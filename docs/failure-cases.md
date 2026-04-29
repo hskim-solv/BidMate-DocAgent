@@ -9,3 +9,4 @@
 - 필터 완화 + 질의 재작성
 - top-k/rerank 파라미터 조정
 - 세션 컨텍스트 보강 및 검증 로그 점검
+- 공개본에서는 verifier가 topic/entity coverage를 확인하고 실패 시 metadata filter를 완화해 1회 retry한다.

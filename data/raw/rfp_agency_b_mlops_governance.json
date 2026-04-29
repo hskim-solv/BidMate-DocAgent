@@ -1,0 +1,28 @@
+{
+  "doc_id": "rfp-agency-b-mlops-governance",
+  "title": "기관 B 데이터 거버넌스 및 MLOps 자동화 RFP",
+  "agency": "기관 B",
+  "project": "데이터 거버넌스 및 MLOps 자동화",
+  "metadata": {
+    "domain": "MLOps",
+    "document_type": "synthetic_public_sample"
+  },
+  "sections": [
+    {
+      "heading": "사업 개요",
+      "text": "기관 B는 데이터 거버넌스와 MLOps 자동화를 결합한 운영 체계를 구축한다. 목표는 모델 배포 절차를 표준화하고 데이터 변경 영향을 추적하는 것이다."
+    },
+    {
+      "heading": "AI 요구사항",
+      "text": "기관 B의 핵심 AI 요구사항은 데이터 거버넌스, MLOps 배포 자동화, 모델 모니터링이다. 시스템은 데이터 lineage, 모델 drift, 배포 승인 이력을 대시보드로 제공해야 한다."
+    },
+    {
+      "heading": "보안 및 개인정보",
+      "text": "기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다. 보안 통제는 데이터셋 반출 승인과 관리자 작업 기록을 중심으로 설계한다."
+    },
+    {
+      "heading": "일정 및 산출물",
+      "text": "기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다. 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다."
+    }
+  ]
+}

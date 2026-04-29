@@ -3,8 +3,8 @@
 
 ## TL;DR
 - **문제**: 길고 복잡한 RFP 문서에서 실무 의사결정에 필요한 핵심 조건(예산/일정/요구사항/제출조건)을 빠르게 찾기 어렵습니다.
-- **해결**: 질문 유형 분석 + metadata-first 검색 + dense retrieval/reranking + 근거 검증/retry를 결합한 Agentic RAG 파이프라인을 구현했습니다.
-- **성과**: 단일 추출/다문서 비교/후속질문/부재판별을 포함한 평가셋에서 근거 기반 응답 품질과 안정성을 검증했습니다.
+- **해결**: 질문 유형 분석 + metadata-first 검색 + local dense retrieval/reranking + 근거 검증/retry를 결합한 Agentic RAG 파이프라인을 구현했습니다.
+- **성과**: 공개 synthetic RFP 평가셋에서 단일 추출/다문서 비교/후속질문/부재판별을 포함한 근거 기반 응답 품질을 검증했습니다.
 - **재현**: 실행 방법과 평가 절차를 문서화해 동일 환경에서 재검증 가능하도록 구성했습니다.
 
 ---
@@ -28,13 +28,13 @@
 
 ### 4) 재현 (Reproducibility)
 - 실행/평가 절차를 README에 요약하고, 상세 배경/실패사례/회고는 `docs/`로 분리
-- 원본 RFP 비공개 제약을 고려해 코드·구조·평가 방법 중심으로 재현 가능성 확보
+- 원본 RFP 비공개 제약을 고려해 공개 synthetic RFP 문서와 평가셋으로 재현 가능성 확보
 
 ---
 
-## Demo / 스크린샷
-- 데모 캡처(질문 → 검색 근거 → 최종 답변) 추가 예정
-- 스크린샷 자리표시자: `docs/assets/demo-overview.png`
+## Demo / 산출물
+- 질의 실행 결과: `outputs/answer.json`
+- 평가 요약: `reports/eval_summary.json`
 
 ---
 
@@ -43,14 +43,16 @@
 <!-- METRICS_TABLE:START -->
 | Category | Metric | Score |
 |---|---:|---:|
-| Single-doc extraction | Answer Accuracy | N/A |
-| Multi-doc comparison | Groundedness Rate | N/A |
-| Abstention | Abstention Accuracy | N/A |
-| System | Latency (p50/p95) | N/A |
-| System | Retry Rate | N/A |
+| Single-doc extraction | Answer Accuracy | 1.000 |
+| Multi-doc comparison | Groundedness Rate | 1.000 |
+| Evidence | Citation Precision | 1.000 |
+| Abstention | Abstention Accuracy | 1.000 |
+| System | Latency (p50/p95) | p50 99.6ms / p95 7524.0ms |
+| System | Retry Rate | 0.200 |
 <!-- METRICS_TABLE:END -->
 
-> 주의: 저장소 공개본에는 원본 데이터 비공개 제약이 있어, 수치 공개 범위는 프로젝트 정책에 따라 업데이트됩니다.
+> 주의: 성능표는 공개 synthetic RFP 평가셋 기준입니다. 원본 RFP 데이터는 비공개 제약으로 저장소에 포함하지 않았습니다.
+> Latency는 CLI 프로세스 기준이라 첫 질의의 로컬 임베딩 모델 로드 시간이 포함됩니다.
 
 ---
 
@@ -78,44 +80,44 @@ Final Response (grounded)
 
 ## 실행 방법 (검증됨)
 
-현재 공개본은 **샘플 모드**로 동작하며, 외부 패키지 없이 Python 표준 라이브러리만으로 실행할 수 있습니다.
+현재 공개본은 `data/raw`의 synthetic RFP 문서를 사용해 로컬에서 end-to-end RAG를 실행합니다. `auto` 모드는 캐시된 `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` 모델을 우선 사용하며, 모델을 사용할 수 없는 환경에서는 deterministic hashing embedding으로 자동 fallback합니다.
 
 ### 1) 환경 준비
 ```bash
 # Python 3.10+ 권장
-python -m venv .venv
+python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
 ### 2) 인덱싱
 ```bash
-python scripts/build_index.py --input_dir data/raw --output_dir data/index
+python3 scripts/build_index.py --input_dir data/raw --output_dir data/index
 ```
 
 ### 3) 질의 실행
 ```bash
-python app.py --input_dir data/index --output_dir outputs --query "기관 A와 기관 B의 AI 요구사항 차이 알려줘"
+python3 app.py --input_dir data/index --output_dir outputs --query "기관 A와 기관 B의 AI 요구사항 차이 알려줘"
 ```
 
 ### 4) 평가 실행
 ```bash
-python eval/run_eval.py --input_dir outputs --output_dir reports --config eval/config.yaml
+python3 eval/run_eval.py --index_dir data/index --output_dir reports --config eval/config.yaml
 ```
 
 ### 5) 성능표 갱신
 ```bash
-python scripts/update_readme_metrics.py --report reports/eval_summary.json --readme README.md
+python3 scripts/update_readme_metrics.py --report reports/eval_summary.json --readme README.md
 ```
 
 ### 6) 일관성 검증 (reports ↔ README)
 ```bash
-python scripts/update_readme_metrics.py --report reports/eval_summary.json --readme README.md --check
+python3 scripts/update_readme_metrics.py --report reports/eval_summary.json --readme README.md --check
 ```
 
-> 참고: 현재 공개 저장소는 **샘플 모드**를 지원합니다. 산출물 경로는 `data/index`, `outputs/`, `reports/`로 고정합니다.
+> 참고: 모델을 처음 내려받아 실제 sentence-transformers 인덱스를 만들려면 `--embedding_backend sentence-transformers`를 사용하세요. 네트워크가 제한된 환경에서는 `--embedding_backend hashing`으로 재현성을 우선한 로컬 실행이 가능합니다. 산출물 경로는 `data/index`, `outputs/`, `reports/`로 고정합니다.
 
-평가 재현 기본 순서: **평가 실행(`eval/run_eval.py`) → 성능표 갱신(`scripts/update_readme_metrics.py`)**
+평가 재현 기본 순서: **인덱싱(`scripts/build_index.py`) → 질의 실행(`app.py`) → 평가 실행(`eval/run_eval.py`) → 성능표 갱신(`scripts/update_readme_metrics.py`)**
 > - 인덱스: `data/index/index.json`
 > - 질의 응답: `outputs/answer.json`
 > - 평가 요약: `reports/eval_summary.json`
@@ -132,4 +134,5 @@ python scripts/update_readme_metrics.py --report reports/eval_summary.json --rea
 
 ## Notice
 - 원본 RFP 문서는 외부 공유 제한으로 저장소에 포함하지 않았습니다.
+- `data/raw` 문서는 공개 재현을 위해 작성한 synthetic RFP 샘플입니다.
 - 본 저장소는 재현 가능한 구조/평가 관점의 포트폴리오 문서화를 목표로 합니다.

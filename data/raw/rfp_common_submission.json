@@ -1,0 +1,20 @@
+{
+  "doc_id": "rfp-common-submission",
+  "title": "공통 제출조건 및 산출물 기준",
+  "agency": "공통",
+  "project": "공통 제출조건",
+  "metadata": {
+    "domain": "submission",
+    "document_type": "synthetic_public_sample"
+  },
+  "sections": [
+    {
+      "heading": "공통 제출조건",
+      "text": "모든 제안사는 일정 준수 계획, 위험 관리 방안, 산출물 품질 검수 절차를 제출해야 한다. 산출물은 표준 템플릿에 맞춰 버전과 책임자를 표시해야 한다."
+    },
+    {
+      "heading": "평가 기준",
+      "text": "공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다. 부재 정보는 추정하지 않고 질의응답 기간에 확인해야 한다."
+    }
+  ]
+}

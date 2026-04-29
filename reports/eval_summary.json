@@ -1,15 +1,110 @@
 {
-  "mode": "sample",
+  "mode": "rag",
   "config": "eval/config.yaml",
-  "num_predictions": 1,
-  "accuracy": null,
-  "groundedness": null,
-  "abstention": null,
+  "index_dir": "data/index",
+  "num_predictions": 5,
+  "accuracy": 1.0,
+  "groundedness": 1.0,
+  "citation_precision": 1.0,
+  "abstention": 1.0,
   "latency": {
-    "p50": null,
-    "p95": null
+    "p50": 99.6,
+    "p95": 7523.967999999999
   },
-  "retry": null,
-  "missing_key_policy": "필수 키 누락 시 null로 채움",
-  "note": "현재 공개 레포에서는 샘플 모드만 지원"
+  "retry": 0.2,
+  "case_results": [
+    {
+      "id": "single_doc_security",
+      "query": "기관 A의 보안 통제 요구사항은?",
+      "answerable": true,
+      "expected_doc_ids": [
+        "rfp-agency-a-ai-quality"
+      ],
+      "evidence_doc_ids": [
+        "rfp-agency-a-ai-quality"
+      ],
+      "accuracy": 1.0,
+      "groundedness": 1.0,
+      "citation_precision": 1.0,
+      "abstention": null,
+      "latency_ms": 9376.85,
+      "retry_count": 0,
+      "abstained": false,
+      "answer": "기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. [rfp-agency-a-ai-quality::chunk-002] 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다. [rfp-agency-a-ai-quality::chunk-004]"
+    },
+    {
+      "id": "multi_doc_ai_requirements",
+      "query": "기관 A와 기관 B의 AI 요구사항 차이 알려줘",
+      "answerable": true,
+      "expected_doc_ids": [
+        "rfp-agency-a-ai-quality",
+        "rfp-agency-b-mlops-governance"
+      ],
+      "evidence_doc_ids": [
+        "rfp-agency-a-ai-quality",
+        "rfp-agency-b-mlops-governance"
+      ],
+      "accuracy": 1.0,
+      "groundedness": 1.0,
+      "citation_precision": 1.0,
+      "abstention": null,
+      "latency_ms": 32.33,
+      "retry_count": 0,
+      "abstained": false,
+      "answer": "기관 A: 기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. [rfp-agency-a-ai-quality::chunk-002] 기관 B: 기관 B의 핵심 AI 요구사항은 데이터 거버넌스, MLOps 배포 자동화, 모델 모니터링이다. [rfp-agency-b-mlops-governance::chunk-002]"
+    },
+    {
+      "id": "follow_up_schedule",
+      "query": "그럼 일정은 어떻게 돼?",
+      "answerable": true,
+      "expected_doc_ids": [
+        "rfp-agency-a-ai-quality"
+      ],
+      "evidence_doc_ids": [
+        "rfp-agency-a-ai-quality"
+      ],
+      "accuracy": 1.0,
+      "groundedness": 1.0,
+      "citation_precision": 1.0,
+      "abstention": null,
+      "latency_ms": 112.44,
+      "retry_count": 0,
+      "abstained": false,
+      "answer": "기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. [rfp-agency-a-ai-quality::chunk-003]"
+    },
+    {
+      "id": "single_doc_chatbot_latency",
+      "query": "기관 C의 챗봇 응답 시간 목표는?",
+      "answerable": true,
+      "expected_doc_ids": [
+        "rfp-agency-c-chatbot"
+      ],
+      "evidence_doc_ids": [
+        "rfp-agency-c-chatbot"
+      ],
+      "accuracy": 1.0,
+      "groundedness": 1.0,
+      "citation_precision": 1.0,
+      "abstention": null,
+      "latency_ms": 59.19,
+      "retry_count": 0,
+      "abstained": false,
+      "answer": "기관 C는 고객지원 챗봇 고도화를 추진한다. [rfp-agency-c-chatbot::chunk-001] 챗봇은 주요 문의에 대해 평균 2초 이내 응답해야 한다. [rfp-agency-c-chatbot::chunk-002]"
+    },
+    {
+      "id": "abstention_missing_blockchain",
+      "query": "기관 A의 블록체인 납품 실적은?",
+      "answerable": false,
+      "expected_doc_ids": [],
+      "evidence_doc_ids": [],
+      "accuracy": null,
+      "groundedness": 1.0,
+      "citation_precision": 1.0,
+      "abstention": 1.0,
+      "latency_ms": 99.6,
+      "retry_count": 1,
+      "abstained": true,
+      "answer": "제공된 공개 샘플 RFP 근거에서는 '기관 A의 블록체인 납품 실적은?'에 답할 수 있는 내용을 찾지 못했습니다."
+    }
+  ]
 }

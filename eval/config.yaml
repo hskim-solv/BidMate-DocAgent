@@ -1,4 +1,49 @@
-mode: sample
-description: Public repository sample evaluation config
-input_answer_file: outputs/answer.json
-output_report_file: reports/eval_summary.json
+mode: rag
+description: Public synthetic RFP evaluation for minimum E2E RAG
+index_dir: data/index
+cases:
+  - id: single_doc_security
+    query: "기관 A의 보안 통제 요구사항은?"
+    expected_doc_ids:
+      - rfp-agency-a-ai-quality
+    expected_terms:
+      - "보안 통제"
+      - "로그"
+    answerable: true
+
+  - id: multi_doc_ai_requirements
+    query: "기관 A와 기관 B의 AI 요구사항 차이 알려줘"
+    expected_doc_ids:
+      - rfp-agency-a-ai-quality
+      - rfp-agency-b-mlops-governance
+    expected_terms:
+      - "품질관리"
+      - "MLOps"
+    answerable: true
+
+  - id: follow_up_schedule
+    query: "그럼 일정은 어떻게 돼?"
+    context_entities:
+      - "기관 A"
+    expected_doc_ids:
+      - rfp-agency-a-ai-quality
+    expected_terms:
+      - "4개월"
+      - "6개월"
+    answerable: true
+
+  - id: single_doc_chatbot_latency
+    query: "기관 C의 챗봇 응답 시간 목표는?"
+    expected_doc_ids:
+      - rfp-agency-c-chatbot
+    expected_terms:
+      - "2초"
+      - "상담 이관"
+    answerable: true
+
+  - id: abstention_missing_blockchain
+    query: "기관 A의 블록체인 납품 실적은?"
+    expected_doc_ids: []
+    expected_terms:
+      - "블록체인"
+    answerable: false

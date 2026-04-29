@@ -7,7 +7,14 @@ from typing import Any, Dict
 
 START_MARKER = "<!-- METRICS_TABLE:START -->"
 END_MARKER = "<!-- METRICS_TABLE:END -->"
-REQUIRED_KEYS = ["accuracy", "groundedness", "abstention", "latency", "retry"]
+REQUIRED_KEYS = [
+    "accuracy",
+    "groundedness",
+    "citation_precision",
+    "abstention",
+    "latency",
+    "retry",
+]
 
 
 def parse_args() -> argparse.Namespace:
@@ -42,6 +49,7 @@ def render_table(summary: Dict[str, Any]) -> str:
     rows = [
         ("Single-doc extraction", "Answer Accuracy", fmt_rate(summary.get("accuracy"))),
         ("Multi-doc comparison", "Groundedness Rate", fmt_rate(summary.get("groundedness"))),
+        ("Evidence", "Citation Precision", fmt_rate(summary.get("citation_precision"))),
         ("Abstention", "Abstention Accuracy", fmt_rate(summary.get("abstention"))),
         ("System", "Latency (p50/p95)", fmt_latency(summary.get("latency"))),
         ("System", "Retry Rate", fmt_rate(summary.get("retry"))),

@@ -1,0 +1,24 @@
+{
+  "doc_id": "rfp-agency-c-chatbot",
+  "title": "기관 C 고객지원 챗봇 고도화 RFP",
+  "agency": "기관 C",
+  "project": "고객지원 챗봇 고도화",
+  "metadata": {
+    "domain": "chatbot",
+    "document_type": "synthetic_public_sample"
+  },
+  "sections": [
+    {
+      "heading": "사업 개요",
+      "text": "기관 C는 고객지원 챗봇 고도화를 추진한다. 목표는 반복 문의를 자동 처리하고 상담원 이관 기준을 명확히 하는 것이다."
+    },
+    {
+      "heading": "AI 요구사항",
+      "text": "기관 C의 챗봇 AI 요구사항은 한국어 FAQ 검색, 의도 분류, 상담 이관 추천이다. 챗봇은 주요 문의에 대해 평균 2초 이내 응답해야 한다."
+    },
+    {
+      "heading": "평가 및 운영",
+      "text": "기관 C는 답변 정확도, 상담 이관 적절성, 사용자 만족도를 운영 지표로 사용한다. 운영 로그는 월간 리포트로 제출한다."
+    }
+  ]
+}

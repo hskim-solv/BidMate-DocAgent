@@ -1,15 +1,64 @@
 {
-  "mode": "sample",
-  "query": "샘플 질문",
-  "answer": "현재 공개 레포에서는 샘플 모드만 지원하며, 더미 근거 기반 응답입니다.",
+  "mode": "rag",
+  "query": "기관 A와 기관 B의 AI 요구사항 차이 알려줘",
+  "analysis": {
+    "query_type": "comparison",
+    "entities": [
+      "기관 A",
+      "기관 B"
+    ],
+    "topics": [
+      "AI",
+      "요구사항"
+    ],
+    "context_entities": [],
+    "context_used": false,
+    "tokens": [
+      "a",
+      "b",
+      "ai",
+      "요구사항"
+    ]
+  },
+  "plan": {
+    "strategy": "metadata-first dense retrieval with lexical reranking",
+    "metadata_filters": {
+      "agencies": [
+        "기관 A",
+        "기관 B"
+      ]
+    },
+    "top_k": 6,
+    "relaxed": false,
+    "retry_policy": "relax metadata filters and widen top-k when verifier rejects evidence"
+  },
+  "answer": "기관 A: 기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. [rfp-agency-a-ai-quality::chunk-002] 기관 B: 기관 B의 핵심 AI 요구사항은 데이터 거버넌스, MLOps 배포 자동화, 모델 모니터링이다. [rfp-agency-b-mlops-governance::chunk-002]",
   "evidence": [
     {
-      "id": "doc-1",
-      "title": "기관 A RFP"
+      "doc_id": "rfp-agency-a-ai-quality",
+      "chunk_id": "rfp-agency-a-ai-quality::chunk-002",
+      "title": "기관 A AI 품질관리 플랫폼 구축 RFP",
+      "text": "기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 시스템은 모델별 정확도와 오류 유형을 수집하고 위험 이벤트를 감사 로그로 남겨야 한다.",
+      "score": 0.8338,
+      "agency": "기관 A",
+      "section": "AI 요구사항"
     },
     {
-      "id": "doc-2",
-      "title": "기관 B RFP"
+      "doc_id": "rfp-agency-b-mlops-governance",
+      "chunk_id": "rfp-agency-b-mlops-governance::chunk-002",
+      "title": "기관 B 데이터 거버넌스 및 MLOps 자동화 RFP",
+      "text": "기관 B의 핵심 AI 요구사항은 데이터 거버넌스, MLOps 배포 자동화, 모델 모니터링이다. 시스템은 데이터 lineage, 모델 drift, 배포 승인 이력을 대시보드로 제공해야 한다.",
+      "score": 0.8409,
+      "agency": "기관 B",
+      "section": "AI 요구사항"
     }
-  ]
+  ],
+  "diagnostics": {
+    "latency_ms": 7579.65,
+    "retry_count": 0,
+    "abstained": false,
+    "verification_reasons": [],
+    "embedding_backend": "sentence-transformers",
+    "embedding_model": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+  }
 }
