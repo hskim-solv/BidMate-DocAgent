@@ -42,7 +42,12 @@ def main() -> int:
         "mode": "sample",
         "config": args.config,
         "num_predictions": 1,
-        "groundedness": "N/A (sample mode)",
+        "accuracy": None,
+        "groundedness": None,
+        "abstention": None,
+        "latency": {"p50": None, "p95": None},
+        "retry": None,
+        "missing_key_policy": "필수 키 누락 시 null로 채움",
         "note": "현재 공개 레포에서는 샘플 모드만 지원",
     }
 
