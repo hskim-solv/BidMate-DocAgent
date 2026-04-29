@@ -1,0 +1,7 @@
+{
+  "mode": "sample",
+  "config": "eval/config.yaml",
+  "num_predictions": 1,
+  "groundedness": "N/A (sample mode)",
+  "note": "현재 공개 레포에서는 샘플 모드만 지원"
+}

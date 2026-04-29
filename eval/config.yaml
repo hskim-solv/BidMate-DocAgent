@@ -1,0 +1,4 @@
+mode: sample
+description: Public repository sample evaluation config
+input_answer_file: outputs/answer.json
+output_report_file: reports/eval_summary.json
