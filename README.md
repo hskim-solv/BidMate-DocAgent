@@ -92,15 +92,18 @@ python scripts/build_index.py --input_dir data/raw --output_dir data/index
 
 ### 3) 질의 실행
 ```bash
-python app.py --query "기관 A와 기관 B의 AI 요구사항 차이 알려줘"
+python app.py --input_dir data/index --output_dir outputs --query "기관 A와 기관 B의 AI 요구사항 차이 알려줘"
 ```
 
 ### 4) 평가 실행
 ```bash
-python eval/run_eval.py --config eval/config.yaml
+python eval/run_eval.py --input_dir outputs --output_dir reports --config eval/config.yaml
 ```
 
-> 참고: 현재 공개 저장소 스냅샷에는 실행 코드/데이터가 포함되어 있지 않을 수 있으므로, 위 명령은 프로젝트 원본 구조 기준 재현 절차입니다.
+> 참고: 현재 공개 저장소는 **샘플 모드**를 지원합니다. 산출물 경로는 `data/index`, `outputs/`, `reports/`로 고정합니다.
+> - 인덱스: `data/index/index.json`
+> - 질의 응답: `outputs/answer.json`
+> - 평가 요약: `reports/eval_summary.json`
 
 ---
 

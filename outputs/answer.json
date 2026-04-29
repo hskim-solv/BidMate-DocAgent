@@ -1,0 +1,15 @@
+{
+  "mode": "sample",
+  "query": "샘플 질문",
+  "answer": "현재 공개 레포에서는 샘플 모드만 지원하며, 더미 근거 기반 응답입니다.",
+  "evidence": [
+    {
+      "id": "doc-1",
+      "title": "기관 A RFP"
+    },
+    {
+      "id": "doc-2",
+      "title": "기관 B RFP"
+    }
+  ]
+}
