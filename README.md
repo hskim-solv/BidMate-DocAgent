@@ -32,6 +32,20 @@
 
 ---
 
+## Portfolio Review Guide
+
+채용 검토자가 빠르게 확인할 수 있도록 이 프로젝트는 아래 7개 질문에 답하는 구조로 정리했습니다. 상세한 의사결정 흐름은 [`docs/portfolio-case-study.md`](docs/portfolio-case-study.md)를 참고하세요.
+
+1. **왜 이 문제를 골랐는가**: RFP QA는 단순 검색보다 다문서 비교, 근거 정합성, 부재판별이 중요해 RAG 역량을 검증하기 좋습니다.
+2. **성공 기준을 어떻게 정했는가**: 답변 정확도뿐 아니라 Groundedness, Citation Precision, Abstention, Latency/Retry를 함께 봅니다.
+3. **어떤 실패가 났는가**: 메타데이터 불일치, 비교 질의의 한쪽 문서 누락, 후속 질문의 엔터티 소실을 주요 실패로 분리했습니다.
+4. **어떤 실험을 비교했는가**: keyword-only, dense-only, metadata-first+dense/rerank, verifier/retry 유무를 비교 축으로 삼았습니다.
+5. **왜 A안이 아니라 B안을 택했는가**: 생성 유창성보다 근거 재현성과 검증 가능성을 우선해 metadata-first + verifier/retry 구조를 채택했습니다.
+6. **에이전트 산출물을 어떻게 검증했는가**: evidence doc id, expected terms, abstention 여부, README metric sync check로 산출물을 검증합니다.
+7. **다음 실험을 왜 그렇게 설계했는가**: 평가셋 확대, citation 자동 검증, latency/retry 비용 분석을 다음 병목 확인 실험으로 둡니다.
+
+---
+
 ## Demo / 산출물
 - 질의 실행 결과: `outputs/answer.json`
 - 평가 요약: `reports/eval_summary.json`
@@ -125,6 +139,7 @@ python3 scripts/update_readme_metrics.py --report reports/eval_summary.json --re
 ---
 
 ## 상세 설계 링크
+- 포트폴리오 case study: [`docs/portfolio-case-study.md`](docs/portfolio-case-study.md)
 - 설계 배경 및 의사결정: [`docs/design-background.md`](docs/design-background.md)
 - 실패 사례 분석: [`docs/failure-cases.md`](docs/failure-cases.md)
 - 회고 및 개선 방향: [`docs/retrospective.md`](docs/retrospective.md)
