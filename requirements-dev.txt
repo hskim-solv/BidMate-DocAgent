@@ -1,0 +1,4 @@
+# Development and verification dependencies for Agentic-VLM.
+# Keep this file focused on tools needed for local/Codex validation.
+
+pytest>=8,<9
