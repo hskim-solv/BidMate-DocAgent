@@ -105,6 +105,61 @@ def sentence_split(text: str) -> list[str]:
     return [p.strip() for p in parts if p.strip()]
 
 
+def split_long_text_unit(text: str, max_chars: int) -> list[str]:
+    if len(text) <= max_chars:
+        return [text]
+
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if len(lines) > 1:
+        chunks: list[str] = []
+        current: list[str] = []
+        current_len = 0
+        for line in lines:
+            if len(line) > max_chars:
+                if current:
+                    chunks.append(" ".join(current).strip())
+                    current = []
+                    current_len = 0
+                chunks.extend(split_long_text_unit(line, max_chars))
+                continue
+            next_len = current_len + len(line) + 1
+            if current and next_len > max_chars:
+                chunks.append(" ".join(current).strip())
+                current = []
+                current_len = 0
+            current.append(line)
+            current_len += len(line) + 1
+        if current:
+            chunks.append(" ".join(current).strip())
+        return chunks
+
+    words = text.split()
+    if len(words) <= 1:
+        return [text[idx : idx + max_chars].strip() for idx in range(0, len(text), max_chars)]
+
+    chunks = []
+    current = []
+    current_len = 0
+    for word in words:
+        if len(word) > max_chars:
+            if current:
+                chunks.append(" ".join(current).strip())
+                current = []
+                current_len = 0
+            chunks.extend(word[idx : idx + max_chars] for idx in range(0, len(word), max_chars))
+            continue
+        next_len = current_len + len(word) + 1
+        if current and next_len > max_chars:
+            chunks.append(" ".join(current).strip())
+            current = []
+            current_len = 0
+        current.append(word)
+        current_len += len(word) + 1
+    if current:
+        chunks.append(" ".join(current).strip())
+    return [chunk for chunk in chunks if chunk]
+
+
 def load_raw_documents(input_dir: Path) -> list[dict[str, Any]]:
     files = sorted(
         p
@@ -176,7 +231,9 @@ def build_chunks(documents: Iterable[dict[str, Any]], max_chars: int = 520) -> l
     for doc in documents:
         chunk_seq = 1
         for section in doc["sections"]:
-            sentences = sentence_split(section["text"]) or [section["text"]]
+            sentences = []
+            for sentence in sentence_split(section["text"]) or [section["text"]]:
+                sentences.extend(split_long_text_unit(sentence, max_chars))
             current: list[str] = []
             current_len = 0
             for sentence in sentences:
@@ -184,8 +241,14 @@ def build_chunks(documents: Iterable[dict[str, Any]], max_chars: int = 520) -> l
                 if current and next_len > max_chars:
                     chunks.append(make_chunk(doc, section["heading"], current, chunk_seq))
                     chunk_seq += 1
-                    current = current[-1:]
-                    current_len = sum(len(s) + 1 for s in current)
+                    overlap = current[-1:]
+                    overlap_len = sum(len(s) + 1 for s in overlap)
+                    if overlap_len + len(sentence) + 1 <= max_chars:
+                        current = overlap
+                        current_len = overlap_len
+                    else:
+                        current = []
+                        current_len = 0
                 current.append(sentence)
                 current_len += len(sentence) + 1
             if current:
@@ -207,6 +270,7 @@ def make_chunk(
         "title": doc["title"],
         "agency": doc.get("agency", ""),
         "project": doc.get("project", ""),
+        "metadata": doc.get("metadata", {}),
         "section": section,
         "text": text,
         "tokens": tokenize(" ".join([doc["title"], doc.get("agency", ""), section, text])),
@@ -318,6 +382,22 @@ def build_index_payload(
     embedding_backend: str = "auto",
 ) -> dict[str, Any]:
     documents = load_raw_documents(input_dir)
+    return build_index_payload_from_documents(
+        documents,
+        source_dir=str(input_dir),
+        model_name=model_name,
+        embedding_backend=embedding_backend,
+        message="Public synthetic RFP index for local minimum E2E RAG.",
+    )
+
+
+def build_index_payload_from_documents(
+    documents: list[dict[str, Any]],
+    source_dir: str,
+    model_name: str = DEFAULT_EMBEDDING_MODEL,
+    embedding_backend: str = "auto",
+    message: str = "RFP index for local minimum E2E RAG.",
+) -> dict[str, Any]:
     chunks = build_chunks(documents)
     embedding_inputs = [
         " ".join([chunk["title"], chunk.get("agency", ""), chunk["section"], chunk["text"]])
@@ -341,7 +421,7 @@ def build_index_payload(
     return {
         "schema_version": 1,
         "mode": "rag",
-        "message": "Public synthetic RFP index for local minimum E2E RAG.",
+        "message": message,
         "embedding": {
             "backend": embedding_result.backend,
             "model": embedding_result.model,
@@ -351,7 +431,7 @@ def build_index_payload(
         "build": {
             "num_documents": len(public_docs),
             "num_chunks": len(chunks),
-            "source_dir": str(input_dir),
+            "source_dir": source_dir,
         },
         "documents": public_docs,
         "chunks": chunks,
@@ -477,6 +557,7 @@ def retrieve(
                 "title": chunk["title"],
                 "agency": chunk.get("agency", ""),
                 "project": chunk.get("project", ""),
+                "metadata": chunk.get("metadata", {}),
                 "section": chunk["section"],
                 "text": chunk["text"],
                 "score": round(float(score), 4),
@@ -693,6 +774,7 @@ def strip_internal_scores(evidence: list[dict[str, Any]]) -> list[dict[str, Any]
             "text": item["text"],
             "score": item["score"],
             "agency": item.get("agency", ""),
+            "metadata": item.get("metadata", {}),
             "section": item.get("section", ""),
         }
         for item in evidence

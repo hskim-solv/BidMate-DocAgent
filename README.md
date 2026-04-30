@@ -49,6 +49,7 @@
 ## Demo / 산출물
 - 질의 실행 결과: `outputs/answer.json`
 - 평가 요약: `reports/eval_summary.json`
+- PDF/HWP ingestion 진단 리포트: `data/index/ingestion_report.json` (`--metadata_csv` 사용 시)
 
 ---
 
@@ -136,11 +137,25 @@ python3 scripts/update_readme_metrics.py --report reports/eval_summary.json --re
 > - 질의 응답: `outputs/answer.json`
 > - 평가 요약: `reports/eval_summary.json`
 
+### 선택) PDF/HWP + data_list.csv ingestion
+비공개 원본 파일을 로컬에 보유한 경우 `data_list.csv`의 `텍스트` 컬럼을 v1 본문 소스로 사용해 PDF/HWP 메타데이터를 인덱스에 반영할 수 있습니다. `data/data_list.csv`와 `data/files/`는 비공개 데이터이므로 Git 추적 대상이 아닙니다.
+
+```bash
+python3 scripts/build_index.py \
+  --metadata_csv data/data_list.csv \
+  --files_dir data/files \
+  --output_dir data/index \
+  --embedding_backend hashing
+```
+
+이 모드는 `data/index/index.json`과 함께 `data/index/ingestion_report.json`을 생성합니다. 리포트에는 문서별 indexed/failed 상태와 `missing_file`, `empty_text`, `unsupported_file_format`, `duplicate_doc_id` 같은 실패 사유가 기록됩니다.
+
 ---
 
 ## 상세 설계 링크
 - 포트폴리오 case study: [`docs/portfolio-case-study.md`](docs/portfolio-case-study.md)
 - 설계 배경 및 의사결정: [`docs/design-background.md`](docs/design-background.md)
+- PDF/HWP ingestion: [`docs/real-data-ingestion.md`](docs/real-data-ingestion.md)
 - 실패 사례 분석: [`docs/failure-cases.md`](docs/failure-cases.md)
 - 회고 및 개선 방향: [`docs/retrospective.md`](docs/retrospective.md)
 - 프로젝트 상세 문서 인덱스: [`docs/README.md`](docs/README.md)
