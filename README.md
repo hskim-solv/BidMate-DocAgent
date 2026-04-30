@@ -64,17 +64,18 @@
 | Follow-up | Answer Accuracy | 1.000 |
 | Evidence | Citation Precision | 1.000 |
 | Abstention | Abstention Accuracy | 1.000 |
-| System | Latency (p50/p95) | p50 1.0ms / p95 1.3ms |
+| System | Latency (p50/p95) | p50 1.1ms / p95 2.2ms |
 | System | Retry Rate | 0.250 |
 
 ### Ablation comparison
 
-| Run | Metadata-first | Rerank | Verifier/Retry | Accuracy | Groundedness | Citation | Abstention | Retry | Latency p95 |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| full | on | on | on | 1.000 | 1.000 | 1.000 | 1.000 | 0.250 | 1.3ms |
-| no_metadata_first | off | on | on | 1.000 | 1.000 | 0.833 | 1.000 | 0.000 | 1.6ms |
-| no_rerank | on | off | on | 1.000 | 1.000 | 1.000 | 1.000 | 0.250 | 2.0ms |
-| no_verifier_retry | on | on | off | 1.000 | 0.750 | 0.750 | 0.000 | 0.000 | 2.3ms |
+| Run | Retrieval | Metadata-first | Rerank | Verifier/Retry | Accuracy | Groundedness | Citation | Abstention | Retry | Latency p95 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| full | flat | on | on | on | 1.000 | 1.000 | 1.000 | 1.000 | 0.250 | 2.2ms |
+| hierarchical | hierarchical | on | on | on | 1.000 | 1.000 | 1.000 | 1.000 | 0.250 | 1.5ms |
+| no_metadata_first | flat | off | on | on | 1.000 | 1.000 | 0.833 | 1.000 | 0.000 | 1.8ms |
+| no_rerank | flat | on | off | on | 1.000 | 1.000 | 1.000 | 1.000 | 0.250 | 1.8ms |
+| no_verifier_retry | flat | on | on | off | 1.000 | 0.750 | 0.750 | 0.000 | 0.000 | 1.5ms |
 <!-- METRICS_TABLE:END -->
 
 > 주의: 성능표는 공개 synthetic RFP 평가셋 기준입니다. 원본 RFP 데이터는 비공개 제약으로 저장소에 포함하지 않았습니다.
@@ -142,6 +143,8 @@ python3 scripts/update_readme_metrics.py --report reports/eval_summary.json --re
 ```
 
 > 참고: 모델을 처음 내려받아 실제 sentence-transformers 인덱스를 만들려면 `--embedding_backend sentence-transformers`를 사용하세요. 네트워크가 제한된 환경에서는 `--embedding_backend hashing`으로 재현성을 우선한 로컬 실행이 가능합니다. 산출물 경로는 `data/index`, `outputs/`, `reports/`로 고정합니다.
+> Chunking 기본값은 `--chunking_strategy auto --chunk_max_chars 520 --chunk_overlap_sentences 1`입니다. `auto`는 heading/section 구조가 있으면 section-aware chunk metadata를 저장하고, 단일 본문처럼 구조가 약하면 fixed fallback을 사용합니다.
+> 질의 기본값은 flat child-chunk retrieval입니다. parent section 단위 재조립을 확인하려면 `app.py`에 `--retrieval_mode hierarchical`을 지정하거나 `eval/config.yaml`의 `hierarchical` ablation run을 실행합니다.
 
 평가 재현 기본 순서: **인덱싱(`scripts/build_index.py`) → 질의 실행(`app.py`) → 평가 실행(`eval/run_eval.py`) → 성능표 갱신(`scripts/update_readme_metrics.py`)**
 > - 인덱스: `data/index/index.json`
@@ -166,6 +169,7 @@ python3 scripts/build_index.py \
 ## 상세 설계 링크
 - 포트폴리오 case study: [`docs/portfolio-case-study.md`](docs/portfolio-case-study.md)
 - 설계 배경 및 의사결정: [`docs/design-background.md`](docs/design-background.md)
+- Chunking diagnostics: [`docs/chunking-diagnostics.md`](docs/chunking-diagnostics.md)
 - PDF/HWP ingestion: [`docs/real-data-ingestion.md`](docs/real-data-ingestion.md)
 - 실패 사례 분석: [`docs/failure-cases.md`](docs/failure-cases.md)
 - 회고 및 개선 방향: [`docs/retrospective.md`](docs/retrospective.md)

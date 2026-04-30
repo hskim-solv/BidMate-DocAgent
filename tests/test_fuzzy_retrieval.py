@@ -23,6 +23,21 @@ class FuzzyMetadataRetrievalTest(unittest.TestCase):
             result["plan"]["metadata_filters"]["doc_ids"],
         )
 
+    def test_section_metadata_is_stored_on_chunks_and_evidence(self) -> None:
+        chunk = self.index["chunks"][0]
+
+        self.assertEqual("section", chunk["chunking_strategy"])
+        self.assertEqual(["사업 개요"], chunk["section_path"])
+        self.assertEqual(1, chunk["chunk_seq_in_section"])
+        self.assertTrue(chunk["section_id"].startswith("rfp-agency-a-ai-quality::section-"))
+
+        result = run_rag_query(self.index, "기관 A의 보안 통제 요구사항은?")
+        evidence = result["evidence"][0]
+
+        self.assertEqual(["AI 요구사항"], evidence["section_path"])
+        self.assertEqual(evidence["section_id"], evidence["parent_section_id"])
+        self.assertEqual("section", evidence["chunking_strategy"])
+
     def test_abbreviation_query_keeps_both_comparison_sides(self) -> None:
         result = run_rag_query(self.index, "A와 B의 AI 요구사항 차이 알려줘")
 
@@ -92,6 +107,79 @@ class FuzzyMetadataRetrievalTest(unittest.TestCase):
             {"alpha-research", "alpha-regional"},
             set(result["plan"]["metadata_filters"]["doc_ids"]),
         )
+
+    def test_auto_chunking_uses_fixed_fallback_for_weak_structure(self) -> None:
+        fallback_index = build_index_payload_from_documents(
+            [
+                {
+                    "doc_id": "single-body",
+                    "title": "단일 본문 RFP",
+                    "agency": "기관 S",
+                    "project": "단일 본문 사업",
+                    "metadata": {},
+                    "sections": [
+                        {
+                            "heading": "본문",
+                            "text": "보안 로그를 남긴다. 운영 리포트를 제출한다.",
+                        }
+                    ],
+                    "source_path": "single-body.txt",
+                }
+            ],
+            source_dir="test-fixture",
+            embedding_backend="hashing",
+        )
+
+        self.assertEqual(
+            {"fixed": 1},
+            fallback_index["build"]["chunking"]["actual_strategy_counts"],
+        )
+        self.assertEqual("fixed", fallback_index["chunks"][0]["chunking_strategy"])
+        self.assertEqual(["문서 전체"], fallback_index["chunks"][0]["section_path"])
+
+    def test_hierarchical_retrieval_reassembles_parent_section(self) -> None:
+        long_section_index = build_index_payload_from_documents(
+            [
+                {
+                    "doc_id": "section-parent",
+                    "title": "부모 섹션 테스트 RFP",
+                    "agency": "기관 P",
+                    "project": "부모 섹션 사업",
+                    "metadata": {},
+                    "sections": [
+                        {
+                            "heading": "보안 요구사항",
+                            "text": (
+                                "보안 로그는 모든 관리자 작업에 대해 남겨야 한다. "
+                                "접근 권한은 역할별로 분리한다. "
+                                "운영 리포트는 매월 제출한다."
+                            ),
+                        }
+                    ],
+                    "source_path": "section-parent.txt",
+                }
+            ],
+            source_dir="test-fixture",
+            embedding_backend="hashing",
+            chunking_strategy="section",
+            chunk_max_chars=45,
+            chunk_overlap_sentences=0,
+        )
+
+        flat = run_rag_query(long_section_index, "기관 P의 보안 로그 요구사항은?", top_k=1)
+        hierarchical = run_rag_query(
+            long_section_index,
+            "기관 P의 보안 로그 요구사항은?",
+            top_k=1,
+            retrieval_mode="hierarchical",
+        )
+
+        self.assertEqual("flat", flat["diagnostics"]["retrieval_mode"])
+        self.assertEqual("hierarchical", hierarchical["diagnostics"]["retrieval_mode"])
+        self.assertEqual("hierarchical", hierarchical["evidence"][0]["retrieval_mode"])
+        self.assertGreater(len(hierarchical["evidence"][0]["text"]), len(flat["evidence"][0]["text"]))
+        self.assertIn("운영 리포트", hierarchical["evidence"][0]["text"])
+        self.assertTrue(hierarchical["evidence"][0]["child_chunk_ids"])
 
     def test_retry_relaxes_filters_when_verifier_rejects_evidence(self) -> None:
         result = run_rag_query(self.index, "기관 A의 블록체인 납품 실적은?")

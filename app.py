@@ -19,6 +19,12 @@ def parse_args() -> argparse.Namespace:
         default="",
         help="Comma-separated entities for follow-up questions, e.g. '기관 A'.",
     )
+    parser.add_argument(
+        "--retrieval_mode",
+        default="flat",
+        choices=["flat", "hierarchical"],
+        help="Use flat child-chunk retrieval or hierarchical parent-section reassembly.",
+    )
     return parser.parse_args()
 
 
@@ -45,6 +51,7 @@ def main() -> int:
             args.query,
             top_k=args.top_k,
             context_entities=parse_context_entities(args.context_entities),
+            retrieval_mode=args.retrieval_mode,
         )
     except Exception as exc:
         print(f"[ERROR] RAG query failed: {exc}", file=sys.stderr)
