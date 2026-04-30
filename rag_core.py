@@ -8,6 +8,7 @@ generation is extractive, and external LLM/API calls are not required.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import difflib
 import hashlib
 import json
 import math
@@ -16,6 +17,7 @@ from pathlib import Path
 import re
 import time
 from typing import Any, Iterable
+import unicodedata
 
 import numpy as np
 
@@ -83,6 +85,39 @@ TOPIC_KEYWORDS = [
     "실적",
 ]
 
+STRICT_METADATA_CONFIDENCE = 0.90
+REDUCED_METADATA_CONFIDENCE = 0.70
+AMBIGUOUS_CONFIDENCE_DELTA = 0.05
+
+METADATA_GENERIC_TOKENS = {
+    "rfp",
+    "사업",
+    "용역",
+    "구축",
+    "고도화",
+    "개발",
+    "운영",
+    "정보",
+    "시스템",
+}
+
+KOREAN_PARTICLE_SUFFIXES = (
+    "으로",
+    "에서",
+    "에게",
+    "과",
+    "와",
+    "의",
+    "은",
+    "는",
+    "이",
+    "가",
+    "을",
+    "를",
+    "로",
+    "에",
+)
+
 
 @dataclass(frozen=True)
 class EmbeddingResult:
@@ -93,6 +128,39 @@ class EmbeddingResult:
 
 def normalize_entity(value: str) -> str:
     return re.sub(r"\s+", " ", value.strip())
+
+
+def compact_metadata_text(value: str) -> str:
+    normalized = unicodedata.normalize("NFC", value).lower()
+    return re.sub(r"[^0-9a-z가-힣]+", "", normalized)
+
+
+def normalize_metadata_token(token: str) -> str:
+    token = unicodedata.normalize("NFC", token).lower().strip()
+    if re.fullmatch(r"[가-힣]+", token):
+        for suffix in KOREAN_PARTICLE_SUFFIXES:
+            if len(token) > len(suffix) + 1 and token.endswith(suffix):
+                return token[: -len(suffix)]
+    return token
+
+
+def metadata_tokens(text: str) -> list[str]:
+    tokens = []
+    for match in TOKEN_RE.finditer(unicodedata.normalize("NFC", text)):
+        token = normalize_metadata_token(match.group(0))
+        if token and token not in STOPWORDS:
+            tokens.append(token)
+    return tokens
+
+
+def ordered_unique(values: Iterable[str]) -> list[str]:
+    seen = set()
+    ordered = []
+    for value in values:
+        if value and value not in seen:
+            seen.add(value)
+            ordered.append(value)
+    return ordered
 
 
 def tokenize(text: str) -> list[str]:
@@ -459,32 +527,213 @@ def known_entities(index: dict[str, Any]) -> list[str]:
     return entities
 
 
+def metadata_targets(index: dict[str, Any]) -> list[dict[str, Any]]:
+    targets = []
+    for doc in index.get("documents", []):
+        for field in ("agency", "project", "title"):
+            value = str(doc.get(field) or "").strip()
+            if value:
+                targets.append(make_metadata_target(doc, field, value))
+    return targets
+
+
+def make_metadata_target(doc: dict[str, Any], field: str, value: str) -> dict[str, Any]:
+    tokens = metadata_tokens(value)
+    core_tokens = [token for token in tokens if token not in METADATA_GENERIC_TOKENS]
+    return {
+        "doc_id": str(doc.get("doc_id") or ""),
+        "agency": str(doc.get("agency") or ""),
+        "project": str(doc.get("project") or ""),
+        "field": field,
+        "value": value,
+        "compact": compact_metadata_text(value),
+        "tokens": tokens,
+        "core_tokens": core_tokens,
+        "aliases": metadata_aliases(field, value, tokens),
+    }
+
+
+def metadata_aliases(field: str, value: str, tokens: list[str]) -> list[str]:
+    aliases = []
+    if field == "agency":
+        for token in tokens:
+            if 1 <= len(token) <= 4 and re.search(r"[a-z0-9]", token):
+                aliases.append(token)
+        compact = compact_metadata_text(value)
+        if compact.startswith("기관") and len(compact) > 2:
+            aliases.append(compact[2:])
+    return ordered_unique(aliases)
+
+
+def coerce_metadata_targets(values: list[Any]) -> list[dict[str, Any]]:
+    if not values:
+        return []
+    if isinstance(values[0], dict):
+        return values
+    return [
+        make_metadata_target(
+            {"doc_id": f"agency::{value}", "agency": str(value), "project": ""},
+            "agency",
+            str(value),
+        )
+        for value in values
+    ]
+
+
+def match_metadata_targets(query: str, targets: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    query_compact = compact_metadata_text(query)
+    query_tokens = metadata_tokens(query)
+    query_token_set = set(query_tokens)
+    matches = []
+    for target in targets:
+        match = match_metadata_target(query_compact, query_tokens, query_token_set, target)
+        if match:
+            matches.append(match)
+    return dedupe_metadata_matches(matches)
+
+
+def match_metadata_target(
+    query_compact: str,
+    query_tokens: list[str],
+    query_token_set: set[str],
+    target: dict[str, Any],
+) -> dict[str, Any] | None:
+    target_compact = target.get("compact", "")
+    target_tokens = target.get("core_tokens") or target.get("tokens") or []
+
+    if target_compact and len(target_compact) >= 2 and target_compact in query_compact:
+        return make_metadata_match(target, 1.0, "compact_contains", target_tokens)
+
+    alias_hits = [alias for alias in target.get("aliases", []) if alias in query_token_set]
+    if alias_hits:
+        return make_metadata_match(target, 0.78, "abbreviation", alias_hits)
+
+    overlap = [token for token in target_tokens if token in query_token_set]
+    if len(overlap) >= 2:
+        overlap_ratio = len(overlap) / max(1, len(target_tokens))
+        confidence = min(0.89, 0.70 + (0.19 * overlap_ratio))
+        return make_metadata_match(target, confidence, "partial_tokens", overlap)
+    if len(overlap) == 1 and target["field"] in {"project", "title"} and len(target_tokens) <= 2:
+        if len(overlap[0]) >= 3:
+            return make_metadata_match(target, 0.72, "partial_tokens", overlap)
+
+    fuzzy_score = best_metadata_phrase_similarity(target_tokens, query_tokens)
+    if fuzzy_score >= REDUCED_METADATA_CONFIDENCE:
+        confidence = min(0.84, fuzzy_score)
+        return make_metadata_match(target, confidence, "fuzzy_similarity", target_tokens)
+
+    return None
+
+
+def best_metadata_phrase_similarity(target_tokens: list[str], query_tokens: list[str]) -> float:
+    if not target_tokens or not query_tokens:
+        return 0.0
+    target_text = "".join(target_tokens)
+    min_size = max(1, len(target_tokens) - 1)
+    max_size = min(len(query_tokens), len(target_tokens) + 1)
+    best = 0.0
+    for size in range(min_size, max_size + 1):
+        for start in range(0, len(query_tokens) - size + 1):
+            phrase = "".join(query_tokens[start : start + size])
+            best = max(best, difflib.SequenceMatcher(None, target_text, phrase).ratio())
+    return best
+
+
+def make_metadata_match(
+    target: dict[str, Any],
+    confidence: float,
+    match_type: str,
+    matched_terms: list[str],
+) -> dict[str, Any]:
+    stage = "strict" if confidence >= STRICT_METADATA_CONFIDENCE else "reduced"
+    return {
+        "doc_id": target["doc_id"],
+        "agency": target.get("agency", ""),
+        "project": target.get("project", ""),
+        "field": target["field"],
+        "value": target["value"],
+        "confidence": round(float(confidence), 3),
+        "stage": stage,
+        "match_type": match_type,
+        "matched_terms": ordered_unique(matched_terms),
+    }
+
+
+def dedupe_metadata_matches(matches: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    best_by_target: dict[tuple[str, str, str], dict[str, Any]] = {}
+    for match in matches:
+        key = (match["doc_id"], match["field"], match["value"])
+        current = best_by_target.get(key)
+        if current is None or match["confidence"] > current["confidence"]:
+            best_by_target[key] = match
+    return sorted(
+        best_by_target.values(),
+        key=lambda item: (item["confidence"], item["field"] == "agency"),
+        reverse=True,
+    )
+
+
+def metadata_matches_for_stage(matches: list[dict[str, Any]], stage: str) -> list[dict[str, Any]]:
+    if stage == "strict":
+        return [match for match in matches if match["confidence"] >= STRICT_METADATA_CONFIDENCE]
+    if stage == "reduced":
+        return [match for match in matches if match["confidence"] >= REDUCED_METADATA_CONFIDENCE]
+    return []
+
+
+def metadata_filters_from_matches(matches: list[dict[str, Any]]) -> dict[str, Any]:
+    if not matches:
+        return {}
+    return {
+        "doc_ids": ordered_unique(match["doc_id"] for match in matches),
+        "agencies": ordered_unique(match["agency"] for match in matches),
+        "projects": ordered_unique(match["project"] for match in matches),
+        "confidence": round(max(match["confidence"] for match in matches), 3),
+    }
+
+
+def best_metadata_doc_scores(matches: list[dict[str, Any]]) -> dict[str, float]:
+    scores: dict[str, float] = {}
+    for match in matches:
+        doc_id = match.get("doc_id", "")
+        if doc_id:
+            scores[doc_id] = max(scores.get(doc_id, 0.0), float(match["confidence"]))
+    return scores
+
+
+def is_metadata_ambiguous(matches: list[dict[str, Any]], query_type: str) -> bool:
+    if query_type == "comparison":
+        return False
+    reduced_matches = metadata_matches_for_stage(matches, "reduced")
+    if not reduced_matches:
+        return False
+    scores = best_metadata_doc_scores(reduced_matches)
+    if len(scores) <= 1:
+        return False
+    top_score = max(scores.values())
+    close_doc_ids = [
+        doc_id for doc_id, score in scores.items() if score >= top_score - AMBIGUOUS_CONFIDENCE_DELTA
+    ]
+    return len(close_doc_ids) > 1
+
+
 def analyze_query(
     query: str,
-    entities: list[str],
+    entities: list[Any],
     context_entities: list[str] | None = None,
 ) -> dict[str, Any]:
+    targets = coerce_metadata_targets(entities)
     normalized_query = normalize_entity(query)
-    query_no_space = re.sub(r"\s+", "", normalized_query.lower())
-    found_entities: list[str] = []
-    for entity in entities:
-        entity_no_space = re.sub(r"\s+", "", entity.lower())
-        if entity_no_space and entity_no_space in query_no_space:
-            found_entities.append(entity)
-
-    for match in ENTITY_RE.findall(normalized_query):
-        candidate = normalize_entity(match)
-        for entity in entities:
-            if re.sub(r"\s+", "", entity.lower()) == re.sub(r"\s+", "", candidate.lower()):
-                if entity not in found_entities:
-                    found_entities.append(entity)
+    metadata_matches = match_metadata_targets(normalized_query, targets)
 
     context_used = False
-    if not found_entities and context_entities:
+    if not metadata_matches and context_entities:
+        context_matches = []
         for entity in context_entities:
-            if entity in entities and entity not in found_entities:
-                found_entities.append(entity)
-                context_used = True
+            context_matches.extend(match_metadata_targets(entity, targets))
+        if context_matches:
+            context_used = True
+            metadata_matches = dedupe_metadata_matches(context_matches)
 
     topics = []
     for keyword in TOPIC_KEYWORDS:
@@ -498,32 +747,72 @@ def analyze_query(
                 topics.append(token)
 
     comparison_terms = ("차이", "비교", "공통", "각각", "대비")
-    if len(found_entities) > 1 or any(term in normalized_query for term in comparison_terms):
+    comparison_joiners = ("와", "과", "및", ",", "/")
+    reduced_matches = metadata_matches_for_stage(metadata_matches, "reduced")
+    matched_doc_ids = ordered_unique(match["doc_id"] for match in reduced_matches)
+    matched_agencies = ordered_unique(match["agency"] for match in reduced_matches)
+    matched_projects = ordered_unique(match["project"] for match in reduced_matches)
+    has_comparison_term = any(term in normalized_query for term in comparison_terms)
+    has_multi_target_joiner = len(matched_doc_ids) > 1 and any(
+        joiner in normalized_query for joiner in comparison_joiners
+    )
+    if has_comparison_term or has_multi_target_joiner:
         query_type = "comparison"
     elif context_used:
         query_type = "follow_up"
     else:
         query_type = "single_doc"
 
+    strict_matches = metadata_matches_for_stage(metadata_matches, "strict")
+    strict_filters = metadata_filters_from_matches(strict_matches)
+    reduced_filters = metadata_filters_from_matches(reduced_matches)
+
     return {
         "query_type": query_type,
-        "entities": found_entities,
+        "entities": matched_agencies,
         "topics": topics[:8],
         "context_entities": context_entities or [],
         "context_used": context_used,
         "tokens": tokenize(normalized_query),
+        "metadata_matches": metadata_matches,
+        "matched_doc_ids": matched_doc_ids,
+        "matched_agencies": matched_agencies,
+        "matched_projects": matched_projects,
+        "metadata_confidence": round(max((m["confidence"] for m in metadata_matches), default=0.0), 3),
+        "metadata_ambiguous": is_metadata_ambiguous(metadata_matches, query_type),
+        "metadata_filters_by_stage": {
+            "strict": strict_filters,
+            "reduced": reduced_filters,
+            "relaxed": {},
+        },
+        "metadata_doc_scores": best_metadata_doc_scores(reduced_matches),
     }
 
 
-def make_plan(analysis: dict[str, Any], relaxed: bool = False, top_k: int | None = None) -> dict[str, Any]:
+def make_plan(
+    analysis: dict[str, Any],
+    relaxed: bool = False,
+    top_k: int | None = None,
+    stage: str | None = None,
+) -> dict[str, Any]:
     default_top_k = 6 if analysis["query_type"] == "comparison" else 4
-    filters = {} if relaxed else {"agencies": analysis.get("entities", [])}
+    if relaxed:
+        stage = "relaxed"
+    stage = stage or "strict"
+    if stage == "relaxed":
+        filters = {}
+    else:
+        filters_by_stage = analysis.get("metadata_filters_by_stage") or {}
+        filters = filters_by_stage.get(stage) or {}
+        if not filters and not filters_by_stage:
+            filters = {"agencies": analysis.get("entities", [])}
     return {
         "strategy": "metadata-first dense retrieval with lexical reranking",
+        "filter_stage": stage,
         "metadata_filters": filters,
         "top_k": top_k or default_top_k,
-        "relaxed": relaxed,
-        "retry_policy": "relax metadata filters and widen top-k when verifier rejects evidence",
+        "relaxed": stage == "relaxed",
+        "retry_policy": "try strict metadata filters, then reduced fuzzy filters, then relaxed retrieval",
     }
 
 
@@ -535,10 +824,26 @@ def retrieve(
 ) -> list[dict[str, Any]]:
     chunks = index["chunks"]
     filters = plan.get("metadata_filters") or {}
+    doc_ids = set(filters.get("doc_ids") or [])
     agencies = set(filters.get("agencies") or [])
-    candidates = [c for c in chunks if not agencies or c.get("agency") in agencies]
+    projects = set(filters.get("projects") or [])
+    candidates = [
+        c
+        for c in chunks
+        if (
+            (doc_ids and c.get("doc_id") in doc_ids)
+            or (not doc_ids and agencies and c.get("agency") in agencies)
+            or (not doc_ids and projects and c.get("project") in projects)
+            or not (doc_ids or agencies or projects)
+        )
+    ]
+    plan["candidate_count"] = len(candidates)
+    plan["total_chunks"] = len(chunks)
+    plan["filter_fallback_used"] = False
     if not candidates:
         candidates = chunks
+        plan["candidate_count"] = len(candidates)
+        plan["filter_fallback_used"] = True
 
     embedding_config = index.get("embedding", {})
     query_embedding = embed_query_for_index(query, embedding_config)
@@ -620,6 +925,10 @@ def lexical_similarity(query_tokens: set[str], topics: list[str], chunk: dict[st
 
 
 def metadata_similarity(analysis: dict[str, Any], chunk: dict[str, Any]) -> float:
+    doc_scores = analysis.get("metadata_doc_scores") or {}
+    doc_id = chunk.get("doc_id")
+    if doc_id in doc_scores:
+        return float(doc_scores[doc_id])
     entities = analysis.get("entities") or []
     if not entities:
         return 0.0
@@ -644,6 +953,13 @@ def verify_evidence(analysis: dict[str, Any], evidence: list[dict[str, Any]]) ->
         missing = [entity for entity in entities if entity not in covered]
         if missing:
             reasons.append("missing_comparison_entity:" + ",".join(missing))
+
+    matched_doc_ids = analysis.get("matched_doc_ids") or []
+    if analysis.get("query_type") == "comparison" and len(matched_doc_ids) > 1:
+        covered_doc_ids = {item.get("doc_id") for item in evidence}
+        missing_doc_ids = [doc_id for doc_id in matched_doc_ids if doc_id not in covered_doc_ids]
+        if missing_doc_ids:
+            reasons.append("missing_comparison_doc:" + ",".join(missing_doc_ids))
 
     return not reasons, reasons
 
@@ -722,6 +1038,38 @@ def select_supporting_evidence(
     return pool[:2]
 
 
+def metadata_stage_sequence(analysis: dict[str, Any]) -> list[str]:
+    filters_by_stage = analysis.get("metadata_filters_by_stage") or {}
+    strict_filters = filters_by_stage.get("strict") or {}
+    reduced_filters = filters_by_stage.get("reduced") or {}
+    stages = []
+    if strict_filters:
+        stages.append("strict")
+    if reduced_filters and reduced_filters != strict_filters:
+        stages.append("reduced")
+    if not stages:
+        stages.append("strict")
+    stages.append("relaxed")
+    return stages
+
+
+def summarize_stage_attempt(
+    plan: dict[str, Any],
+    verified: bool,
+    verification_reasons: list[str],
+) -> dict[str, Any]:
+    return {
+        "stage": plan.get("filter_stage"),
+        "metadata_filters": plan.get("metadata_filters") or {},
+        "top_k": plan.get("top_k"),
+        "candidate_count": plan.get("candidate_count"),
+        "total_chunks": plan.get("total_chunks"),
+        "filter_fallback_used": plan.get("filter_fallback_used", False),
+        "verified": verified,
+        "verification_reasons": verification_reasons,
+    }
+
+
 def run_rag_query(
     index: dict[str, Any],
     query: str,
@@ -729,17 +1077,26 @@ def run_rag_query(
     context_entities: list[str] | None = None,
 ) -> dict[str, Any]:
     started = time.perf_counter()
-    analysis = analyze_query(query, known_entities(index), context_entities=context_entities)
-    plan = make_plan(analysis, top_k=top_k)
-    evidence = retrieve(index, query, analysis, plan)
-    verified, verification_reasons = verify_evidence(analysis, evidence)
+    analysis = analyze_query(query, metadata_targets(index), context_entities=context_entities)
+    stage_attempts = []
     retry_count = 0
+    plan: dict[str, Any] = {}
+    evidence: list[dict[str, Any]] = []
+    verified = False
+    verification_reasons: list[str] = []
 
-    if not verified:
-        retry_count = 1
-        plan = make_plan(analysis, relaxed=True, top_k=max(top_k or 0, 8))
+    for attempt_index, stage in enumerate(metadata_stage_sequence(analysis)):
+        attempt_top_k = top_k
+        if attempt_index > 0:
+            attempt_top_k = max(top_k or 0, 8)
+        plan = make_plan(analysis, top_k=attempt_top_k, stage=stage)
         evidence = retrieve(index, query, analysis, plan)
         verified, verification_reasons = verify_evidence(analysis, evidence)
+        stage_attempts.append(summarize_stage_attempt(plan, verified, verification_reasons))
+        if verified:
+            break
+        if attempt_index < len(metadata_stage_sequence(analysis)) - 1:
+            retry_count += 1
 
     if not verified:
         evidence = []
@@ -759,6 +1116,8 @@ def run_rag_query(
             "retry_count": retry_count,
             "abstained": abstained,
             "verification_reasons": verification_reasons,
+            "filter_stage_attempts": stage_attempts,
+            "final_relaxation_reason": stage_attempts[-2]["verification_reasons"] if retry_count else [],
             "embedding_backend": index.get("embedding", {}).get("backend"),
             "embedding_model": index.get("embedding", {}).get("model"),
         },
