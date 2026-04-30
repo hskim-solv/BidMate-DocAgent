@@ -22,6 +22,7 @@ DEFAULT_ABLATION_RUNS = [
         "metadata_first": True,
         "rerank": True,
         "verifier_retry": True,
+        "retrieval_mode": "flat",
     }
 ]
 
@@ -57,6 +58,11 @@ def load_config(path: Path) -> dict[str, Any]:
             raise ValueError("Each ablation run must be a mapping with a name")
         if run["name"] in seen_names:
             raise ValueError(f"Duplicate ablation run name: {run['name']}")
+        retrieval_mode = run.get("retrieval_mode", "flat")
+        if retrieval_mode not in {"flat", "hierarchical"}:
+            raise ValueError(
+                f"Eval run retrieval_mode must be 'flat' or 'hierarchical': {run['name']}"
+            )
         seen_names.add(run["name"])
     return data
 
@@ -188,6 +194,7 @@ def summarize_run(
         "metadata_first": bool(run_config.get("metadata_first", True)),
         "rerank": bool(run_config.get("rerank", True)),
         "verifier_retry": bool(run_config.get("verifier_retry", True)),
+        "retrieval_mode": str(run_config.get("retrieval_mode", "flat")),
         **metric_block(case_results),
         "by_query_type": {},
     }
@@ -216,6 +223,7 @@ def evaluate_run(
             metadata_first=bool(run_config.get("metadata_first", True)),
             rerank=bool(run_config.get("rerank", True)),
             verifier_retry=bool(run_config.get("verifier_retry", True)),
+            retrieval_mode=str(run_config.get("retrieval_mode", "flat")),
         )
         case_results.append(score_case(case, prediction))
     return case_results
@@ -231,6 +239,7 @@ def ablation_runs(config: dict[str, Any]) -> list[dict[str, Any]]:
                 "metadata_first": bool(run.get("metadata_first", True)),
                 "rerank": bool(run.get("rerank", True)),
                 "verifier_retry": bool(run.get("verifier_retry", True)),
+                "retrieval_mode": str(run.get("retrieval_mode", "flat")),
             }
         )
     return normalized

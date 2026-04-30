@@ -23,6 +23,8 @@ import numpy as np
 
 DEFAULT_EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 DEFAULT_HASH_DIM = 384
+DEFAULT_CHUNK_MAX_CHARS = 520
+DEFAULT_CHUNK_OVERLAP_SENTENCES = 1
 INDEX_FILENAME = "index.json"
 MODEL_CACHE: dict[tuple[str, bool], Any] = {}
 
@@ -113,6 +115,9 @@ TOPIC_KEYWORDS = [
 STRICT_METADATA_CONFIDENCE = 0.90
 REDUCED_METADATA_CONFIDENCE = 0.70
 AMBIGUOUS_CONFIDENCE_DELTA = 0.05
+VALID_CHUNKING_STRATEGIES = {"auto", "section", "fixed"}
+VALID_RETRIEVAL_MODES = {"flat", "hierarchical"}
+WEAK_SECTION_HEADINGS = {"", "본문", "body", "text", "content"}
 
 METADATA_GENERIC_TOKENS = {
     "rfp",
@@ -324,54 +329,240 @@ def normalize_text_document(path: Path) -> dict[str, Any]:
     }
 
 
-def build_chunks(documents: Iterable[dict[str, Any]], max_chars: int = 520) -> list[dict[str, Any]]:
-    chunks: list[dict[str, Any]] = []
-    for doc in documents:
-        chunk_seq = 1
-        for section in doc["sections"]:
-            sentences = []
-            for sentence in sentence_split(section["text"]) or [section["text"]]:
-                sentences.extend(split_long_text_unit(sentence, max_chars))
-            current: list[str] = []
-            current_len = 0
-            for sentence in sentences:
-                next_len = current_len + len(sentence) + 1
-                if current and next_len > max_chars:
-                    chunks.append(make_chunk(doc, section["heading"], current, chunk_seq))
-                    chunk_seq += 1
-                    overlap = current[-1:]
-                    overlap_len = sum(len(s) + 1 for s in overlap)
-                    if overlap_len + len(sentence) + 1 <= max_chars:
-                        current = overlap
-                        current_len = overlap_len
-                    else:
-                        current = []
-                        current_len = 0
-                current.append(sentence)
-                current_len += len(sentence) + 1
-            if current:
-                chunks.append(make_chunk(doc, section["heading"], current, chunk_seq))
-                chunk_seq += 1
-    return chunks
+def validate_chunking_options(
+    chunking_strategy: str,
+    max_chars: int,
+    overlap_sentences: int,
+) -> None:
+    if chunking_strategy not in VALID_CHUNKING_STRATEGIES:
+        choices = ", ".join(sorted(VALID_CHUNKING_STRATEGIES))
+        raise ValueError(f"chunking_strategy must be one of: {choices}")
+    if max_chars < 1:
+        raise ValueError("chunk_max_chars must be positive.")
+    if overlap_sentences < 0:
+        raise ValueError("chunk_overlap_sentences must be zero or positive.")
 
 
-def make_chunk(
-    doc: dict[str, Any],
-    section: str,
-    sentences: list[str],
-    chunk_seq: int,
-) -> dict[str, Any]:
-    text = " ".join(sentences).strip()
+def normalize_section_path(section: dict[str, Any], heading: str) -> list[str]:
+    raw_path = section.get("section_path") or section.get("path") or []
+    if isinstance(raw_path, str):
+        parts = [part.strip() for part in raw_path.split(">")]
+    elif isinstance(raw_path, list):
+        parts = [str(part).strip() for part in raw_path]
+    else:
+        parts = []
+    path = [part for part in parts if part]
+    if not path:
+        path = [heading]
+    return path
+
+
+def normalize_document_sections(doc: dict[str, Any]) -> list[dict[str, Any]]:
+    normalized = []
+    for idx, section in enumerate(doc.get("sections") or [], start=1):
+        heading = str(section.get("heading") or f"section-{idx}").strip()
+        text = str(section.get("text") or "").strip()
+        if not text:
+            continue
+        section_path = normalize_section_path(section, heading)
+        normalized.append(
+            {
+                "section_id": f"{doc['doc_id']}::section-{idx:03d}",
+                "doc_id": doc["doc_id"],
+                "title": doc["title"],
+                "agency": doc.get("agency", ""),
+                "project": doc.get("project", ""),
+                "metadata": doc.get("metadata", {}),
+                "section": section_path[-1],
+                "heading": heading,
+                "section_path": section_path,
+                "text": text,
+            }
+        )
+    return normalized
+
+
+def document_has_section_structure(doc: dict[str, Any]) -> bool:
+    sections = normalize_document_sections(doc)
+    if len(sections) > 1:
+        return True
+    if not sections:
+        return False
+    section = sections[0]
+    heading = str(section.get("heading") or "").strip().lower()
+    section_path = section.get("section_path") or []
+    return len(section_path) > 1 or heading not in WEAK_SECTION_HEADINGS
+
+
+def resolve_chunking_strategy(doc: dict[str, Any], requested_strategy: str) -> str:
+    if requested_strategy == "auto":
+        return "section" if document_has_section_structure(doc) else "fixed"
+    return requested_strategy
+
+
+def fixed_parent_section(doc: dict[str, Any], sections: list[dict[str, Any]]) -> dict[str, Any]:
+    parts = []
+    for section in sections:
+        heading = str(section.get("section") or "").strip()
+        text = str(section.get("text") or "").strip()
+        if heading and heading not in WEAK_SECTION_HEADINGS:
+            parts.append(f"{heading}\n{text}")
+        else:
+            parts.append(text)
     return {
-        "chunk_id": f"{doc['doc_id']}::chunk-{chunk_seq:03d}",
+        "section_id": f"{doc['doc_id']}::section-001",
         "doc_id": doc["doc_id"],
         "title": doc["title"],
         "agency": doc.get("agency", ""),
         "project": doc.get("project", ""),
         "metadata": doc.get("metadata", {}),
-        "section": section,
+        "section": "문서 전체",
+        "heading": "문서 전체",
+        "section_path": ["문서 전체"],
+        "text": "\n\n".join(part for part in parts if part).strip(),
+    }
+
+
+def split_section_text(
+    text: str,
+    max_chars: int,
+    overlap_sentences: int,
+) -> list[list[str]]:
+    sentences = []
+    for sentence in sentence_split(text) or [text]:
+        sentences.extend(split_long_text_unit(sentence, max_chars))
+
+    chunks: list[list[str]] = []
+    current: list[str] = []
+    current_len = 0
+    for sentence in sentences:
+        next_len = current_len + len(sentence) + 1
+        if current and next_len > max_chars:
+            chunks.append(current)
+            overlap = current[-overlap_sentences:] if overlap_sentences else []
+            overlap_len = sum(len(s) + 1 for s in overlap)
+            if overlap and overlap_len + len(sentence) + 1 <= max_chars:
+                current = overlap
+                current_len = overlap_len
+            else:
+                current = []
+                current_len = 0
+        current.append(sentence)
+        current_len += len(sentence) + 1
+    if current:
+        chunks.append(current)
+    return chunks
+
+
+def build_chunk_records(
+    documents: Iterable[dict[str, Any]],
+    max_chars: int = DEFAULT_CHUNK_MAX_CHARS,
+    chunking_strategy: str = "auto",
+    overlap_sentences: int = DEFAULT_CHUNK_OVERLAP_SENTENCES,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:
+    validate_chunking_options(chunking_strategy, max_chars, overlap_sentences)
+    chunks: list[dict[str, Any]] = []
+    parent_sections: list[dict[str, Any]] = []
+    strategy_counts = {"section": 0, "fixed": 0}
+    document_diagnostics = []
+
+    for doc in documents:
+        normalized_sections = normalize_document_sections(doc)
+        actual_strategy = resolve_chunking_strategy(doc, chunking_strategy)
+        parent_candidates = (
+            normalized_sections
+            if actual_strategy == "section"
+            else [fixed_parent_section(doc, normalized_sections)]
+        )
+        doc_chunk_count = 0
+        chunk_seq = 1
+
+        for parent in parent_candidates:
+            parent = {**parent, "chunking_strategy": actual_strategy}
+            parent_sections.append(parent)
+            section_chunks = split_section_text(parent["text"], max_chars, overlap_sentences)
+            for chunk_seq_in_section, sentences in enumerate(section_chunks, start=1):
+                chunks.append(
+                    make_chunk(
+                        doc,
+                        parent,
+                        sentences,
+                        chunk_seq,
+                        chunk_seq_in_section,
+                        actual_strategy,
+                    )
+                )
+                chunk_seq += 1
+                doc_chunk_count += 1
+
+        strategy_counts[actual_strategy] += 1
+        document_diagnostics.append(
+            {
+                "doc_id": doc["doc_id"],
+                "requested_strategy": chunking_strategy,
+                "actual_strategy": actual_strategy,
+                "num_input_sections": len(normalized_sections),
+                "num_parent_sections": len(parent_candidates),
+                "num_chunks": doc_chunk_count,
+            }
+        )
+
+    diagnostics = {
+        "requested_strategy": chunking_strategy,
+        "max_chars": max_chars,
+        "overlap_sentences": overlap_sentences,
+        "num_parent_sections": len(parent_sections),
+        "actual_strategy_counts": {
+            key: value for key, value in strategy_counts.items() if value
+        },
+        "documents": document_diagnostics,
+    }
+    return chunks, parent_sections, diagnostics
+
+
+def build_chunks(
+    documents: Iterable[dict[str, Any]],
+    max_chars: int = DEFAULT_CHUNK_MAX_CHARS,
+    chunking_strategy: str = "auto",
+    overlap_sentences: int = DEFAULT_CHUNK_OVERLAP_SENTENCES,
+) -> list[dict[str, Any]]:
+    chunks, _, _ = build_chunk_records(
+        documents,
+        max_chars=max_chars,
+        chunking_strategy=chunking_strategy,
+        overlap_sentences=overlap_sentences,
+    )
+    return chunks
+
+
+def make_chunk(
+    doc: dict[str, Any],
+    parent_section: dict[str, Any],
+    sentences: list[str],
+    chunk_seq: int,
+    chunk_seq_in_section: int,
+    chunking_strategy: str,
+) -> dict[str, Any]:
+    text = " ".join(sentences).strip()
+    section_path = parent_section.get("section_path") or [parent_section.get("section", "")]
+    section_label = str(parent_section.get("section") or section_path[-1])
+    return {
+        "chunk_id": f"{doc['doc_id']}::chunk-{chunk_seq:03d}",
+        "section_id": parent_section["section_id"],
+        "parent_section_id": parent_section["section_id"],
+        "doc_id": doc["doc_id"],
+        "title": doc["title"],
+        "agency": doc.get("agency", ""),
+        "project": doc.get("project", ""),
+        "metadata": doc.get("metadata", {}),
+        "section": section_label,
+        "section_path": section_path,
+        "chunk_seq_in_section": chunk_seq_in_section,
+        "chunking_strategy": chunking_strategy,
         "text": text,
-        "tokens": tokenize(" ".join([doc["title"], doc.get("agency", ""), section, text])),
+        "tokens": tokenize(
+            " ".join([doc["title"], doc.get("agency", ""), " > ".join(section_path), text])
+        ),
     }
 
 
@@ -478,6 +669,9 @@ def build_index_payload(
     input_dir: Path,
     model_name: str = DEFAULT_EMBEDDING_MODEL,
     embedding_backend: str = "auto",
+    chunking_strategy: str = "auto",
+    chunk_max_chars: int = DEFAULT_CHUNK_MAX_CHARS,
+    chunk_overlap_sentences: int = DEFAULT_CHUNK_OVERLAP_SENTENCES,
 ) -> dict[str, Any]:
     documents = load_raw_documents(input_dir)
     return build_index_payload_from_documents(
@@ -485,6 +679,9 @@ def build_index_payload(
         source_dir=str(input_dir),
         model_name=model_name,
         embedding_backend=embedding_backend,
+        chunking_strategy=chunking_strategy,
+        chunk_max_chars=chunk_max_chars,
+        chunk_overlap_sentences=chunk_overlap_sentences,
         message="Public synthetic RFP index for local minimum E2E RAG.",
     )
 
@@ -494,11 +691,26 @@ def build_index_payload_from_documents(
     source_dir: str,
     model_name: str = DEFAULT_EMBEDDING_MODEL,
     embedding_backend: str = "auto",
+    chunking_strategy: str = "auto",
+    chunk_max_chars: int = DEFAULT_CHUNK_MAX_CHARS,
+    chunk_overlap_sentences: int = DEFAULT_CHUNK_OVERLAP_SENTENCES,
     message: str = "RFP index for local minimum E2E RAG.",
 ) -> dict[str, Any]:
-    chunks = build_chunks(documents)
+    chunks, parent_sections, chunking_diagnostics = build_chunk_records(
+        documents,
+        max_chars=chunk_max_chars,
+        chunking_strategy=chunking_strategy,
+        overlap_sentences=chunk_overlap_sentences,
+    )
     embedding_inputs = [
-        " ".join([chunk["title"], chunk.get("agency", ""), chunk["section"], chunk["text"]])
+        " ".join(
+            [
+                chunk["title"],
+                chunk.get("agency", ""),
+                " > ".join(chunk.get("section_path") or [chunk["section"]]),
+                chunk["text"],
+            ]
+        )
         for chunk in chunks
     ]
     embedding_result = embed_texts(embedding_inputs, model_name=model_name, backend=embedding_backend)
@@ -529,9 +741,12 @@ def build_index_payload_from_documents(
         "build": {
             "num_documents": len(public_docs),
             "num_chunks": len(chunks),
+            "num_parent_sections": len(parent_sections),
             "source_dir": source_dir,
+            "chunking": chunking_diagnostics,
         },
         "documents": public_docs,
+        "parent_sections": parent_sections,
         "chunks": chunks,
     }
 
@@ -827,7 +1042,11 @@ def make_plan(
     metadata_first: bool = True,
     rerank: bool = True,
     verifier_retry: bool = True,
+    retrieval_mode: str = "flat",
 ) -> dict[str, Any]:
+    if retrieval_mode not in VALID_RETRIEVAL_MODES:
+        choices = ", ".join(sorted(VALID_RETRIEVAL_MODES))
+        raise ValueError(f"retrieval_mode must be one of: {choices}")
     default_top_k = 6 if analysis["query_type"] == "comparison" else 4
     if relaxed:
         stage = "relaxed"
@@ -852,6 +1071,7 @@ def make_plan(
         "metadata_first": metadata_first,
         "rerank": rerank,
         "verifier_retry": verifier_retry,
+        "retrieval_mode": retrieval_mode,
         "metadata_filters": filters,
         "top_k": top_k or default_top_k,
         "relaxed": stage == "relaxed",
@@ -912,6 +1132,12 @@ def retrieve(
                 "project": chunk.get("project", ""),
                 "metadata": chunk.get("metadata", {}),
                 "section": chunk["section"],
+                "section_id": chunk.get("section_id"),
+                "parent_section_id": chunk.get("parent_section_id") or chunk.get("section_id"),
+                "section_path": chunk.get("section_path") or [chunk.get("section", "")],
+                "chunk_seq_in_section": chunk.get("chunk_seq_in_section"),
+                "chunking_strategy": chunk.get("chunking_strategy", "legacy"),
+                "retrieval_mode": "flat",
                 "text": chunk["text"],
                 "score": round(float(score), 4),
                 "score_parts": {
@@ -923,7 +1149,62 @@ def retrieve(
         )
 
     scored.sort(key=lambda item: item["score"], reverse=True)
-    return scored[: int(plan["top_k"])]
+    top_k = int(plan["top_k"])
+    if plan.get("retrieval_mode") == "hierarchical":
+        return reassemble_parent_sections(index, scored, top_k, plan)
+    return scored[:top_k]
+
+
+def reassemble_parent_sections(
+    index: dict[str, Any],
+    scored_chunks: list[dict[str, Any]],
+    top_k: int,
+    plan: dict[str, Any],
+) -> list[dict[str, Any]]:
+    parent_by_id = {
+        str(section.get("section_id")): section
+        for section in index.get("parent_sections", [])
+        if section.get("section_id")
+    }
+    best_by_parent: dict[str, dict[str, Any]] = {}
+    child_ids_by_parent: dict[str, list[str]] = {}
+
+    for chunk in scored_chunks:
+        parent_id = str(
+            chunk.get("parent_section_id") or chunk.get("section_id") or chunk.get("chunk_id")
+        )
+        child_ids_by_parent.setdefault(parent_id, []).append(chunk["chunk_id"])
+        current = best_by_parent.get(parent_id)
+        if current is None or chunk["score"] > current["score"]:
+            best_by_parent[parent_id] = chunk
+
+    plan["parent_candidate_count"] = len(best_by_parent)
+
+    reassembled = []
+    for parent_id, best_chunk in best_by_parent.items():
+        parent = parent_by_id.get(parent_id)
+        if not parent:
+            item = dict(best_chunk)
+            item["retrieval_mode"] = "hierarchical_fallback"
+            item["child_chunk_ids"] = child_ids_by_parent.get(parent_id, [])
+            reassembled.append(item)
+            continue
+
+        item = {
+            **best_chunk,
+            "section_id": parent.get("section_id"),
+            "parent_section_id": parent_id,
+            "section": parent.get("section", best_chunk.get("section", "")),
+            "section_path": parent.get("section_path") or best_chunk.get("section_path") or [],
+            "text": parent.get("text", best_chunk.get("text", "")),
+            "chunking_strategy": parent.get("chunking_strategy", best_chunk.get("chunking_strategy", "")),
+            "retrieval_mode": "hierarchical",
+            "child_chunk_ids": child_ids_by_parent.get(parent_id, []),
+        }
+        reassembled.append(item)
+
+    reassembled.sort(key=lambda item: item["score"], reverse=True)
+    return reassembled[:top_k]
 
 
 def embed_query_for_index(query: str, embedding_config: dict[str, Any]) -> np.ndarray:
@@ -956,12 +1237,13 @@ def dense_similarity(query_vector: np.ndarray, chunk_vector: Any) -> float:
 def lexical_similarity(query_tokens: set[str], topics: list[str], chunk: dict[str, Any]) -> float:
     if not query_tokens and not topics:
         return 0.0
+    section_path = chunk.get("section_path") or [chunk.get("section", "")]
     chunk_text = " ".join(
         [
             chunk.get("title", ""),
             chunk.get("agency", ""),
             chunk.get("project", ""),
-            chunk.get("section", ""),
+            " > ".join(section_path),
             chunk.get("text", ""),
         ]
     ).lower()
@@ -1124,8 +1406,10 @@ def summarize_stage_attempt(
         "metadata_filters": plan.get("metadata_filters") or {},
         "top_k": plan.get("top_k"),
         "candidate_count": plan.get("candidate_count"),
+        "parent_candidate_count": plan.get("parent_candidate_count"),
         "total_chunks": plan.get("total_chunks"),
         "filter_fallback_used": plan.get("filter_fallback_used", False),
+        "retrieval_mode": plan.get("retrieval_mode", "flat"),
         "verified": verified,
         "verification_reasons": verification_reasons,
     }
@@ -1139,8 +1423,12 @@ def run_rag_query(
     metadata_first: bool = True,
     rerank: bool = True,
     verifier_retry: bool = True,
+    retrieval_mode: str = "flat",
 ) -> dict[str, Any]:
     started = time.perf_counter()
+    if retrieval_mode not in VALID_RETRIEVAL_MODES:
+        choices = ", ".join(sorted(VALID_RETRIEVAL_MODES))
+        raise ValueError(f"retrieval_mode must be one of: {choices}")
     analysis = analyze_query(query, metadata_targets(index), context_entities=context_entities)
     stage_sequence = metadata_stage_sequence(
         analysis,
@@ -1165,6 +1453,7 @@ def run_rag_query(
             metadata_first=metadata_first,
             rerank=rerank,
             verifier_retry=verifier_retry,
+            retrieval_mode=retrieval_mode,
         )
         evidence = retrieve(index, query, analysis, plan)
         if verifier_retry:
@@ -1203,6 +1492,7 @@ def run_rag_query(
             "metadata_first": metadata_first,
             "rerank": rerank,
             "verifier_retry": verifier_retry,
+            "retrieval_mode": retrieval_mode,
         },
     }
 
@@ -1218,6 +1508,13 @@ def strip_internal_scores(evidence: list[dict[str, Any]]) -> list[dict[str, Any]
             "agency": item.get("agency", ""),
             "metadata": item.get("metadata", {}),
             "section": item.get("section", ""),
+            "section_id": item.get("section_id"),
+            "parent_section_id": item.get("parent_section_id"),
+            "section_path": item.get("section_path") or [],
+            "chunk_seq_in_section": item.get("chunk_seq_in_section"),
+            "chunking_strategy": item.get("chunking_strategy", ""),
+            "retrieval_mode": item.get("retrieval_mode", "flat"),
+            "child_chunk_ids": item.get("child_chunk_ids", []),
         }
         for item in evidence
     ]

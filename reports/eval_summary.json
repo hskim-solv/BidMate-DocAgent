@@ -8,9 +8,9 @@
   "citation_precision": 1.0,
   "abstention": 1.0,
   "latency": {
-    "p50": 0.99,
-    "p95": 1.3339999999999999,
-    "mean": 1.0024999999999997
+    "p50": 1.07,
+    "p95": 2.1854999999999998,
+    "mean": 1.2070833333333333
   },
   "retry": 0.25,
   "by_query_type": {
@@ -21,9 +21,9 @@
       "citation_precision": 1.0,
       "abstention": null,
       "latency": {
-        "p50": 1.045,
-        "p95": 2.8775,
-        "mean": 1.3883333333333334
+        "p50": 1.13,
+        "p95": 2.9475000000000002,
+        "mean": 1.5183333333333333
       },
       "retry": 0.0,
       "retry_cost": {
@@ -41,9 +41,9 @@
       "citation_precision": 1.0,
       "abstention": null,
       "latency": {
-        "p50": 1.13,
-        "p95": 1.2750000000000001,
-        "mean": 1.1233333333333333
+        "p50": 1.08,
+        "p95": 1.515,
+        "mean": 1.1700000000000002
       },
       "retry": 0.0,
       "retry_cost": {
@@ -61,9 +61,9 @@
       "citation_precision": 1.0,
       "abstention": null,
       "latency": {
-        "p50": 0.52,
-        "p95": 0.5975,
-        "mean": 0.5216666666666666
+        "p50": 0.6699999999999999,
+        "p95": 0.9324999999999999,
+        "mean": 0.705
       },
       "retry": 0.0,
       "retry_cost": {
@@ -81,9 +81,9 @@
       "citation_precision": 1.0,
       "abstention": 1.0,
       "latency": {
-        "p50": 1.005,
-        "p95": 1.0750000000000002,
-        "mean": 0.9766666666666667
+        "p50": 1.4,
+        "p95": 1.8575,
+        "mean": 1.4350000000000003
       },
       "retry": 1.0,
       "retry_cost": {
@@ -113,15 +113,16 @@
         "metadata_first": true,
         "rerank": true,
         "verifier_retry": true,
+        "retrieval_mode": "flat",
         "num_predictions": 24,
         "accuracy": 1.0,
         "groundedness": 1.0,
         "citation_precision": 1.0,
         "abstention": 1.0,
         "latency": {
-          "p50": 0.99,
-          "p95": 1.3339999999999999,
-          "mean": 1.0024999999999997
+          "p50": 1.07,
+          "p95": 2.1854999999999998,
+          "mean": 1.2070833333333333
         },
         "retry": 0.25,
         "retry_cost": {
@@ -141,9 +142,9 @@
             "citation_precision": 1.0,
             "abstention": null,
             "latency": {
-              "p50": 1.045,
-              "p95": 2.8775,
-              "mean": 1.3883333333333334
+              "p50": 1.13,
+              "p95": 2.9475000000000002,
+              "mean": 1.5183333333333333
             },
             "retry": 0.0,
             "retry_cost": {
@@ -161,9 +162,9 @@
             "citation_precision": 1.0,
             "abstention": null,
             "latency": {
-              "p50": 1.13,
-              "p95": 1.2750000000000001,
-              "mean": 1.1233333333333333
+              "p50": 1.08,
+              "p95": 1.515,
+              "mean": 1.1700000000000002
             },
             "retry": 0.0,
             "retry_cost": {
@@ -181,9 +182,9 @@
             "citation_precision": 1.0,
             "abstention": null,
             "latency": {
-              "p50": 0.52,
-              "p95": 0.5975,
-              "mean": 0.5216666666666666
+              "p50": 0.6699999999999999,
+              "p95": 0.9324999999999999,
+              "mean": 0.705
             },
             "retry": 0.0,
             "retry_cost": {
@@ -201,9 +202,9 @@
             "citation_precision": 1.0,
             "abstention": 1.0,
             "latency": {
-              "p50": 1.005,
-              "p95": 1.0750000000000002,
-              "mean": 0.9766666666666667
+              "p50": 1.4,
+              "p95": 1.8575,
+              "mean": 1.4350000000000003
             },
             "retry": 1.0,
             "retry_cost": {
@@ -237,7 +238,7 @@
             "groundedness": 1.0,
             "citation_precision": 1.0,
             "abstention": null,
-            "latency_ms": 3.39,
+            "latency_ms": 3.19,
             "retry_count": 0,
             "retry_trigger_reasons": [],
             "abstained": false,
@@ -262,7 +263,7 @@
             "groundedness": 1.0,
             "citation_precision": 1.0,
             "abstention": null,
-            "latency_ms": 1.34,
+            "latency_ms": 1.47,
             "retry_count": 0,
             "retry_trigger_reasons": [],
             "abstained": false,
@@ -287,7 +288,7 @@
             "groundedness": 1.0,
             "citation_precision": 1.0,
             "abstention": null,
-            "latency_ms": 1.05,
+            "latency_ms": 0.79,
             "retry_count": 0,
             "retry_trigger_reasons": [],
             "abstained": false,
@@ -312,7 +313,7 @@
             "groundedness": 1.0,
             "citation_precision": 1.0,
             "abstention": null,
-            "latency_ms": 0.92,
+            "latency_ms": 2.22,
             "retry_count": 0,
             "retry_trigger_reasons": [],
             "abstained": false,
@@ -337,7 +338,7 @@
             "groundedness": 1.0,
             "citation_precision": 1.0,
             "abstention": null,
-            "latency_ms": 0.59,
+            "latency_ms": 0.69,
             "retry_count": 0,
             "retry_trigger_reasons": [],
             "abstained": false,
@@ -362,7 +363,7 @@
             "groundedness": 1.0,
             "citation_precision": 1.0,
             "abstention": null,
-            "latency_ms": 1.04,
+            "latency_ms": 0.75,
             "retry_count": 0,
             "retry_trigger_reasons": [],
             "abstained": false,
@@ -389,7 +390,7 @@
             "groundedness": 1.0,
             "citation_precision": 1.0,
             "abstention": null,
-            "latency_ms": 1.16,
+            "latency_ms": 1.65,
             "retry_count": 0,
             "retry_trigger_reasons": [],
             "abstained": false,
@@ -416,7 +417,7 @@
             "groundedness": 1.0,
             "citation_precision": 1.0,
             "abstention": null,
-            "latency_ms": 1.3,
+            "latency_ms": 1.09,
             "retry_count": 0,
             "retry_trigger_reasons": [],
             "abstained": false,
@@ -443,7 +444,7 @@
             "groundedness": 1.0,
             "citation_precision": 1.0,
             "abstention": null,
-            "latency_ms": 1.0,
+            "latency_ms": 1.11,
             "retry_count": 0,
             "retry_trigger_reasons": [],
             "abstained": false,
@@ -470,7 +471,7 @@
             "groundedness": 1.0,
             "citation_precision": 1.0,
             "abstention": null,
-            "latency_ms": 1.2,
+            "latency_ms": 1.03,
             "retry_count": 0,
             "retry_trigger_reasons": [],
             "abstained": false,
@@ -497,7 +498,7 @@
             "groundedness": 1.0,
             "citation_precision": 1.0,
             "abstention": null,
-            "latency_ms": 1.1,
+            "latency_ms": 1.07,
             "retry_count": 0,
             "retry_trigger_reasons": [],
             "abstained": false,
@@ -524,7 +525,7 @@
             "groundedness": 1.0,
             "citation_precision": 1.0,
             "abstention": null,
-            "latency_ms": 0.98,
+            "latency_ms": 1.07,
             "retry_count": 0,
             "retry_trigger_reasons": [],
             "abstained": false,
@@ -549,7 +550,7 @@
             "groundedness": 1.0,
             "citation_precision": 1.0,
             "abstention": null,
-            "latency_ms": 0.5,
+            "latency_ms": 0.57,
             "retry_count": 0,
             "retry_trigger_reasons": [],
             "abstained": false,
@@ -574,7 +575,7 @@
             "groundedness": 1.0,
             "citation_precision": 1.0,
             "abstention": null,
-            "latency_ms": 0.49,
+            "latency_ms": 0.72,
             "retry_count": 0,
             "retry_trigger_reasons": [],
             "abstained": false,
@@ -599,7 +600,7 @@
             "groundedness": 1.0,
             "citation_precision": 1.0,
             "abstention": null,
-            "latency_ms": 0.43,
+            "latency_ms": 0.57,
             "retry_count": 0,
             "retry_trigger_reasons": [],
             "abstained": false,
@@ -624,7 +625,7 @@
             "groundedness": 1.0,
             "citation_precision": 1.0,
             "abstention": null,
-            "latency_ms": 0.61,
+            "latency_ms": 0.99,
             "retry_count": 0,
             "retry_trigger_reasons": [],
             "abstained": false,
@@ -649,7 +650,7 @@
             "groundedness": 1.0,
             "citation_precision": 1.0,
             "abstention": null,
-            "latency_ms": 0.56,
+            "latency_ms": 0.76,
             "retry_count": 0,
             "retry_trigger_reasons": [],
             "abstained": false,
@@ -674,7 +675,7 @@
             "groundedness": 1.0,
             "citation_precision": 1.0,
             "abstention": null,
-            "latency_ms": 0.54,
+            "latency_ms": 0.62,
             "retry_count": 0,
             "retry_trigger_reasons": [],
             "abstained": false,
@@ -695,7 +696,7 @@
             "groundedness": 1.0,
             "citation_precision": 1.0,
             "abstention": 1.0,
-            "latency_ms": 1.08,
+            "latency_ms": 1.45,
             "retry_count": 1,
             "retry_trigger_reasons": [
               "topic_not_grounded",
@@ -719,7 +720,7 @@
             "groundedness": 1.0,
             "citation_precision": 1.0,
             "abstention": 1.0,
-            "latency_ms": 0.96,
+            "latency_ms": 1.46,
             "retry_count": 1,
             "retry_trigger_reasons": [
               "topic_not_grounded",
@@ -743,7 +744,7 @@
             "groundedness": 1.0,
             "citation_precision": 1.0,
             "abstention": 1.0,
-            "latency_ms": 0.87,
+            "latency_ms": 1.06,
             "retry_count": 1,
             "retry_trigger_reasons": [
               "topic_not_grounded",
@@ -767,7 +768,7 @@
             "groundedness": 1.0,
             "citation_precision": 1.0,
             "abstention": 1.0,
-            "latency_ms": 1.06,
+            "latency_ms": 1.3,
             "retry_count": 1,
             "retry_trigger_reasons": [
               "topic_not_grounded",
@@ -791,7 +792,7 @@
             "groundedness": 1.0,
             "citation_precision": 1.0,
             "abstention": 1.0,
-            "latency_ms": 1.05,
+            "latency_ms": 1.99,
             "retry_count": 1,
             "retry_trigger_reasons": [
               "topic_not_grounded",
@@ -815,7 +816,7 @@
             "groundedness": 1.0,
             "citation_precision": 1.0,
             "abstention": 1.0,
-            "latency_ms": 0.84,
+            "latency_ms": 1.35,
             "retry_count": 1,
             "retry_trigger_reasons": [
               "topic_not_grounded",
@@ -827,129 +828,20 @@
         ]
       },
       {
-        "name": "no_metadata_first",
-        "metadata_first": false,
+        "name": "hierarchical",
+        "metadata_first": true,
         "rerank": true,
         "verifier_retry": true,
-        "num_predictions": 24,
-        "accuracy": 1.0,
-        "groundedness": 1.0,
-        "citation_precision": 0.8333333333333334,
-        "abstention": 1.0,
-        "latency": {
-          "p50": 1.045,
-          "p95": 1.6134999999999997,
-          "mean": 1.0941666666666667
-        },
-        "retry": 0.0,
-        "retry_cost": {
-          "total_retries": 0,
-          "mean_retry_count": 0.0,
-          "max_retry_count": 0,
-          "cases_with_retry": 0
-        },
-        "retry_reason_counts": {
-          "topic_not_grounded": 6
-        },
-        "by_query_type": {
-          "single_doc": {
-            "num_predictions": 6,
-            "accuracy": 1.0,
-            "groundedness": 1.0,
-            "citation_precision": 0.75,
-            "abstention": null,
-            "latency": {
-              "p50": 1.245,
-              "p95": 1.5825,
-              "mean": 1.295
-            },
-            "retry": 0.0,
-            "retry_cost": {
-              "total_retries": 0,
-              "mean_retry_count": 0.0,
-              "max_retry_count": 0,
-              "cases_with_retry": 0
-            },
-            "retry_reason_counts": {}
-          },
-          "multi_doc": {
-            "num_predictions": 6,
-            "accuracy": 1.0,
-            "groundedness": 1.0,
-            "citation_precision": 1.0,
-            "abstention": null,
-            "latency": {
-              "p50": 0.845,
-              "p95": 1.015,
-              "mean": 0.8866666666666667
-            },
-            "retry": 0.0,
-            "retry_cost": {
-              "total_retries": 0,
-              "mean_retry_count": 0.0,
-              "max_retry_count": 0,
-              "cases_with_retry": 0
-            },
-            "retry_reason_counts": {}
-          },
-          "follow_up": {
-            "num_predictions": 6,
-            "accuracy": 1.0,
-            "groundedness": 1.0,
-            "citation_precision": 0.5833333333333334,
-            "abstention": null,
-            "latency": {
-              "p50": 1.1800000000000002,
-              "p95": 1.885,
-              "mean": 1.2133333333333334
-            },
-            "retry": 0.0,
-            "retry_cost": {
-              "total_retries": 0,
-              "mean_retry_count": 0.0,
-              "max_retry_count": 0,
-              "cases_with_retry": 0
-            },
-            "retry_reason_counts": {}
-          },
-          "abstention": {
-            "num_predictions": 6,
-            "accuracy": null,
-            "groundedness": 1.0,
-            "citation_precision": 1.0,
-            "abstention": 1.0,
-            "latency": {
-              "p50": 0.9099999999999999,
-              "p95": 1.425,
-              "mean": 0.9816666666666665
-            },
-            "retry": 0.0,
-            "retry_cost": {
-              "total_retries": 0,
-              "mean_retry_count": 0.0,
-              "max_retry_count": 0,
-              "cases_with_retry": 0
-            },
-            "retry_reason_counts": {
-              "topic_not_grounded": 6
-            }
-          }
-        }
-      },
-      {
-        "name": "no_rerank",
-        "metadata_first": true,
-        "rerank": false,
-        "verifier_retry": true,
+        "retrieval_mode": "hierarchical",
         "num_predictions": 24,
         "accuracy": 1.0,
         "groundedness": 1.0,
         "citation_precision": 1.0,
         "abstention": 1.0,
         "latency": {
-          "p50": 0.98,
-          "p95": 2.0109999999999992,
-          "mean": 1.1512499999999999
+          "p50": 0.96,
+          "p95": 1.5069999999999997,
+          "mean": 1.0179166666666668
         },
         "retry": 0.25,
         "retry_cost": {
@@ -969,9 +861,9 @@
             "citation_precision": 1.0,
             "abstention": null,
             "latency": {
-              "p50": 0.835,
-              "p95": 1.1475,
-              "mean": 0.8566666666666668
+              "p50": 0.895,
+              "p95": 1.0550000000000002,
+              "mean": 0.8783333333333333
             },
             "retry": 0.0,
             "retry_cost": {
@@ -989,9 +881,9 @@
             "citation_precision": 1.0,
             "abstention": null,
             "latency": {
-              "p50": 0.95,
-              "p95": 1.4225,
-              "mean": 1.0316666666666665
+              "p50": 1.085,
+              "p95": 1.9525,
+              "mean": 1.26
             },
             "retry": 0.0,
             "retry_cost": {
@@ -1009,9 +901,9 @@
             "citation_precision": 1.0,
             "abstention": null,
             "latency": {
-              "p50": 0.7150000000000001,
-              "p95": 3.3049999999999997,
-              "mean": 1.3
+              "p50": 0.755,
+              "p95": 0.9175,
+              "mean": 0.7666666666666667
             },
             "retry": 0.0,
             "retry_cost": {
@@ -1029,9 +921,231 @@
             "citation_precision": 1.0,
             "abstention": 1.0,
             "latency": {
-              "p50": 1.255,
-              "p95": 1.9849999999999999,
-              "mean": 1.4166666666666667
+              "p50": 1.185,
+              "p95": 1.315,
+              "mean": 1.1666666666666667
+            },
+            "retry": 1.0,
+            "retry_cost": {
+              "total_retries": 6,
+              "mean_retry_count": 1.0,
+              "max_retry_count": 1,
+              "cases_with_retry": 6
+            },
+            "retry_reason_counts": {
+              "topic_not_grounded": 12
+            }
+          }
+        }
+      },
+      {
+        "name": "no_metadata_first",
+        "metadata_first": false,
+        "rerank": true,
+        "verifier_retry": true,
+        "retrieval_mode": "flat",
+        "num_predictions": 24,
+        "accuracy": 1.0,
+        "groundedness": 1.0,
+        "citation_precision": 0.8333333333333334,
+        "abstention": 1.0,
+        "latency": {
+          "p50": 1.225,
+          "p95": 1.76,
+          "mean": 1.3041666666666665
+        },
+        "retry": 0.0,
+        "retry_cost": {
+          "total_retries": 0,
+          "mean_retry_count": 0.0,
+          "max_retry_count": 0,
+          "cases_with_retry": 0
+        },
+        "retry_reason_counts": {
+          "topic_not_grounded": 6
+        },
+        "by_query_type": {
+          "single_doc": {
+            "num_predictions": 6,
+            "accuracy": 1.0,
+            "groundedness": 1.0,
+            "citation_precision": 0.75,
+            "abstention": null,
+            "latency": {
+              "p50": 1.16,
+              "p95": 1.3200000000000003,
+              "mean": 1.1366666666666665
+            },
+            "retry": 0.0,
+            "retry_cost": {
+              "total_retries": 0,
+              "mean_retry_count": 0.0,
+              "max_retry_count": 0,
+              "cases_with_retry": 0
+            },
+            "retry_reason_counts": {}
+          },
+          "multi_doc": {
+            "num_predictions": 6,
+            "accuracy": 1.0,
+            "groundedness": 1.0,
+            "citation_precision": 1.0,
+            "abstention": null,
+            "latency": {
+              "p50": 1.45,
+              "p95": 1.7425000000000002,
+              "mean": 1.4116666666666668
+            },
+            "retry": 0.0,
+            "retry_cost": {
+              "total_retries": 0,
+              "mean_retry_count": 0.0,
+              "max_retry_count": 0,
+              "cases_with_retry": 0
+            },
+            "retry_reason_counts": {}
+          },
+          "follow_up": {
+            "num_predictions": 6,
+            "accuracy": 1.0,
+            "groundedness": 1.0,
+            "citation_precision": 0.5833333333333334,
+            "abstention": null,
+            "latency": {
+              "p50": 1.09,
+              "p95": 2.52,
+              "mean": 1.3833333333333335
+            },
+            "retry": 0.0,
+            "retry_cost": {
+              "total_retries": 0,
+              "mean_retry_count": 0.0,
+              "max_retry_count": 0,
+              "cases_with_retry": 0
+            },
+            "retry_reason_counts": {}
+          },
+          "abstention": {
+            "num_predictions": 6,
+            "accuracy": null,
+            "groundedness": 1.0,
+            "citation_precision": 1.0,
+            "abstention": 1.0,
+            "latency": {
+              "p50": 1.2349999999999999,
+              "p95": 1.6300000000000001,
+              "mean": 1.2850000000000001
+            },
+            "retry": 0.0,
+            "retry_cost": {
+              "total_retries": 0,
+              "mean_retry_count": 0.0,
+              "max_retry_count": 0,
+              "cases_with_retry": 0
+            },
+            "retry_reason_counts": {
+              "topic_not_grounded": 6
+            }
+          }
+        }
+      },
+      {
+        "name": "no_rerank",
+        "metadata_first": true,
+        "rerank": false,
+        "verifier_retry": true,
+        "retrieval_mode": "flat",
+        "num_predictions": 24,
+        "accuracy": 1.0,
+        "groundedness": 1.0,
+        "citation_precision": 1.0,
+        "abstention": 1.0,
+        "latency": {
+          "p50": 1.205,
+          "p95": 1.75,
+          "mean": 1.2566666666666668
+        },
+        "retry": 0.25,
+        "retry_cost": {
+          "total_retries": 6,
+          "mean_retry_count": 0.25,
+          "max_retry_count": 1,
+          "cases_with_retry": 6
+        },
+        "retry_reason_counts": {
+          "topic_not_grounded": 12
+        },
+        "by_query_type": {
+          "single_doc": {
+            "num_predictions": 6,
+            "accuracy": 1.0,
+            "groundedness": 1.0,
+            "citation_precision": 1.0,
+            "abstention": null,
+            "latency": {
+              "p50": 1.18,
+              "p95": 1.6875,
+              "mean": 1.2149999999999999
+            },
+            "retry": 0.0,
+            "retry_cost": {
+              "total_retries": 0,
+              "mean_retry_count": 0.0,
+              "max_retry_count": 0,
+              "cases_with_retry": 0
+            },
+            "retry_reason_counts": {}
+          },
+          "multi_doc": {
+            "num_predictions": 6,
+            "accuracy": 1.0,
+            "groundedness": 1.0,
+            "citation_precision": 1.0,
+            "abstention": null,
+            "latency": {
+              "p50": 1.155,
+              "p95": 1.2525,
+              "mean": 1.1466666666666667
+            },
+            "retry": 0.0,
+            "retry_cost": {
+              "total_retries": 0,
+              "mean_retry_count": 0.0,
+              "max_retry_count": 0,
+              "cases_with_retry": 0
+            },
+            "retry_reason_counts": {}
+          },
+          "follow_up": {
+            "num_predictions": 6,
+            "accuracy": 1.0,
+            "groundedness": 1.0,
+            "citation_precision": 1.0,
+            "abstention": null,
+            "latency": {
+              "p50": 0.765,
+              "p95": 1.125,
+              "mean": 0.8216666666666667
+            },
+            "retry": 0.0,
+            "retry_cost": {
+              "total_retries": 0,
+              "mean_retry_count": 0.0,
+              "max_retry_count": 0,
+              "cases_with_retry": 0
+            },
+            "retry_reason_counts": {}
+          },
+          "abstention": {
+            "num_predictions": 6,
+            "accuracy": null,
+            "groundedness": 1.0,
+            "citation_precision": 1.0,
+            "abstention": 1.0,
+            "latency": {
+              "p50": 1.56,
+              "p95": 3.085,
+              "mean": 1.8433333333333335
             },
             "retry": 1.0,
             "retry_cost": {
@@ -1051,15 +1165,16 @@
         "metadata_first": true,
         "rerank": true,
         "verifier_retry": false,
+        "retrieval_mode": "flat",
         "num_predictions": 24,
         "accuracy": 1.0,
         "groundedness": 0.75,
         "citation_precision": 0.75,
         "abstention": 0.0,
         "latency": {
-          "p50": 1.02,
-          "p95": 2.325499999999999,
-          "mean": 1.2587499999999998
+          "p50": 1.05,
+          "p95": 1.5325,
+          "mean": 1.1049999999999998
         },
         "retry": 0.0,
         "retry_cost": {
@@ -1077,9 +1192,9 @@
             "citation_precision": 1.0,
             "abstention": null,
             "latency": {
-              "p50": 1.51,
-              "p95": 3.14,
-              "mean": 1.7616666666666667
+              "p50": 1.05,
+              "p95": 1.4375,
+              "mean": 1.07
             },
             "retry": 0.0,
             "retry_cost": {
@@ -1097,9 +1212,9 @@
             "citation_precision": 1.0,
             "abstention": null,
             "latency": {
-              "p50": 1.275,
-              "p95": 1.91,
-              "mean": 1.4116666666666668
+              "p50": 1.26,
+              "p95": 1.585,
+              "mean": 1.3100000000000003
             },
             "retry": 0.0,
             "retry_cost": {
@@ -1117,9 +1232,9 @@
             "citation_precision": 1.0,
             "abstention": null,
             "latency": {
-              "p50": 0.845,
-              "p95": 0.9374999999999999,
-              "mean": 0.8233333333333334
+              "p50": 0.9450000000000001,
+              "p95": 1.2325,
+              "mean": 0.9733333333333333
             },
             "retry": 0.0,
             "retry_cost": {
@@ -1137,9 +1252,9 @@
             "citation_precision": 0.0,
             "abstention": 0.0,
             "latency": {
-              "p50": 0.965,
-              "p95": 1.33,
-              "mean": 1.0383333333333333
+              "p50": 0.9450000000000001,
+              "p95": 1.45,
+              "mean": 1.0666666666666667
             },
             "retry": 0.0,
             "retry_cost": {
@@ -1174,7 +1289,7 @@
       "groundedness": 1.0,
       "citation_precision": 1.0,
       "abstention": null,
-      "latency_ms": 3.39,
+      "latency_ms": 3.19,
       "retry_count": 0,
       "retry_trigger_reasons": [],
       "abstained": false,
@@ -1199,7 +1314,7 @@
       "groundedness": 1.0,
       "citation_precision": 1.0,
       "abstention": null,
-      "latency_ms": 1.34,
+      "latency_ms": 1.47,
       "retry_count": 0,
       "retry_trigger_reasons": [],
       "abstained": false,
@@ -1224,7 +1339,7 @@
       "groundedness": 1.0,
       "citation_precision": 1.0,
       "abstention": null,
-      "latency_ms": 1.05,
+      "latency_ms": 0.79,
       "retry_count": 0,
       "retry_trigger_reasons": [],
       "abstained": false,
@@ -1249,7 +1364,7 @@
       "groundedness": 1.0,
       "citation_precision": 1.0,
       "abstention": null,
-      "latency_ms": 0.92,
+      "latency_ms": 2.22,
       "retry_count": 0,
       "retry_trigger_reasons": [],
       "abstained": false,
@@ -1274,7 +1389,7 @@
       "groundedness": 1.0,
       "citation_precision": 1.0,
       "abstention": null,
-      "latency_ms": 0.59,
+      "latency_ms": 0.69,
       "retry_count": 0,
       "retry_trigger_reasons": [],
       "abstained": false,
@@ -1299,7 +1414,7 @@
       "groundedness": 1.0,
       "citation_precision": 1.0,
       "abstention": null,
-      "latency_ms": 1.04,
+      "latency_ms": 0.75,
       "retry_count": 0,
       "retry_trigger_reasons": [],
       "abstained": false,
@@ -1326,7 +1441,7 @@
       "groundedness": 1.0,
       "citation_precision": 1.0,
       "abstention": null,
-      "latency_ms": 1.16,
+      "latency_ms": 1.65,
       "retry_count": 0,
       "retry_trigger_reasons": [],
       "abstained": false,
@@ -1353,7 +1468,7 @@
       "groundedness": 1.0,
       "citation_precision": 1.0,
       "abstention": null,
-      "latency_ms": 1.3,
+      "latency_ms": 1.09,
       "retry_count": 0,
       "retry_trigger_reasons": [],
       "abstained": false,
@@ -1380,7 +1495,7 @@
       "groundedness": 1.0,
       "citation_precision": 1.0,
       "abstention": null,
-      "latency_ms": 1.0,
+      "latency_ms": 1.11,
       "retry_count": 0,
       "retry_trigger_reasons": [],
       "abstained": false,
@@ -1407,7 +1522,7 @@
       "groundedness": 1.0,
       "citation_precision": 1.0,
       "abstention": null,
-      "latency_ms": 1.2,
+      "latency_ms": 1.03,
       "retry_count": 0,
       "retry_trigger_reasons": [],
       "abstained": false,
@@ -1434,7 +1549,7 @@
       "groundedness": 1.0,
       "citation_precision": 1.0,
       "abstention": null,
-      "latency_ms": 1.1,
+      "latency_ms": 1.07,
       "retry_count": 0,
       "retry_trigger_reasons": [],
       "abstained": false,
@@ -1461,7 +1576,7 @@
       "groundedness": 1.0,
       "citation_precision": 1.0,
       "abstention": null,
-      "latency_ms": 0.98,
+      "latency_ms": 1.07,
       "retry_count": 0,
       "retry_trigger_reasons": [],
       "abstained": false,
@@ -1486,7 +1601,7 @@
       "groundedness": 1.0,
       "citation_precision": 1.0,
       "abstention": null,
-      "latency_ms": 0.5,
+      "latency_ms": 0.57,
       "retry_count": 0,
       "retry_trigger_reasons": [],
       "abstained": false,
@@ -1511,7 +1626,7 @@
       "groundedness": 1.0,
       "citation_precision": 1.0,
       "abstention": null,
-      "latency_ms": 0.49,
+      "latency_ms": 0.72,
       "retry_count": 0,
       "retry_trigger_reasons": [],
       "abstained": false,
@@ -1536,7 +1651,7 @@
       "groundedness": 1.0,
       "citation_precision": 1.0,
       "abstention": null,
-      "latency_ms": 0.43,
+      "latency_ms": 0.57,
       "retry_count": 0,
       "retry_trigger_reasons": [],
       "abstained": false,
@@ -1561,7 +1676,7 @@
       "groundedness": 1.0,
       "citation_precision": 1.0,
       "abstention": null,
-      "latency_ms": 0.61,
+      "latency_ms": 0.99,
       "retry_count": 0,
       "retry_trigger_reasons": [],
       "abstained": false,
@@ -1586,7 +1701,7 @@
       "groundedness": 1.0,
       "citation_precision": 1.0,
       "abstention": null,
-      "latency_ms": 0.56,
+      "latency_ms": 0.76,
       "retry_count": 0,
       "retry_trigger_reasons": [],
       "abstained": false,
@@ -1611,7 +1726,7 @@
       "groundedness": 1.0,
       "citation_precision": 1.0,
       "abstention": null,
-      "latency_ms": 0.54,
+      "latency_ms": 0.62,
       "retry_count": 0,
       "retry_trigger_reasons": [],
       "abstained": false,
@@ -1632,7 +1747,7 @@
       "groundedness": 1.0,
       "citation_precision": 1.0,
       "abstention": 1.0,
-      "latency_ms": 1.08,
+      "latency_ms": 1.45,
       "retry_count": 1,
       "retry_trigger_reasons": [
         "topic_not_grounded",
@@ -1656,7 +1771,7 @@
       "groundedness": 1.0,
       "citation_precision": 1.0,
       "abstention": 1.0,
-      "latency_ms": 0.96,
+      "latency_ms": 1.46,
       "retry_count": 1,
       "retry_trigger_reasons": [
         "topic_not_grounded",
@@ -1680,7 +1795,7 @@
       "groundedness": 1.0,
       "citation_precision": 1.0,
       "abstention": 1.0,
-      "latency_ms": 0.87,
+      "latency_ms": 1.06,
       "retry_count": 1,
       "retry_trigger_reasons": [
         "topic_not_grounded",
@@ -1704,7 +1819,7 @@
       "groundedness": 1.0,
       "citation_precision": 1.0,
       "abstention": 1.0,
-      "latency_ms": 1.06,
+      "latency_ms": 1.3,
       "retry_count": 1,
       "retry_trigger_reasons": [
         "topic_not_grounded",
@@ -1728,7 +1843,7 @@
       "groundedness": 1.0,
       "citation_precision": 1.0,
       "abstention": 1.0,
-      "latency_ms": 1.05,
+      "latency_ms": 1.99,
       "retry_count": 1,
       "retry_trigger_reasons": [
         "topic_not_grounded",
@@ -1752,7 +1867,7 @@
       "groundedness": 1.0,
       "citation_precision": 1.0,
       "abstention": 1.0,
-      "latency_ms": 0.84,
+      "latency_ms": 1.35,
       "retry_count": 1,
       "retry_trigger_reasons": [
         "topic_not_grounded",

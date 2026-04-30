@@ -12,3 +12,4 @@
 - 공개본에서는 agency/project/title metadata를 정규화해 exact/partial/fuzzy 후보를 확장한다.
 - verifier가 topic/entity/doc coverage를 확인하고 실패 시 strict → reduced → relaxed 단계로 metadata filter를 완화한다.
 - retrieval diagnostics에는 단계별 filter, 후보 수, 검증 실패 사유를 남겨 metadata mismatch를 추적한다.
+- section-aware chunk metadata(`section_path`, `parent_section_id`)와 hierarchical retrieval 진단은 요구사항 목록이 chunk 경계에서 끊기거나 비교 질의 근거가 문맥 없이 보이는 경우를 해석하는 데 사용한다.

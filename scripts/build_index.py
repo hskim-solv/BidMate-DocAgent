@@ -9,7 +9,13 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 from ingestion import load_documents_from_metadata_csv
-from rag_core import DEFAULT_EMBEDDING_MODEL, build_index_payload, build_index_payload_from_documents
+from rag_core import (
+    DEFAULT_CHUNK_MAX_CHARS,
+    DEFAULT_CHUNK_OVERLAP_SENTENCES,
+    DEFAULT_EMBEDDING_MODEL,
+    build_index_payload,
+    build_index_payload_from_documents,
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -37,6 +43,24 @@ def parse_args() -> argparse.Namespace:
         choices=["auto", "sentence-transformers", "hashing"],
         help="Use cached sentence-transformers in auto mode; otherwise fall back to deterministic hashing.",
     )
+    parser.add_argument(
+        "--chunking_strategy",
+        default="auto",
+        choices=["auto", "section", "fixed"],
+        help="Chunk by detected sections in auto mode; use fixed fallback when structure is weak.",
+    )
+    parser.add_argument(
+        "--chunk_max_chars",
+        type=int,
+        default=DEFAULT_CHUNK_MAX_CHARS,
+        help="Maximum characters per child chunk.",
+    )
+    parser.add_argument(
+        "--chunk_overlap_sentences",
+        type=int,
+        default=DEFAULT_CHUNK_OVERLAP_SENTENCES,
+        help="Number of trailing sentences to overlap between adjacent chunks.",
+    )
     return parser.parse_args()
 
 
@@ -55,6 +79,10 @@ def validate_args(args: argparse.Namespace) -> None:
 
     if using_metadata_csv and not args.files_dir:
         raise ValueError("--files_dir is required when --metadata_csv is provided.")
+    if args.chunk_max_chars < 1:
+        raise ValueError("--chunk_max_chars must be positive.")
+    if args.chunk_overlap_sentences < 0:
+        raise ValueError("--chunk_overlap_sentences must be zero or positive.")
 
 
 def main() -> int:
@@ -72,6 +100,9 @@ def main() -> int:
                 source_dir=str(Path(args.metadata_csv)),
                 model_name=args.model,
                 embedding_backend=args.embedding_backend,
+                chunking_strategy=args.chunking_strategy,
+                chunk_max_chars=args.chunk_max_chars,
+                chunk_overlap_sentences=args.chunk_overlap_sentences,
                 message="PDF/HWP RFP index built from data_list.csv text and joined metadata.",
             )
         else:
@@ -79,6 +110,9 @@ def main() -> int:
                 Path(args.input_dir),
                 model_name=args.model,
                 embedding_backend=args.embedding_backend,
+                chunking_strategy=args.chunking_strategy,
+                chunk_max_chars=args.chunk_max_chars,
+                chunk_overlap_sentences=args.chunk_overlap_sentences,
             )
     except Exception as exc:
         print(f"[ERROR] Index build failed: {exc}", file=sys.stderr)
