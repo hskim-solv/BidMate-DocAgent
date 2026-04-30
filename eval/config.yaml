@@ -1,17 +1,107 @@
 mode: rag
-description: Public synthetic RFP evaluation for minimum E2E RAG
+description: Public synthetic RFP evaluation with stratified ablation runs
 index_dir: data/index
+ablation_runs:
+  - name: full
+    metadata_first: true
+    rerank: true
+    verifier_retry: true
+  - name: no_metadata_first
+    metadata_first: false
+    rerank: true
+    verifier_retry: true
+  - name: no_rerank
+    metadata_first: true
+    rerank: false
+    verifier_retry: true
+  - name: no_verifier_retry
+    metadata_first: true
+    rerank: true
+    verifier_retry: false
 cases:
   - id: single_doc_security
+    query_type: single_doc
     query: "기관 A의 보안 통제 요구사항은?"
     expected_doc_ids:
       - rfp-agency-a-ai-quality
     expected_terms:
       - "보안 통제"
       - "로그"
+    expected_citation_terms:
+      - "보안 통제"
+      - "로그"
+    answerable: true
+
+  - id: single_doc_chatbot_latency
+    query_type: single_doc
+    query: "기관 C의 챗봇 응답 시간 목표는?"
+    expected_doc_ids:
+      - rfp-agency-c-chatbot
+    expected_terms:
+      - "2초"
+      - "상담 이관"
+    expected_citation_terms:
+      - "2초"
+      - "상담 이관"
+    answerable: true
+
+  - id: single_doc_b_privacy_security
+    query_type: single_doc
+    query: "기관 B의 개인정보 보안 요구사항은?"
+    expected_doc_ids:
+      - rfp-agency-b-mlops-governance
+    expected_terms:
+      - "개인정보 비식별화"
+      - "접근 권한 분리"
+    expected_citation_terms:
+      - "개인정보 비식별화"
+      - "접근 권한 분리"
+    answerable: true
+
+  - id: single_doc_common_submission
+    query_type: single_doc
+    query: "공통 제출조건에서 모든 제안사가 제출해야 하는 것은?"
+    expected_doc_ids:
+      - rfp-common-submission
+    expected_terms:
+      - "일정 준수 계획"
+      - "위험 관리 방안"
+      - "산출물 품질 검수 절차"
+    expected_citation_terms:
+      - "일정 준수 계획"
+      - "위험 관리 방안"
+    answerable: true
+
+  - id: single_doc_a_deliverables
+    query_type: single_doc
+    query: "기관 A의 필수 산출물은?"
+    expected_doc_ids:
+      - rfp-agency-a-ai-quality
+    expected_terms:
+      - "모델 점검 리포트"
+      - "보안 통제 매뉴얼"
+      - "운영자 교육 자료"
+    expected_citation_terms:
+      - "모델 점검 리포트"
+      - "보안 통제 매뉴얼"
+    answerable: true
+
+  - id: single_doc_b_schedule_deliverables
+    query_type: single_doc
+    query: "기관 B 일정과 필수 산출물은?"
+    expected_doc_ids:
+      - rfp-agency-b-mlops-governance
+    expected_terms:
+      - "3개월"
+      - "5개월"
+      - "MLOps 운영 가이드"
+    expected_citation_terms:
+      - "3개월"
+      - "5개월"
     answerable: true
 
   - id: multi_doc_ai_requirements
+    query_type: multi_doc
     query: "기관 A와 기관 B의 AI 요구사항 차이 알려줘"
     expected_doc_ids:
       - rfp-agency-a-ai-quality
@@ -19,9 +109,88 @@ cases:
     expected_terms:
       - "품질관리"
       - "MLOps"
+    expected_citation_terms:
+      - "품질관리"
+      - "MLOps"
+    answerable: true
+
+  - id: multi_doc_security_controls
+    query_type: multi_doc
+    query: "기관 A와 기관 B의 보안 요구사항 차이를 비교해줘"
+    expected_doc_ids:
+      - rfp-agency-a-ai-quality
+      - rfp-agency-b-mlops-governance
+    expected_terms:
+      - "보안 통제"
+      - "개인정보 비식별화"
+    expected_citation_terms:
+      - "보안 통제"
+      - "개인정보 비식별화"
+    answerable: true
+
+  - id: multi_doc_schedule_compare
+    query_type: multi_doc
+    query: "기관 A와 기관 B의 일정 차이를 비교해줘"
+    expected_doc_ids:
+      - rfp-agency-a-ai-quality
+      - rfp-agency-b-mlops-governance
+    expected_terms:
+      - "4개월"
+      - "6개월"
+      - "3개월"
+      - "5개월"
+    expected_citation_terms:
+      - "4개월"
+      - "3개월"
+    answerable: true
+
+  - id: multi_doc_a_c_ai_focus
+    query_type: multi_doc
+    query: "기관 A와 기관 C의 AI 요구사항 초점 차이는?"
+    expected_doc_ids:
+      - rfp-agency-a-ai-quality
+      - rfp-agency-c-chatbot
+    expected_terms:
+      - "품질관리"
+      - "챗봇"
+      - "상담 이관"
+    expected_citation_terms:
+      - "품질관리"
+      - "상담 이관"
+    answerable: true
+
+  - id: multi_doc_b_c_operations
+    query_type: multi_doc
+    query: "기관 B와 기관 C의 운영 지표나 모니터링 요구를 비교해줘"
+    expected_doc_ids:
+      - rfp-agency-b-mlops-governance
+      - rfp-agency-c-chatbot
+    expected_terms:
+      - "모니터링 대시보드"
+      - "답변 정확도"
+      - "사용자 만족도"
+    expected_citation_terms:
+      - "모니터링 대시보드"
+      - "답변 정확도"
+    answerable: true
+
+  - id: multi_doc_a_common_submission
+    query_type: multi_doc
+    query: "기관 A 제출조건과 공통 평가 기준을 비교해줘"
+    expected_doc_ids:
+      - rfp-agency-a-ai-quality
+      - rfp-common-submission
+    expected_terms:
+      - "수행 조직"
+      - "요구사항 이해도"
+      - "근거 기반 실행 계획"
+    expected_citation_terms:
+      - "수행 조직"
+      - "근거 기반 실행 계획"
     answerable: true
 
   - id: follow_up_schedule
+    query_type: follow_up
     query: "그럼 일정은 어떻게 돼?"
     context_entities:
       - "기관 A"
@@ -30,20 +199,134 @@ cases:
     expected_terms:
       - "4개월"
       - "6개월"
+    expected_citation_terms:
+      - "4개월"
+      - "6개월"
     answerable: true
 
-  - id: single_doc_chatbot_latency
-    query: "기관 C의 챗봇 응답 시간 목표는?"
+  - id: follow_up_b_deliverables
+    query_type: follow_up
+    query: "필수 산출물은 뭐야?"
+    context_entities:
+      - "기관 B"
+    expected_doc_ids:
+      - rfp-agency-b-mlops-governance
+    expected_terms:
+      - "데이터 표준 사전"
+      - "MLOps 운영 가이드"
+      - "모니터링 대시보드"
+    expected_citation_terms:
+      - "데이터 표준 사전"
+      - "MLOps 운영 가이드"
+    answerable: true
+
+  - id: follow_up_c_response_target
+    query_type: follow_up
+    query: "응답 성능 목표는?"
+    context_entities:
+      - "기관 C"
     expected_doc_ids:
       - rfp-agency-c-chatbot
     expected_terms:
       - "2초"
-      - "상담 이관"
+      - "주요 문의"
+    expected_citation_terms:
+      - "2초"
+      - "주요 문의"
+    answerable: true
+
+  - id: follow_up_common_evaluation
+    query_type: follow_up
+    query: "평가 기준은 무엇을 중심으로 진행해?"
+    context_entities:
+      - "공통"
+    expected_doc_ids:
+      - rfp-common-submission
+    expected_terms:
+      - "요구사항 이해도"
+      - "근거 기반 실행 계획"
+      - "보안 및 운영 리스크"
+    expected_citation_terms:
+      - "요구사항 이해도"
+      - "근거 기반 실행 계획"
+    answerable: true
+
+  - id: follow_up_a_team
+    query_type: follow_up
+    query: "수행 조직에는 누가 포함돼야 해?"
+    context_entities:
+      - "기관 A"
+    expected_doc_ids:
+      - rfp-agency-a-ai-quality
+    expected_terms:
+      - "PM"
+      - "ML 엔지니어"
+      - "보안 담당자"
+    expected_citation_terms:
+      - "PM"
+      - "ML 엔지니어"
+    answerable: true
+
+  - id: follow_up_c_operation_metrics
+    query_type: follow_up
+    query: "운영 지표로 무엇을 사용해?"
+    context_entities:
+      - "기관 C"
+    expected_doc_ids:
+      - rfp-agency-c-chatbot
+    expected_terms:
+      - "답변 정확도"
+      - "상담 이관 적절성"
+      - "사용자 만족도"
+    expected_citation_terms:
+      - "답변 정확도"
+      - "사용자 만족도"
     answerable: true
 
   - id: abstention_missing_blockchain
+    query_type: abstention
     query: "기관 A의 블록체인 납품 실적은?"
     expected_doc_ids: []
     expected_terms:
       - "블록체인"
+    answerable: false
+
+  - id: abstention_missing_drone
+    query_type: abstention
+    query: "기관 B의 드론 영상분석 요구사항은?"
+    expected_doc_ids: []
+    expected_terms:
+      - "드론"
+    answerable: false
+
+  - id: abstention_missing_payment
+    query_type: abstention
+    query: "기관 C의 결제 기능 연동 요구사항은?"
+    expected_doc_ids: []
+    expected_terms:
+      - "결제"
+    answerable: false
+
+  - id: abstention_missing_ocr
+    query_type: abstention
+    query: "공통 제출조건에 OCR 자동인식 기능 요구가 있나?"
+    expected_doc_ids: []
+    expected_terms:
+      - "OCR"
+    answerable: false
+
+  - id: abstention_missing_genai
+    query_type: abstention
+    query: "기관 A의 생성형 AI 상담 기능 요구사항은?"
+    expected_doc_ids: []
+    expected_terms:
+      - "생성형"
+    answerable: false
+
+  - id: abstention_missing_quantum
+    query_type: abstention
+    query: "기관 B의 양자암호 연동 요구사항은?"
+    expected_doc_ids: []
+    expected_terms:
+      - "양자암호"
     answerable: false

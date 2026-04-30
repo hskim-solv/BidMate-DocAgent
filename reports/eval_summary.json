@@ -2,19 +2,1162 @@
   "mode": "rag",
   "config": "eval/config.yaml",
   "index_dir": "data/index",
-  "num_predictions": 5,
+  "num_predictions": 24,
   "accuracy": 1.0,
   "groundedness": 1.0,
   "citation_precision": 1.0,
   "abstention": 1.0,
   "latency": {
-    "p50": 99.6,
-    "p95": 7523.967999999999
+    "p50": 0.99,
+    "p95": 1.3339999999999999,
+    "mean": 1.0024999999999997
   },
-  "retry": 0.2,
+  "retry": 0.25,
+  "by_query_type": {
+    "single_doc": {
+      "num_predictions": 6,
+      "accuracy": 1.0,
+      "groundedness": 1.0,
+      "citation_precision": 1.0,
+      "abstention": null,
+      "latency": {
+        "p50": 1.045,
+        "p95": 2.8775,
+        "mean": 1.3883333333333334
+      },
+      "retry": 0.0,
+      "retry_cost": {
+        "total_retries": 0,
+        "mean_retry_count": 0.0,
+        "max_retry_count": 0,
+        "cases_with_retry": 0
+      },
+      "retry_reason_counts": {}
+    },
+    "multi_doc": {
+      "num_predictions": 6,
+      "accuracy": 1.0,
+      "groundedness": 1.0,
+      "citation_precision": 1.0,
+      "abstention": null,
+      "latency": {
+        "p50": 1.13,
+        "p95": 1.2750000000000001,
+        "mean": 1.1233333333333333
+      },
+      "retry": 0.0,
+      "retry_cost": {
+        "total_retries": 0,
+        "mean_retry_count": 0.0,
+        "max_retry_count": 0,
+        "cases_with_retry": 0
+      },
+      "retry_reason_counts": {}
+    },
+    "follow_up": {
+      "num_predictions": 6,
+      "accuracy": 1.0,
+      "groundedness": 1.0,
+      "citation_precision": 1.0,
+      "abstention": null,
+      "latency": {
+        "p50": 0.52,
+        "p95": 0.5975,
+        "mean": 0.5216666666666666
+      },
+      "retry": 0.0,
+      "retry_cost": {
+        "total_retries": 0,
+        "mean_retry_count": 0.0,
+        "max_retry_count": 0,
+        "cases_with_retry": 0
+      },
+      "retry_reason_counts": {}
+    },
+    "abstention": {
+      "num_predictions": 6,
+      "accuracy": null,
+      "groundedness": 1.0,
+      "citation_precision": 1.0,
+      "abstention": 1.0,
+      "latency": {
+        "p50": 1.005,
+        "p95": 1.0750000000000002,
+        "mean": 0.9766666666666667
+      },
+      "retry": 1.0,
+      "retry_cost": {
+        "total_retries": 6,
+        "mean_retry_count": 1.0,
+        "max_retry_count": 1,
+        "cases_with_retry": 6
+      },
+      "retry_reason_counts": {
+        "topic_not_grounded": 12
+      }
+    }
+  },
+  "retry_cost": {
+    "total_retries": 6,
+    "mean_retry_count": 0.25,
+    "max_retry_count": 1,
+    "cases_with_retry": 6
+  },
+  "retry_reason_counts": {
+    "topic_not_grounded": 12
+  },
+  "ablation": {
+    "runs": [
+      {
+        "name": "full",
+        "metadata_first": true,
+        "rerank": true,
+        "verifier_retry": true,
+        "num_predictions": 24,
+        "accuracy": 1.0,
+        "groundedness": 1.0,
+        "citation_precision": 1.0,
+        "abstention": 1.0,
+        "latency": {
+          "p50": 0.99,
+          "p95": 1.3339999999999999,
+          "mean": 1.0024999999999997
+        },
+        "retry": 0.25,
+        "retry_cost": {
+          "total_retries": 6,
+          "mean_retry_count": 0.25,
+          "max_retry_count": 1,
+          "cases_with_retry": 6
+        },
+        "retry_reason_counts": {
+          "topic_not_grounded": 12
+        },
+        "by_query_type": {
+          "single_doc": {
+            "num_predictions": 6,
+            "accuracy": 1.0,
+            "groundedness": 1.0,
+            "citation_precision": 1.0,
+            "abstention": null,
+            "latency": {
+              "p50": 1.045,
+              "p95": 2.8775,
+              "mean": 1.3883333333333334
+            },
+            "retry": 0.0,
+            "retry_cost": {
+              "total_retries": 0,
+              "mean_retry_count": 0.0,
+              "max_retry_count": 0,
+              "cases_with_retry": 0
+            },
+            "retry_reason_counts": {}
+          },
+          "multi_doc": {
+            "num_predictions": 6,
+            "accuracy": 1.0,
+            "groundedness": 1.0,
+            "citation_precision": 1.0,
+            "abstention": null,
+            "latency": {
+              "p50": 1.13,
+              "p95": 1.2750000000000001,
+              "mean": 1.1233333333333333
+            },
+            "retry": 0.0,
+            "retry_cost": {
+              "total_retries": 0,
+              "mean_retry_count": 0.0,
+              "max_retry_count": 0,
+              "cases_with_retry": 0
+            },
+            "retry_reason_counts": {}
+          },
+          "follow_up": {
+            "num_predictions": 6,
+            "accuracy": 1.0,
+            "groundedness": 1.0,
+            "citation_precision": 1.0,
+            "abstention": null,
+            "latency": {
+              "p50": 0.52,
+              "p95": 0.5975,
+              "mean": 0.5216666666666666
+            },
+            "retry": 0.0,
+            "retry_cost": {
+              "total_retries": 0,
+              "mean_retry_count": 0.0,
+              "max_retry_count": 0,
+              "cases_with_retry": 0
+            },
+            "retry_reason_counts": {}
+          },
+          "abstention": {
+            "num_predictions": 6,
+            "accuracy": null,
+            "groundedness": 1.0,
+            "citation_precision": 1.0,
+            "abstention": 1.0,
+            "latency": {
+              "p50": 1.005,
+              "p95": 1.0750000000000002,
+              "mean": 0.9766666666666667
+            },
+            "retry": 1.0,
+            "retry_cost": {
+              "total_retries": 6,
+              "mean_retry_count": 1.0,
+              "max_retry_count": 1,
+              "cases_with_retry": 6
+            },
+            "retry_reason_counts": {
+              "topic_not_grounded": 12
+            }
+          }
+        },
+        "case_results": [
+          {
+            "id": "single_doc_security",
+            "query_type": "single_doc",
+            "query": "기관 A의 보안 통제 요구사항은?",
+            "answerable": true,
+            "expected_doc_ids": [
+              "rfp-agency-a-ai-quality"
+            ],
+            "evidence_doc_ids": [
+              "rfp-agency-a-ai-quality"
+            ],
+            "doc_match": true,
+            "term_match": true,
+            "citation_term_match": true,
+            "citation_doc_precision": 1.0,
+            "accuracy": 1.0,
+            "groundedness": 1.0,
+            "citation_precision": 1.0,
+            "abstention": null,
+            "latency_ms": 3.39,
+            "retry_count": 0,
+            "retry_trigger_reasons": [],
+            "abstained": false,
+            "answer": "기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. [rfp-agency-a-ai-quality::chunk-002] 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다. [rfp-agency-a-ai-quality::chunk-004]"
+          },
+          {
+            "id": "single_doc_chatbot_latency",
+            "query_type": "single_doc",
+            "query": "기관 C의 챗봇 응답 시간 목표는?",
+            "answerable": true,
+            "expected_doc_ids": [
+              "rfp-agency-c-chatbot"
+            ],
+            "evidence_doc_ids": [
+              "rfp-agency-c-chatbot"
+            ],
+            "doc_match": true,
+            "term_match": true,
+            "citation_term_match": true,
+            "citation_doc_precision": 1.0,
+            "accuracy": 1.0,
+            "groundedness": 1.0,
+            "citation_precision": 1.0,
+            "abstention": null,
+            "latency_ms": 1.34,
+            "retry_count": 0,
+            "retry_trigger_reasons": [],
+            "abstained": false,
+            "answer": "챗봇은 주요 문의에 대해 평균 2초 이내 응답해야 한다. [rfp-agency-c-chatbot::chunk-002] 기관 C는 고객지원 챗봇 고도화를 추진한다. [rfp-agency-c-chatbot::chunk-001]"
+          },
+          {
+            "id": "single_doc_b_privacy_security",
+            "query_type": "single_doc",
+            "query": "기관 B의 개인정보 보안 요구사항은?",
+            "answerable": true,
+            "expected_doc_ids": [
+              "rfp-agency-b-mlops-governance"
+            ],
+            "evidence_doc_ids": [
+              "rfp-agency-b-mlops-governance"
+            ],
+            "doc_match": true,
+            "term_match": true,
+            "citation_term_match": true,
+            "citation_doc_precision": 1.0,
+            "accuracy": 1.0,
+            "groundedness": 1.0,
+            "citation_precision": 1.0,
+            "abstention": null,
+            "latency_ms": 1.05,
+            "retry_count": 0,
+            "retry_trigger_reasons": [],
+            "abstained": false,
+            "answer": "기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다. [rfp-agency-b-mlops-governance::chunk-003]"
+          },
+          {
+            "id": "single_doc_common_submission",
+            "query_type": "single_doc",
+            "query": "공통 제출조건에서 모든 제안사가 제출해야 하는 것은?",
+            "answerable": true,
+            "expected_doc_ids": [
+              "rfp-common-submission"
+            ],
+            "evidence_doc_ids": [
+              "rfp-common-submission"
+            ],
+            "doc_match": true,
+            "term_match": true,
+            "citation_term_match": true,
+            "citation_doc_precision": 1.0,
+            "accuracy": 1.0,
+            "groundedness": 1.0,
+            "citation_precision": 1.0,
+            "abstention": null,
+            "latency_ms": 0.92,
+            "retry_count": 0,
+            "retry_trigger_reasons": [],
+            "abstained": false,
+            "answer": "모든 제안사는 일정 준수 계획, 위험 관리 방안, 산출물 품질 검수 절차를 제출해야 한다. [rfp-common-submission::chunk-001] 공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다. [rfp-common-submission::chunk-002]"
+          },
+          {
+            "id": "single_doc_a_deliverables",
+            "query_type": "single_doc",
+            "query": "기관 A의 필수 산출물은?",
+            "answerable": true,
+            "expected_doc_ids": [
+              "rfp-agency-a-ai-quality"
+            ],
+            "evidence_doc_ids": [
+              "rfp-agency-a-ai-quality"
+            ],
+            "doc_match": true,
+            "term_match": true,
+            "citation_term_match": true,
+            "citation_doc_precision": 1.0,
+            "accuracy": 1.0,
+            "groundedness": 1.0,
+            "citation_precision": 1.0,
+            "abstention": null,
+            "latency_ms": 0.59,
+            "retry_count": 0,
+            "retry_trigger_reasons": [],
+            "abstained": false,
+            "answer": "필수 산출물은 모델 점검 리포트, 보안 통제 매뉴얼, 운영자 교육 자료이다. [rfp-agency-a-ai-quality::chunk-003]"
+          },
+          {
+            "id": "single_doc_b_schedule_deliverables",
+            "query_type": "single_doc",
+            "query": "기관 B 일정과 필수 산출물은?",
+            "answerable": true,
+            "expected_doc_ids": [
+              "rfp-agency-b-mlops-governance"
+            ],
+            "evidence_doc_ids": [
+              "rfp-agency-b-mlops-governance"
+            ],
+            "doc_match": true,
+            "term_match": true,
+            "citation_term_match": true,
+            "citation_doc_precision": 1.0,
+            "accuracy": 1.0,
+            "groundedness": 1.0,
+            "citation_precision": 1.0,
+            "abstention": null,
+            "latency_ms": 1.04,
+            "retry_count": 0,
+            "retry_trigger_reasons": [],
+            "abstained": false,
+            "answer": "기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다. [rfp-agency-b-mlops-governance::chunk-004]"
+          },
+          {
+            "id": "multi_doc_ai_requirements",
+            "query_type": "multi_doc",
+            "query": "기관 A와 기관 B의 AI 요구사항 차이 알려줘",
+            "answerable": true,
+            "expected_doc_ids": [
+              "rfp-agency-a-ai-quality",
+              "rfp-agency-b-mlops-governance"
+            ],
+            "evidence_doc_ids": [
+              "rfp-agency-a-ai-quality",
+              "rfp-agency-b-mlops-governance"
+            ],
+            "doc_match": true,
+            "term_match": true,
+            "citation_term_match": true,
+            "citation_doc_precision": 1.0,
+            "accuracy": 1.0,
+            "groundedness": 1.0,
+            "citation_precision": 1.0,
+            "abstention": null,
+            "latency_ms": 1.16,
+            "retry_count": 0,
+            "retry_trigger_reasons": [],
+            "abstained": false,
+            "answer": "기관 A: 기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. [rfp-agency-a-ai-quality::chunk-002] 기관 B: 기관 B의 핵심 AI 요구사항은 데이터 거버넌스, MLOps 배포 자동화, 모델 모니터링이다. [rfp-agency-b-mlops-governance::chunk-002]"
+          },
+          {
+            "id": "multi_doc_security_controls",
+            "query_type": "multi_doc",
+            "query": "기관 A와 기관 B의 보안 요구사항 차이를 비교해줘",
+            "answerable": true,
+            "expected_doc_ids": [
+              "rfp-agency-a-ai-quality",
+              "rfp-agency-b-mlops-governance"
+            ],
+            "evidence_doc_ids": [
+              "rfp-agency-a-ai-quality",
+              "rfp-agency-b-mlops-governance"
+            ],
+            "doc_match": true,
+            "term_match": true,
+            "citation_term_match": true,
+            "citation_doc_precision": 1.0,
+            "accuracy": 1.0,
+            "groundedness": 1.0,
+            "citation_precision": 1.0,
+            "abstention": null,
+            "latency_ms": 1.3,
+            "retry_count": 0,
+            "retry_trigger_reasons": [],
+            "abstained": false,
+            "answer": "기관 A: 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다. [rfp-agency-a-ai-quality::chunk-004] 기관 B: 보안 통제는 데이터셋 반출 승인과 관리자 작업 기록을 중심으로 설계한다. [rfp-agency-b-mlops-governance::chunk-003]"
+          },
+          {
+            "id": "multi_doc_schedule_compare",
+            "query_type": "multi_doc",
+            "query": "기관 A와 기관 B의 일정 차이를 비교해줘",
+            "answerable": true,
+            "expected_doc_ids": [
+              "rfp-agency-a-ai-quality",
+              "rfp-agency-b-mlops-governance"
+            ],
+            "evidence_doc_ids": [
+              "rfp-agency-a-ai-quality",
+              "rfp-agency-b-mlops-governance"
+            ],
+            "doc_match": true,
+            "term_match": true,
+            "citation_term_match": true,
+            "citation_doc_precision": 1.0,
+            "accuracy": 1.0,
+            "groundedness": 1.0,
+            "citation_precision": 1.0,
+            "abstention": null,
+            "latency_ms": 1.0,
+            "retry_count": 0,
+            "retry_trigger_reasons": [],
+            "abstained": false,
+            "answer": "기관 A: 기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. [rfp-agency-a-ai-quality::chunk-003] 기관 B: 기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다. [rfp-agency-b-mlops-governance::chunk-004]"
+          },
+          {
+            "id": "multi_doc_a_c_ai_focus",
+            "query_type": "multi_doc",
+            "query": "기관 A와 기관 C의 AI 요구사항 초점 차이는?",
+            "answerable": true,
+            "expected_doc_ids": [
+              "rfp-agency-a-ai-quality",
+              "rfp-agency-c-chatbot"
+            ],
+            "evidence_doc_ids": [
+              "rfp-agency-a-ai-quality",
+              "rfp-agency-c-chatbot"
+            ],
+            "doc_match": true,
+            "term_match": true,
+            "citation_term_match": true,
+            "citation_doc_precision": 1.0,
+            "accuracy": 1.0,
+            "groundedness": 1.0,
+            "citation_precision": 1.0,
+            "abstention": null,
+            "latency_ms": 1.2,
+            "retry_count": 0,
+            "retry_trigger_reasons": [],
+            "abstained": false,
+            "answer": "기관 A: 기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. [rfp-agency-a-ai-quality::chunk-002] 기관 C: 기관 C의 챗봇 AI 요구사항은 한국어 FAQ 검색, 의도 분류, 상담 이관 추천이다. [rfp-agency-c-chatbot::chunk-002]"
+          },
+          {
+            "id": "multi_doc_b_c_operations",
+            "query_type": "multi_doc",
+            "query": "기관 B와 기관 C의 운영 지표나 모니터링 요구를 비교해줘",
+            "answerable": true,
+            "expected_doc_ids": [
+              "rfp-agency-b-mlops-governance",
+              "rfp-agency-c-chatbot"
+            ],
+            "evidence_doc_ids": [
+              "rfp-agency-b-mlops-governance",
+              "rfp-agency-c-chatbot"
+            ],
+            "doc_match": true,
+            "term_match": true,
+            "citation_term_match": true,
+            "citation_doc_precision": 1.0,
+            "accuracy": 1.0,
+            "groundedness": 1.0,
+            "citation_precision": 1.0,
+            "abstention": null,
+            "latency_ms": 1.1,
+            "retry_count": 0,
+            "retry_trigger_reasons": [],
+            "abstained": false,
+            "answer": "기관 B: 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다. [rfp-agency-b-mlops-governance::chunk-004] 기관 C: 기관 C는 답변 정확도, 상담 이관 적절성, 사용자 만족도를 운영 지표로 사용한다. [rfp-agency-c-chatbot::chunk-003]"
+          },
+          {
+            "id": "multi_doc_a_common_submission",
+            "query_type": "multi_doc",
+            "query": "기관 A 제출조건과 공통 평가 기준을 비교해줘",
+            "answerable": true,
+            "expected_doc_ids": [
+              "rfp-agency-a-ai-quality",
+              "rfp-common-submission"
+            ],
+            "evidence_doc_ids": [
+              "rfp-agency-a-ai-quality",
+              "rfp-common-submission"
+            ],
+            "doc_match": true,
+            "term_match": true,
+            "citation_term_match": true,
+            "citation_doc_precision": 1.0,
+            "accuracy": 1.0,
+            "groundedness": 1.0,
+            "citation_precision": 1.0,
+            "abstention": null,
+            "latency_ms": 0.98,
+            "retry_count": 0,
+            "retry_trigger_reasons": [],
+            "abstained": false,
+            "answer": "기관 A: 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다. [rfp-agency-a-ai-quality::chunk-004] 공통: 공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다. [rfp-common-submission::chunk-002]"
+          },
+          {
+            "id": "follow_up_schedule",
+            "query_type": "follow_up",
+            "query": "그럼 일정은 어떻게 돼?",
+            "answerable": true,
+            "expected_doc_ids": [
+              "rfp-agency-a-ai-quality"
+            ],
+            "evidence_doc_ids": [
+              "rfp-agency-a-ai-quality"
+            ],
+            "doc_match": true,
+            "term_match": true,
+            "citation_term_match": true,
+            "citation_doc_precision": 1.0,
+            "accuracy": 1.0,
+            "groundedness": 1.0,
+            "citation_precision": 1.0,
+            "abstention": null,
+            "latency_ms": 0.5,
+            "retry_count": 0,
+            "retry_trigger_reasons": [],
+            "abstained": false,
+            "answer": "기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. [rfp-agency-a-ai-quality::chunk-003]"
+          },
+          {
+            "id": "follow_up_b_deliverables",
+            "query_type": "follow_up",
+            "query": "필수 산출물은 뭐야?",
+            "answerable": true,
+            "expected_doc_ids": [
+              "rfp-agency-b-mlops-governance"
+            ],
+            "evidence_doc_ids": [
+              "rfp-agency-b-mlops-governance"
+            ],
+            "doc_match": true,
+            "term_match": true,
+            "citation_term_match": true,
+            "citation_doc_precision": 1.0,
+            "accuracy": 1.0,
+            "groundedness": 1.0,
+            "citation_precision": 1.0,
+            "abstention": null,
+            "latency_ms": 0.49,
+            "retry_count": 0,
+            "retry_trigger_reasons": [],
+            "abstained": false,
+            "answer": "필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다. [rfp-agency-b-mlops-governance::chunk-004]"
+          },
+          {
+            "id": "follow_up_c_response_target",
+            "query_type": "follow_up",
+            "query": "응답 성능 목표는?",
+            "answerable": true,
+            "expected_doc_ids": [
+              "rfp-agency-c-chatbot"
+            ],
+            "evidence_doc_ids": [
+              "rfp-agency-c-chatbot"
+            ],
+            "doc_match": true,
+            "term_match": true,
+            "citation_term_match": true,
+            "citation_doc_precision": 1.0,
+            "accuracy": 1.0,
+            "groundedness": 1.0,
+            "citation_precision": 1.0,
+            "abstention": null,
+            "latency_ms": 0.43,
+            "retry_count": 0,
+            "retry_trigger_reasons": [],
+            "abstained": false,
+            "answer": "챗봇은 주요 문의에 대해 평균 2초 이내 응답해야 한다. [rfp-agency-c-chatbot::chunk-002]"
+          },
+          {
+            "id": "follow_up_common_evaluation",
+            "query_type": "follow_up",
+            "query": "평가 기준은 무엇을 중심으로 진행해?",
+            "answerable": true,
+            "expected_doc_ids": [
+              "rfp-common-submission"
+            ],
+            "evidence_doc_ids": [
+              "rfp-common-submission"
+            ],
+            "doc_match": true,
+            "term_match": true,
+            "citation_term_match": true,
+            "citation_doc_precision": 1.0,
+            "accuracy": 1.0,
+            "groundedness": 1.0,
+            "citation_precision": 1.0,
+            "abstention": null,
+            "latency_ms": 0.61,
+            "retry_count": 0,
+            "retry_trigger_reasons": [],
+            "abstained": false,
+            "answer": "공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다. [rfp-common-submission::chunk-002]"
+          },
+          {
+            "id": "follow_up_a_team",
+            "query_type": "follow_up",
+            "query": "수행 조직에는 누가 포함돼야 해?",
+            "answerable": true,
+            "expected_doc_ids": [
+              "rfp-agency-a-ai-quality"
+            ],
+            "evidence_doc_ids": [
+              "rfp-agency-a-ai-quality"
+            ],
+            "doc_match": true,
+            "term_match": true,
+            "citation_term_match": true,
+            "citation_doc_precision": 1.0,
+            "accuracy": 1.0,
+            "groundedness": 1.0,
+            "citation_precision": 1.0,
+            "abstention": null,
+            "latency_ms": 0.56,
+            "retry_count": 0,
+            "retry_trigger_reasons": [],
+            "abstained": false,
+            "answer": "제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. [rfp-agency-a-ai-quality::chunk-004]"
+          },
+          {
+            "id": "follow_up_c_operation_metrics",
+            "query_type": "follow_up",
+            "query": "운영 지표로 무엇을 사용해?",
+            "answerable": true,
+            "expected_doc_ids": [
+              "rfp-agency-c-chatbot"
+            ],
+            "evidence_doc_ids": [
+              "rfp-agency-c-chatbot"
+            ],
+            "doc_match": true,
+            "term_match": true,
+            "citation_term_match": true,
+            "citation_doc_precision": 1.0,
+            "accuracy": 1.0,
+            "groundedness": 1.0,
+            "citation_precision": 1.0,
+            "abstention": null,
+            "latency_ms": 0.54,
+            "retry_count": 0,
+            "retry_trigger_reasons": [],
+            "abstained": false,
+            "answer": "기관 C는 답변 정확도, 상담 이관 적절성, 사용자 만족도를 운영 지표로 사용한다. [rfp-agency-c-chatbot::chunk-003]"
+          },
+          {
+            "id": "abstention_missing_blockchain",
+            "query_type": "abstention",
+            "query": "기관 A의 블록체인 납품 실적은?",
+            "answerable": false,
+            "expected_doc_ids": [],
+            "evidence_doc_ids": [],
+            "doc_match": true,
+            "term_match": true,
+            "citation_term_match": false,
+            "citation_doc_precision": 0.0,
+            "accuracy": null,
+            "groundedness": 1.0,
+            "citation_precision": 1.0,
+            "abstention": 1.0,
+            "latency_ms": 1.08,
+            "retry_count": 1,
+            "retry_trigger_reasons": [
+              "topic_not_grounded",
+              "topic_not_grounded"
+            ],
+            "abstained": true,
+            "answer": "제공된 공개 샘플 RFP 근거에서는 '기관 A의 블록체인 납품 실적은?'에 답할 수 있는 내용을 찾지 못했습니다."
+          },
+          {
+            "id": "abstention_missing_drone",
+            "query_type": "abstention",
+            "query": "기관 B의 드론 영상분석 요구사항은?",
+            "answerable": false,
+            "expected_doc_ids": [],
+            "evidence_doc_ids": [],
+            "doc_match": true,
+            "term_match": true,
+            "citation_term_match": false,
+            "citation_doc_precision": 0.0,
+            "accuracy": null,
+            "groundedness": 1.0,
+            "citation_precision": 1.0,
+            "abstention": 1.0,
+            "latency_ms": 0.96,
+            "retry_count": 1,
+            "retry_trigger_reasons": [
+              "topic_not_grounded",
+              "topic_not_grounded"
+            ],
+            "abstained": true,
+            "answer": "제공된 공개 샘플 RFP 근거에서는 '기관 B의 드론 영상분석 요구사항은?'에 답할 수 있는 내용을 찾지 못했습니다."
+          },
+          {
+            "id": "abstention_missing_payment",
+            "query_type": "abstention",
+            "query": "기관 C의 결제 기능 연동 요구사항은?",
+            "answerable": false,
+            "expected_doc_ids": [],
+            "evidence_doc_ids": [],
+            "doc_match": true,
+            "term_match": true,
+            "citation_term_match": false,
+            "citation_doc_precision": 0.0,
+            "accuracy": null,
+            "groundedness": 1.0,
+            "citation_precision": 1.0,
+            "abstention": 1.0,
+            "latency_ms": 0.87,
+            "retry_count": 1,
+            "retry_trigger_reasons": [
+              "topic_not_grounded",
+              "topic_not_grounded"
+            ],
+            "abstained": true,
+            "answer": "제공된 공개 샘플 RFP 근거에서는 '기관 C의 결제 기능 연동 요구사항은?'에 답할 수 있는 내용을 찾지 못했습니다."
+          },
+          {
+            "id": "abstention_missing_ocr",
+            "query_type": "abstention",
+            "query": "공통 제출조건에 OCR 자동인식 기능 요구가 있나?",
+            "answerable": false,
+            "expected_doc_ids": [],
+            "evidence_doc_ids": [],
+            "doc_match": true,
+            "term_match": true,
+            "citation_term_match": false,
+            "citation_doc_precision": 0.0,
+            "accuracy": null,
+            "groundedness": 1.0,
+            "citation_precision": 1.0,
+            "abstention": 1.0,
+            "latency_ms": 1.06,
+            "retry_count": 1,
+            "retry_trigger_reasons": [
+              "topic_not_grounded",
+              "topic_not_grounded"
+            ],
+            "abstained": true,
+            "answer": "제공된 공개 샘플 RFP 근거에서는 '공통 제출조건에 OCR 자동인식 기능 요구가 있나?'에 답할 수 있는 내용을 찾지 못했습니다."
+          },
+          {
+            "id": "abstention_missing_genai",
+            "query_type": "abstention",
+            "query": "기관 A의 생성형 AI 상담 기능 요구사항은?",
+            "answerable": false,
+            "expected_doc_ids": [],
+            "evidence_doc_ids": [],
+            "doc_match": true,
+            "term_match": true,
+            "citation_term_match": false,
+            "citation_doc_precision": 0.0,
+            "accuracy": null,
+            "groundedness": 1.0,
+            "citation_precision": 1.0,
+            "abstention": 1.0,
+            "latency_ms": 1.05,
+            "retry_count": 1,
+            "retry_trigger_reasons": [
+              "topic_not_grounded",
+              "topic_not_grounded"
+            ],
+            "abstained": true,
+            "answer": "제공된 공개 샘플 RFP 근거에서는 '기관 A의 생성형 AI 상담 기능 요구사항은?'에 답할 수 있는 내용을 찾지 못했습니다."
+          },
+          {
+            "id": "abstention_missing_quantum",
+            "query_type": "abstention",
+            "query": "기관 B의 양자암호 연동 요구사항은?",
+            "answerable": false,
+            "expected_doc_ids": [],
+            "evidence_doc_ids": [],
+            "doc_match": true,
+            "term_match": true,
+            "citation_term_match": false,
+            "citation_doc_precision": 0.0,
+            "accuracy": null,
+            "groundedness": 1.0,
+            "citation_precision": 1.0,
+            "abstention": 1.0,
+            "latency_ms": 0.84,
+            "retry_count": 1,
+            "retry_trigger_reasons": [
+              "topic_not_grounded",
+              "topic_not_grounded"
+            ],
+            "abstained": true,
+            "answer": "제공된 공개 샘플 RFP 근거에서는 '기관 B의 양자암호 연동 요구사항은?'에 답할 수 있는 내용을 찾지 못했습니다."
+          }
+        ]
+      },
+      {
+        "name": "no_metadata_first",
+        "metadata_first": false,
+        "rerank": true,
+        "verifier_retry": true,
+        "num_predictions": 24,
+        "accuracy": 1.0,
+        "groundedness": 1.0,
+        "citation_precision": 0.8333333333333334,
+        "abstention": 1.0,
+        "latency": {
+          "p50": 1.045,
+          "p95": 1.6134999999999997,
+          "mean": 1.0941666666666667
+        },
+        "retry": 0.0,
+        "retry_cost": {
+          "total_retries": 0,
+          "mean_retry_count": 0.0,
+          "max_retry_count": 0,
+          "cases_with_retry": 0
+        },
+        "retry_reason_counts": {
+          "topic_not_grounded": 6
+        },
+        "by_query_type": {
+          "single_doc": {
+            "num_predictions": 6,
+            "accuracy": 1.0,
+            "groundedness": 1.0,
+            "citation_precision": 0.75,
+            "abstention": null,
+            "latency": {
+              "p50": 1.245,
+              "p95": 1.5825,
+              "mean": 1.295
+            },
+            "retry": 0.0,
+            "retry_cost": {
+              "total_retries": 0,
+              "mean_retry_count": 0.0,
+              "max_retry_count": 0,
+              "cases_with_retry": 0
+            },
+            "retry_reason_counts": {}
+          },
+          "multi_doc": {
+            "num_predictions": 6,
+            "accuracy": 1.0,
+            "groundedness": 1.0,
+            "citation_precision": 1.0,
+            "abstention": null,
+            "latency": {
+              "p50": 0.845,
+              "p95": 1.015,
+              "mean": 0.8866666666666667
+            },
+            "retry": 0.0,
+            "retry_cost": {
+              "total_retries": 0,
+              "mean_retry_count": 0.0,
+              "max_retry_count": 0,
+              "cases_with_retry": 0
+            },
+            "retry_reason_counts": {}
+          },
+          "follow_up": {
+            "num_predictions": 6,
+            "accuracy": 1.0,
+            "groundedness": 1.0,
+            "citation_precision": 0.5833333333333334,
+            "abstention": null,
+            "latency": {
+              "p50": 1.1800000000000002,
+              "p95": 1.885,
+              "mean": 1.2133333333333334
+            },
+            "retry": 0.0,
+            "retry_cost": {
+              "total_retries": 0,
+              "mean_retry_count": 0.0,
+              "max_retry_count": 0,
+              "cases_with_retry": 0
+            },
+            "retry_reason_counts": {}
+          },
+          "abstention": {
+            "num_predictions": 6,
+            "accuracy": null,
+            "groundedness": 1.0,
+            "citation_precision": 1.0,
+            "abstention": 1.0,
+            "latency": {
+              "p50": 0.9099999999999999,
+              "p95": 1.425,
+              "mean": 0.9816666666666665
+            },
+            "retry": 0.0,
+            "retry_cost": {
+              "total_retries": 0,
+              "mean_retry_count": 0.0,
+              "max_retry_count": 0,
+              "cases_with_retry": 0
+            },
+            "retry_reason_counts": {
+              "topic_not_grounded": 6
+            }
+          }
+        }
+      },
+      {
+        "name": "no_rerank",
+        "metadata_first": true,
+        "rerank": false,
+        "verifier_retry": true,
+        "num_predictions": 24,
+        "accuracy": 1.0,
+        "groundedness": 1.0,
+        "citation_precision": 1.0,
+        "abstention": 1.0,
+        "latency": {
+          "p50": 0.98,
+          "p95": 2.0109999999999992,
+          "mean": 1.1512499999999999
+        },
+        "retry": 0.25,
+        "retry_cost": {
+          "total_retries": 6,
+          "mean_retry_count": 0.25,
+          "max_retry_count": 1,
+          "cases_with_retry": 6
+        },
+        "retry_reason_counts": {
+          "topic_not_grounded": 12
+        },
+        "by_query_type": {
+          "single_doc": {
+            "num_predictions": 6,
+            "accuracy": 1.0,
+            "groundedness": 1.0,
+            "citation_precision": 1.0,
+            "abstention": null,
+            "latency": {
+              "p50": 0.835,
+              "p95": 1.1475,
+              "mean": 0.8566666666666668
+            },
+            "retry": 0.0,
+            "retry_cost": {
+              "total_retries": 0,
+              "mean_retry_count": 0.0,
+              "max_retry_count": 0,
+              "cases_with_retry": 0
+            },
+            "retry_reason_counts": {}
+          },
+          "multi_doc": {
+            "num_predictions": 6,
+            "accuracy": 1.0,
+            "groundedness": 1.0,
+            "citation_precision": 1.0,
+            "abstention": null,
+            "latency": {
+              "p50": 0.95,
+              "p95": 1.4225,
+              "mean": 1.0316666666666665
+            },
+            "retry": 0.0,
+            "retry_cost": {
+              "total_retries": 0,
+              "mean_retry_count": 0.0,
+              "max_retry_count": 0,
+              "cases_with_retry": 0
+            },
+            "retry_reason_counts": {}
+          },
+          "follow_up": {
+            "num_predictions": 6,
+            "accuracy": 1.0,
+            "groundedness": 1.0,
+            "citation_precision": 1.0,
+            "abstention": null,
+            "latency": {
+              "p50": 0.7150000000000001,
+              "p95": 3.3049999999999997,
+              "mean": 1.3
+            },
+            "retry": 0.0,
+            "retry_cost": {
+              "total_retries": 0,
+              "mean_retry_count": 0.0,
+              "max_retry_count": 0,
+              "cases_with_retry": 0
+            },
+            "retry_reason_counts": {}
+          },
+          "abstention": {
+            "num_predictions": 6,
+            "accuracy": null,
+            "groundedness": 1.0,
+            "citation_precision": 1.0,
+            "abstention": 1.0,
+            "latency": {
+              "p50": 1.255,
+              "p95": 1.9849999999999999,
+              "mean": 1.4166666666666667
+            },
+            "retry": 1.0,
+            "retry_cost": {
+              "total_retries": 6,
+              "mean_retry_count": 1.0,
+              "max_retry_count": 1,
+              "cases_with_retry": 6
+            },
+            "retry_reason_counts": {
+              "topic_not_grounded": 12
+            }
+          }
+        }
+      },
+      {
+        "name": "no_verifier_retry",
+        "metadata_first": true,
+        "rerank": true,
+        "verifier_retry": false,
+        "num_predictions": 24,
+        "accuracy": 1.0,
+        "groundedness": 0.75,
+        "citation_precision": 0.75,
+        "abstention": 0.0,
+        "latency": {
+          "p50": 1.02,
+          "p95": 2.325499999999999,
+          "mean": 1.2587499999999998
+        },
+        "retry": 0.0,
+        "retry_cost": {
+          "total_retries": 0,
+          "mean_retry_count": 0.0,
+          "max_retry_count": 0,
+          "cases_with_retry": 0
+        },
+        "retry_reason_counts": {},
+        "by_query_type": {
+          "single_doc": {
+            "num_predictions": 6,
+            "accuracy": 1.0,
+            "groundedness": 1.0,
+            "citation_precision": 1.0,
+            "abstention": null,
+            "latency": {
+              "p50": 1.51,
+              "p95": 3.14,
+              "mean": 1.7616666666666667
+            },
+            "retry": 0.0,
+            "retry_cost": {
+              "total_retries": 0,
+              "mean_retry_count": 0.0,
+              "max_retry_count": 0,
+              "cases_with_retry": 0
+            },
+            "retry_reason_counts": {}
+          },
+          "multi_doc": {
+            "num_predictions": 6,
+            "accuracy": 1.0,
+            "groundedness": 1.0,
+            "citation_precision": 1.0,
+            "abstention": null,
+            "latency": {
+              "p50": 1.275,
+              "p95": 1.91,
+              "mean": 1.4116666666666668
+            },
+            "retry": 0.0,
+            "retry_cost": {
+              "total_retries": 0,
+              "mean_retry_count": 0.0,
+              "max_retry_count": 0,
+              "cases_with_retry": 0
+            },
+            "retry_reason_counts": {}
+          },
+          "follow_up": {
+            "num_predictions": 6,
+            "accuracy": 1.0,
+            "groundedness": 1.0,
+            "citation_precision": 1.0,
+            "abstention": null,
+            "latency": {
+              "p50": 0.845,
+              "p95": 0.9374999999999999,
+              "mean": 0.8233333333333334
+            },
+            "retry": 0.0,
+            "retry_cost": {
+              "total_retries": 0,
+              "mean_retry_count": 0.0,
+              "max_retry_count": 0,
+              "cases_with_retry": 0
+            },
+            "retry_reason_counts": {}
+          },
+          "abstention": {
+            "num_predictions": 6,
+            "accuracy": null,
+            "groundedness": 0.0,
+            "citation_precision": 0.0,
+            "abstention": 0.0,
+            "latency": {
+              "p50": 0.965,
+              "p95": 1.33,
+              "mean": 1.0383333333333333
+            },
+            "retry": 0.0,
+            "retry_cost": {
+              "total_retries": 0,
+              "mean_retry_count": 0.0,
+              "max_retry_count": 0,
+              "cases_with_retry": 0
+            },
+            "retry_reason_counts": {}
+          }
+        }
+      }
+    ]
+  },
   "case_results": [
     {
       "id": "single_doc_security",
+      "query_type": "single_doc",
       "query": "기관 A의 보안 통제 요구사항은?",
       "answerable": true,
       "expected_doc_ids": [
@@ -23,17 +1166,148 @@
       "evidence_doc_ids": [
         "rfp-agency-a-ai-quality"
       ],
+      "doc_match": true,
+      "term_match": true,
+      "citation_term_match": true,
+      "citation_doc_precision": 1.0,
       "accuracy": 1.0,
       "groundedness": 1.0,
       "citation_precision": 1.0,
       "abstention": null,
-      "latency_ms": 9376.85,
+      "latency_ms": 3.39,
       "retry_count": 0,
+      "retry_trigger_reasons": [],
       "abstained": false,
       "answer": "기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. [rfp-agency-a-ai-quality::chunk-002] 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다. [rfp-agency-a-ai-quality::chunk-004]"
     },
     {
+      "id": "single_doc_chatbot_latency",
+      "query_type": "single_doc",
+      "query": "기관 C의 챗봇 응답 시간 목표는?",
+      "answerable": true,
+      "expected_doc_ids": [
+        "rfp-agency-c-chatbot"
+      ],
+      "evidence_doc_ids": [
+        "rfp-agency-c-chatbot"
+      ],
+      "doc_match": true,
+      "term_match": true,
+      "citation_term_match": true,
+      "citation_doc_precision": 1.0,
+      "accuracy": 1.0,
+      "groundedness": 1.0,
+      "citation_precision": 1.0,
+      "abstention": null,
+      "latency_ms": 1.34,
+      "retry_count": 0,
+      "retry_trigger_reasons": [],
+      "abstained": false,
+      "answer": "챗봇은 주요 문의에 대해 평균 2초 이내 응답해야 한다. [rfp-agency-c-chatbot::chunk-002] 기관 C는 고객지원 챗봇 고도화를 추진한다. [rfp-agency-c-chatbot::chunk-001]"
+    },
+    {
+      "id": "single_doc_b_privacy_security",
+      "query_type": "single_doc",
+      "query": "기관 B의 개인정보 보안 요구사항은?",
+      "answerable": true,
+      "expected_doc_ids": [
+        "rfp-agency-b-mlops-governance"
+      ],
+      "evidence_doc_ids": [
+        "rfp-agency-b-mlops-governance"
+      ],
+      "doc_match": true,
+      "term_match": true,
+      "citation_term_match": true,
+      "citation_doc_precision": 1.0,
+      "accuracy": 1.0,
+      "groundedness": 1.0,
+      "citation_precision": 1.0,
+      "abstention": null,
+      "latency_ms": 1.05,
+      "retry_count": 0,
+      "retry_trigger_reasons": [],
+      "abstained": false,
+      "answer": "기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다. [rfp-agency-b-mlops-governance::chunk-003]"
+    },
+    {
+      "id": "single_doc_common_submission",
+      "query_type": "single_doc",
+      "query": "공통 제출조건에서 모든 제안사가 제출해야 하는 것은?",
+      "answerable": true,
+      "expected_doc_ids": [
+        "rfp-common-submission"
+      ],
+      "evidence_doc_ids": [
+        "rfp-common-submission"
+      ],
+      "doc_match": true,
+      "term_match": true,
+      "citation_term_match": true,
+      "citation_doc_precision": 1.0,
+      "accuracy": 1.0,
+      "groundedness": 1.0,
+      "citation_precision": 1.0,
+      "abstention": null,
+      "latency_ms": 0.92,
+      "retry_count": 0,
+      "retry_trigger_reasons": [],
+      "abstained": false,
+      "answer": "모든 제안사는 일정 준수 계획, 위험 관리 방안, 산출물 품질 검수 절차를 제출해야 한다. [rfp-common-submission::chunk-001] 공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다. [rfp-common-submission::chunk-002]"
+    },
+    {
+      "id": "single_doc_a_deliverables",
+      "query_type": "single_doc",
+      "query": "기관 A의 필수 산출물은?",
+      "answerable": true,
+      "expected_doc_ids": [
+        "rfp-agency-a-ai-quality"
+      ],
+      "evidence_doc_ids": [
+        "rfp-agency-a-ai-quality"
+      ],
+      "doc_match": true,
+      "term_match": true,
+      "citation_term_match": true,
+      "citation_doc_precision": 1.0,
+      "accuracy": 1.0,
+      "groundedness": 1.0,
+      "citation_precision": 1.0,
+      "abstention": null,
+      "latency_ms": 0.59,
+      "retry_count": 0,
+      "retry_trigger_reasons": [],
+      "abstained": false,
+      "answer": "필수 산출물은 모델 점검 리포트, 보안 통제 매뉴얼, 운영자 교육 자료이다. [rfp-agency-a-ai-quality::chunk-003]"
+    },
+    {
+      "id": "single_doc_b_schedule_deliverables",
+      "query_type": "single_doc",
+      "query": "기관 B 일정과 필수 산출물은?",
+      "answerable": true,
+      "expected_doc_ids": [
+        "rfp-agency-b-mlops-governance"
+      ],
+      "evidence_doc_ids": [
+        "rfp-agency-b-mlops-governance"
+      ],
+      "doc_match": true,
+      "term_match": true,
+      "citation_term_match": true,
+      "citation_doc_precision": 1.0,
+      "accuracy": 1.0,
+      "groundedness": 1.0,
+      "citation_precision": 1.0,
+      "abstention": null,
+      "latency_ms": 1.04,
+      "retry_count": 0,
+      "retry_trigger_reasons": [],
+      "abstained": false,
+      "answer": "기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다. [rfp-agency-b-mlops-governance::chunk-004]"
+    },
+    {
       "id": "multi_doc_ai_requirements",
+      "query_type": "multi_doc",
       "query": "기관 A와 기관 B의 AI 요구사항 차이 알려줘",
       "answerable": true,
       "expected_doc_ids": [
@@ -44,17 +1318,158 @@
         "rfp-agency-a-ai-quality",
         "rfp-agency-b-mlops-governance"
       ],
+      "doc_match": true,
+      "term_match": true,
+      "citation_term_match": true,
+      "citation_doc_precision": 1.0,
       "accuracy": 1.0,
       "groundedness": 1.0,
       "citation_precision": 1.0,
       "abstention": null,
-      "latency_ms": 32.33,
+      "latency_ms": 1.16,
       "retry_count": 0,
+      "retry_trigger_reasons": [],
       "abstained": false,
       "answer": "기관 A: 기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. [rfp-agency-a-ai-quality::chunk-002] 기관 B: 기관 B의 핵심 AI 요구사항은 데이터 거버넌스, MLOps 배포 자동화, 모델 모니터링이다. [rfp-agency-b-mlops-governance::chunk-002]"
     },
     {
+      "id": "multi_doc_security_controls",
+      "query_type": "multi_doc",
+      "query": "기관 A와 기관 B의 보안 요구사항 차이를 비교해줘",
+      "answerable": true,
+      "expected_doc_ids": [
+        "rfp-agency-a-ai-quality",
+        "rfp-agency-b-mlops-governance"
+      ],
+      "evidence_doc_ids": [
+        "rfp-agency-a-ai-quality",
+        "rfp-agency-b-mlops-governance"
+      ],
+      "doc_match": true,
+      "term_match": true,
+      "citation_term_match": true,
+      "citation_doc_precision": 1.0,
+      "accuracy": 1.0,
+      "groundedness": 1.0,
+      "citation_precision": 1.0,
+      "abstention": null,
+      "latency_ms": 1.3,
+      "retry_count": 0,
+      "retry_trigger_reasons": [],
+      "abstained": false,
+      "answer": "기관 A: 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다. [rfp-agency-a-ai-quality::chunk-004] 기관 B: 보안 통제는 데이터셋 반출 승인과 관리자 작업 기록을 중심으로 설계한다. [rfp-agency-b-mlops-governance::chunk-003]"
+    },
+    {
+      "id": "multi_doc_schedule_compare",
+      "query_type": "multi_doc",
+      "query": "기관 A와 기관 B의 일정 차이를 비교해줘",
+      "answerable": true,
+      "expected_doc_ids": [
+        "rfp-agency-a-ai-quality",
+        "rfp-agency-b-mlops-governance"
+      ],
+      "evidence_doc_ids": [
+        "rfp-agency-a-ai-quality",
+        "rfp-agency-b-mlops-governance"
+      ],
+      "doc_match": true,
+      "term_match": true,
+      "citation_term_match": true,
+      "citation_doc_precision": 1.0,
+      "accuracy": 1.0,
+      "groundedness": 1.0,
+      "citation_precision": 1.0,
+      "abstention": null,
+      "latency_ms": 1.0,
+      "retry_count": 0,
+      "retry_trigger_reasons": [],
+      "abstained": false,
+      "answer": "기관 A: 기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. [rfp-agency-a-ai-quality::chunk-003] 기관 B: 기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다. [rfp-agency-b-mlops-governance::chunk-004]"
+    },
+    {
+      "id": "multi_doc_a_c_ai_focus",
+      "query_type": "multi_doc",
+      "query": "기관 A와 기관 C의 AI 요구사항 초점 차이는?",
+      "answerable": true,
+      "expected_doc_ids": [
+        "rfp-agency-a-ai-quality",
+        "rfp-agency-c-chatbot"
+      ],
+      "evidence_doc_ids": [
+        "rfp-agency-a-ai-quality",
+        "rfp-agency-c-chatbot"
+      ],
+      "doc_match": true,
+      "term_match": true,
+      "citation_term_match": true,
+      "citation_doc_precision": 1.0,
+      "accuracy": 1.0,
+      "groundedness": 1.0,
+      "citation_precision": 1.0,
+      "abstention": null,
+      "latency_ms": 1.2,
+      "retry_count": 0,
+      "retry_trigger_reasons": [],
+      "abstained": false,
+      "answer": "기관 A: 기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. [rfp-agency-a-ai-quality::chunk-002] 기관 C: 기관 C의 챗봇 AI 요구사항은 한국어 FAQ 검색, 의도 분류, 상담 이관 추천이다. [rfp-agency-c-chatbot::chunk-002]"
+    },
+    {
+      "id": "multi_doc_b_c_operations",
+      "query_type": "multi_doc",
+      "query": "기관 B와 기관 C의 운영 지표나 모니터링 요구를 비교해줘",
+      "answerable": true,
+      "expected_doc_ids": [
+        "rfp-agency-b-mlops-governance",
+        "rfp-agency-c-chatbot"
+      ],
+      "evidence_doc_ids": [
+        "rfp-agency-b-mlops-governance",
+        "rfp-agency-c-chatbot"
+      ],
+      "doc_match": true,
+      "term_match": true,
+      "citation_term_match": true,
+      "citation_doc_precision": 1.0,
+      "accuracy": 1.0,
+      "groundedness": 1.0,
+      "citation_precision": 1.0,
+      "abstention": null,
+      "latency_ms": 1.1,
+      "retry_count": 0,
+      "retry_trigger_reasons": [],
+      "abstained": false,
+      "answer": "기관 B: 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다. [rfp-agency-b-mlops-governance::chunk-004] 기관 C: 기관 C는 답변 정확도, 상담 이관 적절성, 사용자 만족도를 운영 지표로 사용한다. [rfp-agency-c-chatbot::chunk-003]"
+    },
+    {
+      "id": "multi_doc_a_common_submission",
+      "query_type": "multi_doc",
+      "query": "기관 A 제출조건과 공통 평가 기준을 비교해줘",
+      "answerable": true,
+      "expected_doc_ids": [
+        "rfp-agency-a-ai-quality",
+        "rfp-common-submission"
+      ],
+      "evidence_doc_ids": [
+        "rfp-agency-a-ai-quality",
+        "rfp-common-submission"
+      ],
+      "doc_match": true,
+      "term_match": true,
+      "citation_term_match": true,
+      "citation_doc_precision": 1.0,
+      "accuracy": 1.0,
+      "groundedness": 1.0,
+      "citation_precision": 1.0,
+      "abstention": null,
+      "latency_ms": 0.98,
+      "retry_count": 0,
+      "retry_trigger_reasons": [],
+      "abstained": false,
+      "answer": "기관 A: 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다. [rfp-agency-a-ai-quality::chunk-004] 공통: 공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다. [rfp-common-submission::chunk-002]"
+    },
+    {
       "id": "follow_up_schedule",
+      "query_type": "follow_up",
       "query": "그럼 일정은 어떻게 돼?",
       "answerable": true,
       "expected_doc_ids": [
@@ -63,18 +1478,49 @@
       "evidence_doc_ids": [
         "rfp-agency-a-ai-quality"
       ],
+      "doc_match": true,
+      "term_match": true,
+      "citation_term_match": true,
+      "citation_doc_precision": 1.0,
       "accuracy": 1.0,
       "groundedness": 1.0,
       "citation_precision": 1.0,
       "abstention": null,
-      "latency_ms": 112.44,
+      "latency_ms": 0.5,
       "retry_count": 0,
+      "retry_trigger_reasons": [],
       "abstained": false,
       "answer": "기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. [rfp-agency-a-ai-quality::chunk-003]"
     },
     {
-      "id": "single_doc_chatbot_latency",
-      "query": "기관 C의 챗봇 응답 시간 목표는?",
+      "id": "follow_up_b_deliverables",
+      "query_type": "follow_up",
+      "query": "필수 산출물은 뭐야?",
+      "answerable": true,
+      "expected_doc_ids": [
+        "rfp-agency-b-mlops-governance"
+      ],
+      "evidence_doc_ids": [
+        "rfp-agency-b-mlops-governance"
+      ],
+      "doc_match": true,
+      "term_match": true,
+      "citation_term_match": true,
+      "citation_doc_precision": 1.0,
+      "accuracy": 1.0,
+      "groundedness": 1.0,
+      "citation_precision": 1.0,
+      "abstention": null,
+      "latency_ms": 0.49,
+      "retry_count": 0,
+      "retry_trigger_reasons": [],
+      "abstained": false,
+      "answer": "필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다. [rfp-agency-b-mlops-governance::chunk-004]"
+    },
+    {
+      "id": "follow_up_c_response_target",
+      "query_type": "follow_up",
+      "query": "응답 성능 목표는?",
       "answerable": true,
       "expected_doc_ids": [
         "rfp-agency-c-chatbot"
@@ -82,29 +1528,238 @@
       "evidence_doc_ids": [
         "rfp-agency-c-chatbot"
       ],
+      "doc_match": true,
+      "term_match": true,
+      "citation_term_match": true,
+      "citation_doc_precision": 1.0,
       "accuracy": 1.0,
       "groundedness": 1.0,
       "citation_precision": 1.0,
       "abstention": null,
-      "latency_ms": 59.19,
+      "latency_ms": 0.43,
       "retry_count": 0,
+      "retry_trigger_reasons": [],
       "abstained": false,
-      "answer": "기관 C는 고객지원 챗봇 고도화를 추진한다. [rfp-agency-c-chatbot::chunk-001] 챗봇은 주요 문의에 대해 평균 2초 이내 응답해야 한다. [rfp-agency-c-chatbot::chunk-002]"
+      "answer": "챗봇은 주요 문의에 대해 평균 2초 이내 응답해야 한다. [rfp-agency-c-chatbot::chunk-002]"
+    },
+    {
+      "id": "follow_up_common_evaluation",
+      "query_type": "follow_up",
+      "query": "평가 기준은 무엇을 중심으로 진행해?",
+      "answerable": true,
+      "expected_doc_ids": [
+        "rfp-common-submission"
+      ],
+      "evidence_doc_ids": [
+        "rfp-common-submission"
+      ],
+      "doc_match": true,
+      "term_match": true,
+      "citation_term_match": true,
+      "citation_doc_precision": 1.0,
+      "accuracy": 1.0,
+      "groundedness": 1.0,
+      "citation_precision": 1.0,
+      "abstention": null,
+      "latency_ms": 0.61,
+      "retry_count": 0,
+      "retry_trigger_reasons": [],
+      "abstained": false,
+      "answer": "공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다. [rfp-common-submission::chunk-002]"
+    },
+    {
+      "id": "follow_up_a_team",
+      "query_type": "follow_up",
+      "query": "수행 조직에는 누가 포함돼야 해?",
+      "answerable": true,
+      "expected_doc_ids": [
+        "rfp-agency-a-ai-quality"
+      ],
+      "evidence_doc_ids": [
+        "rfp-agency-a-ai-quality"
+      ],
+      "doc_match": true,
+      "term_match": true,
+      "citation_term_match": true,
+      "citation_doc_precision": 1.0,
+      "accuracy": 1.0,
+      "groundedness": 1.0,
+      "citation_precision": 1.0,
+      "abstention": null,
+      "latency_ms": 0.56,
+      "retry_count": 0,
+      "retry_trigger_reasons": [],
+      "abstained": false,
+      "answer": "제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. [rfp-agency-a-ai-quality::chunk-004]"
+    },
+    {
+      "id": "follow_up_c_operation_metrics",
+      "query_type": "follow_up",
+      "query": "운영 지표로 무엇을 사용해?",
+      "answerable": true,
+      "expected_doc_ids": [
+        "rfp-agency-c-chatbot"
+      ],
+      "evidence_doc_ids": [
+        "rfp-agency-c-chatbot"
+      ],
+      "doc_match": true,
+      "term_match": true,
+      "citation_term_match": true,
+      "citation_doc_precision": 1.0,
+      "accuracy": 1.0,
+      "groundedness": 1.0,
+      "citation_precision": 1.0,
+      "abstention": null,
+      "latency_ms": 0.54,
+      "retry_count": 0,
+      "retry_trigger_reasons": [],
+      "abstained": false,
+      "answer": "기관 C는 답변 정확도, 상담 이관 적절성, 사용자 만족도를 운영 지표로 사용한다. [rfp-agency-c-chatbot::chunk-003]"
     },
     {
       "id": "abstention_missing_blockchain",
+      "query_type": "abstention",
       "query": "기관 A의 블록체인 납품 실적은?",
       "answerable": false,
       "expected_doc_ids": [],
       "evidence_doc_ids": [],
+      "doc_match": true,
+      "term_match": true,
+      "citation_term_match": false,
+      "citation_doc_precision": 0.0,
       "accuracy": null,
       "groundedness": 1.0,
       "citation_precision": 1.0,
       "abstention": 1.0,
-      "latency_ms": 99.6,
+      "latency_ms": 1.08,
       "retry_count": 1,
+      "retry_trigger_reasons": [
+        "topic_not_grounded",
+        "topic_not_grounded"
+      ],
       "abstained": true,
       "answer": "제공된 공개 샘플 RFP 근거에서는 '기관 A의 블록체인 납품 실적은?'에 답할 수 있는 내용을 찾지 못했습니다."
+    },
+    {
+      "id": "abstention_missing_drone",
+      "query_type": "abstention",
+      "query": "기관 B의 드론 영상분석 요구사항은?",
+      "answerable": false,
+      "expected_doc_ids": [],
+      "evidence_doc_ids": [],
+      "doc_match": true,
+      "term_match": true,
+      "citation_term_match": false,
+      "citation_doc_precision": 0.0,
+      "accuracy": null,
+      "groundedness": 1.0,
+      "citation_precision": 1.0,
+      "abstention": 1.0,
+      "latency_ms": 0.96,
+      "retry_count": 1,
+      "retry_trigger_reasons": [
+        "topic_not_grounded",
+        "topic_not_grounded"
+      ],
+      "abstained": true,
+      "answer": "제공된 공개 샘플 RFP 근거에서는 '기관 B의 드론 영상분석 요구사항은?'에 답할 수 있는 내용을 찾지 못했습니다."
+    },
+    {
+      "id": "abstention_missing_payment",
+      "query_type": "abstention",
+      "query": "기관 C의 결제 기능 연동 요구사항은?",
+      "answerable": false,
+      "expected_doc_ids": [],
+      "evidence_doc_ids": [],
+      "doc_match": true,
+      "term_match": true,
+      "citation_term_match": false,
+      "citation_doc_precision": 0.0,
+      "accuracy": null,
+      "groundedness": 1.0,
+      "citation_precision": 1.0,
+      "abstention": 1.0,
+      "latency_ms": 0.87,
+      "retry_count": 1,
+      "retry_trigger_reasons": [
+        "topic_not_grounded",
+        "topic_not_grounded"
+      ],
+      "abstained": true,
+      "answer": "제공된 공개 샘플 RFP 근거에서는 '기관 C의 결제 기능 연동 요구사항은?'에 답할 수 있는 내용을 찾지 못했습니다."
+    },
+    {
+      "id": "abstention_missing_ocr",
+      "query_type": "abstention",
+      "query": "공통 제출조건에 OCR 자동인식 기능 요구가 있나?",
+      "answerable": false,
+      "expected_doc_ids": [],
+      "evidence_doc_ids": [],
+      "doc_match": true,
+      "term_match": true,
+      "citation_term_match": false,
+      "citation_doc_precision": 0.0,
+      "accuracy": null,
+      "groundedness": 1.0,
+      "citation_precision": 1.0,
+      "abstention": 1.0,
+      "latency_ms": 1.06,
+      "retry_count": 1,
+      "retry_trigger_reasons": [
+        "topic_not_grounded",
+        "topic_not_grounded"
+      ],
+      "abstained": true,
+      "answer": "제공된 공개 샘플 RFP 근거에서는 '공통 제출조건에 OCR 자동인식 기능 요구가 있나?'에 답할 수 있는 내용을 찾지 못했습니다."
+    },
+    {
+      "id": "abstention_missing_genai",
+      "query_type": "abstention",
+      "query": "기관 A의 생성형 AI 상담 기능 요구사항은?",
+      "answerable": false,
+      "expected_doc_ids": [],
+      "evidence_doc_ids": [],
+      "doc_match": true,
+      "term_match": true,
+      "citation_term_match": false,
+      "citation_doc_precision": 0.0,
+      "accuracy": null,
+      "groundedness": 1.0,
+      "citation_precision": 1.0,
+      "abstention": 1.0,
+      "latency_ms": 1.05,
+      "retry_count": 1,
+      "retry_trigger_reasons": [
+        "topic_not_grounded",
+        "topic_not_grounded"
+      ],
+      "abstained": true,
+      "answer": "제공된 공개 샘플 RFP 근거에서는 '기관 A의 생성형 AI 상담 기능 요구사항은?'에 답할 수 있는 내용을 찾지 못했습니다."
+    },
+    {
+      "id": "abstention_missing_quantum",
+      "query_type": "abstention",
+      "query": "기관 B의 양자암호 연동 요구사항은?",
+      "answerable": false,
+      "expected_doc_ids": [],
+      "evidence_doc_ids": [],
+      "doc_match": true,
+      "term_match": true,
+      "citation_term_match": false,
+      "citation_doc_precision": 0.0,
+      "accuracy": null,
+      "groundedness": 1.0,
+      "citation_precision": 1.0,
+      "abstention": 1.0,
+      "latency_ms": 0.84,
+      "retry_count": 1,
+      "retry_trigger_reasons": [
+        "topic_not_grounded",
+        "topic_not_grounded"
+      ],
+      "abstained": true,
+      "answer": "제공된 공개 샘플 RFP 근거에서는 '기관 B의 양자암호 연동 요구사항은?'에 답할 수 있는 내용을 찾지 못했습니다."
     }
   ]
 }

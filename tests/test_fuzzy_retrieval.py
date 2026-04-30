@@ -104,6 +104,39 @@ class FuzzyMetadataRetrievalTest(unittest.TestCase):
         )
         self.assertEqual("relaxed", result["plan"]["filter_stage"])
 
+    def test_metadata_first_can_be_disabled_for_ablation(self) -> None:
+        result = run_rag_query(
+            self.index,
+            "기관 A의 보안 통제 요구사항은?",
+            metadata_first=False,
+        )
+
+        self.assertFalse(result["plan"]["metadata_first"])
+        self.assertEqual("relaxed", result["plan"]["filter_stage"])
+        self.assertEqual({}, result["plan"]["metadata_filters"])
+
+    def test_rerank_can_be_disabled_for_ablation(self) -> None:
+        result = run_rag_query(
+            self.index,
+            "기관 A의 보안 통제 요구사항은?",
+            rerank=False,
+        )
+
+        self.assertFalse(result["plan"]["rerank"])
+        self.assertEqual("dense", result["plan"]["strategy"].replace("metadata-first ", ""))
+
+    def test_verifier_retry_can_be_disabled_for_ablation(self) -> None:
+        result = run_rag_query(
+            self.index,
+            "기관 A의 블록체인 납품 실적은?",
+            verifier_retry=False,
+        )
+
+        self.assertFalse(result["diagnostics"]["verifier_retry"])
+        self.assertFalse(result["diagnostics"]["abstained"])
+        self.assertEqual(0, result["diagnostics"]["retry_count"])
+        self.assertTrue(result["evidence"])
+
 
 if __name__ == "__main__":
     unittest.main()

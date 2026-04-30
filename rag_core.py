@@ -36,8 +36,33 @@ STOPWORDS = {
     "어떻게",
     "알려줘",
     "차이",
+    "차이는",
+    "차이를",
     "비교",
+    "비교해줘",
     "기관",
+    "요구",
+    "요구가",
+    "요구사항",
+    "기능",
+    "목표",
+    "성능",
+    "초점",
+    "필수",
+    "그중",
+    "어떤",
+    "누가",
+    "포함돼야",
+    "해",
+    "있나",
+    "무엇을",
+    "사용해",
+    "진행해",
+    "중심으로",
+    "시간",
+    "지표나",
+    "하는",
+    "것은",
     "의",
     "와",
     "과",
@@ -138,9 +163,14 @@ def compact_metadata_text(value: str) -> str:
 def normalize_metadata_token(token: str) -> str:
     token = unicodedata.normalize("NFC", token).lower().strip()
     if re.fullmatch(r"[가-힣]+", token):
-        for suffix in KOREAN_PARTICLE_SUFFIXES:
-            if len(token) > len(suffix) + 1 and token.endswith(suffix):
-                return token[: -len(suffix)]
+        changed = True
+        while changed:
+            changed = False
+            for suffix in KOREAN_PARTICLE_SUFFIXES:
+                if len(token) > len(suffix) + 1 and token.endswith(suffix):
+                    token = token[: -len(suffix)]
+                    changed = True
+                    break
     return token
 
 
@@ -164,7 +194,7 @@ def ordered_unique(values: Iterable[str]) -> list[str]:
 
 
 def tokenize(text: str) -> list[str]:
-    tokens = [m.group(0).lower() for m in TOKEN_RE.finditer(text)]
+    tokens = [normalize_metadata_token(m.group(0)) for m in TOKEN_RE.finditer(text)]
     return [t for t in tokens if t and t not in STOPWORDS]
 
 
@@ -746,7 +776,7 @@ def analyze_query(
             if not token.startswith("기관"):
                 topics.append(token)
 
-    comparison_terms = ("차이", "비교", "공통", "각각", "대비")
+    comparison_terms = ("차이", "비교", "각각", "대비")
     comparison_joiners = ("와", "과", "및", ",", "/")
     reduced_matches = metadata_matches_for_stage(metadata_matches, "reduced")
     matched_doc_ids = ordered_unique(match["doc_id"] for match in reduced_matches)
@@ -794,9 +824,14 @@ def make_plan(
     relaxed: bool = False,
     top_k: int | None = None,
     stage: str | None = None,
+    metadata_first: bool = True,
+    rerank: bool = True,
+    verifier_retry: bool = True,
 ) -> dict[str, Any]:
     default_top_k = 6 if analysis["query_type"] == "comparison" else 4
     if relaxed:
+        stage = "relaxed"
+    if not metadata_first:
         stage = "relaxed"
     stage = stage or "strict"
     if stage == "relaxed":
@@ -806,9 +841,17 @@ def make_plan(
         filters = filters_by_stage.get(stage) or {}
         if not filters and not filters_by_stage:
             filters = {"agencies": analysis.get("entities", [])}
+    scoring = "dense"
+    if rerank and metadata_first:
+        scoring = "dense + lexical + metadata rerank"
+    elif rerank:
+        scoring = "dense + lexical rerank"
     return {
-        "strategy": "metadata-first dense retrieval with lexical reranking",
+        "strategy": scoring if not metadata_first else f"metadata-first {scoring}",
         "filter_stage": stage,
+        "metadata_first": metadata_first,
+        "rerank": rerank,
+        "verifier_retry": verifier_retry,
         "metadata_filters": filters,
         "top_k": top_k or default_top_k,
         "relaxed": stage == "relaxed",
@@ -854,7 +897,12 @@ def retrieve(
         dense_score = dense_similarity(query_embedding, chunk.get("embedding"))
         lexical_score = lexical_similarity(query_tokens, query_topics, chunk)
         metadata_score = metadata_similarity(analysis, chunk)
-        score = (0.60 * dense_score) + (0.25 * lexical_score) + (0.15 * metadata_score)
+        if not plan.get("rerank", True):
+            score = dense_score
+        elif not plan.get("metadata_first", True):
+            score = (0.70 * dense_score) + (0.30 * lexical_score)
+        else:
+            score = (0.60 * dense_score) + (0.25 * lexical_score) + (0.15 * metadata_score)
         scored.append(
             {
                 "doc_id": chunk["doc_id"],
@@ -942,9 +990,12 @@ def verify_evidence(analysis: dict[str, Any], evidence: list[dict[str, Any]]) ->
     if evidence[0]["score"] < 0.18:
         reasons.append("low_top_score")
 
-    combined = " ".join(item["text"] for item in evidence).lower()
+    combined = " ".join(
+        " ".join([item.get("title", ""), item.get("section", ""), item["text"]])
+        for item in evidence
+    ).lower()
     topics = [topic for topic in analysis.get("topics", []) if topic.lower() not in {"ai"}]
-    if topics and not any(topic.lower() in combined for topic in topics):
+    if topics and not all(topic.lower() in combined for topic in topics):
         reasons.append("topic_not_grounded")
 
     entities = analysis.get("entities") or []
@@ -1025,20 +1076,29 @@ def select_supporting_evidence(
         for item in evidence
         if not topics or any(topic in item["text"].lower() for topic in topics)
     ]
-    pool = topic_matched or evidence
 
     if analysis.get("query_type") == "comparison" and len(analysis.get("entities", [])) > 1:
         selected = []
         for entity in analysis["entities"]:
-            match = next((item for item in pool if item.get("agency") == entity), None)
+            match = next((item for item in topic_matched if item.get("agency") == entity), None)
+            if not match:
+                match = next((item for item in evidence if item.get("agency") == entity), None)
             if match:
                 selected.append(match)
-        return selected or pool[:2]
+        return selected or (topic_matched or evidence)[:2]
 
+    pool = topic_matched or evidence
     return pool[:2]
 
 
-def metadata_stage_sequence(analysis: dict[str, Any]) -> list[str]:
+def metadata_stage_sequence(
+    analysis: dict[str, Any],
+    metadata_first: bool = True,
+    verifier_retry: bool = True,
+) -> list[str]:
+    if not metadata_first:
+        return ["relaxed"]
+
     filters_by_stage = analysis.get("metadata_filters_by_stage") or {}
     strict_filters = filters_by_stage.get("strict") or {}
     reduced_filters = filters_by_stage.get("reduced") or {}
@@ -1049,7 +1109,8 @@ def metadata_stage_sequence(analysis: dict[str, Any]) -> list[str]:
         stages.append("reduced")
     if not stages:
         stages.append("strict")
-    stages.append("relaxed")
+    if verifier_retry:
+        stages.append("relaxed")
     return stages
 
 
@@ -1075,9 +1136,17 @@ def run_rag_query(
     query: str,
     top_k: int | None = None,
     context_entities: list[str] | None = None,
+    metadata_first: bool = True,
+    rerank: bool = True,
+    verifier_retry: bool = True,
 ) -> dict[str, Any]:
     started = time.perf_counter()
     analysis = analyze_query(query, metadata_targets(index), context_entities=context_entities)
+    stage_sequence = metadata_stage_sequence(
+        analysis,
+        metadata_first=metadata_first,
+        verifier_retry=verifier_retry,
+    )
     stage_attempts = []
     retry_count = 0
     plan: dict[str, Any] = {}
@@ -1085,17 +1154,28 @@ def run_rag_query(
     verified = False
     verification_reasons: list[str] = []
 
-    for attempt_index, stage in enumerate(metadata_stage_sequence(analysis)):
+    for attempt_index, stage in enumerate(stage_sequence):
         attempt_top_k = top_k
         if attempt_index > 0:
             attempt_top_k = max(top_k or 0, 8)
-        plan = make_plan(analysis, top_k=attempt_top_k, stage=stage)
+        plan = make_plan(
+            analysis,
+            top_k=attempt_top_k,
+            stage=stage,
+            metadata_first=metadata_first,
+            rerank=rerank,
+            verifier_retry=verifier_retry,
+        )
         evidence = retrieve(index, query, analysis, plan)
-        verified, verification_reasons = verify_evidence(analysis, evidence)
+        if verifier_retry:
+            verified, verification_reasons = verify_evidence(analysis, evidence)
+        else:
+            verified = bool(evidence)
+            verification_reasons = [] if verified else ["no_evidence"]
         stage_attempts.append(summarize_stage_attempt(plan, verified, verification_reasons))
         if verified:
             break
-        if attempt_index < len(metadata_stage_sequence(analysis)) - 1:
+        if attempt_index < len(stage_sequence) - 1:
             retry_count += 1
 
     if not verified:
@@ -1120,6 +1200,9 @@ def run_rag_query(
             "final_relaxation_reason": stage_attempts[-2]["verification_reasons"] if retry_count else [],
             "embedding_backend": index.get("embedding", {}).get("backend"),
             "embedding_model": index.get("embedding", {}).get("model"),
+            "metadata_first": metadata_first,
+            "rerank": rerank,
+            "verifier_retry": verifier_retry,
         },
     }
 

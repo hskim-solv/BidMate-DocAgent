@@ -58,12 +58,23 @@
 <!-- METRICS_TABLE:START -->
 | Category | Metric | Score |
 |---|---:|---:|
+| Overall | Answer Accuracy | 1.000 |
 | Single-doc extraction | Answer Accuracy | 1.000 |
 | Multi-doc comparison | Groundedness Rate | 1.000 |
+| Follow-up | Answer Accuracy | 1.000 |
 | Evidence | Citation Precision | 1.000 |
 | Abstention | Abstention Accuracy | 1.000 |
-| System | Latency (p50/p95) | p50 99.6ms / p95 7524.0ms |
-| System | Retry Rate | 0.200 |
+| System | Latency (p50/p95) | p50 1.0ms / p95 1.3ms |
+| System | Retry Rate | 0.250 |
+
+### Ablation comparison
+
+| Run | Metadata-first | Rerank | Verifier/Retry | Accuracy | Groundedness | Citation | Abstention | Retry | Latency p95 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| full | on | on | on | 1.000 | 1.000 | 1.000 | 1.000 | 0.250 | 1.3ms |
+| no_metadata_first | off | on | on | 1.000 | 1.000 | 0.833 | 1.000 | 0.000 | 1.6ms |
+| no_rerank | on | off | on | 1.000 | 1.000 | 1.000 | 1.000 | 0.250 | 2.0ms |
+| no_verifier_retry | on | on | off | 1.000 | 0.750 | 0.750 | 0.000 | 0.000 | 2.3ms |
 <!-- METRICS_TABLE:END -->
 
 > 주의: 성능표는 공개 synthetic RFP 평가셋 기준입니다. 원본 RFP 데이터는 비공개 제약으로 저장소에 포함하지 않았습니다.

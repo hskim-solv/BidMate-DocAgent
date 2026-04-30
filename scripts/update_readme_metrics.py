@@ -45,18 +45,93 @@ def fmt_latency(value: Any) -> str:
     return "N/A"
 
 
-def render_table(summary: Dict[str, Any]) -> str:
+def metric_from_type(summary: Dict[str, Any], query_type: str, metric: str) -> Any:
+    by_type = summary.get("by_query_type")
+    if not isinstance(by_type, dict):
+        return None
+    block = by_type.get(query_type)
+    if not isinstance(block, dict):
+        return None
+    return block.get(metric)
+
+
+def fmt_flag(value: Any) -> str:
+    return "on" if bool(value) else "off"
+
+
+def render_main_table(summary: Dict[str, Any]) -> str:
     rows = [
-        ("Single-doc extraction", "Answer Accuracy", fmt_rate(summary.get("accuracy"))),
-        ("Multi-doc comparison", "Groundedness Rate", fmt_rate(summary.get("groundedness"))),
+        ("Overall", "Answer Accuracy", fmt_rate(summary.get("accuracy"))),
+        (
+            "Single-doc extraction",
+            "Answer Accuracy",
+            fmt_rate(metric_from_type(summary, "single_doc", "accuracy")),
+        ),
+        (
+            "Multi-doc comparison",
+            "Groundedness Rate",
+            fmt_rate(metric_from_type(summary, "multi_doc", "groundedness")),
+        ),
+        (
+            "Follow-up",
+            "Answer Accuracy",
+            fmt_rate(metric_from_type(summary, "follow_up", "accuracy")),
+        ),
         ("Evidence", "Citation Precision", fmt_rate(summary.get("citation_precision"))),
-        ("Abstention", "Abstention Accuracy", fmt_rate(summary.get("abstention"))),
+        (
+            "Abstention",
+            "Abstention Accuracy",
+            fmt_rate(metric_from_type(summary, "abstention", "abstention") or summary.get("abstention")),
+        ),
         ("System", "Latency (p50/p95)", fmt_latency(summary.get("latency"))),
         ("System", "Retry Rate", fmt_rate(summary.get("retry"))),
     ]
     table = ["| Category | Metric | Score |", "|---|---:|---:|"]
     table.extend(f"| {c} | {m} | {s} |" for c, m, s in rows)
     return "\n".join(table)
+
+
+def render_ablation_table(summary: Dict[str, Any]) -> str:
+    ablation = summary.get("ablation")
+    runs = ablation.get("runs") if isinstance(ablation, dict) else None
+    if not isinstance(runs, list) or not runs:
+        return ""
+
+    table = [
+        "### Ablation comparison",
+        "",
+        "| Run | Metadata-first | Rerank | Verifier/Retry | Accuracy | Groundedness | Citation | Abstention | Retry | Latency p95 |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+    ]
+    for run in runs:
+        if not isinstance(run, dict):
+            continue
+        latency = run.get("latency") if isinstance(run.get("latency"), dict) else {}
+        p95 = latency.get("p95") if isinstance(latency, dict) else None
+        p95_text = f"{p95:.1f}ms" if isinstance(p95, (int, float)) else "N/A"
+        table.append(
+            "| {name} | {metadata_first} | {rerank} | {verifier_retry} | {accuracy} | {groundedness} | {citation} | {abstention} | {retry} | {p95} |".format(
+                name=run.get("name", "unknown"),
+                metadata_first=fmt_flag(run.get("metadata_first")),
+                rerank=fmt_flag(run.get("rerank")),
+                verifier_retry=fmt_flag(run.get("verifier_retry")),
+                accuracy=fmt_rate(run.get("accuracy")),
+                groundedness=fmt_rate(run.get("groundedness")),
+                citation=fmt_rate(run.get("citation_precision")),
+                abstention=fmt_rate(run.get("abstention")),
+                retry=fmt_rate(run.get("retry")),
+                p95=p95_text,
+            )
+        )
+    return "\n".join(table)
+
+
+def render_table(summary: Dict[str, Any]) -> str:
+    parts = [render_main_table(summary)]
+    ablation_table = render_ablation_table(summary)
+    if ablation_table:
+        parts.append(ablation_table)
+    return "\n\n".join(parts)
 
 
 def replace_section(readme_text: str, new_table: str) -> str:
