@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 import sys
 
-from rag_core import load_index, run_rag_query
+from rag_core import DEFAULT_CLI_PIPELINE_NAME, load_index, pipeline_cli_choices, run_rag_query
 
 
 def parse_args() -> argparse.Namespace:
@@ -13,12 +13,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output_dir", default="outputs", help="Directory to save answer JSON.")
     parser.add_argument("--query", required=True, help="User query string.")
     parser.add_argument("--config", default=None, help="Unused in this command; accepted for CLI consistency.")
+    parser.add_argument(
+        "--pipeline",
+        default=DEFAULT_CLI_PIPELINE_NAME,
+        choices=pipeline_cli_choices(),
+        help="Named RAG pipeline preset. Default is the naive baseline.",
+    )
     parser.add_argument("--top_k", type=int, default=None, help="Override retrieval top-k.")
     parser.add_argument(
         "--retrieval_mode",
-        default="flat",
+        default=None,
         choices=["flat", "hierarchical"],
-        help="Use flat child chunks or hierarchical parent-section evidence.",
+        help="Override the pipeline retrieval mode.",
     )
     parser.add_argument(
         "--context_entities",
@@ -71,6 +77,7 @@ def main() -> int:
         answer = run_rag_query(
             index,
             args.query,
+            pipeline=args.pipeline,
             top_k=args.top_k,
             context_entities=parse_context_entities(args.context_entities),
             retrieval_mode=args.retrieval_mode,

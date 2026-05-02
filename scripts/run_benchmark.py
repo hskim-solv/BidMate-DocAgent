@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 import hashlib
 import importlib.util
 import json
+import os
 from pathlib import Path
 import re
 import shutil
@@ -19,7 +20,7 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from rag_core import load_index
+from rag_core import DEFAULT_CLI_PIPELINE_NAME, load_index, resolve_pipeline_config
 
 
 def load_eval_module() -> Any:
@@ -97,12 +98,15 @@ def git_dirty() -> bool:
 
 def run_logged_command(command: list[str], log_path: Path) -> None:
     log_path.parent.mkdir(parents=True, exist_ok=True)
+    env = os.environ.copy()
+    env["PYTHONDONTWRITEBYTECODE"] = "1"
     with log_path.open("w", encoding="utf-8") as log_file:
         log_file.write("$ " + " ".join(command) + "\n\n")
         log_file.flush()
         result = subprocess.run(
             command,
             cwd=ROOT_DIR,
+            env=env,
             text=True,
             stdout=log_file,
             stderr=subprocess.STDOUT,
@@ -115,15 +119,17 @@ def normalize_run(run: dict[str, Any]) -> dict[str, Any]:
     name = str(run.get("name") or "").strip()
     if not name:
         raise ValueError("Each ablation run must include a name")
-    retrieval_mode = str(run.get("retrieval_mode", "flat"))
-    if retrieval_mode not in {"flat", "hierarchical"}:
-        raise ValueError(f"Invalid retrieval_mode for {name}: {retrieval_mode}")
+    config = resolve_pipeline_config(run, default_pipeline=DEFAULT_CLI_PIPELINE_NAME)
     return {
         "name": name,
-        "metadata_first": bool(run.get("metadata_first", True)),
-        "rerank": bool(run.get("rerank", True)),
-        "verifier_retry": bool(run.get("verifier_retry", True)),
-        "retrieval_mode": retrieval_mode,
+        "pipeline": config["pipeline"],
+        "pipeline_alias": config.get("pipeline_alias"),
+        "top_k": config.get("top_k"),
+        "metadata_first": bool(config.get("metadata_first")),
+        "rerank": bool(config.get("rerank")),
+        "verifier_retry": bool(config.get("verifier_retry")),
+        "retrieval_mode": str(config.get("retrieval_mode", "flat")),
+        "prompt_profile": str(config.get("prompt_profile")),
     }
 
 
@@ -150,11 +156,28 @@ def metric_snapshot(summary: dict[str, Any]) -> dict[str, Any]:
 
 def run_flags(run: dict[str, Any]) -> dict[str, Any]:
     return {
+        "pipeline": str(run.get("pipeline") or ""),
+        "top_k": run.get("top_k"),
         "metadata_first": bool(run.get("metadata_first", True)),
         "rerank": bool(run.get("rerank", True)),
         "verifier_retry": bool(run.get("verifier_retry", True)),
         "retrieval_mode": str(run.get("retrieval_mode", "flat")),
+        "prompt_profile": str(run.get("prompt_profile") or ""),
     }
+
+
+def case_has_error(score: dict[str, Any]) -> bool:
+    for key in (
+        "accuracy",
+        "groundedness",
+        "citation_precision",
+        "answer_format_compliance",
+        "abstention",
+    ):
+        value = score.get(key)
+        if isinstance(value, (int, float)) and value < 1.0:
+            return True
+    return str(score.get("answer_status") or "") == "partial"
 
 
 def evaluate_run_with_artifacts(
@@ -164,6 +187,7 @@ def evaluate_run_with_artifacts(
     answer_policy: dict[str, Any],
     predictions_file: Any,
     latency_file: Any,
+    error_examples_file: Any,
     trace_dir: Path,
 ) -> list[dict[str, Any]]:
     case_results = []
@@ -177,11 +201,14 @@ def evaluate_run_with_artifacts(
             prior_prediction = EVAL.run_rag_query(
                 index,
                 str(turn["query"]),
+                pipeline=str(run_config.get("pipeline") or DEFAULT_CLI_PIPELINE_NAME),
+                top_k=run_config.get("top_k"),
                 context_entities=turn.get("context_entities") or [],
                 metadata_first=bool(run_config.get("metadata_first", True)),
                 rerank=bool(run_config.get("rerank", True)),
                 verifier_retry=bool(run_config.get("verifier_retry", True)),
                 retrieval_mode=str(run_config.get("retrieval_mode", "flat")),
+                prompt_profile=str(run_config.get("prompt_profile") or ""),
                 conversation_state=conversation_state,
             )
             conversation_state = prior_prediction.get("conversation_state") or conversation_state
@@ -189,11 +216,14 @@ def evaluate_run_with_artifacts(
         prediction = EVAL.run_rag_query(
             index,
             str(case["query"]),
+            pipeline=str(run_config.get("pipeline") or DEFAULT_CLI_PIPELINE_NAME),
+            top_k=run_config.get("top_k"),
             context_entities=case.get("context_entities") or [],
             metadata_first=bool(run_config.get("metadata_first", True)),
             rerank=bool(run_config.get("rerank", True)),
             verifier_retry=bool(run_config.get("verifier_retry", True)),
             retrieval_mode=str(run_config.get("retrieval_mode", "flat")),
+            prompt_profile=str(run_config.get("prompt_profile") or ""),
             conversation_state=conversation_state,
         )
         score = EVAL.score_case(case, prediction, answer_policy)
@@ -207,6 +237,8 @@ def evaluate_run_with_artifacts(
             "score": score,
         }
         predictions_file.write(json.dumps(record, ensure_ascii=False) + "\n")
+        if case_has_error(score):
+            error_examples_file.write(json.dumps(record, ensure_ascii=False) + "\n")
 
         diagnostics = prediction.get("diagnostics") or {}
         latency_file.write(
@@ -215,9 +247,12 @@ def evaluate_run_with_artifacts(
                     "run": run_name,
                     "case_id": case.get("id"),
                     "query_type": case.get("query_type"),
+                    "pipeline": diagnostics.get("pipeline"),
+                    "top_k": (prediction.get("plan") or {}).get("top_k"),
                     "latency_ms": diagnostics.get("latency_ms"),
                     "retry_count": diagnostics.get("retry_count", 0),
                     "retrieval_mode": diagnostics.get("retrieval_mode"),
+                    "prompt_profile": diagnostics.get("prompt_profile"),
                 },
                 ensure_ascii=False,
             )
@@ -258,6 +293,10 @@ def build_summary(
         "mode": "rag",
         "config": config_path,
         "index_dir": index_dir,
+        "primary_run": primary_summary["name"],
+        "pipeline": primary_summary.get("pipeline"),
+        "prompt_profile": primary_summary.get("prompt_profile"),
+        "top_k": primary_summary.get("top_k"),
         "num_predictions": primary_summary["num_predictions"],
         "accuracy": primary_summary["accuracy"],
         "groundedness": primary_summary["groundedness"],
@@ -299,6 +338,7 @@ def main() -> int:
     logs_dir.mkdir(parents=True, exist_ok=True)
     predictions_path = run_dir / "predictions.jsonl"
     latency_path = run_dir / "latency_samples.jsonl"
+    error_examples_path = run_dir / "error_examples.jsonl"
     eval_summary_path = run_dir / "eval_summary.json"
     manifest_path = run_dir / "run_manifest.json"
 
@@ -323,7 +363,7 @@ def main() -> int:
     run_summaries = []
     with predictions_path.open("w", encoding="utf-8") as predictions_file, latency_path.open(
         "w", encoding="utf-8"
-    ) as latency_file:
+    ) as latency_file, error_examples_path.open("w", encoding="utf-8") as error_examples_file:
         for run_config in normalized_runs:
             case_results = evaluate_run_with_artifacts(
                 index,
@@ -332,6 +372,7 @@ def main() -> int:
                 answer_policy,
                 predictions_file,
                 latency_file,
+                error_examples_file,
                 traces_dir,
             )
             run_summary = EVAL.summarize_run(
@@ -352,6 +393,7 @@ def main() -> int:
         "eval_summary": rel_path(eval_summary_path),
         "predictions": rel_path(predictions_path),
         "latency_samples": rel_path(latency_path),
+        "error_examples": rel_path(error_examples_path),
         "traces": rel_path(traces_dir),
         "logs": rel_path(logs_dir),
     }
@@ -386,8 +428,15 @@ def main() -> int:
         "retriever_config": {
             "index_dir": rel_path(index_dir),
             "retrieval_modes": sorted({run["retrieval_mode"] for run in normalized_runs}),
+            "pipeline_by_run": {
+                run["name"]: str(run.get("pipeline") or "") for run in normalized_runs
+            },
+            "top_k_by_run": {run["name"]: run.get("top_k") for run in normalized_runs},
             "metadata_first_runs": {
                 run["name"]: bool(run.get("metadata_first", True)) for run in normalized_runs
+            },
+            "prompt_profile_by_run": {
+                run["name"]: str(run.get("prompt_profile") or "") for run in normalized_runs
             },
         },
         "reranker_config": {

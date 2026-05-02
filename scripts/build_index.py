@@ -65,9 +65,9 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--chunking_strategy",
-        default="auto",
+        default="fixed",
         choices=["auto", "section", "fixed"],
-        help="Chunk by detected sections in auto mode; use fixed fallback when structure is weak.",
+        help="Chunking strategy. Default fixed is the naive baseline reference.",
     )
     parser.add_argument(
         "--chunk_max_chars",

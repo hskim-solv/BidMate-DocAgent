@@ -27,6 +27,40 @@ DEFAULT_CHUNK_MAX_CHARS = 520
 DEFAULT_CHUNK_OVERLAP_SENTENCES = 1
 VALID_CHUNKING_STRATEGIES = {"auto", "section", "fixed"}
 VALID_RETRIEVAL_MODES = {"flat", "hierarchical"}
+DEFAULT_CLI_PIPELINE_NAME = "naive_baseline"
+DEFAULT_RAG_PIPELINE_NAME = "agentic_full"
+PIPELINE_CONFIG_KEYS = (
+    "top_k",
+    "metadata_first",
+    "rerank",
+    "verifier_retry",
+    "retrieval_mode",
+    "prompt_profile",
+)
+PIPELINE_PRESETS: dict[str, dict[str, Any]] = {
+    "naive_baseline": {
+        "top_k": 4,
+        "metadata_first": False,
+        "rerank": False,
+        "verifier_retry": False,
+        "retrieval_mode": "flat",
+        "prompt_profile": "minimal_grounded_extractive",
+        "description": (
+            "Fixed-size chunks with dense top-k retrieval only; no metadata-first "
+            "filtering, reranking, or verifier retry."
+        ),
+    },
+    "agentic_full": {
+        "top_k": None,
+        "metadata_first": True,
+        "rerank": True,
+        "verifier_retry": True,
+        "retrieval_mode": "flat",
+        "prompt_profile": "structured_grounded_claims",
+        "description": "Metadata-first retrieval with lexical/metadata rerank and verifier retry.",
+    },
+}
+PIPELINE_ALIASES = {"full": "agentic_full"}
 WEAK_SECTION_HEADINGS = {
     "",
     "본문",
@@ -234,6 +268,62 @@ def ordered_unique(values: Iterable[str]) -> list[str]:
             seen.add(value)
             ordered.append(value)
     return ordered
+
+
+def is_pipeline_name(value: Any) -> bool:
+    name = str(value or "")
+    return name in PIPELINE_PRESETS or name in PIPELINE_ALIASES
+
+
+def pipeline_cli_choices() -> list[str]:
+    return [DEFAULT_CLI_PIPELINE_NAME, DEFAULT_RAG_PIPELINE_NAME]
+
+
+def canonical_pipeline_name(value: str | None, default: str = DEFAULT_RAG_PIPELINE_NAME) -> str:
+    requested = str(value or default)
+    canonical = PIPELINE_ALIASES.get(requested, requested)
+    if canonical not in PIPELINE_PRESETS:
+        choices = ", ".join(sorted([*PIPELINE_PRESETS, *PIPELINE_ALIASES]))
+        raise ValueError(f"pipeline must be one of: {choices}")
+    return canonical
+
+
+def resolve_pipeline_config(
+    value: str | dict[str, Any] | None = None,
+    default_pipeline: str = DEFAULT_RAG_PIPELINE_NAME,
+) -> dict[str, Any]:
+    source = value if isinstance(value, dict) else {}
+    requested = str(value) if isinstance(value, str) else str(source.get("pipeline") or "")
+    if not requested and is_pipeline_name(source.get("name")):
+        requested = str(source.get("name"))
+    canonical = canonical_pipeline_name(requested or default_pipeline, default_pipeline)
+    config = dict(PIPELINE_PRESETS[canonical])
+    config["pipeline"] = canonical
+    if requested and requested != canonical:
+        config["pipeline_alias"] = requested
+
+    for key in PIPELINE_CONFIG_KEYS:
+        if key not in source or source.get(key) is None:
+            continue
+        config[key] = source[key]
+
+    top_k = config.get("top_k")
+    if top_k is not None:
+        top_k = int(top_k)
+        if top_k < 1:
+            raise ValueError("top_k must be positive.")
+    retrieval_mode = str(config.get("retrieval_mode") or "flat")
+    if retrieval_mode not in VALID_RETRIEVAL_MODES:
+        choices = ", ".join(sorted(VALID_RETRIEVAL_MODES))
+        raise ValueError(f"retrieval_mode must be one of: {choices}")
+
+    config["top_k"] = top_k
+    config["metadata_first"] = bool(config.get("metadata_first"))
+    config["rerank"] = bool(config.get("rerank"))
+    config["verifier_retry"] = bool(config.get("verifier_retry"))
+    config["retrieval_mode"] = retrieval_mode
+    config["prompt_profile"] = str(config.get("prompt_profile") or "structured_grounded_claims")
+    return config
 
 
 def coerce_string_list(value: Any) -> list[str]:
@@ -1328,6 +1418,8 @@ def make_plan(
     rerank: bool = True,
     verifier_retry: bool = True,
     retrieval_mode: str = "flat",
+    pipeline: str = DEFAULT_RAG_PIPELINE_NAME,
+    prompt_profile: str = "structured_grounded_claims",
 ) -> dict[str, Any]:
     if retrieval_mode not in VALID_RETRIEVAL_MODES:
         choices = ", ".join(sorted(VALID_RETRIEVAL_MODES))
@@ -1352,6 +1444,8 @@ def make_plan(
         scoring = "dense + lexical rerank"
     return {
         "strategy": scoring if not metadata_first else f"metadata-first {scoring}",
+        "pipeline": pipeline,
+        "prompt_profile": prompt_profile,
         "filter_stage": stage,
         "metadata_first": metadata_first,
         "rerank": rerank,
@@ -1877,6 +1971,8 @@ def summarize_stage_attempt(
 ) -> dict[str, Any]:
     return {
         "stage": plan.get("filter_stage"),
+        "pipeline": plan.get("pipeline"),
+        "prompt_profile": plan.get("prompt_profile"),
         "metadata_filters": plan.get("metadata_filters") or {},
         "top_k": plan.get("top_k"),
         "candidate_count": plan.get("candidate_count"),
@@ -1919,6 +2015,8 @@ def make_context_clarification_result(
     rerank: bool,
     verifier_retry: bool,
     retrieval_mode: str,
+    pipeline: str,
+    prompt_profile: str,
 ) -> dict[str, Any]:
     reason = str(context_resolution.get("reason") or "context_resolution_failed")
     analysis = dict(analysis)
@@ -1948,6 +2046,8 @@ def make_context_clarification_result(
         "analysis": analysis,
         "plan": {
             "strategy": "conversation-state clarification",
+            "pipeline": pipeline,
+            "prompt_profile": prompt_profile,
             "metadata_first": metadata_first,
             "rerank": rerank,
             "verifier_retry": verifier_retry,
@@ -1979,6 +2079,8 @@ def make_context_clarification_result(
             "rerank": rerank,
             "verifier_retry": verifier_retry,
             "retrieval_mode": retrieval_mode,
+            "pipeline": pipeline,
+            "prompt_profile": prompt_profile,
         },
     }
 
@@ -2055,15 +2157,37 @@ def run_rag_query(
     query: str,
     top_k: int | None = None,
     context_entities: list[str] | None = None,
-    metadata_first: bool = True,
-    rerank: bool = True,
-    verifier_retry: bool = True,
-    retrieval_mode: str = "flat",
+    metadata_first: bool | None = None,
+    rerank: bool | None = None,
+    verifier_retry: bool | None = None,
+    retrieval_mode: str | None = None,
+    pipeline: str | None = None,
+    prompt_profile: str | None = None,
     conversation_state: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    if retrieval_mode not in VALID_RETRIEVAL_MODES:
-        choices = ", ".join(sorted(VALID_RETRIEVAL_MODES))
-        raise ValueError(f"retrieval_mode must be one of: {choices}")
+    pipeline_source: dict[str, Any] = {"pipeline": pipeline or DEFAULT_RAG_PIPELINE_NAME}
+    for key, value in (
+        ("top_k", top_k),
+        ("metadata_first", metadata_first),
+        ("rerank", rerank),
+        ("verifier_retry", verifier_retry),
+        ("retrieval_mode", retrieval_mode),
+        ("prompt_profile", prompt_profile),
+    ):
+        if value is not None:
+            pipeline_source[key] = value
+    pipeline_config = resolve_pipeline_config(
+        pipeline_source,
+        default_pipeline=DEFAULT_RAG_PIPELINE_NAME,
+    )
+    top_k = pipeline_config["top_k"]
+    metadata_first = bool(pipeline_config["metadata_first"])
+    rerank = bool(pipeline_config["rerank"])
+    verifier_retry = bool(pipeline_config["verifier_retry"])
+    retrieval_mode = str(pipeline_config["retrieval_mode"])
+    pipeline_name = str(pipeline_config["pipeline"])
+    prompt_profile = str(pipeline_config["prompt_profile"])
+
     started = time.perf_counter()
     state = normalize_conversation_state(conversation_state)
     targets = metadata_targets(index)
@@ -2086,6 +2210,8 @@ def run_rag_query(
             rerank,
             verifier_retry,
             retrieval_mode,
+            pipeline_name,
+            prompt_profile,
         )
 
     analysis = analyze_query(
@@ -2121,6 +2247,8 @@ def run_rag_query(
             rerank=rerank,
             verifier_retry=verifier_retry,
             retrieval_mode=retrieval_mode,
+            pipeline=pipeline_name,
+            prompt_profile=prompt_profile,
         )
         evidence = retrieve(index, retrieval_query, analysis, plan)
         if verifier_retry:
@@ -2182,6 +2310,8 @@ def run_rag_query(
             "rerank": rerank,
             "verifier_retry": verifier_retry,
             "retrieval_mode": retrieval_mode,
+            "pipeline": pipeline_name,
+            "prompt_profile": prompt_profile,
         },
     }
 

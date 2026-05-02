@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+export PYTHONDONTWRITEBYTECODE=1
 
 # Minimal end-to-end smoke test for Agentic-VLM.
 # Run from the repository root:

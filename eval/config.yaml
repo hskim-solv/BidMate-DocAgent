@@ -1,33 +1,41 @@
 mode: rag
 description: Public synthetic RFP evaluation with stratified ablation runs
 index_dir: data/index
+primary_run: naive_baseline
 answer_policy:
   answerable_status: supported
   unanswerable_status: insufficient
   min_claims_answerable: 1
   require_claim_citations: true
 ablation_runs:
+  - name: naive_baseline
+    pipeline: naive_baseline
   - name: full
+    pipeline: agentic_full
     metadata_first: true
     rerank: true
     verifier_retry: true
     retrieval_mode: flat
   - name: hierarchical
+    pipeline: agentic_full
     metadata_first: true
     rerank: true
     verifier_retry: true
     retrieval_mode: hierarchical
   - name: no_metadata_first
+    pipeline: agentic_full
     metadata_first: false
     rerank: true
     verifier_retry: true
     retrieval_mode: flat
   - name: no_rerank
+    pipeline: agentic_full
     metadata_first: true
     rerank: false
     verifier_retry: true
     retrieval_mode: flat
   - name: no_verifier_retry
+    pipeline: agentic_full
     metadata_first: true
     rerank: true
     verifier_retry: false

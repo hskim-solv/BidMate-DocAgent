@@ -51,22 +51,26 @@
       "type": "object",
       "required": ["metadata_first", "rerank", "verifier_retry", "retrieval_mode"],
       "properties": {
+        "pipeline": { "type": "string" },
+        "top_k": { "type": ["integer", "null"] },
         "metadata_first": { "type": "boolean" },
         "rerank": { "type": "boolean" },
         "verifier_retry": { "type": "boolean" },
-        "retrieval_mode": { "type": "string", "enum": ["flat", "hierarchical"] }
+        "retrieval_mode": { "type": "string", "enum": ["flat", "hierarchical"] },
+        "prompt_profile": { "type": "string" }
       },
       "additionalProperties": false
     },
     "artifact_paths": {
       "type": "object",
-      "required": ["run_dir", "run_manifest", "eval_summary", "predictions", "latency_samples", "traces", "logs"],
+      "required": ["run_dir", "run_manifest", "eval_summary", "predictions", "latency_samples", "error_examples", "traces", "logs"],
       "properties": {
         "run_dir": { "type": "string" },
         "run_manifest": { "type": "string" },
         "eval_summary": { "type": "string" },
         "predictions": { "type": "string" },
         "latency_samples": { "type": "string" },
+        "error_examples": { "type": "string" },
         "traces": { "type": "string" },
         "logs": { "type": "string" }
       },
