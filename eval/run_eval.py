@@ -201,6 +201,7 @@ def score_case(
     evidence_text = " ".join(str(item.get("text") or "") for item in evidence)
     combined_text = " ".join([answer, evidence_text])
     diagnostics = prediction.get("diagnostics") or {}
+    context_resolution = diagnostics.get("context_resolution") or {}
     abstained = bool(diagnostics.get("abstained"))
     answer_format = score_answer_format(case, prediction, answer_policy)
 
@@ -344,6 +345,7 @@ def evaluate_run(
                 metadata_first=bool(run_config.get("metadata_first", True)),
                 rerank=bool(run_config.get("rerank", True)),
                 verifier_retry=bool(run_config.get("verifier_retry", True)),
+                retrieval_mode=str(run_config.get("retrieval_mode", "flat")),
                 conversation_state=conversation_state,
             )
             conversation_state = prior_prediction.get("conversation_state") or conversation_state
@@ -355,6 +357,7 @@ def evaluate_run(
             metadata_first=bool(run_config.get("metadata_first", True)),
             rerank=bool(run_config.get("rerank", True)),
             verifier_retry=bool(run_config.get("verifier_retry", True)),
+            retrieval_mode=str(run_config.get("retrieval_mode", "flat")),
             conversation_state=conversation_state,
         )
         case_results.append(score_case(case, prediction, answer_policy))

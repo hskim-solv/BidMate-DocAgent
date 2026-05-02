@@ -9,9 +9,9 @@
   "abstention": 1.0,
   "answer_format_compliance": 1.0,
   "latency": {
-    "p50": 2.9450000000000003,
-    "p95": 11.890999999999998,
-    "mean": 4.8912499999999985
+    "p50": 2.38,
+    "p95": 4.7225,
+    "mean": 2.586538461538461
   },
   "retry": 0.23076923076923078,
   "by_query_type": {
@@ -23,9 +23,9 @@
       "abstention": null,
       "answer_format_compliance": 1.0,
       "latency": {
-        "p50": 9.44,
-        "p95": 12.32,
-        "mean": 7.771666666666666
+        "p50": 2.0250000000000004,
+        "p95": 6.02,
+        "mean": 2.8466666666666662
       },
       "retry": 0.0,
       "retry_cost": {
@@ -44,9 +44,9 @@
       "abstention": null,
       "answer_format_compliance": 1.0,
       "latency": {
-        "p50": 3.855,
-        "p95": 8.4275,
-        "mean": 4.536666666666667
+        "p50": 2.8899999999999997,
+        "p95": 4.334999999999999,
+        "mean": 3.1
       },
       "retry": 0.0,
       "retry_cost": {
@@ -62,12 +62,12 @@
       "accuracy": 1.0,
       "groundedness": 1.0,
       "citation_precision": 1.0,
-      "abstention": null,
+      "abstention": 1.0,
       "answer_format_compliance": 1.0,
       "latency": {
-        "p50": 1.3599999999999999,
-        "p95": 6.34,
-        "mean": 2.4483333333333333
+        "p50": 1.31,
+        "p95": 1.5630000000000002,
+        "mean": 1.2600000000000002
       },
       "retry": 0.0,
       "retry_cost": {
@@ -86,9 +86,9 @@
       "abstention": 1.0,
       "answer_format_compliance": 1.0,
       "latency": {
-        "p50": 3.495,
-        "p95": 9.3075,
-        "mean": 4.808333333333334
+        "p50": 3.275,
+        "p95": 4.66,
+        "mean": 3.581666666666667
       },
       "retry": 1.0,
       "retry_cost": {
@@ -118,6 +118,7 @@
         "metadata_first": true,
         "rerank": true,
         "verifier_retry": true,
+        "retrieval_mode": "flat",
         "num_predictions": 26,
         "accuracy": 1.0,
         "groundedness": 1.0,
@@ -125,9 +126,9 @@
         "abstention": 1.0,
         "answer_format_compliance": 1.0,
         "latency": {
-          "p50": 2.9450000000000003,
-          "p95": 11.890999999999998,
-          "mean": 4.8912499999999985
+          "p50": 2.38,
+          "p95": 4.7225,
+          "mean": 2.586538461538461
         },
         "retry": 0.23076923076923078,
         "retry_cost": {
@@ -148,9 +149,9 @@
             "abstention": null,
             "answer_format_compliance": 1.0,
             "latency": {
-              "p50": 9.44,
-              "p95": 12.32,
-              "mean": 7.771666666666666
+              "p50": 2.0250000000000004,
+              "p95": 6.02,
+              "mean": 2.8466666666666662
             },
             "retry": 0.0,
             "retry_cost": {
@@ -169,9 +170,9 @@
             "abstention": null,
             "answer_format_compliance": 1.0,
             "latency": {
-              "p50": 3.855,
-              "p95": 8.4275,
-              "mean": 4.536666666666667
+              "p50": 2.8899999999999997,
+              "p95": 4.334999999999999,
+              "mean": 3.1
             },
             "retry": 0.0,
             "retry_cost": {
@@ -187,12 +188,12 @@
             "accuracy": 1.0,
             "groundedness": 1.0,
             "citation_precision": 1.0,
-            "abstention": null,
+            "abstention": 1.0,
             "answer_format_compliance": 1.0,
             "latency": {
-              "p50": 1.3599999999999999,
-              "p95": 6.34,
-              "mean": 2.4483333333333333
+              "p50": 1.31,
+              "p95": 1.5630000000000002,
+              "mean": 1.2600000000000002
             },
             "retry": 0.0,
             "retry_cost": {
@@ -211,9 +212,9 @@
             "abstention": 1.0,
             "answer_format_compliance": 1.0,
             "latency": {
-              "p50": 3.495,
-              "p95": 9.3075,
-              "mean": 4.808333333333334
+              "p50": 3.275,
+              "p95": 4.66,
+              "mean": 3.581666666666667
             },
             "retry": 1.0,
             "retry_cost": {
@@ -247,7 +248,7 @@
             "groundedness": 1.0,
             "citation_precision": 1.0,
             "abstention": null,
-            "latency_ms": 12.43,
+            "latency_ms": 7.1,
             "retry_count": 0,
             "retry_trigger_reasons": [],
             "context_resolution_status": "not_needed",
@@ -293,7 +294,7 @@
             "groundedness": 1.0,
             "citation_precision": 1.0,
             "abstention": null,
-            "latency_ms": 11.33,
+            "latency_ms": 1.85,
             "retry_count": 0,
             "retry_trigger_reasons": [],
             "context_resolution_status": "not_needed",
@@ -339,7 +340,7 @@
             "groundedness": 1.0,
             "citation_precision": 1.0,
             "abstention": null,
-            "latency_ms": 1.86,
+            "latency_ms": 1.66,
             "retry_count": 0,
             "retry_trigger_reasons": [],
             "context_resolution_status": "not_needed",
@@ -385,7 +386,7 @@
             "groundedness": 1.0,
             "citation_precision": 1.0,
             "abstention": null,
-            "latency_ms": 11.99,
+            "latency_ms": 2.78,
             "retry_count": 0,
             "retry_trigger_reasons": [],
             "context_resolution_status": "not_needed",
@@ -431,7 +432,7 @@
             "groundedness": 1.0,
             "citation_precision": 1.0,
             "abstention": null,
-            "latency_ms": 1.47,
+            "latency_ms": 1.49,
             "retry_count": 0,
             "retry_trigger_reasons": [],
             "context_resolution_status": "not_needed",
@@ -477,7 +478,7 @@
             "groundedness": 1.0,
             "citation_precision": 1.0,
             "abstention": null,
-            "latency_ms": 7.55,
+            "latency_ms": 2.2,
             "retry_count": 0,
             "retry_trigger_reasons": [],
             "context_resolution_status": "not_needed",
@@ -525,7 +526,7 @@
             "groundedness": 1.0,
             "citation_precision": 1.0,
             "abstention": null,
-            "latency_ms": 4.51,
+            "latency_ms": 2.23,
             "retry_count": 0,
             "retry_trigger_reasons": [],
             "context_resolution_status": "not_needed",
@@ -575,7 +576,7 @@
             "groundedness": 1.0,
             "citation_precision": 1.0,
             "abstention": null,
-            "latency_ms": 2.47,
+            "latency_ms": 2.65,
             "retry_count": 0,
             "retry_trigger_reasons": [],
             "context_resolution_status": "not_needed",
@@ -625,7 +626,7 @@
             "groundedness": 1.0,
             "citation_precision": 1.0,
             "abstention": null,
-            "latency_ms": 1.59,
+            "latency_ms": 2.53,
             "retry_count": 0,
             "retry_trigger_reasons": [],
             "context_resolution_status": "not_needed",
@@ -675,7 +676,7 @@
             "groundedness": 1.0,
             "citation_precision": 1.0,
             "abstention": null,
-            "latency_ms": 6.32,
+            "latency_ms": 3.42,
             "retry_count": 0,
             "retry_trigger_reasons": [],
             "context_resolution_status": "not_needed",
@@ -725,7 +726,7 @@
             "groundedness": 1.0,
             "citation_precision": 1.0,
             "abstention": null,
-            "latency_ms": 9.13,
+            "latency_ms": 3.13,
             "retry_count": 0,
             "retry_trigger_reasons": [],
             "context_resolution_status": "not_needed",
@@ -775,7 +776,7 @@
             "groundedness": 1.0,
             "citation_precision": 1.0,
             "abstention": null,
-            "latency_ms": 3.2,
+            "latency_ms": 4.64,
             "retry_count": 0,
             "retry_trigger_reasons": [],
             "context_resolution_status": "not_needed",
@@ -823,7 +824,7 @@
             "groundedness": 1.0,
             "citation_precision": 1.0,
             "abstention": null,
-            "latency_ms": 0.96,
+            "latency_ms": 1.26,
             "retry_count": 0,
             "retry_trigger_reasons": [],
             "context_resolution_status": "resolved",
@@ -869,7 +870,7 @@
             "groundedness": 1.0,
             "citation_precision": 1.0,
             "abstention": null,
-            "latency_ms": 1.22,
+            "latency_ms": 1.19,
             "retry_count": 0,
             "retry_trigger_reasons": [],
             "context_resolution_status": "resolved",
@@ -915,7 +916,7 @@
             "groundedness": 1.0,
             "citation_precision": 1.0,
             "abstention": null,
-            "latency_ms": 0.99,
+            "latency_ms": 1.13,
             "retry_count": 0,
             "retry_trigger_reasons": [],
             "context_resolution_status": "resolved",
@@ -961,7 +962,7 @@
             "groundedness": 1.0,
             "citation_precision": 1.0,
             "abstention": null,
-            "latency_ms": 2.35,
+            "latency_ms": 1.55,
             "retry_count": 0,
             "retry_trigger_reasons": [],
             "context_resolution_status": "resolved",
@@ -1007,7 +1008,7 @@
             "groundedness": 1.0,
             "citation_precision": 1.0,
             "abstention": null,
-            "latency_ms": 7.67,
+            "latency_ms": 1.36,
             "retry_count": 0,
             "retry_trigger_reasons": [],
             "context_resolution_status": "resolved",
@@ -1053,7 +1054,7 @@
             "groundedness": 1.0,
             "citation_precision": 1.0,
             "abstention": null,
-            "latency_ms": 1.5,
+            "latency_ms": 1.55,
             "retry_count": 0,
             "retry_trigger_reasons": [],
             "context_resolution_status": "resolved",
@@ -1099,7 +1100,7 @@
             "groundedness": 1.0,
             "citation_precision": 1.0,
             "abstention": null,
-            "latency_ms": 1.86,
+            "latency_ms": 1.57,
             "retry_count": 0,
             "retry_trigger_reasons": [],
             "context_resolution_status": "resolved",
@@ -1108,7 +1109,21 @@
             "context_resolution_reason": "",
             "resolved_query": "기관 A 그 기관이 요구한 보안 조건도 보여줘",
             "abstained": false,
-            "answer": "기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. [rfp-agency-a-ai-quality::chunk-002] 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다. [rfp-agency-a-ai-quality::chunk-004]"
+            "expected_answer_status": "supported",
+            "answer_status": "supported",
+            "expected_claim_targets": [],
+            "claim_targets": [
+              "기관 A"
+            ],
+            "claim_count": 2,
+            "format_checks": {
+              "status_match": true,
+              "min_claims": true,
+              "claim_targets": true,
+              "claim_citations": true
+            },
+            "answer_format_compliance": 1.0,
+            "answer": "기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다. 기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다.\n- 기관 A: 기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. [rfp-agency-a-ai-quality::chunk-002]\n- 기관 A: 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다. [rfp-agency-a-ai-quality::chunk-004] 기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 시스템은 모델별 정확도와 오류 유형을 수집하고 위험 이벤트를 감사 로그로 남겨야 한다. 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다. 제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다."
           },
           {
             "id": "follow_up_state_ambiguous_clarification",
@@ -1125,7 +1140,7 @@
             "groundedness": 1.0,
             "citation_precision": 1.0,
             "abstention": 1.0,
-            "latency_ms": 0.32,
+            "latency_ms": 0.47,
             "retry_count": 0,
             "retry_trigger_reasons": [],
             "context_resolution_status": "needs_clarification",
@@ -1134,7 +1149,19 @@
             "context_resolution_reason": "ambiguous_active_state",
             "resolved_query": "그 기관의 보안 조건은?",
             "abstained": true,
-            "answer": "'그 기관의 보안 조건은?'에서 가리키는 대상이 모호합니다. 현재 문맥 후보는 기관 A, 기관 B입니다. 기관명 또는 사업명을 하나로 지정해 주세요."
+            "expected_answer_status": "insufficient",
+            "answer_status": "insufficient",
+            "expected_claim_targets": [],
+            "claim_targets": [],
+            "claim_count": 0,
+            "format_checks": {
+              "status_match": true,
+              "min_claims": true,
+              "claim_targets": true,
+              "claim_citations": true
+            },
+            "answer_format_compliance": 1.0,
+            "answer": "'그 기관의 보안 조건은?'에서 가리키는 대상이 모호합니다. 현재 문맥 후보는 기관 A, 기관 B입니다. 기관명 또는 사업명을 하나로 지정해 주세요. '그 기관의 보안 조건은?'에서 가리키는 대상이 모호합니다. 현재 문맥 후보는 기관 A, 기관 B입니다. 기관명 또는 사업명을 하나로 지정해 주세요.\n- 근거 부족: 사유: ambiguous_active_state; 확인 필요 대상: 기관 A, 기관 B '그 기관의 보안 조건은?'의 생략된 참조를 충분히 확정하지 못했습니다."
           },
           {
             "id": "abstention_missing_blockchain",
@@ -1151,7 +1178,7 @@
             "groundedness": 1.0,
             "citation_precision": 1.0,
             "abstention": 1.0,
-            "latency_ms": 2.69,
+            "latency_ms": 4.75,
             "retry_count": 1,
             "retry_trigger_reasons": [
               "topic_not_grounded",
@@ -1192,7 +1219,7 @@
             "groundedness": 1.0,
             "citation_precision": 1.0,
             "abstention": 1.0,
-            "latency_ms": 2.29,
+            "latency_ms": 2.88,
             "retry_count": 1,
             "retry_trigger_reasons": [
               "topic_not_grounded",
@@ -1233,7 +1260,7 @@
             "groundedness": 1.0,
             "citation_precision": 1.0,
             "abstention": 1.0,
-            "latency_ms": 2.38,
+            "latency_ms": 3.44,
             "retry_count": 1,
             "retry_trigger_reasons": [
               "topic_not_grounded",
@@ -1274,7 +1301,7 @@
             "groundedness": 1.0,
             "citation_precision": 1.0,
             "abstention": 1.0,
-            "latency_ms": 4.3,
+            "latency_ms": 3.11,
             "retry_count": 1,
             "retry_trigger_reasons": [
               "topic_not_grounded",
@@ -1315,7 +1342,7 @@
             "groundedness": 1.0,
             "citation_precision": 1.0,
             "abstention": 1.0,
-            "latency_ms": 10.02,
+            "latency_ms": 4.39,
             "retry_count": 1,
             "retry_trigger_reasons": [
               "topic_not_grounded",
@@ -1356,7 +1383,7 @@
             "groundedness": 1.0,
             "citation_precision": 1.0,
             "abstention": 1.0,
-            "latency_ms": 7.17,
+            "latency_ms": 2.92,
             "retry_count": 1,
             "retry_trigger_reasons": [
               "topic_not_grounded",
@@ -1390,231 +1417,6 @@
         "rerank": true,
         "verifier_retry": true,
         "retrieval_mode": "hierarchical",
-        "num_predictions": 24,
-        "accuracy": 1.0,
-        "groundedness": 1.0,
-        "citation_precision": 1.0,
-        "abstention": 1.0,
-        "latency": {
-          "p50": 0.96,
-          "p95": 1.5069999999999997,
-          "mean": 1.0179166666666668
-        },
-        "retry": 0.25,
-        "retry_cost": {
-          "total_retries": 6,
-          "mean_retry_count": 0.25,
-          "max_retry_count": 1,
-          "cases_with_retry": 6
-        },
-        "retry_reason_counts": {
-          "topic_not_grounded": 12
-        },
-        "by_query_type": {
-          "single_doc": {
-            "num_predictions": 6,
-            "accuracy": 1.0,
-            "groundedness": 1.0,
-            "citation_precision": 1.0,
-            "abstention": null,
-            "latency": {
-              "p50": 0.895,
-              "p95": 1.0550000000000002,
-              "mean": 0.8783333333333333
-            },
-            "retry": 0.0,
-            "retry_cost": {
-              "total_retries": 0,
-              "mean_retry_count": 0.0,
-              "max_retry_count": 0,
-              "cases_with_retry": 0
-            },
-            "retry_reason_counts": {}
-          },
-          "multi_doc": {
-            "num_predictions": 6,
-            "accuracy": 1.0,
-            "groundedness": 1.0,
-            "citation_precision": 1.0,
-            "abstention": null,
-            "latency": {
-              "p50": 1.085,
-              "p95": 1.9525,
-              "mean": 1.26
-            },
-            "retry": 0.0,
-            "retry_cost": {
-              "total_retries": 0,
-              "mean_retry_count": 0.0,
-              "max_retry_count": 0,
-              "cases_with_retry": 0
-            },
-            "retry_reason_counts": {}
-          },
-          "follow_up": {
-            "num_predictions": 6,
-            "accuracy": 1.0,
-            "groundedness": 1.0,
-            "citation_precision": 1.0,
-            "abstention": null,
-            "latency": {
-              "p50": 0.755,
-              "p95": 0.9175,
-              "mean": 0.7666666666666667
-            },
-            "retry": 0.0,
-            "retry_cost": {
-              "total_retries": 0,
-              "mean_retry_count": 0.0,
-              "max_retry_count": 0,
-              "cases_with_retry": 0
-            },
-            "retry_reason_counts": {}
-          },
-          "abstention": {
-            "num_predictions": 6,
-            "accuracy": null,
-            "groundedness": 1.0,
-            "citation_precision": 1.0,
-            "abstention": 1.0,
-            "latency": {
-              "p50": 1.185,
-              "p95": 1.315,
-              "mean": 1.1666666666666667
-            },
-            "retry": 1.0,
-            "retry_cost": {
-              "total_retries": 6,
-              "mean_retry_count": 1.0,
-              "max_retry_count": 1,
-              "cases_with_retry": 6
-            },
-            "retry_reason_counts": {
-              "topic_not_grounded": 12
-            }
-          }
-        }
-      },
-      {
-        "name": "no_metadata_first",
-        "metadata_first": false,
-        "rerank": true,
-        "verifier_retry": true,
-        "num_predictions": 26,
-        "accuracy": 1.0,
-        "groundedness": 1.0,
-        "citation_precision": 0.8461538461538461,
-        "abstention": 1.0,
-        "answer_format_compliance": 1.0,
-        "latency": {
-          "p50": 2.17,
-          "p95": 11.905499999999996,
-          "mean": 3.915833333333333
-        },
-        "retry": 0.0,
-        "retry_cost": {
-          "total_retries": 0,
-          "mean_retry_count": 0.0,
-          "max_retry_count": 0,
-          "cases_with_retry": 0
-        },
-        "retry_reason_counts": {
-          "topic_not_grounded": 6
-        },
-        "by_query_type": {
-          "single_doc": {
-            "num_predictions": 6,
-            "accuracy": 1.0,
-            "groundedness": 1.0,
-            "citation_precision": 0.75,
-            "abstention": null,
-            "answer_format_compliance": 1.0,
-            "latency": {
-              "p50": 2.125,
-              "p95": 10.4775,
-              "mean": 4.5249999999999995
-            },
-            "retry": 0.0,
-            "retry_cost": {
-              "total_retries": 0,
-              "mean_retry_count": 0.0,
-              "max_retry_count": 0,
-              "cases_with_retry": 0
-            },
-            "retry_reason_counts": {}
-          },
-          "multi_doc": {
-            "num_predictions": 6,
-            "accuracy": 1.0,
-            "groundedness": 1.0,
-            "citation_precision": 1.0,
-            "abstention": null,
-            "answer_format_compliance": 1.0,
-            "latency": {
-              "p50": 2.705,
-              "p95": 12.03,
-              "mean": 5.48
-            },
-            "retry": 0.0,
-            "retry_cost": {
-              "total_retries": 0,
-              "mean_retry_count": 0.0,
-              "max_retry_count": 0,
-              "cases_with_retry": 0
-            },
-            "retry_reason_counts": {}
-          },
-          "follow_up": {
-            "num_predictions": 8,
-            "accuracy": 1.0,
-            "groundedness": 1.0,
-            "citation_precision": 0.5833333333333334,
-            "abstention": null,
-            "answer_format_compliance": 1.0,
-            "latency": {
-              "p50": 2.11,
-              "p95": 6.6625000000000005,
-              "mean": 3.3633333333333333
-            },
-            "retry": 0.0,
-            "retry_cost": {
-              "total_retries": 0,
-              "mean_retry_count": 0.0,
-              "max_retry_count": 0,
-              "cases_with_retry": 0
-            },
-            "retry_reason_counts": {}
-          },
-          "abstention": {
-            "num_predictions": 6,
-            "accuracy": null,
-            "groundedness": 1.0,
-            "citation_precision": 1.0,
-            "abstention": 1.0,
-            "answer_format_compliance": 1.0,
-            "latency": {
-              "p50": 1.7650000000000001,
-              "p95": 4.609999999999999,
-              "mean": 2.2949999999999995
-            },
-            "retry": 0.0,
-            "retry_cost": {
-              "total_retries": 0,
-              "mean_retry_count": 0.0,
-              "max_retry_count": 0,
-              "cases_with_retry": 0
-            },
-            "retry_reason_counts": {
-              "topic_not_grounded": 6
-            }
-          }
-        }
-      },
-      {
-        "name": "no_rerank",
-        "metadata_first": true,
-        "rerank": false,
-        "verifier_retry": true,
         "num_predictions": 26,
         "accuracy": 1.0,
         "groundedness": 1.0,
@@ -1622,9 +1424,9 @@
         "abstention": 1.0,
         "answer_format_compliance": 1.0,
         "latency": {
-          "p50": 2.115,
-          "p95": 7.907499999999997,
-          "mean": 3.2733333333333334
+          "p50": 2.03,
+          "p95": 5.37,
+          "mean": 2.5176923076923075
         },
         "retry": 0.23076923076923078,
         "retry_cost": {
@@ -1645,9 +1447,9 @@
             "abstention": null,
             "answer_format_compliance": 1.0,
             "latency": {
-              "p50": 1.945,
-              "p95": 6.7675,
-              "mean": 2.86
+              "p50": 1.94,
+              "p95": 2.6024999999999996,
+              "mean": 1.9966666666666668
             },
             "retry": 0.0,
             "retry_cost": {
@@ -1666,9 +1468,9 @@
             "abstention": null,
             "answer_format_compliance": 1.0,
             "latency": {
-              "p50": 2.335,
-              "p95": 5.3525,
-              "mean": 3.0
+              "p50": 2.92,
+              "p95": 5.37,
+              "mean": 3.315
             },
             "retry": 0.0,
             "retry_cost": {
@@ -1684,12 +1486,12 @@
             "accuracy": 1.0,
             "groundedness": 1.0,
             "citation_precision": 1.0,
-            "abstention": null,
+            "abstention": 1.0,
             "answer_format_compliance": 1.0,
             "latency": {
-              "p50": 1.7200000000000002,
-              "p95": 11.8225,
-              "mean": 4.373333333333333
+              "p50": 1.42,
+              "p95": 1.801,
+              "mean": 1.3162500000000001
             },
             "retry": 0.0,
             "retry_cost": {
@@ -1708,9 +1510,241 @@
             "abstention": 1.0,
             "answer_format_compliance": 1.0,
             "latency": {
-              "p50": 2.465,
-              "p95": 4.33,
-              "mean": 2.86
+              "p50": 2.665,
+              "p95": 8.59,
+              "mean": 3.8433333333333337
+            },
+            "retry": 1.0,
+            "retry_cost": {
+              "total_retries": 6,
+              "mean_retry_count": 1.0,
+              "max_retry_count": 1,
+              "cases_with_retry": 6
+            },
+            "retry_reason_counts": {
+              "topic_not_grounded": 12
+            }
+          }
+        }
+      },
+      {
+        "name": "no_metadata_first",
+        "metadata_first": false,
+        "rerank": true,
+        "verifier_retry": true,
+        "retrieval_mode": "flat",
+        "num_predictions": 26,
+        "accuracy": 1.0,
+        "groundedness": 1.0,
+        "citation_precision": 0.8461538461538461,
+        "abstention": 1.0,
+        "answer_format_compliance": 1.0,
+        "latency": {
+          "p50": 2.34,
+          "p95": 4.1499999999999995,
+          "mean": 2.396153846153847
+        },
+        "retry": 0.0,
+        "retry_cost": {
+          "total_retries": 0,
+          "mean_retry_count": 0.0,
+          "max_retry_count": 0,
+          "cases_with_retry": 0
+        },
+        "retry_reason_counts": {
+          "topic_not_grounded": 6
+        },
+        "by_query_type": {
+          "single_doc": {
+            "num_predictions": 6,
+            "accuracy": 1.0,
+            "groundedness": 1.0,
+            "citation_precision": 0.75,
+            "abstention": null,
+            "answer_format_compliance": 1.0,
+            "latency": {
+              "p50": 3.2,
+              "p95": 4.615,
+              "mean": 3.486666666666667
+            },
+            "retry": 0.0,
+            "retry_cost": {
+              "total_retries": 0,
+              "mean_retry_count": 0.0,
+              "max_retry_count": 0,
+              "cases_with_retry": 0
+            },
+            "retry_reason_counts": {}
+          },
+          "multi_doc": {
+            "num_predictions": 6,
+            "accuracy": 1.0,
+            "groundedness": 1.0,
+            "citation_precision": 1.0,
+            "abstention": null,
+            "answer_format_compliance": 1.0,
+            "latency": {
+              "p50": 2.455,
+              "p95": 3.2575000000000003,
+              "mean": 2.603333333333333
+            },
+            "retry": 0.0,
+            "retry_cost": {
+              "total_retries": 0,
+              "mean_retry_count": 0.0,
+              "max_retry_count": 0,
+              "cases_with_retry": 0
+            },
+            "retry_reason_counts": {}
+          },
+          "follow_up": {
+            "num_predictions": 8,
+            "accuracy": 1.0,
+            "groundedness": 1.0,
+            "citation_precision": 0.6875,
+            "abstention": 1.0,
+            "answer_format_compliance": 1.0,
+            "latency": {
+              "p50": 1.79,
+              "p95": 2.0355,
+              "mean": 1.64
+            },
+            "retry": 0.0,
+            "retry_cost": {
+              "total_retries": 0,
+              "mean_retry_count": 0.0,
+              "max_retry_count": 0,
+              "cases_with_retry": 0
+            },
+            "retry_reason_counts": {}
+          },
+          "abstention": {
+            "num_predictions": 6,
+            "accuracy": null,
+            "groundedness": 1.0,
+            "citation_precision": 1.0,
+            "abstention": 1.0,
+            "answer_format_compliance": 1.0,
+            "latency": {
+              "p50": 2.105,
+              "p95": 2.5275,
+              "mean": 2.1066666666666665
+            },
+            "retry": 0.0,
+            "retry_cost": {
+              "total_retries": 0,
+              "mean_retry_count": 0.0,
+              "max_retry_count": 0,
+              "cases_with_retry": 0
+            },
+            "retry_reason_counts": {
+              "topic_not_grounded": 6
+            }
+          }
+        }
+      },
+      {
+        "name": "no_rerank",
+        "metadata_first": true,
+        "rerank": false,
+        "verifier_retry": true,
+        "retrieval_mode": "flat",
+        "num_predictions": 26,
+        "accuracy": 1.0,
+        "groundedness": 1.0,
+        "citation_precision": 1.0,
+        "abstention": 1.0,
+        "answer_format_compliance": 1.0,
+        "latency": {
+          "p50": 1.87,
+          "p95": 3.6825,
+          "mean": 1.9619230769230767
+        },
+        "retry": 0.23076923076923078,
+        "retry_cost": {
+          "total_retries": 6,
+          "mean_retry_count": 0.23076923076923078,
+          "max_retry_count": 1,
+          "cases_with_retry": 6
+        },
+        "retry_reason_counts": {
+          "topic_not_grounded": 12
+        },
+        "by_query_type": {
+          "single_doc": {
+            "num_predictions": 6,
+            "accuracy": 1.0,
+            "groundedness": 1.0,
+            "citation_precision": 1.0,
+            "abstention": null,
+            "answer_format_compliance": 1.0,
+            "latency": {
+              "p50": 1.935,
+              "p95": 2.535,
+              "mean": 1.9633333333333336
+            },
+            "retry": 0.0,
+            "retry_cost": {
+              "total_retries": 0,
+              "mean_retry_count": 0.0,
+              "max_retry_count": 0,
+              "cases_with_retry": 0
+            },
+            "retry_reason_counts": {}
+          },
+          "multi_doc": {
+            "num_predictions": 6,
+            "accuracy": 1.0,
+            "groundedness": 1.0,
+            "citation_precision": 1.0,
+            "abstention": null,
+            "answer_format_compliance": 1.0,
+            "latency": {
+              "p50": 1.9449999999999998,
+              "p95": 4.0249999999999995,
+              "mean": 2.5733333333333337
+            },
+            "retry": 0.0,
+            "retry_cost": {
+              "total_retries": 0,
+              "mean_retry_count": 0.0,
+              "max_retry_count": 0,
+              "cases_with_retry": 0
+            },
+            "retry_reason_counts": {}
+          },
+          "follow_up": {
+            "num_predictions": 8,
+            "accuracy": 1.0,
+            "groundedness": 1.0,
+            "citation_precision": 1.0,
+            "abstention": 1.0,
+            "answer_format_compliance": 1.0,
+            "latency": {
+              "p50": 1.255,
+              "p95": 1.7869999999999997,
+              "mean": 1.2275
+            },
+            "retry": 0.0,
+            "retry_cost": {
+              "total_retries": 0,
+              "mean_retry_count": 0.0,
+              "max_retry_count": 0,
+              "cases_with_retry": 0
+            },
+            "retry_reason_counts": {}
+          },
+          "abstention": {
+            "num_predictions": 6,
+            "accuracy": null,
+            "groundedness": 1.0,
+            "citation_precision": 1.0,
+            "abstention": 1.0,
+            "answer_format_compliance": 1.0,
+            "latency": {
+              "p50": 2.2199999999999998,
+              "p95": 2.87,
+              "mean": 2.328333333333333
             },
             "retry": 1.0,
             "retry_cost": {
@@ -1730,16 +1764,17 @@
         "metadata_first": true,
         "rerank": true,
         "verifier_retry": false,
+        "retrieval_mode": "flat",
         "num_predictions": 26,
         "accuracy": 1.0,
-        "groundedness": 0.75,
-        "citation_precision": 0.75,
-        "abstention": 0.0,
-        "answer_format_compliance": 0.75,
+        "groundedness": 0.7692307692307693,
+        "citation_precision": 0.7692307692307693,
+        "abstention": 0.14285714285714285,
+        "answer_format_compliance": 0.7692307692307693,
         "latency": {
-          "p50": 1.9100000000000001,
-          "p95": 5.737499999999998,
-          "mean": 2.481666666666667
+          "p50": 1.55,
+          "p95": 2.4075,
+          "mean": 1.6057692307692308
         },
         "retry": 0.0,
         "retry_cost": {
@@ -1758,9 +1793,9 @@
             "abstention": null,
             "answer_format_compliance": 1.0,
             "latency": {
-              "p50": 1.79,
-              "p95": 5.095,
-              "mean": 2.401666666666667
+              "p50": 1.4649999999999999,
+              "p95": 2.0549999999999997,
+              "mean": 1.545
             },
             "retry": 0.0,
             "retry_cost": {
@@ -1779,9 +1814,9 @@
             "abstention": null,
             "answer_format_compliance": 1.0,
             "latency": {
-              "p50": 2.05,
-              "p95": 6.4625,
-              "mean": 3.0933333333333337
+              "p50": 2.125,
+              "p95": 2.545,
+              "mean": 2.146666666666667
             },
             "retry": 0.0,
             "retry_cost": {
@@ -1797,12 +1832,12 @@
             "accuracy": 1.0,
             "groundedness": 1.0,
             "citation_precision": 1.0,
-            "abstention": null,
+            "abstention": 1.0,
             "answer_format_compliance": 1.0,
             "latency": {
-              "p50": 1.255,
-              "p95": 3.8425,
-              "mean": 1.82
+              "p50": 1.05,
+              "p95": 1.376,
+              "mean": 1.0274999999999999
             },
             "retry": 0.0,
             "retry_cost": {
@@ -1821,9 +1856,9 @@
             "abstention": 0.0,
             "answer_format_compliance": 0.0,
             "latency": {
-              "p50": 2.635,
-              "p95": 3.6225,
-              "mean": 2.611666666666667
+              "p50": 1.925,
+              "p95": 2.2625,
+              "mean": 1.8966666666666665
             },
             "retry": 0.0,
             "retry_cost": {
@@ -1858,7 +1893,7 @@
       "groundedness": 1.0,
       "citation_precision": 1.0,
       "abstention": null,
-      "latency_ms": 12.43,
+      "latency_ms": 7.1,
       "retry_count": 0,
       "retry_trigger_reasons": [],
       "context_resolution_status": "not_needed",
@@ -1904,7 +1939,7 @@
       "groundedness": 1.0,
       "citation_precision": 1.0,
       "abstention": null,
-      "latency_ms": 11.33,
+      "latency_ms": 1.85,
       "retry_count": 0,
       "retry_trigger_reasons": [],
       "context_resolution_status": "not_needed",
@@ -1950,7 +1985,7 @@
       "groundedness": 1.0,
       "citation_precision": 1.0,
       "abstention": null,
-      "latency_ms": 1.86,
+      "latency_ms": 1.66,
       "retry_count": 0,
       "retry_trigger_reasons": [],
       "context_resolution_status": "not_needed",
@@ -1996,7 +2031,7 @@
       "groundedness": 1.0,
       "citation_precision": 1.0,
       "abstention": null,
-      "latency_ms": 11.99,
+      "latency_ms": 2.78,
       "retry_count": 0,
       "retry_trigger_reasons": [],
       "context_resolution_status": "not_needed",
@@ -2042,7 +2077,7 @@
       "groundedness": 1.0,
       "citation_precision": 1.0,
       "abstention": null,
-      "latency_ms": 1.47,
+      "latency_ms": 1.49,
       "retry_count": 0,
       "retry_trigger_reasons": [],
       "context_resolution_status": "not_needed",
@@ -2088,7 +2123,7 @@
       "groundedness": 1.0,
       "citation_precision": 1.0,
       "abstention": null,
-      "latency_ms": 7.55,
+      "latency_ms": 2.2,
       "retry_count": 0,
       "retry_trigger_reasons": [],
       "context_resolution_status": "not_needed",
@@ -2136,7 +2171,7 @@
       "groundedness": 1.0,
       "citation_precision": 1.0,
       "abstention": null,
-      "latency_ms": 4.51,
+      "latency_ms": 2.23,
       "retry_count": 0,
       "retry_trigger_reasons": [],
       "context_resolution_status": "not_needed",
@@ -2186,7 +2221,7 @@
       "groundedness": 1.0,
       "citation_precision": 1.0,
       "abstention": null,
-      "latency_ms": 2.47,
+      "latency_ms": 2.65,
       "retry_count": 0,
       "retry_trigger_reasons": [],
       "context_resolution_status": "not_needed",
@@ -2236,7 +2271,7 @@
       "groundedness": 1.0,
       "citation_precision": 1.0,
       "abstention": null,
-      "latency_ms": 1.59,
+      "latency_ms": 2.53,
       "retry_count": 0,
       "retry_trigger_reasons": [],
       "context_resolution_status": "not_needed",
@@ -2286,7 +2321,7 @@
       "groundedness": 1.0,
       "citation_precision": 1.0,
       "abstention": null,
-      "latency_ms": 6.32,
+      "latency_ms": 3.42,
       "retry_count": 0,
       "retry_trigger_reasons": [],
       "context_resolution_status": "not_needed",
@@ -2336,7 +2371,7 @@
       "groundedness": 1.0,
       "citation_precision": 1.0,
       "abstention": null,
-      "latency_ms": 9.13,
+      "latency_ms": 3.13,
       "retry_count": 0,
       "retry_trigger_reasons": [],
       "context_resolution_status": "not_needed",
@@ -2386,7 +2421,7 @@
       "groundedness": 1.0,
       "citation_precision": 1.0,
       "abstention": null,
-      "latency_ms": 3.2,
+      "latency_ms": 4.64,
       "retry_count": 0,
       "retry_trigger_reasons": [],
       "context_resolution_status": "not_needed",
@@ -2434,7 +2469,7 @@
       "groundedness": 1.0,
       "citation_precision": 1.0,
       "abstention": null,
-      "latency_ms": 0.96,
+      "latency_ms": 1.26,
       "retry_count": 0,
       "retry_trigger_reasons": [],
       "context_resolution_status": "resolved",
@@ -2480,7 +2515,7 @@
       "groundedness": 1.0,
       "citation_precision": 1.0,
       "abstention": null,
-      "latency_ms": 1.22,
+      "latency_ms": 1.19,
       "retry_count": 0,
       "retry_trigger_reasons": [],
       "context_resolution_status": "resolved",
@@ -2526,7 +2561,7 @@
       "groundedness": 1.0,
       "citation_precision": 1.0,
       "abstention": null,
-      "latency_ms": 0.99,
+      "latency_ms": 1.13,
       "retry_count": 0,
       "retry_trigger_reasons": [],
       "context_resolution_status": "resolved",
@@ -2572,7 +2607,7 @@
       "groundedness": 1.0,
       "citation_precision": 1.0,
       "abstention": null,
-      "latency_ms": 2.35,
+      "latency_ms": 1.55,
       "retry_count": 0,
       "retry_trigger_reasons": [],
       "context_resolution_status": "resolved",
@@ -2618,7 +2653,7 @@
       "groundedness": 1.0,
       "citation_precision": 1.0,
       "abstention": null,
-      "latency_ms": 7.67,
+      "latency_ms": 1.36,
       "retry_count": 0,
       "retry_trigger_reasons": [],
       "context_resolution_status": "resolved",
@@ -2664,7 +2699,7 @@
       "groundedness": 1.0,
       "citation_precision": 1.0,
       "abstention": null,
-      "latency_ms": 1.5,
+      "latency_ms": 1.55,
       "retry_count": 0,
       "retry_trigger_reasons": [],
       "context_resolution_status": "resolved",
@@ -2710,7 +2745,7 @@
       "groundedness": 1.0,
       "citation_precision": 1.0,
       "abstention": null,
-      "latency_ms": 1.86,
+      "latency_ms": 1.57,
       "retry_count": 0,
       "retry_trigger_reasons": [],
       "context_resolution_status": "resolved",
@@ -2719,7 +2754,21 @@
       "context_resolution_reason": "",
       "resolved_query": "기관 A 그 기관이 요구한 보안 조건도 보여줘",
       "abstained": false,
-      "answer": "기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. [rfp-agency-a-ai-quality::chunk-002] 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다. [rfp-agency-a-ai-quality::chunk-004]"
+      "expected_answer_status": "supported",
+      "answer_status": "supported",
+      "expected_claim_targets": [],
+      "claim_targets": [
+        "기관 A"
+      ],
+      "claim_count": 2,
+      "format_checks": {
+        "status_match": true,
+        "min_claims": true,
+        "claim_targets": true,
+        "claim_citations": true
+      },
+      "answer_format_compliance": 1.0,
+      "answer": "기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다. 기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다.\n- 기관 A: 기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. [rfp-agency-a-ai-quality::chunk-002]\n- 기관 A: 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다. [rfp-agency-a-ai-quality::chunk-004] 기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 시스템은 모델별 정확도와 오류 유형을 수집하고 위험 이벤트를 감사 로그로 남겨야 한다. 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다. 제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다."
     },
     {
       "id": "follow_up_state_ambiguous_clarification",
@@ -2736,7 +2785,7 @@
       "groundedness": 1.0,
       "citation_precision": 1.0,
       "abstention": 1.0,
-      "latency_ms": 0.32,
+      "latency_ms": 0.47,
       "retry_count": 0,
       "retry_trigger_reasons": [],
       "context_resolution_status": "needs_clarification",
@@ -2745,7 +2794,19 @@
       "context_resolution_reason": "ambiguous_active_state",
       "resolved_query": "그 기관의 보안 조건은?",
       "abstained": true,
-      "answer": "'그 기관의 보안 조건은?'에서 가리키는 대상이 모호합니다. 현재 문맥 후보는 기관 A, 기관 B입니다. 기관명 또는 사업명을 하나로 지정해 주세요."
+      "expected_answer_status": "insufficient",
+      "answer_status": "insufficient",
+      "expected_claim_targets": [],
+      "claim_targets": [],
+      "claim_count": 0,
+      "format_checks": {
+        "status_match": true,
+        "min_claims": true,
+        "claim_targets": true,
+        "claim_citations": true
+      },
+      "answer_format_compliance": 1.0,
+      "answer": "'그 기관의 보안 조건은?'에서 가리키는 대상이 모호합니다. 현재 문맥 후보는 기관 A, 기관 B입니다. 기관명 또는 사업명을 하나로 지정해 주세요. '그 기관의 보안 조건은?'에서 가리키는 대상이 모호합니다. 현재 문맥 후보는 기관 A, 기관 B입니다. 기관명 또는 사업명을 하나로 지정해 주세요.\n- 근거 부족: 사유: ambiguous_active_state; 확인 필요 대상: 기관 A, 기관 B '그 기관의 보안 조건은?'의 생략된 참조를 충분히 확정하지 못했습니다."
     },
     {
       "id": "abstention_missing_blockchain",
@@ -2762,7 +2823,7 @@
       "groundedness": 1.0,
       "citation_precision": 1.0,
       "abstention": 1.0,
-      "latency_ms": 2.69,
+      "latency_ms": 4.75,
       "retry_count": 1,
       "retry_trigger_reasons": [
         "topic_not_grounded",
@@ -2803,7 +2864,7 @@
       "groundedness": 1.0,
       "citation_precision": 1.0,
       "abstention": 1.0,
-      "latency_ms": 2.29,
+      "latency_ms": 2.88,
       "retry_count": 1,
       "retry_trigger_reasons": [
         "topic_not_grounded",
@@ -2844,7 +2905,7 @@
       "groundedness": 1.0,
       "citation_precision": 1.0,
       "abstention": 1.0,
-      "latency_ms": 2.38,
+      "latency_ms": 3.44,
       "retry_count": 1,
       "retry_trigger_reasons": [
         "topic_not_grounded",
@@ -2885,7 +2946,7 @@
       "groundedness": 1.0,
       "citation_precision": 1.0,
       "abstention": 1.0,
-      "latency_ms": 4.3,
+      "latency_ms": 3.11,
       "retry_count": 1,
       "retry_trigger_reasons": [
         "topic_not_grounded",
@@ -2926,7 +2987,7 @@
       "groundedness": 1.0,
       "citation_precision": 1.0,
       "abstention": 1.0,
-      "latency_ms": 10.02,
+      "latency_ms": 4.39,
       "retry_count": 1,
       "retry_trigger_reasons": [
         "topic_not_grounded",
@@ -2967,7 +3028,7 @@
       "groundedness": 1.0,
       "citation_precision": 1.0,
       "abstention": 1.0,
-      "latency_ms": 7.17,
+      "latency_ms": 2.92,
       "retry_count": 1,
       "retry_trigger_reasons": [
         "topic_not_grounded",

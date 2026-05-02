@@ -1,6 +1,7 @@
 {
   "mode": "rag",
   "query": "기관 A와 기관 B의 AI 요구사항 차이 알려줘",
+  "resolved_query": "기관 A와 기관 B의 AI 요구사항 차이 알려줘",
   "analysis": {
     "query_type": "comparison",
     "entities": [
@@ -109,6 +110,14 @@
     "metadata_doc_scores": {
       "rfp-agency-a-ai-quality": 1.0,
       "rfp-agency-b-mlops-governance": 1.0
+    },
+    "context_resolution": {
+      "status": "not_needed",
+      "source": "query",
+      "confidence": 1.0,
+      "reason": "",
+      "resolved_query": "기관 A와 기관 B의 AI 요구사항 차이 알려줘",
+      "context_entities": []
     }
   },
   "plan": {
@@ -223,8 +232,55 @@
       "child_chunk_ids": []
     }
   ],
+  "conversation_state": {
+    "schema_version": 1,
+    "active_agencies": [
+      "기관 A",
+      "기관 B"
+    ],
+    "active_projects": [
+      "AI 품질관리 플랫폼 구축",
+      "데이터 거버넌스 및 MLOps 자동화"
+    ],
+    "active_topics": [
+      "AI"
+    ],
+    "active_doc_ids": [
+      "rfp-agency-a-ai-quality",
+      "rfp-agency-b-mlops-governance"
+    ],
+    "confidence": 1.0,
+    "turns": [
+      {
+        "turn": 1,
+        "query": "기관 A와 기관 B의 AI 요구사항 차이 알려줘",
+        "resolved_query": "기관 A와 기관 B의 AI 요구사항 차이 알려줘",
+        "active_agencies": [
+          "기관 A",
+          "기관 B"
+        ],
+        "active_projects": [
+          "AI 품질관리 플랫폼 구축",
+          "데이터 거버넌스 및 MLOps 자동화"
+        ],
+        "active_topics": [
+          "AI"
+        ],
+        "active_doc_ids": [
+          "rfp-agency-a-ai-quality",
+          "rfp-agency-b-mlops-governance"
+        ],
+        "context_resolution": {
+          "status": "not_needed",
+          "source": "query",
+          "confidence": 1.0,
+          "reason": ""
+        }
+      }
+    ]
+  },
   "diagnostics": {
-    "latency_ms": 7.41,
+    "latency_ms": 5.44,
     "retry_count": 0,
     "abstained": false,
     "answer_status": "supported",
@@ -261,6 +317,14 @@
       }
     ],
     "final_relaxation_reason": [],
+    "context_resolution": {
+      "status": "not_needed",
+      "source": "query",
+      "confidence": 1.0,
+      "reason": "",
+      "resolved_query": "기관 A와 기관 B의 AI 요구사항 차이 알려줘",
+      "context_entities": []
+    },
     "embedding_backend": "hashing",
     "embedding_model": "local-hashing-bow",
     "metadata_first": true,

@@ -1,4 +1,4 @@
-.PHONY: setup index ask eval check smoke test clean
+.PHONY: setup index ask eval benchmark benchmark-check check smoke test clean
 
 PYTHON ?= python3
 VENV ?= .venv
@@ -16,6 +16,12 @@ ask:
 
 eval:
 	$(PYTHON) eval/run_eval.py --index_dir data/index --output_dir reports --config eval/config.yaml
+
+benchmark:
+	$(PYTHON) scripts/run_benchmark.py --suite benchmarks/suites/public_synthetic_rfp.yaml --ablations benchmarks/ablations/rag_quality_axes.yaml
+
+benchmark-check:
+	$(PYTHON) scripts/summarize_benchmark.py --manifest $${MANIFEST:?set MANIFEST=artifacts/benchmarks/<run_id>/run_manifest.json} --check
 
 check:
 	$(PYTHON) scripts/update_readme_metrics.py --report reports/eval_summary.json --readme README.md --check
