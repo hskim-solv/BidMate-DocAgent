@@ -106,7 +106,11 @@ class MetadataCsvIngestionTest(unittest.TestCase):
 
             self.assertEqual(2, payload["build"]["num_documents"])
             self.assertGreater(payload["build"]["num_chunks"], 2)
+            self.assertEqual({"fixed": 2}, payload["build"]["chunking"]["actual_strategy_counts"])
+            self.assertEqual(2, len(payload["parent_sections"]))
             self.assertTrue(all("metadata" in chunk for chunk in payload["chunks"]))
+            self.assertTrue(all("section_path" in chunk for chunk in payload["chunks"]))
+            self.assertTrue(all("chunking_strategy" in chunk for chunk in payload["chunks"]))
             self.assertTrue(all(len(chunk["text"]) <= 520 for chunk in payload["chunks"]))
             self.assertEqual("202400001", payload["chunks"][0]["metadata"]["notice_id"])
 

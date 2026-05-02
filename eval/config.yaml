@@ -6,18 +6,27 @@ ablation_runs:
     metadata_first: true
     rerank: true
     verifier_retry: true
+    retrieval_mode: flat
+  - name: hierarchical
+    metadata_first: true
+    rerank: true
+    verifier_retry: true
+    retrieval_mode: hierarchical
   - name: no_metadata_first
     metadata_first: false
     rerank: true
     verifier_retry: true
+    retrieval_mode: flat
   - name: no_rerank
     metadata_first: true
     rerank: false
     verifier_retry: true
+    retrieval_mode: flat
   - name: no_verifier_retry
     metadata_first: true
     rerank: true
     verifier_retry: false
+    retrieval_mode: flat
 cases:
   - id: single_doc_security
     query_type: single_doc

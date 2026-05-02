@@ -1003,6 +1003,117 @@
         ]
       },
       {
+        "name": "hierarchical",
+        "metadata_first": true,
+        "rerank": true,
+        "verifier_retry": true,
+        "retrieval_mode": "hierarchical",
+        "num_predictions": 24,
+        "accuracy": 1.0,
+        "groundedness": 1.0,
+        "citation_precision": 1.0,
+        "abstention": 1.0,
+        "latency": {
+          "p50": 0.96,
+          "p95": 1.5069999999999997,
+          "mean": 1.0179166666666668
+        },
+        "retry": 0.25,
+        "retry_cost": {
+          "total_retries": 6,
+          "mean_retry_count": 0.25,
+          "max_retry_count": 1,
+          "cases_with_retry": 6
+        },
+        "retry_reason_counts": {
+          "topic_not_grounded": 12
+        },
+        "by_query_type": {
+          "single_doc": {
+            "num_predictions": 6,
+            "accuracy": 1.0,
+            "groundedness": 1.0,
+            "citation_precision": 1.0,
+            "abstention": null,
+            "latency": {
+              "p50": 0.895,
+              "p95": 1.0550000000000002,
+              "mean": 0.8783333333333333
+            },
+            "retry": 0.0,
+            "retry_cost": {
+              "total_retries": 0,
+              "mean_retry_count": 0.0,
+              "max_retry_count": 0,
+              "cases_with_retry": 0
+            },
+            "retry_reason_counts": {}
+          },
+          "multi_doc": {
+            "num_predictions": 6,
+            "accuracy": 1.0,
+            "groundedness": 1.0,
+            "citation_precision": 1.0,
+            "abstention": null,
+            "latency": {
+              "p50": 1.085,
+              "p95": 1.9525,
+              "mean": 1.26
+            },
+            "retry": 0.0,
+            "retry_cost": {
+              "total_retries": 0,
+              "mean_retry_count": 0.0,
+              "max_retry_count": 0,
+              "cases_with_retry": 0
+            },
+            "retry_reason_counts": {}
+          },
+          "follow_up": {
+            "num_predictions": 6,
+            "accuracy": 1.0,
+            "groundedness": 1.0,
+            "citation_precision": 1.0,
+            "abstention": null,
+            "latency": {
+              "p50": 0.755,
+              "p95": 0.9175,
+              "mean": 0.7666666666666667
+            },
+            "retry": 0.0,
+            "retry_cost": {
+              "total_retries": 0,
+              "mean_retry_count": 0.0,
+              "max_retry_count": 0,
+              "cases_with_retry": 0
+            },
+            "retry_reason_counts": {}
+          },
+          "abstention": {
+            "num_predictions": 6,
+            "accuracy": null,
+            "groundedness": 1.0,
+            "citation_precision": 1.0,
+            "abstention": 1.0,
+            "latency": {
+              "p50": 1.185,
+              "p95": 1.315,
+              "mean": 1.1666666666666667
+            },
+            "retry": 1.0,
+            "retry_cost": {
+              "total_retries": 6,
+              "mean_retry_count": 1.0,
+              "max_retry_count": 1,
+              "cases_with_retry": 6
+            },
+            "retry_reason_counts": {
+              "topic_not_grounded": 12
+            }
+          }
+        }
+      },
+      {
         "name": "no_metadata_first",
         "metadata_first": false,
         "rerank": true,

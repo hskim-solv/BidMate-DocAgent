@@ -100,8 +100,8 @@ def render_ablation_table(summary: Dict[str, Any]) -> str:
     table = [
         "### Ablation comparison",
         "",
-        "| Run | Metadata-first | Rerank | Verifier/Retry | Accuracy | Groundedness | Citation | Abstention | Retry | Latency p95 |",
-        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "| Run | Retrieval | Metadata-first | Rerank | Verifier/Retry | Accuracy | Groundedness | Citation | Abstention | Retry | Latency p95 |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for run in runs:
         if not isinstance(run, dict):
@@ -110,8 +110,9 @@ def render_ablation_table(summary: Dict[str, Any]) -> str:
         p95 = latency.get("p95") if isinstance(latency, dict) else None
         p95_text = f"{p95:.1f}ms" if isinstance(p95, (int, float)) else "N/A"
         table.append(
-            "| {name} | {metadata_first} | {rerank} | {verifier_retry} | {accuracy} | {groundedness} | {citation} | {abstention} | {retry} | {p95} |".format(
+            "| {name} | {retrieval} | {metadata_first} | {rerank} | {verifier_retry} | {accuracy} | {groundedness} | {citation} | {abstention} | {retry} | {p95} |".format(
                 name=run.get("name", "unknown"),
+                retrieval=run.get("retrieval_mode", "flat"),
                 metadata_first=fmt_flag(run.get("metadata_first")),
                 rerank=fmt_flag(run.get("rerank")),
                 verifier_retry=fmt_flag(run.get("verifier_retry")),
