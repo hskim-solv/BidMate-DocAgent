@@ -1,0 +1,46 @@
+schema_version: 1
+description: Public synthetic parser-stage gold fixture for visual parsing v2.
+documents:
+  - doc_id: parser-fixture-doc
+    artifact: parser-fixture-doc.visual.json
+    ocr_text:
+      snippets:
+        - "1. 사업 개요"
+        - "사업명: 시각 파싱 평가 사업"
+        - "기관: 공개기관"
+        - "보안 요구사항은 접근 통제입니다."
+        - "항목 | 값"
+        - "보안 | 접근 통제"
+        - "로그 | 감사 추적"
+    layout_blocks:
+      - text: "1. 사업 개요"
+        type: heading
+        page_number: 1
+      - text: "사업명: 시각 파싱 평가 사업"
+        type: text
+        page_number: 1
+      - text: "항목 | 값"
+        type: table
+        page_number: 1
+    sections:
+      - heading: "1. 사업 개요"
+        page_span: [1, 1]
+    tables:
+      - rows:
+          - ["항목", "값"]
+          - ["보안", "접근 통제"]
+          - ["로그", "감사 추적"]
+    fields:
+      - key: "사업명"
+        value: "시각 파싱 평가 사업"
+      - key: "기관"
+        value: "공개기관"
+    bbox_anchors:
+      - text: "사업명: 시각 파싱 평가 사업"
+        page_number: 1
+        bbox: [10, 40, 280, 100]
+        min_iou: 0.9
+      - text: "항목 | 값"
+        page_number: 1
+        bbox: [10, 120, 300, 190]
+        min_iou: 0.9

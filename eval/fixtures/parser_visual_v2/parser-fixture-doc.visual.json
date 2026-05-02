@@ -1,0 +1,143 @@
+{
+  "schema_version": 2,
+  "doc_id": "parser-fixture-doc",
+  "title": "시각 파싱 평가 사업",
+  "agency": "공개기관",
+  "project": "시각 파싱 평가 사업",
+  "source_path": "eval/fixtures/parser_visual_v2/parser-fixture-doc.pdf",
+  "file_format": "pdf",
+  "metadata": {
+    "file_format": "pdf",
+    "file_name": "parser-fixture-doc.pdf",
+    "document_type": "visual_parsing_v2"
+  },
+  "pages": [
+    {
+      "page_number": 1,
+      "width": 400.0,
+      "height": 600.0,
+      "blocks": [
+        {
+          "block_id": "parser-fixture-doc::p001::b001",
+          "text": "1. 사업 개요",
+          "type": "heading",
+          "page_number": 1,
+          "bbox": [10, 10, 120, 30],
+          "confidence": 1.0,
+          "source": "pdf_text_layer"
+        },
+        {
+          "block_id": "parser-fixture-doc::p001::b002",
+          "text": "사업명: 시각 파싱 평가 사업\n기관: 공개기관\n보안 요구사항은 접근 통제입니다.",
+          "type": "text",
+          "page_number": 1,
+          "bbox": [10, 40, 280, 100],
+          "confidence": 1.0,
+          "source": "pdf_text_layer"
+        },
+        {
+          "block_id": "parser-fixture-doc::p001::b003",
+          "text": "항목 | 값\n보안 | 접근 통제\n로그 | 감사 추적",
+          "type": "table",
+          "page_number": 1,
+          "bbox": [10, 120, 300, 190],
+          "confidence": 0.95,
+          "source": "layout_heuristic"
+        }
+      ]
+    }
+  ],
+  "tables": [
+    {
+      "table_id": "parser-fixture-doc::p001::heuristic001",
+      "page_number": 1,
+      "bbox": [10, 120, 300, 190],
+      "rows": [
+        ["항목", "값"],
+        ["보안", "접근 통제"],
+        ["로그", "감사 추적"]
+      ],
+      "source": "layout_heuristic",
+      "confidence": 0.45
+    }
+  ],
+  "field_candidates": [
+    {
+      "field_id": "field-001",
+      "key": "사업명",
+      "value": "시각 파싱 평가 사업",
+      "page_number": 1,
+      "bbox": [10, 40, 280, 100],
+      "source": "pdf_text_layer",
+      "confidence": 1.0
+    },
+    {
+      "field_id": "field-002",
+      "key": "기관",
+      "value": "공개기관",
+      "page_number": 1,
+      "bbox": [10, 40, 280, 100],
+      "source": "pdf_text_layer",
+      "confidence": 1.0
+    }
+  ],
+  "sections": [
+    {
+      "heading": "1. 사업 개요",
+      "section_path": ["1. 사업 개요"],
+      "text": "사업명: 시각 파싱 평가 사업\n기관: 공개기관\n보안 요구사항은 접근 통제입니다.\n항목 | 값\n보안 | 접근 통제\n로그 | 감사 추적",
+      "page_span": [1, 1],
+      "regions": [
+        {
+          "page_number": 1,
+          "bbox": [10, 10, 120, 30],
+          "source": "pdf_text_layer",
+          "type": "heading",
+          "block_id": "parser-fixture-doc::p001::b001"
+        },
+        {
+          "page_number": 1,
+          "bbox": [10, 40, 280, 100],
+          "source": "pdf_text_layer",
+          "type": "text",
+          "block_id": "parser-fixture-doc::p001::b002"
+        },
+        {
+          "page_number": 1,
+          "bbox": [10, 120, 300, 190],
+          "source": "layout_heuristic",
+          "type": "table",
+          "block_id": "parser-fixture-doc::p001::b003"
+        }
+      ]
+    }
+  ],
+  "diagnostics": {
+    "status": "parsed",
+    "reasons": [],
+    "stages": [
+      {
+        "name": "pdf_text_layer",
+        "status": "ok",
+        "blocks": 3
+      },
+      {
+        "name": "ocr",
+        "status": "skipped",
+        "reason": "text_layer_sufficient"
+      },
+      {
+        "name": "table_extraction",
+        "status": "ok",
+        "tables": 1
+      }
+    ],
+    "summary": {
+      "pages": 1,
+      "blocks": 3,
+      "tables": 1,
+      "field_candidates": 2,
+      "sections": 1
+    }
+  }
+}

@@ -66,6 +66,7 @@
 - Benchmark local artifacts: `artifacts/benchmarks/` (gitignored)
 - PDF/HWP ingestion 진단 리포트: `data/index/ingestion_report.json` (`--metadata_csv` 사용 시)
 - Visual parsing v2 artifact: `data/index/visual_artifacts/*.visual.json` (`--visual_input_dir` 또는 `--ingestion_mode visual` 사용 시)
+- Parser-stage 평가 리포트: `reports/parser_eval_summary.json` (`eval/run_parser_eval.py` 사용 시)
 
 ---
 
@@ -240,6 +241,19 @@ python3 scripts/build_index.py \
 ```
 
 이 모드는 `data/index/index.json`, `data/index/ingestion_report.json`, `data/index/visual_artifacts/*.visual.json`을 생성합니다. OCR에는 Python 패키지(`pymupdf`, `pdfplumber`, `pytesseract`, `Pillow`, `opencv-python-headless`)와 시스템 Tesseract 설치가 필요합니다. OCR 엔진이 없으면 text-layer PDF는 계속 처리할 수 있지만 image-only 문서는 `ocr_unavailable`로 실패합니다.
+
+visual parsing 품질은 QA 평가와 별도로 parser-stage 평가로 확인합니다. 이 평가는 이미 생성된 `*.visual.json` artifact와 gold 기대값을 비교하며 OCR text, layout block, section boundary, table, field, bbox/page-region 지표를 `reports/parser_eval_summary.json`에 기록합니다. 공개 fixture로 먼저 실행해 report 형태를 확인할 수 있습니다.
+
+```bash
+python3 eval/run_parser_eval.py \
+  --artifact_dir eval/fixtures/parser_visual_v2 \
+  --gold eval/parser_visual_v2_gold.yaml \
+  --output_dir reports \
+  --run_name visual_v2_fixture \
+  --parser_version 2
+```
+
+실제 visual ingestion 산출물을 비교할 때는 같은 gold 형식에서 `doc_id`와 artifact 이름을 맞춘 뒤 `--artifact_dir data/index/visual_artifacts`를 지정합니다. README의 핵심 성능표는 기존 QA 평가(`reports/eval_summary.json`) 기준으로 유지하고, parser-stage 지표는 별도 리포트로 관리합니다.
 
 ---
 
