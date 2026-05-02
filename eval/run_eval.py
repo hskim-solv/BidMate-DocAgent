@@ -48,6 +48,12 @@ def load_config(path: Path) -> dict[str, Any]:
         query_type = case.get("query_type")
         if query_type not in QUERY_TYPES:
             raise ValueError(f"Eval case must include query_type in {QUERY_TYPES}: {case.get('id')}")
+        prior_turns = case.get("prior_turns") or []
+        if not isinstance(prior_turns, list):
+            raise ValueError(f"Eval case prior_turns must be a list: {case.get('id')}")
+        for turn in prior_turns:
+            if not isinstance(turn, dict) or not str(turn.get("query") or "").strip():
+                raise ValueError(f"Each prior turn must include a query: {case.get('id')}")
 
     runs = data.get("ablation_runs", DEFAULT_ABLATION_RUNS)
     if not isinstance(runs, list) or not runs:
@@ -97,6 +103,7 @@ def score_case(case: dict[str, Any], prediction: dict[str, Any]) -> dict[str, An
     combined_text = " ".join([answer, evidence_text])
     diagnostics = prediction.get("diagnostics") or {}
     abstained = bool(diagnostics.get("abstained"))
+    context_resolution = diagnostics.get("context_resolution") or {}
 
     citation_doc_precision = 0.0
     if evidence_doc_ids:
@@ -140,6 +147,11 @@ def score_case(case: dict[str, Any], prediction: dict[str, Any]) -> dict[str, An
         "latency_ms": diagnostics.get("latency_ms"),
         "retry_count": diagnostics.get("retry_count", 0),
         "retry_trigger_reasons": retry_trigger_reasons(prediction),
+        "context_resolution_status": context_resolution.get("status"),
+        "context_resolution_source": context_resolution.get("source"),
+        "context_resolution_confidence": context_resolution.get("confidence"),
+        "context_resolution_reason": context_resolution.get("reason"),
+        "resolved_query": prediction.get("resolved_query"),
         "abstained": abstained,
         "answer": answer,
     }
@@ -216,6 +228,19 @@ def evaluate_run(
 ) -> list[dict[str, Any]]:
     case_results = []
     for case in cases:
+        conversation_state: dict[str, Any] = {}
+        for turn in case.get("prior_turns") or []:
+            prior_prediction = run_rag_query(
+                index,
+                str(turn["query"]),
+                context_entities=turn.get("context_entities") or [],
+                metadata_first=bool(run_config.get("metadata_first", True)),
+                rerank=bool(run_config.get("rerank", True)),
+                verifier_retry=bool(run_config.get("verifier_retry", True)),
+                conversation_state=conversation_state,
+            )
+            conversation_state = prior_prediction.get("conversation_state") or conversation_state
+
         prediction = run_rag_query(
             index,
             str(case["query"]),
@@ -223,7 +248,7 @@ def evaluate_run(
             metadata_first=bool(run_config.get("metadata_first", True)),
             rerank=bool(run_config.get("rerank", True)),
             verifier_retry=bool(run_config.get("verifier_retry", True)),
-            retrieval_mode=str(run_config.get("retrieval_mode", "flat")),
+            conversation_state=conversation_state,
         )
         case_results.append(score_case(case, prediction))
     return case_results

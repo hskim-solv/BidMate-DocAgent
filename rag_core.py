@@ -34,6 +34,7 @@ SENTENCE_RE = re.compile(r"(?<=[.!?。])\s+")
 
 STOPWORDS = {
     "그럼",
+    "그",
     "그리고",
     "어떻게",
     "알려줘",
@@ -44,14 +45,18 @@ STOPWORDS = {
     "비교해줘",
     "기관",
     "요구",
+    "요구한",
     "요구가",
     "요구사항",
+    "조건",
+    "조건도",
     "기능",
     "목표",
     "성능",
     "초점",
     "필수",
     "그중",
+    "보여줘",
     "어떤",
     "누가",
     "포함돼야",
@@ -115,9 +120,24 @@ TOPIC_KEYWORDS = [
 STRICT_METADATA_CONFIDENCE = 0.90
 REDUCED_METADATA_CONFIDENCE = 0.70
 AMBIGUOUS_CONFIDENCE_DELTA = 0.05
-VALID_CHUNKING_STRATEGIES = {"auto", "section", "fixed"}
-VALID_RETRIEVAL_MODES = {"flat", "hierarchical"}
-WEAK_SECTION_HEADINGS = {"", "본문", "body", "text", "content"}
+CONVERSATION_STATE_SCHEMA_VERSION = 1
+MAX_CONVERSATION_TURNS = 12
+CONTEXT_RESOLUTION_THRESHOLD = 0.70
+
+IMPLICIT_REFERENCE_PATTERNS = (
+    "그 기관",
+    "그 사업",
+    "그 시스템",
+    "그 문서",
+    "그 프로젝트",
+    "해당 기관",
+    "해당 사업",
+    "해당 시스템",
+    "이 기관",
+    "이 사업",
+    "그럼",
+    "그중",
+)
 
 METADATA_GENERIC_TOKENS = {
     "rfp",
@@ -196,6 +216,48 @@ def ordered_unique(values: Iterable[str]) -> list[str]:
             seen.add(value)
             ordered.append(value)
     return ordered
+
+
+def coerce_string_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return ordered_unique(str(item).strip() for item in value if str(item).strip())
+
+
+def empty_conversation_state() -> dict[str, Any]:
+    return {
+        "schema_version": CONVERSATION_STATE_SCHEMA_VERSION,
+        "active_agencies": [],
+        "active_projects": [],
+        "active_topics": [],
+        "active_doc_ids": [],
+        "confidence": 0.0,
+        "turns": [],
+    }
+
+
+def normalize_conversation_state(state: dict[str, Any] | None) -> dict[str, Any]:
+    normalized = empty_conversation_state()
+    if not isinstance(state, dict):
+        return normalized
+
+    normalized["schema_version"] = int(
+        state.get("schema_version") or CONVERSATION_STATE_SCHEMA_VERSION
+    )
+    normalized["active_agencies"] = coerce_string_list(state.get("active_agencies"))
+    normalized["active_projects"] = coerce_string_list(state.get("active_projects"))
+    normalized["active_topics"] = coerce_string_list(state.get("active_topics"))
+    normalized["active_doc_ids"] = coerce_string_list(state.get("active_doc_ids"))
+    try:
+        normalized["confidence"] = round(float(state.get("confidence") or 0.0), 3)
+    except (TypeError, ValueError):
+        normalized["confidence"] = 0.0
+
+    turns = state.get("turns") if isinstance(state.get("turns"), list) else []
+    normalized["turns"] = [
+        turn for turn in turns[-MAX_CONVERSATION_TURNS:] if isinstance(turn, dict)
+    ]
+    return normalized
 
 
 def tokenize(text: str) -> list[str]:
@@ -962,6 +1024,140 @@ def is_metadata_ambiguous(matches: list[dict[str, Any]], query_type: str) -> boo
     return len(close_doc_ids) > 1
 
 
+def has_implicit_reference(query: str) -> bool:
+    normalized_query = normalize_entity(query)
+    return any(pattern in normalized_query for pattern in IMPLICIT_REFERENCE_PATTERNS)
+
+
+def has_comparison_request(query: str) -> bool:
+    comparison_terms = ("차이", "비교", "각각", "대비")
+    return any(term in normalize_entity(query) for term in comparison_terms)
+
+
+def active_state_terms(state: dict[str, Any]) -> list[str]:
+    terms = state.get("active_agencies") or state.get("active_projects") or []
+    if terms:
+        return coerce_string_list(terms)
+    return coerce_string_list(state.get("active_doc_ids"))
+
+
+def active_state_size(state: dict[str, Any]) -> int:
+    return max(
+        len(state.get("active_agencies") or []),
+        len(state.get("active_projects") or []),
+        len(state.get("active_doc_ids") or []),
+    )
+
+
+def make_context_resolution(
+    status: str,
+    source: str,
+    confidence: float,
+    reason: str = "",
+    resolved_query: str | None = None,
+    context_entities: list[str] | None = None,
+) -> dict[str, Any]:
+    return {
+        "status": status,
+        "source": source,
+        "confidence": round(float(confidence), 3),
+        "reason": reason,
+        "resolved_query": resolved_query,
+        "context_entities": context_entities or [],
+    }
+
+
+def resolve_conversation_context(
+    query: str,
+    initial_analysis: dict[str, Any],
+    conversation_state: dict[str, Any],
+    context_entities: list[str] | None = None,
+) -> tuple[str, list[str], dict[str, Any]]:
+    explicit_context = coerce_string_list(context_entities or [])
+    if explicit_context:
+        return (
+            query,
+            explicit_context,
+            make_context_resolution(
+                "resolved",
+                "context_entities",
+                1.0,
+                resolved_query=query,
+                context_entities=explicit_context,
+            ),
+        )
+
+    if initial_analysis.get("matched_doc_ids"):
+        return (
+            query,
+            [],
+            make_context_resolution("not_needed", "query", 1.0, resolved_query=query),
+        )
+
+    if not has_implicit_reference(query):
+        return (
+            query,
+            [],
+            make_context_resolution("not_needed", "none", 0.0, resolved_query=query),
+        )
+
+    state_terms = active_state_terms(conversation_state)
+    if not state_terms:
+        return (
+            query,
+            [],
+            make_context_resolution(
+                "needs_clarification",
+                "conversation_state",
+                0.0,
+                reason="no_active_state",
+                resolved_query=query,
+            ),
+        )
+
+    state_confidence = float(conversation_state.get("confidence") or 0.0)
+    if state_confidence < CONTEXT_RESOLUTION_THRESHOLD:
+        return (
+            query,
+            [],
+            make_context_resolution(
+                "needs_clarification",
+                "conversation_state",
+                state_confidence,
+                reason="weak_active_state",
+                resolved_query=query,
+                context_entities=state_terms,
+            ),
+        )
+
+    if active_state_size(conversation_state) > 1 and not has_comparison_request(query):
+        return (
+            query,
+            [],
+            make_context_resolution(
+                "needs_clarification",
+                "conversation_state",
+                state_confidence,
+                reason="ambiguous_active_state",
+                resolved_query=query,
+                context_entities=state_terms,
+            ),
+        )
+
+    resolved_query = " ".join([*state_terms, query])
+    return (
+        resolved_query,
+        state_terms,
+        make_context_resolution(
+            "resolved",
+            "conversation_state",
+            state_confidence,
+            resolved_query=resolved_query,
+            context_entities=state_terms,
+        ),
+    )
+
+
 def analyze_query(
     query: str,
     entities: list[Any],
@@ -1415,6 +1611,143 @@ def summarize_stage_attempt(
     }
 
 
+def clarification_answer(query: str, context_resolution: dict[str, Any]) -> str:
+    reason = context_resolution.get("reason")
+    if reason == "no_active_state":
+        return (
+            f"'{query}'는 이전 문맥의 기관이나 사업을 확인해야 답할 수 있습니다. "
+            "기관명 또는 사업명을 포함해 다시 질문해 주세요."
+        )
+    if reason == "ambiguous_active_state":
+        entities = ", ".join(context_resolution.get("context_entities") or [])
+        return (
+            f"'{query}'에서 가리키는 대상이 모호합니다. "
+            f"현재 문맥 후보는 {entities}입니다. 기관명 또는 사업명을 하나로 지정해 주세요."
+        )
+    return (
+        f"'{query}'의 생략된 참조를 충분히 확정하지 못했습니다. "
+        "기관명 또는 사업명을 포함해 다시 질문해 주세요."
+    )
+
+
+def make_context_clarification_result(
+    index: dict[str, Any],
+    query: str,
+    analysis: dict[str, Any],
+    conversation_state: dict[str, Any],
+    context_resolution: dict[str, Any],
+    started: float,
+    metadata_first: bool,
+    rerank: bool,
+    verifier_retry: bool,
+) -> dict[str, Any]:
+    reason = str(context_resolution.get("reason") or "context_resolution_failed")
+    analysis = dict(analysis)
+    analysis["query_type"] = "follow_up"
+    analysis["context_resolution"] = context_resolution
+    latency_ms = (time.perf_counter() - started) * 1000
+    return {
+        "mode": "rag",
+        "query": query,
+        "resolved_query": context_resolution.get("resolved_query") or query,
+        "analysis": analysis,
+        "plan": {
+            "strategy": "conversation-state clarification",
+            "metadata_first": metadata_first,
+            "rerank": rerank,
+            "verifier_retry": verifier_retry,
+            "metadata_filters": {},
+            "top_k": None,
+            "relaxed": False,
+            "retry_policy": "clarify before retrieval when entity resolution is weak",
+        },
+        "answer": clarification_answer(query, context_resolution),
+        "evidence": [],
+        "conversation_state": conversation_state,
+        "diagnostics": {
+            "latency_ms": round(latency_ms, 2),
+            "retry_count": 0,
+            "abstained": True,
+            "verification_reasons": [reason],
+            "filter_stage_attempts": [],
+            "final_relaxation_reason": [],
+            "context_resolution": context_resolution,
+            "embedding_backend": index.get("embedding", {}).get("backend"),
+            "embedding_model": index.get("embedding", {}).get("model"),
+            "metadata_first": metadata_first,
+            "rerank": rerank,
+            "verifier_retry": verifier_retry,
+        },
+    }
+
+
+def update_conversation_state(
+    conversation_state: dict[str, Any],
+    original_query: str,
+    resolved_query: str,
+    analysis: dict[str, Any],
+    evidence: list[dict[str, Any]],
+    context_resolution: dict[str, Any],
+) -> dict[str, Any]:
+    active_doc_ids = ordered_unique(
+        [
+            *coerce_string_list(analysis.get("matched_doc_ids")),
+            *(item.get("doc_id", "") for item in evidence),
+        ]
+    )
+    active_agencies = ordered_unique(
+        [
+            *coerce_string_list(analysis.get("entities")),
+            *(item.get("agency", "") for item in evidence),
+        ]
+    )
+    active_projects = ordered_unique(
+        [
+            *coerce_string_list(analysis.get("matched_projects")),
+            *(item.get("project", "") for item in evidence),
+        ]
+    )
+    active_topics = coerce_string_list(analysis.get("topics"))
+
+    if not (active_doc_ids or active_agencies or active_projects):
+        return conversation_state
+
+    metadata_confidence = float(analysis.get("metadata_confidence") or 0.0)
+    resolution_confidence = float(context_resolution.get("confidence") or 0.0)
+    confidence = max(metadata_confidence, resolution_confidence, 0.85)
+    if analysis.get("metadata_ambiguous"):
+        confidence = min(confidence, 0.65)
+
+    turns = list(conversation_state.get("turns") or [])
+    turns.append(
+        {
+            "turn": len(turns) + 1,
+            "query": original_query,
+            "resolved_query": resolved_query,
+            "active_agencies": active_agencies,
+            "active_projects": active_projects,
+            "active_topics": active_topics,
+            "active_doc_ids": active_doc_ids,
+            "context_resolution": {
+                "status": context_resolution.get("status"),
+                "source": context_resolution.get("source"),
+                "confidence": context_resolution.get("confidence"),
+                "reason": context_resolution.get("reason", ""),
+            },
+        }
+    )
+
+    return {
+        "schema_version": CONVERSATION_STATE_SCHEMA_VERSION,
+        "active_agencies": active_agencies,
+        "active_projects": active_projects,
+        "active_topics": active_topics,
+        "active_doc_ids": active_doc_ids,
+        "confidence": round(float(confidence), 3),
+        "turns": turns[-MAX_CONVERSATION_TURNS:],
+    }
+
+
 def run_rag_query(
     index: dict[str, Any],
     query: str,
@@ -1423,13 +1756,40 @@ def run_rag_query(
     metadata_first: bool = True,
     rerank: bool = True,
     verifier_retry: bool = True,
-    retrieval_mode: str = "flat",
+    conversation_state: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     started = time.perf_counter()
-    if retrieval_mode not in VALID_RETRIEVAL_MODES:
-        choices = ", ".join(sorted(VALID_RETRIEVAL_MODES))
-        raise ValueError(f"retrieval_mode must be one of: {choices}")
-    analysis = analyze_query(query, metadata_targets(index), context_entities=context_entities)
+    state = normalize_conversation_state(conversation_state)
+    targets = metadata_targets(index)
+    initial_analysis = analyze_query(query, targets)
+    retrieval_query, effective_context_entities, context_resolution = resolve_conversation_context(
+        query,
+        initial_analysis,
+        state,
+        context_entities=context_entities,
+    )
+    if context_resolution["status"] == "needs_clarification":
+        return make_context_clarification_result(
+            index,
+            query,
+            initial_analysis,
+            state,
+            context_resolution,
+            started,
+            metadata_first,
+            rerank,
+            verifier_retry,
+        )
+
+    analysis = analyze_query(
+        retrieval_query,
+        targets,
+        context_entities=effective_context_entities,
+    )
+    if context_resolution["source"] in {"conversation_state", "context_entities"}:
+        analysis["query_type"] = "follow_up"
+        analysis["context_used"] = True
+    analysis["context_resolution"] = context_resolution
     stage_sequence = metadata_stage_sequence(
         analysis,
         metadata_first=metadata_first,
@@ -1455,7 +1815,7 @@ def run_rag_query(
             verifier_retry=verifier_retry,
             retrieval_mode=retrieval_mode,
         )
-        evidence = retrieve(index, query, analysis, plan)
+        evidence = retrieve(index, retrieval_query, analysis, plan)
         if verifier_retry:
             verified, verification_reasons = verify_evidence(analysis, evidence)
         else:
@@ -1471,15 +1831,25 @@ def run_rag_query(
         evidence = []
     else:
         evidence = select_supporting_evidence(analysis, evidence)
+        state = update_conversation_state(
+            state,
+            query,
+            retrieval_query,
+            analysis,
+            evidence,
+            context_resolution,
+        )
     answer, abstained = generate_answer(query, analysis, evidence, verified)
     latency_ms = (time.perf_counter() - started) * 1000
     return {
         "mode": "rag",
         "query": query,
+        "resolved_query": retrieval_query,
         "analysis": analysis,
         "plan": plan,
         "answer": answer,
         "evidence": strip_internal_scores(evidence),
+        "conversation_state": state,
         "diagnostics": {
             "latency_ms": round(latency_ms, 2),
             "retry_count": retry_count,
@@ -1487,6 +1857,7 @@ def run_rag_query(
             "verification_reasons": verification_reasons,
             "filter_stage_attempts": stage_attempts,
             "final_relaxation_reason": stage_attempts[-2]["verification_reasons"] if retry_count else [],
+            "context_resolution": context_resolution,
             "embedding_backend": index.get("embedding", {}).get("backend"),
             "embedding_model": index.get("embedding", {}).get("model"),
             "metadata_first": metadata_first,

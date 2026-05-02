@@ -6,6 +6,7 @@ set -euo pipefail
 #   bash scripts/smoke.sh
 # Optional overrides:
 #   INPUT_DIR=data/raw INDEX_DIR=data/index OUTPUT_DIR=outputs REPORT_DIR=reports QUERY="..." bash scripts/smoke.sh
+#   EMBEDDING_BACKEND=auto bash scripts/smoke.sh
 
 INPUT_DIR="${INPUT_DIR:-data/raw}"
 INDEX_DIR="${INDEX_DIR:-data/index}"
@@ -14,6 +15,7 @@ REPORT_DIR="${REPORT_DIR:-reports}"
 QUERY="${QUERY:-기관 A와 기관 B의 AI 요구사항 차이 알려줘}"
 EVAL_CONFIG="${EVAL_CONFIG:-eval/config.yaml}"
 README_PATH="${README_PATH:-README.md}"
+EMBEDDING_BACKEND="${EMBEDDING_BACKEND:-hashing}"
 
 log() {
   printf '\n[%s] %s\n' "$(date '+%H:%M:%S')" "$1"
@@ -46,7 +48,10 @@ require_dir "$INPUT_DIR"
 mkdir -p "$INDEX_DIR" "$OUTPUT_DIR" "$REPORT_DIR"
 
 log "Building index"
-python3 scripts/build_index.py --input_dir "$INPUT_DIR" --output_dir "$INDEX_DIR"
+python3 scripts/build_index.py \
+  --input_dir "$INPUT_DIR" \
+  --output_dir "$INDEX_DIR" \
+  --embedding_backend "$EMBEDDING_BACKEND"
 
 log "Running sample query"
 python3 app.py --input_dir "$INDEX_DIR" --output_dir "$OUTPUT_DIR" --query "$QUERY"
@@ -58,7 +63,11 @@ REPORT_JSON="$REPORT_DIR/eval_summary.json"
 require_file "$REPORT_JSON"
 
 log "Checking README metrics consistency"
-python3 scripts/update_readme_metrics.py --report "$REPORT_JSON" --readme "$README_PATH" --check
+if [[ "$REPORT_DIR" == "reports" ]]; then
+  python3 scripts/update_readme_metrics.py --report "$REPORT_JSON" --readme "$README_PATH" --check
+else
+  echo "Skipping README metrics check for non-default REPORT_DIR=$REPORT_DIR"
+fi
 
 log "Smoke test completed successfully"
 echo "Generated artifacts:"
