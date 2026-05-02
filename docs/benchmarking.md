@@ -5,11 +5,11 @@
 ## Source Of Truth
 
 - `benchmarks/suites/public_synthetic_rfp.yaml`: 공개 synthetic RFP benchmark suite 정의
-- `benchmarks/ablations/rag_quality_axes.yaml`: baseline, primary run, ablation flag 정의
+- `benchmarks/ablations/rag_quality_axes.yaml`: `naive_baseline` control, primary run, ablation flag 정의
 - `benchmarks/registry.schema.json`: registry와 run manifest의 최소 schema
 - `benchmarks/registry.json`: 커밋 가능한 집계 registry
 
-`benchmarks/`에는 실행 정의와 집계 지표만 둔다. 원문 RFP, raw logs, per-example dump는 커밋하지 않는다.
+`benchmarks/`에는 실행 정의와 집계 지표만 둔다. 원문 RFP, raw logs, per-example dump는 커밋하지 않는다. 기본 baseline은 fixed-size chunking과 dense top-k retrieval만 사용하는 `naive_baseline`이며, `full`은 metadata-first/rerank/verifier retry를 켠 비교 대상이다.
 
 ## Local Artifacts
 
@@ -27,6 +27,7 @@ python3 scripts/run_benchmark.py \
 - `eval_summary.json`: benchmark run의 aggregate eval summary
 - `predictions.jsonl`: per-example prediction dump
 - `latency_samples.jsonl`: per-example latency/retry sample
+- `error_examples.jsonl`: metric이 실패하거나 partial로 판정된 비교용 error example
 - `traces/`: per-example plan/diagnostics/evidence reference
 - `logs/`: index build 등 command log
 

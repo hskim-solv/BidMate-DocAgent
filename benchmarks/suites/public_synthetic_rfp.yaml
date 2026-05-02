@@ -19,6 +19,8 @@ index:
     - data/index
     - --embedding_backend
     - hashing
+    - --chunking_strategy
+    - fixed
 eval:
   config: eval/config.yaml
   output_dir: reports

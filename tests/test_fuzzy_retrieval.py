@@ -177,6 +177,35 @@ class FuzzyMetadataRetrievalTest(unittest.TestCase):
         self.assertEqual("relaxed", result["plan"]["filter_stage"])
         self.assertEqual({}, result["plan"]["metadata_filters"])
 
+    def test_naive_pipeline_uses_dense_top_k_without_agentic_stages(self) -> None:
+        result = run_rag_query(
+            self.index,
+            "기관 A의 보안 통제 요구사항은?",
+            pipeline="naive_baseline",
+        )
+
+        self.assertEqual("naive_baseline", result["plan"]["pipeline"])
+        self.assertEqual("minimal_grounded_extractive", result["plan"]["prompt_profile"])
+        self.assertEqual(4, result["plan"]["top_k"])
+        self.assertFalse(result["plan"]["metadata_first"])
+        self.assertFalse(result["plan"]["rerank"])
+        self.assertFalse(result["diagnostics"]["verifier_retry"])
+        self.assertEqual("relaxed", result["plan"]["filter_stage"])
+        self.assertEqual("dense", result["plan"]["strategy"])
+
+    def test_full_alias_uses_agentic_pipeline_preset(self) -> None:
+        result = run_rag_query(
+            self.index,
+            "기관 A의 보안 통제 요구사항은?",
+            pipeline="full",
+        )
+
+        self.assertEqual("agentic_full", result["plan"]["pipeline"])
+        self.assertEqual("structured_grounded_claims", result["plan"]["prompt_profile"])
+        self.assertTrue(result["plan"]["metadata_first"])
+        self.assertTrue(result["plan"]["rerank"])
+        self.assertTrue(result["diagnostics"]["verifier_retry"])
+
     def test_rerank_can_be_disabled_for_ablation(self) -> None:
         result = run_rag_query(
             self.index,

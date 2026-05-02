@@ -153,7 +153,7 @@ def render_docs(registry: dict[str, Any]) -> str:
     lines = [
         "# Ablation Results",
         "",
-        "이 문서는 커밋 가능한 집계 지표만 남긴다. Raw predictions, traces, logs, latency samples, per-example dumps는 `artifacts/benchmarks/` 아래에 생성되며 Git에 커밋하지 않는다.",
+        "이 문서는 커밋 가능한 집계 지표만 남긴다. Raw predictions, traces, logs, latency samples, error examples는 `artifacts/benchmarks/` 아래에 생성되며 Git에 커밋하지 않는다.",
         "",
         "## Latest Run",
         "",
@@ -185,19 +185,22 @@ def render_docs(registry: dict[str, Any]) -> str:
         "",
         "## Ablation Table",
         "",
-        "| Run | Metadata-first | Rerank | Verifier/Retry | Retrieval | Accuracy | Groundedness | Citation | Format | Abstention | Retry | Latency p95 |",
-        "|---|---:|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|",
+        "| Run | Pipeline | Top-k | Metadata-first | Rerank | Verifier/Retry | Retrieval | Prompt | Accuracy | Groundedness | Citation | Format | Abstention | Retry | Latency p95 |",
+        "|---|---|---:|---:|---:|---:|---|---|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for run in latest.get("runs") or []:
         flags = run.get("flags") or {}
         metrics = run.get("metrics") or {}
         lines.append(
-            "| {name} | {metadata_first} | {rerank} | {verifier_retry} | {retrieval_mode} | {accuracy} | {groundedness} | {citation} | {format} | {abstention} | {retry} | {latency} |".format(
+            "| {name} | {pipeline} | {top_k} | {metadata_first} | {rerank} | {verifier_retry} | {retrieval_mode} | {prompt} | {accuracy} | {groundedness} | {citation} | {format} | {abstention} | {retry} | {latency} |".format(
                 name=run.get("name"),
+                pipeline=flags.get("pipeline", ""),
+                top_k=fmt_top_k(flags.get("top_k")),
                 metadata_first=flag(flags.get("metadata_first")),
                 rerank=flag(flags.get("rerank")),
                 verifier_retry=flag(flags.get("verifier_retry")),
                 retrieval_mode=flags.get("retrieval_mode", "flat"),
+                prompt=flags.get("prompt_profile", ""),
                 accuracy=fmt_rate(metrics.get("accuracy")),
                 groundedness=fmt_rate(metrics.get("groundedness")),
                 citation=fmt_rate(metrics.get("citation_precision")),
@@ -213,8 +216,8 @@ def render_docs(registry: dict[str, Any]) -> str:
             "",
             "## Interpretation",
             "",
-            f"- `{baseline_name}`는 verifier/retry를 끈 lightweight baseline이다.",
-            f"- `{primary_name}`는 metadata-first, rerank, verifier/retry를 모두 켠 primary run이다.",
+            f"- `{baseline_name}`는 fixed chunk + dense top-k만 쓰는 naive control baseline이다.",
+            f"- `{primary_name}`는 비교 대상 primary run이다.",
             "- latency와 retry는 품질 지표와 함께 본다. retry가 늘어도 groundedness, citation, abstention 개선이 동반되는지 확인한다.",
             "- 현재 수치는 공개 synthetic RFP 평가셋 기준의 2차 가공 집계이며, 원본 RFP 문서나 raw example output은 포함하지 않는다.",
             "",
@@ -235,6 +238,10 @@ def table_row(label: str, baseline: dict[str, Any], primary: dict[str, Any], key
         primary=fmt_rate(primary.get(key)),
         delta=fmt_delta(primary.get(key), baseline.get(key)),
     )
+
+
+def fmt_top_k(value: Any) -> str:
+    return str(value) if isinstance(value, int) else "auto"
 
 
 def flag(value: Any) -> str:

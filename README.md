@@ -76,6 +76,12 @@
 
 CLI와 리뷰 편의를 위해 같은 내용을 사람이 읽기 쉬운 `answer_text`로도 제공합니다. 자세한 예시는 [`docs/answer-policy.md`](docs/answer-policy.md)를 참고하세요.
 
+## Baseline policy
+
+기본 CLI/eval reference는 `naive_baseline`입니다. 이 baseline은 fixed-size chunking, hashing dense top-k=4 retrieval, minimal grounded extractive answer prompt만 사용하며 metadata-first filtering, rerank, verifier/retry는 제외합니다.
+
+현재 agentic pipeline은 `agentic_full` preset으로 유지합니다. 기본 control과 비교하려면 `app.py --pipeline agentic_full` 또는 benchmark의 `full` run을 사용합니다.
+
 ---
 
 ## 핵심 성능표 (실측)
@@ -83,25 +89,26 @@ CLI와 리뷰 편의를 위해 같은 내용을 사람이 읽기 쉬운 `answer_
 <!-- METRICS_TABLE:START -->
 | Category | Metric | Score |
 |---|---:|---:|
-| Overall | Answer Accuracy | 1.000 |
+| Overall | Answer Accuracy | 0.947 |
 | Single-doc extraction | Answer Accuracy | 1.000 |
 | Multi-doc comparison | Groundedness Rate | 1.000 |
-| Follow-up | Answer Accuracy | 1.000 |
-| Evidence | Citation Precision | 1.000 |
-| Evidence | Answer Format Compliance | 1.000 |
-| Abstention | Abstention Accuracy | 1.000 |
-| System | Latency (p50/p95) | p50 2.4ms / p95 4.7ms |
-| System | Retry Rate | 0.231 |
+| Follow-up | Answer Accuracy | 0.857 |
+| Evidence | Citation Precision | 0.519 |
+| Evidence | Answer Format Compliance | 0.731 |
+| Abstention | Abstention Accuracy | 0.143 |
+| System | Latency (p50/p95) | p50 3.1ms / p95 5.8ms |
+| System | Retry Rate | 0.000 |
 
 ### Ablation comparison
 
-| Run | Metadata-first | Rerank | Verifier/Retry | Accuracy | Groundedness | Citation | Format | Abstention | Retry | Latency p95 |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| full | on | on | on | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 | 0.231 | 4.7ms |
-| hierarchical | on | on | on | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 | 0.231 | 5.4ms |
-| no_metadata_first | off | on | on | 1.000 | 1.000 | 0.846 | 1.000 | 1.000 | 0.000 | 4.1ms |
-| no_rerank | on | off | on | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 | 0.231 | 3.7ms |
-| no_verifier_retry | on | on | off | 1.000 | 0.769 | 0.769 | 0.769 | 0.143 | 0.000 | 2.4ms |
+| Run | Pipeline | Top-k | Metadata-first | Rerank | Verifier/Retry | Accuracy | Groundedness | Citation | Format | Abstention | Retry | Latency p95 |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| naive_baseline | naive_baseline | 4 | off | off | off | 0.947 | 0.731 | 0.519 | 0.731 | 0.143 | 0.000 | 5.8ms |
+| full | agentic_full | auto | on | on | on | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 | 0.231 | 5.8ms |
+| hierarchical | agentic_full | auto | on | on | on | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 | 0.231 | 6.4ms |
+| no_metadata_first | agentic_full | auto | off | on | on | 0.947 | 0.962 | 0.750 | 0.962 | 1.000 | 0.000 | 4.7ms |
+| no_rerank | agentic_full | auto | on | off | on | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 | 0.231 | 11.3ms |
+| no_verifier_retry | agentic_full | auto | on | on | off | 1.000 | 0.769 | 0.769 | 0.769 | 0.143 | 0.000 | 4.5ms |
 <!-- METRICS_TABLE:END -->
 
 > 주의: 성능표는 공개 synthetic RFP 평가셋 기준입니다. 원본 RFP 데이터는 비공개 제약으로 저장소에 포함하지 않았습니다.
@@ -133,7 +140,7 @@ Final Response (grounded)
 
 ## 실행 방법 (검증됨)
 
-현재 공개본은 `data/raw`의 synthetic RFP 문서를 사용해 로컬에서 end-to-end RAG를 실행합니다. `auto` 모드는 캐시된 `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` 모델을 우선 사용하며, 모델을 사용할 수 없는 환경에서는 deterministic hashing embedding으로 자동 fallback합니다.
+현재 공개본은 `data/raw`의 synthetic RFP 문서를 사용해 로컬에서 end-to-end RAG를 실행합니다. 기본 실행은 `naive_baseline` control이며, embedding `auto` 모드는 캐시된 `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` 모델을 우선 사용하고 모델을 사용할 수 없는 환경에서는 deterministic hashing embedding으로 자동 fallback합니다.
 
 ### 1) 환경 준비
 ```bash
@@ -151,6 +158,16 @@ python3 scripts/build_index.py --input_dir data/raw --output_dir data/index
 ### 3) 질의 실행
 ```bash
 python3 app.py --input_dir data/index --output_dir outputs --query "기관 A와 기관 B의 AI 요구사항 차이 알려줘"
+```
+
+강한 agentic 파이프라인을 확인하려면 명시적으로 preset을 지정합니다.
+
+```bash
+python3 app.py \
+  --input_dir data/index \
+  --output_dir outputs \
+  --query "기관 A와 기관 B의 AI 요구사항 차이 알려줘" \
+  --pipeline agentic_full
 ```
 
 후속 질문을 재현하려면 세션 상태 파일을 명시적으로 지정합니다. 상태에는 현재 활성 agency/project/topic/doc id와 최근 턴 요약이 JSON으로 저장되며, 생략된 참조가 모호하면 답을 추정하지 않고 clarification 응답으로 중단합니다.
@@ -195,11 +212,11 @@ python3 scripts/summarize_benchmark.py \
   --manifest artifacts/benchmarks/<run_id>/run_manifest.json
 ```
 
-Benchmark source of truth는 `benchmarks/suites/`, `benchmarks/ablations/`, `benchmarks/registry.schema.json`에 둡니다. Raw predictions, traces, logs, latency samples는 `artifacts/benchmarks/` 아래에 생성되며 Git에 커밋하지 않습니다. 사람이 읽는 결과 해석은 [`docs/benchmarking.md`](docs/benchmarking.md)와 [`docs/ablation-results.md`](docs/ablation-results.md)를 참고하세요.
+Benchmark source of truth는 `benchmarks/suites/`, `benchmarks/ablations/`, `benchmarks/registry.schema.json`에 둡니다. Raw predictions, traces, logs, latency samples, error examples는 `artifacts/benchmarks/` 아래에 생성되며 Git에 커밋하지 않습니다. 사람이 읽는 결과 해석은 [`docs/benchmarking.md`](docs/benchmarking.md)와 [`docs/ablation-results.md`](docs/ablation-results.md)를 참고하세요.
 
 > 참고: 모델을 처음 내려받아 실제 sentence-transformers 인덱스를 만들려면 `--embedding_backend sentence-transformers`를 사용하세요. 네트워크가 제한된 환경에서는 `--embedding_backend hashing`으로 재현성을 우선한 로컬 실행이 가능합니다. 산출물 경로는 `data/index`, `outputs/`, `reports/`로 고정합니다.
-> Chunking 기본값은 `--chunking_strategy auto --chunk_max_chars 520 --chunk_overlap_sentences 1`입니다. `auto`는 heading/section 구조가 있으면 section-aware chunk metadata를 저장하고, 단일 본문처럼 구조가 약하면 fixed fallback을 사용합니다.
-> 질의 기본값은 flat child-chunk retrieval입니다. parent section 단위 재조립을 확인하려면 `app.py`에 `--retrieval_mode hierarchical`을 지정하거나 `eval/config.yaml`의 `hierarchical` ablation run을 실행합니다.
+> Chunking 기본값은 naive baseline 기준인 `--chunking_strategy fixed --chunk_max_chars 520 --chunk_overlap_sentences 1`입니다. section-aware 비교는 `--chunking_strategy auto` 또는 `section`으로 명시합니다.
+> 질의 기본값은 `--pipeline naive_baseline`의 flat dense top-k=4 retrieval입니다. parent section 단위 재조립을 확인하려면 `app.py`에 `--pipeline agentic_full --retrieval_mode hierarchical`을 지정하거나 `eval/config.yaml`의 `hierarchical` ablation run을 실행합니다.
 
 평가 재현 기본 순서: **인덱싱(`scripts/build_index.py`) → 질의 실행(`app.py`) → 평가 실행(`eval/run_eval.py`) → 성능표 갱신(`scripts/update_readme_metrics.py`)**
 > - 인덱스: `data/index/index.json`

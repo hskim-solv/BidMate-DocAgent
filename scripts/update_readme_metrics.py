@@ -60,6 +60,10 @@ def fmt_flag(value: Any) -> str:
     return "on" if bool(value) else "off"
 
 
+def fmt_top_k(value: Any) -> str:
+    return str(value) if isinstance(value, int) else "auto"
+
+
 def render_main_table(summary: Dict[str, Any]) -> str:
     rows = [
         ("Overall", "Answer Accuracy", fmt_rate(summary.get("accuracy"))),
@@ -102,8 +106,8 @@ def render_ablation_table(summary: Dict[str, Any]) -> str:
     table = [
         "### Ablation comparison",
         "",
-        "| Run | Metadata-first | Rerank | Verifier/Retry | Accuracy | Groundedness | Citation | Format | Abstention | Retry | Latency p95 |",
-        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "| Run | Pipeline | Top-k | Metadata-first | Rerank | Verifier/Retry | Accuracy | Groundedness | Citation | Format | Abstention | Retry | Latency p95 |",
+        "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for run in runs:
         if not isinstance(run, dict):
@@ -112,9 +116,10 @@ def render_ablation_table(summary: Dict[str, Any]) -> str:
         p95 = latency.get("p95") if isinstance(latency, dict) else None
         p95_text = f"{p95:.1f}ms" if isinstance(p95, (int, float)) else "N/A"
         table.append(
-            "| {name} | {metadata_first} | {rerank} | {verifier_retry} | {accuracy} | {groundedness} | {citation} | {format} | {abstention} | {retry} | {p95} |".format(
+            "| {name} | {pipeline} | {top_k} | {metadata_first} | {rerank} | {verifier_retry} | {accuracy} | {groundedness} | {citation} | {format} | {abstention} | {retry} | {p95} |".format(
                 name=run.get("name", "unknown"),
-                retrieval=run.get("retrieval_mode", "flat"),
+                pipeline=run.get("pipeline", ""),
+                top_k=fmt_top_k(run.get("top_k")),
                 metadata_first=fmt_flag(run.get("metadata_first")),
                 rerank=fmt_flag(run.get("rerank")),
                 verifier_retry=fmt_flag(run.get("verifier_retry")),

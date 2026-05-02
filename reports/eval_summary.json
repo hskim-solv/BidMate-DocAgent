@@ -2,30 +2,34 @@
   "mode": "rag",
   "config": "eval/config.yaml",
   "index_dir": "data/index",
+  "primary_run": "naive_baseline",
+  "pipeline": "naive_baseline",
+  "prompt_profile": "minimal_grounded_extractive",
+  "top_k": 4,
   "num_predictions": 26,
-  "accuracy": 1.0,
-  "groundedness": 1.0,
-  "citation_precision": 1.0,
-  "abstention": 1.0,
-  "answer_format_compliance": 1.0,
+  "accuracy": 0.9473684210526315,
+  "groundedness": 0.7307692307692307,
+  "citation_precision": 0.5192307692307693,
+  "abstention": 0.14285714285714285,
+  "answer_format_compliance": 0.7307692307692307,
   "latency": {
-    "p50": 2.38,
-    "p95": 4.7225,
-    "mean": 2.586538461538461
+    "p50": 3.145,
+    "p95": 5.777499999999999,
+    "mean": 3.3438461538461555
   },
-  "retry": 0.23076923076923078,
+  "retry": 0.0,
   "by_query_type": {
     "single_doc": {
       "num_predictions": 6,
       "accuracy": 1.0,
       "groundedness": 1.0,
-      "citation_precision": 1.0,
+      "citation_precision": 0.5,
       "abstention": null,
       "answer_format_compliance": 1.0,
       "latency": {
-        "p50": 2.0250000000000004,
-        "p95": 6.02,
-        "mean": 2.8466666666666662
+        "p50": 3.5599999999999996,
+        "p95": 7.414999999999999,
+        "mean": 4.178333333333333
       },
       "retry": 0.0,
       "retry_cost": {
@@ -44,9 +48,9 @@
       "abstention": null,
       "answer_format_compliance": 1.0,
       "latency": {
-        "p50": 2.8899999999999997,
-        "p95": 4.334999999999999,
-        "mean": 3.1
+        "p50": 3.9,
+        "p95": 5.51,
+        "mean": 4.043333333333334
       },
       "retry": 0.0,
       "retry_cost": {
@@ -59,15 +63,15 @@
     },
     "follow_up": {
       "num_predictions": 8,
-      "accuracy": 1.0,
-      "groundedness": 1.0,
-      "citation_precision": 1.0,
+      "accuracy": 0.8571428571428571,
+      "groundedness": 0.875,
+      "citation_precision": 0.5625,
       "abstention": 1.0,
-      "answer_format_compliance": 1.0,
+      "answer_format_compliance": 0.875,
       "latency": {
-        "p50": 1.31,
-        "p95": 1.5630000000000002,
-        "mean": 1.2600000000000002
+        "p50": 2.0549999999999997,
+        "p95": 3.661999999999999,
+        "mean": 2.00875
       },
       "retry": 0.0,
       "retry_cost": {
@@ -81,77 +85,74 @@
     "abstention": {
       "num_predictions": 6,
       "accuracy": null,
-      "groundedness": 1.0,
-      "citation_precision": 1.0,
-      "abstention": 1.0,
-      "answer_format_compliance": 1.0,
+      "groundedness": 0.0,
+      "citation_precision": 0.0,
+      "abstention": 0.0,
+      "answer_format_compliance": 0.0,
       "latency": {
-        "p50": 3.275,
-        "p95": 4.66,
-        "mean": 3.581666666666667
+        "p50": 3.24,
+        "p95": 5.09,
+        "mean": 3.59
       },
-      "retry": 1.0,
+      "retry": 0.0,
       "retry_cost": {
-        "total_retries": 6,
-        "mean_retry_count": 1.0,
-        "max_retry_count": 1,
-        "cases_with_retry": 6
+        "total_retries": 0,
+        "mean_retry_count": 0.0,
+        "max_retry_count": 0,
+        "cases_with_retry": 0
       },
-      "retry_reason_counts": {
-        "topic_not_grounded": 12
-      }
+      "retry_reason_counts": {}
     }
   },
   "retry_cost": {
-    "total_retries": 6,
-    "mean_retry_count": 0.23076923076923078,
-    "max_retry_count": 1,
-    "cases_with_retry": 6
+    "total_retries": 0,
+    "mean_retry_count": 0.0,
+    "max_retry_count": 0,
+    "cases_with_retry": 0
   },
-  "retry_reason_counts": {
-    "topic_not_grounded": 12
-  },
+  "retry_reason_counts": {},
   "ablation": {
     "runs": [
       {
-        "name": "full",
-        "metadata_first": true,
-        "rerank": true,
-        "verifier_retry": true,
+        "name": "naive_baseline",
+        "pipeline": "naive_baseline",
+        "top_k": 4,
+        "metadata_first": false,
+        "rerank": false,
+        "verifier_retry": false,
         "retrieval_mode": "flat",
+        "prompt_profile": "minimal_grounded_extractive",
         "num_predictions": 26,
-        "accuracy": 1.0,
-        "groundedness": 1.0,
-        "citation_precision": 1.0,
-        "abstention": 1.0,
-        "answer_format_compliance": 1.0,
+        "accuracy": 0.9473684210526315,
+        "groundedness": 0.7307692307692307,
+        "citation_precision": 0.5192307692307693,
+        "abstention": 0.14285714285714285,
+        "answer_format_compliance": 0.7307692307692307,
         "latency": {
-          "p50": 2.38,
-          "p95": 4.7225,
-          "mean": 2.586538461538461
+          "p50": 3.145,
+          "p95": 5.777499999999999,
+          "mean": 3.3438461538461555
         },
-        "retry": 0.23076923076923078,
+        "retry": 0.0,
         "retry_cost": {
-          "total_retries": 6,
-          "mean_retry_count": 0.23076923076923078,
-          "max_retry_count": 1,
-          "cases_with_retry": 6
+          "total_retries": 0,
+          "mean_retry_count": 0.0,
+          "max_retry_count": 0,
+          "cases_with_retry": 0
         },
-        "retry_reason_counts": {
-          "topic_not_grounded": 12
-        },
+        "retry_reason_counts": {},
         "by_query_type": {
           "single_doc": {
             "num_predictions": 6,
             "accuracy": 1.0,
             "groundedness": 1.0,
-            "citation_precision": 1.0,
+            "citation_precision": 0.5,
             "abstention": null,
             "answer_format_compliance": 1.0,
             "latency": {
-              "p50": 2.0250000000000004,
-              "p95": 6.02,
-              "mean": 2.8466666666666662
+              "p50": 3.5599999999999996,
+              "p95": 7.414999999999999,
+              "mean": 4.178333333333333
             },
             "retry": 0.0,
             "retry_cost": {
@@ -170,9 +171,9 @@
             "abstention": null,
             "answer_format_compliance": 1.0,
             "latency": {
-              "p50": 2.8899999999999997,
-              "p95": 4.334999999999999,
-              "mean": 3.1
+              "p50": 3.9,
+              "p95": 5.51,
+              "mean": 4.043333333333334
             },
             "retry": 0.0,
             "retry_cost": {
@@ -185,15 +186,15 @@
           },
           "follow_up": {
             "num_predictions": 8,
-            "accuracy": 1.0,
-            "groundedness": 1.0,
-            "citation_precision": 1.0,
+            "accuracy": 0.8571428571428571,
+            "groundedness": 0.875,
+            "citation_precision": 0.5625,
             "abstention": 1.0,
-            "answer_format_compliance": 1.0,
+            "answer_format_compliance": 0.875,
             "latency": {
-              "p50": 1.31,
-              "p95": 1.5630000000000002,
-              "mean": 1.2600000000000002
+              "p50": 2.0549999999999997,
+              "p95": 3.661999999999999,
+              "mean": 2.00875
             },
             "retry": 0.0,
             "retry_cost": {
@@ -207,25 +208,23 @@
           "abstention": {
             "num_predictions": 6,
             "accuracy": null,
-            "groundedness": 1.0,
-            "citation_precision": 1.0,
-            "abstention": 1.0,
-            "answer_format_compliance": 1.0,
+            "groundedness": 0.0,
+            "citation_precision": 0.0,
+            "abstention": 0.0,
+            "answer_format_compliance": 0.0,
             "latency": {
-              "p50": 3.275,
-              "p95": 4.66,
-              "mean": 3.581666666666667
+              "p50": 3.24,
+              "p95": 5.09,
+              "mean": 3.59
             },
-            "retry": 1.0,
+            "retry": 0.0,
             "retry_cost": {
-              "total_retries": 6,
-              "mean_retry_count": 1.0,
-              "max_retry_count": 1,
-              "cases_with_retry": 6
+              "total_retries": 0,
+              "mean_retry_count": 0.0,
+              "max_retry_count": 0,
+              "cases_with_retry": 0
             },
-            "retry_reason_counts": {
-              "topic_not_grounded": 12
-            }
+            "retry_reason_counts": {}
           }
         },
         "case_results": [
@@ -238,17 +237,18 @@
               "rfp-agency-a-ai-quality"
             ],
             "evidence_doc_ids": [
-              "rfp-agency-a-ai-quality"
+              "rfp-agency-a-ai-quality",
+              "rfp-agency-b-mlops-governance"
             ],
             "doc_match": true,
             "term_match": true,
             "citation_term_match": true,
-            "citation_doc_precision": 1.0,
+            "citation_doc_precision": 0.5,
             "accuracy": 1.0,
             "groundedness": 1.0,
-            "citation_precision": 1.0,
+            "citation_precision": 0.5,
             "abstention": null,
-            "latency_ms": 7.1,
+            "latency_ms": 8.29,
             "retry_count": 0,
             "retry_trigger_reasons": [],
             "context_resolution_status": "not_needed",
@@ -263,7 +263,8 @@
               "기관 A"
             ],
             "claim_targets": [
-              "기관 A"
+              "기관 A",
+              "기관 B"
             ],
             "claim_count": 2,
             "format_checks": {
@@ -273,7 +274,7 @@
               "claim_citations": true
             },
             "answer_format_compliance": 1.0,
-            "answer": "기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다. 기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다.\n- 기관 A: 기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. [rfp-agency-a-ai-quality::chunk-002]\n- 기관 A: 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다. [rfp-agency-a-ai-quality::chunk-004] 기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 시스템은 모델별 정확도와 오류 유형을 수집하고 위험 이벤트를 감사 로그로 남겨야 한다. 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다. 제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다."
+            "answer": "AI 요구사항\n기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 보안 통제는 데이터셋 반출 승인과 관리자 작업 기록을 중심으로 설계한다. AI 요구사항\n기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 보안 통제는 데이터셋 반출 승인과 관리자 작업 기록을 중심으로 설계한다.\n- 기관 A: AI 요구사항\n기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. [rfp-agency-a-ai-quality::chunk-001]\n- 기관 B: 보안 통제는 데이터셋 반출 승인과 관리자 작업 기록을 중심으로 설계한다. [rfp-agency-b-mlops-governance::chunk-001] AI 요구사항\n기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 사업 개요\n기관 A는 AI 품질관리 플랫폼 구축을 추진한다. 목표는 모델 성능 저하를 조기에 감지하고 품질 지표를 표준화하는 것이다. AI 요구사항\n기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 시스템은 모델별 정확도와 오류 유형을 수집하고 위험 이벤트를 감사 로그로 남겨야 한다. 일정 및 산출물\n기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. 필수 산출물은 모델 점검 리포트, 보안 통제 매뉴얼, 운영자 교육 자료이다. 제출조건\n제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다. 보안 통제는 데이터셋 반출 승인과 관리자 작업 기록을 중심으로 설계한다. 사업 개요\n기관 B는 데이터 거버넌스와 MLOps 자동화를 결합한 운영 체계를 구축한다. 목표는 모델 배포 절차를 표준화하고 데이터 변경 영향을 추적하는 것이다. AI 요구사항\n기관 B의 핵심 AI 요구사항은 데이터 거버넌스, MLOps 배포 자동화, 모델 모니터링이다. 시스템은 데이터 lineage, 모델 drift, 배포 승인 이력을 대시보드로 제공해야 한다. 보안 및 개인정보\n기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다. 보안 통제는 데이터셋 반출 승인과 관리자 작업 기록을 중심으로 설계한다. 일정 및 산출물\n기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다. 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다."
           },
           {
             "id": "single_doc_chatbot_latency",
@@ -284,17 +285,18 @@
               "rfp-agency-c-chatbot"
             ],
             "evidence_doc_ids": [
-              "rfp-agency-c-chatbot"
+              "rfp-agency-c-chatbot",
+              "rfp-common-submission"
             ],
             "doc_match": true,
             "term_match": true,
             "citation_term_match": true,
-            "citation_doc_precision": 1.0,
+            "citation_doc_precision": 0.5,
             "accuracy": 1.0,
             "groundedness": 1.0,
-            "citation_precision": 1.0,
+            "citation_precision": 0.5,
             "abstention": null,
-            "latency_ms": 1.85,
+            "latency_ms": 2.55,
             "retry_count": 0,
             "retry_trigger_reasons": [],
             "context_resolution_status": "not_needed",
@@ -309,6 +311,7 @@
               "기관 C"
             ],
             "claim_targets": [
+              "공통",
               "기관 C"
             ],
             "claim_count": 2,
@@ -319,7 +322,7 @@
               "claim_citations": true
             },
             "answer_format_compliance": 1.0,
-            "answer": "챗봇은 주요 문의에 대해 평균 2초 이내 응답해야 한다. 기관 C는 고객지원 챗봇 고도화를 추진한다. 챗봇은 주요 문의에 대해 평균 2초 이내 응답해야 한다. 기관 C는 고객지원 챗봇 고도화를 추진한다.\n- 기관 C: 챗봇은 주요 문의에 대해 평균 2초 이내 응답해야 한다. [rfp-agency-c-chatbot::chunk-002]\n- 기관 C: 기관 C는 고객지원 챗봇 고도화를 추진한다. [rfp-agency-c-chatbot::chunk-001] 챗봇은 주요 문의에 대해 평균 2초 이내 응답해야 한다. 기관 C의 챗봇 AI 요구사항은 한국어 FAQ 검색, 의도 분류, 상담 이관 추천이다. 챗봇은 주요 문의에 대해 평균 2초 이내 응답해야 한다. 기관 C는 고객지원 챗봇 고도화를 추진한다. 기관 C는 고객지원 챗봇 고도화를 추진한다. 목표는 반복 문의를 자동 처리하고 상담원 이관 기준을 명확히 하는 것이다."
+            "answer": "챗봇은 주요 문의에 대해 평균 2초 이내 응답해야 한다. 부재 정보는 추정하지 않고 질의응답 기간에 확인해야 한다. 챗봇은 주요 문의에 대해 평균 2초 이내 응답해야 한다. 부재 정보는 추정하지 않고 질의응답 기간에 확인해야 한다.\n- 기관 C: 챗봇은 주요 문의에 대해 평균 2초 이내 응답해야 한다. [rfp-agency-c-chatbot::chunk-001]\n- 공통: 부재 정보는 추정하지 않고 질의응답 기간에 확인해야 한다. [rfp-common-submission::chunk-001] 챗봇은 주요 문의에 대해 평균 2초 이내 응답해야 한다. 사업 개요\n기관 C는 고객지원 챗봇 고도화를 추진한다. 목표는 반복 문의를 자동 처리하고 상담원 이관 기준을 명확히 하는 것이다. AI 요구사항\n기관 C의 챗봇 AI 요구사항은 한국어 FAQ 검색, 의도 분류, 상담 이관 추천이다. 챗봇은 주요 문의에 대해 평균 2초 이내 응답해야 한다. 평가 및 운영\n기관 C는 답변 정확도, 상담 이관 적절성, 사용자 만족도를 운영 지표로 사용한다. 운영 로그는 월간 리포트로 제출한다. 부재 정보는 추정하지 않고 질의응답 기간에 확인해야 한다. 공통 제출조건\n모든 제안사는 일정 준수 계획, 위험 관리 방안, 산출물 품질 검수 절차를 제출해야 한다. 산출물은 표준 템플릿에 맞춰 버전과 책임자를 표시해야 한다. 평가 기준\n공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다. 부재 정보는 추정하지 않고 질의응답 기간에 확인해야 한다."
           },
           {
             "id": "single_doc_b_privacy_security",
@@ -330,17 +333,18 @@
               "rfp-agency-b-mlops-governance"
             ],
             "evidence_doc_ids": [
+              "rfp-agency-a-ai-quality",
               "rfp-agency-b-mlops-governance"
             ],
             "doc_match": true,
             "term_match": true,
             "citation_term_match": true,
-            "citation_doc_precision": 1.0,
+            "citation_doc_precision": 0.5,
             "accuracy": 1.0,
             "groundedness": 1.0,
-            "citation_precision": 1.0,
+            "citation_precision": 0.5,
             "abstention": null,
-            "latency_ms": 1.66,
+            "latency_ms": 2.32,
             "retry_count": 0,
             "retry_trigger_reasons": [],
             "context_resolution_status": "not_needed",
@@ -355,9 +359,10 @@
               "기관 B"
             ],
             "claim_targets": [
+              "기관 A",
               "기관 B"
             ],
-            "claim_count": 1,
+            "claim_count": 2,
             "format_checks": {
               "status_match": true,
               "min_claims": true,
@@ -365,7 +370,7 @@
               "claim_citations": true
             },
             "answer_format_compliance": 1.0,
-            "answer": "기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다. 기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다.\n- 기관 B: 기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다. [rfp-agency-b-mlops-governance::chunk-003] 기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다. 기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다. 보안 통제는 데이터셋 반출 승인과 관리자 작업 기록을 중심으로 설계한다."
+            "answer": "보안 및 개인정보\n기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다. 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다. 보안 및 개인정보\n기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다. 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다.\n- 기관 B: 보안 및 개인정보\n기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다. [rfp-agency-b-mlops-governance::chunk-001]\n- 기관 A: 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다. [rfp-agency-a-ai-quality::chunk-001] 보안 및 개인정보\n기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다. 사업 개요\n기관 B는 데이터 거버넌스와 MLOps 자동화를 결합한 운영 체계를 구축한다. 목표는 모델 배포 절차를 표준화하고 데이터 변경 영향을 추적하는 것이다. AI 요구사항\n기관 B의 핵심 AI 요구사항은 데이터 거버넌스, MLOps 배포 자동화, 모델 모니터링이다. 시스템은 데이터 lineage, 모델 drift, 배포 승인 이력을 대시보드로 제공해야 한다. 보안 및 개인정보\n기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다. 보안 통제는 데이터셋 반출 승인과 관리자 작업 기록을 중심으로 설계한다. 일정 및 산출물\n기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다. 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다. 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다. 사업 개요\n기관 A는 AI 품질관리 플랫폼 구축을 추진한다. 목표는 모델 성능 저하를 조기에 감지하고 품질 지표를 표준화하는 것이다. AI 요구사항\n기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 시스템은 모델별 정확도와 오류 유형을 수집하고 위험 이벤트를 감사 로그로 남겨야 한다. 일정 및 산출물\n기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. 필수 산출물은 모델 점검 리포트, 보안 통제 매뉴얼, 운영자 교육 자료이다. 제출조건\n제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다."
           },
           {
             "id": "single_doc_common_submission",
@@ -376,17 +381,18 @@
               "rfp-common-submission"
             ],
             "evidence_doc_ids": [
+              "rfp-agency-a-ai-quality",
               "rfp-common-submission"
             ],
             "doc_match": true,
             "term_match": true,
             "citation_term_match": true,
-            "citation_doc_precision": 1.0,
+            "citation_doc_precision": 0.5,
             "accuracy": 1.0,
             "groundedness": 1.0,
-            "citation_precision": 1.0,
+            "citation_precision": 0.5,
             "abstention": null,
-            "latency_ms": 2.78,
+            "latency_ms": 4.79,
             "retry_count": 0,
             "retry_trigger_reasons": [],
             "context_resolution_status": "not_needed",
@@ -401,7 +407,8 @@
               "공통"
             ],
             "claim_targets": [
-              "공통"
+              "공통",
+              "기관 A"
             ],
             "claim_count": 2,
             "format_checks": {
@@ -411,7 +418,7 @@
               "claim_citations": true
             },
             "answer_format_compliance": 1.0,
-            "answer": "모든 제안사는 일정 준수 계획, 위험 관리 방안, 산출물 품질 검수 절차를 제출해야 한다. 공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다. 모든 제안사는 일정 준수 계획, 위험 관리 방안, 산출물 품질 검수 절차를 제출해야 한다. 공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다.\n- 공통: 모든 제안사는 일정 준수 계획, 위험 관리 방안, 산출물 품질 검수 절차를 제출해야 한다. [rfp-common-submission::chunk-001]\n- 공통: 공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다. [rfp-common-submission::chunk-002] 모든 제안사는 일정 준수 계획, 위험 관리 방안, 산출물 품질 검수 절차를 제출해야 한다. 모든 제안사는 일정 준수 계획, 위험 관리 방안, 산출물 품질 검수 절차를 제출해야 한다. 산출물은 표준 템플릿에 맞춰 버전과 책임자를 표시해야 한다. 공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다. 공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다. 부재 정보는 추정하지 않고 질의응답 기간에 확인해야 한다."
+            "answer": "공통 제출조건\n모든 제안사는 일정 준수 계획, 위험 관리 방안, 산출물 품질 검수 절차를 제출해야 한다. 제출조건\n제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. 공통 제출조건\n모든 제안사는 일정 준수 계획, 위험 관리 방안, 산출물 품질 검수 절차를 제출해야 한다. 제출조건\n제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다.\n- 공통: 공통 제출조건\n모든 제안사는 일정 준수 계획, 위험 관리 방안, 산출물 품질 검수 절차를 제출해야 한다. [rfp-common-submission::chunk-001]\n- 기관 A: 제출조건\n제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. [rfp-agency-a-ai-quality::chunk-001] 공통 제출조건\n모든 제안사는 일정 준수 계획, 위험 관리 방안, 산출물 품질 검수 절차를 제출해야 한다. 공통 제출조건\n모든 제안사는 일정 준수 계획, 위험 관리 방안, 산출물 품질 검수 절차를 제출해야 한다. 산출물은 표준 템플릿에 맞춰 버전과 책임자를 표시해야 한다. 평가 기준\n공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다. 부재 정보는 추정하지 않고 질의응답 기간에 확인해야 한다. 제출조건\n제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. 사업 개요\n기관 A는 AI 품질관리 플랫폼 구축을 추진한다. 목표는 모델 성능 저하를 조기에 감지하고 품질 지표를 표준화하는 것이다. AI 요구사항\n기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 시스템은 모델별 정확도와 오류 유형을 수집하고 위험 이벤트를 감사 로그로 남겨야 한다. 일정 및 산출물\n기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. 필수 산출물은 모델 점검 리포트, 보안 통제 매뉴얼, 운영자 교육 자료이다. 제출조건\n제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다."
           },
           {
             "id": "single_doc_a_deliverables",
@@ -422,17 +429,18 @@
               "rfp-agency-a-ai-quality"
             ],
             "evidence_doc_ids": [
-              "rfp-agency-a-ai-quality"
+              "rfp-agency-a-ai-quality",
+              "rfp-agency-b-mlops-governance"
             ],
             "doc_match": true,
             "term_match": true,
             "citation_term_match": true,
-            "citation_doc_precision": 1.0,
+            "citation_doc_precision": 0.5,
             "accuracy": 1.0,
             "groundedness": 1.0,
-            "citation_precision": 1.0,
+            "citation_precision": 0.5,
             "abstention": null,
-            "latency_ms": 1.49,
+            "latency_ms": 4.06,
             "retry_count": 0,
             "retry_trigger_reasons": [],
             "context_resolution_status": "not_needed",
@@ -447,9 +455,10 @@
               "기관 A"
             ],
             "claim_targets": [
-              "기관 A"
+              "기관 A",
+              "기관 B"
             ],
-            "claim_count": 1,
+            "claim_count": 2,
             "format_checks": {
               "status_match": true,
               "min_claims": true,
@@ -457,7 +466,7 @@
               "claim_citations": true
             },
             "answer_format_compliance": 1.0,
-            "answer": "필수 산출물은 모델 점검 리포트, 보안 통제 매뉴얼, 운영자 교육 자료이다. 필수 산출물은 모델 점검 리포트, 보안 통제 매뉴얼, 운영자 교육 자료이다.\n- 기관 A: 필수 산출물은 모델 점검 리포트, 보안 통제 매뉴얼, 운영자 교육 자료이다. [rfp-agency-a-ai-quality::chunk-003] 필수 산출물은 모델 점검 리포트, 보안 통제 매뉴얼, 운영자 교육 자료이다. 기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. 필수 산출물은 모델 점검 리포트, 보안 통제 매뉴얼, 운영자 교육 자료이다."
+            "answer": "필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다. 일정 및 산출물\n기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다. 일정 및 산출물\n기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다.\n- 기관 B: 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다. [rfp-agency-b-mlops-governance::chunk-001]\n- 기관 A: 일정 및 산출물\n기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. [rfp-agency-a-ai-quality::chunk-001] 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다. 사업 개요\n기관 B는 데이터 거버넌스와 MLOps 자동화를 결합한 운영 체계를 구축한다. 목표는 모델 배포 절차를 표준화하고 데이터 변경 영향을 추적하는 것이다. AI 요구사항\n기관 B의 핵심 AI 요구사항은 데이터 거버넌스, MLOps 배포 자동화, 모델 모니터링이다. 시스템은 데이터 lineage, 모델 drift, 배포 승인 이력을 대시보드로 제공해야 한다. 보안 및 개인정보\n기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다. 보안 통제는 데이터셋 반출 승인과 관리자 작업 기록을 중심으로 설계한다. 일정 및 산출물\n기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다. 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다. 일정 및 산출물\n기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. 사업 개요\n기관 A는 AI 품질관리 플랫폼 구축을 추진한다. 목표는 모델 성능 저하를 조기에 감지하고 품질 지표를 표준화하는 것이다. AI 요구사항\n기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 시스템은 모델별 정확도와 오류 유형을 수집하고 위험 이벤트를 감사 로그로 남겨야 한다. 일정 및 산출물\n기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. 필수 산출물은 모델 점검 리포트, 보안 통제 매뉴얼, 운영자 교육 자료이다. 제출조건\n제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다."
           },
           {
             "id": "single_doc_b_schedule_deliverables",
@@ -468,17 +477,18 @@
               "rfp-agency-b-mlops-governance"
             ],
             "evidence_doc_ids": [
-              "rfp-agency-b-mlops-governance"
+              "rfp-agency-b-mlops-governance",
+              "rfp-common-submission"
             ],
             "doc_match": true,
             "term_match": true,
             "citation_term_match": true,
-            "citation_doc_precision": 1.0,
+            "citation_doc_precision": 0.5,
             "accuracy": 1.0,
             "groundedness": 1.0,
-            "citation_precision": 1.0,
+            "citation_precision": 0.5,
             "abstention": null,
-            "latency_ms": 2.2,
+            "latency_ms": 3.06,
             "retry_count": 0,
             "retry_trigger_reasons": [],
             "context_resolution_status": "not_needed",
@@ -493,9 +503,10 @@
               "기관 B"
             ],
             "claim_targets": [
+              "공통",
               "기관 B"
             ],
-            "claim_count": 1,
+            "claim_count": 2,
             "format_checks": {
               "status_match": true,
               "min_claims": true,
@@ -503,7 +514,7 @@
               "claim_citations": true
             },
             "answer_format_compliance": 1.0,
-            "answer": "기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다. 기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다.\n- 기관 B: 기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다. [rfp-agency-b-mlops-governance::chunk-004] 기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다. 기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다. 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다."
+            "answer": "일정 및 산출물\n기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다. 공통 제출조건\n모든 제안사는 일정 준수 계획, 위험 관리 방안, 산출물 품질 검수 절차를 제출해야 한다. 일정 및 산출물\n기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다. 공통 제출조건\n모든 제안사는 일정 준수 계획, 위험 관리 방안, 산출물 품질 검수 절차를 제출해야 한다.\n- 기관 B: 일정 및 산출물\n기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다. [rfp-agency-b-mlops-governance::chunk-001]\n- 공통: 공통 제출조건\n모든 제안사는 일정 준수 계획, 위험 관리 방안, 산출물 품질 검수 절차를 제출해야 한다. [rfp-common-submission::chunk-001] 일정 및 산출물\n기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다. 사업 개요\n기관 B는 데이터 거버넌스와 MLOps 자동화를 결합한 운영 체계를 구축한다. 목표는 모델 배포 절차를 표준화하고 데이터 변경 영향을 추적하는 것이다. AI 요구사항\n기관 B의 핵심 AI 요구사항은 데이터 거버넌스, MLOps 배포 자동화, 모델 모니터링이다. 시스템은 데이터 lineage, 모델 drift, 배포 승인 이력을 대시보드로 제공해야 한다. 보안 및 개인정보\n기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다. 보안 통제는 데이터셋 반출 승인과 관리자 작업 기록을 중심으로 설계한다. 일정 및 산출물\n기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다. 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다. 공통 제출조건\n모든 제안사는 일정 준수 계획, 위험 관리 방안, 산출물 품질 검수 절차를 제출해야 한다. 공통 제출조건\n모든 제안사는 일정 준수 계획, 위험 관리 방안, 산출물 품질 검수 절차를 제출해야 한다. 산출물은 표준 템플릿에 맞춰 버전과 책임자를 표시해야 한다. 평가 기준\n공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다. 부재 정보는 추정하지 않고 질의응답 기간에 확인해야 한다."
           },
           {
             "id": "multi_doc_ai_requirements",
@@ -526,7 +537,7 @@
             "groundedness": 1.0,
             "citation_precision": 1.0,
             "abstention": null,
-            "latency_ms": 2.23,
+            "latency_ms": 2.66,
             "retry_count": 0,
             "retry_trigger_reasons": [],
             "context_resolution_status": "not_needed",
@@ -553,7 +564,7 @@
               "claim_citations": true
             },
             "answer_format_compliance": 1.0,
-            "answer": "기관 A: 기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 기관 B: 기관 B의 핵심 AI 요구사항은 데이터 거버넌스, MLOps 배포 자동화, 모델 모니터링이다. 기관 A: 기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 기관 B: 기관 B의 핵심 AI 요구사항은 데이터 거버넌스, MLOps 배포 자동화, 모델 모니터링이다.\n- 기관 A: 기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. [rfp-agency-a-ai-quality::chunk-002]\n- 기관 B: 기관 B의 핵심 AI 요구사항은 데이터 거버넌스, MLOps 배포 자동화, 모델 모니터링이다. [rfp-agency-b-mlops-governance::chunk-002] 기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 시스템은 모델별 정확도와 오류 유형을 수집하고 위험 이벤트를 감사 로그로 남겨야 한다. 기관 B의 핵심 AI 요구사항은 데이터 거버넌스, MLOps 배포 자동화, 모델 모니터링이다. 기관 B의 핵심 AI 요구사항은 데이터 거버넌스, MLOps 배포 자동화, 모델 모니터링이다. 시스템은 데이터 lineage, 모델 drift, 배포 승인 이력을 대시보드로 제공해야 한다."
+            "answer": "기관 A: 사업 개요\n기관 A는 AI 품질관리 플랫폼 구축을 추진한다. 기관 B: AI 요구사항\n기관 B의 핵심 AI 요구사항은 데이터 거버넌스, MLOps 배포 자동화, 모델 모니터링이다. 기관 A: 사업 개요\n기관 A는 AI 품질관리 플랫폼 구축을 추진한다. 기관 B: AI 요구사항\n기관 B의 핵심 AI 요구사항은 데이터 거버넌스, MLOps 배포 자동화, 모델 모니터링이다.\n- 기관 A: 사업 개요\n기관 A는 AI 품질관리 플랫폼 구축을 추진한다. [rfp-agency-a-ai-quality::chunk-001]\n- 기관 B: AI 요구사항\n기관 B의 핵심 AI 요구사항은 데이터 거버넌스, MLOps 배포 자동화, 모델 모니터링이다. [rfp-agency-b-mlops-governance::chunk-001] 사업 개요\n기관 A는 AI 품질관리 플랫폼 구축을 추진한다. 사업 개요\n기관 A는 AI 품질관리 플랫폼 구축을 추진한다. 목표는 모델 성능 저하를 조기에 감지하고 품질 지표를 표준화하는 것이다. AI 요구사항\n기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 시스템은 모델별 정확도와 오류 유형을 수집하고 위험 이벤트를 감사 로그로 남겨야 한다. 일정 및 산출물\n기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. 필수 산출물은 모델 점검 리포트, 보안 통제 매뉴얼, 운영자 교육 자료이다. 제출조건\n제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다. AI 요구사항\n기관 B의 핵심 AI 요구사항은 데이터 거버넌스, MLOps 배포 자동화, 모델 모니터링이다. 사업 개요\n기관 B는 데이터 거버넌스와 MLOps 자동화를 결합한 운영 체계를 구축한다. 목표는 모델 배포 절차를 표준화하고 데이터 변경 영향을 추적하는 것이다. AI 요구사항\n기관 B의 핵심 AI 요구사항은 데이터 거버넌스, MLOps 배포 자동화, 모델 모니터링이다. 시스템은 데이터 lineage, 모델 drift, 배포 승인 이력을 대시보드로 제공해야 한다. 보안 및 개인정보\n기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다. 보안 통제는 데이터셋 반출 승인과 관리자 작업 기록을 중심으로 설계한다. 일정 및 산출물\n기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다. 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다."
           },
           {
             "id": "multi_doc_security_controls",
@@ -576,7 +587,7 @@
             "groundedness": 1.0,
             "citation_precision": 1.0,
             "abstention": null,
-            "latency_ms": 2.65,
+            "latency_ms": 5.85,
             "retry_count": 0,
             "retry_trigger_reasons": [],
             "context_resolution_status": "not_needed",
@@ -603,7 +614,7 @@
               "claim_citations": true
             },
             "answer_format_compliance": 1.0,
-            "answer": "기관 A: 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다. 기관 B: 보안 통제는 데이터셋 반출 승인과 관리자 작업 기록을 중심으로 설계한다. 기관 A: 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다. 기관 B: 보안 통제는 데이터셋 반출 승인과 관리자 작업 기록을 중심으로 설계한다.\n- 기관 A: 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다. [rfp-agency-a-ai-quality::chunk-004]\n- 기관 B: 보안 통제는 데이터셋 반출 승인과 관리자 작업 기록을 중심으로 설계한다. [rfp-agency-b-mlops-governance::chunk-003] 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다. 제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다. 보안 통제는 데이터셋 반출 승인과 관리자 작업 기록을 중심으로 설계한다. 기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다. 보안 통제는 데이터셋 반출 승인과 관리자 작업 기록을 중심으로 설계한다."
+            "answer": "기관 A: AI 요구사항\n기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 기관 B: 보안 및 개인정보\n기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다. 기관 A: AI 요구사항\n기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 기관 B: 보안 및 개인정보\n기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다.\n- 기관 A: AI 요구사항\n기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. [rfp-agency-a-ai-quality::chunk-001]\n- 기관 B: 보안 및 개인정보\n기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다. [rfp-agency-b-mlops-governance::chunk-001] AI 요구사항\n기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 사업 개요\n기관 A는 AI 품질관리 플랫폼 구축을 추진한다. 목표는 모델 성능 저하를 조기에 감지하고 품질 지표를 표준화하는 것이다. AI 요구사항\n기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 시스템은 모델별 정확도와 오류 유형을 수집하고 위험 이벤트를 감사 로그로 남겨야 한다. 일정 및 산출물\n기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. 필수 산출물은 모델 점검 리포트, 보안 통제 매뉴얼, 운영자 교육 자료이다. 제출조건\n제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다. 보안 및 개인정보\n기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다. 사업 개요\n기관 B는 데이터 거버넌스와 MLOps 자동화를 결합한 운영 체계를 구축한다. 목표는 모델 배포 절차를 표준화하고 데이터 변경 영향을 추적하는 것이다. AI 요구사항\n기관 B의 핵심 AI 요구사항은 데이터 거버넌스, MLOps 배포 자동화, 모델 모니터링이다. 시스템은 데이터 lineage, 모델 drift, 배포 승인 이력을 대시보드로 제공해야 한다. 보안 및 개인정보\n기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다. 보안 통제는 데이터셋 반출 승인과 관리자 작업 기록을 중심으로 설계한다. 일정 및 산출물\n기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다. 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다."
           },
           {
             "id": "multi_doc_schedule_compare",
@@ -626,7 +637,7 @@
             "groundedness": 1.0,
             "citation_precision": 1.0,
             "abstention": null,
-            "latency_ms": 2.53,
+            "latency_ms": 4.49,
             "retry_count": 0,
             "retry_trigger_reasons": [],
             "context_resolution_status": "not_needed",
@@ -653,7 +664,7 @@
               "claim_citations": true
             },
             "answer_format_compliance": 1.0,
-            "answer": "기관 A: 기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. 기관 B: 기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다. 기관 A: 기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. 기관 B: 기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다.\n- 기관 A: 기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. [rfp-agency-a-ai-quality::chunk-003]\n- 기관 B: 기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다. [rfp-agency-b-mlops-governance::chunk-004] 기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. 기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. 필수 산출물은 모델 점검 리포트, 보안 통제 매뉴얼, 운영자 교육 자료이다. 기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다. 기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다. 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다."
+            "answer": "기관 A: 일정 및 산출물\n기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. 기관 B: 일정 및 산출물\n기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다. 기관 A: 일정 및 산출물\n기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. 기관 B: 일정 및 산출물\n기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다.\n- 기관 A: 일정 및 산출물\n기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. [rfp-agency-a-ai-quality::chunk-001]\n- 기관 B: 일정 및 산출물\n기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다. [rfp-agency-b-mlops-governance::chunk-001] 일정 및 산출물\n기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. 사업 개요\n기관 A는 AI 품질관리 플랫폼 구축을 추진한다. 목표는 모델 성능 저하를 조기에 감지하고 품질 지표를 표준화하는 것이다. AI 요구사항\n기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 시스템은 모델별 정확도와 오류 유형을 수집하고 위험 이벤트를 감사 로그로 남겨야 한다. 일정 및 산출물\n기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. 필수 산출물은 모델 점검 리포트, 보안 통제 매뉴얼, 운영자 교육 자료이다. 제출조건\n제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다. 일정 및 산출물\n기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다. 사업 개요\n기관 B는 데이터 거버넌스와 MLOps 자동화를 결합한 운영 체계를 구축한다. 목표는 모델 배포 절차를 표준화하고 데이터 변경 영향을 추적하는 것이다. AI 요구사항\n기관 B의 핵심 AI 요구사항은 데이터 거버넌스, MLOps 배포 자동화, 모델 모니터링이다. 시스템은 데이터 lineage, 모델 drift, 배포 승인 이력을 대시보드로 제공해야 한다. 보안 및 개인정보\n기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다. 보안 통제는 데이터셋 반출 승인과 관리자 작업 기록을 중심으로 설계한다. 일정 및 산출물\n기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다. 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다."
           },
           {
             "id": "multi_doc_a_c_ai_focus",
@@ -676,7 +687,7 @@
             "groundedness": 1.0,
             "citation_precision": 1.0,
             "abstention": null,
-            "latency_ms": 3.42,
+            "latency_ms": 3.46,
             "retry_count": 0,
             "retry_trigger_reasons": [],
             "context_resolution_status": "not_needed",
@@ -703,7 +714,7 @@
               "claim_citations": true
             },
             "answer_format_compliance": 1.0,
-            "answer": "기관 A: 기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 기관 C: 기관 C의 챗봇 AI 요구사항은 한국어 FAQ 검색, 의도 분류, 상담 이관 추천이다. 기관 A: 기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 기관 C: 기관 C의 챗봇 AI 요구사항은 한국어 FAQ 검색, 의도 분류, 상담 이관 추천이다.\n- 기관 A: 기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. [rfp-agency-a-ai-quality::chunk-002]\n- 기관 C: 기관 C의 챗봇 AI 요구사항은 한국어 FAQ 검색, 의도 분류, 상담 이관 추천이다. [rfp-agency-c-chatbot::chunk-002] 기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 시스템은 모델별 정확도와 오류 유형을 수집하고 위험 이벤트를 감사 로그로 남겨야 한다. 기관 C의 챗봇 AI 요구사항은 한국어 FAQ 검색, 의도 분류, 상담 이관 추천이다. 기관 C의 챗봇 AI 요구사항은 한국어 FAQ 검색, 의도 분류, 상담 이관 추천이다. 챗봇은 주요 문의에 대해 평균 2초 이내 응답해야 한다."
+            "answer": "기관 A: 사업 개요\n기관 A는 AI 품질관리 플랫폼 구축을 추진한다. 기관 C: AI 요구사항\n기관 C의 챗봇 AI 요구사항은 한국어 FAQ 검색, 의도 분류, 상담 이관 추천이다. 기관 A: 사업 개요\n기관 A는 AI 품질관리 플랫폼 구축을 추진한다. 기관 C: AI 요구사항\n기관 C의 챗봇 AI 요구사항은 한국어 FAQ 검색, 의도 분류, 상담 이관 추천이다.\n- 기관 A: 사업 개요\n기관 A는 AI 품질관리 플랫폼 구축을 추진한다. [rfp-agency-a-ai-quality::chunk-001]\n- 기관 C: AI 요구사항\n기관 C의 챗봇 AI 요구사항은 한국어 FAQ 검색, 의도 분류, 상담 이관 추천이다. [rfp-agency-c-chatbot::chunk-001] 사업 개요\n기관 A는 AI 품질관리 플랫폼 구축을 추진한다. 사업 개요\n기관 A는 AI 품질관리 플랫폼 구축을 추진한다. 목표는 모델 성능 저하를 조기에 감지하고 품질 지표를 표준화하는 것이다. AI 요구사항\n기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 시스템은 모델별 정확도와 오류 유형을 수집하고 위험 이벤트를 감사 로그로 남겨야 한다. 일정 및 산출물\n기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. 필수 산출물은 모델 점검 리포트, 보안 통제 매뉴얼, 운영자 교육 자료이다. 제출조건\n제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다. AI 요구사항\n기관 C의 챗봇 AI 요구사항은 한국어 FAQ 검색, 의도 분류, 상담 이관 추천이다. 사업 개요\n기관 C는 고객지원 챗봇 고도화를 추진한다. 목표는 반복 문의를 자동 처리하고 상담원 이관 기준을 명확히 하는 것이다. AI 요구사항\n기관 C의 챗봇 AI 요구사항은 한국어 FAQ 검색, 의도 분류, 상담 이관 추천이다. 챗봇은 주요 문의에 대해 평균 2초 이내 응답해야 한다. 평가 및 운영\n기관 C는 답변 정확도, 상담 이관 적절성, 사용자 만족도를 운영 지표로 사용한다. 운영 로그는 월간 리포트로 제출한다."
           },
           {
             "id": "multi_doc_b_c_operations",
@@ -726,7 +737,7 @@
             "groundedness": 1.0,
             "citation_precision": 1.0,
             "abstention": null,
-            "latency_ms": 3.13,
+            "latency_ms": 3.92,
             "retry_count": 0,
             "retry_trigger_reasons": [],
             "context_resolution_status": "not_needed",
@@ -753,7 +764,7 @@
               "claim_citations": true
             },
             "answer_format_compliance": 1.0,
-            "answer": "기관 B: 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다. 기관 C: 기관 C는 답변 정확도, 상담 이관 적절성, 사용자 만족도를 운영 지표로 사용한다. 기관 B: 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다. 기관 C: 기관 C는 답변 정확도, 상담 이관 적절성, 사용자 만족도를 운영 지표로 사용한다.\n- 기관 B: 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다. [rfp-agency-b-mlops-governance::chunk-004]\n- 기관 C: 기관 C는 답변 정확도, 상담 이관 적절성, 사용자 만족도를 운영 지표로 사용한다. [rfp-agency-c-chatbot::chunk-003] 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다. 기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다. 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다. 기관 C는 답변 정확도, 상담 이관 적절성, 사용자 만족도를 운영 지표로 사용한다. 기관 C는 답변 정확도, 상담 이관 적절성, 사용자 만족도를 운영 지표로 사용한다. 운영 로그는 월간 리포트로 제출한다."
+            "answer": "기관 B: 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다. 기관 C: 평가 및 운영\n기관 C는 답변 정확도, 상담 이관 적절성, 사용자 만족도를 운영 지표로 사용한다. 기관 B: 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다. 기관 C: 평가 및 운영\n기관 C는 답변 정확도, 상담 이관 적절성, 사용자 만족도를 운영 지표로 사용한다.\n- 기관 B: 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다. [rfp-agency-b-mlops-governance::chunk-001]\n- 기관 C: 평가 및 운영\n기관 C는 답변 정확도, 상담 이관 적절성, 사용자 만족도를 운영 지표로 사용한다. [rfp-agency-c-chatbot::chunk-001] 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다. 사업 개요\n기관 B는 데이터 거버넌스와 MLOps 자동화를 결합한 운영 체계를 구축한다. 목표는 모델 배포 절차를 표준화하고 데이터 변경 영향을 추적하는 것이다. AI 요구사항\n기관 B의 핵심 AI 요구사항은 데이터 거버넌스, MLOps 배포 자동화, 모델 모니터링이다. 시스템은 데이터 lineage, 모델 drift, 배포 승인 이력을 대시보드로 제공해야 한다. 보안 및 개인정보\n기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다. 보안 통제는 데이터셋 반출 승인과 관리자 작업 기록을 중심으로 설계한다. 일정 및 산출물\n기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다. 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다. 평가 및 운영\n기관 C는 답변 정확도, 상담 이관 적절성, 사용자 만족도를 운영 지표로 사용한다. 사업 개요\n기관 C는 고객지원 챗봇 고도화를 추진한다. 목표는 반복 문의를 자동 처리하고 상담원 이관 기준을 명확히 하는 것이다. AI 요구사항\n기관 C의 챗봇 AI 요구사항은 한국어 FAQ 검색, 의도 분류, 상담 이관 추천이다. 챗봇은 주요 문의에 대해 평균 2초 이내 응답해야 한다. 평가 및 운영\n기관 C는 답변 정확도, 상담 이관 적절성, 사용자 만족도를 운영 지표로 사용한다. 운영 로그는 월간 리포트로 제출한다."
           },
           {
             "id": "multi_doc_a_common_submission",
@@ -776,7 +787,7 @@
             "groundedness": 1.0,
             "citation_precision": 1.0,
             "abstention": null,
-            "latency_ms": 4.64,
+            "latency_ms": 3.88,
             "retry_count": 0,
             "retry_trigger_reasons": [],
             "context_resolution_status": "not_needed",
@@ -803,7 +814,7 @@
               "claim_citations": true
             },
             "answer_format_compliance": 1.0,
-            "answer": "기관 A: 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다. 공통: 공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다. 기관 A: 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다. 공통: 공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다.\n- 기관 A: 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다. [rfp-agency-a-ai-quality::chunk-004]\n- 공통: 공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다. [rfp-common-submission::chunk-002] 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다. 제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다. 공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다. 공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다. 부재 정보는 추정하지 않고 질의응답 기간에 확인해야 한다."
+            "answer": "기관 A: 제출조건\n제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. 공통: 평가 기준\n공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다. 기관 A: 제출조건\n제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. 공통: 평가 기준\n공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다.\n- 기관 A: 제출조건\n제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. [rfp-agency-a-ai-quality::chunk-001]\n- 공통: 평가 기준\n공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다. [rfp-common-submission::chunk-001] 제출조건\n제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. 사업 개요\n기관 A는 AI 품질관리 플랫폼 구축을 추진한다. 목표는 모델 성능 저하를 조기에 감지하고 품질 지표를 표준화하는 것이다. AI 요구사항\n기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 시스템은 모델별 정확도와 오류 유형을 수집하고 위험 이벤트를 감사 로그로 남겨야 한다. 일정 및 산출물\n기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. 필수 산출물은 모델 점검 리포트, 보안 통제 매뉴얼, 운영자 교육 자료이다. 제출조건\n제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다. 평가 기준\n공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다. 공통 제출조건\n모든 제안사는 일정 준수 계획, 위험 관리 방안, 산출물 품질 검수 절차를 제출해야 한다. 산출물은 표준 템플릿에 맞춰 버전과 책임자를 표시해야 한다. 평가 기준\n공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다. 부재 정보는 추정하지 않고 질의응답 기간에 확인해야 한다."
           },
           {
             "id": "follow_up_schedule",
@@ -814,17 +825,18 @@
               "rfp-agency-a-ai-quality"
             ],
             "evidence_doc_ids": [
-              "rfp-agency-a-ai-quality"
+              "rfp-agency-a-ai-quality",
+              "rfp-common-submission"
             ],
             "doc_match": true,
             "term_match": true,
             "citation_term_match": true,
-            "citation_doc_precision": 1.0,
+            "citation_doc_precision": 0.5,
             "accuracy": 1.0,
             "groundedness": 1.0,
-            "citation_precision": 1.0,
+            "citation_precision": 0.5,
             "abstention": null,
-            "latency_ms": 1.26,
+            "latency_ms": 1.92,
             "retry_count": 0,
             "retry_trigger_reasons": [],
             "context_resolution_status": "resolved",
@@ -839,9 +851,10 @@
               "기관 A"
             ],
             "claim_targets": [
+              "공통",
               "기관 A"
             ],
-            "claim_count": 1,
+            "claim_count": 2,
             "format_checks": {
               "status_match": true,
               "min_claims": true,
@@ -849,7 +862,7 @@
               "claim_citations": true
             },
             "answer_format_compliance": 1.0,
-            "answer": "기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. 기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다.\n- 기관 A: 기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. [rfp-agency-a-ai-quality::chunk-003] 기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. 기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. 필수 산출물은 모델 점검 리포트, 보안 통제 매뉴얼, 운영자 교육 자료이다."
+            "answer": "일정 및 산출물\n기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. 공통 제출조건\n모든 제안사는 일정 준수 계획, 위험 관리 방안, 산출물 품질 검수 절차를 제출해야 한다. 일정 및 산출물\n기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. 공통 제출조건\n모든 제안사는 일정 준수 계획, 위험 관리 방안, 산출물 품질 검수 절차를 제출해야 한다.\n- 기관 A: 일정 및 산출물\n기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. [rfp-agency-a-ai-quality::chunk-001]\n- 공통: 공통 제출조건\n모든 제안사는 일정 준수 계획, 위험 관리 방안, 산출물 품질 검수 절차를 제출해야 한다. [rfp-common-submission::chunk-001] 일정 및 산출물\n기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. 사업 개요\n기관 A는 AI 품질관리 플랫폼 구축을 추진한다. 목표는 모델 성능 저하를 조기에 감지하고 품질 지표를 표준화하는 것이다. AI 요구사항\n기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 시스템은 모델별 정확도와 오류 유형을 수집하고 위험 이벤트를 감사 로그로 남겨야 한다. 일정 및 산출물\n기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. 필수 산출물은 모델 점검 리포트, 보안 통제 매뉴얼, 운영자 교육 자료이다. 제출조건\n제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다. 공통 제출조건\n모든 제안사는 일정 준수 계획, 위험 관리 방안, 산출물 품질 검수 절차를 제출해야 한다. 공통 제출조건\n모든 제안사는 일정 준수 계획, 위험 관리 방안, 산출물 품질 검수 절차를 제출해야 한다. 산출물은 표준 템플릿에 맞춰 버전과 책임자를 표시해야 한다. 평가 기준\n공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다. 부재 정보는 추정하지 않고 질의응답 기간에 확인해야 한다."
           },
           {
             "id": "follow_up_b_deliverables",
@@ -860,17 +873,18 @@
               "rfp-agency-b-mlops-governance"
             ],
             "evidence_doc_ids": [
-              "rfp-agency-b-mlops-governance"
+              "rfp-agency-b-mlops-governance",
+              "rfp-common-submission"
             ],
             "doc_match": true,
             "term_match": true,
             "citation_term_match": true,
-            "citation_doc_precision": 1.0,
+            "citation_doc_precision": 0.5,
             "accuracy": 1.0,
             "groundedness": 1.0,
-            "citation_precision": 1.0,
+            "citation_precision": 0.5,
             "abstention": null,
-            "latency_ms": 1.19,
+            "latency_ms": 2.02,
             "retry_count": 0,
             "retry_trigger_reasons": [],
             "context_resolution_status": "resolved",
@@ -885,9 +899,10 @@
               "기관 B"
             ],
             "claim_targets": [
+              "공통",
               "기관 B"
             ],
-            "claim_count": 1,
+            "claim_count": 2,
             "format_checks": {
               "status_match": true,
               "min_claims": true,
@@ -895,7 +910,7 @@
               "claim_citations": true
             },
             "answer_format_compliance": 1.0,
-            "answer": "필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다. 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다.\n- 기관 B: 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다. [rfp-agency-b-mlops-governance::chunk-004] 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다. 기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다. 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다."
+            "answer": "필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다. 산출물은 표준 템플릿에 맞춰 버전과 책임자를 표시해야 한다. 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다. 산출물은 표준 템플릿에 맞춰 버전과 책임자를 표시해야 한다.\n- 기관 B: 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다. [rfp-agency-b-mlops-governance::chunk-001]\n- 공통: 산출물은 표준 템플릿에 맞춰 버전과 책임자를 표시해야 한다. [rfp-common-submission::chunk-001] 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다. 사업 개요\n기관 B는 데이터 거버넌스와 MLOps 자동화를 결합한 운영 체계를 구축한다. 목표는 모델 배포 절차를 표준화하고 데이터 변경 영향을 추적하는 것이다. AI 요구사항\n기관 B의 핵심 AI 요구사항은 데이터 거버넌스, MLOps 배포 자동화, 모델 모니터링이다. 시스템은 데이터 lineage, 모델 drift, 배포 승인 이력을 대시보드로 제공해야 한다. 보안 및 개인정보\n기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다. 보안 통제는 데이터셋 반출 승인과 관리자 작업 기록을 중심으로 설계한다. 일정 및 산출물\n기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다. 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다. 산출물은 표준 템플릿에 맞춰 버전과 책임자를 표시해야 한다. 공통 제출조건\n모든 제안사는 일정 준수 계획, 위험 관리 방안, 산출물 품질 검수 절차를 제출해야 한다. 산출물은 표준 템플릿에 맞춰 버전과 책임자를 표시해야 한다. 평가 기준\n공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다. 부재 정보는 추정하지 않고 질의응답 기간에 확인해야 한다."
           },
           {
             "id": "follow_up_c_response_target",
@@ -906,17 +921,18 @@
               "rfp-agency-c-chatbot"
             ],
             "evidence_doc_ids": [
-              "rfp-agency-c-chatbot"
+              "rfp-agency-c-chatbot",
+              "rfp-common-submission"
             ],
             "doc_match": true,
             "term_match": true,
             "citation_term_match": true,
-            "citation_doc_precision": 1.0,
+            "citation_doc_precision": 0.5,
             "accuracy": 1.0,
             "groundedness": 1.0,
-            "citation_precision": 1.0,
+            "citation_precision": 0.5,
             "abstention": null,
-            "latency_ms": 1.13,
+            "latency_ms": 4.25,
             "retry_count": 0,
             "retry_trigger_reasons": [],
             "context_resolution_status": "resolved",
@@ -931,9 +947,10 @@
               "기관 C"
             ],
             "claim_targets": [
+              "공통",
               "기관 C"
             ],
-            "claim_count": 1,
+            "claim_count": 2,
             "format_checks": {
               "status_match": true,
               "min_claims": true,
@@ -941,7 +958,7 @@
               "claim_citations": true
             },
             "answer_format_compliance": 1.0,
-            "answer": "챗봇은 주요 문의에 대해 평균 2초 이내 응답해야 한다. 챗봇은 주요 문의에 대해 평균 2초 이내 응답해야 한다.\n- 기관 C: 챗봇은 주요 문의에 대해 평균 2초 이내 응답해야 한다. [rfp-agency-c-chatbot::chunk-002] 챗봇은 주요 문의에 대해 평균 2초 이내 응답해야 한다. 기관 C의 챗봇 AI 요구사항은 한국어 FAQ 검색, 의도 분류, 상담 이관 추천이다. 챗봇은 주요 문의에 대해 평균 2초 이내 응답해야 한다."
+            "answer": "부재 정보는 추정하지 않고 질의응답 기간에 확인해야 한다. 챗봇은 주요 문의에 대해 평균 2초 이내 응답해야 한다. 부재 정보는 추정하지 않고 질의응답 기간에 확인해야 한다. 챗봇은 주요 문의에 대해 평균 2초 이내 응답해야 한다.\n- 공통: 부재 정보는 추정하지 않고 질의응답 기간에 확인해야 한다. [rfp-common-submission::chunk-001]\n- 기관 C: 챗봇은 주요 문의에 대해 평균 2초 이내 응답해야 한다. [rfp-agency-c-chatbot::chunk-001] 부재 정보는 추정하지 않고 질의응답 기간에 확인해야 한다. 공통 제출조건\n모든 제안사는 일정 준수 계획, 위험 관리 방안, 산출물 품질 검수 절차를 제출해야 한다. 산출물은 표준 템플릿에 맞춰 버전과 책임자를 표시해야 한다. 평가 기준\n공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다. 부재 정보는 추정하지 않고 질의응답 기간에 확인해야 한다. 챗봇은 주요 문의에 대해 평균 2초 이내 응답해야 한다. 사업 개요\n기관 C는 고객지원 챗봇 고도화를 추진한다. 목표는 반복 문의를 자동 처리하고 상담원 이관 기준을 명확히 하는 것이다. AI 요구사항\n기관 C의 챗봇 AI 요구사항은 한국어 FAQ 검색, 의도 분류, 상담 이관 추천이다. 챗봇은 주요 문의에 대해 평균 2초 이내 응답해야 한다. 평가 및 운영\n기관 C는 답변 정확도, 상담 이관 적절성, 사용자 만족도를 운영 지표로 사용한다. 운영 로그는 월간 리포트로 제출한다."
           },
           {
             "id": "follow_up_common_evaluation",
@@ -952,17 +969,18 @@
               "rfp-common-submission"
             ],
             "evidence_doc_ids": [
+              "rfp-agency-c-chatbot",
               "rfp-common-submission"
             ],
             "doc_match": true,
             "term_match": true,
             "citation_term_match": true,
-            "citation_doc_precision": 1.0,
+            "citation_doc_precision": 0.5,
             "accuracy": 1.0,
             "groundedness": 1.0,
-            "citation_precision": 1.0,
+            "citation_precision": 0.5,
             "abstention": null,
-            "latency_ms": 1.55,
+            "latency_ms": 2.57,
             "retry_count": 0,
             "retry_trigger_reasons": [],
             "context_resolution_status": "resolved",
@@ -977,9 +995,10 @@
               "공통"
             ],
             "claim_targets": [
-              "공통"
+              "공통",
+              "기관 C"
             ],
-            "claim_count": 1,
+            "claim_count": 2,
             "format_checks": {
               "status_match": true,
               "min_claims": true,
@@ -987,7 +1006,7 @@
               "claim_citations": true
             },
             "answer_format_compliance": 1.0,
-            "answer": "공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다. 공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다.\n- 공통: 공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다. [rfp-common-submission::chunk-002] 공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다. 공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다. 부재 정보는 추정하지 않고 질의응답 기간에 확인해야 한다."
+            "answer": "평가 기준\n공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다. 목표는 반복 문의를 자동 처리하고 상담원 이관 기준을 명확히 하는 것이다. 평가 기준\n공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다. 목표는 반복 문의를 자동 처리하고 상담원 이관 기준을 명확히 하는 것이다.\n- 공통: 평가 기준\n공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다. [rfp-common-submission::chunk-001]\n- 기관 C: 목표는 반복 문의를 자동 처리하고 상담원 이관 기준을 명확히 하는 것이다. [rfp-agency-c-chatbot::chunk-001] 평가 기준\n공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다. 공통 제출조건\n모든 제안사는 일정 준수 계획, 위험 관리 방안, 산출물 품질 검수 절차를 제출해야 한다. 산출물은 표준 템플릿에 맞춰 버전과 책임자를 표시해야 한다. 평가 기준\n공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다. 부재 정보는 추정하지 않고 질의응답 기간에 확인해야 한다. 목표는 반복 문의를 자동 처리하고 상담원 이관 기준을 명확히 하는 것이다. 사업 개요\n기관 C는 고객지원 챗봇 고도화를 추진한다. 목표는 반복 문의를 자동 처리하고 상담원 이관 기준을 명확히 하는 것이다. AI 요구사항\n기관 C의 챗봇 AI 요구사항은 한국어 FAQ 검색, 의도 분류, 상담 이관 추천이다. 챗봇은 주요 문의에 대해 평균 2초 이내 응답해야 한다. 평가 및 운영\n기관 C는 답변 정확도, 상담 이관 적절성, 사용자 만족도를 운영 지표로 사용한다. 운영 로그는 월간 리포트로 제출한다."
           },
           {
             "id": "follow_up_a_team",
@@ -1008,7 +1027,7 @@
             "groundedness": 1.0,
             "citation_precision": 1.0,
             "abstention": null,
-            "latency_ms": 1.36,
+            "latency_ms": 2.27,
             "retry_count": 0,
             "retry_trigger_reasons": [],
             "context_resolution_status": "resolved",
@@ -1033,7 +1052,7 @@
               "claim_citations": true
             },
             "answer_format_compliance": 1.0,
-            "answer": "제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. 제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다.\n- 기관 A: 제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. [rfp-agency-a-ai-quality::chunk-004] 제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. 제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다."
+            "answer": "제출조건\n제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. 제출조건\n제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다.\n- 기관 A: 제출조건\n제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. [rfp-agency-a-ai-quality::chunk-001] 제출조건\n제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. 사업 개요\n기관 A는 AI 품질관리 플랫폼 구축을 추진한다. 목표는 모델 성능 저하를 조기에 감지하고 품질 지표를 표준화하는 것이다. AI 요구사항\n기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 시스템은 모델별 정확도와 오류 유형을 수집하고 위험 이벤트를 감사 로그로 남겨야 한다. 일정 및 산출물\n기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. 필수 산출물은 모델 점검 리포트, 보안 통제 매뉴얼, 운영자 교육 자료이다. 제출조건\n제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다."
           },
           {
             "id": "follow_up_c_operation_metrics",
@@ -1044,17 +1063,18 @@
               "rfp-agency-c-chatbot"
             ],
             "evidence_doc_ids": [
+              "rfp-agency-b-mlops-governance",
               "rfp-agency-c-chatbot"
             ],
             "doc_match": true,
             "term_match": true,
             "citation_term_match": true,
-            "citation_doc_precision": 1.0,
+            "citation_doc_precision": 0.5,
             "accuracy": 1.0,
             "groundedness": 1.0,
-            "citation_precision": 1.0,
+            "citation_precision": 0.5,
             "abstention": null,
-            "latency_ms": 1.55,
+            "latency_ms": 2.09,
             "retry_count": 0,
             "retry_trigger_reasons": [],
             "context_resolution_status": "resolved",
@@ -1069,51 +1089,8 @@
               "기관 C"
             ],
             "claim_targets": [
+              "기관 B",
               "기관 C"
-            ],
-            "claim_count": 1,
-            "format_checks": {
-              "status_match": true,
-              "min_claims": true,
-              "claim_targets": true,
-              "claim_citations": true
-            },
-            "answer_format_compliance": 1.0,
-            "answer": "기관 C는 답변 정확도, 상담 이관 적절성, 사용자 만족도를 운영 지표로 사용한다. 기관 C는 답변 정확도, 상담 이관 적절성, 사용자 만족도를 운영 지표로 사용한다.\n- 기관 C: 기관 C는 답변 정확도, 상담 이관 적절성, 사용자 만족도를 운영 지표로 사용한다. [rfp-agency-c-chatbot::chunk-003] 기관 C는 답변 정확도, 상담 이관 적절성, 사용자 만족도를 운영 지표로 사용한다. 기관 C는 답변 정확도, 상담 이관 적절성, 사용자 만족도를 운영 지표로 사용한다. 운영 로그는 월간 리포트로 제출한다."
-          },
-          {
-            "id": "follow_up_state_a_security",
-            "query_type": "follow_up",
-            "query": "그 기관이 요구한 보안 조건도 보여줘",
-            "answerable": true,
-            "expected_doc_ids": [
-              "rfp-agency-a-ai-quality"
-            ],
-            "evidence_doc_ids": [
-              "rfp-agency-a-ai-quality"
-            ],
-            "doc_match": true,
-            "term_match": true,
-            "citation_term_match": true,
-            "citation_doc_precision": 1.0,
-            "accuracy": 1.0,
-            "groundedness": 1.0,
-            "citation_precision": 1.0,
-            "abstention": null,
-            "latency_ms": 1.57,
-            "retry_count": 0,
-            "retry_trigger_reasons": [],
-            "context_resolution_status": "resolved",
-            "context_resolution_source": "conversation_state",
-            "context_resolution_confidence": 1.0,
-            "context_resolution_reason": "",
-            "resolved_query": "기관 A 그 기관이 요구한 보안 조건도 보여줘",
-            "abstained": false,
-            "expected_answer_status": "supported",
-            "answer_status": "supported",
-            "expected_claim_targets": [],
-            "claim_targets": [
-              "기관 A"
             ],
             "claim_count": 2,
             "format_checks": {
@@ -1123,7 +1100,47 @@
               "claim_citations": true
             },
             "answer_format_compliance": 1.0,
-            "answer": "기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다. 기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다.\n- 기관 A: 기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. [rfp-agency-a-ai-quality::chunk-002]\n- 기관 A: 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다. [rfp-agency-a-ai-quality::chunk-004] 기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 시스템은 모델별 정확도와 오류 유형을 수집하고 위험 이벤트를 감사 로그로 남겨야 한다. 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다. 제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다."
+            "answer": "평가 및 운영\n기관 C는 답변 정확도, 상담 이관 적절성, 사용자 만족도를 운영 지표로 사용한다. 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다. 평가 및 운영\n기관 C는 답변 정확도, 상담 이관 적절성, 사용자 만족도를 운영 지표로 사용한다. 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다.\n- 기관 C: 평가 및 운영\n기관 C는 답변 정확도, 상담 이관 적절성, 사용자 만족도를 운영 지표로 사용한다. [rfp-agency-c-chatbot::chunk-001]\n- 기관 B: 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다. [rfp-agency-b-mlops-governance::chunk-001] 평가 및 운영\n기관 C는 답변 정확도, 상담 이관 적절성, 사용자 만족도를 운영 지표로 사용한다. 사업 개요\n기관 C는 고객지원 챗봇 고도화를 추진한다. 목표는 반복 문의를 자동 처리하고 상담원 이관 기준을 명확히 하는 것이다. AI 요구사항\n기관 C의 챗봇 AI 요구사항은 한국어 FAQ 검색, 의도 분류, 상담 이관 추천이다. 챗봇은 주요 문의에 대해 평균 2초 이내 응답해야 한다. 평가 및 운영\n기관 C는 답변 정확도, 상담 이관 적절성, 사용자 만족도를 운영 지표로 사용한다. 운영 로그는 월간 리포트로 제출한다. 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다. 사업 개요\n기관 B는 데이터 거버넌스와 MLOps 자동화를 결합한 운영 체계를 구축한다. 목표는 모델 배포 절차를 표준화하고 데이터 변경 영향을 추적하는 것이다. AI 요구사항\n기관 B의 핵심 AI 요구사항은 데이터 거버넌스, MLOps 배포 자동화, 모델 모니터링이다. 시스템은 데이터 lineage, 모델 drift, 배포 승인 이력을 대시보드로 제공해야 한다. 보안 및 개인정보\n기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다. 보안 통제는 데이터셋 반출 승인과 관리자 작업 기록을 중심으로 설계한다. 일정 및 산출물\n기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다. 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다."
+          },
+          {
+            "id": "follow_up_state_a_security",
+            "query_type": "follow_up",
+            "query": "그 기관이 요구한 보안 조건도 보여줘",
+            "answerable": true,
+            "expected_doc_ids": [
+              "rfp-agency-a-ai-quality"
+            ],
+            "evidence_doc_ids": [],
+            "doc_match": false,
+            "term_match": false,
+            "citation_term_match": false,
+            "citation_doc_precision": 0.0,
+            "accuracy": 0.0,
+            "groundedness": 0.0,
+            "citation_precision": 0.0,
+            "abstention": null,
+            "latency_ms": 0.48,
+            "retry_count": 0,
+            "retry_trigger_reasons": [],
+            "context_resolution_status": "needs_clarification",
+            "context_resolution_source": "conversation_state",
+            "context_resolution_confidence": 1.0,
+            "context_resolution_reason": "ambiguous_active_state",
+            "resolved_query": "그 기관이 요구한 보안 조건도 보여줘",
+            "abstained": true,
+            "expected_answer_status": "supported",
+            "answer_status": "insufficient",
+            "expected_claim_targets": [],
+            "claim_targets": [],
+            "claim_count": 0,
+            "format_checks": {
+              "status_match": false,
+              "min_claims": false,
+              "claim_targets": true,
+              "claim_citations": false
+            },
+            "answer_format_compliance": 0.0,
+            "answer": "'그 기관이 요구한 보안 조건도 보여줘'에서 가리키는 대상이 모호합니다. 현재 문맥 후보는 기관 A, 기관 C입니다. 기관명 또는 사업명을 하나로 지정해 주세요. '그 기관이 요구한 보안 조건도 보여줘'에서 가리키는 대상이 모호합니다. 현재 문맥 후보는 기관 A, 기관 C입니다. 기관명 또는 사업명을 하나로 지정해 주세요.\n- 근거 부족: 사유: ambiguous_active_state; 확인 필요 대상: 기관 A, 기관 C '그 기관이 요구한 보안 조건도 보여줘'의 생략된 참조를 충분히 확정하지 못했습니다."
           },
           {
             "id": "follow_up_state_ambiguous_clarification",
@@ -1169,40 +1186,43 @@
             "query": "기관 A의 블록체인 납품 실적은?",
             "answerable": false,
             "expected_doc_ids": [],
-            "evidence_doc_ids": [],
-            "doc_match": true,
-            "term_match": true,
+            "evidence_doc_ids": [
+              "rfp-agency-a-ai-quality",
+              "rfp-agency-b-mlops-governance"
+            ],
+            "doc_match": false,
+            "term_match": false,
             "citation_term_match": false,
             "citation_doc_precision": 0.0,
             "accuracy": null,
-            "groundedness": 1.0,
-            "citation_precision": 1.0,
-            "abstention": 1.0,
-            "latency_ms": 4.75,
-            "retry_count": 1,
-            "retry_trigger_reasons": [
-              "topic_not_grounded",
-              "topic_not_grounded"
-            ],
+            "groundedness": 0.0,
+            "citation_precision": 0.0,
+            "abstention": 0.0,
+            "latency_ms": 3.25,
+            "retry_count": 0,
+            "retry_trigger_reasons": [],
             "context_resolution_status": "not_needed",
             "context_resolution_source": "query",
             "context_resolution_confidence": 1.0,
             "context_resolution_reason": "",
             "resolved_query": "기관 A의 블록체인 납품 실적은?",
-            "abstained": true,
+            "abstained": false,
             "expected_answer_status": "insufficient",
-            "answer_status": "insufficient",
+            "answer_status": "supported",
             "expected_claim_targets": [],
-            "claim_targets": [],
-            "claim_count": 0,
+            "claim_targets": [
+              "기관 A",
+              "기관 B"
+            ],
+            "claim_count": 2,
             "format_checks": {
-              "status_match": true,
+              "status_match": false,
               "min_claims": true,
               "claim_targets": true,
               "claim_citations": true
             },
-            "answer_format_compliance": 1.0,
-            "answer": "제공된 공개 샘플 RFP 근거에서는 '기관 A의 블록체인 납품 실적은?'에 답할 수 있는 내용을 찾지 못했습니다. 제공된 공개 샘플 RFP 근거에서는 '기관 A의 블록체인 납품 실적은?'에 답할 수 있는 내용을 찾지 못했습니다.\n- 근거 부족: 사유: topic_not_grounded; 확인 필요 대상: 기관 A '기관 A의 블록체인 납품 실적은?'에 대한 충분한 근거를 찾지 못했습니다."
+            "answer_format_compliance": 0.0,
+            "answer": "사업 개요\n기관 A는 AI 품질관리 플랫폼 구축을 추진한다. 목표는 모델 배포 절차를 표준화하고 데이터 변경 영향을 추적하는 것이다. 사업 개요\n기관 A는 AI 품질관리 플랫폼 구축을 추진한다. 목표는 모델 배포 절차를 표준화하고 데이터 변경 영향을 추적하는 것이다.\n- 기관 A: 사업 개요\n기관 A는 AI 품질관리 플랫폼 구축을 추진한다. [rfp-agency-a-ai-quality::chunk-001]\n- 기관 B: 목표는 모델 배포 절차를 표준화하고 데이터 변경 영향을 추적하는 것이다. [rfp-agency-b-mlops-governance::chunk-001] 사업 개요\n기관 A는 AI 품질관리 플랫폼 구축을 추진한다. 사업 개요\n기관 A는 AI 품질관리 플랫폼 구축을 추진한다. 목표는 모델 성능 저하를 조기에 감지하고 품질 지표를 표준화하는 것이다. AI 요구사항\n기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 시스템은 모델별 정확도와 오류 유형을 수집하고 위험 이벤트를 감사 로그로 남겨야 한다. 일정 및 산출물\n기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. 필수 산출물은 모델 점검 리포트, 보안 통제 매뉴얼, 운영자 교육 자료이다. 제출조건\n제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다. 목표는 모델 배포 절차를 표준화하고 데이터 변경 영향을 추적하는 것이다. 사업 개요\n기관 B는 데이터 거버넌스와 MLOps 자동화를 결합한 운영 체계를 구축한다. 목표는 모델 배포 절차를 표준화하고 데이터 변경 영향을 추적하는 것이다. AI 요구사항\n기관 B의 핵심 AI 요구사항은 데이터 거버넌스, MLOps 배포 자동화, 모델 모니터링이다. 시스템은 데이터 lineage, 모델 drift, 배포 승인 이력을 대시보드로 제공해야 한다. 보안 및 개인정보\n기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다. 보안 통제는 데이터셋 반출 승인과 관리자 작업 기록을 중심으로 설계한다. 일정 및 산출물\n기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다. 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다."
           },
           {
             "id": "abstention_missing_drone",
@@ -1210,40 +1230,43 @@
             "query": "기관 B의 드론 영상분석 요구사항은?",
             "answerable": false,
             "expected_doc_ids": [],
-            "evidence_doc_ids": [],
-            "doc_match": true,
-            "term_match": true,
+            "evidence_doc_ids": [
+              "rfp-agency-a-ai-quality",
+              "rfp-agency-b-mlops-governance"
+            ],
+            "doc_match": false,
+            "term_match": false,
             "citation_term_match": false,
             "citation_doc_precision": 0.0,
             "accuracy": null,
-            "groundedness": 1.0,
-            "citation_precision": 1.0,
-            "abstention": 1.0,
-            "latency_ms": 2.88,
-            "retry_count": 1,
-            "retry_trigger_reasons": [
-              "topic_not_grounded",
-              "topic_not_grounded"
-            ],
+            "groundedness": 0.0,
+            "citation_precision": 0.0,
+            "abstention": 0.0,
+            "latency_ms": 5.56,
+            "retry_count": 0,
+            "retry_trigger_reasons": [],
             "context_resolution_status": "not_needed",
             "context_resolution_source": "query",
             "context_resolution_confidence": 1.0,
             "context_resolution_reason": "",
             "resolved_query": "기관 B의 드론 영상분석 요구사항은?",
-            "abstained": true,
+            "abstained": false,
             "expected_answer_status": "insufficient",
-            "answer_status": "insufficient",
+            "answer_status": "supported",
             "expected_claim_targets": [],
-            "claim_targets": [],
-            "claim_count": 0,
+            "claim_targets": [
+              "기관 A",
+              "기관 B"
+            ],
+            "claim_count": 2,
             "format_checks": {
-              "status_match": true,
+              "status_match": false,
               "min_claims": true,
               "claim_targets": true,
               "claim_citations": true
             },
-            "answer_format_compliance": 1.0,
-            "answer": "제공된 공개 샘플 RFP 근거에서는 '기관 B의 드론 영상분석 요구사항은?'에 답할 수 있는 내용을 찾지 못했습니다. 제공된 공개 샘플 RFP 근거에서는 '기관 B의 드론 영상분석 요구사항은?'에 답할 수 있는 내용을 찾지 못했습니다.\n- 근거 부족: 사유: topic_not_grounded; 확인 필요 대상: 기관 B '기관 B의 드론 영상분석 요구사항은?'에 대한 충분한 근거를 찾지 못했습니다."
+            "answer_format_compliance": 0.0,
+            "answer": "보안 및 개인정보\n기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다. 사업 개요\n기관 A는 AI 품질관리 플랫폼 구축을 추진한다. 보안 및 개인정보\n기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다. 사업 개요\n기관 A는 AI 품질관리 플랫폼 구축을 추진한다.\n- 기관 B: 보안 및 개인정보\n기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다. [rfp-agency-b-mlops-governance::chunk-001]\n- 기관 A: 사업 개요\n기관 A는 AI 품질관리 플랫폼 구축을 추진한다. [rfp-agency-a-ai-quality::chunk-001] 보안 및 개인정보\n기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다. 사업 개요\n기관 B는 데이터 거버넌스와 MLOps 자동화를 결합한 운영 체계를 구축한다. 목표는 모델 배포 절차를 표준화하고 데이터 변경 영향을 추적하는 것이다. AI 요구사항\n기관 B의 핵심 AI 요구사항은 데이터 거버넌스, MLOps 배포 자동화, 모델 모니터링이다. 시스템은 데이터 lineage, 모델 drift, 배포 승인 이력을 대시보드로 제공해야 한다. 보안 및 개인정보\n기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다. 보안 통제는 데이터셋 반출 승인과 관리자 작업 기록을 중심으로 설계한다. 일정 및 산출물\n기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다. 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다. 사업 개요\n기관 A는 AI 품질관리 플랫폼 구축을 추진한다. 사업 개요\n기관 A는 AI 품질관리 플랫폼 구축을 추진한다. 목표는 모델 성능 저하를 조기에 감지하고 품질 지표를 표준화하는 것이다. AI 요구사항\n기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 시스템은 모델별 정확도와 오류 유형을 수집하고 위험 이벤트를 감사 로그로 남겨야 한다. 일정 및 산출물\n기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. 필수 산출물은 모델 점검 리포트, 보안 통제 매뉴얼, 운영자 교육 자료이다. 제출조건\n제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다."
           },
           {
             "id": "abstention_missing_payment",
@@ -1251,40 +1274,43 @@
             "query": "기관 C의 결제 기능 연동 요구사항은?",
             "answerable": false,
             "expected_doc_ids": [],
-            "evidence_doc_ids": [],
-            "doc_match": true,
-            "term_match": true,
+            "evidence_doc_ids": [
+              "rfp-agency-c-chatbot",
+              "rfp-common-submission"
+            ],
+            "doc_match": false,
+            "term_match": false,
             "citation_term_match": false,
             "citation_doc_precision": 0.0,
             "accuracy": null,
-            "groundedness": 1.0,
-            "citation_precision": 1.0,
-            "abstention": 1.0,
-            "latency_ms": 3.44,
-            "retry_count": 1,
-            "retry_trigger_reasons": [
-              "topic_not_grounded",
-              "topic_not_grounded"
-            ],
+            "groundedness": 0.0,
+            "citation_precision": 0.0,
+            "abstention": 0.0,
+            "latency_ms": 2.81,
+            "retry_count": 0,
+            "retry_trigger_reasons": [],
             "context_resolution_status": "not_needed",
             "context_resolution_source": "query",
             "context_resolution_confidence": 1.0,
             "context_resolution_reason": "",
             "resolved_query": "기관 C의 결제 기능 연동 요구사항은?",
-            "abstained": true,
+            "abstained": false,
             "expected_answer_status": "insufficient",
-            "answer_status": "insufficient",
+            "answer_status": "supported",
             "expected_claim_targets": [],
-            "claim_targets": [],
-            "claim_count": 0,
+            "claim_targets": [
+              "공통",
+              "기관 C"
+            ],
+            "claim_count": 2,
             "format_checks": {
-              "status_match": true,
+              "status_match": false,
               "min_claims": true,
               "claim_targets": true,
               "claim_citations": true
             },
-            "answer_format_compliance": 1.0,
-            "answer": "제공된 공개 샘플 RFP 근거에서는 '기관 C의 결제 기능 연동 요구사항은?'에 답할 수 있는 내용을 찾지 못했습니다. 제공된 공개 샘플 RFP 근거에서는 '기관 C의 결제 기능 연동 요구사항은?'에 답할 수 있는 내용을 찾지 못했습니다.\n- 근거 부족: 사유: topic_not_grounded; 확인 필요 대상: 기관 C '기관 C의 결제 기능 연동 요구사항은?'에 대한 충분한 근거를 찾지 못했습니다."
+            "answer_format_compliance": 0.0,
+            "answer": "사업 개요\n기관 C는 고객지원 챗봇 고도화를 추진한다. 부재 정보는 추정하지 않고 질의응답 기간에 확인해야 한다. 사업 개요\n기관 C는 고객지원 챗봇 고도화를 추진한다. 부재 정보는 추정하지 않고 질의응답 기간에 확인해야 한다.\n- 기관 C: 사업 개요\n기관 C는 고객지원 챗봇 고도화를 추진한다. [rfp-agency-c-chatbot::chunk-001]\n- 공통: 부재 정보는 추정하지 않고 질의응답 기간에 확인해야 한다. [rfp-common-submission::chunk-001] 사업 개요\n기관 C는 고객지원 챗봇 고도화를 추진한다. 사업 개요\n기관 C는 고객지원 챗봇 고도화를 추진한다. 목표는 반복 문의를 자동 처리하고 상담원 이관 기준을 명확히 하는 것이다. AI 요구사항\n기관 C의 챗봇 AI 요구사항은 한국어 FAQ 검색, 의도 분류, 상담 이관 추천이다. 챗봇은 주요 문의에 대해 평균 2초 이내 응답해야 한다. 평가 및 운영\n기관 C는 답변 정확도, 상담 이관 적절성, 사용자 만족도를 운영 지표로 사용한다. 운영 로그는 월간 리포트로 제출한다. 부재 정보는 추정하지 않고 질의응답 기간에 확인해야 한다. 공통 제출조건\n모든 제안사는 일정 준수 계획, 위험 관리 방안, 산출물 품질 검수 절차를 제출해야 한다. 산출물은 표준 템플릿에 맞춰 버전과 책임자를 표시해야 한다. 평가 기준\n공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다. 부재 정보는 추정하지 않고 질의응답 기간에 확인해야 한다."
           },
           {
             "id": "abstention_missing_ocr",
@@ -1292,40 +1318,43 @@
             "query": "공통 제출조건에 OCR 자동인식 기능 요구가 있나?",
             "answerable": false,
             "expected_doc_ids": [],
-            "evidence_doc_ids": [],
-            "doc_match": true,
-            "term_match": true,
+            "evidence_doc_ids": [
+              "rfp-agency-a-ai-quality",
+              "rfp-common-submission"
+            ],
+            "doc_match": false,
+            "term_match": false,
             "citation_term_match": false,
             "citation_doc_precision": 0.0,
             "accuracy": null,
-            "groundedness": 1.0,
-            "citation_precision": 1.0,
-            "abstention": 1.0,
-            "latency_ms": 3.11,
-            "retry_count": 1,
-            "retry_trigger_reasons": [
-              "topic_not_grounded",
-              "topic_not_grounded"
-            ],
+            "groundedness": 0.0,
+            "citation_precision": 0.0,
+            "abstention": 0.0,
+            "latency_ms": 3.68,
+            "retry_count": 0,
+            "retry_trigger_reasons": [],
             "context_resolution_status": "not_needed",
             "context_resolution_source": "query",
             "context_resolution_confidence": 1.0,
             "context_resolution_reason": "",
             "resolved_query": "공통 제출조건에 OCR 자동인식 기능 요구가 있나?",
-            "abstained": true,
+            "abstained": false,
             "expected_answer_status": "insufficient",
-            "answer_status": "insufficient",
+            "answer_status": "supported",
             "expected_claim_targets": [],
-            "claim_targets": [],
-            "claim_count": 0,
+            "claim_targets": [
+              "공통",
+              "기관 A"
+            ],
+            "claim_count": 2,
             "format_checks": {
-              "status_match": true,
+              "status_match": false,
               "min_claims": true,
               "claim_targets": true,
               "claim_citations": true
             },
-            "answer_format_compliance": 1.0,
-            "answer": "제공된 공개 샘플 RFP 근거에서는 '공통 제출조건에 OCR 자동인식 기능 요구가 있나?'에 답할 수 있는 내용을 찾지 못했습니다. 제공된 공개 샘플 RFP 근거에서는 '공통 제출조건에 OCR 자동인식 기능 요구가 있나?'에 답할 수 있는 내용을 찾지 못했습니다.\n- 근거 부족: 사유: topic_not_grounded; 확인 필요 대상: 공통 '공통 제출조건에 OCR 자동인식 기능 요구가 있나?'에 대한 충분한 근거를 찾지 못했습니다."
+            "answer_format_compliance": 0.0,
+            "answer": "공통 제출조건\n모든 제안사는 일정 준수 계획, 위험 관리 방안, 산출물 품질 검수 절차를 제출해야 한다. 제출조건\n제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. 공통 제출조건\n모든 제안사는 일정 준수 계획, 위험 관리 방안, 산출물 품질 검수 절차를 제출해야 한다. 제출조건\n제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다.\n- 공통: 공통 제출조건\n모든 제안사는 일정 준수 계획, 위험 관리 방안, 산출물 품질 검수 절차를 제출해야 한다. [rfp-common-submission::chunk-001]\n- 기관 A: 제출조건\n제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. [rfp-agency-a-ai-quality::chunk-001] 공통 제출조건\n모든 제안사는 일정 준수 계획, 위험 관리 방안, 산출물 품질 검수 절차를 제출해야 한다. 공통 제출조건\n모든 제안사는 일정 준수 계획, 위험 관리 방안, 산출물 품질 검수 절차를 제출해야 한다. 산출물은 표준 템플릿에 맞춰 버전과 책임자를 표시해야 한다. 평가 기준\n공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다. 부재 정보는 추정하지 않고 질의응답 기간에 확인해야 한다. 제출조건\n제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. 사업 개요\n기관 A는 AI 품질관리 플랫폼 구축을 추진한다. 목표는 모델 성능 저하를 조기에 감지하고 품질 지표를 표준화하는 것이다. AI 요구사항\n기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 시스템은 모델별 정확도와 오류 유형을 수집하고 위험 이벤트를 감사 로그로 남겨야 한다. 일정 및 산출물\n기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. 필수 산출물은 모델 점검 리포트, 보안 통제 매뉴얼, 운영자 교육 자료이다. 제출조건\n제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다."
           },
           {
             "id": "abstention_missing_genai",
@@ -1333,40 +1362,41 @@
             "query": "기관 A의 생성형 AI 상담 기능 요구사항은?",
             "answerable": false,
             "expected_doc_ids": [],
-            "evidence_doc_ids": [],
-            "doc_match": true,
-            "term_match": true,
+            "evidence_doc_ids": [
+              "rfp-agency-c-chatbot"
+            ],
+            "doc_match": false,
+            "term_match": false,
             "citation_term_match": false,
             "citation_doc_precision": 0.0,
             "accuracy": null,
-            "groundedness": 1.0,
-            "citation_precision": 1.0,
-            "abstention": 1.0,
-            "latency_ms": 4.39,
-            "retry_count": 1,
-            "retry_trigger_reasons": [
-              "topic_not_grounded",
-              "topic_not_grounded"
-            ],
+            "groundedness": 0.0,
+            "citation_precision": 0.0,
+            "abstention": 0.0,
+            "latency_ms": 3.23,
+            "retry_count": 0,
+            "retry_trigger_reasons": [],
             "context_resolution_status": "not_needed",
             "context_resolution_source": "query",
             "context_resolution_confidence": 1.0,
             "context_resolution_reason": "",
             "resolved_query": "기관 A의 생성형 AI 상담 기능 요구사항은?",
-            "abstained": true,
+            "abstained": false,
             "expected_answer_status": "insufficient",
-            "answer_status": "insufficient",
+            "answer_status": "supported",
             "expected_claim_targets": [],
-            "claim_targets": [],
-            "claim_count": 0,
+            "claim_targets": [
+              "기관 C"
+            ],
+            "claim_count": 1,
             "format_checks": {
-              "status_match": true,
+              "status_match": false,
               "min_claims": true,
               "claim_targets": true,
               "claim_citations": true
             },
-            "answer_format_compliance": 1.0,
-            "answer": "제공된 공개 샘플 RFP 근거에서는 '기관 A의 생성형 AI 상담 기능 요구사항은?'에 답할 수 있는 내용을 찾지 못했습니다. 제공된 공개 샘플 RFP 근거에서는 '기관 A의 생성형 AI 상담 기능 요구사항은?'에 답할 수 있는 내용을 찾지 못했습니다.\n- 근거 부족: 사유: topic_not_grounded; 확인 필요 대상: 기관 A '기관 A의 생성형 AI 상담 기능 요구사항은?'에 대한 충분한 근거를 찾지 못했습니다."
+            "answer_format_compliance": 0.0,
+            "answer": "AI 요구사항\n기관 C의 챗봇 AI 요구사항은 한국어 FAQ 검색, 의도 분류, 상담 이관 추천이다. AI 요구사항\n기관 C의 챗봇 AI 요구사항은 한국어 FAQ 검색, 의도 분류, 상담 이관 추천이다.\n- 기관 C: AI 요구사항\n기관 C의 챗봇 AI 요구사항은 한국어 FAQ 검색, 의도 분류, 상담 이관 추천이다. [rfp-agency-c-chatbot::chunk-001] AI 요구사항\n기관 C의 챗봇 AI 요구사항은 한국어 FAQ 검색, 의도 분류, 상담 이관 추천이다. 사업 개요\n기관 C는 고객지원 챗봇 고도화를 추진한다. 목표는 반복 문의를 자동 처리하고 상담원 이관 기준을 명확히 하는 것이다. AI 요구사항\n기관 C의 챗봇 AI 요구사항은 한국어 FAQ 검색, 의도 분류, 상담 이관 추천이다. 챗봇은 주요 문의에 대해 평균 2초 이내 응답해야 한다. 평가 및 운영\n기관 C는 답변 정확도, 상담 이관 적절성, 사용자 만족도를 운영 지표로 사용한다. 운영 로그는 월간 리포트로 제출한다."
           },
           {
             "id": "abstention_missing_quantum",
@@ -1374,49 +1404,55 @@
             "query": "기관 B의 양자암호 연동 요구사항은?",
             "answerable": false,
             "expected_doc_ids": [],
-            "evidence_doc_ids": [],
-            "doc_match": true,
-            "term_match": true,
+            "evidence_doc_ids": [
+              "rfp-agency-b-mlops-governance",
+              "rfp-agency-c-chatbot"
+            ],
+            "doc_match": false,
+            "term_match": false,
             "citation_term_match": false,
             "citation_doc_precision": 0.0,
             "accuracy": null,
-            "groundedness": 1.0,
-            "citation_precision": 1.0,
-            "abstention": 1.0,
-            "latency_ms": 2.92,
-            "retry_count": 1,
-            "retry_trigger_reasons": [
-              "topic_not_grounded",
-              "topic_not_grounded"
-            ],
+            "groundedness": 0.0,
+            "citation_precision": 0.0,
+            "abstention": 0.0,
+            "latency_ms": 3.01,
+            "retry_count": 0,
+            "retry_trigger_reasons": [],
             "context_resolution_status": "not_needed",
             "context_resolution_source": "query",
             "context_resolution_confidence": 1.0,
             "context_resolution_reason": "",
             "resolved_query": "기관 B의 양자암호 연동 요구사항은?",
-            "abstained": true,
+            "abstained": false,
             "expected_answer_status": "insufficient",
-            "answer_status": "insufficient",
+            "answer_status": "supported",
             "expected_claim_targets": [],
-            "claim_targets": [],
-            "claim_count": 0,
+            "claim_targets": [
+              "기관 B",
+              "기관 C"
+            ],
+            "claim_count": 2,
             "format_checks": {
-              "status_match": true,
+              "status_match": false,
               "min_claims": true,
               "claim_targets": true,
               "claim_citations": true
             },
-            "answer_format_compliance": 1.0,
-            "answer": "제공된 공개 샘플 RFP 근거에서는 '기관 B의 양자암호 연동 요구사항은?'에 답할 수 있는 내용을 찾지 못했습니다. 제공된 공개 샘플 RFP 근거에서는 '기관 B의 양자암호 연동 요구사항은?'에 답할 수 있는 내용을 찾지 못했습니다.\n- 근거 부족: 사유: topic_not_grounded; 확인 필요 대상: 기관 B '기관 B의 양자암호 연동 요구사항은?'에 대한 충분한 근거를 찾지 못했습니다."
+            "answer_format_compliance": 0.0,
+            "answer": "보안 및 개인정보\n기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다. 운영 로그는 월간 리포트로 제출한다. 보안 및 개인정보\n기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다. 운영 로그는 월간 리포트로 제출한다.\n- 기관 B: 보안 및 개인정보\n기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다. [rfp-agency-b-mlops-governance::chunk-001]\n- 기관 C: 운영 로그는 월간 리포트로 제출한다. [rfp-agency-c-chatbot::chunk-001] 보안 및 개인정보\n기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다. 사업 개요\n기관 B는 데이터 거버넌스와 MLOps 자동화를 결합한 운영 체계를 구축한다. 목표는 모델 배포 절차를 표준화하고 데이터 변경 영향을 추적하는 것이다. AI 요구사항\n기관 B의 핵심 AI 요구사항은 데이터 거버넌스, MLOps 배포 자동화, 모델 모니터링이다. 시스템은 데이터 lineage, 모델 drift, 배포 승인 이력을 대시보드로 제공해야 한다. 보안 및 개인정보\n기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다. 보안 통제는 데이터셋 반출 승인과 관리자 작업 기록을 중심으로 설계한다. 일정 및 산출물\n기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다. 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다. 운영 로그는 월간 리포트로 제출한다. 사업 개요\n기관 C는 고객지원 챗봇 고도화를 추진한다. 목표는 반복 문의를 자동 처리하고 상담원 이관 기준을 명확히 하는 것이다. AI 요구사항\n기관 C의 챗봇 AI 요구사항은 한국어 FAQ 검색, 의도 분류, 상담 이관 추천이다. 챗봇은 주요 문의에 대해 평균 2초 이내 응답해야 한다. 평가 및 운영\n기관 C는 답변 정확도, 상담 이관 적절성, 사용자 만족도를 운영 지표로 사용한다. 운영 로그는 월간 리포트로 제출한다."
           }
         ]
       },
       {
-        "name": "hierarchical",
+        "name": "full",
+        "pipeline": "agentic_full",
+        "top_k": null,
         "metadata_first": true,
         "rerank": true,
         "verifier_retry": true,
-        "retrieval_mode": "hierarchical",
+        "retrieval_mode": "flat",
+        "prompt_profile": "structured_grounded_claims",
         "num_predictions": 26,
         "accuracy": 1.0,
         "groundedness": 1.0,
@@ -1424,9 +1460,9 @@
         "abstention": 1.0,
         "answer_format_compliance": 1.0,
         "latency": {
-          "p50": 2.03,
-          "p95": 5.37,
-          "mean": 2.5176923076923075
+          "p50": 2.495,
+          "p95": 5.8275,
+          "mean": 2.8730769230769226
         },
         "retry": 0.23076923076923078,
         "retry_cost": {
@@ -1447,9 +1483,9 @@
             "abstention": null,
             "answer_format_compliance": 1.0,
             "latency": {
-              "p50": 1.94,
-              "p95": 2.6024999999999996,
-              "mean": 1.9966666666666668
+              "p50": 2.565,
+              "p95": 6.322500000000001,
+              "mean": 3.6999999999999997
             },
             "retry": 0.0,
             "retry_cost": {
@@ -1468,9 +1504,9 @@
             "abstention": null,
             "answer_format_compliance": 1.0,
             "latency": {
-              "p50": 2.92,
-              "p95": 5.37,
-              "mean": 3.315
+              "p50": 3.45,
+              "p95": 4.775,
+              "mean": 3.471666666666667
             },
             "retry": 0.0,
             "retry_cost": {
@@ -1489,9 +1525,9 @@
             "abstention": 1.0,
             "answer_format_compliance": 1.0,
             "latency": {
-              "p50": 1.42,
-              "p95": 1.801,
-              "mean": 1.3162500000000001
+              "p50": 2.225,
+              "p95": 2.578,
+              "mean": 1.90125
             },
             "retry": 0.0,
             "retry_cost": {
@@ -1510,9 +1546,128 @@
             "abstention": 1.0,
             "answer_format_compliance": 1.0,
             "latency": {
-              "p50": 2.665,
-              "p95": 8.59,
-              "mean": 3.8433333333333337
+              "p50": 2.54,
+              "p95": 4.01,
+              "mean": 2.7433333333333336
+            },
+            "retry": 1.0,
+            "retry_cost": {
+              "total_retries": 6,
+              "mean_retry_count": 1.0,
+              "max_retry_count": 1,
+              "cases_with_retry": 6
+            },
+            "retry_reason_counts": {
+              "topic_not_grounded": 12
+            }
+          }
+        }
+      },
+      {
+        "name": "hierarchical",
+        "pipeline": "agentic_full",
+        "top_k": null,
+        "metadata_first": true,
+        "rerank": true,
+        "verifier_retry": true,
+        "retrieval_mode": "hierarchical",
+        "prompt_profile": "structured_grounded_claims",
+        "num_predictions": 26,
+        "accuracy": 1.0,
+        "groundedness": 1.0,
+        "citation_precision": 1.0,
+        "abstention": 1.0,
+        "answer_format_compliance": 1.0,
+        "latency": {
+          "p50": 2.385,
+          "p95": 6.38,
+          "mean": 3.0688461538461533
+        },
+        "retry": 0.23076923076923078,
+        "retry_cost": {
+          "total_retries": 6,
+          "mean_retry_count": 0.23076923076923078,
+          "max_retry_count": 1,
+          "cases_with_retry": 6
+        },
+        "retry_reason_counts": {
+          "topic_not_grounded": 12
+        },
+        "by_query_type": {
+          "single_doc": {
+            "num_predictions": 6,
+            "accuracy": 1.0,
+            "groundedness": 1.0,
+            "citation_precision": 1.0,
+            "abstention": null,
+            "answer_format_compliance": 1.0,
+            "latency": {
+              "p50": 2.235,
+              "p95": 4.504999999999999,
+              "mean": 2.86
+            },
+            "retry": 0.0,
+            "retry_cost": {
+              "total_retries": 0,
+              "mean_retry_count": 0.0,
+              "max_retry_count": 0,
+              "cases_with_retry": 0
+            },
+            "retry_reason_counts": {}
+          },
+          "multi_doc": {
+            "num_predictions": 6,
+            "accuracy": 1.0,
+            "groundedness": 1.0,
+            "citation_precision": 1.0,
+            "abstention": null,
+            "answer_format_compliance": 1.0,
+            "latency": {
+              "p50": 3.455,
+              "p95": 7.805,
+              "mean": 4.486666666666667
+            },
+            "retry": 0.0,
+            "retry_cost": {
+              "total_retries": 0,
+              "mean_retry_count": 0.0,
+              "max_retry_count": 0,
+              "cases_with_retry": 0
+            },
+            "retry_reason_counts": {}
+          },
+          "follow_up": {
+            "num_predictions": 8,
+            "accuracy": 1.0,
+            "groundedness": 1.0,
+            "citation_precision": 1.0,
+            "abstention": 1.0,
+            "answer_format_compliance": 1.0,
+            "latency": {
+              "p50": 1.84,
+              "p95": 2.335,
+              "mean": 1.64875
+            },
+            "retry": 0.0,
+            "retry_cost": {
+              "total_retries": 0,
+              "mean_retry_count": 0.0,
+              "max_retry_count": 0,
+              "cases_with_retry": 0
+            },
+            "retry_reason_counts": {}
+          },
+          "abstention": {
+            "num_predictions": 6,
+            "accuracy": null,
+            "groundedness": 1.0,
+            "citation_precision": 1.0,
+            "abstention": 1.0,
+            "answer_format_compliance": 1.0,
+            "latency": {
+              "p50": 2.8049999999999997,
+              "p95": 6.2975,
+              "mean": 3.753333333333334
             },
             "retry": 1.0,
             "retry_cost": {
@@ -1529,20 +1684,23 @@
       },
       {
         "name": "no_metadata_first",
+        "pipeline": "agentic_full",
+        "top_k": null,
         "metadata_first": false,
         "rerank": true,
         "verifier_retry": true,
         "retrieval_mode": "flat",
+        "prompt_profile": "structured_grounded_claims",
         "num_predictions": 26,
-        "accuracy": 1.0,
-        "groundedness": 1.0,
-        "citation_precision": 0.8461538461538461,
+        "accuracy": 0.9473684210526315,
+        "groundedness": 0.9615384615384616,
+        "citation_precision": 0.75,
         "abstention": 1.0,
-        "answer_format_compliance": 1.0,
+        "answer_format_compliance": 0.9615384615384616,
         "latency": {
-          "p50": 2.34,
-          "p95": 4.1499999999999995,
-          "mean": 2.396153846153847
+          "p50": 2.625,
+          "p95": 4.69,
+          "mean": 2.797692307692308
         },
         "retry": 0.0,
         "retry_cost": {
@@ -1559,13 +1717,13 @@
             "num_predictions": 6,
             "accuracy": 1.0,
             "groundedness": 1.0,
-            "citation_precision": 0.75,
+            "citation_precision": 0.5,
             "abstention": null,
             "answer_format_compliance": 1.0,
             "latency": {
-              "p50": 3.2,
-              "p95": 4.615,
-              "mean": 3.486666666666667
+              "p50": 3.12,
+              "p95": 4.69,
+              "mean": 3.3783333333333334
             },
             "retry": 0.0,
             "retry_cost": {
@@ -1584,9 +1742,9 @@
             "abstention": null,
             "answer_format_compliance": 1.0,
             "latency": {
-              "p50": 2.455,
-              "p95": 3.2575000000000003,
-              "mean": 2.603333333333333
+              "p50": 3.55,
+              "p95": 4.6825,
+              "mean": 3.551666666666667
             },
             "retry": 0.0,
             "retry_cost": {
@@ -1599,15 +1757,15 @@
           },
           "follow_up": {
             "num_predictions": 8,
-            "accuracy": 1.0,
-            "groundedness": 1.0,
-            "citation_precision": 0.6875,
+            "accuracy": 0.8571428571428571,
+            "groundedness": 0.875,
+            "citation_precision": 0.5625,
             "abstention": 1.0,
-            "answer_format_compliance": 1.0,
+            "answer_format_compliance": 0.875,
             "latency": {
-              "p50": 1.79,
-              "p95": 2.0355,
-              "mean": 1.64
+              "p50": 2.11,
+              "p95": 3.2104999999999992,
+              "mean": 1.9962500000000003
             },
             "retry": 0.0,
             "retry_cost": {
@@ -1626,9 +1784,9 @@
             "abstention": 1.0,
             "answer_format_compliance": 1.0,
             "latency": {
-              "p50": 2.105,
-              "p95": 2.5275,
-              "mean": 2.1066666666666665
+              "p50": 2.325,
+              "p95": 3.4899999999999998,
+              "mean": 2.5316666666666667
             },
             "retry": 0.0,
             "retry_cost": {
@@ -1645,10 +1803,13 @@
       },
       {
         "name": "no_rerank",
+        "pipeline": "agentic_full",
+        "top_k": null,
         "metadata_first": true,
         "rerank": false,
         "verifier_retry": true,
         "retrieval_mode": "flat",
+        "prompt_profile": "structured_grounded_claims",
         "num_predictions": 26,
         "accuracy": 1.0,
         "groundedness": 1.0,
@@ -1656,9 +1817,9 @@
         "abstention": 1.0,
         "answer_format_compliance": 1.0,
         "latency": {
-          "p50": 1.87,
-          "p95": 3.6825,
-          "mean": 1.9619230769230767
+          "p50": 3.11,
+          "p95": 11.287500000000001,
+          "mean": 4.667692307692308
         },
         "retry": 0.23076923076923078,
         "retry_cost": {
@@ -1679,9 +1840,9 @@
             "abstention": null,
             "answer_format_compliance": 1.0,
             "latency": {
-              "p50": 1.935,
-              "p95": 2.535,
-              "mean": 1.9633333333333336
+              "p50": 2.33,
+              "p95": 5.755,
+              "mean": 3.1016666666666666
             },
             "retry": 0.0,
             "retry_cost": {
@@ -1700,9 +1861,9 @@
             "abstention": null,
             "answer_format_compliance": 1.0,
             "latency": {
-              "p50": 1.9449999999999998,
-              "p95": 4.0249999999999995,
-              "mean": 2.5733333333333337
+              "p50": 5.945,
+              "p95": 8.2425,
+              "mean": 5.82
             },
             "retry": 0.0,
             "retry_cost": {
@@ -1721,9 +1882,9 @@
             "abstention": 1.0,
             "answer_format_compliance": 1.0,
             "latency": {
-              "p50": 1.255,
-              "p95": 1.7869999999999997,
-              "mean": 1.2275
+              "p50": 2.625,
+              "p95": 13.398499999999993,
+              "mean": 4.601249999999999
             },
             "retry": 0.0,
             "retry_cost": {
@@ -1742,9 +1903,9 @@
             "abstention": 1.0,
             "answer_format_compliance": 1.0,
             "latency": {
-              "p50": 2.2199999999999998,
-              "p95": 2.87,
-              "mean": 2.328333333333333
+              "p50": 2.8099999999999996,
+              "p95": 11.287500000000001,
+              "mean": 5.17
             },
             "retry": 1.0,
             "retry_cost": {
@@ -1761,10 +1922,13 @@
       },
       {
         "name": "no_verifier_retry",
+        "pipeline": "agentic_full",
+        "top_k": null,
         "metadata_first": true,
         "rerank": true,
         "verifier_retry": false,
         "retrieval_mode": "flat",
+        "prompt_profile": "structured_grounded_claims",
         "num_predictions": 26,
         "accuracy": 1.0,
         "groundedness": 0.7692307692307693,
@@ -1772,9 +1936,9 @@
         "abstention": 0.14285714285714285,
         "answer_format_compliance": 0.7692307692307693,
         "latency": {
-          "p50": 1.55,
-          "p95": 2.4075,
-          "mean": 1.6057692307692308
+          "p50": 2.535,
+          "p95": 4.505,
+          "mean": 2.6715384615384616
         },
         "retry": 0.0,
         "retry_cost": {
@@ -1793,9 +1957,9 @@
             "abstention": null,
             "answer_format_compliance": 1.0,
             "latency": {
-              "p50": 1.4649999999999999,
-              "p95": 2.0549999999999997,
-              "mean": 1.545
+              "p50": 2.5549999999999997,
+              "p95": 3.2375000000000003,
+              "mean": 2.5533333333333332
             },
             "retry": 0.0,
             "retry_cost": {
@@ -1814,9 +1978,9 @@
             "abstention": null,
             "answer_format_compliance": 1.0,
             "latency": {
-              "p50": 2.125,
-              "p95": 2.545,
-              "mean": 2.146666666666667
+              "p50": 3.365,
+              "p95": 4.4975000000000005,
+              "mean": 3.41
             },
             "retry": 0.0,
             "retry_cost": {
@@ -1835,9 +1999,9 @@
             "abstention": 1.0,
             "answer_format_compliance": 1.0,
             "latency": {
-              "p50": 1.05,
-              "p95": 1.376,
-              "mean": 1.0274999999999999
+              "p50": 2.115,
+              "p95": 3.4514999999999993,
+              "mean": 2.08
             },
             "retry": 0.0,
             "retry_cost": {
@@ -1856,9 +2020,9 @@
             "abstention": 0.0,
             "answer_format_compliance": 0.0,
             "latency": {
-              "p50": 1.925,
-              "p95": 2.2625,
-              "mean": 1.8966666666666665
+              "p50": 2.4699999999999998,
+              "p95": 4.297499999999999,
+              "mean": 2.84
             },
             "retry": 0.0,
             "retry_cost": {
@@ -1883,17 +2047,18 @@
         "rfp-agency-a-ai-quality"
       ],
       "evidence_doc_ids": [
-        "rfp-agency-a-ai-quality"
+        "rfp-agency-a-ai-quality",
+        "rfp-agency-b-mlops-governance"
       ],
       "doc_match": true,
       "term_match": true,
       "citation_term_match": true,
-      "citation_doc_precision": 1.0,
+      "citation_doc_precision": 0.5,
       "accuracy": 1.0,
       "groundedness": 1.0,
-      "citation_precision": 1.0,
+      "citation_precision": 0.5,
       "abstention": null,
-      "latency_ms": 7.1,
+      "latency_ms": 8.29,
       "retry_count": 0,
       "retry_trigger_reasons": [],
       "context_resolution_status": "not_needed",
@@ -1908,7 +2073,8 @@
         "기관 A"
       ],
       "claim_targets": [
-        "기관 A"
+        "기관 A",
+        "기관 B"
       ],
       "claim_count": 2,
       "format_checks": {
@@ -1918,7 +2084,7 @@
         "claim_citations": true
       },
       "answer_format_compliance": 1.0,
-      "answer": "기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다. 기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다.\n- 기관 A: 기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. [rfp-agency-a-ai-quality::chunk-002]\n- 기관 A: 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다. [rfp-agency-a-ai-quality::chunk-004] 기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 시스템은 모델별 정확도와 오류 유형을 수집하고 위험 이벤트를 감사 로그로 남겨야 한다. 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다. 제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다."
+      "answer": "AI 요구사항\n기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 보안 통제는 데이터셋 반출 승인과 관리자 작업 기록을 중심으로 설계한다. AI 요구사항\n기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 보안 통제는 데이터셋 반출 승인과 관리자 작업 기록을 중심으로 설계한다.\n- 기관 A: AI 요구사항\n기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. [rfp-agency-a-ai-quality::chunk-001]\n- 기관 B: 보안 통제는 데이터셋 반출 승인과 관리자 작업 기록을 중심으로 설계한다. [rfp-agency-b-mlops-governance::chunk-001] AI 요구사항\n기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 사업 개요\n기관 A는 AI 품질관리 플랫폼 구축을 추진한다. 목표는 모델 성능 저하를 조기에 감지하고 품질 지표를 표준화하는 것이다. AI 요구사항\n기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 시스템은 모델별 정확도와 오류 유형을 수집하고 위험 이벤트를 감사 로그로 남겨야 한다. 일정 및 산출물\n기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. 필수 산출물은 모델 점검 리포트, 보안 통제 매뉴얼, 운영자 교육 자료이다. 제출조건\n제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다. 보안 통제는 데이터셋 반출 승인과 관리자 작업 기록을 중심으로 설계한다. 사업 개요\n기관 B는 데이터 거버넌스와 MLOps 자동화를 결합한 운영 체계를 구축한다. 목표는 모델 배포 절차를 표준화하고 데이터 변경 영향을 추적하는 것이다. AI 요구사항\n기관 B의 핵심 AI 요구사항은 데이터 거버넌스, MLOps 배포 자동화, 모델 모니터링이다. 시스템은 데이터 lineage, 모델 drift, 배포 승인 이력을 대시보드로 제공해야 한다. 보안 및 개인정보\n기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다. 보안 통제는 데이터셋 반출 승인과 관리자 작업 기록을 중심으로 설계한다. 일정 및 산출물\n기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다. 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다."
     },
     {
       "id": "single_doc_chatbot_latency",
@@ -1929,17 +2095,18 @@
         "rfp-agency-c-chatbot"
       ],
       "evidence_doc_ids": [
-        "rfp-agency-c-chatbot"
+        "rfp-agency-c-chatbot",
+        "rfp-common-submission"
       ],
       "doc_match": true,
       "term_match": true,
       "citation_term_match": true,
-      "citation_doc_precision": 1.0,
+      "citation_doc_precision": 0.5,
       "accuracy": 1.0,
       "groundedness": 1.0,
-      "citation_precision": 1.0,
+      "citation_precision": 0.5,
       "abstention": null,
-      "latency_ms": 1.85,
+      "latency_ms": 2.55,
       "retry_count": 0,
       "retry_trigger_reasons": [],
       "context_resolution_status": "not_needed",
@@ -1954,6 +2121,7 @@
         "기관 C"
       ],
       "claim_targets": [
+        "공통",
         "기관 C"
       ],
       "claim_count": 2,
@@ -1964,7 +2132,7 @@
         "claim_citations": true
       },
       "answer_format_compliance": 1.0,
-      "answer": "챗봇은 주요 문의에 대해 평균 2초 이내 응답해야 한다. 기관 C는 고객지원 챗봇 고도화를 추진한다. 챗봇은 주요 문의에 대해 평균 2초 이내 응답해야 한다. 기관 C는 고객지원 챗봇 고도화를 추진한다.\n- 기관 C: 챗봇은 주요 문의에 대해 평균 2초 이내 응답해야 한다. [rfp-agency-c-chatbot::chunk-002]\n- 기관 C: 기관 C는 고객지원 챗봇 고도화를 추진한다. [rfp-agency-c-chatbot::chunk-001] 챗봇은 주요 문의에 대해 평균 2초 이내 응답해야 한다. 기관 C의 챗봇 AI 요구사항은 한국어 FAQ 검색, 의도 분류, 상담 이관 추천이다. 챗봇은 주요 문의에 대해 평균 2초 이내 응답해야 한다. 기관 C는 고객지원 챗봇 고도화를 추진한다. 기관 C는 고객지원 챗봇 고도화를 추진한다. 목표는 반복 문의를 자동 처리하고 상담원 이관 기준을 명확히 하는 것이다."
+      "answer": "챗봇은 주요 문의에 대해 평균 2초 이내 응답해야 한다. 부재 정보는 추정하지 않고 질의응답 기간에 확인해야 한다. 챗봇은 주요 문의에 대해 평균 2초 이내 응답해야 한다. 부재 정보는 추정하지 않고 질의응답 기간에 확인해야 한다.\n- 기관 C: 챗봇은 주요 문의에 대해 평균 2초 이내 응답해야 한다. [rfp-agency-c-chatbot::chunk-001]\n- 공통: 부재 정보는 추정하지 않고 질의응답 기간에 확인해야 한다. [rfp-common-submission::chunk-001] 챗봇은 주요 문의에 대해 평균 2초 이내 응답해야 한다. 사업 개요\n기관 C는 고객지원 챗봇 고도화를 추진한다. 목표는 반복 문의를 자동 처리하고 상담원 이관 기준을 명확히 하는 것이다. AI 요구사항\n기관 C의 챗봇 AI 요구사항은 한국어 FAQ 검색, 의도 분류, 상담 이관 추천이다. 챗봇은 주요 문의에 대해 평균 2초 이내 응답해야 한다. 평가 및 운영\n기관 C는 답변 정확도, 상담 이관 적절성, 사용자 만족도를 운영 지표로 사용한다. 운영 로그는 월간 리포트로 제출한다. 부재 정보는 추정하지 않고 질의응답 기간에 확인해야 한다. 공통 제출조건\n모든 제안사는 일정 준수 계획, 위험 관리 방안, 산출물 품질 검수 절차를 제출해야 한다. 산출물은 표준 템플릿에 맞춰 버전과 책임자를 표시해야 한다. 평가 기준\n공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다. 부재 정보는 추정하지 않고 질의응답 기간에 확인해야 한다."
     },
     {
       "id": "single_doc_b_privacy_security",
@@ -1975,17 +2143,18 @@
         "rfp-agency-b-mlops-governance"
       ],
       "evidence_doc_ids": [
+        "rfp-agency-a-ai-quality",
         "rfp-agency-b-mlops-governance"
       ],
       "doc_match": true,
       "term_match": true,
       "citation_term_match": true,
-      "citation_doc_precision": 1.0,
+      "citation_doc_precision": 0.5,
       "accuracy": 1.0,
       "groundedness": 1.0,
-      "citation_precision": 1.0,
+      "citation_precision": 0.5,
       "abstention": null,
-      "latency_ms": 1.66,
+      "latency_ms": 2.32,
       "retry_count": 0,
       "retry_trigger_reasons": [],
       "context_resolution_status": "not_needed",
@@ -2000,9 +2169,10 @@
         "기관 B"
       ],
       "claim_targets": [
+        "기관 A",
         "기관 B"
       ],
-      "claim_count": 1,
+      "claim_count": 2,
       "format_checks": {
         "status_match": true,
         "min_claims": true,
@@ -2010,7 +2180,7 @@
         "claim_citations": true
       },
       "answer_format_compliance": 1.0,
-      "answer": "기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다. 기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다.\n- 기관 B: 기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다. [rfp-agency-b-mlops-governance::chunk-003] 기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다. 기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다. 보안 통제는 데이터셋 반출 승인과 관리자 작업 기록을 중심으로 설계한다."
+      "answer": "보안 및 개인정보\n기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다. 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다. 보안 및 개인정보\n기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다. 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다.\n- 기관 B: 보안 및 개인정보\n기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다. [rfp-agency-b-mlops-governance::chunk-001]\n- 기관 A: 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다. [rfp-agency-a-ai-quality::chunk-001] 보안 및 개인정보\n기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다. 사업 개요\n기관 B는 데이터 거버넌스와 MLOps 자동화를 결합한 운영 체계를 구축한다. 목표는 모델 배포 절차를 표준화하고 데이터 변경 영향을 추적하는 것이다. AI 요구사항\n기관 B의 핵심 AI 요구사항은 데이터 거버넌스, MLOps 배포 자동화, 모델 모니터링이다. 시스템은 데이터 lineage, 모델 drift, 배포 승인 이력을 대시보드로 제공해야 한다. 보안 및 개인정보\n기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다. 보안 통제는 데이터셋 반출 승인과 관리자 작업 기록을 중심으로 설계한다. 일정 및 산출물\n기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다. 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다. 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다. 사업 개요\n기관 A는 AI 품질관리 플랫폼 구축을 추진한다. 목표는 모델 성능 저하를 조기에 감지하고 품질 지표를 표준화하는 것이다. AI 요구사항\n기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 시스템은 모델별 정확도와 오류 유형을 수집하고 위험 이벤트를 감사 로그로 남겨야 한다. 일정 및 산출물\n기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. 필수 산출물은 모델 점검 리포트, 보안 통제 매뉴얼, 운영자 교육 자료이다. 제출조건\n제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다."
     },
     {
       "id": "single_doc_common_submission",
@@ -2021,17 +2191,18 @@
         "rfp-common-submission"
       ],
       "evidence_doc_ids": [
+        "rfp-agency-a-ai-quality",
         "rfp-common-submission"
       ],
       "doc_match": true,
       "term_match": true,
       "citation_term_match": true,
-      "citation_doc_precision": 1.0,
+      "citation_doc_precision": 0.5,
       "accuracy": 1.0,
       "groundedness": 1.0,
-      "citation_precision": 1.0,
+      "citation_precision": 0.5,
       "abstention": null,
-      "latency_ms": 2.78,
+      "latency_ms": 4.79,
       "retry_count": 0,
       "retry_trigger_reasons": [],
       "context_resolution_status": "not_needed",
@@ -2046,7 +2217,8 @@
         "공통"
       ],
       "claim_targets": [
-        "공통"
+        "공통",
+        "기관 A"
       ],
       "claim_count": 2,
       "format_checks": {
@@ -2056,7 +2228,7 @@
         "claim_citations": true
       },
       "answer_format_compliance": 1.0,
-      "answer": "모든 제안사는 일정 준수 계획, 위험 관리 방안, 산출물 품질 검수 절차를 제출해야 한다. 공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다. 모든 제안사는 일정 준수 계획, 위험 관리 방안, 산출물 품질 검수 절차를 제출해야 한다. 공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다.\n- 공통: 모든 제안사는 일정 준수 계획, 위험 관리 방안, 산출물 품질 검수 절차를 제출해야 한다. [rfp-common-submission::chunk-001]\n- 공통: 공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다. [rfp-common-submission::chunk-002] 모든 제안사는 일정 준수 계획, 위험 관리 방안, 산출물 품질 검수 절차를 제출해야 한다. 모든 제안사는 일정 준수 계획, 위험 관리 방안, 산출물 품질 검수 절차를 제출해야 한다. 산출물은 표준 템플릿에 맞춰 버전과 책임자를 표시해야 한다. 공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다. 공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다. 부재 정보는 추정하지 않고 질의응답 기간에 확인해야 한다."
+      "answer": "공통 제출조건\n모든 제안사는 일정 준수 계획, 위험 관리 방안, 산출물 품질 검수 절차를 제출해야 한다. 제출조건\n제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. 공통 제출조건\n모든 제안사는 일정 준수 계획, 위험 관리 방안, 산출물 품질 검수 절차를 제출해야 한다. 제출조건\n제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다.\n- 공통: 공통 제출조건\n모든 제안사는 일정 준수 계획, 위험 관리 방안, 산출물 품질 검수 절차를 제출해야 한다. [rfp-common-submission::chunk-001]\n- 기관 A: 제출조건\n제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. [rfp-agency-a-ai-quality::chunk-001] 공통 제출조건\n모든 제안사는 일정 준수 계획, 위험 관리 방안, 산출물 품질 검수 절차를 제출해야 한다. 공통 제출조건\n모든 제안사는 일정 준수 계획, 위험 관리 방안, 산출물 품질 검수 절차를 제출해야 한다. 산출물은 표준 템플릿에 맞춰 버전과 책임자를 표시해야 한다. 평가 기준\n공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다. 부재 정보는 추정하지 않고 질의응답 기간에 확인해야 한다. 제출조건\n제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. 사업 개요\n기관 A는 AI 품질관리 플랫폼 구축을 추진한다. 목표는 모델 성능 저하를 조기에 감지하고 품질 지표를 표준화하는 것이다. AI 요구사항\n기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 시스템은 모델별 정확도와 오류 유형을 수집하고 위험 이벤트를 감사 로그로 남겨야 한다. 일정 및 산출물\n기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. 필수 산출물은 모델 점검 리포트, 보안 통제 매뉴얼, 운영자 교육 자료이다. 제출조건\n제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다."
     },
     {
       "id": "single_doc_a_deliverables",
@@ -2067,17 +2239,18 @@
         "rfp-agency-a-ai-quality"
       ],
       "evidence_doc_ids": [
-        "rfp-agency-a-ai-quality"
+        "rfp-agency-a-ai-quality",
+        "rfp-agency-b-mlops-governance"
       ],
       "doc_match": true,
       "term_match": true,
       "citation_term_match": true,
-      "citation_doc_precision": 1.0,
+      "citation_doc_precision": 0.5,
       "accuracy": 1.0,
       "groundedness": 1.0,
-      "citation_precision": 1.0,
+      "citation_precision": 0.5,
       "abstention": null,
-      "latency_ms": 1.49,
+      "latency_ms": 4.06,
       "retry_count": 0,
       "retry_trigger_reasons": [],
       "context_resolution_status": "not_needed",
@@ -2092,9 +2265,10 @@
         "기관 A"
       ],
       "claim_targets": [
-        "기관 A"
+        "기관 A",
+        "기관 B"
       ],
-      "claim_count": 1,
+      "claim_count": 2,
       "format_checks": {
         "status_match": true,
         "min_claims": true,
@@ -2102,7 +2276,7 @@
         "claim_citations": true
       },
       "answer_format_compliance": 1.0,
-      "answer": "필수 산출물은 모델 점검 리포트, 보안 통제 매뉴얼, 운영자 교육 자료이다. 필수 산출물은 모델 점검 리포트, 보안 통제 매뉴얼, 운영자 교육 자료이다.\n- 기관 A: 필수 산출물은 모델 점검 리포트, 보안 통제 매뉴얼, 운영자 교육 자료이다. [rfp-agency-a-ai-quality::chunk-003] 필수 산출물은 모델 점검 리포트, 보안 통제 매뉴얼, 운영자 교육 자료이다. 기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. 필수 산출물은 모델 점검 리포트, 보안 통제 매뉴얼, 운영자 교육 자료이다."
+      "answer": "필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다. 일정 및 산출물\n기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다. 일정 및 산출물\n기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다.\n- 기관 B: 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다. [rfp-agency-b-mlops-governance::chunk-001]\n- 기관 A: 일정 및 산출물\n기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. [rfp-agency-a-ai-quality::chunk-001] 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다. 사업 개요\n기관 B는 데이터 거버넌스와 MLOps 자동화를 결합한 운영 체계를 구축한다. 목표는 모델 배포 절차를 표준화하고 데이터 변경 영향을 추적하는 것이다. AI 요구사항\n기관 B의 핵심 AI 요구사항은 데이터 거버넌스, MLOps 배포 자동화, 모델 모니터링이다. 시스템은 데이터 lineage, 모델 drift, 배포 승인 이력을 대시보드로 제공해야 한다. 보안 및 개인정보\n기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다. 보안 통제는 데이터셋 반출 승인과 관리자 작업 기록을 중심으로 설계한다. 일정 및 산출물\n기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다. 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다. 일정 및 산출물\n기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. 사업 개요\n기관 A는 AI 품질관리 플랫폼 구축을 추진한다. 목표는 모델 성능 저하를 조기에 감지하고 품질 지표를 표준화하는 것이다. AI 요구사항\n기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 시스템은 모델별 정확도와 오류 유형을 수집하고 위험 이벤트를 감사 로그로 남겨야 한다. 일정 및 산출물\n기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. 필수 산출물은 모델 점검 리포트, 보안 통제 매뉴얼, 운영자 교육 자료이다. 제출조건\n제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다."
     },
     {
       "id": "single_doc_b_schedule_deliverables",
@@ -2113,17 +2287,18 @@
         "rfp-agency-b-mlops-governance"
       ],
       "evidence_doc_ids": [
-        "rfp-agency-b-mlops-governance"
+        "rfp-agency-b-mlops-governance",
+        "rfp-common-submission"
       ],
       "doc_match": true,
       "term_match": true,
       "citation_term_match": true,
-      "citation_doc_precision": 1.0,
+      "citation_doc_precision": 0.5,
       "accuracy": 1.0,
       "groundedness": 1.0,
-      "citation_precision": 1.0,
+      "citation_precision": 0.5,
       "abstention": null,
-      "latency_ms": 2.2,
+      "latency_ms": 3.06,
       "retry_count": 0,
       "retry_trigger_reasons": [],
       "context_resolution_status": "not_needed",
@@ -2138,9 +2313,10 @@
         "기관 B"
       ],
       "claim_targets": [
+        "공통",
         "기관 B"
       ],
-      "claim_count": 1,
+      "claim_count": 2,
       "format_checks": {
         "status_match": true,
         "min_claims": true,
@@ -2148,7 +2324,7 @@
         "claim_citations": true
       },
       "answer_format_compliance": 1.0,
-      "answer": "기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다. 기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다.\n- 기관 B: 기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다. [rfp-agency-b-mlops-governance::chunk-004] 기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다. 기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다. 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다."
+      "answer": "일정 및 산출물\n기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다. 공통 제출조건\n모든 제안사는 일정 준수 계획, 위험 관리 방안, 산출물 품질 검수 절차를 제출해야 한다. 일정 및 산출물\n기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다. 공통 제출조건\n모든 제안사는 일정 준수 계획, 위험 관리 방안, 산출물 품질 검수 절차를 제출해야 한다.\n- 기관 B: 일정 및 산출물\n기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다. [rfp-agency-b-mlops-governance::chunk-001]\n- 공통: 공통 제출조건\n모든 제안사는 일정 준수 계획, 위험 관리 방안, 산출물 품질 검수 절차를 제출해야 한다. [rfp-common-submission::chunk-001] 일정 및 산출물\n기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다. 사업 개요\n기관 B는 데이터 거버넌스와 MLOps 자동화를 결합한 운영 체계를 구축한다. 목표는 모델 배포 절차를 표준화하고 데이터 변경 영향을 추적하는 것이다. AI 요구사항\n기관 B의 핵심 AI 요구사항은 데이터 거버넌스, MLOps 배포 자동화, 모델 모니터링이다. 시스템은 데이터 lineage, 모델 drift, 배포 승인 이력을 대시보드로 제공해야 한다. 보안 및 개인정보\n기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다. 보안 통제는 데이터셋 반출 승인과 관리자 작업 기록을 중심으로 설계한다. 일정 및 산출물\n기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다. 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다. 공통 제출조건\n모든 제안사는 일정 준수 계획, 위험 관리 방안, 산출물 품질 검수 절차를 제출해야 한다. 공통 제출조건\n모든 제안사는 일정 준수 계획, 위험 관리 방안, 산출물 품질 검수 절차를 제출해야 한다. 산출물은 표준 템플릿에 맞춰 버전과 책임자를 표시해야 한다. 평가 기준\n공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다. 부재 정보는 추정하지 않고 질의응답 기간에 확인해야 한다."
     },
     {
       "id": "multi_doc_ai_requirements",
@@ -2171,7 +2347,7 @@
       "groundedness": 1.0,
       "citation_precision": 1.0,
       "abstention": null,
-      "latency_ms": 2.23,
+      "latency_ms": 2.66,
       "retry_count": 0,
       "retry_trigger_reasons": [],
       "context_resolution_status": "not_needed",
@@ -2198,7 +2374,7 @@
         "claim_citations": true
       },
       "answer_format_compliance": 1.0,
-      "answer": "기관 A: 기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 기관 B: 기관 B의 핵심 AI 요구사항은 데이터 거버넌스, MLOps 배포 자동화, 모델 모니터링이다. 기관 A: 기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 기관 B: 기관 B의 핵심 AI 요구사항은 데이터 거버넌스, MLOps 배포 자동화, 모델 모니터링이다.\n- 기관 A: 기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. [rfp-agency-a-ai-quality::chunk-002]\n- 기관 B: 기관 B의 핵심 AI 요구사항은 데이터 거버넌스, MLOps 배포 자동화, 모델 모니터링이다. [rfp-agency-b-mlops-governance::chunk-002] 기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 시스템은 모델별 정확도와 오류 유형을 수집하고 위험 이벤트를 감사 로그로 남겨야 한다. 기관 B의 핵심 AI 요구사항은 데이터 거버넌스, MLOps 배포 자동화, 모델 모니터링이다. 기관 B의 핵심 AI 요구사항은 데이터 거버넌스, MLOps 배포 자동화, 모델 모니터링이다. 시스템은 데이터 lineage, 모델 drift, 배포 승인 이력을 대시보드로 제공해야 한다."
+      "answer": "기관 A: 사업 개요\n기관 A는 AI 품질관리 플랫폼 구축을 추진한다. 기관 B: AI 요구사항\n기관 B의 핵심 AI 요구사항은 데이터 거버넌스, MLOps 배포 자동화, 모델 모니터링이다. 기관 A: 사업 개요\n기관 A는 AI 품질관리 플랫폼 구축을 추진한다. 기관 B: AI 요구사항\n기관 B의 핵심 AI 요구사항은 데이터 거버넌스, MLOps 배포 자동화, 모델 모니터링이다.\n- 기관 A: 사업 개요\n기관 A는 AI 품질관리 플랫폼 구축을 추진한다. [rfp-agency-a-ai-quality::chunk-001]\n- 기관 B: AI 요구사항\n기관 B의 핵심 AI 요구사항은 데이터 거버넌스, MLOps 배포 자동화, 모델 모니터링이다. [rfp-agency-b-mlops-governance::chunk-001] 사업 개요\n기관 A는 AI 품질관리 플랫폼 구축을 추진한다. 사업 개요\n기관 A는 AI 품질관리 플랫폼 구축을 추진한다. 목표는 모델 성능 저하를 조기에 감지하고 품질 지표를 표준화하는 것이다. AI 요구사항\n기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 시스템은 모델별 정확도와 오류 유형을 수집하고 위험 이벤트를 감사 로그로 남겨야 한다. 일정 및 산출물\n기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. 필수 산출물은 모델 점검 리포트, 보안 통제 매뉴얼, 운영자 교육 자료이다. 제출조건\n제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다. AI 요구사항\n기관 B의 핵심 AI 요구사항은 데이터 거버넌스, MLOps 배포 자동화, 모델 모니터링이다. 사업 개요\n기관 B는 데이터 거버넌스와 MLOps 자동화를 결합한 운영 체계를 구축한다. 목표는 모델 배포 절차를 표준화하고 데이터 변경 영향을 추적하는 것이다. AI 요구사항\n기관 B의 핵심 AI 요구사항은 데이터 거버넌스, MLOps 배포 자동화, 모델 모니터링이다. 시스템은 데이터 lineage, 모델 drift, 배포 승인 이력을 대시보드로 제공해야 한다. 보안 및 개인정보\n기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다. 보안 통제는 데이터셋 반출 승인과 관리자 작업 기록을 중심으로 설계한다. 일정 및 산출물\n기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다. 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다."
     },
     {
       "id": "multi_doc_security_controls",
@@ -2221,7 +2397,7 @@
       "groundedness": 1.0,
       "citation_precision": 1.0,
       "abstention": null,
-      "latency_ms": 2.65,
+      "latency_ms": 5.85,
       "retry_count": 0,
       "retry_trigger_reasons": [],
       "context_resolution_status": "not_needed",
@@ -2248,7 +2424,7 @@
         "claim_citations": true
       },
       "answer_format_compliance": 1.0,
-      "answer": "기관 A: 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다. 기관 B: 보안 통제는 데이터셋 반출 승인과 관리자 작업 기록을 중심으로 설계한다. 기관 A: 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다. 기관 B: 보안 통제는 데이터셋 반출 승인과 관리자 작업 기록을 중심으로 설계한다.\n- 기관 A: 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다. [rfp-agency-a-ai-quality::chunk-004]\n- 기관 B: 보안 통제는 데이터셋 반출 승인과 관리자 작업 기록을 중심으로 설계한다. [rfp-agency-b-mlops-governance::chunk-003] 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다. 제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다. 보안 통제는 데이터셋 반출 승인과 관리자 작업 기록을 중심으로 설계한다. 기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다. 보안 통제는 데이터셋 반출 승인과 관리자 작업 기록을 중심으로 설계한다."
+      "answer": "기관 A: AI 요구사항\n기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 기관 B: 보안 및 개인정보\n기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다. 기관 A: AI 요구사항\n기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 기관 B: 보안 및 개인정보\n기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다.\n- 기관 A: AI 요구사항\n기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. [rfp-agency-a-ai-quality::chunk-001]\n- 기관 B: 보안 및 개인정보\n기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다. [rfp-agency-b-mlops-governance::chunk-001] AI 요구사항\n기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 사업 개요\n기관 A는 AI 품질관리 플랫폼 구축을 추진한다. 목표는 모델 성능 저하를 조기에 감지하고 품질 지표를 표준화하는 것이다. AI 요구사항\n기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 시스템은 모델별 정확도와 오류 유형을 수집하고 위험 이벤트를 감사 로그로 남겨야 한다. 일정 및 산출물\n기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. 필수 산출물은 모델 점검 리포트, 보안 통제 매뉴얼, 운영자 교육 자료이다. 제출조건\n제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다. 보안 및 개인정보\n기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다. 사업 개요\n기관 B는 데이터 거버넌스와 MLOps 자동화를 결합한 운영 체계를 구축한다. 목표는 모델 배포 절차를 표준화하고 데이터 변경 영향을 추적하는 것이다. AI 요구사항\n기관 B의 핵심 AI 요구사항은 데이터 거버넌스, MLOps 배포 자동화, 모델 모니터링이다. 시스템은 데이터 lineage, 모델 drift, 배포 승인 이력을 대시보드로 제공해야 한다. 보안 및 개인정보\n기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다. 보안 통제는 데이터셋 반출 승인과 관리자 작업 기록을 중심으로 설계한다. 일정 및 산출물\n기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다. 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다."
     },
     {
       "id": "multi_doc_schedule_compare",
@@ -2271,7 +2447,7 @@
       "groundedness": 1.0,
       "citation_precision": 1.0,
       "abstention": null,
-      "latency_ms": 2.53,
+      "latency_ms": 4.49,
       "retry_count": 0,
       "retry_trigger_reasons": [],
       "context_resolution_status": "not_needed",
@@ -2298,7 +2474,7 @@
         "claim_citations": true
       },
       "answer_format_compliance": 1.0,
-      "answer": "기관 A: 기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. 기관 B: 기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다. 기관 A: 기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. 기관 B: 기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다.\n- 기관 A: 기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. [rfp-agency-a-ai-quality::chunk-003]\n- 기관 B: 기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다. [rfp-agency-b-mlops-governance::chunk-004] 기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. 기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. 필수 산출물은 모델 점검 리포트, 보안 통제 매뉴얼, 운영자 교육 자료이다. 기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다. 기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다. 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다."
+      "answer": "기관 A: 일정 및 산출물\n기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. 기관 B: 일정 및 산출물\n기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다. 기관 A: 일정 및 산출물\n기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. 기관 B: 일정 및 산출물\n기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다.\n- 기관 A: 일정 및 산출물\n기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. [rfp-agency-a-ai-quality::chunk-001]\n- 기관 B: 일정 및 산출물\n기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다. [rfp-agency-b-mlops-governance::chunk-001] 일정 및 산출물\n기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. 사업 개요\n기관 A는 AI 품질관리 플랫폼 구축을 추진한다. 목표는 모델 성능 저하를 조기에 감지하고 품질 지표를 표준화하는 것이다. AI 요구사항\n기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 시스템은 모델별 정확도와 오류 유형을 수집하고 위험 이벤트를 감사 로그로 남겨야 한다. 일정 및 산출물\n기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. 필수 산출물은 모델 점검 리포트, 보안 통제 매뉴얼, 운영자 교육 자료이다. 제출조건\n제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다. 일정 및 산출물\n기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다. 사업 개요\n기관 B는 데이터 거버넌스와 MLOps 자동화를 결합한 운영 체계를 구축한다. 목표는 모델 배포 절차를 표준화하고 데이터 변경 영향을 추적하는 것이다. AI 요구사항\n기관 B의 핵심 AI 요구사항은 데이터 거버넌스, MLOps 배포 자동화, 모델 모니터링이다. 시스템은 데이터 lineage, 모델 drift, 배포 승인 이력을 대시보드로 제공해야 한다. 보안 및 개인정보\n기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다. 보안 통제는 데이터셋 반출 승인과 관리자 작업 기록을 중심으로 설계한다. 일정 및 산출물\n기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다. 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다."
     },
     {
       "id": "multi_doc_a_c_ai_focus",
@@ -2321,7 +2497,7 @@
       "groundedness": 1.0,
       "citation_precision": 1.0,
       "abstention": null,
-      "latency_ms": 3.42,
+      "latency_ms": 3.46,
       "retry_count": 0,
       "retry_trigger_reasons": [],
       "context_resolution_status": "not_needed",
@@ -2348,7 +2524,7 @@
         "claim_citations": true
       },
       "answer_format_compliance": 1.0,
-      "answer": "기관 A: 기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 기관 C: 기관 C의 챗봇 AI 요구사항은 한국어 FAQ 검색, 의도 분류, 상담 이관 추천이다. 기관 A: 기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 기관 C: 기관 C의 챗봇 AI 요구사항은 한국어 FAQ 검색, 의도 분류, 상담 이관 추천이다.\n- 기관 A: 기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. [rfp-agency-a-ai-quality::chunk-002]\n- 기관 C: 기관 C의 챗봇 AI 요구사항은 한국어 FAQ 검색, 의도 분류, 상담 이관 추천이다. [rfp-agency-c-chatbot::chunk-002] 기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 시스템은 모델별 정확도와 오류 유형을 수집하고 위험 이벤트를 감사 로그로 남겨야 한다. 기관 C의 챗봇 AI 요구사항은 한국어 FAQ 검색, 의도 분류, 상담 이관 추천이다. 기관 C의 챗봇 AI 요구사항은 한국어 FAQ 검색, 의도 분류, 상담 이관 추천이다. 챗봇은 주요 문의에 대해 평균 2초 이내 응답해야 한다."
+      "answer": "기관 A: 사업 개요\n기관 A는 AI 품질관리 플랫폼 구축을 추진한다. 기관 C: AI 요구사항\n기관 C의 챗봇 AI 요구사항은 한국어 FAQ 검색, 의도 분류, 상담 이관 추천이다. 기관 A: 사업 개요\n기관 A는 AI 품질관리 플랫폼 구축을 추진한다. 기관 C: AI 요구사항\n기관 C의 챗봇 AI 요구사항은 한국어 FAQ 검색, 의도 분류, 상담 이관 추천이다.\n- 기관 A: 사업 개요\n기관 A는 AI 품질관리 플랫폼 구축을 추진한다. [rfp-agency-a-ai-quality::chunk-001]\n- 기관 C: AI 요구사항\n기관 C의 챗봇 AI 요구사항은 한국어 FAQ 검색, 의도 분류, 상담 이관 추천이다. [rfp-agency-c-chatbot::chunk-001] 사업 개요\n기관 A는 AI 품질관리 플랫폼 구축을 추진한다. 사업 개요\n기관 A는 AI 품질관리 플랫폼 구축을 추진한다. 목표는 모델 성능 저하를 조기에 감지하고 품질 지표를 표준화하는 것이다. AI 요구사항\n기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 시스템은 모델별 정확도와 오류 유형을 수집하고 위험 이벤트를 감사 로그로 남겨야 한다. 일정 및 산출물\n기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. 필수 산출물은 모델 점검 리포트, 보안 통제 매뉴얼, 운영자 교육 자료이다. 제출조건\n제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다. AI 요구사항\n기관 C의 챗봇 AI 요구사항은 한국어 FAQ 검색, 의도 분류, 상담 이관 추천이다. 사업 개요\n기관 C는 고객지원 챗봇 고도화를 추진한다. 목표는 반복 문의를 자동 처리하고 상담원 이관 기준을 명확히 하는 것이다. AI 요구사항\n기관 C의 챗봇 AI 요구사항은 한국어 FAQ 검색, 의도 분류, 상담 이관 추천이다. 챗봇은 주요 문의에 대해 평균 2초 이내 응답해야 한다. 평가 및 운영\n기관 C는 답변 정확도, 상담 이관 적절성, 사용자 만족도를 운영 지표로 사용한다. 운영 로그는 월간 리포트로 제출한다."
     },
     {
       "id": "multi_doc_b_c_operations",
@@ -2371,7 +2547,7 @@
       "groundedness": 1.0,
       "citation_precision": 1.0,
       "abstention": null,
-      "latency_ms": 3.13,
+      "latency_ms": 3.92,
       "retry_count": 0,
       "retry_trigger_reasons": [],
       "context_resolution_status": "not_needed",
@@ -2398,7 +2574,7 @@
         "claim_citations": true
       },
       "answer_format_compliance": 1.0,
-      "answer": "기관 B: 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다. 기관 C: 기관 C는 답변 정확도, 상담 이관 적절성, 사용자 만족도를 운영 지표로 사용한다. 기관 B: 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다. 기관 C: 기관 C는 답변 정확도, 상담 이관 적절성, 사용자 만족도를 운영 지표로 사용한다.\n- 기관 B: 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다. [rfp-agency-b-mlops-governance::chunk-004]\n- 기관 C: 기관 C는 답변 정확도, 상담 이관 적절성, 사용자 만족도를 운영 지표로 사용한다. [rfp-agency-c-chatbot::chunk-003] 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다. 기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다. 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다. 기관 C는 답변 정확도, 상담 이관 적절성, 사용자 만족도를 운영 지표로 사용한다. 기관 C는 답변 정확도, 상담 이관 적절성, 사용자 만족도를 운영 지표로 사용한다. 운영 로그는 월간 리포트로 제출한다."
+      "answer": "기관 B: 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다. 기관 C: 평가 및 운영\n기관 C는 답변 정확도, 상담 이관 적절성, 사용자 만족도를 운영 지표로 사용한다. 기관 B: 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다. 기관 C: 평가 및 운영\n기관 C는 답변 정확도, 상담 이관 적절성, 사용자 만족도를 운영 지표로 사용한다.\n- 기관 B: 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다. [rfp-agency-b-mlops-governance::chunk-001]\n- 기관 C: 평가 및 운영\n기관 C는 답변 정확도, 상담 이관 적절성, 사용자 만족도를 운영 지표로 사용한다. [rfp-agency-c-chatbot::chunk-001] 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다. 사업 개요\n기관 B는 데이터 거버넌스와 MLOps 자동화를 결합한 운영 체계를 구축한다. 목표는 모델 배포 절차를 표준화하고 데이터 변경 영향을 추적하는 것이다. AI 요구사항\n기관 B의 핵심 AI 요구사항은 데이터 거버넌스, MLOps 배포 자동화, 모델 모니터링이다. 시스템은 데이터 lineage, 모델 drift, 배포 승인 이력을 대시보드로 제공해야 한다. 보안 및 개인정보\n기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다. 보안 통제는 데이터셋 반출 승인과 관리자 작업 기록을 중심으로 설계한다. 일정 및 산출물\n기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다. 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다. 평가 및 운영\n기관 C는 답변 정확도, 상담 이관 적절성, 사용자 만족도를 운영 지표로 사용한다. 사업 개요\n기관 C는 고객지원 챗봇 고도화를 추진한다. 목표는 반복 문의를 자동 처리하고 상담원 이관 기준을 명확히 하는 것이다. AI 요구사항\n기관 C의 챗봇 AI 요구사항은 한국어 FAQ 검색, 의도 분류, 상담 이관 추천이다. 챗봇은 주요 문의에 대해 평균 2초 이내 응답해야 한다. 평가 및 운영\n기관 C는 답변 정확도, 상담 이관 적절성, 사용자 만족도를 운영 지표로 사용한다. 운영 로그는 월간 리포트로 제출한다."
     },
     {
       "id": "multi_doc_a_common_submission",
@@ -2421,7 +2597,7 @@
       "groundedness": 1.0,
       "citation_precision": 1.0,
       "abstention": null,
-      "latency_ms": 4.64,
+      "latency_ms": 3.88,
       "retry_count": 0,
       "retry_trigger_reasons": [],
       "context_resolution_status": "not_needed",
@@ -2448,7 +2624,7 @@
         "claim_citations": true
       },
       "answer_format_compliance": 1.0,
-      "answer": "기관 A: 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다. 공통: 공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다. 기관 A: 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다. 공통: 공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다.\n- 기관 A: 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다. [rfp-agency-a-ai-quality::chunk-004]\n- 공통: 공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다. [rfp-common-submission::chunk-002] 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다. 제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다. 공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다. 공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다. 부재 정보는 추정하지 않고 질의응답 기간에 확인해야 한다."
+      "answer": "기관 A: 제출조건\n제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. 공통: 평가 기준\n공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다. 기관 A: 제출조건\n제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. 공통: 평가 기준\n공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다.\n- 기관 A: 제출조건\n제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. [rfp-agency-a-ai-quality::chunk-001]\n- 공통: 평가 기준\n공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다. [rfp-common-submission::chunk-001] 제출조건\n제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. 사업 개요\n기관 A는 AI 품질관리 플랫폼 구축을 추진한다. 목표는 모델 성능 저하를 조기에 감지하고 품질 지표를 표준화하는 것이다. AI 요구사항\n기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 시스템은 모델별 정확도와 오류 유형을 수집하고 위험 이벤트를 감사 로그로 남겨야 한다. 일정 및 산출물\n기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. 필수 산출물은 모델 점검 리포트, 보안 통제 매뉴얼, 운영자 교육 자료이다. 제출조건\n제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다. 평가 기준\n공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다. 공통 제출조건\n모든 제안사는 일정 준수 계획, 위험 관리 방안, 산출물 품질 검수 절차를 제출해야 한다. 산출물은 표준 템플릿에 맞춰 버전과 책임자를 표시해야 한다. 평가 기준\n공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다. 부재 정보는 추정하지 않고 질의응답 기간에 확인해야 한다."
     },
     {
       "id": "follow_up_schedule",
@@ -2459,17 +2635,18 @@
         "rfp-agency-a-ai-quality"
       ],
       "evidence_doc_ids": [
-        "rfp-agency-a-ai-quality"
+        "rfp-agency-a-ai-quality",
+        "rfp-common-submission"
       ],
       "doc_match": true,
       "term_match": true,
       "citation_term_match": true,
-      "citation_doc_precision": 1.0,
+      "citation_doc_precision": 0.5,
       "accuracy": 1.0,
       "groundedness": 1.0,
-      "citation_precision": 1.0,
+      "citation_precision": 0.5,
       "abstention": null,
-      "latency_ms": 1.26,
+      "latency_ms": 1.92,
       "retry_count": 0,
       "retry_trigger_reasons": [],
       "context_resolution_status": "resolved",
@@ -2484,9 +2661,10 @@
         "기관 A"
       ],
       "claim_targets": [
+        "공통",
         "기관 A"
       ],
-      "claim_count": 1,
+      "claim_count": 2,
       "format_checks": {
         "status_match": true,
         "min_claims": true,
@@ -2494,7 +2672,7 @@
         "claim_citations": true
       },
       "answer_format_compliance": 1.0,
-      "answer": "기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. 기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다.\n- 기관 A: 기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. [rfp-agency-a-ai-quality::chunk-003] 기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. 기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. 필수 산출물은 모델 점검 리포트, 보안 통제 매뉴얼, 운영자 교육 자료이다."
+      "answer": "일정 및 산출물\n기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. 공통 제출조건\n모든 제안사는 일정 준수 계획, 위험 관리 방안, 산출물 품질 검수 절차를 제출해야 한다. 일정 및 산출물\n기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. 공통 제출조건\n모든 제안사는 일정 준수 계획, 위험 관리 방안, 산출물 품질 검수 절차를 제출해야 한다.\n- 기관 A: 일정 및 산출물\n기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. [rfp-agency-a-ai-quality::chunk-001]\n- 공통: 공통 제출조건\n모든 제안사는 일정 준수 계획, 위험 관리 방안, 산출물 품질 검수 절차를 제출해야 한다. [rfp-common-submission::chunk-001] 일정 및 산출물\n기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. 사업 개요\n기관 A는 AI 품질관리 플랫폼 구축을 추진한다. 목표는 모델 성능 저하를 조기에 감지하고 품질 지표를 표준화하는 것이다. AI 요구사항\n기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 시스템은 모델별 정확도와 오류 유형을 수집하고 위험 이벤트를 감사 로그로 남겨야 한다. 일정 및 산출물\n기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. 필수 산출물은 모델 점검 리포트, 보안 통제 매뉴얼, 운영자 교육 자료이다. 제출조건\n제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다. 공통 제출조건\n모든 제안사는 일정 준수 계획, 위험 관리 방안, 산출물 품질 검수 절차를 제출해야 한다. 공통 제출조건\n모든 제안사는 일정 준수 계획, 위험 관리 방안, 산출물 품질 검수 절차를 제출해야 한다. 산출물은 표준 템플릿에 맞춰 버전과 책임자를 표시해야 한다. 평가 기준\n공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다. 부재 정보는 추정하지 않고 질의응답 기간에 확인해야 한다."
     },
     {
       "id": "follow_up_b_deliverables",
@@ -2505,17 +2683,18 @@
         "rfp-agency-b-mlops-governance"
       ],
       "evidence_doc_ids": [
-        "rfp-agency-b-mlops-governance"
+        "rfp-agency-b-mlops-governance",
+        "rfp-common-submission"
       ],
       "doc_match": true,
       "term_match": true,
       "citation_term_match": true,
-      "citation_doc_precision": 1.0,
+      "citation_doc_precision": 0.5,
       "accuracy": 1.0,
       "groundedness": 1.0,
-      "citation_precision": 1.0,
+      "citation_precision": 0.5,
       "abstention": null,
-      "latency_ms": 1.19,
+      "latency_ms": 2.02,
       "retry_count": 0,
       "retry_trigger_reasons": [],
       "context_resolution_status": "resolved",
@@ -2530,9 +2709,10 @@
         "기관 B"
       ],
       "claim_targets": [
+        "공통",
         "기관 B"
       ],
-      "claim_count": 1,
+      "claim_count": 2,
       "format_checks": {
         "status_match": true,
         "min_claims": true,
@@ -2540,7 +2720,7 @@
         "claim_citations": true
       },
       "answer_format_compliance": 1.0,
-      "answer": "필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다. 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다.\n- 기관 B: 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다. [rfp-agency-b-mlops-governance::chunk-004] 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다. 기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다. 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다."
+      "answer": "필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다. 산출물은 표준 템플릿에 맞춰 버전과 책임자를 표시해야 한다. 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다. 산출물은 표준 템플릿에 맞춰 버전과 책임자를 표시해야 한다.\n- 기관 B: 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다. [rfp-agency-b-mlops-governance::chunk-001]\n- 공통: 산출물은 표준 템플릿에 맞춰 버전과 책임자를 표시해야 한다. [rfp-common-submission::chunk-001] 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다. 사업 개요\n기관 B는 데이터 거버넌스와 MLOps 자동화를 결합한 운영 체계를 구축한다. 목표는 모델 배포 절차를 표준화하고 데이터 변경 영향을 추적하는 것이다. AI 요구사항\n기관 B의 핵심 AI 요구사항은 데이터 거버넌스, MLOps 배포 자동화, 모델 모니터링이다. 시스템은 데이터 lineage, 모델 drift, 배포 승인 이력을 대시보드로 제공해야 한다. 보안 및 개인정보\n기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다. 보안 통제는 데이터셋 반출 승인과 관리자 작업 기록을 중심으로 설계한다. 일정 및 산출물\n기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다. 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다. 산출물은 표준 템플릿에 맞춰 버전과 책임자를 표시해야 한다. 공통 제출조건\n모든 제안사는 일정 준수 계획, 위험 관리 방안, 산출물 품질 검수 절차를 제출해야 한다. 산출물은 표준 템플릿에 맞춰 버전과 책임자를 표시해야 한다. 평가 기준\n공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다. 부재 정보는 추정하지 않고 질의응답 기간에 확인해야 한다."
     },
     {
       "id": "follow_up_c_response_target",
@@ -2551,17 +2731,18 @@
         "rfp-agency-c-chatbot"
       ],
       "evidence_doc_ids": [
-        "rfp-agency-c-chatbot"
+        "rfp-agency-c-chatbot",
+        "rfp-common-submission"
       ],
       "doc_match": true,
       "term_match": true,
       "citation_term_match": true,
-      "citation_doc_precision": 1.0,
+      "citation_doc_precision": 0.5,
       "accuracy": 1.0,
       "groundedness": 1.0,
-      "citation_precision": 1.0,
+      "citation_precision": 0.5,
       "abstention": null,
-      "latency_ms": 1.13,
+      "latency_ms": 4.25,
       "retry_count": 0,
       "retry_trigger_reasons": [],
       "context_resolution_status": "resolved",
@@ -2576,9 +2757,10 @@
         "기관 C"
       ],
       "claim_targets": [
+        "공통",
         "기관 C"
       ],
-      "claim_count": 1,
+      "claim_count": 2,
       "format_checks": {
         "status_match": true,
         "min_claims": true,
@@ -2586,7 +2768,7 @@
         "claim_citations": true
       },
       "answer_format_compliance": 1.0,
-      "answer": "챗봇은 주요 문의에 대해 평균 2초 이내 응답해야 한다. 챗봇은 주요 문의에 대해 평균 2초 이내 응답해야 한다.\n- 기관 C: 챗봇은 주요 문의에 대해 평균 2초 이내 응답해야 한다. [rfp-agency-c-chatbot::chunk-002] 챗봇은 주요 문의에 대해 평균 2초 이내 응답해야 한다. 기관 C의 챗봇 AI 요구사항은 한국어 FAQ 검색, 의도 분류, 상담 이관 추천이다. 챗봇은 주요 문의에 대해 평균 2초 이내 응답해야 한다."
+      "answer": "부재 정보는 추정하지 않고 질의응답 기간에 확인해야 한다. 챗봇은 주요 문의에 대해 평균 2초 이내 응답해야 한다. 부재 정보는 추정하지 않고 질의응답 기간에 확인해야 한다. 챗봇은 주요 문의에 대해 평균 2초 이내 응답해야 한다.\n- 공통: 부재 정보는 추정하지 않고 질의응답 기간에 확인해야 한다. [rfp-common-submission::chunk-001]\n- 기관 C: 챗봇은 주요 문의에 대해 평균 2초 이내 응답해야 한다. [rfp-agency-c-chatbot::chunk-001] 부재 정보는 추정하지 않고 질의응답 기간에 확인해야 한다. 공통 제출조건\n모든 제안사는 일정 준수 계획, 위험 관리 방안, 산출물 품질 검수 절차를 제출해야 한다. 산출물은 표준 템플릿에 맞춰 버전과 책임자를 표시해야 한다. 평가 기준\n공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다. 부재 정보는 추정하지 않고 질의응답 기간에 확인해야 한다. 챗봇은 주요 문의에 대해 평균 2초 이내 응답해야 한다. 사업 개요\n기관 C는 고객지원 챗봇 고도화를 추진한다. 목표는 반복 문의를 자동 처리하고 상담원 이관 기준을 명확히 하는 것이다. AI 요구사항\n기관 C의 챗봇 AI 요구사항은 한국어 FAQ 검색, 의도 분류, 상담 이관 추천이다. 챗봇은 주요 문의에 대해 평균 2초 이내 응답해야 한다. 평가 및 운영\n기관 C는 답변 정확도, 상담 이관 적절성, 사용자 만족도를 운영 지표로 사용한다. 운영 로그는 월간 리포트로 제출한다."
     },
     {
       "id": "follow_up_common_evaluation",
@@ -2597,17 +2779,18 @@
         "rfp-common-submission"
       ],
       "evidence_doc_ids": [
+        "rfp-agency-c-chatbot",
         "rfp-common-submission"
       ],
       "doc_match": true,
       "term_match": true,
       "citation_term_match": true,
-      "citation_doc_precision": 1.0,
+      "citation_doc_precision": 0.5,
       "accuracy": 1.0,
       "groundedness": 1.0,
-      "citation_precision": 1.0,
+      "citation_precision": 0.5,
       "abstention": null,
-      "latency_ms": 1.55,
+      "latency_ms": 2.57,
       "retry_count": 0,
       "retry_trigger_reasons": [],
       "context_resolution_status": "resolved",
@@ -2622,9 +2805,10 @@
         "공통"
       ],
       "claim_targets": [
-        "공통"
+        "공통",
+        "기관 C"
       ],
-      "claim_count": 1,
+      "claim_count": 2,
       "format_checks": {
         "status_match": true,
         "min_claims": true,
@@ -2632,7 +2816,7 @@
         "claim_citations": true
       },
       "answer_format_compliance": 1.0,
-      "answer": "공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다. 공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다.\n- 공통: 공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다. [rfp-common-submission::chunk-002] 공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다. 공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다. 부재 정보는 추정하지 않고 질의응답 기간에 확인해야 한다."
+      "answer": "평가 기준\n공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다. 목표는 반복 문의를 자동 처리하고 상담원 이관 기준을 명확히 하는 것이다. 평가 기준\n공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다. 목표는 반복 문의를 자동 처리하고 상담원 이관 기준을 명확히 하는 것이다.\n- 공통: 평가 기준\n공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다. [rfp-common-submission::chunk-001]\n- 기관 C: 목표는 반복 문의를 자동 처리하고 상담원 이관 기준을 명확히 하는 것이다. [rfp-agency-c-chatbot::chunk-001] 평가 기준\n공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다. 공통 제출조건\n모든 제안사는 일정 준수 계획, 위험 관리 방안, 산출물 품질 검수 절차를 제출해야 한다. 산출물은 표준 템플릿에 맞춰 버전과 책임자를 표시해야 한다. 평가 기준\n공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다. 부재 정보는 추정하지 않고 질의응답 기간에 확인해야 한다. 목표는 반복 문의를 자동 처리하고 상담원 이관 기준을 명확히 하는 것이다. 사업 개요\n기관 C는 고객지원 챗봇 고도화를 추진한다. 목표는 반복 문의를 자동 처리하고 상담원 이관 기준을 명확히 하는 것이다. AI 요구사항\n기관 C의 챗봇 AI 요구사항은 한국어 FAQ 검색, 의도 분류, 상담 이관 추천이다. 챗봇은 주요 문의에 대해 평균 2초 이내 응답해야 한다. 평가 및 운영\n기관 C는 답변 정확도, 상담 이관 적절성, 사용자 만족도를 운영 지표로 사용한다. 운영 로그는 월간 리포트로 제출한다."
     },
     {
       "id": "follow_up_a_team",
@@ -2653,7 +2837,7 @@
       "groundedness": 1.0,
       "citation_precision": 1.0,
       "abstention": null,
-      "latency_ms": 1.36,
+      "latency_ms": 2.27,
       "retry_count": 0,
       "retry_trigger_reasons": [],
       "context_resolution_status": "resolved",
@@ -2678,7 +2862,7 @@
         "claim_citations": true
       },
       "answer_format_compliance": 1.0,
-      "answer": "제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. 제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다.\n- 기관 A: 제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. [rfp-agency-a-ai-quality::chunk-004] 제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. 제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다."
+      "answer": "제출조건\n제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. 제출조건\n제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다.\n- 기관 A: 제출조건\n제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. [rfp-agency-a-ai-quality::chunk-001] 제출조건\n제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. 사업 개요\n기관 A는 AI 품질관리 플랫폼 구축을 추진한다. 목표는 모델 성능 저하를 조기에 감지하고 품질 지표를 표준화하는 것이다. AI 요구사항\n기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 시스템은 모델별 정확도와 오류 유형을 수집하고 위험 이벤트를 감사 로그로 남겨야 한다. 일정 및 산출물\n기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. 필수 산출물은 모델 점검 리포트, 보안 통제 매뉴얼, 운영자 교육 자료이다. 제출조건\n제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다."
     },
     {
       "id": "follow_up_c_operation_metrics",
@@ -2689,17 +2873,18 @@
         "rfp-agency-c-chatbot"
       ],
       "evidence_doc_ids": [
+        "rfp-agency-b-mlops-governance",
         "rfp-agency-c-chatbot"
       ],
       "doc_match": true,
       "term_match": true,
       "citation_term_match": true,
-      "citation_doc_precision": 1.0,
+      "citation_doc_precision": 0.5,
       "accuracy": 1.0,
       "groundedness": 1.0,
-      "citation_precision": 1.0,
+      "citation_precision": 0.5,
       "abstention": null,
-      "latency_ms": 1.55,
+      "latency_ms": 2.09,
       "retry_count": 0,
       "retry_trigger_reasons": [],
       "context_resolution_status": "resolved",
@@ -2714,51 +2899,8 @@
         "기관 C"
       ],
       "claim_targets": [
+        "기관 B",
         "기관 C"
-      ],
-      "claim_count": 1,
-      "format_checks": {
-        "status_match": true,
-        "min_claims": true,
-        "claim_targets": true,
-        "claim_citations": true
-      },
-      "answer_format_compliance": 1.0,
-      "answer": "기관 C는 답변 정확도, 상담 이관 적절성, 사용자 만족도를 운영 지표로 사용한다. 기관 C는 답변 정확도, 상담 이관 적절성, 사용자 만족도를 운영 지표로 사용한다.\n- 기관 C: 기관 C는 답변 정확도, 상담 이관 적절성, 사용자 만족도를 운영 지표로 사용한다. [rfp-agency-c-chatbot::chunk-003] 기관 C는 답변 정확도, 상담 이관 적절성, 사용자 만족도를 운영 지표로 사용한다. 기관 C는 답변 정확도, 상담 이관 적절성, 사용자 만족도를 운영 지표로 사용한다. 운영 로그는 월간 리포트로 제출한다."
-    },
-    {
-      "id": "follow_up_state_a_security",
-      "query_type": "follow_up",
-      "query": "그 기관이 요구한 보안 조건도 보여줘",
-      "answerable": true,
-      "expected_doc_ids": [
-        "rfp-agency-a-ai-quality"
-      ],
-      "evidence_doc_ids": [
-        "rfp-agency-a-ai-quality"
-      ],
-      "doc_match": true,
-      "term_match": true,
-      "citation_term_match": true,
-      "citation_doc_precision": 1.0,
-      "accuracy": 1.0,
-      "groundedness": 1.0,
-      "citation_precision": 1.0,
-      "abstention": null,
-      "latency_ms": 1.57,
-      "retry_count": 0,
-      "retry_trigger_reasons": [],
-      "context_resolution_status": "resolved",
-      "context_resolution_source": "conversation_state",
-      "context_resolution_confidence": 1.0,
-      "context_resolution_reason": "",
-      "resolved_query": "기관 A 그 기관이 요구한 보안 조건도 보여줘",
-      "abstained": false,
-      "expected_answer_status": "supported",
-      "answer_status": "supported",
-      "expected_claim_targets": [],
-      "claim_targets": [
-        "기관 A"
       ],
       "claim_count": 2,
       "format_checks": {
@@ -2768,7 +2910,47 @@
         "claim_citations": true
       },
       "answer_format_compliance": 1.0,
-      "answer": "기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다. 기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다.\n- 기관 A: 기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. [rfp-agency-a-ai-quality::chunk-002]\n- 기관 A: 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다. [rfp-agency-a-ai-quality::chunk-004] 기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 시스템은 모델별 정확도와 오류 유형을 수집하고 위험 이벤트를 감사 로그로 남겨야 한다. 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다. 제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다."
+      "answer": "평가 및 운영\n기관 C는 답변 정확도, 상담 이관 적절성, 사용자 만족도를 운영 지표로 사용한다. 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다. 평가 및 운영\n기관 C는 답변 정확도, 상담 이관 적절성, 사용자 만족도를 운영 지표로 사용한다. 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다.\n- 기관 C: 평가 및 운영\n기관 C는 답변 정확도, 상담 이관 적절성, 사용자 만족도를 운영 지표로 사용한다. [rfp-agency-c-chatbot::chunk-001]\n- 기관 B: 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다. [rfp-agency-b-mlops-governance::chunk-001] 평가 및 운영\n기관 C는 답변 정확도, 상담 이관 적절성, 사용자 만족도를 운영 지표로 사용한다. 사업 개요\n기관 C는 고객지원 챗봇 고도화를 추진한다. 목표는 반복 문의를 자동 처리하고 상담원 이관 기준을 명확히 하는 것이다. AI 요구사항\n기관 C의 챗봇 AI 요구사항은 한국어 FAQ 검색, 의도 분류, 상담 이관 추천이다. 챗봇은 주요 문의에 대해 평균 2초 이내 응답해야 한다. 평가 및 운영\n기관 C는 답변 정확도, 상담 이관 적절성, 사용자 만족도를 운영 지표로 사용한다. 운영 로그는 월간 리포트로 제출한다. 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다. 사업 개요\n기관 B는 데이터 거버넌스와 MLOps 자동화를 결합한 운영 체계를 구축한다. 목표는 모델 배포 절차를 표준화하고 데이터 변경 영향을 추적하는 것이다. AI 요구사항\n기관 B의 핵심 AI 요구사항은 데이터 거버넌스, MLOps 배포 자동화, 모델 모니터링이다. 시스템은 데이터 lineage, 모델 drift, 배포 승인 이력을 대시보드로 제공해야 한다. 보안 및 개인정보\n기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다. 보안 통제는 데이터셋 반출 승인과 관리자 작업 기록을 중심으로 설계한다. 일정 및 산출물\n기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다. 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다."
+    },
+    {
+      "id": "follow_up_state_a_security",
+      "query_type": "follow_up",
+      "query": "그 기관이 요구한 보안 조건도 보여줘",
+      "answerable": true,
+      "expected_doc_ids": [
+        "rfp-agency-a-ai-quality"
+      ],
+      "evidence_doc_ids": [],
+      "doc_match": false,
+      "term_match": false,
+      "citation_term_match": false,
+      "citation_doc_precision": 0.0,
+      "accuracy": 0.0,
+      "groundedness": 0.0,
+      "citation_precision": 0.0,
+      "abstention": null,
+      "latency_ms": 0.48,
+      "retry_count": 0,
+      "retry_trigger_reasons": [],
+      "context_resolution_status": "needs_clarification",
+      "context_resolution_source": "conversation_state",
+      "context_resolution_confidence": 1.0,
+      "context_resolution_reason": "ambiguous_active_state",
+      "resolved_query": "그 기관이 요구한 보안 조건도 보여줘",
+      "abstained": true,
+      "expected_answer_status": "supported",
+      "answer_status": "insufficient",
+      "expected_claim_targets": [],
+      "claim_targets": [],
+      "claim_count": 0,
+      "format_checks": {
+        "status_match": false,
+        "min_claims": false,
+        "claim_targets": true,
+        "claim_citations": false
+      },
+      "answer_format_compliance": 0.0,
+      "answer": "'그 기관이 요구한 보안 조건도 보여줘'에서 가리키는 대상이 모호합니다. 현재 문맥 후보는 기관 A, 기관 C입니다. 기관명 또는 사업명을 하나로 지정해 주세요. '그 기관이 요구한 보안 조건도 보여줘'에서 가리키는 대상이 모호합니다. 현재 문맥 후보는 기관 A, 기관 C입니다. 기관명 또는 사업명을 하나로 지정해 주세요.\n- 근거 부족: 사유: ambiguous_active_state; 확인 필요 대상: 기관 A, 기관 C '그 기관이 요구한 보안 조건도 보여줘'의 생략된 참조를 충분히 확정하지 못했습니다."
     },
     {
       "id": "follow_up_state_ambiguous_clarification",
@@ -2814,40 +2996,43 @@
       "query": "기관 A의 블록체인 납품 실적은?",
       "answerable": false,
       "expected_doc_ids": [],
-      "evidence_doc_ids": [],
-      "doc_match": true,
-      "term_match": true,
+      "evidence_doc_ids": [
+        "rfp-agency-a-ai-quality",
+        "rfp-agency-b-mlops-governance"
+      ],
+      "doc_match": false,
+      "term_match": false,
       "citation_term_match": false,
       "citation_doc_precision": 0.0,
       "accuracy": null,
-      "groundedness": 1.0,
-      "citation_precision": 1.0,
-      "abstention": 1.0,
-      "latency_ms": 4.75,
-      "retry_count": 1,
-      "retry_trigger_reasons": [
-        "topic_not_grounded",
-        "topic_not_grounded"
-      ],
+      "groundedness": 0.0,
+      "citation_precision": 0.0,
+      "abstention": 0.0,
+      "latency_ms": 3.25,
+      "retry_count": 0,
+      "retry_trigger_reasons": [],
       "context_resolution_status": "not_needed",
       "context_resolution_source": "query",
       "context_resolution_confidence": 1.0,
       "context_resolution_reason": "",
       "resolved_query": "기관 A의 블록체인 납품 실적은?",
-      "abstained": true,
+      "abstained": false,
       "expected_answer_status": "insufficient",
-      "answer_status": "insufficient",
+      "answer_status": "supported",
       "expected_claim_targets": [],
-      "claim_targets": [],
-      "claim_count": 0,
+      "claim_targets": [
+        "기관 A",
+        "기관 B"
+      ],
+      "claim_count": 2,
       "format_checks": {
-        "status_match": true,
+        "status_match": false,
         "min_claims": true,
         "claim_targets": true,
         "claim_citations": true
       },
-      "answer_format_compliance": 1.0,
-      "answer": "제공된 공개 샘플 RFP 근거에서는 '기관 A의 블록체인 납품 실적은?'에 답할 수 있는 내용을 찾지 못했습니다. 제공된 공개 샘플 RFP 근거에서는 '기관 A의 블록체인 납품 실적은?'에 답할 수 있는 내용을 찾지 못했습니다.\n- 근거 부족: 사유: topic_not_grounded; 확인 필요 대상: 기관 A '기관 A의 블록체인 납품 실적은?'에 대한 충분한 근거를 찾지 못했습니다."
+      "answer_format_compliance": 0.0,
+      "answer": "사업 개요\n기관 A는 AI 품질관리 플랫폼 구축을 추진한다. 목표는 모델 배포 절차를 표준화하고 데이터 변경 영향을 추적하는 것이다. 사업 개요\n기관 A는 AI 품질관리 플랫폼 구축을 추진한다. 목표는 모델 배포 절차를 표준화하고 데이터 변경 영향을 추적하는 것이다.\n- 기관 A: 사업 개요\n기관 A는 AI 품질관리 플랫폼 구축을 추진한다. [rfp-agency-a-ai-quality::chunk-001]\n- 기관 B: 목표는 모델 배포 절차를 표준화하고 데이터 변경 영향을 추적하는 것이다. [rfp-agency-b-mlops-governance::chunk-001] 사업 개요\n기관 A는 AI 품질관리 플랫폼 구축을 추진한다. 사업 개요\n기관 A는 AI 품질관리 플랫폼 구축을 추진한다. 목표는 모델 성능 저하를 조기에 감지하고 품질 지표를 표준화하는 것이다. AI 요구사항\n기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 시스템은 모델별 정확도와 오류 유형을 수집하고 위험 이벤트를 감사 로그로 남겨야 한다. 일정 및 산출물\n기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. 필수 산출물은 모델 점검 리포트, 보안 통제 매뉴얼, 운영자 교육 자료이다. 제출조건\n제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다. 목표는 모델 배포 절차를 표준화하고 데이터 변경 영향을 추적하는 것이다. 사업 개요\n기관 B는 데이터 거버넌스와 MLOps 자동화를 결합한 운영 체계를 구축한다. 목표는 모델 배포 절차를 표준화하고 데이터 변경 영향을 추적하는 것이다. AI 요구사항\n기관 B의 핵심 AI 요구사항은 데이터 거버넌스, MLOps 배포 자동화, 모델 모니터링이다. 시스템은 데이터 lineage, 모델 drift, 배포 승인 이력을 대시보드로 제공해야 한다. 보안 및 개인정보\n기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다. 보안 통제는 데이터셋 반출 승인과 관리자 작업 기록을 중심으로 설계한다. 일정 및 산출물\n기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다. 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다."
     },
     {
       "id": "abstention_missing_drone",
@@ -2855,40 +3040,43 @@
       "query": "기관 B의 드론 영상분석 요구사항은?",
       "answerable": false,
       "expected_doc_ids": [],
-      "evidence_doc_ids": [],
-      "doc_match": true,
-      "term_match": true,
+      "evidence_doc_ids": [
+        "rfp-agency-a-ai-quality",
+        "rfp-agency-b-mlops-governance"
+      ],
+      "doc_match": false,
+      "term_match": false,
       "citation_term_match": false,
       "citation_doc_precision": 0.0,
       "accuracy": null,
-      "groundedness": 1.0,
-      "citation_precision": 1.0,
-      "abstention": 1.0,
-      "latency_ms": 2.88,
-      "retry_count": 1,
-      "retry_trigger_reasons": [
-        "topic_not_grounded",
-        "topic_not_grounded"
-      ],
+      "groundedness": 0.0,
+      "citation_precision": 0.0,
+      "abstention": 0.0,
+      "latency_ms": 5.56,
+      "retry_count": 0,
+      "retry_trigger_reasons": [],
       "context_resolution_status": "not_needed",
       "context_resolution_source": "query",
       "context_resolution_confidence": 1.0,
       "context_resolution_reason": "",
       "resolved_query": "기관 B의 드론 영상분석 요구사항은?",
-      "abstained": true,
+      "abstained": false,
       "expected_answer_status": "insufficient",
-      "answer_status": "insufficient",
+      "answer_status": "supported",
       "expected_claim_targets": [],
-      "claim_targets": [],
-      "claim_count": 0,
+      "claim_targets": [
+        "기관 A",
+        "기관 B"
+      ],
+      "claim_count": 2,
       "format_checks": {
-        "status_match": true,
+        "status_match": false,
         "min_claims": true,
         "claim_targets": true,
         "claim_citations": true
       },
-      "answer_format_compliance": 1.0,
-      "answer": "제공된 공개 샘플 RFP 근거에서는 '기관 B의 드론 영상분석 요구사항은?'에 답할 수 있는 내용을 찾지 못했습니다. 제공된 공개 샘플 RFP 근거에서는 '기관 B의 드론 영상분석 요구사항은?'에 답할 수 있는 내용을 찾지 못했습니다.\n- 근거 부족: 사유: topic_not_grounded; 확인 필요 대상: 기관 B '기관 B의 드론 영상분석 요구사항은?'에 대한 충분한 근거를 찾지 못했습니다."
+      "answer_format_compliance": 0.0,
+      "answer": "보안 및 개인정보\n기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다. 사업 개요\n기관 A는 AI 품질관리 플랫폼 구축을 추진한다. 보안 및 개인정보\n기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다. 사업 개요\n기관 A는 AI 품질관리 플랫폼 구축을 추진한다.\n- 기관 B: 보안 및 개인정보\n기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다. [rfp-agency-b-mlops-governance::chunk-001]\n- 기관 A: 사업 개요\n기관 A는 AI 품질관리 플랫폼 구축을 추진한다. [rfp-agency-a-ai-quality::chunk-001] 보안 및 개인정보\n기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다. 사업 개요\n기관 B는 데이터 거버넌스와 MLOps 자동화를 결합한 운영 체계를 구축한다. 목표는 모델 배포 절차를 표준화하고 데이터 변경 영향을 추적하는 것이다. AI 요구사항\n기관 B의 핵심 AI 요구사항은 데이터 거버넌스, MLOps 배포 자동화, 모델 모니터링이다. 시스템은 데이터 lineage, 모델 drift, 배포 승인 이력을 대시보드로 제공해야 한다. 보안 및 개인정보\n기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다. 보안 통제는 데이터셋 반출 승인과 관리자 작업 기록을 중심으로 설계한다. 일정 및 산출물\n기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다. 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다. 사업 개요\n기관 A는 AI 품질관리 플랫폼 구축을 추진한다. 사업 개요\n기관 A는 AI 품질관리 플랫폼 구축을 추진한다. 목표는 모델 성능 저하를 조기에 감지하고 품질 지표를 표준화하는 것이다. AI 요구사항\n기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 시스템은 모델별 정확도와 오류 유형을 수집하고 위험 이벤트를 감사 로그로 남겨야 한다. 일정 및 산출물\n기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. 필수 산출물은 모델 점검 리포트, 보안 통제 매뉴얼, 운영자 교육 자료이다. 제출조건\n제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다."
     },
     {
       "id": "abstention_missing_payment",
@@ -2896,40 +3084,43 @@
       "query": "기관 C의 결제 기능 연동 요구사항은?",
       "answerable": false,
       "expected_doc_ids": [],
-      "evidence_doc_ids": [],
-      "doc_match": true,
-      "term_match": true,
+      "evidence_doc_ids": [
+        "rfp-agency-c-chatbot",
+        "rfp-common-submission"
+      ],
+      "doc_match": false,
+      "term_match": false,
       "citation_term_match": false,
       "citation_doc_precision": 0.0,
       "accuracy": null,
-      "groundedness": 1.0,
-      "citation_precision": 1.0,
-      "abstention": 1.0,
-      "latency_ms": 3.44,
-      "retry_count": 1,
-      "retry_trigger_reasons": [
-        "topic_not_grounded",
-        "topic_not_grounded"
-      ],
+      "groundedness": 0.0,
+      "citation_precision": 0.0,
+      "abstention": 0.0,
+      "latency_ms": 2.81,
+      "retry_count": 0,
+      "retry_trigger_reasons": [],
       "context_resolution_status": "not_needed",
       "context_resolution_source": "query",
       "context_resolution_confidence": 1.0,
       "context_resolution_reason": "",
       "resolved_query": "기관 C의 결제 기능 연동 요구사항은?",
-      "abstained": true,
+      "abstained": false,
       "expected_answer_status": "insufficient",
-      "answer_status": "insufficient",
+      "answer_status": "supported",
       "expected_claim_targets": [],
-      "claim_targets": [],
-      "claim_count": 0,
+      "claim_targets": [
+        "공통",
+        "기관 C"
+      ],
+      "claim_count": 2,
       "format_checks": {
-        "status_match": true,
+        "status_match": false,
         "min_claims": true,
         "claim_targets": true,
         "claim_citations": true
       },
-      "answer_format_compliance": 1.0,
-      "answer": "제공된 공개 샘플 RFP 근거에서는 '기관 C의 결제 기능 연동 요구사항은?'에 답할 수 있는 내용을 찾지 못했습니다. 제공된 공개 샘플 RFP 근거에서는 '기관 C의 결제 기능 연동 요구사항은?'에 답할 수 있는 내용을 찾지 못했습니다.\n- 근거 부족: 사유: topic_not_grounded; 확인 필요 대상: 기관 C '기관 C의 결제 기능 연동 요구사항은?'에 대한 충분한 근거를 찾지 못했습니다."
+      "answer_format_compliance": 0.0,
+      "answer": "사업 개요\n기관 C는 고객지원 챗봇 고도화를 추진한다. 부재 정보는 추정하지 않고 질의응답 기간에 확인해야 한다. 사업 개요\n기관 C는 고객지원 챗봇 고도화를 추진한다. 부재 정보는 추정하지 않고 질의응답 기간에 확인해야 한다.\n- 기관 C: 사업 개요\n기관 C는 고객지원 챗봇 고도화를 추진한다. [rfp-agency-c-chatbot::chunk-001]\n- 공통: 부재 정보는 추정하지 않고 질의응답 기간에 확인해야 한다. [rfp-common-submission::chunk-001] 사업 개요\n기관 C는 고객지원 챗봇 고도화를 추진한다. 사업 개요\n기관 C는 고객지원 챗봇 고도화를 추진한다. 목표는 반복 문의를 자동 처리하고 상담원 이관 기준을 명확히 하는 것이다. AI 요구사항\n기관 C의 챗봇 AI 요구사항은 한국어 FAQ 검색, 의도 분류, 상담 이관 추천이다. 챗봇은 주요 문의에 대해 평균 2초 이내 응답해야 한다. 평가 및 운영\n기관 C는 답변 정확도, 상담 이관 적절성, 사용자 만족도를 운영 지표로 사용한다. 운영 로그는 월간 리포트로 제출한다. 부재 정보는 추정하지 않고 질의응답 기간에 확인해야 한다. 공통 제출조건\n모든 제안사는 일정 준수 계획, 위험 관리 방안, 산출물 품질 검수 절차를 제출해야 한다. 산출물은 표준 템플릿에 맞춰 버전과 책임자를 표시해야 한다. 평가 기준\n공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다. 부재 정보는 추정하지 않고 질의응답 기간에 확인해야 한다."
     },
     {
       "id": "abstention_missing_ocr",
@@ -2937,40 +3128,43 @@
       "query": "공통 제출조건에 OCR 자동인식 기능 요구가 있나?",
       "answerable": false,
       "expected_doc_ids": [],
-      "evidence_doc_ids": [],
-      "doc_match": true,
-      "term_match": true,
+      "evidence_doc_ids": [
+        "rfp-agency-a-ai-quality",
+        "rfp-common-submission"
+      ],
+      "doc_match": false,
+      "term_match": false,
       "citation_term_match": false,
       "citation_doc_precision": 0.0,
       "accuracy": null,
-      "groundedness": 1.0,
-      "citation_precision": 1.0,
-      "abstention": 1.0,
-      "latency_ms": 3.11,
-      "retry_count": 1,
-      "retry_trigger_reasons": [
-        "topic_not_grounded",
-        "topic_not_grounded"
-      ],
+      "groundedness": 0.0,
+      "citation_precision": 0.0,
+      "abstention": 0.0,
+      "latency_ms": 3.68,
+      "retry_count": 0,
+      "retry_trigger_reasons": [],
       "context_resolution_status": "not_needed",
       "context_resolution_source": "query",
       "context_resolution_confidence": 1.0,
       "context_resolution_reason": "",
       "resolved_query": "공통 제출조건에 OCR 자동인식 기능 요구가 있나?",
-      "abstained": true,
+      "abstained": false,
       "expected_answer_status": "insufficient",
-      "answer_status": "insufficient",
+      "answer_status": "supported",
       "expected_claim_targets": [],
-      "claim_targets": [],
-      "claim_count": 0,
+      "claim_targets": [
+        "공통",
+        "기관 A"
+      ],
+      "claim_count": 2,
       "format_checks": {
-        "status_match": true,
+        "status_match": false,
         "min_claims": true,
         "claim_targets": true,
         "claim_citations": true
       },
-      "answer_format_compliance": 1.0,
-      "answer": "제공된 공개 샘플 RFP 근거에서는 '공통 제출조건에 OCR 자동인식 기능 요구가 있나?'에 답할 수 있는 내용을 찾지 못했습니다. 제공된 공개 샘플 RFP 근거에서는 '공통 제출조건에 OCR 자동인식 기능 요구가 있나?'에 답할 수 있는 내용을 찾지 못했습니다.\n- 근거 부족: 사유: topic_not_grounded; 확인 필요 대상: 공통 '공통 제출조건에 OCR 자동인식 기능 요구가 있나?'에 대한 충분한 근거를 찾지 못했습니다."
+      "answer_format_compliance": 0.0,
+      "answer": "공통 제출조건\n모든 제안사는 일정 준수 계획, 위험 관리 방안, 산출물 품질 검수 절차를 제출해야 한다. 제출조건\n제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. 공통 제출조건\n모든 제안사는 일정 준수 계획, 위험 관리 방안, 산출물 품질 검수 절차를 제출해야 한다. 제출조건\n제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다.\n- 공통: 공통 제출조건\n모든 제안사는 일정 준수 계획, 위험 관리 방안, 산출물 품질 검수 절차를 제출해야 한다. [rfp-common-submission::chunk-001]\n- 기관 A: 제출조건\n제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. [rfp-agency-a-ai-quality::chunk-001] 공통 제출조건\n모든 제안사는 일정 준수 계획, 위험 관리 방안, 산출물 품질 검수 절차를 제출해야 한다. 공통 제출조건\n모든 제안사는 일정 준수 계획, 위험 관리 방안, 산출물 품질 검수 절차를 제출해야 한다. 산출물은 표준 템플릿에 맞춰 버전과 책임자를 표시해야 한다. 평가 기준\n공통 평가는 요구사항 이해도, 근거 기반 실행 계획, 보안 및 운영 리스크 대응 능력을 중심으로 진행한다. 부재 정보는 추정하지 않고 질의응답 기간에 확인해야 한다. 제출조건\n제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. 사업 개요\n기관 A는 AI 품질관리 플랫폼 구축을 추진한다. 목표는 모델 성능 저하를 조기에 감지하고 품질 지표를 표준화하는 것이다. AI 요구사항\n기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 시스템은 모델별 정확도와 오류 유형을 수집하고 위험 이벤트를 감사 로그로 남겨야 한다. 일정 및 산출물\n기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. 필수 산출물은 모델 점검 리포트, 보안 통제 매뉴얼, 운영자 교육 자료이다. 제출조건\n제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다."
     },
     {
       "id": "abstention_missing_genai",
@@ -2978,40 +3172,41 @@
       "query": "기관 A의 생성형 AI 상담 기능 요구사항은?",
       "answerable": false,
       "expected_doc_ids": [],
-      "evidence_doc_ids": [],
-      "doc_match": true,
-      "term_match": true,
+      "evidence_doc_ids": [
+        "rfp-agency-c-chatbot"
+      ],
+      "doc_match": false,
+      "term_match": false,
       "citation_term_match": false,
       "citation_doc_precision": 0.0,
       "accuracy": null,
-      "groundedness": 1.0,
-      "citation_precision": 1.0,
-      "abstention": 1.0,
-      "latency_ms": 4.39,
-      "retry_count": 1,
-      "retry_trigger_reasons": [
-        "topic_not_grounded",
-        "topic_not_grounded"
-      ],
+      "groundedness": 0.0,
+      "citation_precision": 0.0,
+      "abstention": 0.0,
+      "latency_ms": 3.23,
+      "retry_count": 0,
+      "retry_trigger_reasons": [],
       "context_resolution_status": "not_needed",
       "context_resolution_source": "query",
       "context_resolution_confidence": 1.0,
       "context_resolution_reason": "",
       "resolved_query": "기관 A의 생성형 AI 상담 기능 요구사항은?",
-      "abstained": true,
+      "abstained": false,
       "expected_answer_status": "insufficient",
-      "answer_status": "insufficient",
+      "answer_status": "supported",
       "expected_claim_targets": [],
-      "claim_targets": [],
-      "claim_count": 0,
+      "claim_targets": [
+        "기관 C"
+      ],
+      "claim_count": 1,
       "format_checks": {
-        "status_match": true,
+        "status_match": false,
         "min_claims": true,
         "claim_targets": true,
         "claim_citations": true
       },
-      "answer_format_compliance": 1.0,
-      "answer": "제공된 공개 샘플 RFP 근거에서는 '기관 A의 생성형 AI 상담 기능 요구사항은?'에 답할 수 있는 내용을 찾지 못했습니다. 제공된 공개 샘플 RFP 근거에서는 '기관 A의 생성형 AI 상담 기능 요구사항은?'에 답할 수 있는 내용을 찾지 못했습니다.\n- 근거 부족: 사유: topic_not_grounded; 확인 필요 대상: 기관 A '기관 A의 생성형 AI 상담 기능 요구사항은?'에 대한 충분한 근거를 찾지 못했습니다."
+      "answer_format_compliance": 0.0,
+      "answer": "AI 요구사항\n기관 C의 챗봇 AI 요구사항은 한국어 FAQ 검색, 의도 분류, 상담 이관 추천이다. AI 요구사항\n기관 C의 챗봇 AI 요구사항은 한국어 FAQ 검색, 의도 분류, 상담 이관 추천이다.\n- 기관 C: AI 요구사항\n기관 C의 챗봇 AI 요구사항은 한국어 FAQ 검색, 의도 분류, 상담 이관 추천이다. [rfp-agency-c-chatbot::chunk-001] AI 요구사항\n기관 C의 챗봇 AI 요구사항은 한국어 FAQ 검색, 의도 분류, 상담 이관 추천이다. 사업 개요\n기관 C는 고객지원 챗봇 고도화를 추진한다. 목표는 반복 문의를 자동 처리하고 상담원 이관 기준을 명확히 하는 것이다. AI 요구사항\n기관 C의 챗봇 AI 요구사항은 한국어 FAQ 검색, 의도 분류, 상담 이관 추천이다. 챗봇은 주요 문의에 대해 평균 2초 이내 응답해야 한다. 평가 및 운영\n기관 C는 답변 정확도, 상담 이관 적절성, 사용자 만족도를 운영 지표로 사용한다. 운영 로그는 월간 리포트로 제출한다."
     },
     {
       "id": "abstention_missing_quantum",
@@ -3019,40 +3214,43 @@
       "query": "기관 B의 양자암호 연동 요구사항은?",
       "answerable": false,
       "expected_doc_ids": [],
-      "evidence_doc_ids": [],
-      "doc_match": true,
-      "term_match": true,
+      "evidence_doc_ids": [
+        "rfp-agency-b-mlops-governance",
+        "rfp-agency-c-chatbot"
+      ],
+      "doc_match": false,
+      "term_match": false,
       "citation_term_match": false,
       "citation_doc_precision": 0.0,
       "accuracy": null,
-      "groundedness": 1.0,
-      "citation_precision": 1.0,
-      "abstention": 1.0,
-      "latency_ms": 2.92,
-      "retry_count": 1,
-      "retry_trigger_reasons": [
-        "topic_not_grounded",
-        "topic_not_grounded"
-      ],
+      "groundedness": 0.0,
+      "citation_precision": 0.0,
+      "abstention": 0.0,
+      "latency_ms": 3.01,
+      "retry_count": 0,
+      "retry_trigger_reasons": [],
       "context_resolution_status": "not_needed",
       "context_resolution_source": "query",
       "context_resolution_confidence": 1.0,
       "context_resolution_reason": "",
       "resolved_query": "기관 B의 양자암호 연동 요구사항은?",
-      "abstained": true,
+      "abstained": false,
       "expected_answer_status": "insufficient",
-      "answer_status": "insufficient",
+      "answer_status": "supported",
       "expected_claim_targets": [],
-      "claim_targets": [],
-      "claim_count": 0,
+      "claim_targets": [
+        "기관 B",
+        "기관 C"
+      ],
+      "claim_count": 2,
       "format_checks": {
-        "status_match": true,
+        "status_match": false,
         "min_claims": true,
         "claim_targets": true,
         "claim_citations": true
       },
-      "answer_format_compliance": 1.0,
-      "answer": "제공된 공개 샘플 RFP 근거에서는 '기관 B의 양자암호 연동 요구사항은?'에 답할 수 있는 내용을 찾지 못했습니다. 제공된 공개 샘플 RFP 근거에서는 '기관 B의 양자암호 연동 요구사항은?'에 답할 수 있는 내용을 찾지 못했습니다.\n- 근거 부족: 사유: topic_not_grounded; 확인 필요 대상: 기관 B '기관 B의 양자암호 연동 요구사항은?'에 대한 충분한 근거를 찾지 못했습니다."
+      "answer_format_compliance": 0.0,
+      "answer": "보안 및 개인정보\n기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다. 운영 로그는 월간 리포트로 제출한다. 보안 및 개인정보\n기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다. 운영 로그는 월간 리포트로 제출한다.\n- 기관 B: 보안 및 개인정보\n기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다. [rfp-agency-b-mlops-governance::chunk-001]\n- 기관 C: 운영 로그는 월간 리포트로 제출한다. [rfp-agency-c-chatbot::chunk-001] 보안 및 개인정보\n기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다. 사업 개요\n기관 B는 데이터 거버넌스와 MLOps 자동화를 결합한 운영 체계를 구축한다. 목표는 모델 배포 절차를 표준화하고 데이터 변경 영향을 추적하는 것이다. AI 요구사항\n기관 B의 핵심 AI 요구사항은 데이터 거버넌스, MLOps 배포 자동화, 모델 모니터링이다. 시스템은 데이터 lineage, 모델 drift, 배포 승인 이력을 대시보드로 제공해야 한다. 보안 및 개인정보\n기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다. 보안 통제는 데이터셋 반출 승인과 관리자 작업 기록을 중심으로 설계한다. 일정 및 산출물\n기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다. 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다. 운영 로그는 월간 리포트로 제출한다. 사업 개요\n기관 C는 고객지원 챗봇 고도화를 추진한다. 목표는 반복 문의를 자동 처리하고 상담원 이관 기준을 명확히 하는 것이다. AI 요구사항\n기관 C의 챗봇 AI 요구사항은 한국어 FAQ 검색, 의도 분류, 상담 이관 추천이다. 챗봇은 주요 문의에 대해 평균 2초 이내 응답해야 한다. 평가 및 운영\n기관 C는 답변 정확도, 상담 이관 적절성, 사용자 만족도를 운영 지표로 사용한다. 운영 로그는 월간 리포트로 제출한다."
     }
   ]
 }

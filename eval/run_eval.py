@@ -12,17 +12,21 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from rag_core import load_index, percentile, rate, run_rag_query
+from rag_core import (
+    DEFAULT_CLI_PIPELINE_NAME,
+    load_index,
+    percentile,
+    rate,
+    resolve_pipeline_config,
+    run_rag_query,
+)
 
 
 QUERY_TYPES = ("single_doc", "multi_doc", "follow_up", "abstention")
 DEFAULT_ABLATION_RUNS = [
     {
-        "name": "full",
-        "metadata_first": True,
-        "rerank": True,
-        "verifier_retry": True,
-        "retrieval_mode": "flat",
+        "name": DEFAULT_CLI_PIPELINE_NAME,
+        "pipeline": DEFAULT_CLI_PIPELINE_NAME,
     }
 ]
 
@@ -35,6 +39,23 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--query", default=None, help="Unused in this command; accepted for CLI consistency.")
     parser.add_argument("--config", required=True, help="Path to eval config YAML file.")
     return parser.parse_args()
+
+
+def normalize_run_config(run: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(run, dict) or not run.get("name"):
+        raise ValueError("Each ablation run must be a mapping with a name")
+    config = resolve_pipeline_config(run, default_pipeline=DEFAULT_CLI_PIPELINE_NAME)
+    return {
+        "name": str(run["name"]),
+        "pipeline": config["pipeline"],
+        "pipeline_alias": config.get("pipeline_alias"),
+        "top_k": config.get("top_k"),
+        "metadata_first": bool(config.get("metadata_first")),
+        "rerank": bool(config.get("rerank")),
+        "verifier_retry": bool(config.get("verifier_retry")),
+        "retrieval_mode": str(config.get("retrieval_mode", "flat")),
+        "prompt_profile": str(config.get("prompt_profile")),
+    }
 
 
 def load_config(path: Path) -> dict[str, Any]:
@@ -60,16 +81,10 @@ def load_config(path: Path) -> dict[str, Any]:
         raise ValueError("Eval config ablation_runs must be a non-empty list when provided")
     seen_names: set[str] = set()
     for run in runs:
-        if not isinstance(run, dict) or not run.get("name"):
-            raise ValueError("Each ablation run must be a mapping with a name")
-        if run["name"] in seen_names:
-            raise ValueError(f"Duplicate ablation run name: {run['name']}")
-        retrieval_mode = run.get("retrieval_mode", "flat")
-        if retrieval_mode not in {"flat", "hierarchical"}:
-            raise ValueError(
-                f"Eval run retrieval_mode must be 'flat' or 'hierarchical': {run['name']}"
-            )
-        seen_names.add(run["name"])
+        normalized_run = normalize_run_config(run)
+        if normalized_run["name"] in seen_names:
+            raise ValueError(f"Duplicate ablation run name: {normalized_run['name']}")
+        seen_names.add(normalized_run["name"])
     return data
 
 
@@ -310,10 +325,13 @@ def summarize_run(
 ) -> dict[str, Any]:
     summary = {
         "name": name,
+        "pipeline": str(run_config.get("pipeline") or ""),
+        "top_k": run_config.get("top_k"),
         "metadata_first": bool(run_config.get("metadata_first", True)),
         "rerank": bool(run_config.get("rerank", True)),
         "verifier_retry": bool(run_config.get("verifier_retry", True)),
         "retrieval_mode": str(run_config.get("retrieval_mode", "flat")),
+        "prompt_profile": str(run_config.get("prompt_profile") or ""),
         **metric_block(case_results),
         "by_query_type": {},
     }
@@ -341,11 +359,14 @@ def evaluate_run(
             prior_prediction = run_rag_query(
                 index,
                 str(turn["query"]),
+                pipeline=str(run_config.get("pipeline") or DEFAULT_CLI_PIPELINE_NAME),
+                top_k=run_config.get("top_k"),
                 context_entities=turn.get("context_entities") or [],
                 metadata_first=bool(run_config.get("metadata_first", True)),
                 rerank=bool(run_config.get("rerank", True)),
                 verifier_retry=bool(run_config.get("verifier_retry", True)),
                 retrieval_mode=str(run_config.get("retrieval_mode", "flat")),
+                prompt_profile=str(run_config.get("prompt_profile") or ""),
                 conversation_state=conversation_state,
             )
             conversation_state = prior_prediction.get("conversation_state") or conversation_state
@@ -353,11 +374,14 @@ def evaluate_run(
         prediction = run_rag_query(
             index,
             str(case["query"]),
+            pipeline=str(run_config.get("pipeline") or DEFAULT_CLI_PIPELINE_NAME),
+            top_k=run_config.get("top_k"),
             context_entities=case.get("context_entities") or [],
             metadata_first=bool(run_config.get("metadata_first", True)),
             rerank=bool(run_config.get("rerank", True)),
             verifier_retry=bool(run_config.get("verifier_retry", True)),
             retrieval_mode=str(run_config.get("retrieval_mode", "flat")),
+            prompt_profile=str(run_config.get("prompt_profile") or ""),
             conversation_state=conversation_state,
         )
         case_results.append(score_case(case, prediction, answer_policy))
@@ -366,18 +390,7 @@ def evaluate_run(
 
 def ablation_runs(config: dict[str, Any]) -> list[dict[str, Any]]:
     runs = config.get("ablation_runs") or DEFAULT_ABLATION_RUNS
-    normalized = []
-    for run in runs:
-        normalized.append(
-            {
-                "name": str(run["name"]),
-                "metadata_first": bool(run.get("metadata_first", True)),
-                "rerank": bool(run.get("rerank", True)),
-                "verifier_retry": bool(run.get("verifier_retry", True)),
-                "retrieval_mode": str(run.get("retrieval_mode", "flat")),
-            }
-        )
-    return normalized
+    return [normalize_run_config(run) for run in runs]
 
 
 def main() -> int:
@@ -393,7 +406,8 @@ def main() -> int:
         return 2
 
     run_summaries = []
-    full_summary = None
+    primary_summary = None
+    primary_run_name = str(config.get("primary_run") or DEFAULT_CLI_PIPELINE_NAME)
     try:
         for run_config in ablation_runs(config):
             case_results = evaluate_run(
@@ -402,40 +416,44 @@ def main() -> int:
                 run_config,
                 config.get("answer_policy") if isinstance(config.get("answer_policy"), dict) else {},
             )
-            is_full = run_config["name"] == "full"
+            is_primary = run_config["name"] == primary_run_name
             run_summary = summarize_run(
                 run_config["name"],
                 run_config,
                 case_results,
-                include_cases=is_full,
+                include_cases=is_primary,
             )
             run_summaries.append(run_summary)
-            if is_full:
-                full_summary = run_summary
+            if is_primary:
+                primary_summary = run_summary
     except Exception as exc:
         print(f"[ERROR] Eval execution failed: {exc}", file=sys.stderr)
         return 2
 
-    if full_summary is None:
-        full_summary = run_summaries[0]
+    if primary_summary is None:
+        primary_summary = run_summaries[0]
 
     summary = {
         "mode": "rag",
         "config": args.config,
         "index_dir": args.index_dir,
-        "num_predictions": full_summary["num_predictions"],
-        "accuracy": full_summary["accuracy"],
-        "groundedness": full_summary["groundedness"],
-        "citation_precision": full_summary["citation_precision"],
-        "abstention": full_summary["abstention"],
-        "answer_format_compliance": full_summary["answer_format_compliance"],
-        "latency": full_summary["latency"],
-        "retry": full_summary["retry"],
-        "by_query_type": full_summary["by_query_type"],
-        "retry_cost": full_summary["retry_cost"],
-        "retry_reason_counts": full_summary["retry_reason_counts"],
+        "primary_run": primary_summary["name"],
+        "pipeline": primary_summary.get("pipeline"),
+        "prompt_profile": primary_summary.get("prompt_profile"),
+        "top_k": primary_summary.get("top_k"),
+        "num_predictions": primary_summary["num_predictions"],
+        "accuracy": primary_summary["accuracy"],
+        "groundedness": primary_summary["groundedness"],
+        "citation_precision": primary_summary["citation_precision"],
+        "abstention": primary_summary["abstention"],
+        "answer_format_compliance": primary_summary["answer_format_compliance"],
+        "latency": primary_summary["latency"],
+        "retry": primary_summary["retry"],
+        "by_query_type": primary_summary["by_query_type"],
+        "retry_cost": primary_summary["retry_cost"],
+        "retry_reason_counts": primary_summary["retry_reason_counts"],
         "ablation": {"runs": run_summaries},
-        "case_results": full_summary.get("case_results", []),
+        "case_results": primary_summary.get("case_results", []),
     }
 
     out_dir = Path(args.output_dir)
