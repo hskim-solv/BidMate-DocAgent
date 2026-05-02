@@ -8,6 +8,7 @@ import importlib.util
 import json
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import sys
 from typing import Any
@@ -286,11 +287,16 @@ def main() -> int:
         args.artifact_root or suite.get("artifacts", {}).get("root") or "artifacts/benchmarks"
     )
     run_dir = artifact_root / run_id
-    if run_dir.exists() and not args.force:
-        raise SystemExit(f"[ERROR] Artifact directory already exists: {rel_path(run_dir)}")
+    if run_dir.exists():
+        if not args.force:
+            raise SystemExit(f"[ERROR] Artifact directory already exists: {rel_path(run_dir)}")
+        shutil.rmtree(run_dir)
+
+    run_dir.mkdir(parents=True, exist_ok=True)
 
     traces_dir = run_dir / "traces"
     logs_dir = run_dir / "logs"
+    logs_dir.mkdir(parents=True, exist_ok=True)
     predictions_path = run_dir / "predictions.jsonl"
     latency_path = run_dir / "latency_samples.jsonl"
     eval_summary_path = run_dir / "eval_summary.json"
