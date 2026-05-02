@@ -37,7 +37,7 @@
 }
 ```
 
-좋은 답변은 claim마다 citation이 있고, citation의 chunk text가 claim을 직접 지지한다. 비교 질문에서는 대상별 claim을 나눠 스캔 가능하게 유지한다.
+좋은 답변은 claim마다 citation이 있고, citation의 chunk text가 claim을 직접 지지한다. visual parsing v2 인덱스에서는 citation에 `page_span`과 `regions`가 추가될 수 있어 page/bbox 근거 위치까지 추적할 수 있다. 비교 질문에서는 대상별 claim을 나눠 스캔 가능하게 유지한다.
 
 ## 나쁜 답변 예시
 

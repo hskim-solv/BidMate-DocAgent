@@ -377,7 +377,16 @@ def normalize_json_document(data: dict[str, Any], path: Path) -> dict[str, Any]:
         heading = str(section.get("heading") or f"section-{idx}")
         text = str(section.get("text") or "").strip()
         if text:
-            normalized_sections.append({"heading": heading, "text": text})
+            normalized_section = {"heading": heading, "text": text}
+            if section.get("section_path"):
+                normalized_section["section_path"] = section.get("section_path")
+            regions = normalize_regions(section.get("regions"))
+            page_span = normalize_page_span(section.get("page_span"), regions)
+            if regions:
+                normalized_section["regions"] = regions
+            if page_span:
+                normalized_section["page_span"] = page_span
+            normalized_sections.append(normalized_section)
     if not normalized_sections:
         raise ValueError(f"Document has no text: {path}")
     metadata = data.get("metadata") if isinstance(data.get("metadata"), dict) else {}
@@ -437,6 +446,48 @@ def normalize_section_path(section: dict[str, Any], heading: str) -> list[str]:
     return path
 
 
+def normalize_regions(value: Any) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    regions = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        region: dict[str, Any] = {}
+        page_number = item.get("page_number")
+        if isinstance(page_number, int):
+            region["page_number"] = page_number
+        elif page_number is None:
+            region["page_number"] = None
+        bbox = item.get("bbox")
+        if isinstance(bbox, list) and len(bbox) == 4:
+            region["bbox"] = bbox
+        elif bbox is None:
+            region["bbox"] = None
+        for key in ("source", "type", "block_id"):
+            if item.get(key) is not None:
+                region[key] = str(item.get(key))
+        if region:
+            regions.append(region)
+    return regions
+
+
+def normalize_page_span(value: Any, regions: list[dict[str, Any]]) -> list[int] | None:
+    if isinstance(value, list) and len(value) == 2:
+        try:
+            return [int(value[0]), int(value[1])]
+        except (TypeError, ValueError):
+            pass
+    page_numbers = [
+        int(region["page_number"])
+        for region in regions
+        if isinstance(region.get("page_number"), int)
+    ]
+    if not page_numbers:
+        return None
+    return [min(page_numbers), max(page_numbers)]
+
+
 def normalize_document_sections(doc: dict[str, Any]) -> list[dict[str, Any]]:
     normalized = []
     for idx, section in enumerate(doc.get("sections") or [], start=1):
@@ -445,20 +496,25 @@ def normalize_document_sections(doc: dict[str, Any]) -> list[dict[str, Any]]:
         if not text:
             continue
         section_path = normalize_section_path(section, heading)
-        normalized.append(
-            {
-                "section_id": f"{doc['doc_id']}::section-{idx:03d}",
-                "doc_id": doc["doc_id"],
-                "title": doc["title"],
-                "agency": doc.get("agency", ""),
-                "project": doc.get("project", ""),
-                "metadata": doc.get("metadata", {}),
-                "section": section_path[-1],
-                "heading": heading,
-                "section_path": section_path,
-                "text": text,
-            }
-        )
+        regions = normalize_regions(section.get("regions"))
+        page_span = normalize_page_span(section.get("page_span"), regions)
+        normalized_section = {
+            "section_id": f"{doc['doc_id']}::section-{idx:03d}",
+            "doc_id": doc["doc_id"],
+            "title": doc["title"],
+            "agency": doc.get("agency", ""),
+            "project": doc.get("project", ""),
+            "metadata": doc.get("metadata", {}),
+            "section": section_path[-1],
+            "heading": heading,
+            "section_path": section_path,
+            "text": text,
+        }
+        if regions:
+            normalized_section["regions"] = regions
+        if page_span:
+            normalized_section["page_span"] = page_span
+        normalized.append(normalized_section)
     return normalized
 
 
@@ -482,14 +538,16 @@ def resolve_chunking_strategy(doc: dict[str, Any], requested_strategy: str) -> s
 
 def fixed_parent_section(doc: dict[str, Any], sections: list[dict[str, Any]]) -> dict[str, Any]:
     parts = []
+    regions = []
     for section in sections:
         heading = str(section.get("section") or "").strip()
         text = str(section.get("text") or "").strip()
+        regions.extend(normalize_regions(section.get("regions")))
         if heading and heading not in WEAK_SECTION_HEADINGS:
             parts.append(f"{heading}\n{text}")
         else:
             parts.append(text)
-    return {
+    parent = {
         "section_id": f"{doc['doc_id']}::section-001",
         "doc_id": doc["doc_id"],
         "title": doc["title"],
@@ -501,6 +559,12 @@ def fixed_parent_section(doc: dict[str, Any], sections: list[dict[str, Any]]) ->
         "section_path": ["문서 전체"],
         "text": "\n\n".join(part for part in parts if part).strip(),
     }
+    page_span = normalize_page_span(None, regions)
+    if regions:
+        parent["regions"] = regions
+    if page_span:
+        parent["page_span"] = page_span
+    return parent
 
 
 def split_section_text(
@@ -626,7 +690,9 @@ def make_chunk(
     text = " ".join(sentences).strip()
     section_path = parent_section.get("section_path") or [parent_section.get("section", "")]
     section_label = str(parent_section.get("section") or section_path[-1])
-    return {
+    regions = normalize_regions(parent_section.get("regions"))
+    page_span = normalize_page_span(parent_section.get("page_span"), regions)
+    chunk = {
         "chunk_id": f"{doc['doc_id']}::chunk-{chunk_seq:03d}",
         "section_id": parent_section["section_id"],
         "parent_section_id": parent_section["section_id"],
@@ -644,6 +710,11 @@ def make_chunk(
             " ".join([doc["title"], doc.get("agency", ""), " > ".join(section_path), text])
         ),
     }
+    if regions:
+        chunk["regions"] = regions
+    if page_span:
+        chunk["page_span"] = page_span
+    return chunk
 
 
 def embed_texts(
@@ -1337,30 +1408,35 @@ def retrieve(
             score = (0.70 * dense_score) + (0.30 * lexical_score)
         else:
             score = (0.60 * dense_score) + (0.25 * lexical_score) + (0.15 * metadata_score)
-        scored.append(
-            {
-                "doc_id": chunk["doc_id"],
-                "chunk_id": chunk["chunk_id"],
-                "title": chunk["title"],
-                "agency": chunk.get("agency", ""),
-                "project": chunk.get("project", ""),
-                "metadata": chunk.get("metadata", {}),
-                "section": chunk["section"],
-                "section_id": chunk.get("section_id"),
-                "parent_section_id": chunk.get("parent_section_id") or chunk.get("section_id"),
-                "section_path": chunk.get("section_path") or [chunk.get("section", "")],
-                "chunk_seq_in_section": chunk.get("chunk_seq_in_section"),
-                "chunking_strategy": chunk.get("chunking_strategy", "legacy"),
-                "retrieval_mode": "flat",
-                "text": chunk["text"],
-                "score": round(float(score), 4),
-                "score_parts": {
-                    "dense": round(float(dense_score), 4),
-                    "lexical": round(float(lexical_score), 4),
-                    "metadata": round(float(metadata_score), 4),
-                },
-            }
-        )
+        item = {
+            "doc_id": chunk["doc_id"],
+            "chunk_id": chunk["chunk_id"],
+            "title": chunk["title"],
+            "agency": chunk.get("agency", ""),
+            "project": chunk.get("project", ""),
+            "metadata": chunk.get("metadata", {}),
+            "section": chunk["section"],
+            "section_id": chunk.get("section_id"),
+            "parent_section_id": chunk.get("parent_section_id") or chunk.get("section_id"),
+            "section_path": chunk.get("section_path") or [chunk.get("section", "")],
+            "chunk_seq_in_section": chunk.get("chunk_seq_in_section"),
+            "chunking_strategy": chunk.get("chunking_strategy", "legacy"),
+            "retrieval_mode": "flat",
+            "text": chunk["text"],
+            "score": round(float(score), 4),
+            "score_parts": {
+                "dense": round(float(dense_score), 4),
+                "lexical": round(float(lexical_score), 4),
+                "metadata": round(float(metadata_score), 4),
+            },
+        }
+        regions = normalize_regions(chunk.get("regions"))
+        page_span = normalize_page_span(chunk.get("page_span"), regions)
+        if regions:
+            item["regions"] = regions
+        if page_span:
+            item["page_span"] = page_span
+        scored.append(item)
 
     scored.sort(key=lambda item: item["score"], reverse=True)
     top_k = int(plan["top_k"])
@@ -1415,6 +1491,12 @@ def reassemble_parent_sections(
             "retrieval_mode": "hierarchical",
             "child_chunk_ids": child_ids_by_parent.get(parent_id, []),
         }
+        parent_regions = normalize_regions(parent.get("regions"))
+        parent_page_span = normalize_page_span(parent.get("page_span"), parent_regions)
+        if parent_regions:
+            item["regions"] = parent_regions
+        if parent_page_span:
+            item["page_span"] = parent_page_span
         reassembled.append(item)
 
     reassembled.sort(key=lambda item: item["score"], reverse=True)
@@ -1618,13 +1700,20 @@ def claim_target(item: dict[str, Any]) -> str:
 
 
 def make_citation(item: dict[str, Any]) -> dict[str, Any]:
-    return {
+    citation = {
         "doc_id": item.get("doc_id", ""),
         "chunk_id": item.get("chunk_id", ""),
         "title": item.get("title", ""),
         "section": item.get("section", ""),
         "agency": item.get("agency", ""),
     }
+    regions = normalize_regions(item.get("regions"))
+    page_span = normalize_page_span(item.get("page_span"), regions)
+    if regions:
+        citation["regions"] = regions
+    if page_span:
+        citation["page_span"] = page_span
+    return citation
 
 
 def answer_status(
@@ -2098,8 +2187,9 @@ def run_rag_query(
 
 
 def strip_internal_scores(evidence: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    return [
-        {
+    stripped = []
+    for item in evidence:
+        public_item = {
             "doc_id": item["doc_id"],
             "chunk_id": item["chunk_id"],
             "title": item["title"],
@@ -2116,8 +2206,14 @@ def strip_internal_scores(evidence: list[dict[str, Any]]) -> list[dict[str, Any]
             "retrieval_mode": item.get("retrieval_mode", "flat"),
             "child_chunk_ids": item.get("child_chunk_ids", []),
         }
-        for item in evidence
-    ]
+        regions = normalize_regions(item.get("regions"))
+        page_span = normalize_page_span(item.get("page_span"), regions)
+        if regions:
+            public_item["regions"] = regions
+        if page_span:
+            public_item["page_span"] = page_span
+        stripped.append(public_item)
+    return stripped
 
 
 def percentile(values: list[float], pct: float) -> float | None:
