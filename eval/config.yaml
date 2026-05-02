@@ -283,6 +283,30 @@ cases:
       - "사용자 만족도"
     answerable: true
 
+  - id: follow_up_state_a_security
+    query_type: follow_up
+    prior_turns:
+      - query: "기관 A의 AI 요구사항은?"
+    query: "그 기관이 요구한 보안 조건도 보여줘"
+    expected_doc_ids:
+      - rfp-agency-a-ai-quality
+    expected_terms:
+      - "보안 통제"
+      - "로그"
+    expected_citation_terms:
+      - "보안 통제"
+      - "로그"
+    answerable: true
+
+  - id: follow_up_state_ambiguous_clarification
+    query_type: follow_up
+    prior_turns:
+      - query: "기관 A와 기관 B의 보안 요구사항 차이를 비교해줘"
+    query: "그 기관의 보안 조건은?"
+    expected_doc_ids: []
+    expected_terms: []
+    answerable: false
+
   - id: abstention_missing_blockchain
     query_type: abstention
     query: "기관 A의 블록체인 납품 실적은?"

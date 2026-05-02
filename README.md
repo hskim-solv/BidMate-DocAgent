@@ -64,17 +64,17 @@
 | Follow-up | Answer Accuracy | 1.000 |
 | Evidence | Citation Precision | 1.000 |
 | Abstention | Abstention Accuracy | 1.000 |
-| System | Latency (p50/p95) | p50 1.0ms / p95 1.3ms |
-| System | Retry Rate | 0.250 |
+| System | Latency (p50/p95) | p50 1.4ms / p95 3.6ms |
+| System | Retry Rate | 0.231 |
 
 ### Ablation comparison
 
 | Run | Metadata-first | Rerank | Verifier/Retry | Accuracy | Groundedness | Citation | Abstention | Retry | Latency p95 |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| full | on | on | on | 1.000 | 1.000 | 1.000 | 1.000 | 0.250 | 1.3ms |
-| no_metadata_first | off | on | on | 1.000 | 1.000 | 0.833 | 1.000 | 0.000 | 1.6ms |
-| no_rerank | on | off | on | 1.000 | 1.000 | 1.000 | 1.000 | 0.250 | 2.0ms |
-| no_verifier_retry | on | on | off | 1.000 | 0.750 | 0.750 | 0.000 | 0.000 | 2.3ms |
+| full | on | on | on | 1.000 | 1.000 | 1.000 | 1.000 | 0.231 | 3.6ms |
+| no_metadata_first | off | on | on | 1.000 | 1.000 | 0.846 | 1.000 | 0.000 | 3.0ms |
+| no_rerank | on | off | on | 1.000 | 1.000 | 1.000 | 1.000 | 0.231 | 2.8ms |
+| no_verifier_retry | on | on | off | 1.000 | 0.769 | 0.769 | 0.143 | 0.000 | 2.4ms |
 <!-- METRICS_TABLE:END -->
 
 > 주의: 성능표는 공개 synthetic RFP 평가셋 기준입니다. 원본 RFP 데이터는 비공개 제약으로 저장소에 포함하지 않았습니다.
@@ -124,6 +124,23 @@ python3 scripts/build_index.py --input_dir data/raw --output_dir data/index
 ### 3) 질의 실행
 ```bash
 python3 app.py --input_dir data/index --output_dir outputs --query "기관 A와 기관 B의 AI 요구사항 차이 알려줘"
+```
+
+후속 질문을 재현하려면 세션 상태 파일을 명시적으로 지정합니다. 상태에는 현재 활성 agency/project/topic/doc id와 최근 턴 요약이 JSON으로 저장되며, 생략된 참조가 모호하면 답을 추정하지 않고 clarification 응답으로 중단합니다.
+
+```bash
+python3 app.py \
+  --input_dir data/index \
+  --output_dir outputs \
+  --query "기관 A의 AI 요구사항은?" \
+  --session_state outputs/session_state.json \
+  --reset_session
+
+python3 app.py \
+  --input_dir data/index \
+  --output_dir outputs \
+  --query "그 기관이 요구한 보안 조건도 보여줘" \
+  --session_state outputs/session_state.json
 ```
 
 ### 4) 평가 실행

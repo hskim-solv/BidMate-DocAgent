@@ -19,6 +19,16 @@ def parse_args() -> argparse.Namespace:
         default="",
         help="Comma-separated entities for follow-up questions, e.g. '기관 A'.",
     )
+    parser.add_argument(
+        "--session_state",
+        default=None,
+        help="Optional JSON file used to persist conversational entity state across runs.",
+    )
+    parser.add_argument(
+        "--reset_session",
+        action="store_true",
+        help="Start with an empty conversational state before saving --session_state.",
+    )
     return parser.parse_args()
 
 
@@ -35,16 +45,29 @@ def parse_context_entities(value: str) -> list[str]:
     return [part.strip() for part in value.split(",") if part.strip()]
 
 
+def load_session_state(path: Path, reset: bool = False) -> dict:
+    if reset or not path.exists():
+        return {}
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise ValueError(f"--session_state must contain a JSON object: {path}")
+    return data
+
+
 def main() -> int:
     try:
         args = parse_args()
         validate_args(args)
         index = load_index(Path(args.input_dir))
+        session_state = None
+        if args.session_state:
+            session_state = load_session_state(Path(args.session_state), reset=args.reset_session)
         answer = run_rag_query(
             index,
             args.query,
             top_k=args.top_k,
             context_entities=parse_context_entities(args.context_entities),
+            conversation_state=session_state,
         )
     except Exception as exc:
         print(f"[ERROR] RAG query failed: {exc}", file=sys.stderr)
@@ -55,6 +78,15 @@ def main() -> int:
     out_path = out_dir / "answer.json"
     out_path.write_text(json.dumps(answer, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"[OK] Answer written: {out_path}")
+
+    if args.session_state:
+        session_path = Path(args.session_state)
+        session_path.parent.mkdir(parents=True, exist_ok=True)
+        session_path.write_text(
+            json.dumps(answer.get("conversation_state", {}), ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        print(f"[OK] Session state written: {session_path}")
 
     if args.config:
         print("[INFO] --config is accepted for interface consistency but unused here.")
