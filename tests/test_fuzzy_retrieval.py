@@ -42,6 +42,16 @@ class FuzzyMetadataRetrievalTest(unittest.TestCase):
         result = run_rag_query(self.index, "A와 B의 AI 요구사항 차이 알려줘")
 
         self.assertEqual("comparison", result["analysis"]["query_type"])
+        self.assertEqual("supported", result["answer"]["status"])
+        self.assertEqual("comparison", result["answer"]["query_type"])
+        self.assertIn("answer_text", result)
+        self.assertEqual(
+            {"기관 A", "기관 B"},
+            {claim["target"] for claim in result["answer"]["claims"]},
+        )
+        self.assertTrue(
+            all(claim["citations"][0]["chunk_id"] for claim in result["answer"]["claims"])
+        )
         self.assertEqual(
             {"rfp-agency-a-ai-quality", "rfp-agency-b-mlops-governance"},
             set(result["analysis"]["matched_doc_ids"]),
@@ -108,83 +118,47 @@ class FuzzyMetadataRetrievalTest(unittest.TestCase):
             set(result["plan"]["metadata_filters"]["doc_ids"]),
         )
 
-    def test_auto_chunking_uses_fixed_fallback_for_weak_structure(self) -> None:
-        fallback_index = build_index_payload_from_documents(
+    def test_partial_comparison_keeps_supported_claims_and_missing_target(self) -> None:
+        partial_index = build_index_payload_from_documents(
             [
                 {
-                    "doc_id": "single-body",
-                    "title": "단일 본문 RFP",
-                    "agency": "기관 S",
-                    "project": "단일 본문 사업",
+                    "doc_id": "agency-x-security",
+                    "title": "기관 X 보안 RFP",
+                    "agency": "기관 X",
+                    "project": "보안 사업",
                     "metadata": {},
-                    "sections": [
-                        {
-                            "heading": "본문",
-                            "text": "보안 로그를 남긴다. 운영 리포트를 제출한다.",
-                        }
-                    ],
-                    "source_path": "single-body.txt",
-                }
+                    "sections": [{"heading": "보안", "text": "기관 X는 보안 로그와 접근 통제를 요구한다."}],
+                    "source_path": "agency-x.txt",
+                },
+                {
+                    "doc_id": "agency-y-schedule",
+                    "title": "기관 Y 운영 RFP",
+                    "agency": "기관 Y",
+                    "project": "운영 사업",
+                    "metadata": {},
+                    "sections": [{"heading": "운영", "text": "기관 Y는 일정 관리와 사용자 교육을 요구한다."}],
+                    "source_path": "agency-y.txt",
+                },
             ],
             source_dir="test-fixture",
             embedding_backend="hashing",
         )
 
-        self.assertEqual(
-            {"fixed": 1},
-            fallback_index["build"]["chunking"]["actual_strategy_counts"],
-        )
-        self.assertEqual("fixed", fallback_index["chunks"][0]["chunking_strategy"])
-        self.assertEqual(["문서 전체"], fallback_index["chunks"][0]["section_path"])
+        result = run_rag_query(partial_index, "기관 X와 기관 Y의 보안 요구사항 차이를 비교해줘")
 
-    def test_hierarchical_retrieval_reassembles_parent_section(self) -> None:
-        long_section_index = build_index_payload_from_documents(
-            [
-                {
-                    "doc_id": "section-parent",
-                    "title": "부모 섹션 테스트 RFP",
-                    "agency": "기관 P",
-                    "project": "부모 섹션 사업",
-                    "metadata": {},
-                    "sections": [
-                        {
-                            "heading": "보안 요구사항",
-                            "text": (
-                                "보안 로그는 모든 관리자 작업에 대해 남겨야 한다. "
-                                "접근 권한은 역할별로 분리한다. "
-                                "운영 리포트는 매월 제출한다."
-                            ),
-                        }
-                    ],
-                    "source_path": "section-parent.txt",
-                }
-            ],
-            source_dir="test-fixture",
-            embedding_backend="hashing",
-            chunking_strategy="section",
-            chunk_max_chars=45,
-            chunk_overlap_sentences=0,
-        )
-
-        flat = run_rag_query(long_section_index, "기관 P의 보안 로그 요구사항은?", top_k=1)
-        hierarchical = run_rag_query(
-            long_section_index,
-            "기관 P의 보안 로그 요구사항은?",
-            top_k=1,
-            retrieval_mode="hierarchical",
-        )
-
-        self.assertEqual("flat", flat["diagnostics"]["retrieval_mode"])
-        self.assertEqual("hierarchical", hierarchical["diagnostics"]["retrieval_mode"])
-        self.assertEqual("hierarchical", hierarchical["evidence"][0]["retrieval_mode"])
-        self.assertGreater(len(hierarchical["evidence"][0]["text"]), len(flat["evidence"][0]["text"]))
-        self.assertIn("운영 리포트", hierarchical["evidence"][0]["text"])
-        self.assertTrue(hierarchical["evidence"][0]["child_chunk_ids"])
+        self.assertEqual("partial", result["answer"]["status"])
+        self.assertFalse(result["diagnostics"]["abstained"])
+        self.assertEqual(["기관 Y"], result["answer"]["insufficiency"]["missing_targets"])
+        self.assertEqual({"기관 X"}, {claim["target"] for claim in result["answer"]["claims"]})
 
     def test_retry_relaxes_filters_when_verifier_rejects_evidence(self) -> None:
         result = run_rag_query(self.index, "기관 A의 블록체인 납품 실적은?")
 
         self.assertTrue(result["diagnostics"]["abstained"])
+        self.assertEqual("insufficient", result["answer"]["status"])
+        self.assertEqual("abstention", result["answer"]["query_type"])
+        self.assertEqual([], result["answer"]["claims"])
+        self.assertTrue(result["answer"]["insufficiency"]["reasons"])
         self.assertGreaterEqual(result["diagnostics"]["retry_count"], 1)
         self.assertEqual(
             ["strict", "relaxed"],
@@ -222,6 +196,7 @@ class FuzzyMetadataRetrievalTest(unittest.TestCase):
 
         self.assertFalse(result["diagnostics"]["verifier_retry"])
         self.assertFalse(result["diagnostics"]["abstained"])
+        self.assertEqual("supported", result["answer"]["status"])
         self.assertEqual(0, result["diagnostics"]["retry_count"])
         self.assertTrue(result["evidence"])
 

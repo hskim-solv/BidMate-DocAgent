@@ -12,6 +12,7 @@ REQUIRED_KEYS = [
     "groundedness",
     "citation_precision",
     "abstention",
+    "answer_format_compliance",
     "latency",
     "retry",
 ]
@@ -78,6 +79,7 @@ def render_main_table(summary: Dict[str, Any]) -> str:
             fmt_rate(metric_from_type(summary, "follow_up", "accuracy")),
         ),
         ("Evidence", "Citation Precision", fmt_rate(summary.get("citation_precision"))),
+        ("Evidence", "Answer Format Compliance", fmt_rate(summary.get("answer_format_compliance"))),
         (
             "Abstention",
             "Abstention Accuracy",
@@ -100,7 +102,7 @@ def render_ablation_table(summary: Dict[str, Any]) -> str:
     table = [
         "### Ablation comparison",
         "",
-        "| Run | Retrieval | Metadata-first | Rerank | Verifier/Retry | Accuracy | Groundedness | Citation | Abstention | Retry | Latency p95 |",
+        "| Run | Metadata-first | Rerank | Verifier/Retry | Accuracy | Groundedness | Citation | Format | Abstention | Retry | Latency p95 |",
         "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for run in runs:
@@ -110,7 +112,7 @@ def render_ablation_table(summary: Dict[str, Any]) -> str:
         p95 = latency.get("p95") if isinstance(latency, dict) else None
         p95_text = f"{p95:.1f}ms" if isinstance(p95, (int, float)) else "N/A"
         table.append(
-            "| {name} | {retrieval} | {metadata_first} | {rerank} | {verifier_retry} | {accuracy} | {groundedness} | {citation} | {abstention} | {retry} | {p95} |".format(
+            "| {name} | {metadata_first} | {rerank} | {verifier_retry} | {accuracy} | {groundedness} | {citation} | {format} | {abstention} | {retry} | {p95} |".format(
                 name=run.get("name", "unknown"),
                 retrieval=run.get("retrieval_mode", "flat"),
                 metadata_first=fmt_flag(run.get("metadata_first")),
@@ -119,6 +121,7 @@ def render_ablation_table(summary: Dict[str, Any]) -> str:
                 accuracy=fmt_rate(run.get("accuracy")),
                 groundedness=fmt_rate(run.get("groundedness")),
                 citation=fmt_rate(run.get("citation_precision")),
+                format=fmt_rate(run.get("answer_format_compliance")),
                 abstention=fmt_rate(run.get("abstention")),
                 retry=fmt_rate(run.get("retry")),
                 p95=p95_text,

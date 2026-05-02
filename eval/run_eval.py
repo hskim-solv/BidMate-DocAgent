@@ -88,7 +88,106 @@ def retry_trigger_reasons(prediction: dict[str, Any]) -> list[str]:
     return reasons
 
 
-def score_case(case: dict[str, Any], prediction: dict[str, Any]) -> dict[str, Any]:
+def answer_payload(prediction: dict[str, Any]) -> dict[str, Any]:
+    answer = prediction.get("answer")
+    return answer if isinstance(answer, dict) else {}
+
+
+def answer_claims(prediction: dict[str, Any]) -> list[dict[str, Any]]:
+    claims = answer_payload(prediction).get("claims") or []
+    return [claim for claim in claims if isinstance(claim, dict)]
+
+
+def answer_to_text(prediction: dict[str, Any]) -> str:
+    payload = answer_payload(prediction)
+    if not payload:
+        return str(prediction.get("answer") or "")
+    parts = [
+        str(payload.get("summary") or ""),
+        str(prediction.get("answer_text") or ""),
+    ]
+    for claim in answer_claims(prediction):
+        parts.extend([str(claim.get("claim") or ""), str(claim.get("support") or "")])
+    insufficiency = payload.get("insufficiency")
+    if isinstance(insufficiency, dict):
+        parts.append(str(insufficiency.get("message") or ""))
+    return " ".join(part for part in parts if part)
+
+
+def answer_status(prediction: dict[str, Any]) -> str:
+    payload = answer_payload(prediction)
+    diagnostics = prediction.get("diagnostics") or {}
+    return str(payload.get("status") or diagnostics.get("answer_status") or "")
+
+
+def score_answer_format(
+    case: dict[str, Any],
+    prediction: dict[str, Any],
+    policy: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    policy = policy or {}
+    answerable = bool(case.get("answerable", True))
+    expected_status = case.get("expected_answer_status")
+    if expected_status is None:
+        expected_status = (
+            policy.get("answerable_status", "supported")
+            if answerable
+            else policy.get("unanswerable_status", "insufficient")
+        )
+    min_claims = case.get("min_claims")
+    if min_claims is None:
+        min_claims = int(
+            policy.get("min_claims_answerable", 1)
+            if answerable
+            else policy.get("min_claims_unanswerable", 0)
+        )
+    require_claim_citations = bool(
+        case.get("require_claim_citations", policy.get("require_claim_citations", True))
+    )
+    expected_targets = {str(target) for target in case.get("expected_claim_targets") or []}
+
+    claims = answer_claims(prediction)
+    claim_targets = {str(claim.get("target") or "") for claim in claims}
+    citation_checks = []
+    for claim in claims:
+        citations = claim.get("citations") or []
+        citation_checks.append(
+            bool(citations)
+            and all(
+                isinstance(citation, dict)
+                and bool(citation.get("doc_id"))
+                and bool(citation.get("chunk_id"))
+                for citation in citations
+            )
+        )
+    citations_ok = True
+    if require_claim_citations and claims:
+        citations_ok = all(citation_checks)
+    elif require_claim_citations and int(min_claims) > 0:
+        citations_ok = False
+
+    checks = {
+        "status_match": answer_status(prediction) == str(expected_status),
+        "min_claims": len(claims) >= int(min_claims),
+        "claim_targets": expected_targets.issubset(claim_targets),
+        "claim_citations": citations_ok,
+    }
+    return {
+        "expected_answer_status": str(expected_status),
+        "answer_status": answer_status(prediction),
+        "expected_claim_targets": sorted(expected_targets),
+        "claim_targets": sorted(target for target in claim_targets if target),
+        "claim_count": len(claims),
+        "format_checks": checks,
+        "answer_format_compliance": 1.0 if all(checks.values()) else 0.0,
+    }
+
+
+def score_case(
+    case: dict[str, Any],
+    prediction: dict[str, Any],
+    answer_policy: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     answerable = bool(case.get("answerable", True))
     query_type = str(case.get("query_type"))
     expected_doc_ids = set(case.get("expected_doc_ids") or [])
@@ -98,12 +197,12 @@ def score_case(case: dict[str, Any], prediction: dict[str, Any]) -> dict[str, An
     ]
     evidence = prediction.get("evidence") or []
     evidence_doc_ids = {item.get("doc_id") for item in evidence}
-    answer = str(prediction.get("answer") or "")
+    answer = answer_to_text(prediction)
     evidence_text = " ".join(str(item.get("text") or "") for item in evidence)
     combined_text = " ".join([answer, evidence_text])
     diagnostics = prediction.get("diagnostics") or {}
     abstained = bool(diagnostics.get("abstained"))
-    context_resolution = diagnostics.get("context_resolution") or {}
+    answer_format = score_answer_format(case, prediction, answer_policy)
 
     citation_doc_precision = 0.0
     if evidence_doc_ids:
@@ -153,6 +252,7 @@ def score_case(case: dict[str, Any], prediction: dict[str, Any]) -> dict[str, An
         "context_resolution_reason": context_resolution.get("reason"),
         "resolved_query": prediction.get("resolved_query"),
         "abstained": abstained,
+        **answer_format,
         "answer": answer,
     }
 
@@ -166,6 +266,11 @@ def metric_block(case_results: list[dict[str, Any]]) -> dict[str, Any]:
         r["citation_precision"] for r in case_results if r["citation_precision"] is not None
     ]
     abstention_scores = [r["abstention"] for r in case_results if r["abstention"] is not None]
+    format_scores = [
+        r["answer_format_compliance"]
+        for r in case_results
+        if r.get("answer_format_compliance") is not None
+    ]
     latencies = [float(r["latency_ms"]) for r in case_results if r["latency_ms"] is not None]
     retry_counts = [int(r.get("retry_count") or 0) for r in case_results]
     retries = [float(count > 0) for count in retry_counts]
@@ -179,6 +284,7 @@ def metric_block(case_results: list[dict[str, Any]]) -> dict[str, Any]:
         "groundedness": rate(groundedness_scores),
         "citation_precision": rate(citation_scores),
         "abstention": rate(abstention_scores),
+        "answer_format_compliance": rate(format_scores),
         "latency": {
             "p50": percentile(latencies, 0.50),
             "p95": percentile(latencies, 0.95),
@@ -225,6 +331,7 @@ def evaluate_run(
     index: dict[str, Any],
     cases: list[dict[str, Any]],
     run_config: dict[str, Any],
+    answer_policy: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     case_results = []
     for case in cases:
@@ -250,7 +357,7 @@ def evaluate_run(
             verifier_retry=bool(run_config.get("verifier_retry", True)),
             conversation_state=conversation_state,
         )
-        case_results.append(score_case(case, prediction))
+        case_results.append(score_case(case, prediction, answer_policy))
     return case_results
 
 
@@ -286,7 +393,12 @@ def main() -> int:
     full_summary = None
     try:
         for run_config in ablation_runs(config):
-            case_results = evaluate_run(index, config["cases"], run_config)
+            case_results = evaluate_run(
+                index,
+                config["cases"],
+                run_config,
+                config.get("answer_policy") if isinstance(config.get("answer_policy"), dict) else {},
+            )
             is_full = run_config["name"] == "full"
             run_summary = summarize_run(
                 run_config["name"],
@@ -313,6 +425,7 @@ def main() -> int:
         "groundedness": full_summary["groundedness"],
         "citation_precision": full_summary["citation_precision"],
         "abstention": full_summary["abstention"],
+        "answer_format_compliance": full_summary["answer_format_compliance"],
         "latency": full_summary["latency"],
         "retry": full_summary["retry"],
         "by_query_type": full_summary["by_query_type"],
