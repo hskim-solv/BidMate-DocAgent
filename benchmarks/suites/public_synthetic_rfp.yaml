@@ -1,0 +1,33 @@
+id: public_synthetic_rfp
+name: Public synthetic RFP benchmark
+description: Reproducible benchmark suite for the committed synthetic RFP sample set.
+dataset:
+  id: public_synthetic_rfp_v1
+  type: synthetic_rfp
+  input_dir: data/raw
+  privacy: public_synthetic_only
+  note: Private/original RFP documents must not be committed or referenced in docs.
+index:
+  output_dir: data/index
+  embedding_backend: hashing
+  command:
+    - python3
+    - scripts/build_index.py
+    - --input_dir
+    - data/raw
+    - --output_dir
+    - data/index
+    - --embedding_backend
+    - hashing
+eval:
+  config: eval/config.yaml
+  output_dir: reports
+artifacts:
+  root: artifacts/benchmarks
+  gitignored: true
+  local_only:
+    - predictions.jsonl
+    - latency_samples.jsonl
+    - traces/
+    - logs/
+    - per-example dumps

@@ -1,0 +1,141 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "benchmarks/registry.schema.json",
+  "title": "BidMate benchmark registry and run manifest schema",
+  "type": "object",
+  "required": ["schema_version"],
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "entries": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/registry_entry" }
+    },
+    "run_manifest": { "$ref": "#/$defs/run_manifest" }
+  },
+  "$defs": {
+    "latency_block": {
+      "type": "object",
+      "required": ["p50", "p95", "mean"],
+      "properties": {
+        "p50": { "type": ["number", "null"] },
+        "p95": { "type": ["number", "null"] },
+        "mean": { "type": ["number", "null"] }
+      },
+      "additionalProperties": true
+    },
+    "metric_block": {
+      "type": "object",
+      "required": [
+        "num_predictions",
+        "accuracy",
+        "groundedness",
+        "citation_precision",
+        "answer_format_compliance",
+        "abstention",
+        "retry",
+        "latency"
+      ],
+      "properties": {
+        "num_predictions": { "type": "integer" },
+        "accuracy": { "type": ["number", "null"] },
+        "groundedness": { "type": ["number", "null"] },
+        "citation_precision": { "type": ["number", "null"] },
+        "answer_format_compliance": { "type": ["number", "null"] },
+        "abstention": { "type": ["number", "null"] },
+        "retry": { "type": ["number", "null"] },
+        "latency": { "$ref": "#/$defs/latency_block" }
+      },
+      "additionalProperties": true
+    },
+    "ablation_flags": {
+      "type": "object",
+      "required": ["metadata_first", "rerank", "verifier_retry", "retrieval_mode"],
+      "properties": {
+        "metadata_first": { "type": "boolean" },
+        "rerank": { "type": "boolean" },
+        "verifier_retry": { "type": "boolean" },
+        "retrieval_mode": { "type": "string", "enum": ["flat", "hierarchical"] }
+      },
+      "additionalProperties": false
+    },
+    "artifact_paths": {
+      "type": "object",
+      "required": ["run_dir", "run_manifest", "eval_summary", "predictions", "latency_samples", "traces", "logs"],
+      "properties": {
+        "run_dir": { "type": "string" },
+        "run_manifest": { "type": "string" },
+        "eval_summary": { "type": "string" },
+        "predictions": { "type": "string" },
+        "latency_samples": { "type": "string" },
+        "traces": { "type": "string" },
+        "logs": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "run_manifest": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "run_id",
+        "git_commit",
+        "suite",
+        "ablation_flags",
+        "model_config",
+        "retriever_config",
+        "reranker_config",
+        "verifier_config",
+        "metrics",
+        "latency",
+        "artifacts"
+      ],
+      "properties": {
+        "schema_version": { "type": "integer", "const": 1 },
+        "run_id": { "type": "string" },
+        "generated_at": { "type": "string" },
+        "git_commit": { "type": "string" },
+        "git_dirty": { "type": "boolean" },
+        "suite": { "type": "object" },
+        "ablation_flags": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/ablation_flags" }
+        },
+        "model_config": { "type": "object" },
+        "retriever_config": { "type": "object" },
+        "reranker_config": { "type": "object" },
+        "verifier_config": { "type": "object" },
+        "metrics": { "type": "object" },
+        "latency": { "type": "object" },
+        "artifacts": { "$ref": "#/$defs/artifact_paths" }
+      },
+      "additionalProperties": true
+    },
+    "registry_entry": {
+      "type": "object",
+      "required": ["run_id", "git_commit", "suite_id", "baseline_run", "primary_run", "runs"],
+      "properties": {
+        "run_id": { "type": "string" },
+        "generated_at": { "type": "string" },
+        "git_commit": { "type": "string" },
+        "git_dirty": { "type": "boolean" },
+        "suite_id": { "type": "string" },
+        "dataset_id": { "type": "string" },
+        "baseline_run": { "type": "string" },
+        "primary_run": { "type": "string" },
+        "runs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "flags", "metrics"],
+            "properties": {
+              "name": { "type": "string" },
+              "flags": { "$ref": "#/$defs/ablation_flags" },
+              "metrics": { "$ref": "#/$defs/metric_block" }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}

@@ -50,6 +50,8 @@
 ## Demo / 산출물
 - 질의 실행 결과: `outputs/answer.json`
 - 평가 요약: `reports/eval_summary.json`
+- Benchmark registry: `benchmarks/registry.json`
+- Benchmark local artifacts: `artifacts/benchmarks/` (gitignored)
 - PDF/HWP ingestion 진단 리포트: `data/index/ingestion_report.json` (`--metadata_csv` 사용 시)
 
 ---
@@ -74,17 +76,18 @@ CLI와 리뷰 편의를 위해 같은 내용을 사람이 읽기 쉬운 `answer_
 | Evidence | Citation Precision | 1.000 |
 | Evidence | Answer Format Compliance | 1.000 |
 | Abstention | Abstention Accuracy | 1.000 |
-| System | Latency (p50/p95) | p50 2.9ms / p95 11.9ms |
-| System | Retry Rate | 0.250 |
+| System | Latency (p50/p95) | p50 2.4ms / p95 4.7ms |
+| System | Retry Rate | 0.231 |
 
 ### Ablation comparison
 
 | Run | Metadata-first | Rerank | Verifier/Retry | Accuracy | Groundedness | Citation | Format | Abstention | Retry | Latency p95 |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| full | on | on | on | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 | 0.250 | 11.9ms |
-| no_metadata_first | off | on | on | 1.000 | 1.000 | 0.833 | 1.000 | 1.000 | 0.000 | 11.9ms |
-| no_rerank | on | off | on | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 | 0.250 | 7.9ms |
-| no_verifier_retry | on | on | off | 1.000 | 0.750 | 0.750 | 0.750 | 0.000 | 0.000 | 5.7ms |
+| full | on | on | on | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 | 0.231 | 4.7ms |
+| hierarchical | on | on | on | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 | 0.231 | 5.4ms |
+| no_metadata_first | off | on | on | 1.000 | 1.000 | 0.846 | 1.000 | 1.000 | 0.000 | 4.1ms |
+| no_rerank | on | off | on | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 | 0.231 | 3.7ms |
+| no_verifier_retry | on | on | off | 1.000 | 0.769 | 0.769 | 0.769 | 0.143 | 0.000 | 2.4ms |
 <!-- METRICS_TABLE:END -->
 
 > 주의: 성능표는 공개 synthetic RFP 평가셋 기준입니다. 원본 RFP 데이터는 비공개 제약으로 저장소에 포함하지 않았습니다.
@@ -168,6 +171,18 @@ python3 scripts/update_readme_metrics.py --report reports/eval_summary.json --re
 python3 scripts/update_readme_metrics.py --report reports/eval_summary.json --readme README.md --check
 ```
 
+### 7) Benchmark / ablation registry
+```bash
+python3 scripts/run_benchmark.py \
+  --suite benchmarks/suites/public_synthetic_rfp.yaml \
+  --ablations benchmarks/ablations/rag_quality_axes.yaml
+
+python3 scripts/summarize_benchmark.py \
+  --manifest artifacts/benchmarks/<run_id>/run_manifest.json
+```
+
+Benchmark source of truth는 `benchmarks/suites/`, `benchmarks/ablations/`, `benchmarks/registry.schema.json`에 둡니다. Raw predictions, traces, logs, latency samples는 `artifacts/benchmarks/` 아래에 생성되며 Git에 커밋하지 않습니다. 사람이 읽는 결과 해석은 [`docs/benchmarking.md`](docs/benchmarking.md)와 [`docs/ablation-results.md`](docs/ablation-results.md)를 참고하세요.
+
 > 참고: 모델을 처음 내려받아 실제 sentence-transformers 인덱스를 만들려면 `--embedding_backend sentence-transformers`를 사용하세요. 네트워크가 제한된 환경에서는 `--embedding_backend hashing`으로 재현성을 우선한 로컬 실행이 가능합니다. 산출물 경로는 `data/index`, `outputs/`, `reports/`로 고정합니다.
 > Chunking 기본값은 `--chunking_strategy auto --chunk_max_chars 520 --chunk_overlap_sentences 1`입니다. `auto`는 heading/section 구조가 있으면 section-aware chunk metadata를 저장하고, 단일 본문처럼 구조가 약하면 fixed fallback을 사용합니다.
 > 질의 기본값은 flat child-chunk retrieval입니다. parent section 단위 재조립을 확인하려면 `app.py`에 `--retrieval_mode hierarchical`을 지정하거나 `eval/config.yaml`의 `hierarchical` ablation run을 실행합니다.
@@ -194,6 +209,8 @@ python3 scripts/build_index.py \
 
 ## 상세 설계 링크
 - 포트폴리오 case study: [`docs/portfolio-case-study.md`](docs/portfolio-case-study.md)
+- Benchmarking: [`docs/benchmarking.md`](docs/benchmarking.md)
+- Ablation results: [`docs/ablation-results.md`](docs/ablation-results.md)
 - 설계 배경 및 의사결정: [`docs/design-background.md`](docs/design-background.md)
 - Chunking diagnostics: [`docs/chunking-diagnostics.md`](docs/chunking-diagnostics.md)
 - PDF/HWP ingestion: [`docs/real-data-ingestion.md`](docs/real-data-ingestion.md)

@@ -32,3 +32,6 @@ outputs/*
 !outputs/answer.json
 reports/*
 !reports/eval_summary.json
+
+# Benchmark raw/local artifacts
+artifacts/benchmarks/

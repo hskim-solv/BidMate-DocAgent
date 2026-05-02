@@ -41,6 +41,14 @@ require_file "scripts/build_index.py"
 require_file "app.py"
 require_file "eval/run_eval.py"
 require_file "scripts/update_readme_metrics.py"
+require_file "scripts/run_benchmark.py"
+require_file "scripts/summarize_benchmark.py"
+require_file "benchmarks/suites/public_synthetic_rfp.yaml"
+require_file "benchmarks/ablations/rag_quality_axes.yaml"
+require_file "benchmarks/registry.schema.json"
+require_file "benchmarks/registry.json"
+require_file "docs/benchmarking.md"
+require_file "docs/ablation-results.md"
 require_file "$EVAL_CONFIG"
 require_file "$README_PATH"
 require_dir "$INPUT_DIR"
@@ -64,6 +72,7 @@ require_file "$REPORT_JSON"
 
 log "Checking README metrics consistency"
 if [[ "$REPORT_DIR" == "reports" ]]; then
+  python3 scripts/update_readme_metrics.py --report "$REPORT_JSON" --readme "$README_PATH"
   python3 scripts/update_readme_metrics.py --report "$REPORT_JSON" --readme "$README_PATH" --check
 else
   echo "Skipping README metrics check for non-default REPORT_DIR=$REPORT_DIR"

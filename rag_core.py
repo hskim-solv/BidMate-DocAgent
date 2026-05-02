@@ -25,6 +25,20 @@ DEFAULT_EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-
 DEFAULT_HASH_DIM = 384
 DEFAULT_CHUNK_MAX_CHARS = 520
 DEFAULT_CHUNK_OVERLAP_SENTENCES = 1
+VALID_CHUNKING_STRATEGIES = {"auto", "section", "fixed"}
+VALID_RETRIEVAL_MODES = {"flat", "hierarchical"}
+WEAK_SECTION_HEADINGS = {
+    "",
+    "본문",
+    "body",
+    "text",
+    "document",
+    "문서",
+    "문서 전체",
+    "section",
+    "section-1",
+    "section-001",
+}
 INDEX_FILENAME = "index.json"
 MODEL_CACHE: dict[tuple[str, bool], Any] = {}
 
@@ -1815,12 +1829,29 @@ def make_context_clarification_result(
     metadata_first: bool,
     rerank: bool,
     verifier_retry: bool,
+    retrieval_mode: str,
 ) -> dict[str, Any]:
     reason = str(context_resolution.get("reason") or "context_resolution_failed")
     analysis = dict(analysis)
     analysis["query_type"] = "follow_up"
     analysis["context_resolution"] = context_resolution
     latency_ms = (time.perf_counter() - started) * 1000
+    insufficiency = {
+        "message": f"'{query}'의 생략된 참조를 충분히 확정하지 못했습니다.",
+        "reasons": [reason],
+        "missing_targets": context_resolution.get("context_entities") or [],
+        "missing_topics": specific_topics(analysis),
+        "checked_entities": context_resolution.get("context_entities") or [],
+        "checked_doc_ids": context_resolution.get("active_doc_ids") or [],
+    }
+    answer = {
+        "status": ANSWER_STATUS_INSUFFICIENT,
+        "query_type": "abstention",
+        "summary": clarification_answer(query, context_resolution),
+        "claims": [],
+        "insufficiency": insufficiency,
+    }
+    answer_text = render_answer_text(answer)
     return {
         "mode": "rag",
         "query": query,
@@ -1831,18 +1862,24 @@ def make_context_clarification_result(
             "metadata_first": metadata_first,
             "rerank": rerank,
             "verifier_retry": verifier_retry,
+            "retrieval_mode": retrieval_mode,
             "metadata_filters": {},
             "top_k": None,
             "relaxed": False,
             "retry_policy": "clarify before retrieval when entity resolution is weak",
         },
-        "answer": clarification_answer(query, context_resolution),
+        "answer": answer,
+        "answer_text": answer_text,
         "evidence": [],
         "conversation_state": conversation_state,
         "diagnostics": {
             "latency_ms": round(latency_ms, 2),
             "retry_count": 0,
             "abstained": True,
+            "answer_status": answer["status"],
+            "answer_query_type": answer["query_type"],
+            "claim_count": 0,
+            "citation_count": 0,
             "verification_reasons": [reason],
             "filter_stage_attempts": [],
             "final_relaxation_reason": [],
@@ -1852,6 +1889,7 @@ def make_context_clarification_result(
             "metadata_first": metadata_first,
             "rerank": rerank,
             "verifier_retry": verifier_retry,
+            "retrieval_mode": retrieval_mode,
         },
     }
 
@@ -1931,8 +1969,12 @@ def run_rag_query(
     metadata_first: bool = True,
     rerank: bool = True,
     verifier_retry: bool = True,
+    retrieval_mode: str = "flat",
     conversation_state: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    if retrieval_mode not in VALID_RETRIEVAL_MODES:
+        choices = ", ".join(sorted(VALID_RETRIEVAL_MODES))
+        raise ValueError(f"retrieval_mode must be one of: {choices}")
     started = time.perf_counter()
     state = normalize_conversation_state(conversation_state)
     targets = metadata_targets(index)
@@ -1954,6 +1996,7 @@ def run_rag_query(
             metadata_first,
             rerank,
             verifier_retry,
+            retrieval_mode,
         )
 
     analysis = analyze_query(
@@ -2013,6 +2056,14 @@ def run_rag_query(
         verified,
         verification_reasons,
     )
+    next_state = update_conversation_state(
+        state,
+        query,
+        retrieval_query,
+        analysis,
+        evidence,
+        context_resolution,
+    )
     latency_ms = (time.perf_counter() - started) * 1000
     return {
         "mode": "rag",
@@ -2023,7 +2074,7 @@ def run_rag_query(
         "answer": answer,
         "answer_text": answer_text,
         "evidence": strip_internal_scores(evidence),
-        "conversation_state": state,
+        "conversation_state": next_state,
         "diagnostics": {
             "latency_ms": round(latency_ms, 2),
             "retry_count": retry_count,
