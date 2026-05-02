@@ -35,7 +35,19 @@
 
 ## Portfolio Review Guide
 
-채용 검토자가 빠르게 확인할 수 있도록 이 프로젝트는 아래 7개 질문에 답하는 구조로 정리했습니다. 상세한 의사결정 흐름은 [`docs/portfolio-case-study.md`](docs/portfolio-case-study.md)를 참고하세요.
+채용 검토자가 빠르게 확인할 수 있도록 5분 리뷰 경로와 포트폴리오 관점의 핵심 질문을 함께 정리했습니다. 상세한 의사결정 흐름은 [`docs/portfolio-case-study.md`](docs/portfolio-case-study.md)를 참고하세요.
+
+### 5-minute reviewer path
+
+처음 보는 리뷰어는 아래 순서로 확인하면 문제 정의, 데모, 검증 근거를 짧게 훑을 수 있습니다. 명령과 대표 질의는 [`docs/reviewer-evidence-pack.md`](docs/reviewer-evidence-pack.md)에 모았습니다.
+
+1. **문제 이해**: 이 README의 `TL;DR`, `Quick Review`, `아키텍처`를 확인합니다.
+2. **데모 실행**: `scripts/build_index.py`로 인덱스를 만들고 `app.py`로 대표 비교 질의를 실행합니다.
+3. **예시 출력 확인**: `outputs/answer.json`에서 `answer.status`, claim별 citation, top-level evidence를 확인합니다.
+4. **평가/ablation 확인**: `reports/eval_summary.json`, `docs/ablation-results.md`에서 metric과 설계 선택의 영향을 확인합니다.
+5. **실패/개선 근거 확인**: `docs/failure-cases.md`, `docs/retrospective.md`에서 한계와 다음 실험 방향을 확인합니다.
+
+이 프로젝트가 답하려는 핵심 질문은 다음 7개입니다.
 
 1. **왜 이 문제를 골랐는가**: RFP QA는 단순 검색보다 다문서 비교, 근거 정합성, 부재판별이 중요해 RAG 역량을 검증하기 좋습니다.
 2. **성공 기준을 어떻게 정했는가**: 답변 정확도뿐 아니라 Groundedness, Citation Precision, Abstention, Latency/Retry를 함께 봅니다.
