@@ -1,5 +1,6 @@
 # BidMate Agent 상세 문서
 
+- [Reviewer evidence pack](./reviewer-evidence-pack.md)
 - [포트폴리오 case study](./portfolio-case-study.md)
 - [Benchmarking](./benchmarking.md)
 - [Ablation results](./ablation-results.md)
