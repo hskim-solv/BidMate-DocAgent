@@ -110,6 +110,10 @@ TOPIC_KEYWORDS = [
     "실적",
 ]
 
+ANSWER_STATUS_SUPPORTED = "supported"
+ANSWER_STATUS_PARTIAL = "partial"
+ANSWER_STATUS_INSUFFICIENT = "insufficient"
+
 STRICT_METADATA_CONFIDENCE = 0.90
 REDUCED_METADATA_CONFIDENCE = 0.70
 AMBIGUOUS_CONFIDENCE_DELTA = 0.05
@@ -994,7 +998,7 @@ def verify_evidence(analysis: dict[str, Any], evidence: list[dict[str, Any]]) ->
         " ".join([item.get("title", ""), item.get("section", ""), item["text"]])
         for item in evidence
     ).lower()
-    topics = [topic for topic in analysis.get("topics", []) if topic.lower() not in {"ai"}]
+    topics = specific_topics(analysis)
     if topics and not all(topic.lower() in combined for topic in topics):
         reasons.append("topic_not_grounded")
 
@@ -1004,6 +1008,14 @@ def verify_evidence(analysis: dict[str, Any], evidence: list[dict[str, Any]]) ->
         missing = [entity for entity in entities if entity not in covered]
         if missing:
             reasons.append("missing_comparison_entity:" + ",".join(missing))
+        if topics:
+            missing_topic_entities = []
+            for entity in entities:
+                entity_evidence = [item for item in evidence if item.get("agency") == entity]
+                if entity_evidence and not any(evidence_has_topic(item, topics) for item in entity_evidence):
+                    missing_topic_entities.append(entity)
+            if missing_topic_entities:
+                reasons.append("missing_comparison_topic:" + ",".join(missing_topic_entities))
 
     matched_doc_ids = analysis.get("matched_doc_ids") or []
     if analysis.get("query_type") == "comparison" and len(matched_doc_ids) > 1:
@@ -1015,29 +1027,71 @@ def verify_evidence(analysis: dict[str, Any], evidence: list[dict[str, Any]]) ->
     return not reasons, reasons
 
 
+def specific_topics(analysis: dict[str, Any]) -> list[str]:
+    return [topic for topic in analysis.get("topics", []) if topic.lower() not in {"ai"}]
+
+
+def evidence_has_topic(item: dict[str, Any], topics: list[str]) -> bool:
+    text = " ".join([item.get("title", ""), item.get("section", ""), item.get("text", "")]).lower()
+    return any(topic.lower() in text for topic in topics)
+
+
 def generate_answer(
     query: str,
     analysis: dict[str, Any],
     evidence: list[dict[str, Any]],
     verified: bool,
-) -> tuple[str, bool]:
-    if not verified:
-        return (
-            f"제공된 공개 샘플 RFP 근거에서는 '{query}'에 답할 수 있는 내용을 찾지 못했습니다.",
-            True,
+    verification_reasons: list[str] | None = None,
+) -> tuple[dict[str, Any], str, bool]:
+    claims = build_claims(analysis, evidence)
+    status = answer_status(analysis, claims, verified, verification_reasons or [])
+    insufficiency = None
+    if status != ANSWER_STATUS_SUPPORTED:
+        insufficiency = build_insufficiency(
+            query,
+            analysis,
+            claims,
+            verified,
+            verification_reasons or [],
         )
 
-    if analysis.get("query_type") == "comparison" and len(analysis.get("entities", [])) > 1:
-        parts = []
-        for entity in analysis["entities"]:
-            entity_evidence = [item for item in evidence if item.get("agency") == entity]
-            if not entity_evidence:
-                continue
-            best = best_sentence(entity_evidence[0]["text"], analysis.get("topics", []), analysis["tokens"])
-            parts.append(f"{entity}: {best} [{entity_evidence[0]['chunk_id']}]")
-        if parts:
-            return " ".join(parts), False
+    answer = {
+        "status": status,
+        "query_type": answer_query_type(analysis, status),
+        "summary": answer_summary(query, analysis, claims, status, insufficiency),
+        "claims": claims,
+        "insufficiency": insufficiency,
+    }
+    answer_text = render_answer_text(answer)
+    return answer, answer_text, status == ANSWER_STATUS_INSUFFICIENT
 
+
+def build_claims(analysis: dict[str, Any], evidence: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    if analysis.get("query_type") == "comparison" and len(analysis.get("entities", [])) > 1:
+        return build_comparison_claims(analysis, evidence)
+
+    return build_extract_claims(analysis, evidence)
+
+
+def build_comparison_claims(
+    analysis: dict[str, Any],
+    evidence: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    claims = []
+    used_chunks = set()
+    for entity in analysis["entities"]:
+        entity_evidence = [item for item in evidence if item.get("agency") == entity]
+        if not entity_evidence:
+            continue
+        item = entity_evidence[0]
+        if item["chunk_id"] in used_chunks:
+            continue
+        used_chunks.add(item["chunk_id"])
+        claims.append(make_claim(entity, item, analysis))
+    return claims
+
+
+def build_extract_claims(analysis: dict[str, Any], evidence: list[dict[str, Any]]) -> list[dict[str, Any]]:
     selected = []
     seen = set()
     for item in evidence:
@@ -1046,10 +1100,129 @@ def generate_answer(
         if key in seen:
             continue
         seen.add(key)
-        selected.append(f"{sentence} [{item['chunk_id']}]")
+        selected.append(make_claim(claim_target(item), item, analysis, sentence=sentence))
         if len(selected) >= 2:
             break
-    return " ".join(selected), False
+    return selected
+
+
+def make_claim(
+    target: str,
+    item: dict[str, Any],
+    analysis: dict[str, Any],
+    sentence: str | None = None,
+) -> dict[str, Any]:
+    claim_text = sentence or best_sentence(item["text"], analysis.get("topics", []), analysis.get("tokens", []))
+    return {
+        "target": target,
+        "claim": claim_text,
+        "support": item["text"],
+        "citations": [make_citation(item)],
+    }
+
+
+def claim_target(item: dict[str, Any]) -> str:
+    return str(item.get("agency") or item.get("title") or item.get("doc_id") or "unknown")
+
+
+def make_citation(item: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "doc_id": item.get("doc_id", ""),
+        "chunk_id": item.get("chunk_id", ""),
+        "title": item.get("title", ""),
+        "section": item.get("section", ""),
+        "agency": item.get("agency", ""),
+    }
+
+
+def answer_status(
+    analysis: dict[str, Any],
+    claims: list[dict[str, Any]],
+    verified: bool,
+    verification_reasons: list[str],
+) -> str:
+    if verified:
+        return ANSWER_STATUS_SUPPORTED
+    has_partial_comparison_reason = any(
+        reason.startswith("missing_comparison") for reason in verification_reasons
+    )
+    if analysis.get("query_type") == "comparison" and claims and has_partial_comparison_reason:
+        return ANSWER_STATUS_PARTIAL
+    return ANSWER_STATUS_INSUFFICIENT
+
+
+def answer_query_type(analysis: dict[str, Any], status: str) -> str:
+    if status == ANSWER_STATUS_INSUFFICIENT:
+        return "abstention"
+    if analysis.get("query_type") == "comparison":
+        return "comparison"
+    if analysis.get("query_type") == "follow_up":
+        return "follow_up"
+    return "single_doc"
+
+
+def answer_summary(
+    query: str,
+    analysis: dict[str, Any],
+    claims: list[dict[str, Any]],
+    status: str,
+    insufficiency: dict[str, Any] | None,
+) -> str:
+    if status == ANSWER_STATUS_INSUFFICIENT:
+        return f"제공된 공개 샘플 RFP 근거에서는 '{query}'에 답할 수 있는 내용을 찾지 못했습니다."
+
+    compact_claims = " ".join(f"{claim['target']}: {claim['claim']}" for claim in claims)
+    if status == ANSWER_STATUS_PARTIAL:
+        missing = ", ".join((insufficiency or {}).get("missing_targets") or [])
+        suffix = f" 확인되지 않은 대상: {missing}." if missing else ""
+        return f"일부 근거만 확인했습니다. {compact_claims}{suffix}".strip()
+
+    if analysis.get("query_type") == "comparison":
+        return compact_claims
+    return " ".join(claim["claim"] for claim in claims)
+
+
+def build_insufficiency(
+    query: str,
+    analysis: dict[str, Any],
+    claims: list[dict[str, Any]],
+    verified: bool,
+    verification_reasons: list[str],
+) -> dict[str, Any]:
+    supported_targets = {claim.get("target") for claim in claims}
+    checked_entities = analysis.get("entities") or analysis.get("context_entities") or []
+    missing_targets = [entity for entity in checked_entities if entity not in supported_targets]
+    if not verified and not missing_targets and checked_entities:
+        missing_targets = list(checked_entities)
+    return {
+        "message": f"'{query}'에 대한 충분한 근거를 찾지 못했습니다.",
+        "reasons": verification_reasons or (["verification_failed"] if not verified else []),
+        "missing_targets": missing_targets,
+        "missing_topics": specific_topics(analysis),
+        "checked_entities": checked_entities,
+        "checked_doc_ids": analysis.get("matched_doc_ids") or [],
+    }
+
+
+def render_answer_text(answer: dict[str, Any]) -> str:
+    lines = [str(answer.get("summary") or "").strip()]
+    for claim in answer.get("claims") or []:
+        citations = claim.get("citations") or []
+        citation_ids = ", ".join(citation.get("chunk_id", "") for citation in citations if citation.get("chunk_id"))
+        suffix = f" [{citation_ids}]" if citation_ids else ""
+        lines.append(f"- {claim.get('target')}: {claim.get('claim')}{suffix}")
+    insufficiency = answer.get("insufficiency")
+    if insufficiency:
+        reasons = ", ".join(insufficiency.get("reasons") or [])
+        missing_targets = ", ".join(insufficiency.get("missing_targets") or [])
+        details = []
+        if reasons:
+            details.append(f"사유: {reasons}")
+        if missing_targets:
+            details.append(f"확인 필요 대상: {missing_targets}")
+        if details:
+            lines.append("- 근거 부족: " + "; ".join(details))
+    return "\n".join(line for line in lines if line)
 
 
 def best_sentence(text: str, topics: list[str], query_tokens: list[str]) -> str:
@@ -1070,7 +1243,7 @@ def select_supporting_evidence(
     analysis: dict[str, Any],
     evidence: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    topics = [topic.lower() for topic in analysis.get("topics", [])]
+    topics = [topic.lower() for topic in specific_topics(analysis)]
     topic_matched = [
         item
         for item in evidence
@@ -1081,11 +1254,13 @@ def select_supporting_evidence(
         selected = []
         for entity in analysis["entities"]:
             match = next((item for item in topic_matched if item.get("agency") == entity), None)
-            if not match:
+            if not match and not topics:
                 match = next((item for item in evidence if item.get("agency") == entity), None)
             if match:
                 selected.append(match)
-        return selected or (topic_matched or evidence)[:2]
+        if topics:
+            return selected or topic_matched[:2]
+        return selected or evidence[:2]
 
     pool = topic_matched or evidence
     return pool[:2]
@@ -1178,11 +1353,17 @@ def run_rag_query(
         if attempt_index < len(stage_sequence) - 1:
             retry_count += 1
 
-    if not verified:
-        evidence = []
-    else:
+    if verified or analysis.get("query_type") == "comparison":
         evidence = select_supporting_evidence(analysis, evidence)
-    answer, abstained = generate_answer(query, analysis, evidence, verified)
+    else:
+        evidence = []
+    answer, answer_text, abstained = generate_answer(
+        query,
+        analysis,
+        evidence,
+        verified,
+        verification_reasons,
+    )
     latency_ms = (time.perf_counter() - started) * 1000
     return {
         "mode": "rag",
@@ -1190,11 +1371,16 @@ def run_rag_query(
         "analysis": analysis,
         "plan": plan,
         "answer": answer,
+        "answer_text": answer_text,
         "evidence": strip_internal_scores(evidence),
         "diagnostics": {
             "latency_ms": round(latency_ms, 2),
             "retry_count": retry_count,
             "abstained": abstained,
+            "answer_status": answer["status"],
+            "answer_query_type": answer["query_type"],
+            "claim_count": len(answer["claims"]),
+            "citation_count": sum(len(claim.get("citations") or []) for claim in answer["claims"]),
             "verification_reasons": verification_reasons,
             "filter_stage_attempts": stage_attempts,
             "final_relaxation_reason": stage_attempts[-2]["verification_reasons"] if retry_count else [],

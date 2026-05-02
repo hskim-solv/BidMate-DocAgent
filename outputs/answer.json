@@ -139,7 +139,43 @@
     "total_chunks": 13,
     "filter_fallback_used": false
   },
-  "answer": "기관 A: 기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. [rfp-agency-a-ai-quality::chunk-002] 기관 B: 기관 B의 핵심 AI 요구사항은 데이터 거버넌스, MLOps 배포 자동화, 모델 모니터링이다. [rfp-agency-b-mlops-governance::chunk-002]",
+  "answer": {
+    "status": "supported",
+    "query_type": "comparison",
+    "summary": "기관 A: 기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 기관 B: 기관 B의 핵심 AI 요구사항은 데이터 거버넌스, MLOps 배포 자동화, 모델 모니터링이다.",
+    "claims": [
+      {
+        "target": "기관 A",
+        "claim": "기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다.",
+        "support": "기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 시스템은 모델별 정확도와 오류 유형을 수집하고 위험 이벤트를 감사 로그로 남겨야 한다.",
+        "citations": [
+          {
+            "doc_id": "rfp-agency-a-ai-quality",
+            "chunk_id": "rfp-agency-a-ai-quality::chunk-002",
+            "title": "기관 A AI 품질관리 플랫폼 구축 RFP",
+            "section": "AI 요구사항",
+            "agency": "기관 A"
+          }
+        ]
+      },
+      {
+        "target": "기관 B",
+        "claim": "기관 B의 핵심 AI 요구사항은 데이터 거버넌스, MLOps 배포 자동화, 모델 모니터링이다.",
+        "support": "기관 B의 핵심 AI 요구사항은 데이터 거버넌스, MLOps 배포 자동화, 모델 모니터링이다. 시스템은 데이터 lineage, 모델 drift, 배포 승인 이력을 대시보드로 제공해야 한다.",
+        "citations": [
+          {
+            "doc_id": "rfp-agency-b-mlops-governance",
+            "chunk_id": "rfp-agency-b-mlops-governance::chunk-002",
+            "title": "기관 B 데이터 거버넌스 및 MLOps 자동화 RFP",
+            "section": "AI 요구사항",
+            "agency": "기관 B"
+          }
+        ]
+      }
+    ],
+    "insufficiency": null
+  },
+  "answer_text": "기관 A: 기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 기관 B: 기관 B의 핵심 AI 요구사항은 데이터 거버넌스, MLOps 배포 자동화, 모델 모니터링이다.\n- 기관 A: 기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. [rfp-agency-a-ai-quality::chunk-002]\n- 기관 B: 기관 B의 핵심 AI 요구사항은 데이터 거버넌스, MLOps 배포 자동화, 모델 모니터링이다. [rfp-agency-b-mlops-governance::chunk-002]",
   "evidence": [
     {
       "doc_id": "rfp-agency-a-ai-quality",
@@ -169,9 +205,13 @@
     }
   ],
   "diagnostics": {
-    "latency_ms": 1.87,
+    "latency_ms": 7.41,
     "retry_count": 0,
     "abstained": false,
+    "answer_status": "supported",
+    "answer_query_type": "comparison",
+    "claim_count": 2,
+    "citation_count": 2,
     "verification_reasons": [],
     "filter_stage_attempts": [
       {

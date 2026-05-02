@@ -20,6 +20,7 @@
 - **Planner**: 메타데이터 필터 중심 검색 전략 수립
 - **Retriever**: dense retrieval + reranking
 - **Verifier/Retry**: 근거 부족 시 재검색·재시도 후 grounded answer 생성
+- **Answer Policy**: claim 단위 citation, partial/insufficient 상태, 사람이 읽는 `answer_text`를 함께 출력
 
 ### 3) 성과 (Outcome)
 - 평가 범위: 단일 문서 추출, 단일 문서 심화 탐색, 다문서 비교, 후속 질문, 부재 정보 판별
@@ -53,6 +54,14 @@
 
 ---
 
+## 답변 출력 정책
+
+`outputs/answer.json`의 `answer`는 구조화된 객체입니다. `status`는 `supported`, `partial`, `insufficient` 중 하나이며, `claims`의 각 항목은 `target`, `claim`, `support`, `citations`를 포함합니다. 근거가 부족하면 `claims`를 비우고 `insufficiency`에 사유와 확인 대상이 기록됩니다.
+
+CLI와 리뷰 편의를 위해 같은 내용을 사람이 읽기 쉬운 `answer_text`로도 제공합니다. 자세한 예시는 [`docs/answer-policy.md`](docs/answer-policy.md)를 참고하세요.
+
+---
+
 ## 핵심 성능표 (실측)
 
 <!-- METRICS_TABLE:START -->
@@ -63,18 +72,19 @@
 | Multi-doc comparison | Groundedness Rate | 1.000 |
 | Follow-up | Answer Accuracy | 1.000 |
 | Evidence | Citation Precision | 1.000 |
+| Evidence | Answer Format Compliance | 1.000 |
 | Abstention | Abstention Accuracy | 1.000 |
-| System | Latency (p50/p95) | p50 1.0ms / p95 1.3ms |
+| System | Latency (p50/p95) | p50 2.9ms / p95 11.9ms |
 | System | Retry Rate | 0.250 |
 
 ### Ablation comparison
 
-| Run | Metadata-first | Rerank | Verifier/Retry | Accuracy | Groundedness | Citation | Abstention | Retry | Latency p95 |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| full | on | on | on | 1.000 | 1.000 | 1.000 | 1.000 | 0.250 | 1.3ms |
-| no_metadata_first | off | on | on | 1.000 | 1.000 | 0.833 | 1.000 | 0.000 | 1.6ms |
-| no_rerank | on | off | on | 1.000 | 1.000 | 1.000 | 1.000 | 0.250 | 2.0ms |
-| no_verifier_retry | on | on | off | 1.000 | 0.750 | 0.750 | 0.000 | 0.000 | 2.3ms |
+| Run | Metadata-first | Rerank | Verifier/Retry | Accuracy | Groundedness | Citation | Format | Abstention | Retry | Latency p95 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| full | on | on | on | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 | 0.250 | 11.9ms |
+| no_metadata_first | off | on | on | 1.000 | 1.000 | 0.833 | 1.000 | 1.000 | 0.000 | 11.9ms |
+| no_rerank | on | off | on | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 | 0.250 | 7.9ms |
+| no_verifier_retry | on | on | off | 1.000 | 0.750 | 0.750 | 0.750 | 0.000 | 0.000 | 5.7ms |
 <!-- METRICS_TABLE:END -->
 
 > 주의: 성능표는 공개 synthetic RFP 평가셋 기준입니다. 원본 RFP 데이터는 비공개 제약으로 저장소에 포함하지 않았습니다.
@@ -95,9 +105,9 @@ Retriever (dense + reranking)
   ↓
 Evidence Aggregator
   ↓
-Answer Generator
-  ↓
 Verifier / Retry Loop
+  ↓
+Answer Generator (structured claims)
   ↓
 Final Response (grounded)
 ```
@@ -167,6 +177,7 @@ python3 scripts/build_index.py \
 - 포트폴리오 case study: [`docs/portfolio-case-study.md`](docs/portfolio-case-study.md)
 - 설계 배경 및 의사결정: [`docs/design-background.md`](docs/design-background.md)
 - PDF/HWP ingestion: [`docs/real-data-ingestion.md`](docs/real-data-ingestion.md)
+- 답변 출력 정책: [`docs/answer-policy.md`](docs/answer-policy.md)
 - 실패 사례 분석: [`docs/failure-cases.md`](docs/failure-cases.md)
 - 회고 및 개선 방향: [`docs/retrospective.md`](docs/retrospective.md)
 - 프로젝트 상세 문서 인덱스: [`docs/README.md`](docs/README.md)

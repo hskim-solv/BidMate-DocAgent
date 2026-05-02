@@ -2,8 +2,9 @@
 
 ## 핵심 의사결정
 - Metadata-first Retrieval: 기관/사업 메타데이터로 후보군을 축소한 뒤 dense/lexical 점수를 결합해 본문 검색
-- Evidence-grounded Answering: LLM 호출 없이 근거 chunk의 문장을 추출해 답변과 citation의 연결을 우선
+- Evidence-grounded Answering: LLM 호출 없이 근거 chunk의 문장을 추출해 claim 단위 답변과 citation의 연결을 우선
 - Abstention over Hallucination: 근거 부족 시 추측 대신 부재 응답
+- Structured Answer Contract: `answer.status`, `claims`, `insufficiency`, `answer_text`를 분리해 리뷰와 자동 평가를 쉽게 함
 - Retry Loop: retrieval 실패 시 재시도 전략 적용
 
 ## 배경

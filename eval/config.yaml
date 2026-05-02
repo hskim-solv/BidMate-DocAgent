@@ -1,6 +1,11 @@
 mode: rag
 description: Public synthetic RFP evaluation with stratified ablation runs
 index_dir: data/index
+answer_policy:
+  answerable_status: supported
+  unanswerable_status: insufficient
+  min_claims_answerable: 1
+  require_claim_citations: true
 ablation_runs:
   - name: full
     metadata_first: true
@@ -30,6 +35,8 @@ cases:
     expected_citation_terms:
       - "보안 통제"
       - "로그"
+    expected_claim_targets:
+      - "기관 A"
     answerable: true
 
   - id: single_doc_chatbot_latency
@@ -43,6 +50,8 @@ cases:
     expected_citation_terms:
       - "2초"
       - "상담 이관"
+    expected_claim_targets:
+      - "기관 C"
     answerable: true
 
   - id: single_doc_b_privacy_security
@@ -56,6 +65,8 @@ cases:
     expected_citation_terms:
       - "개인정보 비식별화"
       - "접근 권한 분리"
+    expected_claim_targets:
+      - "기관 B"
     answerable: true
 
   - id: single_doc_common_submission
@@ -70,6 +81,8 @@ cases:
     expected_citation_terms:
       - "일정 준수 계획"
       - "위험 관리 방안"
+    expected_claim_targets:
+      - "공통"
     answerable: true
 
   - id: single_doc_a_deliverables
@@ -84,6 +97,8 @@ cases:
     expected_citation_terms:
       - "모델 점검 리포트"
       - "보안 통제 매뉴얼"
+    expected_claim_targets:
+      - "기관 A"
     answerable: true
 
   - id: single_doc_b_schedule_deliverables
@@ -98,6 +113,8 @@ cases:
     expected_citation_terms:
       - "3개월"
       - "5개월"
+    expected_claim_targets:
+      - "기관 B"
     answerable: true
 
   - id: multi_doc_ai_requirements
@@ -112,6 +129,9 @@ cases:
     expected_citation_terms:
       - "품질관리"
       - "MLOps"
+    expected_claim_targets:
+      - "기관 A"
+      - "기관 B"
     answerable: true
 
   - id: multi_doc_security_controls
@@ -126,6 +146,9 @@ cases:
     expected_citation_terms:
       - "보안 통제"
       - "개인정보 비식별화"
+    expected_claim_targets:
+      - "기관 A"
+      - "기관 B"
     answerable: true
 
   - id: multi_doc_schedule_compare
@@ -142,6 +165,9 @@ cases:
     expected_citation_terms:
       - "4개월"
       - "3개월"
+    expected_claim_targets:
+      - "기관 A"
+      - "기관 B"
     answerable: true
 
   - id: multi_doc_a_c_ai_focus
@@ -157,6 +183,9 @@ cases:
     expected_citation_terms:
       - "품질관리"
       - "상담 이관"
+    expected_claim_targets:
+      - "기관 A"
+      - "기관 C"
     answerable: true
 
   - id: multi_doc_b_c_operations
@@ -172,6 +201,9 @@ cases:
     expected_citation_terms:
       - "모니터링 대시보드"
       - "답변 정확도"
+    expected_claim_targets:
+      - "기관 B"
+      - "기관 C"
     answerable: true
 
   - id: multi_doc_a_common_submission
@@ -187,6 +219,9 @@ cases:
     expected_citation_terms:
       - "수행 조직"
       - "근거 기반 실행 계획"
+    expected_claim_targets:
+      - "기관 A"
+      - "공통"
     answerable: true
 
   - id: follow_up_schedule
@@ -202,6 +237,8 @@ cases:
     expected_citation_terms:
       - "4개월"
       - "6개월"
+    expected_claim_targets:
+      - "기관 A"
     answerable: true
 
   - id: follow_up_b_deliverables
@@ -218,6 +255,8 @@ cases:
     expected_citation_terms:
       - "데이터 표준 사전"
       - "MLOps 운영 가이드"
+    expected_claim_targets:
+      - "기관 B"
     answerable: true
 
   - id: follow_up_c_response_target
@@ -233,6 +272,8 @@ cases:
     expected_citation_terms:
       - "2초"
       - "주요 문의"
+    expected_claim_targets:
+      - "기관 C"
     answerable: true
 
   - id: follow_up_common_evaluation
@@ -249,6 +290,8 @@ cases:
     expected_citation_terms:
       - "요구사항 이해도"
       - "근거 기반 실행 계획"
+    expected_claim_targets:
+      - "공통"
     answerable: true
 
   - id: follow_up_a_team
@@ -265,6 +308,8 @@ cases:
     expected_citation_terms:
       - "PM"
       - "ML 엔지니어"
+    expected_claim_targets:
+      - "기관 A"
     answerable: true
 
   - id: follow_up_c_operation_metrics
@@ -281,6 +326,8 @@ cases:
     expected_citation_terms:
       - "답변 정확도"
       - "사용자 만족도"
+    expected_claim_targets:
+      - "기관 C"
     answerable: true
 
   - id: abstention_missing_blockchain
