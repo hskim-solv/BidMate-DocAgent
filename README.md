@@ -136,6 +136,23 @@ python3 scripts/build_index.py --input_dir data/raw --output_dir data/index
 python3 app.py --input_dir data/index --output_dir outputs --query "기관 A와 기관 B의 AI 요구사항 차이 알려줘"
 ```
 
+후속 질문을 재현하려면 세션 상태 파일을 명시적으로 지정합니다. 상태에는 현재 활성 agency/project/topic/doc id와 최근 턴 요약이 JSON으로 저장되며, 생략된 참조가 모호하면 답을 추정하지 않고 clarification 응답으로 중단합니다.
+
+```bash
+python3 app.py \
+  --input_dir data/index \
+  --output_dir outputs \
+  --query "기관 A의 AI 요구사항은?" \
+  --session_state outputs/session_state.json \
+  --reset_session
+
+python3 app.py \
+  --input_dir data/index \
+  --output_dir outputs \
+  --query "그 기관이 요구한 보안 조건도 보여줘" \
+  --session_state outputs/session_state.json
+```
+
 ### 4) 평가 실행
 ```bash
 python3 eval/run_eval.py --index_dir data/index --output_dir reports --config eval/config.yaml
@@ -152,6 +169,8 @@ python3 scripts/update_readme_metrics.py --report reports/eval_summary.json --re
 ```
 
 > 참고: 모델을 처음 내려받아 실제 sentence-transformers 인덱스를 만들려면 `--embedding_backend sentence-transformers`를 사용하세요. 네트워크가 제한된 환경에서는 `--embedding_backend hashing`으로 재현성을 우선한 로컬 실행이 가능합니다. 산출물 경로는 `data/index`, `outputs/`, `reports/`로 고정합니다.
+> Chunking 기본값은 `--chunking_strategy auto --chunk_max_chars 520 --chunk_overlap_sentences 1`입니다. `auto`는 heading/section 구조가 있으면 section-aware chunk metadata를 저장하고, 단일 본문처럼 구조가 약하면 fixed fallback을 사용합니다.
+> 질의 기본값은 flat child-chunk retrieval입니다. parent section 단위 재조립을 확인하려면 `app.py`에 `--retrieval_mode hierarchical`을 지정하거나 `eval/config.yaml`의 `hierarchical` ablation run을 실행합니다.
 
 평가 재현 기본 순서: **인덱싱(`scripts/build_index.py`) → 질의 실행(`app.py`) → 평가 실행(`eval/run_eval.py`) → 성능표 갱신(`scripts/update_readme_metrics.py`)**
 > - 인덱스: `data/index/index.json`
@@ -176,6 +195,7 @@ python3 scripts/build_index.py \
 ## 상세 설계 링크
 - 포트폴리오 case study: [`docs/portfolio-case-study.md`](docs/portfolio-case-study.md)
 - 설계 배경 및 의사결정: [`docs/design-background.md`](docs/design-background.md)
+- Chunking diagnostics: [`docs/chunking-diagnostics.md`](docs/chunking-diagnostics.md)
 - PDF/HWP ingestion: [`docs/real-data-ingestion.md`](docs/real-data-ingestion.md)
 - 답변 출력 정책: [`docs/answer-policy.md`](docs/answer-policy.md)
 - 실패 사례 분석: [`docs/failure-cases.md`](docs/failure-cases.md)

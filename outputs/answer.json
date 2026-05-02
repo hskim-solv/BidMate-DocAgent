@@ -117,6 +117,7 @@
     "metadata_first": true,
     "rerank": true,
     "verifier_retry": true,
+    "retrieval_mode": "flat",
     "metadata_filters": {
       "doc_ids": [
         "rfp-agency-a-ai-quality",
@@ -188,7 +189,16 @@
         "domain": "AI quality",
         "document_type": "synthetic_public_sample"
       },
-      "section": "AI 요구사항"
+      "section": "AI 요구사항",
+      "section_id": "rfp-agency-a-ai-quality::section-002",
+      "parent_section_id": "rfp-agency-a-ai-quality::section-002",
+      "section_path": [
+        "AI 요구사항"
+      ],
+      "chunk_seq_in_section": 1,
+      "chunking_strategy": "section",
+      "retrieval_mode": "flat",
+      "child_chunk_ids": []
     },
     {
       "doc_id": "rfp-agency-b-mlops-governance",
@@ -201,7 +211,16 @@
         "domain": "MLOps",
         "document_type": "synthetic_public_sample"
       },
-      "section": "AI 요구사항"
+      "section": "AI 요구사항",
+      "section_id": "rfp-agency-b-mlops-governance::section-002",
+      "parent_section_id": "rfp-agency-b-mlops-governance::section-002",
+      "section_path": [
+        "AI 요구사항"
+      ],
+      "chunk_seq_in_section": 1,
+      "chunking_strategy": "section",
+      "retrieval_mode": "flat",
+      "child_chunk_ids": []
     }
   ],
   "diagnostics": {
@@ -233,8 +252,10 @@
         },
         "top_k": 6,
         "candidate_count": 8,
+        "parent_candidate_count": null,
         "total_chunks": 13,
         "filter_fallback_used": false,
+        "retrieval_mode": "flat",
         "verified": true,
         "verification_reasons": []
       }
@@ -244,6 +265,7 @@
     "embedding_model": "local-hashing-bow",
     "metadata_first": true,
     "rerank": true,
-    "verifier_retry": true
+    "verifier_retry": true,
+    "retrieval_mode": "flat"
   }
 }

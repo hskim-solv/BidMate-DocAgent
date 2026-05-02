@@ -23,6 +23,8 @@ import numpy as np
 
 DEFAULT_EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 DEFAULT_HASH_DIM = 384
+DEFAULT_CHUNK_MAX_CHARS = 520
+DEFAULT_CHUNK_OVERLAP_SENTENCES = 1
 INDEX_FILENAME = "index.json"
 MODEL_CACHE: dict[tuple[str, bool], Any] = {}
 
@@ -32,6 +34,7 @@ SENTENCE_RE = re.compile(r"(?<=[.!?。])\s+")
 
 STOPWORDS = {
     "그럼",
+    "그",
     "그리고",
     "어떻게",
     "알려줘",
@@ -42,14 +45,18 @@ STOPWORDS = {
     "비교해줘",
     "기관",
     "요구",
+    "요구한",
     "요구가",
     "요구사항",
+    "조건",
+    "조건도",
     "기능",
     "목표",
     "성능",
     "초점",
     "필수",
     "그중",
+    "보여줘",
     "어떤",
     "누가",
     "포함돼야",
@@ -117,6 +124,24 @@ ANSWER_STATUS_INSUFFICIENT = "insufficient"
 STRICT_METADATA_CONFIDENCE = 0.90
 REDUCED_METADATA_CONFIDENCE = 0.70
 AMBIGUOUS_CONFIDENCE_DELTA = 0.05
+CONVERSATION_STATE_SCHEMA_VERSION = 1
+MAX_CONVERSATION_TURNS = 12
+CONTEXT_RESOLUTION_THRESHOLD = 0.70
+
+IMPLICIT_REFERENCE_PATTERNS = (
+    "그 기관",
+    "그 사업",
+    "그 시스템",
+    "그 문서",
+    "그 프로젝트",
+    "해당 기관",
+    "해당 사업",
+    "해당 시스템",
+    "이 기관",
+    "이 사업",
+    "그럼",
+    "그중",
+)
 
 METADATA_GENERIC_TOKENS = {
     "rfp",
@@ -195,6 +220,48 @@ def ordered_unique(values: Iterable[str]) -> list[str]:
             seen.add(value)
             ordered.append(value)
     return ordered
+
+
+def coerce_string_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return ordered_unique(str(item).strip() for item in value if str(item).strip())
+
+
+def empty_conversation_state() -> dict[str, Any]:
+    return {
+        "schema_version": CONVERSATION_STATE_SCHEMA_VERSION,
+        "active_agencies": [],
+        "active_projects": [],
+        "active_topics": [],
+        "active_doc_ids": [],
+        "confidence": 0.0,
+        "turns": [],
+    }
+
+
+def normalize_conversation_state(state: dict[str, Any] | None) -> dict[str, Any]:
+    normalized = empty_conversation_state()
+    if not isinstance(state, dict):
+        return normalized
+
+    normalized["schema_version"] = int(
+        state.get("schema_version") or CONVERSATION_STATE_SCHEMA_VERSION
+    )
+    normalized["active_agencies"] = coerce_string_list(state.get("active_agencies"))
+    normalized["active_projects"] = coerce_string_list(state.get("active_projects"))
+    normalized["active_topics"] = coerce_string_list(state.get("active_topics"))
+    normalized["active_doc_ids"] = coerce_string_list(state.get("active_doc_ids"))
+    try:
+        normalized["confidence"] = round(float(state.get("confidence") or 0.0), 3)
+    except (TypeError, ValueError):
+        normalized["confidence"] = 0.0
+
+    turns = state.get("turns") if isinstance(state.get("turns"), list) else []
+    normalized["turns"] = [
+        turn for turn in turns[-MAX_CONVERSATION_TURNS:] if isinstance(turn, dict)
+    ]
+    return normalized
 
 
 def tokenize(text: str) -> list[str]:
@@ -328,54 +395,240 @@ def normalize_text_document(path: Path) -> dict[str, Any]:
     }
 
 
-def build_chunks(documents: Iterable[dict[str, Any]], max_chars: int = 520) -> list[dict[str, Any]]:
-    chunks: list[dict[str, Any]] = []
-    for doc in documents:
-        chunk_seq = 1
-        for section in doc["sections"]:
-            sentences = []
-            for sentence in sentence_split(section["text"]) or [section["text"]]:
-                sentences.extend(split_long_text_unit(sentence, max_chars))
-            current: list[str] = []
-            current_len = 0
-            for sentence in sentences:
-                next_len = current_len + len(sentence) + 1
-                if current and next_len > max_chars:
-                    chunks.append(make_chunk(doc, section["heading"], current, chunk_seq))
-                    chunk_seq += 1
-                    overlap = current[-1:]
-                    overlap_len = sum(len(s) + 1 for s in overlap)
-                    if overlap_len + len(sentence) + 1 <= max_chars:
-                        current = overlap
-                        current_len = overlap_len
-                    else:
-                        current = []
-                        current_len = 0
-                current.append(sentence)
-                current_len += len(sentence) + 1
-            if current:
-                chunks.append(make_chunk(doc, section["heading"], current, chunk_seq))
-                chunk_seq += 1
-    return chunks
+def validate_chunking_options(
+    chunking_strategy: str,
+    max_chars: int,
+    overlap_sentences: int,
+) -> None:
+    if chunking_strategy not in VALID_CHUNKING_STRATEGIES:
+        choices = ", ".join(sorted(VALID_CHUNKING_STRATEGIES))
+        raise ValueError(f"chunking_strategy must be one of: {choices}")
+    if max_chars < 1:
+        raise ValueError("chunk_max_chars must be positive.")
+    if overlap_sentences < 0:
+        raise ValueError("chunk_overlap_sentences must be zero or positive.")
 
 
-def make_chunk(
-    doc: dict[str, Any],
-    section: str,
-    sentences: list[str],
-    chunk_seq: int,
-) -> dict[str, Any]:
-    text = " ".join(sentences).strip()
+def normalize_section_path(section: dict[str, Any], heading: str) -> list[str]:
+    raw_path = section.get("section_path") or section.get("path") or []
+    if isinstance(raw_path, str):
+        parts = [part.strip() for part in raw_path.split(">")]
+    elif isinstance(raw_path, list):
+        parts = [str(part).strip() for part in raw_path]
+    else:
+        parts = []
+    path = [part for part in parts if part]
+    if not path:
+        path = [heading]
+    return path
+
+
+def normalize_document_sections(doc: dict[str, Any]) -> list[dict[str, Any]]:
+    normalized = []
+    for idx, section in enumerate(doc.get("sections") or [], start=1):
+        heading = str(section.get("heading") or f"section-{idx}").strip()
+        text = str(section.get("text") or "").strip()
+        if not text:
+            continue
+        section_path = normalize_section_path(section, heading)
+        normalized.append(
+            {
+                "section_id": f"{doc['doc_id']}::section-{idx:03d}",
+                "doc_id": doc["doc_id"],
+                "title": doc["title"],
+                "agency": doc.get("agency", ""),
+                "project": doc.get("project", ""),
+                "metadata": doc.get("metadata", {}),
+                "section": section_path[-1],
+                "heading": heading,
+                "section_path": section_path,
+                "text": text,
+            }
+        )
+    return normalized
+
+
+def document_has_section_structure(doc: dict[str, Any]) -> bool:
+    sections = normalize_document_sections(doc)
+    if len(sections) > 1:
+        return True
+    if not sections:
+        return False
+    section = sections[0]
+    heading = str(section.get("heading") or "").strip().lower()
+    section_path = section.get("section_path") or []
+    return len(section_path) > 1 or heading not in WEAK_SECTION_HEADINGS
+
+
+def resolve_chunking_strategy(doc: dict[str, Any], requested_strategy: str) -> str:
+    if requested_strategy == "auto":
+        return "section" if document_has_section_structure(doc) else "fixed"
+    return requested_strategy
+
+
+def fixed_parent_section(doc: dict[str, Any], sections: list[dict[str, Any]]) -> dict[str, Any]:
+    parts = []
+    for section in sections:
+        heading = str(section.get("section") or "").strip()
+        text = str(section.get("text") or "").strip()
+        if heading and heading not in WEAK_SECTION_HEADINGS:
+            parts.append(f"{heading}\n{text}")
+        else:
+            parts.append(text)
     return {
-        "chunk_id": f"{doc['doc_id']}::chunk-{chunk_seq:03d}",
+        "section_id": f"{doc['doc_id']}::section-001",
         "doc_id": doc["doc_id"],
         "title": doc["title"],
         "agency": doc.get("agency", ""),
         "project": doc.get("project", ""),
         "metadata": doc.get("metadata", {}),
-        "section": section,
+        "section": "문서 전체",
+        "heading": "문서 전체",
+        "section_path": ["문서 전체"],
+        "text": "\n\n".join(part for part in parts if part).strip(),
+    }
+
+
+def split_section_text(
+    text: str,
+    max_chars: int,
+    overlap_sentences: int,
+) -> list[list[str]]:
+    sentences = []
+    for sentence in sentence_split(text) or [text]:
+        sentences.extend(split_long_text_unit(sentence, max_chars))
+
+    chunks: list[list[str]] = []
+    current: list[str] = []
+    current_len = 0
+    for sentence in sentences:
+        next_len = current_len + len(sentence) + 1
+        if current and next_len > max_chars:
+            chunks.append(current)
+            overlap = current[-overlap_sentences:] if overlap_sentences else []
+            overlap_len = sum(len(s) + 1 for s in overlap)
+            if overlap and overlap_len + len(sentence) + 1 <= max_chars:
+                current = overlap
+                current_len = overlap_len
+            else:
+                current = []
+                current_len = 0
+        current.append(sentence)
+        current_len += len(sentence) + 1
+    if current:
+        chunks.append(current)
+    return chunks
+
+
+def build_chunk_records(
+    documents: Iterable[dict[str, Any]],
+    max_chars: int = DEFAULT_CHUNK_MAX_CHARS,
+    chunking_strategy: str = "auto",
+    overlap_sentences: int = DEFAULT_CHUNK_OVERLAP_SENTENCES,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:
+    validate_chunking_options(chunking_strategy, max_chars, overlap_sentences)
+    chunks: list[dict[str, Any]] = []
+    parent_sections: list[dict[str, Any]] = []
+    strategy_counts = {"section": 0, "fixed": 0}
+    document_diagnostics = []
+
+    for doc in documents:
+        normalized_sections = normalize_document_sections(doc)
+        actual_strategy = resolve_chunking_strategy(doc, chunking_strategy)
+        parent_candidates = (
+            normalized_sections
+            if actual_strategy == "section"
+            else [fixed_parent_section(doc, normalized_sections)]
+        )
+        doc_chunk_count = 0
+        chunk_seq = 1
+
+        for parent in parent_candidates:
+            parent = {**parent, "chunking_strategy": actual_strategy}
+            parent_sections.append(parent)
+            section_chunks = split_section_text(parent["text"], max_chars, overlap_sentences)
+            for chunk_seq_in_section, sentences in enumerate(section_chunks, start=1):
+                chunks.append(
+                    make_chunk(
+                        doc,
+                        parent,
+                        sentences,
+                        chunk_seq,
+                        chunk_seq_in_section,
+                        actual_strategy,
+                    )
+                )
+                chunk_seq += 1
+                doc_chunk_count += 1
+
+        strategy_counts[actual_strategy] += 1
+        document_diagnostics.append(
+            {
+                "doc_id": doc["doc_id"],
+                "requested_strategy": chunking_strategy,
+                "actual_strategy": actual_strategy,
+                "num_input_sections": len(normalized_sections),
+                "num_parent_sections": len(parent_candidates),
+                "num_chunks": doc_chunk_count,
+            }
+        )
+
+    diagnostics = {
+        "requested_strategy": chunking_strategy,
+        "max_chars": max_chars,
+        "overlap_sentences": overlap_sentences,
+        "num_parent_sections": len(parent_sections),
+        "actual_strategy_counts": {
+            key: value for key, value in strategy_counts.items() if value
+        },
+        "documents": document_diagnostics,
+    }
+    return chunks, parent_sections, diagnostics
+
+
+def build_chunks(
+    documents: Iterable[dict[str, Any]],
+    max_chars: int = DEFAULT_CHUNK_MAX_CHARS,
+    chunking_strategy: str = "auto",
+    overlap_sentences: int = DEFAULT_CHUNK_OVERLAP_SENTENCES,
+) -> list[dict[str, Any]]:
+    chunks, _, _ = build_chunk_records(
+        documents,
+        max_chars=max_chars,
+        chunking_strategy=chunking_strategy,
+        overlap_sentences=overlap_sentences,
+    )
+    return chunks
+
+
+def make_chunk(
+    doc: dict[str, Any],
+    parent_section: dict[str, Any],
+    sentences: list[str],
+    chunk_seq: int,
+    chunk_seq_in_section: int,
+    chunking_strategy: str,
+) -> dict[str, Any]:
+    text = " ".join(sentences).strip()
+    section_path = parent_section.get("section_path") or [parent_section.get("section", "")]
+    section_label = str(parent_section.get("section") or section_path[-1])
+    return {
+        "chunk_id": f"{doc['doc_id']}::chunk-{chunk_seq:03d}",
+        "section_id": parent_section["section_id"],
+        "parent_section_id": parent_section["section_id"],
+        "doc_id": doc["doc_id"],
+        "title": doc["title"],
+        "agency": doc.get("agency", ""),
+        "project": doc.get("project", ""),
+        "metadata": doc.get("metadata", {}),
+        "section": section_label,
+        "section_path": section_path,
+        "chunk_seq_in_section": chunk_seq_in_section,
+        "chunking_strategy": chunking_strategy,
         "text": text,
-        "tokens": tokenize(" ".join([doc["title"], doc.get("agency", ""), section, text])),
+        "tokens": tokenize(
+            " ".join([doc["title"], doc.get("agency", ""), " > ".join(section_path), text])
+        ),
     }
 
 
@@ -482,6 +735,9 @@ def build_index_payload(
     input_dir: Path,
     model_name: str = DEFAULT_EMBEDDING_MODEL,
     embedding_backend: str = "auto",
+    chunking_strategy: str = "auto",
+    chunk_max_chars: int = DEFAULT_CHUNK_MAX_CHARS,
+    chunk_overlap_sentences: int = DEFAULT_CHUNK_OVERLAP_SENTENCES,
 ) -> dict[str, Any]:
     documents = load_raw_documents(input_dir)
     return build_index_payload_from_documents(
@@ -489,6 +745,9 @@ def build_index_payload(
         source_dir=str(input_dir),
         model_name=model_name,
         embedding_backend=embedding_backend,
+        chunking_strategy=chunking_strategy,
+        chunk_max_chars=chunk_max_chars,
+        chunk_overlap_sentences=chunk_overlap_sentences,
         message="Public synthetic RFP index for local minimum E2E RAG.",
     )
 
@@ -498,11 +757,26 @@ def build_index_payload_from_documents(
     source_dir: str,
     model_name: str = DEFAULT_EMBEDDING_MODEL,
     embedding_backend: str = "auto",
+    chunking_strategy: str = "auto",
+    chunk_max_chars: int = DEFAULT_CHUNK_MAX_CHARS,
+    chunk_overlap_sentences: int = DEFAULT_CHUNK_OVERLAP_SENTENCES,
     message: str = "RFP index for local minimum E2E RAG.",
 ) -> dict[str, Any]:
-    chunks = build_chunks(documents)
+    chunks, parent_sections, chunking_diagnostics = build_chunk_records(
+        documents,
+        max_chars=chunk_max_chars,
+        chunking_strategy=chunking_strategy,
+        overlap_sentences=chunk_overlap_sentences,
+    )
     embedding_inputs = [
-        " ".join([chunk["title"], chunk.get("agency", ""), chunk["section"], chunk["text"]])
+        " ".join(
+            [
+                chunk["title"],
+                chunk.get("agency", ""),
+                " > ".join(chunk.get("section_path") or [chunk["section"]]),
+                chunk["text"],
+            ]
+        )
         for chunk in chunks
     ]
     embedding_result = embed_texts(embedding_inputs, model_name=model_name, backend=embedding_backend)
@@ -533,9 +807,12 @@ def build_index_payload_from_documents(
         "build": {
             "num_documents": len(public_docs),
             "num_chunks": len(chunks),
+            "num_parent_sections": len(parent_sections),
             "source_dir": source_dir,
+            "chunking": chunking_diagnostics,
         },
         "documents": public_docs,
+        "parent_sections": parent_sections,
         "chunks": chunks,
     }
 
@@ -751,6 +1028,140 @@ def is_metadata_ambiguous(matches: list[dict[str, Any]], query_type: str) -> boo
     return len(close_doc_ids) > 1
 
 
+def has_implicit_reference(query: str) -> bool:
+    normalized_query = normalize_entity(query)
+    return any(pattern in normalized_query for pattern in IMPLICIT_REFERENCE_PATTERNS)
+
+
+def has_comparison_request(query: str) -> bool:
+    comparison_terms = ("차이", "비교", "각각", "대비")
+    return any(term in normalize_entity(query) for term in comparison_terms)
+
+
+def active_state_terms(state: dict[str, Any]) -> list[str]:
+    terms = state.get("active_agencies") or state.get("active_projects") or []
+    if terms:
+        return coerce_string_list(terms)
+    return coerce_string_list(state.get("active_doc_ids"))
+
+
+def active_state_size(state: dict[str, Any]) -> int:
+    return max(
+        len(state.get("active_agencies") or []),
+        len(state.get("active_projects") or []),
+        len(state.get("active_doc_ids") or []),
+    )
+
+
+def make_context_resolution(
+    status: str,
+    source: str,
+    confidence: float,
+    reason: str = "",
+    resolved_query: str | None = None,
+    context_entities: list[str] | None = None,
+) -> dict[str, Any]:
+    return {
+        "status": status,
+        "source": source,
+        "confidence": round(float(confidence), 3),
+        "reason": reason,
+        "resolved_query": resolved_query,
+        "context_entities": context_entities or [],
+    }
+
+
+def resolve_conversation_context(
+    query: str,
+    initial_analysis: dict[str, Any],
+    conversation_state: dict[str, Any],
+    context_entities: list[str] | None = None,
+) -> tuple[str, list[str], dict[str, Any]]:
+    explicit_context = coerce_string_list(context_entities or [])
+    if explicit_context:
+        return (
+            query,
+            explicit_context,
+            make_context_resolution(
+                "resolved",
+                "context_entities",
+                1.0,
+                resolved_query=query,
+                context_entities=explicit_context,
+            ),
+        )
+
+    if initial_analysis.get("matched_doc_ids"):
+        return (
+            query,
+            [],
+            make_context_resolution("not_needed", "query", 1.0, resolved_query=query),
+        )
+
+    if not has_implicit_reference(query):
+        return (
+            query,
+            [],
+            make_context_resolution("not_needed", "none", 0.0, resolved_query=query),
+        )
+
+    state_terms = active_state_terms(conversation_state)
+    if not state_terms:
+        return (
+            query,
+            [],
+            make_context_resolution(
+                "needs_clarification",
+                "conversation_state",
+                0.0,
+                reason="no_active_state",
+                resolved_query=query,
+            ),
+        )
+
+    state_confidence = float(conversation_state.get("confidence") or 0.0)
+    if state_confidence < CONTEXT_RESOLUTION_THRESHOLD:
+        return (
+            query,
+            [],
+            make_context_resolution(
+                "needs_clarification",
+                "conversation_state",
+                state_confidence,
+                reason="weak_active_state",
+                resolved_query=query,
+                context_entities=state_terms,
+            ),
+        )
+
+    if active_state_size(conversation_state) > 1 and not has_comparison_request(query):
+        return (
+            query,
+            [],
+            make_context_resolution(
+                "needs_clarification",
+                "conversation_state",
+                state_confidence,
+                reason="ambiguous_active_state",
+                resolved_query=query,
+                context_entities=state_terms,
+            ),
+        )
+
+    resolved_query = " ".join([*state_terms, query])
+    return (
+        resolved_query,
+        state_terms,
+        make_context_resolution(
+            "resolved",
+            "conversation_state",
+            state_confidence,
+            resolved_query=resolved_query,
+            context_entities=state_terms,
+        ),
+    )
+
+
 def analyze_query(
     query: str,
     entities: list[Any],
@@ -831,7 +1242,11 @@ def make_plan(
     metadata_first: bool = True,
     rerank: bool = True,
     verifier_retry: bool = True,
+    retrieval_mode: str = "flat",
 ) -> dict[str, Any]:
+    if retrieval_mode not in VALID_RETRIEVAL_MODES:
+        choices = ", ".join(sorted(VALID_RETRIEVAL_MODES))
+        raise ValueError(f"retrieval_mode must be one of: {choices}")
     default_top_k = 6 if analysis["query_type"] == "comparison" else 4
     if relaxed:
         stage = "relaxed"
@@ -856,6 +1271,7 @@ def make_plan(
         "metadata_first": metadata_first,
         "rerank": rerank,
         "verifier_retry": verifier_retry,
+        "retrieval_mode": retrieval_mode,
         "metadata_filters": filters,
         "top_k": top_k or default_top_k,
         "relaxed": stage == "relaxed",
@@ -916,6 +1332,12 @@ def retrieve(
                 "project": chunk.get("project", ""),
                 "metadata": chunk.get("metadata", {}),
                 "section": chunk["section"],
+                "section_id": chunk.get("section_id"),
+                "parent_section_id": chunk.get("parent_section_id") or chunk.get("section_id"),
+                "section_path": chunk.get("section_path") or [chunk.get("section", "")],
+                "chunk_seq_in_section": chunk.get("chunk_seq_in_section"),
+                "chunking_strategy": chunk.get("chunking_strategy", "legacy"),
+                "retrieval_mode": "flat",
                 "text": chunk["text"],
                 "score": round(float(score), 4),
                 "score_parts": {
@@ -927,7 +1349,62 @@ def retrieve(
         )
 
     scored.sort(key=lambda item: item["score"], reverse=True)
-    return scored[: int(plan["top_k"])]
+    top_k = int(plan["top_k"])
+    if plan.get("retrieval_mode") == "hierarchical":
+        return reassemble_parent_sections(index, scored, top_k, plan)
+    return scored[:top_k]
+
+
+def reassemble_parent_sections(
+    index: dict[str, Any],
+    scored_chunks: list[dict[str, Any]],
+    top_k: int,
+    plan: dict[str, Any],
+) -> list[dict[str, Any]]:
+    parent_by_id = {
+        str(section.get("section_id")): section
+        for section in index.get("parent_sections", [])
+        if section.get("section_id")
+    }
+    best_by_parent: dict[str, dict[str, Any]] = {}
+    child_ids_by_parent: dict[str, list[str]] = {}
+
+    for chunk in scored_chunks:
+        parent_id = str(
+            chunk.get("parent_section_id") or chunk.get("section_id") or chunk.get("chunk_id")
+        )
+        child_ids_by_parent.setdefault(parent_id, []).append(chunk["chunk_id"])
+        current = best_by_parent.get(parent_id)
+        if current is None or chunk["score"] > current["score"]:
+            best_by_parent[parent_id] = chunk
+
+    plan["parent_candidate_count"] = len(best_by_parent)
+
+    reassembled = []
+    for parent_id, best_chunk in best_by_parent.items():
+        parent = parent_by_id.get(parent_id)
+        if not parent:
+            item = dict(best_chunk)
+            item["retrieval_mode"] = "hierarchical_fallback"
+            item["child_chunk_ids"] = child_ids_by_parent.get(parent_id, [])
+            reassembled.append(item)
+            continue
+
+        item = {
+            **best_chunk,
+            "section_id": parent.get("section_id"),
+            "parent_section_id": parent_id,
+            "section": parent.get("section", best_chunk.get("section", "")),
+            "section_path": parent.get("section_path") or best_chunk.get("section_path") or [],
+            "text": parent.get("text", best_chunk.get("text", "")),
+            "chunking_strategy": parent.get("chunking_strategy", best_chunk.get("chunking_strategy", "")),
+            "retrieval_mode": "hierarchical",
+            "child_chunk_ids": child_ids_by_parent.get(parent_id, []),
+        }
+        reassembled.append(item)
+
+    reassembled.sort(key=lambda item: item["score"], reverse=True)
+    return reassembled[:top_k]
 
 
 def embed_query_for_index(query: str, embedding_config: dict[str, Any]) -> np.ndarray:
@@ -960,12 +1437,13 @@ def dense_similarity(query_vector: np.ndarray, chunk_vector: Any) -> float:
 def lexical_similarity(query_tokens: set[str], topics: list[str], chunk: dict[str, Any]) -> float:
     if not query_tokens and not topics:
         return 0.0
+    section_path = chunk.get("section_path") or [chunk.get("section", "")]
     chunk_text = " ".join(
         [
             chunk.get("title", ""),
             chunk.get("agency", ""),
             chunk.get("project", ""),
-            chunk.get("section", ""),
+            " > ".join(section_path),
             chunk.get("text", ""),
         ]
     ).lower()
@@ -1299,10 +1777,149 @@ def summarize_stage_attempt(
         "metadata_filters": plan.get("metadata_filters") or {},
         "top_k": plan.get("top_k"),
         "candidate_count": plan.get("candidate_count"),
+        "parent_candidate_count": plan.get("parent_candidate_count"),
         "total_chunks": plan.get("total_chunks"),
         "filter_fallback_used": plan.get("filter_fallback_used", False),
+        "retrieval_mode": plan.get("retrieval_mode", "flat"),
         "verified": verified,
         "verification_reasons": verification_reasons,
+    }
+
+
+def clarification_answer(query: str, context_resolution: dict[str, Any]) -> str:
+    reason = context_resolution.get("reason")
+    if reason == "no_active_state":
+        return (
+            f"'{query}'는 이전 문맥의 기관이나 사업을 확인해야 답할 수 있습니다. "
+            "기관명 또는 사업명을 포함해 다시 질문해 주세요."
+        )
+    if reason == "ambiguous_active_state":
+        entities = ", ".join(context_resolution.get("context_entities") or [])
+        return (
+            f"'{query}'에서 가리키는 대상이 모호합니다. "
+            f"현재 문맥 후보는 {entities}입니다. 기관명 또는 사업명을 하나로 지정해 주세요."
+        )
+    return (
+        f"'{query}'의 생략된 참조를 충분히 확정하지 못했습니다. "
+        "기관명 또는 사업명을 포함해 다시 질문해 주세요."
+    )
+
+
+def make_context_clarification_result(
+    index: dict[str, Any],
+    query: str,
+    analysis: dict[str, Any],
+    conversation_state: dict[str, Any],
+    context_resolution: dict[str, Any],
+    started: float,
+    metadata_first: bool,
+    rerank: bool,
+    verifier_retry: bool,
+) -> dict[str, Any]:
+    reason = str(context_resolution.get("reason") or "context_resolution_failed")
+    analysis = dict(analysis)
+    analysis["query_type"] = "follow_up"
+    analysis["context_resolution"] = context_resolution
+    latency_ms = (time.perf_counter() - started) * 1000
+    return {
+        "mode": "rag",
+        "query": query,
+        "resolved_query": context_resolution.get("resolved_query") or query,
+        "analysis": analysis,
+        "plan": {
+            "strategy": "conversation-state clarification",
+            "metadata_first": metadata_first,
+            "rerank": rerank,
+            "verifier_retry": verifier_retry,
+            "metadata_filters": {},
+            "top_k": None,
+            "relaxed": False,
+            "retry_policy": "clarify before retrieval when entity resolution is weak",
+        },
+        "answer": clarification_answer(query, context_resolution),
+        "evidence": [],
+        "conversation_state": conversation_state,
+        "diagnostics": {
+            "latency_ms": round(latency_ms, 2),
+            "retry_count": 0,
+            "abstained": True,
+            "verification_reasons": [reason],
+            "filter_stage_attempts": [],
+            "final_relaxation_reason": [],
+            "context_resolution": context_resolution,
+            "embedding_backend": index.get("embedding", {}).get("backend"),
+            "embedding_model": index.get("embedding", {}).get("model"),
+            "metadata_first": metadata_first,
+            "rerank": rerank,
+            "verifier_retry": verifier_retry,
+        },
+    }
+
+
+def update_conversation_state(
+    conversation_state: dict[str, Any],
+    original_query: str,
+    resolved_query: str,
+    analysis: dict[str, Any],
+    evidence: list[dict[str, Any]],
+    context_resolution: dict[str, Any],
+) -> dict[str, Any]:
+    active_doc_ids = ordered_unique(
+        [
+            *coerce_string_list(analysis.get("matched_doc_ids")),
+            *(item.get("doc_id", "") for item in evidence),
+        ]
+    )
+    active_agencies = ordered_unique(
+        [
+            *coerce_string_list(analysis.get("entities")),
+            *(item.get("agency", "") for item in evidence),
+        ]
+    )
+    active_projects = ordered_unique(
+        [
+            *coerce_string_list(analysis.get("matched_projects")),
+            *(item.get("project", "") for item in evidence),
+        ]
+    )
+    active_topics = coerce_string_list(analysis.get("topics"))
+
+    if not (active_doc_ids or active_agencies or active_projects):
+        return conversation_state
+
+    metadata_confidence = float(analysis.get("metadata_confidence") or 0.0)
+    resolution_confidence = float(context_resolution.get("confidence") or 0.0)
+    confidence = max(metadata_confidence, resolution_confidence, 0.85)
+    if analysis.get("metadata_ambiguous"):
+        confidence = min(confidence, 0.65)
+
+    turns = list(conversation_state.get("turns") or [])
+    turns.append(
+        {
+            "turn": len(turns) + 1,
+            "query": original_query,
+            "resolved_query": resolved_query,
+            "active_agencies": active_agencies,
+            "active_projects": active_projects,
+            "active_topics": active_topics,
+            "active_doc_ids": active_doc_ids,
+            "context_resolution": {
+                "status": context_resolution.get("status"),
+                "source": context_resolution.get("source"),
+                "confidence": context_resolution.get("confidence"),
+                "reason": context_resolution.get("reason", ""),
+            },
+        }
+    )
+
+    return {
+        "schema_version": CONVERSATION_STATE_SCHEMA_VERSION,
+        "active_agencies": active_agencies,
+        "active_projects": active_projects,
+        "active_topics": active_topics,
+        "active_doc_ids": active_doc_ids,
+        "confidence": round(float(confidence), 3),
+        "turns": turns[-MAX_CONVERSATION_TURNS:],
     }
 
 
@@ -1314,9 +1931,40 @@ def run_rag_query(
     metadata_first: bool = True,
     rerank: bool = True,
     verifier_retry: bool = True,
+    conversation_state: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     started = time.perf_counter()
-    analysis = analyze_query(query, metadata_targets(index), context_entities=context_entities)
+    state = normalize_conversation_state(conversation_state)
+    targets = metadata_targets(index)
+    initial_analysis = analyze_query(query, targets)
+    retrieval_query, effective_context_entities, context_resolution = resolve_conversation_context(
+        query,
+        initial_analysis,
+        state,
+        context_entities=context_entities,
+    )
+    if context_resolution["status"] == "needs_clarification":
+        return make_context_clarification_result(
+            index,
+            query,
+            initial_analysis,
+            state,
+            context_resolution,
+            started,
+            metadata_first,
+            rerank,
+            verifier_retry,
+        )
+
+    analysis = analyze_query(
+        retrieval_query,
+        targets,
+        context_entities=effective_context_entities,
+    )
+    if context_resolution["source"] in {"conversation_state", "context_entities"}:
+        analysis["query_type"] = "follow_up"
+        analysis["context_used"] = True
+    analysis["context_resolution"] = context_resolution
     stage_sequence = metadata_stage_sequence(
         analysis,
         metadata_first=metadata_first,
@@ -1340,8 +1988,9 @@ def run_rag_query(
             metadata_first=metadata_first,
             rerank=rerank,
             verifier_retry=verifier_retry,
+            retrieval_mode=retrieval_mode,
         )
-        evidence = retrieve(index, query, analysis, plan)
+        evidence = retrieve(index, retrieval_query, analysis, plan)
         if verifier_retry:
             verified, verification_reasons = verify_evidence(analysis, evidence)
         else:
@@ -1368,11 +2017,13 @@ def run_rag_query(
     return {
         "mode": "rag",
         "query": query,
+        "resolved_query": retrieval_query,
         "analysis": analysis,
         "plan": plan,
         "answer": answer,
         "answer_text": answer_text,
         "evidence": strip_internal_scores(evidence),
+        "conversation_state": state,
         "diagnostics": {
             "latency_ms": round(latency_ms, 2),
             "retry_count": retry_count,
@@ -1384,11 +2035,13 @@ def run_rag_query(
             "verification_reasons": verification_reasons,
             "filter_stage_attempts": stage_attempts,
             "final_relaxation_reason": stage_attempts[-2]["verification_reasons"] if retry_count else [],
+            "context_resolution": context_resolution,
             "embedding_backend": index.get("embedding", {}).get("backend"),
             "embedding_model": index.get("embedding", {}).get("model"),
             "metadata_first": metadata_first,
             "rerank": rerank,
             "verifier_retry": verifier_retry,
+            "retrieval_mode": retrieval_mode,
         },
     }
 
@@ -1404,6 +2057,13 @@ def strip_internal_scores(evidence: list[dict[str, Any]]) -> list[dict[str, Any]
             "agency": item.get("agency", ""),
             "metadata": item.get("metadata", {}),
             "section": item.get("section", ""),
+            "section_id": item.get("section_id"),
+            "parent_section_id": item.get("parent_section_id"),
+            "section_path": item.get("section_path") or [],
+            "chunk_seq_in_section": item.get("chunk_seq_in_section"),
+            "chunking_strategy": item.get("chunking_strategy", ""),
+            "retrieval_mode": item.get("retrieval_mode", "flat"),
+            "child_chunk_ids": item.get("child_chunk_ids", []),
         }
         for item in evidence
     ]

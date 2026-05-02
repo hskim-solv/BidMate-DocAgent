@@ -23,6 +23,21 @@ class FuzzyMetadataRetrievalTest(unittest.TestCase):
             result["plan"]["metadata_filters"]["doc_ids"],
         )
 
+    def test_section_metadata_is_stored_on_chunks_and_evidence(self) -> None:
+        chunk = self.index["chunks"][0]
+
+        self.assertEqual("section", chunk["chunking_strategy"])
+        self.assertEqual(["사업 개요"], chunk["section_path"])
+        self.assertEqual(1, chunk["chunk_seq_in_section"])
+        self.assertTrue(chunk["section_id"].startswith("rfp-agency-a-ai-quality::section-"))
+
+        result = run_rag_query(self.index, "기관 A의 보안 통제 요구사항은?")
+        evidence = result["evidence"][0]
+
+        self.assertEqual(["AI 요구사항"], evidence["section_path"])
+        self.assertEqual(evidence["section_id"], evidence["parent_section_id"])
+        self.assertEqual("section", evidence["chunking_strategy"])
+
     def test_abbreviation_query_keeps_both_comparison_sides(self) -> None:
         result = run_rag_query(self.index, "A와 B의 AI 요구사항 차이 알려줘")
 
@@ -184,6 +199,58 @@ class FuzzyMetadataRetrievalTest(unittest.TestCase):
         self.assertEqual("supported", result["answer"]["status"])
         self.assertEqual(0, result["diagnostics"]["retry_count"])
         self.assertTrue(result["evidence"])
+
+    def test_conversation_state_resolves_implicit_follow_up_entity(self) -> None:
+        first = run_rag_query(
+            self.index,
+            "기관 A의 AI 요구사항은?",
+            conversation_state={},
+        )
+
+        follow_up = run_rag_query(
+            self.index,
+            "그 기관이 요구한 보안 조건도 보여줘",
+            conversation_state=first["conversation_state"],
+        )
+
+        self.assertFalse(follow_up["diagnostics"]["abstained"])
+        self.assertEqual(
+            "resolved",
+            follow_up["diagnostics"]["context_resolution"]["status"],
+        )
+        self.assertEqual(
+            "conversation_state",
+            follow_up["diagnostics"]["context_resolution"]["source"],
+        )
+        self.assertIn("기관 A", follow_up["resolved_query"])
+        self.assertEqual(
+            {"rfp-agency-a-ai-quality"},
+            {item["doc_id"] for item in follow_up["evidence"]},
+        )
+
+    def test_conversation_state_clarifies_ambiguous_singular_reference(self) -> None:
+        first = run_rag_query(
+            self.index,
+            "기관 A와 기관 B의 보안 요구사항 차이를 비교해줘",
+            conversation_state={},
+        )
+
+        follow_up = run_rag_query(
+            self.index,
+            "그 기관의 보안 조건은?",
+            conversation_state=first["conversation_state"],
+        )
+
+        self.assertTrue(follow_up["diagnostics"]["abstained"])
+        self.assertEqual([], follow_up["evidence"])
+        self.assertEqual(
+            "needs_clarification",
+            follow_up["diagnostics"]["context_resolution"]["status"],
+        )
+        self.assertEqual(
+            "ambiguous_active_state",
+            follow_up["diagnostics"]["context_resolution"]["reason"],
+        )
 
 
 if __name__ == "__main__":
