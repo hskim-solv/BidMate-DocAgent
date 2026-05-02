@@ -1,4 +1,9 @@
-numpy>=1.24
+numpy>=1.24,<2.3
 PyYAML>=6.0
 sentence-transformers>=2.7,<3.0
 transformers>=4.41,<5.0
+pymupdf>=1.24,<2.0
+pdfplumber>=0.11,<1.0
+pytesseract>=0.3,<1.0
+Pillow>=10.0
+opencv-python-headless>=4.9,<4.13

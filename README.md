@@ -65,6 +65,7 @@
 - Benchmark registry: `benchmarks/registry.json`
 - Benchmark local artifacts: `artifacts/benchmarks/` (gitignored)
 - PDF/HWP ingestion 진단 리포트: `data/index/ingestion_report.json` (`--metadata_csv` 사용 시)
+- Visual parsing v2 artifact: `data/index/visual_artifacts/*.visual.json` (`--visual_input_dir` 또는 `--ingestion_mode visual` 사용 시)
 
 ---
 
@@ -217,6 +218,29 @@ python3 scripts/build_index.py \
 
 이 모드는 `data/index/index.json`과 함께 `data/index/ingestion_report.json`을 생성합니다. 리포트에는 문서별 indexed/failed 상태와 `missing_file`, `empty_text`, `unsupported_file_format`, `duplicate_doc_id` 같은 실패 사유가 기록됩니다.
 
+### 선택) Document visual parsing v2
+원본 PDF/이미지 문서를 직접 파싱해 page/bbox/region metadata가 포함된 v2 artifact를 만들 수 있습니다. PDF는 text layer block을 우선 사용하고, text가 부족한 page 또는 이미지 파일은 OCR adapter를 사용합니다. HWP는 이번 v2에서 native visual parsing 대상이 아니며, metadata CSV visual mode에서는 기존 `텍스트` 컬럼으로 fallback하고 `visual_fallback_hwp`로 표시합니다.
+
+```bash
+python3 scripts/build_index.py \
+  --visual_input_dir data/visual_samples \
+  --output_dir data/index \
+  --embedding_backend hashing
+```
+
+metadata CSV와 함께 v2를 비교하려면 다음처럼 실행합니다.
+
+```bash
+python3 scripts/build_index.py \
+  --metadata_csv data/data_list.csv \
+  --files_dir data/files \
+  --ingestion_mode visual \
+  --output_dir data/index \
+  --embedding_backend hashing
+```
+
+이 모드는 `data/index/index.json`, `data/index/ingestion_report.json`, `data/index/visual_artifacts/*.visual.json`을 생성합니다. OCR에는 Python 패키지(`pymupdf`, `pdfplumber`, `pytesseract`, `Pillow`, `opencv-python-headless`)와 시스템 Tesseract 설치가 필요합니다. OCR 엔진이 없으면 text-layer PDF는 계속 처리할 수 있지만 image-only 문서는 `ocr_unavailable`로 실패합니다.
+
 ---
 
 ## 상세 설계 링크
@@ -226,6 +250,7 @@ python3 scripts/build_index.py \
 - 설계 배경 및 의사결정: [`docs/design-background.md`](docs/design-background.md)
 - Chunking diagnostics: [`docs/chunking-diagnostics.md`](docs/chunking-diagnostics.md)
 - PDF/HWP ingestion: [`docs/real-data-ingestion.md`](docs/real-data-ingestion.md)
+- Visual parsing v2: [`docs/visual-ingestion-v2.md`](docs/visual-ingestion-v2.md)
 - 답변 출력 정책: [`docs/answer-policy.md`](docs/answer-policy.md)
 - 실패 사례 분석: [`docs/failure-cases.md`](docs/failure-cases.md)
 - 회고 및 개선 방향: [`docs/retrospective.md`](docs/retrospective.md)
