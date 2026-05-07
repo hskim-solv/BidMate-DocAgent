@@ -169,10 +169,35 @@ METADATA_GENERIC_TOKENS = {
     "시스템",
 }
 
+VERIFICATION_INTENT_TOKENS = {
+    "간단히",
+    "관련",
+    "내용",
+    "대해",
+    "알려줘",
+    "요약",
+    "요약해줘",
+    "정리",
+    "정리해줘",
+    "주요",
+    "확인",
+}
+
+METADATA_EVIDENCE_LABELS = {
+    "budget": ("예산", "사업예산", "사업 금액"),
+    "published_at": ("공개 일자", "공고일"),
+    "bid_start_at": ("입찰", "입찰 시작일", "입찰 참여 시작일"),
+    "bid_deadline_at": ("입찰", "마감일", "입찰 마감일", "입찰 참여 마감일"),
+    "summary": ("요약", "사업 요약"),
+}
+
 KOREAN_PARTICLE_SUFFIXES = (
     "으로",
     "에서",
     "에게",
+    "도",
+    "만",
+    "나",
     "과",
     "와",
     "의",
@@ -1568,11 +1593,8 @@ def verify_evidence(analysis: dict[str, Any], evidence: list[dict[str, Any]]) ->
     if evidence[0]["score"] < 0.18:
         reasons.append("low_top_score")
 
-    combined = " ".join(
-        " ".join([item.get("title", ""), item.get("section", ""), item["text"]])
-        for item in evidence
-    ).lower()
-    topics = specific_topics(analysis)
+    combined = " ".join(evidence_text_for_verification(item) for item in evidence).lower()
+    topics = verification_topics(analysis)
     if topics and not all(topic.lower() in combined for topic in topics):
         reasons.append("topic_not_grounded")
 
@@ -1602,11 +1624,62 @@ def verify_evidence(analysis: dict[str, Any], evidence: list[dict[str, Any]]) ->
 
 
 def specific_topics(analysis: dict[str, Any]) -> list[str]:
-    return [topic for topic in analysis.get("topics", []) if topic.lower() not in {"ai"}]
+    return verification_topics(analysis)
+
+
+def verification_topics(analysis: dict[str, Any]) -> list[str]:
+    metadata_terms = metadata_terms_for_verification(analysis)
+    keyword_terms = {
+        normalize_metadata_token(keyword)
+        for keyword in TOPIC_KEYWORDS
+        if normalize_metadata_token(keyword).lower() != "ai"
+    }
+    topics = []
+    for topic in analysis.get("topics", []):
+        normalized = normalize_metadata_token(str(topic))
+        if not normalized or normalized.lower() == "ai":
+            continue
+        if normalized in metadata_terms and normalized not in keyword_terms:
+            continue
+        if normalized in METADATA_GENERIC_TOKENS or normalized in VERIFICATION_INTENT_TOKENS:
+            continue
+        topics.append(normalized)
+    return ordered_unique(topics)
+
+
+def metadata_terms_for_verification(analysis: dict[str, Any]) -> set[str]:
+    values: list[str] = []
+    for key in ("entities", "matched_agencies", "matched_projects", "context_entities"):
+        values.extend(str(value) for value in analysis.get(key) or [])
+    for match in analysis.get("metadata_matches") or []:
+        values.extend(
+            str(match.get(key) or "")
+            for key in ("agency", "project", "value")
+        )
+        values.extend(str(term) for term in match.get("matched_terms") or [])
+    return set(metadata_tokens(" ".join(values)))
+
+
+def evidence_text_for_verification(item: dict[str, Any]) -> str:
+    parts = [
+        item.get("title", ""),
+        item.get("agency", ""),
+        item.get("project", ""),
+        item.get("section", ""),
+        item.get("text", ""),
+    ]
+    metadata = item.get("metadata")
+    if isinstance(metadata, dict):
+        for key, value in metadata.items():
+            if value is None or value == "":
+                continue
+            parts.extend(METADATA_EVIDENCE_LABELS.get(str(key), (str(key),)))
+            parts.append(str(value))
+    return " ".join(str(part) for part in parts if str(part).strip())
 
 
 def evidence_has_topic(item: dict[str, Any], topics: list[str]) -> bool:
-    text = " ".join([item.get("title", ""), item.get("section", ""), item.get("text", "")]).lower()
+    text = evidence_text_for_verification(item).lower()
     return any(topic.lower() in text for topic in topics)
 
 
@@ -1824,11 +1897,11 @@ def select_supporting_evidence(
     analysis: dict[str, Any],
     evidence: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    topics = [topic.lower() for topic in specific_topics(analysis)]
+    topics = [topic.lower() for topic in verification_topics(analysis)]
     topic_matched = [
         item
         for item in evidence
-        if not topics or any(topic in item["text"].lower() for topic in topics)
+        if not topics or any(topic in evidence_text_for_verification(item).lower() for topic in topics)
     ]
 
     if analysis.get("query_type") == "comparison" and len(analysis.get("entities", [])) > 1:
@@ -2173,6 +2246,7 @@ def run_rag_query(
             "claim_count": len(answer["claims"]),
             "citation_count": sum(len(claim.get("citations") or []) for claim in answer["claims"]),
             "verification_reasons": verification_reasons,
+            "verification_topics": verification_topics(analysis),
             "filter_stage_attempts": stage_attempts,
             "final_relaxation_reason": stage_attempts[-2]["verification_reasons"] if retry_count else [],
             "context_resolution": context_resolution,
