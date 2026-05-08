@@ -81,6 +81,29 @@ class ParserEvalTest(unittest.TestCase):
         self.assertIn("ocr_missing_text", report["failure_taxonomy"])
         self.assertIn("bbox_misaligned", report["failure_taxonomy"])
 
+    def test_build_report_groups_by_hardcase_category(self) -> None:
+        gold = {
+            "documents": [
+                {
+                    "doc_id": "broken-doc",
+                    "hardcase_categories": ["table_heavy", "noisy_ocr"],
+                    "ocr_text": {"snippets": ["사업명: 오류 사례"]},
+                    "layout_blocks": [
+                        {"text": "사업명: 오류 사례", "type": "text", "page_number": 1}
+                    ],
+                    "fields": [{"key": "사업명", "value": "오류 사례"}],
+                    "bbox_anchors": [{"text": "사업명: 오류 사례", "page_number": 1}],
+                }
+            ]
+        }
+
+        report = build_report(Path("missing-artifacts"), Path("gold.yaml"), gold, "unit", "2")
+        by_category = report["summary"]["by_hardcase_category"]
+
+        self.assertEqual(1, by_category["table_heavy"]["num_documents"])
+        self.assertEqual(1, by_category["noisy_ocr"]["num_documents_with_errors"])
+        self.assertEqual({"artifact_missing": 1}, by_category["table_heavy"]["failure_counts"])
+
     def test_cli_writes_parser_eval_summary(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             completed = subprocess.run(
