@@ -19,6 +19,9 @@ venv/
 .vscode/
 *.swp
 
+# Claude Code local settings
+.claude/
+
 # Local/private source data
 data/files/
 data/data_list.csv
@@ -31,8 +34,7 @@ data/index/*
 !data/index/index.json
 outputs/*
 !outputs/answer.json
-reports/*
-!reports/eval_summary.json
+reports/
 
 # Benchmark raw/local artifacts
 artifacts/benchmarks/
