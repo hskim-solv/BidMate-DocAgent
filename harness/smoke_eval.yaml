@@ -1,0 +1,44 @@
+mode: rag
+description: Tiny fixed smoke evaluation set for the reproducible harness.
+index_dir: data/index
+primary_run: naive_baseline
+answer_policy:
+  answerable_status: supported
+  unanswerable_status: insufficient
+  min_claims_answerable: 1
+  require_claim_citations: true
+ablation_runs:
+  - name: naive_baseline
+    pipeline: naive_baseline
+cases:
+  - id: smoke_single_doc_security
+    query_type: single_doc
+    query: "기관 A의 보안 통제 요구사항은?"
+    expected_doc_ids:
+      - rfp-agency-a-ai-quality
+    expected_terms:
+      - "보안 통제"
+      - "로그"
+    expected_citation_terms:
+      - "보안 통제"
+      - "로그"
+    expected_claim_targets:
+      - "기관 A"
+    answerable: true
+
+  - id: smoke_multi_doc_ai_requirements
+    query_type: multi_doc
+    query: "기관 A와 기관 B의 AI 요구사항 차이 알려줘"
+    expected_doc_ids:
+      - rfp-agency-a-ai-quality
+      - rfp-agency-b-mlops-governance
+    expected_terms:
+      - "품질관리"
+      - "MLOps"
+    expected_citation_terms:
+      - "품질관리"
+      - "MLOps"
+    expected_claim_targets:
+      - "기관 A"
+      - "기관 B"
+    answerable: true

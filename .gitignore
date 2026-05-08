@@ -38,3 +38,4 @@ reports/
 
 # Benchmark raw/local artifacts
 artifacts/benchmarks/
+artifacts/runs/
