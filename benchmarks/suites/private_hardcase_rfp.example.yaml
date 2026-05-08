@@ -1,0 +1,39 @@
+id: private_hardcase_rfp
+name: Private hard-case RFP benchmark template
+description: Local-only benchmark slice for scanned, rotated, table-heavy, mixed-layout, and noisy OCR RFP documents.
+dataset:
+  id: private_hardcase_rfp_v1
+  type: private_rfp_hardcase
+  input_dir: data/files
+  privacy: private_local_only
+  note: Do not commit raw private documents, raw private predictions, original file names, or source-specific identifiers.
+index:
+  output_dir: data/index-private-hardcase
+  embedding_backend: hashing
+  command:
+    - python3
+    - scripts/build_index.py
+    - --metadata_csv
+    - data/data_list.csv
+    - --files_dir
+    - data/files
+    - --ingestion_mode
+    - visual
+    - --output_dir
+    - data/index-private-hardcase
+    - --embedding_backend
+    - hashing
+eval:
+  config: eval/private_hardcase.local.yaml
+  output_dir: reports
+artifacts:
+  root: artifacts/benchmarks
+  gitignored: true
+  local_only:
+    - predictions.jsonl
+    - latency_samples.jsonl
+    - error_examples.jsonl
+    - traces/
+    - logs/
+    - private source documents
+    - per-example dumps

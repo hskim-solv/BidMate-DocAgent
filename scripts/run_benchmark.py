@@ -150,6 +150,7 @@ def metric_snapshot(summary: dict[str, Any]) -> dict[str, Any]:
         "retry_cost",
         "retry_reason_counts",
         "by_query_type",
+        "by_hardcase_category",
     ]
     return {key: summary.get(key) for key in keys if key in summary}
 
@@ -233,6 +234,7 @@ def evaluate_run_with_artifacts(
             "run": run_name,
             "case_id": case.get("id"),
             "query_type": case.get("query_type"),
+            "hardcase_categories": EVAL.hardcase_categories(case),
             "prediction": prediction,
             "score": score,
         }
@@ -247,6 +249,7 @@ def evaluate_run_with_artifacts(
                     "run": run_name,
                     "case_id": case.get("id"),
                     "query_type": case.get("query_type"),
+                    "hardcase_categories": EVAL.hardcase_categories(case),
                     "pipeline": diagnostics.get("pipeline"),
                     "top_k": (prediction.get("plan") or {}).get("top_k"),
                     "latency_ms": diagnostics.get("latency_ms"),
@@ -262,6 +265,7 @@ def evaluate_run_with_artifacts(
         trace = {
             "run": run_name,
             "case_id": case.get("id"),
+            "hardcase_categories": EVAL.hardcase_categories(case),
             "plan": prediction.get("plan"),
             "diagnostics": diagnostics,
             "evidence_refs": [
@@ -306,6 +310,7 @@ def build_summary(
         "latency": primary_summary["latency"],
         "retry": primary_summary["retry"],
         "by_query_type": primary_summary["by_query_type"],
+        "by_hardcase_category": primary_summary.get("by_hardcase_category", {}),
         "retry_cost": primary_summary["retry_cost"],
         "retry_reason_counts": primary_summary["retry_reason_counts"],
         "ablation": {"runs": run_summaries},

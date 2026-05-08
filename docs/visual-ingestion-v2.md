@@ -57,6 +57,8 @@ python3 eval/run_parser_eval.py \
 
 실패 taxonomy는 `ocr_missing_text`, `layout_type_mismatch`, `section_boundary_missing`, `table_cell_mismatch`, `field_missing`, `field_value_mismatch`, `bbox_missing`, `bbox_misaligned`를 포함한다. 이 코드는 downstream 분석에서 retrieval miss, noisy chunking, wrong field grounding, weak bbox citation 같은 QA 실패 원인과 연결한다.
 
+private hard-case gold에는 문서별 `hardcase_categories`를 둘 수 있다. `eval/run_parser_eval.py`는 `summary.by_hardcase_category`를 생성해 scanned PDF, rotated/skewed, table-heavy, mixed-layout, noisy OCR 조건별 parser metric과 failure count를 분리한다. 비공개 원문과 raw artifact는 커밋하지 않고 aggregate만 [`docs/private-hardcase-benchmark.md`](private-hardcase-benchmark.md) 방식으로 기록한다.
+
 ## 실행 예시
 ```bash
 python3 scripts/build_index.py \

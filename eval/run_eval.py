@@ -31,6 +31,22 @@ DEFAULT_ABLATION_RUNS = [
 ]
 
 
+def hardcase_categories(item: dict[str, Any]) -> list[str]:
+    categories = item.get("hardcase_categories") or item.get("hardcase_category") or []
+    if isinstance(categories, str):
+        categories = [categories]
+    if not isinstance(categories, list):
+        return []
+    normalized = []
+    seen: set[str] = set()
+    for category in categories:
+        value = str(category).strip()
+        if value and value not in seen:
+            normalized.append(value)
+            seen.add(value)
+    return normalized
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run local RAG evaluation over configured cases.")
     parser.add_argument("--input_dir", default="outputs", help="Kept for CLI compatibility; not required.")
@@ -75,6 +91,11 @@ def load_config(path: Path) -> dict[str, Any]:
         for turn in prior_turns:
             if not isinstance(turn, dict) or not str(turn.get("query") or "").strip():
                 raise ValueError(f"Each prior turn must include a query: {case.get('id')}")
+        categories = case.get("hardcase_categories") or case.get("hardcase_category") or []
+        if isinstance(categories, str):
+            categories = [categories]
+        if not isinstance(categories, list):
+            raise ValueError(f"Eval case hardcase_categories must be a list: {case.get('id')}")
 
     runs = data.get("ablation_runs", DEFAULT_ABLATION_RUNS)
     if not isinstance(runs, list) or not runs:
@@ -247,6 +268,7 @@ def score_case(
     return {
         "id": case.get("id"),
         "query_type": query_type,
+        "hardcase_categories": hardcase_categories(case),
         "query": case.get("query"),
         "answerable": answerable,
         "expected_doc_ids": sorted(expected_doc_ids),
@@ -341,6 +363,15 @@ def summarize_run(
     for query_type in QUERY_TYPES:
         if query_type in grouped:
             summary["by_query_type"][query_type] = metric_block(grouped[query_type])
+    hardcase_grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for result in case_results:
+        for category in hardcase_categories(result):
+            hardcase_grouped[category].append(result)
+    if hardcase_grouped:
+        summary["by_hardcase_category"] = {
+            category: metric_block(hardcase_grouped[category])
+            for category in sorted(hardcase_grouped)
+        }
     if include_cases:
         summary["case_results"] = case_results
     return summary
@@ -450,6 +481,7 @@ def main() -> int:
         "latency": primary_summary["latency"],
         "retry": primary_summary["retry"],
         "by_query_type": primary_summary["by_query_type"],
+        "by_hardcase_category": primary_summary.get("by_hardcase_category", {}),
         "retry_cost": primary_summary["retry_cost"],
         "retry_reason_counts": primary_summary["retry_reason_counts"],
         "ablation": {"runs": run_summaries},

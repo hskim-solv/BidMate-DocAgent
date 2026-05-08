@@ -5,6 +5,7 @@
 ## Source Of Truth
 
 - `benchmarks/suites/public_synthetic_rfp.yaml`: 공개 synthetic RFP benchmark suite 정의
+- `benchmarks/suites/private_hardcase_rfp.example.yaml`: 비공개 hard-case benchmark용 local-only suite template
 - `benchmarks/ablations/rag_quality_axes.yaml`: `naive_baseline` control, primary run, ablation flag 정의
 - `benchmarks/registry.schema.json`: registry와 run manifest의 최소 schema
 - `benchmarks/registry.json`: 커밋 가능한 집계 registry
@@ -51,3 +52,9 @@ python3 scripts/summarize_benchmark.py \
 ```
 
 요약 결과는 `benchmarks/registry.json`과 `docs/ablation-results.md`에 반영된다. 문서에는 2차 가공 결과와 집계 지표만 남기며, private RFP 기반 실험을 수행하더라도 원문이나 per-example output은 포함하지 않는다.
+
+## Private Hard-case Slice
+
+이슈 #24의 private hard-case slice는 공개 benchmark를 대체하지 않고 현실적인 문서 조건에서 품질 하락을 분리하기 위한 보조 suite다. `eval/private_hardcase.example.yaml`은 익명 case list와 `hardcase_categories` 형식을 보여준다. 실제 실행 파일은 `eval/private_hardcase.local.yaml`처럼 `.gitignore` 대상 local YAML로 복사해 사용한다.
+
+`eval/run_eval.py`와 benchmark manifest는 `by_hardcase_category` 집계를 포함한다. 이 값만 registry/docs에 남기고 raw private prediction, trace, 원문 artifact는 `artifacts/benchmarks/` 아래 local-only 산출물로 유지한다. 운영 절차와 금지 항목은 [`docs/private-hardcase-benchmark.md`](private-hardcase-benchmark.md)에 정리했다.
