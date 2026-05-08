@@ -1,4 +1,4 @@
-.PHONY: setup index ask eval benchmark benchmark-check check smoke test clean
+.PHONY: setup index ask eval benchmark benchmark-check check smoke harness-smoke test clean
 
 PYTHON ?= python3
 VENV ?= .venv
@@ -28,6 +28,9 @@ check:
 
 smoke:
 	bash scripts/smoke.sh
+
+harness-smoke:
+	$(PYTHON) scripts/run_harness.py --config harness/smoke.yaml
 
 test:
 	bash scripts/test.sh
