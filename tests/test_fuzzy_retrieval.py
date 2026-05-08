@@ -166,6 +166,94 @@ class FuzzyMetadataRetrievalTest(unittest.TestCase):
         )
         self.assertEqual("relaxed", result["plan"]["filter_stage"])
 
+    def test_verifier_ignores_metadata_and_intent_tokens_for_real_like_summary(self) -> None:
+        real_like_index = build_index_payload_from_documents(
+            [
+                {
+                    "doc_id": "bonghwa-disaster",
+                    "title": "봉화군 재난통합관리시스템 고도화 사업",
+                    "agency": "경상북도 봉화군",
+                    "project": "봉화군 재난통합관리시스템 고도화 사업",
+                    "metadata": {
+                        "summary": "사업범위: 재난통합관리시스템 고도화 및 개선",
+                    },
+                    "sections": [
+                        {
+                            "heading": "본문",
+                            "text": (
+                                "사업내용 및 범위는 재난 상황관리 기능 개선과 "
+                                "시스템 연계 고도화를 포함한다."
+                            ),
+                        }
+                    ],
+                    "source_path": "bonghwa.hwp",
+                }
+            ],
+            source_dir="test-fixture",
+            embedding_backend="hashing",
+        )
+
+        result = run_rag_query(
+            real_like_index,
+            "경상북도 봉화군 봉화군 재난통합관리시스템 고도화 사업의 주요 요구사항과 사업 범위를 요약해줘",
+        )
+
+        self.assertEqual("supported", result["answer"]["status"])
+        self.assertFalse(result["diagnostics"]["abstained"])
+        self.assertEqual({"bonghwa-disaster"}, {item["doc_id"] for item in result["evidence"]})
+
+    def test_follow_up_budget_particle_normalization_uses_conversation_state(self) -> None:
+        real_like_index = build_index_payload_from_documents(
+            [
+                {
+                    "doc_id": "hanyeong-track",
+                    "title": "한영대학교 특성화 맞춤형 교육환경 구축 사업",
+                    "agency": "한영대학",
+                    "project": "한영대학교 특성화 맞춤형 교육환경 구축 - 트랙운영 학사정보시스템 고도화",
+                    "metadata": {
+                        "budget": 130000000,
+                        "summary": "사업예산 130,000,000원, 사업기간 계약일로부터 3개월",
+                    },
+                    "sections": [
+                        {
+                            "heading": "사업 안내",
+                            "text": (
+                                "사업예산은 130,000,000원 범위 내이다. "
+                                "사업기간은 계약일로부터 3개월이다. "
+                                "트랙기반 교육과정 운영 관리 체계를 지원한다."
+                            ),
+                        }
+                    ],
+                    "source_path": "hanyeong.hwp",
+                }
+            ],
+            source_dir="test-fixture",
+            embedding_backend="hashing",
+        )
+        first = run_rag_query(
+            real_like_index,
+            "한영대학교 특성화 맞춤형 교육환경 구축 사업의 주요 요구사항은?",
+            conversation_state={},
+        )
+
+        follow_up = run_rag_query(
+            real_like_index,
+            "그 사업의 사업기간과 사업예산도 알려줘",
+            conversation_state=first["conversation_state"],
+        )
+
+        self.assertEqual("supported", follow_up["answer"]["status"])
+        self.assertFalse(follow_up["diagnostics"]["abstained"])
+        self.assertEqual(
+            "resolved",
+            follow_up["diagnostics"]["context_resolution"]["status"],
+        )
+        self.assertEqual(
+            "conversation_state",
+            follow_up["diagnostics"]["context_resolution"]["source"],
+        )
+        self.assertIn("사업예산", follow_up["diagnostics"]["verification_topics"])
+
     def test_metadata_first_can_be_disabled_for_ablation(self) -> None:
         result = run_rag_query(
             self.index,
