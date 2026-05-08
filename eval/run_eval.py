@@ -96,6 +96,45 @@ def load_config(path: Path) -> dict[str, Any]:
             categories = [categories]
         if not isinstance(categories, list):
             raise ValueError(f"Eval case hardcase_categories must be a list: {case.get('id')}")
+        citation_pages = case.get("expected_citation_pages") or []
+        if not isinstance(citation_pages, list):
+            raise ValueError(f"Eval case expected_citation_pages must be a list: {case.get('id')}")
+        for expected_page in citation_pages:
+            if not isinstance(expected_page, dict) or not str(expected_page.get("doc_id") or "").strip():
+                raise ValueError(
+                    f"Each expected_citation_pages item must include doc_id: {case.get('id')}"
+                )
+            pages = expected_page.get("pages") or []
+            if (
+                not isinstance(pages, list)
+                or not pages
+                or not all(isinstance(page, int) for page in pages)
+            ):
+                raise ValueError(
+                    f"Each expected_citation_pages item must include non-empty integer pages: {case.get('id')}"
+                )
+        citation_regions = case.get("expected_citation_regions") or []
+        if not isinstance(citation_regions, list):
+            raise ValueError(f"Eval case expected_citation_regions must be a list: {case.get('id')}")
+        for expected_region in citation_regions:
+            if not isinstance(expected_region, dict) or not str(expected_region.get("doc_id") or "").strip():
+                raise ValueError(
+                    f"Each expected_citation_regions item must include doc_id: {case.get('id')}"
+                )
+            if not isinstance(expected_region.get("page_number"), int):
+                raise ValueError(
+                    f"Each expected_citation_regions item must include page_number: {case.get('id')}"
+                )
+            if not is_bbox(expected_region.get("bbox")):
+                raise ValueError(
+                    f"Each expected_citation_regions item must include bbox: {case.get('id')}"
+                )
+            try:
+                float(expected_region.get("min_iou", 0.5))
+            except (TypeError, ValueError):
+                raise ValueError(
+                    f"Each expected_citation_regions min_iou must be numeric: {case.get('id')}"
+                )
 
     runs = data.get("ablation_runs", DEFAULT_ABLATION_RUNS)
     if not isinstance(runs, list) or not runs:
@@ -154,6 +193,182 @@ def answer_status(prediction: dict[str, Any]) -> str:
     payload = answer_payload(prediction)
     diagnostics = prediction.get("diagnostics") or {}
     return str(payload.get("status") or diagnostics.get("answer_status") or "")
+
+
+def answer_citations(prediction: dict[str, Any]) -> list[dict[str, Any]]:
+    citations: list[dict[str, Any]] = []
+    for claim in answer_claims(prediction):
+        for citation in claim.get("citations") or []:
+            if isinstance(citation, dict):
+                citations.append(citation)
+    return citations
+
+
+def is_bbox(value: Any) -> bool:
+    if not isinstance(value, list) or len(value) != 4:
+        return False
+    try:
+        [float(part) for part in value]
+    except (TypeError, ValueError):
+        return False
+    return True
+
+
+def bbox_iou(left: list[Any], right: list[Any]) -> float:
+    l0, t0, l1, b1 = [float(part) for part in left]
+    r0, u0, r1, d1 = [float(part) for part in right]
+    inter_w = max(0.0, min(l1, r1) - max(l0, r0))
+    inter_h = max(0.0, min(b1, d1) - max(t0, u0))
+    intersection = inter_w * inter_h
+    left_area = max(0.0, l1 - l0) * max(0.0, b1 - t0)
+    right_area = max(0.0, r1 - r0) * max(0.0, d1 - u0)
+    union = left_area + right_area - intersection
+    return 0.0 if union <= 0 else intersection / union
+
+
+def citation_pages(citation: dict[str, Any]) -> set[int]:
+    pages: set[int] = set()
+    page_span = citation.get("page_span")
+    if (
+        isinstance(page_span, list)
+        and len(page_span) == 2
+        and all(isinstance(page, int) for page in page_span)
+    ):
+        start, end = page_span
+        if start <= end:
+            pages.update(range(start, end + 1))
+    for region in citation.get("regions") or []:
+        if isinstance(region, dict) and isinstance(region.get("page_number"), int):
+            pages.add(int(region["page_number"]))
+    return pages
+
+
+def score_citation_pages(
+    expected_pages: list[dict[str, Any]],
+    citations: list[dict[str, Any]],
+) -> tuple[float | None, list[dict[str, Any]]]:
+    if not expected_pages:
+        return None, []
+
+    matched = 0
+    errors: list[dict[str, Any]] = []
+    for expected in expected_pages:
+        doc_id = str(expected.get("doc_id") or "")
+        pages = {int(page) for page in expected.get("pages") or [] if isinstance(page, int)}
+        same_doc = [citation for citation in citations if str(citation.get("doc_id") or "") == doc_id]
+        page_sets = [citation_pages(citation) for citation in same_doc]
+        page_sets = [page_set for page_set in page_sets if page_set]
+        if any(page_set & pages for page_set in page_sets):
+            matched += 1
+            continue
+        if not page_sets:
+            errors.append(
+                {
+                    "code": "page_missing",
+                    "message": "Expected citation page metadata was unavailable.",
+                    "expected": {"doc_id": doc_id, "pages": sorted(pages)},
+                }
+            )
+        else:
+            errors.append(
+                {
+                    "code": "page_mismatch",
+                    "message": "Citation page metadata did not overlap expected pages.",
+                    "expected": {"doc_id": doc_id, "pages": sorted(pages)},
+                    "actual_pages": sorted({page for page_set in page_sets for page in page_set}),
+                }
+            )
+    return matched / len(expected_pages), errors
+
+
+def citation_regions(citation: dict[str, Any]) -> list[dict[str, Any]]:
+    regions = citation.get("regions") or []
+    return [region for region in regions if isinstance(region, dict)]
+
+
+def score_citation_regions(
+    expected_regions: list[dict[str, Any]],
+    citations: list[dict[str, Any]],
+) -> tuple[float | None, list[dict[str, Any]]]:
+    if not expected_regions:
+        return None, []
+
+    matched = 0
+    errors: list[dict[str, Any]] = []
+    for expected in expected_regions:
+        doc_id = str(expected.get("doc_id") or "")
+        page_number = int(expected["page_number"])
+        expected_bbox = expected.get("bbox")
+        min_iou = float(expected.get("min_iou", 0.5))
+        candidate_regions: list[dict[str, Any]] = []
+        for citation in citations:
+            if str(citation.get("doc_id") or "") != doc_id:
+                continue
+            for region in citation_regions(citation):
+                if region.get("page_number") == page_number and is_bbox(region.get("bbox")):
+                    candidate_regions.append(region)
+        if not candidate_regions:
+            errors.append(
+                {
+                    "code": "region_unavailable",
+                    "message": "Expected citation region metadata was unavailable.",
+                    "expected": {
+                        "doc_id": doc_id,
+                        "page_number": page_number,
+                        "bbox": expected_bbox,
+                    },
+                }
+            )
+            continue
+        best_iou = max(bbox_iou(region["bbox"], expected_bbox) for region in candidate_regions)
+        if best_iou >= min_iou:
+            matched += 1
+            continue
+        errors.append(
+            {
+                "code": "region_misaligned",
+                "message": "Citation region bbox did not meet the IoU threshold.",
+                "expected": {
+                    "doc_id": doc_id,
+                    "page_number": page_number,
+                    "bbox": expected_bbox,
+                    "min_iou": min_iou,
+                },
+                "actual": {
+                    "best_iou": round(best_iou, 3),
+                    "regions": [
+                        {
+                            "page_number": region.get("page_number"),
+                            "bbox": region.get("bbox"),
+                            "block_id": region.get("block_id"),
+                        }
+                        for region in candidate_regions
+                    ],
+                },
+            }
+        )
+    return matched / len(expected_regions), errors
+
+
+def score_citation_grounding(
+    case: dict[str, Any],
+    prediction: dict[str, Any],
+) -> dict[str, Any]:
+    citations = answer_citations(prediction)
+    page_score, page_errors = score_citation_pages(case.get("expected_citation_pages") or [], citations)
+    region_score, region_errors = score_citation_regions(
+        case.get("expected_citation_regions") or [],
+        citations,
+    )
+    present_scores = [
+        score for score in (page_score, region_score) if isinstance(score, (int, float))
+    ]
+    return {
+        "citation_page_precision": page_score,
+        "citation_region_precision": region_score,
+        "citation_grounding": rate([float(score) for score in present_scores]),
+        "citation_grounding_errors": page_errors + region_errors,
+    }
 
 
 def score_answer_format(
@@ -240,6 +455,7 @@ def score_case(
     context_resolution = diagnostics.get("context_resolution") or {}
     abstained = bool(diagnostics.get("abstained"))
     answer_format = score_answer_format(case, prediction, answer_policy)
+    citation_grounding = score_citation_grounding(case, prediction)
 
     citation_doc_precision = 0.0
     if evidence_doc_ids:
@@ -294,12 +510,23 @@ def score_case(
         "accuracy": accuracy,
         "groundedness": groundedness,
         "citation_precision": citation_precision,
+        **citation_grounding,
         "abstention": abstention,
         "comparison_target_recall": comparison_target_recall,
         "comparison_pool_recall": comparison_pool_recall,
         "latency_ms": diagnostics.get("latency_ms"),
         "retry_count": diagnostics.get("retry_count", 0),
         "retry_trigger_reasons": retry_trigger_reasons(prediction),
+        "cold_start": bool(diagnostics.get("cold_start", False)),
+        "stage_latency": dict(diagnostics.get("stage_latency") or {}),
+        "attempt_latency": [
+            {
+                "stage": attempt.get("stage"),
+                "retrieve_ms": attempt.get("retrieve_ms", 0.0),
+                "verify_ms": attempt.get("verify_ms", 0.0),
+            }
+            for attempt in diagnostics.get("filter_stage_attempts") or []
+        ],
         "context_resolution_status": context_resolution.get("status"),
         "context_resolution_source": context_resolution.get("source"),
         "context_resolution_confidence": context_resolution.get("confidence"),
@@ -311,6 +538,18 @@ def score_case(
     }
 
 
+_TOP_LEVEL_STAGE_KEYS = ("query_analysis_ms", "context_resolution_ms", "answer_generation_ms")
+
+
+def _latency_summary(values: list[float]) -> dict[str, float | None]:
+    return {
+        "p50": percentile(values, 0.50),
+        "p95": percentile(values, 0.95),
+        "mean": rate(values),
+        "count": len(values),
+    }
+
+
 def metric_block(case_results: list[dict[str, Any]]) -> dict[str, Any]:
     accuracy_scores = [r["accuracy"] for r in case_results if r["accuracy"] is not None]
     groundedness_scores = [
@@ -318,6 +557,19 @@ def metric_block(case_results: list[dict[str, Any]]) -> dict[str, Any]:
     ]
     citation_scores = [
         r["citation_precision"] for r in case_results if r["citation_precision"] is not None
+    ]
+    citation_page_scores = [
+        r["citation_page_precision"]
+        for r in case_results
+        if r.get("citation_page_precision") is not None
+    ]
+    citation_region_scores = [
+        r["citation_region_precision"]
+        for r in case_results
+        if r.get("citation_region_precision") is not None
+    ]
+    citation_grounding_scores = [
+        r["citation_grounding"] for r in case_results if r.get("citation_grounding") is not None
     ]
     abstention_scores = [r["abstention"] for r in case_results if r["abstention"] is not None]
     comparison_recall_scores = [
@@ -341,12 +593,61 @@ def metric_block(case_results: list[dict[str, Any]]) -> dict[str, Any]:
     retry_reason_counts = Counter(
         reason for result in case_results for reason in result.get("retry_trigger_reasons") or []
     )
+    citation_grounding_error_counts = Counter(
+        error["code"]
+        for result in case_results
+        for error in result.get("citation_grounding_errors") or []
+        if isinstance(error, dict) and error.get("code")
+    )
+
+    warm_results = [r for r in case_results if not bool(r.get("cold_start"))]
+    cold_results = [r for r in case_results if bool(r.get("cold_start"))]
+
+    stage_buckets: dict[str, list[float]] = {key: [] for key in _TOP_LEVEL_STAGE_KEYS}
+    retrieve_samples: list[float] = []
+    verify_samples: list[float] = []
+    for result in warm_results:
+        stage_latency = result.get("stage_latency") or {}
+        for key in _TOP_LEVEL_STAGE_KEYS:
+            value = stage_latency.get(key)
+            if value is not None:
+                stage_buckets[key].append(float(value))
+        for attempt in result.get("attempt_latency") or []:
+            retrieve_samples.append(float(attempt.get("retrieve_ms") or 0.0))
+            verify_samples.append(float(attempt.get("verify_ms") or 0.0))
+
+    stage_latency_summary: dict[str, dict[str, float | None]] = {
+        key: _latency_summary(stage_buckets[key]) for key in _TOP_LEVEL_STAGE_KEYS
+    }
+    stage_latency_summary["retrieve_ms"] = _latency_summary(retrieve_samples)
+    stage_latency_summary["verify_ms"] = _latency_summary(verify_samples)
+
+    latency_by_retry_count: dict[str, dict[str, float | None]] = {}
+    grouped_latencies: dict[int, list[float]] = defaultdict(list)
+    for result in warm_results:
+        if result.get("latency_ms") is None:
+            continue
+        bucket = int(result.get("retry_count") or 0)
+        grouped_latencies[bucket].append(float(result["latency_ms"]))
+    for bucket in sorted(grouped_latencies):
+        latency_by_retry_count[str(bucket)] = _latency_summary(grouped_latencies[bucket])
+
+    cold_latencies = [
+        float(r["latency_ms"]) for r in cold_results if r.get("latency_ms") is not None
+    ]
+    cold_start_samples = {
+        "count": len(cold_results),
+        "latency_ms": _latency_summary(cold_latencies) if cold_latencies else None,
+    }
 
     block: dict[str, Any] = {
         "num_predictions": len(case_results),
         "accuracy": rate(accuracy_scores),
         "groundedness": rate(groundedness_scores),
         "citation_precision": rate(citation_scores),
+        "citation_page_precision": rate(citation_page_scores),
+        "citation_region_precision": rate(citation_region_scores),
+        "citation_grounding": rate(citation_grounding_scores),
         "abstention": rate(abstention_scores),
         "answer_format_compliance": rate(format_scores),
         "latency": {
@@ -354,6 +655,9 @@ def metric_block(case_results: list[dict[str, Any]]) -> dict[str, Any]:
             "p95": percentile(latencies, 0.95),
             "mean": rate(latencies),
         },
+        "stage_latency": stage_latency_summary,
+        "latency_by_retry_count": latency_by_retry_count,
+        "cold_start_samples": cold_start_samples,
         "retry": rate(retries),
         "retry_cost": {
             "total_retries": sum(retry_counts),
@@ -362,6 +666,7 @@ def metric_block(case_results: list[dict[str, Any]]) -> dict[str, Any]:
             "cases_with_retry": sum(1 for count in retry_counts if count > 0),
         },
         "retry_reason_counts": dict(sorted(retry_reason_counts.items())),
+        "citation_grounding_error_counts": dict(sorted(citation_grounding_error_counts.items())),
     }
     if comparison_recall_scores:
         block["comparison_target_recall"] = rate(comparison_recall_scores)
@@ -513,14 +818,21 @@ def main() -> int:
         "accuracy": primary_summary["accuracy"],
         "groundedness": primary_summary["groundedness"],
         "citation_precision": primary_summary["citation_precision"],
+        "citation_page_precision": primary_summary["citation_page_precision"],
+        "citation_region_precision": primary_summary["citation_region_precision"],
+        "citation_grounding": primary_summary["citation_grounding"],
         "abstention": primary_summary["abstention"],
         "answer_format_compliance": primary_summary["answer_format_compliance"],
         "latency": primary_summary["latency"],
+        "stage_latency": primary_summary.get("stage_latency", {}),
+        "latency_by_retry_count": primary_summary.get("latency_by_retry_count", {}),
+        "cold_start_samples": primary_summary.get("cold_start_samples", {}),
         "retry": primary_summary["retry"],
         "by_query_type": primary_summary["by_query_type"],
         "by_hardcase_category": primary_summary.get("by_hardcase_category", {}),
         "retry_cost": primary_summary["retry_cost"],
         "retry_reason_counts": primary_summary["retry_reason_counts"],
+        "citation_grounding_error_counts": primary_summary["citation_grounding_error_counts"],
         "ablation": {"runs": run_summaries},
         "case_results": primary_summary.get("case_results", []),
     }

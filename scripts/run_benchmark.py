@@ -143,12 +143,16 @@ def metric_snapshot(summary: dict[str, Any]) -> dict[str, Any]:
         "accuracy",
         "groundedness",
         "citation_precision",
+        "citation_page_precision",
+        "citation_region_precision",
+        "citation_grounding",
         "answer_format_compliance",
         "abstention",
         "retry",
         "latency",
         "retry_cost",
         "retry_reason_counts",
+        "citation_grounding_error_counts",
         "by_query_type",
         "by_hardcase_category",
     ]
@@ -172,6 +176,7 @@ def case_has_error(score: dict[str, Any]) -> bool:
         "accuracy",
         "groundedness",
         "citation_precision",
+        "citation_grounding",
         "answer_format_compliance",
         "abstention",
     ):
@@ -243,6 +248,14 @@ def evaluate_run_with_artifacts(
             error_examples_file.write(json.dumps(record, ensure_ascii=False) + "\n")
 
         diagnostics = prediction.get("diagnostics") or {}
+        attempt_latency = [
+            {
+                "stage": attempt.get("stage"),
+                "retrieve_ms": attempt.get("retrieve_ms", 0.0),
+                "verify_ms": attempt.get("verify_ms", 0.0),
+            }
+            for attempt in diagnostics.get("filter_stage_attempts") or []
+        ]
         latency_file.write(
             json.dumps(
                 {
@@ -256,6 +269,9 @@ def evaluate_run_with_artifacts(
                     "retry_count": diagnostics.get("retry_count", 0),
                     "retrieval_mode": diagnostics.get("retrieval_mode"),
                     "prompt_profile": diagnostics.get("prompt_profile"),
+                    "cold_start": bool(diagnostics.get("cold_start", False)),
+                    "stage_latency": diagnostics.get("stage_latency") or {},
+                    "attempt_latency": attempt_latency,
                 },
                 ensure_ascii=False,
             )
@@ -308,6 +324,9 @@ def build_summary(
         "abstention": primary_summary["abstention"],
         "answer_format_compliance": primary_summary["answer_format_compliance"],
         "latency": primary_summary["latency"],
+        "stage_latency": primary_summary.get("stage_latency", {}),
+        "latency_by_retry_count": primary_summary.get("latency_by_retry_count", {}),
+        "cold_start_samples": primary_summary.get("cold_start_samples", {}),
         "retry": primary_summary["retry"],
         "by_query_type": primary_summary["by_query_type"],
         "by_hardcase_category": primary_summary.get("by_hardcase_category", {}),
