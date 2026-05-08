@@ -96,7 +96,7 @@ CLI와 리뷰 편의를 위해 같은 내용을 사람이 읽기 쉬운 `answer_
 | Evidence | Citation Precision | 0.519 |
 | Evidence | Answer Format Compliance | 0.731 |
 | Abstention | Abstention Accuracy | 0.143 |
-| System | Latency (p50/p95) | p50 3.1ms / p95 5.8ms |
+| System | Latency (p50/p95) | p50 1.5ms / p95 2.4ms |
 | System | Retry Rate | 0.000 |
 
 > Stage 단위 latency, retry 비용, cold-start 분리 해석은 [`docs/benchmarking.md`](docs/benchmarking.md#stage-latency--retry-cost)를 참고한다.
@@ -105,12 +105,12 @@ CLI와 리뷰 편의를 위해 같은 내용을 사람이 읽기 쉬운 `answer_
 
 | Run | Pipeline | Top-k | Metadata-first | Rerank | Verifier/Retry | Accuracy | Groundedness | Citation | Format | Abstention | Retry | Latency p95 |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| naive_baseline | naive_baseline | 4 | off | off | off | 0.947 | 0.731 | 0.519 | 0.731 | 0.143 | 0.000 | 5.8ms |
-| full | agentic_full | auto | on | on | on | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 | 0.231 | 5.8ms |
-| hierarchical | agentic_full | auto | on | on | on | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 | 0.231 | 6.4ms |
-| no_metadata_first | agentic_full | auto | off | on | on | 0.947 | 0.962 | 0.750 | 0.962 | 1.000 | 0.000 | 4.7ms |
-| no_rerank | agentic_full | auto | on | off | on | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 | 0.231 | 11.3ms |
-| no_verifier_retry | agentic_full | auto | on | on | off | 1.000 | 0.769 | 0.769 | 0.769 | 0.143 | 0.000 | 4.5ms |
+| naive_baseline | naive_baseline | 4 | off | off | off | 0.947 | 0.731 | 0.519 | 0.731 | 0.143 | 0.000 | 2.4ms |
+| full | agentic_full | auto | on | on | on | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 | 0.231 | 1.8ms |
+| hierarchical | agentic_full | auto | on | on | on | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 | 0.231 | 2.6ms |
+| no_metadata_first | agentic_full | auto | off | on | on | 0.947 | 0.962 | 0.750 | 0.962 | 1.000 | 0.000 | 2.4ms |
+| no_rerank | agentic_full | auto | on | off | on | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 | 0.231 | 2.5ms |
+| no_verifier_retry | agentic_full | auto | on | on | off | 1.000 | 0.769 | 0.769 | 0.769 | 0.143 | 0.000 | 2.2ms |
 <!-- METRICS_TABLE:END -->
 
 > 주의: 성능표는 공개 synthetic RFP 평가셋 기준입니다. 원본 RFP 데이터는 비공개 제약으로 저장소에 포함하지 않았습니다.
@@ -309,6 +309,7 @@ python3 eval/run_parser_eval.py \
 - Chunking diagnostics: [`docs/chunking-diagnostics.md`](docs/chunking-diagnostics.md)
 - PDF/HWP ingestion: [`docs/real-data-ingestion.md`](docs/real-data-ingestion.md)
 - Visual parsing v2: [`docs/visual-ingestion-v2.md`](docs/visual-ingestion-v2.md)
+- Citation grounding evaluation: [`docs/citation-grounding-eval.md`](docs/citation-grounding-eval.md)
 - Reproducible harness: [`docs/harness.md`](docs/harness.md)
 - 답변 출력 정책: [`docs/answer-policy.md`](docs/answer-policy.md)
 - 실패 사례 분석: [`docs/failure-cases.md`](docs/failure-cases.md)

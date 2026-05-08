@@ -309,7 +309,8 @@ def render_docs(registry: dict[str, Any]) -> str:
             "",
             "- 평가셋을 늘릴 때는 suite YAML을 추가하고 registry에는 집계 지표만 편입한다.",
             "- private RFP 기반 실험은 local artifact로만 보관하고 문서에는 익명화된 집계 결과만 남긴다.",
-            "- citation 검증과 latency/retry 비용 분석은 별도 ablation axis로 분리해 누적한다.",
+            "- citation 검증은 document/chunk precision과 page/region grounding을 분리해 누적한다.",
+            "- latency/retry 비용 분석은 별도 ablation axis로 분리해 누적한다.",
         ]
     )
     return "\n".join(lines) + "\n"

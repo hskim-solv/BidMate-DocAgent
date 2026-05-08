@@ -1,13 +1,123 @@
 import unittest
 from pathlib import Path
 
-from eval.run_eval import load_config, summarize_run
+from eval.run_eval import load_config, score_case, summarize_run
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 
 
 class EvalMetricsTest(unittest.TestCase):
+    def prediction_with_citation(self, citation: dict) -> dict:
+        return {
+            "answer": {
+                "status": "supported",
+                "claims": [
+                    {
+                        "target": "기관 V",
+                        "claim": "보안 요구사항은 접근 통제입니다.",
+                        "support": "보안 요구사항은 접근 통제입니다.",
+                        "citations": [citation],
+                    }
+                ],
+            },
+            "answer_text": "보안 요구사항은 접근 통제입니다.",
+            "evidence": [
+                {
+                    "doc_id": "visual-doc",
+                    "chunk_id": "visual-doc::chunk-001",
+                    "text": "보안 요구사항은 접근 통제입니다.",
+                }
+            ],
+            "diagnostics": {"latency_ms": 1.0, "retry_count": 0},
+        }
+
+    def visual_case(self, **overrides: object) -> dict:
+        case = {
+            "id": "visual-grounding",
+            "query_type": "single_doc",
+            "query": "기관 V의 보안 요구사항은?",
+            "expected_doc_ids": ["visual-doc"],
+            "expected_terms": ["보안 요구사항", "접근 통제"],
+            "expected_citation_terms": ["보안 요구사항", "접근 통제"],
+            "expected_claim_targets": ["기관 V"],
+            "expected_citation_pages": [{"doc_id": "visual-doc", "pages": [2]}],
+            "expected_citation_regions": [
+                {
+                    "doc_id": "visual-doc",
+                    "page_number": 2,
+                    "bbox": [10, 20, 120, 160],
+                    "min_iou": 0.9,
+                }
+            ],
+            "answerable": True,
+        }
+        case.update(overrides)
+        return case
+
+    def test_scores_page_and_region_grounded_citation(self) -> None:
+        prediction = self.prediction_with_citation(
+            {
+                "doc_id": "visual-doc",
+                "chunk_id": "visual-doc::chunk-001",
+                "page_span": [2, 2],
+                "regions": [{"page_number": 2, "bbox": [10, 20, 120, 160]}],
+            }
+        )
+
+        result = score_case(self.visual_case(), prediction)
+
+        self.assertEqual(1.0, result["citation_page_precision"])
+        self.assertEqual(1.0, result["citation_region_precision"])
+        self.assertEqual(1.0, result["citation_grounding"])
+        self.assertEqual([], result["citation_grounding_errors"])
+
+    def test_scores_page_drift(self) -> None:
+        prediction = self.prediction_with_citation(
+            {
+                "doc_id": "visual-doc",
+                "chunk_id": "visual-doc::chunk-001",
+                "page_span": [3, 3],
+                "regions": [{"page_number": 3, "bbox": [10, 20, 120, 160]}],
+            }
+        )
+
+        result = score_case(self.visual_case(expected_citation_regions=[]), prediction)
+
+        self.assertEqual(0.0, result["citation_page_precision"])
+        self.assertEqual(0.0, result["citation_grounding"])
+        self.assertEqual("page_mismatch", result["citation_grounding_errors"][0]["code"])
+
+    def test_scores_bbox_drift(self) -> None:
+        prediction = self.prediction_with_citation(
+            {
+                "doc_id": "visual-doc",
+                "chunk_id": "visual-doc::chunk-001",
+                "page_span": [2, 2],
+                "regions": [{"page_number": 2, "bbox": [200, 200, 260, 260]}],
+            }
+        )
+
+        result = score_case(self.visual_case(expected_citation_pages=[]), prediction)
+
+        self.assertEqual(0.0, result["citation_region_precision"])
+        self.assertEqual(0.0, result["citation_grounding"])
+        self.assertEqual("region_misaligned", result["citation_grounding_errors"][0]["code"])
+
+    def test_scores_unavailable_region_metadata(self) -> None:
+        prediction = self.prediction_with_citation(
+            {
+                "doc_id": "visual-doc",
+                "chunk_id": "visual-doc::chunk-001",
+                "page_span": [2, 2],
+            }
+        )
+
+        result = score_case(self.visual_case(expected_citation_pages=[]), prediction)
+
+        self.assertEqual(0.0, result["citation_region_precision"])
+        self.assertEqual("region_unavailable", result["citation_grounding_errors"][0]["code"])
+
     def test_summarize_run_groups_metrics_by_hardcase_category(self) -> None:
         case_results = [
             {
