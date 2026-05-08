@@ -58,27 +58,3 @@ python3 scripts/summarize_benchmark.py \
 이슈 #24의 private hard-case slice는 공개 benchmark를 대체하지 않고 현실적인 문서 조건에서 품질 하락을 분리하기 위한 보조 suite다. `eval/private_hardcase.example.yaml`은 익명 case list와 `hardcase_categories` 형식을 보여준다. 실제 실행 파일은 `eval/private_hardcase.local.yaml`처럼 `.gitignore` 대상 local YAML로 복사해 사용한다.
 
 `eval/run_eval.py`와 benchmark manifest는 `by_hardcase_category` 집계를 포함한다. 이 값만 registry/docs에 남기고 raw private prediction, trace, 원문 artifact는 `artifacts/benchmarks/` 아래 local-only 산출물로 유지한다. 운영 절차와 금지 항목은 [`docs/private-hardcase-benchmark.md`](private-hardcase-benchmark.md)에 정리했다.
-
-## Stage Latency & Retry Cost
-
-이슈 #32 이후 benchmark는 단일 `latency_ms` 외에 stage 단위 latency를 함께 기록한다. 목표는 reviewer가 "응답 시간이 어느 단계에서 쌓이는지"와 "verifier retry가 품질 개선만큼 latency 비용을 정당화하는지"를 동시에 판단할 수 있게 하는 것이다.
-
-`run_rag_query`의 diagnostics에 추가된 필드:
-
-- `stage_latency`: top-level stage별 ms — `query_analysis_ms`, `context_resolution_ms`, `answer_generation_ms`
-- `filter_stage_attempts[i].retrieve_ms` / `verify_ms`: strict → reduced → relaxed 각 retry 시도의 retrieval+rerank, verifier 비용
-- `cold_start`: 프로세스 첫 호출 여부. embedding/reranker lazy-load가 첫 query latency에 섞이는 것을 분리한다.
-
-`latency_samples.jsonl`은 위 필드를 row 단위로도 기록한다 (`stage_latency`, `attempt_latency`, `cold_start`). 기존 컬럼은 유지되며 추가 필드는 무시해도 안전하다.
-
-`eval_summary.json`에는 다음 집계 블록이 추가된다 (warm = `cold_start=false`인 case만).
-
-- `stage_latency.{stage}` → `{p50, p95, mean, count}`. `retrieve_ms` / `verify_ms`는 모든 retry 시도를 통합한 sample이다.
-- `latency_by_retry_count["0" | "1" | "2" | ...]` → retry 수별 case latency 분포. retry quality gain을 비교할 때 사용한다.
-- `cold_start_samples` → cold-start case 수와 latency. warm percentile에는 포함되지 않는다.
-
-같은 블록은 `by_query_type`과 `by_hardcase_category`에도 동일하게 propagate된다. Reviewer가 latency 트레이드오프를 읽을 때의 가이드:
-
-1. `latency.p95`가 늘어났다면 먼저 `stage_latency.retrieve_ms`/`verify_ms`를 보고 어느 단계가 원인인지 식별한다.
-2. `latency_by_retry_count["1+"]`의 p95와 `retry_cost.cases_with_retry`를 함께 보고, 같은 retry로 얻은 groundedness/citation/abstention gain (ablation 비교)이 latency 증가를 정당화하는지 판단한다.
-3. `cold_start_samples`는 별도로 기록되므로 warm steady-state 비교를 흐리지 않는다. CI/평가 환경에서는 첫 case의 cold_start 영향을 확인용으로만 사용한다.
