@@ -216,6 +216,17 @@ python3 scripts/summarize_benchmark.py \
 
 Benchmark source of truth는 `benchmarks/suites/`, `benchmarks/ablations/`, `benchmarks/registry.schema.json`에 둡니다. Raw predictions, traces, logs, latency samples, error examples는 `artifacts/benchmarks/` 아래에 생성되며 Git에 커밋하지 않습니다. 사람이 읽는 결과 해석은 [`docs/benchmarking.md`](docs/benchmarking.md)와 [`docs/ablation-results.md`](docs/ablation-results.md)를 참고하세요.
 
+Private 100-doc 실험은 원문/개별 예측 없이 anonymized aggregate만 요약합니다. 아래 fixture는 summary flow 검증용이며 실측 private 성과가 아닙니다.
+
+```bash
+python3 scripts/summarize_benchmark.py \
+  --manifest benchmarks/examples/private100_aggregate_manifest.example.json \
+  --registry /private/tmp/private100-registry.json \
+  --docs /private/tmp/private100-summary.md
+```
+
+운영 기준과 커밋 금지 항목은 [`docs/private-100-doc-experiments.md`](docs/private-100-doc-experiments.md)를 참고하세요.
+
 ### 선택) Harness smoke run
 재현 가능한 smoke 실행의 config snapshot, 로그, prediction, metric을 한 디렉터리에 모으려면 `python3 scripts/run_harness.py --config harness/smoke.yaml` 또는 `make harness-smoke`를 실행합니다. 산출물은 `artifacts/runs/<run_id>/` 아래에 생성되며 Git 추적 대상이 아닙니다. 자세한 흐름은 [`docs/harness.md`](docs/harness.md)를 참고하세요.
 
@@ -293,6 +304,7 @@ python3 eval/run_parser_eval.py \
 - 포트폴리오 case study: [`docs/portfolio-case-study.md`](docs/portfolio-case-study.md)
 - Benchmarking: [`docs/benchmarking.md`](docs/benchmarking.md)
 - Ablation results: [`docs/ablation-results.md`](docs/ablation-results.md)
+- Private 100-doc experiments: [`docs/private-100-doc-experiments.md`](docs/private-100-doc-experiments.md)
 - 설계 배경 및 의사결정: [`docs/design-background.md`](docs/design-background.md)
 - Chunking diagnostics: [`docs/chunking-diagnostics.md`](docs/chunking-diagnostics.md)
 - PDF/HWP ingestion: [`docs/real-data-ingestion.md`](docs/real-data-ingestion.md)

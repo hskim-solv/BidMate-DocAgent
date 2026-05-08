@@ -51,6 +51,21 @@
       },
       "additionalProperties": true
     },
+    "dataset_privacy_metadata": {
+      "type": "object",
+      "description": "Commit-safe dataset metadata for public/private aggregate comparison. Do not store raw file names, source organization names, queries, predictions, traces, or snippets here.",
+      "properties": {
+        "type": { "type": "string" },
+        "privacy": {
+          "type": "string",
+          "enum": ["public_synthetic", "private_local_only", "private_aggregate_only"]
+        },
+        "corpus_size": { "type": "integer", "minimum": 0 },
+        "anonymized": { "type": "boolean" },
+        "comparison_group": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
     "ablation_flags": {
       "type": "object",
       "required": ["metadata_first", "rerank", "verifier_retry", "retrieval_mode"],
@@ -127,6 +142,7 @@
         "git_dirty": { "type": "boolean" },
         "suite_id": { "type": "string" },
         "dataset_id": { "type": "string" },
+        "dataset": { "$ref": "#/$defs/dataset_privacy_metadata" },
         "baseline_run": { "type": "string" },
         "primary_run": { "type": "string" },
         "runs": {

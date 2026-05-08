@@ -5,6 +5,7 @@
 - [Benchmarking](./benchmarking.md)
 - [Reproducible harness](./harness.md)
 - [Private hard-case benchmark](./private-hardcase-benchmark.md)
+- [Private 100-doc experiments](./private-100-doc-experiments.md)
 - [Ablation results](./ablation-results.md)
 - [설계 배경 및 의사결정](./design-background.md)
 - [답변 출력 정책](./answer-policy.md)
