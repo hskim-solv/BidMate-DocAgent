@@ -11,5 +11,6 @@
 - [답변 출력 정책](./answer-policy.md)
 - [PDF/HWP ingestion](./real-data-ingestion.md)
 - [Visual parsing v2](./visual-ingestion-v2.md)
+- [Citation grounding evaluation](./citation-grounding-eval.md)
 - [실패 사례 분석](./failure-cases.md)
 - [회고 및 향후 개선](./retrospective.md)
