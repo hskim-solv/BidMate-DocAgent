@@ -2,6 +2,8 @@
 
 이 문서는 이슈 #24의 private hard-case benchmark 운영 기준을 정리한다. 목적은 공개 synthetic benchmark를 대체하는 것이 아니라, scanned PDF, rotated/skewed page, table-heavy page, mixed layout, noisy OCR 조건에서 parser/retrieval/answer failure가 얼마나 늘어나는지 aggregate로 비교하는 것이다.
 
+private 100-doc 실험처럼 corpus-level aggregate를 장기 추적할 때는 [`private-100-doc-experiments.md`](private-100-doc-experiments.md)의 naming과 commit boundary도 함께 따른다.
+
 ## Commit Boundary
 
 커밋 가능한 항목은 benchmark template, 익명 case id, aggregate metric, failure taxonomy, 실행 절차뿐이다.

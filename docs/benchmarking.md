@@ -6,6 +6,7 @@
 
 - `benchmarks/suites/public_synthetic_rfp.yaml`: 공개 synthetic RFP benchmark suite 정의
 - `benchmarks/suites/private_hardcase_rfp.example.yaml`: 비공개 hard-case benchmark용 local-only suite template
+- `benchmarks/examples/private100_aggregate_manifest.example.json`: private 100-doc aggregate-only summary flow 검증용 fixture
 - `benchmarks/ablations/rag_quality_axes.yaml`: `naive_baseline` control, primary run, ablation flag 정의
 - `benchmarks/registry.schema.json`: registry와 run manifest의 최소 schema
 - `benchmarks/registry.json`: 커밋 가능한 집계 registry
@@ -52,6 +53,17 @@ python3 scripts/summarize_benchmark.py \
 ```
 
 요약 결과는 `benchmarks/registry.json`과 `docs/ablation-results.md`에 반영된다. 문서에는 2차 가공 결과와 집계 지표만 남기며, private RFP 기반 실험을 수행하더라도 원문이나 per-example output은 포함하지 않는다.
+
+private 100-doc aggregate flow는 같은 스크립트를 사용하되, manifest의 `suite.dataset`에 `privacy`, `corpus_size`, `anonymized`, `comparison_group` 같은 commit-safe metadata만 둔다.
+
+```bash
+python3 scripts/summarize_benchmark.py \
+  --manifest benchmarks/examples/private100_aggregate_manifest.example.json \
+  --registry /private/tmp/private100-registry.json \
+  --docs /private/tmp/private100-summary.md
+```
+
+이 예시는 흐름 검증용 fixture이며 실측 private 성과가 아니다. 실제 private 운영 기준과 금지 항목은 [`docs/private-100-doc-experiments.md`](private-100-doc-experiments.md)에 정리했다.
 
 ## Private Hard-case Slice
 

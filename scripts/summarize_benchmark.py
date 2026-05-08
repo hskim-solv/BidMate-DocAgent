@@ -9,6 +9,13 @@ import sys
 from typing import Any
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
+DATASET_PRIVACY_KEYS = (
+    "type",
+    "privacy",
+    "corpus_size",
+    "anonymized",
+    "comparison_group",
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -25,6 +32,13 @@ def parse_args() -> argparse.Namespace:
 def repo_path(value: str | Path) -> Path:
     path = Path(value)
     return path if path.is_absolute() else ROOT_DIR / path
+
+
+def display_path(path: Path) -> str:
+    try:
+        return str(path.relative_to(ROOT_DIR))
+    except ValueError:
+        return str(path)
 
 
 def load_json(path: Path) -> Any:
@@ -75,6 +89,11 @@ def metric_block(summary: dict[str, Any] | None) -> dict[str, Any]:
     return {key: summary.get(key) for key in keys if key in summary}
 
 
+def dataset_privacy_metadata(dataset: dict[str, Any] | None) -> dict[str, Any]:
+    dataset = dataset or {}
+    return {key: dataset.get(key) for key in DATASET_PRIVACY_KEYS if key in dataset}
+
+
 def registry_entry(manifest: dict[str, Any]) -> dict[str, Any]:
     metrics_by_run = manifest.get("metrics", {}).get("runs") or {}
     flags_by_run = manifest.get("ablation_flags") or {}
@@ -91,13 +110,14 @@ def registry_entry(manifest: dict[str, Any]) -> dict[str, Any]:
                 "metrics": metric_block(metrics_by_run.get(name)),
             }
         )
-    return {
+    dataset = manifest.get("suite", {}).get("dataset", {}) or {}
+    entry = {
         "run_id": manifest["run_id"],
         "generated_at": manifest.get("generated_at"),
         "git_commit": manifest.get("git_commit"),
         "git_dirty": bool(manifest.get("git_dirty")),
         "suite_id": manifest.get("suite", {}).get("id"),
-        "dataset_id": manifest.get("suite", {}).get("dataset", {}).get("id"),
+        "dataset_id": dataset.get("id"),
         "ablation_suite_id": manifest.get("ablation_suite", {}).get("id"),
         "baseline_run": baseline_run,
         "primary_run": primary_run,
@@ -132,6 +152,10 @@ def registry_entry(manifest: dict[str, Any]) -> dict[str, Any]:
         "artifact_manifest": manifest.get("artifacts", {}).get("run_manifest"),
         "runs": runs,
     }
+    privacy_metadata = dataset_privacy_metadata(dataset)
+    if privacy_metadata:
+        entry["dataset"] = privacy_metadata
+    return entry
 
 
 def delta_value(primary: Any, baseline: Any) -> float | None:
@@ -167,7 +191,7 @@ def render_docs(registry: dict[str, Any]) -> str:
     lines = [
         "# Ablation Results",
         "",
-        "이 문서는 커밋 가능한 집계 지표만 남긴다. Raw predictions, traces, logs, latency samples, error examples는 `artifacts/benchmarks/` 아래에 생성되며 Git에 커밋하지 않는다.",
+        "이 문서는 커밋 가능한 집계 지표만 남긴다. 원시 예측, 진단 로그, 지연시간 샘플, 오류 예시는 `artifacts/benchmarks/` 아래에 생성되며 Git에 커밋하지 않는다.",
         "",
         "## Latest Run",
         "",
@@ -256,6 +280,21 @@ def render_docs(registry: dict[str, Any]) -> str:
                 )
             )
 
+    comparison_rows = public_private_comparison_rows(entries)
+    if comparison_rows:
+        lines.extend(
+            [
+                "",
+                "## Public vs Private Aggregate",
+                "",
+                "이 표는 공개 synthetic 결과와 익명 private aggregate를 함께 볼 때만 생성된다. private row는 원문, 파일명, 기관명, 질의 본문, 개별 답변, 실행 추적 없이 집계 지표만 사용한다.",
+                "",
+                "| Metric | Public primary | Private primary | Delta |",
+                "|---|---:|---:|---:|",
+            ]
+        )
+        lines.extend(comparison_rows)
+
     lines.extend(
         [
             "",
@@ -275,6 +314,85 @@ def render_docs(registry: dict[str, Any]) -> str:
         ]
     )
     return "\n".join(lines) + "\n"
+
+
+def public_private_comparison_rows(entries: list[dict[str, Any]]) -> list[str]:
+    private_entry = latest_entry(entries, is_private=True)
+    public_entry = matching_public_entry(entries, private_entry)
+    if not public_entry or not private_entry:
+        return []
+
+    public_metrics = public_entry.get("primary_metrics") or {}
+    private_metrics = private_entry.get("primary_metrics") or {}
+    rows = [
+        comparison_row("Cases", public_metrics, private_metrics, "num_predictions", formatter=fmt_count),
+        comparison_row("Accuracy", public_metrics, private_metrics, "accuracy"),
+        comparison_row("Groundedness", public_metrics, private_metrics, "groundedness"),
+        comparison_row("Citation Precision", public_metrics, private_metrics, "citation_precision"),
+        comparison_row("Citation Grounding", public_metrics, private_metrics, "citation_grounding"),
+        comparison_row("Format Compliance", public_metrics, private_metrics, "answer_format_compliance"),
+        comparison_row("Abstention", public_metrics, private_metrics, "abstention"),
+        comparison_row("Retry Rate", public_metrics, private_metrics, "retry"),
+        "| Latency p95 | {public} | {private} | {delta} |".format(
+            public=fmt_latency(public_metrics.get("latency")),
+            private=fmt_latency(private_metrics.get("latency")),
+            delta=fmt_delta(
+                (private_metrics.get("latency") or {}).get("p95"),
+                (public_metrics.get("latency") or {}).get("p95"),
+            ),
+        ),
+    ]
+    return rows
+
+
+def matching_public_entry(entries: list[dict[str, Any]], private_entry: dict[str, Any] | None) -> dict[str, Any] | None:
+    public_entries = [entry for entry in entries if not entry_is_private(entry)]
+    if not public_entries:
+        return None
+    comparison_group = str((private_entry.get("dataset") or {}).get("comparison_group") or "") if private_entry else ""
+    if comparison_group:
+        matched = [
+            entry
+            for entry in public_entries
+            if entry.get("suite_id") == comparison_group or entry.get("dataset_id") == comparison_group
+        ]
+        if matched:
+            return sorted(matched, key=lambda item: str(item.get("generated_at") or item.get("run_id") or ""))[-1]
+    return sorted(public_entries, key=lambda item: str(item.get("generated_at") or item.get("run_id") or ""))[-1]
+
+
+def latest_entry(entries: list[dict[str, Any]], *, is_private: bool) -> dict[str, Any] | None:
+    candidates = [entry for entry in entries if entry_is_private(entry) is is_private]
+    if not candidates:
+        return None
+    return sorted(candidates, key=lambda item: str(item.get("generated_at") or item.get("run_id") or ""))[-1]
+
+
+def entry_is_private(entry: dict[str, Any]) -> bool:
+    dataset = entry.get("dataset") or {}
+    dataset_type = str(dataset.get("type") or "")
+    privacy = str(dataset.get("privacy") or "")
+    return bool(dataset.get("anonymized")) or "private" in dataset_type or "private" in privacy
+
+
+def comparison_row(
+    label: str,
+    public_metrics: dict[str, Any],
+    private_metrics: dict[str, Any],
+    key: str,
+    *,
+    formatter: Any = fmt_rate,
+) -> str:
+    return "| {label} | {public} | {private} | {delta} |".format(
+        label=label,
+        public=formatter(public_metrics.get(key)),
+        private=formatter(private_metrics.get(key)),
+        delta=fmt_delta(private_metrics.get(key), public_metrics.get(key)),
+    )
+
+
+def fmt_count(value: Any) -> str:
+    return str(value) if isinstance(value, int) else "N/A"
 
 
 def table_row(label: str, baseline: dict[str, Any], primary: dict[str, Any], key: str) -> str:
@@ -322,8 +440,8 @@ def main() -> int:
     docs_path.parent.mkdir(parents=True, exist_ok=True)
     registry_path.write_text(next_registry_text, encoding="utf-8")
     docs_path.write_text(next_docs_text, encoding="utf-8")
-    print(f"[OK] Updated benchmark registry: {registry_path.relative_to(ROOT_DIR)}")
-    print(f"[OK] Updated ablation docs: {docs_path.relative_to(ROOT_DIR)}")
+    print(f"[OK] Updated benchmark registry: {display_path(registry_path)}")
+    print(f"[OK] Updated ablation docs: {display_path(docs_path)}")
     return 0
 
 
