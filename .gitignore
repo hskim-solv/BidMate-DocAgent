@@ -23,6 +23,7 @@ venv/
 data/files/
 data/data_list.csv
 data/data_list.xlsx
+eval/*.local.yaml
 원본 데이터/
 
 # Generated artifacts: keep committed portfolio samples, ignore extra outputs

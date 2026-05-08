@@ -17,9 +17,27 @@ python3 scripts/build_index.py \
   --embedding_backend hashing
 ```
 
+## Optional real-data profile
+공개 baseline은 `data/raw` synthetic 흐름으로 유지한다. 로컬에 비공개 원본과 `data_list.csv`가 있는 환경에서는 다음 smoke profile로 실데이터 end-to-end를 확인한다.
+
+```bash
+bash scripts/smoke_real.sh
+```
+
+기본값은 다음과 같다.
+- 입력: `data/data_list.csv`, `data/files/`
+- 인덱스: `data/index/real100/`
+- 질의 출력: `outputs/real100/answer.json`
+- 평가 출력: `reports/real100/eval_summary.json`
+- 평가 설정: `eval/real_config.local.yaml`
+
+`eval/real_config.local.yaml`이 없으면 인덱싱과 대표 질의까지만 실행하고, 실데이터 gold 평가를 건너뛴다. 새 환경에서는 `eval/real_config.example.yaml`을 복사해 로컬 expected doc id/term/target을 채운다. `eval/*.local.yaml`, 실데이터 원본, 실데이터 산출물은 Git 추적 대상이 아니다.
+
 ## 출력
 - `data/index/index.json`: 기존 RAG index schema를 유지하되, 문서와 chunk에 normalized metadata를 포함한다.
 - `data/index/ingestion_report.json`: CSV row별 `indexed` 또는 `failed` 상태와 실패 사유를 기록한다.
+
+optional profile을 사용할 때도 index schema는 동일하며, 기본 경로만 `data/index/real100/`로 분리한다.
 
 ## v1 / v2 비교
 - v1 기본값은 `--ingestion_mode csv-text`이며, CSV의 `텍스트` 컬럼을 본문으로 사용한다.
@@ -36,3 +54,6 @@ python3 scripts/build_index.py \
 - 동일 `doc_id`가 반복되는 경우: `duplicate_doc_id`
 
 단, 성공적으로 인덱싱 가능한 문서가 0개이면 입력 오류로 보고 빌드를 실패시킨다.
+
+## 현재 로컬 검증 기준
+현재 로컬 실데이터 샘플은 100개 row로 구성되며, CSV 텍스트 기반 v1 경로에서 100개 문서가 모두 인덱싱된다. 이 수치는 private local data 기준이므로 공개 README 성능표에는 반영하지 않는다.

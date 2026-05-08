@@ -118,6 +118,36 @@ class FuzzyMetadataRetrievalTest(unittest.TestCase):
             set(result["plan"]["metadata_filters"]["doc_ids"]),
         )
 
+    def test_single_agency_schedule_and_budget_query_is_not_comparison(self) -> None:
+        same_agency_index = build_index_payload_from_documents(
+            [
+                {
+                    "doc_id": "agency-x-main",
+                    "title": "기관 X 시스템 기능개선",
+                    "agency": "기관 X",
+                    "project": "시스템 기능개선",
+                    "metadata": {},
+                    "sections": [{"heading": "본문", "text": "사업기간은 3개월이고 사업금액은 1억원이다."}],
+                    "source_path": "agency-x-main.txt",
+                },
+                {
+                    "doc_id": "agency-x-extra",
+                    "title": "기관 X 포털 기능개선",
+                    "agency": "기관 X",
+                    "project": "포털 기능개선",
+                    "metadata": {},
+                    "sections": [{"heading": "본문", "text": "포털 기능개선은 별도 유지관리 사업이다."}],
+                    "source_path": "agency-x-extra.txt",
+                },
+            ],
+            source_dir="test-fixture",
+            embedding_backend="hashing",
+        )
+
+        result = run_rag_query(same_agency_index, "기관 X의 사업기간과 사업금액은?")
+
+        self.assertEqual("single_doc", result["analysis"]["query_type"])
+
     def test_partial_comparison_keeps_supported_claims_and_missing_target(self) -> None:
         partial_index = build_index_payload_from_documents(
             [
@@ -253,6 +283,37 @@ class FuzzyMetadataRetrievalTest(unittest.TestCase):
             follow_up["diagnostics"]["context_resolution"]["source"],
         )
         self.assertIn("사업예산", follow_up["diagnostics"]["verification_topics"])
+
+    def test_metadata_only_budget_claim_does_not_emit_unrelated_body_sentence(self) -> None:
+        real_like_index = build_index_payload_from_documents(
+            [
+                {
+                    "doc_id": "agency-x-budget",
+                    "title": "기관 X 예산 사업",
+                    "agency": "기관 X",
+                    "project": "예산 사업",
+                    "metadata": {"budget": 130000000},
+                    "sections": [
+                        {
+                            "heading": "본문",
+                            "text": "기관 X는 사용자 교육과 운영 지원을 제공한다.",
+                        }
+                    ],
+                    "source_path": "agency-x.hwp",
+                }
+            ],
+            source_dir="test-fixture",
+            embedding_backend="hashing",
+        )
+
+        result = run_rag_query(real_like_index, "기관 X의 사업예산 알려줘")
+
+        self.assertEqual("supported", result["answer"]["status"])
+        self.assertFalse(result["diagnostics"]["abstained"])
+        self.assertEqual(1, len(result["answer"]["claims"]))
+        self.assertIn("사업예산", result["answer"]["claims"][0]["claim"])
+        self.assertIn("130,000,000원", result["answer"]["claims"][0]["claim"])
+        self.assertNotIn("운영 지원", result["answer"]["summary"])
 
     def test_metadata_first_can_be_disabled_for_ablation(self) -> None:
         result = run_rag_query(
