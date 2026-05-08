@@ -36,6 +36,7 @@ class BenchmarkSummaryTest(unittest.TestCase):
                         "accuracy": 0.5,
                         "groundedness": 0.5,
                         "citation_precision": 0.25,
+                        "citation_grounding": 0.75,
                         "answer_format_compliance": 0.5,
                         "abstention": None,
                         "retry": 0.5,
@@ -46,6 +47,7 @@ class BenchmarkSummaryTest(unittest.TestCase):
                                 "accuracy": 0.0,
                                 "groundedness": 0.0,
                                 "citation_precision": 0.0,
+                                "citation_grounding": 0.0,
                                 "answer_format_compliance": 0.0,
                                 "abstention": None,
                                 "retry": 1.0,
@@ -62,8 +64,12 @@ class BenchmarkSummaryTest(unittest.TestCase):
         docs = render_docs({"schema_version": 1, "entries": [entry]})
 
         self.assertIn("by_hardcase_category", entry["primary_metrics"])
+        self.assertEqual(0.75, entry["primary_metrics"]["citation_grounding"])
         self.assertIn("## Hard-case Slices", docs)
-        self.assertIn("| table_heavy | 1 | 0.000 | 0.000 | 0.000 | 0.000 | N/A | 1.000 |", docs)
+        self.assertIn(
+            "| table_heavy | 1 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | N/A | 1.000 |",
+            docs,
+        )
 
 
 if __name__ == "__main__":

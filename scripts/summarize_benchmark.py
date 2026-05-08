@@ -60,12 +60,16 @@ def metric_block(summary: dict[str, Any] | None) -> dict[str, Any]:
         "accuracy",
         "groundedness",
         "citation_precision",
+        "citation_page_precision",
+        "citation_region_precision",
+        "citation_grounding",
         "answer_format_compliance",
         "abstention",
         "retry",
         "latency",
         "retry_cost",
         "retry_reason_counts",
+        "citation_grounding_error_counts",
         "by_hardcase_category",
     ]
     return {key: summary.get(key) for key in keys if key in summary}
@@ -104,6 +108,15 @@ def registry_entry(manifest: dict[str, Any]) -> dict[str, Any]:
             "groundedness": delta_value(primary.get("groundedness"), baseline.get("groundedness")),
             "citation_precision": delta_value(
                 primary.get("citation_precision"), baseline.get("citation_precision")
+            ),
+            "citation_page_precision": delta_value(
+                primary.get("citation_page_precision"), baseline.get("citation_page_precision")
+            ),
+            "citation_region_precision": delta_value(
+                primary.get("citation_region_precision"), baseline.get("citation_region_precision")
+            ),
+            "citation_grounding": delta_value(
+                primary.get("citation_grounding"), baseline.get("citation_grounding")
             ),
             "answer_format_compliance": delta_value(
                 primary.get("answer_format_compliance"),
@@ -172,6 +185,9 @@ def render_docs(registry: dict[str, Any]) -> str:
         table_row("Accuracy", baseline, primary, "accuracy"),
         table_row("Groundedness", baseline, primary, "groundedness"),
         table_row("Citation Precision", baseline, primary, "citation_precision"),
+        table_row("Citation Page Precision", baseline, primary, "citation_page_precision"),
+        table_row("Citation Region Precision", baseline, primary, "citation_region_precision"),
+        table_row("Citation Grounding", baseline, primary, "citation_grounding"),
         table_row("Format Compliance", baseline, primary, "answer_format_compliance"),
         table_row("Abstention", baseline, primary, "abstention"),
         table_row("Retry Rate", baseline, primary, "retry"),
@@ -186,14 +202,14 @@ def render_docs(registry: dict[str, Any]) -> str:
         "",
         "## Ablation Table",
         "",
-        "| Run | Pipeline | Top-k | Metadata-first | Rerank | Verifier/Retry | Retrieval | Prompt | Accuracy | Groundedness | Citation | Format | Abstention | Retry | Latency p95 |",
-        "|---|---|---:|---:|---:|---:|---|---|---:|---:|---:|---:|---:|---:|---:|",
+        "| Run | Pipeline | Top-k | Metadata-first | Rerank | Verifier/Retry | Retrieval | Prompt | Accuracy | Groundedness | Citation | Citation Grounding | Format | Abstention | Retry | Latency p95 |",
+        "|---|---|---:|---:|---:|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for run in latest.get("runs") or []:
         flags = run.get("flags") or {}
         metrics = run.get("metrics") or {}
         lines.append(
-            "| {name} | {pipeline} | {top_k} | {metadata_first} | {rerank} | {verifier_retry} | {retrieval_mode} | {prompt} | {accuracy} | {groundedness} | {citation} | {format} | {abstention} | {retry} | {latency} |".format(
+            "| {name} | {pipeline} | {top_k} | {metadata_first} | {rerank} | {verifier_retry} | {retrieval_mode} | {prompt} | {accuracy} | {groundedness} | {citation} | {citation_grounding} | {format} | {abstention} | {retry} | {latency} |".format(
                 name=run.get("name"),
                 pipeline=flags.get("pipeline", ""),
                 top_k=fmt_top_k(flags.get("top_k")),
@@ -205,6 +221,7 @@ def render_docs(registry: dict[str, Any]) -> str:
                 accuracy=fmt_rate(metrics.get("accuracy")),
                 groundedness=fmt_rate(metrics.get("groundedness")),
                 citation=fmt_rate(metrics.get("citation_precision")),
+                citation_grounding=fmt_rate(metrics.get("citation_grounding")),
                 format=fmt_rate(metrics.get("answer_format_compliance")),
                 abstention=fmt_rate(metrics.get("abstention")),
                 retry=fmt_rate(metrics.get("retry")),
@@ -219,19 +236,20 @@ def render_docs(registry: dict[str, Any]) -> str:
                 "",
                 "## Hard-case Slices",
                 "",
-                "| Category | Cases | Accuracy | Groundedness | Citation | Format | Abstention | Retry |",
-                "|---|---:|---:|---:|---:|---:|---:|---:|",
+                "| Category | Cases | Accuracy | Groundedness | Citation | Citation Grounding | Format | Abstention | Retry |",
+                "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
             ]
         )
         for category in sorted(hardcase_metrics):
             metrics = hardcase_metrics[category] or {}
             lines.append(
-                "| {category} | {cases} | {accuracy} | {groundedness} | {citation} | {format} | {abstention} | {retry} |".format(
+                "| {category} | {cases} | {accuracy} | {groundedness} | {citation} | {citation_grounding} | {format} | {abstention} | {retry} |".format(
                     category=category,
                     cases=metrics.get("num_predictions", "N/A"),
                     accuracy=fmt_rate(metrics.get("accuracy")),
                     groundedness=fmt_rate(metrics.get("groundedness")),
                     citation=fmt_rate(metrics.get("citation_precision")),
+                    citation_grounding=fmt_rate(metrics.get("citation_grounding")),
                     format=fmt_rate(metrics.get("answer_format_compliance")),
                     abstention=fmt_rate(metrics.get("abstention")),
                     retry=fmt_rate(metrics.get("retry")),
@@ -252,7 +270,8 @@ def render_docs(registry: dict[str, Any]) -> str:
             "",
             "- 평가셋을 늘릴 때는 suite YAML을 추가하고 registry에는 집계 지표만 편입한다.",
             "- private RFP 기반 실험은 local artifact로만 보관하고 문서에는 익명화된 집계 결과만 남긴다.",
-            "- citation 검증과 latency/retry 비용 분석은 별도 ablation axis로 분리해 누적한다.",
+            "- citation 검증은 document/chunk precision과 page/region grounding을 분리해 누적한다.",
+            "- latency/retry 비용 분석은 별도 ablation axis로 분리해 누적한다.",
         ]
     )
     return "\n".join(lines) + "\n"
