@@ -214,6 +214,9 @@ python3 scripts/summarize_benchmark.py \
 
 Benchmark source of truth는 `benchmarks/suites/`, `benchmarks/ablations/`, `benchmarks/registry.schema.json`에 둡니다. Raw predictions, traces, logs, latency samples, error examples는 `artifacts/benchmarks/` 아래에 생성되며 Git에 커밋하지 않습니다. 사람이 읽는 결과 해석은 [`docs/benchmarking.md`](docs/benchmarking.md)와 [`docs/ablation-results.md`](docs/ablation-results.md)를 참고하세요.
 
+### 선택) Harness smoke run
+재현 가능한 smoke 실행의 config snapshot, 로그, prediction, metric을 한 디렉터리에 모으려면 `python3 scripts/run_harness.py --config harness/smoke.yaml` 또는 `make harness-smoke`를 실행합니다. 산출물은 `artifacts/runs/<run_id>/` 아래에 생성되며 Git 추적 대상이 아닙니다. 자세한 흐름은 [`docs/harness.md`](docs/harness.md)를 참고하세요.
+
 > 참고: 모델을 처음 내려받아 실제 sentence-transformers 인덱스를 만들려면 `--embedding_backend sentence-transformers`를 사용하세요. 네트워크가 제한된 환경에서는 `--embedding_backend hashing`으로 재현성을 우선한 로컬 실행이 가능합니다. 산출물 경로는 `data/index`, `outputs/`, `reports/`로 고정합니다.
 > Chunking 기본값은 naive baseline 기준인 `--chunking_strategy fixed --chunk_max_chars 520 --chunk_overlap_sentences 1`입니다. section-aware 비교는 `--chunking_strategy auto` 또는 `section`으로 명시합니다.
 > 질의 기본값은 `--pipeline naive_baseline`의 flat dense top-k=4 retrieval입니다. parent section 단위 재조립을 확인하려면 `app.py`에 `--pipeline agentic_full --retrieval_mode hierarchical`을 지정하거나 `eval/config.yaml`의 `hierarchical` ablation run을 실행합니다.
@@ -292,6 +295,7 @@ python3 eval/run_parser_eval.py \
 - Chunking diagnostics: [`docs/chunking-diagnostics.md`](docs/chunking-diagnostics.md)
 - PDF/HWP ingestion: [`docs/real-data-ingestion.md`](docs/real-data-ingestion.md)
 - Visual parsing v2: [`docs/visual-ingestion-v2.md`](docs/visual-ingestion-v2.md)
+- Reproducible harness: [`docs/harness.md`](docs/harness.md)
 - 답변 출력 정책: [`docs/answer-policy.md`](docs/answer-policy.md)
 - 실패 사례 분석: [`docs/failure-cases.md`](docs/failure-cases.md)
 - 회고 및 개선 방향: [`docs/retrospective.md`](docs/retrospective.md)

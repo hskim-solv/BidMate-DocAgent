@@ -1,0 +1,15 @@
+id: public_synthetic_smoke
+description: Minimal reproducible smoke harness over committed synthetic RFP data.
+artifact_root: artifacts/runs
+dataset:
+  id: public_synthetic_rfp_v1
+  input_dir: data/raw
+  privacy: public_synthetic_only
+index:
+  embedding_backend: hashing
+  chunking_strategy: fixed
+query:
+  text: "기관 A와 기관 B의 AI 요구사항 차이 알려줘"
+  pipeline: naive_baseline
+eval:
+  config: harness/smoke_eval.yaml

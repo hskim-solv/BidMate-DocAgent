@@ -3,6 +3,7 @@
 - [Reviewer evidence pack](./reviewer-evidence-pack.md)
 - [포트폴리오 case study](./portfolio-case-study.md)
 - [Benchmarking](./benchmarking.md)
+- [Reproducible harness](./harness.md)
 - [Private hard-case benchmark](./private-hardcase-benchmark.md)
 - [Ablation results](./ablation-results.md)
 - [설계 배경 및 의사결정](./design-background.md)
