@@ -2124,12 +2124,37 @@ def metadata_stage_sequence(
     return stages
 
 
+_PROCESS_WARM = False
+
+
+class _StageTimer:
+    """Accumulate ``time.perf_counter`` deltas (ms) into a dict bucket.
+
+    Adds the elapsed milliseconds to ``bucket[key]`` so re-entering the same
+    key (e.g. a stage invoked twice) sums into a single total.
+    """
+
+    def __init__(self, bucket: dict[str, float], key: str) -> None:
+        self.bucket = bucket
+        self.key = key
+
+    def __enter__(self) -> "_StageTimer":
+        self._t0 = time.perf_counter()
+        return self
+
+    def __exit__(self, *exc: Any) -> None:
+        elapsed_ms = (time.perf_counter() - self._t0) * 1000
+        self.bucket[self.key] = self.bucket.get(self.key, 0.0) + elapsed_ms
+
+
 def summarize_stage_attempt(
     plan: dict[str, Any],
     verified: bool,
     verification_reasons: list[str],
+    *,
+    timings: dict[str, float] | None = None,
 ) -> dict[str, Any]:
-    return {
+    record = {
         "stage": plan.get("filter_stage"),
         "pipeline": plan.get("pipeline"),
         "prompt_profile": plan.get("prompt_profile"),
@@ -2142,7 +2167,10 @@ def summarize_stage_attempt(
         "retrieval_mode": plan.get("retrieval_mode", "flat"),
         "verified": verified,
         "verification_reasons": verification_reasons,
+        "retrieve_ms": round(float((timings or {}).get("retrieve_ms", 0.0)), 2),
+        "verify_ms": round(float((timings or {}).get("verify_ms", 0.0)), 2),
     }
+    return record
 
 
 def clarification_answer(query: str, context_resolution: dict[str, Any]) -> str:
@@ -2177,6 +2205,9 @@ def make_context_clarification_result(
     retrieval_mode: str,
     pipeline: str,
     prompt_profile: str,
+    *,
+    stage_timings: dict[str, float] | None = None,
+    cold_start: bool = False,
 ) -> dict[str, Any]:
     reason = str(context_resolution.get("reason") or "context_resolution_failed")
     analysis = dict(analysis)
@@ -2241,6 +2272,12 @@ def make_context_clarification_result(
             "retrieval_mode": retrieval_mode,
             "pipeline": pipeline,
             "prompt_profile": prompt_profile,
+            "cold_start": cold_start,
+            "stage_latency": {
+                "query_analysis_ms": round(float((stage_timings or {}).get("query_analysis_ms", 0.0)), 2),
+                "context_resolution_ms": round(float((stage_timings or {}).get("context_resolution_ms", 0.0)), 2),
+                "answer_generation_ms": round(float((stage_timings or {}).get("answer_generation_ms", 0.0)), 2),
+            },
         },
     }
 
@@ -2348,16 +2385,24 @@ def run_rag_query(
     pipeline_name = str(pipeline_config["pipeline"])
     prompt_profile = str(pipeline_config["prompt_profile"])
 
+    global _PROCESS_WARM
+    cold_start = not _PROCESS_WARM
+    if cold_start:
+        _PROCESS_WARM = True
+
     started = time.perf_counter()
+    stage_timings: dict[str, float] = {}
     state = normalize_conversation_state(conversation_state)
     targets = metadata_targets(index)
-    initial_analysis = analyze_query(query, targets)
-    retrieval_query, effective_context_entities, context_resolution = resolve_conversation_context(
-        query,
-        initial_analysis,
-        state,
-        context_entities=context_entities,
-    )
+    with _StageTimer(stage_timings, "query_analysis_ms"):
+        initial_analysis = analyze_query(query, targets)
+    with _StageTimer(stage_timings, "context_resolution_ms"):
+        retrieval_query, effective_context_entities, context_resolution = resolve_conversation_context(
+            query,
+            initial_analysis,
+            state,
+            context_entities=context_entities,
+        )
     if context_resolution["status"] == "needs_clarification":
         return make_context_clarification_result(
             index,
@@ -2372,13 +2417,16 @@ def run_rag_query(
             retrieval_mode,
             pipeline_name,
             prompt_profile,
+            stage_timings=stage_timings,
+            cold_start=cold_start,
         )
 
-    analysis = analyze_query(
-        retrieval_query,
-        targets,
-        context_entities=effective_context_entities,
-    )
+    with _StageTimer(stage_timings, "query_analysis_ms"):
+        analysis = analyze_query(
+            retrieval_query,
+            targets,
+            context_entities=effective_context_entities,
+        )
     if context_resolution["source"] in {"conversation_state", "context_entities"}:
         analysis["query_type"] = "follow_up"
         analysis["context_used"] = True
@@ -2399,24 +2447,29 @@ def run_rag_query(
         attempt_top_k = top_k
         if attempt_index > 0:
             attempt_top_k = max(top_k or 0, 8)
-        plan = make_plan(
-            analysis,
-            top_k=attempt_top_k,
-            stage=stage,
-            metadata_first=metadata_first,
-            rerank=rerank,
-            verifier_retry=verifier_retry,
-            retrieval_mode=retrieval_mode,
-            pipeline=pipeline_name,
-            prompt_profile=prompt_profile,
+        attempt_timings: dict[str, float] = {}
+        with _StageTimer(attempt_timings, "retrieve_ms"):
+            plan = make_plan(
+                analysis,
+                top_k=attempt_top_k,
+                stage=stage,
+                metadata_first=metadata_first,
+                rerank=rerank,
+                verifier_retry=verifier_retry,
+                retrieval_mode=retrieval_mode,
+                pipeline=pipeline_name,
+                prompt_profile=prompt_profile,
+            )
+            evidence = retrieve(index, retrieval_query, analysis, plan)
+        with _StageTimer(attempt_timings, "verify_ms"):
+            if verifier_retry:
+                verified, verification_reasons = verify_evidence(analysis, evidence)
+            else:
+                verified = bool(evidence)
+                verification_reasons = [] if verified else ["no_evidence"]
+        stage_attempts.append(
+            summarize_stage_attempt(plan, verified, verification_reasons, timings=attempt_timings)
         )
-        evidence = retrieve(index, retrieval_query, analysis, plan)
-        if verifier_retry:
-            verified, verification_reasons = verify_evidence(analysis, evidence)
-        else:
-            verified = bool(evidence)
-            verification_reasons = [] if verified else ["no_evidence"]
-        stage_attempts.append(summarize_stage_attempt(plan, verified, verification_reasons))
         if verified:
             break
         if attempt_index < len(stage_sequence) - 1:
@@ -2426,13 +2479,14 @@ def run_rag_query(
         evidence = select_supporting_evidence(analysis, evidence)
     else:
         evidence = []
-    answer, answer_text, abstained = generate_answer(
-        query,
-        analysis,
-        evidence,
-        verified,
-        verification_reasons,
-    )
+    with _StageTimer(stage_timings, "answer_generation_ms"):
+        answer, answer_text, abstained = generate_answer(
+            query,
+            analysis,
+            evidence,
+            verified,
+            verification_reasons,
+        )
     next_state = update_conversation_state(
         state,
         query,
@@ -2442,6 +2496,11 @@ def run_rag_query(
         context_resolution,
     )
     latency_ms = (time.perf_counter() - started) * 1000
+    stage_latency = {
+        "query_analysis_ms": round(stage_timings.get("query_analysis_ms", 0.0), 2),
+        "context_resolution_ms": round(stage_timings.get("context_resolution_ms", 0.0), 2),
+        "answer_generation_ms": round(stage_timings.get("answer_generation_ms", 0.0), 2),
+    }
     return {
         "mode": "rag",
         "query": query,
@@ -2473,6 +2532,8 @@ def run_rag_query(
             "retrieval_mode": retrieval_mode,
             "pipeline": pipeline_name,
             "prompt_profile": prompt_profile,
+            "cold_start": cold_start,
+            "stage_latency": stage_latency,
         },
     }
 
