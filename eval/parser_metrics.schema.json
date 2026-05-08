@@ -34,6 +34,23 @@
         "failure_counts": {
           "type": "object",
           "additionalProperties": { "type": "integer", "minimum": 0 }
+        },
+        "by_hardcase_category": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "required": ["num_documents", "num_documents_with_errors", "metrics", "failure_counts"],
+            "properties": {
+              "num_documents": { "type": "integer", "minimum": 0 },
+              "num_documents_with_errors": { "type": "integer", "minimum": 0 },
+              "metrics": { "type": "object" },
+              "failure_counts": {
+                "type": "object",
+                "additionalProperties": { "type": "integer", "minimum": 0 }
+              }
+            },
+            "additionalProperties": true
+          }
         }
       },
       "additionalProperties": true
@@ -45,6 +62,10 @@
         "required": ["doc_id", "artifact_path", "parser_status", "metrics", "errors"],
         "properties": {
           "doc_id": { "type": "string" },
+          "hardcase_categories": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
           "artifact_path": { "type": "string" },
           "parser_status": { "type": "string" },
           "metrics": {

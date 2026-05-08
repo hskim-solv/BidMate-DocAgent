@@ -66,6 +66,7 @@ def metric_block(summary: dict[str, Any] | None) -> dict[str, Any]:
         "latency",
         "retry_cost",
         "retry_reason_counts",
+        "by_hardcase_category",
     ]
     return {key: summary.get(key) for key in keys if key in summary}
 
@@ -210,6 +211,32 @@ def render_docs(registry: dict[str, Any]) -> str:
                 latency=fmt_latency(metrics.get("latency")),
             )
         )
+
+    hardcase_metrics = (primary.get("by_hardcase_category") or {})
+    if hardcase_metrics:
+        lines.extend(
+            [
+                "",
+                "## Hard-case Slices",
+                "",
+                "| Category | Cases | Accuracy | Groundedness | Citation | Format | Abstention | Retry |",
+                "|---|---:|---:|---:|---:|---:|---:|---:|",
+            ]
+        )
+        for category in sorted(hardcase_metrics):
+            metrics = hardcase_metrics[category] or {}
+            lines.append(
+                "| {category} | {cases} | {accuracy} | {groundedness} | {citation} | {format} | {abstention} | {retry} |".format(
+                    category=category,
+                    cases=metrics.get("num_predictions", "N/A"),
+                    accuracy=fmt_rate(metrics.get("accuracy")),
+                    groundedness=fmt_rate(metrics.get("groundedness")),
+                    citation=fmt_rate(metrics.get("citation_precision")),
+                    format=fmt_rate(metrics.get("answer_format_compliance")),
+                    abstention=fmt_rate(metrics.get("abstention")),
+                    retry=fmt_rate(metrics.get("retry")),
+                )
+            )
 
     lines.extend(
         [

@@ -1,0 +1,66 @@
+mode: rag
+description: Private hard-case RFP evaluation template. Copy to eval/private_hardcase.local.yaml before use.
+index_dir: data/index-private-hardcase
+primary_run: visual_v2_full
+answer_policy:
+  answerable_status: supported
+  unanswerable_status: insufficient
+  min_claims_answerable: 1
+  require_claim_citations: true
+ablation_runs:
+  - name: text_v1_full
+    pipeline: agentic_full
+    metadata_first: true
+    rerank: true
+    verifier_retry: true
+    retrieval_mode: flat
+    prompt_profile: private_text_v1
+  - name: visual_v2_full
+    pipeline: agentic_full
+    metadata_first: true
+    rerank: true
+    verifier_retry: true
+    retrieval_mode: hierarchical
+    prompt_profile: private_visual_v2
+cases:
+  - id: private-hardcase-001
+    hardcase_categories:
+      - scanned_pdf
+      - noisy_ocr
+    query_type: single_doc
+    query: "익명 문서 001의 제출 마감 조건은?"
+    expected_doc_ids:
+      - private-hardcase-doc-001
+    expected_terms:
+      - "제출 마감"
+    expected_citation_terms:
+      - "제출 마감"
+    expected_claim_targets:
+      - "익명 문서 001"
+    answerable: true
+
+  - id: private-hardcase-002
+    hardcase_categories:
+      - rotated_or_skewed
+      - table_heavy
+    query_type: single_doc
+    query: "익명 문서 002의 정량 평가 배점 조건은?"
+    expected_doc_ids:
+      - private-hardcase-doc-002
+    expected_terms:
+      - "배점"
+    expected_citation_terms:
+      - "배점"
+    expected_claim_targets:
+      - "익명 문서 002"
+    answerable: true
+
+  - id: private-hardcase-003
+    hardcase_categories:
+      - mixed_layout
+    query_type: abstention
+    query: "익명 문서 003에 명시되지 않은 유지보수 예산은?"
+    expected_doc_ids: []
+    expected_terms: []
+    expected_claim_targets: []
+    answerable: false

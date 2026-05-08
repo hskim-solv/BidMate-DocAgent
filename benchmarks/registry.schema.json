@@ -43,7 +43,11 @@
         "answer_format_compliance": { "type": ["number", "null"] },
         "abstention": { "type": ["number", "null"] },
         "retry": { "type": ["number", "null"] },
-        "latency": { "$ref": "#/$defs/latency_block" }
+        "latency": { "$ref": "#/$defs/latency_block" },
+        "by_hardcase_category": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/metric_block" }
+        }
       },
       "additionalProperties": true
     },

@@ -121,7 +121,28 @@ def load_gold(path: Path) -> dict[str, Any]:
         if doc_id in seen_doc_ids:
             raise ValueError(f"Duplicate parser gold doc_id: {doc_id}")
         seen_doc_ids.add(doc_id)
+        categories = document.get("hardcase_categories") or document.get("hardcase_category") or []
+        if isinstance(categories, str):
+            categories = [categories]
+        if not isinstance(categories, list):
+            raise ValueError(f"Parser gold hardcase_categories must be a list: {doc_id}")
     return data
+
+
+def hardcase_categories(item: dict[str, Any]) -> list[str]:
+    categories = item.get("hardcase_categories") or item.get("hardcase_category") or []
+    if isinstance(categories, str):
+        categories = [categories]
+    if not isinstance(categories, list):
+        return []
+    normalized = []
+    seen: set[str] = set()
+    for category in categories:
+        value = str(category).strip()
+        if value and value not in seen:
+            normalized.append(value)
+            seen.add(value)
+    return normalized
 
 
 def load_artifact(artifact_dir: Path, gold_doc: dict[str, Any]) -> tuple[Path, dict[str, Any] | None]:
@@ -536,6 +557,7 @@ def score_document(
         add_error(errors, "artifact_missing", "Expected visual artifact file is missing.")
         return {
             "doc_id": doc_id,
+            "hardcase_categories": hardcase_categories(gold_doc),
             "artifact_path": str(artifact_path),
             "parser_status": "missing",
             "metrics": metrics,
@@ -552,6 +574,7 @@ def score_document(
     diagnostics = artifact.get("diagnostics") or {}
     return {
         "doc_id": doc_id,
+        "hardcase_categories": hardcase_categories(gold_doc),
         "artifact_path": str(artifact_path),
         "parser_status": str(diagnostics.get("status") or "unknown"),
         "metrics": metrics,
@@ -578,6 +601,17 @@ def summarize_documents(documents: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def summarize_by_hardcase_category(documents: list[dict[str, Any]]) -> dict[str, Any]:
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for document in documents:
+        for category in hardcase_categories(document):
+            grouped.setdefault(category, []).append(document)
+    return {
+        category: summarize_documents(grouped[category])
+        for category in sorted(grouped)
+    }
+
+
 def build_report(
     artifact_dir: Path,
     gold_path: Path,
@@ -589,6 +623,8 @@ def build_report(
     for gold_doc in sorted(gold["documents"], key=lambda item: str(item["doc_id"])):
         artifact_path, artifact = load_artifact(artifact_dir, gold_doc)
         document_results.append(score_document(gold_doc, artifact, artifact_path))
+    summary = summarize_documents(document_results)
+    summary["by_hardcase_category"] = summarize_by_hardcase_category(document_results)
 
     return {
         "mode": "parser",
@@ -599,7 +635,7 @@ def build_report(
             "artifact_dir": str(artifact_dir),
             "gold": str(gold_path),
         },
-        "summary": summarize_documents(document_results),
+        "summary": summary,
         "documents": document_results,
         "failure_taxonomy": FAILURE_TAXONOMY,
     }
