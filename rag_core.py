@@ -225,6 +225,22 @@ METADATA_EVIDENCE_LABELS = {
     "summary": ("요약", "사업 요약"),
 }
 
+METADATA_CLAIM_LABELS = {
+    "budget": "사업예산",
+    "published_at": "공개 일자",
+    "bid_start_at": "입찰 시작일",
+    "bid_deadline_at": "입찰 마감일",
+    "summary": "사업 요약",
+}
+
+METADATA_CLAIM_TOPIC_LABELS = {
+    "budget": ("예산", "사업예산", "사업금액", "금액"),
+    "published_at": ("공개", "일자", "공개일자", "공고일"),
+    "bid_start_at": ("입찰", "시작일", "입찰시작일", "입찰참여시작일", "일정"),
+    "bid_deadline_at": ("입찰", "마감일", "입찰마감일", "입찰참여마감일", "일정"),
+    "summary": ("요약", "사업요약", "사업기간", "기간"),
+}
+
 KOREAN_PARTICLE_SUFFIXES = (
     "으로",
     "에서",
@@ -1398,7 +1414,7 @@ def analyze_query(
     matched_agencies = ordered_unique(match["agency"] for match in reduced_matches)
     matched_projects = ordered_unique(match["project"] for match in reduced_matches)
     has_comparison_term = any(term in normalized_query for term in comparison_terms)
-    has_multi_target_joiner = len(matched_doc_ids) > 1 and any(
+    has_multi_target_joiner = len(matched_agencies) > 1 and any(
         joiner in normalized_query for joiner in comparison_joiners
     )
     if has_comparison_term or has_multi_target_joiner:
@@ -1836,7 +1852,29 @@ def build_extract_claims(analysis: dict[str, Any], evidence: list[dict[str, Any]
     selected = []
     seen = set()
     for item in evidence:
+        metadata_sentences = metadata_claim_sentences(item, analysis)
+        for metadata_sentence in metadata_sentences:
+            key = (item["chunk_id"], metadata_sentence)
+            if key in seen:
+                continue
+            seen.add(key)
+            selected.append(
+                make_claim(
+                    claim_target(item),
+                    item,
+                    analysis,
+                    sentence=metadata_sentence,
+                    support=metadata_sentence,
+                )
+            )
+            if len(selected) >= 2:
+                break
+        if len(selected) >= 2:
+            break
+
         sentence = best_sentence(item["text"], analysis.get("topics", []), analysis.get("tokens", []))
+        if metadata_sentences and not sentence_has_verification_topic(sentence, analysis):
+            continue
         key = (item["chunk_id"], sentence)
         if key in seen:
             continue
@@ -1852,12 +1890,13 @@ def make_claim(
     item: dict[str, Any],
     analysis: dict[str, Any],
     sentence: str | None = None,
+    support: str | None = None,
 ) -> dict[str, Any]:
     claim_text = sentence or best_sentence(item["text"], analysis.get("topics", []), analysis.get("tokens", []))
     return {
         "target": target,
         "claim": claim_text,
-        "support": item["text"],
+        "support": support or item["text"],
         "citations": [make_citation(item)],
     }
 
@@ -1985,6 +2024,54 @@ def best_sentence(text: str, topics: list[str], query_tokens: list[str]) -> str:
         scored.append((topic_hits * 3 + token_hits, len(sentence), sentence))
     scored.sort(key=lambda item: (item[0], -item[1]), reverse=True)
     return scored[0][2]
+
+
+def metadata_claim_sentences(item: dict[str, Any], analysis: dict[str, Any]) -> list[str]:
+    metadata = item.get("metadata")
+    if not isinstance(metadata, dict):
+        return []
+
+    sentences = []
+    for key in METADATA_CLAIM_LABELS:
+        value = metadata.get(key)
+        if value is None or value == "":
+            continue
+        if not metadata_field_requested(key, value, analysis):
+            continue
+        sentences.append(f"{METADATA_CLAIM_LABELS[key]}: {format_metadata_claim_value(key, value)}")
+    return ordered_unique(sentences)
+
+
+def metadata_field_requested(key: str, value: Any, analysis: dict[str, Any]) -> bool:
+    terms = [term for term in verification_topics(analysis) if term]
+    if not terms:
+        return False
+
+    labels = METADATA_CLAIM_TOPIC_LABELS.get(key) or METADATA_EVIDENCE_LABELS.get(key, (key,))
+    label_text = " ".join(str(label) for label in labels)
+    value_text = str(value)
+    searchable = compact_metadata_text(" ".join([label_text, value_text]))
+    for term in terms:
+        compact_term = compact_metadata_text(str(term))
+        if compact_term and compact_term in searchable:
+            return True
+    return False
+
+
+def format_metadata_claim_value(key: str, value: Any) -> str:
+    if key == "budget" and isinstance(value, (int, float)):
+        if isinstance(value, float) and not value.is_integer():
+            return f"{value:,.2f}원"
+        return f"{int(value):,}원"
+    return str(value)
+
+
+def sentence_has_verification_topic(sentence: str, analysis: dict[str, Any]) -> bool:
+    topics = verification_topics(analysis)
+    if not topics:
+        return True
+    lowered = sentence.lower()
+    return any(topic.lower() in lowered for topic in topics)
 
 
 def select_supporting_evidence(

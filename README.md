@@ -236,6 +236,16 @@ python3 scripts/build_index.py \
 
 이 모드는 `data/index/index.json`과 함께 `data/index/ingestion_report.json`을 생성합니다. 리포트에는 문서별 indexed/failed 상태와 `missing_file`, `empty_text`, `unsupported_file_format`, `duplicate_doc_id` 같은 실패 사유가 기록됩니다.
 
+#### Optional real-data profile
+
+공개 synthetic baseline과 성능표는 그대로 유지하고, 로컬 private 실데이터는 별도 profile로 실행합니다.
+
+```bash
+bash scripts/smoke_real.sh
+```
+
+기본 입력은 `data/data_list.csv`와 `data/files/`이며, 산출물은 `data/index/real100/`, `outputs/real100/`, `reports/real100/`에 생성됩니다. `eval/real_config.local.yaml`이 있으면 실데이터 gold 평가까지 실행하고, 없으면 인덱싱과 대표 질의까지만 실행합니다. 로컬 평가 파일은 `eval/real_config.example.yaml`을 복사해 만들며, `eval/*.local.yaml`은 Git 추적 대상이 아닙니다.
+
 ### 선택) Document visual parsing v2
 원본 PDF/이미지 문서를 직접 파싱해 page/bbox/region metadata가 포함된 v2 artifact를 만들 수 있습니다. PDF는 text layer block을 우선 사용하고, text가 부족한 page 또는 이미지 파일은 OCR adapter를 사용합니다. HWP는 이번 v2에서 native visual parsing 대상이 아니며, metadata CSV visual mode에서는 기존 `텍스트` 컬럼으로 fallback하고 `visual_fallback_hwp`로 표시합니다.
 

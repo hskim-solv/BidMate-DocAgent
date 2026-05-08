@@ -1,0 +1,37 @@
+mode: rag
+description: Local-only real RFP evaluation template. Copy to eval/real_config.local.yaml and fill with private expected values.
+index_dir: data/index/real100
+answer_policy:
+  answerable_status: supported
+  unanswerable_status: insufficient
+  min_claims_answerable: 1
+  require_claim_citations: true
+ablation_runs:
+  - name: full
+    metadata_first: true
+    rerank: true
+    verifier_retry: true
+    retrieval_mode: flat
+cases:
+  - id: replace_single_doc_budget_schedule
+    query_type: single_doc
+    query: "발주기관명 사업명의 사업기간과 사업예산 알려줘"
+    expected_doc_ids:
+      - replace-with-real-doc-id
+    expected_terms:
+      - "replace-with-budget-term"
+      - "replace-with-schedule-term"
+    expected_citation_terms:
+      - "replace-with-budget-term"
+    expected_claim_targets:
+      - "replace-with-agency"
+    answerable: true
+
+  - id: replace_absent_fact
+    query_type: abstention
+    query: "발주기관명 사업명의 문서에 없는 조건을 알려줘"
+    expected_doc_ids: []
+    expected_terms: []
+    expected_citation_terms: []
+    expected_claim_targets: []
+    answerable: false
