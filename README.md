@@ -99,6 +99,8 @@ CLI와 리뷰 편의를 위해 같은 내용을 사람이 읽기 쉬운 `answer_
 | System | Latency (p50/p95) | p50 3.1ms / p95 5.8ms |
 | System | Retry Rate | 0.000 |
 
+> Stage 단위 latency, retry 비용, cold-start 분리 해석은 [`docs/benchmarking.md`](docs/benchmarking.md#stage-latency--retry-cost)를 참고한다.
+
 ### Ablation comparison
 
 | Run | Pipeline | Top-k | Metadata-first | Rerank | Verifier/Retry | Accuracy | Groundedness | Citation | Format | Abstention | Retry | Latency p95 |
