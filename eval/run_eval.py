@@ -501,6 +501,16 @@ def score_case(
         "latency_ms": diagnostics.get("latency_ms"),
         "retry_count": diagnostics.get("retry_count", 0),
         "retry_trigger_reasons": retry_trigger_reasons(prediction),
+        "cold_start": bool(diagnostics.get("cold_start", False)),
+        "stage_latency": dict(diagnostics.get("stage_latency") or {}),
+        "attempt_latency": [
+            {
+                "stage": attempt.get("stage"),
+                "retrieve_ms": attempt.get("retrieve_ms", 0.0),
+                "verify_ms": attempt.get("verify_ms", 0.0),
+            }
+            for attempt in diagnostics.get("filter_stage_attempts") or []
+        ],
         "context_resolution_status": context_resolution.get("status"),
         "context_resolution_source": context_resolution.get("source"),
         "context_resolution_confidence": context_resolution.get("confidence"),
@@ -509,6 +519,18 @@ def score_case(
         "abstained": abstained,
         **answer_format,
         "answer": answer,
+    }
+
+
+_TOP_LEVEL_STAGE_KEYS = ("query_analysis_ms", "context_resolution_ms", "answer_generation_ms")
+
+
+def _latency_summary(values: list[float]) -> dict[str, float | None]:
+    return {
+        "p50": percentile(values, 0.50),
+        "p95": percentile(values, 0.95),
+        "mean": rate(values),
+        "count": len(values),
     }
 
 
@@ -552,6 +574,46 @@ def metric_block(case_results: list[dict[str, Any]]) -> dict[str, Any]:
         if isinstance(error, dict) and error.get("code")
     )
 
+    warm_results = [r for r in case_results if not bool(r.get("cold_start"))]
+    cold_results = [r for r in case_results if bool(r.get("cold_start"))]
+
+    stage_buckets: dict[str, list[float]] = {key: [] for key in _TOP_LEVEL_STAGE_KEYS}
+    retrieve_samples: list[float] = []
+    verify_samples: list[float] = []
+    for result in warm_results:
+        stage_latency = result.get("stage_latency") or {}
+        for key in _TOP_LEVEL_STAGE_KEYS:
+            value = stage_latency.get(key)
+            if value is not None:
+                stage_buckets[key].append(float(value))
+        for attempt in result.get("attempt_latency") or []:
+            retrieve_samples.append(float(attempt.get("retrieve_ms") or 0.0))
+            verify_samples.append(float(attempt.get("verify_ms") or 0.0))
+
+    stage_latency_summary: dict[str, dict[str, float | None]] = {
+        key: _latency_summary(stage_buckets[key]) for key in _TOP_LEVEL_STAGE_KEYS
+    }
+    stage_latency_summary["retrieve_ms"] = _latency_summary(retrieve_samples)
+    stage_latency_summary["verify_ms"] = _latency_summary(verify_samples)
+
+    latency_by_retry_count: dict[str, dict[str, float | None]] = {}
+    grouped_latencies: dict[int, list[float]] = defaultdict(list)
+    for result in warm_results:
+        if result.get("latency_ms") is None:
+            continue
+        bucket = int(result.get("retry_count") or 0)
+        grouped_latencies[bucket].append(float(result["latency_ms"]))
+    for bucket in sorted(grouped_latencies):
+        latency_by_retry_count[str(bucket)] = _latency_summary(grouped_latencies[bucket])
+
+    cold_latencies = [
+        float(r["latency_ms"]) for r in cold_results if r.get("latency_ms") is not None
+    ]
+    cold_start_samples = {
+        "count": len(cold_results),
+        "latency_ms": _latency_summary(cold_latencies) if cold_latencies else None,
+    }
+
     return {
         "num_predictions": len(case_results),
         "accuracy": rate(accuracy_scores),
@@ -567,6 +629,9 @@ def metric_block(case_results: list[dict[str, Any]]) -> dict[str, Any]:
             "p95": percentile(latencies, 0.95),
             "mean": rate(latencies),
         },
+        "stage_latency": stage_latency_summary,
+        "latency_by_retry_count": latency_by_retry_count,
+        "cold_start_samples": cold_start_samples,
         "retry": rate(retries),
         "retry_cost": {
             "total_retries": sum(retry_counts),
@@ -722,6 +787,9 @@ def main() -> int:
         "abstention": primary_summary["abstention"],
         "answer_format_compliance": primary_summary["answer_format_compliance"],
         "latency": primary_summary["latency"],
+        "stage_latency": primary_summary.get("stage_latency", {}),
+        "latency_by_retry_count": primary_summary.get("latency_by_retry_count", {}),
+        "cold_start_samples": primary_summary.get("cold_start_samples", {}),
         "retry": primary_summary["retry"],
         "by_query_type": primary_summary["by_query_type"],
         "by_hardcase_category": primary_summary.get("by_hardcase_category", {}),
