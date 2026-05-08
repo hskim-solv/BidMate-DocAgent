@@ -9,6 +9,13 @@ import sys
 from typing import Any
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
+DATASET_PRIVACY_KEYS = (
+    "type",
+    "privacy",
+    "corpus_size",
+    "anonymized",
+    "comparison_group",
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -25,6 +32,13 @@ def parse_args() -> argparse.Namespace:
 def repo_path(value: str | Path) -> Path:
     path = Path(value)
     return path if path.is_absolute() else ROOT_DIR / path
+
+
+def display_path(path: Path) -> str:
+    try:
+        return str(path.relative_to(ROOT_DIR))
+    except ValueError:
+        return str(path)
 
 
 def load_json(path: Path) -> Any:
@@ -60,15 +74,24 @@ def metric_block(summary: dict[str, Any] | None) -> dict[str, Any]:
         "accuracy",
         "groundedness",
         "citation_precision",
+        "citation_page_precision",
+        "citation_region_precision",
+        "citation_grounding",
         "answer_format_compliance",
         "abstention",
         "retry",
         "latency",
         "retry_cost",
         "retry_reason_counts",
+        "citation_grounding_error_counts",
         "by_hardcase_category",
     ]
     return {key: summary.get(key) for key in keys if key in summary}
+
+
+def dataset_privacy_metadata(dataset: dict[str, Any] | None) -> dict[str, Any]:
+    dataset = dataset or {}
+    return {key: dataset.get(key) for key in DATASET_PRIVACY_KEYS if key in dataset}
 
 
 def registry_entry(manifest: dict[str, Any]) -> dict[str, Any]:
@@ -87,13 +110,14 @@ def registry_entry(manifest: dict[str, Any]) -> dict[str, Any]:
                 "metrics": metric_block(metrics_by_run.get(name)),
             }
         )
-    return {
+    dataset = manifest.get("suite", {}).get("dataset", {}) or {}
+    entry = {
         "run_id": manifest["run_id"],
         "generated_at": manifest.get("generated_at"),
         "git_commit": manifest.get("git_commit"),
         "git_dirty": bool(manifest.get("git_dirty")),
         "suite_id": manifest.get("suite", {}).get("id"),
-        "dataset_id": manifest.get("suite", {}).get("dataset", {}).get("id"),
+        "dataset_id": dataset.get("id"),
         "ablation_suite_id": manifest.get("ablation_suite", {}).get("id"),
         "baseline_run": baseline_run,
         "primary_run": primary_run,
@@ -104,6 +128,15 @@ def registry_entry(manifest: dict[str, Any]) -> dict[str, Any]:
             "groundedness": delta_value(primary.get("groundedness"), baseline.get("groundedness")),
             "citation_precision": delta_value(
                 primary.get("citation_precision"), baseline.get("citation_precision")
+            ),
+            "citation_page_precision": delta_value(
+                primary.get("citation_page_precision"), baseline.get("citation_page_precision")
+            ),
+            "citation_region_precision": delta_value(
+                primary.get("citation_region_precision"), baseline.get("citation_region_precision")
+            ),
+            "citation_grounding": delta_value(
+                primary.get("citation_grounding"), baseline.get("citation_grounding")
             ),
             "answer_format_compliance": delta_value(
                 primary.get("answer_format_compliance"),
@@ -119,6 +152,10 @@ def registry_entry(manifest: dict[str, Any]) -> dict[str, Any]:
         "artifact_manifest": manifest.get("artifacts", {}).get("run_manifest"),
         "runs": runs,
     }
+    privacy_metadata = dataset_privacy_metadata(dataset)
+    if privacy_metadata:
+        entry["dataset"] = privacy_metadata
+    return entry
 
 
 def delta_value(primary: Any, baseline: Any) -> float | None:
@@ -154,7 +191,7 @@ def render_docs(registry: dict[str, Any]) -> str:
     lines = [
         "# Ablation Results",
         "",
-        "이 문서는 커밋 가능한 집계 지표만 남긴다. Raw predictions, traces, logs, latency samples, error examples는 `artifacts/benchmarks/` 아래에 생성되며 Git에 커밋하지 않는다.",
+        "이 문서는 커밋 가능한 집계 지표만 남긴다. 원시 예측, 진단 로그, 지연시간 샘플, 오류 예시는 `artifacts/benchmarks/` 아래에 생성되며 Git에 커밋하지 않는다.",
         "",
         "## Latest Run",
         "",
@@ -172,6 +209,9 @@ def render_docs(registry: dict[str, Any]) -> str:
         table_row("Accuracy", baseline, primary, "accuracy"),
         table_row("Groundedness", baseline, primary, "groundedness"),
         table_row("Citation Precision", baseline, primary, "citation_precision"),
+        table_row("Citation Page Precision", baseline, primary, "citation_page_precision"),
+        table_row("Citation Region Precision", baseline, primary, "citation_region_precision"),
+        table_row("Citation Grounding", baseline, primary, "citation_grounding"),
         table_row("Format Compliance", baseline, primary, "answer_format_compliance"),
         table_row("Abstention", baseline, primary, "abstention"),
         table_row("Retry Rate", baseline, primary, "retry"),
@@ -186,14 +226,14 @@ def render_docs(registry: dict[str, Any]) -> str:
         "",
         "## Ablation Table",
         "",
-        "| Run | Pipeline | Top-k | Metadata-first | Rerank | Verifier/Retry | Retrieval | Prompt | Accuracy | Groundedness | Citation | Format | Abstention | Retry | Latency p95 |",
-        "|---|---|---:|---:|---:|---:|---|---|---:|---:|---:|---:|---:|---:|---:|",
+        "| Run | Pipeline | Top-k | Metadata-first | Rerank | Verifier/Retry | Retrieval | Prompt | Accuracy | Groundedness | Citation | Citation Grounding | Format | Abstention | Retry | Latency p95 |",
+        "|---|---|---:|---:|---:|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for run in latest.get("runs") or []:
         flags = run.get("flags") or {}
         metrics = run.get("metrics") or {}
         lines.append(
-            "| {name} | {pipeline} | {top_k} | {metadata_first} | {rerank} | {verifier_retry} | {retrieval_mode} | {prompt} | {accuracy} | {groundedness} | {citation} | {format} | {abstention} | {retry} | {latency} |".format(
+            "| {name} | {pipeline} | {top_k} | {metadata_first} | {rerank} | {verifier_retry} | {retrieval_mode} | {prompt} | {accuracy} | {groundedness} | {citation} | {citation_grounding} | {format} | {abstention} | {retry} | {latency} |".format(
                 name=run.get("name"),
                 pipeline=flags.get("pipeline", ""),
                 top_k=fmt_top_k(flags.get("top_k")),
@@ -205,6 +245,7 @@ def render_docs(registry: dict[str, Any]) -> str:
                 accuracy=fmt_rate(metrics.get("accuracy")),
                 groundedness=fmt_rate(metrics.get("groundedness")),
                 citation=fmt_rate(metrics.get("citation_precision")),
+                citation_grounding=fmt_rate(metrics.get("citation_grounding")),
                 format=fmt_rate(metrics.get("answer_format_compliance")),
                 abstention=fmt_rate(metrics.get("abstention")),
                 retry=fmt_rate(metrics.get("retry")),
@@ -219,24 +260,40 @@ def render_docs(registry: dict[str, Any]) -> str:
                 "",
                 "## Hard-case Slices",
                 "",
-                "| Category | Cases | Accuracy | Groundedness | Citation | Format | Abstention | Retry |",
-                "|---|---:|---:|---:|---:|---:|---:|---:|",
+                "| Category | Cases | Accuracy | Groundedness | Citation | Citation Grounding | Format | Abstention | Retry |",
+                "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
             ]
         )
         for category in sorted(hardcase_metrics):
             metrics = hardcase_metrics[category] or {}
             lines.append(
-                "| {category} | {cases} | {accuracy} | {groundedness} | {citation} | {format} | {abstention} | {retry} |".format(
+                "| {category} | {cases} | {accuracy} | {groundedness} | {citation} | {citation_grounding} | {format} | {abstention} | {retry} |".format(
                     category=category,
                     cases=metrics.get("num_predictions", "N/A"),
                     accuracy=fmt_rate(metrics.get("accuracy")),
                     groundedness=fmt_rate(metrics.get("groundedness")),
                     citation=fmt_rate(metrics.get("citation_precision")),
+                    citation_grounding=fmt_rate(metrics.get("citation_grounding")),
                     format=fmt_rate(metrics.get("answer_format_compliance")),
                     abstention=fmt_rate(metrics.get("abstention")),
                     retry=fmt_rate(metrics.get("retry")),
                 )
             )
+
+    comparison_rows = public_private_comparison_rows(entries)
+    if comparison_rows:
+        lines.extend(
+            [
+                "",
+                "## Public vs Private Aggregate",
+                "",
+                "이 표는 공개 synthetic 결과와 익명 private aggregate를 함께 볼 때만 생성된다. private row는 원문, 파일명, 기관명, 질의 본문, 개별 답변, 실행 추적 없이 집계 지표만 사용한다.",
+                "",
+                "| Metric | Public primary | Private primary | Delta |",
+                "|---|---:|---:|---:|",
+            ]
+        )
+        lines.extend(comparison_rows)
 
     lines.extend(
         [
@@ -256,6 +313,85 @@ def render_docs(registry: dict[str, Any]) -> str:
         ]
     )
     return "\n".join(lines) + "\n"
+
+
+def public_private_comparison_rows(entries: list[dict[str, Any]]) -> list[str]:
+    private_entry = latest_entry(entries, is_private=True)
+    public_entry = matching_public_entry(entries, private_entry)
+    if not public_entry or not private_entry:
+        return []
+
+    public_metrics = public_entry.get("primary_metrics") or {}
+    private_metrics = private_entry.get("primary_metrics") or {}
+    rows = [
+        comparison_row("Cases", public_metrics, private_metrics, "num_predictions", formatter=fmt_count),
+        comparison_row("Accuracy", public_metrics, private_metrics, "accuracy"),
+        comparison_row("Groundedness", public_metrics, private_metrics, "groundedness"),
+        comparison_row("Citation Precision", public_metrics, private_metrics, "citation_precision"),
+        comparison_row("Citation Grounding", public_metrics, private_metrics, "citation_grounding"),
+        comparison_row("Format Compliance", public_metrics, private_metrics, "answer_format_compliance"),
+        comparison_row("Abstention", public_metrics, private_metrics, "abstention"),
+        comparison_row("Retry Rate", public_metrics, private_metrics, "retry"),
+        "| Latency p95 | {public} | {private} | {delta} |".format(
+            public=fmt_latency(public_metrics.get("latency")),
+            private=fmt_latency(private_metrics.get("latency")),
+            delta=fmt_delta(
+                (private_metrics.get("latency") or {}).get("p95"),
+                (public_metrics.get("latency") or {}).get("p95"),
+            ),
+        ),
+    ]
+    return rows
+
+
+def matching_public_entry(entries: list[dict[str, Any]], private_entry: dict[str, Any] | None) -> dict[str, Any] | None:
+    public_entries = [entry for entry in entries if not entry_is_private(entry)]
+    if not public_entries:
+        return None
+    comparison_group = str((private_entry.get("dataset") or {}).get("comparison_group") or "") if private_entry else ""
+    if comparison_group:
+        matched = [
+            entry
+            for entry in public_entries
+            if entry.get("suite_id") == comparison_group or entry.get("dataset_id") == comparison_group
+        ]
+        if matched:
+            return sorted(matched, key=lambda item: str(item.get("generated_at") or item.get("run_id") or ""))[-1]
+    return sorted(public_entries, key=lambda item: str(item.get("generated_at") or item.get("run_id") or ""))[-1]
+
+
+def latest_entry(entries: list[dict[str, Any]], *, is_private: bool) -> dict[str, Any] | None:
+    candidates = [entry for entry in entries if entry_is_private(entry) is is_private]
+    if not candidates:
+        return None
+    return sorted(candidates, key=lambda item: str(item.get("generated_at") or item.get("run_id") or ""))[-1]
+
+
+def entry_is_private(entry: dict[str, Any]) -> bool:
+    dataset = entry.get("dataset") or {}
+    dataset_type = str(dataset.get("type") or "")
+    privacy = str(dataset.get("privacy") or "")
+    return bool(dataset.get("anonymized")) or "private" in dataset_type or "private" in privacy
+
+
+def comparison_row(
+    label: str,
+    public_metrics: dict[str, Any],
+    private_metrics: dict[str, Any],
+    key: str,
+    *,
+    formatter: Any = fmt_rate,
+) -> str:
+    return "| {label} | {public} | {private} | {delta} |".format(
+        label=label,
+        public=formatter(public_metrics.get(key)),
+        private=formatter(private_metrics.get(key)),
+        delta=fmt_delta(private_metrics.get(key), public_metrics.get(key)),
+    )
+
+
+def fmt_count(value: Any) -> str:
+    return str(value) if isinstance(value, int) else "N/A"
 
 
 def table_row(label: str, baseline: dict[str, Any], primary: dict[str, Any], key: str) -> str:
@@ -303,8 +439,8 @@ def main() -> int:
     docs_path.parent.mkdir(parents=True, exist_ok=True)
     registry_path.write_text(next_registry_text, encoding="utf-8")
     docs_path.write_text(next_docs_text, encoding="utf-8")
-    print(f"[OK] Updated benchmark registry: {registry_path.relative_to(ROOT_DIR)}")
-    print(f"[OK] Updated ablation docs: {docs_path.relative_to(ROOT_DIR)}")
+    print(f"[OK] Updated benchmark registry: {display_path(registry_path)}")
+    print(f"[OK] Updated ablation docs: {display_path(docs_path)}")
     return 0
 
 
