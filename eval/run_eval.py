@@ -250,6 +250,20 @@ def score_case(
         else bool(evidence)
     )
 
+    comparison_target_recall: float | None = None
+    comparison_pool_recall: float | None = None
+    if query_type == "multi_doc" and len(expected_doc_ids) >= 2:
+        covered = expected_doc_ids & evidence_doc_ids
+        comparison_target_recall = len(covered) / len(expected_doc_ids)
+        coverage_after = (
+            ((prediction.get("plan") or {}).get("comparison_coverage") or {}).get("after") or {}
+        )
+        pool_doc_ids = {doc_id for doc_id, count in coverage_after.items() if count > 0}
+        if pool_doc_ids:
+            comparison_pool_recall = (
+                len(expected_doc_ids & pool_doc_ids) / len(expected_doc_ids)
+            )
+
     if answerable:
         doc_match = expected_doc_ids.issubset(evidence_doc_ids)
         term_match = contains_all_terms(combined_text, expected_terms)
@@ -281,6 +295,8 @@ def score_case(
         "groundedness": groundedness,
         "citation_precision": citation_precision,
         "abstention": abstention,
+        "comparison_target_recall": comparison_target_recall,
+        "comparison_pool_recall": comparison_pool_recall,
         "latency_ms": diagnostics.get("latency_ms"),
         "retry_count": diagnostics.get("retry_count", 0),
         "retry_trigger_reasons": retry_trigger_reasons(prediction),
@@ -304,6 +320,16 @@ def metric_block(case_results: list[dict[str, Any]]) -> dict[str, Any]:
         r["citation_precision"] for r in case_results if r["citation_precision"] is not None
     ]
     abstention_scores = [r["abstention"] for r in case_results if r["abstention"] is not None]
+    comparison_recall_scores = [
+        r["comparison_target_recall"]
+        for r in case_results
+        if r.get("comparison_target_recall") is not None
+    ]
+    comparison_pool_recall_scores = [
+        r["comparison_pool_recall"]
+        for r in case_results
+        if r.get("comparison_pool_recall") is not None
+    ]
     format_scores = [
         r["answer_format_compliance"]
         for r in case_results
@@ -316,7 +342,7 @@ def metric_block(case_results: list[dict[str, Any]]) -> dict[str, Any]:
         reason for result in case_results for reason in result.get("retry_trigger_reasons") or []
     )
 
-    return {
+    block: dict[str, Any] = {
         "num_predictions": len(case_results),
         "accuracy": rate(accuracy_scores),
         "groundedness": rate(groundedness_scores),
@@ -337,6 +363,17 @@ def metric_block(case_results: list[dict[str, Any]]) -> dict[str, Any]:
         },
         "retry_reason_counts": dict(sorted(retry_reason_counts.items())),
     }
+    if comparison_recall_scores:
+        block["comparison_target_recall"] = rate(comparison_recall_scores)
+        block["comparison_target_full_coverage_rate"] = rate(
+            [1.0 if score >= 1.0 - 1e-9 else 0.0 for score in comparison_recall_scores]
+        )
+    if comparison_pool_recall_scores:
+        block["comparison_pool_recall"] = rate(comparison_pool_recall_scores)
+        block["comparison_pool_full_coverage_rate"] = rate(
+            [1.0 if score >= 1.0 - 1e-9 else 0.0 for score in comparison_pool_recall_scores]
+        )
+    return block
 
 
 def summarize_run(
