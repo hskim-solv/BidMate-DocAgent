@@ -8,15 +8,29 @@ answer_policy:
   require_claim_citations: true
 ablation_runs:
   - name: full
+    retrieval_strategy: metadata_rerank
     metadata_first: true
     rerank: true
     verifier_retry: true
     retrieval_mode: flat
   - name: hierarchical
+    retrieval_strategy: hierarchical
     metadata_first: true
     rerank: true
     verifier_retry: true
     retrieval_mode: hierarchical
+  - name: naive_keyword
+    retrieval_strategy: naive
+    metadata_first: false
+    rerank: false
+    verifier_retry: false
+    retrieval_mode: flat
+  - name: dense_only
+    retrieval_strategy: dense
+    metadata_first: false
+    rerank: false
+    verifier_retry: false
+    retrieval_mode: flat
   - name: no_metadata_first
     metadata_first: false
     rerank: true

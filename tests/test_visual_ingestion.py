@@ -1,5 +1,6 @@
 import csv
 import importlib.util
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -10,6 +11,7 @@ from visual_ingestion import (
     extract_table_candidates,
     load_visual_documents_from_metadata_csv,
     parse_visual_document,
+    table_sections_from_tables,
 )
 
 
@@ -107,6 +109,44 @@ class VisualIngestionTest(unittest.TestCase):
         self.assertEqual("사업명", fields[0]["key"])
         self.assertEqual("후보 추출 사업", fields[0]["value"])
 
+    def test_table_candidates_become_searchable_sections(self) -> None:
+        tables = [
+            {
+                "table_id": "table-1",
+                "page_number": 2,
+                "bbox": [10, 20, 120, 160],
+                "rows": [["항목", "요구사항"], ["보안", "접근 통제"], ["로그", "감사 추적"]],
+                "source": "unit",
+            }
+        ]
+
+        sections = table_sections_from_tables(tables)
+
+        self.assertEqual(1, len(sections))
+        self.assertEqual("table", sections[0]["content_type"])
+        self.assertEqual("table-1", sections[0]["table_id"])
+        self.assertIn("로그 | 감사 추적", sections[0]["text"])
+        self.assertEqual([2, 2], sections[0]["page_span"])
+
+    def test_plain_text_hwp_visual_input_uses_adapter(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            hwp_path = Path(tmp_dir) / "sample.hwp"
+            hwp_path.write_text(
+                "사업명: HWP adapter 사업\n보안 요구사항은 접근 통제입니다.",
+                encoding="utf-8",
+            )
+
+            document, artifact = parse_visual_document(
+                hwp_path,
+                doc_id="hwp-adapter",
+                title="HWP adapter 사업",
+            )
+
+        self.assertIsNotNone(document)
+        self.assertEqual("parsed", artifact["diagnostics"]["status"])
+        self.assertEqual("visual_parsing_v2", document["metadata"]["text_source"])
+        self.assertIn("HWP adapter 사업", document["sections"][0]["text"])
+
     def test_metadata_csv_visual_mode_falls_back_for_hwp(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
@@ -145,6 +185,8 @@ class VisualIngestionTest(unittest.TestCase):
             self.assertEqual(1, report["summary"]["fallback_documents"])
             self.assertEqual("data_list_csv_text", documents[0]["metadata"]["text_source"])
             self.assertEqual("visual_fallback_hwp", documents[0]["metadata"]["visual_fallback_reason"])
+            artifact = json.loads(Path(report["records"][0]["artifact_path"]).read_text(encoding="utf-8"))
+            self.assertIn("hwp_parser_unavailable", artifact["diagnostics"]["reasons"])
 
     def test_region_metadata_reaches_chunks_evidence_and_citations(self) -> None:
         region = {

@@ -54,7 +54,11 @@
         "metadata_first": { "type": "boolean" },
         "rerank": { "type": "boolean" },
         "verifier_retry": { "type": "boolean" },
-        "retrieval_mode": { "type": "string", "enum": ["flat", "hierarchical"] }
+        "retrieval_mode": { "type": "string", "enum": ["flat", "hierarchical"] },
+        "retrieval_strategy": {
+          "type": ["string", "null"],
+          "enum": ["metadata_rerank", "dense", "naive", "hierarchical", null]
+        }
       },
       "additionalProperties": false
     },

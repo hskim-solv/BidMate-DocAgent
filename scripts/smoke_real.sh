@@ -71,9 +71,12 @@ python3 eval/run_eval.py --index_dir "$INDEX_DIR" --output_dir "$REPORT_DIR" --c
 
 REPORT_JSON="$REPORT_DIR/eval_summary.json"
 require_file "$REPORT_JSON"
+AGGREGATE_JSON="$REPORT_DIR/eval_aggregate.json"
+python3 -c 'import json, sys; src, dst = sys.argv[1:3]; data = json.load(open(src, encoding="utf-8")); keep = {key: data.get(key) for key in ("mode", "num_predictions", "accuracy", "groundedness", "citation_precision", "abstention", "answer_format_compliance", "retrieval", "latency", "retry", "retry_cost", "retry_reason_counts", "by_query_type")}; json.dump(keep, open(dst, "w", encoding="utf-8"), ensure_ascii=False, indent=2)' "$REPORT_JSON" "$AGGREGATE_JSON"
 
 log "Real-data smoke test completed successfully"
 echo "Generated artifacts:"
 echo "- Index dir:   $INDEX_DIR"
 echo "- Outputs dir: $OUTPUT_DIR"
 echo "- Report file: $REPORT_JSON"
+echo "- Aggregate file: $AGGREGATE_JSON"

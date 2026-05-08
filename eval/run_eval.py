@@ -19,6 +19,7 @@ QUERY_TYPES = ("single_doc", "multi_doc", "follow_up", "abstention")
 DEFAULT_ABLATION_RUNS = [
     {
         "name": "full",
+        "retrieval_strategy": "metadata_rerank",
         "metadata_first": True,
         "rerank": True,
         "verifier_retry": True,
@@ -68,6 +69,17 @@ def load_config(path: Path) -> dict[str, Any]:
         if retrieval_mode not in {"flat", "hierarchical"}:
             raise ValueError(
                 f"Eval run retrieval_mode must be 'flat' or 'hierarchical': {run['name']}"
+            )
+        retrieval_strategy = run.get("retrieval_strategy")
+        if retrieval_strategy is not None and retrieval_strategy not in {
+            "metadata_rerank",
+            "dense",
+            "naive",
+            "hierarchical",
+        }:
+            raise ValueError(
+                "Eval run retrieval_strategy must be one of "
+                f"metadata_rerank, dense, naive, hierarchical: {run['name']}"
             )
         seen_names.add(run["name"])
     return data
@@ -120,6 +132,64 @@ def answer_status(prediction: dict[str, Any]) -> str:
     return str(payload.get("status") or diagnostics.get("answer_status") or "")
 
 
+def retrieval_refs(prediction: dict[str, Any]) -> list[dict[str, Any]]:
+    diagnostics = prediction.get("diagnostics") or {}
+    attempts = [
+        attempt
+        for attempt in diagnostics.get("filter_stage_attempts") or []
+        if isinstance(attempt, dict)
+    ]
+    if not attempts:
+        return []
+    final_attempt = next((attempt for attempt in attempts if attempt.get("verified")), attempts[-1])
+    refs = final_attempt.get("retrieved_ranked_refs") or []
+    return [ref for ref in refs if isinstance(ref, dict)]
+
+
+def score_retrieval_quality(
+    expected_doc_ids: set[str],
+    prediction: dict[str, Any],
+) -> dict[str, Any]:
+    refs = retrieval_refs(prediction)
+    ranked_doc_ids = [str(ref.get("doc_id") or "") for ref in refs]
+    doc_ranks: dict[str, int] = {}
+    for rank, doc_id in enumerate(ranked_doc_ids, start=1):
+        if doc_id and doc_id not in doc_ranks:
+            doc_ranks[doc_id] = rank
+
+    if not expected_doc_ids:
+        return {
+            "retrieval_recall_at_1": None,
+            "retrieval_recall_at_3": None,
+            "retrieval_recall_at_5": None,
+            "retrieval_mrr": None,
+            "expected_doc_ranks": {},
+            "retrieval_missed_doc_ids": [],
+        }
+
+    expected_ranks = {
+        doc_id: doc_ranks.get(doc_id)
+        for doc_id in sorted(expected_doc_ids)
+    }
+    present_ranks = [rank for rank in expected_ranks.values() if isinstance(rank, int)]
+    first_rank = min(present_ranks) if present_ranks else None
+
+    def recall_at(k: int) -> float:
+        top_docs = set(ranked_doc_ids[:k])
+        return len(expected_doc_ids & top_docs) / len(expected_doc_ids)
+
+    return {
+        "retrieval_recall_at_1": recall_at(1),
+        "retrieval_recall_at_3": recall_at(3),
+        "retrieval_recall_at_5": recall_at(5),
+        "retrieval_mrr": (1.0 / first_rank) if first_rank else 0.0,
+        "expected_doc_ranks": expected_ranks,
+        "retrieval_missed_doc_ids": [
+            doc_id for doc_id, rank in expected_ranks.items() if rank is None
+        ],
+    }
+
+
 def score_answer_format(
     case: dict[str, Any],
     prediction: dict[str, Any],
@@ -149,6 +219,7 @@ def score_answer_format(
     claims = answer_claims(prediction)
     claim_targets = {str(claim.get("target") or "") for claim in claims}
     citation_checks = []
+    grounding_checks = []
     for claim in claims:
         citations = claim.get("citations") or []
         citation_checks.append(
@@ -160,17 +231,22 @@ def score_answer_format(
                 for citation in citations
             )
         )
+        claim_text = normalize_eval_text(claim.get("claim"))
+        support_text = normalize_eval_text(claim.get("support"))
+        grounding_checks.append(bool(claim_text) and claim_text in support_text)
     citations_ok = True
     if require_claim_citations and claims:
         citations_ok = all(citation_checks)
     elif require_claim_citations and int(min_claims) > 0:
         citations_ok = False
+    grounding_ok = all(grounding_checks) if claims else int(min_claims) == 0
 
     checks = {
         "status_match": answer_status(prediction) == str(expected_status),
         "min_claims": len(claims) >= int(min_claims),
         "claim_targets": expected_targets.issubset(claim_targets),
         "claim_citations": citations_ok,
+        "claim_grounding": grounding_ok,
     }
     return {
         "expected_answer_status": str(expected_status),
@@ -181,6 +257,10 @@ def score_answer_format(
         "format_checks": checks,
         "answer_format_compliance": 1.0 if all(checks.values()) else 0.0,
     }
+
+
+def normalize_eval_text(value: Any) -> str:
+    return "".join(str(value or "").lower().split())
 
 
 def score_case(
@@ -204,6 +284,7 @@ def score_case(
     context_resolution = diagnostics.get("context_resolution") or {}
     abstained = bool(diagnostics.get("abstained"))
     answer_format = score_answer_format(case, prediction, answer_policy)
+    retrieval_quality = score_retrieval_quality(expected_doc_ids, prediction)
 
     citation_doc_precision = 0.0
     if evidence_doc_ids:
@@ -253,6 +334,7 @@ def score_case(
         "context_resolution_reason": context_resolution.get("reason"),
         "resolved_query": prediction.get("resolved_query"),
         "abstained": abstained,
+        **retrieval_quality,
         **answer_format,
         "answer": answer,
     }
@@ -278,6 +360,28 @@ def metric_block(case_results: list[dict[str, Any]]) -> dict[str, Any]:
     retry_reason_counts = Counter(
         reason for result in case_results for reason in result.get("retry_trigger_reasons") or []
     )
+    retrieval = {
+        "recall_at_1": rate(
+            [r["retrieval_recall_at_1"] for r in case_results if r["retrieval_recall_at_1"] is not None]
+        ),
+        "recall_at_3": rate(
+            [r["retrieval_recall_at_3"] for r in case_results if r["retrieval_recall_at_3"] is not None]
+        ),
+        "recall_at_5": rate(
+            [r["retrieval_recall_at_5"] for r in case_results if r["retrieval_recall_at_5"] is not None]
+        ),
+        "mrr": rate(
+            [r["retrieval_mrr"] for r in case_results if r["retrieval_mrr"] is not None]
+        ),
+        "missed_cases": [
+            {
+                "id": result.get("id"),
+                "missed_doc_ids": result.get("retrieval_missed_doc_ids") or [],
+            }
+            for result in case_results
+            if result.get("retrieval_missed_doc_ids")
+        ],
+    }
 
     return {
         "num_predictions": len(case_results),
@@ -299,6 +403,7 @@ def metric_block(case_results: list[dict[str, Any]]) -> dict[str, Any]:
             "cases_with_retry": sum(1 for count in retry_counts if count > 0),
         },
         "retry_reason_counts": dict(sorted(retry_reason_counts.items())),
+        "retrieval": retrieval,
     }
 
 
@@ -310,6 +415,7 @@ def summarize_run(
 ) -> dict[str, Any]:
     summary = {
         "name": name,
+        "retrieval_strategy": str(run_config.get("retrieval_strategy") or ""),
         "metadata_first": bool(run_config.get("metadata_first", True)),
         "rerank": bool(run_config.get("rerank", True)),
         "verifier_retry": bool(run_config.get("verifier_retry", True)),
@@ -346,6 +452,7 @@ def evaluate_run(
                 rerank=bool(run_config.get("rerank", True)),
                 verifier_retry=bool(run_config.get("verifier_retry", True)),
                 retrieval_mode=str(run_config.get("retrieval_mode", "flat")),
+                retrieval_strategy=run_config.get("retrieval_strategy"),
                 conversation_state=conversation_state,
             )
             conversation_state = prior_prediction.get("conversation_state") or conversation_state
@@ -358,6 +465,7 @@ def evaluate_run(
             rerank=bool(run_config.get("rerank", True)),
             verifier_retry=bool(run_config.get("verifier_retry", True)),
             retrieval_mode=str(run_config.get("retrieval_mode", "flat")),
+            retrieval_strategy=run_config.get("retrieval_strategy"),
             conversation_state=conversation_state,
         )
         case_results.append(score_case(case, prediction, answer_policy))
@@ -371,6 +479,7 @@ def ablation_runs(config: dict[str, Any]) -> list[dict[str, Any]]:
         normalized.append(
             {
                 "name": str(run["name"]),
+                "retrieval_strategy": run.get("retrieval_strategy"),
                 "metadata_first": bool(run.get("metadata_first", True)),
                 "rerank": bool(run.get("rerank", True)),
                 "verifier_retry": bool(run.get("verifier_retry", True)),
@@ -429,6 +538,7 @@ def main() -> int:
         "citation_precision": full_summary["citation_precision"],
         "abstention": full_summary["abstention"],
         "answer_format_compliance": full_summary["answer_format_compliance"],
+        "retrieval": full_summary.get("retrieval"),
         "latency": full_summary["latency"],
         "retry": full_summary["retry"],
         "by_query_type": full_summary["by_query_type"],

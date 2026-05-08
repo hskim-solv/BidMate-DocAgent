@@ -1,0 +1,7 @@
+Public HWP text fixture for visual_input_dir smoke.
+사업명: 공개 HWP 파싱 검증 사업
+요구사항
+보안 요구사항은 접근 통제와 감사 로그를 포함한다.
+항목 | 요구사항
+보안 | 접근 통제
+로그 | 감사 추적

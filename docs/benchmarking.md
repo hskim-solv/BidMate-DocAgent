@@ -5,7 +5,7 @@
 ## Source Of Truth
 
 - `benchmarks/suites/public_synthetic_rfp.yaml`: 공개 synthetic RFP benchmark suite 정의
-- `benchmarks/ablations/rag_quality_axes.yaml`: baseline, primary run, ablation flag 정의
+- `benchmarks/ablations/rag_quality_axes.yaml`: naive baseline, primary run, retrieval strategy/ablation flag 정의
 - `benchmarks/registry.schema.json`: registry와 run manifest의 최소 schema
 - `benchmarks/registry.json`: 커밋 가능한 집계 registry
 
@@ -23,7 +23,7 @@ python3 scripts/run_benchmark.py \
 
 생성되는 로컬 파일은 다음과 같다.
 
-- `run_manifest.json`: run id, git commit, suite id, ablation flags, model/retriever/reranker/verifier config, metrics, latency, artifact path
+- `run_manifest.json`: run id, git commit, suite id, ablation flags, retrieval strategy, model/retriever/reranker/verifier config, retrieval/answer metrics, latency, artifact path
 - `eval_summary.json`: benchmark run의 aggregate eval summary
 - `predictions.jsonl`: per-example prediction dump
 - `latency_samples.jsonl`: per-example latency/retry sample
@@ -49,4 +49,4 @@ python3 scripts/summarize_benchmark.py \
   --check
 ```
 
-요약 결과는 `benchmarks/registry.json`과 `docs/ablation-results.md`에 반영된다. 문서에는 2차 가공 결과와 집계 지표만 남기며, private RFP 기반 실험을 수행하더라도 원문이나 per-example output은 포함하지 않는다.
+요약 결과는 `benchmarks/registry.json`과 `docs/ablation-results.md`에 반영된다. 문서에는 2차 가공 결과와 집계 지표만 남기며, private RFP 기반 실험을 수행하더라도 원문이나 per-example output은 포함하지 않는다. Retrieval Recall@3와 MRR은 answer formatting과 별도로 expected document가 후보에 들어왔는지 확인하기 위한 기본 retrieval 품질 지표다.

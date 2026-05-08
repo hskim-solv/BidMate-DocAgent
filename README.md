@@ -3,7 +3,7 @@
 
 ## TL;DR
 - **문제**: 길고 복잡한 RFP 문서에서 실무 의사결정에 필요한 핵심 조건(예산/일정/요구사항/제출조건)을 빠르게 찾기 어렵습니다.
-- **해결**: 질문 유형 분석 + metadata-first 검색 + local dense retrieval/reranking + 근거 검증/retry를 결합한 Agentic RAG 파이프라인을 구현했습니다.
+- **해결**: naive keyword baseline부터 metadata-first 검색, local dense retrieval/reranking, 근거 검증/retry까지 같은 평가 루프에서 비교하는 Agentic RAG 파이프라인을 구현했습니다.
 - **성과**: 공개 synthetic RFP 평가셋에서 단일 추출/다문서 비교/후속질문/부재판별을 포함한 근거 기반 응답 품질을 검증했습니다.
 - **재현**: 실행 방법과 평가 절차를 문서화해 동일 환경에서 재검증 가능하도록 구성했습니다.
 
@@ -18,13 +18,13 @@
 ### 2) 해결 (Solution)
 - **Query Analyzer**: 질문 유형 및 핵심 엔터티(기관/사업/주제) 추출
 - **Planner**: 메타데이터 필터 중심 검색 전략 수립
-- **Retriever**: dense retrieval + reranking
+- **Retriever**: naive keyword, dense, metadata-first reranking, hierarchical evidence assembly 전략 지원
 - **Verifier/Retry**: 근거 부족 시 재검색·재시도 후 grounded answer 생성
 - **Answer Policy**: claim 단위 citation, partial/insufficient 상태, 사람이 읽는 `answer_text`를 함께 출력
 
 ### 3) 성과 (Outcome)
 - 평가 범위: 단일 문서 추출, 단일 문서 심화 탐색, 다문서 비교, 후속 질문, 부재 정보 판별
-- 핵심 지표: Answer Accuracy, Groundedness, Citation Precision, Abstention Accuracy, Latency, Retry Rate
+- 핵심 지표: Answer Accuracy, Retrieval Recall@k/MRR, Groundedness, Citation Precision, Abstention Accuracy, Latency, Retry Rate
 - 상세 수치/해석은 아래 성능표 및 `docs/` 문서 참고
 
 ### 4) 재현 (Reproducibility)
@@ -50,12 +50,12 @@
 이 프로젝트가 답하려는 핵심 질문은 다음 7개입니다.
 
 1. **왜 이 문제를 골랐는가**: RFP QA는 단순 검색보다 다문서 비교, 근거 정합성, 부재판별이 중요해 RAG 역량을 검증하기 좋습니다.
-2. **성공 기준을 어떻게 정했는가**: 답변 정확도뿐 아니라 Groundedness, Citation Precision, Abstention, Latency/Retry를 함께 봅니다.
+2. **성공 기준을 어떻게 정했는가**: 답변 정확도뿐 아니라 Retrieval Recall/MRR, Groundedness, Citation Precision, Abstention, Latency/Retry를 함께 봅니다.
 3. **어떤 실패가 났는가**: 메타데이터 불일치, 비교 질의의 한쪽 문서 누락, 후속 질문의 엔터티 소실을 주요 실패로 분리했습니다.
 4. **어떤 실험을 비교했는가**: keyword-only, dense-only, metadata-first+dense/rerank, verifier/retry 유무를 비교 축으로 삼았습니다.
 5. **왜 A안이 아니라 B안을 택했는가**: 생성 유창성보다 근거 재현성과 검증 가능성을 우선해 metadata-first + verifier/retry 구조를 채택했습니다.
 6. **에이전트 산출물을 어떻게 검증했는가**: evidence doc id, expected terms, abstention 여부, README metric sync check로 산출물을 검증합니다.
-7. **다음 실험을 왜 그렇게 설계했는가**: 평가셋 확대, citation 자동 검증, latency/retry 비용 분석을 다음 병목 확인 실험으로 둡니다.
+7. **다음 실험을 왜 그렇게 설계했는가**: naive baseline 대비 retrieval/answer 품질 차이를 확인하고, citation 자동 검증과 latency/retry 비용 분석을 다음 병목 확인 실험으로 둡니다.
 
 ---
 
@@ -89,19 +89,23 @@ CLI와 리뷰 편의를 위해 같은 내용을 사람이 읽기 쉬운 `answer_
 | Follow-up | Answer Accuracy | 1.000 |
 | Evidence | Citation Precision | 1.000 |
 | Evidence | Answer Format Compliance | 1.000 |
+| Retrieval | Recall@3 | 1.000 |
+| Retrieval | MRR | 1.000 |
 | Abstention | Abstention Accuracy | 1.000 |
-| System | Latency (p50/p95) | p50 2.4ms / p95 4.7ms |
+| System | Latency (p50/p95) | p50 8.6ms / p95 56.0ms |
 | System | Retry Rate | 0.231 |
 
 ### Ablation comparison
 
-| Run | Metadata-first | Rerank | Verifier/Retry | Accuracy | Groundedness | Citation | Format | Abstention | Retry | Latency p95 |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| full | on | on | on | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 | 0.231 | 4.7ms |
-| hierarchical | on | on | on | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 | 0.231 | 5.4ms |
-| no_metadata_first | off | on | on | 1.000 | 1.000 | 0.846 | 1.000 | 1.000 | 0.000 | 4.1ms |
-| no_rerank | on | off | on | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 | 0.231 | 3.7ms |
-| no_verifier_retry | on | on | off | 1.000 | 0.769 | 0.769 | 0.769 | 0.143 | 0.000 | 2.4ms |
+| Run | Strategy | Metadata-first | Rerank | Verifier/Retry | Retrieval@3 | MRR | Accuracy | Groundedness | Citation | Format | Abstention | Retry | Latency p95 |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| full | metadata_rerank | on | on | on | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 | 0.231 | 56.0ms |
+| hierarchical | hierarchical | on | on | on | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 | 0.231 | 70.4ms |
+| naive_keyword | naive | off | off | off | 0.921 | 0.974 | 1.000 | 0.769 | 0.596 | 0.769 | 0.143 | 0.000 | 25.3ms |
+| dense_only | dense | off | off | off | 0.947 | 0.947 | 0.947 | 0.731 | 0.615 | 0.731 | 0.143 | 0.000 | 19.5ms |
+| no_metadata_first | flat | off | on | on | 1.000 | 0.974 | 1.000 | 1.000 | 0.846 | 1.000 | 1.000 | 0.000 | 37.6ms |
+| no_rerank | flat | on | off | on | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 | 0.231 | 40.1ms |
+| no_verifier_retry | flat | on | on | off | 1.000 | 1.000 | 1.000 | 0.769 | 0.769 | 0.769 | 0.143 | 0.000 | 116.5ms |
 <!-- METRICS_TABLE:END -->
 
 > 주의: 성능표는 공개 synthetic RFP 평가셋 기준입니다. 원본 RFP 데이터는 비공개 제약으로 저장소에 포함하지 않았습니다.
@@ -118,7 +122,7 @@ Query Analyzer
   ↓
 Planner (metadata-first)
   ↓
-Retriever (dense + reranking)
+Retriever (naive / dense / metadata_rerank / hierarchical)
   ↓
 Evidence Aggregator
   ↓
@@ -200,6 +204,7 @@ Benchmark source of truth는 `benchmarks/suites/`, `benchmarks/ablations/`, `ben
 > 참고: 모델을 처음 내려받아 실제 sentence-transformers 인덱스를 만들려면 `--embedding_backend sentence-transformers`를 사용하세요. 네트워크가 제한된 환경에서는 `--embedding_backend hashing`으로 재현성을 우선한 로컬 실행이 가능합니다. 산출물 경로는 `data/index`, `outputs/`, `reports/`로 고정합니다.
 > Chunking 기본값은 `--chunking_strategy auto --chunk_max_chars 520 --chunk_overlap_sentences 1`입니다. `auto`는 heading/section 구조가 있으면 section-aware chunk metadata를 저장하고, 단일 본문처럼 구조가 약하면 fixed fallback을 사용합니다.
 > 질의 기본값은 flat child-chunk retrieval입니다. parent section 단위 재조립을 확인하려면 `app.py`에 `--retrieval_mode hierarchical`을 지정하거나 `eval/config.yaml`의 `hierarchical` ablation run을 실행합니다.
+> Named retrieval strategy를 직접 비교하려면 `app.py`에 `--retrieval_strategy naive|dense|metadata_rerank|hierarchical`을 지정합니다. `naive`는 metadata filter, rerank, verifier/retry를 모두 끄고 keyword score만 사용합니다.
 
 평가 재현 기본 순서: **인덱싱(`scripts/build_index.py`) → 질의 실행(`app.py`) → 평가 실행(`eval/run_eval.py`) → 성능표 갱신(`scripts/update_readme_metrics.py`)**
 > - 인덱스: `data/index/index.json`
@@ -230,7 +235,7 @@ bash scripts/smoke_real.sh
 기본 입력은 `data/data_list.csv`와 `data/files/`이며, 산출물은 `data/index/real100/`, `outputs/real100/`, `reports/real100/`에 생성됩니다. `eval/real_config.local.yaml`이 있으면 실데이터 gold 평가까지 실행하고, 없으면 인덱싱과 대표 질의까지만 실행합니다. 로컬 평가 파일은 `eval/real_config.example.yaml`을 복사해 만들며, `eval/*.local.yaml`은 Git 추적 대상이 아닙니다.
 
 ### 선택) Document visual parsing v2
-원본 PDF/이미지 문서를 직접 파싱해 page/bbox/region metadata가 포함된 v2 artifact를 만들 수 있습니다. PDF는 text layer block을 우선 사용하고, text가 부족한 page 또는 이미지 파일은 OCR adapter를 사용합니다. HWP는 이번 v2에서 native visual parsing 대상이 아니며, metadata CSV visual mode에서는 기존 `텍스트` 컬럼으로 fallback하고 `visual_fallback_hwp`로 표시합니다.
+원본 PDF/이미지/HWP 문서를 직접 파싱해 page/bbox/region metadata가 포함된 v2 artifact를 만들 수 있습니다. PDF는 text layer block을 우선 사용하고, text가 부족한 page 또는 이미지 파일은 OCR adapter를 사용합니다. HWP는 `hwp5txt`가 있으면 native text extraction을 시도하고, metadata CSV visual mode에서는 parser가 없을 때 기존 `텍스트` 컬럼으로 fallback하면서 `visual_fallback_hwp`와 `hwp_parser_unavailable`을 표시합니다.
 
 ```bash
 python3 scripts/build_index.py \
@@ -251,6 +256,8 @@ python3 scripts/build_index.py \
 ```
 
 이 모드는 `data/index/index.json`, `data/index/ingestion_report.json`, `data/index/visual_artifacts/*.visual.json`을 생성합니다. OCR에는 Python 패키지(`pymupdf`, `pdfplumber`, `pytesseract`, `Pillow`, `opencv-python-headless`)와 시스템 Tesseract 설치가 필요합니다. OCR 엔진이 없으면 text-layer PDF는 계속 처리할 수 있지만 image-only 문서는 `ocr_unavailable`로 실패합니다.
+
+공개 smoke용 visual 입력은 `data/visual_samples/`에 둡니다. 추출된 table candidate는 별도 table section/chunk로도 인덱싱되어 table 기반 요구사항을 evidence/citation으로 추적할 수 있습니다.
 
 visual parsing 품질은 QA 평가와 별도로 parser-stage 평가로 확인합니다. 이 평가는 이미 생성된 `*.visual.json` artifact와 gold 기대값을 비교하며 OCR text, layout block, section boundary, table, field, bbox/page-region 지표를 `reports/parser_eval_summary.json`에 기록합니다. 공개 fixture로 먼저 실행해 report 형태를 확인할 수 있습니다.
 

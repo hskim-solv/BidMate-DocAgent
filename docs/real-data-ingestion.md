@@ -42,8 +42,8 @@ optional profile을 사용할 때도 index schema는 동일하며, 기본 경로
 ## v1 / v2 비교
 - v1 기본값은 `--ingestion_mode csv-text`이며, CSV의 `텍스트` 컬럼을 본문으로 사용한다.
 - v2는 `--ingestion_mode visual`을 명시했을 때만 활성화된다.
-- v2에서 PDF/image는 visual parser artifact를 만들고, HWP는 native visual parsing 대신 CSV 텍스트 fallback을 사용한다.
-- HWP fallback 문서는 metadata에 `visual_fallback_reason: visual_fallback_hwp`, `text_source: data_list_csv_text`를 유지한다.
+- v2에서 PDF/image는 visual parser artifact를 만들고, HWP는 `hwp5txt` adapter가 있으면 native text extraction을 시도한다. adapter가 없으면 CSV 텍스트 fallback을 사용한다.
+- HWP fallback 문서는 metadata에 `visual_fallback_reason: visual_fallback_hwp`, `text_source: data_list_csv_text`를 유지하고 artifact diagnostics에 `hwp_parser_unavailable`을 남긴다.
 - 두 모드 모두 기본 산출물 경로는 `data/index/index.json`과 `data/index/ingestion_report.json`이다. v2는 추가로 `data/index/visual_artifacts/*.visual.json`을 생성한다.
 
 ## 실패 처리
@@ -57,3 +57,5 @@ optional profile을 사용할 때도 index schema는 동일하며, 기본 경로
 
 ## 현재 로컬 검증 기준
 현재 로컬 실데이터 샘플은 100개 row로 구성되며, CSV 텍스트 기반 v1 경로에서 100개 문서가 모두 인덱싱된다. 이 수치는 private local data 기준이므로 공개 README 성능표에는 반영하지 않는다.
+
+실데이터 평가를 실행하면 `reports/real100/eval_summary.json` 외에 `reports/real100/eval_aggregate.json`도 생성한다. aggregate 파일은 case별 query/answer를 제거하고 accuracy, retrieval, grounding, citation, abstention, latency/retry 같은 집계값만 남기기 위한 로컬 공유용 산출물이다.

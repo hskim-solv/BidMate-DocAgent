@@ -66,6 +66,7 @@ def metric_block(summary: dict[str, Any] | None) -> dict[str, Any]:
         "latency",
         "retry_cost",
         "retry_reason_counts",
+        "retrieval",
     ]
     return {key: summary.get(key) for key in keys if key in summary}
 
@@ -110,6 +111,14 @@ def registry_entry(manifest: dict[str, Any]) -> dict[str, Any]:
             ),
             "abstention": delta_value(primary.get("abstention"), baseline.get("abstention")),
             "retry": delta_value(primary.get("retry"), baseline.get("retry")),
+            "retrieval_recall_at_3": delta_value(
+                (primary.get("retrieval") or {}).get("recall_at_3"),
+                (baseline.get("retrieval") or {}).get("recall_at_3"),
+            ),
+            "retrieval_mrr": delta_value(
+                (primary.get("retrieval") or {}).get("mrr"),
+                (baseline.get("retrieval") or {}).get("mrr"),
+            ),
             "latency_p95": delta_value(
                 (primary.get("latency") or {}).get("p95"),
                 (baseline.get("latency") or {}).get("p95"),
@@ -173,6 +182,8 @@ def render_docs(registry: dict[str, Any]) -> str:
         table_row("Citation Precision", baseline, primary, "citation_precision"),
         table_row("Format Compliance", baseline, primary, "answer_format_compliance"),
         table_row("Abstention", baseline, primary, "abstention"),
+        retrieval_row("Retrieval Recall@3", baseline, primary, "recall_at_3"),
+        retrieval_row("Retrieval MRR", baseline, primary, "mrr"),
         table_row("Retry Rate", baseline, primary, "retry"),
         "| Latency p95 | {baseline} | {primary} | {delta} |".format(
             baseline=fmt_latency(baseline.get("latency")),
@@ -185,19 +196,22 @@ def render_docs(registry: dict[str, Any]) -> str:
         "",
         "## Ablation Table",
         "",
-        "| Run | Metadata-first | Rerank | Verifier/Retry | Retrieval | Accuracy | Groundedness | Citation | Format | Abstention | Retry | Latency p95 |",
-        "|---|---:|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|",
+        "| Run | Strategy | Metadata-first | Rerank | Verifier/Retry | Retrieval@3 | MRR | Accuracy | Groundedness | Citation | Format | Abstention | Retry | Latency p95 |",
+        "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for run in latest.get("runs") or []:
         flags = run.get("flags") or {}
         metrics = run.get("metrics") or {}
+        retrieval = metrics.get("retrieval") or {}
         lines.append(
-            "| {name} | {metadata_first} | {rerank} | {verifier_retry} | {retrieval_mode} | {accuracy} | {groundedness} | {citation} | {format} | {abstention} | {retry} | {latency} |".format(
+            "| {name} | {strategy} | {metadata_first} | {rerank} | {verifier_retry} | {retrieval_at_3} | {mrr} | {accuracy} | {groundedness} | {citation} | {format} | {abstention} | {retry} | {latency} |".format(
                 name=run.get("name"),
+                strategy=flags.get("retrieval_strategy") or flags.get("retrieval_mode", "flat"),
                 metadata_first=flag(flags.get("metadata_first")),
                 rerank=flag(flags.get("rerank")),
                 verifier_retry=flag(flags.get("verifier_retry")),
-                retrieval_mode=flags.get("retrieval_mode", "flat"),
+                retrieval_at_3=fmt_rate(retrieval.get("recall_at_3")),
+                mrr=fmt_rate(retrieval.get("mrr")),
                 accuracy=fmt_rate(metrics.get("accuracy")),
                 groundedness=fmt_rate(metrics.get("groundedness")),
                 citation=fmt_rate(metrics.get("citation_precision")),
@@ -213,8 +227,9 @@ def render_docs(registry: dict[str, Any]) -> str:
             "",
             "## Interpretation",
             "",
-            f"- `{baseline_name}`는 verifier/retry를 끈 lightweight baseline이다.",
+            f"- `{baseline_name}`는 metadata/rerank/verifier를 끈 naive baseline이다.",
             f"- `{primary_name}`는 metadata-first, rerank, verifier/retry를 모두 켠 primary run이다.",
+            "- Retrieval@3와 MRR은 answer formatting과 별도로 expected document가 검색 후보에 들어왔는지 확인한다.",
             "- latency와 retry는 품질 지표와 함께 본다. retry가 늘어도 groundedness, citation, abstention 개선이 동반되는지 확인한다.",
             "- 현재 수치는 공개 synthetic RFP 평가셋 기준의 2차 가공 집계이며, 원본 RFP 문서나 raw example output은 포함하지 않는다.",
             "",
@@ -234,6 +249,17 @@ def table_row(label: str, baseline: dict[str, Any], primary: dict[str, Any], key
         baseline=fmt_rate(baseline.get(key)),
         primary=fmt_rate(primary.get(key)),
         delta=fmt_delta(primary.get(key), baseline.get(key)),
+    )
+
+
+def retrieval_row(label: str, baseline: dict[str, Any], primary: dict[str, Any], key: str) -> str:
+    baseline_retrieval = baseline.get("retrieval") or {}
+    primary_retrieval = primary.get("retrieval") or {}
+    return "| {label} | {baseline} | {primary} | {delta} |".format(
+        label=label,
+        baseline=fmt_rate(baseline_retrieval.get(key)),
+        primary=fmt_rate(primary_retrieval.get(key)),
+        delta=fmt_delta(primary_retrieval.get(key), baseline_retrieval.get(key)),
     )
 
 

@@ -16,6 +16,9 @@ QUERY="${QUERY:-기관 A와 기관 B의 AI 요구사항 차이 알려줘}"
 EVAL_CONFIG="${EVAL_CONFIG:-eval/config.yaml}"
 README_PATH="${README_PATH:-README.md}"
 EMBEDDING_BACKEND="${EMBEDDING_BACKEND:-hashing}"
+VISUAL_INPUT_DIR="${VISUAL_INPUT_DIR:-data/visual_samples}"
+VISUAL_INDEX_DIR="${VISUAL_INDEX_DIR:-/private/tmp/agentic-vlm-visual-index}"
+PARSER_REPORT_DIR="${PARSER_REPORT_DIR:-/private/tmp/agentic-vlm-parser-reports}"
 
 log() {
   printf '\n[%s] %s\n' "$(date '+%H:%M:%S')" "$1"
@@ -43,10 +46,13 @@ require_file "eval/run_eval.py"
 require_file "scripts/update_readme_metrics.py"
 require_file "scripts/run_benchmark.py"
 require_file "scripts/summarize_benchmark.py"
+require_file "eval/run_parser_eval.py"
 require_file "benchmarks/suites/public_synthetic_rfp.yaml"
 require_file "benchmarks/ablations/rag_quality_axes.yaml"
 require_file "benchmarks/registry.schema.json"
 require_file "benchmarks/registry.json"
+require_file "eval/parser_visual_v2_gold.yaml"
+require_dir "eval/fixtures/parser_visual_v2"
 require_file "docs/benchmarking.md"
 require_file "docs/ablation-results.md"
 require_file "$EVAL_CONFIG"
@@ -69,6 +75,22 @@ python3 eval/run_eval.py --index_dir "$INDEX_DIR" --output_dir "$REPORT_DIR" --c
 
 REPORT_JSON="$REPORT_DIR/eval_summary.json"
 require_file "$REPORT_JSON"
+
+if [[ -d "$VISUAL_INPUT_DIR" ]]; then
+  log "Building public visual/HWP fixture index"
+  python3 scripts/build_index.py \
+    --visual_input_dir "$VISUAL_INPUT_DIR" \
+    --output_dir "$VISUAL_INDEX_DIR" \
+    --embedding_backend "$EMBEDDING_BACKEND"
+fi
+
+log "Running parser fixture evaluation"
+python3 eval/run_parser_eval.py \
+  --artifact_dir eval/fixtures/parser_visual_v2 \
+  --gold eval/parser_visual_v2_gold.yaml \
+  --output_dir "$PARSER_REPORT_DIR" \
+  --run_name visual_v2_fixture \
+  --parser_version 2
 
 log "Checking README metrics consistency"
 if [[ "$REPORT_DIR" == "reports" ]]; then

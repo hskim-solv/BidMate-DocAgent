@@ -14,6 +14,8 @@ from dataclasses import asdict, dataclass
 import json
 from pathlib import Path
 import re
+import shutil
+import subprocess
 from typing import Any, Callable
 
 from ingestion import (
@@ -30,7 +32,7 @@ from ingestion import (
 VISUAL_SCHEMA_VERSION = 2
 PDF_MIN_TEXT_CHARS_FOR_OCR = 24
 SUPPORTED_IMAGE_FORMATS = {"png", "jpg", "jpeg", "tif", "tiff", "bmp", "webp"}
-SUPPORTED_VISUAL_FORMATS = {"pdf", *SUPPORTED_IMAGE_FORMATS}
+SUPPORTED_VISUAL_FORMATS = {"pdf", "hwp", *SUPPORTED_IMAGE_FORMATS}
 VISUAL_METADATA_FORMATS = { *SUPPORTED_VISUAL_FORMATS, "hwp" }
 
 OcrProvider = Callable[[Any], str | list[dict[str, Any]]]
@@ -289,6 +291,18 @@ def parse_visual_document(
             base_metadata,
             ocr_provider,
         )
+    elif file_format == "hwp":
+        artifact = parse_hwp_artifact(
+            source_path,
+            resolved_doc_id,
+            resolved_title,
+            agency,
+            project,
+            base_metadata,
+        )
+        if artifact["diagnostics"]["status"] == "failed":
+            return None, artifact
+        return artifact_to_document(artifact), artifact
     else:
         artifact = parse_image_artifact(
             source_path,
@@ -304,6 +318,80 @@ def parse_visual_document(
     if artifact["diagnostics"]["status"] == "failed":
         return None, artifact
     return artifact_to_document(artifact), artifact
+
+
+def parse_hwp_artifact(
+    source_path: Path,
+    doc_id: str,
+    title: str,
+    agency: str,
+    project: str,
+    metadata: dict[str, Any],
+) -> dict[str, Any]:
+    artifact = base_visual_artifact(source_path, doc_id, "hwp", title, agency, project, metadata)
+    try:
+        text, parser_name = extract_hwp_text(source_path)
+    except OcrUnavailable as exc:
+        mark_failed(artifact, "hwp_parser_unavailable", {"error": str(exc)})
+        return artifact
+    except Exception as exc:
+        mark_failed(artifact, "hwp_parse_failed", {"error": str(exc)})
+        return artifact
+
+    if not text.strip():
+        mark_failed(artifact, "empty_visual_text")
+        return artifact
+
+    region = {
+        "page_number": None,
+        "bbox": None,
+        "source": parser_name,
+        "type": "hwp_text",
+        "block_id": f"{doc_id}::hwp::text",
+    }
+    artifact["sections"] = [
+        {
+            "heading": "본문",
+            "section_path": ["본문"],
+            "text": text,
+            "page_span": None,
+            "regions": [region],
+        }
+    ]
+    add_stage(artifact, "hwp_text_extraction", "ok", {"parser": parser_name})
+    artifact["diagnostics"]["status"] = "parsed"
+    artifact["diagnostics"]["summary"] = {
+        "pages": 0,
+        "blocks": 0,
+        "tables": 0,
+        "field_candidates": 0,
+        "sections": 1,
+    }
+    return artifact
+
+
+def extract_hwp_text(source_path: Path) -> tuple[str, str]:
+    hwp5txt = shutil.which("hwp5txt")
+    if hwp5txt:
+        result = subprocess.run(
+            [hwp5txt, str(source_path)],
+            check=False,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=30,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return normalize_body_text(result.stdout), "hwp5txt"
+
+    try:
+        fixture_text = source_path.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        fixture_text = ""
+    if fixture_text.strip() and "HWP Document File" not in fixture_text[:64]:
+        return normalize_body_text(fixture_text), "plain_text_hwp_fixture"
+
+    raise OcrUnavailable("Install hwp5txt or provide CSV text fallback for HWP files.")
 
 
 def parse_pdf_artifact(
@@ -640,6 +728,7 @@ def finalize_visual_artifact(artifact: dict[str, Any]) -> None:
         artifact["tables"].extend(heuristic_tables)
     artifact["field_candidates"] = extract_field_candidates(blocks)
     artifact["sections"] = build_sections_from_blocks(blocks)
+    artifact["sections"].extend(table_sections_from_tables(artifact["tables"]))
 
     if not artifact["sections"]:
         mark_failed(artifact, "empty_visual_text")
@@ -697,12 +786,19 @@ def make_hwp_fallback_document(
         }
     ]
     artifact["diagnostics"]["status"] = "fallback"
-    artifact["diagnostics"]["reasons"] = ["visual_fallback_hwp"]
+    artifact["diagnostics"]["reasons"] = ["visual_fallback_hwp", "hwp_parser_unavailable"]
+    artifact["diagnostics"]["stages"].append(
+        {
+            "name": "hwp_text_extraction",
+            "status": "failed",
+            "reason": "hwp_parser_unavailable",
+        }
+    )
     artifact["diagnostics"]["stages"].append(
         {
             "name": "hwp_visual_parsing",
             "status": "fallback",
-            "reason": "HWP native visual parsing is out of scope for v2.",
+            "reason": "CSV text fallback was used because native HWP parsing is unavailable.",
         }
     )
     artifact["diagnostics"]["summary"] = {
@@ -921,6 +1017,50 @@ def extract_table_candidates(
     return tables
 
 
+def table_sections_from_tables(tables: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    sections = []
+    for table in tables:
+        rows = table.get("rows") or []
+        if not rows:
+            continue
+        text = table_text(rows)
+        if not text:
+            continue
+        table_id = str(table.get("table_id") or "table")
+        page_number = table.get("page_number")
+        region = {
+            "page_number": page_number if isinstance(page_number, int) else None,
+            "bbox": table.get("bbox"),
+            "source": str(table.get("source") or "table_extraction"),
+            "type": "table",
+            "block_id": table_id,
+        }
+        sections.append(
+            {
+                "heading": f"표 {table_id}",
+                "section_path": ["표", table_id],
+                "text": text,
+                "page_span": page_span_from_regions([region]),
+                "regions": [region],
+                "content_type": "table",
+                "table_id": table_id,
+            }
+        )
+    return sections
+
+
+def table_text(rows: list[Any]) -> str:
+    lines = []
+    for row in rows:
+        if not isinstance(row, list):
+            continue
+        cells = [str(cell or "").strip() for cell in row]
+        cells = [cell for cell in cells if cell]
+        if cells:
+            lines.append(" | ".join(cells))
+    return "\n".join(lines).strip()
+
+
 def extract_field_candidates(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
     candidates = []
     field_seq = 1
@@ -1097,4 +1237,3 @@ def make_visual_report(
         "summary": summary,
         "records": [asdict(record) for record in records],
     }
-

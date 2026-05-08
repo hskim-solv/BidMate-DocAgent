@@ -8,9 +8,16 @@ answer_policy:
   require_claim_citations: true
 ablation_runs:
   - name: full
+    retrieval_strategy: metadata_rerank
     metadata_first: true
     rerank: true
     verifier_retry: true
+    retrieval_mode: flat
+  - name: naive_keyword
+    retrieval_strategy: naive
+    metadata_first: false
+    rerank: false
+    verifier_retry: false
     retrieval_mode: flat
 cases:
   - id: replace_single_doc_budget_schedule
@@ -30,6 +37,114 @@ cases:
   - id: replace_absent_fact
     query_type: abstention
     query: "발주기관명 사업명의 문서에 없는 조건을 알려줘"
+    expected_doc_ids: []
+    expected_terms: []
+    expected_citation_terms: []
+    expected_claim_targets: []
+    answerable: false
+
+  - id: replace_single_doc_security
+    query_type: single_doc
+    query: "발주기관명 사업명의 보안 요구사항은?"
+    expected_doc_ids:
+      - replace-with-real-doc-id
+    expected_terms:
+      - "replace-with-security-term"
+    expected_citation_terms:
+      - "replace-with-security-term"
+    expected_claim_targets:
+      - "replace-with-agency"
+    answerable: true
+
+  - id: replace_single_doc_deliverables
+    query_type: single_doc
+    query: "발주기관명 사업명의 필수 산출물은?"
+    expected_doc_ids:
+      - replace-with-real-doc-id
+    expected_terms:
+      - "replace-with-deliverable"
+    expected_citation_terms:
+      - "replace-with-deliverable"
+    expected_claim_targets:
+      - "replace-with-agency"
+    answerable: true
+
+  - id: replace_multi_doc_requirements
+    query_type: multi_doc
+    query: "발주기관A 사업명A와 발주기관B 사업명B의 주요 요구사항을 비교해줘"
+    expected_doc_ids:
+      - replace-with-real-doc-id-a
+      - replace-with-real-doc-id-b
+    expected_terms:
+      - "replace-with-term-a"
+      - "replace-with-term-b"
+    expected_citation_terms:
+      - "replace-with-term-a"
+      - "replace-with-term-b"
+    expected_claim_targets:
+      - "replace-with-agency-a"
+      - "replace-with-agency-b"
+    answerable: true
+
+  - id: replace_multi_doc_schedule
+    query_type: multi_doc
+    query: "발주기관A 사업명A와 발주기관B 사업명B의 일정 차이를 비교해줘"
+    expected_doc_ids:
+      - replace-with-real-doc-id-a
+      - replace-with-real-doc-id-b
+    expected_terms:
+      - "replace-with-schedule-term-a"
+      - "replace-with-schedule-term-b"
+    expected_citation_terms:
+      - "replace-with-schedule-term-a"
+      - "replace-with-schedule-term-b"
+    expected_claim_targets:
+      - "replace-with-agency-a"
+      - "replace-with-agency-b"
+    answerable: true
+
+  - id: replace_follow_up_budget
+    query_type: follow_up
+    prior_turns:
+      - query: "발주기관명 사업명의 주요 요구사항은?"
+    query: "그 사업의 사업예산도 알려줘"
+    expected_doc_ids:
+      - replace-with-real-doc-id
+    expected_terms:
+      - "replace-with-budget-term"
+    expected_citation_terms:
+      - "replace-with-budget-term"
+    expected_claim_targets:
+      - "replace-with-agency"
+    answerable: true
+
+  - id: replace_follow_up_deliverables
+    query_type: follow_up
+    prior_turns:
+      - query: "발주기관명 사업명의 주요 요구사항은?"
+    query: "필수 산출물은 뭐야?"
+    expected_doc_ids:
+      - replace-with-real-doc-id
+    expected_terms:
+      - "replace-with-deliverable"
+    expected_citation_terms:
+      - "replace-with-deliverable"
+    expected_claim_targets:
+      - "replace-with-agency"
+    answerable: true
+
+  - id: replace_absent_future_scope
+    query_type: abstention
+    query: "발주기관명 사업명에 문서에 없는 미래 확장 범위가 있나?"
+    expected_doc_ids: []
+    expected_terms: []
+    expected_citation_terms: []
+    expected_claim_targets: []
+    answerable: false
+
+  - id: replace_absent_unrelated_technology
+    query_type: abstention
+    query: "발주기관명 사업명에 문서에 없는 특정 기술 요구가 있나?"
     expected_doc_ids: []
     expected_terms: []
     expected_citation_terms: []

@@ -13,6 +13,7 @@ REQUIRED_KEYS = [
     "citation_precision",
     "abstention",
     "answer_format_compliance",
+    "retrieval",
     "latency",
     "retry",
 ]
@@ -44,6 +45,13 @@ def fmt_latency(value: Any) -> str:
         if isinstance(p50, (int, float)) and isinstance(p95, (int, float)):
             return f"p50 {p50:.1f}ms / p95 {p95:.1f}ms"
     return "N/A"
+
+
+def metric_from_retrieval(summary: Dict[str, Any], metric: str) -> Any:
+    retrieval = summary.get("retrieval")
+    if not isinstance(retrieval, dict):
+        return None
+    return retrieval.get(metric)
 
 
 def metric_from_type(summary: Dict[str, Any], query_type: str, metric: str) -> Any:
@@ -80,6 +88,8 @@ def render_main_table(summary: Dict[str, Any]) -> str:
         ),
         ("Evidence", "Citation Precision", fmt_rate(summary.get("citation_precision"))),
         ("Evidence", "Answer Format Compliance", fmt_rate(summary.get("answer_format_compliance"))),
+        ("Retrieval", "Recall@3", fmt_rate(metric_from_retrieval(summary, "recall_at_3"))),
+        ("Retrieval", "MRR", fmt_rate(metric_from_retrieval(summary, "mrr"))),
         (
             "Abstention",
             "Abstention Accuracy",
@@ -102,8 +112,8 @@ def render_ablation_table(summary: Dict[str, Any]) -> str:
     table = [
         "### Ablation comparison",
         "",
-        "| Run | Metadata-first | Rerank | Verifier/Retry | Accuracy | Groundedness | Citation | Format | Abstention | Retry | Latency p95 |",
-        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "| Run | Strategy | Metadata-first | Rerank | Verifier/Retry | Retrieval@3 | MRR | Accuracy | Groundedness | Citation | Format | Abstention | Retry | Latency p95 |",
+        "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for run in runs:
         if not isinstance(run, dict):
@@ -111,13 +121,16 @@ def render_ablation_table(summary: Dict[str, Any]) -> str:
         latency = run.get("latency") if isinstance(run.get("latency"), dict) else {}
         p95 = latency.get("p95") if isinstance(latency, dict) else None
         p95_text = f"{p95:.1f}ms" if isinstance(p95, (int, float)) else "N/A"
+        retrieval = run.get("retrieval") if isinstance(run.get("retrieval"), dict) else {}
         table.append(
-            "| {name} | {metadata_first} | {rerank} | {verifier_retry} | {accuracy} | {groundedness} | {citation} | {format} | {abstention} | {retry} | {p95} |".format(
+            "| {name} | {strategy} | {metadata_first} | {rerank} | {verifier_retry} | {retrieval_at_3} | {mrr} | {accuracy} | {groundedness} | {citation} | {format} | {abstention} | {retry} | {p95} |".format(
                 name=run.get("name", "unknown"),
-                retrieval=run.get("retrieval_mode", "flat"),
+                strategy=run.get("retrieval_strategy") or run.get("retrieval_mode", "flat"),
                 metadata_first=fmt_flag(run.get("metadata_first")),
                 rerank=fmt_flag(run.get("rerank")),
                 verifier_retry=fmt_flag(run.get("verifier_retry")),
+                retrieval_at_3=fmt_rate(retrieval.get("recall_at_3")),
+                mrr=fmt_rate(retrieval.get("mrr")),
                 accuracy=fmt_rate(run.get("accuracy")),
                 groundedness=fmt_rate(run.get("groundedness")),
                 citation=fmt_rate(run.get("citation_precision")),
@@ -157,6 +170,23 @@ def normalize_outside_markers(text: str) -> str:
     return text[:start] + text[end:]
 
 
+def normalize_volatile_latency_values(text: str) -> str:
+    normalized_lines = []
+    for line in text.splitlines():
+        if "| System | Latency (p50/p95) |" in line:
+            normalized_lines.append("| System | Latency (p50/p95) | <latency> |")
+        elif line.startswith("|") and line.endswith("|") and line.count("|") >= 13:
+            cells = [cell.strip() for cell in line.strip("|").split("|")]
+            if cells and cells[0] not in {"Run", "---"}:
+                cells[-1] = "<latency>"
+                normalized_lines.append("| " + " | ".join(cells) + " |")
+            else:
+                normalized_lines.append(line)
+        else:
+            normalized_lines.append(line)
+    return "\n".join(normalized_lines)
+
+
 def main() -> int:
     args = parse_args()
     report_path = Path(args.report)
@@ -175,6 +205,9 @@ def main() -> int:
 
     if args.check:
         if original != updated:
+            if normalize_volatile_latency_values(original) == normalize_volatile_latency_values(updated):
+                print("[OK] README metrics table matches except volatile latency values")
+                return 0
             print("[FAIL] README metrics table is out of date. Run scripts/update_readme_metrics.py")
             return 1
         print("[OK] README metrics table is up-to-date")

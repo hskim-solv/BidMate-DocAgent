@@ -226,6 +226,370 @@
           }
         }
       ]
+    },
+    {
+      "run_id": "public_synthetic_rfp_20260508T022829Z",
+      "generated_at": "2026-05-08T02:28:45.533653Z",
+      "git_commit": "3657f1efd22e9dd2351afc260a7650c500e5940b",
+      "git_dirty": true,
+      "suite_id": "public_synthetic_rfp",
+      "dataset_id": "public_synthetic_rfp_v1",
+      "ablation_suite_id": "rag_quality_axes",
+      "baseline_run": "naive_keyword",
+      "primary_run": "full",
+      "baseline_metrics": {
+        "num_predictions": 26,
+        "accuracy": 1.0,
+        "groundedness": 0.7692307692307693,
+        "citation_precision": 0.5961538461538461,
+        "answer_format_compliance": 0.7692307692307693,
+        "abstention": 0.14285714285714285,
+        "retry": 0.0,
+        "latency": {
+          "p50": 13.934999999999999,
+          "p95": 52.735,
+          "mean": 20.55269230769231
+        },
+        "retry_cost": {
+          "total_retries": 0,
+          "mean_retry_count": 0.0,
+          "max_retry_count": 0,
+          "cases_with_retry": 0
+        },
+        "retry_reason_counts": {},
+        "retrieval": {
+          "recall_at_1": 0.7894736842105263,
+          "recall_at_3": 0.9210526315789473,
+          "recall_at_5": 1.0,
+          "mrr": 0.9736842105263158,
+          "missed_cases": []
+        }
+      },
+      "primary_metrics": {
+        "num_predictions": 26,
+        "accuracy": 1.0,
+        "groundedness": 1.0,
+        "citation_precision": 1.0,
+        "answer_format_compliance": 1.0,
+        "abstention": 1.0,
+        "retry": 0.23076923076923078,
+        "latency": {
+          "p50": 27.060000000000002,
+          "p95": 217.825,
+          "mean": 52.4496153846154
+        },
+        "retry_cost": {
+          "total_retries": 6,
+          "mean_retry_count": 0.23076923076923078,
+          "max_retry_count": 1,
+          "cases_with_retry": 6
+        },
+        "retry_reason_counts": {
+          "topic_not_grounded": 12
+        },
+        "retrieval": {
+          "recall_at_1": 0.8421052631578947,
+          "recall_at_3": 1.0,
+          "recall_at_5": 1.0,
+          "mrr": 1.0,
+          "missed_cases": []
+        }
+      },
+      "delta": {
+        "accuracy": 0.0,
+        "groundedness": 0.23076923076923073,
+        "citation_precision": 0.40384615384615385,
+        "answer_format_compliance": 0.23076923076923073,
+        "abstention": 0.8571428571428572,
+        "retry": 0.23076923076923078,
+        "retrieval_recall_at_3": 0.07894736842105265,
+        "retrieval_mrr": 0.02631578947368418,
+        "latency_p95": 165.08999999999997
+      },
+      "artifact_manifest": "artifacts/benchmarks/public_synthetic_rfp_20260508T022829Z/run_manifest.json",
+      "runs": [
+        {
+          "name": "dense_only",
+          "flags": {
+            "metadata_first": false,
+            "rerank": false,
+            "verifier_retry": false,
+            "retrieval_mode": "flat",
+            "retrieval_strategy": "dense"
+          },
+          "metrics": {
+            "num_predictions": 26,
+            "accuracy": 0.9473684210526315,
+            "groundedness": 0.7307692307692307,
+            "citation_precision": 0.6153846153846154,
+            "answer_format_compliance": 0.7307692307692307,
+            "abstention": 0.14285714285714285,
+            "retry": 0.0,
+            "latency": {
+              "p50": 35.205,
+              "p95": 320.6875,
+              "mean": 78.83269230769231
+            },
+            "retry_cost": {
+              "total_retries": 0,
+              "mean_retry_count": 0.0,
+              "max_retry_count": 0,
+              "cases_with_retry": 0
+            },
+            "retry_reason_counts": {},
+            "retrieval": {
+              "recall_at_1": 0.7894736842105263,
+              "recall_at_3": 0.9473684210526315,
+              "recall_at_5": 0.9473684210526315,
+              "mrr": 0.9473684210526315,
+              "missed_cases": [
+                {
+                  "id": "follow_up_c_response_target",
+                  "missed_doc_ids": [
+                    "rfp-agency-c-chatbot"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "full",
+          "flags": {
+            "metadata_first": true,
+            "rerank": true,
+            "verifier_retry": true,
+            "retrieval_mode": "flat",
+            "retrieval_strategy": "metadata_rerank"
+          },
+          "metrics": {
+            "num_predictions": 26,
+            "accuracy": 1.0,
+            "groundedness": 1.0,
+            "citation_precision": 1.0,
+            "answer_format_compliance": 1.0,
+            "abstention": 1.0,
+            "retry": 0.23076923076923078,
+            "latency": {
+              "p50": 27.060000000000002,
+              "p95": 217.825,
+              "mean": 52.4496153846154
+            },
+            "retry_cost": {
+              "total_retries": 6,
+              "mean_retry_count": 0.23076923076923078,
+              "max_retry_count": 1,
+              "cases_with_retry": 6
+            },
+            "retry_reason_counts": {
+              "topic_not_grounded": 12
+            },
+            "retrieval": {
+              "recall_at_1": 0.8421052631578947,
+              "recall_at_3": 1.0,
+              "recall_at_5": 1.0,
+              "mrr": 1.0,
+              "missed_cases": []
+            }
+          }
+        },
+        {
+          "name": "hierarchical",
+          "flags": {
+            "metadata_first": true,
+            "rerank": true,
+            "verifier_retry": true,
+            "retrieval_mode": "hierarchical",
+            "retrieval_strategy": "hierarchical"
+          },
+          "metrics": {
+            "num_predictions": 26,
+            "accuracy": 1.0,
+            "groundedness": 1.0,
+            "citation_precision": 1.0,
+            "answer_format_compliance": 1.0,
+            "abstention": 1.0,
+            "retry": 0.23076923076923078,
+            "latency": {
+              "p50": 19.485,
+              "p95": 160.425,
+              "mean": 53.9323076923077
+            },
+            "retry_cost": {
+              "total_retries": 6,
+              "mean_retry_count": 0.23076923076923078,
+              "max_retry_count": 1,
+              "cases_with_retry": 6
+            },
+            "retry_reason_counts": {
+              "topic_not_grounded": 12
+            },
+            "retrieval": {
+              "recall_at_1": 0.8421052631578947,
+              "recall_at_3": 1.0,
+              "recall_at_5": 1.0,
+              "mrr": 1.0,
+              "missed_cases": []
+            }
+          }
+        },
+        {
+          "name": "naive_keyword",
+          "flags": {
+            "metadata_first": false,
+            "rerank": false,
+            "verifier_retry": false,
+            "retrieval_mode": "flat",
+            "retrieval_strategy": "naive"
+          },
+          "metrics": {
+            "num_predictions": 26,
+            "accuracy": 1.0,
+            "groundedness": 0.7692307692307693,
+            "citation_precision": 0.5961538461538461,
+            "answer_format_compliance": 0.7692307692307693,
+            "abstention": 0.14285714285714285,
+            "retry": 0.0,
+            "latency": {
+              "p50": 13.934999999999999,
+              "p95": 52.735,
+              "mean": 20.55269230769231
+            },
+            "retry_cost": {
+              "total_retries": 0,
+              "mean_retry_count": 0.0,
+              "max_retry_count": 0,
+              "cases_with_retry": 0
+            },
+            "retry_reason_counts": {},
+            "retrieval": {
+              "recall_at_1": 0.7894736842105263,
+              "recall_at_3": 0.9210526315789473,
+              "recall_at_5": 1.0,
+              "mrr": 0.9736842105263158,
+              "missed_cases": []
+            }
+          }
+        },
+        {
+          "name": "no_metadata_first",
+          "flags": {
+            "metadata_first": false,
+            "rerank": true,
+            "verifier_retry": true,
+            "retrieval_mode": "flat",
+            "retrieval_strategy": null
+          },
+          "metrics": {
+            "num_predictions": 26,
+            "accuracy": 1.0,
+            "groundedness": 1.0,
+            "citation_precision": 0.8461538461538461,
+            "answer_format_compliance": 1.0,
+            "abstention": 1.0,
+            "retry": 0.0,
+            "latency": {
+              "p50": 14.030000000000001,
+              "p95": 131.7325,
+              "mean": 32.84615384615385
+            },
+            "retry_cost": {
+              "total_retries": 0,
+              "mean_retry_count": 0.0,
+              "max_retry_count": 0,
+              "cases_with_retry": 0
+            },
+            "retry_reason_counts": {
+              "topic_not_grounded": 6
+            },
+            "retrieval": {
+              "recall_at_1": 0.7894736842105263,
+              "recall_at_3": 1.0,
+              "recall_at_5": 1.0,
+              "mrr": 0.9736842105263158,
+              "missed_cases": []
+            }
+          }
+        },
+        {
+          "name": "no_rerank",
+          "flags": {
+            "metadata_first": true,
+            "rerank": false,
+            "verifier_retry": true,
+            "retrieval_mode": "flat",
+            "retrieval_strategy": null
+          },
+          "metrics": {
+            "num_predictions": 26,
+            "accuracy": 1.0,
+            "groundedness": 1.0,
+            "citation_precision": 1.0,
+            "answer_format_compliance": 1.0,
+            "abstention": 1.0,
+            "retry": 0.23076923076923078,
+            "latency": {
+              "p50": 19.905,
+              "p95": 124.7875,
+              "mean": 36.2976923076923
+            },
+            "retry_cost": {
+              "total_retries": 6,
+              "mean_retry_count": 0.23076923076923078,
+              "max_retry_count": 1,
+              "cases_with_retry": 6
+            },
+            "retry_reason_counts": {
+              "topic_not_grounded": 12
+            },
+            "retrieval": {
+              "recall_at_1": 0.8421052631578947,
+              "recall_at_3": 1.0,
+              "recall_at_5": 1.0,
+              "mrr": 1.0,
+              "missed_cases": []
+            }
+          }
+        },
+        {
+          "name": "no_verifier_retry",
+          "flags": {
+            "metadata_first": true,
+            "rerank": true,
+            "verifier_retry": false,
+            "retrieval_mode": "flat",
+            "retrieval_strategy": null
+          },
+          "metrics": {
+            "num_predictions": 26,
+            "accuracy": 1.0,
+            "groundedness": 0.7692307692307693,
+            "citation_precision": 0.7692307692307693,
+            "answer_format_compliance": 0.7692307692307693,
+            "abstention": 0.14285714285714285,
+            "retry": 0.0,
+            "latency": {
+              "p50": 20.86,
+              "p95": 201.9125,
+              "mean": 47.67999999999999
+            },
+            "retry_cost": {
+              "total_retries": 0,
+              "mean_retry_count": 0.0,
+              "max_retry_count": 0,
+              "cases_with_retry": 0
+            },
+            "retry_reason_counts": {},
+            "retrieval": {
+              "recall_at_1": 0.8421052631578947,
+              "recall_at_3": 1.0,
+              "recall_at_5": 1.0,
+              "mrr": 1.0,
+              "missed_cases": []
+            }
+          }
+        }
+      ]
     }
   ]
 }

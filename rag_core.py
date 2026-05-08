@@ -27,6 +27,8 @@ DEFAULT_CHUNK_MAX_CHARS = 520
 DEFAULT_CHUNK_OVERLAP_SENTENCES = 1
 VALID_CHUNKING_STRATEGIES = {"auto", "section", "fixed"}
 VALID_RETRIEVAL_MODES = {"flat", "hierarchical"}
+VALID_RETRIEVAL_STRATEGIES = {"metadata_rerank", "dense", "naive", "hierarchical"}
+DEFAULT_RETRIEVAL_STRATEGY = "metadata_rerank"
 WEAK_SECTION_HEADINGS = {
     "",
     "본문",
@@ -281,6 +283,92 @@ def coerce_string_list(value: Any) -> list[str]:
     if not isinstance(value, list):
         return []
     return ordered_unique(str(item).strip() for item in value if str(item).strip())
+
+
+def normalize_retrieval_options(
+    retrieval_strategy: str | None = None,
+    metadata_first: bool = True,
+    rerank: bool = True,
+    verifier_retry: bool = True,
+    retrieval_mode: str = "flat",
+) -> dict[str, Any]:
+    strategy = (retrieval_strategy or "").strip()
+    if strategy:
+        if strategy not in VALID_RETRIEVAL_STRATEGIES:
+            choices = ", ".join(sorted(VALID_RETRIEVAL_STRATEGIES))
+            raise ValueError(f"retrieval_strategy must be one of: {choices}")
+        if strategy == "naive":
+            return {
+                "retrieval_strategy": strategy,
+                "metadata_first": False,
+                "rerank": False,
+                "verifier_retry": False,
+                "retrieval_mode": "flat",
+            }
+        if strategy == "dense":
+            return {
+                "retrieval_strategy": strategy,
+                "metadata_first": False,
+                "rerank": False,
+                "verifier_retry": False,
+                "retrieval_mode": "flat",
+            }
+        if strategy == "hierarchical":
+            return {
+                "retrieval_strategy": strategy,
+                "metadata_first": True,
+                "rerank": True,
+                "verifier_retry": True,
+                "retrieval_mode": "hierarchical",
+            }
+        return {
+            "retrieval_strategy": strategy,
+            "metadata_first": True,
+            "rerank": True,
+            "verifier_retry": True,
+            "retrieval_mode": "flat",
+        }
+
+    if retrieval_mode not in VALID_RETRIEVAL_MODES:
+        choices = ", ".join(sorted(VALID_RETRIEVAL_MODES))
+        raise ValueError(f"retrieval_mode must be one of: {choices}")
+
+    if retrieval_mode == "hierarchical":
+        strategy = "hierarchical"
+    elif not metadata_first and not rerank and not verifier_retry:
+        strategy = "dense"
+    else:
+        strategy = DEFAULT_RETRIEVAL_STRATEGY
+
+    return {
+        "retrieval_strategy": strategy,
+        "metadata_first": metadata_first,
+        "rerank": rerank,
+        "verifier_retry": verifier_retry,
+        "retrieval_mode": retrieval_mode,
+    }
+
+
+def normalize_metadata_facets(doc: dict[str, Any]) -> dict[str, Any]:
+    metadata = doc.get("metadata") if isinstance(doc.get("metadata"), dict) else {}
+    facets = {
+        "doc_id": str(doc.get("doc_id") or ""),
+        "agency": str(doc.get("agency") or ""),
+        "project": str(doc.get("project") or ""),
+        "title": str(doc.get("title") or ""),
+        "notice_id": str(metadata.get("notice_id") or ""),
+        "notice_round": str(metadata.get("notice_round") or ""),
+        "budget": metadata.get("budget"),
+        "published_at": str(metadata.get("published_at") or ""),
+        "bid_start_at": str(metadata.get("bid_start_at") or ""),
+        "bid_deadline_at": str(metadata.get("bid_deadline_at") or ""),
+        "file_format": str(metadata.get("file_format") or ""),
+        "file_name": str(metadata.get("file_name") or ""),
+        "document_type": str(metadata.get("document_type") or ""),
+        "text_source": str(metadata.get("text_source") or ""),
+        "visual_parse_status": str(metadata.get("visual_parse_status") or ""),
+    }
+    return {key: value for key, value in facets.items() if value not in ("", None)}
 
 
 def empty_conversation_state() -> dict[str, Any]:
@@ -546,6 +634,7 @@ def normalize_document_sections(doc: dict[str, Any]) -> list[dict[str, Any]]:
             "agency": doc.get("agency", ""),
             "project": doc.get("project", ""),
             "metadata": doc.get("metadata", {}),
+            "metadata_facets": normalize_metadata_facets(doc),
             "section": section_path[-1],
             "heading": heading,
             "section_path": section_path,
@@ -555,6 +644,9 @@ def normalize_document_sections(doc: dict[str, Any]) -> list[dict[str, Any]]:
             normalized_section["regions"] = regions
         if page_span:
             normalized_section["page_span"] = page_span
+        for key in ("content_type", "table_id", "field_id"):
+            if section.get(key):
+                normalized_section[key] = str(section.get(key))
         normalized.append(normalized_section)
     return normalized
 
@@ -595,6 +687,7 @@ def fixed_parent_section(doc: dict[str, Any], sections: list[dict[str, Any]]) ->
         "agency": doc.get("agency", ""),
         "project": doc.get("project", ""),
         "metadata": doc.get("metadata", {}),
+        "metadata_facets": normalize_metadata_facets(doc),
         "section": "문서 전체",
         "heading": "문서 전체",
         "section_path": ["문서 전체"],
@@ -742,6 +835,11 @@ def make_chunk(
         "agency": doc.get("agency", ""),
         "project": doc.get("project", ""),
         "metadata": doc.get("metadata", {}),
+        "metadata_facets": {
+            **normalize_metadata_facets(doc),
+            "section_path": " > ".join(section_path),
+            "section": section_label,
+        },
         "section": section_label,
         "section_path": section_path,
         "chunk_seq_in_section": chunk_seq_in_section,
@@ -751,6 +849,9 @@ def make_chunk(
             " ".join([doc["title"], doc.get("agency", ""), " > ".join(section_path), text])
         ),
     }
+    for key in ("content_type", "table_id", "field_id"):
+        if parent_section.get(key):
+            chunk[key] = parent_section.get(key)
     if regions:
         chunk["regions"] = regions
     if page_span:
@@ -916,6 +1017,7 @@ def build_index_payload_from_documents(
             "agency": doc.get("agency", ""),
             "project": doc.get("project", ""),
             "metadata": doc.get("metadata", {}),
+            "metadata_facets": normalize_metadata_facets(doc),
             "source_path": doc["source_path"],
         }
         for doc in documents
@@ -969,6 +1071,23 @@ def metadata_targets(index: dict[str, Any]) -> list[dict[str, Any]]:
     for doc in index.get("documents", []):
         for field in ("agency", "project", "title"):
             value = str(doc.get(field) or "").strip()
+            if value:
+                targets.append(make_metadata_target(doc, field, value))
+        facets = doc.get("metadata_facets") if isinstance(doc.get("metadata_facets"), dict) else {}
+        for field in (
+            "doc_id",
+            "notice_id",
+            "notice_round",
+            "published_at",
+            "bid_start_at",
+            "bid_deadline_at",
+            "file_format",
+            "file_name",
+            "document_type",
+            "text_source",
+            "visual_parse_status",
+        ):
+            value = str(facets.get(field) or "").strip()
             if value:
                 targets.append(make_metadata_target(doc, field, value))
     return targets
@@ -1369,6 +1488,7 @@ def make_plan(
     rerank: bool = True,
     verifier_retry: bool = True,
     retrieval_mode: str = "flat",
+    retrieval_strategy: str = DEFAULT_RETRIEVAL_STRATEGY,
 ) -> dict[str, Any]:
     if retrieval_mode not in VALID_RETRIEVAL_MODES:
         choices = ", ".join(sorted(VALID_RETRIEVAL_MODES))
@@ -1387,12 +1507,15 @@ def make_plan(
         if not filters and not filters_by_stage:
             filters = {"agencies": analysis.get("entities", [])}
     scoring = "dense"
-    if rerank and metadata_first:
+    if retrieval_strategy == "naive":
+        scoring = "keyword"
+    elif rerank and metadata_first:
         scoring = "dense + lexical + metadata rerank"
     elif rerank:
         scoring = "dense + lexical rerank"
     return {
         "strategy": scoring if not metadata_first else f"metadata-first {scoring}",
+        "retrieval_strategy": retrieval_strategy,
         "filter_stage": stage,
         "metadata_first": metadata_first,
         "rerank": rerank,
@@ -1435,15 +1558,19 @@ def retrieve(
         plan["filter_fallback_used"] = True
 
     embedding_config = index.get("embedding", {})
-    query_embedding = embed_query_for_index(query, embedding_config)
+    query_embedding = None
+    if plan.get("retrieval_strategy") != "naive":
+        query_embedding = embed_query_for_index(query, embedding_config)
     query_tokens = set(analysis.get("tokens", []))
     query_topics = analysis.get("topics", [])
     scored = []
     for chunk in candidates:
-        dense_score = dense_similarity(query_embedding, chunk.get("embedding"))
+        dense_score = dense_similarity(query_embedding, chunk.get("embedding")) if query_embedding is not None else 0.0
         lexical_score = lexical_similarity(query_tokens, query_topics, chunk)
         metadata_score = metadata_similarity(analysis, chunk)
-        if not plan.get("rerank", True):
+        if plan.get("retrieval_strategy") == "naive":
+            score = lexical_score
+        elif not plan.get("rerank", True):
             score = dense_score
         elif not plan.get("metadata_first", True):
             score = (0.70 * dense_score) + (0.30 * lexical_score)
@@ -1456,6 +1583,7 @@ def retrieve(
             "agency": chunk.get("agency", ""),
             "project": chunk.get("project", ""),
             "metadata": chunk.get("metadata", {}),
+            "metadata_facets": chunk.get("metadata_facets", {}),
             "section": chunk["section"],
             "section_id": chunk.get("section_id"),
             "parent_section_id": chunk.get("parent_section_id") or chunk.get("section_id"),
@@ -1471,6 +1599,9 @@ def retrieve(
                 "metadata": round(float(metadata_score), 4),
             },
         }
+        for key in ("content_type", "table_id", "field_id"):
+            if chunk.get(key):
+                item[key] = chunk.get(key)
         regions = normalize_regions(chunk.get("regions"))
         page_span = normalize_page_span(chunk.get("page_span"), regions)
         if regions:
@@ -1528,10 +1659,14 @@ def reassemble_parent_sections(
             "section": parent.get("section", best_chunk.get("section", "")),
             "section_path": parent.get("section_path") or best_chunk.get("section_path") or [],
             "text": parent.get("text", best_chunk.get("text", "")),
+            "metadata_facets": parent.get("metadata_facets") or best_chunk.get("metadata_facets", {}),
             "chunking_strategy": parent.get("chunking_strategy", best_chunk.get("chunking_strategy", "")),
             "retrieval_mode": "hierarchical",
             "child_chunk_ids": child_ids_by_parent.get(parent_id, []),
         }
+        for key in ("content_type", "table_id", "field_id"):
+            if parent.get(key) or best_chunk.get(key):
+                item[key] = parent.get(key) or best_chunk.get(key)
         parent_regions = normalize_regions(parent.get("regions"))
         parent_page_span = normalize_page_span(parent.get("page_span"), parent_regions)
         if parent_regions:
@@ -1707,15 +1842,17 @@ def generate_answer(
     verification_reasons: list[str] | None = None,
 ) -> tuple[dict[str, Any], str, bool]:
     claims = build_claims(analysis, evidence)
-    status = answer_status(analysis, claims, verified, verification_reasons or [])
+    grounding_reasons = citation_grounding_reasons(claims)
+    all_reasons = [*(verification_reasons or []), *grounding_reasons]
+    status = answer_status(analysis, claims, verified and not grounding_reasons, all_reasons)
     insufficiency = None
     if status != ANSWER_STATUS_SUPPORTED:
         insufficiency = build_insufficiency(
             query,
             analysis,
             claims,
-            verified,
-            verification_reasons or [],
+            verified and not grounding_reasons,
+            all_reasons,
         )
 
     answer = {
@@ -1727,6 +1864,20 @@ def generate_answer(
     }
     answer_text = render_answer_text(answer)
     return answer, answer_text, status == ANSWER_STATUS_INSUFFICIENT
+
+
+def citation_grounding_reasons(claims: list[dict[str, Any]]) -> list[str]:
+    reasons = []
+    for idx, claim in enumerate(claims, start=1):
+        citations = claim.get("citations") or []
+        if not citations:
+            reasons.append(f"missing_claim_citation:{idx}")
+            continue
+        claim_text = compact_metadata_text(str(claim.get("claim") or ""))
+        support_text = compact_metadata_text(str(claim.get("support") or ""))
+        if claim_text and support_text and claim_text not in support_text:
+            reasons.append(f"citation_drift:{idx}")
+    return reasons
 
 
 def build_claims(analysis: dict[str, Any], evidence: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -2034,7 +2185,9 @@ def summarize_stage_attempt(
     plan: dict[str, Any],
     verified: bool,
     verification_reasons: list[str],
+    evidence: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
+    evidence = evidence or []
     return {
         "stage": plan.get("filter_stage"),
         "metadata_filters": plan.get("metadata_filters") or {},
@@ -2044,6 +2197,19 @@ def summarize_stage_attempt(
         "total_chunks": plan.get("total_chunks"),
         "filter_fallback_used": plan.get("filter_fallback_used", False),
         "retrieval_mode": plan.get("retrieval_mode", "flat"),
+        "retrieval_strategy": plan.get("retrieval_strategy", DEFAULT_RETRIEVAL_STRATEGY),
+        "retrieved_doc_ids": ordered_unique(item.get("doc_id", "") for item in evidence),
+        "retrieved_chunk_ids": ordered_unique(item.get("chunk_id", "") for item in evidence),
+        "retrieved_ranked_refs": [
+            {
+                "rank": rank,
+                "doc_id": item.get("doc_id", ""),
+                "chunk_id": item.get("chunk_id", ""),
+                "section": item.get("section", ""),
+                "score": item.get("score"),
+            }
+            for rank, item in enumerate(evidence, start=1)
+        ],
         "verified": verified,
         "verification_reasons": verification_reasons,
     }
@@ -2079,6 +2245,7 @@ def make_context_clarification_result(
     rerank: bool,
     verifier_retry: bool,
     retrieval_mode: str,
+    retrieval_strategy: str,
 ) -> dict[str, Any]:
     reason = str(context_resolution.get("reason") or "context_resolution_failed")
     analysis = dict(analysis)
@@ -2112,6 +2279,7 @@ def make_context_clarification_result(
             "rerank": rerank,
             "verifier_retry": verifier_retry,
             "retrieval_mode": retrieval_mode,
+            "retrieval_strategy": retrieval_strategy,
             "metadata_filters": {},
             "top_k": None,
             "relaxed": False,
@@ -2139,6 +2307,7 @@ def make_context_clarification_result(
             "rerank": rerank,
             "verifier_retry": verifier_retry,
             "retrieval_mode": retrieval_mode,
+            "retrieval_strategy": retrieval_strategy,
         },
     }
 
@@ -2219,11 +2388,21 @@ def run_rag_query(
     rerank: bool = True,
     verifier_retry: bool = True,
     retrieval_mode: str = "flat",
+    retrieval_strategy: str | None = None,
     conversation_state: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    if retrieval_mode not in VALID_RETRIEVAL_MODES:
-        choices = ", ".join(sorted(VALID_RETRIEVAL_MODES))
-        raise ValueError(f"retrieval_mode must be one of: {choices}")
+    options = normalize_retrieval_options(
+        retrieval_strategy=retrieval_strategy,
+        metadata_first=metadata_first,
+        rerank=rerank,
+        verifier_retry=verifier_retry,
+        retrieval_mode=retrieval_mode,
+    )
+    retrieval_strategy = str(options["retrieval_strategy"])
+    metadata_first = bool(options["metadata_first"])
+    rerank = bool(options["rerank"])
+    verifier_retry = bool(options["verifier_retry"])
+    retrieval_mode = str(options["retrieval_mode"])
     started = time.perf_counter()
     state = normalize_conversation_state(conversation_state)
     targets = metadata_targets(index)
@@ -2246,6 +2425,7 @@ def run_rag_query(
             rerank,
             verifier_retry,
             retrieval_mode,
+            retrieval_strategy,
         )
 
     analysis = analyze_query(
@@ -2281,6 +2461,7 @@ def run_rag_query(
             rerank=rerank,
             verifier_retry=verifier_retry,
             retrieval_mode=retrieval_mode,
+            retrieval_strategy=retrieval_strategy,
         )
         evidence = retrieve(index, retrieval_query, analysis, plan)
         if verifier_retry:
@@ -2288,7 +2469,9 @@ def run_rag_query(
         else:
             verified = bool(evidence)
             verification_reasons = [] if verified else ["no_evidence"]
-        stage_attempts.append(summarize_stage_attempt(plan, verified, verification_reasons))
+        stage_attempts.append(
+            summarize_stage_attempt(plan, verified, verification_reasons, evidence)
+        )
         if verified:
             break
         if attempt_index < len(stage_sequence) - 1:
@@ -2343,6 +2526,7 @@ def run_rag_query(
             "rerank": rerank,
             "verifier_retry": verifier_retry,
             "retrieval_mode": retrieval_mode,
+            "retrieval_strategy": retrieval_strategy,
         },
     }
 
@@ -2358,6 +2542,7 @@ def strip_internal_scores(evidence: list[dict[str, Any]]) -> list[dict[str, Any]
             "score": item["score"],
             "agency": item.get("agency", ""),
             "metadata": item.get("metadata", {}),
+            "metadata_facets": item.get("metadata_facets", {}),
             "section": item.get("section", ""),
             "section_id": item.get("section_id"),
             "parent_section_id": item.get("parent_section_id"),
@@ -2367,6 +2552,9 @@ def strip_internal_scores(evidence: list[dict[str, Any]]) -> list[dict[str, Any]
             "retrieval_mode": item.get("retrieval_mode", "flat"),
             "child_chunk_ids": item.get("child_chunk_ids", []),
         }
+        for key in ("content_type", "table_id", "field_id"):
+            if item.get(key):
+                public_item[key] = item.get(key)
         regions = normalize_regions(item.get("regions"))
         page_span = normalize_page_span(item.get("page_span"), regions)
         if regions:

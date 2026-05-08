@@ -21,6 +21,12 @@ def parse_args() -> argparse.Namespace:
         help="Use flat child chunks or hierarchical parent-section evidence.",
     )
     parser.add_argument(
+        "--retrieval_strategy",
+        default=None,
+        choices=["metadata_rerank", "dense", "naive", "hierarchical"],
+        help="Named retrieval strategy. Overrides metadata/rerank defaults when provided.",
+    )
+    parser.add_argument(
         "--context_entities",
         default="",
         help="Comma-separated entities for follow-up questions, e.g. '기관 A'.",
@@ -74,6 +80,7 @@ def main() -> int:
             top_k=args.top_k,
             context_entities=parse_context_entities(args.context_entities),
             retrieval_mode=args.retrieval_mode,
+            retrieval_strategy=args.retrieval_strategy,
             conversation_state=session_state,
         )
     except Exception as exc:

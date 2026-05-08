@@ -58,6 +58,20 @@
           "a",
           "ai"
         ]
+      },
+      {
+        "doc_id": "rfp-agency-a-ai-quality",
+        "agency": "기관 A",
+        "project": "AI 품질관리 플랫폼 구축",
+        "field": "doc_id",
+        "value": "rfp-agency-a-ai-quality",
+        "confidence": 0.795,
+        "stage": "reduced",
+        "match_type": "partial_tokens",
+        "matched_terms": [
+          "a",
+          "ai"
+        ]
       }
     ],
     "matched_doc_ids": [
@@ -122,6 +136,7 @@
   },
   "plan": {
     "strategy": "metadata-first dense + lexical + metadata rerank",
+    "retrieval_strategy": "metadata_rerank",
     "filter_stage": "strict",
     "metadata_first": true,
     "rerank": true,
@@ -198,6 +213,15 @@
         "domain": "AI quality",
         "document_type": "synthetic_public_sample"
       },
+      "metadata_facets": {
+        "doc_id": "rfp-agency-a-ai-quality",
+        "agency": "기관 A",
+        "project": "AI 품질관리 플랫폼 구축",
+        "title": "기관 A AI 품질관리 플랫폼 구축 RFP",
+        "document_type": "synthetic_public_sample",
+        "section_path": "AI 요구사항",
+        "section": "AI 요구사항"
+      },
       "section": "AI 요구사항",
       "section_id": "rfp-agency-a-ai-quality::section-002",
       "parent_section_id": "rfp-agency-a-ai-quality::section-002",
@@ -219,6 +243,15 @@
       "metadata": {
         "domain": "MLOps",
         "document_type": "synthetic_public_sample"
+      },
+      "metadata_facets": {
+        "doc_id": "rfp-agency-b-mlops-governance",
+        "agency": "기관 B",
+        "project": "데이터 거버넌스 및 MLOps 자동화",
+        "title": "기관 B 데이터 거버넌스 및 MLOps 자동화 RFP",
+        "document_type": "synthetic_public_sample",
+        "section_path": "AI 요구사항",
+        "section": "AI 요구사항"
       },
       "section": "AI 요구사항",
       "section_id": "rfp-agency-b-mlops-governance::section-002",
@@ -280,7 +313,7 @@
     ]
   },
   "diagnostics": {
-    "latency_ms": 5.44,
+    "latency_ms": 23.24,
     "retry_count": 0,
     "abstained": false,
     "answer_status": "supported",
@@ -288,6 +321,7 @@
     "claim_count": 2,
     "citation_count": 2,
     "verification_reasons": [],
+    "verification_topics": [],
     "filter_stage_attempts": [
       {
         "stage": "strict",
@@ -312,6 +346,63 @@
         "total_chunks": 13,
         "filter_fallback_used": false,
         "retrieval_mode": "flat",
+        "retrieval_strategy": "metadata_rerank",
+        "retrieved_doc_ids": [
+          "rfp-agency-b-mlops-governance",
+          "rfp-agency-a-ai-quality"
+        ],
+        "retrieved_chunk_ids": [
+          "rfp-agency-b-mlops-governance::chunk-002",
+          "rfp-agency-a-ai-quality::chunk-002",
+          "rfp-agency-a-ai-quality::chunk-001",
+          "rfp-agency-a-ai-quality::chunk-003",
+          "rfp-agency-a-ai-quality::chunk-004",
+          "rfp-agency-b-mlops-governance::chunk-003"
+        ],
+        "retrieved_ranked_refs": [
+          {
+            "rank": 1,
+            "doc_id": "rfp-agency-b-mlops-governance",
+            "chunk_id": "rfp-agency-b-mlops-governance::chunk-002",
+            "section": "AI 요구사항",
+            "score": 0.7351
+          },
+          {
+            "rank": 2,
+            "doc_id": "rfp-agency-a-ai-quality",
+            "chunk_id": "rfp-agency-a-ai-quality::chunk-002",
+            "section": "AI 요구사항",
+            "score": 0.7153
+          },
+          {
+            "rank": 3,
+            "doc_id": "rfp-agency-a-ai-quality",
+            "chunk_id": "rfp-agency-a-ai-quality::chunk-001",
+            "section": "사업 개요",
+            "score": 0.7026
+          },
+          {
+            "rank": 4,
+            "doc_id": "rfp-agency-a-ai-quality",
+            "chunk_id": "rfp-agency-a-ai-quality::chunk-003",
+            "section": "일정 및 산출물",
+            "score": 0.6989
+          },
+          {
+            "rank": 5,
+            "doc_id": "rfp-agency-a-ai-quality",
+            "chunk_id": "rfp-agency-a-ai-quality::chunk-004",
+            "section": "제출조건",
+            "score": 0.6874
+          },
+          {
+            "rank": 6,
+            "doc_id": "rfp-agency-b-mlops-governance",
+            "chunk_id": "rfp-agency-b-mlops-governance::chunk-003",
+            "section": "보안 및 개인정보",
+            "score": 0.5429
+          }
+        ],
         "verified": true,
         "verification_reasons": []
       }
@@ -330,6 +421,7 @@
     "metadata_first": true,
     "rerank": true,
     "verifier_retry": true,
-    "retrieval_mode": "flat"
+    "retrieval_mode": "flat",
+    "retrieval_strategy": "metadata_rerank"
   }
 }

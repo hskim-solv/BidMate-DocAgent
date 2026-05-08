@@ -60,8 +60,8 @@ python3 app.py \
 | Evidence type | Where to look | What it proves |
 |---|---|---|
 | Success example | [`../outputs/answer.json`](../outputs/answer.json) | 비교 질의에서 기관별 claim과 citation이 분리되어 나온다. |
-| Aggregate metrics | [`../reports/eval_summary.json`](../reports/eval_summary.json) | 단일 추출, 다문서 비교, 후속 질문, 부재판별이 같은 평가 루프에서 측정된다. |
-| Ablation impact | [`./ablation-results.md`](./ablation-results.md) | verifier/retry가 groundedness, citation, abstention에 주는 영향을 비교한다. |
+| Aggregate metrics | [`../reports/eval_summary.json`](../reports/eval_summary.json) | 단일 추출, 다문서 비교, 후속 질문, 부재판별과 Retrieval Recall@3/MRR이 같은 평가 루프에서 측정된다. |
+| Ablation impact | [`./ablation-results.md`](./ablation-results.md) | naive keyword baseline 대비 metadata-first/rerank/verifier가 retrieval, groundedness, citation, abstention에 주는 영향을 비교한다. |
 | Failure taxonomy | [`./failure-cases.md`](./failure-cases.md) | metadata mismatch, partial coverage, citation drift 같은 실패 유형을 분리한다. |
 | Improvement direction | [`./retrospective.md`](./retrospective.md) | 평가셋 확대, citation 검증 강화, latency/retry 비용 분석을 다음 작업으로 둔다. |
 
@@ -69,7 +69,7 @@ python3 app.py \
 
 - **Problem**: RFP QA는 긴 문서에서 예산, 일정, 요구사항, 제출조건을 찾는 문제를 넘어 다문서 비교와 근거 검증이 핵심이다.
 - **Design choice**: 생성 유창성보다 재현 가능한 근거성을 우선해 query analysis, metadata-first retrieval, reranking, verifier/retry, structured answer policy를 연결했다.
-- **Validation**: `eval/config.yaml`의 공개 synthetic 케이스로 answer accuracy, groundedness, citation precision, answer format compliance, abstention, latency/retry를 함께 본다.
+- **Validation**: `eval/config.yaml`의 공개 synthetic 케이스로 retrieval recall/MRR, answer accuracy, groundedness, citation precision, answer format compliance, abstention, latency/retry를 함께 본다.
 - **Observed failures**: 후보 문서 누락, 비교 질의의 partial coverage, 후속 질문의 엔터티 소실, unsupported over-answering을 주요 위험으로 분류했다.
 - **Improvement path**: 데이터셋을 확장하고, citation chunk가 claim을 직접 지지하는지 더 강하게 검증하며, retry가 품질 대비 지연을 얼마나 만드는지 분리 측정한다.
 

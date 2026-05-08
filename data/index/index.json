@@ -67,6 +67,13 @@
         "domain": "AI quality",
         "document_type": "synthetic_public_sample"
       },
+      "metadata_facets": {
+        "doc_id": "rfp-agency-a-ai-quality",
+        "agency": "기관 A",
+        "project": "AI 품질관리 플랫폼 구축",
+        "title": "기관 A AI 품질관리 플랫폼 구축 RFP",
+        "document_type": "synthetic_public_sample"
+      },
       "source_path": "data/raw/rfp_agency_a_ai_quality.json"
     },
     {
@@ -76,6 +83,13 @@
       "project": "데이터 거버넌스 및 MLOps 자동화",
       "metadata": {
         "domain": "MLOps",
+        "document_type": "synthetic_public_sample"
+      },
+      "metadata_facets": {
+        "doc_id": "rfp-agency-b-mlops-governance",
+        "agency": "기관 B",
+        "project": "데이터 거버넌스 및 MLOps 자동화",
+        "title": "기관 B 데이터 거버넌스 및 MLOps 자동화 RFP",
         "document_type": "synthetic_public_sample"
       },
       "source_path": "data/raw/rfp_agency_b_mlops_governance.json"
@@ -89,6 +103,13 @@
         "domain": "chatbot",
         "document_type": "synthetic_public_sample"
       },
+      "metadata_facets": {
+        "doc_id": "rfp-agency-c-chatbot",
+        "agency": "기관 C",
+        "project": "고객지원 챗봇 고도화",
+        "title": "기관 C 고객지원 챗봇 고도화 RFP",
+        "document_type": "synthetic_public_sample"
+      },
       "source_path": "data/raw/rfp_agency_c_chatbot.json"
     },
     {
@@ -98,6 +119,13 @@
       "project": "공통 제출조건",
       "metadata": {
         "domain": "submission",
+        "document_type": "synthetic_public_sample"
+      },
+      "metadata_facets": {
+        "doc_id": "rfp-common-submission",
+        "agency": "공통",
+        "project": "공통 제출조건",
+        "title": "공통 제출조건 및 산출물 기준",
         "document_type": "synthetic_public_sample"
       },
       "source_path": "data/raw/rfp_common_submission.json"
@@ -112,6 +140,13 @@
       "project": "AI 품질관리 플랫폼 구축",
       "metadata": {
         "domain": "AI quality",
+        "document_type": "synthetic_public_sample"
+      },
+      "metadata_facets": {
+        "doc_id": "rfp-agency-a-ai-quality",
+        "agency": "기관 A",
+        "project": "AI 품질관리 플랫폼 구축",
+        "title": "기관 A AI 품질관리 플랫폼 구축 RFP",
         "document_type": "synthetic_public_sample"
       },
       "section": "사업 개요",
@@ -132,6 +167,13 @@
         "domain": "AI quality",
         "document_type": "synthetic_public_sample"
       },
+      "metadata_facets": {
+        "doc_id": "rfp-agency-a-ai-quality",
+        "agency": "기관 A",
+        "project": "AI 품질관리 플랫폼 구축",
+        "title": "기관 A AI 품질관리 플랫폼 구축 RFP",
+        "document_type": "synthetic_public_sample"
+      },
       "section": "AI 요구사항",
       "heading": "AI 요구사항",
       "section_path": [
@@ -148,6 +190,13 @@
       "project": "AI 품질관리 플랫폼 구축",
       "metadata": {
         "domain": "AI quality",
+        "document_type": "synthetic_public_sample"
+      },
+      "metadata_facets": {
+        "doc_id": "rfp-agency-a-ai-quality",
+        "agency": "기관 A",
+        "project": "AI 품질관리 플랫폼 구축",
+        "title": "기관 A AI 품질관리 플랫폼 구축 RFP",
         "document_type": "synthetic_public_sample"
       },
       "section": "일정 및 산출물",
@@ -168,6 +217,13 @@
         "domain": "AI quality",
         "document_type": "synthetic_public_sample"
       },
+      "metadata_facets": {
+        "doc_id": "rfp-agency-a-ai-quality",
+        "agency": "기관 A",
+        "project": "AI 품질관리 플랫폼 구축",
+        "title": "기관 A AI 품질관리 플랫폼 구축 RFP",
+        "document_type": "synthetic_public_sample"
+      },
       "section": "제출조건",
       "heading": "제출조건",
       "section_path": [
@@ -184,6 +240,13 @@
       "project": "데이터 거버넌스 및 MLOps 자동화",
       "metadata": {
         "domain": "MLOps",
+        "document_type": "synthetic_public_sample"
+      },
+      "metadata_facets": {
+        "doc_id": "rfp-agency-b-mlops-governance",
+        "agency": "기관 B",
+        "project": "데이터 거버넌스 및 MLOps 자동화",
+        "title": "기관 B 데이터 거버넌스 및 MLOps 자동화 RFP",
         "document_type": "synthetic_public_sample"
       },
       "section": "사업 개요",
@@ -204,6 +267,13 @@
         "domain": "MLOps",
         "document_type": "synthetic_public_sample"
       },
+      "metadata_facets": {
+        "doc_id": "rfp-agency-b-mlops-governance",
+        "agency": "기관 B",
+        "project": "데이터 거버넌스 및 MLOps 자동화",
+        "title": "기관 B 데이터 거버넌스 및 MLOps 자동화 RFP",
+        "document_type": "synthetic_public_sample"
+      },
       "section": "AI 요구사항",
       "heading": "AI 요구사항",
       "section_path": [
@@ -220,6 +290,13 @@
       "project": "데이터 거버넌스 및 MLOps 자동화",
       "metadata": {
         "domain": "MLOps",
+        "document_type": "synthetic_public_sample"
+      },
+      "metadata_facets": {
+        "doc_id": "rfp-agency-b-mlops-governance",
+        "agency": "기관 B",
+        "project": "데이터 거버넌스 및 MLOps 자동화",
+        "title": "기관 B 데이터 거버넌스 및 MLOps 자동화 RFP",
         "document_type": "synthetic_public_sample"
       },
       "section": "보안 및 개인정보",
@@ -240,6 +317,13 @@
         "domain": "MLOps",
         "document_type": "synthetic_public_sample"
       },
+      "metadata_facets": {
+        "doc_id": "rfp-agency-b-mlops-governance",
+        "agency": "기관 B",
+        "project": "데이터 거버넌스 및 MLOps 자동화",
+        "title": "기관 B 데이터 거버넌스 및 MLOps 자동화 RFP",
+        "document_type": "synthetic_public_sample"
+      },
       "section": "일정 및 산출물",
       "heading": "일정 및 산출물",
       "section_path": [
@@ -256,6 +340,13 @@
       "project": "고객지원 챗봇 고도화",
       "metadata": {
         "domain": "chatbot",
+        "document_type": "synthetic_public_sample"
+      },
+      "metadata_facets": {
+        "doc_id": "rfp-agency-c-chatbot",
+        "agency": "기관 C",
+        "project": "고객지원 챗봇 고도화",
+        "title": "기관 C 고객지원 챗봇 고도화 RFP",
         "document_type": "synthetic_public_sample"
       },
       "section": "사업 개요",
@@ -276,6 +367,13 @@
         "domain": "chatbot",
         "document_type": "synthetic_public_sample"
       },
+      "metadata_facets": {
+        "doc_id": "rfp-agency-c-chatbot",
+        "agency": "기관 C",
+        "project": "고객지원 챗봇 고도화",
+        "title": "기관 C 고객지원 챗봇 고도화 RFP",
+        "document_type": "synthetic_public_sample"
+      },
       "section": "AI 요구사항",
       "heading": "AI 요구사항",
       "section_path": [
@@ -292,6 +390,13 @@
       "project": "고객지원 챗봇 고도화",
       "metadata": {
         "domain": "chatbot",
+        "document_type": "synthetic_public_sample"
+      },
+      "metadata_facets": {
+        "doc_id": "rfp-agency-c-chatbot",
+        "agency": "기관 C",
+        "project": "고객지원 챗봇 고도화",
+        "title": "기관 C 고객지원 챗봇 고도화 RFP",
         "document_type": "synthetic_public_sample"
       },
       "section": "평가 및 운영",
@@ -312,6 +417,13 @@
         "domain": "submission",
         "document_type": "synthetic_public_sample"
       },
+      "metadata_facets": {
+        "doc_id": "rfp-common-submission",
+        "agency": "공통",
+        "project": "공통 제출조건",
+        "title": "공통 제출조건 및 산출물 기준",
+        "document_type": "synthetic_public_sample"
+      },
       "section": "공통 제출조건",
       "heading": "공통 제출조건",
       "section_path": [
@@ -328,6 +440,13 @@
       "project": "공통 제출조건",
       "metadata": {
         "domain": "submission",
+        "document_type": "synthetic_public_sample"
+      },
+      "metadata_facets": {
+        "doc_id": "rfp-common-submission",
+        "agency": "공통",
+        "project": "공통 제출조건",
+        "title": "공통 제출조건 및 산출물 기준",
         "document_type": "synthetic_public_sample"
       },
       "section": "평가 기준",
@@ -351,6 +470,15 @@
       "metadata": {
         "domain": "AI quality",
         "document_type": "synthetic_public_sample"
+      },
+      "metadata_facets": {
+        "doc_id": "rfp-agency-a-ai-quality",
+        "agency": "기관 A",
+        "project": "AI 품질관리 플랫폼 구축",
+        "title": "기관 A AI 품질관리 플랫폼 구축 RFP",
+        "document_type": "synthetic_public_sample",
+        "section_path": "사업 개요",
+        "section": "사업 개요"
       },
       "section": "사업 개요",
       "section_path": [
@@ -783,6 +911,15 @@
         "domain": "AI quality",
         "document_type": "synthetic_public_sample"
       },
+      "metadata_facets": {
+        "doc_id": "rfp-agency-a-ai-quality",
+        "agency": "기관 A",
+        "project": "AI 품질관리 플랫폼 구축",
+        "title": "기관 A AI 품질관리 플랫폼 구축 RFP",
+        "document_type": "synthetic_public_sample",
+        "section_path": "AI 요구사항",
+        "section": "AI 요구사항"
+      },
       "section": "AI 요구사항",
       "section_path": [
         "AI 요구사항"
@@ -810,7 +947,7 @@
         "추적이다",
         "시스템",
         "모델별",
-        "정확도",
+        "정확",
         "오류",
         "유형",
         "수집하고",
@@ -868,12 +1005,12 @@
         0.0,
         0.0,
         0.11396057903766632,
-        0.0,
+        0.11396057903766632,
         0.0,
         0.0,
         0.11396057903766632,
         0.0,
-        0.0,
+        -0.11396057903766632,
         0.0,
         0.0,
         0.0,
@@ -939,27 +1076,27 @@
         0.0,
         0.0,
         0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        -0.11396057903766632,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
         0.11396057903766632,
         0.0,
         0.0,
         0.0,
         0.0,
         0.0,
-        -0.11396057903766632,
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-        0.11396057903766632,
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-        0.0,
         0.0,
         0.0,
         0.0,
@@ -979,7 +1116,7 @@
         0.0,
         0.0,
         0.0,
-        -0.11396057903766632,
+        0.0,
         0.0,
         0.11396057903766632,
         0.0,
@@ -1150,7 +1287,6 @@
         0.0,
         0.0,
         0.0,
-        0.11396057903766632,
         0.0,
         0.0,
         0.0,
@@ -1171,12 +1307,6 @@
         0.0,
         0.0,
         0.0,
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-        -0.11396057903766632,
         0.0,
         0.0,
         0.0,
@@ -1190,10 +1320,17 @@
         0.0,
         0.0,
         0.0,
+        -0.11396057903766632,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
         0.0,
         0.0,
         -0.11396057903766632,
-        0.0,
+        -0.11396057903766632,
         0.0,
         -0.11396057903766632,
         0.0,
@@ -1219,6 +1356,15 @@
       "metadata": {
         "domain": "AI quality",
         "document_type": "synthetic_public_sample"
+      },
+      "metadata_facets": {
+        "doc_id": "rfp-agency-a-ai-quality",
+        "agency": "기관 A",
+        "project": "AI 품질관리 플랫폼 구축",
+        "title": "기관 A AI 품질관리 플랫폼 구축 RFP",
+        "document_type": "synthetic_public_sample",
+        "section_path": "일정 및 산출물",
+        "section": "일정 및 산출물"
       },
       "section": "일정 및 산출물",
       "section_path": [
@@ -1662,6 +1808,15 @@
         "domain": "AI quality",
         "document_type": "synthetic_public_sample"
       },
+      "metadata_facets": {
+        "doc_id": "rfp-agency-a-ai-quality",
+        "agency": "기관 A",
+        "project": "AI 품질관리 플랫폼 구축",
+        "title": "기관 A AI 품질관리 플랫폼 구축 RFP",
+        "document_type": "synthetic_public_sample",
+        "section_path": "제출조건",
+        "section": "제출조건"
+      },
       "section": "제출조건",
       "section_path": [
         "제출조건"
@@ -2098,6 +2253,15 @@
         "domain": "MLOps",
         "document_type": "synthetic_public_sample"
       },
+      "metadata_facets": {
+        "doc_id": "rfp-agency-b-mlops-governance",
+        "agency": "기관 B",
+        "project": "데이터 거버넌스 및 MLOps 자동화",
+        "title": "기관 B 데이터 거버넌스 및 MLOps 자동화 RFP",
+        "document_type": "synthetic_public_sample",
+        "section_path": "사업 개요",
+        "section": "사업 개요"
+      },
       "section": "사업 개요",
       "section_path": [
         "사업 개요"
@@ -2533,6 +2697,15 @@
       "metadata": {
         "domain": "MLOps",
         "document_type": "synthetic_public_sample"
+      },
+      "metadata_facets": {
+        "doc_id": "rfp-agency-b-mlops-governance",
+        "agency": "기관 B",
+        "project": "데이터 거버넌스 및 MLOps 자동화",
+        "title": "기관 B 데이터 거버넌스 및 MLOps 자동화 RFP",
+        "document_type": "synthetic_public_sample",
+        "section_path": "AI 요구사항",
+        "section": "AI 요구사항"
       },
       "section": "AI 요구사항",
       "section_path": [
@@ -2972,6 +3145,15 @@
         "domain": "MLOps",
         "document_type": "synthetic_public_sample"
       },
+      "metadata_facets": {
+        "doc_id": "rfp-agency-b-mlops-governance",
+        "agency": "기관 B",
+        "project": "데이터 거버넌스 및 MLOps 자동화",
+        "title": "기관 B 데이터 거버넌스 및 MLOps 자동화 RFP",
+        "document_type": "synthetic_public_sample",
+        "section_path": "보안 및 개인정보",
+        "section": "보안 및 개인정보"
+      },
       "section": "보안 및 개인정보",
       "section_path": [
         "보안 및 개인정보"
@@ -3407,6 +3589,15 @@
       "metadata": {
         "domain": "MLOps",
         "document_type": "synthetic_public_sample"
+      },
+      "metadata_facets": {
+        "doc_id": "rfp-agency-b-mlops-governance",
+        "agency": "기관 B",
+        "project": "데이터 거버넌스 및 MLOps 자동화",
+        "title": "기관 B 데이터 거버넌스 및 MLOps 자동화 RFP",
+        "document_type": "synthetic_public_sample",
+        "section_path": "일정 및 산출물",
+        "section": "일정 및 산출물"
       },
       "section": "일정 및 산출물",
       "section_path": [
@@ -3851,6 +4042,15 @@
         "domain": "chatbot",
         "document_type": "synthetic_public_sample"
       },
+      "metadata_facets": {
+        "doc_id": "rfp-agency-c-chatbot",
+        "agency": "기관 C",
+        "project": "고객지원 챗봇 고도화",
+        "title": "기관 C 고객지원 챗봇 고도화 RFP",
+        "document_type": "synthetic_public_sample",
+        "section_path": "사업 개요",
+        "section": "사업 개요"
+      },
       "section": "사업 개요",
       "section_path": [
         "사업 개요"
@@ -4280,6 +4480,15 @@
       "metadata": {
         "domain": "chatbot",
         "document_type": "synthetic_public_sample"
+      },
+      "metadata_facets": {
+        "doc_id": "rfp-agency-c-chatbot",
+        "agency": "기관 C",
+        "project": "고객지원 챗봇 고도화",
+        "title": "기관 C 고객지원 챗봇 고도화 RFP",
+        "document_type": "synthetic_public_sample",
+        "section_path": "AI 요구사항",
+        "section": "AI 요구사항"
       },
       "section": "AI 요구사항",
       "section_path": [
@@ -4717,6 +4926,15 @@
         "domain": "chatbot",
         "document_type": "synthetic_public_sample"
       },
+      "metadata_facets": {
+        "doc_id": "rfp-agency-c-chatbot",
+        "agency": "기관 C",
+        "project": "고객지원 챗봇 고도화",
+        "title": "기관 C 고객지원 챗봇 고도화 RFP",
+        "document_type": "synthetic_public_sample",
+        "section_path": "평가 및 운영",
+        "section": "평가 및 운영"
+      },
       "section": "평가 및 운영",
       "section_path": [
         "평가 및 운영"
@@ -4736,12 +4954,12 @@
         "운영",
         "c",
         "답변",
-        "정확도",
+        "정확",
         "상담",
         "이관",
         "적절성",
         "사용자",
-        "만족도",
+        "만족",
         "운영",
         "지표",
         "사용한다",
@@ -4756,8 +4974,8 @@
         0.0,
         0.0,
         0.0,
-        0.1259881556034088,
-        0.1259881556034088,
+        0.12403473258018494,
+        0.12403473258018494,
         0.0,
         0.0,
         0.0,
@@ -4772,7 +4990,7 @@
         0.0,
         0.0,
         0.0,
-        0.1259881556034088,
+        0.12403473258018494,
         0.0,
         0.0,
         0.0,
@@ -4780,13 +4998,13 @@
         0.0,
         0.0,
         0.0,
-        -0.1259881556034088,
+        -0.12403473258018494,
         0.0,
         0.0,
         0.0,
         0.0,
         0.0,
-        -0.1259881556034088,
+        -0.12403473258018494,
         0.0,
         0.0,
         0.0,
@@ -4796,8 +5014,9 @@
         0.0,
         0.0,
         0.0,
-        -0.1259881556034088,
+        -0.12403473258018494,
         0.0,
+        0.12403473258018494,
         0.0,
         0.0,
         0.0,
@@ -4810,8 +5029,8 @@
         0.0,
         0.0,
         0.0,
+        0.12403473258018494,
         0.0,
-        0.1259881556034088,
         0.0,
         0.0,
         0.0,
@@ -4822,14 +5041,16 @@
         0.0,
         0.0,
         0.0,
+        0.12403473258018494,
         0.0,
-        0.1259881556034088,
         0.0,
         0.0,
         0.0,
         0.0,
+        -0.3721041977405548,
+        -0.12403473258018494,
+        -0.12403473258018494,
         0.0,
-        -0.37796446681022644,
         0.0,
         0.0,
         0.0,
@@ -4850,10 +5071,10 @@
         0.0,
         0.0,
         0.0,
+        -0.12403473258018494,
         0.0,
         0.0,
         0.0,
-        -0.1259881556034088,
         0.0,
         0.0,
         0.0,
@@ -4861,23 +5082,23 @@
         0.0,
         0.0,
         0.0,
+        -0.3721041977405548,
         0.0,
         0.0,
+        0.12403473258018494,
         0.0,
-        -0.37796446681022644,
+        0.12403473258018494,
+        0.12403473258018494,
         0.0,
         0.0,
-        0.1259881556034088,
         0.0,
-        0.1259881556034088,
-        0.1259881556034088,
         0.0,
         0.0,
+        0.12403473258018494,
+        -0.12403473258018494,
         0.0,
         0.0,
         0.0,
-        0.1259881556034088,
-        -0.1259881556034088,
         0.0,
         0.0,
         0.0,
@@ -4885,26 +5106,28 @@
         0.0,
         0.0,
         0.0,
+        0.12403473258018494,
+        -0.12403473258018494,
         0.0,
         0.0,
         0.0,
         0.0,
-        -0.1259881556034088,
         0.0,
         0.0,
         0.0,
         0.0,
         0.0,
         0.0,
+        -0.24806946516036987,
         0.0,
         0.0,
         0.0,
         0.0,
-        -0.2519763112068176,
         0.0,
         0.0,
         0.0,
         0.0,
+        0.12403473258018494,
         0.0,
         0.0,
         0.0,
@@ -4912,30 +5135,31 @@
         0.0,
         0.0,
         0.0,
+        0.12403473258018494,
         0.0,
+        0.12403473258018494,
         0.0,
         0.0,
         0.0,
         0.0,
-        0.1259881556034088,
         0.0,
         0.0,
         0.0,
         0.0,
         0.0,
+        0.12403473258018494,
         0.0,
         0.0,
         0.0,
         0.0,
         0.0,
+        0.12403473258018494,
         0.0,
-        0.1259881556034088,
         0.0,
         0.0,
         0.0,
         0.0,
         0.0,
-        0.1259881556034088,
         0.0,
         0.0,
         0.0,
@@ -4945,29 +5169,27 @@
         0.0,
         0.0,
         0.0,
+        0.12403473258018494,
         0.0,
         0.0,
         0.0,
-        0.1259881556034088,
         0.0,
         0.0,
-        0.1259881556034088,
         0.0,
         0.0,
         0.0,
         0.0,
+        0.12403473258018494,
         0.0,
         0.0,
         0.0,
         0.0,
         0.0,
-        0.1259881556034088,
         0.0,
         0.0,
         0.0,
         0.0,
         0.0,
-        0.1259881556034088,
         0.0,
         0.0,
         0.0,
@@ -4977,11 +5199,11 @@
         0.0,
         0.0,
         0.0,
+        0.12403473258018494,
         0.0,
         0.0,
         0.0,
         0.0,
-        0.1259881556034088,
         0.0,
         0.0,
         0.0,
@@ -4996,29 +5218,29 @@
         0.0,
         0.0,
         0.0,
+        0.12403473258018494,
         0.0,
         0.0,
         0.0,
         0.0,
-        0.1259881556034088,
+        -0.12403473258018494,
         0.0,
         0.0,
         0.0,
         0.0,
-        -0.1259881556034088,
         0.0,
+        -0.12403473258018494,
         0.0,
         0.0,
         0.0,
+        0.12403473258018494,
         0.0,
         0.0,
         0.0,
         0.0,
         0.0,
-        0.1259881556034088,
         0.0,
         0.0,
-        0.1259881556034088,
         0.0,
         0.0,
         0.0,
@@ -5033,18 +5255,17 @@
         0.0,
         0.0,
         0.0,
+        -0.12403473258018494,
         0.0,
+        -0.12403473258018494,
         0.0,
         0.0,
         0.0,
-        -0.1259881556034088,
         0.0,
-        -0.1259881556034088,
         0.0,
         0.0,
         0.0,
         0.0,
-        -0.1259881556034088,
         0.0,
         0.0,
         0.0,
@@ -5066,20 +5287,20 @@
         0.0,
         0.0,
         0.0,
+        -0.12403473258018494,
         0.0,
+        -0.12403473258018494,
         0.0,
         0.0,
-        -0.1259881556034088,
         0.0,
-        -0.1259881556034088,
         0.0,
         0.0,
+        0.24806946516036987,
         0.0,
+        -0.12403473258018494,
         0.0,
         0.0,
-        0.2519763112068176,
         0.0,
-        -0.1259881556034088,
         0.0,
         0.0,
         0.0,
@@ -5110,13 +5331,12 @@
         0.0,
         0.0,
         0.0,
-        -0.1259881556034088,
         0.0,
         0.0,
         0.0,
+        -0.12403473258018494,
         0.0,
         0.0,
-        -0.1259881556034088,
         0.0,
         0.0,
         0.0,
@@ -5128,10 +5348,8 @@
         0.0,
         0.0,
         0.0,
-        0.0,
-        0.0,
-        -0.1259881556034088,
-        0.1259881556034088,
+        -0.12403473258018494,
+        0.12403473258018494,
         0.0,
         0.0,
         0.0,
@@ -5149,6 +5367,15 @@
       "metadata": {
         "domain": "submission",
         "document_type": "synthetic_public_sample"
+      },
+      "metadata_facets": {
+        "doc_id": "rfp-common-submission",
+        "agency": "공통",
+        "project": "공통 제출조건",
+        "title": "공통 제출조건 및 산출물 기준",
+        "document_type": "synthetic_public_sample",
+        "section_path": "공통 제출조건",
+        "section": "공통 제출조건"
       },
       "section": "공통 제출조건",
       "section_path": [
@@ -5588,6 +5815,15 @@
         "domain": "submission",
         "document_type": "synthetic_public_sample"
       },
+      "metadata_facets": {
+        "doc_id": "rfp-common-submission",
+        "agency": "공통",
+        "project": "공통 제출조건",
+        "title": "공통 제출조건 및 산출물 기준",
+        "document_type": "synthetic_public_sample",
+        "section_path": "평가 기준",
+        "section": "평가 기준"
+      },
       "section": "평가 기준",
       "section_path": [
         "평가 기준"
@@ -5606,7 +5842,7 @@
         "기준",
         "공통",
         "평가",
-        "이해도",
+        "이해",
         "근거",
         "기반",
         "실행",
@@ -5637,7 +5873,7 @@
         0.0,
         -0.11396057903766632,
         0.0,
-        0.0,
+        0.11396057903766632,
         0.0,
         0.0,
         0.0,
@@ -5913,15 +6149,15 @@
         0.0,
         0.0,
         0.0,
-        -0.11396057903766632,
         0.0,
+        0.11396057903766632,
         0.22792115807533264,
         0.0,
         0.0,
         0.0,
         0.0,
         0.0,
-        0.11396057903766632,
+        0.0,
         0.0,
         -0.11396057903766632,
         0.0,
@@ -5930,7 +6166,7 @@
         0.0,
         0.0,
         0.0,
-        0.0,
+        0.11396057903766632,
         0.0,
         0.0,
         0.11396057903766632,
@@ -5948,7 +6184,7 @@
         0.0,
         0.0,
         0.0,
-        0.11396057903766632,
+        0.0,
         0.0,
         0.11396057903766632,
         0.0,

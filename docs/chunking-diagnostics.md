@@ -11,6 +11,7 @@ RFP 문서는 heading, 요구사항 목록, 제출조건 같은 구조가 검색
 - `chunk_seq_in_section`: 같은 parent section 안에서 child chunk 순서를 나타낸다.
 - `chunking_strategy`: 실제 적용된 전략이다. 값은 `section` 또는 `fixed`이다.
 - `regions` / `page_span`: visual parsing v2 입력에서만 포함되는 page/bbox 근거 위치 metadata다.
+- `metadata_facets`: agency, project, notice id, dates, budget, file format, document/text source, section path처럼 filter/debug에 쓰는 normalized metadata view다.
 
 `index.json`의 `parent_sections`에는 parent section text와 metadata가 저장된다. visual parsing v2 문서라면 parent section에도 `regions`와 `page_span`이 보존된다. `build.chunking`에는 요청 전략, `chunk_max_chars`, overlap, 문서별 실제 전략, parent section 수, chunk 수가 기록된다.
 

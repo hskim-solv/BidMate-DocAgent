@@ -118,8 +118,17 @@ def normalize_run(run: dict[str, Any]) -> dict[str, Any]:
     retrieval_mode = str(run.get("retrieval_mode", "flat"))
     if retrieval_mode not in {"flat", "hierarchical"}:
         raise ValueError(f"Invalid retrieval_mode for {name}: {retrieval_mode}")
+    retrieval_strategy = run.get("retrieval_strategy")
+    if retrieval_strategy is not None and retrieval_strategy not in {
+        "metadata_rerank",
+        "dense",
+        "naive",
+        "hierarchical",
+    }:
+        raise ValueError(f"Invalid retrieval_strategy for {name}: {retrieval_strategy}")
     return {
         "name": name,
+        "retrieval_strategy": retrieval_strategy,
         "metadata_first": bool(run.get("metadata_first", True)),
         "rerank": bool(run.get("rerank", True)),
         "verifier_retry": bool(run.get("verifier_retry", True)),
@@ -143,6 +152,7 @@ def metric_snapshot(summary: dict[str, Any]) -> dict[str, Any]:
         "latency",
         "retry_cost",
         "retry_reason_counts",
+        "retrieval",
         "by_query_type",
     ]
     return {key: summary.get(key) for key in keys if key in summary}
@@ -154,6 +164,7 @@ def run_flags(run: dict[str, Any]) -> dict[str, Any]:
         "rerank": bool(run.get("rerank", True)),
         "verifier_retry": bool(run.get("verifier_retry", True)),
         "retrieval_mode": str(run.get("retrieval_mode", "flat")),
+        "retrieval_strategy": run.get("retrieval_strategy"),
     }
 
 
@@ -182,6 +193,7 @@ def evaluate_run_with_artifacts(
                 rerank=bool(run_config.get("rerank", True)),
                 verifier_retry=bool(run_config.get("verifier_retry", True)),
                 retrieval_mode=str(run_config.get("retrieval_mode", "flat")),
+                retrieval_strategy=run_config.get("retrieval_strategy"),
                 conversation_state=conversation_state,
             )
             conversation_state = prior_prediction.get("conversation_state") or conversation_state
@@ -194,6 +206,7 @@ def evaluate_run_with_artifacts(
             rerank=bool(run_config.get("rerank", True)),
             verifier_retry=bool(run_config.get("verifier_retry", True)),
             retrieval_mode=str(run_config.get("retrieval_mode", "flat")),
+            retrieval_strategy=run_config.get("retrieval_strategy"),
             conversation_state=conversation_state,
         )
         score = EVAL.score_case(case, prediction, answer_policy)
@@ -218,6 +231,7 @@ def evaluate_run_with_artifacts(
                     "latency_ms": diagnostics.get("latency_ms"),
                     "retry_count": diagnostics.get("retry_count", 0),
                     "retrieval_mode": diagnostics.get("retrieval_mode"),
+                    "retrieval_strategy": diagnostics.get("retrieval_strategy"),
                 },
                 ensure_ascii=False,
             )
@@ -386,6 +400,9 @@ def main() -> int:
         "retriever_config": {
             "index_dir": rel_path(index_dir),
             "retrieval_modes": sorted({run["retrieval_mode"] for run in normalized_runs}),
+            "retrieval_strategies": sorted(
+                str(run.get("retrieval_strategy") or "legacy_flags") for run in normalized_runs
+            ),
             "metadata_first_runs": {
                 run["name"]: bool(run.get("metadata_first", True)) for run in normalized_runs
             },

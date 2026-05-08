@@ -1,14 +1,14 @@
 # Visual parsing v2
 
-이 문서는 이슈 #14의 PDF/image visual parsing v2 경로를 설명한다. 기존 공개 baseline(`data/raw`)과 CSV-text v1 ingestion은 기본 동작으로 유지한다.
+이 문서는 PDF/image/HWP visual parsing v2 경로를 설명한다. 기존 공개 baseline(`data/raw`)과 CSV-text v1 ingestion은 기본 동작으로 유지한다.
 
 ## 목적
-- 원본 PDF/이미지에서 text, page, bbox, region metadata를 함께 추출한다.
+- 원본 PDF/이미지/HWP에서 text, page, bbox, region metadata를 함께 추출한다.
 - parser artifact를 기존 RAG document schema로 정규화해 chunking, retrieval, citation 흐름에서 재사용한다.
-- HWP는 이번 단계에서 native visual parsing을 하지 않고 CSV 텍스트 fallback으로 비교 가능성을 유지한다.
+- HWP는 `hwp5txt`가 있으면 native text extraction을 시도하고, metadata CSV visual mode에서는 parser가 없을 때 CSV 텍스트 fallback으로 비교 가능성을 유지한다.
 
 ## 입력
-- `--visual_input_dir`: PDF 또는 이미지(`pdf`, `png`, `jpg`, `jpeg`, `tif`, `tiff`, `bmp`, `webp`) 파일 디렉터리.
+- `--visual_input_dir`: PDF, HWP, 이미지(`pdf`, `hwp`, `png`, `jpg`, `jpeg`, `tif`, `tiff`, `bmp`, `webp`) 파일 디렉터리.
 - `--metadata_csv --files_dir --ingestion_mode visual`: 기존 `data_list.csv` 메타데이터를 사용하되 PDF/image는 v2 parser로 처리하고 HWP는 v1 텍스트 fallback으로 처리한다.
 - `--visual_artifact_dir`: v2 artifact 저장 위치. 생략하면 `<output_dir>/visual_artifacts`를 사용한다.
 
@@ -22,6 +22,7 @@
 - PDF text layer: PyMuPDF로 page block, bbox, layout type을 추출한다.
 - OCR: PDF page text가 부족하거나 이미지 입력일 때 OCR adapter를 호출한다.
 - Table candidates: pdfplumber table 추출과 layout text heuristic을 함께 사용한다.
+- Table indexing: table candidate를 별도 table section으로 정규화해 RAG chunk/evidence/citation 경로에 포함한다.
 - Field candidates: `key: value`, `key=value` 형태의 line을 후보로 기록한다.
 - Section detection: heading-like block을 section boundary로 사용하고, 없으면 문서 전체 section으로 묶는다.
 
@@ -29,7 +30,8 @@
 - `pdf_parser_unavailable`: PyMuPDF를 사용할 수 없어 PDF를 열 수 없음.
 - `ocr_unavailable`: pytesseract 또는 시스템 Tesseract 실행이 불가능함.
 - `empty_visual_text`: text layer와 OCR 모두에서 인덱싱 가능한 text가 없음.
-- `visual_fallback_hwp`: HWP native visual parsing은 후속 과제로 남기고 CSV `텍스트` 컬럼을 사용함.
+- `hwp_parser_unavailable`: HWP text extraction adapter를 사용할 수 없음.
+- `visual_fallback_hwp`: metadata CSV visual mode에서 CSV `텍스트` 컬럼을 사용함.
 
 OCR 품질은 자동으로 개선되었다고 간주하지 않는다. v2의 1차 성공 기준은 page/bbox region artifact 생성, 기존 retrieval 호환성, v1/v2 비교 가능성이다.
 
@@ -64,6 +66,8 @@ python3 scripts/build_index.py \
   --output_dir data/index \
   --embedding_backend hashing
 ```
+
+`data/visual_samples/`에는 공개 smoke용 HWP text fixture가 포함된다. 이 fixture는 비공개 원본 없이 `--visual_input_dir` 경로와 HWP adapter/fallback 경계를 검증하기 위한 최소 샘플이다.
 
 ```bash
 python3 scripts/build_index.py \

@@ -1,7 +1,12 @@
 import unittest
 from pathlib import Path
 
-from rag_core import build_index_payload, build_index_payload_from_documents, run_rag_query
+from rag_core import (
+    build_index_payload,
+    build_index_payload_from_documents,
+    citation_grounding_reasons,
+    run_rag_query,
+)
 
 
 class FuzzyMetadataRetrievalTest(unittest.TestCase):
@@ -28,6 +33,9 @@ class FuzzyMetadataRetrievalTest(unittest.TestCase):
 
         self.assertEqual("section", chunk["chunking_strategy"])
         self.assertEqual(["사업 개요"], chunk["section_path"])
+        self.assertEqual("기관 A", chunk["metadata_facets"]["agency"])
+        self.assertEqual("AI 품질관리 플랫폼 구축", chunk["metadata_facets"]["project"])
+        self.assertEqual("사업 개요", chunk["metadata_facets"]["section"])
         self.assertEqual(1, chunk["chunk_seq_in_section"])
         self.assertTrue(chunk["section_id"].startswith("rfp-agency-a-ai-quality::section-"))
 
@@ -336,6 +344,33 @@ class FuzzyMetadataRetrievalTest(unittest.TestCase):
         self.assertFalse(result["plan"]["rerank"])
         self.assertEqual("dense", result["plan"]["strategy"].replace("metadata-first ", ""))
 
+    def test_naive_retrieval_strategy_is_keyword_only_without_filters_or_verifier(self) -> None:
+        result = run_rag_query(
+            self.index,
+            "기관 A의 보안 통제 요구사항은?",
+            retrieval_strategy="naive",
+        )
+
+        self.assertEqual("naive", result["plan"]["retrieval_strategy"])
+        self.assertEqual("keyword", result["plan"]["strategy"])
+        self.assertFalse(result["plan"]["metadata_first"])
+        self.assertFalse(result["plan"]["rerank"])
+        self.assertFalse(result["diagnostics"]["verifier_retry"])
+        self.assertEqual({}, result["plan"]["metadata_filters"])
+        self.assertEqual("relaxed", result["plan"]["filter_stage"])
+        self.assertTrue(result["diagnostics"]["filter_stage_attempts"][0]["retrieved_ranked_refs"])
+
+    def test_hierarchical_retrieval_strategy_maps_to_parent_evidence(self) -> None:
+        result = run_rag_query(
+            self.index,
+            "기관 A의 보안 통제 요구사항은?",
+            retrieval_strategy="hierarchical",
+        )
+
+        self.assertEqual("hierarchical", result["plan"]["retrieval_strategy"])
+        self.assertEqual("hierarchical", result["plan"]["retrieval_mode"])
+        self.assertEqual("hierarchical", result["evidence"][0]["retrieval_mode"])
+
     def test_verifier_retry_can_be_disabled_for_ablation(self) -> None:
         result = run_rag_query(
             self.index,
@@ -400,6 +435,19 @@ class FuzzyMetadataRetrievalTest(unittest.TestCase):
             "ambiguous_active_state",
             follow_up["diagnostics"]["context_resolution"]["reason"],
         )
+
+    def test_claim_citation_grounding_detects_drift(self) -> None:
+        reasons = citation_grounding_reasons(
+            [
+                {
+                    "claim": "기관 A는 블록체인 납품 실적이 있다.",
+                    "support": "기관 A는 보안 통제와 로그 추적을 요구한다.",
+                    "citations": [{"doc_id": "doc", "chunk_id": "chunk"}],
+                }
+            ]
+        )
+
+        self.assertEqual(["citation_drift:1"], reasons)
 
 
 if __name__ == "__main__":

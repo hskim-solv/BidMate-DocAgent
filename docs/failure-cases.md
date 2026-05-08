@@ -10,10 +10,12 @@
 7. layout/section boundary 오류로 heading과 본문이 잘못 묶여 chunk가 노이즈를 포함하는 경우
 8. table/field 추출 오류로 요구사항 표나 key-value 사실이 누락 또는 오인식되는 경우
 9. bbox/page-region 누락 또는 오정렬로 citation이 원문 위치까지 설명하지 못하는 경우
+10. naive/dense retrieval 단계에서 expected document가 top-k 후보에 들어오지 않는 경우
 
 ## 대응 전략
 - 필터 완화 + 질의 재작성
 - top-k/rerank 파라미터 조정
+- Retrieval Recall@k와 MRR을 answer metric과 분리해 검색 실패와 답변 생성 실패를 구분한다.
 - 세션 컨텍스트 보강 및 검증 로그 점검
 - 공개본에서는 agency/project/title metadata를 정규화해 exact/partial/fuzzy 후보를 확장한다.
 - verifier가 topic/entity/doc coverage를 확인하고 실패 시 strict → reduced → relaxed 단계로 metadata filter를 완화한다.
