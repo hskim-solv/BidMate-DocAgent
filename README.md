@@ -123,9 +123,9 @@ User Query
   ↓
 Query Analyzer
   ↓
-Planner (metadata-first)
+Planner (metadata-first, comparison-aware top_k)
   ↓
-Retriever (dense + reranking)
+Retriever (dense + reranking + balanced top-k cut for comparisons)
   ↓
 Evidence Aggregator
   ↓
@@ -135,6 +135,8 @@ Answer Generator (structured claims)
   ↓
 Final Response (grounded)
 ```
+
+비교 질의(`query_type == "comparison"`)에서는 단순 global top-k 컷이 한쪽 문서만 채워 verifier가 불필요한 retry를 트리거하는 문제를 막기 위해, 각 비교 대상에 최소 1개 이상의 evidence가 들어가도록 보장하는 balanced top-k 컷을 적용한다. 자세한 설계는 [docs/comparison-ranking.md](docs/comparison-ranking.md) 참고.
 
 ---
 

@@ -241,6 +241,63 @@ cases:
       - "공통"
     answerable: true
 
+  - id: multi_doc_one_sided_quality_focus
+    query_type: multi_doc
+    hardcase_categories:
+      - one_sided_comparison
+    query: "품질관리 관점에서 기관 A와 기관 B의 AI 요구사항 차이는?"
+    expected_doc_ids:
+      - rfp-agency-a-ai-quality
+      - rfp-agency-b-mlops-governance
+    expected_terms:
+      - "품질관리"
+      - "데이터 거버넌스"
+    expected_citation_terms:
+      - "품질관리"
+      - "데이터 거버넌스"
+    expected_claim_targets:
+      - "기관 A"
+      - "기관 B"
+    answerable: true
+
+  - id: multi_doc_one_sided_mlops_focus
+    query_type: multi_doc
+    hardcase_categories:
+      - one_sided_comparison
+    query: "MLOps 자동화 측면에서 기관 B와 기관 A는 어떻게 다른가?"
+    expected_doc_ids:
+      - rfp-agency-b-mlops-governance
+      - rfp-agency-a-ai-quality
+    expected_terms:
+      - "MLOps"
+      - "품질관리"
+    expected_citation_terms:
+      - "MLOps"
+      - "품질관리"
+    expected_claim_targets:
+      - "기관 A"
+      - "기관 B"
+    answerable: true
+
+  - id: multi_doc_one_sided_chatbot_focus
+    query_type: multi_doc
+    hardcase_categories:
+      - one_sided_comparison
+    query: "사용자 만족도 측면에서 기관 C와 기관 B의 운영 지표는 어떻게 다른가?"
+    expected_doc_ids:
+      - rfp-agency-c-chatbot
+      - rfp-agency-b-mlops-governance
+    expected_terms:
+      - "사용자 만족도"
+      - "모니터링 대시보드"
+    expected_citation_terms:
+      - "사용자 만족도"
+      - "모니터링 대시보드"
+    expected_claim_targets:
+      - "기관 B"
+      - "기관 C"
+    answerable: true
+
   - id: follow_up_schedule
     query_type: follow_up
     query: "그럼 일정은 어떻게 돼?"

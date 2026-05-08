@@ -37,6 +37,13 @@ PIPELINE_CONFIG_KEYS = (
     "retrieval_mode",
     "prompt_profile",
 )
+DEFAULT_COMPARISON_BALANCE: dict[str, Any] = {
+    "enabled": True,
+    "min_per_target": 1,
+    "k_per_target": 3,
+    "headroom": 2,
+    "max_top_k": 12,
+}
 PIPELINE_PRESETS: dict[str, dict[str, Any]] = {
     "naive_baseline": {
         "top_k": 4,
@@ -57,6 +64,7 @@ PIPELINE_PRESETS: dict[str, dict[str, Any]] = {
         "verifier_retry": True,
         "retrieval_mode": "flat",
         "prompt_profile": "structured_grounded_claims",
+        "comparison_balance": dict(DEFAULT_COMPARISON_BALANCE),
         "description": "Metadata-first retrieval with lexical/metadata rerank and verifier retry.",
     },
 }
@@ -347,6 +355,9 @@ def resolve_pipeline_config(
         if key not in source or source.get(key) is None:
             continue
         config[key] = source[key]
+
+    if "comparison_balance" in source and source.get("comparison_balance") is not None:
+        config["comparison_balance"] = source["comparison_balance"]
 
     top_k = config.get("top_k")
     if top_k is not None:
@@ -1450,6 +1461,21 @@ def analyze_query(
     }
 
 
+def comparison_targets_for_analysis(analysis: dict[str, Any]) -> tuple[list[str], str]:
+    """Return (targets, target_field) for comparison balancing.
+
+    Prefers matched doc_ids when ≥2 are present; otherwise falls back to matched
+    agencies. Returns ([], "") when balancing is not applicable.
+    """
+    matched_doc_ids = list(analysis.get("matched_doc_ids") or [])
+    if len(matched_doc_ids) >= 2:
+        return ordered_unique(matched_doc_ids), "doc_id"
+    entities = list(analysis.get("entities") or [])
+    if len(entities) >= 2:
+        return ordered_unique(entities), "agency"
+    return [], ""
+
+
 def make_plan(
     analysis: dict[str, Any],
     relaxed: bool = False,
@@ -1461,11 +1487,27 @@ def make_plan(
     retrieval_mode: str = "flat",
     pipeline: str = DEFAULT_RAG_PIPELINE_NAME,
     prompt_profile: str = "structured_grounded_claims",
+    comparison_balance: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     if retrieval_mode not in VALID_RETRIEVAL_MODES:
         choices = ", ".join(sorted(VALID_RETRIEVAL_MODES))
         raise ValueError(f"retrieval_mode must be one of: {choices}")
     default_top_k = 6 if analysis["query_type"] == "comparison" else 4
+
+    targets, target_field = comparison_targets_for_analysis(analysis)
+    balance_enabled = bool(
+        comparison_balance
+        and comparison_balance.get("enabled")
+        and analysis.get("query_type") == "comparison"
+        and len(targets) >= 2
+    )
+    if balance_enabled and analysis.get("query_type") == "comparison":
+        k_per_target = int(comparison_balance.get("k_per_target", 3))
+        headroom = int(comparison_balance.get("headroom", 2))
+        max_top_k = int(comparison_balance.get("max_top_k", 12))
+        adaptive = k_per_target * len(targets) + headroom
+        default_top_k = max(default_top_k, min(max_top_k, adaptive))
+
     if relaxed:
         stage = "relaxed"
     if not metadata_first:
@@ -1483,7 +1525,7 @@ def make_plan(
         scoring = "dense + lexical + metadata rerank"
     elif rerank:
         scoring = "dense + lexical rerank"
-    return {
+    plan: dict[str, Any] = {
         "strategy": scoring if not metadata_first else f"metadata-first {scoring}",
         "pipeline": pipeline,
         "prompt_profile": prompt_profile,
@@ -1497,6 +1539,12 @@ def make_plan(
         "relaxed": stage == "relaxed",
         "retry_policy": "try strict metadata filters, then reduced fuzzy filters, then relaxed retrieval",
     }
+    if comparison_balance is not None:
+        plan["comparison_balance"] = dict(comparison_balance)
+    if targets:
+        plan["comparison_targets"] = targets
+        plan["comparison_target_field"] = target_field
+    return plan
 
 
 def retrieve(
@@ -1576,8 +1624,101 @@ def retrieve(
     scored.sort(key=lambda item: item["score"], reverse=True)
     top_k = int(plan["top_k"])
     if plan.get("retrieval_mode") == "hierarchical":
-        return reassemble_parent_sections(index, scored, top_k, plan)
-    return scored[:top_k]
+        return reassemble_parent_sections(index, scored, top_k, plan, analysis)
+    return apply_comparison_balance(scored, analysis, plan, top_k)
+
+
+def _coverage_counts(
+    items: list[dict[str, Any]],
+    targets: list[str],
+    target_field: str,
+) -> dict[str, int]:
+    counts = {target: 0 for target in targets}
+    for item in items:
+        value = item.get(target_field)
+        if value in counts:
+            counts[value] += 1
+    return counts
+
+
+def apply_comparison_balance(
+    scored: list[dict[str, Any]],
+    analysis: dict[str, Any],
+    plan: dict[str, Any],
+    top_k: int,
+) -> list[dict[str, Any]]:
+    """Apply coverage-aware top-k cut for comparison queries.
+
+    For non-comparison queries or when fewer than two targets are matched, this
+    is a no-op equivalent to ``scored[:top_k]``. When enabled, it guarantees up
+    to ``min_per_target`` top-scoring items per comparison target before
+    filling the remainder by global score. Records ``comparison_coverage``
+    diagnostics on the plan dict either way (so observability is consistent
+    across enabled/disabled states).
+    """
+    targets, target_field = comparison_targets_for_analysis(analysis)
+    is_comparison = analysis.get("query_type") == "comparison" and len(targets) >= 2
+
+    balance_config = plan.get("comparison_balance") or {}
+    enabled = bool(balance_config.get("enabled")) and is_comparison
+
+    if not is_comparison:
+        return scored[:top_k]
+
+    before = _coverage_counts(scored, targets, target_field)
+
+    if not enabled:
+        selected = scored[:top_k]
+        plan["comparison_coverage"] = {
+            "targets": targets,
+            "target_field": target_field,
+            "before": before,
+            "after": _coverage_counts(selected, targets, target_field),
+            "balanced": False,
+        }
+        return selected
+
+    min_per_target = max(1, int(balance_config.get("min_per_target", 1)))
+    if len(targets) > 0:
+        max_min = max(1, top_k // len(targets))
+        effective_min = min(min_per_target, max_min)
+    else:
+        effective_min = min_per_target
+
+    selected_ids: set[str] = set()
+    selected: list[dict[str, Any]] = []
+    for target in targets:
+        picks = 0
+        for item in scored:
+            if picks >= effective_min:
+                break
+            if item.get("chunk_id") in selected_ids:
+                continue
+            if item.get(target_field) == target:
+                selected.append(item)
+                selected_ids.add(item.get("chunk_id"))
+                picks += 1
+
+    for item in scored:
+        if len(selected) >= top_k:
+            break
+        if item.get("chunk_id") in selected_ids:
+            continue
+        selected.append(item)
+        selected_ids.add(item.get("chunk_id"))
+
+    selected.sort(key=lambda item: item["score"], reverse=True)
+    selected = selected[:top_k]
+
+    plan["comparison_coverage"] = {
+        "targets": targets,
+        "target_field": target_field,
+        "before": before,
+        "after": _coverage_counts(selected, targets, target_field),
+        "balanced": True,
+        "min_per_target": effective_min,
+    }
+    return selected
 
 
 def reassemble_parent_sections(
@@ -1585,6 +1726,7 @@ def reassemble_parent_sections(
     scored_chunks: list[dict[str, Any]],
     top_k: int,
     plan: dict[str, Any],
+    analysis: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     parent_by_id = {
         str(section.get("section_id")): section
@@ -1635,6 +1777,8 @@ def reassemble_parent_sections(
         reassembled.append(item)
 
     reassembled.sort(key=lambda item: item["score"], reverse=True)
+    if analysis is not None:
+        return apply_comparison_balance(reassembled, analysis, plan, top_k)
     return reassembled[:top_k]
 
 
@@ -2129,7 +2273,7 @@ def summarize_stage_attempt(
     verified: bool,
     verification_reasons: list[str],
 ) -> dict[str, Any]:
-    return {
+    summary = {
         "stage": plan.get("filter_stage"),
         "pipeline": plan.get("pipeline"),
         "prompt_profile": plan.get("prompt_profile"),
@@ -2143,6 +2287,9 @@ def summarize_stage_attempt(
         "verified": verified,
         "verification_reasons": verification_reasons,
     }
+    if plan.get("comparison_coverage") is not None:
+        summary["comparison_coverage"] = plan["comparison_coverage"]
+    return summary
 
 
 def clarification_answer(query: str, context_resolution: dict[str, Any]) -> str:
@@ -2324,6 +2471,7 @@ def run_rag_query(
     pipeline: str | None = None,
     prompt_profile: str | None = None,
     conversation_state: dict[str, Any] | None = None,
+    comparison_balance: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     pipeline_source: dict[str, Any] = {"pipeline": pipeline or DEFAULT_RAG_PIPELINE_NAME}
     for key, value in (
@@ -2336,6 +2484,8 @@ def run_rag_query(
     ):
         if value is not None:
             pipeline_source[key] = value
+    if comparison_balance is not None:
+        pipeline_source["comparison_balance"] = comparison_balance
     pipeline_config = resolve_pipeline_config(
         pipeline_source,
         default_pipeline=DEFAULT_RAG_PIPELINE_NAME,
@@ -2347,6 +2497,7 @@ def run_rag_query(
     retrieval_mode = str(pipeline_config["retrieval_mode"])
     pipeline_name = str(pipeline_config["pipeline"])
     prompt_profile = str(pipeline_config["prompt_profile"])
+    resolved_comparison_balance = pipeline_config.get("comparison_balance")
 
     started = time.perf_counter()
     state = normalize_conversation_state(conversation_state)
@@ -2409,6 +2560,7 @@ def run_rag_query(
             retrieval_mode=retrieval_mode,
             pipeline=pipeline_name,
             prompt_profile=prompt_profile,
+            comparison_balance=resolved_comparison_balance,
         )
         evidence = retrieve(index, retrieval_query, analysis, plan)
         if verifier_retry:

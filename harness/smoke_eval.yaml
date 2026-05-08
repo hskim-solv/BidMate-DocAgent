@@ -42,3 +42,22 @@ cases:
       - "기관 A"
       - "기관 B"
     answerable: true
+
+  - id: smoke_multi_doc_one_sided_quality_focus
+    query_type: multi_doc
+    hardcase_categories:
+      - one_sided_comparison
+    query: "품질관리 관점에서 기관 A와 기관 B의 AI 요구사항 차이는?"
+    expected_doc_ids:
+      - rfp-agency-a-ai-quality
+      - rfp-agency-b-mlops-governance
+    expected_terms:
+      - "품질관리"
+      - "데이터 거버넌스"
+    expected_citation_terms:
+      - "품질관리"
+      - "데이터 거버넌스"
+    expected_claim_targets:
+      - "기관 A"
+      - "기관 B"
+    answerable: true

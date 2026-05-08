@@ -431,5 +431,100 @@ class FuzzyMetadataRetrievalTest(unittest.TestCase):
         )
 
 
+class BalancedComparisonRerankTest(unittest.TestCase):
+    """Tests for the comparison-aware top-k cut introduced for issue #33."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.index = cls._build_asymmetric_index()
+
+    @staticmethod
+    def _build_asymmetric_index() -> dict:
+        """Two-doc fixture where one document has many more chunks than the other."""
+        agency_a_sections = [
+            {"heading": f"섹션 A{i}", "text": f"기관 A는 보안 통제 {i}번 항목을 요구한다."}
+            for i in range(1, 7)
+        ]
+        agency_b_sections = [
+            {"heading": "섹션 B1", "text": "기관 B는 개인정보 비식별화를 요구한다."}
+        ]
+        return build_index_payload_from_documents(
+            [
+                {
+                    "doc_id": "asym-agency-a",
+                    "title": "기관 A 보안 RFP",
+                    "agency": "기관 A",
+                    "project": "보안 통제",
+                    "metadata": {},
+                    "sections": agency_a_sections,
+                    "source_path": "asym-a.txt",
+                },
+                {
+                    "doc_id": "asym-agency-b",
+                    "title": "기관 B 보안 RFP",
+                    "agency": "기관 B",
+                    "project": "개인정보 보호",
+                    "metadata": {},
+                    "sections": agency_b_sections,
+                    "source_path": "asym-b.txt",
+                },
+            ],
+            source_dir="test-fixture",
+            embedding_backend="hashing",
+        )
+
+    def test_balanced_rerank_min_coverage_under_asymmetry(self) -> None:
+        """Comparison query against an asymmetric corpus must cover both targets."""
+        result = run_rag_query(
+            self.index,
+            "기관 A와 기관 B의 보안 요구사항 차이를 비교해줘",
+            pipeline="agentic_full",
+        )
+
+        self.assertEqual("comparison", result["analysis"]["query_type"])
+        coverage = result["plan"].get("comparison_coverage")
+        self.assertIsNotNone(coverage)
+        self.assertTrue(coverage["balanced"])
+        self.assertEqual(
+            sorted(coverage["targets"]),
+            sorted(["asym-agency-a", "asym-agency-b"]),
+        )
+        for target in coverage["targets"]:
+            self.assertGreaterEqual(coverage["after"][target], 1)
+
+    def test_balanced_disabled_preserves_top_k_ordering(self) -> None:
+        """With balancing disabled, the cut must be a plain global score sort."""
+        result = run_rag_query(
+            self.index,
+            "기관 A와 기관 B의 보안 요구사항 차이를 비교해줘",
+            pipeline="agentic_full",
+            comparison_balance={"enabled": False},
+        )
+        coverage = result["plan"].get("comparison_coverage")
+        self.assertIsNotNone(coverage)
+        self.assertFalse(coverage["balanced"])
+
+    def test_balanced_no_op_for_single_doc_query(self) -> None:
+        """Single-doc queries must not record comparison_coverage diagnostics."""
+        result = run_rag_query(
+            self.index,
+            "기관 A의 보안 통제 요구사항은?",
+            pipeline="agentic_full",
+        )
+        self.assertEqual("single_doc", result["analysis"]["query_type"])
+        self.assertIsNone(result["plan"].get("comparison_coverage"))
+
+    def test_naive_baseline_does_not_apply_balancing(self) -> None:
+        """The naive_baseline preset must not enable comparison balancing."""
+        result = run_rag_query(
+            self.index,
+            "기관 A와 기관 B의 보안 요구사항 차이를 비교해줘",
+            pipeline="naive_baseline",
+        )
+        coverage = result["plan"].get("comparison_coverage")
+        if coverage is not None:
+            self.assertFalse(coverage["balanced"])
+
+
 if __name__ == "__main__":
     unittest.main()
