@@ -209,7 +209,11 @@ class ValidateDataListCsvTest(unittest.TestCase):
             self.assertEqual(2, resolution["first_seen_row"])
             self.assertEqual("20240001-0-2", resolution["suggested_doc_id"])
 
-    def test_blank_required_field_warnings_are_separate_from_failures(self) -> None:
+    def test_blank_text_is_a_failure_not_a_warning(self) -> None:
+        # Mirrors the ingestion path which raises ``empty_text`` for blank
+        # body text. Validating a CSV where every row has empty text must
+        # not exit clean — otherwise the pre-flight check claims success
+        # for inputs that will fail the actual index build.
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             files_dir = root / "files"
@@ -233,12 +237,92 @@ class ValidateDataListCsvTest(unittest.TestCase):
                 ],
             )
             report = validate_data_list_csv(csv_path, files_dir)
-            self.assertEqual(1, report["summary"]["ok_rows"])
-            self.assertEqual(0, report["summary"]["failed_rows"])
-            warnings = report["summary"]["blank_field_warnings"]
+            self.assertEqual(0, report["summary"]["ok_rows"])
+            self.assertEqual(1, report["summary"]["failed_rows"])
             self.assertEqual(
-                {"blank_agency": 1, "blank_project": 1, "blank_text": 1},
-                warnings,
+                {"empty_text": 1},
+                report["summary"]["failure_reasons"],
+            )
+            warnings = report["summary"]["blank_field_warnings"]
+            self.assertEqual({"blank_agency": 1, "blank_project": 1}, warnings)
+            self.assertNotIn("blank_text", warnings)
+            self.assertIn("empty_text", report["failure_taxonomy"])
+
+    def test_fail_policy_does_not_reserve_suggested_doc_id(self) -> None:
+        # Regression for codex P1: under ``on_duplicate_doc_id="fail"`` the
+        # second collision row only *suggests* ``<base>-2`` for diagnostics.
+        # A later row whose canonical doc_id is legitimately ``<base>-2``
+        # must remain free to claim it instead of being flagged as a
+        # spurious duplicate.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            files_dir = root / "files"
+            files_dir.mkdir()
+            for name in ("a.pdf", "b.pdf", "c.pdf"):
+                (files_dir / name).write_bytes(b"%PDF-1.4\n")
+            csv_path = root / "data_list.csv"
+            _write_csv(
+                csv_path,
+                rows=[
+                    _row(
+                        **{
+                            "공고 번호": "20240001",
+                            "공고 차수": "0",
+                            "사업명": "원본",
+                            "발주 기관": "기관 A",
+                            "파일형식": "pdf",
+                            "파일명": "a.pdf",
+                            "텍스트": "본문 가",
+                        }
+                    ),
+                    _row(
+                        **{
+                            "공고 번호": "20240001",
+                            "공고 차수": "0",
+                            "사업명": "충돌",
+                            "발주 기관": "기관 A",
+                            "파일형식": "pdf",
+                            "파일명": "b.pdf",
+                            "텍스트": "본문 나",
+                        }
+                    ),
+                    _row(
+                        **{
+                            "공고 번호": "20240001-0-2",
+                            "공고 차수": "",
+                            "사업명": "별개 공고",
+                            "발주 기관": "기관 B",
+                            "파일형식": "pdf",
+                            "파일명": "c.pdf",
+                            "텍스트": "본문 다",
+                        }
+                    ),
+                ],
+            )
+
+            report = validate_data_list_csv(csv_path, files_dir)
+            self.assertEqual(2, report["summary"]["ok_rows"])
+            self.assertEqual(1, report["summary"]["failed_rows"])
+            self.assertEqual(
+                {"duplicate_doc_id": 1},
+                report["summary"]["failure_reasons"],
+            )
+            ok_doc_ids = sorted(
+                record["doc_id"]
+                for record in report["records"]
+                if record["status"] == "ok"
+            )
+            self.assertEqual(["20240001-0", "20240001-0-2"], ok_doc_ids)
+
+            documents, ingestion_report = load_documents_from_metadata_csv(
+                csv_path,
+                files_dir,
+            )
+            indexed_doc_ids = sorted(doc["doc_id"] for doc in documents)
+            self.assertEqual(["20240001-0", "20240001-0-2"], indexed_doc_ids)
+            self.assertEqual(
+                {"duplicate_doc_id": 1},
+                ingestion_report["summary"]["failure_reasons"],
             )
 
 

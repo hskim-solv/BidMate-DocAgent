@@ -204,8 +204,8 @@ def normalize_ingestion_row(
     else:
         existing_row = tracker.seen.get(base_doc_id)
         if existing_row is not None:
-            suggested = next_unique_doc_id(base_doc_id, tracker)
             if on_duplicate_doc_id == "suffix":
+                suggested = reserve_next_unique_doc_id(base_doc_id, tracker)
                 doc_id = suggested
                 duplicate_resolution = {
                     "policy": "suffix",
@@ -214,6 +214,10 @@ def normalize_ingestion_row(
                     "assigned_doc_id": suggested,
                 }
             else:
+                # Read-only peek: do not reserve the suggested id, otherwise a
+                # later row whose canonical doc_id is legitimately <base>-N
+                # would be falsely flagged as a duplicate.
+                suggested = peek_next_unique_doc_id(base_doc_id, tracker)
                 failure_reason = "duplicate_doc_id"
                 duplicate_resolution = {
                     "policy": "fail",
@@ -383,12 +387,37 @@ def slug_part(value: str) -> str:
     return normalized
 
 
-def next_unique_doc_id(base_doc_id: str, tracker: _DuplicateTracker) -> str:
+def _compute_next_unique_doc_id(
+    base_doc_id: str,
+    tracker: _DuplicateTracker,
+) -> tuple[str, int]:
     count = tracker.counts.get(base_doc_id, 1) + 1
     candidate = f"{base_doc_id}-{count}"
     while candidate in tracker.seen:
         count += 1
         candidate = f"{base_doc_id}-{count}"
+    return candidate, count
+
+
+def peek_next_unique_doc_id(base_doc_id: str, tracker: _DuplicateTracker) -> str:
+    """Compute the next available ``<base>-N`` id without mutating ``tracker``.
+
+    Used when ``on_duplicate_doc_id="fail"`` so the failure record can carry a
+    ``suggested_doc_id`` for diagnostics without reserving an id that no row
+    will ever take. A later row whose canonical doc_id is legitimately
+    ``<base>-N`` must remain free to claim it.
+    """
+    candidate, _ = _compute_next_unique_doc_id(base_doc_id, tracker)
+    return candidate
+
+
+def reserve_next_unique_doc_id(base_doc_id: str, tracker: _DuplicateTracker) -> str:
+    """Compute and reserve the next ``<base>-N`` id; mutates ``tracker``.
+
+    Used when ``on_duplicate_doc_id="suffix"`` to actually take the id for the
+    duplicate row.
+    """
+    candidate, count = _compute_next_unique_doc_id(base_doc_id, tracker)
     tracker.seen[candidate] = tracker.seen.get(base_doc_id, 0)
     tracker.counts[base_doc_id] = count
     return candidate
@@ -587,13 +616,15 @@ def audit_metadata_row(
     source_path = find_source_file(files_dir, file_name) if file_name else files_dir
     base_doc_id = canonical_doc_id(notice_id, notice_round, file_name)
 
+    # Track non-fatal warnings on fields ingestion accepts but downstream
+    # eval often relies on. Blank body text is NOT a warning: the ingestion
+    # path raises ``empty_text`` for that row, and the validator must
+    # report the same failure so a clean validator exit code can be trusted.
     messages: list[str] = []
     if not clean_cell(row.get("발주 기관")):
         messages.append("blank_agency")
     if not clean_cell(row.get("사업명")):
         messages.append("blank_project")
-    if not clean_cell(row.get("텍스트")):
-        messages.append("blank_text")
 
     duplicate_resolution: dict[str, Any] | None = None
     failure_reason: str | None = None
@@ -610,8 +641,8 @@ def audit_metadata_row(
     else:
         existing_row = tracker.seen.get(base_doc_id)
         if existing_row is not None:
-            suggested = next_unique_doc_id(base_doc_id, tracker)
             if on_duplicate_doc_id == "suffix":
+                suggested = reserve_next_unique_doc_id(base_doc_id, tracker)
                 doc_id = suggested
                 duplicate_resolution = {
                     "policy": "suffix",
@@ -620,6 +651,7 @@ def audit_metadata_row(
                     "assigned_doc_id": suggested,
                 }
             else:
+                suggested = peek_next_unique_doc_id(base_doc_id, tracker)
                 failure_reason = "duplicate_doc_id"
                 duplicate_resolution = {
                     "policy": "fail",
@@ -630,6 +662,8 @@ def audit_metadata_row(
         else:
             tracker.seen[base_doc_id] = row_number
             tracker.counts[base_doc_id] = 1
+            if not clean_cell(row.get("텍스트")):
+                failure_reason = "empty_text"
 
     return make_record(
         row_number,
