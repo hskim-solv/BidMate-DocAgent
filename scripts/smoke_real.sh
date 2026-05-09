@@ -38,12 +38,21 @@ require_dir() {
 }
 
 require_file "scripts/build_index.py"
+require_file "scripts/validate_data_list.py"
 require_file "app.py"
 require_file "eval/run_eval.py"
 require_file "$METADATA_CSV"
 require_dir "$FILES_DIR"
 
 mkdir -p "$INDEX_DIR" "$OUTPUT_DIR" "$REPORT_DIR"
+
+log "Validating data_list.csv schema"
+if ! python3 scripts/validate_data_list.py \
+  --metadata_csv "$METADATA_CSV" \
+  --files_dir "$FILES_DIR" \
+  --output_path "$REPORT_DIR/data_list_validation.json"; then
+  echo "[WARN] data_list.csv has row-level issues; review $REPORT_DIR/data_list_validation.json before proceeding." >&2
+fi
 
 log "Building real-data index"
 python3 scripts/build_index.py \
