@@ -23,3 +23,5 @@
 - visual parsing v2는 `eval/run_parser_eval.py`로 QA 이전 단계의 OCR/layout/section/table/field/bbox 오류를 분리해 기록한다.
 - page/region citation gold가 있는 경우 `eval/run_eval.py`가 `page_missing`, `page_mismatch`, `region_unavailable`, `region_misaligned`를 기록한다.
 - parser failure taxonomy는 downstream 실패와 연결해 해석한다. 예를 들어 `ocr_missing_text`는 retrieval miss, `section_boundary_missing`은 noisy chunking, `table_cell_mismatch`는 표 기반 요구사항 누락, `field_value_mismatch`는 잘못된 metadata-like claim, `bbox_missing`/`bbox_misaligned`는 `region_unavailable`/`region_misaligned`로 이어질 수 있다.
+
+자세한 real-data 분석과 우선순위 백로그는 [real-data-failure-taxonomy.md](real-data-failure-taxonomy.md) 참조.
