@@ -44,6 +44,11 @@ DEFAULT_COMPARISON_BALANCE: dict[str, Any] = {
     "headroom": 2,
     "max_top_k": 12,
 }
+QUERY_TYPE_TOP_K_DEFAULTS: dict[str, int] = {
+    "single_doc": 4,
+    "follow_up": 6,
+    "comparison": 6,
+}
 PIPELINE_PRESETS: dict[str, dict[str, Any]] = {
     "naive_baseline": {
         "top_k": 4,
@@ -384,6 +389,17 @@ def coerce_string_list(value: Any) -> list[str]:
     return ordered_unique(str(item).strip() for item in value if str(item).strip())
 
 
+def coerce_alias_values(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        raw_values = re.split(r"[,;/|]", value)
+        return ordered_unique(part.strip() for part in raw_values if part.strip())
+    if isinstance(value, list):
+        return ordered_unique(str(item).strip() for item in value if str(item).strip())
+    return []
+
+
 def empty_conversation_state() -> dict[str, Any]:
     return {
         "schema_version": CONVERSATION_STATE_SCHEMA_VERSION,
@@ -391,7 +407,9 @@ def empty_conversation_state() -> dict[str, Any]:
         "active_projects": [],
         "active_topics": [],
         "active_doc_ids": [],
+        "active_candidates": [],
         "confidence": 0.0,
+        "ambiguous": False,
         "turns": [],
     }
 
@@ -408,6 +426,12 @@ def normalize_conversation_state(state: dict[str, Any] | None) -> dict[str, Any]
     normalized["active_projects"] = coerce_string_list(state.get("active_projects"))
     normalized["active_topics"] = coerce_string_list(state.get("active_topics"))
     normalized["active_doc_ids"] = coerce_string_list(state.get("active_doc_ids"))
+    active_candidates = state.get("active_candidates")
+    if isinstance(active_candidates, list):
+        normalized["active_candidates"] = [
+            candidate for candidate in active_candidates[-8:] if isinstance(candidate, dict)
+        ]
+    normalized["ambiguous"] = bool(state.get("ambiguous", False))
     try:
         normalized["confidence"] = round(float(state.get("confidence") or 0.0), 3)
     except (TypeError, ValueError):
@@ -1078,6 +1102,7 @@ def metadata_targets(index: dict[str, Any]) -> list[dict[str, Any]]:
 def make_metadata_target(doc: dict[str, Any], field: str, value: str) -> dict[str, Any]:
     tokens = metadata_tokens(value)
     core_tokens = [token for token in tokens if token not in METADATA_GENERIC_TOKENS]
+    explicit_aliases = metadata_explicit_aliases(doc, field)
     return {
         "doc_id": str(doc.get("doc_id") or ""),
         "agency": str(doc.get("agency") or ""),
@@ -1087,12 +1112,33 @@ def make_metadata_target(doc: dict[str, Any], field: str, value: str) -> dict[st
         "compact": compact_metadata_text(value),
         "tokens": tokens,
         "core_tokens": core_tokens,
-        "aliases": metadata_aliases(field, value, tokens),
+        "aliases": metadata_aliases(field, value, tokens, explicit_aliases),
+        "explicit_aliases": explicit_aliases,
     }
 
 
-def metadata_aliases(field: str, value: str, tokens: list[str]) -> list[str]:
+def metadata_explicit_aliases(doc: dict[str, Any], field: str) -> list[str]:
+    metadata = doc.get("metadata") if isinstance(doc.get("metadata"), dict) else {}
+    aliases: list[str] = []
+    aliases.extend(coerce_alias_values(metadata.get(f"{field}_aliases")))
+
+    generic_aliases = metadata.get("aliases")
+    if isinstance(generic_aliases, dict):
+        aliases.extend(coerce_alias_values(generic_aliases.get(field)))
+    else:
+        aliases.extend(coerce_alias_values(generic_aliases))
+
+    return ordered_unique(aliases)
+
+
+def metadata_aliases(
+    field: str,
+    value: str,
+    tokens: list[str],
+    explicit_aliases: list[str] | None = None,
+) -> list[str]:
     aliases = []
+    aliases.extend(explicit_aliases or [])
     if field == "agency":
         for token in tokens:
             if 1 <= len(token) <= 4 and re.search(r"[a-z0-9]", token):
@@ -1100,6 +1146,10 @@ def metadata_aliases(field: str, value: str, tokens: list[str]) -> list[str]:
         compact = compact_metadata_text(value)
         if compact.startswith("기관") and len(compact) > 2:
             aliases.append(compact[2:])
+    else:
+        for token in tokens:
+            if 2 <= len(token) <= 8 and re.search(r"[a-z0-9]", token):
+                aliases.append(token)
     return ordered_unique(aliases)
 
 
@@ -1142,7 +1192,23 @@ def match_metadata_target(
     if target_compact and len(target_compact) >= 2 and target_compact in query_compact:
         return make_metadata_match(target, 1.0, "compact_contains", target_tokens)
 
-    alias_hits = [alias for alias in target.get("aliases", []) if alias in query_token_set]
+    explicit_alias_hits = []
+    for alias in target.get("explicit_aliases", []):
+        alias_compact = compact_metadata_text(str(alias))
+        alias_tokens = set(metadata_tokens(str(alias)))
+        if (
+            (alias_compact and alias_compact in query_compact)
+            or bool(alias_tokens and alias_tokens.issubset(query_token_set))
+        ):
+            explicit_alias_hits.append(str(alias))
+    if explicit_alias_hits:
+        return make_metadata_match(target, 0.92, "explicit_alias", explicit_alias_hits)
+
+    alias_hits = []
+    for alias in target.get("aliases", []):
+        alias_compact = compact_metadata_text(str(alias))
+        if alias in query_token_set or (alias_compact and alias_compact in query_compact):
+            alias_hits.append(str(alias))
     if alias_hits:
         return make_metadata_match(target, 0.78, "abbreviation", alias_hits)
 
@@ -1239,20 +1305,49 @@ def best_metadata_doc_scores(matches: list[dict[str, Any]]) -> dict[str, float]:
     return scores
 
 
-def is_metadata_ambiguous(matches: list[dict[str, Any]], query_type: str) -> bool:
+def metadata_ambiguity_details(matches: list[dict[str, Any]], query_type: str) -> dict[str, Any]:
     if query_type == "comparison":
-        return False
+        return {
+            "ambiguous": False,
+            "reason": "comparison_allows_multiple_targets",
+            "candidate_doc_ids": [],
+            "top_score": 0.0,
+            "confidence_delta": AMBIGUOUS_CONFIDENCE_DELTA,
+        }
     reduced_matches = metadata_matches_for_stage(matches, "reduced")
     if not reduced_matches:
-        return False
+        return {
+            "ambiguous": False,
+            "reason": "no_reduced_candidates",
+            "candidate_doc_ids": [],
+            "top_score": 0.0,
+            "confidence_delta": AMBIGUOUS_CONFIDENCE_DELTA,
+        }
     scores = best_metadata_doc_scores(reduced_matches)
     if len(scores) <= 1:
-        return False
+        return {
+            "ambiguous": False,
+            "reason": "single_candidate",
+            "candidate_doc_ids": list(scores.keys()),
+            "top_score": round(max(scores.values(), default=0.0), 3),
+            "confidence_delta": AMBIGUOUS_CONFIDENCE_DELTA,
+        }
     top_score = max(scores.values())
     close_doc_ids = [
         doc_id for doc_id, score in scores.items() if score >= top_score - AMBIGUOUS_CONFIDENCE_DELTA
     ]
-    return len(close_doc_ids) > 1
+    ambiguous = len(close_doc_ids) > 1
+    return {
+        "ambiguous": ambiguous,
+        "reason": "close_candidate_scores" if ambiguous else "clear_top_candidate",
+        "candidate_doc_ids": close_doc_ids,
+        "top_score": round(top_score, 3),
+        "confidence_delta": AMBIGUOUS_CONFIDENCE_DELTA,
+    }
+
+
+def is_metadata_ambiguous(matches: list[dict[str, Any]], query_type: str) -> bool:
+    return bool(metadata_ambiguity_details(matches, query_type).get("ambiguous"))
 
 
 def has_implicit_reference(query: str) -> bool:
@@ -1266,9 +1361,12 @@ def has_comparison_request(query: str) -> bool:
 
 
 def active_state_terms(state: dict[str, Any]) -> list[str]:
-    terms = state.get("active_agencies") or state.get("active_projects") or []
+    terms = [
+        *coerce_string_list(state.get("active_agencies")),
+        *coerce_string_list(state.get("active_projects")),
+    ]
     if terms:
-        return coerce_string_list(terms)
+        return ordered_unique(terms)
     return coerce_string_list(state.get("active_doc_ids"))
 
 
@@ -1287,6 +1385,8 @@ def make_context_resolution(
     reason: str = "",
     resolved_query: str | None = None,
     context_entities: list[str] | None = None,
+    context_projects: list[str] | None = None,
+    active_doc_ids: list[str] | None = None,
 ) -> dict[str, Any]:
     return {
         "status": status,
@@ -1295,6 +1395,8 @@ def make_context_resolution(
         "reason": reason,
         "resolved_query": resolved_query,
         "context_entities": context_entities or [],
+        "context_projects": context_projects or [],
+        "active_doc_ids": active_doc_ids or [],
     }
 
 
@@ -1333,6 +1435,9 @@ def resolve_conversation_context(
         )
 
     state_terms = active_state_terms(conversation_state)
+    state_agencies = coerce_string_list(conversation_state.get("active_agencies"))
+    state_projects = coerce_string_list(conversation_state.get("active_projects"))
+    state_doc_ids = coerce_string_list(conversation_state.get("active_doc_ids"))
     if not state_terms:
         return (
             query,
@@ -1343,6 +1448,7 @@ def resolve_conversation_context(
                 0.0,
                 reason="no_active_state",
                 resolved_query=query,
+                active_doc_ids=state_doc_ids,
             ),
         )
 
@@ -1357,7 +1463,9 @@ def resolve_conversation_context(
                 state_confidence,
                 reason="weak_active_state",
                 resolved_query=query,
-                context_entities=state_terms,
+                context_entities=state_agencies or state_terms,
+                context_projects=state_projects,
+                active_doc_ids=state_doc_ids,
             ),
         )
 
@@ -1371,7 +1479,9 @@ def resolve_conversation_context(
                 state_confidence,
                 reason="ambiguous_active_state",
                 resolved_query=query,
-                context_entities=state_terms,
+                context_entities=state_agencies or state_terms,
+                context_projects=state_projects,
+                active_doc_ids=state_doc_ids,
             ),
         )
 
@@ -1384,7 +1494,9 @@ def resolve_conversation_context(
             "conversation_state",
             state_confidence,
             resolved_query=resolved_query,
-            context_entities=state_terms,
+            context_entities=state_agencies or state_terms,
+            context_projects=state_projects,
+            active_doc_ids=state_doc_ids,
         ),
     )
 
@@ -1438,6 +1550,7 @@ def analyze_query(
     strict_matches = metadata_matches_for_stage(metadata_matches, "strict")
     strict_filters = metadata_filters_from_matches(strict_matches)
     reduced_filters = metadata_filters_from_matches(reduced_matches)
+    ambiguity = metadata_ambiguity_details(metadata_matches, query_type)
 
     return {
         "query_type": query_type,
@@ -1451,7 +1564,8 @@ def analyze_query(
         "matched_agencies": matched_agencies,
         "matched_projects": matched_projects,
         "metadata_confidence": round(max((m["confidence"] for m in metadata_matches), default=0.0), 3),
-        "metadata_ambiguous": is_metadata_ambiguous(metadata_matches, query_type),
+        "metadata_ambiguous": bool(ambiguity.get("ambiguous")),
+        "metadata_ambiguity": ambiguity,
         "metadata_filters_by_stage": {
             "strict": strict_filters,
             "reduced": reduced_filters,
@@ -1476,10 +1590,73 @@ def comparison_targets_for_analysis(analysis: dict[str, Any]) -> tuple[list[str]
     return [], ""
 
 
+def summarize_metadata_match(match: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "doc_id": match.get("doc_id", ""),
+        "field": match.get("field", ""),
+        "value": match.get("value", ""),
+        "agency": match.get("agency", ""),
+        "project": match.get("project", ""),
+        "confidence": match.get("confidence", 0.0),
+        "stage": match.get("stage", ""),
+        "match_type": match.get("match_type", ""),
+        "matched_terms": match.get("matched_terms", []),
+    }
+
+
+def metadata_resolution_diagnostics(
+    query: str,
+    analysis: dict[str, Any],
+    *,
+    selected_stage: str | None = None,
+    decision: str | None = None,
+    reason: str = "",
+) -> dict[str, Any]:
+    matches = list(analysis.get("metadata_matches") or [])
+    selected_by_stage: dict[str, list[dict[str, Any]]] = {}
+    for stage in ("strict", "reduced"):
+        selected_by_stage[stage] = [
+            summarize_metadata_match(match)
+            for match in metadata_matches_for_stage(matches, stage)
+        ]
+    selected_by_stage["relaxed"] = []
+
+    selected_stage = selected_stage or ""
+    selected_matches = selected_by_stage.get(selected_stage, [])
+    ambiguity = dict(analysis.get("metadata_ambiguity") or {})
+    ambiguous = bool(analysis.get("metadata_ambiguous"))
+    if decision is None:
+        decision = "clarify" if ambiguous and analysis.get("query_type") != "comparison" else "use_selected_candidates"
+
+    return {
+        "normalized_query": normalize_entity(query),
+        "normalized_query_compact": compact_metadata_text(query),
+        "normalized_query_tokens": metadata_tokens(query),
+        "candidate_count": len(matches),
+        "candidates": [summarize_metadata_match(match) for match in matches],
+        "selected_stage": selected_stage,
+        "selected_candidates_by_stage": selected_by_stage,
+        "selected_candidates": selected_matches,
+        "selected_doc_ids": ordered_unique(match.get("doc_id", "") for match in selected_matches),
+        "matched_doc_ids": coerce_string_list(analysis.get("matched_doc_ids")),
+        "ambiguity": {
+            **ambiguity,
+            "ambiguous": ambiguous,
+            "decision": decision,
+            "decision_reason": reason or ambiguity.get("reason", ""),
+        },
+    }
+
+
+def query_type_default_top_k(query_type: str) -> int:
+    return QUERY_TYPE_TOP_K_DEFAULTS.get(query_type, QUERY_TYPE_TOP_K_DEFAULTS["single_doc"])
+
+
 def make_plan(
     analysis: dict[str, Any],
     relaxed: bool = False,
     top_k: int | None = None,
+    top_k_reason: str | None = None,
     stage: str | None = None,
     metadata_first: bool = True,
     rerank: bool = True,
@@ -1492,7 +1669,11 @@ def make_plan(
     if retrieval_mode not in VALID_RETRIEVAL_MODES:
         choices = ", ".join(sorted(VALID_RETRIEVAL_MODES))
         raise ValueError(f"retrieval_mode must be one of: {choices}")
-    default_top_k = 6 if analysis["query_type"] == "comparison" else 4
+    query_type = str(analysis.get("query_type") or "single_doc")
+    default_top_k = query_type_default_top_k(query_type)
+    budget_reason = top_k_reason or (
+        "explicit_override" if top_k is not None else f"{query_type}_default"
+    )
 
     targets, target_field = comparison_targets_for_analysis(analysis)
     balance_enabled = bool(
@@ -1507,6 +1688,8 @@ def make_plan(
         max_top_k = int(comparison_balance.get("max_top_k", 12))
         adaptive = k_per_target * len(targets) + headroom
         default_top_k = max(default_top_k, min(max_top_k, adaptive))
+        if top_k is None:
+            budget_reason = "comparison_coverage_adaptive"
 
     if relaxed:
         stage = "relaxed"
@@ -1536,6 +1719,12 @@ def make_plan(
         "retrieval_mode": retrieval_mode,
         "metadata_filters": filters,
         "top_k": top_k or default_top_k,
+        "retrieval_budget": {
+            "selected_top_k": top_k or default_top_k,
+            "query_type": query_type,
+            "reason": budget_reason,
+            "defaults": dict(QUERY_TYPE_TOP_K_DEFAULTS),
+        },
         "relaxed": stage == "relaxed",
         "retry_policy": "try strict metadata filters, then reduced fuzzy filters, then relaxed retrieval",
     }
@@ -2262,7 +2451,7 @@ def metadata_stage_sequence(
     if reduced_filters and reduced_filters != strict_filters:
         stages.append("reduced")
     if not stages:
-        stages.append("strict")
+        return ["relaxed"]
     if verifier_retry:
         stages.append("relaxed")
     return stages
@@ -2304,6 +2493,7 @@ def summarize_stage_attempt(
         "prompt_profile": plan.get("prompt_profile"),
         "metadata_filters": plan.get("metadata_filters") or {},
         "top_k": plan.get("top_k"),
+        "retrieval_budget": plan.get("retrieval_budget") or {},
         "candidate_count": plan.get("candidate_count"),
         "parent_candidate_count": plan.get("parent_candidate_count"),
         "total_chunks": plan.get("total_chunks"),
@@ -2327,7 +2517,14 @@ def clarification_answer(query: str, context_resolution: dict[str, Any]) -> str:
             "기관명 또는 사업명을 포함해 다시 질문해 주세요."
         )
     if reason == "ambiguous_active_state":
-        entities = ", ".join(context_resolution.get("context_entities") or [])
+        entities = ", ".join(
+            ordered_unique(
+                [
+                    *(context_resolution.get("context_entities") or []),
+                    *(context_resolution.get("context_projects") or []),
+                ]
+            )
+        )
         return (
             f"'{query}'에서 가리키는 대상이 모호합니다. "
             f"현재 문맥 후보는 {entities}입니다. 기관명 또는 사업명을 하나로 지정해 주세요."
@@ -2359,6 +2556,13 @@ def make_context_clarification_result(
     analysis = dict(analysis)
     analysis["query_type"] = "follow_up"
     analysis["context_resolution"] = context_resolution
+    metadata_resolution = metadata_resolution_diagnostics(
+        query,
+        analysis,
+        selected_stage="",
+        decision="clarify",
+        reason=reason,
+    )
     latency_ms = (time.perf_counter() - started) * 1000
     insufficiency = {
         "message": f"'{query}'의 생략된 참조를 충분히 확정하지 못했습니다.",
@@ -2391,6 +2595,12 @@ def make_context_clarification_result(
             "retrieval_mode": retrieval_mode,
             "metadata_filters": {},
             "top_k": None,
+            "retrieval_budget": {
+                "selected_top_k": None,
+                "query_type": "follow_up",
+                "reason": "clarification_before_retrieval",
+                "defaults": dict(QUERY_TYPE_TOP_K_DEFAULTS),
+            },
             "relaxed": False,
             "retry_policy": "clarify before retrieval when entity resolution is weak",
         },
@@ -2410,6 +2620,130 @@ def make_context_clarification_result(
             "filter_stage_attempts": [],
             "final_relaxation_reason": [],
             "context_resolution": context_resolution,
+            "metadata_resolution": metadata_resolution,
+            "selected_top_k": None,
+            "embedding_backend": index.get("embedding", {}).get("backend"),
+            "embedding_model": index.get("embedding", {}).get("model"),
+            "metadata_first": metadata_first,
+            "rerank": rerank,
+            "verifier_retry": verifier_retry,
+            "retrieval_mode": retrieval_mode,
+            "pipeline": pipeline,
+            "prompt_profile": prompt_profile,
+            "cold_start": cold_start,
+            "stage_latency": {
+                "query_analysis_ms": round(float((stage_timings or {}).get("query_analysis_ms", 0.0)), 2),
+                "context_resolution_ms": round(float((stage_timings or {}).get("context_resolution_ms", 0.0)), 2),
+                "answer_generation_ms": round(float((stage_timings or {}).get("answer_generation_ms", 0.0)), 2),
+            },
+        },
+    }
+
+
+def metadata_clarification_answer(query: str, analysis: dict[str, Any]) -> str:
+    ambiguity = analysis.get("metadata_ambiguity") or {}
+    candidate_doc_ids = ", ".join(ambiguity.get("candidate_doc_ids") or analysis.get("matched_doc_ids") or [])
+    suffix = f" 현재 후보 문서는 {candidate_doc_ids}입니다." if candidate_doc_ids else ""
+    return (
+        f"'{query}'에서 가리키는 기관 또는 사업 후보가 여러 개라서 하나로 확정할 수 없습니다."
+        f"{suffix} 기관명 또는 사업명을 더 구체적으로 지정해 주세요."
+    )
+
+
+def make_metadata_clarification_result(
+    index: dict[str, Any],
+    query: str,
+    retrieval_query: str,
+    analysis: dict[str, Any],
+    conversation_state: dict[str, Any],
+    context_resolution: dict[str, Any],
+    started: float,
+    metadata_first: bool,
+    rerank: bool,
+    verifier_retry: bool,
+    retrieval_mode: str,
+    pipeline: str,
+    prompt_profile: str,
+    *,
+    stage_timings: dict[str, float] | None = None,
+    cold_start: bool = False,
+) -> dict[str, Any]:
+    reason = "metadata_ambiguous"
+    analysis = dict(analysis)
+    analysis["context_resolution"] = context_resolution
+    metadata_resolution = metadata_resolution_diagnostics(
+        retrieval_query,
+        analysis,
+        selected_stage="reduced",
+        decision="clarify",
+        reason=reason,
+    )
+    latency_ms = (time.perf_counter() - started) * 1000
+    checked_entities = ordered_unique(
+        [
+            *(analysis.get("entities") or []),
+            *(analysis.get("matched_projects") or []),
+        ]
+    )
+    insufficiency = {
+        "message": f"'{query}'의 기관 또는 사업 후보를 충분히 확정하지 못했습니다.",
+        "reasons": [reason],
+        "missing_targets": checked_entities,
+        "missing_topics": specific_topics(analysis),
+        "checked_entities": checked_entities,
+        "checked_doc_ids": analysis.get("matched_doc_ids") or [],
+    }
+    answer = {
+        "status": ANSWER_STATUS_INSUFFICIENT,
+        "query_type": "abstention",
+        "summary": metadata_clarification_answer(query, analysis),
+        "claims": [],
+        "insufficiency": insufficiency,
+    }
+    answer_text = render_answer_text(answer)
+    return {
+        "mode": "rag",
+        "query": query,
+        "resolved_query": retrieval_query,
+        "analysis": analysis,
+        "plan": {
+            "strategy": "metadata ambiguity clarification",
+            "pipeline": pipeline,
+            "prompt_profile": prompt_profile,
+            "metadata_first": metadata_first,
+            "rerank": rerank,
+            "verifier_retry": verifier_retry,
+            "retrieval_mode": retrieval_mode,
+            "metadata_filters": {},
+            "top_k": None,
+            "retrieval_budget": {
+                "selected_top_k": None,
+                "query_type": analysis.get("query_type"),
+                "reason": "clarification_before_retrieval",
+                "defaults": dict(QUERY_TYPE_TOP_K_DEFAULTS),
+            },
+            "relaxed": False,
+            "retry_policy": "clarify before retrieval when metadata resolution is ambiguous",
+        },
+        "answer": answer,
+        "answer_text": answer_text,
+        "evidence": [],
+        "conversation_state": conversation_state,
+        "diagnostics": {
+            "latency_ms": round(latency_ms, 2),
+            "retry_count": 0,
+            "abstained": True,
+            "answer_status": answer["status"],
+            "answer_query_type": answer["query_type"],
+            "claim_count": 0,
+            "citation_count": 0,
+            "verification_reasons": [reason],
+            "verification_topics": verification_topics(analysis),
+            "filter_stage_attempts": [],
+            "final_relaxation_reason": [],
+            "context_resolution": context_resolution,
+            "metadata_resolution": metadata_resolution,
+            "selected_top_k": None,
             "embedding_backend": index.get("embedding", {}).get("backend"),
             "embedding_model": index.get("embedding", {}).get("model"),
             "metadata_first": metadata_first,
@@ -2455,6 +2789,14 @@ def update_conversation_state(
         ]
     )
     active_topics = coerce_string_list(analysis.get("topics"))
+    active_candidates = [
+        {
+            "doc_id": doc_id,
+            "agency": next((item.get("agency", "") for item in evidence if item.get("doc_id") == doc_id), ""),
+            "project": next((item.get("project", "") for item in evidence if item.get("doc_id") == doc_id), ""),
+        }
+        for doc_id in active_doc_ids
+    ]
 
     if not (active_doc_ids or active_agencies or active_projects):
         return conversation_state
@@ -2480,6 +2822,9 @@ def update_conversation_state(
                 "source": context_resolution.get("source"),
                 "confidence": context_resolution.get("confidence"),
                 "reason": context_resolution.get("reason", ""),
+                "context_entities": context_resolution.get("context_entities", []),
+                "context_projects": context_resolution.get("context_projects", []),
+                "active_doc_ids": context_resolution.get("active_doc_ids", []),
             },
         }
     )
@@ -2490,7 +2835,9 @@ def update_conversation_state(
         "active_projects": active_projects,
         "active_topics": active_topics,
         "active_doc_ids": active_doc_ids,
+        "active_candidates": active_candidates,
         "confidence": round(float(confidence), 3),
+        "ambiguous": bool(analysis.get("metadata_ambiguous")),
         "turns": turns[-MAX_CONVERSATION_TURNS:],
     }
 
@@ -2527,6 +2874,7 @@ def run_rag_query(
         default_pipeline=DEFAULT_RAG_PIPELINE_NAME,
     )
     top_k = pipeline_config["top_k"]
+    requested_top_k = top_k
     metadata_first = bool(pipeline_config["metadata_first"])
     rerank = bool(pipeline_config["rerank"])
     verifier_retry = bool(pipeline_config["verifier_retry"])
@@ -2581,6 +2929,24 @@ def run_rag_query(
         analysis["query_type"] = "follow_up"
         analysis["context_used"] = True
     analysis["context_resolution"] = context_resolution
+    if analysis.get("metadata_ambiguous") and analysis.get("query_type") != "comparison":
+        return make_metadata_clarification_result(
+            index,
+            query,
+            retrieval_query,
+            analysis,
+            state,
+            context_resolution,
+            started,
+            metadata_first,
+            rerank,
+            verifier_retry,
+            retrieval_mode,
+            pipeline_name,
+            prompt_profile,
+            stage_timings=stage_timings,
+            cold_start=cold_start,
+        )
     stage_sequence = metadata_stage_sequence(
         analysis,
         metadata_first=metadata_first,
@@ -2595,13 +2961,18 @@ def run_rag_query(
 
     for attempt_index, stage in enumerate(stage_sequence):
         attempt_top_k = top_k
+        top_k_reason = None
+        if requested_top_k is not None:
+            top_k_reason = "pipeline_or_explicit_override"
         if attempt_index > 0:
             attempt_top_k = max(top_k or 0, 8)
+            top_k_reason = "retry_expansion"
         attempt_timings: dict[str, float] = {}
         with _StageTimer(attempt_timings, "retrieve_ms"):
             plan = make_plan(
                 analysis,
                 top_k=attempt_top_k,
+                top_k_reason=top_k_reason,
                 stage=stage,
                 metadata_first=metadata_first,
                 rerank=rerank,
@@ -2652,6 +3023,11 @@ def run_rag_query(
         "context_resolution_ms": round(stage_timings.get("context_resolution_ms", 0.0), 2),
         "answer_generation_ms": round(stage_timings.get("answer_generation_ms", 0.0), 2),
     }
+    metadata_resolution = metadata_resolution_diagnostics(
+        retrieval_query,
+        analysis,
+        selected_stage=str(plan.get("filter_stage") or ""),
+    )
     return {
         "mode": "rag",
         "query": query,
@@ -2675,6 +3051,8 @@ def run_rag_query(
             "filter_stage_attempts": stage_attempts,
             "final_relaxation_reason": stage_attempts[-2]["verification_reasons"] if retry_count and len(stage_attempts) >= 2 else [],
             "context_resolution": context_resolution,
+            "metadata_resolution": metadata_resolution,
+            "selected_top_k": plan.get("top_k"),
             "embedding_backend": index.get("embedding", {}).get("backend"),
             "embedding_model": index.get("embedding", {}).get("model"),
             "metadata_first": metadata_first,

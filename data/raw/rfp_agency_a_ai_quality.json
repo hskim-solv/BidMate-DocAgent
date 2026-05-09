@@ -5,7 +5,11 @@
   "project": "AI 품질관리 플랫폼 구축",
   "metadata": {
     "domain": "AI quality",
-    "document_type": "synthetic_public_sample"
+    "document_type": "synthetic_public_sample",
+    "project_aliases": [
+      "품관플",
+      "AI품플"
+    ]
   },
   "sections": [
     {

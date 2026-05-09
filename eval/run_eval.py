@@ -452,7 +452,11 @@ def score_case(
     evidence_text = " ".join(str(item.get("text") or "") for item in evidence)
     combined_text = " ".join([answer, evidence_text])
     diagnostics = prediction.get("diagnostics") or {}
+    plan = prediction.get("plan") or {}
+    analysis = prediction.get("analysis") or {}
     context_resolution = diagnostics.get("context_resolution") or {}
+    metadata_resolution = diagnostics.get("metadata_resolution") or {}
+    ambiguity = metadata_resolution.get("ambiguity") or {}
     abstained = bool(diagnostics.get("abstained"))
     answer_format = score_answer_format(case, prediction, answer_policy)
     citation_grounding = score_citation_grounding(case, prediction)
@@ -517,6 +521,14 @@ def score_case(
         "latency_ms": diagnostics.get("latency_ms"),
         "retry_count": diagnostics.get("retry_count", 0),
         "retry_trigger_reasons": retry_trigger_reasons(prediction),
+        "filter_stage": plan.get("filter_stage"),
+        "selected_top_k": diagnostics.get("selected_top_k"),
+        "retrieval_budget": dict(plan.get("retrieval_budget") or {}),
+        "metadata_ambiguous": bool(analysis.get("metadata_ambiguous")),
+        "ambiguity_decision": ambiguity.get("decision"),
+        "ambiguity_reason": ambiguity.get("decision_reason") or ambiguity.get("reason"),
+        "metadata_candidate_count": metadata_resolution.get("candidate_count"),
+        "metadata_selected_doc_ids": metadata_resolution.get("selected_doc_ids") or [],
         "cold_start": bool(diagnostics.get("cold_start", False)),
         "stage_latency": dict(diagnostics.get("stage_latency") or {}),
         "attempt_latency": [
