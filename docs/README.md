@@ -3,6 +3,7 @@
 - [Reviewer evidence pack](./reviewer-evidence-pack.md)
 - [포트폴리오 case study](./portfolio-case-study.md)
 - [Benchmarking](./benchmarking.md)
+- [Retrieval hardening milestone](./retrieval-hardening.md)
 - [Reproducible harness](./harness.md)
 - [Private hard-case benchmark](./private-hardcase-benchmark.md)
 - [Private 100-doc experiments](./private-100-doc-experiments.md)
