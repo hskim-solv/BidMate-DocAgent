@@ -13,4 +13,5 @@
 - [Visual parsing v2](./visual-ingestion-v2.md)
 - [Citation grounding evaluation](./citation-grounding-eval.md)
 - [실패 사례 분석](./failure-cases.md)
+- [실데이터 실패 분류 및 우선순위 백로그](./real-data-failure-taxonomy.md)
 - [회고 및 향후 개선](./retrospective.md)
