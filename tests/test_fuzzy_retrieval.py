@@ -19,9 +19,46 @@ class FuzzyMetadataRetrievalTest(unittest.TestCase):
         self.assertEqual(["rfp-agency-a-ai-quality"], result["analysis"]["matched_doc_ids"])
         self.assertEqual("strict", result["plan"]["filter_stage"])
         self.assertEqual(
+            "use_selected_candidates",
+            result["diagnostics"]["metadata_resolution"]["ambiguity"]["decision"],
+        )
+        self.assertEqual(
             ["rfp-agency-a-ai-quality"],
             result["plan"]["metadata_filters"]["doc_ids"],
         )
+
+    def test_noisy_agency_mention_records_metadata_resolution_diagnostics(self) -> None:
+        result = run_rag_query(self.index, "기관-A 의 보안 통제 요구사항은?")
+
+        metadata_resolution = result["diagnostics"]["metadata_resolution"]
+        self.assertEqual(["rfp-agency-a-ai-quality"], result["analysis"]["matched_doc_ids"])
+        self.assertEqual("strict", result["plan"]["filter_stage"])
+        self.assertEqual("strict", metadata_resolution["selected_stage"])
+        self.assertEqual(["rfp-agency-a-ai-quality"], metadata_resolution["selected_doc_ids"])
+        self.assertGreaterEqual(metadata_resolution["candidate_count"], 1)
+        self.assertEqual(4, result["diagnostics"]["selected_top_k"])
+        self.assertEqual("single_doc_default", result["plan"]["retrieval_budget"]["reason"])
+
+    def test_explicit_project_alias_matches_project_metadata(self) -> None:
+        result = run_rag_query(self.index, "품관플의 보안 통제 요구사항은?")
+
+        self.assertEqual(["rfp-agency-a-ai-quality"], result["analysis"]["matched_doc_ids"])
+        self.assertEqual(["AI 품질관리 플랫폼 구축"], result["analysis"]["matched_projects"])
+        self.assertEqual("strict", result["plan"]["filter_stage"])
+        self.assertTrue(
+            any(
+                match["match_type"] == "explicit_alias"
+                for match in result["analysis"]["metadata_matches"]
+            )
+        )
+
+    def test_korean_project_alias_matches_mlops_document(self) -> None:
+        result = run_rag_query(self.index, "엠엘옵스 자동화의 필수 산출물은?")
+
+        self.assertEqual(["rfp-agency-b-mlops-governance"], result["analysis"]["matched_doc_ids"])
+        self.assertEqual(["데이터 거버넌스 및 MLOps 자동화"], result["analysis"]["matched_projects"])
+        self.assertFalse(result["diagnostics"]["abstained"])
+        self.assertEqual("supported", result["answer"]["status"])
 
     def test_section_metadata_is_stored_on_chunks_and_evidence(self) -> None:
         chunk = self.index["chunks"][0]
@@ -79,7 +116,7 @@ class FuzzyMetadataRetrievalTest(unittest.TestCase):
             set(result["plan"]["metadata_filters"]["doc_ids"]),
         )
 
-    def test_ambiguous_metadata_keeps_close_candidates(self) -> None:
+    def test_ambiguous_metadata_clarifies_close_candidates(self) -> None:
         ambiguous_index = build_index_payload_from_documents(
             [
                 {
@@ -109,13 +146,17 @@ class FuzzyMetadataRetrievalTest(unittest.TestCase):
 
         self.assertEqual("single_doc", result["analysis"]["query_type"])
         self.assertTrue(result["analysis"]["metadata_ambiguous"])
+        self.assertTrue(result["diagnostics"]["abstained"])
+        self.assertEqual("insufficient", result["answer"]["status"])
+        self.assertEqual("abstention", result["answer"]["query_type"])
+        self.assertEqual([], result["evidence"])
         self.assertEqual(
-            {"alpha-research", "alpha-regional"},
-            set(result["analysis"]["matched_doc_ids"]),
+            "clarify",
+            result["diagnostics"]["metadata_resolution"]["ambiguity"]["decision"],
         )
         self.assertEqual(
             {"alpha-research", "alpha-regional"},
-            set(result["plan"]["metadata_filters"]["doc_ids"]),
+            set(result["analysis"]["matched_doc_ids"]),
         )
 
     def test_single_agency_schedule_and_budget_query_is_not_comparison(self) -> None:
@@ -147,6 +188,12 @@ class FuzzyMetadataRetrievalTest(unittest.TestCase):
         result = run_rag_query(same_agency_index, "기관 X의 사업기간과 사업금액은?")
 
         self.assertEqual("single_doc", result["analysis"]["query_type"])
+        self.assertTrue(result["analysis"]["metadata_ambiguous"])
+        self.assertTrue(result["diagnostics"]["abstained"])
+        self.assertEqual(
+            "clarify",
+            result["diagnostics"]["metadata_resolution"]["ambiguity"]["decision"],
+        )
 
     def test_partial_comparison_keeps_supported_claims_and_missing_target(self) -> None:
         partial_index = build_index_payload_from_documents(
@@ -282,7 +329,7 @@ class FuzzyMetadataRetrievalTest(unittest.TestCase):
             "conversation_state",
             follow_up["diagnostics"]["context_resolution"]["source"],
         )
-        self.assertIn("사업예산", follow_up["diagnostics"]["verification_topics"])
+        self.assertIn("예산", follow_up["diagnostics"]["verification_topics"])
 
     def test_metadata_only_budget_claim_does_not_emit_unrelated_body_sentence(self) -> None:
         real_like_index = build_index_payload_from_documents(
@@ -405,6 +452,64 @@ class FuzzyMetadataRetrievalTest(unittest.TestCase):
             {"rfp-agency-a-ai-quality"},
             {item["doc_id"] for item in follow_up["evidence"]},
         )
+        self.assertEqual(6, follow_up["plan"]["top_k"])
+        self.assertEqual("follow_up_default", follow_up["plan"]["retrieval_budget"]["reason"])
+        self.assertEqual(6, follow_up["diagnostics"]["selected_top_k"])
+
+    def test_multi_step_follow_up_preserves_agency_and_project_context(self) -> None:
+        first = run_rag_query(
+            self.index,
+            "기관 A의 AI 요구사항은?",
+            conversation_state={},
+        )
+        second = run_rag_query(
+            self.index,
+            "그 기관이 요구한 보안 조건도 보여줘",
+            conversation_state=first["conversation_state"],
+        )
+        third = run_rag_query(
+            self.index,
+            "그 사업의 필수 산출물은?",
+            conversation_state=second["conversation_state"],
+        )
+
+        self.assertFalse(third["diagnostics"]["abstained"])
+        self.assertEqual("follow_up", third["analysis"]["query_type"])
+        self.assertIn("기관 A", third["resolved_query"])
+        self.assertIn("AI 품질관리 플랫폼 구축", third["resolved_query"])
+        self.assertEqual(
+            ["기관 A"],
+            third["diagnostics"]["context_resolution"]["context_entities"],
+        )
+        self.assertEqual(
+            ["AI 품질관리 플랫폼 구축"],
+            third["diagnostics"]["context_resolution"]["context_projects"],
+        )
+        self.assertEqual(
+            ["rfp-agency-a-ai-quality"],
+            third["diagnostics"]["context_resolution"]["active_doc_ids"],
+        )
+        self.assertEqual(
+            {"rfp-agency-a-ai-quality"},
+            {item["doc_id"] for item in third["evidence"]},
+        )
+
+    def test_follow_up_budget_differs_from_single_doc_default(self) -> None:
+        single = run_rag_query(
+            self.index,
+            "기관 A의 보안 통제 요구사항은?",
+            conversation_state={},
+        )
+        follow_up = run_rag_query(
+            self.index,
+            "그 기관의 필수 산출물은?",
+            conversation_state=single["conversation_state"],
+        )
+
+        self.assertEqual(4, single["plan"]["top_k"])
+        self.assertEqual(6, follow_up["plan"]["top_k"])
+        self.assertEqual("single_doc_default", single["plan"]["retrieval_budget"]["reason"])
+        self.assertEqual("follow_up_default", follow_up["plan"]["retrieval_budget"]["reason"])
 
     def test_conversation_state_clarifies_ambiguous_singular_reference(self) -> None:
         first = run_rag_query(

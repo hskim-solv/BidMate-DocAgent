@@ -89,28 +89,26 @@ CLI와 리뷰 편의를 위해 같은 내용을 사람이 읽기 쉬운 `answer_
 <!-- METRICS_TABLE:START -->
 | Category | Metric | Score |
 |---|---:|---:|
-| Overall | Answer Accuracy | 0.947 |
+| Overall | Answer Accuracy | 0.808 |
 | Single-doc extraction | Answer Accuracy | 1.000 |
-| Multi-doc comparison | Groundedness Rate | 1.000 |
-| Follow-up | Answer Accuracy | 0.857 |
-| Evidence | Citation Precision | 0.519 |
-| Evidence | Answer Format Compliance | 0.731 |
+| Multi-doc comparison | Groundedness Rate | 0.667 |
+| Follow-up | Answer Accuracy | 0.750 |
+| Evidence | Citation Precision | 0.455 |
+| Evidence | Answer Format Compliance | 0.667 |
 | Abstention | Abstention Accuracy | 0.143 |
-| System | Latency (p50/p95) | p50 1.5ms / p95 2.4ms |
+| System | Latency (p50/p95) | p50 1.2ms / p95 1.7ms |
 | System | Retry Rate | 0.000 |
-
-> Stage 단위 latency, retry 비용, cold-start 분리 해석은 [`docs/benchmarking.md`](docs/benchmarking.md#stage-latency--retry-cost)를 참고한다.
 
 ### Ablation comparison
 
 | Run | Pipeline | Top-k | Metadata-first | Rerank | Verifier/Retry | Accuracy | Groundedness | Citation | Format | Abstention | Retry | Latency p95 |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| naive_baseline | naive_baseline | 4 | off | off | off | 0.947 | 0.731 | 0.519 | 0.731 | 0.143 | 0.000 | 2.4ms |
-| full | agentic_full | auto | on | on | on | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 | 0.231 | 1.8ms |
-| hierarchical | agentic_full | auto | on | on | on | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 | 0.231 | 2.6ms |
-| no_metadata_first | agentic_full | auto | off | on | on | 0.947 | 0.962 | 0.750 | 0.962 | 1.000 | 0.000 | 2.4ms |
-| no_rerank | agentic_full | auto | on | off | on | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 | 0.231 | 2.5ms |
-| no_verifier_retry | agentic_full | auto | on | on | off | 1.000 | 0.769 | 0.769 | 0.769 | 0.143 | 0.000 | 2.2ms |
+| naive_baseline | naive_baseline | 4 | off | off | off | 0.808 | 0.667 | 0.455 | 0.667 | 0.143 | 0.000 | 1.7ms |
+| full | agentic_full | auto | on | on | on | 0.885 | 0.909 | 0.909 | 0.909 | 1.000 | 0.273 | 1.9ms |
+| hierarchical | agentic_full | auto | on | on | on | 0.885 | 0.909 | 0.909 | 0.909 | 1.000 | 0.273 | 2.1ms |
+| no_metadata_first | agentic_full | auto | off | on | on | 0.808 | 0.848 | 0.636 | 0.848 | 1.000 | 0.000 | 1.8ms |
+| no_rerank | agentic_full | auto | on | off | on | 0.885 | 0.909 | 0.909 | 0.909 | 1.000 | 0.273 | 1.9ms |
+| no_verifier_retry | agentic_full | auto | on | on | off | 0.885 | 0.727 | 0.727 | 0.727 | 0.143 | 0.000 | 1.4ms |
 <!-- METRICS_TABLE:END -->
 
 > 주의: 성능표는 공개 synthetic RFP 평가셋 기준입니다. 원본 RFP 데이터는 비공개 제약으로 저장소에 포함하지 않았습니다.
@@ -127,7 +125,7 @@ Query Analyzer
   ↓
 Planner (metadata-first, comparison-aware top_k)
   ↓
-Retriever (dense + reranking + balanced top-k cut for comparisons)
+Retriever (staged metadata filters + dense/reranking + query-type top_k)
   ↓
 Evidence Aggregator
   ↓
@@ -138,7 +136,7 @@ Answer Generator (structured claims)
 Final Response (grounded)
 ```
 
-비교 질의(`query_type == "comparison"`)에서는 단순 global top-k 컷이 한쪽 문서만 채워 verifier가 불필요한 retry를 트리거하는 문제를 막기 위해, 각 비교 대상에 최소 1개 이상의 evidence가 들어가도록 보장하는 balanced top-k 컷을 적용한다. 자세한 설계는 [docs/comparison-ranking.md](docs/comparison-ranking.md) 참고.
+비교 질의(`query_type == "comparison"`)에서는 단순 global top-k 컷이 한쪽 문서만 채워 verifier가 불필요한 retry를 트리거하는 문제를 막기 위해, 각 비교 대상에 최소 1개 이상의 evidence가 들어가도록 보장하는 balanced top-k 컷을 적용한다. Metadata filter staging, alias lexicon, follow-up carryover, ambiguity clarification, query-type top_k 진단은 [docs/retrieval-hardening.md](docs/retrieval-hardening.md)에 정리했다. 비교 ranking 상세 설계는 [docs/comparison-ranking.md](docs/comparison-ranking.md) 참고.
 
 ---
 

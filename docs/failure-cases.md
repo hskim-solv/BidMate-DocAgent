@@ -16,6 +16,7 @@
 - top-k/rerank 파라미터 조정
 - 세션 컨텍스트 보강 및 검증 로그 점검
 - 공개본에서는 agency/project/title metadata를 정규화해 exact/partial/fuzzy 후보를 확장한다.
+- 명시적 alias lexicon과 ambiguity clarification 정책은 [retrieval-hardening.md](retrieval-hardening.md)에 정리한다.
 - verifier가 topic/entity/doc coverage를 확인하고 실패 시 strict → reduced → relaxed 단계로 metadata filter를 완화한다.
 - retrieval diagnostics에는 단계별 filter, 후보 수, 검증 실패 사유를 남겨 metadata mismatch를 추적한다.
 - 최종 답변은 `supported`/`partial`/`insufficient` 상태를 명시하고, claim마다 citation을 연결한다.
