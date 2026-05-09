@@ -49,25 +49,13 @@
         "doc_id": "rfp-agency-a-ai-quality",
         "agency": "기관 A",
         "project": "AI 품질관리 플랫폼 구축",
-        "field": "project",
-        "value": "AI 품질관리 플랫폼 구축",
-        "confidence": 0.78,
-        "stage": "reduced",
-        "match_type": "abbreviation",
-        "matched_terms": [
-          "ai"
-        ]
-      },
-      {
-        "doc_id": "rfp-agency-a-ai-quality",
-        "agency": "기관 A",
-        "project": "AI 품질관리 플랫폼 구축",
         "field": "title",
         "value": "기관 A AI 품질관리 플랫폼 구축 RFP",
-        "confidence": 0.78,
+        "confidence": 0.795,
         "stage": "reduced",
-        "match_type": "abbreviation",
+        "match_type": "partial_tokens",
         "matched_terms": [
+          "a",
           "ai"
         ]
       }
@@ -366,7 +354,7 @@
     ]
   },
   "diagnostics": {
-    "latency_ms": 2.01,
+    "latency_ms": 2.16,
     "retry_count": 0,
     "abstained": false,
     "answer_status": "supported",
@@ -413,8 +401,8 @@
         "retrieval_mode": "flat",
         "verified": true,
         "verification_reasons": [],
-        "retrieve_ms": 0.16,
-        "verify_ms": 0.15,
+        "retrieve_ms": 0.18,
+        "verify_ms": 0.13,
         "comparison_coverage": {
           "targets": [
             "rfp-agency-a-ai-quality",
@@ -453,7 +441,7 @@
         "b",
         "ai"
       ],
-      "candidate_count": 4,
+      "candidate_count": 3,
       "candidates": [
         {
           "doc_id": "rfp-agency-a-ai-quality",
@@ -483,27 +471,15 @@
         },
         {
           "doc_id": "rfp-agency-a-ai-quality",
-          "field": "project",
-          "value": "AI 품질관리 플랫폼 구축",
-          "agency": "기관 A",
-          "project": "AI 품질관리 플랫폼 구축",
-          "confidence": 0.78,
-          "stage": "reduced",
-          "match_type": "abbreviation",
-          "matched_terms": [
-            "ai"
-          ]
-        },
-        {
-          "doc_id": "rfp-agency-a-ai-quality",
           "field": "title",
           "value": "기관 A AI 품질관리 플랫폼 구축 RFP",
           "agency": "기관 A",
           "project": "AI 품질관리 플랫폼 구축",
-          "confidence": 0.78,
+          "confidence": 0.795,
           "stage": "reduced",
-          "match_type": "abbreviation",
+          "match_type": "partial_tokens",
           "matched_terms": [
+            "a",
             "ai"
           ]
         }
@@ -567,27 +543,15 @@
           },
           {
             "doc_id": "rfp-agency-a-ai-quality",
-            "field": "project",
-            "value": "AI 품질관리 플랫폼 구축",
-            "agency": "기관 A",
-            "project": "AI 품질관리 플랫폼 구축",
-            "confidence": 0.78,
-            "stage": "reduced",
-            "match_type": "abbreviation",
-            "matched_terms": [
-              "ai"
-            ]
-          },
-          {
-            "doc_id": "rfp-agency-a-ai-quality",
             "field": "title",
             "value": "기관 A AI 품질관리 플랫폼 구축 RFP",
             "agency": "기관 A",
             "project": "AI 품질관리 플랫폼 구축",
-            "confidence": 0.78,
+            "confidence": 0.795,
             "stage": "reduced",
-            "match_type": "abbreviation",
+            "match_type": "partial_tokens",
             "matched_terms": [
+              "a",
               "ai"
             ]
           }
@@ -651,7 +615,7 @@
     "prompt_profile": "structured_grounded_claims",
     "cold_start": true,
     "stage_latency": {
-      "query_analysis_ms": 0.45,
+      "query_analysis_ms": 0.53,
       "context_resolution_ms": 0.0,
       "answer_generation_ms": 0.36
     }
