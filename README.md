@@ -96,19 +96,19 @@ CLI와 리뷰 편의를 위해 같은 내용을 사람이 읽기 쉬운 `answer_
 | Evidence | Citation Precision | 0.455 |
 | Evidence | Answer Format Compliance | 0.667 |
 | Abstention | Abstention Accuracy | 0.143 |
-| System | Latency (p50/p95) | p50 1.2ms / p95 1.7ms |
+| System | Latency (p50/p95) | p50 1.1ms / p95 1.9ms |
 | System | Retry Rate | 0.000 |
 
 ### Ablation comparison
 
 | Run | Pipeline | Top-k | Metadata-first | Rerank | Verifier/Retry | Accuracy | Groundedness | Citation | Format | Abstention | Retry | Latency p95 |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| naive_baseline | naive_baseline | 4 | off | off | off | 0.808 | 0.667 | 0.455 | 0.667 | 0.143 | 0.000 | 1.7ms |
-| full | agentic_full | auto | on | on | on | 0.885 | 0.909 | 0.909 | 0.909 | 1.000 | 0.273 | 1.9ms |
-| hierarchical | agentic_full | auto | on | on | on | 0.885 | 0.909 | 0.909 | 0.909 | 1.000 | 0.273 | 2.1ms |
-| no_metadata_first | agentic_full | auto | off | on | on | 0.808 | 0.848 | 0.636 | 0.848 | 1.000 | 0.000 | 1.8ms |
+| naive_baseline | naive_baseline | 4 | off | off | off | 0.808 | 0.667 | 0.455 | 0.667 | 0.143 | 0.000 | 1.9ms |
+| full | agentic_full | auto | on | on | on | 0.885 | 0.909 | 0.909 | 0.909 | 1.000 | 0.273 | 2.0ms |
+| hierarchical | agentic_full | auto | on | on | on | 0.885 | 0.909 | 0.909 | 0.909 | 1.000 | 0.273 | 1.9ms |
+| no_metadata_first | agentic_full | auto | off | on | on | 0.808 | 0.848 | 0.636 | 0.848 | 1.000 | 0.000 | 1.6ms |
 | no_rerank | agentic_full | auto | on | off | on | 0.885 | 0.909 | 0.909 | 0.909 | 1.000 | 0.273 | 1.9ms |
-| no_verifier_retry | agentic_full | auto | on | on | off | 0.885 | 0.727 | 0.727 | 0.727 | 0.143 | 0.000 | 1.4ms |
+| no_verifier_retry | agentic_full | auto | on | on | off | 0.885 | 0.727 | 0.727 | 0.727 | 0.143 | 0.000 | 1.5ms |
 <!-- METRICS_TABLE:END -->
 
 > 주의: 성능표는 공개 synthetic RFP 평가셋 기준입니다. 원본 RFP 데이터는 비공개 제약으로 저장소에 포함하지 않았습니다.

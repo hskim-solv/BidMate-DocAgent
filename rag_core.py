@@ -1146,10 +1146,6 @@ def metadata_aliases(
         compact = compact_metadata_text(value)
         if compact.startswith("기관") and len(compact) > 2:
             aliases.append(compact[2:])
-    else:
-        for token in tokens:
-            if 2 <= len(token) <= 8 and re.search(r"[a-z0-9]", token):
-                aliases.append(token)
     return ordered_unique(aliases)
 
 
@@ -1207,7 +1203,9 @@ def match_metadata_target(
     alias_hits = []
     for alias in target.get("aliases", []):
         alias_compact = compact_metadata_text(str(alias))
-        if alias in query_token_set or (alias_compact and alias_compact in query_compact):
+        if alias in query_token_set or (
+            alias_compact and len(alias_compact) >= 2 and alias_compact in query_compact
+        ):
             alias_hits.append(str(alias))
     if alias_hits:
         return make_metadata_match(target, 0.78, "abbreviation", alias_hits)
@@ -2451,7 +2449,7 @@ def metadata_stage_sequence(
     if reduced_filters and reduced_filters != strict_filters:
         stages.append("reduced")
     if not stages:
-        return ["relaxed"]
+        return ["relaxed", "relaxed"] if verifier_retry else ["relaxed"]
     if verifier_retry:
         stages.append("relaxed")
     return stages

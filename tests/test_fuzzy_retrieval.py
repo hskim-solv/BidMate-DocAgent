@@ -1,7 +1,14 @@
 import unittest
 from pathlib import Path
 
-from rag_core import build_index_payload, build_index_payload_from_documents, run_rag_query
+from rag_core import (
+    analyze_query,
+    build_index_payload,
+    build_index_payload_from_documents,
+    metadata_stage_sequence,
+    metadata_targets,
+    run_rag_query,
+)
 
 
 class FuzzyMetadataRetrievalTest(unittest.TestCase):
@@ -98,6 +105,17 @@ class FuzzyMetadataRetrievalTest(unittest.TestCase):
             {"rfp-agency-a-ai-quality", "rfp-agency-b-mlops-governance"},
             {item["doc_id"] for item in result["evidence"]},
         )
+
+    def test_short_agency_alias_does_not_match_inside_longer_token(self) -> None:
+        analysis = analyze_query("AI 요구사항은?", metadata_targets(self.index))
+
+        self.assertNotIn("기관 A", analysis["entities"])
+        self.assertNotIn("rfp-agency-a-ai-quality", analysis["matched_doc_ids"])
+
+    def test_metadata_miss_preserves_relaxed_retry_expansion(self) -> None:
+        analysis = analyze_query("문서에 없는 새 주제 알려줘", metadata_targets(self.index))
+
+        self.assertEqual(["relaxed", "relaxed"], metadata_stage_sequence(analysis))
 
     def test_partial_project_query_matches_project_metadata(self) -> None:
         result = run_rag_query(
