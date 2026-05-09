@@ -5,7 +5,11 @@
   "project": "고객지원 챗봇 고도화",
   "metadata": {
     "domain": "chatbot",
-    "document_type": "synthetic_public_sample"
+    "document_type": "synthetic_public_sample",
+    "project_aliases": [
+      "챗봇 고도화",
+      "고객지원 챗봇"
+    ]
   },
   "sections": [
     {

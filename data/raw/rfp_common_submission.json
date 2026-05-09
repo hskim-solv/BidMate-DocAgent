@@ -5,7 +5,11 @@
   "project": "공통 제출조건",
   "metadata": {
     "domain": "submission",
-    "document_type": "synthetic_public_sample"
+    "document_type": "synthetic_public_sample",
+    "project_aliases": [
+      "공통 조건",
+      "공통 산출물 기준"
+    ]
   },
   "sections": [
     {

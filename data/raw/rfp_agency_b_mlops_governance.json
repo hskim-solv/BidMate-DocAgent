@@ -5,7 +5,11 @@
   "project": "데이터 거버넌스 및 MLOps 자동화",
   "metadata": {
     "domain": "MLOps",
-    "document_type": "synthetic_public_sample"
+    "document_type": "synthetic_public_sample",
+    "project_aliases": [
+      "엠엘옵스 자동화",
+      "데이터 MLOps"
+    ]
   },
   "sections": [
     {
