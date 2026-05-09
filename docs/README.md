@@ -10,6 +10,7 @@
 - [설계 배경 및 의사결정](./design-background.md)
 - [답변 출력 정책](./answer-policy.md)
 - [PDF/HWP ingestion](./real-data-ingestion.md)
+- [Local gold authoring guide](./local-gold-authoring.md)
 - [Visual parsing v2](./visual-ingestion-v2.md)
 - [Citation grounding evaluation](./citation-grounding-eval.md)
 - [실패 사례 분석](./failure-cases.md)
