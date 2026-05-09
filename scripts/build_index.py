@@ -81,6 +81,16 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_CHUNK_OVERLAP_SENTENCES,
         help="Number of trailing sentences to overlap between adjacent chunks.",
     )
+    parser.add_argument(
+        "--on_duplicate_doc_id",
+        default="fail",
+        choices=["fail", "suffix"],
+        help=(
+            "How duplicate canonical doc_ids should be handled when ingesting "
+            "from --metadata_csv. 'fail' marks the later row as duplicate; "
+            "'suffix' deterministically appends -2/-3/... to keep both rows."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -145,6 +155,7 @@ def main() -> int:
                 documents, ingestion_report = load_documents_from_metadata_csv(
                     Path(args.metadata_csv),
                     Path(args.files_dir),
+                    on_duplicate_doc_id=args.on_duplicate_doc_id,
                 )
                 message = "PDF/HWP RFP index built from data_list.csv text and joined metadata."
             payload = build_index_payload_from_documents(

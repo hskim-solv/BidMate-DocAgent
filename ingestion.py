@@ -9,7 +9,8 @@ in the ingestion report.
 from __future__ import annotations
 
 import csv
-from dataclasses import asdict, dataclass
+from collections import OrderedDict
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 import re
 from typing import Any
@@ -26,6 +27,37 @@ REQUIRED_COLUMNS = [
     "텍스트",
 ]
 
+INGESTION_REPORT_SCHEMA_VERSION = 2
+
+# Public, reviewer-facing failure taxonomy for ingestion. Keep keys stable;
+# downstream tooling (eval/run_eval.py, docs, dashboards) reads them.
+FAILURE_TAXONOMY: dict[str, dict[str, str]] = {
+    "missing_file_name": {
+        "stage": "row",
+        "downstream_risk": "Row cannot be matched to any source file.",
+    },
+    "missing_doc_id": {
+        "stage": "row",
+        "downstream_risk": "Row produces no stable identifier; eval cannot reference it.",
+    },
+    "duplicate_doc_id": {
+        "stage": "row",
+        "downstream_risk": "Two rows would collide in the index; later row is dropped.",
+    },
+    "unsupported_file_format": {
+        "stage": "row",
+        "downstream_risk": "PDF/HWP path is the only supported v1 format.",
+    },
+    "missing_file": {
+        "stage": "filesystem",
+        "downstream_risk": "Source file is referenced but not present on disk.",
+    },
+    "empty_text": {
+        "stage": "text",
+        "downstream_risk": "CSV has no body text for this row; nothing to chunk or embed.",
+    },
+}
+
 
 @dataclass(frozen=True)
 class IngestionRecord:
@@ -36,6 +68,22 @@ class IngestionRecord:
     file_format: str
     source_path: str
     reason: str | None = None
+    duplicate_resolution: dict[str, Any] | None = None
+    messages: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class ValidationIssue:
+    code: str
+    field: str
+    message: str
+    row_number: int | None = None
+
+
+@dataclass
+class _DuplicateTracker:
+    seen: dict[str, int] = field(default_factory=dict)
+    counts: dict[str, int] = field(default_factory=dict)
 
 
 class CsvTextDocumentLoader:
@@ -65,7 +113,14 @@ LOADERS: dict[str, CsvTextDocumentLoader] = {
 def load_documents_from_metadata_csv(
     metadata_csv: Path,
     files_dir: Path,
+    *,
+    on_duplicate_doc_id: str = "fail",
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    if on_duplicate_doc_id not in {"fail", "suffix"}:
+        raise ValueError(
+            "on_duplicate_doc_id must be 'fail' or 'suffix'; got: "
+            f"{on_duplicate_doc_id}"
+        )
     if not metadata_csv.exists():
         raise ValueError(f"--metadata_csv does not exist: {metadata_csv}")
     if not metadata_csv.is_file():
@@ -77,17 +132,22 @@ def load_documents_from_metadata_csv(
 
     documents: list[dict[str, Any]] = []
     records: list[IngestionRecord] = []
-    seen_doc_ids: set[str] = set()
+    tracker = _DuplicateTracker()
 
     with metadata_csv.open("r", encoding="utf-8-sig", newline="") as file:
         reader = csv.DictReader(file)
         validate_fieldnames(reader.fieldnames or [], metadata_csv)
         for row_number, row in enumerate(reader, start=2):
-            document, record = normalize_ingestion_row(row, row_number, files_dir, seen_doc_ids)
+            document, record = normalize_ingestion_row(
+                row,
+                row_number,
+                files_dir,
+                tracker,
+                on_duplicate_doc_id=on_duplicate_doc_id,
+            )
             records.append(record)
             if document is not None:
                 documents.append(document)
-                seen_doc_ids.add(document["doc_id"])
 
     if not documents:
         failure_reasons = sorted({record.reason or record.status for record in records})
@@ -96,16 +156,13 @@ def load_documents_from_metadata_csv(
             f"{metadata_csv}. Failure reasons: {', '.join(failure_reasons) or 'none'}"
         )
 
-    report = {
-        "metadata_csv": str(metadata_csv),
-        "files_dir": str(files_dir),
-        "summary": {
-            "total_rows": len(records),
-            "indexed_documents": len(documents),
-            "failed_rows": sum(1 for record in records if record.status == "failed"),
-        },
-        "records": [asdict(record) for record in records],
-    }
+    report = build_ingestion_report(
+        metadata_csv=metadata_csv,
+        files_dir=files_dir,
+        records=records,
+        indexed_count=len(documents),
+        on_duplicate_doc_id=on_duplicate_doc_id,
+    )
     return documents, report
 
 
@@ -121,22 +178,57 @@ def normalize_ingestion_row(
     row: dict[str, str],
     row_number: int,
     files_dir: Path,
-    seen_doc_ids: set[str],
+    tracker: _DuplicateTracker,
+    *,
+    on_duplicate_doc_id: str = "fail",
 ) -> tuple[dict[str, Any] | None, IngestionRecord]:
     notice_id = clean_cell(row.get("공고 번호"))
     notice_round = clean_cell(row.get("공고 차수"))
     file_name = clean_cell(row.get("파일명"))
     file_format = normalize_file_format(row.get("파일형식"), file_name)
     source_path = find_source_file(files_dir, file_name) if file_name else files_dir
-    doc_id = make_doc_id(notice_id, notice_round) if notice_id else make_doc_id_from_file_name(file_name)
+    base_doc_id = canonical_doc_id(notice_id, notice_round, file_name)
 
-    failure_reason = validate_row_basics(
-        doc_id=doc_id,
-        file_name=file_name,
-        file_format=file_format,
-        source_path=source_path,
-        seen_doc_ids=seen_doc_ids,
-    )
+    duplicate_resolution: dict[str, Any] | None = None
+    failure_reason: str | None = None
+    doc_id = base_doc_id
+
+    if not file_name:
+        failure_reason = "missing_file_name"
+    elif not doc_id:
+        failure_reason = "missing_doc_id"
+    elif file_format not in SUPPORTED_FILE_FORMATS:
+        failure_reason = "unsupported_file_format"
+    elif not source_path.exists() or not source_path.is_file():
+        failure_reason = "missing_file"
+    else:
+        existing_row = tracker.seen.get(base_doc_id)
+        if existing_row is not None:
+            if on_duplicate_doc_id == "suffix":
+                suggested = reserve_next_unique_doc_id(base_doc_id, tracker)
+                doc_id = suggested
+                duplicate_resolution = {
+                    "policy": "suffix",
+                    "base_doc_id": base_doc_id,
+                    "first_seen_row": existing_row,
+                    "assigned_doc_id": suggested,
+                }
+            else:
+                # Read-only peek: do not reserve the suggested id, otherwise a
+                # later row whose canonical doc_id is legitimately <base>-N
+                # would be falsely flagged as a duplicate.
+                suggested = peek_next_unique_doc_id(base_doc_id, tracker)
+                failure_reason = "duplicate_doc_id"
+                duplicate_resolution = {
+                    "policy": "fail",
+                    "base_doc_id": base_doc_id,
+                    "first_seen_row": existing_row,
+                    "suggested_doc_id": suggested,
+                }
+        else:
+            tracker.seen[base_doc_id] = row_number
+            tracker.counts[base_doc_id] = 1
+
     if failure_reason:
         return None, make_record(
             row_number,
@@ -146,6 +238,7 @@ def normalize_ingestion_row(
             file_format,
             source_path,
             failure_reason,
+            duplicate_resolution=duplicate_resolution,
         )
 
     loader = LOADERS[file_format]
@@ -160,9 +253,14 @@ def normalize_ingestion_row(
             file_format,
             source_path,
             str(exc),
+            duplicate_resolution=duplicate_resolution,
         )
 
     metadata = normalize_metadata(row, file_format, file_name)
+    metadata["doc_id"] = doc_id
+    if duplicate_resolution and on_duplicate_doc_id == "suffix":
+        metadata["doc_id_resolution"] = duplicate_resolution["policy"]
+        metadata["doc_id_base"] = duplicate_resolution["base_doc_id"]
     document = {
         "doc_id": doc_id,
         "title": clean_cell(row.get("사업명")) or Path(file_name).stem,
@@ -179,27 +277,8 @@ def normalize_ingestion_row(
         file_name,
         file_format,
         source_path,
+        duplicate_resolution=duplicate_resolution,
     )
-
-
-def validate_row_basics(
-    doc_id: str | None,
-    file_name: str,
-    file_format: str,
-    source_path: Path,
-    seen_doc_ids: set[str],
-) -> str | None:
-    if not file_name:
-        return "missing_file_name"
-    if not doc_id:
-        return "missing_doc_id"
-    if doc_id in seen_doc_ids:
-        return "duplicate_doc_id"
-    if file_format not in SUPPORTED_FILE_FORMATS:
-        return "unsupported_file_format"
-    if not source_path.exists() or not source_path.is_file():
-        return "missing_file"
-    return None
 
 
 def make_record(
@@ -210,6 +289,9 @@ def make_record(
     file_format: str,
     source_path: Path,
     reason: str | None = None,
+    *,
+    duplicate_resolution: dict[str, Any] | None = None,
+    messages: tuple[str, ...] = (),
 ) -> IngestionRecord:
     return IngestionRecord(
         row_number=row_number,
@@ -219,6 +301,8 @@ def make_record(
         file_format=file_format,
         source_path=str(source_path),
         reason=reason,
+        duplicate_resolution=duplicate_resolution,
+        messages=messages,
     )
 
 
@@ -260,21 +344,83 @@ def find_source_file(files_dir: Path, file_name: str) -> Path:
     return candidate
 
 
+def canonical_doc_id(
+    notice_id: str | None,
+    notice_round: str | None,
+    file_name: str | None,
+) -> str | None:
+    """Single canonical doc_id rule used across ingestion paths.
+
+    Priority:
+      1. ``notice_id`` (+ optional ``notice_round``) if non-empty.
+      2. File-name stem fallback.
+    Both branches NFC-normalize, casefold, and collapse whitespace so the
+    same source row produces the same id across runs and platforms.
+    """
+    notice = clean_cell(notice_id)
+    if notice:
+        return make_doc_id(notice, clean_cell(notice_round))
+    return make_doc_id_from_file_name(clean_cell(file_name or ""))
+
+
 def make_doc_id(notice_id: str, notice_round: str) -> str:
     parts = [notice_id]
     if notice_round:
         parts.append(notice_round)
-    return "-".join(slug_part(part) for part in parts if part)
+    slugged = [slug_part(part) for part in parts if slug_part(part)]
+    return "-".join(slugged)
 
 
 def make_doc_id_from_file_name(file_name: str) -> str | None:
     if not file_name:
         return None
-    return slug_part(Path(file_name).stem)
+    stem = Path(file_name).stem
+    slug = slug_part(stem)
+    return slug or None
 
 
 def slug_part(value: str) -> str:
-    return re.sub(r"\s+", "-", value.strip())
+    if not value:
+        return ""
+    normalized = unicodedata.normalize("NFC", value).strip()
+    normalized = re.sub(r"\s+", "-", normalized)
+    return normalized
+
+
+def _compute_next_unique_doc_id(
+    base_doc_id: str,
+    tracker: _DuplicateTracker,
+) -> tuple[str, int]:
+    count = tracker.counts.get(base_doc_id, 1) + 1
+    candidate = f"{base_doc_id}-{count}"
+    while candidate in tracker.seen:
+        count += 1
+        candidate = f"{base_doc_id}-{count}"
+    return candidate, count
+
+
+def peek_next_unique_doc_id(base_doc_id: str, tracker: _DuplicateTracker) -> str:
+    """Compute the next available ``<base>-N`` id without mutating ``tracker``.
+
+    Used when ``on_duplicate_doc_id="fail"`` so the failure record can carry a
+    ``suggested_doc_id`` for diagnostics without reserving an id that no row
+    will ever take. A later row whose canonical doc_id is legitimately
+    ``<base>-N`` must remain free to claim it.
+    """
+    candidate, _ = _compute_next_unique_doc_id(base_doc_id, tracker)
+    return candidate
+
+
+def reserve_next_unique_doc_id(base_doc_id: str, tracker: _DuplicateTracker) -> str:
+    """Compute and reserve the next ``<base>-N`` id; mutates ``tracker``.
+
+    Used when ``on_duplicate_doc_id="suffix"`` to actually take the id for the
+    duplicate row.
+    """
+    candidate, count = _compute_next_unique_doc_id(base_doc_id, tracker)
+    tracker.seen[candidate] = tracker.seen.get(base_doc_id, 0)
+    tracker.counts[base_doc_id] = count
+    return candidate
 
 
 def parse_budget(value: str | None) -> int | float | str | None:
@@ -296,3 +442,297 @@ def clean_cell(value: str | None) -> str:
 
 def normalize_body_text(value: str | None) -> str:
     return clean_cell(value).replace("\r\n", "\n").replace("\r", "\n")
+
+
+def build_ingestion_report(
+    *,
+    metadata_csv: Path,
+    files_dir: Path,
+    records: list[IngestionRecord],
+    indexed_count: int,
+    on_duplicate_doc_id: str,
+) -> dict[str, Any]:
+    """Build the canonical ingestion_report.json payload."""
+    failure_reasons: dict[str, int] = OrderedDict()
+    failure_examples: dict[str, list[dict[str, Any]]] = OrderedDict()
+    doc_id_sources: dict[str, int] = OrderedDict()
+    file_formats: dict[str, int] = OrderedDict()
+    duplicate_groups: dict[str, list[int]] = OrderedDict()
+
+    for record in records:
+        if record.reason:
+            failure_reasons[record.reason] = failure_reasons.get(record.reason, 0) + 1
+            examples = failure_examples.setdefault(record.reason, [])
+            if len(examples) < 3:
+                examples.append(
+                    {
+                        "row_number": record.row_number,
+                        "doc_id": record.doc_id,
+                        "file_name": record.file_name,
+                        "file_format": record.file_format,
+                    }
+                )
+        fmt = record.file_format or "unknown"
+        file_formats[fmt] = file_formats.get(fmt, 0) + 1
+        if record.status == "indexed":
+            source = "notice_id" if _looks_like_notice_id_doc(record) else "file_name"
+            doc_id_sources[source] = doc_id_sources.get(source, 0) + 1
+        _accumulate_duplicate_group(duplicate_groups, record)
+
+    summary = {
+        "schema_version": INGESTION_REPORT_SCHEMA_VERSION,
+        "total_rows": len(records),
+        "indexed_documents": indexed_count,
+        "failed_rows": sum(1 for record in records if record.status == "failed"),
+        "failure_reasons": dict(failure_reasons),
+        "failure_examples": {k: v for k, v in failure_examples.items()},
+        "doc_id_sources": dict(doc_id_sources),
+        "file_formats": dict(file_formats),
+        "duplicate_doc_ids": {k: sorted(set(v)) for k, v in duplicate_groups.items()},
+        "on_duplicate_doc_id": on_duplicate_doc_id,
+    }
+    return {
+        "metadata_csv": str(metadata_csv),
+        "files_dir": str(files_dir),
+        "summary": summary,
+        "failure_taxonomy": FAILURE_TAXONOMY,
+        "records": [_record_to_dict(record) for record in records],
+    }
+
+
+def _accumulate_duplicate_group(
+    duplicate_groups: dict[str, list[int]],
+    record: IngestionRecord,
+) -> None:
+    """Add a record to ``duplicate_groups`` keyed by base_doc_id when applicable."""
+    if not record.duplicate_resolution:
+        return
+    base = str(record.duplicate_resolution.get("base_doc_id") or record.doc_id or "")
+    if not base:
+        return
+    duplicate_groups.setdefault(base, [])
+    duplicate_groups[base].append(record.row_number)
+    first_seen = record.duplicate_resolution.get("first_seen_row")
+    if isinstance(first_seen, int) and first_seen not in duplicate_groups[base]:
+        duplicate_groups[base].append(first_seen)
+
+
+def _looks_like_notice_id_doc(record: IngestionRecord) -> bool:
+    if not record.doc_id or not record.file_name:
+        return True
+    stem_slug = slug_part(Path(record.file_name).stem)
+    return record.doc_id != stem_slug
+
+
+def _record_to_dict(record: IngestionRecord) -> dict[str, Any]:
+    payload = asdict(record)
+    payload["messages"] = list(record.messages)
+    if record.duplicate_resolution is None:
+        payload.pop("duplicate_resolution", None)
+    return payload
+
+
+def validate_data_list_csv(
+    metadata_csv: Path,
+    files_dir: Path,
+    *,
+    on_duplicate_doc_id: str = "fail",
+) -> dict[str, Any]:
+    """Lightweight schema/audit pass over data_list.csv.
+
+    Mirrors the per-row checks of :func:`load_documents_from_metadata_csv`
+    but does not load body text or build documents. Returns a report
+    structurally compatible with ``ingestion_report.json``.
+    """
+    if on_duplicate_doc_id not in {"fail", "suffix"}:
+        raise ValueError(
+            "on_duplicate_doc_id must be 'fail' or 'suffix'; got: "
+            f"{on_duplicate_doc_id}"
+        )
+    if not metadata_csv.exists():
+        raise ValueError(f"metadata_csv does not exist: {metadata_csv}")
+    if not metadata_csv.is_file():
+        raise ValueError(f"metadata_csv must be a file: {metadata_csv}")
+    if not files_dir.exists():
+        raise ValueError(f"files_dir does not exist: {files_dir}")
+    if not files_dir.is_dir():
+        raise ValueError(f"files_dir must be a directory: {files_dir}")
+
+    schema_issues: list[ValidationIssue] = []
+    records: list[IngestionRecord] = []
+    tracker = _DuplicateTracker()
+
+    with metadata_csv.open("r", encoding="utf-8-sig", newline="") as handle:
+        reader = csv.DictReader(handle)
+        fieldnames = reader.fieldnames or []
+        missing = [column for column in REQUIRED_COLUMNS if column not in fieldnames]
+        for column in missing:
+            schema_issues.append(
+                ValidationIssue(
+                    code="missing_required_column",
+                    field=column,
+                    message=f"required column missing: {column}",
+                )
+            )
+        if missing:
+            return _build_validation_report(
+                metadata_csv=metadata_csv,
+                files_dir=files_dir,
+                records=records,
+                schema_issues=schema_issues,
+                on_duplicate_doc_id=on_duplicate_doc_id,
+            )
+        for row_number, row in enumerate(reader, start=2):
+            record = audit_metadata_row(
+                row,
+                row_number,
+                files_dir,
+                tracker,
+                on_duplicate_doc_id=on_duplicate_doc_id,
+            )
+            records.append(record)
+
+    return _build_validation_report(
+        metadata_csv=metadata_csv,
+        files_dir=files_dir,
+        records=records,
+        schema_issues=schema_issues,
+        on_duplicate_doc_id=on_duplicate_doc_id,
+    )
+
+
+def audit_metadata_row(
+    row: dict[str, str],
+    row_number: int,
+    files_dir: Path,
+    tracker: _DuplicateTracker,
+    *,
+    on_duplicate_doc_id: str = "fail",
+) -> IngestionRecord:
+    notice_id = clean_cell(row.get("공고 번호"))
+    notice_round = clean_cell(row.get("공고 차수"))
+    file_name = clean_cell(row.get("파일명"))
+    file_format = normalize_file_format(row.get("파일형식"), file_name)
+    source_path = find_source_file(files_dir, file_name) if file_name else files_dir
+    base_doc_id = canonical_doc_id(notice_id, notice_round, file_name)
+
+    # Track non-fatal warnings on fields ingestion accepts but downstream
+    # eval often relies on. Blank body text is NOT a warning: the ingestion
+    # path raises ``empty_text`` for that row, and the validator must
+    # report the same failure so a clean validator exit code can be trusted.
+    messages: list[str] = []
+    if not clean_cell(row.get("발주 기관")):
+        messages.append("blank_agency")
+    if not clean_cell(row.get("사업명")):
+        messages.append("blank_project")
+
+    duplicate_resolution: dict[str, Any] | None = None
+    failure_reason: str | None = None
+    doc_id = base_doc_id
+
+    if not file_name:
+        failure_reason = "missing_file_name"
+    elif not doc_id:
+        failure_reason = "missing_doc_id"
+    elif file_format not in SUPPORTED_FILE_FORMATS:
+        failure_reason = "unsupported_file_format"
+    elif not source_path.exists() or not source_path.is_file():
+        failure_reason = "missing_file"
+    else:
+        existing_row = tracker.seen.get(base_doc_id)
+        if existing_row is not None:
+            if on_duplicate_doc_id == "suffix":
+                suggested = reserve_next_unique_doc_id(base_doc_id, tracker)
+                doc_id = suggested
+                duplicate_resolution = {
+                    "policy": "suffix",
+                    "base_doc_id": base_doc_id,
+                    "first_seen_row": existing_row,
+                    "assigned_doc_id": suggested,
+                }
+            else:
+                suggested = peek_next_unique_doc_id(base_doc_id, tracker)
+                failure_reason = "duplicate_doc_id"
+                duplicate_resolution = {
+                    "policy": "fail",
+                    "base_doc_id": base_doc_id,
+                    "first_seen_row": existing_row,
+                    "suggested_doc_id": suggested,
+                }
+        else:
+            tracker.seen[base_doc_id] = row_number
+            tracker.counts[base_doc_id] = 1
+            if not clean_cell(row.get("텍스트")):
+                failure_reason = "empty_text"
+
+    return make_record(
+        row_number,
+        "failed" if failure_reason else "ok",
+        doc_id,
+        file_name,
+        file_format,
+        source_path,
+        failure_reason,
+        duplicate_resolution=duplicate_resolution,
+        messages=tuple(messages),
+    )
+
+
+def _build_validation_report(
+    *,
+    metadata_csv: Path,
+    files_dir: Path,
+    records: list[IngestionRecord],
+    schema_issues: list[ValidationIssue],
+    on_duplicate_doc_id: str,
+) -> dict[str, Any]:
+    failure_reasons: dict[str, int] = OrderedDict()
+    failure_examples: dict[str, list[dict[str, Any]]] = OrderedDict()
+    file_formats: dict[str, int] = OrderedDict()
+    duplicate_groups: dict[str, list[int]] = OrderedDict()
+    blank_field_counts: dict[str, int] = OrderedDict()
+
+    for record in records:
+        if record.reason:
+            failure_reasons[record.reason] = failure_reasons.get(record.reason, 0) + 1
+            examples = failure_examples.setdefault(record.reason, [])
+            if len(examples) < 3:
+                examples.append(
+                    {
+                        "row_number": record.row_number,
+                        "doc_id": record.doc_id,
+                        "file_name": record.file_name,
+                        "file_format": record.file_format,
+                    }
+                )
+        fmt = record.file_format or "unknown"
+        file_formats[fmt] = file_formats.get(fmt, 0) + 1
+        for message in record.messages:
+            blank_field_counts[message] = blank_field_counts.get(message, 0) + 1
+        _accumulate_duplicate_group(duplicate_groups, record)
+
+    ok_count = sum(1 for record in records if record.status == "ok")
+    failed_count = sum(1 for record in records if record.status == "failed")
+    schema_ok = not schema_issues
+    summary = {
+        "schema_version": INGESTION_REPORT_SCHEMA_VERSION,
+        "schema_ok": schema_ok,
+        "total_rows": len(records),
+        "ok_rows": ok_count,
+        "failed_rows": failed_count,
+        "failure_reasons": dict(failure_reasons),
+        "failure_examples": {k: v for k, v in failure_examples.items()},
+        "blank_field_warnings": dict(blank_field_counts),
+        "file_formats": dict(file_formats),
+        "duplicate_doc_ids": {k: sorted(set(v)) for k, v in duplicate_groups.items()},
+        "on_duplicate_doc_id": on_duplicate_doc_id,
+    }
+    return {
+        "mode": "validation",
+        "metadata_csv": str(metadata_csv),
+        "files_dir": str(files_dir),
+        "summary": summary,
+        "schema_issues": [asdict(issue) for issue in schema_issues],
+        "failure_taxonomy": FAILURE_TAXONOMY,
+        "records": [_record_to_dict(record) for record in records],
+    }
