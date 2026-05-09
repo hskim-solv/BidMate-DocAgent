@@ -10,3 +10,4 @@
 - 공개 synthetic 외 실제 원문 기반 평가셋을 별도로 확보해 일반화 성능을 검증한다.
 - citation 품질은 문서 ID 일치뿐 아니라 evidence text의 핵심 근거 포함 여부까지 계속 강화한다.
 - latency 최적화는 retry가 발생한 부재판별 케이스와 첫 질의 모델 로드 비용을 분리해 추적한다.
+- 실데이터 실패 모드를 분류하고 후속 작업의 우선순위 백로그를 별도 문서로 정리한다 → [real-data-failure-taxonomy.md](real-data-failure-taxonomy.md).

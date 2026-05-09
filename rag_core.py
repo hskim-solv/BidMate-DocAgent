@@ -2597,17 +2597,29 @@ def run_rag_query(
         attempt_top_k = top_k
         if attempt_index > 0:
             attempt_top_k = max(top_k or 0, 8)
-        plan = make_plan(
-            analysis,
-            top_k=attempt_top_k,
-            stage=stage,
-            metadata_first=metadata_first,
-            rerank=rerank,
-            verifier_retry=verifier_retry,
-            retrieval_mode=retrieval_mode,
-            pipeline=pipeline_name,
-            prompt_profile=prompt_profile,
-            comparison_balance=resolved_comparison_balance,
+        attempt_timings: dict[str, float] = {}
+        with _StageTimer(attempt_timings, "retrieve_ms"):
+            plan = make_plan(
+                analysis,
+                top_k=attempt_top_k,
+                stage=stage,
+                metadata_first=metadata_first,
+                rerank=rerank,
+                verifier_retry=verifier_retry,
+                retrieval_mode=retrieval_mode,
+                pipeline=pipeline_name,
+                prompt_profile=prompt_profile,
+                comparison_balance=resolved_comparison_balance,
+            )
+            evidence = retrieve(index, retrieval_query, analysis, plan)
+        with _StageTimer(attempt_timings, "verify_ms"):
+            if verifier_retry:
+                verified, verification_reasons = verify_evidence(analysis, evidence)
+            else:
+                verified = bool(evidence)
+                verification_reasons = [] if verified else ["no_evidence"]
+        stage_attempts.append(
+            summarize_stage_attempt(plan, verified, verification_reasons, timings=attempt_timings)
         )
         if verified:
             break
@@ -2661,7 +2673,7 @@ def run_rag_query(
             "verification_reasons": verification_reasons,
             "verification_topics": verification_topics(analysis),
             "filter_stage_attempts": stage_attempts,
-            "final_relaxation_reason": stage_attempts[-2]["verification_reasons"] if retry_count else [],
+            "final_relaxation_reason": stage_attempts[-2]["verification_reasons"] if retry_count and len(stage_attempts) >= 2 else [],
             "context_resolution": context_resolution,
             "embedding_backend": index.get("embedding", {}).get("backend"),
             "embedding_model": index.get("embedding", {}).get("model"),
