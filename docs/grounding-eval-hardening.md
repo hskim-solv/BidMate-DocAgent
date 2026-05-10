@@ -30,6 +30,7 @@ python3 app.py --input_dir data/index --output_dir outputs --query "기관 A와 
 python3 eval/run_eval.py --index_dir data/index --output_dir reports --config eval/config.yaml
 python3 scripts/update_readme_metrics.py --report reports/eval_summary.json --readme README.md --check
 python3 -m pytest tests/test_eval_metrics.py tests/test_fuzzy_retrieval.py
+make test-regression  # P0 retrieval-loop / answerable-smoke regression guards (#68)
 ```
 
 Inspect these artifacts:

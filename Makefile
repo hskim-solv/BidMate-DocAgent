@@ -1,4 +1,4 @@
-.PHONY: setup index ask eval benchmark benchmark-check check smoke harness-smoke test clean
+.PHONY: setup index ask eval benchmark benchmark-check check smoke harness-smoke test test-regression clean
 
 PYTHON ?= python3
 VENV ?= .venv
@@ -34,6 +34,11 @@ harness-smoke:
 
 test:
 	bash scripts/test.sh
+
+# Fast P0 regression guards for the retrieval loop and answerable smoke path.
+# Run before any change to rag_core retrieval/verification or the eval pipeline.
+test-regression:
+	$(PYTHON) -m pytest tests/test_retrieval_loop_regression.py -q
 
 clean:
 	rm -rf data/index outputs reports
