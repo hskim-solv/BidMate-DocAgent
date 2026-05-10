@@ -87,6 +87,8 @@ class FuzzyMetadataRetrievalTest(unittest.TestCase):
 
         self.assertEqual("comparison", result["analysis"]["query_type"])
         self.assertEqual("supported", result["answer"]["status"])
+        self.assertEqual(2, result["answer"]["schema_version"])
+        self.assertEqual("verified", result["answer"]["status_reason"]["code"])
         self.assertEqual("comparison", result["answer"]["query_type"])
         self.assertIn("answer_text", result)
         self.assertEqual(
@@ -242,15 +244,32 @@ class FuzzyMetadataRetrievalTest(unittest.TestCase):
         result = run_rag_query(partial_index, "기관 X와 기관 Y의 보안 요구사항 차이를 비교해줘")
 
         self.assertEqual("partial", result["answer"]["status"])
+        self.assertEqual(2, result["answer"]["schema_version"])
+        self.assertEqual("partial_comparison", result["answer"]["status_reason"]["code"])
         self.assertFalse(result["diagnostics"]["abstained"])
         self.assertEqual(["기관 Y"], result["answer"]["insufficiency"]["missing_targets"])
         self.assertEqual({"기관 X"}, {claim["target"] for claim in result["answer"]["claims"]})
+
+    def test_partial_comparison_records_unknown_requested_target(self) -> None:
+        result = run_rag_query(
+            self.index,
+            "기관 A와 기관 D의 보안 요구사항 차이를 비교해줘",
+            pipeline="agentic_full",
+        )
+
+        self.assertEqual("comparison", result["analysis"]["query_type"])
+        self.assertIn("기관 D", result["analysis"]["requested_entities"])
+        self.assertEqual("partial", result["answer"]["status"])
+        self.assertEqual(["기관 D"], result["answer"]["insufficiency"]["missing_targets"])
+        self.assertEqual({"기관 A"}, {claim["target"] for claim in result["answer"]["claims"]})
 
     def test_retry_relaxes_filters_when_verifier_rejects_evidence(self) -> None:
         result = run_rag_query(self.index, "기관 A의 블록체인 납품 실적은?")
 
         self.assertTrue(result["diagnostics"]["abstained"])
         self.assertEqual("insufficient", result["answer"]["status"])
+        self.assertEqual(2, result["answer"]["schema_version"])
+        self.assertEqual("insufficient_evidence", result["answer"]["status_reason"]["code"])
         self.assertEqual("abstention", result["answer"]["query_type"])
         self.assertEqual([], result["answer"]["claims"])
         self.assertTrue(result["answer"]["insufficiency"]["reasons"])
@@ -473,6 +492,27 @@ class FuzzyMetadataRetrievalTest(unittest.TestCase):
         self.assertEqual(6, follow_up["plan"]["top_k"])
         self.assertEqual("follow_up_default", follow_up["plan"]["retrieval_budget"]["reason"])
         self.assertEqual(6, follow_up["diagnostics"]["selected_top_k"])
+        self.assertEqual(1, follow_up["trace"]["schema_version"])
+        self.assertTrue(follow_up["trace"]["query_rewrite"]["rewritten"])
+        self.assertEqual(
+            "conversation_state_prefix",
+            follow_up["trace"]["query_rewrite"]["rewrite_type"],
+        )
+        self.assertIn("readable_summary", follow_up["trace"]["planner"])
+
+    def test_planner_trace_is_readable_for_direct_query(self) -> None:
+        result = run_rag_query(
+            self.index,
+            "기관 A의 보안 통제 요구사항은?",
+            pipeline="agentic_full",
+        )
+
+        trace = result["trace"]
+        self.assertEqual(1, trace["schema_version"])
+        self.assertFalse(trace["query_rewrite"]["rewritten"])
+        self.assertEqual("single_doc", trace["planner"]["query_type"])
+        self.assertEqual("agentic_full", trace["planner"]["pipeline"])
+        self.assertIn("stage=", trace["planner"]["readable_summary"])
 
     def test_multi_step_follow_up_preserves_agency_and_project_context(self) -> None:
         first = run_rag_query(

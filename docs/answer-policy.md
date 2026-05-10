@@ -10,13 +10,27 @@
 | `partial` | 비교 질문에서 일부 대상만 근거로 확인됨 | 확인된 대상만 있음 | 1개 이상 |
 | `insufficient` | 답변 가능한 근거를 찾지 못함 | 없음 | 없음 |
 
-`answer_text`는 사람이 빠르게 읽기 위한 요약이고, 검증 가능한 계약은 `answer.status`, `answer.claims`, `answer.insufficiency`, top-level `evidence`를 기준으로 본다.
+현재 답변 객체는 `schema_version: 2`를 사용한다. `answer_text`는 사람이 빠르게 읽기 위한 요약이고, 검증 가능한 계약은 `answer.schema_version`, `answer.status`, `answer.status_reason`, `answer.claims`, `answer.insufficiency`, top-level `evidence`를 기준으로 본다.
+
+`status_reason`은 machine-readable 진단 필드다.
+
+| field | 의미 |
+|---|---|
+| `code` | `verified`, `partial_comparison`, `insufficient_evidence`, `context_clarification`, `metadata_ambiguity_clarification` 중 하나 |
+| `verified` | verifier 기준 통과 여부. 단, 명시 요청된 비교 대상이 corpus에 없으면 verifier 설정과 무관하게 `partial`이 될 수 있음 |
+| `verification_reasons` | `topic_not_grounded`, `missing_comparison_doc:*`, `missing_requested_entity:*` 같은 근거 부족 사유 |
 
 ## 좋은 답변 예시
 
 ```json
 {
+  "schema_version": 2,
   "status": "supported",
+  "status_reason": {
+    "code": "verified",
+    "verified": true,
+    "verification_reasons": []
+  },
   "query_type": "comparison",
   "summary": "기관 A: ... 기관 B: ...",
   "claims": [
@@ -43,7 +57,13 @@
 
 ```json
 {
+  "schema_version": 2,
   "status": "supported",
+  "status_reason": {
+    "code": "verified",
+    "verified": true,
+    "verification_reasons": []
+  },
   "summary": "기관 A는 블록체인 납품 실적이 있습니다.",
   "claims": [],
   "insufficiency": null
@@ -58,7 +78,13 @@ unsupported 질문은 다음처럼 답한다.
 
 ```json
 {
+  "schema_version": 2,
   "status": "insufficient",
+  "status_reason": {
+    "code": "insufficient_evidence",
+    "verified": false,
+    "verification_reasons": ["topic_not_grounded"]
+  },
   "query_type": "abstention",
   "summary": "제공된 공개 샘플 RFP 근거에서는 '기관 A의 블록체인 납품 실적은?'에 답할 수 있는 내용을 찾지 못했습니다.",
   "claims": [],
@@ -70,7 +96,7 @@ unsupported 질문은 다음처럼 답한다.
 }
 ```
 
-비교 질문에서 한쪽만 확인되면 `partial`로 표시하고, 확인되지 않은 대상은 `missing_targets`에 남긴다. 이 경우 확인된 claim만 citation과 함께 제공하며, 빠진 대상을 추측해 채우지 않는다.
+비교 질문에서 한쪽만 확인되면 `partial`로 표시하고, 확인되지 않은 대상은 `missing_targets`에 남긴다. 명시적으로 요청된 기관이 corpus metadata에 없을 때도 `missing_requested_entity:*` 사유를 남겨 `partial`로 처리한다. 이 경우 확인된 claim만 citation과 함께 제공하며, 빠진 대상을 추측해 채우지 않는다.
 
 ## 실패 유형
 

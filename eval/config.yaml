@@ -54,6 +54,13 @@ cases:
       - "로그"
     expected_claim_targets:
       - "기관 A"
+    expected_claim_citations:
+      - target: "기관 A"
+        expected_doc_ids:
+          - rfp-agency-a-ai-quality
+        expected_terms:
+          - "보안 통제"
+          - "로그"
     answerable: true
 
   - id: single_doc_chatbot_latency
@@ -189,8 +196,31 @@ cases:
       - "기관 B"
     answerable: true
 
-  - id: multi_doc_ai_requirements
-    query_type: multi_doc
+  - id: single_doc_c_operation_metrics
+    query_type: single_doc
+    query: "기관 C가 운영 지표로 사용하는 항목은?"
+    expected_doc_ids:
+      - rfp-agency-c-chatbot
+    expected_terms:
+      - "답변 정확도"
+      - "상담 이관 적절성"
+      - "사용자 만족도"
+    expected_citation_terms:
+      - "답변 정확도"
+      - "사용자 만족도"
+    expected_claim_targets:
+      - "기관 C"
+    expected_claim_citations:
+      - target: "기관 C"
+        expected_doc_ids:
+          - rfp-agency-c-chatbot
+        expected_terms:
+          - "답변 정확도"
+          - "사용자 만족도"
+    answerable: true
+
+  - id: comparison_ai_requirements
+    query_type: comparison
     query: "기관 A와 기관 B의 AI 요구사항 차이 알려줘"
     expected_doc_ids:
       - rfp-agency-a-ai-quality
@@ -204,10 +234,21 @@ cases:
     expected_claim_targets:
       - "기관 A"
       - "기관 B"
+    expected_claim_citations:
+      - target: "기관 A"
+        expected_doc_ids:
+          - rfp-agency-a-ai-quality
+        expected_terms:
+          - "품질관리"
+      - target: "기관 B"
+        expected_doc_ids:
+          - rfp-agency-b-mlops-governance
+        expected_terms:
+          - "MLOps"
     answerable: true
 
-  - id: multi_doc_security_controls
-    query_type: multi_doc
+  - id: comparison_security_controls
+    query_type: comparison
     query: "기관 A와 기관 B의 보안 요구사항 차이를 비교해줘"
     expected_doc_ids:
       - rfp-agency-a-ai-quality
@@ -221,10 +262,52 @@ cases:
     expected_claim_targets:
       - "기관 A"
       - "기관 B"
+    expected_claim_citations:
+      - target: "기관 A"
+        expected_doc_ids:
+          - rfp-agency-a-ai-quality
+        expected_terms:
+          - "보안 통제"
+          - "로그"
+      - target: "기관 B"
+        expected_doc_ids:
+          - rfp-agency-b-mlops-governance
+        expected_terms:
+          - "개인정보 비식별화"
+          - "접근 권한 분리"
     answerable: true
 
-  - id: multi_doc_schedule_compare
-    query_type: multi_doc
+  - id: comparison_partial_missing_agency_d
+    query_type: comparison
+    hardcase_categories:
+      - answer_schema_v2
+      - partial_comparison
+    query: "기관 A와 기관 D의 보안 요구사항 차이를 비교해줘"
+    expected_doc_ids:
+      - rfp-agency-a-ai-quality
+    expected_terms:
+      - "보안 통제"
+      - "로그"
+    expected_citation_terms:
+      - "보안 통제"
+      - "로그"
+    expected_claim_targets:
+      - "기관 A"
+    expected_missing_targets:
+      - "기관 D"
+    expected_answer_status: partial
+    min_claims: 1
+    expected_claim_citations:
+      - target: "기관 A"
+        expected_doc_ids:
+          - rfp-agency-a-ai-quality
+        expected_terms:
+          - "보안 통제"
+          - "로그"
+    answerable: true
+
+  - id: comparison_schedule_compare
+    query_type: comparison
     query: "기관 A와 기관 B의 일정 차이를 비교해줘"
     expected_doc_ids:
       - rfp-agency-a-ai-quality
@@ -242,8 +325,8 @@ cases:
       - "기관 B"
     answerable: true
 
-  - id: multi_doc_a_c_ai_focus
-    query_type: multi_doc
+  - id: comparison_a_c_ai_focus
+    query_type: comparison
     query: "기관 A와 기관 C의 AI 요구사항 초점 차이는?"
     expected_doc_ids:
       - rfp-agency-a-ai-quality
@@ -260,8 +343,8 @@ cases:
       - "기관 C"
     answerable: true
 
-  - id: multi_doc_b_c_operations
-    query_type: multi_doc
+  - id: comparison_b_c_operations
+    query_type: comparison
     query: "기관 B와 기관 C의 운영 지표나 모니터링 요구를 비교해줘"
     expected_doc_ids:
       - rfp-agency-b-mlops-governance
@@ -278,8 +361,8 @@ cases:
       - "기관 C"
     answerable: true
 
-  - id: multi_doc_a_common_submission
-    query_type: multi_doc
+  - id: comparison_a_common_submission
+    query_type: comparison
     query: "기관 A 제출조건과 공통 평가 기준을 비교해줘"
     expected_doc_ids:
       - rfp-agency-a-ai-quality
@@ -296,8 +379,8 @@ cases:
       - "공통"
     answerable: true
 
-  - id: multi_doc_one_sided_quality_focus
-    query_type: multi_doc
+  - id: comparison_one_sided_quality_focus
+    query_type: comparison
     hardcase_categories:
       - one_sided_comparison
     query: "품질관리 관점에서 기관 A와 기관 B의 AI 요구사항 차이는?"
@@ -315,8 +398,8 @@ cases:
       - "기관 B"
     answerable: true
 
-  - id: multi_doc_one_sided_mlops_focus
-    query_type: multi_doc
+  - id: comparison_one_sided_mlops_focus
+    query_type: comparison
     hardcase_categories:
       - one_sided_comparison
     query: "MLOps 자동화 측면에서 기관 B와 기관 A는 어떻게 다른가?"
@@ -334,8 +417,8 @@ cases:
       - "기관 B"
     answerable: true
 
-  - id: multi_doc_one_sided_chatbot_focus
-    query_type: multi_doc
+  - id: comparison_one_sided_chatbot_focus
+    query_type: comparison
     hardcase_categories:
       - one_sided_comparison
     query: "사용자 만족도 측면에서 기관 C와 기관 B의 운영 지표는 어떻게 다른가?"
@@ -472,6 +555,15 @@ cases:
     expected_citation_terms:
       - "보안 통제"
       - "로그"
+    expected_claim_targets:
+      - "기관 A"
+    expected_claim_citations:
+      - target: "기관 A"
+        expected_doc_ids:
+          - rfp-agency-a-ai-quality
+        expected_terms:
+          - "보안 통제"
+          - "로그"
     answerable: true
 
   - id: follow_up_state_multi_step_a_deliverables
