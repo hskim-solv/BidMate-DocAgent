@@ -2,13 +2,59 @@ import unittest
 from pathlib import Path
 
 from rag_core import (
+    REDACTED_LIST_PLACEHOLDER,
     analyze_query,
     build_index_payload,
     build_index_payload_from_documents,
     metadata_stage_sequence,
     metadata_targets,
+    redact_trace,
     run_rag_query,
 )
+
+
+REQUIRED_QUERY_REWRITE_FIELDS = {
+    "original_query",
+    "resolved_query",
+    "rewritten",
+    "rewrite_type",
+    "context_source",
+    "context_status",
+    "context_resolution_confidence",
+    "reason",
+    "context_entities",
+    "context_projects",
+    "active_doc_ids",
+    "readable_summary",
+}
+
+REQUIRED_PLANNER_FIELDS = {
+    "query_type",
+    "pipeline",
+    "prompt_profile",
+    "strategy",
+    "retrieval_mode",
+    "metadata_first",
+    "rerank",
+    "verifier_retry",
+    "stage_sequence",
+    "selected_stage",
+    "selected_top_k",
+    "retrieval_budget",
+    "metadata_candidate_count",
+    "metadata_selected_doc_ids",
+    "metadata_ambiguous",
+    "comparison_coverage",
+    "stage_latencies_ms",
+    "attempts",
+    "readable_summary",
+}
+
+REQUIRED_LATENCY_KEYS = {
+    "query_analysis_ms",
+    "context_resolution_ms",
+    "answer_generation_ms",
+}
 
 
 class FuzzyMetadataRetrievalTest(unittest.TestCase):
@@ -513,6 +559,71 @@ class FuzzyMetadataRetrievalTest(unittest.TestCase):
         self.assertEqual("single_doc", trace["planner"]["query_type"])
         self.assertEqual("agentic_full", trace["planner"]["pipeline"])
         self.assertIn("stage=", trace["planner"]["readable_summary"])
+
+        self.assertEqual(
+            REQUIRED_QUERY_REWRITE_FIELDS,
+            set(trace["query_rewrite"].keys()),
+        )
+        self.assertEqual(REQUIRED_PLANNER_FIELDS, set(trace["planner"].keys()))
+        latencies = trace["planner"]["stage_latencies_ms"]
+        self.assertEqual(REQUIRED_LATENCY_KEYS, set(latencies.keys()))
+        for key in REQUIRED_LATENCY_KEYS:
+            self.assertIsInstance(latencies[key], (int, float))
+            self.assertGreaterEqual(latencies[key], 0.0)
+        self.assertIsInstance(
+            trace["query_rewrite"]["context_resolution_confidence"], (int, float)
+        )
+
+    def test_redact_trace_masks_doc_ids_and_entities_but_preserves_shape(self) -> None:
+        first = run_rag_query(
+            self.index,
+            "기관 A의 AI 요구사항은?",
+            conversation_state={},
+        )
+        follow_up = run_rag_query(
+            self.index,
+            "그 기관이 요구한 보안 조건도 보여줘",
+            conversation_state=first["conversation_state"],
+        )
+        trace = follow_up["trace"]
+        original_active = list(trace["query_rewrite"]["active_doc_ids"])
+        original_entities = list(trace["query_rewrite"]["context_entities"])
+        original_selected = list(trace["planner"]["metadata_selected_doc_ids"])
+        self.assertTrue(original_active, "fixture should produce active_doc_ids")
+
+        redacted = redact_trace(trace, include_doc_ids=False, include_entities=False)
+
+        self.assertEqual(
+            [REDACTED_LIST_PLACEHOLDER] * len(original_active),
+            redacted["query_rewrite"]["active_doc_ids"],
+        )
+        self.assertEqual(
+            [REDACTED_LIST_PLACEHOLDER] * len(original_entities),
+            redacted["query_rewrite"]["context_entities"],
+        )
+        self.assertEqual(
+            [REDACTED_LIST_PLACEHOLDER] * len(original_selected),
+            redacted["planner"]["metadata_selected_doc_ids"],
+        )
+        # original trace is unchanged (deep copy)
+        self.assertEqual(original_active, trace["query_rewrite"]["active_doc_ids"])
+        # non-list scalar fields preserved
+        self.assertEqual(
+            trace["query_rewrite"]["rewrite_type"],
+            redacted["query_rewrite"]["rewrite_type"],
+        )
+        self.assertEqual(
+            trace["planner"]["stage_latencies_ms"],
+            redacted["planner"]["stage_latencies_ms"],
+        )
+        # readable_summary embeds the selected doc IDs; redaction must rewrite it
+        # so doc IDs do not leak via the summary string.
+        for doc_id in original_selected:
+            self.assertNotIn(doc_id, redacted["planner"]["readable_summary"])
+        self.assertIn(
+            REDACTED_LIST_PLACEHOLDER,
+            redacted["planner"]["readable_summary"],
+        )
 
     def test_multi_step_follow_up_preserves_agency_and_project_context(self) -> None:
         first = run_rag_query(
