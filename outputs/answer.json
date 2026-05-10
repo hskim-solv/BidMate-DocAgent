@@ -8,6 +8,11 @@
       "기관 A",
       "기관 B"
     ],
+    "requested_entities": [
+      "기관 A",
+      "기관 B"
+    ],
+    "missing_requested_entities": [],
     "topics": [
       "AI"
     ],
@@ -130,55 +135,34 @@
     }
   },
   "plan": {
-    "strategy": "metadata-first dense + lexical + metadata rerank",
-    "pipeline": "agentic_full",
-    "prompt_profile": "structured_grounded_claims",
-    "filter_stage": "strict",
-    "metadata_first": true,
-    "rerank": true,
-    "verifier_retry": true,
+    "strategy": "dense",
+    "pipeline": "naive_baseline",
+    "prompt_profile": "minimal_grounded_extractive",
+    "filter_stage": "relaxed",
+    "metadata_first": false,
+    "rerank": false,
+    "verifier_retry": false,
     "retrieval_mode": "flat",
-    "metadata_filters": {
-      "doc_ids": [
-        "rfp-agency-a-ai-quality",
-        "rfp-agency-b-mlops-governance"
-      ],
-      "agencies": [
-        "기관 A",
-        "기관 B"
-      ],
-      "projects": [
-        "AI 품질관리 플랫폼 구축",
-        "데이터 거버넌스 및 MLOps 자동화"
-      ],
-      "confidence": 1.0
-    },
-    "top_k": 8,
+    "metadata_filters": {},
+    "top_k": 4,
     "retrieval_budget": {
-      "selected_top_k": 8,
+      "selected_top_k": 4,
       "query_type": "comparison",
-      "reason": "comparison_coverage_adaptive",
+      "reason": "pipeline_or_explicit_override",
       "defaults": {
         "single_doc": 4,
         "follow_up": 6,
         "comparison": 6
       }
     },
-    "relaxed": false,
+    "relaxed": true,
     "retry_policy": "try strict metadata filters, then reduced fuzzy filters, then relaxed retrieval",
-    "comparison_balance": {
-      "enabled": true,
-      "min_per_target": 1,
-      "k_per_target": 3,
-      "headroom": 2,
-      "max_top_k": 12
-    },
     "comparison_targets": [
       "rfp-agency-a-ai-quality",
       "rfp-agency-b-mlops-governance"
     ],
     "comparison_target_field": "doc_id",
-    "candidate_count": 2,
+    "candidate_count": 4,
     "total_chunks": 4,
     "filter_fallback_used": false,
     "comparison_coverage": {
@@ -195,12 +179,17 @@
         "rfp-agency-a-ai-quality": 1,
         "rfp-agency-b-mlops-governance": 1
       },
-      "balanced": true,
-      "min_per_target": 1
+      "balanced": false
     }
   },
   "answer": {
+    "schema_version": 2,
     "status": "supported",
+    "status_reason": {
+      "code": "verified",
+      "verified": true,
+      "verification_reasons": []
+    },
     "query_type": "comparison",
     "summary": "기관 A: 사업 개요\n기관 A는 AI 품질관리 플랫폼 구축을 추진한다. 기관 B: AI 요구사항\n기관 B의 핵심 AI 요구사항은 데이터 거버넌스, MLOps 배포 자동화, 모델 모니터링이다.",
     "claims": [
@@ -242,7 +231,7 @@
       "chunk_id": "rfp-agency-a-ai-quality::chunk-001",
       "title": "기관 A AI 품질관리 플랫폼 구축 RFP",
       "text": "사업 개요\n기관 A는 AI 품질관리 플랫폼 구축을 추진한다. 목표는 모델 성능 저하를 조기에 감지하고 품질 지표를 표준화하는 것이다. AI 요구사항\n기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 시스템은 모델별 정확도와 오류 유형을 수집하고 위험 이벤트를 감사 로그로 남겨야 한다. 일정 및 산출물\n기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. 필수 산출물은 모델 점검 리포트, 보안 통제 매뉴얼, 운영자 교육 자료이다. 제출조건\n제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다.",
-      "score": 0.6988,
+      "score": 0.5744,
       "agency": "기관 A",
       "metadata": {
         "domain": "AI quality",
@@ -268,7 +257,7 @@
       "chunk_id": "rfp-agency-b-mlops-governance::chunk-001",
       "title": "기관 B 데이터 거버넌스 및 MLOps 자동화 RFP",
       "text": "사업 개요\n기관 B는 데이터 거버넌스와 MLOps 자동화를 결합한 운영 체계를 구축한다. 목표는 모델 배포 절차를 표준화하고 데이터 변경 영향을 추적하는 것이다. AI 요구사항\n기관 B의 핵심 AI 요구사항은 데이터 거버넌스, MLOps 배포 자동화, 모델 모니터링이다. 시스템은 데이터 lineage, 모델 drift, 배포 승인 이력을 대시보드로 제공해야 한다. 보안 및 개인정보\n기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다. 보안 통제는 데이터셋 반출 승인과 관리자 작업 기록을 중심으로 설계한다. 일정 및 산출물\n기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다. 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다.",
-      "score": 0.7092,
+      "score": 0.5916,
       "agency": "기관 B",
       "metadata": {
         "domain": "MLOps",
@@ -290,6 +279,87 @@
       "child_chunk_ids": []
     }
   ],
+  "trace": {
+    "schema_version": 1,
+    "query_rewrite": {
+      "original_query": "기관 A와 기관 B의 AI 요구사항 차이 알려줘",
+      "resolved_query": "기관 A와 기관 B의 AI 요구사항 차이 알려줘",
+      "rewritten": false,
+      "rewrite_type": "none",
+      "context_source": "query",
+      "context_status": "not_needed",
+      "reason": "",
+      "context_entities": [],
+      "context_projects": [],
+      "active_doc_ids": [],
+      "readable_summary": "none: query used without text rewrite"
+    },
+    "planner": {
+      "query_type": "comparison",
+      "pipeline": "naive_baseline",
+      "prompt_profile": "minimal_grounded_extractive",
+      "strategy": "dense",
+      "retrieval_mode": "flat",
+      "metadata_first": false,
+      "rerank": false,
+      "verifier_retry": false,
+      "stage_sequence": [
+        "relaxed"
+      ],
+      "selected_stage": "relaxed",
+      "selected_top_k": 4,
+      "retrieval_budget": {
+        "selected_top_k": 4,
+        "query_type": "comparison",
+        "reason": "pipeline_or_explicit_override",
+        "defaults": {
+          "single_doc": 4,
+          "follow_up": 6,
+          "comparison": 6
+        }
+      },
+      "metadata_candidate_count": 3,
+      "metadata_selected_doc_ids": [],
+      "metadata_ambiguous": false,
+      "comparison_coverage": {
+        "targets": [
+          "rfp-agency-a-ai-quality",
+          "rfp-agency-b-mlops-governance"
+        ],
+        "target_field": "doc_id",
+        "before": {
+          "rfp-agency-a-ai-quality": 1,
+          "rfp-agency-b-mlops-governance": 1
+        },
+        "after": {
+          "rfp-agency-a-ai-quality": 1,
+          "rfp-agency-b-mlops-governance": 1
+        },
+        "balanced": false
+      },
+      "attempts": [
+        {
+          "stage": "relaxed",
+          "top_k": 4,
+          "verified": true,
+          "verification_reasons": [],
+          "metadata_doc_ids": []
+        }
+      ],
+      "readable_summary": "comparison planned with naive_baseline stage=relaxed top_k=4 metadata_docs=none"
+    },
+    "answer_schema": {
+      "schema_version": 2,
+      "status": "supported",
+      "status_reason": {
+        "code": "verified",
+        "verified": true,
+        "verification_reasons": []
+      },
+      "query_type": "comparison",
+      "claim_count": 2
+    }
+  },
   "conversation_state": {
     "schema_version": 1,
     "active_agencies": [
@@ -354,7 +424,7 @@
     ]
   },
   "diagnostics": {
-    "latency_ms": 2.16,
+    "latency_ms": 1.91,
     "retry_count": 0,
     "abstained": false,
     "answer_status": "supported",
@@ -365,36 +435,22 @@
     "verification_topics": [],
     "filter_stage_attempts": [
       {
-        "stage": "strict",
-        "pipeline": "agentic_full",
-        "prompt_profile": "structured_grounded_claims",
-        "metadata_filters": {
-          "doc_ids": [
-            "rfp-agency-a-ai-quality",
-            "rfp-agency-b-mlops-governance"
-          ],
-          "agencies": [
-            "기관 A",
-            "기관 B"
-          ],
-          "projects": [
-            "AI 품질관리 플랫폼 구축",
-            "데이터 거버넌스 및 MLOps 자동화"
-          ],
-          "confidence": 1.0
-        },
-        "top_k": 8,
+        "stage": "relaxed",
+        "pipeline": "naive_baseline",
+        "prompt_profile": "minimal_grounded_extractive",
+        "metadata_filters": {},
+        "top_k": 4,
         "retrieval_budget": {
-          "selected_top_k": 8,
+          "selected_top_k": 4,
           "query_type": "comparison",
-          "reason": "comparison_coverage_adaptive",
+          "reason": "pipeline_or_explicit_override",
           "defaults": {
             "single_doc": 4,
             "follow_up": 6,
             "comparison": 6
           }
         },
-        "candidate_count": 2,
+        "candidate_count": 4,
         "parent_candidate_count": null,
         "total_chunks": 4,
         "filter_fallback_used": false,
@@ -402,7 +458,7 @@
         "verified": true,
         "verification_reasons": [],
         "retrieve_ms": 0.18,
-        "verify_ms": 0.13,
+        "verify_ms": 0.0,
         "comparison_coverage": {
           "targets": [
             "rfp-agency-a-ai-quality",
@@ -417,8 +473,7 @@
             "rfp-agency-a-ai-quality": 1,
             "rfp-agency-b-mlops-governance": 1
           },
-          "balanced": true,
-          "min_per_target": 1
+          "balanced": false
         }
       }
     ],
@@ -484,7 +539,7 @@
           ]
         }
       ],
-      "selected_stage": "strict",
+      "selected_stage": "relaxed",
       "selected_candidates_by_stage": {
         "strict": [
           {
@@ -558,38 +613,8 @@
         ],
         "relaxed": []
       },
-      "selected_candidates": [
-        {
-          "doc_id": "rfp-agency-a-ai-quality",
-          "field": "agency",
-          "value": "기관 A",
-          "agency": "기관 A",
-          "project": "AI 품질관리 플랫폼 구축",
-          "confidence": 1.0,
-          "stage": "strict",
-          "match_type": "compact_contains",
-          "matched_terms": [
-            "a"
-          ]
-        },
-        {
-          "doc_id": "rfp-agency-b-mlops-governance",
-          "field": "agency",
-          "value": "기관 B",
-          "agency": "기관 B",
-          "project": "데이터 거버넌스 및 MLOps 자동화",
-          "confidence": 1.0,
-          "stage": "strict",
-          "match_type": "compact_contains",
-          "matched_terms": [
-            "b"
-          ]
-        }
-      ],
-      "selected_doc_ids": [
-        "rfp-agency-a-ai-quality",
-        "rfp-agency-b-mlops-governance"
-      ],
+      "selected_candidates": [],
+      "selected_doc_ids": [],
       "matched_doc_ids": [
         "rfp-agency-a-ai-quality",
         "rfp-agency-b-mlops-governance"
@@ -604,18 +629,18 @@
         "decision_reason": "comparison_allows_multiple_targets"
       }
     },
-    "selected_top_k": 8,
+    "selected_top_k": 4,
     "embedding_backend": "hashing",
     "embedding_model": "local-hashing-bow",
-    "metadata_first": true,
-    "rerank": true,
-    "verifier_retry": true,
+    "metadata_first": false,
+    "rerank": false,
+    "verifier_retry": false,
     "retrieval_mode": "flat",
-    "pipeline": "agentic_full",
-    "prompt_profile": "structured_grounded_claims",
+    "pipeline": "naive_baseline",
+    "prompt_profile": "minimal_grounded_extractive",
     "cold_start": true,
     "stage_latency": {
-      "query_analysis_ms": 0.53,
+      "query_analysis_ms": 0.51,
       "context_resolution_ms": 0.0,
       "answer_generation_ms": 0.36
     }

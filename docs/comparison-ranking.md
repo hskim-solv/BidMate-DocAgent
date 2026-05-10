@@ -76,12 +76,12 @@ This is also surfaced in `diagnostics.filter_stage_attempts[].comparison_coverag
 
 ## Eval metric
 
-`eval/run_eval.py` computes two coverage metrics per `query_type == "multi_doc"` case with ≥2 expected doc_ids:
+`eval/run_eval.py` computes two coverage metrics per `query_type == "comparison"` case with ≥2 expected doc_ids. Older configs that still use `multi_doc` are normalized to the `comparison` slice:
 
 - `comparison_target_recall` = `|expected_doc_ids ∩ evidence_doc_ids| / |expected_doc_ids|` — measured against the FINAL evidence (post `select_supporting_evidence` topic-grounding trim). Sensitive to topic-grounding failures, not just retrieval coverage.
 - `comparison_pool_recall` = `|expected_doc_ids ∩ pool_doc_ids| / |expected_doc_ids|` — measured against the post-balance retrieval pool (read from `plan.comparison_coverage.after`). Isolates the effect of balancing from downstream verifier/topic trimming.
 
-Both are aggregated in `metric_block` as means plus a `*_full_coverage_rate` (fraction with recall == 1.0). They only appear under `by_query_type["multi_doc"]` and `by_hardcase_category["one_sided_comparison"]` (or any slice with qualifying cases) so headline numbers stay clean.
+Both are aggregated in `metric_block` as means plus a `*_full_coverage_rate` (fraction with recall == 1.0). They appear under `by_slice["comparison"]` / `by_query_type["comparison"]` and `by_hardcase_category["one_sided_comparison"]` (or any slice with qualifying cases) so headline numbers stay clean.
 
 `comparison_pool_recall` is the cleanest signal that the balanced top-k cut is doing its job; `comparison_target_recall` is the user-visible answer-quality signal that depends on both balancing and topic grounding.
 

@@ -90,7 +90,7 @@ INDEX_FILENAME = "index.json"
 MODEL_CACHE: dict[tuple[str, bool], Any] = {}
 
 TOKEN_RE = re.compile(r"[A-Za-z0-9]+|[가-힣]+")
-ENTITY_RE = re.compile(r"기관\s*[A-Za-z0-9가-힣]+")
+ENTITY_RE = re.compile(r"기관\s*[-_]?\s*([A-Za-z0-9]+)", re.IGNORECASE)
 SENTENCE_RE = re.compile(r"(?<=[.!?。])\s+")
 
 STOPWORDS = {
@@ -181,6 +181,8 @@ TOPIC_KEYWORDS = [
 ANSWER_STATUS_SUPPORTED = "supported"
 ANSWER_STATUS_PARTIAL = "partial"
 ANSWER_STATUS_INSUFFICIENT = "insufficient"
+ANSWER_SCHEMA_VERSION = 2
+TRACE_SCHEMA_VERSION = 1
 
 STRICT_METADATA_CONFIDENCE = 0.90
 REDUCED_METADATA_CONFIDENCE = 0.70
@@ -1358,6 +1360,18 @@ def has_comparison_request(query: str) -> bool:
     return any(term in normalize_entity(query) for term in comparison_terms)
 
 
+def extract_requested_agencies(query: str) -> list[str]:
+    agencies = []
+    for match in ENTITY_RE.finditer(unicodedata.normalize("NFC", query)):
+        token = normalize_metadata_token(match.group(1))
+        if not token:
+            continue
+        if re.fullmatch(r"[a-z0-9]+", token):
+            token = token.upper()
+        agencies.append(f"기관 {token}")
+    return ordered_unique(agencies)
+
+
 def active_state_terms(state: dict[str, Any]) -> list[str]:
     terms = [
         *coerce_string_list(state.get("active_agencies")),
@@ -1506,6 +1520,7 @@ def analyze_query(
 ) -> dict[str, Any]:
     targets = coerce_metadata_targets(entities)
     normalized_query = normalize_entity(query)
+    requested_agencies = extract_requested_agencies(normalized_query)
     metadata_matches = match_metadata_targets(normalized_query, targets)
 
     context_used = False
@@ -1544,6 +1559,9 @@ def analyze_query(
         query_type = "follow_up"
     else:
         query_type = "single_doc"
+    analysis_entities = matched_agencies
+    if query_type == "comparison":
+        analysis_entities = ordered_unique([*requested_agencies, *matched_agencies])
 
     strict_matches = metadata_matches_for_stage(metadata_matches, "strict")
     strict_filters = metadata_filters_from_matches(strict_matches)
@@ -1552,7 +1570,11 @@ def analyze_query(
 
     return {
         "query_type": query_type,
-        "entities": matched_agencies,
+        "entities": analysis_entities,
+        "requested_entities": requested_agencies,
+        "missing_requested_entities": [
+            entity for entity in requested_agencies if entity not in matched_agencies
+        ],
         "topics": topics[:8],
         "context_entities": context_entities or [],
         "context_used": context_used,
@@ -2132,7 +2154,8 @@ def generate_answer(
     verification_reasons: list[str] | None = None,
 ) -> tuple[dict[str, Any], str, bool]:
     claims = build_claims(analysis, evidence)
-    status = answer_status(analysis, claims, verified, verification_reasons or [])
+    effective_reasons = answer_verification_reasons(analysis, verification_reasons or [])
+    status = answer_status(analysis, claims, verified, effective_reasons)
     insufficiency = None
     if status != ANSWER_STATUS_SUPPORTED:
         insufficiency = build_insufficiency(
@@ -2140,11 +2163,13 @@ def generate_answer(
             analysis,
             claims,
             verified,
-            verification_reasons or [],
+            effective_reasons,
         )
 
     answer = {
+        "schema_version": ANSWER_SCHEMA_VERSION,
         "status": status,
+        "status_reason": answer_status_reason(status, verified, effective_reasons),
         "query_type": answer_query_type(analysis, status),
         "summary": answer_summary(query, analysis, claims, status, insufficiency),
         "claims": claims,
@@ -2152,6 +2177,39 @@ def generate_answer(
     }
     answer_text = render_answer_text(answer)
     return answer, answer_text, status == ANSWER_STATUS_INSUFFICIENT
+
+
+def answer_verification_reasons(
+    analysis: dict[str, Any],
+    verification_reasons: list[str],
+) -> list[str]:
+    reasons = list(verification_reasons)
+    if analysis.get("query_type") == "comparison":
+        for entity in analysis.get("missing_requested_entities") or []:
+            reason = f"missing_requested_entity:{entity}"
+            if reason not in reasons:
+                reasons.append(reason)
+    return reasons
+
+
+def answer_status_reason(
+    status: str,
+    verified: bool,
+    verification_reasons: list[str],
+    code: str | None = None,
+) -> dict[str, Any]:
+    if code is None:
+        if status == ANSWER_STATUS_SUPPORTED:
+            code = "verified"
+        elif status == ANSWER_STATUS_PARTIAL:
+            code = "partial_comparison"
+        else:
+            code = "insufficient_evidence"
+    return {
+        "code": code,
+        "verified": bool(verified),
+        "verification_reasons": verification_reasons,
+    }
 
 
 def build_claims(analysis: dict[str, Any], evidence: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -2260,9 +2318,15 @@ def answer_status(
     verification_reasons: list[str],
 ) -> str:
     if verified:
-        return ANSWER_STATUS_SUPPORTED
+        has_missing_requested = any(
+            reason.startswith("missing_requested_entity") for reason in verification_reasons
+        )
+        if not has_missing_requested:
+            return ANSWER_STATUS_SUPPORTED
     has_partial_comparison_reason = any(
-        reason.startswith("missing_comparison") for reason in verification_reasons
+        reason.startswith("missing_comparison")
+        or reason.startswith("missing_requested_entity")
+        for reason in verification_reasons
     )
     if analysis.get("query_type") == "comparison" and claims and has_partial_comparison_reason:
         return ANSWER_STATUS_PARTIAL
@@ -2507,6 +2571,124 @@ def summarize_stage_attempt(
     return summary
 
 
+def build_query_rewrite_trace(
+    original_query: str,
+    resolved_query: str,
+    context_resolution: dict[str, Any],
+) -> dict[str, Any]:
+    rewritten = bool(resolved_query and resolved_query != original_query)
+    source = str(context_resolution.get("source") or "none")
+    status = str(context_resolution.get("status") or "")
+    if rewritten and source == "conversation_state":
+        rewrite_type = "conversation_state_prefix"
+    elif source == "context_entities":
+        rewrite_type = "explicit_context"
+    elif status == "needs_clarification":
+        rewrite_type = "clarification_required"
+    else:
+        rewrite_type = "none"
+
+    return {
+        "original_query": original_query,
+        "resolved_query": resolved_query or original_query,
+        "rewritten": rewritten,
+        "rewrite_type": rewrite_type,
+        "context_source": source,
+        "context_status": status,
+        "reason": context_resolution.get("reason", ""),
+        "context_entities": context_resolution.get("context_entities") or [],
+        "context_projects": context_resolution.get("context_projects") or [],
+        "active_doc_ids": context_resolution.get("active_doc_ids") or [],
+        "readable_summary": (
+            f"{rewrite_type}: {original_query} -> {resolved_query}"
+            if rewritten
+            else f"{rewrite_type}: query used without text rewrite"
+        ),
+    }
+
+
+def build_planner_trace(
+    analysis: dict[str, Any],
+    plan: dict[str, Any],
+    metadata_resolution: dict[str, Any],
+    stage_sequence: list[str],
+    stage_attempts: list[dict[str, Any]],
+) -> dict[str, Any]:
+    attempts = [
+        {
+            "stage": attempt.get("stage"),
+            "top_k": attempt.get("top_k"),
+            "verified": bool(attempt.get("verified")),
+            "verification_reasons": attempt.get("verification_reasons") or [],
+            "metadata_doc_ids": (attempt.get("metadata_filters") or {}).get("doc_ids") or [],
+        }
+        for attempt in stage_attempts
+    ]
+    selected_doc_ids = metadata_resolution.get("selected_doc_ids") or []
+    query_type = str(analysis.get("query_type") or "")
+    filter_stage = str(plan.get("filter_stage") or "")
+    top_k = plan.get("top_k")
+    return {
+        "query_type": query_type,
+        "pipeline": plan.get("pipeline"),
+        "prompt_profile": plan.get("prompt_profile"),
+        "strategy": plan.get("strategy"),
+        "retrieval_mode": plan.get("retrieval_mode"),
+        "metadata_first": bool(plan.get("metadata_first")),
+        "rerank": bool(plan.get("rerank")),
+        "verifier_retry": bool(plan.get("verifier_retry")),
+        "stage_sequence": stage_sequence,
+        "selected_stage": filter_stage,
+        "selected_top_k": top_k,
+        "retrieval_budget": plan.get("retrieval_budget") or {},
+        "metadata_candidate_count": metadata_resolution.get("candidate_count"),
+        "metadata_selected_doc_ids": selected_doc_ids,
+        "metadata_ambiguous": bool(analysis.get("metadata_ambiguous")),
+        "comparison_coverage": plan.get("comparison_coverage"),
+        "attempts": attempts,
+        "readable_summary": (
+            f"{query_type} planned with {plan.get('pipeline')} "
+            f"stage={filter_stage or 'none'} top_k={top_k} "
+            f"metadata_docs={selected_doc_ids or 'none'}"
+        ),
+    }
+
+
+def build_result_trace(
+    original_query: str,
+    resolved_query: str,
+    analysis: dict[str, Any],
+    plan: dict[str, Any],
+    metadata_resolution: dict[str, Any],
+    context_resolution: dict[str, Any],
+    stage_sequence: list[str],
+    stage_attempts: list[dict[str, Any]],
+    answer: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "schema_version": TRACE_SCHEMA_VERSION,
+        "query_rewrite": build_query_rewrite_trace(
+            original_query,
+            resolved_query,
+            context_resolution,
+        ),
+        "planner": build_planner_trace(
+            analysis,
+            plan,
+            metadata_resolution,
+            stage_sequence,
+            stage_attempts,
+        ),
+        "answer_schema": {
+            "schema_version": answer.get("schema_version"),
+            "status": answer.get("status"),
+            "status_reason": answer.get("status_reason") or {},
+            "query_type": answer.get("query_type"),
+            "claim_count": len(answer.get("claims") or []),
+        },
+    }
+
+
 def clarification_answer(query: str, context_resolution: dict[str, Any]) -> str:
     reason = context_resolution.get("reason")
     if reason == "no_active_state":
@@ -2571,40 +2753,60 @@ def make_context_clarification_result(
         "checked_doc_ids": context_resolution.get("active_doc_ids") or [],
     }
     answer = {
+        "schema_version": ANSWER_SCHEMA_VERSION,
         "status": ANSWER_STATUS_INSUFFICIENT,
+        "status_reason": answer_status_reason(
+            ANSWER_STATUS_INSUFFICIENT,
+            False,
+            [reason],
+            code="context_clarification",
+        ),
         "query_type": "abstention",
         "summary": clarification_answer(query, context_resolution),
         "claims": [],
         "insufficiency": insufficiency,
     }
     answer_text = render_answer_text(answer)
+    plan = {
+        "strategy": "conversation-state clarification",
+        "pipeline": pipeline,
+        "prompt_profile": prompt_profile,
+        "metadata_first": metadata_first,
+        "rerank": rerank,
+        "verifier_retry": verifier_retry,
+        "retrieval_mode": retrieval_mode,
+        "metadata_filters": {},
+        "top_k": None,
+        "retrieval_budget": {
+            "selected_top_k": None,
+            "query_type": "follow_up",
+            "reason": "clarification_before_retrieval",
+            "defaults": dict(QUERY_TYPE_TOP_K_DEFAULTS),
+        },
+        "relaxed": False,
+        "retry_policy": "clarify before retrieval when entity resolution is weak",
+    }
+    trace = build_result_trace(
+        query,
+        context_resolution.get("resolved_query") or query,
+        analysis,
+        plan,
+        metadata_resolution,
+        context_resolution,
+        [],
+        [],
+        answer,
+    )
     return {
         "mode": "rag",
         "query": query,
         "resolved_query": context_resolution.get("resolved_query") or query,
         "analysis": analysis,
-        "plan": {
-            "strategy": "conversation-state clarification",
-            "pipeline": pipeline,
-            "prompt_profile": prompt_profile,
-            "metadata_first": metadata_first,
-            "rerank": rerank,
-            "verifier_retry": verifier_retry,
-            "retrieval_mode": retrieval_mode,
-            "metadata_filters": {},
-            "top_k": None,
-            "retrieval_budget": {
-                "selected_top_k": None,
-                "query_type": "follow_up",
-                "reason": "clarification_before_retrieval",
-                "defaults": dict(QUERY_TYPE_TOP_K_DEFAULTS),
-            },
-            "relaxed": False,
-            "retry_policy": "clarify before retrieval when entity resolution is weak",
-        },
+        "plan": plan,
         "answer": answer,
         "answer_text": answer_text,
         "evidence": [],
+        "trace": trace,
         "conversation_state": conversation_state,
         "diagnostics": {
             "latency_ms": round(latency_ms, 2),
@@ -2692,40 +2894,60 @@ def make_metadata_clarification_result(
         "checked_doc_ids": analysis.get("matched_doc_ids") or [],
     }
     answer = {
+        "schema_version": ANSWER_SCHEMA_VERSION,
         "status": ANSWER_STATUS_INSUFFICIENT,
+        "status_reason": answer_status_reason(
+            ANSWER_STATUS_INSUFFICIENT,
+            False,
+            [reason],
+            code="metadata_ambiguity_clarification",
+        ),
         "query_type": "abstention",
         "summary": metadata_clarification_answer(query, analysis),
         "claims": [],
         "insufficiency": insufficiency,
     }
     answer_text = render_answer_text(answer)
+    plan = {
+        "strategy": "metadata ambiguity clarification",
+        "pipeline": pipeline,
+        "prompt_profile": prompt_profile,
+        "metadata_first": metadata_first,
+        "rerank": rerank,
+        "verifier_retry": verifier_retry,
+        "retrieval_mode": retrieval_mode,
+        "metadata_filters": {},
+        "top_k": None,
+        "retrieval_budget": {
+            "selected_top_k": None,
+            "query_type": analysis.get("query_type"),
+            "reason": "clarification_before_retrieval",
+            "defaults": dict(QUERY_TYPE_TOP_K_DEFAULTS),
+        },
+        "relaxed": False,
+        "retry_policy": "clarify before retrieval when metadata resolution is ambiguous",
+    }
+    trace = build_result_trace(
+        query,
+        retrieval_query,
+        analysis,
+        plan,
+        metadata_resolution,
+        context_resolution,
+        [],
+        [],
+        answer,
+    )
     return {
         "mode": "rag",
         "query": query,
         "resolved_query": retrieval_query,
         "analysis": analysis,
-        "plan": {
-            "strategy": "metadata ambiguity clarification",
-            "pipeline": pipeline,
-            "prompt_profile": prompt_profile,
-            "metadata_first": metadata_first,
-            "rerank": rerank,
-            "verifier_retry": verifier_retry,
-            "retrieval_mode": retrieval_mode,
-            "metadata_filters": {},
-            "top_k": None,
-            "retrieval_budget": {
-                "selected_top_k": None,
-                "query_type": analysis.get("query_type"),
-                "reason": "clarification_before_retrieval",
-                "defaults": dict(QUERY_TYPE_TOP_K_DEFAULTS),
-            },
-            "relaxed": False,
-            "retry_policy": "clarify before retrieval when metadata resolution is ambiguous",
-        },
+        "plan": plan,
         "answer": answer,
         "answer_text": answer_text,
         "evidence": [],
+        "trace": trace,
         "conversation_state": conversation_state,
         "diagnostics": {
             "latency_ms": round(latency_ms, 2),
@@ -3026,6 +3248,17 @@ def run_rag_query(
         analysis,
         selected_stage=str(plan.get("filter_stage") or ""),
     )
+    trace = build_result_trace(
+        query,
+        retrieval_query,
+        analysis,
+        plan,
+        metadata_resolution,
+        context_resolution,
+        stage_sequence,
+        stage_attempts,
+        answer,
+    )
     return {
         "mode": "rag",
         "query": query,
@@ -3035,6 +3268,7 @@ def run_rag_query(
         "answer": answer,
         "answer_text": answer_text,
         "evidence": strip_internal_scores(evidence),
+        "trace": trace,
         "conversation_state": next_state,
         "diagnostics": {
             "latency_ms": round(latency_ms, 2),
@@ -3044,7 +3278,7 @@ def run_rag_query(
             "answer_query_type": answer["query_type"],
             "claim_count": len(answer["claims"]),
             "citation_count": sum(len(claim.get("citations") or []) for claim in answer["claims"]),
-            "verification_reasons": verification_reasons,
+            "verification_reasons": (answer.get("status_reason") or {}).get("verification_reasons") or verification_reasons,
             "verification_topics": verification_topics(analysis),
             "filter_stage_attempts": stage_attempts,
             "final_relaxation_reason": stage_attempts[-2]["verification_reasons"] if retry_count and len(stage_attempts) >= 2 else [],

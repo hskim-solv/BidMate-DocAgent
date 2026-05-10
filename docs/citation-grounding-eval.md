@@ -1,9 +1,10 @@
 # Citation grounding evaluation
 
-이 문서는 이슈 #26의 page/region-grounded citation 평가 기준을 정리한다. 기존 `citation_precision`은 문서/근거 term 중심 지표로 유지하고, visual parsing v2에서 page/bbox metadata가 있을 때만 추가 grounding 지표를 계산한다.
+이 문서는 citation 평가 기준을 정리한다. 기존 `citation_precision`은 whole-answer 문서/근거 term 중심 지표로 유지하고, `claim_citation_alignment`는 claim마다 citation chunk가 해당 claim을 직접 지지하는지 별도로 측정한다. visual parsing v2에서 page/bbox metadata가 있을 때는 page/region grounding 지표도 추가 계산한다.
 
 ## 목적
 - 답변 citation이 올바른 문서뿐 아니라 올바른 page/region을 가리키는지 분리해 측정한다.
+- whole-answer citation 품질과 claim-level citation drift를 분리한다.
 - text v1과 visual v2를 비교할 때 region metadata가 없는 경우와 잘못 정렬된 경우를 구분한다.
 - downstream citation drift를 parser-stage `bbox_missing`, `bbox_misaligned` 오류와 연결해 해석한다.
 
@@ -20,9 +21,16 @@ expected_citation_regions:
     page_number: 1
     bbox: [10, 40, 280, 100]
     min_iou: 0.5
+
+expected_claim_citations:
+  - target: 기관 A
+    expected_doc_ids: [rfp-agency-a-ai-quality]
+    expected_terms: ["보안 통제", "로그"]
 ```
 
 `expected_citation_pages`는 citation의 `page_span` 또는 `regions[*].page_number`와 비교한다. `expected_citation_regions`는 같은 `doc_id`와 `page_number`의 `regions[*].bbox`를 gold bbox와 IoU로 비교하며, `min_iou` 기본값은 `0.5`다.
+
+`expected_claim_citations`는 선택 필드다. 지정하면 해당 target claim의 citation이 기대 doc id와 expected terms를 직접 포함해야 한다. 지정하지 않은 claim도 기본적으로 claim text가 cited evidence text에 의해 지지되는지 token/substring 기반으로 점검한다.
 
 ## Report fields
 `reports/eval_summary.json`에는 다음 additive metric이 기록된다.
@@ -32,9 +40,11 @@ expected_citation_regions:
 | `citation_page_precision` | 기대 page anchor 중 citation page metadata가 맞은 비율 |
 | `citation_region_precision` | 기대 region anchor 중 citation bbox가 IoU 기준을 통과한 비율 |
 | `citation_grounding` | page/region grounding score의 평균. 둘 다 없으면 `null` |
+| `claim_citation_alignment` | claim별 citation chunk가 claim text와 기대 claim terms를 직접 지지한 비율 |
 | `citation_grounding_error_counts` | page/region grounding 실패 taxonomy count |
+| `claim_citation_error_counts` | claim-level citation alignment 실패 taxonomy count |
 
-case result에는 `citation_grounding_errors`가 포함된다.
+case result에는 `citation_grounding_errors`와 `claim_citation_errors`가 포함된다.
 
 | Code | Meaning |
 |---|---|
@@ -42,6 +52,17 @@ case result에는 `citation_grounding_errors`가 포함된다.
 | `page_mismatch` | page metadata는 있으나 기대 page와 불일치 |
 | `region_unavailable` | 기대 page의 bbox region metadata가 없음 |
 | `region_misaligned` | bbox가 있으나 IoU threshold 미달 |
+
+Claim-level 오류는 다음처럼 해석한다.
+
+| Code | Meaning |
+|---|---|
+| `claim_missing_citation` | claim에 citation이 없음 |
+| `citation_not_in_evidence` | claim citation chunk가 top-level evidence에 없음 |
+| `claim_text_not_supported_by_citation` | citation text가 claim text를 직접 지지하지 않음 |
+| `expected_claim_doc_mismatch` | target별 expected doc id와 citation doc id가 다름 |
+| `expected_claim_terms_missing` | target별 expected terms가 citation text에 없음 |
+| `expected_claim_missing` | expected target claim이 출력되지 않음 |
 
 ## Examples
 Correctly grounded citation:

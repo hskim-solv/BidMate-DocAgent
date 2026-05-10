@@ -24,7 +24,7 @@
 
 ### 3) 성과 (Outcome)
 - 평가 범위: 단일 문서 추출, 단일 문서 심화 탐색, 다문서 비교, 후속 질문, 부재 정보 판별
-- 핵심 지표: Answer Accuracy, Groundedness, Citation Precision, Abstention Accuracy, Latency, Retry Rate
+- 핵심 지표: Answer Accuracy, Groundedness, Citation Precision, Claim Citation Alignment, Abstention Accuracy, Latency, Retry Rate
 - 상세 수치/해석은 아래 성능표 및 `docs/` 문서 참고
 
 ### 4) 재현 (Reproducibility)
@@ -62,6 +62,7 @@
 ## Demo / 산출물
 - 질의 실행 결과: `outputs/answer.json`
 - 평가 요약: `reports/eval_summary.json`
+- Planner/rewrite trace: `reports/traces/<run>/<case>.trace.json` (`eval/run_eval.py` 실행 시 생성, Git 미추적)
 - Benchmark registry: `benchmarks/registry.json`
 - Benchmark local artifacts: `artifacts/benchmarks/` (gitignored)
 - PDF/HWP ingestion 진단 리포트: `data/index/ingestion_report.json` (`--metadata_csv` 사용 시)
@@ -72,9 +73,11 @@
 
 ## 답변 출력 정책
 
-`outputs/answer.json`의 `answer`는 구조화된 객체입니다. `status`는 `supported`, `partial`, `insufficient` 중 하나이며, `claims`의 각 항목은 `target`, `claim`, `support`, `citations`를 포함합니다. 근거가 부족하면 `claims`를 비우고 `insufficiency`에 사유와 확인 대상이 기록됩니다.
+`outputs/answer.json`의 `answer`는 `schema_version: 2`인 구조화 객체입니다. `status`는 `supported`, `partial`, `insufficient` 중 하나이며, `status_reason`은 machine-readable 사유를 담습니다. `claims`의 각 항목은 `target`, `claim`, `support`, `citations`를 포함합니다. 근거가 부족하면 `claims`를 비우고 `insufficiency`에 사유와 확인 대상이 기록됩니다.
 
 CLI와 리뷰 편의를 위해 같은 내용을 사람이 읽기 쉬운 `answer_text`로도 제공합니다. 자세한 예시는 [`docs/answer-policy.md`](docs/answer-policy.md)를 참고하세요.
+
+Planner와 query rewrite 결정은 `outputs/answer.json`의 `trace`와 eval 실행 후 `reports/traces/`에서 확인할 수 있습니다. Grounding/eval hardening 변경 사항과 trace 해석 방법은 [`docs/grounding-eval-hardening.md`](docs/grounding-eval-hardening.md)를 참고하세요.
 
 ## Baseline policy
 
@@ -89,26 +92,27 @@ CLI와 리뷰 편의를 위해 같은 내용을 사람이 읽기 쉬운 `answer_
 <!-- METRICS_TABLE:START -->
 | Category | Metric | Score |
 |---|---:|---:|
-| Overall | Answer Accuracy | 0.808 |
+| Overall | Answer Accuracy | 0.821 |
 | Single-doc extraction | Answer Accuracy | 1.000 |
-| Multi-doc comparison | Groundedness Rate | 0.667 |
+| Multi-doc comparison | Groundedness Rate | 0.700 |
 | Follow-up | Answer Accuracy | 0.750 |
-| Evidence | Citation Precision | 0.455 |
-| Evidence | Answer Format Compliance | 0.667 |
+| Evidence | Citation Precision | 0.471 |
+| Evidence | Claim Citation Alignment | 0.970 |
+| Evidence | Answer Format Compliance | 0.686 |
 | Abstention | Abstention Accuracy | 0.143 |
-| System | Latency (p50/p95) | p50 1.1ms / p95 1.9ms |
+| System | Latency (p50/p95) | p50 1.1ms / p95 1.8ms |
 | System | Retry Rate | 0.000 |
 
 ### Ablation comparison
 
-| Run | Pipeline | Top-k | Metadata-first | Rerank | Verifier/Retry | Accuracy | Groundedness | Citation | Format | Abstention | Retry | Latency p95 |
-|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| naive_baseline | naive_baseline | 4 | off | off | off | 0.808 | 0.667 | 0.455 | 0.667 | 0.143 | 0.000 | 1.9ms |
-| full | agentic_full | auto | on | on | on | 0.885 | 0.909 | 0.909 | 0.909 | 1.000 | 0.273 | 2.0ms |
-| hierarchical | agentic_full | auto | on | on | on | 0.885 | 0.909 | 0.909 | 0.909 | 1.000 | 0.273 | 1.9ms |
-| no_metadata_first | agentic_full | auto | off | on | on | 0.808 | 0.848 | 0.636 | 0.848 | 1.000 | 0.000 | 1.6ms |
-| no_rerank | agentic_full | auto | on | off | on | 0.885 | 0.909 | 0.909 | 0.909 | 1.000 | 0.273 | 1.9ms |
-| no_verifier_retry | agentic_full | auto | on | on | off | 0.885 | 0.727 | 0.727 | 0.727 | 0.143 | 0.000 | 1.5ms |
+| Run | Pipeline | Top-k | Metadata-first | Rerank | Verifier/Retry | Accuracy | Groundedness | Citation | Claim Align | Format | Abstention | Retry | Latency p95 |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| naive_baseline | naive_baseline | 4 | off | off | off | 0.821 | 0.686 | 0.471 | 0.970 | 0.686 | 0.143 | 0.000 | 1.8ms |
+| full | agentic_full | auto | on | on | on | 0.857 | 0.886 | 0.886 | 0.964 | 0.886 | 1.000 | 0.314 | 1.8ms |
+| hierarchical | agentic_full | auto | on | on | on | 0.857 | 0.886 | 0.886 | 0.964 | 0.886 | 1.000 | 0.314 | 2.0ms |
+| no_metadata_first | agentic_full | auto | off | on | on | 0.786 | 0.829 | 0.629 | 0.926 | 0.829 | 1.000 | 0.000 | 1.9ms |
+| no_rerank | agentic_full | auto | on | off | on | 0.857 | 0.886 | 0.886 | 0.964 | 0.886 | 1.000 | 0.314 | 1.7ms |
+| no_verifier_retry | agentic_full | auto | on | on | off | 0.893 | 0.743 | 0.743 | 1.000 | 0.743 | 0.143 | 0.000 | 1.5ms |
 <!-- METRICS_TABLE:END -->
 
 > 주의: 성능표는 공개 synthetic RFP 평가셋 기준입니다. 원본 RFP 데이터는 비공개 제약으로 저장소에 포함하지 않았습니다.
@@ -310,6 +314,7 @@ python3 eval/run_parser_eval.py \
 - PDF/HWP ingestion: [`docs/real-data-ingestion.md`](docs/real-data-ingestion.md)
 - Visual parsing v2: [`docs/visual-ingestion-v2.md`](docs/visual-ingestion-v2.md)
 - Citation grounding evaluation: [`docs/citation-grounding-eval.md`](docs/citation-grounding-eval.md)
+- Grounding/eval hardening: [`docs/grounding-eval-hardening.md`](docs/grounding-eval-hardening.md)
 - Reproducible harness: [`docs/harness.md`](docs/harness.md)
 - 답변 출력 정책: [`docs/answer-policy.md`](docs/answer-policy.md)
 - 실패 사례 분석: [`docs/failure-cases.md`](docs/failure-cases.md)

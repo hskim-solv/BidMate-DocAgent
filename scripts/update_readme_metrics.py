@@ -11,6 +11,7 @@ REQUIRED_KEYS = [
     "accuracy",
     "groundedness",
     "citation_precision",
+    "claim_citation_alignment",
     "abstention",
     "answer_format_compliance",
     "latency",
@@ -47,10 +48,12 @@ def fmt_latency(value: Any) -> str:
 
 
 def metric_from_type(summary: Dict[str, Any], query_type: str, metric: str) -> Any:
-    by_type = summary.get("by_query_type")
+    by_type = summary.get("by_slice") or summary.get("by_query_type")
     if not isinstance(by_type, dict):
         return None
     block = by_type.get(query_type)
+    if block is None and query_type == "comparison":
+        block = by_type.get("multi_doc")
     if not isinstance(block, dict):
         return None
     return block.get(metric)
@@ -75,7 +78,7 @@ def render_main_table(summary: Dict[str, Any]) -> str:
         (
             "Multi-doc comparison",
             "Groundedness Rate",
-            fmt_rate(metric_from_type(summary, "multi_doc", "groundedness")),
+            fmt_rate(metric_from_type(summary, "comparison", "groundedness")),
         ),
         (
             "Follow-up",
@@ -83,6 +86,7 @@ def render_main_table(summary: Dict[str, Any]) -> str:
             fmt_rate(metric_from_type(summary, "follow_up", "accuracy")),
         ),
         ("Evidence", "Citation Precision", fmt_rate(summary.get("citation_precision"))),
+        ("Evidence", "Claim Citation Alignment", fmt_rate(summary.get("claim_citation_alignment"))),
         ("Evidence", "Answer Format Compliance", fmt_rate(summary.get("answer_format_compliance"))),
         (
             "Abstention",
@@ -106,8 +110,8 @@ def render_ablation_table(summary: Dict[str, Any]) -> str:
     table = [
         "### Ablation comparison",
         "",
-        "| Run | Pipeline | Top-k | Metadata-first | Rerank | Verifier/Retry | Accuracy | Groundedness | Citation | Format | Abstention | Retry | Latency p95 |",
-        "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "| Run | Pipeline | Top-k | Metadata-first | Rerank | Verifier/Retry | Accuracy | Groundedness | Citation | Claim Align | Format | Abstention | Retry | Latency p95 |",
+        "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for run in runs:
         if not isinstance(run, dict):
@@ -116,7 +120,7 @@ def render_ablation_table(summary: Dict[str, Any]) -> str:
         p95 = latency.get("p95") if isinstance(latency, dict) else None
         p95_text = f"{p95:.1f}ms" if isinstance(p95, (int, float)) else "N/A"
         table.append(
-            "| {name} | {pipeline} | {top_k} | {metadata_first} | {rerank} | {verifier_retry} | {accuracy} | {groundedness} | {citation} | {format} | {abstention} | {retry} | {p95} |".format(
+            "| {name} | {pipeline} | {top_k} | {metadata_first} | {rerank} | {verifier_retry} | {accuracy} | {groundedness} | {citation} | {claim_align} | {format} | {abstention} | {retry} | {p95} |".format(
                 name=run.get("name", "unknown"),
                 pipeline=run.get("pipeline", ""),
                 top_k=fmt_top_k(run.get("top_k")),
@@ -126,6 +130,7 @@ def render_ablation_table(summary: Dict[str, Any]) -> str:
                 accuracy=fmt_rate(run.get("accuracy")),
                 groundedness=fmt_rate(run.get("groundedness")),
                 citation=fmt_rate(run.get("citation_precision")),
+                claim_align=fmt_rate(run.get("claim_citation_alignment")),
                 format=fmt_rate(run.get("answer_format_compliance")),
                 abstention=fmt_rate(run.get("abstention")),
                 retry=fmt_rate(run.get("retry")),
