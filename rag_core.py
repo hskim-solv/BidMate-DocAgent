@@ -2741,14 +2741,21 @@ def redact_trace(
 
     planner = redacted.get("planner")
     if isinstance(planner, dict) and not include_doc_ids:
-        planner["metadata_selected_doc_ids"] = _mask(
-            planner.get("metadata_selected_doc_ids")
-        )
+        masked_selected = _mask(planner.get("metadata_selected_doc_ids"))
+        planner["metadata_selected_doc_ids"] = masked_selected
         attempts = planner.get("attempts")
         if isinstance(attempts, list):
             for attempt in attempts:
                 if isinstance(attempt, dict):
                     attempt["metadata_doc_ids"] = _mask(attempt.get("metadata_doc_ids"))
+        # readable_summary embeds the selected doc IDs verbatim; rebuild it
+        # so masking is consistent with the structured fields.
+        planner["readable_summary"] = (
+            f"{planner.get('query_type', '')} planned with {planner.get('pipeline')} "
+            f"stage={planner.get('selected_stage') or 'none'} "
+            f"top_k={planner.get('selected_top_k')} "
+            f"metadata_docs={masked_selected or 'none'}"
+        )
 
     return redacted
 

@@ -93,7 +93,7 @@ python eval/run_eval.py --config eval/dev_config.yaml --redact_trace all
 python eval/run_eval.py --config eval/dev_config.yaml --redact_trace doc_ids
 ```
 
-Redaction replaces each list entry with the literal `"<redacted>"` while preserving list length, so structural shape (e.g. "two doc IDs were selected") is still inspectable. The in-memory result returned by `run_rag_query` is never mutated — redaction applies only at the trace-write boundary.
+Redaction replaces each list entry with the literal `"<redacted>"` while preserving list length, so structural shape (e.g. "two doc IDs were selected") is still inspectable. `planner.readable_summary` is rewritten in lockstep so it cannot leak the selected doc IDs via its summary string. The in-memory result returned by `run_rag_query` is never mutated — redaction applies only at the trace-write boundary.
 
 The `eval_summary.json` records the effective redaction state under `trace_redaction`.
 

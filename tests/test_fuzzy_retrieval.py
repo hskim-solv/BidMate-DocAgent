@@ -616,6 +616,14 @@ class FuzzyMetadataRetrievalTest(unittest.TestCase):
             trace["planner"]["stage_latencies_ms"],
             redacted["planner"]["stage_latencies_ms"],
         )
+        # readable_summary embeds the selected doc IDs; redaction must rewrite it
+        # so doc IDs do not leak via the summary string.
+        for doc_id in original_selected:
+            self.assertNotIn(doc_id, redacted["planner"]["readable_summary"])
+        self.assertIn(
+            REDACTED_LIST_PLACEHOLDER,
+            redacted["planner"]["readable_summary"],
+        )
 
     def test_multi_step_follow_up_preserves_agency_and_project_context(self) -> None:
         first = run_rag_query(
