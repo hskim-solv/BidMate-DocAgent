@@ -19,6 +19,7 @@ from rag_core import (
     load_index,
     percentile,
     rate,
+    redact_trace,
     resolve_pipeline_config,
     run_rag_query,
 )
@@ -67,7 +68,28 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Directory for local planner/rewrite trace JSON files. Defaults to <output_dir>/traces.",
     )
+    parser.add_argument(
+        "--redact_trace",
+        choices=("doc_ids", "entities", "all"),
+        action="append",
+        default=None,
+        help=(
+            "Mask sensitive list fields in written traces. Pass once per category "
+            "(doc_ids|entities) or 'all' to mask both. Default: no redaction."
+        ),
+    )
     return parser.parse_args()
+
+
+def trace_redact_options(values: list[str] | None) -> dict[str, bool]:
+    """Translate CLI --redact_trace selections into redact_trace kwargs."""
+    selected = set(values or [])
+    if "all" in selected:
+        selected.update({"doc_ids", "entities"})
+    return {
+        "include_doc_ids": "doc_ids" not in selected,
+        "include_entities": "entities" not in selected,
+    }
 
 
 def normalize_run_config(run: dict[str, Any]) -> dict[str, Any]:
@@ -1013,8 +1035,12 @@ def prediction_trace_payload(
     case: dict[str, Any],
     run_config: dict[str, Any],
     prediction: dict[str, Any],
+    *,
+    redact_options: dict[str, bool] | None = None,
 ) -> dict[str, Any]:
     trace = prediction.get("trace") if isinstance(prediction.get("trace"), dict) else {}
+    if redact_options and isinstance(trace, dict):
+        trace = redact_trace(trace, **redact_options)
     return {
         "schema_version": 1,
         "case_id": case.get("id"),
@@ -1032,6 +1058,8 @@ def write_prediction_trace(
     case: dict[str, Any],
     run_config: dict[str, Any],
     prediction: dict[str, Any],
+    *,
+    redact_options: dict[str, bool] | None = None,
 ) -> str | None:
     if trace_dir is None:
         return None
@@ -1040,7 +1068,12 @@ def write_prediction_trace(
     path = run_dir / f"{safe_path_part(str(case.get('id') or 'case'))}.trace.json"
     path.write_text(
         json.dumps(
-            prediction_trace_payload(case, run_config, prediction),
+            prediction_trace_payload(
+                case,
+                run_config,
+                prediction,
+                redact_options=redact_options,
+            ),
             ensure_ascii=False,
             indent=2,
         ),
@@ -1055,6 +1088,7 @@ def evaluate_run(
     run_config: dict[str, Any],
     answer_policy: dict[str, Any] | None = None,
     trace_dir: Path | None = None,
+    redact_options: dict[str, bool] | None = None,
 ) -> list[dict[str, Any]]:
     case_results = []
     for case in cases:
@@ -1088,7 +1122,13 @@ def evaluate_run(
             prompt_profile=str(run_config.get("prompt_profile") or ""),
             conversation_state=conversation_state,
         )
-        trace_path = write_prediction_trace(trace_dir, case, run_config, prediction)
+        trace_path = write_prediction_trace(
+            trace_dir,
+            case,
+            run_config,
+            prediction,
+            redact_options=redact_options,
+        )
         result = score_case(case, prediction, answer_policy)
         if trace_path:
             result["trace_path"] = trace_path
@@ -1117,6 +1157,7 @@ def main() -> int:
     primary_summary = None
     primary_run_name = str(config.get("primary_run") or DEFAULT_CLI_PIPELINE_NAME)
     trace_root = Path(args.trace_dir) if args.trace_dir else Path(args.output_dir) / "traces"
+    redact_options = trace_redact_options(args.redact_trace)
     try:
         for run_config in ablation_runs(config):
             case_results = evaluate_run(
@@ -1125,6 +1166,7 @@ def main() -> int:
                 run_config,
                 config.get("answer_policy") if isinstance(config.get("answer_policy"), dict) else {},
                 trace_dir=trace_root,
+                redact_options=redact_options,
             )
             is_primary = run_config["name"] == primary_run_name
             run_summary = summarize_run(
@@ -1174,6 +1216,10 @@ def main() -> int:
         "citation_grounding_error_counts": primary_summary["citation_grounding_error_counts"],
         "claim_citation_error_counts": primary_summary["claim_citation_error_counts"],
         "trace_dir": str(trace_root),
+        "trace_redaction": {
+            "include_doc_ids": redact_options["include_doc_ids"],
+            "include_entities": redact_options["include_entities"],
+        },
         "ablation": {"runs": run_summaries},
         "case_results": primary_summary.get("case_results", []),
     }
