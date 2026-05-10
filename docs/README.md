@@ -5,6 +5,7 @@
 - [Benchmarking](./benchmarking.md)
 - [Retrieval hardening milestone](./retrieval-hardening.md)
 - [Grounding/eval hardening](./grounding-eval-hardening.md)
+- [Planner & query-rewrite trace schema](./planner-trace.md)
 - [Reproducible harness](./harness.md)
 - [Private hard-case benchmark](./private-hardcase-benchmark.md)
 - [Private 100-doc experiments](./private-100-doc-experiments.md)
