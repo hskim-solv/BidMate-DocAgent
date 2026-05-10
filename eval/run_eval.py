@@ -3,8 +3,10 @@ import argparse
 from collections import Counter, defaultdict
 import json
 from pathlib import Path
+import re
 import sys
 from typing import Any
+import unicodedata
 
 import yaml
 
@@ -22,7 +24,8 @@ from rag_core import (
 )
 
 
-QUERY_TYPES = ("single_doc", "multi_doc", "follow_up", "abstention")
+QUERY_TYPES = ("single_doc", "comparison", "follow_up", "abstention")
+QUERY_TYPE_ALIASES = {"multi_doc": "comparison"}
 DEFAULT_ABLATION_RUNS = [
     {
         "name": DEFAULT_CLI_PIPELINE_NAME,
@@ -47,6 +50,11 @@ def hardcase_categories(item: dict[str, Any]) -> list[str]:
     return normalized
 
 
+def canonical_query_type(query_type: Any) -> str:
+    value = str(query_type or "").strip()
+    return QUERY_TYPE_ALIASES.get(value, value)
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run local RAG evaluation over configured cases.")
     parser.add_argument("--input_dir", default="outputs", help="Kept for CLI compatibility; not required.")
@@ -54,6 +62,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output_dir", default="reports", help="Directory to save eval summary.")
     parser.add_argument("--query", default=None, help="Unused in this command; accepted for CLI consistency.")
     parser.add_argument("--config", required=True, help="Path to eval config YAML file.")
+    parser.add_argument(
+        "--trace_dir",
+        default=None,
+        help="Directory for local planner/rewrite trace JSON files. Defaults to <output_dir>/traces.",
+    )
     return parser.parse_args()
 
 
@@ -82,9 +95,11 @@ def load_config(path: Path) -> dict[str, Any]:
     if not isinstance(cases, list) or not cases:
         raise ValueError("Eval config must include non-empty cases list")
     for case in cases:
-        query_type = case.get("query_type")
+        query_type = canonical_query_type(case.get("query_type"))
         if query_type not in QUERY_TYPES:
-            raise ValueError(f"Eval case must include query_type in {QUERY_TYPES}: {case.get('id')}")
+            accepted = tuple([*QUERY_TYPES, *QUERY_TYPE_ALIASES])
+            raise ValueError(f"Eval case must include query_type in {accepted}: {case.get('id')}")
+        case["query_type"] = query_type
         prior_turns = case.get("prior_turns") or []
         if not isinstance(prior_turns, list):
             raise ValueError(f"Eval case prior_turns must be a list: {case.get('id')}")
@@ -135,6 +150,24 @@ def load_config(path: Path) -> dict[str, Any]:
                 raise ValueError(
                     f"Each expected_citation_regions min_iou must be numeric: {case.get('id')}"
                 )
+        expected_claim_citations = case.get("expected_claim_citations") or []
+        if not isinstance(expected_claim_citations, list):
+            raise ValueError(f"Eval case expected_claim_citations must be a list: {case.get('id')}")
+        for expected_claim in expected_claim_citations:
+            if not isinstance(expected_claim, dict):
+                raise ValueError(
+                    f"Each expected_claim_citations item must be a mapping: {case.get('id')}"
+                )
+            if expected_claim.get("target") is not None and not str(expected_claim.get("target")).strip():
+                raise ValueError(
+                    f"expected_claim_citations target must be non-empty when provided: {case.get('id')}"
+                )
+            for field in ("expected_terms", "expected_doc_ids"):
+                values = expected_claim.get(field) or []
+                if not isinstance(values, list):
+                    raise ValueError(
+                        f"expected_claim_citations {field} must be a list: {case.get('id')}"
+                    )
 
     runs = data.get("ablation_runs", DEFAULT_ABLATION_RUNS)
     if not isinstance(runs, list) or not runs:
@@ -371,6 +404,214 @@ def score_citation_grounding(
     }
 
 
+ALIGN_TOKEN_RE = re.compile(r"[A-Za-z0-9]+|[가-힣]+")
+ALIGN_STOPWORDS = {
+    "기관",
+    "핵심",
+    "요구사항",
+    "요구",
+    "차이",
+    "비교",
+    "관련",
+    "확인",
+    "대상",
+    "한다",
+    "있다",
+    "이다",
+    "은",
+    "는",
+    "이",
+    "가",
+    "을",
+    "를",
+    "의",
+    "와",
+    "과",
+}
+
+
+def normalized_alignment_text(text: str) -> str:
+    normalized = unicodedata.normalize("NFC", text).lower()
+    return re.sub(r"[^0-9a-z가-힣]+", "", normalized)
+
+
+def alignment_tokens(text: str) -> list[str]:
+    tokens = []
+    for match in ALIGN_TOKEN_RE.finditer(unicodedata.normalize("NFC", text).lower()):
+        token = match.group(0)
+        if len(token) <= 1 or token in ALIGN_STOPWORDS:
+            continue
+        tokens.append(token)
+    return tokens
+
+
+def evidence_alignment_text(item: dict[str, Any]) -> str:
+    parts = [
+        item.get("title", ""),
+        item.get("agency", ""),
+        item.get("project", ""),
+        item.get("section", ""),
+        item.get("text", ""),
+    ]
+    metadata = item.get("metadata")
+    if isinstance(metadata, dict):
+        for key, value in sorted(metadata.items()):
+            if value is None or value == "":
+                continue
+            parts.append(str(key))
+            parts.append(str(value))
+    return " ".join(str(part) for part in parts if str(part).strip())
+
+
+def claim_text_supported_by_citation(claim: dict[str, Any], citation_text: str) -> bool:
+    claim_text = " ".join(
+        str(claim.get(key) or "") for key in ("claim", "support") if claim.get(key)
+    )
+    if not claim_text.strip() or not citation_text.strip():
+        return False
+
+    compact_claim = normalized_alignment_text(str(claim.get("claim") or ""))
+    compact_citation = normalized_alignment_text(citation_text)
+    if compact_claim and compact_claim in compact_citation:
+        return True
+
+    tokens = alignment_tokens(str(claim.get("claim") or ""))
+    if not tokens:
+        return bool(compact_claim and compact_claim in compact_citation)
+    citation_tokens = set(alignment_tokens(citation_text))
+    overlap = sum(1 for token in tokens if token in citation_tokens)
+    return (overlap / max(1, len(tokens))) >= 0.5
+
+
+def expected_claim_specs_for_target(
+    case: dict[str, Any],
+    target: str,
+) -> list[dict[str, Any]]:
+    specs = case.get("expected_claim_citations") or []
+    matched = []
+    for spec in specs:
+        if not isinstance(spec, dict):
+            continue
+        expected_target = str(spec.get("target") or "").strip()
+        if not expected_target or expected_target == target:
+            matched.append(spec)
+    return matched
+
+
+def score_claim_citation_alignment(
+    case: dict[str, Any],
+    prediction: dict[str, Any],
+) -> dict[str, Any]:
+    evidence_by_chunk = {
+        str(item.get("chunk_id")): item
+        for item in prediction.get("evidence") or []
+        if item.get("chunk_id")
+    }
+    claims = answer_claims(prediction)
+    expected_specs = [
+        spec for spec in case.get("expected_claim_citations") or [] if isinstance(spec, dict)
+    ]
+    errors: list[dict[str, Any]] = []
+    scores: list[float] = []
+    claim_targets = {str(claim.get("target") or "") for claim in claims}
+
+    for claim_index, claim in enumerate(claims):
+        target = str(claim.get("target") or "")
+        citations = [citation for citation in claim.get("citations") or [] if isinstance(citation, dict)]
+        if not citations:
+            scores.append(0.0)
+            errors.append(
+                {
+                    "code": "claim_missing_citation",
+                    "message": "Claim has no citation.",
+                    "claim_index": claim_index,
+                    "target": target,
+                }
+            )
+            continue
+
+        citation_items = []
+        missing_chunk_ids = []
+        for citation in citations:
+            chunk_id = str(citation.get("chunk_id") or "")
+            item = evidence_by_chunk.get(chunk_id)
+            if item is None:
+                missing_chunk_ids.append(chunk_id)
+                continue
+            citation_items.append(item)
+        citation_text = " ".join(evidence_alignment_text(item) for item in citation_items)
+        citation_doc_ids = {str(item.get("doc_id") or "") for item in citation_items}
+
+        claim_errors: list[dict[str, Any]] = []
+        if missing_chunk_ids and not citation_items:
+            claim_errors.append(
+                {
+                    "code": "citation_not_in_evidence",
+                    "message": "Claim citation chunk was not present in top-level evidence.",
+                    "claim_index": claim_index,
+                    "target": target,
+                    "chunk_ids": missing_chunk_ids,
+                }
+            )
+        elif not claim_text_supported_by_citation(claim, citation_text):
+            claim_errors.append(
+                {
+                    "code": "claim_text_not_supported_by_citation",
+                    "message": "Claim text was not directly supported by the cited evidence text.",
+                    "claim_index": claim_index,
+                    "target": target,
+                    "citation_chunk_ids": [item.get("chunk_id") for item in citation_items],
+                }
+            )
+
+        for spec in expected_claim_specs_for_target(case, target):
+            expected_doc_ids = {str(doc_id) for doc_id in spec.get("expected_doc_ids") or []}
+            expected_terms = [str(term) for term in spec.get("expected_terms") or []]
+            if expected_doc_ids and not (expected_doc_ids & citation_doc_ids):
+                claim_errors.append(
+                    {
+                        "code": "expected_claim_doc_mismatch",
+                        "message": "Claim citation doc_id did not match the expected claim-level doc.",
+                        "claim_index": claim_index,
+                        "target": target,
+                        "expected_doc_ids": sorted(expected_doc_ids),
+                        "actual_doc_ids": sorted(doc_id for doc_id in citation_doc_ids if doc_id),
+                    }
+                )
+            if expected_terms and not contains_all_terms(citation_text, expected_terms):
+                claim_errors.append(
+                    {
+                        "code": "expected_claim_terms_missing",
+                        "message": "Claim citation text missed expected claim-level terms.",
+                        "claim_index": claim_index,
+                        "target": target,
+                        "expected_terms": expected_terms,
+                    }
+                )
+
+        errors.extend(claim_errors)
+        scores.append(0.0 if claim_errors else 1.0)
+
+    for spec in expected_specs:
+        expected_target = str(spec.get("target") or "").strip()
+        if expected_target and expected_target not in claim_targets:
+            scores.append(0.0)
+            errors.append(
+                {
+                    "code": "expected_claim_missing",
+                    "message": "Expected claim target was not emitted.",
+                    "target": expected_target,
+                }
+            )
+
+    return {
+        "claim_citation_alignment": rate(scores) if scores else None,
+        "claim_citation_aligned": sum(1 for score in scores if score >= 1.0),
+        "claim_citation_checked": len(scores),
+        "claim_citation_errors": errors,
+    }
+
+
 def score_answer_format(
     case: dict[str, Any],
     prediction: dict[str, Any],
@@ -396,7 +637,11 @@ def score_answer_format(
         case.get("require_claim_citations", policy.get("require_claim_citations", True))
     )
     expected_targets = {str(target) for target in case.get("expected_claim_targets") or []}
+    expected_missing_targets = {
+        str(target) for target in case.get("expected_missing_targets") or []
+    }
 
+    payload = answer_payload(prediction)
     claims = answer_claims(prediction)
     claim_targets = {str(claim.get("target") or "") for claim in claims}
     citation_checks = []
@@ -417,17 +662,27 @@ def score_answer_format(
     elif require_claim_citations and int(min_claims) > 0:
         citations_ok = False
 
+    insufficiency = payload.get("insufficiency") if isinstance(payload, dict) else {}
+    if not isinstance(insufficiency, dict):
+        insufficiency = {}
+    missing_targets = {str(target) for target in insufficiency.get("missing_targets") or []}
+
     checks = {
+        "schema_version": int(payload.get("schema_version") or 0) >= 2,
         "status_match": answer_status(prediction) == str(expected_status),
         "min_claims": len(claims) >= int(min_claims),
         "claim_targets": expected_targets.issubset(claim_targets),
         "claim_citations": citations_ok,
     }
+    if expected_missing_targets:
+        checks["missing_targets"] = expected_missing_targets.issubset(missing_targets)
     return {
         "expected_answer_status": str(expected_status),
         "answer_status": answer_status(prediction),
         "expected_claim_targets": sorted(expected_targets),
         "claim_targets": sorted(target for target in claim_targets if target),
+        "expected_missing_targets": sorted(expected_missing_targets),
+        "missing_targets": sorted(target for target in missing_targets if target),
         "claim_count": len(claims),
         "format_checks": checks,
         "answer_format_compliance": 1.0 if all(checks.values()) else 0.0,
@@ -440,7 +695,7 @@ def score_case(
     answer_policy: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     answerable = bool(case.get("answerable", True))
-    query_type = str(case.get("query_type"))
+    query_type = canonical_query_type(case.get("query_type"))
     expected_doc_ids = set(case.get("expected_doc_ids") or [])
     expected_terms = [str(term) for term in case.get("expected_terms") or []]
     expected_citation_terms = [
@@ -460,6 +715,7 @@ def score_case(
     abstained = bool(diagnostics.get("abstained"))
     answer_format = score_answer_format(case, prediction, answer_policy)
     citation_grounding = score_citation_grounding(case, prediction)
+    claim_alignment = score_claim_citation_alignment(case, prediction)
 
     citation_doc_precision = 0.0
     if evidence_doc_ids:
@@ -472,7 +728,7 @@ def score_case(
 
     comparison_target_recall: float | None = None
     comparison_pool_recall: float | None = None
-    if query_type == "multi_doc" and len(expected_doc_ids) >= 2:
+    if query_type == "comparison" and len(expected_doc_ids) >= 2:
         covered = expected_doc_ids & evidence_doc_ids
         comparison_target_recall = len(covered) / len(expected_doc_ids)
         coverage_after = (
@@ -502,6 +758,7 @@ def score_case(
     return {
         "id": case.get("id"),
         "query_type": query_type,
+        "slice": query_type,
         "hardcase_categories": hardcase_categories(case),
         "query": case.get("query"),
         "answerable": answerable,
@@ -515,6 +772,7 @@ def score_case(
         "groundedness": groundedness,
         "citation_precision": citation_precision,
         **citation_grounding,
+        **claim_alignment,
         "abstention": abstention,
         "comparison_target_recall": comparison_target_recall,
         "comparison_pool_recall": comparison_pool_recall,
@@ -583,6 +841,11 @@ def metric_block(case_results: list[dict[str, Any]]) -> dict[str, Any]:
     citation_grounding_scores = [
         r["citation_grounding"] for r in case_results if r.get("citation_grounding") is not None
     ]
+    claim_alignment_scores = [
+        r["claim_citation_alignment"]
+        for r in case_results
+        if r.get("claim_citation_alignment") is not None
+    ]
     abstention_scores = [r["abstention"] for r in case_results if r["abstention"] is not None]
     comparison_recall_scores = [
         r["comparison_target_recall"]
@@ -609,6 +872,12 @@ def metric_block(case_results: list[dict[str, Any]]) -> dict[str, Any]:
         error["code"]
         for result in case_results
         for error in result.get("citation_grounding_errors") or []
+        if isinstance(error, dict) and error.get("code")
+    )
+    claim_citation_error_counts = Counter(
+        error["code"]
+        for result in case_results
+        for error in result.get("claim_citation_errors") or []
         if isinstance(error, dict) and error.get("code")
     )
 
@@ -660,6 +929,7 @@ def metric_block(case_results: list[dict[str, Any]]) -> dict[str, Any]:
         "citation_page_precision": rate(citation_page_scores),
         "citation_region_precision": rate(citation_region_scores),
         "citation_grounding": rate(citation_grounding_scores),
+        "claim_citation_alignment": rate(claim_alignment_scores),
         "abstention": rate(abstention_scores),
         "answer_format_compliance": rate(format_scores),
         "latency": {
@@ -679,6 +949,7 @@ def metric_block(case_results: list[dict[str, Any]]) -> dict[str, Any]:
         },
         "retry_reason_counts": dict(sorted(retry_reason_counts.items())),
         "citation_grounding_error_counts": dict(sorted(citation_grounding_error_counts.items())),
+        "claim_citation_error_counts": dict(sorted(claim_citation_error_counts.items())),
     }
     if comparison_recall_scores:
         block["comparison_target_recall"] = rate(comparison_recall_scores)
@@ -710,13 +981,16 @@ def summarize_run(
         "prompt_profile": str(run_config.get("prompt_profile") or ""),
         **metric_block(case_results),
         "by_query_type": {},
+        "by_slice": {},
     }
     grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for result in case_results:
-        grouped[str(result["query_type"])].append(result)
+        grouped[canonical_query_type(result["query_type"])].append(result)
     for query_type in QUERY_TYPES:
         if query_type in grouped:
-            summary["by_query_type"][query_type] = metric_block(grouped[query_type])
+            block = metric_block(grouped[query_type])
+            summary["by_query_type"][query_type] = block
+            summary["by_slice"][query_type] = block
     hardcase_grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for result in case_results:
         for category in hardcase_categories(result):
@@ -731,11 +1005,56 @@ def summarize_run(
     return summary
 
 
+def safe_path_part(value: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_.-]+", "_", value).strip("_") or "unknown"
+
+
+def prediction_trace_payload(
+    case: dict[str, Any],
+    run_config: dict[str, Any],
+    prediction: dict[str, Any],
+) -> dict[str, Any]:
+    trace = prediction.get("trace") if isinstance(prediction.get("trace"), dict) else {}
+    return {
+        "schema_version": 1,
+        "case_id": case.get("id"),
+        "run": run_config.get("name"),
+        "pipeline": run_config.get("pipeline"),
+        "slice": canonical_query_type(case.get("query_type")),
+        "query": case.get("query"),
+        "answer_status": answer_status(prediction),
+        "trace": trace,
+    }
+
+
+def write_prediction_trace(
+    trace_dir: Path | None,
+    case: dict[str, Any],
+    run_config: dict[str, Any],
+    prediction: dict[str, Any],
+) -> str | None:
+    if trace_dir is None:
+        return None
+    run_dir = trace_dir / safe_path_part(str(run_config.get("name") or "run"))
+    run_dir.mkdir(parents=True, exist_ok=True)
+    path = run_dir / f"{safe_path_part(str(case.get('id') or 'case'))}.trace.json"
+    path.write_text(
+        json.dumps(
+            prediction_trace_payload(case, run_config, prediction),
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    return str(path)
+
+
 def evaluate_run(
     index: dict[str, Any],
     cases: list[dict[str, Any]],
     run_config: dict[str, Any],
     answer_policy: dict[str, Any] | None = None,
+    trace_dir: Path | None = None,
 ) -> list[dict[str, Any]]:
     case_results = []
     for case in cases:
@@ -769,7 +1088,11 @@ def evaluate_run(
             prompt_profile=str(run_config.get("prompt_profile") or ""),
             conversation_state=conversation_state,
         )
-        case_results.append(score_case(case, prediction, answer_policy))
+        trace_path = write_prediction_trace(trace_dir, case, run_config, prediction)
+        result = score_case(case, prediction, answer_policy)
+        if trace_path:
+            result["trace_path"] = trace_path
+        case_results.append(result)
     return case_results
 
 
@@ -793,6 +1116,7 @@ def main() -> int:
     run_summaries = []
     primary_summary = None
     primary_run_name = str(config.get("primary_run") or DEFAULT_CLI_PIPELINE_NAME)
+    trace_root = Path(args.trace_dir) if args.trace_dir else Path(args.output_dir) / "traces"
     try:
         for run_config in ablation_runs(config):
             case_results = evaluate_run(
@@ -800,6 +1124,7 @@ def main() -> int:
                 config["cases"],
                 run_config,
                 config.get("answer_policy") if isinstance(config.get("answer_policy"), dict) else {},
+                trace_dir=trace_root,
             )
             is_primary = run_config["name"] == primary_run_name
             run_summary = summarize_run(
@@ -833,6 +1158,7 @@ def main() -> int:
         "citation_page_precision": primary_summary["citation_page_precision"],
         "citation_region_precision": primary_summary["citation_region_precision"],
         "citation_grounding": primary_summary["citation_grounding"],
+        "claim_citation_alignment": primary_summary["claim_citation_alignment"],
         "abstention": primary_summary["abstention"],
         "answer_format_compliance": primary_summary["answer_format_compliance"],
         "latency": primary_summary["latency"],
@@ -841,10 +1167,13 @@ def main() -> int:
         "cold_start_samples": primary_summary.get("cold_start_samples", {}),
         "retry": primary_summary["retry"],
         "by_query_type": primary_summary["by_query_type"],
+        "by_slice": primary_summary.get("by_slice", {}),
         "by_hardcase_category": primary_summary.get("by_hardcase_category", {}),
         "retry_cost": primary_summary["retry_cost"],
         "retry_reason_counts": primary_summary["retry_reason_counts"],
         "citation_grounding_error_counts": primary_summary["citation_grounding_error_counts"],
+        "claim_citation_error_counts": primary_summary["claim_citation_error_counts"],
+        "trace_dir": str(trace_root),
         "ablation": {"runs": run_summaries},
         "case_results": primary_summary.get("case_results", []),
     }

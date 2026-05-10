@@ -45,7 +45,7 @@ cp eval/real_config.example.yaml eval/real_config.local.yaml
 | 필드 | 의미 |
 |---|---|
 | `id` | 케이스 식별자. 다른 케이스와 겹치지 않도록 유니크하게 둔다. |
-| `query_type` | `single_doc`, `multi_doc`, `follow_up`, `abstention` 중 하나. |
+| `query_type` | `single_doc`, `comparison`, `follow_up`, `abstention` 중 하나. 기존 `multi_doc` 값은 호환 alias로 읽힌다. |
 | `query` | 사용자가 입력하는 질의 본문. |
 | `expected_doc_ids` | 기대되는 정답 doc_id 목록. abstention 케이스에서는 `[]`. |
 | `expected_terms` | 답변 텍스트에 등장해야 하는 핵심 term들. |
