@@ -7,6 +7,7 @@ generation is extractive, and external LLM/API calls are not required.
 
 from __future__ import annotations
 
+import copy
 from dataclasses import dataclass
 import difflib
 import hashlib
@@ -2595,6 +2596,9 @@ def build_query_rewrite_trace(
         "rewrite_type": rewrite_type,
         "context_source": source,
         "context_status": status,
+        "context_resolution_confidence": round(
+            float(context_resolution.get("confidence") or 0.0), 3
+        ),
         "reason": context_resolution.get("reason", ""),
         "context_entities": context_resolution.get("context_entities") or [],
         "context_projects": context_resolution.get("context_projects") or [],
@@ -2613,6 +2617,8 @@ def build_planner_trace(
     metadata_resolution: dict[str, Any],
     stage_sequence: list[str],
     stage_attempts: list[dict[str, Any]],
+    *,
+    stage_latencies_ms: dict[str, float] | None = None,
 ) -> dict[str, Any]:
     attempts = [
         {
@@ -2628,6 +2634,14 @@ def build_planner_trace(
     query_type = str(analysis.get("query_type") or "")
     filter_stage = str(plan.get("filter_stage") or "")
     top_k = plan.get("top_k")
+    latencies = {
+        key: round(float((stage_latencies_ms or {}).get(key, 0.0)), 2)
+        for key in (
+            "query_analysis_ms",
+            "context_resolution_ms",
+            "answer_generation_ms",
+        )
+    }
     return {
         "query_type": query_type,
         "pipeline": plan.get("pipeline"),
@@ -2645,6 +2659,7 @@ def build_planner_trace(
         "metadata_selected_doc_ids": selected_doc_ids,
         "metadata_ambiguous": bool(analysis.get("metadata_ambiguous")),
         "comparison_coverage": plan.get("comparison_coverage"),
+        "stage_latencies_ms": latencies,
         "attempts": attempts,
         "readable_summary": (
             f"{query_type} planned with {plan.get('pipeline')} "
@@ -2664,6 +2679,8 @@ def build_result_trace(
     stage_sequence: list[str],
     stage_attempts: list[dict[str, Any]],
     answer: dict[str, Any],
+    *,
+    stage_latencies_ms: dict[str, float] | None = None,
 ) -> dict[str, Any]:
     return {
         "schema_version": TRACE_SCHEMA_VERSION,
@@ -2678,6 +2695,7 @@ def build_result_trace(
             metadata_resolution,
             stage_sequence,
             stage_attempts,
+            stage_latencies_ms=stage_latencies_ms,
         ),
         "answer_schema": {
             "schema_version": answer.get("schema_version"),
@@ -2687,6 +2705,52 @@ def build_result_trace(
             "claim_count": len(answer.get("claims") or []),
         },
     }
+
+
+REDACTED_LIST_PLACEHOLDER = "<redacted>"
+
+
+def redact_trace(
+    trace: dict[str, Any],
+    *,
+    include_doc_ids: bool = True,
+    include_entities: bool = True,
+) -> dict[str, Any]:
+    """Return a deep copy of `trace` with sensitive list fields masked.
+
+    `include_doc_ids=False` masks active doc ids in query_rewrite, planner
+    metadata selections, and per-attempt metadata filters. `include_entities=False`
+    masks context entity / project lists. Counts are preserved so reviewers can
+    still see structural shape.
+    """
+    if not isinstance(trace, dict):
+        return trace
+    redacted = copy.deepcopy(trace)
+
+    def _mask(values: Any) -> list[str]:
+        items = values if isinstance(values, list) else []
+        return [REDACTED_LIST_PLACEHOLDER] * len(items)
+
+    rewrite = redacted.get("query_rewrite")
+    if isinstance(rewrite, dict):
+        if not include_entities:
+            rewrite["context_entities"] = _mask(rewrite.get("context_entities"))
+            rewrite["context_projects"] = _mask(rewrite.get("context_projects"))
+        if not include_doc_ids:
+            rewrite["active_doc_ids"] = _mask(rewrite.get("active_doc_ids"))
+
+    planner = redacted.get("planner")
+    if isinstance(planner, dict) and not include_doc_ids:
+        planner["metadata_selected_doc_ids"] = _mask(
+            planner.get("metadata_selected_doc_ids")
+        )
+        attempts = planner.get("attempts")
+        if isinstance(attempts, list):
+            for attempt in attempts:
+                if isinstance(attempt, dict):
+                    attempt["metadata_doc_ids"] = _mask(attempt.get("metadata_doc_ids"))
+
+    return redacted
 
 
 def clarification_answer(query: str, context_resolution: dict[str, Any]) -> str:
@@ -2796,6 +2860,7 @@ def make_context_clarification_result(
         [],
         [],
         answer,
+        stage_latencies_ms=stage_timings,
     )
     return {
         "mode": "rag",
@@ -2937,6 +3002,7 @@ def make_metadata_clarification_result(
         [],
         [],
         answer,
+        stage_latencies_ms=stage_timings,
     )
     return {
         "mode": "rag",
@@ -3258,6 +3324,7 @@ def run_rag_query(
         stage_sequence,
         stage_attempts,
         answer,
+        stage_latencies_ms=stage_latency,
     )
     return {
         "mode": "rag",
