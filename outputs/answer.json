@@ -288,6 +288,7 @@
       "rewrite_type": "none",
       "context_source": "query",
       "context_status": "not_needed",
+      "context_resolution_confidence": 1.0,
       "reason": "",
       "context_entities": [],
       "context_projects": [],
@@ -336,6 +337,11 @@
           "rfp-agency-b-mlops-governance": 1
         },
         "balanced": false
+      },
+      "stage_latencies_ms": {
+        "query_analysis_ms": 0.48,
+        "context_resolution_ms": 0.0,
+        "answer_generation_ms": 0.34
       },
       "attempts": [
         {
@@ -424,7 +430,7 @@
     ]
   },
   "diagnostics": {
-    "latency_ms": 1.91,
+    "latency_ms": 1.81,
     "retry_count": 0,
     "abstained": false,
     "answer_status": "supported",
@@ -457,7 +463,7 @@
         "retrieval_mode": "flat",
         "verified": true,
         "verification_reasons": [],
-        "retrieve_ms": 0.18,
+        "retrieve_ms": 0.17,
         "verify_ms": 0.0,
         "comparison_coverage": {
           "targets": [
@@ -640,9 +646,9 @@
     "prompt_profile": "minimal_grounded_extractive",
     "cold_start": true,
     "stage_latency": {
-      "query_analysis_ms": 0.51,
+      "query_analysis_ms": 0.48,
       "context_resolution_ms": 0.0,
-      "answer_generation_ms": 0.36
+      "answer_generation_ms": 0.34
     }
   }
 }

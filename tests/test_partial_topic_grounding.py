@@ -1,4 +1,4 @@
-"""Behavioral guards for partial-topic grounding (issue #69).
+"""Behavioral guards for partial-topic grounding (issues #69 and #89).
 
 Covers two complementary expectations from ``docs/real-data-failure-taxonomy.md``
 C6 ("false abstention"):
@@ -9,7 +9,10 @@ C6 ("false abstention"):
   surfaces as ``partial`` instead of an unconditional abstention.
 * **Preservation** — when no relevant evidence exists (out-of-corpus
   query), abstention is preserved. Partial-topic mode must not turn
-  unanswerable queries into hallucinated ``partial`` answers.
+  unanswerable queries into hallucinated ``partial`` answers. Issue #89
+  added a ``≥ 2 matched topics`` floor on top of the fraction floor to
+  cut the 1-of-2 incidental-overlap pattern that flipped real-data
+  intended-abstention cases after #69.
 
 Both tests use the deterministic hashing embedding backend on the
 existing ``data/raw`` fixture, matching the pattern in
@@ -21,6 +24,7 @@ from pathlib import Path
 
 from rag_core import (
     PARTIAL_TOPIC_GROUNDING_MIN_FRACTION,
+    PARTIAL_TOPIC_GROUNDING_MIN_MATCHED,
     PARTIAL_TOPIC_GROUNDING_REASON,
     build_index_payload,
     verify_evidence,
@@ -54,16 +58,46 @@ class VerifyEvidencePartialTopicTest(unittest.TestCase):
         self.assertNotIn(PARTIAL_TOPIC_GROUNDING_REASON, reasons)
 
     def test_relaxed_accepts_partial_topic_match_above_threshold(self) -> None:
-        analysis = {"topics": ["보안 통제", "로그 추적"]}
-        evidence = self._evidence("이 문서는 보안 통제만 다룬다.")
+        # ≥ FRACTION AND ≥ MIN_MATCHED matched topics → accepted in
+        # relaxed mode. After issue #89's tightening, the gate also
+        # requires at least PARTIAL_TOPIC_GROUNDING_MIN_MATCHED matched
+        # topics, so we exercise a 3-of-4 = 0.75 profile that satisfies
+        # both the fraction floor and the matched-count floor.
+        analysis = {"topics": ["보안 통제", "로그 추적", "감사 로그", "양자암호"]}
+        evidence = self._evidence(
+            "이 문서는 보안 통제와 로그 추적, 그리고 감사 로그를 다룬다."
+        )
+        self.assertGreaterEqual(3 / 4, PARTIAL_TOPIC_GROUNDING_MIN_FRACTION)
+        self.assertGreaterEqual(3, PARTIAL_TOPIC_GROUNDING_MIN_MATCHED)
         verified, reasons = verify_evidence(
             analysis, evidence, allow_partial_topic=True
         )
-        # 1/2 == 0.5 == PARTIAL_TOPIC_GROUNDING_MIN_FRACTION → accepted.
-        self.assertGreaterEqual(1 / 2, PARTIAL_TOPIC_GROUNDING_MIN_FRACTION)
         self.assertTrue(verified, f"reasons={reasons}")
         self.assertIn(PARTIAL_TOPIC_GROUNDING_REASON, reasons)
         self.assertNotIn("topic_not_grounded", reasons)
+
+    def test_relaxed_rejects_one_of_two_partial_topic_match(self) -> None:
+        """Issue #89 regression guard.
+
+        Pre-#89 the gate accepted a 1-of-2 partial overlap in relaxed
+        mode (1/2 = 0.5 ≥ 0.5 AND matched ≥ 1). On real data this
+        flipped intended-abstention queries that share one incidental
+        topic-token with in-corpus content (e.g. an out-of-corpus
+        query whose first token matches a metadata term). The
+        :data:`PARTIAL_TOPIC_GROUNDING_MIN_MATCHED` floor cuts this
+        deterministically.
+        """
+        analysis = {"topics": ["보안 통제", "양자암호"]}
+        evidence = self._evidence("기관 A의 보안 통제 요구사항은 다음과 같다.")
+        verified, reasons = verify_evidence(
+            analysis, evidence, allow_partial_topic=True
+        )
+        # 1/2 == 0.5 satisfies the fraction floor but fails the
+        # matched-count floor (1 < PARTIAL_TOPIC_GROUNDING_MIN_MATCHED).
+        self.assertLess(1, PARTIAL_TOPIC_GROUNDING_MIN_MATCHED)
+        self.assertFalse(verified, f"reasons={reasons}")
+        self.assertIn("topic_not_grounded", reasons)
+        self.assertNotIn(PARTIAL_TOPIC_GROUNDING_REASON, reasons)
 
     def test_relaxed_still_rejects_zero_topic_match(self) -> None:
         analysis = {"topics": ["보안 통제", "로그 추적"]}

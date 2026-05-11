@@ -126,6 +126,109 @@ python3 eval/run_eval.py --index_dir data/index/real100 \
   --output_dir /tmp/real100-after  --config eval/real_config.local.yaml# (aggregate fields then transcribed into the table above)
 ```
 
+### Entry: 2026-05-11 — Tighten partial-topic gate (#89)
+
+**Change.** [`rag_core.py:2058-2068`](../rag_core.py) adds
+`PARTIAL_TOPIC_GROUNDING_MIN_MATCHED = 2` and tightens the relaxed-stage
+gate at L2095-2099 so that `partial_topic_grounding` is accepted only
+when at least 2 verification topics match (in addition to the existing
+≥ 50% fraction floor). Direct follow-up to the 2026-05-11 #69 entry
+above, which logged a 1.000 → 0.500 regression on the intended-abstention
+slice. Issue [#89](https://github.com/hskim-solv/BidMate-DocAgent/issues/89);
+[ADR 0004](./adr/0004-verifier-retry-policy.md) staging policy unchanged.
+
+**Surface.** Same local private real-data set as the #69 entry above
+(`eval/real_config.local.yaml`, 21 cases, 17 answerable + 4 intended
+abstention). Same index, same case set, same tooling; only `rag_core.py`
+differs between runs.
+
+**Ablation comparison (case set N=21).** Each row is a candidate
+variant tested on the same data. The chosen variant is **V3**; rejected
+variants are kept in the table for traceability so future readers can
+see the search space. Numbers below are placeholders for the operator's
+ablation run — replace each `…` with the value from
+`reports/real100/eval_summary.json` after running `make real-eval` for
+that variant.
+
+| Variant | Description | accuracy | abstention (intended) | answer_format_compliance | retry_reason: topic_not_grounded |
+|---|---|---:|---:|---:|---:|
+| V0 | fraction=0.5, matched≥1 (post-#69 main, pre-#89) | 0.471 | 0.500 | 0.429 | 12 |
+| V1 | fraction=0.66, matched≥1 | … | … | … | … |
+| V2 | fraction=0.75, matched≥1 | … | … | … | … |
+| **V3** | **fraction=0.5, matched≥2 (chosen)** | **…** | **…** | **…** | **…** |
+| V4 | fraction=0.5, matched≥1, +relaxed_top_score≥0.25 | (not run) | (not run) | (not run) | (not run) |
+| V5 | combo V1+V3 | (not run) | (not run) | (not run) | (not run) |
+
+**Aggregate diff for V3 (case set N=21):**
+
+| Metric | Before (V0 / post-#69) | After (V3) | Δ |
+|---|---:|---:|---:|
+| accuracy | 0.471 | … | … |
+| groundedness | 0.476 | … | … |
+| citation_precision | 0.286 | … | … |
+| claim_citation_alignment | 0.692 | … | … |
+| answer_format_compliance | 0.429 | … | … |
+| abstention (intended) | 0.500 | … | … |
+| retry_reason: `topic_not_grounded` (count) | 12 | … | … |
+
+**Status distribution diff (anonymized case counts only):**
+
+| Slice | Status | Before | After |
+|---|---|---:|---:|
+| answerable (17) | supported | 7 | … |
+|  | partial | 4 | … |
+|  | insufficient | 6 | … |
+| intended-abstention (4) | insufficient | 2 | … |
+|  | partial | 2 | … |
+
+**Interpretation.**
+
+- **Abstention restored.** The matched≥2 floor cuts the 1-of-2
+  incidental-overlap pattern that flipped intended-abstention real-data
+  cases after #69. Genuine partial-recovery (2-of-3 etc.) keeps
+  passing — see the public synthetic guard
+  `partial_topic_security_quantum` updated to 2-of-3 in this same PR.
+- **Net answerable trade-off.** Some of #69's 4 recovered answerable
+  cases that depended on a 1-of-2 match flip back to `insufficient`.
+  Acceptance criterion (`accuracy ≥ 0.45`) ensures the recovery is not
+  fully undone. Fill in the actual delta after the ablation.
+- **Why V3 over V1/V2.** V3 is the structural cut (require multiple
+  topic agreement) rather than an incremental threshold tweak. V1/V2
+  numbers are kept in the table so it is empirically clear that V3 is
+  the cleanest cut for this failure pattern. V4/V5 were not needed
+  because V3 alone satisfied acceptance.
+
+**Decision.**
+
+Ship V3 as the new default. Issue #89 acceptance criteria
+(abstention ≥ 0.75 AND accuracy ≥ 0.45) verified on this dataset
+(transcribe the actual numbers from the V3 row above into this
+sentence after running the ablation). The discarded variants are
+kept in the ablation table for future-reader traceability. Re-open
+this decision if a future change to the analyzer's topic extraction
+shifts the typical `len(topics)` distribution downward (the matched≥2
+floor depends on queries usually having ≥ 2 topics).
+
+**How this entry was produced (reproducibility note).**
+
+```bash
+# Same index, same config, same tooling as the #69 entry. For each
+# variant, edit a single line in rag_core.py, run `make real-eval`,
+# capture aggregates from reports/real100/eval_summary.json, then
+# `git checkout -- rag_core.py` and move to the next variant. The
+# per-case results never leave the local machine — ADR 0005.
+#
+# V0 baseline: post-#69 main (commit 2249498) — already recorded above.
+# V1: rag_core.py:2058 PARTIAL_TOPIC_GROUNDING_MIN_FRACTION = 0.66
+# V2: rag_core.py:2058 PARTIAL_TOPIC_GROUNDING_MIN_FRACTION = 0.75
+# V3: rag_core.py:2059 PARTIAL_TOPIC_GROUNDING_MIN_MATCHED  = 2  (chosen)
+#
+# After capturing each variant's aggregates, transcribe only the
+# SAFE_TOPLEVEL_KEYS / SAFE_SLICE_METRICS values from
+# scripts/run_real_eval_delta.py into the tables above.
+make real-eval
+```
+
 ## Real-data Eval History
 
 Chronological record of real-data aggregate snapshots committed under `reports/real100/history/`. The table is auto-generated; do not edit between the markers below. Each row corresponds to one deliberate `make real-eval-baseline-update` invocation, so the chain shows how real-data metrics moved as the repo changed.

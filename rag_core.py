@@ -2050,12 +2050,20 @@ def metadata_similarity(analysis: dict[str, Any], chunk: dict[str, Any]) -> floa
     return 1.0 if chunk.get("agency") in entities else 0.0
 
 
-# Minimum fraction of verification topics that must appear in the
-# combined evidence text for a *relaxed* (last-attempt) verification
-# pass to accept partial-topic grounding instead of abstaining. See
-# issue #69 / docs/real-data-failure-taxonomy.md C6, and ADR 0004 for
+# Partial-topic grounding requires BOTH (a) at least
+# PARTIAL_TOPIC_GROUNDING_MIN_MATCHED matched verification topics AND
+# (b) the matched fraction to be at least
+# PARTIAL_TOPIC_GROUNDING_MIN_FRACTION of all topics. The "≥ 2 matched"
+# floor exists because a 1-of-2 incidental-overlap pattern flipped
+# intended-abstention real-data cases to `partial` after #69 (see
+# issue #89 and the Real-data Decision Log in
+# docs/private-100-doc-experiments.md). Genuine partial recovery
+# requires structural agreement across multiple topics. Keep both
+# guards: the fraction floor still rejects 2-of-5 = 0.4 etc.
+# See issue #69 / docs/real-data-failure-taxonomy.md C6, ADR 0004 for
 # the strict→relaxed staging policy this implements.
 PARTIAL_TOPIC_GROUNDING_MIN_FRACTION = 0.5
+PARTIAL_TOPIC_GROUNDING_MIN_MATCHED = 2
 PARTIAL_TOPIC_GROUNDING_REASON = "partial_topic_grounding"
 
 
@@ -2068,14 +2076,20 @@ def verify_evidence(
     """Verify that ``evidence`` supports the query in ``analysis``.
 
     When ``allow_partial_topic`` is ``True`` (caller signals this is the
-    last retrieval attempt), a partial topic match — at least one topic
-    and at least :data:`PARTIAL_TOPIC_GROUNDING_MIN_FRACTION` of all
-    topics present in the combined evidence text — is accepted with
+    last retrieval attempt), a partial topic match — at least
+    :data:`PARTIAL_TOPIC_GROUNDING_MIN_MATCHED` matched topics AND at
+    least :data:`PARTIAL_TOPIC_GROUNDING_MIN_FRACTION` of all topics
+    present in the combined evidence text — is accepted with
     ``verified=True`` and a non-blocking
     :data:`PARTIAL_TOPIC_GROUNDING_REASON` in the reasons list. The
     caller (see :func:`answer_status`) maps that reason to
     ``ANSWER_STATUS_PARTIAL`` so the answer surfaces the weaker
     grounding instead of abstaining outright.
+
+    The ``≥ 2 matched`` floor (issue #89) cuts the 1-of-2 incidental
+    overlap pattern that flipped real-data intended-abstention cases
+    to ``partial`` after #69; the fraction floor remains as a guard
+    against weakly-balanced cases like 2-of-5.
 
     All other checks (low top score, comparison entity / doc coverage)
     remain strict — partial topic grounding does not bypass hallucination
@@ -2094,7 +2108,7 @@ def verify_evidence(
         if matched_topic_count < len(topics):
             if (
                 allow_partial_topic
-                and matched_topic_count >= 1
+                and matched_topic_count >= PARTIAL_TOPIC_GROUNDING_MIN_MATCHED
                 and (matched_topic_count / len(topics)) >= PARTIAL_TOPIC_GROUNDING_MIN_FRACTION
             ):
                 # Soft signal — caller surfaces this as `partial` status.
