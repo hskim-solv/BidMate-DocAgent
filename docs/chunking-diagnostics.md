@@ -76,3 +76,32 @@ python3 scripts/build_index.py \
 이 분리는 real-data taxonomy C3의 "chunk boundary, masked by upstream miss"를 풀기 위한 첫 단계다. 자연 real-data에서는 이 두 실패 모드가 한 case에서 동시에 일어나기 쉬우므로 합성 probe로 분리해서 본다.
 
 **확장 가이드**: 새 chunking 전략을 비교할 때 같은 probe set을 양쪽 인덱스에 돌리면 되돌아오는 `chunk_seq_in_section / total_chunks_in_section` 분포로 분할 정책 차이를 한눈에 본다. 답 텍스트를 변경하지 않은 채 수치 격차만 비교 가능하다는 점이 핵심이다.
+
+## Strategy ablation (issue #62)
+
+issue #73의 probe set이 갖춰진 뒤, chunking 전략 차이를 정량적으로 비교 가능해졌다. [`scripts/run_chunking_ablation.py`](../scripts/run_chunking_ablation.py)는 동일 코퍼스(`data/raw/`)를 fixed / section / auto 세 전략으로 인덱싱한 뒤 chunk_boundary probe queries에 대한 top-evidence score를 표로 출력한다.
+
+```bash
+python3 scripts/run_chunking_ablation.py
+```
+
+**2026-05-11 측정 결과** (hashing backend, max_chars=520, overlap_sentences=1):
+
+| Probe | fixed | section | auto |
+|---|:---:|:---:|:---:|
+| chunk_probe_external_audit_period | ✓ 0.7951 (2/3) | ✓ **0.849** (2/2) | ✓ **0.849** (2/2) |
+| chunk_probe_report_storage | ✓ **0.7342** (3/3) | ✓ 0.7084 (1/2) | ✓ 0.7084 (1/2) |
+| chunk_probe_calibration_overlap | ✓ 0.7913 (1/3) | ✓ **0.7995** (2/2) | ✓ **0.7995** (2/2) |
+| **mean score Δ vs fixed** | — | **+0.012** | **+0.012** |
+
+해석:
+
+- **section / auto가 평균적으로 약 +0.012 score gain**. 3개 probe 중 2개에서 fixed보다 높은 top-score를 달성한다 (`external_audit`, `calibration_overlap`). 모든 probe가 정답 doc + 정답 term을 포함하는 evidence를 returns.
+- **section은 자연 경계를 보존**한다. fixed는 한 doc을 단일 parent로 묶고 character cap에서 자른다. section은 heading 단위로 분리하므로 같은 사업의 여러 측면(개요 vs 자동화)이 다른 chunk로 분리된다.
+- **report_storage probe는 fixed가 약간 더 좋다** (0.7342 vs 0.7084). 정답이 마지막 section의 후반부에 있을 때, fixed는 더 큰 chunk에 답이 포함되어 dense 매칭에 유리. section은 같은 답을 더 작은 chunk로 좁혀 노이즈는 줄지만 score는 약간 낮아진다.
+- **현재 CLI 기본값은 `fixed`** ([ADR 0001](./adr/0001-preserve-naive-baseline.md) — naive_baseline 재현성). 위 결과는 multi-section RFP 코퍼스에서는 `--chunking_strategy auto`를 명시적으로 사용할 때 chunk_boundary slice 평균이 미약하게 개선됨을 시사한다. 명시적 옵션으로 두고 default는 변경하지 않는다 (베이스라인 보호).
+
+**언제 strategy를 바꿀지 가이드**:
+- 짧은 단일 section RFP가 다수일 때 → `fixed`가 합리적 (chunk 수 최소화)
+- 긴 multi-section RFP가 많고 chunk_boundary slice 점수가 낮을 때 → `auto` 또는 `section`을 ablation으로 검증 후 선택
+- 비교 ablation은 `python3 scripts/run_chunking_ablation.py` 한 번이면 충분
