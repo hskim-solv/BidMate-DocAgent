@@ -9,6 +9,7 @@ in the ingestion report.
 from __future__ import annotations
 
 import csv
+import os
 from collections import OrderedDict
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -104,10 +105,74 @@ class HwpCsvTextLoader(CsvTextDocumentLoader):
     file_format = "hwp"
 
 
+class HwpNativeLoader(CsvTextDocumentLoader):
+    """Opt-in HWP loader that parses the binary natively via pyhwp.
+
+    Spike scaffolding (issue #167). On any import error, OSError, or runtime
+    parse failure, falls back to the CSV ``텍스트`` column so the baseline
+    ingestion contract (ADR 0001) keeps working without pyhwp installed.
+
+    The selected source is exposed via ``last_text_source`` so the caller can
+    propagate it into the document metadata.
+    """
+
+    file_format = "hwp"
+
+    def __init__(self) -> None:
+        self.last_text_source = "data_list_csv_text"
+
+    def load_text(self, row: dict[str, str], source_path: Path) -> str:
+        self.last_text_source = "data_list_csv_text"
+        try:
+            native_text = _extract_hwp_native(source_path)
+        except (ImportError, OSError, RuntimeError):
+            native_text = None
+        if native_text:
+            self.last_text_source = "hwp_native"
+            return native_text
+        text = normalize_body_text(row.get("텍스트", ""))
+        if not text:
+            raise ValueError("empty_text")
+        return text
+
+
+def _extract_hwp_native(source_path: Path) -> str | None:
+    """Extract body text from an HWP file using pyhwp's Hwp5File API.
+
+    Returns ``None`` if parsing succeeds but yields no normalized text.
+    Raises ``ImportError`` if pyhwp is unavailable; other exceptions
+    (``OSError``, ``RuntimeError``) propagate to the caller for fallback.
+    """
+    from hwp5.xmlmodel import Hwp5File  # type: ignore[import-not-found]
+
+    hwp = Hwp5File(str(source_path))
+    parts: list[str] = []
+    for section in hwp.bodytext.section_list():
+        for paragraph in section.paragraphs:
+            for chunk in paragraph.text_chunks:
+                parts.append(chunk.text)
+    text = normalize_body_text("\n".join(parts))
+    return text or None
+
+
 LOADERS: dict[str, CsvTextDocumentLoader] = {
     "pdf": PdfCsvTextLoader(),
     "hwp": HwpCsvTextLoader(),
 }
+
+
+def _resolve_loader(file_format: str) -> CsvTextDocumentLoader:
+    """Pick the loader for ``file_format``.
+
+    For HWP, respect the ``BIDMATE_HWP_LOADER=native`` opt-in (spike, #167);
+    everything else falls through to the registered default.
+    """
+    if (
+        file_format == "hwp"
+        and os.environ.get("BIDMATE_HWP_LOADER", "").strip().lower() == "native"
+    ):
+        return HwpNativeLoader()
+    return LOADERS[file_format]
 
 
 def load_documents_from_metadata_csv(
@@ -241,7 +306,7 @@ def normalize_ingestion_row(
             duplicate_resolution=duplicate_resolution,
         )
 
-    loader = LOADERS[file_format]
+    loader = _resolve_loader(file_format)
     try:
         text = loader.load_text(row, source_path)
     except ValueError as exc:
@@ -256,7 +321,10 @@ def normalize_ingestion_row(
             duplicate_resolution=duplicate_resolution,
         )
 
-    metadata = normalize_metadata(row, file_format, file_name)
+    text_source = getattr(loader, "last_text_source", "data_list_csv_text")
+    metadata = normalize_metadata(
+        row, file_format, file_name, text_source=text_source
+    )
     metadata["doc_id"] = doc_id
     if duplicate_resolution and on_duplicate_doc_id == "suffix":
         metadata["doc_id_resolution"] = duplicate_resolution["policy"]
@@ -306,7 +374,13 @@ def make_record(
     )
 
 
-def normalize_metadata(row: dict[str, str], file_format: str, file_name: str) -> dict[str, Any]:
+def normalize_metadata(
+    row: dict[str, str],
+    file_format: str,
+    file_name: str,
+    *,
+    text_source: str = "data_list_csv_text",
+) -> dict[str, Any]:
     return {
         "notice_id": clean_cell(row.get("공고 번호")),
         "notice_round": clean_cell(row.get("공고 차수")),
@@ -321,7 +395,7 @@ def normalize_metadata(row: dict[str, str], file_format: str, file_name: str) ->
         "file_name": file_name,
         "doc_id_source": "notice_id" if clean_cell(row.get("공고 번호")) else "file_name",
         "document_type": "private_pdf_hwp_csv_text",
-        "text_source": "data_list_csv_text",
+        "text_source": text_source,
     }
 
 
