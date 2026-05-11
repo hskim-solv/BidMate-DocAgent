@@ -6,9 +6,11 @@ Pipeline: ingestion → metadata normalization → chunking → retrieval →
 reranking/planning → evidence aggregation → grounded answer → verification →
 evaluation → reviewer-facing docs.
 
-Deterministic rules live in `.gitignore` / CI (`pr-eval.yml`) / `.githooks/` /
-[`.github/pull_request_template.md`](.github/pull_request_template.md). This
-file captures the principles and pointers that aren't auto-enforced.
+Automation surface: `.gitignore`, CI (`pr-eval.yml`), `.githooks/`,
+[`.github/pull_request_template.md`](.github/pull_request_template.md),
+[`.claude/settings.json`](.claude/settings.json) (PreToolUse awareness hook
+for load-bearing edits). This file captures the principles and pointers
+that aren't auto-enforced.
 
 ## Start here
 

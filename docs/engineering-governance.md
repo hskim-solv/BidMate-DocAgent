@@ -128,9 +128,11 @@ measurement rigor, governance, regression discipline) should read
 threads the artifacts above into one interview-ready narrative
 without duplicating their content.
 
-## Local hook setup (one-time, per developer)
+## Hook setup
 
-Activate the opt-in hooks:
+### Git hooks (opt-in, one-time per developer)
+
+Activate:
 
     git config core.hooksPath .githooks
 
@@ -148,3 +150,15 @@ This enables two hooks under `.githooks/`:
   PR (PR template item 5b). Exits 0 — never blocks. Skip with `git push
   --no-verify` only with a documented reason (e.g. doc-only follow-up of
   a measured PR).
+
+### Claude Code hook (auto-loaded, no setup)
+
+`.claude/settings.json` is committed in this repo and auto-loaded by Claude
+Code. It registers a **`PreToolUse`** hook on `Edit` / `MultiEdit` / `Write`
+that prints a stderr awareness reminder when Claude is about to modify a
+load-bearing file (`rag_core.py`, `ingestion.py`, `visual_ingestion.py`,
+`eval/`, `api/`, `docs/adr/`). The reminder lists ADRs to consider and
+notes the PR template item 5b requirement.
+
+Hook script: [`scripts/claude-hooks/pretooluse-loadbearing.sh`](../scripts/claude-hooks/pretooluse-loadbearing.sh).
+Never blocks — pure awareness layer.

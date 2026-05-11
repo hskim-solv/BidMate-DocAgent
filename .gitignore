@@ -19,8 +19,10 @@ venv/
 .vscode/
 *.swp
 
-# Claude Code local settings
-.claude/
+# Claude Code: local state (worktrees, transcripts, per-user permissions)
+# is ignored; the shared `.claude/settings.json` (hooks etc.) IS committed.
+.claude/*
+!.claude/settings.json
 
 # Local/private source data
 data/files/
