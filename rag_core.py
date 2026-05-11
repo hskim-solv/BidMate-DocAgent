@@ -22,10 +22,7 @@ import unicodedata
 
 import numpy as np
 
-try:
-    from rank_bm25 import BM25Okapi as _BM25Okapi
-except ImportError:  # pragma: no cover — defensive; declared in requirements.txt
-    _BM25Okapi = None  # type: ignore[assignment]
+from rag_synthesis import synthesize_answer
 
 DEFAULT_EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 DEFAULT_HASH_DIM = 384
@@ -90,8 +87,22 @@ PIPELINE_PRESETS: dict[str, dict[str, Any]] = {
         "comparison_balance": dict(DEFAULT_COMPARISON_BALANCE),
         "description": "Metadata-first retrieval with lexical/metadata rerank and verifier retry.",
     },
+    # ADR 0007 — additive LLM synthesis path. Same retrieval/verifier as
+    # agentic_full; only the summary/answer_text rendering swaps to a
+    # backend-pluggable LLM under the "no new chunk_ids" guard. Claims
+    # and citations remain extractive (ADR 0003 preserved).
+    "agentic_full_llm": {
+        "top_k": None,
+        "metadata_first": True,
+        "rerank": True,
+        "verifier_retry": True,
+        "retrieval_mode": "flat",
+        "prompt_profile": "llm_synthesis",
+        "comparison_balance": dict(DEFAULT_COMPARISON_BALANCE),
+        "description": "agentic_full retrieval; LLM-synthesized summary under ADR 0007 guard.",
+    },
 }
-PIPELINE_ALIASES = {"full": "agentic_full"}
+PIPELINE_ALIASES = {"full": "agentic_full", "full_llm": "agentic_full_llm"}
 WEAK_SECTION_HEADINGS = {
     "",
     "본문",
@@ -350,7 +361,11 @@ def is_pipeline_name(value: Any) -> bool:
 
 
 def pipeline_cli_choices() -> list[str]:
-    return [DEFAULT_CLI_PIPELINE_NAME, DEFAULT_RAG_PIPELINE_NAME]
+    # ADR 0001 explicit signal: this list is the source of truth for
+    # which pipeline names are surfaced to the CLI. Adding/removing an
+    # entry is the explicit revisit of that ADR (or, for additive
+    # changes like ADR 0007, the explicit follow-on).
+    return [DEFAULT_CLI_PIPELINE_NAME, DEFAULT_RAG_PIPELINE_NAME, "agentic_full_llm"]
 
 
 def canonical_pipeline_name(value: str | None, default: str = DEFAULT_RAG_PIPELINE_NAME) -> str:
@@ -3630,6 +3645,15 @@ def run_rag_query(
             verified,
             verification_reasons,
         )
+    synthesis_meta: dict[str, Any] | None = None
+    if prompt_profile == "llm_synthesis" and not abstained:
+        with _StageTimer(stage_timings, "synthesis_ms"):
+            synthesized, synthesis_meta = synthesize_answer(
+                query, analysis, answer, evidence
+            )
+        if synthesized is not None:
+            answer = synthesized
+            answer_text = synthesized.get("answer_text", answer_text)
     next_state = update_conversation_state(
         state,
         query,
@@ -3644,6 +3668,8 @@ def run_rag_query(
         "context_resolution_ms": round(stage_timings.get("context_resolution_ms", 0.0), 2),
         "answer_generation_ms": round(stage_timings.get("answer_generation_ms", 0.0), 2),
     }
+    if "synthesis_ms" in stage_timings:
+        stage_latency["synthesis_ms"] = round(stage_timings.get("synthesis_ms", 0.0), 2)
     metadata_resolution = metadata_resolution_diagnostics(
         retrieval_query,
         analysis,
@@ -3699,6 +3725,7 @@ def run_rag_query(
             "prompt_profile": prompt_profile,
             "cold_start": cold_start,
             "stage_latency": stage_latency,
+            "synthesis": synthesis_meta,
         },
     }
 

@@ -25,6 +25,7 @@ from rag_core import (
     resolve_pipeline_config,
     run_rag_query,
 )
+from eval.bootstrap import bootstrap_ci
 
 
 QUERY_TYPES = ("single_doc", "comparison", "follow_up", "abstention")
@@ -1036,17 +1037,18 @@ def metric_block(case_results: list[dict[str, Any]]) -> dict[str, Any]:
         "latency_ms": _latency_summary(cold_latencies) if cold_latencies else None,
     }
 
-    chunk_metric_summary: dict[str, float | None] = {}
-    for key in [f"chunk_recall_at_{k}" for k in CHUNK_METRIC_KS] + [
-        "chunk_mrr",
-        "chunk_ndcg_at_10",
-    ]:
-        values = [r[key] for r in case_results if r.get(key) is not None]
-        chunk_metric_summary[key] = rate(values)
-    cases_with_gold = sum(1 for r in case_results if r.get("gold_chunk_ids"))
-    chunk_metric_summary["cases_with_gold"] = cases_with_gold
-    chunk_metric_summary["cases_total"] = len(case_results)
-
+    ci_block: dict[str, Any] = {
+        "accuracy": bootstrap_ci(accuracy_scores),
+        "groundedness": bootstrap_ci(groundedness_scores),
+        "citation_precision": bootstrap_ci(citation_scores),
+        "citation_page_precision": bootstrap_ci(citation_page_scores),
+        "citation_region_precision": bootstrap_ci(citation_region_scores),
+        "citation_grounding": bootstrap_ci(citation_grounding_scores),
+        "claim_citation_alignment": bootstrap_ci(claim_alignment_scores),
+        "abstention": bootstrap_ci(abstention_scores),
+        "answer_format_compliance": bootstrap_ci(format_scores),
+        "retry": bootstrap_ci(retries),
+    }
     block: dict[str, Any] = {
         "num_predictions": len(case_results),
         "accuracy": rate(accuracy_scores),
@@ -1058,7 +1060,7 @@ def metric_block(case_results: list[dict[str, Any]]) -> dict[str, Any]:
         "claim_citation_alignment": rate(claim_alignment_scores),
         "abstention": rate(abstention_scores),
         "answer_format_compliance": rate(format_scores),
-        "chunk_retrieval": chunk_metric_summary,
+        "ci": ci_block,
         "latency": {
             "p50": percentile(latencies, 0.50),
             "p95": percentile(latencies, 0.95),
@@ -1094,11 +1096,13 @@ def metric_block(case_results: list[dict[str, Any]]) -> dict[str, Any]:
         block["comparison_target_full_coverage_rate"] = rate(
             [1.0 if score >= 1.0 - 1e-9 else 0.0 for score in comparison_recall_scores]
         )
+        ci_block["comparison_target_recall"] = bootstrap_ci(comparison_recall_scores)
     if comparison_pool_recall_scores:
         block["comparison_pool_recall"] = rate(comparison_pool_recall_scores)
         block["comparison_pool_full_coverage_rate"] = rate(
             [1.0 if score >= 1.0 - 1e-9 else 0.0 for score in comparison_pool_recall_scores]
         )
+        ci_block["comparison_pool_recall"] = bootstrap_ci(comparison_pool_recall_scores)
     return block
 
 
@@ -1328,6 +1332,7 @@ def main() -> int:
         "claim_citation_alignment": primary_summary["claim_citation_alignment"],
         "abstention": primary_summary["abstention"],
         "answer_format_compliance": primary_summary["answer_format_compliance"],
+        "ci": primary_summary.get("ci", {}),
         "latency": primary_summary["latency"],
         "stage_latency": primary_summary.get("stage_latency", {}),
         "latency_by_retry_count": primary_summary.get("latency_by_retry_count", {}),

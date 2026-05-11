@@ -5,6 +5,12 @@ import sys
 from pathlib import Path
 from typing import Any, Dict
 
+ROOT_DIR = Path(__file__).resolve().parents[1]
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+
+from eval.bootstrap import format_ci_band  # noqa: E402
+
 START_MARKER = "<!-- METRICS_TABLE:START -->"
 END_MARKER = "<!-- METRICS_TABLE:END -->"
 REQUIRED_KEYS = [
@@ -38,6 +44,45 @@ def fmt_rate(value: Any) -> str:
     return f"{value:.3f}" if isinstance(value, (int, float)) else "N/A"
 
 
+def fmt_rate_ci(value: Any, ci: Any) -> str:
+    """Format ``0.906 (0.78–1.00)`` when a CI dict is available."""
+    if isinstance(ci, dict) and ci.get("mean") is not None:
+        return format_ci_band(ci, digits=3)
+    return fmt_rate(value)
+
+
+def fmt_rate_ci_compact(value: Any, ci: Any) -> str:
+    """Format ``0.906±0.11`` (half-width). Keeps the ablation table narrow."""
+    if not isinstance(ci, dict) or ci.get("mean") is None:
+        return fmt_rate(value)
+    mean = ci["mean"]
+    lo = ci.get("ci_lo")
+    hi = ci.get("ci_hi")
+    if lo is None or hi is None:
+        return f"{mean:.3f}"
+    half = max(hi - mean, mean - lo)
+    return f"{mean:.3f}±{half:.2f}"
+
+
+def ci_for(summary: Dict[str, Any], metric: str) -> Any:
+    ci_block = summary.get("ci")
+    if isinstance(ci_block, dict):
+        return ci_block.get(metric)
+    return None
+
+
+def ci_from_type(summary: Dict[str, Any], query_type: str, metric: str) -> Any:
+    by_type = summary.get("by_slice") or summary.get("by_query_type")
+    if not isinstance(by_type, dict):
+        return None
+    block = by_type.get(query_type)
+    if block is None and query_type == "comparison":
+        block = by_type.get("multi_doc")
+    if isinstance(block, dict):
+        return ci_for(block, metric)
+    return None
+
+
 def fmt_latency(value: Any) -> str:
     if isinstance(value, dict):
         p50 = value.get("p50")
@@ -68,35 +113,69 @@ def fmt_top_k(value: Any) -> str:
 
 
 def render_main_table(summary: Dict[str, Any]) -> str:
+    abstention_value = (
+        metric_from_type(summary, "abstention", "abstention")
+        or summary.get("abstention")
+    )
+    abstention_ci = (
+        ci_from_type(summary, "abstention", "abstention") or ci_for(summary, "abstention")
+    )
     rows = [
-        ("Overall", "Answer Accuracy", fmt_rate(summary.get("accuracy"))),
+        ("Overall", "Answer Accuracy", fmt_rate_ci(summary.get("accuracy"), ci_for(summary, "accuracy"))),
         (
             "Single-doc extraction",
             "Answer Accuracy",
-            fmt_rate(metric_from_type(summary, "single_doc", "accuracy")),
+            fmt_rate_ci(
+                metric_from_type(summary, "single_doc", "accuracy"),
+                ci_from_type(summary, "single_doc", "accuracy"),
+            ),
         ),
         (
             "Multi-doc comparison",
             "Groundedness Rate",
-            fmt_rate(metric_from_type(summary, "comparison", "groundedness")),
+            fmt_rate_ci(
+                metric_from_type(summary, "comparison", "groundedness"),
+                ci_from_type(summary, "comparison", "groundedness"),
+            ),
         ),
         (
             "Follow-up",
             "Answer Accuracy",
-            fmt_rate(metric_from_type(summary, "follow_up", "accuracy")),
+            fmt_rate_ci(
+                metric_from_type(summary, "follow_up", "accuracy"),
+                ci_from_type(summary, "follow_up", "accuracy"),
+            ),
         ),
-        ("Evidence", "Citation Precision", fmt_rate(summary.get("citation_precision"))),
-        ("Evidence", "Claim Citation Alignment", fmt_rate(summary.get("claim_citation_alignment"))),
-        ("Evidence", "Answer Format Compliance", fmt_rate(summary.get("answer_format_compliance"))),
+        (
+            "Evidence",
+            "Citation Precision",
+            fmt_rate_ci(summary.get("citation_precision"), ci_for(summary, "citation_precision")),
+        ),
+        (
+            "Evidence",
+            "Claim Citation Alignment",
+            fmt_rate_ci(
+                summary.get("claim_citation_alignment"),
+                ci_for(summary, "claim_citation_alignment"),
+            ),
+        ),
+        (
+            "Evidence",
+            "Answer Format Compliance",
+            fmt_rate_ci(
+                summary.get("answer_format_compliance"),
+                ci_for(summary, "answer_format_compliance"),
+            ),
+        ),
         (
             "Abstention",
             "Abstention Accuracy",
-            fmt_rate(metric_from_type(summary, "abstention", "abstention") or summary.get("abstention")),
+            fmt_rate_ci(abstention_value, abstention_ci),
         ),
         ("System", "Latency (p50/p95)", fmt_latency(summary.get("latency"))),
-        ("System", "Retry Rate", fmt_rate(summary.get("retry"))),
+        ("System", "Retry Rate", fmt_rate_ci(summary.get("retry"), ci_for(summary, "retry"))),
     ]
-    table = ["| Category | Metric | Score |", "|---|---:|---:|"]
+    table = ["| Category | Metric | Score (95% CI) |", "|---|---:|---:|"]
     table.extend(f"| {c} | {m} | {s} |" for c, m, s in rows)
     return "\n".join(table)
 
@@ -127,16 +206,21 @@ def render_ablation_table(summary: Dict[str, Any]) -> str:
                 metadata_first=fmt_flag(run.get("metadata_first")),
                 rerank=fmt_flag(run.get("rerank")),
                 verifier_retry=fmt_flag(run.get("verifier_retry")),
-                accuracy=fmt_rate(run.get("accuracy")),
-                groundedness=fmt_rate(run.get("groundedness")),
-                citation=fmt_rate(run.get("citation_precision")),
-                claim_align=fmt_rate(run.get("claim_citation_alignment")),
+                accuracy=fmt_rate_ci_compact(run.get("accuracy"), ci_for(run, "accuracy")),
+                groundedness=fmt_rate_ci_compact(run.get("groundedness"), ci_for(run, "groundedness")),
+                citation=fmt_rate_ci_compact(run.get("citation_precision"), ci_for(run, "citation_precision")),
+                claim_align=fmt_rate_ci_compact(
+                    run.get("claim_citation_alignment"),
+                    ci_for(run, "claim_citation_alignment"),
+                ),
                 format=fmt_rate(run.get("answer_format_compliance")),
                 abstention=fmt_rate(run.get("abstention")),
                 retry=fmt_rate(run.get("retry")),
                 p95=p95_text,
             )
         )
+    table.append("")
+    table.append("> Values shown as `mean±half-width` for the 95% bootstrap CI (n=cases, 1000 resamples, seed=17). The non-CI columns (Format, Abstention, Retry) are point estimates; their CIs appear in the detailed main table above.")
     return "\n".join(table)
 
 
