@@ -82,17 +82,26 @@ Record at 1280×720 with QuickTime / OBS, trim to 60–90 s, export as
 MP4 or GIF, save to `docs/assets/demo.gif` (or `.mp4`). Keep file size
 under 5 MB for the README to render quickly.
 
-### 4. Publish the GHCR image (one-time)
+### 4. Publish the GHCR image — automated by CI (issue #252)
 
-The `docker run ghcr.io/<user>/bidmate-demo:latest` recipe in the
-README only works if the image is pushed:
+Every push to `main` triggers
+[`.github/workflows/docker-publish.yml`](../.github/workflows/docker-publish.yml),
+which builds and pushes the demo image to
+`ghcr.io/<user>/bidmate-demo:latest` (plus a short-sha tag). No PAT
+is needed — the workflow's `GITHUB_TOKEN` carries `packages: write`.
+
+Manual triggers remain available for previewing a non-main branch
+image:
 
 ```bash
 docker login ghcr.io        # use a PAT with write:packages scope
 make docker-publish         # builds + pushes ghcr.io/hskim-solv/bidmate-demo:latest
 ```
 
-After the first push, the image is **public** by default for new
+…or click **Run workflow** on the Actions tab to re-run against a
+chosen branch.
+
+After the first CI push, the image is **public** by default for new
 GHCR pushes; if the author had set it private, flip it via
 **GitHub → Packages → bidmate-demo → Package settings → Change visibility**.
 
