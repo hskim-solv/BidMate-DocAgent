@@ -30,6 +30,33 @@ python3 eval/run_eval.py --index_dir data/index --output_dir reports --config ev
 python3 scripts/update_readme_metrics.py --report reports/eval_summary.json --readme README.md --check
 ```
 
+## Korean money/date normalization (issue #170)
+
+`analyze_query`와 `verify_evidence`는 query와 evidence text에 모두
+`text_normalize.normalize_text`를 적용한다. 비교는 OR(원본, 정규화된 형태)로
+strictly additive — legacy substring 매칭은 항상 보존된다.
+
+Canonical forms:
+
+- Money: integer KRW. `5천만원` → `50000000`. `壹拾億元` → `1000000000`.
+  `90,000,000원` → `90000000`. `일금일억오천만원정` → `150000000`.
+- Date: ISO `YYYY-MM-DD`. `'26.3.15.` → `2026-03-15`. 두 자리 연도는 rolling
+  +5 window 으로 century를 결정 (anchor=2026 기준 `'30` → 2030, `'40` → 1940).
+- Approximate markers (`약`, `대략`, `~`, `정도`, `내외`): canonical form은
+  원본 옆에 append (`약 5천만원 [≈50000000]`) — qualifier가 살아남는다.
+
+False-positive guard: `반올림`처럼 money-shaped 음절을 포함하지만 money-unit
+suffix(원/정/元/圓)도 section power(만/억/조/萬/億/兆)도 없는 lemma는 매치하지
+않는다. `tests/test_text_normalize_regression.py`의 `FalsePositiveGuardTest`가
+이를 pin한다.
+
+Known limitations:
+
+- `M월 D일` (year-less)은 정규화하지 않는다. `run_rag_query`에 anchor_year를
+  plumb 하는 별도 PR이 필요 (out of scope).
+- `parse_budget` ingestion semantics는 변경 없음. Verification-time OR-match가
+  stale `"15억"` budget metadata를 reindex 없이 처리한다.
+
 ## Issue coverage
 
 - #55: staged metadata filters and per-stage diagnostics.
@@ -37,3 +64,4 @@ python3 scripts/update_readme_metrics.py --report reports/eval_summary.json --re
 - #57: persistent follow-up state and retrieval-query carryover.
 - #59: ambiguity detection with clarification-before-retrieval behavior.
 - #61: planner-owned query-type top_k selection and diagnostics.
+- #170: Korean money/date canonical-form OR-match at query/verify time.
