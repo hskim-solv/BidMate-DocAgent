@@ -3,12 +3,20 @@ from __future__ import annotations
 
 import argparse
 import copy
-import json
 from pathlib import Path
 import sys
 from typing import Any
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _utils import (  # noqa: E402
+    fmt_rate,
+    load_json,
+    metric_snapshot,
+    repo_path,
+    stable_json,
+)
+
 DATASET_PRIVACY_KEYS = (
     "type",
     "privacy",
@@ -29,28 +37,11 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def repo_path(value: str | Path) -> Path:
-    path = Path(value)
-    return path if path.is_absolute() else ROOT_DIR / path
-
-
 def display_path(path: Path) -> str:
     try:
         return str(path.relative_to(ROOT_DIR))
     except ValueError:
         return str(path)
-
-
-def load_json(path: Path) -> Any:
-    return json.loads(path.read_text(encoding="utf-8"))
-
-
-def stable_json(payload: Any) -> str:
-    return json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
-
-
-def fmt_rate(value: Any) -> str:
-    return f"{value:.3f}" if isinstance(value, (int, float)) else "N/A"
 
 
 def fmt_latency(value: Any) -> str:
@@ -67,28 +58,6 @@ def fmt_delta(primary: Any, baseline: Any) -> str:
     return f"{sign}{delta:.3f}"
 
 
-def metric_block(summary: dict[str, Any] | None) -> dict[str, Any]:
-    summary = summary or {}
-    keys = [
-        "num_predictions",
-        "accuracy",
-        "groundedness",
-        "citation_precision",
-        "citation_page_precision",
-        "citation_region_precision",
-        "citation_grounding",
-        "answer_format_compliance",
-        "abstention",
-        "retry",
-        "latency",
-        "retry_cost",
-        "retry_reason_counts",
-        "citation_grounding_error_counts",
-        "by_hardcase_category",
-    ]
-    return {key: summary.get(key) for key in keys if key in summary}
-
-
 def dataset_privacy_metadata(dataset: dict[str, Any] | None) -> dict[str, Any]:
     dataset = dataset or {}
     return {key: dataset.get(key) for key in DATASET_PRIVACY_KEYS if key in dataset}
@@ -99,15 +68,15 @@ def registry_entry(manifest: dict[str, Any]) -> dict[str, Any]:
     flags_by_run = manifest.get("ablation_flags") or {}
     baseline_run = str(manifest.get("ablation_suite", {}).get("baseline_run") or "")
     primary_run = str(manifest.get("ablation_suite", {}).get("primary_run") or "")
-    baseline = metric_block(metrics_by_run.get(baseline_run))
-    primary = metric_block(metrics_by_run.get(primary_run))
+    baseline = metric_snapshot(metrics_by_run.get(baseline_run), include_query_type=False)
+    primary = metric_snapshot(metrics_by_run.get(primary_run), include_query_type=False)
     runs = []
     for name in sorted(metrics_by_run):
         runs.append(
             {
                 "name": name,
                 "flags": flags_by_run.get(name) or {},
-                "metrics": metric_block(metrics_by_run.get(name)),
+                "metrics": metric_snapshot(metrics_by_run.get(name), include_query_type=False),
             }
         )
     dataset = manifest.get("suite", {}).get("dataset", {}) or {}

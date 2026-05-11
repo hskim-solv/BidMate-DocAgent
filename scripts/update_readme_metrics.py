@@ -8,8 +8,10 @@ from typing import Any, Dict
 ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from eval.bootstrap import format_ci_band  # noqa: E402
+from _utils import fmt_rate  # noqa: E402
 
 START_MARKER = "<!-- METRICS_TABLE:START -->"
 END_MARKER = "<!-- METRICS_TABLE:END -->"
@@ -38,10 +40,6 @@ def load_summary(path: Path) -> Dict[str, Any]:
     for key in REQUIRED_KEYS:
         data.setdefault(key, None)
     return data
-
-
-def fmt_rate(value: Any) -> str:
-    return f"{value:.3f}" if isinstance(value, (int, float)) else "N/A"
 
 
 def fmt_rate_ci(value: Any, ci: Any) -> str:

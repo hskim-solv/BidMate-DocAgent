@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import argparse
 from datetime import datetime, timezone
-import hashlib
 import importlib.util
 import json
 import os
@@ -14,13 +13,22 @@ import subprocess
 import sys
 from typing import Any
 
-import yaml
-
 ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from rag_core import DEFAULT_CLI_PIPELINE_NAME, load_index, resolve_pipeline_config
+from rag_core import DEFAULT_CLI_PIPELINE_NAME, load_index, resolve_pipeline_config  # noqa: E402
+from _utils import (  # noqa: E402
+    git_dirty,
+    git_output,
+    json_hash,
+    load_yaml,
+    metric_snapshot,
+    rel_path,
+    repo_path,
+    write_json,
+)
 
 
 def load_eval_module() -> Any:
@@ -44,56 +52,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--artifact_root", default=None, help="Override artifact root directory.")
     parser.add_argument("--force", action="store_true", help="Overwrite an existing run artifact directory.")
     return parser.parse_args()
-
-
-def repo_path(value: str | Path) -> Path:
-    path = Path(value)
-    return path if path.is_absolute() else ROOT_DIR / path
-
-
-def rel_path(path: str | Path) -> str:
-    resolved = Path(path).resolve()
-    try:
-        return str(resolved.relative_to(ROOT_DIR))
-    except ValueError:
-        return str(resolved)
-
-
-def load_yaml(path: Path) -> dict[str, Any]:
-    data = yaml.safe_load(path.read_text(encoding="utf-8"))
-    if not isinstance(data, dict):
-        raise ValueError(f"YAML must be a mapping: {path}")
-    return data
-
-
-def write_json(path: Path, payload: Any) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-
-
-def json_hash(payload: Any) -> str:
-    encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
-    return hashlib.sha256(encoded).hexdigest()
-
-
-def git_output(args: list[str], default: str = "unknown") -> str:
-    try:
-        result = subprocess.run(
-            ["git", *args],
-            cwd=ROOT_DIR,
-            check=True,
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
-    except Exception:
-        return default
-    return result.stdout.strip() or default
-
-
-def git_dirty() -> bool:
-    status = git_output(["status", "--porcelain", "--untracked-files=no"], default="")
-    return bool(status.strip())
 
 
 def run_logged_command(command: list[str], log_path: Path) -> None:
@@ -136,28 +94,6 @@ def normalize_run(run: dict[str, Any]) -> dict[str, Any]:
 
 def safe_name(value: str) -> str:
     return re.sub(r"[^A-Za-z0-9_.-]+", "_", value).strip("_") or "case"
-
-
-def metric_snapshot(summary: dict[str, Any]) -> dict[str, Any]:
-    keys = [
-        "num_predictions",
-        "accuracy",
-        "groundedness",
-        "citation_precision",
-        "citation_page_precision",
-        "citation_region_precision",
-        "citation_grounding",
-        "answer_format_compliance",
-        "abstention",
-        "retry",
-        "latency",
-        "retry_cost",
-        "retry_reason_counts",
-        "citation_grounding_error_counts",
-        "by_query_type",
-        "by_hardcase_category",
-    ]
-    return {key: summary.get(key) for key in keys if key in summary}
 
 
 def run_flags(run: dict[str, Any]) -> dict[str, Any]:
