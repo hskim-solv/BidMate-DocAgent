@@ -322,6 +322,8 @@ python3 eval/run_parser_eval.py \
 - Grounding/eval hardening: [`docs/grounding-eval-hardening.md`](docs/grounding-eval-hardening.md)
 - Reproducible harness: [`docs/harness.md`](docs/harness.md)
 - API demo (FastAPI + container): [`docs/api-demo.md`](docs/api-demo.md)
+- Architecture Decision Records: [`docs/adr/README.md`](docs/adr/README.md)
+- Engineering governance (workflow map): [`docs/engineering-governance.md`](docs/engineering-governance.md)
 - 답변 출력 정책: [`docs/answer-policy.md`](docs/answer-policy.md)
 - 실패 사례 분석: [`docs/failure-cases.md`](docs/failure-cases.md)
 - 회고 및 개선 방향: [`docs/retrospective.md`](docs/retrospective.md)

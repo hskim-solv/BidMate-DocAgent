@@ -1,5 +1,7 @@
 # BidMate Agent 상세 문서
 
+- [Engineering governance (workflow map)](./engineering-governance.md)
+- [Architecture Decision Records](./adr/README.md)
 - [Reviewer evidence pack](./reviewer-evidence-pack.md)
 - [포트폴리오 case study](./portfolio-case-study.md)
 - [Benchmarking](./benchmarking.md)
