@@ -57,6 +57,11 @@ reports/real100/judge.local.json
 !reports/external_baselines.json
 reports/external_baselines.local.json
 
+# ADR 0012 — synthetic-eval LLM-judge aggregate is committable;
+# per-case verdicts stay local. Mirrors the ADR 0005 / 0006 split.
+!reports/synthetic_judge.aggregate.json
+reports/synthetic_judge.local.json
+
 # Benchmark raw/local artifacts
 artifacts/benchmarks/
 artifacts/runs/
