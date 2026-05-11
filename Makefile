@@ -1,4 +1,4 @@
-.PHONY: setup index ask eval benchmark benchmark-check check smoke harness-smoke test test-regression api api-docker demo demo-docker real-eval real-eval-delta real-eval-baseline-update real-eval-history-render real-eval-history-check real-eval-with-judge synthetic-judge leaderboard leaderboard-check clean
+.PHONY: setup index ask eval benchmark benchmark-check check smoke harness-smoke test test-regression api api-docker demo demo-docker pareto real-eval real-eval-delta real-eval-baseline-update real-eval-history-render real-eval-history-check real-eval-with-judge synthetic-judge leaderboard leaderboard-check clean
 
 PYTHON ?= python3
 VENV ?= .venv
@@ -28,6 +28,13 @@ ask:
 
 eval:
 	$(PYTHON) eval/run_eval.py --index_dir data/index --output_dir reports --config eval/config.yaml
+
+# Cost-quality Pareto frontier table (and PNG if matplotlib installed)
+# from the latest reports/eval_summary.json. Read-only consumer — see
+# scripts/plot_pareto.py for cost/quality axis choice (latency p95 vs
+# citation_precision).
+pareto:
+	$(PYTHON) scripts/plot_pareto.py --summary reports/eval_summary.json --markdown-out reports/pareto.md --png-out reports/pareto.png
 
 benchmark:
 	$(PYTHON) scripts/run_benchmark.py --suite benchmarks/suites/public_synthetic_rfp.yaml --ablations benchmarks/ablations/rag_quality_axes.yaml
