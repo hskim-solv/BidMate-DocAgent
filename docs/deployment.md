@@ -175,12 +175,25 @@ Suggested storyboard (timestamps target ~150 s total):
    issue #89 — the demo proves the system *prefers abstaining* over
    guessing.
 5. **1:45–2:15** — switch the sidebar to the Diagnostics tab on a
-   prior result. Walk through the stage latency, the synthesis
-   metadata, and the embedding backend display.
-6. **2:15–end** — close with the README ablation table screenshot:
+   prior result. Walk through:
+   - stage latency (per-stage ms in `diagnostics.stage_latency`),
+   - synthesis metadata — specifically `diagnostics.synthesis.cost_estimate_usd`
+     and `cache_read_tokens` / `cache_write_tokens` (ADR 0015 cost
+     telemetry; prove caching is actually firing by showing
+     `cache_read_tokens > 0` on a repeat query),
+   - the embedding backend display.
+6. **2:15–2:45** — close with the README ablation table screenshot:
    bootstrap CIs visible, honest about which gaps are statistically
    real and which are noise.
+7. **2:45–end (optional 30s epilogue)** — flip to terminal,
+   `BIDMATE_LOG_FORMAT=json make demo` once to show the structured
+   `query_start` / `query_complete` JSON events, then
+   `make reproduce` to print the SHA-256 reproducibility hash
+   (ADR 0005 surface) — proves the public synthetic surface is
+   deterministic across hosts.
 
 Record with QuickTime / OBS at 1080p. Upload to YouTube (unlisted is
 fine), then embed the link in `README.md` under the Live Demo
-section.
+section. The companion still-image asset (`docs/assets/demo.gif`,
+< 8MB) can be a focused 30-60s loop of steps 2 and 4 only — that is
+the highest-signal slice for a 60-second reviewer impression.
