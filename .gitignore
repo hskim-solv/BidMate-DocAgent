@@ -34,7 +34,17 @@ data/index/*
 !data/index/index.json
 outputs/*
 !outputs/answer.json
-reports/
+reports/*
+# Aggregate-only artifacts under reports/real100/ are committable
+# (ADR 0005 commit boundary). The negation chain below allowlists
+# only the explicit aggregate filenames — eval_summary.json and any
+# per-case trace stay ignored.
+!reports/real100/
+reports/real100/*
+!reports/real100/baseline.aggregate.json
+!reports/real100/history/
+reports/real100/history/*
+!reports/real100/history/*.aggregate.json
 
 # Benchmark raw/local artifacts
 artifacts/benchmarks/
