@@ -78,6 +78,7 @@
 - **Live synthetic judge aggregate** (ADR 0012, issue #164): stub-mode aggregate 만 commit 되어 있음. live 백엔드(openai_compatible) 로 갱신한 aggregate diff 를 별도 PR 로 commit 하면 RAGAS-style 실측 노출.
 - **`hybrid_bm25`** (ADR 0010, issue #119): `eval/config.yaml` 에 추가됨. `make eval` 의 ablation 블록에는 이미 채워지지만 (`accuracy=0.906`, `groundedness=0.929` — `full` 과 동일 ceiling), 본 문서의 committed snapshot 은 `make benchmark` 의 manifest 기반이므로 다음 benchmark 실행 후 row 를 추가한다. 실측 차이는 private real-data eval (`make real-eval-delta`) 에서 드러날 가능성이 크다.
 - **KO RFP per-axis** (issue #126): `eval/ko_axes.py` 에 `detect_ko_axes()` 가 추가되어 dev 결과 CSV 를 `eval/evaluate_dev_results.py` 로 평가할 때 `summary["by_ko_axes"]` 블록으로 per-axis (`금액단위 / 날짜형식 / 한자 / 사업번호 / 약칭`) accuracy 가 emit 된다. 차기 dev-side run 결과를 본 표에 별도 row 로 누적한다. `eval/run_eval.py` (CI 표면) 으로의 승격은 후속 PR.
+- **Multi-turn decay** (issue #125): `eval/multiturn_eval.py` 에 `derive_turn_depth()` + `build_qid_parent_map()` 가 추가되어 `summary["by_turn_depth"]` 블록으로 per-turn (turn 1 / 2 / 3 / …) accuracy 가 emit 된다. ADR 0001 invariant 준수 — `naive_baseline` / `agentic_full` 위에 *측정 축* 만 추가, 어느 파이프라인도 대체하지 않음. 초기 시나리오 fixture: `eval/multiturn_scenarios_v1.jsonl` (2 시나리오 × 3 turns, entity carryover + graceful-degradation abstention 포함). 차기 dev-side run 결과로 decay 커브를 본 표에 누적.
 
 ## Next Actions
 
