@@ -130,12 +130,21 @@ without duplicating their content.
 
 ## Local hook setup (one-time, per developer)
 
-Activate the opt-in pre-push reminder hook:
+Activate the opt-in hooks:
 
     git config core.hooksPath .githooks
 
-The hook prints a warning when a push touches retrieval / verifier / eval / api
-paths, reminding you to attach `make real-eval-delta` to the PR (PR template
-item 5b). It is **non-fatal** — it exits 0 and never blocks a push. Skip with
-`git push --no-verify` only with a documented reason (e.g. doc-only follow-up
-of a measured PR).
+This enables two hooks under `.githooks/`:
+
+- **`pre-commit`** — **hard-blocks** commits that include files from the
+  private side of the eval split (ADR 0005). Aligned with `.gitignore`;
+  catches `git add -f` and other force-paths. Bypass with `git commit
+  --no-verify` only when intentionally committing an aggregate artifact
+  that the hook's allowlist missed — and fix the allowlist in the same
+  change.
+
+- **`pre-push`** — **soft-warns** when a push touches retrieval / verifier /
+  eval / api paths, reminding you to attach `make real-eval-delta` to the
+  PR (PR template item 5b). Exits 0 — never blocks. Skip with `git push
+  --no-verify` only with a documented reason (e.g. doc-only follow-up of
+  a measured PR).
