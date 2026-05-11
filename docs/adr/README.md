@@ -70,3 +70,4 @@ project record.
 | [0005](./0005-eval-split-public-synthetic-private-local.md) | accepted | Eval split: public synthetic vs private local |
 | [0006](./0006-llm-judge-on-real-data-only.md) | accepted | LLM-judge on the real-data surface only (refines 0004) |
 | [0007](./0007-issue-linked-branch-naming.md) | accepted | Issue-linked branch naming as a required check |
+| [0008](./0008-evidence-boundary.md) | accepted | Evidence text boundary and instruction-like-pattern neutralization |

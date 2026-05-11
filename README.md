@@ -158,6 +158,10 @@ CLI와 리뷰 편의를 위해 같은 내용을 사람이 읽기 쉬운 `answer_
 
 Planner와 query rewrite 결정은 `outputs/answer.json`의 `trace`와 eval 실행 후 `reports/traces/`에서 확인할 수 있습니다. Grounding/eval hardening 변경 사항과 trace 해석 방법은 [`docs/grounding-eval-hardening.md`](docs/grounding-eval-hardening.md)를 참고하세요.
 
+## Evidence boundary defense
+
+외부 RFP 문서에서 온 retrieved chunk가 chat-template 토큰(`<|im_start|>` 등), role 태그(`SYSTEM:` / `ASSISTANT:`), 또는 instruction-override 문구를 포함할 수 있습니다. `neutralize_instruction_patterns()` ([rag_core.py](rag_core.py))가 verifier와 LLM judge로 흐르는 evidence text를 normalize해 downstream LLM 소비자가 RFP 본문에 의해 영향받지 않도록 합니다. 본문 내용은 보존되고 marker로 wrapping만 됩니다 — 결정은 [ADR 0008](docs/adr/0008-evidence-boundary.md), regression 테스트는 [`tests/test_prompt_injection_regression.py`](tests/test_prompt_injection_regression.py).
+
 ## Baseline policy
 
 기본 CLI/eval reference는 `naive_baseline`입니다. 이 baseline은 fixed-size chunking, hashing dense top-k=4 retrieval, minimal grounded extractive answer prompt만 사용하며 metadata-first filtering, rerank, verifier/retry는 제외합니다.
