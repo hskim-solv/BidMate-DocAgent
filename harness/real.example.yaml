@@ -1,0 +1,15 @@
+id: real_local_full
+description: Local-only real RFP harness template. Copy to harness/real.local.yaml and point eval.config at your eval/real_config.local.yaml. None of these resolved files are committed (see .gitignore).
+artifact_root: artifacts/runs
+dataset:
+  id: real_rfp_local
+  input_dir: data/files
+  privacy: private_real_local
+index:
+  embedding_backend: hashing
+  chunking_strategy: fixed
+query:
+  text: "발주기관명 사업명의 사업기간과 사업예산 알려줘"
+  pipeline: agentic_full
+eval:
+  config: eval/real_config.local.yaml

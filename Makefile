@@ -1,4 +1,4 @@
-.PHONY: setup index ask eval benchmark benchmark-check check smoke smoke-with-judge harness-smoke test test-regression api api-docker demo demo-docker pareto docker-publish real-eval real-eval-delta real-eval-baseline-update real-eval-history-render real-eval-history-check real-eval-with-judge synthetic-judge leaderboard leaderboard-check clean
+.PHONY: setup index ask eval benchmark benchmark-check check smoke smoke-with-judge harness-smoke harness-real harness-ablation harness-compare test test-regression api api-docker demo demo-docker pareto docker-publish real-eval real-eval-delta real-eval-baseline-update real-eval-history-render real-eval-history-check real-eval-with-judge synthetic-judge leaderboard leaderboard-check clean
 
 PYTHON ?= python3
 VENV ?= .venv
@@ -68,6 +68,26 @@ smoke-with-judge: smoke
 
 harness-smoke:
 	$(PYTHON) scripts/run_harness.py --config harness/smoke.yaml
+
+# Real-data harness profile. Requires harness/real.local.yaml (copied from
+# harness/real.example.yaml) and the eval/*.local.yaml it points to. None
+# of these resolved files are committed.
+harness-real:
+	$(PYTHON) scripts/run_harness.py --config harness/real.local.yaml
+
+# Run a matrix of harness cells on the committed public synthetic corpus.
+# Writes artifacts/matrices/<matrix_id>/{matrix_summary.json, compare.md}.
+# Pass MATRIX=harness/your.yaml to use a different matrix file.
+MATRIX ?= harness/ablation.example.yaml
+harness-ablation:
+	$(PYTHON) scripts/run_harness.py --matrix $(MATRIX) --force
+
+# Compare two harness runs (dirs under artifacts/runs/ or eval_summary.json).
+# Example: make harness-compare RUN_A=artifacts/runs/a RUN_B=artifacts/runs/b
+harness-compare:
+	$(PYTHON) scripts/run_harness.py --compare \
+	  --run-a $${RUN_A:?set RUN_A=<run-dir-or-eval_summary.json>} \
+	  --run-b $${RUN_B:?set RUN_B=<run-dir-or-eval_summary.json>}
 
 test:
 	bash scripts/test.sh
