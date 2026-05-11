@@ -2,7 +2,15 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from eval.run_eval import evaluate_run, load_config, score_case, summarize_run
+from eval.run_eval import (
+    compute_run_manifest,
+    cross_ablation_retry_precision,
+    evaluate_run,
+    load_config,
+    retry_effectiveness_block,
+    score_case,
+    summarize_run,
+)
 from rag_core import build_index_payload
 
 
@@ -307,6 +315,155 @@ class EvalMetricsTest(unittest.TestCase):
             ["scanned_pdf", "noisy_ocr"],
             config["cases"][0]["hardcase_categories"],
         )
+
+
+class RetryEffectivenessTest(unittest.TestCase):
+    """Regression tests for retry effectiveness block (issue #120).
+
+    Cover the three pillars:
+    - single-run metrics on case_results with mixed retry status
+    - graceful empty-set fallback (no retries triggered)
+    - cross-ablation precision joining agentic_full vs no_verifier_retry
+    """
+
+    def _case(
+        self,
+        *,
+        cid: str,
+        accuracy: float | None,
+        retry_count: int,
+        last_verified: bool | None,
+    ) -> dict:
+        return {
+            "id": cid,
+            "query_type": "single_doc",
+            "accuracy": accuracy,
+            "groundedness": accuracy,
+            "citation_precision": accuracy,
+            "claim_citation_alignment": accuracy,
+            "answer_format_compliance": accuracy,
+            "abstention": None,
+            "latency_ms": 10.0,
+            "retry_count": retry_count,
+            "retry_trigger_reasons": ["topic_not_grounded"] if retry_count > 0 else [],
+            "last_attempt_verified": last_verified,
+        }
+
+    def test_empty_case_set(self) -> None:
+        block = retry_effectiveness_block([])
+        self.assertEqual(0, block["cases_with_retry"])
+        self.assertIsNone(block["recovery_rate"])
+        self.assertIsNone(block["residual_failure_rate"])
+        self.assertIsNone(block["retry_lift_vs_no_retry"])
+
+    def test_no_retries_triggered(self) -> None:
+        cases = [
+            self._case(cid="a", accuracy=1.0, retry_count=0, last_verified=True),
+            self._case(cid="b", accuracy=1.0, retry_count=0, last_verified=True),
+        ]
+        block = retry_effectiveness_block(cases)
+        self.assertEqual(0, block["cases_with_retry"])
+        self.assertEqual(2, block["cases_without_retry"])
+        self.assertIsNone(block["recovery_rate"])
+
+    def test_recovery_and_residual_complementary(self) -> None:
+        # 4 retried cases: 3 correct, 1 wrong → recovery=0.75, residual=0.25
+        cases = [
+            self._case(cid="r1", accuracy=1.0, retry_count=1, last_verified=True),
+            self._case(cid="r2", accuracy=1.0, retry_count=1, last_verified=True),
+            self._case(cid="r3", accuracy=1.0, retry_count=1, last_verified=True),
+            self._case(cid="r4", accuracy=0.0, retry_count=1, last_verified=False),
+            self._case(cid="n1", accuracy=1.0, retry_count=0, last_verified=True),
+        ]
+        block = retry_effectiveness_block(cases)
+        self.assertEqual(4, block["cases_with_retry"])
+        self.assertEqual(1, block["cases_without_retry"])
+        self.assertAlmostEqual(0.75, block["recovery_rate"])
+        self.assertAlmostEqual(0.25, block["residual_failure_rate"])
+        # 3 of 4 last attempts verified
+        self.assertAlmostEqual(0.75, block["retry_resolution_rate"])
+        # lift: 0.75 - 1.0 = -0.25 (retried cases worse than non-retried, expected)
+        self.assertAlmostEqual(-0.25, block["retry_lift_vs_no_retry"])
+
+    def test_resolution_rate_gracefully_skips_missing(self) -> None:
+        # last_attempt_verified=None — should be excluded from resolution rate
+        cases = [
+            self._case(cid="r1", accuracy=1.0, retry_count=1, last_verified=None),
+            self._case(cid="r2", accuracy=1.0, retry_count=1, last_verified=True),
+        ]
+        block = retry_effectiveness_block(cases)
+        # Only 1 valid resolution flag → 1.0
+        self.assertAlmostEqual(1.0, block["retry_resolution_rate"])
+
+    def test_cross_ablation_precision(self) -> None:
+        full = [
+            # case 1: retried, baseline would fail → true positive
+            self._case(cid="c1", accuracy=1.0, retry_count=1, last_verified=True),
+            # case 2: retried, baseline would succeed → false positive
+            self._case(cid="c2", accuracy=1.0, retry_count=1, last_verified=True),
+            # case 3: retried, baseline also failed → true positive
+            self._case(cid="c3", accuracy=0.0, retry_count=1, last_verified=False),
+            # case 4: not retried → excluded
+            self._case(cid="c4", accuracy=1.0, retry_count=0, last_verified=True),
+        ]
+        baseline = [
+            self._case(cid="c1", accuracy=0.0, retry_count=0, last_verified=False),
+            self._case(cid="c2", accuracy=1.0, retry_count=0, last_verified=True),
+            self._case(cid="c3", accuracy=0.0, retry_count=0, last_verified=False),
+            self._case(cid="c4", accuracy=1.0, retry_count=0, last_verified=True),
+        ]
+        result = cross_ablation_retry_precision(full, baseline)
+        self.assertIsNotNone(result)
+        self.assertEqual(3, result["n_retry_triggered"])
+        self.assertEqual(2, result["true_positive_triggers"])
+        self.assertEqual(1, result["false_positive_triggers"])
+        # 2 / (2 + 1) ≈ 0.6667
+        self.assertAlmostEqual(2 / 3, result["retry_precision"], places=4)
+        self.assertEqual(
+            "cross_ablation(agentic_full,no_verifier_retry)", result["method"]
+        )
+
+    def test_cross_ablation_returns_none_without_baseline(self) -> None:
+        full = [
+            self._case(cid="c1", accuracy=1.0, retry_count=1, last_verified=True),
+        ]
+        self.assertIsNone(cross_ablation_retry_precision(full, []))
+        self.assertIsNone(cross_ablation_retry_precision([], full))
+
+    def test_summary_exposes_retry_effectiveness(self) -> None:
+        cases = [
+            self._case(cid="a", accuracy=1.0, retry_count=1, last_verified=True),
+            self._case(cid="b", accuracy=0.0, retry_count=1, last_verified=False),
+        ]
+        summary = summarize_run("unit", {"pipeline": "agentic_full"}, cases)
+        self.assertIn("retry_effectiveness", summary)
+        self.assertEqual(2, summary["retry_effectiveness"]["cases_with_retry"])
+        self.assertAlmostEqual(
+            0.5, summary["retry_effectiveness"]["recovery_rate"]
+        )
+
+
+class RunManifestTest(unittest.TestCase):
+    """Regression test for run_manifest schema (issue #120 pre-stack)."""
+
+    def test_manifest_has_expected_keys(self) -> None:
+        manifest = compute_run_manifest(ROOT_DIR / "eval" / "config.yaml")
+        self.assertIn("git_commit", manifest)
+        self.assertIn("git_dirty", manifest)
+        self.assertIn("config_path", manifest)
+        self.assertIn("config_sha256", manifest)
+        self.assertIn("generated_at", manifest)
+        # Generated timestamp ends with Z (UTC) per spec.
+        self.assertTrue(manifest["generated_at"].endswith("Z"))
+        # SHA is truncated 16-char hex.
+        self.assertEqual(16, len(manifest["config_sha256"]))
+        # Stable: hashing the same file twice gives the same SHA.
+        again = compute_run_manifest(ROOT_DIR / "eval" / "config.yaml")
+        self.assertEqual(manifest["config_sha256"], again["config_sha256"])
+
+    def test_manifest_handles_missing_config_gracefully(self) -> None:
+        manifest = compute_run_manifest(Path("/nonexistent/eval.yaml"))
+        self.assertEqual("unknown", manifest["config_sha256"])
 
 
 if __name__ == "__main__":
