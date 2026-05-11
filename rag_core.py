@@ -794,6 +794,7 @@ def build_chunk_records(
             parent = {**parent, "chunking_strategy": actual_strategy}
             parent_sections.append(parent)
             section_chunks = split_section_text(parent["text"], max_chars, overlap_sentences)
+            total_chunks_in_section = len(section_chunks)
             for chunk_seq_in_section, sentences in enumerate(section_chunks, start=1):
                 chunks.append(
                     make_chunk(
@@ -802,6 +803,7 @@ def build_chunk_records(
                         sentences,
                         chunk_seq,
                         chunk_seq_in_section,
+                        total_chunks_in_section,
                         actual_strategy,
                     )
                 )
@@ -854,6 +856,7 @@ def make_chunk(
     sentences: list[str],
     chunk_seq: int,
     chunk_seq_in_section: int,
+    total_chunks_in_section: int,
     chunking_strategy: str,
 ) -> dict[str, Any]:
     text = " ".join(sentences).strip()
@@ -873,6 +876,7 @@ def make_chunk(
         "section": section_label,
         "section_path": section_path,
         "chunk_seq_in_section": chunk_seq_in_section,
+        "total_chunks_in_section": total_chunks_in_section,
         "chunking_strategy": chunking_strategy,
         "text": text,
         "tokens": tokenize(
@@ -1813,6 +1817,7 @@ def retrieve(
             "parent_section_id": chunk.get("parent_section_id") or chunk.get("section_id"),
             "section_path": chunk.get("section_path") or [chunk.get("section", "")],
             "chunk_seq_in_section": chunk.get("chunk_seq_in_section"),
+            "total_chunks_in_section": chunk.get("total_chunks_in_section"),
             "chunking_strategy": chunk.get("chunking_strategy", "legacy"),
             "retrieval_mode": "flat",
             "text": chunk["text"],
@@ -3467,6 +3472,7 @@ def strip_internal_scores(evidence: list[dict[str, Any]]) -> list[dict[str, Any]
             "parent_section_id": item.get("parent_section_id"),
             "section_path": item.get("section_path") or [],
             "chunk_seq_in_section": item.get("chunk_seq_in_section"),
+            "total_chunks_in_section": item.get("total_chunks_in_section"),
             "chunking_strategy": item.get("chunking_strategy", ""),
             "retrieval_mode": item.get("retrieval_mode", "flat"),
             "child_chunk_ids": item.get("child_chunk_ids", []),

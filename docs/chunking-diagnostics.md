@@ -8,7 +8,8 @@ RFP 문서는 heading, 요구사항 목록, 제출조건 같은 구조가 검색
 
 - `section_id` / `parent_section_id`: parent section과 child chunk를 연결한다.
 - `section_path`: heading 계층을 보존한다. 공개 synthetic 문서는 1단계 heading을 사용한다.
-- `chunk_seq_in_section`: 같은 parent section 안에서 child chunk 순서를 나타낸다.
+- `chunk_seq_in_section`: 같은 parent section 안에서 child chunk 순서를 나타낸다 (1-indexed).
+- `total_chunks_in_section`: 같은 parent section을 구성하는 child chunk의 총 수. issue #73 진단 필드 — `chunk_seq_in_section`과 함께 보면 "section을 N등분 중 M번째를 가져왔다"가 evidence 단계에서 바로 읽힌다.
 - `chunking_strategy`: 실제 적용된 전략이다. 값은 `section` 또는 `fixed`이다.
 - `regions` / `page_span`: visual parsing v2 입력에서만 포함되는 page/bbox 근거 위치 metadata다.
 
@@ -48,3 +49,30 @@ python3 scripts/build_index.py \
 - 기본 flat retrieval은 naive baseline과 agentic full pipeline 모두의 기본 retrieval mode다.
 - hierarchical retrieval은 긴 section이 여러 child chunk로 나뉠 때 주변 문맥을 함께 확인하는 실험 옵션이다.
 - 품질 비교는 `reports/eval_summary.json`의 `hierarchical` ablation run과 fixed/auto 임시 인덱스 평가 결과를 함께 본다.
+
+## Chunk-boundary probe set (issue #73)
+
+공개 synthetic 문서는 모두 1 chunk 안에 들어갈 만큼 짧아서 chunk-boundary 실패 모드(real-data taxonomy C3)를 자연스럽게 노출시키지 못한다. 이 격차를 메우기 위해 의도적으로 multi-chunk로 분할되는 probe fixture와 probe query를 별도로 추가했다.
+
+**Probe fixture**: [`data/raw/rfp_agency_d_spectrometer_probe.json`](../data/raw/rfp_agency_d_spectrometer_probe.json)
+- 기관 D · 분광기 시스템 운영 (현존하지 않는 가상 기관 — 다른 eval case와 metadata 충돌 없음)
+- 두 개 본문 section: 사업 개요 (~1100자) + 운영 자동화 세부 요구사항 (~750자)
+- 기본 `max_chars=520` + `auto`/`section` 전략에서 각 section이 2 chunk로 분할되어 총 4 chunk 생성
+
+**Probe queries** (`eval/config.yaml`, `hardcase_categories: chunk_boundary`):
+
+| Probe id | 답이 위치한 chunk | 무엇을 잡는가 |
+|---|---|---|
+| `chunk_probe_external_audit_period` | section 1, chunk 2/2 | 첫 chunk 너머에 있는 fact retrieval — 첫 chunk의 metadata 토큰 밀도가 더 높아도 정답 chunk를 surface해야 함 |
+| `chunk_probe_report_storage` | section 2, chunk 2/2 | section 경계를 넘는 retrieval — 섹션 1만 보지 않고 섹션 2를 골라야 함 |
+| `chunk_probe_calibration_overlap` | section 1, chunk 1/2와 2/2 모두 (overlap region) | `DEFAULT_CHUNK_OVERLAP_SENTENCES=1` 메커니즘이 살아있는지 — overlap된 문장이 양쪽 chunk에서 retrieve 가능해야 함 |
+
+**진단 활용**: 위 probe가 실패하면 `outputs/answer.json`의 `evidence[*].chunk_seq_in_section / total_chunks_in_section` 값을 본다.
+
+- evidence가 비어있으면 → upstream retrieval 실패 (entity / metadata filter 문제, C1/C2)
+- evidence는 있는데 `chunk_seq_in_section`이 정답 chunk 번호와 다르면 → chunking failure (C3) 자체
+- 두 chunk가 같은 section에서 나왔는데 답에 필요한 chunk만 빠져 있으면 → top-k 산정 또는 score 균형 문제
+
+이 분리는 real-data taxonomy C3의 "chunk boundary, masked by upstream miss"를 풀기 위한 첫 단계다. 자연 real-data에서는 이 두 실패 모드가 한 case에서 동시에 일어나기 쉬우므로 합성 probe로 분리해서 본다.
+
+**확장 가이드**: 새 chunking 전략을 비교할 때 같은 probe set을 양쪽 인덱스에 돌리면 되돌아오는 `chunk_seq_in_section / total_chunks_in_section` 분포로 분할 정책 차이를 한눈에 본다. 답 텍스트를 변경하지 않은 채 수치 격차만 비교 가능하다는 점이 핵심이다.

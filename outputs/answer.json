@@ -162,8 +162,8 @@
       "rfp-agency-b-mlops-governance"
     ],
     "comparison_target_field": "doc_id",
-    "candidate_count": 4,
-    "total_chunks": 4,
+    "candidate_count": 7,
+    "total_chunks": 7,
     "filter_fallback_used": false,
     "comparison_coverage": {
       "targets": [
@@ -248,6 +248,7 @@
         "문서 전체"
       ],
       "chunk_seq_in_section": 1,
+      "total_chunks_in_section": 1,
       "chunking_strategy": "fixed",
       "retrieval_mode": "flat",
       "child_chunk_ids": []
@@ -274,6 +275,7 @@
         "문서 전체"
       ],
       "chunk_seq_in_section": 1,
+      "total_chunks_in_section": 1,
       "chunking_strategy": "fixed",
       "retrieval_mode": "flat",
       "child_chunk_ids": []
@@ -339,7 +341,7 @@
         "balanced": false
       },
       "stage_latencies_ms": {
-        "query_analysis_ms": 0.48,
+        "query_analysis_ms": 0.52,
         "context_resolution_ms": 0.0,
         "answer_generation_ms": 0.34
       },
@@ -430,7 +432,7 @@
     ]
   },
   "diagnostics": {
-    "latency_ms": 1.81,
+    "latency_ms": 1.92,
     "retry_count": 0,
     "abstained": false,
     "answer_status": "supported",
@@ -456,14 +458,14 @@
             "comparison": 6
           }
         },
-        "candidate_count": 4,
+        "candidate_count": 7,
         "parent_candidate_count": null,
-        "total_chunks": 4,
+        "total_chunks": 7,
         "filter_fallback_used": false,
         "retrieval_mode": "flat",
         "verified": true,
         "verification_reasons": [],
-        "retrieve_ms": 0.17,
+        "retrieve_ms": 0.21,
         "verify_ms": 0.0,
         "comparison_coverage": {
           "targets": [
@@ -646,7 +648,7 @@
     "prompt_profile": "minimal_grounded_extractive",
     "cold_start": true,
     "stage_latency": {
-      "query_analysis_ms": 0.48,
+      "query_analysis_ms": 0.52,
       "context_resolution_ms": 0.0,
       "answer_generation_ms": 0.34
     }
