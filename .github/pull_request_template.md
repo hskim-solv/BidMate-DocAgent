@@ -5,7 +5,12 @@ If a section truly doesn't apply, write "N/A" with a one-line reason — don't d
 
 ## 1. What changed and why
 
-<!-- One paragraph. Link the issue. -->
+<!--
+One paragraph. The `Closes #N` below is **required** (ADR 0007) and
+must match the issue number in your branch name (e.g. branch
+`feat/issue-79-foo` → `Closes #79`). The Branch & Issue Convention CI
+check will block merge if missing or mismatched.
+-->
 
 Closes #
 

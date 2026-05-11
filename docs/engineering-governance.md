@@ -25,17 +25,24 @@ If you are new to the repo or onboarding a reviewer, start here.
 The expected flow for any non-trivial change, written as a checklist
 a contributor (human or AI) can walk through:
 
-1. **Open or pick an issue.** Real-data failure taxonomy entries
-   (`docs/real-data-failure-taxonomy.md`) and the prioritized backlog
-   are the primary feed.
+1. **Open or pick an issue. (Required, ADR 0007.)** Real-data failure
+   taxonomy entries (`docs/real-data-failure-taxonomy.md`) and the
+   prioritized backlog are the primary feed. Use the templates in
+   [`.github/ISSUE_TEMPLATE/`](../.github/ISSUE_TEMPLATE/). The
+   branch + PR are required to reference this issue number; the
+   convention check (CI) will block merge otherwise.
 2. **Decide if it needs an ADR.** Use the criteria in
    [`docs/adr/README.md`](./adr/README.md). Most changes do **not**;
    when in doubt, ask in the issue.
 3. **Inspect what exists.** Per `CLAUDE.md` ("Before coding,
    inspect..."). Name the files you read, the functions you intend
    to reuse, and what you found that surprised you.
-4. **Branch + worktree if parallel.** Two independent tracks → two
-   worktrees, two PRs. Coupled tracks → one PR, one branch.
+4. **Branch + worktree if parallel.** Name the branch
+   `<type>/issue-<N>[-<slug>]` per ADR 0007 — e.g.
+   `feat/issue-79-senior-positioning`. Claude Code's default
+   worktree names (`claude/<auto>`) must be renamed before the PR
+   (`git branch -m feat/issue-<N>-<slug>`). Two independent tracks
+   → two worktrees, two PRs. Coupled tracks → one PR, one branch.
 5. **Make the change.** Reuse over invent. One concern per PR.
 6. **Add or update tests.** Behavior change without a test is
    presumed accidental. Regressions get a guard test in
@@ -46,9 +53,12 @@ a contributor (human or AI) can walk through:
 8. **Push, open PR.** PR body fills in
    [`.github/pull_request_template.md`](../.github/pull_request_template.md)
    (what / files / risks / tests / eval impact / back-compat / out-of-scope).
-9. **CI verifies.** `Pytest` job + `Eval delta vs base` job. The
-   delta job upserts a comment with the metrics table; expect `·`
-   across the board for non-RAG changes.
+9. **CI verifies.** Three checks run on every PR:
+   - `Pytest` (in `pr-eval.yml`).
+   - `Eval delta vs base` (in `pr-eval.yml`) — upserts a comment with
+     the metrics table; expect `·` across the board for non-RAG changes.
+   - `Validate branch name + issue link` (in `branch-and-issue-check.yml`,
+     ADR 0007) — enforces the convention. Required status check.
 10. **Address review.** No mid-review scope creep — open a follow-up
     issue instead.
 11. **Merge.** Squash-merge, delete the branch, remove the worktree
@@ -134,6 +144,8 @@ without duplicating their content.
 
 Activate:
 
+    make install-hooks
+    # or equivalently:
     git config core.hooksPath .githooks
 
 This enables two hooks under `.githooks/`:
@@ -145,11 +157,18 @@ This enables two hooks under `.githooks/`:
   that the hook's allowlist missed — and fix the allowlist in the same
   change.
 
-- **`pre-push`** — **soft-warns** when a push touches retrieval / verifier /
-  eval / api paths, reminding you to attach `make real-eval-delta` to the
-  PR (PR template item 5b). Exits 0 — never blocks. Skip with `git push
-  --no-verify` only with a documented reason (e.g. doc-only follow-up of
-  a measured PR).
+- **`pre-push`** — two checks:
+  1. **Branch + issue convention (ADR 0007)** — **hard-fails** if the
+     current branch doesn't match `<type>/issue-<N>[-<slug>]`. Mirror of
+     the CI check so violations surface before push round-trip. If `gh`
+     is installed and authed, also verifies issue #N exists.
+  2. **Real-data eval reminder** — **soft-warns** when a push touches
+     retrieval / verifier / eval / api paths, reminding you to attach
+     `make real-eval-delta` to the PR (PR template item 5b). Exits 0 —
+     never blocks.
+
+  Skip both with `git push --no-verify` only with a documented reason
+  (e.g. doc-only follow-up of a measured PR).
 
 ### Claude Code hook (auto-loaded, no setup)
 

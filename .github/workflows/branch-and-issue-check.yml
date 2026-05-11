@@ -1,0 +1,41 @@
+name: Branch & Issue Convention
+
+# Enforces ADR 0007: every PR must come from a branch named
+# `<type>/issue-<N>[-<slug>]` AND have `Closes #N` in its body
+# matching the branch's issue number. The referenced issue must
+# exist in this repo.
+#
+# Fast (~15s, no checkout). Should be set as a required status
+# check on `main` after one green run.
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: read
+  issues: read
+
+jobs:
+  branch-and-issue:
+    name: Validate branch name + issue link
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            scripts/check_branch_and_issue.py
+          sparse-checkout-cone-mode: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Validate
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          python scripts/check_branch_and_issue.py --pr ${{ github.event.pull_request.number }}
