@@ -57,6 +57,11 @@ SAFE_TOPLEVEL_KEYS = frozenset(
         "primary_run",
         "prompt_profile",
         "top_k",
+        # LLM-judge aggregates (ADR 0006). Only status_distribution /
+        # grounded_rate / agreement_with_verifier / n cross the commit
+        # boundary; per-case judge text stays in
+        # reports/real100/judge.local.json.
+        "judge",
     }
 )
 
@@ -277,6 +282,37 @@ def render_markdown(
                 f"{head_reasons.get(reason, 0)} |"
             )
 
+    base_judge = base.get("judge") or {}
+    head_judge = head.get("judge") or {}
+    if base_judge or head_judge:
+        lines.append("")
+        lines.append("#### LLM-judge aggregate (ADR 0006)")
+        lines.append("")
+        lines.append("| metric | base | head | Δ |")
+        lines.append("|---|---|---|---|")
+        for key, label, higher in (
+            ("grounded_rate", "judge_grounded_rate", True),
+            ("agreement_with_verifier", "agreement_with_verifier", True),
+        ):
+            b = base_judge.get(key)
+            h = head_judge.get(key)
+            lines.append(
+                f"| {label} | {_fmt_value(b)} | {_fmt_value(h)} | "
+                f"{_fmt_delta(b, h, higher)} |"
+            )
+        base_dist = base_judge.get("status_distribution") or {}
+        head_dist = head_judge.get("status_distribution") or {}
+        statuses = sorted(set(base_dist) | set(head_dist))
+        if statuses:
+            lines.append("")
+            lines.append("| judge_status | base count | head count |")
+            lines.append("|---|---:|---:|")
+            for status in statuses:
+                lines.append(
+                    f"| {status} | {base_dist.get(status, 0)} | "
+                    f"{head_dist.get(status, 0)} |"
+                )
+
     lines.append("")
     lines.append(
         "_Aggregate-only. Per-case data is never read or rendered by this "
@@ -383,6 +419,32 @@ def main() -> int:
     base_raw = json.loads(base_path.read_text(encoding="utf-8"))
 
     head = extract_aggregate(head_raw)
+
+    # ADR 0006: if a judge.local.json sits beside the head eval
+    # summary, fold its aggregate into the head view so the delta
+    # surfaces judge_grounded_rate / agreement_with_verifier when the
+    # user just ran `make real-eval-with-judge`. The per-case judge
+    # text is never copied into the head aggregate.
+    judge_local = head_path.parent / "judge.local.json"
+    if judge_local.exists():
+        from collections import Counter
+
+        judge_payload = json.loads(judge_local.read_text(encoding="utf-8"))
+        cases = judge_payload.get("cases") or []
+        statuses = [c.get("judge_status") for c in cases if c.get("judge_status")]
+        grounded = [bool(c.get("judge_grounded")) for c in cases]
+        agreements = [bool(c.get("agrees")) for c in cases if c.get("agrees") is not None]
+        head["judge"] = {
+            "status_distribution": dict(Counter(statuses)),
+            "grounded_rate": (sum(grounded) / len(grounded)) if grounded else None,
+            "agreement_with_verifier": (
+                sum(agreements) / len(agreements) if agreements else None
+            ),
+            "n": len(cases),
+        }
+        # Privacy guard: assert nothing leaked.
+        _assert_no_forbidden(head["judge"], "judge")
+
     base = extract_aggregate(base_raw) if "case_results" in base_raw else base_raw
     # If the baseline file was already in aggregate form (it should be),
     # re-running the extractor is a no-op but also re-asserts the
