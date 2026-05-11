@@ -22,6 +22,7 @@ that aren't auto-enforced.
 
 - [`docs/engineering-governance.md`](docs/engineering-governance.md) — workflow map.
 - [`docs/adr/README.md`](docs/adr/README.md) — decision index.
+- [`docs/multi-agent-ownership.md`](docs/multi-agent-ownership.md) — coordination model when multiple agents work in parallel.
 - If touching retrieval / answer / eval, also read:
   [ADR 0001](docs/adr/0001-preserve-naive-baseline.md) (naive baseline),
   [ADR 0003](docs/adr/0003-structured-answer-citation-contract.md) (answer contract),
