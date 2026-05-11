@@ -1,4 +1,4 @@
-.PHONY: setup index ask eval benchmark benchmark-check check smoke harness-smoke test test-regression api api-docker real-eval real-eval-delta real-eval-baseline-update real-eval-history-render real-eval-history-check real-eval-with-judge clean
+.PHONY: setup install-hooks check-branch index ask eval benchmark benchmark-check check smoke harness-smoke test test-regression api api-docker real-eval real-eval-delta real-eval-baseline-update real-eval-history-render real-eval-history-check real-eval-with-judge clean
 
 PYTHON ?= python3
 VENV ?= .venv
@@ -7,6 +7,18 @@ ACTIVATE = . $(VENV)/bin/activate
 setup:
 	$(PYTHON) -m venv $(VENV)
 	$(ACTIVATE) && pip install -r requirements.txt
+
+# One-time per clone: activate the opt-in git hooks in .githooks/
+# (pre-commit ADR 0005 boundary, pre-push branch/eval checks).
+install-hooks:
+	git config core.hooksPath .githooks
+	@echo "Activated .githooks/ for this clone. See docs/engineering-governance.md §Hook setup."
+
+# Ad-hoc validation of the current branch against ADR 0007.
+# Useful before opening a PR; mirrors the CI check.
+check-branch:
+	$(PYTHON) scripts/check_branch_and_issue.py \
+	  --branch "$$(git rev-parse --abbrev-ref HEAD)" --check-issue
 
 index:
 	$(PYTHON) scripts/build_index.py --input_dir data/raw --output_dir data/index

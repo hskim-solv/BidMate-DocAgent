@@ -3,16 +3,48 @@
 #
 # Activate per-developer with:
 #   git config core.hooksPath .githooks
+#   (or: make install-hooks)
 #
-# Behavior: if the commits about to be pushed touch retrieval /
-# verifier / eval / api paths, remind the contributor to attach a
-# real-data eval delta to the PR (see CLAUDE.md pre-PR checklist
-# item 5b). Non-fatal — prints a warning, exits 0.
+# Behavior (two checks, in order):
 #
-# Skip with `git push --no-verify` only if you have a documented
+# 1. Branch name + issue convention (ADR 0007) — HARD-FAILS the push
+#    if the current branch does not match <type>/issue-<N>[-<slug>].
+#    If `gh` is installed and authed, also verifies issue #N exists.
+#    Mirror of the CI check `.github/workflows/branch-and-issue-check.yml`.
+#
+# 2. Real-data eval delta reminder — SOFT-WARNS (exits 0) if the push
+#    touches retrieval / verifier / eval / api paths without a
+#    real-data delta, per CLAUDE.md pre-PR checklist item 5b.
+#
+# Skip both with `git push --no-verify` only if you have a documented
 # reason (e.g. doc-only follow-up of a measured PR).
 
 set -u
+
+# ---------------------------------------------------------------------------
+# 1. Branch name + issue convention (ADR 0007).
+# ---------------------------------------------------------------------------
+
+current_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+if [[ -n "$current_branch" && "$current_branch" != "HEAD" ]]; then
+  if command -v python3 >/dev/null 2>&1; then
+    if ! python3 scripts/check_branch_and_issue.py \
+           --branch "$current_branch" --check-issue; then
+      cat >&2 <<EOF
+
+   Bypass (only with a documented reason):
+       git push --no-verify
+
+EOF
+      exit 1
+    fi
+  fi
+fi
+
+# ---------------------------------------------------------------------------
+# 2. Real-data eval delta reminder (existing behavior, unchanged).
+# ---------------------------------------------------------------------------
+
 
 # Watch-list: files whose change implies a real-data delta is owed.
 WATCH_PATTERNS=(

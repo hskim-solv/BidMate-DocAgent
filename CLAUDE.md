@@ -6,8 +6,14 @@ Pipeline: ingestion → metadata normalization → chunking → retrieval →
 reranking/planning → evidence aggregation → grounded answer → verification →
 evaluation → reviewer-facing docs.
 
-Automation surface: `.gitignore`, CI (`pr-eval.yml`), `.githooks/`,
+Automation surface: `.gitignore`,
+CI ([`pr-eval.yml`](.github/workflows/pr-eval.yml),
+[`branch-and-issue-check.yml`](.github/workflows/branch-and-issue-check.yml)),
+`.githooks/`,
+[`scripts/check_branch_and_issue.py`](scripts/check_branch_and_issue.py)
+(single-source regex for branch + issue convention, ADR 0007),
 [`.github/pull_request_template.md`](.github/pull_request_template.md),
+[`.github/ISSUE_TEMPLATE/`](.github/ISSUE_TEMPLATE/),
 [`.claude/settings.json`](.claude/settings.json) (PreToolUse awareness hook
 for load-bearing edits). This file captures the principles and pointers
 that aren't auto-enforced.
@@ -40,6 +46,7 @@ Supporting:
 
 ## Core principles
 
+- **Issue first; convention-matched branch.** Every PR must reference an issue (`Closes #N` in body) and its branch must match `<type>/issue-<N>[-<slug>]` (ADR 0007). The CI workflow `branch-and-issue-check.yml` enforces both at PR time.
 - **Reuse over invent.** Inspect existing implementation before coding. Search for reusable utilities first.
 - **One PR, one concern.** Out-of-scope fixes → separate issue / follow-up PR.
 - **Behavior change ↔ test change.** Behavior change without a test is presumed accidental. Regression tests go in `tests/test_*_regression.py` (pattern: `tests/test_retrieval_loop_regression.py`).
@@ -55,8 +62,10 @@ important — the synthetic CI delta alone missed #69's intended-abstention regr
 
 ## Frequently used commands
 
+- `make install-hooks` — one-time per clone: activates `.githooks/` (pre-commit ADR 0005 boundary, pre-push branch/eval checks).
 - `make smoke` — quick sanity check (few minutes, `EMBEDDING_BACKEND=hashing`).
 - `bash scripts/test.sh` — `pytest -q`; same as the CI gate.
+- `make check-branch` — ad-hoc validation of the current branch against ADR 0007.
 - `make real-eval` + `make real-eval-delta` — private 100-doc eval; required when load-bearing files change.
 - Latency numbers come from `reports/eval_summary.json` `stage_latency` block — not ad-hoc measurement.
 
