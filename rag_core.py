@@ -2073,10 +2073,24 @@ def retrieve(
         )
 
     vector_store = index.get("_vector_store")
+    # In-memory fast path: hoist the raw matrix so the hot loop does
+    # C-level numpy indexing instead of a Python method call per chunk
+    # (#232 — eliminates the ~0.13ms p50 / 0.17ms p95 regression flagged
+    # on PR #234 vs the pre-abstraction direct-indexing path). Remote
+    # backends (Qdrant/pgvector, Stage 2+) will fall through to
+    # ``vector_store.get(idx)``.
+    vectors_matrix = (
+        vector_store.vectors
+        if isinstance(vector_store, InMemoryVectorStore)
+        else None
+    )
     scored = []
     for chunk in candidates:
-        if vector_store is not None and chunk.get("embedding_idx") is not None:
-            chunk_vec = vector_store.get(int(chunk["embedding_idx"]))
+        embedding_idx = chunk.get("embedding_idx")
+        if vectors_matrix is not None and embedding_idx is not None:
+            chunk_vec = vectors_matrix[int(embedding_idx)]
+        elif vector_store is not None and embedding_idx is not None:
+            chunk_vec = vector_store.get(int(embedding_idx))
         else:
             # Defensive fallback: a chunk dict produced outside the normal
             # load_index path (e.g., a hand-crafted test fixture) may still
