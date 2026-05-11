@@ -1,7 +1,7 @@
 # BidMate Agent
 **RFP 문서 이해를 위한 Agentic RAG 시스템**
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![PR Eval Delta](https://github.com/hskim-solv/BidMate-DocAgent/actions/workflows/pr-eval.yml/badge.svg?branch=main)](https://github.com/hskim-solv/BidMate-DocAgent/actions/workflows/pr-eval.yml) [![Python 3.11](https://img.shields.io/badge/Python-3.11-blue.svg)](pyproject.toml) [![Engineering notes](https://img.shields.io/badge/engineering--notes-GitHub%20Pages-blue)](https://hskim-solv.github.io/BidMate-DocAgent/) [![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/hskim-solv/BidMate-DocAgent/blob/main/demo/bidmate_quickstart.ipynb)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![PR Eval Delta](https://github.com/hskim-solv/BidMate-DocAgent/actions/workflows/pr-eval.yml/badge.svg?branch=main)](https://github.com/hskim-solv/BidMate-DocAgent/actions/workflows/pr-eval.yml) [![Python 3.11](https://img.shields.io/badge/Python-3.11-blue.svg)](pyproject.toml) [![Engineering notes](https://img.shields.io/badge/engineering--notes-GitHub%20Pages-blue)](https://hskim-solv.github.io/BidMate-DocAgent/) [![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/hskim-solv/BidMate-DocAgent/blob/main/demo/bidmate_quickstart.ipynb) [![Open in HF Spaces](https://huggingface.co/datasets/huggingface/badges/resolve/main/open-in-hf-spaces-sm.svg)](https://huggingface.co/spaces/hskim-solv/bidmate-docagent)
 
 <!-- Hero demo asset slot. Recording guide: docs/deployment.md#recording-the-demo-video.
      Replace docs/assets/demo.gif with the actual asset once captured; renders inline
@@ -13,7 +13,8 @@
 | 경로 | 상태 | 비고 |
 |---|---|---|
 | **Colab 5분 quickstart** | [![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/hskim-solv/BidMate-DocAgent/blob/main/demo/bidmate_quickstart.ipynb) | 클론 / 설치 없이 브라우저에서 바로 grounded answer 1건 실행 |
-| **Streamlit UI** | 배포 가이드: [`docs/deployment.md`](docs/deployment.md) | Fly.io / Hugging Face Spaces / Railway 어느 쪽이든 한 번에 (Dockerfile 동일) |
+| **Streamlit on HF Spaces** | [![Open in HF Spaces](https://huggingface.co/datasets/huggingface/badges/resolve/main/open-in-hf-spaces-sm.svg)](https://huggingface.co/spaces/hskim-solv/bidmate-docagent) | 브라우저 한 번 클릭으로 라이브 데모 도달. 🔁 Space sleep 시 cold-start 약 30–60s — 그동안은 아래 docker / Colab 행 사용. 운영: [`docs/deployment.md#hugging-face-spaces`](docs/deployment.md#hugging-face-spaces) |
+| **Self-host (Fly.io / Railway / Spaces CLI)** | 배포 가이드: [`docs/deployment.md`](docs/deployment.md) | 동일 Dockerfile + Streamlit SDK로 본인 계정에 배포 |
 | **One-line docker run** | `docker run -p 8501:8501 -p 8000:8000 -e BIDMATE_DEMO_MODE=both ghcr.io/hskim-solv/bidmate-demo:latest` | 클론 없이 published image 로 Streamlit + FastAPI 동시 실행 ([`docs/deployment.md`](docs/deployment.md#one-line-docker-run-no-clone-fastest-reviewer-path) 참고) |
 | **FastAPI Swagger** | `make api` 후 [/docs](http://localhost:8000/docs) | 프로그래매틱 사용·통합 테스트용 |
 | **로컬 1분 시작** | `make index && make demo` | `http://localhost:8501` |

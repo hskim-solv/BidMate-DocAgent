@@ -98,6 +98,38 @@ Claude synthesis add `ANTHROPIC_API_KEY` and
 `BIDMATE_SYNTHESIS_BACKEND=anthropic` in the Space's *Settings →
 Variables and secrets*.
 
+### Operational notes
+
+The placeholder URL referenced from the repo-root README
+(`https://huggingface.co/spaces/hskim-solv/bidmate-docagent`)
+activates once the first push above succeeds. Day-to-day
+operations:
+
+- **Redeploy** — push to the Space's `main`; Spaces auto-rebuilds.
+  Manual trigger via Space web UI *Settings → Restart this Space*
+  (warm) or *Factory rebuild* (cold, re-installs requirements).
+- **Dependency pinning** — Spaces picks up the repo-root
+  [`requirements.txt`](../requirements.txt) automatically. The
+  Streamlit / FastAPI / retrieval deps are pinned there; the
+  heavier observability extras live in
+  [`requirements-observability.txt`](../requirements-observability.txt)
+  and are *not* pulled into the Space image, keeping cold-start
+  under a minute.
+- **Secrets rotation** — set `ANTHROPIC_API_KEY` and
+  `BIDMATE_SYNTHESIS_BACKEND=anthropic` under *Settings → Variables
+  and secrets*. Without them the demo runs the stub synthesis
+  backend (ADR 0011 zero-regression: extractive and stub paths are
+  byte-identical), so the Space remains functional even with no
+  key.
+- **Free-tier resource / cold-start** — 16 GB RAM / 2 CPU; the
+  Space sleeps after inactivity and the first request after sleep
+  takes ~30–60 s to wake. The index (`data/index/`) is committed,
+  so no build step on cold-start.
+- **Fallback when the Space is down** — the README "🚀 Live demo"
+  table lists the one-line `docker run` and Colab quickstart
+  immediately under the Spaces row, so a reviewer who hits a
+  sleeping or unhealthy Space can pivot in one click.
+
 ## Railway
 
 Railway picks up the `Dockerfile` automatically. The container ships
