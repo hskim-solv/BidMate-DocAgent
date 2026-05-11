@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Throwaway change for §5b red-team verification (issue #283). Will be reverted.
 """Shared local RAG primitives for the public BidMate sample.
 
 The implementation keeps the public demo deterministic: retrieval is local,
