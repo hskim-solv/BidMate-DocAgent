@@ -2,6 +2,7 @@
 import argparse
 from collections import Counter, defaultdict
 import json
+import math
 from pathlib import Path
 import re
 import sys
@@ -712,10 +713,84 @@ def score_answer_format(
     }
 
 
+CHUNK_METRIC_KS = (5, 10)
+
+
+def derive_gold_chunk_ids(
+    case: dict[str, Any],
+    index: dict[str, Any] | None,
+) -> list[str]:
+    """Derive a chunk-level gold set from ``expected_doc_ids`` + ``expected_terms``.
+
+    A chunk is gold if its ``doc_id`` is in the case's ``expected_doc_ids`` AND
+    its text contains at least one ``expected_term``. If the case provides an
+    explicit ``gold_chunk_ids`` list it is used verbatim. Returns an empty list
+    for cases without expectations (e.g. abstention).
+    """
+    explicit = case.get("gold_chunk_ids")
+    if explicit:
+        return [str(item) for item in explicit if item]
+    expected_doc_ids = set(case.get("expected_doc_ids") or [])
+    expected_terms = [str(term) for term in case.get("expected_terms") or [] if term]
+    if not expected_doc_ids or not expected_terms or not index:
+        return []
+    chunks = index.get("chunks") or []
+    gold: list[str] = []
+    for chunk in chunks:
+        if chunk.get("doc_id") not in expected_doc_ids:
+            continue
+        text = str(chunk.get("text") or "")
+        if any(term in text for term in expected_terms):
+            chunk_id = str(chunk.get("chunk_id") or "")
+            if chunk_id:
+                gold.append(chunk_id)
+    return gold
+
+
+def chunk_recall_at_k(retrieved: list[str], gold: list[str], k: int) -> float | None:
+    if not gold:
+        return None
+    if not retrieved or k <= 0:
+        return 0.0
+    head = retrieved[:k]
+    hits = sum(1 for chunk_id in gold if chunk_id in head)
+    return hits / len(gold)
+
+
+def chunk_mrr(retrieved: list[str], gold: list[str]) -> float | None:
+    if not gold:
+        return None
+    if not retrieved:
+        return 0.0
+    gold_set = set(gold)
+    for rank, chunk_id in enumerate(retrieved, start=1):
+        if chunk_id in gold_set:
+            return 1.0 / rank
+    return 0.0
+
+
+def chunk_ndcg_at_k(retrieved: list[str], gold: list[str], k: int) -> float | None:
+    if not gold:
+        return None
+    if not retrieved or k <= 0:
+        return 0.0
+    gold_set = set(gold)
+    dcg = 0.0
+    for rank, chunk_id in enumerate(retrieved[:k], start=1):
+        rel = 1.0 if chunk_id in gold_set else 0.0
+        if rel:
+            dcg += rel / math.log2(rank + 1)
+    ideal_hits = min(len(gold_set), k)
+    idcg = sum(1.0 / math.log2(rank + 1) for rank in range(1, ideal_hits + 1))
+    return (dcg / idcg) if idcg else 0.0
+
+
 def score_case(
     case: dict[str, Any],
     prediction: dict[str, Any],
     answer_policy: dict[str, Any] | None = None,
+    *,
+    gold_chunk_ids: list[str] | None = None,
 ) -> dict[str, Any]:
     answerable = bool(case.get("answerable", True))
     query_type = canonical_query_type(case.get("query_type"))
@@ -778,6 +853,19 @@ def score_case(
         citation_precision = 1.0 if abstained and not evidence else 0.0
         abstention = 1.0 if abstained else 0.0
 
+    retrieved_chunk_ids = [
+        str(chunk_id)
+        for chunk_id in diagnostics.get("retrieved_chunk_ids") or []
+        if chunk_id
+    ]
+    gold_for_chunks = [str(item) for item in gold_chunk_ids or [] if item]
+    chunk_metrics: dict[str, float | None] = {
+        f"chunk_recall_at_{k}": chunk_recall_at_k(retrieved_chunk_ids, gold_for_chunks, k)
+        for k in CHUNK_METRIC_KS
+    }
+    chunk_metrics["chunk_mrr"] = chunk_mrr(retrieved_chunk_ids, gold_for_chunks)
+    chunk_metrics["chunk_ndcg_at_10"] = chunk_ndcg_at_k(retrieved_chunk_ids, gold_for_chunks, 10)
+
     return {
         "id": case.get("id"),
         "query_type": query_type,
@@ -787,6 +875,9 @@ def score_case(
         "answerable": answerable,
         "expected_doc_ids": sorted(expected_doc_ids),
         "evidence_doc_ids": sorted(doc_id for doc_id in evidence_doc_ids if doc_id),
+        "gold_chunk_ids": gold_for_chunks,
+        "retrieved_chunk_ids": retrieved_chunk_ids,
+        **chunk_metrics,
         "doc_match": doc_match,
         "term_match": term_match,
         "citation_term_match": citation_term_match,
@@ -944,6 +1035,17 @@ def metric_block(case_results: list[dict[str, Any]]) -> dict[str, Any]:
         "latency_ms": _latency_summary(cold_latencies) if cold_latencies else None,
     }
 
+    chunk_metric_summary: dict[str, float | None] = {}
+    for key in [f"chunk_recall_at_{k}" for k in CHUNK_METRIC_KS] + [
+        "chunk_mrr",
+        "chunk_ndcg_at_10",
+    ]:
+        values = [r[key] for r in case_results if r.get(key) is not None]
+        chunk_metric_summary[key] = rate(values)
+    cases_with_gold = sum(1 for r in case_results if r.get("gold_chunk_ids"))
+    chunk_metric_summary["cases_with_gold"] = cases_with_gold
+    chunk_metric_summary["cases_total"] = len(case_results)
+
     block: dict[str, Any] = {
         "num_predictions": len(case_results),
         "accuracy": rate(accuracy_scores),
@@ -955,6 +1057,7 @@ def metric_block(case_results: list[dict[str, Any]]) -> dict[str, Any]:
         "claim_citation_alignment": rate(claim_alignment_scores),
         "abstention": rate(abstention_scores),
         "answer_format_compliance": rate(format_scores),
+        "chunk_retrieval": chunk_metric_summary,
         "latency": {
             "p50": percentile(latencies, 0.50),
             "p95": percentile(latencies, 0.95),
@@ -1141,7 +1244,13 @@ def evaluate_run(
             prediction,
             redact_options=redact_options,
         )
-        result = score_case(case, prediction, answer_policy)
+        gold_chunk_ids = derive_gold_chunk_ids(case, index)
+        result = score_case(
+            case,
+            prediction,
+            answer_policy,
+            gold_chunk_ids=gold_chunk_ids,
+        )
         if trace_path:
             result["trace_path"] = trace_path
         case_results.append(result)
