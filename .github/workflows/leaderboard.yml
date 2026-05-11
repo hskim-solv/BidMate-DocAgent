@@ -1,0 +1,76 @@
+name: Leaderboard — append history + render on merge to main
+
+# Issue #166: every merge to main produces one history snapshot under
+# reports/history/ and re-renders reports/leaderboard.md +
+# docs/leaderboard.md (Jekyll page consumed by GitHub Pages).
+#
+# Aggregate-only by construction — the writer reuses extract_aggregate
+# from scripts/run_real_eval_delta.py, so per-case fields cannot leak.
+
+on:
+  push:
+    branches: [main]
+    # Skip merge commits that are *themselves* the leaderboard bot,
+    # to prevent infinite trigger loops.
+    paths-ignore:
+      - "reports/history/**"
+      - "reports/leaderboard.md"
+      - "docs/leaderboard.md"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: leaderboard-append
+  cancel-in-progress: false
+
+jobs:
+  append-and-render:
+    if: "!contains(github.event.head_commit.message, '[skip leaderboard]')"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (full history for git provenance)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Build index + run eval (hashing backend, deterministic)
+        env:
+          EMBEDDING_BACKEND: hashing
+        run: |
+          make index
+          make eval
+
+      - name: Append history snapshot
+        run: python3 scripts/write_synthetic_history.py
+
+      - name: Render leaderboard artifacts
+        run: python3 scripts/leaderboard.py
+
+      - name: Commit & push if changed
+        env:
+          GIT_AUTHOR_NAME: "github-actions[bot]"
+          GIT_AUTHOR_EMAIL: "github-actions[bot]@users.noreply.github.com"
+          GIT_COMMITTER_NAME: "github-actions[bot]"
+          GIT_COMMITTER_EMAIL: "github-actions[bot]@users.noreply.github.com"
+        run: |
+          set -eu
+          git add reports/history/ reports/leaderboard.md docs/leaderboard.md
+          if git diff --staged --quiet; then
+            echo "No leaderboard changes to commit."
+            exit 0
+          fi
+          SHA12=$(git rev-parse --short=12 HEAD)
+          git commit -m "ci: append leaderboard for ${SHA12} [skip leaderboard]"
+          git push

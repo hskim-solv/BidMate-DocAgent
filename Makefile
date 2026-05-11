@@ -1,4 +1,4 @@
-.PHONY: setup index ask eval benchmark benchmark-check check smoke harness-smoke test test-regression api api-docker demo demo-docker real-eval real-eval-delta real-eval-baseline-update real-eval-history-render real-eval-history-check real-eval-with-judge synthetic-judge clean
+.PHONY: setup index ask eval benchmark benchmark-check check smoke harness-smoke test test-regression api api-docker demo demo-docker real-eval real-eval-delta real-eval-baseline-update real-eval-history-render real-eval-history-check real-eval-with-judge synthetic-judge leaderboard leaderboard-check clean
 
 PYTHON ?= python3
 VENV ?= .venv
@@ -132,6 +132,20 @@ synthetic-judge:
 	  --summary reports/eval_summary.json \
 	  --aggregate reports/synthetic_judge.aggregate.json \
 	  --local reports/synthetic_judge.local.json
+
+# Append a history snapshot of the current eval_summary.json + render
+# the leaderboard markdown table and the docs/leaderboard.md Chart.js
+# page. Mirrors the real-data history pattern but for the public
+# synthetic surface (issue #166). CI runs this automatically on every
+# merge to main via .github/workflows/leaderboard.yml.
+leaderboard:
+	$(PYTHON) scripts/write_synthetic_history.py
+	$(PYTHON) scripts/leaderboard.py
+
+# Verify the rendered leaderboard artifacts are up to date with the
+# current reports/history/ contents. Suitable for pre-PR gating.
+leaderboard-check:
+	$(PYTHON) scripts/leaderboard.py --check
 
 clean:
 	rm -rf data/index outputs reports
