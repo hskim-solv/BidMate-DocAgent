@@ -36,7 +36,7 @@ import os
 import time
 from typing import Any
 
-SYNTHESIS_SCHEMA_VERSION = 1
+SYNTHESIS_SCHEMA_VERSION = 2
 ENV_BACKEND = "BIDMATE_SYNTHESIS_BACKEND"
 ENV_MODEL = "BIDMATE_SYNTHESIS_MODEL"
 ENV_API_KEY = "BIDMATE_SYNTHESIS_API_KEY"
@@ -49,6 +49,70 @@ DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-6"
 DEFAULT_MAX_TOKENS = 1024
 EVIDENCE_TEXT_LIMIT = 600
 EVIDENCE_FOR_PROMPT = 6
+
+# Public list-pricing per million tokens (USD) used for portfolio-side
+# cost estimation only — NOT an Anthropic billing source of truth. The
+# real invoice authority is the Anthropic console; these constants let
+# the eval surface flag order-of-magnitude regressions ("a refactor
+# 10x'd token spend") without a billing API dependency. Update when
+# Anthropic publishes new tiers.
+PRICING_PER_MTOK_USD: dict[str, dict[str, float]] = {
+    # Claude 4.x family (input/output, plus the standard 0.1x cache-read
+    # discount and 1.25x cache-write surcharge on input).
+    "claude-opus-4-7": {
+        "input": 15.0, "output": 75.0, "cache_read": 1.50, "cache_write": 18.75,
+    },
+    "claude-sonnet-4-6": {
+        "input": 3.0, "output": 15.0, "cache_read": 0.30, "cache_write": 3.75,
+    },
+    "claude-haiku-4-5-20251001": {
+        "input": 1.0, "output": 5.0, "cache_read": 0.10, "cache_write": 1.25,
+    },
+}
+
+
+def _resolve_pricing(model: str | None) -> dict[str, float] | None:
+    if not model:
+        return None
+    # Allow versioned ids (e.g. ``claude-sonnet-4-6-20260301``) to match
+    # the base entry — we look up by longest known prefix.
+    candidates = [m for m in PRICING_PER_MTOK_USD if model.startswith(m)]
+    if not candidates:
+        return None
+    best = max(candidates, key=len)
+    return PRICING_PER_MTOK_USD[best]
+
+
+def compute_cost_usd(
+    *,
+    model: str | None,
+    tokens_in: int | None,
+    tokens_out: int | None,
+    cache_read_tokens: int | None = None,
+    cache_write_tokens: int | None = None,
+) -> float | None:
+    """Estimate USD cost from token counts and the model price card.
+
+    Returns ``None`` when the model is unknown (e.g. ``stub`` or any
+    openai-compatible endpoint where local pricing is not modeled).
+    ``tokens_in`` is the *uncached* input tokens — cache-read and
+    cache-write tokens are billed separately and must be passed
+    explicitly, not double-counted.
+    """
+    pricing = _resolve_pricing(model)
+    if pricing is None:
+        return None
+    cost = 0.0
+    if tokens_in:
+        cost += (tokens_in / 1_000_000.0) * pricing["input"]
+    if tokens_out:
+        cost += (tokens_out / 1_000_000.0) * pricing["output"]
+    if cache_read_tokens:
+        cost += (cache_read_tokens / 1_000_000.0) * pricing["cache_read"]
+    if cache_write_tokens:
+        cost += (cache_write_tokens / 1_000_000.0) * pricing["cache_write"]
+    # Six-decimal rounding: the typical per-query spend is fractions of a cent.
+    return round(cost, 6)
 
 SYSTEM_PROMPT = (
     "You rewrite the summary of an answer produced by a retrieval-augmented "
@@ -110,6 +174,9 @@ def synthesize_answer(
         "model": None,
         "tokens_in": None,
         "tokens_out": None,
+        "cache_read_tokens": None,
+        "cache_write_tokens": None,
+        "cost_estimate_usd": None,
         "latency_ms": None,
         "fell_back": False,
         "fallback_reason": None,
@@ -167,6 +234,15 @@ def synthesize_answer(
     meta["model"] = payload.get("model")
     meta["tokens_in"] = payload.get("tokens_in")
     meta["tokens_out"] = payload.get("tokens_out")
+    meta["cache_read_tokens"] = payload.get("cache_read_tokens")
+    meta["cache_write_tokens"] = payload.get("cache_write_tokens")
+    meta["cost_estimate_usd"] = compute_cost_usd(
+        model=meta["model"],
+        tokens_in=meta["tokens_in"],
+        tokens_out=meta["tokens_out"],
+        cache_read_tokens=meta["cache_read_tokens"],
+        cache_write_tokens=meta["cache_write_tokens"],
+    )
     meta["used_chunk_ids"] = used_chunk_ids
     return updated, meta
 
@@ -311,6 +387,12 @@ def _anthropic_backend(  # pragma: no cover - network
 
     client = anthropic.Anthropic(api_key=api_key)
     user_prompt = _build_user_prompt(query, analysis, answer, evidence)
+    # Tool definitions stay stable across queries, so we mark the LAST
+    # tool in the array with cache_control — that creates a cache
+    # breakpoint covering tools + system in one block, maximizing hit
+    # rate on subsequent calls.
+    cached_tool = dict(TOOL_DEFINITION)
+    cached_tool["cache_control"] = {"type": "ephemeral"}
     response = client.messages.create(
         model=model,
         max_tokens=max_tokens,
@@ -322,7 +404,7 @@ def _anthropic_backend(  # pragma: no cover - network
                 "cache_control": {"type": "ephemeral"},
             }
         ],
-        tools=[TOOL_DEFINITION],
+        tools=[cached_tool],
         tool_choice={"type": "tool", "name": TOOL_DEFINITION["name"]},
         messages=[{"role": "user", "content": user_prompt}],
     )
@@ -335,6 +417,8 @@ def _anthropic_backend(  # pragma: no cover - network
         "model": model,
         "tokens_in": getattr(usage, "input_tokens", None) if usage else None,
         "tokens_out": getattr(usage, "output_tokens", None) if usage else None,
+        "cache_read_tokens": getattr(usage, "cache_read_input_tokens", None) if usage else None,
+        "cache_write_tokens": getattr(usage, "cache_creation_input_tokens", None) if usage else None,
     }
 
 
@@ -411,5 +495,7 @@ __all__ = [
     "DEFAULT_BACKEND",
     "ENV_BACKEND",
     "ENV_MODEL",
+    "PRICING_PER_MTOK_USD",
+    "compute_cost_usd",
     "synthesize_answer",
 ]

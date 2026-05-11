@@ -15,7 +15,7 @@
 
 | 시그널 | 어디서 확인하나 |
 |---|---|
-| 아키텍처 결정이 **사후 합리화가 아닌 기록된 결정**으로 남아있다 | [`docs/adr/`](./adr/README.md) — 14개 ADR (12 accepted / 2 proposed), status-tracked, supersession chains 명시 |
+| 아키텍처 결정이 **사후 합리화가 아닌 기록된 결정**으로 남아있다 | [`docs/adr/`](./adr/README.md) — 15개 ADR (13 accepted / 2 proposed), status-tracked, supersession chains 명시 |
 | **측정 가능한 성공 기준**을 미리 잡고 그 기준으로 평가한다 | [`portfolio-case-study.md` §2](./portfolio-case-study.md), [`eval/config.yaml`](../eval/config.yaml), README headline 표 |
 | 합성 평가의 한계를 알고 **공개/비공개 평가 분리**로 보완한다 | [ADR 0005](./adr/0005-eval-split-public-synthetic-private-local.md), [`docs/private-100-doc-experiments.md`](./private-100-doc-experiments.md) |
 | **실패를 분류·우선순위화**한 뒤 백로그로 만든다 | [`docs/real-data-failure-taxonomy.md`](./real-data-failure-taxonomy.md), 메타 이슈 #49 |
@@ -25,7 +25,7 @@
 
 ## 시니어 시그널 1 — 아키텍처 결정의 추적성
 
-각 ADR은 **하나의 의사결정**을 다룬다. 14개를 빠르게 읽고 나면, 이 시스템에서 어떤 선택이 load-bearing인지와 supersession chain이 명확해진다.
+각 ADR은 **하나의 의사결정**을 다룬다. 15개를 빠르게 읽고 나면, 이 시스템에서 어떤 선택이 load-bearing인지와 supersession chain이 명확해진다.
 
 | ADR | 상태 | 결정 | 시니어 관점에서 왜 중요한가 |
 |---|---|---|---|
@@ -43,6 +43,7 @@
 | [0012](./adr/0012-llm-judge-on-public-synthetic.md) | accepted | LLM-judge on public synthetic, stub-default (refines 0006, reuses 0011) | judge backend는 결정적 stub으로 CI 통과; real backend는 운영자 옵트인 |
 | [0013](./adr/0013-observability-as-additive-pluggable-surface.md) | accepted | observability를 additive·pluggable·fail-closed로 | trace backend(LangFuse/OTel) 장애가 query를 깨뜨리지 않음; LLM Ops 의식의 코드화 |
 | [0014](./adr/0014-ragas-judge-additive-synthetic.md) | accepted | RAGAS judge as additive enrichment (extends 0012) | 외부 표준 메트릭으로 cross-validation; 결정적 stub-default 유지 |
+| [0015](./adr/0015-cost-telemetry-additive.md) | accepted | cost telemetry as additive observability (extends 0011, 0013) | per-query `cost_estimate_usd` + `cache_read_tokens` 캡처 — LLM Ops 핵심 시그널을 계약 위반 없이 추가 |
 
 **인터뷰 talking point 1 (real-data 회귀)**: "ADR 0005가 없었다면 공개본의 abstention 회귀(#69의 `1.000 → 0.500` 사건)는 아무도 보지 못했을 것이다. 공개 합성만 보던 시기에는 1-of-2 incidental overlap 패턴이 잡히지 않았다." — 근거: [`docs/private-100-doc-experiments.md`](./private-100-doc-experiments.md) 2026-05-11 entry.
 
@@ -132,6 +133,7 @@ make reproduce  # smoke + SHA-256 over the environment-invariant metric subset
 | "LangChain/LlamaIndex 안 쓰고 왜 자체 구축?" | [ADR 0009](./adr/0009-external-baseline-comparison.md) — 비대칭 metric(citation/abstention)을 외부 시스템이 producer 못하는 게 정량 답변 |
 | "LLM-as-judge bias는 어떻게 다루나요?" | [ADR 0012](./adr/0012-llm-judge-on-public-synthetic.md) + [ADR 0014](./adr/0014-ragas-judge-additive-synthetic.md) — stub-default + RAGAS cross-check |
 | "운영에서 latency/cost/trace는 어떻게 봅니까?" | [ADR 0013](./adr/0013-observability-as-additive-pluggable-surface.md) + [`docs/observability.md`](./observability.md) — LangFuse/OTel pluggable, fail-closed |
+| "토큰 비용은 어떻게 추적하나요? prompt caching hit rate는요?" | [ADR 0015](./adr/0015-cost-telemetry-additive.md) — `diagnostics.synthesis.cost_estimate_usd` + `cache_read_tokens` + `cache_write_tokens`; price card는 `rag_synthesis.PRICING_PER_MTOK_USD`, 회귀 가드는 `tests/test_synthesis_cost_telemetry.py` |
 | "확장한다면 다음 우선순위는?" | [`portfolio-case-study.md` §7](./portfolio-case-study.md) + 메타 이슈 #49 |
 
 ## 이 프로젝트가 입증하지 않는 것 (정직한 범위)

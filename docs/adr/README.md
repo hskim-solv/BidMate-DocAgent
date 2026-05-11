@@ -77,6 +77,7 @@ project record.
 | [0012](./0012-llm-judge-on-public-synthetic.md) | accepted | LLM-judge on the public synthetic eval, stub-default (refines 0006, reuses 0011 backend pattern) |
 | [0013](./0013-observability-as-additive-pluggable-surface.md) | accepted | Observability as an additive, pluggable, fail-closed surface |
 | [0014](./0014-ragas-judge-additive-synthetic.md) | accepted | RAGAS-style LLM judge as additive enrichment on synthetic surface (extends 0012) |
+| [0015](./0015-cost-telemetry-additive.md) | accepted | Cost telemetry as additive observability (extends 0011, 0013) |
 
 ## Decision evolution
 
