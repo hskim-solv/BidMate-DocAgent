@@ -26,6 +26,7 @@ from rag_core import (
     run_rag_query,
 )
 from eval.bootstrap import bootstrap_ci
+from scripts.write_real_eval_baseline import provenance
 
 
 QUERY_TYPES = ("single_doc", "comparison", "follow_up", "abstention")
@@ -921,6 +922,15 @@ def score_case(
         "abstained": abstained,
         **answer_format,
         "answer": answer,
+        "evidence": [
+            {
+                "text": str(item.get("text") or "")[:600],
+                "doc_id": item.get("doc_id"),
+                "chunk_id": item.get("chunk_id"),
+                "page": item.get("page"),
+            }
+            for item in (prediction.get("evidence") or [])[:3]
+        ],
     }
 
 
@@ -1316,6 +1326,7 @@ def main() -> int:
 
     summary = {
         "mode": "rag",
+        "provenance": provenance(),
         "config": args.config,
         "index_dir": args.index_dir,
         "primary_run": primary_summary["name"],

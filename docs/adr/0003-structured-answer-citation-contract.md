@@ -2,7 +2,7 @@
 
 - **Status**: accepted
 - **Date**: 2026-05-11
-- **Related**: [`docs/answer-policy.md`](../answer-policy.md), [`docs/citation-grounding-eval.md`](../citation-grounding-eval.md), [`eval/run_eval.py`](../../eval/run_eval.py)
+- **Related**: [`docs/answer-policy.md`](../answer-policy.md) (working reference, enforcement walkthrough in [§계약 강제 메커니즘](../answer-policy.md#계약-강제-메커니즘)), [`docs/citation-grounding-eval.md`](../citation-grounding-eval.md), [`eval/run_eval.py`](../../eval/run_eval.py)
 
 ## Context
 

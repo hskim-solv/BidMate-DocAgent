@@ -28,6 +28,7 @@ except ImportError:  # pragma: no cover — defensive; declared in requirements.
     _BM25Okapi = None  # type: ignore[assignment]
 
 from rag_synthesis import synthesize_answer
+from text_normalize import expand_forms, normalize_text
 
 DEFAULT_EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 DEFAULT_HASH_DIM = 384
@@ -938,8 +939,13 @@ def embed_texts(
     backend: str = "auto",
     local_only: bool = False,
 ) -> EmbeddingResult:
-    if backend not in {"auto", "sentence-transformers", "hashing"}:
-        raise ValueError("--embedding_backend must be one of: auto, sentence-transformers, hashing")
+    if backend not in {"auto", "sentence-transformers", "hashing", "openai"}:
+        raise ValueError(
+            "--embedding_backend must be one of: auto, sentence-transformers, hashing, openai"
+        )
+
+    if backend == "openai":
+        return _embed_with_openai(texts, model_name=model_name)
 
     should_try_sentence_transformers = backend == "sentence-transformers" or (
         backend == "auto" and sentence_transformer_cache_available(model_name)
@@ -974,6 +980,35 @@ def embed_texts(
         vectors=hashing_embeddings(texts, DEFAULT_HASH_DIM),
         backend="hashing",
         model="local-hashing-bow",
+    )
+
+
+def _embed_with_openai(texts: list[str], *, model_name: str) -> EmbeddingResult:
+    try:
+        import openai  # type: ignore[import-not-found]
+    except Exception as exc:
+        raise RuntimeError(
+            "openai backend requires the openai SDK. "
+            "Install with `pip install openai` or use --embedding_backend sentence-transformers."
+        ) from exc
+    api_key = os.environ.get("BIDMATE_OPENAI_API_KEY") or os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        raise RuntimeError(
+            "BIDMATE_OPENAI_API_KEY (or OPENAI_API_KEY) is not set for embedding_backend=openai."
+        )
+    client = openai.OpenAI(api_key=api_key)
+    vectors: list[list[float]] = []
+    batch_size = 100
+    for start in range(0, len(texts), batch_size):
+        batch = texts[start : start + batch_size]
+        resp = client.embeddings.create(model=model_name, input=batch)
+        vectors.extend(item.embedding for item in resp.data)
+    arr = np.asarray(vectors, dtype=np.float32)
+    norms = np.linalg.norm(arr, axis=1, keepdims=True).clip(min=1e-12)
+    return EmbeddingResult(
+        vectors=arr / norms,
+        backend="openai",
+        model=model_name,
     )
 
 
@@ -1620,6 +1655,23 @@ def analyze_query(
             if not token.startswith("기관"):
                 topics.append(token)
 
+    # ADR 0007 / issue #170: add canonical-form tokens from Korean money/date
+    # normalization so substring topic matching can bridge 5천만원 ↔ 50,000,000.
+    # Strictly additive — existing tokens are kept; new tokens compete for the
+    # topics[:8] cap on equal footing.
+    canonical_query = normalize_text(normalized_query)
+    if canonical_query != normalized_query:
+        existing = {topic.lower() for topic in topics}
+        for token in tokenize(canonical_query):
+            if (
+                len(token) > 1
+                and token not in STOPWORDS
+                and not token.startswith("기관")
+                and token.lower() not in existing
+            ):
+                topics.append(token)
+                existing.add(token.lower())
+
     comparison_terms = ("차이", "비교", "각각", "대비")
     comparison_joiners = ("와", "과", "및", ",", "/")
     reduced_matches = metadata_matches_for_stage(metadata_matches, "reduced")
@@ -1949,7 +2001,7 @@ def retrieve(
             item["score"] = round(float(rrf * rrf_norm), 6)
             item["score_parts"]["rank_rrf"] = round(float(rrf * rrf_norm), 6)
 
-    scored.sort(key=lambda item: item["score"], reverse=True)
+    scored.sort(key=lambda item: (item["score"], item["chunk_id"]), reverse=True)
     top_k = int(plan["top_k"])
     if plan.get("retrieval_mode") == "hierarchical":
         return reassemble_parent_sections(index, scored, top_k, plan, analysis)
@@ -2124,6 +2176,11 @@ def embed_query_for_index(query: str, embedding_config: dict[str, Any]) -> np.nd
             ).vectors[0]
         except Exception:
             return hashing_embeddings([query], dimension)[0]
+    if backend == "openai":
+        try:
+            return embed_texts([query], model_name=model, backend="openai").vectors[0]
+        except Exception:
+            return hashing_embeddings([query], dimension)[0]
     return hashing_embeddings([query], dimension)[0]
 
 
@@ -2284,9 +2341,21 @@ def verify_evidence(
         reasons.append("low_top_score")
 
     combined = " ".join(evidence_text_for_verification(item) for item in evidence).lower()
+    # ADR 0007 / issue #170: Korean money/date OR-match. Build canonical form
+    # once; substring check tests (form ∈ combined) OR (form ∈ canonical) for
+    # each form in expand_forms(topic). Strictly additive — legacy
+    # (topic ∈ combined) is preserved as the first branch.
+    combined_canonical = normalize_text(combined)
     topics = verification_topics(analysis)
     if topics:
-        matched_topic_count = sum(1 for topic in topics if topic.lower() in combined)
+        matched_topic_count = sum(
+            1
+            for topic in topics
+            if any(
+                form in combined or form in combined_canonical
+                for form in expand_forms(topic.lower())
+            )
+        )
         if matched_topic_count < len(topics):
             if (
                 allow_partial_topic
@@ -2417,7 +2486,12 @@ def evidence_text_for_verification(item: dict[str, Any]) -> str:
 
 def evidence_has_topic(item: dict[str, Any], topics: list[str]) -> bool:
     text = evidence_text_for_verification(item).lower()
-    return any(topic.lower() in text for topic in topics)
+    text_canonical = normalize_text(text)
+    return any(
+        (form in text) or (form in text_canonical)
+        for topic in topics
+        for form in expand_forms(topic.lower())
+    )
 
 
 def generate_answer(

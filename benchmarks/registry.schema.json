@@ -79,6 +79,7 @@
         "rerank": { "type": "boolean" },
         "verifier_retry": { "type": "boolean" },
         "retrieval_mode": { "type": "string", "enum": ["flat", "hierarchical"] },
+        "retrieval_backend": { "type": "string", "enum": ["dense", "hybrid"] },
         "prompt_profile": { "type": "string" }
       },
       "additionalProperties": false

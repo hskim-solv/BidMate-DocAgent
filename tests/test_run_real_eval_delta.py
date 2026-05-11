@@ -142,6 +142,58 @@ class ExtractAggregateTest(unittest.TestCase):
         self.assertIn("Slice abstention", md)
         self.assertIn("abstention", md)
 
+    def test_provenance_passes_through_extraction(self) -> None:
+        """Issue #160: provenance is metadata about run state (no per-case
+        content), so it crosses the ADR 0005 commit boundary intact. It
+        must survive extract_aggregate and not trip the forbidden-key guard.
+        """
+        summary_with_provenance = {
+            **FULL_SUMMARY,
+            "provenance": {
+                "git_commit": "deadbeef0000",
+                "git_dirty": False,
+                "generated_at": "2026-05-11T08:04:05Z",
+            },
+        }
+        agg = extract_aggregate(summary_with_provenance)
+        self.assertIn("provenance", agg)
+        self.assertEqual(agg["provenance"]["git_commit"], "deadbeef0000")
+        self.assertEqual(agg["provenance"]["git_dirty"], False)
+        # No per-case data leaked through.
+        flat = json.dumps(agg, ensure_ascii=False)
+        self.assertNotIn("real_secret_case", flat)
+        self.assertNotIn("private_doc_1", flat)
+
+    def test_render_includes_commit_sha_header(self) -> None:
+        """The rendered delta surfaces base/head commit SHAs so reviewers
+        can spot eval-vs-baseline provenance skew (the #160 failure mode).
+        """
+        base = extract_aggregate(
+            {
+                **FULL_SUMMARY,
+                "provenance": {
+                    "git_commit": "aaaaaaaaaaaa",
+                    "git_dirty": False,
+                    "generated_at": "2026-05-01T00:00:00Z",
+                },
+            }
+        )
+        head = extract_aggregate(
+            {
+                **FULL_SUMMARY,
+                "accuracy": 0.6,
+                "provenance": {
+                    "git_commit": "bbbbbbbbbbbb",
+                    "git_dirty": False,
+                    "generated_at": "2026-05-11T00:00:00Z",
+                },
+            }
+        )
+        md = render_markdown(base, head, "test")
+        self.assertIn("aaaaaaaaaaaa", md)
+        self.assertIn("bbbbbbbbbbbb", md)
+        self.assertIn("commits:", md)
+
 
 class FullScriptInvocationTest(unittest.TestCase):
     """Smoke-test the full script end-to-end via subprocess so the

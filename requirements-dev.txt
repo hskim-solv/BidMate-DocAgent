@@ -4,3 +4,7 @@
 pytest>=9.0.3
 # Required by fastapi.testclient (starlette.testclient) for tests/test_api.py.
 httpx>=0.27,<1.0
+# Opt-in OpenAI embedding backend (issue #161, embedding ablation runner).
+# Production runtime does NOT import openai — only contributors running
+# scripts/run_embedding_ablation.py --models text-embedding-3-large need this.
+openai>=1.0
