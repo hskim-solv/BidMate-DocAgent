@@ -52,6 +52,11 @@ reports/real100/history/*
 # for clarity (already caught by reports/real100/* above).
 reports/real100/judge.local.json
 
+# ADR 0009 — external baseline aggregates are committable (no per-case
+# LLM text), per-case detail stays local. Mirrors the ADR 0005 split.
+!reports/external_baselines.json
+reports/external_baselines.local.json
+
 # Benchmark raw/local artifacts
 artifacts/benchmarks/
 artifacts/runs/

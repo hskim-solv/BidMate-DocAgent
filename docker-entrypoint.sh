@@ -24,5 +24,33 @@ else
   echo "[entrypoint] Reusing existing index at $INDEX_DIR/index.json"
 fi
 
-echo "[entrypoint] Starting uvicorn on $HOST:$PORT"
-exec uvicorn api.main:app --host "$HOST" --port "$PORT"
+# BIDMATE_DEMO_MODE=api (default) | streamlit | both
+# - api: FastAPI on $PORT (default 8000)
+# - streamlit: Streamlit UI on $STREAMLIT_PORT (default 8501)
+# - both: API in background + Streamlit in foreground
+MODE="${BIDMATE_DEMO_MODE:-api}"
+STREAMLIT_PORT="${BIDMATE_STREAMLIT_PORT:-8501}"
+
+case "$MODE" in
+  api)
+    echo "[entrypoint] Starting uvicorn on $HOST:$PORT"
+    exec uvicorn api.main:app --host "$HOST" --port "$PORT"
+    ;;
+  streamlit)
+    echo "[entrypoint] Starting Streamlit on $HOST:$STREAMLIT_PORT"
+    exec streamlit run demo/streamlit_app.py \
+      --server.address="$HOST" --server.port="$STREAMLIT_PORT" \
+      --server.headless=true --browser.gatherUsageStats=false
+    ;;
+  both)
+    echo "[entrypoint] Starting FastAPI on $HOST:$PORT and Streamlit on $HOST:$STREAMLIT_PORT"
+    uvicorn api.main:app --host "$HOST" --port "$PORT" &
+    exec streamlit run demo/streamlit_app.py \
+      --server.address="$HOST" --server.port="$STREAMLIT_PORT" \
+      --server.headless=true --browser.gatherUsageStats=false
+    ;;
+  *)
+    echo "[entrypoint] Unknown BIDMATE_DEMO_MODE=$MODE (expected api|streamlit|both)" >&2
+    exit 2
+    ;;
+esac

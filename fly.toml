@@ -1,0 +1,81 @@
+# Fly.io configuration for the BidMate-DocAgent live demo.
+#
+# One-time setup (locally):
+#   flyctl auth signup        # or: flyctl auth login
+#   flyctl launch --no-deploy --copy-config --name <your-app-name>
+#   flyctl deploy
+#
+# The container builds the hashing-backend index on first start, so
+# the public demo runs offline (no LLM API key, no Anthropic billing).
+# To swap to the live LLM synthesis path:
+#   flyctl secrets set ANTHROPIC_API_KEY=sk-ant-...
+#   flyctl secrets set BIDMATE_SYNTHESIS_BACKEND=anthropic
+#
+# Region: sea (Seattle) by default — adjust to one closer to your
+# expected reviewers. `seo` (Seoul) is a natural fit for a Korean RFP
+# demo when Fly.io has capacity there.
+
+app = "bidmate-docagent-demo"   # rename via `flyctl apps create` before first deploy
+primary_region = "sea"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  BIDMATE_DEMO_MODE = "both"       # FastAPI on :8000 + Streamlit on :8501
+  BIDMATE_INDEX_DIR = "/app/data/index"
+  EMBEDDING_BACKEND = "hashing"
+  BIDMATE_SYNTHESIS_BACKEND = "stub"
+
+# Streamlit UI — the public-facing port.
+[[services]]
+  internal_port = 8501
+  protocol = "tcp"
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [[services.ports]]
+    handlers = ["http"]
+    port = 80
+    force_https = true
+
+  [[services.ports]]
+    handlers = ["tls", "http"]
+    port = 443
+
+  [services.concurrency]
+    type = "requests"
+    soft_limit = 20
+    hard_limit = 25
+
+# FastAPI surface — useful for /health probes and programmatic use.
+[[services]]
+  internal_port = 8000
+  protocol = "tcp"
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [[services.ports]]
+    handlers = ["http"]
+    port = 8000
+
+  [services.concurrency]
+    type = "requests"
+    soft_limit = 50
+    hard_limit = 75
+
+[checks]
+  [checks.health]
+    type = "http"
+    interval = "15s"
+    timeout = "3s"
+    grace_period = "30s"
+    method = "GET"
+    path = "/health"
+    port = 8000
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "1gb"   # Streamlit + sentence-transformers cache fit in 1 GB on hashing backend
