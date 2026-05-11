@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""LLM answer synthesis path for ADR 0007.
+"""LLM answer synthesis path for ADR 0011.
 
 The synthesizer is an *additive* renderer for the structured answer
 produced by ``rag_core.generate_answer``. It rewrites only ``summary``

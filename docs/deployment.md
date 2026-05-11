@@ -3,7 +3,7 @@
 This page covers three deploy targets for the BidMate-DocAgent live
 demo. All three serve the **Streamlit UI** (`demo/streamlit_app.py`)
 backed by either the deterministic hashing pipeline (offline, free)
-or live Claude synthesis (ADR 0007, paid).
+or live Claude synthesis (ADR 0011, paid).
 
 For the CLI / eval flow (not deployment), see
 [`docs/api-demo.md`](api-demo.md) and the root `README.md`.
@@ -17,7 +17,7 @@ For the CLI / eval flow (not deployment), see
       If yes, prepare `ANTHROPIC_API_KEY` and budget (~$0.05 per query
       with Sonnet 4.6 + prompt caching). If no, leave the default
       `BIDMATE_SYNTHESIS_BACKEND=stub` — the stub is a deterministic
-      pass-through (ADR 0007).
+      pass-through (ADR 0011).
 
 ## Fly.io
 
@@ -113,7 +113,7 @@ Suggested storyboard (timestamps target ~150 s total):
    citation chunk_ids on each claim.
 3. **0:45–1:15** — toggle "Compare extractive vs LLM synthesis".
    Show that under the `stub` backend the two columns are
-   byte-identical (ADR 0007 zero-regression contract). Mention that
+   byte-identical (ADR 0011 zero-regression contract). Mention that
    `anthropic` backend would diverge here.
 4. **1:15–1:45** — run `abstention_one_of_two_topic_overlap`
    (기관 A의 보안과 드론은?). Highlight `🔴 insufficient` status and

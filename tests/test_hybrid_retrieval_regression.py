@@ -1,4 +1,4 @@
-"""Regression guards for hybrid BM25 + dense retrieval (ADR 0009, issue #119).
+"""Regression guards for hybrid BM25 + dense retrieval (ADR 0010, issue #119).
 
 Locks in four contracts:
 

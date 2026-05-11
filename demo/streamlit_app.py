@@ -113,7 +113,7 @@ def render_diagnostics(diag: dict) -> None:
     synthesis = diag.get("synthesis")
     if synthesis:
         with st.container(border=True):
-            st.markdown("**LLM Synthesis (ADR 0007)**")
+            st.markdown("**LLM Synthesis (ADR 0011)**")
             scols = st.columns(3)
             scols[0].metric("Backend", synthesis.get("backend", "?"))
             scols[1].metric("Fell back", "yes" if synthesis.get("fell_back") else "no")
@@ -161,14 +161,14 @@ st.markdown(
 st.caption(
     "ADRs: [0001 naive baseline](https://github.com/hskim-solv/BidMate-DocAgent/blob/main/docs/adr/0001-preserve-naive-baseline.md) · "
     "[0003 answer contract](https://github.com/hskim-solv/BidMate-DocAgent/blob/main/docs/adr/0003-structured-answer-citation-contract.md) · "
-    "[0007 LLM synthesis](https://github.com/hskim-solv/BidMate-DocAgent/blob/main/docs/adr/0007-llm-synthesis-as-additive-ablation.md)"
+    "[0011 LLM synthesis](https://github.com/hskim-solv/BidMate-DocAgent/blob/main/docs/adr/0011-llm-synthesis-as-additive-ablation.md)"
 )
 
 with st.sidebar:
     st.header("⚙️ Configuration")
     pipelines = pipeline_cli_choices()
     default_idx = pipelines.index("agentic_full") if "agentic_full" in pipelines else 0
-    pipeline = st.radio("Pipeline preset", pipelines, index=default_idx, help="naive_baseline = control · agentic_full = extractive · agentic_full_llm = LLM synthesis (ADR 0007, stub by default)")
+    pipeline = st.radio("Pipeline preset", pipelines, index=default_idx, help="naive_baseline = control · agentic_full = extractive · agentic_full_llm = LLM synthesis (ADR 0011, stub by default)")
     top_k = st.slider("Top-k retrieval", 1, 12, 4)
     retrieval_mode = st.selectbox("Retrieval mode", ["flat", "hierarchical"])
     compare_mode = st.checkbox("Compare extractive vs LLM side-by-side", value=False)
@@ -236,7 +236,7 @@ if run_btn and query.strip():
             except Exception as exc:
                 st.error(f"LLM run failed: {exc}")
         st.info(
-            "ADR 0007: stub backend is a pass-through, so the answers are byte-identical. "
+            "ADR 0011: stub backend is a pass-through, so the answers are byte-identical. "
             "Set `BIDMATE_SYNTHESIS_BACKEND=anthropic` (with `ANTHROPIC_API_KEY`) "
             "to see the live Claude synthesis."
         )

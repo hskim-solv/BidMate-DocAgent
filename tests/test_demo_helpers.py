@@ -114,7 +114,7 @@ class RunPipelineIntegrationTest(unittest.TestCase):
     def test_runs_llm_synthesis_with_stub(self) -> None:
         # Verifies the agentic_full_llm preset still resolves and the
         # synthesis path activates (stub backend, byte-equal to
-        # extractive per ADR 0007).
+        # extractive per ADR 0011).
         result = run_pipeline(
             self.index,
             "기관 A의 보안 통제 요구사항은?",

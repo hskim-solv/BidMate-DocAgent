@@ -1,4 +1,4 @@
-"""Contract tests for ADR 0007 — LLM answer synthesis as additive ablation.
+"""Contract tests for ADR 0011 — LLM answer synthesis as additive ablation.
 
 The synthesizer is *additive*: it rewrites only ``summary`` and
 ``answer_text``. ``status``, ``claims``, ``citations``, ``insufficiency``,
@@ -9,7 +9,7 @@ must be rejected and the deterministic answer kept.
 These tests lock the contract on three surfaces:
 
 * unit-level guards on ``rag_synthesis.synthesize_answer``
-* the pass-through stub backend (used by public CI per ADR 0007)
+* the pass-through stub backend (used by public CI per ADR 0011)
 * the end-to-end ``agentic_full_llm`` pipeline preset returning a
   zero-regression answer dict against the same query as ``agentic_full``
 """
@@ -101,7 +101,7 @@ class SynthesisUnitTest(unittest.TestCase):
         self.assertEqual(meta["fallback_reason"], "no_evidence_chunks")
 
     def test_unauthorized_chunk_id_falls_back(self) -> None:
-        # ADR 0007 hard postcondition: any chunk_id outside evidence
+        # ADR 0011 hard postcondition: any chunk_id outside evidence
         # rejects the synthesis and keeps the deterministic answer.
         original = rag_synthesis._BACKENDS["stub"]
 

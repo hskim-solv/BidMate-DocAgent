@@ -1,4 +1,6 @@
-# 0009: Hybrid BM25 + dense retrieval with RRF fusion
+# 0010: Hybrid BM25 + dense retrieval with RRF fusion
+
+(Originally landed as ADR 0009 in [#159](https://github.com/hskim-solv/BidMate-DocAgent/pull/159); renumbered to 0010 to resolve a filesystem collision with the concurrent [`0009-external-baseline-comparison.md`](./0009-external-baseline-comparison.md) which landed first.)
 
 - **Status**: accepted
 - **Date**: 2026-05-11

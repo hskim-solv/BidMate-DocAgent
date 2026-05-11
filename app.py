@@ -30,7 +30,7 @@ def parse_args() -> argparse.Namespace:
         "--retrieval_backend",
         default=None,
         choices=["dense", "hybrid"],
-        help="Override the retrieval backend. 'hybrid' fuses BM25 + dense with RRF (ADR 0009).",
+        help="Override the retrieval backend. 'hybrid' fuses BM25 + dense with RRF (ADR 0010).",
     )
     parser.add_argument(
         "--context_entities",

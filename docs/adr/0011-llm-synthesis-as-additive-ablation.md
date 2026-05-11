@@ -1,4 +1,6 @@
-# 0007: LLM answer synthesis as additive ablation
+# 0011: LLM answer synthesis as additive ablation
+
+(Originally landed as ADR 0007 in [#142](https://github.com/hskim-solv/BidMate-DocAgent/pull/142); renumbered to 0011 to resolve a filesystem collision with the foundational [`0007-issue-linked-branch-naming.md`](./0007-issue-linked-branch-naming.md) governance ADR which landed first.)
 
 - **Status**: proposed
 - **Date**: 2026-05-11

@@ -120,7 +120,7 @@ mirroring ADR 0005's split for the real-data surface.
 - Public CI stays deterministic, free, and offline (ADR 0004 /
   ADR 0006). External backends are an opt-in side road.
 - Backend abstraction is the same idiom already established by ADR 0006
-  (`BIDMATE_JUDGE_BACKEND`) and ADR 0007
+  (`BIDMATE_JUDGE_BACKEND`) and ADR 0011
   (`BIDMATE_SYNTHESIS_BACKEND`) — readers learn it once.
 
 **Costs**

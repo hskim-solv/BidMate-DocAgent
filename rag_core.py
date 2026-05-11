@@ -22,6 +22,11 @@ import unicodedata
 
 import numpy as np
 
+try:
+    from rank_bm25 import BM25Okapi as _BM25Okapi
+except ImportError:  # pragma: no cover — defensive; declared in requirements.txt
+    _BM25Okapi = None  # type: ignore[assignment]
+
 from rag_synthesis import synthesize_answer
 
 DEFAULT_EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
@@ -87,7 +92,7 @@ PIPELINE_PRESETS: dict[str, dict[str, Any]] = {
         "comparison_balance": dict(DEFAULT_COMPARISON_BALANCE),
         "description": "Metadata-first retrieval with lexical/metadata rerank and verifier retry.",
     },
-    # ADR 0007 — additive LLM synthesis path. Same retrieval/verifier as
+    # ADR 0011 — additive LLM synthesis path. Same retrieval/verifier as
     # agentic_full; only the summary/answer_text rendering swaps to a
     # backend-pluggable LLM under the "no new chunk_ids" guard. Claims
     # and citations remain extractive (ADR 0003 preserved).
@@ -99,7 +104,7 @@ PIPELINE_PRESETS: dict[str, dict[str, Any]] = {
         "retrieval_mode": "flat",
         "prompt_profile": "llm_synthesis",
         "comparison_balance": dict(DEFAULT_COMPARISON_BALANCE),
-        "description": "agentic_full retrieval; LLM-synthesized summary under ADR 0007 guard.",
+        "description": "agentic_full retrieval; LLM-synthesized summary under ADR 0011 guard.",
     },
 }
 PIPELINE_ALIASES = {"full": "agentic_full", "full_llm": "agentic_full_llm"}
@@ -364,7 +369,7 @@ def pipeline_cli_choices() -> list[str]:
     # ADR 0001 explicit signal: this list is the source of truth for
     # which pipeline names are surfaced to the CLI. Adding/removing an
     # entry is the explicit revisit of that ADR (or, for additive
-    # changes like ADR 0007, the explicit follow-on).
+    # changes like ADR 0011, the explicit follow-on).
     return [DEFAULT_CLI_PIPELINE_NAME, DEFAULT_RAG_PIPELINE_NAME, "agentic_full_llm"]
 
 

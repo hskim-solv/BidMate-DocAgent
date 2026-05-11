@@ -48,7 +48,7 @@ Short version:
 | **Railway** | Connect this repo; Railway auto-detects the `Dockerfile`; set `BIDMATE_DEMO_MODE=streamlit`. |
 
 All three targets work with the default `stub` synthesis backend (no
-API key, no billing). To enable live Claude synthesis (ADR 0007):
+API key, no billing). To enable live Claude synthesis (ADR 0011):
 
 ```bash
 flyctl secrets set ANTHROPIC_API_KEY=sk-ant-... \\
@@ -58,12 +58,12 @@ flyctl secrets set ANTHROPIC_API_KEY=sk-ant-... \\
 ## What the demo shows
 
 - **Pipeline picker** — `naive_baseline` (control) vs `agentic_full`
-  (extractive) vs `agentic_full_llm` (LLM synthesis, ADR 0007).
+  (extractive) vs `agentic_full_llm` (LLM synthesis, ADR 0011).
 - **Sample queries** for each query type (single-doc, comparison,
   follow-up, abstention) including the regression-guard cases
   (#69 partial-topic, #89 1-of-2 topic).
 - **Side-by-side comparison** of extractive vs LLM synthesis on the
-  same query — the ADR 0007 "zero regression under stub" contract
+  same query — the ADR 0011 "zero regression under stub" contract
   becomes visible.
 - **Evidence pane** showing the retrieved chunks with their
   `chunk_id`, `agency`, section path, and score.
