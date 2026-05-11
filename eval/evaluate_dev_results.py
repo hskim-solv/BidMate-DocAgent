@@ -2,8 +2,8 @@
 """
 Keyword-based evaluator for dev_queries_v1-style result CSVs.
 
-Usage:
-  python evaluate_dev_results.py \
+Usage (run from repository root):
+  python eval/evaluate_dev_results.py \
       --results eval_results_template_filled.csv \
       --out-prefix outputs/dev_eval_run1
 

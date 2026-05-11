@@ -63,8 +63,10 @@
 
 ## 실행 예시
 
+저장소 루트에서 실행합니다.
+
 ```bash
-python evaluate_dev_results.py \
+python eval/evaluate_dev_results.py \
   --results eval_results_template_filled.csv \
   --out-prefix outputs/bm25_v1
 ```
