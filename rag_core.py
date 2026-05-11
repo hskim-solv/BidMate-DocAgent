@@ -1395,6 +1395,27 @@ def active_state_size(state: dict[str, Any]) -> int:
     )
 
 
+def inject_entities_into_query(query: str, entities: list[str]) -> str:
+    """Prepend resolved entities to the retrieval query (issue #71).
+
+    Skips entities that already appear in the query (case-insensitive)
+    so user-typed entities don't get duplicated. Order is preserved so
+    deterministic reproduction of dense embeddings is unaffected when
+    no augmentation is needed.
+    """
+    if not entities:
+        return query
+    lowered_query = query.lower()
+    missing = [
+        entity
+        for entity in entities
+        if entity and entity.lower() not in lowered_query
+    ]
+    if not missing:
+        return query
+    return " ".join([*missing, query])
+
+
 def make_context_resolution(
     status: str,
     source: str,
@@ -1425,14 +1446,23 @@ def resolve_conversation_context(
 ) -> tuple[str, list[str], dict[str, Any]]:
     explicit_context = coerce_string_list(context_entities or [])
     if explicit_context:
+        # Issue #71: prepend entities into the retrieval query string
+        # so dense / lexical scoring picks up the entity anchor — the
+        # same augmentation the conversation_state branch below
+        # already performs. Without this, follow-ups like "그럼 일정은?"
+        # carrying `context_entities=["기관 A"]` lost the entity in
+        # token space (only the metadata match path saw it). Resolved
+        # by injection so dense embedding and `lexical_similarity`
+        # both gain the anchor. Real-data taxonomy C4-1.
+        augmented_query = inject_entities_into_query(query, explicit_context)
         return (
-            query,
+            augmented_query,
             explicit_context,
             make_context_resolution(
                 "resolved",
                 "context_entities",
                 1.0,
-                resolved_query=query,
+                resolved_query=augmented_query,
                 context_entities=explicit_context,
             ),
         )
@@ -1502,7 +1532,7 @@ def resolve_conversation_context(
             ),
         )
 
-    resolved_query = " ".join([*state_terms, query])
+    resolved_query = inject_entities_into_query(query, state_terms)
     return (
         resolved_query,
         state_terms,

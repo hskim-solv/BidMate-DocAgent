@@ -432,7 +432,7 @@
     ]
   },
   "diagnostics": {
-    "latency_ms": 1.92,
+    "latency_ms": 1.94,
     "retry_count": 0,
     "abstained": false,
     "answer_status": "supported",
@@ -465,7 +465,7 @@
         "retrieval_mode": "flat",
         "verified": true,
         "verification_reasons": [],
-        "retrieve_ms": 0.21,
+        "retrieve_ms": 0.23,
         "verify_ms": 0.0,
         "comparison_coverage": {
           "targets": [
