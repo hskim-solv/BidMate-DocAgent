@@ -62,7 +62,7 @@ class RunRagQueryTimingTest(unittest.TestCase):
         original_verify = rag_core.verify_evidence
         calls = {"n": 0}
 
-        def always_fail(analysis, evidence):
+        def always_fail(analysis, evidence, **_kwargs):
             calls["n"] += 1
             return False, ["forced_failure"]
 

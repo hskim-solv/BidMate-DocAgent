@@ -55,5 +55,65 @@ Inspect these artifacts:
 - #60: local planner/rewrite traces are emitted in both `outputs/answer.json` and `reports/traces/`.
 - #63: answer schema v2 explicitly represents `supported`, `partial`, and `insufficient` with machine-readable status reasons.
 - #64: claim-level citation alignment is measured separately from whole-answer citation precision.
+- #69: partial-topic grounding on the relaxed (last-attempt) verifier stage — see below.
 
 Out of scope remains chunking redesign (#62) and confidentiality/reporting flow (#65).
+
+## Partial-topic grounding (issue #69)
+
+`docs/real-data-failure-taxonomy.md` C6 identified false abstention as
+the highest-impact remaining failure on real corpora: 9 of 12 real100
+misses ended with `retry_trigger_reason: topic_not_grounded × 2` —
+both the strict and relaxed stages rejected the same weak-but-usable
+evidence because the verifier required **every** verification topic to
+appear in the combined evidence text. The intended-abstention cases
+(P-13~15) were already robust; the failure was over-strict
+verification, not under-strict retrieval.
+
+### What changed
+
+- `verify_evidence(..., allow_partial_topic=False)` gained an explicit
+  flag. The retrieval loop sets it to `True` **only on the last
+  scheduled attempt** so the strict stages keep their current bar.
+- On the last attempt, when at least one topic and at least
+  `PARTIAL_TOPIC_GROUNDING_MIN_FRACTION` (currently `0.5`) of all
+  verification topics appear in the evidence, the verifier returns
+  `verified=True` with a non-blocking `partial_topic_grounding` reason.
+- `answer_status` maps that reason to `ANSWER_STATUS_PARTIAL` (not
+  `supported`), and `answer_status_reason` emits
+  `code: partial_topic_grounding` so the partial path is distinguishable
+  from the existing `partial_comparison` path. Both are documented in
+  [`answer-policy.md`](./answer-policy.md).
+- All other floors stay strict: `low_top_score`, comparison entity /
+  doc coverage, and the per-entity comparison topic check remain
+  blocking. Partial-topic grounding does not buy a free pass through
+  the hallucination floor.
+
+### Trade-off
+
+This is the strict-vs-relaxed knob anticipated in
+[ADR 0004](./adr/0004-verifier-retry-policy.md). The trade-off is
+explicit:
+
+- **Won**: meaningful share of false-abstention queries recover to
+  `partial` instead of `insufficient`. On the public synthetic eval,
+  the new `partial_topic_security_quantum` case ships as the in-tree
+  guard; real-data impact is expected on the C6 backlog (9 cases).
+- **Cost**: `citation_precision` may dip slightly because partial
+  answers can include citations to chunks that only ground some of
+  the requested topics. The status itself (`partial`) is the
+  contract telling callers the answer is not fully grounded.
+
+### How to validate locally
+
+```bash
+python3 scripts/build_index.py --input_dir data/raw --output_dir data/index --embedding_backend hashing
+python3 eval/run_eval.py --index_dir data/index --output_dir reports --config eval/config.yaml
+python3 -m pytest tests/test_partial_topic_grounding.py -v
+```
+
+Look for `case_results[*].id == "partial_topic_security_quantum"` with
+`answer_status == "partial"` and `verification_reasons` containing
+`partial_topic_grounding`. The same eval must keep the
+`abstention` (intended-abstention) metric unchanged on the
+unanswerable slice.

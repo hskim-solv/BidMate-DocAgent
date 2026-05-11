@@ -2050,8 +2050,38 @@ def metadata_similarity(analysis: dict[str, Any], chunk: dict[str, Any]) -> floa
     return 1.0 if chunk.get("agency") in entities else 0.0
 
 
-def verify_evidence(analysis: dict[str, Any], evidence: list[dict[str, Any]]) -> tuple[bool, list[str]]:
-    reasons = []
+# Minimum fraction of verification topics that must appear in the
+# combined evidence text for a *relaxed* (last-attempt) verification
+# pass to accept partial-topic grounding instead of abstaining. See
+# issue #69 / docs/real-data-failure-taxonomy.md C6, and ADR 0004 for
+# the strict→relaxed staging policy this implements.
+PARTIAL_TOPIC_GROUNDING_MIN_FRACTION = 0.5
+PARTIAL_TOPIC_GROUNDING_REASON = "partial_topic_grounding"
+
+
+def verify_evidence(
+    analysis: dict[str, Any],
+    evidence: list[dict[str, Any]],
+    *,
+    allow_partial_topic: bool = False,
+) -> tuple[bool, list[str]]:
+    """Verify that ``evidence`` supports the query in ``analysis``.
+
+    When ``allow_partial_topic`` is ``True`` (caller signals this is the
+    last retrieval attempt), a partial topic match — at least one topic
+    and at least :data:`PARTIAL_TOPIC_GROUNDING_MIN_FRACTION` of all
+    topics present in the combined evidence text — is accepted with
+    ``verified=True`` and a non-blocking
+    :data:`PARTIAL_TOPIC_GROUNDING_REASON` in the reasons list. The
+    caller (see :func:`answer_status`) maps that reason to
+    ``ANSWER_STATUS_PARTIAL`` so the answer surfaces the weaker
+    grounding instead of abstaining outright.
+
+    All other checks (low top score, comparison entity / doc coverage)
+    remain strict — partial topic grounding does not bypass hallucination
+    floors or comparison contracts.
+    """
+    reasons: list[str] = []
     if not evidence:
         return False, ["no_evidence"]
     if evidence[0]["score"] < 0.18:
@@ -2059,8 +2089,18 @@ def verify_evidence(analysis: dict[str, Any], evidence: list[dict[str, Any]]) ->
 
     combined = " ".join(evidence_text_for_verification(item) for item in evidence).lower()
     topics = verification_topics(analysis)
-    if topics and not all(topic.lower() in combined for topic in topics):
-        reasons.append("topic_not_grounded")
+    if topics:
+        matched_topic_count = sum(1 for topic in topics if topic.lower() in combined)
+        if matched_topic_count < len(topics):
+            if (
+                allow_partial_topic
+                and matched_topic_count >= 1
+                and (matched_topic_count / len(topics)) >= PARTIAL_TOPIC_GROUNDING_MIN_FRACTION
+            ):
+                # Soft signal — caller surfaces this as `partial` status.
+                reasons.append(PARTIAL_TOPIC_GROUNDING_REASON)
+            else:
+                reasons.append("topic_not_grounded")
 
     entities = analysis.get("entities") or []
     if analysis.get("query_type") == "comparison" and len(entities) > 1:
@@ -2084,7 +2124,10 @@ def verify_evidence(analysis: dict[str, Any], evidence: list[dict[str, Any]]) ->
         if missing_doc_ids:
             reasons.append("missing_comparison_doc:" + ",".join(missing_doc_ids))
 
-    return not reasons, reasons
+    # `partial_topic_grounding` is non-blocking: it surfaces the weaker
+    # grounding to the answer layer without forcing an abstention.
+    blocking_reasons = [reason for reason in reasons if reason != PARTIAL_TOPIC_GROUNDING_REASON]
+    return not blocking_reasons, reasons
 
 
 def specific_topics(analysis: dict[str, Any]) -> list[str]:
@@ -2203,7 +2246,13 @@ def answer_status_reason(
         if status == ANSWER_STATUS_SUPPORTED:
             code = "verified"
         elif status == ANSWER_STATUS_PARTIAL:
-            code = "partial_comparison"
+            # Disambiguate between the two partial paths so the status
+            # reason is machine-readable: comparison-coverage partial
+            # vs partial-topic grounding (#69 / ADR 0004).
+            if PARTIAL_TOPIC_GROUNDING_REASON in verification_reasons:
+                code = "partial_topic_grounding"
+            else:
+                code = "partial_comparison"
         else:
             code = "insufficient_evidence"
     return {
@@ -2318,11 +2367,17 @@ def answer_status(
     verified: bool,
     verification_reasons: list[str],
 ) -> str:
+    has_partial_topic = PARTIAL_TOPIC_GROUNDING_REASON in verification_reasons
     if verified:
         has_missing_requested = any(
             reason.startswith("missing_requested_entity") for reason in verification_reasons
         )
-        if not has_missing_requested:
+        if has_partial_topic and claims:
+            # Verified via the relaxed-stage partial-topic path: surface
+            # the weaker grounding as ``partial`` rather than the
+            # unconditional ``supported`` that strict verification yields.
+            return ANSWER_STATUS_PARTIAL
+        if not has_missing_requested and not has_partial_topic:
             return ANSWER_STATUS_SUPPORTED
     has_partial_comparison_reason = any(
         reason.startswith("missing_comparison")
@@ -3278,7 +3333,16 @@ def run_rag_query(
             evidence = retrieve(index, retrieval_query, analysis, plan)
         with _StageTimer(attempt_timings, "verify_ms"):
             if verifier_retry:
-                verified, verification_reasons = verify_evidence(analysis, evidence)
+                # On the last scheduled attempt allow partial-topic
+                # grounding so weak-but-usable evidence surfaces as
+                # ``partial`` instead of an unconditional abstention
+                # (issue #69, ADR 0004).
+                is_last_attempt = attempt_index == len(stage_sequence) - 1
+                verified, verification_reasons = verify_evidence(
+                    analysis,
+                    evidence,
+                    allow_partial_topic=is_last_attempt,
+                )
             else:
                 verified = bool(evidence)
                 verification_reasons = [] if verified else ["no_evidence"]
