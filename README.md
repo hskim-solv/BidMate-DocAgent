@@ -250,6 +250,46 @@ Final Response (grounded)
 
 ---
 
+## Korean RFP domain adaptations
+
+본 시스템은 한국 정부조달/B2B RFP 도메인 특성을 반영해 다음 5가지를 의도적으로 다르게 설계했습니다. 일반 multilingual RAG 템플릿에는 없는 결정들입니다.
+
+### 1) HWP 파일 처리 — CSV 텍스트 fallback
+
+원본 HWP를 native parse하는 대신 `data_list.csv`의 `텍스트` 컬럼을 본문 소스로 사용하고 `visual_fallback_hwp` 마커를 부여합니다. HWP native binary 포맷의 안정적 parsing 라이브러리 부재와 라이선스 제약을 회피하기 위한 의도된 trade-off입니다.
+
+- CSV 텍스트 로더: [`HwpCsvTextLoader` (ingestion.py:103)](ingestion.py)
+- Visual fallback document: [`make_hwp_fallback_document` (visual_ingestion.py:659)](visual_ingestion.py)
+
+### 2) Korean RFP 메타데이터 컬럼 컨벤션
+
+`공고 번호`, `사업명`, `발주 기관`, `파일형식`, `파일명`, `텍스트` 6개 컬럼을 `REQUIRED_COLUMNS`로 강제하고 metadata-first filter의 1차 필드로 사용합니다. 한국 조달 시스템의 표준 메타데이터 표기와 일치.
+
+- 컬럼 정의: [`REQUIRED_COLUMNS` (ingestion.py:21)](ingestion.py)
+
+### 3) Korean tokenization — 외부 형태소 분석기 미사용
+
+`[A-Za-z0-9]+|[가-힣]+` 정규식과 한국어 조사 제거 normalize만 사용합니다. **의도적으로** KoNLPy / soynlp / kiwipiepy 같은 형태소 분석 라이브러리를 도입하지 않았습니다. 이유: 한자/영문 기술 용어와 한글 사업명이 혼재된 RFP 텍스트에서 형태소 분석의 정확도 이득 대비, container 부피 / CI 재현성 / Java JVM 의존(KoNLPy) 비용이 큽니다.
+
+- 토큰 정규식: [`TOKEN_RE` (rag_core.py:93)](rag_core.py)
+- 조사 제거 정규화: [`normalize_metadata_token` (rag_core.py:297)](rag_core.py)
+
+### 4) 기관 약칭/alias 자동 추출
+
+`기관 A` ↔ `기관A` 같은 공백 압축형, 한글 1–4자 접두 토큰을 자동 추출해 metadata filter의 fuzzy match에 사용합니다. CSV 메타데이터의 `{field}_aliases` 컬럼도 병합.
+
+- 구현: [`metadata_aliases` (rag_core.py:1137)](rag_core.py)
+
+### 5) Embedding 모델 선택 — multilingual MiniLM
+
+`sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`를 기본으로 채택. 채택 이유: 한국어/영어 multilingual 지원, L12 경량(~120MB), API 의존 0, 로컬 재현성. **한계 명시**: 2019년 모델로 2025년 최신 multilingual 모델(BGE-M3, multilingual-e5-large, KURE 등) 대비 품질 ablation을 아직 실행하지 않았습니다. 다음 실험 사이클 항목.
+
+- 기본값: [`DEFAULT_EMBEDDING_MODEL` (rag_core.py:25)](rag_core.py)
+
+도메인-특화 retrieval hardening의 전체 카탈로그는 [`docs/retrieval-hardening.md`](docs/retrieval-hardening.md)를 참고하세요.
+
+---
+
 ## 실행 방법 (검증됨)
 
 두 가지 흐름을 제공합니다.
