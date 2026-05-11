@@ -134,6 +134,7 @@ make reproduce  # smoke + SHA-256 over the environment-invariant metric subset
 | "LLM-as-judge bias는 어떻게 다루나요?" | [ADR 0012](./adr/0012-llm-judge-on-public-synthetic.md) + [ADR 0014](./adr/0014-ragas-judge-additive-synthetic.md) — stub-default + RAGAS cross-check |
 | "운영에서 latency/cost/trace는 어떻게 봅니까?" | [ADR 0013](./adr/0013-observability-as-additive-pluggable-surface.md) + [`docs/observability.md`](./observability.md) — LangFuse/OTel pluggable, fail-closed |
 | "토큰 비용은 어떻게 추적하나요? prompt caching hit rate는요?" | [ADR 0015](./adr/0015-cost-telemetry-additive.md) — `diagnostics.synthesis.cost_estimate_usd` + `cache_read_tokens` + `cache_write_tokens`; price card는 `rag_synthesis.PRICING_PER_MTOK_USD`, 회귀 가드는 `tests/test_synthesis_cost_telemetry.py` |
+| "p95 latency SLO는 어떻게 enforce하나요?" | `eval/config.yaml::latency_budgets`에 per-ablation 절대 ceiling 선언 → `make check-latency` (또는 PR workflow의 "Latency SLO check" step)이 violation 시 CI fail. 회귀 게이트(품질)와 SLO 게이트(latency)를 분리 — host variance 노이즈로 인한 거짓 fail 방지. 구현: `scripts/check_latency_slo.py`, 회귀 가드 `tests/test_check_latency_slo.py` |
 | "확장한다면 다음 우선순위는?" | [`portfolio-case-study.md` §7](./portfolio-case-study.md) + 메타 이슈 #49 |
 
 ## 이 프로젝트가 입증하지 않는 것 (정직한 범위)

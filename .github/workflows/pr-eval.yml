@@ -84,6 +84,16 @@ jobs:
         working-directory: base
         run: python eval/run_eval.py --index_dir data/index --output_dir reports --config eval/config.ci.yaml
 
+      - name: Latency SLO check (head)
+        # Absolute p95 ceiling check per eval/config.yaml::latency_budgets.
+        # Independent from the quality regression gate below — latency is
+        # not gated on relative drift (CI variance) but is gated on
+        # absolute budget breach.
+        run: |
+          python pr/scripts/check_latency_slo.py \
+            --config pr/eval/config.yaml \
+            --summary pr/reports/eval_summary.json
+
       - name: Render delta table + regression gate
         id: delta
         # The script exits 1 when a gated quality metric (accuracy,
