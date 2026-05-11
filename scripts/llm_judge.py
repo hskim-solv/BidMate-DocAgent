@@ -136,7 +136,16 @@ def _openai_compatible_backend(prompt: str, *, verifier_status: str) -> dict[str
         response_format={"type": "json_object"},
     )
     content = response.choices[0].message.content or "{}"
-    parsed = json.loads(content)
+    try:
+        parsed = json.loads(content)
+    except json.JSONDecodeError:
+        # Malformed model output (#171) — fall back to insufficient with
+        # a marker reason rather than crashing the entire eval run.
+        return {
+            "judge_status": "insufficient",
+            "judge_grounded": False,
+            "judge_reason_short": "malformed_json: judge backend returned non-JSON content",
+        }
     return _normalize_judge_payload(parsed, fallback_status=verifier_status)
 
 
@@ -226,7 +235,21 @@ def judge_summary(
             continue
         prompt = _build_prompt(case)
         verifier_status = str(case.get("answer_status") or "insufficient")
-        verdict = backend_fn(prompt, verifier_status=verifier_status)
+        try:
+            raw_verdict = backend_fn(prompt, verifier_status=verifier_status)
+            verdict = _normalize_judge_payload(
+                raw_verdict, fallback_status=verifier_status
+            )
+        except Exception as exc:  # noqa: BLE001 — by design (#171)
+            # One bad case must not block the rest of the eval run.
+            # Convert any backend exception (rate limit, server error,
+            # timeout, network failure) into an insufficient verdict
+            # with a marker reason; the dispatcher keeps going.
+            verdict = {
+                "judge_status": "insufficient",
+                "judge_grounded": False,
+                "judge_reason_short": f"backend_error: {type(exc).__name__}",
+            }
         judged.append(
             {
                 "id": case.get("id"),
