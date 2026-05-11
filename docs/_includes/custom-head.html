@@ -1,0 +1,24 @@
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script>
+  // GitHub Pages의 kramdown은 ```mermaid 블록을 <pre><code class="language-mermaid">로 출력한다.
+  // mermaid.run()을 querySelector로 직접 호출해 <pre>/<code>를 mermaid가 인식하도록 정규화한다.
+  document.addEventListener("DOMContentLoaded", function () {
+    document.querySelectorAll('pre > code.language-mermaid').forEach(function (block) {
+      var pre = block.parentNode;
+      var wrapper = document.createElement('div');
+      wrapper.className = 'mermaid';
+      wrapper.textContent = block.textContent;
+      pre.parentNode.replaceChild(wrapper, pre);
+    });
+    if (window.mermaid) {
+      window.mermaid.initialize({ startOnLoad: false, theme: 'default' });
+      window.mermaid.run();
+    }
+  });
+</script>
+<style>
+  /* 블로그 본문 가독성 보강 */
+  .post-content table, .page-content table { font-size: 0.9rem; }
+  .post-content blockquote, .page-content blockquote { border-left: 4px solid #d4a017; }
+  .mermaid { background: #fbfbfb; padding: 12px; border: 1px solid #eee; border-radius: 4px; }
+</style>
