@@ -17,7 +17,12 @@ slowing down the dev loop. See ``make test-regression``.
 import unittest
 from pathlib import Path
 
-from rag_core import build_index_payload, run_rag_query
+from rag_core import (
+    MAX_AGENT_ITERATIONS,
+    build_index_payload,
+    metadata_stage_sequence,
+    run_rag_query,
+)
 
 
 ANSWERABLE_QUERY = "기관 A의 보안 통제 요구사항은?"
@@ -74,6 +79,57 @@ class RetrievalLoopRegressionTest(unittest.TestCase):
         self.assertEqual(0, diagnostics["retry_count"])
         self.assertIsInstance(diagnostics["final_relaxation_reason"], list)
         self.assertEqual([], diagnostics["final_relaxation_reason"])
+
+    def test_stage_sequence_never_exceeds_cap(self) -> None:
+        """Explicit-cap invariant (PR-02).
+
+        ``metadata_stage_sequence`` is the only producer of ``stage_sequence``.
+        Across all relevant analysis shapes it must stay within
+        ``MAX_AGENT_ITERATIONS``; otherwise the loop guard in
+        ``run_rag_query`` would raise.
+        """
+        analyses = [
+            {},
+            {"metadata_filters_by_stage": {"strict": {"agency": "기관 A"}}},
+            {
+                "metadata_filters_by_stage": {
+                    "strict": {"agency": "기관 A"},
+                    "reduced": {"agency": "기관"},
+                }
+            },
+        ]
+        for analysis in analyses:
+            for metadata_first in (True, False):
+                for verifier_retry in (True, False):
+                    with self.subTest(
+                        analysis=analysis,
+                        metadata_first=metadata_first,
+                        verifier_retry=verifier_retry,
+                    ):
+                        seq = metadata_stage_sequence(
+                            analysis,
+                            metadata_first=metadata_first,
+                            verifier_retry=verifier_retry,
+                        )
+                        self.assertGreaterEqual(len(seq), 1)
+                        self.assertLessEqual(len(seq), MAX_AGENT_ITERATIONS)
+
+    def test_iteration_cap_constant_matches_observed_max(self) -> None:
+        """Sanity: the published cap is at least the observed worst case."""
+        # Comparison + strict + reduced + verifier_retry exercises the longest
+        # sequence today (strict, reduced, relaxed = 3 stages).
+        seq = metadata_stage_sequence(
+            {
+                "metadata_filters_by_stage": {
+                    "strict": {"agency": "기관 A"},
+                    "reduced": {"agency": "기관"},
+                }
+            },
+            metadata_first=True,
+            verifier_retry=True,
+        )
+        self.assertLessEqual(len(seq), MAX_AGENT_ITERATIONS)
+        self.assertGreaterEqual(MAX_AGENT_ITERATIONS, len(seq))
 
     def test_out_of_corpus_query_exits_loop_without_indexerror(self) -> None:
         """R1 guard for the retry/abstention path.
