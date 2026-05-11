@@ -66,6 +66,13 @@ Every PR description must answer these, in order:
    that acceptable?
 5. **Eval impact.** What do you expect the CI eval delta to show?
    ("All `·`" is a valid answer for non-RAG changes — say so.)
+   - **5b. Real-data delta.** If `rag_core.py`, `ingestion.py`,
+     `visual_ingestion.py`, `eval/`, or `api/` changed, attach the
+     `make real-eval-delta` aggregate table (or explicitly state
+     "no behavior change in retrieval / verifier path"). The
+     synthetic CI delta alone missed #69's intended-abstention
+     regression — see ADR 0005 and
+     [`docs/private-100-doc-experiments.md`](docs/private-100-doc-experiments.md).
 6. **Backward compatibility.** Anything that breaks an existing
    contract, schema, CLI flag, or doc link? If yes, what's the
    migration?
@@ -85,6 +92,19 @@ Every PR description must answer these, in order:
 - Heavy-dep tests (visual ingestion, sentence-transformers) are fine
   but must use the hashing embedding backend wherever the test is
   about retrieval / verifier logic rather than the embedding itself.
+
+## Local hook setup (one-time, per developer)
+
+Activate the opt-in pre-push reminder hook:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+The hook prints a warning if a push touches retrieval / verifier /
+eval / api paths without (currently a soft signal — see CLAUDE.md
+pre-PR checklist 5b). Skip with `git push --no-verify` only with a
+documented reason. The hook is non-fatal; it never blocks a push.
 
 ## Reproducibility & performance expectations
 

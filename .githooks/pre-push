@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+# Opt-in pre-push hook for BidMate-DocAgent.
+#
+# Activate per-developer with:
+#   git config core.hooksPath .githooks
+#
+# Behavior: if the commits about to be pushed touch retrieval /
+# verifier / eval / api paths, remind the contributor to attach a
+# real-data eval delta to the PR (see CLAUDE.md pre-PR checklist
+# item 5b). Non-fatal — prints a warning, exits 0.
+#
+# Skip with `git push --no-verify` only if you have a documented
+# reason (e.g. doc-only follow-up of a measured PR).
+
+set -u
+
+# Watch-list: files whose change implies a real-data delta is owed.
+WATCH_PATTERNS=(
+  "rag_core.py"
+  "ingestion.py"
+  "visual_ingestion.py"
+  "eval/"
+  "api/"
+  "scripts/build_index.py"
+)
+
+# Resolve upstream / base ref. Prefer @{upstream}; fall back to origin/main.
+if upstream=$(git rev-parse --abbrev-ref --symbolic-full-name @{upstream} 2>/dev/null); then
+  base="$upstream"
+else
+  base="origin/main"
+fi
+
+# Files changed between the upstream and HEAD.
+if ! changed=$(git diff --name-only "$base"...HEAD 2>/dev/null); then
+  # No upstream / new branch — fall back to diff vs origin/main if it exists.
+  if git rev-parse --verify origin/main >/dev/null 2>&1; then
+    changed=$(git diff --name-only origin/main...HEAD 2>/dev/null || true)
+  else
+    changed=""
+  fi
+fi
+
+if [[ -z "$changed" ]]; then
+  exit 0
+fi
+
+# Match against the watch-list.
+hit=""
+while IFS= read -r file; do
+  for pat in "${WATCH_PATTERNS[@]}"; do
+    case "$file" in
+      "$pat"|"$pat"*)
+        hit="$file"
+        break 2
+        ;;
+    esac
+  done
+done <<< "$changed"
+
+if [[ -n "$hit" ]]; then
+  cat >&2 <<EOF
+
+⚠️  Retrieval / verifier / eval path changed in this push.
+    (first match: $hit)
+
+    Per CLAUDE.md pre-PR checklist item 5b, attach the aggregate
+    real-data eval delta to the PR body before requesting review:
+
+        make real-eval
+        make real-eval-delta
+
+    The delta script is aggregate-only (ADR 0005 commit boundary) so
+    its output is safe to paste into the PR.
+
+    Push proceeds. Skip this reminder with --no-verify only if you
+    have a documented reason.
+
+EOF
+fi
+
+exit 0
