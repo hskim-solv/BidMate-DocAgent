@@ -28,21 +28,10 @@ if [[ -z "$file_path" ]]; then
   exit 0
 fi
 
-# Load-bearing patterns (extended regex). Mirror CLAUDE.md "Load-bearing
-# files" section. Anchored to "/" to avoid matching inside arbitrary
-# substrings.
-LOAD_BEARING_PATTERNS=(
-  '/rag_core\.py$'
-  '/ingestion\.py$'
-  '/visual_ingestion\.py$'
-  '/eval/'
-  '/api/'
-  '/docs/adr/'
-)
-
-for pat in "${LOAD_BEARING_PATTERNS[@]}"; do
-  if [[ "$file_path" =~ $pat ]]; then
-    cat >&2 <<EOF
+# Load-bearing list lives in scripts/_governance.py (single source of
+# truth, also consumed by .githooks/pre-push and the §5b CI gate).
+if python3 scripts/_governance.py --is-load-bearing "$file_path" 2>/dev/null; then
+  cat >&2 <<EOF
 ⚠️  Load-bearing file: $file_path
 
     ADRs to consider (CLAUDE.md):
@@ -53,8 +42,6 @@ for pat in "${LOAD_BEARING_PATTERNS[@]}"; do
     PR template item 5b (real-eval-delta aggregate table) will be required
     when this change ships.
 EOF
-    break
-  fi
-done
+fi
 
 exit 0

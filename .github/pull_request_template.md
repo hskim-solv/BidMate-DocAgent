@@ -17,8 +17,9 @@ Closes #
 ## 2. Files affected
 
 <!--
-Bulleted list. Flag any of these as load-bearing:
-rag_core.py, ingestion.py, visual_ingestion.py, eval/, api/, docs/adr/
+Bulleted list. Flag any of these as load-bearing
+(canonical list: scripts/_governance.py):
+rag_core.py, ingestion.py, visual_ingestion.py, eval/, api/, docs/adr/, scripts/build_index.py
 -->
 
 ## 3. Risks
@@ -45,11 +46,13 @@ What do you expect the CI eval delta to show?
 ### 5b. Real-data delta
 
 <!--
-Required if rag_core.py, ingestion.py, visual_ingestion.py, eval/, or api/ changed.
+Required if any load-bearing path changed
+(rag_core.py, ingestion.py, visual_ingestion.py, eval/, api/, docs/adr/, scripts/build_index.py).
 Attach the `make real-eval-delta` aggregate table, or state explicitly:
 "No behavior change in retrieval / verifier path."
 See ADR 0005 and docs/private-100-doc-experiments.md.
-The synthetic CI delta alone missed #69's intended-abstention regression.
+The synthetic CI delta alone missed #69's intended-abstention regression;
+the §5b CI gate (scripts/check_branch_and_issue.py --check-5b) now enforces this.
 -->
 
 ## 6. Backward compatibility

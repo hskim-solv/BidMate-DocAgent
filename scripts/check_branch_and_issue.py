@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
-"""Validate branch naming convention and PR-issue linkage (ADR 0007).
+"""Validate branch naming convention, PR-issue linkage, and §5b real-data delta.
 
-Single source of truth for the regex. Called from two places:
+Single source of truth for the regexes. Called from three places:
 
 - `.githooks/pre-push` (local) → `--branch <name> --check-issue`
 - `.github/workflows/branch-and-issue-check.yml` (CI) → `--pr <number>`
+- Same CI workflow → `--check-5b <number>` (enforces PR template §5b for
+  load-bearing changes, per CLAUDE.md PR #69 lesson)
 
 Exit codes:
     0  ok (or exempt)
     1  convention violation (printed to stderr)
-    2  internal error (e.g. `gh` unavailable in --pr mode)
+    2  internal error (e.g. `gh` unavailable)
 """
 
 from __future__ import annotations
@@ -22,6 +24,8 @@ import subprocess
 import sys
 from typing import Optional
 
+from _governance import is_load_bearing
+
 
 BRANCH_REGEX = re.compile(
     r"^(?:feat|fix|docs|chore|refactor|test|ci|perf|build|style)"
@@ -33,6 +37,14 @@ EXEMPT_REGEX = re.compile(r"^(?:revert-|dependabot/|renovate/|pre-commit-ci/)")
 CLOSES_REGEX = re.compile(r"(?i)\b(?:closes|fixes|resolves)\s+#(\d+)\b")
 
 ALLOWED_PREFIXES = "feat, fix, docs, chore, refactor, test, ci, perf, build, style"
+
+HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
+FIVE_B_HEADER_RE = re.compile(r"###\s+5b\.\s*Real-data delta", re.IGNORECASE)
+FIVE_B_TABLE_RE = re.compile(r"^\s*\|.+\|.+\|", re.MULTILINE)
+FIVE_B_ESCAPE_RE = re.compile(
+    r"No behavior change in\s+(?:retrieval|verifier|eval|api|ingestion)\b",
+    re.IGNORECASE,
+)
 
 
 def _err(msg: str) -> None:
@@ -194,13 +206,113 @@ def check_pr_mode(pr_number: int) -> int:
     return 0
 
 
+def _five_b_section(body: str) -> Optional[str]:
+    """Return the §5b section text (HTML comments stripped) or None if absent.
+
+    The PR template ships with HTML comments under each header explaining
+    what to write; those comments are invisible in rendered markdown and
+    must not satisfy the §5b requirement. We strip them first.
+    """
+    stripped = HTML_COMMENT_RE.sub("", body)
+    m = FIVE_B_HEADER_RE.search(stripped)
+    if not m:
+        return None
+    rest = stripped[m.end():]
+    next_section = re.search(r"\n##\s", rest)
+    if next_section:
+        return rest[: next_section.start()]
+    return rest
+
+
+def check_5b_mode(pr_number: int) -> int:
+    """Verify PR body §5b for load-bearing changes.
+
+    Logic:
+      1. `gh pr view --json files,body` → list of changed paths + body text.
+      2. Filter changed paths through `_governance.is_load_bearing()`.
+      3. If none match → exit 0 (skip; non-load-bearing PR).
+      4. If any match → require body to contain the '### 5b. Real-data delta'
+         header AND, beneath it (HTML comments stripped), either a markdown
+         table row OR the escape sentence
+         'No behavior change in retrieval/verifier/eval/api/ingestion path'.
+      5. On failure: print actionable error pointing to PR #69 lesson.
+    """
+    if not gh_available():
+        _err("❌ `gh` CLI is required in --check-5b mode but is not available.\n")
+        return 2
+    repo = get_repo_slug()
+    if not repo:
+        _err("❌ Could not determine repo slug (set GITHUB_REPOSITORY).\n")
+        return 2
+    try:
+        result = subprocess.run(
+            ["gh", "pr", "view", str(pr_number), "--repo", repo,
+             "--json", "files,body"],
+            capture_output=True, text=True, check=True,
+        )
+    except subprocess.CalledProcessError as e:
+        _err(f"❌ Could not fetch PR #{pr_number}: {e.stderr}\n")
+        return 2
+
+    pr = json.loads(result.stdout)
+    files = pr.get("files") or []
+    body = pr.get("body") or ""
+
+    load_bearing_hits = [
+        f.get("path", "") for f in files if is_load_bearing(f.get("path", ""))
+    ]
+    if not load_bearing_hits:
+        sys.stdout.write(
+            f"OK: PR #{pr_number} changes no load-bearing path; §5b not required.\n"
+        )
+        return 0
+
+    section = _five_b_section(body)
+    example = load_bearing_hits[0]
+    remediation = (
+        "   PR #69 lesson: the synthetic CI delta alone missed an intended-abstention regression.\n"
+        "   Either:\n"
+        "     (a) attach the `make real-eval-delta` aggregate table under\n"
+        "         '### 5b. Real-data delta', or\n"
+        "     (b) state explicitly: 'No behavior change in retrieval / verifier path.'\n"
+        "   See: .github/pull_request_template.md and CLAUDE.md.\n"
+    )
+    if section is None:
+        _err(
+            f"\n❌ Load-bearing change detected (e.g. {example}) but PR body has\n"
+            f"   no '### 5b. Real-data delta' section.\n" + remediation
+        )
+        return 1
+
+    has_table = bool(FIVE_B_TABLE_RE.search(section))
+    has_escape = bool(FIVE_B_ESCAPE_RE.search(section))
+    if not (has_table or has_escape):
+        _err(
+            f"\n❌ Load-bearing change detected (e.g. {example}) but §5b is\n"
+            f"   missing both a markdown table and the escape sentence.\n"
+            + remediation
+        )
+        return 1
+
+    sys.stdout.write(
+        f"OK: PR #{pr_number} touches load-bearing path "
+        f"({example}); §5b contains "
+        f"{'table' if has_table else 'escape sentence'}.\n"
+    )
+    return 0
+
+
 def main() -> int:
     p = argparse.ArgumentParser(
-        description="Validate branch + issue convention (ADR 0007).",
+        description="Validate branch + issue convention + §5b (ADR 0007, CLAUDE.md).",
     )
     g = p.add_mutually_exclusive_group(required=True)
     g.add_argument("--branch", help="Branch name to validate (local mode).")
     g.add_argument("--pr", type=int, help="PR number to validate (CI mode).")
+    g.add_argument(
+        "--check-5b", type=int, dest="check_5b", metavar="PR_NUMBER",
+        help="Verify PR body §5b for load-bearing changes (CI mode).",
+    )
     p.add_argument(
         "--check-issue", action="store_true",
         help="In --branch mode, also verify the referenced issue exists via gh.",
@@ -209,7 +321,9 @@ def main() -> int:
 
     if args.branch is not None:
         return check_branch_mode(args.branch, args.check_issue)
-    return check_pr_mode(args.pr)
+    if args.pr is not None:
+        return check_pr_mode(args.pr)
+    return check_5b_mode(args.check_5b)
 
 
 if __name__ == "__main__":

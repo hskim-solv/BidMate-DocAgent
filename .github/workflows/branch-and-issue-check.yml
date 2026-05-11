@@ -1,9 +1,12 @@
 name: Branch & Issue Convention
 
-# Enforces ADR 0007: every PR must come from a branch named
-# `<type>/issue-<N>[-<slug>]` AND have `Closes #N` in its body
-# matching the branch's issue number. The referenced issue must
-# exist in this repo.
+# Enforces two governance gates per PR:
+#   (1) ADR 0007: branch named `<type>/issue-<N>[-<slug>]` with a
+#       matching `Closes #N` in the body, and the referenced issue
+#       must exist in this repo.
+#   (2) CLAUDE.md PR #69 lesson: when any load-bearing path changes
+#       (see scripts/_governance.py), the PR body §5b "Real-data
+#       delta" must contain a markdown table OR the escape sentence.
 #
 # Fast (~15s, no checkout). Should be set as a required status
 # check on `main` after one green run.
@@ -27,15 +30,23 @@ jobs:
         with:
           sparse-checkout: |
             scripts/check_branch_and_issue.py
+            scripts/_governance.py
           sparse-checkout-cone-mode: false
 
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: Validate
+      - name: Validate branch name + issue link
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           python scripts/check_branch_and_issue.py --pr ${{ github.event.pull_request.number }}
+
+      - name: Validate PR §5b (load-bearing real-eval delta)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          python scripts/check_branch_and_issue.py --check-5b ${{ github.event.pull_request.number }}
