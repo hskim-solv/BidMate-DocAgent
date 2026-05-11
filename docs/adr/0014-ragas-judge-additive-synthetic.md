@@ -1,4 +1,4 @@
-# 0012: RAGAS-style LLM-judge as additive enrichment on the synthetic surface
+# 0014: RAGAS-style LLM-judge as additive enrichment on the synthetic surface
 
 - **Status**: accepted
 - **Date**: 2026-05-11
