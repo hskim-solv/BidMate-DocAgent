@@ -19,6 +19,7 @@ If you are new to the repo or onboarding a reviewer, start here.
 | Reviewer-facing metrics | `reports/eval_summary.json`, README headline table | The PR eval delta workflow upserts a PR comment with the diff. |
 | Failure analysis | [`docs/real-data-failure-taxonomy.md`](./real-data-failure-taxonomy.md), [`docs/failure-cases.md`](./failure-cases.md) | Drives the prioritized backlog. |
 | API demo | [`docs/api-demo.md`](./api-demo.md), `api/main.py` | Reviewer playground; never the source of truth for measurement. |
+| Issue/PR triage | This page, ["Milestones & issue lifecycle"](#milestones--issue-lifecycle) | Milestones, stale policy, current categorisation snapshot. |
 
 ## Change lifecycle
 
@@ -65,6 +66,49 @@ a contributor (human or AI) can walk through:
     if used.
 12. **Update docs** if the change changed something a reviewer needs
     to know (README headline metrics, ADR status, taxonomy entry).
+
+## Milestones & issue lifecycle
+
+Open issues are grouped into milestones so the backlog scans cleanly
+and a reviewer can see what is planned vs. parked. Milestones are
+manually maintained on GitHub; the snapshot below is illustrative —
+the GitHub milestone pages are authoritative.
+
+### Milestones
+
+| Milestone | Purpose | Typical issue kind |
+|---|---|---|
+| `v3-release` | Concrete work toward the next release of the RAG stack — ingestion v3, retrieval/ranking changes, new core utilities. | `feat`, `fix` that ship behavior. |
+| `portfolio-review-readiness` | Reviewer-facing polish: README clarity, case-study narrative, deploy artifacts, structured-output docs, ablation visualisation. | `docs`, `chore`, `eval` work whose audience is the portfolio reviewer. |
+| `real-data-evaluation` | Private 100-doc real-data eval health: failures observed in [`docs/real-data-failure-taxonomy.md`](./real-data-failure-taxonomy.md), Korean-specific axes, abstention regressions. | `eval`, `fix` that lands a measurable real-data delta. |
+
+Meta/parent issues (e.g. #118 portfolio review readiness, #187 phase
+enhancement backlog) do **not** carry a milestone — they group child
+issues which themselves are milestoned.
+
+### Stale-issue policy
+
+- **60 days without activity** → label `stale`. Comment with a one-line
+  prompt: "still planned? close or rescope." Triage weekly.
+- **90 days without activity after `stale`** → close with a comment
+  pointing at the milestone the work would have lived in. Reopen if the
+  work is picked up.
+- **Never auto-close** — closure is a human decision, the label is the
+  automation-friendly signal.
+
+The labels and milestones are managed manually for now; no GitHub
+Action wires this. Promotion to automation lands as a separate change
+if backlog growth justifies it.
+
+### Snapshot (2026-05-11)
+
+| Milestone | Open issues |
+|---|---|
+| `v3-release` | #121, #167, #168, #170 |
+| `portfolio-review-readiness` | #122, #123, #124, #125, #127, #128, #164, #172 |
+| `real-data-evaluation` | #126 |
+
+Issues without a clear home stay milestone-less until categorised.
 
 ## How the documents reinforce each other
 
