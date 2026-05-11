@@ -98,6 +98,54 @@ unsupported 질문은 다음처럼 답한다.
 
 비교 질문에서 한쪽만 확인되면 `partial`로 표시하고, 확인되지 않은 대상은 `missing_targets`에 남긴다. 명시적으로 요청된 기관이 corpus metadata에 없을 때도 `missing_requested_entity:*` 사유를 남겨 `partial`로 처리한다. 이 경우 확인된 claim만 citation과 함께 제공하며, 빠진 대상을 추측해 채우지 않는다.
 
+## 계약 강제 메커니즘
+
+`schema_version: 2` 계약은 두 단계로 강제된다. extractive 경로가 `status` / `claims` / `citations` / `status_reason` / `insufficiency`를 결정적으로 락하고, optional LLM 합성 경로는 `summary` / `answer_text`만 다시 쓸 수 있다 ([ADR 0001](./adr/0001-preserve-naive-baseline.md) extractive baseline invariant, [ADR 0011](./adr/0011-llm-synthesis-as-additive-ablation.md) additive synthesis).
+
+### 1단계 — extractive (락 단계)
+
+[`rag_core.py`](../rag_core.py) 안의 함수가 verifier 출력을 그대로 status로 굳힌다.
+
+| 단계 | 함수 (rag_core.py) | 강제 내용 |
+|---|---|---|
+| Evidence 검증 | `verify_evidence` (L2252) | topic/entity coverage 체크. `allow_partial_topic`은 retrieval 마지막 시도에서만 `True`. partial-topic 매칭으로 통과하면 `verified=True`지만 status는 `partial`로 surface (#69 회귀 방지) |
+| Claim 빌드 | `build_claims` / `build_comparison_claims` / `build_extract_claims` (L2495–2520) | claim마다 `chunk_id`가 evidence list에 존재함을 by-construction으로 보장 |
+| Status 결정 | `answer_status` (L2594), `answer_status_reason` (L2469) | `ANSWER_STATUS_{SUPPORTED,PARTIAL,INSUFFICIENT}` (L215–217) 셋 중 하나로 클램프. 다른 값은 emit 불가 |
+
+이 단계의 출력은 다운스트림에서 immutable로 취급된다.
+
+### 2단계 — LLM synthesis (additive 단계, 옵션)
+
+[`rag_synthesis.py`](../rag_synthesis.py) `synthesize_answer`는 위 단계 출력을 입력으로 받아 `summary`와 `answer_text`만 다시 쓴다. 6개 게이트가 직렬로 실행되며 하나라도 실패하면 fallback flag와 reason을 메타에 박은 채 extractive 답변을 그대로 반환한다.
+
+| Gate | Trigger | `fallback_reason` |
+|---|---|---|
+| Backend 알 수 없음 | `BIDMATE_SYNTHESIS_BACKEND` 미지원 값 | `unknown_backend:<value>` |
+| Evidence 없음 | `allowed_chunk_ids`가 빈 set | `no_evidence_chunks` |
+| Backend 호출 실패 | 예외 발생 (network, parse, quota 등) | `backend_error:<exc_type>:<truncated>` |
+| Summary 빈 문자열 | `payload.summary`가 비어 있음 | `empty_summary` |
+| Unauthorized chunk | `used_chunk_ids ⊄ evidence chunk_ids` | `unauthorized_chunk_ids:<head>` |
+| Claim 밖 chunk | `used_chunk_ids ⊄ claim citation chunk_ids` | `chunks_outside_claims:<head>` |
+
+이 게이트들은 ADR 0011의 "no new chunk_ids" hard postcondition을 코드 레벨로 구현한다. LLM이 hallucinated citation을 만들어도 set-membership 체크로 즉시 거부되고 extractive 출력이 surface된다.
+
+### `schema_version` bump 규칙
+
+위 contract의 어느 부분이라도 *비호환*으로 바뀌면 `schema_version`을 3으로 올리고 [ADR 0003](./adr/0003-structured-answer-citation-contract.md) supersede를 새 ADR로 기록한다. additive 변경(예: `claims[].citations[]`에 optional `page_span` 추가)은 bump 없음. `claims` shape 변경, status enum 추가/제거, `status_reason.code` 의미 변경은 모두 비호환.
+
+### 테스트 매트릭스
+
+| 테스트 | 잠그는 contract |
+|---|---|
+| [`tests/test_llm_synthesis.py`](../tests/test_llm_synthesis.py) | 6개 게이트의 fallback reason 정확성, ADR 0011 additive 불변(extractive와 LLM 경로가 같은 `claims`/`citations` 반환) |
+| [`tests/test_partial_topic_grounding.py`](../tests/test_partial_topic_grounding.py) | partial-topic 통과 시 `status=partial` 강제 (#69 회귀 가드) |
+| [`tests/test_followup_entity_injection.py`](../tests/test_followup_entity_injection.py) | follow-up entity carryover에서 `status=partial` 비강등 |
+| `eval/run_eval.py`의 `score_answer_format` | `Answer Format Compliance` metric — claim 단위 citation 누락 시 점수 차감 |
+
+### 평가 surface와의 연결
+
+eval pipeline은 `answer.status_reason.code` / `answer.claims` / top-level `evidence`만 검증 입력으로 사용한다 (`answer_text`는 검증 대상 아님). 따라서 위 두 단계가 만든 출력이 평가 metric에 그대로 surface된다.
+
 ## 실패 유형
 
 - unsupported over-answering: 근거가 없는데 `supported`로 답함

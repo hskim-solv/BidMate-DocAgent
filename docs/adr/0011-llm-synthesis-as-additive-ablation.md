@@ -4,7 +4,7 @@
 
 - **Status**: proposed
 - **Date**: 2026-05-11
-- **Related**: extends [ADR 0001](./0001-preserve-naive-baseline.md); preserves [ADR 0003](./0003-structured-answer-citation-contract.md); reuses backend pattern from [ADR 0006](./0006-llm-judge-on-real-data-only.md)
+- **Related**: extends [ADR 0001](./0001-preserve-naive-baseline.md); preserves [ADR 0003](./0003-structured-answer-citation-contract.md); reuses backend pattern from [ADR 0006](./0006-llm-judge-on-real-data-only.md); implementation walkthrough in [`docs/answer-policy.md`](../answer-policy.md#계약-강제-메커니즘)
 - **Deciders**: hskim
 
 ## Context
