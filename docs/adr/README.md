@@ -78,6 +78,7 @@ project record.
 | [0013](./0013-observability-as-additive-pluggable-surface.md) | accepted | Observability as an additive, pluggable, fail-closed surface |
 | [0014](./0014-ragas-judge-additive-synthetic.md) | accepted | RAGAS-style LLM judge as additive enrichment on synthetic surface (extends 0012) |
 | [0015](./0015-cost-telemetry-additive.md) | accepted | Cost telemetry as additive observability (extends 0011, 0013) |
+| [0016](./0016-judge-human-agreement.md) | proposed | Judge↔human agreement as calibration gate on real-data eval (refines 0006) |
 
 ## Decision evolution
 
@@ -114,6 +115,9 @@ refines 0004 with an LLM judge restricted to the private surface,
 reinforcing 0005's public reproducibility. [ADR 0008](./0008-evidence-boundary.md)
 defends the answer contract (0003) and the LLM judge (0006) against
 prompt-injection patterns embedded in retrieved evidence.
+[ADR 0016](./0016-judge-human-agreement.md) calibrates the 0006 judge
+against human spot-labels (Cohen's κ + Spearman ρ) so a verifier-judge
+co-regression cannot pass undetected.
 
 #### Governance — process codified as a decision (0007)
 
@@ -162,6 +166,7 @@ graph LR
   subgraph Real-data hardening
     A6[0006 LLM judge real-data]
     A8[0008 Evidence boundary]
+    A16[0016 Judge-human agreement]
   end
 
   subgraph Additive ablation surface
@@ -190,6 +195,7 @@ graph LR
 
   A6 -- refines --> A12
   A6 -- refines --> A14
+  A6 -- calibrated by --> A16
 
   A6 -. backend .-> A9
   A6 -. backend .-> A11
