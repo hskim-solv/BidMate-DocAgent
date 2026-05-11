@@ -27,8 +27,11 @@ try:
 except ImportError:  # pragma: no cover — defensive; declared in requirements.txt
     _BM25Okapi = None  # type: ignore[assignment]
 
+from bidmate_logging import get_logger, log_query_event
 from rag_observability import resolve_trace_backend
 from rag_synthesis import synthesize_answer
+
+_LOGGER = get_logger("rag_core")
 from rag_vector_store import (
     InMemoryVectorStore,
     VectorStore,
@@ -3888,6 +3891,20 @@ def run_rag_query(
     if cold_start:
         _PROCESS_WARM = True
 
+    query_hash = hashlib.sha256(query.encode("utf-8")).hexdigest()[:12]
+    log_query_event(
+        _LOGGER,
+        "query_start",
+        query_hash=query_hash,
+        query_length=len(query),
+        pipeline=pipeline_name,
+        prompt_profile=prompt_profile,
+        retrieval_backend=retrieval_backend,
+        retrieval_mode=retrieval_mode,
+        top_k=requested_top_k,
+        cold_start=cold_start,
+    )
+
     started = time.perf_counter()
     stage_timings: dict[str, float] = {}
     state = normalize_conversation_state(conversation_state)
@@ -4187,6 +4204,21 @@ def run_rag_query(
         trace_backend_name,
         trace_unavailable_reason,
         trace_error,
+    )
+    log_query_event(
+        _LOGGER,
+        "query_complete",
+        query_hash=query_hash,
+        status=answer["status"],
+        query_type=answer["query_type"],
+        latency_ms=round(latency_ms, 2),
+        retry_count=retry_count,
+        abstained=abstained,
+        claim_count=len(answer["claims"]),
+        citation_count=diagnostics["citation_count"],
+        pipeline=pipeline_name,
+        cold_start=cold_start,
+        trace_backend=trace_backend_name,
     )
     return result
 

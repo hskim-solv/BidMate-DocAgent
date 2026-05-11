@@ -105,14 +105,18 @@
 리뷰어가 클론한 직후 한 명령으로 시스템을 돌려볼 수 있다.
 
 ```bash
-make smoke   # build_index → sample query → eval → README check
+make smoke      # build_index → sample query → eval → README check
+make reproduce  # smoke + SHA-256 over the environment-invariant metric subset
 ```
 
 - 외부 API/네트워크 의존 없음 (`EMBEDDING_BACKEND=hashing`)
 - 결정성 (`hashing` backend) → 같은 입력에 같은 출력
 - 산출물: `outputs/answer.json`, `reports/eval_summary.json`
+- **크로스머신 재현성 증명**: `make reproduce`가 `eval_summary.json`에서 latency·timestamp 같은 host-dependent 필드를 제거한 후 SHA-256을 계산한다. 같은 해시가 다른 머신(Linux container 등)에서 나오면 결정성 주장이 *증명 가능*한 형태로 backing된다 — `BASELINE=<hash> make reproduce`로 비교 시 mismatch는 exit 2.
 
 운영 데모는 [`docs/api-demo.md`](./api-demo.md)의 FastAPI 한 줄 startup으로 분리되어 있다 — playground이지만 measurement source는 절대 아님 ([`engineering-governance.md` table](./engineering-governance.md) 참조).
+
+**구조화 로깅**: `BIDMATE_LOG_FORMAT=json make demo`로 stdout JSON 로그를 흘려보내면 stage별 `query_start`/`query_complete` 이벤트가 `query_hash`/`latency_ms`/`status`/`retry_count`/`abstained` 필드와 함께 떨어진다. 로그 aggregation(CloudLogging/ELK/Datadog)에 그대로 꽂아 운영 관찰성을 확장 가능. 구현은 [`bidmate_logging.py`](../bidmate_logging.py).
 
 ## 인터뷰에서 받을 만한 질문과 답의 위치
 
