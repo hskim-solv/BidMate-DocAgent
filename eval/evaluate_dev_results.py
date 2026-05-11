@@ -35,7 +35,6 @@ from typing import List, Set
 import pandas as pd
 
 from eval.ko_axes import KO_AXES, detect_ko_axes
-from eval.multiturn_eval import build_qid_parent_map, derive_turn_depth
 
 
 ABSTAIN_PATTERNS = [
@@ -228,15 +227,6 @@ def summarise(per_q: pd.DataFrame) -> dict:
         if mask.any():
             summary["by_ko_axes"][axis] = block(per_q[mask])
 
-    summary["by_turn_depth"] = {}
-    if "turn_depth" in per_q.columns:
-        for depth, sub in per_q.groupby("turn_depth"):
-            try:
-                depth_key = int(depth)
-            except (TypeError, ValueError):
-                continue
-            summary["by_turn_depth"][depth_key] = block(sub)
-
     return summary
 
 
@@ -261,13 +251,6 @@ def main():
         merged = row.to_dict()
         merged.update(evaluate_row(row))
         per_q_rows.append(merged)
-
-    qid_to_parent = build_qid_parent_map(per_q_rows)
-    for entry in per_q_rows:
-        qid = str(entry.get("qid") or "")
-        entry["turn_depth"] = derive_turn_depth(
-            qid, qid_to_parent.get(qid), qid_to_parent
-        )
 
     per_q = pd.DataFrame(per_q_rows)
     summary = summarise(per_q)
@@ -304,16 +287,6 @@ def main():
             lines.append(f"### {axis}")
             lines.append("")
             for key, value in block.items():
-                lines.append(f"- {key}: {value}")
-            lines.append("")
-
-    if summary.get("by_turn_depth"):
-        lines.append("## By turn depth")
-        lines.append("")
-        for depth in sorted(summary["by_turn_depth"]):
-            lines.append(f"### turn {depth}")
-            lines.append("")
-            for key, value in summary["by_turn_depth"][depth].items():
                 lines.append(f"- {key}: {value}")
             lines.append("")
 
