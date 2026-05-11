@@ -228,23 +228,23 @@ Cold start (모델 첫 로드): hashing ≈ 2.1ms / sentence-transformers ≈ 5.
 
 ## 아키텍처 (요약)
 
-```text
-User Query
-  ↓
-Query Analyzer
-  ↓
-Planner (metadata-first, comparison-aware top_k)
-  ↓
-Retriever (staged metadata filters + dense/reranking + query-type top_k)
-  ↓
-Evidence Aggregator
-  ↓
-Verifier / Retry Loop
-  ↓
-Answer Generator (structured claims)
-  ↓
-Final Response (grounded)
+```mermaid
+flowchart TD
+    Q[User Query] --> A[Query Analyzer]
+    A --> P["Planner<br/>metadata-first<br/><b>comparison-aware top_k</b>"]
+    P --> R["Retriever<br/>staged metadata filters<br/>+ dense/reranking<br/>+ query-type top_k"]
+    R --> E[Evidence Aggregator]
+    E --> V[Verifier / Retry Loop]
+    V --> G["Answer Generator<br/>structured claims<br/><b>extractive — no LLM</b>"]
+    G --> F[Final Response<br/>grounded with citations]
+
+    classDef highlight fill:#fffbdd,stroke:#d4a017,stroke-width:2px,color:#000
+    class P,G highlight
 ```
+
+> 강조된 두 노드는 본 프로젝트의 핵심 설계 결정에 대응합니다.
+> - Planner의 `comparison-aware top_k` → 상단 [Key technical contribution — comparison-aware balanced top-k](#key-technical-contribution--comparison-aware-balanced-top-k) 섹션
+> - Answer Generator의 `extractive — no LLM` → 상단 [Why extractive, not generative?](#why-extractive-not-generative) 섹션
 
 비교 질의(`query_type == "comparison"`)에서는 단순 global top-k 컷이 한쪽 문서만 채워 verifier가 불필요한 retry를 트리거하는 문제를 막기 위해, 각 비교 대상에 최소 1개 이상의 evidence가 들어가도록 보장하는 balanced top-k 컷을 적용한다. Metadata filter staging, alias lexicon, follow-up carryover, ambiguity clarification, query-type top_k 진단은 [docs/retrieval-hardening.md](docs/retrieval-hardening.md)에 정리했다. 비교 ranking 상세 설계는 [docs/comparison-ranking.md](docs/comparison-ranking.md) 참고.
 
