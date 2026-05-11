@@ -647,3 +647,32 @@ cases:
     expected_terms:
       - "양자암호"
     answerable: false
+
+  # Issue #69 / docs/real-data-failure-taxonomy.md C6 — partial-topic
+  # recovery. "보안 통제" is documented for 기관 A; "양자암호" is not
+  # in the corpus. Before this change the strict-then-relaxed verifier
+  # abstained on `topic_not_grounded × 2`. After the change the relaxed
+  # (last-attempt) verifier accepts the partial match with a
+  # `partial_topic_grounding` reason and the answer surfaces as
+  # `partial` rather than an unconditional abstention. This case is the
+  # public synthetic guard that the policy stays in effect.
+  - id: partial_topic_security_quantum
+    query_type: single_doc
+    query: "기관 A의 보안 통제와 양자암호 적용 방안은?"
+    expected_doc_ids:
+      - rfp-agency-a-ai-quality
+    expected_terms:
+      - "보안 통제"
+    expected_citation_terms:
+      - "보안 통제"
+    expected_answer_status: partial
+    min_claims: 1
+    expected_claim_targets:
+      - "기관 A"
+    expected_claim_citations:
+      - target: "기관 A"
+        expected_doc_ids:
+          - rfp-agency-a-ai-quality
+        expected_terms:
+          - "보안 통제"
+    answerable: true

@@ -7,7 +7,7 @@
 | status | 의미 | evidence | claims |
 |---|---|---|---|
 | `supported` | 모든 필수 대상과 주제가 근거로 확인됨 | 있음 | 1개 이상 |
-| `partial` | 비교 질문에서 일부 대상만 근거로 확인됨 | 확인된 대상만 있음 | 1개 이상 |
+| `partial` | (a) 비교 질문에서 일부 대상만 근거로 확인됨, 또는 (b) 검증 토픽 중 일부만 evidence에 매칭됨 (relaxed 단계의 partial-topic grounding) | 확인된 대상만 있음 | 1개 이상 |
 | `insufficient` | 답변 가능한 근거를 찾지 못함 | 없음 | 없음 |
 
 현재 답변 객체는 `schema_version: 2`를 사용한다. `answer_text`는 사람이 빠르게 읽기 위한 요약이고, 검증 가능한 계약은 `answer.schema_version`, `answer.status`, `answer.status_reason`, `answer.claims`, `answer.insufficiency`, top-level `evidence`를 기준으로 본다.
@@ -16,9 +16,9 @@
 
 | field | 의미 |
 |---|---|
-| `code` | `verified`, `partial_comparison`, `insufficient_evidence`, `context_clarification`, `metadata_ambiguity_clarification` 중 하나 |
-| `verified` | verifier 기준 통과 여부. 단, 명시 요청된 비교 대상이 corpus에 없으면 verifier 설정과 무관하게 `partial`이 될 수 있음 |
-| `verification_reasons` | `topic_not_grounded`, `missing_comparison_doc:*`, `missing_requested_entity:*` 같은 근거 부족 사유 |
+| `code` | `verified`, `partial_comparison`, `partial_topic_grounding`, `insufficient_evidence`, `context_clarification`, `metadata_ambiguity_clarification` 중 하나 |
+| `verified` | verifier 기준 통과 여부. 단, 명시 요청된 비교 대상이 corpus에 없으면 verifier 설정과 무관하게 `partial`이 될 수 있음. relaxed 단계의 partial-topic 매칭으로 통과한 경우 `verified=True`이지만 status는 `partial`로 surface된다 |
+| `verification_reasons` | `topic_not_grounded`, `partial_topic_grounding`, `missing_comparison_doc:*`, `missing_requested_entity:*` 같은 근거 부족 또는 약한 근거 사유 |
 
 ## 좋은 답변 예시
 
