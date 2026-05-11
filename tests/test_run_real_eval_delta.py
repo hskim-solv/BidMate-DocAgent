@@ -341,6 +341,80 @@ class ExtractAggregateTest(unittest.TestCase):
         self.assertIn("0.950", md)
 
 
+class CIBlockExtractTest(unittest.TestCase):
+    """Bootstrap CI block (#166 leaderboard / #267 chart bands) must
+    round-trip the headline-metric subset and drop unknown sub-keys
+    or per-case payload smuggled in by a future maintainer."""
+
+    SUMMARY_WITH_CI = {
+        **FULL_SUMMARY,
+        "ci": {
+            "accuracy": {
+                "mean": 0.471,
+                "ci_lo": 0.286,
+                "ci_hi": 0.667,
+                "n": 21,
+                "num_resamples": 1000,
+                "alpha": 0.05,
+            },
+            "groundedness": {
+                "mean": 0.476,
+                "ci_lo": 0.286,
+                "ci_hi": 0.667,
+                "n": 21,
+            },
+            # Unknown metric — must be dropped.
+            "made_up_metric": {"mean": 0.99, "ci_lo": 0.98, "ci_hi": 1.0},
+            # Per-case smuggling attempt — extractor must drop the entire
+            # entry because the inner shape is wrong (list, not dict).
+            "case_results": [{"id": "leak", "query": "leak"}],
+        },
+    }
+
+    def test_ci_block_round_trips_for_whitelisted_metrics(self) -> None:
+        agg = extract_aggregate(self.SUMMARY_WITH_CI)
+        ci = agg["ci"]
+        self.assertIn("accuracy", ci)
+        self.assertIn("groundedness", ci)
+        self.assertAlmostEqual(0.286, ci["accuracy"]["ci_lo"])
+        self.assertAlmostEqual(0.667, ci["accuracy"]["ci_hi"])
+        self.assertEqual(21, ci["accuracy"]["n"])
+        self.assertEqual(1000, ci["accuracy"]["num_resamples"])
+
+    def test_ci_unknown_metrics_dropped(self) -> None:
+        agg = extract_aggregate(self.SUMMARY_WITH_CI)
+        self.assertNotIn("made_up_metric", agg["ci"])
+        self.assertNotIn("case_results", agg["ci"])
+
+    def test_ci_no_leak_strings(self) -> None:
+        agg = extract_aggregate(self.SUMMARY_WITH_CI)
+        self.assertNotIn("leak", json.dumps(agg))
+
+    def test_ci_unknown_sub_keys_dropped(self) -> None:
+        summary = {
+            **FULL_SUMMARY,
+            "ci": {
+                "accuracy": {
+                    "mean": 0.5,
+                    "ci_lo": 0.3,
+                    "ci_hi": 0.7,
+                    # Smuggling attempts — must be dropped.
+                    "raw_scores": [0.1, 0.2, 0.3],
+                    "case_ids": ["c1", "c2"],
+                }
+            },
+        }
+        agg = extract_aggregate(summary)
+        self.assertEqual(
+            set(agg["ci"]["accuracy"].keys()),
+            {"mean", "ci_lo", "ci_hi"},
+        )
+
+    def test_ci_omitted_when_summary_has_no_ci(self) -> None:
+        agg = extract_aggregate(FULL_SUMMARY)
+        self.assertNotIn("ci", agg)
+
+
 class FullScriptInvocationTest(unittest.TestCase):
     """Smoke-test the full script end-to-end via subprocess so the
     CLI argument plumbing is exercised."""

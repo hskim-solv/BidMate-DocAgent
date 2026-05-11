@@ -55,6 +55,18 @@ def _snapshot(
                 "ci_hi": min(1.0, accuracy + 0.07),
                 "n": 42,
             },
+            "citation_precision": {
+                "mean": accuracy - 0.01,
+                "ci_lo": max(0.0, accuracy - 0.06),
+                "ci_hi": min(1.0, accuracy + 0.04),
+                "n": 42,
+            },
+            "answer_format_compliance": {
+                "mean": accuracy,
+                "ci_lo": max(0.0, accuracy - 0.04),
+                "ci_hi": min(1.0, accuracy + 0.04),
+                "n": 42,
+            },
         },
         "provenance": {
             "git_commit": sha,
@@ -148,6 +160,21 @@ class LeaderboardRenderTest(unittest.TestCase):
             self.assertIn(key, data["metrics"])
             self.assertEqual(2, len(data["metrics"][key]["values"]))
             self.assertEqual(2, len(data["metrics"][key]["ci_lo"]))
+        # Issue #267 regression: CI bands must be numeric, not None,
+        # when the source snapshots include a ci block. A previous bug
+        # let extract_aggregate strip the ci block silently, leaving
+        # the chart bands as null arrays and a flat-line leaderboard.
+        for key, _ in HEADLINE_METRICS:
+            ci_lo = data["metrics"][key]["ci_lo"]
+            ci_hi = data["metrics"][key]["ci_hi"]
+            self.assertTrue(
+                all(isinstance(v, (int, float)) for v in ci_lo),
+                f"{key} ci_lo lost numeric values during round-trip: {ci_lo}",
+            )
+            self.assertTrue(
+                all(isinstance(v, (int, float)) for v in ci_hi),
+                f"{key} ci_hi lost numeric values during round-trip: {ci_hi}",
+            )
 
     def test_page_does_not_leak_per_case_fields_if_present_in_history(self) -> None:
         """Defense-in-depth: even if a history file contained case_results

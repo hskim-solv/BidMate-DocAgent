@@ -79,8 +79,34 @@ SAFE_TOPLEVEL_KEYS = frozenset(
         # commit boundary; per-case verdicts stay in
         # reports/eval_summary.judge.local.json and reports/judge_cache/.
         "judge_ragas",
+        # Bootstrap 95% CI per headline metric (issue #166 / #267 leaderboard).
+        # The block is {metric: {mean, ci_lo, ci_hi, n, num_resamples, alpha}};
+        # the extractor below whitelists both the metric and sub-key sets.
+        "ci",
     }
 )
+
+# Headline metrics whose bootstrap CI is allowed to round-trip the
+# extractor. Mirrors the scalar metrics already whitelisted at the top
+# level (run_eval.py:1213) so `aggregate.json` and `aggregate.json["ci"]`
+# can never carry different metric inventories.
+SAFE_CI_METRIC_KEYS = (
+    "accuracy",
+    "groundedness",
+    "citation_precision",
+    "citation_page_precision",
+    "citation_region_precision",
+    "citation_grounding",
+    "claim_citation_alignment",
+    "answer_format_compliance",
+    "abstention",
+    "retry",
+    # Comparison-aware retrieval metrics (run_eval.py:1273-1279) — only
+    # populated when the eval includes comparison cases.
+    "comparison_target_recall",
+    "comparison_pool_recall",
+)
+SAFE_CI_SUB_KEYS = ("mean", "ci_lo", "ci_hi", "n", "num_resamples", "alpha")
 
 # RAGAS metric sub-keys whitelisted from `judge_ragas`. Float scalars + CI dicts.
 SAFE_JUDGE_RAGAS_METRIC_KEYS = (
@@ -229,6 +255,21 @@ def extract_aggregate(summary: dict[str, Any]) -> dict[str, Any]:
                     extracted["cross_ablation"] = cross_out
             if extracted:
                 out[key] = extracted
+        elif key == "ci" and isinstance(value, dict):
+            ci_out: dict[str, Any] = {}
+            for metric in SAFE_CI_METRIC_KEYS:
+                metric_ci = value.get(metric)
+                if not isinstance(metric_ci, dict):
+                    continue
+                trimmed = {
+                    sub: metric_ci.get(sub)
+                    for sub in SAFE_CI_SUB_KEYS
+                    if metric_ci.get(sub) is not None
+                }
+                if trimmed:
+                    ci_out[metric] = trimmed
+            if ci_out:
+                out[key] = ci_out
         elif key == "run_manifest" and isinstance(value, dict):
             # Drop config_path (filesystem layout, not committable).
             # Keep git_commit / git_dirty / config_sha256 / generated_at.
