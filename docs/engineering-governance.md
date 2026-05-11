@@ -13,6 +13,7 @@ If you are new to the repo or onboarding a reviewer, start here.
 | Concern | Source of truth | Notes |
 |---|---|---|
 | Coding & review rules | [`CLAUDE.md`](../CLAUDE.md) | Pre-PR checklist, prohibited shortcuts, performance expectations. |
+| Multi-agent coordination | [`docs/multi-agent-ownership.md`](./multi-agent-ownership.md) | 7-way ownership split, `rag_core.py` lock holder, conflict-resolution rules when several agents work in parallel. |
 | Load-bearing decisions | [`docs/adr/`](./adr/README.md) | One short file per decision; status-tracked. |
 | Behavior contracts | [ADR 0003](./adr/0003-structured-answer-citation-contract.md), [`docs/answer-policy.md`](./answer-policy.md) | Answer JSON shape, `schema_version`, status values. |
 | Eval surfaces | [ADR 0005](./adr/0005-eval-split-public-synthetic-private-local.md), [`eval/config.yaml`](../eval/config.yaml), `eval/*.example.yaml` | Public synthetic is committed; private local is `.gitignore`d. |
