@@ -78,12 +78,12 @@
 
 | 규칙 | 어디에 적혀있나 | 어떻게 강제되나 |
 |---|---|---|
-| Pre-PR 7-item 체크리스트 | [`CLAUDE.md`](../CLAUDE.md) §"Pre-PR review checklist" | PR template + 리뷰 게이트 |
-| Real-data delta 첨부 (load-bearing 변경) | `CLAUDE.md` §5b | `.githooks/` 옵션 hook + PR 가이드 |
-| ADR threshold | `CLAUDE.md` §"Change rules" | 리뷰어 명시적 질문 |
+| Pre-PR 7-item 체크리스트 | [`.github/pull_request_template.md`](../.github/pull_request_template.md) | PR template + 리뷰 게이트 |
+| Real-data delta 첨부 (load-bearing 변경) | [`.github/pull_request_template.md`](../.github/pull_request_template.md) §5b | `.githooks/pre-push` 옵션 hook + PR 가이드 |
+| ADR threshold | [`CLAUDE.md`](../CLAUDE.md) §"Core principles" + [`docs/adr/README.md`](./adr/README.md) | 리뷰어 명시적 질문 |
 | Public/private eval 분리 | [ADR 0005](./adr/0005-eval-split-public-synthetic-private-local.md) | `scripts/run_real_eval_delta.py`의 `SAFE_TOPLEVEL_KEYS` / `FORBIDDEN_KEYS` enforcement |
 | Answer contract immutability | [ADR 0003](./adr/0003-structured-answer-citation-contract.md) | `score_answer_format` in `eval/run_eval.py` |
-| README metrics ↔ report 동기화 | `CLAUDE.md` reproducibility | `scripts/update_readme_metrics.py --check` (CI) |
+| README metrics ↔ report 동기화 | `scripts/update_readme_metrics.py` + CI gate | `scripts/update_readme_metrics.py --check` (CI) |
 | Naive baseline 보존 | [ADR 0001](./adr/0001-preserve-naive-baseline.md) | `eval/config.yaml`의 `naive_baseline` ablation 매번 실행 |
 
 거버넌스가 어떻게 anti-pattern을 차단하는지는 [`engineering-governance.md` §"Anti-patterns this governance is designed to prevent"](./engineering-governance.md) 참조.

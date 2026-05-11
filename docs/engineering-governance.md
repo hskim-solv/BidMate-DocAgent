@@ -43,8 +43,9 @@ a contributor (human or AI) can walk through:
 7. **Run the eval locally if relevant.** `make eval` for the public
    synthetic surface. Compare against `main`'s
    `reports/eval_summary.json` if you have it.
-8. **Push, open PR.** PR body answers the pre-PR checklist in
-   `CLAUDE.md` (what / files / risks / tests / eval impact / back-compat / out-of-scope).
+8. **Push, open PR.** PR body fills in
+   [`.github/pull_request_template.md`](../.github/pull_request_template.md)
+   (what / files / risks / tests / eval impact / back-compat / out-of-scope).
 9. **CI verifies.** `Pytest` job + `Eval delta vs base` job. The
    delta job upserts a comment with the metrics table; expect `·`
    across the board for non-RAG changes.
@@ -100,8 +101,9 @@ a contributor (human or AI) can walk through:
   it. *Prevented by:* `naive_baseline` is a named ablation in
   `eval/config.yaml`; every eval run reports it.
 - Decision laundering — a load-bearing choice is buried in a
-  refactor PR. *Prevented by:* ADR threshold in `CLAUDE.md`; the
-  pre-PR checklist forces the question.
+  refactor PR. *Prevented by:* ADR threshold in `CLAUDE.md` Core
+  principles + [`docs/adr/README.md`](./adr/README.md); the PR
+  template forces the question.
 - Review-time scope creep — a PR grows to include "while I was
   here" fixes. *Prevented by:* "one PR, one concern" in
   `CLAUDE.md`; spawn a follow-up issue instead.
@@ -125,3 +127,15 @@ measurement rigor, governance, regression discipline) should read
 [`docs/senior-positioning.md`](./senior-positioning.md) first — it
 threads the artifacts above into one interview-ready narrative
 without duplicating their content.
+
+## Local hook setup (one-time, per developer)
+
+Activate the opt-in pre-push reminder hook:
+
+    git config core.hooksPath .githooks
+
+The hook prints a warning when a push touches retrieval / verifier / eval / api
+paths, reminding you to attach `make real-eval-delta` to the PR (PR template
+item 5b). It is **non-fatal** — it exits 0 and never blocks a push. Skip with
+`git push --no-verify` only with a documented reason (e.g. doc-only follow-up
+of a measured PR).
