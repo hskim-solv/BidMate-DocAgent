@@ -48,7 +48,7 @@ def render_pair(base: dict[str, Any], head: dict[str, Any], *, title: str,
     lines.append("")
     lines.append(f"| metric | {base_label} | {head_label} | Δ |")
     lines.append("|---|---|---|---|")
-    for path, label, higher in METRICS:
+    for path, label, higher, _gated in METRICS:
         b = get_path(base, path)
         h = get_path(head, path)
         lines.append(
@@ -99,7 +99,7 @@ def render_matrix_compare(
     lines.append("| metric | " + " | ".join(header_cells) + " | " + " | ".join(delta_headers) + " |")
     lines.append("|" + "---|" * (1 + len(header_cells) + len(delta_headers)))
 
-    for path, label, higher in METRICS:
+    for path, label, higher, _gated in METRICS:
         base_val = get_path(base, path)
         row = [label, fmt_value(base_val)]
         for c in others:
