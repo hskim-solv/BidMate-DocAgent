@@ -3017,9 +3017,41 @@ def make_context_clarification_result(
 
 
 def metadata_clarification_answer(query: str, analysis: dict[str, Any]) -> str:
+    """Clarification text shown when ambiguous metadata matches force
+    abstention (issue #72).
+
+    Lists each candidate as `agency · project (doc_id)` so the user can
+    pick a more specific phrasing without having to look up doc_ids.
+    Falls back to bare doc_ids if metadata_matches don't carry agency /
+    project (defensive — should not happen on well-formed indexes).
+    """
     ambiguity = analysis.get("metadata_ambiguity") or {}
-    candidate_doc_ids = ", ".join(ambiguity.get("candidate_doc_ids") or analysis.get("matched_doc_ids") or [])
-    suffix = f" 현재 후보 문서는 {candidate_doc_ids}입니다." if candidate_doc_ids else ""
+    candidate_doc_ids = ambiguity.get("candidate_doc_ids") or analysis.get("matched_doc_ids") or []
+    metadata_matches = analysis.get("metadata_matches") or []
+    agency_project_by_doc: dict[str, str] = {}
+    for match in metadata_matches:
+        doc_id = match.get("doc_id")
+        if doc_id and doc_id not in agency_project_by_doc:
+            agency = (match.get("agency") or "").strip()
+            project = (match.get("project") or "").strip()
+            if agency and project:
+                agency_project_by_doc[doc_id] = f"{agency} · {project}"
+            elif agency:
+                agency_project_by_doc[doc_id] = agency
+            elif project:
+                agency_project_by_doc[doc_id] = project
+    candidates_rendered = []
+    for doc_id in candidate_doc_ids:
+        label = agency_project_by_doc.get(doc_id)
+        if label:
+            candidates_rendered.append(f"{label} ({doc_id})")
+        else:
+            candidates_rendered.append(doc_id)
+    if not candidates_rendered:
+        suffix = ""
+    else:
+        joined = ", ".join(candidates_rendered)
+        suffix = f" 현재 후보는 {joined}입니다."
     return (
         f"'{query}'에서 가리키는 기관 또는 사업 후보가 여러 개라서 하나로 확정할 수 없습니다."
         f"{suffix} 기관명 또는 사업명을 더 구체적으로 지정해 주세요."

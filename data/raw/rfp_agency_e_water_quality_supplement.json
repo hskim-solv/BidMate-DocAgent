@@ -1,0 +1,22 @@
+{
+  "doc_id": "rfp-agency-e-water-quality-supplement",
+  "title": "기관 E 수질 모니터링 부속 사업 RFP (single-turn ambiguity probe — supplement)",
+  "agency": "기관 E",
+  "project": "수질 모니터링 부속 사업",
+  "metadata": {
+    "domain": "water quality",
+    "document_type": "synthetic_single_turn_ambiguity_probe",
+    "project_aliases": ["수질 부속사업", "수질 모니터링 부속"],
+    "probe_purpose": "issue-72 single-turn ambiguity — pair with rfp-agency-e-water-quality-main under same agency 기관 E"
+  },
+  "sections": [
+    {
+      "heading": "사업 개요",
+      "text": "기관 E 수질 모니터링 부속 사업은 본 사업과 별개로 비상시 긴급 측정 대응을 다룬다. 부속 사업은 비상 출동 인력 운영과 임시 측정 장비 배치를 포함한다. 사업 기간은 6개월이며 본 사업과 병행 진행한다."
+    },
+    {
+      "heading": "비상 측정 절차",
+      "text": "비상 측정은 본 사업의 측정망에서 이상 수치가 감지되면 30분 내 출동해 추가 측정을 수행한다. 비상 측정 결과는 즉시 보고된다."
+    }
+  ]
+}
