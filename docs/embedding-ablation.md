@@ -51,6 +51,17 @@ Run date: 2026-05-11. Public synthetic corpus (n=42; single_doc 14 / comparison 
 
 All other agentic ablations (`hierarchical`, `no_metadata_first`, `no_rerank`, `no_verifier_retry`) show **0pp delta** in primary metrics.
 
+### Chunk-level retrieval (human-annotated gold subset, n=10)
+
+Issue [#175](https://github.com/hskim-solv/BidMate-DocAgent/issues/175) added explicit `gold_chunk_ids` to 8 `follow_up` + 2 `single_doc` chunk-boundary cases. Per-slice averages over the **annotated subset** (re-run 2026-05-11, `naive_baseline`, `hashing` backend):
+
+| slice | n_annotated | chunk_recall@5 | chunk_MRR | chunk_nDCG@10 |
+|---|---:|---:|---:|---:|
+| single_doc (chunk-boundary probes) | 2 | 1.000 | 0.750 | 0.815 |
+| follow_up | 8 | 0.750 | 0.750 | 0.750 |
+
+Annotation outcome: heuristic-derived gold and human-annotated gold **agree on all 10 cases** — the 0.750 follow_up score reflects two multi-turn cases (`follow_up_state_a_security`, `follow_up_state_multi_step_a_deliverables`) where the retriever returns no chunks at all (tracked under issue [#57](https://github.com/hskim-solv/BidMate-DocAgent/issues/57) C4), not a gold-labeling artifact. Embedding-model comparisons can now distinguish retrieval misses from heuristic blind spots on these cases.
+
 ### Reading the result
 
 1. **For the full agentic pipeline, the embedding choice is irrelevant on this corpus.** Metadata-first filtering (ADR 0002) bypasses dense retrieval for most queries, so a better embedding doesn't help. This is empirical validation of the metadata-first design — the pipeline is robust to a suboptimal embedding.
