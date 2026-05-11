@@ -2,6 +2,22 @@ mode: rag
 description: Public synthetic RFP evaluation with stratified ablation runs
 index_dir: data/index
 primary_run: naive_baseline
+# Per-ablation latency budgets used by scripts/check_latency_slo.py.
+# These are ABSOLUTE p95 ceilings for the public synthetic surface,
+# which runs the deterministic `hashing` embedding backend in CI. The
+# observed p95 is ~5 ms; the ceiling is set ~20x generous to absorb
+# runner variance without producing flaky failures. Real-data runs use
+# sentence-transformers and have their own (uncommitted) budgets.
+# Budgets are per-pipeline-run name (matches `ablation_runs[].name`).
+latency_budgets:
+  naive_baseline:
+    p95_ms: 100
+  full:
+    p95_ms: 200
+  full_llm:
+    # Stub synthesis backend adds <1 ms; real `anthropic` backend is
+    # measured separately (operator-side, ADR 0005 boundary).
+    p95_ms: 300
 answer_policy:
   answerable_status: supported
   unanswerable_status: insufficient
