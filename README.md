@@ -10,6 +10,8 @@
 | **Streamlit UI** | 배포 가이드: [`docs/deployment.md`](docs/deployment.md) | Fly.io / Hugging Face Spaces / Railway 어느 쪽이든 한 번에 (Dockerfile 동일) |
 | **FastAPI Swagger** | `make api` 후 [/docs](http://localhost:8000/docs) | 프로그래매틱 사용·통합 테스트용 |
 | **로컬 1분 시작** | `make index && make demo` | `http://localhost:8501` |
+| **데모 비디오 (2~3분)** | 녹화 가이드: [docs/deployment.md#recording-the-demo-video](docs/deployment.md#recording-the-demo-video) | 라이브 배포 후 README 상단에 embed 예정 |
+| **📈 Live leaderboard** | [https://hskim-solv.github.io/BidMate-DocAgent/leaderboard/](https://hskim-solv.github.io/BidMate-DocAgent/leaderboard/) | 메인 브랜치 머지마다 자동 누적되는 headline metric time-series + bootstrap CI 밴드 (ADR 0005 aggregate-only) |
 | **데모 비디오 (2~3분)** | 후속 작업 — 가이드: [docs/deployment.md#recording-the-demo-video](docs/deployment.md#recording-the-demo-video) | 배포·녹화 완료 후 본 표 상단에 embed |
 | **엔지니어링 노트** | [hskim-solv.github.io/BidMate-DocAgent](https://hskim-solv.github.io/BidMate-DocAgent/) | 결정의 *왜*와 측정 결과를 정리한 GitHub Pages 사이트 (블로그 3편 + 1-page deep-dive) |
 

@@ -47,6 +47,14 @@ reports/real100/*
 !reports/real100/history/
 reports/real100/history/*
 !reports/real100/history/*.aggregate.json
+# Issue #166 — synthetic public eval time-series. Same aggregate-only
+# pattern as real100/history above. Per-case data stays ignored under
+# reports/* (line 39 above); only the aggregate JSON snapshots and the
+# rendered markdown table cross the commit boundary.
+!reports/history/
+reports/history/*
+!reports/history/*.aggregate.json
+!reports/leaderboard.md
 # LLM-judge per-case verdicts (ADR 0006) stay local — only their
 # aggregate is folded into baseline.aggregate.json. Explicit ignore
 # for clarity (already caught by reports/real100/* above).
