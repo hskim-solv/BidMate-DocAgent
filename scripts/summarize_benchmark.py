@@ -226,14 +226,14 @@ def render_docs(registry: dict[str, Any]) -> str:
         "",
         "## Ablation Table",
         "",
-        "| Run | Pipeline | Top-k | Metadata-first | Rerank | Verifier/Retry | Retrieval | Prompt | Accuracy | Groundedness | Citation | Citation Grounding | Format | Abstention | Retry | Latency p95 |",
-        "|---|---|---:|---:|---:|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "| Run | Pipeline | Top-k | Metadata-first | Rerank | Verifier/Retry | Retrieval | Backend | Prompt | Accuracy | Groundedness | Citation | Citation Grounding | Format | Abstention | Retry | Latency p95 |",
+        "|---|---|---:|---:|---:|---:|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for run in latest.get("runs") or []:
         flags = run.get("flags") or {}
         metrics = run.get("metrics") or {}
         lines.append(
-            "| {name} | {pipeline} | {top_k} | {metadata_first} | {rerank} | {verifier_retry} | {retrieval_mode} | {prompt} | {accuracy} | {groundedness} | {citation} | {citation_grounding} | {format} | {abstention} | {retry} | {latency} |".format(
+            "| {name} | {pipeline} | {top_k} | {metadata_first} | {rerank} | {verifier_retry} | {retrieval_mode} | {retrieval_backend} | {prompt} | {accuracy} | {groundedness} | {citation} | {citation_grounding} | {format} | {abstention} | {retry} | {latency} |".format(
                 name=run.get("name"),
                 pipeline=flags.get("pipeline", ""),
                 top_k=fmt_top_k(flags.get("top_k")),
@@ -241,6 +241,7 @@ def render_docs(registry: dict[str, Any]) -> str:
                 rerank=flag(flags.get("rerank")),
                 verifier_retry=flag(flags.get("verifier_retry")),
                 retrieval_mode=flags.get("retrieval_mode", "flat"),
+                retrieval_backend=flags.get("retrieval_backend", "dense"),
                 prompt=flags.get("prompt_profile", ""),
                 accuracy=fmt_rate(metrics.get("accuracy")),
                 groundedness=fmt_rate(metrics.get("groundedness")),
@@ -302,6 +303,7 @@ def render_docs(registry: dict[str, Any]) -> str:
             "",
             f"- `{baseline_name}`는 fixed chunk + dense top-k만 쓰는 naive control baseline이다.",
             f"- `{primary_name}`는 비교 대상 primary run이다.",
+            "- `Retrieval` 컬럼은 `retrieval_mode` (flat / hierarchical, ADR 0002), `Backend` 컬럼은 `retrieval_backend` (dense / hybrid, ADR 0010) 를 의미하며 두 축은 직교한다.",
             "- latency와 retry는 품질 지표와 함께 본다. retry가 늘어도 groundedness, citation, abstention 개선이 동반되는지 확인한다.",
             "- 현재 수치는 공개 synthetic RFP 평가셋 기준의 2차 가공 집계이며, 원본 RFP 문서나 raw example output은 포함하지 않는다.",
             "",

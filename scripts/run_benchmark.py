@@ -129,6 +129,7 @@ def normalize_run(run: dict[str, Any]) -> dict[str, Any]:
         "rerank": bool(config.get("rerank")),
         "verifier_retry": bool(config.get("verifier_retry")),
         "retrieval_mode": str(config.get("retrieval_mode", "flat")),
+        "retrieval_backend": str(config.get("retrieval_backend", "dense")),
         "prompt_profile": str(config.get("prompt_profile")),
     }
 
@@ -167,6 +168,7 @@ def run_flags(run: dict[str, Any]) -> dict[str, Any]:
         "rerank": bool(run.get("rerank", True)),
         "verifier_retry": bool(run.get("verifier_retry", True)),
         "retrieval_mode": str(run.get("retrieval_mode", "flat")),
+        "retrieval_backend": str(run.get("retrieval_backend", "dense")),
         "prompt_profile": str(run.get("prompt_profile") or ""),
     }
 
@@ -214,6 +216,7 @@ def evaluate_run_with_artifacts(
                 rerank=bool(run_config.get("rerank", True)),
                 verifier_retry=bool(run_config.get("verifier_retry", True)),
                 retrieval_mode=str(run_config.get("retrieval_mode", "flat")),
+                retrieval_backend=str(run_config.get("retrieval_backend", "dense")),
                 prompt_profile=str(run_config.get("prompt_profile") or ""),
                 conversation_state=conversation_state,
             )
@@ -229,6 +232,7 @@ def evaluate_run_with_artifacts(
             rerank=bool(run_config.get("rerank", True)),
             verifier_retry=bool(run_config.get("verifier_retry", True)),
             retrieval_mode=str(run_config.get("retrieval_mode", "flat")),
+            retrieval_backend=str(run_config.get("retrieval_backend", "dense")),
             prompt_profile=str(run_config.get("prompt_profile") or ""),
             conversation_state=conversation_state,
         )
@@ -452,6 +456,7 @@ def main() -> int:
         "retriever_config": {
             "index_dir": rel_path(index_dir),
             "retrieval_modes": sorted({run["retrieval_mode"] for run in normalized_runs}),
+            "retrieval_backends": sorted({run["retrieval_backend"] for run in normalized_runs}),
             "pipeline_by_run": {
                 run["name"]: str(run.get("pipeline") or "") for run in normalized_runs
             },
