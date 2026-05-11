@@ -20,6 +20,7 @@ from __future__ import annotations
 import csv
 from dataclasses import asdict, dataclass
 import json
+import os
 from pathlib import Path
 import re
 from typing import Any, Callable
@@ -40,6 +41,10 @@ PDF_MIN_TEXT_CHARS_FOR_OCR = 24
 SUPPORTED_IMAGE_FORMATS = {"png", "jpg", "jpeg", "tif", "tiff", "bmp", "webp"}
 SUPPORTED_VISUAL_FORMATS = {"pdf", *SUPPORTED_IMAGE_FORMATS}
 VISUAL_METADATA_FORMATS = { *SUPPORTED_VISUAL_FORMATS, "hwp" }
+
+DEFAULT_DONUT_MODEL = "daekeun-ml/donut-base-finetuned-korean"
+DONUT_FALLBACK_MODEL = "naver-clova-ix/donut-base"
+OCR_PROVIDERS = ("tesseract", "donut")
 
 OcrProvider = Callable[[Any], str | list[dict[str, Any]]]
 
@@ -564,6 +569,84 @@ def tesseract_ocr_provider(image: Any) -> list[dict[str, Any]]:
             }
         )
     return blocks
+
+
+_DONUT_MODEL_CACHE: dict[str, tuple[Any, Any]] = {}
+
+
+def donut_ocr_provider(image: Any) -> str:
+    """Layout-aware vision provider: returns Donut's seq2seq text for one page image."""
+    try:
+        import torch  # type: ignore
+        from transformers import DonutProcessor, VisionEncoderDecoderModel  # type: ignore
+    except Exception as exc:
+        raise OcrUnavailable(
+            f"donut_unavailable: install torch + transformers to use the donut backend ({exc})"
+        ) from exc
+
+    requested = os.environ.get("BIDMATE_DONUT_MODEL", DEFAULT_DONUT_MODEL)
+    cached = _DONUT_MODEL_CACHE.get(requested)
+    if cached is None:
+        try:
+            processor = DonutProcessor.from_pretrained(requested)
+            model = VisionEncoderDecoderModel.from_pretrained(requested)
+            loaded_id = requested
+        except Exception as exc:
+            if requested == DONUT_FALLBACK_MODEL:
+                raise OcrUnavailable(f"donut_load_failed: {exc}") from exc
+            try:
+                processor = DonutProcessor.from_pretrained(DONUT_FALLBACK_MODEL)
+                model = VisionEncoderDecoderModel.from_pretrained(DONUT_FALLBACK_MODEL)
+                loaded_id = DONUT_FALLBACK_MODEL
+            except Exception as fallback_exc:
+                raise OcrUnavailable(
+                    f"donut_load_failed: {requested} ({exc}); fallback {DONUT_FALLBACK_MODEL} ({fallback_exc})"
+                ) from fallback_exc
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        model = model.to(device)
+        model.eval()
+        cached = (processor, model)
+        _DONUT_MODEL_CACHE[requested] = cached
+        _DONUT_MODEL_CACHE[loaded_id] = cached
+    processor, model = cached
+    device = next(model.parameters()).device
+
+    pixel_values = processor(image, return_tensors="pt").pixel_values.to(device)
+    decoder_input_ids = processor.tokenizer(
+        "<s>", add_special_tokens=False, return_tensors="pt"
+    ).input_ids.to(device)
+
+    with torch.no_grad():
+        outputs = model.generate(
+            pixel_values,
+            decoder_input_ids=decoder_input_ids,
+            max_length=model.decoder.config.max_position_embeddings,
+            pad_token_id=processor.tokenizer.pad_token_id,
+            eos_token_id=processor.tokenizer.eos_token_id,
+            use_cache=True,
+            num_beams=1,
+            bad_words_ids=[[processor.tokenizer.unk_token_id]],
+            return_dict_in_generate=True,
+        )
+
+    sequence = processor.batch_decode(outputs.sequences)[0]
+    if processor.tokenizer.eos_token:
+        sequence = sequence.replace(processor.tokenizer.eos_token, "")
+    if processor.tokenizer.pad_token:
+        sequence = sequence.replace(processor.tokenizer.pad_token, "")
+    return sequence.strip()
+
+
+def get_ocr_provider(name: str | None = None) -> OcrProvider:
+    """Return the OCR provider matching ``name`` (or env var BIDMATE_VISUAL_OCR)."""
+    resolved = (name or os.environ.get("BIDMATE_VISUAL_OCR") or "tesseract").lower()
+    if resolved == "tesseract":
+        return tesseract_ocr_provider
+    if resolved == "donut":
+        return donut_ocr_provider
+    raise ValueError(
+        f"unknown ocr provider: {resolved!r}. Valid options: {sorted(OCR_PROVIDERS)}"
+    )
 
 
 def normalize_ocr_result(
