@@ -1,6 +1,14 @@
 # BidMate Agent
 **RFP 문서 이해를 위한 Agentic RAG 시스템**
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![PR Eval Delta](https://github.com/hskim-solv/BidMate-DocAgent/actions/workflows/pr-eval.yml/badge.svg?branch=main)](https://github.com/hskim-solv/BidMate-DocAgent/actions/workflows/pr-eval.yml) [![Python 3.11](https://img.shields.io/badge/Python-3.11-blue.svg)](pyproject.toml)
+
+## Business context
+
+RFP/제안요청서는 한국 B2B/공공 입찰 시장에서 평균 수십~수백 페이지에 달하며, 검토자는 (a) 요건 추출, (b) 평가 기준 매핑, (c) 모순/누락 탐지를 수동으로 수행한다. 도메인 보고에 따르면 RFP 1건당 검토 시간은 복잡도에 따라 **약 4–20시간** 범위로 추정되고, 누락된 요건은 입찰 실격 또는 계약 조건 불이익으로 직결된다. 본 시스템은 위 세 단계를 grounded answer 형태로 자동화해 검토자가 *판단*에 집중하도록 시간을 절감하는 것을 목표로 한다.
+
+> 비즈니스 임팩트는 보수적 추정 범위로 표기했다. 정확한 시간 단축률은 도메인 사용자 평가가 필요하며, 본 저장소의 정량 지표(groundedness, citation precision 등)는 *검토 보조 품질*의 proxy로 측정됐다. 비즈니스 임팩트 실증은 다음 실험 사이클 항목.
+
 ## TL;DR
 - **문제**: 길고 복잡한 RFP 문서에서 실무 의사결정에 필요한 핵심 조건(예산/일정/요구사항/제출조건)을 빠르게 찾기 어렵습니다.
 - **해결**: 질문 유형 분석 + metadata-first 검색 + local dense retrieval/reranking + 근거 검증/retry를 결합한 Agentic RAG 파이프라인을 구현했습니다.
@@ -61,6 +69,36 @@
 ---
 
 ## Demo / 산출물
+
+비교 질의에 대한 grounded answer 출력 예시 ([`outputs/answer.json`](outputs/answer.json) 발췌). 각 claim에는 출처 문서/섹션 citation이 붙어 있고, diagnostics에 latency와 사용된 embedding backend가 함께 기록된다.
+
+```json
+{
+  "query": "기관 A와 기관 B의 AI 요구사항 차이 알려줘",
+  "answer": {
+    "schema_version": 2,
+    "status": "supported",
+    "claims": [
+      {
+        "target": "기관 A",
+        "claim": "사업 개요 — 기관 A는 AI 품질관리 플랫폼 구축을 추진한다.",
+        "citations": [
+          {"doc_id": "rfp-agency-a-ai-quality", "section": "문서 전체"}
+        ]
+      },
+      {
+        "target": "기관 B",
+        "claim": "기관 B의 핵심 AI 요구사항은 데이터 거버넌스, MLOps 배포 자동화, 모델 모니터링이다.",
+        "citations": [
+          {"doc_id": "rfp-agency-b-mlops-governance", "section": "문서 전체"}
+        ]
+      }
+    ]
+  },
+  "diagnostics": {"latency_ms": 1.91, "embedding_backend": "hashing", "pipeline": "naive_baseline"}
+}
+```
+
 - 질의 실행 결과: `outputs/answer.json`
 - 평가 요약: `reports/eval_summary.json`
 - Planner/rewrite trace: `reports/traces/<run>/<case>.trace.json` (`eval/run_eval.py` 실행 시 생성, Git 미추적)
