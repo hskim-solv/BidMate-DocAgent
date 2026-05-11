@@ -19,6 +19,28 @@ For the CLI / eval flow (not deployment), see
       `BIDMATE_SYNTHESIS_BACKEND=stub` — the stub is a deterministic
       pass-through (ADR 0011).
 
+## One-line `docker run` (no clone, fastest reviewer path)
+
+For a reviewer who already has Docker installed, the fastest path is
+a published image:
+
+```bash
+docker run --rm -p 8501:8501 -p 8000:8000 \\
+  -e BIDMATE_DEMO_MODE=both \\
+  ghcr.io/hskim-solv/bidmate-demo:latest
+# Streamlit UI: http://localhost:8501
+# FastAPI Swagger: http://localhost:8000/docs
+```
+
+The image is published via `make docker-publish` (requires `docker
+login ghcr.io` beforehand). Override the tag with
+`IMAGE_TAG=ghcr.io/<user>/bidmate-demo:<tag> make docker-publish` to
+push to a different registry.
+
+For the from-source recipe (clones the repo, builds locally), use
+`make demo-docker` instead — same Dockerfile, same ports, no
+registry dependency.
+
 ## Fly.io
 
 Free tier comfortably hosts the demo (1 shared-CPU machine, 1 GB

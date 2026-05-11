@@ -1,13 +1,15 @@
 # BidMate Agent
 **RFP 문서 이해를 위한 Agentic RAG 시스템**
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![PR Eval Delta](https://github.com/hskim-solv/BidMate-DocAgent/actions/workflows/pr-eval.yml/badge.svg?branch=main)](https://github.com/hskim-solv/BidMate-DocAgent/actions/workflows/pr-eval.yml) [![Python 3.11](https://img.shields.io/badge/Python-3.11-blue.svg)](pyproject.toml) [![Engineering notes](https://img.shields.io/badge/engineering--notes-GitHub%20Pages-blue)](https://hskim-solv.github.io/BidMate-DocAgent/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![PR Eval Delta](https://github.com/hskim-solv/BidMate-DocAgent/actions/workflows/pr-eval.yml/badge.svg?branch=main)](https://github.com/hskim-solv/BidMate-DocAgent/actions/workflows/pr-eval.yml) [![Python 3.11](https://img.shields.io/badge/Python-3.11-blue.svg)](pyproject.toml) [![Engineering notes](https://img.shields.io/badge/engineering--notes-GitHub%20Pages-blue)](https://hskim-solv.github.io/BidMate-DocAgent/) [![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/hskim-solv/BidMate-DocAgent/blob/main/demo/bidmate_quickstart.ipynb)
 
 ## 🚀 Live demo
 
 | 경로 | 상태 | 비고 |
 |---|---|---|
+| **Colab 5분 quickstart** | [![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/hskim-solv/BidMate-DocAgent/blob/main/demo/bidmate_quickstart.ipynb) | 클론 / 설치 없이 브라우저에서 바로 grounded answer 1건 실행 |
 | **Streamlit UI** | 배포 가이드: [`docs/deployment.md`](docs/deployment.md) | Fly.io / Hugging Face Spaces / Railway 어느 쪽이든 한 번에 (Dockerfile 동일) |
+| **One-line docker run** | `docker run -p 8501:8501 -p 8000:8000 -e BIDMATE_DEMO_MODE=both ghcr.io/hskim-solv/bidmate-demo:latest` | 클론 없이 published image 로 Streamlit + FastAPI 동시 실행 ([`docs/deployment.md`](docs/deployment.md#one-line-docker-run-no-clone-fastest-reviewer-path) 참고) |
 | **FastAPI Swagger** | `make api` 후 [/docs](http://localhost:8000/docs) | 프로그래매틱 사용·통합 테스트용 |
 | **로컬 1분 시작** | `make index && make demo` | `http://localhost:8501` |
 | **데모 비디오 (2~3분)** | 녹화 가이드: [docs/deployment.md#recording-the-demo-video](docs/deployment.md#recording-the-demo-video) | 라이브 배포 후 README 상단에 embed 예정 |
