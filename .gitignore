@@ -77,3 +77,9 @@ reports/synthetic_judge.local.json
 # Benchmark raw/local artifacts
 artifacts/benchmarks/
 artifacts/runs/
+artifacts/matrices/
+
+# Harness private overlays (paired with eval/*.local.yaml). Only the
+# *.example.yaml templates are committed.
+harness/*.local.yaml
+harness/real.yaml
