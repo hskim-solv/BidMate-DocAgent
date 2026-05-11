@@ -13,7 +13,7 @@ RFP/제안요청서 문서 이해를 위한 Agentic RAG 시스템 [BidMate-DocAg
   - [Extractive를 1급 baseline로 유지하는 이유](./blog/2026-05-extractive-baseline/)
   - [Public synthetic + Private real, 두 평가 surface](./blog/2026-05-public-synthetic-private-real/)
   - [실패 분류로 백로그 생성하기](./blog/2026-05-failure-taxonomy-backlog/)
-- **[1-page Architecture deep-dive](./architecture-deep-dive/)** (준비 중)
+- **[1-page Architecture deep-dive](./architecture-deep-dive/)** — 파이프라인 / ADR 매핑 / 측정 highlight 한 페이지 요약
 - **[저장소 문서 인덱스](./)** — ADR, 설계 노트, 벤치마크, 평가
 
 ## 5분 리뷰 경로 (저장소 기준)
