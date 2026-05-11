@@ -59,6 +59,12 @@ cp eval/real_config.example.yaml eval/real_config.local.yaml
 - `context_entities`: 평가 시점에 강제로 주입할 발주기관/사업명. 보통은 비워둔다.
 - `hardcase_categories`: 카테고리별 슬라이스 메트릭에 포함시키고 싶을 때(예: `["C1", "C5"]`).
 - `expected_citation_pages`, `expected_citation_regions`: visual 인덱스에서 페이지·영역 단위 grounding을 검증할 때만.
+- `gold_chunk_ids`: chunk-level retrieval 메트릭(recall@k / MRR / nDCG@10)의 정답 chunk 목록. 비워두면 `expected_doc_ids` + `expected_terms` 휴리스틱으로 자동 유도된다([`eval/run_eval.py` `derive_gold_chunk_ids`](../eval/run_eval.py)). 휴리스틱이 잡지 못하는 경우나 동일 doc 내 여러 chunk 중 어느 것이 진짜 정답인지 명시하고 싶을 때만 손으로 적는다. chunk id는 `data/index/index.json`의 `chunks[].chunk_id`(보통 `<doc_id>::chunk-NNN`)에서 그대로 복사한다.
+  ```yaml
+  gold_chunk_ids:
+    - rfp-agency-d-spectrometer-probe::chunk-003
+  ```
+  대화형으로 후보 chunk를 확인하려면 [`scripts/dump_case_chunks.py`](../scripts/dump_case_chunks.py)를 쓴다.
 
 ## doc_id를 어떻게 알아내나
 
@@ -166,6 +172,19 @@ PDF/HWP 인덱스의 한 사업에 대해 사업기간과 사업예산을 묻는
 - **`expected_terms`에 너무 긴 문장을 넣어서 정답이 fail로 잡힘** — 답변 생성 형식과 어순이 달라서이다. 명사·숫자·일자 단위로 쪼갠다.
 - **abstention 케이스가 false negative로 잡힘** — 그 키워드가 다른 row의 `텍스트`에 우연히 등장하는 경우이다. 코퍼스에 정말 없는 키워드인지 `grep` 한 번 해본다.
 - **follow_up이 abstain으로 빠짐** — 현재 구현은 1단계 follow-up까지만 강하게 처리한다(C4-1, 이슈 [#57](https://github.com/hskim-solv/BidMate-DocAgent/issues/57)). 2단계 implicit chain은 보수적으로 케이스에서 빼두는 것을 권장한다.
+
+## Annotation log — `gold_chunk_ids`
+
+[이슈 #175](https://github.com/hskim-solv/BidMate-DocAgent/issues/175) 일환으로 `eval/config.yaml`의 답변 가능(answerable) 케이스 중 휴리스틱 blind-spot 위험이 가장 높은 10건에 대해 `gold_chunk_ids`를 사람이 직접 확인하고 명시했다.
+
+- **Annotator**: hskim (`times21c@gmail.com`)
+- **Date**: 2026-05-11
+- **Method**: [`scripts/dump_case_chunks.py`](../scripts/dump_case_chunks.py)로 `expected_doc_ids`에 속한 chunk를 모두 dump하고 본문을 읽어 정답 chunk를 1건 선택.
+- **Cases (10)**:
+  - `follow_up` (8건, all answerable): `follow_up_schedule`, `follow_up_b_deliverables`, `follow_up_c_response_target`, `follow_up_common_evaluation`, `follow_up_a_team`, `follow_up_c_operation_metrics`, `follow_up_state_a_security`, `follow_up_state_multi_step_a_deliverables`.
+  - `single_doc` chunk-boundary 프로브 (2건): `chunk_probe_external_audit_period` (chunk-002), `chunk_probe_report_storage` (chunk-003). agency-D 문서는 3-chunk로 분할되어 있어 단일 doc 내 chunk 선택이 자명하지 않은 유일한 케이스.
+- **Result**: 위 10건에서 휴리스틱이 선택한 gold와 사람 annotation이 완전히 일치(per-case `chunk_recall@5`/`MRR`/`nDCG@10` 변동 없음). `follow_up_state_a_security` / `follow_up_state_multi_step_a_deliverables`의 R@5=0은 retriever가 multi-turn 컨텍스트에서 chunk를 가져오지 못하는 **진짜 retrieval 결함**임을 사람 gold로 재확인 (이슈 [#57](https://github.com/hskim-solv/BidMate-DocAgent/issues/57) C4 대응 추적).
+- **Skipped**: `abstention` 슬라이스 (9건) 및 `follow_up_state_ambiguous_clarification` — `answerable: false`라 정답 chunk가 존재하지 않음. 강제 annotation은 ADR 0003 abstention 계약을 왜곡한다.
 
 ## 참고
 

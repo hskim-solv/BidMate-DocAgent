@@ -73,6 +73,25 @@
 
 현재 commit 된 aggregate 는 **stub backend** 기준 — verifier status 를 거울처럼 반사하므로 `agreement_with_verifier=1.0` 이고 RAGAS 점수는 status-derived fixture (supported→0.85, partial→0.5, insufficient→0.1) 이다. 진짜 신호가 아니다. 실제 LLM judge 수치를 보려면 live 백엔드로 다시 돌려 aggregate 를 갱신한다.
 
+## Chunk-level retrieval (PR #147 + human-annotated gold from #175)
+
+이슈 [#147](https://github.com/hskim-solv/BidMate-DocAgent/issues/147)에서 추가된 chunk-level retrieval 메트릭 (recall@k / MRR / nDCG@10) — gold chunk 는 `expected_doc_ids` + `expected_terms` 휴리스틱으로 자동 유도되며 case 단위로 `gold_chunk_ids` override 가능 ([`eval/run_eval.py` `derive_gold_chunk_ids`](../eval/run_eval.py)).
+
+`naive_baseline` 기준 (2026-05-11 re-run, `eval/config.yaml` n=42):
+
+| slice | cases_total | cases_with_gold | chunk_recall@5 | chunk_recall@10 | chunk_MRR | chunk_nDCG@10 |
+|---|---:|---:|---:|---:|---:|---:|
+| single_doc | 14 | 14 | 1.000 | 1.000 | 0.893 | 0.921 |
+| comparison | 10 | 10 | 0.950 | 0.950 | 1.000 | 0.953 |
+| follow_up | 9 | 8 | 0.750 | 0.750 | 0.750 | 0.750 |
+| abstention | 9 | 0 | N/A | N/A | N/A | N/A |
+
+`abstention` 슬라이스 및 `follow_up_state_ambiguous_clarification` 1건은 `answerable: false` 라 gold chunk 가 존재하지 않는다 (의도된 N/A — abstention 계약, ADR 0003).
+
+이슈 [#175](https://github.com/hskim-solv/BidMate-DocAgent/issues/175) 일환으로 답변 가능한 8 follow_up + 2 chunk-boundary single_doc 케이스에 `gold_chunk_ids` 를 사람이 직접 확인해 명시 (annotation log: [`docs/local-gold-authoring.md`](./local-gold-authoring.md#annotation-log--gold_chunk_ids)). 휴리스틱 결과와 사람 annotation 이 10/10 케이스에서 동일 — follow_up 의 0.750 은 multi-turn 컨텍스트 (`follow_up_state_a_security`, `follow_up_state_multi_step_a_deliverables`) 에서 retriever 가 chunk 를 가져오지 못하는 진짜 결함이며 (이슈 [#57](https://github.com/hskim-solv/BidMate-DocAgent/issues/57) C4), gold-labeling artifact 가 아니다.
+
+후속 PR 후보: `metric_block` 에 chunk metric aggregation roll-up 추가 (현재 case 단위로만 emit). 본 표 수치는 case_results 평균으로 계산.
+
 ## Pending rows
 
 - **Live synthetic judge aggregate** (ADR 0012, issue #164): stub-mode aggregate 만 commit 되어 있음. live 백엔드(openai_compatible) 로 갱신한 aggregate diff 를 별도 PR 로 commit 하면 RAGAS-style 실측 노출.
