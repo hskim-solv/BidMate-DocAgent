@@ -702,3 +702,55 @@ cases:
     expected_terms:
       - "드론"
     answerable: false
+
+  # Issue #73 — chunk-boundary probe set. The probe fixture
+  # `data/raw/rfp_agency_d_spectrometer_probe.json` is intentionally
+  # long enough to chunk into multiple pieces under default
+  # max_chars=520 (3+ chunks across 2 parent sections under
+  # `auto`/`section` strategy). Each probe query targets a fact that
+  # lives in a specific chunk position — first/middle/last/overlap —
+  # so a regression in chunking that drops or misaligns a chunk
+  # surfaces here even if upstream retrieval (entity / metadata /
+  # filter) keeps working. Diagnostics: each evidence item now carries
+  # `chunk_seq_in_section` and `total_chunks_in_section` so reviewers
+  # can read "got chunk 2/3" vs "got chunk 1/3 when answer was in 2/3"
+  # straight from `outputs/answer.json`.
+  - id: chunk_probe_external_audit_period
+    query_type: single_doc
+    hardcase_categories:
+      - chunk_boundary
+    query: "기관 D 분광기 운영 데이터의 외부 감사 주기는?"
+    expected_doc_ids:
+      - rfp-agency-d-spectrometer-probe
+    expected_terms:
+      - "분기별"
+    expected_citation_terms:
+      - "분기별"
+    answerable: true
+
+  - id: chunk_probe_report_storage
+    query_type: single_doc
+    hardcase_categories:
+      - chunk_boundary
+    query: "기관 D 분광기 보고서 보관 기간과 위치는?"
+    expected_doc_ids:
+      - rfp-agency-d-spectrometer-probe
+    expected_terms:
+      - "5년"
+      - "NAS"
+    expected_citation_terms:
+      - "5년"
+    answerable: true
+
+  - id: chunk_probe_calibration_overlap
+    query_type: single_doc
+    hardcase_categories:
+      - chunk_boundary
+    query: "기관 D 분광기 라만 캘리브레이션 주기는?"
+    expected_doc_ids:
+      - rfp-agency-d-spectrometer-probe
+    expected_terms:
+      - "매일"
+    expected_citation_terms:
+      - "매일"
+    answerable: true
