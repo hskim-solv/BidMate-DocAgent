@@ -5,7 +5,7 @@
 #   git config core.hooksPath .githooks
 #   (or: make install-hooks)
 #
-# Behavior (two checks, in order):
+# Behavior (three checks, in order):
 #
 # 1. Branch name + issue convention (ADR 0007) — HARD-FAILS the push
 #    if the current branch does not match <type>/issue-<N>[-<slug>].
@@ -16,7 +16,12 @@
 #    touches retrieval / verifier / eval / api paths without a
 #    real-data delta, per CLAUDE.md pre-PR checklist item 5b.
 #
-# Skip both with `git push --no-verify` only if you have a documented
+# 3. README metrics freshness reminder — SOFT-WARNS (exits 0) if
+#    reports/eval_summary.json exists locally and the committed
+#    README's metrics block diverges. eval_summary.json is gitignored,
+#    so this is the only feasible enforcement point.
+#
+# Skip all with `git push --no-verify` only if you have a documented
 # reason (e.g. doc-only follow-up of a measured PR).
 
 set -u
@@ -95,6 +100,37 @@ if [[ -n "$hit" ]]; then
     have a documented reason.
 
 EOF
+fi
+
+# ---------------------------------------------------------------------------
+# 3. README metrics freshness reminder (SOFT-WARN).
+# ---------------------------------------------------------------------------
+# If reports/eval_summary.json exists locally and the committed README's
+# metrics block diverges from what `update_readme_metrics.py` would render,
+# remind the developer to refresh it before reviewers see stale numbers.
+# eval_summary.json is gitignored, so this is the only feasible enforcement
+# point — CI cannot compare against it.
+
+if [[ -f "reports/eval_summary.json" ]] && command -v python3 >/dev/null 2>&1; then
+  if ! python3 scripts/update_readme_metrics.py \
+         --report reports/eval_summary.json --readme README.md --check \
+         >/dev/null 2>&1; then
+    cat >&2 <<EOF
+
+⚠️  README metrics block looks stale vs reports/eval_summary.json.
+
+    Refresh before reviewers see outdated numbers:
+
+        make check     # confirm staleness
+        python3 scripts/update_readme_metrics.py \\
+            --report reports/eval_summary.json --readme README.md
+        git add README.md && git commit --amend --no-edit  # or new commit
+
+    Push proceeds. Skip this reminder with --no-verify if README
+    intentionally lags eval_summary in this PR.
+
+EOF
+  fi
 fi
 
 exit 0
