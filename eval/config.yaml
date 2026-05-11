@@ -754,3 +754,35 @@ cases:
     expected_citation_terms:
       - "매일"
     answerable: true
+
+  # Issue #72 — single-turn metadata ambiguity probe set. The probe
+  # fixtures `data/raw/rfp_agency_e_water_quality_main.json` and
+  # `data/raw/rfp_agency_e_water_quality_supplement.json` share agency
+  # 기관 E with overlapping project_aliases ("수질 모니터링 ..."),
+  # so generic single-turn queries hit both candidates and trigger
+  # `metadata_ambiguity_clarification` rather than guessing or
+  # silently abstaining. The probes lock in:
+  #   (a) the early clarification gate fires (status=insufficient with
+  #       code=metadata_ambiguity_clarification, query_type=abstention)
+  #   (b) the clarification message lists agency · project for each
+  #       competing candidate so the user can re-phrase
+  # Real-data taxonomy C2-1 — "동일 기관에 다수 사업" pattern.
+  - id: single_turn_ambiguity_water_generic
+    query_type: abstention
+    hardcase_categories:
+      - ambiguous_follow_up
+    query: "기관 E의 사업 개요는?"
+    expected_doc_ids: []
+    expected_terms:
+      - "수질"
+    answerable: false
+
+  - id: single_turn_ambiguity_water_partial_project
+    query_type: abstention
+    hardcase_categories:
+      - ambiguous_follow_up
+    query: "기관 E의 수질 모니터링 사업은?"
+    expected_doc_ids: []
+    expected_terms:
+      - "수질"
+    answerable: false
