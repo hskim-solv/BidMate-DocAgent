@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 import argparse
 from collections import Counter, defaultdict
+import datetime
+import hashlib
 import json
 import math
 from pathlib import Path
 import re
+import subprocess
 import sys
 from typing import Any
 import unicodedata
@@ -59,6 +62,44 @@ def hardcase_categories(item: dict[str, Any]) -> list[str]:
 def canonical_query_type(query_type: Any) -> str:
     value = str(query_type or "").strip()
     return QUERY_TYPE_ALIASES.get(value, value)
+
+
+def _git(*args: str) -> str:
+    try:
+        result = subprocess.run(
+            ["git", *args],
+            capture_output=True,
+            text=True,
+            cwd=ROOT_DIR,
+            check=False,
+        )
+        return result.stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
+def compute_run_manifest(config_path: Path) -> dict[str, Any]:
+    """Build the run_manifest block pinned to git commit + config bytes + UTC time.
+
+    Needed for leaderboard time-series (#166) and judge calibration
+    reproducibility (#169). Field naming mirrors
+    ``scripts.write_real_eval_baseline._provenance`` (``git_commit``,
+    ``git_dirty``, ``generated_at``) so the real-eval baseline pipeline
+    and the synthetic eval pipeline share one schema.
+    """
+    commit = _git("rev-parse", "HEAD")[:12] or "unknown"
+    dirty = _git("status", "--porcelain") != ""
+    try:
+        config_sha = hashlib.sha256(config_path.read_bytes()).hexdigest()[:16]
+    except (FileNotFoundError, OSError):
+        config_sha = "unknown"
+    return {
+        "git_commit": commit,
+        "git_dirty": dirty,
+        "config_path": str(config_path),
+        "config_sha256": config_sha,
+        "generated_at": datetime.datetime.utcnow().isoformat() + "Z",
+    }
 
 
 def parse_args() -> argparse.Namespace:
@@ -899,6 +940,11 @@ def score_case(
         "latency_ms": diagnostics.get("latency_ms"),
         "retry_count": diagnostics.get("retry_count", 0),
         "retry_trigger_reasons": retry_trigger_reasons(prediction),
+        "last_attempt_verified": (
+            bool((diagnostics.get("filter_stage_attempts") or [])[-1].get("verified"))
+            if (diagnostics.get("filter_stage_attempts") or [])
+            else None
+        ),
         "filter_stage": plan.get("filter_stage"),
         "selected_top_k": diagnostics.get("selected_top_k"),
         "retrieval_budget": dict(plan.get("retrieval_budget") or {}),
@@ -946,6 +992,119 @@ def _latency_summary(values: list[float]) -> dict[str, float | None]:
         "p95": percentile(values, 0.95),
         "mean": rate(values),
         "count": len(values),
+    }
+
+
+def retry_effectiveness_block(case_results: list[dict[str, Any]]) -> dict[str, Any]:
+    """Within-run retry effectiveness metrics (issue #120).
+
+    Reports five signals, all conditional on retry-triggered answerable
+    cases (n = cases_with_retry):
+
+    * ``recovery_rate`` — mean accuracy on retry-triggered cases.
+    * ``residual_failure_rate`` — mean (1 - accuracy) on the same subset.
+    * ``retry_resolution_rate`` — proxy for the verifier's own signal:
+      fraction of retry-triggered cases whose final ``filter_stage_attempt``
+      was verified. Distinguishes "retry resolved cleanly" from
+      "retry exhausted the iteration cap with an unverified result".
+    * ``retry_lift_vs_no_retry`` — recovery_rate minus the accuracy on
+      non-retried answerable cases in the same run. Honest read of
+      "does retry help on hard cases?".
+
+    The true ``retry_precision`` ("would the first attempt have been
+    correct without the verifier rejecting it?") requires a cross-run
+    comparison against ``no_verifier_retry`` on the same case set —
+    computed separately at the main() level. See ADR 0004 / ADR 0001.
+    """
+    answerable = [r for r in case_results if r.get("accuracy") is not None]
+    retried = [r for r in answerable if (r.get("retry_count") or 0) > 0]
+    not_retried = [r for r in answerable if (r.get("retry_count") or 0) == 0]
+
+    if not retried:
+        return {
+            "cases_with_retry": 0,
+            "cases_without_retry": len(not_retried),
+            "recovery_rate": None,
+            "residual_failure_rate": None,
+            "retry_resolution_rate": None,
+            "retry_lift_vs_no_retry": None,
+            "ci": {},
+        }
+
+    recovery_scores = [float(r["accuracy"]) for r in retried]
+    residual_scores = [1.0 - score for score in recovery_scores]
+    recovery_rate = rate(recovery_scores)
+    residual_failure_rate = rate(residual_scores)
+
+    resolution_flags = [
+        float(bool(r.get("last_attempt_verified")))
+        for r in retried
+        if r.get("last_attempt_verified") is not None
+    ]
+    retry_resolution_rate = rate(resolution_flags) if resolution_flags else None
+
+    not_retried_accuracy = [float(r["accuracy"]) for r in not_retried]
+    no_retry_baseline = rate(not_retried_accuracy) if not_retried_accuracy else None
+    retry_lift = (
+        recovery_rate - no_retry_baseline
+        if recovery_rate is not None and no_retry_baseline is not None
+        else None
+    )
+
+    return {
+        "cases_with_retry": len(retried),
+        "cases_without_retry": len(not_retried),
+        "recovery_rate": recovery_rate,
+        "residual_failure_rate": residual_failure_rate,
+        "retry_resolution_rate": retry_resolution_rate,
+        "retry_lift_vs_no_retry": retry_lift,
+        "ci": {
+            "recovery_rate": bootstrap_ci(recovery_scores),
+            "residual_failure_rate": bootstrap_ci(residual_scores),
+        },
+    }
+
+
+def cross_ablation_retry_precision(
+    full_case_results: list[dict[str, Any]],
+    baseline_case_results: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    """Cross-run retry_precision per issue #120 false-positive trigger spec.
+
+    Compares ``agentic_full`` (verifier-on) to ``no_verifier_retry`` on
+    the same case set. A retry trigger is *true-positive* when the
+    verifier-off baseline would have produced a wrong answer (= retry
+    was warranted), and *false-positive* when the baseline would have
+    been correct anyway (= the verifier was over-eager).
+
+    Returns ``None`` if either side is empty or no case has retry_count > 0.
+    """
+    full_by_id = {c.get("id"): c for c in full_case_results if c.get("id")}
+    base_by_id = {c.get("id"): c for c in baseline_case_results if c.get("id")}
+    shared_ids = sorted(set(full_by_id) & set(base_by_id))
+    triggered = [
+        cid
+        for cid in shared_ids
+        if (full_by_id[cid].get("retry_count") or 0) > 0
+        and full_by_id[cid].get("accuracy") is not None
+        and base_by_id[cid].get("accuracy") is not None
+    ]
+    if not triggered:
+        return None
+    true_positive = sum(
+        1 for cid in triggered if float(base_by_id[cid].get("accuracy") or 0.0) < 1.0
+    )
+    false_positive = sum(
+        1 for cid in triggered if float(base_by_id[cid].get("accuracy") or 0.0) >= 1.0
+    )
+    n = true_positive + false_positive
+    return {
+        "n_retry_triggered": len(triggered),
+        "n_evaluable": n,
+        "true_positive_triggers": true_positive,
+        "false_positive_triggers": false_positive,
+        "retry_precision": (true_positive / n) if n > 0 else None,
+        "method": "cross_ablation(agentic_full,no_verifier_retry)",
     }
 
 
@@ -1101,6 +1260,7 @@ def metric_block(case_results: list[dict[str, Any]]) -> dict[str, Any]:
             ),
         },
         "retry_reason_counts": dict(sorted(retry_reason_counts.items())),
+        "retry_effectiveness": retry_effectiveness_block(case_results),
         "citation_grounding_error_counts": dict(sorted(citation_grounding_error_counts.items())),
         "claim_citation_error_counts": dict(sorted(claim_citation_error_counts.items())),
     }
@@ -1306,6 +1466,7 @@ def main() -> int:
     primary_run_name = str(config.get("primary_run") or DEFAULT_CLI_PIPELINE_NAME)
     trace_root = Path(args.trace_dir) if args.trace_dir else Path(args.output_dir) / "traces"
     redact_options = trace_redact_options(args.redact_trace)
+    all_case_results: dict[str, list[dict[str, Any]]] = {}
     try:
         for run_config in ablation_runs(config):
             case_results = evaluate_run(
@@ -1316,6 +1477,7 @@ def main() -> int:
                 trace_dir=trace_root,
                 redact_options=redact_options,
             )
+            all_case_results[run_config["name"]] = case_results
             is_primary = run_config["name"] == primary_run_name
             run_summary = summarize_run(
                 run_config["name"],
@@ -1333,9 +1495,19 @@ def main() -> int:
     if primary_summary is None:
         primary_summary = run_summaries[0]
 
+    retry_effectiveness = dict(primary_summary.get("retry_effectiveness") or {})
+    full_cases = all_case_results.get("agentic_full") or all_case_results.get(primary_run_name) or []
+    baseline_cases = all_case_results.get("no_verifier_retry") or []
+    cross_precision = (
+        cross_ablation_retry_precision(full_cases, baseline_cases) if baseline_cases else None
+    )
+    if cross_precision:
+        retry_effectiveness["cross_ablation"] = cross_precision
+
     summary = {
         "mode": "rag",
         "provenance": provenance(),
+        "run_manifest": compute_run_manifest(config_path),
         "config": args.config,
         "index_dir": args.index_dir,
         "primary_run": primary_summary["name"],
@@ -1363,6 +1535,7 @@ def main() -> int:
         "by_hardcase_category": primary_summary.get("by_hardcase_category", {}),
         "retry_cost": primary_summary["retry_cost"],
         "retry_reason_counts": primary_summary["retry_reason_counts"],
+        "retry_effectiveness": retry_effectiveness,
         "citation_grounding_error_counts": primary_summary["citation_grounding_error_counts"],
         "claim_citation_error_counts": primary_summary["claim_citation_error_counts"],
         "trace_dir": str(trace_root),
