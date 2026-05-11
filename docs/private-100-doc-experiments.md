@@ -123,8 +123,7 @@ git worktree add /tmp/pre-69 2f76671
 python3 eval/run_eval.py --index_dir data/index/real100 \
   --output_dir /tmp/real100-before --config eval/real_config.local.yaml
 python3 eval/run_eval.py --index_dir data/index/real100 \
-  --output_dir /tmp/real100-after  --config eval/real_config.local.yaml
-# (aggregate fields then transcribed into the table above)
+  --output_dir /tmp/real100-after  --config eval/real_config.local.yaml# (aggregate fields then transcribed into the table above)
 ```
 
 ## Real-data Eval History
