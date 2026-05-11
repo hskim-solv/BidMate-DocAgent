@@ -1,0 +1,22 @@
+{
+  "doc_id": "rfp-agency-e-water-quality-main",
+  "title": "기관 E 수질 모니터링 본 사업 RFP (single-turn ambiguity probe — main)",
+  "agency": "기관 E",
+  "project": "수질 모니터링 본 사업",
+  "metadata": {
+    "domain": "water quality",
+    "document_type": "synthetic_single_turn_ambiguity_probe",
+    "project_aliases": ["수질 본사업", "수질 모니터링 본"],
+    "probe_purpose": "issue-72 single-turn ambiguity — pair with rfp-agency-e-water-quality-supplement under same agency 기관 E"
+  },
+  "sections": [
+    {
+      "heading": "사업 개요",
+      "text": "기관 E 수질 모니터링 본 사업은 광역 상수도 원수 수질 측정망의 본 운영을 다룬다. 본 사업은 측정 지점 운영, 데이터 수집, 정기 보고를 포함하며 12개월 단위로 갱신된다."
+    },
+    {
+      "heading": "측정 항목",
+      "text": "본 사업에서 측정하는 항목은 탁도, pH, 잔류 염소, 대장균이며 측정 주기는 매시간이다. 측정 데이터는 본청 서버에 실시간 전송된다."
+    }
+  ]
+}
