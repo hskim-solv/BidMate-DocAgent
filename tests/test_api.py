@@ -8,18 +8,17 @@ matching the pattern used by other retrieval regression tests.
 from __future__ import annotations
 
 import unittest
-from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 from api import main as api_main
-from rag_core import build_index_payload
 
 
 class ApiSmokeTest(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls) -> None:
-        cls.index = build_index_payload(Path("data/raw"), embedding_backend="hashing")
+    @pytest.fixture(autouse=True)
+    def _inject_shared_index(self, shared_raw_index):
+        self.index = shared_raw_index
 
     def _client(self, *, with_index: bool = True) -> TestClient:
         client = TestClient(api_main.app)

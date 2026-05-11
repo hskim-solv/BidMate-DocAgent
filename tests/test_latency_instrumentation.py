@@ -1,9 +1,10 @@
 import time
 import unittest
-from pathlib import Path
+
+import pytest
 
 import rag_core
-from rag_core import _StageTimer, build_index_payload, run_rag_query
+from rag_core import _StageTimer, run_rag_query
 from eval.run_eval import metric_block, summarize_run
 
 
@@ -26,9 +27,9 @@ class StageTimerTest(unittest.TestCase):
 
 
 class RunRagQueryTimingTest(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls) -> None:
-        cls.index = build_index_payload(Path("data/raw"), embedding_backend="hashing")
+    @pytest.fixture(autouse=True)
+    def _inject_shared_index(self, shared_raw_index):
+        self.index = shared_raw_index
 
     def setUp(self) -> None:
         rag_core._PROCESS_WARM = False
