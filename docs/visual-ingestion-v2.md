@@ -7,6 +7,14 @@
 - parser artifact를 기존 RAG document schema로 정규화해 chunking, retrieval, citation 흐름에서 재사용한다.
 - HWP는 이번 단계에서 native visual parsing을 하지 않고 CSV 텍스트 fallback으로 비교 가능성을 유지한다.
 
+## What this is NOT
+
+이 파이프라인이 **하지 않는** 것을 명확히 라벨링한다 (reviewer 오해 방지용 — 이 섹션이 ground truth):
+
+- **Layout-aware vision foundation model을 사용하지 않는다.** LayoutLMv3 / Donut / ColPali / Nougat / pix2struct 같은 vision-language 모델은 `visual_ingestion.py`에 import되지 않으며, 표/제목/본문 구분은 pdfplumber의 통계적 table detection과 PyMuPDF text block heuristic + pytesseract OCR fallback 조합에만 의존한다. vision foundation model과의 1-page 비교 spike는 후속 단계 항목.
+- **HWP를 native parse하지 않는다.** `pyhwp` / `hwp5html` / `olefile`을 import하지 않으며, HWP 본문은 사용자가 사전에 `data_list.csv`의 `텍스트` 컬럼에 추출해 둔 텍스트를 사용한다 (`visual_fallback_hwp` 마커). native HWP parser spike는 후속 단계 항목.
+- **End-to-end vision quality ablation을 제공하지 않는다.** 현재 단계의 측정은 OCR text recall, layout block precision/recall, table cell F1, field key-value precision 같은 parser-stage 지표(`reports/parser_eval_summary.json`)에 한정된다. layout-aware 모델과의 정량 비교는 별도 spike에서 다룬다.
+
 ## 입력
 - `--visual_input_dir`: PDF 또는 이미지(`pdf`, `png`, `jpg`, `jpeg`, `tif`, `tiff`, `bmp`, `webp`) 파일 디렉터리.
 - `--metadata_csv --files_dir --ingestion_mode visual`: 기존 `data_list.csv` 메타데이터를 사용하되 PDF/image는 v2 parser로 처리하고 HWP는 v1 텍스트 fallback으로 처리한다.

@@ -1,6 +1,14 @@
 #!/usr/bin/env python3
 """Visual parsing v2 ingestion for PDF/image RFP sources.
 
+This module is OCR-only: PyMuPDF for PDF text-layer blocks, pdfplumber for
+table candidates, pytesseract for OCR fallback when the text layer is sparse
+or the input is an image. It does NOT use layout-aware vision foundation
+models (LayoutLMv3 / Donut / ColPali / Nougat / pix2struct); a 1-page
+comparison spike against such a model is a separate, planned path. HWP is
+also not parsed natively here — see ``docs/visual-ingestion-v2.md`` for the
+CSV-text fallback rationale.
+
 The parser emits structured artifacts with page/block/region metadata and
 normalizes those artifacts into the existing RAG document shape. Heavy parser
 dependencies are imported lazily so the public CSV/text baseline keeps running
