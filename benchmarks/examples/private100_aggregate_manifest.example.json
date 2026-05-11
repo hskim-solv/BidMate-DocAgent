@@ -28,6 +28,7 @@
       "rerank": true,
       "verifier_retry": true,
       "retrieval_mode": "flat",
+      "retrieval_backend": "dense",
       "prompt_profile": "private_text_v1"
     },
     "private100_visual_v2_full": {
@@ -37,6 +38,7 @@
       "rerank": true,
       "verifier_retry": true,
       "retrieval_mode": "hierarchical",
+      "retrieval_backend": "dense",
       "prompt_profile": "private_visual_v2"
     }
   },
