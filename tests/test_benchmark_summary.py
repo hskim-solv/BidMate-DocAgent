@@ -29,6 +29,7 @@ class BenchmarkSummaryTest(unittest.TestCase):
                     "rerank": True,
                     "verifier_retry": True,
                     "retrieval_mode": "hierarchical",
+                    "retrieval_backend": "dense",
                     "prompt_profile": "private_visual_v2",
                 }
             },
@@ -73,6 +74,8 @@ class BenchmarkSummaryTest(unittest.TestCase):
             "| table_heavy | 1 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | N/A | 1.000 |",
             docs,
         )
+        self.assertIn("| Retrieval | Backend | Prompt |", docs)
+        self.assertIn("| hierarchical | dense | private_visual_v2 |", docs)
 
     def test_private100_fixture_preserves_privacy_metadata_and_comparison(self) -> None:
         private_manifest = self.load_private100_fixture()
@@ -101,6 +104,7 @@ class BenchmarkSummaryTest(unittest.TestCase):
                         "rerank": True,
                         "verifier_retry": True,
                         "retrieval_mode": "flat",
+                        "retrieval_backend": "dense",
                         "prompt_profile": "structured_grounded_claims",
                     }
                 },
