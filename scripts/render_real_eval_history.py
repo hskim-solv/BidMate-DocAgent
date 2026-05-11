@@ -53,6 +53,9 @@ COLUMNS: list[tuple[str, str]] = [
     ("abstention", "Abst."),
     ("answer_format_compliance", "Format"),
     ("retry", "Retry"),
+    # ADR 0006: LLM-judge agreement. Shown only when present; absent
+    # entries render as "—" via the _fmt fallback.
+    ("agreement_with_verifier", "Judge⇄Verifier"),
 ]
 
 
@@ -77,6 +80,7 @@ def load_history() -> list[dict[str, Any]]:
         raw = json.loads(path.read_text(encoding="utf-8"))
         agg = extract_aggregate(raw)
         provenance = raw.get("provenance") or {}
+        judge_block = agg.get("judge") or {}
         rows.append(
             {
                 "file": path.name,
@@ -88,6 +92,7 @@ def load_history() -> list[dict[str, Any]]:
                 "abstention": agg.get("abstention"),
                 "answer_format_compliance": agg.get("answer_format_compliance"),
                 "retry": agg.get("retry"),
+                "agreement_with_verifier": judge_block.get("agreement_with_verifier"),
             }
         )
     rows.sort(key=lambda row: (row["date"], row["file"]))

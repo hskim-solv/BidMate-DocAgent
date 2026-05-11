@@ -1,4 +1,4 @@
-.PHONY: setup index ask eval benchmark benchmark-check check smoke harness-smoke test test-regression api api-docker real-eval real-eval-delta real-eval-baseline-update real-eval-history-render real-eval-history-check clean
+.PHONY: setup index ask eval benchmark benchmark-check check smoke harness-smoke test test-regression api api-docker real-eval real-eval-delta real-eval-baseline-update real-eval-history-render real-eval-history-check real-eval-with-judge clean
 
 PYTHON ?= python3
 VENV ?= .venv
@@ -88,6 +88,15 @@ real-eval-history-render:
 # aggregate snapshots. Suitable for pre-PR gating.
 real-eval-history-check:
 	$(PYTHON) scripts/render_real_eval_history.py --check
+
+# Run the local real-data eval, then ask an LLM judge for a second
+# opinion (ADR 0006). The judge is real-data only; never invoked from
+# public CI. Default backend is `stub` (deterministic, no network);
+# set BIDMATE_JUDGE_BACKEND=openai_compatible plus BIDMATE_JUDGE_*
+# env vars for a real judge call.
+real-eval-with-judge: real-eval
+	$(PYTHON) scripts/llm_judge.py
+	@echo "Run \`make real-eval-baseline-update\` to fold the judge aggregate into the committable baseline."
 
 clean:
 	rm -rf data/index outputs reports

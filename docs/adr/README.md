@@ -68,3 +68,4 @@ project record.
 | [0003](./0003-structured-answer-citation-contract.md) | accepted | Structured answer / citation contract (`schema_version: 2`) |
 | [0004](./0004-verifier-retry-policy.md) | accepted | Verifier-driven retry with strict → relaxed staging |
 | [0005](./0005-eval-split-public-synthetic-private-local.md) | accepted | Eval split: public synthetic vs private local |
+| [0006](./0006-llm-judge-on-real-data-only.md) | accepted | LLM-judge on the real-data surface only (refines 0004) |

@@ -45,6 +45,10 @@ reports/real100/*
 !reports/real100/history/
 reports/real100/history/*
 !reports/real100/history/*.aggregate.json
+# LLM-judge per-case verdicts (ADR 0006) stay local — only their
+# aggregate is folded into baseline.aggregate.json. Explicit ignore
+# for clarity (already caught by reports/real100/* above).
+reports/real100/judge.local.json
 
 # Benchmark raw/local artifacts
 artifacts/benchmarks/

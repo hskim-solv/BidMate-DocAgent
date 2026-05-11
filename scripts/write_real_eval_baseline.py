@@ -34,6 +34,7 @@ from scripts.run_real_eval_delta import extract_aggregate
 EVAL_SUMMARY = ROOT / "reports" / "real100" / "eval_summary.json"
 BASELINE_PATH = ROOT / "reports" / "real100" / "baseline.aggregate.json"
 HISTORY_DIR = ROOT / "reports" / "real100" / "history"
+JUDGE_LOCAL = ROOT / "reports" / "real100" / "judge.local.json"
 
 
 def _git(*args: str) -> str:
@@ -79,6 +80,28 @@ def main() -> int:
     agg = extract_aggregate(raw)
     provenance = _provenance()
     agg["provenance"] = provenance
+
+    # If a judge run is present (ADR 0006), fold its aggregate into the
+    # baseline. The per-case judge file stays local; only the
+    # committable aggregate keys are copied here.
+    if JUDGE_LOCAL.exists():
+        from collections import Counter
+
+        judge_payload = json.loads(JUDGE_LOCAL.read_text(encoding="utf-8"))
+        cases = judge_payload.get("cases") or []
+        statuses = [c.get("judge_status") for c in cases if c.get("judge_status")]
+        grounded = [bool(c.get("judge_grounded")) for c in cases]
+        agreements = [bool(c.get("agrees")) for c in cases if c.get("agrees") is not None]
+        agg["judge"] = {
+            "status_distribution": dict(Counter(statuses)),
+            "grounded_rate": (sum(grounded) / len(grounded)) if grounded else None,
+            "agreement_with_verifier": (
+                sum(agreements) / len(agreements) if agreements else None
+            ),
+            "n": len(cases),
+            "backend": str(judge_payload.get("backend") or "unknown"),
+            "model": str(judge_payload.get("model") or "unknown"),
+        }
 
     serialized = json.dumps(agg, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
 
