@@ -62,6 +62,7 @@ PIPELINE_CONFIG_KEYS = (
     "top_k",
     "metadata_first",
     "rerank",
+    "rerank_cross_encoder",
     "verifier_retry",
     "retrieval_mode",
     "retrieval_backend",
@@ -86,6 +87,7 @@ PIPELINE_PRESETS: dict[str, dict[str, Any]] = {
         "top_k": 4,
         "metadata_first": False,
         "rerank": False,
+        "rerank_cross_encoder": False,
         "verifier_retry": False,
         "retrieval_mode": "flat",
         "retrieval_backend": "dense",
@@ -101,6 +103,7 @@ PIPELINE_PRESETS: dict[str, dict[str, Any]] = {
         "top_k": None,
         "metadata_first": True,
         "rerank": True,
+        "rerank_cross_encoder": False,
         "verifier_retry": True,
         "retrieval_mode": "flat",
         "retrieval_backend": "dense",
@@ -118,6 +121,7 @@ PIPELINE_PRESETS: dict[str, dict[str, Any]] = {
         "top_k": None,
         "metadata_first": True,
         "rerank": True,
+        "rerank_cross_encoder": False,
         "verifier_retry": True,
         "retrieval_mode": "flat",
         "prompt_profile": "llm_synthesis",
@@ -502,6 +506,7 @@ def resolve_pipeline_config(
     config["top_k"] = top_k
     config["metadata_first"] = bool(config.get("metadata_first"))
     config["rerank"] = bool(config.get("rerank"))
+    config["rerank_cross_encoder"] = bool(config.get("rerank_cross_encoder"))
     config["verifier_retry"] = bool(config.get("verifier_retry"))
     config["retrieval_mode"] = retrieval_mode
     config["retrieval_backend"] = retrieval_backend
@@ -2153,7 +2158,13 @@ def retrieve(
             item["score"] = round(float(rrf * rrf_norm), 6)
             item["score_parts"]["rank_rrf"] = round(float(rrf * rrf_norm), 6)
 
-    scored.sort(key=lambda item: (item["score"], item["chunk_id"]), reverse=True)
+    scored.sort(key=lambda item: item["score"], reverse=True)
+    if plan.get("rerank_cross_encoder"):
+        from rag_rerank import rerank as cross_rerank
+
+        top_n = min(30, max(int(plan["top_k"] or 10) * 3, int(plan["top_k"] or 10)))
+        scored, rerank_meta = cross_rerank(query, scored, top_n=top_n)
+        plan["rerank_cross_encoder_meta"] = rerank_meta
     top_k = int(plan["top_k"])
     if plan.get("retrieval_mode") == "hierarchical":
         return reassemble_parent_sections(index, scored, top_k, plan, analysis)
