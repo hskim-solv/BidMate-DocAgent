@@ -10,6 +10,13 @@
 # To swap to the live LLM synthesis path:
 #   flyctl secrets set ANTHROPIC_API_KEY=sk-ant-...
 #   flyctl secrets set BIDMATE_SYNTHESIS_BACKEND=anthropic
+# To enable LangFuse trace observability (ADR 0013):
+#   flyctl secrets set BIDMATE_TRACE_BACKEND=langfuse
+#   flyctl secrets set LANGFUSE_PUBLIC_KEY=pk-lf-... LANGFUSE_SECRET_KEY=sk-lf-...
+#   flyctl secrets set LANGFUSE_HOST=https://cloud.langfuse.com   # or self-hosted
+# OpenTelemetry alternative (vendor-agnostic):
+#   flyctl secrets set BIDMATE_TRACE_BACKEND=otel
+#   flyctl secrets set OTEL_EXPORTER_OTLP_ENDPOINT=https://api.honeycomb.io/v1/traces
 #
 # Region: sea (Seattle) by default — adjust to one closer to your
 # expected reviewers. `seo` (Seoul) is a natural fit for a Korean RFP
@@ -26,6 +33,7 @@ primary_region = "sea"
   BIDMATE_INDEX_DIR = "/app/data/index"
   EMBEDDING_BACKEND = "hashing"
   BIDMATE_SYNTHESIS_BACKEND = "stub"
+  BIDMATE_TRACE_BACKEND = "none"   # set to "langfuse" or "otel" via flyctl secrets to enable tracing
 
 # Streamlit UI — the public-facing port.
 [[services]]

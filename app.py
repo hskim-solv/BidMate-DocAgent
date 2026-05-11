@@ -100,6 +100,10 @@ def main() -> int:
     out_path.write_text(json.dumps(answer, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"[OK] Answer written: {out_path}")
 
+    trace_url = (answer.get("diagnostics") or {}).get("trace_url")
+    if trace_url:
+        print(f"[OK] Trace: {trace_url}")
+
     if args.session_state:
         session_path = Path(args.session_state)
         session_path.parent.mkdir(parents=True, exist_ok=True)

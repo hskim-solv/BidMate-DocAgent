@@ -13,7 +13,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     BIDMATE_INDEX_DIR=/app/data/index \
-    EMBEDDING_BACKEND=hashing
+    EMBEDDING_BACKEND=hashing \
+    BIDMATE_TRACE_BACKEND=none
 
 WORKDIR /app
 
@@ -32,7 +33,7 @@ RUN pip install --upgrade pip \
 # Copy only the code/data needed at runtime. tests/, benchmarks/, eval/
 # are intentionally left out of the image to keep it small — they are
 # part of the CLI evaluation flow, not the demo surface.
-COPY rag_core.py rag_synthesis.py ingestion.py visual_ingestion.py app.py ./
+COPY rag_core.py rag_synthesis.py rag_observability.py ingestion.py visual_ingestion.py app.py ./
 COPY api/ ./api/
 COPY demo/ ./demo/
 COPY scripts/build_index.py ./scripts/build_index.py

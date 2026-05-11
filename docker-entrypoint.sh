@@ -12,7 +12,9 @@ INPUT_DIR="${BIDMATE_RAW_DIR:-/app/data/raw}"
 EMBEDDING_BACKEND="${EMBEDDING_BACKEND:-hashing}"
 HOST="${BIDMATE_API_HOST:-0.0.0.0}"
 PORT="${BIDMATE_API_PORT:-8000}"
+TRACE_BACKEND="${BIDMATE_TRACE_BACKEND:-none}"
 
+echo "[entrypoint] Trace backend: $TRACE_BACKEND"
 mkdir -p "$INDEX_DIR"
 if [[ ! -f "$INDEX_DIR/index.json" ]]; then
   echo "[entrypoint] No index.json under $INDEX_DIR; building from $INPUT_DIR (backend=$EMBEDDING_BACKEND)"
