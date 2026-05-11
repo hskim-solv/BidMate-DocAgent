@@ -1,4 +1,4 @@
-.PHONY: setup index ask eval benchmark benchmark-check check smoke harness-smoke test test-regression api api-docker real-eval real-eval-delta real-eval-baseline-update clean
+.PHONY: setup index ask eval benchmark benchmark-check check smoke harness-smoke test test-regression api api-docker real-eval real-eval-delta real-eval-baseline-update real-eval-history-render real-eval-history-check clean
 
 PYTHON ?= python3
 VENV ?= .venv
@@ -71,21 +71,23 @@ real-eval-delta:
 	  --base reports/real100/baseline.aggregate.json
 
 # Deliberate baseline bump. Reads the current eval_summary.json and
-# overwrites reports/real100/baseline.aggregate.json with the
-# aggregate-only fields. Intended to run *after* a decision is made
-# (PR merged, threshold tightened, etc.), not on every eval. Diff the
-# result with `git diff` before committing.
+# writes BOTH the current baseline AND an append-only history archive
+# entry. Aggregate-only (extractor enforces ADR 0005). Intended to run
+# *after* a decision is made (PR merged, threshold tightened, etc.),
+# not on every eval. Diff the result with `git diff` before committing.
 real-eval-baseline-update:
-	$(PYTHON) -c "import json, sys, datetime, subprocess; \
-	sys.path.insert(0, '.'); \
-	from scripts.run_real_eval_delta import extract_aggregate; \
-	raw = json.load(open('reports/real100/eval_summary.json')); \
-	agg = extract_aggregate(raw); \
-	sha = subprocess.run(['git','rev-parse','HEAD'], capture_output=True, text=True).stdout.strip()[:12]; \
-	dirty = subprocess.run(['git','status','--porcelain'], capture_output=True, text=True).stdout.strip() != ''; \
-	agg['provenance'] = {'git_commit': sha, 'git_dirty': bool(dirty), 'generated_at': datetime.datetime.utcnow().isoformat()+'Z'}; \
-	open('reports/real100/baseline.aggregate.json','w').write(json.dumps(agg, ensure_ascii=False, indent=2, sort_keys=True)+chr(10)); \
-	print('[OK] baseline.aggregate.json updated. git diff to review.')"
+	$(PYTHON) scripts/write_real_eval_baseline.py
+
+# Render the chronological real-data history table into
+# docs/private-100-doc-experiments.md (between the
+# real-eval-history-{start,end} markers). Aggregate-only.
+real-eval-history-render:
+	$(PYTHON) scripts/render_real_eval_history.py
+
+# Verify the rendered history table is up to date with committed
+# aggregate snapshots. Suitable for pre-PR gating.
+real-eval-history-check:
+	$(PYTHON) scripts/render_real_eval_history.py --check
 
 clean:
 	rm -rf data/index outputs reports
