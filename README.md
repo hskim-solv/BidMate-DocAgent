@@ -146,6 +146,11 @@ Final Response (grounded)
 
 ## 실행 방법 (검증됨)
 
+두 가지 흐름을 제공합니다.
+
+- **CLI 평가 흐름 (source of truth)**: `scripts/build_index.py` → `app.py` → `eval/run_eval.py`. 재현 가능한 측정/벤치마크/ablation 보고서 생성용.
+- **API 데모 흐름 (리뷰어용)**: `make api` 또는 `make api-docker`로 FastAPI 서버를 띄워 `/health`, `/pipelines`, `POST /query` 엔드포인트로 RAG를 호출. 출력은 grounded answer/citation 계약을 그대로 보존. 자세한 내용은 [`docs/api-demo.md`](docs/api-demo.md).
+
 현재 공개본은 `data/raw`의 synthetic RFP 문서를 사용해 로컬에서 end-to-end RAG를 실행합니다. 기본 실행은 `naive_baseline` control이며, embedding `auto` 모드는 캐시된 `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` 모델을 우선 사용하고 모델을 사용할 수 없는 환경에서는 deterministic hashing embedding으로 자동 fallback합니다.
 
 ### 1) 환경 준비
@@ -316,6 +321,7 @@ python3 eval/run_parser_eval.py \
 - Citation grounding evaluation: [`docs/citation-grounding-eval.md`](docs/citation-grounding-eval.md)
 - Grounding/eval hardening: [`docs/grounding-eval-hardening.md`](docs/grounding-eval-hardening.md)
 - Reproducible harness: [`docs/harness.md`](docs/harness.md)
+- API demo (FastAPI + container): [`docs/api-demo.md`](docs/api-demo.md)
 - 답변 출력 정책: [`docs/answer-policy.md`](docs/answer-policy.md)
 - 실패 사례 분석: [`docs/failure-cases.md`](docs/failure-cases.md)
 - 회고 및 개선 방향: [`docs/retrospective.md`](docs/retrospective.md)

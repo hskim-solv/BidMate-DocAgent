@@ -1,4 +1,4 @@
-.PHONY: setup index ask eval benchmark benchmark-check check smoke harness-smoke test test-regression clean
+.PHONY: setup index ask eval benchmark benchmark-check check smoke harness-smoke test test-regression api api-docker clean
 
 PYTHON ?= python3
 VENV ?= .venv
@@ -39,6 +39,17 @@ test:
 # Run before any change to rag_core retrieval/verification or the eval pipeline.
 test-regression:
 	$(PYTHON) -m pytest tests/test_retrieval_loop_regression.py -q
+
+# Run the FastAPI demo locally. Requires data/index to exist
+# (run `make index` first). See docs/api-demo.md for details.
+api:
+	$(PYTHON) -m uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
+
+# Build and run the demo container. The entrypoint builds the index on
+# first start if data/index is empty inside the container.
+api-docker:
+	docker build -t bidmate-demo .
+	docker run --rm -p 8000:8000 bidmate-demo
 
 clean:
 	rm -rf data/index outputs reports
