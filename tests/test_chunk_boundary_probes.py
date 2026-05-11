@@ -20,12 +20,12 @@ existing `data/raw` fixture, matching the pattern in
 """
 
 import unittest
-from pathlib import Path
+
+import pytest
 
 from rag_core import (
     DEFAULT_CHUNK_MAX_CHARS,
     build_chunk_records,
-    build_index_payload,
     run_rag_query,
 )
 
@@ -95,11 +95,9 @@ class ChunkBoundaryProbeRetrievalTest(unittest.TestCase):
     `supported`.
     """
 
-    @classmethod
-    def setUpClass(cls) -> None:
-        cls.index = build_index_payload(
-            Path("data/raw"), embedding_backend="hashing"
-        )
+    @pytest.fixture(autouse=True)
+    def _inject_shared_index(self, shared_raw_index):
+        self.index = shared_raw_index
 
     def _expect_supported_with_term(
         self, query: str, expected_term: str
