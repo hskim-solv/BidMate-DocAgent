@@ -28,6 +28,7 @@ except ImportError:  # pragma: no cover — defensive; declared in requirements.
     _BM25Okapi = None  # type: ignore[assignment]
 
 from rag_synthesis import synthesize_answer
+from text_normalize import expand_forms, normalize_text
 
 DEFAULT_EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 DEFAULT_HASH_DIM = 384
@@ -1620,6 +1621,23 @@ def analyze_query(
             if not token.startswith("기관"):
                 topics.append(token)
 
+    # ADR 0007 / issue #170: add canonical-form tokens from Korean money/date
+    # normalization so substring topic matching can bridge 5천만원 ↔ 50,000,000.
+    # Strictly additive — existing tokens are kept; new tokens compete for the
+    # topics[:8] cap on equal footing.
+    canonical_query = normalize_text(normalized_query)
+    if canonical_query != normalized_query:
+        existing = {topic.lower() for topic in topics}
+        for token in tokenize(canonical_query):
+            if (
+                len(token) > 1
+                and token not in STOPWORDS
+                and not token.startswith("기관")
+                and token.lower() not in existing
+            ):
+                topics.append(token)
+                existing.add(token.lower())
+
     comparison_terms = ("차이", "비교", "각각", "대비")
     comparison_joiners = ("와", "과", "및", ",", "/")
     reduced_matches = metadata_matches_for_stage(metadata_matches, "reduced")
@@ -2284,9 +2302,21 @@ def verify_evidence(
         reasons.append("low_top_score")
 
     combined = " ".join(evidence_text_for_verification(item) for item in evidence).lower()
+    # ADR 0007 / issue #170: Korean money/date OR-match. Build canonical form
+    # once; substring check tests (form ∈ combined) OR (form ∈ canonical) for
+    # each form in expand_forms(topic). Strictly additive — legacy
+    # (topic ∈ combined) is preserved as the first branch.
+    combined_canonical = normalize_text(combined)
     topics = verification_topics(analysis)
     if topics:
-        matched_topic_count = sum(1 for topic in topics if topic.lower() in combined)
+        matched_topic_count = sum(
+            1
+            for topic in topics
+            if any(
+                form in combined or form in combined_canonical
+                for form in expand_forms(topic.lower())
+            )
+        )
         if matched_topic_count < len(topics):
             if (
                 allow_partial_topic
@@ -2417,7 +2447,12 @@ def evidence_text_for_verification(item: dict[str, Any]) -> str:
 
 def evidence_has_topic(item: dict[str, Any], topics: list[str]) -> bool:
     text = evidence_text_for_verification(item).lower()
-    return any(topic.lower() in text for topic in topics)
+    text_canonical = normalize_text(text)
+    return any(
+        (form in text) or (form in text_canonical)
+        for topic in topics
+        for form in expand_forms(topic.lower())
+    )
 
 
 def generate_answer(
