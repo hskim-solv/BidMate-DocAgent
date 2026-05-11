@@ -1,0 +1,80 @@
+{
+  "abstention": 0.3,
+  "accuracy": 0.84375,
+  "answer_format_compliance": 0.6666666666666666,
+  "by_query_type": {
+    "abstention": {
+      "abstention": 0.2222222222222222,
+      "answer_format_compliance": 0.2222222222222222,
+      "groundedness": 0.2222222222222222,
+      "num_predictions": 9
+    },
+    "comparison": {
+      "accuracy": 0.7,
+      "answer_format_compliance": 0.6,
+      "groundedness": 0.7,
+      "num_predictions": 10
+    },
+    "follow_up": {
+      "abstention": 1.0,
+      "accuracy": 0.75,
+      "answer_format_compliance": 0.7777777777777778,
+      "groundedness": 0.7777777777777778,
+      "num_predictions": 9
+    },
+    "single_doc": {
+      "accuracy": 1.0,
+      "answer_format_compliance": 0.9285714285714286,
+      "groundedness": 1.0,
+      "num_predictions": 14
+    }
+  },
+  "citation_grounding": null,
+  "citation_precision": 0.5119047619047619,
+  "claim_citation_alignment": 0.9736842105263158,
+  "groundedness": 0.7142857142857143,
+  "latency": {
+    "mean": 3.4500000000000006,
+    "p50": 3.19,
+    "p95": 6.2674999999999965
+  },
+  "num_predictions": 42,
+  "pipeline": "naive_baseline",
+  "primary_run": "naive_baseline",
+  "prompt_profile": "minimal_grounded_extractive",
+  "provenance": {
+    "generated_at": "2026-05-11T12:19:19.082276Z",
+    "git_commit": "9e69e00be4a4",
+    "git_dirty": false
+  },
+  "retry": 0.0,
+  "retry_reason_counts": {},
+  "stage_latency": {
+    "answer_generation_ms": {
+      "mean": 0.5124390243902438,
+      "p50": 0.55,
+      "p95": 0.81
+    },
+    "context_resolution_ms": {
+      "mean": 0.0036585365853658543,
+      "p50": 0.0,
+      "p95": 0.02
+    },
+    "query_analysis_ms": {
+      "mean": 1.9212195121951214,
+      "p50": 1.55,
+      "p95": 4.31
+    },
+    "retrieve_ms": {
+      "mean": 0.26222222222222225,
+      "p50": 0.26,
+      "p95": 0.3
+    },
+    "verify_ms": {
+      "mean": 0.0,
+      "p50": 0.0,
+      "p95": 0.0
+    }
+  },
+  "top_k": 4
+}
