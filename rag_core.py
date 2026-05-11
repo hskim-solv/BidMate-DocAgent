@@ -123,6 +123,11 @@ WEAK_SECTION_HEADINGS = {
     "section-001",
 }
 INDEX_FILENAME = "index.json"
+# M2 (#207): vectors live in a sidecar .npy so the JSON stays small and a
+# future VectorStore abstraction (#176) can swap in alternate backends
+# without touching the chunk-metadata payload.
+EMBEDDINGS_FILENAME = "embeddings.npy"
+INDEX_SCHEMA_VERSION = 2
 MODEL_CACHE: dict[tuple[str, bool], Any] = {}
 
 TOKEN_RE = re.compile(r"[A-Za-z0-9]+|[가-힣]+")
@@ -1116,8 +1121,13 @@ def build_index_payload_from_documents(
         for chunk in chunks
     ]
     embedding_result = embed_texts(embedding_inputs, model_name=model_name, backend=embedding_backend)
-    for chunk, vector in zip(chunks, embedding_result.vectors.tolist()):
-        chunk["embedding"] = vector
+    # M2 (#207): vectors live in a sidecar .npy. Chunks reference rows by
+    # embedding_idx — inline lists were ~85% of the JSON file size and
+    # forced a per-query Python-list → NumPy materialization.
+    vectors_matrix = np.asarray(embedding_result.vectors, dtype=np.float32)
+    for idx, chunk in enumerate(chunks):
+        chunk["embedding_idx"] = idx
+        chunk.pop("embedding", None)
 
     public_docs = [
         {
@@ -1131,7 +1141,7 @@ def build_index_payload_from_documents(
         for doc in documents
     ]
     return {
-        "schema_version": 1,
+        "schema_version": INDEX_SCHEMA_VERSION,
         "mode": "rag",
         "message": message,
         "embedding": {
@@ -1139,6 +1149,7 @@ def build_index_payload_from_documents(
             "model": embedding_result.model,
             "dimension": int(embedding_result.vectors.shape[1]),
             "normalized": True,
+            "storage": "sidecar_npy",
         },
         "build": {
             "num_documents": len(public_docs),
@@ -1150,6 +1161,7 @@ def build_index_payload_from_documents(
         "documents": public_docs,
         "parent_sections": parent_sections,
         "chunks": chunks,
+        "_vectors": vectors_matrix,
     }
 
 
@@ -1162,7 +1174,46 @@ def load_index(index_dir: Path) -> dict[str, Any]:
         raise ValueError(f"Unsupported index mode: {payload.get('mode')}. Rebuild the index.")
     if not payload.get("chunks"):
         raise ValueError(f"Index has no chunks: {path}")
+    schema = int(payload.get("schema_version", 1))
+    if schema >= INDEX_SCHEMA_VERSION:
+        embeddings_path = index_dir / EMBEDDINGS_FILENAME
+        if not embeddings_path.exists():
+            raise ValueError(
+                f"Index schema_version={schema} requires sidecar {embeddings_path}. "
+                f"Rebuild via scripts/build_index.py."
+            )
+        payload["_vectors"] = np.load(embeddings_path)
+    else:
+        # Legacy schema 1 — vectors inlined per chunk. Materialize the
+        # matrix once at load time so the retrieve() path can stay on
+        # the new index["_vectors"][embedding_idx] code path.
+        inline = [c.get("embedding") for c in payload["chunks"]]
+        if inline and all(v is not None for v in inline):
+            payload["_vectors"] = np.asarray(inline, dtype=np.float32)
+            for idx, chunk in enumerate(payload["chunks"]):
+                chunk["embedding_idx"] = idx
+                chunk.pop("embedding", None)
+        else:
+            payload["_vectors"] = None
     return payload
+
+
+def write_index(payload: dict[str, Any], output_dir: Path) -> Path:
+    """Atomically persist an index payload + embeddings sidecar.
+
+    Pops the in-memory ``_vectors`` matrix from the payload, writes it to
+    ``embeddings.npy``, and serializes the remaining JSON-compatible
+    structure to ``index.json``. The caller's ``payload`` dict is mutated
+    (the private key is removed) — see scripts/build_index.py for the
+    canonical use site.
+    """
+    output_dir.mkdir(parents=True, exist_ok=True)
+    vectors = payload.pop("_vectors", None)
+    if vectors is not None:
+        np.save(output_dir / EMBEDDINGS_FILENAME, np.asarray(vectors, dtype=np.float32))
+    out_path = output_dir / INDEX_FILENAME
+    out_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    return out_path
 
 
 def known_entities(index: dict[str, Any]) -> list[str]:
@@ -1932,9 +1983,18 @@ def retrieve(
     if retrieval_backend == "hybrid":
         bm25_score_by_chunk = bm25_scores_for_index(index, list(query_tokens))
 
+    vectors_matrix = index.get("_vectors")
     scored = []
     for chunk in candidates:
-        dense_score = dense_similarity(query_embedding, chunk.get("embedding"))
+        if vectors_matrix is not None and chunk.get("embedding_idx") is not None:
+            chunk_vec = vectors_matrix[int(chunk["embedding_idx"])]
+        else:
+            # Defensive fallback: a chunk dict produced outside the normal
+            # load_index path (e.g., a hand-crafted test fixture) may still
+            # carry an inline embedding. Keeps tests/test_partial_topic_*.py
+            # style fixtures working without forcing a sidecar.
+            chunk_vec = chunk.get("embedding")
+        dense_score = dense_similarity(query_embedding, chunk_vec)
         lexical_score = lexical_similarity(query_tokens, query_topics, chunk)
         metadata_score = metadata_similarity(analysis, chunk)
         bm25_score = float(bm25_score_by_chunk.get(str(chunk.get("chunk_id")), 0.0))
