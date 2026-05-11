@@ -46,15 +46,8 @@ fi
 # ---------------------------------------------------------------------------
 
 
-# Watch-list: files whose change implies a real-data delta is owed.
-WATCH_PATTERNS=(
-  "rag_core.py"
-  "ingestion.py"
-  "visual_ingestion.py"
-  "eval/"
-  "api/"
-  "scripts/build_index.py"
-)
+# Watch-list lives in scripts/_governance.py (single source of truth,
+# also consumed by the Claude PreToolUse hook and the §5b CI gate).
 
 # Resolve upstream / base ref. Prefer @{upstream}; fall back to origin/main.
 if upstream=$(git rev-parse --abbrev-ref --symbolic-full-name @{upstream} 2>/dev/null); then
@@ -77,18 +70,11 @@ if [[ -z "$changed" ]]; then
   exit 0
 fi
 
-# Match against the watch-list.
+# Match against the load-bearing SSoT.
 hit=""
-while IFS= read -r file; do
-  for pat in "${WATCH_PATTERNS[@]}"; do
-    case "$file" in
-      "$pat"|"$pat"*)
-        hit="$file"
-        break 2
-        ;;
-    esac
-  done
-done <<< "$changed"
+if command -v python3 >/dev/null 2>&1; then
+  hit=$(printf '%s\n' "$changed" | python3 scripts/_governance.py --any-match 2>/dev/null | head -n1)
+fi
 
 if [[ -n "$hit" ]]; then
   cat >&2 <<EOF
