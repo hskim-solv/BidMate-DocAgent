@@ -63,7 +63,11 @@ def test_legacy_schema1_materializes_from_inline_chunks(matrix: np.ndarray) -> N
 def test_unsupported_backend_raises(
     tmp_path: Path, matrix: np.ndarray, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    # ``pgvector`` stays Stage 3 (unimplemented); selecting it today
+    # must still raise NotImplementedError. ``qdrant`` is now a
+    # supported backend (Stage 2a, #176) — see
+    # ``tests/test_vector_store_qdrant.py``.
     vector_store_from_matrix(matrix).persist(tmp_path)
-    monkeypatch.setenv(ENV_INDEX_BACKEND, "qdrant")
+    monkeypatch.setenv(ENV_INDEX_BACKEND, "pgvector")
     with pytest.raises(NotImplementedError, match="#176"):
         load_vector_store(tmp_path, schema_version=2)
