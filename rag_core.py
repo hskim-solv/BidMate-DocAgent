@@ -1949,7 +1949,7 @@ def retrieve(
             item["score"] = round(float(rrf * rrf_norm), 6)
             item["score_parts"]["rank_rrf"] = round(float(rrf * rrf_norm), 6)
 
-    scored.sort(key=lambda item: item["score"], reverse=True)
+    scored.sort(key=lambda item: (item["score"], item["chunk_id"]), reverse=True)
     top_k = int(plan["top_k"])
     if plan.get("retrieval_mode") == "hierarchical":
         return reassemble_parent_sections(index, scored, top_k, plan, analysis)

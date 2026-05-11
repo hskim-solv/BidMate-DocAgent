@@ -44,7 +44,13 @@ def _git(*args: str) -> str:
     return result.stdout.strip()
 
 
-def _provenance() -> dict[str, object]:
+def provenance() -> dict[str, object]:
+    """Return a provenance block for the current git HEAD.
+
+    Shared by the baseline writer (this script) and the eval runner
+    (``eval/run_eval.py``). Format is intentionally narrow: 12-char SHA,
+    dirty flag, ISO-8601 UTC timestamp.
+    """
     sha = _git("rev-parse", "HEAD")[:12] or "unknown"
     dirty = _git("status", "--porcelain") != ""
     return {
@@ -54,18 +60,55 @@ def _provenance() -> dict[str, object]:
     }
 
 
-def _run_id(provenance: dict[str, object]) -> str:
+def _run_id(prov: dict[str, object]) -> str:
     # YYYYMMDDTHHMMSSZ_<sha12>
     ts = (
-        str(provenance.get("generated_at"))
+        str(prov.get("generated_at"))
         .replace("-", "")
         .replace(":", "")
         .split(".")[0]  # drop fractional seconds
     )
     if not ts.endswith("Z"):
         ts += "Z"
-    sha = str(provenance.get("git_commit") or "unknown")[:12]
+    sha = str(prov.get("git_commit") or "unknown")[:12]
     return f"{ts}_{sha}"
+
+
+def _warn_if_stale(
+    eval_prov: dict[str, object] | None, baseline_prov: dict[str, object]
+) -> None:
+    """Warn loudly if the eval was generated at a different code state
+    than the baseline is being written at.
+
+    This is the failure mode that produced issue #160: ``make real-eval``
+    runs at commit X, then ``make real-eval-baseline-update`` runs at
+    commit Y, and the baseline silently captures Y's provenance with X's
+    metrics. We warn rather than fail because legitimate workflows
+    (e.g., docs-only changes between runs) shouldn't be blocked, but we
+    want the failure mode to be loud and self-diagnosing.
+    """
+    if not isinstance(eval_prov, dict):
+        print(
+            "[WARN] eval_summary.json has no `provenance` block — cannot verify "
+            "the eval was run at the current HEAD. The baseline's provenance "
+            "will reflect the current HEAD, not the eval-run code state. "
+            "Re-run `make real-eval` at HEAD to get a self-consistent baseline.",
+            file=sys.stderr,
+        )
+        return
+    eval_sha = str(eval_prov.get("git_commit") or "").strip()
+    baseline_sha = str(baseline_prov.get("git_commit") or "").strip()
+    if not eval_sha or not baseline_sha or eval_sha == baseline_sha:
+        return
+    print(
+        f"[WARN] Provenance skew detected:\n"
+        f"        eval_summary.json was generated at git_commit={eval_sha}\n"
+        f"        baseline is being written at  git_commit={baseline_sha}\n"
+        f"        The baseline's provenance will not match the eval's code state.\n"
+        f"        This is the #160 failure mode. Re-run `make real-eval` at HEAD\n"
+        f"        before continuing, or accept the skew if you understand the cause.",
+        file=sys.stderr,
+    )
 
 
 def main() -> int:
@@ -78,8 +121,10 @@ def main() -> int:
 
     raw = json.loads(EVAL_SUMMARY.read_text(encoding="utf-8"))
     agg = extract_aggregate(raw)
-    provenance = _provenance()
-    agg["provenance"] = provenance
+    eval_prov = raw.get("provenance") if isinstance(raw, dict) else None
+    baseline_prov = provenance()
+    _warn_if_stale(eval_prov, baseline_prov)
+    agg["provenance"] = baseline_prov
 
     # If a judge run is present (ADR 0006), fold its aggregate into the
     # baseline. The per-case judge file stays local; only the
@@ -109,7 +154,7 @@ def main() -> int:
     BASELINE_PATH.write_text(serialized, encoding="utf-8")
 
     HISTORY_DIR.mkdir(parents=True, exist_ok=True)
-    history_path = HISTORY_DIR / f"{_run_id(provenance)}.aggregate.json"
+    history_path = HISTORY_DIR / f"{_run_id(baseline_prov)}.aggregate.json"
     history_path.write_text(serialized, encoding="utf-8")
 
     print(f"[OK] Updated {BASELINE_PATH.relative_to(ROOT)}")
