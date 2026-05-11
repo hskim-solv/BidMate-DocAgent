@@ -3,6 +3,11 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![PR Eval Delta](https://github.com/hskim-solv/BidMate-DocAgent/actions/workflows/pr-eval.yml/badge.svg?branch=main)](https://github.com/hskim-solv/BidMate-DocAgent/actions/workflows/pr-eval.yml) [![Python 3.11](https://img.shields.io/badge/Python-3.11-blue.svg)](pyproject.toml) [![Engineering notes](https://img.shields.io/badge/engineering--notes-GitHub%20Pages-blue)](https://hskim-solv.github.io/BidMate-DocAgent/) [![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/hskim-solv/BidMate-DocAgent/blob/main/demo/bidmate_quickstart.ipynb)
 
+<!-- Hero demo asset slot. Recording guide: docs/deployment.md#recording-the-demo-video.
+     Replace docs/assets/demo.gif with the actual asset once captured; renders inline
+     in the GitHub README and in the pinned-repo profile card. -->
+![BidMate-DocAgent live demo (60-90 s walkthrough)](docs/assets/demo.gif)
+
 ## 🚀 Live demo
 
 | 경로 | 상태 | 비고 |
