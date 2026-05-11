@@ -74,8 +74,22 @@ SAFE_TOPLEVEL_KEYS = frozenset(
         # boundary; per-case judge text stays in
         # reports/real100/judge.local.json.
         "judge",
+        # ADR 0012 RAGAS-style judge aggregates on the synthetic surface.
+        # Only the four metric means + their 95% bootstrap CIs cross the
+        # commit boundary; per-case verdicts stay in
+        # reports/eval_summary.judge.local.json and reports/judge_cache/.
+        "judge_ragas",
     }
 )
+
+# RAGAS metric sub-keys whitelisted from `judge_ragas`. Float scalars + CI dicts.
+SAFE_JUDGE_RAGAS_METRIC_KEYS = (
+    "faithfulness",
+    "answer_relevance",
+    "context_precision",
+    "context_recall",
+)
+SAFE_JUDGE_RAGAS_META_KEYS = ("n", "ci")
 
 # Sub-keys whitelisted from `retry_effectiveness` — all numeric or count
 # aggregates over the case set, no per-case payload.
@@ -223,6 +237,22 @@ def extract_aggregate(summary: dict[str, Any]) -> dict[str, Any]:
                 for sub in SAFE_RUN_MANIFEST_KEYS
                 if value.get(sub) is not None
             }
+        elif key == "judge_ragas" and isinstance(value, dict):
+            ragas: dict[str, Any] = {}
+            for metric in SAFE_JUDGE_RAGAS_METRIC_KEYS:
+                if value.get(metric) is not None:
+                    ragas[metric] = value[metric]
+            for meta in SAFE_JUDGE_RAGAS_META_KEYS:
+                if meta == "ci" and isinstance(value.get(meta), dict):
+                    ragas[meta] = {
+                        m: value[meta].get(m)
+                        for m in SAFE_JUDGE_RAGAS_METRIC_KEYS
+                        if isinstance(value[meta].get(m), dict)
+                    }
+                elif value.get(meta) is not None:
+                    ragas[meta] = value[meta]
+            if ragas:
+                out[key] = ragas
         else:
             out[key] = value
 
@@ -386,6 +416,22 @@ def render_markdown(
                 f"base={_fmt_value(base_cross.get('retry_precision'))} · "
                 f"head={_fmt_value(head_cross.get('retry_precision'))} · "
                 f"method=`{head_cross.get('method') or base_cross.get('method', '—')}`_"
+            )
+
+    base_ragas = base.get("judge_ragas") or {}
+    head_ragas = head.get("judge_ragas") or {}
+    if base_ragas or head_ragas:
+        lines.append("")
+        lines.append("#### RAGAS judge (ADR 0012, opt-in)")
+        lines.append("")
+        lines.append("| metric | base | head | Δ |")
+        lines.append("|---|---|---|---|")
+        for metric in SAFE_JUDGE_RAGAS_METRIC_KEYS:
+            b = base_ragas.get(metric)
+            h = head_ragas.get(metric)
+            lines.append(
+                f"| {metric} | {_fmt_value(b)} | {_fmt_value(h)} | "
+                f"{_fmt_delta(b, h, True)} |"
             )
 
     base_judge = base.get("judge") or {}
