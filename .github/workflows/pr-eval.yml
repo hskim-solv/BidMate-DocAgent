@@ -84,12 +84,26 @@ jobs:
         working-directory: base
         run: python eval/run_eval.py --index_dir data/index --output_dir reports --config eval/config.ci.yaml
 
-      - name: Render delta table
+      - name: Render delta table + regression gate
+        id: delta
+        # The script exits 1 when a gated quality metric (accuracy,
+        # groundedness, citation_precision, etc.; latency excluded) drops
+        # by more than 0.05 absolute. Setting ALLOW_REGRESSION=true when
+        # the PR body contains `[ALLOW_REGRESSION` (case-sensitive marker)
+        # lets the script surface the regression in the comment while
+        # still exiting 0 — so the gate stays informational for
+        # intentional trade-offs but blocks silent regressions.
+        env:
+          ALLOW_REGRESSION: ${{ contains(github.event.pull_request.body, '[ALLOW_REGRESSION') }}
         run: |
+          set +e
           python pr/scripts/compare_eval.py \
             --base base/reports/eval_summary.json \
             --head pr/reports/eval_summary.json \
-            --title "Eval delta — \`full\` pipeline" > delta.md
+            --title "Eval delta — \`full\` pipeline" \
+            --regression-threshold 0.05 > delta.md
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+          set -e
           cat delta.md
 
       - name: Upload eval summaries
@@ -102,6 +116,7 @@ jobs:
             base/reports/eval_summary.json
 
       - name: Upsert PR comment
+        if: always() && hashFiles('delta.md') != ''
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -117,3 +132,9 @@ jobs:
           else
             gh pr comment "$PR_NUMBER" --repo "$REPO" --body "$body"
           fi
+
+      - name: Fail on quality regression
+        if: steps.delta.outputs.exit_code != '0'
+        run: |
+          echo "::error::Quality regression gate failed — see PR comment for the metric breakdown. To intentionally accept the trade-off, add '[ALLOW_REGRESSION: <reason>]' to the PR body and re-run."
+          exit 1
