@@ -34,6 +34,8 @@ from typing import List, Set
 
 import pandas as pd
 
+from eval.ko_axes import KO_AXES, detect_ko_axes
+
 
 ABSTAIN_PATTERNS = [
     "확인되지 않는다",
@@ -164,9 +166,12 @@ def evaluate_row(row: pd.Series) -> dict:
 
     grounded_pass = int(doc_hit == 1 and answer_pass == 1) if predicted_doc_ids else int(answer_pass == 1)
 
+    ko_axes = detect_ko_axes(row.to_dict() if hasattr(row, "to_dict") else dict(row))
+
     return {
         "qid": qid,
         "question_type": qtype,
+        "ko_axes": "|".join(ko_axes),
         "answer_nonempty": answer_nonempty,
         "must_include_total": must_total,
         "must_include_hit": must_hit,
@@ -211,6 +216,16 @@ def summarise(per_q: pd.DataFrame) -> dict:
     summary["overall"] = block(per_q)
     for qtype, sub in per_q.groupby("question_type"):
         summary["by_type"][qtype] = block(sub)
+
+    summary["by_ko_axes"] = {}
+    for axis in KO_AXES:
+        if "ko_axes" not in per_q.columns:
+            break
+        mask = per_q["ko_axes"].fillna("").apply(
+            lambda value: axis in [tag for tag in str(value).split("|") if tag]
+        )
+        if mask.any():
+            summary["by_ko_axes"][axis] = block(per_q[mask])
 
     return summary
 
@@ -264,6 +279,16 @@ def main():
         for key, value in block.items():
             lines.append(f"- {key}: {value}")
         lines.append("")
+
+    if summary.get("by_ko_axes"):
+        lines.append("## By KO RFP axis")
+        lines.append("")
+        for axis, block in summary["by_ko_axes"].items():
+            lines.append(f"### {axis}")
+            lines.append("")
+            for key, value in block.items():
+                lines.append(f"- {key}: {value}")
+            lines.append("")
 
     markdown_path.write_text("\n".join(lines), encoding="utf-8")
 
