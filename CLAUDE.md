@@ -25,7 +25,8 @@ that aren't auto-enforced.
 - If touching retrieval / answer / eval, also read:
   [ADR 0001](docs/adr/0001-preserve-naive-baseline.md) (naive baseline),
   [ADR 0003](docs/adr/0003-structured-answer-citation-contract.md) (answer contract),
-  [ADR 0005](docs/adr/0005-eval-split-public-synthetic-private-local.md) (eval split).
+  [ADR 0005](docs/adr/0005-eval-split-public-synthetic-private-local.md) (eval split),
+  [ADR 0012](docs/adr/0012-llm-judge-on-public-synthetic.md) (synthetic LLM-judge).
 
 ## Repository map
 

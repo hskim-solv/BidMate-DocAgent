@@ -126,6 +126,49 @@ class EvalMetricsTest(unittest.TestCase):
         self.assertEqual(0.0, result["citation_region_precision"])
         self.assertEqual("region_unavailable", result["citation_grounding_errors"][0]["code"])
 
+    def test_score_case_emits_evidence_for_judge_consumers(self) -> None:
+        """score_case must expose top-3 evidence with {text, doc_id,
+        chunk_id, page} for scripts/llm_judge.py + eval/synthetic_judge.py
+        (ADR 0006 + ADR 0012). Text is truncated to 600 chars."""
+        long_text = "가" * 1000
+        prediction = {
+            "answer": {
+                "schema_version": 2,
+                "status": "supported",
+                "claims": [],
+            },
+            "answer_text": "answer",
+            "evidence": [
+                {"doc_id": "d1", "chunk_id": "d1::c1", "text": long_text, "page": 1},
+                {"doc_id": "d2", "chunk_id": "d2::c2", "text": "short", "page": 2},
+                {"doc_id": "d3", "chunk_id": "d3::c3", "text": "third", "page": 3},
+                {"doc_id": "d4", "chunk_id": "d4::c4", "text": "fourth", "page": 4},
+            ],
+            "diagnostics": {"latency_ms": 1.0, "retry_count": 0},
+        }
+        result = score_case(self.visual_case(), prediction)
+        self.assertIn("evidence", result)
+        evidence = result["evidence"]
+        # Top 3 only.
+        self.assertEqual(len(evidence), 3)
+        # Text is truncated to 600 chars.
+        self.assertEqual(len(evidence[0]["text"]), 600)
+        # All four schema keys present.
+        for item in evidence:
+            self.assertEqual(set(item), {"text", "doc_id", "chunk_id", "page"})
+        # Ordering preserved from prediction.evidence.
+        self.assertEqual([e["doc_id"] for e in evidence], ["d1", "d2", "d3"])
+
+    def test_score_case_evidence_handles_empty(self) -> None:
+        prediction = {
+            "answer": {"schema_version": 2, "status": "insufficient", "claims": []},
+            "answer_text": "",
+            "evidence": [],
+            "diagnostics": {"latency_ms": 1.0, "retry_count": 0},
+        }
+        result = score_case(self.visual_case(), prediction)
+        self.assertEqual(result["evidence"], [])
+
     def test_summarize_run_groups_metrics_by_hardcase_category(self) -> None:
         case_results = [
             {

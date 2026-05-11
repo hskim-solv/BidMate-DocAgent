@@ -922,6 +922,15 @@ def score_case(
         "abstained": abstained,
         **answer_format,
         "answer": answer,
+        "evidence": [
+            {
+                "text": str(item.get("text") or "")[:600],
+                "doc_id": item.get("doc_id"),
+                "chunk_id": item.get("chunk_id"),
+                "page": item.get("page"),
+            }
+            for item in (prediction.get("evidence") or [])[:3]
+        ],
     }
 
 

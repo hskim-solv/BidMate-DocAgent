@@ -1,4 +1,4 @@
-.PHONY: setup index ask eval benchmark benchmark-check check smoke harness-smoke test test-regression api api-docker demo demo-docker real-eval real-eval-delta real-eval-baseline-update real-eval-history-render real-eval-history-check real-eval-with-judge clean
+.PHONY: setup index ask eval benchmark benchmark-check check smoke harness-smoke test test-regression api api-docker demo demo-docker real-eval real-eval-delta real-eval-baseline-update real-eval-history-render real-eval-history-check real-eval-with-judge synthetic-judge clean
 
 PYTHON ?= python3
 VENV ?= .venv
@@ -121,6 +121,17 @@ real-eval-history-check:
 real-eval-with-judge: real-eval
 	$(PYTHON) scripts/llm_judge.py
 	@echo "Run \`make real-eval-baseline-update\` to fold the judge aggregate into the committable baseline."
+
+# Run the LLM judge over the public synthetic eval summary (ADR 0012).
+# Default backend `stub` is deterministic and runs in CI; set
+# BIDMATE_SYNTHETIC_JUDGE_BACKEND=openai_compatible plus the shared
+# BIDMATE_JUDGE_* credentials for a live RAGAS-style signal. Writes a
+# committable aggregate and a git-ignored per-case file.
+synthetic-judge:
+	$(PYTHON) -m eval.synthetic_judge \
+	  --summary reports/eval_summary.json \
+	  --aggregate reports/synthetic_judge.aggregate.json \
+	  --local reports/synthetic_judge.local.json
 
 clean:
 	rm -rf data/index outputs reports

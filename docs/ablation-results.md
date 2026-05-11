@@ -60,6 +60,23 @@
 - latency와 retry는 품질 지표와 함께 본다. retry가 늘어도 groundedness, citation, abstention 개선이 동반되는지 확인한다.
 - 현재 수치는 공개 synthetic RFP 평가셋 기준의 2차 가공 집계이며, 원본 RFP 문서나 raw example output은 포함하지 않는다.
 
+## Synthetic LLM-judge (RAGAS-style, ADR 0012)
+
+`make synthetic-judge` 로 stub 또는 live 백엔드 judge 점수를 산출한다. 공개 CI 는 stub-only 로 돌고 (토큰 비용 0, 재현 가능), live 점수는 개발자가 `BIDMATE_SYNTHETIC_JUDGE_BACKEND=openai_compatible` 로 수동 실행 후 commit 한다.
+
+`reports/synthetic_judge.aggregate.json` (committed, aggregate-only — ADR 0005 boundary) 에 다음이 누적된다:
+
+- `faithfulness_mean`, `answer_relevance_mean`: 0.0–1.0 RAGAS-style 평균.
+- `grounded_rate`: judge가 grounded 로 본 비율.
+- `agreement_with_verifier`: deterministic verifier 와 동의한 비율 — **drop 이 actionable signal**.
+- `by_query_type`: single_doc / comparison / follow_up / abstention 슬라이스별 같은 메트릭.
+
+현재 commit 된 aggregate 는 **stub backend** 기준 — verifier status 를 거울처럼 반사하므로 `agreement_with_verifier=1.0` 이고 RAGAS 점수는 status-derived fixture (supported→0.85, partial→0.5, insufficient→0.1) 이다. 진짜 신호가 아니다. 실제 LLM judge 수치를 보려면 live 백엔드로 다시 돌려 aggregate 를 갱신한다.
+
+## Pending rows
+
+- **Live synthetic judge aggregate** (ADR 0012, issue #164): stub-mode aggregate 만 commit 되어 있음. live 백엔드(openai_compatible) 로 갱신한 aggregate diff 를 별도 PR 로 commit 하면 RAGAS-style 실측 노출.
+
 ## Next Actions
 
 - 평가셋을 늘릴 때는 suite YAML을 추가하고 registry에는 집계 지표만 편입한다.

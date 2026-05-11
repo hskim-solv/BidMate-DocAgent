@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-05-11T10:17:51.012417Z",
+  "backend": "stub",
+  "model": "stub",
+  "n": 42,
+  "faithfulness_mean": 0.7607142857142857,
+  "answer_relevance_mean": 0.7404761904761905,
+  "grounded_rate": 0.8809523809523809,
+  "agreement_with_verifier": 1.0,
+  "status_distribution": {
+    "supported": 37,
+    "insufficient": 5
+  },
+  "by_query_type": {
+    "abstention": {
+      "n": 9,
+      "faithfulness_mean": 0.6833333333333332,
+      "answer_relevance_mean": 0.6888888888888889,
+      "grounded_rate": 0.7777777777777778,
+      "agreement_with_verifier": 1.0,
+      "status_distribution": {
+        "supported": 7,
+        "insufficient": 2
+      }
+    },
+    "comparison": {
+      "n": 10,
+      "faithfulness_mean": 0.85,
+      "answer_relevance_mean": 0.8,
+      "grounded_rate": 1.0,
+      "agreement_with_verifier": 1.0,
+      "status_distribution": {
+        "supported": 10
+      }
+    },
+    "follow_up": {
+      "n": 9,
+      "faithfulness_mean": 0.6,
+      "answer_relevance_mean": 0.6333333333333333,
+      "grounded_rate": 0.6666666666666666,
+      "agreement_with_verifier": 1.0,
+      "status_distribution": {
+        "supported": 6,
+        "insufficient": 3
+      }
+    },
+    "single_doc": {
+      "n": 14,
+      "faithfulness_mean": 0.85,
+      "answer_relevance_mean": 0.8,
+      "grounded_rate": 1.0,
+      "agreement_with_verifier": 1.0,
+      "status_distribution": {
+        "supported": 14
+      }
+    }
+  }
+}
