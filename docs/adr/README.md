@@ -74,3 +74,4 @@ project record.
 | [0009](./0009-external-baseline-comparison.md) | proposed | External baseline comparison via a separate script (extends 0001) |
 | [0010](./0010-hybrid-bm25-dense-retrieval-rrf.md) | accepted | Hybrid BM25 + dense retrieval with RRF fusion |
 | [0011](./0011-llm-synthesis-as-additive-ablation.md) | proposed | LLM answer synthesis as additive ablation (extends 0001, preserves 0003) |
+| [0012](./0012-trace-backend.md) | proposed | Trace backend as a pluggable, off-by-default observability surface |

@@ -4,3 +4,8 @@
 pytest>=9.0.3
 # Required by fastapi.testclient (starlette.testclient) for tests/test_api.py.
 httpx>=0.27,<1.0
+# Required by tests/test_tracing*.py — exercises ADR 0012 OtelTracer via the
+# bundled InMemorySpanExporter. NOT in requirements.txt: production users
+# opt in by installing opentelemetry-sdk themselves; default
+# BIDMATE_TRACE_BACKEND=none avoids the import entirely.
+opentelemetry-sdk>=1.27,<2.0
