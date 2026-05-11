@@ -56,6 +56,34 @@ ablation_runs:
     verifier_retry: true
     retrieval_mode: flat
     retrieval_backend: hybrid
+  # Issue #149 — RRF k sweep. The default `hybrid_bm25` row above runs
+  # at the current `RRF_K = 60` default; the three rows below sweep
+  # k ∈ {10, 30, 100} so a real-data ablation can pick a robust k as
+  # the new default. All other knobs are held identical to `hybrid_bm25`.
+  - name: hybrid_bm25_k10
+    pipeline: agentic_full
+    metadata_first: true
+    rerank: true
+    verifier_retry: true
+    retrieval_mode: flat
+    retrieval_backend: hybrid
+    rrf_k: 10
+  - name: hybrid_bm25_k30
+    pipeline: agentic_full
+    metadata_first: true
+    rerank: true
+    verifier_retry: true
+    retrieval_mode: flat
+    retrieval_backend: hybrid
+    rrf_k: 30
+  - name: hybrid_bm25_k100
+    pipeline: agentic_full
+    metadata_first: true
+    rerank: true
+    verifier_retry: true
+    retrieval_mode: flat
+    retrieval_backend: hybrid
+    rrf_k: 100
 cases:
   - id: single_doc_security
     query_type: single_doc

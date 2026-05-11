@@ -18,6 +18,7 @@ if str(ROOT_DIR) not in sys.path:
 from rag_core import (
     DEFAULT_CLI_PIPELINE_NAME,
     MAX_AGENT_ITERATIONS,
+    RRF_K,
     load_index,
     percentile,
     rate,
@@ -111,6 +112,7 @@ def normalize_run_config(run: dict[str, Any]) -> dict[str, Any]:
         "retrieval_mode": str(config.get("retrieval_mode", "flat")),
         "retrieval_backend": str(config.get("retrieval_backend", "dense")),
         "prompt_profile": str(config.get("prompt_profile")),
+        "rrf_k": int(config.get("rrf_k", RRF_K)),
     }
 
 
@@ -1132,6 +1134,7 @@ def summarize_run(
         "retrieval_mode": str(run_config.get("retrieval_mode", "flat")),
         "retrieval_backend": str(run_config.get("retrieval_backend", "dense")),
         "prompt_profile": str(run_config.get("prompt_profile") or ""),
+        "rrf_k": int(run_config.get("rrf_k", RRF_K)),
         **metric_block(case_results),
         "by_query_type": {},
         "by_slice": {},
@@ -1238,6 +1241,7 @@ def evaluate_run(
                 retrieval_backend=str(run_config.get("retrieval_backend", "dense")),
                 prompt_profile=str(run_config.get("prompt_profile") or ""),
                 conversation_state=conversation_state,
+                rrf_k=int(run_config.get("rrf_k", RRF_K)),
             )
             conversation_state = prior_prediction.get("conversation_state") or conversation_state
 
@@ -1254,6 +1258,7 @@ def evaluate_run(
             retrieval_backend=str(run_config.get("retrieval_backend", "dense")),
             prompt_profile=str(run_config.get("prompt_profile") or ""),
             conversation_state=conversation_state,
+            rrf_k=int(run_config.get("rrf_k", RRF_K)),
         )
         trace_path = write_prediction_trace(
             trace_dir,

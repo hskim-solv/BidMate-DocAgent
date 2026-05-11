@@ -39,6 +39,10 @@ VALID_CHUNKING_STRATEGIES = {"auto", "section", "fixed"}
 VALID_RETRIEVAL_MODES = {"flat", "hierarchical"}
 VALID_RETRIEVAL_BACKENDS = {"dense", "hybrid"}
 RRF_K = 60
+# Inclusive bounds for the hybrid RRF k knob (issue #149). The lower
+# bound rules out k=0 (division-by-zero); the upper bound is a sanity
+# cap — beyond ~1000 the fusion is effectively a flat sum of ranks.
+VALID_RRF_K_RANGE = (1, 1000)
 
 # Hard cap on the per-query agent loop. ``metadata_stage_sequence`` today
 # returns at most ["strict", "reduced", "relaxed"] (3 stages). This constant
@@ -56,6 +60,7 @@ PIPELINE_CONFIG_KEYS = (
     "retrieval_mode",
     "retrieval_backend",
     "prompt_profile",
+    "rrf_k",
 )
 DEFAULT_COMPARISON_BALANCE: dict[str, Any] = {
     "enabled": True,
@@ -78,6 +83,7 @@ PIPELINE_PRESETS: dict[str, dict[str, Any]] = {
         "retrieval_mode": "flat",
         "retrieval_backend": "dense",
         "prompt_profile": "minimal_grounded_extractive",
+        "rrf_k": RRF_K,
         "description": (
             "Fixed-size chunks with dense top-k retrieval only; no metadata-first "
             "filtering, reranking, or verifier retry."
@@ -91,6 +97,7 @@ PIPELINE_PRESETS: dict[str, dict[str, Any]] = {
         "retrieval_mode": "flat",
         "retrieval_backend": "dense",
         "prompt_profile": "structured_grounded_claims",
+        "rrf_k": RRF_K,
         "comparison_balance": dict(DEFAULT_COMPARISON_BALANCE),
         "description": "Metadata-first retrieval with lexical/metadata rerank and verifier retry.",
     },
@@ -105,6 +112,7 @@ PIPELINE_PRESETS: dict[str, dict[str, Any]] = {
         "verifier_retry": True,
         "retrieval_mode": "flat",
         "prompt_profile": "llm_synthesis",
+        "rrf_k": RRF_K,
         "comparison_balance": dict(DEFAULT_COMPARISON_BALANCE),
         "description": "agentic_full retrieval; LLM-synthesized summary under ADR 0011 guard.",
     },
@@ -424,6 +432,11 @@ def resolve_pipeline_config(
     if retrieval_backend not in VALID_RETRIEVAL_BACKENDS:
         choices = ", ".join(sorted(VALID_RETRIEVAL_BACKENDS))
         raise ValueError(f"retrieval_backend must be one of: {choices}")
+    rrf_k_raw = config.get("rrf_k")
+    rrf_k = RRF_K if rrf_k_raw is None else int(rrf_k_raw)
+    rrf_lo, rrf_hi = VALID_RRF_K_RANGE
+    if rrf_k < rrf_lo or rrf_k > rrf_hi:
+        raise ValueError(f"rrf_k must be in [{rrf_lo}, {rrf_hi}].")
 
     config["top_k"] = top_k
     config["metadata_first"] = bool(config.get("metadata_first"))
@@ -432,6 +445,7 @@ def resolve_pipeline_config(
     config["retrieval_mode"] = retrieval_mode
     config["retrieval_backend"] = retrieval_backend
     config["prompt_profile"] = str(config.get("prompt_profile") or "structured_grounded_claims")
+    config["rrf_k"] = rrf_k
     return config
 
 
@@ -1867,6 +1881,7 @@ def make_plan(
     pipeline: str = DEFAULT_RAG_PIPELINE_NAME,
     prompt_profile: str = "structured_grounded_claims",
     comparison_balance: dict[str, Any] | None = None,
+    rrf_k: int = RRF_K,
 ) -> dict[str, Any]:
     if retrieval_mode not in VALID_RETRIEVAL_MODES:
         choices = ", ".join(sorted(VALID_RETRIEVAL_MODES))
@@ -1874,6 +1889,9 @@ def make_plan(
     if retrieval_backend not in VALID_RETRIEVAL_BACKENDS:
         choices = ", ".join(sorted(VALID_RETRIEVAL_BACKENDS))
         raise ValueError(f"retrieval_backend must be one of: {choices}")
+    rrf_lo, rrf_hi = VALID_RRF_K_RANGE
+    if int(rrf_k) < rrf_lo or int(rrf_k) > rrf_hi:
+        raise ValueError(f"rrf_k must be in [{rrf_lo}, {rrf_hi}].")
     query_type = str(analysis.get("query_type") or "single_doc")
     default_top_k = query_type_default_top_k(query_type)
     budget_reason = top_k_reason or (
@@ -1925,6 +1943,7 @@ def make_plan(
         "verifier_retry": verifier_retry,
         "retrieval_mode": retrieval_mode,
         "retrieval_backend": retrieval_backend,
+        "rrf_k": int(rrf_k),
         "metadata_filters": filters,
         "top_k": top_k or default_top_k,
         "retrieval_budget": {
@@ -2051,14 +2070,16 @@ def retrieve(
         )
         dense_rank = {it["chunk_id"]: rank for rank, it in enumerate(by_dense)}
         bm25_rank = {it["chunk_id"]: rank for rank, it in enumerate(by_bm25)}
-        # Raw RRF tops out at 2/RRF_K (~0.033 for k=60). Normalize to
-        # [0,1] so the verifier's score floor (rag_core.py:2254,
-        # threshold 0.18 tuned for the dense+lexical fusion) keeps
-        # working for both backends without per-backend branches.
-        rrf_norm = RRF_K / 2.0
+        # Raw RRF tops out at 2/k. Normalize to [0,1] so the verifier's
+        # score floor (rag_core.py:2254, threshold 0.18 tuned for the
+        # dense+lexical fusion) keeps working for both backends without
+        # per-backend branches. `rrf_k` is plan-time configurable per
+        # issue #149; default still `RRF_K = 60`.
+        rrf_k = int(plan.get("rrf_k", RRF_K))
+        rrf_norm = rrf_k / 2.0
         for item in scored:
             cid = item["chunk_id"]
-            rrf = (1.0 / (RRF_K + dense_rank[cid])) + (1.0 / (RRF_K + bm25_rank[cid]))
+            rrf = (1.0 / (rrf_k + dense_rank[cid])) + (1.0 / (rrf_k + bm25_rank[cid]))
             item["score"] = round(float(rrf * rrf_norm), 6)
             item["score_parts"]["rank_rrf"] = round(float(rrf * rrf_norm), 6)
 
@@ -3277,6 +3298,7 @@ def make_context_clarification_result(
     *,
     stage_timings: dict[str, float] | None = None,
     cold_start: bool = False,
+    rrf_k: int = RRF_K,
 ) -> dict[str, Any]:
     reason = str(context_resolution.get("reason") or "context_resolution_failed")
     analysis = dict(analysis)
@@ -3322,6 +3344,7 @@ def make_context_clarification_result(
         "verifier_retry": verifier_retry,
         "retrieval_mode": retrieval_mode,
         "retrieval_backend": retrieval_backend,
+        "rrf_k": int(rrf_k),
         "metadata_filters": {},
         "top_k": None,
         "retrieval_budget": {
@@ -3377,6 +3400,7 @@ def make_context_clarification_result(
             "verifier_retry": verifier_retry,
             "retrieval_mode": retrieval_mode,
             "retrieval_backend": retrieval_backend,
+            "rrf_k": int(rrf_k),
             "pipeline": pipeline,
             "prompt_profile": prompt_profile,
             "cold_start": cold_start,
@@ -3449,6 +3473,7 @@ def make_metadata_clarification_result(
     *,
     stage_timings: dict[str, float] | None = None,
     cold_start: bool = False,
+    rrf_k: int = RRF_K,
 ) -> dict[str, Any]:
     reason = "metadata_ambiguous"
     analysis = dict(analysis)
@@ -3499,6 +3524,7 @@ def make_metadata_clarification_result(
         "verifier_retry": verifier_retry,
         "retrieval_mode": retrieval_mode,
         "retrieval_backend": retrieval_backend,
+        "rrf_k": int(rrf_k),
         "metadata_filters": {},
         "top_k": None,
         "retrieval_budget": {
@@ -3555,6 +3581,7 @@ def make_metadata_clarification_result(
             "verifier_retry": verifier_retry,
             "retrieval_mode": retrieval_mode,
             "retrieval_backend": retrieval_backend,
+            "rrf_k": int(rrf_k),
             "pipeline": pipeline,
             "prompt_profile": prompt_profile,
             "cold_start": cold_start,
@@ -3661,6 +3688,7 @@ def run_rag_query(
     prompt_profile: str | None = None,
     conversation_state: dict[str, Any] | None = None,
     comparison_balance: dict[str, Any] | None = None,
+    rrf_k: int | None = None,
 ) -> dict[str, Any]:
     pipeline_source: dict[str, Any] = {"pipeline": pipeline or DEFAULT_RAG_PIPELINE_NAME}
     for key, value in (
@@ -3671,6 +3699,7 @@ def run_rag_query(
         ("retrieval_mode", retrieval_mode),
         ("retrieval_backend", retrieval_backend),
         ("prompt_profile", prompt_profile),
+        ("rrf_k", rrf_k),
     ):
         if value is not None:
             pipeline_source[key] = value
@@ -3689,6 +3718,7 @@ def run_rag_query(
     retrieval_backend = str(pipeline_config["retrieval_backend"])
     pipeline_name = str(pipeline_config["pipeline"])
     prompt_profile = str(pipeline_config["prompt_profile"])
+    rrf_k = int(pipeline_config["rrf_k"])
     resolved_comparison_balance = pipeline_config.get("comparison_balance")
 
     global _PROCESS_WARM
@@ -3753,6 +3783,7 @@ def run_rag_query(
             prompt_profile,
             stage_timings=stage_timings,
             cold_start=cold_start,
+            rrf_k=rrf_k,
         )
         _attach_trace_diagnostics(
             result,
@@ -3796,6 +3827,7 @@ def run_rag_query(
             prompt_profile,
             stage_timings=stage_timings,
             cold_start=cold_start,
+            rrf_k=rrf_k,
         )
         _attach_trace_diagnostics(
             result,
@@ -3851,6 +3883,7 @@ def run_rag_query(
                 pipeline=pipeline_name,
                 prompt_profile=prompt_profile,
                 comparison_balance=resolved_comparison_balance,
+                rrf_k=rrf_k,
             )
             evidence = retrieve(index, retrieval_query, analysis, plan)
         with _StageTimer(
@@ -3962,6 +3995,7 @@ def run_rag_query(
         "verifier_retry": verifier_retry,
         "retrieval_mode": retrieval_mode,
         "retrieval_backend": retrieval_backend,
+        "rrf_k": int(rrf_k),
         "pipeline": pipeline_name,
         "prompt_profile": prompt_profile,
         "cold_start": cold_start,
