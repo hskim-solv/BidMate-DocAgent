@@ -1,4 +1,6 @@
-# 0008: External baseline comparison via a separate script
+# 0009: External baseline comparison via a separate script
+
+(Originally drafted as ADR 0008 alongside [#155](https://github.com/hskim-solv/BidMate-DocAgent/pull/155); renumbered to 0009 to avoid collision with the concurrent evidence-boundary ADR in [#144](https://github.com/hskim-solv/BidMate-DocAgent/pull/144), per the "numbers are never reused" rule in [docs/adr/README.md](./README.md).)
 
 - **Status**: proposed
 - **Date**: 2026-05-11

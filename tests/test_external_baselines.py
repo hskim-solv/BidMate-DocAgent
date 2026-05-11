@@ -1,4 +1,4 @@
-"""Contract tests for the ADR 0008 external baseline comparison.
+"""Contract tests for the ADR 0009 external baseline comparison.
 
 The comparison is *asymmetric by design* — the symmetric metric subset
 (accuracy, retrieval_recall, latency) is the only fair comparison
@@ -121,14 +121,12 @@ class ExternalBaselineIntegrationTest(unittest.TestCase):
             self.assertIn(key, aggregate["asymmetric_metrics"])
             self.assertIsNone(
                 aggregate["asymmetric_metrics"][key],
-                f"{key} must stay null — see ADR 0008 methodology",
+                f"{key} must stay null — see ADR 0009 methodology",
             )
-        self.assertIn("ADR 0008", aggregate["asymmetric_metrics_note"]) if "ADR 0008" in aggregate["asymmetric_metrics_note"] else self.assertIn(
-            "0008", aggregate["asymmetric_metrics_note"]
-        )
+        self.assertIn("0009", aggregate["asymmetric_metrics_note"])
 
     def test_committable_aggregate_has_no_per_case_text(self) -> None:
-        # ADR 0005 / ADR 0008 commit-boundary: the aggregate file must
+        # ADR 0005 / ADR 0009 commit-boundary: the aggregate file must
         # not carry per-case LLM-generated text. A leak here would
         # publish RFP content under restrictive license terms.
         aggregate, _ = run_comparison(self.cases, self.corpus, backend="stub")
@@ -138,7 +136,7 @@ class ExternalBaselineIntegrationTest(unittest.TestCase):
             self.assertNotIn(
                 substring,
                 serialized,
-                f"Aggregate must not contain {substring!r} — ADR 0008 commit boundary",
+                f"Aggregate must not contain {substring!r} — ADR 0009 commit boundary",
             )
 
     def test_unknown_backend_raises(self) -> None:

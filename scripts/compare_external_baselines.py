@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""External baseline comparison (ADR 0008).
+"""External baseline comparison (ADR 0009).
 
 Runs LangChain ``RetrievalQA`` or LlamaIndex ``QueryEngine`` against
 the same public synthetic eval cases used by ``eval/run_eval.py`` and
@@ -11,7 +11,7 @@ The symmetric metric subset (accuracy / retrieval_recall@k / latency)
 is the only honest comparison surface — external systems do not produce
 the structured ``claims[].citations[]`` shape required for the
 asymmetric metrics (citation_precision, claim_citation_alignment,
-abstention_accuracy, answer_format_compliance). See ADR 0008 for the
+abstention_accuracy, answer_format_compliance). See ADR 0009 for the
 methodology decision.
 
 Backends (selected by ``BIDMATE_EXTERNAL_BACKEND``):
@@ -36,7 +36,7 @@ Usage::
         ANTHROPIC_API_KEY=... \\
         python3 scripts/compare_external_baselines.py
 
-Per ADR 0008 this script is **not** invoked by ``make smoke`` or
+Per ADR 0009 this script is **not** invoked by ``make smoke`` or
 ``pr-eval.yml``; CI stays deterministic and free.
 """
 from __future__ import annotations
@@ -407,7 +407,7 @@ def run_comparison(
             "External baselines do not produce the structured "
             "claims[].citations[] shape required for chunk-level "
             "citation metrics or first-class abstention status. See "
-            "docs/adr/0008-external-baseline-comparison.md."
+            "docs/adr/0009-external-baseline-comparison.md."
         ),
         "generated_at": datetime.datetime.utcnow().isoformat() + "Z",
     }
