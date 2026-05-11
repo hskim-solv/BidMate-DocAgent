@@ -2223,13 +2223,47 @@ def metadata_terms_for_verification(analysis: dict[str, Any]) -> set[str]:
     return set(metadata_tokens(" ".join(values)))
 
 
+EVIDENCE_BOUNDARY = "\n[---EVIDENCE_BOUNDARY---]\n"
+
+_CHAT_TEMPLATE_TOKEN_RE = re.compile(
+    r"<\|(?:im_start|im_end|system|user|assistant|tool|begin_of_text|end_of_text|fim_[a-z_]+|endoftext)\|>",
+    re.IGNORECASE,
+)
+_ROLE_TAG_LINE_RE = re.compile(
+    r"(?im)^[ \t]*(SYSTEM|ASSISTANT|USER|TOOL)\s*:\s*.+$"
+)
+_INSTRUCTION_OVERRIDE_LINE_RE = re.compile(
+    r"(?im)^[ \t]*(?:ignore|disregard|forget|override|bypass)\b[^.\n]{0,80}?\b(?:instructions?|prompts?|rules?|directives?|system|guidance)\b.*$"
+)
+
+
+def neutralize_instruction_patterns(text: str) -> str:
+    """Neutralize chat-template and instruction-override patterns in document-controlled text.
+
+    Wraps suspicious lines with ``[INSTRUCTION_LIKE]...[/INSTRUCTION_LIKE]``
+    and replaces chat template tokens with ``[REDACTED_CHAT_TOKEN]`` so they
+    cannot impersonate role boundaries in downstream LLM consumers. Content
+    is preserved (citations remain readable) — see ADR 0008.
+    """
+    if not text:
+        return text
+    out = _CHAT_TEMPLATE_TOKEN_RE.sub("[REDACTED_CHAT_TOKEN]", text)
+    out = _ROLE_TAG_LINE_RE.sub(
+        lambda m: f"[INSTRUCTION_LIKE]{m.group(0)}[/INSTRUCTION_LIKE]", out
+    )
+    out = _INSTRUCTION_OVERRIDE_LINE_RE.sub(
+        lambda m: f"[INSTRUCTION_LIKE]{m.group(0)}[/INSTRUCTION_LIKE]", out
+    )
+    return out
+
+
 def evidence_text_for_verification(item: dict[str, Any]) -> str:
     parts = [
-        item.get("title", ""),
-        item.get("agency", ""),
-        item.get("project", ""),
-        item.get("section", ""),
-        item.get("text", ""),
+        neutralize_instruction_patterns(str(item.get("title", "") or "")),
+        neutralize_instruction_patterns(str(item.get("agency", "") or "")),
+        neutralize_instruction_patterns(str(item.get("project", "") or "")),
+        neutralize_instruction_patterns(str(item.get("section", "") or "")),
+        neutralize_instruction_patterns(str(item.get("text", "") or "")),
     ]
     metadata = item.get("metadata")
     if isinstance(metadata, dict):
@@ -2237,7 +2271,7 @@ def evidence_text_for_verification(item: dict[str, Any]) -> str:
             if value is None or value == "":
                 continue
             parts.extend(METADATA_EVIDENCE_LABELS.get(str(key), (str(key),)))
-            parts.append(str(value))
+            parts.append(neutralize_instruction_patterns(str(value)))
     return " ".join(str(part) for part in parts if str(part).strip())
 
 

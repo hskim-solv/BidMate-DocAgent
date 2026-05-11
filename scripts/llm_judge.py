@@ -56,6 +56,11 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from rag_core import EVIDENCE_BOUNDARY, neutralize_instruction_patterns  # noqa: E402
+
 DEFAULT_EVAL_PATH = ROOT / "reports" / "real100" / "eval_summary.json"
 DEFAULT_OUTPUT_PATH = ROOT / "reports" / "real100" / "judge.local.json"
 
@@ -171,11 +176,14 @@ def _build_prompt(case: dict[str, Any]) -> str:
     evidence_items = case.get("evidence") or []
     evidence_lines = []
     for i, item in enumerate(evidence_items[:3], start=1):
-        text = (item.get("text") if isinstance(item, dict) else "") or ""
-        evidence_lines.append(f"[{i}] {text[:600]}")
-    evidence_block = "\n".join(evidence_lines) or "(no evidence)"
+        raw_text = (item.get("text") if isinstance(item, dict) else "") or ""
+        text = neutralize_instruction_patterns(raw_text[:600])
+        evidence_lines.append(f"[{i}] {text}")
+    evidence_block = EVIDENCE_BOUNDARY.join(evidence_lines) or "(no evidence)"
     return PROMPT_TEMPLATE.format(
-        query=query, summary=summary, evidence=evidence_block
+        query=neutralize_instruction_patterns(query),
+        summary=neutralize_instruction_patterns(summary),
+        evidence=evidence_block,
     )
 
 
