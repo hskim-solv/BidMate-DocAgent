@@ -939,8 +939,13 @@ def embed_texts(
     backend: str = "auto",
     local_only: bool = False,
 ) -> EmbeddingResult:
-    if backend not in {"auto", "sentence-transformers", "hashing"}:
-        raise ValueError("--embedding_backend must be one of: auto, sentence-transformers, hashing")
+    if backend not in {"auto", "sentence-transformers", "hashing", "openai"}:
+        raise ValueError(
+            "--embedding_backend must be one of: auto, sentence-transformers, hashing, openai"
+        )
+
+    if backend == "openai":
+        return _embed_with_openai(texts, model_name=model_name)
 
     should_try_sentence_transformers = backend == "sentence-transformers" or (
         backend == "auto" and sentence_transformer_cache_available(model_name)
@@ -975,6 +980,35 @@ def embed_texts(
         vectors=hashing_embeddings(texts, DEFAULT_HASH_DIM),
         backend="hashing",
         model="local-hashing-bow",
+    )
+
+
+def _embed_with_openai(texts: list[str], *, model_name: str) -> EmbeddingResult:
+    try:
+        import openai  # type: ignore[import-not-found]
+    except Exception as exc:
+        raise RuntimeError(
+            "openai backend requires the openai SDK. "
+            "Install with `pip install openai` or use --embedding_backend sentence-transformers."
+        ) from exc
+    api_key = os.environ.get("BIDMATE_OPENAI_API_KEY") or os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        raise RuntimeError(
+            "BIDMATE_OPENAI_API_KEY (or OPENAI_API_KEY) is not set for embedding_backend=openai."
+        )
+    client = openai.OpenAI(api_key=api_key)
+    vectors: list[list[float]] = []
+    batch_size = 100
+    for start in range(0, len(texts), batch_size):
+        batch = texts[start : start + batch_size]
+        resp = client.embeddings.create(model=model_name, input=batch)
+        vectors.extend(item.embedding for item in resp.data)
+    arr = np.asarray(vectors, dtype=np.float32)
+    norms = np.linalg.norm(arr, axis=1, keepdims=True).clip(min=1e-12)
+    return EmbeddingResult(
+        vectors=arr / norms,
+        backend="openai",
+        model=model_name,
     )
 
 
@@ -2140,6 +2174,11 @@ def embed_query_for_index(query: str, embedding_config: dict[str, Any]) -> np.nd
                 backend="sentence-transformers",
                 local_only=True,
             ).vectors[0]
+        except Exception:
+            return hashing_embeddings([query], dimension)[0]
+    if backend == "openai":
+        try:
+            return embed_texts([query], model_name=model, backend="openai").vectors[0]
         except Exception:
             return hashing_embeddings([query], dimension)[0]
     return hashing_embeddings([query], dimension)[0]

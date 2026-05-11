@@ -56,12 +56,20 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output_dir", required=True, help="Path to write index.json.")
     parser.add_argument("--query", default=None, help="Unused in this command; accepted for CLI consistency.")
     parser.add_argument("--config", default=None, help="Unused in this command; accepted for CLI consistency.")
-    parser.add_argument("--model", default=DEFAULT_EMBEDDING_MODEL, help="SentenceTransformer model name.")
+    parser.add_argument(
+        "--model",
+        default=DEFAULT_EMBEDDING_MODEL,
+        help="Embedding model name (sentence-transformers ID, or OpenAI model name when --embedding_backend=openai).",
+    )
     parser.add_argument(
         "--embedding_backend",
         default="auto",
-        choices=["auto", "sentence-transformers", "hashing"],
-        help="Use cached sentence-transformers in auto mode; otherwise fall back to deterministic hashing.",
+        choices=["auto", "sentence-transformers", "hashing", "openai"],
+        help=(
+            "Use cached sentence-transformers in auto mode; "
+            "openai routes to OpenAI Embeddings API (BIDMATE_OPENAI_API_KEY required); "
+            "hashing is the deterministic fallback."
+        ),
     )
     parser.add_argument(
         "--chunking_strategy",
