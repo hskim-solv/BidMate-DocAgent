@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+# Pre-commit hook for BidMate-DocAgent.
+#
+# Activate per-developer with:
+#   git config core.hooksPath .githooks
+#
+# Behavior: hard-blocks commits that include files from the private side of
+# the eval split (ADR 0005). These paths are `.gitignore`d, but `git add -f`
+# or other force-paths can bypass that. The hook is the second line of
+# defense, aligned with `.gitignore`.
+#
+# Bypass with `git commit --no-verify` only if you are intentionally
+# committing an aggregate artifact that the allowlist regex below failed to
+# match — and please fix the allowlist in that same change.
+
+set -u
+
+# Blocked path patterns (regex). Must mirror `.gitignore`'s ADR 0005 boundary.
+BLOCKED_PATTERNS=(
+  '^data/files/'
+  '^data/data_list\.csv$'
+  '^data/data_list\.xlsx$'
+  '^eval/.*\.local\.yaml$'
+  '^reports/real[^/]*/'
+)
+
+# Allowlist (regex). These aggregate artifacts ARE safe to commit; they
+# mirror the `!`-rules in `.gitignore`.
+ALLOWED_PATTERNS=(
+  '^reports/real100/baseline\.aggregate\.json$'
+  '^reports/real100/history/[^/]+\.aggregate\.json$'
+)
+
+staged=$(git diff --cached --name-only --diff-filter=ACMR 2>/dev/null || true)
+
+if [[ -z "$staged" ]]; then
+  exit 0
+fi
+
+violations=()
+while IFS= read -r file; do
+  [[ -z "$file" ]] && continue
+
+  # Skip files that match the allowlist.
+  allowed=0
+  for allow_pat in "${ALLOWED_PATTERNS[@]}"; do
+    if [[ "$file" =~ $allow_pat ]]; then
+      allowed=1
+      break
+    fi
+  done
+  [[ "$allowed" -eq 1 ]] && continue
+
+  # Flag files that match a blocked pattern.
+  for block_pat in "${BLOCKED_PATTERNS[@]}"; do
+    if [[ "$file" =~ $block_pat ]]; then
+      violations+=("$file")
+      break
+    fi
+  done
+done <<< "$staged"
+
+if [[ ${#violations[@]} -gt 0 ]]; then
+  cat >&2 <<EOF
+
+❌ Pre-commit hook blocked: staged files violate the ADR 0005 commit boundary.
+
+   The following are on the private side of the eval split and must not
+   enter git:
+
+EOF
+  for f in "${violations[@]}"; do
+    echo "     - $f" >&2
+  done
+  cat >&2 <<EOF
+
+   These paths are .gitignored, so you typically don't see them. If you
+   used \`git add -f\` to force-add, undo with:
+
+       git restore --staged ${violations[*]}
+
+   See ADR 0005 (docs/adr/0005-eval-split-public-synthetic-private-local.md)
+   and docs/private-100-doc-experiments.md.
+
+   Bypass with \`git commit --no-verify\` only if you are intentionally
+   committing an aggregate artifact that the allowlist regex failed to
+   match — and please fix the allowlist in the same change.
+
+EOF
+  exit 1
+fi
+
+exit 0
