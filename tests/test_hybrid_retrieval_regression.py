@@ -1,6 +1,6 @@
 """Regression guards for hybrid BM25 + dense retrieval (ADR 0010, issue #119).
 
-Locks in four contracts:
+Locks in six contracts:
 
 * Default ``retrieval_backend`` is ``"dense"`` — naive_baseline behaviour
   (ADR 0001) is bit-stable when callers omit the new knob.
@@ -11,6 +11,14 @@ Locks in four contracts:
 * A rare-term query is retrievable under hybrid even when dense alone
   collides on neighbours under the hashing embedding backend.
 * ``resolve_pipeline_config`` rejects unknown backend values.
+* ``rrf_k`` is plan-time configurable (issue #149) — default is the
+  module-level ``RRF_K = 60``; out-of-range values are rejected;
+  varying k produces observably different normalized RRF scores.
+* ``bm25_stopword_profile`` is plan-time configurable (issue #150) —
+  default is ``"shared"`` (current behaviour); the ``"bm25_extra"``
+  profile strips additional Korean particles (까지/부터/마다/…) and
+  short discourse stopwords from BM25 only, leaving dense/Jaccard
+  scoring bit-stable.
 
 Lightweight (hashing embedding backend + ``data/raw`` fixture) so
 ``make test-regression`` stays fast.
@@ -20,9 +28,16 @@ import unittest
 from pathlib import Path
 
 from rag_core import (
+    BM25_EXTRA_PARTICLE_SUFFIXES,
+    BM25_EXTRA_STOPWORDS,
+    RRF_K,
+    VALID_BM25_STOPWORD_PROFILES,
     VALID_RETRIEVAL_BACKENDS,
+    _apply_bm25_extra_filter,
     analyze_query,
+    bm25_scores_for_index,
     build_index_payload,
+    get_or_build_bm25,
     make_plan,
     metadata_targets,
     resolve_pipeline_config,
@@ -43,7 +58,14 @@ class HybridRetrievalRegressionTest(unittest.TestCase):
             embedding_backend="hashing",
         )
 
-    def _retrieve_with_backend(self, query: str, retrieval_backend: str) -> list[dict]:
+    def _retrieve_with_backend(
+        self,
+        query: str,
+        retrieval_backend: str,
+        *,
+        rrf_k: int = RRF_K,
+        bm25_stopword_profile: str = "shared",
+    ) -> list[dict]:
         analysis = analyze_query(query, metadata_targets(self.index))
         plan = make_plan(
             analysis,
@@ -53,6 +75,8 @@ class HybridRetrievalRegressionTest(unittest.TestCase):
             verifier_retry=False,
             retrieval_mode="flat",
             retrieval_backend=retrieval_backend,
+            rrf_k=rrf_k,
+            bm25_stopword_profile=bm25_stopword_profile,
         )
         return retrieve(self.index, query, analysis, plan)
 
@@ -118,6 +142,218 @@ class HybridRetrievalRegressionTest(unittest.TestCase):
 
     def test_valid_retrieval_backends_constant_is_minimal(self) -> None:
         self.assertEqual({"dense", "hybrid"}, VALID_RETRIEVAL_BACKENDS)
+
+    # -- Issue #149 — RRF k as plan-time knob -----------------------
+
+    def test_default_rrf_k_is_60(self) -> None:
+        """Plan-time default for ``rrf_k`` matches the module constant.
+
+        The ADR 0010 acceptance contract pins the default at 60; the
+        knob plumbing must not silently drift away from it.
+        """
+        analysis = analyze_query(ANSWERABLE_QUERY, metadata_targets(self.index))
+        plan = make_plan(
+            analysis,
+            top_k=4,
+            retrieval_backend="hybrid",
+        )
+        self.assertEqual(60, plan["rrf_k"])
+        self.assertEqual(RRF_K, plan["rrf_k"])
+
+    def test_rrf_k_override_changes_scores(self) -> None:
+        """Different ``rrf_k`` values produce observably different scores.
+
+        k=10 makes the top rank dominate; k=200 flattens the fusion. The
+        normalized RRF score for the top-ranked chunk must differ
+        between these two regimes by more than rounding noise.
+        """
+        evidence_k10 = self._retrieve_with_backend(
+            ANSWERABLE_QUERY, "hybrid", rrf_k=10
+        )
+        evidence_k200 = self._retrieve_with_backend(
+            ANSWERABLE_QUERY, "hybrid", rrf_k=200
+        )
+        self.assertGreater(len(evidence_k10), 0)
+        self.assertGreater(len(evidence_k200), 0)
+        self.assertNotAlmostEqual(
+            evidence_k10[0]["score"],
+            evidence_k200[0]["score"],
+            places=3,
+            msg="rrf_k override should change the normalized top score",
+        )
+
+    def test_resolve_pipeline_config_rejects_out_of_range_rrf_k(self) -> None:
+        with self.assertRaises(ValueError):
+            resolve_pipeline_config(
+                {"pipeline": "agentic_full", "retrieval_backend": "hybrid", "rrf_k": 0}
+            )
+        with self.assertRaises(ValueError):
+            resolve_pipeline_config(
+                {"pipeline": "agentic_full", "retrieval_backend": "hybrid", "rrf_k": 5000}
+            )
+
+    def test_make_plan_rejects_out_of_range_rrf_k(self) -> None:
+        analysis = analyze_query(ANSWERABLE_QUERY, metadata_targets(self.index))
+        with self.assertRaises(ValueError):
+            make_plan(analysis, retrieval_backend="hybrid", rrf_k=0)
+        with self.assertRaises(ValueError):
+            make_plan(analysis, retrieval_backend="hybrid", rrf_k=5000)
+
+    def test_dense_path_ignores_rrf_k(self) -> None:
+        """``rrf_k`` only affects the hybrid RRF fusion block.
+
+        Under ``retrieval_backend="dense"`` the score is the weighted
+        dense+lexical+metadata sum (no RRF), so different ``rrf_k``
+        values must produce identical evidence — this preserves ADR
+        0001 bit-stability for the dense path.
+        """
+        r_a = self._retrieve_with_backend(ANSWERABLE_QUERY, "dense", rrf_k=10)
+        r_b = self._retrieve_with_backend(ANSWERABLE_QUERY, "dense", rrf_k=200)
+        self.assertEqual(
+            [(it["chunk_id"], it["score"]) for it in r_a],
+            [(it["chunk_id"], it["score"]) for it in r_b],
+        )
+
+    def test_diagnostics_surface_rrf_k(self) -> None:
+        """``rrf_k`` appears in both ``plan`` and ``diagnostics`` for traceability."""
+        result = run_rag_query(
+            self.index,
+            ANSWERABLE_QUERY,
+            retrieval_backend="hybrid",
+            rrf_k=30,
+        )
+        self.assertEqual(30, result["plan"]["rrf_k"])
+        self.assertEqual(30, result["diagnostics"]["rrf_k"])
+
+    # -- Issue #150 — BM25 stopword profile knob --------------------
+
+    def test_default_bm25_stopword_profile_is_shared(self) -> None:
+        """Plan-time default for ``bm25_stopword_profile`` is ``"shared"`` —
+        the existing BM25 path stays bit-stable when callers omit the knob.
+        """
+        analysis = analyze_query(ANSWERABLE_QUERY, metadata_targets(self.index))
+        plan = make_plan(analysis, top_k=4, retrieval_backend="hybrid")
+        self.assertEqual("shared", plan["bm25_stopword_profile"])
+
+    def test_valid_bm25_stopword_profiles_constant(self) -> None:
+        self.assertEqual({"shared", "bm25_extra"}, VALID_BM25_STOPWORD_PROFILES)
+
+    def test_resolve_pipeline_config_rejects_invalid_profile(self) -> None:
+        with self.assertRaises(ValueError):
+            resolve_pipeline_config(
+                {
+                    "pipeline": "agentic_full",
+                    "retrieval_backend": "hybrid",
+                    "bm25_stopword_profile": "kkma",
+                }
+            )
+
+    def test_make_plan_rejects_invalid_profile(self) -> None:
+        analysis = analyze_query(ANSWERABLE_QUERY, metadata_targets(self.index))
+        with self.assertRaises(ValueError):
+            make_plan(
+                analysis,
+                retrieval_backend="hybrid",
+                bm25_stopword_profile="splade",
+            )
+
+    def test_bm25_extra_strips_까지_부터_suffixes(self) -> None:
+        """``_apply_bm25_extra_filter`` removes ``까지`` / ``부터`` / etc.
+        from the BM25 input tokens (issue #150 user-listed particles).
+
+        Mirrors the existing :func:`normalize_metadata_token`
+        invariant: a suffix is stripped only if the remaining stem is
+        ≥ 2 Hangul characters (otherwise the token would collapse to a
+        meaningless 1-char fragment). So ``기관까지`` → ``기관`` but a
+        3-char input like ``주마다`` (stem ``주``) is left unchanged.
+        """
+        filtered = _apply_bm25_extra_filter(
+            ["기관까지", "보안부터", "월간마다", "정상", "주마다"]
+        )
+        self.assertEqual(
+            ["기관", "보안", "월간", "정상", "주마다"],
+            filtered,
+        )
+
+    def test_bm25_extra_drops_extra_stopwords(self) -> None:
+        filtered = _apply_bm25_extra_filter(["또한", "또는", "보안"])
+        self.assertEqual(["보안"], filtered)
+        # Sanity: every BM25_EXTRA_STOPWORDS member is dropped.
+        for sw in BM25_EXTRA_STOPWORDS:
+            self.assertEqual([], _apply_bm25_extra_filter([sw]))
+
+    def test_bm25_cache_is_keyed_by_profile(self) -> None:
+        """Two profiles produce two distinct BM25Okapi instances in
+        ``index["_bm25_by_profile"]`` — they must not collide.
+        """
+        bm25_shared, _ = get_or_build_bm25(self.index, "shared")
+        bm25_extra, _ = get_or_build_bm25(self.index, "bm25_extra")
+        self.assertIsNot(bm25_shared, bm25_extra)
+        # Calling again returns the cached instances unchanged.
+        self.assertIs(bm25_shared, get_or_build_bm25(self.index, "shared")[0])
+        self.assertIs(bm25_extra, get_or_build_bm25(self.index, "bm25_extra")[0])
+
+    def test_dense_path_unaffected_by_bm25_stopword_profile(self) -> None:
+        """``retrieval_backend="dense"`` is byte-stable across profiles.
+
+        BM25 is not consulted on the dense path; the profile knob must
+        therefore produce **identical** evidence (chunk_id, score) lists.
+        This locks in the ADR 0001 / issue #150 acceptance criterion.
+        """
+        r_shared = self._retrieve_with_backend(
+            ANSWERABLE_QUERY, "dense", bm25_stopword_profile="shared"
+        )
+        r_extra = self._retrieve_with_backend(
+            ANSWERABLE_QUERY, "dense", bm25_stopword_profile="bm25_extra"
+        )
+        self.assertEqual(
+            [(it["chunk_id"], it["score"]) for it in r_shared],
+            [(it["chunk_id"], it["score"]) for it in r_extra],
+        )
+
+    def test_hybrid_profile_changes_query_side_scoring(self) -> None:
+        """Under hybrid retrieval, a query containing ``까지`` / ``부터``
+        gets different BM25 scores between profiles — the bm25_extra
+        profile strips those suffixes before BM25 sees them.
+        """
+        analysis = analyze_query(ANSWERABLE_QUERY, metadata_targets(self.index))
+        query_tokens = list(analysis.get("tokens") or []) + ["기관까지", "보안부터"]
+        scores_shared = bm25_scores_for_index(
+            self.index, query_tokens, stopword_profile="shared"
+        )
+        scores_extra = bm25_scores_for_index(
+            self.index, query_tokens, stopword_profile="bm25_extra"
+        )
+        self.assertEqual(scores_shared.keys(), scores_extra.keys())
+        # Some chunk must score differently between the two profiles
+        # (the suffix-stripped versions resolve to different BM25 terms).
+        self.assertTrue(
+            any(
+                abs(scores_shared[cid] - scores_extra[cid]) > 1e-9
+                for cid in scores_shared
+            ),
+            "bm25_extra profile should produce observably different scores "
+            "for queries carrying the additional particle suffixes",
+        )
+
+    def test_diagnostics_surface_bm25_stopword_profile(self) -> None:
+        result = run_rag_query(
+            self.index,
+            ANSWERABLE_QUERY,
+            retrieval_backend="hybrid",
+            bm25_stopword_profile="bm25_extra",
+        )
+        self.assertEqual("bm25_extra", result["plan"]["bm25_stopword_profile"])
+        self.assertEqual(
+            "bm25_extra", result["diagnostics"]["bm25_stopword_profile"]
+        )
+
+    def test_bm25_extra_particle_list_includes_까지_부터(self) -> None:
+        """The BM25-only particle list explicitly carries the
+        user-listed missing particles from issue #150.
+        """
+        self.assertIn("까지", BM25_EXTRA_PARTICLE_SUFFIXES)
+        self.assertIn("부터", BM25_EXTRA_PARTICLE_SUFFIXES)
 
 
 if __name__ == "__main__":

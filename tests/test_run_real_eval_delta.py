@@ -194,6 +194,152 @@ class ExtractAggregateTest(unittest.TestCase):
         self.assertIn("bbbbbbbbbbbb", md)
         self.assertIn("commits:", md)
 
+    def test_retry_effectiveness_sub_keys_extracted(self) -> None:
+        """Issue #120: the retry_effectiveness aggregate must round-trip the
+        whitelisted sub-keys (counts + rates + cross_ablation) and drop any
+        unexpected nesting."""
+        summary = {
+            **FULL_SUMMARY,
+            "retry_effectiveness": {
+                "cases_with_retry": 6,
+                "cases_without_retry": 36,
+                "recovery_rate": 0.5,
+                "residual_failure_rate": 0.5,
+                "retry_resolution_rate": 0.83,
+                "retry_lift_vs_no_retry": -0.1,
+                "ci": {
+                    "recovery_rate": {"mean": 0.5, "ci_lo": 0.2, "ci_hi": 0.8, "n": 6},
+                    "residual_failure_rate": {
+                        "mean": 0.5,
+                        "ci_lo": 0.2,
+                        "ci_hi": 0.8,
+                        "n": 6,
+                    },
+                },
+                "cross_ablation": {
+                    "n_retry_triggered": 6,
+                    "n_evaluable": 6,
+                    "true_positive_triggers": 4,
+                    "false_positive_triggers": 2,
+                    "retry_precision": 0.667,
+                    "method": "cross_ablation(agentic_full,no_verifier_retry)",
+                    # Unexpected sub-key — must be dropped.
+                    "case_results": [{"id": "leak"}],
+                },
+            },
+        }
+        agg = extract_aggregate(summary)
+        re = agg["retry_effectiveness"]
+        self.assertEqual(6, re["cases_with_retry"])
+        self.assertAlmostEqual(0.667, re["cross_ablation"]["retry_precision"])
+        self.assertNotIn("case_results", re["cross_ablation"])
+        # CI sub-block preserved
+        self.assertIn("recovery_rate", re["ci"])
+        # No FORBIDDEN_KEYS leakage anywhere
+        from scripts.run_real_eval_delta import _assert_no_forbidden
+
+        _assert_no_forbidden(re)
+
+    def test_run_manifest_drops_filesystem_path(self) -> None:
+        """run_manifest must omit config_path (filesystem layout) but keep
+        the SHA. The aggregate is committable, so a path like
+        'eval/real_config.local.yaml' is not safe to publish."""
+        summary = {
+            **FULL_SUMMARY,
+            "run_manifest": {
+                "git_commit": "abc123def456",
+                "git_dirty": False,
+                "config_path": "/Users/hskim/private/real_config.local.yaml",
+                "config_sha256": "0123456789abcdef",
+                "generated_at": "2026-05-11T10:30:00Z",
+            },
+        }
+        agg = extract_aggregate(summary)
+        manifest = agg["run_manifest"]
+        self.assertEqual("abc123def456", manifest["git_commit"])
+        self.assertEqual("0123456789abcdef", manifest["config_sha256"])
+        self.assertNotIn("config_path", manifest)
+        # The dropped path should not appear anywhere in the serialized output.
+        self.assertNotIn("hskim", json.dumps(agg))
+
+    def test_render_includes_retry_effectiveness_section(self) -> None:
+        summary_with_re = {
+            **FULL_SUMMARY,
+            "retry_effectiveness": {
+                "cases_with_retry": 6,
+                "cases_without_retry": 36,
+                "recovery_rate": 0.5,
+                "residual_failure_rate": 0.5,
+                "retry_resolution_rate": 0.83,
+                "retry_lift_vs_no_retry": -0.1,
+            },
+        }
+        base = extract_aggregate(summary_with_re)
+        head = extract_aggregate({**summary_with_re, "retry_effectiveness": {
+            **summary_with_re["retry_effectiveness"],
+            "recovery_rate": 0.8,
+        }})
+        md = render_markdown(base, head, "test")
+        self.assertIn("Retry effectiveness", md)
+        self.assertIn("recovery_rate", md)
+        self.assertIn("0.500", md)
+        self.assertIn("0.800", md)
+
+    def test_judge_ragas_sub_keys_whitelisted(self) -> None:
+        """ADR 0012: judge_ragas aggregate must round-trip the four metric
+        means + CI sub-block, and drop any unexpected sub-keys (e.g.,
+        per-case payload smuggled in by a future maintainer)."""
+        summary = {
+            **FULL_SUMMARY,
+            "judge_ragas": {
+                "faithfulness": 0.92,
+                "answer_relevance": 0.85,
+                "context_precision": 0.78,
+                "context_recall": 0.81,
+                "n": 42,
+                "ci": {
+                    "faithfulness": {"mean": 0.92, "ci_lo": 0.85, "ci_hi": 0.97, "n": 42},
+                    "answer_relevance": {"mean": 0.85, "ci_lo": 0.78, "ci_hi": 0.92, "n": 42},
+                },
+                # Unexpected sub-keys must be dropped.
+                "cases": [{"id": "leak", "query": "leak"}],
+                "raw_prompts": "leak prompt content",
+            },
+        }
+        agg = extract_aggregate(summary)
+        ragas = agg["judge_ragas"]
+        self.assertAlmostEqual(0.92, ragas["faithfulness"])
+        self.assertAlmostEqual(0.78, ragas["context_precision"])
+        self.assertEqual(42, ragas["n"])
+        self.assertIn("faithfulness", ragas["ci"])
+        # Unexpected sub-keys dropped.
+        self.assertNotIn("cases", ragas)
+        self.assertNotIn("raw_prompts", ragas)
+        # Privacy: leaked strings should not appear anywhere in the aggregate.
+        self.assertNotIn("leak", json.dumps(agg))
+
+    def test_render_includes_judge_ragas_section(self) -> None:
+        summary_with_ragas = {
+            **FULL_SUMMARY,
+            "judge_ragas": {
+                "faithfulness": 0.92,
+                "answer_relevance": 0.85,
+                "context_precision": 0.78,
+                "context_recall": 0.81,
+                "n": 42,
+            },
+        }
+        base = extract_aggregate(summary_with_ragas)
+        head = extract_aggregate({**summary_with_ragas, "judge_ragas": {
+            **summary_with_ragas["judge_ragas"],
+            "faithfulness": 0.95,
+        }})
+        md = render_markdown(base, head, "test")
+        self.assertIn("RAGAS judge", md)
+        self.assertIn("faithfulness", md)
+        self.assertIn("0.920", md)
+        self.assertIn("0.950", md)
+
 
 class FullScriptInvocationTest(unittest.TestCase):
     """Smoke-test the full script end-to-end via subprocess so the

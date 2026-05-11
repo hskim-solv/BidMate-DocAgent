@@ -41,6 +41,7 @@ Load-bearing — changes here require PR template **item 5b (real-data delta)** 
 Supporting:
 
 - `app.py` — CLI query entry point.
+- `rag_vector_store.py` — `VectorStore` Protocol behind the embeddings sidecar (issue #232, Stage 1 of #176). `BIDMATE_INDEX_BACKEND=memory` is the only supported value today; `qdrant` / `pgvector` are reserved for follow-up PRs.
 - `scripts/` — `build_index.py`, `update_readme_metrics.py`, `run_real_eval_delta.py`, etc.
 - `data/raw/` → `data/index/` → `outputs/` → `reports/` (pipeline artifacts).
 - `docs/` — design notes, ADRs, failure analyses, reviewer artifacts.

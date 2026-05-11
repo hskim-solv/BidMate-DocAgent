@@ -56,6 +56,46 @@ ablation_runs:
     verifier_retry: true
     retrieval_mode: flat
     retrieval_backend: hybrid
+  # Issue #149 — RRF k sweep. The default `hybrid_bm25` row above runs
+  # at the current `RRF_K = 60` default; the three rows below sweep
+  # k ∈ {10, 30, 100} so a real-data ablation can pick a robust k as
+  # the new default. All other knobs are held identical to `hybrid_bm25`.
+  - name: hybrid_bm25_k10
+    pipeline: agentic_full
+    metadata_first: true
+    rerank: true
+    verifier_retry: true
+    retrieval_mode: flat
+    retrieval_backend: hybrid
+    rrf_k: 10
+  - name: hybrid_bm25_k30
+    pipeline: agentic_full
+    metadata_first: true
+    rerank: true
+    verifier_retry: true
+    retrieval_mode: flat
+    retrieval_backend: hybrid
+    rrf_k: 30
+  - name: hybrid_bm25_k100
+    pipeline: agentic_full
+    metadata_first: true
+    rerank: true
+    verifier_retry: true
+    retrieval_mode: flat
+    retrieval_backend: hybrid
+    rrf_k: 100
+  # Issue #150 — BM25 채널 전용 stopword/조사 셋 (까지/부터/마다/조차/…)
+  # 을 적용한 hybrid 비교 셀. dense + Jaccard lexical 경로는 건드리지
+  # 않고 BM25 corpus + query 토큰만 필터함. `hybrid_bm25` (shared
+  # profile) 가 control.
+  - name: hybrid_bm25_extra_stopwords
+    pipeline: agentic_full
+    metadata_first: true
+    rerank: true
+    verifier_retry: true
+    retrieval_mode: flat
+    retrieval_backend: hybrid
+    bm25_stopword_profile: bm25_extra
   # Issue #163 / ADR 0011 pattern — additive cross-encoder reranker. The
   # existing `full` row is the natural negative (rerank_cross_encoder
   # defaults to false). Under the CI default backend (stub) the cross-
@@ -476,6 +516,9 @@ cases:
     expected_terms:
       - "4개월"
       - "6개월"
+    # Manually verified (issue #175): single chunk covers agency-A schedule.
+    gold_chunk_ids:
+      - rfp-agency-a-ai-quality::chunk-001
     expected_citation_terms:
       - "4개월"
       - "6개월"
@@ -494,6 +537,9 @@ cases:
       - "데이터 표준 사전"
       - "MLOps 운영 가이드"
       - "모니터링 대시보드"
+    # Manually verified (issue #175).
+    gold_chunk_ids:
+      - rfp-agency-b-mlops-governance::chunk-001
     expected_citation_terms:
       - "데이터 표준 사전"
       - "MLOps 운영 가이드"
@@ -511,6 +557,9 @@ cases:
     expected_terms:
       - "2초"
       - "주요 문의"
+    # Manually verified (issue #175).
+    gold_chunk_ids:
+      - rfp-agency-c-chatbot::chunk-001
     expected_citation_terms:
       - "2초"
       - "주요 문의"
@@ -529,6 +578,9 @@ cases:
       - "요구사항 이해도"
       - "근거 기반 실행 계획"
       - "보안 및 운영 리스크"
+    # Manually verified (issue #175).
+    gold_chunk_ids:
+      - rfp-common-submission::chunk-001
     expected_citation_terms:
       - "요구사항 이해도"
       - "근거 기반 실행 계획"
@@ -547,6 +599,9 @@ cases:
       - "PM"
       - "ML 엔지니어"
       - "보안 담당자"
+    # Manually verified (issue #175).
+    gold_chunk_ids:
+      - rfp-agency-a-ai-quality::chunk-001
     expected_citation_terms:
       - "PM"
       - "ML 엔지니어"
@@ -565,6 +620,9 @@ cases:
       - "답변 정확도"
       - "상담 이관 적절성"
       - "사용자 만족도"
+    # Manually verified (issue #175).
+    gold_chunk_ids:
+      - rfp-agency-c-chatbot::chunk-001
     expected_citation_terms:
       - "답변 정확도"
       - "사용자 만족도"
@@ -582,6 +640,10 @@ cases:
     expected_terms:
       - "보안 통제"
       - "로그"
+    # Manually verified (issue #175). Baseline retriever currently returns
+    # empty retrieved_chunk_ids on this multi-turn case — see follow-up gap.
+    gold_chunk_ids:
+      - rfp-agency-a-ai-quality::chunk-001
     expected_citation_terms:
       - "보안 통제"
       - "로그"
@@ -611,6 +673,9 @@ cases:
       - "모델 점검 리포트"
       - "보안 통제 매뉴얼"
       - "운영자 교육 자료"
+    # Manually verified (issue #175). Multi-step follow-up — known retrieval gap.
+    gold_chunk_ids:
+      - rfp-agency-a-ai-quality::chunk-001
     expected_citation_terms:
       - "모델 점검 리포트"
       - "보안 통제 매뉴얼"
@@ -754,6 +819,9 @@ cases:
       - rfp-agency-d-spectrometer-probe
     expected_terms:
       - "분기별"
+    # Manually verified (issue #175). Audit-period text lives in chunk-002.
+    gold_chunk_ids:
+      - rfp-agency-d-spectrometer-probe::chunk-002
     expected_citation_terms:
       - "분기별"
     answerable: true
@@ -768,6 +836,9 @@ cases:
     expected_terms:
       - "5년"
       - "NAS"
+    # Manually verified (issue #175). Storage spec lives in chunk-003.
+    gold_chunk_ids:
+      - rfp-agency-d-spectrometer-probe::chunk-003
     expected_citation_terms:
       - "5년"
     answerable: true

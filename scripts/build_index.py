@@ -13,8 +13,10 @@ from rag_core import (
     DEFAULT_CHUNK_MAX_CHARS,
     DEFAULT_CHUNK_OVERLAP_SENTENCES,
     DEFAULT_EMBEDDING_MODEL,
+    EMBEDDINGS_FILENAME,
     build_index_payload,
     build_index_payload_from_documents,
+    write_index,
 )
 from visual_ingestion import (
     load_visual_documents_from_dir,
@@ -205,8 +207,13 @@ def main() -> int:
         return 2
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    out_path = output_dir / "index.json"
-    out_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    # M2 (#207): build counts come from the payload BEFORE write_index
+    # pops the in-memory _vector_store (#232) and serializes the sidecar.
+    num_docs = payload["build"]["num_documents"]
+    num_chunks = payload["build"]["num_chunks"]
+    embedding_backend = payload["embedding"]["backend"]
+    out_path = write_index(payload, output_dir)
+    embeddings_path = output_dir / EMBEDDINGS_FILENAME
     if ingestion_report is not None:
         report_path = output_dir / "ingestion_report.json"
         report_path.write_text(
@@ -215,9 +222,9 @@ def main() -> int:
         )
     print(
         "[OK] RAG index written: "
-        f"{out_path} ({payload['build']['num_documents']} docs, "
-        f"{payload['build']['num_chunks']} chunks, "
-        f"embedding={payload['embedding']['backend']})"
+        f"{out_path} (+ {embeddings_path.name}, "
+        f"{num_docs} docs, {num_chunks} chunks, "
+        f"embedding={embedding_backend})"
     )
     if ingestion_report is not None:
         print(f"[OK] Ingestion report written: {report_path}")

@@ -53,6 +53,14 @@ SAFE_TOPLEVEL_KEYS = frozenset(
         "latency",  # only sub-keys "p50", "p95", "mean" extracted below
         "stage_latency",  # aggregated p50/p95/mean per stage
         "retry_reason_counts",  # reason strings are non-identifying
+        # Issue #120: retry effectiveness aggregates. All sub-fields are
+        # counts/rates over the case set with no per-case payload; the
+        # extractor below whitelists the exact sub-keys.
+        "retry_effectiveness",
+        # Run identity for leaderboard (#166) + judge calibration (#169).
+        # Only git_commit / git_dirty / config_sha256 / generated_at cross
+        # the commit boundary — the local filesystem path is dropped.
+        "run_manifest",
         "pipeline",
         "primary_run",
         "prompt_profile",
@@ -66,8 +74,47 @@ SAFE_TOPLEVEL_KEYS = frozenset(
         # boundary; per-case judge text stays in
         # reports/real100/judge.local.json.
         "judge",
+        # ADR 0012 RAGAS-style judge aggregates on the synthetic surface.
+        # Only the four metric means + their 95% bootstrap CIs cross the
+        # commit boundary; per-case verdicts stay in
+        # reports/eval_summary.judge.local.json and reports/judge_cache/.
+        "judge_ragas",
     }
 )
+
+# RAGAS metric sub-keys whitelisted from `judge_ragas`. Float scalars + CI dicts.
+SAFE_JUDGE_RAGAS_METRIC_KEYS = (
+    "faithfulness",
+    "answer_relevance",
+    "context_precision",
+    "context_recall",
+)
+SAFE_JUDGE_RAGAS_META_KEYS = ("n", "ci")
+
+# Sub-keys whitelisted from `retry_effectiveness` — all numeric or count
+# aggregates over the case set, no per-case payload.
+SAFE_RETRY_EFFECTIVENESS_KEYS = (
+    "cases_with_retry",
+    "cases_without_retry",
+    "recovery_rate",
+    "residual_failure_rate",
+    "retry_resolution_rate",
+    "retry_lift_vs_no_retry",
+)
+SAFE_RETRY_EFFECTIVENESS_CROSS_KEYS = (
+    "n_retry_triggered",
+    "n_evaluable",
+    "true_positive_triggers",
+    "false_positive_triggers",
+    "retry_precision",
+    "method",
+)
+SAFE_RETRY_EFFECTIVENESS_CI_KEYS = ("recovery_rate", "residual_failure_rate")
+
+# Sub-keys whitelisted from `run_manifest`. ``config_path`` is dropped
+# (filesystem layout is not committable); ``config_sha256`` is the
+# canonical config identifier.
+SAFE_RUN_MANIFEST_KEYS = ("git_commit", "git_dirty", "config_sha256", "generated_at")
 
 # Per-slice subkeys extracted from `by_query_type`.
 SAFE_SLICE_METRICS = (
@@ -156,6 +203,56 @@ def extract_aggregate(summary: dict[str, Any]) -> dict[str, Any]:
             # Reason strings are taxonomy codes ("topic_not_grounded"), not
             # identifying. Counts are integers. Safe.
             out[key] = {str(k): int(v) for k, v in value.items()}
+        elif key == "retry_effectiveness" and isinstance(value, dict):
+            extracted: dict[str, Any] = {
+                sub: value.get(sub)
+                for sub in SAFE_RETRY_EFFECTIVENESS_KEYS
+                if value.get(sub) is not None
+            }
+            ci = value.get("ci")
+            if isinstance(ci, dict):
+                ci_out = {
+                    sub: ci.get(sub)
+                    for sub in SAFE_RETRY_EFFECTIVENESS_CI_KEYS
+                    if isinstance(ci.get(sub), dict)
+                }
+                if ci_out:
+                    extracted["ci"] = ci_out
+            cross = value.get("cross_ablation")
+            if isinstance(cross, dict):
+                cross_out = {
+                    sub: cross.get(sub)
+                    for sub in SAFE_RETRY_EFFECTIVENESS_CROSS_KEYS
+                    if cross.get(sub) is not None
+                }
+                if cross_out:
+                    extracted["cross_ablation"] = cross_out
+            if extracted:
+                out[key] = extracted
+        elif key == "run_manifest" and isinstance(value, dict):
+            # Drop config_path (filesystem layout, not committable).
+            # Keep git_commit / git_dirty / config_sha256 / generated_at.
+            out[key] = {
+                sub: value.get(sub)
+                for sub in SAFE_RUN_MANIFEST_KEYS
+                if value.get(sub) is not None
+            }
+        elif key == "judge_ragas" and isinstance(value, dict):
+            ragas: dict[str, Any] = {}
+            for metric in SAFE_JUDGE_RAGAS_METRIC_KEYS:
+                if value.get(metric) is not None:
+                    ragas[metric] = value[metric]
+            for meta in SAFE_JUDGE_RAGAS_META_KEYS:
+                if meta == "ci" and isinstance(value.get(meta), dict):
+                    ragas[meta] = {
+                        m: value[meta].get(m)
+                        for m in SAFE_JUDGE_RAGAS_METRIC_KEYS
+                        if isinstance(value[meta].get(m), dict)
+                    }
+                elif value.get(meta) is not None:
+                    ragas[meta] = value[meta]
+            if ragas:
+                out[key] = ragas
         else:
             out[key] = value
 
@@ -288,6 +385,53 @@ def render_markdown(
             lines.append(
                 f"| `{reason}` | {base_reasons.get(reason, 0)} | "
                 f"{head_reasons.get(reason, 0)} |"
+            )
+
+    base_retry_eff = base.get("retry_effectiveness") or {}
+    head_retry_eff = head.get("retry_effectiveness") or {}
+    if base_retry_eff or head_retry_eff:
+        lines.append("")
+        lines.append("#### Retry effectiveness (#120)")
+        lines.append("")
+        lines.append("| metric | base | head | Δ |")
+        lines.append("|---|---|---|---|")
+        for key, label, higher in (
+            ("recovery_rate", "recovery_rate", True),
+            ("residual_failure_rate", "residual_failure_rate", False),
+            ("retry_resolution_rate", "retry_resolution_rate", True),
+            ("retry_lift_vs_no_retry", "retry_lift_vs_no_retry", True),
+        ):
+            b = base_retry_eff.get(key)
+            h = head_retry_eff.get(key)
+            lines.append(
+                f"| {label} | {_fmt_value(b)} | {_fmt_value(h)} | "
+                f"{_fmt_delta(b, h, higher)} |"
+            )
+        base_cross = base_retry_eff.get("cross_ablation") or {}
+        head_cross = head_retry_eff.get("cross_ablation") or {}
+        if base_cross or head_cross:
+            lines.append("")
+            lines.append(
+                "_Cross-ablation retry_precision (vs no_verifier_retry baseline): "
+                f"base={_fmt_value(base_cross.get('retry_precision'))} · "
+                f"head={_fmt_value(head_cross.get('retry_precision'))} · "
+                f"method=`{head_cross.get('method') or base_cross.get('method', '—')}`_"
+            )
+
+    base_ragas = base.get("judge_ragas") or {}
+    head_ragas = head.get("judge_ragas") or {}
+    if base_ragas or head_ragas:
+        lines.append("")
+        lines.append("#### RAGAS judge (ADR 0012, opt-in)")
+        lines.append("")
+        lines.append("| metric | base | head | Δ |")
+        lines.append("|---|---|---|---|")
+        for metric in SAFE_JUDGE_RAGAS_METRIC_KEYS:
+            b = base_ragas.get(metric)
+            h = head_ragas.get(metric)
+            lines.append(
+                f"| {metric} | {_fmt_value(b)} | {_fmt_value(h)} | "
+                f"{_fmt_delta(b, h, True)} |"
             )
 
     base_judge = base.get("judge") or {}

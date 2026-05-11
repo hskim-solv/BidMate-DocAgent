@@ -19,6 +19,28 @@ For the CLI / eval flow (not deployment), see
       `BIDMATE_SYNTHESIS_BACKEND=stub` — the stub is a deterministic
       pass-through (ADR 0011).
 
+## One-line `docker run` (no clone, fastest reviewer path)
+
+For a reviewer who already has Docker installed, the fastest path is
+a published image:
+
+```bash
+docker run --rm -p 8501:8501 -p 8000:8000 \\
+  -e BIDMATE_DEMO_MODE=both \\
+  ghcr.io/hskim-solv/bidmate-demo:latest
+# Streamlit UI: http://localhost:8501
+# FastAPI Swagger: http://localhost:8000/docs
+```
+
+The image is published via `make docker-publish` (requires `docker
+login ghcr.io` beforehand). Override the tag with
+`IMAGE_TAG=ghcr.io/<user>/bidmate-demo:<tag> make docker-publish` to
+push to a different registry.
+
+For the from-source recipe (clones the repo, builds locally), use
+`make demo-docker` instead — same Dockerfile, same ports, no
+registry dependency.
+
 ## Fly.io
 
 Free tier comfortably hosts the demo (1 shared-CPU machine, 1 GB
@@ -75,6 +97,38 @@ Spaces auto-detects `app_file: demo/streamlit_app.py` and runs
 Claude synthesis add `ANTHROPIC_API_KEY` and
 `BIDMATE_SYNTHESIS_BACKEND=anthropic` in the Space's *Settings →
 Variables and secrets*.
+
+### Operational notes
+
+The placeholder URL referenced from the repo-root README
+(`https://huggingface.co/spaces/hskim-solv/bidmate-docagent`)
+activates once the first push above succeeds. Day-to-day
+operations:
+
+- **Redeploy** — push to the Space's `main`; Spaces auto-rebuilds.
+  Manual trigger via Space web UI *Settings → Restart this Space*
+  (warm) or *Factory rebuild* (cold, re-installs requirements).
+- **Dependency pinning** — Spaces picks up the repo-root
+  [`requirements.txt`](../requirements.txt) automatically. The
+  Streamlit / FastAPI / retrieval deps are pinned there; the
+  heavier observability extras live in
+  [`requirements-observability.txt`](../requirements-observability.txt)
+  and are *not* pulled into the Space image, keeping cold-start
+  under a minute.
+- **Secrets rotation** — set `ANTHROPIC_API_KEY` and
+  `BIDMATE_SYNTHESIS_BACKEND=anthropic` under *Settings → Variables
+  and secrets*. Without them the demo runs the stub synthesis
+  backend (ADR 0011 zero-regression: extractive and stub paths are
+  byte-identical), so the Space remains functional even with no
+  key.
+- **Free-tier resource / cold-start** — 16 GB RAM / 2 CPU; the
+  Space sleeps after inactivity and the first request after sleep
+  takes ~30–60 s to wake. The index (`data/index/`) is committed,
+  so no build step on cold-start.
+- **Fallback when the Space is down** — the README "🚀 Live demo"
+  table lists the one-line `docker run` and Colab quickstart
+  immediately under the Spaces row, so a reviewer who hits a
+  sleeping or unhealthy Space can pivot in one click.
 
 ## Railway
 

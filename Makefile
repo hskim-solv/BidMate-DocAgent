@@ -1,4 +1,4 @@
-.PHONY: setup index ask eval benchmark benchmark-check check smoke harness-smoke test test-regression api api-docker demo demo-docker real-eval real-eval-delta real-eval-baseline-update real-eval-history-render real-eval-history-check real-eval-with-judge synthetic-judge leaderboard leaderboard-check clean
+.PHONY: setup index ask eval benchmark benchmark-check check smoke smoke-with-judge harness-smoke test test-regression api api-docker demo demo-docker pareto docker-publish real-eval real-eval-delta real-eval-baseline-update real-eval-history-render real-eval-history-check real-eval-with-judge synthetic-judge leaderboard leaderboard-check clean
 
 PYTHON ?= python3
 VENV ?= .venv
@@ -29,6 +29,21 @@ ask:
 eval:
 	$(PYTHON) eval/run_eval.py --index_dir data/index --output_dir reports --config eval/config.yaml
 
+# Cost-quality Pareto frontier table (and PNG if matplotlib installed)
+# from the latest reports/eval_summary.json. Read-only consumer — see
+# scripts/plot_pareto.py for cost/quality axis choice (latency p95 vs
+# citation_precision).
+pareto:
+	$(PYTHON) scripts/plot_pareto.py --summary reports/eval_summary.json --markdown-out reports/pareto.md --png-out reports/pareto.png
+
+# Publish the demo image to GHCR so reviewers can `docker run <image>`
+# without cloning the repo (issue #123). Requires `docker login ghcr.io`
+# beforehand; override IMAGE_TAG to publish to a different registry.
+IMAGE_TAG ?= ghcr.io/hskim-solv/bidmate-demo:latest
+docker-publish:
+	docker build -t $(IMAGE_TAG) .
+	docker push $(IMAGE_TAG)
+
 benchmark:
 	$(PYTHON) scripts/run_benchmark.py --suite benchmarks/suites/public_synthetic_rfp.yaml --ablations benchmarks/ablations/rag_quality_axes.yaml
 
@@ -40,6 +55,16 @@ check:
 
 smoke:
 	bash scripts/smoke.sh
+
+# Run the synthetic smoke eval, then ask a RAGAS-style LLM judge for
+# enrichment metrics (ADR 0012). Opt-in additive only — never replaces
+# the deterministic verifier. Default backend is `stub` (zero-cost,
+# deterministic); set BIDMATE_JUDGE_BACKEND=openai_compatible plus
+# BIDMATE_JUDGE_* env vars for a paid judge call. Pass --fold-aggregate
+# to merge the judge_ragas block into reports/eval_summary.json.
+smoke-with-judge: smoke
+	$(PYTHON) eval/llm_judge.py --fold-aggregate
+	@echo "RAGAS scores written. Per-case verdicts in reports/eval_summary.judge.local.json (gitignored)."
 
 harness-smoke:
 	$(PYTHON) scripts/run_harness.py --config harness/smoke.yaml

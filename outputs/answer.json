@@ -144,6 +144,8 @@
     "verifier_retry": false,
     "retrieval_mode": "flat",
     "retrieval_backend": "dense",
+    "rrf_k": 60,
+    "bm25_stopword_profile": "shared",
     "metadata_filters": {},
     "top_k": 4,
     "retrieval_budget": {
@@ -342,9 +344,9 @@
         "balanced": false
       },
       "stage_latencies_ms": {
-        "query_analysis_ms": 0.75,
-        "context_resolution_ms": 0.0,
-        "answer_generation_ms": 0.36
+        "query_analysis_ms": 1.99,
+        "context_resolution_ms": 0.01,
+        "answer_generation_ms": 1.0
       },
       "attempts": [
         {
@@ -433,7 +435,7 @@
     ]
   },
   "diagnostics": {
-    "latency_ms": 4.52,
+    "latency_ms": 5.11,
     "retry_count": 0,
     "abstained": false,
     "answer_status": "supported",
@@ -466,7 +468,7 @@
         "retrieval_mode": "flat",
         "verified": true,
         "verification_reasons": [],
-        "retrieve_ms": 0.34,
+        "retrieve_ms": 0.92,
         "verify_ms": 0.0,
         "comparison_coverage": {
           "targets": [
@@ -490,7 +492,7 @@
       "rfp-agency-b-mlops-governance::chunk-001",
       "rfp-agency-a-ai-quality::chunk-001",
       "rfp-agency-c-chatbot::chunk-001",
-      "rfp-common-submission::chunk-001"
+      "rfp-agency-d-spectrometer-probe::chunk-001"
     ],
     "final_relaxation_reason": [],
     "context_resolution": {
@@ -652,18 +654,16 @@
     "verifier_retry": false,
     "retrieval_mode": "flat",
     "retrieval_backend": "dense",
+    "rrf_k": 60,
+    "bm25_stopword_profile": "shared",
     "pipeline": "naive_baseline",
     "prompt_profile": "minimal_grounded_extractive",
     "cold_start": true,
     "stage_latency": {
-      "query_analysis_ms": 0.75,
-      "context_resolution_ms": 0.0,
-      "answer_generation_ms": 0.36
+      "query_analysis_ms": 1.99,
+      "context_resolution_ms": 0.01,
+      "answer_generation_ms": 1.0
     },
-    "synthesis": null,
-    "trace_url": null,
-    "trace_backend": "none",
-    "trace_unavailable_reason": null,
-    "trace_error": null
+    "synthesis": null
   }
 }

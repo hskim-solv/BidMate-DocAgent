@@ -34,6 +34,10 @@ eval/*.local.yaml
 # Generated artifacts: keep committed portfolio samples, ignore extra outputs
 data/index/*
 !data/index/index.json
+# M2 (#207): vectors live in a sidecar .npy file alongside index.json so
+# the JSON stays small and a future VectorStore abstraction (#176) can
+# swap backends. Both files together are the portfolio sample.
+!data/index/embeddings.npy
 outputs/*
 !outputs/answer.json
 reports/*

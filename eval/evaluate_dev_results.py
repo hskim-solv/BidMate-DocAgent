@@ -34,6 +34,9 @@ from typing import List, Set
 
 import pandas as pd
 
+from eval.ko_axes import KO_AXES, detect_ko_axes
+from eval.multiturn_eval import build_qid_parent_map, derive_turn_depth
+
 
 ABSTAIN_PATTERNS = [
     "확인되지 않는다",
@@ -164,9 +167,12 @@ def evaluate_row(row: pd.Series) -> dict:
 
     grounded_pass = int(doc_hit == 1 and answer_pass == 1) if predicted_doc_ids else int(answer_pass == 1)
 
+    ko_axes = detect_ko_axes(row.to_dict() if hasattr(row, "to_dict") else dict(row))
+
     return {
         "qid": qid,
         "question_type": qtype,
+        "ko_axes": "|".join(ko_axes),
         "answer_nonempty": answer_nonempty,
         "must_include_total": must_total,
         "must_include_hit": must_hit,
@@ -212,6 +218,25 @@ def summarise(per_q: pd.DataFrame) -> dict:
     for qtype, sub in per_q.groupby("question_type"):
         summary["by_type"][qtype] = block(sub)
 
+    summary["by_ko_axes"] = {}
+    for axis in KO_AXES:
+        if "ko_axes" not in per_q.columns:
+            break
+        mask = per_q["ko_axes"].fillna("").apply(
+            lambda value: axis in [tag for tag in str(value).split("|") if tag]
+        )
+        if mask.any():
+            summary["by_ko_axes"][axis] = block(per_q[mask])
+
+    summary["by_turn_depth"] = {}
+    if "turn_depth" in per_q.columns:
+        for depth, sub in per_q.groupby("turn_depth"):
+            try:
+                depth_key = int(depth)
+            except (TypeError, ValueError):
+                continue
+            summary["by_turn_depth"][depth_key] = block(sub)
+
     return summary
 
 
@@ -236,6 +261,13 @@ def main():
         merged = row.to_dict()
         merged.update(evaluate_row(row))
         per_q_rows.append(merged)
+
+    qid_to_parent = build_qid_parent_map(per_q_rows)
+    for entry in per_q_rows:
+        qid = str(entry.get("qid") or "")
+        entry["turn_depth"] = derive_turn_depth(
+            qid, qid_to_parent.get(qid), qid_to_parent
+        )
 
     per_q = pd.DataFrame(per_q_rows)
     summary = summarise(per_q)
@@ -264,6 +296,26 @@ def main():
         for key, value in block.items():
             lines.append(f"- {key}: {value}")
         lines.append("")
+
+    if summary.get("by_ko_axes"):
+        lines.append("## By KO RFP axis")
+        lines.append("")
+        for axis, block in summary["by_ko_axes"].items():
+            lines.append(f"### {axis}")
+            lines.append("")
+            for key, value in block.items():
+                lines.append(f"- {key}: {value}")
+            lines.append("")
+
+    if summary.get("by_turn_depth"):
+        lines.append("## By turn depth")
+        lines.append("")
+        for depth in sorted(summary["by_turn_depth"]):
+            lines.append(f"### turn {depth}")
+            lines.append("")
+            for key, value in summary["by_turn_depth"][depth].items():
+                lines.append(f"- {key}: {value}")
+            lines.append("")
 
     markdown_path.write_text("\n".join(lines), encoding="utf-8")
 

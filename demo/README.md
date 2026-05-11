@@ -12,6 +12,11 @@ license: mit
 
 # BidMate-DocAgent live demo
 
+<!-- Hero asset slot — recorded walkthrough (60-90 s). See
+     docs/deployment.md#recording-the-demo-video for capture instructions.
+     The same asset is referenced from the repo-root README. -->
+![Live demo walkthrough](../docs/assets/demo.gif)
+
 This directory holds the **reviewer-facing** demo UI. The Streamlit
 front-page lets anyone exercise the RAG pipeline (extractive +
 LLM-synthesis ablation) against the public synthetic RFP corpus

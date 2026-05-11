@@ -29,6 +29,12 @@ except ImportError:  # pragma: no cover — defensive; declared in requirements.
 
 from rag_observability import resolve_trace_backend
 from rag_synthesis import synthesize_answer
+from rag_vector_store import (
+    InMemoryVectorStore,
+    VectorStore,
+    load_vector_store,
+    vector_store_from_matrix,
+)
 from text_normalize import expand_forms, normalize_text
 
 DEFAULT_EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
@@ -39,6 +45,10 @@ VALID_CHUNKING_STRATEGIES = {"auto", "section", "fixed"}
 VALID_RETRIEVAL_MODES = {"flat", "hierarchical"}
 VALID_RETRIEVAL_BACKENDS = {"dense", "hybrid"}
 RRF_K = 60
+# Inclusive bounds for the hybrid RRF k knob (issue #149). The lower
+# bound rules out k=0 (division-by-zero); the upper bound is a sanity
+# cap — beyond ~1000 the fusion is effectively a flat sum of ranks.
+VALID_RRF_K_RANGE = (1, 1000)
 
 # Hard cap on the per-query agent loop. ``metadata_stage_sequence`` today
 # returns at most ["strict", "reduced", "relaxed"] (3 stages). This constant
@@ -57,6 +67,8 @@ PIPELINE_CONFIG_KEYS = (
     "retrieval_mode",
     "retrieval_backend",
     "prompt_profile",
+    "rrf_k",
+    "bm25_stopword_profile",
 )
 DEFAULT_COMPARISON_BALANCE: dict[str, Any] = {
     "enabled": True,
@@ -80,6 +92,8 @@ PIPELINE_PRESETS: dict[str, dict[str, Any]] = {
         "retrieval_mode": "flat",
         "retrieval_backend": "dense",
         "prompt_profile": "minimal_grounded_extractive",
+        "rrf_k": RRF_K,
+        "bm25_stopword_profile": "shared",
         "description": (
             "Fixed-size chunks with dense top-k retrieval only; no metadata-first "
             "filtering, reranking, or verifier retry."
@@ -94,6 +108,8 @@ PIPELINE_PRESETS: dict[str, dict[str, Any]] = {
         "retrieval_mode": "flat",
         "retrieval_backend": "dense",
         "prompt_profile": "structured_grounded_claims",
+        "rrf_k": RRF_K,
+        "bm25_stopword_profile": "shared",
         "comparison_balance": dict(DEFAULT_COMPARISON_BALANCE),
         "description": "Metadata-first retrieval with lexical/metadata rerank and verifier retry.",
     },
@@ -109,6 +125,8 @@ PIPELINE_PRESETS: dict[str, dict[str, Any]] = {
         "verifier_retry": True,
         "retrieval_mode": "flat",
         "prompt_profile": "llm_synthesis",
+        "rrf_k": RRF_K,
+        "bm25_stopword_profile": "shared",
         "comparison_balance": dict(DEFAULT_COMPARISON_BALANCE),
         "description": "agentic_full retrieval; LLM-synthesized summary under ADR 0011 guard.",
     },
@@ -127,6 +145,11 @@ WEAK_SECTION_HEADINGS = {
     "section-001",
 }
 INDEX_FILENAME = "index.json"
+# M2 (#207): vectors live in a sidecar .npy so the JSON stays small and a
+# future VectorStore abstraction (#176) can swap in alternate backends
+# without touching the chunk-metadata payload.
+EMBEDDINGS_FILENAME = "embeddings.npy"
+INDEX_SCHEMA_VERSION = 2
 MODEL_CACHE: dict[tuple[str, bool], Any] = {}
 
 TOKEN_RE = re.compile(r"[A-Za-z0-9]+|[가-힣]+")
@@ -316,6 +339,53 @@ KOREAN_PARTICLE_SUFFIXES = (
     "에",
 )
 
+# Issue #150 — BM25-only extension of the particle suffix list. Applied
+# at the BM25 corpus-build and query-side only via
+# ``_apply_bm25_extra_filter``; never touches the tokens cached on
+# chunks at index time, so the dense + Jaccard lexical scoring paths
+# are preserved bit-for-bit (acceptance criterion: "dense/Jaccard 경로의
+# 동작은 보존"). Active under
+# ``bm25_stopword_profile = "bm25_extra"`` ablation; default profile
+# ``"shared"`` reuses the common ``KOREAN_PARTICLE_SUFFIXES`` only.
+BM25_EXTRA_PARTICLE_SUFFIXES: tuple[str, ...] = (
+    "까지",
+    "부터",
+    "마다",
+    "조차",
+    "마저",
+    "한테",
+    "께서",
+    "보다",
+    "처럼",
+    "같이",
+    "라도",
+    "라는",
+    "라고",
+    "이라",
+    "이라는",
+    "이라고",
+)
+
+# Short Korean discourse particles that survive ``normalize_metadata_token``
+# (they aren't pure-Hangul particle suffixes; they appear as standalone
+# tokens) but carry no IDF signal for BM25 — filtered only under the
+# bm25_extra profile, again leaving dense/Jaccard untouched.
+BM25_EXTRA_STOPWORDS: frozenset[str] = frozenset({
+    "또한",
+    "또는",
+    "혹은",
+    "그러나",
+    "하지만",
+    "이러한",
+    "그러한",
+    "저러한",
+    "다만",
+    "다음",
+    "다음과",
+})
+
+VALID_BM25_STOPWORD_PROFILES = {"shared", "bm25_extra"}
+
 
 @dataclass(frozen=True)
 class EmbeddingResult:
@@ -423,6 +493,15 @@ def resolve_pipeline_config(
     if retrieval_backend not in VALID_RETRIEVAL_BACKENDS:
         choices = ", ".join(sorted(VALID_RETRIEVAL_BACKENDS))
         raise ValueError(f"retrieval_backend must be one of: {choices}")
+    rrf_k_raw = config.get("rrf_k")
+    rrf_k = RRF_K if rrf_k_raw is None else int(rrf_k_raw)
+    rrf_lo, rrf_hi = VALID_RRF_K_RANGE
+    if rrf_k < rrf_lo or rrf_k > rrf_hi:
+        raise ValueError(f"rrf_k must be in [{rrf_lo}, {rrf_hi}].")
+    bm25_stopword_profile = str(config.get("bm25_stopword_profile") or "shared")
+    if bm25_stopword_profile not in VALID_BM25_STOPWORD_PROFILES:
+        choices = ", ".join(sorted(VALID_BM25_STOPWORD_PROFILES))
+        raise ValueError(f"bm25_stopword_profile must be one of: {choices}")
 
     config["top_k"] = top_k
     config["metadata_first"] = bool(config.get("metadata_first"))
@@ -432,6 +511,8 @@ def resolve_pipeline_config(
     config["retrieval_mode"] = retrieval_mode
     config["retrieval_backend"] = retrieval_backend
     config["prompt_profile"] = str(config.get("prompt_profile") or "structured_grounded_claims")
+    config["rrf_k"] = rrf_k
+    config["bm25_stopword_profile"] = bm25_stopword_profile
     return config
 
 
@@ -1121,8 +1202,16 @@ def build_index_payload_from_documents(
         for chunk in chunks
     ]
     embedding_result = embed_texts(embedding_inputs, model_name=model_name, backend=embedding_backend)
-    for chunk, vector in zip(chunks, embedding_result.vectors.tolist()):
-        chunk["embedding"] = vector
+    # M2 (#207): vectors live in a sidecar .npy. Chunks reference rows by
+    # embedding_idx — inline lists were ~85% of the JSON file size and
+    # forced a per-query Python-list → NumPy materialization.
+    # Stage 1 of #176 (#232): the matrix is wrapped in a VectorStore so
+    # future backends (Qdrant, pgvector) can slot in without touching
+    # chunk-metadata storage. InMemoryVectorStore is bit-identical.
+    vectors_matrix = np.asarray(embedding_result.vectors, dtype=np.float32)
+    for idx, chunk in enumerate(chunks):
+        chunk["embedding_idx"] = idx
+        chunk.pop("embedding", None)
 
     public_docs = [
         {
@@ -1136,7 +1225,7 @@ def build_index_payload_from_documents(
         for doc in documents
     ]
     return {
-        "schema_version": 1,
+        "schema_version": INDEX_SCHEMA_VERSION,
         "mode": "rag",
         "message": message,
         "embedding": {
@@ -1144,6 +1233,7 @@ def build_index_payload_from_documents(
             "model": embedding_result.model,
             "dimension": int(embedding_result.vectors.shape[1]),
             "normalized": True,
+            "storage": "sidecar_npy",
         },
         "build": {
             "num_documents": len(public_docs),
@@ -1155,6 +1245,7 @@ def build_index_payload_from_documents(
         "documents": public_docs,
         "parent_sections": parent_sections,
         "chunks": chunks,
+        "_vector_store": vector_store_from_matrix(vectors_matrix),
     }
 
 
@@ -1167,7 +1258,42 @@ def load_index(index_dir: Path) -> dict[str, Any]:
         raise ValueError(f"Unsupported index mode: {payload.get('mode')}. Rebuild the index.")
     if not payload.get("chunks"):
         raise ValueError(f"Index has no chunks: {path}")
+    schema = int(payload.get("schema_version", 1))
+    # Stage 1 of #176 (#232): the vector matrix is now hidden behind a
+    # VectorStore. load_vector_store handles the schema-2 sidecar path
+    # and the legacy schema-1 inline-list materialization. The legacy
+    # chunk-mutation loop (embedding_idx / pop) stays here because it
+    # mutates payload["chunks"], not the store — and must run *after*
+    # load_vector_store has read the inline lists.
+    if schema < INDEX_SCHEMA_VERSION:
+        payload["_vector_store"] = load_vector_store(
+            index_dir, schema, chunks=payload["chunks"]
+        )
+        if payload["_vector_store"] is not None:
+            for idx, chunk in enumerate(payload["chunks"]):
+                chunk["embedding_idx"] = idx
+                chunk.pop("embedding", None)
+    else:
+        payload["_vector_store"] = load_vector_store(index_dir, schema)
     return payload
+
+
+def write_index(payload: dict[str, Any], output_dir: Path) -> Path:
+    """Atomically persist an index payload + embeddings sidecar.
+
+    Pops the in-memory ``_vector_store`` from the payload, asks it to
+    persist its vectors (typically ``embeddings.npy``), and serializes
+    the remaining JSON-compatible structure to ``index.json``. The
+    caller's ``payload`` dict is mutated (the private key is removed) —
+    see scripts/build_index.py for the canonical use site.
+    """
+    output_dir.mkdir(parents=True, exist_ok=True)
+    store = payload.pop("_vector_store", None)
+    if store is not None:
+        store.persist(output_dir)
+    out_path = output_dir / INDEX_FILENAME
+    out_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    return out_path
 
 
 def known_entities(index: dict[str, Any]) -> list[str]:
@@ -1821,6 +1947,8 @@ def make_plan(
     pipeline: str = DEFAULT_RAG_PIPELINE_NAME,
     prompt_profile: str = "structured_grounded_claims",
     comparison_balance: dict[str, Any] | None = None,
+    rrf_k: int = RRF_K,
+    bm25_stopword_profile: str = "shared",
 ) -> dict[str, Any]:
     if retrieval_mode not in VALID_RETRIEVAL_MODES:
         choices = ", ".join(sorted(VALID_RETRIEVAL_MODES))
@@ -1828,6 +1956,12 @@ def make_plan(
     if retrieval_backend not in VALID_RETRIEVAL_BACKENDS:
         choices = ", ".join(sorted(VALID_RETRIEVAL_BACKENDS))
         raise ValueError(f"retrieval_backend must be one of: {choices}")
+    rrf_lo, rrf_hi = VALID_RRF_K_RANGE
+    if int(rrf_k) < rrf_lo or int(rrf_k) > rrf_hi:
+        raise ValueError(f"rrf_k must be in [{rrf_lo}, {rrf_hi}].")
+    if bm25_stopword_profile not in VALID_BM25_STOPWORD_PROFILES:
+        choices = ", ".join(sorted(VALID_BM25_STOPWORD_PROFILES))
+        raise ValueError(f"bm25_stopword_profile must be one of: {choices}")
     query_type = str(analysis.get("query_type") or "single_doc")
     default_top_k = query_type_default_top_k(query_type)
     budget_reason = top_k_reason or (
@@ -1879,6 +2013,8 @@ def make_plan(
         "verifier_retry": verifier_retry,
         "retrieval_mode": retrieval_mode,
         "retrieval_backend": retrieval_backend,
+        "rrf_k": int(rrf_k),
+        "bm25_stopword_profile": bm25_stopword_profile,
         "metadata_filters": filters,
         "top_k": top_k or default_top_k,
         "retrieval_budget": {
@@ -1935,11 +2071,24 @@ def retrieve(
 
     bm25_score_by_chunk: dict[str, float] = {}
     if retrieval_backend == "hybrid":
-        bm25_score_by_chunk = bm25_scores_for_index(index, list(query_tokens))
+        bm25_score_by_chunk = bm25_scores_for_index(
+            index,
+            list(query_tokens),
+            stopword_profile=str(plan.get("bm25_stopword_profile", "shared")),
+        )
 
+    vector_store = index.get("_vector_store")
     scored = []
     for chunk in candidates:
-        dense_score = dense_similarity(query_embedding, chunk.get("embedding"))
+        if vector_store is not None and chunk.get("embedding_idx") is not None:
+            chunk_vec = vector_store.get(int(chunk["embedding_idx"]))
+        else:
+            # Defensive fallback: a chunk dict produced outside the normal
+            # load_index path (e.g., a hand-crafted test fixture) may still
+            # carry an inline embedding. Keeps tests/test_partial_topic_*.py
+            # style fixtures working without forcing a sidecar.
+            chunk_vec = chunk.get("embedding")
+        dense_score = dense_similarity(query_embedding, chunk_vec)
         lexical_score = lexical_similarity(query_tokens, query_topics, chunk)
         metadata_score = metadata_similarity(analysis, chunk)
         bm25_score = float(bm25_score_by_chunk.get(str(chunk.get("chunk_id")), 0.0))
@@ -1996,14 +2145,16 @@ def retrieve(
         )
         dense_rank = {it["chunk_id"]: rank for rank, it in enumerate(by_dense)}
         bm25_rank = {it["chunk_id"]: rank for rank, it in enumerate(by_bm25)}
-        # Raw RRF tops out at 2/RRF_K (~0.033 for k=60). Normalize to
-        # [0,1] so the verifier's score floor (rag_core.py:2254,
-        # threshold 0.18 tuned for the dense+lexical fusion) keeps
-        # working for both backends without per-backend branches.
-        rrf_norm = RRF_K / 2.0
+        # Raw RRF tops out at 2/k. Normalize to [0,1] so the verifier's
+        # score floor (rag_core.py:2254, threshold 0.18 tuned for the
+        # dense+lexical fusion) keeps working for both backends without
+        # per-backend branches. `rrf_k` is plan-time configurable per
+        # issue #149; default still `RRF_K = 60`.
+        rrf_k = int(plan.get("rrf_k", RRF_K))
+        rrf_norm = rrf_k / 2.0
         for item in scored:
             cid = item["chunk_id"]
-            rrf = (1.0 / (RRF_K + dense_rank[cid])) + (1.0 / (RRF_K + bm25_rank[cid]))
+            rrf = (1.0 / (rrf_k + dense_rank[cid])) + (1.0 / (rrf_k + bm25_rank[cid]))
             item["score"] = round(float(rrf * rrf_norm), 6)
             item["score_parts"]["rank_rrf"] = round(float(rrf * rrf_norm), 6)
 
@@ -2206,43 +2357,102 @@ def dense_similarity(query_vector: np.ndarray, chunk_vector: Any) -> float:
     return max(0.0, min(1.0, (score + 1.0) / 2.0))
 
 
-def _chunk_tokens_for_bm25(chunk: dict[str, Any]) -> list[str]:
+def _strip_bm25_extra_suffixes(token: str) -> str:
+    """Strip ``BM25_EXTRA_PARTICLE_SUFFIXES`` greedily from a pure-Hangul token.
+
+    Mirrors :func:`normalize_metadata_token`'s suffix-stripping loop but
+    against the BM25-only extension list (issue #150). Returns the
+    original token unchanged for non-Hangul tokens.
+    """
+    if not re.fullmatch(r"[가-힣]+", token):
+        return token
+    changed = True
+    while changed:
+        changed = False
+        for suffix in BM25_EXTRA_PARTICLE_SUFFIXES:
+            if len(token) > len(suffix) + 1 and token.endswith(suffix):
+                token = token[: -len(suffix)]
+                changed = True
+                break
+    return token
+
+
+def _apply_bm25_extra_filter(tokens: Iterable[str]) -> list[str]:
+    """Apply the BM25-extra particle suffix strip + stopword filter (issue #150).
+
+    Called only from the BM25 corpus-build and query-side paths under
+    ``bm25_stopword_profile = "bm25_extra"``. Never touches the tokens
+    cached on chunks at index time, so the dense + Jaccard lexical
+    scoring paths stay bit-stable (issue #150 acceptance criterion).
+    """
+    out: list[str] = []
+    for token in tokens:
+        stripped = _strip_bm25_extra_suffixes(str(token))
+        if stripped and stripped not in BM25_EXTRA_STOPWORDS:
+            out.append(stripped)
+    return out
+
+
+def _chunk_tokens_for_bm25(
+    chunk: dict[str, Any],
+    stopword_profile: str = "shared",
+) -> list[str]:
     tokens = chunk.get("tokens")
     if isinstance(tokens, list) and tokens:
-        return [str(t) for t in tokens]
-    section_path = chunk.get("section_path") or [chunk.get("section", "")]
-    text = " ".join(
-        [
-            chunk.get("title", ""),
-            chunk.get("agency", ""),
-            chunk.get("project", ""),
-            " > ".join(section_path),
-            chunk.get("text", ""),
-        ]
-    )
-    return tokenize(text)
+        base = [str(t) for t in tokens]
+    else:
+        section_path = chunk.get("section_path") or [chunk.get("section", "")]
+        text = " ".join(
+            [
+                chunk.get("title", ""),
+                chunk.get("agency", ""),
+                chunk.get("project", ""),
+                " > ".join(section_path),
+                chunk.get("text", ""),
+            ]
+        )
+        base = tokenize(text)
+    if stopword_profile == "bm25_extra":
+        base = _apply_bm25_extra_filter(base)
+    return base
 
 
-def get_or_build_bm25(index: dict[str, Any]) -> tuple[Any, list[str]]:
+def get_or_build_bm25(
+    index: dict[str, Any],
+    stopword_profile: str = "shared",
+) -> tuple[Any, list[str]]:
     """Lazy-build and cache a BM25Okapi index over chunk tokens.
 
-    Returns the cached `(bm25, chunk_ids)` tuple. Cached on the index
-    object under `_bm25` / `_bm25_chunk_ids` so repeated queries against
-    the same index avoid re-tokenization. Raises RuntimeError if the
-    optional `rank_bm25` dependency is missing — the caller must gate
-    on `retrieval_backend == "hybrid"`.
+    Returns the cached ``(bm25, chunk_ids)`` tuple keyed by
+    ``stopword_profile`` (issue #150). The ``shared`` profile uses the
+    common tokens cached on each chunk; the ``bm25_extra`` profile
+    applies :func:`_apply_bm25_extra_filter` (strips the BM25-only
+    extension particle set and drops short BM25-only stopwords) before
+    constructing BM25Okapi. Each profile gets its own ``BM25Okapi``
+    instance inside ``index["_bm25_by_profile"]`` so the IDF
+    distribution stays consistent between corpus build and query side.
+
+    For back-compat the ``shared`` build is mirrored at
+    ``index["_bm25"]`` / ``index["_bm25_chunk_ids"]`` so any external
+    code that inspected those keys keeps working.
+
+    Raises RuntimeError if the optional ``rank_bm25`` dependency is
+    missing — the caller must gate on ``retrieval_backend == "hybrid"``.
     """
     if _BM25Okapi is None:
         raise RuntimeError(
             "retrieval_backend='hybrid' requires the 'rank_bm25' package "
             "(install via requirements.txt)."
         )
-    cached = index.get("_bm25")
-    chunk_ids = index.get("_bm25_chunk_ids")
-    if cached is not None and isinstance(chunk_ids, list):
-        return cached, chunk_ids
+    if stopword_profile not in VALID_BM25_STOPWORD_PROFILES:
+        choices = ", ".join(sorted(VALID_BM25_STOPWORD_PROFILES))
+        raise ValueError(f"bm25_stopword_profile must be one of: {choices}")
+    profile_cache = index.setdefault("_bm25_by_profile", {})
+    entry = profile_cache.get(stopword_profile)
+    if isinstance(entry, tuple) and len(entry) == 2:
+        return entry  # type: ignore[return-value]
     chunks = index.get("chunks") or []
-    corpus = [_chunk_tokens_for_bm25(c) for c in chunks]
+    corpus = [_chunk_tokens_for_bm25(c, stopword_profile) for c in chunks]
     # rank_bm25 requires at least one non-empty document. If the corpus
     # is entirely empty (degenerate test fixture) substitute a single
     # placeholder token so BM25Okapi doesn't divide by zero.
@@ -2250,23 +2460,36 @@ def get_or_build_bm25(index: dict[str, Any]) -> tuple[Any, list[str]]:
         corpus = [["__empty__"] for _ in chunks] or [["__empty__"]]
     bm25 = _BM25Okapi(corpus)
     chunk_ids = [str(c.get("chunk_id")) for c in chunks]
-    index["_bm25"] = bm25
-    index["_bm25_chunk_ids"] = chunk_ids
+    profile_cache[stopword_profile] = (bm25, chunk_ids)
+    if stopword_profile == "shared":
+        # Back-compat: legacy callers may still inspect ``_bm25`` /
+        # ``_bm25_chunk_ids``. Mirror the shared-profile entry there
+        # without exposing the per-profile dict to them.
+        index["_bm25"] = bm25
+        index["_bm25_chunk_ids"] = chunk_ids
     return bm25, chunk_ids
 
 
 def bm25_scores_for_index(
-    index: dict[str, Any], query_tokens: list[str]
+    index: dict[str, Any],
+    query_tokens: list[str],
+    stopword_profile: str = "shared",
 ) -> dict[str, float]:
-    """Return a `chunk_id -> bm25_score` map across all chunks in the
-    index. Callers filter to their candidate slice. Empty query tokens
-    yield an all-zero map.
+    """Return a ``chunk_id -> bm25_score`` map across all chunks in the
+    index for the given ``stopword_profile``. Callers filter to their
+    candidate slice. Empty query tokens (or tokens that the
+    ``bm25_extra`` filter strips to empty) yield an all-zero map.
     """
+    chunks = index.get("chunks") or []
     if not query_tokens:
-        chunks = index.get("chunks") or []
         return {str(c.get("chunk_id")): 0.0 for c in chunks}
-    bm25, chunk_ids = get_or_build_bm25(index)
-    raw = bm25.get_scores(list(query_tokens))
+    effective_tokens = list(query_tokens)
+    if stopword_profile == "bm25_extra":
+        effective_tokens = _apply_bm25_extra_filter(effective_tokens)
+        if not effective_tokens:
+            return {str(c.get("chunk_id")): 0.0 for c in chunks}
+    bm25, chunk_ids = get_or_build_bm25(index, stopword_profile)
+    raw = bm25.get_scores(effective_tokens)
     return {chunk_id: float(score) for chunk_id, score in zip(chunk_ids, raw)}
 
 
@@ -3228,6 +3451,8 @@ def make_context_clarification_result(
     *,
     stage_timings: dict[str, float] | None = None,
     cold_start: bool = False,
+    rrf_k: int = RRF_K,
+    bm25_stopword_profile: str = "shared",
 ) -> dict[str, Any]:
     reason = str(context_resolution.get("reason") or "context_resolution_failed")
     analysis = dict(analysis)
@@ -3273,6 +3498,8 @@ def make_context_clarification_result(
         "verifier_retry": verifier_retry,
         "retrieval_mode": retrieval_mode,
         "retrieval_backend": retrieval_backend,
+        "rrf_k": int(rrf_k),
+        "bm25_stopword_profile": bm25_stopword_profile,
         "metadata_filters": {},
         "top_k": None,
         "retrieval_budget": {
@@ -3328,6 +3555,8 @@ def make_context_clarification_result(
             "verifier_retry": verifier_retry,
             "retrieval_mode": retrieval_mode,
             "retrieval_backend": retrieval_backend,
+            "rrf_k": int(rrf_k),
+            "bm25_stopword_profile": bm25_stopword_profile,
             "pipeline": pipeline,
             "prompt_profile": prompt_profile,
             "cold_start": cold_start,
@@ -3400,6 +3629,8 @@ def make_metadata_clarification_result(
     *,
     stage_timings: dict[str, float] | None = None,
     cold_start: bool = False,
+    rrf_k: int = RRF_K,
+    bm25_stopword_profile: str = "shared",
 ) -> dict[str, Any]:
     reason = "metadata_ambiguous"
     analysis = dict(analysis)
@@ -3450,6 +3681,8 @@ def make_metadata_clarification_result(
         "verifier_retry": verifier_retry,
         "retrieval_mode": retrieval_mode,
         "retrieval_backend": retrieval_backend,
+        "rrf_k": int(rrf_k),
+        "bm25_stopword_profile": bm25_stopword_profile,
         "metadata_filters": {},
         "top_k": None,
         "retrieval_budget": {
@@ -3506,6 +3739,8 @@ def make_metadata_clarification_result(
             "verifier_retry": verifier_retry,
             "retrieval_mode": retrieval_mode,
             "retrieval_backend": retrieval_backend,
+            "rrf_k": int(rrf_k),
+            "bm25_stopword_profile": bm25_stopword_profile,
             "pipeline": pipeline,
             "prompt_profile": prompt_profile,
             "cold_start": cold_start,
@@ -3612,6 +3847,8 @@ def run_rag_query(
     prompt_profile: str | None = None,
     conversation_state: dict[str, Any] | None = None,
     comparison_balance: dict[str, Any] | None = None,
+    rrf_k: int | None = None,
+    bm25_stopword_profile: str | None = None,
 ) -> dict[str, Any]:
     pipeline_source: dict[str, Any] = {"pipeline": pipeline or DEFAULT_RAG_PIPELINE_NAME}
     for key, value in (
@@ -3622,6 +3859,8 @@ def run_rag_query(
         ("retrieval_mode", retrieval_mode),
         ("retrieval_backend", retrieval_backend),
         ("prompt_profile", prompt_profile),
+        ("rrf_k", rrf_k),
+        ("bm25_stopword_profile", bm25_stopword_profile),
     ):
         if value is not None:
             pipeline_source[key] = value
@@ -3640,6 +3879,8 @@ def run_rag_query(
     retrieval_backend = str(pipeline_config["retrieval_backend"])
     pipeline_name = str(pipeline_config["pipeline"])
     prompt_profile = str(pipeline_config["prompt_profile"])
+    rrf_k = int(pipeline_config["rrf_k"])
+    bm25_stopword_profile = str(pipeline_config["bm25_stopword_profile"])
     resolved_comparison_balance = pipeline_config.get("comparison_balance")
 
     global _PROCESS_WARM
@@ -3704,6 +3945,8 @@ def run_rag_query(
             prompt_profile,
             stage_timings=stage_timings,
             cold_start=cold_start,
+            rrf_k=rrf_k,
+            bm25_stopword_profile=bm25_stopword_profile,
         )
         _attach_trace_diagnostics(
             result,
@@ -3747,6 +3990,8 @@ def run_rag_query(
             prompt_profile,
             stage_timings=stage_timings,
             cold_start=cold_start,
+            rrf_k=rrf_k,
+            bm25_stopword_profile=bm25_stopword_profile,
         )
         _attach_trace_diagnostics(
             result,
@@ -3802,6 +4047,8 @@ def run_rag_query(
                 pipeline=pipeline_name,
                 prompt_profile=prompt_profile,
                 comparison_balance=resolved_comparison_balance,
+                rrf_k=rrf_k,
+                bm25_stopword_profile=bm25_stopword_profile,
             )
             evidence = retrieve(index, retrieval_query, analysis, plan)
         with _StageTimer(
@@ -3913,6 +4160,8 @@ def run_rag_query(
         "verifier_retry": verifier_retry,
         "retrieval_mode": retrieval_mode,
         "retrieval_backend": retrieval_backend,
+        "rrf_k": int(rrf_k),
+        "bm25_stopword_profile": bm25_stopword_profile,
         "pipeline": pipeline_name,
         "prompt_profile": prompt_profile,
         "cold_start": cold_start,
