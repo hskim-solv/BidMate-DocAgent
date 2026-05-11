@@ -65,3 +65,65 @@ python3 scripts/summarize_benchmark.py \
 | Abstention | 1.000 | 0.770 | -0.230 |
 
 실제 실험에서는 이 표보다 `by_hardcase_category`를 우선 확인한다. 전체 성능 하락이 `table_heavy`나 `noisy_ocr` 같은 slice에 집중되면 parser/layout 또는 citation grounding 쪽 병목으로 분류한다.
+
+## Real-data Decision Log
+
+이 섹션은 retrieval / verifier policy 변경의 **real-data aggregate-only** before/after를 기록한다. ADR 0005의 commit boundary를 준수해 case ID·query text·doc ID·파일명은 절대 포함하지 않는다. 목적은 "왜 이렇게 짰는가?" 그리고 "그 결정이 real-data에서 어떻게 작동했는가?" 두 질문에 답할 수 있는 자료를 남기는 것이다.
+
+### Entry: 2026-05-11 — Partial-topic grounding @ fraction=0.5 (#69)
+
+**Change.** `verify_evidence`에 `allow_partial_topic` 추가, 마지막 retrieval 시도에서 verification topics의 ≥50%가 evidence에 매칭되면 `partial_topic_grounding` reason으로 `verified=True`를 반환하고 status는 `partial`로 surface ([ADR 0004](./adr/0004-verifier-retry-policy.md) anticipated knob).
+
+**Surface.** Local private real-data set (`eval/real_config.local.yaml`, 21 cases, 17 answerable + 4 intended-abstention). 동일 index, 동일 case set, 동일 tooling으로 pre-commit (2f76671) vs post-commit (2249498) 비교.
+
+**Aggregate diff (case set N=21):**
+
+| Metric | Before | After | Δ |
+|---|---:|---:|---:|
+| accuracy | 0.353 | 0.471 | **+0.118** ✅ |
+| groundedness | 0.476 | 0.476 | · |
+| citation_precision | 0.381 | 0.286 | −0.095 ⚠️ |
+| claim_citation_alignment | 0.786 | 0.692 | −0.093 ⚠️ |
+| answer_format_compliance | 0.524 | 0.429 | −0.095 ⚠️ |
+| abstention (intended) | 1.000 | 0.500 | **−0.500** ⚠️ |
+| retry_reason: `topic_not_grounded` (count) | 18 | 12 | −6 ✅ |
+
+**Status distribution diff (anonymized case counts only):**
+
+| Slice | Status | Before | After |
+|---|---|---:|---:|
+| answerable (17) | supported | 7 | 7 |
+|  | partial | 0 | **4** ↑ |
+|  | insufficient | 10 | **6** ↓ |
+| intended-abstention (4) | insufficient | 4 | **2** ↓ |
+|  | partial | 0 | **2** ↑ ⚠️ |
+
+**Interpretation.**
+
+- **Recovery works.** 4 / 17 answerable cases recovered from `insufficient` → `partial`; net accuracy gain +0.118. `topic_not_grounded` retry signal dropped one-third (18 → 12), confirming the strict→relaxed staging is engaging as designed.
+- **False-positive on intended abstention.** 2 of 4 intended-abstention cases flipped from `insufficient` → `partial`. Issue #69's own acceptance criterion ("intended abstention cases remain abstentions") is **partially violated** at fraction=0.5. The public synthetic eval did not catch this because its out-of-corpus cases are crisply disjoint from the corpus; real-data abstention queries share incidental topic tokens with in-corpus content.
+- **Citation precision drop is mechanical.** Partial answers cite chunks that ground only some of the requested topics; the `partial` status itself is the contract telling callers the answer is weak. Same shape as the public synthetic delta in PR #88.
+
+**Decision.**
+
+Ship #69 as-is in main with this finding logged, then **tighten** in a follow-up: the false-positive rate on intended abstention is too high to accept long-term. Candidates for the tighten PR — pick by ablation:
+
+1. Raise `PARTIAL_TOPIC_GROUNDING_MIN_FRACTION` from 0.5 toward 0.66 or 0.75.
+2. Gate partial-topic acceptance on `len(topics) >= 2` so single-topic queries (more likely to be out-of-corpus phrasing) can't trigger it.
+3. Raise the `low_top_score` floor (currently 0.18) on the relaxed stage only.
+
+Follow-up issue tracked in the meta roadmap (#49).
+
+**How this entry was produced (reproducibility note).**
+
+```bash
+# Same index, same config, same tooling — run on pre-#69 commit
+# (2f76671) and current main, then diff aggregate-only fields. The
+# per-case results are NOT committed; only the numbers above.
+git worktree add /tmp/pre-69 2f76671
+python3 eval/run_eval.py --index_dir data/index/real100 \
+  --output_dir /tmp/real100-before --config eval/real_config.local.yaml
+python3 eval/run_eval.py --index_dir data/index/real100 \
+  --output_dir /tmp/real100-after  --config eval/real_config.local.yaml
+# (aggregate fields then transcribed into the table above)
+```
