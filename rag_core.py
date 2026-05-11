@@ -3448,6 +3448,10 @@ def run_rag_query(
         if attempt_index < len(stage_sequence) - 1:
             retry_count += 1
 
+    retrieved_chunk_ids: list[str] = [
+        str(item.get("chunk_id") or "") for item in evidence if item.get("chunk_id")
+    ]
+
     if verified or analysis.get("query_type") == "comparison":
         evidence = select_supporting_evidence(analysis, evidence)
     else:
@@ -3513,6 +3517,7 @@ def run_rag_query(
             "verification_reasons": (answer.get("status_reason") or {}).get("verification_reasons") or verification_reasons,
             "verification_topics": verification_topics(analysis),
             "filter_stage_attempts": stage_attempts,
+            "retrieved_chunk_ids": retrieved_chunk_ids,
             "final_relaxation_reason": stage_attempts[-2]["verification_reasons"] if retry_count and len(stage_attempts) >= 2 else [],
             "context_resolution": context_resolution,
             "metadata_resolution": metadata_resolution,
