@@ -29,6 +29,12 @@ except ImportError:  # pragma: no cover — defensive; declared in requirements.
 
 from rag_observability import resolve_trace_backend
 from rag_synthesis import synthesize_answer
+from rag_vector_store import (
+    InMemoryVectorStore,
+    VectorStore,
+    load_vector_store,
+    vector_store_from_matrix,
+)
 from text_normalize import expand_forms, normalize_text
 
 DEFAULT_EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
@@ -1194,6 +1200,9 @@ def build_index_payload_from_documents(
     # M2 (#207): vectors live in a sidecar .npy. Chunks reference rows by
     # embedding_idx — inline lists were ~85% of the JSON file size and
     # forced a per-query Python-list → NumPy materialization.
+    # Stage 1 of #176 (#232): the matrix is wrapped in a VectorStore so
+    # future backends (Qdrant, pgvector) can slot in without touching
+    # chunk-metadata storage. InMemoryVectorStore is bit-identical.
     vectors_matrix = np.asarray(embedding_result.vectors, dtype=np.float32)
     for idx, chunk in enumerate(chunks):
         chunk["embedding_idx"] = idx
@@ -1231,7 +1240,7 @@ def build_index_payload_from_documents(
         "documents": public_docs,
         "parent_sections": parent_sections,
         "chunks": chunks,
-        "_vectors": vectors_matrix,
+        "_vector_store": vector_store_from_matrix(vectors_matrix),
     }
 
 
@@ -1245,42 +1254,38 @@ def load_index(index_dir: Path) -> dict[str, Any]:
     if not payload.get("chunks"):
         raise ValueError(f"Index has no chunks: {path}")
     schema = int(payload.get("schema_version", 1))
-    if schema >= INDEX_SCHEMA_VERSION:
-        embeddings_path = index_dir / EMBEDDINGS_FILENAME
-        if not embeddings_path.exists():
-            raise ValueError(
-                f"Index schema_version={schema} requires sidecar {embeddings_path}. "
-                f"Rebuild via scripts/build_index.py."
-            )
-        payload["_vectors"] = np.load(embeddings_path)
-    else:
-        # Legacy schema 1 — vectors inlined per chunk. Materialize the
-        # matrix once at load time so the retrieve() path can stay on
-        # the new index["_vectors"][embedding_idx] code path.
-        inline = [c.get("embedding") for c in payload["chunks"]]
-        if inline and all(v is not None for v in inline):
-            payload["_vectors"] = np.asarray(inline, dtype=np.float32)
+    # Stage 1 of #176 (#232): the vector matrix is now hidden behind a
+    # VectorStore. load_vector_store handles the schema-2 sidecar path
+    # and the legacy schema-1 inline-list materialization. The legacy
+    # chunk-mutation loop (embedding_idx / pop) stays here because it
+    # mutates payload["chunks"], not the store — and must run *after*
+    # load_vector_store has read the inline lists.
+    if schema < INDEX_SCHEMA_VERSION:
+        payload["_vector_store"] = load_vector_store(
+            index_dir, schema, chunks=payload["chunks"]
+        )
+        if payload["_vector_store"] is not None:
             for idx, chunk in enumerate(payload["chunks"]):
                 chunk["embedding_idx"] = idx
                 chunk.pop("embedding", None)
-        else:
-            payload["_vectors"] = None
+    else:
+        payload["_vector_store"] = load_vector_store(index_dir, schema)
     return payload
 
 
 def write_index(payload: dict[str, Any], output_dir: Path) -> Path:
     """Atomically persist an index payload + embeddings sidecar.
 
-    Pops the in-memory ``_vectors`` matrix from the payload, writes it to
-    ``embeddings.npy``, and serializes the remaining JSON-compatible
-    structure to ``index.json``. The caller's ``payload`` dict is mutated
-    (the private key is removed) — see scripts/build_index.py for the
-    canonical use site.
+    Pops the in-memory ``_vector_store`` from the payload, asks it to
+    persist its vectors (typically ``embeddings.npy``), and serializes
+    the remaining JSON-compatible structure to ``index.json``. The
+    caller's ``payload`` dict is mutated (the private key is removed) —
+    see scripts/build_index.py for the canonical use site.
     """
     output_dir.mkdir(parents=True, exist_ok=True)
-    vectors = payload.pop("_vectors", None)
-    if vectors is not None:
-        np.save(output_dir / EMBEDDINGS_FILENAME, np.asarray(vectors, dtype=np.float32))
+    store = payload.pop("_vector_store", None)
+    if store is not None:
+        store.persist(output_dir)
     out_path = output_dir / INDEX_FILENAME
     out_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     return out_path
@@ -2067,11 +2072,11 @@ def retrieve(
             stopword_profile=str(plan.get("bm25_stopword_profile", "shared")),
         )
 
-    vectors_matrix = index.get("_vectors")
+    vector_store = index.get("_vector_store")
     scored = []
     for chunk in candidates:
-        if vectors_matrix is not None and chunk.get("embedding_idx") is not None:
-            chunk_vec = vectors_matrix[int(chunk["embedding_idx"])]
+        if vector_store is not None and chunk.get("embedding_idx") is not None:
+            chunk_vec = vector_store.get(int(chunk["embedding_idx"]))
         else:
             # Defensive fallback: a chunk dict produced outside the normal
             # load_index path (e.g., a hand-crafted test fixture) may still

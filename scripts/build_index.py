@@ -208,7 +208,7 @@ def main() -> int:
 
     output_dir.mkdir(parents=True, exist_ok=True)
     # M2 (#207): build counts come from the payload BEFORE write_index
-    # pops the in-memory _vectors matrix and serializes the sidecar.
+    # pops the in-memory _vector_store (#232) and serializes the sidecar.
     num_docs = payload["build"]["num_documents"]
     num_chunks = payload["build"]["num_chunks"]
     embedding_backend = payload["embedding"]["backend"]
