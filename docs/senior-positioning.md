@@ -15,7 +15,7 @@
 
 | 시그널 | 어디서 확인하나 |
 |---|---|
-| 아키텍처 결정이 **사후 합리화가 아닌 기록된 결정**으로 남아있다 | [`docs/adr/`](./adr/README.md) — 6개 ADR, status-tracked |
+| 아키텍처 결정이 **사후 합리화가 아닌 기록된 결정**으로 남아있다 | [`docs/adr/`](./adr/README.md) — 14개 ADR (12 accepted / 2 proposed), status-tracked, supersession chains 명시 |
 | **측정 가능한 성공 기준**을 미리 잡고 그 기준으로 평가한다 | [`portfolio-case-study.md` §2](./portfolio-case-study.md), [`eval/config.yaml`](../eval/config.yaml), README headline 표 |
 | 합성 평가의 한계를 알고 **공개/비공개 평가 분리**로 보완한다 | [ADR 0005](./adr/0005-eval-split-public-synthetic-private-local.md), [`docs/private-100-doc-experiments.md`](./private-100-doc-experiments.md) |
 | **실패를 분류·우선순위화**한 뒤 백로그로 만든다 | [`docs/real-data-failure-taxonomy.md`](./real-data-failure-taxonomy.md), 메타 이슈 #49 |
@@ -25,18 +25,30 @@
 
 ## 시니어 시그널 1 — 아키텍처 결정의 추적성
 
-각 ADR은 **하나의 의사결정**을 다룬다. 6개를 빠르게 읽고 나면, 이 시스템에서 어떤 선택이 load-bearing인지가 명확해진다.
+각 ADR은 **하나의 의사결정**을 다룬다. 14개를 빠르게 읽고 나면, 이 시스템에서 어떤 선택이 load-bearing인지와 supersession chain이 명확해진다.
 
-| ADR | 결정 | 시니어 관점에서 왜 중요한가 |
-|---|---|---|
-| [0001](./adr/0001-preserve-naive-baseline.md) | naive baseline을 ablation으로 보존 | 후속 retrieval 변경의 효과를 항상 baseline 대비로 측정 가능 |
-| [0002](./adr/0002-metadata-first-retrieval.md) | metadata-first retrieval | 의미 유사도 단독의 함정(기관·문서 단위 제약 누락)을 회피한 trade-off |
-| [0003](./adr/0003-structured-answer-citation-contract.md) | answer/citation 계약 (`schema_version: 2`) | 후속 변경이 silent contract drift를 만들 수 없게 잠금 |
-| [0004](./adr/0004-verifier-retry-policy.md) | strict→relaxed verifier staging | 비용(latency)을 인정하면서 partial coverage를 잡는 명시적 정책 |
-| [0005](./adr/0005-eval-split-public-synthetic-private-local.md) | 공개 합성 vs 비공개 로컬 평가 분리 | 외부 공개 제약과 일반화 한계를 인정하면서 reproducibility를 지키는 설계 |
-| [0006](./adr/0006-llm-judge-real-data-only.md) | LLM-judge는 real-data 표면에서만 | 공개본의 결정성과 실제 신호를 동시에 살리는 비대칭 결정 |
+| ADR | 상태 | 결정 | 시니어 관점에서 왜 중요한가 |
+|---|---|---|---|
+| [0001](./adr/0001-preserve-naive-baseline.md) | accepted | naive baseline을 ablation으로 보존 | 후속 retrieval 변경의 효과를 항상 baseline 대비로 측정 가능 |
+| [0002](./adr/0002-metadata-first-retrieval.md) | accepted | metadata-first retrieval | 의미 유사도 단독의 함정(기관·문서 단위 제약 누락)을 회피한 trade-off |
+| [0003](./adr/0003-structured-answer-citation-contract.md) | accepted | answer/citation 계약 (`schema_version: 2`) | 후속 변경이 silent contract drift를 만들 수 없게 잠금 |
+| [0004](./adr/0004-verifier-retry-policy.md) | accepted | strict→relaxed verifier staging | latency 비용을 인정하면서 partial coverage를 잡는 명시적 정책 |
+| [0005](./adr/0005-eval-split-public-synthetic-private-local.md) | accepted | 공개 합성 vs 비공개 로컬 평가 분리 | 외부 공개 제약과 일반화 한계를 인정하면서 reproducibility를 지키는 설계 |
+| [0006](./adr/0006-llm-judge-on-real-data-only.md) | accepted | LLM-judge는 real-data 표면에서만 (refines 0004) | 공개본의 결정성과 실제 신호를 동시에 살리는 비대칭 결정 |
+| [0007](./adr/0007-issue-linked-branch-naming.md) | accepted | issue-linked 브랜치 네이밍 (`<type>/issue-N`) | 추적성을 doc이 아니라 CI(`branch-and-issue-check.yml`)로 강제 |
+| [0008](./adr/0008-evidence-boundary.md) | accepted | evidence boundary defense | prompt injection을 contract surface에서 차단 — 보안 의식의 명시화 |
+| [0009](./adr/0009-external-baseline-comparison.md) | proposed | LangChain/LlamaIndex 외부 baseline 분리 비교 (extends 0001) | "왜 자체 구축?" 질문에 비대칭 metric(citation/grounding)으로 정량 답변 |
+| [0010](./adr/0010-hybrid-bm25-dense-retrieval-rrf.md) | accepted | hybrid BM25 + dense + RRF | retrieval 보강은 *추가 ablation*으로만; 단일 backend로 결합 안 함 |
+| [0011](./adr/0011-llm-synthesis-as-additive-ablation.md) | proposed | LLM 합성은 additive ablation (extends 0001, preserves 0003) | answer_text 렌더링만 LLM 교체; claims/citations/status는 결정적 verifier가 그대로 결정 |
+| [0012](./adr/0012-llm-judge-on-public-synthetic.md) | accepted | LLM-judge on public synthetic, stub-default (refines 0006, reuses 0011) | judge backend는 결정적 stub으로 CI 통과; real backend는 운영자 옵트인 |
+| [0013](./adr/0013-observability-as-additive-pluggable-surface.md) | accepted | observability를 additive·pluggable·fail-closed로 | trace backend(LangFuse/OTel) 장애가 query를 깨뜨리지 않음; LLM Ops 의식의 코드화 |
+| [0014](./adr/0014-ragas-judge-additive-synthetic.md) | accepted | RAGAS judge as additive enrichment (extends 0012) | 외부 표준 메트릭으로 cross-validation; 결정적 stub-default 유지 |
 
-**인터뷰 talking point**: "ADR 0005가 없었다면 공개본의 abstention 회귀(#69의 `1.000 → 0.500` 사건)는 아무도 보지 못했을 것이다. 공개 합성만 보던 시기에는 1-of-2 incidental overlap 패턴이 잡히지 않았다." — 근거: [`docs/private-100-doc-experiments.md`](./private-100-doc-experiments.md) 2026-05-11 entry.
+**인터뷰 talking point 1 (real-data 회귀)**: "ADR 0005가 없었다면 공개본의 abstention 회귀(#69의 `1.000 → 0.500` 사건)는 아무도 보지 못했을 것이다. 공개 합성만 보던 시기에는 1-of-2 incidental overlap 패턴이 잡히지 않았다." — 근거: [`docs/private-100-doc-experiments.md`](./private-100-doc-experiments.md) 2026-05-11 entry.
+
+**인터뷰 talking point 2 (additive ablation 규율)**: "ADR 0011은 LLM 합성을 *추가*하지만 ADR 0001의 extractive baseline을 *대체하지 않는다*. `agentic_full_llm` preset은 같은 claims/citations에 answer_text만 LLM으로 렌더링하고, evidence에 없는 chunk_id를 인용하면 거부되고 extractive로 fallback. ADR 0013의 observability도 같은 패턴 — additive + fail-closed. 새 기능이 들어와도 기존 measurement surface가 손상되지 않게 보존한다는 규율이다."
+
+**인터뷰 talking point 3 (보안 contract)**: "ADR 0008은 prompt injection 방어를 *답변 contract의 일부*로 정의한다. evidence boundary 마커로 LLM이 외부 텍스트를 instruction이 아닌 데이터로 보도록 강제 — 검증 가능한 자리(테스트 `test_prompt_injection_regression.py`)에 보안이 잠겨있어야 시니어 코드 리뷰에서 통과한다."
 
 ## 시니어 시그널 2 — 측정의 엄격성
 
@@ -112,6 +124,10 @@ make smoke   # build_index → sample query → eval → README check
 | "회귀 발생을 어떻게 막나요?" | 이 문서 §3 + `tests/test_*_regression.py` |
 | "한국어 RFP의 메타데이터 기반 retrieval은 어떤 trade-off가 있나요?" | [ADR 0002](./adr/0002-metadata-first-retrieval.md) + [`docs/retrieval-hardening.md`](./retrieval-hardening.md) |
 | "abstention/insufficient는 왜 별도 status로 두었나요?" | [ADR 0003](./adr/0003-structured-answer-citation-contract.md) + [`docs/answer-policy.md`](./answer-policy.md) |
+| "prompt injection은 어떻게 막나요?" | [ADR 0008](./adr/0008-evidence-boundary.md) + `tests/test_prompt_injection_regression.py` |
+| "LangChain/LlamaIndex 안 쓰고 왜 자체 구축?" | [ADR 0009](./adr/0009-external-baseline-comparison.md) — 비대칭 metric(citation/abstention)을 외부 시스템이 producer 못하는 게 정량 답변 |
+| "LLM-as-judge bias는 어떻게 다루나요?" | [ADR 0012](./adr/0012-llm-judge-on-public-synthetic.md) + [ADR 0014](./adr/0014-ragas-judge-additive-synthetic.md) — stub-default + RAGAS cross-check |
+| "운영에서 latency/cost/trace는 어떻게 봅니까?" | [ADR 0013](./adr/0013-observability-as-additive-pluggable-surface.md) + [`docs/observability.md`](./observability.md) — LangFuse/OTel pluggable, fail-closed |
 | "확장한다면 다음 우선순위는?" | [`portfolio-case-study.md` §7](./portfolio-case-study.md) + 메타 이슈 #49 |
 
 ## 이 프로젝트가 입증하지 않는 것 (정직한 범위)
