@@ -1,4 +1,4 @@
-.PHONY: setup index ask eval benchmark benchmark-check check smoke harness-smoke test test-regression api api-docker real-eval real-eval-delta real-eval-baseline-update real-eval-history-render real-eval-history-check real-eval-with-judge clean
+.PHONY: setup index ask eval benchmark benchmark-check check smoke harness-smoke test test-regression api api-docker demo demo-docker real-eval real-eval-delta real-eval-baseline-update real-eval-history-render real-eval-history-check real-eval-with-judge clean
 
 PYTHON ?= python3
 VENV ?= .venv
@@ -50,6 +50,18 @@ api:
 api-docker:
 	docker build -t bidmate-demo .
 	docker run --rm -p 8000:8000 bidmate-demo
+
+# Run the Streamlit live demo UI locally on http://localhost:8501.
+# Requires data/index to exist (run `make index` first) — the app will
+# rebuild from data/raw on first invocation if it does not.
+demo:
+	$(PYTHON) -m streamlit run demo/streamlit_app.py
+
+# Run the demo container with the Streamlit UI on :8501 (and FastAPI on
+# :8000 alongside). See docs/deployment.md for Fly.io / HF Spaces.
+demo-docker:
+	docker build -t bidmate-demo .
+	docker run --rm -p 8000:8000 -p 8501:8501 -e BIDMATE_DEMO_MODE=both bidmate-demo
 
 # ---------------------------------------------------------------------------
 # Real-data eval cycle (private; ADR 0005 commit boundary). Requires
