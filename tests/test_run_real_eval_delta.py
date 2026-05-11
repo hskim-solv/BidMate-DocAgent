@@ -285,6 +285,61 @@ class ExtractAggregateTest(unittest.TestCase):
         self.assertIn("0.500", md)
         self.assertIn("0.800", md)
 
+    def test_judge_ragas_sub_keys_whitelisted(self) -> None:
+        """ADR 0012: judge_ragas aggregate must round-trip the four metric
+        means + CI sub-block, and drop any unexpected sub-keys (e.g.,
+        per-case payload smuggled in by a future maintainer)."""
+        summary = {
+            **FULL_SUMMARY,
+            "judge_ragas": {
+                "faithfulness": 0.92,
+                "answer_relevance": 0.85,
+                "context_precision": 0.78,
+                "context_recall": 0.81,
+                "n": 42,
+                "ci": {
+                    "faithfulness": {"mean": 0.92, "ci_lo": 0.85, "ci_hi": 0.97, "n": 42},
+                    "answer_relevance": {"mean": 0.85, "ci_lo": 0.78, "ci_hi": 0.92, "n": 42},
+                },
+                # Unexpected sub-keys must be dropped.
+                "cases": [{"id": "leak", "query": "leak"}],
+                "raw_prompts": "leak prompt content",
+            },
+        }
+        agg = extract_aggregate(summary)
+        ragas = agg["judge_ragas"]
+        self.assertAlmostEqual(0.92, ragas["faithfulness"])
+        self.assertAlmostEqual(0.78, ragas["context_precision"])
+        self.assertEqual(42, ragas["n"])
+        self.assertIn("faithfulness", ragas["ci"])
+        # Unexpected sub-keys dropped.
+        self.assertNotIn("cases", ragas)
+        self.assertNotIn("raw_prompts", ragas)
+        # Privacy: leaked strings should not appear anywhere in the aggregate.
+        self.assertNotIn("leak", json.dumps(agg))
+
+    def test_render_includes_judge_ragas_section(self) -> None:
+        summary_with_ragas = {
+            **FULL_SUMMARY,
+            "judge_ragas": {
+                "faithfulness": 0.92,
+                "answer_relevance": 0.85,
+                "context_precision": 0.78,
+                "context_recall": 0.81,
+                "n": 42,
+            },
+        }
+        base = extract_aggregate(summary_with_ragas)
+        head = extract_aggregate({**summary_with_ragas, "judge_ragas": {
+            **summary_with_ragas["judge_ragas"],
+            "faithfulness": 0.95,
+        }})
+        md = render_markdown(base, head, "test")
+        self.assertIn("RAGAS judge", md)
+        self.assertIn("faithfulness", md)
+        self.assertIn("0.920", md)
+        self.assertIn("0.950", md)
+
 
 class FullScriptInvocationTest(unittest.TestCase):
     """Smoke-test the full script end-to-end via subprocess so the

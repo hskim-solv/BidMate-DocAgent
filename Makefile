@@ -1,4 +1,4 @@
-.PHONY: setup index ask eval benchmark benchmark-check check smoke harness-smoke test test-regression api api-docker demo demo-docker pareto docker-publish real-eval real-eval-delta real-eval-baseline-update real-eval-history-render real-eval-history-check real-eval-with-judge synthetic-judge leaderboard leaderboard-check clean
+.PHONY: setup index ask eval benchmark benchmark-check check smoke smoke-with-judge harness-smoke test test-regression api api-docker demo demo-docker pareto docker-publish real-eval real-eval-delta real-eval-baseline-update real-eval-history-render real-eval-history-check real-eval-with-judge synthetic-judge leaderboard leaderboard-check clean
 
 PYTHON ?= python3
 VENV ?= .venv
@@ -55,6 +55,16 @@ check:
 
 smoke:
 	bash scripts/smoke.sh
+
+# Run the synthetic smoke eval, then ask a RAGAS-style LLM judge for
+# enrichment metrics (ADR 0012). Opt-in additive only — never replaces
+# the deterministic verifier. Default backend is `stub` (zero-cost,
+# deterministic); set BIDMATE_JUDGE_BACKEND=openai_compatible plus
+# BIDMATE_JUDGE_* env vars for a paid judge call. Pass --fold-aggregate
+# to merge the judge_ragas block into reports/eval_summary.json.
+smoke-with-judge: smoke
+	$(PYTHON) eval/llm_judge.py --fold-aggregate
+	@echo "RAGAS scores written. Per-case verdicts in reports/eval_summary.judge.local.json (gitignored)."
 
 harness-smoke:
 	$(PYTHON) scripts/run_harness.py --config harness/smoke.yaml
