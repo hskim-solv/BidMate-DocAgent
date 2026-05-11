@@ -26,6 +26,7 @@ from rag_core import (
     run_rag_query,
 )
 from eval.bootstrap import bootstrap_ci
+from scripts.write_real_eval_baseline import provenance
 
 
 QUERY_TYPES = ("single_doc", "comparison", "follow_up", "abstention")
@@ -1316,6 +1317,7 @@ def main() -> int:
 
     summary = {
         "mode": "rag",
+        "provenance": provenance(),
         "config": args.config,
         "index_dir": args.index_dir,
         "primary_run": primary_summary["name"],

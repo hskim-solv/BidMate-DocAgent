@@ -57,6 +57,10 @@ SAFE_TOPLEVEL_KEYS = frozenset(
         "primary_run",
         "prompt_profile",
         "top_k",
+        # Run-state metadata (no per-case content). Surfaces eval-vs-baseline
+        # commit skew in the rendered delta — see issue #160. Sub-keys are
+        # git_commit (12-char SHA), git_dirty (bool), generated_at (ISO 8601).
+        "provenance",
         # LLM-judge aggregates (ADR 0006). Only status_distribution /
         # grounded_rate / agreement_with_verifier / n cross the commit
         # boundary; per-case judge text stays in
@@ -238,6 +242,10 @@ def render_markdown(
         f"- cases: base={base.get('num_predictions', '?')} · "
         f"head={head.get('num_predictions', '?')}"
     )
+    base_sha = str(((base.get("provenance") or {}).get("git_commit")) or "?")
+    head_sha = str(((head.get("provenance") or {}).get("git_commit")) or "?")
+    if base_sha != "?" or head_sha != "?":
+        lines.append(f"- commits: base=`{base_sha}` · head=`{head_sha}`")
     lines.append("")
     lines.append("| metric | base | head | Δ |")
     lines.append("|---|---|---|---|")
