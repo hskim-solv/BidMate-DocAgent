@@ -1,0 +1,90 @@
+{
+  "abstention": 0.3,
+  "accuracy": 0.84375,
+  "answer_format_compliance": 0.6666666666666666,
+  "by_query_type": {
+    "abstention": {
+      "abstention": 0.2222222222222222,
+      "answer_format_compliance": 0.2222222222222222,
+      "groundedness": 0.2222222222222222,
+      "num_predictions": 9
+    },
+    "comparison": {
+      "accuracy": 0.7,
+      "answer_format_compliance": 0.6,
+      "groundedness": 0.7,
+      "num_predictions": 10
+    },
+    "follow_up": {
+      "abstention": 1.0,
+      "accuracy": 0.75,
+      "answer_format_compliance": 0.7777777777777778,
+      "groundedness": 0.7777777777777778,
+      "num_predictions": 9
+    },
+    "single_doc": {
+      "accuracy": 1.0,
+      "answer_format_compliance": 0.9285714285714286,
+      "groundedness": 1.0,
+      "num_predictions": 14
+    }
+  },
+  "citation_grounding": null,
+  "citation_precision": 0.5119047619047619,
+  "claim_citation_alignment": 0.9736842105263158,
+  "groundedness": 0.7142857142857143,
+  "latency": {
+    "mean": 3.1347619047619046,
+    "p50": 2.91,
+    "p95": 5.7129999999999965
+  },
+  "num_predictions": 42,
+  "pipeline": "naive_baseline",
+  "primary_run": "naive_baseline",
+  "prompt_profile": "minimal_grounded_extractive",
+  "provenance": {
+    "generated_at": "2026-05-11T13:58:34.141821Z",
+    "git_commit": "2697ef73fdb7",
+    "git_dirty": false
+  },
+  "retry": 0.0,
+  "retry_effectiveness": {
+    "cases_with_retry": 0,
+    "cases_without_retry": 32
+  },
+  "retry_reason_counts": {},
+  "run_manifest": {
+    "config_sha256": "16a63f2b264c6634",
+    "generated_at": "2026-05-11T13:58:33.990454Z",
+    "git_commit": "2697ef73fdb7",
+    "git_dirty": false
+  },
+  "stage_latency": {
+    "answer_generation_ms": {
+      "mean": 0.49658536585365853,
+      "p50": 0.53,
+      "p95": 0.78
+    },
+    "context_resolution_ms": {
+      "mean": 0.0039024390243902435,
+      "p50": 0.0,
+      "p95": 0.02
+    },
+    "query_analysis_ms": {
+      "mean": 1.6551219512195126,
+      "p50": 1.31,
+      "p95": 3.8
+    },
+    "retrieve_ms": {
+      "mean": 0.25611111111111107,
+      "p50": 0.26,
+      "p95": 0.28
+    },
+    "verify_ms": {
+      "mean": 0.0,
+      "p50": 0.0,
+      "p95": 0.0
+    }
+  },
+  "top_k": 4
+}
