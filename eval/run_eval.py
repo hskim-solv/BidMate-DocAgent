@@ -16,6 +16,7 @@ if str(ROOT_DIR) not in sys.path:
 
 from rag_core import (
     DEFAULT_CLI_PIPELINE_NAME,
+    MAX_AGENT_ITERATIONS,
     load_index,
     percentile,
     rate,
@@ -968,6 +969,17 @@ def metric_block(case_results: list[dict[str, Any]]) -> dict[str, Any]:
             "mean_retry_count": rate([float(count) for count in retry_counts]),
             "max_retry_count": max(retry_counts) if retry_counts else 0,
             "cases_with_retry": sum(1 for count in retry_counts if count > 0),
+        },
+        "iterations": {
+            "cap": MAX_AGENT_ITERATIONS,
+            "mean_used": rate([float(count + 1) for count in retry_counts]),
+            "max_used": (max(retry_counts) + 1) if retry_counts else 0,
+            "cases_at_cap": sum(
+                1 for count in retry_counts if count + 1 >= MAX_AGENT_ITERATIONS
+            ),
+            "pct_at_cap": rate(
+                [float(count + 1 >= MAX_AGENT_ITERATIONS) for count in retry_counts]
+            ),
         },
         "retry_reason_counts": dict(sorted(retry_reason_counts.items())),
         "citation_grounding_error_counts": dict(sorted(citation_grounding_error_counts.items())),

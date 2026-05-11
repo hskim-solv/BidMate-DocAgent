@@ -28,6 +28,13 @@ DEFAULT_CHUNK_MAX_CHARS = 520
 DEFAULT_CHUNK_OVERLAP_SENTENCES = 1
 VALID_CHUNKING_STRATEGIES = {"auto", "section", "fixed"}
 VALID_RETRIEVAL_MODES = {"flat", "hierarchical"}
+
+# Hard cap on the per-query agent loop. ``metadata_stage_sequence`` today
+# returns at most ["strict", "reduced", "relaxed"] (3 stages). This constant
+# pins the contract — any future addition to the stage list that pushes
+# past 3 must update this value and explain why in the PR description.
+MAX_AGENT_ITERATIONS = 3
+
 DEFAULT_CLI_PIPELINE_NAME = "naive_baseline"
 DEFAULT_RAG_PIPELINE_NAME = "agentic_full"
 PIPELINE_CONFIG_KEYS = (
@@ -3381,6 +3388,12 @@ def run_rag_query(
         metadata_first=metadata_first,
         verifier_retry=verifier_retry,
     )
+    if len(stage_sequence) > MAX_AGENT_ITERATIONS:
+        raise RuntimeError(
+            f"stage_sequence length {len(stage_sequence)} exceeds "
+            f"MAX_AGENT_ITERATIONS={MAX_AGENT_ITERATIONS}; "
+            "update MAX_AGENT_ITERATIONS and revisit the loop contract."
+        )
     stage_attempts = []
     retry_count = 0
     plan: dict[str, Any] = {}
