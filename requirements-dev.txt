@@ -8,3 +8,9 @@ httpx>=0.27,<1.0
 # Production runtime does NOT import openai — only contributors running
 # scripts/run_embedding_ablation.py --models text-embedding-3-large need this.
 openai>=1.0
+# Opt-in cross-encoder reranker backends (issue #163, rag_rerank.py).
+# CI default is BIDMATE_RERANK_BACKEND=stub (identity, no SDK needed).
+# Real backends — BGE-reranker-v2-m3 / dragonkue-ko via FlagEmbedding, or
+# Cohere rerank-3.5-multilingual — are opt-in only.
+FlagEmbedding>=1.2
+cohere>=5.0

@@ -149,6 +149,7 @@ def normalize_run_config(run: dict[str, Any]) -> dict[str, Any]:
         "top_k": config.get("top_k"),
         "metadata_first": bool(config.get("metadata_first")),
         "rerank": bool(config.get("rerank")),
+        "rerank_cross_encoder": bool(config.get("rerank_cross_encoder")),
         "verifier_retry": bool(config.get("verifier_retry")),
         "retrieval_mode": str(config.get("retrieval_mode", "flat")),
         "retrieval_backend": str(config.get("retrieval_backend", "dense")),

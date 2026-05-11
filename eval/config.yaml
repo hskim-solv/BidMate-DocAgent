@@ -96,6 +96,20 @@ ablation_runs:
     retrieval_mode: flat
     retrieval_backend: hybrid
     bm25_stopword_profile: bm25_extra
+  # Issue #163 / ADR 0011 pattern — additive cross-encoder reranker. The
+  # existing `full` row is the natural negative (rerank_cross_encoder
+  # defaults to false). Under the CI default backend (stub) the cross-
+  # encoder is an identity pass-through, so `full_reranker` is byte-equal
+  # to `full` on eval_summary.json. Real backends (BIDMATE_RERANK_BACKEND
+  # in {bge, bge_ko, cohere}) re-score top-N candidates with sigmoid-
+  # squashed cross-encoder scores.
+  - name: full_reranker
+    pipeline: agentic_full
+    metadata_first: true
+    rerank: true
+    rerank_cross_encoder: true
+    verifier_retry: true
+    retrieval_mode: flat
 cases:
   - id: single_doc_security
     query_type: single_doc
