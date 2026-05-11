@@ -649,20 +649,22 @@ cases:
     answerable: false
 
   # Issue #69 / docs/real-data-failure-taxonomy.md C6 — partial-topic
-  # recovery. "보안 통제" is documented for 기관 A; "양자암호" is not
-  # in the corpus. Before this change the strict-then-relaxed verifier
-  # abstained on `topic_not_grounded × 2`. After the change the relaxed
-  # (last-attempt) verifier accepts the partial match with a
-  # `partial_topic_grounding` reason and the answer surfaces as
-  # `partial` rather than an unconditional abstention. This case is the
-  # public synthetic guard that the policy stays in effect.
+  # recovery. After issue #89 the gate also requires ≥ 2 matched
+  # topics (cuts the 1-of-2 incidental-overlap pattern that flipped
+  # real-data intended-abstention cases). This case now uses 3 topics
+  # with 2 in-corpus ("보안 통제", "로그 추적") + 1 out-of-corpus
+  # ("양자암호"), producing a 2-of-3 ≈ 0.667 partial match that
+  # satisfies both the fraction floor (0.5) and the matched-count
+  # floor (2). It remains the public synthetic guard that the
+  # partial-recovery path stays in effect.
   - id: partial_topic_security_quantum
     query_type: single_doc
-    query: "기관 A의 보안 통제와 양자암호 적용 방안은?"
+    query: "기관 A의 보안 통제, 로그 추적과 양자암호 적용 방안은?"
     expected_doc_ids:
       - rfp-agency-a-ai-quality
     expected_terms:
       - "보안 통제"
+      - "로그 추적"
     expected_citation_terms:
       - "보안 통제"
     expected_answer_status: partial
@@ -676,3 +678,27 @@ cases:
         expected_terms:
           - "보안 통제"
     answerable: true
+
+  # Issue #89 — out-of-corpus abstention regression guard. The
+  # analyzer decomposes "보안과 드론" into exactly 2 single-token
+  # verification topics: "보안" (in-corpus, appears in
+  # rfp_agency_a_ai_quality and rfp_agency_b_mlops_governance) and
+  # "드론" (out-of-corpus). Under the original fraction=0.5 +
+  # matched≥1 policy this 1-of-2 case flipped intended abstention to
+  # `partial`. With the matched≥2 floor the gate keeps it as
+  # `insufficient` (the global `unanswerable_status` default at the
+  # top of this file). This is the public synthetic guard for the
+  # tightening so the regression is caught in CI without needing the
+  # private real-data surface.
+  #
+  # Note: the natural phrasing "보안 통제와 드론은?" decomposes into
+  # 4 sub-topics (보안 / 보안 통제 / 통제 / 드론), giving 3-of-4
+  # matched and *not* exercising the 1-of-N pattern. Single-noun
+  # phrasing keeps the regression target deterministic.
+  - id: abstention_one_of_two_topic_overlap
+    query_type: abstention
+    query: "기관 A의 보안과 드론은?"
+    expected_doc_ids: []
+    expected_terms:
+      - "드론"
+    answerable: false
