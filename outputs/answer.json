@@ -143,6 +143,7 @@
     "rerank": false,
     "verifier_retry": false,
     "retrieval_mode": "flat",
+    "retrieval_backend": "dense",
     "metadata_filters": {},
     "top_k": 4,
     "retrieval_budget": {
@@ -432,7 +433,7 @@
     ]
   },
   "diagnostics": {
-    "latency_ms": 2.27,
+    "latency_ms": 2.25,
     "retry_count": 0,
     "abstained": false,
     "answer_status": "supported",
@@ -465,7 +466,7 @@
         "retrieval_mode": "flat",
         "verified": true,
         "verification_reasons": [],
-        "retrieve_ms": 0.28,
+        "retrieve_ms": 0.29,
         "verify_ms": 0.0,
         "comparison_coverage": {
           "targets": [
@@ -644,6 +645,7 @@
     "rerank": false,
     "verifier_retry": false,
     "retrieval_mode": "flat",
+    "retrieval_backend": "dense",
     "pipeline": "naive_baseline",
     "prompt_profile": "minimal_grounded_extractive",
     "cold_start": true,

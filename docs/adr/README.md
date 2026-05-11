@@ -71,3 +71,4 @@ project record.
 | [0006](./0006-llm-judge-on-real-data-only.md) | accepted | LLM-judge on the real-data surface only (refines 0004) |
 | [0007](./0007-issue-linked-branch-naming.md) | accepted | Issue-linked branch naming as a required check |
 | [0008](./0008-evidence-boundary.md) | accepted | Evidence text boundary and instruction-like-pattern neutralization |
+| [0009](./0009-hybrid-bm25-dense-retrieval-rrf.md) | accepted | Hybrid BM25 + dense retrieval with RRF fusion |

@@ -107,6 +107,7 @@ def normalize_run_config(run: dict[str, Any]) -> dict[str, Any]:
         "rerank": bool(config.get("rerank")),
         "verifier_retry": bool(config.get("verifier_retry")),
         "retrieval_mode": str(config.get("retrieval_mode", "flat")),
+        "retrieval_backend": str(config.get("retrieval_backend", "dense")),
         "prompt_profile": str(config.get("prompt_profile")),
     }
 
@@ -1115,6 +1116,7 @@ def summarize_run(
         "rerank": bool(run_config.get("rerank", True)),
         "verifier_retry": bool(run_config.get("verifier_retry", True)),
         "retrieval_mode": str(run_config.get("retrieval_mode", "flat")),
+        "retrieval_backend": str(run_config.get("retrieval_backend", "dense")),
         "prompt_profile": str(run_config.get("prompt_profile") or ""),
         **metric_block(case_results),
         "by_query_type": {},
@@ -1219,6 +1221,7 @@ def evaluate_run(
                 rerank=bool(run_config.get("rerank", True)),
                 verifier_retry=bool(run_config.get("verifier_retry", True)),
                 retrieval_mode=str(run_config.get("retrieval_mode", "flat")),
+                retrieval_backend=str(run_config.get("retrieval_backend", "dense")),
                 prompt_profile=str(run_config.get("prompt_profile") or ""),
                 conversation_state=conversation_state,
             )
@@ -1234,6 +1237,7 @@ def evaluate_run(
             rerank=bool(run_config.get("rerank", True)),
             verifier_retry=bool(run_config.get("verifier_retry", True)),
             retrieval_mode=str(run_config.get("retrieval_mode", "flat")),
+            retrieval_backend=str(run_config.get("retrieval_backend", "dense")),
             prompt_profile=str(run_config.get("prompt_profile") or ""),
             conversation_state=conversation_state,
         )

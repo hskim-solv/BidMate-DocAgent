@@ -27,6 +27,12 @@ def parse_args() -> argparse.Namespace:
         help="Override the pipeline retrieval mode.",
     )
     parser.add_argument(
+        "--retrieval_backend",
+        default=None,
+        choices=["dense", "hybrid"],
+        help="Override the retrieval backend. 'hybrid' fuses BM25 + dense with RRF (ADR 0009).",
+    )
+    parser.add_argument(
         "--context_entities",
         default="",
         help="Comma-separated entities for follow-up questions, e.g. '기관 A'.",
@@ -81,6 +87,7 @@ def main() -> int:
             top_k=args.top_k,
             context_entities=parse_context_entities(args.context_entities),
             retrieval_mode=args.retrieval_mode,
+            retrieval_backend=args.retrieval_backend,
             conversation_state=session_state,
         )
     except Exception as exc:
