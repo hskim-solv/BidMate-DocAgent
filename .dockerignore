@@ -1,0 +1,71 @@
+# BidMate-DocAgent Docker build context allowlist.
+#
+# The Dockerfile uses explicit COPY of named files (rag_core.py, api/,
+# demo/, scripts/build_index.py, data/raw/, docker-entrypoint.sh —
+# see Dockerfile lines 35-40), so the image content is already
+# tightly scoped. This file shrinks the *build context* the daemon
+# receives, which speeds up local and remote builds and avoids
+# uploading transient eval / scratch state.
+
+# Version control
+.git/
+.gitignore
+.gitattributes
+.githooks/
+
+# CI / workflow / GitHub state (not needed in the runtime image)
+.github/
+
+# Claude Code worktree-side state and hooks scratch
+.claude/
+
+# Python caches and build artifacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+build/
+dist/
+
+# Local environments and secrets
+.venv/
+venv/
+.env
+.env.*
+
+# OS / editor noise
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*~
+
+# Tests, benchmarks, eval — the demo image is a runtime surface,
+# not a CI surface. Keeping these out of the context also keeps
+# fixtures out of cache invalidation for image rebuilds.
+tests/
+benchmarks/
+eval/
+artifacts/
+
+# Reviewer-facing docs are not needed inside the image
+docs/
+
+# Reports / outputs are generated artifacts; the entrypoint
+# regenerates data/index on first start (Dockerfile lines 8-9).
+reports/
+outputs/
+data/index/
+data/files/
+data/data_list.csv
+data/data_list.xlsx
+원본 데이터/
+
+# IDE / scratch dirs that sometimes appear locally
+.tmp/
+.cache/
