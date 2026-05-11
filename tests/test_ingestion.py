@@ -115,5 +115,100 @@ class MetadataCsvIngestionTest(unittest.TestCase):
             self.assertEqual("202400001", payload["chunks"][0]["metadata"]["notice_id"])
 
 
+class RowValidationParityRegression(unittest.TestCase):
+    """Both ingestion and audit paths must surface the same failure_reason
+    on shared validation-chain failures (issue #257). Guards against drift
+    after the shared `_resolve_row_validation` helper was introduced."""
+
+    def _row(self, **overrides: str) -> dict[str, str]:
+        row = {col: "" for col in FIELDNAMES}
+        row.update(
+            {
+                "공고 번호": "202400001",
+                "공고 차수": "0",
+                "사업명": "샘플 사업",
+                "발주 기관": "기관 X",
+                "파일형식": "pdf",
+                "텍스트": "본문 텍스트입니다.",
+            }
+        )
+        row.update(overrides)
+        return row
+
+    def _reasons(
+        self, files_dir: Path, row: dict[str, str]
+    ) -> tuple[str | None, str | None]:
+        from ingestion import (
+            _DuplicateTracker,
+            audit_metadata_row,
+            normalize_ingestion_row,
+        )
+
+        _, record_n = normalize_ingestion_row(
+            row, row_number=2, files_dir=files_dir, tracker=_DuplicateTracker()
+        )
+        record_a = audit_metadata_row(
+            row, row_number=2, files_dir=files_dir, tracker=_DuplicateTracker()
+        )
+        return record_n.reason, record_a.reason
+
+    def test_missing_file_name_reason_matches(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            normalize_reason, audit_reason = self._reasons(
+                Path(tmp), self._row(파일명="")
+            )
+            self.assertEqual("missing_file_name", normalize_reason)
+            self.assertEqual("missing_file_name", audit_reason)
+
+    def test_unsupported_file_format_reason_matches(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            files_dir = Path(tmp) / "files"
+            files_dir.mkdir()
+            (files_dir / "report.docx").write_bytes(b"")
+            normalize_reason, audit_reason = self._reasons(
+                files_dir, self._row(파일명="report.docx", 파일형식="docx")
+            )
+            self.assertEqual("unsupported_file_format", normalize_reason)
+            self.assertEqual("unsupported_file_format", audit_reason)
+
+    def test_missing_file_reason_matches(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            files_dir = Path(tmp) / "files"
+            files_dir.mkdir()
+            normalize_reason, audit_reason = self._reasons(
+                files_dir, self._row(파일명="absent.pdf")
+            )
+            self.assertEqual("missing_file", normalize_reason)
+            self.assertEqual("missing_file", audit_reason)
+
+    def test_duplicate_doc_id_reason_matches(self) -> None:
+        # First row reserves the doc_id; second row collides on the same
+        # canonical key. Both paths must report duplicate_doc_id on the
+        # collider row when on_duplicate_doc_id defaults to "fail".
+        from ingestion import (
+            _DuplicateTracker,
+            audit_metadata_row,
+            normalize_ingestion_row,
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            files_dir = Path(tmp) / "files"
+            files_dir.mkdir()
+            (files_dir / "sample.pdf").write_bytes(b"%PDF-1.4\n")
+            row1 = self._row(파일명="sample.pdf")
+            row2 = self._row(파일명="sample.pdf")
+
+            tracker_n = _DuplicateTracker()
+            normalize_ingestion_row(row1, 2, files_dir, tracker_n)
+            _, record_n = normalize_ingestion_row(row2, 3, files_dir, tracker_n)
+
+            tracker_a = _DuplicateTracker()
+            audit_metadata_row(row1, 2, files_dir, tracker_a)
+            record_a = audit_metadata_row(row2, 3, files_dir, tracker_a)
+
+            self.assertEqual("duplicate_doc_id", record_n.reason)
+            self.assertEqual("duplicate_doc_id", record_a.reason)
+
+
 if __name__ == "__main__":
     unittest.main()

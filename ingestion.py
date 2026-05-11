@@ -239,14 +239,38 @@ def validate_fieldnames(fieldnames: list[str], metadata_csv: Path) -> None:
         )
 
 
-def normalize_ingestion_row(
+@dataclass
+class _RowValidation:
+    """Row-level resolution result shared by ingestion + audit paths."""
+
+    file_name: str
+    file_format: str
+    source_path: Path
+    doc_id: str
+    base_doc_id: str
+    failure_reason: str | None
+    duplicate_resolution: dict[str, Any] | None
+    # True when this row reserved a fresh slot in the tracker (no
+    # duplicate collision and validation passed up to that point).
+    # Callers use this to gate post-resolution checks like ``empty_text``.
+    tracker_registered: bool
+
+
+def _resolve_row_validation(
     row: dict[str, str],
     row_number: int,
     files_dir: Path,
     tracker: _DuplicateTracker,
     *,
     on_duplicate_doc_id: str = "fail",
-) -> tuple[dict[str, Any] | None, IngestionRecord]:
+) -> _RowValidation:
+    """Run the shared row-identity + duplicate-resolution validation chain.
+
+    Used by ``normalize_ingestion_row`` (which then loads the body text)
+    and ``audit_metadata_row`` (which then checks for blank body text).
+    Mutates ``tracker`` in place: a fresh row is recorded; a suffix
+    collision reserves the next unique id.
+    """
     notice_id = clean_cell(row.get("공고 번호"))
     notice_round = clean_cell(row.get("공고 차수"))
     file_name = clean_cell(row.get("파일명"))
@@ -257,6 +281,7 @@ def normalize_ingestion_row(
     duplicate_resolution: dict[str, Any] | None = None
     failure_reason: str | None = None
     doc_id = base_doc_id
+    tracker_registered = False
 
     if not file_name:
         failure_reason = "missing_file_name"
@@ -279,9 +304,9 @@ def normalize_ingestion_row(
                     "assigned_doc_id": suggested,
                 }
             else:
-                # Read-only peek: do not reserve the suggested id, otherwise a
-                # later row whose canonical doc_id is legitimately <base>-N
-                # would be falsely flagged as a duplicate.
+                # Read-only peek: do not reserve the suggested id, otherwise
+                # a later row whose canonical doc_id is legitimately
+                # <base>-N would be falsely flagged as a duplicate.
                 suggested = peek_next_unique_doc_id(base_doc_id, tracker)
                 failure_reason = "duplicate_doc_id"
                 duplicate_resolution = {
@@ -293,59 +318,84 @@ def normalize_ingestion_row(
         else:
             tracker.seen[base_doc_id] = row_number
             tracker.counts[base_doc_id] = 1
+            tracker_registered = True
 
-    if failure_reason:
+    return _RowValidation(
+        file_name=file_name,
+        file_format=file_format,
+        source_path=source_path,
+        doc_id=doc_id,
+        base_doc_id=base_doc_id,
+        failure_reason=failure_reason,
+        duplicate_resolution=duplicate_resolution,
+        tracker_registered=tracker_registered,
+    )
+
+
+def normalize_ingestion_row(
+    row: dict[str, str],
+    row_number: int,
+    files_dir: Path,
+    tracker: _DuplicateTracker,
+    *,
+    on_duplicate_doc_id: str = "fail",
+) -> tuple[dict[str, Any] | None, IngestionRecord]:
+    validation = _resolve_row_validation(
+        row, row_number, files_dir, tracker, on_duplicate_doc_id=on_duplicate_doc_id
+    )
+
+    if validation.failure_reason:
         return None, make_record(
             row_number,
             "failed",
-            doc_id,
-            file_name,
-            file_format,
-            source_path,
-            failure_reason,
-            duplicate_resolution=duplicate_resolution,
+            validation.doc_id,
+            validation.file_name,
+            validation.file_format,
+            validation.source_path,
+            validation.failure_reason,
+            duplicate_resolution=validation.duplicate_resolution,
         )
 
-    loader = _resolve_loader(file_format)
+    loader = _resolve_loader(validation.file_format)
     try:
-        text = loader.load_text(row, source_path)
+        text = loader.load_text(row, validation.source_path)
     except ValueError as exc:
         return None, make_record(
             row_number,
             "failed",
-            doc_id,
-            file_name,
-            file_format,
-            source_path,
+            validation.doc_id,
+            validation.file_name,
+            validation.file_format,
+            validation.source_path,
             str(exc),
-            duplicate_resolution=duplicate_resolution,
+            duplicate_resolution=validation.duplicate_resolution,
         )
 
     text_source = getattr(loader, "last_text_source", "data_list_csv_text")
     metadata = normalize_metadata(
-        row, file_format, file_name, text_source=text_source
+        row, validation.file_format, validation.file_name, text_source=text_source
     )
-    metadata["doc_id"] = doc_id
-    if duplicate_resolution and on_duplicate_doc_id == "suffix":
-        metadata["doc_id_resolution"] = duplicate_resolution["policy"]
-        metadata["doc_id_base"] = duplicate_resolution["base_doc_id"]
+    metadata["doc_id"] = validation.doc_id
+    if validation.duplicate_resolution and on_duplicate_doc_id == "suffix":
+        metadata["doc_id_resolution"] = validation.duplicate_resolution["policy"]
+        metadata["doc_id_base"] = validation.duplicate_resolution["base_doc_id"]
     document = {
-        "doc_id": doc_id,
-        "title": clean_cell(row.get("사업명")) or Path(file_name).stem,
+        "doc_id": validation.doc_id,
+        "title": clean_cell(row.get("사업명")) or Path(validation.file_name).stem,
         "agency": clean_cell(row.get("발주 기관")),
         "project": clean_cell(row.get("사업명")),
         "metadata": metadata,
         "sections": [{"heading": "본문", "text": text}],
-        "source_path": str(source_path),
+        "source_path": str(validation.source_path),
     }
     return document, make_record(
         row_number,
         "indexed",
-        doc_id,
-        file_name,
-        file_format,
-        source_path,
-        duplicate_resolution=duplicate_resolution,
+        validation.doc_id,
+        validation.file_name,
+        validation.file_format,
+        validation.source_path,
+        duplicate_resolution=validation.duplicate_resolution,
     )
 
 
@@ -683,13 +733,6 @@ def audit_metadata_row(
     *,
     on_duplicate_doc_id: str = "fail",
 ) -> IngestionRecord:
-    notice_id = clean_cell(row.get("공고 번호"))
-    notice_round = clean_cell(row.get("공고 차수"))
-    file_name = clean_cell(row.get("파일명"))
-    file_format = normalize_file_format(row.get("파일형식"), file_name)
-    source_path = find_source_file(files_dir, file_name) if file_name else files_dir
-    base_doc_id = canonical_doc_id(notice_id, notice_round, file_name)
-
     # Track non-fatal warnings on fields ingestion accepts but downstream
     # eval often relies on. Blank body text is NOT a warning: the ingestion
     # path raises ``empty_text`` for that row, and the validator must
@@ -700,54 +743,29 @@ def audit_metadata_row(
     if not clean_cell(row.get("사업명")):
         messages.append("blank_project")
 
-    duplicate_resolution: dict[str, Any] | None = None
-    failure_reason: str | None = None
-    doc_id = base_doc_id
+    validation = _resolve_row_validation(
+        row, row_number, files_dir, tracker, on_duplicate_doc_id=on_duplicate_doc_id
+    )
 
-    if not file_name:
-        failure_reason = "missing_file_name"
-    elif not doc_id:
-        failure_reason = "missing_doc_id"
-    elif file_format not in SUPPORTED_FILE_FORMATS:
-        failure_reason = "unsupported_file_format"
-    elif not source_path.exists() or not source_path.is_file():
-        failure_reason = "missing_file"
-    else:
-        existing_row = tracker.seen.get(base_doc_id)
-        if existing_row is not None:
-            if on_duplicate_doc_id == "suffix":
-                suggested = reserve_next_unique_doc_id(base_doc_id, tracker)
-                doc_id = suggested
-                duplicate_resolution = {
-                    "policy": "suffix",
-                    "base_doc_id": base_doc_id,
-                    "first_seen_row": existing_row,
-                    "assigned_doc_id": suggested,
-                }
-            else:
-                suggested = peek_next_unique_doc_id(base_doc_id, tracker)
-                failure_reason = "duplicate_doc_id"
-                duplicate_resolution = {
-                    "policy": "fail",
-                    "base_doc_id": base_doc_id,
-                    "first_seen_row": existing_row,
-                    "suggested_doc_id": suggested,
-                }
-        else:
-            tracker.seen[base_doc_id] = row_number
-            tracker.counts[base_doc_id] = 1
-            if not clean_cell(row.get("텍스트")):
-                failure_reason = "empty_text"
+    # audit-only: after a clean tracker registration, a blank body text
+    # surfaces as ``empty_text`` so a clean validator exit code mirrors
+    # the ingestion path's runtime failure for the same row.
+    if (
+        validation.tracker_registered
+        and validation.failure_reason is None
+        and not clean_cell(row.get("텍스트"))
+    ):
+        validation.failure_reason = "empty_text"
 
     return make_record(
         row_number,
-        "failed" if failure_reason else "ok",
-        doc_id,
-        file_name,
-        file_format,
-        source_path,
-        failure_reason,
-        duplicate_resolution=duplicate_resolution,
+        "failed" if validation.failure_reason else "ok",
+        validation.doc_id,
+        validation.file_name,
+        validation.file_format,
+        validation.source_path,
+        validation.failure_reason,
+        duplicate_resolution=validation.duplicate_resolution,
         messages=tuple(messages),
     )
 
