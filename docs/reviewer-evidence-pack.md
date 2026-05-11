@@ -2,6 +2,8 @@
 
 이 문서는 채용 리뷰어 또는 면접관이 BidMate Agent의 데모 흐름, 대표 질의, 성공/실패/개선 근거를 5분 안에 확인할 수 있도록 정리한 한 페이지 가이드다.
 
+> 5분 데모 이후 시니어 엔지니어링 시그널 측면에서 어떤 결정이 왜 이루어졌는지 인터뷰 흐름으로 보고 싶다면 [`senior-positioning.md`](./senior-positioning.md)와 [`portfolio-case-study.md`](./portfolio-case-study.md)를 같이 읽으면 된다.
+
 ## 5-minute demo flow
 
 아래 흐름은 README의 기본 경로와 동일하며, CLI 인터페이스와 산출물 경로를 바꾸지 않는다.
