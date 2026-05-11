@@ -1,0 +1,16 @@
+# Optional dependencies for the ADR 0010 observability backends.
+#
+# Not installed by default. Set BIDMATE_TRACE_BACKEND to enable a
+# backend after installing the corresponding line(s). Missing packages
+# fall back to the noop backend with diagnostics.trace_unavailable_reason
+# populated — the query path is never broken by a missing dep.
+#
+# Install: pip install -r requirements-observability.txt
+# Docs:    docs/observability.md
+
+# LangFuse self-hosted or cloud
+langfuse>=2.0,<3.0
+
+# OpenTelemetry — vendor-agnostic, works with Honeycomb / Tempo / Datadog / etc.
+opentelemetry-sdk>=1.20,<2.0
+opentelemetry-exporter-otlp-proto-http>=1.20,<2.0

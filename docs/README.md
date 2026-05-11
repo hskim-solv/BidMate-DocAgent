@@ -1,5 +1,7 @@
 # BidMate Agent 상세 문서
 
+- **[1-page Architecture deep-dive](./architecture-deep-dive.md)** — 파이프라인 / ADR 매핑 / 측정 highlight 한 페이지 요약
+- **[엔지니어링 블로그 (Phase 4 시리즈)](./blog/index.md)** — extractive baseline · 이중 eval · 실패 분류
 - [Engineering governance (workflow map)](./engineering-governance.md)
 - [Architecture Decision Records](./adr/README.md)
 - [Reviewer evidence pack](./reviewer-evidence-pack.md)

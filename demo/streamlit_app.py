@@ -100,6 +100,19 @@ def render_answer(answer: dict) -> None:
                 st.write(msg)
 
 
+def render_trace_link(diag: dict) -> None:
+    """Surface the ADR 0013 trace URL when a real backend captured one."""
+    trace_url = diag.get("trace_url")
+    if trace_url:
+        st.link_button("🔍 View trace", trace_url)
+    backend = diag.get("trace_backend") or "none"
+    unavailable = diag.get("trace_unavailable_reason")
+    if backend != "none" and not trace_url:
+        st.caption(f"Trace backend `{backend}` configured, no URL surfaced.")
+    elif unavailable:
+        st.caption(f"Trace fallback: `{unavailable}`")
+
+
 def render_diagnostics(diag: dict) -> None:
     cols = st.columns(4)
     cols[0].metric("Latency (ms)", f"{diag.get('latency_ms', 0):.1f}")
@@ -109,6 +122,8 @@ def render_diagnostics(diag: dict) -> None:
 
     st.caption(f"Pipeline: `{diag.get('pipeline')}` · prompt_profile: `{diag.get('prompt_profile')}`")
     st.caption(f"Embedding: `{diag.get('embedding_backend')}` ({diag.get('embedding_model') or 'hashing-fallback'})")
+    trace_backend = diag.get("trace_backend") or "none"
+    st.caption(f"Trace backend: `{trace_backend}`")
 
     synthesis = diag.get("synthesis")
     if synthesis:
@@ -220,6 +235,7 @@ if run_btn and query.strip():
             try:
                 ext = _run(query, pipeline="agentic_full", top_k=top_k, retrieval_mode=retrieval_mode, context_entities=context_entities)
                 render_answer(ext["answer"])
+                render_trace_link(ext.get("diagnostics") or {})
                 st.caption(f"Wall: {ext['_wall_ms']:.1f} ms")
             except Exception as exc:
                 st.error(f"extractive run failed: {exc}")
@@ -228,6 +244,7 @@ if run_btn and query.strip():
             try:
                 llm = _run(query, pipeline="agentic_full_llm", top_k=top_k, retrieval_mode=retrieval_mode, context_entities=context_entities)
                 render_answer(llm["answer"])
+                render_trace_link(llm.get("diagnostics") or {})
                 synth = (llm.get("diagnostics") or {}).get("synthesis") or {}
                 st.caption(
                     f"Wall: {llm['_wall_ms']:.1f} ms · synthesis backend: "
@@ -258,6 +275,7 @@ if run_btn and query.strip():
         )
         with tab_answer:
             render_answer(result["answer"])
+            render_trace_link(result.get("diagnostics") or {})
         with tab_evidence:
             render_evidence(result.get("evidence") or [])
         with tab_diag:

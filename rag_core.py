@@ -27,6 +27,7 @@ try:
 except ImportError:  # pragma: no cover — defensive; declared in requirements.txt
     _BM25Okapi = None  # type: ignore[assignment]
 
+from rag_observability import resolve_trace_backend
 from rag_synthesis import synthesize_answer
 from text_normalize import expand_forms, normalize_text
 
@@ -2887,19 +2888,73 @@ class _StageTimer:
 
     Adds the elapsed milliseconds to ``bucket[key]`` so re-entering the same
     key (e.g. a stage invoked twice) sums into a single total.
+
+    Optionally wraps the timed region in a ``TraceContext.span`` (ADR
+    0010). The span context manager is best-effort — any exception
+    from the backend is swallowed so a misbehaving tracer cannot break
+    the pipeline.
     """
 
-    def __init__(self, bucket: dict[str, float], key: str) -> None:
+    def __init__(
+        self,
+        bucket: dict[str, float],
+        key: str,
+        *,
+        trace: Any = None,
+        attrs: dict[str, Any] | None = None,
+    ) -> None:
         self.bucket = bucket
         self.key = key
+        self._trace = trace
+        self._attrs = attrs or {}
+        self._span_cm: Any = None
 
     def __enter__(self) -> "_StageTimer":
         self._t0 = time.perf_counter()
+        if self._trace is not None:
+            span_name = self.key[:-3] if self.key.endswith("_ms") else self.key
+            try:
+                self._span_cm = self._trace.span(span_name, **self._attrs)
+                self._span_cm.__enter__()
+            except Exception:
+                self._span_cm = None
         return self
 
     def __exit__(self, *exc: Any) -> None:
         elapsed_ms = (time.perf_counter() - self._t0) * 1000
         self.bucket[self.key] = self.bucket.get(self.key, 0.0) + elapsed_ms
+        if self._span_cm is not None:
+            try:
+                self._span_cm.__exit__(*exc)
+            except Exception:
+                pass
+
+
+def _attach_trace_diagnostics(
+    result: dict[str, Any],
+    trace_handle: Any,
+    backend_name: str,
+    unavailable_reason: str | None,
+    trace_error: str | None,
+) -> None:
+    """Inject the ADR 0013 trace fields into ``result['diagnostics']``.
+
+    Calls ``trace_handle.finish(diagnostics)`` to flush the trace and
+    capture a URL when the backend supports one. Any exception in
+    ``finish`` is swallowed and recorded — the additive-ablation
+    invariant requires that tracing never breaks the query path.
+    """
+    diagnostics = result.setdefault("diagnostics", {})
+    trace_url: str | None = None
+    if trace_handle is not None:
+        try:
+            trace_url = trace_handle.finish(diagnostics)
+        except Exception as exc:
+            trace_error = (trace_error or "") + f"|finish:{type(exc).__name__}:{str(exc)[:120]}"
+    diagnostics["trace_url"] = trace_url
+    diagnostics["trace_backend"] = backend_name
+    diagnostics["trace_unavailable_reason"] = unavailable_reason
+    diagnostics["trace_error"] = trace_error or None
 
 
 def summarize_stage_attempt(
@@ -3585,9 +3640,36 @@ def run_rag_query(
     stage_timings: dict[str, float] = {}
     state = normalize_conversation_state(conversation_state)
     targets = metadata_targets(index)
-    with _StageTimer(stage_timings, "query_analysis_ms"):
+
+    trace_backend_obj, trace_backend_name, trace_unavailable_reason = resolve_trace_backend()
+    trace_error: str | None = None
+    _trace_handle: Any = None
+    # Fast path: when no backend is active, skip the span machinery entirely.
+    # `_StageTimer(trace=None)` short-circuits — this keeps the noop default
+    # well within the ADR 0013 trace budget (< 5% p95 stage overhead).
+    if trace_backend_name != "none":
+        try:
+            _trace_handle = trace_backend_obj.start_trace(
+                query,
+                {
+                    "pipeline": pipeline_name,
+                    "prompt_profile": prompt_profile,
+                    "embedding_backend": index.get("embedding", {}).get("backend"),
+                    "retrieval_backend": retrieval_backend,
+                    "retrieval_mode": retrieval_mode,
+                    "metadata_first": metadata_first,
+                    "rerank": rerank,
+                    "verifier_retry": verifier_retry,
+                    "cold_start": cold_start,
+                },
+            )
+        except Exception as exc:
+            trace_error = f"start_trace:{type(exc).__name__}:{str(exc)[:120]}"
+            _trace_handle = None
+
+    with _StageTimer(stage_timings, "query_analysis_ms", trace=_trace_handle, attrs={"iteration": 1}):
         initial_analysis = analyze_query(query, targets)
-    with _StageTimer(stage_timings, "context_resolution_ms"):
+    with _StageTimer(stage_timings, "context_resolution_ms", trace=_trace_handle):
         retrieval_query, effective_context_entities, context_resolution = resolve_conversation_context(
             query,
             initial_analysis,
@@ -3595,7 +3677,7 @@ def run_rag_query(
             context_entities=context_entities,
         )
     if context_resolution["status"] == "needs_clarification":
-        return make_context_clarification_result(
+        result = make_context_clarification_result(
             index,
             query,
             initial_analysis,
@@ -3612,8 +3694,16 @@ def run_rag_query(
             stage_timings=stage_timings,
             cold_start=cold_start,
         )
+        _attach_trace_diagnostics(
+            result,
+            _trace_handle,
+            trace_backend_name,
+            trace_unavailable_reason,
+            trace_error,
+        )
+        return result
 
-    with _StageTimer(stage_timings, "query_analysis_ms"):
+    with _StageTimer(stage_timings, "query_analysis_ms", trace=_trace_handle, attrs={"iteration": 2}):
         analysis = analyze_query(
             retrieval_query,
             targets,
@@ -3623,8 +3713,13 @@ def run_rag_query(
         analysis["query_type"] = "follow_up"
         analysis["context_used"] = True
     analysis["context_resolution"] = context_resolution
+    if _trace_handle is not None:
+        try:
+            _trace_handle.set_tag("query_type", str(analysis.get("query_type") or ""))
+        except Exception:
+            pass
     if analysis.get("metadata_ambiguous") and analysis.get("query_type") != "comparison":
-        return make_metadata_clarification_result(
+        result = make_metadata_clarification_result(
             index,
             query,
             retrieval_query,
@@ -3642,6 +3737,14 @@ def run_rag_query(
             stage_timings=stage_timings,
             cold_start=cold_start,
         )
+        _attach_trace_diagnostics(
+            result,
+            _trace_handle,
+            trace_backend_name,
+            trace_unavailable_reason,
+            trace_error,
+        )
+        return result
     stage_sequence = metadata_stage_sequence(
         analysis,
         metadata_first=metadata_first,
@@ -3669,7 +3772,12 @@ def run_rag_query(
             attempt_top_k = max(top_k or 0, 8)
             top_k_reason = "retry_expansion"
         attempt_timings: dict[str, float] = {}
-        with _StageTimer(attempt_timings, "retrieve_ms"):
+        with _StageTimer(
+            attempt_timings,
+            "retrieve_ms",
+            trace=_trace_handle,
+            attrs={"attempt_index": attempt_index, "stage": str(stage or ""), "top_k": attempt_top_k or 0},
+        ):
             plan = make_plan(
                 analysis,
                 top_k=attempt_top_k,
@@ -3685,7 +3793,12 @@ def run_rag_query(
                 comparison_balance=resolved_comparison_balance,
             )
             evidence = retrieve(index, retrieval_query, analysis, plan)
-        with _StageTimer(attempt_timings, "verify_ms"):
+        with _StageTimer(
+            attempt_timings,
+            "verify_ms",
+            trace=_trace_handle,
+            attrs={"attempt_index": attempt_index, "verifier_retry": verifier_retry},
+        ):
             if verifier_retry:
                 # On the last scheduled attempt allow partial-topic
                 # grounding so weak-but-usable evidence surfaces as
@@ -3716,7 +3829,7 @@ def run_rag_query(
         evidence = select_supporting_evidence(analysis, evidence)
     else:
         evidence = []
-    with _StageTimer(stage_timings, "answer_generation_ms"):
+    with _StageTimer(stage_timings, "answer_generation_ms", trace=_trace_handle):
         answer, answer_text, abstained = generate_answer(
             query,
             analysis,
@@ -3726,7 +3839,7 @@ def run_rag_query(
         )
     synthesis_meta: dict[str, Any] | None = None
     if prompt_profile == "llm_synthesis" and not abstained:
-        with _StageTimer(stage_timings, "synthesis_ms"):
+        with _StageTimer(stage_timings, "synthesis_ms", trace=_trace_handle, attrs={"prompt_profile": prompt_profile}):
             synthesized, synthesis_meta = synthesize_answer(
                 query, analysis, answer, evidence
             )
@@ -3754,7 +3867,7 @@ def run_rag_query(
         analysis,
         selected_stage=str(plan.get("filter_stage") or ""),
     )
-    trace = build_result_trace(
+    result_trace = build_result_trace(
         query,
         retrieval_query,
         analysis,
@@ -3766,7 +3879,36 @@ def run_rag_query(
         answer,
         stage_latencies_ms=stage_latency,
     )
-    return {
+    diagnostics: dict[str, Any] = {
+        "latency_ms": round(latency_ms, 2),
+        "retry_count": retry_count,
+        "abstained": abstained,
+        "answer_status": answer["status"],
+        "answer_query_type": answer["query_type"],
+        "claim_count": len(answer["claims"]),
+        "citation_count": sum(len(claim.get("citations") or []) for claim in answer["claims"]),
+        "verification_reasons": (answer.get("status_reason") or {}).get("verification_reasons") or verification_reasons,
+        "verification_topics": verification_topics(analysis),
+        "filter_stage_attempts": stage_attempts,
+        "retrieved_chunk_ids": retrieved_chunk_ids,
+        "final_relaxation_reason": stage_attempts[-2]["verification_reasons"] if retry_count and len(stage_attempts) >= 2 else [],
+        "context_resolution": context_resolution,
+        "metadata_resolution": metadata_resolution,
+        "selected_top_k": plan.get("top_k"),
+        "embedding_backend": index.get("embedding", {}).get("backend"),
+        "embedding_model": index.get("embedding", {}).get("model"),
+        "metadata_first": metadata_first,
+        "rerank": rerank,
+        "verifier_retry": verifier_retry,
+        "retrieval_mode": retrieval_mode,
+        "retrieval_backend": retrieval_backend,
+        "pipeline": pipeline_name,
+        "prompt_profile": prompt_profile,
+        "cold_start": cold_start,
+        "stage_latency": stage_latency,
+        "synthesis": synthesis_meta,
+    }
+    result = {
         "mode": "rag",
         "query": query,
         "resolved_query": retrieval_query,
@@ -3775,38 +3917,18 @@ def run_rag_query(
         "answer": answer,
         "answer_text": answer_text,
         "evidence": strip_internal_scores(evidence),
-        "trace": trace,
+        "trace": result_trace,
         "conversation_state": next_state,
-        "diagnostics": {
-            "latency_ms": round(latency_ms, 2),
-            "retry_count": retry_count,
-            "abstained": abstained,
-            "answer_status": answer["status"],
-            "answer_query_type": answer["query_type"],
-            "claim_count": len(answer["claims"]),
-            "citation_count": sum(len(claim.get("citations") or []) for claim in answer["claims"]),
-            "verification_reasons": (answer.get("status_reason") or {}).get("verification_reasons") or verification_reasons,
-            "verification_topics": verification_topics(analysis),
-            "filter_stage_attempts": stage_attempts,
-            "retrieved_chunk_ids": retrieved_chunk_ids,
-            "final_relaxation_reason": stage_attempts[-2]["verification_reasons"] if retry_count and len(stage_attempts) >= 2 else [],
-            "context_resolution": context_resolution,
-            "metadata_resolution": metadata_resolution,
-            "selected_top_k": plan.get("top_k"),
-            "embedding_backend": index.get("embedding", {}).get("backend"),
-            "embedding_model": index.get("embedding", {}).get("model"),
-            "metadata_first": metadata_first,
-            "rerank": rerank,
-            "verifier_retry": verifier_retry,
-            "retrieval_mode": retrieval_mode,
-            "retrieval_backend": retrieval_backend,
-            "pipeline": pipeline_name,
-            "prompt_profile": prompt_profile,
-            "cold_start": cold_start,
-            "stage_latency": stage_latency,
-            "synthesis": synthesis_meta,
-        },
+        "diagnostics": diagnostics,
     }
+    _attach_trace_diagnostics(
+        result,
+        _trace_handle,
+        trace_backend_name,
+        trace_unavailable_reason,
+        trace_error,
+    )
+    return result
 
 
 def strip_internal_scores(evidence: list[dict[str, Any]]) -> list[dict[str, Any]]:
