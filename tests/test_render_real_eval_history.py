@@ -45,7 +45,7 @@ class RealEvalHistoryRendererTest(unittest.TestCase):
         (self.root / "reports" / "real100" / "history").mkdir(parents=True)
         # Copy the scripts module so subprocess can find it.
         repo_root = Path(__file__).resolve().parents[1]
-        for fname in ("run_real_eval_delta.py", "render_real_eval_history.py"):
+        for fname in ("_utils.py", "run_real_eval_delta.py", "render_real_eval_history.py"):
             shutil.copy(repo_root / "scripts" / fname, self.root / "scripts" / fname)
         # __init__.py so `import scripts.run_real_eval_delta` works.
         (self.root / "scripts" / "__init__.py").write_text("")

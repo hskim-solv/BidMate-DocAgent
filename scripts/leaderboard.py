@@ -37,6 +37,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from scripts._utils import render_history_table  # noqa: E402
 from scripts.run_real_eval_delta import extract_aggregate  # noqa: E402
 
 HISTORY_DIR = ROOT / "reports" / "history"
@@ -61,14 +62,6 @@ TABLE_COLUMNS: list[tuple[str, str]] = [
     ("abstention", "Abstention"),
     ("retry", "Retry"),
 ]
-
-
-def _fmt(value: Any) -> str:
-    if value is None:
-        return "—"
-    if isinstance(value, float):
-        return f"{value:.3f}"
-    return str(value)
 
 
 def load_history(history_dir: Path = HISTORY_DIR) -> list[dict[str, Any]]:
@@ -113,21 +106,12 @@ def _render_table_only(rows: list[dict[str, Any]]) -> str:
     ``render_page`` (which embeds it under its own ``## Tabular view``
     section, where a duplicate title would be a bug).
     """
-    if not rows:
-        return ""
-    header = "| " + " | ".join(label for _, label in TABLE_COLUMNS) + " |"
-    sep = "|" + "|".join(["---"] * len(TABLE_COLUMNS)) + "|"
-    lines = [header, sep]
-    for row in rows:
-        cells = []
-        for key, _ in TABLE_COLUMNS:
-            value = row.get(key)
-            if key == "commit":
-                cells.append(f"`{value}`" if value else "—")
-            else:
-                cells.append(_fmt(value))
-        lines.append("| " + " | ".join(cells) + " |")
-    return "\n".join(lines) + "\n"
+    return render_history_table(
+        rows,
+        TABLE_COLUMNS,
+        empty_message="",
+        trailing_newline=True,
+    )
 
 
 def render_markdown_table(rows: list[dict[str, Any]]) -> str:
