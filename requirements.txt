@@ -3,6 +3,14 @@ PyYAML>=6.0.3
 rank-bm25>=0.2.2,<1.0
 sentence-transformers>=2.7,<3.0
 transformers>=4.41,<5.0
+# ADR 0019 condition 1 — torch>=2.6 is the CVE-2025-32434 mitigation
+# enforced inside sentence_transformers' load path for BAAI/bge-m3 and
+# other models that ship custom code. Pinning here unblocks Phase 1.3
+# (BGE-M3 embedding ablation) and locks the floor against silent
+# downgrades in fresh installs. Older 2.2.x is still functional for
+# MiniLM / e5 / KoSimCSE — see docs/embedding-ablation.md Phase 1.2
+# "Env state" table.
+torch>=2.6
 pymupdf>=1.24,<2.0
 pdfplumber>=0.11.9,<1.0
 pytesseract>=0.3,<1.0
