@@ -8,6 +8,13 @@ permissions:
   contents: read
   pull-requests: write
 
+# Cancel in-progress runs on the same PR when a new push arrives —
+# the new push triggers a fresh run anyway, so finishing the stale
+# one is wasted minutes (and risks stale PR comments).
+concurrency:
+  group: pr-eval-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 env:
   EMBEDDING_BACKEND: hashing
   PYTHONDONTWRITEBYTECODE: "1"
@@ -99,21 +106,24 @@ jobs:
         run: |
           python -c "import yaml; c=yaml.safe_load(open('eval/config.yaml')); c['primary_run']='full'; c['ablation_runs']=[r for r in c['ablation_runs'] if r['name']=='full']; open('eval/config.ci.yaml','w').write(yaml.safe_dump(c, allow_unicode=True, sort_keys=False))"
 
-      - name: Build index — PR
-        working-directory: pr
-        run: python scripts/build_index.py --input_dir data/raw --output_dir data/index --embedding_backend hashing
+      # Both PR and base sides use the *PR side's* composite action
+      # so this workflow keeps working in the transition PR (when main
+      # / base hasn't received the action yet) and after merge (when
+      # the two copies are identical). The composite's
+      # `working-directory` input handles the divergence cleanly.
+      - name: Build index + run eval — PR
+        uses: ./pr/.github/actions/run-eval
+        with:
+          working-directory: pr
+          config: eval/config.ci.yaml
+          embedding-backend: hashing
 
-      - name: Run eval — PR
-        working-directory: pr
-        run: python eval/run_eval.py --index_dir data/index --output_dir reports --config eval/config.ci.yaml
-
-      - name: Build index — base
-        working-directory: base
-        run: python scripts/build_index.py --input_dir data/raw --output_dir data/index --embedding_backend hashing
-
-      - name: Run eval — base
-        working-directory: base
-        run: python eval/run_eval.py --index_dir data/index --output_dir reports --config eval/config.ci.yaml
+      - name: Build index + run eval — base
+        uses: ./pr/.github/actions/run-eval
+        with:
+          working-directory: base
+          config: eval/config.ci.yaml
+          embedding-backend: hashing
 
       - name: Render delta table
         run: |
