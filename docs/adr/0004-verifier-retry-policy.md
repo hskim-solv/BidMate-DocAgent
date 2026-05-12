@@ -2,7 +2,7 @@
 
 - **Status**: accepted
 - **Date**: 2026-05-11
-- **Related**: [`rag_core.py`](../../rag_core.py) (`verify_evidence`, `L1843` / `L2053`), [`docs/verifier-rules.md`](../verifier-rules.md) (strict → relaxed staging expressed as pseudo-prompts; LLM-migration counter-checks), [`docs/real-data-failure-taxonomy.md`](../real-data-failure-taxonomy.md), [`docs/grounding-eval-hardening.md`](../grounding-eval-hardening.md)
+- **Related**: [`rag_verifier.py`](../../rag_verifier.py) (`verify_evidence` + partial-topic grounding policy, extracted from `rag_core.py:L1843/L2053` in PR-J1 / issue #465), [`docs/verifier-rules.md`](../verifier-rules.md) (strict → relaxed staging expressed as pseudo-prompts; LLM-migration counter-checks), [`docs/real-data-failure-taxonomy.md`](../real-data-failure-taxonomy.md), [`docs/grounding-eval-hardening.md`](../grounding-eval-hardening.md)
 
 ## Context
 

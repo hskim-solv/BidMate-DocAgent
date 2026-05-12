@@ -19,7 +19,7 @@ Closes #
 <!--
 Bulleted list. Flag any of these as load-bearing
 (canonical list: scripts/_governance.py):
-rag_core.py, rag_retrieval.py, ingestion.py, visual_ingestion.py, eval/, api/, docs/adr/, scripts/build_index.py
+rag_core.py, rag_retrieval.py, rag_verifier.py, ingestion.py, visual_ingestion.py, eval/, api/, docs/adr/, scripts/build_index.py
 -->
 
 ## 3. Risks
@@ -47,7 +47,7 @@ What do you expect the CI eval delta to show?
 
 <!--
 Required if any load-bearing path changed
-(rag_core.py, rag_retrieval.py, ingestion.py, visual_ingestion.py, eval/, api/, docs/adr/, scripts/build_index.py).
+(rag_core.py, rag_retrieval.py, rag_verifier.py, ingestion.py, visual_ingestion.py, eval/, api/, docs/adr/, scripts/build_index.py).
 Attach the `make real-eval-delta` aggregate table, or state explicitly:
 "No behavior change in retrieval / verifier path."
 See ADR 0005 and docs/private-100-doc-experiments.md.
