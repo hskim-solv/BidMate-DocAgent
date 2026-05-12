@@ -15,7 +15,7 @@
 
 | 시그널 | 어디서 확인하나 |
 |---|---|
-| 아키텍처 결정이 **사후 합리화가 아닌 기록된 결정**으로 남아있다 | [`docs/adr/`](./adr/README.md) — 26개 ADR (19 accepted / 7 proposed), status-tracked, supersession chains 명시 |
+| 아키텍처 결정이 **사후 합리화가 아닌 기록된 결정**으로 남아있다 | [`docs/adr/`](./adr/README.md) — 26개 ADR (20 accepted / 6 proposed), status-tracked, supersession chains 명시 |
 | **측정 가능한 성공 기준**을 미리 잡고 그 기준으로 평가한다 | [`portfolio-case-study.md` §2](./portfolio-case-study.md), [`eval/config.yaml`](../eval/config.yaml), README headline 표 |
 | 합성 평가의 한계를 알고 **공개/비공개 평가 분리**로 보완한다 | [ADR 0005](./adr/0005-eval-split-public-synthetic-private-local.md), [`docs/private-100-doc-experiments.md`](./private-100-doc-experiments.md) |
 | **실패를 분류·우선순위화**한 뒤 백로그로 만든다 | [`docs/real-data-failure-taxonomy.md`](./real-data-failure-taxonomy.md), 메타 이슈 #49 |
@@ -49,7 +49,7 @@
 | [0018](./adr/0018-korean-public-rag-bench.md) | accepted | Korean public RAG bench (KorQuAD 2.1) as supplementary out-of-domain surface (extends 0005) | "한국어 일반 텍스트에서도 동작합니까?" 질문에 공개 재현 가능한 한 줄 명령(`make korean-public-eval`)으로 답변 — 합성 surface와 분리, CI 게이트가 *아님* |
 | [0019](./adr/0019-embedding-default-stays-minilm.md) | accepted | embedding 디폴트 = MiniLM-L12-v2 잠금 + 재오픈 조건 명시 (extends 0002) | 2차 사이클 측정이 env mismatch로 deferred됐을 때 *deferral 자체*를 ADR로 잠금 — 다음 contributor가 같은 실험을 다시 시도하지 않고, "디폴트 교체"의 empirical bar(`full` 파이프라인 ≥+5pp)도 명시 |
 | [0021](./adr/0021-bge-m3-completes-phase-1-3.md) | accepted | BGE-M3 Phase 1.3 측정 완료, ADR 0019 condition 2 closure (supplements 0019) | deferred 결정이 *실제로 닫히는 과정*까지 ADR로 박음. 4개 named candidate + 5개 임베딩(2019–2024) cross-architecture 측정으로 `0pp-on-full` 패턴이 empirical support 받는 단계까지 도달 |
-| [0022](./adr/0022-langgraph-orchestration-stage-1.md) | proposed | LangGraph orchestrator path for agentic_full presets — stage 1 (single-node passthrough + env-var dispatch, opt-in via `BIDMATE_ORCHESTRATOR=langgraph`) | "Agentic" 라벨에 코드 실체를 붙이는 epic의 stage 1 — JSON-identity 보장 가능한 단일 노드부터 land 후 stage 2에서 multi-node 분해. ADR 0001 `naive_baseline`은 직접 경로 유지. |
+| [0022](./adr/0022-langgraph-orchestration-stage-1.md) | accepted | LangGraph orchestrator path for agentic_full presets — stage 1 (single-node passthrough + env-var dispatch, opt-in via `BIDMATE_ORCHESTRATOR=langgraph`) | "Agentic" 라벨에 코드 실체를 붙이는 epic의 stage 1 — JSON-identity 보장 가능한 단일 노드부터 land 후 stage 2에서 multi-node 분해. ADR 0001 `naive_baseline`은 직접 경로 유지. |
 | [0023](./adr/0023-hyde-query-expansion-ablation.md) | proposed | HyDE query expansion as additive ablation (extends 0001, preserves 0003) | Reranker Protocol과 별도 Protocol seam — 쿼리↔문서 어휘 갭(공식체 RFP vs 일상 질의)을 LLM 가상답변 임베딩으로 메우는 ablation. `IdentityExpander` 디폴트로 ADR 0001 골든 비트동일 유지 |
 | [0024](./adr/0024-agentic-full-llm-as-api-default.md) | accepted | API surface default preset = `agentic_full_llm`; backend default stays `stub` (complements 0011; CLI default stays `naive_baseline` per 0001) | "Agentic RAG" 라벨에 *기본 API surface*를 맞추는 절충안. preset만 flip하고 synthesis backend default(`stub`)는 유지 — CI 결정성 + cost 0 보존. CLI / function-level / backend 3개 default 경계를 회귀 테스트로 잠금. |
 | [0025](./adr/0025-cost-frontier-defer-until-real-baselines.md) | accepted | cost-accuracy frontier을 외부 baseline 실측이 land할 때까지 deferral (defers #177; backs README §Limitations "비용 영점"; follows 0019 → 0021 pattern) | "왜 비용 축 frontier plot이 없냐?"에 modeled-cost 가짜 그림 대신 measurement-gated deferral로 응답. self-hosted 전부 cost=0이라 in-repo ablation들은 x=0에 모임 → 외부 baseline(`backend != "stub"`) 실측이 들어와야 비로소 의미 — 그 조건을 ADR로 잠금. #124의 latency-quality Pareto frontier가 그동안 portfolio asset. |
