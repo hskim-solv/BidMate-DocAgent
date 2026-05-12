@@ -7,7 +7,7 @@
 
 ## Context
 
-Retrieval in [`rag_core.retrieve_candidates`](../../rag_core.py) embeds the
+Retrieval in [`rag_retrieval.retrieve_candidates`](../../rag_retrieval.py) embeds the
 raw user query, then scores chunks via dense cosine + lexical Jaccard
 + metadata + (optionally) BM25 before fusion / rerank. The dense
 embedding compares one short, often colloquial Korean query against
@@ -20,7 +20,7 @@ that the query does not.
 After PR #342 split `retrieve()` into `retrieve_candidates` +
 `apply_fusion_and_reranking`, and PR #358 introduced the `Reranker`
 Protocol, the dense-embedding call site is a single line
-([`rag_core.py:L1780`](../../rag_core.py)) — a clean seam for a
+(now in [`rag_retrieval.retrieve_candidates`](../../rag_retrieval.py), extracted from `rag_core.py:L1780` in PR-H1b / issue #461) — a clean seam for a
 pre-retrieval query-rewrite stage. The question is not *whether* HyDE
 should plug in here, but how to add it without:
 
@@ -64,7 +64,7 @@ separate from) the `Reranker` Protocol of ADR 0020.
   the never-raise fallback makes `full_hyde` byte-equal to `full` on
   `eval_summary.json`. The row is meaningful when an operator runs
   `BIDMATE_QUERY_EXPANSION_BACKEND=hyde` with a key in scope.
-- `rag_core.retrieve_candidates` calls `default_expander(plan)` once,
+- `rag_retrieval.retrieve_candidates` calls `default_expander(plan)` once,
   passes the returned text to `embed_query_for_index`, and writes
   `plan["query_expansion_meta"]`. The raw `query` parameter is
   unchanged; BM25 / lexical / metadata branches downstream consume
