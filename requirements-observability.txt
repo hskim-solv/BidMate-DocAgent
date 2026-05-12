@@ -12,5 +12,5 @@
 langfuse>=2.0,<3.0
 
 # OpenTelemetry — vendor-agnostic, works with Honeycomb / Tempo / Datadog / etc.
-opentelemetry-sdk>=1.20,<2.0
+opentelemetry-sdk>=1.41.1,<2.0
 opentelemetry-exporter-otlp-proto-http>=1.20,<2.0
