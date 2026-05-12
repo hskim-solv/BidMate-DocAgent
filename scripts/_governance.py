@@ -35,6 +35,7 @@ LOAD_BEARING_PATHS: list[str] = [
     "rag_retrieval.py",
     "rag_verifier.py",
     "rag_answer.py",
+    "rag_query.py",
     "ingestion.py",
     "visual_ingestion.py",
     "eval/",
