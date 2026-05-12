@@ -15,7 +15,7 @@
 
 | 시그널 | 어디서 확인하나 |
 |---|---|
-| 아키텍처 결정이 **사후 합리화가 아닌 기록된 결정**으로 남아있다 | [`docs/adr/`](./adr/README.md) — 26개 ADR (19 accepted / 7 proposed), status-tracked, supersession chains 명시 |
+| 아키텍처 결정이 **사후 합리화가 아닌 기록된 결정**으로 남아있다 | [`docs/adr/`](./adr/README.md) — 27개 ADR (20 accepted / 7 proposed), status-tracked, supersession chains 명시 |
 | **측정 가능한 성공 기준**을 미리 잡고 그 기준으로 평가한다 | [`portfolio-case-study.md` §2](./portfolio-case-study.md), [`eval/config.yaml`](../eval/config.yaml), README headline 표 |
 | 합성 평가의 한계를 알고 **공개/비공개 평가 분리**로 보완한다 | [ADR 0005](./adr/0005-eval-split-public-synthetic-private-local.md), [`docs/private-100-doc-experiments.md`](./private-100-doc-experiments.md) |
 | **실패를 분류·우선순위화**한 뒤 백로그로 만든다 | [`docs/real-data-failure-taxonomy.md`](./real-data-failure-taxonomy.md), 메타 이슈 #49 |
@@ -55,6 +55,7 @@
 | [0025](./adr/0025-cost-frontier-defer-until-real-baselines.md) | accepted | cost-accuracy frontier을 외부 baseline 실측이 land할 때까지 deferral (defers #177; backs README §Limitations "비용 영점"; follows 0019 → 0021 pattern) | "왜 비용 축 frontier plot이 없냐?"에 modeled-cost 가짜 그림 대신 measurement-gated deferral로 응답. self-hosted 전부 cost=0이라 in-repo ablation들은 x=0에 모임 → 외부 baseline(`backend != "stub"`) 실측이 들어와야 비로소 의미 — 그 조건을 ADR로 잠금. #124의 latency-quality Pareto frontier가 그동안 portfolio asset. |
 | [0026](./adr/0026-cross-encoder-reranker-deferral.md) | accepted | cross-encoder reranker 기본값 = stub-identity 유지, 실 backend(bge / bge_ko / cohere) 측정 deferral (mirrors 0019/0025 pattern) | `full` vs `no_rerank`가 공개 합성에서 이미 0pp (ADR 0002 metadata-first가 dense 위 reorder를 무의미하게 함). `full_reranker`는 CI stub 디폴트에서 `full`과 by-construction 비트동일. Protocol 표면은 향후 HyDE-reranker / LLM-as-reranker seam으로 보존 — 측정 효과 없으나 *측정이 안 됐다*는 점을 ADR로 잠금. |
 | [0027](./adr/0027-lora-finetuned-embedding-additive.md) | proposed | LoRA-fine-tuned embedding adapter as additive ablation, env-var gated (`BIDMATE_EMBEDDING_LORA_ADAPTER`), HF Hub adapter pinned by commit SHA (extends 0001 / 0011 / 0019; does NOT trigger 0019 re-open) | "have you fine-tuned a model?" 인터뷰 질문에 reproducible artifact(Colab 노트북 + HF Hub adapter)로 답. Phase 1.2/ADR 0019에서 metadata-first가 embedding variance를 흡수한다는 것이 확인됐으므로 `full` 행은 ~0pp가 honest 결과 — 그래서 dense-only `naive_baseline_finetuned` 행을 같이 land해서 측정 가능한 표면을 분리. HF Hub adapter는 `<repo>@<sha>` SHA pin으로 silent re-push supply-chain 차단. |
+| [0028](./adr/0028-security-screen-additive.md) | accepted | Prompt-injection screen (query-side, diagnostic-only) + PII redaction (ingestion-time, opt-in via `BIDMATE_INGEST_REDACT_PII`) as additive security layer (extends 0008 to query side; preserves 0001 / 0003 / 0005) | ADR 0008이 evidence 측 injection 방어라면 0028은 query 측 보완. 5개 한국 RFP 도메인 + 3개 영문 일반 패턴의 regex floor — Llama Guard 같은 ML 분류기는 측정-게이트로 미루고 결정적 floor부터. PII는 default off + 단일 env-var 토글로 ADR 0001 byte-identical 유지. "production 보안 어떻게?" 질문에 측정 가능한 답 + ADR 0008과 짝을 이루는 surface 설계. |
 
 **인터뷰 talking point 1 (real-data 회귀)**: "ADR 0005가 없었다면 공개본의 abstention 회귀(#69의 `1.000 → 0.500` 사건)는 아무도 보지 못했을 것이다. 공개 합성만 보던 시기에는 1-of-2 incidental overlap 패턴이 잡히지 않았다." — 근거: [`docs/private-100-doc-experiments.md`](./private-100-doc-experiments.md) 2026-05-11 entry.
 
@@ -182,7 +183,7 @@ make reproduce  # smoke + SHA-256 over the environment-invariant metric subset
 
 ### 30초 자기소개
 
-> "BidMate-DocAgent는 **한국어 RFP 도메인-특화 RAG**입니다. 일반 영어 벤치(KMMLU/MMLU) 점수 경쟁이 아니라, 한국 B2B/공공 입찰 시장의 비교 질의에서 발생하는 한쪽 문서 starvation 패턴을 발견하고 막은 게 차별점입니다. **comparison-aware balanced top-k** + **metadata-first retrieval** + **extractive grounded-answer 계약**으로 hallucination을 구조적으로 차단하고, **공개 합성 + 비공개 real-data + KorQuAD 2.1 한국어 공개셋** 세 표면으로 silent regression을 분리 탐지합니다. 운영 시그널 측에서는 **26개 ADR**, prompt-caching 적용 **cost telemetry**, fail-closed **observability(LangFuse/OTel)**, **CI 회귀 게이트**까지 완성했습니다."
+> "BidMate-DocAgent는 **한국어 RFP 도메인-특화 RAG**입니다. 일반 영어 벤치(KMMLU/MMLU) 점수 경쟁이 아니라, 한국 B2B/공공 입찰 시장의 비교 질의에서 발생하는 한쪽 문서 starvation 패턴을 발견하고 막은 게 차별점입니다. **comparison-aware balanced top-k** + **metadata-first retrieval** + **extractive grounded-answer 계약**으로 hallucination을 구조적으로 차단하고, **공개 합성 + 비공개 real-data + KorQuAD 2.1 한국어 공개셋** 세 표면으로 silent regression을 분리 탐지합니다. 운영 시그널 측에서는 **27개 ADR**, prompt-caching 적용 **cost telemetry**, fail-closed **observability(LangFuse/OTel)**, **CI 회귀 게이트**까지 완성했습니다."
 
 읽는 시간 ≈ 30초. 면접 첫 답으로 그대로 사용 가능. 상대가 "좀 더 자세히"를 물으면 §1, 측정 의문에는 §2, 운영 의문에는 [`production-readiness.md`](./production-readiness.md)로 넘어간다.
 
