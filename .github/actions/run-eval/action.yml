@@ -1,0 +1,72 @@
+name: 'Run BidMate eval'
+description: >-
+  Build the index and run eval/run_eval.py, with `actions/cache` keyed
+  on data/raw + builder code so unchanged-data PRs skip the build step.
+  Shared by .github/workflows/pr-eval.yml (PR + base checkouts) and
+  .github/workflows/leaderboard.yml (main merge). See issue #400.
+
+inputs:
+  working-directory:
+    description: >-
+      Subdirectory holding the checked-out repo (e.g. `pr` or `base`
+      when pr-eval.yml uses dual checkouts). Use `.` for a default
+      single-checkout layout (leaderboard.yml).
+    required: false
+    default: '.'
+  config:
+    description: >-
+      Eval config path relative to `working-directory`. PR/base
+      pipelines pass `eval/config.ci.yaml` (full-pipeline-only
+      variant built earlier in the job); leaderboard uses the
+      default committed config.
+    required: false
+    default: 'eval/config.yaml'
+  embedding-backend:
+    description: >-
+      Value forwarded to `scripts/build_index.py --embedding_backend`.
+      Also a cache-key dimension — `hashing` (deterministic CI default)
+      gets a different cache scope than e.g. `minilm`.
+    required: false
+    default: 'hashing'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Restore cached index
+      id: cache-index
+      uses: actions/cache@v4
+      with:
+        path: ${{ inputs.working-directory }}/data/index
+        # Invalidate when raw data changes (the inputs the index is
+        # built from) OR when the builder code changes (build_index +
+        # ingestion). Backend is part of the key because different
+        # embedding backends produce different index payloads even
+        # for the same raw inputs.
+        key: >-
+          bidmate-index-${{ inputs.embedding-backend }}-${{
+          hashFiles(format('{0}/data/raw/**', inputs.working-directory))
+          }}-${{
+          hashFiles(
+            format('{0}/scripts/build_index.py', inputs.working-directory),
+            format('{0}/ingestion.py', inputs.working-directory),
+            format('{0}/visual_ingestion.py', inputs.working-directory)
+          ) }}
+
+    - name: Build index (cache miss only)
+      if: steps.cache-index.outputs.cache-hit != 'true'
+      working-directory: ${{ inputs.working-directory }}
+      shell: bash
+      run: >-
+        python scripts/build_index.py
+        --input_dir data/raw
+        --output_dir data/index
+        --embedding_backend ${{ inputs.embedding-backend }}
+
+    - name: Run eval
+      working-directory: ${{ inputs.working-directory }}
+      shell: bash
+      run: >-
+        python eval/run_eval.py
+        --index_dir data/index
+        --output_dir reports
+        --config ${{ inputs.config }}

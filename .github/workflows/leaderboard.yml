@@ -46,11 +46,11 @@ jobs:
           pip install -r requirements.txt
 
       - name: Build index + run eval (hashing backend, deterministic)
-        env:
-          EMBEDDING_BACKEND: hashing
-        run: |
-          make index
-          make eval
+        uses: ./.github/actions/run-eval
+        with:
+          working-directory: '.'
+          config: eval/config.yaml
+          embedding-backend: hashing
 
       - name: Append history snapshot
         run: python3 scripts/write_synthetic_history.py
