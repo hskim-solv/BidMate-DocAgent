@@ -60,6 +60,13 @@ reports/embedding-ablation/
 # schema reference (~25 representative rows).
 data/training/*
 !data/training/sample.jsonl
+# LoRA fine-tuning notebook artifacts (issue #435 / notebooks/embedding_finetune.ipynb).
+# `lora_adapter/` is the trained PEFT delta (~30 MB) — distributed via HF Hub,
+# not committed. `notebooks/_artifacts/` holds the training curve PNG and any
+# other run outputs that should accompany the writeup on the model card, not
+# the repo.
+lora_adapter/
+notebooks/_artifacts/
 # M2 (#207): vectors live in a sidecar .npy file alongside index.json so
 # the JSON stays small and a future VectorStore abstraction (#176) can
 # swap backends. Both files together are the portfolio sample.
