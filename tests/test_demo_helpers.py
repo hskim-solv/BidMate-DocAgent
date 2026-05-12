@@ -81,6 +81,30 @@ class StreamlitModuleSyntaxTest(unittest.TestCase):
         self.assertIn("from demo.helpers import", source)
         self.assertIn("SAMPLE_QUERIES", source)
 
+    def test_run_pipeline_calls_pass_index_first(self) -> None:
+        # Regression for issue #303: a single-mode call site invoked
+        # ``run_pipeline(query, ...)`` directly, mapping ``query`` to the
+        # ``index`` parameter and producing a TypeError at request time.
+        # Every call to ``run_pipeline`` in the Streamlit module must pass
+        # at least 2 positional args (index, query) — caller code should
+        # use the ``_run`` helper which auto-injects ``get_index()``.
+        path = ROOT_DIR / "demo" / "streamlit_app.py"
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        bad_calls: list[tuple[int, int]] = []
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            if isinstance(func, ast.Name) and func.id == "run_pipeline":
+                if len(node.args) < 2:
+                    bad_calls.append((node.lineno, len(node.args)))
+        self.assertEqual(
+            bad_calls, [],
+            f"streamlit_app.py has run_pipeline() calls with <2 positional args "
+            f"at {bad_calls}. Use _run(query, ...) instead — _run injects "
+            f"get_index() as the first positional arg. See issue #303.",
+        )
+
 
 class RunPipelineIntegrationTest(unittest.TestCase):
     """End-to-end exercise of ``run_pipeline`` against the real index.
