@@ -32,6 +32,7 @@ import sys
 # (prefix match); others as files (exact name or "/<name>" suffix match).
 LOAD_BEARING_PATHS: list[str] = [
     "rag_core.py",
+    "rag_retrieval.py",
     "ingestion.py",
     "visual_ingestion.py",
     "eval/",
