@@ -28,9 +28,9 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 
 from rag_core import (
     DEFAULT_CLI_PIPELINE_NAME,
+    arun_rag_query,
     load_index,
     pipeline_cli_choices,
-    run_rag_query,
 )
 
 from .schemas import QueryRequest
@@ -145,7 +145,7 @@ def pipelines(request: Request) -> dict[str, Any]:
 
 
 @app.post("/query")
-def query(
+async def query(
     body: QueryRequest,
     request: Request,
     index: dict[str, Any] = Depends(get_index),
@@ -153,12 +153,16 @@ def query(
     """Run one RAG query and return the raw answer dict.
 
     The response shape is intentionally **not** wrapped in a pydantic
-    model — it passes through whatever ``run_rag_query`` returns so the
-    API never drifts from the canonical answer / citation contract.
+    model — it passes through whatever ``arun_rag_query`` returns so
+    the API never drifts from the canonical answer / citation contract.
+    ``arun_rag_query`` runs the sync RAG pipeline on a worker thread
+    (``asyncio.to_thread``) so the event loop stays free for the next
+    request (#173 Stage 1). Fan-out parallelism of comparison-query
+    branches is Stage 2.
     """
     pipeline = body.pipeline or request.app.state.default_pipeline
     try:
-        return run_rag_query(
+        return await arun_rag_query(
             index,
             body.query,
             pipeline=pipeline,
