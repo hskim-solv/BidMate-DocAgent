@@ -18,7 +18,25 @@ import re
 from typing import Any
 import unicodedata
 
+from bidmate_security import redact_pii
 from rag_metadata_extraction import extract_rfp_metadata
+
+
+def _pii_redaction_enabled() -> bool:
+    """Issue #455 / ADR 0028: opt-in PII redaction at ingestion time.
+
+    Default off. Enable with ``BIDMATE_INGEST_REDACT_PII=true`` (or
+    ``1`` / ``yes``). When enabled, the loader-returned text is passed
+    through ``bidmate_security.redact_pii`` before chunking — Korean
+    mobile phone, email, and 주민등록번호 are replaced with stable
+    tokens (``<phone>``, ``<email>``, ``<rrn>``). ADR 0001 invariant:
+    default off keeps ``naive_baseline`` byte-identical.
+    """
+    return os.environ.get("BIDMATE_INGEST_REDACT_PII", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
 
 SUPPORTED_FILE_FORMATS = {"pdf", "hwp"}
 
@@ -413,6 +431,11 @@ def normalize_ingestion_row(
             str(exc),
             duplicate_resolution=validation.duplicate_resolution,
         )
+    # Issue #455 / ADR 0028: opt-in PII redaction. Default off keeps
+    # ADR 0001 naive_baseline byte-identical; the env-var gate is the
+    # single switch operators flip in deployment.
+    if _pii_redaction_enabled():
+        text = redact_pii(text)
 
     text_source = getattr(loader, "last_text_source", "data_list_csv_text")
     metadata = normalize_metadata(

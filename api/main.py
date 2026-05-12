@@ -26,6 +26,7 @@ from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 
+from bidmate_security import screen_query
 from rag_core import (
     DEFAULT_CLI_PIPELINE_NAME,
     arun_rag_query,
@@ -168,8 +169,14 @@ async def query(
     branches is Stage 2.
     """
     pipeline = body.pipeline or request.app.state.default_pipeline
+    # Issue #455 / ADR 0028: screen the user query for prompt-injection
+    # patterns before retrieval. Diagnostic-only — flagged queries still
+    # run, but the diagnostic is attached to the response so downstream
+    # consumers can log, alert, or block. The screen is regex-only,
+    # never raises, and adds <100µs to request latency.
+    injection_screen = screen_query(body.query)
     try:
-        return await arun_rag_query(
+        result = await arun_rag_query(
             index,
             body.query,
             pipeline=pipeline,
@@ -184,3 +191,14 @@ async def query(
             status_code=500,
             detail={"error": "rag_query_failed", "message": str(exc)},
         )
+    # Attach the injection-screen result under diagnostics. ADR 0003's
+    # answer-contract schema_version does NOT bump — adding a key under
+    # `diagnostics` is contract-compatible per ADR 0011 / 0013 / 0015's
+    # additive-key convention. If a future pipeline returns a result
+    # without a `diagnostics` block, create one.
+    diagnostics = result.get("diagnostics")
+    if not isinstance(diagnostics, dict):
+        diagnostics = {}
+        result["diagnostics"] = diagnostics
+    diagnostics["injection_screen"] = injection_screen
+    return result
