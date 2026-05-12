@@ -40,6 +40,25 @@ from rag_vector_store import (
 )
 from text_normalize import expand_forms, normalize_text
 
+# Korean lexicon constants live in korean_lexicon.py (data/lexicon/ko_default.yaml).
+# Re-exported here so existing call sites — including
+# `tests/test_hybrid_retrieval_regression.py` which imports
+# BM25_EXTRA_PARTICLE_SUFFIXES / BM25_EXTRA_STOPWORDS from rag_core —
+# keep working unchanged. See issue #344.
+from korean_lexicon import (
+    BM25_EXTRA_PARTICLE_SUFFIXES,
+    BM25_EXTRA_STOPWORDS,
+    IMPLICIT_REFERENCE_PATTERNS,
+    KOREAN_PARTICLE_SUFFIXES,
+    METADATA_CLAIM_LABELS,
+    METADATA_CLAIM_TOPIC_LABELS,
+    METADATA_EVIDENCE_LABELS,
+    METADATA_GENERIC_TOKENS,
+    STOPWORDS,
+    TOPIC_KEYWORDS,
+    VERIFICATION_INTENT_TOKENS,
+)
+
 DEFAULT_EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 DEFAULT_HASH_DIM = 384
 DEFAULT_CHUNK_MAX_CHARS = 520
@@ -159,91 +178,6 @@ TOKEN_RE = re.compile(r"[A-Za-z0-9]+|[가-힣]+")
 ENTITY_RE = re.compile(r"기관\s*[-_]?\s*([A-Za-z0-9]+)", re.IGNORECASE)
 SENTENCE_RE = re.compile(r"(?<=[.!?。])\s+")
 
-STOPWORDS = {
-    "그럼",
-    "그",
-    "그리고",
-    "어떻게",
-    "알려줘",
-    "차이",
-    "차이는",
-    "차이를",
-    "비교",
-    "비교해줘",
-    "기관",
-    "요구",
-    "요구한",
-    "요구가",
-    "요구사항",
-    "조건",
-    "조건도",
-    "기능",
-    "목표",
-    "성능",
-    "초점",
-    "필수",
-    "그중",
-    "보여줘",
-    "어떤",
-    "누가",
-    "포함돼야",
-    "해",
-    "있나",
-    "무엇을",
-    "사용해",
-    "진행해",
-    "중심으로",
-    "시간",
-    "지표나",
-    "하는",
-    "것은",
-    "의",
-    "와",
-    "과",
-    "는",
-    "은",
-    "를",
-    "을",
-    "이",
-    "가",
-    "에",
-    "내",
-    "돼",
-    "무엇",
-    "뭐야",
-    "대한",
-    "있는",
-    "없는",
-    "되나요",
-    "습니까",
-    "인가요",
-}
-
-TOPIC_KEYWORDS = [
-    "AI",
-    "품질관리",
-    "품질",
-    "보안",
-    "보안 통제",
-    "통제",
-    "로그",
-    "데이터",
-    "거버넌스",
-    "MLOps",
-    "자동화",
-    "모니터링",
-    "일정",
-    "산출물",
-    "제출조건",
-    "예산",
-    "챗봇",
-    "응답",
-    "상담",
-    "블록체인",
-    "납품",
-    "실적",
-]
-
 ANSWER_STATUS_SUPPORTED = "supported"
 ANSWER_STATUS_PARTIAL = "partial"
 ANSWER_STATUS_INSUFFICIENT = "insufficient"
@@ -256,136 +190,6 @@ AMBIGUOUS_CONFIDENCE_DELTA = 0.05
 CONVERSATION_STATE_SCHEMA_VERSION = 1
 MAX_CONVERSATION_TURNS = 12
 CONTEXT_RESOLUTION_THRESHOLD = 0.70
-
-IMPLICIT_REFERENCE_PATTERNS = (
-    "그 기관",
-    "그 사업",
-    "그 시스템",
-    "그 문서",
-    "그 프로젝트",
-    "해당 기관",
-    "해당 사업",
-    "해당 시스템",
-    "이 기관",
-    "이 사업",
-    "그럼",
-    "그중",
-)
-
-METADATA_GENERIC_TOKENS = {
-    "rfp",
-    "사업",
-    "용역",
-    "구축",
-    "고도화",
-    "개발",
-    "운영",
-    "정보",
-    "시스템",
-}
-
-VERIFICATION_INTENT_TOKENS = {
-    "간단히",
-    "관련",
-    "내용",
-    "대해",
-    "알려줘",
-    "요약",
-    "요약해줘",
-    "정리",
-    "정리해줘",
-    "주요",
-    "확인",
-}
-
-METADATA_EVIDENCE_LABELS = {
-    "budget": ("예산", "사업예산", "사업 금액"),
-    "published_at": ("공개 일자", "공고일"),
-    "bid_start_at": ("입찰", "입찰 시작일", "입찰 참여 시작일"),
-    "bid_deadline_at": ("입찰", "마감일", "입찰 마감일", "입찰 참여 마감일"),
-    "summary": ("요약", "사업 요약"),
-}
-
-METADATA_CLAIM_LABELS = {
-    "budget": "사업예산",
-    "published_at": "공개 일자",
-    "bid_start_at": "입찰 시작일",
-    "bid_deadline_at": "입찰 마감일",
-    "summary": "사업 요약",
-}
-
-METADATA_CLAIM_TOPIC_LABELS = {
-    "budget": ("예산", "사업예산", "사업금액", "금액"),
-    "published_at": ("공개", "일자", "공개일자", "공고일"),
-    "bid_start_at": ("입찰", "시작일", "입찰시작일", "입찰참여시작일", "일정"),
-    "bid_deadline_at": ("입찰", "마감일", "입찰마감일", "입찰참여마감일", "일정"),
-    "summary": ("요약", "사업요약", "사업기간", "기간"),
-}
-
-KOREAN_PARTICLE_SUFFIXES = (
-    "으로",
-    "에서",
-    "에게",
-    "도",
-    "만",
-    "나",
-    "과",
-    "와",
-    "의",
-    "은",
-    "는",
-    "이",
-    "가",
-    "을",
-    "를",
-    "로",
-    "에",
-)
-
-# Issue #150 — BM25-only extension of the particle suffix list. Applied
-# at the BM25 corpus-build and query-side only via
-# ``_apply_bm25_extra_filter``; never touches the tokens cached on
-# chunks at index time, so the dense + Jaccard lexical scoring paths
-# are preserved bit-for-bit (acceptance criterion: "dense/Jaccard 경로의
-# 동작은 보존"). Active under
-# ``bm25_stopword_profile = "bm25_extra"`` ablation; default profile
-# ``"shared"`` reuses the common ``KOREAN_PARTICLE_SUFFIXES`` only.
-BM25_EXTRA_PARTICLE_SUFFIXES: tuple[str, ...] = (
-    "까지",
-    "부터",
-    "마다",
-    "조차",
-    "마저",
-    "한테",
-    "께서",
-    "보다",
-    "처럼",
-    "같이",
-    "라도",
-    "라는",
-    "라고",
-    "이라",
-    "이라는",
-    "이라고",
-)
-
-# Short Korean discourse particles that survive ``normalize_metadata_token``
-# (they aren't pure-Hangul particle suffixes; they appear as standalone
-# tokens) but carry no IDF signal for BM25 — filtered only under the
-# bm25_extra profile, again leaving dense/Jaccard untouched.
-BM25_EXTRA_STOPWORDS: frozenset[str] = frozenset({
-    "또한",
-    "또는",
-    "혹은",
-    "그러나",
-    "하지만",
-    "이러한",
-    "그러한",
-    "저러한",
-    "다만",
-    "다음",
-    "다음과",
-})
 
 VALID_BM25_STOPWORD_PROFILES = {"shared", "bm25_extra"}
 
