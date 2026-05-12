@@ -16,6 +16,7 @@ the FastAPI surface for single-image deploys.
 from __future__ import annotations
 
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -155,6 +156,26 @@ def _run(query: str, *, pipeline: str, top_k: int | None, retrieval_mode: str, c
     )
 
 
+def _synthesis_backend() -> str:
+    return (os.environ.get("BIDMATE_SYNTHESIS_BACKEND") or "stub").strip().lower()
+
+
+def _retrieved_chunk_ids(result: dict) -> list[str]:
+    return [
+        str(item.get("chunk_id") or "")
+        for item in (result.get("evidence") or [])
+        if item.get("chunk_id")
+    ]
+
+
+def render_retrieved_caption(result: dict) -> None:
+    ids = _retrieved_chunk_ids(result)
+    if ids:
+        st.caption(f"📚 Retrieved ({len(ids)}): " + ", ".join(f"`{cid}`" for cid in ids))
+    else:
+        st.caption("📚 Retrieved: — (no evidence)")
+
+
 # -----------------------------------------------------------------------------
 # Layout
 # -----------------------------------------------------------------------------
@@ -181,12 +202,44 @@ st.caption(
 
 with st.sidebar:
     st.header("⚙️ Configuration")
+
+    backend = _synthesis_backend()
+    if backend == "anthropic":
+        st.success(f"🟢 LLM synthesis: `{backend}` (live Claude)")
+    elif backend == "stub":
+        st.warning("🟡 LLM synthesis: `stub` (pass-through)")
+        with st.expander("왜 `agentic_full_llm` 결과가 extractive와 같아 보이나요?"):
+            st.markdown(
+                "ADR 0011 계약상 `stub` 백엔드는 extractive summary를 그대로 통과시킵니다 — "
+                "compare 모드에서 좌·우가 byte-identical인 건 정상 동작입니다.\n\n"
+                "실제 Claude 합성을 보려면:\n"
+                "```bash\n"
+                "export ANTHROPIC_API_KEY=sk-ant-...\n"
+                "export BIDMATE_SYNTHESIS_BACKEND=anthropic\n"
+                "streamlit run demo/streamlit_app.py\n"
+                "```"
+            )
+    else:
+        st.info(f"🔵 LLM synthesis: `{backend}`")
+
     pipelines = pipeline_cli_choices()
     default_idx = pipelines.index("agentic_full") if "agentic_full" in pipelines else 0
-    pipeline = st.radio("Pipeline preset", pipelines, index=default_idx, help="naive_baseline = control · agentic_full = extractive · agentic_full_llm = LLM synthesis (ADR 0011, stub by default)")
+    compare_mode = st.checkbox(
+        "Compare extractive vs LLM side-by-side",
+        value=False,
+        help="체크 시 preset 라디오는 무시되고 agentic_full + agentic_full_llm이 동시에 실행됩니다.",
+    )
+    pipeline = st.radio(
+        "Pipeline preset",
+        pipelines,
+        index=default_idx,
+        disabled=compare_mode,
+        help="naive_baseline = control · agentic_full = extractive · agentic_full_llm = LLM synthesis (ADR 0011, stub by default)",
+    )
+    if compare_mode:
+        st.caption("⚠️ Compare 모드에서는 위 라디오 선택이 무시됩니다 (agentic_full + agentic_full_llm 동시 실행).")
     top_k = st.slider("Top-k retrieval", 1, 12, 4)
     retrieval_mode = st.selectbox("Retrieval mode", ["flat", "hierarchical"])
-    compare_mode = st.checkbox("Compare extractive vs LLM side-by-side", value=False)
 
     st.divider()
     st.header("📝 Sample queries")
@@ -228,12 +281,24 @@ run_btn = st.button("🔍 Run query", type="primary", use_container_width=True)
 
 if run_btn and query.strip():
     if compare_mode:
-        st.subheader("Extractive vs LLM Synthesis (stub backend)")
+        backend = _synthesis_backend()
+        if backend == "stub":
+            st.subheader("Extractive vs LLM Synthesis")
+            st.warning(
+                "🟡 `stub` backend — 좌·우 summary는 의도적으로 동일합니다 (ADR 0011 pass-through 계약). "
+                "실제 Claude 합성을 보려면 `BIDMATE_SYNTHESIS_BACKEND=anthropic`로 전환하세요."
+            )
+        elif backend == "anthropic":
+            st.subheader("Extractive vs LLM Synthesis")
+            st.success("🟢 `anthropic` backend — 우측은 라이브 Claude 합성 결과입니다.")
+        else:
+            st.subheader(f"Extractive vs LLM Synthesis ({backend} backend)")
         col_l, col_r = st.columns(2)
         with col_l:
             st.markdown("#### 📐 `agentic_full` (extractive)")
             try:
                 ext = _run(query, pipeline="agentic_full", top_k=top_k, retrieval_mode=retrieval_mode, context_entities=context_entities)
+                render_retrieved_caption(ext)
                 render_answer(ext["answer"])
                 render_trace_link(ext.get("diagnostics") or {})
                 st.caption(f"Wall: {ext['_wall_ms']:.1f} ms")
@@ -243,6 +308,7 @@ if run_btn and query.strip():
             st.markdown("#### 🤖 `agentic_full_llm` (LLM synthesis)")
             try:
                 llm = _run(query, pipeline="agentic_full_llm", top_k=top_k, retrieval_mode=retrieval_mode, context_entities=context_entities)
+                render_retrieved_caption(llm)
                 render_answer(llm["answer"])
                 render_trace_link(llm.get("diagnostics") or {})
                 synth = (llm.get("diagnostics") or {}).get("synthesis") or {}
@@ -252,11 +318,6 @@ if run_btn and query.strip():
                 )
             except Exception as exc:
                 st.error(f"LLM run failed: {exc}")
-        st.info(
-            "ADR 0011: stub backend is a pass-through, so the answers are byte-identical. "
-            "Set `BIDMATE_SYNTHESIS_BACKEND=anthropic` (with `ANTHROPIC_API_KEY`) "
-            "to see the live Claude synthesis."
-        )
     else:
         try:
             result = _run(
@@ -274,6 +335,7 @@ if run_btn and query.strip():
             ["📝 Answer", "📚 Evidence", "🔍 Diagnostics", "🐞 Raw JSON"]
         )
         with tab_answer:
+            render_retrieved_caption(result)
             render_answer(result["answer"])
             render_trace_link(result.get("diagnostics") or {})
         with tab_evidence:
