@@ -449,5 +449,160 @@ class HarnessE2ETest(unittest.TestCase):
         self.assertIsInstance(record["command"], list)
 
 
+# ---------------------------------------------------------------------------
+# Issue #236 — index cache (config_subkey-keyed skip).
+# ---------------------------------------------------------------------------
+
+
+class IndexCacheHelperTest(unittest.TestCase):
+    """Unit tests for the cache subkey + I/O helpers in run_harness."""
+
+    def test_subkey_depends_only_on_dataset_and_index(self) -> None:
+        base = {
+            "dataset": {"id": "public_synthetic_rfp_v1", "input_dir": "data/raw"},
+            "index": {"embedding_backend": "hashing", "chunking_strategy": "fixed"},
+            "query": {"text": "q1", "pipeline": "naive_baseline"},
+            "eval": {"config": "harness/smoke_eval.yaml"},
+        }
+        same_index_diff_query = {**base, "query": {"text": "q2", "pipeline": "naive_baseline"}}
+        diff_index = {**base, "index": {"embedding_backend": "minilm", "chunking_strategy": "fixed"}}
+        diff_dataset = {**base, "dataset": {"id": "other", "input_dir": "data/raw"}}
+
+        self.assertEqual(
+            run_harness.index_cache_subkey(base),
+            run_harness.index_cache_subkey(same_index_diff_query),
+            "query/eval changes must not invalidate the index cache",
+        )
+        self.assertNotEqual(run_harness.index_cache_subkey(base), run_harness.index_cache_subkey(diff_index))
+        self.assertNotEqual(run_harness.index_cache_subkey(base), run_harness.index_cache_subkey(diff_dataset))
+
+    def test_load_returns_empty_for_missing_or_corrupt_file(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.assertEqual(run_harness.load_index_cache(root), {})
+
+            cache_path = root / run_harness.INDEX_CACHE_DIRNAME / run_harness.INDEX_CACHE_FILENAME
+            cache_path.parent.mkdir(parents=True)
+            cache_path.write_text("{ this is not json", encoding="utf-8")
+            self.assertEqual(run_harness.load_index_cache(root), {})
+
+    def test_save_and_load_round_trip(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            mapping = {"abc123": "run_x", "def456": "run_y"}
+            run_harness.save_index_cache(root, mapping)
+            self.assertEqual(run_harness.load_index_cache(root), mapping)
+
+    def test_resolve_cached_index_misses_when_source_dir_gone(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            # Cache entry exists but the source run dir has no index/index.json.
+            run_harness.save_index_cache(root, {"abc": "ghost_run"})
+            source_dir, source_run_id = run_harness.resolve_cached_index(root, "abc")
+            self.assertIsNone(source_dir)
+            self.assertIsNone(source_run_id)
+
+    def test_resolve_cached_index_hits_when_index_present(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "src_run" / "index").mkdir(parents=True)
+            (root / "src_run" / "index" / "index.json").write_text("{}", encoding="utf-8")
+            run_harness.save_index_cache(root, {"abc": "src_run"})
+
+            source_dir, source_run_id = run_harness.resolve_cached_index(root, "abc")
+            self.assertEqual(source_run_id, "src_run")
+            self.assertEqual(source_dir, root / "src_run" / "index")
+
+    def test_resolve_cached_index_misses_unknown_subkey(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.assertEqual(run_harness.resolve_cached_index(root, "unknown"), (None, None))
+
+
+class IndexCacheE2ETest(unittest.TestCase):
+    """E2E: same dataset+index config across two runs hits the cache.
+
+    Has its own ``tmp_root`` (separate from ``HarnessE2ETest``) so the
+    cache state is isolated — first run is guaranteed a miss, second a
+    hit, regardless of test ordering.
+    """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.tmp_root = Path(__file__).resolve().parent / "_tmp_harness_cache"
+        if cls.tmp_root.exists():
+            import shutil
+
+            shutil.rmtree(cls.tmp_root)
+        cls.tmp_root.mkdir(parents=True)
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        import shutil
+
+        if cls.tmp_root.exists():
+            shutil.rmtree(cls.tmp_root)
+
+    def _run_smoke(self, run_id: str) -> dict:
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(ROOT_DIR / "scripts" / "run_harness.py"),
+                "--config",
+                "harness/smoke.yaml",
+                "--run_id",
+                run_id,
+                "--artifact_root",
+                str(self.tmp_root),
+                "--force",
+            ],
+            cwd=ROOT_DIR,
+            text=True,
+            capture_output=True,
+            timeout=180,
+        )
+        self.assertEqual(result.returncode, 0, msg=f"stdout={result.stdout}\nstderr={result.stderr}")
+        return json.loads((self.tmp_root / run_id / "run_manifest.json").read_text(encoding="utf-8"))
+
+    def test_first_run_misses_then_second_run_hits(self) -> None:
+        m_first = self._run_smoke("cache_first")
+        self.assertIn("cache", m_first)
+        self.assertFalse(m_first["cache"]["index_hit"])
+        self.assertIsNone(m_first["cache"]["source_run_id"])
+        cache_key = m_first["cache"]["key"]
+        self.assertIsInstance(cache_key, str)
+        self.assertTrue(cache_key)
+
+        m_second = self._run_smoke("cache_second")
+        self.assertTrue(m_second["cache"]["index_hit"])
+        self.assertEqual(m_second["cache"]["source_run_id"], "cache_first")
+        self.assertEqual(m_second["cache"]["key"], cache_key)
+
+        # Step entry shape for cached index step keeps the same fields
+        # downstream consumers (summary.json, errors.jsonl) read.
+        steps = json.loads(
+            (self.tmp_root / "cache_second" / "summary.json").read_text(encoding="utf-8")
+        )["steps"]
+        index_step = next(s for s in steps if s["name"] == "index")
+        self.assertTrue(index_step["cached"])
+        self.assertEqual(index_step["source_run_id"], "cache_first")
+        self.assertEqual(index_step["returncode"], 0)
+        self.assertEqual(index_step["status"], "passed")
+
+        # The cached index file actually exists in the second run's
+        # artifact tree (copy, not symlink, so archives self-contain).
+        self.assertTrue((self.tmp_root / "cache_second" / "index" / "index.json").exists())
+
+
 if __name__ == "__main__":
     unittest.main()
