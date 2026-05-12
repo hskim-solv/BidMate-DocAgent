@@ -11,7 +11,7 @@
 #
 # Hook input (stdin, JSON): currently discarded.
 #
-# Documentation: docs/auto-ship.md (TODO), the plan at
+# Documentation: docs/auto-ship.md, the plan at
 # /Users/hskim/.claude/plans/prci-synchronous-newell.md, and CLAUDE.md.
 
 set -u
