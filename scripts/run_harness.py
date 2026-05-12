@@ -177,6 +177,132 @@ def build_commands(config: dict[str, Any], run_dir: Path) -> dict[str, list[str]
     }
 
 
+# ---------------------------------------------------------------------------
+# Index cache (issue #236)
+#
+# When the harness iterates ablations that share a dataset + index
+# configuration but vary only in query/eval, rebuilding the index on
+# every run wastes minutes. The cache maps a deterministic subset of
+# the config (dataset + index portions only) to a prior run's
+# `index/` directory; subsequent runs with the same subkey copy the
+# cached index instead of running ``scripts/build_index.py``.
+#
+# Layout: ``<artifact_root>/_cache/index_hash.json`` holds the
+# ``{config_subkey: source_run_id}`` mapping. Stale entries (source
+# run dir deleted, index file missing) are treated as miss and lazily
+# cleared on the next miss-write.
+# ---------------------------------------------------------------------------
+
+
+_INDEX_CACHE_KEY_FIELDS = ("dataset", "index")
+INDEX_CACHE_DIRNAME = "_cache"
+INDEX_CACHE_FILENAME = "index_hash.json"
+
+
+def index_cache_subkey(config: dict[str, Any]) -> str:
+    """Deterministic hash of the dataset+index portion of a harness config.
+
+    Excludes ``query`` / ``eval`` blocks so iterating queries against
+    a built index does not invalidate the cache.
+    """
+    subset = {k: config.get(k) for k in _INDEX_CACHE_KEY_FIELDS}
+    return json_hash(subset)
+
+
+def _index_cache_path(artifact_root: Path) -> Path:
+    return artifact_root / INDEX_CACHE_DIRNAME / INDEX_CACHE_FILENAME
+
+
+def load_index_cache(artifact_root: Path) -> dict[str, str]:
+    """Load the ``{config_subkey -> source_run_id}`` mapping (empty if absent)."""
+    path = _index_cache_path(artifact_root)
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {}
+    return {
+        str(k): str(v)
+        for k, v in (data or {}).items()
+        if isinstance(v, str) and v
+    }
+
+
+def save_index_cache(artifact_root: Path, mapping: dict[str, str]) -> None:
+    """Persist the ``{config_subkey -> source_run_id}`` mapping."""
+    path = _index_cache_path(artifact_root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(mapping, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+
+def resolve_cached_index(
+    artifact_root: Path, cache_subkey: str
+) -> tuple[Path | None, str | None]:
+    """Return ``(source_dir, source_run_id)`` for a cache hit; ``(None, None)`` on miss.
+
+    A stale entry — source run dir deleted, or ``index.json`` missing
+    — is treated as a miss; the mapping is left as-is and lazily
+    overwritten on the next successful build.
+    """
+    mapping = load_index_cache(artifact_root)
+    source_run_id = mapping.get(cache_subkey)
+    if not source_run_id:
+        return None, None
+    source_index_dir = artifact_root / source_run_id / "index"
+    if not (source_index_dir / "index.json").exists():
+        return None, None
+    return source_index_dir, source_run_id
+
+
+def _try_cache_index_step(
+    artifact_root: Path,
+    run_dir: Path,
+    config: dict[str, Any],
+    logs_dir: Path,
+    command: list[str],
+) -> tuple[dict[str, Any] | None, str | None]:
+    """Return ``(step_entry, source_run_id)`` on cache hit; ``(None, None)`` on miss.
+
+    On hit, copies the cached index directory into ``run_dir/index``
+    and writes a stub log so the step entry shape matches the
+    ``run_logged_command`` output exactly (eval pipeline downstream
+    consumers don't see a special-case shape).
+    """
+    cache_key = index_cache_subkey(config)
+    source_dir, source_run_id = resolve_cached_index(artifact_root, cache_key)
+    if source_dir is None:
+        return None, None
+    target = run_dir / "index"
+    if target.exists():
+        shutil.rmtree(target)
+    shutil.copytree(source_dir, target)
+    log_path = logs_dir / "index.log"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    timestamp = utc_now()
+    log_path.write_text(
+        f"$ {' '.join(command)}\n\n"
+        f"[cache hit @ {timestamp}] copied index from "
+        f"{rel_path(source_dir)} (source_run_id={source_run_id})\n",
+        encoding="utf-8",
+    )
+    step_entry = {
+        "name": "index",
+        "command": command,
+        "log": rel_path(log_path),
+        "started_at": timestamp,
+        "ended_at": timestamp,
+        "returncode": 0,
+        "status": "passed",
+        "cached": True,
+        "source_run_id": source_run_id,
+    }
+    return step_entry, source_run_id
+
+
 def metric_snapshot(metrics_path: Path) -> dict[str, Any]:
     if not metrics_path.exists():
         return {}
@@ -271,11 +397,24 @@ def _execute_pipeline(
     steps: list[dict[str, Any]] = []
     status = "passed"
     failure: dict[str, Any] | None = None
+    artifact_root = run_dir.parent
+    cache_subkey = index_cache_subkey(config)
+    cache_hit = False
+    cache_source_run_id: str | None = None
 
     for name in ("index", "query", "eval"):
         span_cm = trace_ctx.span(name) if trace_ctx is not None else nullcontext()
         with span_cm:
-            step = {"name": name, **run_logged_command(commands[name], logs_dir / f"{name}.log")}
+            cached_step: dict[str, Any] | None = None
+            if name == "index":
+                cached_step, cache_source_run_id = _try_cache_index_step(
+                    artifact_root, run_dir, config, logs_dir, commands["index"]
+                )
+            if cached_step is not None:
+                step = cached_step
+                cache_hit = True
+            else:
+                step = {"name": name, **run_logged_command(commands[name], logs_dir / f"{name}.log")}
         steps.append(step)
         if command_failed(step):
             status = "failed"
@@ -287,6 +426,14 @@ def _execute_pipeline(
             }
             append_jsonl(errors_path, failure)
             break
+
+    # Update the cache only when the index step actually ran AND
+    # succeeded — never write a stale cache entry pointing at a failed
+    # or skipped build.
+    if status == "passed" and not cache_hit:
+        mapping = load_index_cache(artifact_root)
+        mapping[cache_subkey] = run_id
+        save_index_cache(artifact_root, mapping)
 
     write_predictions(
         answer_path,
@@ -354,6 +501,11 @@ def _execute_pipeline(
         "status": status,
         "metrics": metrics,
         "observability": observability_block,
+        "cache": {
+            "index_hit": cache_hit,
+            "source_run_id": cache_source_run_id if cache_hit else None,
+            "key": cache_subkey,
+        },
     }
     if failure:
         manifest["failure"] = failure
