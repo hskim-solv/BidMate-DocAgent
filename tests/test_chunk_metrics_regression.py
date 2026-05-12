@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from eval.run_eval import (  # noqa: E402
+from eval.scorers import (  # noqa: E402
     chunk_mrr,
     chunk_ndcg_at_k,
     chunk_recall_at_k,

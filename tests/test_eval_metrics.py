@@ -8,9 +8,9 @@ from eval.run_eval import (
     evaluate_run,
     load_config,
     retry_effectiveness_block,
-    score_case,
     summarize_run,
 )
+from eval.scorers import score_case
 from rag_core import build_index_payload
 
 
