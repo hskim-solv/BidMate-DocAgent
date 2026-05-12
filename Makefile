@@ -1,4 +1,36 @@
-.PHONY: setup index ask eval benchmark benchmark-check check check-latency korean-public-eval korean-public-fetch external-baselines-stub external-baselines-langchain external-baselines-llamaindex smoke smoke-with-judge reproduce harness-smoke harness-real harness-ablation harness-compare test test-regression api api-docker demo demo-docker pareto docker-publish real-eval real-eval-delta real-eval-baseline-update real-eval-history-render real-eval-history-check real-eval-with-judge synthetic-judge leaderboard leaderboard-check clean
+# PHONY declarations are grouped by workflow domain to mirror the recipe
+# sections below. Composite gates (e.g. `governance-check`) live alongside
+# their member targets. Preserve target names verbatim when adding to a
+# group — downstream docs (CLAUDE.md, docs/engineering-governance.md) and
+# .githooks/ reference these names directly.
+
+# Setup / hooks
+.PHONY: setup install-hooks
+
+# Governance gates (branch + issue, README metrics, latency SLO, leaderboard
+# freshness, real-eval history freshness, benchmark manifest check). Run
+# `make governance-check` to invoke the pre-PR subset in sequence.
+.PHONY: check-branch governance-check check check-latency leaderboard-check real-eval-history-check benchmark-check
+
+# Index build + ad-hoc ask
+.PHONY: index ask
+
+# Synthetic eval surface (public corpus). Includes smoke, full eval, harness
+# matrix, judges, leaderboard render, pareto, korean public bench, external
+# baselines.
+.PHONY: eval smoke smoke-with-judge reproduce benchmark synthetic-judge leaderboard pareto korean-public-fetch korean-public-eval external-baselines-stub external-baselines-langchain external-baselines-llamaindex harness-smoke harness-ablation harness-compare
+
+# Real-data eval cycle (private; ADR 0005 commit boundary).
+.PHONY: real-eval real-eval-delta real-eval-baseline-update real-eval-history-render real-eval-with-judge harness-real
+
+# API / demo (FastAPI + Streamlit; local + docker variants)
+.PHONY: api api-docker demo demo-docker docker-publish
+
+# Tests
+.PHONY: test test-regression
+
+# Cleanup
+.PHONY: clean
 
 PYTHON ?= python3
 VENV ?= .venv
@@ -19,6 +51,15 @@ install-hooks:
 check-branch:
 	$(PYTHON) scripts/check_branch_and_issue.py \
 	  --branch "$$(git rev-parse --abbrev-ref HEAD)" --check-issue
+
+# Composite governance gate. Runs the three pre-PR freshness checks in
+# sequence: branch + issue convention (ADR 0007), leaderboard render
+# freshness, and real-data history-table freshness. Each sub-target is
+# already wired into CI / hooks individually; this target just shortens
+# the local pre-PR checklist into a single invocation. Fails on the
+# first sub-target that exits non-zero.
+governance-check: check-branch leaderboard-check real-eval-history-check
+	@echo "governance-check: branch + leaderboard + real-eval-history OK."
 
 index:
 	$(PYTHON) scripts/build_index.py --input_dir data/raw --output_dir data/index
