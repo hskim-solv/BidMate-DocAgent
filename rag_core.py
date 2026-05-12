@@ -3602,7 +3602,42 @@ def run_rag_query(
     bm25_stopword_profile: str | None = None,
     *,
     params: QueryParams | None = None,
+    _skip_graph: bool = False,
 ) -> dict[str, Any]:
+    # ADR 0022 / issue #401 — opt-in LangGraph orchestrator path.
+    # ``BIDMATE_ORCHESTRATOR=langgraph`` (default ``direct``) routes
+    # through ``rag_graph_agentic_full.run_via_langgraph`` which builds
+    # a passthrough StateGraph and calls back here with
+    # ``_skip_graph=True`` to bypass this dispatch (recursion guard).
+    # The ``naive_baseline`` preset is preserved as ablation per
+    # ADR 0001 and is intentionally NOT routed through LangGraph.
+    if (
+        not _skip_graph
+        and os.environ.get("BIDMATE_ORCHESTRATOR", "direct").strip().lower() == "langgraph"
+        and (pipeline is None or pipeline != "naive_baseline")
+        and (params is None or params.pipeline != "naive_baseline")
+    ):
+        from rag_graph_agentic_full import run_via_langgraph
+
+        return run_via_langgraph(
+            index,
+            query,
+            top_k=top_k,
+            context_entities=context_entities,
+            metadata_first=metadata_first,
+            rerank=rerank,
+            verifier_retry=verifier_retry,
+            retrieval_mode=retrieval_mode,
+            retrieval_backend=retrieval_backend,
+            pipeline=pipeline,
+            prompt_profile=prompt_profile,
+            conversation_state=conversation_state,
+            comparison_balance=comparison_balance,
+            rrf_k=rrf_k,
+            bm25_stopword_profile=bm25_stopword_profile,
+            params=params,
+        )
+
     if params is not None:
         # Pre-bundle path (issue #260). `params=` is an additive opt-in:
         # individual pipeline kwargs are still accepted for compatibility,
