@@ -147,6 +147,21 @@ ablation_runs:
     rerank_cross_encoder: true
     verifier_retry: true
     retrieval_mode: flat
+  # Issue #396 / ADR 0022 — additive query-side rewrite (HyDE). The
+  # existing `full` row is the natural negative (`query_expansion`
+  # defaults to identity). Under the public CI hashing-backend +
+  # `BIDMATE_QUERY_EXPANSION_BACKEND` unset, ``HyDEExpander`` falls
+  # back to the raw query (no ANTHROPIC_API_KEY), so `full_hyde` is
+  # byte-equal to `full` on the deterministic eval surface. Real
+  # backends (BIDMATE_QUERY_EXPANSION_BACKEND=hyde + ANTHROPIC_API_KEY)
+  # generate a hypothetical RFP-style passage and embed it instead.
+  - name: full_hyde
+    pipeline: agentic_full
+    metadata_first: true
+    rerank: true
+    verifier_retry: true
+    retrieval_mode: flat
+    query_expansion: hyde
 cases:
   - id: single_doc_security
     query_type: single_doc

@@ -29,6 +29,7 @@ except ImportError:  # pragma: no cover — defensive; declared in requirements.
 
 from bidmate_logging import get_logger, log_query_event
 from rag_observability import resolve_trace_backend
+from rag_query_expansion import default_expander
 from rag_synthesis import synthesize_answer
 
 _LOGGER = get_logger("rag_core")
@@ -74,6 +75,7 @@ from rag_pipeline_presets import (
     PIPELINE_PRESETS,
     RRF_K,
     VALID_BM25_STOPWORD_PROFILES,
+    VALID_QUERY_EXPANSIONS,
     VALID_RETRIEVAL_BACKENDS,
     VALID_RETRIEVAL_MODES,
     VALID_RRF_K_RANGE,
@@ -1777,7 +1779,17 @@ def retrieve_candidates(
         plan["filter_fallback_used"] = True
 
     embedding_config = index.get("embedding", {})
-    query_embedding = embed_query_for_index(query, embedding_config)
+    # #396 / ADR 0022 — pluggable query expansion. Default is the
+    # ``IdentityExpander`` so ``naive_baseline`` and any preset without
+    # an explicit ``query_expansion`` knob produce a bit-identical
+    # ``embed_query_for_index`` call (ADR 0001 golden invariant).
+    # HyDE replaces ONLY the dense embedding input — the BM25 / lexical /
+    # metadata paths below consume ``analysis.tokens`` (computed
+    # upstream from the raw ``query``), so they remain invariant.
+    expander = default_expander(plan)
+    embed_text, expansion_meta = expander.expand(query, plan=plan)
+    plan["query_expansion_meta"] = expansion_meta
+    query_embedding = embed_query_for_index(embed_text, embedding_config)
     query_tokens = set(analysis.get("tokens", []))
     query_topics = analysis.get("topics", [])
     retrieval_backend = str(plan.get("retrieval_backend", "dense"))
