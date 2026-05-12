@@ -11,6 +11,32 @@
 
 > 일반 영어 LLM 벤치(KMMLU/MMLU) 점수 경쟁이 아닌 **한국어 RFP 도메인-특화 RAG**입니다. 차별화는 세 축: 비교 질의에서 한쪽 문서 starvation을 막는 [comparison-aware balanced top-k](#key-technical-contribution--comparison-aware-balanced-top-k), 의미 유사도 단독의 함정을 회피하는 metadata-first retrieval([ADR 0002](docs/adr/0002-metadata-first-retrieval.md)), hallucination을 구조적으로 차단하는 extractive grounded-answer 답변 계약([ADR 0003](docs/adr/0003-structured-answer-citation-contract.md)). 측정은 공개 합성 + 비공개 real-data + KorQuAD 2.1 한국어 공개셋으로 분리([ADR 0005](docs/adr/0005-eval-split-public-synthetic-private-local.md), [ADR 0018](docs/adr/0018-korean-public-rag-bench.md)) — silent regression이 한 표면에서 다른 표면으로 새지 않도록 설계됐습니다.
 
+### 🎬 5초 비주얼 훅 — 실제 `comparison` 질의 한 건 (extractive, no LLM)
+
+다음은 본 시스템이 실제로 출력하는 `agentic_full` 파이프라인 결과입니다. *외부 LLM 호출 없이*, retrieved evidence에서 claim을 추출하고 citation으로 잠급니다 ([ADR 0003](docs/adr/0003-structured-answer-citation-contract.md)).
+
+```text
+$ make ask
+python3 app.py --input_dir data/index --query "기관 A와 기관 B의 보안 요구사항 차이를 알려줘" --pipeline agentic_full
+
+INFO bidmate.rag_core: query_complete  status='supported'  query_type='comparison'
+                                       latency_ms=5.79      retry_count=0
+                                       claim_count=2        citation_count=2
+
+[OK] Answer written: outputs/answer.json
+
+─ Answer ───────────────────────────────────────────────────────────────────
+기관 A — 모델 품질관리, 보안 통제, 로그 추적
+        [rfp-agency-a-ai-quality::chunk-001]
+기관 B — 개인정보 비식별화, 접근 권한 분리
+        [rfp-agency-b-mlops-governance::chunk-001]
+────────────────────────────────────────────────────────────────────────────
+```
+
+- 두 기관이 **모두** 인용된 점이 핵심 — [comparison-aware balanced top-k](#key-technical-contribution--comparison-aware-balanced-top-k)가 한쪽 문서 starvation을 막은 결과. 단순 global top-k는 score가 높은 한 문서가 결과 슬롯을 과점할 수 있습니다.
+- 외부 API 호출 없음 (extractive). 위 5.79 ms는 in-memory index · n=2 docs 기준 실측치이며 ([ADR 0019](docs/adr/0019-embedding-default-stays-minilm.md)의 MiniLM 디폴트 결정 효과), 실제 RFP 코퍼스에서는 corpus 크기 + retry policy에 따라 변동합니다.
+- 5초 터미널 재생 (asciinema 설치 시): `asciinema play docs/assets/demo.cast`. 60–90 s 풀 워크스루 녹화 가이드: [`docs/deployment.md#recording-the-demo-video`](docs/deployment.md#recording-the-demo-video).
+
 ## 🚀 Live demo
 
 | 경로 | 상태 | 비고 |
@@ -23,7 +49,8 @@
 | **FastAPI Swagger** | `make api` 후 [/docs](http://localhost:8000/docs) | 프로그래매틱 사용·통합 테스트용 |
 | **로컬 1분 시작** | `make index && make demo` | `http://localhost:8501` |
 | **📈 Live leaderboard** | [https://hskim-solv.github.io/BidMate-DocAgent/leaderboard/](https://hskim-solv.github.io/BidMate-DocAgent/leaderboard/) | 메인 브랜치 머지마다 자동 누적되는 headline metric time-series + bootstrap CI 밴드 (ADR 0005 aggregate-only) |
-| **데모 비디오 (2~3분)** | 후속 작업 — 가이드: [docs/deployment.md#recording-the-demo-video](docs/deployment.md#recording-the-demo-video) | 배포·녹화 완료 후 본 표 상단에 embed |
+| **5초 터미널 미리보기 (asciinema)** | `asciinema play docs/assets/demo.cast` 또는 [정적 블록](#-5초-비주얼-훅--실제-comparison-질의-한-건-extractive-no-llm) | 위 hero 섹션의 정적 markdown과 같은 명령 출력을 5초 재생용 cast 파일 ([`docs/assets/demo.cast`](docs/assets/demo.cast))로 패키징 (#172 D) |
+| **데모 비디오 (60–90 s 풀 워크스루)** | 후속 녹화 작업 — 가이드: [`docs/deployment.md#recording-the-demo-video`](docs/deployment.md#recording-the-demo-video) | 위 5초 미리보기는 단일 `comparison` 질의 한 건; 풀 워크스루는 abstention/diagnostics/synthesis 비교까지 포함 |
 | **엔지니어링 노트** | [hskim-solv.github.io/BidMate-DocAgent](https://hskim-solv.github.io/BidMate-DocAgent/) | 결정의 *왜*와 측정 결과를 정리한 GitHub Pages 사이트 (블로그 3편 + 1-page deep-dive) |
 
 데모 UI는 3개 pipeline preset(`naive_baseline` · `agentic_full` · `agentic_full_llm`)을 라디오 버튼으로 전환하고, 같은 질의에 대한 **extractive vs LLM 합성(ADR 0011)** 답변을 side-by-side로 비교합니다. 모든 claim은 evidence chunk_id로 추적 가능하며, abstention 케이스(예: `기관 A의 양자암호 적용 방안은?`)는 🔴 insufficient status로 명시되어 *근거 부족을 정직하게 인정*합니다.
