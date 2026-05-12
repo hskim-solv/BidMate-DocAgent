@@ -3,10 +3,11 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![PR Eval Delta](https://github.com/hskim-solv/BidMate-DocAgent/actions/workflows/pr-eval.yml/badge.svg?branch=main)](https://github.com/hskim-solv/BidMate-DocAgent/actions/workflows/pr-eval.yml) [![Python 3.11](https://img.shields.io/badge/Python-3.11-blue.svg)](pyproject.toml) [![Engineering notes](https://img.shields.io/badge/engineering--notes-GitHub%20Pages-blue)](https://hskim-solv.github.io/BidMate-DocAgent/) [![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/hskim-solv/BidMate-DocAgent/blob/main/demo/bidmate_quickstart.ipynb) [![Open in HF Spaces](https://huggingface.co/datasets/huggingface/badges/resolve/main/open-in-hf-spaces-sm.svg)](https://huggingface.co/spaces/hskim-solv/bidmate-docagent)
 
-<!-- Hero demo asset slot. Recording guide: docs/deployment.md#recording-the-demo-video.
-     Replace docs/assets/demo.gif with the actual asset once captured; renders inline
-     in the GitHub README and in the pinned-repo profile card. -->
-![BidMate-DocAgent live demo (60-90 s walkthrough)](docs/assets/demo.gif)
+<!-- Hero demo asset slot. Asset (docs/assets/demo.gif) not yet captured;
+     image line is commented out to avoid broken-image rendering on GitHub.
+     Recording guide: docs/deployment.md#recording-the-demo-video.
+     To re-enable: uncomment the line below once docs/assets/demo.gif exists. -->
+<!-- ![BidMate-DocAgent live demo (60-90 s walkthrough)](docs/assets/demo.gif) -->
 
 > 일반 영어 LLM 벤치(KMMLU/MMLU) 점수 경쟁이 아닌 **한국어 RFP 도메인-특화 RAG**입니다. 차별화는 세 축: 비교 질의에서 한쪽 문서 starvation을 막는 [comparison-aware balanced top-k](#key-technical-contribution--comparison-aware-balanced-top-k), 의미 유사도 단독의 함정을 회피하는 metadata-first retrieval([ADR 0002](docs/adr/0002-metadata-first-retrieval.md)), hallucination을 구조적으로 차단하는 extractive grounded-answer 답변 계약([ADR 0003](docs/adr/0003-structured-answer-citation-contract.md)). 측정은 공개 합성 + 비공개 real-data + KorQuAD 2.1 한국어 공개셋으로 분리([ADR 0005](docs/adr/0005-eval-split-public-synthetic-private-local.md), [ADR 0018](docs/adr/0018-korean-public-rag-bench.md)) — silent regression이 한 표면에서 다른 표면으로 새지 않도록 설계됐습니다.
 
@@ -20,7 +21,6 @@
 | **One-line docker run** | `docker run -p 8501:8501 -p 8000:8000 -e BIDMATE_DEMO_MODE=both ghcr.io/hskim-solv/bidmate-demo:latest` | 클론 없이 published image 로 Streamlit + FastAPI 동시 실행 ([`docs/deployment.md`](docs/deployment.md#one-line-docker-run-no-clone-fastest-reviewer-path) 참고) |
 | **FastAPI Swagger** | `make api` 후 [/docs](http://localhost:8000/docs) | 프로그래매틱 사용·통합 테스트용 |
 | **로컬 1분 시작** | `make index && make demo` | `http://localhost:8501` |
-| **데모 비디오 (2~3분)** | 녹화 가이드: [docs/deployment.md#recording-the-demo-video](docs/deployment.md#recording-the-demo-video) | 라이브 배포 후 README 상단에 embed 예정 |
 | **📈 Live leaderboard** | [https://hskim-solv.github.io/BidMate-DocAgent/leaderboard/](https://hskim-solv.github.io/BidMate-DocAgent/leaderboard/) | 메인 브랜치 머지마다 자동 누적되는 headline metric time-series + bootstrap CI 밴드 (ADR 0005 aggregate-only) |
 | **데모 비디오 (2~3분)** | 후속 작업 — 가이드: [docs/deployment.md#recording-the-demo-video](docs/deployment.md#recording-the-demo-video) | 배포·녹화 완료 후 본 표 상단에 embed |
 | **엔지니어링 노트** | [hskim-solv.github.io/BidMate-DocAgent](https://hskim-solv.github.io/BidMate-DocAgent/) | 결정의 *왜*와 측정 결과를 정리한 GitHub Pages 사이트 (블로그 3편 + 1-page deep-dive) |
