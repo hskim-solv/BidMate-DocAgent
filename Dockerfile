@@ -33,11 +33,20 @@ RUN pip install --upgrade pip \
 # Copy only the code/data needed at runtime. tests/, benchmarks/, eval/
 # are intentionally left out of the image to keep it small — they are
 # part of the CLI evaluation flow, not the demo surface.
-COPY rag_core.py rag_synthesis.py rag_observability.py ingestion.py visual_ingestion.py app.py ./
+#
+# `COPY *.py ./` deliberately picks up every top-level module — the
+# rag_core decomposition (#344/#364/#373/…) keeps extracting new ones
+# (rag_metadata_extraction, rag_pipeline_presets, korean_lexicon, …)
+# and an explicit list silently rotted past those refactors, causing a
+# ModuleNotFoundError crash loop on Fly (issue #383). Keep the COPY
+# generic so future extractions stay deployable without Dockerfile
+# edits, and mirror the same set in deploy-fly.yml's path filter.
+COPY *.py ./
 COPY api/ ./api/
 COPY demo/ ./demo/
 COPY scripts/build_index.py ./scripts/build_index.py
 COPY data/raw/ ./data/raw/
+COPY data/lexicon/ ./data/lexicon/
 COPY docker-entrypoint.sh ./docker-entrypoint.sh
 RUN chmod +x docker-entrypoint.sh
 

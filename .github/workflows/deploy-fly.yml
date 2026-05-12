@@ -12,17 +12,13 @@ on:
   push:
     branches: [main]
     paths:
-      # Dockerfile-copied runtime code
-      - 'rag_core.py'
-      - 'rag_synthesis.py'
-      - 'rag_observability.py'
-      - 'ingestion.py'
-      - 'visual_ingestion.py'
-      - 'app.py'
+      # Dockerfile-copied runtime code — keep in sync with Dockerfile COPY set.
+      - '*.py'                       # every top-level module (rag_core, ingestion, …)
       - 'api/**'
       - 'demo/**'
       - 'scripts/build_index.py'
       - 'data/raw/**'
+      - 'data/lexicon/**'
       # Container + deploy primitives
       - 'Dockerfile'
       - 'docker-entrypoint.sh'

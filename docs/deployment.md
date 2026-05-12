@@ -74,10 +74,10 @@ to stay under the free-tier budget.
 Every push to `main` that touches a runtime path runs
 [`.github/workflows/deploy-fly.yml`](../.github/workflows/deploy-fly.yml)
 and re-deploys the live demo. The path filter mirrors the Dockerfile
-COPY set (`rag_core.py`, `rag_synthesis.py`, `rag_observability.py`,
-`ingestion.py`, `visual_ingestion.py`, `app.py`, `api/**`, `demo/**`,
-`scripts/build_index.py`, `data/raw/**`, `Dockerfile`,
-`docker-entrypoint.sh`, `requirements.txt`, `fly.toml`) — doc-only
+COPY set: every top-level `*.py`, `api/**`, `demo/**`,
+`scripts/build_index.py`, `data/raw/**`, `data/lexicon/**`, the
+container primitives (`Dockerfile`, `docker-entrypoint.sh`,
+`requirements.txt`, `fly.toml`), and the workflow itself. Doc-only
 changes do *not* trigger a deploy. The workflow asserts every machine
 is in `started` state via `flyctl status --json` and smoke-tests
 `https://<app>.fly.dev/health` before posting a comment on the merged
