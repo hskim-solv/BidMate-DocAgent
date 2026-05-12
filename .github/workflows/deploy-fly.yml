@@ -69,25 +69,34 @@ jobs:
             flyctl deploy --remote-only --app "$FLY_APP"
           fi
 
-      - name: Assert all machines healthy
+      - name: Poll /health until ready (also wakes the machine)
+        # `flyctl status` immediately after deploy reports `stopped` because
+        # fly.toml sets `auto_stop_machines=true` + `min_machines_running=0`
+        # for cost savings — Fly intentionally stops idle machines and only
+        # auto-starts them on the next request. So the only real validation
+        # is the actual user path: GET /health. The first request both wakes
+        # the machine (auto_start_machines=true) and verifies the response.
+        # Poll for ~3 minutes to cover cold start (index build + uvicorn
+        # boot + DNS propagation on first deploy).
         if: ${{ github.event.inputs.dry_run != 'true' }}
         run: |
           set -eu
-          flyctl status --json --app "$FLY_APP" \
-            | jq -e '[.Machines[] | select(.state != "started")] | length == 0'
-
-      - name: Smoke-test public route
-        if: ${{ github.event.inputs.dry_run != 'true' }}
-        run: |
-          set -eu
-          for i in 1 2 3 4 5; do
-            if curl --fail --max-time 10 "$FLY_URL/health"; then
-              echo "Health check passed on attempt $i"
+          deadline=$(( $(date +%s) + 180 ))
+          attempt=0
+          while [ "$(date +%s)" -lt "$deadline" ]; do
+            attempt=$((attempt + 1))
+            if curl --fail --max-time 15 "$FLY_URL/health"; then
+              echo ""
+              echo "::notice::Health check passed on attempt $attempt"
               exit 0
             fi
-            sleep 10
+            remaining=$(( deadline - $(date +%s) ))
+            echo "attempt $attempt — waiting for $FLY_URL/health (${remaining}s remaining)"
+            sleep 5
           done
-          echo "::error::Health check failed after 5 attempts"
+          echo "::error::Health check failed after 3 minutes"
+          echo "=== Final machine status ==="
+          flyctl status --app "$FLY_APP" || true
           exit 1
 
       - name: Upsert PR comment with live URL + SHA
@@ -107,7 +116,7 @@ jobs:
           fi
           marker="<!-- deploy-fly-bot -->"
           short_sha="${SHA:0:7}"
-          body="$(printf '%s\n\n🟢 **Live demo deployed**\n\n- URL: %s/\n- SHA: `%s`\n- Healthcheck: passed\n\nRollback: `flyctl releases revert <version>` (see [docs/deployment.md](../blob/main/docs/deployment.md#rollback))\n' \
+          body="$(printf '%s\n\n🟢 **Live demo deployed**\n\n- URL: %s/\n- SHA: `%s`\n- Healthcheck: passed\n\nFirst request after idle wakes the machine — expect ~5-10s cold start. Rollback: `flyctl releases revert <version>` (see [docs/deployment.md](../blob/main/docs/deployment.md#rollback)).\n' \
             "$marker" "$FLY_URL" "$short_sha")"
           for pr in $prs; do
             existing=$(gh api "repos/$REPO/issues/$pr/comments" \
