@@ -29,6 +29,10 @@
 # Tests
 .PHONY: test test-regression
 
+# Auto-ship pipeline (Stop hook driven). See scripts/claude-hooks/stop-ship.sh
+# and the plan at /Users/hskim/.claude/plans/prci-synchronous-newell.md.
+.PHONY: ship-arm ship-disarm ship-status
+
 # Cleanup
 .PHONY: clean
 
@@ -281,3 +285,54 @@ leaderboard-check:
 
 clean:
 	rm -rf data/index outputs reports
+
+# ---------------------------------------------------------------------------
+# Auto-ship pipeline (Stop hook driven). Single-shot: every cycle disarms.
+#
+# Arming variables (env):
+#   TTL          duration string (default 2h). Examples: 30m, 2h, 90m.
+#   REAL_EVAL    auto (default), skip, async. Affects PR body §5b cascade.
+#   DRAFT        true|false (default false). Open PR as draft.
+#   DRY_RUN      0|1. With 1, all mutating commands are echoed to
+#                .claude/.ship-dryrun.log instead of executed.
+#   CROSS_OWNER  ack to bypass multi-agent lock check (logged).
+#   STACKED      ack to bypass heterogeneous-prefix refusal (logged).
+#
+# Examples:
+#   make ship-arm                       # 2h TTL, auto §5b
+#   make ship-arm TTL=30m REAL_EVAL=skip
+#   make ship-arm DRY_RUN=1             # safe end-to-end test
+#   make ship-disarm                    # immediate kill (tier 1)
+#   make ship-status                    # human-readable arm state
+# ---------------------------------------------------------------------------
+
+TTL ?= 2h
+REAL_EVAL ?= auto
+DRAFT ?= false
+DRY_RUN ?= 0
+CROSS_OWNER ?=
+STACKED ?=
+
+ship-arm:
+	@$(PYTHON) scripts/claude-hooks/_ship_arm.py \
+	  --ttl "$(TTL)" \
+	  --real-eval "$(REAL_EVAL)" \
+	  --draft "$(DRAFT)" \
+	  --dry-run "$(DRY_RUN)" \
+	  --cross-owner "$(CROSS_OWNER)" \
+	  --stacked "$(STACKED)"
+
+ship-disarm:
+	@rm -f .claude/.ship-armed .claude/.ship-running.pid
+	@echo "ship: disarmed."
+
+ship-status:
+	@if [ -f .claude/.ship-armed ]; then \
+	  echo "ship: ARMED"; \
+	  cat .claude/.ship-armed; \
+	else \
+	  echo "ship: not armed"; \
+	fi
+	@if [ -f .claude/.ship-running.pid ]; then \
+	  echo "ship: pipeline running (pid=$$(cat .claude/.ship-running.pid))"; \
+	fi
