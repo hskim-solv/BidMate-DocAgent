@@ -1,3 +1,35 @@
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
+
+[tool.coverage.run]
+branch = true
+source = [
+    "rag_core",
+    "rag_synthesis",
+    "rag_vector_store",
+    "rag_rerank",
+    "rag_observability",
+    "ingestion",
+    "visual_ingestion",
+    "text_normalize",
+    "bidmate_logging",
+    "app",
+    "api",
+    "eval",
+    "scripts",
+]
+omit = [
+    "tests/*",
+    "*/conftest.py",
+    "scripts/_governance.py",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
+exclude_also = [
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.:",
+]

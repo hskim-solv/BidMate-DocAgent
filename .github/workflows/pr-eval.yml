@@ -32,6 +32,34 @@ jobs:
       - name: Run pytest
         run: bash scripts/test.sh
 
+      - name: Coverage summary
+        if: always()
+        run: |
+          if [ -f coverage.xml ] && command -v coverage >/dev/null 2>&1; then
+            {
+              echo "## Coverage";
+              echo '```';
+              coverage report --skip-empty || true;
+              echo '```';
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload coverage artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-xml
+          path: coverage.xml
+          if-no-files-found: warn
+
+      - name: Upload coverage to Codecov
+        if: always()
+        uses: codecov/codecov-action@v4
+        with:
+          files: coverage.xml
+          fail_ci_if_error: false
+          verbose: false
+
       - name: Verify leaderboard artifacts are in sync with history
         run: python3 scripts/leaderboard.py --check
 
