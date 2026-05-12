@@ -59,6 +59,26 @@ from korean_lexicon import (
     VERIFICATION_INTENT_TOKENS,
 )
 
+# Pipeline preset registry (PIPELINE_PRESETS, PIPELINE_ALIASES, helpers,
+# RRF_K, VALID_RRF_K_RANGE, etc.) lives in rag_pipeline_presets.py as
+# of issue #364 — stage 1 of the rag_core.py decomposition epic. The
+# symbols below are re-exported so the FastAPI server, CLI app,
+# benchmark / build_index / eval scripts, Streamlit demo and the test
+# suite keep importing them from ``rag_core`` unchanged.
+from rag_pipeline_presets import (
+    DEFAULT_CLI_PIPELINE_NAME,
+    DEFAULT_COMPARISON_BALANCE,
+    DEFAULT_RAG_PIPELINE_NAME,
+    PIPELINE_ALIASES,
+    PIPELINE_CONFIG_KEYS,
+    PIPELINE_PRESETS,
+    RRF_K,
+    VALID_RRF_K_RANGE,
+    canonical_pipeline_name,
+    is_pipeline_name,
+    pipeline_cli_choices,
+)
+
 DEFAULT_EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 DEFAULT_HASH_DIM = 384
 DEFAULT_CHUNK_MAX_CHARS = 520
@@ -66,11 +86,6 @@ DEFAULT_CHUNK_OVERLAP_SENTENCES = 1
 VALID_CHUNKING_STRATEGIES = {"auto", "section", "fixed"}
 VALID_RETRIEVAL_MODES = {"flat", "hierarchical"}
 VALID_RETRIEVAL_BACKENDS = {"dense", "hybrid"}
-RRF_K = 60
-# Inclusive bounds for the hybrid RRF k knob (issue #149). The lower
-# bound rules out k=0 (division-by-zero); the upper bound is a sanity
-# cap — beyond ~1000 the fusion is effectively a flat sum of ranks.
-VALID_RRF_K_RANGE = (1, 1000)
 
 # Hard cap on the per-query agent loop. ``metadata_stage_sequence`` today
 # returns at most ["strict", "reduced", "relaxed"] (3 stages). This constant
@@ -78,82 +93,11 @@ VALID_RRF_K_RANGE = (1, 1000)
 # past 3 must update this value and explain why in the PR description.
 MAX_AGENT_ITERATIONS = 3
 
-DEFAULT_CLI_PIPELINE_NAME = "naive_baseline"
-DEFAULT_RAG_PIPELINE_NAME = "agentic_full"
-PIPELINE_CONFIG_KEYS = (
-    "top_k",
-    "metadata_first",
-    "rerank",
-    "rerank_cross_encoder",
-    "verifier_retry",
-    "retrieval_mode",
-    "retrieval_backend",
-    "prompt_profile",
-    "rrf_k",
-    "bm25_stopword_profile",
-)
-DEFAULT_COMPARISON_BALANCE: dict[str, Any] = {
-    "enabled": True,
-    "min_per_target": 1,
-    "k_per_target": 3,
-    "headroom": 2,
-    "max_top_k": 12,
-}
 QUERY_TYPE_TOP_K_DEFAULTS: dict[str, int] = {
     "single_doc": 4,
     "follow_up": 6,
     "comparison": 6,
 }
-PIPELINE_PRESETS: dict[str, dict[str, Any]] = {
-    "naive_baseline": {
-        "top_k": 4,
-        "metadata_first": False,
-        "rerank": False,
-        "rerank_cross_encoder": False,
-        "verifier_retry": False,
-        "retrieval_mode": "flat",
-        "retrieval_backend": "dense",
-        "prompt_profile": "minimal_grounded_extractive",
-        "rrf_k": RRF_K,
-        "bm25_stopword_profile": "shared",
-        "description": (
-            "Fixed-size chunks with dense top-k retrieval only; no metadata-first "
-            "filtering, reranking, or verifier retry."
-        ),
-    },
-    "agentic_full": {
-        "top_k": None,
-        "metadata_first": True,
-        "rerank": True,
-        "rerank_cross_encoder": False,
-        "verifier_retry": True,
-        "retrieval_mode": "flat",
-        "retrieval_backend": "dense",
-        "prompt_profile": "structured_grounded_claims",
-        "rrf_k": RRF_K,
-        "bm25_stopword_profile": "shared",
-        "comparison_balance": dict(DEFAULT_COMPARISON_BALANCE),
-        "description": "Metadata-first retrieval with lexical/metadata rerank and verifier retry.",
-    },
-    # ADR 0011 — additive LLM synthesis path. Same retrieval/verifier as
-    # agentic_full; only the summary/answer_text rendering swaps to a
-    # backend-pluggable LLM under the "no new chunk_ids" guard. Claims
-    # and citations remain extractive (ADR 0003 preserved).
-    "agentic_full_llm": {
-        "top_k": None,
-        "metadata_first": True,
-        "rerank": True,
-        "rerank_cross_encoder": False,
-        "verifier_retry": True,
-        "retrieval_mode": "flat",
-        "prompt_profile": "llm_synthesis",
-        "rrf_k": RRF_K,
-        "bm25_stopword_profile": "shared",
-        "comparison_balance": dict(DEFAULT_COMPARISON_BALANCE),
-        "description": "agentic_full retrieval; LLM-synthesized summary under ADR 0011 guard.",
-    },
-}
-PIPELINE_ALIASES = {"full": "agentic_full", "full_llm": "agentic_full_llm"}
 WEAK_SECTION_HEADINGS = {
     "",
     "본문",
@@ -241,28 +185,6 @@ def ordered_unique(values: Iterable[str]) -> list[str]:
             seen.add(value)
             ordered.append(value)
     return ordered
-
-
-def is_pipeline_name(value: Any) -> bool:
-    name = str(value or "")
-    return name in PIPELINE_PRESETS or name in PIPELINE_ALIASES
-
-
-def pipeline_cli_choices() -> list[str]:
-    # ADR 0001 explicit signal: this list is the source of truth for
-    # which pipeline names are surfaced to the CLI. Adding/removing an
-    # entry is the explicit revisit of that ADR (or, for additive
-    # changes like ADR 0011, the explicit follow-on).
-    return [DEFAULT_CLI_PIPELINE_NAME, DEFAULT_RAG_PIPELINE_NAME, "agentic_full_llm"]
-
-
-def canonical_pipeline_name(value: str | None, default: str = DEFAULT_RAG_PIPELINE_NAME) -> str:
-    requested = str(value or default)
-    canonical = PIPELINE_ALIASES.get(requested, requested)
-    if canonical not in PIPELINE_PRESETS:
-        choices = ", ".join(sorted([*PIPELINE_PRESETS, *PIPELINE_ALIASES]))
-        raise ValueError(f"pipeline must be one of: {choices}")
-    return canonical
 
 
 def resolve_pipeline_config(
