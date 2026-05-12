@@ -16,10 +16,18 @@ makes them visible to git).
 
 Intended cadence: deliberate, after a decision lands (PR merged,
 threshold tightened). Not every run.
+
+Strict mode (issue #414): pass ``--strict`` or set
+``BIDMATE_BASELINE_STRICT=1`` to escalate the two existing provenance
+warnings (no eval-side provenance block; eval/baseline SHA skew per
+issue #160) from stderr-only to hard failures (exit 2, no baseline
+written). Default behavior is unchanged.
 """
 from __future__ import annotations
 
+import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -30,40 +38,63 @@ if str(ROOT) not in sys.path:
 from scripts._utils import build_provenance, make_run_id
 from scripts.run_real_eval_delta import extract_aggregate
 
+STRICT_ENV_VAR = "BIDMATE_BASELINE_STRICT"
+_TRUTHY = {"1", "true", "yes"}
+
 EVAL_SUMMARY = ROOT / "reports" / "real100" / "eval_summary.json"
 BASELINE_PATH = ROOT / "reports" / "real100" / "baseline.aggregate.json"
 HISTORY_DIR = ROOT / "reports" / "real100" / "history"
 JUDGE_LOCAL = ROOT / "reports" / "real100" / "judge.local.json"
 
 
+def _resolve_strict(flag: bool) -> bool:
+    """Effective strict mode = CLI flag OR ``BIDMATE_BASELINE_STRICT`` truthy.
+
+    Truthy values (case-insensitive): ``1``, ``true``, ``yes``. Any other
+    value of the env var is treated as falsy, including ``0``, ``false``,
+    ``no``, the empty string, or anything unrecognized.
+    """
+    if flag:
+        return True
+    raw = os.environ.get(STRICT_ENV_VAR, "").strip().lower()
+    return raw in _TRUTHY
+
+
 def _warn_if_stale(
-    eval_prov: dict[str, object] | None, baseline_prov: dict[str, object]
+    eval_prov: dict[str, object] | None,
+    baseline_prov: dict[str, object],
+    strict: bool = False,
 ) -> None:
-    """Warn loudly if the eval was generated at a different code state
-    than the baseline is being written at.
+    """Warn — or, in strict mode, hard-fail — when the eval was generated
+    at a different code state than the baseline is being written at.
 
     This is the failure mode that produced issue #160: ``make real-eval``
     runs at commit X, then ``make real-eval-baseline-update`` runs at
     commit Y, and the baseline silently captures Y's provenance with X's
-    metrics. We warn rather than fail because legitimate workflows
-    (e.g., docs-only changes between runs) shouldn't be blocked, but we
-    want the failure mode to be loud and self-diagnosing.
+    metrics. Default is warn (legitimate workflows like docs-only changes
+    between runs shouldn't be blocked). Strict mode (``--strict`` or
+    ``BIDMATE_BASELINE_STRICT=1``, issue #414) escalates both branches
+    to ``SystemExit(2)`` — for CI/pre-push and other gates that require
+    a self-consistent baseline.
     """
+    level = "ERROR" if strict else "WARN"
     if not isinstance(eval_prov, dict):
         print(
-            "[WARN] eval_summary.json has no `provenance` block — cannot verify "
+            f"[{level}] eval_summary.json has no `provenance` block — cannot verify "
             "the eval was run at the current HEAD. The baseline's provenance "
             "will reflect the current HEAD, not the eval-run code state. "
             "Re-run `make real-eval` at HEAD to get a self-consistent baseline.",
             file=sys.stderr,
         )
+        if strict:
+            raise SystemExit(2)
         return
     eval_sha = str(eval_prov.get("git_commit") or "").strip()
     baseline_sha = str(baseline_prov.get("git_commit") or "").strip()
     if not eval_sha or not baseline_sha or eval_sha == baseline_sha:
         return
     print(
-        f"[WARN] Provenance skew detected:\n"
+        f"[{level}] Provenance skew detected:\n"
         f"        eval_summary.json was generated at git_commit={eval_sha}\n"
         f"        baseline is being written at  git_commit={baseline_sha}\n"
         f"        The baseline's provenance will not match the eval's code state.\n"
@@ -71,9 +102,28 @@ def _warn_if_stale(
         f"        before continuing, or accept the skew if you understand the cause.",
         file=sys.stderr,
     )
+    if strict:
+        raise SystemExit(2)
 
 
-def main() -> int:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument(
+        "--strict",
+        action="store_true",
+        help=(
+            "Escalate provenance warnings (missing eval provenance; eval/"
+            "baseline SHA skew per issue #160) to hard failures: exit 2, "
+            f"baseline NOT written. Equivalent to {STRICT_ENV_VAR}=1."
+        ),
+    )
+    return ap.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
+    strict = _resolve_strict(args.strict)
+
     if not EVAL_SUMMARY.exists():
         print(
             f"[ERROR] {EVAL_SUMMARY} not found. Run `make real-eval` first.",
@@ -85,7 +135,7 @@ def main() -> int:
     agg = extract_aggregate(raw)
     eval_prov = raw.get("provenance") if isinstance(raw, dict) else None
     baseline_prov = build_provenance()
-    _warn_if_stale(eval_prov, baseline_prov)
+    _warn_if_stale(eval_prov, baseline_prov, strict=strict)
     agg["provenance"] = baseline_prov
 
     # If a judge run is present (ADR 0006), fold its aggregate into the

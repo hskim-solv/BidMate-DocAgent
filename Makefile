@@ -244,8 +244,13 @@ real-eval-delta:
 # entry. Aggregate-only (extractor enforces ADR 0005). Intended to run
 # *after* a decision is made (PR merged, threshold tightened, etc.),
 # not on every eval. Diff the result with `git diff` before committing.
+#
+# Pass STRICT=1 (or set BIDMATE_BASELINE_STRICT=1, issue #414) to escalate
+# the two existing provenance warnings (no eval-side provenance; eval/
+# baseline SHA skew per issue #160) to hard failures — for CI/pre-push
+# or any gate that requires a self-consistent baseline.
 real-eval-baseline-update:
-	$(PYTHON) scripts/write_real_eval_baseline.py
+	$(PYTHON) scripts/write_real_eval_baseline.py $(if $(STRICT),--strict,)
 
 # Render the chronological real-data history table into
 # docs/private-100-doc-experiments.md (between the
