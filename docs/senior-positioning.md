@@ -157,8 +157,9 @@ make reproduce  # smoke + SHA-256 over the environment-invariant metric subset
 
 **15분 — 포트폴리오 평가**
 1. 이 문서 §"시니어 시그널 한눈에 보기" 표
-2. [`portfolio-case-study.md`](./portfolio-case-study.md) §3, §5, §7
-3. ADR 0005 + 0003 (load-bearing 결정 둘만)
+2. [`production-readiness.md`](./production-readiness.md) — 운영 surface 1-pager (health, observability, cost, SLO, regression gate, reproducibility)
+3. [`portfolio-case-study.md`](./portfolio-case-study.md) §3, §5, §7
+4. ADR 0005 + 0003 (load-bearing 결정 둘만)
 
 **30분 — 깊이 있는 평가**
 1. [`engineering-governance.md`](./engineering-governance.md) 전체
