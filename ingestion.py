@@ -135,7 +135,7 @@ class HwpNativeLoader(CsvTextDocumentLoader):
         self.last_fallback_reason = None
         try:
             native_text = _extract_hwp_native(source_path)
-        except (ImportError, OSError, RuntimeError) as exc:
+        except _hwp_native_fallback_exceptions() as exc:
             native_text = None
             reason = f"{type(exc).__name__}: {str(exc)[:120]}"
             self.last_fallback_reason = reason
@@ -153,12 +153,38 @@ class HwpNativeLoader(CsvTextDocumentLoader):
         return text
 
 
+def _hwp_native_fallback_exceptions() -> tuple[type[BaseException], ...]:
+    """Exception tuple ``HwpNativeLoader`` catches to fall back to CSV text.
+
+    Includes pyhwp's own parse-time errors (``InvalidHwp5FileError``,
+    ``InvalidOleStorageError``) when ``hwp5`` is installed. Built lazily so
+    the handler is still well-formed when ``hwp5`` is absent (CI case),
+    where ``_extract_hwp_native`` raises ``ImportError`` and falls back.
+    """
+    base: tuple[type[BaseException], ...] = (
+        ImportError,
+        OSError,
+        RuntimeError,
+        ValueError,
+    )
+    try:
+        from hwp5.errors import (  # type: ignore[import-not-found]
+            InvalidHwp5FileError,
+            InvalidOleStorageError,
+        )
+    except ImportError:
+        return base
+    return base + (InvalidHwp5FileError, InvalidOleStorageError)
+
+
 def _extract_hwp_native(source_path: Path) -> str | None:
     """Extract body text from an HWP file using pyhwp's Hwp5File API.
 
     Returns ``None`` if parsing succeeds but yields no normalized text.
-    Raises ``ImportError`` if pyhwp is unavailable; other exceptions
-    (``OSError``, ``RuntimeError``) propagate to the caller for fallback.
+    Raises ``ImportError`` if pyhwp is unavailable; pyhwp's parse-time
+    errors (``InvalidHwp5FileError``, ``InvalidOleStorageError``) along
+    with ``OSError``, ``RuntimeError``, ``ValueError`` propagate to the
+    caller for fallback (see ``_hwp_native_fallback_exceptions``).
     """
     from hwp5.xmlmodel import Hwp5File  # type: ignore[import-not-found]
 
