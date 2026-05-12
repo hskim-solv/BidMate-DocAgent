@@ -8,14 +8,25 @@ SSoT instead of carrying their own copy. The §5b tests confirm the
 gating logic accepts the documented escape sentence and rejects an
 empty/comment-only template body (which would otherwise let PR #69-class
 regressions through).
+
+Additional invariants (issue #315, parent #284):
+- `naive_baseline` preset retained in `eval/config.yaml` (ADR 0001).
+- Every ADR row in `docs/adr/README.md` resolves to a file on disk
+  (CLAUDE.md "Prohibited: Deleting or renaming ADR files").
+- `rag_core.py` defines no `pydantic.BaseModel` / `TypedDict` subclass
+  (CLAUDE.md "Prohibited: parallel ... model that shadows
+  run_rag_query's answer dict"; ADR 0003).
 """
 
 from __future__ import annotations
 
+import ast
+import re
 import sys
 from pathlib import Path
 
 import pytest
+import yaml
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -159,4 +170,115 @@ def test_five_b_escape_regex_accepts_documented_escape(sentence):
 def test_five_b_escape_regex_rejects_off_pattern(sentence):
     assert not cbi.FIVE_B_ESCAPE_RE.search(sentence), (
         f"Should not match escape: {sentence!r}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# G2 — `naive_baseline` preset retained in eval/config.yaml (ADR 0001).
+# ---------------------------------------------------------------------------
+
+
+def test_naive_baseline_preset_present_in_eval_config():
+    cfg = yaml.safe_load((ROOT_DIR / "eval" / "config.yaml").read_text())
+
+    ablation_names = {a.get("name") for a in cfg.get("ablation_runs") or []}
+    assert "naive_baseline" in ablation_names, (
+        "ADR 0001 — `naive_baseline` must remain in eval/config.yaml "
+        "`ablation_runs`. It is the side-by-side comparison floor every "
+        "other ablation is measured against; removing it silently "
+        "invalidates every ablation delta. If a legitimate change "
+        "demands its removal, write an ADR superseding 0001 first."
+    )
+
+    assert "naive_baseline" in (cfg.get("latency_budgets") or {}), (
+        "`latency_budgets.naive_baseline` is the absolute p95 ceiling "
+        "enforced by scripts/check_latency_slo.py. Removing it silently "
+        "disables the baseline ablation's latency regression gate."
+    )
+
+
+# ---------------------------------------------------------------------------
+# G4 — every ADR row in docs/adr/README.md resolves to a file on disk and
+# vice versa (CLAUDE.md "Prohibited: Deleting or renaming ADR files").
+# ---------------------------------------------------------------------------
+
+
+_ADR_INDEX_ROW_RE = re.compile(
+    r"\|\s*\[(\d{4})\]\(\./(\d{4}-[^)]+\.md)\)\s*\|"
+)
+
+
+def _parsed_adr_index() -> list[tuple[str, str]]:
+    readme = (ROOT_DIR / "docs" / "adr" / "README.md").read_text()
+    rows = _ADR_INDEX_ROW_RE.findall(readme)
+    assert rows, (
+        "Could not parse any ADR rows in docs/adr/README.md. "
+        "Expected rows of the form `| [NNNN](./NNNN-slug.md) | status | title |`."
+    )
+    return rows
+
+
+def test_adr_index_rows_resolve_to_files():
+    adr_dir = ROOT_DIR / "docs" / "adr"
+    for number, filename in _parsed_adr_index():
+        path = adr_dir / filename
+        assert path.exists(), (
+            f"ADR {number} is listed in docs/adr/README.md but the file "
+            f"{filename!r} does not exist. CLAUDE.md Prohibited: "
+            f"'Deleting or renaming ADR files. Mark Superseded in the "
+            f"Status block; keep the file.' Restore the file or remove "
+            f"the README row with an explicit ADR-renumber rationale."
+        )
+
+
+def test_no_unlinked_adr_files_on_disk():
+    adr_dir = ROOT_DIR / "docs" / "adr"
+    indexed = {filename for _, filename in _parsed_adr_index()}
+    for path in sorted(adr_dir.glob("[0-9][0-9][0-9][0-9]-*.md")):
+        assert path.name in indexed, (
+            f"ADR file {path.name!r} exists on disk but is not listed in "
+            f"docs/adr/README.md index table. Either add a row to the "
+            f"index (preferred) or delete the file with a rationale in "
+            f"the PR description."
+        )
+
+
+# ---------------------------------------------------------------------------
+# G5 — rag_core.py must not introduce a pydantic/TypedDict class that
+# shadows the answer dict (CLAUDE.md "Prohibited"; ADR 0003).
+# ---------------------------------------------------------------------------
+
+
+_SHADOW_BASES = {"BaseModel", "TypedDict"}
+
+
+def test_rag_core_has_no_shadow_answer_models():
+    tree = ast.parse((ROOT_DIR / "rag_core.py").read_text())
+
+    offenders: list[tuple[str, str, int]] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ClassDef):
+            continue
+        for base in node.bases:
+            base_name: str | None = None
+            if isinstance(base, ast.Name):
+                base_name = base.id
+            elif isinstance(base, ast.Attribute):
+                base_name = base.attr
+            if base_name in _SHADOW_BASES:
+                offenders.append((node.name, base_name, node.lineno))
+
+    assert not offenders, (
+        "rag_core.py defines class(es) that shadow the answer dict:\n"
+        + "\n".join(
+            f"  - line {ln}: class {name}({base})"
+            for name, base, ln in offenders
+        )
+        + "\n\nCLAUDE.md Prohibited: 'Adding a parallel pydantic / "
+        "TypedDict model that shadows run_rag_query's answer dict — "
+        "the dict is the contract (ADR 0003).' The answer dict is "
+        "constructed near rag_core.py:2778 with `ANSWER_SCHEMA_VERSION`; "
+        "bump that constant on contract change, but do not introduce a "
+        "parallel class. If a structural model is genuinely needed, "
+        "write an ADR superseding 0003 first."
     )
