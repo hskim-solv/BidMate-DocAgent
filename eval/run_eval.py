@@ -3,6 +3,7 @@ import argparse
 from collections import Counter, defaultdict
 import datetime
 import hashlib
+import importlib.util
 import json
 from pathlib import Path
 import re
@@ -700,8 +701,30 @@ def evaluate_run(
 
 
 def ablation_runs(config: dict[str, Any]) -> list[dict[str, Any]]:
+    """Build the per-row run-config list, filtering out rows whose
+    ``requires_module`` declaration names an unimportable module.
+
+    Issue #151 — the ``m3_full`` row needs ``FlagEmbedding`` (~2GB
+    weights, opt-in via ``pip install -r requirements-m3.txt``). The
+    public synthetic CI runs with ``EMBEDDING_BACKEND=hashing`` and
+    doesn't install the dep, so the row would otherwise crash the
+    smoke target. ``requires_module`` lets the row declare its own
+    opt-in gate; missing modules trigger a clear stderr log and the
+    row is silently dropped from the ablation set.
+    """
     runs = config.get("ablation_runs") or DEFAULT_ABLATION_RUNS
-    return [normalize_run_config(run) for run in runs]
+    kept: list[dict[str, Any]] = []
+    for run in runs:
+        required = run.get("requires_module") if isinstance(run, dict) else None
+        if required and importlib.util.find_spec(str(required)) is None:
+            print(
+                f"[skip] ablation row '{run.get('name')}': "
+                f"requires_module '{required}' is not importable",
+                file=sys.stderr,
+            )
+            continue
+        kept.append(run)
+    return [normalize_run_config(run) for run in kept]
 
 
 def main() -> int:

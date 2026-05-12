@@ -141,7 +141,11 @@ class HybridRetrievalRegressionTest(unittest.TestCase):
             resolve_pipeline_config({"pipeline": "agentic_full", "retrieval_backend": "splade"})
 
     def test_valid_retrieval_backends_constant_is_minimal(self) -> None:
-        self.assertEqual({"dense", "hybrid"}, VALID_RETRIEVAL_BACKENDS)
+        # Issue #151 — ``m3`` joins the allow-list as the third opt-in
+        # backend (BGE-M3 dense + sparse + ColBERT multi-vector fused
+        # via N-way RRF). Default remains ``dense``; ``hybrid`` is
+        # unchanged. See ``docs/m3-multichannel-spike.md``.
+        self.assertEqual({"dense", "hybrid", "m3"}, VALID_RETRIEVAL_BACKENDS)
 
     # -- Issue #149 — RRF k as plan-time knob -----------------------
 

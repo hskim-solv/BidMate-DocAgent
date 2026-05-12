@@ -121,6 +121,28 @@ ablation_runs:
     retrieval_mode: flat
     retrieval_backend: hybrid
     rrf_k: 100
+  # Issue #151 — BGE-M3 multi-channel measurement spike. ``m3`` backend
+  # fuses BGE-M3 의 dense + sparse + multi-vector (ColBERT-style) 세 채널을
+  # N-way RRF 로 결합한다. Opt-in 이며 ``pip install -r requirements-m3.txt``
+  # 가 필요. 공개 합성 CI 는 ``EMBEDDING_BACKEND=hashing`` 으로 돌고
+  # 이 row 를 실행하지 않으므로 smoke 가 영향받지 않는다. ADR 0010 의
+  # "Alternatives considered" (lines 72-85) 가 명시한 deferred ablation
+  # 의 후속. 결과 분석은 ``docs/m3-multichannel-spike.md`` 가 담당.
+  # Channel-level decomposition (sparse-only, colbert-only) 은 lift 가
+  # 정당화되는 경우에만 follow-up PR 에서.
+  - name: m3_full
+    pipeline: agentic_full
+    metadata_first: true
+    rerank: true
+    verifier_retry: true
+    retrieval_mode: flat
+    retrieval_backend: m3
+    # ``eval/run_eval.py.ablation_runs`` checks this and silently drops
+    # the row when FlagEmbedding isn't importable, so the public
+    # synthetic CI (hashing backend, no opt-in dep installed) stays
+    # green. The row runs as soon as ``pip install -r requirements-m3.txt``
+    # is applied.
+    requires_module: FlagEmbedding
   # Issue #150 — BM25 채널 전용 stopword/조사 셋 (까지/부터/마다/조차/…)
   # 을 적용한 hybrid 비교 셀. dense + Jaccard lexical 경로는 건드리지
   # 않고 BM25 corpus + query 토큰만 필터함. `hybrid_bm25` (shared

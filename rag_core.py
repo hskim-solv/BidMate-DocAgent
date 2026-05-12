@@ -1678,6 +1678,11 @@ def make_plan(
         scoring = "dense + lexical rerank"
     if retrieval_backend == "hybrid":
         scoring = f"hybrid (bm25 + {scoring}) rrf"
+    elif retrieval_backend == "m3":
+        # Issue #151 — BGE-M3 dense + sparse + ColBERT multi-vector fused
+        # via N-way RRF. Opt-in measurement spike; see
+        # ``docs/m3-multichannel-spike.md``.
+        scoring = "m3 (dense + sparse + colbert) rrf"
     plan: dict[str, Any] = {
         "strategy": scoring if not metadata_first else f"metadata-first {scoring}",
         "pipeline": pipeline,
@@ -1777,6 +1782,44 @@ def retrieve_candidates(
             stopword_profile=str(plan.get("bm25_stopword_profile", "shared")),
         )
 
+    # Issue #151 — BGE-M3 multi-channel spike. Lazy: only entered when
+    # the caller opted into ``retrieval_backend = "m3"``. Default ``dense``
+    # and ``hybrid`` paths skip the import + forward pass entirely
+    # (ADR 0001 bit-identical invariant; public CI never installs the
+    # FlagEmbedding dep). Cache is per-index, in-memory only — no schema
+    # change to ``index.json`` for the spike.
+    m3_sparse_by_chunk: dict[str, float] = {}
+    m3_colbert_by_chunk: dict[str, float] = {}
+    if retrieval_backend == "m3":
+        from rag_m3 import compute_m3_index_cache, get_m3_encoder
+
+        encoder = get_m3_encoder()
+        cache = index.get("_m3_cache")
+        if cache is None:
+            cache = compute_m3_index_cache(encoder, chunks)
+            index["_m3_cache"] = cache
+        query_m3 = encoder.encode([query])
+        q_sparse = query_m3.sparse[0] if query_m3.sparse else {}
+        q_colbert = query_m3.colbert[0] if query_m3.colbert else np.zeros((0, 0), dtype=np.float32)
+        # Score every chunk against the query on the two new channels.
+        # Dense score is reused from the existing ``raw_cosine_by_idx``
+        # path below — BGE-M3 dense vectors aren't re-routed through the
+        # vector store for the spike; the chunk's existing dense channel
+        # (whatever embedding backend built the index) plays the role of
+        # the "dense rank". A follow-up PR can swap the dense channel
+        # for BGE-M3's if the spike justifies it.
+        for chunk_idx, chunk in enumerate(chunks):
+            chunk_id = str(chunk.get("chunk_id"))
+            m3_sparse_by_chunk[chunk_id] = encoder.sparse_score(
+                q_sparse, cache.sparse[chunk_idx] if chunk_idx < len(cache.sparse) else {}
+            )
+            colbert_vec = (
+                cache.colbert[chunk_idx]
+                if chunk_idx < len(cache.colbert)
+                else np.zeros((0, 0), dtype=np.float32)
+            )
+            m3_colbert_by_chunk[chunk_id] = encoder.colbert_score(q_colbert, colbert_vec)
+
     vector_store = index.get("_vector_store")
     # #176 Stage 2c: drive dense scoring through ``VectorStore.query``
     # instead of looping ``store.get(idx)`` + ``dense_similarity`` per
@@ -1814,8 +1857,15 @@ def retrieve_candidates(
             dense_score = dense_similarity(query_embedding, chunk_vec)
         lexical_score = lexical_similarity(query_tokens, query_topics, chunk)
         metadata_score = metadata_similarity(analysis, chunk)
-        bm25_score = float(bm25_score_by_chunk.get(str(chunk.get("chunk_id")), 0.0))
-        if retrieval_backend == "hybrid":
+        chunk_id_str = str(chunk.get("chunk_id"))
+        bm25_score = float(bm25_score_by_chunk.get(chunk_id_str, 0.0))
+        m3_sparse_score = float(m3_sparse_by_chunk.get(chunk_id_str, 0.0))
+        m3_colbert_score = float(m3_colbert_by_chunk.get(chunk_id_str, 0.0))
+        if retrieval_backend in ("hybrid", "m3"):
+            # RRF backends defer scoring to ``apply_fusion_and_reranking``
+            # — the per-chunk score here is a placeholder. The
+            # diagnostic ``score_parts`` keys carry the channel-level
+            # signals for the fusion stage to rank on.
             score = 0.0
         elif not plan.get("rerank", True):
             score = dense_score
@@ -1823,6 +1873,18 @@ def retrieve_candidates(
             score = (0.70 * dense_score) + (0.30 * lexical_score)
         else:
             score = (0.60 * dense_score) + (0.25 * lexical_score) + (0.15 * metadata_score)
+        score_parts: dict[str, float] = {
+            "dense": round(float(dense_score), 4),
+            "lexical": round(float(lexical_score), 4),
+            "metadata": round(float(metadata_score), 4),
+            "bm25": round(float(bm25_score), 4),
+        }
+        if retrieval_backend == "m3":
+            # Diagnostic-only; consumed by N-way RRF downstream. Score
+            # ranges: sparse ≥ 0 (SPLADE dot), colbert ∈ [0, T_q]
+            # (max-sim sum). Rounded for log stability.
+            score_parts["m3_sparse"] = round(float(m3_sparse_score), 4)
+            score_parts["m3_colbert"] = round(float(m3_colbert_score), 4)
         item = {
             "doc_id": chunk["doc_id"],
             "chunk_id": chunk["chunk_id"],
@@ -1840,12 +1902,7 @@ def retrieve_candidates(
             "retrieval_mode": "flat",
             "text": chunk["text"],
             "score": round(float(score), 4),
-            "score_parts": {
-                "dense": round(float(dense_score), 4),
-                "lexical": round(float(lexical_score), 4),
-                "metadata": round(float(metadata_score), 4),
-                "bm25": round(float(bm25_score), 4),
-            },
+            "score_parts": score_parts,
         }
         regions = normalize_regions(chunk.get("regions"))
         page_span = normalize_page_span(chunk.get("page_span"), regions)
@@ -1870,29 +1927,37 @@ def apply_fusion_and_reranking(
     ``rerank_cross_encoder_meta`` only when the cross-encoder stage
     runs (unchanged behavior)."""
     retrieval_backend = str(plan.get("retrieval_backend", "dense"))
-    if retrieval_backend == "hybrid" and scored:
-        by_dense = sorted(
-            scored,
-            key=lambda it: (it["score_parts"]["dense"], it["chunk_id"]),
-            reverse=True,
-        )
-        by_bm25 = sorted(
-            scored,
-            key=lambda it: (it["score_parts"]["bm25"], it["chunk_id"]),
-            reverse=True,
-        )
-        dense_rank = {it["chunk_id"]: rank for rank, it in enumerate(by_dense)}
-        bm25_rank = {it["chunk_id"]: rank for rank, it in enumerate(by_bm25)}
-        # Raw RRF tops out at 2/k. Normalize to [0,1] so the verifier's
-        # score floor (rag_core.py:2254, threshold 0.18 tuned for the
-        # dense+lexical fusion) keeps working for both backends without
-        # per-backend branches. `rrf_k` is plan-time configurable per
-        # issue #149; default still `RRF_K = 60`.
+    # RRF channel selection by backend. ``hybrid`` stays 2-way (dense +
+    # bm25) — bit-identical to ADR 0010. ``m3`` is 3-way (dense + m3_sparse
+    # + m3_colbert) per issue #151 measurement spike. Both share the
+    # same N-way RRF + normalization math below.
+    rrf_channel_keys: tuple[str, ...] = ()
+    if retrieval_backend == "hybrid":
+        rrf_channel_keys = ("dense", "bm25")
+    elif retrieval_backend == "m3":
+        rrf_channel_keys = ("dense", "m3_sparse", "m3_colbert")
+    if rrf_channel_keys and scored:
+        # Stable rank-by-channel: sort by (channel_score desc, chunk_id) so
+        # ties resolve deterministically. Same idiom as the ADR 0010
+        # hybrid path it replaces.
+        channel_ranks: dict[str, dict[str, int]] = {}
+        for key in rrf_channel_keys:
+            ordered = sorted(
+                scored,
+                key=lambda it, k=key: (it["score_parts"].get(k, 0.0), it["chunk_id"]),
+                reverse=True,
+            )
+            channel_ranks[key] = {it["chunk_id"]: rank for rank, it in enumerate(ordered)}
+        # Raw N-way RRF tops out at N/k. Normalize to [0,1] so the
+        # verifier's score floor (rag_core.py:2254, threshold 0.18 tuned
+        # for the dense+lexical fusion) keeps working for every backend
+        # without per-backend branches. ``rrf_k`` is plan-time
+        # configurable per issue #149; default still ``RRF_K = 60``.
         rrf_k = int(plan.get("rrf_k", RRF_K))
-        rrf_norm = rrf_k / 2.0
+        rrf_norm = rrf_k / float(len(rrf_channel_keys))
         for item in scored:
             cid = item["chunk_id"]
-            rrf = (1.0 / (rrf_k + dense_rank[cid])) + (1.0 / (rrf_k + bm25_rank[cid]))
+            rrf = sum(1.0 / (rrf_k + ranks[cid]) for ranks in channel_ranks.values())
             item["score"] = round(float(rrf * rrf_norm), 6)
             item["score_parts"]["rank_rrf"] = round(float(rrf * rrf_norm), 6)
 

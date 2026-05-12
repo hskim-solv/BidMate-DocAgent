@@ -164,7 +164,12 @@ def canonical_pipeline_name(value: str | None, default: str = DEFAULT_RAG_PIPELI
 # self-contained — ``resolve_pipeline_config`` does not have to reach
 # back into ``rag_core`` to validate.
 VALID_RETRIEVAL_MODES = {"flat", "hierarchical"}
-VALID_RETRIEVAL_BACKENDS = {"dense", "hybrid"}
+# Issue #151 — ``m3`` opts into BGE-M3's dense + sparse + multi-vector
+# (ColBERT-style) channels fused via N-way RRF. Opt-in only; default
+# stays ``dense``. Requires ``pip install -r requirements-m3.txt``.
+# See ``docs/m3-multichannel-spike.md`` and ADR 0010's
+# "Alternatives considered" (lines 72-85) for the deferral context.
+VALID_RETRIEVAL_BACKENDS = {"dense", "hybrid", "m3"}
 VALID_BM25_STOPWORD_PROFILES = {"shared", "bm25_extra"}
 # Issue #396 / ADR 0023 — pluggable QueryExpander discriminator. Kept
 # narrow on purpose: a typo like "hide" raises rather than silently

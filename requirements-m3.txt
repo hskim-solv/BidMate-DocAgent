@@ -1,0 +1,22 @@
+# Optional BGE-M3 multi-channel retrieval backend (issue #151).
+#
+# Install with:
+#   pip install -r requirements-m3.txt
+#
+# Activate at runtime:
+#   set `retrieval_backend: m3` in `eval/config.yaml` (or pass the same
+#   key through ``run_rag_query`` / ``make_plan``).
+#
+# Default (`retrieval_backend=dense`) and the existing `hybrid` (BM25 +
+# dense, ADR 0010) paths never import FlagEmbedding — the public
+# synthetic CI (`pr-eval.yml` with `EMBEDDING_BACKEND=hashing`) stays
+# unaffected by this file. Only the `m3_*` ablation rows in
+# `eval/config.yaml` pull these weights; absence raises a clear
+# `RuntimeError` (see `rag_m3.M3Encoder.__init__`).
+#
+# This is a **measurement spike** (ADR 0019 → 0021 measure-first
+# pattern). If the spike shows meaningful lift over `hybrid_bm25`, a
+# follow-up PR persists sparse + colbert vectors on disk (index schema
+# bump 2 → 3) and writes ADR 0025 as a supplement to ADR 0010. See
+# `docs/m3-multichannel-spike.md`.
+FlagEmbedding>=1.2,<2.0
