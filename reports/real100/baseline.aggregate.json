@@ -1,0 +1,187 @@
+{
+  "abstention": 0.5,
+  "accuracy": 0.47058823529411764,
+  "answer_format_compliance": 0.42857142857142855,
+  "by_query_type": {
+    "abstention": {
+      "abstention": 0.5,
+      "answer_format_compliance": 0.5,
+      "groundedness": 0.5,
+      "num_predictions": 4
+    },
+    "comparison": {
+      "accuracy": 1.0,
+      "answer_format_compliance": 1.0,
+      "groundedness": 1.0,
+      "num_predictions": 1
+    },
+    "follow_up": {
+      "accuracy": 0.25,
+      "answer_format_compliance": 0.5,
+      "groundedness": 0.25,
+      "num_predictions": 4
+    },
+    "single_doc": {
+      "accuracy": 0.5,
+      "answer_format_compliance": 0.3333333333333333,
+      "groundedness": 0.5,
+      "num_predictions": 12
+    }
+  },
+  "ci": {
+    "abstention": {
+      "alpha": 0.05,
+      "ci_hi": 1.0,
+      "ci_lo": 0.0,
+      "mean": 0.5,
+      "n": 4,
+      "num_resamples": 1000
+    },
+    "accuracy": {
+      "alpha": 0.05,
+      "ci_hi": 0.7058823529411765,
+      "ci_lo": 0.23529411764705882,
+      "mean": 0.47058823529411764,
+      "n": 17,
+      "num_resamples": 1000
+    },
+    "answer_format_compliance": {
+      "alpha": 0.05,
+      "ci_hi": 0.6190476190476191,
+      "ci_lo": 0.23809523809523808,
+      "mean": 0.42857142857142855,
+      "n": 21,
+      "num_resamples": 1000
+    },
+    "citation_precision": {
+      "alpha": 0.05,
+      "ci_hi": 0.47619047619047616,
+      "ci_lo": 0.09523809523809523,
+      "mean": 0.2857142857142857,
+      "n": 21,
+      "num_resamples": 1000
+    },
+    "claim_citation_alignment": {
+      "alpha": 0.05,
+      "ci_hi": 0.875,
+      "ci_lo": 0.4583333333333333,
+      "mean": 0.6666666666666666,
+      "n": 12,
+      "num_resamples": 1000
+    },
+    "comparison_pool_recall": {
+      "alpha": 0.05,
+      "ci_hi": 1.0,
+      "ci_lo": 1.0,
+      "mean": 1.0,
+      "n": 1,
+      "num_resamples": 1000
+    },
+    "comparison_target_recall": {
+      "alpha": 0.05,
+      "ci_hi": 1.0,
+      "ci_lo": 1.0,
+      "mean": 1.0,
+      "n": 1,
+      "num_resamples": 1000
+    },
+    "groundedness": {
+      "alpha": 0.05,
+      "ci_hi": 0.6666666666666666,
+      "ci_lo": 0.23809523809523808,
+      "mean": 0.47619047619047616,
+      "n": 21,
+      "num_resamples": 1000
+    },
+    "retry": {
+      "alpha": 0.05,
+      "ci_hi": 0.6190476190476191,
+      "ci_lo": 0.23809523809523808,
+      "mean": 0.42857142857142855,
+      "n": 21,
+      "num_resamples": 1000
+    }
+  },
+  "citation_grounding": null,
+  "citation_precision": 0.2857142857142857,
+  "claim_citation_alignment": 0.6666666666666666,
+  "groundedness": 0.47619047619047616,
+  "latency": {
+    "mean": 136.87190476190474,
+    "p50": 139.5,
+    "p95": 234.33
+  },
+  "num_predictions": 21,
+  "pipeline": "agentic_full",
+  "primary_run": "full",
+  "prompt_profile": "structured_grounded_claims",
+  "provenance": {
+    "generated_at": "2026-05-12T02:55:49.434862Z",
+    "git_commit": "2ce37653b048",
+    "git_dirty": true
+  },
+  "retry": 0.42857142857142855,
+  "retry_effectiveness": {
+    "cases_with_retry": 6,
+    "cases_without_retry": 11,
+    "ci": {
+      "recovery_rate": {
+        "alpha": 0.05,
+        "ci_hi": 0.6666666666666666,
+        "ci_lo": 0.0,
+        "mean": 0.3333333333333333,
+        "n": 6,
+        "num_resamples": 1000
+      },
+      "residual_failure_rate": {
+        "alpha": 0.05,
+        "ci_hi": 1.0,
+        "ci_lo": 0.3333333333333333,
+        "mean": 0.6666666666666666,
+        "n": 6,
+        "num_resamples": 1000
+      }
+    },
+    "recovery_rate": 0.3333333333333333,
+    "residual_failure_rate": 0.6666666666666666,
+    "retry_lift_vs_no_retry": -0.2121212121212121,
+    "retry_resolution_rate": 0.5
+  },
+  "retry_reason_counts": {
+    "topic_not_grounded": 13
+  },
+  "run_manifest": {
+    "config_sha256": "11a4125af938bfad",
+    "generated_at": "2026-05-12T02:55:49.285826Z",
+    "git_commit": "2ce37653b048",
+    "git_dirty": true
+  },
+  "stage_latency": {
+    "answer_generation_ms": {
+      "mean": 1.006,
+      "p50": 0.7250000000000001,
+      "p95": 2.851500000000002
+    },
+    "context_resolution_ms": {
+      "mean": 0.004999999999999999,
+      "p50": 0.0,
+      "p95": 0.010500000000000008
+    },
+    "query_analysis_ms": {
+      "mean": 78.425,
+      "p50": 77.495,
+      "p95": 125.6855
+    },
+    "retrieve_ms": {
+      "mean": 28.40291666666667,
+      "p50": 23.22,
+      "p95": 89.49099999999991
+    },
+    "verify_ms": {
+      "mean": 7.974166666666668,
+      "p50": 5.220000000000001,
+      "p95": 32.22949999999996
+    }
+  },
+  "top_k": null
+}
