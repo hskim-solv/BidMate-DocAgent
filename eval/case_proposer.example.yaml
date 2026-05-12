@@ -1,0 +1,44 @@
+# Case proposer config template (ADR 0029).
+# Copy to eval/case_proposer.local.yaml before use; this template is
+# committed, the .local.yaml stays gitignored alongside
+# eval/real_config.local.yaml.
+#
+# PR1 ships only the skeleton — the runner CLI (`make case-propose`)
+# and the actual stub generation logic land in PR2. Fields below are
+# the planned shape so reviewers can sanity-check the contract.
+
+# Backend selection. CI must run "stub". Live calls are opt-in via
+# the BIDMATE_CASE_PROPOSER_BACKEND env var, which overrides this key.
+backend: stub  # stub | openai_compatible
+
+# Optional model identifier passed through to the backend. For stub,
+# this is recorded verbatim in proposer_meta.model (default "stub").
+# For openai_compatible (PR3), this is the live model id, e.g.
+# "claude-sonnet-4-6" or a self-hosted equivalent.
+model: stub
+
+# How many seed documents from data/data_list.csv to consider per run.
+# PR2 will cap and sample deterministically. N=10 with 2 templates
+# per doc yields ~20 candidate cases per cycle, which matches the
+# review throughput a single reviewer can handle in a sitting.
+n_seed_docs: 10
+templates_per_doc: 2
+
+# Inputs the proposer reads. Both are gitignored.
+metadata_csv: data/data_list.csv
+index_dir: data/index/real100
+
+# Outputs (gitignored except for the aggregate; ADR 0005 boundary).
+proposed_out: reports/proposed/proposed_cases.local.yaml
+reviewed_out: reports/proposed/reviewed_cases.local.yaml
+aggregate_out: reports/proposed/proposer.aggregate.json
+
+# Query type mix. PR4's by_query_type χ²-test will flag if the
+# proposed distribution skews vs. the existing 100 hand-labeled
+# cases. The default below mirrors the expected mix in
+# real_config.local.yaml.
+query_type_mix:
+  single_doc: 0.6
+  abstention: 0.2
+  comparison: 0.15
+  follow_up: 0.05
