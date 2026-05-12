@@ -70,6 +70,45 @@ jobs:
       - name: Verify leaderboard artifacts are in sync with history
         run: python3 scripts/leaderboard.py --check
 
+  baseline-provenance:
+    # Gate (issue #413): verify reports/real100/baseline.aggregate.json's
+    # `provenance.git_commit` is still reachable from origin/<base ref>.
+    # Catches the silent-breakage tail of issue #160 — a baseline whose
+    # commit was force-pushed or rebased off main, leaving real-eval-delta
+    # diffing against a phantom code state. Fast (stdlib only, no deps).
+    name: Baseline provenance reachability
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          sparse-checkout: |
+            scripts/check_baseline_provenance.py
+            reports/real100/baseline.aggregate.json
+          sparse-checkout-cone-mode: false
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Verify baseline commit is reachable from base ref
+        env:
+          BASE_REF: origin/${{ github.event.pull_request.base.ref }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          # If this PR modifies the baseline, the new provenance.git_commit
+          # legitimately points at a commit that is not yet ancestor of
+          # the base ref. Accept ancestry of the PR head SHA as the escape
+          # hatch — the gate re-runs on every push and the merge commit,
+          # so a stale SHA is caught the moment the PR moves past it.
+          if git diff --name-only "$BASE_REF"...HEAD \
+               | grep -qx 'reports/real100/baseline.aggregate.json'; then
+            python scripts/check_baseline_provenance.py \
+              --ref "$BASE_REF" --allow-equal-to "$PR_HEAD_SHA"
+          else
+            python scripts/check_baseline_provenance.py --ref "$BASE_REF"
+          fi
+
   eval-delta:
     name: Eval delta vs base
     runs-on: ubuntu-latest

@@ -10,7 +10,7 @@
 # Governance gates (branch + issue, README metrics, latency SLO, leaderboard
 # freshness, real-eval history freshness, benchmark manifest check). Run
 # `make governance-check` to invoke the pre-PR subset in sequence.
-.PHONY: check-branch governance-check check check-latency leaderboard-check real-eval-history-check benchmark-check
+.PHONY: check-branch governance-check check check-latency leaderboard-check real-eval-history-check benchmark-check check-baseline-provenance
 
 # Index build + ad-hoc ask
 .PHONY: index ask
@@ -62,8 +62,17 @@ check-branch:
 # already wired into CI / hooks individually; this target just shortens
 # the local pre-PR checklist into a single invocation. Fails on the
 # first sub-target that exits non-zero.
-governance-check: check-branch leaderboard-check real-eval-history-check
-	@echo "governance-check: branch + leaderboard + real-eval-history OK."
+governance-check: check-branch leaderboard-check real-eval-history-check check-baseline-provenance
+	@echo "governance-check: branch + leaderboard + real-eval-history + baseline-provenance OK."
+
+# Verify reports/real100/baseline.aggregate.json's provenance.git_commit is
+# still reachable from origin/main (issue #413). Catches the silent-breakage
+# tail of issue #160: a baseline committed at a SHA that was later
+# force-pushed/rebased off main, leaving `make real-eval-delta` diffing
+# against a phantom code state. For non-default refs, invoke the script
+# directly: `python scripts/check_baseline_provenance.py --ref <ref>`.
+check-baseline-provenance:
+	$(PYTHON) scripts/check_baseline_provenance.py
 
 index:
 	$(PYTHON) scripts/build_index.py --input_dir data/raw --output_dir data/index
