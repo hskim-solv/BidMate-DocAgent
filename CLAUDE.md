@@ -73,6 +73,7 @@ important — the synthetic CI delta alone missed #69's intended-abstention regr
 - `bash scripts/test.sh` — `pytest -q`; same as the CI gate.
 - `make check-branch` — ad-hoc validation of the current branch against ADR 0007.
 - `make real-eval` + `make real-eval-delta` — private 100-doc eval; required when load-bearing files change.
+- `make ship-arm` — Stop-hook–driven auto-ship pipeline (commit → push → PR → CI → squash-merge). See [`docs/auto-ship.md`](docs/auto-ship.md) for gates, stages, and `STACKED=ack` discipline.
 - Latency numbers come from `reports/eval_summary.json` `stage_latency` block — not ad-hoc measurement.
 
 ## Prohibited (not enforced by automation)
