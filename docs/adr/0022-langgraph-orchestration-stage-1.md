@@ -1,9 +1,10 @@
 # 0022: LangGraph orchestrator path for agentic_full presets — stage 1 (single-node passthrough)
 
-- **Status**: proposed
+- **Status**: accepted
 - **Date**: 2026-05-12
 - **Deciders**: hskim
-- **Related**: [ADR 0001](./0001-preserve-naive-baseline.md) (naive_baseline reserved as direct-path ablation), [ADR 0011](./0011-llm-synthesis-as-additive-ablation.md) (agentic_full_llm under same retrieval surface), [ADR 0013](./0013-observability-as-additive-pluggable-surface.md) (trace backend additivity pattern this ADR reuses), issue #401
+- **Related**: [ADR 0001](./0001-preserve-naive-baseline.md) (naive_baseline reserved as direct-path ablation), [ADR 0011](./0011-llm-synthesis-as-additive-ablation.md) (agentic_full_llm under same retrieval surface), [ADR 0013](./0013-observability-as-additive-pluggable-surface.md) (trace backend additivity pattern this ADR reuses), issue #401, PR #404 (implementation), issue #453 (status flip)
+- **Update (status flip, 2026-05-12, issue #453)**: Status promoted `proposed` → `accepted`. The stage-1 implementation merged via PR [#404](https://github.com/hskim-solv/BidMate-DocAgent/pull/404) (commit `349dd08`) lands all four sub-items from the Decision section: `requirements-graph.txt`, [`rag_graph_agentic_full.py`](../../rag_graph_agentic_full.py) (`AgenticFullState` TypedDict + `run_via_langgraph` entry point + process-cached compiled graph), [`rag_core.py:3673-3690`](../../rag_core.py) (env-var dispatch + `_skip_graph` recursion guard + `naive_baseline` bypass), and [`tests/test_langgraph_orchestrator_regression.py`](../../tests/test_langgraph_orchestrator_regression.py) (JSON-identity over `(agentic_full, agentic_full_llm) × (single-doc, comparison)` modulo timing fields, ADR 0001 invariant gate, module import smoke). The "What stage 2 will do" section below remains the unchanged forward plan and is *not* part of this status flip.
 
 ## Context
 
