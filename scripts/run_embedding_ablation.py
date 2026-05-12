@@ -37,10 +37,12 @@ Approximate disk + cost guide (opt-in models):
     nlpai-lab/KURE-v1                    ~1.1GB disk, 768-dim, free (Korean-specialized)
     text-embedding-3-large               OpenAI, 3072-dim, ~$0.004 for n=42
 """
+
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -74,6 +76,25 @@ def _slug(model_id: str) -> str:
     return model_id.replace("/", "_").replace("-", "_").replace(".", "_")
 
 
+def _adapter_suffix() -> str:
+    """Slug fragment that disambiguates base vs LoRA-adapted runs.
+
+    Issue #179 / ADR 0027: when ``BIDMATE_EMBEDDING_LORA_ADAPTER`` is set,
+    the index + report directory slugs get an ``__lora_<adapter>`` suffix
+    so running this script twice (baseline + adapted) on the same base
+    model writes to *separate* output paths instead of overwriting.
+    Without the env var (CI default), the suffix is empty — slug stays
+    identical to pre-#434 output.
+    """
+    adapter = os.environ.get("BIDMATE_EMBEDDING_LORA_ADAPTER")
+    if not adapter:
+        return ""
+    # Drop ``@<sha>`` pin for a stable on-disk slug; the SHA is captured
+    # in the eval_summary.json provenance block, not the path.
+    repo = adapter.split("@", 1)[0]
+    return "__lora_" + _slug(repo)
+
+
 def _derive_backend(model_id: str) -> str:
     if model_id.startswith("text-embedding-"):
         return "openai"
@@ -83,9 +104,7 @@ def _derive_backend(model_id: str) -> str:
 def _run(cmd: list[str]) -> None:
     proc = subprocess.run(cmd, cwd=REPO_ROOT, check=False)
     if proc.returncode != 0:
-        raise SystemExit(
-            f"Command failed (exit {proc.returncode}): {' '.join(cmd)}"
-        )
+        raise SystemExit(f"Command failed (exit {proc.returncode}): {' '.join(cmd)}")
 
 
 def build_index(model_id: str, index_dir: Path, backend: str | None = None) -> None:
@@ -94,10 +113,14 @@ def build_index(model_id: str, index_dir: Path, backend: str | None = None) -> N
         [
             sys.executable,
             "scripts/build_index.py",
-            "--input_dir", "data/raw",
-            "--output_dir", str(index_dir),
-            "--embedding_backend", backend,
-            "--model", model_id,
+            "--input_dir",
+            "data/raw",
+            "--output_dir",
+            str(index_dir),
+            "--embedding_backend",
+            backend,
+            "--model",
+            model_id,
         ]
     )
 
@@ -107,9 +130,12 @@ def run_eval(index_dir: Path, output_dir: Path) -> Path:
         [
             sys.executable,
             "eval/run_eval.py",
-            "--index_dir", str(index_dir),
-            "--output_dir", str(output_dir),
-            "--config", "eval/config.yaml",
+            "--index_dir",
+            str(index_dir),
+            "--output_dir",
+            str(output_dir),
+            "--config",
+            "eval/config.yaml",
         ]
     )
     return output_dir / "eval_summary.json"
@@ -181,8 +207,9 @@ def main() -> int:
     base_reports.mkdir(parents=True, exist_ok=True)
 
     per_model: dict[str, dict[str, dict]] = {}
+    adapter_suffix = _adapter_suffix()
     for model_id in args.models:
-        slug = _slug(model_id)
+        slug = _slug(model_id) + adapter_suffix
         index_dir = base_index / slug
         report_dir = base_reports / slug
         summary_path = report_dir / "eval_summary.json"

@@ -146,7 +146,7 @@ INDEX_FILENAME = "index.json"
 # without touching the chunk-metadata payload.
 EMBEDDINGS_FILENAME = "embeddings.npy"
 INDEX_SCHEMA_VERSION = 2
-MODEL_CACHE: dict[tuple[str, bool], Any] = {}
+MODEL_CACHE: dict[tuple[str, bool, str | None], Any] = {}
 
 TOKEN_RE = re.compile(r"[A-Za-z0-9]+|[가-힣]+")
 ENTITY_RE = re.compile(r"기관\s*[-_]?\s*([A-Za-z0-9]+)", re.IGNORECASE)
@@ -718,10 +718,26 @@ def embed_texts(
             with huggingface_offline(local_only or backend == "auto"):
                 from sentence_transformers import SentenceTransformer
 
-                cache_key = (model_name, local_only or backend == "auto")
+                # ADR 0027 — additive LoRA adapter, gated by env var so
+                # the default (env unset) path remains byte-identical
+                # to pre-#434 behavior. ``adapter_path`` is part of the
+                # cache key so adapted / unadapted variants of the same
+                # base model don't clobber each other.
+                adapter_path = os.environ.get("BIDMATE_EMBEDDING_LORA_ADAPTER") or None
+                cache_key = (model_name, local_only or backend == "auto", adapter_path)
                 model = MODEL_CACHE.get(cache_key)
                 if model is None:
                     model = SentenceTransformer(model_name)
+                    if adapter_path:
+                        # PEFT is lazy-imported (optional dep in
+                        # requirements-lora.txt) — the hashing-only CI
+                        # path never executes this branch and so never
+                        # needs the package installed.
+                        from peft import PeftModel  # type: ignore[import-not-found]
+
+                        underlying = model[0].auto_model
+                        adapted = PeftModel.from_pretrained(underlying, adapter_path)
+                        model[0].auto_model = adapted.merge_and_unload()
                     MODEL_CACHE[cache_key] = model
             vectors = model.encode(
                 texts,

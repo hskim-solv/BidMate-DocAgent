@@ -88,6 +88,7 @@ project record.
 | [0024](./0024-agentic-full-llm-as-api-default.md) | accepted | API surface default preset = `agentic_full_llm`; backend default stays `stub` (complements 0011; CLI default stays `naive_baseline` per 0001) |
 | [0025](./0025-cost-frontier-defer-until-real-baselines.md) | accepted | Cost-accuracy frontier deferred until external baseline real runs land (defers #177; backs README §Limitations "비용 영점"; follows ADR 0019 → 0021 measurement-gated pattern) |
 | [0026](./0026-cross-encoder-reranker-deferral.md) | accepted | Cross-encoder reranker default stays stub-identity; real-backend (bge / bge_ko / cohere) measurement deferred — `full_reranker ≡ full` under CI stub by construction, `full` vs `no_rerank` already 0pp on public synthetic (mirrors ADR 0019 / 0025 pattern) |
+| [0027](./0027-lora-finetuned-embedding-additive.md) | proposed | LoRA-fine-tuned embedding adapter as additive ablation, env-var gated (`BIDMATE_EMBEDDING_LORA_ADAPTER`), HF Hub adapter pinned by commit SHA (extends 0001 / 0011 / 0019; does NOT trigger 0019 re-open) |
 
 ## Decision evolution
 

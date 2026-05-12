@@ -1,0 +1,17 @@
+# Optional LoRA fine-tuned embedding adapter backend (ADR 0027, issue #179).
+#
+# Install with:
+#   pip install -r requirements-lora.txt
+#
+# Activate at runtime by pointing the embedding loader at a Hugging Face
+# Hub repo (or a local adapter directory):
+#   export BIDMATE_EMBEDDING_BACKEND=sentence-transformers
+#   export BIDMATE_EMBEDDING_LORA_ADAPTER=bidmate/embedding-lora-kure-rfp-ko-v1
+#
+# Default (`BIDMATE_EMBEDDING_LORA_ADAPTER` unset) keeps `rag_core.embed_texts`
+# bit-identical to pre-#434 behavior — the lazy `from peft import PeftModel`
+# never executes, so the hashing-only public CI stays free of the dep.
+# This is the ADR 0001 invariant for the additive-ablation pattern (mirrors
+# requirements-graph.txt for LangGraph and requirements-observability.txt
+# for the tracing backend).
+peft>=0.13,<1.0

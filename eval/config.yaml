@@ -23,6 +23,16 @@ latency_budgets:
     # the per-query budget is identical to ``full``. The LLM-backed
     # ingest path is measured separately (operator-side, ADR 0005).
     p95_ms: 200
+  agentic_full_finetuned:
+    # Issue #179 / ADR 0027 — LoRA adapter merge happens at index-
+    # build time, so per-query latency mirrors ``full``. Real
+    # sentence-transformers encoding is the heavier path (operator-
+    # side, ADR 0005); CI default backend (hashing) is a no-op.
+    p95_ms: 200
+  naive_baseline_finetuned:
+    # Same as ``naive_baseline`` — the LoRA adapter does not change
+    # the per-query retrieval shape, only the vector content.
+    p95_ms: 100
 answer_policy:
   answerable_status: supported
   unanswerable_status: insufficient
@@ -199,6 +209,31 @@ ablation_runs:
     verifier_retry: true
     retrieval_mode: flat
     query_expansion: hyde
+  # Issue #179 / ADR 0027 — additive LoRA-fine-tuned embedding adapter.
+  # The ``embedding_model`` / ``embedding_lora_adapter`` keys are
+  # documentation read by ``scripts/run_embedding_ablation.py`` at
+  # index-build time; they are silently dropped by
+  # ``eval/run_eval.normalize_run_config`` so under the default
+  # hashing CI backend these rows are byte-equal to their parents
+  # (``full`` / ``naive_baseline``). The adapter only changes vector
+  # content when both ``BIDMATE_EMBEDDING_BACKEND=sentence-transformers``
+  # and ``BIDMATE_EMBEDDING_LORA_ADAPTER=<hf-repo>@<sha>`` are set —
+  # mirrors the ADR 0011 / 0017 / 0023 additive-opt-in pattern.
+  # The ``@<sha>`` placeholder is replaced with the pinned commit SHA
+  # in #179 once the adapter is trained and uploaded; ADR 0027
+  # mandates SHA pinning to close the supply-chain hole.
+  - name: agentic_full_finetuned
+    pipeline: agentic_full
+    metadata_first: true
+    rerank: true
+    verifier_retry: true
+    retrieval_mode: flat
+    embedding_model: nlpai-lab/KURE-v1
+    embedding_lora_adapter: bidmate/embedding-lora-kure-rfp-ko-v1@<sha>
+  - name: naive_baseline_finetuned
+    pipeline: naive_baseline
+    embedding_model: nlpai-lab/KURE-v1
+    embedding_lora_adapter: bidmate/embedding-lora-kure-rfp-ko-v1@<sha>
 cases:
   - id: single_doc_security
     query_type: single_doc
