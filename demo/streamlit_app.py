@@ -259,7 +259,7 @@ if run_btn and query.strip():
         )
     else:
         try:
-            result = run_pipeline(
+            result = _run(
                 query,
                 pipeline=pipeline,
                 top_k=top_k,
