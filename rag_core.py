@@ -85,6 +85,19 @@ from rag_pipeline_presets import (
     resolve_pipeline_config,
 )
 
+# Conversation state schema + helpers live in rag_conversation_state.py as
+# of issue #415 (PR-E stage 3 of the rag_core.py decomposition epic). The
+# symbols below are direct-imported (no re-export wrapper) — repo-wide
+# grep at PR filing confirmed zero external consumers.
+from rag_conversation_state import (
+    AMBIGUOUS_CONFIDENCE_DELTA,
+    CONTEXT_RESOLUTION_THRESHOLD,
+    CONVERSATION_STATE_SCHEMA_VERSION,
+    MAX_CONVERSATION_TURNS,
+    empty_conversation_state,
+    normalize_conversation_state,
+)
+
 DEFAULT_EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 DEFAULT_HASH_DIM = 384
 DEFAULT_CHUNK_MAX_CHARS = 520
@@ -134,10 +147,6 @@ TRACE_SCHEMA_VERSION = 1
 
 STRICT_METADATA_CONFIDENCE = 0.90
 REDUCED_METADATA_CONFIDENCE = 0.70
-AMBIGUOUS_CONFIDENCE_DELTA = 0.05
-CONVERSATION_STATE_SCHEMA_VERSION = 1
-MAX_CONVERSATION_TURNS = 12
-CONTEXT_RESOLUTION_THRESHOLD = 0.70
 
 
 @dataclass(frozen=True)
@@ -232,49 +241,6 @@ def coerce_alias_values(value: Any) -> list[str]:
         return ordered_unique(str(item).strip() for item in value if str(item).strip())
     return []
 
-
-def empty_conversation_state() -> dict[str, Any]:
-    return {
-        "schema_version": CONVERSATION_STATE_SCHEMA_VERSION,
-        "active_agencies": [],
-        "active_projects": [],
-        "active_topics": [],
-        "active_doc_ids": [],
-        "active_candidates": [],
-        "confidence": 0.0,
-        "ambiguous": False,
-        "turns": [],
-    }
-
-
-def normalize_conversation_state(state: dict[str, Any] | None) -> dict[str, Any]:
-    normalized = empty_conversation_state()
-    if not isinstance(state, dict):
-        return normalized
-
-    normalized["schema_version"] = int(
-        state.get("schema_version") or CONVERSATION_STATE_SCHEMA_VERSION
-    )
-    normalized["active_agencies"] = coerce_string_list(state.get("active_agencies"))
-    normalized["active_projects"] = coerce_string_list(state.get("active_projects"))
-    normalized["active_topics"] = coerce_string_list(state.get("active_topics"))
-    normalized["active_doc_ids"] = coerce_string_list(state.get("active_doc_ids"))
-    active_candidates = state.get("active_candidates")
-    if isinstance(active_candidates, list):
-        normalized["active_candidates"] = [
-            candidate for candidate in active_candidates[-8:] if isinstance(candidate, dict)
-        ]
-    normalized["ambiguous"] = bool(state.get("ambiguous", False))
-    try:
-        normalized["confidence"] = round(float(state.get("confidence") or 0.0), 3)
-    except (TypeError, ValueError):
-        normalized["confidence"] = 0.0
-
-    turns = state.get("turns") if isinstance(state.get("turns"), list) else []
-    normalized["turns"] = [
-        turn for turn in turns[-MAX_CONVERSATION_TURNS:] if isinstance(turn, dict)
-    ]
-    return normalized
 
 
 def tokenize(text: str) -> list[str]:
