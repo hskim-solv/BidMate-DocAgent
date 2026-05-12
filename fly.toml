@@ -18,13 +18,15 @@
 #   flyctl secrets set BIDMATE_TRACE_BACKEND=otel
 #   flyctl secrets set OTEL_EXPORTER_OTLP_ENDPOINT=https://api.honeycomb.io/v1/traces
 #
-# Region: seo (Seoul) for the Korean RFP reviewer audience — lowest
-# latency for the primary user base. Fly.io deprecated `sea` (Seattle)
-# in 2026, so the prior default would silently fail at machine creation
-# even though build/push succeeded (issue #371).
+# Region: sjc (San Jose). Fly.io explicitly recommended `sjc` after
+# `sea` was deprecated (issue #371), and `seo` (Seoul) was rejected on
+# this account at machine placement with "Region 'seo' cannot host
+# your machine" (issue #378). `sjc` is a verified-working fallback.
+# Korean reviewers see ~200ms RTT; acceptable for a portfolio demo.
+# Trying `nrt` for lower Asia latency is tracked as a follow-up to #378.
 
 app = "bidmate-docagent-demo"   # rename via `flyctl apps create` before first deploy
-primary_region = "seo"
+primary_region = "sjc"
 
 [build]
   dockerfile = "Dockerfile"
