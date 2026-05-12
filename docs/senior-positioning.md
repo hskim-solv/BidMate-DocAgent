@@ -166,3 +166,41 @@ make reproduce  # smoke + SHA-256 over the environment-invariant metric subset
 2. ADR 6개 모두 (5분씩)
 3. 이 문서 §3의 #69 → #89 case study
 4. [`docs/private-100-doc-experiments.md`](./private-100-doc-experiments.md) Decision Log 1–2 entries
+
+## 인터뷰 quick reference
+
+이 섹션은 *참조 lookup*이 아닌 *실연 material*이다. 위 §"인터뷰에서 받을 만한 질문과 답의 위치" 표가 "X 질문 받으면 Y 찾으면 된다"라면, 여기는 "X 질문 받으면 그대로 말하면 된다."
+
+### 30초 자기소개
+
+> "BidMate-DocAgent는 **한국어 RFP 도메인-특화 RAG**입니다. 일반 영어 벤치(KMMLU/MMLU) 점수 경쟁이 아니라, 한국 B2B/공공 입찰 시장의 비교 질의에서 발생하는 한쪽 문서 starvation 패턴을 발견하고 막은 게 차별점입니다. **comparison-aware balanced top-k** + **metadata-first retrieval** + **extractive grounded-answer 계약**으로 hallucination을 구조적으로 차단하고, **공개 합성 + 비공개 real-data + KorQuAD 2.1 한국어 공개셋** 세 표면으로 silent regression을 분리 탐지합니다. 운영 시그널 측에서는 **19개 ADR**, prompt-caching 적용 **cost telemetry**, fail-closed **observability(LangFuse/OTel)**, **CI 회귀 게이트**까지 완성했습니다."
+
+읽는 시간 ≈ 30초. 면접 첫 답으로 그대로 사용 가능. 상대가 "좀 더 자세히"를 물으면 §1, 측정 의문에는 §2, 운영 의문에는 [`production-readiness.md`](./production-readiness.md)로 넘어간다.
+
+### 5분 데모 스크립트
+
+라이브 데모는 [HF Spaces](https://huggingface.co/spaces/hskim-solv/bidmate-docagent) 또는 로컬 `make demo` (http://localhost:8501) 둘 다 동일. cold-start 30–60초를 감안해 시작 전에 미리 한 번 깨워둘 것.
+
+| 시간 | 행동 | 말할 내용 |
+|---|---|---|
+| 0:00–0:30 | HF Spaces 또는 `make demo` 오픈. 3개 preset 라디오(`naive_baseline` / `agentic_full` / `agentic_full_llm`) 보여주기 | "추가 설정 없이 브라우저에서 바로 라이브. 같은 질의에 대해 extractive vs LLM 합성 응답을 side-by-side 비교할 수 있도록 ablation을 UI에 노출했습니다." |
+| 0:30–1:30 | Comparison 질의 실행 — 예: `기관 A와 기관 B의 AI 요구사항 차이 알려줘`. answer + claim 별 chunk_id citation 보여주기 | "이 프로젝트의 핵심 기여는 RFP 비교 질의에서 한쪽 문서 starvation을 막는 **balanced top-k retrieval**입니다. 일반 RAG 튜토리얼엔 없는 도메인-특화 ranking이고, 모든 claim이 evidence chunk_id로 추적되므로 hallucination이 구조적으로 불가능합니다." |
+| 1:30–2:30 | Abstention 질의 실행 — 예: `기관 A의 양자암호 적용 방안은?`. 🔴 `status: insufficient` 명시 보여주기 | "evidence가 부족할 때 답을 만들어내는 대신 **명시적으로 abstain**합니다. ADR 0003에서 `insufficient`를 1급 status로 두었습니다. 검토자가 *불확실성*을 알 수 있어야 자동화에 의존할 수 있습니다." |
+| 2:30–3:30 | 답변 아래 "🔍 View trace" 클릭 → LangFuse / OTel UI. retrieve / verify per-attempt span, retry 발생 시 attempt_index=1 span 보여주기 | "LLM Ops observability는 **fail-closed 옵셔널 surface**입니다. `BIDMATE_TRACE_BACKEND=langfuse` 한 줄로 켜고, 끄면 zero overhead noop. 백엔드 장애가 query를 절대 깨뜨리지 않습니다(ADR 0013)." |
+| 3:30–4:30 | `outputs/answer.json` 또는 FastAPI 응답의 `diagnostics.synthesis` 펼치기. `cost_estimate_usd`, `tokens_in/out`, `cache_read_tokens > 0` 보여주기 | "Anthropic prompt caching이 시스템 프롬프트 + 도구 정의에 활성화돼 있고, 두 번째 호출의 `cache_read_input_tokens > 0`가 실제로 캐시 hit하는 증명입니다. `cost_estimate_usd`는 ADR 0015의 order-of-magnitude regression 시그널 — Anthropic 콘솔이 billing source of truth라는 점을 명시적으로 밝힙니다." |
+| 4:30–5:00 | README headline 표 + GitHub Pages [leaderboard](https://hskim-solv.github.io/BidMate-DocAgent/leaderboard/) 열기 | "README 숫자는 `scripts/update_readme_metrics.py --check`로 CI gate에서 강제되고, leaderboard는 main merge마다 자동 누적됩니다. ADR 0005 aggregate-only 경계가 `extract_aggregate`로 defense-in-depth 적용돼 비공개 per-case 데이터는 새지 않습니다." |
+
+### 면접 빠른 답변 카드
+
+위 데모를 끝낸 뒤 받을 가능성이 높은 follow-up과 각 답이 살아있는 위치:
+
+| 면접관 질문 | 답할 위치 / talking point |
+|---|---|
+| "왜 generative 모델이 아닌 extractive?" | 데모 1:30–2:30 step + ADR 0003 "4가지 이유" (재현성 / 비용 영점 / judge confound 제거 / hallucination 구조적 불가능) |
+| "abstention을 어떻게 평가했나?" | ADR 0003 + 합성 abstention 9 cases + #69 → #89 case (이 문서 §3) |
+| "observability와 cost를 어떻게?" | 데모 2:30–4:30 + [`production-readiness.md`](./production-readiness.md) (한 페이지 reviewer reference) |
+| "측정을 어떻게 신뢰?" | 이 문서 §2 + bootstrap 95% CI + 3-surface 분리(ADR 0005 / 0018) |
+| "회귀를 어떻게 막나?" | 이 문서 §3 + CI quality regression gate(`pr-eval.yml`) + `tests/test_*_regression.py` |
+| "한국어 RAG 일반화는?" | KorQuAD 2.1 supplementary surface (ADR 0018) + "domain mismatch는 의도된 신호" 프레이밍 |
+| "LangChain / LlamaIndex와 비교?" | ADR 0009 external baseline comparison — *옆 ablation*이지 교체가 아님 (ADR 0001 invariant) |
+| "왜 2026년에 2019년 MiniLM 임베딩?" | ADR 0019의 4가지 명시적 re-open 조건 — "deferral도 ADR로 닫는다" |
