@@ -145,6 +145,33 @@ class EmbeddingResult:
     model: str
 
 
+@dataclass(frozen=True)
+class QueryParams:
+    """Bundle of pipeline configuration kwargs for ``run_rag_query`` (issue #260).
+
+    Additive, non-breaking signature extension. Existing callers using
+    individual kwargs (``top_k=...``, ``rerank=...``, etc.) keep working
+    unchanged. New callers can pass a single ``params=QueryParams(...)``
+    bundle instead.
+
+    Per-call inputs (``context_entities``, ``conversation_state``) stay
+    separate kwargs on ``run_rag_query`` — they vary per turn, not per
+    pipeline configuration. The return contract (ADR 0003) is unchanged.
+    """
+
+    top_k: int | None = None
+    metadata_first: bool | None = None
+    rerank: bool | None = None
+    verifier_retry: bool | None = None
+    retrieval_mode: str | None = None
+    retrieval_backend: str | None = None
+    pipeline: str | None = None
+    prompt_profile: str | None = None
+    comparison_balance: dict[str, Any] | None = None
+    rrf_k: int | None = None
+    bm25_stopword_profile: str | None = None
+
+
 def normalize_entity(value: str) -> str:
     return re.sub(r"\s+", " ", value.strip())
 
@@ -3573,7 +3600,46 @@ def run_rag_query(
     comparison_balance: dict[str, Any] | None = None,
     rrf_k: int | None = None,
     bm25_stopword_profile: str | None = None,
+    *,
+    params: QueryParams | None = None,
 ) -> dict[str, Any]:
+    if params is not None:
+        # Pre-bundle path (issue #260). `params=` is an additive opt-in:
+        # individual pipeline kwargs are still accepted for compatibility,
+        # but mixing both is almost always a caller bug, so surface it loudly.
+        # Per-call inputs (`context_entities`, `conversation_state`) stay
+        # separate kwargs because they vary per turn, not per pipeline config.
+        legacy_pipeline_kwargs = {
+            "top_k": top_k,
+            "metadata_first": metadata_first,
+            "rerank": rerank,
+            "verifier_retry": verifier_retry,
+            "retrieval_mode": retrieval_mode,
+            "retrieval_backend": retrieval_backend,
+            "pipeline": pipeline,
+            "prompt_profile": prompt_profile,
+            "comparison_balance": comparison_balance,
+            "rrf_k": rrf_k,
+            "bm25_stopword_profile": bm25_stopword_profile,
+        }
+        conflicting = sorted(k for k, v in legacy_pipeline_kwargs.items() if v is not None)
+        if conflicting:
+            raise ValueError(
+                "run_rag_query: cannot mix params= with explicit pipeline kwargs; "
+                f"set them on the QueryParams instance instead. Conflicting kwargs: {conflicting}"
+            )
+        top_k = params.top_k
+        metadata_first = params.metadata_first
+        rerank = params.rerank
+        verifier_retry = params.verifier_retry
+        retrieval_mode = params.retrieval_mode
+        retrieval_backend = params.retrieval_backend
+        pipeline = params.pipeline
+        prompt_profile = params.prompt_profile
+        comparison_balance = params.comparison_balance
+        rrf_k = params.rrf_k
+        bm25_stopword_profile = params.bm25_stopword_profile
+
     pipeline_source: dict[str, Any] = {"pipeline": pipeline or DEFAULT_RAG_PIPELINE_NAME}
     for key, value in (
         ("top_k", top_k),
