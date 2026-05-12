@@ -32,7 +32,7 @@ permalink: /blog/2026-05-external-review-followup/
 | `pyproject.toml` 없음 (ruff/lint 없음) | **존재** (단 룰셋 좁음: `E9,F63,F7,F82`) | [`pyproject.toml`](https://github.com/hskim-solv/BidMate-DocAgent/blob/main/pyproject.toml) `tool.ruff` + `tool.coverage` |
 | `.env.example` 없음 | **존재** | [`.env.example`](https://github.com/hskim-solv/BidMate-DocAgent/blob/main/.env.example) |
 | FastAPI는 의존성만 있고 활용 안 됨 | **운영 중인 API 서버** (ADR 0024가 기본 preset 결정) | [`api/main.py`](https://github.com/hskim-solv/BidMate-DocAgent/blob/main/api/main.py), [`api/schemas.py`](https://github.com/hskim-solv/BidMate-DocAgent/blob/main/api/schemas.py) |
-| ADR 12개+ | **27개** (0001-0027, 0020 결번) | [`docs/adr/`](https://github.com/hskim-solv/BidMate-DocAgent/blob/main/docs/adr/) |
+| ADR 12개+ | **26개** (0001-0027 범위에서 0020 결번) | [`docs/adr/`](https://github.com/hskim-solv/BidMate-DocAgent/blob/main/docs/adr/) |
 | `rag_core.py` 4,350 LOC god-file (단일 모듈) | **4,201 LOC** + 이미 20개 top-level 모듈로 PR-E 분해 진행 중 | `rag_pipeline_presets.py`, `rag_conversation_state.py`, `korean_lexicon.py`, `rag_query_expansion.py`, `rag_reranker.py`, `rag_synthesis.py`, `rag_observability.py`, `rag_vector_store.py` 등 |
 | 테스트 가시성 낮음 | **71개 테스트 파일 + coverage 설정** | [`tests/`](https://github.com/hskim-solv/BidMate-DocAgent/blob/main/tests/), `pyproject.toml`의 `tool.coverage` (branch tracking, 14 모듈) |
 
