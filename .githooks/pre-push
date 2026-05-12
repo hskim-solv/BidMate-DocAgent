@@ -1,136 +1,38 @@
 #!/usr/bin/env bash
-# Opt-in pre-push hook for BidMate-DocAgent.
+# Opt-in pre-push hook for BidMate-DocAgent. Thin dispatcher.
 #
 # Activate per-developer with:
 #   git config core.hooksPath .githooks
 #   (or: make install-hooks)
 #
-# Behavior (three checks, in order):
+# Behavior (two phases, in order):
 #
-# 1. Branch name + issue convention (ADR 0007) — HARD-FAILS the push
-#    if the current branch does not match <type>/issue-<N>[-<slug>].
-#    If `gh` is installed and authed, also verifies issue #N exists.
-#    Mirror of the CI check `.github/workflows/branch-and-issue-check.yml`.
+# 1. `_pre-push-branch-check.sh` — HARD-FAILS if the current branch does not
+#    match the ADR 0007 convention `<type>/issue-<N>[-<slug>]`. Exit code
+#    propagates and blocks the push.
 #
-# 2. Real-data eval delta reminder — SOFT-WARNS (exits 0) if the push
-#    touches retrieval / verifier / eval / api paths without a
-#    real-data delta, per CLAUDE.md pre-PR checklist item 5b.
+# 2. `_pre-push-real-eval-reminder.sh` — SOFT-WARNS (always exits 0) for:
+#    - real-data eval delta reminder when retrieval / verifier / eval / api
+#      paths changed (load-bearing SSoT: `scripts/_governance.py`),
+#    - README metrics freshness reminder when `reports/eval_summary.json`
+#      diverges from the committed README block.
 #
-# 3. README metrics freshness reminder — SOFT-WARNS (exits 0) if
-#    reports/eval_summary.json exists locally and the committed
-#    README's metrics block diverges. eval_summary.json is gitignored,
-#    so this is the only feasible enforcement point.
+# Both sub-scripts are independently runnable for manual debugging:
 #
-# Skip all with `git push --no-verify` only if you have a documented
-# reason (e.g. doc-only follow-up of a measured PR).
+#     bash .githooks/_pre-push-branch-check.sh
+#     bash .githooks/_pre-push-real-eval-reminder.sh
+#
+# Skip the whole hook with `git push --no-verify` only if you have a
+# documented reason (e.g. doc-only follow-up of a measured PR).
 
 set -u
 
-# ---------------------------------------------------------------------------
-# 1. Branch name + issue convention (ADR 0007).
-# ---------------------------------------------------------------------------
+HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-current_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
-if [[ -n "$current_branch" && "$current_branch" != "HEAD" ]]; then
-  if command -v python3 >/dev/null 2>&1; then
-    if ! python3 scripts/check_branch_and_issue.py \
-           --branch "$current_branch" --check-issue; then
-      cat >&2 <<EOF
+# Phase 1: hard-fail branch convention check.
+bash "$HOOK_DIR/_pre-push-branch-check.sh" || exit $?
 
-   Bypass (only with a documented reason):
-       git push --no-verify
-
-EOF
-      exit 1
-    fi
-  fi
-fi
-
-# ---------------------------------------------------------------------------
-# 2. Real-data eval delta reminder (existing behavior, unchanged).
-# ---------------------------------------------------------------------------
-
-
-# Watch-list lives in scripts/_governance.py (single source of truth,
-# also consumed by the Claude PreToolUse hook and the §5b CI gate).
-
-# Resolve upstream / base ref. Prefer @{upstream}; fall back to origin/main.
-if upstream=$(git rev-parse --abbrev-ref --symbolic-full-name @{upstream} 2>/dev/null); then
-  base="$upstream"
-else
-  base="origin/main"
-fi
-
-# Files changed between the upstream and HEAD.
-if ! changed=$(git diff --name-only "$base"...HEAD 2>/dev/null); then
-  # No upstream / new branch — fall back to diff vs origin/main if it exists.
-  if git rev-parse --verify origin/main >/dev/null 2>&1; then
-    changed=$(git diff --name-only origin/main...HEAD 2>/dev/null || true)
-  else
-    changed=""
-  fi
-fi
-
-if [[ -z "$changed" ]]; then
-  exit 0
-fi
-
-# Match against the load-bearing SSoT.
-hit=""
-if command -v python3 >/dev/null 2>&1; then
-  hit=$(printf '%s\n' "$changed" | python3 scripts/_governance.py --any-match 2>/dev/null | head -n1)
-fi
-
-if [[ -n "$hit" ]]; then
-  cat >&2 <<EOF
-
-⚠️  Retrieval / verifier / eval path changed in this push.
-    (first match: $hit)
-
-    Per CLAUDE.md pre-PR checklist item 5b, attach the aggregate
-    real-data eval delta to the PR body before requesting review:
-
-        make real-eval
-        make real-eval-delta
-
-    The delta script is aggregate-only (ADR 0005 commit boundary) so
-    its output is safe to paste into the PR.
-
-    Push proceeds. Skip this reminder with --no-verify only if you
-    have a documented reason.
-
-EOF
-fi
-
-# ---------------------------------------------------------------------------
-# 3. README metrics freshness reminder (SOFT-WARN).
-# ---------------------------------------------------------------------------
-# If reports/eval_summary.json exists locally and the committed README's
-# metrics block diverges from what `update_readme_metrics.py` would render,
-# remind the developer to refresh it before reviewers see stale numbers.
-# eval_summary.json is gitignored, so this is the only feasible enforcement
-# point — CI cannot compare against it.
-
-if [[ -f "reports/eval_summary.json" ]] && command -v python3 >/dev/null 2>&1; then
-  if ! python3 scripts/update_readme_metrics.py \
-         --report reports/eval_summary.json --readme README.md --check \
-         >/dev/null 2>&1; then
-    cat >&2 <<EOF
-
-⚠️  README metrics block looks stale vs reports/eval_summary.json.
-
-    Refresh before reviewers see outdated numbers:
-
-        make check     # confirm staleness
-        python3 scripts/update_readme_metrics.py \\
-            --report reports/eval_summary.json --readme README.md
-        git add README.md && git commit --amend --no-edit  # or new commit
-
-    Push proceeds. Skip this reminder with --no-verify if README
-    intentionally lags eval_summary in this PR.
-
-EOF
-  fi
-fi
+# Phase 2: soft-warn reminders (real-eval §5b + README freshness).
+bash "$HOOK_DIR/_pre-push-real-eval-reminder.sh" || true
 
 exit 0
