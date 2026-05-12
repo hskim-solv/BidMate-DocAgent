@@ -8,6 +8,10 @@ Covers:
     pyhwp installed in CI)
   * ``text_source`` metadata propagates from the loader (no longer hardcoded)
   * cross-format isolation: PDF dispatch ignores the HWP-specific env var
+  * fallback observability (issue #363): ``last_fallback_reason`` field is
+    populated and a ``RuntimeWarning`` is emitted on every silent CSV
+    fallback; clean native success leaves the field ``None`` and emits
+    nothing
 """
 
 from __future__ import annotations
@@ -16,6 +20,7 @@ import csv
 import os
 import tempfile
 import unittest
+import warnings
 from pathlib import Path
 from unittest import mock
 
@@ -136,41 +141,84 @@ class HwpNativeLoaderRegressionTest(unittest.TestCase):
         loader = HwpNativeLoader()
         # Force the import inside _extract_hwp_native to fail by injecting a
         # patched importer. This mirrors the no-pyhwp CI environment.
-        with mock.patch(
-            "ingestion._extract_hwp_native",
-            side_effect=ImportError("pyhwp not installed"),
-        ):
-            text = loader.load_text(
-                {"텍스트": "fallback body"}, Path("/nonexistent.hwp")
-            )
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            with mock.patch(
+                "ingestion._extract_hwp_native",
+                side_effect=ImportError("pyhwp not installed"),
+            ):
+                text = loader.load_text(
+                    {"텍스트": "fallback body"}, Path("/nonexistent.hwp")
+                )
         self.assertEqual("fallback body", text)
         self.assertEqual("data_list_csv_text", loader.last_text_source)
+        # Issue #363: silent fallback is now observable.
+        self.assertIsNotNone(loader.last_fallback_reason)
+        self.assertIn("ImportError", loader.last_fallback_reason)
+        self.assertIn("pyhwp not installed", loader.last_fallback_reason)
+        runtime_warnings = [w for w in caught if issubclass(w.category, RuntimeWarning)]
+        self.assertEqual(1, len(runtime_warnings))
+        self.assertIn("HwpNativeLoader fallback", str(runtime_warnings[0].message))
 
     def test_native_loader_falls_back_when_parser_raises_oserror(self) -> None:
         loader = HwpNativeLoader()
-        with mock.patch(
-            "ingestion._extract_hwp_native",
-            side_effect=OSError("not a valid OLE file"),
-        ):
-            text = loader.load_text(
-                {"텍스트": "csv text after parse failure"},
-                Path("/nonexistent.hwp"),
-            )
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            with mock.patch(
+                "ingestion._extract_hwp_native",
+                side_effect=OSError("not a valid OLE file"),
+            ):
+                text = loader.load_text(
+                    {"텍스트": "csv text after parse failure"},
+                    Path("/nonexistent.hwp"),
+                )
         self.assertEqual("csv text after parse failure", text)
         self.assertEqual("data_list_csv_text", loader.last_text_source)
+        # Issue #363: silent fallback is now observable.
+        self.assertIsNotNone(loader.last_fallback_reason)
+        self.assertIn("OSError", loader.last_fallback_reason)
+        self.assertIn("not a valid OLE file", loader.last_fallback_reason)
+        runtime_warnings = [w for w in caught if issubclass(w.category, RuntimeWarning)]
+        self.assertEqual(1, len(runtime_warnings))
 
     def test_native_loader_records_hwp_native_source_on_success(self) -> None:
         loader = HwpNativeLoader()
-        with mock.patch(
-            "ingestion._extract_hwp_native",
-            return_value="native extracted body",
-        ):
-            text = loader.load_text(
-                {"텍스트": "csv text (should be ignored)"},
-                Path("/nonexistent.hwp"),
-            )
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            with mock.patch(
+                "ingestion._extract_hwp_native",
+                return_value="native extracted body",
+            ):
+                text = loader.load_text(
+                    {"텍스트": "csv text (should be ignored)"},
+                    Path("/nonexistent.hwp"),
+                )
         self.assertEqual("native extracted body", text)
         self.assertEqual("hwp_native", loader.last_text_source)
+        # Issue #363: clean native success leaves no fallback trace.
+        self.assertIsNone(loader.last_fallback_reason)
+        runtime_warnings = [w for w in caught if issubclass(w.category, RuntimeWarning)]
+        self.assertEqual(0, len(runtime_warnings))
+
+    def test_native_loader_fallback_reason_resets_between_calls(self) -> None:
+        """Issue #363: a clean call after a failed one must clear the reason
+        so diagnostics never bleed across documents in a multi-doc ingest."""
+        loader = HwpNativeLoader()
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            with mock.patch(
+                "ingestion._extract_hwp_native",
+                side_effect=RuntimeError("corrupted body section"),
+            ):
+                loader.load_text({"텍스트": "first csv"}, Path("/a.hwp"))
+            self.assertIsNotNone(loader.last_fallback_reason)
+            with mock.patch(
+                "ingestion._extract_hwp_native",
+                return_value="second native body",
+            ):
+                loader.load_text({"텍스트": "second csv"}, Path("/b.hwp"))
+            self.assertIsNone(loader.last_fallback_reason)
+            self.assertEqual("hwp_native", loader.last_text_source)
 
     def test_native_loader_empty_native_and_empty_csv_raises(self) -> None:
         loader = HwpNativeLoader()

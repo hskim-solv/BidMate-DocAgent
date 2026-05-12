@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import csv
 import os
+import warnings
 from collections import OrderedDict
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -114,21 +115,35 @@ class HwpNativeLoader(CsvTextDocumentLoader):
     parse failure, falls back to the CSV ``텍스트`` column so the baseline
     ingestion contract (ADR 0001) keeps working without pyhwp installed.
 
-    The selected source is exposed via ``last_text_source`` so the caller can
-    propagate it into the document metadata.
+    Diagnostics (issue #363): ``last_text_source`` records which source the
+    final text came from; ``last_fallback_reason`` records ``"ExceptionName:
+    truncated message"`` when fallback fires (``None`` otherwise). Because
+    this loader is only constructed when the user opts in via
+    ``BIDMATE_HWP_LOADER=native`` (see ``_resolve_loader``), every fallback
+    here also emits a ``RuntimeWarning`` so the silent path is visible in
+    real-data eval logs.
     """
 
     file_format = "hwp"
 
     def __init__(self) -> None:
         self.last_text_source = "data_list_csv_text"
+        self.last_fallback_reason: str | None = None
 
     def load_text(self, row: dict[str, str], source_path: Path) -> str:
         self.last_text_source = "data_list_csv_text"
+        self.last_fallback_reason = None
         try:
             native_text = _extract_hwp_native(source_path)
-        except (ImportError, OSError, RuntimeError):
+        except (ImportError, OSError, RuntimeError) as exc:
             native_text = None
+            reason = f"{type(exc).__name__}: {str(exc)[:120]}"
+            self.last_fallback_reason = reason
+            warnings.warn(
+                f"HwpNativeLoader fallback to CSV text: {reason}",
+                RuntimeWarning,
+                stacklevel=2,
+            )
         if native_text:
             self.last_text_source = "hwp_native"
             return native_text
