@@ -71,3 +71,69 @@ def test_unsupported_backend_raises(
     monkeypatch.setenv(ENV_INDEX_BACKEND, "pgvector")
     with pytest.raises(NotImplementedError, match="#176"):
         load_vector_store(tmp_path, schema_version=2)
+
+
+# ---------------------------------------------------------------------------
+# Stage 2b: query(qvec, top_k)
+# ---------------------------------------------------------------------------
+
+
+def test_in_memory_query_returns_top_k_sorted_by_score(matrix: np.ndarray) -> None:
+    """Querying with one of the indexed rows must rank that row at idx 0
+    with score ≈ 1.0 (self-cosine on an L2-normalized matrix)."""
+    store = vector_store_from_matrix(matrix)
+    qvec = matrix[2]
+    result = store.query(qvec, top_k=3)
+    assert len(result) == 3
+    assert result[0][0] == 2
+    assert pytest.approx(result[0][1], abs=1e-6) == 1.0
+    # Scores must be non-increasing.
+    scores = [s for _, s in result]
+    assert scores == sorted(scores, reverse=True)
+
+
+def test_in_memory_query_clamps_top_k_to_n(matrix: np.ndarray) -> None:
+    store = vector_store_from_matrix(matrix)
+    result = store.query(matrix[0], top_k=100)
+    assert len(result) == len(store) == 5
+    # All five indices are present, no duplicates.
+    assert {idx for idx, _ in result} == set(range(5))
+
+
+def test_in_memory_query_empty_store_returns_empty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv(ENV_INDEX_BACKEND, raising=False)
+    empty = np.zeros((0, 4), dtype=np.float32)
+    store = vector_store_from_matrix(empty)
+    assert store.query(np.zeros(4, dtype=np.float32), top_k=5) == []
+
+
+def test_in_memory_query_top_k_zero_returns_empty(matrix: np.ndarray) -> None:
+    store = vector_store_from_matrix(matrix)
+    assert store.query(matrix[0], top_k=0) == []
+
+
+def test_in_memory_query_dim_mismatch_raises(matrix: np.ndarray) -> None:
+    store = vector_store_from_matrix(matrix)
+    with pytest.raises(ValueError, match="dim"):
+        store.query(np.zeros(99, dtype=np.float32), top_k=3)
+
+
+def test_in_memory_query_stable_tie_break(matrix: np.ndarray) -> None:
+    """Two rows with the same score must be returned in ascending
+    row-index order — the brute-force loop in ``rag_core.retrieve``
+    relies on stable ordering for reproducibility."""
+    # Construct a matrix where rows 1 and 3 are identical → identical
+    # scores against any query.
+    twins = matrix.copy()
+    twins[3] = twins[1]
+    store = vector_store_from_matrix(twins)
+    qvec = twins[1]
+    result = store.query(qvec, top_k=5)
+    # Rows 1 and 3 both score 1.0; argpartition with stable sort puts
+    # the lower index first.
+    top_scores = [s for _, s in result if pytest.approx(s, abs=1e-6) == 1.0]
+    top_ids = [i for i, s in result if pytest.approx(s, abs=1e-6) == 1.0]
+    assert top_scores == sorted(top_scores, reverse=True)
+    assert top_ids == sorted(top_ids)

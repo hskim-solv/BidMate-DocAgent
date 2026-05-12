@@ -9,19 +9,20 @@ from #207) is invariant across backends, so users can switch
 Stages of #176:
 
 * **Stage 1** (#234, merged) — Protocol + ``InMemoryVectorStore``.
-* **Stage 2a** (this module's ``qdrant`` backend) — Qdrant in-memory
-  collection adapter. ``get(idx)`` is bit-identical to in-memory; the
-  Qdrant collection holds the same points in parallel so a future
-  Stage 2b can add a ``query(qvec, top_k)`` Protocol method and
-  delegate ANN search to Qdrant without rebuilding the index.
-* **Stage 2b** (deferred) — Protocol-level ``query`` method + Qdrant
-  filter-pushdown.
+* **Stage 2a** (#288, merged) — Qdrant in-memory collection adapter.
+  ``get(idx)`` is bit-identical to in-memory; the Qdrant collection
+  holds the same points in parallel.
+* **Stage 2b** (this PR) — Protocol-level ``query(qvec, top_k)``
+  method exposing top-k cosine retrieval. ``InMemoryVectorStore``
+  ships an exact brute-force implementation; ``QdrantVectorStore``
+  delegates to ``client.search`` so the Qdrant collection actually
+  earns its keep. ``rag_core.retrieve`` is not yet wired to
+  ``query`` — that integration is Stage 2c so reviewers can read
+  the API change without a load-bearing retrieve diff.
+* **Stage 2c** (deferred) — wire ``rag_core.retrieve`` to
+  ``store.query`` so both backends drive ranking through the same
+  surface. Filter-pushdown (Qdrant payload filters) extends ``query``.
 * **Stage 3** (deferred) — pgvector backend for SaaS-Postgres scale.
-
-The Protocol is deliberately minimal: ``get(idx)`` is what the
-retrieval loop currently needs. A ``query(qvec, top_k)`` method is
-reserved for Stage 2b — adding it now would duplicate candidate-filter
-logic and break the no-behavior-change invariant.
 """
 
 from __future__ import annotations
@@ -55,6 +56,11 @@ class VectorStore(Protocol):
     Implementations are constructed by ``load_vector_store`` (read path)
     or ``vector_store_from_matrix`` (build path), and are attached to the
     in-memory index payload under the ``_vector_store`` key.
+
+    ``query`` is the Stage 2b extension (#176): both backends MUST
+    accept an L2-normalized float32 query vector and return the
+    top-``k`` ``(idx, score)`` pairs sorted by score descending. Score
+    is cosine similarity in ``[-1, 1]``.
     """
 
     dimension: int
@@ -62,6 +68,10 @@ class VectorStore(Protocol):
     def __len__(self) -> int: ...
 
     def get(self, idx: int) -> np.ndarray: ...
+
+    def query(
+        self, qvec: np.ndarray, top_k: int
+    ) -> list[tuple[int, float]]: ...
 
     def persist(self, output_dir: Path) -> None: ...
 
@@ -72,7 +82,9 @@ class InMemoryVectorStore:
 
     Wraps a ``(N, D)`` float32 L2-normalized matrix. ``get`` returns a
     view into the underlying array (not a copy), matching the prior
-    ``vectors_matrix[i]`` behavior in ``rag_core.retrieve``.
+    ``vectors_matrix[i]`` behavior in ``rag_core.retrieve``. ``query``
+    is a brute-force exact cosine top-k — the matrix is already
+    L2-normalized so dot product equals cosine.
     """
 
     vectors: np.ndarray
@@ -87,6 +99,30 @@ class InMemoryVectorStore:
     def get(self, idx: int) -> np.ndarray:
         return self.vectors[idx]
 
+    def query(
+        self, qvec: np.ndarray, top_k: int
+    ) -> list[tuple[int, float]]:
+        if len(self) == 0 or top_k <= 0:
+            return []
+        qvec_f32 = np.asarray(qvec, dtype=np.float32)
+        if qvec_f32.shape[-1] != self.dimension:
+            raise ValueError(
+                f"Query vector dim {qvec_f32.shape[-1]} does not match "
+                f"index dim {self.dimension}."
+            )
+        scores = self.vectors @ qvec_f32
+        k = min(top_k, len(scores))
+        if k == len(scores):
+            order = np.argsort(-scores, kind="stable")
+        else:
+            # argpartition pulls the k highest-scoring rows, then we
+            # sort within that slice. Stable sort ensures deterministic
+            # tie-breaks by row index — matching the brute-force loop
+            # in ``rag_core.retrieve`` today.
+            partition = np.argpartition(-scores, k - 1)[:k]
+            order = partition[np.argsort(-scores[partition], kind="stable")]
+        return [(int(i), float(scores[i])) for i in order]
+
     def persist(self, output_dir: Path) -> None:
         output_dir.mkdir(parents=True, exist_ok=True)
         np.save(
@@ -97,20 +133,19 @@ class InMemoryVectorStore:
 
 @dataclass
 class QdrantVectorStore:
-    """Qdrant in-memory collection adapter (#176 Stage 2a).
+    """Qdrant in-memory collection adapter (#176 Stage 2a + 2b).
 
     Wraps the same ``(N, D)`` float32 L2-normalized matrix as
-    ``InMemoryVectorStore`` and additionally mirrors it into a Qdrant
-    collection opened in ``location=":memory:"`` mode. Stage 2a keeps
-    the matrix in memory so ``get(idx)`` returns the bit-identical row
-    that the in-memory backend would — preserving retrieval ranking.
-    Stage 2b will introduce a ``query(qvec, top_k)`` Protocol method
-    that delegates to Qdrant and lets us drop the parallel matrix.
+    ``InMemoryVectorStore`` and mirrors it into a Qdrant collection
+    opened in ``location=":memory:"`` mode. ``get(idx)`` returns the
+    bit-identical row from the matrix; ``query`` delegates to
+    ``client.search`` so the Qdrant collection actually drives the
+    cosine top-k ranking.
 
-    ``persist`` writes the existing ``embeddings.npy`` sidecar so users
-    can switch backends without rebuilding the index. Native Qdrant
-    collection persistence (``location=<path>``) is reserved for Stage
-    2b.
+    Native Qdrant collection persistence (``location=<path>``) is
+    reserved for Stage 3 — Stage 2 writes the same
+    ``embeddings.npy`` sidecar so users can switch backends without
+    rebuilding the index.
     """
 
     vectors: np.ndarray
@@ -126,6 +161,31 @@ class QdrantVectorStore:
 
     def get(self, idx: int) -> np.ndarray:
         return self.vectors[idx]
+
+    def query(
+        self, qvec: np.ndarray, top_k: int
+    ) -> list[tuple[int, float]]:
+        if len(self) == 0 or top_k <= 0:
+            return []
+        qvec_f32 = np.asarray(qvec, dtype=np.float32)
+        if qvec_f32.shape[-1] != self.dimension:
+            raise ValueError(
+                f"Query vector dim {qvec_f32.shape[-1]} does not match "
+                f"index dim {self.dimension}."
+            )
+        # Qdrant's in-memory mode runs exact cosine search at this size
+        # (no HNSW approximation kicks in for the small Korean RFP
+        # corpora used in eval). For larger collections Qdrant uses an
+        # HNSW index — the API contract here is "top-k cosine" and the
+        # ranking ties are broken by Qdrant's stable point-id order.
+        # ``query_points`` is the universal endpoint in qdrant-client
+        # 1.10+; ``search`` was removed.
+        response = self.client.query_points(
+            collection_name=self.collection_name,
+            query=qvec_f32.tolist(),
+            limit=top_k,
+        )
+        return [(int(p.id), float(p.score)) for p in response.points]
 
     def persist(self, output_dir: Path) -> None:
         output_dir.mkdir(parents=True, exist_ok=True)

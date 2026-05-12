@@ -129,3 +129,77 @@ def test_qdrant_empty_matrix_does_not_crash(
     store = vector_store_from_matrix(empty)
     assert isinstance(store, QdrantVectorStore)
     assert len(store) == 0
+
+
+# ---------------------------------------------------------------------------
+# Stage 2b: query(qvec, top_k) — Qdrant ANN + parity with brute-force
+# ---------------------------------------------------------------------------
+
+
+def test_qdrant_query_returns_top_k_with_self_at_top(
+    matrix: np.ndarray, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(ENV_INDEX_BACKEND, "qdrant")
+    store = vector_store_from_matrix(matrix)
+    result = store.query(matrix[2], top_k=3)
+    assert len(result) == 3
+    assert result[0][0] == 2
+    assert result[0][1] == pytest.approx(1.0, abs=1e-5)
+    scores = [s for _, s in result]
+    assert scores == sorted(scores, reverse=True)
+
+
+def test_qdrant_query_matches_in_memory_top_k_ranking(
+    matrix: np.ndarray, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Parity contract for Stage 2b: on a small in-memory Qdrant
+    collection (no HNSW kick-in), the top-k cosine ranking must
+    exactly match ``InMemoryVectorStore.query`` — both indices and
+    scores. Guards against off-by-one and tie-break drift between
+    the two backends."""
+    monkeypatch.delenv(ENV_INDEX_BACKEND, raising=False)
+    memory_store = vector_store_from_matrix(matrix)
+    monkeypatch.setenv(ENV_INDEX_BACKEND, "qdrant")
+    qdrant_store = vector_store_from_matrix(matrix)
+
+    # Try every row as a query — surfaces any per-row asymmetry.
+    for i in range(matrix.shape[0]):
+        memory_result = memory_store.query(matrix[i], top_k=3)
+        qdrant_result = qdrant_store.query(matrix[i], top_k=3)
+        assert [idx for idx, _ in memory_result] == [
+            idx for idx, _ in qdrant_result
+        ], f"index ranking diverged for row {i}"
+        for (m_idx, m_score), (q_idx, q_score) in zip(
+            memory_result, qdrant_result
+        ):
+            assert m_idx == q_idx
+            assert m_score == pytest.approx(q_score, abs=1e-5)
+
+
+def test_qdrant_query_clamps_top_k_to_n(
+    matrix: np.ndarray, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(ENV_INDEX_BACKEND, "qdrant")
+    store = vector_store_from_matrix(matrix)
+    result = store.query(matrix[0], top_k=100)
+    # Qdrant respects the `limit` parameter — it returns N points, not 100.
+    assert len(result) == len(store)
+    assert {idx for idx, _ in result} == set(range(len(store)))
+
+
+def test_qdrant_query_empty_store_returns_empty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(ENV_INDEX_BACKEND, "qdrant")
+    empty = np.zeros((0, 4), dtype=np.float32)
+    store = vector_store_from_matrix(empty)
+    assert store.query(np.zeros(4, dtype=np.float32), top_k=5) == []
+
+
+def test_qdrant_query_dim_mismatch_raises(
+    matrix: np.ndarray, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(ENV_INDEX_BACKEND, "qdrant")
+    store = vector_store_from_matrix(matrix)
+    with pytest.raises(ValueError, match="dim"):
+        store.query(np.zeros(99, dtype=np.float32), top_k=3)
