@@ -3652,66 +3652,88 @@ def update_conversation_state(
     }
 
 
-def run_rag_query(
+@dataclass
+class _RunContext:
+    """Mutable per-query state threaded through the ``run_rag_query`` phase functions.
+
+    ADR 0022 stage 2 decomposes ``run_rag_query`` into
+    :func:`_phase_analyze` / :func:`_phase_retrieve_loop` /
+    :func:`_phase_build_answer` so the LangGraph orchestrator in
+    :mod:`rag_graph_agentic_full` can call the same phase code that the
+    direct path runs. JSON-identity vs the direct path therefore holds
+    by construction. Underscore-prefixed because
+    :mod:`rag_graph_agentic_full` is the only intended consumer.
+    """
+
+    index: dict[str, Any]
+    query: str
+    context_entities: list[str] | None
+    top_k: int | None
+    requested_top_k: int | None
+    metadata_first: bool
+    rerank: bool
+    verifier_retry: bool
+    retrieval_mode: str
+    retrieval_backend: str
+    pipeline_name: str
+    prompt_profile: str
+    rrf_k: int
+    bm25_stopword_profile: str
+    resolved_comparison_balance: Any
+    state: dict[str, Any]
+    targets: list[dict[str, Any]]
+    query_hash: str
+    cold_start: bool
+    started: float
+    stage_timings: dict[str, float]
+    trace_backend_obj: Any
+    trace_backend_name: str
+    trace_unavailable_reason: Any
+    trace_error: Any
+    trace_handle: Any
+    retrieval_query: str = ""
+    effective_context_entities: list[str] | None = None
+    context_resolution: dict[str, Any] | None = None
+    analysis: dict[str, Any] | None = None
+    stage_sequence: list[Any] | None = None
+    stage_attempts: list[dict[str, Any]] | None = None
+    retry_count: int = 0
+    plan: dict[str, Any] | None = None
+    evidence: list[dict[str, Any]] | None = None
+    verified: bool = False
+    verification_reasons: list[str] | None = None
+    retrieved_chunk_ids: list[str] | None = None
+
+
+def _build_run_context(
     index: dict[str, Any],
     query: str,
-    top_k: int | None = None,
-    context_entities: list[str] | None = None,
-    metadata_first: bool | None = None,
-    rerank: bool | None = None,
-    verifier_retry: bool | None = None,
-    retrieval_mode: str | None = None,
-    retrieval_backend: str | None = None,
-    pipeline: str | None = None,
-    prompt_profile: str | None = None,
-    conversation_state: dict[str, Any] | None = None,
-    comparison_balance: dict[str, Any] | None = None,
-    rrf_k: int | None = None,
-    bm25_stopword_profile: str | None = None,
     *,
-    params: QueryParams | None = None,
-    _skip_graph: bool = False,
-) -> dict[str, Any]:
-    # ADR 0022 / issue #401 — opt-in LangGraph orchestrator path.
-    # ``BIDMATE_ORCHESTRATOR=langgraph`` (default ``direct``) routes
-    # through ``rag_graph_agentic_full.run_via_langgraph`` which builds
-    # a passthrough StateGraph and calls back here with
-    # ``_skip_graph=True`` to bypass this dispatch (recursion guard).
-    # The ``naive_baseline`` preset is preserved as ablation per
-    # ADR 0001 and is intentionally NOT routed through LangGraph.
-    if (
-        not _skip_graph
-        and os.environ.get("BIDMATE_ORCHESTRATOR", "direct").strip().lower() == "langgraph"
-        and (pipeline is None or pipeline != "naive_baseline")
-        and (params is None or params.pipeline != "naive_baseline")
-    ):
-        from rag_graph_agentic_full import run_via_langgraph
+    top_k: int | None,
+    context_entities: list[str] | None,
+    metadata_first: bool | None,
+    rerank: bool | None,
+    verifier_retry: bool | None,
+    retrieval_mode: str | None,
+    retrieval_backend: str | None,
+    pipeline: str | None,
+    prompt_profile: str | None,
+    conversation_state: dict[str, Any] | None,
+    comparison_balance: dict[str, Any] | None,
+    rrf_k: int | None,
+    bm25_stopword_profile: str | None,
+    params: QueryParams | None,
+) -> _RunContext:
+    """Normalize raw ``run_rag_query`` inputs into a :class:`_RunContext`.
 
-        return run_via_langgraph(
-            index,
-            query,
-            top_k=top_k,
-            context_entities=context_entities,
-            metadata_first=metadata_first,
-            rerank=rerank,
-            verifier_retry=verifier_retry,
-            retrieval_mode=retrieval_mode,
-            retrieval_backend=retrieval_backend,
-            pipeline=pipeline,
-            prompt_profile=prompt_profile,
-            conversation_state=conversation_state,
-            comparison_balance=comparison_balance,
-            rrf_k=rrf_k,
-            bm25_stopword_profile=bm25_stopword_profile,
-            params=params,
-        )
-
+    Handles ``params=`` bundle normalization, pipeline-preset resolution,
+    the ``_PROCESS_WARM`` cold-start flag, query hashing, the
+    ``query_start`` log event, and trace-backend startup. Splitting this
+    out of ``run_rag_query`` lets the LangGraph orchestrator
+    (ADR 0022 stage 2) build the context once and pass it through the
+    three graph nodes.
+    """
     if params is not None:
-        # Pre-bundle path (issue #260). `params=` is an additive opt-in:
-        # individual pipeline kwargs are still accepted for compatibility,
-        # but mixing both is almost always a caller bug, so surface it loudly.
-        # Per-call inputs (`context_entities`, `conversation_state`) stay
-        # separate kwargs because they vary per turn, not per pipeline config.
         legacy_pipeline_kwargs = {
             "top_k": top_k,
             "metadata_first": metadata_first,
@@ -3763,17 +3785,17 @@ def run_rag_query(
         pipeline_source,
         default_pipeline=DEFAULT_RAG_PIPELINE_NAME,
     )
-    top_k = pipeline_config["top_k"]
-    requested_top_k = top_k
-    metadata_first = bool(pipeline_config["metadata_first"])
-    rerank = bool(pipeline_config["rerank"])
-    verifier_retry = bool(pipeline_config["verifier_retry"])
-    retrieval_mode = str(pipeline_config["retrieval_mode"])
-    retrieval_backend = str(pipeline_config["retrieval_backend"])
+    resolved_top_k = pipeline_config["top_k"]
+    requested_top_k = resolved_top_k
+    metadata_first_val = bool(pipeline_config["metadata_first"])
+    rerank_val = bool(pipeline_config["rerank"])
+    verifier_retry_val = bool(pipeline_config["verifier_retry"])
+    retrieval_mode_val = str(pipeline_config["retrieval_mode"])
+    retrieval_backend_val = str(pipeline_config["retrieval_backend"])
     pipeline_name = str(pipeline_config["pipeline"])
-    prompt_profile = str(pipeline_config["prompt_profile"])
-    rrf_k = int(pipeline_config["rrf_k"])
-    bm25_stopword_profile = str(pipeline_config["bm25_stopword_profile"])
+    prompt_profile_val = str(pipeline_config["prompt_profile"])
+    rrf_k_val = int(pipeline_config["rrf_k"])
+    bm25_stopword_profile_val = str(pipeline_config["bm25_stopword_profile"])
     resolved_comparison_balance = pipeline_config.get("comparison_balance")
 
     global _PROCESS_WARM
@@ -3788,9 +3810,9 @@ def run_rag_query(
         query_hash=query_hash,
         query_length=len(query),
         pipeline=pipeline_name,
-        prompt_profile=prompt_profile,
-        retrieval_backend=retrieval_backend,
-        retrieval_mode=retrieval_mode,
+        prompt_profile=prompt_profile_val,
+        retrieval_backend=retrieval_backend_val,
+        retrieval_mode=retrieval_mode_val,
         top_k=requested_top_k,
         cold_start=cold_start,
     )
@@ -3802,116 +3824,152 @@ def run_rag_query(
 
     trace_backend_obj, trace_backend_name, trace_unavailable_reason = resolve_trace_backend()
     trace_error: str | None = None
-    _trace_handle: Any = None
-    # Fast path: when no backend is active, skip the span machinery entirely.
-    # `_StageTimer(trace=None)` short-circuits — this keeps the noop default
-    # well within the ADR 0013 trace budget (< 5% p95 stage overhead).
+    trace_handle: Any = None
     if trace_backend_name != "none":
         try:
-            _trace_handle = trace_backend_obj.start_trace(
+            trace_handle = trace_backend_obj.start_trace(
                 query,
                 {
                     "pipeline": pipeline_name,
-                    "prompt_profile": prompt_profile,
+                    "prompt_profile": prompt_profile_val,
                     "embedding_backend": index.get("embedding", {}).get("backend"),
-                    "retrieval_backend": retrieval_backend,
-                    "retrieval_mode": retrieval_mode,
-                    "metadata_first": metadata_first,
-                    "rerank": rerank,
-                    "verifier_retry": verifier_retry,
+                    "retrieval_backend": retrieval_backend_val,
+                    "retrieval_mode": retrieval_mode_val,
+                    "metadata_first": metadata_first_val,
+                    "rerank": rerank_val,
+                    "verifier_retry": verifier_retry_val,
                     "cold_start": cold_start,
                 },
             )
         except Exception as exc:
             trace_error = f"start_trace:{type(exc).__name__}:{str(exc)[:120]}"
-            _trace_handle = None
+            trace_handle = None
 
-    with _StageTimer(stage_timings, "query_analysis_ms", trace=_trace_handle, attrs={"iteration": 1}):
-        initial_analysis = analyze_query(query, targets)
-    with _StageTimer(stage_timings, "context_resolution_ms", trace=_trace_handle):
+    return _RunContext(
+        index=index,
+        query=query,
+        context_entities=context_entities,
+        top_k=resolved_top_k,
+        requested_top_k=requested_top_k,
+        metadata_first=metadata_first_val,
+        rerank=rerank_val,
+        verifier_retry=verifier_retry_val,
+        retrieval_mode=retrieval_mode_val,
+        retrieval_backend=retrieval_backend_val,
+        pipeline_name=pipeline_name,
+        prompt_profile=prompt_profile_val,
+        rrf_k=rrf_k_val,
+        bm25_stopword_profile=bm25_stopword_profile_val,
+        resolved_comparison_balance=resolved_comparison_balance,
+        state=state,
+        targets=targets,
+        query_hash=query_hash,
+        cold_start=cold_start,
+        started=started,
+        stage_timings=stage_timings,
+        trace_backend_obj=trace_backend_obj,
+        trace_backend_name=trace_backend_name,
+        trace_unavailable_reason=trace_unavailable_reason,
+        trace_error=trace_error,
+        trace_handle=trace_handle,
+    )
+
+
+def _phase_analyze(ctx: _RunContext) -> dict[str, Any] | None:
+    """Run query analysis + context resolution + ambiguity check (ADR 0022 stage 2).
+
+    Returns a final result dict if the query short-circuits with a
+    context-clarification or metadata-ambiguity reply, otherwise ``None``
+    after mutating ``ctx`` with the analysis outputs that
+    :func:`_phase_retrieve_loop` and :func:`_phase_build_answer` consume.
+    """
+    with _StageTimer(ctx.stage_timings, "query_analysis_ms", trace=ctx.trace_handle, attrs={"iteration": 1}):
+        initial_analysis = analyze_query(ctx.query, ctx.targets)
+    with _StageTimer(ctx.stage_timings, "context_resolution_ms", trace=ctx.trace_handle):
         retrieval_query, effective_context_entities, context_resolution = resolve_conversation_context(
-            query,
+            ctx.query,
             initial_analysis,
-            state,
-            context_entities=context_entities,
+            ctx.state,
+            context_entities=ctx.context_entities,
         )
     if context_resolution["status"] == "needs_clarification":
         result = make_context_clarification_result(
-            index,
-            query,
+            ctx.index,
+            ctx.query,
             initial_analysis,
-            state,
+            ctx.state,
             context_resolution,
-            started,
-            metadata_first,
-            rerank,
-            verifier_retry,
-            retrieval_mode,
-            retrieval_backend,
-            pipeline_name,
-            prompt_profile,
-            stage_timings=stage_timings,
-            cold_start=cold_start,
-            rrf_k=rrf_k,
-            bm25_stopword_profile=bm25_stopword_profile,
+            ctx.started,
+            ctx.metadata_first,
+            ctx.rerank,
+            ctx.verifier_retry,
+            ctx.retrieval_mode,
+            ctx.retrieval_backend,
+            ctx.pipeline_name,
+            ctx.prompt_profile,
+            stage_timings=ctx.stage_timings,
+            cold_start=ctx.cold_start,
+            rrf_k=ctx.rrf_k,
+            bm25_stopword_profile=ctx.bm25_stopword_profile,
         )
         _attach_trace_diagnostics(
             result,
-            _trace_handle,
-            trace_backend_name,
-            trace_unavailable_reason,
-            trace_error,
+            ctx.trace_handle,
+            ctx.trace_backend_name,
+            ctx.trace_unavailable_reason,
+            ctx.trace_error,
         )
         return result
 
-    with _StageTimer(stage_timings, "query_analysis_ms", trace=_trace_handle, attrs={"iteration": 2}):
+    with _StageTimer(ctx.stage_timings, "query_analysis_ms", trace=ctx.trace_handle, attrs={"iteration": 2}):
         analysis = analyze_query(
             retrieval_query,
-            targets,
+            ctx.targets,
             context_entities=effective_context_entities,
         )
     if context_resolution["source"] in {"conversation_state", "context_entities"}:
         analysis["query_type"] = "follow_up"
         analysis["context_used"] = True
     analysis["context_resolution"] = context_resolution
-    if _trace_handle is not None:
+    if ctx.trace_handle is not None:
         try:
-            _trace_handle.set_tag("query_type", str(analysis.get("query_type") or ""))
+            ctx.trace_handle.set_tag("query_type", str(analysis.get("query_type") or ""))
         except Exception:
             pass
     if analysis.get("metadata_ambiguous") and analysis.get("query_type") != "comparison":
         result = make_metadata_clarification_result(
-            index,
-            query,
+            ctx.index,
+            ctx.query,
             retrieval_query,
             analysis,
-            state,
+            ctx.state,
             context_resolution,
-            started,
-            metadata_first,
-            rerank,
-            verifier_retry,
-            retrieval_mode,
-            retrieval_backend,
-            pipeline_name,
-            prompt_profile,
-            stage_timings=stage_timings,
-            cold_start=cold_start,
-            rrf_k=rrf_k,
-            bm25_stopword_profile=bm25_stopword_profile,
+            ctx.started,
+            ctx.metadata_first,
+            ctx.rerank,
+            ctx.verifier_retry,
+            ctx.retrieval_mode,
+            ctx.retrieval_backend,
+            ctx.pipeline_name,
+            ctx.prompt_profile,
+            stage_timings=ctx.stage_timings,
+            cold_start=ctx.cold_start,
+            rrf_k=ctx.rrf_k,
+            bm25_stopword_profile=ctx.bm25_stopword_profile,
         )
         _attach_trace_diagnostics(
             result,
-            _trace_handle,
-            trace_backend_name,
-            trace_unavailable_reason,
-            trace_error,
+            ctx.trace_handle,
+            ctx.trace_backend_name,
+            ctx.trace_unavailable_reason,
+            ctx.trace_error,
         )
         return result
+
     stage_sequence = metadata_stage_sequence(
         analysis,
-        metadata_first=metadata_first,
-        verifier_retry=verifier_retry,
+        metadata_first=ctx.metadata_first,
+        verifier_retry=ctx.verifier_retry,
     )
     if len(stage_sequence) > MAX_AGENT_ITERATIONS:
         raise RuntimeError(
@@ -3919,26 +3977,44 @@ def run_rag_query(
             f"MAX_AGENT_ITERATIONS={MAX_AGENT_ITERATIONS}; "
             "update MAX_AGENT_ITERATIONS and revisit the loop contract."
         )
-    stage_attempts = []
+
+    ctx.retrieval_query = retrieval_query
+    ctx.effective_context_entities = effective_context_entities
+    ctx.context_resolution = context_resolution
+    ctx.analysis = analysis
+    ctx.stage_sequence = stage_sequence
+    return None
+
+
+def _phase_retrieve_loop(ctx: _RunContext) -> None:
+    """Run the metadata-stage retry loop (ADR 0022 stage 2).
+
+    Mutates ``ctx`` with ``stage_attempts``, ``retry_count``, ``plan``,
+    ``evidence``, ``verified``, ``verification_reasons``,
+    ``retrieved_chunk_ids``.
+    """
+    stage_attempts: list[dict[str, Any]] = []
     retry_count = 0
     plan: dict[str, Any] = {}
     evidence: list[dict[str, Any]] = []
     verified = False
     verification_reasons: list[str] = []
 
+    stage_sequence = ctx.stage_sequence or []
+    analysis = ctx.analysis or {}
     for attempt_index, stage in enumerate(stage_sequence):
-        attempt_top_k = top_k
+        attempt_top_k = ctx.top_k
         top_k_reason = None
-        if requested_top_k is not None:
+        if ctx.requested_top_k is not None:
             top_k_reason = "pipeline_or_explicit_override"
         if attempt_index > 0:
-            attempt_top_k = max(top_k or 0, 8)
+            attempt_top_k = max(ctx.top_k or 0, 8)
             top_k_reason = "retry_expansion"
         attempt_timings: dict[str, float] = {}
         with _StageTimer(
             attempt_timings,
             "retrieve_ms",
-            trace=_trace_handle,
+            trace=ctx.trace_handle,
             attrs={"attempt_index": attempt_index, "stage": str(stage or ""), "top_k": attempt_top_k or 0},
         ):
             plan = make_plan(
@@ -3946,29 +4022,25 @@ def run_rag_query(
                 top_k=attempt_top_k,
                 top_k_reason=top_k_reason,
                 stage=stage,
-                metadata_first=metadata_first,
-                rerank=rerank,
-                verifier_retry=verifier_retry,
-                retrieval_mode=retrieval_mode,
-                retrieval_backend=retrieval_backend,
-                pipeline=pipeline_name,
-                prompt_profile=prompt_profile,
-                comparison_balance=resolved_comparison_balance,
-                rrf_k=rrf_k,
-                bm25_stopword_profile=bm25_stopword_profile,
+                metadata_first=ctx.metadata_first,
+                rerank=ctx.rerank,
+                verifier_retry=ctx.verifier_retry,
+                retrieval_mode=ctx.retrieval_mode,
+                retrieval_backend=ctx.retrieval_backend,
+                pipeline=ctx.pipeline_name,
+                prompt_profile=ctx.prompt_profile,
+                comparison_balance=ctx.resolved_comparison_balance,
+                rrf_k=ctx.rrf_k,
+                bm25_stopword_profile=ctx.bm25_stopword_profile,
             )
-            evidence = retrieve(index, retrieval_query, analysis, plan)
+            evidence = retrieve(ctx.index, ctx.retrieval_query, analysis, plan)
         with _StageTimer(
             attempt_timings,
             "verify_ms",
-            trace=_trace_handle,
-            attrs={"attempt_index": attempt_index, "verifier_retry": verifier_retry},
+            trace=ctx.trace_handle,
+            attrs={"attempt_index": attempt_index, "verifier_retry": ctx.verifier_retry},
         ):
-            if verifier_retry:
-                # On the last scheduled attempt allow partial-topic
-                # grounding so weak-but-usable evidence surfaces as
-                # ``partial`` instead of an unconditional abstention
-                # (issue #69, ADR 0004).
+            if ctx.verifier_retry:
                 is_last_attempt = attempt_index == len(stage_sequence) - 1
                 verified, verification_reasons = verify_evidence(
                     analysis,
@@ -3994,59 +4066,84 @@ def run_rag_query(
         evidence = select_supporting_evidence(analysis, evidence)
     else:
         evidence = []
-    with _StageTimer(stage_timings, "answer_generation_ms", trace=_trace_handle):
+
+    ctx.stage_attempts = stage_attempts
+    ctx.retry_count = retry_count
+    ctx.plan = plan
+    ctx.evidence = evidence
+    ctx.verified = verified
+    ctx.verification_reasons = verification_reasons
+    ctx.retrieved_chunk_ids = retrieved_chunk_ids
+
+
+def _phase_build_answer(ctx: _RunContext) -> dict[str, Any]:
+    """Build the final answer and result dict (ADR 0022 stage 2).
+
+    Reads phase-1/2 outputs from ``ctx``, writes the ``query_complete``
+    log event, attaches trace diagnostics, and returns the result dict
+    in the same key order as the legacy ``run_rag_query`` body — the
+    JSON-identity contract pinned by
+    ``tests/test_langgraph_orchestrator_regression.py``.
+    """
+    analysis = ctx.analysis or {}
+    evidence = ctx.evidence or []
+    verification_reasons = ctx.verification_reasons or []
+    plan = ctx.plan or {}
+    stage_attempts = ctx.stage_attempts or []
+
+    with _StageTimer(ctx.stage_timings, "answer_generation_ms", trace=ctx.trace_handle):
         answer, answer_text, abstained = generate_answer(
-            query,
+            ctx.query,
             analysis,
             evidence,
-            verified,
+            ctx.verified,
             verification_reasons,
         )
     synthesis_meta: dict[str, Any] | None = None
-    if prompt_profile == "llm_synthesis" and not abstained:
-        with _StageTimer(stage_timings, "synthesis_ms", trace=_trace_handle, attrs={"prompt_profile": prompt_profile}):
+    if ctx.prompt_profile == "llm_synthesis" and not abstained:
+        with _StageTimer(ctx.stage_timings, "synthesis_ms", trace=ctx.trace_handle, attrs={"prompt_profile": ctx.prompt_profile}):
             synthesized, synthesis_meta = synthesize_answer(
-                query, analysis, answer, evidence
+                ctx.query, analysis, answer, evidence
             )
         if synthesized is not None:
             answer = synthesized
             answer_text = synthesized.get("answer_text", answer_text)
     next_state = update_conversation_state(
-        state,
-        query,
-        retrieval_query,
+        ctx.state,
+        ctx.query,
+        ctx.retrieval_query,
         analysis,
         evidence,
-        context_resolution,
+        ctx.context_resolution,
     )
-    latency_ms = (time.perf_counter() - started) * 1000
+    latency_ms = (time.perf_counter() - ctx.started) * 1000
     stage_latency = {
-        "query_analysis_ms": round(stage_timings.get("query_analysis_ms", 0.0), 2),
-        "context_resolution_ms": round(stage_timings.get("context_resolution_ms", 0.0), 2),
-        "answer_generation_ms": round(stage_timings.get("answer_generation_ms", 0.0), 2),
+        "query_analysis_ms": round(ctx.stage_timings.get("query_analysis_ms", 0.0), 2),
+        "context_resolution_ms": round(ctx.stage_timings.get("context_resolution_ms", 0.0), 2),
+        "answer_generation_ms": round(ctx.stage_timings.get("answer_generation_ms", 0.0), 2),
     }
-    if "synthesis_ms" in stage_timings:
-        stage_latency["synthesis_ms"] = round(stage_timings.get("synthesis_ms", 0.0), 2)
+    if "synthesis_ms" in ctx.stage_timings:
+        stage_latency["synthesis_ms"] = round(ctx.stage_timings.get("synthesis_ms", 0.0), 2)
     metadata_resolution = metadata_resolution_diagnostics(
-        retrieval_query,
+        ctx.retrieval_query,
         analysis,
         selected_stage=str(plan.get("filter_stage") or ""),
     )
     result_trace = build_result_trace(
-        query,
-        retrieval_query,
+        ctx.query,
+        ctx.retrieval_query,
         analysis,
         plan,
         metadata_resolution,
-        context_resolution,
-        stage_sequence,
+        ctx.context_resolution,
+        ctx.stage_sequence,
         stage_attempts,
         answer,
         stage_latencies_ms=stage_latency,
     )
     diagnostics: dict[str, Any] = {
         "latency_ms": round(latency_ms, 2),
-        "retry_count": retry_count,
+        "retry_count": ctx.retry_count,
         "abstained": abstained,
         "answer_status": answer["status"],
         "answer_query_type": answer["query_type"],
@@ -4055,30 +4152,30 @@ def run_rag_query(
         "verification_reasons": (answer.get("status_reason") or {}).get("verification_reasons") or verification_reasons,
         "verification_topics": verification_topics(analysis),
         "filter_stage_attempts": stage_attempts,
-        "retrieved_chunk_ids": retrieved_chunk_ids,
-        "final_relaxation_reason": stage_attempts[-2]["verification_reasons"] if retry_count and len(stage_attempts) >= 2 else [],
-        "context_resolution": context_resolution,
+        "retrieved_chunk_ids": ctx.retrieved_chunk_ids,
+        "final_relaxation_reason": stage_attempts[-2]["verification_reasons"] if ctx.retry_count and len(stage_attempts) >= 2 else [],
+        "context_resolution": ctx.context_resolution,
         "metadata_resolution": metadata_resolution,
         "selected_top_k": plan.get("top_k"),
-        "embedding_backend": index.get("embedding", {}).get("backend"),
-        "embedding_model": index.get("embedding", {}).get("model"),
-        "metadata_first": metadata_first,
-        "rerank": rerank,
-        "verifier_retry": verifier_retry,
-        "retrieval_mode": retrieval_mode,
-        "retrieval_backend": retrieval_backend,
-        "rrf_k": int(rrf_k),
-        "bm25_stopword_profile": bm25_stopword_profile,
-        "pipeline": pipeline_name,
-        "prompt_profile": prompt_profile,
-        "cold_start": cold_start,
+        "embedding_backend": ctx.index.get("embedding", {}).get("backend"),
+        "embedding_model": ctx.index.get("embedding", {}).get("model"),
+        "metadata_first": ctx.metadata_first,
+        "rerank": ctx.rerank,
+        "verifier_retry": ctx.verifier_retry,
+        "retrieval_mode": ctx.retrieval_mode,
+        "retrieval_backend": ctx.retrieval_backend,
+        "rrf_k": int(ctx.rrf_k),
+        "bm25_stopword_profile": ctx.bm25_stopword_profile,
+        "pipeline": ctx.pipeline_name,
+        "prompt_profile": ctx.prompt_profile,
+        "cold_start": ctx.cold_start,
         "stage_latency": stage_latency,
         "synthesis": synthesis_meta,
     }
     result = {
         "mode": "rag",
-        "query": query,
-        "resolved_query": retrieval_query,
+        "query": ctx.query,
+        "resolved_query": ctx.retrieval_query,
         "analysis": analysis,
         "plan": plan,
         "answer": answer,
@@ -4090,27 +4187,115 @@ def run_rag_query(
     }
     _attach_trace_diagnostics(
         result,
-        _trace_handle,
-        trace_backend_name,
-        trace_unavailable_reason,
-        trace_error,
+        ctx.trace_handle,
+        ctx.trace_backend_name,
+        ctx.trace_unavailable_reason,
+        ctx.trace_error,
     )
     log_query_event(
         _LOGGER,
         "query_complete",
-        query_hash=query_hash,
+        query_hash=ctx.query_hash,
         status=answer["status"],
         query_type=answer["query_type"],
         latency_ms=round(latency_ms, 2),
-        retry_count=retry_count,
+        retry_count=ctx.retry_count,
         abstained=abstained,
         claim_count=len(answer["claims"]),
         citation_count=diagnostics["citation_count"],
-        pipeline=pipeline_name,
-        cold_start=cold_start,
-        trace_backend=trace_backend_name,
+        pipeline=ctx.pipeline_name,
+        cold_start=ctx.cold_start,
+        trace_backend=ctx.trace_backend_name,
     )
     return result
+
+
+def run_rag_query(
+    index: dict[str, Any],
+    query: str,
+    top_k: int | None = None,
+    context_entities: list[str] | None = None,
+    metadata_first: bool | None = None,
+    rerank: bool | None = None,
+    verifier_retry: bool | None = None,
+    retrieval_mode: str | None = None,
+    retrieval_backend: str | None = None,
+    pipeline: str | None = None,
+    prompt_profile: str | None = None,
+    conversation_state: dict[str, Any] | None = None,
+    comparison_balance: dict[str, Any] | None = None,
+    rrf_k: int | None = None,
+    bm25_stopword_profile: str | None = None,
+    *,
+    params: QueryParams | None = None,
+    _skip_graph: bool = False,
+) -> dict[str, Any]:
+    # ADR 0022 — opt-in LangGraph orchestrator dispatch.
+    # ``BIDMATE_ORCHESTRATOR=langgraph`` (default ``direct``) routes
+    # through :func:`rag_graph_agentic_full.run_via_langgraph` which
+    # builds the run context once and threads it through three nodes
+    # (analyze / retrieve_loop / build_answer) — stage 2 of the
+    # ADR-0022 migration. Each node calls the same ``_phase_*`` helper
+    # the direct path runs, so JSON-identity vs the direct path holds
+    # by construction (regression pinned by
+    # ``tests/test_langgraph_orchestrator_regression.py``).
+    # The ``_skip_graph`` kwarg forces the direct path even with the
+    # env var set — kept as a private override for callers that need
+    # deterministic dispatch independent of the environment. The
+    # ``naive_baseline`` preset stays on the direct path (ADR 0001)
+    # regardless of the env var.
+    if (
+        not _skip_graph
+        and os.environ.get("BIDMATE_ORCHESTRATOR", "direct").strip().lower() == "langgraph"
+        and (pipeline is None or pipeline != "naive_baseline")
+        and (params is None or params.pipeline != "naive_baseline")
+    ):
+        from rag_graph_agentic_full import run_via_langgraph
+
+        return run_via_langgraph(
+            index,
+            query,
+            top_k=top_k,
+            context_entities=context_entities,
+            metadata_first=metadata_first,
+            rerank=rerank,
+            verifier_retry=verifier_retry,
+            retrieval_mode=retrieval_mode,
+            retrieval_backend=retrieval_backend,
+            pipeline=pipeline,
+            prompt_profile=prompt_profile,
+            conversation_state=conversation_state,
+            comparison_balance=comparison_balance,
+            rrf_k=rrf_k,
+            bm25_stopword_profile=bm25_stopword_profile,
+            params=params,
+        )
+
+    ctx = _build_run_context(
+        index,
+        query,
+        top_k=top_k,
+        context_entities=context_entities,
+        metadata_first=metadata_first,
+        rerank=rerank,
+        verifier_retry=verifier_retry,
+        retrieval_mode=retrieval_mode,
+        retrieval_backend=retrieval_backend,
+        pipeline=pipeline,
+        prompt_profile=prompt_profile,
+        conversation_state=conversation_state,
+        comparison_balance=comparison_balance,
+        rrf_k=rrf_k,
+        bm25_stopword_profile=bm25_stopword_profile,
+        params=params,
+    )
+
+    early_result = _phase_analyze(ctx)
+    if early_result is not None:
+        return early_result
+
+    _phase_retrieve_loop(ctx)
+    return _phase_build_answer(ctx)
 
 
 async def arun_rag_query(

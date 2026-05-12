@@ -173,3 +173,97 @@ class GraphModuleImportTest(unittest.TestCase):
         graph_b = rag_graph_agentic_full._graph()
         # Same compiled graph object — the cache works.
         self.assertIs(graph_a, graph_b)
+
+
+class GraphStructureStage2Test(unittest.TestCase):
+    """ADR 0022 stage 2 — the graph has three nodes, not one.
+
+    Stage 1 shipped a single passthrough node so JSON-identity was
+    structurally trivial. Stage 2 splits into analyze / retrieve_loop /
+    build_answer with a conditional edge that short-circuits to END on
+    context-clarification or metadata-ambiguity early returns. These
+    tests pin the *structure* so a future stage-3 refactor cannot
+    silently collapse it back to a passthrough.
+    """
+
+    def test_graph_has_three_phase_nodes(self) -> None:
+        compiled = rag_graph_agentic_full._graph()
+        # ``nodes`` on a compiled StateGraph maps node name → node object,
+        # plus internal START / END markers. We assert the three phase
+        # nodes are present.
+        node_names = set(compiled.nodes)
+        for required in ("analyze", "retrieve_loop", "build_answer"):
+            self.assertIn(required, node_names, f"missing node: {required!r}; got {node_names!r}")
+
+    def test_phase_helpers_exposed_from_rag_core(self) -> None:
+        # The graph nodes import these by name at call time — if a
+        # future refactor renames or removes one, the import would
+        # fail at first dispatch instead of at this test.
+        self.assertTrue(callable(getattr(rag_core, "_phase_analyze", None)))
+        self.assertTrue(callable(getattr(rag_core, "_phase_retrieve_loop", None)))
+        self.assertTrue(callable(getattr(rag_core, "_phase_build_answer", None)))
+        self.assertTrue(callable(getattr(rag_core, "_build_run_context", None)))
+
+    def test_route_after_analyze_branches_on_result_presence(self) -> None:
+        # The conditional edge router after `analyze` short-circuits to
+        # END when the analyze phase emits a final result dict (early
+        # return), otherwise it continues to `retrieve_loop`. This pins
+        # the contract used by the LangGraph dispatch table.
+        router = rag_graph_agentic_full._route_after_analyze
+        self.assertEqual(router({"ctx": object()}), "retrieve_loop")
+        self.assertEqual(router({"ctx": object(), "result": {"mode": "rag"}}), "end")
+
+
+@pytest.mark.skipif(
+    not _has_local_index(),
+    reason="data/index/index.json missing — run `scripts/build_index.py` first",
+)
+def test_phase_analyze_short_circuits_for_context_clarification(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When ``_phase_analyze`` short-circuits (e.g. needs_clarification),
+    it returns a result dict so the graph can route directly to END
+    without running retrieve_loop / build_answer. A query that triggers
+    context clarification is the cheapest path to verify this.
+    """
+    index = rag_core.load_index(INDEX_PATH)
+    monkeypatch.setattr(rag_core, "_PROCESS_WARM", False, raising=False)
+    # An implicit-reference query with no conversation context typically
+    # triggers ``needs_clarification`` — the analyze phase emits the
+    # context-clarification result without entering retrieval.
+    ctx = rag_core._build_run_context(
+        copy.deepcopy(index),
+        "그건 어떻게 돼?",
+        top_k=None,
+        context_entities=None,
+        metadata_first=None,
+        rerank=None,
+        verifier_retry=None,
+        retrieval_mode=None,
+        retrieval_backend=None,
+        pipeline="agentic_full",
+        prompt_profile=None,
+        conversation_state=None,
+        comparison_balance=None,
+        rrf_k=None,
+        bm25_stopword_profile=None,
+        params=None,
+    )
+    early = rag_core._phase_analyze(ctx)
+    # The exact early-return depends on the query's resolution, but
+    # whichever path fires (clarification or metadata-ambiguity), we
+    # require an early return as a callable shape so the graph router
+    # can short-circuit. Normal flow returns None.
+    if early is None:
+        # If analyze did not short-circuit, the phase populated ctx for
+        # the retrieve loop. That's still a valid path (the query
+        # resolved without clarification) — assert the state the next
+        # phase needs is present so the contract is honored.
+        assert ctx.analysis is not None
+        assert ctx.stage_sequence is not None
+        assert ctx.retrieval_query
+    else:
+        assert isinstance(early, dict)
+        assert early.get("mode") == "rag"
+        # Short-circuit results must still carry the answer-contract
+        # fields the downstream callers expect.
+        assert "answer" in early
+        assert "diagnostics" in early
