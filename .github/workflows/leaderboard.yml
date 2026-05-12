@@ -1,21 +1,31 @@
-name: Leaderboard — append history + render on merge to main
+name: Leaderboard — append history + render (daily / on demand)
 
-# Issue #166: every merge to main produces one history snapshot under
-# reports/history/ and re-renders reports/leaderboard.md +
-# docs/leaderboard.md (Jekyll page consumed by GitHub Pages).
+# Issue #166: produce one history snapshot under reports/history/ and
+# re-render reports/leaderboard.md + docs/leaderboard.md (Jekyll page
+# consumed by GitHub Pages).
 #
 # Aggregate-only by construction — the writer reuses extract_aggregate
 # from scripts/run_real_eval_delta.py, so per-case fields cannot leak.
+#
+# Issue #471: trigger moved from `push to main` to a daily cron +
+# workflow_dispatch. The previous "every merge" cadence stamped a bot
+# commit per PR even when naive_baseline metrics were bit-identical
+# (ADR 0001 keeps that surface intentionally stable), so the main log
+# filled with `ci: append leaderboard for <sha>` rather than meaningful
+# changes. Run on-demand via `gh workflow run leaderboard.yml` when an
+# immediate stamp is needed (e.g. right after a load-bearing merge).
 
 on:
-  push:
-    branches: [main]
-    # Skip merge commits that are *themselves* the leaderboard bot,
-    # to prevent infinite trigger loops.
-    paths-ignore:
-      - "reports/history/**"
-      - "reports/leaderboard.md"
-      - "docs/leaderboard.md"
+  schedule:
+    # 22:00 KST / 13:00 UTC daily. GitHub Actions cron has up to 5m of
+    # drift; that's well within the leaderboard's daily granularity.
+    - cron: '0 13 * * *'
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: 'Optional note logged alongside the dispatch event.'
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -26,7 +36,6 @@ concurrency:
 
 jobs:
   append-and-render:
-    if: "!contains(github.event.head_commit.message, '[skip leaderboard]')"
     runs-on: ubuntu-latest
     steps:
       - name: Checkout (full history for git provenance)
