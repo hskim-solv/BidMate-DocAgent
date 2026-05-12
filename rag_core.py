@@ -1847,6 +1847,21 @@ def retrieve(
     analysis: dict[str, Any],
     plan: dict[str, Any],
 ) -> list[dict[str, Any]]:
+    scored = retrieve_candidates(index, query, analysis, plan)
+    return apply_fusion_and_reranking(scored, index, query, analysis, plan)
+
+
+def retrieve_candidates(
+    index: dict[str, Any],
+    query: str,
+    analysis: dict[str, Any],
+    plan: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Filter + per-chunk dense / lexical / metadata / BM25 scoring; the
+    pre-fusion phase of ``retrieve``. Split out so future Phase 3
+    multi-query / HyDE work can fan out this phase without piling onto
+    the fusion+rerank tail. Mutates ``plan`` with ``candidate_count``,
+    ``total_chunks``, ``filter_fallback_used`` (unchanged order)."""
     chunks = index["chunks"]
     filters = plan.get("metadata_filters") or {}
     doc_ids = set(filters.get("doc_ids") or [])
@@ -1961,7 +1976,22 @@ def retrieve(
         if page_span:
             item["page_span"] = page_span
         scored.append(item)
+    return scored
 
+
+def apply_fusion_and_reranking(
+    scored: list[dict[str, Any]],
+    index: dict[str, Any],
+    query: str,
+    analysis: dict[str, Any],
+    plan: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Fuse, sort, optionally cross-encoder rerank, then apply top-k.
+    Takes the pre-fusion list from ``retrieve_candidates`` and returns
+    the final ranked evidence. Mutates ``plan`` with
+    ``rerank_cross_encoder_meta`` only when the cross-encoder stage
+    runs (unchanged behavior)."""
+    retrieval_backend = str(plan.get("retrieval_backend", "dense"))
     if retrieval_backend == "hybrid" and scored:
         by_dense = sorted(
             scored,
