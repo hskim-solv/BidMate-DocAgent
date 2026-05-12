@@ -50,6 +50,12 @@ data/embedding-ablation/
 # Headline numbers are committed in docs/embedding-ablation.md so the public repo
 # stays small (the raw JSON is ~2 MB per model and traces/ adds another ~2 MB).
 reports/embedding-ablation/
+# LoRA fine-tuning training pairs (issue #433 / scripts/generate_finetune_pairs.py).
+# Generated from data/raw via the script; the 5k-scale embedding_pairs.jsonl is
+# reproducible with `seed=17`. data/training/sample.jsonl is the committed
+# schema reference (~25 representative rows).
+data/training/*
+!data/training/sample.jsonl
 # M2 (#207): vectors live in a sidecar .npy file alongside index.json so
 # the JSON stays small and a future VectorStore abstraction (#176) can
 # swap backends. Both files together are the portfolio sample.
