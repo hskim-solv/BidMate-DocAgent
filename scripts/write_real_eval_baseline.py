@@ -19,9 +19,7 @@ threshold tightened). Not every run.
 """
 from __future__ import annotations
 
-import datetime
 import json
-import subprocess
 import sys
 from pathlib import Path
 
@@ -29,49 +27,13 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from scripts._utils import build_provenance, make_run_id
 from scripts.run_real_eval_delta import extract_aggregate
 
 EVAL_SUMMARY = ROOT / "reports" / "real100" / "eval_summary.json"
 BASELINE_PATH = ROOT / "reports" / "real100" / "baseline.aggregate.json"
 HISTORY_DIR = ROOT / "reports" / "real100" / "history"
 JUDGE_LOCAL = ROOT / "reports" / "real100" / "judge.local.json"
-
-
-def _git(*args: str) -> str:
-    result = subprocess.run(
-        ["git", *args], capture_output=True, text=True, cwd=ROOT
-    )
-    return result.stdout.strip()
-
-
-def provenance() -> dict[str, object]:
-    """Return a provenance block for the current git HEAD.
-
-    Shared by the baseline writer (this script) and the eval runner
-    (``eval/run_eval.py``). Format is intentionally narrow: 12-char SHA,
-    dirty flag, ISO-8601 UTC timestamp.
-    """
-    sha = _git("rev-parse", "HEAD")[:12] or "unknown"
-    dirty = _git("status", "--porcelain") != ""
-    return {
-        "git_commit": sha,
-        "git_dirty": bool(dirty),
-        "generated_at": datetime.datetime.utcnow().isoformat() + "Z",
-    }
-
-
-def _run_id(prov: dict[str, object]) -> str:
-    # YYYYMMDDTHHMMSSZ_<sha12>
-    ts = (
-        str(prov.get("generated_at"))
-        .replace("-", "")
-        .replace(":", "")
-        .split(".")[0]  # drop fractional seconds
-    )
-    if not ts.endswith("Z"):
-        ts += "Z"
-    sha = str(prov.get("git_commit") or "unknown")[:12]
-    return f"{ts}_{sha}"
 
 
 def _warn_if_stale(
@@ -122,7 +84,7 @@ def main() -> int:
     raw = json.loads(EVAL_SUMMARY.read_text(encoding="utf-8"))
     agg = extract_aggregate(raw)
     eval_prov = raw.get("provenance") if isinstance(raw, dict) else None
-    baseline_prov = provenance()
+    baseline_prov = build_provenance()
     _warn_if_stale(eval_prov, baseline_prov)
     agg["provenance"] = baseline_prov
 
@@ -154,7 +116,7 @@ def main() -> int:
     BASELINE_PATH.write_text(serialized, encoding="utf-8")
 
     HISTORY_DIR.mkdir(parents=True, exist_ok=True)
-    history_path = HISTORY_DIR / f"{_run_id(baseline_prov)}.aggregate.json"
+    history_path = HISTORY_DIR / f"{make_run_id(baseline_prov)}.aggregate.json"
     history_path.write_text(serialized, encoding="utf-8")
 
     print(f"[OK] Updated {BASELINE_PATH.relative_to(ROOT)}")

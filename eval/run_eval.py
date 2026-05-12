@@ -37,7 +37,7 @@ from eval.scorers._shared import (
     retry_trigger_reasons,
 )
 from eval.scorers.citation import is_bbox
-from scripts.write_real_eval_baseline import provenance
+from scripts._utils import build_provenance
 
 
 QUERY_TYPES = ("single_doc", "comparison", "follow_up", "abstention")
@@ -68,9 +68,9 @@ def compute_run_manifest(config_path: Path) -> dict[str, Any]:
 
     Needed for leaderboard time-series (#166) and judge calibration
     reproducibility (#169). Field naming mirrors
-    ``scripts.write_real_eval_baseline._provenance`` (``git_commit``,
-    ``git_dirty``, ``generated_at``) so the real-eval baseline pipeline
-    and the synthetic eval pipeline share one schema.
+    ``scripts._utils.build_provenance`` (``git_commit``, ``git_dirty``,
+    ``generated_at``) so the real-eval baseline pipeline and the
+    synthetic eval pipeline share one schema.
     """
     commit = _git("rev-parse", "HEAD")[:12] or "unknown"
     dirty = _git("status", "--porcelain") != ""
@@ -761,7 +761,7 @@ def main() -> int:
 
     summary = {
         "mode": "rag",
-        "provenance": provenance(),
+        "provenance": build_provenance(),
         "run_manifest": compute_run_manifest(config_path),
         "config": args.config,
         "index_dir": args.index_dir,

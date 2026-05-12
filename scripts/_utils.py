@@ -89,6 +89,44 @@ def git_dirty() -> bool:
     return bool(status.strip())
 
 
+def build_provenance() -> dict[str, object]:
+    """Provenance block for the current git HEAD.
+
+    Shared by the synthetic history writer
+    (``scripts/write_synthetic_history.py``) and the real-data baseline
+    writer (``scripts/write_real_eval_baseline.py``). Format is
+    intentionally narrow: 12-char SHA, dirty flag, ISO-8601 UTC
+    timestamp.
+
+    The dirty flag intentionally includes untracked files
+    (``git status --porcelain`` without ``--untracked-files=no``) so a
+    snapshot taken from a workspace with stray files is flagged as
+    not-clean — stricter than the ``git_dirty()`` helper used by the
+    leaderboard/render side.
+    """
+    sha = git_output(["rev-parse", "HEAD"], default="")[:12] or "unknown"
+    dirty = git_output(["status", "--porcelain"], default="") != ""
+    return {
+        "git_commit": sha,
+        "git_dirty": bool(dirty),
+        "generated_at": utc_now(),
+    }
+
+
+def make_run_id(provenance: dict[str, object]) -> str:
+    """Build ``YYYYMMDDTHHMMSSZ_<sha12>`` run id from a provenance block."""
+    ts = (
+        str(provenance.get("generated_at"))
+        .replace("-", "")
+        .replace(":", "")
+        .split(".")[0]  # drop fractional seconds
+    )
+    if not ts.endswith("Z"):
+        ts += "Z"
+    sha = str(provenance.get("git_commit") or "unknown")[:12]
+    return f"{ts}_{sha}"
+
+
 def fmt_rate(value: Any) -> str:
     return f"{value:.3f}" if isinstance(value, (int, float)) else "N/A"
 
