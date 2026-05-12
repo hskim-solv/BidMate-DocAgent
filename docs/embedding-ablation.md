@@ -99,17 +99,29 @@ Per-model artifacts go to `data/embedding-ablation/<slug>/` (index) and `reports
 | `nlpai-lab/KURE-v1` | ~1.1GB | 768 | free | Korean-specialized |
 | `text-embedding-3-large` | n/a | 3072 | ~$0.13 / 1M tokens (~$0.004 / n=42) | OpenAI |
 
-### Headline numbers — Phase 1.2
+### Headline numbers — Phase 1.2 (deferred, see ADR 0019)
 
-Measurement pending — append below after running the reproduction commands above. Expected hypothesis (to falsify): same `0pp Δ on full` / `meaningful Δ on naive_baseline` pattern from the first comparison holds for the new models. If a model breaks the pattern (large `full` Δ), that's a reviewer-relevant signal worth investigating, and possibly an ADR per the "ADR threshold" note below.
+**Attempted 2026-05-12; blocked on a Python environment mismatch that is out of scope for this measurement cycle.**
 
-```
-TBD — paste output of `python3 scripts/run_embedding_ablation.py --models ...` here.
-```
+| model | attempted | blocker |
+|---|---|---|
+| `BAAI/bge-m3` | yes | sentence-transformers refuses load with `torch == 2.2.2` (CVE-2025-32434 hard requirement: `torch >= 2.6`). |
+| `intfloat/multilingual-e5-large-instruct` | yes | transformers refuses load with `huggingface-hub == 1.14.0` (transformers requires `huggingface-hub < 1.0`). |
+| `nlpai-lab/KURE-v1` | not attempted | Same env class as above is the expected blocker; deferred with the other two. |
+| `text-embedding-3-large` | not attempted | Paid API; out of scope for the local-default decision. |
 
-## Why no ADR
+[ADR 0019](adr/0019-embedding-default-stays-minilm.md) records the resulting decision: **MiniLM-L12-v2 stays the documented default**, the first-cycle measurement (MiniLM vs e5-base) is the empirical justification, and the second cycle re-opens automatically the next time a contributor lands a Python env upgrade. The runner itself remains ready (it correctly surfaces the blocker rather than failing silently) so the experiment costs zero re-implementation when the env clears.
 
-The default did not change. No load-bearing decision is being replaced. If a future ablation finds a model that meaningfully improves `full` (not just `naive_baseline`) and the team decides to switch the default, that change should land with an ADR per CLAUDE.md "ADR threshold". The OpenAI backend addition is an additive ablation surface under stub-default (CI runs `EMBEDDING_BACKEND=hashing` and never hits OpenAI) — same pattern as [ADR 0011](adr/0011-llm-synthesis-as-additive-ablation.md).
+The first-cycle conclusion still applies:
+
+- **Full pipeline metrics are embedding-invariant on this corpus** — metadata-first filtering (ADR 0002) routes around dense retrieval for most queries.
+- **Naive baseline IS embedding-sensitive** — e5-base lifted accuracy +18.8pp over MiniLM on `naive_baseline`. The hypothesis worth testing in the next cycle is whether modern multilingual / Korean-specialized models break the `0pp on full` pattern. That hypothesis cannot be falsified yet.
+
+## Why the deferral is itself ADR-worthy
+
+The default did not change, so the empirical decision still has no ADR — but the *deferral* itself is now load-bearing. Without ADR 0019, the next contributor would either (a) re-run the same blocked measurement, or (b) silently swap the default without the empirical bar. ADR 0019 nails down both the "stay on MiniLM" decision and the explicit conditions under which it re-opens.
+
+If a future ablation finds a model that meaningfully improves `full` (not just `naive_baseline`) and the team decides to switch the default, that change should land with a *follow-up* ADR per CLAUDE.md "ADR threshold". The OpenAI backend addition is an additive ablation surface under stub-default (CI runs `EMBEDDING_BACKEND=hashing` and never hits OpenAI) — same pattern as [ADR 0011](adr/0011-llm-synthesis-as-additive-ablation.md).
 
 ## See also
 
@@ -117,3 +129,4 @@ The default did not change. No load-bearing decision is being replaced. If a fut
 - [`docs/ablation-results.md`](ablation-results.md) — broader ablation context
 - [ADR 0001](adr/0001-preserve-naive-baseline.md) — why `naive_baseline` is preserved
 - [ADR 0002](adr/0002-metadata-first-retrieval.md) — why metadata-first dominates
+- [ADR 0019](adr/0019-embedding-default-stays-minilm.md) — the deferral decision

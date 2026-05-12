@@ -81,6 +81,7 @@ project record.
 | [0016](./0016-judge-human-agreement.md) | proposed | Judge↔human agreement as calibration gate on real-data eval (refines 0006) |
 | [0017](./0017-llm-metadata-extraction-additive.md) | proposed | LLM metadata extraction as additive backend (extends 0011) |
 | [0018](./0018-korean-public-rag-bench.md) | accepted | Korean public RAG bench as supplementary out-of-domain surface (extends 0005) |
+| [0019](./0019-embedding-default-stays-minilm.md) | accepted | Embedding default stays MiniLM-L12-v2 with explicit re-open conditions (extends 0002) |
 
 ## Decision evolution
 

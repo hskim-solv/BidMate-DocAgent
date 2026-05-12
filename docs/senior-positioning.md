@@ -15,7 +15,7 @@
 
 | 시그널 | 어디서 확인하나 |
 |---|---|
-| 아키텍처 결정이 **사후 합리화가 아닌 기록된 결정**으로 남아있다 | [`docs/adr/`](./adr/README.md) — 16개 ADR (14 accepted / 2 proposed), status-tracked, supersession chains 명시 |
+| 아키텍처 결정이 **사후 합리화가 아닌 기록된 결정**으로 남아있다 | [`docs/adr/`](./adr/README.md) — 17개 ADR (15 accepted / 2 proposed), status-tracked, supersession chains 명시 |
 | **측정 가능한 성공 기준**을 미리 잡고 그 기준으로 평가한다 | [`portfolio-case-study.md` §2](./portfolio-case-study.md), [`eval/config.yaml`](../eval/config.yaml), README headline 표 |
 | 합성 평가의 한계를 알고 **공개/비공개 평가 분리**로 보완한다 | [ADR 0005](./adr/0005-eval-split-public-synthetic-private-local.md), [`docs/private-100-doc-experiments.md`](./private-100-doc-experiments.md) |
 | **실패를 분류·우선순위화**한 뒤 백로그로 만든다 | [`docs/real-data-failure-taxonomy.md`](./real-data-failure-taxonomy.md), 메타 이슈 #49 |
@@ -25,7 +25,7 @@
 
 ## 시니어 시그널 1 — 아키텍처 결정의 추적성
 
-각 ADR은 **하나의 의사결정**을 다룬다. 16개를 빠르게 읽고 나면, 이 시스템에서 어떤 선택이 load-bearing인지와 supersession chain이 명확해진다.
+각 ADR은 **하나의 의사결정**을 다룬다. 17개를 빠르게 읽고 나면, 이 시스템에서 어떤 선택이 load-bearing인지와 supersession chain이 명확해진다.
 
 | ADR | 상태 | 결정 | 시니어 관점에서 왜 중요한가 |
 |---|---|---|---|
@@ -45,6 +45,7 @@
 | [0014](./adr/0014-ragas-judge-additive-synthetic.md) | accepted | RAGAS judge as additive enrichment (extends 0012) | 외부 표준 메트릭으로 cross-validation; 결정적 stub-default 유지 |
 | [0015](./adr/0015-cost-telemetry-additive.md) | accepted | cost telemetry as additive observability (extends 0011, 0013) | per-query `cost_estimate_usd` + `cache_read_tokens` 캡처 — LLM Ops 핵심 시그널을 계약 위반 없이 추가 |
 | [0018](./adr/0018-korean-public-rag-bench.md) | accepted | Korean public RAG bench (KorQuAD 2.1) as supplementary out-of-domain surface (extends 0005) | "한국어 일반 텍스트에서도 동작합니까?" 질문에 공개 재현 가능한 한 줄 명령(`make korean-public-eval`)으로 답변 — 합성 surface와 분리, CI 게이트가 *아님* |
+| [0019](./adr/0019-embedding-default-stays-minilm.md) | accepted | embedding 디폴트 = MiniLM-L12-v2 잠금 + 재오픈 조건 명시 (extends 0002) | 2차 사이클 측정이 env mismatch로 deferred됐을 때 *deferral 자체*를 ADR로 잠금 — 다음 contributor가 같은 실험을 다시 시도하지 않고, "디폴트 교체"의 empirical bar(`full` 파이프라인 ≥+5pp)도 명시 |
 
 **인터뷰 talking point 1 (real-data 회귀)**: "ADR 0005가 없었다면 공개본의 abstention 회귀(#69의 `1.000 → 0.500` 사건)는 아무도 보지 못했을 것이다. 공개 합성만 보던 시기에는 1-of-2 incidental overlap 패턴이 잡히지 않았다." — 근거: [`docs/private-100-doc-experiments.md`](./private-100-doc-experiments.md) 2026-05-11 entry.
 
@@ -137,6 +138,7 @@ make reproduce  # smoke + SHA-256 over the environment-invariant metric subset
 | "토큰 비용은 어떻게 추적하나요? prompt caching hit rate는요?" | [ADR 0015](./adr/0015-cost-telemetry-additive.md) — `diagnostics.synthesis.cost_estimate_usd` + `cache_read_tokens` + `cache_write_tokens`; price card는 `rag_synthesis.PRICING_PER_MTOK_USD`, 회귀 가드는 `tests/test_synthesis_cost_telemetry.py` |
 | "p95 latency SLO는 어떻게 enforce하나요?" | `eval/config.yaml::latency_budgets`에 per-ablation 절대 ceiling 선언 → `make check-latency` (또는 PR workflow의 "Latency SLO check" step)이 violation 시 CI fail. 회귀 게이트(품질)와 SLO 게이트(latency)를 분리 — host variance 노이즈로 인한 거짓 fail 방지. 구현: `scripts/check_latency_slo.py`, 회귀 가드 `tests/test_check_latency_slo.py` |
 | "한국어 일반 텍스트에서도 동작합니까?" | [ADR 0018](./adr/0018-korean-public-rag-bench.md) + `make korean-public-eval` — KorQuAD 2.1 dev 150건 out-of-domain 측정. 점수가 낮은 것이 *load-bearing*: RFP-도메인 특화 시스템의 generalization 한계를 명시적으로 노출. 구현: [`eval/korean_public/`](../eval/korean_public/README.md) |
+| "2026년에 왜 2019년 MiniLM 임베딩?" | [ADR 0019](./adr/0019-embedding-default-stays-minilm.md) + [`docs/embedding-ablation.md`](./embedding-ablation.md) — 1차 측정: full 파이프라인은 metadata-first filtering(ADR 0002) 덕분에 embedding-invariant (0pp Δ). 2차 사이클은 env mismatch로 deferred, ADR 0019가 재오픈 조건(env 업그레이드 + `full` ≥+5pp)을 잠금 |
 | "확장한다면 다음 우선순위는?" | [`portfolio-case-study.md` §7](./portfolio-case-study.md) + 메타 이슈 #49 |
 
 ## 이 프로젝트가 입증하지 않는 것 (정직한 범위)
