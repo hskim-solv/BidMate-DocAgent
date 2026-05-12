@@ -90,6 +90,31 @@ project record.
 | [0026](./0026-cross-encoder-reranker-deferral.md) | accepted | Cross-encoder reranker default stays stub-identity; real-backend (bge / bge_ko / cohere) measurement deferred — `full_reranker ≡ full` under CI stub by construction, `full` vs `no_rerank` already 0pp on public synthetic (mirrors ADR 0019 / 0025 pattern) |
 | [0027](./0027-lora-finetuned-embedding-additive.md) | proposed | LoRA-fine-tuned embedding adapter as additive ablation, env-var gated (`BIDMATE_EMBEDDING_LORA_ADAPTER`), HF Hub adapter pinned by commit SHA (extends 0001 / 0011 / 0019; does NOT trigger 0019 re-open) |
 
+## Deferred decisions (measurement-gated re-open)
+
+Several ADRs lock the *current* default while naming explicit measurement
+conditions that, if satisfied, would re-open the decision and potentially
+flip the default. This pattern (origin: ADR 0019 → ADR 0021) keeps the
+decision honest without forcing premature changes — and provides a
+ready answer when an external review re-suggests an option that was
+already considered.
+
+Each row below has a corresponding `adr-reopen`–labeled tracking issue
+so the re-open condition is visible in the backlog rather than buried
+in ADR prose.
+
+| ADR | Locked default | Re-open trigger | Tracking |
+|---|---|---|---|
+| [0019](./0019-embedding-default-stays-minilm.md) + [0021](./0021-bge-m3-completes-phase-1-3.md) | Embedding stays MiniLM-L12-v2 | New candidate (e.g. KURE-v1, fine-tuned LoRA per [0027](./0027-lora-finetuned-embedding-additive.md)) shows ≥ +5pp `full` lift with non-overlapping 95% CIs | [`adr-reopen` label](https://github.com/hskim-solv/BidMate-DocAgent/labels/adr-reopen) |
+| [0025](./0025-cost-frontier-defer-until-real-baselines.md) | No modeled cost-accuracy frontier in repo | `reports/external_baselines.json` gets ≥ 1 entry with `backend != "stub"` (n ≥ 32) + ADR 0015 token aggregation wired into eval | [`adr-reopen` label](https://github.com/hskim-solv/BidMate-DocAgent/labels/adr-reopen) |
+| [0026](./0026-cross-encoder-reranker-deferral.md) | `BIDMATE_RERANK_BACKEND=stub` (identity); `Reranker` Protocol kept | Real backend (`bge` / `bge_ko` / `cohere`) shows ≥ +3pp lift on `full_reranker` vs `full` with non-overlapping 95% CIs on public synthetic (n=42) | [`adr-reopen` label](https://github.com/hskim-solv/BidMate-DocAgent/labels/adr-reopen) |
+
+Note that ADR 0024 (API default = `agentic_full_llm`) and ADR 0022
+(LangGraph orchestrator stage 1) are *not* listed here because they are
+already accepted action items, not deferrals. ADR 0027 (LoRA adapter)
+is *proposed* — it inherits ADR 0019's re-open conditions and does not
+itself defer anything.
+
 ## Decision evolution
 
 Every ADR file carries `Date: 2026-05-11` because that's when the ADR
