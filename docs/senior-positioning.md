@@ -15,7 +15,7 @@
 
 | 시그널 | 어디서 확인하나 |
 |---|---|
-| 아키텍처 결정이 **사후 합리화가 아닌 기록된 결정**으로 남아있다 | [`docs/adr/`](./adr/README.md) — 17개 ADR (15 accepted / 2 proposed), status-tracked, supersession chains 명시 |
+| 아키텍처 결정이 **사후 합리화가 아닌 기록된 결정**으로 남아있다 | [`docs/adr/`](./adr/README.md) — 19개 ADR (15 accepted / 4 proposed), status-tracked, supersession chains 명시 |
 | **측정 가능한 성공 기준**을 미리 잡고 그 기준으로 평가한다 | [`portfolio-case-study.md` §2](./portfolio-case-study.md), [`eval/config.yaml`](../eval/config.yaml), README headline 표 |
 | 합성 평가의 한계를 알고 **공개/비공개 평가 분리**로 보완한다 | [ADR 0005](./adr/0005-eval-split-public-synthetic-private-local.md), [`docs/private-100-doc-experiments.md`](./private-100-doc-experiments.md) |
 | **실패를 분류·우선순위화**한 뒤 백로그로 만든다 | [`docs/real-data-failure-taxonomy.md`](./real-data-failure-taxonomy.md), 메타 이슈 #49 |
@@ -25,7 +25,7 @@
 
 ## 시니어 시그널 1 — 아키텍처 결정의 추적성
 
-각 ADR은 **하나의 의사결정**을 다룬다. 17개를 빠르게 읽고 나면, 이 시스템에서 어떤 선택이 load-bearing인지와 supersession chain이 명확해진다.
+각 ADR은 **하나의 의사결정**을 다룬다. 19개를 빠르게 읽고 나면, 이 시스템에서 어떤 선택이 load-bearing인지와 supersession chain이 명확해진다.
 
 | ADR | 상태 | 결정 | 시니어 관점에서 왜 중요한가 |
 |---|---|---|---|
@@ -44,6 +44,8 @@
 | [0013](./adr/0013-observability-as-additive-pluggable-surface.md) | accepted | observability를 additive·pluggable·fail-closed로 | trace backend(LangFuse/OTel) 장애가 query를 깨뜨리지 않음; LLM Ops 의식의 코드화 |
 | [0014](./adr/0014-ragas-judge-additive-synthetic.md) | accepted | RAGAS judge as additive enrichment (extends 0012) | 외부 표준 메트릭으로 cross-validation; 결정적 stub-default 유지 |
 | [0015](./adr/0015-cost-telemetry-additive.md) | accepted | cost telemetry as additive observability (extends 0011, 0013) | per-query `cost_estimate_usd` + `cache_read_tokens` 캡처 — LLM Ops 핵심 시그널을 계약 위반 없이 추가 |
+| [0016](./adr/0016-judge-human-agreement.md) | proposed | Judge↔human agreement as calibration gate (refines 0006) | verifier-judge co-regression 차단 — 0006의 LLM-judge를 human spot-label과 Cohen's κ + Spearman ρ로 정합 검증, 두 자동평가가 같은 방향으로 잘못 가는 회귀를 게이트로 잡음 |
+| [0017](./adr/0017-llm-metadata-extraction-additive.md) | proposed | LLM metadata extraction as additive backend (extends 0011) | metadata 추출도 LLM additive ablation으로 — 0011 backend 패턴 재사용, 결정적 추출기 baseline은 ADR 0002 metadata-first 경로에 그대로 보존 |
 | [0018](./adr/0018-korean-public-rag-bench.md) | accepted | Korean public RAG bench (KorQuAD 2.1) as supplementary out-of-domain surface (extends 0005) | "한국어 일반 텍스트에서도 동작합니까?" 질문에 공개 재현 가능한 한 줄 명령(`make korean-public-eval`)으로 답변 — 합성 surface와 분리, CI 게이트가 *아님* |
 | [0019](./adr/0019-embedding-default-stays-minilm.md) | accepted | embedding 디폴트 = MiniLM-L12-v2 잠금 + 재오픈 조건 명시 (extends 0002) | 2차 사이클 측정이 env mismatch로 deferred됐을 때 *deferral 자체*를 ADR로 잠금 — 다음 contributor가 같은 실험을 다시 시도하지 않고, "디폴트 교체"의 empirical bar(`full` 파이프라인 ≥+5pp)도 명시 |
 
