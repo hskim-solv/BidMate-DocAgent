@@ -69,6 +69,40 @@ and the API at `https://<app>.fly.dev:8000/docs`. The
 `auto_stop_machines = true` setting lets the machine sleep when idle
 to stay under the free-tier budget.
 
+### Continuous deploy
+
+Every push to `main` that touches a runtime path runs
+[`.github/workflows/deploy-fly.yml`](../.github/workflows/deploy-fly.yml)
+and re-deploys the live demo. The path filter mirrors the Dockerfile
+COPY set (`rag_core.py`, `rag_synthesis.py`, `rag_observability.py`,
+`ingestion.py`, `visual_ingestion.py`, `app.py`, `api/**`, `demo/**`,
+`scripts/build_index.py`, `data/raw/**`, `Dockerfile`,
+`docker-entrypoint.sh`, `requirements.txt`, `fly.toml`) — doc-only
+changes do *not* trigger a deploy. The workflow asserts every machine
+is in `started` state via `flyctl status --json` and smoke-tests
+`https://<app>.fly.dev/health` before posting a comment on the merged
+PR with the live URL + short SHA.
+
+One-time setup: add `FLY_API_TOKEN` as a repository secret
+(`flyctl auth token` locally, then Repo Settings → Secrets and
+variables → Actions → New secret).
+
+### Rollback
+
+If a release introduces a regression:
+
+```bash
+flyctl releases                              # list recent releases (version, status, time)
+flyctl releases revert <version>             # roll back to a specific release
+flyctl status                                # confirm machines pinned to the reverted release
+```
+
+The reverted state is sticky until the next push touches a filtered
+path. For a manual redeploy without a code change, use the workflow's
+`workflow_dispatch` trigger (Actions tab → *Deploy demo to Fly.io* →
+*Run workflow*); set `dry_run: true` to build the image without
+releasing — useful for validating `Dockerfile` changes before merge.
+
 ## Hugging Face Spaces
 
 Spaces is ideal for a "click and try" reviewer link — no signup, no

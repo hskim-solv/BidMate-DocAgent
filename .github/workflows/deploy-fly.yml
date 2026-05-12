@@ -1,0 +1,126 @@
+name: Deploy demo to Fly.io
+
+# Issue #181 (Phase 3.6): every merge to main that touches a runtime path
+# re-deploys the live demo at https://bidmate-docagent-demo.fly.dev/.
+# Builds on PR #158 (fly.toml + Dockerfile + docs/deployment.md).
+#
+# Path filter ground truth: Dockerfile L36-41 (the COPY set). If you add a
+# new runtime file to the Dockerfile, also add it here — otherwise the live
+# demo will silently drift from main.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      # Dockerfile-copied runtime code
+      - 'rag_core.py'
+      - 'rag_synthesis.py'
+      - 'rag_observability.py'
+      - 'ingestion.py'
+      - 'visual_ingestion.py'
+      - 'app.py'
+      - 'api/**'
+      - 'demo/**'
+      - 'scripts/build_index.py'
+      - 'data/raw/**'
+      # Container + deploy primitives
+      - 'Dockerfile'
+      - 'docker-entrypoint.sh'
+      - 'requirements.txt'
+      - 'fly.toml'
+      # Self
+      - '.github/workflows/deploy-fly.yml'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Build only, do not release — verification path'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: deploy-fly
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: flyctl deploy --remote-only
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      FLY_APP: bidmate-docagent-demo
+      FLY_URL: https://bidmate-docagent-demo.fly.dev
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up flyctl
+        # SHA-pinned per supply-chain hygiene; dependabot github-actions
+        # ecosystem (.github/dependabot.yml) auto-PRs upstream updates.
+        uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1
+
+      - name: Deploy (or build-only on dry-run)
+        run: |
+          set -eu
+          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+            echo "::notice::dry_run=true — building image without releasing"
+            flyctl deploy --build-only --remote-only --app "$FLY_APP"
+          else
+            flyctl deploy --remote-only --app "$FLY_APP"
+          fi
+
+      - name: Assert all machines healthy
+        if: ${{ github.event.inputs.dry_run != 'true' }}
+        run: |
+          set -eu
+          flyctl status --json --app "$FLY_APP" \
+            | jq -e '[.Machines[] | select(.state != "started")] | length == 0'
+
+      - name: Smoke-test public route
+        if: ${{ github.event.inputs.dry_run != 'true' }}
+        run: |
+          set -eu
+          for i in 1 2 3 4 5; do
+            if curl --fail --max-time 10 "$FLY_URL/health"; then
+              echo "Health check passed on attempt $i"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::Health check failed after 5 attempts"
+          exit 1
+
+      - name: Upsert PR comment with live URL + SHA
+        if: ${{ github.event.inputs.dry_run != 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -eu
+          # Resolve PR(s) for this SHA. 0 PRs → direct push, skip silently.
+          # >1 PRs → cherry-picks / backports, comment on all (cheap, idempotent).
+          prs=$(gh api "repos/$REPO/commits/$SHA/pulls" --jq '.[].number')
+          if [ -z "$prs" ]; then
+            echo "No PR for $SHA — direct push or hotfix. Skipping comment."
+            exit 0
+          fi
+          marker="<!-- deploy-fly-bot -->"
+          short_sha="${SHA:0:7}"
+          body="$(printf '%s\n\n🟢 **Live demo deployed**\n\n- URL: %s/\n- SHA: `%s`\n- Healthcheck: passed\n\nRollback: `flyctl releases revert <version>` (see [docs/deployment.md](../blob/main/docs/deployment.md#rollback))\n' \
+            "$marker" "$FLY_URL" "$short_sha")"
+          for pr in $prs; do
+            existing=$(gh api "repos/$REPO/issues/$pr/comments" \
+              --jq ".[] | select(.body | startswith(\"$marker\")) | .id" | head -n1)
+            if [ -n "$existing" ]; then
+              gh api -X PATCH "repos/$REPO/issues/comments/$existing" -f body="$body" >/dev/null
+              echo "Updated existing comment $existing on PR #$pr"
+            else
+              gh pr comment "$pr" --repo "$REPO" --body "$body"
+              echo "Posted new comment on PR #$pr"
+            fi
+          done
