@@ -90,6 +90,7 @@ project record.
 | [0026](./0026-cross-encoder-reranker-deferral.md) | accepted | Cross-encoder reranker default stays stub-identity; real-backend (bge / bge_ko / cohere) measurement deferred — `full_reranker ≡ full` under CI stub by construction, `full` vs `no_rerank` already 0pp on public synthetic (mirrors ADR 0019 / 0025 pattern) |
 | [0027](./0027-lora-finetuned-embedding-additive.md) | proposed | LoRA-fine-tuned embedding adapter as additive ablation, env-var gated (`BIDMATE_EMBEDDING_LORA_ADAPTER`), HF Hub adapter pinned by commit SHA (extends 0001 / 0011 / 0019; does NOT trigger 0019 re-open) |
 | [0028](./0028-security-screen-additive.md) | accepted | Prompt-injection screen (query-side, diagnostic-only) + PII redaction (ingestion-time, opt-in via `BIDMATE_INGEST_REDACT_PII`) as additive security layer (extends 0008 to query side; preserves 0001 / 0003 / 0005) |
+| [0029](./0029-real-data-case-proposer-additive.md) | proposed | Real-data case proposer as additive semi-supervised eval-set growth (extends 0005 / 0006; reuses 0011 / 0012 backend pattern; preserves 0001 / 0003 / 0004 / 0008; calibration mirrors 0016) |
 
 ## Deferred decisions (measurement-gated re-open)
 

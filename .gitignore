@@ -113,6 +113,13 @@ reports/external_baselines.local.json
 !reports/synthetic_judge.aggregate.json
 reports/synthetic_judge.local.json
 
+# ADR 0029 — real-data case proposer aggregate is committable;
+# per-case proposed/reviewed yaml stays local. Mirrors the
+# ADR 0005 / 0006 / 0012 split.
+!reports/proposed/
+reports/proposed/*
+!reports/proposed/proposer.aggregate.json
+
 # Benchmark raw/local artifacts
 artifacts/benchmarks/
 artifacts/runs/
