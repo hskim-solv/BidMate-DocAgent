@@ -1,10 +1,11 @@
-# 0022: LangGraph orchestrator path for agentic_full presets — stage 1 (single-node passthrough)
+# 0022: LangGraph orchestrator path for agentic_full presets — stages 1 (passthrough) & 2 (multi-node)
 
 - **Status**: accepted
-- **Date**: 2026-05-12
+- **Date**: 2026-05-12 (stage 1) / 2026-05-13 (stage 2)
 - **Deciders**: hskim
-- **Related**: [ADR 0001](./0001-preserve-naive-baseline.md) (naive_baseline reserved as direct-path ablation), [ADR 0011](./0011-llm-synthesis-as-additive-ablation.md) (agentic_full_llm under same retrieval surface), [ADR 0013](./0013-observability-as-additive-pluggable-surface.md) (trace backend additivity pattern this ADR reuses), issue #401, PR #404 (implementation), issue #453 (status flip)
-- **Update (status flip, 2026-05-12, issue #453)**: Status promoted `proposed` → `accepted`. The stage-1 implementation merged via PR [#404](https://github.com/hskim-solv/BidMate-DocAgent/pull/404) (commit `349dd08`) lands all four sub-items from the Decision section: `requirements-graph.txt`, [`rag_graph_agentic_full.py`](../../rag_graph_agentic_full.py) (`AgenticFullState` TypedDict + `run_via_langgraph` entry point + process-cached compiled graph), [`rag_core.py:3673-3690`](../../rag_core.py) (env-var dispatch + `_skip_graph` recursion guard + `naive_baseline` bypass), and [`tests/test_langgraph_orchestrator_regression.py`](../../tests/test_langgraph_orchestrator_regression.py) (JSON-identity over `(agentic_full, agentic_full_llm) × (single-doc, comparison)` modulo timing fields, ADR 0001 invariant gate, module import smoke). The "What stage 2 will do" section below remains the unchanged forward plan and is *not* part of this status flip.
+- **Related**: [ADR 0001](./0001-preserve-naive-baseline.md) (naive_baseline reserved as direct-path ablation), [ADR 0011](./0011-llm-synthesis-as-additive-ablation.md) (agentic_full_llm under same retrieval surface), [ADR 0013](./0013-observability-as-additive-pluggable-surface.md) (trace backend additivity pattern this ADR reuses), issue #401 (stage 1) / PR [#404](https://github.com/hskim-solv/BidMate-DocAgent/pull/404) (stage 1 implementation) / issue #453 (stage 1 status flip), issue #457 (stage 2) / PR ??? (stage 2 implementation — this PR)
+- **Update (status flip, 2026-05-12, issue #453)**: Status promoted `proposed` → `accepted`. The stage-1 implementation merged via PR [#404](https://github.com/hskim-solv/BidMate-DocAgent/pull/404) (commit `349dd08`) lands all four sub-items from the Decision section: `requirements-graph.txt`, [`rag_graph_agentic_full.py`](../../rag_graph_agentic_full.py) (`AgenticFullState` TypedDict + `run_via_langgraph` entry point + process-cached compiled graph), [`rag_core.py:3673-3690`](../../rag_core.py) (env-var dispatch + `_skip_graph` recursion guard + `naive_baseline` bypass), and [`tests/test_langgraph_orchestrator_regression.py`](../../tests/test_langgraph_orchestrator_regression.py) (JSON-identity over `(agentic_full, agentic_full_llm) × (single-doc, comparison)` modulo timing fields, ADR 0001 invariant gate, module import smoke).
+- **Update (stage 2 land, 2026-05-13, issue #457)**: Stage-2 multi-node decomposition merged. `rag_graph_agentic_full.py` now compiles a three-node StateGraph (analyze / retrieve_loop / build_answer) with a conditional edge after analyze. `rag_core.py` exposes `_RunContext` + `_build_run_context` + `_phase_analyze` / `_phase_retrieve_loop` / `_phase_build_answer` extracted from the legacy `run_rag_query` body; both the direct path and the graph nodes call the same `_phase_*` helpers so JSON-identity holds by construction. `tests/test_langgraph_orchestrator_regression.py` adds `GraphStructureStage2Test` (3-node assertion + conditional-edge router contract + phase-helper public surface) and `test_phase_analyze_short_circuits_for_context_clarification`. Existing 4 JSON-identity tests continue to pass without modification — confirming the by-construction claim.
 
 ## Context
 
@@ -87,48 +88,130 @@ the direct path executes. Any future multi-node decomposition must
 preserve that identity through explicit eval gates — this ADR is
 stage 1 and intentionally postpones that work.
 
-## What stage 2 will do (out of scope here)
+## Decision (stage 2)
 
-Stage 2 (a separate ADR + issue) splits the single node into at least
-three nodes:
+Split the single passthrough node into three phase nodes that mirror
+the analyze / retrieve / build phases inside the legacy
+`run_rag_query` body. Crucially, the nodes do **not** re-implement the
+orchestration in the graph module — that would carry exactly the
+JSON-identity regression risk this ADR's two-stage split exists to
+avoid. Instead, three private helpers extracted from `run_rag_query`'s
+body in `rag_core.py` become the single source of truth, and both the
+direct path and the graph nodes call them:
 
-- `analyze_query_node` — calls the existing `analyze_query` helper.
-- `retrieve_loop_node` — wraps `metadata_stage_sequence` +
-  `plan_retrieval` + `retrieve` with a conditional edge for verifier
-  retry (the policy currently lives inside an inner `for stage in
-  stage_sequence` loop).
-- `build_answer_node` — calls `generate_answer` and, under the
-  `agentic_full_llm` preset, also `synthesize_answer`.
+- `rag_core._RunContext` — a private mutable dataclass that carries
+  every cross-phase field (`retrieval_query`, `analysis`,
+  `stage_sequence`, `evidence`, `verified`, `verification_reasons`,
+  `retrieved_chunk_ids`, `plan`, trace handle, timings, ...) so the
+  three phases can run either inline or threaded through LangGraph
+  state.
+- `rag_core._build_run_context(...)` — moves the `params=` bundle
+  normalization, pipeline-preset resolution, `_PROCESS_WARM`
+  cold-start flag, query hashing, `query_start` log, and
+  trace-backend startup out of `run_rag_query`'s body. The LangGraph
+  entry point calls this *before* graph invocation so all three nodes
+  see the same context.
+- `rag_core._phase_analyze(ctx) -> dict | None` — runs the two
+  `analyze_query` iterations, conversation-context resolution, and the
+  metadata-ambiguity / needs-clarification short-circuit checks.
+  Returns a final result dict if the phase short-circuits, otherwise
+  `None` after mutating `ctx`. The LangGraph router
+  (`_route_after_analyze`) reads this signal and routes to `END`
+  (early return) or `retrieve_loop` (continue) via a conditional edge.
+- `rag_core._phase_retrieve_loop(ctx)` — runs the
+  `metadata_stage_sequence` strict → reduced → relaxed retry loop with
+  `make_plan` + `retrieve` + `verify_evidence` per attempt, then
+  applies `select_supporting_evidence` and computes
+  `retrieved_chunk_ids`.
+- `rag_core._phase_build_answer(ctx) -> dict` — runs `generate_answer`
+  (plus `synthesize_answer` under `agentic_full_llm`), updates
+  conversation state, assembles `diagnostics` and the final `result`
+  dict in the same key order as the legacy body, attaches trace
+  diagnostics, and emits the `query_complete` log line.
 
-The state schema in `AgenticFullState` is deliberately small in stage
-1 so that stage 2 can expand it without breaking any field the
-JSON-identity test currently checks (because stage 1 only checks the
-final `result` dict, the intermediate fields are unobserved here).
+The new `run_rag_query` body is:
+
+```python
+ctx = _build_run_context(...)
+early_result = _phase_analyze(ctx)
+if early_result is not None:
+    return early_result
+_phase_retrieve_loop(ctx)
+return _phase_build_answer(ctx)
+```
+
+…and the LangGraph nodes are thin wrappers around the same three
+phase calls. JSON-identity is therefore preserved by construction —
+the phase functions are literally the moved-out blocks of the legacy
+body, executed in the same order with the same inputs. The regression
+test `tests/test_langgraph_orchestrator_regression.py` (which compares
+`json.dumps(..., sort_keys=True)` byte-equality between
+`BIDMATE_ORCHESTRATOR=direct` and `=langgraph` for two queries × two
+presets) keeps passing without modification.
+
+`AgenticFullState` was a small TypedDict in stage 1 (`index`,
+`query`, `pipeline_kwargs`, `result`); stage 2 replaces those fields
+with a single mutable `ctx` slot plus the same terminal `result` slot.
+The intermediate fields all live on `_RunContext`, so the TypedDict
+stays minimal even as the orchestration becomes explicit.
+
+The stage-1 recursion guard (`_skip_graph` kwarg) is no longer needed
+for correctness — stage 2 nodes call `_phase_*` directly, not back
+into `run_rag_query` — but the kwarg is retained as a private "force
+direct path" override for callers that need deterministic dispatch
+independent of the environment variable.
+
+Stage-2 specific tests added alongside the stage-1 JSON-identity ones:
+
+- `GraphStructureStage2Test.test_graph_has_three_phase_nodes` — pins
+  that the compiled graph carries `analyze` / `retrieve_loop` /
+  `build_answer` so a future refactor cannot silently collapse it
+  back to a passthrough.
+- `GraphStructureStage2Test.test_route_after_analyze_branches_on_result_presence`
+  — pins the conditional-edge contract: `result` present ⇒ END,
+  otherwise ⇒ `retrieve_loop`.
+- `GraphStructureStage2Test.test_phase_helpers_exposed_from_rag_core`
+  — `rag_core` keeps exposing `_build_run_context`, `_phase_analyze`,
+  `_phase_retrieve_loop`, `_phase_build_answer`; a rename would
+  surface here instead of at first dispatch.
+- `test_phase_analyze_short_circuits_for_context_clarification` —
+  whichever path the phase takes (short-circuit or continue), the
+  state it hands off matches the contract the next phase or the
+  caller expects.
 
 ## Consequences
 
 Easier:
 
-- The "Agentic RAG" label gets a concrete operational meaning —
-  `BIDMATE_ORCHESTRATOR=langgraph` produces a StateGraph that a
-  reviewer can inspect, even if stage 1's graph has one node.
-- Stage 2's multi-node decomposition lands on top of an already-wired
-  dispatch path. The risky JSON-identity work is bounded to the per-node
-  output assembly; the dispatch + dependency + test harness are paid
-  for in this ADR.
-- Test coverage: ADR 0001 invariant for `naive_baseline` is now
-  pinned by an explicit test, not just doc convention.
+- The "Agentic RAG" label gets a concrete operational meaning that
+  matches the code: `BIDMATE_ORCHESTRATOR=langgraph` now runs a
+  three-node StateGraph (not a one-node passthrough) where every node
+  is inspectable, and per-stage latencies in LangSmith / Langfuse map
+  cleanly to the three phases.
+- Single source of truth for orchestration: `_phase_*` helpers run
+  whether the caller used the direct path or the graph path, so the
+  two cannot drift.
+- The risky JSON-identity work was bounded to the dispatch + harness
+  work in stage 1; stage 2 needed zero changes to the regression
+  test contract.
+- ADR 0001 invariant for `naive_baseline` is pinned by an explicit
+  test, not just doc convention.
 
 Costs / honesty:
 
-- A single-node graph adds zero per-stage observability vs the direct
-  path. Stage 1 explicitly does NOT claim a "now we can see
-  per-stage latencies in LangSmith" benefit — that ships in stage 2.
+- `_RunContext` is a 30+ field private dataclass — large, but each
+  field is one that the legacy body already carried as a local
+  variable. The dataclass makes the cross-phase contract *explicit*
+  rather than *implicit* in the function-scoped locals.
 - LangGraph version range (`>=0.6,<2.0`) is broad. If LangGraph 2.x
-  introduces a breaking API the stage-2 ADR re-pins it.
-- The `_skip_graph` kwarg is a private API contract — external
-  callers must never pass it. Underscore prefix + ADR mention is the
-  signal; the type signature is otherwise unchanged.
+  introduces a breaking API, the dispatch table in `_build_graph` and
+  the conditional-edges call site are the only places to re-pin.
+- The `_skip_graph` kwarg is now a soft override (stage 1 needed it
+  for recursion safety; stage 2 doesn't). Removing it would be a
+  follow-up cleanup.
+- The phase helpers are private (`_`-prefixed). External code that
+  wants a phase-level surface should request a public API via a
+  follow-up ADR rather than relying on the internal contract.
 
 ## Alternatives considered
 
@@ -154,15 +237,20 @@ Costs / honesty:
 ## See also
 
 - [`rag_graph_agentic_full.py`](../../rag_graph_agentic_full.py) — the
-  stage-1 graph module.
+  stage-2 three-node graph module (analyze / retrieve_loop /
+  build_answer with a conditional edge).
+- [`rag_core.py`](../../rag_core.py) — `_RunContext`,
+  `_build_run_context`, and the `_phase_*` helpers that both the
+  direct path and the LangGraph nodes call.
 - [`requirements-graph.txt`](../../requirements-graph.txt) — the
-  opt-in dependency.
+  opt-in LangGraph dependency.
 - [`tests/test_langgraph_orchestrator_regression.py`](../../tests/test_langgraph_orchestrator_regression.py)
-  — the JSON-identity + ADR-0001 dispatch tests.
+  — JSON-identity + ADR-0001 dispatch tests (stage 1) plus the
+  multi-node graph-structure tests (stage 2).
 - [ADR 0001](./0001-preserve-naive-baseline.md) — naive_baseline policy
   this ADR explicitly preserves.
 - [ADR 0011](./0011-llm-synthesis-as-additive-ablation.md) — the
   additive opt-in pattern this ADR reuses.
 - [ADR 0013](./0013-observability-as-additive-pluggable-surface.md) —
-  the trace-backend additivity pattern that stage 2 will reuse for
-  LangSmith / Langfuse integration.
+  the trace-backend additivity pattern; per-stage latencies in
+  LangSmith / Langfuse map cleanly to the three stage-2 nodes.
