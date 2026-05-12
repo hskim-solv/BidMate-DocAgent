@@ -82,11 +82,52 @@ def fmt_value(value: Any) -> str:
     return str(value)
 
 
-def fmt_delta(base: Any, head: Any, higher_is_better: bool) -> str:
+_ABS_SILENCE_FLOOR = 5e-4
+
+
+def min_num_predictions(*summaries: Any) -> int | None:
+    """Return the smallest positive ``num_predictions`` across summaries.
+
+    Used to size the N-aware silence threshold. Non-int / missing /
+    non-positive values are ignored; if no summary has a usable count
+    the caller falls back to the absolute floor.
+    """
+    counts: list[int] = []
+    for summary in summaries:
+        if not isinstance(summary, dict):
+            continue
+        value = summary.get("num_predictions")
+        if isinstance(value, int) and value > 0:
+            counts.append(value)
+    return min(counts) if counts else None
+
+
+def silence_threshold(n_min: int | None) -> float:
+    """Return the ``|delta| < threshold`` band that renders as ``·``.
+
+    Issue #463: a fixed ``5e-4`` floor silences only sub-rounding noise,
+    which is too tight for small N — on a real eval of N=21, a single
+    case is ±4.76 pp, so any move under half a case (~0.024) is
+    statistically indistinguishable from a tied state. Tying the band
+    to ``0.5 / n_min`` makes the silence rule N-aware while still
+    floored by the original rounding guard for large or unknown N.
+    """
+    if isinstance(n_min, int) and n_min > 0:
+        return max(_ABS_SILENCE_FLOOR, 0.5 / n_min)
+    return _ABS_SILENCE_FLOOR
+
+
+def fmt_delta(
+    base: Any,
+    head: Any,
+    higher_is_better: bool,
+    *,
+    n_min: int | None = None,
+) -> str:
     if not isinstance(base, (int, float)) or not isinstance(head, (int, float)):
         return "—"
     delta = float(head) - float(base)
-    if abs(delta) < 5e-4:
+    if abs(delta) < silence_threshold(n_min):
         return "·"
     sign = "+" if delta > 0 else ""
     improved = (delta > 0) if higher_is_better else (delta < 0)

@@ -15,6 +15,10 @@ import pytest
 
 from scripts.run_real_eval_delta import (
     FORBIDDEN_KEYS,
+    SAFE_ABSTENTION_OUTCOME_KEYS,
+    _fmt_delta,
+    _min_num_predictions,
+    _silence_threshold,
     extract_aggregate,
     render_markdown,
 )
@@ -413,6 +417,208 @@ class CIBlockExtractTest(unittest.TestCase):
     def test_ci_omitted_when_summary_has_no_ci(self) -> None:
         agg = extract_aggregate(FULL_SUMMARY)
         self.assertNotIn("ci", agg)
+
+
+class NAwareSilenceTest(unittest.TestCase):
+    """Issue #463: silence band must grow as ``num_predictions`` shrinks.
+
+    On a real eval of N=21 a single case is ±4.76 pp, so the original
+    fixed 5e-4 floor silenced only rounding noise and let sub-case
+    wobble look like real movement. The N-aware rule sizes the band to
+    half a case.
+    """
+
+    def test_silence_threshold_falls_back_to_floor_for_unknown_n(self) -> None:
+        self.assertAlmostEqual(_silence_threshold(None), 5e-4)
+
+    def test_silence_threshold_floor_for_large_n(self) -> None:
+        # 0.5 / 10000 = 5e-5 < 5e-4 floor, so the floor wins.
+        self.assertAlmostEqual(_silence_threshold(10000), 5e-4)
+
+    def test_silence_threshold_scales_for_small_n(self) -> None:
+        # 0.5 / 21 ~= 0.02381
+        self.assertAlmostEqual(_silence_threshold(21), 0.5 / 21)
+
+    def test_fmt_delta_silences_sub_half_case_on_small_n(self) -> None:
+        # delta = 0.010 is well under 0.5/21 ~ 0.024 → ·
+        self.assertEqual(_fmt_delta(0.50, 0.51, True, n_min=21), "·")
+
+    def test_fmt_delta_surfaces_above_half_case_on_small_n(self) -> None:
+        # delta = 0.050 > 0.024 → renders with direction arrow
+        rendered = _fmt_delta(0.50, 0.55, True, n_min=21)
+        self.assertIn("+0.050", rendered)
+        self.assertIn("✅", rendered)
+
+    def test_fmt_delta_silences_below_floor_when_n_omitted(self) -> None:
+        # Back-compat: callers without n_min still observe the 5e-4 floor.
+        self.assertEqual(_fmt_delta(0.500, 0.5003, True), "·")
+        rendered = _fmt_delta(0.500, 0.5010, True)
+        self.assertIn("+0.001", rendered)
+
+    def test_min_num_predictions_handles_missing_and_invalid(self) -> None:
+        self.assertIsNone(_min_num_predictions({}, {}))
+        self.assertIsNone(
+            _min_num_predictions({"num_predictions": -1}, {"num_predictions": 0})
+        )
+        self.assertEqual(
+            _min_num_predictions({"num_predictions": 42}, {"num_predictions": 21}),
+            21,
+        )
+
+
+class BaseHeadCIRenderTest(unittest.TestCase):
+    """Issue #463: surface single-run bootstrap CI next to base/head
+    values so reviewers can eyeball whether a delta sits inside the
+    noise band. The CI block is already aggregate-safe per ADR 0005."""
+
+    SUMMARY_WITH_CI = {
+        **FULL_SUMMARY,
+        "ci": {
+            "accuracy": {
+                "mean": 0.471,
+                "ci_lo": 0.235,
+                "ci_hi": 0.706,
+                "n": 21,
+                "num_resamples": 1000,
+            }
+        },
+    }
+
+    def test_render_includes_ci_bracket_for_metric_with_ci(self) -> None:
+        base = extract_aggregate(self.SUMMARY_WITH_CI)
+        head = extract_aggregate({**self.SUMMARY_WITH_CI, "accuracy": 0.6})
+        md = render_markdown(base, head, "test")
+        # Bracketed CI appears next to the value.
+        self.assertIn("[0.235, 0.706]", md)
+
+    def test_render_skips_ci_bracket_for_dotted_path(self) -> None:
+        # latency.p50 has no `ci` block under its dotted path; render
+        # must not invent one.
+        base = extract_aggregate(self.SUMMARY_WITH_CI)
+        head = extract_aggregate({**self.SUMMARY_WITH_CI, "accuracy": 0.6})
+        md = render_markdown(base, head, "test")
+        # latency_p50_ms row should not have a [lo, hi] bracket on it.
+        # We assert the value 100.000 (base latency p50) is not followed
+        # by a bracket.
+        self.assertNotIn("100.000 [", md)
+
+    def test_render_omits_bracket_when_ci_absent(self) -> None:
+        base = extract_aggregate(FULL_SUMMARY)
+        head = extract_aggregate({**FULL_SUMMARY, "accuracy": 0.6})
+        md = render_markdown(base, head, "test")
+        # No CI block in FULL_SUMMARY → no brackets.
+        self.assertNotIn("[0.", md)
+
+    def test_render_shows_silence_band_header_when_n_known(self) -> None:
+        base = extract_aggregate(self.SUMMARY_WITH_CI)
+        head = extract_aggregate({**self.SUMMARY_WITH_CI, "accuracy": 0.6})
+        md = render_markdown(base, head, "test")
+        self.assertIn("silence band", md)
+        self.assertIn("N=21", md)
+
+
+class AbstentionOutcomeBreakdownTest(unittest.TestCase):
+    """Issue #463: intended-abstention bimodality (0/1) collapsed two
+    distinct failure modes (hallucination vs ambiguous boundary).
+    The 3-bin breakdown surfaces them separately while staying within
+    the ADR 0005 aggregate-only commit boundary."""
+
+    SUMMARY_WITH_OUTCOMES = {
+        **FULL_SUMMARY,
+        "abstention_outcomes": {
+            "correct_refusal": 2,
+            "incorrect_answer": 1,
+            "boundary_partial": 1,
+        },
+        "by_query_type": {
+            **FULL_SUMMARY["by_query_type"],
+            "abstention": {
+                "num_predictions": 4,
+                "abstention": 0.5,
+                "abstention_outcomes": {
+                    "correct_refusal": 2,
+                    "incorrect_answer": 1,
+                    "boundary_partial": 1,
+                },
+            },
+        },
+    }
+
+    def test_outcomes_round_trip_at_top_level(self) -> None:
+        agg = extract_aggregate(self.SUMMARY_WITH_OUTCOMES)
+        self.assertIn("abstention_outcomes", agg)
+        outcomes = agg["abstention_outcomes"]
+        self.assertEqual(outcomes["correct_refusal"], 2)
+        self.assertEqual(outcomes["incorrect_answer"], 1)
+        self.assertEqual(outcomes["boundary_partial"], 1)
+        for value in outcomes.values():
+            self.assertIsInstance(value, int)
+
+    def test_outcomes_round_trip_in_slice(self) -> None:
+        agg = extract_aggregate(self.SUMMARY_WITH_OUTCOMES)
+        slice_payload = agg["by_query_type"]["abstention"]
+        self.assertIn("abstention_outcomes", slice_payload)
+        self.assertEqual(slice_payload["abstention_outcomes"]["correct_refusal"], 2)
+
+    def test_outcomes_extractor_drops_unknown_bin_keys(self) -> None:
+        summary = {
+            **FULL_SUMMARY,
+            "abstention_outcomes": {
+                "correct_refusal": 2,
+                "incorrect_answer": 1,
+                "boundary_partial": 1,
+                # Smuggling attempt — must be dropped.
+                "case_results": [{"id": "leak", "query": "leak"}],
+                "made_up_bin": 99,
+            },
+        }
+        agg = extract_aggregate(summary)
+        outcomes = agg["abstention_outcomes"]
+        self.assertEqual(set(outcomes.keys()), set(SAFE_ABSTENTION_OUTCOME_KEYS))
+        self.assertNotIn("made_up_bin", outcomes)
+        self.assertNotIn("leak", json.dumps(agg))
+
+    def test_outcomes_in_slice_drops_unknown_keys(self) -> None:
+        summary = {
+            **FULL_SUMMARY,
+            "by_query_type": {
+                "abstention": {
+                    "num_predictions": 4,
+                    "abstention_outcomes": {
+                        "correct_refusal": 1,
+                        "case_results": [{"id": "leak"}],
+                    },
+                }
+            },
+        }
+        agg = extract_aggregate(summary)
+        slice_outcomes = agg["by_query_type"]["abstention"]["abstention_outcomes"]
+        self.assertEqual(set(slice_outcomes.keys()), {"correct_refusal"})
+        self.assertNotIn("leak", json.dumps(agg))
+
+    def test_render_includes_outcome_breakdown_table(self) -> None:
+        base = extract_aggregate(self.SUMMARY_WITH_OUTCOMES)
+        head = extract_aggregate(
+            {
+                **self.SUMMARY_WITH_OUTCOMES,
+                "by_query_type": {
+                    **self.SUMMARY_WITH_OUTCOMES["by_query_type"],
+                    "abstention": {
+                        "num_predictions": 4,
+                        "abstention": 0.75,
+                        "abstention_outcomes": {
+                            "correct_refusal": 3,
+                            "incorrect_answer": 0,
+                            "boundary_partial": 1,
+                        },
+                    },
+                },
+            }
+        )
+        md = render_markdown(base, head, "test")
+        self.assertIn("Abstention outcome breakdown", md)
+        for key in SAFE_ABSTENTION_OUTCOME_KEYS:
+            self.assertIn(key, md)
 
 
 class FullScriptInvocationTest(unittest.TestCase):
