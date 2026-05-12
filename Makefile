@@ -1,4 +1,4 @@
-.PHONY: setup index ask eval benchmark benchmark-check check check-latency korean-public-eval korean-public-fetch smoke smoke-with-judge reproduce harness-smoke harness-real harness-ablation harness-compare test test-regression api api-docker demo demo-docker pareto docker-publish real-eval real-eval-delta real-eval-baseline-update real-eval-history-render real-eval-history-check real-eval-with-judge synthetic-judge leaderboard leaderboard-check clean
+.PHONY: setup index ask eval benchmark benchmark-check check check-latency korean-public-eval korean-public-fetch external-baselines-stub external-baselines-langchain external-baselines-llamaindex smoke smoke-with-judge reproduce harness-smoke harness-real harness-ablation harness-compare test test-regression api api-docker demo demo-docker pareto docker-publish real-eval real-eval-delta real-eval-baseline-update real-eval-history-render real-eval-history-check real-eval-with-judge synthetic-judge leaderboard leaderboard-check clean
 
 PYTHON ?= python3
 VENV ?= .venv
@@ -70,6 +70,27 @@ korean-public-fetch:
 
 korean-public-eval: korean-public-fetch
 	$(PYTHON) eval/korean_public/run.py
+
+# External baseline comparison (ADR 0009 / issue #157).
+# Stub backend is deterministic and free — exercises the comparison
+# infrastructure without API cost. Live backends require ANTHROPIC_API_KEY
+# and a one-time install of the SDK extras (~$2 / 42 cases at Sonnet 4.6).
+external-baselines-stub:
+	BIDMATE_EXTERNAL_BACKEND=stub $(PYTHON) scripts/compare_external_baselines.py
+
+external-baselines-langchain:
+	@if [ -z "$$ANTHROPIC_API_KEY" ]; then \
+		echo "ANTHROPIC_API_KEY not set. Live LangChain run needs an Anthropic key (~\$$2 / 42 cases)."; \
+		exit 1; \
+	fi
+	BIDMATE_EXTERNAL_BACKEND=langchain $(PYTHON) scripts/compare_external_baselines.py
+
+external-baselines-llamaindex:
+	@if [ -z "$$ANTHROPIC_API_KEY" ]; then \
+		echo "ANTHROPIC_API_KEY not set. Live LlamaIndex run needs an Anthropic key (~\$$2 / 42 cases)."; \
+		exit 1; \
+	fi
+	BIDMATE_EXTERNAL_BACKEND=llamaindex $(PYTHON) scripts/compare_external_baselines.py
 
 smoke:
 	bash scripts/smoke.sh
