@@ -155,6 +155,21 @@ ablation_runs:
     retrieval_mode: flat
     retrieval_backend: hybrid
     bm25_stopword_profile: bm25_extra
+  # Issue #152 — feasibility investigation (docs/investigations/152-splade-
+  # colbert-feasibility.md). Cell C3 of the 2×2 gap-quantification sweep:
+  # crosses #149 's `rrf_k` knob and #150 's `bm25_stopword_profile` knob.
+  # Sibling rows above cover one axis each; this row is the only cell that
+  # combines both. Real-data delta (private 21-case) lands in the §3.3 table
+  # of the investigation note per ADR 0005 boundary.
+  - name: hybrid_bm25_k30_extra
+    pipeline: agentic_full
+    metadata_first: true
+    rerank: true
+    verifier_retry: true
+    retrieval_mode: flat
+    retrieval_backend: hybrid
+    rrf_k: 30
+    bm25_stopword_profile: bm25_extra
   # Issue #163 / ADR 0011 pattern — additive cross-encoder reranker. The
   # existing `full` row is the natural negative (rerank_cross_encoder
   # defaults to false). Under the CI default backend (stub) the cross-
