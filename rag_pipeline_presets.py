@@ -138,11 +138,13 @@ def is_pipeline_name(value: Any) -> bool:
 
 
 def pipeline_cli_choices() -> list[str]:
-    # ADR 0001 explicit signal: this list is the source of truth for
-    # which pipeline names are surfaced to the CLI. Adding/removing an
-    # entry is the explicit revisit of that ADR (or, for additive
-    # changes like ADR 0011, the explicit follow-on).
-    return [DEFAULT_CLI_PIPELINE_NAME, DEFAULT_RAG_PIPELINE_NAME, "agentic_full_llm"]
+    # ADR 0001 explicit signal: ``PIPELINE_PRESETS`` is the single source
+    # of truth for which pipeline names are surfaced to the CLI. Adding
+    # a preset to that dict above auto-extends this list; removing one
+    # disappears it. The historical hardcoded triple
+    # ``[naive_baseline, agentic_full, agentic_full_llm]`` is preserved
+    # bit-equal under Python 3.7+ dict insertion order (issue #384).
+    return list(PIPELINE_PRESETS.keys())
 
 
 def canonical_pipeline_name(value: str | None, default: str = DEFAULT_RAG_PIPELINE_NAME) -> str:
