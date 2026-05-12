@@ -83,6 +83,7 @@ project record.
 | [0018](./0018-korean-public-rag-bench.md) | accepted | Korean public RAG bench as supplementary out-of-domain surface (extends 0005) |
 | [0019](./0019-embedding-default-stays-minilm.md) | accepted | Embedding default stays MiniLM-L12-v2 with explicit re-open conditions (extends 0002) |
 | [0021](./0021-bge-m3-completes-phase-1-3.md) | accepted | BGE-M3 closes ADR 0019 Phase 1.3 condition 2; default stays MiniLM (supplements 0019) |
+| [0022](./0022-langgraph-orchestration-stage-1.md) | proposed | LangGraph orchestrator path for agentic_full presets — stage 1 (single-node passthrough, opt-in via BIDMATE_ORCHESTRATOR=langgraph, preserves ADR 0001) |
 
 ## Decision evolution
 

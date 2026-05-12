@@ -1,0 +1,20 @@
+# Optional LangGraph orchestration backend (ADR 0022, issue #401).
+#
+# Install with:
+#   pip install -r requirements-graph.txt
+#
+# Activate at runtime:
+#   export BIDMATE_ORCHESTRATOR=langgraph
+#
+# Default (`BIDMATE_ORCHESTRATOR=direct`) uses the in-process Python call
+# path in `rag_core.run_rag_query` — no LangGraph dependency, no graph
+# construction overhead, CI-reproducible. Setting the env var to
+# `langgraph` routes through `rag_graph_agentic_full.run_via_langgraph`,
+# which builds a single-node StateGraph that calls the same query body
+# (recursion-guarded). Stage 1 of the PR-H epic — output is
+# JSON-identical to the direct path by construction.
+#
+# Multi-node decomposition (analyze / retrieve / build_answer as
+# separate graph nodes) is a follow-up stage; the dependency is the
+# same.
+langgraph>=0.6,<2.0

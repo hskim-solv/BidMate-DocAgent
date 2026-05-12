@@ -15,7 +15,7 @@
 
 | 시그널 | 어디서 확인하나 |
 |---|---|
-| 아키텍처 결정이 **사후 합리화가 아닌 기록된 결정**으로 남아있다 | [`docs/adr/`](./adr/README.md) — 20개 ADR (16 accepted / 4 proposed), status-tracked, supersession chains 명시 |
+| 아키텍처 결정이 **사후 합리화가 아닌 기록된 결정**으로 남아있다 | [`docs/adr/`](./adr/README.md) — 21개 ADR (16 accepted / 5 proposed), status-tracked, supersession chains 명시 |
 | **측정 가능한 성공 기준**을 미리 잡고 그 기준으로 평가한다 | [`portfolio-case-study.md` §2](./portfolio-case-study.md), [`eval/config.yaml`](../eval/config.yaml), README headline 표 |
 | 합성 평가의 한계를 알고 **공개/비공개 평가 분리**로 보완한다 | [ADR 0005](./adr/0005-eval-split-public-synthetic-private-local.md), [`docs/private-100-doc-experiments.md`](./private-100-doc-experiments.md) |
 | **실패를 분류·우선순위화**한 뒤 백로그로 만든다 | [`docs/real-data-failure-taxonomy.md`](./real-data-failure-taxonomy.md), 메타 이슈 #49 |
@@ -49,6 +49,7 @@
 | [0018](./adr/0018-korean-public-rag-bench.md) | accepted | Korean public RAG bench (KorQuAD 2.1) as supplementary out-of-domain surface (extends 0005) | "한국어 일반 텍스트에서도 동작합니까?" 질문에 공개 재현 가능한 한 줄 명령(`make korean-public-eval`)으로 답변 — 합성 surface와 분리, CI 게이트가 *아님* |
 | [0019](./adr/0019-embedding-default-stays-minilm.md) | accepted | embedding 디폴트 = MiniLM-L12-v2 잠금 + 재오픈 조건 명시 (extends 0002) | 2차 사이클 측정이 env mismatch로 deferred됐을 때 *deferral 자체*를 ADR로 잠금 — 다음 contributor가 같은 실험을 다시 시도하지 않고, "디폴트 교체"의 empirical bar(`full` 파이프라인 ≥+5pp)도 명시 |
 | [0021](./adr/0021-bge-m3-completes-phase-1-3.md) | accepted | BGE-M3 Phase 1.3 측정 완료, ADR 0019 condition 2 closure (supplements 0019) | deferred 결정이 *실제로 닫히는 과정*까지 ADR로 박음. 4개 named candidate + 5개 임베딩(2019–2024) cross-architecture 측정으로 `0pp-on-full` 패턴이 empirical support 받는 단계까지 도달 |
+| [0022](./adr/0022-langgraph-orchestration-stage-1.md) | proposed | LangGraph orchestrator path for agentic_full presets — stage 1 (single-node passthrough + env-var dispatch, opt-in via `BIDMATE_ORCHESTRATOR=langgraph`) | "Agentic" 라벨에 코드 실체를 붙이는 epic의 stage 1 — JSON-identity 보장 가능한 단일 노드부터 land 후 stage 2에서 multi-node 분해. ADR 0001 `naive_baseline`은 직접 경로 유지. |
 
 **인터뷰 talking point 1 (real-data 회귀)**: "ADR 0005가 없었다면 공개본의 abstention 회귀(#69의 `1.000 → 0.500` 사건)는 아무도 보지 못했을 것이다. 공개 합성만 보던 시기에는 1-of-2 incidental overlap 패턴이 잡히지 않았다." — 근거: [`docs/private-100-doc-experiments.md`](./private-100-doc-experiments.md) 2026-05-11 entry.
 
@@ -176,7 +177,7 @@ make reproduce  # smoke + SHA-256 over the environment-invariant metric subset
 
 ### 30초 자기소개
 
-> "BidMate-DocAgent는 **한국어 RFP 도메인-특화 RAG**입니다. 일반 영어 벤치(KMMLU/MMLU) 점수 경쟁이 아니라, 한국 B2B/공공 입찰 시장의 비교 질의에서 발생하는 한쪽 문서 starvation 패턴을 발견하고 막은 게 차별점입니다. **comparison-aware balanced top-k** + **metadata-first retrieval** + **extractive grounded-answer 계약**으로 hallucination을 구조적으로 차단하고, **공개 합성 + 비공개 real-data + KorQuAD 2.1 한국어 공개셋** 세 표면으로 silent regression을 분리 탐지합니다. 운영 시그널 측에서는 **20개 ADR**, prompt-caching 적용 **cost telemetry**, fail-closed **observability(LangFuse/OTel)**, **CI 회귀 게이트**까지 완성했습니다."
+> "BidMate-DocAgent는 **한국어 RFP 도메인-특화 RAG**입니다. 일반 영어 벤치(KMMLU/MMLU) 점수 경쟁이 아니라, 한국 B2B/공공 입찰 시장의 비교 질의에서 발생하는 한쪽 문서 starvation 패턴을 발견하고 막은 게 차별점입니다. **comparison-aware balanced top-k** + **metadata-first retrieval** + **extractive grounded-answer 계약**으로 hallucination을 구조적으로 차단하고, **공개 합성 + 비공개 real-data + KorQuAD 2.1 한국어 공개셋** 세 표면으로 silent regression을 분리 탐지합니다. 운영 시그널 측에서는 **21개 ADR**, prompt-caching 적용 **cost telemetry**, fail-closed **observability(LangFuse/OTel)**, **CI 회귀 게이트**까지 완성했습니다."
 
 읽는 시간 ≈ 30초. 면접 첫 답으로 그대로 사용 가능. 상대가 "좀 더 자세히"를 물으면 §1, 측정 의문에는 §2, 운영 의문에는 [`production-readiness.md`](./production-readiness.md)로 넘어간다.
 

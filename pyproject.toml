@@ -29,6 +29,7 @@ source = [
     "bidmate_logging",
     "korean_lexicon",
     "rag_pipeline_presets",
+    "rag_graph_agentic_full",
     "app",
     "api",
     "eval",
