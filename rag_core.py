@@ -98,6 +98,19 @@ from rag_conversation_state import (
     normalize_conversation_state,
 )
 
+# ADR 0003 answer-contract schema constants live in rag_answer_schema.py
+# as of issue #417 (PR-E stage 4a). Re-exported here so external
+# consumers (tests/test_demo_helpers, tests/test_governance,
+# tests/test_answer_contract_snapshot) keep their existing
+# ``from rag_core import ANSWER_STATUS_SUPPORTED, ANSWER_SCHEMA_VERSION``
+# imports unchanged.
+from rag_answer_schema import (
+    ANSWER_SCHEMA_VERSION,
+    ANSWER_STATUS_INSUFFICIENT,
+    ANSWER_STATUS_PARTIAL,
+    ANSWER_STATUS_SUPPORTED,
+)
+
 DEFAULT_EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 DEFAULT_HASH_DIM = 384
 DEFAULT_CHUNK_MAX_CHARS = 520
@@ -139,10 +152,6 @@ TOKEN_RE = re.compile(r"[A-Za-z0-9]+|[가-힣]+")
 ENTITY_RE = re.compile(r"기관\s*[-_]?\s*([A-Za-z0-9]+)", re.IGNORECASE)
 SENTENCE_RE = re.compile(r"(?<=[.!?。])\s+")
 
-ANSWER_STATUS_SUPPORTED = "supported"
-ANSWER_STATUS_PARTIAL = "partial"
-ANSWER_STATUS_INSUFFICIENT = "insufficient"
-ANSWER_SCHEMA_VERSION = 2
 TRACE_SCHEMA_VERSION = 1
 
 STRICT_METADATA_CONFIDENCE = 0.90
