@@ -1,5 +1,5 @@
 numpy>=1.24,<2.3
-PyYAML>=6.0
+PyYAML>=6.0.3
 rank-bm25>=0.2.2,<1.0
 sentence-transformers>=2.7,<3.0
 transformers>=4.41,<5.0
