@@ -4223,6 +4223,58 @@ def run_rag_query(
     return result
 
 
+async def arun_rag_query(
+    index: dict[str, Any],
+    query: str,
+    top_k: int | None = None,
+    context_entities: list[str] | None = None,
+    metadata_first: bool | None = None,
+    rerank: bool | None = None,
+    verifier_retry: bool | None = None,
+    retrieval_mode: str | None = None,
+    retrieval_backend: str | None = None,
+    pipeline: str | None = None,
+    prompt_profile: str | None = None,
+    conversation_state: dict[str, Any] | None = None,
+    comparison_balance: dict[str, Any] | None = None,
+    rrf_k: int | None = None,
+    bm25_stopword_profile: str | None = None,
+) -> dict[str, Any]:
+    """Async-aware entry point for the RAG pipeline (#173 Stage 1).
+
+    Stage 1 (this PR): thin async wrapper that runs
+    :func:`run_rag_query` on a worker thread via
+    :func:`asyncio.to_thread` so async callers (FastAPI, future
+    Streamlit-async hooks) do not block the event loop. The sync
+    body and its output are byte-identical to ``run_rag_query`` —
+    no behavior change.
+
+    Stage 2 (deferred): fan-out the comparison-query per-target
+    retrieval branches with :func:`asyncio.gather`. The async
+    surface introduced here is the seam Stage 2 needs.
+    """
+    import asyncio
+
+    return await asyncio.to_thread(
+        run_rag_query,
+        index,
+        query,
+        top_k=top_k,
+        context_entities=context_entities,
+        metadata_first=metadata_first,
+        rerank=rerank,
+        verifier_retry=verifier_retry,
+        retrieval_mode=retrieval_mode,
+        retrieval_backend=retrieval_backend,
+        pipeline=pipeline,
+        prompt_profile=prompt_profile,
+        conversation_state=conversation_state,
+        comparison_balance=comparison_balance,
+        rrf_k=rrf_k,
+        bm25_stopword_profile=bm25_stopword_profile,
+    )
+
+
 def strip_internal_scores(evidence: list[dict[str, Any]]) -> list[dict[str, Any]]:
     stripped = []
     for item in evidence:
