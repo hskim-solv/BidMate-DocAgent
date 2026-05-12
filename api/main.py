@@ -38,15 +38,22 @@ from .schemas import QueryRequest
 logger = logging.getLogger("bidmate.api")
 
 DEFAULT_INDEX_DIR = "data/index"
-DEFAULT_API_PIPELINE = "agentic_full"
+# ADR 0024 / PR-I (issue #405): API surface defaults to the
+# `agentic_full_llm` preset (ADR 0011 additive LLM synthesis path). The
+# *backend* default is still `BIDMATE_SYNTHESIS_BACKEND=stub` (ADR 0011)
+# so CI / public reviewers see a deterministic response with the LLM
+# preset selected; real LLM backends activate only when an operator
+# sets `BIDMATE_SYNTHESIS_BACKEND=anthropic` (or `openai_compatible`).
+# CLI (`app.py`) keeps `naive_baseline` per ADR 0001.
+DEFAULT_API_PIPELINE = "agentic_full_llm"
 
 
 def _resolve_default_pipeline() -> str:
     """Pick the default pipeline for unspecified requests.
 
     Prefers ``BIDMATE_DEFAULT_PIPELINE`` from the environment, then
-    ``agentic_full``, then the CLI default. The fallback chain keeps the
-    API working even if the registry is reshuffled.
+    ``agentic_full_llm`` (ADR 0024), then the CLI default. The fallback
+    chain keeps the API working even if the registry is reshuffled.
     """
     env = (os.environ.get("BIDMATE_DEFAULT_PIPELINE") or "").strip()
     choices = set(pipeline_cli_choices())

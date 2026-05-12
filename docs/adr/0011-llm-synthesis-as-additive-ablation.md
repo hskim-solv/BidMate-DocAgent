@@ -4,8 +4,9 @@
 
 - **Status**: proposed
 - **Date**: 2026-05-11
-- **Related**: extends [ADR 0001](./0001-preserve-naive-baseline.md); preserves [ADR 0003](./0003-structured-answer-citation-contract.md); reuses backend pattern from [ADR 0006](./0006-llm-judge-on-real-data-only.md); implementation walkthrough in [`docs/answer-policy.md`](../answer-policy.md#계약-강제-메커니즘)
+- **Related**: extends [ADR 0001](./0001-preserve-naive-baseline.md); preserves [ADR 0003](./0003-structured-answer-citation-contract.md); reuses backend pattern from [ADR 0006](./0006-llm-judge-on-real-data-only.md); **complemented by** [ADR 0024](./0024-agentic-full-llm-as-api-default.md) (API preset default flips to `agentic_full_llm`; backend default stays `stub`); implementation walkthrough in [`docs/answer-policy.md`](../answer-policy.md#계약-강제-메커니즘)
 - **Deciders**: hskim
+- **Update (PR-I, issue #405, 2026-05-12)**: the API surface default preset flips from `agentic_full` to `agentic_full_llm` ([ADR 0024](./0024-agentic-full-llm-as-api-default.md)). The *backend* additivity contract this ADR established stays unchanged — `BIDMATE_SYNTHESIS_BACKEND=stub` is still the default, so a public API call runs the LLM synthesis preset under the deterministic stub renderer. CLI (`naive_baseline`, ADR 0001) and function-level (`agentic_full`) defaults are untouched.
 
 ## Context
 
