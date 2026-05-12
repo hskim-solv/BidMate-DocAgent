@@ -28,6 +28,7 @@ source = [
     "text_normalize",
     "bidmate_logging",
     "korean_lexicon",
+    "rag_pipeline_presets",
     "app",
     "api",
     "eval",
