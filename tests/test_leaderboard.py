@@ -209,6 +209,46 @@ class LeaderboardRenderTest(unittest.TestCase):
             self.assertNotIn(leak, md)
             self.assertNotIn(leak, page)
 
+    def test_render_page_does_not_duplicate_h1_or_intro(self) -> None:
+        """Page must have exactly one H1 and one intro paragraph.
+
+        Earlier the page embedded ``render_markdown_table`` verbatim,
+        which produced TWO ``# Synthetic Eval Leaderboard`` headers and
+        TWO intro paragraphs — once under the front-matter (the page's
+        own title) and once again under ``## Tabular view``. This is
+        the regression guard against re-introducing that duplication.
+        """
+        with TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            history = _write_history(
+                tmp,
+                [
+                    _snapshot("aaaa11112222", "2026-05-08", 0.844),
+                    _snapshot("bbbb33334444", "2026-05-12", 0.906),
+                ],
+            )
+            rows = load_history(history)
+            page = render_page(rows)
+        # Exactly one H1 — front-matter `title:` does not count as H1 markdown.
+        h1_count = sum(
+            1
+            for line in page.splitlines()
+            if line.startswith("# ") and "Synthetic Eval Leaderboard" in line
+        )
+        self.assertEqual(
+            1,
+            h1_count,
+            f"Expected exactly one '# Synthetic Eval Leaderboard' H1, got {h1_count}",
+        )
+        # Intro phrase ("Time-series view of headline metrics") should also
+        # appear once — the page's own intro under the H1, not duplicated
+        # under "## Tabular view".
+        self.assertEqual(
+            1,
+            page.count("Time-series view of headline metrics"),
+            "Intro phrase 'Time-series view of headline metrics' must appear exactly once",
+        )
+
     def test_write_artifacts_round_trip(self) -> None:
         """Both markdown and page files are written and re-read identical."""
         with TemporaryDirectory() as tmpdir:
