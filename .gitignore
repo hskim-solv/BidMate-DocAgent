@@ -64,6 +64,12 @@ reports/real100/history/*
 reports/history/*
 !reports/history/*.aggregate.json
 !reports/leaderboard.md
+# Issue #237 — harness aggregate snapshots. Generated per ``run_harness``
+# invocation; untracked by default to keep developer working trees
+# clean. The leaderboard time-series lives under reports/history/
+# (real-eval results) — harness runs are isolated here so the
+# leaderboard isn't polluted with smoke-test data.
+reports/harness_history/
 # LLM-judge per-case verdicts (ADR 0006) stay local — only their
 # aggregate is folded into baseline.aggregate.json. Explicit ignore
 # for clarity (already caught by reports/real100/* above).

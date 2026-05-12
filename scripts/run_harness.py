@@ -16,6 +16,7 @@ Three modes:
 from __future__ import annotations
 
 import argparse
+from contextlib import nullcontext
 import copy
 from datetime import datetime, timezone
 import json
@@ -31,6 +32,7 @@ import yaml
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(ROOT_DIR))
 from _utils import (  # noqa: E402
     append_jsonl,
     git_dirty,
@@ -43,6 +45,16 @@ from _utils import (  # noqa: E402
     write_json,
 )
 from harness_compare import render_matrix_compare, render_pair, resolve_summary  # noqa: E402
+from rag_observability import (  # noqa: E402
+    OBSERVABILITY_SCHEMA_VERSION,
+    resolve_trace_backend,
+)
+
+# Harness aggregate snapshots use a sibling directory of
+# ``reports/history/`` so they coexist with the real-eval leaderboard
+# time series (``scripts/write_synthetic_history.py``) without
+# polluting it. The on-disk shape mirrors that script.
+HARNESS_HISTORY_DIR = ROOT_DIR / "reports" / "harness_history"
 
 
 def parse_args() -> argparse.Namespace:
@@ -57,6 +69,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--run-a", default=None, help="Run dir or eval_summary.json (compare mode)")
     parser.add_argument("--run-b", default=None, help="Run dir or eval_summary.json (compare mode)")
     parser.add_argument("--out", default=None, help="Write compare markdown to this file")
+    parser.add_argument(
+        "--no-observability",
+        action="store_true",
+        help=(
+            "Disable LangFuse/OTel trace + reports/harness_history append. "
+            "Manifest still records observability={backend:'none', "
+            "unavailable_reason:'disabled'} so downstream consumers can tell "
+            "the difference between 'tracing turned off' and 'tracing failed'."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -193,6 +215,7 @@ def _execute_pipeline(
     *,
     source_paths: dict[str, str],
     eval_config_path: Path,
+    no_observability: bool = False,
 ) -> dict[str, Any]:
     """Run index → query → eval against a pre-resolved run_dir.
 
@@ -202,6 +225,11 @@ def _execute_pipeline(
 
     The caller owns run_dir creation/wiping so matrix mode can write a
     cell_config.yaml alongside before invoking.
+
+    ``no_observability=True`` short-circuits the LangFuse / OTel trace
+    and the ``reports/harness_history`` append. The manifest still
+    carries an ``observability`` block so downstream consumers can
+    distinguish "tracing turned off" from "tracing failed".
     """
     started_at = utc_now()
     logs_dir = run_dir / "logs"
@@ -222,13 +250,32 @@ def _execute_pipeline(
     write_json(config_snapshot_path, config_snapshot)
     errors_path.touch()
 
+    # Observability is fail-closed by construction (ADR 0013): even if
+    # ``BIDMATE_TRACE_BACKEND`` requests langfuse/otel, an SDK miss or
+    # auth failure falls back to a noop context and reports the reason.
+    trace_ctx = None
+    trace_backend_name = "none"
+    trace_unavailable_reason: str | None = "disabled" if no_observability else None
+    if not no_observability:
+        backend, trace_backend_name, trace_unavailable_reason = resolve_trace_backend()
+        trace_ctx = backend.start_trace(
+            query=str(require_mapping(config, "query").get("text") or ""),
+            tags={
+                "run_id": run_id,
+                "source": "run_harness",
+                "config_id": str(config.get("id") or ""),
+            },
+        )
+
     commands = build_commands(config, run_dir)
     steps: list[dict[str, Any]] = []
     status = "passed"
     failure: dict[str, Any] | None = None
 
     for name in ("index", "query", "eval"):
-        step = {"name": name, **run_logged_command(commands[name], logs_dir / f"{name}.log")}
+        span_cm = trace_ctx.span(name) if trace_ctx is not None else nullcontext()
+        with span_cm:
+            step = {"name": name, **run_logged_command(commands[name], logs_dir / f"{name}.log")}
         steps.append(step)
         if command_failed(step):
             status = "failed"
@@ -273,6 +320,27 @@ def _execute_pipeline(
     }
     write_json(summary_path, summary)
 
+    # Finish the trace before writing the manifest so the trace_url
+    # can be embedded. Any backend error is swallowed inside finish()
+    # and surfaces as a None trace_url.
+    trace_url: str | None = None
+    if trace_ctx is not None:
+        trace_url = trace_ctx.finish(
+            {
+                "answer_status": metrics.get("answer_status"),
+                "latency_ms": (metrics.get("latency") or {}).get("p50_ms"),
+                "abstained": (metrics.get("abstention") or {}).get("count"),
+                "status": status,
+            }
+        )
+
+    observability_block: dict[str, Any] = {
+        "schema_version": OBSERVABILITY_SCHEMA_VERSION,
+        "backend": trace_backend_name,
+        "trace_url": trace_url,
+        "unavailable_reason": trace_unavailable_reason,
+    }
+
     manifest = {
         "schema_version": 1,
         "run_id": run_id,
@@ -285,14 +353,93 @@ def _execute_pipeline(
         "commands": commands,
         "status": status,
         "metrics": metrics,
+        "observability": observability_block,
     }
     if failure:
         manifest["failure"] = failure
+
+    # Aggregate snapshot mirror of write_synthetic_history.py — only on
+    # successful runs and only when observability is enabled. Failures
+    # here must NEVER break the harness run, so any exception is
+    # recorded back into the observability block.
+    if not no_observability and status == "passed":
+        try:
+            history_path = _append_harness_history_snapshot(
+                run_id=run_id,
+                manifest=manifest,
+                eval_summary_path=metrics_path,
+            )
+            observability_block["history_path"] = rel_path(history_path)
+        except Exception as exc:  # pragma: no cover - defensive
+            observability_block["history_error"] = (
+                f"{type(exc).__name__}: {str(exc)[:200]}"
+            )
+
     write_json(manifest_path, manifest)
 
     print(f"[OK] Harness run written: {rel_path(run_dir)}")
     print(f"[OK] Run manifest: {rel_path(manifest_path)}")
+    if observability_block.get("trace_url"):
+        print(f"[OK] Trace URL: {observability_block['trace_url']}")
+    if observability_block.get("history_path"):
+        print(f"[OK] History snapshot: {observability_block['history_path']}")
     return manifest
+
+
+def _append_harness_history_snapshot(
+    *,
+    run_id: str,
+    manifest: dict[str, Any],
+    eval_summary_path: Path,
+) -> Path:
+    """Mirror ``write_synthetic_history.py`` for harness runs.
+
+    Lives under ``reports/harness_history/`` (sibling of
+    ``reports/history/``) so the leaderboard time-series stays
+    pure-real-eval. The on-disk filename + JSON shape match the
+    sibling script so ``scripts/leaderboard.py:load_history`` can be
+    pointed at this directory for harness-only views.
+    """
+    HARNESS_HISTORY_DIR.mkdir(parents=True, exist_ok=True)
+    sha = (manifest.get("git_commit") or "unknown")[:12]
+    ts = (
+        str(manifest["generated_at"]).replace("-", "").replace(":", "").split(".")[0]
+    )
+    if not ts.endswith("Z"):
+        ts += "Z"
+    out_path = HARNESS_HISTORY_DIR / f"{ts}_{sha}.aggregate.json"
+
+    eval_summary: dict[str, Any] = {}
+    if eval_summary_path.exists():
+        try:
+            eval_summary = json.loads(eval_summary_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            eval_summary = {}
+
+    aggregate = {
+        "schema_version": 1,
+        "source": "run_harness",
+        "run_id": run_id,
+        "provenance": {
+            "git_commit": manifest.get("git_commit"),
+            "git_dirty": manifest.get("git_dirty"),
+            "generated_at": manifest.get("generated_at"),
+        },
+        "config_hash": manifest.get("config_hash"),
+        "metrics": manifest.get("metrics") or {},
+        "answer_status": eval_summary.get("answer_status"),
+        "abstention": eval_summary.get("abstention"),
+        "observability": {
+            k: v
+            for k, v in (manifest.get("observability") or {}).items()
+            if k in ("backend", "trace_url", "schema_version")
+        },
+    }
+    out_path.write_text(
+        json.dumps(aggregate, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return out_path
 
 
 def execute_single(
@@ -301,6 +448,7 @@ def execute_single(
     run_id: str | None,
     artifact_root: Path | None,
     force: bool,
+    no_observability: bool = False,
 ) -> int:
     config = load_yaml(config_path)
     config_id = str(config.get("id") or config_path.stem)
@@ -325,6 +473,7 @@ def execute_single(
         run_dir,
         source_paths=source_paths,
         eval_config_path=eval_config_path,
+        no_observability=no_observability,
     )
     return 0 if manifest["status"] == "passed" else 2
 
@@ -417,7 +566,7 @@ def _validate_matrix(matrix: dict[str, Any]) -> None:
         )
 
 
-def execute_matrix(matrix_path: Path, *, force: bool) -> int:
+def execute_matrix(matrix_path: Path, *, force: bool, no_observability: bool = False) -> int:
     matrix = load_yaml(matrix_path)
     _validate_matrix(matrix)
 
@@ -480,6 +629,7 @@ def execute_matrix(matrix_path: Path, *, force: bool) -> int:
             cell_run_dir,
             source_paths=source_paths,
             eval_config_path=eval_config_path,
+            no_observability=no_observability,
         )
 
         cell_summary_path = cell_run_dir / "metrics" / "eval_summary.json"
@@ -591,12 +741,17 @@ def main() -> int:
             raise SystemExit("[ERROR] --compare requires --run-a and --run-b")
         return execute_compare(args.run_a, args.run_b, args.out)
     if args.matrix:
-        return execute_matrix(repo_path(args.matrix), force=args.force)
+        return execute_matrix(
+            repo_path(args.matrix),
+            force=args.force,
+            no_observability=args.no_observability,
+        )
     return execute_single(
         repo_path(args.config),
         run_id=args.run_id,
         artifact_root=repo_path(args.artifact_root) if args.artifact_root else None,
         force=args.force,
+        no_observability=args.no_observability,
     )
 
 
