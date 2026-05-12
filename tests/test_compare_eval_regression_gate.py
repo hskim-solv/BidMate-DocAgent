@@ -27,7 +27,12 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
-from _eval_delta import detect_regressions  # noqa: E402
+from _eval_delta import (  # noqa: E402
+    detect_regressions,
+    fmt_delta,
+    min_num_predictions,
+    silence_threshold,
+)
 
 
 def _base_summary() -> dict:
@@ -107,6 +112,45 @@ class DetectRegressionsTest(unittest.TestCase):
         for r in regressions:
             self.assertIn("delta", r)
             self.assertIn("threshold", r)
+
+
+class SilenceBandTest(unittest.TestCase):
+    """Issue #463: ``fmt_delta`` silences sub-rounding noise on large N
+    but widens the band to half a case width when N is small, so 1-case
+    wobble on a tiny eval doesn't look like real signal."""
+
+    def test_silence_threshold_floor_when_n_omitted(self) -> None:
+        self.assertAlmostEqual(silence_threshold(None), 5e-4)
+
+    def test_silence_threshold_floor_for_large_n(self) -> None:
+        self.assertAlmostEqual(silence_threshold(10000), 5e-4)
+
+    def test_silence_threshold_scales_for_small_n(self) -> None:
+        self.assertAlmostEqual(silence_threshold(42), 0.5 / 42)
+        self.assertAlmostEqual(silence_threshold(21), 0.5 / 21)
+
+    def test_fmt_delta_silences_below_band_with_n_min(self) -> None:
+        # 0.5 / 21 ~= 0.024; a 0.010 delta sits below it.
+        self.assertEqual(fmt_delta(0.50, 0.51, True, n_min=21), "·")
+
+    def test_fmt_delta_surfaces_above_band_with_n_min(self) -> None:
+        rendered = fmt_delta(0.50, 0.55, True, n_min=21)
+        self.assertIn("+0.050", rendered)
+        self.assertIn("✅", rendered)
+
+    def test_fmt_delta_back_compat_without_n_min(self) -> None:
+        # Existing callers without n_min keep the original 5e-4 floor.
+        self.assertEqual(fmt_delta(0.500, 0.5002, True), "·")
+        self.assertIn("+0.001", fmt_delta(0.500, 0.5010, True))
+
+    def test_min_num_predictions_picks_smaller_side(self) -> None:
+        self.assertEqual(
+            min_num_predictions(
+                {"num_predictions": 42}, {"num_predictions": 21}
+            ),
+            21,
+        )
+        self.assertIsNone(min_num_predictions({}, None))
 
 
 class CompareEvalCliGateTest(unittest.TestCase):

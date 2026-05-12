@@ -83,8 +83,15 @@ SAFE_TOPLEVEL_KEYS = frozenset(
         # The block is {metric: {mean, ci_lo, ci_hi, n, num_resamples, alpha}};
         # the extractor below whitelists both the metric and sub-key sets.
         "ci",
+        # Issue #463: integer counts decomposing intended-abstention cases
+        # into 3 outcome bins. The extractor whitelists the bin names below
+        # and casts to int — no per-case text crosses the boundary.
+        "abstention_outcomes",
     }
 )
+
+# Whitelisted bin names for ``abstention_outcomes``. Integer counts only.
+SAFE_ABSTENTION_OUTCOME_KEYS = ("correct_refusal", "incorrect_answer", "boundary_partial")
 
 # Headline metrics whose bootstrap CI is allowed to round-trip the
 # extractor. Mirrors the scalar metrics already whitelisted at the top
@@ -148,6 +155,7 @@ SAFE_SLICE_METRICS = (
     "accuracy",
     "groundedness",
     "abstention",
+    "abstention_outcomes",
     "answer_format_compliance",
 )
 
@@ -255,6 +263,14 @@ def extract_aggregate(summary: dict[str, Any]) -> dict[str, Any]:
                     extracted["cross_ablation"] = cross_out
             if extracted:
                 out[key] = extracted
+        elif key == "abstention_outcomes" and isinstance(value, dict):
+            bin_out = {
+                sub: int(value[sub])
+                for sub in SAFE_ABSTENTION_OUTCOME_KEYS
+                if isinstance(value.get(sub), (int, float))
+            }
+            if bin_out:
+                out[key] = bin_out
         elif key == "ci" and isinstance(value, dict):
             ci_out: dict[str, Any] = {}
             for metric in SAFE_CI_METRIC_KEYS:
@@ -303,11 +319,22 @@ def extract_aggregate(summary: dict[str, Any]) -> dict[str, Any]:
         for slice_name, slice_summary in by_query_type.items():
             if not isinstance(slice_summary, dict):
                 continue
-            slice_out[str(slice_name)] = {
-                m: slice_summary.get(m)
-                for m in SAFE_SLICE_METRICS
-                if slice_summary.get(m) is not None
-            }
+            extracted_slice: dict[str, Any] = {}
+            for m in SAFE_SLICE_METRICS:
+                raw = slice_summary.get(m)
+                if raw is None:
+                    continue
+                if m == "abstention_outcomes" and isinstance(raw, dict):
+                    bin_out = {
+                        sub: int(raw[sub])
+                        for sub in SAFE_ABSTENTION_OUTCOME_KEYS
+                        if isinstance(raw.get(sub), (int, float))
+                    }
+                    if bin_out:
+                        extracted_slice[m] = bin_out
+                else:
+                    extracted_slice[m] = raw
+            slice_out[str(slice_name)] = extracted_slice
         out["by_query_type"] = slice_out
 
     _assert_no_forbidden(out)
@@ -352,16 +379,82 @@ def _fmt_value(value: Any) -> str:
     return str(value)
 
 
-def _fmt_delta(base: Any, head: Any, higher_is_better: bool) -> str:
+_ABS_SILENCE_FLOOR = 5e-4
+
+
+def _silence_threshold(n_min: int | None) -> float:
+    """``|delta| < threshold`` band that renders as ``·``.
+
+    Issue #463: on N=21 a single case is ±4.76 pp, so the original
+    fixed ``5e-4`` band silences only sub-rounding noise and lets
+    sub-case wobble look like real movement. Sizing the band to
+    ``0.5 / n_min`` keeps it case-aware while floored by the original
+    rounding guard when N is unknown or large.
+    """
+    if isinstance(n_min, int) and n_min > 0:
+        return max(_ABS_SILENCE_FLOOR, 0.5 / n_min)
+    return _ABS_SILENCE_FLOOR
+
+
+def _fmt_delta(
+    base: Any,
+    head: Any,
+    higher_is_better: bool,
+    *,
+    n_min: int | None = None,
+) -> str:
     if not isinstance(base, (int, float)) or not isinstance(head, (int, float)):
         return "—"
     delta = float(head) - float(base)
-    if abs(delta) < 5e-4:
+    if abs(delta) < _silence_threshold(n_min):
         return "·"
     sign = "+" if delta > 0 else ""
     improved = (delta > 0) if higher_is_better else (delta < 0)
     flag = " ✅" if improved else " ⚠️"
     return f"{sign}{delta:.3f}{flag}"
+
+
+def _min_num_predictions(base: dict[str, Any], head: dict[str, Any]) -> int | None:
+    """Smallest positive ``num_predictions`` across base and head.
+
+    Tied to :func:`_silence_threshold`. Real-eval delta uses the
+    minimum of the two so the silence band is the *less powered* side's
+    half-case width — a slice that shrinks shouldn't lower the noise
+    floor with it.
+    """
+    counts: list[int] = []
+    for summary in (base, head):
+        if not isinstance(summary, dict):
+            continue
+        value = summary.get("num_predictions")
+        if isinstance(value, int) and value > 0:
+            counts.append(value)
+    return min(counts) if counts else None
+
+
+def _fmt_ci(summary: dict[str, Any], metric_key: str) -> str:
+    """Return `` [ci_lo, ci_hi]`` for the metric or empty string.
+
+    Issue #463: surface the single-run bootstrap CI (already aggregate-
+    safe via ADR 0005 whitelist, see ``SAFE_CI_METRIC_KEYS``) next to
+    each base/head value so reviewers can eyeball whether a delta sits
+    inside the noise band. Dotted paths (``latency.p50``) and metrics
+    without a CI block render as empty string and the table falls back
+    to bare values.
+    """
+    if not isinstance(summary, dict) or "." in metric_key:
+        return ""
+    ci_block = summary.get("ci")
+    if not isinstance(ci_block, dict):
+        return ""
+    metric_ci = ci_block.get(metric_key)
+    if not isinstance(metric_ci, dict):
+        return ""
+    lo = metric_ci.get("ci_lo")
+    hi = metric_ci.get("ci_hi")
+    if not isinstance(lo, (int, float)) or not isinstance(hi, (int, float)):
+        return ""
+    return f" [{lo:.3f}, {hi:.3f}]"
 
 
 def render_markdown(
@@ -384,15 +477,21 @@ def render_markdown(
     head_sha = str(((head.get("provenance") or {}).get("git_commit")) or "?")
     if base_sha != "?" or head_sha != "?":
         lines.append(f"- commits: base=`{base_sha}` · head=`{head_sha}`")
+    n_min = _min_num_predictions(base, head)
+    if n_min:
+        lines.append(
+            f"- silence band: ±{_silence_threshold(n_min):.3f} (N={n_min})"
+        )
     lines.append("")
-    lines.append("| metric | base | head | Δ |")
+    lines.append("| metric | base (95% CI) | head (95% CI) | Δ |")
     lines.append("|---|---|---|---|")
     for path, label, higher in METRICS:
         b = _get_path(base, path)
         h = _get_path(head, path)
         lines.append(
-            f"| {label} | {_fmt_value(b)} | {_fmt_value(h)} | "
-            f"{_fmt_delta(b, h, higher)} |"
+            f"| {label} | {_fmt_value(b)}{_fmt_ci(base, path)} "
+            f"| {_fmt_value(h)}{_fmt_ci(head, path)} "
+            f"| {_fmt_delta(b, h, higher, n_min=n_min)} |"
         )
 
     # Slice-level abstention is the most important signal we surfaced
@@ -411,8 +510,24 @@ def render_markdown(
             h = (head_slices.get(name) or {}).get("abstention")
             lines.append(
                 f"| {name} | {_fmt_value(b)} | {_fmt_value(h)} | "
-                f"{_fmt_delta(b, h, True)} |"
+                f"{_fmt_delta(b, h, True, n_min=n_min)} |"
             )
+
+    # Issue #463: 3-bin breakdown so a confident-refusal → hallucination
+    # regression and a confident-refusal → boundary-partial regression
+    # don't collapse onto the same scalar abstention delta.
+    base_outcomes = (base_slices.get("abstention") or {}).get("abstention_outcomes")
+    head_outcomes = (head_slices.get("abstention") or {}).get("abstention_outcomes")
+    if isinstance(base_outcomes, dict) or isinstance(head_outcomes, dict):
+        lines.append("")
+        lines.append("#### Abstention outcome breakdown (intended-abstention slice)")
+        lines.append("")
+        lines.append("| outcome | base | head |")
+        lines.append("|---|---:|---:|")
+        for outcome_key in SAFE_ABSTENTION_OUTCOME_KEYS:
+            b_count = (base_outcomes or {}).get(outcome_key, 0)
+            h_count = (head_outcomes or {}).get(outcome_key, 0)
+            lines.append(f"| {outcome_key} | {b_count} | {h_count} |")
 
     base_reasons = base.get("retry_reason_counts") or {}
     head_reasons = head.get("retry_reason_counts") or {}
@@ -446,7 +561,7 @@ def render_markdown(
             h = head_retry_eff.get(key)
             lines.append(
                 f"| {label} | {_fmt_value(b)} | {_fmt_value(h)} | "
-                f"{_fmt_delta(b, h, higher)} |"
+                f"{_fmt_delta(b, h, higher, n_min=n_min)} |"
             )
         base_cross = base_retry_eff.get("cross_ablation") or {}
         head_cross = head_retry_eff.get("cross_ablation") or {}
@@ -472,7 +587,7 @@ def render_markdown(
             h = head_ragas.get(metric)
             lines.append(
                 f"| {metric} | {_fmt_value(b)} | {_fmt_value(h)} | "
-                f"{_fmt_delta(b, h, True)} |"
+                f"{_fmt_delta(b, h, True, n_min=n_min)} |"
             )
 
     base_judge = base.get("judge") or {}
@@ -491,7 +606,7 @@ def render_markdown(
             h = head_judge.get(key)
             lines.append(
                 f"| {label} | {_fmt_value(b)} | {_fmt_value(h)} | "
-                f"{_fmt_delta(b, h, higher)} |"
+                f"{_fmt_delta(b, h, higher, n_min=n_min)} |"
             )
         base_dist = base_judge.get("status_distribution") or {}
         head_dist = head_judge.get("status_distribution") or {}

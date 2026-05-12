@@ -27,7 +27,14 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _eval_delta import METRICS, detect_regressions, fmt_delta, fmt_value, get_path  # noqa: E402
+from _eval_delta import (  # noqa: E402
+    METRICS,
+    detect_regressions,
+    fmt_delta,
+    fmt_value,
+    get_path,
+    min_num_predictions,
+)
 
 DEFAULT_REGRESSION_THRESHOLD = 0.05
 ENV_ALLOW_REGRESSION = "ALLOW_REGRESSION"
@@ -106,12 +113,16 @@ def main() -> int:
         f"head={head.get('num_predictions', '?')}"
     )
     lines.append("")
+    n_min = min_num_predictions(base, head)
     lines.append("| metric | main | PR | Δ |")
     lines.append("|---|---|---|---|")
     for path, label, higher, _gated in METRICS:
         b = get_path(base, path)
         h = get_path(head, path)
-        lines.append(f"| {label} | {fmt_value(b)} | {fmt_value(h)} | {fmt_delta(b, h, higher)} |")
+        lines.append(
+            f"| {label} | {fmt_value(b)} | {fmt_value(h)} | "
+            f"{fmt_delta(b, h, higher, n_min=n_min)} |"
+        )
     lines.append("")
 
     regressions: list[dict] = []

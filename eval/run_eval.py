@@ -364,6 +364,43 @@ def cross_ablation_retry_precision(
     }
 
 
+def _abstention_outcomes(case_results: list[dict[str, Any]]) -> dict[str, int]:
+    """Bucket intended-abstention cases into 3 outcome bins.
+
+    Issue #463: the headline ``abstention`` rate is bimodal — correct
+    refusals and "wrong answer plus hallucinated evidence" both collapse
+    into the same scalar, so a regression that flips a confident
+    abstention into a hallucinated answer can land at the same delta as
+    a regression that flips one into a partial refusal. The bins:
+
+    * ``correct_refusal`` — model abstained AND returned no evidence.
+    * ``incorrect_answer`` — model answered AND attached evidence
+      (a hallucination on a topic the corpus does not cover).
+    * ``boundary_partial`` — everything else: an abstention with
+      stray evidence, or an answer without evidence. These are the
+      ambiguous boundary cases worth manual triage.
+
+    Counts only; no per-case payload, no document IDs, no query text.
+    """
+    correct = incorrect = boundary = 0
+    for result in case_results:
+        if result.get("answerable") is not False:
+            continue
+        abstained = bool(result.get("abstained"))
+        has_evidence = bool(result.get("evidence_doc_ids"))
+        if abstained and not has_evidence:
+            correct += 1
+        elif not abstained and has_evidence:
+            incorrect += 1
+        else:
+            boundary += 1
+    return {
+        "correct_refusal": correct,
+        "incorrect_answer": incorrect,
+        "boundary_partial": boundary,
+    }
+
+
 def metric_block(case_results: list[dict[str, Any]]) -> dict[str, Any]:
     accuracy_scores = [r["accuracy"] for r in case_results if r["accuracy"] is not None]
     groundedness_scores = [
@@ -391,6 +428,11 @@ def metric_block(case_results: list[dict[str, Any]]) -> dict[str, Any]:
         if r.get("claim_citation_alignment") is not None
     ]
     abstention_scores = [r["abstention"] for r in case_results if r["abstention"] is not None]
+    # Issue #463: decompose intended-abstention cases into 3 bins so the
+    # bimodal abstention score (0.0 / 1.0) stops collapsing distinct
+    # failure modes. Counts only — no per-case text — so the aggregate
+    # crosses the ADR 0005 commit boundary intact.
+    abstention_outcomes = _abstention_outcomes(case_results)
     comparison_recall_scores = [
         r["comparison_target_recall"]
         for r in case_results
@@ -487,6 +529,7 @@ def metric_block(case_results: list[dict[str, Any]]) -> dict[str, Any]:
         "citation_grounding": rate(citation_grounding_scores),
         "claim_citation_alignment": rate(claim_alignment_scores),
         "abstention": rate(abstention_scores),
+        "abstention_outcomes": abstention_outcomes,
         "answer_format_compliance": rate(format_scores),
         "ci": ci_block,
         "latency": {
@@ -801,6 +844,7 @@ def main() -> int:
         "citation_grounding": primary_summary["citation_grounding"],
         "claim_citation_alignment": primary_summary["claim_citation_alignment"],
         "abstention": primary_summary["abstention"],
+        "abstention_outcomes": primary_summary.get("abstention_outcomes"),
         "answer_format_compliance": primary_summary["answer_format_compliance"],
         "ci": primary_summary.get("ci", {}),
         "latency": primary_summary["latency"],
