@@ -17,6 +17,8 @@ import re
 from typing import Any
 import unicodedata
 
+from rag_metadata_extraction import extract_rfp_metadata
+
 SUPPORTED_FILE_FORMATS = {"pdf", "hwp"}
 
 REQUIRED_COLUMNS = [
@@ -388,6 +390,15 @@ def normalize_ingestion_row(
         "sections": [{"heading": "본문", "text": text}],
         "source_path": str(validation.source_path),
     }
+    # Issue #180 wire-up: write the eight-field structured extraction
+    # into ``metadata["extracted"]`` as an *additive* sidecar. The
+    # regex backend is the default (ADR 0001 invariant), so this stays
+    # deterministic and offline unless ``BIDMATE_METADATA_BACKEND`` is
+    # flipped to ``anthropic_tool_use`` / ``openai_function_call``.
+    # Top-level ``agency`` / ``project`` are intentionally untouched —
+    # downstream chunk metadata propagation in rag_core.py and the
+    # answer/citation contract (ADR 0003) read those fields.
+    document["metadata"]["extracted"] = extract_rfp_metadata(document).as_dict()
     return document, make_record(
         row_number,
         "indexed",
