@@ -41,6 +41,10 @@ data/korean_public/
 # Generated artifacts: keep committed portfolio samples, ignore extra outputs
 data/index/*
 !data/index/index.json
+# Per-experiment embedding ablation indices (issue #174 / scripts/run_embedding_ablation.py).
+# Multi-GB per model and entirely reproducible from data/raw via the runner; the
+# committed evidence lives in docs/embedding-ablation.md instead.
+data/embedding-ablation/
 # M2 (#207): vectors live in a sidecar .npy file alongside index.json so
 # the JSON stays small and a future VectorStore abstraction (#176) can
 # swap backends. Both files together are the portfolio sample.

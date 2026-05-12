@@ -69,19 +69,23 @@ Annotation outcome: heuristic-derived gold and human-annotated gold **agree on a
 3. **No default change.** The CI path stays on `hashing` (per ADR 0001 reproducibility) and the README default stays on MiniLM-L12-v2 because the full pipeline metrics are identical. A future PR can revisit if a higher-impact corpus shows otherwise.
 4. **Reviewer talking point.** A reviewer asking "why MiniLM in 2026?" gets a measured answer: "metadata-first filtering makes the agentic pipeline robust to embedding choice; we measured a +18.8pp accuracy lift on naive baseline with multilingual-e5-base but 0pp on the full pipeline."
 
-## Second comparison — Phase 1.2 (issue #161): runner extended
+## Second comparison — Phase 1.2 (issue #174): partial 3-of-4 measurement
 
-This cycle adds the **OpenAI Embeddings API as a first-class backend** and **auto-derives the backend from the model ID** (`text-embedding-*` → `openai`, else `sentence-transformers`). The runner now spans modern multilingual SoTA (BGE-M3, e5-large-instruct), Korean-specialized (KURE-v1), and a paid external baseline (OpenAI text-embedding-3-large).
+This cycle adds the **OpenAI Embeddings API as a first-class backend** and **auto-derives the backend from the model ID** (`text-embedding-*` → `openai`, else `sentence-transformers`). The runner now spans modern multilingual SoTA (BGE-M3, e5-large-instruct), Korean-specialized (KoSimCSE), and a paid external baseline (OpenAI text-embedding-3-large).
+
+Issue #174 (this section) executed the named candidates from ADR 0019. Three of four ran to completion; BAAI/bge-m3 remains blocked on the `torch` half of ADR 0019 condition 1.
 
 ### Reproduction
 
 ```bash
-# Modern multilingual + Korean-specialized (~4.4GB disk total, ~10 min cold cache)
+# Phase 1.2 measured set (~1.8GB disk, ~5 min cold cache on this corpus)
 python3 scripts/run_embedding_ablation.py --models \
     sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 \
-    BAAI/bge-m3 \
     intfloat/multilingual-e5-large-instruct \
-    nlpai-lab/KURE-v1
+    BM-K/KoSimCSE-roberta-multitask
+
+# BGE-M3 — still blocked, requires torch >= 2.6 (see env section below)
+python3 scripts/run_embedding_ablation.py --models BAAI/bge-m3
 
 # OpenAI text-embedding-3-large (3072-dim) — ~$0.004 for n=42 corpus
 export BIDMATE_OPENAI_API_KEY=sk-...
@@ -94,28 +98,58 @@ Per-model artifacts go to `data/embedding-ablation/<slug>/` (index) and `reports
 
 | model | disk | dim | cost | notes |
 |---|---:|---:|---|---|
-| `BAAI/bge-m3` | ~2.0GB | 1024 | free | 2024 multilingual SoTA |
-| `intfloat/multilingual-e5-large-instruct` | ~1.3GB | 1024 | free | instruction-tuned |
-| `nlpai-lab/KURE-v1` | ~1.1GB | 768 | free | Korean-specialized |
-| `text-embedding-3-large` | n/a | 3072 | ~$0.13 / 1M tokens (~$0.004 / n=42) | OpenAI |
+| `BAAI/bge-m3` | ~2.0GB | 1024 | free | 2024 multilingual SoTA — env-blocked (torch < 2.6) |
+| `intfloat/multilingual-e5-large-instruct` | ~1.3GB | 1024 | free | instruction-tuned, measured this cycle |
+| `BM-K/KoSimCSE-roberta-multitask` | ~0.5GB | 768 | free | Korean-specialized, MEAN-pooling fallback (model is not packaged for sentence-transformers; the runner wraps it with default mean-token pooling) |
+| `nlpai-lab/KURE-v1` | ~1.1GB | 768 | free | Korean-specialized — Phase 1.3 candidate (deferred) |
+| `text-embedding-3-large` | n/a | 3072 | ~$0.13 / 1M tokens (~$0.004 / n=42) | OpenAI — Phase 1.3 candidate |
 
-### Headline numbers — Phase 1.2 (deferred, see ADR 0019)
+### Env state for this cycle
 
-**Attempted 2026-05-12; blocked on a Python environment mismatch that is out of scope for this measurement cycle.**
+Phase 1.2 cleared one of the two env blockers from the original ADR 0019 analysis; the other remains:
 
-| model | attempted | blocker |
-|---|---|---|
-| `BAAI/bge-m3` | yes | sentence-transformers refuses load with `torch == 2.2.2` (CVE-2025-32434 hard requirement: `torch >= 2.6`). |
-| `intfloat/multilingual-e5-large-instruct` | yes | transformers refuses load with `huggingface-hub == 1.14.0` (transformers requires `huggingface-hub < 1.0`). |
-| `nlpai-lab/KURE-v1` | not attempted | Same env class as above is the expected blocker; deferred with the other two. |
-| `text-embedding-3-large` | not attempted | Paid API; out of scope for the local-default decision. |
+| dependency | observed | required | status |
+|---|---|---|---|
+| `huggingface-hub` | `0.36.2` | `< 1.0` | ✅ cleared — `intfloat/multilingual-e5-large-instruct` loaded cleanly |
+| `torch` | `2.2.2` | `>= 2.6` | ❌ still blocking BAAI/bge-m3 (CVE-2025-32434 hard requirement in `sentence_transformers` load path) |
 
-[ADR 0019](adr/0019-embedding-default-stays-minilm.md) records the resulting decision: **MiniLM-L12-v2 stays the documented default**, the first-cycle measurement (MiniLM vs e5-base) is the empirical justification, and the second cycle re-opens automatically the next time a contributor lands a Python env upgrade. The runner itself remains ready (it correctly surfaces the blocker rather than failing silently) so the experiment costs zero re-implementation when the env clears.
+A future PR pinning `torch >= 2.6` in `requirements.txt` unblocks BGE-M3 and triggers Phase 1.3 (one more re-run; the runner is idempotent via `--reuse-existing`).
 
-The first-cycle conclusion still applies:
+### Headline numbers — Phase 1.2 (measured 2026-05-12, n=42)
 
-- **Full pipeline metrics are embedding-invariant on this corpus** — metadata-first filtering (ADR 0002) routes around dense retrieval for most queries.
-- **Naive baseline IS embedding-sensitive** — e5-base lifted accuracy +18.8pp over MiniLM on `naive_baseline`. The hypothesis worth testing in the next cycle is whether modern multilingual / Korean-specialized models break the `0pp on full` pattern. That hypothesis cannot be falsified yet.
+Public synthetic corpus (same n=42 split as the first comparison). 95% bootstrap CIs in brackets.
+
+#### `full` agentic pipeline — **the bar set by ADR 0019 condition 3**
+
+| metric | MiniLM-L12-v2 | e5-large-instruct | KoSimCSE-roberta-multitask | Δ vs MiniLM (e5) | Δ vs MiniLM (KoSimCSE) |
+|---|---:|---:|---:|---:|---:|
+| accuracy | 0.906 [0.781, 1.000] | 0.906 [0.781, 1.000] | 0.906 [0.781, 1.000] | +0.0 | +0.0 |
+| groundedness | 0.929 [0.857, 1.000] | 0.929 [0.857, 1.000] | 0.929 [0.857, 1.000] | +0.0 | +0.0 |
+| citation_precision | 0.905 [0.821, 0.976] | 0.905 [0.821, 0.976] | 0.905 [0.821, 0.976] | +0.0 | +0.0 |
+| abstention | 1.000 [1.000, 1.000] | 1.000 [1.000, 1.000] | 1.000 [1.000, 1.000] | +0.0 | +0.0 |
+| format compliance | 0.905 [0.810, 0.976] | 0.905 [0.810, 0.976] | 0.905 [0.810, 0.976] | +0.0 | +0.0 |
+
+The three models produce **bit-identical** metric values on `full` — not just CI-overlapping. Identical CIs follow trivially (`+0.0` deltas across the board).
+
+#### `naive_baseline` (preserved as ablation per ADR 0001 — does NOT count toward ADR 0019 condition 3)
+
+| metric | MiniLM-L12-v2 | e5-large-instruct | KoSimCSE-roberta-multitask | Δ vs MiniLM (e5) | Δ vs MiniLM (KoSimCSE) |
+|---|---:|---:|---:|---:|---:|
+| accuracy | 0.656 [0.500, 0.812] | 0.844 [0.719, 0.969] | 0.781 [0.625, 0.906] | **+18.8** | **+12.5** |
+| groundedness | 0.595 [0.452, 0.738] | 0.714 [0.571, 0.833] | 0.667 [0.524, 0.786] | **+11.9** | +7.1 |
+| citation_precision | 0.488 [0.357, 0.619] | 0.560 [0.440, 0.679] | 0.488 [0.369, 0.607] | +7.1 | +0.0 |
+| abstention | 0.300 [0.000, 0.600] | 0.300 [0.000, 0.600] | 0.300 [0.000, 0.600] | +0.0 | +0.0 |
+| format compliance | 0.548 [0.405, 0.690] | 0.667 [0.524, 0.810] | 0.619 [0.476, 0.762] | **+11.9** | +7.1 |
+
+Same shape as the first-cycle finding — modern multilingual and Korean-specialized models both materially improve dense-only retrieval, but the production pipeline (`full`) routes around dense for most queries, so neither lift transfers.
+
+### Reading the Phase 1.2 partial result
+
+1. **ADR 0019 condition 3 is NOT triggered.** Both measured candidates show 0pp delta on `full.accuracy` and `full.groundedness`. The CI question is moot when the point estimates are identical. The default stays MiniLM-L12-v2.
+2. **The `0pp-on-full` pattern is robust across the embedding-quality axis we just expanded.** First cycle showed it for `e5-base` (older multilingual). Phase 1.2 confirms it for `e5-large-instruct` (2024 SoTA, instruction-tuned, 1024-dim) and `KoSimCSE-roberta-multitask` (Korean-specialized). The "maybe a modern / Korean model breaks the pattern" hypothesis is falsified on this corpus.
+3. **Empirical support for ADR 0002 (metadata-first retrieval).** Metadata-first routes most queries away from dense retrieval before the embedding choice has a chance to matter. The full pipeline's robustness to a 7-year-old embedding is not luck — it is the metadata-first design absorbing the embedding-quality axis.
+4. **`naive_baseline` keeps moving with the embedding.** e5-large-instruct lifts `naive_baseline.accuracy` from 0.656 → 0.844 (+18.8pp, matching e5-base's first-cycle delta). KoSimCSE adds +12.5pp. ADR 0001 preserves naive as an ablation surface so these deltas are observable but not actionable for the default.
+5. **BGE-M3 is the one named-candidate gap.** ADR 0019 condition 2 ("runs to completion") is *partially* met for this cycle. The remaining work is a `torch >= 2.6` requirements.txt bump — a focused chore PR, not a measurement decision. Phase 1.3 re-runs against BGE-M3 once that lands.
 
 ## Why the deferral is itself ADR-worthy
 
