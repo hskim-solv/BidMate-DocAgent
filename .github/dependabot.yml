@@ -1,0 +1,29 @@
+# Issue #334 (G9 of #284): weekly dependency updates.
+# Preferred over a `pip-audit` CI step because dependabot ships native to
+# GitHub, needs no extra workflow, and surfaces issues as PRs that go through
+# the same review path as any other change.
+#
+# Ecosystems:
+#   - pip: picks up requirements.txt, requirements-dev.txt,
+#     requirements-observability.txt, and pyproject.toml dependencies.
+#   - github-actions: picks up pinned action versions in
+#     .github/workflows/*.yml.
+version: 2
+updates:
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "python"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "github-actions"

@@ -2,6 +2,19 @@
 pythonpath = ["."]
 testpaths = ["tests"]
 
+# Issue #334 (G8 of #284): opt-in ruff lint gate from scripts/test.sh.
+# Rule selection is narrowed to the fatal pyflakes subset (syntax errors,
+# undefined names). Pre-existing E402 / F401 / F841 findings across the
+# codebase are real but out of scope for this PR — see "One PR, one concern"
+# in CLAUDE.md. Broaden after a focused clean-up sweep lands.
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+extend-exclude = ["data/", "reports/", "artifacts/", "outputs/"]
+
+[tool.ruff.lint]
+select = ["E9", "F63", "F7", "F82"]
+
 [tool.coverage.run]
 branch = true
 source = [
