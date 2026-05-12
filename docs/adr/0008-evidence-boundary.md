@@ -3,7 +3,7 @@
 - **Status**: accepted
 - **Date**: 2026-05-11
 - **Deciders**: hskim-solv
-- **Related**: [`rag_core.py:evidence_text_for_verification`](../../rag_core.py), [`scripts/llm_judge.py:_build_prompt`](../../scripts/llm_judge.py), [ADR 0003](0003-structured-answer-citation-contract.md), [ADR 0006](0006-llm-judge-on-real-data-only.md)
+- **Related**: [`rag_verifier.py`](../../rag_verifier.py) (`evidence_text_for_verification`, `neutralize_instruction_patterns`, `EVIDENCE_BOUNDARY` — extracted from `rag_core.py` in PR-J1 / issue #465; `rag_core` keeps re-exports for backward compatibility), [`scripts/llm_judge.py:_build_prompt`](../../scripts/llm_judge.py), [ADR 0003](0003-structured-answer-citation-contract.md), [ADR 0006](0006-llm-judge-on-real-data-only.md), [ADR 0028](0028-security-screen-additive.md) (complementary query-side defense)
 
 ## Context
 
