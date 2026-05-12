@@ -85,6 +85,7 @@ project record.
 | [0021](./0021-bge-m3-completes-phase-1-3.md) | accepted | BGE-M3 closes ADR 0019 Phase 1.3 condition 2; default stays MiniLM (supplements 0019) |
 | [0022](./0022-langgraph-orchestration-stage-1.md) | proposed | LangGraph orchestrator path for agentic_full presets — stage 1 (single-node passthrough, opt-in via BIDMATE_ORCHESTRATOR=langgraph, preserves ADR 0001) |
 | [0023](./0023-hyde-query-expansion-ablation.md) | proposed | HyDE query expansion as additive ablation (extends 0001, preserves 0003, reuses 0011 / 0020 backend pattern) |
+| [0024](./0024-agentic-full-llm-as-api-default.md) | accepted | API surface default preset = `agentic_full_llm`; backend default stays `stub` (complements 0011; CLI default stays `naive_baseline` per 0001) |
 
 ## Decision evolution
 

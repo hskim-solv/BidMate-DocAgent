@@ -15,7 +15,7 @@
 
 | 시그널 | 어디서 확인하나 |
 |---|---|
-| 아키텍처 결정이 **사후 합리화가 아닌 기록된 결정**으로 남아있다 | [`docs/adr/`](./adr/README.md) — 22개 ADR (16 accepted / 6 proposed), status-tracked, supersession chains 명시 |
+| 아키텍처 결정이 **사후 합리화가 아닌 기록된 결정**으로 남아있다 | [`docs/adr/`](./adr/README.md) — 23개 ADR (17 accepted / 6 proposed), status-tracked, supersession chains 명시 |
 | **측정 가능한 성공 기준**을 미리 잡고 그 기준으로 평가한다 | [`portfolio-case-study.md` §2](./portfolio-case-study.md), [`eval/config.yaml`](../eval/config.yaml), README headline 표 |
 | 합성 평가의 한계를 알고 **공개/비공개 평가 분리**로 보완한다 | [ADR 0005](./adr/0005-eval-split-public-synthetic-private-local.md), [`docs/private-100-doc-experiments.md`](./private-100-doc-experiments.md) |
 | **실패를 분류·우선순위화**한 뒤 백로그로 만든다 | [`docs/real-data-failure-taxonomy.md`](./real-data-failure-taxonomy.md), 메타 이슈 #49 |
@@ -51,6 +51,7 @@
 | [0021](./adr/0021-bge-m3-completes-phase-1-3.md) | accepted | BGE-M3 Phase 1.3 측정 완료, ADR 0019 condition 2 closure (supplements 0019) | deferred 결정이 *실제로 닫히는 과정*까지 ADR로 박음. 4개 named candidate + 5개 임베딩(2019–2024) cross-architecture 측정으로 `0pp-on-full` 패턴이 empirical support 받는 단계까지 도달 |
 | [0022](./adr/0022-langgraph-orchestration-stage-1.md) | proposed | LangGraph orchestrator path for agentic_full presets — stage 1 (single-node passthrough + env-var dispatch, opt-in via `BIDMATE_ORCHESTRATOR=langgraph`) | "Agentic" 라벨에 코드 실체를 붙이는 epic의 stage 1 — JSON-identity 보장 가능한 단일 노드부터 land 후 stage 2에서 multi-node 분해. ADR 0001 `naive_baseline`은 직접 경로 유지. |
 | [0023](./adr/0023-hyde-query-expansion-ablation.md) | proposed | HyDE query expansion as additive ablation (extends 0001, preserves 0003) | Reranker Protocol과 별도 Protocol seam — 쿼리↔문서 어휘 갭(공식체 RFP vs 일상 질의)을 LLM 가상답변 임베딩으로 메우는 ablation. `IdentityExpander` 디폴트로 ADR 0001 골든 비트동일 유지 |
+| [0024](./adr/0024-agentic-full-llm-as-api-default.md) | accepted | API surface default preset = `agentic_full_llm`; backend default stays `stub` (complements 0011; CLI default stays `naive_baseline` per 0001) | "Agentic RAG" 라벨에 *기본 API surface*를 맞추는 절충안. preset만 flip하고 synthesis backend default(`stub`)는 유지 — CI 결정성 + cost 0 보존. CLI / function-level / backend 3개 default 경계를 회귀 테스트로 잠금. |
 
 **인터뷰 talking point 1 (real-data 회귀)**: "ADR 0005가 없었다면 공개본의 abstention 회귀(#69의 `1.000 → 0.500` 사건)는 아무도 보지 못했을 것이다. 공개 합성만 보던 시기에는 1-of-2 incidental overlap 패턴이 잡히지 않았다." — 근거: [`docs/private-100-doc-experiments.md`](./private-100-doc-experiments.md) 2026-05-11 entry.
 
@@ -178,7 +179,7 @@ make reproduce  # smoke + SHA-256 over the environment-invariant metric subset
 
 ### 30초 자기소개
 
-> "BidMate-DocAgent는 **한국어 RFP 도메인-특화 RAG**입니다. 일반 영어 벤치(KMMLU/MMLU) 점수 경쟁이 아니라, 한국 B2B/공공 입찰 시장의 비교 질의에서 발생하는 한쪽 문서 starvation 패턴을 발견하고 막은 게 차별점입니다. **comparison-aware balanced top-k** + **metadata-first retrieval** + **extractive grounded-answer 계약**으로 hallucination을 구조적으로 차단하고, **공개 합성 + 비공개 real-data + KorQuAD 2.1 한국어 공개셋** 세 표면으로 silent regression을 분리 탐지합니다. 운영 시그널 측에서는 **22개 ADR**, prompt-caching 적용 **cost telemetry**, fail-closed **observability(LangFuse/OTel)**, **CI 회귀 게이트**까지 완성했습니다."
+> "BidMate-DocAgent는 **한국어 RFP 도메인-특화 RAG**입니다. 일반 영어 벤치(KMMLU/MMLU) 점수 경쟁이 아니라, 한국 B2B/공공 입찰 시장의 비교 질의에서 발생하는 한쪽 문서 starvation 패턴을 발견하고 막은 게 차별점입니다. **comparison-aware balanced top-k** + **metadata-first retrieval** + **extractive grounded-answer 계약**으로 hallucination을 구조적으로 차단하고, **공개 합성 + 비공개 real-data + KorQuAD 2.1 한국어 공개셋** 세 표면으로 silent regression을 분리 탐지합니다. 운영 시그널 측에서는 **23개 ADR**, prompt-caching 적용 **cost telemetry**, fail-closed **observability(LangFuse/OTel)**, **CI 회귀 게이트**까지 완성했습니다."
 
 읽는 시간 ≈ 30초. 면접 첫 답으로 그대로 사용 가능. 상대가 "좀 더 자세히"를 물으면 §1, 측정 의문에는 §2, 운영 의문에는 [`production-readiness.md`](./production-readiness.md)로 넘어간다.
 
