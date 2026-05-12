@@ -1,4 +1,4 @@
-.PHONY: setup index ask eval benchmark benchmark-check check check-latency smoke smoke-with-judge reproduce harness-smoke harness-real harness-ablation harness-compare test test-regression api api-docker demo demo-docker pareto docker-publish real-eval real-eval-delta real-eval-baseline-update real-eval-history-render real-eval-history-check real-eval-with-judge synthetic-judge leaderboard leaderboard-check clean
+.PHONY: setup index ask eval benchmark benchmark-check check check-latency korean-public-eval korean-public-fetch smoke smoke-with-judge reproduce harness-smoke harness-real harness-ablation harness-compare test test-regression api api-docker demo demo-docker pareto docker-publish real-eval real-eval-delta real-eval-baseline-update real-eval-history-render real-eval-history-check real-eval-with-judge synthetic-judge leaderboard leaderboard-check clean
 
 PYTHON ?= python3
 VENV ?= .venv
@@ -59,6 +59,17 @@ check:
 # adding a new ablation does not force a budget for every one.
 check-latency:
 	$(PYTHON) scripts/check_latency_slo.py --config eval/config.yaml --summary reports/eval_summary.json
+
+# Korean public RAG bench (ADR 0018) — supplementary out-of-domain
+# surface. Fetches a deterministic KorQuAD 2.1 dev subset (~93 MB
+# one-time download) and runs the existing pipeline against it.
+# Never CI-gated; numbers describe upstream dataset distribution, not
+# pipeline correctness. Output → reports/korean_public/eval_summary.json.
+korean-public-fetch:
+	$(PYTHON) eval/korean_public/fetch_korquad.py
+
+korean-public-eval: korean-public-fetch
+	$(PYTHON) eval/korean_public/run.py
 
 smoke:
 	bash scripts/smoke.sh
