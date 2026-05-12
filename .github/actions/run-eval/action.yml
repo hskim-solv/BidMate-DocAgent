@@ -1,9 +1,13 @@
 name: 'Run BidMate eval'
 description: >-
-  Build the index and run eval/run_eval.py, with `actions/cache` keyed
-  on data/raw + builder code so unchanged-data PRs skip the build step.
+  Build the index and run eval/run_eval.py, with two `actions/cache`
+  layers: the index cache (#400) lets unchanged-data PRs skip the build
+  step, and the eval-summary cache (#469) lets unchanged-code base
+  checkouts skip run_eval entirely. PR-side is keyed on the head commit
+  so it remains a cache miss almost always; base-side is keyed on main
+  state and hits on every repeat PR against the same merge.
   Shared by .github/workflows/pr-eval.yml (PR + base checkouts) and
-  .github/workflows/leaderboard.yml (main merge). See issue #400.
+  .github/workflows/leaderboard.yml (main merge).
 
 inputs:
   working-directory:
@@ -62,7 +66,30 @@ runs:
         --output_dir data/index
         --embedding_backend ${{ inputs.embedding-backend }}
 
-    - name: Run eval
+    - name: Restore cached eval summary
+      id: cache-eval
+      uses: actions/cache@v4
+      with:
+        path: ${{ inputs.working-directory }}/reports/eval_summary.json
+        # Invalidate when raw data changes, when the eval config / cases
+        # / scorers change, or when any RAG / ingestion code that
+        # run_eval actually executes changes. `inputs.config` is part of
+        # the key so PR-side `eval/config.ci.yaml` keeps a cache scope
+        # separate from leaderboard's `eval/config.yaml`.
+        key: >-
+          bidmate-eval-${{ inputs.embedding-backend }}-${{ inputs.config }}-${{
+          hashFiles(format('{0}/data/raw/**', inputs.working-directory))
+          }}-${{
+          hashFiles(
+            format('{0}/eval/**', inputs.working-directory),
+            format('{0}/rag_*.py', inputs.working-directory),
+            format('{0}/scripts/build_index.py', inputs.working-directory),
+            format('{0}/ingestion.py', inputs.working-directory),
+            format('{0}/visual_ingestion.py', inputs.working-directory)
+          ) }}
+
+    - name: Run eval (cache miss only)
+      if: steps.cache-eval.outputs.cache-hit != 'true'
       working-directory: ${{ inputs.working-directory }}
       shell: bash
       run: >-
@@ -70,3 +97,12 @@ runs:
         --index_dir data/index
         --output_dir reports
         --config ${{ inputs.config }}
+
+    - name: Report eval cache outcome
+      shell: bash
+      run: |
+        if [ "${{ steps.cache-eval.outputs.cache-hit }}" = "true" ]; then
+          echo "::notice title=Eval cache::eval_summary.json restored from cache; run_eval was skipped."
+        else
+          echo "::notice title=Eval cache::eval_summary.json freshly computed (cache miss)."
+        fi
