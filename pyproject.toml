@@ -27,6 +27,7 @@ source = [
     "visual_ingestion",
     "text_normalize",
     "bidmate_logging",
+    "korean_lexicon",
     "app",
     "api",
     "eval",

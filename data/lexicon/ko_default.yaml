@@ -1,0 +1,240 @@
+# Korean linguistic + RFP-domain lexicon for BidMate-DocAgent.
+#
+# Externalized from rag_core.py in issue #344 (PR-D of the Tier 2 plan).
+# The loader lives in korean_lexicon.py at the repo root and coerces each
+# section back to its original Python type (set / tuple / frozenset /
+# dict[str, tuple]) so consumers in rag_core.py and tests/ see the same
+# value identity as before the extraction.
+#
+# Order matters for sections loaded as `tuple` (korean_particle_suffixes,
+# bm25_extra_particle_suffixes, implicit_reference_patterns). Set-typed
+# sections are listed alphabetically when possible for review clarity.
+
+# ─── General Korean stopwords + a few domain-generic noise tokens ─────
+# Loaded as `set[str]`. Applied at token-match heuristics — does not
+# affect dense embedding paths.
+stopwords:
+  - "그럼"
+  - "그"
+  - "그리고"
+  - "어떻게"
+  - "알려줘"
+  - "차이"
+  - "차이는"
+  - "차이를"
+  - "비교"
+  - "비교해줘"
+  - "기관"
+  - "요구"
+  - "요구한"
+  - "요구가"
+  - "요구사항"
+  - "조건"
+  - "조건도"
+  - "기능"
+  - "목표"
+  - "성능"
+  - "초점"
+  - "필수"
+  - "그중"
+  - "보여줘"
+  - "어떤"
+  - "누가"
+  - "포함돼야"
+  - "해"
+  - "있나"
+  - "무엇을"
+  - "사용해"
+  - "진행해"
+  - "중심으로"
+  - "시간"
+  - "지표나"
+  - "하는"
+  - "것은"
+  - "의"
+  - "와"
+  - "과"
+  - "는"
+  - "은"
+  - "를"
+  - "을"
+  - "이"
+  - "가"
+  - "에"
+  - "내"
+  - "돼"
+  - "무엇"
+  - "뭐야"
+  - "대한"
+  - "있는"
+  - "없는"
+  - "되나요"
+  - "습니까"
+  - "인가요"
+
+# ─── RFP-domain topic keywords ────────────────────────────────────────
+# Loaded as `list[str]`. Used by intent classification + verifier topic
+# alignment. Order preserved (current usage is set-membership tests, but
+# we keep the list shape to allow future weighted-priority extensions).
+topic_keywords:
+  - "AI"
+  - "품질관리"
+  - "품질"
+  - "보안"
+  - "보안 통제"
+  - "통제"
+  - "로그"
+  - "데이터"
+  - "거버넌스"
+  - "MLOps"
+  - "자동화"
+  - "모니터링"
+  - "일정"
+  - "산출물"
+  - "제출조건"
+  - "예산"
+  - "챗봇"
+  - "응답"
+  - "상담"
+  - "블록체인"
+  - "납품"
+  - "실적"
+
+# ─── Follow-up reference markers ──────────────────────────────────────
+# Loaded as `tuple[str, ...]`. Substring-matched for context resolution
+# in multi-turn conversations. Order preserved (first-match logic).
+implicit_reference_patterns:
+  - "그 기관"
+  - "그 사업"
+  - "그 시스템"
+  - "그 문서"
+  - "그 프로젝트"
+  - "해당 기관"
+  - "해당 사업"
+  - "해당 시스템"
+  - "이 기관"
+  - "이 사업"
+  - "그럼"
+  - "그중"
+
+# ─── Generic RFP boilerplate tokens ───────────────────────────────────
+# Loaded as `set[str]`. Down-weighted in metadata token matching since
+# almost every RFP contains these.
+metadata_generic_tokens:
+  - "rfp"
+  - "사업"
+  - "용역"
+  - "구축"
+  - "고도화"
+  - "개발"
+  - "운영"
+  - "정보"
+  - "시스템"
+
+# ─── Verifier intent-signal tokens ────────────────────────────────────
+# Loaded as `set[str]`. Used by the verifier loop to detect summary /
+# overview / confirmation requests.
+verification_intent_tokens:
+  - "간단히"
+  - "관련"
+  - "내용"
+  - "대해"
+  - "알려줘"
+  - "요약"
+  - "요약해줘"
+  - "정리"
+  - "정리해줘"
+  - "주요"
+  - "확인"
+
+# ─── Metadata evidence labels ─────────────────────────────────────────
+# Loaded as `dict[str, tuple[str, ...]]`. Maps metadata field id to
+# Korean evidence labels surfaced in answer schema (ADR 0003).
+metadata_evidence_labels:
+  budget: ["예산", "사업예산", "사업 금액"]
+  published_at: ["공개 일자", "공고일"]
+  bid_start_at: ["입찰", "입찰 시작일", "입찰 참여 시작일"]
+  bid_deadline_at: ["입찰", "마감일", "입찰 마감일", "입찰 참여 마감일"]
+  summary: ["요약", "사업 요약"]
+
+# ─── Metadata claim labels (singular) ─────────────────────────────────
+# Loaded as `dict[str, str]`. Single Korean label per metadata field for
+# claim-text rendering.
+metadata_claim_labels:
+  budget: "사업예산"
+  published_at: "공개 일자"
+  bid_start_at: "입찰 시작일"
+  bid_deadline_at: "입찰 마감일"
+  summary: "사업 요약"
+
+# ─── Metadata claim topic labels ──────────────────────────────────────
+# Loaded as `dict[str, tuple[str, ...]]`. Alternate phrasings for
+# claim-topic matching in the verifier.
+metadata_claim_topic_labels:
+  budget: ["예산", "사업예산", "사업금액", "금액"]
+  published_at: ["공개", "일자", "공개일자", "공고일"]
+  bid_start_at: ["입찰", "시작일", "입찰시작일", "입찰참여시작일", "일정"]
+  bid_deadline_at: ["입찰", "마감일", "입찰마감일", "입찰참여마감일", "일정"]
+  summary: ["요약", "사업요약", "사업기간", "기간"]
+
+# ─── Korean particle suffixes (shared profile) ────────────────────────
+# Loaded as `tuple[str, ...]`. Order preserved — `normalize_metadata_token`
+# strips suffixes iteratively, longest-first is implied by code position.
+# Active under the default `bm25_stopword_profile = "shared"`.
+korean_particle_suffixes:
+  - "으로"
+  - "에서"
+  - "에게"
+  - "도"
+  - "만"
+  - "나"
+  - "과"
+  - "와"
+  - "의"
+  - "은"
+  - "는"
+  - "이"
+  - "가"
+  - "을"
+  - "를"
+  - "로"
+  - "에"
+
+# ─── BM25-only extra particle suffixes (issue #150) ───────────────────
+# Loaded as `tuple[str, ...]`. Applied only under the `bm25_extra`
+# stopword profile via `_apply_bm25_extra_filter`; never touches dense
+# or Jaccard scoring paths.
+bm25_extra_particle_suffixes:
+  - "까지"
+  - "부터"
+  - "마다"
+  - "조차"
+  - "마저"
+  - "한테"
+  - "께서"
+  - "보다"
+  - "처럼"
+  - "같이"
+  - "라도"
+  - "라는"
+  - "라고"
+  - "이라"
+  - "이라는"
+  - "이라고"
+
+# ─── BM25-only extra discourse stopwords (issue #150) ─────────────────
+# Loaded as `frozenset[str]`. Short Korean discourse particles that
+# survive `normalize_metadata_token` but carry no IDF signal for BM25.
+# Applied only under the `bm25_extra` profile.
+bm25_extra_stopwords:
+  - "또한"
+  - "또는"
+  - "혹은"
+  - "그러나"
+  - "하지만"
+  - "이러한"
+  - "그러한"
+  - "저러한"
+  - "다만"
+  - "다음"
+  - "다음과"
