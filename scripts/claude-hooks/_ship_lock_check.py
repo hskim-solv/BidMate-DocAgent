@@ -19,7 +19,9 @@ import argparse
 import os
 import sys
 
-from check_branch_and_issue import parse_branch
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+
+from check_branch_and_issue import parse_branch  # noqa: E402
 
 
 # (path -> owner issue number). Directories end with "/".
