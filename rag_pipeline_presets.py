@@ -138,3 +138,73 @@ def canonical_pipeline_name(value: str | None, default: str = DEFAULT_RAG_PIPELI
         choices = ", ".join(sorted([*PIPELINE_PRESETS, *PIPELINE_ALIASES]))
         raise ValueError(f"pipeline must be one of: {choices}")
     return canonical
+
+
+# ─── Pipeline config validation (PR-E stage 2, issue #375) ────────────
+# Three retrieval-side validation sets used by ``resolve_pipeline_config``
+# AND by per-query override helpers in ``rag_core`` (e.g. the
+# ``rrf_k``/``retrieval_mode`` checks inside ``plan_retrieval`` and the
+# hybrid retriever entry points). Owning them here keeps the leaf module
+# self-contained — ``resolve_pipeline_config`` does not have to reach
+# back into ``rag_core`` to validate.
+VALID_RETRIEVAL_MODES = {"flat", "hierarchical"}
+VALID_RETRIEVAL_BACKENDS = {"dense", "hybrid"}
+VALID_BM25_STOPWORD_PROFILES = {"shared", "bm25_extra"}
+
+
+def resolve_pipeline_config(
+    value: str | dict[str, Any] | None = None,
+    default_pipeline: str = DEFAULT_RAG_PIPELINE_NAME,
+) -> dict[str, Any]:
+    source = value if isinstance(value, dict) else {}
+    requested = str(value) if isinstance(value, str) else str(source.get("pipeline") or "")
+    if not requested and is_pipeline_name(source.get("name")):
+        requested = str(source.get("name"))
+    canonical = canonical_pipeline_name(requested or default_pipeline, default_pipeline)
+    config = dict(PIPELINE_PRESETS[canonical])
+    config["pipeline"] = canonical
+    if requested and requested != canonical:
+        config["pipeline_alias"] = requested
+
+    for key in PIPELINE_CONFIG_KEYS:
+        if key not in source or source.get(key) is None:
+            continue
+        config[key] = source[key]
+
+    if "comparison_balance" in source and source.get("comparison_balance") is not None:
+        config["comparison_balance"] = source["comparison_balance"]
+
+    top_k = config.get("top_k")
+    if top_k is not None:
+        top_k = int(top_k)
+        if top_k < 1:
+            raise ValueError("top_k must be positive.")
+    retrieval_mode = str(config.get("retrieval_mode") or "flat")
+    if retrieval_mode not in VALID_RETRIEVAL_MODES:
+        choices = ", ".join(sorted(VALID_RETRIEVAL_MODES))
+        raise ValueError(f"retrieval_mode must be one of: {choices}")
+    retrieval_backend = str(config.get("retrieval_backend") or "dense")
+    if retrieval_backend not in VALID_RETRIEVAL_BACKENDS:
+        choices = ", ".join(sorted(VALID_RETRIEVAL_BACKENDS))
+        raise ValueError(f"retrieval_backend must be one of: {choices}")
+    rrf_k_raw = config.get("rrf_k")
+    rrf_k = RRF_K if rrf_k_raw is None else int(rrf_k_raw)
+    rrf_lo, rrf_hi = VALID_RRF_K_RANGE
+    if rrf_k < rrf_lo or rrf_k > rrf_hi:
+        raise ValueError(f"rrf_k must be in [{rrf_lo}, {rrf_hi}].")
+    bm25_stopword_profile = str(config.get("bm25_stopword_profile") or "shared")
+    if bm25_stopword_profile not in VALID_BM25_STOPWORD_PROFILES:
+        choices = ", ".join(sorted(VALID_BM25_STOPWORD_PROFILES))
+        raise ValueError(f"bm25_stopword_profile must be one of: {choices}")
+
+    config["top_k"] = top_k
+    config["metadata_first"] = bool(config.get("metadata_first"))
+    config["rerank"] = bool(config.get("rerank"))
+    config["rerank_cross_encoder"] = bool(config.get("rerank_cross_encoder"))
+    config["verifier_retry"] = bool(config.get("verifier_retry"))
+    config["retrieval_mode"] = retrieval_mode
+    config["retrieval_backend"] = retrieval_backend
+    config["prompt_profile"] = str(config.get("prompt_profile") or "structured_grounded_claims")
+    config["rrf_k"] = rrf_k
+    config["bm25_stopword_profile"] = bm25_stopword_profile
+    return config
