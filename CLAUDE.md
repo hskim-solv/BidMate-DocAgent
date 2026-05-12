@@ -44,7 +44,8 @@ Supporting:
 
 - `app.py` — CLI query entry point.
 - `rag_vector_store.py` — `VectorStore` Protocol behind the embeddings sidecar (issue #232, Stage 1 of #176). `BIDMATE_INDEX_BACKEND=memory` is the only supported value today; `qdrant` / `pgvector` are reserved for follow-up PRs.
-- `rag_reranker.py` — `Reranker` Protocol + default `CrossEncoderReranker` adapter (issue #345, follow-up to #332). Wraps `rag_rerank.rerank` so future HyDE / LLM-as-reranker impls plug in without touching `rag_core.apply_fusion_and_reranking`.
+- `rag_reranker.py` — `Reranker` Protocol + default `CrossEncoderReranker` adapter (issue #345, follow-up to #332). Wraps `rag_rerank.rerank` so future HyDE / LLM-as-reranker impls plug in without touching `rag_retrieval.apply_fusion_and_reranking`.
+- `rag_retrieval.py` — post-retrieval fusion / comparison balance / hierarchical reassembly extracted from `rag_core.py` (issue #459, PR-H1a). Owns `apply_fusion_and_reranking` (RRF + cross-encoder dispatch), `apply_comparison_balance` (coverage-aware top-k), and `reassemble_parent_sections` (hierarchical mode). Late-imports `comparison_targets_for_analysis` / `normalize_regions` / `normalize_page_span` from `rag_core` to avoid circular imports.
 - `rag_query_expansion.py` — `QueryExpander` Protocol + default `IdentityExpander` + opt-in `HyDEExpander` (issue #396, ADR 0023). Plugs in before the dense-embedding call in `rag_core.retrieve_candidates`; BM25 / lexical / metadata paths consume `analysis.tokens` and remain invariant. Identity default preserves the ADR 0001 `naive_baseline` bit-identical golden.
 - `scripts/` — `build_index.py`, `update_readme_metrics.py`, `run_real_eval_delta.py`, etc.
 - `data/raw/` → `data/index/` → `outputs/` → `reports/` (pipeline artifacts).

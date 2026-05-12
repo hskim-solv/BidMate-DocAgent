@@ -17,7 +17,7 @@ each is in a different state of measurement:
    ([`rag_reranker.py`](../../rag_reranker.py), introduced by issue
    [#345](https://github.com/hskim-solv/oss-bidmate-docagent/issues/345)
    / PR [#358](https://github.com/hskim-solv/oss-bidmate-docagent/pull/358))
-   — consumed by [`rag_core.apply_fusion_and_reranking`](../../rag_core.py)
+   — consumed by [`rag_retrieval.apply_fusion_and_reranking`](../../rag_retrieval.py) (extracted from `rag_core.py` in PR-H1a, issue #459)
    only when `plan["rerank_cross_encoder"]` is set. Surfaced as the
    `full_reranker` preset in [`eval/config.yaml`](../../eval/config.yaml)
    `line 143-149` (`rerank: true` + `rerank_cross_encoder: true`).
