@@ -20,7 +20,9 @@ import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
 
-from check_branch_and_issue import parse_branch
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+
+from check_branch_and_issue import parse_branch  # noqa: E402
 
 
 ARMED_FILE = ".claude/.ship-armed"

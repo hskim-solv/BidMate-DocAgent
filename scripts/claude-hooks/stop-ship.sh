@@ -352,10 +352,10 @@ stage_3_pr() {
 stage_4_ci() {
   log "s4" "Stage 4: CI wait (timeout 30min)"
   if [[ "$DRY_RUN" == "1" ]]; then
-    log "s4" "[dry-run] gh pr checks $PR_NUMBER --watch --interval 30 --required"
+    log "s4" "[dry-run] gh pr checks $PR_NUMBER --watch --interval 30"
     return 0
   fi
-  if ! timeout 1800 gh pr checks "$PR_NUMBER" --watch --interval 30 --required; then
+  if ! timeout 1800 gh pr checks "$PR_NUMBER" --watch --interval 30; then
     local rc=$?
     if (( rc == 124 )); then
       gh pr comment "$PR_NUMBER" --body "Auto-ship: CI timeout after 30min; PR left open." || true

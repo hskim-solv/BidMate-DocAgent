@@ -26,8 +26,10 @@ import sys
 import time
 from typing import Optional
 
-from _governance import is_load_bearing
-from check_branch_and_issue import (
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+
+from _governance import is_load_bearing  # noqa: E402
+from check_branch_and_issue import (  # noqa: E402
     FIVE_B_ESCAPE_RE,
     FIVE_B_HEADER_RE,
     FIVE_B_TABLE_RE,
