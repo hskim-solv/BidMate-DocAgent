@@ -2020,10 +2020,10 @@ def apply_fusion_and_reranking(
 
     scored.sort(key=lambda item: item["score"], reverse=True)
     if plan.get("rerank_cross_encoder"):
-        from rag_rerank import rerank as cross_rerank
+        from rag_reranker import default_reranker
 
         top_n = min(30, max(int(plan["top_k"] or 10) * 3, int(plan["top_k"] or 10)))
-        scored, rerank_meta = cross_rerank(query, scored, top_n=top_n)
+        scored, rerank_meta = default_reranker().rerank(query, scored, top_n=top_n)
         plan["rerank_cross_encoder_meta"] = rerank_meta
     top_k = int(plan["top_k"])
     if plan.get("retrieval_mode") == "hierarchical":
