@@ -203,3 +203,58 @@ def test_qdrant_query_dim_mismatch_raises(
     store = vector_store_from_matrix(matrix)
     with pytest.raises(ValueError, match="dim"):
         store.query(np.zeros(99, dtype=np.float32), top_k=3)
+
+
+# ---------------------------------------------------------------------------
+# Issue #324: moderate-scale parity lockdown
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def clustered_matrix() -> np.ndarray:
+    """200 x 64 L2-normalized matrix with 5 latent clusters; models real
+    RFP corpora where chunks naturally group around recurring topics."""
+    rng = np.random.default_rng(seed=20260512)
+    n_clusters = 5
+    n_per_cluster = 40
+    dim = 64
+    centroids = rng.standard_normal((n_clusters, dim)).astype(np.float32)
+    rows = []
+    for c in range(n_clusters):
+        noise = rng.standard_normal((n_per_cluster, dim)).astype(np.float32)
+        rows.append(centroids[c] + 0.3 * noise)
+    m = np.concatenate(rows, axis=0)
+    m /= np.linalg.norm(m, axis=1, keepdims=True)
+    return m
+
+
+@pytest.mark.parametrize("top_k", [5, 10])
+def test_qdrant_query_matches_in_memory_at_moderate_scale(
+    clustered_matrix: np.ndarray,
+    top_k: int,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Issue #324: on a 200 x 64 clustered matrix, Qdrant ``:memory:``
+    top-k ranking and scores must still match ``InMemoryVectorStore``
+    exactly, locking the "in-memory Qdrant = exact cosine" assumption
+    against silent HNSW activation, distance-metric drift, or upsert /
+    point-id misalignment that the 6 x 4 Stage 2b parity test cannot
+    surface."""
+    monkeypatch.delenv(ENV_INDEX_BACKEND, raising=False)
+    memory_store = vector_store_from_matrix(clustered_matrix)
+    monkeypatch.setenv(ENV_INDEX_BACKEND, "qdrant")
+    qdrant_store = vector_store_from_matrix(clustered_matrix)
+
+    for qi in range(0, clustered_matrix.shape[0], 10):
+        memory_result = memory_store.query(clustered_matrix[qi], top_k=top_k)
+        qdrant_result = qdrant_store.query(clustered_matrix[qi], top_k=top_k)
+        assert len(memory_result) == top_k
+        assert len(qdrant_result) == top_k
+        assert [idx for idx, _ in memory_result] == [
+            idx for idx, _ in qdrant_result
+        ], f"index ranking diverged for query row {qi}, top_k={top_k}"
+        for (m_idx, m_score), (q_idx, q_score) in zip(
+            memory_result, qdrant_result
+        ):
+            assert m_idx == q_idx
+            assert m_score == pytest.approx(q_score, abs=1e-5)
