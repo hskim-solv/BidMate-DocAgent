@@ -3,7 +3,8 @@
 - **Status**: accepted
 - **Date**: 2026-05-12
 - **Deciders**: hskim
-- **Related**: [ADR 0001](./0001-preserve-naive-baseline.md) (baseline preserved), [ADR 0002](./0002-metadata-first-retrieval.md) (metadata-first dominates), [`docs/embedding-ablation.md`](../embedding-ablation.md), issues #161 (Phase 1.2 runner) and #300 (this decision)
+- **Related**: [ADR 0001](./0001-preserve-naive-baseline.md) (baseline preserved), [ADR 0002](./0002-metadata-first-retrieval.md) (metadata-first dominates), [ADR 0021](./0021-bge-m3-completes-phase-1-3.md) (Phase 1.3 supplement that closes condition 2), [`docs/embedding-ablation.md`](../embedding-ablation.md), issues #161 (Phase 1.2 runner) and #300 (this decision)
+- **Update (Phase 1.3, issue #389, 2026-05-12)**: condition 1 fully met (`torch >= 2.6` pinned in `requirements.txt:8`, `huggingface-hub 0.36.2 < 1.0` already in place), condition 2 fully met for all four named candidates (BGE-M3 measurement closed the last gap), condition 3 **NOT triggered** for any candidate (the `0pp-on-full` pattern holds across all five measured embeddings). This ADR stays accepted; see [ADR 0021](./0021-bge-m3-completes-phase-1-3.md) for the supplement.
 
 ## Context
 

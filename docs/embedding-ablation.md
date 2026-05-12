@@ -157,6 +157,86 @@ The default did not change, so the empirical decision still has no ADR — but t
 
 If a future ablation finds a model that meaningfully improves `full` (not just `naive_baseline`) and the team decides to switch the default, that change should land with a *follow-up* ADR per CLAUDE.md "ADR threshold". The OpenAI backend addition is an additive ablation surface under stub-default (CI runs `EMBEDDING_BACKEND=hashing` and never hits OpenAI) — same pattern as [ADR 0011](adr/0011-llm-synthesis-as-additive-ablation.md).
 
+## Third comparison — Phase 1.3 (issue #389): BGE-M3 closes ADR 0019 condition 2
+
+Phase 1.2 left `BAAI/bge-m3` as the one named-candidate gap because the
+maintainer's local Python install was on `torch 2.2.2` — below the
+`torch >= 2.6` CVE-2025-32434 mitigation that modern
+`sentence_transformers` hard-requires for BGE-M3's custom loader code.
+Once `requirements.txt` pinned `torch >= 2.6` (the chore PR that ADR 0019
+flagged), Phase 1.3 was reduced to "create a fresh venv, run the runner
+against BGE-M3 alone, append the row."
+
+### Env state for this cycle
+
+Both blockers from the original ADR 0019 analysis are now cleared:
+
+| dependency | observed (Phase 1.3 venv) | required | status |
+|---|---|---|---|
+| `torch` | `2.11.0` | `>= 2.6` | ✅ cleared — `requirements.txt:8` pin, `BAAI/bge-m3` loads cleanly |
+| `huggingface-hub` | `0.36.2` | `< 1.0` | ✅ cleared (since Phase 1.2) |
+
+### Headline numbers — Phase 1.3 (measured 2026-05-12, n=42)
+
+Same n=42 public synthetic corpus as Phase 1.1 / 1.2.
+
+#### `full` agentic pipeline — **ADR 0019 condition 3 evaluator**
+
+| metric | MiniLM-L12-v2 | BGE-M3 | Δ vs MiniLM |
+|---|---:|---:|---:|
+| accuracy | 0.906 | 0.906 | **+0.0** |
+| groundedness | 0.929 | 0.929 | **+0.0** |
+| citation_precision | 0.905 | 0.905 | **+0.0** |
+| abstention | 1.000 | 1.000 | **+0.0** |
+| format compliance | 0.905 | 0.905 | **+0.0** |
+
+Four for four. BGE-M3 produces **bit-identical** `full` metrics — not
+just CI-overlapping — just like e5-large-instruct and
+KoSimCSE-roberta-multitask did in Phase 1.2. Identical CIs follow.
+
+#### `naive_baseline` (preserved as ablation per ADR 0001 — does NOT count toward ADR 0019 condition 3)
+
+| metric | MiniLM-L12-v2 | BGE-M3 | Δ vs MiniLM |
+|---|---:|---:|---:|
+| accuracy | 0.656 | 0.844 | **+18.8** |
+| groundedness | 0.595 | 0.714 | **+11.9** |
+| citation_precision | 0.488 | 0.548 | +6.0 |
+| abstention | 0.300 | 0.300 | +0.0 |
+| format compliance | 0.548 | 0.667 | **+11.9** |
+
+BGE-M3 lands at the same `naive_baseline` ceiling as e5-large-instruct
+(both lift accuracy from 0.656 → 0.844, +18.8pp). The dense-only
+retriever is *vastly* better at finding the right document; the agentic
+pipeline routes around dense for most queries and absorbs the lift.
+
+#### Other ablations (no_metadata_first / no_rerank / hierarchical / no_verifier_retry)
+
+All four show `+0.0` deltas vs MiniLM on every metric — same pattern as
+`full`. The runner output is preserved at
+`reports/embedding-ablation/BAAI_bge_m3/eval_summary.json`.
+
+### Reading the Phase 1.3 result
+
+1. **ADR 0019 condition 2 is fully met.** All four ADR-0019-named
+   candidates (MiniLM, e5-large-instruct, KoSimCSE, BGE-M3) have now
+   run to completion against the n=42 public synthetic corpus. No
+   measurement is "deferred" anymore.
+2. **ADR 0019 condition 3 is NOT triggered for BGE-M3 either.** The
+   `0pp-on-full` pattern is robust across all four candidates and
+   across MiniLM (2019), e5-base (2023), e5-large-instruct (2024
+   SoTA), KoSimCSE (Korean-specialized), and BGE-M3 (2024
+   multi-functional). The "modern model breaks the pattern" and
+   "Korean-specialized model breaks the pattern" hypotheses are both
+   falsified on this corpus.
+3. **Default stays MiniLM-L12-v2.** ADR 0019 stays accepted; the
+   follow-up [ADR 0021](adr/0021-bge-m3-completes-phase-1-3.md) is a
+   *supplement* that documents the closure, not a supersede.
+4. **The empirical claim is now strong enough to publish.** Five
+   embeddings spanning 2019–2024, multilingual / instruction-tuned /
+   Korean-specialized / multi-functional: the agentic pipeline's
+   `full` metrics do not move. Metadata-first retrieval (ADR 0002) is
+   the load-bearing design choice, not the embedding choice.
+
 ## See also
 
 - [`scripts/run_embedding_ablation.py`](../scripts/run_embedding_ablation.py) — the runner
@@ -164,3 +244,4 @@ If a future ablation finds a model that meaningfully improves `full` (not just `
 - [ADR 0001](adr/0001-preserve-naive-baseline.md) — why `naive_baseline` is preserved
 - [ADR 0002](adr/0002-metadata-first-retrieval.md) — why metadata-first dominates
 - [ADR 0019](adr/0019-embedding-default-stays-minilm.md) — the deferral decision
+- [ADR 0021](adr/0021-bge-m3-completes-phase-1-3.md) — the Phase 1.3 closure
