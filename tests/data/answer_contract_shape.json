@@ -1,0 +1,59 @@
+{
+  "answer": {
+    "claims": [
+      {
+        "citations": [
+          {
+            "agency": "str",
+            "chunk_id": "str",
+            "doc_id": "str",
+            "section": "str",
+            "title": "str"
+          }
+        ],
+        "claim": "str",
+        "support": "str",
+        "target": "str"
+      }
+    ],
+    "insufficiency": "null",
+    "query_type": "str",
+    "schema_version": "int",
+    "status": "str",
+    "status_reason": {
+      "code": "str",
+      "verification_reasons": [],
+      "verified": "bool"
+    },
+    "summary": "str"
+  },
+  "answer_text": "str",
+  "evidence": [
+    {
+      "agency": "str",
+      "child_chunk_ids": [],
+      "chunk_id": "str",
+      "chunk_seq_in_section": "int",
+      "chunking_strategy": "str",
+      "doc_id": "str",
+      "metadata": {
+        "document_type": "str",
+        "domain": "str",
+        "project_aliases": [
+          "str"
+        ]
+      },
+      "parent_section_id": "str",
+      "retrieval_mode": "str",
+      "score": "float",
+      "section": "str",
+      "section_id": "str",
+      "section_path": [
+        "str"
+      ],
+      "text": "str",
+      "title": "str",
+      "total_chunks_in_section": "int"
+    }
+  ]
+}
