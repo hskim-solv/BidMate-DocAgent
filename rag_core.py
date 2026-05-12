@@ -2081,17 +2081,40 @@ def retrieve(
         )
 
     vector_store = index.get("_vector_store")
+    # #176 Stage 2c: drive dense scoring through ``VectorStore.query``
+    # instead of looping ``store.get(idx)`` + ``dense_similarity`` per
+    # chunk. On the default in-memory backend the math is identical
+    # (numpy dot on the same L2-normalized matrix, then the same
+    # ``(cosine + 1) / 2`` affine clamp). On the Qdrant backend the
+    # query is delegated to the Qdrant collection — ranking parity to
+    # the in-memory backend is asserted by
+    # ``tests/test_vector_store_qdrant.py::test_qdrant_query_matches_in_memory_top_k_ranking``
+    # (PR #296, 1e-5 tolerance). Inline-embedding fixtures fall back
+    # to the per-chunk ``dense_similarity`` path below.
+    raw_cosine_by_idx: dict[int, float] = {}
+    if vector_store is not None and len(vector_store) > 0:
+        for idx, raw in vector_store.query(query_embedding, top_k=len(vector_store)):
+            raw_cosine_by_idx[int(idx)] = float(raw)
     scored = []
     for chunk in candidates:
-        if vector_store is not None and chunk.get("embedding_idx") is not None:
-            chunk_vec = vector_store.get(int(chunk["embedding_idx"]))
+        embedding_idx = chunk.get("embedding_idx")
+        if (
+            vector_store is not None
+            and embedding_idx is not None
+            and int(embedding_idx) in raw_cosine_by_idx
+        ):
+            raw = raw_cosine_by_idx[int(embedding_idx)]
+            # Mirror ``dense_similarity``'s affine clamp so the verifier
+            # score floor (rag_core.py:2254, threshold tuned for
+            # ``(cosine + 1) / 2``) keeps working byte-identically.
+            dense_score = max(0.0, min(1.0, (raw + 1.0) / 2.0))
         else:
             # Defensive fallback: a chunk dict produced outside the normal
             # load_index path (e.g., a hand-crafted test fixture) may still
             # carry an inline embedding. Keeps tests/test_partial_topic_*.py
             # style fixtures working without forcing a sidecar.
             chunk_vec = chunk.get("embedding")
-        dense_score = dense_similarity(query_embedding, chunk_vec)
+            dense_score = dense_similarity(query_embedding, chunk_vec)
         lexical_score = lexical_similarity(query_tokens, query_topics, chunk)
         metadata_score = metadata_similarity(analysis, chunk)
         bm25_score = float(bm25_score_by_chunk.get(str(chunk.get("chunk_id")), 0.0))
