@@ -282,3 +282,152 @@ def test_rag_core_has_no_shadow_answer_models():
         "parallel class. If a structural model is genuinely needed, "
         "write an ADR superseding 0003 first."
     )
+
+
+# ---------------------------------------------------------------------------
+# G6 — docs/senior-positioning.md narrative must stay in sync with the
+# actual docs/adr/ directory (issue #317).
+#
+# The narrative mirrors three pieces of ADR-directory state:
+#   1. an "{N}개 ADR" count label (in the signal-overview table intro AND
+#      in an in-body interview talking-point quote),
+#   2. an "{N} accepted / {M} proposed" status breakdown alongside (1),
+#   3. an ADR table with one row per `docs/adr/NNNN-*.md` file, each row
+#      carrying a status cell that must match the file's
+#      `- **Status**: ...` header.
+#
+# Without these guards, merging a new ADR (or flipping a status from
+# proposed → accepted) silently drifts the reviewer-facing narrative.
+# ---------------------------------------------------------------------------
+
+
+_SENIOR_POS_PATH = ROOT_DIR / "docs" / "senior-positioning.md"
+
+_SENIOR_POS_ROW_RE = re.compile(
+    r"^\|\s*\[(\d{4})\]\(\./adr/(\d{4}-[^)]+\.md)\)\s*\|\s*(\w+)\s*\|",
+    re.MULTILINE,
+)
+
+_SENIOR_POS_COUNT_RE = re.compile(r"(\d+)\s*개\s+ADR")
+
+_SENIOR_POS_STATUS_LABEL_RE = re.compile(
+    r"(\d+)\s+accepted\s*/\s*(\d+)\s+proposed"
+)
+
+_ADR_STATUS_HEADER_RE = re.compile(
+    r"^-\s*\*\*Status\*\*\s*:\s*(\w+)\s*$",
+    re.MULTILINE,
+)
+
+
+def _adr_files() -> list[Path]:
+    return sorted(
+        (ROOT_DIR / "docs" / "adr").glob("[0-9][0-9][0-9][0-9]-*.md")
+    )
+
+
+def _adr_statuses() -> dict[str, str]:
+    """Map ADR number ('0001') -> declared status ('accepted'/'proposed')."""
+    result: dict[str, str] = {}
+    for path in _adr_files():
+        m = _ADR_STATUS_HEADER_RE.search(path.read_text())
+        assert m, (
+            f"ADR {path.name}: missing `- **Status**: ...` header line. "
+            f"Add it near the top of the file (see ADR 0001 for the pattern)."
+        )
+        result[path.name[:4]] = m.group(1)
+    return result
+
+
+def test_senior_positioning_count_label_matches_adr_files():
+    text = _SENIOR_POS_PATH.read_text()
+    label_values = {int(n) for n in _SENIOR_POS_COUNT_RE.findall(text)}
+    assert label_values, (
+        "docs/senior-positioning.md must contain a '{N}개 ADR' count label."
+    )
+    actual = len(_adr_files())
+    assert label_values == {actual}, (
+        f"senior-positioning.md '{{N}}개 ADR' labels = {sorted(label_values)}, "
+        f"docs/adr/ file count = {actual}. Issue #317: when a new ADR is "
+        f"merged, update every '{{N}}개 ADR' occurrence in "
+        f"docs/senior-positioning.md (signal-overview table intro + interview "
+        f"talking-point quote)."
+    )
+
+
+def test_senior_positioning_status_breakdown_matches_adr_files():
+    text = _SENIOR_POS_PATH.read_text()
+    m = _SENIOR_POS_STATUS_LABEL_RE.search(text)
+    assert m, (
+        "docs/senior-positioning.md must contain a "
+        "'{N} accepted / {M} proposed' status breakdown label "
+        "(near the '{N}개 ADR' count)."
+    )
+    declared = (int(m.group(1)), int(m.group(2)))
+
+    statuses = list(_adr_statuses().values())
+    actual = (statuses.count("accepted"), statuses.count("proposed"))
+
+    assert declared == actual, (
+        f"senior-positioning.md status breakdown = "
+        f"{declared[0]} accepted / {declared[1]} proposed, "
+        f"actual ADR file headers = "
+        f"{actual[0]} accepted / {actual[1]} proposed. "
+        f"Issue #317: update the breakdown label whenever an ADR's "
+        f"`- **Status**: ...` header changes or a new ADR is added."
+    )
+
+
+def test_senior_positioning_table_rows_match_adr_files():
+    text = _SENIOR_POS_PATH.read_text()
+    rows = _SENIOR_POS_ROW_RE.findall(text)
+    assert rows, (
+        "docs/senior-positioning.md must contain ADR table rows of the form "
+        "`| [NNNN](./adr/NNNN-slug.md) | <status> | ... |`."
+    )
+
+    narrative_numbers = {row[0] for row in rows}
+    narrative_filenames = {row[1] for row in rows}
+    narrative_status_by_num = {row[0]: row[2] for row in rows}
+
+    actual_files = _adr_files()
+    actual_numbers = {p.name[:4] for p in actual_files}
+    actual_filenames = {p.name for p in actual_files}
+    actual_statuses = _adr_statuses()
+
+    assert narrative_numbers == actual_numbers, (
+        f"ADR set drift between docs/senior-positioning.md table and "
+        f"docs/adr/ files.\n"
+        f"  missing from narrative: "
+        f"{sorted(actual_numbers - narrative_numbers)}\n"
+        f"  unknown in narrative:   "
+        f"{sorted(narrative_numbers - actual_numbers)}\n"
+        f"Issue #317: add/remove rows in docs/senior-positioning.md so the "
+        f"narrative table tracks the directory."
+    )
+
+    assert narrative_filenames == actual_filenames, (
+        f"ADR filename drift between narrative table link targets and "
+        f"docs/adr/. Check `./adr/...` link targets in "
+        f"senior-positioning.md.\n"
+        f"  narrative-only: "
+        f"{sorted(narrative_filenames - actual_filenames)}\n"
+        f"  disk-only:      "
+        f"{sorted(actual_filenames - narrative_filenames)}"
+    )
+
+    mismatches = [
+        (n, narrative_status_by_num[n], actual_statuses[n])
+        for n in sorted(narrative_numbers)
+        if narrative_status_by_num[n] != actual_statuses[n]
+    ]
+    assert not mismatches, (
+        "Status cell drift between senior-positioning.md table and ADR "
+        "file `- **Status**:` headers:\n"
+        + "\n".join(
+            f"  {n}: narrative={narr!r}, file={file!r}"
+            for n, narr, file in mismatches
+        )
+        + "\nIssue #317: update the status cell in the narrative row when "
+        "the ADR file's status changes (e.g., proposed -> accepted)."
+    )
