@@ -10,6 +10,16 @@
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash scripts/claude-hooks/stop-ship.sh"
+          }
+        ]
+      }
     ]
   }
 }
