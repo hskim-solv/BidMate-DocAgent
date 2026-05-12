@@ -35,6 +35,7 @@ from typing import Any
 # Reuse the extractor + privacy guards from the delta script. Adding a
 # new entry point should not weaken the boundary.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from scripts._utils import render_history_table  # noqa: E402
 from scripts.run_real_eval_delta import extract_aggregate  # noqa: E402
 
 HISTORY_DIR = Path("reports/real100/history")
@@ -54,17 +55,9 @@ COLUMNS: list[tuple[str, str]] = [
     ("answer_format_compliance", "Format"),
     ("retry", "Retry"),
     # ADR 0006: LLM-judge agreement. Shown only when present; absent
-    # entries render as "—" via the _fmt fallback.
+    # entries render as "—" via render_history_table's fmt_cell fallback.
     ("agreement_with_verifier", "Judge⇄Verifier"),
 ]
-
-
-def _fmt(value: Any) -> str:
-    if value is None:
-        return "—"
-    if isinstance(value, float):
-        return f"{value:.3f}"
-    return str(value)
 
 
 def load_history() -> list[dict[str, Any]]:
@@ -100,26 +93,15 @@ def load_history() -> list[dict[str, Any]]:
 
 
 def render_table(rows: list[dict[str, Any]]) -> str:
-    if not rows:
-        return (
+    return render_history_table(
+        rows,
+        COLUMNS,
+        empty_message=(
             "_No real-data history entries yet. Run "
             "`make real-eval-baseline-update` to seed the first "
             "snapshot._"
-        )
-    header = "| " + " | ".join(label for _, label in COLUMNS) + " |"
-    sep = "|" + "|".join(["---"] * len(COLUMNS)) + "|"
-    lines = [header, sep]
-    for row in rows:
-        cells = []
-        for key, _ in COLUMNS:
-            value = row.get(key)
-            if key == "commit":
-                value = f"`{value}`" if value else "—"
-            else:
-                value = _fmt(value)
-            cells.append(value)
-        lines.append("| " + " | ".join(cells) + " |")
-    return "\n".join(lines)
+        ),
+    )
 
 
 def render_section(rows: list[dict[str, Any]]) -> str:

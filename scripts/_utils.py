@@ -131,6 +131,75 @@ def fmt_rate(value: Any) -> str:
     return f"{value:.3f}" if isinstance(value, (int, float)) else "N/A"
 
 
+def fmt_cell(value: Any) -> str:
+    """Format a cell value for a markdown history table.
+
+    Conventions shared by the real-data history renderer
+    (``scripts/render_real_eval_history.py``) and the synthetic
+    leaderboard (``scripts/leaderboard.py``):
+
+    - ``None`` renders as ``"—"`` (em dash), not ``"None"`` — missing
+      metrics on older snapshots should look intentional, not broken.
+    - ``float`` renders with 3 decimals — the precision both eval
+      surfaces are calibrated to.
+    - Other values fall through to ``str(value)``.
+
+    Note: ``fmt_rate`` (also in this module) uses a different
+    convention (``"N/A"`` instead of ``"—"``) and is consumed by the
+    README ablation table renderer. Keep both — they target different
+    audiences (in-repo history tables vs README headline metrics).
+    """
+    if value is None:
+        return "—"
+    if isinstance(value, float):
+        return f"{value:.3f}"
+    return str(value)
+
+
+def render_history_table(
+    rows: list[dict[str, Any]],
+    columns: list[tuple[str, str]],
+    *,
+    empty_message: str = "",
+    trailing_newline: bool = False,
+) -> str:
+    """Render aggregate-history rows as a GitHub markdown table.
+
+    Shared kernel for ``render_real_eval_history.render_table()`` and
+    ``leaderboard._render_table_only()``. Conventions:
+
+    - ``columns`` is a list of ``(row_key, header_label)`` tuples.
+    - The ``"commit"`` column gets backtick-wrapped (``" `abc123`"``);
+      empty commit renders as ``"—"``.
+    - Every other column flows through :func:`fmt_cell`.
+    - ``empty_message`` is returned verbatim when ``rows`` is empty —
+      callers want different "no data" prose.
+    - ``trailing_newline=True`` appends ``"\\n"`` after the last row;
+      matches ``leaderboard._render_table_only`` (which embeds the
+      table under a ``## Tabular view`` section that expects a final
+      newline). Default ``False`` matches ``render_real_eval_history``
+      (which feeds the table into a marker-spliced block).
+    """
+    if not rows:
+        return empty_message
+    header = "| " + " | ".join(label for _, label in columns) + " |"
+    sep = "|" + "|".join(["---"] * len(columns)) + "|"
+    lines = [header, sep]
+    for row in rows:
+        cells = []
+        for key, _ in columns:
+            value = row.get(key)
+            if key == "commit":
+                cells.append(f"`{value}`" if value else "—")
+            else:
+                cells.append(fmt_cell(value))
+        lines.append("| " + " | ".join(cells) + " |")
+    result = "\n".join(lines)
+    if trailing_newline:
+        result += "\n"
+    return result
+
+
 _METRIC_SNAPSHOT_KEYS_PRE = (
     "num_predictions",
     "accuracy",
