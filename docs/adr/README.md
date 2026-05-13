@@ -93,7 +93,7 @@ project record.
 | [0029](./0029-real-data-case-proposer-additive.md) | proposed | Real-data case proposer as additive semi-supervised eval-set growth (extends 0005 / 0006; reuses 0011 / 0012 backend pattern; preserves 0001 / 0003 / 0004 / 0008; calibration mirrors 0016) |
 | [0030](./0030-leaderboard-headline-includes-agentic-full.md) | accepted | Leaderboard headline expands to render `agentic_full` alongside `naive_baseline` as parallel time series; ADR 0001 baseline preserved, `ablation_full` aggregate key added to history snapshots (extends ADR 0001 / ADR 0024 visibility surface) |
 | [0031](./0031-bm25-korean-morphology-additive.md) | accepted | BM25 Korean morphology tokenizer (`bm25_tokenizer: "regex" \| "kiwi"`) as additive ablation, kiwipiepy lazy-imported with never-raise fallback to regex (extends 0010 / 0011; preserves 0001 / 0003; follows 0019 → 0021 / 0026 measurement-gated pattern) |
-| [0032](./0032-eval-saturation-routed-subset.md) | proposed | Eval-set saturation hypothesis + routed-subset measurement surface as falsifier for ADR 0019 deferral (extends 0019 / 0021; preserves 0001 / 0002; adds `agentic_full_routed` ablation preset; spread ≥ +3pp on routed subset triggers 0019 re-open) |
+| [0032](./0032-eval-saturation-routed-subset.md) | accepted | Eval-set saturation hypothesis + routed-subset measurement surface as falsifier for ADR 0019 deferral (extends 0019 / 0021; preserves 0001 / 0002; adds `agentic_full_routed` ablation preset; spread ≥ +3pp on routed subset triggers 0019 re-open; 2026-05-13 first run: spread = 0.0pp → saturation_cross_validated) |
 | [0033](./0033-multihop-cross-section-eval-slice.md) | proposed | Multi-hop cross-section eval slice as orthogonal saturation falsifier (complexity axis; extends 0032; 50-item synthesized dataset, LLM-judge quality filter; spread ≥ +5pp on multi-hop slice supplements ADR 0019 re-open conditions; preserves 0001 / 0003 / 0005) |
 
 ## Deferred decisions (measurement-gated re-open)
@@ -118,10 +118,13 @@ in ADR prose.
 Note that ADR 0024 (API default = `agentic_full_llm`) and ADR 0022
 (LangGraph orchestrator stage 1) are *not* listed here because they are
 already accepted action items, not deferrals. ADR 0027 (LoRA adapter)
-and ADR 0032 (eval-saturation falsifier) are both *proposed* — they
-inherit ADR 0019's re-open conditions and do not themselves defer
-anything; ADR 0032 in particular *defines the measurement surface* that
-makes ADR 0019's re-open trigger empirically testable.
+and ADR 0027 (LoRA adapter) is *proposed* — it
+inherits ADR 0019's re-open conditions and does not itself defer
+anything. ADR 0032 (eval-saturation falsifier) has been promoted to
+*accepted* after the 2026-05-13 first execution (spread = 0.0pp →
+saturation_cross_validated) — it *defined the measurement surface* that
+makes ADR 0019's re-open trigger empirically testable, and that measurement
+is now complete.
 
 ## Decision evolution
 
