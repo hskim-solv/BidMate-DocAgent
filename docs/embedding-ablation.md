@@ -237,6 +237,53 @@ All four show `+0.0` deltas vs MiniLM on every metric — same pattern as
    `full` metrics do not move. Metadata-first retrieval (ADR 0002) is
    the load-bearing design choice, not the embedding choice.
 
+## Fourth comparison — Phase 1.4 (ADR 0032): routed_subset measurement surface
+
+Phase 1.1–1.3은 모두 `full` agentic pipeline (`metadata_first=true`)에서 측정했다. [ADR 0032](adr/0032-eval-saturation-routed-subset.md)는 이 측정이 **saturation**일 수 있다는 가설을 제기했다: metadata-first 라우팅이 대부분의 쿼리를 dense retrieval 전에 흡수하므로, 어떤 임베딩을 써도 agentic full 지표가 0pp delta를 보인다는 것.
+
+Phase 1.4는 이 가설을 falsify하기 위해 `metadata_first=false` ablation preset (`agentic_full_routed`)과 n=11 routed_subset 케이스를 추가한다. 케이스는 metadata-first 라우팅이 resolve 불가한 세 카테고리로 구성된다:
+
+- Multi-turn follow-up (entity 생략으로 metadata match가 non-deterministic, 3 케이스)
+- Multi-doc comparison ambiguity (동일 metadata 후보가 ≥ 2 문서에 분포, 4 케이스)
+- Inference queries (metadata column hook 없음, 4 케이스 incl. 1 abstention)
+
+### Step 2a — Framework validation (hashing backend, 2026-05-13)
+
+Both ablation rows(`agentic_full` / `agentic_full_routed`)가 n=11 케이스 모두에서 오류 없이 실행됨을 확인했다. 전체 결과는 [`reports/embedding_routed.json`](../reports/embedding_routed.json)에 기록되어 있다.
+
+#### `agentic_full_routed` vs `agentic_full` (hashing backend, n=11)
+
+| ablation | metadata_first | accuracy | groundedness | citation_precision | latency p95 |
+|---|:---:|---:|---:|---:|---:|
+| `agentic_full` | true | 0.500 [0.200, 0.800] | 0.455 | 0.455 | 8.3ms |
+| `agentic_full_routed` | false | 0.400 [0.100, 0.700] | 0.364 | 0.364 | 6.9ms |
+
+Routing delta: −0.100pp accuracy. metadata_first=true가 hashing backend에서도 더 높음 — metadata 필터가 precision을 추가하기 때문. CIs는 두 row가 동일한 deterministic 백엔드를 사용하므로 완전히 겹친다.
+
+**중요한 caveat:** hashing backend는 query hash 기반의 deterministic 검색으로 임베딩과 무관하다. 모든 임베딩 모델이 동일한 결과를 낸다 → **embedding spread는 이 run으로 측정 불가**.
+
+### Step 2b — Embedding spread measurement (pending)
+
+**saturation 가설 falsifier의 핵심 측정.** 5개 임베딩(MiniLM, BGE-M3, e5-large-instruct, KoSimCSE, KURE-v1) × `agentic_full_routed` × n=11 routed 케이스를 `EMBEDDING_BACKEND=sentence-transformers`로 실행.
+
+Prerequisites:
+1. `routed_config.yaml` 케이스가 사용하는 synthetic agency doc ID(`rfp-agency-a-ai-quality` 등)를 실제 인덱스에 추가 (or D01-D18 기반으로 케이스 마이그레이션)
+2. `EMBEDDING_BACKEND=sentence-transformers` 로컬 실행 (~30분, ~5GB)
+
+결과 기준:
+- **Spread ≥ +3pp** (top-vs-bottom non-overlapping 95% CI) → ADR 0019 condition 3 re-evaluation trigger
+- **Spread < +3pp** → "routed 영역에서도 saturation = MiniLM lock은 진짜 결정"
+
+Prior evidence (Phase 1.1–1.3, `naive_baseline` 표):
+| model | naive_baseline accuracy | Δ vs MiniLM |
+|---|---:|---:|
+| MiniLM-L12-v2 | 0.656 | — |
+| e5-large-instruct | 0.844 | **+18.8** |
+| BGE-M3 | 0.844 | **+18.8** |
+| KoSimCSE-roberta | 0.781 | **+12.5** |
+
+Dense-only 검색에서는 임베딩이 크게 중요하다. `agentic_full_routed`는 rerank + verifier_retry를 유지하므로 `naive_baseline`보다 높은 절대 점수가 예상되지만, 임베딩 민감도는 여전히 측정 가치가 있다.
+
 ## See also
 
 - [`scripts/run_embedding_ablation.py`](../scripts/run_embedding_ablation.py) — the runner
@@ -245,3 +292,4 @@ All four show `+0.0` deltas vs MiniLM on every metric — same pattern as
 - [ADR 0002](adr/0002-metadata-first-retrieval.md) — why metadata-first dominates
 - [ADR 0019](adr/0019-embedding-default-stays-minilm.md) — the deferral decision
 - [ADR 0021](adr/0021-bge-m3-completes-phase-1-3.md) — the Phase 1.3 closure
+- [ADR 0032](adr/0032-eval-saturation-routed-subset.md) — saturation falsifier + routed_subset

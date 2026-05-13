@@ -130,3 +130,11 @@ the same; no new tooling needed.
   design choice that the `0pp-on-full` pattern empirically supports.
 - [ADR 0019](./0019-embedding-default-stays-minilm.md) — the deferral
   this ADR closes.
+- [ADR 0032](./0032-eval-saturation-routed-subset.md) — adds a
+  `routed_subset` measurement surface (n=11, `metadata_first=false`)
+  to falsify the saturation hypothesis that the `0pp-on-full` pattern
+  is an artefact of metadata-first routing absorbing dense retrieval.
+  The Phase 1.1–1.3 measurements (including this ADR) used `full`
+  pipeline with `metadata_first=true`; ADR 0032 Step 2b measures the
+  same 5 embeddings on the routed surface where dense retrieval is
+  exercised.
