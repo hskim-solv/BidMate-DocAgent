@@ -111,11 +111,28 @@ class _EnvScope:
 
 
 class HwpNativeLoaderRegressionTest(unittest.TestCase):
-    def test_default_dispatch_returns_csv_loader(self) -> None:
+    # ADR 0036: pyhwp-gated default.  Use find_spec mock to control detection.
+
+    def test_default_dispatch_native_when_pyhwp_present(self) -> None:
         with _EnvScope():
-            loader = _resolve_loader("hwp")
-            self.assertIsInstance(loader, HwpCsvTextLoader)
-            self.assertNotIsInstance(loader, HwpNativeLoader)
+            with mock.patch("ingestion.importlib.util.find_spec", return_value=object()):
+                loader = _resolve_loader("hwp")
+        self.assertIsInstance(loader, HwpNativeLoader)
+
+    def test_default_dispatch_csv_when_pyhwp_absent(self) -> None:
+        with _EnvScope():
+            with mock.patch("ingestion.importlib.util.find_spec", return_value=None):
+                loader = _resolve_loader("hwp")
+        self.assertIsInstance(loader, HwpCsvTextLoader)
+        self.assertNotIsInstance(loader, HwpNativeLoader)
+
+    def test_explicit_csv_opt_out_overrides_pyhwp_detection(self) -> None:
+        with _EnvScope() as scope:
+            scope.set("csv")
+            with mock.patch("ingestion.importlib.util.find_spec", return_value=object()):
+                loader = _resolve_loader("hwp")
+        self.assertIsInstance(loader, HwpCsvTextLoader)
+        self.assertNotIsInstance(loader, HwpNativeLoader)
 
     def test_opt_in_dispatch_returns_native_loader(self) -> None:
         with _EnvScope() as scope:

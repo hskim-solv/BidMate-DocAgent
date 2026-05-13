@@ -9,6 +9,7 @@ in the ingestion report.
 from __future__ import annotations
 
 import csv
+import importlib.util
 import os
 import warnings
 from collections import OrderedDict
@@ -376,23 +377,23 @@ LOADERS: dict[str, CsvTextDocumentLoader] = {
 def _resolve_loader(file_format: str) -> CsvTextDocumentLoader:
     """Pick the loader for ``file_format``.
 
-    For HWP, respect the ``BIDMATE_HWP_LOADER`` opt-in (spike #167 + table
-    extraction #506); everything else falls through to the registered
-    default.
+    For HWP, env-var precedence (ADR 0036, highest to lowest):
 
-    Accepted values for ``BIDMATE_HWP_LOADER`` (case-insensitive, trimmed):
-
-    * ``native`` — issue #167 spike: paragraph plain text only
-      (preserves the existing measurement baseline).
-    * ``native_tables`` — issue #506: paragraph plain text **+** table
-      cells with row/col/span metadata. Cells become additional
-      ``sections`` entries with ``metadata.is_table = True``.
+    * ``BIDMATE_HWP_LOADER=csv`` — explicit opt-out; always use CSV loader.
+    * ``BIDMATE_HWP_LOADER=native`` — paragraph plain text only.
+    * ``BIDMATE_HWP_LOADER=native_tables`` — plain text + table cells.
+    * *(unset)* + pyhwp importable — default to ``HwpNativeLoader(with_tables=True)``.
+    * *(unset)* + pyhwp absent — fall through to CSV loader (CI minimal install safe).
     """
     if file_format == "hwp":
         opt_in = os.environ.get("BIDMATE_HWP_LOADER", "").strip().lower()
+        if opt_in == "csv":
+            return LOADERS[file_format]
         if opt_in == "native":
             return HwpNativeLoader()
         if opt_in == "native_tables":
+            return HwpNativeLoader(with_tables=True)
+        if importlib.util.find_spec("hwp5") is not None:
             return HwpNativeLoader(with_tables=True)
     return LOADERS[file_format]
 

@@ -137,11 +137,12 @@ class _EnvScope:
 class DispatchSurfaceTest(unittest.TestCase):
     """The new ``native_tables`` env value swaps the loader correctly."""
 
-    def test_default_dispatch_returns_csv_loader(self) -> None:
+    def test_default_dispatch_csv_when_pyhwp_absent(self) -> None:
         with _EnvScope():
-            loader = _resolve_loader("hwp")
-            self.assertIsInstance(loader, HwpCsvTextLoader)
-            self.assertNotIsInstance(loader, HwpNativeLoader)
+            with mock.patch("ingestion.importlib.util.find_spec", return_value=None):
+                loader = _resolve_loader("hwp")
+        self.assertIsInstance(loader, HwpCsvTextLoader)
+        self.assertNotIsInstance(loader, HwpNativeLoader)
 
     def test_native_returns_text_only_native_loader(self) -> None:
         """#167 spike still produces ``with_tables=False`` (no regression)."""
