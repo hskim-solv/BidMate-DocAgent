@@ -5,7 +5,7 @@ pytest>=9.0.3
 # Coverage measurement for scripts/test.sh + pr-eval CI job (issue #323).
 # Surfaces coverage % in GitHub Actions step summary and uploads coverage.xml
 # artifact; README Codecov badge consumes the same XML.
-pytest-cov>=5.0
+pytest-cov>=7.1.0
 # Required by fastapi.testclient (starlette.testclient) for tests/test_api.py.
 httpx>=0.28.1,<1.0
 # Opt-in OpenAI embedding backend (issue #161, embedding ablation runner).
