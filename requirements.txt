@@ -23,4 +23,4 @@ streamlit>=1.37,<2.0
 # kiwi BM25 path. Lazy-imported (korean_lexicon.kiwi_tokens returns
 # ``None`` when the wheel is missing → silent fallback to regex
 # tokens). Pinned to the 0.x line; 1.0 may ship breaking API changes.
-kiwipiepy>=0.17,<1.0
+kiwipiepy>=0.23.1,<1.0
