@@ -13,6 +13,8 @@
 
 set -u
 
+REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+
 # Read JSON from stdin.
 input=$(cat)
 
@@ -30,11 +32,11 @@ fi
 
 # Load-bearing list lives in scripts/_governance.py (single source of
 # truth, also consumed by .githooks/pre-push and the §5b CI gate).
-if python3 scripts/_governance.py --is-load-bearing "$file_path" 2>/dev/null; then
+if python3 "$REPO_ROOT/scripts/_governance.py" --is-load-bearing "$file_path" 2>/dev/null; then
   # Fire log for /self-review-quarterly governance ROI axis (issue #495).
   # Gitignored via `.claude/*` in repo root .gitignore.
   printf '%s|%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$file_path" \
-    >> .claude/.hook-fires.log 2>/dev/null || true
+    >> "$REPO_ROOT/.claude/.hook-fires.log" 2>/dev/null || true
   cat >&2 <<EOF
 ⚠️  Load-bearing file: $file_path
 
