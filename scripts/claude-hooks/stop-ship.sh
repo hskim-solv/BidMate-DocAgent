@@ -46,7 +46,7 @@ gate_0_parse_armed_file() {
 import json, sys
 try:
     d = json.load(open(sys.argv[1]))
-    for k in ("branch", "expires_at", "merge_mode", "real_eval_mode"):
+    for k in ("branch", "expires_at", "real_eval_mode"):
         if k not in d:
             print(f"missing:{k}"); sys.exit(1)
     print(d["branch"])

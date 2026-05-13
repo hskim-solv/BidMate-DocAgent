@@ -93,7 +93,6 @@ def main() -> int:
         "issue": issue,
         "armed_at": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "expires_at": expires.strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "merge_mode": "squash-admin",
         "real_eval_mode": args.real_eval,
         "draft": args.draft,
         "dry_run": int(args.dry_run) if args.dry_run.isdigit() else 0,
