@@ -23,6 +23,9 @@
 # Real-data eval cycle (private; ADR 0005 commit boundary).
 .PHONY: real-eval real-eval-delta real-eval-baseline-update real-eval-history-render real-eval-with-judge harness-real
 
+# Real-data case proposer cycle (ADR 0029; gitignored I/O).
+.PHONY: case-propose case-review case-promote
+
 # API / demo (FastAPI + Streamlit; local + docker variants)
 .PHONY: api api-docker demo demo-docker docker-publish
 
@@ -271,6 +274,30 @@ real-eval-history-check:
 real-eval-with-judge: real-eval
 	$(PYTHON) scripts/llm_judge.py
 	@echo "Run \`make real-eval-baseline-update\` to fold the judge aggregate into the committable baseline."
+
+# Case proposer cycle (ADR 0029). Two-stage human gate:
+#   case-propose -> reports/proposed/proposed_cases.local.yaml (gitignored)
+#   case-review  -> interactive walk; writes reviewed_cases.local.yaml
+#   case-promote -> idempotent append of approved cases into
+#                   eval/real_config.local.yaml.
+# Default backend is `stub` (deterministic, no network). Set
+# BIDMATE_CASE_PROPOSER_BACKEND=openai_compatible + BIDMATE_JUDGE_*
+# vars for the live proposer (PR3 / not in PR2 scope).
+case-propose:
+	$(PYTHON) -m eval.case_proposer \
+	  --metadata-csv data/data_list.csv \
+	  --index-dir data/index/real100 \
+	  --out reports/proposed/proposed_cases.local.yaml
+
+case-review:
+	$(PYTHON) scripts/case_proposer_review.py \
+	  --proposed reports/proposed/proposed_cases.local.yaml \
+	  --reviewed reports/proposed/reviewed_cases.local.yaml
+
+case-promote:
+	$(PYTHON) scripts/case_proposer_promote.py \
+	  --reviewed reports/proposed/reviewed_cases.local.yaml \
+	  --real-config eval/real_config.local.yaml
 
 # Run the LLM judge over the public synthetic eval summary (ADR 0012).
 # Default backend `stub` is deterministic and runs in CI; set

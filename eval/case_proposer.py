@@ -13,17 +13,25 @@ real-data judge) and ``eval/synthetic_judge.py`` (ADR 0012 synthetic
 judge). All three reuse the stub-default + opt-in live backend
 pattern from ADR 0011.
 
-PR1 scope (this file): skeleton + Protocol + backend dispatch. The
-``stub`` backend returns an empty list; the ``openai_compatible``
-backend raises NotImplementedError. PR2 fills the stub with
-metadata-driven template queries; PR3 wires the live backend.
+Scope status:
+
+* PR1 — skeleton + Protocol + backend dispatch (landed).
+* PR2 (this PR) — stub backend emits metadata-driven template
+  queries from ``data/data_list.csv`` + index; CSV reader, index
+  reader, deterministic YAML writer, ``main()`` CLI.
+* PR3 — ``openai_compatible`` live backend with ADR 0008
+  ``EVIDENCE_BOUNDARY`` sanitization.
+* PR4 — ``proposer.aggregate.json`` writer and ADR 0029 promotion
+  to ``accepted``.
 
 Backends:
 
-* ``stub`` (default, PR1: empty) — deterministic; PR2 will emit
-  metadata-driven template queries from ``data/data_list.csv``.
-  Byte-equal across runs. Used by tests and CI plumbing. Never
-  invokes a network call or LLM SDK.
+* ``stub`` (default) — deterministic. Emits one ``single_doc`` +
+  one ``abstention`` template per seed doc; ``expected_doc_ids``
+  derived from the source row, ``answerable`` derived from
+  ``query_type``. Byte-equal across runs given the same inputs and
+  ``now_iso``. Used by tests and CI plumbing. Never invokes a
+  network call or LLM SDK.
 * ``openai_compatible`` (PR3) — generic OpenAI-compatible endpoint.
   Will reuse ``BIDMATE_JUDGE_API_KEY`` / ``BIDMATE_JUDGE_MODEL`` /
   ``BIDMATE_JUDGE_BASE_URL`` (shared with the real-data judge).
@@ -61,9 +69,14 @@ cannot drift as a side-effect of loading this module (covered by
 """
 from __future__ import annotations
 
+import argparse
+import csv
+import datetime as _dt
+import json
 import os
+import sys
 from pathlib import Path
-from typing import Any, Callable, Protocol
+from typing import Any, Iterable, Protocol
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -77,6 +90,27 @@ PROPOSER_VERSION = 1
 BACKEND_ENV_VAR = "BIDMATE_CASE_PROPOSER_BACKEND"
 
 QUERY_TYPES = ("single_doc", "comparison", "follow_up", "abstention")
+
+# Single-source-of-truth column names from ``ingestion.REQUIRED_COLUMNS``.
+# Hard-coded here (not imported) so this module stays free of
+# ``rag_core``-transitive imports (ADR 0001 byte-identity guard).
+# A drift guard test in tests/test_case_proposer_pipeline.py asserts
+# these match ingestion.REQUIRED_COLUMNS at runtime.
+CSV_COLUMN_NOTICE_ID = "공고 번호"
+CSV_COLUMN_PROJECT = "사업명"
+CSV_COLUMN_AGENCY = "발주 기관"
+CSV_COLUMN_FILE_FORMAT = "파일형식"
+CSV_COLUMN_FILE_NAME = "파일명"
+CSV_COLUMN_TEXT = "텍스트"
+
+REQUIRED_CSV_COLUMNS = (
+    CSV_COLUMN_NOTICE_ID,
+    CSV_COLUMN_PROJECT,
+    CSV_COLUMN_AGENCY,
+    CSV_COLUMN_FILE_FORMAT,
+    CSV_COLUMN_FILE_NAME,
+    CSV_COLUMN_TEXT,
+)
 
 
 class CaseProposerBackend(Protocol):
@@ -96,34 +130,125 @@ class CaseProposerBackend(Protocol):
         rows: list[dict[str, Any]],
         *,
         model: str,
+        now_iso: str,
     ) -> list[dict[str, Any]]:
         ...
+
+
+def _template_single_doc(row: dict[str, Any]) -> str:
+    agency = (row.get(CSV_COLUMN_AGENCY) or "").strip()
+    project = (row.get(CSV_COLUMN_PROJECT) or "").strip()
+    return f"{agency} {project}의 사업기간과 사업예산을 알려줘".strip()
+
+
+def _template_abstention(row: dict[str, Any]) -> str:
+    agency = (row.get(CSV_COLUMN_AGENCY) or "").strip()
+    project = (row.get(CSV_COLUMN_PROJECT) or "").strip()
+    return f"{agency} {project} 문서에 명시되지 않은 조건을 알려줘".strip()
+
+
+def _make_proposed_id(now_iso: str, idx: int) -> str:
+    # now_iso looks like "2026-05-13T08:45:50Z"; we want YYYYMMDD prefix.
+    day = now_iso[:10].replace("-", "")
+    return f"proposed_{day}_{idx:03d}"
+
+
+def _make_proposer_meta(
+    *,
+    backend: str,
+    model: str,
+    seed_doc_id: str,
+    now_iso: str,
+) -> dict[str, Any]:
+    return {
+        "backend": backend,
+        "model": model,
+        "seed_doc_id": seed_doc_id,
+        "generated_at": now_iso,
+        "proposer_version": PROPOSER_VERSION,
+    }
 
 
 def _stub_backend(
     rows: list[dict[str, Any]],
     *,
     model: str,
+    now_iso: str,
 ) -> list[dict[str, Any]]:
-    """Deterministic stub backend.
+    """Deterministic stub backend (PR2).
 
-    PR1: returns an empty list — the skeleton is plumbing-only.
-    PR2 will emit metadata-driven template queries (e.g.
-    ``"{발주기관} {사업명}의 사업기간은?"``) from each row, with
-    ``expected_doc_ids`` derived directly from ``row["doc_id"]`` and
-    ``answerable`` derived from ``query_type``.
+    For each seed-doc row, emit two cases:
+    - ``single_doc``: asks for the project period + budget.
+    - ``abstention``: asks for a fact deliberately not in the doc.
 
-    Byte-equal across runs by construction. Used by CI plumbing.
+    The 1:1 ratio is the cheapest defense against ADR 0029 §Risks #1
+    (systematic bias toward easy single_doc queries inflating the
+    `agentic_full_llm` vs `naive_baseline` delta) — the PR4
+    ``by_query_type`` χ²-test still has a balanced base to compare
+    against. ``expected_doc_ids`` is derived from the row, never
+    from a model response. ``expected_terms`` /
+    ``expected_citation_terms`` are intentionally left empty for the
+    stub — they are the high-edit-rate fields the live backend (PR3)
+    will fill and the human reviewer trims.
+
+    Byte-equal across runs by construction, given the same ``rows``
+    + ``now_iso``.
     """
-    _ = rows  # PR2 will consume
-    _ = model  # always "stub" for this backend; kept for symmetry
-    return []
+    _ = model  # always "stub"; kept for symmetry with live backend
+    cases: list[dict[str, Any]] = []
+    counter = 1
+    for row in rows:
+        doc_id = str(row.get("doc_id") or "").strip()
+        if not doc_id:
+            # Without a doc_id we cannot produce a useful case; skip
+            # rather than fabricate one. The CSV→doc_id mapping is the
+            # caller's responsibility (see ``_attach_doc_ids``).
+            continue
+        agency = (row.get(CSV_COLUMN_AGENCY) or "").strip()
+
+        cases.append(
+            {
+                "id": _make_proposed_id(now_iso, counter),
+                "source": "proposed-then-reviewed",
+                "proposer_meta": _make_proposer_meta(
+                    backend="stub", model="stub", seed_doc_id=doc_id, now_iso=now_iso
+                ),
+                "query_type": "single_doc",
+                "query": _template_single_doc(row),
+                "expected_doc_ids": [doc_id],
+                "expected_terms": [],
+                "expected_citation_terms": [],
+                "expected_claim_targets": [agency] if agency else [],
+                "answerable": True,
+            }
+        )
+        counter += 1
+
+        cases.append(
+            {
+                "id": _make_proposed_id(now_iso, counter),
+                "source": "proposed-then-reviewed",
+                "proposer_meta": _make_proposer_meta(
+                    backend="stub", model="stub", seed_doc_id=doc_id, now_iso=now_iso
+                ),
+                "query_type": "abstention",
+                "query": _template_abstention(row),
+                "expected_doc_ids": [],
+                "expected_terms": [],
+                "expected_citation_terms": [],
+                "expected_claim_targets": [],
+                "answerable": False,
+            }
+        )
+        counter += 1
+    return cases
 
 
 def _openai_compatible_backend(  # pragma: no cover - PR3
     rows: list[dict[str, Any]],
     *,
     model: str,
+    now_iso: str,
 ) -> list[dict[str, Any]]:
     """Generic OpenAI-compatible endpoint (PR3).
 
@@ -133,6 +258,7 @@ def _openai_compatible_backend(  # pragma: no cover - PR3
     """
     _ = rows
     _ = model
+    _ = now_iso
     raise NotImplementedError(
         "openai_compatible backend lands in PR3 (ADR 0029). "
         "Use BIDMATE_CASE_PROPOSER_BACKEND=stub for now."
@@ -162,41 +288,329 @@ def resolve_backend(name: str | None = None) -> tuple[str, CaseProposerBackend]:
     return resolved, backend
 
 
+def _utcnow_iso_z() -> str:
+    """ISO-8601 UTC timestamp with trailing ``Z`` (seconds precision)."""
+    return _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 def propose_cases(
     rows: list[dict[str, Any]] | None = None,
     *,
     backend: str | None = None,
     model: str | None = None,
+    now_iso: str | None = None,
 ) -> list[dict[str, Any]]:
     """Public entry point.
 
-    PR1 scope: dispatch to the resolved backend and return its raw
-    output. PR2 will add CSV reading, index loading, and YAML writing
-    (currently the caller is responsible for both ends — the proposer
-    only owns the generation step).
-
     Args:
-        rows: List of metadata rows. Each row should contain at
-            minimum ``doc_id`` + the standard ``data_list.csv``
-            columns. PR2 will define the precise schema as it wires
-            the CSV reader.
+        rows: List of metadata rows. Each row must have ``doc_id`` set
+            (already filtered against the active index — see
+            ``propose_cases_from_files`` for the CSV→index pipeline).
+            ``CSV_COLUMN_AGENCY`` / ``CSV_COLUMN_PROJECT`` are read
+            for template substitution; missing values degrade
+            gracefully (the template just renders without them).
         backend: Backend name; see ``resolve_backend`` for precedence.
         model: Model identifier to pass through to the backend. For
             ``stub`` this is recorded as ``"stub"`` in
             ``proposer_meta.model``; for ``openai_compatible`` it is
             the live model id.
+        now_iso: Override timestamp for tests / reproducibility. When
+            ``None``, ``datetime.now(UTC)`` is used.
 
     Returns:
-        A list of proposed case dicts. PR1's stub returns ``[]``.
+        A list of proposed case dicts. The order is deterministic
+        given the same ``rows`` ordering.
     """
     rows = rows or []
     resolved_name, backend_fn = resolve_backend(backend)
     resolved_model = model or ("stub" if resolved_name == "stub" else "")
-    return backend_fn(rows, model=resolved_model)
+    resolved_now = now_iso or _utcnow_iso_z()
+    return backend_fn(rows, model=resolved_model, now_iso=resolved_now)
+
+
+# -----------------------------------------------------------------------------
+# CSV + index readers
+# -----------------------------------------------------------------------------
+
+
+class CaseProposerInputError(Exception):
+    """Raised when CSV/index inputs are malformed or missing."""
+
+
+def _read_data_list_csv(path: Path) -> list[dict[str, Any]]:
+    """Read ``data_list.csv`` rows, validating required columns.
+
+    Returns the raw dict per row (column → cell value). Caller is
+    responsible for the CSV→doc_id mapping (see ``_attach_doc_ids``).
+    """
+    if not path.exists():
+        raise CaseProposerInputError(f"data_list.csv not found at {path}")
+    with path.open("r", encoding="utf-8", newline="") as fh:
+        reader = csv.DictReader(fh)
+        if not reader.fieldnames:
+            raise CaseProposerInputError(f"data_list.csv at {path} has no header")
+        missing = [c for c in REQUIRED_CSV_COLUMNS if c not in reader.fieldnames]
+        if missing:
+            raise CaseProposerInputError(
+                f"data_list.csv at {path} missing required columns: {missing}"
+            )
+        return list(reader)
+
+
+def _read_index_doc_ids(index_dir: Path) -> set[str]:
+    """Extract the set of doc_ids present in ``index.json``.
+
+    Reads ``index.json["build"]["documents"][*]["doc_id"]`` if the
+    block is present (full build summary), else falls back to the
+    chunk-level ``index["chunks"][*]["doc_id"]`` set. Either path
+    yields the same set in a well-formed index.
+    """
+    index_path = index_dir / "index.json"
+    if not index_path.exists():
+        raise CaseProposerInputError(f"index.json not found at {index_path}")
+    with index_path.open("r", encoding="utf-8") as fh:
+        index = json.load(fh)
+    documents = (index.get("build") or {}).get("documents") or []
+    if documents:
+        return {str(d["doc_id"]) for d in documents if d.get("doc_id")}
+    chunks = index.get("chunks") or []
+    return {str(c["doc_id"]) for c in chunks if c.get("doc_id")}
+
+
+def _attach_doc_ids(
+    rows: list[dict[str, Any]],
+    valid_doc_ids: set[str],
+) -> list[dict[str, Any]]:
+    """Derive ``doc_id`` per row via ``ingestion.canonical_doc_id`` and
+    drop rows whose derived id is not present in the active index.
+
+    The lazy import keeps ``rag_core`` out of this module's import
+    graph (ADR 0001 byte-identity guard) — ``ingestion.py`` does not
+    import ``rag_core`` directly, but the lazy form is the cheapest
+    defense against future drift.
+    """
+    from ingestion import canonical_doc_id  # noqa: WPS433 (intentional lazy import)
+
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        doc_id = canonical_doc_id(
+            row.get(CSV_COLUMN_NOTICE_ID),
+            row.get("회차"),  # optional; absent in many CSVs
+            row.get(CSV_COLUMN_FILE_NAME),
+        )
+        if not doc_id or doc_id not in valid_doc_ids:
+            continue
+        out.append({**row, "doc_id": doc_id})
+    return out
+
+
+# -----------------------------------------------------------------------------
+# YAML writer (deterministic, no PyYAML default-dict reordering)
+# -----------------------------------------------------------------------------
+
+
+def _yaml_escape_scalar(value: Any) -> str:
+    """Conservative quoting for YAML scalar values.
+
+    The writer is intentionally hand-rolled (rather than ``yaml.dump``)
+    so the output ordering is exactly the ADR 0029 schema order:
+    ``id`` → ``source`` → ``proposer_meta`` (5 keys) → 8 schema
+    fields. PyYAML's default order is alphabetical for dicts on Python
+    pre-3.7 semantics and ``sort_keys=False`` only gets us part way —
+    the dict iteration order is our promise here. Strings always
+    double-quoted (with `"`-escape) so Korean text + colons survive
+    round-trip; booleans and integers emit as-is.
+    """
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (int, float)):
+        return str(value)
+    text = str(value).replace("\\", "\\\\").replace('"', '\\"')
+    return f'"{text}"'
+
+
+def _write_case_yaml_block(case: dict[str, Any], lines: list[str]) -> None:
+    """Emit one case as a YAML list element preserving schema order."""
+    lines.append(f"  - id: {_yaml_escape_scalar(case['id'])}")
+    lines.append(f"    source: {_yaml_escape_scalar(case['source'])}")
+    lines.append("    proposer_meta:")
+    meta = case["proposer_meta"]
+    for key in ("backend", "model", "seed_doc_id", "generated_at", "proposer_version"):
+        lines.append(f"      {key}: {_yaml_escape_scalar(meta[key])}")
+    lines.append(f"    query_type: {_yaml_escape_scalar(case['query_type'])}")
+    lines.append(f"    query: {_yaml_escape_scalar(case['query'])}")
+    for key in (
+        "expected_doc_ids",
+        "expected_terms",
+        "expected_citation_terms",
+        "expected_claim_targets",
+    ):
+        values = case[key]
+        if not values:
+            lines.append(f"    {key}: []")
+        else:
+            lines.append(f"    {key}:")
+            for item in values:
+                lines.append(f"      - {_yaml_escape_scalar(item)}")
+    lines.append(f"    answerable: {_yaml_escape_scalar(case['answerable'])}")
+
+
+def write_proposed_yaml(cases: list[dict[str, Any]], path: Path) -> None:
+    """Write proposed cases to ``path`` in deterministic block style.
+
+    Output shape:
+
+        proposed_cases:
+          - id: "..."
+            source: "..."
+            proposer_meta: { ... }
+            query_type: "..."
+            ...
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lines: list[str] = ["proposed_cases:"]
+    if not cases:
+        lines = ["proposed_cases: []"]
+    else:
+        for case in cases:
+            _write_case_yaml_block(case, lines)
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def propose_cases_from_files(
+    *,
+    metadata_csv: Path = DEFAULT_METADATA_PATH,
+    index_dir: Path = DEFAULT_INDEX_PATH.parent,
+    n_seed_docs: int = 10,
+    backend: str | None = None,
+    model: str | None = None,
+    now_iso: str | None = None,
+) -> list[dict[str, Any]]:
+    """End-to-end: read CSV + index, filter, propose, return cases.
+
+    Selects the first ``n_seed_docs`` rows whose ``canonical_doc_id``
+    is present in the active index. Deterministic sample order (first
+    N by CSV row order) — the proposer is not the place to randomize;
+    that would make ``proposer.aggregate.json`` non-comparable across
+    runs.
+    """
+    raw_rows = _read_data_list_csv(metadata_csv)
+    valid_doc_ids = _read_index_doc_ids(index_dir)
+    rows_with_ids = _attach_doc_ids(raw_rows, valid_doc_ids)
+    if not rows_with_ids:
+        raise CaseProposerInputError(
+            f"No CSV rows from {metadata_csv} resolve to a doc_id present in "
+            f"{index_dir / 'index.json'}. Run `make build-index` first."
+        )
+    selected = rows_with_ids[: max(n_seed_docs, 0)]
+    return propose_cases(
+        selected, backend=backend, model=model, now_iso=now_iso
+    )
+
+
+# -----------------------------------------------------------------------------
+# CLI
+# -----------------------------------------------------------------------------
+
+
+def _build_arg_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(
+        prog="case_proposer",
+        description=(
+            "Propose candidate cases for the real-data eval set (ADR 0029). "
+            "Output is deterministic; review with `make case-review`."
+        ),
+    )
+    p.add_argument(
+        "--metadata-csv",
+        type=Path,
+        default=DEFAULT_METADATA_PATH,
+        help=f"Path to data_list.csv (default: {DEFAULT_METADATA_PATH}).",
+    )
+    p.add_argument(
+        "--index-dir",
+        type=Path,
+        default=DEFAULT_INDEX_PATH.parent,
+        help=(
+            f"Directory containing index.json (default: "
+            f"{DEFAULT_INDEX_PATH.parent})."
+        ),
+    )
+    p.add_argument(
+        "--out",
+        type=Path,
+        default=DEFAULT_PROPOSED_PATH,
+        help=(
+            f"Output yaml path (default: {DEFAULT_PROPOSED_PATH}, "
+            f"gitignored under reports/proposed/)."
+        ),
+    )
+    p.add_argument(
+        "--n-seed-docs",
+        type=int,
+        default=10,
+        help=(
+            "Number of seed docs to use (default: 10). With 2 templates "
+            "per doc, this yields ~20 candidate cases."
+        ),
+    )
+    p.add_argument(
+        "--backend",
+        type=str,
+        default=None,
+        help=(
+            "Backend override. Precedence: arg > "
+            f"${BACKEND_ENV_VAR} > 'stub'. Allowed: "
+            + ", ".join(sorted(_BACKENDS))
+        ),
+    )
+    p.add_argument(
+        "--model",
+        type=str,
+        default=None,
+        help=(
+            "Model id passed to the backend. Ignored for stub "
+            "(always recorded as 'stub')."
+        ),
+    )
+    return p
+
+
+def main(argv: Iterable[str] | None = None) -> int:
+    args = _build_arg_parser().parse_args(list(argv) if argv is not None else None)
+    try:
+        cases = propose_cases_from_files(
+            metadata_csv=args.metadata_csv,
+            index_dir=args.index_dir,
+            n_seed_docs=args.n_seed_docs,
+            backend=args.backend,
+            model=args.model,
+        )
+    except CaseProposerInputError as exc:
+        print(f"case_proposer: {exc}", file=sys.stderr)
+        return 2
+    write_proposed_yaml(cases, args.out)
+    print(
+        f"case_proposer: wrote {len(cases)} candidate(s) to {args.out}",
+        file=sys.stderr,
+    )
+    return 0
+
+
+if __name__ == "__main__":  # pragma: no cover - CLI entry
+    raise SystemExit(main())
 
 
 __all__ = [
     "BACKEND_ENV_VAR",
+    "CSV_COLUMN_AGENCY",
+    "CSV_COLUMN_FILE_FORMAT",
+    "CSV_COLUMN_FILE_NAME",
+    "CSV_COLUMN_NOTICE_ID",
+    "CSV_COLUMN_PROJECT",
+    "CSV_COLUMN_TEXT",
     "DEFAULT_AGGREGATE_PATH",
     "DEFAULT_INDEX_PATH",
     "DEFAULT_METADATA_PATH",
@@ -204,7 +618,12 @@ __all__ = [
     "DEFAULT_REVIEWED_PATH",
     "PROPOSER_VERSION",
     "QUERY_TYPES",
+    "REQUIRED_CSV_COLUMNS",
     "CaseProposerBackend",
+    "CaseProposerInputError",
+    "main",
     "propose_cases",
+    "propose_cases_from_files",
     "resolve_backend",
+    "write_proposed_yaml",
 ]

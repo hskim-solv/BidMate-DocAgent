@@ -1,11 +1,17 @@
-"""Tests for the real-data case proposer skeleton (ADR 0029, PR1).
+"""Tests for the real-data case proposer skeleton + backend dispatch
+(ADR 0029).
 
-The stub backend ships empty in PR1 — these tests pin the skeleton's
-shape (Protocol, backend dispatch, error surface) and the
-ADR 0001 byte-identity guard: loading ``eval.case_proposer`` must not
-pull in ``rag_core``, because the proposer is upstream of
-``run_rag_query`` and any accidental dependency would risk a
-side-effect on the naive baseline golden.
+These tests pin the always-on invariants: backend resolution
+precedence, fail-loud unknown / NotImplemented backends, default
+paths under ``reports/proposed/``, and the ADR 0001 byte-identity
+guard — loading ``eval.case_proposer`` must not pull in ``rag_core``,
+because the proposer is upstream of ``run_rag_query`` and any
+accidental dependency would risk a side-effect on the naive baseline
+golden.
+
+PR2 pipeline-level tests (CSV reader, yaml writer, end-to-end
+``propose_cases_from_files``, review walk, promote idempotency) live
+in ``tests/test_case_proposer_pipeline.py``.
 """
 from __future__ import annotations
 
@@ -25,25 +31,29 @@ from eval.case_proposer import (
 
 
 class CaseProposerStubTest(unittest.TestCase):
-    def test_stub_returns_empty_list_in_pr1(self) -> None:
-        """PR1 invariant: skeleton stub emits no candidates."""
-        out = propose_cases([{"doc_id": "doc-001"}], backend="stub")
+    def test_stub_returns_empty_when_no_rows(self) -> None:
+        """Stub emits no candidates without seed rows."""
+        out = propose_cases([], backend="stub", now_iso="2026-05-13T00:00:00Z")
         self.assertEqual(out, [])
 
     def test_stub_deterministic_across_calls(self) -> None:
         """Stub must be byte-equal across runs (ADR 0011 stub-default contract)."""
         rows = [
-            {"doc_id": "doc-001", "사업명": "사업A"},
-            {"doc_id": "doc-002", "사업명": "사업B"},
+            {"doc_id": "doc-001", "발주 기관": "A기관", "사업명": "사업A"},
+            {"doc_id": "doc-002", "발주 기관": "B기관", "사업명": "사업B"},
         ]
-        calls = [propose_cases(rows, backend="stub") for _ in range(5)]
+        calls = [
+            propose_cases(rows, backend="stub", now_iso="2026-05-13T00:00:00Z")
+            for _ in range(5)
+        ]
         for result in calls[1:]:
             self.assertEqual(result, calls[0])
+        self.assertEqual(len(calls[0]), 4)  # 2 rows * 2 templates
 
     def test_resolve_backend_default_is_stub(self) -> None:
         name, fn = resolve_backend()
         self.assertEqual(name, "stub")
-        self.assertEqual(fn([], model="stub"), [])
+        self.assertEqual(fn([], model="stub", now_iso="2026-05-13T00:00:00Z"), [])
 
     def test_resolve_backend_explicit_arg_wins_over_env(self) -> None:
         """Explicit ``name`` argument overrides $BIDMATE_CASE_PROPOSER_BACKEND."""
@@ -79,13 +89,14 @@ class CaseProposerStubTest(unittest.TestCase):
             resolve_backend("does-not-exist")
         self.assertIn("does-not-exist", str(ctx.exception))
 
-    def test_openai_compatible_backend_raises_not_implemented_in_pr1(self) -> None:
+    def test_openai_compatible_backend_raises_not_implemented(self) -> None:
         """Live backend lands in PR3 — callers must fail loudly, not silently fall back."""
         with self.assertRaises(NotImplementedError):
             propose_cases(
                 [{"doc_id": "doc-001"}],
                 backend="openai_compatible",
                 model="claude-sonnet-4-6",
+                now_iso="2026-05-13T00:00:00Z",
             )
 
     def test_default_paths_under_reports_proposed(self) -> None:
