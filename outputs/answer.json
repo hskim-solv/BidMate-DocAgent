@@ -146,6 +146,7 @@
     "retrieval_backend": "dense",
     "rrf_k": 60,
     "bm25_stopword_profile": "shared",
+    "bm25_tokenizer": "regex",
     "metadata_filters": {},
     "top_k": 4,
     "retrieval_budget": {
@@ -168,6 +169,14 @@
     "candidate_count": 9,
     "total_chunks": 9,
     "filter_fallback_used": false,
+    "query_expansion_meta": {
+      "backend": "identity",
+      "model": null,
+      "fell_back": false,
+      "fallback_reason": null,
+      "latency_ms": 0.0,
+      "expanded_length": 26
+    },
     "comparison_coverage": {
       "targets": [
         "rfp-agency-a-ai-quality",
@@ -344,9 +353,9 @@
         "balanced": false
       },
       "stage_latencies_ms": {
-        "query_analysis_ms": 0.8,
+        "query_analysis_ms": 0.81,
         "context_resolution_ms": 0.0,
-        "answer_generation_ms": 1.25
+        "answer_generation_ms": 0.37
       },
       "attempts": [
         {
@@ -435,7 +444,7 @@
     ]
   },
   "diagnostics": {
-    "latency_ms": 3.27,
+    "latency_ms": 3.07,
     "retry_count": 0,
     "abstained": false,
     "answer_status": "supported",
@@ -468,7 +477,7 @@
         "retrieval_mode": "flat",
         "verified": true,
         "verification_reasons": [],
-        "retrieve_ms": 0.23,
+        "retrieve_ms": 0.68,
         "verify_ms": 0.0,
         "comparison_coverage": {
           "targets": [
@@ -660,9 +669,9 @@
     "prompt_profile": "minimal_grounded_extractive",
     "cold_start": true,
     "stage_latency": {
-      "query_analysis_ms": 0.8,
+      "query_analysis_ms": 0.81,
       "context_resolution_ms": 0.0,
-      "answer_generation_ms": 1.25
+      "answer_generation_ms": 0.37
     },
     "synthesis": null,
     "trace_url": null,
