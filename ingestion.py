@@ -38,6 +38,8 @@ def _pii_redaction_enabled() -> bool:
         "yes",
     }
 
+# HWPX (.hwpx) is the XML-based successor to HWP (ZIP archive, not OLE binary).
+# pyhwp does not support HWPX; a dedicated HwpxLoader is deferred to issue #543.
 SUPPORTED_FILE_FORMATS = {"pdf", "hwp"}
 
 REQUIRED_COLUMNS = [
