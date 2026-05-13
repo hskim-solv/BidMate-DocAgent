@@ -52,6 +52,7 @@ from korean_lexicon import (
     TOPIC_KEYWORDS,
     VERIFICATION_INTENT_TOKENS,
 )
+from rag_metadata_processing import metadata_tokens
 from rag_text_processing import normalize_metadata_token, ordered_unique
 from text_normalize import expand_forms, normalize_text
 
@@ -187,8 +188,6 @@ def verification_topics(analysis: dict[str, Any]) -> list[str]:
 
 
 def metadata_terms_for_verification(analysis: dict[str, Any]) -> set[str]:
-    from rag_core import metadata_tokens
-
     values: list[str] = []
     for key in ("entities", "matched_agencies", "matched_projects", "context_entities"):
         values.extend(str(value) for value in analysis.get(key) or [])

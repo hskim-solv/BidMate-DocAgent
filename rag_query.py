@@ -75,6 +75,16 @@ from rag_pipeline_presets import (
     VALID_RETRIEVAL_MODES,
     VALID_RRF_K_RANGE,
 )
+from rag_metadata_processing import (
+    best_metadata_doc_scores,
+    coerce_metadata_targets,
+    dedupe_metadata_matches,
+    match_metadata_targets,
+    metadata_ambiguity_details,
+    metadata_filters_from_matches,
+    metadata_matches_for_stage,
+    metadata_tokens,
+)
 from rag_text_processing import (
     ENTITY_RE,
     QUERY_TYPE_TOP_K_DEFAULTS,
@@ -89,8 +99,6 @@ from text_normalize import normalize_text
 
 
 def is_metadata_ambiguous(matches: list[dict[str, Any]], query_type: str) -> bool:
-    from rag_core import metadata_ambiguity_details
-
     return bool(metadata_ambiguity_details(matches, query_type).get("ambiguous"))
 
 
@@ -292,16 +300,6 @@ def analyze_query(
     entities: list[Any],
     context_entities: list[str] | None = None,
 ) -> dict[str, Any]:
-    from rag_core import (
-        best_metadata_doc_scores,
-        coerce_metadata_targets,
-        dedupe_metadata_matches,
-        match_metadata_targets,
-        metadata_ambiguity_details,
-        metadata_filters_from_matches,
-        metadata_matches_for_stage,
-    )
-
     targets = coerce_metadata_targets(entities)
     normalized_query = normalize_entity(query)
     requested_agencies = extract_requested_agencies(normalized_query)
@@ -433,8 +431,6 @@ def metadata_resolution_diagnostics(
     decision: str | None = None,
     reason: str = "",
 ) -> dict[str, Any]:
-    from rag_core import metadata_matches_for_stage, metadata_tokens
-
     matches = list(analysis.get("metadata_matches") or [])
     selected_by_stage: dict[str, list[dict[str, Any]]] = {}
     for stage in ("strict", "reduced"):
