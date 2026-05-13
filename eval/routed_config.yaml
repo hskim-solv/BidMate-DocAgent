@@ -1,0 +1,327 @@
+mode: rag
+description: >
+  Routed-subset measurement surface for ADR 0032 (saturation falsifier).
+  Cases here are picked specifically so metadata-first routing does NOT
+  fully resolve the query — dense retrieval is exercised and embedding-
+  level spreads become measurable. Compare `agentic_full` (baseline,
+  metadata_first=true) vs `agentic_full_routed` (metadata_first=false)
+  on the same case set; in PR-2 the matrix is extended to 5 embeddings.
+  Surface is additive — `eval/config.yaml` and the `naive_baseline`
+  golden bytes are untouched (ADR 0001 invariant).
+index_dir: data/index
+primary_run: agentic_full
+latency_budgets:
+  agentic_full:
+    p95_ms: 200
+  agentic_full_routed:
+    # Same ceiling as `agentic_full` — disabling metadata-first only
+    # changes which retrieval path runs, not the per-query budget on
+    # the deterministic hashing backend (real-data measurement is
+    # separate, ADR 0005).
+    p95_ms: 200
+answer_policy:
+  answerable_status: supported
+  unanswerable_status: insufficient
+  min_claims_answerable: 1
+  require_claim_citations: true
+ablation_runs:
+  - name: agentic_full
+    pipeline: agentic_full
+    metadata_first: true
+    rerank: true
+    verifier_retry: true
+    retrieval_mode: flat
+  - name: agentic_full_routed
+    pipeline: agentic_full
+    metadata_first: false
+    rerank: true
+    verifier_retry: true
+    retrieval_mode: flat
+cases:
+  # ============================================================
+  # Category 1 — Multi-turn follow-up where metadata matching is
+  # non-deterministic. The follow-up question omits the agency
+  # entity that was set up by `prior_turns`; metadata-first cannot
+  # uniquely route, so dense retrieval has to disambiguate via
+  # context entity injection.
+  # ============================================================
+  - id: routed_followup_entity_switch_a_to_b
+    query_type: follow_up
+    hardcase_categories:
+      - retrieval_hardening
+      - follow_up_context
+    prior_turns:
+      - query: "기관 A의 보안 통제 요구사항은?"
+    query: "그럼 같은 항목을 기관 B에서는 어떻게 요구하고 있어?"
+    expected_doc_ids:
+      - rfp-agency-b-mlops-governance
+    expected_terms:
+      - "개인정보 비식별화"
+      - "접근 권한 분리"
+    expected_citation_terms:
+      - "개인정보 비식별화"
+      - "접근 권한 분리"
+    expected_claim_targets:
+      - "기관 B"
+    expected_claim_citations:
+      - target: "기관 B"
+        expected_doc_ids:
+          - rfp-agency-b-mlops-governance
+        expected_terms:
+          - "개인정보 비식별화"
+          - "접근 권한 분리"
+    answerable: true
+
+  - id: routed_followup_implicit_metric_c
+    query_type: follow_up
+    hardcase_categories:
+      - retrieval_hardening
+      - follow_up_context
+    prior_turns:
+      - query: "기관 C의 챗봇 응답 시간 목표는?"
+    query: "그 외에 어떤 성능 지표가 함께 요구돼?"
+    expected_doc_ids:
+      - rfp-agency-c-chatbot
+    expected_terms:
+      - "상담 이관"
+    expected_citation_terms:
+      - "상담 이관"
+    expected_claim_targets:
+      - "기관 C"
+    expected_claim_citations:
+      - target: "기관 C"
+        expected_doc_ids:
+          - rfp-agency-c-chatbot
+        expected_terms:
+          - "상담 이관"
+    answerable: true
+
+  - id: routed_followup_2step_implicit_a
+    query_type: follow_up
+    hardcase_categories:
+      - retrieval_hardening
+      - follow_up_context
+    prior_turns:
+      - query: "기관 A의 AI 요구사항은?"
+      - query: "그 기관이 요구한 보안 조건도 알려줘"
+    query: "그 사업의 산출물 검수 항목은 뭐야?"
+    expected_doc_ids:
+      - rfp-agency-a-ai-quality
+    expected_terms:
+      - "모델 점검 리포트"
+      - "보안 통제 매뉴얼"
+    expected_citation_terms:
+      - "모델 점검 리포트"
+      - "보안 통제 매뉴얼"
+    expected_claim_targets:
+      - "기관 A"
+    answerable: true
+
+  # ============================================================
+  # Category 2 — Multi-doc comparison ambiguity. The same metadata
+  # candidate (e.g. "보안", "산출물") is distributed across ≥ 2
+  # docs, so metadata-first cannot pick a single agency — dense
+  # retrieval has to rank semantically across all candidates.
+  # ============================================================
+  - id: routed_compare_strongest_security
+    query_type: comparison
+    hardcase_categories:
+      - retrieval_hardening
+    query: "보안 통제 요구사항이 가장 구체적으로 명시된 기관 두 곳을 비교해줘"
+    expected_doc_ids:
+      - rfp-agency-a-ai-quality
+      - rfp-agency-b-mlops-governance
+    expected_terms:
+      - "보안 통제"
+      - "개인정보 비식별화"
+    expected_citation_terms:
+      - "보안 통제"
+      - "개인정보 비식별화"
+    expected_claim_targets:
+      - "기관 A"
+      - "기관 B"
+    expected_claim_citations:
+      - target: "기관 A"
+        expected_doc_ids:
+          - rfp-agency-a-ai-quality
+        expected_terms:
+          - "보안 통제"
+      - target: "기관 B"
+        expected_doc_ids:
+          - rfp-agency-b-mlops-governance
+        expected_terms:
+          - "개인정보 비식별화"
+    answerable: true
+
+  - id: routed_compare_deliverables_breadth
+    query_type: comparison
+    hardcase_categories:
+      - retrieval_hardening
+    query: "산출물 요구 항목이 가장 많이 명시된 두 기관을 비교해줘"
+    expected_doc_ids:
+      - rfp-agency-a-ai-quality
+      - rfp-agency-b-mlops-governance
+    expected_terms:
+      - "모델 점검 리포트"
+      - "MLOps"
+    expected_citation_terms:
+      - "모델 점검 리포트"
+      - "MLOps"
+    expected_claim_targets:
+      - "기관 A"
+      - "기관 B"
+    expected_claim_citations:
+      - target: "기관 A"
+        expected_doc_ids:
+          - rfp-agency-a-ai-quality
+        expected_terms:
+          - "모델 점검 리포트"
+      - target: "기관 B"
+        expected_doc_ids:
+          - rfp-agency-b-mlops-governance
+        expected_terms:
+          - "MLOps"
+    answerable: true
+
+  - id: routed_compare_common_vs_agency_a
+    query_type: comparison
+    hardcase_categories:
+      - retrieval_hardening
+    query: "공통 제출조건과 기관 A의 산출물 요구를 비교해줘"
+    expected_doc_ids:
+      - rfp-common-submission
+      - rfp-agency-a-ai-quality
+    expected_terms:
+      - "일정 준수 계획"
+      - "모델 점검 리포트"
+    expected_citation_terms:
+      - "일정 준수 계획"
+      - "모델 점검 리포트"
+    expected_claim_targets:
+      - "공통"
+      - "기관 A"
+    expected_claim_citations:
+      - target: "공통"
+        expected_doc_ids:
+          - rfp-common-submission
+        expected_terms:
+          - "일정 준수 계획"
+      - target: "기관 A"
+        expected_doc_ids:
+          - rfp-agency-a-ai-quality
+        expected_terms:
+          - "모델 점검 리포트"
+    answerable: true
+
+  - id: routed_compare_mlops_kinship_a_b
+    query_type: comparison
+    hardcase_categories:
+      - retrieval_hardening
+    query: "MLOps 거버넌스 요구와 가장 유사한 품질 통제 요구를 가진 두 기관을 비교해줘"
+    expected_doc_ids:
+      - rfp-agency-a-ai-quality
+      - rfp-agency-b-mlops-governance
+    expected_terms:
+      - "품질관리"
+      - "MLOps"
+    expected_citation_terms:
+      - "품질관리"
+      - "MLOps"
+    expected_claim_targets:
+      - "기관 A"
+      - "기관 B"
+    expected_claim_citations:
+      - target: "기관 A"
+        expected_doc_ids:
+          - rfp-agency-a-ai-quality
+        expected_terms:
+          - "품질관리"
+      - target: "기관 B"
+        expected_doc_ids:
+          - rfp-agency-b-mlops-governance
+        expected_terms:
+          - "MLOps"
+    answerable: true
+
+  # ============================================================
+  # Category 3 — Inference queries without an explicit metadata
+  # column hook. There is no agency / project / column name in the
+  # query, so metadata-first has nothing to filter on; the answer
+  # has to come from semantic similarity across the corpus.
+  # ============================================================
+  - id: routed_inference_privacy_required_agency
+    query_type: single_doc
+    hardcase_categories:
+      - retrieval_hardening
+    query: "개인정보 비식별화가 핵심 요구로 명시된 사업은 어디야?"
+    expected_doc_ids:
+      - rfp-agency-b-mlops-governance
+    expected_terms:
+      - "개인정보 비식별화"
+      - "접근 권한 분리"
+    expected_citation_terms:
+      - "개인정보 비식별화"
+      - "접근 권한 분리"
+    expected_claim_targets:
+      - "기관 B"
+    expected_claim_citations:
+      - target: "기관 B"
+        expected_doc_ids:
+          - rfp-agency-b-mlops-governance
+        expected_terms:
+          - "개인정보 비식별화"
+    answerable: true
+
+  - id: routed_inference_response_time_owner
+    query_type: single_doc
+    hardcase_categories:
+      - retrieval_hardening
+    query: "응답 시간 목표가 명시적으로 정해진 사업은?"
+    expected_doc_ids:
+      - rfp-agency-c-chatbot
+    expected_terms:
+      - "2초"
+      - "상담 이관"
+    expected_citation_terms:
+      - "2초"
+      - "상담 이관"
+    expected_claim_targets:
+      - "기관 C"
+    expected_claim_citations:
+      - target: "기관 C"
+        expected_doc_ids:
+          - rfp-agency-c-chatbot
+        expected_terms:
+          - "2초"
+    answerable: true
+
+  - id: routed_inference_common_submission_item
+    query_type: single_doc
+    hardcase_categories:
+      - retrieval_hardening
+    query: "모든 제안사가 공통적으로 제출해야 하는 산출물 검수 항목은?"
+    expected_doc_ids:
+      - rfp-common-submission
+    expected_terms:
+      - "산출물 품질 검수 절차"
+    expected_citation_terms:
+      - "산출물 품질 검수 절차"
+    expected_claim_targets:
+      - "공통"
+    expected_claim_citations:
+      - target: "공통"
+        expected_doc_ids:
+          - rfp-common-submission
+        expected_terms:
+          - "산출물 품질 검수 절차"
+    answerable: true
+
+  - id: routed_inference_unanswerable_blockchain_focus
+    query_type: abstention
+    hardcase_categories:
+      - retrieval_hardening
+    query: "블록체인 기반 거래 검증이 핵심 요구인 사업은?"
+    expected_doc_ids: []
+    expected_terms:
+      - "블록체인"
+    answerable: false
