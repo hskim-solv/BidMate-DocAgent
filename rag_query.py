@@ -70,6 +70,7 @@ from rag_pipeline_presets import (
     DEFAULT_RAG_PIPELINE_NAME,
     RRF_K,
     VALID_BM25_STOPWORD_PROFILES,
+    VALID_BM25_TOKENIZERS,
     VALID_RETRIEVAL_BACKENDS,
     VALID_RETRIEVAL_MODES,
     VALID_RRF_K_RANGE,
@@ -503,6 +504,7 @@ def make_plan(
     comparison_balance: dict[str, Any] | None = None,
     rrf_k: int = RRF_K,
     bm25_stopword_profile: str = "shared",
+    bm25_tokenizer: str = "regex",
 ) -> dict[str, Any]:
     from rag_core import QUERY_TYPE_TOP_K_DEFAULTS
 
@@ -518,6 +520,9 @@ def make_plan(
     if bm25_stopword_profile not in VALID_BM25_STOPWORD_PROFILES:
         choices = ", ".join(sorted(VALID_BM25_STOPWORD_PROFILES))
         raise ValueError(f"bm25_stopword_profile must be one of: {choices}")
+    if bm25_tokenizer not in VALID_BM25_TOKENIZERS:
+        choices = ", ".join(sorted(VALID_BM25_TOKENIZERS))
+        raise ValueError(f"bm25_tokenizer must be one of: {choices}")
     query_type = str(analysis.get("query_type") or "single_doc")
     default_top_k = query_type_default_top_k(query_type)
     budget_reason = top_k_reason or (
@@ -576,6 +581,7 @@ def make_plan(
         "retrieval_backend": retrieval_backend,
         "rrf_k": int(rrf_k),
         "bm25_stopword_profile": bm25_stopword_profile,
+        "bm25_tokenizer": bm25_tokenizer,
         "metadata_filters": filters,
         "top_k": top_k or default_top_k,
         "retrieval_budget": {

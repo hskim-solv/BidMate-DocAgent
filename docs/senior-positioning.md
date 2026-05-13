@@ -15,7 +15,7 @@
 
 | 시그널 | 어디서 확인하나 |
 |---|---|
-| 아키텍처 결정이 **사후 합리화가 아닌 기록된 결정**으로 남아있다 | [`docs/adr/`](./adr/README.md) — 29개 ADR (22 accepted / 7 proposed), status-tracked, supersession chains 명시 |
+| 아키텍처 결정이 **사후 합리화가 아닌 기록된 결정**으로 남아있다 | [`docs/adr/`](./adr/README.md) — 30개 ADR (23 accepted / 7 proposed), status-tracked, supersession chains 명시 |
 | **측정 가능한 성공 기준**을 미리 잡고 그 기준으로 평가한다 | [`portfolio-case-study.md` §2](./portfolio-case-study.md), [`eval/config.yaml`](../eval/config.yaml), README headline 표 |
 | 합성 평가의 한계를 알고 **공개/비공개 평가 분리**로 보완한다 | [ADR 0005](./adr/0005-eval-split-public-synthetic-private-local.md), [`docs/private-100-doc-experiments.md`](./private-100-doc-experiments.md) |
 | **실패를 분류·우선순위화**한 뒤 백로그로 만든다 | [`docs/real-data-failure-taxonomy.md`](./real-data-failure-taxonomy.md), 메타 이슈 #49 |
@@ -58,6 +58,7 @@
 | [0028](./adr/0028-security-screen-additive.md) | accepted | Prompt-injection screen (query-side, diagnostic-only) + PII redaction (ingestion-time, opt-in via `BIDMATE_INGEST_REDACT_PII`) as additive security layer (extends 0008 to query side; preserves 0001 / 0003 / 0005) | ADR 0008이 evidence 측 injection 방어라면 0028은 query 측 보완. 5개 한국 RFP 도메인 + 3개 영문 일반 패턴의 regex floor — Llama Guard 같은 ML 분류기는 측정-게이트로 미루고 결정적 floor부터. PII는 default off + 단일 env-var 토글로 ADR 0001 byte-identical 유지. "production 보안 어떻게?" 질문에 측정 가능한 답 + ADR 0008과 짝을 이루는 surface 설계. |
 | [0029](./adr/0029-real-data-case-proposer-additive.md) | proposed | Real-data case proposer as additive semi-supervised eval-set growth (extends 0005 / 0006; reuses 0011 / 0012 backend pattern; preserves 0001 / 0003 / 0004 / 0008; calibration mirrors 0016) | ADR 0005가 case 본문 commit을 막아 N=100에 묶인 private real-data eval을 사람-검수 게이트로 확장. proposer 자체를 ADR 0011 additive-ablation 패턴(stub-default + opt-in live, 0012 미러)으로 만들고, `proposer_accept_rate` / `field_edit_rate`만 commit boundary 위로 올림 — case 본문은 안 보이지만 "proposer가 얼마나 믿을 만한지"는 git log에 남는다. 자동 라벨링 시스템 자체를 정량 평가한다는 ADR 0016 패턴 재사용. "private eval을 어떻게 확장하셨나요?" 질문에 측정-게이트 답 + commit boundary 유지 설계. |
 | [0030](./adr/0030-leaderboard-headline-includes-agentic-full.md) | accepted | Leaderboard headline expands to render `agentic_full` alongside `naive_baseline` as parallel time series; ADR 0001 baseline preserved, `ablation_full` aggregate key added to history snapshots (extends ADR 0001 / ADR 0024 visibility surface) | ADR 0001이 보장하는 baseline 결정성과 ADR 0024가 운영 surface로 잡은 `agentic_full`을 leaderboard에서 *동시에* 가시화. "안 변하는 baseline" 옆에 "움직이는 full"을 두는 것이 정체된 메트릭이 아니라 *의도된 두 축*임을 시각으로 증명. `ablation_full` aggregate sub-key는 ADR 0005 화이트리스트 패턴(`judge_ragas` 0012, `retry_effectiveness` #120) 그대로 — 정수/실수 스칼라 + bootstrap CI 만 통과. forward-only 마이그레이션으로 기존 21개 snapshot에는 키 부재, 새 cron 부터 자동 채워짐. |
+| [0031](./adr/0031-bm25-korean-morphology-additive.md) | accepted | BM25 Korean morphology tokenizer (`bm25_tokenizer: "regex" \| "kiwi"`) as additive ablation, kiwipiepy lazy-imported with never-raise fallback to regex (extends 0010 / 0011; preserves 0001 / 0003; follows 0019 → 0021 / 0026 measurement-gated pattern) | 외부 리뷰 §A3-S3가 정확히 짚은 한국어 형태소 분석기 부재를 측정-게이트 ablation으로 충당. `re.compile(r"[A-Za-z0-9]+\|[가-힣]+")` regex가 "입찰참여시작일" vs "입찰 참여 시작일"을 다르게 토큰화하는 갭을 kiwipiepy 체언/용언/수식어/외래어 POS filter로 정렬. 새 config key + `full_kiwi` 행 + never-raise 폴백 — 휠 누락 환경에서 byte-equal to `hybrid_bm25`. ADR 0019 → 0021 deferred-then-closed 패턴 그대로 — 측정 ≥+3pp lift 시 follow-up ADR로 default flip 가능. "Korean tokenizer 어떻게 했어요?" 질문에 measurable answer + 추가 30MB dep을 hard CI required로 만들지 않은 trade-off 설명. |
 
 **인터뷰 talking point 1 (real-data 회귀)**: "ADR 0005가 없었다면 공개본의 abstention 회귀(#69의 `1.000 → 0.500` 사건)는 아무도 보지 못했을 것이다. 공개 합성만 보던 시기에는 1-of-2 incidental overlap 패턴이 잡히지 않았다." — 근거: [`docs/private-100-doc-experiments.md`](./private-100-doc-experiments.md) 2026-05-11 entry.
 
@@ -185,7 +186,7 @@ make reproduce  # smoke + SHA-256 over the environment-invariant metric subset
 
 ### 30초 자기소개
 
-> "BidMate-DocAgent는 **한국어 RFP 도메인-특화 RAG**입니다. 일반 영어 벤치(KMMLU/MMLU) 점수 경쟁이 아니라, 한국 B2B/공공 입찰 시장의 비교 질의에서 발생하는 한쪽 문서 starvation 패턴을 발견하고 막은 게 차별점입니다. **comparison-aware balanced top-k** + **metadata-first retrieval** + **extractive grounded-answer 계약**으로 hallucination을 구조적으로 차단하고, **공개 합성 + 비공개 real-data + KorQuAD 2.1 한국어 공개셋** 세 표면으로 silent regression을 분리 탐지합니다. 운영 시그널 측에서는 **29개 ADR**, prompt-caching 적용 **cost telemetry**, fail-closed **observability(LangFuse/OTel)**, **CI 회귀 게이트**까지 완성했습니다."
+> "BidMate-DocAgent는 **한국어 RFP 도메인-특화 RAG**입니다. 일반 영어 벤치(KMMLU/MMLU) 점수 경쟁이 아니라, 한국 B2B/공공 입찰 시장의 비교 질의에서 발생하는 한쪽 문서 starvation 패턴을 발견하고 막은 게 차별점입니다. **comparison-aware balanced top-k** + **metadata-first retrieval** + **extractive grounded-answer 계약**으로 hallucination을 구조적으로 차단하고, **공개 합성 + 비공개 real-data + KorQuAD 2.1 한국어 공개셋** 세 표면으로 silent regression을 분리 탐지합니다. 운영 시그널 측에서는 **30개 ADR**, prompt-caching 적용 **cost telemetry**, fail-closed **observability(LangFuse/OTel)**, **CI 회귀 게이트**까지 완성했습니다."
 
 읽는 시간 ≈ 30초. 면접 첫 답으로 그대로 사용 가능. 상대가 "좀 더 자세히"를 물으면 §1, 측정 의문에는 §2, 운영 의문에는 [`production-readiness.md`](./production-readiness.md)로 넘어간다.
 
