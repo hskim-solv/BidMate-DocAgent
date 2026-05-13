@@ -231,6 +231,59 @@ def run_donut(pdf_path: Path) -> PipelineResult:
     )
 
 
+def run_paddleocr(pdf_path: Path) -> PipelineResult:
+    try:
+        import fitz  # type: ignore
+        from PIL import Image  # type: ignore
+    except Exception as exc:
+        return PipelineResult(
+            label="paddleocr (PP-OCRv4)",
+            full_text="", headings=[], table_cells=[], fields=[],
+            latency_seconds=0.0,
+            error=f"pymupdf or pillow missing: {exc}",
+        )
+    try:
+        from visual_ingestion import paddleocr_provider
+    except Exception as exc:
+        return PipelineResult(
+            label="paddleocr (PP-OCRv4)",
+            full_text="", headings=[], table_cells=[], fields=[],
+            latency_seconds=0.0,
+            error=f"paddleocr import failed: {exc}",
+        )
+
+    start = time.perf_counter()
+    error: str | None = None
+    artifact: dict[str, Any] = {}
+    try:
+        _, artifact = parse_visual_document(
+            pdf_path, doc_id="spike-paddleocr", title=pdf_path.stem, ocr_provider=paddleocr_provider
+        )
+    except Exception as exc:
+        error = f"paddleocr inference failed: {exc}"
+    elapsed = time.perf_counter() - start
+
+    if artifact and artifact.get("diagnostics", {}).get("status") == "failed":
+        error = str(artifact["diagnostics"].get("reasons"))
+
+    blocks = [block for page in artifact.get("pages", []) for block in page.get("blocks", [])]
+    full_text = "\n".join(str(b.get("text") or "") for b in blocks).strip()
+    if not full_text and not error:
+        error = "paddleocr produced empty text"
+    headings = [str(b.get("text") or "").strip() for b in blocks if b.get("type") == "heading"]
+    table_cells = [cell for table in (artifact.get("tables") or []) for row in table.get("rows", []) for cell in row]
+    fields = [(c["key"], c["value"]) for c in (artifact.get("field_candidates") or [])]
+    return PipelineResult(
+        label="paddleocr (PP-OCRv4)",
+        full_text=full_text,
+        headings=headings,
+        table_cells=table_cells,
+        fields=fields,
+        latency_seconds=elapsed,
+        error=error,
+    )
+
+
 def strip_donut_tags(text: str) -> str:
     return re.sub(r"</?s_[^>]+>", " ", re.sub(r"<[^>]+>", " ", text)).strip()
 
@@ -347,7 +400,7 @@ def write_doc_results(doc_path: Path, table_md: str, gt_available: bool, errors:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Donut vs OCR 1-page comparison spike (issue #168).")
     parser.add_argument("--input", type=Path, default=None, help="optional real PDF path; default = synthetic")
-    parser.add_argument("--backend", choices=["both", "baseline", "donut"], default="both")
+    parser.add_argument("--backend", choices=["both", "baseline", "donut", "paddleocr", "all"], default="both")
     parser.add_argument("--write-doc", action="store_true", help="update docs/vision-spike.md Results section")
     parser.add_argument("--doc-path", type=Path, default=REPO_ROOT / "docs" / "vision-spike.md")
     args = parser.parse_args(argv)
@@ -366,10 +419,12 @@ def main(argv: list[str] | None = None) -> int:
         print(f"generated synthetic PDF: {pdf_path}")
 
     results: list[PipelineResult] = []
-    if args.backend in ("both", "baseline"):
+    if args.backend in ("both", "baseline", "all"):
         results.append(run_baseline(pdf_path))
-    if args.backend in ("both", "donut"):
+    if args.backend in ("both", "donut", "all"):
         results.append(run_donut(pdf_path))
+    if args.backend in ("paddleocr", "all"):
+        results.append(run_paddleocr(pdf_path))
 
     rows = [compute_metrics(r, gt) for r in results]
     table_md = render_markdown_table(rows, gt_available=gt is not None)

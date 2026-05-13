@@ -44,7 +44,7 @@ VISUAL_METADATA_FORMATS = { *SUPPORTED_VISUAL_FORMATS, "hwp" }
 
 DEFAULT_DONUT_MODEL = "daekeun-ml/donut-base-finetuned-korean"
 DONUT_FALLBACK_MODEL = "naver-clova-ix/donut-base"
-OCR_PROVIDERS = ("tesseract", "donut")
+OCR_PROVIDERS = ("tesseract", "donut", "paddleocr")
 
 OcrProvider = Callable[[Any], str | list[dict[str, Any]]]
 
@@ -637,6 +637,54 @@ def donut_ocr_provider(image: Any) -> str:
     return sequence.strip()
 
 
+_PADDLE_OCR_CACHE: dict[str, Any] = {}
+
+
+def paddleocr_provider(image: Any) -> list[dict[str, Any]]:
+    """PaddleOCR PP-OCRv4 provider: returns structured text blocks for one page image.
+
+    Requires ``paddleocr`` and ``paddlepaddle`` (CPU-only install sufficient).
+    Language is controlled by BIDMATE_PADDLE_LANG env var (default: 'korean').
+    """
+    try:
+        from paddleocr import PaddleOCR  # type: ignore
+    except ImportError as exc:
+        raise OcrUnavailable(
+            f"paddleocr_unavailable: pip install paddleocr paddlepaddle ({exc})"
+        ) from exc
+    try:
+        import numpy as np  # type: ignore
+    except ImportError as exc:
+        raise OcrUnavailable(f"paddleocr_unavailable: numpy required ({exc})") from exc
+
+    lang = os.environ.get("BIDMATE_PADDLE_LANG", "korean")
+    cache_key = f"paddle_{lang}"
+    if cache_key not in _PADDLE_OCR_CACHE:
+        _PADDLE_OCR_CACHE[cache_key] = PaddleOCR(
+            use_angle_cls=True, lang=lang, use_gpu=False, show_log=False
+        )
+    engine = _PADDLE_OCR_CACHE[cache_key]
+
+    img_array = np.array(image)
+    raw = engine.ocr(img_array, cls=True)
+
+    blocks: list[dict[str, Any]] = []
+    if not raw or raw[0] is None:
+        return blocks
+    for line in raw[0]:
+        if not line:
+            continue
+        pts, (text, conf) = line
+        xs = [float(p[0]) for p in pts]
+        ys = [float(p[1]) for p in pts]
+        blocks.append({
+            "text": text,
+            "bbox": [min(xs), min(ys), max(xs), max(ys)],
+            "confidence": float(conf),
+        })
+    return blocks
+
+
 def get_ocr_provider(name: str | None = None) -> OcrProvider:
     """Return the OCR provider matching ``name`` (or env var BIDMATE_VISUAL_OCR)."""
     resolved = (name or os.environ.get("BIDMATE_VISUAL_OCR") or "tesseract").lower()
@@ -644,6 +692,8 @@ def get_ocr_provider(name: str | None = None) -> OcrProvider:
         return tesseract_ocr_provider
     if resolved == "donut":
         return donut_ocr_provider
+    if resolved == "paddleocr":
+        return paddleocr_provider
     raise ValueError(
         f"unknown ocr provider: {resolved!r}. Valid options: {sorted(OCR_PROVIDERS)}"
     )
