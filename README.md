@@ -3,11 +3,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![PR Eval Delta](https://github.com/hskim-solv/BidMate-DocAgent/actions/workflows/pr-eval.yml/badge.svg?branch=main)](https://github.com/hskim-solv/BidMate-DocAgent/actions/workflows/pr-eval.yml) [![codecov](https://codecov.io/gh/hskim-solv/BidMate-DocAgent/branch/main/graph/badge.svg)](https://codecov.io/gh/hskim-solv/BidMate-DocAgent) [![Python 3.11](https://img.shields.io/badge/Python-3.11-blue.svg)](pyproject.toml) [![Engineering notes](https://img.shields.io/badge/engineering--notes-GitHub%20Pages-blue)](https://hskim-solv.github.io/BidMate-DocAgent/) [![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/hskim-solv/BidMate-DocAgent/blob/main/demo/bidmate_quickstart.ipynb) [![Open in HF Spaces](https://huggingface.co/datasets/huggingface/badges/resolve/main/open-in-hf-spaces-sm.svg)](https://huggingface.co/spaces/hskim-solv/bidmate-docagent) [![Live demo on Fly.io](https://img.shields.io/badge/Live%20demo-Fly.io-success)](https://bidmate-docagent-demo.fly.dev/)
 
-<!-- Hero demo asset slot. Asset (docs/assets/demo.gif) not yet captured;
-     image line is commented out to avoid broken-image rendering on GitHub.
-     Recording guide: docs/deployment.md#recording-the-demo-video.
-     To re-enable: uncomment the line below once docs/assets/demo.gif exists. -->
-<!-- ![BidMate-DocAgent live demo (60-90 s walkthrough)](docs/assets/demo.gif) -->
+![BidMate-DocAgent live demo (5s walkthrough — comparison query, extractive, no LLM)](docs/assets/demo.gif)
 
 > 일반 영어 LLM 벤치(KMMLU/MMLU) 점수 경쟁이 아닌 **한국어 RFP 도메인-특화 RAG**입니다. 차별화는 세 축: 비교 질의에서 한쪽 문서 starvation을 막는 [comparison-aware balanced top-k](#key-technical-contribution--comparison-aware-balanced-top-k), 의미 유사도 단독의 함정을 회피하는 metadata-first retrieval([ADR 0002](docs/adr/0002-metadata-first-retrieval.md)), hallucination을 구조적으로 차단하는 extractive grounded-answer 답변 계약([ADR 0003](docs/adr/0003-structured-answer-citation-contract.md)). 측정은 공개 합성 + 비공개 real-data + KorQuAD 2.1 한국어 공개셋으로 분리([ADR 0005](docs/adr/0005-eval-split-public-synthetic-private-local.md), [ADR 0018](docs/adr/0018-korean-public-rag-bench.md)) — silent regression이 한 표면에서 다른 표면으로 새지 않도록 설계됐습니다.
 
@@ -115,36 +111,36 @@ LLM synthesis opt-in(`agentic_full_llm`, [ADR 0011](docs/adr/0011-llm-synthesis-
 | Evidence | Claim Citation Alignment | 1.000 (1.000–1.000) | 0.974 (0.921–1.000) | +2.6pp |
 | Evidence | Answer Format Compliance | 0.905 (0.810–0.976) | 0.667 (0.524–0.810) | +23.8pp |
 | Abstention | Abstention Accuracy | 1.000 (1.000–1.000) | 0.222 (0.000–0.556) | +77.8pp |
-| System | Latency (p50/p95) | p50 2.0ms / p95 5.0ms (`agentic_full`) | p50 2.2ms / p95 5.8ms (`naive_baseline` — CI source of truth) | — |
+| System | Latency (p50/p95) | p50 1.8ms / p95 4.4ms (`agentic_full`) | p50 1.9ms / p95 7.5ms (`naive_baseline` — CI source of truth) | — |
 | System | Retry Rate | 0.310 (0.167–0.452) | 0.000 (0.000–0.000) | — |
 
 ### Ablation comparison
 
 | Run | Pipeline | Top-k | Metadata-first | Rerank | Verifier/Retry | Accuracy | Groundedness | Citation | Claim Align | Format | Abstention | Retry | Latency p95 |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| naive_baseline | naive_baseline | 4 | off | off | off | 0.844±0.12 | 0.714±0.14 | 0.512±0.12 | 0.974±0.05 | 0.667 | 0.300 | 0.000 | 5.8ms |
-| full | agentic_full | auto | on | on | on | 0.906±0.12 | 0.929±0.07 | 0.905±0.08 | 1.000±0.00 | 0.905 | 1.000 | 0.310 | 5.0ms |
-| no_metadata_first | agentic_full | auto | off | on | on | 0.844±0.12 | 0.881±0.10 | 0.679±0.11 | 0.968±0.06 | 0.857 | 1.000 | 0.000 | 4.0ms |
-| no_verifier_retry | agentic_full | auto | on | on | off | 0.906±0.12 | 0.762±0.14 | 0.762±0.14 | 1.000±0.00 | 0.714 | 0.300 | 0.000 | 2.9ms |
+| naive_baseline | naive_baseline | 4 | off | off | off | 0.844±0.12 | 0.714±0.14 | 0.512±0.12 | 0.974±0.05 | 0.667 | 0.300 | 0.000 | 7.5ms |
+| full | agentic_full | auto | on | on | on | 0.906±0.12 | 0.929±0.07 | 0.905±0.08 | 1.000±0.00 | 0.905 | 1.000 | 0.310 | 4.4ms |
+| no_metadata_first | agentic_full | auto | off | on | on | 0.844±0.12 | 0.881±0.10 | 0.679±0.11 | 0.968±0.06 | 0.857 | 1.000 | 0.000 | 3.8ms |
+| no_verifier_retry | agentic_full | auto | on | on | off | 0.906±0.12 | 0.762±0.14 | 0.762±0.14 | 1.000±0.00 | 0.714 | 0.300 | 0.000 | 2.6ms |
 
 <details><summary>Detection-blind ablations under n=42 — statistically inseparable from <code>full</code>; to be re-tested at n≥100 (issue #570)</summary>
 
 | Run | Pipeline | Top-k | Metadata-first | Rerank | Verifier/Retry | Accuracy | Groundedness | Citation | Claim Align | Format | Abstention | Retry | Latency p95 |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| full_llm | agentic_full_llm | auto | on | on | on | 0.906±0.12 | 0.929±0.07 | 0.905±0.08 | 1.000±0.00 | 0.905 | 1.000 | 0.310 | 5.0ms |
-| full_llm_metadata | agentic_full | auto | on | on | on | 0.906±0.12 | 0.929±0.07 | 0.905±0.08 | 1.000±0.00 | 0.905 | 1.000 | 0.310 | 6.8ms |
-| hierarchical | agentic_full | auto | on | on | on | 0.906±0.12 | 0.929±0.07 | 0.905±0.08 | 1.000±0.00 | 0.905 | 1.000 | 0.310 | 4.9ms |
-| no_rerank | agentic_full | auto | on | off | on | 0.906±0.12 | 0.929±0.07 | 0.905±0.08 | 1.000±0.00 | 0.905 | 1.000 | 0.310 | 4.9ms |
-| hybrid_bm25 | agentic_full | auto | on | on | on | 0.906±0.12 | 0.929±0.07 | 0.905±0.08 | 1.000±0.00 | 0.905 | 1.000 | 0.310 | 4.7ms |
-| hybrid_bm25_k10 | agentic_full | auto | on | on | on | 0.906±0.12 | 0.929±0.07 | 0.905±0.08 | 1.000±0.00 | 0.905 | 1.000 | 0.310 | 4.9ms |
-| hybrid_bm25_k30 | agentic_full | auto | on | on | on | 0.906±0.12 | 0.929±0.07 | 0.905±0.08 | 1.000±0.00 | 0.905 | 1.000 | 0.310 | 4.7ms |
+| full_llm | agentic_full_llm | auto | on | on | on | 0.906±0.12 | 0.929±0.07 | 0.905±0.08 | 1.000±0.00 | 0.905 | 1.000 | 0.310 | 4.5ms |
+| full_llm_metadata | agentic_full | auto | on | on | on | 0.906±0.12 | 0.929±0.07 | 0.905±0.08 | 1.000±0.00 | 0.905 | 1.000 | 0.310 | 4.5ms |
+| hierarchical | agentic_full | auto | on | on | on | 0.906±0.12 | 0.929±0.07 | 0.905±0.08 | 1.000±0.00 | 0.905 | 1.000 | 0.310 | 4.4ms |
+| no_rerank | agentic_full | auto | on | off | on | 0.906±0.12 | 0.929±0.07 | 0.905±0.08 | 1.000±0.00 | 0.905 | 1.000 | 0.310 | 4.5ms |
+| hybrid_bm25 | agentic_full | auto | on | on | on | 0.906±0.12 | 0.929±0.07 | 0.905±0.08 | 1.000±0.00 | 0.905 | 1.000 | 0.310 | 4.5ms |
+| hybrid_bm25_k10 | agentic_full | auto | on | on | on | 0.906±0.12 | 0.929±0.07 | 0.905±0.08 | 1.000±0.00 | 0.905 | 1.000 | 0.310 | 4.5ms |
+| hybrid_bm25_k30 | agentic_full | auto | on | on | on | 0.906±0.12 | 0.929±0.07 | 0.905±0.08 | 1.000±0.00 | 0.905 | 1.000 | 0.310 | 4.5ms |
 | hybrid_bm25_k100 | agentic_full | auto | on | on | on | 0.906±0.12 | 0.929±0.07 | 0.905±0.08 | 1.000±0.00 | 0.905 | 1.000 | 0.310 | 4.5ms |
-| hybrid_bm25_extra_stopwords | agentic_full | auto | on | on | on | 0.906±0.12 | 0.929±0.07 | 0.905±0.08 | 1.000±0.00 | 0.905 | 1.000 | 0.310 | 5.0ms |
-| hybrid_bm25_k30_extra | agentic_full | auto | on | on | on | 0.906±0.12 | 0.929±0.07 | 0.905±0.08 | 1.000±0.00 | 0.905 | 1.000 | 0.310 | 4.9ms |
+| hybrid_bm25_extra_stopwords | agentic_full | auto | on | on | on | 0.906±0.12 | 0.929±0.07 | 0.905±0.08 | 1.000±0.00 | 0.905 | 1.000 | 0.310 | 4.6ms |
+| hybrid_bm25_k30_extra | agentic_full | auto | on | on | on | 0.906±0.12 | 0.929±0.07 | 0.905±0.08 | 1.000±0.00 | 0.905 | 1.000 | 0.310 | 5.2ms |
 | full_kiwi | agentic_full | auto | on | on | on | 0.906±0.12 | 0.929±0.07 | 0.905±0.08 | 1.000±0.00 | 0.905 | 1.000 | 0.310 | 4.6ms |
-| full_reranker | agentic_full | auto | on | on | on | 0.906±0.12 | 0.929±0.07 | 0.905±0.08 | 1.000±0.00 | 0.905 | 1.000 | 0.310 | 4.7ms |
-| full_hyde | agentic_full | auto | on | on | on | 0.906±0.12 | 0.929±0.07 | 0.905±0.08 | 1.000±0.00 | 0.905 | 1.000 | 0.310 | 4.4ms |
-| agentic_full_finetuned | agentic_full | auto | on | on | on | 0.906±0.12 | 0.929±0.07 | 0.905±0.08 | 1.000±0.00 | 0.905 | 1.000 | 0.310 | 4.4ms |
+| full_reranker | agentic_full | auto | on | on | on | 0.906±0.12 | 0.929±0.07 | 0.905±0.08 | 1.000±0.00 | 0.905 | 1.000 | 0.310 | 4.4ms |
+| full_hyde | agentic_full | auto | on | on | on | 0.906±0.12 | 0.929±0.07 | 0.905±0.08 | 1.000±0.00 | 0.905 | 1.000 | 0.310 | 4.5ms |
+| agentic_full_finetuned | agentic_full | auto | on | on | on | 0.906±0.12 | 0.929±0.07 | 0.905±0.08 | 1.000±0.00 | 0.905 | 1.000 | 0.310 | 4.5ms |
 | naive_baseline_finetuned | naive_baseline | 4 | off | off | off | 0.844±0.12 | 0.714±0.14 | 0.512±0.12 | 0.974±0.05 | 0.667 | 0.300 | 0.000 | 2.7ms |
 
 </details>
