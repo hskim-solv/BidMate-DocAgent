@@ -11,7 +11,7 @@ httpx>=0.28.1,<1.0
 # Opt-in OpenAI embedding backend (issue #161, embedding ablation runner).
 # Production runtime does NOT import openai — only contributors running
 # scripts/run_embedding_ablation.py --models text-embedding-3-large need this.
-openai>=1.0
+openai>=2.36.0
 # Opt-in cross-encoder reranker backends (issue #163, rag_rerank.py).
 # CI default is BIDMATE_RERANK_BACKEND=stub (identity, no SDK needed).
 # Real backends — BGE-reranker-v2-m3 / dragonkue-ko via FlagEmbedding, or
