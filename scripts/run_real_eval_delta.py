@@ -110,11 +110,32 @@ SAFE_TOPLEVEL_KEYS = frozenset(
         # into 3 outcome bins. The extractor whitelists the bin names below
         # and casts to int — no per-case text crosses the boundary.
         "abstention_outcomes",
+        # Issue #476 / ADR 0029: headline metrics of the `agentic_full`
+        # ablation run, surfaced so the synthetic leaderboard renders the
+        # `full` pipeline as a parallel time series alongside `naive_baseline`.
+        # The extractor below explicitly whitelists each scalar + the
+        # CI sub-block; case-level fields are dropped.
+        "ablation_full",
     }
 )
 
 # Whitelisted bin names for ``abstention_outcomes``. Integer counts only.
 SAFE_ABSTENTION_OUTCOME_KEYS = ("correct_refusal", "incorrect_answer", "boundary_partial")
+
+# Headline scalars allowed inside ``ablation_full``. Mirrors the top-level
+# scalar inventory (run_eval.py:838-847) so the two surfaces never carry
+# different metric sets.
+SAFE_ABLATION_FULL_SCALAR_KEYS = (
+    "num_predictions",
+    "accuracy",
+    "groundedness",
+    "citation_precision",
+    "citation_grounding",
+    "claim_citation_alignment",
+    "answer_format_compliance",
+    "abstention",
+    "retry",
+)
 
 # Headline metrics whose bootstrap CI is allowed to round-trip the
 # extractor. Mirrors the scalar metrics already whitelisted at the top
@@ -227,6 +248,59 @@ METRICS: list[tuple[str, str, bool]] = [
 # -----------------------------------------------------------------------------
 
 
+def _extract_ablation_full(run_summary: dict[str, Any]) -> dict[str, Any] | None:
+    """Return the ADR 0005-safe headline metrics for one ablation run.
+
+    Used by :func:`extract_aggregate` to fold the `name == "full"` run
+    out of ``eval_summary.json::ablation.runs[]`` into a top-level
+    ``ablation_full`` key. Sub-keys are explicitly whitelisted: scalar
+    metrics, the latency p50/p95/mean, the 3-bin abstention outcomes,
+    and the bootstrap CI sub-block — same defense-in-depth pattern as
+    `judge_ragas` (ADR 0012) and `retry_effectiveness` (#120). Case-level
+    fields and per-attempt latencies are dropped.
+    """
+    if not isinstance(run_summary, dict):
+        return None
+    out: dict[str, Any] = {}
+    for key in SAFE_ABLATION_FULL_SCALAR_KEYS:
+        value = run_summary.get(key)
+        if value is not None:
+            out[key] = value
+    latency = run_summary.get("latency")
+    if isinstance(latency, dict):
+        out["latency"] = {
+            sub: latency.get(sub)
+            for sub in ("p50", "p95", "mean")
+            if latency.get(sub) is not None
+        }
+    outcomes = run_summary.get("abstention_outcomes")
+    if isinstance(outcomes, dict):
+        bin_out = {
+            sub: int(outcomes[sub])
+            for sub in SAFE_ABSTENTION_OUTCOME_KEYS
+            if isinstance(outcomes.get(sub), (int, float))
+        }
+        if bin_out:
+            out["abstention_outcomes"] = bin_out
+    ci = run_summary.get("ci")
+    if isinstance(ci, dict):
+        ci_out: dict[str, Any] = {}
+        for metric in SAFE_CI_METRIC_KEYS:
+            metric_ci = ci.get(metric)
+            if not isinstance(metric_ci, dict):
+                continue
+            trimmed = {
+                sub: metric_ci.get(sub)
+                for sub in SAFE_CI_SUB_KEYS
+                if metric_ci.get(sub) is not None
+            }
+            if trimmed:
+                ci_out[metric] = trimmed
+        if ci_out:
+            out["ci"] = ci_out
+    return out or None
+
+
 def extract_aggregate(summary: dict[str, Any]) -> dict[str, Any]:
     """Return a dict containing only ADR-0005-safe aggregate fields.
 
@@ -286,6 +360,10 @@ def extract_aggregate(summary: dict[str, Any]) -> dict[str, Any]:
                     extracted["cross_ablation"] = cross_out
             if extracted:
                 out[key] = extracted
+        elif key == "ablation_full" and isinstance(value, dict):
+            extracted = _extract_ablation_full(value)
+            if extracted:
+                out[key] = extracted
         elif key == "abstention_outcomes" and isinstance(value, dict):
             bin_out = {
                 sub: int(value[sub])
@@ -335,6 +413,25 @@ def extract_aggregate(summary: dict[str, Any]) -> dict[str, Any]:
                 out[key] = ragas
         else:
             out[key] = value
+
+    # Issue #476 / ADR 0029: when fed a raw eval_summary.json (i.e. the
+    # `ablation.runs[]` shape rather than the aggregate-form `ablation_full`
+    # key), pull the `full` run's headline metrics into our schema. This
+    # is what `scripts/write_synthetic_history.py` relies on so its writer
+    # stays a one-liner: it just hands the raw summary to extract_aggregate
+    # and the surface conversion happens here.
+    if "ablation_full" not in out:
+        ablation = summary.get("ablation")
+        if isinstance(ablation, dict):
+            runs = ablation.get("runs") or []
+            full_run = next(
+                (r for r in runs if isinstance(r, dict) and r.get("name") == "full"),
+                None,
+            )
+            if full_run is not None:
+                extracted = _extract_ablation_full(full_run)
+                if extracted:
+                    out["ablation_full"] = extracted
 
     by_query_type = summary.get("by_query_type")
     if isinstance(by_query_type, dict):
