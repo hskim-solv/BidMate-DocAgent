@@ -35,7 +35,18 @@ except Exception:
 if [[ -z "$cmd" ]]; then
   exit 0
 fi
-if ! grep -qE 'gh[[:space:]]+pr[[:space:]]+merge' <<<"$cmd"; then
+is_merge_cmd=$(printf '%s' "$cmd" | python3 -c '
+import sys, shlex, re
+for part in re.split(r"[;&|\n]", sys.stdin.read()):
+    part = part.strip().lstrip("(")
+    try:
+        tokens = shlex.split(part)
+    except ValueError:
+        continue
+    if len(tokens) >= 3 and tokens[0] == "gh" and tokens[1] == "pr" and tokens[2] == "merge":
+        print("yes"); break
+' 2>/dev/null)
+if [[ "$is_merge_cmd" != "yes" ]]; then
   exit 0
 fi
 if ! grep -qE -- '--delete-branch' <<<"$cmd"; then
