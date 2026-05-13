@@ -41,6 +41,56 @@ _KOREAN_INJECTION_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
         "ko-rating-injection",
         re.compile(r"이\s*문서[^\n]*?(평가\s*기준|점수)[^\n]*?(만점|최고|일등)"),
     ),
+    # Jailbreak persona (DAN and similar named-mode bypasses)
+    (
+        "ko-jailbreak-dan",
+        re.compile(r"DAN\s*(모드|를?\s*활성화|으로서|이란)"),
+    ),
+    # Urgency / authority override — directive must follow
+    (
+        "ko-urgency-override",
+        re.compile(
+            r"(원래\s*지시를?\s*(취소|무효|무시)|모든\s*제한을?\s*(해제|없애|제거))"
+        ),
+    ),
+    # System instructions disclosure (explicit reveal request)
+    (
+        "ko-reveal-instructions",
+        re.compile(
+            r"(숨겨진\s*지시\s*사항|당신이\s*받은[^\n]*지시|시스템\s*지시를?\s*(출력|공개|알려))"
+        ),
+    ),
+    # Context/rule invalidation (reset attack)
+    (
+        "ko-reset-context",
+        re.compile(
+            r"(이전|기존)\s*(규칙|지시)[^\n]*(유효하지\s*않|무효|더\s*이상)"
+        ),
+    ),
+    # Role-play as unconstrained AI
+    (
+        "ko-unconstrained-ai",
+        re.compile(r"제한\s*(없는|없이)[^\n]*AI"),
+    ),
+    # Frame attacks: educational / fictional / training — directive shape
+    (
+        "ko-frame-override",
+        re.compile(
+            r"(교육|창작|연구|훈련\s*데이터|소설\s*속)[^\n]*(이전\s*(지시|제약|설정|규칙)[^\n]*(무시|없애|우회|삭제))"
+        ),
+    ),
+    # Simulation / reset mode declarations
+    (
+        "ko-simulation-reset",
+        re.compile(
+            r"(시뮬레이션\s*모드|이전[^\n]*(지시|설정)[^\n]*(삭제|초기화)[^\n]*새로)"
+        ),
+    ),
+    # "Original instructions + ignore/bypass/delete"
+    (
+        "ko-original-override",
+        re.compile(r"원래\s*(지시|시스템)[^\n]*(무시|우회|삭제|잊)"),
+    ),
 )
 
 # General English injection patterns.
@@ -48,7 +98,15 @@ _ENGLISH_INJECTION_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
         "en-ignore-prior",
         re.compile(
-            r"ignore\s+(?:previous|prior|all)\s+(?:instruction|prompt|answer|system)",
+            r"ignore\s+(?:previous|prior|all\s+previous|the\s+system)\s+"
+            r"(?:instruction|prompt|answer|system|rules?)",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "en-ignore-all-caps",
+        re.compile(
+            r"IGNORE\s+ALL\s+(?:PREVIOUS\s+)?INSTRUCTIONS?",
             re.IGNORECASE,
         ),
     ),
