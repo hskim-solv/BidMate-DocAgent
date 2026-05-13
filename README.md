@@ -152,6 +152,8 @@ LLM synthesis opt-in(`agentic_full_llm`, [ADR 0011](docs/adr/0011-llm-synthesis-
 > Values shown as `mean±half-width` for the 95% bootstrap CI (n=cases, 1000 resamples, seed=17). CI overlap between rows = statistical detection limit at that n, not equivalence. At n=42 the half-width was ~±0.12; n=100 narrows it by ×0.65 (√42/100). The non-CI columns (Format, Abstention, Retry) are point estimates; their CIs appear in the detailed main table above.
 <!-- METRICS_TABLE:END -->
 
+> **더 읽기**: [docs/rag-challenges-solved.md](docs/rag-challenges-solved.md) — 이 숫자를 만든 3가지 핵심 결정(STAR 회고). [docs/performance-evolution.md](docs/performance-evolution.md) — n=42→n=100 CI 수축 히스토리 + 기능별 ablation 효과 분해.
+
 > **Ablation 해석 — CI가 말해주는 검출 한계 vs 실측 trade-off**: `no_rerank` / `hierarchical` / `full_llm`이 `full`과 동일 metric을 보이는 것은 *기능이 동등해서가 아니라 n=42 + bootstrap CI가 차이를 검출하지 못해서*였습니다 — CI 폭이 너무 넓어 미세 차이는 noise에 묻혔습니다. 현재 n=100 확장 완료(issue #570); real-eval 재측정으로 통계적 분리 가능성 확인 예정. **CI가 분리되는 진짜 효과**: `no_metadata_first` citation 0.679±0.11 (CI 0.571–0.786) vs `full` 0.905±0.08 (0.821–0.976) — CI 비겹침으로 metadata-first 효용 통계적 입증. `no_verifier_retry` groundedness 0.762±0.14 (CI 0.619–0.881) vs `full` 0.929±0.07 — verifier loop 효용 시사. 상세 latency·embedding backend 비교: [`docs/benchmarking.md`](docs/benchmarking.md).
 
 ---
