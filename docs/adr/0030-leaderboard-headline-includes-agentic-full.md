@@ -1,4 +1,4 @@
-# 0029: Leaderboard headline includes `agentic_full` alongside `naive_baseline`
+# 0030: Leaderboard headline includes `agentic_full` alongside `naive_baseline`
 
 - **Status**: accepted
 - **Date**: 2026-05-13

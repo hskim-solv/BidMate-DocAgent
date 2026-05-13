@@ -1,4 +1,4 @@
-# 0025: LoRA-fine-tuned embedding adapter as additive ablation
+# 0027: LoRA-fine-tuned embedding adapter as additive ablation
 
 - **Status**: proposed
 - **Date**: 2026-05-12

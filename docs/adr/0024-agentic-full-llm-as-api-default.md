@@ -1,4 +1,4 @@
-# 0023: agentic_full_llm as API default (preset only; backend default stays stub)
+# 0024: agentic_full_llm as API default (preset only; backend default stays stub)
 
 - **Status**: accepted
 - **Date**: 2026-05-12
