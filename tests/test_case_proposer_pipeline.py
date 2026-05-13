@@ -19,6 +19,7 @@ from unittest.mock import patch
 
 import yaml
 
+from rag_core import INDEX_SCHEMA_VERSION
 from eval.case_proposer import (
     CSV_COLUMN_AGENCY,
     CSV_COLUMN_FILE_FORMAT,
@@ -55,7 +56,7 @@ def _make_csv(path: Path, rows: list[dict[str, str]]) -> None:
 
 def _make_index(path: Path, doc_ids: list[str]) -> None:
     payload = {
-        "schema_version": 2,
+        "schema_version": INDEX_SCHEMA_VERSION,
         "build": {
             "documents": [{"doc_id": d} for d in doc_ids],
         },

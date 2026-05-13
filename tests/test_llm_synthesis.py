@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 import rag_synthesis
+from rag_answer_schema import ANSWER_SCHEMA_VERSION
 from rag_core import build_index_payload, run_rag_query
 
 
@@ -29,7 +30,7 @@ ANSWERABLE_QUERY = "기관 A의 보안 통제 요구사항은?"
 
 def _make_answer() -> dict[str, Any]:
     return {
-        "schema_version": 2,
+        "schema_version": ANSWER_SCHEMA_VERSION,
         "status": "supported",
         "status_reason": {"code": "verified", "verified": True, "verification_reasons": []},
         "query_type": "single_doc",
