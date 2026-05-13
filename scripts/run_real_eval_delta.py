@@ -36,6 +36,29 @@ import sys
 from pathlib import Path
 from typing import Any
 
+# Issue #473: share the silence-band + formatting helpers with
+# scripts/_eval_delta.py rather than carrying parallel copies. The
+# sys.path insert mirrors scripts/compare_eval.py so the same module
+# resolves whether the script is invoked as `python3 scripts/run_real_eval_delta.py`
+# or imported as `scripts.run_real_eval_delta` (the test suite does both).
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _eval_delta import (  # noqa: E402
+    fmt_delta as _fmt_delta,
+    fmt_value as _fmt_value,
+    get_path as _get_path,
+    min_num_predictions as _min_num_predictions_shared,
+    silence_threshold as _silence_threshold,
+)
+
+
+def _min_num_predictions(base: dict[str, Any], head: dict[str, Any]) -> int | None:
+    """Thin wrapper around :func:`_eval_delta.min_num_predictions`.
+
+    Kept as a module-private name so callers and tests can keep using
+    the underscore-prefixed identifier they already imported.
+    """
+    return _min_num_predictions_shared(base, head)
+
 # Top-level aggregate keys that are safe to commit. Anything else in
 # the input JSONs is ignored. Keep this list intentionally narrow —
 # adding a key requires a privacy review.
@@ -360,76 +383,6 @@ def _assert_no_forbidden(obj: Any, path: str = "") -> None:
 # -----------------------------------------------------------------------------
 # Rendering
 # -----------------------------------------------------------------------------
-
-
-def _get_path(data: Any, path: str) -> Any:
-    cur = data
-    for part in path.split("."):
-        if not isinstance(cur, dict):
-            return None
-        cur = cur.get(part)
-    return cur
-
-
-def _fmt_value(value: Any) -> str:
-    if value is None:
-        return "—"
-    if isinstance(value, float):
-        return f"{value:.3f}"
-    return str(value)
-
-
-_ABS_SILENCE_FLOOR = 5e-4
-
-
-def _silence_threshold(n_min: int | None) -> float:
-    """``|delta| < threshold`` band that renders as ``·``.
-
-    Issue #463: on N=21 a single case is ±4.76 pp, so the original
-    fixed ``5e-4`` band silences only sub-rounding noise and lets
-    sub-case wobble look like real movement. Sizing the band to
-    ``0.5 / n_min`` keeps it case-aware while floored by the original
-    rounding guard when N is unknown or large.
-    """
-    if isinstance(n_min, int) and n_min > 0:
-        return max(_ABS_SILENCE_FLOOR, 0.5 / n_min)
-    return _ABS_SILENCE_FLOOR
-
-
-def _fmt_delta(
-    base: Any,
-    head: Any,
-    higher_is_better: bool,
-    *,
-    n_min: int | None = None,
-) -> str:
-    if not isinstance(base, (int, float)) or not isinstance(head, (int, float)):
-        return "—"
-    delta = float(head) - float(base)
-    if abs(delta) < _silence_threshold(n_min):
-        return "·"
-    sign = "+" if delta > 0 else ""
-    improved = (delta > 0) if higher_is_better else (delta < 0)
-    flag = " ✅" if improved else " ⚠️"
-    return f"{sign}{delta:.3f}{flag}"
-
-
-def _min_num_predictions(base: dict[str, Any], head: dict[str, Any]) -> int | None:
-    """Smallest positive ``num_predictions`` across base and head.
-
-    Tied to :func:`_silence_threshold`. Real-eval delta uses the
-    minimum of the two so the silence band is the *less powered* side's
-    half-case width — a slice that shrinks shouldn't lower the noise
-    floor with it.
-    """
-    counts: list[int] = []
-    for summary in (base, head):
-        if not isinstance(summary, dict):
-            continue
-        value = summary.get("num_predictions")
-        if isinstance(value, int) and value > 0:
-            counts.append(value)
-    return min(counts) if counts else None
 
 
 def _fmt_ci(summary: dict[str, Any], metric_key: str) -> str:
