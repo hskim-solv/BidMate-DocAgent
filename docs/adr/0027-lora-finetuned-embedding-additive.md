@@ -82,59 +82,100 @@ impossible to clear with embeddings alone.
 
 ## Why "adapter only at index-build time, not query time"
 
-<!-- TODO(user): fill in the rationale for keeping the adapter merge
-     at index-build time (offline) rather than per-query inference.
-     Cover: (1) merge_and_unload() inference cost vs the load cost
-     amortized once per index, (2) why we don't need to support
-     query-time hot-swap, (3) how this composes with the existing
-     `data/embedding-ablation/<slug>/` per-model directory pattern
-     introduced in #174. Reference your own thinking here — this is
-     the kind of design rationale future-you needs to recall, and
-     ghost-written justification rots fast. -->
+`rag_core.embed_texts` (line 566–586) merges the adapter once at first
+call, then caches the result in `MODEL_CACHE` under a
+`(model_name, local_only, adapter_path)` key.
+
+**(1) `merge_and_unload()` cost is amortized, not repeated.**
+`PeftModel.merge_and_unload()` rewrites the full base-model weight
+tensor in memory — it's a one-time cost that produces a plain
+`SentenceTransformer` with no PEFT overhead. Doing this per-query
+would mean paying that cost for every encode call. Caching in
+`MODEL_CACHE` means the merge happens once per process lifetime
+(or once per index-build run), after which query-time embedding is
+as fast as the non-adapted path.
+
+**(2) Query-time hot-swap is not a use case here.**
+The `data/embedding-ablation/<slug>/` directory pattern (issue #174)
+persists the embedded chunk vectors for each adapter variant under a
+slug. Switching adapters at query time would require those vectors
+to have been built under the new adapter — i.e., a full index rebuild.
+There is no in-flight re-embedding; the adapter choice is fixed when
+`scripts/build_index.py` runs. Supporting hot-swap would add
+complexity (adapter version tracking per stored vector, invalidation
+on adapter change) with no payoff for the offline-batch eval use case.
+
+**(3) Composition with the `data/embedding-ablation/<slug>/` pattern.**
+`scripts/build_index.py` reads `BIDMATE_EMBEDDING_LORA_ADAPTER` and
+folds it into the run slug, so each (base model, adapter) combination
+lands in its own directory. Calling `embed_texts` at query time reuses
+the same `MODEL_CACHE` entry — both paths share the same merge result.
+The pattern parallels how `BIDMATE_EMBEDDING_BACKEND` and
+`BIDMATE_EMBEDDING_MODEL` already version separate index directories.
 
 ## Consequences
 
-<!-- TODO(user): fill in the operator-facing consequences. Suggested
-     bullets to expand or replace with your own framing:
+**Easier:**
+- The "have you fine-tuned a model?" interview signal is now
+  grounded in a reproducible artifact: a Colab-runnable training
+  notebook (`notebooks/embedding_finetune.ipynb`), an HF Hub adapter
+  pinned by SHA in `eval/config.yaml`, and a byte-equality invariance
+  test (`tests/test_finetuned_ablation_baseline_invariant.py`).
+- The additive-ablation pattern (ADR 0011/0017/0023) gains a fourth
+  instance — reinforcing that "new capability = new env-var + new
+  ablation row, never a default swap."
+- Removing the adapter later is a one-line change: unset
+  `BIDMATE_EMBEDDING_LORA_ADAPTER`. The default path is byte-identical
+  to pre-#434 behavior; no migration needed.
 
-     Easier:
-     - The "have you fine-tuned a model?" interview signal is now
-       grounded in a reproducible artifact (notebook + HF Hub repo
-       + invariance test).
-     - The additive-ablation pattern (ADR 0011/0017/0023) gains a
-       fourth example, reinforcing that "new capability = new env-
-       var + new ablation row, never a default swap."
-
-     Costs / honesty:
-     - New optional dep (PEFT) — install path is
-       `requirements-lora.txt`, not `requirements.txt`.
-     - New artifact class: HF Hub-hosted binary. Supply-chain rule
-       (SHA pinning) is the mitigation; reviewers must check the
-       SHA on every change.
-     - The `full` pipeline delta is expected to be ~0 pp on the
-       n=42 public synthetic surface (Phase 1.2 invariance). The
-       writeup (`docs/embedding-finetune.md`) must lead with the
-       `naive_baseline_finetuned` delta and publish the `full`
-       null as a deliberate result — not hide it. -->
+**Costs / honesty:**
+- New optional dep (PEFT) — install path is `requirements-lora.txt`,
+  not `requirements.txt`. The hashing-only CI path never imports PEFT.
+- New artifact class: HF Hub-hosted binary. The SHA-pinning rule
+  (`<repo>@<sha>` in `eval/config.yaml`) closes the silent-republish
+  supply-chain hole; every adapter bump is a git diff.
+- The `full` pipeline delta is expected to be ~0 pp on the n=42 public
+  synthetic surface (Phase 1.2 / ADR 0021 invariance: metadata-first
+  routing absorbs embedding variance). `docs/embedding-finetune.md`
+  leads with the `naive_baseline_finetuned` delta [TBD — issue #179]
+  and publishes the `full` null as a deliberate result, not an omission.
+- `MODEL_CACHE` uses a 3-tuple key `(model_name, local_only,
+  adapter_path)`. A process that loads both adapted and unadapted
+  variants holds two full model copies in memory simultaneously.
 
 ## Alternatives considered
 
-<!-- TODO(user): fill in each alternative with your reasoning for
-     rejecting it. Skeleton bullets:
+- **Full fine-tune of the base encoder.** Rejected: full fine-tune
+  requires retraining all encoder weights, which (a) demands a much
+  larger labeled dataset than the synthetic pairs from
+  `scripts/generate_finetune_pairs.py`, (b) loses the ability to
+  compare base vs fine-tuned on the same index, because the base
+  weights are gone, and (c) makes the HF Hub artifact a 400 MB
+  checkpoint rather than a ~4 MB PEFT delta. LoRA preserves the
+  base for side-by-side ablation — exactly what the eval surface needs.
 
-     - **Full fine-tune of the base encoder.** Rejected because …
-     - **Merge LoRA into the base and re-upload the merged checkpoint
-       to HF Hub.** Rejected because the ablation surface needs to
-       compare base vs adapted, which a merged checkpoint hides.
-     - **Pin adapter by HF tag or branch instead of commit SHA.**
-       Rejected because a silent re-push to the same tag changes
-       eval results without changing the repo SHA — supply-chain
-       hole the current pattern is designed to close.
-     - **Train both KURE-v1 and BGE-M3 adapters and compare.**
-       Deferred — BGE-M3's asymmetric dense/sparse/multi-vector
-       heads complicate the LoRA target decision; KURE-v1's
-       symmetric encoder needs only one LoRA head and is the
-       Korean-market signal. Future ADR if revisited. -->
+- **Merge LoRA into the base and re-upload the merged checkpoint to
+  HF Hub.** Rejected: the ablation surface (`naive_baseline` vs
+  `naive_baseline_finetuned`) requires comparing the same base model
+  with and without the adapter. A merged checkpoint makes that
+  impossible without storing two full checkpoints. The PEFT delta
+  approach keeps the diff visible and the comparison structurally
+  correct. (`merge_and_unload()` happens locally at runtime for
+  inference speed; the HF Hub stores the delta only.)
+
+- **Pin adapter by HF tag or branch instead of commit SHA.** Rejected:
+  a re-push to the same tag would silently change eval results without
+  any git diff in this repo — exactly the supply-chain hole the SHA-pin
+  pattern is designed to close. SHA pinning means every adapter version
+  bump is a reviewable one-line change in `eval/config.yaml`.
+
+- **Train both KURE-v1 and BGE-M3 adapters and compare.** Deferred:
+  BGE-M3's asymmetric dense/sparse/colbert multi-vector architecture
+  complicates the LoRA target layer decision (separate adapters per
+  head vs a unified projection). KURE-v1's symmetric encoder needs
+  only one LoRA target and is the natural Korean-market signal for this
+  domain. Revisiting BGE-M3 fine-tuning is tracked as a follow-up; a
+  new ADR would be needed to decide the head-targeting strategy.
 
 ## See also
 
