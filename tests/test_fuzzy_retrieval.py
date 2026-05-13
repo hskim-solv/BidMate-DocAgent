@@ -1,6 +1,7 @@
 import unittest
 from pathlib import Path
 
+from rag_answer_schema import ANSWER_SCHEMA_VERSION
 from rag_core import (
     REDACTED_LIST_PLACEHOLDER,
     analyze_query,
@@ -133,7 +134,7 @@ class FuzzyMetadataRetrievalTest(unittest.TestCase):
 
         self.assertEqual("comparison", result["analysis"]["query_type"])
         self.assertEqual("supported", result["answer"]["status"])
-        self.assertEqual(2, result["answer"]["schema_version"])
+        self.assertEqual(ANSWER_SCHEMA_VERSION, result["answer"]["schema_version"])
         self.assertEqual("verified", result["answer"]["status_reason"]["code"])
         self.assertEqual("comparison", result["answer"]["query_type"])
         self.assertIn("answer_text", result)
@@ -290,7 +291,7 @@ class FuzzyMetadataRetrievalTest(unittest.TestCase):
         result = run_rag_query(partial_index, "기관 X와 기관 Y의 보안 요구사항 차이를 비교해줘")
 
         self.assertEqual("partial", result["answer"]["status"])
-        self.assertEqual(2, result["answer"]["schema_version"])
+        self.assertEqual(ANSWER_SCHEMA_VERSION, result["answer"]["schema_version"])
         self.assertEqual("partial_comparison", result["answer"]["status_reason"]["code"])
         self.assertFalse(result["diagnostics"]["abstained"])
         self.assertEqual(["기관 Y"], result["answer"]["insufficiency"]["missing_targets"])
@@ -314,7 +315,7 @@ class FuzzyMetadataRetrievalTest(unittest.TestCase):
 
         self.assertTrue(result["diagnostics"]["abstained"])
         self.assertEqual("insufficient", result["answer"]["status"])
-        self.assertEqual(2, result["answer"]["schema_version"])
+        self.assertEqual(ANSWER_SCHEMA_VERSION, result["answer"]["schema_version"])
         self.assertEqual("insufficient_evidence", result["answer"]["status_reason"]["code"])
         self.assertEqual("abstention", result["answer"]["query_type"])
         self.assertEqual([], result["answer"]["claims"])
