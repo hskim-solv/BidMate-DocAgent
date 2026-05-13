@@ -15,7 +15,7 @@
 
 | 시그널 | 어디서 확인하나 |
 |---|---|
-| 아키텍처 결정이 **사후 합리화가 아닌 기록된 결정**으로 남아있다 | [`docs/adr/`](./adr/README.md) — 31개 ADR (23 accepted / 8 proposed), status-tracked, supersession chains 명시 |
+| 아키텍처 결정이 **사후 합리화가 아닌 기록된 결정**으로 남아있다 | [`docs/adr/`](./adr/README.md) — 32개 ADR (23 accepted / 9 proposed), status-tracked, supersession chains 명시 |
 | **측정 가능한 성공 기준**을 미리 잡고 그 기준으로 평가한다 | [`portfolio-case-study.md` §2](./portfolio-case-study.md), [`eval/config.yaml`](../eval/config.yaml), README headline 표 |
 | 합성 평가의 한계를 알고 **공개/비공개 평가 분리**로 보완한다 | [ADR 0005](./adr/0005-eval-split-public-synthetic-private-local.md), [`docs/private-100-doc-experiments.md`](./private-100-doc-experiments.md) |
 | **실패를 분류·우선순위화**한 뒤 백로그로 만든다 | [`docs/real-data-failure-taxonomy.md`](./real-data-failure-taxonomy.md), 메타 이슈 #49 |
@@ -219,7 +219,7 @@ make reproduce  # smoke + SHA-256 over the environment-invariant metric subset
 
 ### 30초 자기소개
 
-> "BidMate-DocAgent는 **한국어 RFP 도메인-특화 RAG**입니다. 일반 영어 벤치(KMMLU/MMLU) 점수 경쟁이 아니라, 한국 B2B/공공 입찰 시장의 비교 질의에서 발생하는 한쪽 문서 starvation 패턴을 발견하고 막은 게 차별점입니다. **comparison-aware balanced top-k** + **metadata-first retrieval** + **extractive grounded-answer 계약**으로 hallucination을 구조적으로 차단하고, **공개 합성 + 비공개 real-data + KorQuAD 2.1 한국어 공개셋** 세 표면으로 silent regression을 분리 탐지합니다. 운영 시그널 측에서는 **31개 ADR**, prompt-caching 적용 **cost telemetry**, fail-closed **observability(LangFuse/OTel)**, **CI 회귀 게이트**까지 완성했습니다."
+> "BidMate-DocAgent는 **한국어 RFP 도메인-특화 RAG**입니다. 일반 영어 벤치(KMMLU/MMLU) 점수 경쟁이 아니라, 한국 B2B/공공 입찰 시장의 비교 질의에서 발생하는 한쪽 문서 starvation 패턴을 발견하고 막은 게 차별점입니다. **comparison-aware balanced top-k** + **metadata-first retrieval** + **extractive grounded-answer 계약**으로 hallucination을 구조적으로 차단하고, **공개 합성 + 비공개 real-data + KorQuAD 2.1 한국어 공개셋** 세 표면으로 silent regression을 분리 탐지합니다. 운영 시그널 측에서는 **32개 ADR**, prompt-caching 적용 **cost telemetry**, fail-closed **observability(LangFuse/OTel)**, **CI 회귀 게이트**까지 완성했습니다."
 
 읽는 시간 ≈ 30초. 면접 첫 답으로 그대로 사용 가능. 상대가 "좀 더 자세히"를 물으면 §1, 측정 의문에는 §2, 운영 의문에는 [`production-readiness.md`](./production-readiness.md)로 넘어간다.
 
