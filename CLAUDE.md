@@ -15,7 +15,8 @@ CI ([`pr-eval.yml`](.github/workflows/pr-eval.yml),
 [`.github/pull_request_template.md`](.github/pull_request_template.md),
 [`.github/ISSUE_TEMPLATE/`](.github/ISSUE_TEMPLATE/),
 [`.claude/settings.json`](.claude/settings.json) (PreToolUse awareness hook
-for load-bearing edits). This file captures the principles and pointers
+for load-bearing edits + Bash matcher refusing `gh pr merge --delete-branch`
+when stacked dependents exist). This file captures the principles and pointers
 that aren't auto-enforced.
 
 ## Start here

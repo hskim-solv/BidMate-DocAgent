@@ -9,6 +9,15 @@
             "command": "bash scripts/claude-hooks/pretooluse-loadbearing.sh"
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash scripts/claude-hooks/pretooluse-bash-guard.sh"
+          }
+        ]
       }
     ],
     "Stop": [
