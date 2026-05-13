@@ -209,6 +209,8 @@ python3 scripts/update_readme_metrics.py --report reports/eval_summary.json --re
 | 설계 배경 (Korean RFP adaptations, 5가지) | [`docs/design-background.md`](docs/design-background.md) |
 | 답변 출력 정책 + Evidence boundary + Baseline policy | [`docs/answer-policy.md`](docs/answer-policy.md) |
 | 한계 + 회고 + 실패 사례 | [`docs/failure-cases.md`](docs/failure-cases.md) / [`docs/retrospective.md`](docs/retrospective.md) |
+| 공개 평가셋 상세 spec (n=42, 7-doc corpus, 방법론) | [`docs/eval-dataset-spec.md`](docs/eval-dataset-spec.md) |
+| 비공개 100-doc aggregate 정책 + placeholder | [`docs/private-100-doc-experiments.md`](docs/private-100-doc-experiments.md) |
 | 엔지니어링 블로그 (GitHub Pages) | [hskim-solv.github.io/BidMate-DocAgent](https://hskim-solv.github.io/BidMate-DocAgent/) |
 | 전체 문서 인덱스 | [`docs/README.md`](docs/README.md) |
 
