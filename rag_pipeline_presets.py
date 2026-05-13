@@ -193,7 +193,13 @@ VALID_BM25_STOPWORD_PROFILES = {"shared", "bm25_extra"}
 # into kiwipiepy morpheme tokenization (체언 / 용언 / 수식어 /
 # 외래어 POS filter). Missing kiwipiepy → silent fallback to regex,
 # enforced by `korean_lexicon.kiwi_tokens` returning ``None``.
-VALID_BM25_TOKENIZERS = {"regex", "kiwi"}
+VALID_BM25_TOKENIZERS = {"regex", "kiwi", "mecab", "khaiii"}
+# Issue #561 / ADR 0031 valid-set expansion: "mecab" (python-mecab-ko /
+# konlpy.tag.Mecab) and "khaiii" (Khaiii C++ binding) added as opt-in
+# ablation tokenizers. Both have the same never-raise contract as "kiwi":
+# if the dependency is unavailable, `korean_lexicon.mecab_tokens` /
+# `khaiii_tokens` return None and rag_retrieval silently falls back to
+# regex — ADR 0001 naive_baseline invariant preserved.
 # Issue #396 / ADR 0023 — pluggable QueryExpander discriminator. Kept
 # narrow on purpose: a typo like "hide" raises rather than silently
 # degrading retrieval. ``rag_query_expansion.default_expander`` still
