@@ -289,20 +289,80 @@ def collect_git(repo: str, start: str, end: str) -> dict[str, Any]:
     }
 
 
+def _compute_adr_lags(repo: str, start: str, end: str) -> list[dict[str, Any]]:
+    """Return ADR proposed→accepted lag for ADRs accepted within the quarter.
+
+    proposed_date: timestamp of the commit that first added the ADR file.
+    accepted_date: timestamp of the commit that introduced ``**Status**: accepted``.
+    Only emits ADRs whose accepted_date falls in [start, end].
+    lag_days = (accepted - proposed).days  (clamped to 0 if negative).
+    """
+    start_dt = datetime.fromisoformat(start).replace(tzinfo=timezone.utc)
+    end_dt = datetime.fromisoformat(end).replace(
+        tzinfo=timezone.utc, hour=23, minute=59, second=59
+    )
+    adr_dir = Path(repo) / "docs" / "adr"
+    if not adr_dir.is_dir():
+        return []
+    results: list[dict[str, Any]] = []
+    for adr_path in sorted(adr_dir.glob("*.md")):
+        m = ADR_FILENAME_RE.match(adr_path.name)
+        if not m:
+            continue
+        adr_id = m.group(1)
+        rel_path = str(adr_path.relative_to(repo))
+        try:
+            proposed_lines = subprocess.run(
+                ["git", "log", "--diff-filter=A", "--pretty=format:%aI", "--", rel_path],
+                cwd=repo, text=True, capture_output=True, timeout=15,
+            ).stdout.strip().splitlines()
+            if not proposed_lines:
+                continue
+            proposed_dt = datetime.fromisoformat(proposed_lines[-1])
+            if proposed_dt.tzinfo is None:
+                proposed_dt = proposed_dt.replace(tzinfo=timezone.utc)
+
+            accepted_lines = subprocess.run(
+                ["git", "log", "-S", "**Status**: accepted",
+                 "--pretty=format:%aI", "--", rel_path],
+                cwd=repo, text=True, capture_output=True, timeout=15,
+            ).stdout.strip().splitlines()
+            if not accepted_lines:
+                continue
+            accepted_dt = datetime.fromisoformat(accepted_lines[0])
+            if accepted_dt.tzinfo is None:
+                accepted_dt = accepted_dt.replace(tzinfo=timezone.utc)
+        except (subprocess.TimeoutExpired, ValueError, OSError):
+            continue
+
+        if accepted_dt < start_dt or accepted_dt > end_dt:
+            continue
+        lag_days = max((accepted_dt - proposed_dt).days, 0)
+        results.append({
+            "adr_id": adr_id,
+            "proposed_date": proposed_dt.date().isoformat(),
+            "accepted_date": accepted_dt.date().isoformat(),
+            "lag_days": lag_days,
+        })
+    return results
+
+
 def collect_governance_hooks(repo: str, start: str, end: str) -> dict[str, Any]:
     """Parse `.claude/.hook-fires.log` for PreToolUse load-bearing fires.
 
-    Log line format: ``<ISO8601 UTC>|<file_path>`` appended by
-    ``scripts/claude-hooks/pretooluse-loadbearing.sh`` (issue #495).
-    Returns fires within the quarter window plus a top-10 by-path
-    distribution; never reads body of any other file.
+    Log line formats (both accepted):
+    - legacy 2-field: ``<ISO8601 UTC>|<file_path>``
+    - current 4-field: ``<ISO8601 UTC>|<action>|<context>|<detail>``
+      loadbearing fires use ``aware|load-bearing|<file_path>``
+      bash-guard blocks use ``blocked|gh-merge-delete-branch|<branch>``
     """
     log_path = Path(repo) / ".claude" / ".hook-fires.log"
     if not log_path.is_file():
         return {
             "pretooluse_loadbearing_fires": 0,
             "fires_by_path": {},
-            "rule_to_automation_lag_days": [],
+            "fires_by_action": {},
+            "rule_to_automation_lag_days": _compute_adr_lags(repo, start, end),
             "note": "Hook fire log absent at .claude/.hook-fires.log; emit 0.",
         }
     start_dt = datetime.fromisoformat(start).replace(tzinfo=timezone.utc)
@@ -311,30 +371,38 @@ def collect_governance_hooks(repo: str, start: str, end: str) -> dict[str, Any]:
     )
     fires = 0
     by_path: Counter[str] = Counter()
+    by_action: Counter[str] = Counter()
     try:
         for line in log_path.read_text().splitlines():
             line = line.strip()
             if not line or "|" not in line:
                 continue
-            ts, _, path = line.partition("|")
+            parts = line.split("|", 3)
+            ts = parts[0]
             try:
                 fire_dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
             except ValueError:
                 continue
             if fire_dt < start_dt or fire_dt > end_dt:
                 continue
+            if len(parts) >= 4:
+                action, path = parts[1], parts[3]
+            else:
+                action, path = "aware", parts[1] if len(parts) > 1 else ""
             fires += 1
-            by_path[path] += 1
+            if path:
+                by_path[path] += 1
+            if action:
+                by_action[action] += 1
     except OSError:
         pass
-    note = (
-        "Cycle-time lag uses ADR proposed→accepted dates (git history); "
-        "lag list intentionally empty until parsed."
-    )
+    lags = _compute_adr_lags(repo, start, end)
+    note = f"Lag: {len(lags)} ADR(s) with accepted date in window."
     return {
         "pretooluse_loadbearing_fires": fires,
         "fires_by_path": dict(by_path.most_common(10)),
-        "rule_to_automation_lag_days": [],
+        "fires_by_action": dict(by_action),
+        "rule_to_automation_lag_days": lags,
         "note": note,
     }
 
