@@ -9,7 +9,9 @@
      To re-enable: uncomment the line below once docs/assets/demo.gif exists. -->
 <!-- ![BidMate-DocAgent live demo (60-90 s walkthrough)](docs/assets/demo.gif) -->
 
-> 일반 영어 LLM 벤치(KMMLU/MMLU) 점수 경쟁이 아닌 **한국어 RFP 도메인-특화 RAG**입니다. 차별화는 세 축: 비교 질의에서 한쪽 문서 starvation을 막는 [comparison-aware balanced top-k](#key-technical-contribution--comparison-aware-balanced-top-k), 의미 유사도 단독의 함정을 회피하는 metadata-first retrieval([ADR 0002](docs/adr/0002-metadata-first-retrieval.md)), hallucination을 구조적으로 차단하는 extractive grounded-answer 답변 계약([ADR 0003](docs/adr/0003-structured-answer-citation-contract.md)). 측정은 공개 합성 + 비공개 real-data + KorQuAD 2.1 한국어 공개셋으로 분리([ADR 0005](docs/adr/0005-eval-split-public-synthetic-private-local.md), [ADR 0018](docs/adr/0018-korean-public-rag-bench.md)) — silent regression이 한 표면에서 다른 표면으로 새지 않도록 설계됐습니다.
+> 한국 공공·B2B 입찰 RFP에서 비교·요건 추출 질의를 **근거 있는 답변**으로 돌려주는 한국어 도메인 특화 RAG — 외부 LLM 호출 없이 extractive grounding으로 hallucination을 구조적으로 차단.
+> **차별점**: 비교 질의에서 두 기관 문서를 균등 인용하는 [comparison-aware balanced retrieval](#key-technical-contribution--comparison-aware-balanced-top-k), metadata-first 검색([ADR 0002](docs/adr/0002-metadata-first-retrieval.md)), 근거 부족 시 abstention 명시([ADR 0003](docs/adr/0003-structured-answer-citation-contract.md)).
+> **측정**: accuracy 0.62 ± 0.09, citation_precision 0.84 ± 0.05 (95% CI, n=42) — 공개 합성 + 비공개 real-data 분리 평가([ADR 0005](docs/adr/0005-eval-split-public-synthetic-private-local.md)), 33개 설계 결정(ADR).
 
 ### 🎬 5초 비주얼 훅 — 실제 `comparison` 질의 한 건 (extractive, no LLM)
 
