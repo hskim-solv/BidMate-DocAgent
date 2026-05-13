@@ -22,6 +22,8 @@
 
 set -u
 
+REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+
 input=$(cat)
 
 cmd=$(printf '%s' "$input" | python3 -c 'import json,sys
@@ -93,6 +95,9 @@ try:
         print(f"      PR #{p[\"number\"]} — {p[\"title\"]} (head: {p[\"headRefName\"]})")
 except Exception:
     pass' 2>/dev/null)
+
+printf '%s|blocked|gh-merge-delete-branch|%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$head_branch" \
+  >> "$REPO_ROOT/.claude/.hook-fires.log" 2>/dev/null || true
 
 cat >&2 <<EOF
 ⛔ Refusing \`gh pr merge --delete-branch\`: stacked dependents exist on \`$head_branch\`.
