@@ -86,10 +86,36 @@ streamlit run demo/streamlit_app.py
 # Each answer now has a "🔍 View trace" button below it.
 ```
 
-### LangFuse (cloud)
+### LangFuse (cloud — Japan region / Korean data residency)
 
-Same as above but skip the `docker compose up` step and use
-`https://cloud.langfuse.com` (the default `LANGFUSE_HOST`).
+Langfuse Cloud offers US, EU, and JP regions. Use the JP region for
+Korean client data-residency requirements.
+
+```bash
+pip install -r requirements-observability.txt
+
+export BIDMATE_TRACE_BACKEND=langfuse
+export LANGFUSE_PUBLIC_KEY=pk-lf-...
+export LANGFUSE_SECRET_KEY=sk-lf-...
+export LANGFUSE_HOST=https://jp.cloud.langfuse.com   # JP region
+```
+
+Or in `.env`:
+
+```
+BIDMATE_TRACE_BACKEND=langfuse
+LANGFUSE_PUBLIC_KEY=pk-lf-...
+LANGFUSE_SECRET_KEY=sk-lf-...
+LANGFUSE_HOST=https://jp.cloud.langfuse.com
+```
+
+For the US region omit `LANGFUSE_HOST` (default: `https://cloud.langfuse.com`).
+EU region: `https://eu.cloud.langfuse.com`.
+
+### LangFuse (cloud — US, default)
+
+Skip the `docker compose up` step and use the default
+`LANGFUSE_HOST=https://cloud.langfuse.com`.
 
 ### OpenTelemetry → Grafana Tempo
 

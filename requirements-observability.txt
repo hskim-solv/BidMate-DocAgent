@@ -1,4 +1,4 @@
-# Optional dependencies for the ADR 0010 observability backends.
+# Optional dependencies for the ADR 0013 observability backends.
 #
 # Not installed by default. Set BIDMATE_TRACE_BACKEND to enable a
 # backend after installing the corresponding line(s). Missing packages
