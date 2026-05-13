@@ -120,6 +120,10 @@ re-trigger condition 3 and open a fresh follow-up ADR. The
 measurement infrastructure (`scripts/run_embedding_ablation.py`) is
 the same; no new tooling needed.
 
+## Phase 1.4 update — ADR 0032 routed-subset saturation falsifier (2026-05-13)
+
+본 ADR에서 기록한 "0pp on full" 패턴이 metadata-first absorption artifact인지를 [ADR 0032](./0032-eval-saturation-routed-subset.md)가 routed-subset measurement surface (n=11, `agentic_full_routed`)로 falsify 시도했다. 결과: MiniLM / e5-large-instruct / KoSimCSE / KURE-v1 모두 routed accuracy 0.400, spread **0.0pp** (threshold +3pp). Saturation cross-validated. BGE-M3 Phase 1.4 측정도 torch ≥ 2.6 blocker로 동일하게 skip됨.
+
 ## See also
 
 - [`docs/embedding-ablation.md`](../embedding-ablation.md) Phase 1.3 —
@@ -130,3 +134,4 @@ the same; no new tooling needed.
   design choice that the `0pp-on-full` pattern empirically supports.
 - [ADR 0019](./0019-embedding-default-stays-minilm.md) — the deferral
   this ADR closes.
+- [ADR 0032](./0032-eval-saturation-routed-subset.md) — Phase 1.4 routed-subset measurement. "0pp on full"이 saturation artifact가 아님을 cross-validate.

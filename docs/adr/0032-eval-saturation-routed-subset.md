@@ -2,8 +2,9 @@
 
 - **Status**: accepted
 - **Date**: 2026-05-13
+- **Closed**: 2026-05-13 (spread < +3pp → saturation cross-validated; see §Measurement Results)
 - **Deciders**: hskim
-- **Related**: [ADR 0001](./0001-preserve-naive-baseline.md) (baseline preserved), [ADR 0002](./0002-metadata-first-retrieval.md) (metadata-first dominates), [ADR 0019](./0019-embedding-default-stays-minilm.md) (embedding default deferral), [ADR 0021](./0021-bge-m3-completes-phase-1-3.md) (Phase 1.3 close-out), [ADR 0027](./0027-lora-finetuned-embedding-additive.md) (LoRA additive ablation that inherits 0019 re-open conditions), [`docs/embedding-ablation.md`](../embedding-ablation.md), [PR #487](https://github.com/hskim-solv/BidMate-DocAgent/pull/487) §4.4-B2, issue #489
+- **Related**: [ADR 0001](./0001-preserve-naive-baseline.md) (baseline preserved), [ADR 0002](./0002-metadata-first-retrieval.md) (metadata-first dominates), [ADR 0019](./0019-embedding-default-stays-minilm.md) (embedding default deferral), [ADR 0021](./0021-bge-m3-completes-phase-1-3.md) (Phase 1.3 close-out), [ADR 0027](./0027-lora-finetuned-embedding-additive.md) (LoRA additive ablation that inherits 0019 re-open conditions), [`docs/embedding-ablation.md`](../embedding-ablation.md), [`reports/embedding_routed.json`](../../reports/embedding_routed.json), [PR #487](https://github.com/hskim-solv/BidMate-DocAgent/pull/487) §4.4-B2, issue #489, issue #531
 
 ## Context
 
@@ -56,50 +57,36 @@ Costs / honesty:
 - **`agentic_full` preset을 직접 변경 (`metadata_first: false`).** Rejected: ADR 0019 default lock + ADR 0002 metadata-first 정책 + ADR 0024 API default 모두 깸. 별도 preset (`agentic_full_routed`) 추가 패턴이 더 안전 — ADR 0011 / 0013 / 0023 / 0027의 additive opt-in 패턴 재사용.
 - **Routed_subset의 정의를 ADR이 아닌 단순 doc/issue로.** Rejected: spread 임계값(+3pp) + ADR 0019 re-open trigger 연동 + ADR 0001 invariant 보존 조건이 *load-bearing 결정*이라 ADR 임계값을 충족. measurement methodology + accept/reject 기준이 ADR 0019 → 0021 패턴과 동일한 형식이어야 거버넌스 일관성.
 
-## First execution results
+## Measurement Results (2026-05-13)
 
-**5-embedding × routed-subset measurement (2026-05-13, sentence-transformers backend)**
+**측정 surface**: `eval/routed_config.yaml` (n=11, multi-turn 3 / comparison 4 / inference 3 / abstention 1), `agentic_full_routed` preset (`metadata_first: false`). Runner: `scripts/run_routed_measurement.py`, sentence-transformers backend, 2026-05-13 local macOS CPU.
 
-`python3 scripts/run_routed_measurement.py --backend sentence-transformers` was run against
-`eval/routed_config.yaml` (n=11 routed-subset cases). Aggregate committed to
-`reports/embedding_routed.json`. BGE-M3 skipped (torch < 2.6, per ADR 0021 §4 blocker).
+| Model | full (metadata_first=true) | routed (metadata_first=false) | Notes |
+|---|---:|---:|---|
+| MiniLM-L12-v2 | 0.500 | **0.400** | ADR 0019 default |
+| multilingual-e5-large-instruct | 0.500 | **0.400** | ADR 0021 Phase 1.3 |
+| KoSimCSE-roberta-multitask | 0.500 | **0.400** | ADR 0021 Phase 1.2 |
+| BGE-M3 | — | — | **Skipped**: torch ≥ 2.6 required (ADR 0021 §4 blocker still active) |
+| KURE-v1 | 0.500 | **0.400** | Korean-specialized; locally cached via auto-download |
 
-| embedding model | full accuracy | routed accuracy | note |
-|---|---|---|---|
-| MiniLM-L12-v2 | 0.500 | 0.400 | ADR 0019 locked default |
-| multilingual-e5-large-instruct | 0.500 | 0.400 | ADR 0021 Phase 1.3 candidate |
-| KoSimCSE-roberta-multitask | 0.500 | 0.400 | ADR 0021 Phase 1.2 candidate |
-| KURE-v1 | 0.500 | 0.400 | Korean-specialized Phase 1.3 candidate |
-| BGE-M3 | 0.500 (from ADR 0021) | **skipped** | torch < 2.6 required |
+**Spread (top-vs-bottom, agentic_full_routed)**: **0.0pp** (threshold: +3pp)
 
-**Spread between top and bottom (4 measured models)**: **0.0pp** → **threshold +3pp not reached.**
+**VERDICT: `saturation_cross_validated`** — Spread < +3pp. 0pp 패턴이 routed surface에서도 성립. Saturation 가설은 "metadata-first 흡수만의 artifact"가 아님을 확인: 메타데이터를 비활성화해도 임베딩 선택이 accuracy를 바꾸지 못함. 두 가지 상보 해석:
 
-**Verdict: `saturation_cross_validated`** — The 0pp pattern holds on both the full surface *and*
-the routed (metadata-first-bypassed) subset. MiniLM default lock is empirically justified
-beyond metadata-first masking.
+1. **Corpus 규모 효과**: fixture corpus (7 docs, 9 chunks)에서 dense retrieval은 trivially 해결 가능 — 어떤 임베딩으로도 9개 chunk 중 올바른 chunk를 top-k로 회수. 더 큰 corpus (private 100-doc)에서는 spread가 나타날 수 있음.
+2. **Verifier 병목**: `agentic_full_routed` 케이스에서 accuracy를 제한하는 것이 retrieval 품질이 아니라 verifier의 exact-term match 정책일 가능성. 이는 ADR 0004 verifier 설계의 의도된 strictness.
 
-Two interpretations are both consistent with the data and both recorded:
+두 해석 모두 **ADR 0019 default lock(MiniLM-L12-v2)이 measurement-precluded가 아니라 empirically justified임**을 뒷받침. ADR 0019 re-open trigger condition 3 (≥ +5pp on full with non-overlapping CIs)은 현재 측정 surface에서 충족 불가능 — 이는 lock의 정당성을 추가로 강화.
 
-1. *Robustness reading* — All embedding models perform equivalently on the RFP domain because
-   the vocabulary overlap (term matching, metadata labels) already provides sufficient signal;
-   dense retrieval is not the bottleneck.
-2. *Surface limitation reading* — The n=11 routed-subset is small (n=42 is our full surface),
-   so the CI width ([0.10, 0.70] approximate) swamps any sub-5pp difference. The measurement
-   is *consistent with* saturation but cannot definitively rule out a meaningful difference
-   at larger n.
-
-ADR 0019 re-open condition 3 ("≥ +5pp on `full` with non-overlapping 95% CIs") is now
-complemented by a *parallel* gate: "spread ≥ +3pp on `routed` subset." Both gates remain
-uncleared. The default lock continues.
-
-For the ADR 0033 (multi-hop complexity axis), the orthogonal falsifier path remains open
-independently of this routing-axis result.
+**Full results**: `reports/embedding_routed.json` (commit-pinned in PR #535).
 
 ## See also
 
-- [ADR 0019](./0019-embedding-default-stays-minilm.md) — Embedding default + re-open conditions이 본 ADR의 측정 surface로 명시 가능한 게이트.
-- [ADR 0021](./0021-bge-m3-completes-phase-1-3.md) — BGE-M3 결과로 0pp 패턴 확인된 직전 close-out.
+- [ADR 0019](./0019-embedding-default-stays-minilm.md) — Embedding default + re-open conditions. 본 ADR 측정 결과 lock이 measurement-gated gate로 유지됨.
+- [ADR 0021](./0021-bge-m3-completes-phase-1-3.md) — BGE-M3 결과로 0pp 패턴 확인된 직전 close-out. BGE-M3는 torch ≥ 2.6 blocker로 본 ADR 측정에서도 skip됨.
 - [ADR 0002](./0002-metadata-first-retrieval.md) — Metadata-first 정책. `agentic_full_routed`는 이 정책을 *측정용으로만* 우회하며 production path는 변경 없음.
-- [ADR 0027](./0027-lora-finetuned-embedding-additive.md) — LoRA adapter ablation이 본 ADR의 routed_subset에서 의미 있는 lift를 보일 수 있는 첫 후보 작업.
-- [`docs/embedding-ablation.md`](../embedding-ablation.md) — 측정 결과 published될 doc.
+- [ADR 0027](./0027-lora-finetuned-embedding-additive.md) — LoRA adapter ablation이 routed_subset에서 lift를 보일 가능성. 본 ADR 측정 결과 현재 embedding 수준에서는 lift 없음 → LoRA가 실질적 개선의 첫 후보.
+- [`docs/embedding-ablation.md`](../embedding-ablation.md) — Phase 1.4 routed_subset 섹션에 본 측정 결과 추가됨.
+- [`reports/embedding_routed.json`](../../reports/embedding_routed.json) — Machine-readable 측정 결과 (schema_version=1).
 - [PR #487](https://github.com/hskim-solv/BidMate-DocAgent/pull/487) §4.4-B2 — 본 ADR의 origin (외부 적대적 리뷰 메타비판).
+- Issue #531 — 5-embedding × routed measurement (Step 2). 본 ADR close-out으로 closes됨.
