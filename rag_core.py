@@ -175,6 +175,26 @@ from rag_query import (
 # of issue #415 (PR-E stage 3 of the rag_core.py decomposition epic). The
 # symbols below are direct-imported (no re-export wrapper) — repo-wide
 # grep at PR filing confirmed zero external consumers.
+# Text-processing primitives extracted to rag_text_processing (issue #545).
+# Re-exported here so existing ``from rag_core import tokenize`` call sites
+# keep working unchanged.
+from rag_text_processing import (
+    ENTITY_RE,
+    QUERY_TYPE_TOP_K_DEFAULTS,
+    TOKEN_RE,
+    SENTENCE_RE,
+    coerce_alias_values,
+    coerce_string_list,
+    compact_metadata_text,
+    normalize_entity,
+    normalize_metadata_token,
+    normalize_section_path,
+    ordered_unique,
+    sentence_split,
+    split_long_text_unit,
+    tokenize,
+)
+
 from rag_conversation_state import (
     AMBIGUOUS_CONFIDENCE_DELTA,
     CONTEXT_RESOLUTION_THRESHOLD,
@@ -209,11 +229,6 @@ VALID_CHUNKING_STRATEGIES = {"auto", "section", "fixed"}
 # past 3 must update this value and explain why in the PR description.
 MAX_AGENT_ITERATIONS = 3
 
-QUERY_TYPE_TOP_K_DEFAULTS: dict[str, int] = {
-    "single_doc": 4,
-    "follow_up": 6,
-    "comparison": 6,
-}
 WEAK_SECTION_HEADINGS = {
     "",
     "본문",
@@ -233,10 +248,6 @@ INDEX_FILENAME = "index.json"
 EMBEDDINGS_FILENAME = "embeddings.npy"
 INDEX_SCHEMA_VERSION = 2
 MODEL_CACHE: dict[tuple[str, bool, str | None], Any] = {}
-
-TOKEN_RE = re.compile(r"[A-Za-z0-9]+|[가-힣]+")
-ENTITY_RE = re.compile(r"기관\s*[-_]?\s*([A-Za-z0-9]+)", re.IGNORECASE)
-SENTENCE_RE = re.compile(r"(?<=[.!?。])\s+")
 
 TRACE_SCHEMA_VERSION = 1
 
@@ -279,29 +290,6 @@ class QueryParams:
     bm25_tokenizer: str | None = None
 
 
-def normalize_entity(value: str) -> str:
-    return re.sub(r"\s+", " ", value.strip())
-
-
-def compact_metadata_text(value: str) -> str:
-    normalized = unicodedata.normalize("NFC", value).lower()
-    return re.sub(r"[^0-9a-z가-힣]+", "", normalized)
-
-
-def normalize_metadata_token(token: str) -> str:
-    token = unicodedata.normalize("NFC", token).lower().strip()
-    if re.fullmatch(r"[가-힣]+", token):
-        changed = True
-        while changed:
-            changed = False
-            for suffix in KOREAN_PARTICLE_SUFFIXES:
-                if len(token) > len(suffix) + 1 and token.endswith(suffix):
-                    token = token[: -len(suffix)]
-                    changed = True
-                    break
-    return token
-
-
 def metadata_tokens(text: str) -> list[str]:
     tokens = []
     for match in TOKEN_RE.finditer(unicodedata.normalize("NFC", text)):
@@ -309,99 +297,6 @@ def metadata_tokens(text: str) -> list[str]:
         if token and token not in STOPWORDS:
             tokens.append(token)
     return tokens
-
-
-def ordered_unique(values: Iterable[str]) -> list[str]:
-    seen = set()
-    ordered = []
-    for value in values:
-        if value and value not in seen:
-            seen.add(value)
-            ordered.append(value)
-    return ordered
-
-
-def coerce_string_list(value: Any) -> list[str]:
-    if not isinstance(value, list):
-        return []
-    return ordered_unique(str(item).strip() for item in value if str(item).strip())
-
-
-def coerce_alias_values(value: Any) -> list[str]:
-    if value is None:
-        return []
-    if isinstance(value, str):
-        raw_values = re.split(r"[,;/|]", value)
-        return ordered_unique(part.strip() for part in raw_values if part.strip())
-    if isinstance(value, list):
-        return ordered_unique(str(item).strip() for item in value if str(item).strip())
-    return []
-
-
-
-def tokenize(text: str) -> list[str]:
-    tokens = [normalize_metadata_token(m.group(0)) for m in TOKEN_RE.finditer(text)]
-    return [t for t in tokens if t and t not in STOPWORDS]
-
-
-def sentence_split(text: str) -> list[str]:
-    parts = SENTENCE_RE.split(text.strip())
-    return [p.strip() for p in parts if p.strip()]
-
-
-def split_long_text_unit(text: str, max_chars: int) -> list[str]:
-    if len(text) <= max_chars:
-        return [text]
-
-    lines = [line.strip() for line in text.splitlines() if line.strip()]
-    if len(lines) > 1:
-        chunks: list[str] = []
-        current: list[str] = []
-        current_len = 0
-        for line in lines:
-            if len(line) > max_chars:
-                if current:
-                    chunks.append(" ".join(current).strip())
-                    current = []
-                    current_len = 0
-                chunks.extend(split_long_text_unit(line, max_chars))
-                continue
-            next_len = current_len + len(line) + 1
-            if current and next_len > max_chars:
-                chunks.append(" ".join(current).strip())
-                current = []
-                current_len = 0
-            current.append(line)
-            current_len += len(line) + 1
-        if current:
-            chunks.append(" ".join(current).strip())
-        return chunks
-
-    words = text.split()
-    if len(words) <= 1:
-        return [text[idx : idx + max_chars].strip() for idx in range(0, len(text), max_chars)]
-
-    chunks = []
-    current = []
-    current_len = 0
-    for word in words:
-        if len(word) > max_chars:
-            if current:
-                chunks.append(" ".join(current).strip())
-                current = []
-                current_len = 0
-            chunks.extend(word[idx : idx + max_chars] for idx in range(0, len(word), max_chars))
-            continue
-        next_len = current_len + len(word) + 1
-        if current and next_len > max_chars:
-            chunks.append(" ".join(current).strip())
-            current = []
-            current_len = 0
-        current.append(word)
-        current_len += len(word) + 1
-    if current:
-        chunks.append(" ".join(current).strip())
-    return [chunk for chunk in chunks if chunk]
 
 
 def load_raw_documents(input_dir: Path) -> list[dict[str, Any]]:
@@ -493,18 +388,6 @@ def validate_chunking_options(
         raise ValueError("chunk_overlap_sentences must be zero or positive.")
 
 
-def normalize_section_path(section: dict[str, Any], heading: str) -> list[str]:
-    raw_path = section.get("section_path") or section.get("path") or []
-    if isinstance(raw_path, str):
-        parts = [part.strip() for part in raw_path.split(">")]
-    elif isinstance(raw_path, list):
-        parts = [str(part).strip() for part in raw_path]
-    else:
-        parts = []
-    path = [part for part in parts if part]
-    if not path:
-        path = [heading]
-    return path
 
 
 def normalize_regions(value: Any) -> list[dict[str, Any]]:

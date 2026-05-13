@@ -52,6 +52,12 @@ from korean_lexicon import (
     METADATA_CLAIM_TOPIC_LABELS,
     METADATA_EVIDENCE_LABELS,
 )
+from rag_text_processing import (
+    compact_metadata_text,
+    ordered_unique,
+    sentence_split,
+    tokenize,
+)
 from rag_answer_schema import (
     ANSWER_SCHEMA_VERSION,
     ANSWER_STATUS_INSUFFICIENT,
@@ -346,10 +352,6 @@ def render_answer_text(answer: dict[str, Any]) -> str:
 
 
 def best_sentence(text: str, topics: list[str], query_tokens: list[str]) -> str:
-    # Late-import — sentence_split and tokenize are multi-surface
-    # utilities in rag_core. See module docstring.
-    from rag_core import sentence_split, tokenize
-
     sentences = sentence_split(text) or [text]
     scored = []
     token_set = set(query_tokens)
@@ -364,9 +366,6 @@ def best_sentence(text: str, topics: list[str], query_tokens: list[str]) -> str:
 
 
 def metadata_claim_sentences(item: dict[str, Any], analysis: dict[str, Any]) -> list[str]:
-    # Late-import — see module docstring.
-    from rag_core import ordered_unique
-
     metadata = item.get("metadata")
     if not isinstance(metadata, dict):
         return []
@@ -383,9 +382,6 @@ def metadata_claim_sentences(item: dict[str, Any], analysis: dict[str, Any]) -> 
 
 
 def metadata_field_requested(key: str, value: Any, analysis: dict[str, Any]) -> bool:
-    # Late-import — compact_metadata_text is a multi-surface rag_core helper.
-    from rag_core import compact_metadata_text
-
     terms = [term for term in verification_topics(analysis) if term]
     if not terms:
         return False

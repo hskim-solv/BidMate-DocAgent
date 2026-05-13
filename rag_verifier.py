@@ -52,6 +52,7 @@ from korean_lexicon import (
     TOPIC_KEYWORDS,
     VERIFICATION_INTENT_TOKENS,
 )
+from rag_text_processing import normalize_metadata_token, ordered_unique
 from text_normalize import expand_forms, normalize_text
 
 
@@ -166,11 +167,6 @@ def specific_topics(analysis: dict[str, Any]) -> list[str]:
 
 
 def verification_topics(analysis: dict[str, Any]) -> list[str]:
-    # Late-import the rag_core text/metadata utilities. They serve
-    # many non-verifier call sites (analysis path, metadata matching,
-    # claim builders) so the canonical home stays rag_core.
-    from rag_core import normalize_metadata_token, ordered_unique
-
     metadata_terms = metadata_terms_for_verification(analysis)
     keyword_terms = {
         normalize_metadata_token(keyword)
@@ -191,7 +187,6 @@ def verification_topics(analysis: dict[str, Any]) -> list[str]:
 
 
 def metadata_terms_for_verification(analysis: dict[str, Any]) -> set[str]:
-    # Late-import — see verification_topics.
     from rag_core import metadata_tokens
 
     values: list[str] = []

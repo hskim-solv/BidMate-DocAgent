@@ -75,6 +75,16 @@ from rag_pipeline_presets import (
     VALID_RETRIEVAL_MODES,
     VALID_RRF_K_RANGE,
 )
+from rag_text_processing import (
+    ENTITY_RE,
+    QUERY_TYPE_TOP_K_DEFAULTS,
+    coerce_string_list,
+    compact_metadata_text,
+    normalize_entity,
+    normalize_metadata_token,
+    ordered_unique,
+    tokenize,
+)
 from text_normalize import normalize_text
 
 
@@ -85,22 +95,16 @@ def is_metadata_ambiguous(matches: list[dict[str, Any]], query_type: str) -> boo
 
 
 def has_implicit_reference(query: str) -> bool:
-    from rag_core import normalize_entity
-
     normalized_query = normalize_entity(query)
     return any(pattern in normalized_query for pattern in IMPLICIT_REFERENCE_PATTERNS)
 
 
 def has_comparison_request(query: str) -> bool:
-    from rag_core import normalize_entity
-
     comparison_terms = ("차이", "비교", "각각", "대비")
     return any(term in normalize_entity(query) for term in comparison_terms)
 
 
 def extract_requested_agencies(query: str) -> list[str]:
-    from rag_core import ENTITY_RE, normalize_metadata_token, ordered_unique
-
     agencies = []
     for match in ENTITY_RE.finditer(unicodedata.normalize("NFC", query)):
         token = normalize_metadata_token(match.group(1))
@@ -113,8 +117,6 @@ def extract_requested_agencies(query: str) -> list[str]:
 
 
 def active_state_terms(state: dict[str, Any]) -> list[str]:
-    from rag_core import coerce_string_list, ordered_unique
-
     terms = [
         *coerce_string_list(state.get("active_agencies")),
         *coerce_string_list(state.get("active_projects")),
@@ -181,8 +183,6 @@ def resolve_conversation_context(
     conversation_state: dict[str, Any],
     context_entities: list[str] | None = None,
 ) -> tuple[str, list[str], dict[str, Any]]:
-    from rag_core import coerce_string_list
-
     explicit_context = coerce_string_list(context_entities or [])
     if explicit_context:
         # Issue #71: prepend entities into the retrieval query string
@@ -300,9 +300,6 @@ def analyze_query(
         metadata_ambiguity_details,
         metadata_filters_from_matches,
         metadata_matches_for_stage,
-        normalize_entity,
-        ordered_unique,
-        tokenize,
     )
 
     targets = coerce_metadata_targets(entities)
@@ -405,8 +402,6 @@ def comparison_targets_for_analysis(analysis: dict[str, Any]) -> tuple[list[str]
     Prefers matched doc_ids when ≥2 are present; otherwise falls back to matched
     agencies. Returns ([], "") when balancing is not applicable.
     """
-    from rag_core import ordered_unique
-
     matched_doc_ids = list(analysis.get("matched_doc_ids") or [])
     if len(matched_doc_ids) >= 2:
         return ordered_unique(matched_doc_ids), "doc_id"
@@ -438,14 +433,7 @@ def metadata_resolution_diagnostics(
     decision: str | None = None,
     reason: str = "",
 ) -> dict[str, Any]:
-    from rag_core import (
-        coerce_string_list,
-        compact_metadata_text,
-        metadata_matches_for_stage,
-        metadata_tokens,
-        normalize_entity,
-        ordered_unique,
-    )
+    from rag_core import metadata_matches_for_stage, metadata_tokens
 
     matches = list(analysis.get("metadata_matches") or [])
     selected_by_stage: dict[str, list[dict[str, Any]]] = {}
@@ -484,8 +472,6 @@ def metadata_resolution_diagnostics(
 
 
 def query_type_default_top_k(query_type: str) -> int:
-    from rag_core import QUERY_TYPE_TOP_K_DEFAULTS
-
     return QUERY_TYPE_TOP_K_DEFAULTS.get(query_type, QUERY_TYPE_TOP_K_DEFAULTS["single_doc"])
 
 
@@ -507,8 +493,6 @@ def make_plan(
     bm25_stopword_profile: str = "shared",
     bm25_tokenizer: str = "regex",
 ) -> dict[str, Any]:
-    from rag_core import QUERY_TYPE_TOP_K_DEFAULTS
-
     if retrieval_mode not in VALID_RETRIEVAL_MODES:
         choices = ", ".join(sorted(VALID_RETRIEVAL_MODES))
         raise ValueError(f"retrieval_mode must be one of: {choices}")

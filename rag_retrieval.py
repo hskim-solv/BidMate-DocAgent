@@ -64,6 +64,7 @@ import numpy as np
 from korean_lexicon import BM25_EXTRA_PARTICLE_SUFFIXES, BM25_EXTRA_STOPWORDS
 from rag_pipeline_presets import RRF_K, VALID_BM25_STOPWORD_PROFILES
 from rag_query_expansion import default_expander
+from rag_text_processing import tokenize
 
 try:  # noqa: SIM105 — import errors must keep _BM25Okapi defined
     from rank_bm25 import BM25Okapi as _BM25Okapi
@@ -576,13 +577,6 @@ def _chunk_tokens_for_bm25(
     stopword_profile: str = "shared",
     tokenizer: str = "regex",
 ) -> list[str]:
-    # Late-import the regex-based tokenizer from rag_core. ``tokenize``
-    # serves many non-retrieval surfaces (ingestion-time chunk token
-    # cache, query analyzer, partial-topic check, ...) so it stays in
-    # rag_core; this module's BM25 surface uses it only as a fallback
-    # when the chunk doesn't carry a pre-computed token list.
-    from rag_core import tokenize
-
     section_path = chunk.get("section_path") or [chunk.get("section", "")]
     text = " ".join(
         [
@@ -722,11 +716,6 @@ def bm25_scores_for_index(
 
 
 def lexical_similarity(query_tokens: set[str], topics: list[str], chunk: dict[str, Any]) -> float:
-    # Late-import tokenize (rag_core) — also used as a fallback when
-    # the chunk does not carry pre-computed tokens. Same rationale as
-    # ``_chunk_tokens_for_bm25``: tokenize is multi-surface in rag_core.
-    from rag_core import tokenize
-
     if not query_tokens and not topics:
         return 0.0
     section_path = chunk.get("section_path") or [chunk.get("section", "")]
