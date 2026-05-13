@@ -182,7 +182,7 @@ flowchart TD
 
 > 강조된 두 노드: Planner의 `comparison-aware top_k` → [Key technical contribution](#key-technical-contribution--comparison-aware-balanced-top-k), Answer Generator의 `extractive — no LLM` → [Why extractive?](#why-extractive-not-generative)
 
-비교 질의(`query_type == "comparison"`)에서는 balanced top-k 컷을 적용해 각 비교 대상에 최소 1개 이상의 evidence를 보장합니다. Metadata filter staging, alias lexicon, follow-up carryover 상세: [`docs/retrieval-hardening.md`](docs/retrieval-hardening.md). `retrieval_backend` hybrid(BM25+RRF) 근거: [ADR 0010](docs/adr/0010-hybrid-bm25-dense-retrieval-rrf.md).
+비교 질의(`query_type == "comparison"`)에서는 balanced top-k 컷을 적용해 각 비교 대상에 최소 1개 이상의 evidence를 보장합니다. Metadata filter staging, alias lexicon, follow-up carryover 상세: [`docs/retrieval-hardening.md`](docs/retrieval-hardening.md). `retrieval_backend` hybrid(BM25+RRF) 근거: [ADR 0010](docs/adr/0010-hybrid-bm25-dense-retrieval-rrf.md). "agentic"의 의미 (bounded retry vs ReAct/Reflexion 비교): [`docs/agentic-definition.md`](docs/agentic-definition.md).
 
 ---
 
