@@ -2,7 +2,7 @@
 
 - **Status**: accepted
 - **Date**: 2026-05-11
-- **Related**: extends [ADR 0001](./0001-preserve-naive-baseline.md); preserves [ADR 0003](./0003-structured-answer-citation-contract.md); reuses backend pattern from [ADR 0006](./0006-llm-judge-on-real-data-only.md) and [ADR 0011](./0011-llm-synthesis-as-additive-ablation.md); respects eval split from [ADR 0005](./0005-eval-split-public-synthetic-private-local.md)
+- **Related**: extends [ADR 0001](./0001-preserve-naive-baseline.md); preserves [ADR 0003](./0003-structured-answer-citation-contract.md); reuses backend pattern from [ADR 0006](./0006-llm-judge-on-real-data-only.md) and [ADR 0011](./0011-llm-synthesis-as-additive-ablation.md); respects eval split from [ADR 0005](./0005-eval-split-public-synthetic-private-local.md); same "additive pluggable surface" theme as [ADR 0020](./0020-protocol-based-pluggability.md) (retrieval-side Protocols)
 - **Deciders**: hskim
 
 ## Context

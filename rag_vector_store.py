@@ -23,6 +23,10 @@ Stages of #176:
   ``store.query`` so both backends drive ranking through the same
   surface. Filter-pushdown (Qdrant payload filters) extends ``query``.
 * **Stage 3** (deferred) — pgvector backend for SaaS-Postgres scale.
+
+Convention: follows the four-property Protocol-based pluggability pattern
+(ADR 0020). New backends implement ``VectorStore`` and register via
+``default_vector_store()`` — ``rag_core.py`` is untouched.
 """
 
 from __future__ import annotations
