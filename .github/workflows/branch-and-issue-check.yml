@@ -50,3 +50,24 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           python scripts/check_branch_and_issue.py --check-5b ${{ github.event.pull_request.number }}
+
+      - name: Guard ADR file deletion/rename (CLAUDE.md Prohibited)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          # Backup CI gate for the pre-commit ADR guard (issue #619).
+          # Catches --no-verify bypasses. Uses PR file list from GitHub API
+          # so no git history fetch is needed.
+          adr_violations=$(gh api \
+            "/repos/$GITHUB_REPOSITORY/pulls/${{ github.event.pull_request.number }}/files" \
+            --jq '[.[] | select(.filename | test("^docs/adr/.+\\.md$")) | select(.status == "removed" or .status == "renamed")] | length')
+          if [[ "$adr_violations" -gt 0 ]]; then
+            echo "❌ ADR files may not be deleted/renamed (CLAUDE.md Prohibited)." >&2
+            echo "   Mark Superseded in the Status block and keep the file." >&2
+            gh api \
+              "/repos/$GITHUB_REPOSITORY/pulls/${{ github.event.pull_request.number }}/files" \
+              --jq '.[] | select(.filename | test("^docs/adr/.+\\.md$")) | select(.status == "removed" or .status == "renamed") | "  " + .status + ": " + .filename' >&2
+            exit 1
+          fi
+          echo "✅ No ADR file deletions/renames in this PR."
