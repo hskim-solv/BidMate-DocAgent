@@ -64,7 +64,8 @@ class ConfigSurfaceTest(unittest.TestCase):
     """The new config key + validator surfaces are wired correctly."""
 
     def test_valid_tokenizers_set_has_regex_and_kiwi(self) -> None:
-        self.assertEqual(VALID_BM25_TOKENIZERS, {"regex", "kiwi"})
+        # Issue #561 / ADR 0031 valid-set expansion: mecab + khaiii added.
+        self.assertGreaterEqual(VALID_BM25_TOKENIZERS, {"regex", "kiwi", "mecab", "khaiii"})
 
     def test_all_presets_default_to_regex(self) -> None:
         """ADR 0001 invariant — every shipped preset stays at regex.
@@ -83,14 +84,29 @@ class ConfigSurfaceTest(unittest.TestCase):
                 )
 
     def test_resolve_rejects_unknown_tokenizer(self) -> None:
+        # "spacy" is not a valid tokenizer — mecab/khaiii are now valid (issue #561).
         with self.assertRaises(ValueError) as ctx:
             resolve_pipeline_config(
                 {
                     "pipeline": "agentic_full",
-                    "bm25_tokenizer": "mecab",  # not in VALID set
+                    "bm25_tokenizer": "spacy",  # not in VALID set
                 }
             )
         self.assertIn("bm25_tokenizer must be one of", str(ctx.exception))
+
+    def test_resolve_accepts_mecab_explicitly(self) -> None:
+        # Issue #561 — mecab is now a valid tokenizer.
+        config = resolve_pipeline_config(
+            {"pipeline": "agentic_full", "bm25_tokenizer": "mecab"}
+        )
+        self.assertEqual(config["bm25_tokenizer"], "mecab")
+
+    def test_resolve_accepts_khaiii_explicitly(self) -> None:
+        # Issue #561 — khaiii is now a valid tokenizer.
+        config = resolve_pipeline_config(
+            {"pipeline": "agentic_full", "bm25_tokenizer": "khaiii"}
+        )
+        self.assertEqual(config["bm25_tokenizer"], "khaiii")
 
     def test_resolve_accepts_kiwi_explicitly(self) -> None:
         config = resolve_pipeline_config(

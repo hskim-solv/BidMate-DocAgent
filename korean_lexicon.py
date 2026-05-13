@@ -126,3 +126,104 @@ def kiwi_tokens(text: str) -> list[str] | None:
             if form:
                 tokens.append(form)
     return tokens
+
+
+# ---------------------------------------------------------------------------
+# Mecab-ko tokenizer (issue #561 / ADR 0031 valid-set expansion)
+# ---------------------------------------------------------------------------
+
+@lru_cache(maxsize=1)
+def _mecab_instance() -> Any | None:
+    """Return a singleton Mecab analyzer or ``None`` if unavailable.
+
+    Tries ``python-mecab-ko`` first, then ``konlpy.tag.Mecab`` as fallback.
+    ``None`` return signals callers to fall back to the regex tokenizer
+    (never-raise contract, ADR 0001 invariant).
+    """
+    try:
+        from mecab import MeCab  # type: ignore[import-not-found]  # python-mecab-ko
+        return MeCab()
+    except (ImportError, Exception):  # noqa: BLE001
+        pass
+    try:
+        from konlpy.tag import Mecab  # type: ignore[import-not-found]
+        return Mecab()
+    except (ImportError, Exception):  # noqa: BLE001
+        return None
+
+
+def mecab_tokens(text: str) -> list[str] | None:
+    """Morpheme-tokenize ``text`` using Mecab-ko, return BM25-worthy nouns/verbs.
+
+    Returns ``None`` if Mecab is not installed — callers fall back to the
+    regex tokenizer (never-raise, ADR 0001 invariant). Same contract as
+    :func:`kiwi_tokens`.
+    """
+    if not text:
+        return []
+    mecab = _mecab_instance()
+    if mecab is None:
+        return None
+    try:
+        # python-mecab-ko returns list of (surface, tag) tuples via morphs/pos.
+        # konlpy.tag.Mecab.pos() returns the same structure.
+        pos_list = mecab.pos(text)
+    except Exception:  # noqa: BLE001
+        return None
+    # Keep open-class morphemes: NNG/NNP (nouns), VV/VA (verbs/adjectives),
+    # XR (roots), SL (foreign), SN (numbers), NR (numerals).
+    keep_prefixes = ("NN", "VV", "VA", "XR", "SL", "SN", "NR")
+    tokens: list[str] = []
+    for surface, tag in pos_list:
+        if any(tag.startswith(p) for p in keep_prefixes):
+            surface = surface.strip()
+            if surface:
+                tokens.append(surface)
+    return tokens
+
+
+# ---------------------------------------------------------------------------
+# Khaiii tokenizer (issue #561 / ADR 0031 valid-set expansion)
+# ---------------------------------------------------------------------------
+
+@lru_cache(maxsize=1)
+def _khaiii_instance() -> Any | None:
+    """Return a singleton KhaiiiApi instance or ``None`` if unavailable.
+
+    Khaiii requires a compiled C++ shared library. ``None`` return signals
+    callers to fall back to the regex tokenizer (never-raise contract).
+    """
+    try:
+        from khaiii import KhaiiiApi  # type: ignore[import-not-found]
+        api = KhaiiiApi()
+        api.open()
+        return api
+    except (ImportError, Exception):  # noqa: BLE001
+        return None
+
+
+def khaiii_tokens(text: str) -> list[str] | None:
+    """Morpheme-tokenize ``text`` using Khaiii, return BM25-worthy morphemes.
+
+    Returns ``None`` if Khaiii is not installed or fails to initialize —
+    callers fall back to the regex tokenizer (never-raise, ADR 0001 invariant).
+    Same contract as :func:`kiwi_tokens` and :func:`mecab_tokens`.
+    """
+    if not text:
+        return []
+    api = _khaiii_instance()
+    if api is None:
+        return None
+    try:
+        words = api.analyze(text)
+    except Exception:  # noqa: BLE001
+        return None
+    keep_prefixes = ("NN", "VV", "VA", "XR", "SL", "SN", "NR")
+    tokens: list[str] = []
+    for word in words:
+        for morpheme in word.morphs:
+            tag = getattr(morpheme, "tag", "") or ""
+            surface = (getattr(morpheme, "lex", "") or "").strip()
+            if surface and any(tag.startswith(p) for p in keep_prefixes):
+                tokens.append(surface)
+    return tokens
