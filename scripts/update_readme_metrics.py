@@ -3,7 +3,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
@@ -25,6 +25,11 @@ REQUIRED_KEYS = [
     "latency",
     "retry",
 ]
+
+# Runs whose CI separates from `full` — shown in main ablation table.
+# All other runs are detection-blind under n=42 and go into the collapsed block.
+_MAIN_ABLATION_RUNS = {"naive_baseline", "full", "no_metadata_first", "no_verifier_retry"}
+_MAIN_ABLATION_ORDER = ["naive_baseline", "full", "no_metadata_first", "no_verifier_retry"]
 
 
 def parse_args() -> argparse.Namespace:
@@ -110,7 +115,19 @@ def fmt_top_k(value: Any) -> str:
     return str(value) if isinstance(value, int) else "auto"
 
 
-def render_main_table(summary: Dict[str, Any]) -> str:
+def _find_run(runs: List[Dict[str, Any]], name: str) -> Optional[Dict[str, Any]]:
+    return next((r for r in runs if isinstance(r, dict) and r.get("name") == name), None)
+
+
+def _delta_pp(full_val: Optional[float], base_val: Optional[float]) -> str:
+    if full_val is None or base_val is None:
+        return "—"
+    delta = (full_val - base_val) * 100
+    sign = "+" if delta >= 0 else ""
+    return f"{sign}{delta:.1f}pp"
+
+
+def render_main_table(summary: Dict[str, Any], full_run: Optional[Dict[str, Any]] = None) -> str:
     abstention_value = (
         metric_from_type(summary, "abstention", "abstention")
         or summary.get("abstention")
@@ -118,64 +135,209 @@ def render_main_table(summary: Dict[str, Any]) -> str:
     abstention_ci = (
         ci_from_type(summary, "abstention", "abstention") or ci_for(summary, "abstention")
     )
-    rows = [
-        ("Overall", "Answer Accuracy", fmt_rate_ci(summary.get("accuracy"), ci_for(summary, "accuracy"))),
+
+    if full_run is None:
+        # Fallback to single-column when full pipeline data is unavailable (e.g. CI-only naive_baseline run).
+        rows = [
+            ("Overall", "Answer Accuracy", fmt_rate_ci(summary.get("accuracy"), ci_for(summary, "accuracy"))),
+            (
+                "Single-doc extraction",
+                "Answer Accuracy",
+                fmt_rate_ci(
+                    metric_from_type(summary, "single_doc", "accuracy"),
+                    ci_from_type(summary, "single_doc", "accuracy"),
+                ),
+            ),
+            (
+                "Multi-doc comparison",
+                "Groundedness Rate",
+                fmt_rate_ci(
+                    metric_from_type(summary, "comparison", "groundedness"),
+                    ci_from_type(summary, "comparison", "groundedness"),
+                ),
+            ),
+            (
+                "Follow-up",
+                "Answer Accuracy",
+                fmt_rate_ci(
+                    metric_from_type(summary, "follow_up", "accuracy"),
+                    ci_from_type(summary, "follow_up", "accuracy"),
+                ),
+            ),
+            (
+                "Evidence",
+                "Citation Precision",
+                fmt_rate_ci(summary.get("citation_precision"), ci_for(summary, "citation_precision")),
+            ),
+            (
+                "Evidence",
+                "Claim Citation Alignment",
+                fmt_rate_ci(
+                    summary.get("claim_citation_alignment"),
+                    ci_for(summary, "claim_citation_alignment"),
+                ),
+            ),
+            (
+                "Evidence",
+                "Answer Format Compliance",
+                fmt_rate_ci(
+                    summary.get("answer_format_compliance"),
+                    ci_for(summary, "answer_format_compliance"),
+                ),
+            ),
+            (
+                "Abstention",
+                "Abstention Accuracy",
+                fmt_rate_ci(abstention_value, abstention_ci),
+            ),
+            ("System", "Latency (p50/p95)", fmt_latency(summary.get("latency"))),
+            ("System", "Retry Rate", fmt_rate_ci(summary.get("retry"), ci_for(summary, "retry"))),
+        ]
+        table = ["| Category | Metric | Score (95% CI) |", "|---|---:|---:|"]
+        table.extend(f"| {c} | {m} | {s} |" for c, m, s in rows)
+        return "\n".join(table)
+
+    # Three-column mode: agentic_full | naive_baseline | Δ
+    full_abstention = (
+        metric_from_type(full_run, "abstention", "abstention") or full_run.get("abstention")
+    )
+    full_abstention_ci = (
+        ci_from_type(full_run, "abstention", "abstention") or ci_for(full_run, "abstention")
+    )
+    latency_full = fmt_latency(full_run.get("latency"))
+    latency_base = fmt_latency(summary.get("latency"))
+
+    rows_3col = [
         (
-            "Single-doc extraction",
-            "Answer Accuracy",
+            "Overall", "Answer Accuracy",
+            fmt_rate_ci(full_run.get("accuracy"), ci_for(full_run, "accuracy")),
+            fmt_rate_ci(summary.get("accuracy"), ci_for(summary, "accuracy")),
+            _delta_pp(full_run.get("accuracy"), summary.get("accuracy")),
+        ),
+        (
+            "Single-doc extraction", "Answer Accuracy",
+            fmt_rate_ci(
+                metric_from_type(full_run, "single_doc", "accuracy"),
+                ci_from_type(full_run, "single_doc", "accuracy"),
+            ),
             fmt_rate_ci(
                 metric_from_type(summary, "single_doc", "accuracy"),
                 ci_from_type(summary, "single_doc", "accuracy"),
             ),
+            _delta_pp(
+                metric_from_type(full_run, "single_doc", "accuracy"),
+                metric_from_type(summary, "single_doc", "accuracy"),
+            ),
         ),
         (
-            "Multi-doc comparison",
-            "Groundedness Rate",
+            "Multi-doc comparison", "Groundedness Rate",
+            fmt_rate_ci(
+                metric_from_type(full_run, "comparison", "groundedness"),
+                ci_from_type(full_run, "comparison", "groundedness"),
+            ),
             fmt_rate_ci(
                 metric_from_type(summary, "comparison", "groundedness"),
                 ci_from_type(summary, "comparison", "groundedness"),
             ),
+            _delta_pp(
+                metric_from_type(full_run, "comparison", "groundedness"),
+                metric_from_type(summary, "comparison", "groundedness"),
+            ),
         ),
         (
-            "Follow-up",
-            "Answer Accuracy",
+            "Follow-up", "Answer Accuracy",
+            fmt_rate_ci(
+                metric_from_type(full_run, "follow_up", "accuracy"),
+                ci_from_type(full_run, "follow_up", "accuracy"),
+            ),
             fmt_rate_ci(
                 metric_from_type(summary, "follow_up", "accuracy"),
                 ci_from_type(summary, "follow_up", "accuracy"),
             ),
+            _delta_pp(
+                metric_from_type(full_run, "follow_up", "accuracy"),
+                metric_from_type(summary, "follow_up", "accuracy"),
+            ),
         ),
         (
-            "Evidence",
-            "Citation Precision",
+            "Evidence", "Citation Precision",
+            fmt_rate_ci(full_run.get("citation_precision"), ci_for(full_run, "citation_precision")),
             fmt_rate_ci(summary.get("citation_precision"), ci_for(summary, "citation_precision")),
+            _delta_pp(full_run.get("citation_precision"), summary.get("citation_precision")),
         ),
         (
-            "Evidence",
-            "Claim Citation Alignment",
-            fmt_rate_ci(
-                summary.get("claim_citation_alignment"),
-                ci_for(summary, "claim_citation_alignment"),
-            ),
+            "Evidence", "Claim Citation Alignment",
+            fmt_rate_ci(full_run.get("claim_citation_alignment"), ci_for(full_run, "claim_citation_alignment")),
+            fmt_rate_ci(summary.get("claim_citation_alignment"), ci_for(summary, "claim_citation_alignment")),
+            _delta_pp(full_run.get("claim_citation_alignment"), summary.get("claim_citation_alignment")),
         ),
         (
-            "Evidence",
-            "Answer Format Compliance",
-            fmt_rate_ci(
-                summary.get("answer_format_compliance"),
-                ci_for(summary, "answer_format_compliance"),
-            ),
+            "Evidence", "Answer Format Compliance",
+            fmt_rate_ci(full_run.get("answer_format_compliance"), ci_for(full_run, "answer_format_compliance")),
+            fmt_rate_ci(summary.get("answer_format_compliance"), ci_for(summary, "answer_format_compliance")),
+            _delta_pp(full_run.get("answer_format_compliance"), summary.get("answer_format_compliance")),
         ),
         (
-            "Abstention",
-            "Abstention Accuracy",
+            "Abstention", "Abstention Accuracy",
+            fmt_rate_ci(full_abstention, full_abstention_ci),
             fmt_rate_ci(abstention_value, abstention_ci),
+            _delta_pp(full_abstention, abstention_value),
         ),
-        ("System", "Latency (p50/p95)", fmt_latency(summary.get("latency"))),
-        ("System", "Retry Rate", fmt_rate_ci(summary.get("retry"), ci_for(summary, "retry"))),
+        (
+            "System", "Latency (p50/p95)",
+            f"{latency_full} (`agentic_full`)",
+            f"{latency_base} (`naive_baseline` — CI source of truth)",
+            "—",
+        ),
+        (
+            "System", "Retry Rate",
+            fmt_rate_ci(full_run.get("retry"), ci_for(full_run, "retry")),
+            fmt_rate_ci(summary.get("retry"), ci_for(summary, "retry")),
+            "—",
+        ),
     ]
-    table = ["| Category | Metric | Score (95% CI) |", "|---|---:|---:|"]
-    table.extend(f"| {c} | {m} | {s} |" for c, m, s in rows)
+    table = [
+        "| Category | Metric | agentic_full (95% CI) | naive_baseline (95% CI) | Δ |",
+        "|---|---|---:|---:|---:|",
+    ]
+    table.extend(f"| {c} | {m} | {f} | {b} | {d} |" for c, m, f, b, d in rows_3col)
     return "\n".join(table)
+
+
+def _fmt_ablation_row(run: Dict[str, Any]) -> str:
+    latency = run.get("latency") if isinstance(run.get("latency"), dict) else {}
+    p95 = latency.get("p95") if isinstance(latency, dict) else None
+    p95_text = f"{p95:.1f}ms" if isinstance(p95, (int, float)) else "N/A"
+    return (
+        "| {name} | {pipeline} | {top_k} | {metadata_first} | {rerank} | {verifier_retry}"
+        " | {accuracy} | {groundedness} | {citation} | {claim_align}"
+        " | {format} | {abstention} | {retry} | {p95} |"
+    ).format(
+        name=run.get("name", "unknown"),
+        pipeline=run.get("pipeline", ""),
+        top_k=fmt_top_k(run.get("top_k")),
+        metadata_first=fmt_flag(run.get("metadata_first")),
+        rerank=fmt_flag(run.get("rerank")),
+        verifier_retry=fmt_flag(run.get("verifier_retry")),
+        accuracy=fmt_rate_ci_compact(run.get("accuracy"), ci_for(run, "accuracy")),
+        groundedness=fmt_rate_ci_compact(run.get("groundedness"), ci_for(run, "groundedness")),
+        citation=fmt_rate_ci_compact(run.get("citation_precision"), ci_for(run, "citation_precision")),
+        claim_align=fmt_rate_ci_compact(
+            run.get("claim_citation_alignment"),
+            ci_for(run, "claim_citation_alignment"),
+        ),
+        format=fmt_rate(run.get("answer_format_compliance")),
+        abstention=fmt_rate(run.get("abstention")),
+        retry=fmt_rate(run.get("retry")),
+        p95=p95_text,
+    )
+
+
+_ABLATION_HEADER = [
+    "| Run | Pipeline | Top-k | Metadata-first | Rerank | Verifier/Retry"
+    " | Accuracy | Groundedness | Citation | Claim Align | Format | Abstention | Retry | Latency p95 |",
+    "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+]
 
 
 def render_ablation_table(summary: Dict[str, Any]) -> str:
@@ -184,46 +346,46 @@ def render_ablation_table(summary: Dict[str, Any]) -> str:
     if not isinstance(runs, list) or not runs:
         return ""
 
-    table = [
-        "### Ablation comparison",
-        "",
-        "| Run | Pipeline | Top-k | Metadata-first | Rerank | Verifier/Retry | Accuracy | Groundedness | Citation | Claim Align | Format | Abstention | Retry | Latency p95 |",
-        "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
-    ]
-    for run in runs:
-        if not isinstance(run, dict):
-            continue
-        latency = run.get("latency") if isinstance(run.get("latency"), dict) else {}
-        p95 = latency.get("p95") if isinstance(latency, dict) else None
-        p95_text = f"{p95:.1f}ms" if isinstance(p95, (int, float)) else "N/A"
+    order = {n: i for i, n in enumerate(_MAIN_ABLATION_ORDER)}
+    main_runs = sorted(
+        [r for r in runs if isinstance(r, dict) and r.get("name") in _MAIN_ABLATION_RUNS],
+        key=lambda r: order.get(r.get("name", ""), 999),
+    )
+    blind_runs = [r for r in runs if isinstance(r, dict) and r.get("name") not in _MAIN_ABLATION_RUNS]
+
+    table = ["### Ablation comparison", ""]
+    table.extend(_ABLATION_HEADER)
+    for run in main_runs:
+        table.append(_fmt_ablation_row(run))
+
+    if blind_runs:
+        table.append("")
         table.append(
-            "| {name} | {pipeline} | {top_k} | {metadata_first} | {rerank} | {verifier_retry} | {accuracy} | {groundedness} | {citation} | {claim_align} | {format} | {abstention} | {retry} | {p95} |".format(
-                name=run.get("name", "unknown"),
-                pipeline=run.get("pipeline", ""),
-                top_k=fmt_top_k(run.get("top_k")),
-                metadata_first=fmt_flag(run.get("metadata_first")),
-                rerank=fmt_flag(run.get("rerank")),
-                verifier_retry=fmt_flag(run.get("verifier_retry")),
-                accuracy=fmt_rate_ci_compact(run.get("accuracy"), ci_for(run, "accuracy")),
-                groundedness=fmt_rate_ci_compact(run.get("groundedness"), ci_for(run, "groundedness")),
-                citation=fmt_rate_ci_compact(run.get("citation_precision"), ci_for(run, "citation_precision")),
-                claim_align=fmt_rate_ci_compact(
-                    run.get("claim_citation_alignment"),
-                    ci_for(run, "claim_citation_alignment"),
-                ),
-                format=fmt_rate(run.get("answer_format_compliance")),
-                abstention=fmt_rate(run.get("abstention")),
-                retry=fmt_rate(run.get("retry")),
-                p95=p95_text,
-            )
+            "<details>"
+            "<summary>Detection-blind ablations under n=42 — "
+            "statistically inseparable from <code>full</code>; to be re-tested at n≥100 (issue #570)</summary>"
         )
+        table.append("")
+        table.extend(_ABLATION_HEADER)
+        for run in blind_runs:
+            table.append(_fmt_ablation_row(run))
+        table.append("")
+        table.append("</details>")
+
     table.append("")
-    table.append("> Values shown as `mean±half-width` for the 95% bootstrap CI (n=cases, 1000 resamples, seed=17). The non-CI columns (Format, Abstention, Retry) are point estimates; their CIs appear in the detailed main table above.")
+    table.append(
+        "> Values shown as `mean±half-width` for the 95% bootstrap CI (n=cases, 1000 resamples, seed=17). "
+        "The non-CI columns (Format, Abstention, Retry) are point estimates; "
+        "their CIs appear in the detailed main table above."
+    )
     return "\n".join(table)
 
 
 def render_table(summary: Dict[str, Any]) -> str:
-    parts = [render_main_table(summary)]
+    ablation = summary.get("ablation", {})
+    runs = ablation.get("runs", []) if isinstance(ablation, dict) else []
+    full_run = _find_run(runs, "full")
+    parts = [render_main_table(summary, full_run)]
     ablation_table = render_ablation_table(summary)
     if ablation_table:
         parts.append(ablation_table)
