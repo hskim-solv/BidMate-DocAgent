@@ -71,7 +71,7 @@ project record.
 | [0006](./0006-llm-judge-on-real-data-only.md) | accepted | LLM-judge on the real-data surface only (refines 0004) |
 | [0007](./0007-issue-linked-branch-naming.md) | accepted | Issue-linked branch naming convention |
 | [0008](./0008-evidence-boundary.md) | accepted | Evidence-boundary defense against prompt injection |
-| [0009](./0009-external-baseline-comparison.md) | proposed | External baseline comparison via a separate script (extends 0001) |
+| [0009](./0009-external-baseline-comparison.md) | accepted | External baseline comparison via a separate script (extends 0001); `scripts/compare_external_baselines.py` + `reports/external_baselines.json` implemented; stub run committed; real LangChain run deferred to issue #449 |
 | [0010](./0010-hybrid-bm25-dense-retrieval-rrf.md) | accepted | Hybrid BM25 + dense retrieval with RRF fusion |
 | [0011](./0011-llm-synthesis-as-additive-ablation.md) | proposed | LLM answer synthesis as additive ablation (extends 0001, preserves 0003) |
 | [0012](./0012-llm-judge-on-public-synthetic.md) | accepted | LLM-judge on the public synthetic eval, stub-default (refines 0006, reuses 0011 backend pattern) |

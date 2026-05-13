@@ -15,7 +15,7 @@
 
 | 시그널 | 어디서 확인하나 |
 |---|---|
-| 아키텍처 결정이 **사후 합리화가 아닌 기록된 결정**으로 남아있다 | [`docs/adr/`](./adr/README.md) — 32개 ADR (23 accepted / 9 proposed), status-tracked, supersession chains 명시 |
+| 아키텍처 결정이 **사후 합리화가 아닌 기록된 결정**으로 남아있다 | [`docs/adr/`](./adr/README.md) — 32개 ADR (24 accepted / 8 proposed), status-tracked, supersession chains 명시 |
 | **측정 가능한 성공 기준**을 미리 잡고 그 기준으로 평가한다 | [`portfolio-case-study.md` §2](./portfolio-case-study.md), [`eval/config.yaml`](../eval/config.yaml), README headline 표 |
 | 합성 평가의 한계를 알고 **공개/비공개 평가 분리**로 보완한다 | [ADR 0005](./adr/0005-eval-split-public-synthetic-private-local.md), [`docs/private-100-doc-experiments.md`](./private-100-doc-experiments.md) |
 | **실패를 분류·우선순위화**한 뒤 백로그로 만든다 | [`docs/real-data-failure-taxonomy.md`](./real-data-failure-taxonomy.md), 메타 이슈 #49 |
@@ -38,7 +38,7 @@
 | [0006](./adr/0006-llm-judge-on-real-data-only.md) | accepted | LLM-judge는 real-data 표면에서만 (refines 0004) | 공개본의 결정성과 실제 신호를 동시에 살리는 비대칭 결정 |
 | [0007](./adr/0007-issue-linked-branch-naming.md) | accepted | issue-linked 브랜치 네이밍 (`<type>/issue-N`) | 추적성을 doc이 아니라 CI(`branch-and-issue-check.yml`)로 강제 |
 | [0008](./adr/0008-evidence-boundary.md) | accepted | evidence boundary defense | prompt injection을 contract surface에서 차단 — 보안 의식의 명시화 |
-| [0009](./adr/0009-external-baseline-comparison.md) | proposed | LangChain/LlamaIndex 외부 baseline 분리 비교 (extends 0001) | "왜 자체 구축?" 질문에 비대칭 metric(citation/grounding)으로 정량 답변 |
+| [0009](./adr/0009-external-baseline-comparison.md) | accepted | LangChain/LlamaIndex 외부 baseline 분리 비교 (extends 0001) | "왜 자체 구축?" 질문에 비대칭 metric(citation/grounding)으로 정량 답변. `scripts/compare_external_baselines.py` (497 lines) + stub 실행 결과 `reports/external_baselines.json` 커밋 완료. 실 LangChain run → issue #449. |
 | [0010](./adr/0010-hybrid-bm25-dense-retrieval-rrf.md) | accepted | hybrid BM25 + dense + RRF | retrieval 보강은 *추가 ablation*으로만; 단일 backend로 결합 안 함 |
 | [0011](./adr/0011-llm-synthesis-as-additive-ablation.md) | proposed | LLM 합성은 additive ablation (extends 0001, preserves 0003) | answer_text 렌더링만 LLM 교체; claims/citations/status는 결정적 verifier가 그대로 결정 |
 | [0012](./adr/0012-llm-judge-on-public-synthetic.md) | accepted | LLM-judge on public synthetic, stub-default (refines 0006, reuses 0011) | judge backend는 결정적 stub으로 CI 통과; real backend는 운영자 옵트인 |

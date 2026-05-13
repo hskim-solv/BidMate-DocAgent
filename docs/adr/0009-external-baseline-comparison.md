@@ -2,7 +2,7 @@
 
 (Originally drafted as ADR 0008 alongside [#155](https://github.com/hskim-solv/BidMate-DocAgent/pull/155); renumbered to 0009 to avoid collision with the concurrent evidence-boundary ADR in [#144](https://github.com/hskim-solv/BidMate-DocAgent/pull/144), per the "numbers are never reused" rule in [docs/adr/README.md](./README.md).)
 
-- **Status**: proposed
+- **Status**: accepted
 - **Date**: 2026-05-11
 - **Related**: extends [ADR 0001](./0001-preserve-naive-baseline.md); reuses backend pattern from [ADR 0006](./0006-llm-judge-on-real-data-only.md)
 - **Deciders**: hskim
@@ -160,3 +160,40 @@ mirroring ADR 0005's split for the real-data surface.
   defense of the internal baseline applies recursively — if the
   agentic pipeline is worth measuring against a naive one, it is
   also worth measuring against the most popular external framework.
+
+## First execution results
+
+**Stub backend (committed, 2026-05-11)**
+
+`python3 scripts/compare_external_baselines.py` with the default
+`BIDMATE_EXTERNAL_BACKEND=stub` was run against the public synthetic
+n=42 surface and the aggregate committed to
+`reports/external_baselines.json`:
+
+| metric | stub result | note |
+|---|---|---|
+| `accuracy` | 1.000 (CI: [1.000, 1.000]) | stub returns perfect templated answers — not a quality claim |
+| `retrieval_recall@k` | 1.000 (CI: [1.000, 1.000], n=32) | stub retrieves all expected docs |
+| `latency_ms` (p50/p95) | 0 ms / 0 ms | no real retrieval |
+| `citation_precision` | null | asymmetric metric — external system produces no chunk_ids |
+| `claim_citation_alignment` | null | asymmetric metric |
+| `abstention_accuracy` | null | asymmetric metric |
+| `answer_format_compliance` | null | asymmetric metric |
+
+The stub run proves the plumbing end-to-end: `compare_external_baselines.py`
+loads cases from `eval/dev_queries_v1_summary.md`, runs the stub backend,
+aggregates bootstrap CIs, and writes the committable aggregate shape.
+`tests/test_external_baselines.py` covers this path in CI.
+
+**Real LangChain backend (deferred)**
+
+Running `BIDMATE_EXTERNAL_BACKEND=langchain` requires
+`langchain langchain-community langchain-anthropic faiss-cpu
+sentence-transformers` and `ANTHROPIC_API_KEY`. Per ADR 0004 / ADR 0006,
+public CI stays deterministic and free; the real-backend run is an
+opt-in local operation. Tracked in
+[issue #449](https://github.com/hskim-solv/BidMate-DocAgent/issues/449).
+When that run lands, `reports/external_baselines.json` will be updated
+with a row whose `"backend": "langchain"` and the ADR 0025 re-open
+condition (`reports/external_baselines.json` gets ≥ 1 entry with
+`backend != "stub"`, n ≥ 32) will be satisfied.
