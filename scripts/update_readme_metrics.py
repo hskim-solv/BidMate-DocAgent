@@ -107,6 +107,19 @@ def metric_from_type(summary: Dict[str, Any], query_type: str, metric: str) -> A
     return block.get(metric)
 
 
+def fmt_abstention_breakdown(value: Any, outcomes: Any) -> str:
+    """Format ``0.300 (CR:3/IA:7/BP:0)`` when abstention_outcomes is available."""
+    base = fmt_rate(value)
+    if not isinstance(outcomes, dict):
+        return base
+    cr = outcomes.get("correct_refusal")
+    ia = outcomes.get("incorrect_answer")
+    bp = outcomes.get("boundary_partial")
+    if cr is None or ia is None or bp is None:
+        return base
+    return f"{base} ({cr}/{ia}/{bp})"
+
+
 def fmt_flag(value: Any) -> str:
     return "on" if bool(value) else "off"
 
@@ -187,8 +200,9 @@ def render_main_table(summary: Dict[str, Any], full_run: Optional[Dict[str, Any]
             ),
             (
                 "Abstention",
-                "Abstention Accuracy",
-                fmt_rate_ci(abstention_value, abstention_ci),
+                "Abstention Accuracy (CR/IA/BP)",
+                fmt_abstention_breakdown(abstention_value, summary.get("abstention_outcomes"))
+                + (f" ({fmt_rate_ci(abstention_value, abstention_ci)} 95% CI)" if abstention_ci else ""),
             ),
             ("System", "Latency (p50/p95)", fmt_latency(summary.get("latency"))),
             ("System", "Retry Rate", fmt_rate_ci(summary.get("retry"), ci_for(summary, "retry"))),
@@ -278,9 +292,11 @@ def render_main_table(summary: Dict[str, Any], full_run: Optional[Dict[str, Any]
             _delta_pp(full_run.get("answer_format_compliance"), summary.get("answer_format_compliance")),
         ),
         (
-            "Abstention", "Abstention Accuracy",
-            fmt_rate_ci(full_abstention, full_abstention_ci),
-            fmt_rate_ci(abstention_value, abstention_ci),
+            "Abstention", "Abstention Accuracy (CR/IA/BP)",
+            fmt_abstention_breakdown(full_abstention, full_run.get("abstention_outcomes"))
+            + (f" ({fmt_rate_ci(full_abstention, full_abstention_ci)} 95% CI)" if full_abstention_ci else ""),
+            fmt_abstention_breakdown(abstention_value, summary.get("abstention_outcomes"))
+            + (f" ({fmt_rate_ci(abstention_value, abstention_ci)} 95% CI)" if abstention_ci else ""),
             _delta_pp(full_abstention, abstention_value),
         ),
         (
@@ -327,7 +343,7 @@ def _fmt_ablation_row(run: Dict[str, Any]) -> str:
             ci_for(run, "claim_citation_alignment"),
         ),
         format=fmt_rate(run.get("answer_format_compliance")),
-        abstention=fmt_rate(run.get("abstention")),
+        abstention=fmt_abstention_breakdown(run.get("abstention"), run.get("abstention_outcomes")),
         retry=fmt_rate(run.get("retry")),
         p95=p95_text,
     )

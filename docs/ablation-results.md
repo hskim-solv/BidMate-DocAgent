@@ -28,15 +28,19 @@
 
 ## Ablation Table
 
-| Run | Pipeline | Top-k | Metadata-first | Rerank | Verifier/Retry | Retrieval | Backend | Prompt | Accuracy | Groundedness | Citation | Citation Grounding | Format | Abstention | Retry | Latency p95 |
+| Run | Pipeline | Top-k | Metadata-first | Rerank | Verifier/Retry | Retrieval | Backend | Prompt | Accuracy | Groundedness | Citation | Citation Grounding | Format | Abstention (CR/IA/BP) | Retry | Latency p95 |
 |---|---|---:|---:|---:|---:|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| full | agentic_full | auto | on | on | on | flat | dense | structured_grounded_claims | 0.906 | 0.929 | 0.905 | N/A | 0.905 | 1.000 | 0.310 | 3.0ms |
-| hierarchical | agentic_full | auto | on | on | on | hierarchical | dense | structured_grounded_claims | 0.906 | 0.929 | 0.905 | N/A | 0.905 | 1.000 | 0.310 | 2.9ms |
-| hybrid_bm25 | agentic_full | auto | on | on | on | flat | hybrid | structured_grounded_claims | 0.906 | 0.929 | 0.905 | N/A | 0.905 | 1.000 | 0.310 | 3.1ms |
-| naive_baseline | naive_baseline | 4 | off | off | off | flat | dense | minimal_grounded_extractive | 0.844 | 0.714 | 0.512 | N/A | 0.667 | 0.300 | 0.000 | 2.9ms |
-| no_metadata_first | agentic_full | auto | off | on | on | flat | dense | structured_grounded_claims | 0.844 | 0.881 | 0.679 | N/A | 0.857 | 1.000 | 0.000 | 3.0ms |
-| no_rerank | agentic_full | auto | on | off | on | flat | dense | structured_grounded_claims | 0.906 | 0.929 | 0.905 | N/A | 0.905 | 1.000 | 0.310 | 3.2ms |
-| no_verifier_retry | agentic_full | auto | on | on | off | flat | dense | structured_grounded_claims | 0.906 | 0.762 | 0.762 | N/A | 0.714 | 0.300 | 0.000 | 2.8ms |
+| full | agentic_full | auto | on | on | on | flat | dense | structured_grounded_claims | 0.906 | 0.929 | 0.905 | N/A | 0.905 | 1.000 (10/0/0) | 0.310 | 3.0ms |
+| hierarchical | agentic_full | auto | on | on | on | hierarchical | dense | structured_grounded_claims | 0.906 | 0.929 | 0.905 | N/A | 0.905 | 1.000 (10/0/0) | 0.310 | 2.9ms |
+| hybrid_bm25 | agentic_full | auto | on | on | on | flat | hybrid | structured_grounded_claims | 0.906 | 0.929 | 0.905 | N/A | 0.905 | 1.000 (10/0/0) | 0.310 | 3.1ms |
+| naive_baseline | naive_baseline | 4 | off | off | off | flat | dense | minimal_grounded_extractive | 0.844 | 0.714 | 0.512 | N/A | 0.667 | 0.300 (3/7/0) | 0.000 | 2.9ms |
+| no_metadata_first | agentic_full | auto | off | on | on | flat | dense | structured_grounded_claims | 0.844 | 0.881 | 0.679 | N/A | 0.857 | 1.000 (10/0/0) | 0.000 | 3.0ms |
+| no_rerank | agentic_full | auto | on | off | on | flat | dense | structured_grounded_claims | 0.906 | 0.929 | 0.905 | N/A | 0.905 | 1.000 (10/0/0) | 0.310 | 3.2ms |
+| no_verifier_retry | agentic_full | auto | on | on | off | flat | dense | structured_grounded_claims | 0.906 | 0.762 | 0.762 | N/A | 0.714 | 0.300 (3/7/0)† | 0.000 | 2.8ms |
+
+CR=correct\_refusal / IA=incorrect\_answer / BP=boundary\_partial (ADR 0005 §abstention design). **1.000은 10 CR + 0 BP(보수적 abstain)의 합** — oracle 점수가 아닌 verifier+retry 경로가 의도된 abstention 10건을 모두 올바르게 처리한 결과. naive\_baseline의 0.300은 3 CR + 7 IA(근거 없이 답변 시도) + 0 BP.
+
+†`no_verifier_retry` bin 분포는 n=42 헤드라인 비율에서 추산(naive\_baseline과 동일 headline=0.300); 정확한 breakdown은 다음 benchmark 실행(`make benchmark`) 후 `eval_summary.json`에서 확인.
 
 ## Hard-case Slices
 
