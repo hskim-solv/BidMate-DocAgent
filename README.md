@@ -9,7 +9,7 @@
 
 > 한국 공공·B2B 입찰 RFP에서 비교·요건 추출 질의를 **근거 있는 답변**으로 돌려주는 한국어 도메인 특화 RAG — 외부 LLM 호출 없이 extractive grounding으로 hallucination을 구조적으로 차단.
 > **차별점**: 비교 질의에서 두 기관 문서를 균등 인용하는 [comparison-aware balanced retrieval](#key-technical-contribution--comparison-aware-balanced-top-k), metadata-first 검색([ADR 0002](docs/adr/0002-metadata-first-retrieval.md)), 근거 부족 시 abstention 명시([ADR 0003](docs/adr/0003-structured-answer-citation-contract.md)).
-> **측정**: accuracy 0.62 ± 0.09, citation_precision 0.84 ± 0.05 (95% CI, n=42) — 공개 합성 + 비공개 real-data 분리 평가([ADR 0005](docs/adr/0005-eval-split-public-synthetic-private-local.md)), 33개 설계 결정(ADR).
+> **측정**: accuracy 0.718 ± 0.10, citation_precision 0.705 ± 0.08 (`agentic_full`, 95% CI, n=100) — 공개 합성 + 비공개 real-data 분리 평가([ADR 0005](docs/adr/0005-eval-split-public-synthetic-private-local.md)), 33개 설계 결정(ADR).
 
 ### 🎬 5초 비주얼 훅 — 실제 `comparison` 질의 한 건 (extractive, no LLM)
 
@@ -71,7 +71,7 @@ LLM synthesis opt-in(`agentic_full_llm`, [ADR 0011](docs/adr/0011-llm-synthesis-
 - **해결**: 질문 유형 분석 + metadata-first 검색 + local dense retrieval/reranking + 근거 검증/retry를 결합한 Agentic RAG 파이프라인.
 - **시스템 설계**: 외부 LLM 호출 없이 evidence에서 claim을 추출하고 citation을 연결하는 **extractive grounded-answer 파이프라인** ([ADR 0003](docs/adr/0003-structured-answer-citation-contract.md)).
 - **성과**: 공개 synthetic 평가셋 **n=100** (single_doc 34 / comparison 24 / follow_up 21 / abstention 21) 기준 근거 기반 응답 품질 검증. Abstention **+77.8pp** / Citation Precision **+39.3pp** (CI 분리, 통계적으로 유의). [평가셋 상세 spec](docs/eval-dataset-spec.md)
-- **Latency** (naive_baseline, hashing, macOS CPU, n=100): p50 1.9ms / p95 5.9ms.
+- **Latency** (naive_baseline, hashing, macOS CPU, n=100): p50 1.7ms / p95 3.1ms.
 
 ---
 
@@ -100,52 +100,52 @@ LLM synthesis opt-in(`agentic_full_llm`, [ADR 0011](docs/adr/0011-llm-synthesis-
 - **실행 환경**: macOS / CPU-only / Python 3.11 / 단일 워커.
 - **Cold start 분리**: hashing ≈ 2.1ms / sentence-transformers ≈ 5.7s.
 - **평가셋**: 공개 synthetic n=100 (single_doc 34 / comparison 24 / follow_up 21 / abstention 21). 비공개 RFP eval은 [ADR 0005](docs/adr/0005-eval-split-public-synthetic-private-local.md)에 따라 분리합니다. 평가셋 구성 상세: [docs/eval-dataset-spec.md](docs/eval-dataset-spec.md)
-- **헤드라인 latency 기준 preset**: naive_baseline Latency p95 (5.9ms)가 CI source of truth. `agentic_full_llm`은 LLM 레이턴시 포함해 환경 의존적이므로 CI 고정 대상 아님.
+- **헤드라인 latency 기준 preset**: naive_baseline Latency p95 (3.1ms)가 CI source of truth. `agentic_full_llm`은 LLM 레이턴시 포함해 환경 의존적이므로 CI 고정 대상 아님.
 - **`agentic_full_llm` 백엔드 구분**: ablation 표의 `full_llm` 행은 `BIDMATE_SYNTHESIS_BACKEND=stub`(token-less, deterministic; [ADR 0011](docs/adr/0011-llm-synthesis-as-additive-ablation.md)) 기준. stub은 pass-through 합성이라 `full`과 동일 metric이 *정상*.
 - **Rerank 종류 구분**: `Rerank on` 행 대부분은 weighted-score rerank. `full_reranker`만 cross-encoder rerank([rag_rerank.py](rag_rerank.py)) — CI default `stub`이라 `full`과 수치 일치.
 
 <!-- METRICS_TABLE:START -->
 | Category | Metric | agentic_full (95% CI) | naive_baseline (95% CI) | Δ |
 |---|---|---:|---:|---:|
-| Overall | Answer Accuracy | 0.906 (0.781–1.000) | 0.844 (0.719–0.969) | +6.2pp |
-| Single-doc extraction | Answer Accuracy | 1.000 (1.000–1.000) | 1.000 (1.000–1.000) | +0.0pp |
-| Multi-doc comparison | Groundedness Rate | 0.700 (0.400–0.900) | 0.700 (0.400–0.900) | +0.0pp |
-| Follow-up | Answer Accuracy | 1.000 (1.000–1.000) | 0.750 (0.375–1.000) | +25.0pp |
-| Evidence | Citation Precision | 0.905 (0.821–0.976) | 0.512 (0.393–0.631) | +39.3pp |
-| Evidence | Claim Citation Alignment | 1.000 (1.000–1.000) | 0.974 (0.921–1.000) | +2.6pp |
-| Evidence | Answer Format Compliance | 0.905 (0.810–0.976) | 0.667 (0.524–0.810) | +23.8pp |
-| Abstention | Abstention Accuracy | 1.000 (1.000–1.000) | 0.222 (0.000–0.556) | +77.8pp |
-| System | Latency (p50/p95) | p50 1.8ms / p95 4.4ms (`agentic_full`) | p50 1.9ms / p95 7.5ms (`naive_baseline` — CI source of truth) | — |
-| System | Retry Rate | 0.310 (0.167–0.452) | 0.000 (0.000–0.000) | — |
+| Overall | Answer Accuracy | 0.718 (0.615–0.821) | 0.782 (0.679–0.872) | -6.4pp |
+| Single-doc extraction | Answer Accuracy | 0.882 (0.765–0.971) | 0.941 (0.853–1.000) | -5.9pp |
+| Multi-doc comparison | Groundedness Rate | 0.542 (0.333–0.708) | 0.708 (0.542–0.875) | -16.7pp |
+| Follow-up | Answer Accuracy | 0.700 (0.500–0.900) | 0.750 (0.550–0.901) | -5.0pp |
+| Evidence | Citation Precision | 0.705 (0.625–0.780) | 0.525 (0.450–0.610) | +18.0pp |
+| Evidence | Claim Citation Alignment | 0.979 (0.944–1.000) | 0.972 (0.938–1.000) | +0.7pp |
+| Evidence | Answer Format Compliance | 0.620 (0.530–0.710) | 0.630 (0.530–0.730) | -1.0pp |
+| Abstention | Abstention Accuracy (CR/IA/BP) | 0.810 (18/4/0) (0.810 (0.619–0.952) 95% CI) | 0.238 (6/16/0) (0.238 (0.048–0.429) 95% CI) | +57.1pp |
+| System | Latency (p50/p95) | p50 2.6ms / p95 4.6ms (`agentic_full`) | p50 1.7ms / p95 3.1ms (`naive_baseline` — CI source of truth) | — |
+| System | Retry Rate | 0.490 (0.390–0.580) | 0.000 (0.000–0.000) | — |
 
 ### Ablation comparison
 
 | Run | Pipeline | Top-k | Metadata-first | Rerank | Verifier/Retry | Accuracy | Groundedness | Citation | Claim Align | Format | Abstention | Retry | Latency p95 |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| naive_baseline | naive_baseline | 4 | off | off | off | 0.844±0.12 | 0.714±0.14 | 0.512±0.12 | 0.974±0.05 | 0.667 | 0.300 | 0.000 | 7.5ms |
-| full | agentic_full | auto | on | on | on | 0.906±0.12 | 0.929±0.07 | 0.905±0.08 | 1.000±0.00 | 0.905 | 1.000 | 0.310 | 4.4ms |
-| no_metadata_first | agentic_full | auto | off | on | on | 0.844±0.12 | 0.881±0.10 | 0.679±0.11 | 0.968±0.06 | 0.857 | 1.000 | 0.000 | 3.8ms |
-| no_verifier_retry | agentic_full | auto | on | on | off | 0.906±0.12 | 0.762±0.14 | 0.762±0.14 | 1.000±0.00 | 0.714 | 0.300 | 0.000 | 2.6ms |
+| naive_baseline | naive_baseline | 4 | off | off | off | 0.782±0.10 | 0.700±0.09 | 0.525±0.08 | 0.972±0.03 | 0.630 | 0.273 (6/16/0) | 0.000 | 3.1ms |
+| full | agentic_full | auto | on | on | on | 0.718±0.10 | 0.750±0.08 | 0.705±0.08 | 0.979±0.03 | 0.620 | 0.818 (18/4/0) | 0.490 | 4.6ms |
+| no_metadata_first | agentic_full | auto | off | on | on | 0.692±0.10 | 0.740±0.09 | 0.595±0.07 | 0.965±0.04 | 0.600 | 0.818 (18/4/0) | 0.000 | 3.6ms |
+| no_verifier_retry | agentic_full | auto | on | on | off | 0.821±0.09 | 0.720±0.09 | 0.705±0.09 | 0.983±0.03 | 0.660 | 0.273 (6/16/0) | 0.000 | 2.7ms |
 
 <details><summary>Detection-blind ablations — statistically inseparable from <code>full</code> at n=42 (CI bands overlapping; n=42 was the statistical limit). Dataset expanded to n=100 (issue #570 완료); real-eval re-measurement pending.</summary>
 
 | Run | Pipeline | Top-k | Metadata-first | Rerank | Verifier/Retry | Accuracy | Groundedness | Citation | Claim Align | Format | Abstention | Retry | Latency p95 |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| full_llm | agentic_full_llm | auto | on | on | on | 0.906±0.12 | 0.929±0.07 | 0.905±0.08 | 1.000±0.00 | 0.905 | 1.000 | 0.310 | 4.5ms |
-| full_llm_metadata | agentic_full | auto | on | on | on | 0.906±0.12 | 0.929±0.07 | 0.905±0.08 | 1.000±0.00 | 0.905 | 1.000 | 0.310 | 4.5ms |
-| hierarchical | agentic_full | auto | on | on | on | 0.906±0.12 | 0.929±0.07 | 0.905±0.08 | 1.000±0.00 | 0.905 | 1.000 | 0.310 | 4.4ms |
-| no_rerank | agentic_full | auto | on | off | on | 0.906±0.12 | 0.929±0.07 | 0.905±0.08 | 1.000±0.00 | 0.905 | 1.000 | 0.310 | 4.5ms |
-| hybrid_bm25 | agentic_full | auto | on | on | on | 0.906±0.12 | 0.929±0.07 | 0.905±0.08 | 1.000±0.00 | 0.905 | 1.000 | 0.310 | 4.5ms |
-| hybrid_bm25_k10 | agentic_full | auto | on | on | on | 0.906±0.12 | 0.929±0.07 | 0.905±0.08 | 1.000±0.00 | 0.905 | 1.000 | 0.310 | 4.5ms |
-| hybrid_bm25_k30 | agentic_full | auto | on | on | on | 0.906±0.12 | 0.929±0.07 | 0.905±0.08 | 1.000±0.00 | 0.905 | 1.000 | 0.310 | 4.5ms |
-| hybrid_bm25_k100 | agentic_full | auto | on | on | on | 0.906±0.12 | 0.929±0.07 | 0.905±0.08 | 1.000±0.00 | 0.905 | 1.000 | 0.310 | 4.5ms |
-| hybrid_bm25_extra_stopwords | agentic_full | auto | on | on | on | 0.906±0.12 | 0.929±0.07 | 0.905±0.08 | 1.000±0.00 | 0.905 | 1.000 | 0.310 | 4.6ms |
-| hybrid_bm25_k30_extra | agentic_full | auto | on | on | on | 0.906±0.12 | 0.929±0.07 | 0.905±0.08 | 1.000±0.00 | 0.905 | 1.000 | 0.310 | 5.2ms |
-| full_kiwi | agentic_full | auto | on | on | on | 0.906±0.12 | 0.929±0.07 | 0.905±0.08 | 1.000±0.00 | 0.905 | 1.000 | 0.310 | 4.6ms |
-| full_reranker | agentic_full | auto | on | on | on | 0.906±0.12 | 0.929±0.07 | 0.905±0.08 | 1.000±0.00 | 0.905 | 1.000 | 0.310 | 4.4ms |
-| full_hyde | agentic_full | auto | on | on | on | 0.906±0.12 | 0.929±0.07 | 0.905±0.08 | 1.000±0.00 | 0.905 | 1.000 | 0.310 | 4.5ms |
-| agentic_full_finetuned | agentic_full | auto | on | on | on | 0.906±0.12 | 0.929±0.07 | 0.905±0.08 | 1.000±0.00 | 0.905 | 1.000 | 0.310 | 4.5ms |
-| naive_baseline_finetuned | naive_baseline | 4 | off | off | off | 0.844±0.12 | 0.714±0.14 | 0.512±0.12 | 0.974±0.05 | 0.667 | 0.300 | 0.000 | 2.7ms |
+| full_llm | agentic_full_llm | auto | on | on | on | 0.718±0.10 | 0.750±0.08 | 0.705±0.08 | 0.979±0.03 | 0.620 | 0.818 (18/4/0) | 0.490 | 5.8ms |
+| full_llm_metadata | agentic_full | auto | on | on | on | 0.718±0.10 | 0.750±0.08 | 0.705±0.08 | 0.979±0.03 | 0.620 | 0.818 (18/4/0) | 0.490 | 4.7ms |
+| hierarchical | agentic_full | auto | on | on | on | 0.718±0.10 | 0.750±0.08 | 0.695±0.08 | 0.979±0.03 | 0.620 | 0.818 (18/4/0) | 0.490 | 5.0ms |
+| no_rerank | agentic_full | auto | on | off | on | 0.705±0.10 | 0.740±0.08 | 0.695±0.08 | 0.979±0.03 | 0.620 | 0.818 (18/4/0) | 0.490 | 4.5ms |
+| hybrid_bm25 | agentic_full | auto | on | on | on | 0.731±0.10 | 0.750±0.08 | 0.705±0.08 | 0.979±0.03 | 0.620 | 0.818 (18/4/0) | 0.490 | 4.5ms |
+| hybrid_bm25_k10 | agentic_full | auto | on | on | on | 0.731±0.10 | 0.750±0.08 | 0.705±0.08 | 0.979±0.03 | 0.620 | 0.818 (18/4/0) | 0.490 | 4.9ms |
+| hybrid_bm25_k30 | agentic_full | auto | on | on | on | 0.731±0.10 | 0.750±0.08 | 0.705±0.08 | 0.979±0.03 | 0.620 | 0.818 (18/4/0) | 0.490 | 4.8ms |
+| hybrid_bm25_k100 | agentic_full | auto | on | on | on | 0.731±0.10 | 0.750±0.08 | 0.705±0.08 | 0.979±0.03 | 0.620 | 0.818 (18/4/0) | 0.490 | 4.6ms |
+| hybrid_bm25_extra_stopwords | agentic_full | auto | on | on | on | 0.731±0.10 | 0.750±0.08 | 0.705±0.08 | 0.979±0.03 | 0.620 | 0.818 (18/4/0) | 0.490 | 5.0ms |
+| hybrid_bm25_k30_extra | agentic_full | auto | on | on | on | 0.731±0.10 | 0.750±0.08 | 0.705±0.08 | 0.979±0.03 | 0.620 | 0.818 (18/4/0) | 0.490 | 4.7ms |
+| full_kiwi | agentic_full | auto | on | on | on | 0.731±0.10 | 0.750±0.08 | 0.705±0.08 | 0.979±0.03 | 0.620 | 0.818 (18/4/0) | 0.490 | 4.7ms |
+| full_reranker | agentic_full | auto | on | on | on | 0.718±0.10 | 0.750±0.08 | 0.705±0.08 | 0.979±0.03 | 0.620 | 0.818 (18/4/0) | 0.490 | 4.8ms |
+| full_hyde | agentic_full | auto | on | on | on | 0.718±0.10 | 0.750±0.08 | 0.705±0.08 | 0.979±0.03 | 0.620 | 0.818 (18/4/0) | 0.490 | 4.8ms |
+| agentic_full_finetuned | agentic_full | auto | on | on | on | 0.718±0.10 | 0.750±0.08 | 0.705±0.08 | 0.979±0.03 | 0.620 | 0.818 (18/4/0) | 0.490 | 4.8ms |
+| naive_baseline_finetuned | naive_baseline | 4 | off | off | off | 0.782±0.10 | 0.700±0.09 | 0.525±0.08 | 0.972±0.03 | 0.630 | 0.273 (6/16/0) | 0.000 | 2.5ms |
 
 </details>
 
@@ -182,7 +182,7 @@ flowchart TD
 
 > 강조된 두 노드: Planner의 `comparison-aware top_k` → [Key technical contribution](#key-technical-contribution--comparison-aware-balanced-top-k), Answer Generator의 `extractive — no LLM` → [Why extractive?](#why-extractive-not-generative)
 
-비교 질의(`query_type == "comparison"`)에서는 balanced top-k 컷을 적용해 각 비교 대상에 최소 1개 이상의 evidence를 보장합니다. Metadata filter staging, alias lexicon, follow-up carryover 상세: [`docs/retrieval-hardening.md`](docs/retrieval-hardening.md). `retrieval_backend` hybrid(BM25+RRF) 근거: [ADR 0010](docs/adr/0010-hybrid-bm25-dense-retrieval-rrf.md).
+비교 질의(`query_type == "comparison"`)에서는 balanced top-k 컷을 적용해 각 비교 대상에 최소 1개 이상의 evidence를 보장합니다. Metadata filter staging, alias lexicon, follow-up carryover 상세: [`docs/retrieval-hardening.md`](docs/retrieval-hardening.md). `retrieval_backend` hybrid(BM25+RRF) 근거: [ADR 0010](docs/adr/0010-hybrid-bm25-dense-retrieval-rrf.md). "agentic"의 의미 (bounded retry vs ReAct/Reflexion 비교): [`docs/agentic-definition.md`](docs/agentic-definition.md).
 
 ---
 
@@ -215,6 +215,26 @@ python3 scripts/update_readme_metrics.py --report reports/eval_summary.json --re
 | 비공개 100-doc aggregate 정책 + placeholder | [`docs/private-100-doc-experiments.md`](docs/private-100-doc-experiments.md) |
 | 엔지니어링 블로그 (GitHub Pages) | [hskim-solv.github.io/BidMate-DocAgent](https://hskim-solv.github.io/BidMate-DocAgent/) |
 | 전체 문서 인덱스 | [`docs/README.md`](docs/README.md) |
+
+---
+
+## Claude Code와의 협업 (AI Collaboration Transparency)
+
+이 프로젝트는 [Claude Code](https://claude.ai/code)(Opus 4.x)를 개발 파트너로 사용합니다. 과잉 주장(over-claim) 방지를 위해 역할 분담을 명시합니다.
+
+**본인 영역 (사람)**
+- ADR 설계 및 의사결정 게이트 — 어떤 문제를, 언제, 왜 해결할지
+- 포트폴리오 플랜 + 우선순위 (채용 funnel 4층 프레임워크)
+- 5축 협업 self-review 기준 정의 및 분기별 진단
+- 평가 설계 (공개/비공개 분리 경계, ADR 0005) 및 회귀 기준
+
+**Claude Code 영역 (AI)**
+- 코드 구현, 리팩터링, 문서 초안, 테스트 작성
+- 브랜치/PR/이슈 생성 및 CI gate 운영 보조
+- 탐색(Explore subagent), 설계 검토(Plan subagent), 반복 작업 자동화
+
+**분기별 협업 자가진단** — [`/self-review-quarterly`](docs/adr-self-interview-checklist.md) skill로 4축(포트폴리오 진행도) + 5축(Claude 협업 효율)을 한 보고서로 생성.
+최신 보고서: [`docs/self-review/Q2-2026.md`](docs/self-review/Q2-2026.md)
 
 ---
 

@@ -4,7 +4,7 @@
 - **Superseded by**: [ADR 0025](./0025-cost-frontier-defer-until-real-baselines.md) § "Cross-encoder reranker deferral"
 - **Date**: 2026-05-12
 - **Deciders**: hskim
-- **Related**: [ADR 0001](./0001-preserve-naive-baseline.md) (baseline preserved), [ADR 0002](./0002-metadata-first-retrieval.md) (the metadata-first routing that shadows the rerank step), [ADR 0019](./0019-embedding-default-stays-minilm.md) (mirror pattern — measurement-gated default-stays), [ADR 0021](./0021-bge-m3-completes-phase-1-3.md) (the deferred-then-closed loop precedent), [ADR 0025](./0025-cost-frontier-defer-until-real-baselines.md) (sibling deferral pattern, accepted 2026-05-12), [`docs/cross-encoder-reranker.md`](../cross-encoder-reranker.md) (working reference), [`docs/ablation-results.md`](../ablation-results.md) (current ablation table), [`rag_reranker.py`](../../rag_reranker.py) (`Reranker` Protocol + `CrossEncoderReranker` default), issues [#163](https://github.com/hskim-solv/oss-bidmate-docagent/issues/163), [#345](https://github.com/hskim-solv/oss-bidmate-docagent/issues/345), [#412](https://github.com/hskim-solv/oss-bidmate-docagent/issues/412), PR [#358](https://github.com/hskim-solv/oss-bidmate-docagent/pull/358)
+- **Related**: [ADR 0001](./0001-preserve-naive-baseline.md) (baseline preserved), [ADR 0002](./0002-metadata-first-retrieval.md) (the metadata-first routing that shadows the rerank step), [ADR 0019](./0019-embedding-default-stays-minilm.md) (mirror pattern — measurement-gated default-stays), [ADR 0021](./0021-bge-m3-completes-phase-1-3.md) (the deferred-then-closed loop precedent), [ADR 0025](./0025-cost-frontier-defer-until-real-baselines.md) (sibling deferral pattern, accepted 2026-05-12), [`docs/cross-encoder-reranker.md`](../cross-encoder-reranker.md) (working reference), [`docs/ablation-results.md`](../ablation-results.md) (current ablation table), [`rag_reranker.py`](../../rag_reranker.py) (`Reranker` Protocol + `CrossEncoderReranker` default), issues [#163](https://github.com/hskim-solv/BidMate-DocAgent/issues/163), [#345](https://github.com/hskim-solv/BidMate-DocAgent/issues/345), [#412](https://github.com/hskim-solv/BidMate-DocAgent/issues/412), PR [#358](https://github.com/hskim-solv/BidMate-DocAgent/pull/358)
 
 ## Context
 
@@ -16,8 +16,8 @@ each is in a different state of measurement:
    `full` ablation preset.
 2. **`Reranker` Protocol + `CrossEncoderReranker` default**
    ([`rag_reranker.py`](../../rag_reranker.py), introduced by issue
-   [#345](https://github.com/hskim-solv/oss-bidmate-docagent/issues/345)
-   / PR [#358](https://github.com/hskim-solv/oss-bidmate-docagent/pull/358))
+   [#345](https://github.com/hskim-solv/BidMate-DocAgent/issues/345)
+   / PR [#358](https://github.com/hskim-solv/BidMate-DocAgent/pull/358))
    — consumed by [`rag_retrieval.apply_fusion_and_reranking`](../../rag_retrieval.py) (extracted from `rag_core.py` in PR-H1a, issue #459)
    only when `plan["rerank_cross_encoder"]` is set. Surfaced as the
    `full_reranker` preset in [`eval/config.yaml`](../../eval/config.yaml)
@@ -176,7 +176,7 @@ same loop shape as [ADR 0019](./0019-embedding-default-stays-minilm.md)
 ## Alternatives considered
 
 1. **Remove the `Reranker` Protocol entirely (rollback PR
-   [#358](https://github.com/hskim-solv/oss-bidmate-docagent/pull/358)).**
+   [#358](https://github.com/hskim-solv/BidMate-DocAgent/pull/358)).**
    The Protocol is the seam future LLM-as-reranker / HyDE work plugs
    into. Removing it would re-fragment retrieval-side pluggability —
    the convention codified in
@@ -202,7 +202,7 @@ same loop shape as [ADR 0019](./0019-embedding-default-stays-minilm.md)
    condition 1), a follow-up ADR can address model choice without
    re-litigating the seam.
 5. **Run the real-backend measurement now (close issue
-   [#163](https://github.com/hskim-solv/oss-bidmate-docagent/issues/163)
+   [#163](https://github.com/hskim-solv/BidMate-DocAgent/issues/163)
    fully in this ADR).** The measurement requires ~1.1 GB of model
    downloads (`bge`) or a Cohere API key (`cohere`), neither of which
    is on a docs-PR's critical path. Documenting the deferral first

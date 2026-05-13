@@ -31,6 +31,8 @@ jobs:
           sparse-checkout: |
             scripts/check_branch_and_issue.py
             scripts/_governance.py
+            scripts/check_embedding_routed_spread.py
+            reports/embedding_routed.json
           sparse-checkout-cone-mode: false
 
       - uses: actions/setup-python@v6
@@ -50,3 +52,51 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           python scripts/check_branch_and_issue.py --check-5b ${{ github.event.pull_request.number }}
+
+      - name: Guard ADR file deletion/rename (CLAUDE.md Prohibited)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          # Backup CI gate for the pre-commit ADR guard (issue #619).
+          # Catches --no-verify bypasses. Uses PR file list from GitHub API
+          # so no git history fetch is needed.
+          adr_violations=$(gh api \
+            "/repos/$GITHUB_REPOSITORY/pulls/${{ github.event.pull_request.number }}/files" \
+            --jq '[.[] | select(.filename | test("^docs/adr/.+\\.md$")) | select(.status == "removed" or .status == "renamed")] | length')
+          if [[ "$adr_violations" -gt 0 ]]; then
+            echo "❌ ADR files may not be deleted/renamed (CLAUDE.md Prohibited)." >&2
+            echo "   Mark Superseded in the Status block and keep the file." >&2
+            gh api \
+              "/repos/$GITHUB_REPOSITORY/pulls/${{ github.event.pull_request.number }}/files" \
+              --jq '.[] | select(.filename | test("^docs/adr/.+\\.md$")) | select(.status == "removed" or .status == "renamed") | "  " + .status + ": " + .filename' >&2
+            exit 1
+          fi
+          echo "✅ No ADR file deletions/renames in this PR."
+
+      - name: ADR 0032 embedding spread gate (issue #626)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          # When an embedding-related path changes in this PR, verify that
+          # reports/embedding_routed.json was also updated AND spread < threshold.
+          # Non-embedding PRs: skip entirely.
+          embedding_changes=$(gh api \
+            "/repos/$GITHUB_REPOSITORY/pulls/${{ github.event.pull_request.number }}/files" \
+            --jq '[.[] | select(.filename | test("^(rag_embeddings\\.py|eval/routed_config\\.yaml|eval/config\\.yaml)$"))] | length')
+          if [[ "$embedding_changes" -eq 0 ]]; then
+            echo "✅ No embedding-related path changes — spread gate skipped."
+            exit 0
+          fi
+          echo "ℹ️  Embedding-related paths changed; checking reports/embedding_routed.json spread."
+          routed_changed=$(gh api \
+            "/repos/$GITHUB_REPOSITORY/pulls/${{ github.event.pull_request.number }}/files" \
+            --jq '[.[] | select(.filename == "reports/embedding_routed.json")] | length')
+          if [[ "$routed_changed" -eq 0 ]]; then
+            echo "❌ Embedding path changed but reports/embedding_routed.json was NOT updated." >&2
+            echo "   Run: python scripts/run_routed_measurement.py --backend sentence-transformers" >&2
+            echo "   Then commit the updated reports/embedding_routed.json." >&2
+            exit 1
+          fi
+          python scripts/check_embedding_routed_spread.py --report reports/embedding_routed.json

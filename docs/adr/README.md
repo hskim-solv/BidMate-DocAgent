@@ -80,6 +80,7 @@ project record.
 | [0017](./0017-llm-metadata-extraction-additive.md) | superseded by 0011 | LLM metadata extraction as additive backend (extends 0011) |
 | [0018](./0018-korean-public-rag-bench.md) | accepted | Korean public RAG bench as supplementary out-of-domain surface (extends 0005) |
 | [0019](./0019-embedding-default-stays-minilm.md) | superseded by 0001 | Embedding default stays MiniLM-L12-v2 with explicit re-open conditions (extends 0002) |
+| [0020](./0020-protocol-based-pluggability.md) | accepted | Retrieval-side extension points use `@runtime_checkable typing.Protocol` in a leaf module + default adapter wrapping existing impl + `default_*()` factory + env-var routing (VectorStore #176 + Reranker #345; followed by QueryExpander ADR 0023) |
 | [0021](./0021-bge-m3-completes-phase-1-3.md) | accepted | BGE-M3 closes ADR 0019 Phase 1.3 condition 2; default stays MiniLM (supplements 0019) |
 | [0022](./0022-langgraph-orchestration-stage-1.md) | accepted | LangGraph orchestrator path for agentic_full presets — stages 1 (passthrough) + 2 (multi-node analyze / retrieve_loop / build_answer; `_phase_*` helpers shared with direct path; opt-in via BIDMATE_ORCHESTRATOR=langgraph, preserves ADR 0001) |
 | [0024](./0024-agentic-full-llm-as-api-default.md) | accepted | API surface default preset = `agentic_full_llm`; backend default stays `stub` (complements 0011; CLI default stays `naive_baseline` per 0001) |

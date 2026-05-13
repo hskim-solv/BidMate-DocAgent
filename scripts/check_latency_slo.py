@@ -100,6 +100,56 @@ def check(
     return violations, passes, orphans
 
 
+def check_stage(
+    config: dict[str, Any],
+    summary: dict[str, Any],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[str]]:
+    """Return (violations, passes, orphans) for per-stage latency SLO.
+
+    ``stage_latency_budgets`` layout in eval/config.yaml::
+
+        stage_latency_budgets:
+          <run_name>:
+            <stage_name>:
+              p95_ms: <ceiling>
+
+    A run without a stage budget entry is silently skipped. A run name
+    in the budget with no matching ablation run is reported as orphaned.
+    Stage keys without a matching stage_latency entry are silently
+    skipped (some stages are absent on simple pipelines).
+    """
+    stage_budgets = (config or {}).get("stage_latency_budgets") or {}
+    runs = _runs_by_name(summary)
+    violations: list[dict[str, Any]] = []
+    passes: list[dict[str, Any]] = []
+    orphans: list[str] = []
+
+    for run_name, stage_ceilings in stage_budgets.items():
+        run = runs.get(run_name)
+        if run is None:
+            orphans.append(run_name)
+            continue
+        stage_latency = run.get("stage_latency") or {}
+        for stage_name, ceiling_config in (stage_ceilings or {}).items():
+            observed = (stage_latency.get(stage_name) or {}).get("p95")
+            ceiling = (ceiling_config or {}).get("p95_ms")
+            if not isinstance(observed, (int, float)) or not isinstance(ceiling, (int, float)):
+                continue
+            row: dict[str, Any] = {
+                "name": f"{run_name}/{stage_name}",
+                "run": run_name,
+                "stage": stage_name,
+                "observed_p95_ms": float(observed),
+                "ceiling_p95_ms": float(ceiling),
+                "headroom_ms": round(float(ceiling) - float(observed), 3),
+            }
+            if observed > ceiling:
+                violations.append(row)
+            else:
+                passes.append(row)
+    return violations, passes, orphans
+
+
 def _render(violations: list[dict], passes: list[dict], orphans: list[str]) -> str:
     lines: list[str] = []
     if passes:
@@ -140,9 +190,16 @@ def main() -> int:
     args = parse_args()
     config = _load_yaml(Path(args.config))
     summary = _load_json(Path(args.summary))
+
     violations, passes, orphans = check(config, summary)
     print(_render(violations, passes, orphans))
-    return 1 if violations else 0
+
+    stage_violations, stage_passes, stage_orphans = check_stage(config, summary)
+    if stage_violations or stage_passes or stage_orphans:
+        print("\n--- Stage-level SLO ---")
+        print(_render(stage_violations, stage_passes, stage_orphans))
+
+    return 1 if (violations or stage_violations) else 0
 
 
 if __name__ == "__main__":

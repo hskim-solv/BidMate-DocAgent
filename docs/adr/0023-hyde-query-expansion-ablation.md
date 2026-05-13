@@ -2,7 +2,7 @@
 
 - **Status**: proposed
 - **Date**: 2026-05-12
-- **Related**: extends [ADR 0001](./0001-preserve-naive-baseline.md); preserves [ADR 0003](./0003-structured-answer-citation-contract.md); reuses backend pattern from [ADR 0011](./0011-llm-synthesis-as-additive-ablation.md) / [ADR 0020](./0020-protocol-based-pluggability.md); follows the retrieval refactor that landed in [#342](https://github.com/hskim-solv/oss-bidmate-docagent/pull/342) + [#358](https://github.com/hskim-solv/oss-bidmate-docagent/pull/358)
+- **Related**: extends [ADR 0001](./0001-preserve-naive-baseline.md); preserves [ADR 0003](./0003-structured-answer-citation-contract.md); reuses backend pattern from [ADR 0011](./0011-llm-synthesis-as-additive-ablation.md) / [ADR 0020](./0020-protocol-based-pluggability.md); follows the retrieval refactor that landed in [#342](https://github.com/hskim-solv/BidMate-DocAgent/pull/342) + [#358](https://github.com/hskim-solv/BidMate-DocAgent/pull/358)
 - **Deciders**: hskim
 
 ## Context

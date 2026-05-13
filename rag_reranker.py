@@ -16,6 +16,10 @@ fallback contract are preserved unchanged.
 a second concrete reranker (e.g. ``HydeReranker``) lands, the plan-
 based dispatch becomes a one-file change here — ``rag_core.py`` stays
 untouched.
+
+Convention: follows the four-property Protocol-based pluggability pattern
+(ADR 0020). New rerankers implement ``Reranker`` and register via
+``default_reranker()`` — retrieval orchestration is untouched.
 """
 from __future__ import annotations
 

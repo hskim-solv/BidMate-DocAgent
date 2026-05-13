@@ -33,6 +33,36 @@ latency_budgets:
     # Same as ``naive_baseline`` — the LoRA adapter does not change
     # the per-query retrieval shape, only the vector content.
     p95_ms: 100
+  full_mecab:
+    # Issue #561 / ADR 0031 — Mecab-ko tokenizer. Same budget as
+    # full_kiwi; tokenizer fallback to regex when mecab unavailable.
+    p95_ms: 200
+  full_khaiii:
+    # Issue #561 / ADR 0031 — Khaiii tokenizer. Same budget as full_kiwi.
+    p95_ms: 200
+# Per-stage latency budgets used by scripts/check_latency_slo.py (check_stage).
+# Issue #625: stage_latency is measured but was unguarded — silent per-stage
+# drift was possible even when total p95 stayed within ablation ceiling.
+# Ceilings set at ~25x observed CI p95 to absorb runner variance without
+# flaky failures. See: reports/eval_summary.json stage_latency block for
+# observed values. Extend to additional ablations as needed.
+stage_latency_budgets:
+  naive_baseline:
+    query_analysis_ms:
+      p95_ms: 50    # observed CI p95 ≈ 2 ms; 25x ceiling
+    retrieve_ms:
+      p95_ms: 50    # observed CI p95 ≈ 0.2 ms
+    answer_generation_ms:
+      p95_ms: 20    # observed CI p95 ≈ 0.5 ms
+  full:
+    query_analysis_ms:
+      p95_ms: 50    # observed CI p95 ≈ 1.6 ms
+    retrieve_ms:
+      p95_ms: 50    # observed CI p95 ≈ 0.2 ms
+    verify_ms:
+      p95_ms: 50    # observed CI p95 ≈ 1.4 ms
+    answer_generation_ms:
+      p95_ms: 20    # observed CI p95 ≈ 0.4 ms
 answer_policy:
   answerable_status: supported
   unanswerable_status: insufficient
@@ -196,6 +226,32 @@ ablation_runs:
     retrieval_mode: flat
     retrieval_backend: hybrid
     bm25_tokenizer: kiwi
+  # Issue #561 / ADR 0031 valid-set expansion — Mecab-ko BM25 tokenizer.
+  # Same retrieval + verifier as `full_kiwi` (kiwi control row); only
+  # the BM25 tokenizer swaps to Mecab-ko morpheme analysis.
+  # Never-raise: if python-mecab-ko / konlpy is missing, mecab_tokens
+  # returns None and the dispatch falls back to regex (ADR 0001 invariant).
+  # Measurement intent: lift vs kiwi ≥ +3pp → ADR 0031 default tokenizer
+  # re-evaluation; lift < +3pp → kiwi selection is measurement-justified.
+  - name: full_mecab
+    pipeline: agentic_full
+    metadata_first: true
+    rerank: true
+    verifier_retry: true
+    retrieval_mode: flat
+    retrieval_backend: hybrid
+    bm25_tokenizer: mecab
+  # Issue #561 / ADR 0031 valid-set expansion — Khaiii BM25 tokenizer.
+  # Khaiii requires a compiled C++ shared library (optional dependency).
+  # Never-raise fallback to regex if khaiii is unavailable (ADR 0001).
+  - name: full_khaiii
+    pipeline: agentic_full
+    metadata_first: true
+    rerank: true
+    verifier_retry: true
+    retrieval_mode: flat
+    retrieval_backend: hybrid
+    bm25_tokenizer: khaiii
   # Issue #163 / ADR 0011 pattern — additive cross-encoder reranker. The
   # existing `full` row is the natural negative (rerank_cross_encoder
   # defaults to false). Under the CI default backend (stub) the cross-

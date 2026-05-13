@@ -74,6 +74,5 @@ real-data 측정 결과는 aggregate-only commit boundary로 관리된다 (ADR 0
 ## 더 읽을 거리
 
 - [README §핵심 성능표](https://github.com/hskim-solv/BidMate-DocAgent#%ED%95%B5%EC%8B%AC-%EC%84%B1%EB%8A%A5%ED%91%9C-%EC%8B%A4%EC%B8%A1) — bootstrap CI 표 전체
-- [Blog series](./blog/) — 결정들의 *왜*
 - [ADR 인덱스](https://github.com/hskim-solv/BidMate-DocAgent/blob/main/docs/adr/README.md)
 - [Engineering governance](https://github.com/hskim-solv/BidMate-DocAgent/blob/main/docs/engineering-governance.md) — workflow map

@@ -18,7 +18,7 @@ in minimal environments.
 from __future__ import annotations
 
 import csv
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 import json
 import os
 from pathlib import Path
@@ -186,6 +186,9 @@ def parse_visual_metadata_row(
     file_format = normalize_file_format(row.get("파일형식"), file_name)
     source_path = find_source_file(files_dir, file_name) if file_name else files_dir
     doc_id = make_doc_id(notice_id, notice_round) if notice_id else make_doc_id_from_file_name(file_name)
+    project = clean_cell(row.get("사업명"))
+    agency = clean_cell(row.get("발주 기관"))
+    title = project or Path(file_name).stem
 
     failure_reason = validate_visual_row_basics(
         doc_id=doc_id,
@@ -199,16 +202,13 @@ def parse_visual_metadata_row(
             doc_id=doc_id or make_doc_id_from_file_name(file_name) or f"row-{row_number}",
             source_path=source_path,
             file_format=file_format,
-            title=clean_cell(row.get("사업명")) or Path(file_name).stem,
+            title=title,
             metadata=normalize_metadata(row, file_format, file_name),
             reason=failure_reason,
         )
         return None, artifact, record_from_artifact(artifact, None, row_number=row_number)
 
     metadata = normalize_metadata(row, file_format, file_name)
-    title = clean_cell(row.get("사업명")) or Path(file_name).stem
-    agency = clean_cell(row.get("발주 기관"))
-    project = clean_cell(row.get("사업명"))
 
     if file_format == "hwp":
         document, artifact = make_hwp_fallback_document(
@@ -804,16 +804,18 @@ def make_hwp_fallback_document(
     file_format: str,
     file_name: str,
 ) -> tuple[dict[str, Any] | None, dict[str, Any]]:
+    project = clean_cell(row.get("사업명"))
+    agency = clean_cell(row.get("발주 기관"))
+    title = project or Path(file_name).stem
     metadata = normalize_metadata(row, file_format, file_name)
     metadata["visual_fallback_reason"] = "visual_fallback_hwp"
-    title = clean_cell(row.get("사업명")) or Path(file_name).stem
     artifact = base_visual_artifact(
         source_path=source_path,
         doc_id=doc_id,
         file_format=file_format,
         title=title,
-        agency=clean_cell(row.get("발주 기관")),
-        project=clean_cell(row.get("사업명")),
+        agency=agency,
+        project=project,
         metadata=metadata,
     )
     text = normalize_body_text(row.get("텍스트", ""))
@@ -1205,16 +1207,7 @@ def record_from_artifact(
 
 
 def replace_record_artifact_path(record: VisualIngestionRecord, artifact_path: Path) -> VisualIngestionRecord:
-    return VisualIngestionRecord(
-        row_number=record.row_number,
-        status=record.status,
-        doc_id=record.doc_id,
-        file_name=record.file_name,
-        file_format=record.file_format,
-        source_path=record.source_path,
-        artifact_path=str(artifact_path),
-        reason=record.reason,
-    )
+    return replace(record, artifact_path=str(artifact_path))
 
 
 def make_visual_report(
