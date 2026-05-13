@@ -51,15 +51,83 @@ python3 eval/run_eval.py --config eval/config.yaml --index_dir data/index --outp
 
 ## Headline numbers
 
-Measurement pending — append below after running the reproduction commands. Two contracts to verify:
+### Pipeline bug fix (issue #448)
 
-1. **Stub backend invariant**: `full_reranker` row in `eval_summary.json` is byte-equal to the `full` row (no behavior delta under CI default).
-2. **Real backend delta**: at least one of `bge` / `cohere` / `bge_ko` produces a measurable precision lift vs `full` (target: citation_precision or retrieval_recall@5 in the bootstrap CI band that does not overlap `full`'s band).
+Prior to this fix, `rerank_cross_encoder: true` in `eval/config.yaml`'s `full_reranker` row was
+silently discarded — the flag was read in `eval/run_eval.py` but never propagated through
+`run_rag_query → _build_run_context → _RunContext → make_plan → plan dict`. As a result,
+`full_reranker` was byte-equal to `full` regardless of `BIDMATE_RERANK_BACKEND`.
+
+Fixed in the same PR by wiring `rerank_cross_encoder` through:
+- `rag_query.py:make_plan` (added parameter + plan dict key)
+- `rag_core.py:_build_run_context` / `_RunContext` / `_phase_retrieve_loop`
+- `eval/run_eval.py` call to `run_rag_query`
+
+### Measurement: bge_ko backend (2026-05-13, n=100 synthetic, hashing embeddings)
 
 ```
-TBD — paste relevant rows from
-reports/{stub,bge,bge_ko,cohere}_rerank/eval_summary.json here.
+EMBEDDING_BACKEND=hashing BIDMATE_RERANK_BACKEND=bge_ko
+eval config: /tmp/eval_reranker_only.yaml (naive_baseline + full + full_reranker)
+index:       data/index (hashing embeddings, ADR 0001 public synthetic)
 ```
+
+**Overall metrics (95% bootstrap CI, n=100):**
+
+| run | accuracy | Δ vs full | citation_precision | Δ vs full | n |
+|---|---|---|---|---|---|
+| naive_baseline | 0.782 [0.679–0.872] | — | 0.525 [0.450–0.610] | — | 100 |
+| full | 0.718 [0.615–0.821] | — | 0.705 [0.625–0.780] | — | 100 |
+| full_reranker (bge_ko) | 0.590 [0.487–0.692] | **−12.8pp** | 0.705 [0.620–0.785] | 0pp | 100 |
+
+**Per-query-type accuracy (full vs full_reranker):**
+
+| query_type | full | full_reranker | Δ |
+|---|---|---|---|
+| single_doc (n=34) | 0.882 | 0.735 | −14.7pp |
+| comparison (n=24) | 0.500 | 0.292 | −20.8pp |
+| follow_up (n=21) | 0.700 | 0.700 | 0pp |
+| abstention (n=21) | 0.000 | 0.000 | 0pp |
+
+**Abstention decomposition (correct_refusal / incorrect_answer / boundary_partial):**
+
+| run | correct_refusal | incorrect_answer | boundary_partial |
+|---|---|---|---|
+| naive_baseline | 6 | 16 | 0 |
+| full | 18 | 4 | 0 |
+| full_reranker (bge_ko) | **22** | **0** | 0 |
+
+**Latency (ms per query, warm):**
+
+| run | p50 | p95 | mean |
+|---|---|---|---|
+| naive_baseline | 1.7 ms | 3.1 ms | 1.9 ms |
+| full | 2.6 ms | 4.6 ms | 2.6 ms |
+| full_reranker (bge_ko) | 2822 ms | 9435 ms | 3559 ms |
+
+### ADR 0026 re-open verdict (issue #448)
+
+**Condition** (ADR 0026 re-open threshold): ≥+3pp accuracy **or** citation_precision lift with
+non-overlapping 95% CIs vs `full`.
+
+**Result**: −12.8pp accuracy, 0pp citation_precision. CIs overlap (full: [0.615–0.821],
+full_reranker: [0.487–0.692]; overlap region [0.615–0.692]).
+
+**Verdict: REJECTED.** The "0pp-on-full pattern holds" — bge_ko reranker does not meet the
+re-open threshold on hashing embeddings.
+
+**Root cause**: hashing embeddings are non-semantic (bag-of-character n-grams); the reranker
+re-scores semantic relevance, but the top-k input candidates are already ordered by a non-semantic
+blend. The reranker's semantic preference diverges from the hashing blend's ordering, producing
+worse recall for answerable queries. The comparison query type is hit hardest (−20.8pp) because
+comparison needs multi-source diversity that the reranker collapses.
+
+**Abstention improvement is real but insufficient**: bge_ko pushes all incorrect_answer abstentions
+to correct_refusal (4→0 incorrect, 18→22 correct). This is a precision gain on unanswerable cases,
+but accuracy on answerable cases dominates.
+
+**Follow-up gate**: re-evaluate with semantic embeddings (e.g. `BAAI/bge-m3`) once a real-embedding
+index is available in CI. On a semantically-ranked candidate list, the reranker's precision-at-k
+benefit has a fair opportunity to manifest. Track as a blocked follow-up on ADR 0026.
 
 ## Why no ADR
 
