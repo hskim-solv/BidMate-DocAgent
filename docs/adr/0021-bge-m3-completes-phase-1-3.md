@@ -3,7 +3,8 @@
 - **Status**: accepted
 - **Date**: 2026-05-12
 - **Deciders**: hskim
-- **Related**: [ADR 0001](./0001-preserve-naive-baseline.md) (baseline preserved), [ADR 0002](./0002-metadata-first-retrieval.md) (metadata-first dominates), [ADR 0019](./0019-embedding-default-stays-minilm.md) (the deferral), [`docs/embedding-ablation.md`](../embedding-ablation.md) Phase 1.3, issue #389
+- **Related**: [ADR 0001](./0001-preserve-naive-baseline.md) (baseline preserved), [ADR 0002](./0002-metadata-first-retrieval.md) (metadata-first dominates), [ADR 0019](./0019-embedding-default-stays-minilm.md) (the deferral), [ADR 0032](./0032-eval-saturation-routed-subset.md) (routing-axis falsifier, 2026-05-13), [`docs/embedding-ablation.md`](../embedding-ablation.md) Phase 1.3, issue #389
+- **Update (ADR 0032 routing-axis falsifier, 2026-05-13)**: [ADR 0032](./0032-eval-saturation-routed-subset.md) ran the complementary routed-subset measurement (n=11, metadata-first bypassed). BGE-M3 was skipped in that run (torch < 2.6 on the test machine — same env blocker noted in ADR 0021 §Decision). The 4 measured models all showed spread = 0.0pp on the routed subset, confirming the saturation cross-validation finding. The env upgrade needed for BGE-M3 in the routing-axis run remains tracked in the ADR 0032 measurements table.
 
 ## Context
 

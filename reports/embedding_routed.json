@@ -1,0 +1,87 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-05-13T05:55:58.758023Z",
+  "backend": "sentence-transformers",
+  "routed_config": "eval/routed_config.yaml",
+  "threshold_pp": 3.0,
+  "spread": {
+    "spread_pp": 0.0,
+    "threshold_pp": 3.0,
+    "verdict": "saturation_cross_validated",
+    "verdict_description": "Spread < +3pp → saturation cross-validated: 0pp pattern holds on routed + non-routed subsets; MiniLM default lock empirically justified"
+  },
+  "rows": [
+    {
+      "model_key": "minilm",
+      "model_label": "MiniLM-L12-v2",
+      "hf_id": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+      "note": "ADR 0019 locked default",
+      "full": {
+        "accuracy_mean": 0.5,
+        "accuracy_ci": null
+      },
+      "routed": {
+        "accuracy_mean": 0.4,
+        "accuracy_ci": null
+      }
+    },
+    {
+      "model_key": "e5_large",
+      "model_label": "multilingual-e5-large-instruct",
+      "hf_id": "intfloat/multilingual-e5-large-instruct",
+      "note": "ADR 0021 Phase 1.3 candidate",
+      "full": {
+        "accuracy_mean": 0.5,
+        "accuracy_ci": null
+      },
+      "routed": {
+        "accuracy_mean": 0.4,
+        "accuracy_ci": null
+      }
+    },
+    {
+      "model_key": "simcse",
+      "model_label": "KoSimCSE-roberta-multitask",
+      "hf_id": "BM-K/KoSimCSE-roberta-multitask",
+      "note": "ADR 0021 Phase 1.2 candidate",
+      "full": {
+        "accuracy_mean": 0.5,
+        "accuracy_ci": null
+      },
+      "routed": {
+        "accuracy_mean": 0.4,
+        "accuracy_ci": null
+      }
+    },
+    {
+      "model_key": "bge_m3",
+      "model_label": "BGE-M3",
+      "hf_id": "BAAI/bge-m3",
+      "note": "ADR 0021 Phase 1.3 — 0pp on full",
+      "skipped": true,
+      "skip_reason": "Index build failed (returncode=2). BGE-M3 requires torch>=2.6 (ADR 0021 §4 blocker).",
+      "full": {
+        "accuracy_mean": null,
+        "accuracy_ci": null
+      },
+      "routed": {
+        "accuracy_mean": null,
+        "accuracy_ci": null
+      }
+    },
+    {
+      "model_key": "kure_v1",
+      "model_label": "KURE-v1",
+      "hf_id": "nlpai-lab/KURE-v1",
+      "note": "Korean-specialized Phase 1.3 candidate (deferred)",
+      "full": {
+        "accuracy_mean": 0.5,
+        "accuracy_ci": null
+      },
+      "routed": {
+        "accuracy_mean": 0.4,
+        "accuracy_ci": null
+      }
+    }
+  ]
+}

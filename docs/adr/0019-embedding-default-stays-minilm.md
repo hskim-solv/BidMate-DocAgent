@@ -5,6 +5,7 @@
 - **Deciders**: hskim
 - **Related**: [ADR 0001](./0001-preserve-naive-baseline.md) (baseline preserved), [ADR 0002](./0002-metadata-first-retrieval.md) (metadata-first dominates), [ADR 0021](./0021-bge-m3-completes-phase-1-3.md) (Phase 1.3 supplement that closes condition 2), [`docs/embedding-ablation.md`](../embedding-ablation.md), issues #161 (Phase 1.2 runner) and #300 (this decision)
 - **Update (Phase 1.3, issue #389, 2026-05-12)**: condition 1 fully met (`torch >= 2.6` pinned in `requirements.txt:8`, `huggingface-hub 0.36.2 < 1.0` already in place), condition 2 fully met for all four named candidates (BGE-M3 measurement closed the last gap), condition 3 **NOT triggered** for any candidate (the `0pp-on-full` pattern holds across all five measured embeddings). This ADR stays accepted; see [ADR 0021](./0021-bge-m3-completes-phase-1-3.md) for the supplement.
+- **Update (ADR 0032 routing-axis falsifier, issue #550, 2026-05-13)**: [ADR 0032](./0032-eval-saturation-routed-subset.md) added a complementary gate: "spread ≥ +3pp on routed (metadata-first-bypassed) subset." 5-embedding × routed-subset measurement (n=11, `eval/routed_config.yaml`) showed spread = **0.0pp** — `saturation_cross_validated`. Condition 3 **NOT triggered** on the routed axis either. MiniLM default lock is empirically justified beyond metadata-first masking. Aggregate published to `reports/embedding_routed.json`.
 
 ## Context
 

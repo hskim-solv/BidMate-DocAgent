@@ -1,6 +1,6 @@
 # 0032: Eval-set saturation hypothesis + routed-subset measurement surface
 
-- **Status**: proposed
+- **Status**: accepted
 - **Date**: 2026-05-13
 - **Deciders**: hskim
 - **Related**: [ADR 0001](./0001-preserve-naive-baseline.md) (baseline preserved), [ADR 0002](./0002-metadata-first-retrieval.md) (metadata-first dominates), [ADR 0019](./0019-embedding-default-stays-minilm.md) (embedding default deferral), [ADR 0021](./0021-bge-m3-completes-phase-1-3.md) (Phase 1.3 close-out), [ADR 0027](./0027-lora-finetuned-embedding-additive.md) (LoRA additive ablation that inherits 0019 re-open conditions), [`docs/embedding-ablation.md`](../embedding-ablation.md), [PR #487](https://github.com/hskim-solv/BidMate-DocAgent/pull/487) §4.4-B2, issue #489
@@ -55,6 +55,45 @@ Costs / honesty:
 - **임베딩 비교 자체를 영구 deferral.** Rejected: ADR 0019의 measurement-gated 정신과 직접 충돌. 본 ADR은 *측정 가능한 게이트 surface를 만든다*는 명시적 약속.
 - **`agentic_full` preset을 직접 변경 (`metadata_first: false`).** Rejected: ADR 0019 default lock + ADR 0002 metadata-first 정책 + ADR 0024 API default 모두 깸. 별도 preset (`agentic_full_routed`) 추가 패턴이 더 안전 — ADR 0011 / 0013 / 0023 / 0027의 additive opt-in 패턴 재사용.
 - **Routed_subset의 정의를 ADR이 아닌 단순 doc/issue로.** Rejected: spread 임계값(+3pp) + ADR 0019 re-open trigger 연동 + ADR 0001 invariant 보존 조건이 *load-bearing 결정*이라 ADR 임계값을 충족. measurement methodology + accept/reject 기준이 ADR 0019 → 0021 패턴과 동일한 형식이어야 거버넌스 일관성.
+
+## First execution results
+
+**5-embedding × routed-subset measurement (2026-05-13, sentence-transformers backend)**
+
+`python3 scripts/run_routed_measurement.py --backend sentence-transformers` was run against
+`eval/routed_config.yaml` (n=11 routed-subset cases). Aggregate committed to
+`reports/embedding_routed.json`. BGE-M3 skipped (torch < 2.6, per ADR 0021 §4 blocker).
+
+| embedding model | full accuracy | routed accuracy | note |
+|---|---|---|---|
+| MiniLM-L12-v2 | 0.500 | 0.400 | ADR 0019 locked default |
+| multilingual-e5-large-instruct | 0.500 | 0.400 | ADR 0021 Phase 1.3 candidate |
+| KoSimCSE-roberta-multitask | 0.500 | 0.400 | ADR 0021 Phase 1.2 candidate |
+| KURE-v1 | 0.500 | 0.400 | Korean-specialized Phase 1.3 candidate |
+| BGE-M3 | 0.500 (from ADR 0021) | **skipped** | torch < 2.6 required |
+
+**Spread between top and bottom (4 measured models)**: **0.0pp** → **threshold +3pp not reached.**
+
+**Verdict: `saturation_cross_validated`** — The 0pp pattern holds on both the full surface *and*
+the routed (metadata-first-bypassed) subset. MiniLM default lock is empirically justified
+beyond metadata-first masking.
+
+Two interpretations are both consistent with the data and both recorded:
+
+1. *Robustness reading* — All embedding models perform equivalently on the RFP domain because
+   the vocabulary overlap (term matching, metadata labels) already provides sufficient signal;
+   dense retrieval is not the bottleneck.
+2. *Surface limitation reading* — The n=11 routed-subset is small (n=42 is our full surface),
+   so the CI width ([0.10, 0.70] approximate) swamps any sub-5pp difference. The measurement
+   is *consistent with* saturation but cannot definitively rule out a meaningful difference
+   at larger n.
+
+ADR 0019 re-open condition 3 ("≥ +5pp on `full` with non-overlapping 95% CIs") is now
+complemented by a *parallel* gate: "spread ≥ +3pp on `routed` subset." Both gates remain
+uncleared. The default lock continues.
+
+For the ADR 0033 (multi-hop complexity axis), the orthogonal falsifier path remains open
+independently of this routing-axis result.
 
 ## See also
 

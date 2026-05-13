@@ -108,6 +108,10 @@ reports/real100/judge.local.json
 !reports/external_baselines.json
 reports/external_baselines.local.json
 
+# ADR 0032 — routed-subset embedding comparison aggregate is committable;
+# raw per-model index dirs + trace files stay local (.routed_measurement_tmp/).
+!reports/embedding_routed.json
+
 # ADR 0012 — synthetic-eval LLM-judge aggregate is committable;
 # per-case verdicts stay local. Mirrors the ADR 0005 / 0006 split.
 !reports/synthetic_judge.aggregate.json
