@@ -62,6 +62,7 @@ from typing import Any, Iterable
 import numpy as np
 
 from korean_lexicon import BM25_EXTRA_PARTICLE_SUFFIXES, BM25_EXTRA_STOPWORDS
+from rag_metadata_processing import normalize_page_span, normalize_regions
 from rag_pipeline_presets import RRF_K, VALID_BM25_STOPWORD_PROFILES
 from rag_query_expansion import default_expander
 from rag_text_processing import tokenize
@@ -238,12 +239,6 @@ def reassemble_parent_sections(
     plan: dict[str, Any],
     analysis: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
-    # Late-import to avoid circular dependency: rag_core uses
-    # normalize_regions / normalize_page_span in many non-retrieval
-    # call sites (ingestion path, evidence building, ...), so they
-    # stay in rag_core.
-    from rag_core import normalize_regions, normalize_page_span
-
     parent_by_id = {
         str(section.get("section_id")): section
         for section in index.get("parent_sections", [])
@@ -307,12 +302,6 @@ def retrieve_candidates(
     multi-query / HyDE work can fan out this phase without piling onto
     the fusion+rerank tail. Mutates ``plan`` with ``candidate_count``,
     ``total_chunks``, ``filter_fallback_used`` (unchanged order)."""
-    # Late-import region helpers — they serve many non-retrieval call
-    # sites in rag_core (ingestion, evidence builder, partial-topic
-    # grounding) so they stay there. Late-import avoids the circular
-    # ``rag_retrieval ← rag_core ← rag_retrieval`` chain.
-    from rag_core import normalize_page_span, normalize_regions
-
     chunks = index["chunks"]
     filters = plan.get("metadata_filters") or {}
     doc_ids = set(filters.get("doc_ids") or [])

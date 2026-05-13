@@ -52,6 +52,7 @@ from korean_lexicon import (
     METADATA_CLAIM_TOPIC_LABELS,
     METADATA_EVIDENCE_LABELS,
 )
+from rag_metadata_processing import normalize_page_span, normalize_regions
 from rag_text_processing import (
     compact_metadata_text,
     ordered_unique,
@@ -227,12 +228,6 @@ def claim_target(item: dict[str, Any]) -> str:
 
 
 def make_citation(item: dict[str, Any]) -> dict[str, Any]:
-    # Late-import region helpers — they serve many non-answer call
-    # sites in rag_core (ingestion, evidence builder, parent-section
-    # reassembly). Late-import avoids the circular rag_answer ← rag_core
-    # ← rag_answer chain via re-export.
-    from rag_core import normalize_page_span, normalize_regions
-
     citation = {
         "doc_id": item.get("doc_id", ""),
         "chunk_id": item.get("chunk_id", ""),
