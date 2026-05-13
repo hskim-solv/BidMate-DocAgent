@@ -18,3 +18,7 @@ openai>=2.36.0
 # Cohere rerank-3.5-multilingual — are opt-in only.
 FlagEmbedding>=1.2
 cohere>=5.0
+# Issue #632 — eval/evaluate_dev_results.py uses pandas for result analysis.
+# Dev-only: not imported by the production pipeline. Fresh-clone reproducibility
+# requires this to be declared so `pip install -r requirements-dev.txt` suffices.
+pandas>=2.0,<3.0
