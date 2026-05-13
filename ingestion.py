@@ -140,21 +140,37 @@ class HwpNativeLoader(CsvTextDocumentLoader):
     ``BIDMATE_HWP_LOADER=native`` (see ``_resolve_loader``), every fallback
     here also emits a ``RuntimeWarning`` so the silent path is visible in
     real-data eval logs.
+
+    Issue #506 (PR-C1): when ``with_tables=True``, the loader uses the
+    table-aware extractor ``_extract_hwp_native_with_tables`` and exposes
+    the per-cell payloads on ``last_native_tables``. Default
+    ``with_tables=False`` keeps the existing ``BIDMATE_HWP_LOADER=native``
+    measurement baseline (issue #167) byte-identical.
     """
 
     file_format = "hwp"
 
-    def __init__(self) -> None:
+    def __init__(self, with_tables: bool = False) -> None:
         self.last_text_source = "data_list_csv_text"
         self.last_fallback_reason: str | None = None
+        self.with_tables = with_tables
+        self.last_native_tables: list[dict[str, Any]] = []
 
     def load_text(self, row: dict[str, str], source_path: Path) -> str:
         self.last_text_source = "data_list_csv_text"
         self.last_fallback_reason = None
+        self.last_native_tables = []
         try:
-            native_text = _extract_hwp_native(source_path)
+            if self.with_tables:
+                native_text, native_tables = _extract_hwp_native_with_tables(
+                    source_path
+                )
+            else:
+                native_text = _extract_hwp_native(source_path)
+                native_tables = []
         except _hwp_native_fallback_exceptions() as exc:
             native_text = None
+            native_tables = []
             reason = f"{type(exc).__name__}: {str(exc)[:120]}"
             self.last_fallback_reason = reason
             warnings.warn(
@@ -164,6 +180,7 @@ class HwpNativeLoader(CsvTextDocumentLoader):
             )
         if native_text:
             self.last_text_source = "hwp_native"
+            self.last_native_tables = list(native_tables)
             return native_text
         text = normalize_body_text(row.get("텍스트", ""))
         if not text:
@@ -216,6 +233,140 @@ def _extract_hwp_native(source_path: Path) -> str | None:
     return text or None
 
 
+def _extract_hwp_native_with_tables(
+    source_path: Path,
+) -> tuple[str | None, list[dict[str, Any]]]:
+    """Extract body text + table cells from an HWP file via pyhwp event stream.
+
+    Walks the cooked xmlmodel event stream (``Section.events()``) which
+    emits ``TableBody`` / ``TableCell`` model wrappers around their
+    contained ``Text`` payloads. The stream-cooked ``Text`` model replaces
+    the raw ``ParaText`` (see ``hwp5.xmlmodel.range_shaped_textchunk_events``)
+    so we collect ``attrs['text']`` strings instead of decoding chunk
+    tuples ourselves.
+
+    Returns ``(text, tables)`` where:
+
+    * ``text`` is the normalized paragraph plain text **outside** any
+      table — matching the existing ``_extract_hwp_native`` contract for
+      the non-table body so existing measurements remain comparable when
+      a document contains no tables.
+    * ``tables`` is a list of
+      ``{"table_index": int, "rows": int, "cols": int,
+         "cells": [{"row": int, "col": int, "rowspan": int,
+                    "colspan": int, "text": str}, ...]}``
+      preserving HWP-native row/col coordinates and span info.
+
+    Raises ``ImportError`` if pyhwp is unavailable; pyhwp parse-time errors
+    propagate so ``HwpNativeLoader`` can apply its silent CSV fallback (see
+    ``_hwp_native_fallback_exceptions``).
+    """
+    # Lazy imports: pyhwp is an opt-in dependency; importing at module load
+    # would break minimal CI installs that never enable BIDMATE_HWP_LOADER.
+    from hwp5.binmodel import TableBody, TableCell  # type: ignore[import-not-found]
+    from hwp5.xmlmodel import (  # type: ignore[import-not-found]
+        ENDEVENT,
+        STARTEVENT,
+        Hwp5File,
+        Text,
+    )
+
+    hwp = Hwp5File(str(source_path))
+    plain_parts: list[str] = []
+    tables: list[dict[str, Any]] = []
+
+    for section in hwp.bodytext.section_list():
+        table_stack: list[dict[str, Any]] = []
+        cell_stack: list[dict[str, Any]] = []
+        for event, item in section.events():
+            if not (isinstance(item, tuple) and len(item) >= 2):
+                continue
+            model = item[0]
+            attrs = item[1] if isinstance(item[1], dict) else {}
+
+            if model is TableBody:
+                if event is STARTEVENT:
+                    table = {
+                        "table_index": len(tables),
+                        "rows": int(attrs.get("rows", 0) or 0),
+                        "cols": int(attrs.get("cols", 0) or 0),
+                        "cells": [],
+                    }
+                    tables.append(table)
+                    table_stack.append(table)
+                else:
+                    if table_stack:
+                        table_stack.pop()
+            elif model is TableCell:
+                if event is STARTEVENT:
+                    cell_stack.append(
+                        {
+                            "row": int(attrs.get("row", 0) or 0),
+                            "col": int(attrs.get("col", 0) or 0),
+                            "rowspan": int(attrs.get("rowspan", 1) or 1),
+                            "colspan": int(attrs.get("colspan", 1) or 1),
+                            "_text_parts": [],
+                        }
+                    )
+                else:
+                    if cell_stack:
+                        cell = cell_stack.pop()
+                        cell_text = "".join(cell.pop("_text_parts")).strip()
+                        cell["text"] = cell_text
+                        if table_stack:
+                            table_stack[-1]["cells"].append(cell)
+            elif model is Text and event is STARTEVENT:
+                piece = attrs.get("text", "")
+                if not isinstance(piece, str) or not piece:
+                    continue
+                if cell_stack:
+                    cell_stack[-1]["_text_parts"].append(piece)
+                elif not table_stack:
+                    plain_parts.append(piece)
+
+    text = normalize_body_text("\n".join(p for p in plain_parts if p))
+    return (text or None), tables
+
+
+def build_sections_with_native_tables(
+    body_text: str,
+    native_tables: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Build the per-document ``sections`` list, optionally including HWP tables.
+
+    Issue #506 / PR-C1. When ``native_tables`` is empty (the default path,
+    the existing ``BIDMATE_HWP_LOADER=native`` baseline, or any non-HWP
+    format), this returns exactly ``[{"heading": "본문", "text": body_text}]``
+    — byte-identical to the pre-#506 contract so ADR 0001 invariant holds.
+
+    When the HWP native-tables loader has parsed at least one table with
+    non-empty cells, each table becomes an additional section keyed by
+    ``"표 N (HWP native)"`` so downstream section-aware chunking (see
+    ``rag_core.document_has_section_structure``) treats them as first-class
+    retrieval units. The non-empty heading also avoids
+    ``WEAK_SECTION_HEADINGS`` so the section is kept distinct from the
+    body, not folded into the catch-all parent.
+    """
+    sections: list[dict[str, Any]] = [{"heading": "본문", "text": body_text}]
+    for idx, table in enumerate(native_tables):
+        cells = table.get("cells", []) or []
+        cell_lines = [
+            str(cell.get("text", "")).strip()
+            for cell in cells
+            if str(cell.get("text", "")).strip()
+        ]
+        if not cell_lines:
+            continue
+        table_index = int(table.get("table_index", idx))
+        sections.append(
+            {
+                "heading": f"표 {table_index + 1} (HWP native)",
+                "text": "\n".join(cell_lines),
+            }
+        )
+    return sections
+
+
 LOADERS: dict[str, CsvTextDocumentLoader] = {
     "pdf": PdfCsvTextLoader(),
     "hwp": HwpCsvTextLoader(),
@@ -225,14 +376,24 @@ LOADERS: dict[str, CsvTextDocumentLoader] = {
 def _resolve_loader(file_format: str) -> CsvTextDocumentLoader:
     """Pick the loader for ``file_format``.
 
-    For HWP, respect the ``BIDMATE_HWP_LOADER=native`` opt-in (spike, #167);
-    everything else falls through to the registered default.
+    For HWP, respect the ``BIDMATE_HWP_LOADER`` opt-in (spike #167 + table
+    extraction #506); everything else falls through to the registered
+    default.
+
+    Accepted values for ``BIDMATE_HWP_LOADER`` (case-insensitive, trimmed):
+
+    * ``native`` — issue #167 spike: paragraph plain text only
+      (preserves the existing measurement baseline).
+    * ``native_tables`` — issue #506: paragraph plain text **+** table
+      cells with row/col/span metadata. Cells become additional
+      ``sections`` entries with ``metadata.is_table = True``.
     """
-    if (
-        file_format == "hwp"
-        and os.environ.get("BIDMATE_HWP_LOADER", "").strip().lower() == "native"
-    ):
-        return HwpNativeLoader()
+    if file_format == "hwp":
+        opt_in = os.environ.get("BIDMATE_HWP_LOADER", "").strip().lower()
+        if opt_in == "native":
+            return HwpNativeLoader()
+        if opt_in == "native_tables":
+            return HwpNativeLoader(with_tables=True)
     return LOADERS[file_format]
 
 
@@ -445,13 +606,37 @@ def normalize_ingestion_row(
     if validation.duplicate_resolution and on_duplicate_doc_id == "suffix":
         metadata["doc_id_resolution"] = validation.duplicate_resolution["policy"]
         metadata["doc_id_base"] = validation.duplicate_resolution["base_doc_id"]
+
+    # Issue #506 / PR-C1: when the HWP native-tables loader has been
+    # opted into (``BIDMATE_HWP_LOADER=native_tables``) and parsed at
+    # least one table, append each table as its own additional section so
+    # downstream section-aware chunking treats them as first-class
+    # retrieval units. ADR 0001 invariant: ``last_native_tables`` is
+    # always ``[]`` for the default CSV path and the existing
+    # ``BIDMATE_HWP_LOADER=native`` (paragraph-only) baseline, so the
+    # sections list stays exactly ``[{"heading": "본문", "text": text}]``
+    # for every existing measurement and golden.
+    native_tables = getattr(loader, "last_native_tables", None) or []
+    sections = build_sections_with_native_tables(text, native_tables)
+    if native_tables:
+        metadata["native_table_count"] = len(native_tables)
+        metadata["native_tables"] = [
+            {
+                "table_index": int(table.get("table_index", idx)),
+                "rows": int(table.get("rows", 0) or 0),
+                "cols": int(table.get("cols", 0) or 0),
+                "cell_count": len(table.get("cells", [])),
+            }
+            for idx, table in enumerate(native_tables)
+        ]
+
     document = {
         "doc_id": validation.doc_id,
         "title": clean_cell(row.get("사업명")) or Path(validation.file_name).stem,
         "agency": clean_cell(row.get("발주 기관")),
         "project": clean_cell(row.get("사업명")),
         "metadata": metadata,
-        "sections": [{"heading": "본문", "text": text}],
+        "sections": sections,
         "source_path": str(validation.source_path),
     }
     # Issue #180 wire-up: write the eight-field structured extraction

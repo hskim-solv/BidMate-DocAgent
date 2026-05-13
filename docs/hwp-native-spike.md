@@ -20,6 +20,22 @@
   경로는 본 spike 범위가 아니다.
 - **`텍스트` 컬럼 required 해제 아님.** 데이터 컨트랙트는 그대로 유지한다 (adopt 결정 시 별도 PR).
 
+## Modes (2026-05-13 update — PR-C1)
+
+`BIDMATE_HWP_LOADER` 의 세 가지 값:
+
+| 값 | Loader | 출력 | 측정 baseline |
+|---|---|---|---|
+| 미설정 / 기본 | `HwpCsvTextLoader` | CSV `텍스트` 컬럼 | ADR 0001 baseline (불변) |
+| `native` (#167 spike) | `HwpNativeLoader(with_tables=False)` | paragraph plain text | 본 문서의 측정 baseline |
+| `native_tables` (#506 / PR-C1) | `HwpNativeLoader(with_tables=True)` | paragraph plain text **+** 표 셀 (row/col/span metadata) | 별도 측정 — body text 는 `native` 와 동일, 표는 별도 sections |
+
+`native_tables` 모드는 `Section.events()` cooked event stream 을 순회하며
+`TableBody` / `TableCell` model 진입을 추적해 셀 내부 `Text` 페이로드를 누적,
+표 외부 paragraph 와 격리한다 (셀 텍스트가 본문에 누설되지 않으므로 BM25 중복
+색인 위험 없음). pyhwp 미설치 / 파싱 실패 시 silent CSV fallback 그대로
+(``last_native_tables=[]``, `RuntimeWarning` 발생).
+
 ## Scope
 
 다음 라이브러리를 spike 대상으로 한다.
@@ -61,9 +77,12 @@ docs, _ = load_documents_from_metadata_csv(csv_path, files_dir)
 
 `HwpNativeLoader.load_text()` 내부:
 
-1. `_extract_hwp_native(source_path)` 시도.
+1. `with_tables=False` (기본 `native` 모드) 면 `_extract_hwp_native(source_path)`,
+   `with_tables=True` (`native_tables` 모드, PR-C1) 면
+   `_extract_hwp_native_with_tables(source_path)` 시도.
 2. `ImportError` (pyhwp 미설치) / `OSError` (OLE 헤더 오류 등) / `RuntimeError`
    (파싱 중 예외) 발생 시 native 결과를 버리고 CSV `텍스트` 컬럼 사용.
+   `last_native_tables` 는 `[]` 로 reset.
 3. CSV 컬럼도 비어 있으면 기존 `empty_text` failure로 처리 — 기존 taxonomy 그대로.
 
 이 정책 덕에 pyhwp가 설치되지 않은 환경(CI 포함)에서도 native loader는 silent
@@ -149,7 +168,9 @@ native 경로에서 `src`가 모두 `"hwp_native"`로 떨어지면 파싱 성공
 - **라이센스.** pyhwp는 GPL-3 (확인 필요). 사내 RFP 데이터에 적용 시 호환 검토 필요.
 - **표 셀 reconstruction 난이도.** HWP는 표 셀이 document tree에 산재해 있어 단순
   paragraph 추출만으로는 표 구조가 복원되지 않을 수 있다. spike 측정에서 가장 약점
-  가능성이 큰 차원.
+  가능성이 큰 차원. → **PR-C1 (#506) 에서 `native_tables` 모드로 별도 해소.**
+  cooked event stream 의 `TableBody` / `TableCell` 진입을 추적해 셀 텍스트를 본문과
+  격리·셀 좌표 (row/col/span) 보존; 본 spike 의 `native` 모드는 변경 없음.
 - **#160 real-eval baseline 미해결.** 본 spike의 default 경로는 미변경이라 ingestion
   단계 회귀는 unit test로 가드되지만, 실제 `make real-eval-delta`의 byte-equal
   검증은 #160 해결 후에만 신뢰 가능하다.

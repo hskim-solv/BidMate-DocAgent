@@ -165,6 +165,29 @@ python3 scripts/compare_hwp_extraction.py --hwp-dir <HWP_DIR>
 
 샘플 raw 결과 JSON 은 `outputs/hwp_extraction_comparison.json` 에 남는다 (gitignored).
 
+### Path C — `pyhwp` Python API with table extraction (2026-05-13, PR-C1)
+
+본 비교 문서가 Path A `hwp5txt` 의 `table_count = 0` 한계 (CLI 가 `<표>`
+플레이스홀더만 emit) 를 짚어, [`docs/hwp-native-spike.md`](hwp-native-spike.md)
+의 "표 셀 reconstruction 난이도" 위험 항목과 함께 후속 PR-C1 의 트리거가
+되었다. PR-C1 (#506) 는 pyhwp 의 Python API 를
+[`ingestion._extract_hwp_native_with_tables`](../ingestion.py) 로 사용,
+cooked xmlmodel event stream 을 순회해 `TableBody` / `TableCell` 진입 시
+셀 좌표 (row, col, rowspan, colspan) 와 셀 텍스트를 분리 수집한다. opt-in:
+`BIDMATE_HWP_LOADER=native_tables`. 셀은 별도 `sections` 항목
+(`heading: "표 N (HWP native)"`) 으로 surface 되어 downstream section-aware
+chunking 이 자동으로 표를 별도 retrieval 단위로 다룬다. 셀 텍스트는 본문에
+누설되지 않아 BM25 중복 색인 위험이 없다 (테스트 `test_body_text_outside_tables_excludes_cell_text`
+가 회귀 가드).
+
+| 차원 | hwp5txt (Path A) | libreoffice → visual-v2 (Path B) | pyhwp + tables (Path C, PR-C1) | Δ / 비고 |
+|---|---|---|---|---|
+| 본문 char 길이 | 24,085 (median) | 측정 불가 | 측정 TBD | Path C 는 본문 paragraph 만 — `native` 와 동일 |
+| 표 재구성 (셀 좌표) | 0 (구조 손실) | 측정 불가 | TBD (event-stream 기반, row/col/span 보존) | Path A 한계 해소 |
+| 표 셀 ↔ 본문 분리 | n/a (한 stream) | 측정 불가 | ✅ (셀 텍스트가 본문에 누설 안 됨) | BM25 이중 색인 방지 |
+| Latency / doc | 4,645 ms (median) | 측정 불가 | 측정 TBD | event stream 순회 추가 비용 — 사용자 측정 필요 |
+| CI 안정성 | subprocess 의존 | libreoffice 미포함 | ✅ pyhwp 의존 (`requirements.txt`); 미설치 시 silent CSV fallback | never-raise 컨트랙트 동일 |
+
 ## 결정 (TBD)
 
 비교 결과 확인 후 다음 중 하나를 선택한다. 결정 사유는 1-2 문장으로 본
