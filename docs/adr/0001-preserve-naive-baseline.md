@@ -48,6 +48,20 @@ explicit signal that this ADR is being revisited.
 - The README's headline metrics need to make the baseline-vs-full gap
   explicit, or the system looks weaker than it is.
 
+## Default-choice re-evaluation criteria (ADR 0019, consolidated)
+
+ADR 0019 established the pattern for when a "default stays as-is" decision may be revisited. That ADR is Superseded here; the re-open conditions are the load-bearing part.
+
+**Current default kept**: `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` as the embedding model.
+
+**Re-open conditions** (all four must hold before flipping the default):
+1. `requirements.txt` upgrade resolves `torch >= 2.6` and `huggingface-hub < 1.0` blockers.
+2. `python3 scripts/run_embedding_ablation.py --models <miniLM> BAAI/bge-m3 intfloat/multilingual-e5-large-instruct` runs to completion on the public synthetic corpus (n=42).
+3. At least one candidate shows a **`full` pipeline** lift of ≥ +5pp on accuracy or groundedness with non-overlapping bootstrap 95% CIs vs MiniLM. (*Lifts on `naive_baseline` only do NOT count.*)
+4. A follow-up ADR documents the replacement candidate.
+
+**Phase 1.3 update (issue #389, 2026-05-12):** Conditions 1 and 2 are met for all four candidates (BGE-M3 measurement closed the last gap). Condition 3 is NOT triggered — the `0pp-on-full` pattern holds across all five embeddings. This ADR stays accepted.
+
 ## Alternatives considered
 
 - **Drop the baseline once the agentic pipeline ships.** Rejected:

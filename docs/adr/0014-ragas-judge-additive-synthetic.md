@@ -1,6 +1,7 @@
 # 0014: RAGAS-style LLM-judge as additive enrichment on the synthetic surface
 
-- **Status**: accepted
+- **Status**: Superseded
+- **Superseded by**: [ADR 0005](./0005-eval-split-public-synthetic-private-local.md) § "LLM-judge gate layers"
 - **Date**: 2026-05-11
 - **Related**: refines [ADR 0006](./0006-llm-judge-on-real-data-only.md); preserves [ADR 0001](./0001-preserve-naive-baseline.md), [ADR 0003](./0003-structured-answer-citation-contract.md), [ADR 0004](./0004-verifier-retry-policy.md), [ADR 0005](./0005-eval-split-public-synthetic-private-local.md); reuses backend pattern from [ADR 0011](./0011-llm-synthesis-as-additive-ablation.md)
 - **Deciders**: hskim

@@ -65,6 +65,21 @@ side: public-redistributable, or strictly local.
   the aggregate / delta reports plus the public-surface
   reproducibility.
 
+## LLM-judge gate layers (ADR 0006 / 0012 / 0014, consolidated)
+
+Three successive ADRs layered LLM-judge surfaces onto the two eval splits. Those ADRs are Superseded here; their decisions remain in force.
+
+**Gate 1 — real-data only (ADR 0006, accepted)**  
+LLM-judge permitted on `eval/real_config.local.yaml` runs only. Output: per-case `judge.local.json` (gitignored) + aggregate `judge.agreement_with_verifier` (committable). Backend: `BIDMATE_JUDGE_BACKEND` — `stub` | `openai_compatible`. The deterministic verifier remains the gate; the judge is a second opinion.
+
+**Gate 2 — public synthetic stub-default (ADR 0012, accepted)**  
+LLM-judge permitted on `eval/config.yaml` provided CI runs stub-only (`BIDMATE_SYNTHETIC_JUDGE_BACKEND=stub`, deterministic, network-free). Live backend is offline opt-in via `make synthetic-judge`. Committable aggregate: `reports/synthetic_judge.aggregate.json` (ADR 0005 allowlist). Adds `faithfulness`, `answer_relevance`, `agreement_with_verifier`.
+
+**Gate 3 — RAGAS-style enrichment (ADR 0014, accepted)**  
+Four-metric RAGAS-style judge (`faithfulness`, `answer_relevance`, `context_precision`, `context_recall`) as additive enrichment on the synthetic surface. Cache by content hash (`reports/judge_cache/`, gitignored). Hard token-budget cap via `BIDMATE_JUDGE_TOKEN_BUDGET`. Per-case verdicts stay local; aggregate at `eval_summary.json:judge_ragas` is committable.
+
+**Shared invariants (unchanged):** ADR 0004 reproducibility (CI never calls live LLM); ADR 0003 answer contract (judge never affects `answer.status`); ADR 0005 commit boundary (per-case text stays local).
+
 ## Alternatives considered
 
 - **Public-only.** Rejected: synthetic data hides the failure modes

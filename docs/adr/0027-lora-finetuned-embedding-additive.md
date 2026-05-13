@@ -1,6 +1,7 @@
 # 0027: LoRA-fine-tuned embedding adapter as additive ablation
 
-- **Status**: proposed
+- **Status**: Superseded
+- **Superseded by**: [ADR 0011](./0011-llm-synthesis-as-additive-ablation.md) § "Additive opt-in pattern (generalization)"
 - **Date**: 2026-05-12
 - **Deciders**: hskim
 - **Related**: [ADR 0001](./0001-preserve-naive-baseline.md) (naive baseline invariant), [ADR 0011](./0011-llm-synthesis-as-additive-ablation.md) (additive-opt-in pattern), [ADR 0019](./0019-embedding-default-stays-minilm.md) (re-open criteria for swapping the default), [ADR 0021](./0021-bge-m3-completes-phase-1-3.md) (Phase 1.3 closure), issue #179

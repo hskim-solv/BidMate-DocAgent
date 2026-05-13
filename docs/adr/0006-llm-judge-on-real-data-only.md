@@ -1,6 +1,7 @@
 # 0006: LLM-judge on the real-data surface only
 
-- **Status**: accepted
+- **Status**: Superseded
+- **Superseded by**: [ADR 0005](./0005-eval-split-public-synthetic-private-local.md) § "LLM-judge gate layers"
 - **Date**: 2026-05-11
 - **Related**: refines [ADR 0004](./0004-verifier-retry-policy.md); reinforces [ADR 0005](./0005-eval-split-public-synthetic-private-local.md)
 - **Deciders**: hskim

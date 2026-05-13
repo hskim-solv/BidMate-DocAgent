@@ -1,6 +1,7 @@
 # 0017: LLM Metadata Extraction as Additive Backend (extends 0011)
 
-- **Status**: proposed
+- **Status**: Superseded
+- **Superseded by**: [ADR 0011](./0011-llm-synthesis-as-additive-ablation.md) § "Additive opt-in pattern (generalization)"
 - **Date**: 2026-05-12
 - **Deciders**: hskim
 - **Related**: [#180](https://github.com/hskim-solv/BidMate-DocAgent/issues/180), [ADR 0001](./0001-preserve-naive-baseline.md), [ADR 0011](./0011-llm-synthesis-as-additive-ablation.md)

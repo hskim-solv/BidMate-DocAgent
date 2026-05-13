@@ -1,6 +1,7 @@
 # 0012: LLM-judge on the public synthetic eval, stub-default
 
-- **Status**: accepted
+- **Status**: Superseded
+- **Superseded by**: [ADR 0005](./0005-eval-split-public-synthetic-private-local.md) § "LLM-judge gate layers"
 - **Date**: 2026-05-11
 - **Related**: refines [ADR 0006](./0006-llm-judge-on-real-data-only.md); reuses the backend pattern of [ADR 0011](./0011-llm-synthesis-as-additive-ablation.md); preserves [ADR 0004](./0004-verifier-retry-policy.md) reproducibility
 - **Deciders**: hskim

@@ -152,6 +152,24 @@ Reuses the ADR 0006 pattern: `BIDMATE_SYNTHESIS_BACKEND`:
 - ADR 0005: real-data per-case LLM outputs stay local. Aggregates
   (mean cost, mean latency, citation_precision delta) commit.
 
+## Additive opt-in pattern (generalization)
+
+ADR 0011 established a recurring pattern that later ADRs 0015, 0017, and 0027 reused verbatim. Those ADRs are consolidated here as Superseded; their decisions remain unchanged. The pattern is:
+
+1. **Default is deterministic and free.** A `stub` (or `regex`) backend runs on every CI invocation — no network, no cost, reproducible.
+2. **Opt-in via a single env-var.** `BIDMATE_<FEATURE>_BACKEND` dispatches: `stub` (default) | `anthropic` | `openai_compatible`. Unknown/failing backend silently degrades to stub.
+3. **Never changes upstream contract.** The feature writes to a *diagnostics* or *additive ablation row* surface; it cannot modify `answer.status`, `claims`, `citations`, or `naive_baseline` metrics.
+4. **One new ablation row in `eval/config.yaml`.** The feature is measurable as a column, not just a code path.
+5. **Stub-matches-baseline invariant is a contract test.** `test_*_baseline_invariant.py` verifies byte-equality between stub-backend output and the deterministic baseline.
+
+**Instances consolidated here:**
+
+| ADR | Feature | Env-var | Stub invariant |
+|-----|---------|---------|---------------|
+| 0015 | Cost telemetry (tokens, USD estimate) | n/a — diagnostics only | `SYNTHESIS_SCHEMA_VERSION` bump; unknown model → `None` |
+| 0017 | LLM metadata extraction | `BIDMATE_METADATA_BACKEND` | `stub` delegates to `regex`; byte-equal |
+| 0027 | LoRA embedding adapter | `BIDMATE_EMBEDDING_LORA_ADAPTER` | unset = pre-#434 byte-identical; lazy PEFT import |
+
 ## Alternatives considered
 
 - **Replace the extractive path with LLM synthesis entirely.**

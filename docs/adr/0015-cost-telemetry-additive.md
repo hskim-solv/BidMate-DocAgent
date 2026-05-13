@@ -1,6 +1,7 @@
 # 0015: Cost telemetry as additive observability (extends 0011, 0013)
 
-- **Status**: accepted
+- **Status**: Superseded
+- **Superseded by**: [ADR 0011](./0011-llm-synthesis-as-additive-ablation.md) § "Additive opt-in pattern (generalization)"
 - **Date**: 2026-05-12
 - **Deciders**: hskim
 - **Related**: [ADR 0011](./0011-llm-synthesis-as-additive-ablation.md) (LLM synthesis), [ADR 0013](./0013-observability-as-additive-pluggable-surface.md) (trace backends), `rag_synthesis.py`, `tests/test_synthesis_cost_telemetry.py`

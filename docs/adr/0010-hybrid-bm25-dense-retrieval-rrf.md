@@ -67,6 +67,19 @@ unchanged. Diagnostic fields `bm25` and `rank_rrf` are added to
   field, not part of the ADR 0003 answer contract, so no
   `schema_version` bump is required.
 
+## Korean morphology tokenizer layer (ADR 0031, consolidated)
+
+ADR 0031 added `bm25_tokenizer: "regex" | "kiwi"` as an orthogonal ablation on top of this ADR's hybrid BM25 surface. ADR 0031 is Superseded here; key decisions below.
+
+**Decision (ADR 0031, accepted 2026-05-13):** Introduce `bm25_tokenizer` config key in `rag_pipeline_presets.py`. All three presets default to `"regex"` (preserves ADR 0001 and ADR 0010 baseline byte-equality). New ablation row `full_kiwi` in `eval/config.yaml` sets `bm25_tokenizer: kiwi` + `retrieval_backend: hybrid`. `korean_lexicon.kiwi_tokens` lazy-imports `kiwipiepy` — on import failure falls back to regex (never-raise contract).
+
+**Re-open conditions** (kiwi becomes the default when all three hold):
+1. Public synthetic eval (n=42) runs with kiwipiepy installed, producing a real (non-fallback) `full_kiwi` row.
+2. `full_kiwi` shows ≥ +3pp lift on `accuracy` OR `citation_precision` vs `hybrid_bm25` with non-overlapping 95% CIs.
+3. A follow-up ADR documents the install footprint (~30MB `kiwipiepy`) and whether it becomes a hard CI dep.
+
+**Invariants:** ADR 0001 `naive_baseline` golden bit-identical (naive_baseline uses `retrieval_backend: dense`, never invokes BM25). Existing hybrid rows byte-equal.
+
 ## Alternatives considered
 
 - **BGE-M3 sparse channel** — would close the same gap and bring

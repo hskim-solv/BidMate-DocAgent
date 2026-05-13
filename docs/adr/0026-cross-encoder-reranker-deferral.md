@@ -1,6 +1,7 @@
 # 0026: Cross-encoder reranker default stays stub-identity; real-backend measurement deferred
 
-- **Status**: accepted
+- **Status**: Superseded
+- **Superseded by**: [ADR 0025](./0025-cost-frontier-defer-until-real-baselines.md) § "Cross-encoder reranker deferral"
 - **Date**: 2026-05-12
 - **Deciders**: hskim
 - **Related**: [ADR 0001](./0001-preserve-naive-baseline.md) (baseline preserved), [ADR 0002](./0002-metadata-first-retrieval.md) (the metadata-first routing that shadows the rerank step), [ADR 0019](./0019-embedding-default-stays-minilm.md) (mirror pattern — measurement-gated default-stays), [ADR 0021](./0021-bge-m3-completes-phase-1-3.md) (the deferred-then-closed loop precedent), [ADR 0025](./0025-cost-frontier-defer-until-real-baselines.md) (sibling deferral pattern, accepted 2026-05-12), [`docs/cross-encoder-reranker.md`](../cross-encoder-reranker.md) (working reference), [`docs/ablation-results.md`](../ablation-results.md) (current ablation table), [`rag_reranker.py`](../../rag_reranker.py) (`Reranker` Protocol + `CrossEncoderReranker` default), issues [#163](https://github.com/hskim-solv/oss-bidmate-docagent/issues/163), [#345](https://github.com/hskim-solv/oss-bidmate-docagent/issues/345), [#412](https://github.com/hskim-solv/oss-bidmate-docagent/issues/412), PR [#358](https://github.com/hskim-solv/oss-bidmate-docagent/pull/358)

@@ -1,6 +1,7 @@
 # 0019: Embedding default stays MiniLM-L12-v2 with explicit re-open conditions
 
-- **Status**: accepted
+- **Status**: Superseded
+- **Superseded by**: [ADR 0001](./0001-preserve-naive-baseline.md) § "Default-choice re-evaluation criteria"
 - **Date**: 2026-05-12
 - **Deciders**: hskim
 - **Related**: [ADR 0001](./0001-preserve-naive-baseline.md) (baseline preserved), [ADR 0002](./0002-metadata-first-retrieval.md) (metadata-first dominates), [ADR 0021](./0021-bge-m3-completes-phase-1-3.md) (Phase 1.3 supplement that closes condition 2), [`docs/embedding-ablation.md`](../embedding-ablation.md), issues #161 (Phase 1.2 runner) and #300 (this decision)

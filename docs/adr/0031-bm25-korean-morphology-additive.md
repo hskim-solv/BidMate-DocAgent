@@ -1,6 +1,7 @@
 # 0031: BM25 Korean morphology tokenizer as additive ablation
 
-- **Status**: accepted
+- **Status**: Superseded
+- **Superseded by**: [ADR 0010](./0010-hybrid-bm25-dense-retrieval-rrf.md) § "Korean morphology tokenizer layer"
 - **Date**: 2026-05-13
 - **Deciders**: hskim
 - **Related**: [ADR 0001](./0001-preserve-naive-baseline.md) (naive_baseline invariant), [ADR 0010](./0010-hybrid-bm25-dense-retrieval-rrf.md) (hybrid BM25 baseline this layers on), [ADR 0011](./0011-llm-synthesis-as-additive-ablation.md) / [ADR 0013](./0013-observability-as-additive-pluggable-surface.md) (additive-opt-in backend pattern this reuses), [ADR 0019](./0019-embedding-default-stays-minilm.md) / [ADR 0021](./0021-bge-m3-completes-phase-1-3.md) / [ADR 0025](./0025-cost-frontier-defer-until-real-baselines.md) / [ADR 0026](./0026-cross-encoder-reranker-deferral.md) (measurement-gated deferral pattern), issue #486, issue #150 (BM25_EXTRA precedent)
