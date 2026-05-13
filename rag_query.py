@@ -295,6 +295,7 @@ def analyze_query(
     from rag_core import (
         best_metadata_doc_scores,
         coerce_metadata_targets,
+        dedupe_metadata_matches,
         match_metadata_targets,
         metadata_ambiguity_details,
         metadata_filters_from_matches,
