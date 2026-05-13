@@ -42,6 +42,79 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+# Minimal config for EvalSummaryMetricEqualityTest — only the 4 presets needed
+# to assert finetuned equality, plus 3 lightweight cases. Running the full
+# eval/config.yaml (20 presets) in setUpClass exceeds the subprocess timeout.
+_MINIMAL_FINETUNED_CONFIG = {
+    "mode": "rag",
+    "description": "Finetuned ablation baseline invariant — minimal CI surface",
+    "primary_run": "naive_baseline",
+    "answer_policy": {
+        "answerable_status": "supported",
+        "unanswerable_status": "insufficient",
+        "min_claims_answerable": 1,
+        "require_claim_citations": True,
+    },
+    "ablation_runs": [
+        {"name": "naive_baseline", "pipeline": "naive_baseline"},
+        {
+            "name": "full",
+            "pipeline": "agentic_full",
+            "metadata_first": True,
+            "rerank": True,
+            "verifier_retry": True,
+            "retrieval_mode": "flat",
+        },
+        {
+            "name": "agentic_full_finetuned",
+            "pipeline": "agentic_full",
+            "metadata_first": True,
+            "rerank": True,
+            "verifier_retry": True,
+            "retrieval_mode": "flat",
+            "embedding_model": "nlpai-lab/KURE-v1",
+            "embedding_lora_adapter": "bidmate/embedding-lora-kure-rfp-ko-v1@<sha>",
+        },
+        {
+            "name": "naive_baseline_finetuned",
+            "pipeline": "naive_baseline",
+            "embedding_model": "nlpai-lab/KURE-v1",
+            "embedding_lora_adapter": "bidmate/embedding-lora-kure-rfp-ko-v1@<sha>",
+        },
+    ],
+    "cases": [
+        {
+            "id": "single_doc_security",
+            "query_type": "single_doc",
+            "query": "기관 A의 보안 통제 요구사항은?",
+            "expected_doc_ids": ["rfp-agency-a-ai-quality"],
+            "expected_terms": ["보안 통제"],
+            "expected_citation_terms": ["보안 통제"],
+            "answerable": True,
+        },
+        {
+            "id": "comparison_ai_requirements",
+            "query_type": "comparison",
+            "query": "기관 A와 기관 B의 AI 요구사항 차이 알려줘",
+            "expected_doc_ids": [
+                "rfp-agency-a-ai-quality",
+                "rfp-agency-b-mlops-governance",
+            ],
+            "expected_terms": ["MLOps", "품질관리"],
+            "expected_citation_terms": ["MLOps"],
+            "answerable": True,
+        },
+        {
+            "id": "abstention_missing_blockchain",
+            "query_type": "abstention",
+            "query": "기관 A의 블록체인 납품 실적은?",
+            "expected_doc_ids": [],
+            "expected_terms": ["블록체인"],
+            "answerable": False,
+        },
+    ],
+}
+
 
 def _normalize_run_config(row: dict) -> dict:
     sys.path.insert(0, str(ROOT / "eval"))
@@ -217,7 +290,13 @@ class EvalSummaryMetricEqualityTest(unittest.TestCase):
         import tempfile
 
         cls._tmp = tempfile.TemporaryDirectory()
-        output_dir = Path(cls._tmp.name)
+        tmp = Path(cls._tmp.name)
+        config_path = tmp / "config.yaml"
+        config_path.write_text(
+            yaml.safe_dump(_MINIMAL_FINETUNED_CONFIG, allow_unicode=True, sort_keys=False),
+            encoding="utf-8",
+        )
+        output_dir = tmp / "out"
         result = subprocess.run(
             [
                 sys.executable,
@@ -227,7 +306,7 @@ class EvalSummaryMetricEqualityTest(unittest.TestCase):
                 "--output_dir",
                 str(output_dir),
                 "--config",
-                str(ROOT / "eval" / "config.yaml"),
+                str(config_path),
             ],
             cwd=ROOT,
             capture_output=True,
