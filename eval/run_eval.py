@@ -718,6 +718,7 @@ def evaluate_run(
             context_entities=case.get("context_entities") or [],
             metadata_first=bool(run_config.get("metadata_first", True)),
             rerank=bool(run_config.get("rerank", True)),
+            rerank_cross_encoder=bool(run_config.get("rerank_cross_encoder", False)),
             verifier_retry=bool(run_config.get("verifier_retry", True)),
             retrieval_mode=str(run_config.get("retrieval_mode", "flat")),
             retrieval_backend=str(run_config.get("retrieval_backend", "dense")),

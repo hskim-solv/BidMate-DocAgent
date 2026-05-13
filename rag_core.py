@@ -991,6 +991,7 @@ class _RunContext:
     requested_top_k: int | None
     metadata_first: bool
     rerank: bool
+    rerank_cross_encoder: bool
     verifier_retry: bool
     retrieval_mode: str
     retrieval_backend: str
@@ -1033,6 +1034,7 @@ def _build_run_context(
     context_entities: list[str] | None,
     metadata_first: bool | None,
     rerank: bool | None,
+    rerank_cross_encoder: bool | None = None,
     verifier_retry: bool | None,
     retrieval_mode: str | None,
     retrieval_backend: str | None,
@@ -1093,6 +1095,7 @@ def _build_run_context(
         ("top_k", top_k),
         ("metadata_first", metadata_first),
         ("rerank", rerank),
+        ("rerank_cross_encoder", rerank_cross_encoder),
         ("verifier_retry", verifier_retry),
         ("retrieval_mode", retrieval_mode),
         ("retrieval_backend", retrieval_backend),
@@ -1113,6 +1116,7 @@ def _build_run_context(
     requested_top_k = resolved_top_k
     metadata_first_val = bool(pipeline_config["metadata_first"])
     rerank_val = bool(pipeline_config["rerank"])
+    rerank_cross_encoder_val = bool(pipeline_config.get("rerank_cross_encoder"))
     verifier_retry_val = bool(pipeline_config["verifier_retry"])
     retrieval_mode_val = str(pipeline_config["retrieval_mode"])
     retrieval_backend_val = str(pipeline_config["retrieval_backend"])
@@ -1178,6 +1182,7 @@ def _build_run_context(
         requested_top_k=requested_top_k,
         metadata_first=metadata_first_val,
         rerank=rerank_val,
+        rerank_cross_encoder=rerank_cross_encoder_val,
         verifier_retry=verifier_retry_val,
         retrieval_mode=retrieval_mode_val,
         retrieval_backend=retrieval_backend_val,
@@ -1350,6 +1355,7 @@ def _phase_retrieve_loop(ctx: _RunContext) -> None:
                 stage=stage,
                 metadata_first=ctx.metadata_first,
                 rerank=ctx.rerank,
+                rerank_cross_encoder=ctx.rerank_cross_encoder,
                 verifier_retry=ctx.verifier_retry,
                 retrieval_mode=ctx.retrieval_mode,
                 retrieval_backend=ctx.retrieval_backend,
@@ -1544,6 +1550,7 @@ def run_rag_query(
     context_entities: list[str] | None = None,
     metadata_first: bool | None = None,
     rerank: bool | None = None,
+    rerank_cross_encoder: bool | None = None,
     verifier_retry: bool | None = None,
     retrieval_mode: str | None = None,
     retrieval_backend: str | None = None,
@@ -1607,6 +1614,7 @@ def run_rag_query(
         context_entities=context_entities,
         metadata_first=metadata_first,
         rerank=rerank,
+        rerank_cross_encoder=rerank_cross_encoder,
         verifier_retry=verifier_retry,
         retrieval_mode=retrieval_mode,
         retrieval_backend=retrieval_backend,
