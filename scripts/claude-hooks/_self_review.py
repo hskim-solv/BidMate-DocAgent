@@ -289,6 +289,56 @@ def collect_git(repo: str, start: str, end: str) -> dict[str, Any]:
     }
 
 
+def collect_governance_hooks(repo: str, start: str, end: str) -> dict[str, Any]:
+    """Parse `.claude/.hook-fires.log` for PreToolUse load-bearing fires.
+
+    Log line format: ``<ISO8601 UTC>|<file_path>`` appended by
+    ``scripts/claude-hooks/pretooluse-loadbearing.sh`` (issue #495).
+    Returns fires within the quarter window plus a top-10 by-path
+    distribution; never reads body of any other file.
+    """
+    log_path = Path(repo) / ".claude" / ".hook-fires.log"
+    if not log_path.is_file():
+        return {
+            "pretooluse_loadbearing_fires": 0,
+            "fires_by_path": {},
+            "rule_to_automation_lag_days": [],
+            "note": "Hook fire log absent at .claude/.hook-fires.log; emit 0.",
+        }
+    start_dt = datetime.fromisoformat(start).replace(tzinfo=timezone.utc)
+    end_dt = datetime.fromisoformat(end).replace(
+        tzinfo=timezone.utc, hour=23, minute=59, second=59
+    )
+    fires = 0
+    by_path: Counter[str] = Counter()
+    try:
+        for line in log_path.read_text().splitlines():
+            line = line.strip()
+            if not line or "|" not in line:
+                continue
+            ts, _, path = line.partition("|")
+            try:
+                fire_dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+            except ValueError:
+                continue
+            if fire_dt < start_dt or fire_dt > end_dt:
+                continue
+            fires += 1
+            by_path[path] += 1
+    except OSError:
+        pass
+    note = (
+        "Cycle-time lag uses ADR proposed→accepted dates (git history); "
+        "lag list intentionally empty until parsed."
+    )
+    return {
+        "pretooluse_loadbearing_fires": fires,
+        "fires_by_path": dict(by_path.most_common(10)),
+        "rule_to_automation_lag_days": [],
+        "note": note,
+    }
+
+
 def assemble_stats(
     quarter: str, transcripts_glob: str, memory_dir: str, repo: str
 ) -> dict[str, Any]:
@@ -299,14 +349,7 @@ def assemble_stats(
         "sessions": collect_sessions(transcripts_glob, start, end),
         "memory": collect_memory(memory_dir),
         "git": collect_git(repo, start, end),
-        "governance_hooks": {
-            "pretooluse_loadbearing_fires": 0,
-            "rule_to_automation_lag_days": [],
-            "note": (
-                "Hook fire log not wired; emit 0 placeholder. "
-                "Cycle-time evidence comes from git ADR/load-bearing dates."
-            ),
-        },
+        "governance_hooks": collect_governance_hooks(repo, start, end),
     }
 
 
