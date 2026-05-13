@@ -124,6 +124,11 @@ reports/synthetic_judge.local.json
 reports/proposed/*
 !reports/proposed/proposer.aggregate.json
 
+# ADR 0032 — routed-subset measurement aggregate is committable.
+# Hashing-backend framework-validation + future sentence-transformers
+# spread results land here (embedding_routed.json).
+!reports/embedding_routed.json
+
 # Benchmark raw/local artifacts
 artifacts/benchmarks/
 artifacts/runs/

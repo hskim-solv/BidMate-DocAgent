@@ -237,11 +237,49 @@ All four show `+0.0` deltas vs MiniLM on every metric — same pattern as
    `full` metrics do not move. Metadata-first retrieval (ADR 0002) is
    the load-bearing design choice, not the embedding choice.
 
+## Fourth comparison — Phase 1.4 (issue #531, 2026-05-13): routed-subset saturation falsifier
+
+[ADR 0032](adr/0032-eval-saturation-routed-subset.md)이 제기한 질문: "0pp on full" 패턴이 metadata-first absorption의 artifact인가 (즉 임베딩 sensitivity를 측정 불가능하게 만드는가)?
+
+### Measurement surface
+
+`eval/routed_config.yaml` (n=11 케이스, PR #530 추가), `agentic_full_routed` preset (`metadata_first: false`). 측정 케이스는 metadata-first routing이 우회되도록 설계됨:
+- **Multi-turn follow-up** (3 cases): entity switch, implicit metric, 2-step implicit
+- **Multi-doc comparison ambiguity** (4 cases): 동일 metadata 후보가 ≥ 2 문서에 분포
+- **Inference queries** (3 cases): metadata column hook 없는 추론 질의
+- **Abstention** (1 case): corpus에 없는 정보에 대한 abstain 케이스
+
+Runner: `scripts/run_routed_measurement.py --backend sentence-transformers`. 결과: `reports/embedding_routed.json`.
+
+### Headline numbers — Phase 1.4 (measured 2026-05-13, n=11, routed surface)
+
+| Model | full (metadata_first=true) accuracy | routed (metadata_first=false) accuracy | Notes |
+|---|---:|---:|---|
+| MiniLM-L12-v2 | 0.500 | **0.400** | ADR 0019 default |
+| multilingual-e5-large-instruct | 0.500 | **0.400** | ADR 0021 Phase 1.3 |
+| KoSimCSE-roberta-multitask | 0.500 | **0.400** | ADR 0021 Phase 1.2 |
+| BGE-M3 | — | — | Skipped: torch ≥ 2.6 required (ADR 0021 §4 blocker) |
+| KURE-v1 | 0.500 | **0.400** | Korean-specialized; locally cached |
+
+**Spread (top-vs-bottom, routed)**: **0.0pp** (threshold: +3pp per ADR 0032 §Decision)
+
+### Reading the Phase 1.4 result
+
+1. **Saturation cross-validated**: 0pp 패턴이 routed surface (metadata-first disabled)에서도 성립. Saturation 가설은 "metadata-first absorption만의 artifact"가 아님을 확인.
+2. **두 가지 상보 해석**:
+   - *Corpus 규모 효과*: fixture corpus (7 docs, 9 chunks)에서 dense retrieval은 어떤 임베딩으로도 9개 chunk 중 올바른 것을 회수 → 큰 corpus에서는 spread 발생 가능
+   - *Verifier 병목*: accuracy를 제한하는 것이 retrieval 품질이 아니라 verifier exact-term match 정책 (ADR 0004 설계 의도)
+3. **ADR 0019 lock은 measurement-precluded가 아닌 empirically justified**: 두 surface(full + routed) 모두에서 0pp. Re-open condition 3 (≥ +5pp non-overlapping CIs)은 evidence-backed stable.
+4. **ADR 0032 accepted로 closes**: 측정 surface 자체가 목표였으며, spread < +3pp 결과로 ADR 0032 자동 close. ADR 0019 default lock 유지.
+
 ## See also
 
-- [`scripts/run_embedding_ablation.py`](../scripts/run_embedding_ablation.py) — the runner
+- [`scripts/run_embedding_ablation.py`](../scripts/run_embedding_ablation.py) — Phase 1.1~1.3 runner
+- [`scripts/run_routed_measurement.py`](../scripts/run_routed_measurement.py) — Phase 1.4 routed measurement runner
+- [`reports/embedding_routed.json`](../reports/embedding_routed.json) — Phase 1.4 machine-readable results
 - [`docs/ablation-results.md`](ablation-results.md) — broader ablation context
 - [ADR 0001](adr/0001-preserve-naive-baseline.md) — why `naive_baseline` is preserved
 - [ADR 0002](adr/0002-metadata-first-retrieval.md) — why metadata-first dominates
 - [ADR 0019](adr/0019-embedding-default-stays-minilm.md) — the deferral decision
 - [ADR 0021](adr/0021-bge-m3-completes-phase-1-3.md) — the Phase 1.3 closure
+- [ADR 0032](adr/0032-eval-saturation-routed-subset.md) — the Phase 1.4 saturation falsifier (accepted)

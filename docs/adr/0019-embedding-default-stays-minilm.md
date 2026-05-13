@@ -124,3 +124,11 @@ Costs / honesty:
   Rejected: erasing an unfinished cycle would hide a real piece of
   measurement context. The doc now records that the cycle was
   attempted and what specifically blocks it.
+
+## Phase 1.4 update — routed-subset saturation falsifier (ADR 0032, 2026-05-13)
+
+[ADR 0032](./0032-eval-saturation-routed-subset.md)이 "0pp on full = metadata-first masking" 가설을 falsify하기 위해 routed-subset measurement surface를 추가했다 (eval/routed_config.yaml, n=11, `agentic_full_routed` preset: metadata_first=false). 측정 결과 spread **0.0pp** (MiniLM / e5-large-instruct / KoSimCSE / KURE-v1 모두 routed accuracy 0.400, threshold: +3pp). BGE-M3는 torch ≥ 2.6 blocker로 skip됨 (ADR 0021 §4 동일 조건).
+
+**Saturation cross-validated**: 0pp 패턴이 routed surface에서도 성립 — metadata-first 우회 시에도 임베딩 선택이 accuracy를 바꾸지 못함. MiniLM default lock이 measurement-precluded가 아니라 *empirically justified* (두 surface 공통)임을 확인. Re-open trigger condition 3 (≥ +5pp on full, non-overlapping CIs)는 현재 측정 surface에서 structurally unreachable이 아닌, *evidence-backed stable*임이 cross-validated됨. ADR 0032 accepted로 closes.
+
+전체 결과: `reports/embedding_routed.json`.
