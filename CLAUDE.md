@@ -54,6 +54,16 @@ Supporting:
 - `data/raw/` → `data/index/` → `outputs/` → `reports/` (pipeline artifacts).
 - `docs/` — design notes, ADRs, failure analyses, reviewer artifacts.
 
+## Communication
+
+- **Respond in Korean when the user writes in Korean.** Reserve English for English-language prompts or an explicit "respond in English" request. Code, identifiers, commit messages, file/directory names stay in English.
+- **Lead summaries with a 2-3 line TL;DR; details below.** One decision per turn — do not dump multiple PRs / issues / branches in a single message.
+
+## Autonomy & Approvals
+
+- **State-changing actions require explicit approval.** `git push`, `gh pr merge`, `gh pr create`, `git branch -D`, `gh issue create` only after the user gives an explicit go-ahead (e.g. "진행", "go", "merge it", "ok"). Short interrogatives like `"머지?"`, `"PR?"`, `"?"` are **questions** — answer them, do not act on them.
+- **For chained side effects** (stacked-PR merge, ADR-then-PR, multi-issue triage), get a separate approval per step instead of bundling.
+
 ## Core principles
 
 - **Issue first; convention-matched branch.** Every PR must reference an issue (`Closes #N` in body) and its branch must match `<type>/issue-<N>[-<slug>]` (ADR 0007). The CI workflow `branch-and-issue-check.yml` enforces both at PR time.
@@ -62,6 +72,7 @@ Supporting:
 - **Behavior change ↔ test change.** Behavior change without a test is presumed accidental. Regression tests go in `tests/test_*_regression.py` (pattern: `tests/test_retrieval_loop_regression.py`).
 - **Backward compatibility.** Breaking changes need an explicit reason. Answer-contract break (ADR 0003) requires `schema_version` bump.
 - **ADR threshold.** Removing or replacing a load-bearing decision (baseline / pipeline / answer contract / eval surface) needs an ADR. Criteria: [`docs/adr/README.md`](docs/adr/README.md).
+- **Reserve ADR numbers up front.** Before drafting a new ADR, check both `ls docs/adr/` and `gh pr list --search "ADR" --state open` to find the next available number. Propose it and wait for user confirmation before creating the file — concurrent worktree work has produced repeat collisions (0022→0023, 0023→0025, 0029→0030).
 
 ## PR description
 
@@ -86,6 +97,7 @@ important — the synthetic CI delta alone missed #69's intended-abstention regr
 - Adding a parallel pydantic / TypedDict model that shadows `run_rag_query`'s answer dict — the dict is the contract (ADR 0003).
 - Removing the `naive_baseline` preset from `eval/config.yaml` (ADR 0001).
 - Adding unrelated commits mid-review — open a follow-up PR.
+- Running `gh pr merge --delete-branch` without first verifying `gh pr list --base <this-PR-head-branch> --state open --json number` is empty. Open results mean a stacked dependent exists — drop `--delete-branch` or rebase the children onto main first. (A follow-up PreToolUse Bash guard hook automates this; the rule is stated here so it survives even if the hook is disabled.)
 
 ## Non-goals (unless explicitly requested)
 
