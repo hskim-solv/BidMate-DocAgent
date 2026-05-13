@@ -55,6 +55,13 @@ PIPELINE_CONFIG_KEYS = (
     "prompt_profile",
     "rrf_k",
     "bm25_stopword_profile",
+    # Issue #486 / ADR 0030 — pluggable BM25 tokenizer discriminator.
+    # "regex" (default) preserves the ADR 0001 naive_baseline invariant
+    # and the existing ``re.compile(r"[A-Za-z0-9]+|[가-힣]+")`` token
+    # surface. "kiwi" opts into kiwipiepy morpheme tokenization. Never-
+    # raise: if kiwipiepy is missing the dispatch silently falls back to
+    # regex. See ``korean_lexicon.kiwi_tokens``.
+    "bm25_tokenizer",
     # Issue #396 — string discriminator for the query-side rewrite stage.
     # "identity" (default) preserves the ADR 0001 naive_baseline invariant;
     # "hyde" opts into Hypothetical Document Embeddings (LLM rewrite of
@@ -83,6 +90,11 @@ PIPELINE_PRESETS: dict[str, dict[str, Any]] = {
         "prompt_profile": "minimal_grounded_extractive",
         "rrf_k": RRF_K,
         "bm25_stopword_profile": "shared",
+        # ADR 0030 invariant — naive_baseline MUST stay at regex tokenizer.
+        # naive_baseline uses retrieval_backend="dense" so BM25 never fires,
+        # but the explicit value documents intent + protects future changes
+        # that might enable BM25 here.
+        "bm25_tokenizer": "regex",
         # ADR 0001 invariant — naive_baseline MUST stay at identity. Any
         # change here breaks the bit-identical top-K golden test.
         "query_expansion": "identity",
@@ -102,6 +114,10 @@ PIPELINE_PRESETS: dict[str, dict[str, Any]] = {
         "prompt_profile": "structured_grounded_claims",
         "rrf_k": RRF_K,
         "bm25_stopword_profile": "shared",
+        # ADR 0030 — kiwi tokenizer is opt-in per-row in eval/config.yaml.
+        # agentic_full default is regex so existing "full" eval row stays
+        # byte-equal; the new "full_kiwi" row sets this to "kiwi".
+        "bm25_tokenizer": "regex",
         # ADR 0023 — query expansion is opt-in per-row in eval/config.yaml.
         # agentic_full default is identity so the existing "full" eval row
         # stays byte-equal; the new "full_hyde" row sets this to "hyde".
@@ -123,6 +139,7 @@ PIPELINE_PRESETS: dict[str, dict[str, Any]] = {
         "prompt_profile": "llm_synthesis",
         "rrf_k": RRF_K,
         "bm25_stopword_profile": "shared",
+        "bm25_tokenizer": "regex",
         "query_expansion": "identity",
         "comparison_balance": dict(DEFAULT_COMPARISON_BALANCE),
         "description": "agentic_full retrieval; LLM-synthesized summary under ADR 0011 guard.",
@@ -171,6 +188,12 @@ VALID_RETRIEVAL_MODES = {"flat", "hierarchical"}
 # "Alternatives considered" (lines 72-85) for the deferral context.
 VALID_RETRIEVAL_BACKENDS = {"dense", "hybrid", "m3"}
 VALID_BM25_STOPWORD_PROFILES = {"shared", "bm25_extra"}
+# Issue #486 / ADR 0030 — additive Korean-morphology tokenizer.
+# "regex" preserves the ADR 0001 naive_baseline invariant; "kiwi" opts
+# into kiwipiepy morpheme tokenization (체언 / 용언 / 수식어 /
+# 외래어 POS filter). Missing kiwipiepy → silent fallback to regex,
+# enforced by `korean_lexicon.kiwi_tokens` returning ``None``.
+VALID_BM25_TOKENIZERS = {"regex", "kiwi"}
 # Issue #396 / ADR 0023 — pluggable QueryExpander discriminator. Kept
 # narrow on purpose: a typo like "hide" raises rather than silently
 # degrading retrieval. ``rag_query_expansion.default_expander`` still
@@ -223,6 +246,10 @@ def resolve_pipeline_config(
     if bm25_stopword_profile not in VALID_BM25_STOPWORD_PROFILES:
         choices = ", ".join(sorted(VALID_BM25_STOPWORD_PROFILES))
         raise ValueError(f"bm25_stopword_profile must be one of: {choices}")
+    bm25_tokenizer = str(config.get("bm25_tokenizer") or "regex").lower()
+    if bm25_tokenizer not in VALID_BM25_TOKENIZERS:
+        choices = ", ".join(sorted(VALID_BM25_TOKENIZERS))
+        raise ValueError(f"bm25_tokenizer must be one of: {choices}")
     query_expansion = str(config.get("query_expansion") or "identity").lower()
     if query_expansion not in VALID_QUERY_EXPANSIONS:
         choices = ", ".join(sorted(VALID_QUERY_EXPANSIONS))
@@ -238,5 +265,6 @@ def resolve_pipeline_config(
     config["prompt_profile"] = str(config.get("prompt_profile") or "structured_grounded_claims")
     config["rrf_k"] = rrf_k
     config["bm25_stopword_profile"] = bm25_stopword_profile
+    config["bm25_tokenizer"] = bm25_tokenizer
     config["query_expansion"] = query_expansion
     return config

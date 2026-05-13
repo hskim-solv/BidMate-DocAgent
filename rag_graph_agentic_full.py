@@ -156,6 +156,7 @@ def run_via_langgraph(
         comparison_balance=kwargs.get("comparison_balance"),
         rrf_k=kwargs.get("rrf_k"),
         bm25_stopword_profile=kwargs.get("bm25_stopword_profile"),
+        bm25_tokenizer=kwargs.get("bm25_tokenizer"),
         params=kwargs.get("params"),
     )
 

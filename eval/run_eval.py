@@ -142,6 +142,7 @@ def normalize_run_config(run: dict[str, Any]) -> dict[str, Any]:
         "prompt_profile": str(config.get("prompt_profile")),
         "rrf_k": int(config.get("rrf_k", RRF_K)),
         "bm25_stopword_profile": str(config.get("bm25_stopword_profile", "shared")),
+        "bm25_tokenizer": str(config.get("bm25_tokenizer", "regex")),
     }
 
 
@@ -596,6 +597,7 @@ def summarize_run(
         "prompt_profile": str(run_config.get("prompt_profile") or ""),
         "rrf_k": int(run_config.get("rrf_k", RRF_K)),
         "bm25_stopword_profile": str(run_config.get("bm25_stopword_profile", "shared")),
+        "bm25_tokenizer": str(run_config.get("bm25_tokenizer", "regex")),
         **metric_block(case_results),
         "by_query_type": {},
         "by_slice": {},
@@ -704,6 +706,7 @@ def evaluate_run(
                 conversation_state=conversation_state,
                 rrf_k=int(run_config.get("rrf_k", RRF_K)),
                 bm25_stopword_profile=str(run_config.get("bm25_stopword_profile", "shared")),
+                bm25_tokenizer=str(run_config.get("bm25_tokenizer", "regex")),
             )
             conversation_state = prior_prediction.get("conversation_state") or conversation_state
 
@@ -722,6 +725,7 @@ def evaluate_run(
             conversation_state=conversation_state,
             rrf_k=int(run_config.get("rrf_k", RRF_K)),
             bm25_stopword_profile=str(run_config.get("bm25_stopword_profile", "shared")),
+            bm25_tokenizer=str(run_config.get("bm25_tokenizer", "regex")),
         )
         trace_path = write_prediction_trace(
             trace_dir,
