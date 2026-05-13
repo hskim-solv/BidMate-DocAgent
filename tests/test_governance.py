@@ -339,6 +339,7 @@ def _adr_statuses() -> dict[str, str]:
     return result
 
 
+@pytest.mark.skipif(not _SENIOR_POS_PATH.exists(), reason="senior-positioning.md moved to portfolio repo")
 def test_senior_positioning_count_label_matches_adr_files():
     text = _SENIOR_POS_PATH.read_text()
     label_values = {int(n) for n in _SENIOR_POS_COUNT_RE.findall(text)}
@@ -355,6 +356,7 @@ def test_senior_positioning_count_label_matches_adr_files():
     )
 
 
+@pytest.mark.skipif(not _SENIOR_POS_PATH.exists(), reason="senior-positioning.md moved to portfolio repo")
 def test_senior_positioning_status_breakdown_matches_adr_files():
     text = _SENIOR_POS_PATH.read_text()
     m = _SENIOR_POS_STATUS_LABEL_RE.search(text)
@@ -378,6 +380,7 @@ def test_senior_positioning_status_breakdown_matches_adr_files():
     )
 
 
+@pytest.mark.skipif(not _SENIOR_POS_PATH.exists(), reason="senior-positioning.md moved to portfolio repo")
 def test_senior_positioning_table_rows_match_adr_files():
     text = _SENIOR_POS_PATH.read_text()
     rows = _SENIOR_POS_ROW_RE.findall(text)
