@@ -26,8 +26,8 @@ REQUIRED_KEYS = [
     "retry",
 ]
 
-# Runs whose CI separates from `full` — shown in main ablation table.
-# All other runs are detection-blind under n=42 and go into the collapsed block.
+# Runs whose CI separates from `full` at n=100 — shown in main ablation table.
+# All other runs were detection-blind at n=42 (CI overlap) and go into the collapsed block.
 _MAIN_ABLATION_RUNS = {"naive_baseline", "full", "no_metadata_first", "no_verifier_retry"}
 _MAIN_ABLATION_ORDER = ["naive_baseline", "full", "no_metadata_first", "no_verifier_retry"]
 
@@ -362,8 +362,9 @@ def render_ablation_table(summary: Dict[str, Any]) -> str:
         table.append("")
         table.append(
             "<details>"
-            "<summary>Detection-blind ablations under n=42 — "
-            "statistically inseparable from <code>full</code>; to be re-tested at n≥100 (issue #570)</summary>"
+            "<summary>Detection-blind ablations — statistically inseparable from <code>full</code> at n=42 "
+            "(CI bands overlapping; n=42 was the statistical limit). "
+            "Dataset expanded to n=100 (issue #570 완료); real-eval re-measurement pending.</summary>"
         )
         table.append("")
         table.extend(_ABLATION_HEADER)
@@ -375,6 +376,8 @@ def render_ablation_table(summary: Dict[str, Any]) -> str:
     table.append("")
     table.append(
         "> Values shown as `mean±half-width` for the 95% bootstrap CI (n=cases, 1000 resamples, seed=17). "
+        "CI overlap between rows = statistical detection limit at that n, not equivalence. "
+        "At n=42 the half-width was ~±0.12; n=100 narrows it by ×0.65 (√42/100). "
         "The non-CI columns (Format, Abstention, Retry) are point estimates; "
         "their CIs appear in the detailed main table above."
     )
