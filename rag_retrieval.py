@@ -593,6 +593,32 @@ def _chunk_tokens_for_bm25(
             return kiwi_base
         # else: silent fallback to regex below.
 
+    # Issue #561 / ADR 0031 valid-set expansion — Mecab-ko tokenizer.
+    # Never-raise: mecab_tokens returns None if python-mecab-ko / konlpy
+    # is unavailable; falls back to regex (ADR 0001 invariant).
+    if tokenizer == "mecab":
+        from korean_lexicon import mecab_tokens
+
+        mecab_base = mecab_tokens(text)
+        if mecab_base is not None:
+            if stopword_profile == "bm25_extra":
+                mecab_base = _apply_bm25_extra_filter(mecab_base)
+            return mecab_base
+        # else: silent fallback to regex below.
+
+    # Issue #561 / ADR 0031 valid-set expansion — Khaiii tokenizer.
+    # Never-raise: khaiii_tokens returns None if Khaiii C++ binding is
+    # unavailable; falls back to regex (ADR 0001 invariant).
+    if tokenizer == "khaiii":
+        from korean_lexicon import khaiii_tokens
+
+        khaiii_base = khaiii_tokens(text)
+        if khaiii_base is not None:
+            if stopword_profile == "bm25_extra":
+                khaiii_base = _apply_bm25_extra_filter(khaiii_base)
+            return khaiii_base
+        # else: silent fallback to regex below.
+
     tokens = chunk.get("tokens")
     if isinstance(tokens, list) and tokens:
         base = [str(t) for t in tokens]
@@ -695,6 +721,20 @@ def bm25_scores_for_index(
         kiwi_query = kiwi_tokens(" ".join(effective_tokens))
         if kiwi_query is not None:
             effective_tokens = kiwi_query
+    # Issue #561 / ADR 0031 valid-set expansion — query-side Mecab-ko.
+    elif tokenizer == "mecab":
+        from korean_lexicon import mecab_tokens
+
+        mecab_query = mecab_tokens(" ".join(effective_tokens))
+        if mecab_query is not None:
+            effective_tokens = mecab_query
+    # Issue #561 / ADR 0031 valid-set expansion — query-side Khaiii.
+    elif tokenizer == "khaiii":
+        from korean_lexicon import khaiii_tokens
+
+        khaiii_query = khaiii_tokens(" ".join(effective_tokens))
+        if khaiii_query is not None:
+            effective_tokens = khaiii_query
     if stopword_profile == "bm25_extra":
         effective_tokens = _apply_bm25_extra_filter(effective_tokens)
         if not effective_tokens:
