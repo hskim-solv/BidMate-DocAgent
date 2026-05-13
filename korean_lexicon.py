@@ -49,7 +49,7 @@ BM25_EXTRA_PARTICLE_SUFFIXES: tuple[str, ...] = tuple(_data["bm25_extra_particle
 BM25_EXTRA_STOPWORDS: frozenset[str] = frozenset(_data["bm25_extra_stopwords"])
 
 
-# KIWI morphological tokenizer (issue #486, ADR 0030) — additive
+# KIWI morphological tokenizer (issue #486, ADR 0031) — additive
 # Korean-morphology-aware BM25 path. Lazy-imported so the
 # ``kiwipiepy`` dependency stays optional: a missing wheel (or import
 # error on an unusual platform) silently falls back to the regex

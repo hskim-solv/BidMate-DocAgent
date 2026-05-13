@@ -594,7 +594,7 @@ def _chunk_tokens_for_bm25(
         ]
     )
 
-    # Issue #486 / ADR 0030 — kiwi tokenizer recomputes from raw text.
+    # Issue #486 / ADR 0031 — kiwi tokenizer recomputes from raw text.
     # The chunk's cached ``tokens`` list is regex-tokenized at index
     # build time (ADR 0001 invariant), so kiwi must NOT reuse it. The
     # never-raise fallback (``kiwi_tokens`` returns ``None`` when
@@ -636,7 +636,7 @@ def get_or_build_bm25(
     ``tokenizer`` axis is orthogonal: ``regex`` reuses the regex-built
     chunk token cache (or falls back to ``tokenize`` for fixtures
     without it); ``kiwi`` re-tokenizes via kiwipiepy morpheme analysis
-    (ADR 0030, never-raise — silent fallback to regex when kiwipiepy
+    (ADR 0031, never-raise — silent fallback to regex when kiwipiepy
     is missing). Each ``(profile, tokenizer)`` combo gets its own
     ``BM25Okapi`` instance inside ``index["_bm25_by_profile"]`` so the
     IDF distribution stays consistent between corpus build and query
@@ -693,13 +693,13 @@ def bm25_scores_for_index(
     filter to their candidate slice. Empty query tokens (or tokens
     that the ``bm25_extra`` filter strips to empty) yield an all-zero
     map. ``tokenizer="kiwi"`` re-tokenizes both corpus + query via
-    kiwipiepy morpheme analysis (ADR 0030, never-raise fallback).
+    kiwipiepy morpheme analysis (ADR 0031, never-raise fallback).
     """
     chunks = index.get("chunks") or []
     if not query_tokens:
         return {str(c.get("chunk_id")): 0.0 for c in chunks}
     effective_tokens = list(query_tokens)
-    # Issue #486 / ADR 0030 — query-side kiwi tokenization. The corpus
+    # Issue #486 / ADR 0031 — query-side kiwi tokenization. The corpus
     # was built with kiwi morphemes; query tokens must use the same
     # surface form for BM25 IDF to compare apples to apples. The regex-
     # tokenized ``query_tokens`` from ``analyze_query`` are re-joined

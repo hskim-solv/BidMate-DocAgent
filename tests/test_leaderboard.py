@@ -155,26 +155,105 @@ class LeaderboardRenderTest(unittest.TestCase):
         data = json.loads(match.group(1))
         self.assertEqual(["2026-05-08", "2026-05-12"], data["labels"])
         self.assertEqual(2, len(data["commits"]))
-        # All headline metrics present in chart payload.
+        # All headline metrics present in chart payload with both pipeline
+        # series (ADR 0029 — naive_baseline + agentic_full overlay).
         for key, _ in HEADLINE_METRICS:
             self.assertIn(key, data["metrics"])
-            self.assertEqual(2, len(data["metrics"][key]["values"]))
-            self.assertEqual(2, len(data["metrics"][key]["ci_lo"]))
-        # Issue #267 regression: CI bands must be numeric, not None,
-        # when the source snapshots include a ci block. A previous bug
-        # let extract_aggregate strip the ci block silently, leaving
+            self.assertIn("baseline", data["metrics"][key])
+            self.assertIn("full", data["metrics"][key])
+            self.assertEqual(2, len(data["metrics"][key]["baseline"]["values"]))
+            self.assertEqual(2, len(data["metrics"][key]["baseline"]["ci_lo"]))
+            # `full` series is forward-only — these snapshots predate the
+            # `ablation_full` schema so the chart payload renders gaps
+            # (None values) rather than dropping the row.
+            self.assertEqual(2, len(data["metrics"][key]["full"]["values"]))
+            self.assertTrue(
+                all(v is None for v in data["metrics"][key]["full"]["values"]),
+                f"{key} full series should be all-None for pre-#476 snapshots",
+            )
+        # Issue #267 regression: baseline CI bands must be numeric, not
+        # None, when the source snapshots include a ci block. A previous
+        # bug let extract_aggregate strip the ci block silently, leaving
         # the chart bands as null arrays and a flat-line leaderboard.
         for key, _ in HEADLINE_METRICS:
-            ci_lo = data["metrics"][key]["ci_lo"]
-            ci_hi = data["metrics"][key]["ci_hi"]
+            ci_lo = data["metrics"][key]["baseline"]["ci_lo"]
+            ci_hi = data["metrics"][key]["baseline"]["ci_hi"]
             self.assertTrue(
                 all(isinstance(v, (int, float)) for v in ci_lo),
-                f"{key} ci_lo lost numeric values during round-trip: {ci_lo}",
+                f"{key} baseline ci_lo lost numeric values during round-trip: {ci_lo}",
             )
             self.assertTrue(
                 all(isinstance(v, (int, float)) for v in ci_hi),
-                f"{key} ci_hi lost numeric values during round-trip: {ci_hi}",
+                f"{key} baseline ci_hi lost numeric values during round-trip: {ci_hi}",
             )
+
+    def test_full_series_populated_when_snapshot_has_ablation_full(self) -> None:
+        """ADR 0029: a snapshot carrying `ablation_full` should populate
+        the `full` chart series with that pipeline's headline metrics."""
+        with TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            full_snap = _snapshot(
+                "ffff77778888",
+                "2026-05-15",
+                0.844,
+                extras={
+                    "ablation_full": {
+                        "num_predictions": 42,
+                        "accuracy": 0.906,
+                        "groundedness": 0.929,
+                        "citation_precision": 0.905,
+                        "answer_format_compliance": 0.905,
+                        "abstention": 1.000,
+                        "retry": 0.310,
+                    }
+                },
+            )
+            history = _write_history(tmp, [full_snap])
+            rows = load_history(history)
+            page = render_page(rows)
+            md = render_markdown_table(rows)
+        # Both pipeline tables appear in the standalone markdown.
+        self.assertIn("Pipeline: naive_baseline", md)
+        self.assertIn("Pipeline: agentic_full", md)
+        # The full row carries `0.906` (agentic_full accuracy), not just
+        # the 0.844 baseline.
+        self.assertIn("0.906", md)
+        # Chart payload `full` series carries the new value.
+        match = re.search(r"const LEADERBOARD_DATA = (\{.*?\});", page, re.DOTALL)
+        self.assertIsNotNone(match)
+        data = json.loads(match.group(1))
+        self.assertEqual(
+            [0.906], data["metrics"]["accuracy"]["full"]["values"]
+        )
+        self.assertEqual(
+            [0.844], data["metrics"]["accuracy"]["baseline"]["values"]
+        )
+
+    def test_ablation_full_extractor_drops_per_case_leak(self) -> None:
+        """ADR 0029: a snapshot with case_results smuggled into
+        `ablation_full` must round-trip into the rendered page with
+        the leak dropped, preserving the ADR 0005 commit boundary."""
+        with TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            snap = _snapshot(
+                "aaaa11112222",
+                "2026-05-08",
+                0.844,
+                extras={
+                    "ablation_full": {
+                        "accuracy": 0.906,
+                        # Schema-drift smuggling attempt — must be dropped.
+                        "case_results": [{"id": "leak", "query": "leak"}],
+                        "made_up_field": "leak text",
+                    }
+                },
+            )
+            history = _write_history(tmp, [snap])
+            rows = load_history(history)
+            page = render_page(rows)
+        # Per-case payload dropped — strings from case_results / made_up
+        # fields must not appear anywhere in the rendered page.
+        self.assertNotIn("leak", page)
 
     def test_page_does_not_leak_per_case_fields_if_present_in_history(self) -> None:
         """Defense-in-depth: even if a history file contained case_results

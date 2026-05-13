@@ -180,7 +180,7 @@ ablation_runs:
     retrieval_backend: hybrid
     rrf_k: 30
     bm25_stopword_profile: bm25_extra
-  # Issue #486 / ADR 0030 — Korean morphology BM25 ablation. Same retrieval +
+  # Issue #486 / ADR 0031 — Korean morphology BM25 ablation. Same retrieval +
   # verifier as `hybrid_bm25` (control row); only the BM25 tokenizer swaps
   # from regex word-extraction to kiwipiepy morpheme analysis (체언 / 용언 /
   # 수식어 / 외래어 POS filter). Never-raise: if kiwipiepy is missing from

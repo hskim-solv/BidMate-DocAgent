@@ -91,7 +91,8 @@ project record.
 | [0027](./0027-lora-finetuned-embedding-additive.md) | proposed | LoRA-fine-tuned embedding adapter as additive ablation, env-var gated (`BIDMATE_EMBEDDING_LORA_ADAPTER`), HF Hub adapter pinned by commit SHA (extends 0001 / 0011 / 0019; does NOT trigger 0019 re-open) |
 | [0028](./0028-security-screen-additive.md) | accepted | Prompt-injection screen (query-side, diagnostic-only) + PII redaction (ingestion-time, opt-in via `BIDMATE_INGEST_REDACT_PII`) as additive security layer (extends 0008 to query side; preserves 0001 / 0003 / 0005) |
 | [0029](./0029-real-data-case-proposer-additive.md) | proposed | Real-data case proposer as additive semi-supervised eval-set growth (extends 0005 / 0006; reuses 0011 / 0012 backend pattern; preserves 0001 / 0003 / 0004 / 0008; calibration mirrors 0016) |
-| [0030](./0030-bm25-korean-morphology-additive.md) | accepted | BM25 Korean morphology tokenizer (`bm25_tokenizer: "regex" \| "kiwi"`) as additive ablation, kiwipiepy lazy-imported with never-raise fallback to regex (extends 0010 / 0011; preserves 0001 / 0003; follows 0019 → 0021 / 0026 measurement-gated pattern) |
+| [0030](./0030-leaderboard-headline-includes-agentic-full.md) | accepted | Leaderboard headline expands to render `agentic_full` alongside `naive_baseline` as parallel time series; ADR 0001 baseline preserved, `ablation_full` aggregate key added to history snapshots (extends ADR 0001 / ADR 0024 visibility surface) |
+| [0031](./0031-bm25-korean-morphology-additive.md) | accepted | BM25 Korean morphology tokenizer (`bm25_tokenizer: "regex" \| "kiwi"`) as additive ablation, kiwipiepy lazy-imported with never-raise fallback to regex (extends 0010 / 0011; preserves 0001 / 0003; follows 0019 → 0021 / 0026 measurement-gated pattern) |
 
 ## Deferred decisions (measurement-gated re-open)
 

@@ -1,4 +1,4 @@
-"""Regression guard for the kiwi BM25 tokenizer (issue #486, ADR 0030).
+"""Regression guard for the kiwi BM25 tokenizer (issue #486, ADR 0031).
 
 Three contracts to lock:
 
@@ -70,7 +70,7 @@ class ConfigSurfaceTest(unittest.TestCase):
         """ADR 0001 invariant — every shipped preset stays at regex.
 
         A future ADR can flip ``agentic_full`` (or any non-naive
-        preset) to kiwi by changing this default after the ADR 0030
+        preset) to kiwi by changing this default after the ADR 0031
         re-open conditions trigger. Until then, regex is the gate.
         """
         for name, preset in PIPELINE_PRESETS.items():

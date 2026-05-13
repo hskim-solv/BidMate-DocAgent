@@ -23,6 +23,9 @@
 # Real-data eval cycle (private; ADR 0005 commit boundary).
 .PHONY: real-eval real-eval-delta real-eval-baseline-update real-eval-history-render real-eval-with-judge harness-real
 
+# Real-data case proposer cycle (ADR 0029; gitignored I/O).
+.PHONY: case-propose case-review case-promote
+
 # API / demo (FastAPI + Streamlit; local + docker variants)
 .PHONY: api api-docker demo demo-docker docker-publish
 
@@ -32,6 +35,12 @@
 # Auto-ship pipeline (Stop hook driven). See scripts/claude-hooks/stop-ship.sh
 # and the plan at /Users/hskim/.claude/plans/prci-synchronous-newell.md.
 .PHONY: ship-arm ship-disarm ship-status
+
+# Self-review (quarterly meta-feedback loop). Combines 4-axis portfolio
+# rubric + 5-axis Claude collaboration rubric. See SKILL at
+# .claude/skills/self-review-quarterly/SKILL.md and privacy policy at
+# docs/self-review/README.md.
+.PHONY: self-review-quarterly
 
 # Cleanup
 .PHONY: clean
@@ -272,6 +281,30 @@ real-eval-with-judge: real-eval
 	$(PYTHON) scripts/llm_judge.py
 	@echo "Run \`make real-eval-baseline-update\` to fold the judge aggregate into the committable baseline."
 
+# Case proposer cycle (ADR 0029). Two-stage human gate:
+#   case-propose -> reports/proposed/proposed_cases.local.yaml (gitignored)
+#   case-review  -> interactive walk; writes reviewed_cases.local.yaml
+#   case-promote -> idempotent append of approved cases into
+#                   eval/real_config.local.yaml.
+# Default backend is `stub` (deterministic, no network). Set
+# BIDMATE_CASE_PROPOSER_BACKEND=openai_compatible + BIDMATE_JUDGE_*
+# vars for the live proposer (PR3 / not in PR2 scope).
+case-propose:
+	$(PYTHON) -m eval.case_proposer \
+	  --metadata-csv data/data_list.csv \
+	  --index-dir data/index/real100 \
+	  --out reports/proposed/proposed_cases.local.yaml
+
+case-review:
+	$(PYTHON) scripts/case_proposer_review.py \
+	  --proposed reports/proposed/proposed_cases.local.yaml \
+	  --reviewed reports/proposed/reviewed_cases.local.yaml
+
+case-promote:
+	$(PYTHON) scripts/case_proposer_promote.py \
+	  --reviewed reports/proposed/reviewed_cases.local.yaml \
+	  --real-config eval/real_config.local.yaml
+
 # Run the LLM judge over the public synthetic eval summary (ADR 0012).
 # Default backend `stub` is deterministic and runs in CI; set
 # BIDMATE_SYNTHETIC_JUDGE_BACKEND=openai_compatible plus the shared
@@ -350,3 +383,27 @@ ship-status:
 	@if [ -f .claude/.ship-running.pid ]; then \
 	  echo "ship: pipeline running (pid=$$(cat .claude/.ship-running.pid))"; \
 	fi
+
+# ---------------------------------------------------------------------------
+# Self-review quarterly: meta-feedback loop over the past quarter.
+# Emits a Markdown skeleton at docs/self-review/$(QUARTER).md containing
+# metadata-only counts (sessions, tool calls, ADR/PR changes, memory
+# frontmatter). The 4-axis + 5-axis verdict tables are filled by running
+# `/self-review-quarterly $(QUARTER)` in Claude Code. Body excerpts from
+# transcripts are never read — see scripts/claude-hooks/_self_review.py
+# and docs/self-review/README.md for the privacy boundary.
+#
+# Example:
+#   make self-review-quarterly QUARTER=Q2-2026
+# ---------------------------------------------------------------------------
+
+self-review-quarterly:
+	@if [ -z "$(QUARTER)" ]; then \
+	  echo "Usage: make self-review-quarterly QUARTER=Q2-2026"; \
+	  exit 1; \
+	fi
+	@$(PYTHON) scripts/claude-hooks/_self_review.py \
+	  --quarter "$(QUARTER)" \
+	  --emit-report \
+	  --output "docs/self-review/$(QUARTER).md"
+	@echo "Run /self-review-quarterly $(QUARTER) in Claude Code to fill verdict tables."

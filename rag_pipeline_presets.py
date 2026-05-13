@@ -55,7 +55,7 @@ PIPELINE_CONFIG_KEYS = (
     "prompt_profile",
     "rrf_k",
     "bm25_stopword_profile",
-    # Issue #486 / ADR 0030 — pluggable BM25 tokenizer discriminator.
+    # Issue #486 / ADR 0031 — pluggable BM25 tokenizer discriminator.
     # "regex" (default) preserves the ADR 0001 naive_baseline invariant
     # and the existing ``re.compile(r"[A-Za-z0-9]+|[가-힣]+")`` token
     # surface. "kiwi" opts into kiwipiepy morpheme tokenization. Never-
@@ -90,7 +90,7 @@ PIPELINE_PRESETS: dict[str, dict[str, Any]] = {
         "prompt_profile": "minimal_grounded_extractive",
         "rrf_k": RRF_K,
         "bm25_stopword_profile": "shared",
-        # ADR 0030 invariant — naive_baseline MUST stay at regex tokenizer.
+        # ADR 0031 invariant — naive_baseline MUST stay at regex tokenizer.
         # naive_baseline uses retrieval_backend="dense" so BM25 never fires,
         # but the explicit value documents intent + protects future changes
         # that might enable BM25 here.
@@ -114,7 +114,7 @@ PIPELINE_PRESETS: dict[str, dict[str, Any]] = {
         "prompt_profile": "structured_grounded_claims",
         "rrf_k": RRF_K,
         "bm25_stopword_profile": "shared",
-        # ADR 0030 — kiwi tokenizer is opt-in per-row in eval/config.yaml.
+        # ADR 0031 — kiwi tokenizer is opt-in per-row in eval/config.yaml.
         # agentic_full default is regex so existing "full" eval row stays
         # byte-equal; the new "full_kiwi" row sets this to "kiwi".
         "bm25_tokenizer": "regex",
@@ -188,7 +188,7 @@ VALID_RETRIEVAL_MODES = {"flat", "hierarchical"}
 # "Alternatives considered" (lines 72-85) for the deferral context.
 VALID_RETRIEVAL_BACKENDS = {"dense", "hybrid", "m3"}
 VALID_BM25_STOPWORD_PROFILES = {"shared", "bm25_extra"}
-# Issue #486 / ADR 0030 — additive Korean-morphology tokenizer.
+# Issue #486 / ADR 0031 — additive Korean-morphology tokenizer.
 # "regex" preserves the ADR 0001 naive_baseline invariant; "kiwi" opts
 # into kiwipiepy morpheme tokenization (체언 / 용언 / 수식어 /
 # 외래어 POS filter). Missing kiwipiepy → silent fallback to regex,
