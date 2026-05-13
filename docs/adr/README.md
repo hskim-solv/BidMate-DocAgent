@@ -94,6 +94,7 @@ project record.
 | [0030](./0030-leaderboard-headline-includes-agentic-full.md) | accepted | Leaderboard headline expands to render `agentic_full` alongside `naive_baseline` as parallel time series; ADR 0001 baseline preserved, `ablation_full` aggregate key added to history snapshots (extends ADR 0001 / ADR 0024 visibility surface) |
 | [0031](./0031-bm25-korean-morphology-additive.md) | accepted | BM25 Korean morphology tokenizer (`bm25_tokenizer: "regex" \| "kiwi"`) as additive ablation, kiwipiepy lazy-imported with never-raise fallback to regex (extends 0010 / 0011; preserves 0001 / 0003; follows 0019 → 0021 / 0026 measurement-gated pattern) |
 | [0032](./0032-eval-saturation-routed-subset.md) | proposed | Eval-set saturation hypothesis + routed-subset measurement surface as falsifier for ADR 0019 deferral (extends 0019 / 0021; preserves 0001 / 0002; adds `agentic_full_routed` ablation preset; spread ≥ +3pp on routed subset triggers 0019 re-open) |
+| [0033](./0033-multihop-cross-section-eval-slice.md) | proposed | Multi-hop cross-section eval slice as orthogonal saturation falsifier (complexity axis; extends 0032; 50-item synthesized dataset, LLM-judge quality filter; spread ≥ +5pp on multi-hop slice supplements ADR 0019 re-open conditions; preserves 0001 / 0003 / 0005) |
 
 ## Deferred decisions (measurement-gated re-open)
 
