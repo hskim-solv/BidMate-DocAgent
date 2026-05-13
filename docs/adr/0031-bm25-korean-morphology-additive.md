@@ -1,4 +1,4 @@
-# 0029: BM25 Korean morphology tokenizer as additive ablation
+# 0031: BM25 Korean morphology tokenizer as additive ablation
 
 - **Status**: accepted
 - **Date**: 2026-05-13
