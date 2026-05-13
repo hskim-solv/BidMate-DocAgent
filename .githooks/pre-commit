@@ -31,6 +31,33 @@ ALLOWED_PATTERNS=(
   '^reports/real100/history/[^/]+\.aggregate\.json$'
 )
 
+# Guard: ADR file deletion/rename (CLAUDE.md Prohibited).
+# ADR files must not be deleted or renamed — mark Superseded in Status block
+# and keep the file. This is the first line of defence; the CI workflow
+# branch-and-issue-check.yml is the backup gate that catches --no-verify bypasses.
+adr_dr=$(git diff --cached --name-status --diff-filter=DR -- 'docs/adr/*.md' 2>/dev/null || true)
+if [[ -n "$adr_dr" ]]; then
+  cat >&2 <<'EOFERR'
+
+❌ Pre-commit hook blocked: ADR files may not be deleted or renamed.
+
+   CLAUDE.md Prohibited: "Deleting or renaming ADR files. Mark Superseded
+   in the Status block; keep the file."
+
+   Affected files:
+EOFERR
+  echo "$adr_dr" | sed 's/^/     /' >&2
+  cat >&2 <<'EOFERR'
+
+   To fix: restore the file and add "Status: Superseded by ADR XXXX"
+   to its header instead of deleting it.
+
+       git restore --staged <file>
+
+EOFERR
+  exit 1
+fi
+
 staged=$(git diff --cached --name-only --diff-filter=ACMR 2>/dev/null || true)
 
 if [[ -z "$staged" ]]; then
