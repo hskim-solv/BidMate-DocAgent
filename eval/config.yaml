@@ -40,6 +40,29 @@ latency_budgets:
   full_khaiii:
     # Issue #561 / ADR 0031 — Khaiii tokenizer. Same budget as full_kiwi.
     p95_ms: 200
+# Per-stage latency budgets used by scripts/check_latency_slo.py (check_stage).
+# Issue #625: stage_latency is measured but was unguarded — silent per-stage
+# drift was possible even when total p95 stayed within ablation ceiling.
+# Ceilings set at ~25x observed CI p95 to absorb runner variance without
+# flaky failures. See: reports/eval_summary.json stage_latency block for
+# observed values. Extend to additional ablations as needed.
+stage_latency_budgets:
+  naive_baseline:
+    query_analysis_ms:
+      p95_ms: 50    # observed CI p95 ≈ 2 ms; 25x ceiling
+    retrieve_ms:
+      p95_ms: 50    # observed CI p95 ≈ 0.2 ms
+    answer_generation_ms:
+      p95_ms: 20    # observed CI p95 ≈ 0.5 ms
+  full:
+    query_analysis_ms:
+      p95_ms: 50    # observed CI p95 ≈ 1.6 ms
+    retrieve_ms:
+      p95_ms: 50    # observed CI p95 ≈ 0.2 ms
+    verify_ms:
+      p95_ms: 50    # observed CI p95 ≈ 1.4 ms
+    answer_generation_ms:
+      p95_ms: 20    # observed CI p95 ≈ 0.4 ms
 answer_policy:
   answerable_status: supported
   unanswerable_status: insufficient
