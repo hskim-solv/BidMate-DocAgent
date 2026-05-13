@@ -93,6 +93,7 @@ project record.
 | [0032](./0032-eval-saturation-routed-subset.md) | accepted | Eval-set saturation falsifier: 4-embedding × routed_subset (n=11, metadata_first=false) measurement complete; spread **0.0pp** < +3pp threshold → saturation_cross_validated. MiniLM default lock empirically justified on both `full` + `routed` surfaces. (Closes ADR 0019 deferral saturation axis.) |
 | [0034](./0034-vlm-provider-ablation.md) | accepted | VLM provider ablation — Donut defer (torch≥2.6 + GPU required) + PaddleOCR PP-OCRv4 実測 (synthetic: +0pp vs baseline, latency 2.2×); tesseract baseline kept; `paddleocr_provider` opt-in infra added (`BIDMATE_VISUAL_OCR=paddleocr`); re-open on real Korean RFP +5pp lift |
 | [0035](./0035-dict-not-pydantic-v2.md) | accepted | Answer dict is the internal contract — no Pydantic/TypedDict shadow model inside the pipeline (defends ADR 0003 single-source-of-truth; Pydantic allowed at `api/schemas.py` boundary only) |
+| [0036](./0036-hwp-native-loader-pyhwp-gated-default.md) | accepted | HwpNativeLoader promoted to pyhwp-install-detection default (`with_tables=True` when `hwp5` importable); `BIDMATE_HWP_LOADER=csv` is explicit opt-out; CI minimal install (pyhwp absent) unchanged; re-open if native fallback rate > 20% on private corpus |
 
 ## Roadmap (proposed, not yet committed)
 
