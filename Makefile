@@ -33,6 +33,12 @@
 # and the plan at /Users/hskim/.claude/plans/prci-synchronous-newell.md.
 .PHONY: ship-arm ship-disarm ship-status
 
+# Self-review (quarterly meta-feedback loop). Combines 4-axis portfolio
+# rubric + 5-axis Claude collaboration rubric. See SKILL at
+# .claude/skills/self-review-quarterly/SKILL.md and privacy policy at
+# docs/self-review/README.md.
+.PHONY: self-review-quarterly
+
 # Cleanup
 .PHONY: clean
 
@@ -350,3 +356,27 @@ ship-status:
 	@if [ -f .claude/.ship-running.pid ]; then \
 	  echo "ship: pipeline running (pid=$$(cat .claude/.ship-running.pid))"; \
 	fi
+
+# ---------------------------------------------------------------------------
+# Self-review quarterly: meta-feedback loop over the past quarter.
+# Emits a Markdown skeleton at docs/self-review/$(QUARTER).md containing
+# metadata-only counts (sessions, tool calls, ADR/PR changes, memory
+# frontmatter). The 4-axis + 5-axis verdict tables are filled by running
+# `/self-review-quarterly $(QUARTER)` in Claude Code. Body excerpts from
+# transcripts are never read — see scripts/claude-hooks/_self_review.py
+# and docs/self-review/README.md for the privacy boundary.
+#
+# Example:
+#   make self-review-quarterly QUARTER=Q2-2026
+# ---------------------------------------------------------------------------
+
+self-review-quarterly:
+	@if [ -z "$(QUARTER)" ]; then \
+	  echo "Usage: make self-review-quarterly QUARTER=Q2-2026"; \
+	  exit 1; \
+	fi
+	@$(PYTHON) scripts/claude-hooks/_self_review.py \
+	  --quarter "$(QUARTER)" \
+	  --emit-report \
+	  --output "docs/self-review/$(QUARTER).md"
+	@echo "Run /self-review-quarterly $(QUARTER) in Claude Code to fill verdict tables."
