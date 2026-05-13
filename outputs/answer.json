@@ -353,9 +353,9 @@
         "balanced": false
       },
       "stage_latencies_ms": {
-        "query_analysis_ms": 1.07,
+        "query_analysis_ms": 0.74,
         "context_resolution_ms": 0.0,
-        "answer_generation_ms": 0.53
+        "answer_generation_ms": 0.36
       },
       "attempts": [
         {
@@ -444,7 +444,7 @@
     ]
   },
   "diagnostics": {
-    "latency_ms": 3.87,
+    "latency_ms": 2.71,
     "retry_count": 0,
     "abstained": false,
     "answer_status": "supported",
@@ -477,7 +477,7 @@
         "retrieval_mode": "flat",
         "verified": true,
         "verification_reasons": [],
-        "retrieve_ms": 0.77,
+        "retrieve_ms": 0.56,
         "verify_ms": 0.0,
         "comparison_coverage": {
           "targets": [
@@ -669,9 +669,9 @@
     "prompt_profile": "minimal_grounded_extractive",
     "cold_start": true,
     "stage_latency": {
-      "query_analysis_ms": 1.07,
+      "query_analysis_ms": 0.74,
       "context_resolution_ms": 0.0,
-      "answer_generation_ms": 0.53
+      "answer_generation_ms": 0.36
     },
     "synthesis": null,
     "trace_url": null,

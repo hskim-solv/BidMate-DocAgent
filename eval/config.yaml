@@ -1027,3 +1027,887 @@ cases:
     expected_terms:
       - "수질"
     answerable: false
+
+  # ── issue #570 expansion block: n=42 → n=100 ─────────────────────────
+  # Stratified addition: +20 single_doc, +14 comparison, +12 follow_up,
+  # +12 abstention.  All cases use publicly-committable synthetic fixtures
+  # (data/raw/rfp_agency_*.json).  No gold_chunk_ids — not manually
+  # verified against chunk positions.  ADR 0005 boundary honoured.
+
+  # ── single_doc (+20) ─────────────────────────────────────────────────
+
+  - id: single_doc_a_project_goal
+    query_type: single_doc
+    query: "기관 A의 AI 품질관리 플랫폼 구축 목표는?"
+    expected_doc_ids:
+      - rfp-agency-a-ai-quality
+    expected_terms:
+      - "모델 성능 저하"
+      - "품질 지표"
+    expected_citation_terms:
+      - "모델 성능 저하"
+      - "품질 지표"
+    expected_claim_targets:
+      - "기관 A"
+    answerable: true
+
+  - id: single_doc_a_personnel
+    query_type: single_doc
+    query: "기관 A 수행 조직에 포함해야 할 직군은?"
+    expected_doc_ids:
+      - rfp-agency-a-ai-quality
+    expected_terms:
+      - "PM"
+      - "ML 엔지니어"
+      - "보안 담당자"
+    expected_citation_terms:
+      - "PM"
+      - "ML 엔지니어"
+    expected_claim_targets:
+      - "기관 A"
+    answerable: true
+
+  - id: single_doc_a_mvp_deadline
+    query_type: single_doc
+    query: "기관 A의 MVP 제출 기한은?"
+    expected_doc_ids:
+      - rfp-agency-a-ai-quality
+    expected_terms:
+      - "4개월"
+      - "MVP"
+    expected_citation_terms:
+      - "4개월"
+      - "MVP"
+    expected_claim_targets:
+      - "기관 A"
+    answerable: true
+
+  - id: single_doc_a_qualitative_factors
+    query_type: single_doc
+    query: "기관 A의 정성평가에 반영되는 항목은?"
+    expected_doc_ids:
+      - rfp-agency-a-ai-quality
+    expected_terms:
+      - "보안 통제 경험"
+      - "AI 품질관리"
+    expected_citation_terms:
+      - "보안 통제 경험"
+    expected_claim_targets:
+      - "기관 A"
+    answerable: true
+
+  - id: single_doc_a_core_ai_reqs
+    query_type: single_doc
+    query: "기관 A의 핵심 AI 요구사항 세 가지를 알려줘"
+    expected_doc_ids:
+      - rfp-agency-a-ai-quality
+    expected_terms:
+      - "모델 품질관리"
+      - "보안 통제"
+      - "로그 추적"
+    expected_citation_terms:
+      - "모델 품질관리"
+      - "로그 추적"
+    expected_claim_targets:
+      - "기관 A"
+    answerable: true
+
+  - id: single_doc_b_pilot_deadline
+    query_type: single_doc
+    query: "기관 B의 파일럿 환경 구성 완료 기한은?"
+    expected_doc_ids:
+      - rfp-agency-b-mlops-governance
+    expected_terms:
+      - "3개월"
+      - "파일럿"
+    expected_citation_terms:
+      - "3개월"
+      - "파일럿"
+    expected_claim_targets:
+      - "기관 B"
+    answerable: true
+
+  - id: single_doc_b_security_focus
+    query_type: single_doc
+    query: "기관 B 보안 통제 설계의 핵심 항목은?"
+    expected_doc_ids:
+      - rfp-agency-b-mlops-governance
+    expected_terms:
+      - "데이터셋 반출 승인"
+      - "관리자 작업 기록"
+    expected_citation_terms:
+      - "데이터셋 반출 승인"
+      - "관리자 작업 기록"
+    expected_claim_targets:
+      - "기관 B"
+    answerable: true
+
+  - id: single_doc_b_deliverables
+    query_type: single_doc
+    query: "기관 B의 필수 산출물을 모두 열거해줘"
+    expected_doc_ids:
+      - rfp-agency-b-mlops-governance
+    expected_terms:
+      - "데이터 표준 사전"
+      - "MLOps 운영 가이드"
+      - "모니터링 대시보드"
+    expected_citation_terms:
+      - "데이터 표준 사전"
+      - "MLOps 운영 가이드"
+    expected_claim_targets:
+      - "기관 B"
+    answerable: true
+
+  - id: single_doc_b_dashboard_content
+    query_type: single_doc
+    query: "기관 B 모니터링 대시보드에 표시해야 하는 항목은?"
+    expected_doc_ids:
+      - rfp-agency-b-mlops-governance
+    expected_terms:
+      - "데이터 lineage"
+      - "모델 drift"
+      - "배포 승인 이력"
+    expected_citation_terms:
+      - "데이터 lineage"
+      - "모델 drift"
+    expected_claim_targets:
+      - "기관 B"
+    answerable: true
+
+  - id: single_doc_b_privacy_req
+    query_type: single_doc
+    query: "기관 B의 개인정보 처리 요구사항은?"
+    expected_doc_ids:
+      - rfp-agency-b-mlops-governance
+    expected_terms:
+      - "개인정보 비식별화"
+      - "접근 권한 분리"
+    expected_citation_terms:
+      - "개인정보 비식별화"
+      - "접근 권한 분리"
+    expected_claim_targets:
+      - "기관 B"
+    answerable: true
+
+  - id: single_doc_c_project_goal
+    query_type: single_doc
+    query: "기관 C 챗봇 고도화 사업의 목표는?"
+    expected_doc_ids:
+      - rfp-agency-c-chatbot
+    expected_terms:
+      - "반복 문의"
+      - "상담원 이관"
+    expected_citation_terms:
+      - "반복 문의"
+      - "상담원 이관"
+    expected_claim_targets:
+      - "기관 C"
+    answerable: true
+
+  - id: single_doc_c_response_time
+    query_type: single_doc
+    query: "기관 C 챗봇의 응답 속도 목표는?"
+    expected_doc_ids:
+      - rfp-agency-c-chatbot
+    expected_terms:
+      - "2초"
+      - "주요 문의"
+    expected_citation_terms:
+      - "2초"
+    expected_claim_targets:
+      - "기관 C"
+    answerable: true
+
+  - id: single_doc_c_log_cycle
+    query_type: single_doc
+    query: "기관 C 운영 로그의 제출 주기는?"
+    expected_doc_ids:
+      - rfp-agency-c-chatbot
+    expected_terms:
+      - "월간 리포트"
+    expected_citation_terms:
+      - "월간 리포트"
+    expected_claim_targets:
+      - "기관 C"
+    answerable: true
+
+  - id: single_doc_d_kpi
+    query_type: single_doc
+    query: "기관 D 분광기 사업의 핵심 성공 지표는?"
+    expected_doc_ids:
+      - rfp-agency-d-spectrometer-probe
+    expected_terms:
+      - "측정 재현성"
+      - "95퍼센트"
+    expected_citation_terms:
+      - "측정 재현성"
+      - "95퍼센트"
+    expected_claim_targets:
+      - "기관 D"
+    answerable: true
+
+  - id: single_doc_d_fluorescence_calibration
+    query_type: single_doc
+    query: "기관 D 형광 분광기의 캘리브레이션 주기는?"
+    expected_doc_ids:
+      - rfp-agency-d-spectrometer-probe
+    expected_terms:
+      - "형광"
+      - "주 단위"
+    expected_citation_terms:
+      - "주 단위"
+    expected_claim_targets:
+      - "기관 D"
+    answerable: true
+
+  - id: single_doc_d_availability
+    query_type: single_doc
+    query: "기관 D 시스템의 가용성 목표치는?"
+    expected_doc_ids:
+      - rfp-agency-d-spectrometer-probe
+    expected_terms:
+      - "99.5퍼센트"
+    expected_citation_terms:
+      - "99.5퍼센트"
+    expected_claim_targets:
+      - "기관 D"
+    answerable: true
+
+  - id: single_doc_d_retry_limit
+    query_type: single_doc
+    query: "기관 D 자동 재측정의 최대 횟수는?"
+    expected_doc_ids:
+      - rfp-agency-d-spectrometer-probe
+    expected_terms:
+      - "최대 3회"
+    expected_citation_terms:
+      - "최대 3회"
+    expected_claim_targets:
+      - "기관 D"
+    answerable: true
+
+  - id: single_doc_d_duration
+    query_type: single_doc
+    query: "기관 D 분광기 사업 기간은?"
+    expected_doc_ids:
+      - rfp-agency-d-spectrometer-probe
+    expected_terms:
+      - "12개월"
+    expected_citation_terms:
+      - "12개월"
+    expected_claim_targets:
+      - "기관 D"
+    answerable: true
+
+  - id: single_doc_e_main_items
+    query_type: single_doc
+    query: "기관 E 수질 모니터링 본 사업에서 측정하는 항목을 모두 알려줘"
+    expected_doc_ids:
+      - rfp-agency-e-water-quality-main
+    expected_terms:
+      - "탁도"
+      - "pH"
+      - "잔류 염소"
+      - "대장균"
+    expected_citation_terms:
+      - "탁도"
+      - "잔류 염소"
+    expected_claim_targets:
+      - "기관 E 수질 본 사업"
+    answerable: true
+
+  - id: single_doc_e_supplement_mobilization
+    query_type: single_doc
+    query: "기관 E 부속 사업의 비상 출동 기준 시간은?"
+    expected_doc_ids:
+      - rfp-agency-e-water-quality-supplement
+    expected_terms:
+      - "30분"
+      - "이상 수치"
+    expected_citation_terms:
+      - "30분"
+    expected_claim_targets:
+      - "기관 E 부속 사업"
+    answerable: true
+
+  # ── comparison (+14) ─────────────────────────────────────────────────
+
+  - id: comparison_ad_duration
+    query_type: comparison
+    query: "기관 A와 기관 D의 사업 기간을 비교해줘"
+    expected_doc_ids:
+      - rfp-agency-a-ai-quality
+      - rfp-agency-d-spectrometer-probe
+    expected_terms:
+      - "6개월"
+      - "12개월"
+    expected_citation_terms:
+      - "6개월"
+      - "12개월"
+    expected_claim_targets:
+      - "기관 A"
+      - "기관 D"
+    expected_claim_citations:
+      - target: "기관 A"
+        expected_doc_ids:
+          - rfp-agency-a-ai-quality
+        expected_terms:
+          - "6개월"
+      - target: "기관 D"
+        expected_doc_ids:
+          - rfp-agency-d-spectrometer-probe
+        expected_terms:
+          - "12개월"
+    answerable: true
+
+  - id: comparison_bd_duration
+    query_type: comparison
+    query: "기관 B와 기관 D의 사업 기간을 비교해줘"
+    expected_doc_ids:
+      - rfp-agency-b-mlops-governance
+      - rfp-agency-d-spectrometer-probe
+    expected_terms:
+      - "5개월"
+      - "12개월"
+    expected_citation_terms:
+      - "5개월"
+      - "12개월"
+    expected_claim_targets:
+      - "기관 B"
+      - "기관 D"
+    answerable: true
+
+  - id: comparison_cd_goals
+    query_type: comparison
+    query: "기관 C와 기관 D의 사업 목표를 비교해줘"
+    expected_doc_ids:
+      - rfp-agency-c-chatbot
+      - rfp-agency-d-spectrometer-probe
+    expected_terms:
+      - "챗봇"
+      - "분광기"
+    expected_citation_terms:
+      - "챗봇"
+      - "분광기"
+    expected_claim_targets:
+      - "기관 C"
+      - "기관 D"
+    answerable: true
+
+  - id: comparison_de_measurement
+    query_type: comparison
+    query: "기관 D와 기관 E 본 사업의 측정 주기를 비교해줘"
+    expected_doc_ids:
+      - rfp-agency-d-spectrometer-probe
+      - rfp-agency-e-water-quality-main
+    expected_terms:
+      - "캘리브레이션"
+      - "매시간"
+    expected_citation_terms:
+      - "캘리브레이션"
+      - "매시간"
+    expected_claim_targets:
+      - "기관 D"
+      - "기관 E 수질 본 사업"
+    answerable: true
+
+  - id: comparison_e_main_supplement_purpose
+    query_type: comparison
+    query: "기관 E 본 사업과 부속 사업의 목적 차이는?"
+    expected_doc_ids:
+      - rfp-agency-e-water-quality-main
+      - rfp-agency-e-water-quality-supplement
+    expected_terms:
+      - "정기 보고"
+      - "비상 출동"
+    expected_citation_terms:
+      - "정기 보고"
+      - "비상 출동"
+    expected_claim_targets:
+      - "기관 E 수질 본 사업"
+      - "기관 E 부속 사업"
+    answerable: true
+
+  - id: comparison_e_main_supplement_duration
+    query_type: comparison
+    query: "기관 E 본 사업과 부속 사업의 기간을 비교해줘"
+    expected_doc_ids:
+      - rfp-agency-e-water-quality-main
+      - rfp-agency-e-water-quality-supplement
+    expected_terms:
+      - "12개월"
+      - "6개월"
+    expected_citation_terms:
+      - "12개월"
+      - "6개월"
+    expected_claim_targets:
+      - "기관 E 수질 본 사업"
+      - "기관 E 부속 사업"
+    answerable: true
+
+  - id: comparison_ab_monitoring
+    query_type: comparison
+    query: "기관 A와 기관 B의 모니터링 및 로그 요구사항을 비교해줘"
+    expected_doc_ids:
+      - rfp-agency-a-ai-quality
+      - rfp-agency-b-mlops-governance
+    expected_terms:
+      - "감사 로그"
+      - "모델 drift"
+    expected_citation_terms:
+      - "감사 로그"
+      - "모델 drift"
+    expected_claim_targets:
+      - "기관 A"
+      - "기관 B"
+    expected_claim_citations:
+      - target: "기관 A"
+        expected_doc_ids:
+          - rfp-agency-a-ai-quality
+        expected_terms:
+          - "감사 로그"
+      - target: "기관 B"
+        expected_doc_ids:
+          - rfp-agency-b-mlops-governance
+        expected_terms:
+          - "모델 drift"
+    answerable: true
+
+  - id: comparison_ad_focus
+    query_type: comparison
+    query: "기관 A와 기관 D의 핵심 사업 영역을 비교해줘"
+    expected_doc_ids:
+      - rfp-agency-a-ai-quality
+      - rfp-agency-d-spectrometer-probe
+    expected_terms:
+      - "AI 품질관리"
+      - "분광기"
+    expected_citation_terms:
+      - "AI 품질관리"
+      - "분광기"
+    expected_claim_targets:
+      - "기관 A"
+      - "기관 D"
+    answerable: true
+
+  - id: comparison_bd_monitoring
+    query_type: comparison
+    query: "기관 B와 기관 D의 모니터링 요구사항을 비교해줘"
+    expected_doc_ids:
+      - rfp-agency-b-mlops-governance
+      - rfp-agency-d-spectrometer-probe
+    expected_terms:
+      - "모델 모니터링"
+      - "측정 재현성"
+    expected_citation_terms:
+      - "모델 모니터링"
+      - "측정 재현성"
+    expected_claim_targets:
+      - "기관 B"
+      - "기관 D"
+    answerable: true
+
+  - id: comparison_ae_overview
+    query_type: comparison
+    query: "기관 A와 기관 E 본 사업의 사업 개요를 비교해줘"
+    expected_doc_ids:
+      - rfp-agency-a-ai-quality
+      - rfp-agency-e-water-quality-main
+    expected_terms:
+      - "AI 품질관리"
+      - "수질"
+    expected_citation_terms:
+      - "AI 품질관리"
+      - "수질"
+    expected_claim_targets:
+      - "기관 A"
+      - "기관 E 수질 본 사업"
+    answerable: true
+
+  - id: comparison_de_duration
+    query_type: comparison
+    query: "기관 D와 기관 E 본 사업의 계약 기간을 비교해줘"
+    expected_doc_ids:
+      - rfp-agency-d-spectrometer-probe
+      - rfp-agency-e-water-quality-main
+    expected_terms:
+      - "12개월"
+    expected_citation_terms:
+      - "12개월"
+    expected_claim_targets:
+      - "기관 D"
+      - "기관 E 수질 본 사업"
+    answerable: true
+
+  - id: comparison_bc_reporting
+    query_type: comparison
+    query: "기관 B와 기관 C의 보고 방식을 비교해줘"
+    expected_doc_ids:
+      - rfp-agency-b-mlops-governance
+      - rfp-agency-c-chatbot
+    expected_terms:
+      - "모니터링 대시보드"
+      - "월간 리포트"
+    expected_citation_terms:
+      - "모니터링 대시보드"
+      - "월간 리포트"
+    expected_claim_targets:
+      - "기관 B"
+      - "기관 C"
+    answerable: true
+
+  - id: comparison_bc_ai_requirements
+    query_type: comparison
+    query: "기관 B와 기관 C의 AI 기술 요구사항을 비교해줘"
+    expected_doc_ids:
+      - rfp-agency-b-mlops-governance
+      - rfp-agency-c-chatbot
+    expected_terms:
+      - "MLOps"
+      - "의도 분류"
+    expected_citation_terms:
+      - "MLOps"
+      - "의도 분류"
+    expected_claim_targets:
+      - "기관 B"
+      - "기관 C"
+    expected_claim_citations:
+      - target: "기관 B"
+        expected_doc_ids:
+          - rfp-agency-b-mlops-governance
+        expected_terms:
+          - "MLOps"
+      - target: "기관 C"
+        expected_doc_ids:
+          - rfp-agency-c-chatbot
+        expected_terms:
+          - "의도 분류"
+    answerable: true
+
+  - id: comparison_ab_deliverables
+    query_type: comparison
+    query: "기관 A와 기관 B의 필수 산출물을 비교해줘"
+    expected_doc_ids:
+      - rfp-agency-a-ai-quality
+      - rfp-agency-b-mlops-governance
+    expected_terms:
+      - "모델 점검 리포트"
+      - "데이터 표준 사전"
+    expected_citation_terms:
+      - "모델 점검 리포트"
+      - "데이터 표준 사전"
+    expected_claim_targets:
+      - "기관 A"
+      - "기관 B"
+    expected_claim_citations:
+      - target: "기관 A"
+        expected_doc_ids:
+          - rfp-agency-a-ai-quality
+        expected_terms:
+          - "모델 점검 리포트"
+      - target: "기관 B"
+        expected_doc_ids:
+          - rfp-agency-b-mlops-governance
+        expected_terms:
+          - "데이터 표준 사전"
+    answerable: true
+
+  # ── follow_up (+12) ──────────────────────────────────────────────────
+
+  - id: follow_up_b_ai_reqs
+    query_type: follow_up
+    query: "AI 요구사항 세 가지가 뭐야?"
+    context_entities:
+      - "기관 B"
+    expected_doc_ids:
+      - rfp-agency-b-mlops-governance
+    expected_terms:
+      - "데이터 거버넌스"
+      - "MLOps"
+      - "모델 모니터링"
+    expected_citation_terms:
+      - "데이터 거버넌스"
+      - "모델 모니터링"
+    expected_claim_targets:
+      - "기관 B"
+    answerable: true
+
+  - id: follow_up_b_pilot
+    query_type: follow_up
+    query: "파일럿 환경 완성 기한은?"
+    context_entities:
+      - "기관 B"
+    expected_doc_ids:
+      - rfp-agency-b-mlops-governance
+    expected_terms:
+      - "3개월"
+      - "파일럿"
+    expected_citation_terms:
+      - "3개월"
+    expected_claim_targets:
+      - "기관 B"
+    answerable: true
+
+  - id: follow_up_c_project_goal
+    query_type: follow_up
+    query: "이 사업의 목표가 뭐야?"
+    context_entities:
+      - "기관 C"
+    expected_doc_ids:
+      - rfp-agency-c-chatbot
+    expected_terms:
+      - "반복 문의"
+      - "상담원 이관"
+    expected_citation_terms:
+      - "반복 문의"
+    expected_claim_targets:
+      - "기관 C"
+    answerable: true
+
+  - id: follow_up_d_spectrometer_types
+    query_type: follow_up
+    query: "분광기 종류가 몇 가지야?"
+    context_entities:
+      - "기관 D"
+    expected_doc_ids:
+      - rfp-agency-d-spectrometer-probe
+    expected_terms:
+      - "라만 분광기"
+      - "형광 분광기"
+    expected_citation_terms:
+      - "라만 분광기"
+      - "형광 분광기"
+    expected_claim_targets:
+      - "기관 D"
+    answerable: true
+
+  - id: follow_up_d_calibration
+    query_type: follow_up
+    query: "캘리브레이션 주기는 어떻게 돼?"
+    context_entities:
+      - "기관 D"
+    expected_doc_ids:
+      - rfp-agency-d-spectrometer-probe
+    expected_terms:
+      - "라만"
+      - "매일"
+      - "형광"
+      - "주 단위"
+    expected_citation_terms:
+      - "매일"
+      - "주 단위"
+    expected_claim_targets:
+      - "기관 D"
+    answerable: true
+
+  - id: follow_up_d_availability
+    query_type: follow_up
+    query: "가용성 목표치는 얼마야?"
+    context_entities:
+      - "기관 D"
+    expected_doc_ids:
+      - rfp-agency-d-spectrometer-probe
+    expected_terms:
+      - "99.5퍼센트"
+    expected_citation_terms:
+      - "99.5퍼센트"
+    expected_claim_targets:
+      - "기관 D"
+    answerable: true
+
+  - id: follow_up_e_main_items
+    query_type: follow_up
+    query: "측정 항목이 뭐야?"
+    context_entities:
+      - "기관 E 수질 본 사업"
+    expected_doc_ids:
+      - rfp-agency-e-water-quality-main
+    expected_terms:
+      - "탁도"
+      - "pH"
+      - "잔류 염소"
+      - "대장균"
+    expected_citation_terms:
+      - "탁도"
+      - "잔류 염소"
+    expected_claim_targets:
+      - "기관 E 수질 본 사업"
+    answerable: true
+
+  - id: follow_up_e_supplement_response
+    query_type: follow_up
+    query: "비상 출동 기준은?"
+    context_entities:
+      - "기관 E 부속 사업"
+    expected_doc_ids:
+      - rfp-agency-e-water-quality-supplement
+    expected_terms:
+      - "30분"
+      - "이상 수치"
+    expected_citation_terms:
+      - "30분"
+    expected_claim_targets:
+      - "기관 E 부속 사업"
+    answerable: true
+
+  - id: follow_up_state_b_dashboard
+    query_type: follow_up
+    prior_turns:
+      - query: "기관 B의 AI 요구사항은?"
+    query: "모니터링 대시보드에는 뭐가 나와?"
+    expected_doc_ids:
+      - rfp-agency-b-mlops-governance
+    expected_terms:
+      - "데이터 lineage"
+      - "모델 drift"
+      - "배포 승인 이력"
+    expected_citation_terms:
+      - "데이터 lineage"
+      - "모델 drift"
+    expected_claim_targets:
+      - "기관 B"
+    answerable: true
+
+  - id: follow_up_state_d_report_retention
+    query_type: follow_up
+    prior_turns:
+      - query: "기관 D의 운영 자동화 요구사항은?"
+    query: "보고서 보관 기간은 얼마야?"
+    expected_doc_ids:
+      - rfp-agency-d-spectrometer-probe
+    expected_terms:
+      - "5년"
+    expected_citation_terms:
+      - "5년"
+    expected_claim_targets:
+      - "기관 D"
+    answerable: true
+
+  - id: follow_up_state_a_mvp
+    query_type: follow_up
+    prior_turns:
+      - query: "기관 A의 사업 개요는?"
+    query: "MVP는 언제까지야?"
+    expected_doc_ids:
+      - rfp-agency-a-ai-quality
+    expected_terms:
+      - "4개월"
+      - "MVP"
+    expected_citation_terms:
+      - "4개월"
+    expected_claim_targets:
+      - "기관 A"
+    answerable: true
+
+  - id: follow_up_state_d_retry
+    query_type: follow_up
+    prior_turns:
+      - query: "기관 D의 운영 자동화 세부 요구사항은?"
+    query: "자동 재측정은 최대 몇 번이야?"
+    expected_doc_ids:
+      - rfp-agency-d-spectrometer-probe
+    expected_terms:
+      - "최대 3회"
+    expected_citation_terms:
+      - "최대 3회"
+    expected_claim_targets:
+      - "기관 D"
+    answerable: true
+
+  # ── abstention (+12) ─────────────────────────────────────────────────
+
+  - id: abstention_d_budget
+    query_type: abstention
+    query: "기관 D의 분광기 사업 예산은?"
+    expected_doc_ids: []
+    expected_terms:
+      - "예산"
+    answerable: false
+
+  - id: abstention_e_main_budget
+    query_type: abstention
+    query: "기관 E 수질 모니터링 본 사업의 계약 금액은?"
+    expected_doc_ids: []
+    expected_terms:
+      - "계약 금액"
+    answerable: false
+
+  - id: abstention_d_sensor_count
+    query_type: abstention
+    query: "기관 D의 분광기 장비 수량은?"
+    expected_doc_ids: []
+    expected_terms:
+      - "수량"
+    answerable: false
+
+  - id: abstention_c_availability
+    query_type: abstention
+    query: "기관 C 챗봇의 가용성 SLA는?"
+    expected_doc_ids: []
+    expected_terms:
+      - "SLA"
+    answerable: false
+
+  - id: abstention_b_cloud_platform
+    query_type: abstention
+    query: "기관 B의 클라우드 인프라 플랫폼은?"
+    expected_doc_ids: []
+    expected_terms:
+      - "클라우드"
+    answerable: false
+
+  - id: abstention_a_server_spec
+    query_type: abstention
+    query: "기관 A의 AI 학습 서버 GPU 사양은?"
+    expected_doc_ids: []
+    expected_terms:
+      - "GPU"
+    answerable: false
+
+  - id: abstention_common_penalty
+    query_type: abstention
+    query: "공통 산출물 미제출 시 패널티 조항은?"
+    expected_doc_ids: []
+    expected_terms:
+      - "패널티"
+    answerable: false
+
+  - id: abstention_d_night_headcount
+    query_type: abstention
+    query: "기관 D 야간 운영 인력의 인원수는?"
+    expected_doc_ids: []
+    expected_terms:
+      - "인원"
+    answerable: false
+
+  - id: abstention_b_vendor
+    query_type: abstention
+    query: "기관 B의 MLOps 플랫폼 선호 벤더는?"
+    expected_doc_ids: []
+    expected_terms:
+      - "벤더"
+    answerable: false
+
+  - id: abstention_e_supplement_budget
+    query_type: abstention
+    query: "기관 E 부속 사업의 계약 예산은?"
+    expected_doc_ids: []
+    expected_terms:
+      - "예산"
+    answerable: false
+
+  - id: abstention_d_calibration_cost
+    query_type: abstention
+    query: "기관 D의 캘리브레이션 비용은?"
+    expected_doc_ids: []
+    expected_terms:
+      - "비용"
+    answerable: false
+
+  - id: abstention_e_equipment_model
+    query_type: abstention
+    query: "기관 E 수질 측정에 사용하는 장비 모델명은?"
+    expected_doc_ids: []
+    expected_terms:
+      - "모델명"
+    answerable: false

@@ -62,14 +62,14 @@ INFO bidmate.rag_core: query_complete  status='supported'  query_type='compariso
 
 LLM synthesis opt-in(`agentic_full_llm`, [ADR 0011](docs/adr/0011-llm-synthesis-as-additive-ablation.md))과 LLM Ops observability([ADR 0013](docs/adr/0013-observability-as-additive-pluggable-surface.md))는 extractive 파이프라인을 *교체하지 않고* additive ablation으로 추가됩니다 — [`docs/answer-policy.md`](docs/answer-policy.md) / [`docs/observability.md`](docs/observability.md).
 
-> **다음 실험 사이클 (현재 1순위)**: 공개 synthetic n=42 → **n≥100 확장** + bootstrap CI 재측정. Detection-blind ablation 14행의 통계적 분리는 n≥100에서 가능. Tracking: [issue #570](https://github.com/hskim-solv/BidMate-DocAgent/issues/570).
+> **완료 ([issue #570](https://github.com/hskim-solv/BidMate-DocAgent/issues/570))**: 공개 synthetic n=42 → **n=100 확장** 완료 (single_doc 34 / comparison 24 / follow_up 21 / abstention 21). Bootstrap CI 폭 이론적 수축 ×0.65 (√42/100). Detection-blind ablation 재측정은 real-eval 기준으로 후속 실행 예정.
 
 ## TL;DR
 - **문제**: 길고 복잡한 RFP 문서에서 실무 의사결정에 필요한 핵심 조건(예산/일정/요구사항/제출조건)을 빠르게 찾기 어렵습니다.
 - **해결**: 질문 유형 분석 + metadata-first 검색 + local dense retrieval/reranking + 근거 검증/retry를 결합한 Agentic RAG 파이프라인.
 - **시스템 설계**: 외부 LLM 호출 없이 evidence에서 claim을 추출하고 citation을 연결하는 **extractive grounded-answer 파이프라인** ([ADR 0003](docs/adr/0003-structured-answer-citation-contract.md)).
-- **성과**: 공개 synthetic 평가셋 **n=42** (single_doc 14 / comparison 10 / follow_up 9 / abstention 9) 기준 근거 기반 응답 품질 검증. Abstention **+77.8pp** / Citation Precision **+39.3pp** (CI 분리, 통계적으로 유의). [평가셋 상세 spec](docs/eval-dataset-spec.md)
-- **Latency** (naive_baseline, hashing, macOS CPU, n=42): p50 1.9ms / p95 5.9ms.
+- **성과**: 공개 synthetic 평가셋 **n=100** (single_doc 34 / comparison 24 / follow_up 21 / abstention 21) 기준 근거 기반 응답 품질 검증. Abstention **+77.8pp** / Citation Precision **+39.3pp** (CI 분리, 통계적으로 유의). [평가셋 상세 spec](docs/eval-dataset-spec.md)
+- **Latency** (naive_baseline, hashing, macOS CPU, n=100): p50 1.9ms / p95 5.9ms.
 
 ---
 
@@ -97,7 +97,7 @@ LLM synthesis opt-in(`agentic_full_llm`, [ADR 0011](docs/adr/0011-llm-synthesis-
 - **측정 범위**: `Latency p95` 컬럼은 query_analysis + context_resolution + answer_generation 합의 walltime. retrieve/verify stage는 `reports/eval_summary.json`의 `stage_latency` 블록.
 - **실행 환경**: macOS / CPU-only / Python 3.11 / 단일 워커.
 - **Cold start 분리**: hashing ≈ 2.1ms / sentence-transformers ≈ 5.7s.
-- **평가셋**: 공개 synthetic n=42 (single_doc 14 / comparison 10 / follow_up 9 / abstention 9). 비공개 RFP eval은 [ADR 0005](docs/adr/0005-eval-split-public-synthetic-private-local.md)에 따라 분리합니다. 평가셋 구성 상세: [docs/eval-dataset-spec.md](docs/eval-dataset-spec.md)
+- **평가셋**: 공개 synthetic n=100 (single_doc 34 / comparison 24 / follow_up 21 / abstention 21). 비공개 RFP eval은 [ADR 0005](docs/adr/0005-eval-split-public-synthetic-private-local.md)에 따라 분리합니다. 평가셋 구성 상세: [docs/eval-dataset-spec.md](docs/eval-dataset-spec.md)
 - **헤드라인 latency 기준 preset**: naive_baseline Latency p95 (5.9ms)가 CI source of truth. `agentic_full_llm`은 LLM 레이턴시 포함해 환경 의존적이므로 CI 고정 대상 아님.
 - **`agentic_full_llm` 백엔드 구분**: ablation 표의 `full_llm` 행은 `BIDMATE_SYNTHESIS_BACKEND=stub`(token-less, deterministic; [ADR 0011](docs/adr/0011-llm-synthesis-as-additive-ablation.md)) 기준. stub은 pass-through 합성이라 `full`과 동일 metric이 *정상*.
 - **Rerank 종류 구분**: `Rerank on` 행 대부분은 weighted-score rerank. `full_reranker`만 cross-encoder rerank([rag_rerank.py](rag_rerank.py)) — CI default `stub`이라 `full`과 수치 일치.
@@ -125,7 +125,7 @@ LLM synthesis opt-in(`agentic_full_llm`, [ADR 0011](docs/adr/0011-llm-synthesis-
 | no_metadata_first | agentic_full | auto | off | on | on | 0.844±0.12 | 0.881±0.10 | 0.679±0.11 | 0.968±0.06 | 0.857 | 1.000 | 0.000 | 3.8ms |
 | no_verifier_retry | agentic_full | auto | on | on | off | 0.906±0.12 | 0.762±0.14 | 0.762±0.14 | 1.000±0.00 | 0.714 | 0.300 | 0.000 | 2.6ms |
 
-<details><summary>Detection-blind ablations under n=42 — statistically inseparable from <code>full</code>; to be re-tested at n≥100 (issue #570)</summary>
+<details><summary>Detection-blind ablations — originally inseparable at n=42; dataset expanded to n=100 (issue #570 완료). Real-eval re-measurement pending.</summary>
 
 | Run | Pipeline | Top-k | Metadata-first | Rerank | Verifier/Retry | Accuracy | Groundedness | Citation | Claim Align | Format | Abstention | Retry | Latency p95 |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -150,7 +150,7 @@ LLM synthesis opt-in(`agentic_full_llm`, [ADR 0011](docs/adr/0011-llm-synthesis-
 > Values shown as `mean±half-width` for the 95% bootstrap CI (n=cases, 1000 resamples, seed=17). The non-CI columns (Format, Abstention, Retry) are point estimates; their CIs appear in the detailed main table above.
 <!-- METRICS_TABLE:END -->
 
-> **Ablation 해석 — CI가 말해주는 검출 한계 vs 실측 trade-off**: `no_rerank` / `hierarchical` / `full_llm`이 `full`과 동일 metric을 보이는 것은 *기능이 동등해서가 아니라 n=42 + bootstrap CI가 차이를 검출하지 못해서*입니다 — CI 폭이 너무 넓어 미세 차이는 noise에 묻힙니다. **CI가 분리되는 진짜 효과**: `no_metadata_first` citation 0.679±0.11 (CI 0.571–0.786) vs `full` 0.905±0.08 (0.821–0.976) — CI 비겹침으로 metadata-first 효용 통계적 입증. `no_verifier_retry` groundedness 0.762±0.14 (CI 0.619–0.881) vs `full` 0.929±0.07 — verifier loop 효용 시사. 상세 latency·embedding backend 비교: [`docs/benchmarking.md`](docs/benchmarking.md).
+> **Ablation 해석 — CI가 말해주는 검출 한계 vs 실측 trade-off**: `no_rerank` / `hierarchical` / `full_llm`이 `full`과 동일 metric을 보이는 것은 *기능이 동등해서가 아니라 n=42 + bootstrap CI가 차이를 검출하지 못해서*였습니다 — CI 폭이 너무 넓어 미세 차이는 noise에 묻혔습니다. 현재 n=100 확장 완료(issue #570); real-eval 재측정으로 통계적 분리 가능성 확인 예정. **CI가 분리되는 진짜 효과**: `no_metadata_first` citation 0.679±0.11 (CI 0.571–0.786) vs `full` 0.905±0.08 (0.821–0.976) — CI 비겹침으로 metadata-first 효용 통계적 입증. `no_verifier_retry` groundedness 0.762±0.14 (CI 0.619–0.881) vs `full` 0.929±0.07 — verifier loop 효용 시사. 상세 latency·embedding backend 비교: [`docs/benchmarking.md`](docs/benchmarking.md).
 
 ---
 
@@ -207,7 +207,7 @@ python3 scripts/update_readme_metrics.py --report reports/eval_summary.json --re
 | 설계 배경 (Korean RFP adaptations, 5가지) | [`docs/design-background.md`](docs/design-background.md) |
 | 답변 출력 정책 + Evidence boundary + Baseline policy | [`docs/answer-policy.md`](docs/answer-policy.md) |
 | 한계 + 회고 + 실패 사례 | [`docs/failure-cases.md`](docs/failure-cases.md) / [`docs/retrospective.md`](docs/retrospective.md) |
-| 공개 평가셋 상세 spec (n=42, 7-doc corpus, 방법론) | [`docs/eval-dataset-spec.md`](docs/eval-dataset-spec.md) |
+| 공개 평가셋 상세 spec (n=100, 7-doc corpus, 방법론) | [`docs/eval-dataset-spec.md`](docs/eval-dataset-spec.md) |
 | 비공개 100-doc aggregate 정책 + placeholder | [`docs/private-100-doc-experiments.md`](docs/private-100-doc-experiments.md) |
 | 엔지니어링 블로그 (GitHub Pages) | [hskim-solv.github.io/BidMate-DocAgent](https://hskim-solv.github.io/BidMate-DocAgent/) |
 | 전체 문서 인덱스 | [`docs/README.md`](docs/README.md) |
