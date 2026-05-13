@@ -41,7 +41,7 @@ a contributor (human or AI) can walk through:
    to reuse, and what you found that surprised you.
 4. **Branch + worktree if parallel.** Name the branch
    `<type>/issue-<N>[-<slug>]` per ADR 0007 — e.g.
-   `feat/issue-79-senior-positioning`. Claude Code's default
+   `feat/issue-79-hybrid-retrieval`. Claude Code's default
    worktree names (`claude/<auto>`) must be renamed before the PR
    (`git branch -m feat/issue-<N>-<slug>`). Two independent tracks
    → two worktrees, two PRs. Coupled tracks → one PR, one branch.

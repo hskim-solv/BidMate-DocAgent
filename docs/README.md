@@ -1,18 +1,13 @@
 # BidMate Agent 상세 문서
 
 - **[1-page Architecture deep-dive](./architecture-deep-dive.md)** — 파이프라인 / ADR 매핑 / 측정 highlight 한 페이지 요약
-- **[엔지니어링 블로그 (Phase 4 시리즈)](./blog/index.md)** — extractive baseline · 이중 eval · 실패 분류
 - [Engineering governance (workflow map)](./engineering-governance.md)
 - [Architecture Decision Records](./adr/README.md)
-- [Reviewer evidence pack](./reviewer-evidence-pack.md)
-- [포트폴리오 case study](./portfolio-case-study.md)
 - [Benchmarking](./benchmarking.md)
 - [Retrieval hardening milestone](./retrieval-hardening.md)
 - [Grounding/eval hardening](./grounding-eval-hardening.md)
 - [Planner & query-rewrite trace schema](./planner-trace.md)
 - [Reproducible harness](./harness.md)
-- [Private hard-case benchmark](./private-hardcase-benchmark.md)
-- [Private 100-doc experiments](./private-100-doc-experiments.md)
 - [Ablation results](./ablation-results.md)
 - [설계 배경 및 의사결정](./design-background.md)
 - [답변 출력 정책](./answer-policy.md)
@@ -22,4 +17,3 @@
 - [Citation grounding evaluation](./citation-grounding-eval.md)
 - [실패 사례 분석](./failure-cases.md)
 - [실데이터 실패 분류 및 우선순위 백로그](./real-data-failure-taxonomy.md)
-- [회고 및 향후 개선](./retrospective.md)

@@ -192,4 +192,3 @@ PDF/HWP 인덱스의 한 사업에 대해 사업기간과 사업예산을 묻는
 - [실데이터 실패 분류 및 우선순위 백로그](./real-data-failure-taxonomy.md)
 - [답변 정책](./answer-policy.md)
 - [Citation grounding evaluation](./citation-grounding-eval.md)
-- [Private hard-case benchmark](./private-hardcase-benchmark.md)

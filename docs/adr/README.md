@@ -125,9 +125,7 @@ is *proposed*. ADR 0032 (eval-saturation falsifier) is *accepted* (2026-05-13) �
 Every ADR file carries `Date: 2026-05-11` because that's when the ADR
 governance itself was introduced (PR #87 back-filled the five
 foundational ADRs in a single batch). The decisions themselves
-*evolved* through two weeks of build — see [`docs/portfolio-case-study.md`](../portfolio-case-study.md)
-and the [`docs/blog/`](../blog) series for the experiment-narrative — but
-on the time axis they look bunched.
+*evolved* through two weeks of build, but on the time axis they look bunched.
 The more honest evolution axis is **logical dependency**: what extends,
 refines, defends, or reuses the backend of what. See
 [`docs/engineering-governance.md`](../engineering-governance.md) for the
