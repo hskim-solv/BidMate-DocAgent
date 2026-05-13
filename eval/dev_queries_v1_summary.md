@@ -54,3 +54,25 @@
 - 1차 평가는 `gold_answer`와 `must_include` 기반의 규칙 평가로 시작
 - 2차 평가는 실제 답변에 포함된 근거 chunk와 `target_doc_ids` 일치 여부를 함께 확인
 - 비교형은 두 문서를 모두 커버했는지, 부재판별형은 모른다고 답했는지를 별도 지표로 분리
+
+## Routed surface (ADR 0032 Step 1)
+
+`eval/routed_config.yaml` is an additive surface for the saturation falsifier
+defined in [ADR 0032](../docs/adr/0032-eval-saturation-routed-subset.md). It
+ships 11 cases — picked so metadata-first routing cannot fully resolve the
+query — and two ablation rows (`agentic_full` baseline vs
+`agentic_full_routed` with `metadata_first: false`). The case set spans three
+categories from ADR 0032 §Decision:
+
+- Multi-turn follow-up where the follow-up question omits the entity (3 cases)
+- Multi-doc comparison where the same metadata candidate is distributed across ≥ 2 docs (4 cases)
+- Inference queries without an explicit metadata column hook (4 cases, incl. 1 abstention)
+
+Run with:
+
+```
+python -m eval.run_eval --config eval/routed_config.yaml --index_dir data/index --output_dir reports
+```
+
+The 5-embedding × routed-subset matrix and the resulting ADR 0019/0021/0032
+prose update land in a separate follow-up PR (Step 2 of ADR 0032).
