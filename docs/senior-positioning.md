@@ -22,6 +22,7 @@
 | 회귀가 **다시 발생하지 않도록 테스트로 잠근다** | `tests/test_*_regression.py`, [`docs/private-100-doc-experiments.md`](./private-100-doc-experiments.md)의 Real-data Decision Log |
 | **거버넌스가 코드와 같이 진화**한다 (rule book → 규칙 → 자동화) | [`CLAUDE.md`](../CLAUDE.md), [`docs/engineering-governance.md`](./engineering-governance.md), `.github/workflows/` |
 | **재현 가능한 시연**으로 주장 가능한 수치만 README에 올린다 | `make smoke`, `scripts/update_readme_metrics.py --check`, README "핵심 성능표" |
+| **Claude 협업 자체를 측정 가능 영역으로** 통합한다 (4축 + 5축 분기 self-review) | `/self-review-quarterly` (`.claude/skills/self-review-quarterly/SKILL.md`), `docs/self-review/Q2-2026.md`, `scripts/claude-hooks/_self_review.py` |
 
 ## 시니어 시그널 1 — 아키텍처 결정의 추적성
 
@@ -133,6 +134,37 @@ make reproduce  # smoke + SHA-256 over the environment-invariant metric subset
 운영 데모는 [`docs/api-demo.md`](./api-demo.md)의 FastAPI 한 줄 startup으로 분리되어 있다 — playground이지만 measurement source는 절대 아님 ([`engineering-governance.md` table](./engineering-governance.md) 참조).
 
 **구조화 로깅**: `BIDMATE_LOG_FORMAT=json make demo`로 stdout JSON 로그를 흘려보내면 stage별 `query_start`/`query_complete` 이벤트가 `query_hash`/`latency_ms`/`status`/`retry_count`/`abstained` 필드와 함께 떨어진다. 로그 aggregation(CloudLogging/ELK/Datadog)에 그대로 꽂아 운영 관찰성을 확장 가능. 구현은 [`bidmate_logging.py`](../bidmate_logging.py).
+
+## 시니어 시그널 6 — Claude 협업 자체를 측정 가능 영역으로
+
+시그널 4가 *시스템*의 LLM Ops 측정(cost telemetry / observability / verifier retry)을 다룬다면, 시그널 6은 한 단계 메타 위 — **Claude와의 협업 워크플로 자체의 ROI**를 분기마다 정량화한다. AI를 "코드 생성 보조"가 아니라 *측정 가능한 협업자*로 다룬 결과물.
+
+측정 표면이 두 갈래로 분리되어 있다.
+
+```
+공개 합성 + 비공개 real-data + KorQuAD            Claude 협업 표면
+  - 모델 / pipeline 성능 측정                          - 협업 ROI 측정 (분기마다)
+  - eval/ 디렉토리                                     - scripts/claude-hooks/_self_review.py
+  - 시그널 2 + 시그널 5에 backing                       - 본 시그널에 backing
+```
+
+리뷰어가 협업 측정을 점검할 때 볼 곳:
+
+- **4축 + 5축 rubric**: 4축은 `feedback_portfolio_evaluation.md`(*프로젝트 진행* 진단), 5축은 `feedback_collaboration_axes.md`(*Claude 협업* 진단). 둘이 같은 보고서에 나란히 출력되어야 ROI 격차가 surface된다 (예: 4축 ✓✓✓✓여도 5축 △△△△일 수 있고, 그 격차 자체가 시니어 신호).
+- **`/self-review-quarterly` skill**: [`.claude/skills/self-review-quarterly/SKILL.md`](../.claude/skills/self-review-quarterly/SKILL.md). Driver는 transcripts 메타데이터만 읽고(`tool_call_distribution`, `agent_delegations`, `fires_by_path` 등) 본문/argument/diff/메모리 body는 절대 출력 X — schema validation으로 강제.
+- **분기별 보고서**: [`docs/self-review/Q2-2026.md`](./self-review/Q2-2026.md) (첫 분기). Commit-bound 공개 산출물 — 인용 가능 식별자(PR# / ADR id / 파일 경로) 화이트리스트 + grep self-check로 잠겨있다 ([`docs/self-review/README.md`](./self-review/README.md) "Privacy 경계").
+
+**자기-개선 루프의 재현 가능한 증거** (Q2-2026 사이클):
+
+1. 도구 land: [PR #488](https://github.com/hskim-solv/BidMate-DocAgent/pull/488) `feat(skill): add /self-review-quarterly (4+5 axis rubric)`.
+2. 같은 도구가 첫 호출에서 5축 #3 △ (거버넌스 자동화 ROI — `pretooluse_loadbearing_fires=0` placeholder)을 식별.
+3. 같은 분기 안에 ROI #1 land: [PR #499](https://github.com/hskim-solv/BidMate-DocAgent/pull/499) `feat(self-review): wire PreToolUse hook fire log + driver parse`. Hook의 awareness 동작은 그대로(always exit 0), fire log append + driver parse 추가만.
+
+**인터뷰 talking point 1 (측정 가능한 협업)**: "AI를 *측정 가능한 협업자*로 다뤘다. cost telemetry가 시스템 LLM Ops를 측정한다면, `/self-review-quarterly`는 협업 워크플로 자체의 ROI를 분기마다 정량화한다. 첫 보고서가 식별한 약점(거버넌스 자동화 ROI)을 같은 분기에 land — 도구가 자기 자신의 개선을 부트스트랩한 재현 가능한 사이클."
+
+**인터뷰 talking point 2 (privacy contract)**: "협업 측정의 본질적 위험은 transcripts 본문 누출이다. driver schema가 metadata 키만 추출하도록 강제되고, SKILL workflow step 8의 grep self-check가 본문 인용 패턴(사용자 메시지 / 코드 diff / 메모리 body)을 사후 검출한다 — 두 층 모두 [`docs/self-review/README.md`](./self-review/README.md)의 '인용 가능/금지' 화이트리스트에 잠긴 contract. 자동 회귀 가드는 [issue #501](https://github.com/hskim-solv/BidMate-DocAgent/issues/501)로 분리."
+
+**인터뷰 talking point 3 (4축 vs 5축 분리의 정직성)**: "4축은 *프로젝트가 어떻게 굴러가는가*, 5축은 *협업이 어떻게 굴러가는가* — 두 신호가 분리되어야 ROI 비교가 가능하다. Q2-2026 보고서에서 4축은 ✓✓✓△(시장 가시성 외부 baseline 실측 ADR 0025 deferred)였지만 5축은 1✓4△로 떨어졌다. 그 격차가 다음 분기 투자 우선순위를 결정한다."
 
 ## 인터뷰에서 받을 만한 질문과 답의 위치
 
