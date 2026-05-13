@@ -1,0 +1,77 @@
+mode: rag
+description: >
+  Multi-hop cross-section eval slice for ADR 0033 (complexity-axis saturation
+  falsifier). Cases require combining evidence from ≥ 2 non-contiguous chunks
+  or documents — single-hop single-chunk retrieval is insufficient. Additive
+  surface: eval/config.yaml and naive_baseline golden bytes are untouched
+  (ADR 0001 invariant). Run via:
+    make eval-multihop                    # stub backend, CI-safe
+    EMBEDDING_BACKEND=sentence_transformers make eval-multihop  # real signal
+  Results published to docs/embedding-ablation.md Phase 1.4 section.
+index_dir: data/index
+primary_run: naive_baseline
+# Latency budgets for the deterministic CI hashing backend.
+# Multi-hop queries trigger more evidence-aggregation work — budget
+# is 50 % higher than the corresponding single-hop ceiling.
+latency_budgets:
+  naive_baseline:
+    p95_ms: 150
+  full:
+    p95_ms: 300
+  no_metadata_first:
+    p95_ms: 300
+  no_rerank:
+    p95_ms: 300
+  no_verifier_retry:
+    p95_ms: 200
+  hybrid_bm25:
+    p95_ms: 300
+answer_policy:
+  answerable_status: supported
+  unanswerable_status: insufficient
+  min_claims_answerable: 1
+  require_claim_citations: true
+# Dataset: eval/dev_queries_multihop_v1.jsonl
+# Stub version (n=3 placeholders) committed for CI schema validation.
+# Replace by running: make synthesize-multihop (BIDMATE_SYNTHESIZER_BACKEND=openai_compatible)
+dataset: eval/dev_queries_multihop_v1.jsonl
+ablation_runs:
+  # ADR 0001 invariant — naive_baseline row present in every ablation config.
+  - name: naive_baseline
+    pipeline: naive_baseline
+  # Primary agentic pipeline (metadata-first on).
+  - name: full
+    pipeline: agentic_full
+    metadata_first: true
+    rerank: true
+    verifier_retry: true
+    retrieval_mode: flat
+  # Routing-axis cross-comparison (mirrors ADR 0032 agentic_full_routed).
+  # Running both configs together covers both saturation axes (ADR 0032 + 0033).
+  - name: no_metadata_first
+    pipeline: agentic_full
+    metadata_first: false
+    rerank: true
+    verifier_retry: true
+    retrieval_mode: flat
+  # Component-ablation rows (mirrors eval/config.yaml ablation matrix).
+  - name: no_rerank
+    pipeline: agentic_full
+    metadata_first: true
+    rerank: false
+    verifier_retry: true
+    retrieval_mode: flat
+  - name: no_verifier_retry
+    pipeline: agentic_full
+    metadata_first: true
+    rerank: true
+    verifier_retry: false
+    retrieval_mode: flat
+  # Hybrid retrieval row (ADR 0010).
+  - name: hybrid_bm25
+    pipeline: agentic_full
+    metadata_first: true
+    rerank: true
+    verifier_retry: true
+    retrieval_mode: flat
+    retrieval_backend: hybrid

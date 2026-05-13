@@ -18,7 +18,7 @@
 # Synthetic eval surface (public corpus). Includes smoke, full eval, harness
 # matrix, judges, leaderboard render, pareto, korean public bench, external
 # baselines.
-.PHONY: eval smoke smoke-with-judge reproduce benchmark synthetic-judge leaderboard pareto korean-public-fetch korean-public-eval external-baselines-stub external-baselines-langchain external-baselines-llamaindex harness-smoke harness-ablation harness-compare
+.PHONY: eval smoke smoke-with-judge reproduce benchmark synthetic-judge leaderboard pareto korean-public-fetch korean-public-eval external-baselines-stub external-baselines-langchain external-baselines-llamaindex harness-smoke harness-ablation harness-compare synthesize-multihop eval-multihop
 
 # Real-data eval cycle (private; ADR 0005 commit boundary).
 .PHONY: real-eval real-eval-delta real-eval-baseline-update real-eval-history-render real-eval-with-judge harness-real
@@ -91,6 +91,20 @@ ask:
 
 eval:
 	$(PYTHON) eval/run_eval.py --index_dir data/index --output_dir reports --config eval/config.yaml
+
+# Multi-hop cross-section eval slice (ADR 0033).
+# synthesize-multihop: generate eval/dev_queries_multihop_v1.jsonl.
+#   Stub backend (default): placeholder queries, CI-safe, no API calls.
+#   Live backend: set BIDMATE_SYNTHESIZER_BACKEND=openai_compatible + BIDMATE_JUDGE_API_KEY.
+# eval-multihop: run the multi-hop ablation surface against the generated dataset.
+synthesize-multihop:
+	$(PYTHON) scripts/synthesize_multihop_queries.py \
+	    --out eval/dev_queries_multihop_v1.jsonl \
+	    --n $${MULTIHOP_N:-50}
+
+eval-multihop:
+	$(PYTHON) eval/run_eval.py --index_dir data/index --output_dir reports/multihop \
+	    --config eval/multihop_config.yaml
 
 # Cost-quality Pareto frontier table (and PNG if matplotlib installed)
 # from the latest reports/eval_summary.json. Read-only consumer — see
