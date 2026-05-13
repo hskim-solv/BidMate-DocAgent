@@ -20,7 +20,7 @@ ARMED_FILE=".claude/.ship-armed"
 PID_FILE=".claude/.ship-running.pid"
 HISTORY_LOG=".claude/.ship-history.log"
 DRYRUN_LOG=".claude/.ship-dryrun.log"
-TEST_SUMMARY_PATH="/tmp/ship-test-summary.txt"
+TEST_SUMMARY_PATH="$(mktemp /tmp/ship-test-summary.XXXXXX)"
 
 DRY_RUN=0
 ARM_BRANCH=""
@@ -140,6 +140,7 @@ acquire_lock() {
 
 release_lock() {
   rm -f "$PID_FILE"
+  rm -f "$TEST_SUMMARY_PATH"
 }
 
 abort_disarm() {
