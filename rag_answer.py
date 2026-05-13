@@ -384,7 +384,7 @@ def metadata_field_requested(key: str, value: Any, analysis: dict[str, Any]) -> 
     labels = METADATA_CLAIM_TOPIC_LABELS.get(key) or METADATA_EVIDENCE_LABELS.get(key, (key,))
     label_text = " ".join(str(label) for label in labels)
     value_text = str(value)
-    searchable = compact_metadata_text(" ".join([label_text, value_text]))
+    searchable = compact_metadata_text(f"{label_text} {value_text}")
     for term in terms:
         compact_term = compact_metadata_text(str(term))
         if compact_term and compact_term in searchable:

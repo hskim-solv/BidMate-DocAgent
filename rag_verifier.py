@@ -170,9 +170,10 @@ def specific_topics(analysis: dict[str, Any]) -> list[str]:
 def verification_topics(analysis: dict[str, Any]) -> list[str]:
     metadata_terms = metadata_terms_for_verification(analysis)
     keyword_terms = {
-        normalize_metadata_token(keyword)
+        norm
         for keyword in TOPIC_KEYWORDS
-        if normalize_metadata_token(keyword).lower() != "ai"
+        for norm in (normalize_metadata_token(keyword),)
+        if norm.lower() != "ai"
     }
     topics = []
     for topic in analysis.get("topics", []):
@@ -249,7 +250,7 @@ def evidence_text_for_verification(item: dict[str, Any]) -> str:
                 continue
             parts.extend(METADATA_EVIDENCE_LABELS.get(str(key), (str(key),)))
             parts.append(neutralize_instruction_patterns(str(value)))
-    return " ".join(str(part) for part in parts if str(part).strip())
+    return " ".join(part for part in parts if part.strip())
 
 
 def evidence_has_topic(item: dict[str, Any], topics: list[str]) -> bool:
