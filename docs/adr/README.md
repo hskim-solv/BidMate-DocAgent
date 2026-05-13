@@ -91,6 +91,7 @@ project record.
 | [0031](./0031-bm25-korean-morphology-additive.md) | superseded by 0010 | BM25 Korean morphology tokenizer (`bm25_tokenizer: "regex" \| "kiwi"`) as additive ablation |
 | [0032](./0032-eval-saturation-routed-subset.md) | accepted | Eval-set saturation falsifier: 4-embedding × routed_subset (n=11, metadata_first=false) measurement complete; spread **0.0pp** < +3pp threshold → saturation_cross_validated. MiniLM default lock empirically justified on both `full` + `routed` surfaces. (Closes ADR 0019 deferral saturation axis.) |
 | [0034](./0034-vlm-provider-ablation.md) | accepted | VLM provider ablation — Donut defer (torch≥2.6 + GPU required) + PaddleOCR PP-OCRv4 実測 (synthetic: +0pp vs baseline, latency 2.2×); tesseract baseline kept; `paddleocr_provider` opt-in infra added (`BIDMATE_VISUAL_OCR=paddleocr`); re-open on real Korean RFP +5pp lift |
+| [0035](./0035-dict-not-pydantic-v2.md) | accepted | Answer dict is the internal contract — no Pydantic/TypedDict shadow model inside the pipeline (defends ADR 0003 single-source-of-truth; Pydantic allowed at `api/schemas.py` boundary only) |
 
 ## Roadmap (proposed, not yet committed)
 
