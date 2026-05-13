@@ -93,6 +93,7 @@ project record.
 | [0029](./0029-real-data-case-proposer-additive.md) | proposed | Real-data case proposer as additive semi-supervised eval-set growth (extends 0005 / 0006; reuses 0011 / 0012 backend pattern; preserves 0001 / 0003 / 0004 / 0008; calibration mirrors 0016) |
 | [0030](./0030-leaderboard-headline-includes-agentic-full.md) | accepted | Leaderboard headline expands to render `agentic_full` alongside `naive_baseline` as parallel time series; ADR 0001 baseline preserved, `ablation_full` aggregate key added to history snapshots (extends ADR 0001 / ADR 0024 visibility surface) |
 | [0031](./0031-bm25-korean-morphology-additive.md) | accepted | BM25 Korean morphology tokenizer (`bm25_tokenizer: "regex" \| "kiwi"`) as additive ablation, kiwipiepy lazy-imported with never-raise fallback to regex (extends 0010 / 0011; preserves 0001 / 0003; follows 0019 → 0021 / 0026 measurement-gated pattern) |
+| [0032](./0032-eval-saturation-routed-subset.md) | proposed | Eval-set saturation hypothesis + routed-subset measurement surface as falsifier for ADR 0019 deferral (extends 0019 / 0021; preserves 0001 / 0002; adds `agentic_full_routed` ablation preset; spread ≥ +3pp on routed subset triggers 0019 re-open) |
 
 ## Deferred decisions (measurement-gated re-open)
 
@@ -109,15 +110,17 @@ in ADR prose.
 
 | ADR | Locked default | Re-open trigger | Tracking |
 |---|---|---|---|
-| [0019](./0019-embedding-default-stays-minilm.md) + [0021](./0021-bge-m3-completes-phase-1-3.md) | Embedding stays MiniLM-L12-v2 | New candidate (e.g. KURE-v1, fine-tuned LoRA per [0027](./0027-lora-finetuned-embedding-additive.md)) shows ≥ +5pp `full` lift with non-overlapping 95% CIs | [`adr-reopen` label](https://github.com/hskim-solv/BidMate-DocAgent/labels/adr-reopen) |
+| [0019](./0019-embedding-default-stays-minilm.md) + [0021](./0021-bge-m3-completes-phase-1-3.md) | Embedding stays MiniLM-L12-v2 | New candidate (e.g. KURE-v1, fine-tuned LoRA per [0027](./0027-lora-finetuned-embedding-additive.md)) shows ≥ +5pp `full` lift with non-overlapping 95% CIs — measurement surface for the saturation falsifier defined in [0032](./0032-eval-saturation-routed-subset.md) | [`adr-reopen` label](https://github.com/hskim-solv/BidMate-DocAgent/labels/adr-reopen) |
 | [0025](./0025-cost-frontier-defer-until-real-baselines.md) | No modeled cost-accuracy frontier in repo | `reports/external_baselines.json` gets ≥ 1 entry with `backend != "stub"` (n ≥ 32) + ADR 0015 token aggregation wired into eval | [`adr-reopen` label](https://github.com/hskim-solv/BidMate-DocAgent/labels/adr-reopen) |
 | [0026](./0026-cross-encoder-reranker-deferral.md) | `BIDMATE_RERANK_BACKEND=stub` (identity); `Reranker` Protocol kept | Real backend (`bge` / `bge_ko` / `cohere`) shows ≥ +3pp lift on `full_reranker` vs `full` with non-overlapping 95% CIs on public synthetic (n=42) | [`adr-reopen` label](https://github.com/hskim-solv/BidMate-DocAgent/labels/adr-reopen) |
 
 Note that ADR 0024 (API default = `agentic_full_llm`) and ADR 0022
 (LangGraph orchestrator stage 1) are *not* listed here because they are
 already accepted action items, not deferrals. ADR 0027 (LoRA adapter)
-is *proposed* — it inherits ADR 0019's re-open conditions and does not
-itself defer anything.
+and ADR 0032 (eval-saturation falsifier) are both *proposed* — they
+inherit ADR 0019's re-open conditions and do not themselves defer
+anything; ADR 0032 in particular *defines the measurement surface* that
+makes ADR 0019's re-open trigger empirically testable.
 
 ## Decision evolution
 
