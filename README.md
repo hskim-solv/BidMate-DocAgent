@@ -218,6 +218,26 @@ python3 scripts/update_readme_metrics.py --report reports/eval_summary.json --re
 
 ---
 
+## Claude Code와의 협업 (AI Collaboration Transparency)
+
+이 프로젝트는 [Claude Code](https://claude.ai/code)(Opus 4.x)를 개발 파트너로 사용합니다. 과잉 주장(over-claim) 방지를 위해 역할 분담을 명시합니다.
+
+**본인 영역 (사람)**
+- ADR 설계 및 의사결정 게이트 — 어떤 문제를, 언제, 왜 해결할지
+- 포트폴리오 플랜 + 우선순위 (채용 funnel 4층 프레임워크)
+- 5축 협업 self-review 기준 정의 및 분기별 진단
+- 평가 설계 (공개/비공개 분리 경계, ADR 0005) 및 회귀 기준
+
+**Claude Code 영역 (AI)**
+- 코드 구현, 리팩터링, 문서 초안, 테스트 작성
+- 브랜치/PR/이슈 생성 및 CI gate 운영 보조
+- 탐색(Explore subagent), 설계 검토(Plan subagent), 반복 작업 자동화
+
+**분기별 협업 자가진단** — [`/self-review-quarterly`](docs/adr-self-interview-checklist.md) skill로 4축(포트폴리오 진행도) + 5축(Claude 협업 효율)을 한 보고서로 생성.
+최신 보고서: [`docs/self-review/Q2-2026.md`](docs/self-review/Q2-2026.md)
+
+---
+
 ## Notice
 - 원본 RFP 문서는 외부 공유 제한으로 저장소에 포함하지 않았습니다.
 - `data/raw` 문서는 공개 재현을 위해 작성한 synthetic RFP 샘플입니다.
