@@ -66,7 +66,7 @@ LLM synthesis opt-in(`agentic_full_llm`, [ADR 0011](docs/adr/0011-llm-synthesis-
 - **문제**: 길고 복잡한 RFP 문서에서 실무 의사결정에 필요한 핵심 조건(예산/일정/요구사항/제출조건)을 빠르게 찾기 어렵습니다.
 - **해결**: 질문 유형 분석 + metadata-first 검색 + local dense retrieval/reranking + 근거 검증/retry를 결합한 Agentic RAG 파이프라인.
 - **시스템 설계**: 외부 LLM 호출 없이 evidence에서 claim을 추출하고 citation을 연결하는 **extractive grounded-answer 파이프라인** ([ADR 0003](docs/adr/0003-structured-answer-citation-contract.md)).
-- **성과**: 공개 synthetic 평가셋 **n=42** (single_doc 14 / comparison 10 / follow_up 9 / abstention 9) 기준 근거 기반 응답 품질 검증. Abstention **+77.8pp** / Citation Precision **+39.3pp** (CI 분리, 통계적으로 유의).
+- **성과**: 공개 synthetic 평가셋 **n=42** (single_doc 14 / comparison 10 / follow_up 9 / abstention 9) 기준 근거 기반 응답 품질 검증. Abstention **+77.8pp** / Citation Precision **+39.3pp** (CI 분리, 통계적으로 유의). [평가셋 상세 spec](docs/eval-dataset-spec.md)
 - **Latency** (naive_baseline, hashing, macOS CPU, n=42): p50 1.9ms / p95 5.9ms.
 
 ---
@@ -95,7 +95,7 @@ LLM synthesis opt-in(`agentic_full_llm`, [ADR 0011](docs/adr/0011-llm-synthesis-
 - **측정 범위**: `Latency p95` 컬럼은 query_analysis + context_resolution + answer_generation 합의 walltime. retrieve/verify stage는 `reports/eval_summary.json`의 `stage_latency` 블록.
 - **실행 환경**: macOS / CPU-only / Python 3.11 / 단일 워커.
 - **Cold start 분리**: hashing ≈ 2.1ms / sentence-transformers ≈ 5.7s.
-- **평가셋**: 공개 synthetic n=42 (single_doc 14 / comparison 10 / follow_up 9 / abstention 9). 비공개 RFP eval은 [ADR 0005](docs/adr/0005-eval-split-public-synthetic-private-local.md)에 따라 분리합니다.
+- **평가셋**: 공개 synthetic n=42 (single_doc 14 / comparison 10 / follow_up 9 / abstention 9). 비공개 RFP eval은 [ADR 0005](docs/adr/0005-eval-split-public-synthetic-private-local.md)에 따라 분리합니다. 평가셋 구성 상세: [docs/eval-dataset-spec.md](docs/eval-dataset-spec.md)
 - **헤드라인 latency 기준 preset**: naive_baseline Latency p95 (5.9ms)가 CI source of truth. `agentic_full_llm`은 LLM 레이턴시 포함해 환경 의존적이므로 CI 고정 대상 아님.
 - **`agentic_full_llm` 백엔드 구분**: ablation 표의 `full_llm` 행은 `BIDMATE_SYNTHESIS_BACKEND=stub`(token-less, deterministic; [ADR 0011](docs/adr/0011-llm-synthesis-as-additive-ablation.md)) 기준. stub은 pass-through 합성이라 `full`과 동일 metric이 *정상*.
 - **Rerank 종류 구분**: `Rerank on` 행 대부분은 weighted-score rerank. `full_reranker`만 cross-encoder rerank([rag_rerank.py](rag_rerank.py)) — CI default `stub`이라 `full`과 수치 일치.
