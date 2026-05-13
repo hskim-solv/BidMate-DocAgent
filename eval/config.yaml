@@ -180,6 +180,22 @@ ablation_runs:
     retrieval_backend: hybrid
     rrf_k: 30
     bm25_stopword_profile: bm25_extra
+  # Issue #486 / ADR 0031 — Korean morphology BM25 ablation. Same retrieval +
+  # verifier as `hybrid_bm25` (control row); only the BM25 tokenizer swaps
+  # from regex word-extraction to kiwipiepy morpheme analysis (체언 / 용언 /
+  # 수식어 / 외래어 POS filter). Never-raise: if kiwipiepy is missing from
+  # the runtime, `korean_lexicon.kiwi_tokens` returns `None` and the dispatch
+  # silently falls back to regex tokens — so under that condition this row
+  # is byte-equal to `hybrid_bm25`. Real lift (or 0pp confirmation) requires
+  # the kiwipiepy wheel and the public-synthetic eval surface.
+  - name: full_kiwi
+    pipeline: agentic_full
+    metadata_first: true
+    rerank: true
+    verifier_retry: true
+    retrieval_mode: flat
+    retrieval_backend: hybrid
+    bm25_tokenizer: kiwi
   # Issue #163 / ADR 0011 pattern — additive cross-encoder reranker. The
   # existing `full` row is the natural negative (rerank_cross_encoder
   # defaults to false). Under the CI default backend (stub) the cross-

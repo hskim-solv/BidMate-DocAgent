@@ -276,6 +276,7 @@ class QueryParams:
     comparison_balance: dict[str, Any] | None = None
     rrf_k: int | None = None
     bm25_stopword_profile: str | None = None
+    bm25_tokenizer: str | None = None
 
 
 def normalize_entity(value: str) -> str:
@@ -2120,6 +2121,7 @@ class _RunContext:
     prompt_profile: str
     rrf_k: int
     bm25_stopword_profile: str
+    bm25_tokenizer: str
     resolved_comparison_balance: Any
     state: dict[str, Any]
     targets: list[dict[str, Any]]
@@ -2163,7 +2165,8 @@ def _build_run_context(
     comparison_balance: dict[str, Any] | None,
     rrf_k: int | None,
     bm25_stopword_profile: str | None,
-    params: QueryParams | None,
+    bm25_tokenizer: str | None = None,
+    params: QueryParams | None = None,
 ) -> _RunContext:
     """Normalize raw ``run_rag_query`` inputs into a :class:`_RunContext`.
 
@@ -2187,6 +2190,7 @@ def _build_run_context(
             "comparison_balance": comparison_balance,
             "rrf_k": rrf_k,
             "bm25_stopword_profile": bm25_stopword_profile,
+            "bm25_tokenizer": bm25_tokenizer,
         }
         conflicting = sorted(k for k, v in legacy_pipeline_kwargs.items() if v is not None)
         if conflicting:
@@ -2205,6 +2209,7 @@ def _build_run_context(
         comparison_balance = params.comparison_balance
         rrf_k = params.rrf_k
         bm25_stopword_profile = params.bm25_stopword_profile
+        bm25_tokenizer = params.bm25_tokenizer
 
     pipeline_source: dict[str, Any] = {"pipeline": pipeline or DEFAULT_RAG_PIPELINE_NAME}
     for key, value in (
@@ -2217,6 +2222,7 @@ def _build_run_context(
         ("prompt_profile", prompt_profile),
         ("rrf_k", rrf_k),
         ("bm25_stopword_profile", bm25_stopword_profile),
+        ("bm25_tokenizer", bm25_tokenizer),
     ):
         if value is not None:
             pipeline_source[key] = value
@@ -2237,6 +2243,7 @@ def _build_run_context(
     prompt_profile_val = str(pipeline_config["prompt_profile"])
     rrf_k_val = int(pipeline_config["rrf_k"])
     bm25_stopword_profile_val = str(pipeline_config["bm25_stopword_profile"])
+    bm25_tokenizer_val = str(pipeline_config["bm25_tokenizer"])
     resolved_comparison_balance = pipeline_config.get("comparison_balance")
 
     global _PROCESS_WARM
@@ -2301,6 +2308,7 @@ def _build_run_context(
         prompt_profile=prompt_profile_val,
         rrf_k=rrf_k_val,
         bm25_stopword_profile=bm25_stopword_profile_val,
+        bm25_tokenizer=bm25_tokenizer_val,
         resolved_comparison_balance=resolved_comparison_balance,
         state=state,
         targets=targets,
@@ -2473,6 +2481,7 @@ def _phase_retrieve_loop(ctx: _RunContext) -> None:
                 comparison_balance=ctx.resolved_comparison_balance,
                 rrf_k=ctx.rrf_k,
                 bm25_stopword_profile=ctx.bm25_stopword_profile,
+                bm25_tokenizer=ctx.bm25_tokenizer,
             )
             evidence = retrieve(ctx.index, ctx.retrieval_query, analysis, plan)
         with _StageTimer(
@@ -2667,6 +2676,7 @@ def run_rag_query(
     comparison_balance: dict[str, Any] | None = None,
     rrf_k: int | None = None,
     bm25_stopword_profile: str | None = None,
+    bm25_tokenizer: str | None = None,
     *,
     params: QueryParams | None = None,
     _skip_graph: bool = False,
@@ -2709,6 +2719,7 @@ def run_rag_query(
             comparison_balance=comparison_balance,
             rrf_k=rrf_k,
             bm25_stopword_profile=bm25_stopword_profile,
+            bm25_tokenizer=bm25_tokenizer,
             params=params,
         )
 
@@ -2728,6 +2739,7 @@ def run_rag_query(
         comparison_balance=comparison_balance,
         rrf_k=rrf_k,
         bm25_stopword_profile=bm25_stopword_profile,
+        bm25_tokenizer=bm25_tokenizer,
         params=params,
     )
 
@@ -2755,6 +2767,7 @@ async def arun_rag_query(
     comparison_balance: dict[str, Any] | None = None,
     rrf_k: int | None = None,
     bm25_stopword_profile: str | None = None,
+    bm25_tokenizer: str | None = None,
 ) -> dict[str, Any]:
     """Async-aware entry point for the RAG pipeline (#173 Stage 1).
 
@@ -2788,6 +2801,7 @@ async def arun_rag_query(
         comparison_balance=comparison_balance,
         rrf_k=rrf_k,
         bm25_stopword_profile=bm25_stopword_profile,
+        bm25_tokenizer=bm25_tokenizer,
     )
 
 

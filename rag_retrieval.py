@@ -357,6 +357,7 @@ def retrieve_candidates(
             index,
             list(query_tokens),
             stopword_profile=str(plan.get("bm25_stopword_profile", "shared")),
+            tokenizer=str(plan.get("bm25_tokenizer", "regex")),
         )
 
     # Issue #151 — BGE-M3 multi-channel spike. Lazy: only entered when
@@ -573,6 +574,7 @@ def _apply_bm25_extra_filter(tokens: Iterable[str]) -> list[str]:
 def _chunk_tokens_for_bm25(
     chunk: dict[str, Any],
     stopword_profile: str = "shared",
+    tokenizer: str = "regex",
 ) -> list[str]:
     # Late-import the regex-based tokenizer from rag_core. ``tokenize``
     # serves many non-retrieval surfaces (ingestion-time chunk token
@@ -581,20 +583,37 @@ def _chunk_tokens_for_bm25(
     # when the chunk doesn't carry a pre-computed token list.
     from rag_core import tokenize
 
+    section_path = chunk.get("section_path") or [chunk.get("section", "")]
+    text = " ".join(
+        [
+            chunk.get("title", ""),
+            chunk.get("agency", ""),
+            chunk.get("project", ""),
+            " > ".join(section_path),
+            chunk.get("text", ""),
+        ]
+    )
+
+    # Issue #486 / ADR 0031 — kiwi tokenizer recomputes from raw text.
+    # The chunk's cached ``tokens`` list is regex-tokenized at index
+    # build time (ADR 0001 invariant), so kiwi must NOT reuse it. The
+    # never-raise fallback (``kiwi_tokens`` returns ``None`` when
+    # kiwipiepy is missing) drops back to the regex path below — so a
+    # CI environment without the wheel produces bit-identical corpora.
+    if tokenizer == "kiwi":
+        from korean_lexicon import kiwi_tokens
+
+        kiwi_base = kiwi_tokens(text)
+        if kiwi_base is not None:
+            if stopword_profile == "bm25_extra":
+                kiwi_base = _apply_bm25_extra_filter(kiwi_base)
+            return kiwi_base
+        # else: silent fallback to regex below.
+
     tokens = chunk.get("tokens")
     if isinstance(tokens, list) and tokens:
         base = [str(t) for t in tokens]
     else:
-        section_path = chunk.get("section_path") or [chunk.get("section", "")]
-        text = " ".join(
-            [
-                chunk.get("title", ""),
-                chunk.get("agency", ""),
-                chunk.get("project", ""),
-                " > ".join(section_path),
-                chunk.get("text", ""),
-            ]
-        )
         base = tokenize(text)
     if stopword_profile == "bm25_extra":
         base = _apply_bm25_extra_filter(base)
@@ -604,19 +623,26 @@ def _chunk_tokens_for_bm25(
 def get_or_build_bm25(
     index: dict[str, Any],
     stopword_profile: str = "shared",
+    tokenizer: str = "regex",
 ) -> tuple[Any, list[str]]:
     """Lazy-build and cache a BM25Okapi index over chunk tokens.
 
     Returns the cached ``(bm25, chunk_ids)`` tuple keyed by
-    ``stopword_profile`` (issue #150). The ``shared`` profile uses the
-    common tokens cached on each chunk; the ``bm25_extra`` profile
-    applies :func:`_apply_bm25_extra_filter` (strips the BM25-only
-    extension particle set and drops short BM25-only stopwords) before
-    constructing BM25Okapi. Each profile gets its own ``BM25Okapi``
-    instance inside ``index["_bm25_by_profile"]`` so the IDF
-    distribution stays consistent between corpus build and query side.
+    ``(stopword_profile, tokenizer)`` (issue #150 + #486). The
+    ``shared`` profile uses the common tokens cached on each chunk;
+    the ``bm25_extra`` profile applies :func:`_apply_bm25_extra_filter`
+    (strips the BM25-only extension particle set and drops short
+    BM25-only stopwords) before constructing BM25Okapi. The
+    ``tokenizer`` axis is orthogonal: ``regex`` reuses the regex-built
+    chunk token cache (or falls back to ``tokenize`` for fixtures
+    without it); ``kiwi`` re-tokenizes via kiwipiepy morpheme analysis
+    (ADR 0031, never-raise — silent fallback to regex when kiwipiepy
+    is missing). Each ``(profile, tokenizer)`` combo gets its own
+    ``BM25Okapi`` instance inside ``index["_bm25_by_profile"]`` so the
+    IDF distribution stays consistent between corpus build and query
+    side.
 
-    For back-compat the ``shared`` build is mirrored at
+    For back-compat the ``(shared, regex)`` build is mirrored at
     ``index["_bm25"]`` / ``index["_bm25_chunk_ids"]`` so any external
     code that inspected those keys keeps working.
 
@@ -631,12 +657,13 @@ def get_or_build_bm25(
     if stopword_profile not in VALID_BM25_STOPWORD_PROFILES:
         choices = ", ".join(sorted(VALID_BM25_STOPWORD_PROFILES))
         raise ValueError(f"bm25_stopword_profile must be one of: {choices}")
+    cache_key = (stopword_profile, tokenizer)
     profile_cache = index.setdefault("_bm25_by_profile", {})
-    entry = profile_cache.get(stopword_profile)
+    entry = profile_cache.get(cache_key)
     if isinstance(entry, tuple) and len(entry) == 2:
         return entry  # type: ignore[return-value]
     chunks = index.get("chunks") or []
-    corpus = [_chunk_tokens_for_bm25(c, stopword_profile) for c in chunks]
+    corpus = [_chunk_tokens_for_bm25(c, stopword_profile, tokenizer) for c in chunks]
     # rank_bm25 requires at least one non-empty document. If the corpus
     # is entirely empty (degenerate test fixture) substitute a single
     # placeholder token so BM25Okapi doesn't divide by zero.
@@ -644,11 +671,12 @@ def get_or_build_bm25(
         corpus = [["__empty__"] for _ in chunks] or [["__empty__"]]
     bm25 = _BM25Okapi(corpus)
     chunk_ids = [str(c.get("chunk_id")) for c in chunks]
-    profile_cache[stopword_profile] = (bm25, chunk_ids)
-    if stopword_profile == "shared":
+    profile_cache[cache_key] = (bm25, chunk_ids)
+    if stopword_profile == "shared" and tokenizer == "regex":
         # Back-compat: legacy callers may still inspect ``_bm25`` /
-        # ``_bm25_chunk_ids``. Mirror the shared-profile entry there
-        # without exposing the per-profile dict to them.
+        # ``_bm25_chunk_ids``. Mirror the ``(shared, regex)`` entry
+        # (the default for ADR 0001 / 0029 invariants) there without
+        # exposing the per-profile dict to them.
         index["_bm25"] = bm25
         index["_bm25_chunk_ids"] = chunk_ids
     return bm25, chunk_ids
@@ -658,21 +686,37 @@ def bm25_scores_for_index(
     index: dict[str, Any],
     query_tokens: list[str],
     stopword_profile: str = "shared",
+    tokenizer: str = "regex",
 ) -> dict[str, float]:
     """Return a ``chunk_id -> bm25_score`` map across all chunks in the
-    index for the given ``stopword_profile``. Callers filter to their
-    candidate slice. Empty query tokens (or tokens that the
-    ``bm25_extra`` filter strips to empty) yield an all-zero map.
+    index for the given ``(stopword_profile, tokenizer)``. Callers
+    filter to their candidate slice. Empty query tokens (or tokens
+    that the ``bm25_extra`` filter strips to empty) yield an all-zero
+    map. ``tokenizer="kiwi"`` re-tokenizes both corpus + query via
+    kiwipiepy morpheme analysis (ADR 0031, never-raise fallback).
     """
     chunks = index.get("chunks") or []
     if not query_tokens:
         return {str(c.get("chunk_id")): 0.0 for c in chunks}
     effective_tokens = list(query_tokens)
+    # Issue #486 / ADR 0031 — query-side kiwi tokenization. The corpus
+    # was built with kiwi morphemes; query tokens must use the same
+    # surface form for BM25 IDF to compare apples to apples. The regex-
+    # tokenized ``query_tokens`` from ``analyze_query`` are re-joined
+    # and re-tokenized through kiwi. Never-raise: ``kiwi_tokens``
+    # returns ``None`` if kiwipiepy is unavailable, in which case we
+    # keep the regex tokens (matches the corpus's silent fallback).
+    if tokenizer == "kiwi":
+        from korean_lexicon import kiwi_tokens
+
+        kiwi_query = kiwi_tokens(" ".join(effective_tokens))
+        if kiwi_query is not None:
+            effective_tokens = kiwi_query
     if stopword_profile == "bm25_extra":
         effective_tokens = _apply_bm25_extra_filter(effective_tokens)
         if not effective_tokens:
             return {str(c.get("chunk_id")): 0.0 for c in chunks}
-    bm25, chunk_ids = get_or_build_bm25(index, stopword_profile)
+    bm25, chunk_ids = get_or_build_bm25(index, stopword_profile, tokenizer)
     raw = bm25.get_scores(effective_tokens)
     return {chunk_id: float(score) for chunk_id, score in zip(chunk_ids, raw)}
 
