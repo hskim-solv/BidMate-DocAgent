@@ -353,9 +353,7 @@ def build_sections_with_native_tables(
     for idx, table in enumerate(native_tables):
         cells = table.get("cells", []) or []
         cell_lines = [
-            str(cell.get("text", "")).strip()
-            for cell in cells
-            if str(cell.get("text", "")).strip()
+            t for cell in cells if (t := str(cell.get("text", "")).strip())
         ]
         if not cell_lines:
             continue
@@ -839,31 +837,14 @@ def build_ingestion_report(
     on_duplicate_doc_id: str,
 ) -> dict[str, Any]:
     """Build the canonical ingestion_report.json payload."""
-    failure_reasons: dict[str, int] = OrderedDict()
-    failure_examples: dict[str, list[dict[str, Any]]] = OrderedDict()
+    failure_reasons, failure_examples, file_formats, duplicate_groups = (
+        _collect_record_buckets(records)
+    )
     doc_id_sources: dict[str, int] = OrderedDict()
-    file_formats: dict[str, int] = OrderedDict()
-    duplicate_groups: dict[str, list[int]] = OrderedDict()
-
     for record in records:
-        if record.reason:
-            failure_reasons[record.reason] = failure_reasons.get(record.reason, 0) + 1
-            examples = failure_examples.setdefault(record.reason, [])
-            if len(examples) < 3:
-                examples.append(
-                    {
-                        "row_number": record.row_number,
-                        "doc_id": record.doc_id,
-                        "file_name": record.file_name,
-                        "file_format": record.file_format,
-                    }
-                )
-        fmt = record.file_format or "unknown"
-        file_formats[fmt] = file_formats.get(fmt, 0) + 1
         if record.status == "indexed":
             source = "notice_id" if _looks_like_notice_id_doc(record) else "file_name"
             doc_id_sources[source] = doc_id_sources.get(source, 0) + 1
-        _accumulate_duplicate_group(duplicate_groups, record)
 
     summary = {
         "schema_version": INGESTION_REPORT_SCHEMA_VERSION,
@@ -884,6 +865,45 @@ def build_ingestion_report(
         "failure_taxonomy": FAILURE_TAXONOMY,
         "records": [_record_to_dict(record) for record in records],
     }
+
+
+def _collect_record_buckets(
+    records: list[IngestionRecord],
+) -> tuple[
+    dict[str, int],
+    dict[str, list[dict[str, Any]]],
+    dict[str, int],
+    dict[str, list[int]],
+]:
+    """Accumulate the four shared report-building buckets over ``records``.
+
+    Returns ``(failure_reasons, failure_examples, file_formats, duplicate_groups)``.
+    Both :func:`build_ingestion_report` and :func:`_build_validation_report` call
+    this helper so the identical accumulation logic lives in one place.
+    """
+    failure_reasons: dict[str, int] = OrderedDict()
+    failure_examples: dict[str, list[dict[str, Any]]] = OrderedDict()
+    file_formats: dict[str, int] = OrderedDict()
+    duplicate_groups: dict[str, list[int]] = OrderedDict()
+
+    for record in records:
+        if record.reason:
+            failure_reasons[record.reason] = failure_reasons.get(record.reason, 0) + 1
+            examples = failure_examples.setdefault(record.reason, [])
+            if len(examples) < 3:
+                examples.append(
+                    {
+                        "row_number": record.row_number,
+                        "doc_id": record.doc_id,
+                        "file_name": record.file_name,
+                        "file_format": record.file_format,
+                    }
+                )
+        fmt = record.file_format or "unknown"
+        file_formats[fmt] = file_formats.get(fmt, 0) + 1
+        _accumulate_duplicate_group(duplicate_groups, record)
+
+    return failure_reasons, failure_examples, file_formats, duplicate_groups
 
 
 def _accumulate_duplicate_group(
@@ -1040,30 +1060,13 @@ def _build_validation_report(
     schema_issues: list[ValidationIssue],
     on_duplicate_doc_id: str,
 ) -> dict[str, Any]:
-    failure_reasons: dict[str, int] = OrderedDict()
-    failure_examples: dict[str, list[dict[str, Any]]] = OrderedDict()
-    file_formats: dict[str, int] = OrderedDict()
-    duplicate_groups: dict[str, list[int]] = OrderedDict()
+    failure_reasons, failure_examples, file_formats, duplicate_groups = (
+        _collect_record_buckets(records)
+    )
     blank_field_counts: dict[str, int] = OrderedDict()
-
     for record in records:
-        if record.reason:
-            failure_reasons[record.reason] = failure_reasons.get(record.reason, 0) + 1
-            examples = failure_examples.setdefault(record.reason, [])
-            if len(examples) < 3:
-                examples.append(
-                    {
-                        "row_number": record.row_number,
-                        "doc_id": record.doc_id,
-                        "file_name": record.file_name,
-                        "file_format": record.file_format,
-                    }
-                )
-        fmt = record.file_format or "unknown"
-        file_formats[fmt] = file_formats.get(fmt, 0) + 1
         for message in record.messages:
             blank_field_counts[message] = blank_field_counts.get(message, 0) + 1
-        _accumulate_duplicate_group(duplicate_groups, record)
 
     ok_count = sum(1 for record in records if record.status == "ok")
     failed_count = sum(1 for record in records if record.status == "failed")
