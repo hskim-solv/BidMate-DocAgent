@@ -9,7 +9,7 @@
 # Docs:    docs/observability.md
 
 # LangFuse self-hosted or cloud
-langfuse>=2.0,<3.0
+langfuse>=4.6.1,<5.0
 
 # OpenTelemetry — vendor-agnostic, works with Honeycomb / Tempo / Datadog / etc.
 opentelemetry-sdk>=1.41.1,<2.0
