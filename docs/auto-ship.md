@@ -118,13 +118,20 @@ the first line.
 (rc 124): post a PR comment and abort, **leaving the PR open**. On any
 non-zero rc: comment + abort. The pipeline never merges on red.
 
-### Stage 5 — squash-merge ([`stop-ship.sh:374-408`](../scripts/claude-hooks/stop-ship.sh))
+### Stage 5 — squash-merge ([`stop-ship.sh:374-424`](../scripts/claude-hooks/stop-ship.sh))
 
 `gh pr merge <N> --squash --admin --delete-branch`. Verifies the
 post-merge state is `MERGED` (otherwise leaves the arm file in place
 for inspection). Then `git checkout main && git pull --ff-only`,
 delete the local branch, log a `S5_OK` line to
 `.claude/.ship-history.log`, remove the arm file.
+
+**Worktree auto-cleanup (issue #520):** if the pipeline ran from a
+linked worktree (i.e. `git rev-parse --git-dir` contains `/worktrees/`),
+Stage 5 calls `git worktree remove --force <path>` after disarming.
+This prevents merged worktrees from accumulating and inflating the
+per-session base-load cost. Failure is non-blocking — a warning is
+logged and the caller must clean up manually (`git worktree prune`).
 
 ## Stacked-PR discipline (tier 7)
 
