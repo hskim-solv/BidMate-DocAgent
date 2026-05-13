@@ -82,5 +82,5 @@ BidMate-DocAgent의 "agentic"은 **metadata filter를 단계적으로 완화하�
 ## 참고
 
 - 파이프라인 실행 흐름: [`rag_core.py`](../rag_core.py) `run_rag_query` → `_phase_retrieve_loop`
-- LangGraph Stage 1 case study: [`docs/langgraph-orchestration.md`](langgraph-orchestration.md) (issue #593 예정)
+- LangGraph Stage 1 case study: [`docs/agent-system-design-case-study.md`](agent-system-design-case-study.md)
 - 아키텍처 다이어그램: [`README.md § 아키텍처`](../README.md#아키텍처-요약)
