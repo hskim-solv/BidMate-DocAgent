@@ -63,13 +63,13 @@ python3 scripts/summarize_benchmark.py \
   --docs /private/tmp/private100-summary.md
 ```
 
-이 예시는 흐름 검증용 fixture이며 실측 private 성과가 아니다. 실제 private 운영 기준과 금지 항목은 [`docs/private-100-doc-experiments.md`](private-100-doc-experiments.md)에 정리했다.
+이 예시는 흐름 검증용 fixture이며 실측 private 성과가 아니다. private 운영 원칙은 [ADR 0005](./adr/0005-eval-split-public-synthetic-private-local.md)의 commit boundary 규칙을 따른다.
 
 ## Private Hard-case Slice
 
 이슈 #24의 private hard-case slice는 공개 benchmark를 대체하지 않고 현실적인 문서 조건에서 품질 하락을 분리하기 위한 보조 suite다. `eval/private_hardcase.example.yaml`은 익명 case list와 `hardcase_categories` 형식을 보여준다. 실제 실행 파일은 `eval/private_hardcase.local.yaml`처럼 `.gitignore` 대상 local YAML로 복사해 사용한다.
 
-`eval/run_eval.py`와 benchmark manifest는 `by_hardcase_category` 집계를 포함한다. 이 값만 registry/docs에 남기고 raw private prediction, trace, 원문 artifact는 `artifacts/benchmarks/` 아래 local-only 산출물로 유지한다. 운영 절차와 금지 항목은 [`docs/private-hardcase-benchmark.md`](private-hardcase-benchmark.md)에 정리했다.
+`eval/run_eval.py`와 benchmark manifest는 `by_hardcase_category` 집계를 포함한다. 이 값만 registry/docs에 남기고 raw private prediction, trace, 원문 artifact는 `artifacts/benchmarks/` 아래 local-only 산출물로 유지한다. 운영 원칙은 [ADR 0005](./adr/0005-eval-split-public-synthetic-private-local.md)의 commit boundary 규칙을 따른다.
 
 ## Stage Latency & Retry Cost
 

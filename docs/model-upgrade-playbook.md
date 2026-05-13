@@ -348,4 +348,3 @@ quality 회귀가 모델 때문인지 평가 도구 때문인지 분리 불가.
 - [`docs/observability.md`](observability.md) — LangFuse / OTLP trace 백엔드, step 2 의 trace 검증에 사용.
 - [`docs/deployment.md`](deployment.md) — 데모 배포 시점에 본 playbook 의 단계 4 가 production 으로 승격.
 - [`docs/real-data-failure-taxonomy.md`](real-data-failure-taxonomy.md) — Step 2 의 6 카테고리 회귀 카운트 정의.
-- [`docs/portfolio-case-study.md`](portfolio-case-study.md) — 본 playbook 이 답하는 portfolio 질문 (LLM Ops 운영 시그널).

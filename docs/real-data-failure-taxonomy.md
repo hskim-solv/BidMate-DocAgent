@@ -176,8 +176,7 @@ Effort: **S**(≤1일), **M**(1-3일), **L**(1-2주). Impact: **H**(카테고리
 
 - 기존 실패 카테고리: [docs/failure-cases.md](failure-cases.md)
 - parser-stage 실패 분류: `eval/run_parser_eval.py`의 `FAILURE_TAXONOMY` ([failure-cases.md](failure-cases.md)에서 참조)
-- 회고와 향후 개선: [docs/retrospective.md](retrospective.md)
 - 실데이터 ingestion 흐름: [docs/real-data-ingestion.md](real-data-ingestion.md)
-- private hard-case benchmark 운영: [docs/private-hardcase-benchmark.md](private-hardcase-benchmark.md)
+- private hard-case benchmark 운영 기준: [ADR 0005](./adr/0005-eval-split-public-synthetic-private-local.md)
 - 청크 진단: [docs/chunking-diagnostics.md](chunking-diagnostics.md)
 - 답변 정책: [docs/answer-policy.md](answer-policy.md)

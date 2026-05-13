@@ -171,17 +171,10 @@ Reading order for a new contributor:
 2. This file — how the rules connect.
 3. [`docs/adr/README.md`](./adr/README.md) and skim the 6 current
    ADRs — the load-bearing decisions.
-4. [`docs/portfolio-case-study.md`](./portfolio-case-study.md) — the
-   narrative.
-5. [`docs/real-data-failure-taxonomy.md`](./real-data-failure-taxonomy.md)
+4. [`docs/real-data-failure-taxonomy.md`](./real-data-failure-taxonomy.md)
    — what the backlog comes from.
 
-A reviewer who has 10 minutes should start at step 3. A reviewer
-evaluating senior-engineering signals (architectural reasoning,
-measurement rigor, governance, regression discipline) should read
-[`docs/senior-positioning.md`](./senior-positioning.md) first — it
-threads the artifacts above into one interview-ready narrative
-without duplicating their content.
+A reviewer who has 10 minutes should start at step 3.
 
 ## Hook setup
 

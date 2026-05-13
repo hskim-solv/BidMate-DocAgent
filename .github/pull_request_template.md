@@ -50,7 +50,7 @@ Required if any load-bearing path changed
 (rag_core.py, rag_retrieval.py, rag_verifier.py, rag_answer.py, rag_query.py, ingestion.py, visual_ingestion.py, eval/, api/, docs/adr/, scripts/build_index.py).
 Attach the `make real-eval-delta` aggregate table, or state explicitly:
 "No behavior change in retrieval / verifier path."
-See ADR 0005 and docs/private-100-doc-experiments.md.
+See ADR 0005.
 The synthetic CI delta alone missed #69's intended-abstention regression;
 the §5b CI gate (scripts/check_branch_and_issue.py --check-5b) now enforces this.
 -->

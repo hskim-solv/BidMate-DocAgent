@@ -62,7 +62,7 @@ flowchart TD
 | Latency p95 (hashing) | 6.2ms | 2.9ms | metadata-first가 dense 호출 단축 |
 | Latency p95 (ST embedding) | 367ms | 32ms | 약 10–200× cold path 비용 차이 |
 
-real-data n=21 측정 결과는 [`docs/private-100-doc-experiments.md`](https://github.com/hskim-solv/BidMate-DocAgent/blob/main/docs/private-100-doc-experiments.md)의 aggregate-only Decision Log 참고.
+real-data 측정 결과는 aggregate-only commit boundary로 관리된다 (ADR 0005 참고).
 
 ## 한계와 다음 사이클
 
