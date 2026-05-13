@@ -406,6 +406,18 @@ stage_5_merge() {
     "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$PR_NUMBER" "$ARM_BRANCH" >> "$HISTORY_LOG"
   log "s5" "Ship complete: PR #$PR_NUMBER merged to main"
   rm -f "$ARMED_FILE"
+
+  # Auto-remove this linked worktree after a successful merge so merged worktrees
+  # don't accumulate and inflate per-session base-load cost (issue #520).
+  local git_dir
+  git_dir=$(git rev-parse --git-dir 2>/dev/null)
+  if [[ "$git_dir" == *"/worktrees/"* ]]; then
+    local worktree_path
+    worktree_path=$(git rev-parse --show-toplevel 2>/dev/null)
+    log "s5" "auto-removing linked worktree: $worktree_path"
+    git worktree remove --force "$worktree_path" 2>/dev/null || \
+      log "s5" "worktree remove non-fatal: $worktree_path may need manual cleanup"
+  fi
 }
 
 # ---------------------------------------------------------------------------
