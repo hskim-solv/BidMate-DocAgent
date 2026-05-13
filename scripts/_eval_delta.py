@@ -82,6 +82,65 @@ def fmt_value(value: Any) -> str:
     return str(value)
 
 
+# Abstention 3-bin composition threshold (issue #624).
+# incorrect_answer / total_abstention_cases 비율 증가 ≥ this → regression.
+# Equivalent: correct_refusal share drop ≥ this also fires.
+ABSTENTION_OUTCOME_RATE_THRESHOLD = 0.10
+
+
+def detect_abstention_outcome_regressions(
+    base: Any,
+    head: Any,
+) -> list[dict[str, Any]]:
+    """Detect silent drift in abstention 3-bin composition (CR/IA/BP).
+
+    Top-level abstention rate can stay flat while incorrect_answer grows
+    (correct_refusal shrinks). This gate catches that composition change.
+
+    Regression fires when ia_rate = IA / (CR+IA+BP) increases by ≥
+    ABSTENTION_OUTCOME_RATE_THRESHOLD, or cr_rate decreases by the same.
+    Returns [] if abstention_outcomes is absent in either summary.
+    """
+    base_outcomes = (base or {}).get("abstention_outcomes") if isinstance(base, dict) else None
+    head_outcomes = (head or {}).get("abstention_outcomes") if isinstance(head, dict) else None
+    if not isinstance(base_outcomes, dict) or not isinstance(head_outcomes, dict):
+        return []
+
+    b_cr = int(base_outcomes.get("correct_refusal") or 0)
+    b_ia = int(base_outcomes.get("incorrect_answer") or 0)
+    b_bp = int(base_outcomes.get("boundary_partial") or 0)
+    b_total = b_cr + b_ia + b_bp
+
+    h_cr = int(head_outcomes.get("correct_refusal") or 0)
+    h_ia = int(head_outcomes.get("incorrect_answer") or 0)
+    h_bp = int(head_outcomes.get("boundary_partial") or 0)
+    h_total = h_cr + h_ia + h_bp
+
+    if b_total == 0 or h_total == 0:
+        return []
+
+    out: list[dict[str, Any]] = []
+    checks = [
+        ("abstention: incorrect_answer_rate", b_ia / b_total, h_ia / h_total, False),
+        ("abstention: correct_refusal_rate", b_cr / b_total, h_cr / h_total, True),
+    ]
+    for label, b_val, h_val, higher in checks:
+        delta = h_val - b_val
+        regressed = (delta < -ABSTENTION_OUTCOME_RATE_THRESHOLD) if higher else (delta > ABSTENTION_OUTCOME_RATE_THRESHOLD)
+        if regressed:
+            out.append(
+                {
+                    "metric": label,
+                    "path": label.split(": ")[1],
+                    "base": round(b_val, 4),
+                    "head": round(h_val, 4),
+                    "delta": round(delta, 4),
+                    "threshold": ABSTENTION_OUTCOME_RATE_THRESHOLD,
+                }
+            )
+    return out
+
+
 _ABS_SILENCE_FLOOR = 5e-4
 
 

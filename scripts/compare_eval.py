@@ -29,6 +29,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _eval_delta import (  # noqa: E402
     METRICS,
+    detect_abstention_outcome_regressions,
     detect_regressions,
     fmt_delta,
     fmt_value,
@@ -128,6 +129,7 @@ def main() -> int:
     regressions: list[dict] = []
     if args.regression_threshold > 0:
         regressions = detect_regressions(base, head, threshold=args.regression_threshold)
+        regressions += detect_abstention_outcome_regressions(base, head)
     lines.extend(_render_gate_block(regressions, allow=args.allow_regression))
 
     print("\n".join(lines))

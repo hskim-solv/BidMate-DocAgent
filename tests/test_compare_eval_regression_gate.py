@@ -28,6 +28,8 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
 from _eval_delta import (  # noqa: E402
+    ABSTENTION_OUTCOME_RATE_THRESHOLD,
+    detect_abstention_outcome_regressions,
     detect_regressions,
     fmt_delta,
     min_num_predictions,
@@ -151,6 +153,62 @@ class SilenceBandTest(unittest.TestCase):
             21,
         )
         self.assertIsNone(min_num_predictions({}, None))
+
+
+class AbstentionOutcomeRegressionTest(unittest.TestCase):
+    """Issue #624 — abstention 3-bin composition gate."""
+
+    def _outcomes(self, cr: int, ia: int, bp: int) -> dict:
+        base = _base_summary()
+        base["abstention_outcomes"] = {
+            "correct_refusal": cr,
+            "incorrect_answer": ia,
+            "boundary_partial": bp,
+        }
+        return base
+
+    def test_identical_outcomes_no_regression(self) -> None:
+        s = self._outcomes(6, 16, 0)
+        self.assertEqual(detect_abstention_outcome_regressions(s, s), [])
+
+    def test_ia_increase_beyond_threshold_is_regression(self) -> None:
+        # base: IA=16/22 ≈ 0.727; head: IA=20/22 ≈ 0.909 → Δ≈+0.182 > 0.10
+        base = self._outcomes(6, 16, 0)
+        head = self._outcomes(2, 20, 0)
+        regressions = detect_abstention_outcome_regressions(base, head)
+        labels = [r["metric"] for r in regressions]
+        self.assertIn("abstention: incorrect_answer_rate", labels)
+
+    def test_cr_decrease_beyond_threshold_is_regression(self) -> None:
+        # base: CR=10/20 = 0.50; head: CR=1/20 = 0.05 → Δ=-0.45 < -0.10
+        base = self._outcomes(10, 10, 0)
+        head = self._outcomes(1, 19, 0)
+        regressions = detect_abstention_outcome_regressions(base, head)
+        labels = [r["metric"] for r in regressions]
+        self.assertIn("abstention: correct_refusal_rate", labels)
+
+    def test_abstention_rate_flat_but_ia_grows_is_regression(self) -> None:
+        # Overall abstention stays same; IA grows from 50% to 90% of abstentions.
+        base = self._outcomes(cr=5, ia=5, bp=0)   # ia_rate = 0.50
+        head = self._outcomes(cr=1, ia=9, bp=0)   # ia_rate = 0.90 → Δ=+0.40
+        regressions = detect_abstention_outcome_regressions(base, head)
+        self.assertTrue(len(regressions) > 0)
+
+    def test_small_ia_shift_within_threshold_no_regression(self) -> None:
+        # Δ ia_rate = 0.05 < ABSTENTION_OUTCOME_RATE_THRESHOLD = 0.10 → pass
+        base = self._outcomes(cr=10, ia=10, bp=0)   # ia_rate = 0.50
+        head = self._outcomes(cr=9, ia=11, bp=0)    # ia_rate = 0.55 → Δ=+0.05
+        self.assertEqual(detect_abstention_outcome_regressions(base, head), [])
+
+    def test_missing_abstention_outcomes_skips_silently(self) -> None:
+        base = _base_summary()
+        head = _base_summary()
+        self.assertEqual(detect_abstention_outcome_regressions(base, head), [])
+
+    def test_zero_total_skips_silently(self) -> None:
+        base = self._outcomes(0, 0, 0)
+        head = self._outcomes(0, 0, 0)
+        self.assertEqual(detect_abstention_outcome_regressions(base, head), [])
 
 
 class CompareEvalCliGateTest(unittest.TestCase):
