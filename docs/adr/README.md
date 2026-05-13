@@ -73,28 +73,35 @@ project record.
 | [0008](./0008-evidence-boundary.md) | accepted | Evidence-boundary defense against prompt injection |
 | [0009](./0009-external-baseline-comparison.md) | accepted | External baseline comparison via a separate script (extends 0001); `scripts/compare_external_baselines.py` + `reports/external_baselines.json` implemented; stub run committed; real LangChain run deferred to issue #449 |
 | [0010](./0010-hybrid-bm25-dense-retrieval-rrf.md) | accepted | Hybrid BM25 + dense retrieval with RRF fusion |
-| [0011](./0011-llm-synthesis-as-additive-ablation.md) | proposed | LLM answer synthesis as additive ablation; **defines additive opt-in pattern** (0015/0017/0027 consolidated here) |
 | [0012](./0012-llm-judge-on-public-synthetic.md) | superseded by 0005 | LLM-judge on the public synthetic eval, stub-default (refines 0006, reuses 0011 backend pattern) |
 | [0013](./0013-observability-as-additive-pluggable-surface.md) | accepted | Observability as an additive, pluggable, fail-closed surface |
 | [0014](./0014-ragas-judge-additive-synthetic.md) | superseded by 0005 | RAGAS-style LLM judge as additive enrichment on synthetic surface (extends 0012) |
 | [0015](./0015-cost-telemetry-additive.md) | superseded by 0011 | Cost telemetry as additive observability (extends 0011, 0013) |
-| [0016](./0016-judge-human-agreement.md) | proposed | Judge↔human agreement as calibration gate on real-data eval (refines 0006) |
 | [0017](./0017-llm-metadata-extraction-additive.md) | superseded by 0011 | LLM metadata extraction as additive backend (extends 0011) |
 | [0018](./0018-korean-public-rag-bench.md) | accepted | Korean public RAG bench as supplementary out-of-domain surface (extends 0005) |
 | [0019](./0019-embedding-default-stays-minilm.md) | superseded by 0001 | Embedding default stays MiniLM-L12-v2 with explicit re-open conditions (extends 0002) |
 | [0021](./0021-bge-m3-completes-phase-1-3.md) | accepted | BGE-M3 closes ADR 0019 Phase 1.3 condition 2; default stays MiniLM (supplements 0019) |
 | [0022](./0022-langgraph-orchestration-stage-1.md) | accepted | LangGraph orchestrator path for agentic_full presets — stages 1 (passthrough) + 2 (multi-node analyze / retrieve_loop / build_answer; `_phase_*` helpers shared with direct path; opt-in via BIDMATE_ORCHESTRATOR=langgraph, preserves ADR 0001) |
-| [0023](./0023-hyde-query-expansion-ablation.md) | proposed | HyDE query expansion as additive ablation (extends 0001, preserves 0003, reuses 0011 / 0020 backend pattern) |
 | [0024](./0024-agentic-full-llm-as-api-default.md) | accepted | API surface default preset = `agentic_full_llm`; backend default stays `stub` (complements 0011; CLI default stays `naive_baseline` per 0001) |
 | [0025](./0025-cost-frontier-defer-until-real-baselines.md) | accepted | Cost-accuracy frontier deferred until external baseline real runs land (defers #177; backs README §Limitations "비용 영점"; follows ADR 0019 → 0021 measurement-gated pattern) |
 | [0026](./0026-cross-encoder-reranker-deferral.md) | superseded by 0025 | Cross-encoder reranker default stays stub-identity; real-backend measurement deferred |
 | [0027](./0027-lora-finetuned-embedding-additive.md) | superseded by 0011 | LoRA-fine-tuned embedding adapter as additive ablation, env-var gated (`BIDMATE_EMBEDDING_LORA_ADAPTER`) |
 | [0028](./0028-security-screen-additive.md) | accepted | Prompt-injection screen (query-side, diagnostic-only) + PII redaction (ingestion-time, opt-in via `BIDMATE_INGEST_REDACT_PII`) as additive security layer (extends 0008 to query side; preserves 0001 / 0003 / 0005) |
-| [0029](./0029-real-data-case-proposer-additive.md) | proposed | Real-data case proposer as additive semi-supervised eval-set growth (extends 0005 / 0006; reuses 0011 / 0012 backend pattern; preserves 0001 / 0003 / 0004 / 0008; calibration mirrors 0016) |
 | [0030](./0030-leaderboard-headline-includes-agentic-full.md) | accepted | Leaderboard headline expands to render `agentic_full` alongside `naive_baseline` as parallel time series; ADR 0001 baseline preserved, `ablation_full` aggregate key added to history snapshots (extends ADR 0001 / ADR 0024 visibility surface) |
 | [0031](./0031-bm25-korean-morphology-additive.md) | superseded by 0010 | BM25 Korean morphology tokenizer (`bm25_tokenizer: "regex" \| "kiwi"`) as additive ablation |
 | [0032](./0032-eval-saturation-routed-subset.md) | accepted | Eval-set saturation falsifier: 4-embedding × routed_subset (n=11, metadata_first=false) measurement complete; spread **0.0pp** < +3pp threshold → saturation_cross_validated. MiniLM default lock empirically justified on both `full` + `routed` surfaces. (Closes ADR 0019 deferral saturation axis.) |
-| [0033](./0033-multihop-cross-section-eval-slice.md) | proposed | Multi-hop cross-section eval slice as orthogonal saturation falsifier (complexity axis; extends 0032; 50-item synthesized dataset, LLM-judge quality filter; spread ≥ +5pp on multi-hop slice supplements ADR 0019 re-open conditions; preserves 0001 / 0003 / 0005) |
+
+## Roadmap (proposed, not yet committed)
+
+이 ADR들은 *제안 단계*입니다 — 측정 결과 / 외부 리뷰 / 사용자 합의로 accepted로 promote되거나, 측정 결과가 약하면 deferred / superseded로 정리됩니다. 결정 lifecycle은 위 "Status lifecycle" 섹션 참고.
+
+| # | Title | Promote 조건 |
+|---|---|---|
+| [0011](./0011-llm-synthesis-as-additive-ablation.md) | LLM answer synthesis as additive ablation | `full_llm` real backend (anthropic/openai_compatible)이 extractive `full` 대비 ≥+3pp accuracy lift + non-overlapping CI on real-data eval (n≥32) |
+| [0016](./0016-judge-human-agreement.md) | Judge↔human agreement as calibration gate | LLM judge vs human spot-labels: Cohen's κ ≥ 0.6 ("substantial agreement", Landis & Koch 1977) + Spearman ρ ≥ 0.7 (n≥20 real-data items) |
+| [0023](./0023-hyde-query-expansion-ablation.md) | HyDE query expansion as additive ablation | `full_hyde` real backend가 `full` 대비 ≥+3pp lift + non-overlapping CI on public synthetic n≥100 |
+| [0029](./0029-real-data-case-proposer-additive.md) | Real-data case proposer as additive eval-set growth | Proposer accept rate ≥ 80% (human review) + eval set grows by ≥20 accepted cases without contaminating ADR 0005 public/private split |
+| [0033](./0033-multihop-cross-section-eval-slice.md) | Multi-hop cross-section eval slice | Multi-hop slice spread ≥+5pp vs single-hop baseline (n=50, LLM-judge quality filter) + non-overlapping CI (supplements ADR 0019 re-open conditions) |
 
 ## Deferred decisions (measurement-gated re-open)
 
