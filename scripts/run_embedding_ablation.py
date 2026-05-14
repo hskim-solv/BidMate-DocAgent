@@ -153,7 +153,9 @@ def print_table(per_model: dict[str, dict[str, dict]]) -> None:
         return
 
     baseline_id = models[0]
-    print(f"\nEMBEDDING ABLATION (n=42, baseline = {baseline_id})\n")
+    # n= is read from the eval config rather than hardcoded; keep header generic
+    # so it stays accurate as eval/config.yaml grows (was n=42, now n=100+).
+    print(f"\nEMBEDDING ABLATION (baseline = {baseline_id})\n")
     header = f"{'metric':<22}"
     for m in models:
         header += f" {m.split('/')[-1][:22]:>22}"

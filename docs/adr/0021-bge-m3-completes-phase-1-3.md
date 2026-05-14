@@ -135,3 +135,4 @@ the same; no new tooling needed.
 - [ADR 0019](./0019-embedding-default-stays-minilm.md) — the deferral
   this ADR closes.
 - [ADR 0032](./0032-eval-saturation-routed-subset.md) — Phase 1.4 routed-subset measurement. "0pp on full"이 saturation artifact가 아님을 cross-validate.
+- [ADR 0037](./0037-kure-v1-closes-phase-1-5.md) — Phase 1.5 KURE-v1 n=100 formal measurement. issue #447 close.

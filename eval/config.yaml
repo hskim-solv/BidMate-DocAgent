@@ -183,6 +183,7 @@ ablation_runs:
     # green. The row runs as soon as ``pip install -r requirements-m3.txt``
     # is applied.
     requires_module: FlagEmbedding
+    requires_torch_min_version: "2.6"
   # Issue #150 — BM25 채널 전용 stopword/조사 셋 (까지/부터/마다/조차/…)
   # 을 적용한 hybrid 비교 셀. dense + Jaccard lexical 경로는 건드리지
   # 않고 BM25 corpus + query 토큰만 필터함. `hybrid_bm25` (shared

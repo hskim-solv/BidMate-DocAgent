@@ -748,9 +748,19 @@ def evaluate_run(
     return case_results
 
 
+def _torch_version_tuple() -> tuple[int, ...]:
+    try:
+        import torch
+
+        return tuple(int(x) for x in torch.__version__.split(".")[:2] if x.isdigit())
+    except Exception:
+        return (0,)
+
+
 def ablation_runs(config: dict[str, Any]) -> list[dict[str, Any]]:
     """Build the per-row run-config list, filtering out rows whose
-    ``requires_module`` declaration names an unimportable module.
+    ``requires_module`` declaration names an unimportable module, or whose
+    ``requires_torch_min_version`` exceeds the installed torch.
 
     Issue #151 — the ``m3_full`` row needs ``FlagEmbedding`` (~2GB
     weights, opt-in via ``pip install -r requirements-m3.txt``). The
@@ -759,11 +769,20 @@ def ablation_runs(config: dict[str, Any]) -> list[dict[str, Any]]:
     smoke target. ``requires_module`` lets the row declare its own
     opt-in gate; missing modules trigger a clear stderr log and the
     row is silently dropped from the ablation set.
+
+    ``requires_torch_min_version`` gates rows that need a specific torch
+    version (e.g. ``m3_full`` via FlagEmbedding needs torch >= 2.6 due
+    to CVE-2025-32434 — ADR 0019 condition 1). When the installed torch
+    is older the row is silently dropped with a stderr log.
     """
     runs = config.get("ablation_runs") or DEFAULT_ABLATION_RUNS
     kept: list[dict[str, Any]] = []
+    installed_torch = _torch_version_tuple()
     for run in runs:
-        required = run.get("requires_module") if isinstance(run, dict) else None
+        if not isinstance(run, dict):
+            kept.append(run)
+            continue
+        required = run.get("requires_module")
         if required and importlib.util.find_spec(str(required)) is None:
             print(
                 f"[skip] ablation row '{run.get('name')}': "
@@ -771,6 +790,19 @@ def ablation_runs(config: dict[str, Any]) -> list[dict[str, Any]]:
                 file=sys.stderr,
             )
             continue
+        min_torch = run.get("requires_torch_min_version")
+        if min_torch:
+            min_tuple = tuple(
+                int(x) for x in str(min_torch).split(".")[:2] if x.isdigit()
+            )
+            if installed_torch < min_tuple:
+                print(
+                    f"[skip] ablation row '{run.get('name')}': "
+                    f"requires torch >= {min_torch} (installed: "
+                    f"{'.'.join(str(x) for x in installed_torch)})",
+                    file=sys.stderr,
+                )
+                continue
         kept.append(run)
     return [normalize_run_config(run) for run in kept]
 

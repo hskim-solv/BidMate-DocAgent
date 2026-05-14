@@ -272,9 +272,53 @@ Runner: `scripts/run_routed_measurement.py --backend sentence-transformers`. 결
 3. **ADR 0019 lock은 measurement-precluded가 아닌 empirically justified**: 두 surface(full + routed) 모두에서 0pp. Re-open condition 3 (≥ +5pp non-overlapping CIs)은 evidence-backed stable.
 4. **ADR 0032 accepted로 closes**: 측정 surface 자체가 목표였으며, spread < +3pp 결과로 ADR 0032 자동 close. ADR 0019 default lock 유지.
 
+## Fifth comparison — Phase 1.5 (issue #447, 2026-05-14): KURE-v1 Korean-specialized
+
+[ADR 0037](adr/0037-kure-v1-closes-phase-1-5.md)이 제기한 질문: issue #447이 re-open 조건으로 명시한 `nlpai-lab/KURE-v1`을 n=100 full corpus 대상으로 실행하면 condition 3 (≥+5pp `full` lift)이 trigger되는가?
+
+> **Corpus note**: `eval/config.yaml`이 issue #570으로 n=42 → n=100으로 확장됐다. Phase 1.1–1.3의 ADR 0021 수치(accuracy 0.906 등)는 n=42 기준이므로 Phase 1.5 수치와 직접 비교 불가. 본 Phase는 같은 n=100 corpus 위에서 KURE-v1 vs MiniLM을 비교한다.
+
+### Reproduction
+
+```bash
+/opt/homebrew/opt/python@3.11/bin/python3.11 scripts/run_embedding_ablation.py \
+    --models sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 \
+             nlpai-lab/KURE-v1
+```
+
+환경: torch 2.6.0, sentence_transformers 2.7.0, torchvision 0.21.0.
+
+### Headline numbers — Phase 1.5 (n=100, KURE-v1 vs MiniLM)
+
+**`full` agentic pipeline** (the binding gate for ADR 0019 condition 3):
+
+| metric | MiniLM | KURE-v1 | Δ (pp) |
+|---|---:|---:|---:|
+| accuracy | 0.731 | 0.718 | **−1.3** |
+| groundedness | 0.750 | 0.750 | **+0.0** |
+| citation_precision | 0.715 | 0.700 | **−1.5** |
+| abstention | 0.818 | 0.818 | **+0.0** |
+| format compliance | 0.620 | 0.620 | **+0.0** |
+
+**`naive_baseline`** (ADR 0001 preserved ablation — does NOT count):
+
+| metric | MiniLM | KURE-v1 | Δ (pp) |
+|---|---:|---:|---:|
+| accuracy | 0.590 | 0.782 | **+19.2** |
+| groundedness | 0.550 | 0.690 | **+14.0** |
+| citation_precision | 0.440 | 0.530 | +9.0 |
+| format compliance | 0.520 | 0.640 | +12.0 |
+
+### Reading the Phase 1.5 result
+
+1. **Condition 3 NOT triggered**: `full` pipeline에서 KURE-v1은 MiniLM 대비 accuracy −1.3pp, groundedness +0.0pp. +5pp 임계값에 도달하지 못할 뿐 아니라 순 음수(-). 0pp-on-full 패턴이 여섯 번째 임베딩 피벗에서도 성립.
+2. **Korean-specialization은 naive_baseline에서만 유효**: +19.2pp accuracy lift는 인상적이지만 metadata-first routing (ADR 0002)이 agentic pipeline에서 dense retrieval을 우회하므로 `full`에 반영되지 않는다.
+3. **Issue #447 closed**: 세 가지 re-open 조건 모두 처리됨 — 조건 1 (스크립트 추가, docstring 이미 존재), 조건 2 (n=100 실행 완료), 조건 3 (NOT triggered). 결과는 MiniLM 기본값 유지를 지지한다.
+4. **ADR 0019 default lock은 이제 6-pivot empirical basis**: 2019–2024, multilingual / SoTA / Korean-specialized / multi-functional / Korean-specialized-v2 범주를 모두 커버했으며, 어느 것도 `full` 파이프라인 메트릭을 움직이지 못했다.
+
 ## See also
 
-- [`scripts/run_embedding_ablation.py`](../scripts/run_embedding_ablation.py) — Phase 1.1~1.3 runner
+- [`scripts/run_embedding_ablation.py`](../scripts/run_embedding_ablation.py) — Phase 1.1~1.3, 1.5 runner
 - [`scripts/run_routed_measurement.py`](../scripts/run_routed_measurement.py) — Phase 1.4 routed measurement runner
 - [`reports/embedding_routed.json`](../reports/embedding_routed.json) — Phase 1.4 machine-readable results
 - [`docs/ablation-results.md`](ablation-results.md) — broader ablation context
@@ -283,3 +327,4 @@ Runner: `scripts/run_routed_measurement.py --backend sentence-transformers`. 결
 - [ADR 0019](adr/0019-embedding-default-stays-minilm.md) — the deferral decision
 - [ADR 0021](adr/0021-bge-m3-completes-phase-1-3.md) — the Phase 1.3 closure
 - [ADR 0032](adr/0032-eval-saturation-routed-subset.md) — the Phase 1.4 saturation falsifier (accepted)
+- [ADR 0037](adr/0037-kure-v1-closes-phase-1-5.md) — the Phase 1.5 KURE-v1 closure (accepted)
