@@ -472,6 +472,10 @@ def build_chunk_records(
             }
         )
 
+    total_docs = strategy_counts["section"] + strategy_counts["fixed"]
+    section_detection_rate: float | None = (
+        strategy_counts["section"] / total_docs if total_docs else None
+    )
     diagnostics = {
         "requested_strategy": chunking_strategy,
         "max_chars": max_chars,
@@ -480,6 +484,7 @@ def build_chunk_records(
         "actual_strategy_counts": {
             key: value for key, value in strategy_counts.items() if value
         },
+        "section_detection_rate": section_detection_rate,
         "documents": document_diagnostics,
     }
     return chunks, parent_sections, diagnostics

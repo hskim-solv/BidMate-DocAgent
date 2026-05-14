@@ -226,6 +226,9 @@ def main() -> int:
         f"{num_docs} docs, {num_chunks} chunks, "
         f"embedding={embedding_backend})"
     )
+    section_rate = payload["build"]["chunking"].get("section_detection_rate")
+    if section_rate is not None:
+        print(f"[INFO] Chunking: section-detection rate = {section_rate:.1%} ({num_docs} docs, auto strategy)")
     if ingestion_report is not None:
         print(f"[OK] Ingestion report written: {report_path}")
 
