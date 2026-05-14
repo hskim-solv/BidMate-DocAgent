@@ -1,6 +1,6 @@
 # 0033: Multi-hop cross-section eval slice as orthogonal saturation falsifier
 
-- **Status**: proposed
+- **Status**: accepted
 - **Date**: 2026-05-13
 - **Deciders**: hskim
 - **Related**: [ADR 0001](./0001-preserve-naive-baseline.md) (naive_baseline invariant), [ADR 0002](./0002-metadata-first-retrieval.md) (metadata-first context), [ADR 0005](./0005-eval-split-public-synthetic-private-local.md) (public/private eval split), [ADR 0010](./0010-hybrid-bm25-dense-retrieval-rrf.md) (hybrid BM25 retrieval), [ADR 0019](./0019-embedding-default-stays-minilm.md) (embedding default lock), [ADR 0021](./0021-bge-m3-completes-phase-1-3.md) (Phase 1.3 closure), [ADR 0032](./0032-eval-saturation-routed-subset.md) (saturation falsifier — routed axis), issue #533
@@ -223,7 +223,32 @@ eval-design artifact.
 - [`eval/synthetic_judge.py`](../../eval/synthetic_judge.py) /
   [`eval/llm_judge.py`](../../eval/llm_judge.py) — the LLM-judge
   infrastructure the quality-filter will reuse.
-- `eval/dev_queries_multihop_v1.jsonl` — follow-up PR artifact.
-- `scripts/synthesize_multihop_queries.py` — follow-up PR script.
-- `docs/embedding-ablation.md` — Phase 1.4 section where results will
-  be published.
+- `eval/dev_queries_multihop_v1.jsonl` — dataset artifact (Phase 1.5: n=15 stubs).
+- `scripts/synthesize_multihop_queries.py` — follow-up PR script for real LLM synthesis.
+- `docs/embedding-ablation.md` — Phase 1.4 section; Phase 1.5 results to be appended
+  after real synthesis replaces stubs.
+
+## Phase 1.5 update (2026-05-14, closes #667)
+
+**Status change**: proposed → accepted (infrastructure complete, stubs in place).
+
+`eval/dev_queries_multihop_v1.jsonl` expanded from n=3 stub to **n=15** (5 per
+`multihop_type`):
+
+| `multihop_type` | Count | Example query |
+|---|---|---|
+| `cross_section_within_doc` | 5 | 입찰 자격 조건과 보증금 면제 조건의 교차 요건 |
+| `cross_document_comparison` | 5 | D01/D02 입찰 보증금 납부 조건 비교 |
+| `multi_step_conditional` | 5 | 낙찰 거부 시 보증금 처리 절차 |
+
+All 15 entries carry `multihop_valid: true` and non-empty `must_include` token lists.
+`gold_answer` remains stub (`[STUB — requires real LLM synthesis]`) until
+`make synthesize-multihop` is run against real RFP data.
+
+**Regression guard**: `tests/test_multihop_chunking_regression.py` added with 3 cases:
+- Dataset size gate (min 15 rows)
+- Schema validity (required fields on every row)
+- Multi-hop structure test (must_include tokens span ≥ 2 synthetic sections)
+
+**ADR 0001 invariant preserved**: `eval/config.yaml` and `eval/dev_queries_v1.jsonl`
+(the primary golden surface) are unchanged.
