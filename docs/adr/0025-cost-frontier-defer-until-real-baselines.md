@@ -1,6 +1,6 @@
 # 0025: Cost-accuracy frontier deferred until external baseline real runs land
 
-- **Status**: accepted
+- **Status**: superseded by [ADR 0038](./0038-cost-model-and-frontier-interpretation.md)
 - **Date**: 2026-05-12
 - **Deciders**: hskim
 - **Related**: [ADR 0001](./0001-preserve-naive-baseline.md) (baseline preserved), [ADR 0009](./0009-external-baseline-comparison.md) (external baseline infra), [ADR 0011](./0011-llm-synthesis-as-additive-ablation.md) (LLM synthesis backend), [ADR 0015](./0015-cost-telemetry-additive.md) (cost telemetry), [`scripts/plot_pareto.py`](../../scripts/plot_pareto.py) (latency-quality frontier from #124), issues #157 (external baseline real backends — closed infra-only) and #177 (this decision)
