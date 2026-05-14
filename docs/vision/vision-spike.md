@@ -1,6 +1,6 @@
 # Layout-aware visual ingestion spike (Donut)
 
-Tracks issue #168. Honest 1-page comparison of the OCR baseline (`pymupdf` text layer + `pytesseract` fallback) against a layout-aware vision encoder-decoder (`Donut`). Closes the "no layout-aware vision foundation model evaluated" gap called out in [`visual_ingestion.py`](../visual_ingestion.py)'s module docstring (lines 4-10).
+Tracks issue #168. Honest 1-page comparison of the OCR baseline (`pymupdf` text layer + `pytesseract` fallback) against a layout-aware vision encoder-decoder (`Donut`). Closes the "no layout-aware vision foundation model evaluated" gap called out in [`visual_ingestion.py`](../../visual_ingestion.py)'s module docstring (lines 4-10).
 
 ## Scope
 
@@ -55,10 +55,10 @@ See the vulnerability report here https://nvd.nist.gov/vuln/detail/CVE-2025-3243
 
 **Keep the OCR baseline as the default.** Donut adoption is gated on the following criteria, none yet met:
 
-1. Measured ≥X percentage-point lift on the **private 100-doc RFP corpus** (not synthetic), per [ADR 0005](adr/0005-eval-split-public-synthetic-private-local.md)'s real-data discipline.
+1. Measured ≥X percentage-point lift on the **private 100-doc RFP corpus** (not synthetic), per [ADR 0005](../adr/0005-eval-split-public-synthetic-private-local.md)'s real-data discipline.
 2. GPU available in the production / CI path (CPU latency is prohibitive).
 3. Stable Korean-finetuned model checkpoint with `.safetensors` weights (avoids the torch≥2.6 friction).
-4. ADR proposed and accepted to displace the extractive OCR path per [ADR 0001](adr/0001-preserve-naive-baseline.md)'s preserve-baseline invariant.
+4. ADR proposed and accepted to displace the extractive OCR path per [ADR 0001](../adr/0001-preserve-naive-baseline.md)'s preserve-baseline invariant.
 
 For now, Donut is a **diagnostic option** the reviewer can switch on for exploration:
 
@@ -69,6 +69,6 @@ parse_visual_document(pdf, ocr_provider=get_ocr_provider("donut"))
 
 ## Reproduce / extend
 
-Both pipelines are pluggable via the `OcrProvider` interface ([`visual_ingestion.py:44`](../visual_ingestion.py)). Adding another vision model (e.g. `pix2struct`, ColPali, LayoutLMv3) is a new provider function returning either `str` or `list[dict[text, bbox, confidence]]` — the existing `normalize_ocr_result` ([`visual_ingestion.py:577-581`](../visual_ingestion.py)) handles both shapes.
+Both pipelines are pluggable via the `OcrProvider` interface ([`visual_ingestion.py:44`](../../visual_ingestion.py)). Adding another vision model (e.g. `pix2struct`, ColPali, LayoutLMv3) is a new provider function returning either `str` or `list[dict[text, bbox, confidence]]` — the existing `normalize_ocr_result` ([`visual_ingestion.py:577-581`](../../visual_ingestion.py)) handles both shapes.
 
-The regression test [`tests/test_visual_donut_regression.py`](../tests/test_visual_donut_regression.py) guards the wiring without loading any model; CI runs it as part of `bash scripts/test.sh`.
+The regression test [`tests/test_visual_donut_regression.py`](../../tests/test_visual_donut_regression.py) guards the wiring without loading any model; CI runs it as part of `bash scripts/test.sh`.
