@@ -176,7 +176,12 @@ external-baselines-ollama:
 	fi
 	BIDMATE_EXTERNAL_BACKEND=ollama $(PYTHON) scripts/compare_external_baselines.py
 
-smoke:
+# `install-hooks` is a prerequisite so the first `make smoke` on a fresh
+# worktree activates `.githooks/` (closes #719). install-hooks is
+# idempotent (`git config` only, ~5ms), so transitively re-running adds
+# negligible cost. Restores axis #3 (자동화 ROI) measurement by
+# guaranteeing `.hook-fires.log` is writable from the first dev action.
+smoke: install-hooks
 	bash scripts/smoke.sh
 
 # Cross-machine reproducibility hash. Runs the smoke eval and prints a
