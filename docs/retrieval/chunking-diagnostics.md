@@ -54,7 +54,7 @@ python3 scripts/build_index.py \
 
 공개 synthetic 문서는 모두 1 chunk 안에 들어갈 만큼 짧아서 chunk-boundary 실패 모드(real-data taxonomy C3)를 자연스럽게 노출시키지 못한다. 이 격차를 메우기 위해 의도적으로 multi-chunk로 분할되는 probe fixture와 probe query를 별도로 추가했다.
 
-**Probe fixture**: [`data/raw/rfp_agency_d_spectrometer_probe.json`](../data/raw/rfp_agency_d_spectrometer_probe.json)
+**Probe fixture**: [`data/raw/rfp_agency_d_spectrometer_probe.json`](../../data/raw/rfp_agency_d_spectrometer_probe.json)
 - 기관 D · 분광기 시스템 운영 (현존하지 않는 가상 기관 — 다른 eval case와 metadata 충돌 없음)
 - 두 개 본문 section: 사업 개요 (~1100자) + 운영 자동화 세부 요구사항 (~750자)
 - 기본 `max_chars=520` + `auto`/`section` 전략에서 각 section이 2 chunk로 분할되어 총 4 chunk 생성
@@ -79,7 +79,7 @@ python3 scripts/build_index.py \
 
 ## Strategy ablation (issue #62)
 
-issue #73의 probe set이 갖춰진 뒤, chunking 전략 차이를 정량적으로 비교 가능해졌다. [`scripts/run_chunking_ablation.py`](../scripts/run_chunking_ablation.py)는 동일 코퍼스(`data/raw/`)를 fixed / section / auto 세 전략으로 인덱싱한 뒤 chunk_boundary probe queries에 대한 top-evidence score를 표로 출력한다.
+issue #73의 probe set이 갖춰진 뒤, chunking 전략 차이를 정량적으로 비교 가능해졌다. [`scripts/run_chunking_ablation.py`](../../scripts/run_chunking_ablation.py)는 동일 코퍼스(`data/raw/`)를 fixed / section / auto 세 전략으로 인덱싱한 뒤 chunk_boundary probe queries에 대한 top-evidence score를 표로 출력한다.
 
 ```bash
 python3 scripts/run_chunking_ablation.py
@@ -99,7 +99,7 @@ python3 scripts/run_chunking_ablation.py
 - **section / auto가 평균적으로 약 +0.012 score gain**. 3개 probe 중 2개에서 fixed보다 높은 top-score를 달성한다 (`external_audit`, `calibration_overlap`). 모든 probe가 정답 doc + 정답 term을 포함하는 evidence를 returns.
 - **section은 자연 경계를 보존**한다. fixed는 한 doc을 단일 parent로 묶고 character cap에서 자른다. section은 heading 단위로 분리하므로 같은 사업의 여러 측면(개요 vs 자동화)이 다른 chunk로 분리된다.
 - **report_storage probe는 fixed가 약간 더 좋다** (0.7342 vs 0.7084). 정답이 마지막 section의 후반부에 있을 때, fixed는 더 큰 chunk에 답이 포함되어 dense 매칭에 유리. section은 같은 답을 더 작은 chunk로 좁혀 노이즈는 줄지만 score는 약간 낮아진다.
-- **현재 CLI 기본값은 `fixed`** ([ADR 0001](./adr/0001-preserve-naive-baseline.md) — naive_baseline 재현성). 위 결과는 multi-section RFP 코퍼스에서는 `--chunking_strategy auto`를 명시적으로 사용할 때 chunk_boundary slice 평균이 미약하게 개선됨을 시사한다. 명시적 옵션으로 두고 default는 변경하지 않는다 (베이스라인 보호).
+- **현재 CLI 기본값은 `fixed`** ([ADR 0001](../adr/0001-preserve-naive-baseline.md) — naive_baseline 재현성). 위 결과는 multi-section RFP 코퍼스에서는 `--chunking_strategy auto`를 명시적으로 사용할 때 chunk_boundary slice 평균이 미약하게 개선됨을 시사한다. 명시적 옵션으로 두고 default는 변경하지 않는다 (베이스라인 보호).
 
 **언제 strategy를 바꿀지 가이드**:
 - 짧은 단일 section RFP가 다수일 때 → `fixed`가 합리적 (chunk 수 최소화)

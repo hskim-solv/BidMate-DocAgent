@@ -4,15 +4,15 @@ Tracks issue #163 (Phase 1.3). Adds a cross-encoder reranker as an additive abla
 
 ## Scope
 
-The current `agentic_full` rerank in [`rag_core.retrieve`](../rag_core.py) is a hardcoded score blend (0.60 dense + 0.25 lexical + 0.15 metadata when `metadata_first=True`). Cross-encoder rerankers are the next standard layer in modern retrieval stacks — adding one as an ablation tests whether the blend leaves precision on the table.
+The current `agentic_full` rerank in [`rag_core.retrieve`](../../rag_core.py) is a hardcoded score blend (0.60 dense + 0.25 lexical + 0.15 metadata when `metadata_first=True`). Cross-encoder rerankers are the next standard layer in modern retrieval stacks — adding one as an ablation tests whether the blend leaves precision on the table.
 
 This page documents the integration; measurement is the local-run step (see *Reproduction* below).
 
 ## Design
 
 * **Dispatch point**: after the existing 60/25/15 blend's `scored.sort()` and **before** the `top_k` cut + comparison balance. The cross-encoder re-scores the top-N highest-blend-score candidates (N = `min(30, top_k × 3)`), squashes logits via sigmoid into `[0,1]`, and re-sorts. The blend supplies the recall funnel; the cross-encoder adds precision-at-k.
-* **Module**: [`rag_rerank.py`](../rag_rerank.py) — mirrors the `rag_synthesis.py` lazy-import + stub-default + env-var-gated pattern.
-* **Preset flag**: `rerank_cross_encoder: bool`, defaults `False` on all 3 existing presets (`naive_baseline`, `agentic_full`, `agentic_full_llm`). New ablation row `full_reranker` in [`eval/config.yaml`](../eval/config.yaml) flips it to `true`.
+* **Module**: [`rag_rerank.py`](../../rag_rerank.py) — mirrors the `rag_synthesis.py` lazy-import + stub-default + env-var-gated pattern.
+* **Preset flag**: `rerank_cross_encoder: bool`, defaults `False` on all 3 existing presets (`naive_baseline`, `agentic_full`, `agentic_full_llm`). New ablation row `full_reranker` in [`eval/config.yaml`](../../eval/config.yaml) flips it to `true`.
 * **Postcondition guard**: every reordered `chunk_id` must be a subset of the input. Violations fall back to input order with `meta["fallback_reason"] = "chunk_id_postcondition_violation"`.
 * **Score normalization**: cross-encoder logits aren't in `[0,1]`. The verifier's score floor at `rag_core.py` ~L2254 (threshold 0.18) was tuned for the normalized blend; sigmoid squash keeps it working without per-backend branches. Cohere's `relevance_score` is already normalized, so the Cohere branch skips sigmoid and clamps instead.
 
@@ -131,7 +131,7 @@ benefit has a fair opportunity to manifest. Track as a blocked follow-up on ADR 
 
 ## Why no ADR
 
-This is a stub-default additive ablation under [ADR 0011](adr/0011-llm-synthesis-as-additive-ablation.md): an opt-in backend pipeline, gated behind an env var, with CI continuing to run the stub identity path. No load-bearing decision is replaced — the 60/25/15 blend remains the recall funnel; the cross-encoder is a *precision-at-k* refinement on top. If a future PR replaces the blend with a cross-encoder (or removes it), that requires a new ADR per the CLAUDE.md "ADR threshold".
+This is a stub-default additive ablation under [ADR 0011](../adr/0011-llm-synthesis-as-additive-ablation.md): an opt-in backend pipeline, gated behind an env var, with CI continuing to run the stub identity path. No load-bearing decision is replaced — the 60/25/15 blend remains the recall funnel; the cross-encoder is a *precision-at-k* refinement on top. If a future PR replaces the blend with a cross-encoder (or removes it), that requires a new ADR per the CLAUDE.md "ADR threshold".
 
 ## Risks
 
@@ -142,9 +142,9 @@ This is a stub-default additive ablation under [ADR 0011](adr/0011-llm-synthesis
 
 ## See also
 
-- [`rag_rerank.py`](../rag_rerank.py) — backend dispatch
-- [`rag_synthesis.py`](../rag_synthesis.py) — pattern this module mirrors
-- [`tests/test_cross_encoder_rerank.py`](../tests/test_cross_encoder_rerank.py) — contract tests
-- [ADR 0011](adr/0011-llm-synthesis-as-additive-ablation.md) — additive-ablation pattern
-- [ADR 0001](adr/0001-preserve-naive-baseline.md) — naive_baseline invariant (cross-encoder never triggers on naive_baseline)
-- [`docs/embedding-ablation.md`](embedding-ablation.md) — Phase 1.2 sibling cycle (#161)
+- [`rag_rerank.py`](../../rag_rerank.py) — backend dispatch
+- [`rag_synthesis.py`](../../rag_synthesis.py) — pattern this module mirrors
+- [`tests/test_cross_encoder_rerank.py`](../../tests/test_cross_encoder_rerank.py) — contract tests
+- [ADR 0011](../adr/0011-llm-synthesis-as-additive-ablation.md) — additive-ablation pattern
+- [ADR 0001](../adr/0001-preserve-naive-baseline.md) — naive_baseline invariant (cross-encoder never triggers on naive_baseline)
+- [`docs/embedding-ablation.md`](../eval/embedding-ablation.md) — Phase 1.2 sibling cycle (#161)
