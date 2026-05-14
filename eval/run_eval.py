@@ -744,6 +744,11 @@ def evaluate_run(
         )
         if trace_path:
             result["trace_path"] = trace_path
+        synth = (prediction or {}).get("diagnostics", {}).get("synthesis") or {}
+        result["tokens_in"] = synth.get("tokens_in")
+        result["tokens_out"] = synth.get("tokens_out")
+        result["cost_estimate_usd"] = synth.get("cost_estimate_usd")
+        result["llm_model"] = synth.get("model")
         case_results.append(result)
     return case_results
 

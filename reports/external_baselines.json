@@ -2,13 +2,13 @@
   "schema_version": 1,
   "backend": "stub",
   "model": "stub",
-  "n_cases": 42,
+  "n_cases": 100,
   "metrics": {
     "accuracy": {
       "mean": 1.0,
       "ci_lo": 1.0,
       "ci_hi": 1.0,
-      "n": 42,
+      "n": 100,
       "num_resamples": 1000,
       "alpha": 0.05
     },
@@ -16,7 +16,7 @@
       "mean": 1.0,
       "ci_lo": 1.0,
       "ci_hi": 1.0,
-      "n": 32,
+      "n": 78,
       "num_resamples": 1000,
       "alpha": 0.05
     },
@@ -24,7 +24,7 @@
       "p50_ms": 0.0,
       "p95_ms": 0.0,
       "mean_ms": 0.0,
-      "n": 42
+      "n": 100
     }
   },
   "asymmetric_metrics": {
@@ -34,5 +34,5 @@
     "answer_format_compliance": null
   },
   "asymmetric_metrics_note": "External baselines do not produce the structured claims[].citations[] shape required for chunk-level citation metrics or first-class abstention status. See docs/adr/0009-external-baseline-comparison.md.",
-  "generated_at": "2026-05-11T08:29:08.765538Z"
+  "generated_at": "2026-05-14T00:24:51.612047Z"
 }
