@@ -190,6 +190,7 @@ class AssembleStatsStructuralTest(unittest.TestCase):
             "quarter", "date_range", "sessions", "memory", "git",
             "governance_hooks", "pr_diff_stats",
             "axis_2_plan_subagent_skip_rate",
+            "axis_4_cycle_time",
         }
         self.assertEqual(set(stats.keys()), expected_keys)
 

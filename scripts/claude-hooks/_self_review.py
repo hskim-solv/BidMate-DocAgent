@@ -453,7 +453,8 @@ def collect_pr_diff_stats(repo: str, start: str, end: str) -> list[dict[str, Any
                 "gh", "pr", "list",
                 "--state", "merged",
                 "--search", f"merged:{start}..{end}",
-                "--json", "number,headRefName,additions,deletions,mergedAt",
+                "--json",
+                "number,headRefName,additions,deletions,createdAt,mergedAt",
                 "--limit", "200",
             ],
             cwd=repo, capture_output=True, text=True, check=False,
@@ -481,9 +482,86 @@ def collect_pr_diff_stats(repo: str, start: str, end: str) -> list[dict[str, Any
             "head": head,
             "issue": issue,
             "loc": loc,
+            "created_at": item.get("createdAt"),
             "merged_at": item.get("mergedAt"),
         })
     return out
+
+
+def _summary_p50_p90(values: list[float]) -> dict[str, Any]:
+    """Lightweight n-sample summary used by axis #4 cycle-time signals.
+
+    Sort + index for p50/p90 — numpy-free, deterministic. Returns `None`
+    for the mean/percentile fields when the input is empty so the JSON
+    consumer knows the bucket was unmeasured rather than zero. The p90
+    index uses `min(n - 1, int(n * 0.9))`, which collapses to the max for
+    n ≤ 10 and is intentionally conservative for small samples.
+    """
+    n = len(values)
+    if n == 0:
+        return {"count": 0, "mean": None, "p50": None, "p90": None}
+    sv = sorted(values)
+    p50 = sv[n // 2]
+    p90 = sv[min(n - 1, int(n * 0.9))]
+    return {
+        "count": n,
+        "mean": sum(sv) / n,
+        "p50": p50,
+        "p90": p90,
+    }
+
+
+def _parse_gh_iso(ts: str | None) -> datetime | None:
+    """gh CLI emits `Z`-suffix UTC timestamps; coerce to aware datetime.
+
+    Python 3.11+ `datetime.fromisoformat` handles `Z` natively but earlier
+    versions don't — strip-and-replace keeps the parser portable.
+    """
+    if not isinstance(ts, str) or not ts:
+        return None
+    try:
+        return datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def compute_pr_turnaround_summary(prs: list[dict[str, Any]]) -> dict[str, Any]:
+    """Axis #4 cycle-time signal: PR open→merge turnaround in hours.
+
+    Consumes the `collect_pr_diff_stats` output (which already carries
+    `created_at` / `merged_at`) so we make zero extra `gh` calls. Returns
+    `_summary_p50_p90` over hours, plus raw min/max so the LLM rubric
+    layer can spot long-stale outliers (reopened PRs, vendor branches).
+    """
+    hours: list[float] = []
+    for pr in prs:
+        ca = _parse_gh_iso(pr.get("created_at"))
+        ma = _parse_gh_iso(pr.get("merged_at"))
+        if ca is None or ma is None:
+            continue
+        delta = (ma - ca).total_seconds() / 3600.0
+        if delta < 0:
+            continue
+        hours.append(delta)
+    summary = _summary_p50_p90(hours)
+    if hours:
+        summary["min"] = min(hours)
+        summary["max"] = max(hours)
+    return summary
+
+
+def compute_adr_lag_summary(adr_lags: list[dict[str, Any]]) -> dict[str, Any]:
+    """Axis #4 cycle-time signal: ADR proposed→accepted lag in days.
+
+    Reuses `_compute_adr_lags` output (already emitted under the
+    governance_hooks block). Pure in-memory aggregator — no git calls.
+    """
+    days: list[float] = []
+    for entry in adr_lags:
+        v = entry.get("lag_days")
+        if isinstance(v, (int, float)):
+            days.append(float(v))
+    return _summary_p50_p90(days)
 
 
 def compute_axis_2_skip_rate(
@@ -525,15 +603,23 @@ def assemble_stats(
     axis_2 = compute_axis_2_skip_rate(
         pr_diff_stats, sessions.get("plan_calls_by_issue", {})
     )
+    governance = collect_governance_hooks(repo, start, end)
+    axis_4 = {
+        "adr_lag_days": compute_adr_lag_summary(
+            governance.get("rule_to_automation_lag_days", [])
+        ),
+        "pr_turnaround_hours": compute_pr_turnaround_summary(pr_diff_stats),
+    }
     return {
         "quarter": quarter,
         "date_range": [start, end],
         "sessions": sessions,
         "memory": collect_memory(memory_dir),
         "git": collect_git(repo, start, end),
-        "governance_hooks": collect_governance_hooks(repo, start, end),
+        "governance_hooks": governance,
         "pr_diff_stats": pr_diff_stats,
         "axis_2_plan_subagent_skip_rate": axis_2,
+        "axis_4_cycle_time": axis_4,
     }
 
 
@@ -554,6 +640,18 @@ def emit_report(stats: dict[str, Any]) -> str:
             f"{stats['axis_2_plan_subagent_skip_rate'].get('skip_rate')} "
             f"({stats['axis_2_plan_subagent_skip_rate'].get('prs_with_zero_plan_calls')}"
             f"/{stats['axis_2_plan_subagent_skip_rate'].get('prs_evaluated')})"
+        ),
+        (
+            f"- Axis #4 ADR lag (days) mean/p90: "
+            f"{stats['axis_4_cycle_time']['adr_lag_days'].get('mean')} / "
+            f"{stats['axis_4_cycle_time']['adr_lag_days'].get('p90')} "
+            f"(n={stats['axis_4_cycle_time']['adr_lag_days'].get('count')})"
+        ),
+        (
+            f"- Axis #4 PR turnaround (hours) mean/p90: "
+            f"{stats['axis_4_cycle_time']['pr_turnaround_hours'].get('mean')} / "
+            f"{stats['axis_4_cycle_time']['pr_turnaround_hours'].get('p90')} "
+            f"(n={stats['axis_4_cycle_time']['pr_turnaround_hours'].get('count')})"
         ),
         "",
         "## Raw stats (metadata-only — no body excerpts)",
