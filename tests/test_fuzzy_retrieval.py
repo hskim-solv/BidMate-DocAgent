@@ -311,7 +311,34 @@ class FuzzyMetadataRetrievalTest(unittest.TestCase):
         self.assertEqual({"기관 A"}, {claim["target"] for claim in result["answer"]["claims"]})
 
     def test_retry_relaxes_filters_when_verifier_rejects_evidence(self) -> None:
-        result = run_rag_query(self.index, "기관 A의 블록체인 납품 실적은?")
+        # Use an isolated index so that documents added to data/raw/ after
+        # the test was written (e.g. HWP fixtures from PR #648) cannot
+        # supply "납품"-adjacent evidence that triggers partial_topic_grounding
+        # and converts the expected abstention into status='partial'.
+        isolated_index = build_index_payload_from_documents(
+            [
+                {
+                    "doc_id": "rfp-agency-a-ai-quality",
+                    "title": "기관 A AI 품질관리 플랫폼 구축",
+                    "agency": "기관 A",
+                    "project": "AI 품질관리 플랫폼",
+                    "metadata": {},
+                    "sections": [
+                        {
+                            "heading": "AI 요구사항",
+                            "text": (
+                                "기관 A의 핵심 AI 요구사항은 모델 품질관리, "
+                                "보안 통제, 로그 추적이다."
+                            ),
+                        }
+                    ],
+                    "source_path": "rfp-agency-a.json",
+                }
+            ],
+            source_dir="test-fixture",
+            embedding_backend="hashing",
+        )
+        result = run_rag_query(isolated_index, "기관 A의 블록체인 납품 실적은?")
 
         self.assertTrue(result["diagnostics"]["abstained"])
         self.assertEqual("insufficient", result["answer"]["status"])
