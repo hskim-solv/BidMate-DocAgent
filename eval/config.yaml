@@ -40,6 +40,21 @@ latency_budgets:
   full_khaiii:
     # Issue #561 / ADR 0031 — Khaiii tokenizer. Same budget as full_kiwi.
     p95_ms: 200
+  hwp_csv_text:
+    # Issue #652 / ADR 0039 — HWP loader ablation (csv-text loader, text only).
+    # Per-query latency mirrors `full`; actual HWP parsing is ingest-time.
+    # Operator-side: build index with scripts/build_index.py --hwp_loader csv.
+    p95_ms: 200
+  hwp_native:
+    # Issue #652 / ADR 0039 — HWP loader ablation (native loader, no tables).
+    # Requires pyhwp installed; CI pyhwp-absent fallback is csv-text (loader-
+    # invariant for hashing backend). Operator: --hwp_loader native.
+    p95_ms: 200
+  hwp_native_tables:
+    # Issue #652 / ADR 0039 — HWP loader ablation (native loader, with tables).
+    # Default when pyhwp is installed (ADR 0036 default). Operator: --hwp_loader
+    # native_tables or omit flag.
+    p95_ms: 200
 # Per-stage latency budgets used by scripts/check_latency_slo.py (check_stage).
 # Issue #625: stage_latency is measured but was unguarded — silent per-stage
 # drift was possible even when total p95 stayed within ablation ceiling.
@@ -307,6 +322,33 @@ ablation_runs:
     pipeline: naive_baseline
     embedding_model: nlpai-lab/KURE-v1
     embedding_lora_adapter: bidmate/embedding-lora-kure-rfp-ko-v1@<sha>
+  # Issue #652 / ADR 0039 — HWP loader 3-way ablation.
+  # These three rows require separate pre-built indexes (one per loader);
+  # operator-side: `scripts/build_index.py --hwp_loader {csv,native,native_tables}`.
+  # CI hashing backend is loader-invariant (ingest is text-only); real
+  # measurement needs pyhwp installed + native-parsed index (ADR 0005 boundary).
+  # ADR 0001: naive_baseline row is unchanged; all three rows ride agentic_full.
+  - name: hwp_csv_text
+    pipeline: agentic_full
+    metadata_first: true
+    rerank: true
+    verifier_retry: true
+    retrieval_mode: flat
+    hwp_loader: csv
+  - name: hwp_native
+    pipeline: agentic_full
+    metadata_first: true
+    rerank: true
+    verifier_retry: true
+    retrieval_mode: flat
+    hwp_loader: native
+  - name: hwp_native_tables
+    pipeline: agentic_full
+    metadata_first: true
+    rerank: true
+    verifier_retry: true
+    retrieval_mode: flat
+    hwp_loader: native_tables
 cases:
   - id: single_doc_security
     query_type: single_doc
