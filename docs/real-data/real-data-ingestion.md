@@ -1,6 +1,6 @@
 # PDF/HWP ingestion
 
-이 문서는 비공개 PDF/HWP 원본과 `data_list.csv`를 로컬에서 인덱싱하는 v1 경로를 설명한다. 공개 baseline인 `data/raw` synthetic RFP 실행 흐름은 그대로 유지한다. 원본 PDF/image를 직접 파싱하는 v2 경로는 [`visual-ingestion-v2.md`](./visual-ingestion-v2.md)에 별도로 정리한다.
+이 문서는 비공개 PDF/HWP 원본과 `data_list.csv`를 로컬에서 인덱싱하는 v1 경로를 설명한다. 공개 baseline인 `data/raw` synthetic RFP 실행 흐름은 그대로 유지한다. 원본 PDF/image를 직접 파싱하는 v2 경로는 [`visual-ingestion-v2.md`](../visual-ingestion-v2.md)에 별도로 정리한다.
 
 ## 입력
 - `data/data_list.csv`: `공고 번호`, `공고 차수`, `사업명`, `사업 금액`, `발주 기관`, 날짜 필드, `사업 요약`, `파일형식`, `파일명`, `텍스트` 컬럼을 사용한다. 컬럼 audits는 [pre-flight 검증](#pre-flight-검증-issue-51)으로 분리해 본다.
@@ -28,7 +28,7 @@
 
 ## Pre-flight 검증 (issue #51)
 
-인덱싱을 돌리기 전에 CSV 자체의 schema/필수값/중복을 먼저 잡고 싶을 때는 [`scripts/validate_data_list.py`](../scripts/validate_data_list.py)를 사용한다. 이 스크립트는 본문 텍스트는 로드하지 않고 row별 메타데이터만 audits한다.
+인덱싱을 돌리기 전에 CSV 자체의 schema/필수값/중복을 먼저 잡고 싶을 때는 [`scripts/validate_data_list.py`](../../scripts/validate_data_list.py)를 사용한다. 이 스크립트는 본문 텍스트는 로드하지 않고 row별 메타데이터만 audits한다.
 
 ```bash
 python3 scripts/validate_data_list.py \
@@ -64,7 +64,7 @@ bash scripts/smoke_real.sh
 - 평가 출력: `reports/real100/eval_summary.json`
 - 평가 설정: `eval/real_config.local.yaml`
 
-`eval/real_config.local.yaml`이 없으면 인덱싱과 대표 질의까지만 실행하고, 실데이터 gold 평가를 건너뛴다. 새 환경에서는 `eval/real_config.example.yaml`을 복사해 로컬 expected doc id/term/target을 채운다(상세 가이드: [`docs/local-gold-authoring.md`](./local-gold-authoring.md)). `eval/*.local.yaml`, 실데이터 원본, 실데이터 산출물은 Git 추적 대상이 아니다.
+`eval/real_config.local.yaml`이 없으면 인덱싱과 대표 질의까지만 실행하고, 실데이터 gold 평가를 건너뛴다. 새 환경에서는 `eval/real_config.example.yaml`을 복사해 로컬 expected doc id/term/target을 채운다(상세 가이드: [`docs/local-gold-authoring.md`](../local-gold-authoring.md)). `eval/*.local.yaml`, 실데이터 원본, 실데이터 산출물은 Git 추적 대상이 아니다.
 
 ## 출력
 - `data/index/index.json`: 기존 RAG index schema를 유지하되, 문서와 chunk에 normalized metadata를 포함한다.
@@ -104,7 +104,7 @@ optional profile을 사용할 때도 index schema는 동일하며, 기본 경로
 성공적으로 인덱싱 가능한 문서가 0개이면 입력 오류로 보고 빌드를 실패시킨다.
 
 ## 회귀 보호 (issue #54)
-v1 PDF/HWP 혼합 ingestion 경로는 [`tests/test_mixed_format_ingestion_regression.py`](../tests/test_mixed_format_ingestion_regression.py)가 회귀 가드 역할을 한다. 다음을 assert한다.
+v1 PDF/HWP 혼합 ingestion 경로는 [`tests/test_mixed_format_ingestion_regression.py`](../../tests/test_mixed_format_ingestion_regression.py)가 회귀 가드 역할을 한다. 다음을 assert한다.
 
 - PDF + HWP 성공 row가 안정적인 doc_id로 인덱싱된다.
 - 한 mixed corpus에서 `missing_file` / `unsupported_file_format` / `duplicate_doc_id` 세 가지 실패 reason이 grouped count로 잡힌다.

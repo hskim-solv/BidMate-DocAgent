@@ -71,7 +71,7 @@ python3 scripts/summarize_benchmark.py \
 
 ### Entry: 2026-05-11 — Partial-topic grounding @ fraction=0.5 (#69)
 
-**Change.** `verify_evidence`에 `allow_partial_topic` 추가, 마지막 retrieval 시도에서 verification topics의 ≥50%가 evidence에 매칭되면 `partial_topic_grounding` reason으로 `verified=True`를 반환하고 status는 `partial`로 surface ([ADR 0004](./adr/0004-verifier-retry-policy.md) anticipated knob).
+**Change.** `verify_evidence`에 `allow_partial_topic` 추가, 마지막 retrieval 시도에서 verification topics의 ≥50%가 evidence에 매칭되면 `partial_topic_grounding` reason으로 `verified=True`를 반환하고 status는 `partial`로 surface ([ADR 0004](../adr/0004-verifier-retry-policy.md) anticipated knob).
 
 **Surface.** Local private real-data set (`eval/real_config.local.yaml`, 21 cases, 17 answerable + 4 intended-abstention). 동일 index, 동일 case set, 동일 tooling으로 pre-commit (2f76671) vs post-commit (2249498) 비교.
 
@@ -128,14 +128,14 @@ python3 eval/run_eval.py --index_dir data/index/real100 \
 
 ### Entry: 2026-05-11 — Tighten partial-topic gate (#89)
 
-**Change.** [`rag_core.py:2058-2068`](../rag_core.py) adds
+**Change.** [`rag_core.py:2058-2068`](../../rag_core.py) adds
 `PARTIAL_TOPIC_GROUNDING_MIN_MATCHED = 2` and tightens the relaxed-stage
 gate at L2095-2099 so that `partial_topic_grounding` is accepted only
 when at least 2 verification topics match (in addition to the existing
 ≥ 50% fraction floor). Direct follow-up to the 2026-05-11 #69 entry
 above, which logged a 1.000 → 0.500 regression on the intended-abstention
 slice. Issue [#89](https://github.com/hskim-solv/BidMate-DocAgent/issues/89);
-[ADR 0004](./adr/0004-verifier-retry-policy.md) staging policy unchanged.
+[ADR 0004](../adr/0004-verifier-retry-policy.md) staging policy unchanged.
 
 **Surface.** Same local private real-data set as the #69 entry above
 (`eval/real_config.local.yaml`, 21 cases, 17 answerable + 4 intended
