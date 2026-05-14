@@ -1570,6 +1570,37 @@ def run_rag_query(
     params: QueryParams | None = None,
     _skip_graph: bool = False,
 ) -> dict[str, Any]:
+    # ADR 0040 — agent_react preset dispatches to the ReAct orchestrator
+    # unconditionally (pipeline-name routing takes priority over
+    # BIDMATE_ORCHESTRATOR so the ReAct loop is always used when requested,
+    # regardless of the env var). naive_baseline stays on the direct path
+    # (ADR 0001); BIDMATE_PLANNER_BACKEND controls the planner backend.
+    _requested_pipeline = str(
+        (params.pipeline if params else None) or pipeline or ""
+    )
+    if not _skip_graph and _requested_pipeline in ("agent_react", "react"):
+        from rag_graph_react import run_via_langgraph_react
+
+        return run_via_langgraph_react(
+            index,
+            query,
+            top_k=top_k,
+            context_entities=context_entities,
+            metadata_first=metadata_first,
+            rerank=rerank,
+            verifier_retry=verifier_retry,
+            retrieval_mode=retrieval_mode,
+            retrieval_backend=retrieval_backend,
+            pipeline=_requested_pipeline,
+            prompt_profile=prompt_profile,
+            conversation_state=conversation_state,
+            comparison_balance=comparison_balance,
+            rrf_k=rrf_k,
+            bm25_stopword_profile=bm25_stopword_profile,
+            bm25_tokenizer=bm25_tokenizer,
+            params=params,
+        )
+
     # ADR 0022 — opt-in LangGraph orchestrator dispatch.
     # ``BIDMATE_ORCHESTRATOR=langgraph`` (default ``direct``) routes
     # through :func:`rag_graph_agentic_full.run_via_langgraph` which

@@ -68,6 +68,13 @@ PIPELINE_CONFIG_KEYS = (
     # the dense-embedding target). See ``rag_query_expansion.py`` and
     # ADR 0023.
     "query_expansion",
+    # Issue #673 / ADR 0040 — planner backend discriminator for the
+    # agent_react preset.  "static" (default) delegates to
+    # ``rag_query.make_plan`` — deterministic, no LLM call, CI-safe.
+    # "anthropic" activates ``LLMPlanner`` via the Anthropic SDK.
+    # Mirrors the ``BIDMATE_QUERY_EXPANSION_BACKEND`` / ``BIDMATE_SYNTHESIS_BACKEND``
+    # env-var opt-in pattern (ADR 0011, ADR 0023).
+    "planner_backend",
 )
 
 DEFAULT_COMPARISON_BALANCE: dict[str, Any] = {
@@ -144,9 +151,47 @@ PIPELINE_PRESETS: dict[str, dict[str, Any]] = {
         "comparison_balance": dict(DEFAULT_COMPARISON_BALANCE),
         "description": "agentic_full retrieval; LLM-synthesized summary under ADR 0011 guard.",
     },
+    # ADR 0040 — additive ReAct agent loop preset.  Same retrieval/verifier
+    # stack as agentic_full; planner_backend controls the orchestration
+    # implementation (ADR 0041 budget cap contract).
+    # BIDMATE_PLANNER_BACKEND=static (default) → deterministic CI path.
+    # BIDMATE_PLANNER_BACKEND=anthropic → LLMPlanner multi-turn planning.
+    "agent_react": {
+        "top_k": None,
+        "metadata_first": True,
+        "rerank": True,
+        "rerank_cross_encoder": False,
+        "verifier_retry": True,
+        "retrieval_mode": "flat",
+        "retrieval_backend": "dense",
+        "prompt_profile": "structured_grounded_claims",
+        "rrf_k": RRF_K,
+        "bm25_stopword_profile": "shared",
+        # ADR 0031 invariant — keep regex so the agent_react eval row
+        # does not conflate tokenizer change with agent-loop effect.
+        "bm25_tokenizer": "regex",
+        # ADR 0023 — identity default preserves retrievals comparability
+        # with agentic_full baseline (agent adds planning, not expansion).
+        "query_expansion": "identity",
+        # ADR 0040 / ADR 0041 — "static" is CI-safe (no LLM call).
+        # Set BIDMATE_PLANNER_BACKEND=anthropic for real agent runs.
+        "planner_backend": "static",
+        "comparison_balance": dict(DEFAULT_COMPARISON_BALANCE),
+        "description": (
+            "ReAct agent loop: LLMPlanner selects retrieval actions until "
+            "evidence is grounded or budget is exhausted (ADR 0040/0041). "
+            "BIDMATE_PLANNER_BACKEND=static (default, CI-safe) or "
+            "anthropic (opt-in, real LLM planning)."
+        ),
+    },
 }
 
-PIPELINE_ALIASES = {"full": "agentic_full", "full_llm": "agentic_full_llm"}
+PIPELINE_ALIASES = {
+    "full": "agentic_full",
+    "full_llm": "agentic_full_llm",
+    # ADR 0040 — short alias for the ReAct preset.
+    "react": "agent_react",
+}
 
 
 def is_pipeline_name(value: Any) -> bool:
@@ -206,6 +251,10 @@ VALID_BM25_TOKENIZERS = {"regex", "kiwi", "mecab", "khaiii"}
 # tolerates unknown values for runtime safety, but config-time
 # validation prefers an explicit allow-list.
 VALID_QUERY_EXPANSIONS = {"identity", "hyde"}
+# Issue #673 / ADR 0040 — pluggable Planner backend discriminator.
+# "static" (default) → StaticPlanner (make_plan, deterministic, no LLM).
+# "anthropic" → LLMPlanner (Anthropic SDK multi-turn, BIDMATE_PLANNER_BACKEND=anthropic).
+VALID_PLANNER_BACKENDS = {"static", "anthropic"}
 
 
 def resolve_pipeline_config(
