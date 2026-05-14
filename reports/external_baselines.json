@@ -1,29 +1,29 @@
 {
   "schema_version": 1,
-  "backend": "stub",
-  "model": "stub",
+  "backend": "langchain",
+  "model": "claude-sonnet-4-6",
   "n_cases": 100,
   "metrics": {
     "accuracy": {
-      "mean": 1.0,
-      "ci_lo": 1.0,
-      "ci_hi": 1.0,
+      "mean": 0.39,
+      "ci_lo": 0.29,
+      "ci_hi": 0.48024999999999973,
       "n": 100,
       "num_resamples": 1000,
       "alpha": 0.05
     },
     "retrieval_recall": {
-      "mean": 1.0,
-      "ci_lo": 1.0,
-      "ci_hi": 1.0,
+      "mean": 0.6025641025641025,
+      "ci_lo": 0.4935897435897436,
+      "ci_hi": 0.6987179487179487,
       "n": 78,
       "num_resamples": 1000,
       "alpha": 0.05
     },
     "latency_ms": {
-      "p50_ms": 0.0,
-      "p95_ms": 0.0,
-      "mean_ms": 0.0,
+      "p50_ms": 4921.25,
+      "p95_ms": 12768.4,
+      "mean_ms": 5882.98,
       "n": 100
     }
   },
@@ -34,5 +34,5 @@
     "answer_format_compliance": null
   },
   "asymmetric_metrics_note": "External baselines do not produce the structured claims[].citations[] shape required for chunk-level citation metrics or first-class abstention status. See docs/adr/0009-external-baseline-comparison.md.",
-  "generated_at": "2026-05-14T00:24:51.612047Z"
+  "generated_at": "2026-05-14T00:45:02.965222Z"
 }
