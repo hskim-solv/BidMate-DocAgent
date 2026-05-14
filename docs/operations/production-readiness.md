@@ -2,11 +2,11 @@
 
 One-pager for "is this operable?" — health checks, observability, cost,
 regression gates, reproducibility. Pulls together what already lives in
-[ADR 0008](./adr/0008-evidence-boundary.md) /
-[ADR 0013](./adr/0013-observability-as-additive-pluggable-surface.md) /
-[ADR 0015](./adr/0015-cost-telemetry-additive.md) and the eval pipeline.
+[ADR 0008](../adr/0008-evidence-boundary.md) /
+[ADR 0013](../adr/0013-observability-as-additive-pluggable-surface.md) /
+[ADR 0015](../adr/0015-cost-telemetry-additive.md) and the eval pipeline.
 
-Not a runbook — the runbook is [`docs/deployment.md`](./deployment.md).
+Not a runbook — the runbook is [`docs/operations/deployment.md`](./deployment.md).
 Not an architecture tour — those are the ADRs. This is the **operability
 surface area** a reviewer or on-call engineer needs in one screen.
 
@@ -40,7 +40,7 @@ CI runs — byte-identical pipeline behavior. Per-stage spans
 (`pipeline`, `prompt_profile`, `embedding_backend`, `retrieval_mode`) —
 the columns a reviewer actually filters by. Decision: ADR 0013. Setup
 recipes (LangFuse self-hosted/cloud, OTel → Honeycomb/Tempo):
-[`docs/observability.md`](./observability.md).
+[`docs/operations/observability.md`](./observability.md).
 
 **"How do you track cost?"** `diagnostics.synthesis.cost_estimate_usd`
 per query, populated from `compute_cost_usd()` (the single price-table

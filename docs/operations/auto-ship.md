@@ -27,7 +27,7 @@ event. Knobs (env-var overrides):
 | `REAL_EVAL` | `auto` | §5b cascade mode. `skip` forces escape; `async` defers; `auto` runs delta-or-full. |
 | `DRAFT` | `false` | Open PR as draft. |
 | `DRY_RUN` | `0` | With `1`, all mutating commands are echoed to `.claude/.ship-dryrun.log` instead of executed. |
-| `CROSS_OWNER` | _(empty)_ | `ack` bypasses the multi-agent lock check ([`docs/multi-agent-ownership.md`](./multi-agent-ownership.md)). |
+| `CROSS_OWNER` | _(empty)_ | `ack` bypasses the multi-agent lock check ([`docs/multi-agent-ownership.md`](../multi-agent-ownership.md)). |
 | `STACKED` | _(empty)_ | `ack` bypasses the heterogeneous-prefix refusal (see [Stacked-PR discipline](#stacked-pr-discipline-tier-7) below). |
 
 `make ship-disarm` removes the arm file and pid file. `make ship-status`
@@ -226,7 +226,7 @@ GitHub will auto-close all three when the squash lands.
 
 For ADR-introducing commits, prefer "issue + ADR" in the same PR rather
 than two separate PRs — the cluster narrative in
-[`docs/adr/README.md`](./adr/README.md) treats an ADR + its enabling
+[`docs/adr/README.md`](../adr/README.md) treats an ADR + its enabling
 code change as one decision.
 
 ## Failure modes & safety nets
@@ -250,8 +250,8 @@ mutating commands echo to `.claude/.ship-dryrun.log`.
 ## Related
 
 - [`CLAUDE.md`](../CLAUDE.md) — "Frequently used commands", "Core principles" (one PR per concern), Prohibited list.
-- [`docs/engineering-governance.md`](./engineering-governance.md) — navigation hub.
-- [`docs/multi-agent-ownership.md`](./multi-agent-ownership.md) — owner lock map consumed by Stage 1.
-- [ADR 0007](./adr/0007-issue-linked-branch-naming.md) — branch convention enforced in Gate 0 / Stage 2.
+- [`docs/engineering-governance.md`](../engineering-governance.md) — navigation hub.
+- [`docs/multi-agent-ownership.md`](../multi-agent-ownership.md) — owner lock map consumed by Stage 1.
+- [ADR 0007](../adr/0007-issue-linked-branch-naming.md) — branch convention enforced in Gate 0 / Stage 2.
 - [`.github/pull_request_template.md`](../.github/pull_request_template.md) — the template `_ship_pr_body.py` fills in.
 - [`scripts/_governance.py`](../scripts/_governance.py) — load-bearing SSoT.

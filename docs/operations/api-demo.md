@@ -2,7 +2,7 @@
 
 > **호스팅 브라우저 데모는 별도 경로**: 클릭 한 번으로 동작하는 라이브
 > 데모는 Streamlit-on-HF-Spaces입니다 →
-> [`docs/deployment.md#hugging-face-spaces`](deployment.md#hugging-face-spaces).
+> [`docs/operations/deployment.md#hugging-face-spaces`](./deployment.md#hugging-face-spaces).
 > 본 문서는 프로그래매틱 FastAPI surface를 다룹니다.
 
 This page documents the **reviewer-facing demo surface** added in
