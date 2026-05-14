@@ -202,6 +202,15 @@ def _react_loop_node(state: ReactState) -> ReactState:
             if tool_result.get("verdict") == "grounded":
                 history.append(attempt)
                 break  # Grounded — exit loop
+            else:
+                # Self-correction: inject verifier feedback so LLMPlanner
+                # can adjust retrieval in the next planning turn (PR-D, #679).
+                from rag_verifier import format_verifier_feedback
+
+                attempt["feedback_message"] = format_verifier_feedback(
+                    reasons=tool_result.get("reasons", []),
+                    evidence=evidence,
+                )
 
         elif tool == "abstain":
             execute_abstain(tool_input)

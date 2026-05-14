@@ -261,3 +261,34 @@ def evidence_has_topic(item: dict[str, Any], topics: list[str]) -> bool:
         for topic in topics
         for form in expand_forms(topic.lower())
     )
+
+
+def format_verifier_feedback(
+    reasons: list[str],
+    evidence: list[dict[str, Any]],
+) -> str:
+    """Format verifier failure reasons into a coaching message for the next planning turn.
+
+    Called by ``rag_graph_react._react_loop_node`` after a ``verify_grounding``
+    tool call returns a non-grounded verdict.  The returned string is stored in
+    ``attempt["feedback_message"]`` in the history dict, so ``LLMPlanner`` can
+    read it in the next ``plan_next`` call and adjust retrieval parameters.
+
+    ``reasons`` are internal diagnostic strings produced by ``verify_evidence``,
+    not external evidence text, so ``neutralize_instruction_patterns`` is not
+    applied here.  If ``reasons`` is empty (unexpected) a generic fallback is
+    returned.
+    """
+    if not reasons:
+        return (
+            "이전 검색 결과의 근거가 부족합니다. "
+            "다른 stage(relaxed) 또는 키워드로 retrieve_evidence를 재시도해주세요."
+        )
+    chunk_count = len(evidence)
+    reasons_text = "\n".join(f"- {r}" for r in reasons)
+    return (
+        f"이전 검색 결과 검증 실패 ({chunk_count}개 chunk):\n"
+        f"{reasons_text}\n"
+        "위 원인을 참고해 검색 stage/필터/top_k를 조정한 뒤 retrieve_evidence를 다시 호출하거나, "
+        "evidence가 확실히 없으면 abstain을 선택하세요."
+    )
