@@ -619,6 +619,16 @@ def summarize_run(
             category: metric_block(hardcase_grouped[category])
             for category in sorted(hardcase_grouped)
         }
+    format_grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for result in case_results:
+        fmt = result.get("case_source_format")
+        if fmt:
+            format_grouped[fmt].append(result)
+    if format_grouped:
+        summary["by_format"] = {
+            fmt: metric_block(format_grouped[fmt])
+            for fmt in sorted(format_grouped)
+        }
     if include_cases:
         summary["case_results"] = case_results
     return summary
@@ -679,6 +689,30 @@ def write_prediction_trace(
     return str(path)
 
 
+def _build_doc_format_map(index: dict[str, Any]) -> dict[str, str]:
+    """Map doc_id → source_format (fallback: document_type)."""
+    result: dict[str, str] = {}
+    for doc in index.get("documents") or []:
+        doc_id = doc.get("doc_id")
+        if not doc_id:
+            continue
+        metadata = doc.get("metadata") or {}
+        fmt = metadata.get("source_format") or metadata.get("document_type") or "unknown"
+        result[str(doc_id)] = str(fmt)
+    return result
+
+
+def _case_source_format(
+    expected_doc_ids: list[str], doc_format_map: dict[str, str]
+) -> str | None:
+    """Return the source_format of the first expected doc, or None if unavailable."""
+    for doc_id in expected_doc_ids:
+        fmt = doc_format_map.get(str(doc_id))
+        if fmt:
+            return fmt
+    return None
+
+
 def evaluate_run(
     index: dict[str, Any],
     cases: list[dict[str, Any]],
@@ -688,6 +722,7 @@ def evaluate_run(
     redact_options: dict[str, bool] | None = None,
 ) -> list[dict[str, Any]]:
     case_results = []
+    doc_format_map = _build_doc_format_map(index)
     for case in cases:
         conversation_state: dict[str, Any] = {}
         for turn in case.get("prior_turns") or []:
@@ -749,6 +784,9 @@ def evaluate_run(
         result["tokens_out"] = synth.get("tokens_out")
         result["cost_estimate_usd"] = synth.get("cost_estimate_usd")
         result["llm_model"] = synth.get("model")
+        result["case_source_format"] = _case_source_format(
+            result.get("expected_doc_ids") or [], doc_format_map
+        )
         case_results.append(result)
     return case_results
 
@@ -897,6 +935,7 @@ def main() -> int:
         "by_query_type": primary_summary["by_query_type"],
         "by_slice": primary_summary.get("by_slice", {}),
         "by_hardcase_category": primary_summary.get("by_hardcase_category", {}),
+        "by_format": primary_summary.get("by_format", {}),
         "retry_cost": primary_summary["retry_cost"],
         "retry_reason_counts": primary_summary["retry_reason_counts"],
         "retry_effectiveness": retry_effectiveness,

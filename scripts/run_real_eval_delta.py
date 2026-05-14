@@ -116,8 +116,18 @@ SAFE_TOPLEVEL_KEYS = frozenset(
         # The extractor below explicitly whitelists each scalar + the
         # CI sub-block; case-level fields are dropped.
         "ablation_full",
+        # Issue #650 / ADR 0039: per-format accuracy breakdown keyed by
+        # document source_format (hwp / pdf / synthetic_public_sample).
+        # Bucket keys are whitelisted in SAFE_FORMAT_BUCKET_KEYS (fail-closed);
+        # metric sub-keys mirror SAFE_ABLATION_FULL_SCALAR_KEYS; no per-case
+        # payload crosses the boundary.
+        "by_format",
     }
 )
+
+# Allowed bucket keys inside ``by_format``. Fail-closed: any key not in
+# this set is silently dropped before the aggregate is committed.
+SAFE_FORMAT_BUCKET_KEYS = frozenset({"hwp", "pdf", "synthetic_public_sample"})
 
 # Whitelisted bin names for ``abstention_outcomes``. Integer counts only.
 SAFE_ABSTENTION_OUTCOME_KEYS = ("correct_refusal", "incorrect_answer", "boundary_partial")
@@ -456,6 +466,37 @@ def extract_aggregate(summary: dict[str, Any]) -> dict[str, Any]:
                     extracted_slice[m] = raw
             slice_out[str(slice_name)] = extracted_slice
         out["by_query_type"] = slice_out
+
+    # Issue #650 / ADR 0039 — by_format aggregate. Fail-closed: only bucket
+    # keys in SAFE_FORMAT_BUCKET_KEYS are retained; unknown formats are dropped
+    # so new source_format values added to fixtures cannot leak payload.
+    by_format = summary.get("by_format")
+    if isinstance(by_format, dict):
+        format_out: dict[str, dict[str, Any]] = {}
+        for bucket_name, bucket_summary in by_format.items():
+            if str(bucket_name) not in SAFE_FORMAT_BUCKET_KEYS:
+                continue
+            if not isinstance(bucket_summary, dict):
+                continue
+            extracted_bucket: dict[str, Any] = {}
+            for m in SAFE_SLICE_METRICS:
+                raw = bucket_summary.get(m)
+                if raw is None:
+                    continue
+                if m == "abstention_outcomes" and isinstance(raw, dict):
+                    bin_out = {
+                        sub: int(raw[sub])
+                        for sub in SAFE_ABSTENTION_OUTCOME_KEYS
+                        if isinstance(raw.get(sub), (int, float))
+                    }
+                    if bin_out:
+                        extracted_bucket[m] = bin_out
+                else:
+                    extracted_bucket[m] = raw
+            if extracted_bucket:
+                format_out[str(bucket_name)] = extracted_bucket
+        if format_out:
+            out["by_format"] = format_out
 
     _assert_no_forbidden(out)
     return out
