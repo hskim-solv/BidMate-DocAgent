@@ -52,7 +52,12 @@ REQUIRED_COLUMNS = [
     "텍스트",
 ]
 
-INGESTION_REPORT_SCHEMA_VERSION = 2
+# Bumped 2 → 3 in issue #715: summary now carries ``text_source_counts``,
+# ``fallback_reasons``, and ``chunk_health`` (the last is filled by
+# ``scripts/build_index.py`` after the chunk-building stage). The three keys
+# are additive and downstream readers use ``dict.get``, so a v2 reader
+# silently ignores them.
+INGESTION_REPORT_SCHEMA_VERSION = 3
 
 # Public, reviewer-facing failure taxonomy for ingestion. Keep keys stable;
 # downstream tooling (eval/run_eval.py, docs, dashboards) reads them.
@@ -95,6 +100,16 @@ class IngestionRecord:
     reason: str | None = None
     duplicate_resolution: dict[str, Any] | None = None
     messages: tuple[str, ...] = ()
+    # Issue #715: per-document loader provenance. ``text_source`` mirrors
+    # ``HwpLoader.last_text_source`` ("hwp_native" / "data_list_csv_text"
+    # / similar); ``fallback_reason`` mirrors ``HwpLoader.last_fallback_reason``
+    # (``"ExceptionName: truncated message"`` or ``None``). Both are populated
+    # only after the loader successfully extracted text — failures upstream of
+    # the loader keep them at ``None``. Existing readers see no change because
+    # both fields default to ``None`` and downstream report consumers use
+    # ``dict.get`` (additive bump 2 → 3 of ``INGESTION_REPORT_SCHEMA_VERSION``).
+    text_source: str | None = None
+    fallback_reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -583,6 +598,11 @@ def normalize_ingestion_row(
     try:
         text = loader.load_text(row, validation.source_path)
     except ValueError as exc:
+        # Issue #715: surface loader provenance even on failure — the HWP
+        # native loader may have raised mid-parse (e.g. InvalidHwp5FileError)
+        # after stashing the exception on ``last_fallback_reason``. The CSV
+        # text loader has neither attribute, so getattr defaults keep the
+        # plain PDF / CSV failure paths backward-compatible.
         return None, make_record(
             row_number,
             "failed",
@@ -592,6 +612,8 @@ def normalize_ingestion_row(
             validation.source_path,
             str(exc),
             duplicate_resolution=validation.duplicate_resolution,
+            text_source=getattr(loader, "last_text_source", None),
+            fallback_reason=getattr(loader, "last_fallback_reason", None),
         )
     # Issue #455 / ADR 0028: opt-in PII redaction. Default off keeps
     # ADR 0001 naive_baseline byte-identical; the env-var gate is the
@@ -600,6 +622,7 @@ def normalize_ingestion_row(
         text = redact_pii(text)
 
     text_source = getattr(loader, "last_text_source", "data_list_csv_text")
+    fallback_reason = getattr(loader, "last_fallback_reason", None)
     metadata = normalize_metadata(
         row, validation.file_format, validation.file_name, text_source=text_source
     )
@@ -657,6 +680,8 @@ def normalize_ingestion_row(
         validation.file_format,
         validation.source_path,
         duplicate_resolution=validation.duplicate_resolution,
+        text_source=text_source,
+        fallback_reason=fallback_reason,
     )
 
 
@@ -671,6 +696,8 @@ def make_record(
     *,
     duplicate_resolution: dict[str, Any] | None = None,
     messages: tuple[str, ...] = (),
+    text_source: str | None = None,
+    fallback_reason: str | None = None,
 ) -> IngestionRecord:
     return IngestionRecord(
         row_number=row_number,
@@ -682,6 +709,8 @@ def make_record(
         reason=reason,
         duplicate_resolution=duplicate_resolution,
         messages=messages,
+        text_source=text_source,
+        fallback_reason=fallback_reason,
     )
 
 
@@ -838,9 +867,14 @@ def build_ingestion_report(
     on_duplicate_doc_id: str,
 ) -> dict[str, Any]:
     """Build the canonical ingestion_report.json payload."""
-    failure_reasons, failure_examples, file_formats, duplicate_groups = (
-        _collect_record_buckets(records)
-    )
+    (
+        failure_reasons,
+        failure_examples,
+        file_formats,
+        duplicate_groups,
+        text_source_counts,
+        fallback_reasons,
+    ) = _collect_record_buckets(records)
     doc_id_sources: dict[str, int] = OrderedDict()
     for record in records:
         if record.status == "indexed":
@@ -858,6 +892,11 @@ def build_ingestion_report(
         "file_formats": dict(file_formats),
         "duplicate_doc_ids": {k: sorted(set(v)) for k, v in duplicate_groups.items()},
         "on_duplicate_doc_id": on_duplicate_doc_id,
+        # Issue #715 — see ``_collect_record_buckets`` docstring. These two
+        # keys are additive (v3 schema bump); v2 readers ignore them via
+        # ``dict.get``.
+        "text_source_counts": {fmt: dict(sources) for fmt, sources in text_source_counts.items()},
+        "fallback_reasons": dict(fallback_reasons),
     }
     return {
         "metadata_csv": str(metadata_csv),
@@ -875,17 +914,33 @@ def _collect_record_buckets(
     dict[str, list[dict[str, Any]]],
     dict[str, int],
     dict[str, list[int]],
+    dict[str, dict[str, int]],
+    dict[str, int],
 ]:
-    """Accumulate the four shared report-building buckets over ``records``.
+    """Accumulate the six shared report-building buckets over ``records``.
 
-    Returns ``(failure_reasons, failure_examples, file_formats, duplicate_groups)``.
-    Both :func:`build_ingestion_report` and :func:`_build_validation_report` call
-    this helper so the identical accumulation logic lives in one place.
+    Returns ``(failure_reasons, failure_examples, file_formats, duplicate_groups,
+    text_source_counts, fallback_reasons)``. Both :func:`build_ingestion_report`
+    and :func:`_build_validation_report` call this helper so the identical
+    accumulation logic lives in one place.
+
+    The last two buckets were added in issue #715:
+
+    - ``text_source_counts``: ``{file_format: {text_source: count}}`` — answers
+      "for HWP rows, how many went through the native pyhwp loader versus the
+      CSV-text fallback?". Records whose loader never ran (row-validation
+      failures upstream of ``loader.load_text``) contribute ``None`` under
+      ``text_source``; we drop those so the histogram only counts rows that
+      actually reached a loader.
+    - ``fallback_reasons``: ``{reason_string: count}`` — frequency table of
+      ``HwpLoader.last_fallback_reason`` values. ``None`` is dropped.
     """
     failure_reasons: dict[str, int] = OrderedDict()
     failure_examples: dict[str, list[dict[str, Any]]] = OrderedDict()
     file_formats: dict[str, int] = OrderedDict()
     duplicate_groups: dict[str, list[int]] = OrderedDict()
+    text_source_counts: dict[str, dict[str, int]] = OrderedDict()
+    fallback_reasons: dict[str, int] = OrderedDict()
 
     for record in records:
         if record.reason:
@@ -903,8 +958,22 @@ def _collect_record_buckets(
         fmt = record.file_format or "unknown"
         file_formats[fmt] = file_formats.get(fmt, 0) + 1
         _accumulate_duplicate_group(duplicate_groups, record)
+        if record.text_source:
+            per_format = text_source_counts.setdefault(fmt, OrderedDict())
+            per_format[record.text_source] = per_format.get(record.text_source, 0) + 1
+        if record.fallback_reason:
+            fallback_reasons[record.fallback_reason] = (
+                fallback_reasons.get(record.fallback_reason, 0) + 1
+            )
 
-    return failure_reasons, failure_examples, file_formats, duplicate_groups
+    return (
+        failure_reasons,
+        failure_examples,
+        file_formats,
+        duplicate_groups,
+        text_source_counts,
+        fallback_reasons,
+    )
 
 
 def _accumulate_duplicate_group(
@@ -1061,9 +1130,14 @@ def _build_validation_report(
     schema_issues: list[ValidationIssue],
     on_duplicate_doc_id: str,
 ) -> dict[str, Any]:
-    failure_reasons, failure_examples, file_formats, duplicate_groups = (
-        _collect_record_buckets(records)
-    )
+    (
+        failure_reasons,
+        failure_examples,
+        file_formats,
+        duplicate_groups,
+        text_source_counts,
+        fallback_reasons,
+    ) = _collect_record_buckets(records)
     blank_field_counts: dict[str, int] = OrderedDict()
     for record in records:
         for message in record.messages:
@@ -1084,6 +1158,12 @@ def _build_validation_report(
         "file_formats": dict(file_formats),
         "duplicate_doc_ids": {k: sorted(set(v)) for k, v in duplicate_groups.items()},
         "on_duplicate_doc_id": on_duplicate_doc_id,
+        # Issue #715 — text source + fallback histograms (validation mode
+        # never actually calls a loader, so both buckets stay empty in
+        # practice; we still expose the keys for schema parity with
+        # ``build_ingestion_report``).
+        "text_source_counts": {fmt: dict(sources) for fmt, sources in text_source_counts.items()},
+        "fallback_reasons": dict(fallback_reasons),
     }
     return {
         "mode": "validation",

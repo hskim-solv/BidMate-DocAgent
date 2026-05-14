@@ -6,6 +6,7 @@ remain in ``eval/run_eval.py``.
 """
 from eval.scorers.alignment import score_claim_citation_alignment
 from eval.scorers.case import score_case
+from eval.scorers.chunk_health import compute_chunk_health
 from eval.scorers.chunk_metrics import (
     chunk_mrr,
     chunk_ndcg_at_k,
@@ -19,6 +20,7 @@ __all__ = [
     "chunk_mrr",
     "chunk_ndcg_at_k",
     "chunk_recall_at_k",
+    "compute_chunk_health",
     "derive_gold_chunk_ids",
     "score_case",
     "score_citation_grounding",

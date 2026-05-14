@@ -23,6 +23,11 @@ from visual_ingestion import (
     load_visual_documents_from_metadata_csv,
 )
 
+# Issue #715: chunk-corpus sanity metrics folded into ingestion_report.json
+# so operators can spot mid-sentence cuts / near-empty chunks / HWP table
+# coverage at a glance.
+from eval.scorers.chunk_health import compute_chunk_health
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -229,6 +234,17 @@ def main() -> int:
     num_docs = payload["build"]["num_documents"]
     num_chunks = payload["build"]["num_chunks"]
     embedding_backend = payload["embedding"]["backend"]
+
+    # Issue #715: compute chunk-corpus sanity metrics BEFORE write_index, which
+    # mutates ``payload["chunks"]`` to prune embedding sidecars. Fold the
+    # result into ``ingestion_report["summary"]["chunk_health"]`` so a single
+    # JSON file answers "is parsing OK? is chunking OK?" without operators
+    # having to cross-reference multiple artifacts. The metric is purely
+    # observational — it does not affect any retrieval / answer surface.
+    chunk_health = compute_chunk_health(payload.get("chunks") or [])
+    if ingestion_report is not None:
+        ingestion_report.setdefault("summary", {})["chunk_health"] = chunk_health
+
     out_path = write_index(payload, output_dir)
     embeddings_path = output_dir / EMBEDDINGS_FILENAME
     if ingestion_report is not None:

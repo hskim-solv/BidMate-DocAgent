@@ -285,7 +285,7 @@ class HwpNativeLoaderRegressionTest(unittest.TestCase):
                     "ingestion._extract_hwp_native",
                     return_value="native body",
                 ):
-                    documents, _ = load_documents_from_metadata_csv(
+                    documents, report = load_documents_from_metadata_csv(
                         csv_path, files_dir
                     )
                 self.assertEqual(1, len(documents))
@@ -297,6 +297,21 @@ class HwpNativeLoaderRegressionTest(unittest.TestCase):
                     "native body",
                     documents[0]["sections"][0]["text"],
                 )
+                # Issue #715: the per-doc text_source now also propagates to
+                # the IngestionRecord and the aggregate ``text_source_counts``
+                # summary. This pins the flow loader → record → report so a
+                # future refactor of ``make_record`` can't silently drop the
+                # field again.
+                summary = report["summary"]
+                self.assertEqual(
+                    {"hwp": {"hwp_native": 1}},
+                    summary["text_source_counts"],
+                )
+                self.assertEqual({}, summary["fallback_reasons"])
+                indexed = [r for r in report["records"] if r["status"] == "indexed"]
+                self.assertEqual(1, len(indexed))
+                self.assertEqual("hwp_native", indexed[0]["text_source"])
+                self.assertIsNone(indexed[0]["fallback_reason"])
 
 
 if __name__ == "__main__":  # pragma: no cover

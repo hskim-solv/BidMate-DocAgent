@@ -225,6 +225,47 @@ class MixedFormatIngestionTest(unittest.TestCase):
                 all(chunk["metadata"]["text_source"] == "data_list_csv_text" for chunk in payload["chunks"])
             )
 
+    def test_text_source_counts_aggregated_by_format(self) -> None:
+        """Issue #715: summary.text_source_counts buckets per (format, source).
+
+        The mixed-corpus fixture only exercises the v1 CSV-text path
+        (PdfCsvTextLoader / HwpCsvTextLoader), so every indexed row reports
+        the default loader provenance. A separate fixture that opts into the
+        native HWP loader would produce ``{"hwp_native": N}`` here — covered
+        by ``tests/test_hwp_native_loader_regression.py``.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            csv_path, files_dir, _ = _build_mixed_corpus(root)
+            _, report = load_documents_from_metadata_csv(csv_path, files_dir)
+
+            summary = report["summary"]
+            self.assertEqual(3, summary["schema_version"])
+            self.assertEqual(
+                {
+                    "pdf": {"data_list_csv_text": 2},
+                    "hwp": {"data_list_csv_text": 1},
+                },
+                summary["text_source_counts"],
+            )
+            # No HWP native loader was exercised → no fallback messages.
+            self.assertEqual({}, summary["fallback_reasons"])
+
+    def test_chunk_health_is_not_attached_by_ingestion_loader(self) -> None:
+        """``summary.chunk_health`` is wired in by ``scripts/build_index.py``
+        (after the chunk-building stage), not by the ingestion loader itself.
+
+        This boundary keeps ``load_documents_from_metadata_csv`` cheap and
+        side-effect-free for callers that only need the document list (e.g.
+        the validator CLI). The build-index CLI is the single integration
+        point that pays for chunk-health computation.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            csv_path, files_dir, _ = _build_mixed_corpus(root)
+            _, report = load_documents_from_metadata_csv(csv_path, files_dir)
+            self.assertNotIn("chunk_health", report["summary"])
+
     def test_validate_data_list_cli_returns_exit_code_one_for_failures(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
