@@ -63,7 +63,12 @@ from rag_answer_schema import (
     ANSWER_SCHEMA_VERSION,
     ANSWER_STATUS_INSUFFICIENT,
     ANSWER_STATUS_PARTIAL,
+    ANSWER_STATUS_REASON_INSUFFICIENT_EVIDENCE,
+    ANSWER_STATUS_REASON_PARTIAL_COMPARISON,
+    ANSWER_STATUS_REASON_PARTIAL_TOPIC_GROUNDING,
+    ANSWER_STATUS_REASON_VERIFIED,
     ANSWER_STATUS_SUPPORTED,
+    KNOWN_ANSWER_STATUS_REASON_CODES,
 )
 from rag_verifier import (
     PARTIAL_TOPIC_GROUNDING_REASON,
@@ -148,17 +153,28 @@ def answer_status_reason(
 ) -> dict[str, Any]:
     if code is None:
         if status == ANSWER_STATUS_SUPPORTED:
-            code = "verified"
+            code = ANSWER_STATUS_REASON_VERIFIED
         elif status == ANSWER_STATUS_PARTIAL:
             # Disambiguate between the two partial paths so the status
             # reason is machine-readable: comparison-coverage partial
             # vs partial-topic grounding (#69 / ADR 0004).
             if PARTIAL_TOPIC_GROUNDING_REASON in verification_reasons:
-                code = "partial_topic_grounding"
+                code = ANSWER_STATUS_REASON_PARTIAL_TOPIC_GROUNDING
             else:
-                code = "partial_comparison"
+                code = ANSWER_STATUS_REASON_PARTIAL_COMPARISON
         else:
-            code = "insufficient_evidence"
+            code = ANSWER_STATUS_REASON_INSUFFICIENT_EVIDENCE
+    elif code not in KNOWN_ANSWER_STATUS_REASON_CODES:
+        # Issue #759 (RAG senior-review critique #2): the four code
+        # strings the dict may take are now a closed set. An override
+        # outside that set used to flow silently into the synthetic
+        # judge / eval scorer / dashboard layer; we raise instead so
+        # the regression surfaces at the call site.
+        raise ValueError(
+            f"answer_status_reason: unknown status_reason code "
+            f"{code!r}; expected one of "
+            f"{sorted(KNOWN_ANSWER_STATUS_REASON_CODES)}"
+        )
     return {
         "code": code,
         "verified": bool(verified),

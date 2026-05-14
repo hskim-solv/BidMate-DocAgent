@@ -41,7 +41,12 @@ import time
 from typing import Any
 
 from rag_answer import answer_status_reason, render_answer_text
-from rag_answer_schema import ANSWER_SCHEMA_VERSION, ANSWER_STATUS_INSUFFICIENT
+from rag_answer_schema import (
+    ANSWER_SCHEMA_VERSION,
+    ANSWER_STATUS_INSUFFICIENT,
+    ANSWER_STATUS_REASON_CONTEXT_CLARIFICATION,
+    ANSWER_STATUS_REASON_METADATA_AMBIGUITY_CLARIFICATION,
+)
 from rag_pipeline_presets import RRF_K
 from rag_query import metadata_resolution_diagnostics
 from rag_text_processing import QUERY_TYPE_TOP_K_DEFAULTS, ordered_unique
@@ -122,7 +127,7 @@ def make_context_clarification_result(
             ANSWER_STATUS_INSUFFICIENT,
             False,
             [reason],
-            code="context_clarification",
+            code=ANSWER_STATUS_REASON_CONTEXT_CLARIFICATION,
         ),
         "query_type": "abstention",
         "summary": clarification_answer(query, context_resolution),
@@ -305,7 +310,7 @@ def make_metadata_clarification_result(
             ANSWER_STATUS_INSUFFICIENT,
             False,
             [reason],
-            code="metadata_ambiguity_clarification",
+            code=ANSWER_STATUS_REASON_METADATA_AMBIGUITY_CLARIFICATION,
         ),
         "query_type": "abstention",
         "summary": metadata_clarification_answer(query, analysis),

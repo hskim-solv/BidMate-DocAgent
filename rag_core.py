@@ -262,7 +262,17 @@ from rag_answer_schema import (
     ANSWER_SCHEMA_VERSION,
     ANSWER_STATUS_INSUFFICIENT,
     ANSWER_STATUS_PARTIAL,
+    # Issue #759 — RAG senior-review critique #2: status_reason.code
+    # constants + closed set, re-exported here to keep the
+    # ``from rag_core import ...`` import path consumers expect.
+    ANSWER_STATUS_REASON_CONTEXT_CLARIFICATION,
+    ANSWER_STATUS_REASON_INSUFFICIENT_EVIDENCE,
+    ANSWER_STATUS_REASON_METADATA_AMBIGUITY_CLARIFICATION,
+    ANSWER_STATUS_REASON_PARTIAL_COMPARISON,
+    ANSWER_STATUS_REASON_PARTIAL_TOPIC_GROUNDING,
+    ANSWER_STATUS_REASON_VERIFIED,
     ANSWER_STATUS_SUPPORTED,
+    KNOWN_ANSWER_STATUS_REASON_CODES,
 )
 
 DEFAULT_EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
