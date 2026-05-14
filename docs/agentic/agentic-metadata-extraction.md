@@ -116,10 +116,10 @@ authoritative signal and never land in the public repo.
 
 ## Related
 
-- [ADR 0001 — preserve naive baseline](adr/0001-preserve-naive-baseline.md)
-- [ADR 0003 — structured answer / citation contract](adr/0003-structured-answer-citation-contract.md)
-- [ADR 0011 — LLM synthesis as additive ablation](adr/0011-llm-synthesis-as-additive-ablation.md)
-- [ADR 0017 — LLM metadata extraction as additive](adr/0017-llm-metadata-extraction-additive.md)
+- [ADR 0001 — preserve naive baseline](../adr/0001-preserve-naive-baseline.md)
+- [ADR 0003 — structured answer / citation contract](../adr/0003-structured-answer-citation-contract.md)
+- [ADR 0011 — LLM synthesis as additive ablation](../adr/0011-llm-synthesis-as-additive-ablation.md)
+- [ADR 0017 — LLM metadata extraction as additive](../adr/0017-llm-metadata-extraction-additive.md)
 - [`rag_metadata_extraction.py`](../rag_metadata_extraction.py) — backends + tool schema
 - [`ingestion.py`](../ingestion.py) — wire-up seam
 - [`tests/test_ingestion_metadata_wireup_regression.py`](../tests/test_ingestion_metadata_wireup_regression.py) — additive-contract test suite
