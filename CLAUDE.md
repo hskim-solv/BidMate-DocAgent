@@ -65,6 +65,13 @@ Supporting:
 - **State-changing actions require explicit approval.** `git push`, `gh pr merge`, `gh pr create`, `git branch -D`, `gh issue create` only after the user gives an explicit go-ahead (e.g. "진행", "go", "merge it", "ok"). Short interrogatives like `"머지?"`, `"PR?"`, `"?"` are **questions** — answer them, do not act on them.
 - **For chained side effects** (stacked-PR merge, ADR-then-PR, multi-issue triage), get a separate approval per step instead of bundling.
 
+## Delegation defaults
+
+- **Plan subagent before non-trivial change.** Any change touching >1 file or >50 LOC, or any plan-mode entry, dispatches a Plan subagent first. Skip only for typo / single-line fixes.
+- **Explore subagent for read-heavy probes.** ≥5 Read calls accumulated, or any single-file read >200 lines, hands off to Explore so the main conversation keeps tokens free.
+- **Shipping path locked at commit-0.** Decide `ship-pr` skill (manual gates, ADR reserve + stacked safety) vs `make ship-arm` (Stop-hook auto-ship). They are mutually exclusive — never arm both.
+- Full 5-axis ↔ 4-pillar mapping lives in [`docs/agent-utilization.md`](docs/agent-utilization.md). `self-review-quarterly` skill scores against that table.
+
 ## Core principles
 
 - **Issue first; convention-matched branch.** Every PR must reference an issue (`Closes #N` in body) and its branch must match `<type>/issue-<N>[-<slug>]` (ADR 0007). The CI workflow `branch-and-issue-check.yml` enforces both at PR time.
