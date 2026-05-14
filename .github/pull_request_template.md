@@ -66,3 +66,10 @@ If yes, what's the migration?
 ## 7. Out of scope
 
 <!-- Anything you noticed and deliberately did not fix. -->
+
+<!--
+Optional: attach the **`live-judge-please`** label to trigger
+`.github/workflows/pr-judge.yml` (ADR 0043).  The workflow runs the live
+LLM-judge once and posts the RAGAS aggregate as a PR comment.  Re-attach
+the label after each push to refresh (Goodhart guard).
+-->
