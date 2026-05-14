@@ -35,14 +35,14 @@ INFO bidmate.rag_core: query_complete  status='supported'  query_type='compariso
 
 - 두 기관이 **모두** 인용된 점이 핵심 — [comparison-aware balanced top-k](#key-technical-contribution--comparison-aware-balanced-top-k)가 한쪽 문서 starvation을 막은 결과.
 - 외부 API 호출 없음 (extractive). 위 5.79 ms는 in-memory index · n=2 docs 기준 실측치.
-- 5초 터미널 재생 (asciinema 설치 시): `asciinema play docs/assets/demo.cast`. 풀 워크스루 가이드: [`docs/deployment.md`](docs/deployment.md#recording-the-demo-video).
+- 5초 터미널 재생 (asciinema 설치 시): `asciinema play docs/assets/demo.cast`. 풀 워크스루 가이드: [`docs/operations/deployment.md`](docs/operations/deployment.md#recording-the-demo-video).
 
 ## 🚀 Live demo
 
 | 경로 | 상태 | 비고 |
 |---|---|---|
 | **Colab 5분 quickstart** | [![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/hskim-solv/BidMate-DocAgent/blob/main/demo/bidmate_quickstart.ipynb) | 클론 / 설치 없이 브라우저에서 바로 grounded answer 1건 실행 |
-| **🟢 Live demo (Fly.io)** | [https://bidmate-docagent-demo.fly.dev/](https://bidmate-docagent-demo.fly.dev/) | 메인 머지마다 자동 재배포 ([deploy-fly.yml](.github/workflows/deploy-fly.yml)). 첫 요청 cold-start 약 5–10s. 운영: [`docs/deployment.md`](docs/deployment.md) |
+| **🟢 Live demo (Fly.io)** | [https://bidmate-docagent-demo.fly.dev/](https://bidmate-docagent-demo.fly.dev/) | 메인 머지마다 자동 재배포 ([deploy-fly.yml](.github/workflows/deploy-fly.yml)). 첫 요청 cold-start 약 5–10s. 운영: [`docs/operations/deployment.md`](docs/operations/deployment.md) |
 | **Streamlit on HF Spaces** | [![Open in HF Spaces](https://huggingface.co/datasets/huggingface/badges/resolve/main/open-in-hf-spaces-sm.svg)](https://huggingface.co/spaces/hskim-solv/bidmate-docagent) | Fly.io 다운 시 fallback. Space sleep 시 cold-start 약 30–60s |
 | **One-line docker run** | `docker run -p 8501:8501 -p 8000:8000 -e BIDMATE_DEMO_MODE=both ghcr.io/hskim-solv/bidmate-demo:latest` | 클론 없이 Streamlit + FastAPI 동시 실행 |
 | **FastAPI Swagger** | `make api` 후 [/docs](http://localhost:8000/docs) | 프로그래매틱 사용·통합 테스트용 |
@@ -60,9 +60,9 @@ INFO bidmate.rag_core: query_complete  status='supported'  query_type='compariso
 3. **LLM-as-judge confound 제거**: generator와 verifier가 같은 LLM이 아니므로 self-consistency 편향 없음.
 4. **Citation grounding 내재화**: claim이 retrieved evidence에서만 도출되므로 hallucination이 구조적으로 불가능.
 
-**한계 / Trade-off**: 생성 유창성에 제약. RFP 도메인은 정확도와 근거 추적이 우선이므로 수용 가능한 trade-off. 결정 계약: [ADR 0003](docs/adr/0003-structured-answer-citation-contract.md) + [`docs/answer-policy.md`](docs/answer-policy.md).
+**한계 / Trade-off**: 생성 유창성에 제약. RFP 도메인은 정확도와 근거 추적이 우선이므로 수용 가능한 trade-off. 결정 계약: [ADR 0003](docs/adr/0003-structured-answer-citation-contract.md) + [`docs/agentic/answer-policy.md`](docs/agentic/answer-policy.md).
 
-LLM synthesis opt-in(`agentic_full_llm`, [ADR 0011](docs/adr/0011-llm-synthesis-as-additive-ablation.md))과 LLM Ops observability([ADR 0013](docs/adr/0013-observability-as-additive-pluggable-surface.md))는 extractive 파이프라인을 *교체하지 않고* additive ablation으로 추가됩니다 — [`docs/answer-policy.md`](docs/answer-policy.md) / [`docs/observability.md`](docs/observability.md).
+LLM synthesis opt-in(`agentic_full_llm`, [ADR 0011](docs/adr/0011-llm-synthesis-as-additive-ablation.md))과 LLM Ops observability([ADR 0013](docs/adr/0013-observability-as-additive-pluggable-surface.md))는 extractive 파이프라인을 *교체하지 않고* additive ablation으로 추가됩니다 — [`docs/agentic/answer-policy.md`](docs/agentic/answer-policy.md) / [`docs/operations/observability.md`](docs/operations/observability.md).
 
 > **완료 ([issue #570](https://github.com/hskim-solv/BidMate-DocAgent/issues/570))**: 공개 synthetic n=42 → **n=100 확장** 완료 (single_doc 34 / comparison 24 / follow_up 21 / abstention 21). Bootstrap CI 폭 이론적 수축 ×0.65 (√42/100). Detection-blind ablation 재측정은 real-eval 기준으로 후속 실행 예정.
 
@@ -70,7 +70,7 @@ LLM synthesis opt-in(`agentic_full_llm`, [ADR 0011](docs/adr/0011-llm-synthesis-
 - **문제**: 길고 복잡한 RFP 문서에서 실무 의사결정에 필요한 핵심 조건(예산/일정/요구사항/제출조건)을 빠르게 찾기 어렵습니다.
 - **해결**: 질문 유형 분석 + metadata-first 검색 + local dense retrieval/reranking + 근거 검증/retry를 결합한 Agentic RAG 파이프라인.
 - **시스템 설계**: 외부 LLM 호출 없이 evidence에서 claim을 추출하고 citation을 연결하는 **extractive grounded-answer 파이프라인** ([ADR 0003](docs/adr/0003-structured-answer-citation-contract.md)).
-- **성과**: 공개 synthetic 평가셋 **n=100** (single_doc 34 / comparison 24 / follow_up 21 / abstention 21) 기준 근거 기반 응답 품질 검증. Abstention **+77.8pp** / Citation Precision **+39.3pp** (CI 분리, 통계적으로 유의). [평가셋 상세 spec](docs/eval-dataset-spec.md)
+- **성과**: 공개 synthetic 평가셋 **n=100** (single_doc 34 / comparison 24 / follow_up 21 / abstention 21) 기준 근거 기반 응답 품질 검증. Abstention **+77.8pp** / Citation Precision **+39.3pp** (CI 분리, 통계적으로 유의). [평가셋 상세 spec](docs/eval/eval-dataset-spec.md)
 - **Latency** (naive_baseline, hashing, macOS CPU, n=100): p50 1.7ms / p95 3.1ms.
 
 ---
@@ -85,7 +85,7 @@ LLM synthesis opt-in(`agentic_full_llm`, [ADR 0011](docs/adr/0011-llm-synthesis-
 
 - 구현: [`apply_comparison_balance()` (rag_core.py)](rag_core.py), 기본 설정 [`DEFAULT_COMPARISON_BALANCE` (rag_core.py)](rag_core.py)
 - 테스트: [tests/test_fuzzy_retrieval.py](tests/test_fuzzy_retrieval.py) — asymmetric corpus 균형 보장, disabled 시 global ordering 보존, single-doc no-op
-- 설계 문서: [`docs/comparison-ranking.md`](docs/comparison-ranking.md)
+- 설계 문서: [`docs/retrieval/comparison-ranking.md`](docs/retrieval/comparison-ranking.md)
 
 > **One-line pitch**: RFP 비교 질의의 실패 패턴(한쪽 문서 starvation → verifier retry → abstention)을 발견하고, 이를 막는 retrieval ranking 전략을 설계·구현·테스트로 검증한 것이 본 프로젝트의 핵심 기여입니다.
 
@@ -99,7 +99,7 @@ LLM synthesis opt-in(`agentic_full_llm`, [ADR 0011](docs/adr/0011-llm-synthesis-
 - **측정 범위**: `Latency p95` 컬럼은 query_analysis + context_resolution + answer_generation 합의 walltime. retrieve/verify stage는 `reports/eval_summary.json`의 `stage_latency` 블록.
 - **실행 환경**: macOS / CPU-only / Python 3.11 / 단일 워커.
 - **Cold start 분리**: hashing ≈ 2.1ms / sentence-transformers ≈ 5.7s.
-- **평가셋**: 공개 synthetic n=100 (single_doc 34 / comparison 24 / follow_up 21 / abstention 21). 비공개 RFP eval은 [ADR 0005](docs/adr/0005-eval-split-public-synthetic-private-local.md)에 따라 분리합니다. 평가셋 구성 상세: [docs/eval-dataset-spec.md](docs/eval-dataset-spec.md)
+- **평가셋**: 공개 synthetic n=100 (single_doc 34 / comparison 24 / follow_up 21 / abstention 21). 비공개 RFP eval은 [ADR 0005](docs/adr/0005-eval-split-public-synthetic-private-local.md)에 따라 분리합니다. 평가셋 구성 상세: [docs/eval/eval-dataset-spec.md](docs/eval/eval-dataset-spec.md)
 - **헤드라인 latency 기준 preset**: naive_baseline Latency p95 (3.1ms)가 CI source of truth. `agentic_full_llm`은 LLM 레이턴시 포함해 환경 의존적이므로 CI 고정 대상 아님.
 - **`agentic_full_llm` 백엔드 구분**: ablation 표의 `full_llm` 행은 `BIDMATE_SYNTHESIS_BACKEND=stub`(token-less, deterministic; [ADR 0011](docs/adr/0011-llm-synthesis-as-additive-ablation.md)) 기준. stub은 pass-through 합성이라 `full`과 동일 metric이 *정상*.
 - **Rerank 종류 구분**: `Rerank on` 행 대부분은 weighted-score rerank. `full_reranker`만 cross-encoder rerank([rag_rerank.py](rag_rerank.py)) — CI default `stub`이라 `full`과 수치 일치.
@@ -182,7 +182,7 @@ flowchart TD
 
 > 강조된 두 노드: Planner의 `comparison-aware top_k` → [Key technical contribution](#key-technical-contribution--comparison-aware-balanced-top-k), Answer Generator의 `extractive — no LLM` → [Why extractive?](#why-extractive-not-generative)
 
-비교 질의(`query_type == "comparison"`)에서는 balanced top-k 컷을 적용해 각 비교 대상에 최소 1개 이상의 evidence를 보장합니다. Metadata filter staging, alias lexicon, follow-up carryover 상세: [`docs/retrieval-hardening.md`](docs/retrieval-hardening.md). `retrieval_backend` hybrid(BM25+RRF) 근거: [ADR 0010](docs/adr/0010-hybrid-bm25-dense-retrieval-rrf.md). "agentic"의 의미 (bounded retry vs ReAct/Reflexion 비교): [`docs/agentic-definition.md`](docs/agentic-definition.md).
+비교 질의(`query_type == "comparison"`)에서는 balanced top-k 컷을 적용해 각 비교 대상에 최소 1개 이상의 evidence를 보장합니다. Metadata filter staging, alias lexicon, follow-up carryover 상세: [`docs/retrieval/retrieval-hardening.md`](docs/retrieval/retrieval-hardening.md). `retrieval_backend` hybrid(BM25+RRF) 근거: [ADR 0010](docs/adr/0010-hybrid-bm25-dense-retrieval-rrf.md). "agentic"의 의미 (bounded retry vs ReAct/Reflexion 비교): [`docs/agentic/agentic-definition.md`](docs/agentic/agentic-definition.md).
 
 ---
 
@@ -196,7 +196,7 @@ python3 eval/run_eval.py --index_dir data/index --output_dir reports --config ev
 python3 scripts/update_readme_metrics.py --report reports/eval_summary.json --readme README.md
 ```
 
-상세 실행 방법 (FastAPI demo, PDF/HWP ingestion, visual parsing v2, private 100-doc eval, harness): [`docs/api-demo.md`](docs/api-demo.md).
+상세 실행 방법 (FastAPI demo, PDF/HWP ingestion, visual parsing v2, private 100-doc eval, harness): [`docs/operations/api-demo.md`](docs/operations/api-demo.md).
 
 ---
 
@@ -204,15 +204,13 @@ python3 scripts/update_readme_metrics.py --report reports/eval_summary.json --re
 
 | 목적 | 링크 |
 |---|---|
-| 포트폴리오 리뷰 + 5분 리뷰어 경로 + Quick Review | [`docs/portfolio-case-study.md`](docs/portfolio-case-study.md) |
-| 시니어 엔지니어링 narrative + interview talking points | [`docs/senior-positioning.md`](docs/senior-positioning.md) |
-| ADR 인덱스 (33개 결정 + Roadmap 5개) | [`docs/adr/README.md`](docs/adr/README.md) |
-| Ablation results + benchmarking + latency 비교 | [`docs/benchmarking.md`](docs/benchmarking.md) / [`docs/ablation-results.md`](docs/ablation-results.md) |
+| ADR 인덱스 (43개 결정) | [`docs/adr/README.md`](docs/adr/README.md) |
+| Ablation results + benchmarking + latency 비교 | [`docs/benchmarking.md`](docs/benchmarking.md) / [`docs/eval/ablation-results.md`](docs/eval/ablation-results.md) |
 | 설계 배경 (Korean RFP adaptations, 5가지) | [`docs/design-background.md`](docs/design-background.md) |
-| 답변 출력 정책 + Evidence boundary + Baseline policy | [`docs/answer-policy.md`](docs/answer-policy.md) |
-| 한계 + 회고 + 실패 사례 | [`docs/failure-cases.md`](docs/failure-cases.md) / [`docs/retrospective.md`](docs/retrospective.md) |
-| 공개 평가셋 상세 spec (n=100, 7-doc corpus, 방법론) | [`docs/eval-dataset-spec.md`](docs/eval-dataset-spec.md) |
-| 비공개 100-doc aggregate 정책 + placeholder | [`docs/private-100-doc-experiments.md`](docs/private-100-doc-experiments.md) |
+| 답변 출력 정책 + Evidence boundary + Baseline policy | [`docs/agentic/answer-policy.md`](docs/agentic/answer-policy.md) |
+| 한계 + 실패 사례 (real-data taxonomy) | [`docs/real-data/failure-cases.md`](docs/real-data/failure-cases.md) / [`docs/real-data/real-data-failure-taxonomy.md`](docs/real-data/real-data-failure-taxonomy.md) |
+| 공개 평가셋 상세 spec (n=100, 7-doc corpus, 방법론) | [`docs/eval/eval-dataset-spec.md`](docs/eval/eval-dataset-spec.md) |
+| 비공개 100-doc aggregate 정책 + placeholder | [`docs/real-data/private-100-doc-experiments.md`](docs/real-data/private-100-doc-experiments.md) |
 | 엔지니어링 블로그 (GitHub Pages) | [hskim-solv.github.io/BidMate-DocAgent](https://hskim-solv.github.io/BidMate-DocAgent/) |
 | 전체 문서 인덱스 | [`docs/README.md`](docs/README.md) |
 
@@ -233,7 +231,7 @@ python3 scripts/update_readme_metrics.py --report reports/eval_summary.json --re
 - 브랜치/PR/이슈 생성 및 CI gate 운영 보조
 - 탐색(Explore subagent), 설계 검토(Plan subagent), 반복 작업 자동화
 
-**분기별 협업 자가진단** — [`/self-review-quarterly`](docs/adr-self-interview-checklist.md) skill로 4축(포트폴리오 진행도) + 5축(Claude 협업 효율)을 한 보고서로 생성.
+**분기별 협업 자가진단** — `/self-review-quarterly` skill로 4축(포트폴리오 진행도) + 5축(Claude 협업 효율)을 한 보고서로 생성.
 최신 보고서: [`docs/self-review/Q2-2026.md`](docs/self-review/Q2-2026.md)
 
 ---
