@@ -186,7 +186,11 @@ class AssembleStatsStructuralTest(unittest.TestCase):
                 memory_dir=str(tmp / "memory"),
                 repo=repo,
             )
-        expected_keys = {"quarter", "date_range", "sessions", "memory", "git", "governance_hooks"}
+        expected_keys = {
+            "quarter", "date_range", "sessions", "memory", "git",
+            "governance_hooks", "pr_diff_stats",
+            "axis_2_plan_subagent_skip_rate",
+        }
         self.assertEqual(set(stats.keys()), expected_keys)
 
     def test_sessions_keys_are_metadata_only(self) -> None:
@@ -200,7 +204,10 @@ class AssembleStatsStructuralTest(unittest.TestCase):
                 repo=repo,
             )
         session_keys = set(stats["sessions"].keys())
-        allowed = {"count", "tool_call_distribution", "agent_delegations"}
+        allowed = {
+            "count", "tool_call_distribution", "agent_delegations",
+            "plan_calls_by_issue", "plan_calls_unmatched_worktree",
+        }
         self.assertLessEqual(session_keys, allowed,
                              f"sessions block has unexpected keys: {session_keys - allowed}")
 

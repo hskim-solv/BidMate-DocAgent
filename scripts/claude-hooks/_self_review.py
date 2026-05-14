@@ -32,6 +32,20 @@ from typing import Any
 QUARTER_RE = re.compile(r"^Q([1-4])-(\d{4})$")
 ADR_FILENAME_RE = re.compile(r"^(\d{4})-.+\.md$")
 PR_MERGE_RE = re.compile(r"\(#(\d+)\)\s*$")
+# Matches both ADR-0007 branch names (`feat/issue-718-…`) and worktree dir
+# names (`.claude/worktrees/feat-718-…`). The leading type prefix is
+# accepted with or without an `issue-` separator, mirroring how `git
+# worktree add` typically renames the slash.
+BRANCH_ISSUE_RE = re.compile(
+    r"(?:issue|feat|fix|docs|chore|refactor|test|perf|ci|build|style)-(\d+)"
+)
+
+# Axis #2 (Agent delegation) measurement: a PR is considered "non-trivial"
+# when additions + deletions > AXIS_2_LOC_THRESHOLD. Non-trivial PRs are
+# expected to have at least one Plan-subagent call per the CLAUDE.md
+# `## Delegation defaults` rule. The skip rate is computed as
+# (PRs with zero Plan calls) / (non-trivial PRs).
+AXIS_2_LOC_THRESHOLD = 50
 
 DEFAULT_TRANSCRIPTS_GLOB = (
     "~/.claude/projects/-Users-hskim-Desktop-projects-BidMate-DocAgent/*.jsonl"
@@ -108,6 +122,11 @@ def collect_sessions(transcripts_glob: str, start: str, end: str) -> dict[str, A
     tool_counter: Counter[str] = Counter()
     agent_counter: Counter[str] = Counter()
     session_ids: set[str] = set()
+    # Per-issue Plan-subagent call count. Key is the issue number parsed
+    # from the record's `cwd` worktree path (e.g. `feat-718-…` → 718).
+    # Records with no recognizable issue number contribute to `unmatched`.
+    plan_calls_by_issue: Counter[int] = Counter()
+    plan_calls_unmatched = 0
 
     start_dt = datetime.fromisoformat(start).replace(tzinfo=timezone.utc)
     end_dt = datetime.fromisoformat(end).replace(
@@ -158,6 +177,17 @@ def collect_sessions(transcripts_glob: str, start: str, end: str) -> dict[str, A
                                 sub = inp.get("subagent_type")
                                 if isinstance(sub, str) and sub:
                                     agent_counter[sub] += 1
+                                    if sub == "Plan":
+                                        cwd = rec.get("cwd")
+                                        m = (
+                                            BRANCH_ISSUE_RE.search(cwd)
+                                            if isinstance(cwd, str)
+                                            else None
+                                        )
+                                        if m:
+                                            plan_calls_by_issue[int(m.group(1))] += 1
+                                        else:
+                                            plan_calls_unmatched += 1
         except OSError:
             continue
 
@@ -165,6 +195,8 @@ def collect_sessions(transcripts_glob: str, start: str, end: str) -> dict[str, A
         "count": len(session_ids),
         "tool_call_distribution": dict(tool_counter.most_common()),
         "agent_delegations": dict(agent_counter.most_common()),
+        "plan_calls_by_issue": dict(plan_calls_by_issue),
+        "plan_calls_unmatched_worktree": plan_calls_unmatched,
     }
 
 
@@ -407,17 +439,101 @@ def collect_governance_hooks(repo: str, start: str, end: str) -> dict[str, Any]:
     }
 
 
+def collect_pr_diff_stats(repo: str, start: str, end: str) -> list[dict[str, Any]]:
+    """List merged PRs in the quarter with additions + deletions counts.
+
+    Uses `gh pr list --search merged:<start>..<end>` so only PR-shaped
+    merges are counted. Fails soft: returns `[]` if `gh` is missing or
+    unauthenticated. Only the headRefName + numeric LOC are kept; PR
+    titles and bodies are not stored to honor the metadata-only contract.
+    """
+    try:
+        r = subprocess.run(
+            [
+                "gh", "pr", "list",
+                "--state", "merged",
+                "--search", f"merged:{start}..{end}",
+                "--json", "number,headRefName,additions,deletions,mergedAt",
+                "--limit", "200",
+            ],
+            cwd=repo, capture_output=True, text=True, check=False,
+        )
+        if r.returncode != 0 or not r.stdout.strip():
+            return []
+        data = json.loads(r.stdout)
+    except (OSError, subprocess.SubprocessError, json.JSONDecodeError):
+        return []
+    out: list[dict[str, Any]] = []
+    for item in data if isinstance(data, list) else []:
+        if not isinstance(item, dict):
+            continue
+        num = item.get("number")
+        head = item.get("headRefName") or ""
+        add = item.get("additions") or 0
+        rem = item.get("deletions") or 0
+        if not isinstance(num, int) or not isinstance(head, str):
+            continue
+        loc = int(add) + int(rem)
+        m = BRANCH_ISSUE_RE.search(head)
+        issue = int(m.group(1)) if m else None
+        out.append({
+            "number": num,
+            "head": head,
+            "issue": issue,
+            "loc": loc,
+            "merged_at": item.get("mergedAt"),
+        })
+    return out
+
+
+def compute_axis_2_skip_rate(
+    prs: list[dict[str, Any]], plan_calls_by_issue: dict[int, int]
+) -> dict[str, Any]:
+    """Compute Plan-subagent skip rate over non-trivial (LOC > 50) PRs.
+
+    A PR is "covered" when its issue number has ≥1 Plan-subagent call in
+    the quarter's transcripts. PRs whose branch lacks `issue-<N>` are
+    counted under `unmatched` and excluded from the denominator — they
+    cannot be evaluated either way.
+
+    Returns rate in [0.0, 1.0] plus the supporting counts so the LLM
+    rubric layer can show its work.
+    """
+    nontrivial = [p for p in prs if p.get("loc", 0) > AXIS_2_LOC_THRESHOLD]
+    evaluated = [p for p in nontrivial if p.get("issue") is not None]
+    unmatched = len(nontrivial) - len(evaluated)
+    skip_count = sum(
+        1 for p in evaluated if plan_calls_by_issue.get(p["issue"], 0) == 0
+    )
+    rate = (skip_count / len(evaluated)) if evaluated else None
+    return {
+        "loc_threshold": AXIS_2_LOC_THRESHOLD,
+        "prs_nontrivial": len(nontrivial),
+        "prs_evaluated": len(evaluated),
+        "prs_unmatched_branch": unmatched,
+        "prs_with_zero_plan_calls": skip_count,
+        "skip_rate": rate,
+    }
+
+
 def assemble_stats(
     quarter: str, transcripts_glob: str, memory_dir: str, repo: str
 ) -> dict[str, Any]:
     start, end = parse_quarter(quarter)
+    sessions = collect_sessions(transcripts_glob, start, end)
+    pr_diff_stats = collect_pr_diff_stats(repo, start, end)
+    axis_2 = compute_axis_2_skip_rate(
+        pr_diff_stats, sessions.get("plan_calls_by_issue", {})
+    )
     return {
         "quarter": quarter,
         "date_range": [start, end],
-        "sessions": collect_sessions(transcripts_glob, start, end),
+        "sessions": sessions,
         "memory": collect_memory(memory_dir),
         "git": collect_git(repo, start, end),
         "governance_hooks": collect_governance_hooks(repo, start, end),
+        "pr_diff_stats": pr_diff_stats,
+        "axis_2_plan_subagent_skip_rate": axis_2,
     }
 
 
@@ -433,6 +549,12 @@ def emit_report(stats: dict[str, Any]) -> str:
         f"- Load-bearing touches: {stats['git'].get('load_bearing_touches', 0)}",
         f"- ADR changes: {len(stats['git'].get('adr_changes', []))}",
         f"- PRs merged: {len(stats['git'].get('prs_merged', []))}",
+        (
+            f"- Axis #2 Plan-subagent skip rate: "
+            f"{stats['axis_2_plan_subagent_skip_rate'].get('skip_rate')} "
+            f"({stats['axis_2_plan_subagent_skip_rate'].get('prs_with_zero_plan_calls')}"
+            f"/{stats['axis_2_plan_subagent_skip_rate'].get('prs_evaluated')})"
+        ),
         "",
         "## Raw stats (metadata-only — no body excerpts)",
         "",
