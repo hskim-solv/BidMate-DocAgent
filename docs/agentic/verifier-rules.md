@@ -10,8 +10,8 @@ documented baseline.
 
 This is a behavioral specification, not a tutorial. Read alongside:
 
-- [ADR 0003 — answer / citation contract](./adr/0003-structured-answer-citation-contract.md) — the schema each rule writes into.
-- [ADR 0004 — verifier retry policy](./adr/0004-verifier-retry-policy.md) — the strict → relaxed staging this implements.
+- [ADR 0003 — answer / citation contract](../adr/0003-structured-answer-citation-contract.md) — the schema each rule writes into.
+- [ADR 0004 — verifier retry policy](../adr/0004-verifier-retry-policy.md) — the strict → relaxed staging this implements.
 - [`rag_answer_schema.py`](../rag_answer_schema.py) — canonical definitions of `ANSWER_STATUS_*` and `ANSWER_SCHEMA_VERSION`.
 
 ## Constants

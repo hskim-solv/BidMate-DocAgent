@@ -1,6 +1,6 @@
 # Agent 오케스트레이션 실패 모드 분석
 
-> LangGraph 3노드 구조 (`analyze → retrieve_loop → build_answer`) 의 per-node 실패 패턴을 기록한다. 범용 실패 유형은 [docs/failure-cases.md](failure-cases.md) 참조. 이 문서는 **orchestration 수준** — "어떤 노드에서, 어떤 신호로, 어떤 결과가 나오는가"에 집중.
+> LangGraph 3노드 구조 (`analyze → retrieve_loop → build_answer`) 의 per-node 실패 패턴을 기록한다. 범용 실패 유형은 [docs/real-data/failure-cases.md](../real-data/failure-cases.md) 참조. 이 문서는 **orchestration 수준** — "어떤 노드에서, 어떤 신호로, 어떤 결과가 나오는가"에 집중.
 
 ---
 
@@ -70,7 +70,7 @@
 { "comparison_coverage": { "after": {"agency_a": 3, "agency_b": 0}, "balanced": false } }
 ```
 
-**개선 이력**: `apply_comparison_balance` 도입 후 이 패턴 빈도 감소. [docs/comparison-ranking.md](comparison-ranking.md) 참조.
+**개선 이력**: `apply_comparison_balance` 도입 후 이 패턴 빈도 감소. [docs/retrieval/comparison-ranking.md](../retrieval/comparison-ranking.md) 참조.
 
 ---
 
@@ -124,4 +124,4 @@
 | `build_answer` | LLM synthesis 실패 | extractive fallback | `synthesis.fallback_reason` | ✅ (opt-in 전용) |
 | `build_answer` | 빈 evidence cascade | insufficient | `claim_count=0, citation_count=0` | ✅ (abstention) |
 
-> 성능 측정과 overhead quantification: [tests/test_langgraph_performance_profile.py](../tests/test_langgraph_performance_profile.py). 시스템 설계 STAR: [docs/agent-system-design-case-study.md](agent-system-design-case-study.md).
+> 성능 측정과 overhead quantification: [tests/test_langgraph_performance_profile.py](../tests/test_langgraph_performance_profile.py). 시스템 설계 STAR: [docs/agentic/agent-system-design-case-study.md](./agent-system-design-case-study.md).

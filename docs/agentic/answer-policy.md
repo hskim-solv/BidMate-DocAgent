@@ -51,7 +51,7 @@
 }
 ```
 
-좋은 답변은 claim마다 citation이 있고, citation의 chunk text가 claim을 직접 지지한다. visual parsing v2 인덱스에서는 citation에 `page_span`과 `regions`가 추가될 수 있어 page/bbox 근거 위치까지 추적할 수 있다. page/region gold가 있는 평가셋은 [`citation-grounding-eval.md`](citation-grounding-eval.md)의 기준으로 문서 단위 citation precision과 위치 grounding을 분리해 본다. 비교 질문에서는 대상별 claim을 나눠 스캔 가능하게 유지한다.
+좋은 답변은 claim마다 citation이 있고, citation의 chunk text가 claim을 직접 지지한다. visual parsing v2 인덱스에서는 citation에 `page_span`과 `regions`가 추가될 수 있어 page/bbox 근거 위치까지 추적할 수 있다. page/region gold가 있는 평가셋은 [`citation-grounding-eval.md`](../eval/citation-grounding-eval.md)의 기준으로 문서 단위 citation precision과 위치 grounding을 분리해 본다. 비교 질문에서는 대상별 claim을 나눠 스캔 가능하게 유지한다.
 
 ## 나쁜 답변 예시
 
@@ -100,7 +100,7 @@ unsupported 질문은 다음처럼 답한다.
 
 ## 계약 강제 메커니즘
 
-`schema_version: 2` 계약은 두 단계로 강제된다. extractive 경로가 `status` / `claims` / `citations` / `status_reason` / `insufficiency`를 결정적으로 락하고, optional LLM 합성 경로는 `summary` / `answer_text`만 다시 쓸 수 있다 ([ADR 0001](./adr/0001-preserve-naive-baseline.md) extractive baseline invariant, [ADR 0011](./adr/0011-llm-synthesis-as-additive-ablation.md) additive synthesis).
+`schema_version: 2` 계약은 두 단계로 강제된다. extractive 경로가 `status` / `claims` / `citations` / `status_reason` / `insufficiency`를 결정적으로 락하고, optional LLM 합성 경로는 `summary` / `answer_text`만 다시 쓸 수 있다 ([ADR 0001](../adr/0001-preserve-naive-baseline.md) extractive baseline invariant, [ADR 0011](../adr/0011-llm-synthesis-as-additive-ablation.md) additive synthesis).
 
 ### 1단계 — extractive (락 단계)
 
@@ -131,7 +131,7 @@ unsupported 질문은 다음처럼 답한다.
 
 ### `schema_version` bump 규칙
 
-위 contract의 어느 부분이라도 *비호환*으로 바뀌면 `schema_version`을 3으로 올리고 [ADR 0003](./adr/0003-structured-answer-citation-contract.md) supersede를 새 ADR로 기록한다. additive 변경(예: `claims[].citations[]`에 optional `page_span` 추가)은 bump 없음. `claims` shape 변경, status enum 추가/제거, `status_reason.code` 의미 변경은 모두 비호환.
+위 contract의 어느 부분이라도 *비호환*으로 바뀌면 `schema_version`을 3으로 올리고 [ADR 0003](../adr/0003-structured-answer-citation-contract.md) supersede를 새 ADR로 기록한다. additive 변경(예: `claims[].citations[]`에 optional `page_span` 추가)은 bump 없음. `claims` shape 변경, status enum 추가/제거, `status_reason.code` 의미 변경은 모두 비호환.
 
 ### 테스트 매트릭스
 
