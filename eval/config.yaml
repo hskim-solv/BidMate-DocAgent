@@ -1968,3 +1968,104 @@ cases:
     expected_terms:
       - "모델명"
     answerable: false
+
+  # Issue #648 / ADR 0039 — HWP structural hardcase taxonomy activation
+  # (PR-A). Fixtures: rfp_agency_f_smart_factory_hwp.json (table_heavy) and
+  # rfp_agency_g_traffic_hwp.json (layout_broken + rotated_or_skewed).
+  # Five cases exercise the four new ADR 0039 categories on the public
+  # synthetic surface. Fixtures are redistributable synthetic JSON with
+  # metadata.source_format="hwp"; no .hwp binary is committed so
+  # _resolve_loader is never called in CI (pyhwp-absent safe).
+  # ADR 0001: corpus additive only — retrieval/verifier paths unchanged.
+
+  - id: hwp_f_table_budget
+    query_type: single_doc
+    hardcase_categories:
+      - table_heavy
+    query: "기관 F 스마트팩토리 플랫폼 구축 사업의 총 사업비는 얼마인가?"
+    expected_doc_ids:
+      - rfp-agency-f-smart-factory-hwp
+    expected_terms:
+      - "4억 3,500만원"
+      - "435,000,000"
+    expected_citation_terms:
+      - "435,000,000"
+    expected_claim_targets:
+      - "기관 F"
+    expected_claim_citations:
+      - target: "기관 F"
+        expected_doc_ids:
+          - rfp-agency-f-smart-factory-hwp
+        expected_terms:
+          - "435,000,000"
+    answerable: true
+
+  - id: hwp_g_layout_contract_amount
+    query_type: single_doc
+    hardcase_categories:
+      - layout_broken
+    query: "기관 G 교통정보 시스템 개선 사업의 계약금액은 얼마인가?"
+    expected_doc_ids:
+      - rfp-agency-g-traffic-hwp
+    expected_terms:
+      - "2억 8,000만원"
+      - "280,000,000"
+    expected_citation_terms:
+      - "2억 8,000만원"
+    expected_claim_targets:
+      - "기관 G"
+    expected_claim_citations:
+      - target: "기관 G"
+        expected_doc_ids:
+          - rfp-agency-g-traffic-hwp
+        expected_terms:
+          - "2억 8,000만원"
+    answerable: true
+
+  - id: hwp_compare_fg_scale
+    query_type: comparison
+    hardcase_categories:
+      - table_heavy
+      - layout_broken
+    query: "기관 F 스마트팩토리 사업과 기관 G 교통정보 사업 중 어느 기관의 사업 규모가 더 큰가?"
+    expected_doc_ids:
+      - rfp-agency-f-smart-factory-hwp
+      - rfp-agency-g-traffic-hwp
+    expected_terms:
+      - "기관 F"
+      - "기관 G"
+      - "4억 3,500만원"
+      - "2억 8,000만원"
+    expected_claim_targets:
+      - "기관 F"
+      - "기관 G"
+    answerable: true
+
+  - id: hwp_follow_up_f_schedule
+    query_type: follow_up
+    hardcase_categories:
+      - table_heavy
+    prior_turns:
+      - query: "기관 F 스마트팩토리 사업의 규모와 주요 기능은?"
+    query: "그 기관의 최종 납품 일정은 언제인가?"
+    expected_doc_ids:
+      - rfp-agency-f-smart-factory-hwp
+    expected_terms:
+      - "7개월"
+      - "최종 납품"
+    expected_citation_terms:
+      - "7개월"
+    expected_claim_targets:
+      - "기관 F"
+    answerable: true
+
+  - id: hwp_abstention_f_autonomous_vehicle
+    query_type: abstention
+    hardcase_categories:
+      - table_heavy
+    query: "기관 F 스마트팩토리에 자율주행 AGV 연동 요구사항이 있나?"
+    expected_doc_ids: []
+    expected_terms:
+      - "자율주행"
+      - "AGV"
+    answerable: false
