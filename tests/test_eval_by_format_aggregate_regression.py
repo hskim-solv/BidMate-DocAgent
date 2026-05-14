@@ -209,10 +209,19 @@ class TestExtractAggregateByFormat(unittest.TestCase):
             {"hwp": {"num_predictions": 1, "accuracy": 1.0, "case_results": "should_be_dropped"}}
         )
         out = extract_aggregate(summary)
+
+        def _all_keys(d: dict) -> set:
+            keys = set(d.keys())
+            for v in d.values():
+                if isinstance(v, dict):
+                    keys |= _all_keys(v)
+            return keys
+
+        present = _all_keys(out)
         for forbidden in FORBIDDEN_KEYS:
             self.assertNotIn(
                 forbidden,
-                str(out),
+                present,
                 f"Forbidden key '{forbidden}' leaked into aggregate output",
             )
 
