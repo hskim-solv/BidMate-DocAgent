@@ -235,8 +235,14 @@ def _stub_backend_query(state: dict[str, Any], case: dict[str, Any]) -> dict[str
 
 def _langchain_backend_init(corpus: list[dict[str, Any]]) -> dict[str, Any]:  # pragma: no cover - external SDK
     try:
-        from langchain.chains import RetrievalQA
-        from langchain.docstore.document import Document
+        try:
+            from langchain.chains import RetrievalQA
+        except ImportError:
+            from langchain_classic.chains import RetrievalQA  # langchain ≥ 1.0
+        try:
+            from langchain.docstore.document import Document
+        except ImportError:
+            from langchain_core.documents import Document  # langchain ≥ 1.0
         from langchain_community.embeddings import HuggingFaceEmbeddings
         from langchain_community.vectorstores import FAISS
         from langchain_anthropic import ChatAnthropic

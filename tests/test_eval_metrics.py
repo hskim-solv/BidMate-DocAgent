@@ -307,6 +307,34 @@ class EvalMetricsTest(unittest.TestCase):
         self.assertIn("query_rewrite", payload)
         self.assertIn("readable_summary", payload)
 
+    def test_evaluate_run_case_results_contain_synthesis_telemetry_keys(self) -> None:
+        # Verify that tokens_in/out/cost/llm_model keys are always present in
+        # case_results (values may be null for stub/hashing backends).
+        index = build_index_payload(Path("data/raw"), embedding_backend="hashing")
+        case = {
+            "id": "synth-telemetry-case",
+            "query_type": "single_doc",
+            "query": "기관 A의 납품 기한은?",
+            "expected_doc_ids": ["rfp-agency-a-ai-quality"],
+            "expected_terms": ["납품"],
+            "expected_claim_targets": ["기관 A"],
+            "answerable": True,
+        }
+        run_config = {
+            "name": "unit",
+            "pipeline": "naive_baseline",
+            "top_k": None,
+            "metadata_first": True,
+            "rerank": False,
+            "verifier_retry": False,
+            "retrieval_mode": "flat",
+            "prompt_profile": "",
+        }
+        results = evaluate_run(index, [case], run_config)
+        result = results[0]
+        for key in ("tokens_in", "tokens_out", "cost_estimate_usd", "llm_model"):
+            self.assertIn(key, result, f"case_results entry missing key: {key}")
+
     def test_private_hardcase_example_config_loads(self) -> None:
         config = load_config(ROOT_DIR / "eval" / "private_hardcase.example.yaml")
 
