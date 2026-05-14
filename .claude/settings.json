@@ -7,6 +7,10 @@
           {
             "type": "command",
             "command": "bash scripts/claude-hooks/pretooluse-loadbearing.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash scripts/claude-hooks/pretooluse-memory-lines.sh"
           }
         ]
       },
