@@ -101,6 +101,7 @@ def score_case(
     }
     chunk_metrics["chunk_mrr"] = chunk_mrr(retrieved_chunk_ids, gold_for_chunks)
     chunk_metrics["chunk_ndcg_at_10"] = chunk_ndcg_at_k(retrieved_chunk_ids, gold_for_chunks, 10)
+    chunk_metrics["chunk_ndcg_at_20"] = chunk_ndcg_at_k(retrieved_chunk_ids, gold_for_chunks, 20)
 
     return {
         "id": case.get("id"),
