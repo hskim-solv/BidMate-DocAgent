@@ -579,11 +579,75 @@ def metric_block(case_results: list[dict[str, Any]]) -> dict[str, Any]:
     return block
 
 
+def _load_text_source_counts(index_dir: Path | None) -> dict[str, dict[str, int]]:
+    """Pass-through read of ``ingestion_report.json`` text_source_counts (issue #769).
+
+    Reads ``<index_dir>/ingestion_report.json`` produced by ``scripts/build_index.py``
+    (PR #744, ``INGESTION_REPORT_SCHEMA_VERSION>=3``) and returns the per-format
+    text-source histogram.  Returns ``{}`` on any failure — eval must never break
+    on a missing or malformed ingestion report, since the report is optional
+    (e.g. the ``--input_dir`` ingestion path never writes one).
+    """
+    if index_dir is None:
+        return {}
+    report_path = Path(index_dir) / "ingestion_report.json"
+    if not report_path.is_file():
+        return {}
+    try:
+        payload = json.loads(report_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        print(
+            f"[WARN] Could not read text_source_counts from {report_path}: {exc}",
+            file=sys.stderr,
+        )
+        return {}
+    raw = (payload.get("summary") or {}).get("text_source_counts") or {}
+    if not isinstance(raw, dict):
+        return {}
+    cleaned: dict[str, dict[str, int]] = {}
+    for fmt, sources in raw.items():
+        if not isinstance(sources, dict):
+            continue
+        cleaned[str(fmt)] = {
+            str(source): int(count)
+            for source, count in sources.items()
+            if isinstance(count, (int, float))
+        }
+    return cleaned
+
+
+def _inject_text_source_rates(
+    by_format: dict[str, dict[str, Any]],
+    text_source_counts: dict[str, dict[str, int]],
+) -> None:
+    """Merge per-format text_source data into the ``by_format`` aggregate in-place.
+
+    For every format present in ``by_format``, attach the raw ``text_source_counts``
+    sub-dict (for transparency).  For ``hwp`` specifically, derive
+    ``hwp_native_rate`` and ``hwp_fallback_rate`` as a convenience for operators
+    scanning the eval summary at a glance.
+    """
+    for fmt, block in by_format.items():
+        sources = text_source_counts.get(fmt)
+        if not sources:
+            continue
+        total = sum(sources.values())
+        if total <= 0:
+            continue
+        block["text_source_counts"] = dict(sources)
+        if fmt == "hwp":
+            native = int(sources.get("hwp_native", 0))
+            block["hwp_native_rate"] = native / total
+            block["hwp_fallback_rate"] = (total - native) / total
+
+
 def summarize_run(
     name: str,
     run_config: dict[str, Any],
     case_results: list[dict[str, Any]],
     include_cases: bool = False,
+    *,
+    index_dir: Path | None = None,
 ) -> dict[str, Any]:
     summary = {
         "name": name,
@@ -629,6 +693,12 @@ def summarize_run(
             fmt: metric_block(format_grouped[fmt])
             for fmt in sorted(format_grouped)
         }
+        # Issue #769: enrich by_format with the pass-through text_source mix from
+        # ingestion_report.json so operators can see "X% of HWP cases parsed via
+        # the pyhwp native path" without joining two artifacts by hand.
+        text_source_counts = _load_text_source_counts(index_dir)
+        if text_source_counts:
+            _inject_text_source_rates(summary["by_format"], text_source_counts)
     if include_cases:
         summary["case_results"] = case_results
     return summary
@@ -885,6 +955,7 @@ def main() -> int:
                 run_config,
                 case_results,
                 include_cases=is_primary,
+                index_dir=Path(args.index_dir),
             )
             run_summaries.append(run_summary)
             if is_primary:
