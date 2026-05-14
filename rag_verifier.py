@@ -75,6 +75,50 @@ PARTIAL_TOPIC_GROUNDING_MIN_MATCHED = 2
 PARTIAL_TOPIC_GROUNDING_REASON = "partial_topic_grounding"
 
 
+def _count_target_doc_topic_matches(
+    analysis: dict[str, Any],
+    evidence: list[dict[str, Any]],
+    topics: list[str],
+) -> int:
+    """Count how many topics match inside *target-doc-only* evidence text.
+
+    Guards against *cross-entity incidental matches* in partial-topic grounding:
+    when the relaxed retrieval stage drops all metadata filters, documents from
+    unrelated agencies can be retrieved alongside the correct ones. If those
+    unrelated chunks happen to mention 2+ verification topics (e.g. a generic
+    "납품 일정" phrase), the topic count computed over the combined evidence pool
+    would incorrectly trigger ``partial_topic_grounding``.
+
+    When ``analysis["matched_doc_ids"]`` is non-empty (the query was mapped to
+    specific documents by the analysis layer), this function restricts the
+    topic-counting to evidence items whose ``doc_id`` is in that target set.
+    If no target evidence exists, the count is 0. If ``matched_doc_ids`` is
+    empty (unconstrained query), all evidence is used and the function behaves
+    identically to the full-pool count — the guard is dormant.
+
+    Issue #687 / ADR 0004 (partial-topic grounding policy).
+    """
+    target_doc_ids: set[str] = set(analysis.get("matched_doc_ids") or [])
+    if not target_doc_ids:
+        # Unconstrained query — count over all evidence (guard dormant).
+        pool = evidence
+    else:
+        pool = [item for item in evidence if item.get("doc_id", "") in target_doc_ids]
+        if not pool:
+            return 0
+
+    pool_text = " ".join(evidence_text_for_verification(item) for item in pool).lower()
+    pool_canonical = normalize_text(pool_text)
+    return sum(
+        1
+        for topic in topics
+        if any(
+            form in pool_text or form in pool_canonical
+            for form in expand_forms(topic.lower())
+        )
+    )
+
+
 def verify_evidence(
     analysis: dict[str, Any],
     evidence: list[dict[str, Any]],
@@ -126,10 +170,19 @@ def verify_evidence(
             )
         )
         if matched_topic_count < len(topics):
+            if allow_partial_topic:
+                # Cross-entity guard (issue #687): recount topics only in
+                # target-doc evidence so incidental matches from unrelated
+                # agencies retrieved in relaxed mode can't flip the decision.
+                partial_count = _count_target_doc_topic_matches(
+                    analysis, evidence, topics
+                )
+            else:
+                partial_count = matched_topic_count
             if (
                 allow_partial_topic
-                and matched_topic_count >= PARTIAL_TOPIC_GROUNDING_MIN_MATCHED
-                and (matched_topic_count / len(topics)) >= PARTIAL_TOPIC_GROUNDING_MIN_FRACTION
+                and partial_count >= PARTIAL_TOPIC_GROUNDING_MIN_MATCHED
+                and (partial_count / len(topics)) >= PARTIAL_TOPIC_GROUNDING_MIN_FRACTION
             ):
                 # Soft signal — caller surfaces this as `partial` status.
                 reasons.append(PARTIAL_TOPIC_GROUNDING_REASON)

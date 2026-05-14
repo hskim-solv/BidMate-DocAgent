@@ -239,5 +239,90 @@ class WhQueryTokenExclusionTest(unittest.TestCase):
         self.assertNotIn("topic_not_grounded", reasons)
 
 
+class CrossEntityContaminationGuardTest(unittest.TestCase):
+    """Regression guards for issue #687 — cross-entity incidental matches.
+
+    When the relaxed retrieval stage drops all metadata filters, documents
+    from unrelated agencies can be retrieved.  If those documents happen to
+    contain 2+ verification topics (e.g. a generic "납품 일정" mention),
+    ``partial_topic_grounding`` must NOT be triggered — the evidence is
+    entirely from the wrong entity.
+
+    The guard fires only when ``analysis["matched_doc_ids"]`` is non-empty
+    (i.e., the query was mapped to specific documents by the analysis layer).
+    Queries with no entity constraint leave ``matched_doc_ids`` empty and
+    are not affected.
+    """
+
+    def _wrong_entity_evidence(self) -> list[dict]:
+        """Evidence whose doc_id does NOT match the analysis's matched_doc_ids."""
+        return [
+            {
+                "doc_id": "rfp-agency-g-traffic-hwp",
+                "chunk_id": "rfp-agency-g-traffic-hwp::chunk-005",
+                "score": 0.40,
+                "text": "기관 G의 납품 일정은 착수 후 2개월 이내 설계서 제출, 4개월 이내 장비 설치 완료.",
+                "agency": "기관 G",
+            },
+            {
+                "doc_id": "rfp-agency-f-smart-factory-hwp",
+                "chunk_id": "rfp-agency-f-smart-factory-hwp::chunk-001",
+                "score": 0.39,
+                "text": "기관 F는 제조 현장의 생산 실적, 설비 가동률을 통합 관리하는 플랫폼을 구축하고자 한다.",
+                "agency": "기관 F",
+            },
+        ]
+
+    def test_cross_entity_evidence_rejected_when_matched_doc_ids_set(self) -> None:
+        """Evidence from wrong agencies must not trigger partial_topic_grounding.
+
+        Simulates the probe for "기관 A의 블록체인 납품 실적은?" after relaxed
+        retrieval returned 기관 G (납품) + 기관 F (실적) chunks.  With
+        matched_doc_ids=['rfp-agency-a-ai-quality'], the guard detects that no
+        evidence doc_id overlaps and rejects partial_topic_grounding.
+        """
+        analysis = {
+            "topics": ["블록체인", "납품", "실적"],
+            "matched_doc_ids": ["rfp-agency-a-ai-quality"],
+            "entities": ["기관 A"],
+        }
+        evidence = self._wrong_entity_evidence()
+        # 2/3 topics match (납품 + 실적) — fraction 0.67 ≥ 0.5, count 2 ≥ 2.
+        # Without the guard this would trigger partial_topic_grounding.
+        verified, reasons = verify_evidence(
+            analysis, evidence, allow_partial_topic=True
+        )
+        self.assertFalse(verified, f"cross-entity evidence must not verify; reasons={reasons}")
+        self.assertIn("topic_not_grounded", reasons)
+        self.assertNotIn(PARTIAL_TOPIC_GROUNDING_REASON, reasons)
+
+    def test_cross_entity_guard_inactive_when_no_matched_doc_ids(self) -> None:
+        """Guard must be dormant for queries with no entity constraint.
+
+        If ``matched_doc_ids`` is empty (general / out-of-corpus query),
+        the guard must not block partial_topic_grounding — it would have no
+        sensible target to compare against and would silently break the
+        normal partial-topic recovery path.
+        """
+        analysis = {
+            "topics": ["보안 통제", "로그 추적", "감사 로그", "양자암호"],
+            # No matched_doc_ids — unconstrained query.
+        }
+        evidence = [
+            {
+                "doc_id": "doc-x",
+                "chunk_id": "c1",
+                "score": 0.5,
+                "text": "이 문서는 보안 통제와 로그 추적, 그리고 감사 로그를 다룬다.",
+            }
+        ]
+        # 3/4 topics matched → should still accept (guard inactive).
+        verified, reasons = verify_evidence(
+            analysis, evidence, allow_partial_topic=True
+        )
+        self.assertTrue(verified, f"no matched_doc_ids → guard inactive; reasons={reasons}")
+        self.assertIn(PARTIAL_TOPIC_GROUNDING_REASON, reasons)
+
+
 if __name__ == "__main__":
     unittest.main()

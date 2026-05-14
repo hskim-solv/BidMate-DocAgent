@@ -209,7 +209,12 @@ class TestExtractAggregateByFormat(unittest.TestCase):
             {"hwp": {"num_predictions": 1, "accuracy": 1.0, "case_results": "should_be_dropped"}}
         )
         out = extract_aggregate(summary)
-
+        # Collect all keys in the output dict recursively so that nested
+        # by_format sub-dicts are also covered.  Check exact key membership,
+        # NOT str(out) substring search — the latter produces false-positives
+        # when a *new metric name* shares a prefix with a forbidden token
+        # (e.g. "answer_format_compliance" contains the forbidden "answer").
+        # Issue #687: fixed after #650 added answer_format_compliance.
         def _all_keys(d: dict) -> set:
             keys = set(d.keys())
             for v in d.values():
