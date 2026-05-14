@@ -95,6 +95,7 @@ project record.
 | [0035](./0035-dict-not-pydantic-v2.md) | accepted | Answer dict is the internal contract — no Pydantic/TypedDict shadow model inside the pipeline (defends ADR 0003 single-source-of-truth; Pydantic allowed at `api/schemas.py` boundary only) |
 | [0036](./0036-hwp-native-loader-pyhwp-gated-default.md) | accepted | HwpNativeLoader promoted to pyhwp-install-detection default (`with_tables=True` when `hwp5` importable); `BIDMATE_HWP_LOADER=csv` is explicit opt-out; CI minimal install (pyhwp absent) unchanged; re-open if native fallback rate > 20% on private corpus |
 | [0037](./0037-kure-v1-closes-phase-1-5.md) | accepted | KURE-v1 Phase 1.5 n=100 formal measurement: `full` Δ = **−1.3pp** accuracy / **+0.0pp** groundedness → condition 3 NOT triggered; MiniLM default lock holds across 6 embedding pivots; adds `requires_torch_min_version` gate to `eval/run_eval.ablation_runs()`; closes issue #447 |
+| [0039](./0039-hwp-structural-hardcase-taxonomy.md) | proposed | HWP structural hardcase taxonomy (`table_heavy` / `ocr_noisy` / `rotated_or_skewed` / `layout_broken`) for public synthetic surface; ADR 0001/0005/0030 compatible; activated by PR-A (fixtures) → PR-C (loader ablation) → PR-D (tagging); closes issue #646 |
 
 ## Roadmap (proposed, not yet committed)
 
