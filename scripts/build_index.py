@@ -101,6 +101,19 @@ def parse_args() -> argparse.Namespace:
             "'suffix' deterministically appends -2/-3/... to keep both rows."
         ),
     )
+    parser.add_argument(
+        "--hwp_loader",
+        default=None,
+        choices=["csv", "native", "native_tables"],
+        help=(
+            "HWP loader selection for ADR 0039 ablation (issue #652). Sets "
+            "BIDMATE_HWP_LOADER env var before ingestion so _resolve_loader in "
+            "ingestion.py picks the correct backend. 'csv': text-only CSV loader; "
+            "'native': pyhwp native without tables; 'native_tables': pyhwp native "
+            "with table reconstruction (ADR 0036 default when pyhwp installed). "
+            "Omit to use the ADR 0036 runtime default."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -142,8 +155,12 @@ def validate_args(args: argparse.Namespace) -> None:
 def main() -> int:
     ingestion_report = None
     try:
+        import os
+
         args = parse_args()
         validate_args(args)
+        if args.hwp_loader is not None:
+            os.environ["BIDMATE_HWP_LOADER"] = args.hwp_loader
         output_dir = Path(args.output_dir)
         visual_artifact_dir = (
             Path(args.visual_artifact_dir)
