@@ -14,7 +14,7 @@ and the PR stack that closed them.
 
 After ADR 0036 (#641) shipped `HwpNativeLoader` as the pyhwp-gated default,
 the private corpus was 96 HWP + 4 PDF
-([`data/index/real100/ingestion_report.json`](../data/index/real100/ingestion_report.json)).
+([`data/index/real100/ingestion_report.json`](../../data/index/real100/ingestion_report.json)).
 Three questions surfaced:
 
 1. Is HWP data actually exercised in the public eval?
