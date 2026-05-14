@@ -1,0 +1,122 @@
+name: PR Live LLM-Judge
+
+# ADR 0043 — label-gated live LLM-judge cadence.
+#
+# Trigger: a maintainer attaches the `live-judge-please` label to a PR.
+# Effect: run `make eval && make synthetic-judge` with the live backend
+#         (BIDMATE_SYNTHETIC_JUDGE_BACKEND=openai_compatible) and post the
+#         RAGAS aggregate as a PR comment.  The aggregate JSON is uploaded
+#         as a workflow artifact; the comment is upserted in place.
+#
+# Invariants:
+# - pr-eval.yml (ADR 0004 stub-default CI) is **not** modified by this file.
+# - No `git push` of per-case judge text (ADR 0005 commit boundary).
+# - Fork PRs are skipped — `BIDMATE_JUDGE_API_KEY` is a repo secret that
+#   GitHub does not expose to forks, and we explicitly check head repo to
+#   avoid running a no-secret build that would silently fall back to stub.
+# - Goodhart guard: trigger is `labeled` only, not `synchronize`.  After a
+#   new push, the label must be re-attached to refresh the signal.
+
+on:
+  pull_request:
+    types: [labeled]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  # One judge run at a time per PR; a re-label cancels any in-flight run
+  # for the same PR (re-labelers expect a fresh result, not a stale one).
+  group: pr-judge-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  live-judge:
+    name: Live LLM-judge
+    # Three guards:
+    # 1. The label must match `live-judge-please` (workflow fires on every
+    #    labeled event so we filter here).
+    # 2. The PR must be from this repo, not a fork (fork PRs cannot see
+    #    repo secrets and a silent fallback to stub would be misleading).
+    # 3. PR must be open (re-labelling closed PRs is a no-op).
+    if: >-
+      github.event.label.name == 'live-judge-please' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.state == 'open'
+    runs-on: ubuntu-latest
+    env:
+      EMBEDDING_BACKEND: hashing
+      PYTHONDONTWRITEBYTECODE: "1"
+      BIDMATE_SYNTHETIC_JUDGE_BACKEND: openai_compatible
+      BIDMATE_JUDGE_API_KEY: ${{ secrets.BIDMATE_JUDGE_API_KEY }}
+      BIDMATE_JUDGE_MODEL: ${{ secrets.BIDMATE_JUDGE_MODEL }}
+      BIDMATE_JUDGE_BASE_URL: ${{ secrets.BIDMATE_JUDGE_BASE_URL }}
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Verify judge secret is configured
+        run: |
+          if [ -z "$BIDMATE_JUDGE_API_KEY" ]; then
+            echo "::error::BIDMATE_JUDGE_API_KEY secret is empty. Configure" \
+                 "the repository secret per ADR 0043 § Secrets required."
+            exit 1
+          fi
+
+      - name: Build index + run eval (stub embedding, real LLM-judge)
+        run: |
+          make index
+          make eval
+
+      - name: Run live LLM-judge
+        run: make synthetic-judge
+
+      - name: Render PR-comment markdown
+        run: |
+          python scripts/render_judge_comment.py \
+            --aggregate reports/synthetic_judge.aggregate.json \
+            --output judge-comment.md
+          cat judge-comment.md
+
+      - name: Upload aggregate artifact
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: synthetic-judge-aggregate
+          path: reports/synthetic_judge.aggregate.json
+          if-no-files-found: warn
+
+      - name: Upsert PR comment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          marker="<!-- pr-judge-bot -->"
+          body="$(cat judge-comment.md)"
+          existing=$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" \
+            --jq ".[] | select(.body | startswith(\"$marker\")) | .id" \
+            | head -n1)
+          if [ -n "$existing" ]; then
+            gh api -X PATCH "repos/$REPO/issues/comments/$existing" \
+              -f body="$body" >/dev/null
+            echo "Updated existing comment $existing"
+          else
+            gh pr comment "$PR_NUMBER" --repo "$REPO" --body "$body"
+          fi
