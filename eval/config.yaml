@@ -55,6 +55,13 @@ latency_budgets:
     # Default when pyhwp is installed (ADR 0036 default). Operator: --hwp_loader
     # native_tables or omit flag.
     p95_ms: 200
+  agent_react:
+    # Issue #682 / ADR 0040 — ReAct agent loop preset.
+    # BIDMATE_PLANNER_BACKEND=static (default) → no LLM call in CI;
+    # p95 budget mirrors `full` plus react_loop graph node overhead.
+    # Real-agent runs (BIDMATE_PLANNER_BACKEND=anthropic) are measured
+    # operator-side (ADR 0005 boundary); ADR 0041 cap is max_latency_ms=8000.
+    p95_ms: 500
 # Per-stage latency budgets used by scripts/check_latency_slo.py (check_stage).
 # Issue #625: stage_latency is measured but was unguarded — silent per-stage
 # drift was possible even when total p95 stayed within ablation ceiling.
@@ -78,6 +85,16 @@ stage_latency_budgets:
       p95_ms: 50    # observed CI p95 ≈ 1.4 ms
     answer_generation_ms:
       p95_ms: 20    # observed CI p95 ≈ 0.4 ms
+  agent_react:
+    # Issue #682 / ADR 0040/0041 — static planner: make_plan + react_loop node
+    # overhead, no LLM call in CI. react_loop_ms covers the whole loop
+    # (may include 1-2 StaticPlanner plan_next calls + verifier + retrieval).
+    query_analysis_ms:
+      p95_ms: 50
+    react_loop_ms:
+      p95_ms: 300   # static: no LLM; generous ceiling for graph overhead
+    answer_generation_ms:
+      p95_ms: 20
 answer_policy:
   answerable_status: supported
   unanswerable_status: insufficient
@@ -86,6 +103,18 @@ answer_policy:
 ablation_runs:
   - name: naive_baseline
     pipeline: naive_baseline
+  # ADR 0040 — additive ReAct agent loop. BIDMATE_PLANNER_BACKEND=static
+  # keeps this CI-deterministic (no LLM call). Real-agent runs set
+  # BIDMATE_PLANNER_BACKEND=anthropic; real-eval delta measured separately
+  # per ADR 0005 boundary. ADR 0041 budget cap: max_iterations=5,
+  # max_latency_ms=8000.
+  - name: agent_react
+    pipeline: agent_react
+    metadata_first: true
+    rerank: true
+    verifier_retry: true
+    retrieval_mode: flat
+    planner_backend: static
   - name: full
     pipeline: agentic_full
     metadata_first: true
