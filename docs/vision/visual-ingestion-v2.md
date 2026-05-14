@@ -63,11 +63,11 @@ python3 eval/run_parser_eval.py \
 - Field: key-value candidate precision, recall, F1.
 - Bbox/page-region: anchor block의 bbox 존재율과, gold bbox가 있을 때 IoU threshold 충족률.
 
-QA 단계에서는 `eval/run_eval.py`의 선택 gold 필드(`expected_citation_pages`, `expected_citation_regions`)로 citation이 올바른 page/region을 가리키는지 추가 평가할 수 있다. 자세한 기준과 drift 예시는 [`citation-grounding-eval.md`](citation-grounding-eval.md)에 둔다.
+QA 단계에서는 `eval/run_eval.py`의 선택 gold 필드(`expected_citation_pages`, `expected_citation_regions`)로 citation이 올바른 page/region을 가리키는지 추가 평가할 수 있다. 자세한 기준과 drift 예시는 [`citation-grounding-eval.md`](../eval/citation-grounding-eval.md)에 둔다.
 
 실패 taxonomy는 `ocr_missing_text`, `layout_type_mismatch`, `section_boundary_missing`, `table_cell_mismatch`, `field_missing`, `field_value_mismatch`, `bbox_missing`, `bbox_misaligned`를 포함한다. 이 코드는 downstream 분석에서 retrieval miss, noisy chunking, wrong field grounding, weak bbox citation 같은 QA 실패 원인과 연결한다.
 
-private hard-case gold에는 문서별 `hardcase_categories`를 둘 수 있다. `eval/run_parser_eval.py`는 `summary.by_hardcase_category`를 생성해 scanned PDF, rotated/skewed, table-heavy, mixed-layout, noisy OCR 조건별 parser metric과 failure count를 분리한다. 비공개 원문과 raw artifact는 커밋하지 않고 aggregate만 [`docs/private-hardcase-benchmark.md`](private-hardcase-benchmark.md) 방식으로 기록한다.
+private hard-case gold에는 문서별 `hardcase_categories`를 둘 수 있다. `eval/run_parser_eval.py`는 `summary.by_hardcase_category`를 생성해 scanned PDF, rotated/skewed, table-heavy, mixed-layout, noisy OCR 조건별 parser metric과 failure count를 분리한다. 비공개 원문과 raw artifact는 커밋하지 않고 aggregate만 [`docs/real-data/private-hardcase-benchmark.md`](../real-data/private-hardcase-benchmark.md) 방식으로 기록한다.
 
 ## 실행 예시
 ```bash
