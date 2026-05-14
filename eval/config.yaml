@@ -2046,6 +2046,8 @@ cases:
     query_type: single_doc
     hardcase_categories:
       - layout_broken
+      - rotated_or_skewed
+      - ocr_noisy
     query: "기관 G 교통정보 시스템 개선 사업의 계약금액은 얼마인가?"
     expected_doc_ids:
       - rfp-agency-g-traffic-hwp
@@ -2069,6 +2071,8 @@ cases:
     hardcase_categories:
       - table_heavy
       - layout_broken
+      - rotated_or_skewed
+      - ocr_noisy
     query: "기관 F 스마트팩토리 사업과 기관 G 교통정보 사업 중 어느 기관의 사업 규모가 더 큰가?"
     expected_doc_ids:
       - rfp-agency-f-smart-factory-hwp
