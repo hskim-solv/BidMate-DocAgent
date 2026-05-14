@@ -28,6 +28,13 @@ Backends (selected by ``BIDMATE_EXTERNAL_BACKEND``):
   faiss-cpu sentence-transformers`` and ``ANTHROPIC_API_KEY``.
 * ``llamaindex`` — ``llama_index.core.query_engine.RetrieverQueryEngine``
   with the same embedding + LLM stack.
+* ``ollama`` — sentence-transformers embeddings (same model as other
+  backends) + numpy cosine similarity for top-k retrieval + Ollama
+  OpenAI-compatible API for generation. No API key required. Requires
+  ``pip install openai sentence-transformers`` and a running Ollama
+  server. Configure via:
+  ``BIDMATE_EXTERNAL_BASE_URL`` (default: ``http://localhost:11434/v1``)
+  ``BIDMATE_EXTERNAL_MODEL``    (default: ``llama3``)
 
 Usage::
 
@@ -68,6 +75,8 @@ DEFAULT_TOP_K = 4
 DEFAULT_CHUNK_SIZE = 520
 DEFAULT_CHUNK_OVERLAP = 80
 DEFAULT_EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434/v1"
+DEFAULT_OLLAMA_MODEL = "llama3"
 DEFAULT_LLM_MODEL = "claude-sonnet-4-6"
 
 ASYMMETRIC_KEYS = (
@@ -350,10 +359,95 @@ def _llamaindex_backend_query(state: dict[str, Any], case: dict[str, Any]) -> di
     }
 
 
+def _ollama_backend_init(corpus: list[dict[str, Any]]) -> dict[str, Any]:  # pragma: no cover - external SDK
+    try:
+        import numpy as np
+        import openai
+        from sentence_transformers import SentenceTransformer
+    except ImportError as exc:
+        raise RuntimeError(
+            "ollama backend requires `pip install openai sentence-transformers` "
+            "and a running Ollama server (default: http://localhost:11434). "
+            "Set BIDMATE_EXTERNAL_BASE_URL to override the endpoint."
+        ) from exc
+
+    base_url = os.environ.get("BIDMATE_EXTERNAL_BASE_URL", DEFAULT_OLLAMA_BASE_URL)
+    model = os.environ.get("BIDMATE_EXTERNAL_MODEL", DEFAULT_OLLAMA_MODEL)
+    embedding_model_name = os.environ.get("BIDMATE_EXTERNAL_EMBEDDING", DEFAULT_EMBEDDING_MODEL)
+
+    all_chunks: list[dict[str, Any]] = []
+    for doc in corpus:
+        for chunk in chunk_text(doc["text"], chunk_size=DEFAULT_CHUNK_SIZE, overlap=DEFAULT_CHUNK_OVERLAP):
+            all_chunks.append({"text": chunk, "doc_id": doc["doc_id"]})
+
+    embedder = SentenceTransformer(embedding_model_name)
+    embeddings = embedder.encode(
+        [c["text"] for c in all_chunks],
+        normalize_embeddings=True,
+        show_progress_bar=True,
+    )
+    client = openai.OpenAI(base_url=base_url, api_key="ollama")
+
+    return {
+        "client": client,
+        "model": model,
+        "embedder": embedder,
+        "chunks": all_chunks,
+        "embeddings": np.array(embeddings),
+    }
+
+
+def _ollama_backend_query(state: dict[str, Any], case: dict[str, Any]) -> dict[str, Any]:  # pragma: no cover - external SDK
+    import numpy as np
+
+    query = str(case.get("query") or "")
+    started = time.perf_counter()
+
+    query_emb = state["embedder"].encode([query], normalize_embeddings=True)[0]
+    scores = (state["embeddings"] @ query_emb).tolist()
+    top_k_idx = sorted(range(len(scores)), key=lambda i: -scores[i])[:DEFAULT_TOP_K]
+
+    top_chunks = [state["chunks"][i] for i in top_k_idx]
+    context = "\n\n".join(c["text"] for c in top_chunks)
+    retrieved_doc_ids: list[str] = []
+    for c in top_chunks:
+        if c["doc_id"] not in retrieved_doc_ids:
+            retrieved_doc_ids.append(c["doc_id"])
+
+    response = state["client"].chat.completions.create(
+        model=state["model"],
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "You are a helpful assistant. Answer the question based solely "
+                    "on the provided context. If the context does not contain enough "
+                    "information, respond with '근거 부족'."
+                ),
+            },
+            {
+                "role": "user",
+                "content": f"Context:\n{context}\n\nQuestion: {query}",
+            },
+        ],
+        temperature=0.0,
+    )
+    answer_text = response.choices[0].message.content or ""
+    latency_ms = round((time.perf_counter() - started) * 1000, 2)
+
+    return {
+        "answer_text": answer_text,
+        "retrieved_doc_ids": retrieved_doc_ids,
+        "latency_ms": latency_ms,
+        "model": state["model"],
+    }
+
+
 _BACKENDS: dict[str, dict[str, Any]] = {
     "stub": {"init": _stub_backend_init, "query": _stub_backend_query},
     "langchain": {"init": _langchain_backend_init, "query": _langchain_backend_query},
     "llamaindex": {"init": _llamaindex_backend_init, "query": _llamaindex_backend_query},
+    "ollama": {"init": _ollama_backend_init, "query": _ollama_backend_query},
 }
 
 

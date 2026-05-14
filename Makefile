@@ -18,7 +18,7 @@
 # Synthetic eval surface (public corpus). Includes smoke, full eval, harness
 # matrix, judges, leaderboard render, pareto, korean public bench, external
 # baselines.
-.PHONY: eval smoke smoke-with-judge reproduce benchmark synthetic-judge leaderboard pareto korean-public-fetch korean-public-eval external-baselines-stub external-baselines-langchain external-baselines-llamaindex harness-smoke harness-ablation harness-compare synthesize-multihop eval-multihop
+.PHONY: eval smoke smoke-with-judge reproduce benchmark synthetic-judge leaderboard pareto korean-public-fetch korean-public-eval external-baselines-stub external-baselines-langchain external-baselines-llamaindex external-baselines-ollama harness-smoke harness-ablation harness-compare synthesize-multihop eval-multihop
 
 # Real-data eval cycle (private; ADR 0005 commit boundary).
 .PHONY: real-eval real-eval-delta real-eval-baseline-update real-eval-history-render real-eval-with-judge harness-real
@@ -168,6 +168,13 @@ external-baselines-llamaindex:
 		exit 1; \
 	fi
 	BIDMATE_EXTERNAL_BACKEND=llamaindex $(PYTHON) scripts/compare_external_baselines.py
+
+external-baselines-ollama:
+	@if ! curl -sf http://localhost:11434 > /dev/null 2>&1; then \
+		echo "Ollama server not running at http://localhost:11434. Start with: ollama serve"; \
+		exit 1; \
+	fi
+	BIDMATE_EXTERNAL_BACKEND=ollama $(PYTHON) scripts/compare_external_baselines.py
 
 smoke:
 	bash scripts/smoke.sh

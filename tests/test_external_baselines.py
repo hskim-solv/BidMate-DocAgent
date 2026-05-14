@@ -139,6 +139,12 @@ class ExternalBaselineIntegrationTest(unittest.TestCase):
                 f"Aggregate must not contain {substring!r} — ADR 0009 commit boundary",
             )
 
+    def test_ollama_backend_is_registered(self) -> None:
+        from scripts.compare_external_baselines import _BACKENDS
+        self.assertIn("ollama", _BACKENDS)
+        self.assertIn("init", _BACKENDS["ollama"])
+        self.assertIn("query", _BACKENDS["ollama"])
+
     def test_unknown_backend_raises(self) -> None:
         with self.assertRaises(ValueError):
             run_comparison(self.cases, self.corpus, backend="nope")
