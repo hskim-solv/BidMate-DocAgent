@@ -147,6 +147,39 @@ verification_intent_tokens:
   - "주요"
   - "확인"
 
+# ─── Verification topic exclusions (issue #674) ───────────────────────
+# Loaded as `frozenset[str]`. Tokens that must NOT become verification
+# topics — they are query-form words (WH-interrogatives, postpositions,
+# verb endings) that never appear verbatim in RFP document text.
+# Applied inside `rag_verifier.verification_topics` only; no effect on
+# tokenise / BM25 / embedding paths.
+verification_topic_exclusions:
+  # WH-interrogatives (의문사)
+  - "며칠"       # how many days
+  - "몇일"       # how many days (variant)
+  - "언제"       # when
+  - "어디"       # where
+  - "어디서"     # from where
+  - "왜"         # why
+  - "얼마"       # how much (normalize_metadata_token("얼마나") → "얼마")
+  - "몇"         # how many
+  - "뭐"         # what (informal)
+  - "어느"       # which
+  # Postpositions that bleed into topics (조사 단독)
+  - "안에"       # within / inside
+  - "이내"       # within (duration)
+  - "이후"       # after
+  - "이전"       # before
+  - "까지"       # until
+  - "부터"       # from
+  - "에서"       # at / from
+  - "으로"       # to / by
+  # Verb-ending forms that surface as whole tokens (동사 어미)
+  - "마무리돼"   # (be) completed
+  - "마무리되"   # (be) completed (stem form)
+  - "완료돼"     # (be) done
+  - "끝나"       # end / finish
+
 # ─── Metadata evidence labels ─────────────────────────────────────────
 # Loaded as `dict[str, tuple[str, ...]]`. Maps metadata field id to
 # Korean evidence labels surfaced in answer schema (ADR 0003).

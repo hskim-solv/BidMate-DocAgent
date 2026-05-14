@@ -156,5 +156,88 @@ class OutOfCorpusAbstentionPreservedTest(unittest.TestCase):
         self.assertEqual(result["evidence"], [])
 
 
+class WhQueryTokenExclusionTest(unittest.TestCase):
+    """Regression guards for issue #674 — WH-interrogatives, postpositions,
+    and verb endings must not become verification topics (they never appear
+    verbatim in RFP document text, so they inflate the topic list and push
+    the grounded fraction below PARTIAL_TOPIC_GROUNDING_MIN_FRACTION).
+
+    probe_11 scenario: "고양도시관리공사 다목적구장 홈페이지 사업이 며칠 안에 마무리돼?"
+    - raw topics include '며칠', '안에', '마무리돼'  (WH / postposition / verb ending)
+    - gold chunk contains '착수일로부터 90일 이내' but NOT the WH-form words
+    - before fix: 2/6 = 0.33 < 0.5 → topic_not_grounded (wrong abstention)
+    - after fix:  2/3 = 0.67 ≥ 0.5 AND matched ≥ 2 → partial_topic_grounding pass
+    """
+
+    def test_wh_tokens_excluded_from_verification_topics(self) -> None:
+        """며칠 / 안에 / 마무리돼 are filtered out of verification_topics."""
+        from rag_verifier import verification_topics
+
+        analysis = {
+            "topics": [
+                "고양도시관리공사", "다목적구장", "홈페이지",
+                "며칠", "안에", "마무리돼",
+            ]
+        }
+        result = verification_topics(analysis)
+        for excluded in ("며칠", "안에", "마무리돼"):
+            self.assertNotIn(
+                excluded, result,
+                f"WH/postposition/verb token {excluded!r} should be excluded",
+            )
+        for kept in ("고양도시관리공사", "다목적구장"):
+            self.assertIn(kept, result, f"substantive topic {kept!r} should be kept")
+
+    def test_other_wh_words_excluded(self) -> None:
+        """Sample of other WH-query tokens that must not become topics."""
+        from rag_verifier import verification_topics
+
+        wh_words = ["언제", "어디", "왜", "몇", "뭐", "어느", "이내", "이후", "이전"]
+        analysis = {"topics": ["예산", "기관명"] + wh_words}
+        result = verification_topics(analysis)
+        for wh in wh_words:
+            self.assertNotIn(wh, result, f"WH token {wh!r} should be excluded")
+        self.assertIn("예산", result)
+        self.assertIn("기관명", result)
+
+    def test_probe11_partial_grounding_passes_after_wh_exclusion(self) -> None:
+        """End-to-end: probe_11 scenario resolves with partial_topic_grounding.
+
+        Simulates the exact failure case from real100 eval — retrieval succeeded
+        (chunk_recall@10=1.0) but verifier was abstaining due to WH tokens.
+        """
+        evidence = [
+            {
+                "doc_id": "20240903676-1.0",
+                "chunk_id": "20240903676-1.0::chunk-002",
+                "score": 0.8,
+                "text": "과업기간 : 착수일로부터 90일 이내",
+                "title": (
+                    "고양도시관리공사 관산근린공원 다목적구장 "
+                    "회원 통합운영관리 시스템 구축"
+                ),
+                "agency": "고양도시관리공사",
+                "project": "",
+                "section": "",
+            }
+        ]
+        # Raw topics as analyze_query produces for the probe_11 query
+        analysis = {
+            "topics": [
+                "고양도시관리공사", "다목적구장", "홈페이지",
+                "며칠", "안에", "마무리돼",
+            ]
+        }
+        verified, reasons = verify_evidence(
+            analysis, evidence, allow_partial_topic=True
+        )
+        self.assertTrue(
+            verified,
+            f"probe_11 should pass partial_topic_grounding after WH exclusion; reasons={reasons}",
+        )
+        self.assertIn(PARTIAL_TOPIC_GROUNDING_REASON, reasons)
+        self.assertNotIn("topic_not_grounded", reasons)
+
+
 if __name__ == "__main__":
     unittest.main()
