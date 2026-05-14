@@ -141,6 +141,23 @@ ablation_runs:
     rerank: true
     verifier_retry: false
     retrieval_mode: flat
+  # Issue #694 — dedicated retrieval-quality time-series slot.
+  # Uses the full retrieval stack (metadata_first, rerank) with
+  # verifier_retry=false so the first-pass chunk ranking is measured
+  # without the retry-and-relax feedback loop.  Evaluation focus:
+  # chunk_recall_at_5/10/20 and chunk_ndcg_at_10/20; accuracy and
+  # groundedness are expected to be lower than `full` since the verifier
+  # retry that recovers from weak first-pass evidence is absent.
+  # Distinct from `no_verifier_retry` in intent: this row is the
+  # canonical leaderboard slot for tracking retrieval quality over time
+  # (ADR 0030 forward-only series pattern); `no_verifier_retry` remains
+  # the verifier-retry-contribution ablation reference.
+  - name: retrieval_only
+    pipeline: agentic_full
+    metadata_first: true
+    rerank: true
+    verifier_retry: false
+    retrieval_mode: flat
   - name: hybrid_bm25
     pipeline: agentic_full
     metadata_first: true
