@@ -141,6 +141,18 @@ ablation_runs:
     rerank: true
     verifier_retry: false
     retrieval_mode: flat
+  # Issue #721 — retrieval-only ablation: rerank=false + verifier_retry=false.
+  # Completes the 2×2 (rerank × verifier_retry) ablation matrix alongside
+  # `no_rerank` (rerank=false, retry=true) and `no_verifier_retry` (rerank=true,
+  # retry=false). Enables naive_baseline vs retrieval_only vs full 3-way
+  # comparison to isolate retrieval contribution from reranking and verifier
+  # retry. Forward-only addition; ADR 0001 naive_baseline preserved.
+  - name: retrieval_only
+    pipeline: agentic_full
+    metadata_first: true
+    rerank: false
+    verifier_retry: false
+    retrieval_mode: flat
   - name: hybrid_bm25
     pipeline: agentic_full
     metadata_first: true
