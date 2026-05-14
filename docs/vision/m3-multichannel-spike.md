@@ -30,7 +30,7 @@ deferred.
   - sparse (SPLADE-style `{token_id: weight}` dict per text)
   - multi-vector / ColBERT (per-token `(T_i, 1024)` matrix per text;
     late-interaction max-sim sum at scoring time)
-- **N-way RRF fusion** in [`rag_core.apply_fusion_and_reranking`](../rag_core.py)
+- **N-way RRF fusion** in [`rag_core.apply_fusion_and_reranking`](../../rag_core.py)
   — the existing 2-way `hybrid` math (`rrf_k / 2.0` normalization)
   generalizes to `rrf_k / N` for N=3.
 - **Opt-in, in-memory only.** Sparse + colbert outputs are computed once
