@@ -72,6 +72,27 @@ from rag_verifier import (
     verification_topics,
 )
 
+# ─── Evidence pool sizing ──────────────────────────────────────────────────
+# Tokens that signal aggregate intent: the user wants an exhaustive
+# listing (e.g. "모든 일정과 금액 정리해줘"). Detected in
+# ``select_supporting_evidence`` to widen the pool beyond the default
+# of 2 so multiple field-bearing chunks can all contribute.
+_AGGREGATE_SIGNALS: frozenset[str] = frozenset({
+    "모든",    # all
+    "전체",    # entire / all
+    "모두",    # all / everything
+    "목록",    # list
+    "나열",    # enumerate
+    "정리",    # organize / list all
+    "리스트",  # list (loanword)
+    "일체",    # all / every
+    "전부",    # all / entirety
+})
+
+# Pool ceiling for aggregate queries. Covers the typical multi-field
+# case where budget + duration + deadline live in separate chunks.
+_AGGREGATE_POOL_MAX: int = 5
+
 
 def generate_answer(
     query: str,
@@ -408,6 +429,23 @@ def sentence_has_verification_topic(sentence: str, analysis: dict[str, Any]) -> 
     return any(topic.lower() in lowered for topic in topics)
 
 
+def _is_aggregate_query(analysis: dict[str, Any]) -> bool:
+    """Return True when the query has aggregate intent.
+
+    Detects tokens such as "모든" / "전체" / "정리" that indicate the
+    user wants an exhaustive listing of all matching fields — not just
+    the first matching chunk.  Checked against ``analysis["tokens"]``
+    (tokenised resolved query) and ``analysis["resolved_query"]`` as
+    a substring fallback for tokens the analyser may have merged or
+    split differently.
+    """
+    resolved: str = analysis.get("resolved_query") or ""
+    tokens: list[str] = analysis.get("tokens") or []
+    return any(sig in resolved for sig in _AGGREGATE_SIGNALS) or any(
+        sig in tokens for sig in _AGGREGATE_SIGNALS
+    )
+
+
 def select_supporting_evidence(
     analysis: dict[str, Any],
     evidence: list[dict[str, Any]],
@@ -432,6 +470,7 @@ def select_supporting_evidence(
         return selected or evidence[:2]
 
     pool = topic_matched or evidence
-    return pool[:2]
+    pool_size = _AGGREGATE_POOL_MAX if _is_aggregate_query(analysis) else 2
+    return pool[:pool_size]
 
 
