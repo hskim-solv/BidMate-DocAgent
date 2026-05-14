@@ -50,7 +50,15 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 from eval.bootstrap import bootstrap_ci  # noqa: E402
-from rag_core import EVIDENCE_BOUNDARY, neutralize_instruction_patterns  # noqa: E402
+from eval.judge_common import (  # noqa: E402
+    build_evidence_block,
+    build_openai_client,
+    call_openai_json,
+    clamp_score as clamp_score_common,
+    extract_summary,
+    get_judge_model,
+)
+from rag_core import neutralize_instruction_patterns  # noqa: E402
 
 RAGAS_METRICS: tuple[str, ...] = (
     "faithfulness",
@@ -115,35 +123,13 @@ def _stub_backend(_prompt: str) -> dict[str, Any]:
 def _openai_compatible_backend(prompt: str) -> dict[str, Any]:  # pragma: no cover - network
     """Generic OpenAI-compatible endpoint (Anthropic-Compat, OpenAI, vLLM, etc.).
 
-    Reads ``BIDMATE_JUDGE_API_KEY``, ``BIDMATE_JUDGE_MODEL``, optional
-    ``BIDMATE_JUDGE_BASE_URL``. Imported lazily so stub-mode tests have
-    no SDK dependency.
+    Delegates client construction and JSON calling to :mod:`eval.judge_common`
+    so stub-mode tests have no SDK dependency.
     """
-    try:
-        from openai import OpenAI  # type: ignore[import-not-found]
-    except Exception as exc:
-        raise RuntimeError(
-            "openai_compatible backend requires the openai SDK. "
-            "Install with `pip install openai` or use BIDMATE_JUDGE_BACKEND=stub."
-        ) from exc
-
-    api_key = os.environ.get("BIDMATE_JUDGE_API_KEY")
-    if not api_key:
-        raise RuntimeError("BIDMATE_JUDGE_API_KEY is not set.")
-    base_url = os.environ.get("BIDMATE_JUDGE_BASE_URL") or None
-    model = os.environ.get("BIDMATE_JUDGE_MODEL")
-    if not model:
-        raise RuntimeError("BIDMATE_JUDGE_MODEL is not set.")
-
-    client = OpenAI(api_key=api_key, base_url=base_url)
-    response = client.chat.completions.create(
-        model=model,
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.0,
-        response_format={"type": "json_object"},
-    )
-    content = response.choices[0].message.content or "{}"
-    return _normalize_verdict(json.loads(content))
+    client = build_openai_client()
+    model = get_judge_model()
+    payload = call_openai_json(client, model, prompt)
+    return _normalize_verdict(payload)
 
 
 _BACKENDS: dict[str, Callable[[str], dict[str, Any]]] = {
@@ -153,18 +139,10 @@ _BACKENDS: dict[str, Callable[[str], dict[str, Any]]] = {
 
 
 def _normalize_verdict(payload: dict[str, Any]) -> dict[str, Any]:
-    """Clamp and coerce a raw backend payload to the RAGAS schema."""
-    out = {metric: _clamp01(payload.get(metric, 0.0)) for metric in RAGAS_METRICS}
+    """Clamp and coerce a raw backend payload to the Gate 3 RAGAS schema."""
+    out = {metric: clamp_score_common(payload.get(metric, 0.0)) for metric in RAGAS_METRICS}
     out["reason_short"] = str(payload.get("reason_short") or "")[:200]
     return out
-
-
-def _clamp01(value: Any) -> float:
-    try:
-        score = float(value)
-    except (TypeError, ValueError):
-        return 0.0
-    return max(0.0, min(1.0, score))
 
 
 # -----------------------------------------------------------------------------
@@ -172,27 +150,13 @@ def _clamp01(value: Any) -> float:
 # -----------------------------------------------------------------------------
 
 
-def _extract_summary(case: dict[str, Any]) -> str:
-    answer = case.get("answer")
-    if isinstance(answer, dict):
-        return str(answer.get("summary") or "")
-    return str(answer or case.get("answer_text") or "")
-
-
 def _build_prompt(case: dict[str, Any]) -> str:
-    query = case.get("query") or ""
-    summary = _extract_summary(case)
-    evidence_items = case.get("evidence") or []
-    evidence_lines = []
-    for i, item in enumerate(evidence_items[:3], start=1):
-        text = (item.get("text") if isinstance(item, dict) else "") or ""
-        evidence_lines.append(
-            f"[{i}] {neutralize_instruction_patterns(text[:600])}"
-        )
-    evidence_block = EVIDENCE_BOUNDARY.join(evidence_lines) or "(no evidence)"
+    query = neutralize_instruction_patterns(case.get("query") or "")
+    summary = neutralize_instruction_patterns(extract_summary(case))
+    evidence_block = build_evidence_block(case)
     return PROMPT_TEMPLATE.format(
-        query=neutralize_instruction_patterns(query),
-        summary=neutralize_instruction_patterns(summary),
+        query=query,
+        summary=summary,
         evidence=evidence_block,
     )
 
@@ -204,7 +168,7 @@ def _cache_key(case: dict[str, Any], backend: str, model: str) -> str:
     cache (we want fresh judgments when changing the underlying judge).
     """
     query = str(case.get("query") or "")
-    summary = _extract_summary(case)
+    summary = extract_summary(case)
     evidence_items = case.get("evidence") or []
     ev_repr = json.dumps(
         [

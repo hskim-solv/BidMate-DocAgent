@@ -72,13 +72,22 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from rag_core import EVIDENCE_BOUNDARY, neutralize_instruction_patterns  # noqa: E402
+from eval.judge_common import (  # noqa: E402
+    EVIDENCE_BOUNDARY,
+    JUDGE_STATUSES,
+    build_evidence_block,
+    build_openai_client,
+    call_openai_json,
+    clamp_score,
+    extract_summary,
+    get_judge_model,
+    normalize_status_verdict,
+)
+from rag_core import neutralize_instruction_patterns  # noqa: E402
 
 DEFAULT_SUMMARY_PATH = ROOT / "reports" / "eval_summary.json"
 DEFAULT_AGGREGATE_PATH = ROOT / "reports" / "synthetic_judge.aggregate.json"
 DEFAULT_LOCAL_PATH = ROOT / "reports" / "synthetic_judge.local.json"
-
-JUDGE_STATUSES = ("supported", "partial", "insufficient")
 
 # Status-derived fixture scores for the stub backend. Not a real
 # signal; schema-stable so downstream metric blocks don't crash.
@@ -146,65 +155,20 @@ def _openai_compatible_backend(  # pragma: no cover - network
 ) -> dict[str, Any]:
     """Generic OpenAI-compatible endpoint.
 
-    Lazily imports the openai SDK so the stub-only path has no
-    network / SDK dependency.
+    Delegates client construction and JSON calling to :mod:`eval.judge_common`
+    so the stub-only path has no network / SDK dependency.  Returns an
+    ``insufficient`` marker on JSON decode error (PR #218 fault tolerance).
     """
-    try:
-        from openai import OpenAI  # type: ignore[import-not-found]
-    except Exception as exc:  # pragma: no cover - environment-dependent
-        raise RuntimeError(
-            "openai_compatible backend requires the openai SDK. "
-            "Install with `pip install openai` or use "
-            "BIDMATE_SYNTHETIC_JUDGE_BACKEND=stub."
-        ) from exc
-
-    api_key = os.environ.get("BIDMATE_JUDGE_API_KEY")
-    if not api_key:
-        raise RuntimeError("BIDMATE_JUDGE_API_KEY is not set.")
-    base_url = os.environ.get("BIDMATE_JUDGE_BASE_URL") or None
-    model = os.environ.get("BIDMATE_JUDGE_MODEL")
-    if not model:
-        raise RuntimeError("BIDMATE_JUDGE_MODEL is not set.")
-
-    client = OpenAI(api_key=api_key, base_url=base_url)
-    response = client.chat.completions.create(
-        model=model,
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.0,
-        response_format={"type": "json_object"},
-    )
-    content = response.choices[0].message.content or "{}"
-    parsed = json.loads(content)
-    return _normalize_judge_payload(parsed, fallback_status=verifier_status)
-
-
-def _clamp_score(value: Any) -> float:
-    try:
-        score = float(value)
-    except (TypeError, ValueError):
-        return 0.0
-    if score < 0.0:
-        return 0.0
-    if score > 1.0:
-        return 1.0
-    return score
-
-
-def _normalize_judge_payload(
-    payload: dict[str, Any], fallback_status: str
-) -> dict[str, Any]:
-    status = str(payload.get("judge_status") or "").strip().lower()
-    if status not in JUDGE_STATUSES:
-        status = fallback_status if fallback_status in JUDGE_STATUSES else "insufficient"
-    grounded = bool(payload.get("judge_grounded", False))
-    reason = str(payload.get("judge_reason_short") or "")[:200]
-    return {
-        "judge_status": status,
-        "judge_grounded": grounded,
-        "faithfulness": _clamp_score(payload.get("faithfulness")),
-        "answer_relevance": _clamp_score(payload.get("answer_relevance")),
-        "judge_reason_short": reason,
-    }
+    client = build_openai_client()
+    model = get_judge_model()
+    payload = call_openai_json(client, model, prompt)
+    if payload is None:
+        return {
+            "judge_status": "insufficient",
+            "judge_grounded": False,
+            "judge_reason_short": "malformed_json: judge backend returned non-JSON content",
+        }
+    return normalize_status_verdict(payload, fallback_status=verifier_status)
 
 
 _BACKENDS = {
@@ -219,22 +183,12 @@ _BACKENDS = {
 
 
 def _build_prompt(case: dict[str, Any]) -> str:
-    query = case.get("query") or ""
-    answer = case.get("answer") or ""
-    if isinstance(answer, dict):
-        summary = str(answer.get("summary") or "")
-    else:
-        summary = str(answer)
-    evidence_items = case.get("evidence") or []
-    evidence_lines = []
-    for i, item in enumerate(evidence_items[:3], start=1):
-        raw_text = (item.get("text") if isinstance(item, dict) else "") or ""
-        text = neutralize_instruction_patterns(raw_text[:600])
-        evidence_lines.append(f"[{i}] {text}")
-    evidence_block = EVIDENCE_BOUNDARY.join(evidence_lines) or "(no evidence)"
+    query = neutralize_instruction_patterns(case.get("query") or "")
+    summary = neutralize_instruction_patterns(extract_summary(case))
+    evidence_block = build_evidence_block(case)
     return PROMPT_TEMPLATE.format(
-        query=neutralize_instruction_patterns(query),
-        summary=neutralize_instruction_patterns(summary),
+        query=query,
+        summary=summary,
         evidence=evidence_block,
     )
 
@@ -304,8 +258,8 @@ def judge_synthetic_summary(
                 "query_type": case.get("query_type"),
                 "judge_status": verdict["judge_status"],
                 "judge_grounded": verdict["judge_grounded"],
-                "faithfulness": _clamp_score(verdict["faithfulness"]),
-                "answer_relevance": _clamp_score(verdict["answer_relevance"]),
+                "faithfulness": clamp_score(verdict["faithfulness"]),
+                "answer_relevance": clamp_score(verdict["answer_relevance"]),
                 "judge_reason_short": verdict["judge_reason_short"],
                 "verifier_status": verifier_status,
                 "agrees": verdict["judge_status"] == verifier_status,

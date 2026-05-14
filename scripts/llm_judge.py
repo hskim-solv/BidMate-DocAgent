@@ -59,12 +59,19 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from rag_core import EVIDENCE_BOUNDARY, neutralize_instruction_patterns  # noqa: E402
+from eval.judge_common import (  # noqa: E402
+    JUDGE_STATUSES,
+    build_evidence_block,
+    build_openai_client,
+    call_openai_json,
+    extract_summary,
+    get_judge_model,
+    normalize_status_verdict,
+)
+from rag_core import neutralize_instruction_patterns  # noqa: E402
 
 DEFAULT_EVAL_PATH = ROOT / "reports" / "real100" / "eval_summary.json"
 DEFAULT_OUTPUT_PATH = ROOT / "reports" / "real100" / "judge.local.json"
-
-JUDGE_STATUSES = ("supported", "partial", "insufficient")
 
 PROMPT_TEMPLATE = """You are reviewing one answer from a retrieval-augmented QA
 system on a procurement (RFP) document. Judge whether the answer is
@@ -109,59 +116,23 @@ def _stub_backend(_prompt: str, *, verifier_status: str) -> dict[str, Any]:
 def _openai_compatible_backend(prompt: str, *, verifier_status: str) -> dict[str, Any]:  # pragma: no cover - network
     """Generic OpenAI-compatible endpoint backend.
 
-    Imported lazily so the stub-only test path has no network / SDK
-    dependency.
+    Delegates client construction and JSON calling to :mod:`eval.judge_common`
+    so the stub-only test path carries no SDK dependency.  Malformed model
+    output falls back to an ``insufficient`` verdict with a marker reason
+    rather than crashing the entire eval run (hardened in PR #218).
     """
-    try:
-        from openai import OpenAI  # type: ignore[import-not-found]
-    except Exception as exc:  # pragma: no cover - environment-dependent
-        raise RuntimeError(
-            "openai_compatible backend requires the openai SDK. "
-            "Install with `pip install openai` or use BIDMATE_JUDGE_BACKEND=stub."
-        ) from exc
-
-    api_key = os.environ.get("BIDMATE_JUDGE_API_KEY")
-    if not api_key:
-        raise RuntimeError("BIDMATE_JUDGE_API_KEY is not set.")
-    base_url = os.environ.get("BIDMATE_JUDGE_BASE_URL") or None
-    model = os.environ.get("BIDMATE_JUDGE_MODEL")
-    if not model:
-        raise RuntimeError("BIDMATE_JUDGE_MODEL is not set.")
-
-    client = OpenAI(api_key=api_key, base_url=base_url)
-    response = client.chat.completions.create(
-        model=model,
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.0,
-        response_format={"type": "json_object"},
-    )
-    content = response.choices[0].message.content or "{}"
-    try:
-        parsed = json.loads(content)
-    except json.JSONDecodeError:
-        # Malformed model output (#171) — fall back to insufficient with
-        # a marker reason rather than crashing the entire eval run.
+    client = build_openai_client()
+    model = get_judge_model()
+    payload = call_openai_json(client, model, prompt)
+    if payload is None:
+        # call_openai_json returns None on JSON decode error — fall back to
+        # an insufficient marker so the dispatcher keeps going (PR #218).
         return {
             "judge_status": "insufficient",
             "judge_grounded": False,
             "judge_reason_short": "malformed_json: judge backend returned non-JSON content",
         }
-    return _normalize_judge_payload(parsed, fallback_status=verifier_status)
-
-
-def _normalize_judge_payload(
-    payload: dict[str, Any], fallback_status: str
-) -> dict[str, Any]:
-    status = str(payload.get("judge_status") or "").strip().lower()
-    if status not in JUDGE_STATUSES:
-        status = fallback_status if fallback_status in JUDGE_STATUSES else "insufficient"
-    grounded = bool(payload.get("judge_grounded", False))
-    reason = str(payload.get("judge_reason_short") or "")[:200]
-    return {
-        "judge_status": status,
-        "judge_grounded": grounded,
-        "judge_reason_short": reason,
-    }
+    return normalize_status_verdict(payload, fallback_status=verifier_status)
 
 
 _BACKENDS = {
@@ -176,22 +147,12 @@ _BACKENDS = {
 
 
 def _build_prompt(case: dict[str, Any]) -> str:
-    query = case.get("query") or ""
-    answer = case.get("answer") or ""
-    if isinstance(answer, dict):
-        summary = str(answer.get("summary") or "")
-    else:
-        summary = str(answer)
-    evidence_items = case.get("evidence") or []
-    evidence_lines = []
-    for i, item in enumerate(evidence_items[:3], start=1):
-        raw_text = (item.get("text") if isinstance(item, dict) else "") or ""
-        text = neutralize_instruction_patterns(raw_text[:600])
-        evidence_lines.append(f"[{i}] {text}")
-    evidence_block = EVIDENCE_BOUNDARY.join(evidence_lines) or "(no evidence)"
+    query = neutralize_instruction_patterns(case.get("query") or "")
+    summary = neutralize_instruction_patterns(extract_summary(case))
+    evidence_block = build_evidence_block(case)
     return PROMPT_TEMPLATE.format(
-        query=neutralize_instruction_patterns(query),
-        summary=neutralize_instruction_patterns(summary),
+        query=query,
+        summary=summary,
         evidence=evidence_block,
     )
 
@@ -237,7 +198,7 @@ def judge_summary(
         verifier_status = str(case.get("answer_status") or "insufficient")
         try:
             raw_verdict = backend_fn(prompt, verifier_status=verifier_status)
-            verdict = _normalize_judge_payload(
+            verdict = normalize_status_verdict(
                 raw_verdict, fallback_status=verifier_status
             )
         except Exception as exc:  # noqa: BLE001 — by design (#171)
