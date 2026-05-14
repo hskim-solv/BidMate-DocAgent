@@ -73,6 +73,9 @@ def load_history(history_dir: Path = HISTORY_DIR) -> list[dict[str, Any]]:
     ADR 0029 adds an ``ablation_full`` sub-aggregate alongside the
     primary ``naive_baseline`` metrics — absent on pre-#476 snapshots,
     which the renderer surfaces as ``—`` rather than dropping the row.
+    Issue #650 / ADR 0039 adds ``by_format_hwp`` extracted from the
+    ``by_format.hwp`` bucket; absent on pre-#650 snapshots (shows ``—``
+    per ADR 0030 forward-only).
     """
     if not history_dir.exists():
         return []
@@ -83,6 +86,8 @@ def load_history(history_dir: Path = HISTORY_DIR) -> list[dict[str, Any]]:
         provenance = raw.get("provenance") or agg.get("run_manifest") or {}
         ci = agg.get("ci") or {}
         ablation_full = agg.get("ablation_full") or {}
+        by_format = agg.get("by_format") or {}
+        by_format_hwp = by_format.get("hwp") or {}
         rows.append(
             {
                 "file": path.name,
@@ -97,6 +102,7 @@ def load_history(history_dir: Path = HISTORY_DIR) -> list[dict[str, Any]]:
                 "retry": agg.get("retry"),
                 "ci": ci,
                 "ablation_full": ablation_full,
+                "by_format_hwp": by_format_hwp,
             }
         )
     rows.sort(key=lambda row: (row["date"], row["file"]))
@@ -123,6 +129,26 @@ def _full_row_view(row: dict[str, Any]) -> dict[str, Any]:
         "abstention": full.get("abstention"),
         "retry": full.get("retry"),
         "ci": full.get("ci") or {},
+    }
+
+
+def _hwp_format_row_view(row: dict[str, Any]) -> dict[str, Any]:
+    """Project the ``by_format_hwp`` bucket onto the leaderboard row shape.
+
+    Absent on pre-#650 snapshots (shows ``—`` per ADR 0030 forward-only).
+    """
+    hwp = row.get("by_format_hwp") or {}
+    return {
+        "date": row["date"],
+        "commit": row["commit"],
+        "num_predictions": hwp.get("num_predictions"),
+        "accuracy": hwp.get("accuracy"),
+        "groundedness": hwp.get("groundedness"),
+        "citation_precision": hwp.get("citation_precision"),
+        "answer_format_compliance": hwp.get("answer_format_compliance"),
+        "abstention": hwp.get("abstention"),
+        "retry": hwp.get("retry"),
+        "ci": {},
     }
 
 
@@ -173,6 +199,7 @@ def render_markdown_table(rows: list[dict[str, Any]]) -> str:
         "",
     ]
     full_rows = [_full_row_view(row) for row in rows]
+    hwp_rows = [_hwp_format_row_view(row) for row in rows]
     return (
         "\n".join(intro)
         + _render_table_only(rows)
@@ -185,16 +212,25 @@ def render_markdown_table(rows: list[dict[str, Any]]) -> str:
             empty_message="",
             trailing_newline=True,
         )
+        + "\n## HWP Slice: by_format[hwp] (ADR 0039 / issue #650)\n\n"
+        + "_HWP-format case accuracy extracted from `eval_summary.json:by_format.hwp`. "
+        + "`—` cells predate PR-B (#650). Forward-only per ADR 0030._\n\n"
+        + render_history_table(
+            hwp_rows,
+            TABLE_COLUMNS,
+            empty_message="",
+            trailing_newline=True,
+        )
     )
 
 
 def _chart_data(rows: list[dict[str, Any]]) -> dict[str, Any]:
     """Build the JSON payload consumed by Chart.js.
 
-    Each metric carries two series — ``baseline`` (the existing
-    `naive_baseline` time series) and ``full`` (the `agentic_full`
-    time series introduced by ADR 0029). Missing `full` points (pre-
-    #476 snapshots) render as gaps in the chart rather than zeroes.
+    Each metric carries three series:
+    - ``baseline``: ``naive_baseline`` time series
+    - ``full``: ``agentic_full`` time series (ADR 0029; gaps on pre-#476)
+    - ``hwp_format``: ``by_format.hwp`` slice (ADR 0039; gaps on pre-#650)
     """
     labels = [row["date"] for row in rows]
     commits = [row["commit"] for row in rows]
@@ -227,6 +263,11 @@ def _chart_data(rows: list[dict[str, Any]]) -> dict[str, Any]:
                     .get(key, {})
                     .get("ci_hi")
                     for row in rows
+                ],
+            },
+            "hwp_format": {
+                "values": [
+                    (row.get("by_format_hwp") or {}).get(key) for row in rows
                 ],
             },
         }
@@ -270,6 +311,7 @@ window.addEventListener('DOMContentLoaded', () => {{
     if (!el) continue;
     const baseline = LEADERBOARD_DATA.metrics[metric].baseline;
     const full = LEADERBOARD_DATA.metrics[metric].full;
+    const hwpFormat = LEADERBOARD_DATA.metrics[metric].hwp_format;
     new Chart(el, {{
       type: 'line',
       data: {{
@@ -309,6 +351,16 @@ window.addEventListener('DOMContentLoaded', () => {{
             tension: 0.1,
             spanGaps: false,
             order: 1,
+          }},
+          {{
+            label: 'hwp_format (by_format[hwp])',
+            data: hwpFormat.values,
+            borderColor: 'rgb(75, 192, 192)',
+            backgroundColor: 'rgb(75, 192, 192)',
+            fill: false,
+            tension: 0.1,
+            spanGaps: false,
+            order: 2,
           }},
         ],
       }},
