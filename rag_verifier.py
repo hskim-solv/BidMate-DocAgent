@@ -51,6 +51,7 @@ from korean_lexicon import (
     METADATA_GENERIC_TOKENS,
     TOPIC_KEYWORDS,
     VERIFICATION_INTENT_TOKENS,
+    VERIFICATION_TOPIC_EXCLUSIONS,
 )
 from rag_metadata_processing import metadata_tokens
 from rag_text_processing import normalize_metadata_token, ordered_unique
@@ -183,6 +184,8 @@ def verification_topics(analysis: dict[str, Any]) -> list[str]:
         if normalized in metadata_terms and normalized not in keyword_terms:
             continue
         if normalized in METADATA_GENERIC_TOKENS or normalized in VERIFICATION_INTENT_TOKENS:
+            continue
+        if normalized in VERIFICATION_TOPIC_EXCLUSIONS:
             continue
         topics.append(normalized)
     return ordered_unique(topics)

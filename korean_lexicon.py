@@ -47,6 +47,9 @@ METADATA_CLAIM_TOPIC_LABELS: dict[str, tuple[str, ...]] = {
 KOREAN_PARTICLE_SUFFIXES: tuple[str, ...] = tuple(_data["korean_particle_suffixes"])
 BM25_EXTRA_PARTICLE_SUFFIXES: tuple[str, ...] = tuple(_data["bm25_extra_particle_suffixes"])
 BM25_EXTRA_STOPWORDS: frozenset[str] = frozenset(_data["bm25_extra_stopwords"])
+VERIFICATION_TOPIC_EXCLUSIONS: frozenset[str] = frozenset(
+    _data["verification_topic_exclusions"]
+)
 
 
 # KIWI morphological tokenizer (issue #486, ADR 0031) — additive
