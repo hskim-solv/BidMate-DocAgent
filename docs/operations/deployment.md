@@ -6,7 +6,7 @@ backed by either the deterministic hashing pipeline (offline, free)
 or live Claude synthesis (ADR 0011, paid).
 
 For the CLI / eval flow (not deployment), see
-[`docs/api-demo.md`](api-demo.md) and the root `README.md`.
+[`docs/operations/api-demo.md`](./api-demo.md) and the root `README.md`.
 
 ## Pre-flight checklist
 

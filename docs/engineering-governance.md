@@ -19,7 +19,7 @@ If you are new to the repo or onboarding a reviewer, start here.
 | Eval surfaces | [ADR 0005](./adr/0005-eval-split-public-synthetic-private-local.md), [`eval/config.yaml`](../eval/config.yaml), `eval/*.example.yaml` | Public synthetic is committed; private local is `.gitignore`d. |
 | Reviewer-facing metrics | `reports/eval_summary.json`, README headline table | The PR eval delta workflow upserts a PR comment with the diff. |
 | Failure analysis | [`docs/real-data-failure-taxonomy.md`](./real-data-failure-taxonomy.md), [`docs/failure-cases.md`](./failure-cases.md) | Drives the prioritized backlog. |
-| API demo | [`docs/api-demo.md`](./api-demo.md), `api/main.py` | Reviewer playground; never the source of truth for measurement. |
+| API demo | [`docs/operations/api-demo.md`](./operations/api-demo.md), `api/main.py` | Reviewer playground; never the source of truth for measurement. |
 | Issue/PR triage | This page, ["Milestones & issue lifecycle"](#milestones--issue-lifecycle) | Milestones, stale policy, current categorisation snapshot. |
 
 ## Change lifecycle
