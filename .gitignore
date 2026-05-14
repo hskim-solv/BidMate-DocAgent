@@ -117,6 +117,10 @@ reports/external_baselines.local.json
 !reports/synthetic_judge.aggregate.json
 reports/synthetic_judge.local.json
 
+# issue #677 — disagreement diagnostics per-case dump stays local
+# (ADR 0005 boundary). Only the stdout aggregate is safe to commit.
+reports/judge_disagreements.local.json
+
 # ADR 0029 — real-data case proposer aggregate is committable;
 # per-case proposed/reviewed yaml stays local. Mirrors the
 # ADR 0005 / 0006 / 0012 split.

@@ -18,7 +18,7 @@
 # Synthetic eval surface (public corpus). Includes smoke, full eval, harness
 # matrix, judges, leaderboard render, pareto, korean public bench, external
 # baselines.
-.PHONY: eval smoke smoke-with-judge reproduce benchmark synthetic-judge leaderboard pareto korean-public-fetch korean-public-eval external-baselines-stub external-baselines-langchain external-baselines-llamaindex external-baselines-ollama harness-smoke harness-ablation harness-compare synthesize-multihop eval-multihop
+.PHONY: eval smoke smoke-with-judge reproduce benchmark synthetic-judge judge-disagreements leaderboard pareto korean-public-fetch korean-public-eval external-baselines-stub external-baselines-langchain external-baselines-llamaindex external-baselines-ollama harness-smoke harness-ablation harness-compare synthesize-multihop eval-multihop
 
 # Real-data eval cycle (private; ADR 0005 commit boundary).
 .PHONY: real-eval real-eval-delta real-eval-baseline-update real-eval-history-render real-eval-with-judge harness-real
@@ -336,6 +336,14 @@ synthetic-judge:
 	  --summary reports/eval_summary.json \
 	  --aggregate reports/synthetic_judge.aggregate.json \
 	  --local reports/synthetic_judge.local.json
+
+## Dump verifier↔judge disagreement cases from the synthetic judge local file.
+## Requires reports/synthetic_judge.local.json (run make synthetic-judge first).
+## Output: reports/judge_disagreements.local.json (gitignored) + stdout aggregate.
+judge-disagreements:
+	$(PYTHON) scripts/dump_judge_disagreements.py \
+	  --local reports/synthetic_judge.local.json \
+	  --output reports/judge_disagreements.local.json
 
 # Append a history snapshot of the current eval_summary.json + render
 # the leaderboard markdown table and the docs/leaderboard.md Chart.js
