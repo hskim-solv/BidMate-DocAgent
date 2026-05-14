@@ -53,6 +53,8 @@ Attach the `make real-eval-delta` aggregate table, or state explicitly:
 See ADR 0005.
 The synthetic CI delta alone missed #69's intended-abstention regression;
 the §5b CI gate (scripts/check_branch_and_issue.py --check-5b) now enforces this.
+README metric sync is separately gated by pr-eval.yml (issue #739) —
+run `python scripts/update_readme_metrics.py` after any eval surface change.
 -->
 
 ## 6. Backward compatibility

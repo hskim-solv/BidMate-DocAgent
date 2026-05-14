@@ -71,8 +71,8 @@ check-branch:
 # already wired into CI / hooks individually; this target just shortens
 # the local pre-PR checklist into a single invocation. Fails on the
 # first sub-target that exits non-zero.
-governance-check: check-branch leaderboard-check real-eval-history-check check-baseline-provenance
-	@echo "governance-check: branch + leaderboard + real-eval-history + baseline-provenance OK."
+governance-check: check-branch leaderboard-check real-eval-history-check check-baseline-provenance check
+	@echo "governance-check: branch + leaderboard + real-eval-history + baseline-provenance + readme-metric-sync OK."
 
 # Verify reports/real100/baseline.aggregate.json's provenance.git_commit is
 # still reachable from origin/main (issue #413). Catches the silent-breakage
