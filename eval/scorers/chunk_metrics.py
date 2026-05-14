@@ -5,7 +5,7 @@ import math
 from typing import Any
 
 
-CHUNK_METRIC_KS = (5, 10)
+CHUNK_METRIC_KS = (5, 10, 20)
 
 
 def derive_gold_chunk_ids(
