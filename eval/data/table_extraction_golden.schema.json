@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bidmate.local/schemas/table_extraction_golden.json",
+  "title": "Table extraction golden record",
+  "description": "One labeled table from an RFP source document. Used as ground truth for HWP/Upstage parser comparison (issue #728, PR-A0). One JSONL line = one table.",
+  "type": "object",
+  "required": [
+    "doc_id",
+    "source_path",
+    "table_index",
+    "rows",
+    "cols",
+    "cells",
+    "extractor",
+    "extracted_at"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "doc_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Document identifier (typically source file stem)."
+    },
+    "source_path": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Path to the source document the table was extracted from."
+    },
+    "page": {
+      "type": ["integer", "null"],
+      "minimum": 1,
+      "description": "1-indexed source page. Null when the parser does not expose page mappings (pyhwp event stream)."
+    },
+    "table_index": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "0-indexed table position within the document."
+    },
+    "rows": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Declared row count from the parser."
+    },
+    "cols": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Declared column count from the parser."
+    },
+    "caption": {
+      "type": ["string", "null"],
+      "description": "Caption text immediately preceding the table (e.g., '표 3.1 평가 배점'). Null in dumped drafts; filled by the labeler."
+    },
+    "table_kind": {
+      "type": ["string", "null"],
+      "enum": ["evaluation", "requirement", "schedule", "other", null],
+      "description": "Semantic table category. Null in dumped drafts; filled by the labeler. Used by axis #2 of the table-handling plan to drive per-kind chunking policy."
+    },
+    "cells": {
+      "type": "array",
+      "minItems": 0,
+      "description": "Flat list of cells preserving HWP-native row/col coordinates and span info.",
+      "items": {
+        "type": "object",
+        "required": ["row", "col", "rowspan", "colspan", "text"],
+        "additionalProperties": false,
+        "properties": {
+          "row": {"type": "integer", "minimum": 0},
+          "col": {"type": "integer", "minimum": 0},
+          "rowspan": {"type": "integer", "minimum": 1},
+          "colspan": {"type": "integer", "minimum": 1},
+          "text": {"type": "string"}
+        }
+      }
+    },
+    "extractor": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Identifier of the extractor that produced this draft (e.g., 'pyhwp_native_tables', 'upstage_document_parser')."
+    },
+    "extracted_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 UTC timestamp of extraction."
+    },
+    "notes": {
+      "type": ["string", "null"],
+      "description": "Free-form labeler notes. Null in dumped drafts."
+    }
+  }
+}
