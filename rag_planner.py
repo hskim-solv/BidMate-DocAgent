@@ -1,4 +1,4 @@
-"""Planner Protocol — pluggable next-action planning stage (#659).
+"""Planner Protocol — pluggable next-action planning stage (#659, #673).
 
 The ``Planner`` Protocol decouples the ReAct agent loop from the specific
 planning backend, so future strategies (LLM-based multi-turn planning,
@@ -29,8 +29,25 @@ loop is untouched.
 """
 from __future__ import annotations
 
+import json
+import os
 import time
 from typing import Any, Protocol, runtime_checkable
+
+# Env-var contract (mirrors rag_query_expansion.py / rag_synthesis.py).
+ENV_PLANNER_BACKEND = "BIDMATE_PLANNER_BACKEND"
+ENV_PLANNER_MODEL = "BIDMATE_PLANNER_MODEL"
+ENV_PLANNER_MAX_TOKENS = "BIDMATE_PLANNER_MAX_TOKENS"
+ENV_PLANNER_MAX_ITERATIONS = "BIDMATE_PLANNER_MAX_ITERATIONS"
+ENV_PLANNER_MAX_LATENCY_MS = "BIDMATE_PLANNER_MAX_LATENCY_MS"
+
+DEFAULT_PLANNER_BACKEND = "static"
+# Sonnet is the right cost/quality point for single-step planning decisions.
+DEFAULT_PLANNER_MODEL = "claude-sonnet-4-6"
+DEFAULT_PLANNER_MAX_TOKENS = 1024
+# ADR 0041 budget cap defaults
+DEFAULT_MAX_ITERATIONS = 5
+DEFAULT_MAX_LATENCY_MS = 8000
 
 _REQUIRED_META_KEYS = frozenset(
     {"backend", "model", "fell_back", "fallback_reason", "latency_ms"}
@@ -129,14 +146,123 @@ class StaticPlanner:
         return next_action, meta
 
 
-def default_planner(*, preset_kwargs: dict[str, Any] | None = None) -> Planner:
-    """The planner the agent loop uses unless a future plan-level override
-    is wired in.  Returns a fresh ``StaticPlanner`` instance so callers
-    can swap implementations in tests without module-level state.
+class LLMPlanner:
+    """Opt-in ``Planner`` — Anthropic SDK multi-turn planning (ADR 0040).
 
-    When ``LLMPlanner`` lands (PR-C), this function gains a
-    ``BIDMATE_PLANNER_BACKEND`` env-var read — identical to the
-    ``BIDMATE_QUERY_EXPANSION_BACKEND`` dispatch in
-    ``rag_query_expansion.py``.
+    On each ``plan_next`` call the LLM receives the current analysis,
+    prior attempt history, and remaining budget, then chooses the next
+    action from the registered tool set (``AGENT_REACT_TOOLS``).
+
+    Activation: set ``BIDMATE_PLANNER_BACKEND=anthropic``.  The default
+    is ``"static"`` so CI and smoke runs are LLM-free and deterministic.
+
+    Never-raise: every failure path (missing SDK, missing API key, parse
+    error, API error) falls back to ``StaticPlanner`` with
+    ``meta["fell_back"] = True``.  This preserves ADR 0003 answer
+    contract reachability — the agent loop always gets a valid action.
+
+    ADR 0041 budget cap: callers (react_loop node) are responsible for
+    passing ``budget`` with ``iterations_left``, ``tokens_left``, and
+    ``ms_left`` populated; ``LLMPlanner`` does not enforce caps itself
+    but reads them for the user prompt so the LLM can self-regulate.
     """
+
+    def __init__(
+        self,
+        *,
+        preset_kwargs: dict[str, Any] | None = None,
+        model: str | None = None,
+        max_tokens: int | None = None,
+    ) -> None:
+        self._preset_kwargs: dict[str, Any] = preset_kwargs or {}
+        self._model = model or os.environ.get(ENV_PLANNER_MODEL, DEFAULT_PLANNER_MODEL)
+        self._max_tokens = max_tokens or int(
+            os.environ.get(ENV_PLANNER_MAX_TOKENS, DEFAULT_PLANNER_MAX_TOKENS)
+        )
+        self._static_fallback = StaticPlanner(preset_kwargs=preset_kwargs)
+
+    def plan_next(
+        self,
+        *,
+        analysis: dict[str, Any],
+        history: list[dict[str, Any]],
+        budget: dict[str, Any],
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        t0 = time.perf_counter()
+        try:
+            import anthropic  # type: ignore[import-not-found]
+            from rag_agent_tools import AGENT_REACT_SYSTEM_PROMPT, AGENT_REACT_TOOLS
+
+            client = anthropic.Anthropic()
+            user_content = (
+                f"Query analysis:\n{json.dumps(analysis, ensure_ascii=False, indent=2)}\n\n"
+                f"Previous attempts ({len(history)}):\n"
+                f"{json.dumps(history, ensure_ascii=False, indent=2)}\n\n"
+                f"Budget remaining: {json.dumps(budget, ensure_ascii=False)}\n\n"
+                "Select the next action to retrieve grounded evidence for the query."
+            )
+            response = client.messages.create(
+                model=self._model,
+                max_tokens=self._max_tokens,
+                system=AGENT_REACT_SYSTEM_PROMPT,
+                tools=AGENT_REACT_TOOLS,
+                tool_choice={"type": "any"},
+                messages=[{"role": "user", "content": user_content}],
+            )
+            # Extract the first tool_use block.
+            tool_block = next(
+                (b for b in response.content if getattr(b, "type", None) == "tool_use"),
+                None,
+            )
+            if tool_block is None:
+                raise ValueError("LLM returned no tool_use block")
+            next_action: dict[str, Any] = {
+                "tool": tool_block.name,
+                "args": dict(tool_block.input or {}),
+            }
+            latency_ms = (time.perf_counter() - t0) * 1000.0
+            meta: dict[str, Any] = {
+                "backend": "anthropic",
+                "model": self._model,
+                "fell_back": False,
+                "fallback_reason": None,
+                "latency_ms": latency_ms,
+                "input_tokens": getattr(response.usage, "input_tokens", None),
+                "output_tokens": getattr(response.usage, "output_tokens", None),
+            }
+            return next_action, meta
+        except Exception as exc:
+            # Fall back to StaticPlanner — never-raise contract.
+            fallback_action, fallback_meta = self._static_fallback.plan_next(
+                analysis=analysis, history=history, budget=budget
+            )
+            latency_ms = (time.perf_counter() - t0) * 1000.0
+            fallback_meta.update(
+                {
+                    "backend": "anthropic_fallback",
+                    "fell_back": True,
+                    "fallback_reason": f"{type(exc).__name__}: {exc}",
+                    "latency_ms": latency_ms,
+                }
+            )
+            return fallback_action, fallback_meta
+
+
+def default_planner(*, preset_kwargs: dict[str, Any] | None = None) -> Planner:
+    """Factory for the planner the agent loop uses.
+
+    Dispatches on ``BIDMATE_PLANNER_BACKEND`` (mirrors
+    ``BIDMATE_QUERY_EXPANSION_BACKEND`` in ``rag_query_expansion.py``):
+
+    - ``"static"`` (default) → :class:`StaticPlanner` — deterministic,
+      no LLM call, CI-safe.
+    - ``"anthropic"`` → :class:`LLMPlanner` — Anthropic SDK multi-turn
+      planning (ADR 0040/0041).
+
+    Returns a fresh instance each call so test code can swap
+    implementations without module-level state side effects.
+    """
+    backend = os.environ.get(ENV_PLANNER_BACKEND, DEFAULT_PLANNER_BACKEND).strip().lower()
+    if backend == "anthropic":
+        return LLMPlanner(preset_kwargs=preset_kwargs)
     return StaticPlanner(preset_kwargs=preset_kwargs)
