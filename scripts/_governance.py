@@ -165,9 +165,143 @@ def find_duplicate_adr_numbers(
     return {n: sorted(names) for n, names in by_num.items() if len(names) > 1}
 
 
+# ---------------------------------------------------------------------------
+# ADR Consequences verification lint (issue #793 — B3 fix from governance
+# self-audit).
+#
+# ADR 0041 promised `stage_attempts` telemetry, ADR 0042 promised a
+# regression test, ADR 0043 promised PR comments — and nothing actively
+# checks any of it. Without a verification circuit, ADRs become Decision
+# Theatre: "we wrote it down" with no signal months later about whether
+# the commitment held.
+#
+# The contract introduced here is tiny:
+#
+#   ## Verification
+#   <!-- verifies-key: <relative-path>:<key-substring> -->
+#
+# `lint_adr_verification()` confirms:
+#   1. Verification H2 section present
+#   2. ≥1 verifies-key marker
+#   3. for each marker whose target file exists, the key substring
+#      appears somewhere in that file (lenient — substring not JSON path)
+#
+# Step 3 is the actual two-way circuit B3 demanded. Step 2 is the floor
+# (no marker = no claim = Decision Theatre survives). Pre-commit hook
+# applies this only to *newly added* ADR files so the 41 existing ADRs
+# are grandfathered; retrofit happens per-ADR in follow-up PRs.
+# ---------------------------------------------------------------------------
+
+ADR_VERIFIES_KEY_RE = re.compile(
+    r"<!--\s*verifies-key:\s*([^\s:][^:]*?)\s*:\s*([^\s>][^>]*?)\s*-->"
+)
+ADR_VERIFICATION_HEADER_RE = re.compile(r"^##\s+Verification\s*$", re.MULTILINE)
+
+
+def adr_has_verification_section(adr_path: str | Path) -> bool:
+    """Return True if the ADR file contains a `## Verification` H2 header."""
+    p = Path(adr_path)
+    if not p.is_file():
+        return False
+    text = p.read_text(encoding="utf-8", errors="replace")
+    return bool(ADR_VERIFICATION_HEADER_RE.search(text))
+
+
+def extract_adr_verification_markers(
+    adr_path: str | Path,
+) -> list[tuple[str, str]]:
+    """Return ``[(path, key_substring), ...]`` from `<!-- verifies-key: ... -->`.
+
+    Empty list if the file is missing or contains no markers. Whitespace
+    around the path / key is stripped. Order matches source order so the
+    lint output reads top-to-bottom.
+    """
+    p = Path(adr_path)
+    if not p.is_file():
+        return []
+    text = p.read_text(encoding="utf-8", errors="replace")
+    return [
+        (m.group(1).strip(), m.group(2).strip())
+        for m in ADR_VERIFIES_KEY_RE.finditer(text)
+    ]
+
+
+def lint_adr_verification(
+    adr_path: str | Path,
+    repo_root: str | Path = ".",
+) -> list[str]:
+    """Return list of human-readable error messages; empty = clean.
+
+    Lint rules:
+      - section: `## Verification` H2 header must exist
+      - markers: at least one `<!-- verifies-key: path:key -->`
+      - resolvability: for each marker whose `path` file exists,
+        the `key` substring must appear in the file content
+      - missing target file (e.g. `reports/eval_summary.json` in a fresh
+        clone) is NOT an error — just skipped silently. The hook fires
+        in many envs that don't run `make real-eval`.
+    """
+    p = Path(adr_path)
+    if not p.is_file():
+        return [f"ADR file not found: {adr_path}"]
+
+    text = p.read_text(encoding="utf-8", errors="replace")
+    errors: list[str] = []
+
+    if not ADR_VERIFICATION_HEADER_RE.search(text):
+        errors.append("missing `## Verification` H2 section")
+        return errors  # other checks moot without the section
+
+    markers = [
+        (m.group(1).strip(), m.group(2).strip())
+        for m in ADR_VERIFIES_KEY_RE.finditer(text)
+    ]
+    if not markers:
+        errors.append(
+            "Verification section present but contains zero "
+            "`<!-- verifies-key: <path>:<key> -->` markers"
+        )
+        return errors
+
+    root = Path(repo_root)
+    for rel_path, key in markers:
+        target = root / rel_path
+        if not target.exists():
+            # Missing target file is informational, not fatal — many envs
+            # don't generate reports/. Skip silently per docstring.
+            continue
+        try:
+            content = target.read_text(encoding="utf-8", errors="replace")
+        except OSError as exc:
+            errors.append(f"cannot read {rel_path}: {exc}")
+            continue
+        if key not in content:
+            errors.append(
+                f"key `{key}` not found in {rel_path} "
+                "(marker exists but the measurement isn't wired up)"
+            )
+
+    return errors
+
+
 def _cmd_next_adr_number(adr_dir: str) -> int:
     sys.stdout.write(f"{next_adr_number(adr_dir):04d}\n")
     return 0
+
+
+def _cmd_lint_adr_consequences(adr_path: str, repo_root: str) -> int:
+    errors = lint_adr_verification(adr_path, repo_root)
+    if not errors:
+        return 0
+    sys.stderr.write(f"\n❌ ADR Verification lint failed for {adr_path}:\n\n")
+    for err in errors:
+        sys.stderr.write(f"     - {err}\n")
+    sys.stderr.write(
+        "\n   Add a `## Verification` section with at least one machine-checkable\n"
+        "   marker (see docs/adr/_template.md for the format). Existing ADRs are\n"
+        "   grandfathered; this lint applies to newly added ADR files (issue #793).\n\n"
+    )
+    return 1
 
 
 def _cmd_check_adr_collision(adr_dir: str) -> int:
@@ -267,10 +401,20 @@ def main() -> int:
         help="Scan docs/adr/ for two files sharing the same NNNN prefix; "
              "exit 1 with details if any collision is found.",
     )
+    g.add_argument(
+        "--lint-adr-consequences", metavar="ADR_PATH",
+        help="Lint a single ADR's `## Verification` section + verifies-key "
+             "markers (issue #793); exit 1 with details if missing/broken.",
+    )
     p.add_argument(
         "--adr-dir", default=ADR_DIR_DEFAULT,
         help=f"ADR directory (default: {ADR_DIR_DEFAULT}). "
              "Only used by --next-adr-number / --check-adr-collision.",
+    )
+    p.add_argument(
+        "--repo-root", default=".",
+        help="Repo root for verifies-key marker resolution "
+             "(default: current directory). Only used by --lint-adr-consequences.",
     )
     args = p.parse_args()
 
@@ -286,6 +430,8 @@ def main() -> int:
         return _cmd_next_adr_number(args.adr_dir)
     if args.check_adr_collision:
         return _cmd_check_adr_collision(args.adr_dir)
+    if args.lint_adr_consequences is not None:
+        return _cmd_lint_adr_consequences(args.lint_adr_consequences, args.repo_root)
     return 2
 
 
