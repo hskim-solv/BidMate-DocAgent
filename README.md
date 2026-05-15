@@ -231,6 +231,8 @@ python3 scripts/update_readme_metrics.py --report reports/eval_summary.json --re
 - 브랜치/PR/이슈 생성 및 CI gate 운영 보조
 - 탐색(Explore subagent), 설계 검토(Plan subagent), 반복 작업 자동화
 
+**Governance가 막은 실제 인시던트 3건** — synthetic-CI가 놓친 abstention 회귀(#69), stacked-PR child auto-close, ADR 번호 worktree 충돌. 각 사고와 사후 보강 hook/rule: [`docs/engineering-governance.md` Governance saves](docs/engineering-governance.md#governance-saves-real-incidents-prevented). 거버넌스가 *있다*는 신호보다 *rent를 냈다*는 신호를 우선합니다.
+
 **분기별 협업 자가진단** — `/self-review-quarterly` skill로 4축(포트폴리오 진행도) + 5축(Claude 협업 효율)을 한 보고서로 생성.
 최신 보고서: [`docs/self-review/Q2-2026.md`](docs/self-review/Q2-2026.md)
 
