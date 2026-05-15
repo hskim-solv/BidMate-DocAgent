@@ -121,6 +121,13 @@ ablation_runs:
     rerank: true
     verifier_retry: true
     retrieval_mode: flat
+    # ADR 0001 default: regex-based RFP metadata extraction
+    # (``rag_metadata_extraction.RegexBackend``). The discriminator is
+    # consumed by the byte-identity invariant test that pairs this row
+    # with ``full_llm_metadata`` (issue #804). The eval runner itself
+    # does not branch on this key — index-build time is where the
+    # backend is selected via ``BIDMATE_METADATA_BACKEND``.
+    metadata_backend: regex
   # ADR 0011 — additive LLM synthesis path. Default backend is `stub`
   # (deterministic, offline, free) so public CI stays per ADR 0004.
   # Real-data + live demo override `BIDMATE_SYNTHESIS_BACKEND=anthropic`.
@@ -140,12 +147,18 @@ ablation_runs:
   # so public CI / synthetic harness runs stay deterministic and free.
   # The pipeline itself is identical to ``full`` — only the
   # ``metadata["extracted"]`` sidecar in each chunk differs.
+  #
+  # Issue #804: the ``metadata_backend`` discriminator below makes the
+  # config-level difference from ``full`` explicit (without it, the two
+  # rows were byte-identical and the byte-identity invariant test could
+  # not differentiate them — same Goodhart trap as #800).
   - name: full_llm_metadata
     pipeline: agentic_full
     metadata_first: true
     rerank: true
     verifier_retry: true
     retrieval_mode: flat
+    metadata_backend: anthropic_tool_use
   - name: hierarchical
     pipeline: agentic_full
     metadata_first: true
