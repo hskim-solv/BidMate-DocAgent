@@ -170,6 +170,23 @@ from rag_query import (
 # of issue #415 (PR-E stage 3 of the rag_core.py decomposition epic). The
 # symbols below are direct-imported (no re-export wrapper) — repo-wide
 # grep at PR filing confirmed zero external consumers.
+# Embedding primitives extracted to rag_embedding (ADR 0045, issue #843).
+# Re-exported here so existing ``from rag_core import embed_texts`` /
+# ``DEFAULT_EMBEDDING_MODEL`` call sites keep working unchanged. The
+# bodies live in rag_embedding now; this is a structural relocation
+# only and is byte-identical for the naive_baseline preset (ADR 0001).
+from rag_embedding import (
+    DEFAULT_EMBEDDING_MODEL,
+    DEFAULT_HASH_DIM,
+    MODEL_CACHE,
+    EmbeddingResult,
+    _embed_with_openai,
+    embed_texts,
+    expand_features,
+    hashing_embeddings,
+    huggingface_offline,
+    sentence_transformer_cache_available,
+)
 # Text-processing primitives extracted to rag_text_processing (issue #545).
 # Re-exported here so existing ``from rag_core import tokenize`` call sites
 # keep working unchanged.
@@ -275,8 +292,6 @@ from rag_answer_schema import (
     KNOWN_ANSWER_STATUS_REASON_CODES,
 )
 
-DEFAULT_EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
-DEFAULT_HASH_DIM = 384
 DEFAULT_CHUNK_MAX_CHARS = 520
 DEFAULT_CHUNK_OVERLAP_SENTENCES = 1
 VALID_CHUNKING_STRATEGIES = {"auto", "section", "fixed"}
@@ -293,13 +308,6 @@ INDEX_FILENAME = "index.json"
 # without touching the chunk-metadata payload.
 EMBEDDINGS_FILENAME = "embeddings.npy"
 INDEX_SCHEMA_VERSION = 2
-MODEL_CACHE: dict[tuple[str, bool, str | None], Any] = {}
-
-@dataclass(frozen=True)
-class EmbeddingResult:
-    vectors: np.ndarray
-    backend: str
-    model: str
 
 
 @dataclass(frozen=True)
@@ -553,155 +561,6 @@ def make_chunk(
     if page_span:
         chunk["page_span"] = page_span
     return chunk
-
-
-def embed_texts(
-    texts: list[str],
-    model_name: str = DEFAULT_EMBEDDING_MODEL,
-    backend: str = "auto",
-    local_only: bool = False,
-) -> EmbeddingResult:
-    if backend not in {"auto", "sentence-transformers", "hashing", "openai"}:
-        raise ValueError(
-            "--embedding_backend must be one of: auto, sentence-transformers, hashing, openai"
-        )
-
-    if backend == "openai":
-        return _embed_with_openai(texts, model_name=model_name)
-
-    should_try_sentence_transformers = backend == "sentence-transformers" or (
-        backend == "auto" and sentence_transformer_cache_available(model_name)
-    )
-
-    if should_try_sentence_transformers:
-        try:
-            with huggingface_offline(local_only or backend == "auto"):
-                from sentence_transformers import SentenceTransformer
-
-                # ADR 0027 — additive LoRA adapter, gated by env var so
-                # the default (env unset) path remains byte-identical
-                # to pre-#434 behavior. ``adapter_path`` is part of the
-                # cache key so adapted / unadapted variants of the same
-                # base model don't clobber each other.
-                adapter_path = os.environ.get("BIDMATE_EMBEDDING_LORA_ADAPTER") or None
-                cache_key = (model_name, local_only or backend == "auto", adapter_path)
-                model = MODEL_CACHE.get(cache_key)
-                if model is None:
-                    model = SentenceTransformer(model_name)
-                    if adapter_path:
-                        # PEFT is lazy-imported (optional dep in
-                        # requirements-lora.txt) — the hashing-only CI
-                        # path never executes this branch and so never
-                        # needs the package installed.
-                        from peft import PeftModel  # type: ignore[import-not-found]
-
-                        underlying = model[0].auto_model
-                        adapted = PeftModel.from_pretrained(underlying, adapter_path)
-                        model[0].auto_model = adapted.merge_and_unload()
-                    MODEL_CACHE[cache_key] = model
-            vectors = model.encode(
-                texts,
-                convert_to_numpy=True,
-                normalize_embeddings=True,
-                show_progress_bar=False,
-            )
-            return EmbeddingResult(
-                vectors=np.asarray(vectors, dtype=np.float32),
-                backend="sentence-transformers",
-                model=model_name,
-            )
-        except Exception as exc:
-            if backend == "sentence-transformers":
-                raise RuntimeError(f"Failed to load embedding model {model_name}: {exc}") from exc
-
-    return EmbeddingResult(
-        vectors=hashing_embeddings(texts, DEFAULT_HASH_DIM),
-        backend="hashing",
-        model="local-hashing-bow",
-    )
-
-
-def _embed_with_openai(texts: list[str], *, model_name: str) -> EmbeddingResult:
-    try:
-        import openai  # type: ignore[import-not-found]
-    except Exception as exc:
-        raise RuntimeError(
-            "openai backend requires the openai SDK. "
-            "Install with `pip install openai` or use --embedding_backend sentence-transformers."
-        ) from exc
-    api_key = os.environ.get("BIDMATE_OPENAI_API_KEY") or os.environ.get("OPENAI_API_KEY")
-    if not api_key:
-        raise RuntimeError(
-            "BIDMATE_OPENAI_API_KEY (or OPENAI_API_KEY) is not set for embedding_backend=openai."
-        )
-    client = openai.OpenAI(api_key=api_key)
-    vectors: list[list[float]] = []
-    batch_size = 100
-    for start in range(0, len(texts), batch_size):
-        batch = texts[start : start + batch_size]
-        resp = client.embeddings.create(model=model_name, input=batch)
-        vectors.extend(item.embedding for item in resp.data)
-    arr = np.asarray(vectors, dtype=np.float32)
-    norms = np.linalg.norm(arr, axis=1, keepdims=True).clip(min=1e-12)
-    return EmbeddingResult(
-        vectors=arr / norms,
-        backend="openai",
-        model=model_name,
-    )
-
-
-def sentence_transformer_cache_available(model_name: str) -> bool:
-    try:
-        from huggingface_hub import try_to_load_from_cache
-    except Exception:
-        return False
-    for filename in ("modules.json", "config_sentence_transformers.json", "config.json"):
-        cached = try_to_load_from_cache(model_name, filename)
-        if isinstance(cached, str):
-            return True
-    return False
-
-
-class huggingface_offline:
-    def __init__(self, enabled: bool) -> None:
-        self.enabled = enabled
-        self.previous: dict[str, str | None] = {}
-
-    def __enter__(self) -> None:
-        if not self.enabled:
-            return
-        for key in ("HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE"):
-            self.previous[key] = os.environ.get(key)
-            os.environ[key] = "1"
-
-    def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
-        if not self.enabled:
-            return
-        for key, value in self.previous.items():
-            if value is None:
-                os.environ.pop(key, None)
-            else:
-                os.environ[key] = value
-
-
-def hashing_embeddings(texts: list[str], dim: int) -> np.ndarray:
-    vectors = np.zeros((len(texts), dim), dtype=np.float32)
-    for row, text in enumerate(texts):
-        for token in expand_features(tokenize(text)):
-            digest = hashlib.md5(token.encode("utf-8")).hexdigest()
-            idx = int(digest[:8], 16) % dim
-            sign = 1.0 if int(digest[8:10], 16) % 2 == 0 else -1.0
-            vectors[row, idx] += sign
-    norms = np.linalg.norm(vectors, axis=1, keepdims=True)
-    norms[norms == 0] = 1.0
-    return vectors / norms
-
-
-def expand_features(tokens: list[str]) -> list[str]:
-    features = list(tokens)
-    for left, right in zip(tokens, tokens[1:]):
-        features.append(f"{left}_{right}")
-    return features
 
 
 def build_index_payload(
