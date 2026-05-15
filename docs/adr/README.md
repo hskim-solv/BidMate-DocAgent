@@ -61,7 +61,15 @@ project record.
   belongs in a regular design doc.
 - Use the section headings from [`_template.md`](./_template.md):
   **Context**, **Decision**, **Consequences**, **Alternatives
-  considered**.
+  considered**, **Verification**.
+- **New ADRs must include a `## Verification` section with at least one
+  `<!-- verifies-key: <path>:<key> -->` marker** so the Consequences
+  promise stays machine-checkable (issue
+  [#793](https://github.com/hskim-solv/BidMate-DocAgent/issues/793)).
+  Run `python scripts/_governance.py --lint-adr-consequences docs/adr/NNNN-slug.md`
+  to verify locally; the pre-commit hook applies the same check to newly
+  added files. The 41 existing ADRs are grandfathered — retrofit happens
+  per-ADR in follow-ups.
 - Reference concrete code paths (`rag_core.py:L1843`) and existing
   docs rather than restating their content.
 - Cross-link from any prose doc that previously held the rationale,
