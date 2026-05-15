@@ -103,6 +103,29 @@ def score_case(
     chunk_metrics["chunk_ndcg_at_10"] = chunk_ndcg_at_k(retrieved_chunk_ids, gold_for_chunks, 10)
     chunk_metrics["chunk_ndcg_at_20"] = chunk_ndcg_at_k(retrieved_chunk_ids, gold_for_chunks, 20)
 
+    # Rerank delta (issue #767): isolated cross-encoder contribution on top of
+    # the 60/25/15 dense+lexical+metadata blend. Both keys are None when the
+    # rerank stage didn't run (e.g., rerank disabled in naive_baseline, or the
+    # reranker fell back silently). Forward-compat: pre-#767 prediction dicts
+    # have no `pre_rerank_top10` / `post_rerank_top10` keys → values stay None.
+    rerank_meta = plan.get("rerank_cross_encoder_meta") or {}
+    pre_top10 = [str(c) for c in rerank_meta.get("pre_rerank_top10") or [] if c]
+    post_top10 = [str(c) for c in rerank_meta.get("post_rerank_top10") or [] if c]
+    if pre_top10 and post_top10 and gold_for_chunks:
+        pre_mrr = chunk_mrr(pre_top10, gold_for_chunks)
+        post_mrr = chunk_mrr(post_top10, gold_for_chunks)
+        pre_ndcg = chunk_ndcg_at_k(pre_top10, gold_for_chunks, 10)
+        post_ndcg = chunk_ndcg_at_k(post_top10, gold_for_chunks, 10)
+        chunk_metrics["rerank_delta_mrr"] = (
+            (post_mrr - pre_mrr) if pre_mrr is not None and post_mrr is not None else None
+        )
+        chunk_metrics["rerank_delta_ndcg_at_10"] = (
+            (post_ndcg - pre_ndcg) if pre_ndcg is not None and post_ndcg is not None else None
+        )
+    else:
+        chunk_metrics["rerank_delta_mrr"] = None
+        chunk_metrics["rerank_delta_ndcg_at_10"] = None
+
     return {
         "id": case.get("id"),
         "query_type": query_type,
