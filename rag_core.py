@@ -181,6 +181,7 @@ from rag_embedding import (
     MODEL_CACHE,
     EmbeddingResult,
     _embed_with_openai,
+    clear_model_caches,
     embed_texts,
     expand_features,
     hashing_embeddings,
