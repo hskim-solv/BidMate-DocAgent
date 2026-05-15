@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+# Commit-msg hook for BidMate-DocAgent (issue #826 Hook A).
+#
+# Activate per-developer with:
+#   git config core.hooksPath .githooks
+# (Makefile target ``install-hooks`` does this automatically.)
+#
+# Behavior: when the current branch matches the ADR 0007 convention
+# (``<type>/issue-<N>[-<slug>]``), the commit message must contain
+# ``(closes|fixes|resolves) #<N>`` (case-insensitive) referencing the
+# *same* issue number. Otherwise the commit is rejected.
+#
+# Why: prior audit found 22/50 (44%) recent commits lacked an explicit
+# ``closes #N`` first-line reference. CI / PR-body checks catch the
+# *PR* but not the underlying *commits* — so a commit can land on
+# origin without ever being traceable to its issue (squash collapses
+# unique commit metadata at merge time). The hook closes that gap.
+#
+# Cases bypassed (exit 0 without checking):
+#   - Branch is ``main`` / ``master`` (direct commits to default branch
+#     are a separate guard).
+#   - Branch is detached HEAD (rebase, cherry-pick, bisect).
+#   - Branch does not match the ADR 0007 regex — e.g. ``hotfix/foo``,
+#     ``release/v1.2``, or any pre-convention legacy branch.
+#   - Commit is a merge commit, revert, fixup, or squash (git supplies
+#     these messages; their references propagate from the rewritten
+#     history, not the merge metadata).
+#   - First-line subject starts with ``Revert`` (manual revert).
+#
+# Bypass intentionally with ``git commit --no-verify`` — for example
+# during interactive rebase of pre-convention history. The hook prints
+# a one-line stderr explanation so the human can decide.
+
+set -u
+
+COMMIT_MSG_FILE=${1:-}
+if [ -z "${COMMIT_MSG_FILE}" ] || [ ! -f "${COMMIT_MSG_FILE}" ]; then
+  # Defensive: git always passes this; if absent, fall through silently
+  # rather than block legitimate commits over a hook plumbing bug.
+  exit 0
+fi
+
+# --- Bypass: merge / revert / fixup / squash ----------------------------
+# git stores the source in $GIT_COMMIT_MSG_SOURCE for commit-msg hooks,
+# but the simpler test is the message prefix that git auto-generates.
+FIRST_LINE=$(head -n1 "${COMMIT_MSG_FILE}")
+case "${FIRST_LINE}" in
+  "Merge "*|"merge "*) exit 0 ;;
+  "Revert "*|"revert "*) exit 0 ;;
+  "fixup!"*|"squash!"*) exit 0 ;;
+esac
+
+# --- Branch detection ---------------------------------------------------
+BRANCH=$(git symbolic-ref --short -q HEAD 2>/dev/null || echo "")
+if [ -z "${BRANCH}" ]; then
+  # Detached HEAD (rebase, cherry-pick, bisect). Skip.
+  exit 0
+fi
+case "${BRANCH}" in
+  main|master) exit 0 ;;
+esac
+
+# Match ADR 0007 branch convention: <type>/issue-<N>[-<slug>]
+# Allowed types mirror scripts/check_branch_and_issue.py BRANCH_REGEX.
+BRANCH_ISSUE=$(printf "%s\n" "${BRANCH}" | sed -nE 's#^(feat|fix|docs|chore|refactor|test|ci|perf|build|style)/issue-([0-9]+)(-.*)?$#\2#p')
+if [ -z "${BRANCH_ISSUE}" ]; then
+  # Non-conventional branch (e.g. ``hotfix/foo``). Skip — out of scope.
+  exit 0
+fi
+
+# --- Issue-reference check ----------------------------------------------
+# Allow any of: closes / fixes / resolves (case-insensitive), with
+# optional GH-style ``#`` prefix. Match anywhere in the message body —
+# squash-merge collapses to the PR title which already has the ref,
+# but commit-level discipline scans the *commit's own* message.
+if grep -iqE '(close[sd]?|fix(e[sd])?|resolve[sd]?)[[:space:]]+#'"${BRANCH_ISSUE}"'\b' "${COMMIT_MSG_FILE}"; then
+  exit 0
+fi
+
+# --- Reject -------------------------------------------------------------
+cat >&2 <<EOF
+commit-msg hook (issue #826 Hook A): branch ${BRANCH} is for issue
+#${BRANCH_ISSUE}, but the commit message has no '(closes|fixes|resolves)
+#${BRANCH_ISSUE}' reference.
+
+Add one of (anywhere in the message body):
+  closes #${BRANCH_ISSUE}
+  fixes #${BRANCH_ISSUE}
+  resolves #${BRANCH_ISSUE}
+
+Bypass intentionally with ``git commit --no-verify`` (e.g. during
+interactive rebase of pre-convention history).
+EOF
+exit 1
