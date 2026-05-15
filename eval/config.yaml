@@ -170,21 +170,22 @@ ablation_runs:
     rerank: true
     verifier_retry: false
     retrieval_mode: flat
-  # Issue #694 — dedicated retrieval-quality time-series slot.
-  # Uses the full retrieval stack (metadata_first, rerank) with
-  # verifier_retry=false so the first-pass chunk ranking is measured
-  # without the retry-and-relax feedback loop.  Evaluation focus:
-  # chunk_recall_at_5/10/20 and chunk_ndcg_at_10/20; accuracy and
-  # groundedness are expected to be lower than `full` since the verifier
-  # retry that recovers from weak first-pass evidence is absent.
-  # Distinct from `no_verifier_retry` in intent: this row is the
-  # canonical leaderboard slot for tracking retrieval quality over time
-  # (ADR 0030 forward-only series pattern); `no_verifier_retry` remains
-  # the verifier-retry-contribution ablation reference.
+  # Issue #800 (fix follow-up to #694) — re-defined as raw retrieval ablation.
+  # Original PR #694 definition was byte-identical to `no_verifier_retry`
+  # (same pipeline/metadata_first/rerank/verifier_retry/retrieval_mode) so
+  # the two leaderboard columns always produced identical values.  This row
+  # is now the canonical "post-retrieval enhancement off" slot for tracking
+  # raw retrieval quality (chunk_recall_at_5/10/20, chunk_ndcg_at_10/20);
+  # `no_verifier_retry` remains the verifier-retry-contribution reference.
+  # Difference vs `no_verifier_retry`: rerank=false (cross-encoder rerank off).
+  # Difference vs `no_rerank`: verifier_retry=false (no retry-and-relax loop).
+  # Historical values for this column prior to PR-closing #800 are stale —
+  # they reflect the duplicate (=`no_verifier_retry`) config.  Leaderboard
+  # cutoff to be tracked separately (issue D4 follow-up).
   - name: retrieval_only
     pipeline: agentic_full
     metadata_first: true
-    rerank: true
+    rerank: false
     verifier_retry: false
     retrieval_mode: flat
   - name: hybrid_bm25

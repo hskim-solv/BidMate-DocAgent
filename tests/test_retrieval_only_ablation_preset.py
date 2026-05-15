@@ -1,9 +1,14 @@
-"""Regression test for retrieval_only ablation preset (issue #694).
+"""Regression test for retrieval_only ablation preset (issues #694, #800).
 
 Verifies that eval/config.yaml contains the ``retrieval_only`` row with the
-expected config (full retrieval stack, verifier_retry=False) and that the
-ADR 0001 invariants are preserved (naive_baseline unchanged,
+expected config (raw retrieval ablation: rerank=False + verifier_retry=False)
+and that the ADR 0001 invariants are preserved (naive_baseline unchanged,
 no_verifier_retry not removed).
+
+Additionally enforces the differentiation invariant from issue #800:
+``retrieval_only`` and ``no_verifier_retry`` must NOT be byte-identical
+configs (name aside).  The original #694 definition violated this, which is
+why the row was re-defined to ``rerank=false``.
 """
 from __future__ import annotations
 
@@ -48,16 +53,25 @@ class TestRetrievalOnlyAblationRow(unittest.TestCase):
             "retrieval_only: verifier_retry must be False",
         )
 
-    def test_retrieval_only_metadata_first_and_rerank(self) -> None:
-        """Full retrieval stack — metadata_first and rerank must be True."""
+    def test_retrieval_only_metadata_first_true(self) -> None:
+        """metadata_first stays True — retrieval_only measures the post-prefilter stack."""
         row = self.ablation_by_name["retrieval_only"]
         self.assertTrue(
             row.get("metadata_first", True),
-            "retrieval_only: metadata_first must be True (full retrieval stack)",
+            "retrieval_only: metadata_first must be True",
         )
-        self.assertTrue(
+
+    def test_retrieval_only_rerank_false(self) -> None:
+        """Issue #800: rerank=False (raw retrieval, no cross-encoder rerank).
+
+        Differentiates retrieval_only from no_verifier_retry (which has
+        rerank=True).  Previously rerank=True, which made the two rows
+        byte-identical — see issue #800 for the redefinition rationale.
+        """
+        row = self.ablation_by_name["retrieval_only"]
+        self.assertFalse(
             row.get("rerank", True),
-            "retrieval_only: rerank must be True (full retrieval stack)",
+            "retrieval_only: rerank must be False (raw retrieval ablation, issue #800)",
         )
 
     def test_retrieval_only_flat_retrieval_mode(self) -> None:
@@ -90,6 +104,27 @@ class TestRetrievalOnlyAblationRow(unittest.TestCase):
             len(names),
             len(set(names)),
             "Duplicate ablation run names found in eval/config.yaml",
+        )
+
+    def test_retrieval_only_differs_from_no_verifier_retry(self) -> None:
+        """Issue #800 invariant: retrieval_only and no_verifier_retry must NOT
+        be byte-identical (name aside).
+
+        The original PR #694 definition violated this — both rows had
+        identical pipeline/metadata_first/rerank/verifier_retry/retrieval_mode,
+        so ablation runner produced identical leaderboard values for two
+        named columns.  This invariant prevents the regression.
+        """
+        retrieval_only = self.ablation_by_name["retrieval_only"]
+        no_verifier_retry = self.ablation_by_name["no_verifier_retry"]
+        ro_minus_name = {k: v for k, v in retrieval_only.items() if k != "name"}
+        nvr_minus_name = {k: v for k, v in no_verifier_retry.items() if k != "name"}
+        self.assertNotEqual(
+            ro_minus_name,
+            nvr_minus_name,
+            "retrieval_only and no_verifier_retry are byte-identical (issue #800). "
+            "If you intended retrieval_only to be an alias, delete the duplicate row; "
+            "otherwise differentiate at least one config bit.",
         )
 
 
