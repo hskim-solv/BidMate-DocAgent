@@ -25,7 +25,7 @@ import re
 import subprocess
 import sys
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -677,17 +677,40 @@ def emit_report(stats: dict[str, Any]) -> str:
 
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--quarter", required=True, help="Qx-YYYY (e.g. Q2-2026)")
+    mode = p.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--quarter", help="Qx-YYYY (e.g. Q2-2026); full stats / report")
+    mode.add_argument("--window-days", type=int, metavar="N",
+                      help="last N days; emit hook-fires summary JSON only")
     p.add_argument("--transcripts-glob", default=DEFAULT_TRANSCRIPTS_GLOB)
     p.add_argument("--memory-dir", default=DEFAULT_MEMORY_DIR)
     p.add_argument("--repo", default=os.getcwd())
     p.add_argument("--emit-stats", action="store_true",
-                   help="emit stats.json to stdout")
+                   help="emit stats.json to stdout (quarter mode)")
     p.add_argument("--emit-report", action="store_true",
-                   help="emit Markdown report")
+                   help="emit Markdown report (quarter mode)")
     p.add_argument("--output", default="-",
                    help="report path (default stdout; ignored without --emit-report)")
     args = p.parse_args()
+
+    if args.window_days is not None:
+        if args.window_days <= 0:
+            sys.stderr.write("self-review: --window-days must be positive\n")
+            return 1
+        today = datetime.now(timezone.utc).date()
+        start = (today - timedelta(days=args.window_days)).isoformat()
+        end = today.isoformat()
+        try:
+            hooks = collect_governance_hooks(args.repo, start, end)
+        except Exception as e:  # pragma: no cover
+            sys.stderr.write(f"self-review: {e}\n")
+            return 2
+        stats = {
+            "window_days": args.window_days,
+            "date_range": [start, end],
+            "governance_hooks": hooks,
+        }
+        sys.stdout.write(json.dumps(stats, indent=2, ensure_ascii=False) + "\n")
+        return 0
 
     if not args.emit_stats and not args.emit_report:
         sys.stderr.write("self-review: pass --emit-stats or --emit-report\n")
