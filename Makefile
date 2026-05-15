@@ -328,7 +328,8 @@ case-propose:
 	$(PYTHON) -m eval.case_proposer \
 	  --metadata-csv data/data_list.csv \
 	  --index-dir data/index/real100 \
-	  --out reports/proposed/proposed_cases.local.yaml
+	  --out reports/proposed/proposed_cases.local.yaml \
+	  --real-config eval/real_config.local.yaml
 
 case-review:
 	$(PYTHON) scripts/case_proposer_review.py \

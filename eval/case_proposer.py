@@ -479,6 +479,71 @@ def write_proposed_yaml(cases: list[dict[str, Any]], path: Path) -> None:
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def _read_real_config_covered_doc_ids(real_config_path: Path) -> set[str]:
+    """Return the doc_ids already referenced by some case's
+    ``expected_doc_ids`` in the active local real_config.
+
+    Missing file is treated as "no doc covered yet" (empty set) — the
+    local config is gitignored under ADR 0005 so a fresh clone never
+    has it. Malformed YAML or unexpected shape raises so the proposer
+    never silently widens coverage to docs that ARE already covered.
+    """
+    if not real_config_path.exists():
+        return set()
+    import yaml  # lazy: only needed when the local config exists
+
+    text = real_config_path.read_text(encoding="utf-8")
+    config = yaml.safe_load(text)
+    if config is None:
+        return set()
+    if not isinstance(config, dict):
+        # NB: ``yaml.safe_load("[]") or {}`` would silently coerce a list to
+        # an empty dict (empty-list is falsy), defeating the check below.
+        # Branch on ``is None`` explicitly so a top-level list still raises.
+        raise CaseProposerInputError(
+            f"{real_config_path} must contain a YAML mapping at top level."
+        )
+    covered: set[str] = set()
+    for case in config.get("cases") or []:
+        if not isinstance(case, dict):
+            continue
+        for doc_id in case.get("expected_doc_ids") or []:
+            value = str(doc_id).strip()
+            if value:
+                covered.add(value)
+    return covered
+
+
+def _select_uncovered_docs(
+    rows_with_ids: list[dict[str, Any]],
+    covered_doc_ids: set[str],
+    n_seed_docs: int,
+) -> list[dict[str, Any]]:
+    """Reorder ``rows_with_ids`` so uncovered docs come first, then take
+    the first ``n_seed_docs``.
+
+    Direct realization of ADR 0044 §case selection criteria #3 ("prefer
+    documents not yet covered by existing cases"). Within each group
+    (covered / uncovered) the original CSV row order is preserved, so
+    determinism survives and ``proposer.aggregate.json`` stays
+    comparable across runs.
+
+    When the uncovered pool is smaller than ``n_seed_docs``, the tail
+    is filled with covered rows rather than truncated — a small
+    uncovered pool must not starve the proposer.
+    """
+    if n_seed_docs <= 0:
+        return []
+    uncovered: list[dict[str, Any]] = []
+    covered: list[dict[str, Any]] = []
+    for row in rows_with_ids:
+        if str(row.get("doc_id") or "") in covered_doc_ids:
+            covered.append(row)
+        else:
+            uncovered.append(row)
+    return (uncovered + covered)[:n_seed_docs]
+
+
 def propose_cases_from_files(
     *,
     metadata_csv: Path = DEFAULT_METADATA_PATH,
@@ -487,14 +552,25 @@ def propose_cases_from_files(
     backend: str | None = None,
     model: str | None = None,
     now_iso: str | None = None,
+    real_config_path: Path | None = None,
+    prioritize_uncovered: bool = True,
 ) -> list[dict[str, Any]]:
     """End-to-end: read CSV + index, filter, propose, return cases.
 
-    Selects the first ``n_seed_docs`` rows whose ``canonical_doc_id``
-    is present in the active index. Deterministic sample order (first
-    N by CSV row order) — the proposer is not the place to randomize;
-    that would make ``proposer.aggregate.json`` non-comparable across
-    runs.
+    Selects ``n_seed_docs`` rows whose ``canonical_doc_id`` is present
+    in the active index. Selection order:
+
+    * Default (``real_config_path=None``): first N by CSV row order
+      — preserves the PR2 contract for callers that have no notion of
+      an existing eval set (tests, CI plumbing).
+    * Coverage-aware (``real_config_path`` set + ``prioritize_uncovered``):
+      rows whose doc_id is *not* yet referenced in the active
+      ``real_config.local.yaml`` come first, then covered rows fill
+      the tail if needed. Realizes ADR 0044 §case selection criteria #3.
+
+    Determinism is preserved in both modes — within each group the
+    original CSV row order is used. ``proposer.aggregate.json`` stays
+    byte-comparable across runs given the same inputs.
     """
     raw_rows = _read_data_list_csv(metadata_csv)
     valid_doc_ids = _read_index_doc_ids(index_dir)
@@ -504,7 +580,11 @@ def propose_cases_from_files(
             f"No CSV rows from {metadata_csv} resolve to a doc_id present in "
             f"{index_dir / 'index.json'}. Run `make build-index` first."
         )
-    selected = rows_with_ids[: max(n_seed_docs, 0)]
+    if real_config_path is not None and prioritize_uncovered:
+        covered = _read_real_config_covered_doc_ids(real_config_path)
+        selected = _select_uncovered_docs(rows_with_ids, covered, n_seed_docs)
+    else:
+        selected = rows_with_ids[: max(n_seed_docs, 0)]
     return propose_cases(
         selected, backend=backend, model=model, now_iso=now_iso
     )
@@ -575,6 +655,31 @@ def _build_arg_parser() -> argparse.ArgumentParser:
             "(always recorded as 'stub')."
         ),
     )
+    p.add_argument(
+        "--real-config",
+        type=Path,
+        default=None,
+        help=(
+            "Path to the active real_config.local.yaml. When set, the "
+            "proposer prioritizes docs whose doc_id is NOT yet referenced "
+            "by any case's expected_doc_ids (ADR 0044 §case selection #3). "
+            "Missing file → no rows are skipped; fresh-clone behaves "
+            "identically to the default-ordered mode. ADR 0005 boundary: "
+            "the file itself is gitignored — this argument is read-only."
+        ),
+    )
+    p.add_argument(
+        "--no-prioritize-uncovered",
+        dest="prioritize_uncovered",
+        action="store_false",
+        default=True,
+        help=(
+            "Disable ADR 0044 doc_coverage prioritization even when "
+            "--real-config is set (falls back to first-N CSV row order). "
+            "Useful for byte-equal reproductions of the PR2-era proposer "
+            "behavior."
+        ),
+    )
     return p
 
 
@@ -587,6 +692,8 @@ def main(argv: Iterable[str] | None = None) -> int:
             n_seed_docs=args.n_seed_docs,
             backend=args.backend,
             model=args.model,
+            real_config_path=args.real_config,
+            prioritize_uncovered=args.prioritize_uncovered,
         )
     except CaseProposerInputError as exc:
         print(f"case_proposer: {exc}", file=sys.stderr)
