@@ -181,6 +181,12 @@ from rag_embedding import (
     MODEL_CACHE,
     EmbeddingResult,
     _embed_with_openai,
+    # Issue #841 — RAG senior-review critique #7.2: re-exported so
+    # ``tests/conftest.py`` (and any non-pytest caller doing
+    # ``from rag_core import clear_model_caches``) keeps the
+    # familiar import path even after PR #847 moved ``MODEL_CACHE``
+    # to rag_embedding.
+    clear_model_caches,
     embed_texts,
     expand_features,
     hashing_embeddings,
