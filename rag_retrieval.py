@@ -37,15 +37,18 @@ Internal helpers :func:`_coverage_counts`,
 :func:`_chunk_tokens_for_bm25` are module-private (underscore
 preserved from the rag_core layout).
 
-Circular-import avoidance: ``rag_core`` symbols that this module's
-functions need (``tokenize``, ``DEFAULT_EMBEDDING_MODEL`` /
-``DEFAULT_HASH_DIM``, ``embed_texts`` / ``hashing_embeddings``,
-``normalize_regions`` / ``normalize_page_span``) are late-imported at
-function-call time. These helpers serve many non-retrieval call sites
-in ``rag_core`` (ingestion path, evidence building, partial-topic
-grounding, ...), so they stay there; the late-import idiom keeps this
-module a true leaf of the dependency graph from rag_core's
-perspective while still allowing reuse.
+Circular-import avoidance: ``DEFAULT_EMBEDDING_MODEL`` /
+``DEFAULT_HASH_DIM`` / ``embed_texts`` / ``hashing_embeddings`` are
+late-imported from ``rag_core`` inside ``embed_query_for_index``.
+They live in ``rag_core`` because the index-build path also consumes
+them (and they share ``MODEL_CACHE`` state); a follow-up issue
+tracks extracting them to a leaf ``rag_embedding`` module so this
+function can drop the late-import idiom too. ``tokenize`` is now
+imported directly from ``rag_text_processing`` (a true leaf), and
+``normalize_regions`` / ``normalize_page_span`` from
+``rag_metadata_processing``. ``comparison_targets_for_analysis``
+is imported directly from ``rag_query`` (issue #799 — its prior
+late-import via ``rag_core`` was a re-export round-trip).
 
 JSON-identity guarantee: every function is moved byte-for-byte from
 ``rag_core``. ``tests/test_naive_baseline_ranking_invariance.py``,
@@ -64,6 +67,7 @@ import numpy as np
 from korean_lexicon import BM25_EXTRA_PARTICLE_SUFFIXES, BM25_EXTRA_STOPWORDS
 from rag_metadata_processing import normalize_page_span, normalize_regions
 from rag_pipeline_presets import RRF_K, VALID_BM25_STOPWORD_PROFILES
+from rag_query import comparison_targets_for_analysis
 from rag_query_expansion import default_expander
 from rag_text_processing import tokenize
 
@@ -172,12 +176,12 @@ def apply_comparison_balance(
     diagnostics on the plan dict either way (so observability is consistent
     across enabled/disabled states).
     """
-    # Late-import to avoid circular dependency: rag_core imports this
-    # module's public functions, and comparison_targets_for_analysis
-    # lives in rag_core because it is also called from
-    # rag_core.retrieve_candidates (kept there in PR-H1a).
-    from rag_core import comparison_targets_for_analysis
-
+    # Issue #799 — RAG senior-review critique #1 partial fix:
+    # ``comparison_targets_for_analysis`` actually lives in
+    # ``rag_query`` (PR-J3, issue #478). The previous late-import via
+    # ``rag_core`` was a re-export round-trip. Now imported at the
+    # module top, removing one of the two remaining late-import idioms
+    # in this leaf.
     targets, target_field = comparison_targets_for_analysis(analysis)
     is_comparison = analysis.get("query_type") == "comparison" and len(targets) >= 2
 
