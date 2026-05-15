@@ -137,8 +137,13 @@ if [[ -n "$adr_added" ]]; then
     adr_added_args+=("$adr_file")
   done <<< "$adr_added"
   if [[ ${#adr_added_args[@]} -gt 0 ]]; then
-    parity_out=$(python3 scripts/_governance.py --check-adr-readme-parity \
-      --readme-staged "${adr_added_args[@]}" 2>&1)
+    # `--readme-staged` precedes `--check-adr-readme-parity` so argparse
+    # consumes it first (store_true flag, zero args); otherwise nargs='+'
+    # on --check-adr-readme-parity sees `--readme-staged` as the next
+    # option boundary and exits with "expected at least one argument".
+    parity_out=$(python3 scripts/_governance.py \
+      --readme-staged \
+      --check-adr-readme-parity "${adr_added_args[@]}" 2>&1)
     if [[ $? -ne 0 ]]; then
       echo "$parity_out" >&2
       exit 1

@@ -128,6 +128,16 @@ SAFE_TOPLEVEL_KEYS = frozenset(
         # SAFE_HARDCASE_CATEGORY_BUCKET_KEYS (fail-closed) so the public
         # taxonomy can never be silently widened on the committable surface.
         "by_hardcase_category",
+        # Issue #870 / ADR 0048: per-metadata-field accuracy breakdown for
+        # the four single-doc fields (agency / project / budget / deadline).
+        # Bucket keys are whitelisted in SAFE_METADATA_FIELD_BUCKET_KEYS so
+        # the enum can never be silently widened on the committable surface.
+        "by_metadata_field",
+        # Issue #870 / ADR 0048: 10-bin ECE + Brier score over
+        # (confidence, correctness) pairs. Numeric scalars only; the
+        # extractor whitelists ece / brier / n / num_bins. Block is null
+        # when no case carries a numeric ``confidence`` in [0, 1].
+        "abstention_calibration",
     }
 )
 
@@ -145,6 +155,18 @@ SAFE_FORMAT_BUCKET_KEYS = frozenset({"hwp", "pdf", "synthetic_public_sample"})
 SAFE_HARDCASE_CATEGORY_BUCKET_KEYS = frozenset(
     {"table_heavy", "ocr_noisy", "rotated_or_skewed", "layout_broken"}
 )
+
+# Allowed bucket keys inside ``by_metadata_field``. Mirrors ADR 0048's
+# four single-doc metadata fields (must agree with
+# ``METADATA_FIELD_KEYS`` in eval/scorers/_shared.py). Fail-closed:
+# any unknown field name is dropped before commit.
+SAFE_METADATA_FIELD_BUCKET_KEYS = frozenset(
+    {"agency", "project", "budget", "deadline"}
+)
+
+# Whitelisted sub-keys for ``abstention_calibration`` (ADR 0048).
+# Numeric scalars only; no per-case payload, no confidence histograms.
+SAFE_CALIBRATION_KEYS = ("ece", "brier", "n", "num_bins")
 
 # Whitelisted bin names for ``abstention_outcomes``. Integer counts only.
 SAFE_ABSTENTION_OUTCOME_KEYS = ("correct_refusal", "incorrect_answer", "boundary_partial")
@@ -399,6 +421,17 @@ def extract_aggregate(summary: dict[str, Any]) -> dict[str, Any]:
             }
             if bin_out:
                 out[key] = bin_out
+        elif key == "abstention_calibration":
+            if value is None:
+                out[key] = None
+            elif isinstance(value, dict):
+                cal_out: dict[str, Any] = {}
+                for sub in SAFE_CALIBRATION_KEYS:
+                    raw = value.get(sub)
+                    if isinstance(raw, (int, float)):
+                        cal_out[sub] = raw
+                if cal_out:
+                    out[key] = cal_out
         elif key == "ci" and isinstance(value, dict):
             ci_out: dict[str, Any] = {}
             for metric in SAFE_CI_METRIC_KEYS:
@@ -546,6 +579,38 @@ def extract_aggregate(summary: dict[str, Any]) -> dict[str, Any]:
                 hardcase_out[str(bucket_name)] = extracted_bucket
         if hardcase_out:
             out["by_hardcase_category"] = hardcase_out
+
+    # Issue #870 / ADR 0048 — by_metadata_field aggregate. Fail-closed
+    # against the 4-field enum (agency / project / budget / deadline)
+    # so unknown field names from a misconfigured local-only
+    # real_config.local.yaml cannot leak the bucket dimension.
+    by_metadata_field = summary.get("by_metadata_field")
+    if isinstance(by_metadata_field, dict):
+        metadata_out: dict[str, dict[str, Any]] = {}
+        for bucket_name, bucket_summary in by_metadata_field.items():
+            if str(bucket_name) not in SAFE_METADATA_FIELD_BUCKET_KEYS:
+                continue
+            if not isinstance(bucket_summary, dict):
+                continue
+            extracted_bucket = {}
+            for m in SAFE_SLICE_METRICS:
+                raw = bucket_summary.get(m)
+                if raw is None:
+                    continue
+                if m == "abstention_outcomes" and isinstance(raw, dict):
+                    bin_out = {
+                        sub: int(raw[sub])
+                        for sub in SAFE_ABSTENTION_OUTCOME_KEYS
+                        if isinstance(raw.get(sub), (int, float))
+                    }
+                    if bin_out:
+                        extracted_bucket[m] = bin_out
+                else:
+                    extracted_bucket[m] = raw
+            if extracted_bucket:
+                metadata_out[str(bucket_name)] = extracted_bucket
+        if metadata_out:
+            out["by_metadata_field"] = metadata_out
 
     _assert_no_forbidden(out)
     return out
