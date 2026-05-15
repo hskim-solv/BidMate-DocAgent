@@ -125,7 +125,18 @@ def apply_fusion_and_reranking(
         from rag_reranker import default_reranker
 
         top_n = min(30, max(int(plan["top_k"] or 10) * 3, int(plan["top_k"] or 10)))
+        # Capture pre-rerank top-10 chunk_ids before the reranker reorders them.
+        # The eval scorer uses these together with the post-rerank top-10 (set
+        # below) and gold_chunk_ids to compute `rerank_delta_mrr` and
+        # `rerank_delta_ndcg_at_10` — the isolated cross-encoder contribution
+        # on top of the 60/25/15 dense+lexical+metadata blend (issue #767).
+        pre_rerank_top10 = [str(item.get("chunk_id") or "") for item in scored[:10]]
         scored, rerank_meta = default_reranker().rerank(query, scored, top_n=top_n)
+        rerank_meta = dict(rerank_meta)
+        rerank_meta["pre_rerank_top10"] = pre_rerank_top10
+        rerank_meta["post_rerank_top10"] = [
+            str(item.get("chunk_id") or "") for item in scored[:10]
+        ]
         plan["rerank_cross_encoder_meta"] = rerank_meta
     top_k = int(plan["top_k"])
     if plan.get("retrieval_mode") == "hierarchical":
