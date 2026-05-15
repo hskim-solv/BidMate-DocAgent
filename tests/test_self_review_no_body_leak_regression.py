@@ -191,6 +191,7 @@ class AssembleStatsStructuralTest(unittest.TestCase):
             "governance_hooks", "pr_diff_stats",
             "axis_2_plan_subagent_skip_rate",
             "axis_4_cycle_time",
+            "axis_5_memory_hygiene",
         }
         self.assertEqual(set(stats.keys()), expected_keys)
 
