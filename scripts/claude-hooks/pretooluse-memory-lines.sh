@@ -18,10 +18,15 @@
 
 set -u
 
-readonly AWARE_THRESHOLD=20
-readonly BLOCK_THRESHOLD=30
-
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+
+# Thresholds read from scripts/_governance.py THRESHOLDS dict (issue #778
+# single source of truth). Fail-soft to historic PR #720 defaults if the
+# governance script is unreachable so the hook never blocks the user
+# because of a refactor mistake.
+AWARE_THRESHOLD=$(python3 "$REPO_ROOT/scripts/_governance.py" --threshold MEMORY_LINE_AWARE 2>/dev/null || echo 20)
+BLOCK_THRESHOLD=$(python3 "$REPO_ROOT/scripts/_governance.py" --threshold MEMORY_LINE_BLOCK 2>/dev/null || echo 30)
+readonly AWARE_THRESHOLD BLOCK_THRESHOLD
 
 input=$(cat)
 

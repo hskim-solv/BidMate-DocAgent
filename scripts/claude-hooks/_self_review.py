@@ -45,7 +45,20 @@ BRANCH_ISSUE_RE = re.compile(
 # expected to have at least one Plan-subagent call per the CLAUDE.md
 # `## Delegation defaults` rule. The skip rate is computed as
 # (PRs with zero Plan calls) / (non-trivial PRs).
-AXIS_2_LOC_THRESHOLD = 50
+#
+# The value lives in `scripts/_governance.py` `THRESHOLDS` (issue #778
+# SSoT). Late-imported with a fail-soft fallback so this module stays
+# runnable even if the governance script is missing or relocated.
+def _load_axis_2_threshold() -> int:
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+        from _governance import THRESHOLDS  # type: ignore
+        return int(THRESHOLDS.get("AXIS_2_LOC", 50))
+    except Exception:
+        return 50
+
+
+AXIS_2_LOC_THRESHOLD = _load_axis_2_threshold()
 
 DEFAULT_TRANSCRIPTS_GLOB = (
     "~/.claude/projects/-Users-hskim-Desktop-projects-BidMate-DocAgent/*.jsonl"

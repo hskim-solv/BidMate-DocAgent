@@ -118,6 +118,12 @@ PR #723 → #745 / #747 / #748 시퀀스로 `scripts/claude-hooks/_self_review.p
 raw signal을 자동 emit. 본 skill이 그 값을 ✓/△/✗ 로 결정하는 **단일 source of
 truth** — collector 코드에 임계 hard-code 금지.
 
+**코드 임계값 SSoT (issue #778)**: bash hook + python collector가 공유하는
+숫자 임계 (예: `MEMORY_LINE_AWARE=20`, `AXIS_2_LOC=50`) 는 `scripts/_governance.py`
+`THRESHOLDS` dict가 단일 source. `python3 scripts/_governance.py --threshold KEY`
+CLI로 조회. 본 SKILL.md는 그 값들을 **밴드(✓/△/✗)로 매핑하는 결정 룰**의
+SoT — 두 SoT는 직교한다 (값 vs 채점 등급).
+
 | 축 | Signal path | ✓ | △ | ✗ |
 |---|---|---|---|---|
 | #1 컨텍스트 효율 | `sessions.agent_delegations["Explore"]` 호출 / 분기 | ≥ 2 + Read 평균 ≤ 메인 대화당 10회 | 둘 중 하나 미달 | 둘 다 미달 |
