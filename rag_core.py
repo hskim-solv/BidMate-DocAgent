@@ -767,6 +767,18 @@ def _phase_analyze(ctx: _RunContext) -> dict[str, Any] | None:
     context-clarification or metadata-ambiguity reply, otherwise ``None``
     after mutating ``ctx`` with the analysis outputs that
     :func:`_phase_retrieve_loop` and :func:`_phase_build_answer` consume.
+
+    **Mutation contract** (issue #840 — RAG senior-review critique #5,
+    pinned by ``tests/test_phase_mutation_contract.py``):
+
+    Writes to ``ctx`` (only when returning ``None`` — early-exit branches
+    return without writing): ``retrieval_query``,
+    ``effective_context_entities``, ``context_resolution``, ``analysis``,
+    ``stage_sequence``.
+
+    Adding or removing a write here without updating both this docstring
+    and the regression test is the contract drift the critique flagged
+    (shared mutable dict with no contract surface).
     """
     with _StageTimer(ctx.stage_timings, "query_analysis_ms", trace=ctx.trace_handle, attrs={"iteration": 1}):
         initial_analysis = analyze_query(ctx.query, ctx.targets)
@@ -886,9 +898,20 @@ def _phase_analyze(ctx: _RunContext) -> dict[str, Any] | None:
 def _phase_retrieve_loop(ctx: _RunContext) -> None:
     """Run the metadata-stage retry loop (ADR 0022 stage 2).
 
-    Mutates ``ctx`` with ``stage_attempts``, ``retry_count``, ``plan``,
+    **Mutation contract** (issue #840 — RAG senior-review critique #5,
+    pinned by ``tests/test_phase_mutation_contract.py``):
+
+    Writes to ``ctx``: ``stage_attempts``, ``retry_count``, ``plan``,
     ``evidence``, ``verified``, ``verification_reasons``,
     ``retrieved_chunk_ids``.
+
+    Adding or removing a write here without updating both this docstring
+    and the regression test is the contract drift the critique flagged.
+    The "feedback loop with stage attempts" naming would be more honest
+    than "phase" — this function legitimately mutates plan after each
+    retry attempt and is not a pure linear pipeline step. Documented at
+    the call-site contract layer rather than refactored to a state
+    machine (the latter is ADR-grade scope).
     """
     stage_attempts: list[dict[str, Any]] = []
     retry_count = 0
@@ -983,6 +1006,15 @@ def _phase_build_answer(ctx: _RunContext) -> dict[str, Any]:
     in the same key order as the legacy ``run_rag_query`` body — the
     JSON-identity contract pinned by
     ``tests/test_langgraph_orchestrator_regression.py``.
+
+    **Mutation contract** (issue #840 — RAG senior-review critique #5,
+    pinned by ``tests/test_phase_mutation_contract.py``):
+
+    Writes to ``ctx``: none. This phase is read-only against ``ctx`` —
+    it consumes phase-1/2 outputs and produces the return-value result
+    dict. The "no ctx writes" property is what justifies the
+    ``_phase_*`` naming for THIS function (vs the loop-shaped
+    :func:`_phase_retrieve_loop` which legitimately mutates).
     """
     analysis = ctx.analysis or {}
     evidence = ctx.evidence or []
