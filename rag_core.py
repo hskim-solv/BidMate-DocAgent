@@ -903,6 +903,31 @@ def metadata_stage_sequence(
     return stages
 
 
+# ``_PROCESS_WARM`` semantics (issue #842, RAG senior-review critique #7.3)
+# ----------------------------------------------------------------------------
+# Module-level boolean flipped to ``True`` after the first ``run_rag_query``
+# call. Used to set the ``cold_start`` field in the ``query_start`` log event
+# and in the per-case eval diagnostic block, so warm-percentile aggregations
+# (``cold_start_samples`` in ``eval/run_eval.py`` /
+# ``scripts/run_benchmark.py``) can exclude the one-time bootstrap cost
+# (embedding/reranker lazy-load, BM25 cache warm-up — see
+# ``docs/benchmarking.md`` § Cold start).
+#
+# Multi-worker semantics: in a multi-worker FastAPI deployment, each worker
+# process owns its own ``_PROCESS_WARM`` because module-level state is
+# per-process by Python semantics. That is intentional — every fresh worker
+# pays the cold-start cost on its first request, and the diagnostic captures
+# that cost per worker.
+#
+# Long-tail caveat (NOT closed by this flag): the boolean only fires on the
+# FIRST call per process. Subsequent calls always log ``cold_start=False``,
+# even if the process was idle long enough that real cold-start latency
+# would re-emerge (model evicted from OS page cache, BM25 cache reclaimed by
+# GC, JIT caches cooled, etc.). Current consumers (``cold_start_samples``)
+# only need the per-process bootstrap diagnostic, so this is acceptable;
+# upgrading to a TTL-based "warm if active within last N min" tracker is
+# a follow-up if a long-tail latency dashboard ever needs it.
+# See issue #842 for the decision-rule rationale.
 _PROCESS_WARM = False
 
 

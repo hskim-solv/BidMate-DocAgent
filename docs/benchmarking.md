@@ -79,7 +79,7 @@ python3 scripts/summarize_benchmark.py \
 
 - `stage_latency`: top-level stage별 ms — `query_analysis_ms`, `context_resolution_ms`, `answer_generation_ms`
 - `filter_stage_attempts[i].retrieve_ms` / `verify_ms`: strict → reduced → relaxed 각 retry 시도의 retrieval+rerank, verifier 비용
-- `cold_start`: 프로세스 첫 호출 여부. embedding/reranker lazy-load가 첫 query latency에 섞이는 것을 분리한다.
+- `cold_start`: 프로세스 첫 호출 여부. embedding/reranker lazy-load가 첫 query latency에 섞이는 것을 분리한다. **주의** (issue #842): per-process bootstrap 진단용으로, 프로세스가 오래 idle 후 model이 OS page cache에서 evict 됐을 때 재발생하는 long-tail cold-start는 잡지 못한다. 첫 호출 이후 항상 `False` — multi-worker 배포에서는 각 worker가 독립적으로 첫 호출에서 `True` 1회 기록.
 
 `latency_samples.jsonl`은 위 필드를 row 단위로도 기록한다 (`stage_latency`, `attempt_latency`, `cold_start`). 기존 컬럼은 유지되며 추가 필드는 무시해도 안전하다.
 
