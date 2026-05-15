@@ -724,12 +724,25 @@ def get_or_build_bm25(
     if stopword_profile not in VALID_BM25_STOPWORD_PROFILES:
         choices = ", ".join(sorted(VALID_BM25_STOPWORD_PROFILES))
         raise ValueError(f"bm25_stopword_profile must be one of: {choices}")
-    cache_key = (stopword_profile, tokenizer)
+    chunks = index.get("chunks") or []
+    # Issue #833 — RAG senior-review critique #7.1: the cache key used
+    # to be ``(profile, tokenizer)`` only, so a caller that reused
+    # ``index`` after mutating ``index["chunks"]`` (test fixture
+    # mutation, runtime reload, schema bump that adds/removes chunks)
+    # got the stale BM25 + stale chunk_ids → silent corruption with no
+    # exception or warning. Including ``schema_version`` + ``chunk_count``
+    # in the key lets the cache invalidate automatically when the
+    # corpus identity changes; both lookups are O(1).
+    cache_key = (
+        stopword_profile,
+        tokenizer,
+        index.get("schema_version"),
+        len(chunks),
+    )
     profile_cache = index.setdefault("_bm25_by_profile", {})
     entry = profile_cache.get(cache_key)
     if isinstance(entry, tuple) and len(entry) == 2:
         return entry  # type: ignore[return-value]
-    chunks = index.get("chunks") or []
     corpus = [_chunk_tokens_for_bm25(c, stopword_profile, tokenizer) for c in chunks]
     # rank_bm25 requires at least one non-empty document. If the corpus
     # is entirely empty (degenerate test fixture) substitute a single
