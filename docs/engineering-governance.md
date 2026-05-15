@@ -274,3 +274,54 @@ notes the PR template item 5b requirement.
 
 Hook script: [`scripts/claude-hooks/pretooluse-loadbearing.sh`](../scripts/claude-hooks/pretooluse-loadbearing.sh).
 Never blocks — pure awareness layer.
+
+### Claude Code hook (opt-in, user-global) — plan-slug race detector
+
+When multiple concurrent worktrees run Claude Code sessions in parallel,
+the harness writes plan files into a user-global directory
+(`~/.claude/plans/<random-slug>.md`). The slug space is large but
+collisions are not zero on 10+ concurrent worktrees (observed
+2026-05-15 — issue [#779](https://github.com/hskim-solv/BidMate-DocAgent/issues/779)).
+
+[`scripts/claude-hooks/plan-slug-race.sh`](../scripts/claude-hooks/plan-slug-race.sh)
+is a **user-global** `PreToolUse` hook that blocks a `Write` to a plan
+file when:
+
+- the target file exists,
+- its mtime is within the last 5 min (`PLAN_SLUG_RACE_THRESHOLD`,
+  default 300 s),
+- its first 200 bytes declare a different worktree slug than the
+  caller's cwd-derived slug.
+
+Convention enforced on the writer side: the first 200 chars of every
+plan file should contain a marker such as
+`` 본 plan은 worktree `<slug>` 의 deliverable. `` so the hook can detect
+the race. Plans without a marker are not blocked (pre-convention
+files / false-positive avoidance).
+
+Override (only when you genuinely intend to overwrite another
+worktree's plan): set `PLAN_SLUG_RACE_THRESHOLD=0` for the invocation.
+
+The hook is **not** auto-registered (it lives outside the repo's
+`.claude/settings.json` because the same Claude Code session may
+span many repos). Wire it once in `~/.claude/settings.json`:
+
+```jsonc
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "<absolute path to>/scripts/claude-hooks/plan-slug-race.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+Regression coverage: `tests/test_plan_slug_race_hook_regression.py`.
