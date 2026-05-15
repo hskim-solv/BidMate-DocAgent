@@ -110,7 +110,7 @@ This skill writes to a **committed git file**. Privacy violations cannot be retr
 | 2 | Agent 위임 패턴 | ... | `axis_2_plan_subagent_skip_rate.skip_rate` (PR #745) | ... |
 | 3 | 거버넌스 자동화 ROI | ... | `governance_hooks.pretooluse_loadbearing_fires`, `governance_hooks.fires_by_action` | ... |
 | 4 | 사이클 타임 | ... | `axis_4_cycle_time.adr_lag_days`, `axis_4_cycle_time.pr_turnaround_hours` (PR #748) | ... |
-| 5 | 메모리 위생 | ... | `governance_hooks.fires_by_action["memory-lines"]` (PR #747), `memory.by_type` | ... |
+| 5 | 메모리 위생 | ... | #5-A `governance_hooks.fires_by_action["memory-lines"]` (PR #747) + #5-B `axis_5_memory_hygiene.content_freshness.fresh_rate` (issue #877) | ... |
 
 ## 5축 채점 임계값 (Q3-2026~)
 
@@ -131,7 +131,8 @@ SoT — 두 SoT는 직교한다 (값 vs 채점 등급).
 | #3 자동화 ROI | `governance_hooks.pretooluse_loadbearing_fires` + `fires_by_action` 다양성 | fires > 0 **그리고** ≥ 2개 reason 발화 (e.g. `load-bearing` + `memory-lines`) | fires > 0 그러나 1개 reason만 | fires = 0 |
 | #4-A 사이클 타임 (ADR) | `axis_4_cycle_time.adr_lag_days.mean` (days) | ≤ 5 | 5–10 | > 10 |
 | #4-B 사이클 타임 (PR) | `axis_4_cycle_time.pr_turnaround_hours.mean` (hours) | ≤ 48 | 48–120 | > 120 |
-| #5 메모리 위생 | `governance_hooks.fires_by_action["memory-lines"]` 카운트 (action="aware" / "blocked") | blocked=0 + aware ≤ 2 | aware ≥ 3 + blocked=0 | blocked ≥ 1 (편집 차단 = 인덱스 폭발) |
+| #5-A 메모리 인덱스 위생 | `governance_hooks.fires_by_action["memory-lines"]` 카운트 (action="aware" / "blocked") | blocked=0 + aware ≤ 2 | aware ≥ 3 + blocked=0 | blocked ≥ 1 (편집 차단 = 인덱스 폭발) |
+| #5-B 메모리 콘텐츠 신선도 | `axis_5_memory_hygiene.content_freshness.fresh_rate` (분기 내 수정된 메모리 파일 비율) | ≥ 0.5 | 0.2–0.5 | < 0.2 또는 `null` |
 
 **판정 규칙:**
 - 동일 축이 sub-signal 두 개를 가질 때(예: #4-A + #4-B), **둘 다 ✓** 이어야 ✓; 하나라도 ✗면 ✗; 그 외 △.

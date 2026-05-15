@@ -607,6 +607,41 @@ def compute_axis_2_skip_rate(
     }
 
 
+def compute_axis_5_memory_hygiene(
+    memory: dict[str, Any], quarter_start: str
+) -> dict[str, Any]:
+    """Compute memory content freshness for axis #5-B.
+
+    Pairs with the existing axis #5-A signal in
+    `governance_hooks.fires_by_action["memory-lines"]` (index hygiene).
+    This function measures *content* freshness: fraction of memory files
+    whose `mtime` falls inside `[quarter_start, ∞)`. Stale fraction is
+    `1 - fresh_rate`.
+
+    Returns None for `fresh_rate` when memory is empty so the rubric
+    layer can flag "측정 부재" instead of dividing by zero.
+    """
+    files = memory.get("files", [])
+    total = len(files)
+    if total == 0:
+        return {
+            "total": 0,
+            "fresh_in_quarter": 0,
+            "fresh_rate": None,
+            "stale_count": 0,
+            "oldest_mtime": None,
+        }
+    fresh = [f for f in files if (f.get("mtime") or "") >= quarter_start]
+    mtimes = [f.get("mtime", "") for f in files if f.get("mtime")]
+    return {
+        "total": total,
+        "fresh_in_quarter": len(fresh),
+        "fresh_rate": len(fresh) / total,
+        "stale_count": total - len(fresh),
+        "oldest_mtime": min(mtimes) if mtimes else None,
+    }
+
+
 def assemble_stats(
     quarter: str, transcripts_glob: str, memory_dir: str, repo: str
 ) -> dict[str, Any]:
@@ -623,16 +658,21 @@ def assemble_stats(
         ),
         "pr_turnaround_hours": compute_pr_turnaround_summary(pr_diff_stats),
     }
+    memory_data = collect_memory(memory_dir)
+    axis_5 = {
+        "content_freshness": compute_axis_5_memory_hygiene(memory_data, start),
+    }
     return {
         "quarter": quarter,
         "date_range": [start, end],
         "sessions": sessions,
-        "memory": collect_memory(memory_dir),
+        "memory": memory_data,
         "git": collect_git(repo, start, end),
         "governance_hooks": governance,
         "pr_diff_stats": pr_diff_stats,
         "axis_2_plan_subagent_skip_rate": axis_2,
         "axis_4_cycle_time": axis_4,
+        "axis_5_memory_hygiene": axis_5,
     }
 
 
@@ -665,6 +705,12 @@ def emit_report(stats: dict[str, Any]) -> str:
             f"{stats['axis_4_cycle_time']['pr_turnaround_hours'].get('mean')} / "
             f"{stats['axis_4_cycle_time']['pr_turnaround_hours'].get('p90')} "
             f"(n={stats['axis_4_cycle_time']['pr_turnaround_hours'].get('count')})"
+        ),
+        (
+            f"- Axis #5-B Memory freshness (fresh/total): "
+            f"{stats['axis_5_memory_hygiene']['content_freshness'].get('fresh_rate')} "
+            f"({stats['axis_5_memory_hygiene']['content_freshness'].get('fresh_in_quarter')}"
+            f"/{stats['axis_5_memory_hygiene']['content_freshness'].get('total')})"
         ),
         "",
         "## Raw stats (metadata-only — no body excerpts)",
