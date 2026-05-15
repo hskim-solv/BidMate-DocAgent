@@ -92,6 +92,11 @@ reports/real100/history/*
 reports/history/*
 !reports/history/*.aggregate.json
 !reports/leaderboard.md
+# Issue #798 — cost-accuracy frontier (ADR 0038). Markdown + PNG are
+# the rendered artifacts of scripts/plot_cost_frontier.py; check them in
+# so reviewers can see the frontier without running the script.
+!reports/cost_frontier.md
+!reports/cost_frontier.png
 # Issue #237 — harness aggregate snapshots. Generated per ``run_harness``
 # invocation; untracked by default to keep developer working trees
 # clean. The leaderboard time-series lives under reports/history/
