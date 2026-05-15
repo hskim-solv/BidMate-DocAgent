@@ -12,16 +12,19 @@ Stages of #176:
 * **Stage 2a** (#288, merged) — Qdrant in-memory collection adapter.
   ``get(idx)`` is bit-identical to in-memory; the Qdrant collection
   holds the same points in parallel.
-* **Stage 2b** (this PR) — Protocol-level ``query(qvec, top_k)``
-  method exposing top-k cosine retrieval. ``InMemoryVectorStore``
-  ships an exact brute-force implementation; ``QdrantVectorStore``
-  delegates to ``client.search`` so the Qdrant collection actually
-  earns its keep. ``rag_core.retrieve`` is not yet wired to
-  ``query`` — that integration is Stage 2c so reviewers can read
-  the API change without a load-bearing retrieve diff.
-* **Stage 2c** (deferred) — wire ``rag_core.retrieve`` to
-  ``store.query`` so both backends drive ranking through the same
-  surface. Filter-pushdown (Qdrant payload filters) extends ``query``.
+* **Stage 2b** (merged) — Protocol-level ``query(qvec, top_k)`` and
+  ``query_by_indices(qvec, indices)`` methods. ``InMemoryVectorStore``
+  ships exact brute-force implementations; ``QdrantVectorStore``
+  delegates ``query`` to ``client.query_points``.
+* **Stage 2c** (merged) — ``rag_retrieval.apply_fusion_and_reranking``
+  drives ranking through ``store.query`` / ``store.query_by_indices``
+  so both backends share one cosine surface (#795).
+* **Stage 2d** (#834, this PR) — Qdrant connection target is selectable
+  via ``BIDMATE_QDRANT_URL``: empty / ``:memory:`` keeps the in-process
+  default; ``http(s)://`` routes to a production server; any other
+  string is treated as a local path for file-based persistence. Filter
+  pushdown (Qdrant payload filters) and TLS / API-key auth remain
+  follow-ups.
 * **Stage 3** (deferred) — pgvector backend for SaaS-Postgres scale.
 
 Convention: follows the four-property Protocol-based pluggability pattern
@@ -51,6 +54,13 @@ SUPPORTED_BACKENDS = frozenset({"memory", "qdrant"})
 # Qdrant in-memory collection name. Kept stable so introspection and
 # future migrations can match against a single literal.
 QDRANT_COLLECTION_NAME = "bidmate_index"
+
+# Optional Qdrant connection target (issue #834). Empty / unset /
+# ``:memory:`` keeps the in-process ``:memory:`` mode that has always
+# been the default. ``http(s)://...`` routes to a production server;
+# any other string is treated as a filesystem path for file-based
+# persistence — matching qdrant-client's own ``location`` semantics.
+ENV_QDRANT_URL = "BIDMATE_QDRANT_URL"
 
 
 @runtime_checkable
@@ -181,19 +191,22 @@ class InMemoryVectorStore:
 
 @dataclass
 class QdrantVectorStore:
-    """Qdrant in-memory collection adapter (#176 Stage 2a + 2b).
+    """Qdrant-backed VectorStore (#176 Stage 2a + 2b + #834).
 
     Wraps the same ``(N, D)`` float32 L2-normalized matrix as
-    ``InMemoryVectorStore`` and mirrors it into a Qdrant collection
-    opened in ``location=":memory:"`` mode. ``get(idx)`` returns the
-    bit-identical row from the matrix; ``query`` delegates to
-    ``client.search`` so the Qdrant collection actually drives the
-    cosine top-k ranking.
+    ``InMemoryVectorStore`` and mirrors it into a Qdrant collection.
+    Connection target is selected by ``BIDMATE_QDRANT_URL``:
 
-    Native Qdrant collection persistence (``location=<path>``) is
-    reserved for Stage 3 — Stage 2 writes the same
-    ``embeddings.npy`` sidecar so users can switch backends without
-    rebuilding the index.
+      - unset / empty / ``:memory:`` → in-process ``location=":memory:"``
+        (default, no external dependency)
+      - ``http(s)://...`` → production HTTP server
+      - any other string → file-based ``location=<path>``
+
+    ``get(idx)`` returns the bit-identical row from the in-memory
+    matrix; ``query`` delegates to ``client.query_points`` so the Qdrant
+    collection actually drives the cosine top-k ranking. The
+    ``embeddings.npy`` sidecar is written regardless of connection
+    target so users can switch backends without rebuilding the index.
     """
 
     vectors: np.ndarray
@@ -267,8 +280,31 @@ class QdrantVectorStore:
         )
 
 
+def _make_qdrant_client(qdrant_client_cls: Any) -> Any:
+    """Construct a Qdrant client according to ``BIDMATE_QDRANT_URL``.
+
+    Routing (issue #834):
+      - unset / empty / ``:memory:`` → ``location=":memory:"`` (default)
+      - ``http://...`` / ``https://...`` → ``url=<URL>`` (production server)
+      - any other string → ``location=<path>`` (file-based persistence)
+
+    Receives ``qdrant_client_cls`` as a parameter so tests can inject a
+    fake without monkey-patching the qdrant-client module.
+    """
+    url = os.environ.get(ENV_QDRANT_URL, "").strip()
+    if not url or url == ":memory:":
+        return qdrant_client_cls(location=":memory:")
+    if url.startswith(("http://", "https://")):
+        return qdrant_client_cls(url=url)
+    return qdrant_client_cls(location=url)
+
+
 def _build_qdrant_store(vectors: np.ndarray) -> QdrantVectorStore:
-    """Build a QdrantVectorStore around an in-memory collection."""
+    """Build a QdrantVectorStore around the configured Qdrant client.
+
+    Client target is selected by ``BIDMATE_QDRANT_URL`` — see
+    ``_make_qdrant_client``. Default is in-process ``:memory:``.
+    """
     try:
         from qdrant_client import QdrantClient  # type: ignore[import-not-found]
         from qdrant_client.models import (  # type: ignore[import-not-found]
@@ -284,7 +320,7 @@ def _build_qdrant_store(vectors: np.ndarray) -> QdrantVectorStore:
         ) from exc
 
     vectors_f32 = np.asarray(vectors, dtype=np.float32)
-    client = QdrantClient(location=":memory:")
+    client = _make_qdrant_client(QdrantClient)
     # Empty matrices are valid (an index with zero chunks); the
     # collection still needs a dimension, so we default to 1 in that
     # degenerate case rather than crashing.
