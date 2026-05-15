@@ -104,13 +104,33 @@ This skill writes to a **committed git file**. Privacy violations cannot be retr
 
 ## 5축 진단 (Claude 협업)
 
-| # | 축 | 평가 | 근거 | 한 줄 코멘트 |
+| # | 축 | 평가 | 근거 (raw signal) | 한 줄 코멘트 |
 |---|---|---|---|---|
-| 1 | 컨텍스트 효율 | ... | sessions.tool_call_distribution, memory hits | ... |
-| 2 | Agent 위임 패턴 | ... | sessions.agent_delegations | ... |
-| 3 | 거버넌스 자동화 ROI | ... | `scripts/_governance.py`, hook config | ... |
-| 4 | 사이클 타임 | ... | ADR proposed→accepted dates, hook lag | ... |
-| 5 | 메모리 위생 | ... | memory.by_type, files_total | ... |
+| 1 | 컨텍스트 효율 | ... | `sessions.tool_call_distribution`, `sessions.agent_delegations` | ... |
+| 2 | Agent 위임 패턴 | ... | `axis_2_plan_subagent_skip_rate.skip_rate` (PR #745) | ... |
+| 3 | 거버넌스 자동화 ROI | ... | `governance_hooks.pretooluse_loadbearing_fires`, `governance_hooks.fires_by_action` | ... |
+| 4 | 사이클 타임 | ... | `axis_4_cycle_time.adr_lag_days`, `axis_4_cycle_time.pr_turnaround_hours` (PR #748) | ... |
+| 5 | 메모리 위생 | ... | `governance_hooks.fires_by_action["memory-lines"]` (PR #747), `memory.by_type` | ... |
+
+## 5축 채점 임계값 (Q3-2026~)
+
+PR #723 → #745 / #747 / #748 시퀀스로 `scripts/claude-hooks/_self_review.py` 가
+raw signal을 자동 emit. 본 skill이 그 값을 ✓/△/✗ 로 결정하는 **단일 source of
+truth** — collector 코드에 임계 hard-code 금지.
+
+| 축 | Signal path | ✓ | △ | ✗ |
+|---|---|---|---|---|
+| #1 컨텍스트 효율 | `sessions.agent_delegations["Explore"]` 호출 / 분기 | ≥ 2 + Read 평균 ≤ 메인 대화당 10회 | 둘 중 하나 미달 | 둘 다 미달 |
+| #2 Agent 위임 | `axis_2_plan_subagent_skip_rate.skip_rate` | ≤ 0.2 | 0.2–0.5 | > 0.5 |
+| #3 자동화 ROI | `governance_hooks.pretooluse_loadbearing_fires` + `fires_by_action` 다양성 | fires > 0 **그리고** ≥ 2개 reason 발화 (e.g. `load-bearing` + `memory-lines`) | fires > 0 그러나 1개 reason만 | fires = 0 |
+| #4-A 사이클 타임 (ADR) | `axis_4_cycle_time.adr_lag_days.mean` (days) | ≤ 5 | 5–10 | > 10 |
+| #4-B 사이클 타임 (PR) | `axis_4_cycle_time.pr_turnaround_hours.mean` (hours) | ≤ 48 | 48–120 | > 120 |
+| #5 메모리 위생 | `governance_hooks.fires_by_action["memory-lines"]` 카운트 (action="aware" / "blocked") | blocked=0 + aware ≤ 2 | aware ≥ 3 + blocked=0 | blocked ≥ 1 (편집 차단 = 인덱스 폭발) |
+
+**판정 규칙:**
+- 동일 축이 sub-signal 두 개를 가질 때(예: #4-A + #4-B), **둘 다 ✓** 이어야 ✓; 하나라도 ✗면 ✗; 그 외 △.
+- raw signal 이 `null` / `count=0` 이면 측정 부재 — △ 표기 + "측정 인프라 미작동" 한 줄.
+- `p90` 이 `mean` 보다 현저히 크면 (> 2×) outlier 가능성 — `pr_turnaround_hours.max` 확인 후 reopened-PR 영향 한 줄 명시.
 
 ## 최우선 개선점 (ROI)
 
