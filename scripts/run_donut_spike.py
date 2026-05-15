@@ -3,12 +3,12 @@
 
 Generates a synthetic complex-layout PDF with known ground truth, runs both
 pipelines, and writes a metrics table. Donut + torch + transformers are lazy-
-imported only when --backend includes 'donut'. See docs/vision-spike.md and
+imported only when --backend includes 'donut'. See docs/vision/vision-spike.md and
 issue #168 for context.
 
 Usage:
     python scripts/run_donut_spike.py                     # both, stdout only
-    python scripts/run_donut_spike.py --write-doc         # update docs/vision-spike.md
+    python scripts/run_donut_spike.py --write-doc         # update docs/vision/vision-spike.md
     python scripts/run_donut_spike.py --input <pdf>       # use real PDF (no GT metrics)
     python scripts/run_donut_spike.py --backend baseline  # skip Donut
 """
@@ -81,7 +81,7 @@ def generate_complex_layout_pdf(path: Path) -> GroundTruth:
     ]
     body = (
         "This spike compares the OCR baseline against a layout-aware Donut model "
-        "on a single complex-layout RFP page. See docs/vision-spike.md for context."
+        "on a single complex-layout RFP page. See docs/vision/vision-spike.md for context."
     )
 
     doc = fitz.open()
@@ -401,7 +401,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Donut vs OCR 1-page comparison spike (issue #168).")
     parser.add_argument("--input", type=Path, default=None, help="optional real PDF path; default = synthetic")
     parser.add_argument("--backend", choices=["both", "baseline", "donut", "paddleocr", "all"], default="both")
-    parser.add_argument("--write-doc", action="store_true", help="update docs/vision-spike.md Results section")
+    parser.add_argument("--write-doc", action="store_true", help="update docs/vision/vision-spike.md Results section")
     parser.add_argument("--doc-path", type=Path, default=REPO_ROOT / "docs" / "vision-spike.md")
     args = parser.parse_args(argv)
 

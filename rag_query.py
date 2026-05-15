@@ -549,7 +549,7 @@ def make_plan(
     elif retrieval_backend == "m3":
         # Issue #151 — BGE-M3 dense + sparse + ColBERT multi-vector fused
         # via N-way RRF. Opt-in measurement spike; see
-        # ``docs/m3-multichannel-spike.md``.
+        # ``docs/vision/m3-multichannel-spike.md``.
         scoring = "m3 (dense + sparse + colbert) rrf"
     plan: dict[str, Any] = {
         "strategy": scoring if not metadata_first else f"metadata-first {scoring}",

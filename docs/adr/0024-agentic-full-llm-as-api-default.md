@@ -75,7 +75,7 @@ along with the preset would:
   probes and demo traffic.
 - Break the public `eval/run_eval.py` ablation determinism (the
   `full_llm` row currently reports the stub-backend result; see
-  `docs/embedding-ablation.md` and ADR 0012 for the same pattern).
+  `docs/eval/embedding-ablation.md` and ADR 0012 for the same pattern).
 - Erase ADR 0011's central trade-off: *the agentic synthesis preset is
   observable, but the backend is opt-in.*
 

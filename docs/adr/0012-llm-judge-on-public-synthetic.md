@@ -19,7 +19,7 @@ the public-synthetic version with this argument:
 
 That reasoning still applies to **live** judge calls in CI. But it
 leaves a gap: a portfolio reviewer reading
-`docs/ablation-results.md` sees deterministic precision / recall /
+`docs/eval/ablation-results.md` sees deterministic precision / recall /
 nDCG / `groundedness` (bool) and nothing else. There is no public
 RAGAS-style signal — no faithfulness, no answer-relevance — because
 the only place we run a model judge is the private
@@ -111,7 +111,7 @@ Public CI is silent on the live signal — the stub aggregate is
 deterministic plumbing only. A developer who wants the real signal
 runs `make synthetic-judge` with a live backend manually, attaches
 the resulting committed aggregate diff to the PR, and lets reviewers
-read the rendered table in `README.md` / `docs/ablation-results.md`.
+read the rendered table in `README.md` / `docs/eval/ablation-results.md`.
 
 ## Consequences
 

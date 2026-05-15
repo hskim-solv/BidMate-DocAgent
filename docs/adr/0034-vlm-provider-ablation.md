@@ -10,7 +10,7 @@
 
 ## Context
 
-[docs/vision-spike.md](../vision-spike.md) (issue #168) 에서 Donut vision model 과 pytesseract baseline 을 1-page 합성 PDF 에서 비교했다. 결과: Donut 은 `torch≥2.6 + safetensors` 요건 미충족으로 실측 불가, baseline text_recall=0.914 가 상한선으로 남았다.
+[docs/vision/vision-spike.md](../vision/vision-spike.md) (issue #168) 에서 Donut vision model 과 pytesseract baseline 을 1-page 합성 PDF 에서 비교했다. 결과: Donut 은 `torch≥2.6 + safetensors` 요건 미충족으로 실측 불가, baseline text_recall=0.914 가 상한선으로 남았다.
 
 이 ADR 은 세 가지를 확정한다:
 1. **Donut defer 결정 공식화** (vision-spike.md 의 결론을 ADR 로 격상).

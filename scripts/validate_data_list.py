@@ -30,7 +30,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
             "Validate a data_list.csv against the v1 RFP ingestion schema. "
-            "See docs/real-data-ingestion.md for column rules."
+            "See docs/real-data/real-data-ingestion.md for column rules."
         )
     )
     parser.add_argument("--metadata_csv", required=True, help="Path to data_list.csv.")

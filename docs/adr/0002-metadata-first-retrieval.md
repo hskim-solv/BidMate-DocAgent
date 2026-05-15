@@ -2,7 +2,7 @@
 
 - **Status**: accepted
 - **Date**: 2026-05-11
-- **Related**: [`rag_core.py`](../../rag_core.py), [`docs/design-background.md`](../design-background.md), [`docs/real-data-failure-taxonomy.md`](../real-data-failure-taxonomy.md)
+- **Related**: [`rag_core.py`](../../rag_core.py), [`docs/design-background.md`](../design-background.md), [`docs/real-data/real-data-failure-taxonomy.md`](../real-data/real-data-failure-taxonomy.md)
 
 ## Context
 

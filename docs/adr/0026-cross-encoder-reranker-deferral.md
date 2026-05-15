@@ -4,7 +4,7 @@
 - **Superseded by**: [ADR 0025](./0025-cost-frontier-defer-until-real-baselines.md) § "Cross-encoder reranker deferral"
 - **Date**: 2026-05-12
 - **Deciders**: hskim
-- **Related**: [ADR 0001](./0001-preserve-naive-baseline.md) (baseline preserved), [ADR 0002](./0002-metadata-first-retrieval.md) (the metadata-first routing that shadows the rerank step), [ADR 0019](./0019-embedding-default-stays-minilm.md) (mirror pattern — measurement-gated default-stays), [ADR 0021](./0021-bge-m3-completes-phase-1-3.md) (the deferred-then-closed loop precedent), [ADR 0025](./0025-cost-frontier-defer-until-real-baselines.md) (sibling deferral pattern, accepted 2026-05-12), [`docs/cross-encoder-reranker.md`](../cross-encoder-reranker.md) (working reference), [`docs/ablation-results.md`](../ablation-results.md) (current ablation table), [`rag_reranker.py`](../../rag_reranker.py) (`Reranker` Protocol + `CrossEncoderReranker` default), issues [#163](https://github.com/hskim-solv/BidMate-DocAgent/issues/163), [#345](https://github.com/hskim-solv/BidMate-DocAgent/issues/345), [#412](https://github.com/hskim-solv/BidMate-DocAgent/issues/412), PR [#358](https://github.com/hskim-solv/BidMate-DocAgent/pull/358)
+- **Related**: [ADR 0001](./0001-preserve-naive-baseline.md) (baseline preserved), [ADR 0002](./0002-metadata-first-retrieval.md) (the metadata-first routing that shadows the rerank step), [ADR 0019](./0019-embedding-default-stays-minilm.md) (mirror pattern — measurement-gated default-stays), [ADR 0021](./0021-bge-m3-completes-phase-1-3.md) (the deferred-then-closed loop precedent), [ADR 0025](./0025-cost-frontier-defer-until-real-baselines.md) (sibling deferral pattern, accepted 2026-05-12), [`docs/retrieval/cross-encoder-reranker.md`](../retrieval/cross-encoder-reranker.md) (working reference), [`docs/eval/ablation-results.md`](../eval/ablation-results.md) (current ablation table), [`rag_reranker.py`](../../rag_reranker.py) (`Reranker` Protocol + `CrossEncoderReranker` default), issues [#163](https://github.com/hskim-solv/BidMate-DocAgent/issues/163), [#345](https://github.com/hskim-solv/BidMate-DocAgent/issues/345), [#412](https://github.com/hskim-solv/BidMate-DocAgent/issues/412), PR [#358](https://github.com/hskim-solv/BidMate-DocAgent/pull/358)
 
 ## Context
 
@@ -24,14 +24,14 @@ each is in a different state of measurement:
    `line 143-149` (`rerank: true` + `rerank_cross_encoder: true`).
 3. **Cross-encoder backends** (`bge`, `bge_ko`, `cohere`) selected via
    `BIDMATE_RERANK_BACKEND`. CI default is `stub` —
-   [`docs/cross-encoder-reranker.md`](../cross-encoder-reranker.md)
+   [`docs/retrieval/cross-encoder-reranker.md`](../retrieval/cross-encoder-reranker.md)
    describes the dispatch and explicitly states: *"`full_reranker` row
    byte-equals `full` under stub"* (line 25). Stub is a pure-identity
    pass-through; the test
    `tests/test_cross_encoder_rerank.py::RerankStubBackendTest::test_stub_backend_is_identity`
    locks this invariant.
 
-The current ablation table ([`docs/ablation-results.md`](../ablation-results.md))
+The current ablation table ([`docs/eval/ablation-results.md`](../eval/ablation-results.md))
 shows that on the public synthetic surface (n=42), the **first** surface
 already moves 0pp:
 
@@ -53,7 +53,7 @@ Three observations follow:
   construction**, not by empirical accident. The 0 delta there is an
   architectural invariant, not a measurement finding.
 - **No real cross-encoder backend has been measured on this repo's eval
-  surface.** [`docs/cross-encoder-reranker.md`](../cross-encoder-reranker.md)
+  surface.** [`docs/retrieval/cross-encoder-reranker.md`](../retrieval/cross-encoder-reranker.md)
   §Results closes with *"Measurement pending — append below after
   running the reproduction commands."* The `bge` / `bge_ko` / `cohere`
   commands ship but the runs require user-environment setup (model
@@ -113,7 +113,7 @@ ADR re-opens — and the `stub` default flips — when **all three** hold:
 1. A maintainer runs at least one of the `bge` / `bge_ko` / `cohere`
    backends to completion against the public synthetic eval surface
    (n=42) and appends the result table to
-   [`docs/cross-encoder-reranker.md`](../cross-encoder-reranker.md)
+   [`docs/retrieval/cross-encoder-reranker.md`](../retrieval/cross-encoder-reranker.md)
    §Results.
 2. **At least one** of those backends shows a `full_reranker` lift of
    **≥ +3pp** on `accuracy` OR `citation_precision`, with
@@ -127,11 +127,11 @@ ADR re-opens — and the `stub` default flips — when **all three** hold:
    `BIDMATE_RERANK_BACKEND` default from `stub` to the winning
    backend, documenting the latency / cost trade-off (~80-200ms /
    query CPU for `bge`, ~$2 / 1k searches for `cohere` per
-   [`docs/cross-encoder-reranker.md`](../cross-encoder-reranker.md)).
+   [`docs/retrieval/cross-encoder-reranker.md`](../retrieval/cross-encoder-reranker.md)).
 
 If condition 1 lands but condition 2 does not (the 0pp pattern holds
 across real backends too), this ADR stays `accepted` and
-[`docs/cross-encoder-reranker.md`](../cross-encoder-reranker.md)
+[`docs/retrieval/cross-encoder-reranker.md`](../retrieval/cross-encoder-reranker.md)
 §Results gets the measurement appendix without an ADR replacement —
 same loop shape as [ADR 0019](./0019-embedding-default-stays-minilm.md)
 → [ADR 0021](./0021-bge-m3-completes-phase-1-3.md).
@@ -212,8 +212,8 @@ same loop shape as [ADR 0019](./0019-embedding-default-stays-minilm.md)
 
 ## See also
 
-- [`docs/cross-encoder-reranker.md`](../cross-encoder-reranker.md) — design + reproduction commands; the doc this ADR locks the *decision* behind.
-- [`docs/ablation-results.md`](../ablation-results.md) — `full` vs `no_rerank` numbers cited above.
+- [`docs/retrieval/cross-encoder-reranker.md`](../retrieval/cross-encoder-reranker.md) — design + reproduction commands; the doc this ADR locks the *decision* behind.
+- [`docs/eval/ablation-results.md`](../eval/ablation-results.md) — `full` vs `no_rerank` numbers cited above.
 - [`rag_reranker.py`](../../rag_reranker.py) — `Reranker` Protocol surface and `CrossEncoderReranker` default.
 - [`tests/test_cross_encoder_rerank.py`](../../tests/test_cross_encoder_rerank.py) — the stub-identity invariant tests.
 - [ADR 0019](./0019-embedding-default-stays-minilm.md) → [ADR 0021](./0021-bge-m3-completes-phase-1-3.md) — the measurement-gated deferral pattern this ADR follows.

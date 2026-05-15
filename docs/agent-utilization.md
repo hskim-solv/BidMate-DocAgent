@@ -53,6 +53,6 @@
 
 - [`docs/self-review/Q2-2026.md`](self-review/Q2-2026.md) — 5축 진단 원본
 - [`docs/multi-agent-ownership.md`](multi-agent-ownership.md) — 7역할 owner 모델
-- [`docs/auto-ship.md`](operations/auto-ship.md) — `make ship-arm` 8-step 파이프라인
+- [`docs/operations/auto-ship.md`](operations/auto-ship.md) — `make ship-arm` 8-step 파이프라인
 - [`docs/engineering-governance.md`](engineering-governance.md) — workflow map
 - `MEMORY.md` 항목: `feedback_collaboration_axes.md`, `feedback_agent_delegation.md`, `feedback_q2_2026_collaboration_review.md`

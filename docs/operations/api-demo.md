@@ -39,8 +39,8 @@ and wraps `rag_core.run_rag_query` behind three small endpoints.
 ```
 
 Only `query` is required. The response preserves the grounded
-answer / citation contract — see `docs/answer-policy.md` and
-`docs/citation-grounding-eval.md` for the schema specifics.
+answer / citation contract — see `docs/agentic/answer-policy.md` and
+`docs/eval/citation-grounding-eval.md` for the schema specifics.
 
 ## Local startup (no Docker)
 

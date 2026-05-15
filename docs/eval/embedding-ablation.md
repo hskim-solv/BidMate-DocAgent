@@ -321,7 +321,7 @@ Runner: `scripts/run_routed_measurement.py --backend sentence-transformers`. 결
 - [`scripts/run_embedding_ablation.py`](../scripts/run_embedding_ablation.py) — Phase 1.1~1.3, 1.5 runner
 - [`scripts/run_routed_measurement.py`](../scripts/run_routed_measurement.py) — Phase 1.4 routed measurement runner
 - [`reports/embedding_routed.json`](../reports/embedding_routed.json) — Phase 1.4 machine-readable results
-- [`docs/ablation-results.md`](ablation-results.md) — broader ablation context
+- [`docs/eval/ablation-results.md`](ablation-results.md) — broader ablation context
 - [ADR 0001](../adr/0001-preserve-naive-baseline.md) — why `naive_baseline` is preserved
 - [ADR 0002](../adr/0002-metadata-first-retrieval.md) — why metadata-first dominates
 - [ADR 0019](../adr/0019-embedding-default-stays-minilm.md) — the deferral decision

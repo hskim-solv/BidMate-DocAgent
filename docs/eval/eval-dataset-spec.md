@@ -3,7 +3,7 @@
 공개 합성 평가셋의 구성, 평가 방법론, 재현 절차를 담은 reviewer-facing 명세서입니다.
 
 - **평가셋 분리 정책**: [ADR 0005](../adr/0005-eval-split-public-synthetic-private-local.md)
-- **비공개 100-doc 집계**: [`docs/private-100-doc-experiments.md`](../real-data/private-100-doc-experiments.md) (별도 문서)
+- **비공개 100-doc 집계**: [`docs/real-data/private-100-doc-experiments.md`](../real-data/private-100-doc-experiments.md) (별도 문서)
 
 ---
 
@@ -162,7 +162,7 @@ print(dict(Counter(c['query_type'] for c in cases)))
 | 문서 원본 | 저장소 내 `data/raw/` | **포함 금지** (계약·저작권) |
 | 평가 케이스 | `eval/config.yaml` (n=42) | 비공개 config |
 | 케이스별 예측 | `reports/` (gitignored, 로컬) | 동일 |
-| Aggregate 집계 | `reports/synthetic_judge.aggregate.json` | `docs/private-100-doc-experiments.md` 별도 공개 |
+| Aggregate 집계 | `reports/synthetic_judge.aggregate.json` | `docs/real-data/private-100-doc-experiments.md` 별도 공개 |
 | CI gate | `make smoke` / `bash scripts/test.sh` | 차단 (`tests/` 내 raw-data 의존 금지) |
 
 전체 정책 전문: [ADR 0005](../adr/0005-eval-split-public-synthetic-private-local.md)
@@ -173,7 +173,7 @@ print(dict(Counter(c['query_type'] for c in cases)))
 
 - [`eval/dev_queries_v1_summary.md`](../../eval/dev_queries_v1_summary.md) — jsonl 기반 질의 목록 요약
 - [`eval/eval_scoring_guide.md`](../../eval/eval_scoring_guide.md) — 채점 가이드
-- [`docs/private-100-doc-experiments.md`](../real-data/private-100-doc-experiments.md) — 비공개 aggregate 정책 (PR-C)
+- [`docs/real-data/private-100-doc-experiments.md`](../real-data/private-100-doc-experiments.md) — 비공개 aggregate 정책 (PR-C)
 - [ADR 0003](../adr/0003-structured-answer-citation-contract.md) — 답변/인용 계약
 - [ADR 0005](../adr/0005-eval-split-public-synthetic-private-local.md) — eval split 정책
 - [ADR 0012](../adr/0012-llm-judge-on-public-synthetic.md) — synthetic LLM-judge

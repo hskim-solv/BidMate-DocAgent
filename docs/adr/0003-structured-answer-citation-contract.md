@@ -2,7 +2,7 @@
 
 - **Status**: accepted
 - **Date**: 2026-05-11
-- **Related**: [`docs/answer-policy.md`](../answer-policy.md) (working reference, enforcement walkthrough in [§계약 강제 메커니즘](../answer-policy.md#계약-강제-메커니즘)), [`docs/citation-grounding-eval.md`](../citation-grounding-eval.md), [`docs/verifier-rules.md`](../verifier-rules.md) (deterministic verifier rules as pseudo-prompts; status / citation mapping table), [`eval/run_eval.py`](../../eval/run_eval.py)
+- **Related**: [`docs/agentic/answer-policy.md`](../agentic/answer-policy.md) (working reference, enforcement walkthrough in [§계약 강제 메커니즘](../agentic/answer-policy.md#계약-강제-메커니즘)), [`docs/eval/citation-grounding-eval.md`](../eval/citation-grounding-eval.md), [`docs/agentic/verifier-rules.md`](../agentic/verifier-rules.md) (deterministic verifier rules as pseudo-prompts; status / citation mapping table), [`eval/run_eval.py`](../../eval/run_eval.py)
 
 ## Context
 
@@ -39,7 +39,7 @@ Every answer is a JSON object with `schema_version: 2`. The contract:
   `missing_targets` and a human-readable message, instead of a fake
   answer.
 
-[`docs/answer-policy.md`](../answer-policy.md) is the working
+[`docs/agentic/answer-policy.md`](../agentic/answer-policy.md) is the working
 reference; this ADR is the load-bearing decision behind it.
 
 ## Consequences

@@ -28,7 +28,7 @@ The expected flow for any non-trivial change, written as a checklist
 a contributor (human or AI) can walk through:
 
 1. **Open or pick an issue. (Required, ADR 0007.)** Real-data failure
-   taxonomy entries (`docs/real-data-failure-taxonomy.md`) and the
+   taxonomy entries (`docs/real-data/real-data-failure-taxonomy.md`) and the
    prioritized backlog are the primary feed. Use the templates in
    [`.github/ISSUE_TEMPLATE/`](../.github/ISSUE_TEMPLATE/). The
    branch + PR are required to reference this issue number; the

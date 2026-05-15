@@ -783,13 +783,13 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help=(
             "Append a Decision Log entry stub (with the rendered table) to "
-            "docs/private-100-doc-experiments.md so you only fill the "
+            "docs/real-data/private-100-doc-experiments.md so you only fill the "
             "interpretation paragraph."
         ),
     )
     ap.add_argument(
         "--decision-log-path",
-        default="docs/private-100-doc-experiments.md",
+        default="docs/real-data/private-100-doc-experiments.md",
         help="Target file for the Decision Log stub (default is the public doc).",
     )
     return ap.parse_args()

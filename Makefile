@@ -242,7 +242,7 @@ test-regression:
 	$(PYTHON) -m pytest tests/test_retrieval_loop_regression.py -q
 
 # Run the FastAPI demo locally. Requires data/index to exist
-# (run `make index` first). See docs/api-demo.md for details.
+# (run `make index` first). See docs/operations/api-demo.md for details.
 api:
 	$(PYTHON) -m uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
 
@@ -259,7 +259,7 @@ demo:
 	$(PYTHON) -m streamlit run demo/streamlit_app.py
 
 # Run the demo container with the Streamlit UI on :8501 (and FastAPI on
-# :8000 alongside). See docs/deployment.md for Fly.io / HF Spaces.
+# :8000 alongside). See docs/operations/deployment.md for Fly.io / HF Spaces.
 demo-docker:
 	docker build -t bidmate-demo .
 	docker run --rm -p 8000:8000 -p 8501:8501 -e BIDMATE_DEMO_MODE=both bidmate-demo
@@ -297,7 +297,7 @@ real-eval-baseline-update:
 	$(PYTHON) scripts/write_real_eval_baseline.py $(if $(STRICT),--strict,)
 
 # Render the chronological real-data history table into
-# docs/private-100-doc-experiments.md (between the
+# docs/real-data/private-100-doc-experiments.md (between the
 # real-eval-history-{start,end} markers). Aggregate-only.
 real-eval-history-render:
 	$(PYTHON) scripts/render_real_eval_history.py
@@ -360,7 +360,7 @@ judge-disagreements:
 	  --output reports/judge_disagreements.local.json
 
 # Append a history snapshot of the current eval_summary.json + render
-# the leaderboard markdown table and the docs/leaderboard.md Chart.js
+# the leaderboard markdown table and the docs/eval/leaderboard.md Chart.js
 # page. Mirrors the real-data history pattern but for the public
 # synthetic surface (issue #166). CI runs this automatically on every
 # merge to main via .github/workflows/leaderboard.yml.

@@ -16,7 +16,7 @@ reconsidered if the deterministic verifier hits a ceiling."*
 #69 made the ceiling visible. The deterministic verifier's
 `PARTIAL_TOPIC_GROUNDING_MIN_FRACTION` knob recovered 4 false-abstain
 cases on real-data **and** flipped 2 intended abstentions
-(`docs/private-100-doc-experiments.md` Real-data Decision Log entry).
+(`docs/real-data/private-100-doc-experiments.md` Real-data Decision Log entry).
 The Decision Log records the trade-off honestly, but **the threshold
 itself is arbitrary** — no amount of synthetic eval tuning will
 distinguish a "real partial answer" from a "weak hallucination" if

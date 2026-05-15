@@ -5,7 +5,7 @@ Reads every committed aggregate snapshot under ``reports/history/`` and
 writes two artifacts:
 
 * ``reports/leaderboard.md`` — chronological markdown table for in-repo viewing
-* ``docs/leaderboard.md`` — Jekyll-rendered page with an embedded Chart.js
+* ``docs/eval/leaderboard.md`` — Jekyll-rendered page with an embedded Chart.js
   line chart for each headline metric, plus bootstrap CI shaded bands.
   Surfaced at ``hskim-solv.github.io/BidMate-DocAgent/leaderboard/``.
 
@@ -42,7 +42,7 @@ from scripts.run_real_eval_delta import extract_aggregate  # noqa: E402
 
 HISTORY_DIR = ROOT / "reports" / "history"
 LEADERBOARD_MD = ROOT / "reports" / "leaderboard.md"
-LEADERBOARD_PAGE = ROOT / "docs" / "leaderboard.md"
+LEADERBOARD_PAGE = ROOT / "docs" / "eval" / "leaderboard.md"
 
 HEADLINE_METRICS: list[tuple[str, str]] = [
     ("accuracy", "Accuracy"),
@@ -275,7 +275,7 @@ def _chart_data(rows: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def render_page(rows: list[dict[str, Any]]) -> str:
-    """Render the docs/leaderboard.md page with embedded Chart.js."""
+    """Render the docs/eval/leaderboard.md page with embedded Chart.js."""
     chart_payload = _chart_data(rows)
     metric_canvases = "\n".join(
         f'<h2 id="{key}">{label}</h2>\n<canvas id="chart-{key}" height="240"></canvas>'

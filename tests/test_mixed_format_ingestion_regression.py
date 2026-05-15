@@ -8,7 +8,7 @@ Protects the v1 CSV-text path against regressions in:
 
 Tests deliberately use small text fixtures so the suite stays fast and
 CI-friendly. Extending the suite is documented in
-``docs/real-data-ingestion.md``.
+``docs/real-data/real-data-ingestion.md``.
 """
 
 import csv

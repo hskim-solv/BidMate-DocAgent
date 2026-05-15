@@ -49,7 +49,7 @@ main
 | PR-B | #650 | `feat/issue-650-eval-by-format-breakdown` | `eval/run_eval.py`, `scripts/run_real_eval_delta.py`, `tests/test_eval_by_format_aggregate_regression.py` |
 | PR-C | #652 | `feat/issue-652-hwp-loader-ablation` | `eval/config.yaml` (+3 ablation rows), `scripts/build_index.py` (`--hwp_loader`) |
 | PR-D | #654 | `feat/issue-654-hwp-hardcase-tagging` | `eval/config.yaml` (tagging only) |
-| PR-E | #657 | `feat/issue-657-leaderboard-hwp-surface` | `scripts/leaderboard.py`, `docs/hwp-eval-closure.md` (this file) |
+| PR-E | #657 | `feat/issue-657-leaderboard-hwp-surface` | `scripts/leaderboard.py`, `docs/hwp/hwp-eval-closure.md` (this file) |
 
 ## What each gap closure delivers
 

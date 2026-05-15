@@ -9,7 +9,7 @@ the same script runs in CI containers that don't install matplotlib.
 
 Cost axis (lower-is-better): primary summary latency p95 in milliseconds.
 Quality axis (higher-is-better): citation_precision (the metric whose CI
-separation is most discriminating per docs/ablation-results.md).
+separation is most discriminating per docs/eval/ablation-results.md).
 
 The script does not modify the eval pipeline or the answer contract; it is
 a read-only consumer of ``reports/eval_summary.json``.

@@ -2,7 +2,7 @@
 
 - **Status**: accepted
 - **Date**: 2026-05-11
-- **Related**: [`eval/config.yaml`](../../eval/config.yaml), [`eval/real_config.example.yaml`](../../eval/real_config.example.yaml), [`docs/private-100-doc-experiments.md`](../private-100-doc-experiments.md), [`docs/private-hardcase-benchmark.md`](../private-hardcase-benchmark.md), [`docs/real-data-failure-taxonomy.md`](../real-data-failure-taxonomy.md)
+- **Related**: [`eval/config.yaml`](../../eval/config.yaml), [`eval/real_config.example.yaml`](../../eval/real_config.example.yaml), [`docs/real-data/private-100-doc-experiments.md`](../real-data/private-100-doc-experiments.md), [`docs/real-data/private-hardcase-benchmark.md`](../real-data/private-hardcase-benchmark.md), [`docs/real-data/real-data-failure-taxonomy.md`](../real-data/real-data-failure-taxonomy.md)
 
 ## Context
 
@@ -59,7 +59,7 @@ side: public-redistributable, or strictly local.
   private surface silently drifts.
 - README metrics under-report the failure rate that real-data work
   actually sees. Aggregate-delta reports
-  (`docs/private-100-doc-experiments.md`) are needed to bridge that
+  (`docs/real-data/private-100-doc-experiments.md`) are needed to bridge that
   honestly.
 - Reviewers cannot reproduce private-surface numbers. They must trust
   the aggregate / delta reports plus the public-surface

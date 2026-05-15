@@ -3,13 +3,13 @@
 - **Status**: proposed
 - **Date**: 2026-05-14
 - **Deciders**: hskim-solv
-- **Related**: issue #646, ADR 0001, ADR 0005, ADR 0030, ADR 0036, [docs/private-hardcase-benchmark.md](../private-hardcase-benchmark.md)
+- **Related**: issue #646, ADR 0001, ADR 0005, ADR 0030, ADR 0036, [docs/real-data/private-hardcase-benchmark.md](../real-data/private-hardcase-benchmark.md)
 
 ## Context
 
 ADR 0036 (#641) introduced HwpNativeLoader as the pyhwp-gated default, making the private 100-doc eval corpus 96% HWP. The public synthetic surface, however, has no HWP fixtures and its 22 hardcase entries (14 `hardcase_categories` + 8 abstention, [`eval/config.yaml:880-996`](../../eval/config.yaml)) cover only logical and retrieval discrimination — not document-structure failures.
 
-[`docs/private-hardcase-benchmark.md:24-31`](../private-hardcase-benchmark.md) defines five document-structure slices (`scanned_pdf`, `rotated_or_skewed`, `table_heavy`, `mixed_layout`, `noisy_ocr`) for the private surface only. The public `by_hardcase_category` aggregate ([`eval/run_eval.py:618`](../../eval/run_eval.py)) automatically buckets any category tag found in case config, so adding tags requires no code change — only a policy decision on which slices are safe to introduce publicly.
+[`docs/real-data/private-hardcase-benchmark.md:24-31`](../real-data/private-hardcase-benchmark.md) defines five document-structure slices (`scanned_pdf`, `rotated_or_skewed`, `table_heavy`, `mixed_layout`, `noisy_ocr`) for the private surface only. The public `by_hardcase_category` aggregate ([`eval/run_eval.py:618`](../../eval/run_eval.py)) automatically buckets any category tag found in case config, so adding tags requires no code change — only a policy decision on which slices are safe to introduce publicly.
 
 Without this taxonomy, the effect of HWP loader selection (csv-text vs native vs native_tables, ADR 0036) on citation precision or table-cell recall cannot be measured on the public surface, and ADR 0030 leaderboard cannot expose an HWP-specific accuracy time series.
 

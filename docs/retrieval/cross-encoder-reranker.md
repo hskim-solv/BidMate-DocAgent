@@ -147,4 +147,4 @@ This is a stub-default additive ablation under [ADR 0011](../adr/0011-llm-synthe
 - [`tests/test_cross_encoder_rerank.py`](../../tests/test_cross_encoder_rerank.py) — contract tests
 - [ADR 0011](../adr/0011-llm-synthesis-as-additive-ablation.md) — additive-ablation pattern
 - [ADR 0001](../adr/0001-preserve-naive-baseline.md) — naive_baseline invariant (cross-encoder never triggers on naive_baseline)
-- [`docs/embedding-ablation.md`](../eval/embedding-ablation.md) — Phase 1.2 sibling cycle (#161)
+- [`docs/eval/embedding-ablation.md`](../eval/embedding-ablation.md) — Phase 1.2 sibling cycle (#161)

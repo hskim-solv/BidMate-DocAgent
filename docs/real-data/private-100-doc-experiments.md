@@ -49,7 +49,7 @@ python3 scripts/summarize_benchmark.py \
   --docs /private/tmp/private100-summary.md
 ```
 
-`docs/ablation-results.md`는 registry에 public aggregate와 private aggregate가 함께 있을 때 `Public vs Private Aggregate` 표를 생성한다. 이 표는 `primary_metrics`의 집계 값만 사용하며 raw query, prediction, trace는 사용하지 않는다.
+`docs/eval/ablation-results.md`는 registry에 public aggregate와 private aggregate가 함께 있을 때 `Public vs Private Aggregate` 표를 생성한다. 이 표는 `primary_metrics`의 집계 값만 사용하며 raw query, prediction, trace는 사용하지 않는다.
 
 ## Example Aggregate Comparison
 

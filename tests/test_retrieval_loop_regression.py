@@ -1,7 +1,7 @@
 """P0 regression guards for the retrieval loop and answerable smoke path.
 
 Covers two real-data regressions documented in
-``docs/real-data-failure-taxonomy.md`` and tracked under issue #68 / #49:
+``docs/real-data/real-data-failure-taxonomy.md`` and tracked under issue #68 / #49:
 
 * **R2** — retrieval loop body (`retrieve` / `verify_evidence` /
   ``stage_attempts.append``) was lost in a merge, causing every answerable

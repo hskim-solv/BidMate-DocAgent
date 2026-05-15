@@ -5,7 +5,7 @@ description: |
 
   Trigger phrases: "PR 만들어줘", "이거 스택해서 올려", "ADR 쓰고 PR 열어", "ship", "출하", "PR 올려줘", "이 변경 PR로 가자". Trigger even if the user does not say "skill" — driving a change to a merged PR is exactly this skill's scope. Also trigger when the user explicitly references stacked PRs or ADR-then-PR sequencing.
 
-  Do NOT trigger for: bare `git push` or `git commit` requests (skill overhead too high), `make ship-arm` Stop-hook auto-ship runs (different surface, see `docs/auto-ship.md`), or post-merge follow-up tasks. The two ship surfaces are mutually exclusive — never arm `ship-arm` while running this skill.
+  Do NOT trigger for: bare `git push` or `git commit` requests (skill overhead too high), `make ship-arm` Stop-hook auto-ship runs (different surface, see `docs/operations/auto-ship.md`), or post-merge follow-up tasks. The two ship surfaces are mutually exclusive — never arm `ship-arm` while running this skill.
 ---
 
 # /ship-pr — Stacked-PR safe-shipping workflow
@@ -15,7 +15,7 @@ ADR-aware, approval-gated single-PR shipping. The skill replaces an ad-hoc seque
 ## Scope
 
 - One PR per invocation. For a multi-PR stack, the user re-invokes this skill per PR (each call closes one issue).
-- Does NOT replace `make ship-arm`. The Stop-hook pipeline (`docs/auto-ship.md`) is fully autonomous; this skill is explicitly gated. Pick one.
+- Does NOT replace `make ship-arm`. The Stop-hook pipeline (`docs/operations/auto-ship.md`) is fully autonomous; this skill is explicitly gated. Pick one.
 - Does NOT auto-write tests — local gate (step 6) just runs them. If tests are missing for a behavior change, surface that and ask the user.
 
 ## Workflow
@@ -94,7 +94,7 @@ When uncertain → ask, don't act.
 
 - ADR 0007 — branch + issue convention.
 - `CLAUDE.md` `## Autonomy & Approvals`, `## Communication`, `## Core principles` (ADR-number-reservation rule), `## Prohibited` (`--delete-branch` policy).
-- `docs/auto-ship.md` — `make ship-arm` Stop-hook automation (mutually exclusive with this skill).
+- `docs/operations/auto-ship.md` — `make ship-arm` Stop-hook automation (mutually exclusive with this skill).
 - `scripts/_governance.py` — load-bearing path SSoT (used in step 5 and step 2's ADR-necessity check).
 - `scripts/check_branch_and_issue.py` — branch convention validator (step 7).
 

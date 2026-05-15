@@ -167,7 +167,7 @@ ADR 0026 (accepted, same date) applied this same measurement-gated deferral patt
 **Context:** On the public synthetic surface (n=42), `full` (rerank blend on) and `no_rerank` (rerank off) are byte-identical in accuracy/groundedness/citation_precision/abstention. The `rerank: true` blend has zero measured lift. Real backends (`bge`, `bge_ko`, `cohere`) are unmeasured.
 
 **Re-open conditions** (all three must hold to flip the default):
-1. At least one of `bge` / `bge_ko` / `cohere` backends runs to completion on the public synthetic eval (n=42); results appended to `docs/cross-encoder-reranker.md` §Results.
+1. At least one of `bge` / `bge_ko` / `cohere` backends runs to completion on the public synthetic eval (n=42); results appended to `docs/retrieval/cross-encoder-reranker.md` §Results.
 2. That backend shows `full_reranker` lift of ≥ +3pp on `accuracy` OR `citation_precision` with non-overlapping 95% CIs vs `full`.
 3. A follow-up ADR documents the latency/cost trade-off and flips `BIDMATE_RERANK_BACKEND` default.
 

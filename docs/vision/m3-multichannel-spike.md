@@ -78,7 +78,7 @@ the deltas vs the `hybrid_bm25` and `full` controls appear in
 ## Results
 
 _To be filled in by the implementer after the eval runs. Append rows
-to the table below and to `docs/ablation-results.md`._
+to the table below and to `docs/eval/ablation-results.md`._
 
 | Ablation | recall@5 | MRR@10 | faithfulness | citation_precision | p50 latency (s) | p95 latency (s) | peak RSS delta (MB) |
 | --- | --- | --- | --- | --- | --- | --- | --- |
