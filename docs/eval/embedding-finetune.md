@@ -5,7 +5,7 @@
 > Sections marked `TODO(user)` are the *cognitive-ownership* surfaces —
 > author them in your own framing rather than letting the agent draft them.
 
-- **Related**: issue [#179](https://github.com/hskim-solv/BidMate-DocAgent/issues/179), [ADR 0027](./adr/0027-lora-finetuned-embedding-additive.md), [ADR 0019](./adr/0019-embedding-default-stays-minilm.md), [ADR 0021](./adr/0021-bge-m3-completes-phase-1-3.md).
+- **Related**: issue [#179](https://github.com/hskim-solv/BidMate-DocAgent/issues/179), [ADR 0027](../adr/0027-lora-finetuned-embedding-additive.md), [ADR 0019](../adr/0019-embedding-default-stays-minilm.md), [ADR 0021](../adr/0021-bge-m3-completes-phase-1-3.md).
 - **Notebook**: [`notebooks/embedding_finetune.ipynb`](../notebooks/embedding_finetune.ipynb) — Colab T4-runnable end-to-end.
 - **Adapter**: `bidmate/embedding-lora-kure-rfp-ko-v1` on Hugging Face Hub *(uploaded in #179; SHA pinned in [`eval/config.yaml`](../eval/config.yaml))*.
 

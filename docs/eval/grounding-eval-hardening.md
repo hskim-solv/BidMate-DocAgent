@@ -7,7 +7,7 @@
 - Public eval slice를 `single_doc`, `comparison`, `follow_up`, `abstention`으로 표준화했다. 기존 `multi_doc` config 값은 호환 alias로 계속 읽는다.
 - 공개 eval에 claim-level citation spec과 partial comparison 케이스를 추가했다.
 - `answer` 객체를 schema v2로 고정하고 `schema_version`, `status_reason`을 추가했다.
-- `run_rag_query` 결과에 `trace`를 추가해 planner 선택과 query rewrite/context resolution을 한 곳에서 볼 수 있게 했다. 필드 정의와 해석 가이드는 [planner-trace.md](./planner-trace.md) 참고.
+- `run_rag_query` 결과에 `trace`를 추가해 planner 선택과 query rewrite/context resolution을 한 곳에서 볼 수 있게 했다. 필드 정의와 해석 가이드는 [planner-trace.md](../agentic/planner-trace.md) 참고.
 - `eval/run_eval.py`는 각 run/case의 trace를 `reports/traces/<run>/<case>.trace.json`에 쓴다. `reports/`는 gitignored라 private/local trace가 커밋되지 않는다. `--redact_trace` 플래그로 doc ID / entity 마스킹을 켤 수 있다.
 - `claim_citation_alignment`과 `claim_citation_error_counts`를 추가해 whole-answer citation precision과 claim-level drift를 분리했다.
 
@@ -83,7 +83,7 @@ verification, not under-strict retrieval.
   `supported`), and `answer_status_reason` emits
   `code: partial_topic_grounding` so the partial path is distinguishable
   from the existing `partial_comparison` path. Both are documented in
-  [`answer-policy.md`](./answer-policy.md).
+  [`answer-policy.md`](../agentic/answer-policy.md).
 - All other floors stay strict: `low_top_score`, comparison entity /
   doc coverage, and the per-entity comparison topic check remain
   blocking. Partial-topic grounding does not buy a free pass through
@@ -92,7 +92,7 @@ verification, not under-strict retrieval.
 ### Trade-off
 
 This is the strict-vs-relaxed knob anticipated in
-[ADR 0004](./adr/0004-verifier-retry-policy.md). The trade-off is
+[ADR 0004](../adr/0004-verifier-retry-policy.md). The trade-off is
 explicit:
 
 - **Won**: meaningful share of false-abstention queries recover to

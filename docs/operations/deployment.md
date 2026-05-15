@@ -107,7 +107,7 @@ releasing — useful for validating `Dockerfile` changes before merge.
 
 Spaces is ideal for a "click and try" reviewer link — no signup, no
 billing, indexed by the AI community. The Streamlit SDK is supported
-natively; the YAML frontmatter at the top of [`demo/README.md`](../demo/README.md)
+natively; the YAML frontmatter at the top of [`demo/README.md`](../../demo/README.md)
 is the Spaces config.
 
 ```bash

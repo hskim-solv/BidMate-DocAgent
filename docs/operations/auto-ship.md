@@ -135,7 +135,7 @@ logged and the caller must clean up manually (`git worktree prune`).
 
 ## Stacked-PR discipline (tier 7)
 
-The "one PR, one concern" rule from [`CLAUDE.md`](../CLAUDE.md) is
+The "one PR, one concern" rule from [`CLAUDE.md`](../../CLAUDE.md) is
 mechanically enforced in Stage 1 by counting unique commit prefixes on
 the branch:
 
@@ -249,9 +249,9 @@ mutating commands echo to `.claude/.ship-dryrun.log`.
 
 ## Related
 
-- [`CLAUDE.md`](../CLAUDE.md) — "Frequently used commands", "Core principles" (one PR per concern), Prohibited list.
+- [`CLAUDE.md`](../../CLAUDE.md) — "Frequently used commands", "Core principles" (one PR per concern), Prohibited list.
 - [`docs/engineering-governance.md`](../engineering-governance.md) — navigation hub.
 - [`docs/multi-agent-ownership.md`](../multi-agent-ownership.md) — owner lock map consumed by Stage 1.
 - [ADR 0007](../adr/0007-issue-linked-branch-naming.md) — branch convention enforced in Gate 0 / Stage 2.
-- [`.github/pull_request_template.md`](../.github/pull_request_template.md) — the template `_ship_pr_body.py` fills in.
+- [`.github/pull_request_template.md`](../../.github/pull_request_template.md) — the template `_ship_pr_body.py` fills in.
 - [`scripts/_governance.py`](../scripts/_governance.py) — load-bearing SSoT.

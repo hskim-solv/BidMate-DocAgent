@@ -235,6 +235,6 @@ If you suspect the budget is breached:
 ## See also
 
 - [ADR 0013](../adr/0013-observability-as-additive-pluggable-surface.md) — the decision record
-- [ADR 0007](../adr/0007-llm-synthesis-as-additive-ablation.md) — the parallel additive-ablation precedent
+- [ADR 0011](../adr/0011-llm-synthesis-as-additive-ablation.md) — the parallel additive-ablation precedent
 - [`rag_observability.py`](../rag_observability.py) — the backend registry
 - [`tests/test_observability_tracing.py`](../tests/test_observability_tracing.py) — fail-closed contract tests

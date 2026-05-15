@@ -7,7 +7,7 @@
 한국어 RFP / 나라장터 corpora에서는 이 사전 추출 단계가 외부 preprocessing
 종속성으로 남아 있어, native HWP parsing이 가능하다면 그 의존성을 제거할 수 있다.
 
-[`docs/visual-ingestion-v2.md`](../visual-ingestion-v2.md)의 "What this is NOT" 섹션은
+[`docs/visual-ingestion-v2.md`](../vision/visual-ingestion-v2.md)의 "What this is NOT" 섹션은
 이 한계를 명시적으로 라벨링하고 native HWP parser를 "후속 단계 항목"으로 남겨두었다.
 본 spike가 그 후속 단계의 첫 측정이다.
 
@@ -179,5 +179,5 @@ native 경로에서 `src`가 모두 `"hwp_native"`로 떨어지면 파싱 성공
 
 - 이슈: [#167](https://github.com/hskim-solv/BidMate-DocAgent/issues/167)
 - ADR: [0001 — preserve naive baseline](../adr/0001-preserve-naive-baseline.md)
-- 선행 문서: [visual-ingestion-v2.md](../visual-ingestion-v2.md) "What this is NOT" §
+- 선행 문서: [visual-ingestion-v2.md](../vision/visual-ingestion-v2.md) "What this is NOT" §
 - 후속 (HWPX 등): 별도 이슈
