@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import unittest
 
-from eval.synthetic_judge import judge_synthetic_summary
+from eval.judges.synthetic_judge import judge_synthetic_summary
 
 
 _AGGREGATE_REQUIRED_KEYS = {

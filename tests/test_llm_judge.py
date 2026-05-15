@@ -19,7 +19,7 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from eval.llm_judge import (
+from eval.judges.llm_judge import (
     DEFAULT_TOKEN_BUDGET,
     RAGAS_METRICS,
     judge_ragas,
@@ -233,7 +233,7 @@ class JudgeRagasCLITest(unittest.TestCase):
             result = subprocess.run(
                 [
                     sys.executable,
-                    "eval/llm_judge.py",
+                    "eval/judges/llm_judge.py",
                     "--eval-summary", str(eval_path),
                     "--output", str(out_path),
                     "--cache-dir", str(cache_dir),
@@ -269,7 +269,7 @@ class JudgeRagasCLITest(unittest.TestCase):
             result = subprocess.run(
                 [
                     sys.executable,
-                    "eval/llm_judge.py",
+                    "eval/judges/llm_judge.py",
                     "--eval-summary", str(eval_path),
                     "--output", str(out_path),
                     "--cache-dir", str(cache_dir),

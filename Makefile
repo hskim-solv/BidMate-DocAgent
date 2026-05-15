@@ -198,7 +198,7 @@ reproduce:
 # BIDMATE_JUDGE_* env vars for a paid judge call. Pass --fold-aggregate
 # to merge the judge_ragas block into reports/eval_summary.json.
 smoke-with-judge: smoke
-	$(PYTHON) eval/llm_judge.py --fold-aggregate
+	$(PYTHON) eval/judges/llm_judge.py --fold-aggregate
 	@echo "RAGAS scores written. Per-case verdicts in reports/eval_summary.judge.local.json (gitignored)."
 
 harness-smoke:
@@ -337,7 +337,7 @@ case-promote:
 # BIDMATE_JUDGE_* credentials for a live RAGAS-style signal. Writes a
 # committable aggregate and a git-ignored per-case file.
 synthetic-judge:
-	$(PYTHON) -m eval.synthetic_judge \
+	$(PYTHON) -m eval.judges.synthetic_judge \
 	  --summary reports/eval_summary.json \
 	  --aggregate reports/synthetic_judge.aggregate.json \
 	  --local reports/synthetic_judge.local.json

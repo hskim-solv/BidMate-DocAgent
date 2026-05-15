@@ -45,12 +45,12 @@ import sys
 from pathlib import Path
 from typing import Any, Callable
 
-ROOT_DIR = Path(__file__).resolve().parents[1]
+ROOT_DIR = Path(__file__).resolve().parents[2]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 from eval.bootstrap import bootstrap_ci  # noqa: E402
-from eval.judge_common import (  # noqa: E402
+from eval.judges.judge_common import (  # noqa: E402
     build_evidence_block,
     build_openai_client,
     call_openai_json,
@@ -123,7 +123,7 @@ def _stub_backend(_prompt: str) -> dict[str, Any]:
 def _openai_compatible_backend(prompt: str) -> dict[str, Any]:  # pragma: no cover - network
     """Generic OpenAI-compatible endpoint (Anthropic-Compat, OpenAI, vLLM, etc.).
 
-    Delegates client construction and JSON calling to :mod:`eval.judge_common`
+    Delegates client construction and JSON calling to :mod:`eval.judges.judge_common`
     so stub-mode tests have no SDK dependency.
     """
     client = build_openai_client()

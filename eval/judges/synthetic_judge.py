@@ -68,11 +68,11 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from eval.judge_common import (  # noqa: E402
+from eval.judges.judge_common import (  # noqa: E402
     EVIDENCE_BOUNDARY,
     JUDGE_STATUSES,
     build_evidence_block,
@@ -155,7 +155,7 @@ def _openai_compatible_backend(  # pragma: no cover - network
 ) -> dict[str, Any]:
     """Generic OpenAI-compatible endpoint.
 
-    Delegates client construction and JSON calling to :mod:`eval.judge_common`
+    Delegates client construction and JSON calling to :mod:`eval.judges.judge_common`
     so the stub-only path has no network / SDK dependency.  Returns an
     ``insufficient`` marker on JSON decode error (PR #218 fault tolerance).
     """
