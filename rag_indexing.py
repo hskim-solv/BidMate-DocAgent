@@ -91,6 +91,14 @@ def load_raw_documents(input_dir: Path) -> list[dict[str, Any]]:
     for path in files:
         if path.name.startswith("."):
             continue
+        # E2 OOD corpus (data/ood_synthetic_legal/, ADR 0046) writes
+        # ``manifest.json`` and ``README.md`` siblings recording corpus
+        # metadata. Neither is a document — skip both so ``build_index``
+        # treats the directory as exactly the contract files. RFP corpora
+        # under ``data/raw/`` ship neither file, so the existing path
+        # stays byte-identical (ADR 0001 invariant preserved).
+        if path.name in {"manifest.json", "README.md"}:
+            continue
         if path.suffix.lower() == ".json":
             data = json.loads(path.read_text(encoding="utf-8"))
             documents.append(normalize_json_document(data, path))
