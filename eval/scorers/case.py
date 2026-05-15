@@ -4,10 +4,12 @@ from __future__ import annotations
 from typing import Any
 
 from eval.scorers._shared import (
+    answer_payload,
     answer_to_text,
     canonical_query_type,
     contains_all_terms,
     hardcase_categories,
+    metadata_field,
     retry_trigger_reasons,
 )
 from eval.scorers.alignment import score_claim_citation_alignment
@@ -126,11 +128,23 @@ def score_case(
         chunk_metrics["rerank_delta_mrr"] = None
         chunk_metrics["rerank_delta_ndcg_at_10"] = None
 
+    answer_dict = answer_payload(prediction)
+    confidence_raw = answer_dict.get("confidence")
+    confidence: float | None
+    if isinstance(confidence_raw, (int, float)):
+        confidence = float(confidence_raw)
+        if not (0.0 <= confidence <= 1.0):
+            confidence = None
+    else:
+        confidence = None
+
     return {
         "id": case.get("id"),
         "query_type": query_type,
         "slice": query_type,
         "hardcase_categories": hardcase_categories(case),
+        "metadata_field": metadata_field(case),
+        "confidence": confidence,
         "query": case.get("query"),
         "answerable": answerable,
         "expected_doc_ids": sorted(expected_doc_ids),

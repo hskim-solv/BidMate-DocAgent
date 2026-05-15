@@ -11,6 +11,18 @@ from typing import Any
 
 QUERY_TYPE_ALIASES = {"multi_doc": "comparison"}
 
+METADATA_FIELD_KEYS = ("agency", "project", "budget", "deadline")
+
+
+def metadata_field(item: dict[str, Any]) -> str | None:
+    value = item.get("metadata_field")
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    return text if text in METADATA_FIELD_KEYS else None
+
 
 def hardcase_categories(item: dict[str, Any]) -> list[str]:
     categories = item.get("hardcase_categories") or item.get("hardcase_category") or []

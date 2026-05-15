@@ -31,6 +31,7 @@ from rag_core import (
 from eval.bootstrap import bootstrap_ci
 from eval.scorers import derive_gold_chunk_ids, score_case
 from eval.scorers._shared import (
+    METADATA_FIELD_KEYS,
     QUERY_TYPE_ALIASES,
     answer_status,
     canonical_query_type,
@@ -170,6 +171,14 @@ def load_config(path: Path) -> dict[str, Any]:
             categories = [categories]
         if not isinstance(categories, list):
             raise ValueError(f"Eval case hardcase_categories must be a list: {case.get('id')}")
+        metadata_field_value = case.get("metadata_field")
+        if metadata_field_value is not None:
+            text = str(metadata_field_value).strip()
+            if text and text not in METADATA_FIELD_KEYS:
+                raise ValueError(
+                    f"Eval case metadata_field must be one of {METADATA_FIELD_KEYS}: "
+                    f"{case.get('id')} (got {text!r})"
+                )
         citation_pages = case.get("expected_citation_pages") or []
         if not isinstance(citation_pages, list):
             raise ValueError(f"Eval case expected_citation_pages must be a list: {case.get('id')}")
@@ -402,6 +411,60 @@ def _abstention_outcomes(case_results: list[dict[str, Any]]) -> dict[str, int]:
     }
 
 
+def _calibration_correctness(result: dict[str, Any]) -> float | None:
+    if result.get("answerable") is False:
+        if result.get("abstention") is None:
+            return None
+        return float(result["abstention"] == 1.0)
+    if result.get("accuracy") is None:
+        return None
+    return float(result["accuracy"] == 1.0)
+
+
+def _abstention_calibration(case_results: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """ECE (10 fixed-width bins) + Brier score over (confidence, correctness) pairs.
+
+    Returns ``None`` when no case carries a numeric ``confidence`` in
+    ``[0, 1]``. ADR 0048 forward-compatibility: existing snapshots
+    without confidence emission render the block as ``null`` rather than
+    a misleading zeroed dict.
+    """
+    pairs: list[tuple[float, float]] = []
+    for result in case_results:
+        conf = result.get("confidence")
+        if not isinstance(conf, (int, float)):
+            continue
+        conf_f = float(conf)
+        if not (0.0 <= conf_f <= 1.0):
+            continue
+        correct = _calibration_correctness(result)
+        if correct is None:
+            continue
+        pairs.append((conf_f, correct))
+    if not pairs:
+        return None
+    num_bins = 10
+    bins: list[list[tuple[float, float]]] = [[] for _ in range(num_bins)]
+    for conf, correct in pairs:
+        idx = min(int(conf * num_bins), num_bins - 1)
+        bins[idx].append((conf, correct))
+    total = len(pairs)
+    ece = 0.0
+    for bucket in bins:
+        if not bucket:
+            continue
+        avg_conf = sum(c for c, _ in bucket) / len(bucket)
+        avg_acc = sum(corr for _, corr in bucket) / len(bucket)
+        ece += (len(bucket) / total) * abs(avg_acc - avg_conf)
+    brier = sum((c - corr) ** 2 for c, corr in pairs) / total
+    return {
+        "ece": ece,
+        "brier": brier,
+        "n": total,
+        "num_bins": num_bins,
+    }
+
+
 def metric_block(case_results: list[dict[str, Any]]) -> dict[str, Any]:
     accuracy_scores = [r["accuracy"] for r in case_results if r["accuracy"] is not None]
     groundedness_scores = [
@@ -434,6 +497,7 @@ def metric_block(case_results: list[dict[str, Any]]) -> dict[str, Any]:
     # failure modes. Counts only — no per-case text — so the aggregate
     # crosses the ADR 0005 commit boundary intact.
     abstention_outcomes = _abstention_outcomes(case_results)
+    abstention_calibration = _abstention_calibration(case_results)
     comparison_recall_scores = [
         r["comparison_target_recall"]
         for r in case_results
@@ -531,6 +595,7 @@ def metric_block(case_results: list[dict[str, Any]]) -> dict[str, Any]:
         "claim_citation_alignment": rate(claim_alignment_scores),
         "abstention": rate(abstention_scores),
         "abstention_outcomes": abstention_outcomes,
+        "abstention_calibration": abstention_calibration,
         "answer_format_compliance": rate(format_scores),
         "ci": ci_block,
         "latency": {
@@ -682,6 +747,16 @@ def summarize_run(
         summary["by_hardcase_category"] = {
             category: metric_block(hardcase_grouped[category])
             for category in sorted(hardcase_grouped)
+        }
+    metadata_field_grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for result in case_results:
+        field = result.get("metadata_field")
+        if field:
+            metadata_field_grouped[str(field)].append(result)
+    if metadata_field_grouped:
+        summary["by_metadata_field"] = {
+            field: metric_block(metadata_field_grouped[field])
+            for field in sorted(metadata_field_grouped)
         }
     format_grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for result in case_results:
