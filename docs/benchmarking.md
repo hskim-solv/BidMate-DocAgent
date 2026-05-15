@@ -52,7 +52,7 @@ python3 scripts/summarize_benchmark.py \
   --check
 ```
 
-요약 결과는 `benchmarks/registry.json`과 `docs/ablation-results.md`에 반영된다. 문서에는 2차 가공 결과와 집계 지표만 남기며, private RFP 기반 실험을 수행하더라도 원문이나 per-example output은 포함하지 않는다.
+요약 결과는 `benchmarks/registry.json`과 `docs/eval/ablation-results.md`에 반영된다. 문서에는 2차 가공 결과와 집계 지표만 남기며, private RFP 기반 실험을 수행하더라도 원문이나 per-example output은 포함하지 않는다.
 
 private 100-doc aggregate flow는 같은 스크립트를 사용하되, manifest의 `suite.dataset`에 `privacy`, `corpus_size`, `anonymized`, `comparison_group` 같은 commit-safe metadata만 둔다.
 

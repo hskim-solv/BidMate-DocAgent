@@ -59,7 +59,7 @@ ADR을 평가할 때 5 signal 모두 순서대로 거친다 — 어떤 signal에
 
 ## Signal 3 — 실패를 시스템적으로 다룬다
 
-**Verbatim** ([`docs/senior-positioning.md:86-96`](../../../../docs/senior-positioning.md)): 실패는 분류되고, 우선순위가 매겨지고, `tests/test_*_regression.py` regression gate로 잠긴다. `docs/real-data-failure-taxonomy.md`의 6 카테고리 + Decision Log entry로 회귀가 *다시* 발생하지 않게 잠금.
+**Verbatim** ([`docs/senior-positioning.md:86-96`](../../../../docs/senior-positioning.md)): 실패는 분류되고, 우선순위가 매겨지고, `tests/test_*_regression.py` regression gate로 잠긴다. `docs/real-data/real-data-failure-taxonomy.md`의 6 카테고리 + Decision Log entry로 회귀가 *다시* 발생하지 않게 잠금.
 
 **Probe**:
 - ADR이 특정 *실패 모드*에 응답하는가 (즉, "ADR이 *왜 지금* 필요한가"가 실패 경험에서 나오는가)?
@@ -126,7 +126,7 @@ ADR을 평가할 때 5 signal 모두 순서대로 거친다 — 어떤 signal에
 
 **false-positive 방지**:
 - 단순 `make` target 존재 — 그 target이 *결정적*이고 *공개 surface*에서 돌아야 yes. 비밀키 / 외부 API 필요하면 `partial`.
-- ADR이 운영 데모(`docs/api-demo.md`)만 정의 — 그건 playground지 measurement source가 아니다 → signal 5 = `no` 또는 `partial — 데모 surface, measurement source 아님`.
+- ADR이 운영 데모(`docs/operations/api-demo.md`)만 정의 — 그건 playground지 measurement source가 아니다 → signal 5 = `no` 또는 `partial — 데모 surface, measurement source 아님`.
 
 **Evidence 인용 우선순위**:
 1. `Makefile` (`make smoke`, `make reproduce`, `make ask`, `make demo` 등)

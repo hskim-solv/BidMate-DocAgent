@@ -4,7 +4,7 @@
 Builds the public synthetic index once per requested embedding model and
 runs the full ``eval/config.yaml`` ablation suite against each. Prints a
 side-by-side delta table reviewers can transcribe into
-``docs/embedding-ablation.md``.
+``docs/eval/embedding-ablation.md``.
 
 This is a measurement tool, not a CI gate. The CI path stays on the
 deterministic ``hashing`` backend for reproducibility; this runner is

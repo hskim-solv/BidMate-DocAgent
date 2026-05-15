@@ -61,7 +61,7 @@ Out of scope remains chunking redesign (#62) and confidentiality/reporting flow 
 
 ## Partial-topic grounding (issue #69)
 
-`docs/real-data-failure-taxonomy.md` C6 identified false abstention as
+`docs/real-data/real-data-failure-taxonomy.md` C6 identified false abstention as
 the highest-impact remaining failure on real corpora: 9 of 12 real100
 misses ended with `retry_trigger_reason: topic_not_grounded × 2` —
 both the strict and relaxed stages rejected the same weak-but-usable

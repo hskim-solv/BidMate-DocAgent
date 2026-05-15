@@ -1,7 +1,7 @@
 name: Leaderboard — append history + render (daily / on demand)
 
 # Issue #166: produce one history snapshot under reports/history/ and
-# re-render reports/leaderboard.md + docs/leaderboard.md (Jekyll page
+# re-render reports/leaderboard.md + docs/eval/leaderboard.md (Jekyll page
 # consumed by GitHub Pages).
 #
 # Aggregate-only by construction — the writer reuses extract_aggregate
@@ -75,7 +75,7 @@ jobs:
           GIT_COMMITTER_EMAIL: "github-actions[bot]@users.noreply.github.com"
         run: |
           set -eu
-          git add reports/history/ reports/leaderboard.md docs/leaderboard.md
+          git add reports/history/ reports/leaderboard.md docs/eval/leaderboard.md
           if git diff --staged --quiet; then
             echo "No leaderboard changes to commit."
             exit 0

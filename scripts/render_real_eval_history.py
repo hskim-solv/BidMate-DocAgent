@@ -3,7 +3,7 @@
 
 Reads all aggregate snapshots under `reports/real100/history/` and
 writes a chronological markdown table into
-`docs/private-100-doc-experiments.md` between the
+`docs/real-data/private-100-doc-experiments.md` between the
 ``<!-- real-eval-history-start -->`` /
 ``<!-- real-eval-history-end -->`` HTML comment markers.
 
@@ -39,7 +39,7 @@ from scripts._utils import render_history_table  # noqa: E402
 from scripts.run_real_eval_delta import extract_aggregate  # noqa: E402
 
 HISTORY_DIR = Path("reports/real100/history")
-DOC_PATH = Path("docs/private-100-doc-experiments.md")
+DOC_PATH = Path("docs/real-data/private-100-doc-experiments.md")
 MARKER_START = "<!-- real-eval-history-start -->"
 MARKER_END = "<!-- real-eval-history-end -->"
 

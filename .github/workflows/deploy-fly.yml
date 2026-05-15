@@ -2,7 +2,7 @@ name: Deploy demo to Fly.io
 
 # Issue #181 (Phase 3.6): every merge to main that touches a runtime path
 # re-deploys the live demo at https://bidmate-docagent-demo.fly.dev/.
-# Builds on PR #158 (fly.toml + Dockerfile + docs/deployment.md).
+# Builds on PR #158 (fly.toml + Dockerfile + docs/operations/deployment.md).
 #
 # Path filter ground truth: Dockerfile L36-41 (the COPY set). If you add a
 # new runtime file to the Dockerfile, also add it here — otherwise the live
@@ -116,7 +116,7 @@ jobs:
           fi
           marker="<!-- deploy-fly-bot -->"
           short_sha="${SHA:0:7}"
-          body="$(printf '%s\n\n🟢 **Live demo deployed**\n\n- URL: %s/\n- SHA: `%s`\n- Healthcheck: passed\n\nFirst request after idle wakes the machine — expect ~5-10s cold start. Rollback: `flyctl releases revert <version>` (see [docs/deployment.md](../blob/main/docs/deployment.md#rollback)).\n' \
+          body="$(printf '%s\n\n🟢 **Live demo deployed**\n\n- URL: %s/\n- SHA: `%s`\n- Healthcheck: passed\n\nFirst request after idle wakes the machine — expect ~5-10s cold start. Rollback: `flyctl releases revert <version>` (see [docs/operations/deployment.md](../blob/main/docs/operations/deployment.md#rollback)).\n' \
             "$marker" "$FLY_URL" "$short_sha")"
           for pr in $prs; do
             existing=$(gh api "repos/$REPO/issues/$pr/comments" \

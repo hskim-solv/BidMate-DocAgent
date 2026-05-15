@@ -136,7 +136,7 @@ The pattern parallels how `BIDMATE_EMBEDDING_BACKEND` and
   supply-chain hole; every adapter bump is a git diff.
 - The `full` pipeline delta is expected to be ~0 pp on the n=42 public
   synthetic surface (Phase 1.2 / ADR 0021 invariance: metadata-first
-  routing absorbs embedding variance). `docs/embedding-finetune.md`
+  routing absorbs embedding variance). `docs/eval/embedding-finetune.md`
   leads with the `naive_baseline_finetuned` delta [TBD — issue #179]
   and publishes the `full` null as a deliberate result, not an omission.
 - `MODEL_CACHE` uses a 3-tuple key `(model_name, local_only,
@@ -185,7 +185,7 @@ The pattern parallels how `BIDMATE_EMBEDDING_BACKEND` and
 - [`requirements-lora.txt`](../../requirements-lora.txt) — optional PEFT install path.
 - [`scripts/generate_finetune_pairs.py`](../../scripts/generate_finetune_pairs.py) — synthetic pair generation (issue #433).
 - `notebooks/embedding_finetune.ipynb` *(issue #435, not yet landed)* — training notebook.
-- `docs/embedding-finetune.md` *(issue #435, not yet landed)* — model card + measured results.
+- `docs/eval/embedding-finetune.md` *(issue #435, not yet landed)* — model card + measured results.
 - [`tests/test_finetuned_ablation_baseline_invariant.py`](../../tests/test_finetuned_ablation_baseline_invariant.py) — pins the byte-equality invariant.
 - [ADR 0019](./0019-embedding-default-stays-minilm.md) — re-open criteria for swapping the embedding default (NOT triggered by this ADR).
 - [ADR 0021](./0021-bge-m3-completes-phase-1-3.md) — Phase 1.3 closure (off-the-shelf measurement).

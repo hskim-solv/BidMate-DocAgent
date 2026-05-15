@@ -1,6 +1,6 @@
 """Behavioral guards for partial-topic grounding (issues #69 and #89).
 
-Covers two complementary expectations from ``docs/real-data-failure-taxonomy.md``
+Covers two complementary expectations from ``docs/real-data/real-data-failure-taxonomy.md``
 C6 ("false abstention"):
 
 * **Recovery** — when verification topics are only partially matched in

@@ -16,7 +16,7 @@
 
 - `eval/*.local.yaml`은 [`.gitignore`](../.gitignore)에 등록되어 있다. 절대 git에 커밋하지 않는다.
 - 파일 내용에는 발주기관명, 사업명, 공고 번호, 문서 원문 일부 등 민감정보가 포함될 수 있다. PR 본문, 이슈 코멘트, 스크린샷, 외부 채널에 그대로 붙여 넣지 않는다.
-- 평가 결과(`reports/real100/eval_summary.json`)도 같은 이유로 git 추적 대상이 아니다. 공유가 필요하면 sanitized 요약(`docs/real-data-failure-taxonomy.md`처럼 카테고리별 빈도 + sanitized 증상)으로 옮긴다.
+- 평가 결과(`reports/real100/eval_summary.json`)도 같은 이유로 git 추적 대상이 아니다. 공유가 필요하면 sanitized 요약(`docs/real-data/real-data-failure-taxonomy.md`처럼 카테고리별 빈도 + sanitized 증상)으로 옮긴다.
 - 공개 README의 성능 표는 실데이터 평가 결과로 갱신하지 않는다([이슈 #47 out-of-scope](real-data/real-data-failure-taxonomy.md)).
 
 ## 어디서 시작하나
@@ -96,7 +96,7 @@ PDF/HWP 인덱스의 한 사업에 대해 사업기간과 사업예산을 묻는
 
 - `query`는 사용자가 실제로 칠 만한 어순으로 둔다. 비교 질의면 `차이`/`비교`/`각각` 중 하나를 포함시키는 것이 좋다.
 - `expected_terms`에는 답변 텍스트에 반드시 들어가야 하는 핵심 토큰만 넣는다(금액 숫자, 일자, 명사구). 자유 문장 전체를 넣지 않는다.
-- `expected_citation_terms`는 인용 chunk 본문에 그대로 등장해야 하는 토큰이다. metadata-derived claim(예: 사업금액이 metadata에서만 나오는 경우)은 citation chunk에 그 숫자가 없을 수 있으므로 보수적으로 둔다(자세한 사례: [`docs/real-data-failure-taxonomy.md` C5](./real-data/real-data-failure-taxonomy.md#c5-인용-불일치약한-근거-빈도-412-impact-h-effort-s)).
+- `expected_citation_terms`는 인용 chunk 본문에 그대로 등장해야 하는 토큰이다. metadata-derived claim(예: 사업금액이 metadata에서만 나오는 경우)은 citation chunk에 그 숫자가 없을 수 있으므로 보수적으로 둔다(자세한 사례: [`docs/real-data/real-data-failure-taxonomy.md` C5](./real-data/real-data-failure-taxonomy.md#c5-인용-불일치약한-근거-빈도-412-impact-h-effort-s)).
 
 ### 후속 질의(follow_up) 변형
 
@@ -164,7 +164,7 @@ PDF/HWP 인덱스의 한 사업에 대해 사업기간과 사업예산을 묻는
      --index_dir data/index/real100 \
      --output_dir reports/real100
    ```
-4. `reports/real100/eval_summary.json`의 `by_query_type`과 `case_results`를 확인한다. 슬라이스별 빈도와 실패 패턴은 [`docs/real-data-failure-taxonomy.md`](./real-data/real-data-failure-taxonomy.md)와 동일한 분류 체계로 정리하면 트래킹이 쉽다.
+4. `reports/real100/eval_summary.json`의 `by_query_type`과 `case_results`를 확인한다. 슬라이스별 빈도와 실패 패턴은 [`docs/real-data/real-data-failure-taxonomy.md`](./real-data/real-data-failure-taxonomy.md)와 동일한 분류 체계로 정리하면 트래킹이 쉽다.
 
 ## 자주 막히는 지점
 

@@ -4,14 +4,14 @@
 - **Superseded by**: [ADR 0001](./0001-preserve-naive-baseline.md) § "Default-choice re-evaluation criteria"
 - **Date**: 2026-05-12
 - **Deciders**: hskim
-- **Related**: [ADR 0001](./0001-preserve-naive-baseline.md) (baseline preserved), [ADR 0002](./0002-metadata-first-retrieval.md) (metadata-first dominates), [ADR 0021](./0021-bge-m3-completes-phase-1-3.md) (Phase 1.3 supplement that closes condition 2), [`docs/embedding-ablation.md`](../embedding-ablation.md), issues #161 (Phase 1.2 runner) and #300 (this decision)
+- **Related**: [ADR 0001](./0001-preserve-naive-baseline.md) (baseline preserved), [ADR 0002](./0002-metadata-first-retrieval.md) (metadata-first dominates), [ADR 0021](./0021-bge-m3-completes-phase-1-3.md) (Phase 1.3 supplement that closes condition 2), [`docs/eval/embedding-ablation.md`](../eval/embedding-ablation.md), issues #161 (Phase 1.2 runner) and #300 (this decision)
 - **Update (Phase 1.3, issue #389, 2026-05-12)**: condition 1 fully met (`torch >= 2.6` pinned in `requirements.txt:8`, `huggingface-hub 0.36.2 < 1.0` already in place), condition 2 fully met for all four named candidates (BGE-M3 measurement closed the last gap), condition 3 **NOT triggered** for any candidate (the `0pp-on-full` pattern holds across all five measured embeddings). This ADR stays accepted; see [ADR 0021](./0021-bge-m3-completes-phase-1-3.md) for the supplement.
 - **Update (ADR 0032 routing-axis falsifier, issue #550, 2026-05-13)**: [ADR 0032](./0032-eval-saturation-routed-subset.md) added a complementary gate: "spread ≥ +3pp on routed (metadata-first-bypassed) subset." 5-embedding × routed-subset measurement (n=11, `eval/routed_config.yaml`) showed spread = **0.0pp** — `saturation_cross_validated`. Condition 3 **NOT triggered** on the routed axis either. MiniLM default lock is empirically justified beyond metadata-first masking. Aggregate published to `reports/embedding_routed.json`.
 - **Update (Phase 1.5, issue #447, 2026-05-14)**: [ADR 0037](./0037-kure-v1-closes-phase-1-5.md) delivered the formal `nlpai-lab/KURE-v1` measurement on the expanded n=100 public synthetic corpus. `full` pipeline: accuracy Δ = **−1.3pp**, groundedness Δ = **+0.0pp**. Condition 3 **NOT triggered**. `naive_baseline` lifts (+19.2pp accuracy) do not count. Issue #447 closed. Default lock holds across **six** measured embedding pivots.
 
 ## Context
 
-The README's Limitations list and `docs/embedding-ablation.md` both
+The README's Limitations list and `docs/eval/embedding-ablation.md` both
 flagged a half-finished decision: the embedding default is the 2019
 `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`. The
 first-cycle measurement (MiniLM vs `multilingual-e5-base`, n=42)
@@ -76,7 +76,7 @@ is potentially flipped) when **all four** of the following hold:
    an ablation per ADR 0001.)*
 4. A follow-up ADR (numbered 002x) is opened to document the
    replacement, with the candidate's measurement output appended to
-   `docs/embedding-ablation.md` Phase 1.2 section.
+   `docs/eval/embedding-ablation.md` Phase 1.2 section.
 
 If conditions 1–2 land but 3 doesn't (the 0pp pattern holds), this
 ADR stays accepted and the doc is updated with the measurement
@@ -101,7 +101,7 @@ Costs / honesty:
   not exist in this repo; a reviewer asking "why MiniLM in 2026?"
   gets the first-cycle evidence + ADR 0019's re-open conditions, not
   a second-cycle measurement. This is documented explicitly in
-  `docs/embedding-ablation.md`.
+  `docs/eval/embedding-ablation.md`.
 - The env upgrade work is now an unblocking dependency for a piece
   of measurement that is *not* on this PR's critical path. That work
   belongs to whoever has bandwidth for a requirements-pinning sweep.

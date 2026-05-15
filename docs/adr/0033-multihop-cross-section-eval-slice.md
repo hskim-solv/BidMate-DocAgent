@@ -122,7 +122,7 @@ alongside the dataset for reproducibility.
 | Spread ≥ +5pp only when combined with ADR 0032 routed surface | Both axes needed simultaneously | ADR 0019 re-open condition amended to require *both* surfaces |
 | Spread < 5pp on multi-hop slice (both routing modes) | System genuinely robust; saturation is not query-complexity-driven | ADR 0033 closes as `accepted` with negative result; single-hop surface declared sufficient for embedding comparison |
 
-All three outcomes are published in the `docs/embedding-ablation.md`
+All three outcomes are published in the `docs/eval/embedding-ablation.md`
 Phase 1.4 section regardless of direction. A negative result (spread
 < 5pp on multi-hop) is the most interpretable outcome — it confirms
 the 0pp finding is a real property of the architecture, not an
@@ -164,7 +164,7 @@ eval-design artifact.
   maintain (same maintenance pattern as `eval/routed_config.yaml`).
 - Measurement requires real embeddings (sentence-transformers), not
   CI hashing backend. Results are private-run artifacts published to
-  `docs/embedding-ablation.md` — same pattern as ADR 0021 Phase 1.3
+  `docs/eval/embedding-ablation.md` — same pattern as ADR 0021 Phase 1.3
   results.
 
 **Constraints (unchanged)**
@@ -225,7 +225,7 @@ eval-design artifact.
   infrastructure the quality-filter will reuse.
 - `eval/dev_queries_multihop_v1.jsonl` — dataset artifact (Phase 1.5: n=15 stubs).
 - `scripts/synthesize_multihop_queries.py` — follow-up PR script for real LLM synthesis.
-- `docs/embedding-ablation.md` — Phase 1.4 section; Phase 1.5 results to be appended
+- `docs/eval/embedding-ablation.md` — Phase 1.4 section; Phase 1.5 results to be appended
   after real synthesis replaces stubs.
 
 ## Phase 1.5 update (2026-05-14, closes #667)

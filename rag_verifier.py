@@ -65,10 +65,10 @@ from text_normalize import expand_forms, normalize_text
 # floor exists because a 1-of-2 incidental-overlap pattern flipped
 # intended-abstention real-data cases to `partial` after #69 (see
 # issue #89 and the Real-data Decision Log in
-# docs/private-100-doc-experiments.md). Genuine partial recovery
+# docs/real-data/private-100-doc-experiments.md). Genuine partial recovery
 # requires structural agreement across multiple topics. Keep both
 # guards: the fraction floor still rejects 2-of-5 = 0.4 etc.
-# See issue #69 / docs/real-data-failure-taxonomy.md C6, ADR 0004 for
+# See issue #69 / docs/real-data/real-data-failure-taxonomy.md C6, ADR 0004 for
 # the strict→relaxed staging policy this implements.
 PARTIAL_TOPIC_GROUNDING_MIN_FRACTION = 0.5
 PARTIAL_TOPIC_GROUNDING_MIN_MATCHED = 2

@@ -100,7 +100,7 @@ This skill writes to a **committed git file**. Privacy violations cannot be retr
 | 1 | 엔지니어링 디스플린 | ✓ / △ — <사유> / ✗ — <사유> | `PR #458`, `docs/engineering-governance.md` | <1-line, ≤80자> |
 | 2 | 아키텍처 결정 정합성 | ... | `ADR 0028`, `docs/adr/README.md` | ... |
 | 3 | 평가 견고성 (LLM Ops) | ... | `eval/config.yaml`, `reports/eval_summary.json` | ... |
-| 4 | 시장 가시성 | ... | `docs/portfolio-launch-checklist.md`, `docs/leaderboard.md` | ... |
+| 4 | 시장 가시성 | ... | `docs/portfolio-launch-checklist.md`, `docs/eval/leaderboard.md` | ... |
 
 ## 5축 진단 (Claude 협업)
 

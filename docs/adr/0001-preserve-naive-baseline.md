@@ -2,7 +2,7 @@
 
 - **Status**: accepted
 - **Date**: 2026-05-11
-- **Related**: [`CLAUDE.md`](../../CLAUDE.md), [`docs/ablation-results.md`](../ablation-results.md), [`eval/config.yaml`](../../eval/config.yaml)
+- **Related**: [`CLAUDE.md`](../../CLAUDE.md), [`docs/eval/ablation-results.md`](../eval/ablation-results.md), [`eval/config.yaml`](../../eval/config.yaml)
 
 ## Context
 

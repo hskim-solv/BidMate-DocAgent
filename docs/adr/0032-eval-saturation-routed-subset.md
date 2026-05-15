@@ -4,7 +4,7 @@
 - **Date**: 2026-05-13
 - **Closed**: 2026-05-13 (spread < +3pp → saturation cross-validated; see §Measurement Results)
 - **Deciders**: hskim
-- **Related**: [ADR 0001](./0001-preserve-naive-baseline.md) (baseline preserved), [ADR 0002](./0002-metadata-first-retrieval.md) (metadata-first dominates), [ADR 0019](./0019-embedding-default-stays-minilm.md) (embedding default deferral), [ADR 0021](./0021-bge-m3-completes-phase-1-3.md) (Phase 1.3 close-out), [ADR 0027](./0027-lora-finetuned-embedding-additive.md) (LoRA additive ablation that inherits 0019 re-open conditions), [`docs/embedding-ablation.md`](../embedding-ablation.md), [`reports/embedding_routed.json`](../../reports/embedding_routed.json), [PR #487](https://github.com/hskim-solv/BidMate-DocAgent/pull/487) §4.4-B2, issue #489, issue #531
+- **Related**: [ADR 0001](./0001-preserve-naive-baseline.md) (baseline preserved), [ADR 0002](./0002-metadata-first-retrieval.md) (metadata-first dominates), [ADR 0019](./0019-embedding-default-stays-minilm.md) (embedding default deferral), [ADR 0021](./0021-bge-m3-completes-phase-1-3.md) (Phase 1.3 close-out), [ADR 0027](./0027-lora-finetuned-embedding-additive.md) (LoRA additive ablation that inherits 0019 re-open conditions), [`docs/eval/embedding-ablation.md`](../eval/embedding-ablation.md), [`reports/embedding_routed.json`](../../reports/embedding_routed.json), [PR #487](https://github.com/hskim-solv/BidMate-DocAgent/pull/487) §4.4-B2, issue #489, issue #531
 
 ## Context
 
@@ -26,7 +26,7 @@
    - Metadata 키가 명시되지 않은 추론 질의 (예: "이 사업의 핵심 리스크는?" — 어떤 metadata column이 대응하는지 명확하지 않음)
 2. **신규 ablation preset** `agentic_full_routed`: 기존 `agentic_full`에서 `metadata_first: false` 강제. `naive_baseline` / `agentic_full` / `agentic_full_llm` 어디에도 영향 없음 (별도 preset 추가, ADR 0001/0011/0024 invariants 모두 보존).
 3. **측정 matrix**: 5 임베딩 (MiniLM-L12-v2, multilingual-e5-large-instruct, KoSimCSE-roberta-multitask, BGE-M3, KURE-v1) × `agentic_full_routed` × `routed_subset.jsonl`. 측정은 sentence-transformers backend로 로컬에서 (CI는 hashing backend 유지 — 골든 byte-identical 보존, ADR 0001 invariant).
-4. **결과 published**: `reports/embedding_routed_lift.md` 또는 [`docs/embedding-ablation.md`](../embedding-ablation.md) Phase 1.4 섹션에 5 rows 추가 (accuracy / groundedness / citation_precision + 95% CI).
+4. **결과 published**: `reports/embedding_routed_lift.md` 또는 [`docs/eval/embedding-ablation.md`](../eval/embedding-ablation.md) Phase 1.4 섹션에 5 rows 추가 (accuracy / groundedness / citation_precision + 95% CI).
 
 **Accept / reject 기준** (측정 후 자동 트리거):
 
@@ -45,7 +45,7 @@ Easier:
 
 Costs / honesty:
 
-- `routed_subset.jsonl`은 synthetic이므로 representativeness 한계. 진짜 long-tail RFP 케이스의 일부만 cover 가능 — measurement signal이 실제 production lift를 보장하지 않음. ADR 0005 (public synthetic vs private local) 분리 패턴 보존 — private 100-doc surface에서도 별도 측정 가능하면 그 결과는 [`docs/private-100-doc-experiments.md`](../private-100-doc-experiments.md)에 published.
+- `routed_subset.jsonl`은 synthetic이므로 representativeness 한계. 진짜 long-tail RFP 케이스의 일부만 cover 가능 — measurement signal이 실제 production lift를 보장하지 않음. ADR 0005 (public synthetic vs private local) 분리 패턴 보존 — private 100-doc surface에서도 별도 측정 가능하면 그 결과는 [`docs/real-data/private-100-doc-experiments.md`](../real-data/private-100-doc-experiments.md)에 published.
 - Sentence-transformers 측정은 CI에서 자동 reproducible하지 않음 (hashing backend 유지로 골든 보존). 5 임베딩 측정은 로컬 빌드 필요 (~30분 추정, ADR 0019의 env 업그레이드 조건 1이 충족되어야 BGE-M3 / e5-large-instruct 실행 가능). 측정 결과는 commit-pinned PR로 published.
 - ADR 0019 final이 spread < +3pp로 닫히면 ADR 0019 v2 + 본 ADR final이 "default lock empirically justified"로 강화되지만, *동시에 dense retrieval의 system-level 가치가 낮음을 인정*하는 톤. 그러나 ADR 0001 (naive baseline 보존)이 dense-only surface를 따로 잡고 있어 시스템 정합성 유지.
 
@@ -86,7 +86,7 @@ Costs / honesty:
 - [ADR 0021](./0021-bge-m3-completes-phase-1-3.md) — BGE-M3 결과로 0pp 패턴 확인된 직전 close-out. BGE-M3는 torch ≥ 2.6 blocker로 본 ADR 측정에서도 skip됨.
 - [ADR 0002](./0002-metadata-first-retrieval.md) — Metadata-first 정책. `agentic_full_routed`는 이 정책을 *측정용으로만* 우회하며 production path는 변경 없음.
 - [ADR 0027](./0027-lora-finetuned-embedding-additive.md) — LoRA adapter ablation이 routed_subset에서 lift를 보일 가능성. 본 ADR 측정 결과 현재 embedding 수준에서는 lift 없음 → LoRA가 실질적 개선의 첫 후보.
-- [`docs/embedding-ablation.md`](../embedding-ablation.md) — Phase 1.4 routed_subset 섹션에 본 측정 결과 추가됨.
+- [`docs/eval/embedding-ablation.md`](../eval/embedding-ablation.md) — Phase 1.4 routed_subset 섹션에 본 측정 결과 추가됨.
 - [`reports/embedding_routed.json`](../../reports/embedding_routed.json) — Machine-readable 측정 결과 (schema_version=1).
 - [PR #487](https://github.com/hskim-solv/BidMate-DocAgent/pull/487) §4.4-B2 — 본 ADR의 origin (외부 적대적 리뷰 메타비판).
 - Issue #531 — 5-embedding × routed measurement (Step 2). 본 ADR close-out으로 closes됨.

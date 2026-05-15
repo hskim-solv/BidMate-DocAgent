@@ -32,7 +32,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--manifest", required=True, help="Path to artifacts/benchmarks/<run_id>/run_manifest.json")
     parser.add_argument("--registry", default="benchmarks/registry.json")
-    parser.add_argument("--docs", default="docs/ablation-results.md")
+    parser.add_argument("--docs", default="docs/eval/ablation-results.md")
     parser.add_argument("--check", action="store_true", help="Fail if registry/docs are not up-to-date")
     return parser.parse_args()
 

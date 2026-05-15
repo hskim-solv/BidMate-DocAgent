@@ -2,7 +2,7 @@
 
 - **Status**: accepted
 - **Date**: 2026-05-11
-- **Related**: [`rag_verifier.py`](../../rag_verifier.py) (`verify_evidence` + partial-topic grounding policy, extracted from `rag_core.py:L1843/L2053` in PR-J1 / issue #465), [`docs/verifier-rules.md`](../verifier-rules.md) (strict → relaxed staging expressed as pseudo-prompts; LLM-migration counter-checks), [`docs/real-data-failure-taxonomy.md`](../real-data-failure-taxonomy.md), [`docs/grounding-eval-hardening.md`](../grounding-eval-hardening.md)
+- **Related**: [`rag_verifier.py`](../../rag_verifier.py) (`verify_evidence` + partial-topic grounding policy, extracted from `rag_core.py:L1843/L2053` in PR-J1 / issue #465), [`docs/agentic/verifier-rules.md`](../agentic/verifier-rules.md) (strict → relaxed staging expressed as pseudo-prompts; LLM-migration counter-checks), [`docs/real-data/real-data-failure-taxonomy.md`](../real-data/real-data-failure-taxonomy.md), [`docs/eval/grounding-eval-hardening.md`](../eval/grounding-eval-hardening.md)
 
 ## Context
 
@@ -12,7 +12,7 @@ trusts the first retrieval pass produces confident-sounding but
 weakly-grounded answers, which is the failure mode this project most
 wants to avoid. The opposite extreme — refusing to answer whenever
 evidence is imperfect — produces excessive false abstention, which
-`docs/real-data-failure-taxonomy.md` C6 identified as the dominant
+`docs/real-data/real-data-failure-taxonomy.md` C6 identified as the dominant
 remaining failure on real corpora.
 
 There needs to be a structured way to ask *"is this evidence good

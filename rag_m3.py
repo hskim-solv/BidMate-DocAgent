@@ -18,7 +18,7 @@ synthetic CI (``EMBEDDING_BACKEND=hashing``) never installs it, and
 absence raises a clear ``RuntimeError`` only when the user actually opts
 into ``retrieval_backend = "m3"``.
 
-See ``docs/m3-multichannel-spike.md`` for the measurement methodology and
+See ``docs/vision/m3-multichannel-spike.md`` for the measurement methodology and
 ADR 0010's "Alternatives considered" (lines 72-85) for why the channel
 extraction was deferred to its own ablation.
 """
@@ -165,7 +165,7 @@ def compute_m3_index_cache(
     an index. The result is attached to the index dict under
     ``_m3_cache`` (underscore-prefix convention, matching
     ``_vector_store``). Nothing is persisted to disk for this spike —
-    see ``docs/m3-multichannel-spike.md`` decision rule.
+    see ``docs/vision/m3-multichannel-spike.md`` decision rule.
     """
     texts = [str(c.get("text") or "") for c in chunks]
     return encoder.encode(texts)

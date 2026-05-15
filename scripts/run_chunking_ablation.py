@@ -5,7 +5,7 @@ Builds the public synthetic index three times — once per
 `chunking_strategy` (fixed / section / auto) — and runs the
 `chunk_boundary` probe queries from `eval/config.yaml` against each.
 Prints an aggregate table reviewers can transcribe into the
-`docs/chunking-diagnostics.md` ablation section.
+`docs/retrieval/chunking-diagnostics.md` ablation section.
 
 This is a measurement tool, not a one-shot CI gate. It does not
 change defaults; the smoke pipeline still uses the CLI default

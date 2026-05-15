@@ -7,7 +7,7 @@
 
 ## Context
 
-`reports/leaderboard.md` and `docs/leaderboard.md` chart the time series of headline metrics across commits to `main`. The renderer at `scripts/leaderboard.py:67-98` reads `reports/history/*.aggregate.json` and surfaces a single set of metrics per snapshot.
+`reports/leaderboard.md` and `docs/eval/leaderboard.md` chart the time series of headline metrics across commits to `main`. The renderer at `scripts/leaderboard.py:67-98` reads `reports/history/*.aggregate.json` and surfaces a single set of metrics per snapshot.
 
 By construction (`scripts/write_synthetic_history.py:42`), each snapshot carries only the **primary run** — currently `naive_baseline` (per `eval/config.yaml` L4). ADR 0001 intentionally preserves `naive_baseline` as the ablation floor, and its metrics are bit-deterministic on the `hashing` backend. The five most recent main commits (`bb494…a7006`) all rendered identical headline values, which is exactly the property ADR 0001 guarantees.
 
@@ -53,4 +53,4 @@ Mechanism:
 - **Replace `naive_baseline` as the primary run with `agentic_full`**. Would tear up ADR 0001's deliberate baseline-preservation invariant; baseline regressions would be invisible in the headline. Rejected outright — ADR 0001 is the load-bearing constraint here.
 - **Separate `reports/leaderboard_full.md` file + a second Jekyll page**. Doubles the maintenance surface (two CI checks, two pages, two render functions) for a story that wants the two series side-by-side. Rejected for cohesion.
 - **Render only the latest `agentic_full` row (single point, not a time series)**. Loses the time-series story that is the whole point of the leaderboard. Rejected.
-- **Wait for a separate "decision log" surface to host the agentic story**. Already exists in `docs/private-100-doc-experiments.md` for the real-data eval; the synthetic leaderboard is the public surface and needs its own equivalent. Rejected.
+- **Wait for a separate "decision log" surface to host the agentic story**. Already exists in `docs/real-data/private-100-doc-experiments.md` for the real-data eval; the synthetic leaderboard is the public surface and needs its own equivalent. Rejected.

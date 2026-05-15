@@ -8,7 +8,7 @@
   [ADR 0019](./0019-embedding-default-stays-minilm.md) (deferral),
   [ADR 0021](./0021-bge-m3-completes-phase-1-3.md) (Phase 1.3 supplement),
   [ADR 0032](./0032-eval-saturation-routed-subset.md) (Phase 1.4 routed falsifier),
-  [`docs/embedding-ablation.md`](../embedding-ablation.md) Phase 1.5, issue #447
+  [`docs/eval/embedding-ablation.md`](../eval/embedding-ablation.md) Phase 1.5, issue #447
 
 ## Context
 
@@ -121,11 +121,11 @@ pipeline absorbs the lift via metadata-first routing (ADR 0002).
   affected. The `m3_full` row is skipped on machines with `torch < 2.6`; it ran
   correctly on machines with `torch >= 2.6` before.
 - Issue #447 closes once this ADR + the Phase 1.5 section of
-  `docs/embedding-ablation.md` land.
+  `docs/eval/embedding-ablation.md` land.
 
 ## See also
 
-- [`docs/embedding-ablation.md`](../embedding-ablation.md) Phase 1.5 — full results
+- [`docs/eval/embedding-ablation.md`](../eval/embedding-ablation.md) Phase 1.5 — full results
   and reading guide.
 - [ADR 0001](./0001-preserve-naive-baseline.md) — why `naive_baseline` lifts do not
   trigger a default change.

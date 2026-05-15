@@ -6,7 +6,7 @@ table candidates, pytesseract for OCR fallback when the text layer is sparse
 or the input is an image. It does NOT use layout-aware vision foundation
 models (LayoutLMv3 / Donut / ColPali / Nougat / pix2struct); a 1-page
 comparison spike against such a model is a separate, planned path. HWP is
-also not parsed natively here — see ``docs/visual-ingestion-v2.md`` for the
+also not parsed natively here — see ``docs/vision/visual-ingestion-v2.md`` for the
 CSV-text fallback rationale.
 
 The parser emits structured artifacts with page/block/region metadata and

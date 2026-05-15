@@ -9,7 +9,7 @@ the visual-v2 stack.
 This is a measurement harness, not a pipeline component. The default HWP
 ingestion path (CSV ``텍스트`` column, ADR 0001) is unchanged. Outputs go to
 ``outputs/hwp_extraction_comparison.json`` (gitignored) and feed
-``docs/hwp-extraction-comparison.md``'s 결과 table.
+``docs/hwp/hwp-extraction-comparison.md``'s 결과 table.
 
 The script is import-safe and ``--help``-safe without either tool installed;
 missing tools are reported per-file as ``skipped`` with a reason, never raised.
