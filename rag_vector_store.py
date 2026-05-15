@@ -77,6 +77,28 @@ class VectorStore(Protocol):
         self, qvec: np.ndarray, top_k: int
     ) -> list[tuple[int, float]]: ...
 
+    def query_by_indices(
+        self, qvec: np.ndarray, indices: list[int]
+    ) -> list[tuple[int, float]]:
+        """Score the requested indices against ``qvec``; preserve order.
+
+        Issue #795 — RAG senior-review critique #3. The retrieval loop
+        previously called ``query(top_k=len(self))`` to build a full
+        ``raw_cosine_by_idx`` map even when the metadata filter had
+        narrowed candidates to a small subset. ``query_by_indices``
+        lets the loop fetch dense scores for **only** the surfaced
+        candidate indices, restoring the cost benefit of a filtered
+        retrieval path.
+
+        Returns ``(idx, score)`` pairs in the SAME order as
+        ``indices`` (callers build a per-index dict). Out-of-range
+        indices raise ``IndexError`` to surface index/chunk drift at
+        the failing call site rather than silently producing zero
+        scores (mirrors the critique #4 ``dense_similarity`` change
+        from issue #784).
+        """
+        ...
+
     def persist(self, output_dir: Path) -> None: ...
 
 
@@ -126,6 +148,28 @@ class InMemoryVectorStore:
             partition = np.argpartition(-scores, k - 1)[:k]
             order = partition[np.argsort(-scores[partition], kind="stable")]
         return [(int(i), float(scores[i])) for i in order]
+
+    def query_by_indices(
+        self, qvec: np.ndarray, indices: list[int]
+    ) -> list[tuple[int, float]]:
+        # Issue #795 — see Protocol docstring. Local matrix slice +
+        # dot product is the cheapest scoring path; identical to a
+        # per-index loop of ``get(idx)`` + cosine, just vectorized.
+        if not indices:
+            return []
+        qvec_f32 = np.asarray(qvec, dtype=np.float32)
+        if qvec_f32.shape[-1] != self.dimension:
+            raise ValueError(
+                f"Query vector dim {qvec_f32.shape[-1]} does not match "
+                f"index dim {self.dimension}."
+            )
+        # IndexError surfaces drift instead of silent zero scores —
+        # the chunk's ``embedding_idx`` was supposed to point into
+        # this matrix.
+        idx_array = np.asarray(indices, dtype=np.int64)
+        rows = self.vectors[idx_array]
+        scores = rows @ qvec_f32
+        return [(int(i), float(s)) for i, s in zip(indices, scores)]
 
     def persist(self, output_dir: Path) -> None:
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -190,6 +234,30 @@ class QdrantVectorStore:
             limit=top_k,
         )
         return [(int(p.id), float(p.score)) for p in response.points]
+
+    def query_by_indices(
+        self, qvec: np.ndarray, indices: list[int]
+    ) -> list[tuple[int, float]]:
+        # Issue #795 — see Protocol docstring. Qdrant's value-add is
+        # the search path (server-side top-K); for "score these N
+        # specific points against this vector" the matrix dot is
+        # both faster (no round-trip) and bit-identical to the
+        # in-memory backend (the dataclass owns the same matrix as
+        # the source of truth — see ``_build_qdrant_store``). This
+        # keeps the in-memory ↔ Qdrant ranking parity guarantee
+        # asserted by ``test_qdrant_query_matches_in_memory_top_k_ranking``.
+        if not indices:
+            return []
+        qvec_f32 = np.asarray(qvec, dtype=np.float32)
+        if qvec_f32.shape[-1] != self.dimension:
+            raise ValueError(
+                f"Query vector dim {qvec_f32.shape[-1]} does not match "
+                f"index dim {self.dimension}."
+            )
+        idx_array = np.asarray(indices, dtype=np.int64)
+        rows = self.vectors[idx_array]
+        scores = rows @ qvec_f32
+        return [(int(i), float(s)) for i, s in zip(indices, scores)]
 
     def persist(self, output_dir: Path) -> None:
         output_dir.mkdir(parents=True, exist_ok=True)
