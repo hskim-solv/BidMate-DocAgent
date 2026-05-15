@@ -32,22 +32,47 @@ ALLOWED_PATTERNS=(
 )
 
 # Guard: ADR file deletion/rename (CLAUDE.md Prohibited).
-# ADR files must not be deleted or renamed — mark Superseded in Status block
-# and keep the file. This is the first line of defence; the CI workflow
-# branch-and-issue-check.yml is the backup gate that catches --no-verify bypasses.
-adr_dr=$(git diff --cached --name-status --diff-filter=DR -- 'docs/adr/*.md' 2>/dev/null || true)
-if [[ -n "$adr_dr" ]]; then
-  cat >&2 <<'EOFERR'
+# ADR files that already live on origin/main must not be deleted or renamed —
+# mark Superseded in Status block and keep the file. In-PR draft renames
+# (a renumber before the ADR has ever been merged) are allowed since they
+# cannot affect the project record. Issue #817 surfaced this: ADR 0046
+# drafted on PR #820 had to renumber to 0047 mid-flight when PR #824 raced
+# in and shipped a different 0046 first — the original hook blocked the
+# legitimate fix and forced manual intervention.
+#
+# This is the first line of defence; branch-and-issue-check.yml is the
+# backup gate that catches --no-verify bypasses on merged-ADR deletions.
+adr_dr_raw=$(git diff --cached --name-status --diff-filter=DR -- 'docs/adr/*.md' 2>/dev/null || true)
+if [[ -n "$adr_dr_raw" ]]; then
+  # For each rename/delete, only block when the OLD path existed on
+  # origin/main (the merged-ADR protection scope). When origin/main is
+  # unreachable (offline / fresh clone before fetch), fall back to
+  # blocking everything so the conservative direction wins.
+  blocked=""
+  while IFS=$'\t' read -r flag p1 p2; do
+    [[ -z "$flag" ]] && continue
+    old="$p1"  # D: only path; R*: old path is the first
+    if git rev-parse --verify --quiet origin/main >/dev/null 2>&1; then
+      if git cat-file -e "origin/main:$old" 2>/dev/null; then
+        blocked+="$flag"$'\t'"$old"$'\n'
+      fi
+    else
+      blocked+="$flag"$'\t'"$old"$'\n'  # offline fallback: block
+    fi
+  done <<< "$adr_dr_raw"
 
-❌ Pre-commit hook blocked: ADR files may not be deleted or renamed.
+  if [[ -n "$blocked" ]]; then
+    cat >&2 <<'EOFERR'
+
+❌ Pre-commit hook blocked: a merged ADR file is being deleted or renamed.
 
    CLAUDE.md Prohibited: "Deleting or renaming ADR files. Mark Superseded
    in the Status block; keep the file."
 
-   Affected files:
+   Affected files (existed on origin/main):
 EOFERR
-  echo "$adr_dr" | sed 's/^/     /' >&2
-  cat >&2 <<'EOFERR'
+    echo -n "$blocked" | sed 's/^/     /' >&2
+    cat >&2 <<'EOFERR'
 
    To fix: restore the file and add "Status: Superseded by ADR XXXX"
    to its header instead of deleting it.
@@ -55,7 +80,8 @@ EOFERR
        git restore --staged <file>
 
 EOFERR
-  exit 1
+    exit 1
+  fi
 fi
 
 # Guard: ADR number collision (issue #757 — A2 fix from governance self-audit).
