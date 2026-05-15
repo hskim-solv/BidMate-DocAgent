@@ -58,6 +58,24 @@ EOFERR
   exit 1
 fi
 
+# Guard: ADR number collision (issue #757 — A2 fix from governance self-audit).
+# Catches the "two ADR files sharing the same NNNN prefix" failure mode that
+# concurrent worktrees + manual `Reserve ADR numbers up front` (CLAUDE.md)
+# has repeatedly produced (0022→0023, 0023→0025, 0029→0030; live PR #740
+# collision on 0044 caught 2026-05-15). Fires only when this commit adds
+# new ADR file(s); reads filesystem so it catches duplicates that any
+# previous commit / merge brought in too.
+#
+# Bypass with --no-verify only mid-merge; open a follow-up issue to fix.
+adr_added=$(git diff --cached --name-only --diff-filter=A -- 'docs/adr/[0-9]*.md' 2>/dev/null || true)
+if [[ -n "$adr_added" ]]; then
+  collision_out=$(python3 scripts/_governance.py --check-adr-collision 2>&1)
+  if [[ $? -ne 0 ]]; then
+    echo "$collision_out" >&2
+    exit 1
+  fi
+fi
+
 staged=$(git diff --cached --name-only --diff-filter=ACMR 2>/dev/null || true)
 
 if [[ -z "$staged" ]]; then

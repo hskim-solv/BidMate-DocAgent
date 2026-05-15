@@ -23,7 +23,9 @@ Exit codes:
 from __future__ import annotations
 
 import argparse
+import re
 import sys
+from pathlib import Path
 
 
 # Canonical load-bearing path list. The order is not significant; add
@@ -72,6 +74,115 @@ def is_load_bearing(path: str) -> bool:
     return False
 
 
+# ---------------------------------------------------------------------------
+# ADR number reservation (issue #757 — A2 fix from governance self-audit).
+#
+# CLAUDE.md `Reserve ADR numbers up front` rule was manual + repeatedly
+# broken under concurrent worktree work (collisions 0022→0023, 0023→0025,
+# 0029→0030; live collision on 0044 caught 2026-05-15). These helpers and
+# the pre-commit hook that calls them make the rule mechanical.
+#
+# Scope deliberately small:
+#   - Filesystem scan only (no `gh pr list` — keeps the hook offline-safe).
+#   - Catches duplicate `NNNN-*.md` in the same worktree, which is the
+#     concrete failure mode after a merge from another branch that also
+#     added an ADR with the same number.
+#   - Cross-worktree / open-PR collisions still need manual `gh pr list
+#     --search "ADR" --state open` before drafting, per CLAUDE.md.
+# ---------------------------------------------------------------------------
+
+ADR_DIR_DEFAULT = "docs/adr"
+ADR_FILENAME_RE = re.compile(r"^(\d{4})-[a-z0-9][a-z0-9-]*\.md$")
+
+
+def existing_adr_numbers(adr_dir: str | Path = ADR_DIR_DEFAULT) -> set[int]:
+    """Return ADR numbers found as `NNNN-slug.md` files in `adr_dir`.
+
+    Ignores `README.md`, `_template.md`, and any file not matching the
+    canonical `NNNN-slug.md` pattern. Returns an empty set if the
+    directory is missing — callers decide whether that's an error.
+    """
+    p = Path(adr_dir)
+    if not p.is_dir():
+        return set()
+    found: set[int] = set()
+    for entry in p.iterdir():
+        if not entry.is_file():
+            continue
+        m = ADR_FILENAME_RE.match(entry.name)
+        if m:
+            found.add(int(m.group(1)))
+    return found
+
+
+def next_adr_number(adr_dir: str | Path = ADR_DIR_DEFAULT) -> int:
+    """Return the next available ADR number (max existing + 1, or 1 if empty).
+
+    Filesystem-only — does NOT inspect open PRs in concurrent worktrees.
+    Per CLAUDE.md `Reserve ADR numbers up front`, also run
+    `gh pr list --search "ADR" --state open` before drafting.
+    """
+    nums = existing_adr_numbers(adr_dir)
+    if not nums:
+        return 1
+    return max(nums) + 1
+
+
+def find_duplicate_adr_numbers(
+    adr_dir: str | Path = ADR_DIR_DEFAULT,
+) -> dict[int, list[str]]:
+    """Return ``{number: [filenames…]}`` for ADR numbers used by 2+ files.
+
+    Empty dict means no collisions. Used by the pre-commit hook to fail
+    fast when a merge or concurrent worktree drop produced two ADRs with
+    the same NNNN prefix.
+    """
+    p = Path(adr_dir)
+    if not p.is_dir():
+        return {}
+    by_num: dict[int, list[str]] = {}
+    for entry in p.iterdir():
+        if not entry.is_file():
+            continue
+        m = ADR_FILENAME_RE.match(entry.name)
+        if m:
+            num = int(m.group(1))
+            by_num.setdefault(num, []).append(entry.name)
+    return {n: sorted(names) for n, names in by_num.items() if len(names) > 1}
+
+
+def _cmd_next_adr_number(adr_dir: str) -> int:
+    sys.stdout.write(f"{next_adr_number(adr_dir):04d}\n")
+    return 0
+
+
+def _cmd_check_adr_collision(adr_dir: str) -> int:
+    dups = find_duplicate_adr_numbers(adr_dir)
+    if not dups:
+        return 0
+    sys.stderr.write(
+        "\n❌ ADR number collision detected in "
+        f"{adr_dir}:\n\n"
+    )
+    for num, names in sorted(dups.items()):
+        sys.stderr.write(f"     ADR {num:04d}:\n")
+        for name in names:
+            sys.stderr.write(f"       - {name}\n")
+    next_n = next_adr_number(adr_dir)
+    sys.stderr.write(
+        "\n   Resolve by renumbering one of the colliding files to the\n"
+        f"   next available number (suggested: {next_n:04d}). Then update\n"
+        "   the body, related ADRs, and docs/adr/README.md Index entry.\n\n"
+        "   Use:\n"
+        "       python scripts/_governance.py --next-adr-number\n\n"
+        "   This collision is exactly the failure mode CLAUDE.md\n"
+        "   `Reserve ADR numbers up front` warned about. Issue #757\n"
+        "   added this hook so the rule survives without manual\n"
+        "   discipline.\n\n"
+    )
+    return 1
+
+
 def _cmd_is_load_bearing(path: str) -> int:
     return 0 if is_load_bearing(path) else 1
 
@@ -114,6 +225,21 @@ def main() -> int:
         "--list", action="store_true",
         help="Print the canonical load-bearing list, one per line.",
     )
+    g.add_argument(
+        "--next-adr-number", action="store_true",
+        help="Print the next available ADR number (filesystem-only; "
+             "still cross-check `gh pr list --search ADR --state open`).",
+    )
+    g.add_argument(
+        "--check-adr-collision", action="store_true",
+        help="Scan docs/adr/ for two files sharing the same NNNN prefix; "
+             "exit 1 with details if any collision is found.",
+    )
+    p.add_argument(
+        "--adr-dir", default=ADR_DIR_DEFAULT,
+        help=f"ADR directory (default: {ADR_DIR_DEFAULT}). "
+             "Only used by --next-adr-number / --check-adr-collision.",
+    )
     args = p.parse_args()
 
     if args.is_load_bearing is not None:
@@ -122,6 +248,10 @@ def main() -> int:
         return _cmd_any_match()
     if args.list:
         return _cmd_list()
+    if args.next_adr_number:
+        return _cmd_next_adr_number(args.adr_dir)
+    if args.check_adr_collision:
+        return _cmd_check_adr_collision(args.adr_dir)
     return 2
 
 
