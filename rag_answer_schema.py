@@ -40,3 +40,47 @@ ANSWER_STATUS_PARTIAL = "partial"
 ANSWER_STATUS_INSUFFICIENT = "insufficient"
 
 ANSWER_SCHEMA_VERSION = 2
+
+# Reason codes that ``answer["status_reason"]["code"]`` may take. Issue
+# #759 (RAG senior-review critique #2) promotes the four string literals
+# previously inlined in :func:`rag_answer.answer_status_reason` to
+# canonical constants, then gates the function with
+# :data:`KNOWN_ANSWER_STATUS_REASON_CODES` so an unknown override
+# raises :class:`ValueError` instead of silently flowing into the
+# downstream synthetic judge / eval scorer / dashboard layer.
+#
+# Mapping from ``answer["status"]`` to default code (no override path):
+#   - ``ANSWER_STATUS_SUPPORTED``     → ``ANSWER_STATUS_REASON_VERIFIED``
+#   - ``ANSWER_STATUS_PARTIAL``       → ``ANSWER_STATUS_REASON_PARTIAL_TOPIC_GROUNDING``
+#                                       (when ``PARTIAL_TOPIC_GROUNDING_REASON``
+#                                       is in verification_reasons; ADR 0004)
+#                                     → ``ANSWER_STATUS_REASON_PARTIAL_COMPARISON``
+#                                       (otherwise — comparison-coverage path)
+#   - ``ANSWER_STATUS_INSUFFICIENT``  → ``ANSWER_STATUS_REASON_INSUFFICIENT_EVIDENCE``
+#
+# Two additional codes are reachable via the ``code=`` override that
+# the clarification surface (rag_clarification) uses to disambiguate
+# the *reason* a query was abstained from. Both pair with
+# ``ANSWER_STATUS_INSUFFICIENT`` because clarification is a refusal-
+# to-answer path that needs more user input:
+#   - ``ANSWER_STATUS_REASON_CONTEXT_CLARIFICATION`` — the follow-up
+#     query references prior context that has not been resolved
+#     (rag_clarification.context_clarification_answer).
+#   - ``ANSWER_STATUS_REASON_METADATA_AMBIGUITY_CLARIFICATION`` —
+#     metadata-first matched multiple candidate documents
+#     (rag_clarification.metadata_ambiguity_clarification_answer).
+ANSWER_STATUS_REASON_VERIFIED = "verified"
+ANSWER_STATUS_REASON_PARTIAL_TOPIC_GROUNDING = "partial_topic_grounding"
+ANSWER_STATUS_REASON_PARTIAL_COMPARISON = "partial_comparison"
+ANSWER_STATUS_REASON_INSUFFICIENT_EVIDENCE = "insufficient_evidence"
+ANSWER_STATUS_REASON_CONTEXT_CLARIFICATION = "context_clarification"
+ANSWER_STATUS_REASON_METADATA_AMBIGUITY_CLARIFICATION = "metadata_ambiguity_clarification"
+
+KNOWN_ANSWER_STATUS_REASON_CODES: frozenset[str] = frozenset({
+    ANSWER_STATUS_REASON_VERIFIED,
+    ANSWER_STATUS_REASON_PARTIAL_TOPIC_GROUNDING,
+    ANSWER_STATUS_REASON_PARTIAL_COMPARISON,
+    ANSWER_STATUS_REASON_INSUFFICIENT_EVIDENCE,
+    ANSWER_STATUS_REASON_CONTEXT_CLARIFICATION,
+    ANSWER_STATUS_REASON_METADATA_AMBIGUITY_CLARIFICATION,
+})
