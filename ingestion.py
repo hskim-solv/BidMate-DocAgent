@@ -213,9 +213,18 @@ def _hwp_native_fallback_exceptions() -> tuple[type[BaseException], ...]:
     ``InvalidOleStorageError``) when ``hwp5`` is installed. Built lazily so
     the handler is still well-formed when ``hwp5`` is absent (CI case),
     where ``_extract_hwp_native`` raises ``ImportError`` and falls back.
+
+    ``AttributeError`` is included (issue #785) because pyhwp's public API
+    changes across point releases — e.g. the 0.1b15 ``Sections`` object
+    exposes a ``sections`` list attribute rather than the ``section_list()``
+    method our extractor was written against. Without this entry, a single
+    API-drift document aborted the entire build rather than falling back
+    gracefully; with it, the failure is recorded in
+    ``ingestion_report.json.fallback_reasons`` and the build proceeds.
     """
     base: tuple[type[BaseException], ...] = (
         ImportError,
+        AttributeError,
         OSError,
         RuntimeError,
         ValueError,
