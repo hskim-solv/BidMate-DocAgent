@@ -29,6 +29,14 @@ docs/adr/
 - `NNNN` is a 4-digit zero-padded sequence, e.g. `0001`, `0023`.
 - Numbers are **never reused or renumbered**, even if an ADR is later
   superseded. Continuity matters more than tidiness.
+- **Reserve the next number with the CLI before drafting**:
+  `python scripts/_governance.py --next-adr-number`.
+  The pre-commit hook ([`.githooks/pre-commit`](../../.githooks/pre-commit))
+  refuses to commit when two ADR files share the same `NNNN` prefix
+  (issue [#757](https://github.com/hskim-solv/BidMate-DocAgent/issues/757)),
+  but it cannot see open PRs in concurrent worktrees — also run
+  `gh pr list --search "ADR" --state open` per CLAUDE.md
+  `Reserve ADR numbers up front`.
 - `slug` is short, kebab-case, and stable. Pick a name you will not
   want to rename later (e.g. `metadata-first-retrieval`, not
   `retrieval-changes-v2`).
