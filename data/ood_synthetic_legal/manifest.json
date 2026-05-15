@@ -1,0 +1,12 @@
+{
+  "count": 50,
+  "by_category": {
+    "service_tos": 10,
+    "nda": 10,
+    "consortium": 10,
+    "data_processing": 10,
+    "sla": 10
+  },
+  "seed": 20260515,
+  "schema_compat": "data/raw/*.json (BidMate ingestion v1)"
+}
