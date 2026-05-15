@@ -187,6 +187,13 @@ from rag_embedding import (
     huggingface_offline,
     sentence_transformer_cache_available,
 )
+# Re-declare the MODEL_CACHE type annotation on the rag_core module so
+# tests that inspect ``rag_core.__annotations__["MODEL_CACHE"]`` (e.g.
+# tests/test_finetuned_ablation_baseline_invariant.py for the #434
+# 3-tuple key shape) keep seeing the contract after the move. This is
+# a pure annotation, not a rebinding — the imported MODEL_CACHE object
+# above is the canonical one in rag_embedding.
+MODEL_CACHE: dict[tuple[str, bool, str | None], Any]
 # Text-processing primitives extracted to rag_text_processing (issue #545).
 # Re-exported here so existing ``from rag_core import tokenize`` call sites
 # keep working unchanged.
