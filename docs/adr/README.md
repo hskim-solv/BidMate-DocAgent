@@ -118,6 +118,7 @@ project record.
 | [0042](./0042-tool-use-evidence-boundary-defense.md) | accepted | Tool-use attack surface audit: ADR 0008 `neutralize_instruction_patterns` coverage confirmed for all `execute_*` wrappers in `rag_agent_tools.py`; no new call sites needed; `EVIDENCE_BOUNDARY` regression gate added; closes issue #682 |
 | [0043](./0043-pr-cadence-for-live-llm-judge.md) | accepted | Label-gated PR workflow (`live-judge-please`) fires `.github/workflows/pr-judge.yml` with live `BIDMATE_SYNTHETIC_JUDGE_BACKEND=openai_compatible`; posts RAGAS aggregate as PR comment; ADR 0004/0005/0012 invariants preserved; re-attach label after each push (Goodhart guard) |
 | [0044](./0044-realN-eval-case-expansion.md) | accepted | real100 private eval cases expanded in-place (same corpus, same `reports/real100/` series) from n=21 → near-term n≥30 / long-term n≥50 to tighten Wilson 95% CI and ADR 0030 silence threshold; `num_predictions` tracked per snapshot; ADR 0005 boundary preserved (cases stay in gitignored `eval/real_config.local.yaml`); closes issue #732 |
+| [0045](./0045-rag-core-leaf-migration-plan.md) | accepted | `rag_core.py` (1728 LOC) is not a leaf — `rag_retrieval.py` late-imports 5 symbols at 2 call sites; Plan A creates new leaf `rag_embedding.py` (embed primitives + constants); Plan B reroutes `comparison_targets_for_analysis` import from `rag_core` to `rag_query` (already defined there); G2 PR lands the code move, ADR 0001 baseline preserved bit-identical; closes issue #762 |
 
 ## Roadmap (proposed, not yet committed)
 
