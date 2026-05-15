@@ -239,6 +239,32 @@ def _hwp_native_fallback_exceptions() -> tuple[type[BaseException], ...]:
     return base + (InvalidHwp5FileError, InvalidOleStorageError)
 
 
+def _hwp_bodytext_sections(hwp: Any) -> Any:
+    """Adapt across pyhwp's Sections accessor API drift (issue #801).
+
+    pyhwp ≤ 0.1b13 exposed a ``BodyText.section_list()`` method whereas
+    0.1b15 (and later) replaced it with a plain ``sections`` list
+    attribute — silently breaking ``_extract_hwp_native`` and
+    ``_extract_hwp_native_with_tables``. Both call sites now route
+    through this helper so the loader works on both API generations.
+
+    Raises ``AttributeError`` only when neither shape is present, which
+    is then caught by ``_hwp_native_fallback_exceptions`` so the build
+    proceeds with the CSV-text fallback.
+    """
+    bodytext = hwp.bodytext
+    sections = getattr(bodytext, "sections", None)
+    if sections is not None:
+        return sections
+    section_list = getattr(bodytext, "section_list", None)
+    if callable(section_list):
+        return section_list()
+    raise AttributeError(
+        "Hwp5File.bodytext exposes neither 'sections' attribute nor "
+        "'section_list()' method — incompatible pyhwp version"
+    )
+
+
 def _extract_hwp_native(source_path: Path) -> str | None:
     """Extract body text from an HWP file using pyhwp's Hwp5File API.
 
@@ -247,15 +273,33 @@ def _extract_hwp_native(source_path: Path) -> str | None:
     errors (``InvalidHwp5FileError``, ``InvalidOleStorageError``) along
     with ``OSError``, ``RuntimeError``, ``ValueError`` propagate to the
     caller for fallback (see ``_hwp_native_fallback_exceptions``).
+
+    Issue #801: pyhwp 0.1b15 dropped both ``section_list()`` and
+    ``section.paragraphs`` in favour of an event-stream model. This
+    walks ``section.events()`` and collects every ``Text`` event —
+    matching the legacy paragraph-text contract (table-interior text is
+    included, the same as ``section.paragraphs`` traversal did).
     """
-    from hwp5.xmlmodel import Hwp5File  # type: ignore[import-not-found]
+    from hwp5.xmlmodel import (  # type: ignore[import-not-found]
+        STARTEVENT,
+        Hwp5File,
+        Text,
+    )
 
     hwp = Hwp5File(str(source_path))
     parts: list[str] = []
-    for section in hwp.bodytext.section_list():
-        for paragraph in section.paragraphs:
-            for chunk in paragraph.text_chunks:
-                parts.append(chunk.text)
+    for section in _hwp_bodytext_sections(hwp):
+        for event, item in section.events():
+            if event is not STARTEVENT:
+                continue
+            if not (isinstance(item, tuple) and len(item) >= 2):
+                continue
+            model = item[0]
+            attrs = item[1] if isinstance(item[1], dict) else {}
+            if model is Text:
+                piece = attrs.get("text", "")
+                if isinstance(piece, str) and piece:
+                    parts.append(piece)
     text = normalize_body_text("\n".join(parts))
     return text or None
 
@@ -302,7 +346,7 @@ def _extract_hwp_native_with_tables(
     plain_parts: list[str] = []
     tables: list[dict[str, Any]] = []
 
-    for section in hwp.bodytext.section_list():
+    for section in _hwp_bodytext_sections(hwp):
         table_stack: list[dict[str, Any]] = []
         cell_stack: list[dict[str, Any]] = []
         for event, item in section.events():

@@ -57,6 +57,15 @@ If native-loader fallback rate on the private 100-doc corpus exceeds 20% after o
 `make real-eval` cycle with `BIDMATE_HWP_LOADER` unset, revisit the default or the
 pyhwp detection logic.
 
+**API drift adaptation (issue #801, 2026-05-15):** `make real-eval` after PR #787
+recorded `hwp_native_rate = 0.0` (96/96 CSV fallback) because pyhwp 0.1b15 dropped
+`BodyText.section_list()` in favour of a `BodyText.sections` list attribute and
+replaced `section.paragraphs` with the event-stream model. `_extract_hwp_native`
+and `_extract_hwp_native_with_tables` now route through `_hwp_bodytext_sections`
+and walk `section.events()` so both API generations work; the re-open condition
+remains in force until a `make real-eval` cycle on a pyhwp-installed environment
+confirms `hwp_native_rate > 0.7`.
+
 ## Alternatives considered
 
 - **Option 1 — Deprecate**: removes table-extraction capability for Korean RFP users
