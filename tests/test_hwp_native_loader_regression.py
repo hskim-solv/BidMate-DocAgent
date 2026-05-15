@@ -198,6 +198,32 @@ class HwpNativeLoaderRegressionTest(unittest.TestCase):
         runtime_warnings = [w for w in caught if issubclass(w.category, RuntimeWarning)]
         self.assertEqual(1, len(runtime_warnings))
 
+    def test_native_loader_falls_back_when_parser_raises_attribute_error(self) -> None:
+        """Issue #785: pyhwp API drift (e.g. 0.1b15 ``Sections.sections`` list vs
+        legacy ``section_list()`` method) used to abort the entire build because
+        ``AttributeError`` was not in the fallback tuple. Now the per-document
+        failure is recorded and the build proceeds with CSV text."""
+        loader = HwpNativeLoader()
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            with mock.patch(
+                "ingestion._extract_hwp_native",
+                side_effect=AttributeError(
+                    "'OleStorage' object has no attribute 'section_list'"
+                ),
+            ):
+                text = loader.load_text(
+                    {"텍스트": "csv text after attr drift"},
+                    Path("/nonexistent.hwp"),
+                )
+        self.assertEqual("csv text after attr drift", text)
+        self.assertEqual("data_list_csv_text", loader.last_text_source)
+        self.assertIsNotNone(loader.last_fallback_reason)
+        self.assertIn("AttributeError", loader.last_fallback_reason)
+        self.assertIn("section_list", loader.last_fallback_reason)
+        runtime_warnings = [w for w in caught if issubclass(w.category, RuntimeWarning)]
+        self.assertEqual(1, len(runtime_warnings))
+
     def test_native_loader_records_hwp_native_source_on_success(self) -> None:
         loader = HwpNativeLoader()
         with warnings.catch_warnings(record=True) as caught:
