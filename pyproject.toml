@@ -1,6 +1,12 @@
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
+# Marker registry. Tests under unregistered markers warn under
+# pytest-strict-markers. ``qdrant_integration`` flags suites that
+# need a live Qdrant HTTP server (see Makefile `qdrant-up`, issue #853).
+markers = [
+    "qdrant_integration: requires a live Qdrant HTTP server on BIDMATE_QDRANT_URL (default http://localhost:6333); not run in CI",
+]
 
 # Issue #334 (G8 of #284): opt-in ruff lint gate from scripts/test.sh.
 # Rule selection is narrowed to the fatal pyflakes subset (syntax errors,
