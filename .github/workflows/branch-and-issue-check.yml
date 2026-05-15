@@ -82,14 +82,32 @@ jobs:
           # When an embedding-related path changes in this PR, verify that
           # reports/embedding_routed.json was also updated AND spread < threshold.
           # Non-embedding PRs: skip entirely.
-          embedding_changes=$(gh api \
+          #
+          # rag_embeddings.py and eval/routed_config.yaml fire unconditionally
+          # (they are purely embedding-domain files). eval/config.yaml is shared
+          # across many concerns (ablation rows, judges, retrieval knobs, etc.),
+          # so we fire only when its diff *patch* contains an embedding-routing
+          # keyword.  Keyword set (issue #810):
+          #
+          #     embedding | embed_backend | embed_model | model_key | hf_id
+          #     | sentence_transformer | routed
+          #
+          # Bypassed example: flipping `retrieval_only.rerank: true → false`
+          # (PR #802) — no keyword in the patch, gate correctly skipped.
+          unconditional_changes=$(gh api \
             "/repos/$GITHUB_REPOSITORY/pulls/${{ github.event.pull_request.number }}/files" \
-            --jq '[.[] | select(.filename | test("^(rag_embeddings\\.py|eval/routed_config\\.yaml|eval/config\\.yaml)$"))] | length')
+            --jq '[.[] | select(.filename | test("^(rag_embeddings\\.py|eval/routed_config\\.yaml)$"))] | length')
+          config_keyword_hits=$(gh api \
+            "/repos/$GITHUB_REPOSITORY/pulls/${{ github.event.pull_request.number }}/files" \
+            --jq '.[] | select(.filename == "eval/config.yaml") | .patch // ""' \
+            | grep -cE '^[+-].*\b(embedding|embed_backend|embed_model|model_key|hf_id|sentence_transformer|routed)\b' \
+            || true)
+          embedding_changes=$((unconditional_changes + config_keyword_hits))
           if [[ "$embedding_changes" -eq 0 ]]; then
             echo "✅ No embedding-related path changes — spread gate skipped."
             exit 0
           fi
-          echo "ℹ️  Embedding-related paths changed; checking reports/embedding_routed.json spread."
+          echo "ℹ️  Embedding-related paths changed (unconditional=$unconditional_changes config_keyword_hits=$config_keyword_hits); checking reports/embedding_routed.json spread."
           routed_changed=$(gh api \
             "/repos/$GITHUB_REPOSITORY/pulls/${{ github.event.pull_request.number }}/files" \
             --jq '[.[] | select(.filename == "reports/embedding_routed.json")] | length')
