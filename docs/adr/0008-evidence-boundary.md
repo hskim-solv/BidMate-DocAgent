@@ -54,6 +54,45 @@ The helper and the boundary constant are public (no leading underscore) so other
 
 **Contract**: callers must treat the marker tokens above as defensive annotations, not as content. The verifier substring-matching contract is unaffected because topic strings do not overlap with the marker syntax.
 
+## Measurement gaps
+
+Three regex patterns + marker-token wrapping is **not** an
+exhaustive defense. Until issue #828 the ADR did not surface the
+attack vectors that the current rules do not yet cover. Documented
+here so the gap lives at the decision-record layer rather than only
+in tests:
+
+- **Defense surface today**: regex set in
+  [`rag_verifier.py:262/266/269`](../../rag_verifier.py); per-attack
+  positive cases live in
+  [`tests/test_prompt_injection_regression.py`](../../tests/test_prompt_injection_regression.py).
+- **Known unaddressed attack vectors** (tracking issue
+  [#830](https://github.com/hskim-solv/BidMate-DocAgent/issues/830)):
+  - **Marker-bypass**: attacker text containing literal
+    `[/INSTRUCTION_LIKE]` could escape the wrap so following
+    attacker lines flow unwrapped to the LLM judge.
+  - **Marker-tag confusion**: attacker injects an opening
+    `[INSTRUCTION_LIKE]` without a closing tag, hoping the LLM
+    judge treats subsequent content as already-defended.
+  - **Chat-token aliasing**: tokens with surrounding whitespace,
+    fullwidth lookalikes (`＜｜im_start｜＞`), or partial matches
+    (`<|im_star`) are not normalized.
+  - **Role-tag case / unicode**: regex anchors lowercase; check
+    `SyStEm:` and fullwidth `ＳＹＳＴＥＭ:`.
+  - **Instruction-override paraphrases**: regex requires keywords
+    like `ignore` / `disregard`; semantic paraphrases pass through.
+- **Decision rule for a regex change**: a new rule (or a relaxation)
+  requires ≥1 new attack vector covered with no >0 false-positive
+  regressions on the real-corpus survey set (Korean legal language
+  often legitimately quotes "이전 지시사항 무시" in
+  regulation-quote contexts).
+- **Adversarial corpus expansion plan**: covered in #830 (start
+  with the existing regression set, grow per attack vector above).
+- **Cross-link**: the LLM judge (ADR 0006) has its own
+  evaluation surface; defense regressions surface as
+  `agreement_with_verifier` deltas in the leaderboard. Adversarial
+  expansion benchmarks should be added there once #830 ships.
+
 ## Alternatives considered
 
 - **Strip patterns silently** — rejected: destroys evidence and breaks citation auditability. A reviewer reading a citation must see what was in the source.
