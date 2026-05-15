@@ -242,7 +242,7 @@ ablation_runs:
   # 가 필요. 공개 합성 CI 는 ``EMBEDDING_BACKEND=hashing`` 으로 돌고
   # 이 row 를 실행하지 않으므로 smoke 가 영향받지 않는다. ADR 0010 의
   # "Alternatives considered" (lines 72-85) 가 명시한 deferred ablation
-  # 의 후속. 결과 분석은 ``docs/m3-multichannel-spike.md`` 가 담당.
+  # 의 후속. 결과 분석은 ``docs/vision/m3-multichannel-spike.md`` 가 담당.
   # Channel-level decomposition (sparse-only, colbert-only) 은 lift 가
   # 정당화되는 경우에만 follow-up PR 에서.
   - name: m3_full
@@ -1042,7 +1042,7 @@ cases:
       - "양자암호"
     answerable: false
 
-  # Issue #69 / docs/real-data-failure-taxonomy.md C6 — partial-topic
+  # Issue #69 / docs/real-data/real-data-failure-taxonomy.md C6 — partial-topic
   # recovery. After issue #89 the gate also requires ≥ 2 matched
   # topics (cuts the 1-of-2 incidental-overlap pattern that flipped
   # real-data intended-abstention cases). This case now uses 3 topics

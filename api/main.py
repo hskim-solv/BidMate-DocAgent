@@ -95,7 +95,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="BidMate-DocAgent demo API",
     description=(
-        "Thin HTTP surface around the RAG pipeline. See docs/api-demo.md "
+        "Thin HTTP surface around the RAG pipeline. See docs/operations/api-demo.md "
         "for the local + container startup flow."
     ),
     version="0.1.0",

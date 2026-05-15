@@ -7,7 +7,7 @@ description: >
   (ADR 0001 invariant). Run via:
     make eval-multihop                    # stub backend, CI-safe
     EMBEDDING_BACKEND=sentence_transformers make eval-multihop  # real signal
-  Results published to docs/embedding-ablation.md Phase 1.4 section.
+  Results published to docs/eval/embedding-ablation.md Phase 1.4 section.
 index_dir: data/index
 primary_run: naive_baseline
 # Latency budgets for the deterministic CI hashing backend.
