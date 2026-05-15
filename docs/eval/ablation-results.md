@@ -92,7 +92,7 @@ CR=correct\_refusal / IA=incorrect\_answer / BP=boundary\_partial (ADR 0005 §ab
 
 `abstention` 슬라이스 및 `follow_up_state_ambiguous_clarification` 1건은 `answerable: false` 라 gold chunk 가 존재하지 않는다 (의도된 N/A — abstention 계약, ADR 0003).
 
-이슈 [#175](https://github.com/hskim-solv/BidMate-DocAgent/issues/175) 일환으로 답변 가능한 8 follow_up + 2 chunk-boundary single_doc 케이스에 `gold_chunk_ids` 를 사람이 직접 확인해 명시 (annotation log: [`docs/local-gold-authoring.md`](./local-gold-authoring.md#annotation-log--gold_chunk_ids)). 휴리스틱 결과와 사람 annotation 이 10/10 케이스에서 동일 — follow_up 의 0.750 은 multi-turn 컨텍스트 (`follow_up_state_a_security`, `follow_up_state_multi_step_a_deliverables`) 에서 retriever 가 chunk 를 가져오지 못하는 진짜 결함이며 (이슈 [#57](https://github.com/hskim-solv/BidMate-DocAgent/issues/57) C4), gold-labeling artifact 가 아니다.
+이슈 [#175](https://github.com/hskim-solv/BidMate-DocAgent/issues/175) 일환으로 답변 가능한 8 follow_up + 2 chunk-boundary single_doc 케이스에 `gold_chunk_ids` 를 사람이 직접 확인해 명시 (annotation log: [`docs/local-gold-authoring.md`](../local-gold-authoring.md#annotation-log--gold_chunk_ids)). 휴리스틱 결과와 사람 annotation 이 10/10 케이스에서 동일 — follow_up 의 0.750 은 multi-turn 컨텍스트 (`follow_up_state_a_security`, `follow_up_state_multi_step_a_deliverables`) 에서 retriever 가 chunk 를 가져오지 못하는 진짜 결함이며 (이슈 [#57](https://github.com/hskim-solv/BidMate-DocAgent/issues/57) C4), gold-labeling artifact 가 아니다.
 
 후속 PR 후보: `metric_block` 에 chunk metric aggregation roll-up 추가 (현재 case 단위로만 emit). 본 표 수치는 case_results 평균으로 계산.
 

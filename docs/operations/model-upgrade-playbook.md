@@ -161,7 +161,7 @@ shape가 바뀌면 downstream tooling이 깨집니다.
    following 패턴 불일치 의심. 검사 경로: `reports/upgrade/candidate/traces/<case>.trace.json`
    의 synthesis span (혹은 trace 백엔드 enable 시 LangFuse UI 의 `synthesis` span
    metadata).
-3. **인용 grounding 회귀 카운트** ([`docs/real-data-failure-taxonomy.md`](../real-data-failure-taxonomy.md))
+3. **인용 grounding 회귀 카운트** ([`docs/real-data-failure-taxonomy.md`](../real-data/real-data-failure-taxonomy.md))
    : `jq '.citation_grounding_error_counts' reports/upgrade/{baseline,candidate}/eval_summary.json`
    의 6 카테고리 카운트가 어느 하나도 증가하지 않음. 증가하면 모델이 새 grounding
    패턴을 만들고 있다는 신호 — verifier 가 잡지 못하는 미세 회귀.
@@ -344,7 +344,7 @@ quality 회귀가 모델 때문인지 평가 도구 때문인지 분리 불가.
 - [ADR 0006](../adr/0006-llm-judge-on-real-data-only.md) — Judge backend pattern (stub default).
 - [ADR 0011](../adr/0011-llm-synthesis-as-additive-ablation.md) — Synthesis backend toggle. **본 playbook 의 전제**.
 - [ADR 0012](../adr/0012-llm-judge-on-public-synthetic.md) — Public synthetic 에서의 judge stub 정책.
-- [`docs/answer-policy.md`](../answer-policy.md) — schema_version 호환성 가드 코드 위치.
+- [`docs/answer-policy.md`](../agentic/answer-policy.md) — schema_version 호환성 가드 코드 위치.
 - [`docs/operations/observability.md`](./observability.md) — LangFuse / OTLP trace 백엔드, step 2 의 trace 검증에 사용.
 - [`docs/operations/deployment.md`](./deployment.md) — 데모 배포 시점에 본 playbook 의 단계 4 가 production 으로 승격.
-- [`docs/real-data-failure-taxonomy.md`](../real-data-failure-taxonomy.md) — Step 2 의 6 카테고리 회귀 카운트 정의.
+- [`docs/real-data-failure-taxonomy.md`](../real-data/real-data-failure-taxonomy.md) — Step 2 의 6 카테고리 회귀 카운트 정의.

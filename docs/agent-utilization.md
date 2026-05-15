@@ -38,7 +38,7 @@
 - **`ship-pr` skill** — 수동 게이트. push와 merge 각 단계에서 명시적 승인. ADR 번호 예약·stacked-PR 감사 포함. **결정이 무겁거나 stacked PR이면 이쪽**.
 - **`make ship-arm`** — Stop훅 기반 자동 배송. 8-step 사전검사 통과 시 commit → push → PR → CI 대기 → squash-merge까지 자동. **소형/독립 PR이면 이쪽**.
 
-동시 사용 금지(skill 설명 `ship-pr` 트리거 조항 명시). 자세한 단계는 [`auto-ship.md`](auto-ship.md) 참조.
+동시 사용 금지(skill 설명 `ship-pr` 트리거 조항 명시). 자세한 단계는 [`auto-ship.md`](operations/auto-ship.md) 참조.
 
 ## Follow-up Issues
 
@@ -53,6 +53,6 @@
 
 - [`docs/self-review/Q2-2026.md`](self-review/Q2-2026.md) — 5축 진단 원본
 - [`docs/multi-agent-ownership.md`](multi-agent-ownership.md) — 7역할 owner 모델
-- [`docs/auto-ship.md`](auto-ship.md) — `make ship-arm` 8-step 파이프라인
+- [`docs/auto-ship.md`](operations/auto-ship.md) — `make ship-arm` 8-step 파이프라인
 - [`docs/engineering-governance.md`](engineering-governance.md) — workflow map
 - `MEMORY.md` 항목: `feedback_collaboration_axes.md`, `feedback_agent_delegation.md`, `feedback_q2_2026_collaboration_review.md`

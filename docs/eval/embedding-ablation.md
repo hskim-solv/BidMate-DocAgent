@@ -155,7 +155,7 @@ Same shape as the first-cycle finding — modern multilingual and Korean-special
 
 The default did not change, so the empirical decision still has no ADR — but the *deferral* itself is now load-bearing. Without ADR 0019, the next contributor would either (a) re-run the same blocked measurement, or (b) silently swap the default without the empirical bar. ADR 0019 nails down both the "stay on MiniLM" decision and the explicit conditions under which it re-opens.
 
-If a future ablation finds a model that meaningfully improves `full` (not just `naive_baseline`) and the team decides to switch the default, that change should land with a *follow-up* ADR per CLAUDE.md "ADR threshold". The OpenAI backend addition is an additive ablation surface under stub-default (CI runs `EMBEDDING_BACKEND=hashing` and never hits OpenAI) — same pattern as [ADR 0011](adr/0011-llm-synthesis-as-additive-ablation.md).
+If a future ablation finds a model that meaningfully improves `full` (not just `naive_baseline`) and the team decides to switch the default, that change should land with a *follow-up* ADR per CLAUDE.md "ADR threshold". The OpenAI backend addition is an additive ablation surface under stub-default (CI runs `EMBEDDING_BACKEND=hashing` and never hits OpenAI) — same pattern as [ADR 0011](../adr/0011-llm-synthesis-as-additive-ablation.md).
 
 ## Third comparison — Phase 1.3 (issue #389): BGE-M3 closes ADR 0019 condition 2
 
@@ -229,7 +229,7 @@ All four show `+0.0` deltas vs MiniLM on every metric — same pattern as
    "Korean-specialized model breaks the pattern" hypotheses are both
    falsified on this corpus.
 3. **Default stays MiniLM-L12-v2.** ADR 0019 stays accepted; the
-   follow-up [ADR 0021](adr/0021-bge-m3-completes-phase-1-3.md) is a
+   follow-up [ADR 0021](../adr/0021-bge-m3-completes-phase-1-3.md) is a
    *supplement* that documents the closure, not a supersede.
 4. **The empirical claim is now strong enough to publish.** Five
    embeddings spanning 2019–2024, multilingual / instruction-tuned /
@@ -239,7 +239,7 @@ All four show `+0.0` deltas vs MiniLM on every metric — same pattern as
 
 ## Fourth comparison — Phase 1.4 (issue #531, 2026-05-13): routed-subset saturation falsifier
 
-[ADR 0032](adr/0032-eval-saturation-routed-subset.md)이 제기한 질문: "0pp on full" 패턴이 metadata-first absorption의 artifact인가 (즉 임베딩 sensitivity를 측정 불가능하게 만드는가)?
+[ADR 0032](../adr/0032-eval-saturation-routed-subset.md)이 제기한 질문: "0pp on full" 패턴이 metadata-first absorption의 artifact인가 (즉 임베딩 sensitivity를 측정 불가능하게 만드는가)?
 
 ### Measurement surface
 
@@ -274,7 +274,7 @@ Runner: `scripts/run_routed_measurement.py --backend sentence-transformers`. 결
 
 ## Fifth comparison — Phase 1.5 (issue #447, 2026-05-14): KURE-v1 Korean-specialized
 
-[ADR 0037](adr/0037-kure-v1-closes-phase-1-5.md)이 제기한 질문: issue #447이 re-open 조건으로 명시한 `nlpai-lab/KURE-v1`을 n=100 full corpus 대상으로 실행하면 condition 3 (≥+5pp `full` lift)이 trigger되는가?
+[ADR 0037](../adr/0037-kure-v1-closes-phase-1-5.md)이 제기한 질문: issue #447이 re-open 조건으로 명시한 `nlpai-lab/KURE-v1`을 n=100 full corpus 대상으로 실행하면 condition 3 (≥+5pp `full` lift)이 trigger되는가?
 
 > **Corpus note**: `eval/config.yaml`이 issue #570으로 n=42 → n=100으로 확장됐다. Phase 1.1–1.3의 ADR 0021 수치(accuracy 0.906 등)는 n=42 기준이므로 Phase 1.5 수치와 직접 비교 불가. 본 Phase는 같은 n=100 corpus 위에서 KURE-v1 vs MiniLM을 비교한다.
 
@@ -322,9 +322,9 @@ Runner: `scripts/run_routed_measurement.py --backend sentence-transformers`. 결
 - [`scripts/run_routed_measurement.py`](../scripts/run_routed_measurement.py) — Phase 1.4 routed measurement runner
 - [`reports/embedding_routed.json`](../reports/embedding_routed.json) — Phase 1.4 machine-readable results
 - [`docs/ablation-results.md`](ablation-results.md) — broader ablation context
-- [ADR 0001](adr/0001-preserve-naive-baseline.md) — why `naive_baseline` is preserved
-- [ADR 0002](adr/0002-metadata-first-retrieval.md) — why metadata-first dominates
-- [ADR 0019](adr/0019-embedding-default-stays-minilm.md) — the deferral decision
-- [ADR 0021](adr/0021-bge-m3-completes-phase-1-3.md) — the Phase 1.3 closure
-- [ADR 0032](adr/0032-eval-saturation-routed-subset.md) — the Phase 1.4 saturation falsifier (accepted)
-- [ADR 0037](adr/0037-kure-v1-closes-phase-1-5.md) — the Phase 1.5 KURE-v1 closure (accepted)
+- [ADR 0001](../adr/0001-preserve-naive-baseline.md) — why `naive_baseline` is preserved
+- [ADR 0002](../adr/0002-metadata-first-retrieval.md) — why metadata-first dominates
+- [ADR 0019](../adr/0019-embedding-default-stays-minilm.md) — the deferral decision
+- [ADR 0021](../adr/0021-bge-m3-completes-phase-1-3.md) — the Phase 1.3 closure
+- [ADR 0032](../adr/0032-eval-saturation-routed-subset.md) — the Phase 1.4 saturation falsifier (accepted)
+- [ADR 0037](../adr/0037-kure-v1-closes-phase-1-5.md) — the Phase 1.5 KURE-v1 closure (accepted)
