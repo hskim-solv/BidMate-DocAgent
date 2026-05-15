@@ -93,6 +93,26 @@ Costs / constraints:
   the constant must be updated in `rag_synthesis.py`. No auto-update mechanism is
   planned.
 
+## Follow-up status (2026-05-15)
+
+The deferred frontier plot is now implemented as `scripts/plot_cost_frontier.py`
+(issue #798, follow-up to the closed-without-script issue #177). The script reads
+both `reports/eval_summary.json` (in-repo ablations, placed at x=0 per the
+"self-hosted" rule above) and `reports/external_baselines.json` (real API
+backends, cost from `case_results[i].cost_estimate_usd`), and emits
+`reports/cost_frontier.md` plus an optional `reports/cost_frontier.png` when
+matplotlib is installed. Regression tests in
+`tests/test_plot_cost_frontier_regression.py` lock in the Pareto-frontier
+dominance rule, the stub-exclusion behaviour (external runs without per-case
+cost are dropped with a stderr note rather than plotted at x=0), and the three
+anchors (accuracy ceiling / production sweet spot / cheapest acceptable floor).
+
+The first artifact is sanity-only until a real Anthropic API run via
+`make external-baselines-langchain` populates per-case cost in
+`reports/external_baselines.json`. Until then the plot's external side is
+empty and only the in-repo accuracy ceiling is shown — by design, since this
+ADR's "no fabricated numbers" posture means we will not synthesize cost data.
+
 ## Alternatives considered
 
 - **Aggregate cost at the ablation level only (not per-case).** Simpler, avoids

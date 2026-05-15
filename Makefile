@@ -18,7 +18,7 @@
 # Synthetic eval surface (public corpus). Includes smoke, full eval, harness
 # matrix, judges, leaderboard render, pareto, korean public bench, external
 # baselines.
-.PHONY: eval smoke smoke-with-judge reproduce benchmark synthetic-judge judge-disagreements leaderboard pareto korean-public-fetch korean-public-eval external-baselines-stub external-baselines-langchain external-baselines-llamaindex external-baselines-ollama harness-smoke harness-ablation harness-compare synthesize-multihop eval-multihop
+.PHONY: eval smoke smoke-with-judge reproduce benchmark synthetic-judge judge-disagreements leaderboard pareto cost-frontier korean-public-fetch korean-public-eval external-baselines-stub external-baselines-langchain external-baselines-llamaindex external-baselines-ollama harness-smoke harness-ablation harness-compare synthesize-multihop eval-multihop
 
 # Real-data eval cycle (private; ADR 0005 commit boundary).
 .PHONY: real-eval real-eval-delta real-eval-baseline-update real-eval-history-render real-eval-with-judge harness-real
@@ -112,6 +112,15 @@ eval-multihop:
 # citation_precision).
 pareto:
 	$(PYTHON) scripts/plot_pareto.py --summary reports/eval_summary.json --markdown-out reports/pareto.md --png-out reports/pareto.png
+
+# Cost-accuracy frontier (ADR 0038 / issue #798). Reads
+# reports/eval_summary.json (in-repo ablations placed at x=0 per the
+# self-hosted rule) and reports/external_baselines.json (external real-API
+# backends, cost from case_results[i].cost_estimate_usd). Writes
+# reports/cost_frontier.md + reports/cost_frontier.png (PNG when matplotlib
+# is installed; the .md is always produced).
+cost-frontier:
+	$(PYTHON) scripts/plot_cost_frontier.py
 
 # Publish the demo image to GHCR so reviewers can `docker run <image>`
 # without cloning the repo (issue #123). Requires `docker login ghcr.io`
