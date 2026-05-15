@@ -528,10 +528,27 @@ def embed_query_for_index(query: str, embedding_config: dict[str, Any]) -> np.nd
 
 def dense_similarity(query_vector: np.ndarray, chunk_vector: Any) -> float:
     if chunk_vector is None:
+        # Legitimate "no embedding for this chunk" case (e.g. metadata-only
+        # rows in test fixtures). Returning 0.0 is the documented contract.
         return 0.0
     doc_vector = np.asarray(chunk_vector, dtype=np.float32)
     if doc_vector.shape != query_vector.shape:
-        return 0.0
+        # Issue #784 — RAG senior-review critique #4. A shape mismatch
+        # means the chunk and the query were embedded in incompatible
+        # vector spaces (e.g. sidecar built with one model, query
+        # embedded with another). Previously this returned 0.0 which
+        # silently produced a zero-similarity score across the entire
+        # index → retrieval ranking corrupted but the API still
+        # returned "successful" answers. Raising surfaces the
+        # integrity bug at the failing call site instead.
+        raise ValueError(
+            f"dense_similarity: vector shape mismatch — "
+            f"query={query_vector.shape} vs chunk={doc_vector.shape}. "
+            "This indicates the index was built with a different "
+            "embedding model / dimension than the query was embedded "
+            "with. Rebuild the index or check BIDMATE_INDEX_BACKEND / "
+            "EMBEDDING_BACKEND consistency."
+        )
     score = float(np.dot(query_vector, doc_vector))
     return max(0.0, min(1.0, (score + 1.0) / 2.0))
 

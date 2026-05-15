@@ -1188,6 +1188,18 @@ def _build_run_context(
         except Exception as exc:
             trace_error = f"start_trace:{type(exc).__name__}:{str(exc)[:120]}"
             trace_handle = None
+            # Issue #784 — RAG senior-review critique #4: trace_error
+            # was previously only captured into the per-request
+            # diagnostics dict, so an outage of the configured trace
+            # backend (LangSmith down, mis-set token, schema drift)
+            # produced no operator-visible signal. Emit a warning so
+            # aggregate log inspection / alerting can pick it up
+            # without scraping every diagnostics block.
+            _LOGGER.warning(
+                "trace_start_failed backend=%s error=%s",
+                trace_backend_name,
+                trace_error,
+            )
 
     return _RunContext(
         index=index,
@@ -1280,8 +1292,20 @@ def _phase_analyze(ctx: _RunContext) -> dict[str, Any] | None:
     if ctx.trace_handle is not None:
         try:
             ctx.trace_handle.set_tag("query_type", str(analysis.get("query_type") or ""))
-        except Exception:
-            pass
+        except Exception as exc:
+            # Issue #784 — RAG senior-review critique #4: tag drops
+            # used to be a bare ``pass``. The ``trace_handle is not
+            # None`` guard above means start_trace already succeeded,
+            # so a set_tag failure here is rare in steady state and
+            # worth logging each time (e.g. LangSmith schema drift,
+            # tag-name length limits). The tag is still dropped so
+            # the request keeps flowing.
+            _LOGGER.warning(
+                "trace_set_tag_failed tag=%s error=%s:%s",
+                "query_type",
+                type(exc).__name__,
+                str(exc)[:120],
+            )
     if analysis.get("metadata_ambiguous") and analysis.get("query_type") != "comparison":
         result = make_metadata_clarification_result(
             ctx.index,
