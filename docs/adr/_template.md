@@ -30,3 +30,27 @@ assume).
 Brief notes on the options that were not chosen and why. One or two
 bullets each. The goal is to make the trade-off legible, not to
 re-litigate it.
+
+## Verification
+
+How will the Consequences above stay honest 6 months from now? Make the
+promise machine-checkable by adding one or more HTML-comment markers in
+the format:
+
+    <!-- verifies-key: <relative-path>:<key-substring> -->
+
+`scripts/_governance.py --lint-adr-consequences docs/adr/NNNN-slug.md`
+reads these markers, confirms `<relative-path>` exists, and looks for
+`<key-substring>` inside it. The substring match is intentionally lenient
+— the goal is "this ADR's commitment is wired into the measurement
+surface," not "this exact JSON path resolves." Example marker (drop the
+ones that do not apply, add as many as the Consequences imply):
+
+<!-- verifies-key: reports/eval_summary.json:stage_attempts -->
+
+The pre-commit hook (`.githooks/pre-commit`) refuses new ADRs that lack
+this section or contain zero markers (issue #793). Existing ADRs are
+grandfathered — retrofit happens per-ADR in follow-up PRs. The hook does
+NOT fail on missing target files (e.g. `reports/eval_summary.json` may
+not exist in a fresh clone); it only fails when the file exists and the
+key substring is absent.

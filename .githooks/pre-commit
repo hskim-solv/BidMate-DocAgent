@@ -74,6 +74,24 @@ if [[ -n "$adr_added" ]]; then
     echo "$collision_out" >&2
     exit 1
   fi
+
+  # Guard: ADR Consequences verification lint (issue #793 — B3 fix).
+  # Newly added ADR files must include a `## Verification` section + at least
+  # one `<!-- verifies-key: path:key -->` marker. Existing 41 ADRs are
+  # grandfathered; retrofit happens per-ADR in follow-up PRs. The lint also
+  # checks that any marker pointing at an existing file actually contains
+  # the key substring — catches "promise that isn't wired up" early.
+  #
+  # Bypass with --no-verify only mid-merge; open a follow-up to add the
+  # missing section.
+  while IFS= read -r adr_file; do
+    [[ -z "$adr_file" ]] && continue
+    lint_out=$(python3 scripts/_governance.py --lint-adr-consequences "$adr_file" 2>&1)
+    if [[ $? -ne 0 ]]; then
+      echo "$lint_out" >&2
+      exit 1
+    fi
+  done <<< "$adr_added"
 fi
 
 staged=$(git diff --cached --name-only --diff-filter=ACMR 2>/dev/null || true)
