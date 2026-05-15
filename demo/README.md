@@ -13,7 +13,7 @@ license: mit
 # BidMate-DocAgent live demo
 
 <!-- Hero asset slot — recorded walkthrough (60-90 s). See
-     docs/deployment.md#recording-the-demo-video for capture instructions.
+     docs/operations/deployment.md#recording-the-demo-video for capture instructions.
      The same asset is referenced from the repo-root README. -->
 ![Live demo walkthrough](../docs/assets/demo.gif)
 
@@ -43,7 +43,7 @@ make demo-docker
 
 ## Deploy
 
-See [`docs/deployment.md`](../docs/deployment.md) for full recipes.
+See [`docs/operations/deployment.md`](../docs/operations/deployment.md) for full recipes.
 Short version:
 
 | Target | Steps |

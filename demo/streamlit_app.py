@@ -9,7 +9,7 @@ Run locally::
 
     streamlit run demo/streamlit_app.py
 
-Deploy: see ``docs/deployment.md`` for Fly.io and Hugging Face Spaces
+Deploy: see ``docs/operations/deployment.md`` for Fly.io and Hugging Face Spaces
 recipes. The Dockerfile in the repo root bundles this app alongside
 the FastAPI surface for single-image deploys.
 """
