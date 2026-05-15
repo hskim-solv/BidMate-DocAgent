@@ -241,6 +241,20 @@ test:
 test-regression:
 	$(PYTHON) -m pytest tests/test_retrieval_loop_regression.py -q
 
+# F2 (#853): local Qdrant container for the production HTTP server
+# integration test. Image pin is in docker-compose.qdrant.yml.
+# Default workflow: `make qdrant-up && make test-qdrant-integration && make qdrant-down`.
+.PHONY: qdrant-up qdrant-down test-qdrant-integration
+qdrant-up:
+	docker compose -f docker-compose.qdrant.yml up -d
+	@echo "Qdrant integration container starting; healthcheck polls /healthz on :6333."
+
+qdrant-down:
+	docker compose -f docker-compose.qdrant.yml down -v
+
+test-qdrant-integration:
+	$(PYTHON) -m pytest tests/test_qdrant_integration.py -m qdrant_integration -q
+
 # Run the FastAPI demo locally. Requires data/index to exist
 # (run `make index` first). See docs/operations/api-demo.md for details.
 api:
