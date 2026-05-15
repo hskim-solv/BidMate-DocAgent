@@ -120,6 +120,75 @@ def test_in_memory_query_dim_mismatch_raises(matrix: np.ndarray) -> None:
         store.query(np.zeros(99, dtype=np.float32), top_k=3)
 
 
+# ---------------------------------------------------------------------------
+# Issue #795 — query_by_indices(qvec, indices)
+# ---------------------------------------------------------------------------
+
+
+def test_in_memory_query_by_indices_returns_scores_for_subset(
+    matrix: np.ndarray,
+) -> None:
+    """RAG senior-review critique #3 fix: only score the requested
+    indices. Output order matches input order, scores match what
+    ``self.vectors @ qvec`` would produce."""
+    store = vector_store_from_matrix(matrix)
+    qvec = matrix[2]
+    # Pick a non-monotonic subset to confirm output order tracks input.
+    indices = [4, 1, 2]
+    result = store.query_by_indices(qvec, indices)
+    assert [i for i, _ in result] == indices
+    # The score for self (index 2) must be ~1.0; the others are dot
+    # products against matrix[2]. Compare to the bulk dot product.
+    expected = (matrix[indices] @ qvec).tolist()
+    actual = [s for _, s in result]
+    np.testing.assert_allclose(actual, expected, rtol=0, atol=1e-6)
+
+
+def test_in_memory_query_by_indices_empty_indices_returns_empty(
+    matrix: np.ndarray,
+) -> None:
+    store = vector_store_from_matrix(matrix)
+    assert store.query_by_indices(matrix[0], []) == []
+
+
+def test_in_memory_query_by_indices_dim_mismatch_raises(
+    matrix: np.ndarray,
+) -> None:
+    store = vector_store_from_matrix(matrix)
+    with pytest.raises(ValueError, match="dim"):
+        store.query_by_indices(np.zeros(99, dtype=np.float32), [0, 1])
+
+
+def test_in_memory_query_by_indices_out_of_range_raises(
+    matrix: np.ndarray,
+) -> None:
+    """The bug we are NOT introducing: out-of-range indices used to
+    silently produce zero scores under the old loop. Now they raise
+    ``IndexError`` — drift surfaces at the failing call site."""
+    store = vector_store_from_matrix(matrix)
+    with pytest.raises(IndexError):
+        store.query_by_indices(matrix[0], [0, 999])
+
+
+def test_in_memory_query_by_indices_matches_per_index_get_loop(
+    matrix: np.ndarray,
+) -> None:
+    """Bulk path must agree bit-for-bit with the per-chunk
+    ``store.get(idx)`` + dot product loop the old retrieval used."""
+    store = vector_store_from_matrix(matrix)
+    qvec = matrix[2]
+    indices = list(range(len(store)))
+    bulk = store.query_by_indices(qvec, indices)
+    per_index = [(i, float(np.dot(store.get(i), qvec))) for i in indices]
+    assert [i for i, _ in bulk] == [i for i, _ in per_index]
+    np.testing.assert_allclose(
+        [s for _, s in bulk],
+        [s for _, s in per_index],
+        rtol=0,
+        atol=1e-6,
+    )
+
+
 def test_in_memory_query_stable_tie_break(matrix: np.ndarray) -> None:
     """Two rows with the same score must be returned in ascending
     row-index order — the brute-force loop in ``rag_core.retrieve``

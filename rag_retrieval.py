@@ -410,10 +410,36 @@ def retrieve_candidates(
     # ``tests/test_vector_store_qdrant.py::test_qdrant_query_matches_in_memory_top_k_ranking``
     # (PR #296, 1e-5 tolerance). Inline-embedding fixtures fall back
     # to the per-chunk ``dense_similarity`` path below.
+    #
+    # Issue #795 (RAG senior-review critique #3): when the metadata
+    # filter actually narrowed candidates to a strict subset of the
+    # index, fetch dense scores ONLY for those candidates via
+    # ``query_by_indices``. The previous unconditional
+    # ``query(top_k=len(vector_store))`` defeated server-side top-K
+    # backends (Qdrant) and wasted O(N) work on every filtered query.
+    # We retain the full-fetch path for the no-filter / fallback case
+    # because the loop still needs scores for every candidate.
     raw_cosine_by_idx: dict[int, float] = {}
     if vector_store is not None and len(vector_store) > 0:
-        for idx, raw in vector_store.query(query_embedding, top_k=len(vector_store)):
-            raw_cosine_by_idx[int(idx)] = float(raw)
+        candidate_indices = [
+            int(c["embedding_idx"])
+            for c in candidates
+            if c.get("embedding_idx") is not None
+        ]
+        filter_narrowed = (
+            not plan.get("filter_fallback_used", False)
+            and 0 < len(candidate_indices) < len(vector_store)
+        )
+        if filter_narrowed:
+            for idx, raw in vector_store.query_by_indices(
+                query_embedding, candidate_indices
+            ):
+                raw_cosine_by_idx[int(idx)] = float(raw)
+        else:
+            for idx, raw in vector_store.query(
+                query_embedding, top_k=len(vector_store)
+            ):
+                raw_cosine_by_idx[int(idx)] = float(raw)
     scored = []
     for chunk in candidates:
         embedding_idx = chunk.get("embedding_idx")
