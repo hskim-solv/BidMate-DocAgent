@@ -1,0 +1,208 @@
+"""Embedding primitives extracted from ``rag_core.py`` (ADR 0045, issue #843).
+
+This module owns the *bytes-in, vectors-out* path of the BidMate pipeline:
+
+- ``embed_texts`` — the public entry point, dispatching on the
+  ``backend`` argument ("auto" / "sentence-transformers" / "hashing"
+  / "openai") to the appropriate concrete implementation.
+- ``hashing_embeddings`` — deterministic local fallback (the
+  ``EMBEDDING_BACKEND=hashing`` path used by ``make smoke`` and CI).
+- ``_embed_with_openai`` — OpenAI batch-embed adapter.
+- ``sentence_transformer_cache_available`` — HF cache probe used by
+  the auto-routing decision in ``embed_texts``.
+- ``huggingface_offline`` — context manager that flips HF environment
+  variables so SentenceTransformer never hits the network when the
+  weights are already cached locally.
+- ``expand_features`` — unigram + bigram feature expansion for the
+  hashing backend.
+- ``EmbeddingResult`` — dataclass returned by ``embed_texts``.
+- ``MODEL_CACHE`` — process-level cache for SentenceTransformer
+  instances (keyed by ``(model_name, local_only, adapter_path)``).
+- ``DEFAULT_EMBEDDING_MODEL`` / ``DEFAULT_HASH_DIM`` — constants.
+
+Leaf status: depends only on ``rag_text_processing.tokenize`` plus the
+stdlib + optional third-party packages (``sentence-transformers``,
+``openai``, ``huggingface_hub``, ``peft``) that are lazy-imported.
+``rag_core.py`` and ``rag_retrieval.py`` import from here; this module
+imports nothing from them, eliminating the function-local late-imports
+that ADR 0045 flagged. ``rag_core`` re-exports every public symbol so
+existing call sites (``from rag_core import embed_texts``, etc.) keep
+working unchanged — the migration is purely structural.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+import hashlib
+import os
+from typing import Any
+
+import numpy as np
+
+from rag_text_processing import tokenize
+
+
+DEFAULT_EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+DEFAULT_HASH_DIM = 384
+
+# Process-level cache for SentenceTransformer instances. Key:
+# ``(model_name, local_only, adapter_path)`` — adapter_path is part of
+# the key so ADR 0027 LoRA-adapted variants don't clobber unadapted
+# weights of the same base model.
+MODEL_CACHE: dict[tuple[str, bool, str | None], Any] = {}
+
+
+@dataclass(frozen=True)
+class EmbeddingResult:
+    vectors: np.ndarray
+    backend: str
+    model: str
+
+
+def embed_texts(
+    texts: list[str],
+    model_name: str = DEFAULT_EMBEDDING_MODEL,
+    backend: str = "auto",
+    local_only: bool = False,
+) -> EmbeddingResult:
+    if backend not in {"auto", "sentence-transformers", "hashing", "openai"}:
+        raise ValueError(
+            "--embedding_backend must be one of: auto, sentence-transformers, hashing, openai"
+        )
+
+    if backend == "openai":
+        return _embed_with_openai(texts, model_name=model_name)
+
+    should_try_sentence_transformers = backend == "sentence-transformers" or (
+        backend == "auto" and sentence_transformer_cache_available(model_name)
+    )
+
+    if should_try_sentence_transformers:
+        try:
+            with huggingface_offline(local_only or backend == "auto"):
+                from sentence_transformers import SentenceTransformer
+
+                # ADR 0027 — additive LoRA adapter, gated by env var so
+                # the default (env unset) path remains byte-identical
+                # to pre-#434 behavior. ``adapter_path`` is part of the
+                # cache key so adapted / unadapted variants of the same
+                # base model don't clobber each other.
+                adapter_path = os.environ.get("BIDMATE_EMBEDDING_LORA_ADAPTER") or None
+                cache_key = (model_name, local_only or backend == "auto", adapter_path)
+                model = MODEL_CACHE.get(cache_key)
+                if model is None:
+                    model = SentenceTransformer(model_name)
+                    if adapter_path:
+                        # PEFT is lazy-imported (optional dep in
+                        # requirements-lora.txt) — the hashing-only CI
+                        # path never executes this branch and so never
+                        # needs the package installed.
+                        from peft import PeftModel  # type: ignore[import-not-found]
+
+                        underlying = model[0].auto_model
+                        adapted = PeftModel.from_pretrained(underlying, adapter_path)
+                        model[0].auto_model = adapted.merge_and_unload()
+                    MODEL_CACHE[cache_key] = model
+            vectors = model.encode(
+                texts,
+                convert_to_numpy=True,
+                normalize_embeddings=True,
+                show_progress_bar=False,
+            )
+            return EmbeddingResult(
+                vectors=np.asarray(vectors, dtype=np.float32),
+                backend="sentence-transformers",
+                model=model_name,
+            )
+        except Exception as exc:
+            if backend == "sentence-transformers":
+                raise RuntimeError(f"Failed to load embedding model {model_name}: {exc}") from exc
+
+    return EmbeddingResult(
+        vectors=hashing_embeddings(texts, DEFAULT_HASH_DIM),
+        backend="hashing",
+        model="local-hashing-bow",
+    )
+
+
+def _embed_with_openai(texts: list[str], *, model_name: str) -> EmbeddingResult:
+    try:
+        import openai  # type: ignore[import-not-found]
+    except Exception as exc:
+        raise RuntimeError(
+            "openai backend requires the openai SDK. "
+            "Install with `pip install openai` or use --embedding_backend sentence-transformers."
+        ) from exc
+    api_key = os.environ.get("BIDMATE_OPENAI_API_KEY") or os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        raise RuntimeError(
+            "BIDMATE_OPENAI_API_KEY (or OPENAI_API_KEY) is not set for embedding_backend=openai."
+        )
+    client = openai.OpenAI(api_key=api_key)
+    vectors: list[list[float]] = []
+    batch_size = 100
+    for start in range(0, len(texts), batch_size):
+        batch = texts[start : start + batch_size]
+        resp = client.embeddings.create(model=model_name, input=batch)
+        vectors.extend(item.embedding for item in resp.data)
+    arr = np.asarray(vectors, dtype=np.float32)
+    norms = np.linalg.norm(arr, axis=1, keepdims=True).clip(min=1e-12)
+    return EmbeddingResult(
+        vectors=arr / norms,
+        backend="openai",
+        model=model_name,
+    )
+
+
+def sentence_transformer_cache_available(model_name: str) -> bool:
+    try:
+        from huggingface_hub import try_to_load_from_cache
+    except Exception:
+        return False
+    for filename in ("modules.json", "config_sentence_transformers.json", "config.json"):
+        cached = try_to_load_from_cache(model_name, filename)
+        if isinstance(cached, str):
+            return True
+    return False
+
+
+class huggingface_offline:
+    def __init__(self, enabled: bool) -> None:
+        self.enabled = enabled
+        self.previous: dict[str, str | None] = {}
+
+    def __enter__(self) -> None:
+        if not self.enabled:
+            return
+        for key in ("HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE"):
+            self.previous[key] = os.environ.get(key)
+            os.environ[key] = "1"
+
+    def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
+        if not self.enabled:
+            return
+        for key, value in self.previous.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+
+
+def hashing_embeddings(texts: list[str], dim: int) -> np.ndarray:
+    vectors = np.zeros((len(texts), dim), dtype=np.float32)
+    for row, text in enumerate(texts):
+        for token in expand_features(tokenize(text)):
+            digest = hashlib.md5(token.encode("utf-8")).hexdigest()
+            idx = int(digest[:8], 16) % dim
+            sign = 1.0 if int(digest[8:10], 16) % 2 == 0 else -1.0
+            vectors[row, idx] += sign
+    norms = np.linalg.norm(vectors, axis=1, keepdims=True)
+    norms[norms == 0] = 1.0
+    return vectors / norms
+
+
+def expand_features(tokens: list[str]) -> list[str]:
+    features = list(tokens)
+    for left, right in zip(tokens, tokens[1:]):
+        features.append(f"{left}_{right}")
+    return features

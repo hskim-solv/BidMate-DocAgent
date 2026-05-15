@@ -37,18 +37,17 @@ Internal helpers :func:`_coverage_counts`,
 :func:`_chunk_tokens_for_bm25` are module-private (underscore
 preserved from the rag_core layout).
 
-Circular-import avoidance: ``DEFAULT_EMBEDDING_MODEL`` /
-``DEFAULT_HASH_DIM`` / ``embed_texts`` / ``hashing_embeddings`` are
-late-imported from ``rag_core`` inside ``embed_query_for_index``.
-They live in ``rag_core`` because the index-build path also consumes
-them (and they share ``MODEL_CACHE`` state); a follow-up issue
-tracks extracting them to a leaf ``rag_embedding`` module so this
-function can drop the late-import idiom too. ``tokenize`` is now
-imported directly from ``rag_text_processing`` (a true leaf), and
-``normalize_regions`` / ``normalize_page_span`` from
-``rag_metadata_processing``. ``comparison_targets_for_analysis``
-is imported directly from ``rag_query`` (issue #799 — its prior
-late-import via ``rag_core`` was a re-export round-trip).
+Leaf status: every dependency is now top-level — ADR 0045 / issue #843
+extracted ``DEFAULT_EMBEDDING_MODEL`` / ``DEFAULT_HASH_DIM`` /
+``embed_texts`` / ``hashing_embeddings`` into the new leaf
+``rag_embedding`` module, so the prior function-local late-imports
+inside ``embed_query_for_index`` are gone. ``tokenize`` is imported
+from ``rag_text_processing`` (a true leaf), ``normalize_regions`` /
+``normalize_page_span`` from ``rag_metadata_processing``, and
+``comparison_targets_for_analysis`` from ``rag_query`` (issue #799
+removed its rag_core round-trip). The dependency graph from this
+module to ``rag_core`` is now zero edges — ``git grep -nE
+"^\\s*from rag_core" rag_retrieval.py`` returns no lines.
 
 JSON-identity guarantee: every function is moved byte-for-byte from
 ``rag_core``. ``tests/test_naive_baseline_ranking_invariance.py``,
@@ -65,6 +64,12 @@ from typing import Any, Iterable
 import numpy as np
 
 from korean_lexicon import BM25_EXTRA_PARTICLE_SUFFIXES, BM25_EXTRA_STOPWORDS
+from rag_embedding import (
+    DEFAULT_EMBEDDING_MODEL,
+    DEFAULT_HASH_DIM,
+    embed_texts,
+    hashing_embeddings,
+)
 from rag_metadata_processing import normalize_page_span, normalize_regions
 from rag_pipeline_presets import RRF_K, VALID_BM25_STOPWORD_PROFILES
 from rag_query import comparison_targets_for_analysis
@@ -525,16 +530,6 @@ def retrieve_candidates(
 
 
 def embed_query_for_index(query: str, embedding_config: dict[str, Any]) -> np.ndarray:
-    # Late-import the embedding constants + backend dispatchers from
-    # rag_core. They are also used by the index-build path, so they
-    # stay there as the canonical home; this function just reads them.
-    from rag_core import (
-        DEFAULT_EMBEDDING_MODEL,
-        DEFAULT_HASH_DIM,
-        embed_texts,
-        hashing_embeddings,
-    )
-
     backend = str(embedding_config.get("backend") or "hashing")
     model = str(embedding_config.get("model") or DEFAULT_EMBEDDING_MODEL)
     dimension = int(embedding_config.get("dimension") or DEFAULT_HASH_DIM)

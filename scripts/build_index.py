@@ -12,12 +12,12 @@ from ingestion import load_documents_from_metadata_csv
 from rag_core import (
     DEFAULT_CHUNK_MAX_CHARS,
     DEFAULT_CHUNK_OVERLAP_SENTENCES,
-    DEFAULT_EMBEDDING_MODEL,
     EMBEDDINGS_FILENAME,
     build_index_payload,
     build_index_payload_from_documents,
     write_index,
 )
+from rag_embedding import DEFAULT_EMBEDDING_MODEL
 from visual_ingestion import (
     load_visual_documents_from_dir,
     load_visual_documents_from_metadata_csv,
