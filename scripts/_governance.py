@@ -47,6 +47,20 @@ LOAD_BEARING_PATHS: list[str] = [
 ]
 
 
+# Numeric thresholds shared across the governance surface. Single source
+# of truth for hook scripts, the self-review collector, and any future
+# CI gate. SKILL.md (`.claude/skills/self-review-quarterly/SKILL.md`) is
+# the parallel SoT for *grading bands* (✓/△/✗); this dict only holds the
+# *raw values* that bash hooks + python collectors need to agree on.
+THRESHOLDS: dict[str, int] = {
+    # PR #747 PreToolUse MEMORY.md line-count matcher
+    "MEMORY_LINE_AWARE": 20,
+    "MEMORY_LINE_BLOCK": 30,
+    # PR #745 axis #2 (Agent delegation) non-trivial-PR LOC cut-off
+    "AXIS_2_LOC": 50,
+}
+
+
 def _normalize(path: str) -> str:
     if path.startswith("./"):
         return path[2:]
@@ -207,9 +221,22 @@ def _cmd_list() -> int:
     return 0
 
 
+def _cmd_threshold(key: str) -> int:
+    val = THRESHOLDS.get(key)
+    if val is None:
+        sys.stderr.write(
+            f"unknown threshold key: {key!r}; available: "
+            f"{sorted(THRESHOLDS)}\n"
+        )
+        return 1
+    sys.stdout.write(f"{val}\n")
+    return 0
+
+
 def main() -> int:
     p = argparse.ArgumentParser(
-        description="Load-bearing paths SSoT (CLAUDE.md, PR #69 lesson).",
+        description="Load-bearing paths + numeric thresholds SSoT "
+                    "(CLAUDE.md, PR #69 / #747 / #745 lessons).",
     )
     g = p.add_mutually_exclusive_group(required=True)
     g.add_argument(
@@ -224,6 +251,11 @@ def main() -> int:
     g.add_argument(
         "--list", action="store_true",
         help="Print the canonical load-bearing list, one per line.",
+    )
+    g.add_argument(
+        "--threshold", metavar="KEY",
+        help="Print the numeric THRESHOLDS[KEY] to stdout (exit 0). "
+             "Exit 1 if KEY is unknown.",
     )
     g.add_argument(
         "--next-adr-number", action="store_true",
@@ -248,6 +280,8 @@ def main() -> int:
         return _cmd_any_match()
     if args.list:
         return _cmd_list()
+    if args.threshold is not None:
+        return _cmd_threshold(args.threshold)
     if args.next_adr_number:
         return _cmd_next_adr_number(args.adr_dir)
     if args.check_adr_collision:
