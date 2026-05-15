@@ -100,7 +100,15 @@ jobs:
         with:
           name: synthetic-judge-aggregate
           path: reports/synthetic_judge.aggregate.json
-          if-no-files-found: warn
+          # Issue #823 (senior-review B4): the aggregate JSON is the only
+          # justification for running this workflow. If `make synthetic-judge`
+          # silently produces no file (API-key miss, judge timeout, transient
+          # network failure that the Makefile target swallows), the upload
+          # step previously warned and the job stayed green — letting the
+          # comment renderer ship a "judge passed" message with empty cells.
+          # Hard-fail instead so reviewers see ❌ pr-judge / live-judge on
+          # the check list rather than a misleading comment.
+          if-no-files-found: error
 
       - name: Upsert PR comment
         env:

@@ -118,6 +118,38 @@ class WorkflowStructureTest(unittest.TestCase):
             "Per-case local JSON must not be uploaded (ADR 0005 boundary)",
         )
 
+    def test_aggregate_upload_step_hard_fails_on_missing_file(self) -> None:
+        """Issue #823 regression (senior-review B4).
+
+        If ``make synthetic-judge`` silently produces no aggregate JSON
+        (e.g. missing API key, judge backend timeout, swallowed network
+        error), the upload step previously had ``if-no-files-found: warn``
+        and the job stayed green — letting ``render_judge_comment.py``
+        ship a "judge passed" comment with empty cells. The aggregate is
+        the *only* justification for running this workflow, so the upload
+        must hard-fail when it's missing.
+        """
+        steps = self.workflow["jobs"]["live-judge"]["steps"]
+        aggregate_uploads = [
+            s for s in steps
+            if isinstance(s, dict)
+            and s.get("uses", "").startswith("actions/upload-artifact")
+            and "synthetic_judge.aggregate.json" in s.get("with", {}).get("path", "")
+        ]
+        self.assertEqual(
+            1,
+            len(aggregate_uploads),
+            "expected exactly one upload-artifact step for the aggregate JSON",
+        )
+        self.assertEqual(
+            "error",
+            aggregate_uploads[0]["with"].get("if-no-files-found"),
+            "Aggregate upload must hard-fail on missing file (issue #823). "
+            "Reverting to 'warn' lets the PR comment render with empty cells "
+            "and the job stay green — exactly the silent-pass failure mode "
+            "B4 surfaced.",
+        )
+
     def test_no_pull_request_target(self) -> None:
         # `pull_request_target` runs on the *base* repo with secrets exposed,
         # which would let fork PRs exfiltrate BIDMATE_JUDGE_API_KEY.  ADR 0043
