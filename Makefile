@@ -93,6 +93,19 @@ ask:
 eval:
 	$(PYTHON) eval/run_eval.py --index_dir data/index --output_dir reports --config eval/config.yaml
 
+# OOD evaluation surface (ADR 0046 / issue #864). Builds a separate
+# index from data/ood_synthetic_legal/ (E2 corpus) and runs the
+# ood_legal_config.yaml ablation pair (naive_baseline + full).
+# Output: reports/ood_legal/eval_summary.json. RFP eval is untouched
+# and the ADR 0001 baseline guard is not affected (separate index +
+# config + report directory).
+.PHONY: ood-legal-index ood-legal-eval
+ood-legal-index:
+	$(PYTHON) scripts/build_index.py --input_dir data/ood_synthetic_legal --output_dir data/ood_legal_index
+
+ood-legal-eval: ood-legal-index
+	$(PYTHON) eval/run_eval.py --index_dir data/ood_legal_index --output_dir reports/ood_legal --config eval/ood_legal_config.yaml
+
 # Multi-hop cross-section eval slice (ADR 0033).
 # synthesize-multihop: generate eval/dev_queries_multihop_v1.jsonl.
 #   Stub backend (default): placeholder queries, CI-safe, no API calls.
