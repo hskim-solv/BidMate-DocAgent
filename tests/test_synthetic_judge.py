@@ -18,7 +18,7 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from eval.synthetic_judge import judge_synthetic_summary
+from eval.judges.synthetic_judge import judge_synthetic_summary
 
 
 def _fake_summary() -> dict:
@@ -122,7 +122,7 @@ class SyntheticJudgeStubTest(unittest.TestCase):
     def test_evidence_boundary_neutralizes_injection(self) -> None:
         """The judge prompt must neutralize prompt-injection in evidence text
         and wrap evidence with the ADR 0008 boundary marker."""
-        from eval.synthetic_judge import _build_prompt
+        from eval.judges.synthetic_judge import _build_prompt
         from rag_core import EVIDENCE_BOUNDARY
 
         case = {
@@ -159,7 +159,7 @@ class SyntheticJudgeCLITest(unittest.TestCase):
             result = subprocess.run(
                 [
                     sys.executable,
-                    "-m", "eval.synthetic_judge",
+                    "-m", "eval.judges.synthetic_judge",
                     "--summary", str(summary_path),
                     "--aggregate", str(aggregate_path),
                     "--local", str(local_path),

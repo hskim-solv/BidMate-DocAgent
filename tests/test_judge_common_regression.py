@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import unittest
 
-from eval.judge_common import (
+from eval.judges.judge_common import (
     JUDGE_STATUSES,
     build_evidence_block,
     clamp_score,

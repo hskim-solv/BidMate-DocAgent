@@ -11,7 +11,7 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from eval.judge_agreement import (
+from eval.judges.judge_agreement import (
     LABELS,
     cohens_kappa,
     compute_agreement,

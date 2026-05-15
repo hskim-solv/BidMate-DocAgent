@@ -59,7 +59,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from eval.judge_common import (  # noqa: E402
+from eval.judges.judge_common import (  # noqa: E402
     JUDGE_STATUSES,
     build_evidence_block,
     build_openai_client,
