@@ -342,10 +342,16 @@ def _read_data_list_csv(path: Path) -> list[dict[str, Any]]:
 
     Returns the raw dict per row (column → cell value). Caller is
     responsible for the CSV→doc_id mapping (see ``_attach_doc_ids``).
+
+    Uses ``utf-8-sig`` to transparently strip the BOM that several
+    Korean spreadsheet exports prepend — matches the canonical CSV
+    opener in ``ingestion.py`` (issue #873). ``utf-8-sig`` is a strict
+    superset of ``utf-8`` for BOM-less files, so this is safe to apply
+    unconditionally.
     """
     if not path.exists():
         raise CaseProposerInputError(f"data_list.csv not found at {path}")
-    with path.open("r", encoding="utf-8", newline="") as fh:
+    with path.open("r", encoding="utf-8-sig", newline="") as fh:
         reader = csv.DictReader(fh)
         if not reader.fieldnames:
             raise CaseProposerInputError(f"data_list.csv at {path} has no header")
