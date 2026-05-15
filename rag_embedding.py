@@ -52,6 +52,43 @@ DEFAULT_HASH_DIM = 384
 MODEL_CACHE: dict[tuple[str, bool, str | None], Any] = {}
 
 
+def clear_model_caches() -> None:
+    """Drop all process-level model caches.
+
+    Issue #841 — RAG senior-review critique #7.2. ``MODEL_CACHE``
+    accumulates SentenceTransformer instances across calls (and, by
+    extension, across pytest sessions) for cost amortization. The
+    instances themselves are stateless after load, so steady-state
+    behavior is fine — but if a future test asserts "uncached load
+    happens with these args", or a teardown wants to free GPU /
+    page-cache memory, the test needs an explicit reset hook.
+
+    Pytest wires this via the autouse session-scope
+    ``_clear_model_caches_at_session_end`` fixture in
+    ``tests/conftest.py``; non-pytest callers (notebooks, REPL) can
+    invoke it directly. Also clears ``visual_ingestion._DONUT_MODEL_CACHE``
+    when the visual_ingestion module has been imported, so the same
+    "drop all model caches" intent covers both surfaces.
+
+    ADR 0045 / issue #843 — this function lives in ``rag_embedding``
+    (alongside ``MODEL_CACHE``) and is re-exported via ``rag_core`` so
+    existing call sites (``from rag_core import clear_model_caches``)
+    keep working unchanged.
+    """
+    MODEL_CACHE.clear()
+    # ``visual_ingestion`` is an optional surface (HWP visual path);
+    # only clear if the module was loaded so we don't pay the import
+    # cost just to no-op. ``sys.modules`` lookup avoids forcing the
+    # import.
+    import sys
+
+    visual_ingestion = sys.modules.get("visual_ingestion")
+    if visual_ingestion is not None:
+        donut_cache = getattr(visual_ingestion, "_DONUT_MODEL_CACHE", None)
+        if isinstance(donut_cache, dict):
+            donut_cache.clear()
+
+
 @dataclass(frozen=True)
 class EmbeddingResult:
     vectors: np.ndarray
