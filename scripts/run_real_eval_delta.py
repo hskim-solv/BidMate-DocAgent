@@ -122,12 +122,29 @@ SAFE_TOPLEVEL_KEYS = frozenset(
         # metric sub-keys mirror SAFE_ABLATION_FULL_SCALAR_KEYS; no per-case
         # payload crosses the boundary.
         "by_format",
+        # Issue #845 / ADR 0039: per-hardcase-category accuracy breakdown,
+        # populated by run_eval.py:677-685 when cases carry the
+        # ``hardcase_categories`` field. Bucket keys are whitelisted in
+        # SAFE_HARDCASE_CATEGORY_BUCKET_KEYS (fail-closed) so the public
+        # taxonomy can never be silently widened on the committable surface.
+        "by_hardcase_category",
     }
 )
 
 # Allowed bucket keys inside ``by_format``. Fail-closed: any key not in
 # this set is silently dropped before the aggregate is committed.
 SAFE_FORMAT_BUCKET_KEYS = frozenset({"hwp", "pdf", "synthetic_public_sample"})
+
+# Allowed bucket keys inside ``by_hardcase_category``. Mirrors ADR 0039's
+# public 4-category enum (same set as ADR_0039_CATEGORIES in
+# tests/test_hwp_hardcase_category_inventory_regression.py). Fail-closed:
+# any unknown category — including private 5-slice names like
+# ``scanned_pdf`` / ``mixed_layout`` / ``noisy_ocr`` — is silently dropped
+# before the aggregate is committed, so the private taxonomy in
+# docs/real-data/private-hardcase-benchmark.md cannot leak through.
+SAFE_HARDCASE_CATEGORY_BUCKET_KEYS = frozenset(
+    {"table_heavy", "ocr_noisy", "rotated_or_skewed", "layout_broken"}
+)
 
 # Whitelisted bin names for ``abstention_outcomes``. Integer counts only.
 SAFE_ABSTENTION_OUTCOME_KEYS = ("correct_refusal", "incorrect_answer", "boundary_partial")
@@ -497,6 +514,38 @@ def extract_aggregate(summary: dict[str, Any]) -> dict[str, Any]:
                 format_out[str(bucket_name)] = extracted_bucket
         if format_out:
             out["by_format"] = format_out
+
+    # Issue #845 / ADR 0039 — by_hardcase_category aggregate. Fail-closed
+    # against the public 4-category enum so private 5-slice category names
+    # (scanned_pdf / mixed_layout / noisy_ocr) cannot leak even if a
+    # local-only real_config.local.yaml mistakenly tags them.
+    by_hardcase_category = summary.get("by_hardcase_category")
+    if isinstance(by_hardcase_category, dict):
+        hardcase_out: dict[str, dict[str, Any]] = {}
+        for bucket_name, bucket_summary in by_hardcase_category.items():
+            if str(bucket_name) not in SAFE_HARDCASE_CATEGORY_BUCKET_KEYS:
+                continue
+            if not isinstance(bucket_summary, dict):
+                continue
+            extracted_bucket = {}
+            for m in SAFE_SLICE_METRICS:
+                raw = bucket_summary.get(m)
+                if raw is None:
+                    continue
+                if m == "abstention_outcomes" and isinstance(raw, dict):
+                    bin_out = {
+                        sub: int(raw[sub])
+                        for sub in SAFE_ABSTENTION_OUTCOME_KEYS
+                        if isinstance(raw.get(sub), (int, float))
+                    }
+                    if bin_out:
+                        extracted_bucket[m] = bin_out
+                else:
+                    extracted_bucket[m] = raw
+            if extracted_bucket:
+                hardcase_out[str(bucket_name)] = extracted_bucket
+        if hardcase_out:
+            out["by_hardcase_category"] = hardcase_out
 
     _assert_no_forbidden(out)
     return out

@@ -26,6 +26,13 @@ cases:
     expected_claim_targets:
       - "replace-with-agency"
     answerable: true
+    # Optional: ADR 0039 hardcase taxonomy tags (multi-label list).
+    # Allowed values: table_heavy / ocr_noisy / rotated_or_skewed / layout_broken.
+    # Unknown values are dropped by scripts/run_real_eval_delta.py before any
+    # aggregate crosses the ADR 0005 commit boundary, so the private 5-slice
+    # taxonomy (scanned_pdf / mixed_layout / noisy_ocr) stays local-only.
+    # hardcase_categories:
+    #   - table_heavy
 
   - id: replace_absent_fact
     query_type: abstention
