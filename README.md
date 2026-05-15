@@ -127,7 +127,7 @@ LLM synthesis opt-in(`agentic_full_llm`, [ADR 0011](docs/adr/0011-llm-synthesis-
 | no_metadata_first | agentic_full | auto | off | on | on | 0.692±0.10 | 0.740±0.09 | 0.595±0.07 | 0.965±0.04 | 0.600 | 0.818 (18/4/0) | 0.000 | 3.6ms |
 | no_verifier_retry | agentic_full | auto | on | on | off | 0.821±0.09 | 0.720±0.09 | 0.705±0.09 | 0.983±0.03 | 0.660 | 0.273 (6/16/0) | 0.000 | 2.7ms |
 
-<details><summary>Detection-blind ablations — statistically inseparable from <code>full</code> at n=42 (CI bands overlapping; n=42 was the statistical limit). Dataset expanded to n=100 (issue #570 완료); real-eval re-measurement pending.</summary>
+<details><summary>Detection-blind ablations — statistically inseparable from <code>full</code> at n=42 (CI bands overlapping; n=42 was the statistical limit). Dataset expanded to n=100 (issue #570 완료); real-eval re-measurement pending. <strong>19 ablations · ≥5pp + non-overlap CI = 0 winners</strong> — null-result는 [ADR 0001](docs/adr/0001-preserve-naive-baseline.md) baseline 결정성의 mechanical proof로 surface한다 ([docs/eval/ablation-discriminability.md](docs/eval/ablation-discriminability.md), [issue #782](https://github.com/hskim-solv/BidMate-DocAgent/issues/782)).</summary>
 
 | Run | Pipeline | Top-k | Metadata-first | Rerank | Verifier/Retry | Accuracy | Groundedness | Citation | Claim Align | Format | Abstention | Retry | Latency p95 |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
