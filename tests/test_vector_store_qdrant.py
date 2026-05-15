@@ -17,9 +17,11 @@ qdrant_client = pytest.importorskip("qdrant_client")
 
 from rag_vector_store import (  # noqa: E402  (after importorskip)
     ENV_INDEX_BACKEND,
+    ENV_QDRANT_URL,
     QDRANT_COLLECTION_NAME,
     QdrantVectorStore,
     VectorStore,
+    _make_qdrant_client,
     load_vector_store,
     vector_store_from_matrix,
 )
@@ -258,3 +260,92 @@ def test_qdrant_query_matches_in_memory_at_moderate_scale(
         ):
             assert m_idx == q_idx
             assert m_score == pytest.approx(q_score, abs=1e-5)
+
+
+# ---------------------------------------------------------------------------
+# Stage 2d: BIDMATE_QDRANT_URL connection routing (#834)
+# ---------------------------------------------------------------------------
+
+
+class _FakeQdrantClient:
+    """Captures constructor kwargs without touching the real qdrant
+    client. Used to assert ``_make_qdrant_client`` picks the right
+    transport for each ``BIDMATE_QDRANT_URL`` value."""
+
+    instances: list[dict] = []
+
+    def __init__(self, **kwargs):
+        self.kwargs = dict(kwargs)
+        type(self).instances.append(self.kwargs)
+
+
+@pytest.fixture(autouse=True)
+def _reset_fake_client() -> None:
+    _FakeQdrantClient.instances.clear()
+
+
+def test_make_qdrant_client_uses_memory_when_url_unset(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv(ENV_QDRANT_URL, raising=False)
+    _make_qdrant_client(_FakeQdrantClient)
+    assert _FakeQdrantClient.instances == [{"location": ":memory:"}]
+
+
+def test_make_qdrant_client_treats_memory_marker_as_in_process(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(ENV_QDRANT_URL, ":memory:")
+    _make_qdrant_client(_FakeQdrantClient)
+    assert _FakeQdrantClient.instances == [{"location": ":memory:"}]
+
+
+def test_make_qdrant_client_treats_blank_as_in_process(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(ENV_QDRANT_URL, "   ")
+    _make_qdrant_client(_FakeQdrantClient)
+    assert _FakeQdrantClient.instances == [{"location": ":memory:"}]
+
+
+def test_make_qdrant_client_routes_http_url(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(ENV_QDRANT_URL, "http://localhost:6333")
+    _make_qdrant_client(_FakeQdrantClient)
+    assert _FakeQdrantClient.instances == [{"url": "http://localhost:6333"}]
+
+
+def test_make_qdrant_client_routes_https_url(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(
+        ENV_QDRANT_URL, "https://qdrant.example.com:6333"
+    )
+    _make_qdrant_client(_FakeQdrantClient)
+    assert _FakeQdrantClient.instances == [
+        {"url": "https://qdrant.example.com:6333"}
+    ]
+
+
+def test_make_qdrant_client_treats_other_strings_as_filesystem_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(ENV_QDRANT_URL, "/var/lib/qdrant/data")
+    _make_qdrant_client(_FakeQdrantClient)
+    assert _FakeQdrantClient.instances == [
+        {"location": "/var/lib/qdrant/data"}
+    ]
+
+
+def test_qdrant_url_ignored_when_index_backend_is_memory(
+    matrix: np.ndarray, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """ADR 0001 baseline preservation. Even with BIDMATE_QDRANT_URL
+    pointing at a remote, BIDMATE_INDEX_BACKEND=memory (default) must
+    keep the in-memory path — the URL only activates once qdrant is
+    opted into."""
+    monkeypatch.delenv(ENV_INDEX_BACKEND, raising=False)
+    monkeypatch.setenv(ENV_QDRANT_URL, "http://should-not-be-reached:6333")
+    store = vector_store_from_matrix(matrix)
+    assert not isinstance(store, QdrantVectorStore)
