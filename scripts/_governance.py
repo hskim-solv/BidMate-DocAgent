@@ -106,7 +106,14 @@ def is_load_bearing(path: str) -> bool:
 # ---------------------------------------------------------------------------
 
 ADR_DIR_DEFAULT = "docs/adr"
-ADR_FILENAME_RE = re.compile(r"^(\d{4})-[a-z0-9][a-z0-9-]*\.md$")
+# Issue #818: detection-only relaxation. The kebab-lowercase slug remains the
+# *convention* (see ``docs/adr/README.md`` File layout), but the live bug
+# discovery on ``0044-realN-eval-case-expansion.md`` showed that a strict
+# lowercase character class silently hides legitimate-but-mixed-case ADRs from
+# the pre-commit collision scanner and from ``--next-adr-number``. We widen
+# the character class to accept ``[a-zA-Z0-9]`` so detection is robust; a
+# separate lint that warns when an ADR slug is mixed-case is out of scope.
+ADR_FILENAME_RE = re.compile(r"^(\d{4})-[a-zA-Z0-9][a-zA-Z0-9-]*\.md$")
 
 
 def existing_adr_numbers(adr_dir: str | Path = ADR_DIR_DEFAULT) -> set[int]:
