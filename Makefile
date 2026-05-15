@@ -40,7 +40,7 @@
 # rubric + 5-axis Claude collaboration rubric. See SKILL at
 # .claude/skills/self-review-quarterly/SKILL.md and privacy policy at
 # docs/self-review/README.md.
-.PHONY: self-review-quarterly
+.PHONY: self-review-quarterly hook-fires-weekly
 
 # Cleanup
 .PHONY: clean
@@ -441,3 +441,14 @@ self-review-quarterly:
 	  --emit-report \
 	  --output "docs/self-review/$(QUARTER).md"
 	@echo "Run /self-review-quarterly $(QUARTER) in Claude Code to fill verdict tables."
+
+# Rolling-window hook-fires summary (issue #716). Emits last N-day governance
+# hook stats as JSON to stdout. Q3 self-review #3·#4 (automation ROI / rule-to-
+# automation lag) progress gauge — daily-runnable companion to the quarterly
+# report.
+#
+# Example:
+#   make hook-fires-weekly           # last 7 days (default)
+#   make hook-fires-weekly DAYS=30   # last 30 days
+hook-fires-weekly:
+	@$(PYTHON) scripts/claude-hooks/_self_review.py --window-days $(or $(DAYS),7) --repo .
