@@ -205,6 +205,52 @@ ADR_VERIFIES_KEY_RE = re.compile(
 ADR_VERIFICATION_HEADER_RE = re.compile(r"^##\s+Verification\s*$", re.MULTILINE)
 
 
+# ---------------------------------------------------------------------------
+# ADR ↔ README index parity (issue #803).
+#
+# `tests/test_governance.py::test_no_unlinked_adr_files_on_disk` enforces
+# parity in CI Pytest. That runs *after* push, so a missing index row
+# reds main on merge and cascades a red Pytest gate across every open PR
+# until someone authors a fix. The pre-commit hook calls
+# ``adr_readme_parity_violations`` to shift this same check left so the
+# author finds out at ``git commit`` time.
+#
+# The check is deliberately string-grep on the staged README text rather
+# than a markdown parser — it must match exactly the row format the
+# Pytest gate parses (``| [NNNN](./NNNN-slug.md) |``) and stay zero-dep
+# (Python stdlib + git).
+# ---------------------------------------------------------------------------
+
+
+_ADR_INDEX_ROW_RE = re.compile(
+    r"\|\s*\[(\d{4})\]\(\./(\d{4}-[^)]+\.md)\)\s*\|"
+)
+
+
+def adr_readme_parity_violations(
+    adr_filenames: list[str],
+    readme_text: str,
+) -> list[str]:
+    """Return the ADR filenames that have no matching row in ``readme_text``.
+
+    A "matching row" follows the canonical index format::
+
+        | [NNNN](./NNNN-slug.md) | status | title |
+
+    which is what ``test_no_unlinked_adr_files_on_disk`` already parses
+    (see ``tests/test_governance.py::_ADR_INDEX_ROW_RE``). Empty input
+    returns an empty list — the caller should only invoke this when at
+    least one ADR file is staged for add/rename.
+    """
+    rows = {filename for _, filename in _ADR_INDEX_ROW_RE.findall(readme_text)}
+    missing: list[str] = []
+    for path in adr_filenames:
+        name = Path(path).name
+        if name not in rows:
+            missing.append(name)
+    return missing
+
+
 def adr_has_verification_section(adr_path: str | Path) -> bool:
     """Return True if the ADR file contains a `## Verification` H2 header."""
     p = Path(adr_path)
@@ -311,6 +357,68 @@ def _cmd_lint_adr_consequences(adr_path: str, repo_root: str) -> int:
     return 1
 
 
+def _cmd_check_adr_readme_parity(
+    adr_paths: list[str],
+    readme_staged: bool,
+    readme_path: str,
+) -> int:
+    """Hook-side parity check (issue #803).
+
+    When ``readme_staged`` is true, the README content is read from the
+    git index (``git show :docs/adr/README.md``) — that is the version
+    the upcoming commit will publish. Otherwise the working-tree file
+    at ``readme_path`` is read (useful for ad-hoc CLI calls and tests).
+    """
+    if readme_staged:
+        import subprocess
+
+        try:
+            readme_text = subprocess.check_output(
+                ["git", "show", f":{readme_path}"],
+                text=True,
+            )
+        except subprocess.CalledProcessError as exc:
+            sys.stderr.write(
+                f"\n❌ Could not read staged {readme_path} via "
+                f"`git show :{readme_path}`: {exc}\n"
+                "   Is docs/adr/README.md present in the index?\n\n"
+            )
+            return 1
+    else:
+        try:
+            readme_text = Path(readme_path).read_text(encoding="utf-8")
+        except OSError as exc:
+            sys.stderr.write(
+                f"\n❌ Could not read {readme_path}: {exc}\n\n"
+            )
+            return 1
+
+    missing = adr_readme_parity_violations(adr_paths, readme_text)
+    if not missing:
+        return 0
+
+    sys.stderr.write(
+        "\n❌ ADR ↔ README index parity check failed (issue #803):\n\n"
+    )
+    for name in missing:
+        sys.stderr.write(f"     - {name} has no row in docs/adr/README.md\n")
+    sys.stderr.write(
+        "\n   Add a row of the form\n"
+        "       | [NNNN](./NNNN-slug.md) | proposed | one-line title |\n"
+        "   under the Index section of docs/adr/README.md, stage it in\n"
+        "   the same commit, then re-commit.\n\n"
+        "   Why this hook fires at commit time:\n"
+        "     - The CI gate `test_no_unlinked_adr_files_on_disk` is the\n"
+        "       canonical check, but it only runs after push — a missing\n"
+        "       row reds main on merge and cascades a red Pytest gate\n"
+        "       across every open PR until a fix-up PR lands.\n"
+        "     - Issues #730 / #732 / #750 are the recurrence trail.\n\n"
+        "   Bypass with --no-verify only mid-merge; open a follow-up to\n"
+        "   add the missing row.\n\n"
+    )
+    return 1
+
+
 def _cmd_check_adr_collision(adr_dir: str) -> int:
     dups = find_duplicate_adr_numbers(adr_dir)
     if not dups:
@@ -413,6 +521,26 @@ def main() -> int:
         help="Lint a single ADR's `## Verification` section + verifies-key "
              "markers (issue #793); exit 1 with details if missing/broken.",
     )
+    g.add_argument(
+        "--check-adr-readme-parity",
+        nargs="+",
+        metavar="ADR_PATH",
+        help="Check that each ADR path has a matching row in "
+             "docs/adr/README.md (issue #803). Used by the pre-commit hook "
+             "to shift-left the test_no_unlinked_adr_files_on_disk CI gate.",
+    )
+    p.add_argument(
+        "--readme-staged", action="store_true",
+        help="When set with --check-adr-readme-parity, read README content "
+             "from the git index (`git show :<readme-path>`) instead of the "
+             "working tree. Used by the pre-commit hook so the check sees "
+             "exactly what the upcoming commit will publish.",
+    )
+    p.add_argument(
+        "--readme-path", default="docs/adr/README.md",
+        help="README path for --check-adr-readme-parity "
+             "(default: docs/adr/README.md).",
+    )
     p.add_argument(
         "--adr-dir", default=ADR_DIR_DEFAULT,
         help=f"ADR directory (default: {ADR_DIR_DEFAULT}). "
@@ -439,6 +567,12 @@ def main() -> int:
         return _cmd_check_adr_collision(args.adr_dir)
     if args.lint_adr_consequences is not None:
         return _cmd_lint_adr_consequences(args.lint_adr_consequences, args.repo_root)
+    if args.check_adr_readme_parity is not None:
+        return _cmd_check_adr_readme_parity(
+            args.check_adr_readme_parity,
+            readme_staged=args.readme_staged,
+            readme_path=args.readme_path,
+        )
     return 2
 
 
