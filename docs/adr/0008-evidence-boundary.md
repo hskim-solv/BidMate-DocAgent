@@ -65,22 +65,33 @@ in tests:
 - **Defense surface today**: regex set in
   [`rag_verifier.py:262/266/269`](../../rag_verifier.py); per-attack
   positive cases live in
-  [`tests/test_prompt_injection_regression.py`](../../tests/test_prompt_injection_regression.py).
-- **Known unaddressed attack vectors** (tracking issue
+  [`tests/test_prompt_injection_regression.py`](../../tests/test_prompt_injection_regression.py)
+  and the per-vector adversarial pinning in
+  [`tests/test_evidence_boundary_attack_vectors.py`](../../tests/test_evidence_boundary_attack_vectors.py).
+- **Marker-bypass / marker-tag confusion** — **closed by issue #830 surgical PR**:
+  `_LITERAL_MARKER_RE` in `rag_verifier.py` now rewrites any literal
+  `[INSTRUCTION_LIKE]` / `[/INSTRUCTION_LIKE]` token in input to
+  `[INPUT_MARKER]` BEFORE applying the wrap, so every marker token
+  in the output was written by the defense (not by the attacker).
+- **Remaining unaddressed attack vectors** (tracking issue
   [#830](https://github.com/hskim-solv/BidMate-DocAgent/issues/830)):
-  - **Marker-bypass**: attacker text containing literal
-    `[/INSTRUCTION_LIKE]` could escape the wrap so following
-    attacker lines flow unwrapped to the LLM judge.
-  - **Marker-tag confusion**: attacker injects an opening
-    `[INSTRUCTION_LIKE]` without a closing tag, hoping the LLM
-    judge treats subsequent content as already-defended.
-  - **Chat-token aliasing**: tokens with surrounding whitespace,
-    fullwidth lookalikes (`＜｜im_start｜＞`), or partial matches
-    (`<|im_star`) are not normalized.
-  - **Role-tag case / unicode**: regex anchors lowercase; check
-    `SyStEm:` and fullwidth `ＳＹＳＴＥＭ:`.
+  - **Chat-token aliasing**: tokens with surrounding whitespace
+    (`< |im_start| >`), fullwidth lookalikes (`＜｜im_start｜＞`),
+    or partial matches (`<|im_star`) are not normalized.
+    Pinned by
+    `tests/test_evidence_boundary_attack_vectors.py::TestVector3ChatTokenAliasing`.
+    Fix path: NFKC unicode normalization before regex match.
+  - **Role-tag case (fullwidth only)**: ASCII `IGNORECASE` already
+    handles `SyStEm:`; the gap is fullwidth
+    (`ＳＹＳＴＥＭ:`). Pinned by
+    `TestVector4RoleTagCaseUnicode::test_4b_fullwidth_role_tag_NOT_defended`.
+    Fix path: same NFKC normalization as chat-token aliasing.
   - **Instruction-override paraphrases**: regex requires keywords
-    like `ignore` / `disregard`; semantic paraphrases pass through.
+    like `ignore` / `disregard`; semantic paraphrases ("reset
+    everything we discussed") pass through. Pinned by
+    `TestVector5InstructionOverrideParaphrase`. Out of scope for
+    the deterministic verifier per the ADR's Alternatives section
+    — would require an LLM classifier.
 - **Decision rule for a regex change**: a new rule (or a relaxation)
   requires ≥1 new attack vector covered with no >0 false-positive
   regressions on the real-corpus survey set (Korean legal language
