@@ -109,14 +109,28 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--hwp_loader",
         default=None,
-        choices=["csv", "native", "native_tables"],
+        choices=["csv_text", "kordoc", "csv", "native", "native_tables"],
         help=(
-            "HWP loader selection for ADR 0039 ablation (issue #652). Sets "
-            "BIDMATE_HWP_LOADER env var before ingestion so _resolve_loader in "
-            "ingestion.py picks the correct backend. 'csv': text-only CSV loader; "
-            "'native': pyhwp native without tables; 'native_tables': pyhwp native "
-            "with table reconstruction (ADR 0036 default when pyhwp installed). "
-            "Omit to use the ADR 0036 runtime default."
+            "HWP loader selection (ADR 0049). Sets BIDMATE_HWP_LOADER before "
+            "ingestion so _resolve_loader picks the backend. 'kordoc' (default): "
+            "npm subprocess that preserves table structure and headings; "
+            "'csv_text': force the CSV-text fallback (offline / CI / Node-missing). "
+            "Legacy values 'csv'/'native'/'native_tables' (ADR 0036) are aliased "
+            "to 'csv_text' with a DeprecationWarning at ingestion time. "
+            "Omit to use the ADR 0049 runtime default (kordoc → csv_text "
+            "auto-fallback on Node-missing)."
+        ),
+    )
+    parser.add_argument(
+        "--pdf_loader",
+        default=None,
+        choices=["csv_text", "kordoc"],
+        help=(
+            "PDF loader selection (ADR 0049). Sets BIDMATE_PDF_LOADER before "
+            "ingestion. 'kordoc' (default): npm subprocess that preserves "
+            "PDF table structure and headings; 'csv_text': force the cover/TOC "
+            "CSV-text fallback (offline / CI / Node-missing). Omit for the "
+            "ADR 0049 runtime default."
         ),
     )
     return parser.parse_args()
@@ -166,6 +180,8 @@ def main() -> int:
         validate_args(args)
         if args.hwp_loader is not None:
             os.environ["BIDMATE_HWP_LOADER"] = args.hwp_loader
+        if args.pdf_loader is not None:
+            os.environ["BIDMATE_PDF_LOADER"] = args.pdf_loader
         output_dir = Path(args.output_dir)
         visual_artifact_dir = (
             Path(args.visual_artifact_dir)

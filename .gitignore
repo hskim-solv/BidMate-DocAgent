@@ -32,6 +32,7 @@ venv/
 
 # Local/private source data
 data/files/
+data/files_kordoc/
 data/data_list.csv
 data/data_list.xlsx
 eval/*.local.yaml

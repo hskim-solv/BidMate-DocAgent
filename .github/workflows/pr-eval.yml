@@ -130,6 +130,15 @@ jobs:
           cache: pip
           cache-dependency-path: pr/requirements.txt
 
+      # ADR 0049: HWP/PDF ingestion shells out to `npx kordoc`.
+      # On Node-missing the loader auto-degrades to `csv_text`
+      # (telemetry-visible), but for the eval-delta job we want the
+      # kordoc path exercised so the PR's structural-extraction gains
+      # are reflected in the delta vs. base.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
       - name: Install dependencies (PR)
         run: |
           python -m pip install --upgrade pip

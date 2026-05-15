@@ -689,8 +689,11 @@ def _inject_text_source_rates(
 
     For every format present in ``by_format``, attach the raw ``text_source_counts``
     sub-dict (for transparency).  For ``hwp`` specifically, derive
-    ``hwp_native_rate`` and ``hwp_fallback_rate`` as a convenience for operators
-    scanning the eval summary at a glance.
+    ``kordoc_rate`` and ``hwp_fallback_rate`` as a convenience for operators
+    scanning the eval summary at a glance. (Pre-ADR-0049 builds emitted
+    ``hwp_native`` from the pyhwp backend; the key was renamed in ADR 0049
+    when the backend changed to kordoc — ``hwp_native`` legacy counts are
+    folded into the kordoc rate so older snapshots stay readable.)
     """
     for fmt, block in by_format.items():
         sources = text_source_counts.get(fmt)
@@ -701,9 +704,9 @@ def _inject_text_source_rates(
             continue
         block["text_source_counts"] = dict(sources)
         if fmt == "hwp":
-            native = int(sources.get("hwp_native", 0))
-            block["hwp_native_rate"] = native / total
-            block["hwp_fallback_rate"] = (total - native) / total
+            kordoc = int(sources.get("kordoc", 0)) + int(sources.get("hwp_native", 0))
+            block["kordoc_rate"] = kordoc / total
+            block["hwp_fallback_rate"] = (total - kordoc) / total
 
 
 def summarize_run(
