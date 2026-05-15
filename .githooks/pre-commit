@@ -92,6 +92,32 @@ if [[ -n "$adr_added" ]]; then
       exit 1
     fi
   done <<< "$adr_added"
+
+  # Guard: ADR ↔ README index parity (issue #803 — shift-left of the
+  # tests/test_governance.py::test_no_unlinked_adr_files_on_disk CI gate).
+  # An ADR PR that lands without a matching `| [NNNN](./NNNN-*.md) |` row
+  # in docs/adr/README.md reds main on merge and cascades red Pytest across
+  # every open PR (see #730 / #732 / #750 recurrence trail). The pre-commit
+  # check uses the *staged* README content (`git show :docs/adr/README.md`)
+  # so the row must be staged in the same commit — not just sitting in the
+  # working tree.
+  #
+  # Pass all newly added ADR paths in one call (argparse nargs='+') so the
+  # error message lists everything that's missing instead of stopping at
+  # the first violator.
+  adr_added_args=()
+  while IFS= read -r adr_file; do
+    [[ -z "$adr_file" ]] && continue
+    adr_added_args+=("$adr_file")
+  done <<< "$adr_added"
+  if [[ ${#adr_added_args[@]} -gt 0 ]]; then
+    parity_out=$(python3 scripts/_governance.py --check-adr-readme-parity \
+      --readme-staged "${adr_added_args[@]}" 2>&1)
+    if [[ $? -ne 0 ]]; then
+      echo "$parity_out" >&2
+      exit 1
+    fi
+  fi
 fi
 
 staged=$(git diff --cached --name-only --diff-filter=ACMR 2>/dev/null || true)
