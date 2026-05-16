@@ -14,11 +14,29 @@ stable JSON-serializable.
 
 from __future__ import annotations
 
+import re
 from statistics import mean
 from typing import Any, Iterable
 
 
 _SENTENCE_ENDERS_ASCII = (".", "!", "?", "。", "…")
+
+# Issue #902: kordoc (ADR 0049) leaves a ``[중첩 테이블 #N]`` placeholder when a
+# nested table cannot be reconstructed in markdown. 89/100 files in the private
+# real100 corpus contain at least one marker, so the loss is the dominant
+# kordoc gap. Count + sample so a regression points to specific files / lines.
+_NESTED_TABLE_RE = re.compile(r"\[중첩 테이블 #(\d+)\]")
+
+# Cap on samples folded into the report — prevents the JSON from ballooning on
+# pathological corpora while keeping enough to triage. Top-N by marker count
+# is not worth the complexity; first-N (deterministic insertion order) is
+# fine because the report's audience is "which files broke and where".
+_NESTED_TABLE_SAMPLE_LIMIT = 20
+
+# Adjacent text captured after the marker so the sample reads as "here's what
+# the nested table got flattened into". 80 chars is enough for a phrase but
+# short enough that 20 samples stay under ~2 KB.
+_NESTED_TABLE_ADJACENT_CHARS = 80
 # Heuristic Korean sentence-final endings. Conservative set — false negatives
 # (mis-flagging a clean chunk as mid-cut) are preferred over false positives
 # (silently passing a truncated chunk). Mirrors common formal RFP verb
@@ -119,6 +137,15 @@ def compute_chunk_health(chunks: Iterable[dict[str, Any]]) -> dict[str, Any]:
         - ``hwp_table_chunk_ratio``: float in ``[0, 1]``,
           ``hwp_table_chunks / (total HWP chunks)``; ``0.0`` when there are no
           HWP chunks.
+        - ``nested_table_loss_count``: total ``[중첩 테이블 #N]`` markers across
+          the corpus (issue #902 — kordoc gap surface).
+        - ``nested_table_loss_files``: number of distinct ``doc_id`` values
+          that contain at least one marker.
+        - ``nested_table_loss_samples``: list of up to
+          ``_NESTED_TABLE_SAMPLE_LIMIT`` dicts with ``doc_id``, ``marker_id``,
+          and ``adjacent_text`` (first 80 chars after the marker). Insertion
+          order is deterministic — first markers encountered, which makes the
+          report stable across re-runs of the same index.
     """
     chunk_list = list(chunks)
     total = len(chunk_list)
@@ -130,6 +157,9 @@ def compute_chunk_health(chunks: Iterable[dict[str, Any]]) -> dict[str, Any]:
     hwp_table = 0
     eligible_for_cut = 0
     mid_cut = 0
+    nested_total = 0
+    nested_files: set[str] = set()
+    nested_samples: list[dict[str, Any]] = []
 
     for chunk in chunk_list:
         text = str(chunk.get("text") or "")
@@ -152,6 +182,28 @@ def compute_chunk_health(chunks: Iterable[dict[str, Any]]) -> dict[str, Any]:
             if _is_mid_sentence_cut(text):
                 mid_cut += 1
 
+        # Issue #902: ``[중첩 테이블 #N]`` is kordoc's marker for a nested
+        # table that could not be reconstructed in markdown. We count every
+        # occurrence (89/100 files have at least one in the real100 corpus),
+        # track distinct documents, and keep a deterministic prefix of
+        # samples so regression triage points to specific files / IDs.
+        if text:
+            doc_id = str(chunk.get("doc_id") or "")
+            for match in _NESTED_TABLE_RE.finditer(text):
+                nested_total += 1
+                if doc_id:
+                    nested_files.add(doc_id)
+                if len(nested_samples) < _NESTED_TABLE_SAMPLE_LIMIT:
+                    end = match.end()
+                    adjacent = text[end : end + _NESTED_TABLE_ADJACENT_CHARS]
+                    nested_samples.append(
+                        {
+                            "doc_id": doc_id,
+                            "marker_id": match.group(1),
+                            "adjacent_text": adjacent,
+                        }
+                    )
+
     lengths_sorted = sorted(lengths)
     length_stats = {
         "p50": _percentile(lengths_sorted, 0.5),
@@ -172,4 +224,7 @@ def compute_chunk_health(chunks: Iterable[dict[str, Any]]) -> dict[str, Any]:
         "mid_sentence_cut_ratio": mid_ratio,
         "hwp_table_chunks": hwp_table,
         "hwp_table_chunk_ratio": hwp_table_ratio,
+        "nested_table_loss_count": nested_total,
+        "nested_table_loss_files": len(nested_files),
+        "nested_table_loss_samples": nested_samples,
     }

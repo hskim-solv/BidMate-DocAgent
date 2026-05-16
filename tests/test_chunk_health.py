@@ -49,6 +49,9 @@ class TestComputeChunkHealth(unittest.TestCase):
         "mid_sentence_cut_ratio",
         "hwp_table_chunks",
         "hwp_table_chunk_ratio",
+        "nested_table_loss_count",
+        "nested_table_loss_files",
+        "nested_table_loss_samples",
     }
     EXPECTED_LENGTH_KEYS = {"p50", "p95", "max", "min", "mean"}
 
@@ -70,6 +73,9 @@ class TestComputeChunkHealth(unittest.TestCase):
         self.assertEqual(result["mid_sentence_cut_ratio"], 0.0)
         self.assertEqual(result["hwp_table_chunks"], 0)
         self.assertEqual(result["hwp_table_chunk_ratio"], 0.0)
+        self.assertEqual(result["nested_table_loss_count"], 0)
+        self.assertEqual(result["nested_table_loss_files"], 0)
+        self.assertEqual(result["nested_table_loss_samples"], [])
 
     def test_by_format_counts(self):
         chunks = [
