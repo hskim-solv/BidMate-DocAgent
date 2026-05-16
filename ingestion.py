@@ -336,7 +336,11 @@ def _kordoc_convert_batch(source_paths: list[Path]) -> dict[str, str]:
             # which would survive normalize_body_text anyway, but doing it here
             # keeps the cached text consistent for downstream readers.
             demoted = _demote_over_promoted_bullet_headings(content)
-            normalized = normalize_body_text(demoted)
+            # Issue #906: scrub ToC leader-dot runs and standalone page-footer
+            # lines kordoc leaves behind. Runs after demotion so the regex
+            # works on the same text shape the cache will hold.
+            scrubbed = _strip_kordoc_toc_noise(demoted)
+            normalized = normalize_body_text(scrubbed)
             if normalized:
                 markdown_by_stem[stem] = normalized
         if not markdown_by_stem:
@@ -411,6 +415,56 @@ def _demote_over_promoted_bullet_headings(markdown: str) -> str:
         else:
             out.append(line)
     return "\n".join(out)
+
+
+# Issue #906: kordoc preserves two HWP-origin ToC noise patterns that survive
+# normalize_body_text:
+#
+#   1. Leader-dot runs (middle dot ``·`` chains of length 8+, ASCII period
+#      chains of length 15+) — used in HWP ToCs to align page numbers. Once
+#      flattened to markdown they appear inside table cells, inflating chunk
+#      length and producing no semantic signal. Top 3 files in real100:
+#      고려대(27), 서울시립대(23), 서울지도(21).
+#
+#   2. Page-footer lines (``|+-N-|+`` shape) — page numbers wrapped in
+#      pipe glyphs that kordoc emits as standalone lines. Only 3 occurrences
+#      across 2 files (고려대, 기초과학연구원), but the pattern is unique enough
+#      to strip without false-positive risk.
+#
+# Thresholds picked conservatively:
+#   - 8+ middle dots: typical HWP ToC has 30-80 chained dots; legitimate
+#     prose has zero (middle dot is not a normal punctuation mark in Korean).
+#   - 15+ ASCII periods: ellipses (``......``) and section.subsection
+#     numbering (``1.1.1.1``) never reach 15. Real-data check: only one file
+#     uses ASCII periods for ToC leaders.
+#   - Page footer regex is strict (``^\\|+-\\d+-\\|+$``, full-line match).
+_LEADER_MIDDLE_DOT_RE = re.compile(r"·{8,}")
+_LEADER_ASCII_DOT_RE = re.compile(r"\.{15,}")
+_PAGE_FOOTER_LINE_RE = re.compile(r"^\|+-\d+-\|+$")
+
+
+def _strip_kordoc_toc_noise(markdown: str) -> str:
+    """Collapse leader-dot runs and drop standalone page-footer lines.
+
+    Leader runs are replaced with a single space (not the empty string) so
+    word boundaries on either side are preserved — e.g. ``섹션·····2`` →
+    ``섹션 2`` keeps the section name readable. Page-footer lines are
+    dropped entirely (not blanked) so the surrounding paragraphs join
+    naturally — a page break is metadata, not a paragraph divider.
+
+    Conservative on purpose: the function is called on every kordoc batch
+    output and must never damage legitimate content.
+    """
+    if not markdown:
+        return markdown
+    text = _LEADER_MIDDLE_DOT_RE.sub(" ", markdown)
+    text = _LEADER_ASCII_DOT_RE.sub(" ", text)
+    out_lines: list[str] = []
+    for line in text.split("\n"):
+        if _PAGE_FOOTER_LINE_RE.match(line):
+            continue
+        out_lines.append(line)
+    return "\n".join(out_lines)
 
 
 def build_sections_with_native_tables(
