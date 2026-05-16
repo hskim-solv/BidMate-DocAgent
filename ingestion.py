@@ -330,12 +330,87 @@ def _kordoc_convert_batch(source_paths: list[Path]) -> dict[str, str]:
             except OSError:
                 continue
             stem = unicodedata.normalize("NFC", md_path.stem)
-            normalized = normalize_body_text(content)
+            # Issue #904: demote over-promoted HWP bullet headings BEFORE the
+            # whitespace-collapsing ``normalize_body_text`` runs. Order matters
+            # because the bullet detector keys off the line prefix ``#+ <glyph>``
+            # which would survive normalize_body_text anyway, but doing it here
+            # keeps the cached text consistent for downstream readers.
+            demoted = _demote_over_promoted_bullet_headings(content)
+            normalized = normalize_body_text(demoted)
             if normalized:
                 markdown_by_stem[stem] = normalized
         if not markdown_by_stem:
             raise _KordocFallback("kordoc produced no readable output")
         return markdown_by_stem
+
+
+# Issue #904: kordoc (ADR 0049) promotes HWP bullet-list items to markdown
+# headings when the source paragraph carries HWP "글머리표" formatting. On the
+# private real100 corpus this inflates heading density to 16.1% (인천일자리
+# ISP) / 10.6% (한의학연) — well above the 5-7% typical of well-structured
+# specs. Over-promoted headings derail chunk-boundary detection because the
+# fixed-strategy splitter treats every heading as a candidate split point.
+#
+# Detection is bullet-glyph based, not length-based, because the dominant
+# pattern is ``# ㅇ ...`` / ``# □ ...`` / ``# ❍ ...`` — short or long, the
+# leading glyph is the high-confidence signal. We only demote within a "run"
+# of 3+ bullet headings (separated only by blank lines, no body paragraphs)
+# to preserve standalone bullet-prefixed headings that some specs use as
+# legitimate section titles.
+#
+# Glyph allowlist explicitly excludes ``[`` (brackets like ``## [부록 A]`` are
+# legitimate appendix headings) and numbers/Korean prefixes (``제1조`` etc.).
+_BULLET_HEADING_GLYPHS = "□❍○◦●▪■◆▶·ㅇ"
+_BULLET_HEADING_RE = re.compile(
+    rf"^(#+)\s+([{re.escape(_BULLET_HEADING_GLYPHS)}\-])(\s|$)"
+)
+_MIN_RUN_LENGTH_FOR_DEMOTION = 3
+
+
+def _demote_over_promoted_bullet_headings(markdown: str) -> str:
+    """Strip ``#+`` prefix from bullet-style headings appearing in runs.
+
+    A "run" is a contiguous sequence of bullet-prefixed heading lines
+    separated only by blank lines. When a run has at least
+    ``_MIN_RUN_LENGTH_FOR_DEMOTION`` headings, every heading in the run is
+    demoted to plain text by stripping the leading ``#+\\s+`` (the bullet
+    glyph itself is preserved so the original semantic — "this is a bullet
+    item" — survives). Body content between headings breaks the run.
+
+    Returns the input unchanged when no qualifying run is present, so the
+    function is safe to call on every kordoc output. Idempotent: re-running
+    on already-normalized markdown is a no-op.
+    """
+    lines = markdown.split("\n")
+    is_bullet_heading = [bool(_BULLET_HEADING_RE.match(line)) for line in lines]
+    demote_flags = [False] * len(lines)
+
+    i = 0
+    while i < len(lines):
+        if not is_bullet_heading[i]:
+            i += 1
+            continue
+        bullets_in_run: list[int] = []
+        j = i
+        while j < len(lines) and (is_bullet_heading[j] or lines[j].strip() == ""):
+            if is_bullet_heading[j]:
+                bullets_in_run.append(j)
+            j += 1
+        if len(bullets_in_run) >= _MIN_RUN_LENGTH_FOR_DEMOTION:
+            for idx in bullets_in_run:
+                demote_flags[idx] = True
+        i = max(j, i + 1)
+
+    if not any(demote_flags):
+        return markdown
+
+    out: list[str] = []
+    for idx, line in enumerate(lines):
+        if demote_flags[idx]:
+            out.append(re.sub(r"^#+\s+", "", line, count=1))
+        else:
+            out.append(line)
+    return "\n".join(out)
 
 
 def build_sections_with_native_tables(
