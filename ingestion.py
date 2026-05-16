@@ -56,7 +56,12 @@ REQUIRED_COLUMNS = [
 # ``scripts/build_index.py`` after the chunk-building stage). The three keys
 # are additive and downstream readers use ``dict.get``, so a v2 reader
 # silently ignores them.
-INGESTION_REPORT_SCHEMA_VERSION = 3
+#
+# Bumped 3 → 4 in issue #902: ``summary.chunk_health`` gains three additive
+# kordoc-loss fields (``nested_table_loss_count``,
+# ``nested_table_loss_files``, ``nested_table_loss_samples``). v3 readers that
+# already use ``dict.get`` on ``chunk_health`` ignore them transparently.
+INGESTION_REPORT_SCHEMA_VERSION = 4
 
 # Public, reviewer-facing failure taxonomy for ingestion. Keep keys stable;
 # downstream tooling (eval/run_eval.py, docs, dashboards) reads them.

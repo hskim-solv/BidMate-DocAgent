@@ -263,7 +263,10 @@ class MixedFormatIngestionTest(unittest.TestCase):
             _, report = load_documents_from_metadata_csv(csv_path, files_dir)
 
             summary = report["summary"]
-            self.assertEqual(3, summary["schema_version"])
+            # Bumped 3 → 4 in issue #902 (additive nested_table_loss_* fields
+            # on summary.chunk_health). Existing summary fields below are
+            # unchanged.
+            self.assertEqual(4, summary["schema_version"])
             self.assertEqual(
                 {
                     "pdf": {"data_list_csv_text": 2},
