@@ -33,6 +33,12 @@ ALLOWED_PATTERNS=(
   # scripts/eda_real100.py). Mirrors the `!`-rule in `.gitignore`.
   '^reports/real100/eda\.md$'
   '^reports/real100/eda\.aggregate\.json$'
+  # Issue #897 — RAG pipeline EDA aggregate (script:
+  # scripts/rag_pipeline_eda.py). Synthetic + real-100 surfaces.
+  '^reports/rag_pipeline\.md$'
+  '^reports/rag_pipeline\.aggregate\.json$'
+  '^reports/real100/rag_pipeline\.md$'
+  '^reports/real100/rag_pipeline\.aggregate\.json$'
 )
 
 # Guard: ADR file deletion/rename (CLAUDE.md Prohibited).

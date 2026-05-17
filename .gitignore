@@ -103,8 +103,20 @@ reports/real100/*
 !reports/real100/history/
 reports/real100/history/*
 !reports/real100/history/*.aggregate.json
-# Issue #896 — corpus EDA figures (PNG + SVG). Same allowlist pattern
-# as cost_frontier.png above; rendered by scripts/eda_real100.py.
+# Issue #897 — RAG pipeline EDA aggregate (script:
+# scripts/rag_pipeline_eda.py). 7-axis pipeline-dynamics profile derived
+# from eval_summary.json::case_results. Two surfaces:
+#   - reports/rag_pipeline.* (synthetic public eval, ADR 0012 surface)
+#   - reports/real100/rag_pipeline.* (private 100-doc real eval, ADR 0005)
+# ADR 0005 boundary preserved by the script (no case IDs, chunk IDs, or
+# raw text; retry reason prefixes only).
+!reports/rag_pipeline.md
+!reports/rag_pipeline.aggregate.json
+!reports/real100/rag_pipeline.md
+!reports/real100/rag_pipeline.aggregate.json
+# Issue #896 + #897 — EDA figures (PNG + SVG). Same allowlist pattern
+# as cost_frontier.png above. corpus EDA: scripts/eda_real100.py /
+# RAG EDA: scripts/rag_pipeline_eda.py.
 !reports/figures/
 reports/figures/*
 !reports/figures/real100_meta_*.png
@@ -115,6 +127,8 @@ reports/figures/*
 !reports/figures/real100_text_source_*.svg
 !reports/figures/real100_eval_*.png
 !reports/figures/real100_eval_*.svg
+!reports/figures/real100_rag_*.png
+!reports/figures/real100_rag_*.svg
 # Issue #166 — synthetic public eval time-series. Same aggregate-only
 # pattern as real100/history above. Per-case data stays ignored under
 # reports/* (line 39 above); only the aggregate JSON snapshots and the
