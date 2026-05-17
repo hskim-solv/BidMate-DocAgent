@@ -1,142 +1,89 @@
-# 0007: Issue-linked branch naming as a required check
+# 0007: 이슈 연결 브랜치 네이밍을 required check 로
 
 - **Status**: accepted
 - **Date**: 2026-05-11
-- **Related**: extends [`docs/engineering-governance.md`](../engineering-governance.md) §"Change lifecycle"; supersedes the informal `claude/<auto>` worktree naming pattern
+- **Related**: [`docs/engineering-governance.md`](../engineering-governance.md) §"Change lifecycle" 확장; 비공식 `claude/<auto>` worktree 네이밍 패턴 supersede
 - **Deciders**: hskim
 
-## Context
+## TL;DR
 
-Until now the repo had no enforced linkage between work and a tracking issue:
+- 모든 PR 브랜치는 `<type>/issue-<N>[-<slug>]` regex 강제 — CI required check.
+- `scripts/check_branch_and_issue.py` 가 regex 단일 출처 — CI + 로컬 pre-push 훅 양쪽이 동일 스크립트 호출.
+- PR body 의 `Closes #N` 이 브랜치 `<N>` 과 일치해야 함.
 
-- The PR template carries a `Closes #` placeholder under §1, but nothing
-  validates it ([`.github/pull_request_template.md`](../../.github/pull_request_template.md)).
-- Branch names in `git branch -a` are a mix of `claude/issue-<N>-<slug>`,
-  `claude/<adj>-<name>-<hash>` (auto-named worktrees), and a few legacy
-  `feat/<N>-<slug>` shapes. The convention is observable from history but
-  not stated as a rule.
-- `engineering-governance.md` step 1 ("Open or pick an issue") is a soft
-  instruction. PRs can be merged without an issue number anywhere.
+## 배경
 
-Consequence: traceability gaps. A reviewer cannot grep `Closes #123` to
-find the PR that closed an issue if the link was never recorded. Worse,
-the `claude/<auto>` worktree pattern actively obscures whether an issue
-exists at all — the branch name encodes random words, not intent.
+지금까지 작업과 추적 이슈 간 강제 연결 없음:
 
-The new rule below makes the link required and machine-checked at the
-PR boundary.
+- PR 템플릿 §1 에 `Closes #` placeholder 있으나 검증 없음([`.github/pull_request_template.md`](../../.github/pull_request_template.md))
+- `git branch -a` 가 `claude/issue-<N>-<slug>`·`claude/<adj>-<name>-<hash>`(auto-named worktree)·일부 legacy `feat/<N>-<slug>` 혼재. 컨벤션은 history 로 관찰 가능하나 rule 로 명시 안 됨
+- `engineering-governance.md` step 1("Open or pick an issue") 은 soft instruction. 이슈 번호 없이 PR merge 가능
 
-## Decision
+결과: 추적 갭. reviewer 가 `Closes #123` grep 으로 이슈 종료 PR 을 찾을 수 없음 — 링크가 기록 안 됐다면. 더 나쁘게 `claude/<auto>` 패턴은 이슈 존재 자체를 모호하게 만듦 — 브랜치명이 intent 아닌 랜덤 단어 인코딩.
 
-Every PR merged to `main` must satisfy three conditions, enforced by a
-new CI workflow `.github/workflows/branch-and-issue-check.yml`:
+아래 새 rule 로 링크를 required + machine-checked at PR boundary.
 
-1. **Branch name matches the convention:**
+## 결정
+
+`main` 머지 PR 은 새 CI workflow `.github/workflows/branch-and-issue-check.yml` 가 강제하는 세 조건 만족 필요:
+
+1. **브랜치명 컨벤션 매치:**
    ```
    ^(?:feat|fix|docs|chore|refactor|test|ci|perf|build|style)/issue-(\d+)(?:-[a-z0-9]+(?:-[a-z0-9]+)*)?$
    ```
-   - Prefix is one of the conventional-commit types listed above.
-     **`claude/` is rejected** — Claude Code's auto-named worktree
-     branches must be renamed before opening a PR.
-   - `issue-<N>` is mandatory; the slug after it is optional but
-     recommended for human readability.
-   - Examples: `feat/issue-79-senior-positioning`, `fix/issue-104`.
+   - prefix 는 위 conventional-commit 타입 중 하나. **`claude/` 거부** — Claude Code auto-named worktree 브랜치는 PR 전 rename 필요
+   - `issue-<N>` 필수; 뒤 slug 는 선택이나 human readability 위해 권장
+   - 예: `feat/issue-79-senior-positioning`, `fix/issue-104`
 
-2. **The referenced issue exists** in this repo (state — open or closed
-   — is not checked; follow-up branches can legitimately reference a
-   closed issue).
+2. **참조 이슈가 이 repo 에 존재** (state — open/closed — 미검사; follow-up 브랜치가 종료 이슈 참조 가능)
 
-3. **The PR body contains `Closes #N` (or `Fixes` / `Resolves`)** and
-   at least one of those numbers equals the branch's `<N>`. This is
-   the same regex GitHub uses to auto-close issues on merge, so the
-   check piggybacks on existing UX.
+3. **PR body 에 `Closes #N`(또는 `Fixes`/`Resolves`) 포함** + 그 중 하나가 브랜치 `<N>` 과 일치. GitHub merge auto-close 와 동일 regex — 기존 UX piggyback
 
-The regex, issue check, and `Closes`-matching all live in a single
-script — [`scripts/check_branch_and_issue.py`](../../scripts/check_branch_and_issue.py)
-— used by both the CI workflow (`--pr <N>`) and the local
-[`.githooks/pre-push`](../../.githooks/pre-push) hook (`--branch <name>`).
-No regex duplication, no drift.
+regex·이슈 체크·`Closes` 매칭 모두 단일 스크립트([`scripts/check_branch_and_issue.py`](../../scripts/check_branch_and_issue.py))에 위치 — CI workflow(`--pr <N>`) + 로컬 [`.githooks/pre-push`](../../.githooks/pre-push) 훅(`--branch <name>`) 양쪽 사용. regex 중복 없음, drift 없음.
 
-### Exemptions
+### 면제
 
-The following branch prefixes skip the check (they have no tracking
-issue by construction):
+다음 브랜치 prefix 는 체크 스킵(구조상 추적 이슈 없음):
 
-- `revert-*` — GitHub auto-generated revert branches.
-- `dependabot/*` — Dependabot PRs.
-- `renovate/*` — Renovate PRs.
-- `pre-commit-ci/*` — pre-commit autoupdate PRs.
+- `revert-*` — GitHub auto-generated revert
+- `dependabot/*` — Dependabot PR
+- `renovate/*` — Renovate PR
+- `pre-commit-ci/*` — pre-commit autoupdate PR
 
-### Enforcement layers
+### 강제 레이어
 
-| Layer | When | Bypassable? | What it checks |
+| 레이어 | 시점 | 우회 가능? | 검사 내용 |
 |---|---|---|---|
-| CI (`branch-and-issue-check.yml`) | every `pull_request` to `main` | **No** (required status check) | branch regex + issue exists + `Closes #N` matches |
-| Local `.githooks/pre-push` | `git push` (opt-in via `make install-hooks`) | `--no-verify` | branch regex + (if `gh` installed) issue exists |
+| CI (`branch-and-issue-check.yml`) | `main` 으로 모든 `pull_request` | **No** (required status check) | 브랜치 regex + 이슈 존재 + `Closes #N` 매치 |
+| 로컬 `.githooks/pre-push` | `git push` (`make install-hooks` 로 opt-in) | `--no-verify` | 브랜치 regex + (`gh` 설치 시) 이슈 존재 |
 
-CI is the contract. The local hook is a fast-feedback mirror for
-developers who have run `make install-hooks`.
+CI 가 계약. 로컬 훅은 `make install-hooks` 실행한 개발자를 위한 fast-feedback mirror.
 
-## Consequences
+## 결과
 
 **Wins**
 
-- Every merged PR is issue-traceable. `git log --grep '#'` finds the
-  whole change set for an issue, and the GitHub UI auto-closes the
-  issue on merge.
-- Branch names encode intent (`feat/issue-79-…` says what kind of work
-  this is and what it tracks) rather than random words.
-- The PR template's `Closes #` placeholder becomes a contract instead
-  of a hint — reviewers know it will block merge if missing.
-- CI gate cannot be silently bypassed; the local hook gives instant
-  feedback for developers who opt in.
+- 모든 머지 PR 이 이슈 추적 가능. `git log --grep '#'` 가 이슈의 전체 change set 발견; GitHub UI 가 머지 시 이슈 auto-close
+- 브랜치명이 intent 인코딩(`feat/issue-79-…` 는 작업 종류 + 추적 대상 표현) — 랜덤 단어 아님
+- PR 템플릿 `Closes #` placeholder 가 hint 가 아닌 계약 — reviewer 는 누락 시 머지 차단 인지
+- CI 게이트 silent 우회 불가; 로컬 훅은 opt-in 개발자에 즉시 피드백
 
 **Costs**
 
-- **Claude Code's default worktree branch name (`claude/<adj>-<name>-<hash>`)
-  will be rejected.** Contributors must rename before opening a PR
-  (`git branch -m feat/issue-<N>-<slug>`). This is one rename per
-  branch, paid at branch creation rather than commit time.
-- One extra workflow run per PR. Fast (~15s, no checkout of code).
-- Bots (Dependabot, Renovate) are exempted by prefix; their PRs are
-  trusted.
-- Some legitimate work (small typo fixes, doc-only follow-ups) now
-  requires an issue first. We accept this friction in exchange for
-  uniform traceability.
+- **Claude Code 기본 worktree 브랜치명(`claude/<adj>-<name>-<hash>`)이 거부됨.** 기여자는 PR 전 rename 필요(`git branch -m feat/issue-<N>-<slug>`). 브랜치당 1회 rename, commit 시점이 아닌 브랜치 생성 시점 비용
+- PR 당 workflow run 1회 추가. 빠름(~15s, 코드 checkout 없음)
+- bot(Dependabot·Renovate)은 prefix 면제; 그들 PR 은 trusted
+- 일부 정당한 작업(작은 오타 수정·doc-only follow-up)도 이제 이슈 선행 필요. uniform 추적성 대가로 friction 수용
 
-**Constraints introduced**
+**도입된 제약**
 
-- The script `scripts/check_branch_and_issue.py` is the single source
-  of truth for the regex. Future tweaks (allowed prefixes, exemptions,
-  slug shape) edit that file and the corresponding test
-  `tests/test_branch_convention.py` — never duplicate the regex in
-  the CI workflow or the hook.
-- Branch protection on `main` should mark *"Branch & Issue Convention"*
-  as a required status check **after** the workflow has run green on
-  one known-good PR and red on a deliberate probe.
+- `scripts/check_branch_and_issue.py` 가 regex 단일 출처. 향후 변경(허용 prefix·면제·slug shape)은 그 파일 + 테스트 `tests/test_branch_convention.py` 편집 — CI workflow 나 훅에 regex 중복 절대 X
+- `main` 의 branch protection 은 known-good PR 1건 green + deliberate probe red 확인 **후** *"Branch & Issue Convention"* 을 required status check 로 표시
 
-## Alternatives considered
+## 검토한 대안
 
-- **Keep `claude/issue-<N>-<slug>` allowed and just reject the
-  auto-name pattern.** Rejected: the user explicitly opted to drop the
-  `claude/` prefix in favor of conventional-commit types. This also
-  aligns branch names with commit-message conventions and makes the
-  branch list scan like a categorized changelog (`feat/`, `fix/`,
-  `docs/` are immediately legible).
-- **Allow `epic/<slug>` as an issue-less exception for multi-issue
-  work.** Rejected: an epic is itself a tracking issue. Forcing the
-  epic-issue number into the branch name (e.g.
-  `feat/issue-<epic-N>-multi-doc-retrieval`) is a small price for
-  uniformity.
-- **Enforce only in the local hook, not in CI.** Rejected: the existing
-  hooks are opt-in (`git config core.hooksPath .githooks`). Without CI,
-  any contributor who hasn't run `make install-hooks` silently bypasses
-  the rule. CI is the only universal surface.
-- **Validate the issue *body* (e.g. require a checklist).** Rejected as
-  scope creep. This ADR is about traceability, not about issue
-  hygiene. Issue templates ([`.github/ISSUE_TEMPLATE/`](../../.github/ISSUE_TEMPLATE/))
-  encourage hygiene without enforcing it.
-- **Cross-check `Closes #N` without matching the branch's `<N>`.**
-  Rejected: a PR that says `Closes #50` but lives on `feat/issue-49-…`
-  is almost certainly a mistake — either the branch was reused or the
-  body was copy-pasted from a sibling PR. The match catches this.
+- **`claude/issue-<N>-<slug>` 허용 + auto-name 패턴만 거부.** Reject: 사용자가 conventional-commit 타입 선호로 `claude/` prefix drop 을 명시 선택. 또한 브랜치명을 commit 메시지 컨벤션과 정렬 + 브랜치 리스트가 카테고리 changelog 처럼 읽힘(`feat/`·`fix/`·`docs/` 즉시 가독)
+- **multi-issue 작업에 `epic/<slug>` 를 issue-less 예외로 허용.** Reject: epic 자체가 추적 이슈. epic-issue 번호를 브랜치명에 강제(예: `feat/issue-<epic-N>-multi-doc-retrieval`)는 uniformity 의 작은 대가
+- **로컬 훅만 강제, CI 비강제.** Reject: 기존 훅은 opt-in(`git config core.hooksPath .githooks`). CI 없으면 `make install-hooks` 안 한 기여자가 rule 을 silent 우회. CI 가 유일한 universal 표면
+- **이슈 *body* 검증(예: checklist 요구).** Reject as scope creep. 이 ADR 은 추적성, 이슈 위생 아님. 이슈 템플릿([`.github/ISSUE_TEMPLATE/`](../../.github/ISSUE_TEMPLATE/))이 강제 없이 위생 장려
+- **`Closes #N` 만 검사, 브랜치 `<N>` 매칭 안 함.** Reject: `Closes #50` 인데 `feat/issue-49-…` 에 사는 PR 은 거의 확실히 실수 — 브랜치 재사용 또는 sibling PR body 복붙. 매칭이 이를 잡음

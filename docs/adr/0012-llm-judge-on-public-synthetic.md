@@ -1,78 +1,47 @@
-# 0012: LLM-judge on the public synthetic eval, stub-default
+# 0012: 공개 합성 eval 에서 stub-기본 LLM 평가자
 
 - **Status**: Superseded
 - **Superseded by**: [ADR 0005](./0005-eval-split-public-synthetic-private-local.md) § "LLM-judge gate layers"
 - **Date**: 2026-05-11
-- **Related**: refines [ADR 0006](./0006-llm-judge-on-real-data-only.md); reuses the backend pattern of [ADR 0011](./0011-llm-synthesis-as-additive-ablation.md); preserves [ADR 0004](./0004-verifier-retry-policy.md) reproducibility
+- **Related**: [ADR 0006](./0006-llm-judge-on-real-data-only.md) 정제; [ADR 0011](./0011-llm-synthesis-as-additive-ablation.md) 백엔드 패턴 재사용; [ADR 0004](./0004-verifier-retry-policy.md) 재현성 보존
 - **Deciders**: hskim
 
-## Context
+## TL;DR
 
-[ADR 0006](./0006-llm-judge-on-real-data-only.md) introduced an
-LLM-judge on the **real-data** eval surface and explicitly rejected
-the public-synthetic version with this argument:
+- 공개 합성 표면에 stub-기본 LLM 평가자 추가 — CI 는 결정론 stub, opt-in 라이브 백엔드만 RAGAS 신호.
+- ADR 0004 (재현성) + ADR 0005 (commit 경계) + ADR 0006 (실데이터 평가자) 모두 불변.
+- 평가자는 두 번째 의견일 뿐 — `answer.status` 계약 (ADR 0003) 미변경.
 
-> Put the judge in public CI behind a feature flag. **Rejected**:
-> ADR 0004's reproducibility argument still holds for the public path.
-> Per-PR token spend on synthetic cases is also unjustified — those
-> cases are crisply discriminable without a model in the loop.
+## 배경
 
-That reasoning still applies to **live** judge calls in CI. But it
-leaves a gap: a portfolio reviewer reading
-`docs/eval/ablation-results.md` sees deterministic precision / recall /
-nDCG / `groundedness` (bool) and nothing else. There is no public
-RAGAS-style signal — no faithfulness, no answer-relevance — because
-the only place we run a model judge is the private
-`reports/real100/`.
+[ADR 0006](./0006-llm-judge-on-real-data-only.md) 이 **실데이터** eval 표면에 LLM 평가자를 도입하면서 공개 합성 버전은 다음 논리로 명시 reject:
 
-[ADR 0011](./0011-llm-synthesis-as-additive-ablation.md) already
-solved a structurally identical problem: it added an LLM-driven
-ablation (`agentic_full_llm`) but kept the public CI deterministic by
-defaulting to a `stub` backend. The live backend is opt-in via env
-var. ADR 0004's reproducibility argument is preserved because CI
-never makes a network call.
+> CI 에 feature flag 뒤로 평가자 배치. **Reject**: ADR 0004 재현성 논증이 공개 경로에 여전히 유효. PR 당 합성 케이스 토큰 소비도 정당화 불가 — 모델 없이 명확히 구분 가능.
 
-The same pattern applies here. A **stub-default** judge on the
-synthetic surface:
+라이브 평가자 호출에 대해서는 여전히 유효한 논리. 그러나 갭 존재: `docs/eval/ablation-results.md` 를 읽는 포트폴리오 reviewer 는 결정론 precision / recall / nDCG / `groundedness` (bool) 만 보고 그 외 없음. 공개 RAGAS 스타일 신호 부재 — faithfulness 도, answer-relevance 도 없음 — 모델 평가자가 도는 곳이 private `reports/real100/` 뿐이라.
 
-- has zero token cost in CI (the stub mirrors the verifier),
-- is fully reproducible (deterministic stub, deterministic
-  aggregate),
-- exposes a real RAGAS-style signal **on demand** when a developer
-  runs `make synthetic-judge` with a live backend.
+[ADR 0011](./0011-llm-synthesis-as-additive-ablation.md) 가 구조적으로 동일한 문제 해결: LLM 구동 분석 변형 (`agentic_full_llm`) 추가하되 `stub` 기본 백엔드로 공개 CI 결정론 유지. 라이브 백엔드는 env var opt-in. CI 가 네트워크 호출 안 하므로 ADR 0004 재현성 보존.
 
-The scenario ADR 0006 rejected — "live judge in CI" — remains
-rejected. The scenario this ADR introduces — "stub judge in CI,
-live judge opt-in offline" — is structurally different and does not
-violate ADR 0004.
+같은 패턴이 여기 적용. 합성 표면 **stub-기본** 평가자:
 
-## Decision
+- CI 토큰 비용 0 (stub 가 검증기 미러링),
+- 완전 재현 (결정론 stub + 결정론 집계),
+- `make synthetic-judge` 를 라이브 백엔드로 돌리면 **on-demand** 로 RAGAS 스타일 신호 노출.
 
-LLM-as-judge is permitted on the **public synthetic eval surface**
-provided:
+ADR 0006 가 reject 한 시나리오 ("CI 라이브 평가자") 는 여전히 reject. 본 ADR 이 도입한 시나리오 ("CI stub 평가자, 오프라인 opt-in 라이브") 는 구조적으로 다르며 ADR 0004 미위반.
 
-- **CI runs the stub backend only.** `pr-eval.yml`, `make smoke`,
-  `make eval`, and `bash scripts/test.sh` never invoke a live LLM.
-  Stub mode is deterministic, network-free, and produces a
-  byte-equal aggregate across runs.
-- **Live backends are opt-in offline.** A developer who wants real
-  faithfulness / answer-relevance numbers runs
-  `make synthetic-judge` after `make eval`, with
-  `BIDMATE_SYNTHETIC_JUDGE_BACKEND=openai_compatible` plus the
-  shared `BIDMATE_JUDGE_*` credentials. The resulting aggregate is
-  committed to `reports/synthetic_judge.aggregate.json` (ADR 0005
-  aggregate-only boundary). Per-case verdicts stay in
-  `reports/synthetic_judge.local.json` (git-ignored).
-- **The judge is a second opinion, not a gate.** The deterministic
-  verifier's `answer.status` remains the answer-time contract
-  (ADR 0003). The synthetic judge contributes only to evaluation
-  aggregates; it never affects what `run_rag_query` returns.
+## 결정
 
-### Contract
+LLM-as-judge 가 **공개 합성 eval 표면** 에서 다음 조건으로 허용:
 
-- The judge consumes per case from `eval_summary.json`:
-  `(query, answer.summary, evidence[:3].text, answer_status)`.
-- Output per case:
+- **CI 는 stub 백엔드만.** `pr-eval.yml`, `make smoke`, `make eval`, `bash scripts/test.sh` 어디서도 라이브 LLM 호출 없음. Stub 모드는 결정론·네트워크 없음·run 간 byte-equal 집계.
+- **라이브 백엔드는 오프라인 opt-in.** 실 faithfulness / answer-relevance 수치를 원하는 개발자가 `make eval` 후 `BIDMATE_SYNTHETIC_JUDGE_BACKEND=openai_compatible` + 공유 `BIDMATE_JUDGE_*` 자격으로 `make synthetic-judge` 실행. 결과 집계는 `reports/synthetic_judge.aggregate.json` 에 commit (ADR 0005 aggregate-only 경계). 케이스별 verdict 는 `reports/synthetic_judge.local.json` (git-ignored) 잔류.
+- **평가자는 두 번째 의견, gate 아님.** 결정론 검증기의 `answer.status` 가 답변 시점 계약 유지 (ADR 0003). 합성 평가자는 평가 집계에만 기여; `run_rag_query` 반환값에 영향 없음.
+
+### 계약
+
+- 평가자가 `eval_summary.json` 케이스별 소비: `(query, answer.summary, evidence[:3].text, answer_status)`.
+- 케이스별 출력:
   ```json
   {
     "judge_status": "supported" | "partial" | "insufficient",
@@ -82,97 +51,47 @@ provided:
     "judge_reason_short": "≤ 200 chars"
   }
   ```
-- Committable aggregate (`reports/synthetic_judge.aggregate.json`):
-  - `n`, `faithfulness_mean`, `answer_relevance_mean`,
-    `grounded_rate`, **`agreement_with_verifier`**,
-    `status_distribution`.
-  - Same shape, sliced under `by_query_type`.
-- Per-case `judge_reason_short`, raw prompts, raw model responses
-  stay local (ADR 0005 commit boundary).
+- Commit 가능 집계 (`reports/synthetic_judge.aggregate.json`):
+  - `n`, `faithfulness_mean`, `answer_relevance_mean`, `grounded_rate`, **`agreement_with_verifier`**, `status_distribution`.
+  - `by_query_type` 슬라이스에 동일 shape.
+- 케이스별 `judge_reason_short`, raw 프롬프트·응답은 로컬 (ADR 0005 commit 경계).
 
-### Backend pluggability
+### 백엔드 pluggability
 
-`eval/synthetic_judge.py` mirrors `scripts/llm_judge.py`'s pattern:
+`eval/synthetic_judge.py` 가 `scripts/llm_judge.py` 패턴 미러링:
 
-- `stub` (default) — deterministic. `agreement_with_verifier == 1.0`
-  by construction. Status-derived fixture scores (e.g. supported →
-  faithfulness 0.85) keep the aggregate schema populated for
-  downstream consumers without claiming any real signal.
-- `openai_compatible` — generic OpenAI-compatible endpoint. Reads
-  `BIDMATE_JUDGE_API_KEY`, `BIDMATE_JUDGE_MODEL`, optional
-  `BIDMATE_JUDGE_BASE_URL` (shared with the real-data judge —
-  same model can serve both surfaces).
-- Backend choice via `BIDMATE_SYNTHETIC_JUDGE_BACKEND` (independent
-  from real-data `BIDMATE_JUDGE_BACKEND`).
+- `stub` (기본) — 결정론. 구성상 `agreement_with_verifier == 1.0`. status 유래 fixture 점수 (예: supported → faithfulness 0.85) 가 downstream consumer 용 집계 스키마 채움 — 실 신호 주장 아님.
+- `openai_compatible` — 일반 OpenAI 호환 엔드포인트. `BIDMATE_JUDGE_API_KEY`, `BIDMATE_JUDGE_MODEL`, 선택적 `BIDMATE_JUDGE_BASE_URL` 읽음 (실데이터 평가자와 공유 — 동일 모델이 두 표면 served).
+- 백엔드 선택은 `BIDMATE_SYNTHETIC_JUDGE_BACKEND` (실데이터 `BIDMATE_JUDGE_BACKEND` 와 독립).
 
-### Cadence
+### 주기
 
-Public CI is silent on the live signal — the stub aggregate is
-deterministic plumbing only. A developer who wants the real signal
-runs `make synthetic-judge` with a live backend manually, attaches
-the resulting committed aggregate diff to the PR, and lets reviewers
-read the rendered table in `README.md` / `docs/eval/ablation-results.md`.
+공개 CI 는 라이브 신호 침묵 — stub 집계는 결정론 plumbing 만. 실 신호 원하는 개발자가 `make synthetic-judge` 를 라이브 백엔드로 수동 실행 + 결과 commit 된 집계 diff 를 PR 에 첨부, reviewer 가 `README.md` / `docs/eval/ablation-results.md` 렌더 표 확인.
 
-## Consequences
+## 결과
 
 **Wins**
 
-- Public reviewers see a RAGAS-style faithfulness / answer-relevance
-  signal alongside the deterministic metrics, sourced from a
-  committed aggregate snapshot.
-- ADR 0004 stays intact: CI runs no live LLM, every run is
-  reproducible, every run is free.
-- ADR 0005 stays intact: per-case judge text never crosses the
-  commit boundary.
-- ADR 0006 stays intact: the real-data judge is unchanged
-  (`scripts/llm_judge.py` not refactored).
-- Reuses the backend dispatch pattern from
-  [ADR 0011](./0011-llm-synthesis-as-additive-ablation.md) (stub
-  vs. openai_compatible) — one consistent "how to add an LLM"
-  idiom across the codebase.
+- 공개 reviewer 가 결정론 메트릭과 함께 RAGAS 스타일 faithfulness / answer-relevance 신호를 commit 된 집계 스냅샷에서 확인.
+- ADR 0004 유지: CI 라이브 LLM 호출 없음, 모든 run 재현 가능·무료.
+- ADR 0005 유지: 케이스별 평가자 텍스트는 commit 경계 넘지 않음.
+- ADR 0006 유지: 실데이터 평가자 불변 (`scripts/llm_judge.py` 리팩터 없음).
+- [ADR 0011](./0011-llm-synthesis-as-additive-ablation.md) 백엔드 dispatch 패턴 재사용 (stub vs openai_compatible) — 코드베이스 전반 "LLM 추가 방법" 일관 관용구.
 
 **Costs**
 
-- The committed aggregate goes stale unless re-rendered after each
-  retrieval / verifier change. Mitigated by manual cadence — the
-  aggregate is a snapshot, not a CI gate, so staleness shows up as
-  "this number is from commit X" rather than as a regression.
-- Stub-mode aggregate values (faithfulness 0.85 on supported, etc.)
-  are *not* a real signal. The README must clearly mark which
-  numbers come from stub mode (plumbing only) and which come from a
-  live run (real signal).
-- One more file under the ADR 0005 allowlist
-  (`reports/synthetic_judge.aggregate.json`). Mirrors the existing
-  exception for `reports/external_baselines.json` (ADR 0009).
+- commit 집계는 검색·검증기 변경 후 재렌더 없으면 stale. 수동 주기로 완화 — 집계는 CI gate 가 아닌 스냅샷이므로 staleness 는 회귀가 아니라 "이 수치는 commit X 부터" 형태로 나타남.
+- stub 모드 집계 값 (supported 시 faithfulness 0.85 등) 은 *실* 신호 아님. README 가 stub 모드 (plumbing) 와 라이브 run (실 신호) 출처를 명시.
+- ADR 0005 allowlist 파일 1개 추가 (`reports/synthetic_judge.aggregate.json`). `reports/external_baselines.json` (ADR 0009) 기존 예외 미러링.
 
-**Constraints (unchanged)**
+**Constraints (불변)**
 
-- Public CI must not call out to any external LLM. Enforced by
-  convention (CI runs `BIDMATE_SYNTHETIC_JUDGE_BACKEND=stub` by
-  default) plus by omission of `make synthetic-judge` from
-  `pr-eval.yml` and `make smoke`.
-- Aggregate-only commit boundary is enforced by the
-  `judge_synthetic_summary` API — only the aggregate dict has the
-  shape `write_text` writes to the committed path; the per-case
-  local payload writes to the git-ignored path.
+- 공개 CI 는 외부 LLM 호출 금지. CI 가 `BIDMATE_SYNTHETIC_JUDGE_BACKEND=stub` 기본 + `pr-eval.yml` / `make smoke` 에서 `make synthetic-judge` 누락으로 컨벤션 강제.
+- Aggregate-only commit 경계는 `judge_synthetic_summary` API 가 강제 — 집계 dict 만 commit 경로에 `write_text`; 케이스별 로컬 페이로드는 git-ignored 경로.
 
-## Alternatives considered
+## 검토한 대안
 
-- **Live judge in public CI behind a feature flag.** Rejected for
-  the same reason as ADR 0006: ADR 0004 reproducibility +
-  unjustified per-PR token spend on cases that are mostly crisply
-  discriminable.
-- **Deterministic semantic similarity (e.g. cosine on embeddings).**
-  Rejected: this measures *topical relevance*, not *faithfulness*
-  — it cannot tell a faithful summary apart from a hallucinated
-  one that uses the right vocabulary.
-- **Refactor `scripts/llm_judge.py` to handle both surfaces.**
-  Rejected: doubles the blast radius of any change to the
-  real-data judge (which is load-bearing for the ADR 0006 commit
-  boundary). The two judges share ~100 lines of prompt + backend
-  dispatch; the duplication is the cheaper option. If a third
-  judge surface appears, revisit and extract `eval/judge_common.py`.
-- **Only report `faithfulness`; skip `answer_relevance`.** Rejected:
-  the RAGAS-style two-metric pair (faithfulness + answer relevance)
-  is what reviewers expect to see, and the marginal cost of asking
-  the judge for both in one prompt is zero.
+- **공개 CI 에 feature flag 뒤 라이브 평가자.** ADR 0006 과 같은 이유로 reject: ADR 0004 재현성 + 대부분 명확 구분 가능한 케이스에 PR 당 토큰 소비 부당.
+- **결정론 의미 유사도 (예: 임베딩 코사인).** Reject: *주제 관련성* 측정 — 옳은 어휘를 쓴 환각 요약과 충실한 요약을 구분 불가.
+- **`scripts/llm_judge.py` 를 두 표면 처리하도록 리팩터.** Reject: 실데이터 평가자 (ADR 0006 commit 경계의 load-bearing) 변경의 blast radius 2배. 두 평가자가 ~100줄 프롬프트 + 백엔드 dispatch 공유; 중복이 더 저렴. 세 번째 평가자 표면 등장 시 revisit + `eval/judge_common.py` 추출.
+- **`faithfulness` 만 보고; `answer_relevance` skip.** Reject: RAGAS 스타일 2-메트릭 쌍 (faithfulness + answer relevance) 이 reviewer 기대값 + 한 프롬프트로 둘 다 받는 한계 비용 0.

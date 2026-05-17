@@ -1,193 +1,107 @@
-# 0011: LLM answer synthesis as additive ablation
+# 0011: LLM 답변 합성을 분석 변형으로 추가
 
-(Originally landed as ADR 0007 in [#142](https://github.com/hskim-solv/BidMate-DocAgent/pull/142); renumbered to 0011 to resolve a filesystem collision with the foundational [`0007-issue-linked-branch-naming.md`](./0007-issue-linked-branch-naming.md) governance ADR which landed first.)
+(원래 [#142](https://github.com/hskim-solv/BidMate-DocAgent/pull/142) 에서 ADR 0007 로 머지됐으나, 먼저 머지된 governance ADR [`0007-issue-linked-branch-naming.md`](./0007-issue-linked-branch-naming.md) 과 파일명 충돌로 0011 로 번호 재지정.)
 
 - **Status**: proposed
 - **Date**: 2026-05-11
-- **Related**: extends [ADR 0001](./0001-preserve-naive-baseline.md); preserves [ADR 0003](./0003-structured-answer-citation-contract.md); reuses backend pattern from [ADR 0006](./0006-llm-judge-on-real-data-only.md); **complemented by** [ADR 0024](./0024-agentic-full-llm-as-api-default.md) (API preset default flips to `agentic_full_llm`; backend default stays `stub`); implementation walkthrough in [`docs/agentic/answer-policy.md`](../agentic/answer-policy.md#계약-강제-메커니즘)
+- **Related**: extends [ADR 0001](./0001-preserve-naive-baseline.md); preserves [ADR 0003](./0003-structured-answer-citation-contract.md); reuses backend pattern from [ADR 0006](./0006-llm-judge-on-real-data-only.md); **complemented by** [ADR 0024](./0024-agentic-full-llm-as-api-default.md) (API 프리셋 기본값은 `agentic_full_llm` 로 전환; 백엔드 기본은 `stub` 유지); 구현 워크스루는 [`docs/agentic/answer-policy.md`](../agentic/answer-policy.md#계약-강제-메커니즘)
 - **Deciders**: hskim
-- **Update (PR-I, issue #405, 2026-05-12)**: the API surface default preset flips from `agentic_full` to `agentic_full_llm` ([ADR 0024](./0024-agentic-full-llm-as-api-default.md)). The *backend* additivity contract this ADR established stays unchanged — `BIDMATE_SYNTHESIS_BACKEND=stub` is still the default, so a public API call runs the LLM synthesis preset under the deterministic stub renderer. CLI (`naive_baseline`, ADR 0001) and function-level (`agentic_full`) defaults are untouched.
+- **Update (PR-I, issue #405, 2026-05-12)**: API 표면 기본 프리셋이 `agentic_full` → `agentic_full_llm` 로 전환 ([ADR 0024](./0024-agentic-full-llm-as-api-default.md)). 본 ADR 이 정한 *백엔드* 추가성 계약은 불변 — `BIDMATE_SYNTHESIS_BACKEND=stub` 가 여전히 기본이라 공개 API 호출도 결정론적 stub 렌더러에서 LLM 합성 프리셋을 실행. CLI (`naive_baseline`, ADR 0001) 와 함수 레벨 (`agentic_full`) 기본은 그대로.
 
-## Context
+## TL;DR
 
-The pipeline is extractive end-to-end: `generate_answer` in
-[`rag_core.py:L2242`](../../rag_core.py) builds `claims` from retrieved
-sentences and renders `answer_text` by concatenating those claims with
-their chunk-id suffixes (`render_answer_text` at `L2494`). The design
-keeps the public demo deterministic, free, and hallucination-bounded —
-every cited string is verbatim from an evidence chunk.
+- 파이프라인은 end-to-end 추출형 — `generate_answer` 가 검색된 문장을 그대로 이어붙임.
+- LLM 합성을 *추가 분석 변형* 으로 도입: 추출형 기준선·ADR 0003 계약 보존, `summary` / `answer_text` 만 재작성.
+- 백엔드 dispatch (`stub` 기본 / `anthropic` / `openai_compatible`) 로 공개 CI 결정론 유지 + 실데이터·라이브 데모만 라이브 LLM.
 
-That trade-off is correct for grounding rigor, but it leaves three gaps
-visible to a reader of the system:
+## 배경
 
-1. **Read flow is mechanical.** `render_answer_text` joins claim
-   strings with `[chunk_id]` suffixes; the prose does not read like an
-   answer a human would write, and comparison answers in particular
-   read as parallel bullet lists rather than as analysis.
-2. **No LLM surface exists in the pipeline at all.** Prompt
-   engineering, structured output, tool use, and prompt caching —
-   table-stakes skills for an AI-engineer surface in 2026 — have
-   nowhere to live. The system can be evaluated as a retrieval system
-   but not as an LLM application.
-3. **Cost / latency / model trade-offs are not part of the eval
-   matrix.** ADR 0006 introduced an LLM on the real-data eval surface
-   as a *judge*; there is no comparable surface for the system itself.
+파이프라인은 end-to-end 추출형. [`rag_core.py:L2242`](../../rag_core.py) 의 `generate_answer` 가 검색된 문장으로 `claims` 를 만들고 chunk-id 접미사를 붙여 `render_answer_text` (L2494) 가 `answer_text` 를 연결. 공개 데모를 결정론·무료·환각 한계로 묶기 위한 설계로, 인용된 모든 문자열은 근거 chunk 의 verbatim.
 
-Reversing the extractive default would conflict with ADR 0001 (preserve
-the simpler-path baseline) and put the ADR 0003 citation contract at
-risk. The right move is the same shape as ADR 0001's defense of the
-naive baseline: **keep the extractive path as a first-class baseline
-and add LLM synthesis alongside it.**
+근거 연결 엄밀성 면에서 옳은 트레이드오프지만 시스템 reader 에게 보이는 세 가지 갭이 남는다.
 
-## Decision
+1. **읽기 흐름이 기계적.** `render_answer_text` 가 claim 문자열에 `[chunk_id]` 를 붙여 잇기만 함 — 사람이 쓴 답변처럼 읽히지 않고, 비교 답변은 분석이 아닌 병렬 bullet 리스트로 보임.
+2. **파이프라인에 LLM 표면 자체가 없음.** 프롬프트 엔지니어링, 구조화 출력, tool use, prompt caching — 2026 년 AI 엔지니어 표면의 기본기 — 가 들어설 자리가 없음. 검색 시스템으로는 평가되지만 LLM 애플리케이션으로는 평가 불가.
+3. **비용 / 지연 / 모델 트레이드오프가 eval 매트릭스에 부재.** ADR 0006 이 실데이터 eval 표면에 *평가자* 로서 LLM 을 도입했으나, 시스템 자체에 대한 비교 표면이 없음.
 
-LLM answer synthesis is permitted as an **additive** ablation path,
-not a replacement. Specifically:
+추출형 기본을 뒤집으면 ADR 0001 (단순 경로 기준선 보존) 과 충돌하고 ADR 0003 인용 계약이 위험. 올바른 수는 ADR 0001 이 naive baseline 을 지킨 방식과 같음 — **추출형 경로를 일급 기준선으로 두고 LLM 합성을 그 옆에 추가.**
 
-- A new `prompt_profile` value, `llm_synthesis`, is introduced in
-  [`rag_core.py`](../../rag_core.py) alongside `minimal_grounded_extractive`
-  (naive) and `structured_grounded_claims` (agentic_full extractive).
-- A new `PIPELINE_PRESETS` entry, `agentic_full_llm`, sets
-  `prompt_profile=llm_synthesis` and inherits the rest of `agentic_full`'s
-  retrieval / verifier configuration.
-- Both `agentic_full` (extractive) and `agentic_full_llm` (LLM) appear
-  as ablation runs in [`eval/config.yaml`](../../eval/config.yaml), so
-  every eval invocation produces a side-by-side comparison. `agentic_full`
-  remains the regression guard; `agentic_full_llm` is the new column.
-- `naive_baseline` is **unchanged**. ADR 0001's invariant is preserved.
+## 결정
 
-### Contract preserved (ADR 0003)
+LLM 답변 합성은 **추가** 분석 변형 경로로 허용 (대체 아님). 구체적으로:
 
-`generate_answer` continues to return the `schema_version: 2` JSON.
-The LLM synthesis path:
+- [`rag_core.py`](../../rag_core.py) 에 새 `prompt_profile` 값 `llm_synthesis` 를 `minimal_grounded_extractive` (naive), `structured_grounded_claims` (agentic_full 추출형) 와 함께 도입.
+- 새 `PIPELINE_PRESETS` 항목 `agentic_full_llm` 이 `prompt_profile=llm_synthesis` 로 두고 나머지 검색·검증기 설정은 `agentic_full` 상속.
+- [`eval/config.yaml`](../../eval/config.yaml) 에 `agentic_full` (추출형) + `agentic_full_llm` (LLM) 둘 다 분석 변형 run 으로 등록 — 모든 eval 호출이 side-by-side 비교를 생성. `agentic_full` 는 회귀 가드 유지, `agentic_full_llm` 가 새 컬럼.
+- `naive_baseline` 은 **불변**. ADR 0001 불변식 유지.
 
-- **Reuses** `build_claims` to produce the claim list. Claims and
-  citations are still extractive — `chunk_id` references resolve into
-  the same `evidence` list.
-- **Rewrites only `summary` and `answer_text`.** The LLM is given
-  `(query, analysis, claims, evidence_chunks)` and produces a
-  human-readable summary plus a longer-form `answer_text`. Both are
-  outside the verifiable contract per ADR 0003 ("`answer_text` is …
-  not part of the verifiable contract; tooling must not key off it").
-- **Cannot introduce new citations.** If the LLM emits a chunk id not
-  present in `evidence`, the synthesis is rejected and the renderer
-  falls back to the extractive `render_answer_text`. This guard is a
-  hard postcondition, not a soft check.
-- **Cannot change `status`, `claims`, `insufficiency`, or
-  `status_reason`.** Those are computed by the deterministic verifier
-  *before* synthesis runs, and synthesis sees them as inputs only.
+### 계약 보존 (ADR 0003)
 
-If `status != supported`, synthesis is skipped entirely and the
-extractive path runs as today. Abstention messages remain deterministic.
+`generate_answer` 는 계속 `schema_version: 2` JSON 반환. LLM 합성 경로는:
 
-### Backend pluggability
+- `build_claims` 를 **재사용** 해 claim 리스트 생산. claim 과 인용은 여전히 추출형 — `chunk_id` 참조는 동일한 `evidence` 로 resolve.
+- **`summary` 와 `answer_text` 만 재작성.** LLM 에 `(query, analysis, claims, evidence_chunks)` 를 주고 사람이 읽기 좋은 summary + 장형 `answer_text` 생산. 둘 다 ADR 0003 의 검증 가능 계약 밖 ("`answer_text` 는 … 검증 가능 계약의 일부 아님; tooling 은 여기에 의존 금지").
+- **새 인용을 도입 불가.** LLM 이 `evidence` 에 없는 chunk id 를 emit 하면 합성 reject + 추출형 `render_answer_text` 로 폴백. 이 가드는 soft check 아닌 hard postcondition.
+- **`status`, `claims`, `insufficiency`, `status_reason` 변경 불가.** 합성 *이전* 결정론 검증기가 계산한 입력만 받음.
 
-Reuses the ADR 0006 pattern: `BIDMATE_SYNTHESIS_BACKEND`:
+`status != supported` 면 합성 전체 skip + 오늘과 동일한 추출형 경로. 보류 메시지는 결정론 유지.
 
-- `stub` (default) — deterministic fixture; concatenates claims into a
-  templated paragraph. No network. Used by `make smoke`, `pr-eval.yml`,
-  and tests.
-- `anthropic` — Claude API (Sonnet 4.6 default, Haiku 4.5 opt-in via
-  `BIDMATE_SYNTHESIS_MODEL`). Requires `ANTHROPIC_API_KEY`. Uses prompt
-  caching for the system prompt + few-shot examples (≥ 80% token
-  reduction across a real-eval run). Tool use is used to enforce the
-  output shape `{summary: str, answer_text: str, used_chunk_ids: list[str]}`.
-- `openai_compatible` — generic OpenAI-compatible endpoint; same
-  shape, same guard. Lets vLLM / llama.cpp / Solar / KURE-finetuned
-  models be swapped in for the Korean-stack story without touching
-  the pipeline.
+### 백엔드 pluggability
 
-### Cadence
+ADR 0006 패턴 재사용: `BIDMATE_SYNTHESIS_BACKEND`:
 
-- **Public synthetic CI**: `BIDMATE_SYNTHESIS_BACKEND=stub`. Eval delta
-  job continues to compare `naive_baseline` vs `agentic_full` (both
-  deterministic) and reports `agentic_full_llm` as an *additional*
-  column with the stub backend. The stub is enough to exercise the
-  plumbing and lock the contract; it is not a quality claim about the
-  real LLM.
-- **Real-data eval**: `BIDMATE_SYNTHESIS_BACKEND=anthropic`. Aggregate
-  metrics for the LLM column cross the ADR 0005 commit boundary; raw
-  prompts and raw model responses stay local. Token counts and
-  per-query cost are aggregated and committable.
-- **Live demo**: `anthropic` backend, rate-limited, prompt-cached.
+- `stub` (기본) — 결정론 fixture; claim 을 템플릿 단락으로 연결. 네트워크 없음. `make smoke`, `pr-eval.yml`, 테스트에서 사용.
+- `anthropic` — Claude API (Sonnet 4.6 기본, `BIDMATE_SYNTHESIS_MODEL` 로 Haiku 4.5 opt-in). `ANTHROPIC_API_KEY` 필요. 시스템 프롬프트 + few-shot 예시 prompt caching 사용 (실 eval run 전반 ≥ 80% 토큰 감소). tool use 로 출력 형태 `{summary: str, answer_text: str, used_chunk_ids: list[str]}` 강제.
+- `openai_compatible` — 일반 OpenAI 호환 엔드포인트; 동일 형태·가드. vLLM / llama.cpp / Solar / KURE-finetuned 모델을 파이프라인 손 안 대고 한국 스택 스토리에 스왑 가능.
 
-## Consequences
+### 주기
+
+- **공개 합성 CI**: `BIDMATE_SYNTHESIS_BACKEND=stub`. Eval 델타 job 은 `naive_baseline` vs `agentic_full` (둘 다 결정론) 비교 유지 + `agentic_full_llm` 를 stub 백엔드로 *추가* 컬럼 보고. stub 은 plumbing 운동 + 계약 lock 용도 — 실 LLM 품질 주장 아님.
+- **실데이터 eval**: `BIDMATE_SYNTHESIS_BACKEND=anthropic`. LLM 컬럼 집계 메트릭은 ADR 0005 commit 경계 넘김; raw 프롬프트·raw 응답은 로컬. 토큰 수·쿼리당 비용은 집계되어 commit 가능.
+- **라이브 데모**: `anthropic` 백엔드, rate-limit, prompt-cached.
+
+## 결과
 
 **Wins**
 
-- The system gains an LLM surface (prompt engineering, structured
-  output, tool use, prompt cache, streaming) without putting ADR 0003
-  at risk. The citation contract is mechanically preserved by the
-  "no new chunk_ids" guard.
-- The eval matrix grows by one column. `agentic_full` (extractive,
-  deterministic) and `agentic_full_llm` (LLM, stub or live) sit side
-  by side, so the LLM path has to *earn* its slot the same way the
-  agentic pipeline had to under ADR 0001.
-- A latency / cost frontier becomes legible: extractive is ~ms,
-  stub-LLM adds negligible overhead, anthropic-LLM adds tokens + ms.
-  Future ADRs on caching / model choice have a measurable baseline.
-- Reuses the ADR 0006 backend pattern, so there is one consistent
-  "how to add an LLM" idiom in the codebase.
+- 시스템이 LLM 표면 (프롬프트 엔지니어링, 구조화 출력, tool use, prompt cache, streaming) 획득 + ADR 0003 위험 없음. "no new chunk_ids" 가드가 인용 계약을 기계적으로 보존.
+- Eval 매트릭스 1 컬럼 추가. `agentic_full` (추출형·결정론) 와 `agentic_full_llm` (LLM·stub or 라이브) 가 side-by-side → LLM 경로가 ADR 0001 하에서 agentic 파이프라인이 그랬듯 자기 슬롯을 *earn* 해야 함.
+- 지연·비용 frontier 가 가시화: 추출형 ~ms, stub-LLM 무시할 오버헤드, anthropic-LLM 토큰 + ms. 캐싱·모델 선택에 대한 향후 ADR 이 측정 가능한 기준선 보유.
+- ADR 0006 백엔드 패턴 재사용 → 코드베이스에 "LLM 추가 방법" 의 일관 관용구 1개.
 
 **Costs**
 
-- Three answer-rendering paths to keep working: extractive,
-  stub-LLM, live-LLM. Mitigated by the shared input contract — all
-  three consume the same `(answer_dict, evidence)` and produce
-  `answer_text`. A single regression test exercises all three.
-- Token spend per live-eval run. Bounded by manual cadence on
-  real-data (~ 100 cases × cached prompt) and by `stub` default on
-  public CI. Cost numbers go in `reports/real100/aggregate.json` so
-  the spend is visible.
-- One more environment variable family for users to understand.
-  Mitigated by the default being `stub` (works offline, no key).
+- 답변 렌더링 경로 3개 유지: 추출형, stub-LLM, 라이브-LLM. 공유 입력 계약 (`(answer_dict, evidence)` → `answer_text`) 으로 완화. 회귀 테스트 1개가 셋 다 운동.
+- 라이브-eval run 당 토큰 소비. 실데이터 수동 주기 (~ 100 케이스 × cached prompt) + 공개 CI `stub` 기본으로 bound. 비용은 `reports/real100/aggregate.json` 에 노출.
+- 사용자가 이해할 환경 변수 family 1개 추가. 기본이 `stub` (오프라인·무키) 으로 완화.
 
-**Constraints (unchanged)**
+**Constraints (불변)**
 
-- ADR 0001: `naive_baseline` stays in
-  [`pipeline_cli_choices()`](../../rag_core.py) and remains the CLI
-  default.
-- ADR 0003: `schema_version: 2`, `status` values, `claims[].citations`,
-  and `evidence[]` are unchanged. `schema_version` does **not** bump.
-- ADR 0005: real-data per-case LLM outputs stay local. Aggregates
-  (mean cost, mean latency, citation_precision delta) commit.
+- ADR 0001: `naive_baseline` 가 [`pipeline_cli_choices()`](../../rag_core.py) 유지 + CLI 기본.
+- ADR 0003: `schema_version: 2`, `status` 값, `claims[].citations`, `evidence[]` 불변. `schema_version` **bump 안 함**.
+- ADR 0005: 실데이터 케이스별 LLM 출력은 로컬. 집계 (평균 비용·지연·`citation_precision` 델타) 만 commit.
 
-## Additive opt-in pattern (generalization)
+## 추가 opt-in 패턴 (일반화)
 
-ADR 0011 established a recurring pattern that later ADRs 0015, 0017, and 0027 reused verbatim. Those ADRs are consolidated here as Superseded; their decisions remain unchanged. The pattern is:
+ADR 0011 이 후속 ADR 0015, 0017, 0027 이 verbatim 재사용한 반복 패턴 확립. 해당 ADR 들은 여기 Superseded 로 통합; 결정 자체는 불변. 패턴:
 
-1. **Default is deterministic and free.** A `stub` (or `regex`) backend runs on every CI invocation — no network, no cost, reproducible.
-2. **Opt-in via a single env-var.** `BIDMATE_<FEATURE>_BACKEND` dispatches: `stub` (default) | `anthropic` | `openai_compatible`. Unknown/failing backend silently degrades to stub.
-3. **Never changes upstream contract.** The feature writes to a *diagnostics* or *additive ablation row* surface; it cannot modify `answer.status`, `claims`, `citations`, or `naive_baseline` metrics.
-4. **One new ablation row in `eval/config.yaml`.** The feature is measurable as a column, not just a code path.
-5. **Stub-matches-baseline invariant is a contract test.** `test_*_baseline_invariant.py` verifies byte-equality between stub-backend output and the deterministic baseline.
+1. **기본은 결정론·무료.** `stub` (또는 `regex`) 백엔드가 모든 CI 호출에서 실행 — 네트워크·비용·재현성 없음.
+2. **단일 env-var 로 opt-in.** `BIDMATE_<FEATURE>_BACKEND` 가 `stub` (기본) | `anthropic` | `openai_compatible` dispatch. 미상·실패 백엔드는 조용히 stub 로 degrade.
+3. **상류 계약 변경 금지.** 기능은 *진단* 또는 *추가 분석 변형 row* 표면에만 기록 — `answer.status`, `claims`, `citations`, `naive_baseline` 메트릭은 수정 불가.
+4. **`eval/config.yaml` 에 새 분석 변형 row 1개.** 기능은 코드 경로뿐 아니라 컬럼으로도 측정 가능.
+5. **stub-matches-baseline 불변식이 계약 테스트.** `test_*_baseline_invariant.py` 가 stub-백엔드 출력과 결정론 기준선의 byte-equal 검증.
 
-**Instances consolidated here:**
+**통합된 instance:**
 
-| ADR | Feature | Env-var | Stub invariant |
+| ADR | 기능 | Env-var | Stub 불변식 |
 |-----|---------|---------|---------------|
-| 0015 | Cost telemetry (tokens, USD estimate) | n/a — diagnostics only | `SYNTHESIS_SCHEMA_VERSION` bump; unknown model → `None` |
-| 0017 | LLM metadata extraction | `BIDMATE_METADATA_BACKEND` | `stub` delegates to `regex`; byte-equal |
-| 0027 | LoRA embedding adapter | `BIDMATE_EMBEDDING_LORA_ADAPTER` | unset = pre-#434 byte-identical; lazy PEFT import |
+| 0015 | 비용 telemetry (토큰, USD 추정) | n/a — 진단 전용 | `SYNTHESIS_SCHEMA_VERSION` bump; 미상 모델 → `None` |
+| 0017 | LLM 메타데이터 추출 | `BIDMATE_METADATA_BACKEND` | `stub` 가 `regex` 위임; byte-equal |
+| 0027 | LoRA 임베딩 어댑터 | `BIDMATE_EMBEDDING_LORA_ADAPTER` | unset = pre-#434 byte-identical; lazy PEFT import |
 
-## Alternatives considered
+## 검토한 대안
 
-- **Replace the extractive path with LLM synthesis entirely.**
-  Rejected: conflicts with ADR 0001's preservation argument and
-  removes the regression guard against LLM-introduced citation
-  drift. Loses the deterministic CI surface.
-- **Add LLM synthesis only behind a CLI flag, not as a named
-  preset.** Rejected: ADR 0001's argument applies — silent paths
-  rot. If LLM synthesis is worth shipping it should be a named
-  preset that runs on every eval invocation, so its delta against
-  `agentic_full` is always visible.
-- **Let the LLM also rewrite `claims` and `citations`.**
-  Rejected for now: violates ADR 0003 by construction (citations
-  would no longer be guaranteed to resolve into `evidence`). Revisit
-  as a follow-up ADR with a stricter citation-validation pass
-  (every emitted chunk_id must resolve; every claim must cite ≥ 1
-  chunk) and `schema_version: 3`.
-- **Use a free-text LLM endpoint without tool use / structured
-  output.** Rejected: the postcondition that `used_chunk_ids ⊆
-  evidence.chunk_ids` becomes brittle to parse. Tool use makes the
-  guard a simple set-membership check.
+- **추출형 경로를 LLM 합성으로 전면 대체.** Reject: ADR 0001 보존 논증과 충돌 + LLM 인용 드리프트에 대한 회귀 가드 제거. 결정론 CI 표면 상실.
+- **명명 프리셋 없이 CLI 플래그 뒤에만 LLM 합성 추가.** Reject: ADR 0001 의 "조용한 경로는 썩는다" 가 적용. 출시 가치가 있다면 모든 eval 호출에서 돌아가는 명명 프리셋이 되어 `agentic_full` 대비 델타가 항상 가시.
+- **LLM 이 `claims` 와 `citations` 도 재작성.** 현재 reject: 구성상 ADR 0003 위반 (인용이 `evidence` 로 resolve 보장 안 됨). 더 엄격한 인용 검증 pass (emit 한 모든 chunk_id 가 resolve 필요; 모든 claim 이 ≥ 1 chunk 인용 필요) 와 `schema_version: 3` 동반 후속 ADR 로 revisit.
+- **tool use / 구조화 출력 없는 free-text LLM 엔드포인트.** Reject: `used_chunk_ids ⊆ evidence.chunk_ids` postcondition 이 parse 에 brittle. tool use 가 가드를 단순 집합 멤버십 체크로 만듦.

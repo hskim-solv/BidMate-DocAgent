@@ -1,135 +1,64 @@
-# 0022: LangGraph orchestrator path for agentic_full presets — stages 1 (passthrough) & 2 (multi-node)
+# 0022: agentic_full preset용 LangGraph orchestrator 경로 — stage 1 (passthrough) & 2 (multi-node)
 
 - **Status**: accepted
 - **Date**: 2026-05-12 (stage 1) / 2026-05-13 (stage 2)
 - **Deciders**: hskim
-- **Related**: [ADR 0001](./0001-preserve-naive-baseline.md) (naive_baseline reserved as direct-path ablation), [ADR 0011](./0011-llm-synthesis-as-additive-ablation.md) (agentic_full_llm under same retrieval surface), [ADR 0013](./0013-observability-as-additive-pluggable-surface.md) (trace backend additivity pattern this ADR reuses), issue #401 (stage 1) / PR [#404](https://github.com/hskim-solv/BidMate-DocAgent/pull/404) (stage 1 implementation) / issue #453 (stage 1 status flip), issue #457 (stage 2) / PR [#458](https://github.com/hskim-solv/BidMate-DocAgent/pull/458) (stage 2 implementation)
-- **Update (status flip, 2026-05-12, issue #453)**: Status promoted `proposed` → `accepted`. The stage-1 implementation merged via PR [#404](https://github.com/hskim-solv/BidMate-DocAgent/pull/404) (commit `349dd08`) lands all four sub-items from the Decision section: `requirements-graph.txt`, [`rag_graph_agentic_full.py`](../../rag_graph_agentic_full.py) (`AgenticFullState` TypedDict + `run_via_langgraph` entry point + process-cached compiled graph), [`rag_core.py:3673-3690`](../../rag_core.py) (env-var dispatch + `_skip_graph` recursion guard + `naive_baseline` bypass), and [`tests/test_langgraph_orchestrator_regression.py`](../../tests/test_langgraph_orchestrator_regression.py) (JSON-identity over `(agentic_full, agentic_full_llm) × (single-doc, comparison)` modulo timing fields, ADR 0001 invariant gate, module import smoke).
-- **Update (stage 2 land, 2026-05-13, issue #457)**: Stage-2 multi-node decomposition merged. `rag_graph_agentic_full.py` now compiles a three-node StateGraph (analyze / retrieve_loop / build_answer) with a conditional edge after analyze. `rag_core.py` exposes `_RunContext` + `_build_run_context` + `_phase_analyze` / `_phase_retrieve_loop` / `_phase_build_answer` extracted from the legacy `run_rag_query` body; both the direct path and the graph nodes call the same `_phase_*` helpers so JSON-identity holds by construction. `tests/test_langgraph_orchestrator_regression.py` adds `GraphStructureStage2Test` (3-node assertion + conditional-edge router contract + phase-helper public surface) and `test_phase_analyze_short_circuits_for_context_clarification`. Existing 4 JSON-identity tests continue to pass without modification — confirming the by-construction claim.
+- **Related**: [ADR 0001](./0001-preserve-naive-baseline.md) (naive_baseline은 direct-path 분석 변형으로 예약), [ADR 0011](./0011-llm-synthesis-as-additive-ablation.md) (agentic_full_llm은 동일 검색 표면), [ADR 0013](./0013-observability-as-additive-pluggable-surface.md) (본 ADR이 재사용하는 trace backend additivity 패턴), issue #401 (stage 1) / PR [#404](https://github.com/hskim-solv/BidMate-DocAgent/pull/404) (stage 1 구현) / issue #453 (stage 1 status flip), issue #457 (stage 2) / PR [#458](https://github.com/hskim-solv/BidMate-DocAgent/pull/458) (stage 2 구현)
+- **Update (status flip, 2026-05-12, issue #453)**: Status `proposed` → `accepted`. PR [#404](https://github.com/hskim-solv/BidMate-DocAgent/pull/404) (commit `349dd08`)으로 stage-1 구현 머지 — Decision 4 항목 전부(`requirements-graph.txt`, [`rag_graph_agentic_full.py`](../../rag_graph_agentic_full.py)(`AgenticFullState` TypedDict + `run_via_langgraph` 진입점 + process-cached compiled graph), [`rag_core.py:3673-3690`](../../rag_core.py)(env-var dispatch + `_skip_graph` recursion guard + `naive_baseline` bypass), [`tests/test_langgraph_orchestrator_regression.py`](../../tests/test_langgraph_orchestrator_regression.py)) 반영.
+- **Update (stage 2 land, 2026-05-13, issue #457)**: Stage-2 multi-node 분해 머지. `rag_graph_agentic_full.py`가 3-node StateGraph(analyze / retrieve_loop / build_answer + analyze 후 conditional edge) 컴파일. `rag_core.py`는 `_RunContext` + `_build_run_context` + `_phase_analyze` / `_phase_retrieve_loop` / `_phase_build_answer`를 legacy `run_rag_query` body에서 추출 노출; direct 경로와 graph node 양쪽 동일 `_phase_*` helper 호출 → by-construction JSON-identity. 테스트에 `GraphStructureStage2Test`(3-node assertion + conditional-edge router contract + phase-helper public surface) + `test_phase_analyze_short_circuits_for_context_clarification` 추가. 기존 JSON-identity 4 테스트는 수정 없이 통과 — by-construction claim 확인.
 
-## Context
+## TL;DR
 
-External senior review (2026-05) finding #2 argued the "Agentic RAG"
-label is overstated because the pipeline is a procedural Python call —
-no tool-call graph, no per-stage observability surface. The fair
-critique: the agentic loop (`metadata_stage_sequence` strict → reduced
-→ relaxed + verifier retry + answer build) is real but it is
-*structurally* an inner for-loop inside one 426-line function in
-`rag_core.py`, not a graph that an external reviewer can inspect.
+- 외부 senior review #2 ("Agentic RAG label 과장") 대응 — `run_rag_query` 내부 inner for-loop을 LangGraph StateGraph로 노출.
+- Stage 1: dispatch infra + 단일 passthrough node(JSON-identity-by-construction). Stage 2: 3-node 분해(analyze/retrieve_loop/build_answer).
+- `naive_baseline`은 direct path 유지(ADR 0001 불변); LangGraph는 opt-in `requirements-graph.txt`로 격리.
 
-Plan PR-H (Tier 3 of the project review response) calls for a
-LangGraph migration that:
+## 배경
 
-1. Adds `langgraph` as an opt-in dependency (CI default stays direct).
-2. Wraps the `agentic_full` / `agentic_full_llm` flow in a StateGraph
-   whose edges make the retry policy and the prompt-profile branch
-   explicit.
-3. Leaves `naive_baseline` on the direct path — ADR 0001's
-   reproducibility invariant should not pay a langgraph-import cost
-   for the minimal ablation surface.
-4. Enables LangSmith / Langfuse multi-node traces (ADR 0013 backends)
-   once the nodes are actually distinct.
+외부 senior review(2026-05) finding #2가 "Agentic RAG" label 과장 지적 — 파이프라인이 procedural Python call이고 tool-call graph도, per-stage 관측 표면도 없음. agentic loop(`metadata_stage_sequence` strict → reduced → relaxed + 검증기 재시도 + answer build)는 실재하지만 *구조적으로* `rag_core.py` 426-line 단일 함수 내부 inner for-loop이며 외부 reviewer가 inspect 가능한 graph가 아님.
 
-The hard part is the JSON-identity guarantee. `run_rag_query` carries
-dozens of cross-stage fields — `query_hash`, attempt index, timings,
-stage transitions, conversation state, trace blocks, retrieved
-`chunk_ids`, claims, citations, synthesis metadata — and reproducing
-them through a multi-node graph risks subtle drift. A single regression
-that flips a `latency_ms` ordering or a `pipeline_alias` field can
-break every existing eval delta comparison and a slew of regression
-tests.
+Plan PR-H(프로젝트 review 대응 Tier 3)가 다음 LangGraph 마이그레이션을 요청:
 
-## Decision (stage 1)
+1. `langgraph`를 opt-in 의존성으로 추가(CI 기본은 direct 유지).
+2. `agentic_full` / `agentic_full_llm` 흐름을 StateGraph로 wrap — 재시도 정책 + prompt-profile branch 가 edge로 명시.
+3. `naive_baseline`은 direct path 유지 — ADR 0001 재현성 불변이 최소 분석 변형 표면에서 langgraph-import 비용을 지불하지 않음.
+4. 노드가 실제로 분리되면 LangSmith / Langfuse multi-node trace 활성화(ADR 0013 backend).
 
-Land the **dispatch infrastructure and a single passthrough node**
-*now*, defer the multi-node decomposition to stage 2 under its own ADR.
+어려운 부분은 JSON-identity 보장. `run_rag_query`는 cross-stage 필드 수십 개(`query_hash`, attempt index, timings, stage transition, conversation state, trace block, retrieved `chunk_ids`, claim, citation, synthesis metadata) 운반 — multi-node graph 재현 시 미세 drift 위험. `latency_ms` 순서 한 번 뒤집힘 또는 `pipeline_alias` 한 필드 회귀로 모든 eval delta 비교 + 회귀 테스트 다발이 깨질 수 있음.
 
-Concretely:
+## 결정 (stage 1)
 
-- New opt-in dependency file `requirements-graph.txt` with
-  `langgraph>=0.6,<2.0`. **Not** added to `requirements.txt` — public
-  CI never imports langgraph.
-- New module `rag_graph_agentic_full.py` (root, flat-layout
-  convention) exposing:
-  - `AgenticFullState` `TypedDict` carrying inputs + the final
-    `result` dict. Stage-1 schema is deliberately minimal; stage 2
-    expands it as nodes split.
-  - `run_via_langgraph(index, query, **kwargs) -> dict[str, Any]` —
-    the entry point. Builds a one-node `StateGraph` whose single node
-    calls back into `run_rag_query` with the **recursion-guard kwarg**
-    `_skip_graph=True`. The graph is process-cached so successive calls
-    skip the builder.
-- `rag_core.run_rag_query` gains an env-var dispatch at the top:
-  - `BIDMATE_ORCHESTRATOR=direct` (default) — existing call path,
-    unchanged behavior.
-  - `BIDMATE_ORCHESTRATOR=langgraph` + pipeline ≠ `naive_baseline` →
-    delegate to `rag_graph_agentic_full.run_via_langgraph`. The
-    recursion guard is the `_skip_graph` kwarg, kept private
-    (underscore-prefixed) and absent from any external caller.
-  - `naive_baseline` always stays on the direct path regardless of the
-    env var (ADR 0001 invariant). The dispatch check inspects both
-    `pipeline=` and `params.pipeline` to honor both kwarg shapes.
-- New regression test `tests/test_langgraph_orchestrator_regression.py`:
-  - `pytest.importorskip("langgraph")` so CI skips when the opt-in
-    extra is absent.
-  - Parametrized over `(pipeline, query)` for `agentic_full` and
-    `agentic_full_llm` × two queries (single-doc + comparison) → asserts
-    `json.dumps(..., sort_keys=True)` equality between direct and
-    LangGraph paths.
-  - A separate `test_naive_baseline_skips_langgraph_dispatch` pins the
-    ADR 0001 policy: even with `BIDMATE_ORCHESTRATOR=langgraph` set,
-    `naive_baseline` returns the direct-path result.
-  - A `GraphModuleImportTest` smoke-tests the module's public symbols
-    and the graph cache.
+**dispatch 인프라 + 단일 passthrough node를 *지금* 머지**, multi-node 분해는 stage 2로 별도 ADR 보류.
 
-Single-node passthrough is the **JSON-identity-by-construction**
-guarantee: the node literally calls the same `run_rag_query` body that
-the direct path executes. Any future multi-node decomposition must
-preserve that identity through explicit eval gates — this ADR is
-stage 1 and intentionally postpones that work.
+구체:
 
-## Decision (stage 2)
+- 신규 opt-in 의존 파일 `requirements-graph.txt`에 `langgraph>=0.6,<2.0`. `requirements.txt`에는 추가 **안 함** — public CI는 langgraph import 안 함.
+- 신규 모듈 `rag_graph_agentic_full.py`(root, flat-layout):
+  - `AgenticFullState` `TypedDict` — 입력 + 최종 `result` dict. Stage-1 schema는 의도적 최소; stage 2에서 노드 분리에 맞춰 확장.
+  - `run_via_langgraph(index, query, **kwargs) -> dict[str, Any]` — 진입점. 1-node `StateGraph` 빌드, 단일 node가 **recursion-guard kwarg `_skip_graph=True`** 로 `run_rag_query` 재호출. graph는 process-cached.
+- `rag_core.run_rag_query` 상단에 env-var dispatch:
+  - `BIDMATE_ORCHESTRATOR=direct`(default) — 기존 경로, 동작 불변.
+  - `BIDMATE_ORCHESTRATOR=langgraph` + pipeline ≠ `naive_baseline` → `rag_graph_agentic_full.run_via_langgraph`로 위임. recursion guard는 `_skip_graph` kwarg(private, underscore-prefix, 외부 caller 없음).
+  - `naive_baseline`은 env var 무관 direct 경로(ADR 0001 불변). dispatch는 `pipeline=` + `params.pipeline` 양 kwarg 형태 모두 검사.
+- 신규 회귀 테스트 `tests/test_langgraph_orchestrator_regression.py`:
+  - `pytest.importorskip("langgraph")`로 opt-in extra 부재 시 CI skip.
+  - `(pipeline, query)` 파라미터화 — `agentic_full` / `agentic_full_llm` × 두 쿼리(single-doc + comparison) → direct vs LangGraph 경로 `json.dumps(..., sort_keys=True)` equality assertion.
+  - `test_naive_baseline_skips_langgraph_dispatch`로 ADR 0001 정책 pin: `BIDMATE_ORCHESTRATOR=langgraph` 설정에도 `naive_baseline`은 direct-path 결과 반환.
+  - `GraphModuleImportTest`로 모듈 public symbol + graph cache smoke.
 
-Split the single passthrough node into three phase nodes that mirror
-the analyze / retrieve / build phases inside the legacy
-`run_rag_query` body. Crucially, the nodes do **not** re-implement the
-orchestration in the graph module — that would carry exactly the
-JSON-identity regression risk this ADR's two-stage split exists to
-avoid. Instead, three private helpers extracted from `run_rag_query`'s
-body in `rag_core.py` become the single source of truth, and both the
-direct path and the graph nodes call them:
+단일 노드 passthrough가 **JSON-identity-by-construction** 보장 — 노드가 직접 direct path와 동일한 `run_rag_query` body 호출. 향후 multi-node 분해는 명시적 eval gate로 identity를 보존해야 하며, 본 ADR은 stage 1이고 그 작업을 의도적으로 연기.
 
-- `rag_core._RunContext` — a private mutable dataclass that carries
-  every cross-phase field (`retrieval_query`, `analysis`,
-  `stage_sequence`, `evidence`, `verified`, `verification_reasons`,
-  `retrieved_chunk_ids`, `plan`, trace handle, timings, ...) so the
-  three phases can run either inline or threaded through LangGraph
-  state.
-- `rag_core._build_run_context(...)` — moves the `params=` bundle
-  normalization, pipeline-preset resolution, `_PROCESS_WARM`
-  cold-start flag, query hashing, `query_start` log, and
-  trace-backend startup out of `run_rag_query`'s body. The LangGraph
-  entry point calls this *before* graph invocation so all three nodes
-  see the same context.
-- `rag_core._phase_analyze(ctx) -> dict | None` — runs the two
-  `analyze_query` iterations, conversation-context resolution, and the
-  metadata-ambiguity / needs-clarification short-circuit checks.
-  Returns a final result dict if the phase short-circuits, otherwise
-  `None` after mutating `ctx`. The LangGraph router
-  (`_route_after_analyze`) reads this signal and routes to `END`
-  (early return) or `retrieve_loop` (continue) via a conditional edge.
-- `rag_core._phase_retrieve_loop(ctx)` — runs the
-  `metadata_stage_sequence` strict → reduced → relaxed retry loop with
-  `make_plan` + `retrieve` + `verify_evidence` per attempt, then
-  applies `select_supporting_evidence` and computes
-  `retrieved_chunk_ids`.
-- `rag_core._phase_build_answer(ctx) -> dict` — runs `generate_answer`
-  (plus `synthesize_answer` under `agentic_full_llm`), updates
-  conversation state, assembles `diagnostics` and the final `result`
-  dict in the same key order as the legacy body, attaches trace
-  diagnostics, and emits the `query_complete` log line.
+## 결정 (stage 2)
 
-The new `run_rag_query` body is:
+passthrough 단일 노드를 legacy `run_rag_query` body 내부의 analyze / retrieve / build phase를 mirror하는 3 phase node로 분리. 핵심: 노드들이 graph 모듈에서 orchestration을 **재구현하지 않음** — 그러면 본 ADR의 two-stage split이 회피하려는 JSON-identity 회귀 위험을 그대로 안음. 대신 `rag_core.py`의 `run_rag_query` body에서 추출한 3개 private helper가 단일 출처가 되고, direct 경로 + graph node 둘 다 호출:
+
+- `rag_core._RunContext` — 모든 cross-phase 필드(`retrieval_query`, `analysis`, `stage_sequence`, `evidence`, `verified`, `verification_reasons`, `retrieved_chunk_ids`, `plan`, trace handle, timings, ...) 운반 private mutable dataclass — 3 phase가 inline 또는 LangGraph state 스레딩 어느 쪽으로도 실행 가능.
+- `rag_core._build_run_context(...)` — `params=` 묶음 정규화, 파이프라인 프리셋 해결, `_PROCESS_WARM` cold-start flag, query hashing, `query_start` log, trace backend startup을 `run_rag_query` body에서 분리. LangGraph 진입점은 graph 호출 *이전*에 이를 호출 → 3 노드가 동일 컨텍스트 공유.
+- `rag_core._phase_analyze(ctx) -> dict | None` — 2회 `analyze_query` 반복 + conversation-context 해결 + 메타데이터 ambiguity / needs-clarification short-circuit 검사. short-circuit 시 최종 result dict, 아니면 `ctx` 변이 후 `None` 반환. LangGraph router(`_route_after_analyze`)가 이 신호를 읽어 conditional edge로 `END`(조기 반환) 또는 `retrieve_loop`(계속) 라우팅.
+- `rag_core._phase_retrieve_loop(ctx)` — `metadata_stage_sequence` strict → reduced → relaxed 재시도 루프(`make_plan` + `retrieve` + `verify_evidence` per attempt) → `select_supporting_evidence` 적용 + `retrieved_chunk_ids` 계산.
+- `rag_core._phase_build_answer(ctx) -> dict` — `generate_answer`(`agentic_full_llm` 시 `synthesize_answer` 추가) 실행, conversation state 갱신, legacy body와 동일 key 순서로 `diagnostics` + 최종 `result` dict 조립, trace diagnostics 부착, `query_complete` log 출력.
+
+신규 `run_rag_query` body:
 
 ```python
 ctx = _build_run_context(...)
@@ -140,117 +69,48 @@ _phase_retrieve_loop(ctx)
 return _phase_build_answer(ctx)
 ```
 
-…and the LangGraph nodes are thin wrappers around the same three
-phase calls. JSON-identity is therefore preserved by construction —
-the phase functions are literally the moved-out blocks of the legacy
-body, executed in the same order with the same inputs. The regression
-test `tests/test_langgraph_orchestrator_regression.py` (which compares
-`json.dumps(..., sort_keys=True)` byte-equality between
-`BIDMATE_ORCHESTRATOR=direct` and `=langgraph` for two queries × two
-presets) keeps passing without modification.
+LangGraph 노드는 동일 3 phase 호출의 얇은 wrapper. JSON-identity는 by construction 보존 — phase 함수가 legacy body의 이동된 블록을 동일 순서·동일 입력으로 실행. 회귀 테스트 `tests/test_langgraph_orchestrator_regression.py`(`BIDMATE_ORCHESTRATOR=direct` vs `=langgraph`, 2 쿼리 × 2 프리셋의 `json.dumps(..., sort_keys=True)` byte-equality 비교)는 수정 없이 통과.
 
-`AgenticFullState` was a small TypedDict in stage 1 (`index`,
-`query`, `pipeline_kwargs`, `result`); stage 2 replaces those fields
-with a single mutable `ctx` slot plus the same terminal `result` slot.
-The intermediate fields all live on `_RunContext`, so the TypedDict
-stays minimal even as the orchestration becomes explicit.
+`AgenticFullState`는 stage 1에서 작은 TypedDict(`index`, `query`, `pipeline_kwargs`, `result`); stage 2는 그 필드를 단일 mutable `ctx` slot + 동일 terminal `result` slot으로 교체. 중간 필드는 `_RunContext`에 거주 → orchestration이 명시화되어도 TypedDict는 최소 유지.
 
-The stage-1 recursion guard (`_skip_graph` kwarg) is no longer needed
-for correctness — stage 2 nodes call `_phase_*` directly, not back
-into `run_rag_query` — but the kwarg is retained as a private "force
-direct path" override for callers that need deterministic dispatch
-independent of the environment variable.
+stage-1 recursion guard(`_skip_graph` kwarg)는 correctness상 더 이상 불필요 — stage 2 노드는 `_phase_*` 직접 호출, `run_rag_query`로 되돌아오지 않음 — 그러나 환경 변수 독립 deterministic dispatch가 필요한 caller를 위해 private "force direct path" override로 유지.
 
-Stage-2 specific tests added alongside the stage-1 JSON-identity ones:
+stage-2 전용 테스트 추가:
 
-- `GraphStructureStage2Test.test_graph_has_three_phase_nodes` — pins
-  that the compiled graph carries `analyze` / `retrieve_loop` /
-  `build_answer` so a future refactor cannot silently collapse it
-  back to a passthrough.
-- `GraphStructureStage2Test.test_route_after_analyze_branches_on_result_presence`
-  — pins the conditional-edge contract: `result` present ⇒ END,
-  otherwise ⇒ `retrieve_loop`.
-- `GraphStructureStage2Test.test_phase_helpers_exposed_from_rag_core`
-  — `rag_core` keeps exposing `_build_run_context`, `_phase_analyze`,
-  `_phase_retrieve_loop`, `_phase_build_answer`; a rename would
-  surface here instead of at first dispatch.
-- `test_phase_analyze_short_circuits_for_context_clarification` —
-  whichever path the phase takes (short-circuit or continue), the
-  state it hands off matches the contract the next phase or the
-  caller expects.
+- `GraphStructureStage2Test.test_graph_has_three_phase_nodes` — compiled graph가 `analyze` / `retrieve_loop` / `build_answer` 운반 pin → 향후 refactor가 passthrough로 silently collapse 불가.
+- `GraphStructureStage2Test.test_route_after_analyze_branches_on_result_presence` — conditional-edge 계약 pin: `result` 존재 ⇒ END, 그 외 ⇒ `retrieve_loop`.
+- `GraphStructureStage2Test.test_phase_helpers_exposed_from_rag_core` — `rag_core`가 `_build_run_context`, `_phase_analyze`, `_phase_retrieve_loop`, `_phase_build_answer`를 계속 노출; rename은 first dispatch가 아닌 여기서 표면화.
+- `test_phase_analyze_short_circuits_for_context_clarification` — phase가 어느 경로(short-circuit / 계속)를 타든 다음 phase 또는 caller가 기대하는 계약과 일치하는 state 인계.
 
-## Consequences
+## 결과
 
-Easier:
+쉬워진 점:
 
-- The "Agentic RAG" label gets a concrete operational meaning that
-  matches the code: `BIDMATE_ORCHESTRATOR=langgraph` now runs a
-  three-node StateGraph (not a one-node passthrough) where every node
-  is inspectable, and per-stage latencies in LangSmith / Langfuse map
-  cleanly to the three phases.
-- Single source of truth for orchestration: `_phase_*` helpers run
-  whether the caller used the direct path or the graph path, so the
-  two cannot drift.
-- The risky JSON-identity work was bounded to the dispatch + harness
-  work in stage 1; stage 2 needed zero changes to the regression
-  test contract.
-- ADR 0001 invariant for `naive_baseline` is pinned by an explicit
-  test, not just doc convention.
+- "Agentic RAG" label이 코드와 일치하는 구체적 운영 의미 획득: `BIDMATE_ORCHESTRATOR=langgraph`는 이제 3-node StateGraph 실행(1-node passthrough 아님) — 각 노드 inspect 가능, LangSmith / Langfuse per-stage latency가 3 phase에 깔끔히 매핑.
+- orchestration 단일 출처: `_phase_*` helper가 direct 경로든 graph 경로든 동일 실행 → drift 불가.
+- 위험한 JSON-identity 작업은 stage 1의 dispatch + harness 범위로 한정; stage 2는 회귀 테스트 계약에 0 변경.
+- `naive_baseline` ADR 0001 불변이 doc convention이 아니라 명시 테스트로 pin.
 
-Costs / honesty:
+비용 / 정직:
 
-- `_RunContext` is a 30+ field private dataclass — large, but each
-  field is one that the legacy body already carried as a local
-  variable. The dataclass makes the cross-phase contract *explicit*
-  rather than *implicit* in the function-scoped locals.
-- LangGraph version range (`>=0.6,<2.0`) is broad. If LangGraph 2.x
-  introduces a breaking API, the dispatch table in `_build_graph` and
-  the conditional-edges call site are the only places to re-pin.
-- The `_skip_graph` kwarg is now a soft override (stage 1 needed it
-  for recursion safety; stage 2 doesn't). Removing it would be a
-  follow-up cleanup.
-- The phase helpers are private (`_`-prefixed). External code that
-  wants a phase-level surface should request a public API via a
-  follow-up ADR rather than relying on the internal contract.
+- `_RunContext`는 30+ 필드 private dataclass — 크지만 각 필드는 legacy body가 이미 local 변수로 운반하던 것. cross-phase 계약을 함수-scoped local의 *암묵*이 아니라 *명시*로 만듦.
+- LangGraph 버전 범위(`>=0.6,<2.0`) 넓음. LangGraph 2.x breaking API 시 `_build_graph`의 dispatch table + conditional-edge 호출 site만 재pin.
+- `_skip_graph` kwarg는 soft override(stage 1은 recursion safety용; stage 2는 불필요). 제거는 후속 cleanup.
+- phase helper는 private(`_`-prefix). 외부 코드가 phase-level surface 원하면 internal 계약 의존 대신 후속 ADR로 public API 요청.
 
-## Alternatives considered
+## 검토한 대안
 
-- **Skip stage 1, ship the full multi-node decomposition.** Rejected:
-  JSON-identity regression risk against `run_rag_query`'s
-  ~426-line output assembly is real, and a stage-2 PR that breaks
-  any of the existing 650+ regression tests would block on debugging
-  rather than design. Splitting the work bounds the risk.
-- **Add `langgraph` to `requirements.txt` (always-on).** Rejected:
-  langgraph + its dependency tree (`langchain-core`, `pydantic`, ...)
-  inflates every CI install and Docker image for what is, in stage 1,
-  a pure passthrough. ADR 0011 / ADR 0013's "additive opt-in"
-  pattern says opt-in extras live in their own requirements file.
-- **Use a thread-local recursion guard instead of `_skip_graph`
-  kwarg.** Rejected: thread-locals are invisible at the call site
-  (callers can't see the contract). A private kwarg is explicit and
-  testable.
-- **Migrate `naive_baseline` to LangGraph too.** Rejected by ADR
-  0001 — the minimal ablation surface should not depend on an opt-in
-  extra. If the LangGraph dependency is missing, `naive_baseline`
-  must still run.
+- **stage 1 skip, multi-node 분해 전체 ship.** 기각: `run_rag_query` ~426-line 출력 조립에 대한 JSON-identity 회귀 위험 실재 + 기존 650+ 회귀 테스트 깨지면 설계가 아니라 디버깅으로 PR이 막힘. 분할로 위험 한정.
+- **`langgraph`를 `requirements.txt`(always-on)로.** 기각: langgraph + 의존 트리(`langchain-core`, `pydantic`, ...)가 stage 1의 순수 passthrough 위해 모든 CI install / Docker image 팽창. ADR 0011 / ADR 0013 "additive opt-in" 패턴 = opt-in extra는 자체 requirements 파일.
+- **`_skip_graph` kwarg 대신 thread-local recursion guard.** 기각: thread-local은 call site에서 invisible(caller가 계약 확인 불가). private kwarg는 명시 + 테스트 가능.
+- **`naive_baseline`도 LangGraph로 마이그레이션.** ADR 0001 기각 — 최소 분석 변형 표면이 opt-in extra에 의존 불가. LangGraph 의존 부재여도 `naive_baseline` 실행 필수.
 
 ## See also
 
-- [`rag_graph_agentic_full.py`](../../rag_graph_agentic_full.py) — the
-  stage-2 three-node graph module (analyze / retrieve_loop /
-  build_answer with a conditional edge).
-- [`rag_core.py`](../../rag_core.py) — `_RunContext`,
-  `_build_run_context`, and the `_phase_*` helpers that both the
-  direct path and the LangGraph nodes call.
-- [`requirements-graph.txt`](../../requirements-graph.txt) — the
-  opt-in LangGraph dependency.
-- [`tests/test_langgraph_orchestrator_regression.py`](../../tests/test_langgraph_orchestrator_regression.py)
-  — JSON-identity + ADR-0001 dispatch tests (stage 1) plus the
-  multi-node graph-structure tests (stage 2).
-- [ADR 0001](./0001-preserve-naive-baseline.md) — naive_baseline policy
-  this ADR explicitly preserves.
-- [ADR 0011](./0011-llm-synthesis-as-additive-ablation.md) — the
-  additive opt-in pattern this ADR reuses.
-- [ADR 0013](./0013-observability-as-additive-pluggable-surface.md) —
-  the trace-backend additivity pattern; per-stage latencies in
-  LangSmith / Langfuse map cleanly to the three stage-2 nodes.
+- [`rag_graph_agentic_full.py`](../../rag_graph_agentic_full.py) — stage-2 3-node graph 모듈(analyze / retrieve_loop / build_answer + conditional edge).
+- [`rag_core.py`](../../rag_core.py) — `_RunContext`, `_build_run_context`, direct 경로 + LangGraph 노드 양쪽 호출 `_phase_*` helper.
+- [`requirements-graph.txt`](../../requirements-graph.txt) — opt-in LangGraph 의존.
+- [`tests/test_langgraph_orchestrator_regression.py`](../../tests/test_langgraph_orchestrator_regression.py) — JSON-identity + ADR-0001 dispatch 테스트(stage 1) + multi-node graph 구조 테스트(stage 2).
+- [ADR 0001](./0001-preserve-naive-baseline.md) — 본 ADR이 명시 보존하는 naive_baseline 정책.
+- [ADR 0011](./0011-llm-synthesis-as-additive-ablation.md) — 본 ADR이 재사용하는 additive opt-in 패턴.
+- [ADR 0013](./0013-observability-as-additive-pluggable-surface.md) — trace backend additivity 패턴; LangSmith / Langfuse per-stage latency가 stage-2 3 노드에 깔끔 매핑.

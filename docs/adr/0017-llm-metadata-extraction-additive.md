@@ -1,4 +1,4 @@
-# 0017: LLM Metadata Extraction as Additive Backend (extends 0011)
+# 0017: LLM 메타데이터 추출을 추가 백엔드로 (0011 확장)
 
 - **Status**: Superseded
 - **Superseded by**: [ADR 0011](./0011-llm-synthesis-as-additive-ablation.md) § "Additive opt-in pattern (generalization)"
@@ -6,92 +6,38 @@
 - **Deciders**: hskim
 - **Related**: [#180](https://github.com/hskim-solv/BidMate-DocAgent/issues/180), [ADR 0001](./0001-preserve-naive-baseline.md), [ADR 0011](./0011-llm-synthesis-as-additive-ablation.md)
 
-## Context
+## TL;DR
 
-The metadata available to the retrieval / answer path today comes
-from [`ingestion.normalize_metadata`](../../ingestion.py), which
-reads structured CSV columns plus deterministic regex parsing
-(budget normalization, ISO date coercion). For documents whose CSV
-row is incomplete or whose body carries unstructured fields
-(`contact_email`, `contact_name`), the regex path has a hard
-ceiling — there is no signal to give it.
+- `rag_metadata_extraction` 모듈을 `rag_synthesis` 와 1:1 미러링 — `regex` 기본, `stub`/`anthropic_tool_use`/`openai_function_call` 백엔드.
+- `stub` ↔ `regex` byte-equivalence 가 계약 단위 테스트 — ADR 0001 naive 기준선 불변식 유지.
+- 8 필드 스키마 (#180) lock; LLM 추출은 opt-in, ingestion 경로 불변.
 
-[ADR 0011](./0011-llm-synthesis-as-additive-ablation.md) already
-established the additive-LLM-backend pattern in
-[`rag_synthesis.py`](../../rag_synthesis.py): a deterministic stub
-default, an opt-in `anthropic` tool-use backend, an
-openai-compatible alternative, prompt caching on tools + system,
-and a graceful fallback when SDKs or keys are missing. Issue #180
-needs the same shape for metadata extraction so we can compare
-LLM-extracted metadata to the regex baseline on the existing eval
-surface without breaking [ADR 0001](./0001-preserve-naive-baseline.md)'s
-naive-baseline invariant.
+## 배경
 
-## Decision
+오늘의 검색·답변 경로용 메타데이터는 [`ingestion.normalize_metadata`](../../ingestion.py) — 구조화 CSV 컬럼 + 결정론 regex 파싱 (예산 정규화, ISO 날짜 강제) 에서 옴. CSV row 가 불완전하거나 body 가 비구조 필드 (`contact_email`, `contact_name`) 운반하는 문서엔 regex 경로의 hard ceiling — 더 줄 신호 없음.
 
-Add a new [`rag_metadata_extraction`](../../rag_metadata_extraction.py)
-module mirroring `rag_synthesis` one-for-one:
+[ADR 0011](./0011-llm-synthesis-as-additive-ablation.md) 이 이미 [`rag_synthesis.py`](../../rag_synthesis.py) 에 추가 LLM 백엔드 패턴 확립: 결정론 stub 기본, opt-in `anthropic` tool-use 백엔드, openai-compatible 대안, tool + 시스템 프롬프트 캐싱, SDK·키 누락 시 graceful 폴백. 이슈 #180 가 메타데이터 추출에 동일 shape 필요 — [ADR 0001](./0001-preserve-naive-baseline.md) naive 기준선 불변식 안 깨고 LLM-추출 메타데이터를 regex 기준선과 기존 eval 표면에서 비교.
 
-- Public entry point `extract_rfp_metadata(document, backend=...)`
-  returns a typed `MetadataExtraction` dataclass with the eight
-  fields named in #180: `agency`, `project_name`, `budget_amount`,
-  `budget_currency`, `deadline_iso`, `submission_date_iso`,
-  `contact_email`, `contact_name`.
-- Backends (`BIDMATE_METADATA_BACKEND`): `regex` (default —
-  preserves the ADR 0001 invariant), `stub` (delegates to `regex`
-  so stub-mode runs are byte-for-byte identical), `anthropic_tool_use`,
-  `openai_function_call`.
-- The `stub` ↔ `regex` byte-equivalence is a **contract unit test**.
-  It guarantees stub-mode runs produce zero LLM cost AND zero schema
-  drift, so downstream consumers (eval ablation rows, dashboards)
-  stay stable when the LLM path is not enabled.
-- Tool definition `extract_rfp_metadata` is conservative: every
-  field is optional and `additionalProperties: false` so the LLM
-  cannot smuggle unstructured payloads through.
-- On any backend exception, `extract_rfp_metadata` falls back to
-  `_regex_backend`. The pipeline never silently loses metadata
-  because of an SDK or network failure.
-- Body text is truncated to ~8000 chars before being sent to an
-  LLM. For very long RFPs the truncation may drop late-section
-  contacts; this is acceptable for the first iteration and is
-  revisited only if the eval shows non-trivial regression vs
-  regex on the truncation cohort.
+## 결정
 
-## Consequences
+`rag_synthesis` 1:1 미러링하는 새 [`rag_metadata_extraction`](../../rag_metadata_extraction.py) 모듈 추가:
 
-- A reader familiar with `rag_synthesis` understands
-  `rag_metadata_extraction` in one pass: same env-keyed activation,
-  same `# pragma: no cover - network` isolation on real backends,
-  same stub-matches-baseline contract test, same eight-field schema
-  surfaced as a dataclass.
-- Locks the metadata vocabulary at the eight #180 fields. Adding a
-  new field is a schema change — it needs an ADR revision because
-  the eval comparison table downstream of #180 is keyed on this
-  exact shape.
-- LLM extraction is opt-in by env var, never automatic. The
-  ingestion path is unchanged; the LLM path is invoked only by the
-  eval ablation row that asks for it (`agentic_full_llm_metadata`,
-  added in a follow-up PR).
-- Cost surface follows ADR 0011's pricing card pattern: when the
-  LLM ablation runs, it inherits the same `compute_cost_usd` hook
-  in `rag_synthesis` (Sonnet 4.6 default) so a refactor that 10×s
-  metadata-extraction token spend would be flagged the same way as
-  one that 10×s answer-synthesis spend.
+- 공개 진입점 `extract_rfp_metadata(document, backend=...)` 가 #180 의 8 필드 (`agency`, `project_name`, `budget_amount`, `budget_currency`, `deadline_iso`, `submission_date_iso`, `contact_email`, `contact_name`) 를 가진 typed `MetadataExtraction` dataclass 반환.
+- 백엔드 (`BIDMATE_METADATA_BACKEND`): `regex` (기본 — ADR 0001 불변식 보존), `stub` (`regex` 위임 → stub 모드 byte-for-byte identical), `anthropic_tool_use`, `openai_function_call`.
+- `stub` ↔ `regex` byte-equivalence 가 **계약 단위 테스트**. stub 모드 run 의 LLM 비용 0 + 스키마 drift 0 보장 → downstream consumer (eval 분석 변형 row, 대시보드) 가 LLM 경로 미활성 시 안정.
+- tool 정의 `extract_rfp_metadata` 는 보수적: 모든 필드 선택 + `additionalProperties: false` → LLM 이 비구조 페이로드 smuggle 불가.
+- 어떤 백엔드 예외든 `extract_rfp_metadata` 가 `_regex_backend` 로 폴백. 파이프라인이 SDK·네트워크 실패로 메타데이터 조용히 잃지 않음.
+- body 텍스트는 LLM 전송 전 ~8000 chars 로 truncate. 매우 긴 RFP 는 후반 contact 누락 가능 — 첫 iteration 허용 + truncation 코호트 vs regex eval 회귀 non-trivial 시만 revisit.
 
-## Alternatives considered
+## 결과
 
-- **Bury the LLM call inside `ingestion.normalize_metadata`.**
-  Rejected — couples a deterministic CSV reader to a network
-  backend and breaks the ADR 0001 invariant by default. Any opt-in
-  surface that depends on `normalize_metadata` would have a
-  conditional import path, which is exactly the smell ADR 0011
-  avoided.
-- **Skip the stub backend and gate tests on a mock `anthropic`
-  client.** Rejected — the same approach in `rag_synthesis` is
-  proven to keep CI deterministic without mocking SDKs. Mocks
-  drift; the stub-matches-baseline invariant is checked every PR.
-- **JSON-mode (no tool / function call) on OpenAI.** Rejected —
-  the tool / function-call surface gives a structured schema
-  contract. Raw JSON mode is fragile to model-side hallucinations
-  and would duplicate the `additionalProperties: false`
-  enforcement at the parser layer.
+- `rag_synthesis` 친숙한 reader 가 `rag_metadata_extraction` 을 한 번에 이해: 동일 env-key 활성화, 실 백엔드 동일 `# pragma: no cover - network` 격리, 동일 stub-matches-baseline 계약 테스트, 동일 dataclass 노출 8 필드 스키마.
+- 메타데이터 어휘를 #180 8 필드에 lock. 필드 추가는 스키마 변경 — #180 downstream eval 비교 표가 이 정확한 shape 키이므로 ADR 개정 필요.
+- LLM 추출은 env var opt-in, 자동 절대 아님. ingestion 경로 불변; LLM 경로는 요청하는 eval 분석 변형 row (`agentic_full_llm_metadata`, follow-up PR) 만 호출.
+- 비용 표면은 ADR 0011 가격 카드 패턴 따름: LLM 분석 변형 실행 시 `rag_synthesis` 의 동일 `compute_cost_usd` 훅 (Sonnet 4.6 기본) 상속 → 메타데이터 추출 토큰 소비 10× 리팩터가 답변 합성 10× 와 동일 방식으로 flag.
+
+## 검토한 대안
+
+- **`ingestion.normalize_metadata` 내부에 LLM 호출 매장.** Reject — 결정론 CSV reader 를 네트워크 백엔드와 결합 + 기본으로 ADR 0001 불변식 위반. `normalize_metadata` 의존 opt-in 표면이 조건부 import 경로 가지게 됨 — 정확히 ADR 0011 이 피한 smell.
+- **stub 백엔드 skip + mock `anthropic` 클라이언트로 테스트 gate.** Reject — `rag_synthesis` 의 동일 접근이 SDK 모킹 없이 CI 결정론 유지 증명. mock 은 drift; stub-matches-baseline 불변식은 PR 마다 검사.
+- **OpenAI 의 JSON 모드 (tool / function call 없음).** Reject — tool / function-call 표면이 구조화 스키마 계약 부여. raw JSON 모드는 모델 측 환각에 fragile + parser 레이어에 `additionalProperties: false` enforcement 중복.

@@ -1,92 +1,64 @@
-# 0005: Eval split — public synthetic vs private local
+# 0005: Eval 분리 — public synthetic vs private local
 
 - **Status**: accepted
 - **Date**: 2026-05-11
 - **Related**: [`eval/config.yaml`](../../eval/config.yaml), [`eval/real_config.example.yaml`](../../eval/real_config.example.yaml), [`docs/real-data/private-100-doc-experiments.md`](../real-data/private-100-doc-experiments.md), [`docs/real-data/private-hardcase-benchmark.md`](../real-data/private-hardcase-benchmark.md), [`docs/real-data/real-data-failure-taxonomy.md`](../real-data/real-data-failure-taxonomy.md)
 
-## Context
+## TL;DR
 
-The system has two evaluation needs that pull in opposite directions:
+- 공개 synthetic + 비공개 local 두 eval 표면을 나란히 유지한다.
+- 공개 표면이 README 메트릭 anchor, 비공개 표면이 실패 taxonomy 근거.
+- 어떤 새 eval 표면도 한쪽을 선택 — public-redistributable 또는 strictly local.
 
-- **Public reproducibility.** Anyone cloning the repo must be able to
-  run a meaningful eval without secrets, paid APIs, or data we cannot
-  redistribute. README metrics must be backed by a public artifact.
-- **Honest signal.** Synthetic RFPs do not exercise the failure modes
-  that show up on real procurement documents — ambiguous metadata,
-  scanned PDFs, off-distribution phrasing. Real-data eval is where the
-  failure taxonomy actually comes from.
+## 배경
 
-A single eval set cannot do both jobs. Anything we publish gets
-optimized against, and anything we cannot publish cannot anchor
-public claims.
+평가에 상반된 두 요구가 있다:
 
-## Decision
+- **공개 재현성.** repo clone 만으로 secret·paid API·재배포 불가 데이터 없이 의미 있는 eval 실행 가능해야. README 메트릭은 공개 artifact 로 뒷받침되어야
+- **정직한 신호.** synthetic RFP 는 실제 조달 문서의 실패 모드(모호 메타데이터·스캔 PDF·distribution 외 phrasing)를 자극 안 함. 실패 taxonomy 의 실제 출처는 real-data eval
 
-Maintain two eval surfaces side-by-side:
+단일 eval set 으로 양쪽 다 못한다. 공개된 것은 그 자체로 최적화 대상이 되고, 공개 못 하는 것은 공개 주장의 anchor 가 될 수 없다.
 
-- **Public synthetic** (`eval/config.yaml`, `data/raw/`). Committed,
-  CI-runnable on every PR (`make eval`, the eval delta workflow),
-  drives README metrics. Source of truth for *"is the system still
-  shipping the contract it claims?"*. Uses the hashing embedding
-  backend so it runs offline.
-- **Private local** (`eval/real_config.example.yaml` as the
-  scaffold; the actual config and corpus stay out of git). Run
-  locally on real procurement documents. Source of truth for *"what
-  failure modes are real?"*. Outputs (`reports/real100/`) and inputs
-  (`data/files/`, `data/data_list.csv`, the local config) are
-  `.gitignore`d.
+## 결정
 
-The boundary is enforced by the example-file convention
-(`*.example.yaml`) and by `.gitignore`. Any new eval surface picks a
-side: public-redistributable, or strictly local.
+두 eval 표면을 side-by-side 유지:
 
-## Consequences
+- **공개 synthetic** (`eval/config.yaml`, `data/raw/`). 커밋, 매 PR 에서 CI 실행 가능(`make eval`, eval delta workflow), README 메트릭 구동. *"시스템이 여전히 주장한 계약을 출하 중인가?"* 의 단일 출처. 오프라인 실행 위해 hashing 임베딩 백엔드 사용
+- **비공개 local** (`eval/real_config.example.yaml` 가 scaffold; 실제 config 와 corpus 는 git 외부). 실제 조달 문서에서 로컬 실행. *"어떤 실패 모드가 real 인가?"* 의 단일 출처. 출력(`reports/real100/`)·입력(`data/files/`, `data/data_list.csv`, 로컬 config)은 `.gitignore`d
+
+경계는 example 파일 컨벤션(`*.example.yaml`) + `.gitignore` 가 강제. 모든 새 eval 표면은 한쪽을 선택 — public-redistributable 또는 strictly local.
+
+## 결과
 
 **Wins**
 
-- The CI eval delta job (`.github/workflows/pr-eval.yml`) can be
-  honest about what it does and does not cover — it measures the
-  public synthetic surface only.
-- Failure taxonomies and prioritized backlog items can be grounded
-  in real-data observations without leaking the documents.
-- Confidentiality is not a per-file judgment call; the example /
-  gitignore split is the convention.
+- CI eval delta job(`.github/workflows/pr-eval.yml`)이 자기가 무엇을 cover 하고 안 하는지 정직 — 공개 synthetic 표면만 측정
+- 실패 taxonomy 와 우선순위 backlog 가 문서 leak 없이 real-data 관찰에 ground 가능
+- 비밀유지가 파일별 판단이 아니라 컨벤션화
 
 **Costs**
 
-- Two configs to keep in shape. When the schema of a case evolves
-  (new required field, new metric key), both must update or the
-  private surface silently drifts.
-- README metrics under-report the failure rate that real-data work
-  actually sees. Aggregate-delta reports
-  (`docs/real-data/private-100-doc-experiments.md`) are needed to bridge that
-  honestly.
-- Reviewers cannot reproduce private-surface numbers. They must trust
-  the aggregate / delta reports plus the public-surface
-  reproducibility.
+- config 두 벌 유지 부담. case schema 진화(필수 필드 추가·메트릭 키 추가) 시 양쪽 동시 갱신 필요 — 안 그러면 비공개 표면 silent drift
+- README 메트릭이 real-data 가 보는 실패율을 under-report. 정직하게 메우려면 aggregate-delta 리포트(`docs/real-data/private-100-doc-experiments.md`) 필요
+- reviewer 는 비공개 표면 숫자 재현 불가. aggregate/delta 리포트 + 공개 표면 재현성을 신뢰해야
 
-## LLM-judge gate layers (ADR 0006 / 0012 / 0014, consolidated)
+## LLM-judge gate 레이어 (ADR 0006 / 0012 / 0014, 통합)
 
-Three successive ADRs layered LLM-judge surfaces onto the two eval splits. Those ADRs are Superseded here; their decisions remain in force.
+세 연속 ADR 이 두 eval split 위에 LLM-judge 표면을 쌓았다. 그 ADR 들은 여기서 Superseded; 결정은 유효.
 
 **Gate 1 — real-data only (ADR 0006, accepted)**  
-LLM-judge permitted on `eval/real_config.local.yaml` runs only. Output: per-case `judge.local.json` (gitignored) + aggregate `judge.agreement_with_verifier` (committable). Backend: `BIDMATE_JUDGE_BACKEND` — `stub` | `openai_compatible`. The deterministic verifier remains the gate; the judge is a second opinion.
+LLM-judge 는 `eval/real_config.local.yaml` run 에만 허용. 출력: 케이스별 `judge.local.json` (gitignored) + aggregate `judge.agreement_with_verifier` (committable). 백엔드: `BIDMATE_JUDGE_BACKEND` — `stub` | `openai_compatible`. deterministic verifier 가 게이트, judge 는 second opinion.
 
 **Gate 2 — public synthetic stub-default (ADR 0012, accepted)**  
-LLM-judge permitted on `eval/config.yaml` provided CI runs stub-only (`BIDMATE_SYNTHETIC_JUDGE_BACKEND=stub`, deterministic, network-free). Live backend is offline opt-in via `make synthetic-judge`. Committable aggregate: `reports/synthetic_judge.aggregate.json` (ADR 0005 allowlist). Adds `faithfulness`, `answer_relevance`, `agreement_with_verifier`.
+LLM-judge 는 `eval/config.yaml` 에 허용 — 단 CI 는 stub-only(`BIDMATE_SYNTHETIC_JUDGE_BACKEND=stub`, deterministic, network-free). live backend 는 `make synthetic-judge` 로 offline opt-in. committable aggregate: `reports/synthetic_judge.aggregate.json` (ADR 0005 allowlist). `faithfulness`·`answer_relevance`·`agreement_with_verifier` 추가.
 
 **Gate 3 — RAGAS-style enrichment (ADR 0014, accepted)**  
-Four-metric RAGAS-style judge (`faithfulness`, `answer_relevance`, `context_precision`, `context_recall`) as additive enrichment on the synthetic surface. Cache by content hash (`reports/judge_cache/`, gitignored). Hard token-budget cap via `BIDMATE_JUDGE_TOKEN_BUDGET`. Per-case verdicts stay local; aggregate at `eval_summary.json:judge_ragas` is committable.
+4-metric RAGAS-style judge(`faithfulness`·`answer_relevance`·`context_precision`·`context_recall`)를 synthetic 표면에 additive 강화. content hash 캐시(`reports/judge_cache/`, gitignored). `BIDMATE_JUDGE_TOKEN_BUDGET` 로 hard token-budget cap. 케이스별 verdict 는 local 유지, `eval_summary.json:judge_ragas` aggregate 는 committable.
 
-**Shared invariants (unchanged):** ADR 0004 reproducibility (CI never calls live LLM); ADR 0003 answer contract (judge never affects `answer.status`); ADR 0005 commit boundary (per-case text stays local).
+**공유 invariant (불변):** ADR 0004 재현성(CI 는 live LLM 호출 절대 X); ADR 0003 답변 계약(judge 는 `answer.status` 에 영향 절대 X); ADR 0005 commit 경계(케이스별 텍스트는 local 유지).
 
-## Alternatives considered
+## 검토한 대안
 
-- **Public-only.** Rejected: synthetic data hides the failure modes
-  that matter; we would be optimizing for the wrong thing.
-- **Private-only.** Rejected: nothing reproducible to publish; no
-  reviewer can validate any claim.
-- **One config with a private-cases extension loaded conditionally.**
-  Considered. Rejected because the two surfaces have different
-  purposes (PR gating vs. real-data taxonomy), and conflating them
-  makes both harder to defend in review.
+- **공개만.** Reject: synthetic 데이터가 중요한 실패 모드 은닉; 잘못된 대상을 최적화하게 됨
+- **비공개만.** Reject: 공개할 재현 가능한 것 없음; reviewer 가 주장 검증 불가
+- **단일 config + 비공개 case 확장을 조건부 로드.** 고려. Reject: 두 표면이 다른 목적(PR gating vs real-data taxonomy)이고, 섞으면 둘 다 리뷰 방어 난도 ↑
