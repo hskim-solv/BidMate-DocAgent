@@ -1,0 +1,437 @@
+{
+  "axis1_retrieval_efficiency": {
+    "metadata_candidate_pool": {
+      "mean": 9.777777777777779,
+      "n": 36,
+      "p10": 5.0,
+      "p50": 7.0,
+      "p90": 21.0,
+      "p95": 27.25
+    },
+    "mrr": {
+      "mean": null,
+      "n": 0,
+      "p10": null,
+      "p50": null,
+      "p90": null,
+      "p95": null
+    },
+    "n_cases": 36,
+    "n_cases_with_gold_chunks": 0,
+    "ndcg": {
+      "at_10": {
+        "mean": null,
+        "n": 0,
+        "p10": null,
+        "p50": null,
+        "p90": null,
+        "p95": null
+      },
+      "at_20": {
+        "mean": null,
+        "n": 0,
+        "p10": null,
+        "p50": null,
+        "p90": null,
+        "p95": null
+      }
+    },
+    "recall": {
+      "at_10": {
+        "mean": null,
+        "n": 0,
+        "p10": null,
+        "p50": null,
+        "p90": null,
+        "p95": null
+      },
+      "at_20": {
+        "mean": null,
+        "n": 0,
+        "p10": null,
+        "p50": null,
+        "p90": null,
+        "p95": null
+      },
+      "at_5": {
+        "mean": null,
+        "n": 0,
+        "p10": null,
+        "p50": null,
+        "p90": null,
+        "p95": null
+      }
+    },
+    "selected_top_k_histogram": {
+      "4": 6,
+      "8": 21
+    }
+  },
+  "axis2_reranker_contribution": {
+    "rerank_delta_mrr": {
+      "mean_delta": null,
+      "n_cases_with_rerank": 0,
+      "n_improved": 0,
+      "n_regressed": 0,
+      "n_unchanged": 0,
+      "p50_delta": null,
+      "share_improved": null,
+      "share_regressed": null,
+      "share_unchanged": null
+    },
+    "rerank_delta_ndcg_at_10": {
+      "mean_delta": null,
+      "n_cases_with_rerank": 0,
+      "n_improved": 0,
+      "n_regressed": 0,
+      "n_unchanged": 0,
+      "p50_delta": null,
+      "share_improved": null,
+      "share_regressed": null,
+      "share_unchanged": null
+    }
+  },
+  "axis3_verification_retry": {
+    "attempts_distribution": {
+      "1": 16,
+      "2": 16,
+      "3+": 4
+    },
+    "baseline_retry_effectiveness": {
+      "cases_with_retry": 6,
+      "cases_without_retry": 11,
+      "ci": {
+        "recovery_rate": {
+          "alpha": 0.05,
+          "ci_hi": 0.6666666666666666,
+          "ci_lo": 0.0,
+          "mean": 0.3333333333333333,
+          "n": 6,
+          "num_resamples": 1000
+        },
+        "residual_failure_rate": {
+          "alpha": 0.05,
+          "ci_hi": 1.0,
+          "ci_lo": 0.3333333333333333,
+          "mean": 0.6666666666666666,
+          "n": 6,
+          "num_resamples": 1000
+        }
+      },
+      "recovery_rate": 0.3333333333333333,
+      "residual_failure_rate": 0.6666666666666666,
+      "retry_lift_vs_no_retry": -0.2121212121212121,
+      "retry_resolution_rate": 0.5
+    },
+    "baseline_retry_reason_counts": {
+      "topic_not_grounded": 13
+    },
+    "n_cases": 36,
+    "retry_reason_counts_case_level": {
+      "missing_comparison_doc": 21,
+      "missing_comparison_entity": 21,
+      "topic_not_grounded": 9
+    },
+    "verify_breakdown": {
+      "no_attempts_logged": 9,
+      "not_verified": 5,
+      "verified": 22
+    },
+    "verify_rate": 0.8148148148148148
+  },
+  "axis4_stage_latency": {
+    "baseline_e2e_latency": {
+      "mean": 136.87190476190474,
+      "p50": 139.5,
+      "p95": 234.33
+    },
+    "baseline_stage_latency": {
+      "answer_generation_ms": {
+        "mean": 1.006,
+        "p50": 0.7250000000000001,
+        "p95": 2.851500000000002
+      },
+      "context_resolution_ms": {
+        "mean": 0.004999999999999999,
+        "p50": 0.0,
+        "p95": 0.010500000000000008
+      },
+      "query_analysis_ms": {
+        "mean": 78.425,
+        "p50": 77.495,
+        "p95": 125.6855
+      },
+      "retrieve_ms": {
+        "mean": 28.40291666666667,
+        "p50": 23.22,
+        "p95": 89.49099999999991
+      },
+      "verify_ms": {
+        "mean": 7.974166666666668,
+        "p50": 5.220000000000001,
+        "p95": 32.22949999999996
+      }
+    },
+    "cold_vs_warm": {
+      "cold": {
+        "e2e": {
+          "mean": 78.19,
+          "n": 1,
+          "p10": 78.19,
+          "p50": 78.19,
+          "p90": 78.19,
+          "p95": 78.19
+        },
+        "n": 1,
+        "per_stage": {
+          "answer_generation_ms": {
+            "mean": 0.25,
+            "n": 1,
+            "p10": 0.25,
+            "p50": 0.25,
+            "p90": 0.25,
+            "p95": 0.25
+          },
+          "context_resolution_ms": {
+            "mean": 0.0,
+            "n": 1,
+            "p10": 0.0,
+            "p50": 0.0,
+            "p90": 0.0,
+            "p95": 0.0
+          },
+          "query_analysis_ms": {
+            "mean": 63.38,
+            "n": 1,
+            "p10": 63.38,
+            "p50": 63.38,
+            "p90": 63.38,
+            "p95": 63.38
+          },
+          "retrieve_ms": {
+            "mean": null,
+            "n": 0,
+            "p10": null,
+            "p50": null,
+            "p90": null,
+            "p95": null
+          },
+          "verify_ms": {
+            "mean": null,
+            "n": 0,
+            "p10": null,
+            "p50": null,
+            "p90": null,
+            "p95": null
+          }
+        }
+      },
+      "warm": {
+        "e2e": {
+          "mean": 141.50685714285714,
+          "n": 35,
+          "p10": 82.63,
+          "p50": 116.86,
+          "p90": 209.306,
+          "p95": 287.2529999999999
+        },
+        "n": 35,
+        "per_stage": {
+          "answer_generation_ms": {
+            "mean": 0.7931428571428571,
+            "n": 35,
+            "p10": 0.0,
+            "p50": 0.48,
+            "p90": 2.0540000000000003,
+            "p95": 2.309999999999999
+          },
+          "context_resolution_ms": {
+            "mean": 0.003428571428571429,
+            "n": 35,
+            "p10": 0.0,
+            "p50": 0.0,
+            "p90": 0.01,
+            "p95": 0.012999999999999972
+          },
+          "query_analysis_ms": {
+            "mean": 122.04685714285714,
+            "n": 35,
+            "p10": 74.716,
+            "p50": 96.19,
+            "p90": 193.64200000000002,
+            "p95": 268.18199999999985
+          },
+          "retrieve_ms": {
+            "mean": null,
+            "n": 0,
+            "p10": null,
+            "p50": null,
+            "p90": null,
+            "p95": null
+          },
+          "verify_ms": {
+            "mean": null,
+            "n": 0,
+            "p10": null,
+            "p50": null,
+            "p90": null,
+            "p95": null
+          }
+        }
+      }
+    },
+    "e2e_latency_ms": {
+      "mean": 139.74805555555557,
+      "n": 36,
+      "p10": 81.785,
+      "p50": 116.62,
+      "p90": 208.075,
+      "p95": 284.6075
+    },
+    "per_stage": {
+      "answer_generation_ms": {
+        "mean": 0.7780555555555555,
+        "n": 36,
+        "p10": 0.0,
+        "p50": 0.44999999999999996,
+        "p90": 2.035,
+        "p95": 2.295,
+        "share_of_e2e": 0.005567559079534001
+      },
+      "context_resolution_ms": {
+        "mean": 0.0033333333333333335,
+        "n": 36,
+        "p10": 0.0,
+        "p50": 0.0,
+        "p90": 0.01,
+        "p95": 0.0125,
+        "share_of_e2e": 2.3852448752019998e-05
+      },
+      "query_analysis_ms": {
+        "mean": 120.41722222222222,
+        "n": 36,
+        "p10": 70.42,
+        "p50": 95.485,
+        "p90": 192.265,
+        "p95": 265.68,
+        "share_of_e2e": 0.8616736865748478
+      },
+      "retrieve_ms": {
+        "mean": null,
+        "n": 0,
+        "p10": null,
+        "p50": null,
+        "p90": null,
+        "p95": null,
+        "share_of_e2e": null
+      },
+      "verify_ms": {
+        "mean": null,
+        "n": 0,
+        "p10": null,
+        "p50": null,
+        "p90": null,
+        "p95": null,
+        "share_of_e2e": null
+      }
+    }
+  },
+  "axis5_answer_synthesis": {
+    "abstention_by_query_type": {
+      "abstention": {
+        "abstained": 10,
+        "n": 18,
+        "rate": 0.5555555555555556
+      },
+      "single_doc": {
+        "abstained": 2,
+        "n": 18,
+        "rate": 0.1111111111111111
+      }
+    },
+    "answer_format_compliance_mean": 0.6666666666666666,
+    "answer_status_distribution": {
+      "insufficient": 12,
+      "partial": 2,
+      "supported": 22
+    },
+    "baseline_overall": {
+      "abstention": 0.5,
+      "answer_format_compliance": 0.42857142857142855
+    },
+    "confidence": {
+      "histogram": {
+        "[0.0,0.2)": 0,
+        "[0.2,0.4)": 0,
+        "[0.4,0.6)": 0,
+        "[0.6,0.8)": 0,
+        "[0.8,1.0)": 0
+      },
+      "mean": null,
+      "n": 0,
+      "p10": null,
+      "p50": null,
+      "p90": null,
+      "p95": null
+    },
+    "n_cases": 36
+  },
+  "axis6_evidence_quality": {
+    "joint_bucket_share": {
+      "recall_hi_cite_hi": null,
+      "recall_hi_cite_lo": null,
+      "recall_lo_cite_hi": null,
+      "recall_lo_cite_lo": null
+    },
+    "n_paired_cases": 0,
+    "pearson_recall_at_10_vs_citation_precision": null,
+    "pearson_recall_at_10_vs_groundedness": null,
+    "thresholds": {
+      "citation_precision_hi": 0.5,
+      "recall_at_10_hi": 0.5
+    }
+  },
+  "axis7_cold_start": {
+    "cold": {
+      "e2e_latency_ms": {
+        "mean": 78.19,
+        "n": 1,
+        "p10": 78.19,
+        "p50": 78.19,
+        "p90": 78.19,
+        "p95": 78.19
+      },
+      "n": 1,
+      "retrieve_ms": {
+        "mean": null,
+        "n": 0,
+        "p10": null,
+        "p50": null,
+        "p90": null,
+        "p95": null
+      }
+    },
+    "delta_e2e_ms_p50_cold_minus_warm": -38.67,
+    "delta_retrieve_ms_p50_cold_minus_warm": null,
+    "warm": {
+      "e2e_latency_ms": {
+        "mean": 141.50685714285714,
+        "n": 35,
+        "p10": 82.63,
+        "p50": 116.86,
+        "p90": 209.306,
+        "p95": 287.2529999999999
+      },
+      "n": 35,
+      "retrieve_ms": {
+        "mean": null,
+        "n": 0,
+        "p10": null,
+        "p50": null,
+        "p90": null,
+        "p95": null
+      }
+    }
+  },
+  "schema_version": 1
+}
