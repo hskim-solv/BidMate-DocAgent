@@ -94,9 +94,27 @@ reports/*
 !reports/real100/
 reports/real100/*
 !reports/real100/baseline.aggregate.json
+# Issue #896 — real-100 corpus EDA aggregate (script:
+# scripts/eda_real100.py). 4-axis profile of metadata / chunks /
+# text_source / eval-cross. ADR 0005 boundary preserved by the script
+# (no doc/chunk IDs or raw text; agencies past rank 10 anonymized).
+!reports/real100/eda.md
+!reports/real100/eda.aggregate.json
 !reports/real100/history/
 reports/real100/history/*
 !reports/real100/history/*.aggregate.json
+# Issue #896 — corpus EDA figures (PNG + SVG). Same allowlist pattern
+# as cost_frontier.png above; rendered by scripts/eda_real100.py.
+!reports/figures/
+reports/figures/*
+!reports/figures/real100_meta_*.png
+!reports/figures/real100_meta_*.svg
+!reports/figures/real100_chunks_*.png
+!reports/figures/real100_chunks_*.svg
+!reports/figures/real100_text_source_*.png
+!reports/figures/real100_text_source_*.svg
+!reports/figures/real100_eval_*.png
+!reports/figures/real100_eval_*.svg
 # Issue #166 — synthetic public eval time-series. Same aggregate-only
 # pattern as real100/history above. Per-case data stays ignored under
 # reports/* (line 39 above); only the aggregate JSON snapshots and the
