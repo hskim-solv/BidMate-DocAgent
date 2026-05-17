@@ -9,7 +9,6 @@ in the ingestion report.
 from __future__ import annotations
 
 import csv
-import importlib.util
 import os
 import warnings
 from collections import OrderedDict
@@ -57,7 +56,12 @@ REQUIRED_COLUMNS = [
 # ``scripts/build_index.py`` after the chunk-building stage). The three keys
 # are additive and downstream readers use ``dict.get``, so a v2 reader
 # silently ignores them.
-INGESTION_REPORT_SCHEMA_VERSION = 3
+#
+# Bumped 3 → 4 in issue #902: ``summary.chunk_health`` gains three additive
+# kordoc-loss fields (``nested_table_loss_count``,
+# ``nested_table_loss_files``, ``nested_table_loss_samples``). v3 readers that
+# already use ``dict.get`` on ``chunk_health`` ignore them transparently.
+INGESTION_REPORT_SCHEMA_VERSION = 4
 
 # Public, reviewer-facing failure taxonomy for ingestion. Keep keys stable;
 # downstream tooling (eval/run_eval.py, docs, dashboards) reads them.
@@ -144,252 +148,340 @@ class HwpCsvTextLoader(CsvTextDocumentLoader):
     file_format = "hwp"
 
 
-class HwpNativeLoader(CsvTextDocumentLoader):
-    """Opt-in HWP loader that parses the binary natively via pyhwp.
+class _KordocLoader(CsvTextDocumentLoader):
+    """Base loader that shells out to kordoc (npm) to produce Markdown.
 
-    Spike scaffolding (issue #167). On any import error, OSError, or runtime
-    parse failure, falls back to the CSV ``텍스트`` column so the baseline
-    ingestion contract (ADR 0001) keeps working without pyhwp installed.
+    Replaces the legacy pyhwp/hwp5 backend (ADR 0036) and the
+    cover/TOC-only ``PdfCsvTextLoader`` path — see ADR 0049 for
+    rationale. kordoc preserves table structure (``<table>`` with
+    ``rowspan``/``colspan``), headings, and form-document layout that
+    paragraph-only pyhwp extraction and CSV-text PDF extraction discard.
 
-    Diagnostics (issue #363): ``last_text_source`` records which source the
-    final text came from; ``last_fallback_reason`` records ``"ExceptionName:
-    truncated message"`` when fallback fires (``None`` otherwise). Because
-    this loader is only constructed when the user opts in via
-    ``BIDMATE_HWP_LOADER=native`` (see ``_resolve_loader``), every fallback
-    here also emits a ``RuntimeWarning`` so the silent path is visible in
-    real-data eval logs.
+    On any subprocess failure (Node missing, npx error, empty output)
+    falls back to the CSV ``텍스트`` column so ADR 0001's naive baseline
+    invariant holds offline. The fallback path is identical to the
+    pre-kordoc contract — `csv_text` is now load-bearing for offline
+    correctness, not just for ADR 0001 comparison.
 
-    Issue #506 (PR-C1): when ``with_tables=True``, the loader uses the
-    table-aware extractor ``_extract_hwp_native_with_tables`` and exposes
-    the per-cell payloads on ``last_native_tables``. Default
-    ``with_tables=False`` keeps the existing ``BIDMATE_HWP_LOADER=native``
-    measurement baseline (issue #167) byte-identical.
+    Diagnostics: ``last_text_source`` records ``"kordoc"`` or
+    ``"data_list_csv_text"``; ``last_fallback_reason`` records
+    ``"ExceptionName: truncated message"`` when fallback fires
+    (``None`` otherwise). ``reports/eval_summary.json::text_source_counts``
+    keeps working with a key rename only (``hwp_native`` → ``kordoc``).
+
+    Batch optimization: callers (``load_documents_from_metadata_csv``)
+    call ``prime_batch(source_paths)`` once to invoke kordoc on the full
+    file list in one subprocess and cache the resulting Markdown. Per-row
+    ``load_text`` then reads from cache, avoiding N separate ``npx``
+    invocations. Subclasses set ``file_format`` to ``"hwp"`` / ``"pdf"``.
     """
 
-    file_format = "hwp"
+    file_format = ""
 
-    def __init__(self, with_tables: bool = False) -> None:
+    def __init__(self) -> None:
         self.last_text_source = "data_list_csv_text"
         self.last_fallback_reason: str | None = None
-        self.with_tables = with_tables
-        self.last_native_tables: list[dict[str, Any]] = []
+        self._batch_cache: dict[str, str] = {}
 
-    def load_text(self, row: dict[str, str], source_path: Path) -> str:
-        self.last_text_source = "data_list_csv_text"
-        self.last_fallback_reason = None
-        self.last_native_tables = []
+    def prime_batch(self, source_paths: list[Path]) -> None:
+        """Pre-convert all source paths in a single kordoc subprocess.
+
+        On Node-missing / subprocess error / empty output, leaves the
+        cache empty so per-row ``load_text`` records ``last_fallback_reason``
+        and falls back to CSV. Errors are visible via ``last_fallback_reason``
+        on the first ``load_text`` call.
+        """
+        if not source_paths:
+            return
+        unique = list({str(p): p for p in source_paths}.values())
         try:
-            if self.with_tables:
-                native_text, native_tables = _extract_hwp_native_with_tables(
-                    source_path
-                )
-            else:
-                native_text = _extract_hwp_native(source_path)
-                native_tables = []
-        except _hwp_native_fallback_exceptions() as exc:
-            native_text = None
-            native_tables = []
-            reason = f"{type(exc).__name__}: {str(exc)[:120]}"
-            self.last_fallback_reason = reason
+            markdown_by_stem = _kordoc_convert_batch(unique)
+        except _KordocFallback as exc:
+            self.last_fallback_reason = f"{type(exc.__cause__).__name__ if exc.__cause__ else 'KordocError'}: {str(exc)[:120]}"
             warnings.warn(
-                f"HwpNativeLoader fallback to CSV text: {reason}",
+                f"{type(self).__name__} batch fallback to CSV text: {self.last_fallback_reason}",
                 RuntimeWarning,
                 stacklevel=2,
             )
-        if native_text:
-            self.last_text_source = "hwp_native"
-            self.last_native_tables = list(native_tables)
-            return native_text
+            return
+        for path in unique:
+            text = markdown_by_stem.get(_kordoc_output_stem(path))
+            if text:
+                self._batch_cache[str(path)] = text
+
+    def load_text(self, row: dict[str, str], source_path: Path) -> str:
+        self.last_text_source = "data_list_csv_text"
+        cached = self._batch_cache.get(str(source_path))
+        if cached:
+            self.last_text_source = "kordoc"
+            return cached
         text = normalize_body_text(row.get("텍스트", ""))
         if not text:
             raise ValueError("empty_text")
         return text
 
 
-def _hwp_native_fallback_exceptions() -> tuple[type[BaseException], ...]:
-    """Exception tuple ``HwpNativeLoader`` catches to fall back to CSV text.
+class HwpKordocLoader(_KordocLoader):
+    file_format = "hwp"
 
-    Includes pyhwp's own parse-time errors (``InvalidHwp5FileError``,
-    ``InvalidOleStorageError``) when ``hwp5`` is installed. Built lazily so
-    the handler is still well-formed when ``hwp5`` is absent (CI case),
-    where ``_extract_hwp_native`` raises ``ImportError`` and falls back.
 
-    ``AttributeError`` is included (issue #785) because pyhwp's public API
-    changes across point releases — e.g. the 0.1b15 ``Sections`` object
-    exposes a ``sections`` list attribute rather than the ``section_list()``
-    method our extractor was written against. Without this entry, a single
-    API-drift document aborted the entire build rather than falling back
-    gracefully; with it, the failure is recorded in
-    ``ingestion_report.json.fallback_reasons`` and the build proceeds.
+class PdfKordocLoader(_KordocLoader):
+    file_format = "pdf"
+
+
+class _KordocFallback(RuntimeError):
+    """Internal marker raised by ``_kordoc_convert_batch`` to trigger CSV fallback.
+
+    Wraps the underlying cause (``FileNotFoundError`` for missing Node,
+    ``subprocess.CalledProcessError`` for npx non-zero exit, ``ValueError``
+    for empty output) so the caller can record one unified
+    ``last_fallback_reason`` without exposing subprocess internals.
     """
-    base: tuple[type[BaseException], ...] = (
-        ImportError,
-        AttributeError,
-        OSError,
-        RuntimeError,
-        ValueError,
-    )
+
+
+_KORDOC_VERSION_FILE = Path(__file__).resolve().parent / ".kordoc-version"
+
+
+def _read_kordoc_version_spec() -> str:
+    """Read the pinned kordoc npm spec from ``.kordoc-version``.
+
+    Returns ``"kordoc@<version>"`` when the file holds a valid version
+    string, or ``"kordoc"`` (unpinned) when the file is absent or
+    unreadable. Drift detection lives in
+    ``tests/test_ingestion_kordoc_regression.py``.
+    """
     try:
-        from hwp5.errors import (  # type: ignore[import-not-found]
-            InvalidHwp5FileError,
-            InvalidOleStorageError,
+        version = _KORDOC_VERSION_FILE.read_text(encoding="utf-8").strip()
+    except OSError:
+        return "kordoc"
+    if not version or any(c in version for c in {" ", "\n", ";", "&", "|"}):
+        return "kordoc"
+    return f"kordoc@{version}"
+
+
+def _kordoc_output_stem(source_path: Path) -> str:
+    """NFC-normalize the stem so Korean filenames round-trip across macOS / Linux.
+
+    macOS HFS+ stores filenames in NFD; kordoc writes the output filename
+    using the input filename verbatim. Without normalization, the dict key
+    `_batch_cache.get(str(source_path))` and the file we found on disk
+    can disagree purely on Unicode normalization form.
+    """
+    return unicodedata.normalize("NFC", source_path.stem)
+
+
+def _kordoc_convert_batch(source_paths: list[Path]) -> dict[str, str]:
+    """Invoke ``npx kordoc`` on the file list, return ``{stem: markdown}``.
+
+    Raises ``_KordocFallback`` on:
+
+    * ``FileNotFoundError`` — ``node`` / ``npx`` missing on PATH.
+    * ``subprocess.CalledProcessError`` — npx exit code != 0 (e.g.
+      offline / network blocked, kordoc parse error on all files).
+    * ``ValueError`` — subprocess succeeded but produced no output files.
+
+    On success returns a dict mapping ``Path.stem`` (NFC-normalized) to
+    the Markdown text content of the corresponding output file.
+    """
+    import subprocess  # noqa: PLC0415 — local import keeps module load fast for non-HWP paths
+    import shutil  # noqa: PLC0415
+    import tempfile  # noqa: PLC0415
+
+    if shutil.which("node") is None or shutil.which("npx") is None:
+        raise _KordocFallback("node/npx not on PATH") from FileNotFoundError(
+            "node/npx not found"
         )
-    except ImportError:
-        return base
-    return base + (InvalidHwp5FileError, InvalidOleStorageError)
 
+    kordoc_spec = _read_kordoc_version_spec()
 
-def _extract_hwp_native(source_path: Path) -> str | None:
-    """Extract body text from an HWP file using pyhwp's Hwp5File API.
+    with tempfile.TemporaryDirectory(prefix="bidmate_kordoc_") as tmpdir:
+        out_dir = Path(tmpdir)
+        cmd = [
+            "npx",
+            "-y",
+            "-p",
+            kordoc_spec,
+            "-p",
+            "pdfjs-dist",
+            "kordoc",
+            *[str(p) for p in source_paths],
+            "-d",
+            str(out_dir),
+            "--silent",
+        ]
+        try:
+            subprocess.run(
+                cmd,
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=600,
+            )
+        except subprocess.CalledProcessError as exc:
+            stderr_tail = (exc.stderr or "")[-200:].strip()
+            raise _KordocFallback(f"npx exit {exc.returncode}: {stderr_tail}") from exc
+        except subprocess.TimeoutExpired as exc:
+            raise _KordocFallback(f"npx timeout after {exc.timeout}s") from exc
 
-    Returns ``None`` if parsing succeeds but yields no normalized text.
-    Raises ``ImportError`` if pyhwp is unavailable; pyhwp's parse-time
-    errors (``InvalidHwp5FileError``, ``InvalidOleStorageError``) along
-    with ``OSError``, ``RuntimeError``, ``ValueError`` propagate to the
-    caller for fallback (see ``_hwp_native_fallback_exceptions``).
-    """
-    from hwp5.xmlmodel import Hwp5File  # type: ignore[import-not-found]
-
-    hwp = Hwp5File(str(source_path))
-    parts: list[str] = []
-    for section in hwp.bodytext.section_list():
-        for paragraph in section.paragraphs:
-            for chunk in paragraph.text_chunks:
-                parts.append(chunk.text)
-    text = normalize_body_text("\n".join(parts))
-    return text or None
-
-
-def _extract_hwp_native_with_tables(
-    source_path: Path,
-) -> tuple[str | None, list[dict[str, Any]]]:
-    """Extract body text + table cells from an HWP file via pyhwp event stream.
-
-    Walks the cooked xmlmodel event stream (``Section.events()``) which
-    emits ``TableBody`` / ``TableCell`` model wrappers around their
-    contained ``Text`` payloads. The stream-cooked ``Text`` model replaces
-    the raw ``ParaText`` (see ``hwp5.xmlmodel.range_shaped_textchunk_events``)
-    so we collect ``attrs['text']`` strings instead of decoding chunk
-    tuples ourselves.
-
-    Returns ``(text, tables)`` where:
-
-    * ``text`` is the normalized paragraph plain text **outside** any
-      table — matching the existing ``_extract_hwp_native`` contract for
-      the non-table body so existing measurements remain comparable when
-      a document contains no tables.
-    * ``tables`` is a list of
-      ``{"table_index": int, "rows": int, "cols": int,
-         "cells": [{"row": int, "col": int, "rowspan": int,
-                    "colspan": int, "text": str}, ...]}``
-      preserving HWP-native row/col coordinates and span info.
-
-    Raises ``ImportError`` if pyhwp is unavailable; pyhwp parse-time errors
-    propagate so ``HwpNativeLoader`` can apply its silent CSV fallback (see
-    ``_hwp_native_fallback_exceptions``).
-    """
-    # Lazy imports: pyhwp is an opt-in dependency; importing at module load
-    # would break minimal CI installs that never enable BIDMATE_HWP_LOADER.
-    from hwp5.binmodel import TableBody, TableCell  # type: ignore[import-not-found]
-    from hwp5.xmlmodel import (  # type: ignore[import-not-found]
-        ENDEVENT,
-        STARTEVENT,
-        Hwp5File,
-        Text,
-    )
-
-    hwp = Hwp5File(str(source_path))
-    plain_parts: list[str] = []
-    tables: list[dict[str, Any]] = []
-
-    for section in hwp.bodytext.section_list():
-        table_stack: list[dict[str, Any]] = []
-        cell_stack: list[dict[str, Any]] = []
-        for event, item in section.events():
-            if not (isinstance(item, tuple) and len(item) >= 2):
+        markdown_by_stem: dict[str, str] = {}
+        for md_path in out_dir.glob("*.md"):
+            try:
+                content = md_path.read_text(encoding="utf-8")
+            except OSError:
                 continue
-            model = item[0]
-            attrs = item[1] if isinstance(item[1], dict) else {}
+            stem = unicodedata.normalize("NFC", md_path.stem)
+            # Issue #904: demote over-promoted HWP bullet headings BEFORE the
+            # whitespace-collapsing ``normalize_body_text`` runs. Order matters
+            # because the bullet detector keys off the line prefix ``#+ <glyph>``
+            # which would survive normalize_body_text anyway, but doing it here
+            # keeps the cached text consistent for downstream readers.
+            demoted = _demote_over_promoted_bullet_headings(content)
+            # Issue #906: scrub ToC leader-dot runs and standalone page-footer
+            # lines kordoc leaves behind. Runs after demotion so the regex
+            # works on the same text shape the cache will hold.
+            scrubbed = _strip_kordoc_toc_noise(demoted)
+            normalized = normalize_body_text(scrubbed)
+            if normalized:
+                markdown_by_stem[stem] = normalized
+        if not markdown_by_stem:
+            raise _KordocFallback("kordoc produced no readable output")
+        return markdown_by_stem
 
-            if model is TableBody:
-                if event is STARTEVENT:
-                    table = {
-                        "table_index": len(tables),
-                        "rows": int(attrs.get("rows", 0) or 0),
-                        "cols": int(attrs.get("cols", 0) or 0),
-                        "cells": [],
-                    }
-                    tables.append(table)
-                    table_stack.append(table)
-                else:
-                    if table_stack:
-                        table_stack.pop()
-            elif model is TableCell:
-                if event is STARTEVENT:
-                    cell_stack.append(
-                        {
-                            "row": int(attrs.get("row", 0) or 0),
-                            "col": int(attrs.get("col", 0) or 0),
-                            "rowspan": int(attrs.get("rowspan", 1) or 1),
-                            "colspan": int(attrs.get("colspan", 1) or 1),
-                            "_text_parts": [],
-                        }
-                    )
-                else:
-                    if cell_stack:
-                        cell = cell_stack.pop()
-                        cell_text = "".join(cell.pop("_text_parts")).strip()
-                        cell["text"] = cell_text
-                        if table_stack:
-                            table_stack[-1]["cells"].append(cell)
-            elif model is Text and event is STARTEVENT:
-                piece = attrs.get("text", "")
-                if not isinstance(piece, str) or not piece:
-                    continue
-                if cell_stack:
-                    cell_stack[-1]["_text_parts"].append(piece)
-                elif not table_stack:
-                    plain_parts.append(piece)
 
-    text = normalize_body_text("\n".join(p for p in plain_parts if p))
-    return (text or None), tables
+# Issue #904: kordoc (ADR 0049) promotes HWP bullet-list items to markdown
+# headings when the source paragraph carries HWP "글머리표" formatting. On the
+# private real100 corpus this inflates heading density to 16.1% (인천일자리
+# ISP) / 10.6% (한의학연) — well above the 5-7% typical of well-structured
+# specs. Over-promoted headings derail chunk-boundary detection because the
+# fixed-strategy splitter treats every heading as a candidate split point.
+#
+# Detection is bullet-glyph based, not length-based, because the dominant
+# pattern is ``# ㅇ ...`` / ``# □ ...`` / ``# ❍ ...`` — short or long, the
+# leading glyph is the high-confidence signal. We only demote within a "run"
+# of 3+ bullet headings (separated only by blank lines, no body paragraphs)
+# to preserve standalone bullet-prefixed headings that some specs use as
+# legitimate section titles.
+#
+# Glyph allowlist explicitly excludes ``[`` (brackets like ``## [부록 A]`` are
+# legitimate appendix headings) and numbers/Korean prefixes (``제1조`` etc.).
+_BULLET_HEADING_GLYPHS = "□❍○◦●▪■◆▶·ㅇ"
+_BULLET_HEADING_RE = re.compile(
+    rf"^(#+)\s+([{re.escape(_BULLET_HEADING_GLYPHS)}\-])(\s|$)"
+)
+_MIN_RUN_LENGTH_FOR_DEMOTION = 3
+
+
+def _demote_over_promoted_bullet_headings(markdown: str) -> str:
+    """Strip ``#+`` prefix from bullet-style headings appearing in runs.
+
+    A "run" is a contiguous sequence of bullet-prefixed heading lines
+    separated only by blank lines. When a run has at least
+    ``_MIN_RUN_LENGTH_FOR_DEMOTION`` headings, every heading in the run is
+    demoted to plain text by stripping the leading ``#+\\s+`` (the bullet
+    glyph itself is preserved so the original semantic — "this is a bullet
+    item" — survives). Body content between headings breaks the run.
+
+    Returns the input unchanged when no qualifying run is present, so the
+    function is safe to call on every kordoc output. Idempotent: re-running
+    on already-normalized markdown is a no-op.
+    """
+    lines = markdown.split("\n")
+    is_bullet_heading = [bool(_BULLET_HEADING_RE.match(line)) for line in lines]
+    demote_flags = [False] * len(lines)
+
+    i = 0
+    while i < len(lines):
+        if not is_bullet_heading[i]:
+            i += 1
+            continue
+        bullets_in_run: list[int] = []
+        j = i
+        while j < len(lines) and (is_bullet_heading[j] or lines[j].strip() == ""):
+            if is_bullet_heading[j]:
+                bullets_in_run.append(j)
+            j += 1
+        if len(bullets_in_run) >= _MIN_RUN_LENGTH_FOR_DEMOTION:
+            for idx in bullets_in_run:
+                demote_flags[idx] = True
+        i = max(j, i + 1)
+
+    if not any(demote_flags):
+        return markdown
+
+    out: list[str] = []
+    for idx, line in enumerate(lines):
+        if demote_flags[idx]:
+            out.append(re.sub(r"^#+\s+", "", line, count=1))
+        else:
+            out.append(line)
+    return "\n".join(out)
+
+
+# Issue #906: kordoc preserves two HWP-origin ToC noise patterns that survive
+# normalize_body_text:
+#
+#   1. Leader-dot runs (middle dot ``·`` chains of length 8+, ASCII period
+#      chains of length 15+) — used in HWP ToCs to align page numbers. Once
+#      flattened to markdown they appear inside table cells, inflating chunk
+#      length and producing no semantic signal. Top 3 files in real100:
+#      고려대(27), 서울시립대(23), 서울지도(21).
+#
+#   2. Page-footer lines (``|+-N-|+`` shape) — page numbers wrapped in
+#      pipe glyphs that kordoc emits as standalone lines. Only 3 occurrences
+#      across 2 files (고려대, 기초과학연구원), but the pattern is unique enough
+#      to strip without false-positive risk.
+#
+# Thresholds picked conservatively:
+#   - 8+ middle dots: typical HWP ToC has 30-80 chained dots; legitimate
+#     prose has zero (middle dot is not a normal punctuation mark in Korean).
+#   - 15+ ASCII periods: ellipses (``......``) and section.subsection
+#     numbering (``1.1.1.1``) never reach 15. Real-data check: only one file
+#     uses ASCII periods for ToC leaders.
+#   - Page footer regex is strict (``^\\|+-\\d+-\\|+$``, full-line match).
+_LEADER_MIDDLE_DOT_RE = re.compile(r"·{8,}")
+_LEADER_ASCII_DOT_RE = re.compile(r"\.{15,}")
+_PAGE_FOOTER_LINE_RE = re.compile(r"^\|+-\d+-\|+$")
+
+
+def _strip_kordoc_toc_noise(markdown: str) -> str:
+    """Collapse leader-dot runs and drop standalone page-footer lines.
+
+    Leader runs are replaced with a single space (not the empty string) so
+    word boundaries on either side are preserved — e.g. ``섹션·····2`` →
+    ``섹션 2`` keeps the section name readable. Page-footer lines are
+    dropped entirely (not blanked) so the surrounding paragraphs join
+    naturally — a page break is metadata, not a paragraph divider.
+
+    Conservative on purpose: the function is called on every kordoc batch
+    output and must never damage legitimate content.
+    """
+    if not markdown:
+        return markdown
+    text = _LEADER_MIDDLE_DOT_RE.sub(" ", markdown)
+    text = _LEADER_ASCII_DOT_RE.sub(" ", text)
+    out_lines: list[str] = []
+    for line in text.split("\n"):
+        if _PAGE_FOOTER_LINE_RE.match(line):
+            continue
+        out_lines.append(line)
+    return "\n".join(out_lines)
 
 
 def build_sections_with_native_tables(
     body_text: str,
     native_tables: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    """Build the per-document ``sections`` list, optionally including HWP tables.
+    """Build the per-document ``sections`` list. Kordoc-era stub: tables now
+    arrive inline as HTML inside ``body_text``, so ``native_tables`` is
+    always empty and this returns exactly ``[{"heading": "본문", "text": body_text}]``.
 
-    Issue #506 / PR-C1. When ``native_tables`` is empty (the default path,
-    the existing ``BIDMATE_HWP_LOADER=native`` baseline, or any non-HWP
-    format), this returns exactly ``[{"heading": "본문", "text": body_text}]``
-    — byte-identical to the pre-#506 contract so ADR 0001 invariant holds.
-
-    When the HWP native-tables loader has parsed at least one table with
-    non-empty cells, each table becomes an additional section keyed by
-    ``"표 N (HWP native)"`` so downstream section-aware chunking (see
-    ``rag_core.document_has_section_structure``) treats them as first-class
-    retrieval units. The non-empty heading also avoids
-    ``WEAK_SECTION_HEADINGS`` so the section is kept distinct from the
-    body, not folded into the catch-all parent.
+    Kept as a function (rather than inlined at the call site) because
+    several test fixtures construct documents via this helper. The
+    ``native_tables`` parameter is retained for signature compatibility
+    but is asserted empty — ADR 0049 supersedes the per-table-section
+    surface ADR 0036 introduced.
     """
-    sections: list[dict[str, Any]] = [{"heading": "본문", "text": body_text}]
-    for idx, table in enumerate(native_tables):
-        cells = table.get("cells", []) or []
-        cell_lines = [
-            t for cell in cells if (t := str(cell.get("text", "")).strip())
-        ]
-        if not cell_lines:
-            continue
-        table_index = int(table.get("table_index", idx))
-        sections.append(
-            {
-                "heading": f"표 {table_index + 1} (HWP native)",
-                "text": "\n".join(cell_lines),
-            }
-        )
-    return sections
+    return [{"heading": "본문", "text": body_text}]
 
 
 LOADERS: dict[str, CsvTextDocumentLoader] = {
@@ -398,28 +490,137 @@ LOADERS: dict[str, CsvTextDocumentLoader] = {
 }
 
 
+_HWP_KORDOC_LOADER: HwpKordocLoader | None = None
+_PDF_KORDOC_LOADER: PdfKordocLoader | None = None
+
+
+def _reset_kordoc_loaders() -> None:
+    """Drop the module-level kordoc loader singletons (HWP + PDF).
+
+    Called at the start of ``load_documents_from_metadata_csv`` so each
+    ingestion run gets a fresh batch cache and resets
+    ``last_text_source`` / ``last_fallback_reason``. Tests use this to
+    isolate runs.
+    """
+    global _HWP_KORDOC_LOADER, _PDF_KORDOC_LOADER
+    _HWP_KORDOC_LOADER = None
+    _PDF_KORDOC_LOADER = None
+
+
+_reset_hwp_kordoc_loader = _reset_kordoc_loaders
+
+
 def _resolve_loader(file_format: str) -> CsvTextDocumentLoader:
     """Pick the loader for ``file_format``.
 
-    For HWP, env-var precedence (ADR 0036, highest to lowest):
+    For HWP and PDF, env-var precedence (ADR 0049, highest to lowest):
 
-    * ``BIDMATE_HWP_LOADER=csv`` — explicit opt-out; always use CSV loader.
-    * ``BIDMATE_HWP_LOADER=native`` — paragraph plain text only.
-    * ``BIDMATE_HWP_LOADER=native_tables`` — plain text + table cells.
-    * *(unset)* + pyhwp importable — default to ``HwpNativeLoader(with_tables=True)``.
-    * *(unset)* + pyhwp absent — fall through to CSV loader (CI minimal install safe).
+    * ``BIDMATE_HWP_LOADER=csv_text`` / ``BIDMATE_PDF_LOADER=csv_text`` —
+      explicit opt-out; use the CSV-text loader for that format.
+    * *(unset)* or ``=kordoc`` — default to the kordoc-backed loader.
+      Auto-degrades to CSV at runtime when ``node`` / ``npx`` is missing or
+      the subprocess fails (telemetry-visible via ``last_fallback_reason``).
+
+    Legacy HWP values ``csv`` / ``native`` / ``native_tables`` from ADR 0036
+    are aliased to ``csv_text`` (CSV fallback); the two deprecated names
+    fire a one-shot ``DeprecationWarning`` so existing deploy scripts keep
+    working without immediate breakage.
+
+    Each kordoc loader instance is cached at module level so a single
+    ``prime_batch`` (called once from ``load_documents_from_metadata_csv``)
+    populates the cache the per-row ``_resolve_loader`` calls then read from.
     """
+    global _HWP_KORDOC_LOADER, _PDF_KORDOC_LOADER
     if file_format == "hwp":
         opt_in = os.environ.get("BIDMATE_HWP_LOADER", "").strip().lower()
-        if opt_in == "csv":
+        if opt_in in {"native", "native_tables"}:
+            warnings.warn(
+                f"BIDMATE_HWP_LOADER={opt_in!r} is deprecated (ADR 0036 superseded by 0049); "
+                "kordoc is now the default. Set BIDMATE_HWP_LOADER=csv_text to force CSV fallback.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
             return LOADERS[file_format]
-        if opt_in == "native":
-            return HwpNativeLoader()
-        if opt_in == "native_tables":
-            return HwpNativeLoader(with_tables=True)
-        if importlib.util.find_spec("hwp5") is not None:
-            return HwpNativeLoader(with_tables=True)
+        if opt_in in {"csv", "csv_text"}:
+            return LOADERS[file_format]
+        if _HWP_KORDOC_LOADER is None:
+            _HWP_KORDOC_LOADER = HwpKordocLoader()
+        return _HWP_KORDOC_LOADER
+    if file_format == "pdf":
+        opt_in = os.environ.get("BIDMATE_PDF_LOADER", "").strip().lower()
+        if opt_in in {"csv", "csv_text"}:
+            return LOADERS[file_format]
+        if _PDF_KORDOC_LOADER is None:
+            _PDF_KORDOC_LOADER = PdfKordocLoader()
+        return _PDF_KORDOC_LOADER
     return LOADERS[file_format]
+
+
+def _prime_kordoc_batches(
+    rows: list[dict[str, str]], files_dir: Path
+) -> None:
+    """Pre-convert every HWP + PDF source in one kordoc subprocess.
+
+    Combines both formats into a single ``npx kordoc`` invocation so the
+    npm fetch + spin-up cost is paid once per ingestion run. Routes the
+    resulting Markdown into each loader's cache by file extension.
+
+    No-op for any format whose resolver returns the CSV-text loader
+    (env opt-out) or whose row list is empty. Per-row ``_resolve_loader``
+    calls then read the primed cache; misses (Node-down / subprocess
+    error / NFC mismatch) fall through to ``data_list_csv_text``.
+    """
+    paths_by_format: dict[str, list[Path]] = {"hwp": [], "pdf": []}
+    for row in rows:
+        file_name = clean_cell(row.get("파일명"))
+        if not file_name:
+            continue
+        file_format = normalize_file_format(row.get("파일형식"), file_name)
+        if file_format not in paths_by_format:
+            continue
+        source_path = find_source_file(files_dir, file_name)
+        if source_path.exists() and source_path.is_file():
+            paths_by_format[file_format].append(source_path)
+
+    loaders: dict[str, _KordocLoader] = {}
+    for fmt, paths in paths_by_format.items():
+        if not paths:
+            continue
+        loader = _resolve_loader(fmt)
+        if isinstance(loader, _KordocLoader):
+            loaders[fmt] = loader
+
+    if not loaders:
+        return
+
+    combined: list[Path] = []
+    for fmt in loaders:
+        combined.extend(paths_by_format[fmt])
+
+    try:
+        markdown_by_stem = _kordoc_convert_batch(combined)
+    except _KordocFallback as exc:
+        reason = (
+            f"{type(exc.__cause__).__name__ if exc.__cause__ else 'KordocError'}: "
+            f"{str(exc)[:120]}"
+        )
+        for loader in loaders.values():
+            loader.last_fallback_reason = reason
+            warnings.warn(
+                f"{type(loader).__name__} batch fallback to CSV text: {reason}",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+        return
+
+    for fmt, loader in loaders.items():
+        for path in paths_by_format[fmt]:
+            text = markdown_by_stem.get(_kordoc_output_stem(path))
+            if text:
+                loader._batch_cache[str(path)] = text
+
+
+_prime_hwp_kordoc_batch = _prime_kordoc_batches
 
 
 def load_documents_from_metadata_csv(
@@ -446,20 +647,26 @@ def load_documents_from_metadata_csv(
     records: list[IngestionRecord] = []
     tracker = _DuplicateTracker()
 
+    _reset_kordoc_loaders()
+
     with metadata_csv.open("r", encoding="utf-8-sig", newline="") as file:
         reader = csv.DictReader(file)
         validate_fieldnames(reader.fieldnames or [], metadata_csv)
-        for row_number, row in enumerate(reader, start=2):
-            document, record = normalize_ingestion_row(
-                row,
-                row_number,
-                files_dir,
-                tracker,
-                on_duplicate_doc_id=on_duplicate_doc_id,
-            )
-            records.append(record)
-            if document is not None:
-                documents.append(document)
+        rows = list(reader)
+
+    _prime_kordoc_batches(rows, files_dir)
+
+    for row_number, row in enumerate(rows, start=2):
+        document, record = normalize_ingestion_row(
+            row,
+            row_number,
+            files_dir,
+            tracker,
+            on_duplicate_doc_id=on_duplicate_doc_id,
+        )
+        records.append(record)
+        if document is not None:
+            documents.append(document)
 
     if not documents:
         failure_reasons = sorted({record.reason or record.status for record in records})
@@ -640,28 +847,7 @@ def normalize_ingestion_row(
         metadata["doc_id_resolution"] = validation.duplicate_resolution["policy"]
         metadata["doc_id_base"] = validation.duplicate_resolution["base_doc_id"]
 
-    # Issue #506 / PR-C1: when the HWP native-tables loader has been
-    # opted into (``BIDMATE_HWP_LOADER=native_tables``) and parsed at
-    # least one table, append each table as its own additional section so
-    # downstream section-aware chunking treats them as first-class
-    # retrieval units. ADR 0001 invariant: ``last_native_tables`` is
-    # always ``[]`` for the default CSV path and the existing
-    # ``BIDMATE_HWP_LOADER=native`` (paragraph-only) baseline, so the
-    # sections list stays exactly ``[{"heading": "본문", "text": text}]``
-    # for every existing measurement and golden.
-    native_tables = getattr(loader, "last_native_tables", None) or []
-    sections = build_sections_with_native_tables(text, native_tables)
-    if native_tables:
-        metadata["native_table_count"] = len(native_tables)
-        metadata["native_tables"] = [
-            {
-                "table_index": int(table.get("table_index", idx)),
-                "rows": int(table.get("rows", 0) or 0),
-                "cols": int(table.get("cols", 0) or 0),
-                "cell_count": len(table.get("cells", [])),
-            }
-            for idx, table in enumerate(native_tables)
-        ]
+    sections = build_sections_with_native_tables(text, [])
 
     document = {
         "doc_id": validation.doc_id,

@@ -2,11 +2,21 @@
 # Claude Code PreToolUse hook for BidMate-DocAgent — Bash matcher.
 #
 # Registered in `.claude/settings.json` with matcher `Bash`. Fires before
-# Claude runs any Bash command. Refuses `gh pr merge --delete-branch`
-# when the target branch has open stacked dependents (i.e. open PRs
-# whose `base` is this branch). Auto-enforces the policy stated in
-# CLAUDE.md `## Prohibited` after the PR #423 → #431 and PR #470
-# stacked-PR auto-close incidents.
+# Claude runs any Bash command. Two responsibilities:
+#
+#   (1) Refuses `gh pr merge --delete-branch` when the target branch has
+#       open stacked dependents (i.e. open PRs whose `base` is this
+#       branch). Auto-enforces the policy stated in CLAUDE.md
+#       `## Prohibited` after the PR #423 → #431 and PR #470 stacked-PR
+#       auto-close incidents.
+#
+#   (2) Refuses `gh pr create` (without `--base <branch>`) when the
+#       current branch appears to be stacked on another open PR's
+#       branch — i.e. when an `origin/<other-branch>` ref exists whose
+#       merge-base with HEAD is *ahead of* `origin/main`. Issue #826
+#       Hook B (split into #865): a 5-PR stack audit found multiple
+#       cases where a stacked PR was opened against `main` instead of
+#       its upstream branch, collapsing the stack base.
 #
 # Behavior:
 #   - exit 0  : safe / not applicable / fail-open
@@ -33,11 +43,15 @@ try:
 except Exception:
     pass' 2>/dev/null)
 
-# Fast path: not a destructive gh merge.
+# Fast path: empty command.
 if [[ -z "$cmd" ]]; then
   exit 0
 fi
-is_merge_cmd=$(printf '%s' "$cmd" | python3 -c '
+
+# Classify the gh subcommand once: "merge" | "create" | "".
+# We split on shell separators so `foo && gh pr create …` is still caught,
+# but anything inside quotes or comments is preserved by shlex.
+gh_subcommand=$(printf '%s' "$cmd" | python3 -c '
 import sys, shlex, re
 for part in re.split(r"[;&|\n]", sys.stdin.read()):
     part = part.strip().lstrip("(")
@@ -45,12 +59,103 @@ for part in re.split(r"[;&|\n]", sys.stdin.read()):
         tokens = shlex.split(part)
     except ValueError:
         continue
-    if len(tokens) >= 3 and tokens[0] == "gh" and tokens[1] == "pr" and tokens[2] == "merge":
-        print("yes"); break
+    if len(tokens) >= 3 and tokens[0] == "gh" and tokens[1] == "pr":
+        if tokens[2] in ("merge", "create"):
+            print(tokens[2]); break
 ' 2>/dev/null)
-if [[ "$is_merge_cmd" != "yes" ]]; then
+
+if [[ -z "$gh_subcommand" ]]; then
   exit 0
 fi
+
+# --- Branch (2): gh pr create stacked guard (#826 Hook B / #865) ---
+if [[ "$gh_subcommand" == "create" ]]; then
+  # Bypass: explicit --base is intentional. Catches both `--base X` and
+  # `--base=X` forms. `--base main` is the documented escape for
+  # "I really do want to flatten this onto main."
+  has_base=$(printf '%s' "$cmd" | python3 -c '
+import sys, shlex, re
+for part in re.split(r"[;&|\n]", sys.stdin.read()):
+    part = part.strip().lstrip("(")
+    try:
+        tokens = shlex.split(part)
+    except ValueError:
+        continue
+    if len(tokens) >= 3 and tokens[0] == "gh" and tokens[1] == "pr" and tokens[2] == "create":
+        if any(t == "--base" or t.startswith("--base=") for t in tokens[3:]):
+            print("yes"); break
+' 2>/dev/null)
+  if [[ "$has_base" == "yes" ]]; then
+    exit 0
+  fi
+
+  mb_main=$(git merge-base HEAD origin/main 2>/dev/null || true)
+  if [[ -z "$mb_main" ]]; then
+    # No origin/main ref locally (fresh clone, weird worktree). Fail open
+    # — the live `gh pr create` will likely fail too with a clearer error.
+    exit 0
+  fi
+
+  current_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)
+  stacked_on=""
+  # Walk every local origin/* ref. We use refs that the user has already
+  # fetched — this is what `gh pr create` would see anyway. Each refers
+  # to an open or recently-closed PR branch.
+  while IFS= read -r ref; do
+    [[ -z "$ref" ]] && continue
+    case "$ref" in
+      origin/HEAD|origin/main|origin/master) continue ;;
+    esac
+    if [[ -n "$current_branch" && "$ref" == "origin/$current_branch" ]]; then
+      continue
+    fi
+    mb_other=$(git merge-base HEAD "$ref" 2>/dev/null || true)
+    if [[ -z "$mb_other" || "$mb_other" == "$mb_main" ]]; then
+      continue
+    fi
+    # mb_other ≠ mb_main, and mb_main is an ancestor of mb_other → mb_other
+    # sits on the path from main toward HEAD, i.e. our branch forks off
+    # `$ref` at a point that is ahead of `origin/main`. That's a stack.
+    if git merge-base --is-ancestor "$mb_main" "$mb_other" 2>/dev/null; then
+      stacked_on="${ref#origin/}"
+      break
+    fi
+  done < <(git for-each-ref refs/remotes/origin --format='%(refname:short)' 2>/dev/null)
+
+  if [[ -z "$stacked_on" ]]; then
+    # Branch forks off main (or off a branch we don't have a remote ref
+    # for, which gh pr create can't target anyway). Allow.
+    exit 0
+  fi
+
+  printf '%s|blocked|gh-pr-create-stacked|%s|on=%s\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$current_branch" "$stacked_on" \
+    >> "$REPO_ROOT/.claude/.hook-fires.log" 2>/dev/null || true
+
+  cat >&2 <<EOF
+⛔ Refusing \`gh pr create\` without \`--base\`: current branch is stacked.
+
+    Branch \`$current_branch\` was forked from \`$stacked_on\` (an open
+    PR's head branch), not directly from \`main\`. Running \`gh pr create\`
+    without \`--base\` opens this PR against \`main\`, which silently
+    collapses the stack base and (on merge) auto-closes \`$stacked_on\`
+    once \`$current_branch\` lands.
+
+    Two recovery options:
+      (a) Add \`--base $stacked_on\` so the PR targets its real upstream:
+              gh pr create --base $stacked_on ...
+      (b) If you actually want this PR off main (intentional flatten),
+          pass \`--base main\` explicitly to silence this guard:
+              gh pr create --base main ...
+
+    Policy: stacked-PR discipline (project MEMORY.md feedback_pr_discipline).
+    Precedent: PR #423 → #431, PR #470 — auto-close of stacked dependents
+               when the base PR merged with --delete-branch.
+EOF
+  exit 2
+fi
+
+# --- Branch (1): gh pr merge --delete-branch stacked-dependent guard ---
 if ! grep -qE -- '--delete-branch' <<<"$cmd"; then
   exit 0
 fi

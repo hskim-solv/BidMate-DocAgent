@@ -1,11 +1,20 @@
 # 0045: rag_core leaf migration plan — embedding helpers + comparison_targets routing
 
-- **Status**: accepted
+- **Status**: accepted (completed by PR-G2 #847 + PR-G3 #861 + PR-G4 #872)
 - **Date**: 2026-05-15
 - **Related**: [ADR 0001](./0001-preserve-naive-baseline.md) · CLAUDE.md
   *Repository map* (rag_retrieval / rag_verifier / rag_answer / rag_query
   decomposition) · issue #762
 - **Deciders**: hskim
+
+> **2026-05-15 update (G4):** All six ADR-0045 leaf modules
+> (`rag_query`, `rag_retrieval`, `rag_verifier`, `rag_answer`,
+> `rag_embedding`, `rag_indexing`) now have **zero** import edges
+> back to `rag_core` — top-level and function-level. This invariant
+> is regression-tested by
+> [`tests/test_dependency_graph_invariance.py`](../../tests/test_dependency_graph_invariance.py)
+> (issue #872). Any future PR that re-introduces a back-edge — even
+> a function-body late-import — fails CI.
 
 ## Context
 
@@ -174,8 +183,10 @@ the function bodies.  The whole point is to make `rag_core` thin.
 
 - Further `rag_core` slim-down beyond embedding (ingestion split,
   `_RunContext` re-housing) — covered by G3 in the GEF plan.
-- Removing the re-export shims in `rag_core` — scheduled for after
-  G4 dependency-graph verification.
+- Removing the re-export shims in `rag_core` — deferred indefinitely.
+  External callers (`tests/`, `scripts/`, `eval/`, `demo/`, `api/`)
+  rely on the shims; deprecating them would be a separate breaking
+  change beyond the leaf-migration goal.
 - pgvector / Qdrant adapter implementations — F1/F2 in the GEF plan.
 
 ## Verification

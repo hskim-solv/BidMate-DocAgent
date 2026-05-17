@@ -1,7 +1,8 @@
 # 0036: HwpNativeLoader promoted to pyhwp-gated default
 
-- **Status**: accepted
+- **Status**: superseded by [0049](./0049-kordoc-replaces-pyhwp-backend.md)
 - **Date**: 2026-05-13
+- **Superseded**: 2026-05-15 — pyhwp 0.1b15 API drift recorded `hwp_native_rate = 0.0` on the private 100-doc real-eval (paragraph-only extraction lost table/heading structure RFPs rely on). [ADR 0049](./0049-kordoc-replaces-pyhwp-backend.md) replaces the pyhwp backend with kordoc (npm subprocess) and keeps `csv_text` as the unconditional fallback.
 - **Related**: [ADR 0001](0001-preserve-naive-baseline.md) (baseline invariant), [`ingestion.py:_resolve_loader`](../../ingestion.py) (loader routing), [issue #167](https://github.com/hskim-solv/BidMate-DocAgent/issues/167) (original spike), [issue #363](https://github.com/hskim-solv/BidMate-DocAgent/issues/363) (observability), [issue #365](https://github.com/hskim-solv/BidMate-DocAgent/issues/365) (this decision), [issue #426](https://github.com/hskim-solv/BidMate-DocAgent/issues/426) (implementation)
 
 ## Context

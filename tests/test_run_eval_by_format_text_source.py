@@ -3,7 +3,7 @@
 PR #744 (issue #715) wrote ``text_source_counts`` to
 ``ingestion_report.json``; this test pins the consumer side — that
 ``summarize_run`` reads it back into ``by_format`` and derives
-``hwp_native_rate`` / ``hwp_fallback_rate`` without altering any existing
+``kordoc_rate`` / ``hwp_fallback_rate`` without altering any existing
 metric block field.
 
 The tests use direct dict fixtures (no full RAG pipeline) because the
@@ -75,13 +75,13 @@ class LoadTextSourceCountsTest(unittest.TestCase):
             _write_report(
                 Path(tmp),
                 text_source_counts={
-                    "hwp": {"hwp_native": 4, "data_list_csv_text": 1},
+                    "hwp": {"kordoc": 4, "data_list_csv_text": 1},
                     "pdf": {"data_list_csv_text": 3},
                 },
             )
             self.assertEqual(
                 {
-                    "hwp": {"hwp_native": 4, "data_list_csv_text": 1},
+                    "hwp": {"kordoc": 4, "data_list_csv_text": 1},
                     "pdf": {"data_list_csv_text": 3},
                 },
                 _load_text_source_counts(Path(tmp)),
@@ -89,19 +89,19 @@ class LoadTextSourceCountsTest(unittest.TestCase):
 
 
 class InjectTextSourceRatesTest(unittest.TestCase):
-    def test_hwp_native_and_fallback_rates_split_correctly(self) -> None:
+    def test_kordoc_and_fallback_rates_split_correctly(self) -> None:
         by_format = {"hwp": {}, "pdf": {}}
         _inject_text_source_rates(
             by_format,
             {
-                "hwp": {"hwp_native": 3, "data_list_csv_text": 1},
+                "hwp": {"kordoc": 3, "data_list_csv_text": 1},
                 "pdf": {"data_list_csv_text": 2},
             },
         )
-        self.assertAlmostEqual(0.75, by_format["hwp"]["hwp_native_rate"])
+        self.assertAlmostEqual(0.75, by_format["hwp"]["kordoc_rate"])
         self.assertAlmostEqual(0.25, by_format["hwp"]["hwp_fallback_rate"])
         self.assertEqual(
-            {"hwp_native": 3, "data_list_csv_text": 1},
+            {"kordoc": 3, "data_list_csv_text": 1},
             by_format["hwp"]["text_source_counts"],
         )
 
@@ -113,24 +113,24 @@ class InjectTextSourceRatesTest(unittest.TestCase):
         self.assertEqual(
             {"data_list_csv_text": 2}, by_format["pdf"]["text_source_counts"]
         )
-        self.assertNotIn("hwp_native_rate", by_format["pdf"])
+        self.assertNotIn("kordoc_rate", by_format["pdf"])
         self.assertNotIn("hwp_fallback_rate", by_format["pdf"])
 
     def test_skips_formats_absent_in_text_source_counts(self) -> None:
         by_format = {"doc": {"accuracy": 1.0}}
-        _inject_text_source_rates(by_format, {"hwp": {"hwp_native": 1}})
+        _inject_text_source_rates(by_format, {"hwp": {"kordoc": 1}})
         self.assertEqual({"accuracy": 1.0}, by_format["doc"])
 
     def test_hwp_all_fallback_yields_zero_native_rate(self) -> None:
         by_format = {"hwp": {}}
         _inject_text_source_rates(by_format, {"hwp": {"data_list_csv_text": 5}})
-        self.assertEqual(0.0, by_format["hwp"]["hwp_native_rate"])
+        self.assertEqual(0.0, by_format["hwp"]["kordoc_rate"])
         self.assertEqual(1.0, by_format["hwp"]["hwp_fallback_rate"])
 
     def test_hwp_all_native_yields_one_native_rate(self) -> None:
         by_format = {"hwp": {}}
-        _inject_text_source_rates(by_format, {"hwp": {"hwp_native": 5}})
-        self.assertEqual(1.0, by_format["hwp"]["hwp_native_rate"])
+        _inject_text_source_rates(by_format, {"hwp": {"kordoc": 5}})
+        self.assertEqual(1.0, by_format["hwp"]["kordoc_rate"])
         self.assertEqual(0.0, by_format["hwp"]["hwp_fallback_rate"])
 
 
@@ -157,35 +157,35 @@ class SummarizeRunEndToEndTest(unittest.TestCase):
             _write_report(
                 Path(tmp),
                 text_source_counts={
-                    "hwp": {"hwp_native": 2, "data_list_csv_text": 1},
+                    "hwp": {"kordoc": 2, "data_list_csv_text": 1},
                     "pdf": {"data_list_csv_text": 1},
                 },
             )
             summary = self._run_with(Path(tmp))
             self.assertIn("by_format", summary)
             hwp_block = summary["by_format"]["hwp"]
-            self.assertAlmostEqual(2 / 3, hwp_block["hwp_native_rate"])
+            self.assertAlmostEqual(2 / 3, hwp_block["kordoc_rate"])
             self.assertAlmostEqual(1 / 3, hwp_block["hwp_fallback_rate"])
             self.assertEqual(
-                {"hwp_native": 2, "data_list_csv_text": 1},
+                {"kordoc": 2, "data_list_csv_text": 1},
                 hwp_block["text_source_counts"],
             )
             pdf_block = summary["by_format"]["pdf"]
             self.assertEqual(
                 {"data_list_csv_text": 1}, pdf_block["text_source_counts"]
             )
-            self.assertNotIn("hwp_native_rate", pdf_block)
+            self.assertNotIn("kordoc_rate", pdf_block)
 
     def test_by_format_unchanged_when_report_missing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             summary = self._run_with(Path(tmp))
             self.assertIn("by_format", summary)
-            self.assertNotIn("hwp_native_rate", summary["by_format"]["hwp"])
+            self.assertNotIn("kordoc_rate", summary["by_format"]["hwp"])
             self.assertNotIn("text_source_counts", summary["by_format"]["hwp"])
 
     def test_by_format_unchanged_when_index_dir_is_none(self) -> None:
         summary = self._run_with(None)
-        self.assertNotIn("hwp_native_rate", summary["by_format"]["hwp"])
+        self.assertNotIn("kordoc_rate", summary["by_format"]["hwp"])
 
 
 if __name__ == "__main__":  # pragma: no cover

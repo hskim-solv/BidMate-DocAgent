@@ -269,6 +269,15 @@ _ROLE_TAG_LINE_RE = re.compile(
 _INSTRUCTION_OVERRIDE_LINE_RE = re.compile(
     r"(?im)^[ \t]*(?:ignore|disregard|forget|override|bypass)\b[^.\n]{0,80}?\b(?:instructions?|prompts?|rules?|directives?|system|guidance)\b.*$"
 )
+# Issue #830 — RAG senior-review critique #6 marker-bypass / marker-tag
+# confusion. The wrap markers themselves are text tokens; without a
+# defense, attacker text containing literal `[/INSTRUCTION_LIKE]` could
+# escape the wrap, and an unmatched `[INSTRUCTION_LIKE]` could trick
+# the LLM judge into treating subsequent content as already-defended.
+# Pre-rewriting any literal occurrence to `[INPUT_MARKER]` before the
+# wrap pass guarantees every marker token in the output was written
+# by us.
+_LITERAL_MARKER_RE = re.compile(r"\[/?INSTRUCTION_LIKE\]")
 
 
 def neutralize_instruction_patterns(text: str) -> str:
@@ -278,10 +287,22 @@ def neutralize_instruction_patterns(text: str) -> str:
     and replaces chat template tokens with ``[REDACTED_CHAT_TOKEN]`` so they
     cannot impersonate role boundaries in downstream LLM consumers. Content
     is preserved (citations remain readable) — see ADR 0008.
+
+    Issue #830 (advances): also rewrites any literal
+    ``[INSTRUCTION_LIKE]`` / ``[/INSTRUCTION_LIKE]`` token in the input
+    to ``[INPUT_MARKER]`` before applying the wrap. Without this
+    pre-pass an attacker could inject a closing marker to break out of
+    the wrap (marker-bypass), or an unmatched opening marker to confuse
+    the LLM judge into treating subsequent content as already-defended
+    (marker-tag confusion). After the pre-pass, every marker token in
+    the output was written by us — not by the attacker.
     """
     if not text:
         return text
-    out = _CHAT_TEMPLATE_TOKEN_RE.sub("[REDACTED_CHAT_TOKEN]", text)
+    # Pre-pass: kill literal wrap markers from attacker input so the
+    # markers we add downstream are unambiguously ours.
+    out = _LITERAL_MARKER_RE.sub("[INPUT_MARKER]", text)
+    out = _CHAT_TEMPLATE_TOKEN_RE.sub("[REDACTED_CHAT_TOKEN]", out)
     out = _ROLE_TAG_LINE_RE.sub(
         lambda m: f"[INSTRUCTION_LIKE]{m.group(0)}[/INSTRUCTION_LIKE]", out
     )

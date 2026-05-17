@@ -11,6 +11,10 @@
           {
             "type": "command",
             "command": "bash scripts/claude-hooks/pretooluse-memory-lines.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash scripts/claude-hooks/pretooluse-adr-template.sh"
           }
         ]
       },

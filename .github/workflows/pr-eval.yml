@@ -130,6 +130,15 @@ jobs:
           cache: pip
           cache-dependency-path: pr/requirements.txt
 
+      # ADR 0049: HWP/PDF ingestion shells out to `npx kordoc`.
+      # On Node-missing the loader auto-degrades to `csv_text`
+      # (telemetry-visible), but for the eval-delta job we want the
+      # kordoc path exercised so the PR's structural-extraction gains
+      # are reflected in the delta vs. base.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
       - name: Install dependencies (PR)
         run: |
           python -m pip install --upgrade pip
@@ -165,6 +174,15 @@ jobs:
           embedding-backend: hashing
 
       - name: Render delta table
+        # Wire the PR-body `[ALLOW_REGRESSION: <reason>]` convention
+        # documented in scripts/compare_eval.py:17 to the script's env.
+        # The docstring promised reviewer-acknowledged regressions would
+        # exit 0 with annotation; without this env propagation the
+        # workflow ignored the tag (e.g. ADR 0050 corpus expansion
+        # legitimately shifts every quality metric on the synthetic
+        # surface — the gate must accept the acknowledged trade-off).
+        env:
+          ALLOW_REGRESSION: ${{ contains(github.event.pull_request.body, '[ALLOW_REGRESSION') && 'true' || '' }}
         run: |
           python pr/scripts/compare_eval.py \
             --base base/reports/eval_summary.json \

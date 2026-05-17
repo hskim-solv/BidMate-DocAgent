@@ -32,6 +32,7 @@ venv/
 
 # Local/private source data
 data/files/
+data/files_kordoc/
 data/data_list.csv
 data/data_list.xlsx
 eval/*.local.yaml
@@ -41,6 +42,11 @@ eval/*.local.yaml
 # never redistribute the raw corpus or the sampled derivative. Sample
 # files can be regenerated deterministically with `seed=17`.
 data/korean_public/
+
+# Pre-rebuild backups from the ADR 0050 axis-A real_scale_v2_distractor
+# migration. The committed live file is the post-rebuild version; the
+# `.v1_pre_distractor.json` snapshots stay operator-local.
+data/raw/*.v1_pre_distractor.json
 
 # Generated artifacts: keep committed portfolio samples, ignore extra outputs
 data/index/*

@@ -141,6 +141,28 @@ def _build_mixed_corpus(root: Path) -> tuple[Path, Path, list[dict[str, str]]]:
 
 
 class MixedFormatIngestionTest(unittest.TestCase):
+    def setUp(self) -> None:
+        # ADR 0049: kordoc is now the default HWP + PDF backend, but this
+        # suite uses dummy 0-byte fixtures that kordoc can't parse. Force
+        # the CSV-text loader for both formats so the suite stays an
+        # offline-friendly fixture of the v1 path (the kordoc subprocess +
+        # fallback path is covered by tests/test_ingestion_kordoc_regression.py).
+        import os
+        self._env_backup = {
+            "BIDMATE_HWP_LOADER": os.environ.get("BIDMATE_HWP_LOADER"),
+            "BIDMATE_PDF_LOADER": os.environ.get("BIDMATE_PDF_LOADER"),
+        }
+        os.environ["BIDMATE_HWP_LOADER"] = "csv_text"
+        os.environ["BIDMATE_PDF_LOADER"] = "csv_text"
+
+    def tearDown(self) -> None:
+        import os
+        for key, value in self._env_backup.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+
     def test_default_fail_policy_indexes_three_and_reports_three_failures(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -228,11 +250,12 @@ class MixedFormatIngestionTest(unittest.TestCase):
     def test_text_source_counts_aggregated_by_format(self) -> None:
         """Issue #715: summary.text_source_counts buckets per (format, source).
 
-        The mixed-corpus fixture only exercises the v1 CSV-text path
-        (PdfCsvTextLoader / HwpCsvTextLoader), so every indexed row reports
-        the default loader provenance. A separate fixture that opts into the
-        native HWP loader would produce ``{"hwp_native": N}`` here — covered
-        by ``tests/test_hwp_native_loader_regression.py``.
+        The mixed-corpus fixture only exercises the CSV-text path
+        (PdfCsvTextLoader / HwpCsvTextLoader, forced via
+        ``BIDMATE_HWP_LOADER=csv_text``), so every indexed row reports the
+        default fallback provenance. A separate fixture that exercises the
+        kordoc backend (ADR 0049) would produce ``{"kordoc": N}`` here —
+        covered by ``tests/test_ingestion_kordoc_regression.py``.
         """
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -240,7 +263,10 @@ class MixedFormatIngestionTest(unittest.TestCase):
             _, report = load_documents_from_metadata_csv(csv_path, files_dir)
 
             summary = report["summary"]
-            self.assertEqual(3, summary["schema_version"])
+            # Bumped 3 → 4 in issue #902 (additive nested_table_loss_* fields
+            # on summary.chunk_health). Existing summary fields below are
+            # unchanged.
+            self.assertEqual(4, summary["schema_version"])
             self.assertEqual(
                 {
                     "pdf": {"data_list_csv_text": 2},
