@@ -39,6 +39,11 @@ ALLOWED_PATTERNS=(
   '^reports/rag_pipeline\.aggregate\.json$'
   '^reports/real100/rag_pipeline\.md$'
   '^reports/real100/rag_pipeline\.aggregate\.json$'
+  # Issue #945 — distinguishing-power gauge aggregate (script:
+  # scripts/distinguishing_power.py, ADR 0053 §Consequences). Mirrors
+  # the `!`-rule in `.gitignore`.
+  '^reports/real100/distinguishing_power\.md$'
+  '^reports/real100/distinguishing_power\.aggregate\.json$'
 )
 
 # Guard: ADR file deletion/rename (CLAUDE.md Prohibited).
