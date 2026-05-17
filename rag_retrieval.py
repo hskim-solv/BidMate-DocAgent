@@ -345,6 +345,63 @@ def retrieve_candidates(
         plan["candidate_count"] = len(candidates)
         plan["filter_fallback_used"] = True
 
+    # Issue #938 / ADR 0053 — random retrieval baseline. Short-circuit
+    # before the embedding / BM25 / M3 forward passes: assign each
+    # filtered candidate a uniform score in [0, 1] derived from a
+    # SHA-256 of ``(query, chunk_id)`` so the same query produces the
+    # same ranking across runs (test-friendly, eval-reproducible) but
+    # different queries pull different orderings. ``score_parts`` keeps
+    # the existing keys at 0.0 so downstream consumers (eval scorer,
+    # leaderboard) don't crash on missing fields; the diagnostic
+    # ``random`` channel is the only non-zero parts entry.
+    retrieval_backend = str(plan.get("retrieval_backend", "dense"))
+    if retrieval_backend == "random":
+        import hashlib as _hashlib
+
+        scored: list[dict[str, Any]] = []
+        for chunk in candidates:
+            chunk_id_str = str(chunk.get("chunk_id"))
+            digest = _hashlib.sha256(
+                f"{query}\x00{chunk_id_str}".encode("utf-8")
+            ).digest()
+            rand_score = int.from_bytes(digest[:8], "big") / float(1 << 64)
+            score_parts = {
+                "dense": 0.0,
+                "lexical": 0.0,
+                "metadata": 0.0,
+                "bm25": 0.0,
+                "random": round(float(rand_score), 6),
+            }
+            item = {
+                "doc_id": chunk["doc_id"],
+                "chunk_id": chunk["chunk_id"],
+                "title": chunk["title"],
+                "agency": chunk.get("agency", ""),
+                "project": chunk.get("project", ""),
+                "metadata": chunk.get("metadata", {}),
+                "section": chunk["section"],
+                "section_id": chunk.get("section_id"),
+                "parent_section_id": chunk.get("parent_section_id")
+                or chunk.get("section_id"),
+                "section_path": chunk.get("section_path")
+                or [chunk.get("section", "")],
+                "chunk_seq_in_section": chunk.get("chunk_seq_in_section"),
+                "total_chunks_in_section": chunk.get("total_chunks_in_section"),
+                "chunking_strategy": chunk.get("chunking_strategy", "legacy"),
+                "retrieval_mode": "flat",
+                "text": chunk["text"],
+                "score": round(float(rand_score), 6),
+                "score_parts": score_parts,
+            }
+            regions = normalize_regions(chunk.get("regions"))
+            page_span = normalize_page_span(chunk.get("page_span"), regions)
+            if regions:
+                item["regions"] = regions
+            if page_span:
+                item["page_span"] = page_span
+            scored.append(item)
+        return scored
+
     embedding_config = index.get("embedding", {})
     # #396 / ADR 0023 — pluggable query expansion. Default is the
     # ``IdentityExpander`` so ``naive_baseline`` and any preset without
@@ -359,7 +416,6 @@ def retrieve_candidates(
     query_embedding = embed_query_for_index(embed_text, embedding_config)
     query_tokens = set(analysis.get("tokens", []))
     query_topics = analysis.get("topics", [])
-    retrieval_backend = str(plan.get("retrieval_backend", "dense"))
 
     bm25_score_by_chunk: dict[str, float] = {}
     if retrieval_backend == "hybrid":
