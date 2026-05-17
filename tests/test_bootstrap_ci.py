@@ -18,6 +18,7 @@ from eval.bootstrap import (
     DEFAULT_NUM_RESAMPLES,
     bootstrap_ci,
     format_ci_band,
+    paired_bootstrap_ci,
 )
 
 
@@ -89,6 +90,44 @@ class BootstrapCITest(unittest.TestCase):
     def test_format_ci_band_handles_none(self) -> None:
         self.assertEqual(format_ci_band(None), "N/A")
         self.assertEqual(format_ci_band({"mean": None}), "N/A")
+
+
+class PairedBootstrapCITest(unittest.TestCase):
+    def test_paired_bootstrap_ci_deterministic_seed(self) -> None:
+        a = [1.0, 0.0, 1.0, 0.0, 1.0]
+        b = [0.0, 1.0, 1.0, 0.0, 1.0]
+        ci_1 = paired_bootstrap_ci(a, b, seed=17)
+        ci_2 = paired_bootstrap_ci(a, b, seed=17)
+        self.assertEqual(ci_1, ci_2)
+
+    def test_paired_bootstrap_ci_zero_diff_when_identical(self) -> None:
+        # Identical per-case scores → every paired resample sees 0 → CI collapses.
+        values = [1.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0]
+        ci = paired_bootstrap_ci(values, list(values), seed=17)
+        assert ci is not None
+        self.assertEqual(ci["mean_diff"], 0.0)
+        self.assertEqual(ci["ci_lo"], 0.0)
+        self.assertEqual(ci["ci_hi"], 0.0)
+
+    def test_paired_ci_brackets_mean_diff(self) -> None:
+        a = [1.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0]
+        b = [0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0]
+        ci = paired_bootstrap_ci(a, b, seed=17)
+        assert ci is not None
+        self.assertLessEqual(ci["ci_lo"], ci["mean_diff"])
+        self.assertGreaterEqual(ci["ci_hi"], ci["mean_diff"])
+        self.assertEqual(ci["n"], 8)
+        self.assertEqual(ci["num_resamples"], DEFAULT_NUM_RESAMPLES)
+
+    def test_paired_bootstrap_ci_invalid_inputs(self) -> None:
+        self.assertIsNone(paired_bootstrap_ci([], []))
+        self.assertIsNone(paired_bootstrap_ci([1.0], []))
+        self.assertIsNone(paired_bootstrap_ci([], [1.0]))
+        self.assertIsNone(paired_bootstrap_ci([1.0, 2.0], [1.0]))
+        ci = paired_bootstrap_ci([1.0], [2.0], seed=17)
+        assert ci is not None
+        self.assertEqual(ci["mean_diff"], -1.0)
+        self.assertEqual(ci["n"], 1)
 
 
 if __name__ == "__main__":  # pragma: no cover
