@@ -124,6 +124,7 @@ project record.
 | [0048](./0048-realN-metrics-extension.md) | accepted | realN aggregate-only metrics extension — `by_metadata_field` (per-field accuracy + 95% CI for `agency`/`project`/`budget`/`deadline`, opt-in via case `metadata_field` key) + `abstention_calibration` (10-bin ECE + Brier, computed only when `prediction.answer.confidence` present; forward-compat null otherwise); ADR 0001 baseline bit-identical, ADR 0005 boundary preserved; closes issue #870 |
 | [0049](./0049-kordoc-replaces-pyhwp-backend.md) | proposed | kordoc (npm subprocess, Node 18+) replaces pyhwp/hwp5 as HWP backend **and** replaces `PdfCsvTextLoader`'s default cover/TOC path with `PdfKordocLoader`; `BIDMATE_HWP_LOADER` + `BIDMATE_PDF_LOADER` flip independently (`kordoc` default \| `csv_text` offline / CI / Node-missing); `_prime_kordoc_batches` pools HWP + PDF into one `npx` invocation; `csv_text` fallback preserved (ADR 0001 invariant); supersedes ADR 0036; closes issue #890 |
 | [0050](./0050-m4a-axis-a-real-scale-v2-distractor-rebuild.md) | proposed | M4-A axis-A real_scale_v2_distractor 재구축 + H/I/J/K 코퍼스 확장 |
+| [0051](./0051-flat-root-module-layout.md) | accepted | flat-root module layout 유지 — `src/` 마이그레이션 거절 (ADR 0045 leaf DAG 가 패키지화 이득 대체) |
 
 ## Roadmap (proposed, not yet committed)
 
