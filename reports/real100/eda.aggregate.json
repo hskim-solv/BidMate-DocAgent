@@ -1,0 +1,593 @@
+{
+  "axis1_metadata": {
+    "agency": {
+      "other_count": 78,
+      "tail_anonymized": [
+        {
+          "count": 2,
+          "label": "agency_11",
+          "rank": 11
+        },
+        {
+          "count": 1,
+          "label": "agency_12",
+          "rank": 12
+        },
+        {
+          "count": 1,
+          "label": "agency_13",
+          "rank": 13
+        },
+        {
+          "count": 1,
+          "label": "agency_14",
+          "rank": 14
+        },
+        {
+          "count": 1,
+          "label": "agency_15",
+          "rank": 15
+        },
+        {
+          "count": 1,
+          "label": "agency_16",
+          "rank": 16
+        },
+        {
+          "count": 1,
+          "label": "agency_17",
+          "rank": 17
+        },
+        {
+          "count": 1,
+          "label": "agency_18",
+          "rank": 18
+        },
+        {
+          "count": 1,
+          "label": "agency_19",
+          "rank": 19
+        },
+        {
+          "count": 1,
+          "label": "agency_20",
+          "rank": 20
+        },
+        {
+          "count": 1,
+          "label": "agency_21",
+          "rank": 21
+        },
+        {
+          "count": 1,
+          "label": "agency_22",
+          "rank": 22
+        },
+        {
+          "count": 1,
+          "label": "agency_23",
+          "rank": 23
+        },
+        {
+          "count": 1,
+          "label": "agency_24",
+          "rank": 24
+        },
+        {
+          "count": 1,
+          "label": "agency_25",
+          "rank": 25
+        },
+        {
+          "count": 1,
+          "label": "agency_26",
+          "rank": 26
+        },
+        {
+          "count": 1,
+          "label": "agency_27",
+          "rank": 27
+        },
+        {
+          "count": 1,
+          "label": "agency_28",
+          "rank": 28
+        },
+        {
+          "count": 1,
+          "label": "agency_29",
+          "rank": 29
+        },
+        {
+          "count": 1,
+          "label": "agency_30",
+          "rank": 30
+        },
+        {
+          "count": 1,
+          "label": "agency_31",
+          "rank": 31
+        },
+        {
+          "count": 1,
+          "label": "agency_32",
+          "rank": 32
+        },
+        {
+          "count": 1,
+          "label": "agency_33",
+          "rank": 33
+        },
+        {
+          "count": 1,
+          "label": "agency_34",
+          "rank": 34
+        },
+        {
+          "count": 1,
+          "label": "agency_35",
+          "rank": 35
+        },
+        {
+          "count": 1,
+          "label": "agency_36",
+          "rank": 36
+        },
+        {
+          "count": 1,
+          "label": "agency_37",
+          "rank": 37
+        },
+        {
+          "count": 1,
+          "label": "agency_38",
+          "rank": 38
+        },
+        {
+          "count": 1,
+          "label": "agency_39",
+          "rank": 39
+        },
+        {
+          "count": 1,
+          "label": "agency_40",
+          "rank": 40
+        },
+        {
+          "count": 1,
+          "label": "agency_41",
+          "rank": 41
+        },
+        {
+          "count": 1,
+          "label": "agency_42",
+          "rank": 42
+        },
+        {
+          "count": 1,
+          "label": "agency_43",
+          "rank": 43
+        },
+        {
+          "count": 1,
+          "label": "agency_44",
+          "rank": 44
+        },
+        {
+          "count": 1,
+          "label": "agency_45",
+          "rank": 45
+        },
+        {
+          "count": 1,
+          "label": "agency_46",
+          "rank": 46
+        },
+        {
+          "count": 1,
+          "label": "agency_47",
+          "rank": 47
+        },
+        {
+          "count": 1,
+          "label": "agency_48",
+          "rank": 48
+        },
+        {
+          "count": 1,
+          "label": "agency_49",
+          "rank": 49
+        },
+        {
+          "count": 1,
+          "label": "agency_50",
+          "rank": 50
+        },
+        {
+          "count": 1,
+          "label": "agency_51",
+          "rank": 51
+        },
+        {
+          "count": 1,
+          "label": "agency_52",
+          "rank": 52
+        },
+        {
+          "count": 1,
+          "label": "agency_53",
+          "rank": 53
+        },
+        {
+          "count": 1,
+          "label": "agency_54",
+          "rank": 54
+        },
+        {
+          "count": 1,
+          "label": "agency_55",
+          "rank": 55
+        },
+        {
+          "count": 1,
+          "label": "agency_56",
+          "rank": 56
+        },
+        {
+          "count": 1,
+          "label": "agency_57",
+          "rank": 57
+        },
+        {
+          "count": 1,
+          "label": "agency_58",
+          "rank": 58
+        },
+        {
+          "count": 1,
+          "label": "agency_59",
+          "rank": 59
+        },
+        {
+          "count": 1,
+          "label": "agency_60",
+          "rank": 60
+        },
+        {
+          "count": 1,
+          "label": "agency_61",
+          "rank": 61
+        },
+        {
+          "count": 1,
+          "label": "agency_62",
+          "rank": 62
+        },
+        {
+          "count": 1,
+          "label": "agency_63",
+          "rank": 63
+        },
+        {
+          "count": 1,
+          "label": "agency_64",
+          "rank": 64
+        },
+        {
+          "count": 1,
+          "label": "agency_65",
+          "rank": 65
+        },
+        {
+          "count": 1,
+          "label": "agency_66",
+          "rank": 66
+        },
+        {
+          "count": 1,
+          "label": "agency_67",
+          "rank": 67
+        },
+        {
+          "count": 1,
+          "label": "agency_68",
+          "rank": 68
+        },
+        {
+          "count": 1,
+          "label": "agency_69",
+          "rank": 69
+        },
+        {
+          "count": 1,
+          "label": "agency_70",
+          "rank": 70
+        },
+        {
+          "count": 1,
+          "label": "agency_71",
+          "rank": 71
+        },
+        {
+          "count": 1,
+          "label": "agency_72",
+          "rank": 72
+        },
+        {
+          "count": 1,
+          "label": "agency_73",
+          "rank": 73
+        },
+        {
+          "count": 1,
+          "label": "agency_74",
+          "rank": 74
+        },
+        {
+          "count": 1,
+          "label": "agency_75",
+          "rank": 75
+        },
+        {
+          "count": 1,
+          "label": "agency_76",
+          "rank": 76
+        },
+        {
+          "count": 1,
+          "label": "agency_77",
+          "rank": 77
+        },
+        {
+          "count": 1,
+          "label": "agency_78",
+          "rank": 78
+        },
+        {
+          "count": 1,
+          "label": "agency_79",
+          "rank": 79
+        },
+        {
+          "count": 1,
+          "label": "agency_80",
+          "rank": 80
+        },
+        {
+          "count": 1,
+          "label": "agency_81",
+          "rank": 81
+        },
+        {
+          "count": 1,
+          "label": "agency_82",
+          "rank": 82
+        },
+        {
+          "count": 1,
+          "label": "agency_83",
+          "rank": 83
+        },
+        {
+          "count": 1,
+          "label": "agency_84",
+          "rank": 84
+        },
+        {
+          "count": 1,
+          "label": "agency_85",
+          "rank": 85
+        },
+        {
+          "count": 1,
+          "label": "agency_86",
+          "rank": 86
+        },
+        {
+          "count": 1,
+          "label": "agency_87",
+          "rank": 87
+        }
+      ],
+      "top": [
+        {
+          "count": 3,
+          "name": "한국수자원공사",
+          "rank": 1
+        },
+        {
+          "count": 3,
+          "name": "한국철도공사 (용역)",
+          "rank": 2
+        },
+        {
+          "count": 2,
+          "name": "한국연구재단",
+          "rank": 3
+        },
+        {
+          "count": 2,
+          "name": "한국생산기술연구원",
+          "rank": 4
+        },
+        {
+          "count": 2,
+          "name": "인천광역시",
+          "rank": 5
+        },
+        {
+          "count": 2,
+          "name": "국방과학연구소",
+          "rank": 6
+        },
+        {
+          "count": 2,
+          "name": "수협중앙회",
+          "rank": 7
+        },
+        {
+          "count": 2,
+          "name": "한국농어촌공사",
+          "rank": 8
+        },
+        {
+          "count": 2,
+          "name": "축산물품질평가원",
+          "rank": 9
+        },
+        {
+          "count": 2,
+          "name": "광주과학기술원",
+          "rank": 10
+        }
+      ],
+      "unique_count": 87
+    },
+    "budget_krw": {
+      "available_count": 93,
+      "max": 14107009000.0,
+      "mean": 735231462.2365592,
+      "min": 1.0,
+      "missing_count": 7,
+      "p10": 50000000.0,
+      "p50": 196000000.0,
+      "p90": 1076692199.9999998
+    },
+    "csv_text_length_chars": {
+      "max": 18335.0,
+      "mean": 3843.53,
+      "p50": 2583.0,
+      "p95": 8782.8
+    },
+    "file_format_counts": {
+      "hwp": 96,
+      "pdf": 4
+    },
+    "monthly_published_counts": {
+      "2021-10": 1,
+      "2023-06": 1,
+      "2024-02": 1,
+      "2024-03": 4,
+      "2024-04": 15,
+      "2024-05": 17,
+      "2024-06": 14,
+      "2024-07": 3,
+      "2024-08": 8,
+      "2024-09": 5,
+      "2024-10": 10,
+      "2024-11": 7,
+      "2024-12": 5,
+      "2025-01": 6,
+      "2025-02": 3
+    },
+    "summary_length_chars": {
+      "max": 524.0,
+      "mean": 269.21,
+      "p50": 249.5,
+      "p95": 395.19999999999993
+    },
+    "title_length_chars": {
+      "max": 65.0,
+      "mean": 30.1,
+      "p50": 29.0,
+      "p95": 48.0
+    },
+    "total_docs": 100
+  },
+  "axis2_chunk_health": {
+    "corpus_chunk_health": {
+      "by_format": {
+        "hwp": 24846,
+        "pdf": 16
+      },
+      "empty_chunks": 0,
+      "hwp_table_chunk_ratio": 0.0,
+      "hwp_table_chunks": 0,
+      "length_chars": {
+        "max": 520.0,
+        "mean": 430.7598745072802,
+        "min": 5.0,
+        "p50": 470.0,
+        "p95": 517.0
+      },
+      "mid_sentence_cut_ratio": 0.6335371249296115,
+      "near_empty_chunks": 49,
+      "total_chunks": 24862
+    },
+    "length_by_format": {
+      "hwp": {
+        "count": 24846,
+        "max": 520.0,
+        "mean": 430.75195202447077,
+        "p50": 470.0,
+        "p95": 517.0
+      },
+      "pdf": {
+        "count": 16,
+        "max": 510.0,
+        "mean": 443.0625,
+        "p50": 482.0,
+        "p95": 509.25
+      }
+    },
+    "per_doc_chunk_count": {
+      "max": 557,
+      "mean": 248.62,
+      "min": 1,
+      "n_docs": 100,
+      "p50": 235.0,
+      "p95": 400.25
+    }
+  },
+  "axis3_text_source": {
+    "chunk_level_by_format": {
+      "hwp": {
+        "kordoc": 24846
+      },
+      "pdf": {
+        "data_list_csv_text": 16
+      }
+    },
+    "doc_level_by_format": {
+      "hwp": {
+        "kordoc": 96
+      },
+      "pdf": {
+        "data_list_csv_text": 4
+      }
+    },
+    "total_chunks": 24862,
+    "total_docs": 100
+  },
+  "axis4_eval_cross": {
+    "baseline_by_query_type": {
+      "abstention": {
+        "abstention": 0.5,
+        "answer_format_compliance": 0.5,
+        "groundedness": 0.5,
+        "num_predictions": 4
+      },
+      "comparison": {
+        "accuracy": 1.0,
+        "answer_format_compliance": 1.0,
+        "groundedness": 1.0,
+        "num_predictions": 1
+      },
+      "follow_up": {
+        "accuracy": 0.25,
+        "answer_format_compliance": 0.5,
+        "groundedness": 0.25,
+        "num_predictions": 4
+      },
+      "single_doc": {
+        "accuracy": 0.5,
+        "answer_format_compliance": 0.3333333333333333,
+        "groundedness": 0.5,
+        "num_predictions": 12
+      }
+    },
+    "case_cross_available": false,
+    "reason": "eval_summary.case_results not available locally"
+  },
+  "schema_version": 1
+}
