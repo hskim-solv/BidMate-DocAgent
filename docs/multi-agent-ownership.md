@@ -1,116 +1,98 @@
-# Multi-agent ownership model
+# Multi-agent 소유권 모델
 
-> **Tracked in [#245](https://github.com/hskim-solv/BidMate-DocAgent/issues/245).**
-> Owner roles: [#238](https://github.com/hskim-solv/BidMate-DocAgent/issues/238) · [#239](https://github.com/hskim-solv/BidMate-DocAgent/issues/239) · [#240](https://github.com/hskim-solv/BidMate-DocAgent/issues/240) · [#241](https://github.com/hskim-solv/BidMate-DocAgent/issues/241) · [#242](https://github.com/hskim-solv/BidMate-DocAgent/issues/242) · [#243](https://github.com/hskim-solv/BidMate-DocAgent/issues/243) · [#244](https://github.com/hskim-solv/BidMate-DocAgent/issues/244)
+> **추적: [#245](https://github.com/hskim-solv/BidMate-DocAgent/issues/245).**
+> 역할별 owner: [#238](https://github.com/hskim-solv/BidMate-DocAgent/issues/238) · [#239](https://github.com/hskim-solv/BidMate-DocAgent/issues/239) · [#240](https://github.com/hskim-solv/BidMate-DocAgent/issues/240) · [#241](https://github.com/hskim-solv/BidMate-DocAgent/issues/241) · [#242](https://github.com/hskim-solv/BidMate-DocAgent/issues/242) · [#243](https://github.com/hskim-solv/BidMate-DocAgent/issues/243) · [#244](https://github.com/hskim-solv/BidMate-DocAgent/issues/244)
 
-## Why this exists
+## 왜 필요한가
 
-The RAG pipeline is logically staged (ingestion → retrieval → planning → verification → answer → eval), but the hub module [`rag_core.py`](../rag_core.py) (~4,227 LOC) concentrates retrieval, planning, verification, chunking, and answer assembly into one file imported by 26 other files. Fourteen ADRs lock specific contracts (answer schema, naive baseline preservation, eval split, evidence boundary). [`CLAUDE.md`](../CLAUDE.md) insists on "one PR, one concern" with stacked-PR discipline.
+RAG 파이프라인은 단계별 (ingestion → 검색 → 계획 → 검증 → 답변 → eval) 로 나뉘지만, 허브 모듈 [`rag_core.py`](../rag_core.py) (~4,227 LOC) 가 검색·계획·검증·청킹·답변 조립을 한 파일에 집중하고 26개 파일이 이를 import. 14개 ADR 이 계약 (답변 스키마, 기준선 보존, eval 분리, 근거 경계) 을 고정. [`CLAUDE.md`](../CLAUDE.md) 는 "one PR, one concern" + stacked-PR 규율 요구.
 
-When several agents work in parallel, three collision points emerge:
+여러 agent 가 병행 작업 시 3개 충돌 지점:
 
-1. The single file `rag_core.py`.
-2. The answer-dict schema (ADR 0003) — every consumer in `eval/`, `api/`, `demo/` depends on it.
-3. `eval/config.yaml` — the `naive_baseline` preset must be preserved (ADR 0001).
+1. 단일 파일 `rag_core.py`
+2. 답변 dict 스키마 (ADR 0003) — `eval/`, `api/`, `demo/` 의 모든 소비자가 의존
+3. `eval/config.yaml` — `naive_baseline` preset 보존 의무 (ADR 0001)
 
-The split below resolves these by combining **ADR ownership** with a **hub lock-holder**: one agent per ADR cluster, with `rag_core.py` changes routed through a single owner.
+해법: **ADR 소유권** + **허브 lock-holder** — ADR cluster 당 agent 1명, `rag_core.py` 변경은 단일 owner 경유.
 
-## Principles
+## 원칙
 
-1. **ADR ownership.** One agent = the sole author of one or more ADR contracts. That ADR can only be amended through that agent's PR.
-2. **Hub lock holder.** `rag_core.py` is modified by the Pipeline Core owner only. Other owners affect it via hooks, callbacks, or the `run_rag_query` public surface.
-3. **Additive only.** New features ship as ablation or extension presets (see ADRs 0001 / 0011 / 0014). The extractive baseline is never replaced.
-4. **Stacked PRs.** Dependent work is rebased onto an upstream PR with `gh pr create --base <upstream>`. Independent work targets `main` directly.
+1. **ADR 소유권.** agent 1명 = ADR 계약 1개 이상의 단독 저자. 해당 ADR 수정은 그 agent 의 PR 으로만
+2. **허브 lock holder.** `rag_core.py` 는 Pipeline Core owner 만 수정. 다른 owner 는 hook, callback, `run_rag_query` public surface 경유
+3. **Additive only.** 신규 기능은 분석 변형 또는 확장 preset (ADR 0001/0011/0014). 추출형 기준선은 절대 교체 금지
+4. **Stacked PR.** 의존 작업은 상위 PR 위로 rebase, `gh pr create --base <upstream>`. 독립 작업은 `main` 으로 직접
 
-## The seven ownership roles
+## 7개 소유권 역할
 
 ### 1. Pipeline Core — [#238](https://github.com/hskim-solv/BidMate-DocAgent/issues/238)
 
-- **Files:** [`rag_core.py`](../rag_core.py)
-  - chunking: lines 889–1100
-  - planning: lines 1750–2025
-  - retrieval: lines 2027–2320
-  - verification: lines 2528–2750
-  - answer assembly: lines 2749–2950, 4155–4190
-- **ADRs owned:** 0001 (naive baseline), 0002 (metadata-first), 0003 (answer contract), 0004 (verifier-retry), 0008 (evidence boundary), 0010 (hybrid retrieval).
-- **Don'ts.** Remove `naive_baseline` from `pipeline_cli_choices()`; silently change keys in the `run_rag_query` return dict; skip `schema_version` bumps when the answer contract changes.
+- **파일**: [`rag_core.py`](../rag_core.py) (청킹 889–1100, 계획 1750–2025, 검색 2027–2320, 검증 2528–2750, 답변 조립 2749–2950 + 4155–4190)
+- **ADR**: 0001 (기준선), 0002 (메타데이터 우선), 0003 (답변 계약), 0004 (검증기·재시도), 0008 (근거 경계), 0010 (하이브리드 검색)
+- **금지**: `pipeline_cli_choices()` 에서 `naive_baseline` 제거; `run_rag_query` 반환 dict 키 무단 변경; 답변 계약 변경 시 `schema_version` bump 누락
 
 ### 2. Ingestion — [#239](https://github.com/hskim-solv/BidMate-DocAgent/issues/239)
 
-- **Files:** [`ingestion.py`](../ingestion.py), [`visual_ingestion.py`](../visual_ingestion.py), [`rag_normalize.py`](../rag_normalize.py), [`text_normalize.py`](../text_normalize.py).
-- **ADRs owned:** 0008 (evidence boundary — input side).
-- **Examples of in-scope work.** New document formats (HWPX, etc.), OCR / visual extraction improvements, Korean normalization rules, parser metrics.
+- **파일**: [`ingestion.py`](../ingestion.py), [`visual_ingestion.py`](../visual_ingestion.py), [`rag_normalize.py`](../rag_normalize.py), [`text_normalize.py`](../text_normalize.py)
+- **ADR**: 0008 (근거 경계 — 입력측)
+- **범위 예시**: 신규 문서 포맷 (HWPX 등), OCR/visual 추출 개선, 한국어 정규화 규칙, 파서 메트릭
 
 ### 3. Synthesis — [#240](https://github.com/hskim-solv/BidMate-DocAgent/issues/240)
 
-- **Files:** [`rag_synthesis.py`](../rag_synthesis.py); one synthesis hook inside `rag_core.py` (changes routed through Pipeline Core).
-- **ADRs owned:** 0011 (LLM synthesis as additive).
-- **Don'ts.** Generate `claims` / `citations` from the LLM — they must stay extractive (ADR 0003 + ADR 0011). Synthesis must remain opt-in, not on by default.
+- **파일**: [`rag_synthesis.py`](../rag_synthesis.py); `rag_core.py` 안 synthesis 훅 1개 (Pipeline Core 경유)
+- **ADR**: 0011 (LLM synthesis additive)
+- **금지**: `claims`/`citations` 를 LLM 에서 생성 (추출형 유지 — ADR 0003+0011). Synthesis 는 opt-in 유지, 기본 활성 금지
 
 ### 4. Evaluation — [#241](https://github.com/hskim-solv/BidMate-DocAgent/issues/241)
 
-- **Files:** [`eval/`](../eval/) (entire directory), [`scripts/run_real_eval_delta.py`](../scripts/run_real_eval_delta.py), [`scripts/compare_eval.py`](../scripts/compare_eval.py), [`scripts/compare_external_baselines.py`](../scripts/compare_external_baselines.py), [`scripts/leaderboard.py`](../scripts/leaderboard.py), [`scripts/update_readme_metrics.py`](../scripts/update_readme_metrics.py), [`scripts/write_real_eval_baseline.py`](../scripts/write_real_eval_baseline.py), [`scripts/write_synthetic_history.py`](../scripts/write_synthetic_history.py).
-- **ADRs owned:** 0005 (eval split), 0006 (real-only judge), 0009 (external baseline), 0012 (synthetic judge stub-default), 0014 (RAGAS additive).
-- **Don'ts.** Remove the `naive_baseline` ablation preset from `eval/config.yaml` (ADR 0001); enable a live LLM judge by default in public CI (ADR 0012); commit private real-data artifacts (ADR 0005).
+- **파일**: [`eval/`](../eval/) 전체, [`scripts/run_real_eval_delta.py`](../scripts/run_real_eval_delta.py), [`scripts/compare_eval.py`](../scripts/compare_eval.py), [`scripts/compare_external_baselines.py`](../scripts/compare_external_baselines.py), [`scripts/leaderboard.py`](../scripts/leaderboard.py), [`scripts/update_readme_metrics.py`](../scripts/update_readme_metrics.py), [`scripts/write_real_eval_baseline.py`](../scripts/write_real_eval_baseline.py), [`scripts/write_synthetic_history.py`](../scripts/write_synthetic_history.py)
+- **ADR**: 0005 (eval 분리), 0006 (real-only judge), 0009 (외부 baseline), 0012 (합성 judge stub-default), 0014 (RAGAS additive)
+- **금지**: `eval/config.yaml` 에서 `naive_baseline` 제거 (ADR 0001); 공개 CI 에서 live LLM judge 기본 활성 (ADR 0012); 비공개 real-data 산출물 commit (ADR 0005)
 
 ### 5. Observability — [#242](https://github.com/hskim-solv/BidMate-DocAgent/issues/242)
 
-- **Files:** [`rag_observability.py`](../rag_observability.py); trace-hook insertion points inside `rag_core.py` (changes routed through Pipeline Core).
-- **ADRs owned:** 0013 (pluggable observability).
-- **Examples of in-scope work.** New trace backends (Otel exporters, custom sinks), redaction policy, span enrichment.
+- **파일**: [`rag_observability.py`](../rag_observability.py); `rag_core.py` trace 훅 삽입점 (Pipeline Core 경유)
+- **ADR**: 0013 (pluggable observability)
+- **범위 예시**: 신규 trace backend (Otel exporter, custom sink), redaction 정책, span enrichment
 
 ### 6. API & Demo — [#243](https://github.com/hskim-solv/BidMate-DocAgent/issues/243)
 
-- **Files:** [`api/main.py`](../api/main.py), [`app.py`](../app.py), [`demo/`](../demo/).
-- **ADRs owned:** none — this layer only consumes the `run_rag_query` public surface.
-- **Constraint.** Use the `run_rag_query` return-dict keys only. Do not import internal helpers from `rag_core.py`; any new interface need is routed through the Pipeline Core owner.
+- **파일**: [`api/main.py`](../api/main.py), [`app.py`](../app.py), [`demo/`](../demo/)
+- **ADR**: 없음 — `run_rag_query` public surface 만 소비
+- **제약**: `run_rag_query` 반환 dict 키만 사용. `rag_core.py` 내부 헬퍼 import 금지; 신규 인터페이스 필요 시 Pipeline Core owner 경유
 
 ### 7. Infra & CI — [#244](https://github.com/hskim-solv/BidMate-DocAgent/issues/244)
 
-- **Files:** [`.github/workflows/`](../.github/workflows), [`.githooks/`](../.githooks), [`scripts/check_branch_and_issue.py`](../scripts/check_branch_and_issue.py), [`.github/pull_request_template.md`](../.github/pull_request_template.md), [`.github/ISSUE_TEMPLATE/`](../.github/ISSUE_TEMPLATE), [`.claude/settings.json`](../.claude/settings.json).
-- **ADRs owned:** 0007 (issue-linked branch naming).
-- **Examples of in-scope work.** New CI gates (e.g. `schema_version` assertions), pre-commit / pre-push hook additions, PR / issue template updates.
+- **파일**: [`.github/workflows/`](../.github/workflows), [`.githooks/`](../.githooks), [`scripts/check_branch_and_issue.py`](../scripts/check_branch_and_issue.py), [`.github/pull_request_template.md`](../.github/pull_request_template.md), [`.github/ISSUE_TEMPLATE/`](../.github/ISSUE_TEMPLATE), [`.claude/settings.json`](../.claude/settings.json)
+- **ADR**: 0007 (issue-linked 브랜치 명명)
+- **범위 예시**: 신규 CI gate (예: `schema_version` assertion), pre-commit/pre-push 훅 추가, PR/issue 템플릿 갱신
 
-## Conflict-resolution rules
+## 충돌 해결 규칙
 
-- **`rag_core.py` concurrent edits.** Pipeline Core owner is the sole lock holder. When another owner needs hub changes that don't fit a hook or public-surface extension, they open an interface-change PR via Pipeline Core first; their downstream PR stacks on top with `gh pr create --base`.
-- **Answer-dict schema change (ADR 0003).** Always shipped as a standalone PR — ADR amendment + `schema_version` bump + broadcast to eval / api / demo consumers. Never bundled with feature work.
-- **`eval/config.yaml`.** Evaluation owner only. Other owners request new ablation presets; they do not edit the file directly.
-- **`docs/adr/` files.** The relevant area owner authors new ADRs. Existing ADR files are never deleted or renamed — they are marked **Superseded** in the Status block.
+- **`rag_core.py` 동시 편집**: Pipeline Core owner 가 단독 lock holder. 다른 owner 가 hook/public surface 로 안 되는 hub 변경 필요 시 Pipeline Core 경유 interface-change PR 먼저 → downstream PR 은 `gh pr create --base` 로 stack
+- **답변 dict 스키마 변경 (ADR 0003)**: 항상 standalone PR — ADR 수정 + `schema_version` bump + eval/api/demo 소비자 broadcast. feature 작업과 묶지 않음
+- **`eval/config.yaml`**: Evaluation owner 단독. 다른 owner 는 신규 분석 변형 preset 요청, 직접 편집 금지
+- **`docs/adr/` 파일**: 해당 영역 owner 가 신규 ADR 작성. 기존 ADR 파일 삭제·이름변경 금지 — Status 블록에 **Superseded** 표시
 
-## Scenario → owner mapping
+## 시나리오 → owner 매핑
 
-| Scenario | Owner(s) | Stacking |
+| 시나리오 | owner | Stacking |
 | --- | --- | --- |
-| New retrieval backend (e.g. ColBERT) | Pipeline Core + Evaluation | Eval PR stacked on Pipeline Core PR |
-| New document format (e.g. HWPX) | Ingestion | Standalone |
-| LLM-judge / RAGAS metric improvement | Evaluation | Standalone |
-| New demo screen or Colab notebook | API & Demo | Standalone |
-| New CI gate (e.g. `schema_version` assertion) | Infra & CI | Standalone |
-| Answer-schema extension | Pipeline Core → API & Demo + Evaluation | Consumer PRs stacked on the schema PR |
-| New Otel exporter | Observability | Standalone |
+| 신규 검색 backend (예: ColBERT) | Pipeline Core + Evaluation | Eval PR 이 Pipeline Core PR 위로 stack |
+| 신규 문서 포맷 (예: HWPX) | Ingestion | Standalone |
+| LLM-judge / RAGAS 메트릭 개선 | Evaluation | Standalone |
+| 신규 데모 화면 또는 Colab 노트북 | API & Demo | Standalone |
+| 신규 CI gate (예: `schema_version` assertion) | Infra & CI | Standalone |
+| 답변 스키마 확장 | Pipeline Core → API & Demo + Evaluation | 소비자 PR 이 스키마 PR 위로 stack |
+| 신규 Otel exporter | Observability | Standalone |
 
-## Verification
+## 검증
 
-Before every PR:
+매 PR 전: `make smoke` + `bash scripts/test.sh`. load-bearing 파일 (`rag_core.py`, `ingestion.py`, `visual_ingestion.py`, `eval/`, `api/main.py`) 변경 시 `make real-eval` + `make real-eval-delta` + PR 템플릿 5b 채움.
 
-- `make smoke` — fast end-to-end sanity check (`EMBEDDING_BACKEND=hashing`).
-- `bash scripts/test.sh` — `pytest -q` (the CI gate).
+CI gate: [`pr-eval.yml`](../.github/workflows/pr-eval.yml), [`branch-and-issue-check.yml`](../.github/workflows/branch-and-issue-check.yml). 답변 계약 PR 은 추가로 `schema_version` 증가 + ADR 0003 갱신 확인.
 
-When load-bearing files (`rag_core.py`, `ingestion.py`, `visual_ingestion.py`, `eval/`, `api/main.py`) change:
+## 참고
 
-- `make real-eval` + `make real-eval-delta`.
-- Fill in PR-template item 5b (real-data delta).
-
-All PRs pass the standing CI gates:
-
-- [`pr-eval.yml`](../.github/workflows/pr-eval.yml)
-- [`branch-and-issue-check.yml`](../.github/workflows/branch-and-issue-check.yml)
-
-Answer-contract PRs additionally verify a `schema_version` increment and an updated ADR 0003 entry.
-
-## See also
-
-- [`docs/engineering-governance.md`](engineering-governance.md) — broader workflow map.
-- [`docs/adr/README.md`](adr/README.md) — ADR index.
-- [`CLAUDE.md`](../CLAUDE.md) — repository conventions.
+- [`docs/engineering-governance.md`](engineering-governance.md) — 워크플로 맵
+- [`docs/adr/README.md`](adr/README.md) — ADR 인덱스
+- [`CLAUDE.md`](../CLAUDE.md) — 저장소 컨벤션

@@ -1,133 +1,113 @@
 # CLAUDE.md
 
-RFP-focused DocAgent system. **Bid/RFP document intelligence, not a generic AI playground.**
+RFP 문서 이해를 위한 DocAgent 시스템. **입찰/RFP 문서 인텔리전스 전용, 범용 AI 실험장 아님.**
 
-Pipeline: ingestion → metadata normalization → chunking → retrieval →
-reranking/planning → evidence aggregation → grounded answer → verification →
-evaluation → reviewer-facing docs.
+파이프라인: ingestion → 메타데이터 정규화 → 청킹 → 검색 → 재순위/계획 → 근거 집계 → 근거 기반 답변 → 검증 → 평가 → reviewer 문서.
 
-Automation surface: `.gitignore`,
-CI ([`pr-eval.yml`](.github/workflows/pr-eval.yml),
-[`branch-and-issue-check.yml`](.github/workflows/branch-and-issue-check.yml)),
-`.githooks/`,
-[`scripts/check_branch_and_issue.py`](scripts/check_branch_and_issue.py)
-(single-source regex for branch + issue convention, ADR 0007),
-[`.github/pull_request_template.md`](.github/pull_request_template.md),
-[`.github/ISSUE_TEMPLATE/`](.github/ISSUE_TEMPLATE/),
-[`.claude/settings.json`](.claude/settings.json) (PreToolUse awareness hook
-for load-bearing edits + Bash matcher refusing `gh pr merge --delete-branch`
-when stacked dependents exist). This file captures the principles and pointers
-that aren't auto-enforced.
+자동화 표면: `.gitignore`, CI ([`pr-eval.yml`](.github/workflows/pr-eval.yml), [`branch-and-issue-check.yml`](.github/workflows/branch-and-issue-check.yml)), `.githooks/`, [`scripts/check_branch_and_issue.py`](scripts/check_branch_and_issue.py) (브랜치+이슈 컨벤션 regex 단일 출처, ADR 0007), [`.github/pull_request_template.md`](.github/pull_request_template.md), [`.github/ISSUE_TEMPLATE/`](.github/ISSUE_TEMPLATE/), [`.claude/settings.json`](.claude/settings.json) (load-bearing 편집 awareness 훅 + stacked dependent 있을 때 `gh pr merge --delete-branch` 차단 Bash matcher). 이 파일은 자동 강제되지 않는 원칙·포인터를 담는다.
 
-## Start here
+## 여기서 시작
 
-- [`docs/engineering-governance.md`](docs/engineering-governance.md) — workflow map.
-- [`docs/adr/README.md`](docs/adr/README.md) — decision index.
-- [`docs/multi-agent-ownership.md`](docs/multi-agent-ownership.md) — coordination model when multiple agents work in parallel.
-- If touching retrieval / answer / eval, also read:
-  [ADR 0001](docs/adr/0001-preserve-naive-baseline.md) (naive baseline),
-  [ADR 0003](docs/adr/0003-structured-answer-citation-contract.md) (answer contract),
-  [ADR 0005](docs/adr/0005-eval-split-public-synthetic-private-local.md) (eval split),
-  [ADR 0012](docs/adr/0012-llm-judge-on-public-synthetic.md) (synthetic LLM-judge).
+- [`docs/engineering-governance.md`](docs/engineering-governance.md) — 워크플로 맵
+- [`docs/adr/README.md`](docs/adr/README.md) — 결정 인덱스
+- [`docs/multi-agent-ownership.md`](docs/multi-agent-ownership.md) — 여러 agent 가 병행 작업할 때 조율 모델
+- retrieval / answer / eval 손볼 시 추가 필독: [ADR 0001](docs/adr/0001-preserve-naive-baseline.md) (기준선), [ADR 0003](docs/adr/0003-structured-answer-citation-contract.md) (답변 계약), [ADR 0005](docs/adr/0005-eval-split-public-synthetic-private-local.md) (eval 분리), [ADR 0012](docs/adr/0012-llm-judge-on-public-synthetic.md) (합성 LLM-judge)
 
-## Repository map
+## 저장소 맵
 
-Load-bearing — changes here require PR template **item 5b (real-data delta)** filled in. Canonical machine-readable list lives in [`scripts/_governance.py`](scripts/_governance.py) `LOAD_BEARING_PATHS` (single source of truth read by `.githooks/pre-push`, `scripts/claude-hooks/pretooluse-loadbearing.sh`, and the `--check-5b` CI gate); add or remove entries there first so the three consumers pick it up automatically. The bullets below are the human reading guide.
+**Load-bearing** — 변경 시 PR 템플릿 **5b (real-data 델타)** 필수. 기계 판독 가능 단일 출처는 [`scripts/_governance.py`](scripts/_governance.py) 의 `LOAD_BEARING_PATHS` ([.githooks/pre-push](.githooks/pre-push), [scripts/claude-hooks/pretooluse-loadbearing.sh](scripts/claude-hooks/pretooluse-loadbearing.sh), `--check-5b` CI gate 가 함께 읽음). 추가/제거 시 그 파일 먼저 수정.
 
-- `rag_core.py` — core RAG pipeline (retrieval, verifier, answer generation).
-- `ingestion.py`, `visual_ingestion.py` — document loading + parsing. HWP **and** PDF backends are `HwpKordocLoader` / `PdfKordocLoader` (ADR 0049, npm subprocess via `npx`); `csv_text` is the unconditional fallback for both formats when Node is missing or the subprocess fails. `_prime_kordoc_batches` pools HWP + PDF paths into one `npx` invocation per ingestion run.
-- `eval/` — eval scripts and configs (`eval/config.yaml` defines the `naive_baseline` ablation preset).
-- `api/main.py` — FastAPI demo server (the whole `api/` directory is in the SSoT).
-- `docs/adr/` — accepted decision records.
-- `scripts/build_index.py` — index builder; downstream of `ingestion` + `rag_core`, surfaces ablation regressions before they reach eval.
+- `rag_core.py` — RAG 파이프라인 코어 (검색·검증·답변 오케스트레이션)
+- `ingestion.py`, `visual_ingestion.py` — 문서 로딩/파싱. HWP/PDF backend = `HwpKordocLoader`/`PdfKordocLoader` (ADR 0049, `npx` 서브프로세스); `csv_text` 가 Node 부재/실패 시 무조건 fallback
+- `eval/` — eval 스크립트·설정 (`eval/config.yaml` 에 `naive_baseline` 분석 변형 preset)
+- `api/main.py` — FastAPI 데모 서버 (`api/` 전체가 SSoT)
+- `docs/adr/` — accepted 결정 기록
+- `scripts/build_index.py` — 인덱스 빌더, eval 도달 전에 분석 변형 회귀를 표면화
 
-Supporting:
+**Supporting** (rag_core 에서 분리된 leaf 모듈, ADR 0045 검증 — `rag_core` 로의 back-edge 0):
 
-- `app.py` — CLI query entry point.
-- `rag_vector_store.py` — `VectorStore` Protocol behind the embeddings sidecar (issue #232). `BIDMATE_INDEX_BACKEND` accepts `memory` (default) or `qdrant`; `pgvector` is reserved for Stage 3 (#176). Qdrant connection target: `BIDMATE_QDRANT_URL` selects `http(s)://...` (production server), `/path` (file persistence), or `:memory:` / unset (default in-process). In-memory ↔ Qdrant ranking is bit-identical (`tests/test_vector_store_qdrant.py`), so ADR 0001 baseline holds across backends.
-- `rag_reranker.py` — `Reranker` Protocol + default `CrossEncoderReranker` adapter (issue #345, follow-up to #332). Wraps `rag_rerank.rerank` so future HyDE / LLM-as-reranker impls plug in without touching `rag_retrieval.apply_fusion_and_reranking`.
-- `rag_retrieval.py` — retrieval pipeline extracted from `rag_core.py` across PR-H1a (issue #459) + PR-H1b (issue #461). Owns `retrieve_candidates` (candidate generation), the four similarity primitives (`embed_query_for_index`, `dense_similarity`, `lexical_similarity`, `metadata_similarity`), BM25 surface (`bm25_scores_for_index`, `get_or_build_bm25` + `_*` helpers), and the post-retrieval stack (`apply_fusion_and_reranking`, `apply_comparison_balance`, `reassemble_parent_sections`). **ADR 0045 leaf: 0 back-edges to `rag_core`**, top-level or function-level (regression-tested by `tests/test_dependency_graph_invariance.py`, issue #872). Embedding primitives relocated to `rag_embedding` in PR-G2 (#847); ingestion helpers to `rag_indexing` in PR-G3 (#861).
-- `rag_verifier.py` — verifier path extracted from `rag_core.py` (issue #465, PR-J1). Owns `verify_evidence` (main verifier + partial-topic grounding policy per ADR 0004), the topic-extraction helpers (`verification_topics`, `specific_topics`, `metadata_terms_for_verification`), the `EVIDENCE_BOUNDARY` constant + 3 instruction-pattern regexes, `neutralize_instruction_patterns` (ADR 0008 evidence-side defense), `evidence_text_for_verification`, `evidence_has_topic`, and the `PARTIAL_TOPIC_GROUNDING_*` policy constants. Direct imports: `korean_lexicon` (METADATA_EVIDENCE_LABELS / METADATA_GENERIC_TOKENS / TOPIC_KEYWORDS / VERIFICATION_INTENT_TOKENS) + `text_normalize` (expand_forms / normalize_text). **ADR 0045 leaf: 0 back-edges to `rag_core`** (#872). `rag_core` re-exports every public name + 3 constants so `tests/test_synthetic_judge.py` / `tests/test_prompt_injection_regression.py` / `scripts/llm_judge.py` / `eval/synthetic_judge.py` (which import `EVIDENCE_BOUNDARY` and `neutralize_instruction_patterns` from `rag_core`) keep working unchanged.
-- `rag_answer.py` — answer generation extracted from `rag_core.py` (issue #468, PR-J2). Owns the 20 functions that turn verified evidence into the ADR 0003 answer dict: `generate_answer` (main entry), `build_claims` / `build_comparison_claims` / `build_extract_claims`, `make_claim` / `make_citation` / `claim_target`, `answer_status` / `answer_status_reason` / `answer_query_type` / `answer_summary` / `answer_verification_reasons`, `build_insufficiency`, `render_answer_text`, `best_sentence` / `metadata_claim_sentences` / `metadata_field_requested` / `format_metadata_claim_value` / `sentence_has_verification_topic` / `select_supporting_evidence`. ADR 0003 dict contract (`schema_version: 2` literal) stays here; CLAUDE.md prohibition against parallel Pydantic models still applies. Direct imports: `korean_lexicon` (METADATA_CLAIM_*), `rag_answer_schema` (ANSWER_STATUS_* / ANSWER_SCHEMA_VERSION), `rag_verifier` (specific_topics / verification_topics / evidence_text_for_verification / PARTIAL_TOPIC_GROUNDING_REASON). **ADR 0045 leaf: 0 back-edges to `rag_core`** (#872). `rag_core` re-exports every public name so orchestration (`_phase_build_answer`) keeps working.
-- `rag_query.py` — query analysis + planning extracted from `rag_core.py` (issue #478, PR-J3). Owns the 15 functions that turn the raw user query into the `plan` dict retrieval consumes: `analyze_query` (main analyzer), `resolve_conversation_context` + `make_context_resolution` + 7 query-inspection / state helpers (`is_metadata_ambiguous` / `has_implicit_reference` / `has_comparison_request` / `extract_requested_agencies` / `active_state_terms` / `active_state_size` / `inject_entities_into_query`), `comparison_targets_for_analysis` (called via re-export by rag_retrieval / rag_answer), `summarize_metadata_match` / `metadata_resolution_diagnostics`, `query_type_default_top_k` / `make_plan`. Direct imports: `korean_lexicon` (IMPLICIT_REFERENCE_PATTERNS / STOPWORDS / TOPIC_KEYWORDS), `rag_conversation_state` (CONTEXT_RESOLUTION_THRESHOLD), `rag_pipeline_presets` (preset / validation constants), `text_normalize` (normalize_text). **ADR 0045 leaf: 0 back-edges to `rag_core`** (#872). `rag_core` re-exports all 15 public names.
-- `rag_query_expansion.py` — `QueryExpander` Protocol + default `IdentityExpander` + opt-in `HyDEExpander` (issue #396, ADR 0023). Plugs in before the dense-embedding call in `rag_retrieval.retrieve_candidates`; BM25 / lexical / metadata paths consume `analysis.tokens` and remain invariant. Identity default preserves the ADR 0001 `naive_baseline` bit-identical golden.
-- `scripts/` — `build_index.py`, `update_readme_metrics.py`, `run_real_eval_delta.py`, etc.
-- `data/raw/` → `data/index/` → `outputs/` → `reports/` (pipeline artifacts).
-- `docs/` — design notes, ADRs, failure analyses, reviewer artifacts.
+- `app.py` — CLI 쿼리 진입점
+- `rag_vector_store.py` — `VectorStore` Protocol (#232). `BIDMATE_INDEX_BACKEND` = `memory`(기본) / `qdrant`; `pgvector` 는 Stage 3 (#176) 예약. in-memory ↔ Qdrant ranking bit-identical
+- `rag_reranker.py` — `Reranker` Protocol + 기본 `CrossEncoderReranker` (#345)
+- `rag_retrieval.py` — 검색 파이프라인 (#459 + #461). `retrieve_candidates`, 4 유사도 primitive, BM25, fusion·재순위·comparison balance·parent-section 재조립
+- `rag_verifier.py` — 검증기 (#465, PR-J1). `verify_evidence`, topic 추출, `EVIDENCE_BOUNDARY` 상수 + 명령 패턴 regex, `neutralize_instruction_patterns` (ADR 0008)
+- `rag_answer.py` — 답변 생성 (#468, PR-J2). 20 함수가 검증된 근거를 ADR 0003 답변 dict 로 변환. `schema_version: 2` 계약 유지
+- `rag_query.py` — 쿼리 분석·계획 (#478, PR-J3). 15 함수, `analyze_query`/`make_plan`/`comparison_targets_for_analysis` 등
+- `rag_query_expansion.py` — `QueryExpander` Protocol + 기본 `IdentityExpander` + opt-in `HyDEExpander` (#396, ADR 0023)
+- `scripts/` — `build_index.py`, `update_readme_metrics.py`, `run_real_eval_delta.py` 등
+- `data/raw/` → `data/index/` → `outputs/` → `reports/` (파이프라인 산출물)
+- `docs/` — 설계 노트, ADR, 실패 분석, reviewer 문서
 
-## Communication
+## 소통
 
-- **Respond in Korean when the user writes in Korean.** Reserve English for English-language prompts or an explicit "respond in English" request. Code, identifiers, commit messages, file/directory names stay in English.
-- **Lead summaries with a 2-3 line TL;DR; details below.** One decision per turn — do not dump multiple PRs / issues / branches in a single message.
+- **사용자가 한국어로 쓰면 한국어로 응답.** 영어 프롬프트 또는 "respond in English" 명시 시만 영어. 코드·식별자·커밋 메시지·파일/디렉터리명은 영문 유지
+- **2-3줄 TL;DR 후 상세.** 한 턴에 한 결정 — 여러 PR/issue/branch 를 한 메시지에 묶지 않음
 
-## Autonomy & Approvals
+## 자율성 & 승인
 
-- **State-changing actions require explicit approval.** `git push`, `gh pr merge`, `gh pr create`, `git branch -D`, `gh issue create` only after the user gives an explicit go-ahead (e.g. "진행", "go", "merge it", "ok"). Short interrogatives like `"머지?"`, `"PR?"`, `"?"` are **questions** — answer them, do not act on them.
-- **For chained side effects** (stacked-PR merge, ADR-then-PR, multi-issue triage), get a separate approval per step instead of bundling.
+- **상태 변경 액션은 명시 승인 필요.** `git push`, `gh pr merge`, `gh pr create`, `git branch -D`, `gh issue create` 는 사용자 "진행/go/merge it/ok" 명시 후만. "머지?", "PR?", "?" 같은 짧은 의문은 **질문** — 답변만 하고 실행 금지
+- **연쇄 부수효과** (stacked-PR merge, ADR-then-PR, multi-issue triage) 는 단계별 별도 승인
 
-## Delegation defaults
+## 위임 기본값
 
-- **Plan subagent before non-trivial change.** Any change touching >1 file or >50 LOC, or any plan-mode entry, dispatches a Plan subagent first. Skip only for typo / single-line fixes.
-- **Explore subagent for read-heavy probes.** ≥5 Read calls accumulated, or any single-file read >200 lines, hands off to Explore so the main conversation keeps tokens free.
-- **Shipping path locked at commit-0.** Decide `ship-pr` skill (manual gates, ADR reserve + stacked safety) vs `make ship-arm` (Stop-hook auto-ship). They are mutually exclusive — never arm both.
-- Full 5-axis ↔ 4-pillar mapping lives in [`docs/agent-utilization.md`](docs/agent-utilization.md). `self-review-quarterly` skill scores against that table.
+- **non-trivial 변경 전 Plan subagent.** >1 파일 또는 >50 LOC, 또는 plan mode 진입 시 Plan subagent 우선. 오타/단일 라인만 예외
+- **읽기 다발 시 Explore subagent.** Read ≥5회 누적 또는 단일 파일 >200줄 → Explore 위임
+- **Shipping 경로는 commit-0 에 확정.** `ship-pr` skill (수동 게이트, ADR 예약 + stacked 안전) vs `make ship-arm` (Stop-hook 자동 ship) 둘은 mutually exclusive — 동시 활성화 금지
+- 5축 ↔ 4-pillar 매핑 전체: [`docs/agent-utilization.md`](docs/agent-utilization.md). `self-review-quarterly` skill 이 해당 표 기준으로 채점
 
-## Core principles
+## 핵심 원칙
 
-- **Issue first; convention-matched branch.** Every PR must reference an issue (`Closes #N` in body) and its branch must match `<type>/issue-<N>[-<slug>]` (ADR 0007). The CI workflow `branch-and-issue-check.yml` enforces both at PR time.
-- **Reuse over invent.** Inspect existing implementation before coding. Search for reusable utilities first.
-- **One PR, one concern.** Out-of-scope fixes → separate issue / follow-up PR. Same domain decomposed into N PRs on the same day is a valid pattern (e.g. 2026-05-15 PR-A0~A3 four-PR stacked-day) — use `gh pr create --base <parent>` and avoid `--delete-branch` on the parent merge so child PRs don't auto-close.
-- **Per-area PR size heuristic.** "One PR, one concern" applies by surface, not LOC. `eval/` PRs are commonly 200–2500 LOC (dataset + config + plot bundled is one concern); `docs/` PRs typically <100 LOC. Don't reject a 2000-LOC `eval/` PR on size alone, and split a 200-LOC `docs/` PR if it mixes two ADRs. See `project_pr_size_heuristic.md` memory.
-- **Behavior change ↔ test change.** Behavior change without a test is presumed accidental. Regression tests go in `tests/test_*_regression.py` (pattern: `tests/test_retrieval_loop_regression.py`).
-- **Backward compatibility.** Breaking changes need an explicit reason. Answer-contract break (ADR 0003) requires `schema_version` bump.
-- **ADR threshold.** Removing or replacing a load-bearing decision (baseline / pipeline / answer contract / eval surface) needs an ADR — also covers introducing a *new* measurement surface (eval slice, leaderboard signal cadence, self-review axis) since that pins a contract reviewers will rely on. Criteria: [`docs/adr/README.md`](docs/adr/README.md).
-- **Reserve ADR numbers up front.** Before drafting a new ADR, check both `ls docs/adr/` and `gh pr list --search "ADR" --state open` to find the next available number. Propose it and wait for user confirmation before creating the file — concurrent worktree work has produced repeat collisions (0022→0023, 0023→0025, 0029→0030).
-- **LLM coding bias guard.** See the `karpathy-guidelines` skill ([upstream](https://github.com/multica-ai/andrej-karpathy-skills), fetched 2026-05-15 — re-fetch with an explicit PR if upstream HEAD changes) for the 4-principle default (Think Before / Simplicity First / Surgical Changes / Goal-Driven). **Conflict policy**: the project-specific rules above (incident-derived) take precedence over the karpathy 4-principle (generic) — karpathy is a default to lean on when project rules are silent, not an override.
+- **Issue first, 컨벤션 브랜치.** 모든 PR 은 issue 참조 (`Closes #N` in body) + 브랜치 `<type>/issue-<N>[-<slug>]` (ADR 0007). `branch-and-issue-check.yml` 이 PR 시점에 강제
+- **새로 만들기보다 재사용.** 코딩 전 기존 구현 확인. 재사용 유틸리티 먼저 검색
+- **One PR, one concern.** 범위 밖 수정 → 별도 issue/follow-up PR. 같은 도메인을 같은 날 N PR 로 분해는 valid 패턴 (예: 2026-05-15 PR-A0~A3 4-PR stacked-day). `gh pr create --base <parent>` 사용 + 부모 머지 시 `--delete-branch` 회피 (child auto-close 방지)
+- **PR 크기는 surface 별.** "one concern" 은 LOC 가 아니라 surface 기준. `eval/` PR 은 200–2500 LOC 정상 (dataset + config + plot 한 묶음 = 한 concern); `docs/` PR 은 보통 <100 LOC. 2000-LOC `eval/` PR 을 크기만으로 reject 금지, 두 ADR 섞인 200-LOC `docs/` PR 은 분할. memory `project_pr_size_heuristic.md` 참조
+- **동작 변경 ↔ 테스트 변경.** 테스트 없는 동작 변경은 실수로 간주. 회귀 테스트는 `tests/test_*_regression.py` (예: `tests/test_retrieval_loop_regression.py`)
+- **하위 호환성.** Breaking 변경은 명시적 사유 필요. 답변 계약 (ADR 0003) 깨질 시 `schema_version` 증가
+- **ADR 임계값.** load-bearing 결정 (기준선/파이프라인/답변 계약/eval 표면) 제거·교체 시 ADR 필요. **새 측정 표면** (eval 슬라이스, 리더보드 신호, self-review 축) 도입도 포함 (reviewer 가 의존할 계약 고정). 기준: [`docs/adr/README.md`](docs/adr/README.md)
+- **ADR 번호 사전 예약.** ADR 작성 전 `ls docs/adr/` + `gh pr list --search "ADR" --state open` 양쪽 확인. 사용자 확인 후 파일 생성 — 동시 worktree 작업으로 0022→0023, 0023→0025, 0029→0030 충돌 반복 발생
+- **LLM 코딩 편향 가드.** `karpathy-guidelines` skill ([upstream](https://github.com/multica-ai/andrej-karpathy-skills), 2026-05-15 fetch) 의 4 원칙 (Think Before / Simplicity First / Surgical Changes / Goal-Driven). **충돌 정책**: 위 프로젝트 규칙 (인시던트 유래) 이 karpathy 4 원칙 (범용) 보다 우선 — karpathy 는 프로젝트 규칙이 침묵할 때 leaning 기본값
 
-## PR description
+## PR 설명
 
-Fill in [`.github/pull_request_template.md`](.github/pull_request_template.md).
-Every section is required — write "N/A" with a reason rather than deleting.
-When load-bearing files change, **item 5b (real-data delta)** is the most
-important — the synthetic CI delta alone missed #69's intended-abstention regression.
+[`.github/pull_request_template.md`](.github/pull_request_template.md) 채워야 함. 모든 섹션 필수 — 삭제 대신 "N/A" + 사유. load-bearing 파일 변경 시 **5b (real-data 델타)** 가 가장 중요 — 합성 CI 델타만으로 #69 의도된 보류 회귀를 놓친 사례
 
-## Frequently used commands
+## 자주 쓰는 명령
 
-- `make install-hooks` — one-time per clone: activates `.githooks/` (pre-commit ADR 0005 boundary, pre-push branch/eval checks).
-- `make smoke` — quick sanity check (few minutes, `EMBEDDING_BACKEND=hashing`).
-- `bash scripts/test.sh` — `pytest -q`; same as the CI gate.
-- `make check-branch` — ad-hoc validation of the current branch against ADR 0007.
-- `make real-eval` + `make real-eval-delta` — private 100-doc eval; required when load-bearing files change.
-- `make ship-arm` — Stop-hook–driven auto-ship pipeline (commit → push → PR → CI → squash-merge). See [`docs/operations/auto-ship.md`](docs/operations/auto-ship.md) for gates, stages, and `STACKED=ack` discipline.
-- Latency numbers come from `reports/eval_summary.json` `stage_latency` block — not ad-hoc measurement.
+- `make install-hooks` — clone 당 1회, `.githooks/` 활성화 (pre-commit ADR 0005 경계, pre-push 브랜치/eval 체크)
+- `make smoke` — 빠른 sanity check (수분, `EMBEDDING_BACKEND=hashing`)
+- `bash scripts/test.sh` — `pytest -q`, CI gate 와 동일
+- `make check-branch` — 현재 브랜치 ADR 0007 검증
+- `make real-eval` + `make real-eval-delta` — 비공개 100-doc eval, load-bearing 변경 시 필수
+- `make ship-arm` — Stop-hook 자동 ship 파이프라인 (commit → push → PR → CI → squash-merge). 게이트/단계/`STACKED=ack` 규율: [`docs/operations/auto-ship.md`](docs/operations/auto-ship.md)
+- Latency 수치는 `reports/eval_summary.json` `stage_latency` 블록 — ad-hoc 측정 금지
 
-## Prohibited (not enforced by automation)
+## 금지 (자동화 비강제)
 
-- Deleting or renaming ADR files. Mark **Superseded** in the Status block; keep the file.
-- Adding a parallel pydantic / TypedDict model that shadows `run_rag_query`'s answer dict — the dict is the contract (ADR 0003).
-- Removing the `naive_baseline` preset from `eval/config.yaml` (ADR 0001).
-- Adding unrelated commits mid-review — open a follow-up PR.
-- Running `gh pr merge --delete-branch` without first verifying `gh pr list --base <this-PR-head-branch> --state open --json number` is empty. Open results mean a stacked dependent exists — drop `--delete-branch` or rebase the children onto main first. (A follow-up PreToolUse Bash guard hook automates this; the rule is stated here so it survives even if the hook is disabled.)
+- ADR 파일 삭제/이름변경. Status 블록에 **Superseded** 표시하고 파일은 유지
+- `run_rag_query` 답변 dict 를 그림자처럼 가리는 parallel pydantic/TypedDict 모델 추가 — dict 가 계약 (ADR 0003)
+- `eval/config.yaml` 에서 `naive_baseline` preset 제거 (ADR 0001)
+- 리뷰 중 무관한 커밋 추가 — follow-up PR 분리
+- `gh pr list --base <this-PR-head> --state open --json number` 확인 없이 `gh pr merge --delete-branch` 실행. 결과가 비어있지 않으면 stacked dependent 존재 — `--delete-branch` 빼거나 child 를 main 위로 rebase 먼저. (후속 PreToolUse Bash 가드 훅이 자동화하지만, 훅 비활성화 시도 살아남도록 규칙 명시)
 
-## Non-goals (unless explicitly requested)
+## Non-goals (명시 요청 없을 시)
 
-- UI additions, web-service productization.
-- Large architectural rewrites.
-- New paid-API dependencies.
-- Reconstructing private RFP data.
+- UI 추가, 웹 서비스 제품화
+- 대규모 아키텍처 재작성
+- 신규 paid-API 의존성
+- 비공개 RFP 데이터 재구성
 
-## When blocked
+## 막혔을 때
 
-Don't guess large. Instead:
+크게 추측 금지. 대신:
 
-1. State 2-3 failure hypotheses.
-2. Summarize the repro command + observed error.
-3. Propose a minimal fix.
-4. Describe a fallback path if the minimal fix doesn't apply.
+1. 실패 가설 2-3개 명시
+2. 재현 명령 + 관측된 에러 요약
+3. 최소 수정 제안
+4. 최소 수정이 안 통할 fallback 경로 설명
 
-## Domain glossary
+## 도메인 용어
 
-- **Evidence** — retrieved chunk(s) cited as support for a claim.
-- **Grounding** — the claim ↔ evidence ↔ source-document linkage requirement.
-- **Abstention** — first-class answer status (ADR 0003 `status: insufficient`) when retrieved evidence is inadequate; not a fallback or error.
-- **Naive baseline** — minimal-pipeline ablation preset preserved alongside `agentic_full` for side-by-side comparison (ADR 0001).
+- **Evidence (근거)** — 주장을 지지하는 retrieved chunk
+- **Grounding (근거 연결)** — claim ↔ evidence ↔ 원문 연결 요구사항
+- **Abstention (보류)** — ADR 0003 `status: insufficient`, 근거 불충분 시 일급 답변 상태. fallback/error 아님
+- **Naive baseline (기준선)** — `agentic_full` 과 side-by-side 비교용 최소 파이프라인 분석 변형 preset (ADR 0001)
