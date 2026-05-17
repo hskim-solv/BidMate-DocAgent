@@ -23,6 +23,7 @@ from rag_core import (
     metadata_stage_sequence,
     run_rag_query,
 )
+from tests._shared_index_cache import get_shared_raw_index
 
 
 ANSWERABLE_QUERY = "기관 A의 보안 통제 요구사항은?"
@@ -32,10 +33,8 @@ OUT_OF_CORPUS_QUERY = "외계 행성의 우주선 검수 절차는?"
 class RetrievalLoopRegressionTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        cls.index = build_index_payload(
-            Path("data/raw"),
-            embedding_backend="hashing",
-        )
+        # Issue #915 — worker-local cache, see tests/_shared_index_cache.py.
+        cls.index = get_shared_raw_index()
 
     def test_answerable_single_doc_returns_non_empty_evidence(self) -> None:
         """R2 guard: answerable single-doc query must not silently abstain.

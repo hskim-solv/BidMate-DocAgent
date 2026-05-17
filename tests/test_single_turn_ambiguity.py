@@ -25,6 +25,7 @@ from rag_core import (
     metadata_clarification_answer,
     run_rag_query,
 )
+from tests._shared_index_cache import get_shared_raw_index
 
 
 class MetadataClarificationAnswerTest(unittest.TestCase):
@@ -84,9 +85,8 @@ class SingleTurnAmbiguityProbeTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        cls.index = build_index_payload(
-            Path("data/raw"), embedding_backend="hashing"
-        )
+        # Issue #915 — worker-local cache, see tests/_shared_index_cache.py.
+        cls.index = get_shared_raw_index()
 
     def _expect_clarification(self, query: str) -> dict:
         result = run_rag_query(self.index, query)

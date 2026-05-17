@@ -12,6 +12,7 @@ from rag_core import (
     redact_trace,
     run_rag_query,
 )
+from tests._shared_index_cache import get_shared_raw_index
 
 
 REQUIRED_QUERY_REWRITE_FIELDS = {
@@ -61,10 +62,8 @@ REQUIRED_LATENCY_KEYS = {
 class FuzzyMetadataRetrievalTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        cls.index = build_index_payload(
-            Path("data/raw"),
-            embedding_backend="hashing",
-        )
+        # Issue #915 — worker-local cache, see tests/_shared_index_cache.py.
+        cls.index = get_shared_raw_index()
 
     def test_spacing_variant_matches_exact_agency(self) -> None:
         result = run_rag_query(self.index, "기관A의 보안 통제 요구사항은?")

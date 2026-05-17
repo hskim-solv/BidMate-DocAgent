@@ -33,6 +33,7 @@ from pathlib import Path
 from typing import Any
 
 from rag_core import build_index_payload, run_rag_query
+from tests._shared_index_cache import get_shared_raw_index_fixed
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -100,11 +101,8 @@ def _build_contract_shape() -> dict[str, Any]:
     Used both by the test (compared to the committed golden) and by
     the regenerate-golden helper documented in this module's docstring.
     """
-    index = build_index_payload(
-        ROOT_DIR / "data" / "raw",
-        embedding_backend="hashing",
-        chunking_strategy="fixed",
-    )
+    # Issue #915 — worker-local cache, see tests/_shared_index_cache.py.
+    index = get_shared_raw_index_fixed()
     result = run_rag_query(index, SNAPSHOT_QUERY, pipeline="naive_baseline")
     return _shape(_extract_contract_subset(result))
 
@@ -119,11 +117,8 @@ class AnswerContractShapeTest(unittest.TestCase):
         # The literal value is not in the shape signature (shape only
         # captures the type "int"), so we re-read the answer dict
         # directly to ensure the version constant matches ADR 0003.
-        index = build_index_payload(
-            ROOT_DIR / "data" / "raw",
-            embedding_backend="hashing",
-            chunking_strategy="fixed",
-        )
+        # Issue #915 — worker-local cache, see tests/_shared_index_cache.py.
+        index = get_shared_raw_index_fixed()
         result = run_rag_query(index, SNAPSHOT_QUERY, pipeline="naive_baseline")
         version = (result.get("answer") or {}).get("schema_version")
         self.assertEqual(

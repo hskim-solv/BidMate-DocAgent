@@ -26,6 +26,7 @@ from rag_core import (
     resolve_conversation_context,
     run_rag_query,
 )
+from tests._shared_index_cache import get_shared_raw_index
 
 
 class InjectEntitiesIntoQueryTest(unittest.TestCase):
@@ -134,9 +135,8 @@ class FollowUpRetrievalAnchorRegressionTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        cls.index = build_index_payload(
-            Path("data/raw"), embedding_backend="hashing"
-        )
+        # Issue #915 — worker-local cache, see tests/_shared_index_cache.py.
+        cls.index = get_shared_raw_index()
 
     def test_resolved_query_contains_entity_anchor(self) -> None:
         result = run_rag_query(

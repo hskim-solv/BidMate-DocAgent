@@ -39,6 +39,7 @@ from rag_core import (
     metadata_targets,
     resolve_pipeline_config,
 )
+from tests._shared_index_cache import get_shared_raw_index_fixed
 
 
 def _flag_embedding_available() -> bool:
@@ -136,11 +137,8 @@ class NaiveBaselineInvariantTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        cls.index = build_index_payload(
-            Path("data/raw"),
-            embedding_backend="hashing",
-            chunking_strategy="fixed",
-        )
+        # Issue #915 — worker-local cache, see tests/_shared_index_cache.py.
+        cls.index = get_shared_raw_index_fixed()
 
     def test_dense_plan_strategy_does_not_mention_m3(self) -> None:
         analysis = analyze_query("기관 A 보안", metadata_targets(self.index))
@@ -162,11 +160,8 @@ class M3EndToEndTest(unittest.TestCase):  # pragma: no cover — opt-in, gated o
 
     @classmethod
     def setUpClass(cls) -> None:
-        cls.index = build_index_payload(
-            Path("data/raw"),
-            embedding_backend="hashing",
-            chunking_strategy="fixed",
-        )
+        # Issue #915 — worker-local cache, see tests/_shared_index_cache.py.
+        cls.index = get_shared_raw_index_fixed()
 
     def test_m3_score_parts_carry_sparse_and_colbert(self) -> None:
         from rag_core import retrieve

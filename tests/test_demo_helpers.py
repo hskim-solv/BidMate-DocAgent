@@ -24,6 +24,7 @@ from demo.helpers import (
     run_pipeline,
 )
 from rag_core import build_index_payload
+from tests._shared_index_cache import get_shared_raw_index
 
 
 class SampleQueriesContractTest(unittest.TestCase):
@@ -117,10 +118,8 @@ class RunPipelineIntegrationTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        cls.index = build_index_payload(
-            ROOT_DIR / "data" / "raw",
-            embedding_backend="hashing",
-        )
+        # Issue #915 — worker-local cache, see tests/_shared_index_cache.py.
+        cls.index = get_shared_raw_index()
 
     def test_runs_extractive(self) -> None:
         result = run_pipeline(

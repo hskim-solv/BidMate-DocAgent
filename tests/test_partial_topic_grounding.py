@@ -29,6 +29,7 @@ from rag_core import (
     build_index_payload,
     verify_evidence,
 )
+from tests._shared_index_cache import get_shared_raw_index
 
 
 class VerifyEvidencePartialTopicTest(unittest.TestCase):
@@ -142,9 +143,8 @@ class OutOfCorpusAbstentionPreservedTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        cls.index = build_index_payload(
-            Path("data/raw"), embedding_backend="hashing"
-        )
+        # Issue #915 — worker-local cache, see tests/_shared_index_cache.py.
+        cls.index = get_shared_raw_index()
 
     def test_out_of_corpus_query_still_abstains(self) -> None:
         from rag_core import run_rag_query

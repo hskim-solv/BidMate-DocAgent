@@ -23,6 +23,7 @@ import unittest
 from pathlib import Path
 
 from rag_core import build_index_payload, run_rag_query
+from tests._shared_index_cache import get_shared_raw_index_fixed
 
 
 GOLDEN_PATH = Path(__file__).parent / "data" / "naive_baseline_top_k.json"
@@ -34,11 +35,8 @@ class NaiveBaselineRankingInvarianceTest(unittest.TestCase):
         # Hashing backend + fixed chunking = deterministic across machines
         # and across the Phase 3 stack — every PR's CI run reproduces the
         # same vectors.
-        cls.index = build_index_payload(
-            Path("data/raw"),
-            embedding_backend="hashing",
-            chunking_strategy="fixed",
-        )
+        # Issue #915 — worker-local cache, see tests/_shared_index_cache.py.
+        cls.index = get_shared_raw_index_fixed()
         cls.golden = json.loads(GOLDEN_PATH.read_text(encoding="utf-8"))
 
     def test_top_k_chunk_ids_match_golden(self) -> None:
