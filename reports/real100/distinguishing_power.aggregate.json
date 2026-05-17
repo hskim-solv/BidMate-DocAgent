@@ -1,0 +1,88 @@
+{
+  "gauge": {
+    "accuracy": {
+      "default": 0.2966101694915254,
+      "signal_alive": true,
+      "vs_random": {
+        "gap": 0.2711864406779661,
+        "normalized": 0.2782608695652174
+      },
+      "vs_single": {
+        "gap": 0.2288135593220339,
+        "normalized": 0.24545454545454545
+      }
+    },
+    "answer_format_compliance": {
+      "default": 0.2081447963800905,
+      "signal_alive": false,
+      "vs_random": {
+        "gap": -0.2398190045248869,
+        "normalized": -0.4344262295081967
+      },
+      "vs_single": {
+        "gap": -0.2398190045248869,
+        "normalized": -0.4344262295081967
+      }
+    },
+    "citation_precision": {
+      "default": 0.19019607843137254,
+      "signal_alive": false,
+      "vs_random": {
+        "gap": -0.15822021116138762,
+        "normalized": -0.24282407407407405
+      },
+      "vs_single": {
+        "gap": 0.1358974358974359,
+        "normalized": 0.14370015948963316
+      }
+    },
+    "claim_citation_alignment": {
+      "default": 0.9627659574468085,
+      "signal_alive": true,
+      "vs_random": {
+        "gap": 0.08041301627033792,
+        "normalized": 0.6835106382978722
+      },
+      "vs_single": {
+        "gap": 0.0292553191489362,
+        "normalized": 0.44000000000000006
+      }
+    },
+    "groundedness": {
+      "default": 0.25339366515837103,
+      "signal_alive": false,
+      "vs_random": {
+        "gap": -0.1085972850678733,
+        "normalized": -0.17021276595744683
+      },
+      "vs_single": {
+        "gap": 0.17194570135746606,
+        "normalized": 0.187192118226601
+      }
+    }
+  },
+  "num_predictions": 221,
+  "runs": {
+    "full": {
+      "accuracy": 0.2966101694915254,
+      "answer_format_compliance": 0.2081447963800905,
+      "citation_precision": 0.19019607843137254,
+      "claim_citation_alignment": 0.9627659574468085,
+      "groundedness": 0.25339366515837103
+    },
+    "random_retrieval": {
+      "accuracy": 0.025423728813559324,
+      "answer_format_compliance": 0.4479638009049774,
+      "citation_precision": 0.34841628959276016,
+      "claim_citation_alignment": 0.8823529411764706,
+      "groundedness": 0.36199095022624433
+    },
+    "single_chunk": {
+      "accuracy": 0.06779661016949153,
+      "answer_format_compliance": 0.4479638009049774,
+      "citation_precision": 0.05429864253393665,
+      "claim_citation_alignment": 0.9335106382978723,
+      "groundedness": 0.08144796380090498
+    }
+  }
+}
