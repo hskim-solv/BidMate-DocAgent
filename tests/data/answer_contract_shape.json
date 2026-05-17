@@ -37,11 +37,18 @@
       "chunking_strategy": "str",
       "doc_id": "str",
       "metadata": {
+        "axis_a_acceptance_verdict": "str",
+        "axis_a_scale": "str",
+        "axis_a_scale_anchor": "str",
+        "axis_a_scale_distractor_ref": "str",
+        "axis_a_scale_measurement_ref": "str",
+        "axis_a_scale_outline_ref": "str",
         "document_type": "str",
         "domain": "str",
         "project_aliases": [
           "str"
-        ]
+        ],
+        "section_definition": "str"
       },
       "parent_section_id": "str",
       "retrieval_mode": "str",
