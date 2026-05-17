@@ -32,12 +32,28 @@ fi
 # back to serial automatically when pytest-xdist is missing (the `-n` /
 # `--dist` flags simply error out; minimal envs without dev deps installed
 # get the same 1010s serial run as before).
+#
+# Issue #931: CI matrix shard via pytest-split. When `BIDMATE_PYTEST_SPLITS`
+# AND `BIDMATE_PYTEST_SHARD` are both set AND pytest-split is importable,
+# pytest receives `--splits N --group K` to run only this shard's slice of
+# the suite. Used by `.github/workflows/pr-eval.yml`'s matrix.shard fan-out.
+# Local runs without the env vars (default) skip --splits entirely — same
+# behavior as before the matrix shard landed. The fallback chain (no env
+# vars OR pytest-split missing) keeps fresh-clone / minimal-env paths intact.
 if command -v pytest >/dev/null 2>&1; then
   XDIST_FLAGS=()
   if python -c "import xdist" >/dev/null 2>&1; then
     XDIST_FLAGS=(-n auto --dist loadfile)
   fi
-  pytest -q "${XDIST_FLAGS[@]}" "${COV_FLAGS[@]}"
+  SPLIT_FLAGS=()
+  if [[ -n "${BIDMATE_PYTEST_SPLITS:-}" && -n "${BIDMATE_PYTEST_SHARD:-}" ]]; then
+    if python -c "import pytest_split" >/dev/null 2>&1; then
+      SPLIT_FLAGS=(--splits "${BIDMATE_PYTEST_SPLITS}" --group "${BIDMATE_PYTEST_SHARD}")
+    else
+      echo "pytest-split not importable; ignoring BIDMATE_PYTEST_SPLITS/SHARD." >&2
+    fi
+  fi
+  pytest -q "${XDIST_FLAGS[@]}" "${COV_FLAGS[@]}" "${SPLIT_FLAGS[@]}"
 else
   echo "pytest not found. Install dev dependencies or add pytest to requirements." >&2
   exit 1
