@@ -25,8 +25,19 @@ if python -c "import pytest_cov" >/dev/null 2>&1; then
   COV_FLAGS=(--cov --cov-report=term-missing --cov-report=xml)
 fi
 
+# Issue #915: pytest-xdist parallelism via `-n auto`. `--dist loadfile` keeps
+# every test from the same file on a single worker — the file-internal
+# stateful tests (env mutation, golden writes, qdrant collections, langgraph
+# globals — see audit in PR body) stay safe without a marker scheme. Falls
+# back to serial automatically when pytest-xdist is missing (the `-n` /
+# `--dist` flags simply error out; minimal envs without dev deps installed
+# get the same 1010s serial run as before).
 if command -v pytest >/dev/null 2>&1; then
-  pytest -q "${COV_FLAGS[@]}"
+  XDIST_FLAGS=()
+  if python -c "import xdist" >/dev/null 2>&1; then
+    XDIST_FLAGS=(-n auto --dist loadfile)
+  fi
+  pytest -q "${XDIST_FLAGS[@]}" "${COV_FLAGS[@]}"
 else
   echo "pytest not found. Install dev dependencies or add pytest to requirements." >&2
   exit 1
