@@ -409,6 +409,33 @@ ablation_runs:
     verifier_retry: true
     retrieval_mode: flat
     hwp_loader: native_tables
+  # Issue #938 / ADR 0053 — distinguishing-power floor ablations.
+  # The eval-framework-progressive-audit skill (Phase 1 step 2) calls
+  # for three "broken baselines" that should perform *worse* than the
+  # default; any default whose metrics collapse to within noise of one
+  # of these is telling us the default isn't doing real work. PR-5a
+  # lands two of the three (no_verifier is already covered by the
+  # existing ``no_verifier_retry`` row above).
+  - name: random_retrieval
+    pipeline: agentic_full
+    metadata_first: true
+    rerank: true
+    verifier_retry: true
+    retrieval_mode: flat
+    # Deterministic per (query, chunk_id) via SHA-256; no vector /
+    # BM25 / M3 forward pass — see ``rag_retrieval.retrieve_candidates``.
+    retrieval_backend: random
+  - name: single_chunk
+    pipeline: single_chunk
+    # All flags below are redundant with the preset (top_k=1, no
+    # metadata-first / rerank / verifier_retry, dense backend) but are
+    # spelled out so the eval row reads independently of the preset
+    # registry — same convention as the other ablation rows.
+    metadata_first: false
+    rerank: false
+    verifier_retry: false
+    retrieval_mode: flat
+    retrieval_backend: dense
 cases:
   - id: single_doc_security
     query_type: single_doc

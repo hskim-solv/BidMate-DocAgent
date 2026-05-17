@@ -54,7 +54,12 @@ class M3BackendValidationTest(unittest.TestCase):
 
     def test_valid_retrieval_backends_includes_m3(self) -> None:
         self.assertIn("m3", VALID_RETRIEVAL_BACKENDS)
-        self.assertEqual({"dense", "hybrid", "m3"}, VALID_RETRIEVAL_BACKENDS)
+        # ADR 0053 (issue #938) — "random" joined the set as the
+        # distinguishing-power floor. Update lockstep with the m3 row so
+        # both regression guards stay aligned.
+        self.assertEqual(
+            {"dense", "hybrid", "m3", "random"}, VALID_RETRIEVAL_BACKENDS
+        )
 
     def test_resolve_pipeline_config_accepts_m3(self) -> None:
         config = resolve_pipeline_config(

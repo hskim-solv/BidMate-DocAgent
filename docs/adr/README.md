@@ -125,6 +125,7 @@ project record.
 | [0049](./0049-kordoc-replaces-pyhwp-backend.md) | proposed | kordoc (npm subprocess, Node 18+) replaces pyhwp/hwp5 as HWP backend **and** replaces `PdfCsvTextLoader`'s default cover/TOC path with `PdfKordocLoader`; `BIDMATE_HWP_LOADER` + `BIDMATE_PDF_LOADER` flip independently (`kordoc` default \| `csv_text` offline / CI / Node-missing); `_prime_kordoc_batches` pools HWP + PDF into one `npx` invocation; `csv_text` fallback preserved (ADR 0001 invariant); supersedes ADR 0036; closes issue #890 |
 | [0050](./0050-m4a-axis-a-real-scale-v2-distractor-rebuild.md) | proposed | M4-A axis-A real_scale_v2_distractor 재구축 + H/I/J/K 코퍼스 확장 |
 | [0051](./0051-flat-root-module-layout.md) | accepted | flat-root module layout 유지 — `src/` 마이그레이션 거절 (ADR 0045 leaf DAG 가 패키지화 이득 대체) |
+| [0053](./0053-distinguishing-power-floor-ablations.md) | proposed | distinguishing-power floor ablations — `random` retrieval backend (SHA-256 deterministic, no embedding) + `single_chunk` preset (top_k=1, no rerank/retry); falsifiable lower bounds for "does retrieval pull weight?"; ADR 0001 byte-identity invariant preserved; pairs with PR-5b `scripts/distinguishing_power.py` follow-up; closes issue #938 |
 
 ## Roadmap (proposed, not yet committed)
 

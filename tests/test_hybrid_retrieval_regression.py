@@ -145,7 +145,12 @@ class HybridRetrievalRegressionTest(unittest.TestCase):
         # backend (BGE-M3 dense + sparse + ColBERT multi-vector fused
         # via N-way RRF). Default remains ``dense``; ``hybrid`` is
         # unchanged. See ``docs/vision/m3-multichannel-spike.md``.
-        self.assertEqual({"dense", "hybrid", "m3"}, VALID_RETRIEVAL_BACKENDS)
+        # Issue #938 / ADR 0053 — ``random`` is the 4th member: the
+        # distinguishing-power floor (uniform random ranking over
+        # filtered candidates, no embedding / BM25 / M3 forward pass).
+        self.assertEqual(
+            {"dense", "hybrid", "m3", "random"}, VALID_RETRIEVAL_BACKENDS
+        )
 
     # -- Issue #149 — RRF k as plan-time knob -----------------------
 

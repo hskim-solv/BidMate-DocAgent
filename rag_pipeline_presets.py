@@ -184,6 +184,31 @@ PIPELINE_PRESETS: dict[str, dict[str, Any]] = {
             "anthropic (opt-in, real LLM planning)."
         ),
     },
+    # Issue #938 / ADR 0053 — minimal "fetch one chunk and answer" baseline.
+    # Mirrors the naive shape a contributor would reach for without retrieval
+    # engineering: top_k=1, no metadata-first, no rerank, no verifier retry.
+    # The distinguishing-power floor for the "is multi-chunk retrieval pulling
+    # weight?" question — pairs with the ``random_retrieval`` ablation row in
+    # eval/config.yaml. Retrieval backend stays "dense" so the only knob being
+    # varied vs naive_baseline is ``top_k`` (1 vs 4).
+    "single_chunk": {
+        "top_k": 1,
+        "metadata_first": False,
+        "rerank": False,
+        "rerank_cross_encoder": False,
+        "verifier_retry": False,
+        "retrieval_mode": "flat",
+        "retrieval_backend": "dense",
+        "prompt_profile": "minimal_grounded_extractive",
+        "rrf_k": RRF_K,
+        "bm25_stopword_profile": "shared",
+        "bm25_tokenizer": "regex",
+        "query_expansion": "identity",
+        "description": (
+            "Single top-1 dense chunk, no rerank or verifier retry — "
+            "distinguishing-power floor for multi-chunk retrieval value."
+        ),
+    },
 }
 
 PIPELINE_ALIASES = {
@@ -231,7 +256,14 @@ VALID_RETRIEVAL_MODES = {"flat", "hierarchical"}
 # stays ``dense``. Requires ``pip install -r requirements-m3.txt``.
 # See ``docs/vision/m3-multichannel-spike.md`` and ADR 0010's
 # "Alternatives considered" (lines 72-85) for the deferral context.
-VALID_RETRIEVAL_BACKENDS = {"dense", "hybrid", "m3"}
+# Issue #938 / ADR 0053 — ``random`` is the distinguishing-power floor:
+# uniform random ranking over filtered candidates, deterministic per
+# (query, chunk_id) via SHA-256, no embedding / BM25 / M3 forward pass.
+# Any pipeline whose accuracy collapses to within noise of ``random`` is
+# telling us the retrieval signal is not doing work. See the
+# ``random_retrieval`` ablation row in ``eval/config.yaml`` and
+# ``scripts/distinguishing_power.py`` (PR-5b follow-up).
+VALID_RETRIEVAL_BACKENDS = {"dense", "hybrid", "m3", "random"}
 VALID_BM25_STOPWORD_PROFILES = {"shared", "bm25_extra"}
 # Issue #486 / ADR 0031 — additive Korean-morphology tokenizer.
 # "regex" preserves the ADR 0001 naive_baseline invariant; "kiwi" opts
