@@ -2,11 +2,12 @@
 
 | Field       | Value                                     |
 |-------------|-------------------------------------------|
-| **Status**  | Accepted                                  |
+| **Status**  | Accepted (Superseded by ADR 0052)         |
 | **Date**    | 2026-05-14                                |
 | **Issue**   | #732                                      |
 | **Authors** | hskim-solv                                |
 | **Tags**    | eval, real-data, dataset-cardinality      |
+| **Superseded by** | ADR 0052 (n=21→221 step-change via LLM-assisted generator) |
 
 ## TL;DR
 
