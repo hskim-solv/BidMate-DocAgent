@@ -79,51 +79,51 @@ project record.
 
 | # | Status | Title |
 |---|---|---|
-| [0001](./0001-preserve-naive-baseline.md) | accepted | Preserve a naive baseline alongside the agentic pipeline |
-| [0002](./0002-metadata-first-retrieval.md) | accepted | Metadata-first retrieval strategy |
-| [0003](./0003-structured-answer-citation-contract.md) | accepted | Structured answer / citation contract (`schema_version: 2`) |
-| [0004](./0004-verifier-retry-policy.md) | accepted | Verifier-driven retry with strict → relaxed staging |
-| [0005](./0005-eval-split-public-synthetic-private-local.md) | accepted | Eval split: public synthetic vs private local |
-| [0006](./0006-llm-judge-on-real-data-only.md) | superseded by 0005 | LLM-judge on the real-data surface only (refines 0004) |
-| [0007](./0007-issue-linked-branch-naming.md) | accepted | Issue-linked branch naming convention |
-| [0008](./0008-evidence-boundary.md) | accepted | Evidence-boundary defense against prompt injection |
-| [0009](./0009-external-baseline-comparison.md) | accepted | External baseline comparison via a separate script (extends 0001); `scripts/compare_external_baselines.py` + `reports/external_baselines.json` implemented; stub run committed; real LangChain run deferred to issue #449 |
-| [0010](./0010-hybrid-bm25-dense-retrieval-rrf.md) | accepted | Hybrid BM25 + dense retrieval with RRF fusion |
-| [0012](./0012-llm-judge-on-public-synthetic.md) | superseded by 0005 | LLM-judge on the public synthetic eval, stub-default (refines 0006, reuses 0011 backend pattern) |
-| [0013](./0013-observability-as-additive-pluggable-surface.md) | accepted | Observability as an additive, pluggable, fail-closed surface |
-| [0014](./0014-ragas-judge-additive-synthetic.md) | superseded by 0005 | RAGAS-style LLM judge as additive enrichment on synthetic surface (extends 0012) |
-| [0015](./0015-cost-telemetry-additive.md) | superseded by 0011 | Cost telemetry as additive observability (extends 0011, 0013) |
-| [0017](./0017-llm-metadata-extraction-additive.md) | superseded by 0011 | LLM metadata extraction as additive backend (extends 0011) |
-| [0018](./0018-korean-public-rag-bench.md) | accepted | Korean public RAG bench as supplementary out-of-domain surface (extends 0005) |
-| [0019](./0019-embedding-default-stays-minilm.md) | superseded by 0001 | Embedding default stays MiniLM-L12-v2 with explicit re-open conditions (extends 0002) |
-| [0020](./0020-protocol-based-pluggability.md) | accepted | Retrieval-side extension points use `@runtime_checkable typing.Protocol` in a leaf module + default adapter wrapping existing impl + `default_*()` factory + env-var routing (VectorStore #176 + Reranker #345; followed by QueryExpander ADR 0023) |
-| [0021](./0021-bge-m3-completes-phase-1-3.md) | accepted | BGE-M3 closes ADR 0019 Phase 1.3 condition 2; default stays MiniLM (supplements 0019) |
-| [0022](./0022-langgraph-orchestration-stage-1.md) | accepted | LangGraph orchestrator path for agentic_full presets — stages 1 (passthrough) + 2 (multi-node analyze / retrieve_loop / build_answer; `_phase_*` helpers shared with direct path; opt-in via BIDMATE_ORCHESTRATOR=langgraph, preserves ADR 0001) |
-| [0024](./0024-agentic-full-llm-as-api-default.md) | accepted | API surface default preset = `agentic_full_llm`; backend default stays `stub` (complements 0011; CLI default stays `naive_baseline` per 0001) |
-| [0025](./0025-cost-frontier-defer-until-real-baselines.md) | superseded by 0038 | Cost-accuracy frontier deferred until external baseline real runs land (defers #177; backs README §Limitations "비용 영점"; follows ADR 0019 → 0021 measurement-gated pattern) |
-| [0038](./0038-cost-model-and-frontier-interpretation.md) | accepted | Cost model = `PRICING_PER_MTOK_USD` lookup table + `compute_cost_usd()`; `tokens_in/out/cost_estimate_usd/llm_model` wired into `eval_summary.json.case_results[i]`; frontier x-axis = measured $/query, three reading anchors (sweet spot / accuracy ceiling / cheapest floor); closes ADR 0025 conditions 2+3 (issue #449) |
-| [0026](./0026-cross-encoder-reranker-deferral.md) | superseded by 0025 | Cross-encoder reranker default stays stub-identity; real-backend measurement deferred |
-| [0027](./0027-lora-finetuned-embedding-additive.md) | superseded by 0011 | LoRA-fine-tuned embedding adapter as additive ablation, env-var gated (`BIDMATE_EMBEDDING_LORA_ADAPTER`) |
-| [0028](./0028-security-screen-additive.md) | accepted | Prompt-injection screen (query-side, diagnostic-only) + PII redaction (ingestion-time, opt-in via `BIDMATE_INGEST_REDACT_PII`) as additive security layer (extends 0008 to query side; preserves 0001 / 0003 / 0005) |
-| [0030](./0030-leaderboard-headline-includes-agentic-full.md) | accepted | Leaderboard headline expands to render `agentic_full` alongside `naive_baseline` as parallel time series; ADR 0001 baseline preserved, `ablation_full` aggregate key added to history snapshots (extends ADR 0001 / ADR 0024 visibility surface) |
+| [0001](./0001-preserve-naive-baseline.md) | accepted | agentic 파이프라인과 나란히 naive 기준선 유지 |
+| [0002](./0002-metadata-first-retrieval.md) | accepted | 메타데이터 우선 검색 전략 |
+| [0003](./0003-structured-answer-citation-contract.md) | accepted | 구조화된 답변/인용 계약 (`schema_version: 2`) |
+| [0004](./0004-verifier-retry-policy.md) | accepted | 검증기 주도 retry — strict → relaxed 단계화 |
+| [0005](./0005-eval-split-public-synthetic-private-local.md) | accepted | Eval 분리 — public synthetic vs private local |
+| [0006](./0006-llm-judge-on-real-data-only.md) | superseded by 0005 | LLM-judge 는 real-data 표면 전용 |
+| [0007](./0007-issue-linked-branch-naming.md) | accepted | 이슈 연결 브랜치 네이밍을 required check 로 |
+| [0008](./0008-evidence-boundary.md) | accepted | 근거 텍스트 경계 + instruction-like 패턴 무력화 |
+| [0009](./0009-external-baseline-comparison.md) | accepted | 별도 스크립트로 외부 기준선 비교 |
+| [0010](./0010-hybrid-bm25-dense-retrieval-rrf.md) | accepted | Hybrid BM25 + dense 검색 + RRF 융합 |
+| [0012](./0012-llm-judge-on-public-synthetic.md) | superseded by 0005 | 공개 합성 eval 에서 stub-기본 LLM 평가자 |
+| [0013](./0013-observability-as-additive-pluggable-surface.md) | accepted | 관측성을 추가·pluggable·fail-closed 표면으로 |
+| [0014](./0014-ragas-judge-additive-synthetic.md) | superseded by 0005 | 합성 표면에 RAGAS 스타일 LLM 평가자를 추가 enrichment 로 |
+| [0015](./0015-cost-telemetry-additive.md) | superseded by 0011 | 비용 telemetry 를 추가 관측성으로 (0011, 0013 확장) |
+| [0017](./0017-llm-metadata-extraction-additive.md) | superseded by 0011 | LLM 메타데이터 추출을 추가 백엔드로 (0011 확장) |
+| [0018](./0018-korean-public-rag-bench.md) | accepted | 한국어 공개 RAG bench 를 보조 out-of-domain 표면으로 |
+| [0019](./0019-embedding-default-stays-minilm.md) | superseded by 0001 | 임베딩 기본은 MiniLM-L12-v2 유지 + 명시 재오픈 조건 |
+| [0020](./0020-protocol-based-pluggability.md) | accepted | 검색 측 확장 포인트의 Protocol 기반 pluggability |
+| [0021](./0021-bge-m3-completes-phase-1-3.md) | accepted | BGE-M3가 ADR 0019 조건 2를 충족; 기본 embedding은 MiniLM 유지 |
+| [0022](./0022-langgraph-orchestration-stage-1.md) | accepted | agentic_full preset용 LangGraph orchestrator 경로 — stage 1 (passthrough) & 2 (multi-node) |
+| [0024](./0024-agentic-full-llm-as-api-default.md) | accepted | agentic_full_llm을 API default로 (preset만; backend default는 stub 유지) |
+| [0025](./0025-cost-frontier-defer-until-real-baselines.md) | superseded by 0038 | 외부 기준선 실측 도착 전까지 cost-accuracy frontier 보류 |
+| [0038](./0038-cost-model-and-frontier-interpretation.md) | accepted | Cost 모델: PRICING_PER_MTOK_USD 룩업 테이블; frontier x축 = 측정된 $/query |
+| [0026](./0026-cross-encoder-reranker-deferral.md) | superseded by 0025 | Cross-encoder reranker default는 stub-identity 유지; real-backend 측정 보류 |
+| [0027](./0027-lora-finetuned-embedding-additive.md) | superseded by 0011 | LoRA-fine-tuned embedding adapter는 additive 분석 변형 |
+| [0028](./0028-security-screen-additive.md) | accepted | Prompt-injection screen + PII redaction을 additive 보안 layer로 |
+| [0030](./0030-leaderboard-headline-includes-agentic-full.md) | accepted | 리더보드 headline에 `naive_baseline`과 함께 `agentic_full` 포함 |
 | [0031](./0031-bm25-korean-morphology-additive.md) | superseded by 0010 | BM25 Korean morphology tokenizer (`bm25_tokenizer: "regex" \| "kiwi"`) as additive ablation |
-| [0032](./0032-eval-saturation-routed-subset.md) | accepted | Eval-set saturation falsifier: 4-embedding × routed_subset (n=11, metadata_first=false) measurement complete; spread **0.0pp** < +3pp threshold → saturation_cross_validated. MiniLM default lock empirically justified on both `full` + `routed` surfaces. (Closes ADR 0019 deferral saturation axis.) |
-| [0034](./0034-vlm-provider-ablation.md) | accepted | VLM provider ablation — Donut defer (torch≥2.6 + GPU required) + PaddleOCR PP-OCRv4 実測 (synthetic: +0pp vs baseline, latency 2.2×); tesseract baseline kept; `paddleocr_provider` opt-in infra added (`BIDMATE_VISUAL_OCR=paddleocr`); re-open on real Korean RFP +5pp lift |
-| [0035](./0035-dict-not-pydantic-v2.md) | accepted | Answer dict is the internal contract — no Pydantic/TypedDict shadow model inside the pipeline (defends ADR 0003 single-source-of-truth; Pydantic allowed at `api/schemas.py` boundary only) |
-| [0036](./0036-hwp-native-loader-pyhwp-gated-default.md) | superseded by 0049 | HwpNativeLoader promoted to pyhwp-install-detection default (`with_tables=True` when `hwp5` importable); `BIDMATE_HWP_LOADER=csv` is explicit opt-out; CI minimal install (pyhwp absent) unchanged; re-open if native fallback rate > 20% on private corpus |
-| [0037](./0037-kure-v1-closes-phase-1-5.md) | accepted | KURE-v1 Phase 1.5 n=100 formal measurement: `full` Δ = **−1.3pp** accuracy / **+0.0pp** groundedness → condition 3 NOT triggered; MiniLM default lock holds across 6 embedding pivots; adds `requires_torch_min_version` gate to `eval/run_eval.ablation_runs()`; closes issue #447 |
-| [0039](./0039-hwp-structural-hardcase-taxonomy.md) | proposed | HWP structural hardcase taxonomy (`table_heavy` / `ocr_noisy` / `rotated_or_skewed` / `layout_broken`) for public synthetic surface; ADR 0001/0005/0030 compatible; activated by PR-A (fixtures) → PR-C (loader ablation) → PR-D (tagging); closes issue #646 |
-| [0040](./0040-react-agent-loop-additive-preset.md) | accepted | ReAct agent loop as fourth pipeline preset (`agent_react`); additive over ADR 0001/0024 3-layer defaults; `Planner` Protocol (5th ADR 0020 axis); `BIDMATE_PLANNER_BACKEND=static` default keeps CI deterministic; closes issue #673 |
-| [0041](./0041-agent-budget-cap-contract.md) | accepted | Agent budget cap: `max_iterations=5` + `max_latency_ms=8000` hard caps; ADR 0003 `status: insufficient` on exhaustion; ±2pp non-determinism tolerance for real-agent runs; closes issue #673 |
-| [0042](./0042-tool-use-evidence-boundary-defense.md) | accepted | Tool-use attack surface audit: ADR 0008 `neutralize_instruction_patterns` coverage confirmed for all `execute_*` wrappers in `rag_agent_tools.py`; no new call sites needed; `EVIDENCE_BOUNDARY` regression gate added; closes issue #682 |
-| [0043](./0043-pr-cadence-for-live-llm-judge.md) | accepted | Label-gated PR workflow (`live-judge-please`) fires `.github/workflows/pr-judge.yml` with live `BIDMATE_SYNTHETIC_JUDGE_BACKEND=openai_compatible`; posts RAGAS aggregate as PR comment; ADR 0004/0005/0012 invariants preserved; re-attach label after each push (Goodhart guard) |
+| [0032](./0032-eval-saturation-routed-subset.md) | accepted | Eval-set saturation 가설 + routed-subset 측정 surface |
+| [0034](./0034-vlm-provider-ablation.md) | accepted | VLM Provider 분석 변형 — Donut 보류 + PaddleOCR 실측 |
+| [0035](./0035-dict-not-pydantic-v2.md) | accepted | Answer dict — parallel Pydantic / TypedDict shadow 모델 금지 |
+| [0036](./0036-hwp-native-loader-pyhwp-gated-default.md) | superseded by 0049 | HwpNativeLoader를 pyhwp-gated 기본값으로 승격 |
+| [0037](./0037-kure-v1-closes-phase-1-5.md) | accepted | KURE-v1이 ADR 0019 issue #447 re-open 조건 close; 기본값은 MiniLM 유지 |
+| [0039](./0039-hwp-structural-hardcase-taxonomy.md) | proposed | 공개 합성 surface용 HWP 구조 hardcase taxonomy |
+| [0040](./0040-react-agent-loop-additive-preset.md) | accepted | ReAct agent loop을 추가 파이프라인 프리셋으로 |
+| [0041](./0041-agent-budget-cap-contract.md) | accepted | Agent budget cap 계약 |
+| [0042](./0042-tool-use-evidence-boundary-defense.md) | accepted | Tool-use 근거 경계 방어 |
+| [0043](./0043-pr-cadence-for-live-llm-judge.md) | accepted | live LLM-judge 신호를 위한 PR 단위 cadence (label-gated workflow) |
 | [0044](./0044-realN-eval-case-expansion.md) | accepted | real100 private eval cases expanded in-place (same corpus, same `reports/real100/` series) from n=21 → near-term n≥30 / long-term n≥50 to tighten Wilson 95% CI and ADR 0030 silence threshold; `num_predictions` tracked per snapshot; ADR 0005 boundary preserved (cases stay in gitignored `eval/real_config.local.yaml`); closes issue #732 |
-| [0045](./0045-rag-core-leaf-migration-plan.md) | accepted | `rag_core.py` (1728 LOC) is not a leaf — `rag_retrieval.py` late-imports 5 symbols at 2 call sites; Plan A creates new leaf `rag_embedding.py` (embed primitives + constants); Plan B reroutes `comparison_targets_for_analysis` import from `rag_core` to `rag_query` (already defined there); G2 PR lands the code move, ADR 0001 baseline preserved bit-identical; closes issue #762 |
-| [0046](./0046-ood-evaluation-domain-selection.md) | accepted | OOD evaluation domain = Korean legal contracts (법무부 / 공정위 표준약관 / NDA) — structurally adjacent to RFP (clause hierarchy, party metadata, comparison-natural) but vocabulary-distant; ADR 0018 (general Korean bench) untouched; E2-E4 PRs add `data/ood_synthetic_legal/` + `ood_legal` preset + leaderboard column; floor invariant `accuracy(ood-full) ≥ 0.6 × accuracy(rfp-full)`; closes issue #822 |
-| [0047](./0047-solo-author-adr-governance.md) | accepted | Solo-author ADR governance — single-author authority (no Reviewer field by design) + Proposed-status 30d lifecycle SLA + Verification contract (B3 #793 first dogfood) + mechanical number reservation (A2 #757); grandfathers 41 existing ADRs + 5 Proposed ADRs; closes issue #817 |
+| [0045](./0045-rag-core-leaf-migration-plan.md) | accepted | rag_core leaf 마이그레이션 계획 — embedding helpers + comparison_targets routing |
+| [0046](./0046-ood-evaluation-domain-selection.md) | accepted | Out-of-distribution evaluation 도메인 — 한국어 법률 계약서 |
+| [0047](./0047-solo-author-adr-governance.md) | accepted | 1인 저자 ADR governance — lifecycle SLA + verification 계약 |
 | [0048](./0048-realN-metrics-extension.md) | accepted | realN aggregate-only metrics extension — `by_metadata_field` (per-field accuracy + 95% CI for `agency`/`project`/`budget`/`deadline`, opt-in via case `metadata_field` key) + `abstention_calibration` (10-bin ECE + Brier, computed only when `prediction.answer.confidence` present; forward-compat null otherwise); ADR 0001 baseline bit-identical, ADR 0005 boundary preserved; closes issue #870 |
 | [0049](./0049-kordoc-replaces-pyhwp-backend.md) | proposed | kordoc (npm subprocess, Node 18+) replaces pyhwp/hwp5 as HWP backend **and** replaces `PdfCsvTextLoader`'s default cover/TOC path with `PdfKordocLoader`; `BIDMATE_HWP_LOADER` + `BIDMATE_PDF_LOADER` flip independently (`kordoc` default \| `csv_text` offline / CI / Node-missing); `_prime_kordoc_batches` pools HWP + PDF into one `npx` invocation; `csv_text` fallback preserved (ADR 0001 invariant); supersedes ADR 0036; closes issue #890 |
-| [0050](./0050-m4a-axis-a-real-scale-v2-distractor-rebuild.md) | proposed | M4-A axis-A `real_scale_v2_distractor` rebuild — synthetic doc-A/B/C 9 → 103/105/102 sections (Upstage `heading1` anchor, 100-doc kordoc cross-check) to dissolve 13/13 ceiling; +6 additive `axis_a_*` metadata fields; +4 future-hook corpora (H long-context / I distractor / J lexical-overlap / K medical, consumer count 0); 5 ref docs migrated `reports/axis_a_rebuild/` → `docs/eval/axis-a-rebuild/`; index 9 → 383 chunks + `naive_baseline_top_k` / `answer_contract_shape` golden regenerated (ADR 0001 scoring invariant; ADR 0003 schema_version=2 preserved); closes issue #911 |
+| [0050](./0050-m4a-axis-a-real-scale-v2-distractor-rebuild.md) | proposed | M4-A axis-A real_scale_v2_distractor 재구축 + H/I/J/K 코퍼스 확장 |
 
 ## Roadmap (proposed, not yet committed)
 

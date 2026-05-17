@@ -1,220 +1,92 @@
-# 0026: Cross-encoder reranker default stays stub-identity; real-backend measurement deferred
+# 0026: Cross-encoder reranker default는 stub-identity 유지; real-backend 측정 보류
 
 - **Status**: Superseded
 - **Superseded by**: [ADR 0025](./0025-cost-frontier-defer-until-real-baselines.md) § "Cross-encoder reranker deferral"
 - **Date**: 2026-05-12
 - **Deciders**: hskim
-- **Related**: [ADR 0001](./0001-preserve-naive-baseline.md) (baseline preserved), [ADR 0002](./0002-metadata-first-retrieval.md) (the metadata-first routing that shadows the rerank step), [ADR 0019](./0019-embedding-default-stays-minilm.md) (mirror pattern — measurement-gated default-stays), [ADR 0021](./0021-bge-m3-completes-phase-1-3.md) (the deferred-then-closed loop precedent), [ADR 0025](./0025-cost-frontier-defer-until-real-baselines.md) (sibling deferral pattern, accepted 2026-05-12), [`docs/retrieval/cross-encoder-reranker.md`](../retrieval/cross-encoder-reranker.md) (working reference), [`docs/eval/ablation-results.md`](../eval/ablation-results.md) (current ablation table), [`rag_reranker.py`](../../rag_reranker.py) (`Reranker` Protocol + `CrossEncoderReranker` default), issues [#163](https://github.com/hskim-solv/BidMate-DocAgent/issues/163), [#345](https://github.com/hskim-solv/BidMate-DocAgent/issues/345), [#412](https://github.com/hskim-solv/BidMate-DocAgent/issues/412), PR [#358](https://github.com/hskim-solv/BidMate-DocAgent/pull/358)
+- **Related**: [ADR 0001](./0001-preserve-naive-baseline.md) (기준선 보존), [ADR 0002](./0002-metadata-first-retrieval.md) (rerank step를 가리는 메타데이터 우선 라우팅), [ADR 0019](./0019-embedding-default-stays-minilm.md) (mirror — measurement-gated default-stays), [ADR 0021](./0021-bge-m3-completes-phase-1-3.md) (deferred-then-closed 선례), [ADR 0025](./0025-cost-frontier-defer-until-real-baselines.md) (sibling 보류 패턴, 2026-05-12 accepted), [`docs/retrieval/cross-encoder-reranker.md`](../retrieval/cross-encoder-reranker.md), [`docs/eval/ablation-results.md`](../eval/ablation-results.md), [`rag_reranker.py`](../../rag_reranker.py) (`Reranker` Protocol + `CrossEncoderReranker` default), issues [#163](https://github.com/hskim-solv/BidMate-DocAgent/issues/163), [#345](https://github.com/hskim-solv/BidMate-DocAgent/issues/345), [#412](https://github.com/hskim-solv/BidMate-DocAgent/issues/412), PR [#358](https://github.com/hskim-solv/BidMate-DocAgent/pull/358)
 
-## Context
+## TL;DR
 
-Three retrieval-side surfaces interact with the reranking question and
-each is in a different state of measurement:
+- 공공 합성(n=42)에서 `rerank: true` blend가 0pp(`full` ≡ `no_rerank` byte-identical) + stub-identity 하 `full_reranker ≡ full` by construction + real backend(`bge`/`bge_ko`/`cohere`) 미측정.
+- `Reranker` Protocol seam + `BIDMATE_RERANK_BACKEND=stub` default 유지 — 0pp 합성 delta에도 HyDE-reranker / LLM-as-reranker 후속용 plug point.
+- 3 재개 조건(real backend 1 완주 + ≥ +3pp lift + 후속 ADR) 충족 시 default flip.
 
-1. **`rerank: true` blend** (the 60/25/15 dense + lexical + metadata
-   blend in [`rag_core.retrieve`](../../rag_core.py)) — present on the
-   `full` ablation preset.
-2. **`Reranker` Protocol + `CrossEncoderReranker` default**
-   ([`rag_reranker.py`](../../rag_reranker.py), introduced by issue
-   [#345](https://github.com/hskim-solv/BidMate-DocAgent/issues/345)
-   / PR [#358](https://github.com/hskim-solv/BidMate-DocAgent/pull/358))
-   — consumed by [`rag_retrieval.apply_fusion_and_reranking`](../../rag_retrieval.py) (extracted from `rag_core.py` in PR-H1a, issue #459)
-   only when `plan["rerank_cross_encoder"]` is set. Surfaced as the
-   `full_reranker` preset in [`eval/config.yaml`](../../eval/config.yaml)
-   `line 143-149` (`rerank: true` + `rerank_cross_encoder: true`).
-3. **Cross-encoder backends** (`bge`, `bge_ko`, `cohere`) selected via
-   `BIDMATE_RERANK_BACKEND`. CI default is `stub` —
-   [`docs/retrieval/cross-encoder-reranker.md`](../retrieval/cross-encoder-reranker.md)
-   describes the dispatch and explicitly states: *"`full_reranker` row
-   byte-equals `full` under stub"* (line 25). Stub is a pure-identity
-   pass-through; the test
-   `tests/test_cross_encoder_rerank.py::RerankStubBackendTest::test_stub_backend_is_identity`
-   locks this invariant.
+## 배경
 
-The current ablation table ([`docs/eval/ablation-results.md`](../eval/ablation-results.md))
-shows that on the public synthetic surface (n=42), the **first** surface
-already moves 0pp:
+reranking과 상호작용하는 검색-side 표면 3개, 각각 다른 측정 상태:
+
+1. **`rerank: true` blend**([`rag_core.retrieve`](../../rag_core.py)의 60/25/15 dense + lexical + metadata blend) — `full` 분석 변형 프리셋에 present.
+2. **`Reranker` Protocol + `CrossEncoderReranker` default**([`rag_reranker.py`](../../rag_reranker.py), 이슈 [#345](https://github.com/hskim-solv/BidMate-DocAgent/issues/345) / PR [#358](https://github.com/hskim-solv/BidMate-DocAgent/pull/358)) — `plan["rerank_cross_encoder"]` set 시에만 [`rag_retrieval.apply_fusion_and_reranking`](../../rag_retrieval.py)(PR-H1a, 이슈 #459로 `rag_core.py`에서 추출) 소비. [`eval/config.yaml`](../../eval/config.yaml) `line 143-149`(`rerank: true` + `rerank_cross_encoder: true`)에 `full_reranker` 프리셋으로 노출.
+3. **Cross-encoder backend**(`bge`, `bge_ko`, `cohere`) `BIDMATE_RERANK_BACKEND` 선택. CI default `stub` — [`docs/retrieval/cross-encoder-reranker.md`](../retrieval/cross-encoder-reranker.md)가 dispatch 기술하며 *"`full_reranker` row byte-equals `full` under stub"*(line 25) 명시. Stub은 순수 identity pass-through; `tests/test_cross_encoder_rerank.py::RerankStubBackendTest::test_stub_backend_is_identity`가 invariant lock.
+
+현 분석 변형 표([`docs/eval/ablation-results.md`](../eval/ablation-results.md)) — 공공 합성 표면(n=42)에서 **첫 번째** 표면이 이미 0pp:
 
 | Run | Accuracy | Groundedness | Citation precision | Abstention |
 |---|---:|---:|---:|---:|
 | `full` (rerank on, blend only) | 0.906 | 0.929 | 0.905 | 1.000 |
 | `no_rerank` (rerank off entirely) | 0.906 | 0.929 | 0.905 | 1.000 |
 
-Three observations follow:
+3 관찰:
 
-- **The `rerank: true` blend has zero measured quality lift over
-  `no_rerank` on this surface.** Hypothesis (consistent with
-  [ADR 0002](./0002-metadata-first-retrieval.md) and the `0pp-on-full`
-  pattern documented in [ADR 0019](./0019-embedding-default-stays-minilm.md)):
-  metadata-first filtering routes around dense retrieval for most
-  queries, leaving very little for a post-retrieval reorder to
-  improve.
-- **`full_reranker` under stub is byte-identical to `full` by
-  construction**, not by empirical accident. The 0 delta there is an
-  architectural invariant, not a measurement finding.
-- **No real cross-encoder backend has been measured on this repo's eval
-  surface.** [`docs/retrieval/cross-encoder-reranker.md`](../retrieval/cross-encoder-reranker.md)
-  §Results closes with *"Measurement pending — append below after
-  running the reproduction commands."* The `bge` / `bge_ko` / `cohere`
-  commands ship but the runs require user-environment setup (model
-  download or API key) that has not been performed.
+- **`rerank: true` blend는 이 표면에서 `no_rerank` 대비 zero quality lift.** 가설([ADR 0002](./0002-metadata-first-retrieval.md) + [ADR 0019](./0019-embedding-default-stays-minilm.md) `0pp-on-full` 패턴 일관): 대부분 쿼리에서 메타데이터 우선 필터링이 dense 검색을 우회 → post-retrieval reorder가 개선할 여지 미미.
+- **stub 하 `full_reranker`는 by construction `full`과 byte-identical**(empirical accident 아님). 거기서 0 delta는 architectural invariant, 측정 finding 아님.
+- **이 repo eval 표면에 real cross-encoder backend 측정 없음.** [`docs/retrieval/cross-encoder-reranker.md`](../retrieval/cross-encoder-reranker.md) §Results는 *"Measurement pending — append below after running the reproduction commands."*로 마감. `bge` / `bge_ko` / `cohere` 명령은 ship되었으나 user-environment setup(모델 다운로드 / API key) 필요, 미수행.
 
-So the question this ADR closes is: *given (a) the blend already shows
-0 lift, (b) cross-encoder under stub is identity by design, and (c)
-real backends are unmeasured, should the `Reranker` Protocol surface
-and `CrossEncoderReranker` default stay in the codebase?* The
-measurement-gated deferral pattern from [ADR 0019](./0019-embedding-default-stays-minilm.md)
-→ [ADR 0021](./0021-bge-m3-completes-phase-1-3.md) and sibling
-[ADR 0025](./0025-cost-frontier-defer-until-real-baselines.md) applies
-naturally here: lock the decision now, document the re-open conditions
-that would flip the default to a real backend.
+따라서 본 ADR이 close하는 질문: *(a) blend가 이미 0 lift, (b) stub 하 cross-encoder는 by design identity, (c) real backend 미측정인 상태에서 `Reranker` Protocol 표면 + `CrossEncoderReranker` default를 코드베이스에 유지할지?* measurement-gated 보류 패턴([ADR 0019](./0019-embedding-default-stays-minilm.md) → [ADR 0021](./0021-bge-m3-completes-phase-1-3.md)) + sibling [ADR 0025](./0025-cost-frontier-defer-until-real-baselines.md)가 자연스럽게 적용: 결정을 지금 lock, real backend로 default flip할 재개 조건 문서화.
 
-[ADR 0023](./0023-hyde-query-expansion-ablation.md) (proposed)
-already cross-references [ADR 0020](./0020-protocol-based-pluggability.md)
-(proposed, skeleton-only) for the convention these Protocols follow;
-this ADR is downstream of both — it decides the **default behaviour**
-within the convention, not the convention itself.
+[ADR 0023](./0023-hyde-query-expansion-ablation.md)(proposed)은 이미 [ADR 0020](./0020-protocol-based-pluggability.md)(proposed, skeleton-only)을 Protocol convention 출처로 cross-reference; 본 ADR은 두 ADR의 downstream — convention 자체가 아니라 convention 내 **기본 동작** 결정.
 
-## Decision
+## 결정
 
-Keep the `Reranker` Protocol surface and `CrossEncoderReranker` default
-in [`rag_reranker.py`](../../rag_reranker.py); keep
-`BIDMATE_RERANK_BACKEND=stub` (identity) as the CI default so
-`full_reranker ≡ full` by construction. Do **not** remove the rerank
-seam despite the 0pp synthetic delta — real backends are unmeasured
-and the Protocol is the seam for HyDE-reranker / LLM-as-reranker
-follow-ups.
+`Reranker` Protocol 표면 + `CrossEncoderReranker` default를 [`rag_reranker.py`](../../rag_reranker.py)에 유지; `BIDMATE_RERANK_BACKEND=stub`(identity)를 CI default 유지 → `full_reranker ≡ full` by construction. 0pp 합성 delta에도 rerank seam 제거 **금지** — real backend 미측정 + Protocol이 HyDE-reranker / LLM-as-reranker 후속 seam.
 
-Knobs locked by this decision:
+본 결정 lock knob:
 
-- [`eval/config.yaml`](../../eval/config.yaml) preset rows stay in the
-  matrix: `full` (`rerank: true`), `no_rerank` (`rerank: false`), and
-  `full_reranker` (`rerank: true` + `rerank_cross_encoder: true`).
-- `BIDMATE_RERANK_BACKEND` env-var dispatches `stub` (CI default) |
-  `bge` | `bge_ko` | `cohere`. Default stays `stub` until a re-open
-  condition fires.
-- `default_reranker()` factory in [`rag_reranker.py`](../../rag_reranker.py)
-  remains the single dispatch hook — future LLM-as-reranker /
-  HyDE-reranker implementations swap the adapter, not the seam.
+- [`eval/config.yaml`](../../eval/config.yaml) 프리셋 row 유지: `full`(`rerank: true`), `no_rerank`(`rerank: false`), `full_reranker`(`rerank: true` + `rerank_cross_encoder: true`).
+- `BIDMATE_RERANK_BACKEND` env-var dispatch `stub`(CI default) | `bge` | `bge_ko` | `cohere`. 재개 조건 발화 전까지 default `stub`.
+- [`rag_reranker.py`](../../rag_reranker.py) `default_reranker()` factory가 단일 dispatch hook 유지 — 향후 LLM-as-reranker / HyDE-reranker 구현은 adapter swap, seam 변경 없음.
 
-Boundary clarification: this ADR decides the **default behaviour**
-inside the Protocol convention introduced by
-[ADR 0020](./0020-protocol-based-pluggability.md). It does *not*
-re-decide whether the Protocol itself should exist — that is
-ADR 0020's territory.
+경계 명확화: 본 ADR은 [ADR 0020](./0020-protocol-based-pluggability.md)이 도입한 Protocol convention 내 **기본 동작** 결정. Protocol 자체 존재 재결정이 *아님* — 그것은 ADR 0020 영역.
 
-## Re-open conditions
+## 재개 조건
 
-Following the gate pattern from
-[ADR 0019](./0019-embedding-default-stays-minilm.md) and sibling
-[ADR 0025](./0025-cost-frontier-defer-until-real-baselines.md), this
-ADR re-opens — and the `stub` default flips — when **all three** hold:
+[ADR 0019](./0019-embedding-default-stays-minilm.md) + sibling [ADR 0025](./0025-cost-frontier-defer-until-real-baselines.md)의 gate 패턴 따라, 본 ADR은 다음 **셋 모두** 충족 시 재개(+ `stub` default flip):
 
-1. A maintainer runs at least one of the `bge` / `bge_ko` / `cohere`
-   backends to completion against the public synthetic eval surface
-   (n=42) and appends the result table to
-   [`docs/retrieval/cross-encoder-reranker.md`](../retrieval/cross-encoder-reranker.md)
-   §Results.
-2. **At least one** of those backends shows a `full_reranker` lift of
-   **≥ +3pp** on `accuracy` OR `citation_precision`, with
-   non-overlapping bootstrap 95% CIs vs. `full` on the public
-   synthetic surface. X = 3 is intentional: relaxed below
-   [ADR 0019](./0019-embedding-default-stays-minilm.md)'s "≥ +5pp on
-   full" gate because a precision-targeted post-retrieval reorder can
-   be a portfolio signal at a smaller absolute lift than an embedding
-   swap.
-3. A follow-up ADR (numbered `002x` or higher) is opened to flip the
-   `BIDMATE_RERANK_BACKEND` default from `stub` to the winning
-   backend, documenting the latency / cost trade-off (~80-200ms /
-   query CPU for `bge`, ~$2 / 1k searches for `cohere` per
-   [`docs/retrieval/cross-encoder-reranker.md`](../retrieval/cross-encoder-reranker.md)).
+1. maintainer가 `bge` / `bge_ko` / `cohere` 중 ≥ 1을 공공 합성 eval(n=42)에 완주 + [`docs/retrieval/cross-encoder-reranker.md`](../retrieval/cross-encoder-reranker.md) §Results에 결과 표 추가.
+2. 위 backend **≥ 1**이 공공 합성 표면에서 `full` 대비 `accuracy` 또는 `citation_precision`에 `full_reranker` lift **≥ +3pp**, bootstrap 95% CI 비중첩. X = 3은 의도적: [ADR 0019](./0019-embedding-default-stays-minilm.md) "≥ +5pp on full" gate보다 완화 — precision-targeted post-retrieval reorder는 embedding swap보다 작은 절대 lift에서도 portfolio signal 가능.
+3. 후속 ADR(`002x` 이상) 생성 — `BIDMATE_RERANK_BACKEND` default를 `stub` → 승자 backend로 flip, latency / cost trade-off(`bge` ~80-200ms / query CPU, `cohere` ~$2 / 1k searches per [`docs/retrieval/cross-encoder-reranker.md`](../retrieval/cross-encoder-reranker.md)) 문서화.
 
-If condition 1 lands but condition 2 does not (the 0pp pattern holds
-across real backends too), this ADR stays `accepted` and
-[`docs/retrieval/cross-encoder-reranker.md`](../retrieval/cross-encoder-reranker.md)
-§Results gets the measurement appendix without an ADR replacement —
-same loop shape as [ADR 0019](./0019-embedding-default-stays-minilm.md)
-→ [ADR 0021](./0021-bge-m3-completes-phase-1-3.md).
+조건 1 충족했으나 2 미충족(real backend도 0pp 패턴 유지) 시 본 ADR `accepted` 유지 + [`docs/retrieval/cross-encoder-reranker.md`](../retrieval/cross-encoder-reranker.md) §Results에 측정 부록만 추가(ADR replace 없음) — [ADR 0019](./0019-embedding-default-stays-minilm.md) → [ADR 0021](./0021-bge-m3-completes-phase-1-3.md)과 동일 loop shape.
 
-## Consequences
+## 결과
 
 **Wins**
 
-- Future LLM-as-reranker / HyDE-reranker plugs into the same Protocol
-  without re-litigating the seam —
-  [`rag_reranker.py`](../../rag_reranker.py) stays the single swap
-  point.
-- `full` / `no_rerank` / `full_reranker` ablation rows in
-  [`eval/config.yaml`](../../eval/config.yaml) stay aligned; the
-  senior-positioning narrative has a concrete "additive ablation"
-  example that extends [ADR 0001](./0001-preserve-naive-baseline.md).
-- The stub-identity invariant preserves CI determinism — adopting a
-  real backend is opt-in per environment, never a CI-default flip.
-  The byte-equality test
-  `tests/test_cross_encoder_rerank.py::RerankStubBackendTest::test_stub_backend_is_identity`
-  locks this.
-- Reviewer-facing honesty: the "0 delta on synthetic" framing is now
-  ADR-backed (no fabricated lift), and the unmeasured real backends
-  surface as a re-open trigger rather than a hidden todo.
+- 향후 LLM-as-reranker / HyDE-reranker가 seam 재논의 없이 동일 Protocol plug — [`rag_reranker.py`](../../rag_reranker.py)가 단일 swap point 유지.
+- [`eval/config.yaml`](../../eval/config.yaml)의 `full` / `no_rerank` / `full_reranker` 분석 변형 row 정합 유지; senior-positioning narrative가 [ADR 0001](./0001-preserve-naive-baseline.md) 확장 "additive ablation" 구체 예시 보유.
+- stub-identity invariant이 CI 결정성 보존 — real backend 채택은 environment opt-in, CI-default flip이 아님. byte-equality 테스트 `tests/test_cross_encoder_rerank.py::RerankStubBackendTest::test_stub_backend_is_identity`가 lock.
+- reviewer-facing 정직: "0 delta on synthetic" framing이 ADR-backed(fabricated lift 없음) + 미측정 real backend는 숨은 todo 아닌 재개 trigger로 표면화.
 
 **Costs**
 
-- Maintenance cost for an unused real-backend code path (the BGE /
-  Cohere dispatch inside [`rag_rerank.py`](../../rag_rerank.py)).
-  Mitigated by the never-raise fallback contract — `stub` is the
-  always-safe path and any unknown / failing backend silently degrades
-  to identity.
-- A reviewer who asks "you have a cross-encoder reranker but it does
-  nothing?" gets a nuanced answer ("identity under CI default, real
-  backends unmeasured") rather than a single sentence. The Context
-  section above carries the supporting evidence.
-- The decision can be misread as "rerankers don't matter" rather than
-  "rerankers don't matter *on this corpus under stub*". Mitigation:
-  the re-open conditions name the corpus (public synthetic, n=42) and
-  the backends (`bge` / `bge_ko` / `cohere`) explicitly.
+- 미사용 real-backend 코드 경로([`rag_rerank.py`](../../rag_rerank.py) 내 BGE / Cohere dispatch) 유지 비용. never-raise fallback 계약으로 완화 — `stub`이 always-safe 경로 + 미지/실패 backend는 silently identity degrade.
+- "cross-encoder reranker 있는데 아무것도 안 하나?"라는 reviewer 질문에 단일 문장 아닌 미묘 답변("CI default 하 identity, real backend 미측정") 필요. 위 Context 섹션이 근거 운반.
+- 결정이 "*이 corpus, stub 하* 미중요"가 아니라 "rerankers don't matter"로 오독 가능. 완화: 재개 조건이 corpus(공공 합성, n=42) + backend(`bge` / `bge_ko` / `cohere`) 명시.
 
-## Alternatives considered
+## 검토한 대안
 
-1. **Remove the `Reranker` Protocol entirely (rollback PR
-   [#358](https://github.com/hskim-solv/BidMate-DocAgent/pull/358)).**
-   The Protocol is the seam future LLM-as-reranker / HyDE work plugs
-   into. Removing it would re-fragment retrieval-side pluggability —
-   the convention codified in
-   [ADR 0020](./0020-protocol-based-pluggability.md) — for no
-   measurement gain on this surface. Net loss.
-2. **Flip `BIDMATE_RERANK_BACKEND` default to `bge_ko`
-   unconditionally.** No measurement exists yet; defaulting to a real
-   backend would force every CI run to download ~1.1 GB and pay
-   ~80-200ms / query, all without empirical justification.
-   [ADR 0019](./0019-embedding-default-stays-minilm.md)'s "no default
-   flip without ≥ +Xpp evidence" rule applies the same way here.
-3. **Default to identity reranker (= remove `rerank_cross_encoder`
-   from `full_reranker`).** The `full_reranker` preset exists *for*
-   exercising the cross-encoder path. Removing the flag collapses
-   `full_reranker` into `full` and erases the ablation surface — the
-   opposite of what an additive-ablation regime (extends
-   [ADR 0001](./0001-preserve-naive-baseline.md)) is for.
-4. **Switch to a different cross-encoder model
-   (`BAAI/bge-reranker-large`,
-   `mixedbread-ai/mxbai-rerank-large-v1`).** Out of scope. This ADR
-   decides whether to keep the surface, not which model belongs as
-   default. Once a real-backend measurement lands (re-open
-   condition 1), a follow-up ADR can address model choice without
-   re-litigating the seam.
-5. **Run the real-backend measurement now (close issue
-   [#163](https://github.com/hskim-solv/BidMate-DocAgent/issues/163)
-   fully in this ADR).** The measurement requires ~1.1 GB of model
-   downloads (`bge`) or a Cohere API key (`cohere`), neither of which
-   is on a docs-PR's critical path. Documenting the deferral first
-   and measuring later is the same loop shape as
-   [ADR 0019](./0019-embedding-default-stays-minilm.md) →
-   [ADR 0021](./0021-bge-m3-completes-phase-1-3.md).
+1. **`Reranker` Protocol 전체 제거(PR [#358](https://github.com/hskim-solv/BidMate-DocAgent/pull/358) rollback).** Protocol은 향후 LLM-as-reranker / HyDE 작업이 plug하는 seam. 제거는 [ADR 0020](./0020-protocol-based-pluggability.md) convention에 codified된 검색-side pluggability를 재단편화 — 이 표면에서 측정 이득 없음. Net loss.
+2. **`BIDMATE_RERANK_BACKEND` default를 `bge_ko`로 무조건 flip.** 측정 아직 없음; real backend default는 모든 CI run에 ~1.1 GB 다운로드 + ~80-200ms / query 강제, empirical 정당화 전무. [ADR 0019](./0019-embedding-default-stays-minilm.md) "≥ +Xpp 증거 없이 default flip 금지" 규칙이 동일 적용.
+3. **identity reranker 기본(= `full_reranker`에서 `rerank_cross_encoder` 제거).** `full_reranker` 프리셋은 cross-encoder 경로 *실행을 위해* 존재. flag 제거는 `full_reranker`를 `full`로 collapse + 분석 변형 표면 소거 — additive-ablation 체제([ADR 0001](./0001-preserve-naive-baseline.md) 확장) 목적의 정반대.
+4. **다른 cross-encoder 모델로 전환(`BAAI/bge-reranker-large`, `mixedbread-ai/mxbai-rerank-large-v1`).** 범위 외. 본 ADR은 표면 유지 여부 결정, default 모델 결정 아님. real-backend 측정 도착(재개 조건 1) 시 후속 ADR이 seam 재논의 없이 모델 선택 다룸.
+5. **real-backend 측정 지금 실행(이슈 [#163](https://github.com/hskim-solv/BidMate-DocAgent/issues/163)을 본 ADR에서 full close).** 측정은 ~1.1 GB 모델 다운로드(`bge`) 또는 Cohere API key(`cohere`) 필요, 둘 다 docs-PR critical path 외. 보류 먼저 문서화 + 측정은 나중이 [ADR 0019](./0019-embedding-default-stays-minilm.md) → [ADR 0021](./0021-bge-m3-completes-phase-1-3.md)과 동일 loop shape.
 
 ## See also
 
-- [`docs/retrieval/cross-encoder-reranker.md`](../retrieval/cross-encoder-reranker.md) — design + reproduction commands; the doc this ADR locks the *decision* behind.
-- [`docs/eval/ablation-results.md`](../eval/ablation-results.md) — `full` vs `no_rerank` numbers cited above.
-- [`rag_reranker.py`](../../rag_reranker.py) — `Reranker` Protocol surface and `CrossEncoderReranker` default.
-- [`tests/test_cross_encoder_rerank.py`](../../tests/test_cross_encoder_rerank.py) — the stub-identity invariant tests.
-- [ADR 0019](./0019-embedding-default-stays-minilm.md) → [ADR 0021](./0021-bge-m3-completes-phase-1-3.md) — the measurement-gated deferral pattern this ADR follows.
-- [ADR 0025](./0025-cost-frontier-defer-until-real-baselines.md) — sibling deferral ADR (same date, same pattern).
+- [`docs/retrieval/cross-encoder-reranker.md`](../retrieval/cross-encoder-reranker.md) — 설계 + 재현 명령; 본 ADR이 *결정* lock하는 doc.
+- [`docs/eval/ablation-results.md`](../eval/ablation-results.md) — 위 인용 `full` vs `no_rerank` 수치.
+- [`rag_reranker.py`](../../rag_reranker.py) — `Reranker` Protocol 표면 + `CrossEncoderReranker` default.
+- [`tests/test_cross_encoder_rerank.py`](../../tests/test_cross_encoder_rerank.py) — stub-identity invariant 테스트.
+- [ADR 0019](./0019-embedding-default-stays-minilm.md) → [ADR 0021](./0021-bge-m3-completes-phase-1-3.md) — 본 ADR이 따르는 measurement-gated 보류 패턴.
+- [ADR 0025](./0025-cost-frontier-defer-until-real-baselines.md) — sibling 보류 ADR(동일 일자, 동일 패턴).

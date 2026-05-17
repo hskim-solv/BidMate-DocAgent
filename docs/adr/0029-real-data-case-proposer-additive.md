@@ -1,54 +1,32 @@
-# 0029: Real-data case proposer as additive semi-supervised eval-set growth
+# 0029: Real-data case proposer를 additive semi-supervised eval-set 성장 표면으로
 
 - **Status**: proposed
 - **Date**: 2026-05-13
-- **Related**: extends [ADR 0005](./0005-eval-split-public-synthetic-private-local.md) / [ADR 0006](./0006-llm-judge-on-real-data-only.md); reuses backend pattern of [ADR 0011](./0011-llm-synthesis-as-additive-ablation.md) / [ADR 0012](./0012-llm-judge-on-public-synthetic.md); preserves [ADR 0001](./0001-preserve-naive-baseline.md) / [ADR 0003](./0003-structured-answer-citation-contract.md) / [ADR 0004](./0004-verifier-retry-policy.md) / [ADR 0008](./0008-evidence-boundary.md); calibration mirrors [ADR 0016](./0016-judge-human-agreement.md)
+- **Related**: [ADR 0005](./0005-eval-split-public-synthetic-private-local.md) / [ADR 0006](./0006-llm-judge-on-real-data-only.md) 확장; [ADR 0011](./0011-llm-synthesis-as-additive-ablation.md) / [ADR 0012](./0012-llm-judge-on-public-synthetic.md) backend 패턴 재사용; [ADR 0001](./0001-preserve-naive-baseline.md) / [ADR 0003](./0003-structured-answer-citation-contract.md) / [ADR 0004](./0004-verifier-retry-policy.md) / [ADR 0008](./0008-evidence-boundary.md) 보존; calibration은 [ADR 0016](./0016-judge-human-agreement.md) mirror
 - **Deciders**: hskim
 
-## Context
+## TL;DR
 
-The private real-data eval surface
-([`eval/real_config.example.yaml`](../../eval/real_config.example.yaml))
-caps at whatever the human labels — currently N=100. Each case is an
-8-field dict (`query`, `query_type`, `expected_doc_ids`,
-`expected_terms`, `expected_citation_terms`, `expected_claim_targets`,
-`answerable`, `id`) that costs 5–15 minutes to author. Scaling to
-N=200+ is a labeling-throughput problem, not an infrastructure
-problem.
+- private real-data eval 표면(`eval/real_config.example.yaml`)이 human label N=100에 cap — case당 5-15분 → N=200+는 라벨링 처리량 문제.
+- **case proposer**(stub-default + opt-in live backend)가 후보 case 생성 → 사람이 검토(accept/edit/reject) 후 `eval/real_config.local.yaml` append.
+- ADR 0005 aggregate-only 경계 보존: case body는 commit boundary 통과 금지; `proposer.aggregate.json`만 commit.
 
-[ADR 0005](./0005-eval-split-public-synthetic-private-local.md) locks
-case bodies out of the commit boundary (aggregate-only). [ADR 0006](./0006-llm-judge-on-real-data-only.md)
-allows LLMs on the real-data surface but only as a *judge* — a
-second-opinion read of an existing answer. "LLM proposes a case
-candidate, human reviews" is not in either ADR's scope; doing it
-without an explicit decision would silently mix machine-generated
-labels into a surface that ADR 0005 treats as ground truth.
+## 배경
 
-The pattern that fits is ADR 0011's *additive ablation*: introduce a
-new surface (stub-default backend, opt-in live backend) alongside the
-existing one without touching its contract. ADR 0012 already applied
-this to the synthetic judge. The same shape applies to a real-data
-case proposer, with two extra constraints: case bodies still cannot
-cross the commit boundary (ADR 0005), and the human reviewer is the
-gate that decides what enters `eval/real_config.local.yaml`.
+private real-data eval 표면([`eval/real_config.example.yaml`](../../eval/real_config.example.yaml))은 human label만큼 cap — 현재 N=100. 각 case는 8-field dict(`query`, `query_type`, `expected_doc_ids`, `expected_terms`, `expected_citation_terms`, `expected_claim_targets`, `answerable`, `id`) — 작성에 5-15분. N=200+ 확장은 라벨링 처리량 문제, 인프라 문제 아님.
 
-## Decision
+[ADR 0005](./0005-eval-split-public-synthetic-private-local.md)가 case body를 commit 경계 밖 lock(aggregate-only). [ADR 0006](./0006-llm-judge-on-real-data-only.md)이 real-data 표면에 LLM 허용하되 *judge*(기존 답변 second-opinion read)에 한정. "LLM이 case 후보 제안, 사람이 검토"는 어느 ADR 범위도 아님; 명시 결정 없이 수행은 ADR 0005가 ground truth로 다루는 표면에 기계 생성 label silently mix.
 
-Add a **case proposer** as an additive, semi-supervised input surface
-to the real-data eval. The proposer generates candidate case dicts
-that match `eval/real_config.example.yaml`'s 8-field schema; a human
-reviews each candidate (accept / edit / reject) before any case is
-appended to `eval/real_config.local.yaml`.
+적합 패턴은 ADR 0011 *additive 분석 변형*: 기존 표면의 계약을 건드리지 않고 신규 표면(stub-default backend, opt-in live backend) 도입. ADR 0012가 이미 합성 judge에 적용. 동일 shape가 real-data case proposer에 적용 — 단 두 추가 제약: case body는 여전히 commit 경계 통과 불가(ADR 0005) + 사람 reviewer가 `eval/real_config.local.yaml` 진입 결정 gate.
 
-### Contract
+## 결정
 
-- **Input**: `data/data_list.csv` metadata + the top-3 chunks of each
-  seed document from `data/index/real100/index.json`. The `live`
-  backend may consume chunk bodies; the deterministic fields
-  (`expected_doc_ids`, `answerable`) are *always* derived from the
-  source row and `query_type`, never from a model response.
-- **Output (per case)**: superset of the 8-field schema with two
-  meta fields:
+real-data eval에 additive, semi-supervised 입력 표면으로 **case proposer** 추가. proposer가 `eval/real_config.example.yaml` 8-field schema와 매치되는 후보 case dict 생성; 사람이 각 후보 검토(accept / edit / reject) 후에 `eval/real_config.local.yaml` append.
+
+### 계약
+
+- **Input**: `data/data_list.csv` 메타데이터 + `data/index/real100/index.json`에서 각 seed 문서의 top-3 chunk. `live` backend는 chunk body 소비 가능; 결정적 필드(`expected_doc_ids`, `answerable`)는 *항상* source row + `query_type`에서 derive — 모델 응답에서 derive 안 함.
+- **Output (per case)**: 8-field schema + 2 meta field superset:
   ```yaml
   - id: proposed_<YYYYMMDD>_<NNN>
     source: "proposed-then-reviewed"          # vs. "human"
@@ -60,11 +38,8 @@ appended to `eval/real_config.local.yaml`.
       proposer_version: 1
     # ... 8 schema fields ...
   ```
-  Both `source` and `proposer_meta` are stripped on append to
-  `eval/real_config.local.yaml`, so the active config stays a
-  byte-equal subset of the existing schema.
-- **Committable aggregate** (`reports/proposed/proposer.aggregate.json`,
-  ADR 0005 allowlist):
+  `source` + `proposer_meta` 양쪽 모두 `eval/real_config.local.yaml` append 시 strip → active config는 기존 schema의 byte-equal subset 유지.
+- **Committable aggregate** (`reports/proposed/proposer.aggregate.json`, ADR 0005 allowlist):
   ```json
   {
     "schema_version": 1,
@@ -75,133 +50,58 @@ appended to `eval/real_config.local.yaml`.
     "by_query_type": {"single_doc": {...}, "abstention": {...}}
   }
   ```
-  Per-case proposed / reviewed yaml stays under
-  `reports/proposed/*.local.yaml` (gitignored).
+  per-case proposed / reviewed yaml은 `reports/proposed/*.local.yaml`(gitignored) 잔류.
 
 ### Backend pluggability
 
-`eval/case_proposer.py` mirrors `eval/synthetic_judge.py`'s backend
-dispatch:
+`eval/case_proposer.py`가 `eval/synthetic_judge.py` backend dispatch mirror:
 
-- `stub` (default) — deterministic; emits metadata-driven template
-  queries (`사업기간` / `사업예산` / abstention) from `data_list.csv`
-  rows. Byte-equal across runs. Used by tests and CI plumbing.
-- `openai_compatible` — generic OpenAI-compatible endpoint. Reuses
-  the existing `BIDMATE_JUDGE_API_KEY` / `BIDMATE_JUDGE_MODEL` /
-  `BIDMATE_JUDGE_BASE_URL` env vars (a single model can serve both
-  the judge and the proposer); backend selection is a separate var
-  (`BIDMATE_CASE_PROPOSER_BACKEND`) so the two surfaces toggle
-  independently. Chunk bodies pass through
-  `neutralize_instruction_patterns` + `EVIDENCE_BOUNDARY`
-  (ADR 0008) before reaching the prompt.
+- `stub`(default) — 결정적; `data_list.csv` row에서 메타데이터 driven template 쿼리(`사업기간` / `사업예산` / abstention) 출력. run 간 byte-equal. 테스트 + CI plumbing 사용.
+- `openai_compatible` — 일반 OpenAI-compatible endpoint. 기존 `BIDMATE_JUDGE_API_KEY` / `BIDMATE_JUDGE_MODEL` / `BIDMATE_JUDGE_BASE_URL` env var 재사용(단일 모델이 judge + proposer 양쪽 serve 가능); backend 선택은 별도 var(`BIDMATE_CASE_PROPOSER_BACKEND`) → 두 표면 독립 토글. chunk body는 prompt 도달 전 `neutralize_instruction_patterns` + `EVIDENCE_BOUNDARY`(ADR 0008) 통과.
 
-### Two-stage human gate
+### 2-stage human gate
 
-- `make case-propose` writes
-  `reports/proposed/proposed_cases.local.yaml`.
-- `make case-review` is an interactive CLI that walks each candidate,
-  shows a yaml diff, and records `approved: true|false` plus any
-  edits to `reports/proposed/reviewed_cases.local.yaml`.
-- `make case-promote` performs an *idempotent* append of approved
-  cases to `eval/real_config.local.yaml`, skipping any `id` already
-  present. The promote step is explicit (not auto-triggered by
-  review) so the human confirms one more time.
-- `make case-proposer-aggregate` computes
-  `proposer.aggregate.json` from the reviewed yaml.
+- `make case-propose`가 `reports/proposed/proposed_cases.local.yaml` write.
+- `make case-review`는 각 후보 walk + yaml diff 표시 + `approved: true|false` + edit을 `reports/proposed/reviewed_cases.local.yaml`에 record하는 interactive CLI.
+- `make case-promote`가 approved case를 `eval/real_config.local.yaml`에 *idempotent* append, 이미 존재하는 `id` skip. promote step은 명시(review가 auto-trigger 아님) → 사람이 한 번 더 확인.
+- `make case-proposer-aggregate`가 reviewed yaml에서 `proposer.aggregate.json` 계산.
 
-### Statistical hygiene
+### 통계적 hygiene
 
-- The active `run_eval.py` aggregate **does not** expose the `source`
-  field (`human` vs `proposed-then-reviewed`). All cases in
-  `eval/real_config.local.yaml` are treated as equally authoritative
-  by the downstream pipeline. The mix ratio is only visible in
-  `proposer.aggregate.json` and in the README's two-column
-  "100 hand + N proposed-reviewed" rendering. This keeps the headline
-  eval surface honest while making the labeling provenance auditable.
-- `proposer_accept_rate` is the calibration knob, parallel to
-  ADR 0016's `judge_human_agreement`: < 0.5 means the proposer is
-  systematically producing rejected cases — backend / prompt
-  rethink, not a numeric gate.
+- active `run_eval.py` aggregate는 `source` 필드(`human` vs `proposed-then-reviewed`) **노출 안 함**. `eval/real_config.local.yaml` 모든 case가 downstream 파이프라인에 동등 authoritative 취급. mix 비율은 `proposer.aggregate.json` + README "100 hand + N proposed-reviewed" 2-column 렌더링에서만 가시. headline eval 표면이 정직 + 라벨링 provenance auditable 유지.
+- `proposer_accept_rate`는 calibration knob, ADR 0016 `judge_human_agreement` 병렬: < 0.5는 proposer가 체계적으로 rejected case 생산 → backend / prompt 재고, numeric gate 아님.
 
-### Cadence
+### 주기
 
-Manual, like the rest of the real-data cycle. The user runs
-`make case-propose && make case-review && make case-promote`
-when they want to grow the case set, then `make real-eval` re-runs
-the pipeline over the (now larger) `eval/real_config.local.yaml`.
+real-data cycle 나머지와 동일 수동. 사용자가 case set 성장 원할 때 `make case-propose && make case-review && make case-promote` 실행 → `make real-eval`이 (이제 더 큰) `eval/real_config.local.yaml`에 파이프라인 재실행.
 
-## Consequences
+## 결과
 
 **Wins**
 
-- Real-data N can grow past 100 without breaking ADR 0005 — case
-  bodies still never cross the commit boundary.
-- Per-case labeling time drops from 5–15 min (full hand-label) to
-  1–3 min (review + edit) once the proposer is competent, with
-  `proposer_accept_rate` measuring how competent.
-- One more application of ADR 0011's "stub-default + opt-in live"
-  pattern (now: 0011 synthesis, 0012 synthetic judge, 0013
-  observability, 0017 metadata extraction, 0023 HyDE, 0027 LoRA,
-  0028 security screen, 0029 case proposer). Reviewers see the same
-  shape eight times — the additive-pluggable idiom is the project's
-  default.
-- `proposer.aggregate.json` is committable, so the growth from N=100
-  to N=130, N=150, ... is chronological in git log (mirrors ADR 0005
-  history pattern via `make real-eval-history-render`).
+- ADR 0005 깨지 않고 real-data N을 100 초과 성장 — case body는 commit 경계 통과 안 함.
+- proposer가 competent해지면 per-case 라벨링 시간 5-15분(full hand-label) → 1-3분(review + edit) 감소, `proposer_accept_rate`가 competence 측정.
+- ADR 0011 "stub-default + opt-in live" 패턴의 1 추가 적용(현재: 0011 합성, 0012 합성 judge, 0013 관측, 0017 메타데이터 추출, 0023 HyDE, 0027 LoRA, 0028 보안 screen, 0029 case proposer). reviewer는 동일 shape 8회 관찰 → additive-pluggable idiom이 프로젝트 default.
+- `proposer.aggregate.json`이 committable → N=100 → 130 → 150 ... 성장이 git log 시계열(`make real-eval-history-render` 경유 ADR 0005 history 패턴 mirror).
 
 **Costs**
 
-- One more file under the ADR 0005 allowlist
-  (`reports/proposed/proposer.aggregate.json`). Mirrors the existing
-  exceptions for `synthetic_judge.aggregate.json` (ADR 0012) and
-  `external_baselines.json` (ADR 0009).
-- Two-stage human gate is more steps than "edit the yaml directly".
-  Mitigated by `make case-propose` skipping any seed doc that
-  already has 2+ proposed cases in the past 30 days, so the user
-  doesn't re-review identical templates.
-- Prompt-injection surface expands once the live backend lands
-  (PR3); the chunk-body sanitizer reuse from ADR 0008 is the
-  mitigation but adds one more callsite to keep in sync.
+- ADR 0005 allowlist에 파일 1 추가(`reports/proposed/proposer.aggregate.json`). `synthetic_judge.aggregate.json`(ADR 0012) + `external_baselines.json`(ADR 0009) 기존 예외 mirror.
+- 2-stage human gate가 "yaml 직접 편집"보다 단계 많음. `make case-propose`가 최근 30일 ≥ 2 후보 case 있는 seed doc skip → 사용자가 동일 template 재검토 안 함으로 완화.
+- live backend 머지 시(PR3) prompt-injection 표면 확장; ADR 0008 chunk-body sanitizer 재사용이 완화책이나 sync 유지할 callsite 1 추가.
 
-**Constraints (unchanged)**
+**Constraints (불변)**
 
-- ADR 0001 byte-identity of the naive baseline golden
-  (`tests/data/naive_baseline_top_k.json`). The proposer touches
-  only `eval/real_config.local.yaml` (private) and never
-  `eval/config.yaml` (public synthetic).
-- ADR 0003 answer contract. The proposer is upstream of
-  `run_rag_query`; it produces eval *inputs*, not answer outputs.
-- ADR 0004 deterministic verifier. Public CI never invokes the
-  proposer (no `make case-propose` in `pr-eval.yml` or `make smoke`).
-- ADR 0005 aggregate-only commit boundary. Case bodies stay
-  gitignored under `reports/proposed/*.local.yaml`; only the
-  metric aggregate crosses.
-- ADR 0008 evidence boundary. PR3's live backend passes chunks
-  through the same sanitizer as `scripts/llm_judge.py`.
+- ADR 0001 naive baseline golden(`tests/data/naive_baseline_top_k.json`) byte-identity. proposer는 `eval/real_config.local.yaml`(private)만 touch, `eval/config.yaml`(공공 합성)은 절대 안 함.
+- ADR 0003 답변 계약. proposer는 `run_rag_query` upstream; eval *입력* 생산, answer 출력 아님.
+- ADR 0004 결정적 검증기. 공공 CI는 proposer 절대 invoke 안 함(`pr-eval.yml` 또는 `make smoke`에 `make case-propose` 없음).
+- ADR 0005 aggregate-only commit 경계. case body는 `reports/proposed/*.local.yaml` gitignore 잔류; 메트릭 aggregate만 통과.
+- ADR 0008 근거 경계. PR3 live backend는 `scripts/llm_judge.py`와 동일 sanitizer로 chunk 통과.
 
-## Alternatives considered
+## 검토한 대안
 
-- **Skip the proposer; just hand-label more cases.** Rejected:
-  labeling at 5–15 min/case caps the practical N around 100 — even
-  one work-day of effort only adds ~30 cases, and the marginal
-  case has the lowest value (most novel failure modes already
-  caught). The proposer's 1–3 min/case review economics make N=200+
-  realistic.
-- **Auto-generate cases and skip the human gate.** Rejected: ADR 0006
-  pinned the LLM-as-second-opinion principle for the real-data
-  surface. Allowing an LLM to produce *both* the question and the
-  expected labels would mean the eval set is grading itself —
-  exactly the failure mode ADR 0006 was written to prevent.
-- **Use the proposer on the public synthetic surface instead.**
-  Rejected: synthetic cases are crisply discriminable by
-  construction (ADR 0006 §Alternatives); the marginal case there
-  has near-zero value. The labeling bottleneck is real-data only.
-- **Reuse `eval/synthetic_judge.py` to also propose cases.**
-  Rejected: doubles the blast radius of any change to either
-  surface. The two scripts share ~50 lines of backend dispatch; the
-  duplication is the cheaper option until a third LLM surface
-  appears (then extract `eval/llm_backend.py`).
-- **Train a deterministic proposer from past hand-labeled cases.**
-  Premature; revisit if `proposer_accept_rate` on the
-  `openai_compatible` backend plateaus below 0.5 across multiple
-  prompt iterations.
+- **proposer skip; 사람이 case 더 라벨링.** 기각: 5-15분/case 라벨링이 실제 N을 ~100 cap — 하루 노력도 ~30 case 추가만, 한계 case가 최저 가치(가장 novel한 실패 모드는 이미 catch). proposer의 1-3분/case 검토 경제가 N=200+ 현실화.
+- **case auto-생성 + human gate skip.** 기각: ADR 0006이 real-data 표면에 LLM-as-second-opinion 원칙 pin. LLM이 질문 *+* 기대 label *둘 다* 생산 허용은 eval set이 스스로 grade — ADR 0006이 정확히 막으려는 실패 모드.
+- **proposer를 공공 합성 표면에 사용.** 기각: 합성 case는 by construction crisply 구분(ADR 0006 §Alternatives); 거기 한계 case는 near-zero 가치. 라벨링 bottleneck은 real-data 한정.
+- **`eval/synthetic_judge.py`를 case proposer로도 재사용.** 기각: 어느 한 표면 변경의 blast radius 배가. 두 script가 ~50줄 backend dispatch 공유; 3번째 LLM 표면 등장 전까지(그때 `eval/llm_backend.py` 추출) 중복이 더 저렴.
+- **과거 hand-labeled case에서 결정적 proposer 훈련.** 시기상조; `openai_compatible` backend `proposer_accept_rate`가 여러 prompt iteration 걸쳐 < 0.5 plateau면 재방문.

@@ -1,181 +1,80 @@
-# 0025: Cost-accuracy frontier deferred until external baseline real runs land
+# 0025: 외부 기준선 실측 도착 전까지 cost-accuracy frontier 보류
 
 - **Status**: superseded by [ADR 0038](./0038-cost-model-and-frontier-interpretation.md)
 - **Date**: 2026-05-12
 - **Deciders**: hskim
-- **Related**: [ADR 0001](./0001-preserve-naive-baseline.md) (baseline preserved), [ADR 0009](./0009-external-baseline-comparison.md) (external baseline infra), [ADR 0011](./0011-llm-synthesis-as-additive-ablation.md) (LLM synthesis backend), [ADR 0015](./0015-cost-telemetry-additive.md) (cost telemetry), [`scripts/plot_pareto.py`](../../scripts/plot_pareto.py) (latency-quality frontier from #124), issues #157 (external baseline real backends — closed infra-only) and #177 (this decision)
+- **Related**: [ADR 0001](./0001-preserve-naive-baseline.md) (기준선 보존), [ADR 0009](./0009-external-baseline-comparison.md) (외부 기준선 인프라), [ADR 0011](./0011-llm-synthesis-as-additive-ablation.md) (LLM 합성 backend), [ADR 0015](./0015-cost-telemetry-additive.md) (cost telemetry), [`scripts/plot_pareto.py`](../../scripts/plot_pareto.py) (#124 latency-quality frontier), issues #157 (외부 기준선 real backend — infra-only close) / #177 (본 결정)
 
-## Context
+## TL;DR
 
-Issue #177 proposed a cost-accuracy frontier plot ("the single most
-compelling LLM Ops portfolio image"): x-axis = $ per query,
-y-axis = accuracy with bootstrap-CI band, dots = ablations, dashed
-line = Pareto frontier. Three structural gaps block a meaningful plot
-from being produced today:
+- 비용 axis 없이 frontier를 그리는 3가지 구조적 갭(in-repo ablation cost=0 / 외부 기준선 stub / 토큰 집계 미배선)으로 #177 보류.
+- modeled-cost frontier는 측정을 가정처럼 가장 — "no fabricated numbers" 자세(ADR 0019/0021) 위배.
+- [`scripts/plot_pareto.py`](../../scripts/plot_pareto.py)(latency p95 vs citation_precision)가 portfolio asset 유지. 3 재개 조건 충족 시 #177 재개.
 
-1. **All in-repo ablations have token cost = 0.** The 14 ablations in
-   `reports/eval_summary.json.ablation.runs` all run on the
-   self-hosted stack (BGE-M3 / hashing-backend embedding + stub LLM
-   on CI, real local models in user-env). [`README.md`](../../README.md)
-   §Limitations already states this as the "비용 영점" (cost-floor)
-   property. On a $/query x-axis every in-repo ablation collapses
-   onto x = 0, reducing the frontier to a 1-D accuracy-only line.
-2. **External baseline real measurements are missing.**
-   [ADR 0009](./0009-external-baseline-comparison.md) defined the
-   side-by-side comparison surface; issue #157 closed the
-   infrastructure side (LangChain / LlamaIndex backends wired,
-   `make external-baselines-langchain` / `-llamaindex` targets land).
-   But `reports/external_baselines.json` still ships as a stub
-   (`backend: "stub"`, `model: "stub"`, `accuracy: 1.0`, n = 42) —
-   the user-environment run that produces real Sonnet / Haiku /
-   OpenAI numbers is a separate manual step that has not been done.
-   Without that file populated, the frontier has no cost-bearing dots
-   to plot.
-3. **Token diagnostics not wired through eval aggregation.**
-   [ADR 0015](./0015-cost-telemetry-additive.md) emits per-call
-   `tokens_in / tokens_out` on the LLM synthesis path
-   ([`rag_synthesis.py`](../../rag_synthesis.py)). Eval-time
-   aggregation into `case_results[i].tokens_*` is not yet implemented,
-   so even if a non-stub backend were measured, computing $/query for
-   the in-repo dots would require modeling rather than reading.
+## 배경
 
-Issue #124 already shipped a latency-vs-citation_precision Pareto
-frontier ([`scripts/plot_pareto.py`](../../scripts/plot_pareto.py),
-`make pareto`, output at `reports/pareto.md` + optional
-`reports/pareto.png`). The shape — Pareto highlight, optional
-matplotlib render, 14 ablations dotted — is the artifact #177
-imagined; the missing piece is purely the *cost axis*.
+issue #177은 cost-accuracy frontier plot("the single most compelling LLM Ops portfolio image") 제안: x=$/query, y=accuracy bootstrap-CI band, dot=분석 변형, dashed=Pareto frontier. 의미 있는 plot 산출을 막는 구조적 갭 3가지:
 
-## Decision
+1. **모든 in-repo 분석 변형 token cost = 0.** `reports/eval_summary.json.ablation.runs`의 14 변형 모두 self-hosted stack(BGE-M3 / hashing backend embedding + stub LLM on CI; user-env 실제 로컬 모델)에서 실행. [`README.md`](../../README.md) §Limitations에 "비용 영점" 속성으로 이미 명시. $/query x-axis에서 모든 in-repo 변형이 x=0으로 collapse → frontier가 1-D accuracy-only line으로 축소.
+2. **외부 기준선 실측 부재.** [ADR 0009](./0009-external-baseline-comparison.md)가 side-by-side 비교 표면 정의; issue #157이 인프라 측 close(LangChain / LlamaIndex backend 연결, `make external-baselines-langchain` / `-llamaindex` 타겟 머지). 그러나 `reports/external_baselines.json`은 여전히 stub(`backend: "stub"`, `model: "stub"`, `accuracy: 1.0`, n=42) ship — 실제 Sonnet / Haiku / OpenAI 수치 산출 user-environment run은 별도 수동 단계, 미수행. 채워진 파일 없이 frontier는 cost-bearing dot 없음.
+3. **토큰 진단이 eval 집계까지 미배선.** [ADR 0015](./0015-cost-telemetry-additive.md)가 LLM 합성 경로([`rag_synthesis.py`](../../rag_synthesis.py))에서 per-call `tokens_in / tokens_out` 출력. eval-time 집계(`case_results[i].tokens_*`) 미구현 → 비-stub backend 측정해도 in-repo dot $/query 계산은 측정이 아니라 모델링 필요.
 
-**Defer #177 until external baseline real-backend measurements land.**
-Do not produce a modeled-cost frontier in the interim. The existing
-[`plot_pareto.py`](../../scripts/plot_pareto.py) frontier (latency
-p95 vs. citation_precision) remains the portfolio asset for
-cost-quality reasoning. [`README.md`](../../README.md) §Limitations'
-"비용 영점" framing is now backed by this ADR rather than left as a
-caveat.
+issue #124가 latency-vs-citation_precision Pareto frontier([`scripts/plot_pareto.py`](../../scripts/plot_pareto.py), `make pareto`, `reports/pareto.md` + 선택 `reports/pareto.png`) 이미 ship. shape(Pareto highlight, 선택 matplotlib render, 14 변형 dot)은 #177이 상상한 artifact; 빠진 것은 순수 *cost axis*.
 
-The deferral is registered as an ADR rather than left as an open
-issue comment because (a) the analysis above is non-obvious — a
-future contributor who reads "#177 is open" might invest a day
-building a modeled-cost plot before discovering it adds no signal,
-and (b) the project has a measurement-gated decision pattern (ADR
-0019 → 0021) that benefits from being applied consistently.
+## 결정
 
-## Re-open conditions
+**외부 기준선 real-backend 측정 도착 전까지 #177 보류.** 사이 modeled-cost frontier 산출 금지. 기존 [`plot_pareto.py`](../../scripts/plot_pareto.py) frontier(latency p95 vs citation_precision)가 cost-quality 추론용 portfolio asset 유지. [`README.md`](../../README.md) §Limitations "비용 영점" framing은 이제 caveat가 아니라 본 ADR이 backing.
 
-ADR 0025 re-opens (i.e., #177 work resumes and the frontier plot is
-built) when **all three** of the following hold:
+보류를 open issue 코멘트가 아니라 ADR로 등재한 이유: (a) 위 분석은 non-obvious — "#177 open" 보는 미래 기여자가 modeled-cost plot에 하루 투자 후에야 신호 없음을 발견할 수 있음, (b) 프로젝트가 일관 적용으로 이득 보는 measurement-gated 결정 패턴(ADR 0019 → 0021) 보유.
 
-1. `reports/external_baselines.json` contains at least one entry with
-   `backend != "stub"` (e.g., `langchain_openai_sonnet`,
-   `llamaindex_anthropic_haiku`, or `langchain_openai_text_embedding_3_large`)
-   and `metrics.accuracy.n >= 32`. The infrastructure for this exists
-   (#157 closed); only the user-environment run is pending.
-2. [`rag_synthesis.py`](../../rag_synthesis.py)'s ADR 0015
-   `tokens_in / tokens_out` telemetry is aggregated into
-   `eval_summary.json.case_results[i]` *or* the cost model is
-   defended as a configurable lookup table (one $/query estimate per
-   ablation, sourced from public 2026-Q2 prices) with the trade-off
-   documented in the follow-up ADR.
-3. A follow-up ADR (numbered 002x or higher) is opened to document
-   the chosen cost model and the frontier plot's interpretation
-   (production sweet spot / accuracy ceiling / cheapest acceptable
-   floor — the three reading anchors from the original #177 spec).
+## 재개 조건
 
-If condition 1 lands but the resulting plot has only one or two
-real-backend dots, the follow-up ADR may instead document that the
-external-baseline real-run cadence is too thin to support a frontier
-and defer further — same pattern as the
-ADR 0019 → 0021 deferred-then-closed loop.
+ADR 0025는 다음 **모두** 충족 시 재개(#177 작업 재개 + frontier plot 생성):
 
-## Consequences
+1. `reports/external_baselines.json`에 `backend != "stub"` 엔트리(예: `langchain_openai_sonnet`, `llamaindex_anthropic_haiku`, `langchain_openai_text_embedding_3_large`) ≥ 1 + `metrics.accuracy.n >= 32`. 인프라 존재(#157 close); user-environment run만 pending.
+2. [`rag_synthesis.py`](../../rag_synthesis.py)의 ADR 0015 `tokens_in / tokens_out` telemetry가 `eval_summary.json.case_results[i]`에 집계 *또는* cost 모델이 configurable lookup table(공공 2026-Q2 가격 기반 분석 변형당 $/query 추정)로 방어 + trade-off가 후속 ADR 문서화.
+3. 후속 ADR(002x 이상) 생성 — 선택된 cost 모델 + frontier plot 해석(production sweet spot / accuracy ceiling / cheapest acceptable floor — 원본 #177 spec 3 reading anchor) 문서화.
 
-Easier:
+조건 1 충족했으나 결과 plot이 real-backend dot 1-2개만이면 후속 ADR이 외부 기준선 real-run 주기가 frontier 지원 너무 빈약함 + 추가 보류 문서화 가능 — ADR 0019 → 0021 deferred-then-closed loop과 동일 패턴.
 
-- **No fabricated frontier ships.** A modeled-cost plot would look
-  authoritative but encode public-price assumptions as if they were
-  measurements. The honest-portfolio cost is one image fewer; the
-  honest-portfolio benefit is that every plot in the repo is backed
-  by a number that actually moved through the eval pipeline.
-- **[`README.md`](../../README.md) §Limitations' "비용 영점"
-  statement is now ADR-backed.** A reviewer who asks "why no cost
-  axis in your ablation table?" gets a measurement-gated answer
-  rather than a verbal explanation.
-- **[`scripts/plot_pareto.py`](../../scripts/plot_pareto.py) stays
-  the canonical Pareto artifact** for now. It is already wired into
-  `make pareto`, `reports/pareto.md`, and ablation documentation. No
-  contributor needs to choose between two competing frontier scripts.
-- **The deferral itself is searchable.** The next contributor who
-  considers picking up #177 finds this ADR before re-running the
-  analysis.
+## 결과
 
-Costs / honesty:
+쉬워진 점:
 
-- The portfolio image #177 imagined ("the single most compelling LLM
-  Ops portfolio image" — issue body) does not exist in the repo
-  today. A reviewer interested in cost-vs-accuracy can be pointed at
-  [`scripts/plot_pareto.py`](../../scripts/plot_pareto.py) (latency
-  as cost proxy) plus the public token-price table in #177's body,
-  but the synthesis is left to the reader.
-- The re-open conditions are gated on a user-environment measurement
-  step (running `make external-baselines-langchain` / `-llamaindex`
-  with real API keys against the synthetic eval surface). That step
-  is not on any in-repo automation's critical path; it relies on the
-  maintainer choosing to spend the API budget.
-- Issue #177 closes pending this ADR. Reopening requires either
-  satisfying the conditions above or writing a fresh ADR that
-  supersedes 0025 with a different framing.
+- **fabricated frontier ship 없음.** modeled-cost plot은 권위 있게 보이지만 공개 가격 가정을 측정처럼 인코딩. honest-portfolio 비용은 이미지 1 감소; honest-portfolio 이득은 repo 내 모든 plot이 실제 eval 파이프라인 통과한 수치 backing.
+- **[`README.md`](../../README.md) §Limitations "비용 영점" 진술이 ADR backing.** "왜 분석 변형 표에 cost axis 없냐"는 reviewer 질문에 verbal 설명이 아니라 measurement-gated 답변.
+- **[`scripts/plot_pareto.py`](../../scripts/plot_pareto.py)가 canonical Pareto artifact 유지** — `make pareto`, `reports/pareto.md`, 분석 변형 문서에 이미 wired. 기여자가 두 frontier script 중 선택 불필요.
+- **보류 자체가 searchable.** #177 pickup 검토 다음 기여자는 분석 재실행 전 본 ADR 발견.
 
-## Alternatives considered
+비용 / 정직:
 
-- **Build a modeled-cost frontier now.** Use public 2026-Q2 prices
-  (Sonnet 4.6 $3/$15 per 1M, Haiku 4.5 $0.80/$4, BGE-M3 self-hosted
-  $0, text-embedding-3-large $0.13/1M) × per-ablation token estimates
-  to produce one plot. *Rejected:* the estimates would be reverse-derived
-  from prompt sizes rather than measured. Shipping
-  estimate-as-measurement contradicts the "no fabricated numbers"
-  posture already taken in [ADR 0019](./0019-embedding-default-stays-minilm.md)
-  / [ADR 0021](./0021-bge-m3-completes-phase-1-3.md).
-- **Latency-only frontier as substitute.** *Rejected:* this is exactly
-  what [`scripts/plot_pareto.py`](../../scripts/plot_pareto.py)
-  already provides via #124. Re-shipping the same chart with a
-  different label would not advance #177's goal.
-- **Build the token-aggregation infrastructure first (ADR 0015 →
-  eval pipeline wiring), then the frontier.** *Rejected:* scope creep
-  — the wiring is at least a multi-PR effort touching the eval
-  aggregation path, and is independently useful (cost reporting per
-  query). It belongs to its own issue. This ADR documents the
-  *deferral* of #177, not the infrastructure work.
-- **Leave #177 open with a comment.** *Rejected:* a comment loses the
-  ADR cross-reference (this ADR will appear in
-  `docs/adr/README.md`'s Index and dependency graph; a GitHub comment
-  will not). The measurement-gated pattern from ADR 0019 / 0021 is
-  the project's established way of closing this kind of loop.
-- **Close #177 as `wontfix`.** *Rejected:* #177's underlying idea is
-  sound — it just needs external-baseline real data to land first.
-  `wontfix` would obscure that the work resumes naturally once the
-  data exists.
+- #177이 상상한 portfolio 이미지("the single most compelling LLM Ops portfolio image" — issue body)는 오늘 repo 부재. cost-vs-accuracy 관심 reviewer는 [`scripts/plot_pareto.py`](../../scripts/plot_pareto.py)(latency cost proxy) + #177 body 공개 token-price 표 안내 가능, 합성은 reader 몫.
+- 재개 조건은 user-environment 측정 단계(real API key로 `make external-baselines-langchain` / `-llamaindex`를 합성 eval 표면에 실행) gate. in-repo 자동화 critical path 외 — maintainer가 API 예산 지출 선택 의존.
+- issue #177은 본 ADR pending close. 재오픈은 위 조건 충족 또는 다른 framing으로 0025 supersede ADR 작성 필요.
 
-## Cross-encoder reranker deferral (ADR 0026, consolidated)
+## 검토한 대안
 
-ADR 0026 (accepted, same date) applied this same measurement-gated deferral pattern to the cross-encoder reranker surface. ADR 0026 is Superseded here; key decisions below.
+- **modeled-cost frontier 지금 build.** 공공 2026-Q2 가격(Sonnet 4.6 $3/$15 per 1M, Haiku 4.5 $0.80/$4, BGE-M3 self-hosted $0, text-embedding-3-large $0.13/1M) × 분석 변형당 토큰 추정으로 plot 1개 생성. *기각:* 추정이 측정이 아니라 prompt size에서 reverse-derived. estimate-as-measurement ship은 [ADR 0019](./0019-embedding-default-stays-minilm.md) / [ADR 0021](./0021-bge-m3-completes-phase-1-3.md) "no fabricated numbers" 자세 위배.
+- **latency-only frontier로 대체.** *기각:* [`scripts/plot_pareto.py`](../../scripts/plot_pareto.py)가 #124로 제공한 그대로. 다른 label로 같은 chart re-ship은 #177 목표 진전 없음.
+- **토큰 집계 인프라 먼저(ADR 0015 → eval 파이프라인 배선), 그 뒤 frontier.** *기각:* scope creep — 배선은 eval 집계 경로 touch하는 multi-PR 노력 최소, 독립적 유용(per-query cost reporting). 자체 issue 소속. 본 ADR은 #177 *보류* 문서화 — 인프라 작업 아님.
+- **#177 코멘트로 open 유지.** *기각:* 코멘트는 ADR cross-reference 손실(본 ADR은 `docs/adr/README.md` Index + 의존 graph 등장; GitHub 코멘트는 아님). measurement-gated 패턴(ADR 0019/0021)이 이런 loop close 프로젝트 정립 방식.
+- **#177 `wontfix` close.** *기각:* #177 기저 아이디어는 건전 — 외부 기준선 real data 먼저 필요할 뿐. `wontfix`는 data 존재 시 작업 재개 자연스러움을 흐림.
 
-**Decision (ADR 0026):** Keep the `Reranker` Protocol and `CrossEncoderReranker` in `rag_reranker.py`. Keep `BIDMATE_RERANK_BACKEND=stub` (identity) as CI default — `full_reranker ≡ full` by construction. Do not remove the seam despite 0pp synthetic delta; Protocol is the plug point for HyDE-reranker / LLM-as-reranker follow-ups.
+## Cross-encoder reranker 보류 (ADR 0026, consolidated)
 
-**Context:** On the public synthetic surface (n=42), `full` (rerank blend on) and `no_rerank` (rerank off) are byte-identical in accuracy/groundedness/citation_precision/abstention. The `rerank: true` blend has zero measured lift. Real backends (`bge`, `bge_ko`, `cohere`) are unmeasured.
+ADR 0026(accepted, 동일 일자)이 동일 measurement-gated 보류 패턴을 cross-encoder reranker 표면에 적용. ADR 0026은 여기서 Superseded; key 결정 아래.
 
-**Re-open conditions** (all three must hold to flip the default):
-1. At least one of `bge` / `bge_ko` / `cohere` backends runs to completion on the public synthetic eval (n=42); results appended to `docs/retrieval/cross-encoder-reranker.md` §Results.
-2. That backend shows `full_reranker` lift of ≥ +3pp on `accuracy` OR `citation_precision` with non-overlapping 95% CIs vs `full`.
-3. A follow-up ADR documents the latency/cost trade-off and flips `BIDMATE_RERANK_BACKEND` default.
+**Decision (ADR 0026):** `Reranker` Protocol + `CrossEncoderReranker`를 `rag_reranker.py`에 유지. `BIDMATE_RERANK_BACKEND=stub`(identity)를 CI default 유지 — `full_reranker ≡ full` by construction. 0pp 합성 delta에도 seam 제거 금지; Protocol은 HyDE-reranker / LLM-as-reranker 후속 plug point.
+
+**Context:** 공공 합성 표면(n=42)에서 `full`(rerank blend on) + `no_rerank`(rerank off)가 accuracy/groundedness/citation_precision/abstention byte-identical. `rerank: true` blend는 zero 측정 lift. Real backend(`bge`, `bge_ko`, `cohere`) 미측정.
+
+**재개 조건** (default flip에 셋 다 필요):
+1. `bge` / `bge_ko` / `cohere` 중 ≥ 1이 공공 합성 eval(n=42) 완주; 결과를 `docs/retrieval/cross-encoder-reranker.md` §Results에 추가.
+2. 해당 backend가 `full` 대비 `accuracy` 또는 `citation_precision`에 `full_reranker` lift ≥ +3pp, 95% CI 비중첩.
+3. 후속 ADR이 latency/cost trade-off 문서화 + `BIDMATE_RERANK_BACKEND` default flip.
 
 ## See also
 
-- [`scripts/plot_pareto.py`](../../scripts/plot_pareto.py) — the
-  latency-quality Pareto frontier that ships today (closed via #124).
-- [`reports/external_baselines.json`](../../reports/external_baselines.json) —
-  currently stub; re-open trigger when it gets a real-backend entry.
-- [ADR 0019](./0019-embedding-default-stays-minilm.md) → [ADR 0021](./0021-bge-m3-completes-phase-1-3.md) —
-  the measurement-gated deferral pattern this ADR follows.
+- [`scripts/plot_pareto.py`](../../scripts/plot_pareto.py) — 오늘 ship되는 latency-quality Pareto frontier(#124 close).
+- [`reports/external_baselines.json`](../../reports/external_baselines.json) — 현재 stub; real-backend 엔트리 획득 시 재개 trigger.
+- [ADR 0019](./0019-embedding-default-stays-minilm.md) → [ADR 0021](./0021-bge-m3-completes-phase-1-3.md) — 본 ADR이 따르는 measurement-gated 보류 패턴.

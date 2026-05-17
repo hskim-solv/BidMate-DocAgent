@@ -1,191 +1,77 @@
-# 0027: LoRA-fine-tuned embedding adapter as additive ablation
+# 0027: LoRA-fine-tuned embedding adapter는 additive 분석 변형
 
 - **Status**: Superseded
 - **Superseded by**: [ADR 0011](./0011-llm-synthesis-as-additive-ablation.md) § "Additive opt-in pattern (generalization)"
 - **Date**: 2026-05-12
 - **Deciders**: hskim
-- **Related**: [ADR 0001](./0001-preserve-naive-baseline.md) (naive baseline invariant), [ADR 0011](./0011-llm-synthesis-as-additive-ablation.md) (additive-opt-in pattern), [ADR 0019](./0019-embedding-default-stays-minilm.md) (re-open criteria for swapping the default), [ADR 0021](./0021-bge-m3-completes-phase-1-3.md) (Phase 1.3 closure), issue #179
+- **Related**: [ADR 0001](./0001-preserve-naive-baseline.md) (naive baseline invariant), [ADR 0011](./0011-llm-synthesis-as-additive-ablation.md) (additive-opt-in 패턴), [ADR 0019](./0019-embedding-default-stays-minilm.md) (default 교체 재개 기준), [ADR 0021](./0021-bge-m3-completes-phase-1-3.md) (Phase 1.3 종결), issue #179
 
-## Context
+## TL;DR
 
-Phase 1.2 ([ADR 0019](./0019-embedding-default-stays-minilm.md)) and
-Phase 1.3 ([ADR 0021](./0021-bge-m3-completes-phase-1-3.md)) measured
-four off-the-shelf embedding candidates (MiniLM-L12-v2, e5-large-instruct,
-KoSimCSE-roberta-multitask, BGE-M3) on the public n=42 synthetic
-surface. All four produced bit-identical metrics on the `full`
-pipeline because metadata-first retrieval (ADR 0002) routes around
-the dense vector for most queries. On `naive_baseline` (dense-only,
-ADR 0001 invariant) BGE-M3 and e5-large-instruct lift accuracy
-+18.8 pp (0.656 → 0.844), confirming the dense vector still matters
-when the pipeline cannot route around it.
+- KURE-v1 위 LoRA-fine-tuned adapter를 **additive 분석 변형**으로 추가 — `BIDMATE_EMBEDDING_LORA_ADAPTER` env-var gated, default 미설정 시 pre-#434 byte-identical.
+- "have you fine-tuned a model?" 시니어 인터뷰 신호 + 도메인 특화 embedding이 메타데이터 우선 라우팅이 가리는 dense-only lift 회복 가능성 테스트.
+- HF Hub adapter는 `<repo>@<sha>` commit SHA pinning(silent-republish supply-chain 차단).
 
-Issue #179 adds a *trained* embedding artifact — a LoRA-fine-tuned
-adapter over `nlpai-lab/KURE-v1` — covering the "pretrain →
-fine-tune → evaluate" cycle that Phases 1.2 and 1.3 deliberately
-left out (off-the-shelf only). The portfolio motivation is the
-"have you fine-tuned a model?" interview signal for senior AI
-engineer roles in the Korean market; the technical motivation is
-testing whether domain-specialized embeddings recover the dense-only
-lift the metadata-first pipeline currently masks.
+## 배경
 
-The trained adapter is a third-party artifact: a PEFT delta hosted
-on the public Hugging Face Hub, loaded at index-build time by
-`rag_core.embed_texts` via `peft.PeftModel.from_pretrained(...)
-.merge_and_unload()`. This introduces a new artifact class to the
-repo — pinned, optional, and reviewable — and the ADR codifies how
-it integrates with the additive-ablation pattern that ADRs 0011,
-0017, and 0023 established.
+Phase 1.2([ADR 0019](./0019-embedding-default-stays-minilm.md)) + Phase 1.3([ADR 0021](./0021-bge-m3-completes-phase-1-3.md))가 공공 n=42 합성 표면에서 off-the-shelf embedding 후보 4종(MiniLM-L12-v2, e5-large-instruct, KoSimCSE-roberta-multitask, BGE-M3) 측정. 모두 `full` 파이프라인에서 bit-identical 메트릭 — 대부분 쿼리에서 메타데이터 우선 검색(ADR 0002)이 dense vector 우회. `naive_baseline`(dense-only, ADR 0001 invariant)에서 BGE-M3 + e5-large-instruct가 accuracy +18.8 pp(0.656 → 0.844) lift — 파이프라인이 우회 불가일 때 dense vector가 여전히 의미.
 
-## Decision
+issue #179가 *trained* embedding artifact 추가 — `nlpai-lab/KURE-v1` 위 LoRA-fine-tuned adapter — Phase 1.2/1.3이 의도적으로 제외(off-the-shelf only)한 "pretrain → fine-tune → evaluate" cycle 포함. portfolio 동기는 한국 시장 senior AI engineer role의 "have you fine-tuned a model?" 인터뷰 신호; 기술 동기는 도메인 특화 embedding이 메타데이터 우선 파이프라인이 가리는 dense-only lift 회복 여부 테스트.
 
-The LoRA adapter is added as an **additive ablation**, gated by an
-environment variable, with the default (env unset) bit-identical to
-pre-#434 behavior.
+trained adapter는 third-party artifact: 공공 Hugging Face Hub 호스팅 PEFT delta, index-build 시점 `rag_core.embed_texts`가 `peft.PeftModel.from_pretrained(...).merge_and_unload()`로 로드. repo에 신규 artifact class(pinned, optional, reviewable) 도입 + ADR 0011/0017/0023이 정립한 additive-ablation 패턴과의 통합 codify.
 
-**Three load-bearing rules:**
+## 결정
 
-1. **`rag_core.embed_texts` extension is env-var gated.** The PEFT
-   branch executes only when `BIDMATE_EMBEDDING_LORA_ADAPTER` is set
-   to a path or HF Hub repo id. When unset (CI default), the function
-   is byte-identical to its pre-#434 implementation. PEFT is imported
-   lazily *inside* the conditional, so the hashing-only public CI
-   never needs the package installed.
-2. **Two new ablation rows are added to `eval/config.yaml`** —
-   `agentic_full_finetuned` (clones `full`) + `naive_baseline_finetuned`
-   (clones `naive_baseline`). The `embedding_model` and
-   `embedding_lora_adapter` keys on these rows are documentation read
-   by `scripts/run_embedding_ablation.py` at index-build time; they
-   are silently dropped by `eval/run_eval.normalize_run_config` so on
-   the default deterministic surface the **correctness metrics**
-   (`accuracy`, `groundedness`, `citation_precision`, `abstention`,
-   `answer_format_compliance` — the canonical `REPRODUCIBLE_METRICS`
-   set) are byte-equal to the parent rows'. Latency / `stage_latency`
-   drifts μs-scale run-to-run — universal across every ablation, not a
-   contract break (mirrors the same exclusion in
-   `tests/test_eval_reproducibility_regression.py`). A regression
-   test (`tests/test_finetuned_ablation_baseline_invariant.py`) pins
-   both the structural (normalize_run_config) and the end-to-end
-   (eval_summary correctness-metric) layers of the invariant.
-3. **The HF Hub-hosted adapter is pinned by commit SHA** in
-   `eval/config.yaml` (`<repo>@<sha>` form), not by tag or branch.
-   This closes the silent-republish supply-chain hole: a re-push to
-   the same tag would change eval results without changing the repo
-   SHA. Pinning by SHA means every adapter swap is a git diff.
+LoRA adapter를 환경 변수 gated **additive 분석 변형**으로 추가, default(env 미설정)는 pre-#434 동작과 bit-identical.
 
-The CLI default stays `naive_baseline` (ADR 0001). The function-level
-default `model_name` in `embed_texts` stays
-`paraphrase-multilingual-MiniLM-L12-v2` ([ADR 0019](./0019-embedding-default-stays-minilm.md)).
-This ADR does *not* trigger the ADR 0019 re-open criteria — those
-require ≥ +5 pp lift on the `full` pipeline with non-overlapping 95%
-CIs; per Phase 1.2 the metadata-first design makes that nearly
-impossible to clear with embeddings alone.
+**3개 load-bearing 규칙:**
 
-## Why "adapter only at index-build time, not query time"
+1. **`rag_core.embed_texts` 확장은 env-var gated.** PEFT branch는 `BIDMATE_EMBEDDING_LORA_ADAPTER`가 path / HF Hub repo id로 set일 때만 실행. 미설정(CI default) 시 함수는 pre-#434 구현과 byte-identical. PEFT는 조건문 *내부* lazy import → hashing-only 공공 CI는 패키지 설치 불필요.
+2. **`eval/config.yaml`에 신규 분석 변형 row 2개 추가** — `agentic_full_finetuned`(`full` clone) + `naive_baseline_finetuned`(`naive_baseline` clone). 이 row의 `embedding_model` + `embedding_lora_adapter` key는 `scripts/run_embedding_ablation.py`가 index-build 시점 읽는 문서; `eval/run_eval.normalize_run_config`가 silently drop → 기본 결정적 표면에서 **correctness 메트릭**(`accuracy`, `groundedness`, `citation_precision`, `abstention`, `answer_format_compliance` — canonical `REPRODUCIBLE_METRICS` set)은 parent row와 byte-equal. Latency / `stage_latency`는 μs-scale run-to-run drift — 모든 분석 변형 공통, 계약 위배 아님(`tests/test_eval_reproducibility_regression.py`와 동일 제외). 회귀 테스트(`tests/test_finetuned_ablation_baseline_invariant.py`)가 structural(normalize_run_config) + end-to-end(eval_summary correctness-metric) 양 layer invariant pin.
+3. **HF Hub adapter는 commit SHA pin** — `eval/config.yaml`에 tag/branch 아닌 `<repo>@<sha>` 형식. silent-republish supply-chain 구멍 close: 동일 tag re-push는 repo SHA 변경 없이 eval 결과 변경. SHA pin은 모든 adapter swap이 git diff.
 
-`rag_core.embed_texts` (line 566–586) merges the adapter once at first
-call, then caches the result in `MODEL_CACHE` under a
-`(model_name, local_only, adapter_path)` key.
+CLI default는 `naive_baseline` 유지(ADR 0001). `embed_texts`의 함수-level default `model_name`은 `paraphrase-multilingual-MiniLM-L12-v2` 유지([ADR 0019](./0019-embedding-default-stays-minilm.md)). 본 ADR은 ADR 0019 재개 기준 *미트리거* — 기준은 `full` 파이프라인 ≥ +5 pp lift + 95% CI 비중첩 필요; Phase 1.2당 메타데이터 우선 설계가 embedding 단독으로 거의 불가능.
 
-**(1) `merge_and_unload()` cost is amortized, not repeated.**
-`PeftModel.merge_and_unload()` rewrites the full base-model weight
-tensor in memory — it's a one-time cost that produces a plain
-`SentenceTransformer` with no PEFT overhead. Doing this per-query
-would mean paying that cost for every encode call. Caching in
-`MODEL_CACHE` means the merge happens once per process lifetime
-(or once per index-build run), after which query-time embedding is
-as fast as the non-adapted path.
+## "adapter는 index-build 시점만, 쿼리 시점 아님" 이유
 
-**(2) Query-time hot-swap is not a use case here.**
-The `data/embedding-ablation/<slug>/` directory pattern (issue #174)
-persists the embedded chunk vectors for each adapter variant under a
-slug. Switching adapters at query time would require those vectors
-to have been built under the new adapter — i.e., a full index rebuild.
-There is no in-flight re-embedding; the adapter choice is fixed when
-`scripts/build_index.py` runs. Supporting hot-swap would add
-complexity (adapter version tracking per stored vector, invalidation
-on adapter change) with no payoff for the offline-batch eval use case.
+`rag_core.embed_texts`(line 566–586)는 첫 호출에 adapter 1회 merge 후 `MODEL_CACHE`에 `(model_name, local_only, adapter_path)` key로 캐싱.
 
-**(3) Composition with the `data/embedding-ablation/<slug>/` pattern.**
-`scripts/build_index.py` reads `BIDMATE_EMBEDDING_LORA_ADAPTER` and
-folds it into the run slug, so each (base model, adapter) combination
-lands in its own directory. Calling `embed_texts` at query time reuses
-the same `MODEL_CACHE` entry — both paths share the same merge result.
-The pattern parallels how `BIDMATE_EMBEDDING_BACKEND` and
-`BIDMATE_EMBEDDING_MODEL` already version separate index directories.
+**(1) `merge_and_unload()` 비용은 amortize, 반복 아님.** `PeftModel.merge_and_unload()`는 base-model weight tensor 전체를 메모리에서 재작성 — PEFT overhead 없는 plain `SentenceTransformer` 산출 one-time 비용. per-query 실행은 매 encode 호출마다 그 비용 지불. `MODEL_CACHE` 캐싱으로 merge가 process lifetime당 1회(또는 index-build run당 1회) 발생, 이후 쿼리 시점 embedding은 non-adapted 경로만큼 빠름.
 
-## Consequences
+**(2) 쿼리 시점 hot-swap은 이 use case 아님.** `data/embedding-ablation/<slug>/` 디렉터리 패턴(issue #174)이 각 adapter 변형 embedded chunk vector를 slug별 영속화. 쿼리 시점 adapter 전환은 신규 adapter로 vector 빌드되어 있어야 — 즉 full index rebuild. in-flight re-embedding 없음; adapter 선택은 `scripts/build_index.py` 실행 시점 고정. hot-swap 지원은 복잡성(저장 vector당 adapter version tracking, adapter 변경 시 invalidation) 추가, offline-batch eval use case에는 payoff 없음.
+
+**(3) `data/embedding-ablation/<slug>/` 패턴과의 조합.** `scripts/build_index.py`가 `BIDMATE_EMBEDDING_LORA_ADAPTER` 읽어 run slug에 fold → 각 (base model, adapter) 조합이 자체 디렉터리 도착. 쿼리 시점 `embed_texts` 호출은 동일 `MODEL_CACHE` 엔트리 재사용 — 양 경로가 동일 merge 결과 공유. 패턴은 `BIDMATE_EMBEDDING_BACKEND` + `BIDMATE_EMBEDDING_MODEL`이 이미 별도 index 디렉터리 versioning하는 방식과 병렬.
+
+## 결과
 
 **Easier:**
-- The "have you fine-tuned a model?" interview signal is now
-  grounded in a reproducible artifact: a Colab-runnable training
-  notebook (`notebooks/embedding_finetune.ipynb`), an HF Hub adapter
-  pinned by SHA in `eval/config.yaml`, and a byte-equality invariance
-  test (`tests/test_finetuned_ablation_baseline_invariant.py`).
-- The additive-ablation pattern (ADR 0011/0017/0023) gains a fourth
-  instance — reinforcing that "new capability = new env-var + new
-  ablation row, never a default swap."
-- Removing the adapter later is a one-line change: unset
-  `BIDMATE_EMBEDDING_LORA_ADAPTER`. The default path is byte-identical
-  to pre-#434 behavior; no migration needed.
 
-**Costs / honesty:**
-- New optional dep (PEFT) — install path is `requirements-lora.txt`,
-  not `requirements.txt`. The hashing-only CI path never imports PEFT.
-- New artifact class: HF Hub-hosted binary. The SHA-pinning rule
-  (`<repo>@<sha>` in `eval/config.yaml`) closes the silent-republish
-  supply-chain hole; every adapter bump is a git diff.
-- The `full` pipeline delta is expected to be ~0 pp on the n=42 public
-  synthetic surface (Phase 1.2 / ADR 0021 invariance: metadata-first
-  routing absorbs embedding variance). `docs/eval/embedding-finetune.md`
-  leads with the `naive_baseline_finetuned` delta [TBD — issue #179]
-  and publishes the `full` null as a deliberate result, not an omission.
-- `MODEL_CACHE` uses a 3-tuple key `(model_name, local_only,
-  adapter_path)`. A process that loads both adapted and unadapted
-  variants holds two full model copies in memory simultaneously.
+- "have you fine-tuned a model?" 인터뷰 신호가 재현 artifact에 grounding: Colab-runnable training notebook(`notebooks/embedding_finetune.ipynb`), `eval/config.yaml` SHA-pinned HF Hub adapter, byte-equality invariance 테스트(`tests/test_finetuned_ablation_baseline_invariant.py`).
+- additive-ablation 패턴(ADR 0011/0017/0023)이 4번째 인스턴스 획득 — "new capability = new env-var + new 분석 변형 row, never a default swap" 강화.
+- adapter 후일 제거는 1줄 변경: `BIDMATE_EMBEDDING_LORA_ADAPTER` unset. default 경로는 pre-#434 동작과 byte-identical; migration 불필요.
 
-## Alternatives considered
+**Costs / 정직:**
 
-- **Full fine-tune of the base encoder.** Rejected: full fine-tune
-  requires retraining all encoder weights, which (a) demands a much
-  larger labeled dataset than the synthetic pairs from
-  `scripts/generate_finetune_pairs.py`, (b) loses the ability to
-  compare base vs fine-tuned on the same index, because the base
-  weights are gone, and (c) makes the HF Hub artifact a 400 MB
-  checkpoint rather than a ~4 MB PEFT delta. LoRA preserves the
-  base for side-by-side ablation — exactly what the eval surface needs.
+- 신규 optional dep(PEFT) — install 경로는 `requirements-lora.txt`, `requirements.txt` 아님. hashing-only CI 경로는 PEFT import 안 함.
+- 신규 artifact class: HF Hub 호스팅 binary. SHA-pinning 규칙(`eval/config.yaml` `<repo>@<sha>`)이 silent-republish supply-chain 구멍 close; 모든 adapter bump이 git diff.
+- `full` 파이프라인 delta는 n=42 공공 합성 표면에서 ~0 pp 예상(Phase 1.2 / ADR 0021 invariance: 메타데이터 우선 라우팅이 embedding variance 흡수). `docs/eval/embedding-finetune.md`는 `naive_baseline_finetuned` delta[TBD — issue #179]를 lead + `full` null을 omission이 아니라 deliberate 결과로 게시.
+- `MODEL_CACHE`는 3-tuple key `(model_name, local_only, adapter_path)` 사용. adapted + unadapted 변형 양쪽 로드 process는 full 모델 사본 2개를 동시 메모리 보유.
 
-- **Merge LoRA into the base and re-upload the merged checkpoint to
-  HF Hub.** Rejected: the ablation surface (`naive_baseline` vs
-  `naive_baseline_finetuned`) requires comparing the same base model
-  with and without the adapter. A merged checkpoint makes that
-  impossible without storing two full checkpoints. The PEFT delta
-  approach keeps the diff visible and the comparison structurally
-  correct. (`merge_and_unload()` happens locally at runtime for
-  inference speed; the HF Hub stores the delta only.)
+## 검토한 대안
 
-- **Pin adapter by HF tag or branch instead of commit SHA.** Rejected:
-  a re-push to the same tag would silently change eval results without
-  any git diff in this repo — exactly the supply-chain hole the SHA-pin
-  pattern is designed to close. SHA pinning means every adapter version
-  bump is a reviewable one-line change in `eval/config.yaml`.
-
-- **Train both KURE-v1 and BGE-M3 adapters and compare.** Deferred:
-  BGE-M3's asymmetric dense/sparse/colbert multi-vector architecture
-  complicates the LoRA target layer decision (separate adapters per
-  head vs a unified projection). KURE-v1's symmetric encoder needs
-  only one LoRA target and is the natural Korean-market signal for this
-  domain. Revisiting BGE-M3 fine-tuning is tracked as a follow-up; a
-  new ADR would be needed to decide the head-targeting strategy.
+- **base encoder full fine-tune.** 기각: full fine-tune은 모든 encoder weight 재훈련 필요 — (a) `scripts/generate_finetune_pairs.py` 합성 pair보다 훨씬 큰 labeled dataset 요구, (b) base weight 소멸로 base vs fine-tuned 동일 index 비교 불가, (c) HF Hub artifact가 ~4 MB PEFT delta 아닌 400 MB checkpoint. LoRA는 side-by-side 분석 변형용 base 보존 — eval 표면이 정확히 필요로 하는 것.
+- **LoRA를 base에 merge + merged checkpoint를 HF Hub에 re-upload.** 기각: 분석 변형 표면(`naive_baseline` vs `naive_baseline_finetuned`)은 동일 base 모델의 adapter 유/무 비교 필요. merged checkpoint는 full checkpoint 2개 저장 없이 그것 불가능. PEFT delta 접근은 diff 가시 + 비교를 구조적 정확하게 유지(`merge_and_unload()`는 inference 속도용 로컬 런타임; HF Hub는 delta만 저장).
+- **commit SHA 대신 HF tag/branch로 adapter pin.** 기각: 동일 tag re-push는 이 repo git diff 없이 eval 결과 silently 변경 — SHA-pin 패턴이 close하도록 설계된 supply-chain 구멍. SHA pinning은 모든 adapter version bump이 `eval/config.yaml` reviewable 1줄 변경.
+- **KURE-v1 + BGE-M3 양 adapter 훈련 + 비교.** 보류: BGE-M3의 asymmetric dense/sparse/colbert multi-vector 아키텍처가 LoRA target layer 결정 복잡화(head별 별도 adapter vs unified projection). KURE-v1의 symmetric encoder는 LoRA target 1개만 필요 + 이 도메인의 자연스러운 한국 시장 신호. BGE-M3 fine-tuning 재방문은 follow-up; head-targeting 전략 결정은 신규 ADR 필요.
 
 ## See also
 
 - [`rag_core.py`](../../rag_core.py) — `embed_texts` LoRA branch + `MODEL_CACHE` 3-tuple key.
-- [`eval/config.yaml`](../../eval/config.yaml) — the two new
-  `ablation_runs` rows + `latency_budgets` entries.
-- [`requirements-lora.txt`](../../requirements-lora.txt) — optional PEFT install path.
-- [`scripts/generate_finetune_pairs.py`](../../scripts/generate_finetune_pairs.py) — synthetic pair generation (issue #433).
-- `notebooks/embedding_finetune.ipynb` *(issue #435, not yet landed)* — training notebook.
-- `docs/eval/embedding-finetune.md` *(issue #435, not yet landed)* — model card + measured results.
-- [`tests/test_finetuned_ablation_baseline_invariant.py`](../../tests/test_finetuned_ablation_baseline_invariant.py) — pins the byte-equality invariant.
-- [ADR 0019](./0019-embedding-default-stays-minilm.md) — re-open criteria for swapping the embedding default (NOT triggered by this ADR).
-- [ADR 0021](./0021-bge-m3-completes-phase-1-3.md) — Phase 1.3 closure (off-the-shelf measurement).
+- [`eval/config.yaml`](../../eval/config.yaml) — 신규 `ablation_runs` row 2개 + `latency_budgets` 엔트리.
+- [`requirements-lora.txt`](../../requirements-lora.txt) — optional PEFT install 경로.
+- [`scripts/generate_finetune_pairs.py`](../../scripts/generate_finetune_pairs.py) — 합성 pair 생성(issue #433).
+- `notebooks/embedding_finetune.ipynb` *(issue #435, 미머지)* — training notebook.
+- `docs/eval/embedding-finetune.md` *(issue #435, 미머지)* — 모델 카드 + 측정 결과.
+- [`tests/test_finetuned_ablation_baseline_invariant.py`](../../tests/test_finetuned_ablation_baseline_invariant.py) — byte-equality invariant pin.
+- [ADR 0019](./0019-embedding-default-stays-minilm.md) — embedding default 교체 재개 기준(본 ADR 미트리거).
+- [ADR 0021](./0021-bge-m3-completes-phase-1-3.md) — Phase 1.3 종결(off-the-shelf 측정).

@@ -1,100 +1,69 @@
-# 0045: rag_core leaf migration plan — embedding helpers + comparison_targets routing
+# 0045: rag_core leaf 마이그레이션 계획 — embedding helpers + comparison_targets routing
 
 - **Status**: accepted (completed by PR-G2 #847 + PR-G3 #861 + PR-G4 #872)
 - **Date**: 2026-05-15
 - **Related**: [ADR 0001](./0001-preserve-naive-baseline.md) · CLAUDE.md
   *Repository map* (rag_retrieval / rag_verifier / rag_answer / rag_query
-  decomposition) · issue #762
+  분리) · issue #762
 - **Deciders**: hskim
 
-> **2026-05-15 update (G4):** All six ADR-0045 leaf modules
-> (`rag_query`, `rag_retrieval`, `rag_verifier`, `rag_answer`,
-> `rag_embedding`, `rag_indexing`) now have **zero** import edges
-> back to `rag_core` — top-level and function-level. This invariant
-> is regression-tested by
-> [`tests/test_dependency_graph_invariance.py`](../../tests/test_dependency_graph_invariance.py)
-> (issue #872). Any future PR that re-introduces a back-edge — even
-> a function-body late-import — fails CI.
+## TL;DR
 
-## Context
+- `rag_retrieval` 이 `rag_core` 로의 late-import 두 곳을 가지고 있음 (embedding primitives + comparison_targets)
+- Plan A: embedding primitives 를 새 leaf `rag_embedding.py` 로 이동
+- Plan B: comparison_targets 를 `rag_query` 직접 import (이미 거기 있음)
 
-`rag_core.py` is 1728 LOC.  PR-H1a/b (issue #459 / #461) and PR-J1/J2/J3
-(issue #465 / #468 / #478) extracted retrieval / verifier / answer /
-query into sibling leaf modules, but the import graph is still not
-clean: `rag_retrieval.py` reaches back into `rag_core` from inside two
-functions via late-import.
+> **2026-05-15 업데이트 (G4):** 6개 ADR-0045 leaf 모듈 (`rag_query`, `rag_retrieval`, `rag_verifier`, `rag_answer`, `rag_embedding`, `rag_indexing`) 모두 `rag_core` 로의 **0** import 에지 — top-level + function-level. 이 불변량은 [`tests/test_dependency_graph_invariance.py`](../../tests/test_dependency_graph_invariance.py) (issue #872) 가 회귀 테스트. back-edge 재도입하는 모든 미래 PR (function-body late-import 포함) 은 CI 실패.
 
-### Observed late-import inventory (2026-05-15, branch `main`)
+## 배경
+
+`rag_core.py` 가 1728 LOC. PR-H1a/b (issue #459 / #461) 와 PR-J1/J2/J3 (issue #465 / #468 / #478) 가 retrieval / verifier / answer / query 를 sibling leaf 모듈로 추출했지만 import 그래프가 아직 깨끗하지 않음: `rag_retrieval.py` 가 두 함수 내부에서 late-import 로 `rag_core` 에 reach back.
+
+### 관찰된 late-import 인벤토리 (2026-05-15, branch `main`)
 
 | Call site | Late-imported symbols |
 |-----------|----------------------|
 | [`rag_retrieval.py:168`](../../rag_retrieval.py:168) | `comparison_targets_for_analysis` |
 | [`rag_retrieval.py:490`](../../rag_retrieval.py:490) | `DEFAULT_EMBEDDING_MODEL`, `DEFAULT_HASH_DIM`, `embed_texts`, `hashing_embeddings` |
 
-Two call sites × five symbols.  The other three split modules are
-already top-level-clean:
+call site 2 × 심볼 5. 다른 3개 분리 모듈은 이미 top-level-clean:
 
-- `rag_query.py`, `rag_verifier.py`, `rag_answer.py` — **zero** rag_core
-  imports (top-level or late).
+- `rag_query.py`, `rag_verifier.py`, `rag_answer.py` — `rag_core` import **0** (top-level + late)
 
-CLAUDE.md itself acknowledges the unfinished state:
+CLAUDE.md 자체가 미완성 상태 인정:
 
-> *"`rag_core.py` is still orchestration + many utilities → late-import
-> for cycle avoidance (not a leaf in the dependency graph)."*
+> *"`rag_core.py` 는 여전히 orchestration + 많은 utilities → cycle 회피 위한 late-import (의존성 그래프 leaf 아님)."*
 
-This ADR plans the cleanup. Actual code migration is **out of scope**
-for this ADR — it lands as a separate PR (`G2` in the GEF loop, tracked
-in `/Users/hskim/.claude/plans/gleaming-forging-dove.md`).
+본 ADR 은 cleanup 계획. 실제 코드 마이그레이션은 본 ADR **범위 외** — 별도 PR (GEF loop 의 `G2`, `/Users/hskim/.claude/plans/gleaming-forging-dove.md` 추적) 로 land.
 
-### Why two distinct migrations, not one
+### 왜 둘로 나누나, 하나가 아니라
 
-The five late-imported symbols split into two semantic groups:
+5개 late-imported 심볼이 두 semantic 그룹으로 나뉨:
 
-1. **Embedding primitives** — `embed_texts`, `hashing_embeddings`,
-   `_embed_with_openai`, `sentence_transformer_cache_available`,
-   `huggingface_offline`, `expand_features`, `EmbeddingResult`,
-   `DEFAULT_EMBEDDING_MODEL`, `DEFAULT_HASH_DIM`.  These are used by
-   `rag_retrieval.embed_query_for_index`, `rag_core` index-build,
-   *and* `scripts/build_index.py` — three independent consumers.  They
-   are not retrieval-specific.
-2. **Query-analysis output reader** — `comparison_targets_for_analysis`
-   is **already defined in `rag_query.py:397`** as part of the PR-J3
-   extraction; `rag_core` only re-exports it.  The late-import in
-   retrieval is therefore a stale routing decision, not a missing
-   home.
+1. **Embedding primitives** — `embed_texts`, `hashing_embeddings`, `_embed_with_openai`, `sentence_transformer_cache_available`, `huggingface_offline`, `expand_features`, `EmbeddingResult`, `DEFAULT_EMBEDDING_MODEL`, `DEFAULT_HASH_DIM`. `rag_retrieval.embed_query_for_index`, `rag_core` 인덱스 빌드, `scripts/build_index.py` — 3개 독립 consumer 가 사용. 검색 전용 아님.
+2. **Query-analysis 출력 reader** — `comparison_targets_for_analysis` 는 PR-J3 추출의 일환으로 **이미 `rag_query.py:397` 에 정의**; `rag_core` 는 re-export 만. 검색의 late-import 는 stale routing 결정, 누락된 home 아님.
 
-These have different fixes (new leaf module vs. import-source change),
-so they belong in separate PRs.
+다른 fix (새 leaf 모듈 vs import-source 변경) 라서 별도 PR 에 속함.
 
-## Decision
+## 결정
 
-### Plan A: embedding primitives → new leaf module `rag_embedding.py`
+### Plan A: embedding primitives → 새 leaf 모듈 `rag_embedding.py`
 
-Create `rag_embedding.py` as a sibling leaf, modeled on the existing
-[`rag_text_processing.py`](../../rag_text_processing.py) /
-[`rag_metadata_processing.py`](../../rag_metadata_processing.py)
-pattern.  Move:
+`rag_embedding.py` 를 sibling leaf 로 생성, 기존 [`rag_text_processing.py`](../../rag_text_processing.py) / [`rag_metadata_processing.py`](../../rag_metadata_processing.py) 패턴 모델링. 이동:
 
-- Constants: `DEFAULT_EMBEDDING_MODEL`, `DEFAULT_HASH_DIM`
+- 상수: `DEFAULT_EMBEDDING_MODEL`, `DEFAULT_HASH_DIM`
 - Dataclasses: `EmbeddingResult`
-- Functions: `embed_texts`, `_embed_with_openai`,
-  `sentence_transformer_cache_available`, `huggingface_offline`,
-  `hashing_embeddings`, `expand_features`
+- 함수: `embed_texts`, `_embed_with_openai`, `sentence_transformer_cache_available`, `huggingface_offline`, `hashing_embeddings`, `expand_features`
 
-Update consumers:
+Consumer 업데이트:
 
-- `rag_core.py` — top-level `from rag_embedding import …`; keep
-  re-export aliases so downstream code (tests, eval scripts) does not
-  break.
-- `rag_retrieval.py` — replace the late-import block with a top-level
-  `from rag_embedding import …`.
-- `scripts/build_index.py` — replace `from rag_core import
-  DEFAULT_EMBEDDING_MODEL` with `from rag_embedding import …`.
+- `rag_core.py` — top-level `from rag_embedding import …`; 다운스트림 코드 (tests, eval 스크립트) 안 깨지게 re-export alias 유지
+- `rag_retrieval.py` — late-import 블록을 top-level `from rag_embedding import …` 로 교체
+- `scripts/build_index.py` — `from rag_core import DEFAULT_EMBEDDING_MODEL` 를 `from rag_embedding import …` 로 교체
 
 ### Plan B: comparison_targets routing
 
-In `rag_retrieval.py:168`, change the late-import to a top-level import
-from `rag_query`:
+`rag_retrieval.py:168` 에서 late-import 를 `rag_query` 의 top-level import 로 변경:
 
 ```python
 # old:
@@ -103,106 +72,75 @@ from rag_core import comparison_targets_for_analysis  # inside function
 from rag_query import comparison_targets_for_analysis
 ```
 
-Verified direction-safe (2026-05-15):
+방향 안전성 검증 (2026-05-15):
 
 ```
 $ grep -nE "^from rag_|^import rag_" rag_query.py
-# (no reference to rag_retrieval)
+# (rag_retrieval 참조 없음)
 ```
 
-`rag_query` is already a leaf; `rag_retrieval → rag_query` is therefore
-a clean DAG edge.
+`rag_query` 는 이미 leaf; `rag_retrieval → rag_query` 는 clean DAG 에지.
 
 ### Sequencing
 
-- Plan B is a **2-line change** (1 import move + 1 deleted late-import).
-  Bundled into the same PR as Plan A is acceptable since both target
-  the same file (`rag_retrieval.py`) and both eliminate the same
-  `rag_core` back-edge.
-- Plan A + B together = the G2 PR.
+- Plan B 는 **2줄 변경** (import 이동 1 + late-import 삭제 1). 같은 파일 (`rag_retrieval.py`) 타겟이고 같은 `rag_core` back-edge 제거라 Plan A 와 같은 PR 묶음 허용.
+- Plan A + B 합쳐서 = G2 PR.
 
-## Alternatives considered
+## 검토한 대안
 
-### (a) Move embedding primitives into `rag_retrieval.py`
+### (a) embedding primitives 를 `rag_retrieval.py` 로 이동
 
-*Rejected*: `scripts/build_index.py` does not need retrieval and
-should not pay the import cost of cross-encoder rerankers, query
-expanders, etc.  Embedding primitives are not retrieval-specific.
+*거부*: `scripts/build_index.py` 는 검색 불필요하며 cross-encoder reranker, query expander 등의 import 비용 지불 안 해야 함. Embedding primitives 는 검색 전용 아님.
 
-### (b) Leave `rag_core` as the canonical home, document the late-import as accepted
+### (b) `rag_core` 를 정식 home 으로 두고 late-import 를 accepted 로 문서화
 
-*Rejected*: CLAUDE.md already calls this out as unfinished work.  The
-late-import works at runtime but defeats static analysis (IDE
-go-to-definition, mypy reachability) and signals architectural debt to
-new contributors.  This is a senior-portfolio readability cost.
+*거부*: CLAUDE.md 가 이미 미완성 작업으로 호출. late-import 는 런타임에는 작동하지만 정적 분석 (IDE go-to-definition, mypy reachability) 패배시키고 신규 contributor 에게 아키텍처 부채 신호. senior-portfolio 가독성 비용.
 
-### (c) Single big-bang migration that also splits text/metadata helpers
+### (c) text/metadata helpers 도 분리하는 단일 big-bang 마이그레이션
 
-*Rejected*: text/metadata helpers are *already* extracted (`rag_text_processing.py`, `rag_metadata_processing.py`).  Bundling
-embedding migration with non-existent further splits inflates the
-diff without benefit.  One concern per PR (CLAUDE.md).
+*거부*: text/metadata helpers 는 *이미* 추출됨 (`rag_text_processing.py`, `rag_metadata_processing.py`). embedding 마이그레이션을 존재하지 않는 추가 분리와 묶으면 이득 없이 diff 부풀음. one concern per PR (CLAUDE.md).
 
-### (d) Use Python `__all__` / re-export instead of an actual move
+### (d) 실제 이동 대신 Python `__all__` / re-export 사용
 
-*Rejected*: re-export does not break the cycle; rag_core still owns
-the function bodies.  The whole point is to make `rag_core` thin.
+*거부*: re-export 는 cycle 못 깸; rag_core 가 여전히 함수 본체 소유. 전체 목적은 `rag_core` 를 얇게 만드는 것.
 
-## Consequences
+## 결과
 
 **Wins**
 
-- `rag_retrieval.py` becomes a true leaf w.r.t. `rag_core` — no
-  back-edges.
-- `rag_core.py` shrinks by ~150 LOC (the embedding block).  Step
-  toward the ~600-LOC orchestration-only target named in the GEF loop.
-- `scripts/build_index.py` no longer needs rag_core to embed — index
-  build can in principle run without loading the full retrieval/answer
-  stack.
-- IDE / static analyzers report the true dependency graph.
+- `rag_retrieval.py` 가 `rag_core` 에 대해 진정한 leaf — back-edge 없음
+- `rag_core.py` 가 ~150 LOC 축소 (embedding 블록). GEF loop 가 명명한 ~600-LOC orchestration-only 목표로의 step
+- `scripts/build_index.py` 가 embed 위해 rag_core 불필요 — 인덱스 빌드가 원칙적으로 full retrieval/answer 스택 로딩 없이 실행 가능
+- IDE / 정적 분석기가 진정한 의존성 그래프 보고
 
 **Costs**
 
-- One new module file to maintain.  Mitigated: it follows the existing
-  `rag_*_processing.py` pattern, so onboarding cost is near zero.
-- Re-export aliases in `rag_core` are dead weight from a graph
-  cleanliness perspective.  They are **kept on purpose** for the first
-  migration to avoid breaking eval scripts; a follow-up ADR may
-  schedule their removal once import sites are audited.
+- 유지할 새 모듈 파일 1개. 완화: 기존 `rag_*_processing.py` 패턴 따르므로 온보딩 비용 0 에 가까움
+- `rag_core` 의 re-export alias 는 그래프 깨끗함 관점에서 dead weight. eval 스크립트 안 깨지도록 첫 마이그레이션에서 **의도적 유지**; import site audit 후 제거 스케줄링 follow-up ADR 가능
 
-**Unchanged**
+**미변경**
 
-- ADR 0001 naive-baseline invariant: `embed_texts` /
-  `hashing_embeddings` semantics are byte-identical after the move —
-  G2 PR is a pure relocation, not a logic change.
-- ADR 0003 answer contract: untouched (answer generation does not
-  embed).
-- `EMBEDDING_BACKEND` env contract: unchanged (the env-var dispatch
-  lives inside `embed_texts`, which moves as-is).
+- ADR 0001 naive-baseline 불변량: `embed_texts` / `hashing_embeddings` 시맨틱이 이동 후 byte-identical — G2 PR 은 순수 재배치, logic 변경 아님
+- ADR 0003 답변 계약: 미터치 (답변 생성이 embed 안 함)
+- `EMBEDDING_BACKEND` env 계약: 미변경 (env-var dispatch 는 `embed_texts` 내부 거주, as-is 이동)
 
-### Out of scope for this ADR
+### 본 ADR 범위 외
 
-- Further `rag_core` slim-down beyond embedding (ingestion split,
-  `_RunContext` re-housing) — covered by G3 in the GEF plan.
-- Removing the re-export shims in `rag_core` — deferred indefinitely.
-  External callers (`tests/`, `scripts/`, `eval/`, `demo/`, `api/`)
-  rely on the shims; deprecating them would be a separate breaking
-  change beyond the leaf-migration goal.
-- pgvector / Qdrant adapter implementations — F1/F2 in the GEF plan.
+- embedding 너머 추가 `rag_core` slim-down (ingestion 분리, `_RunContext` 재배치) — GEF plan 의 G3 가 cover
+- `rag_core` 의 re-export shim 제거 — 무기한 연기. 외부 caller (`tests/`, `scripts/`, `eval/`, `demo/`, `api/`) 가 shim 의존; deprecate 는 leaf-migration 목표 너머의 별도 breaking 변경
+- pgvector / Qdrant adapter 구현 — GEF plan 의 F1/F2
 
 ## Verification
 
-This ADR is plan-only.  The two preconditions it asserts must be present
-in the working tree at PR time (G2 verifies their *removal* after the
-code move):
+본 ADR 은 plan-only. PR 시점 워킹 트리에 존재해야 할 두 전제조건 (G2 가 코드 이동 후 *제거* 검증):
 
 <!-- verifies-key: rag_retrieval.py:from rag_core import -->
 <!-- verifies-key: rag_query.py:def comparison_targets_for_analysis -->
 
-The G2 implementation PR must show:
+G2 구현 PR 은 다음을 보여야 함:
 
-1. `make smoke` passes (`EMBEDDING_BACKEND=hashing`, hashing path used)
-2. `bash scripts/test.sh` passes (full pytest)
-3. `make real-eval-delta` shows §5b parity (this ADR's invariant is
-   *bit-identical embeddings* — any delta is a bug)
-4. `git grep -nE "^\s+from rag_core" rag_retrieval.py rag_query.py rag_verifier.py rag_answer.py` returns **zero** lines
-5. ADR 0001 `naive_baseline` preset golden unchanged
+1. `make smoke` 통과 (`EMBEDDING_BACKEND=hashing`, hashing 경로 사용)
+2. `bash scripts/test.sh` 통과 (full pytest)
+3. `make real-eval-delta` 가 §5b parity 보임 (본 ADR 불변량은 *bit-identical embeddings* — 모든 델타는 버그)
+4. `git grep -nE "^\s+from rag_core" rag_retrieval.py rag_query.py rag_verifier.py rag_answer.py` 가 **0** 라인 반환
+5. ADR 0001 `naive_baseline` 프리셋 golden 미변경

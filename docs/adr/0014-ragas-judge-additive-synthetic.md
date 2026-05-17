@@ -1,40 +1,46 @@
-# 0014: RAGAS-style LLM-judge as additive enrichment on the synthetic surface
+# 0014: 합성 표면에 RAGAS 스타일 LLM 평가자를 추가 enrichment 로
 
 - **Status**: Superseded
 - **Superseded by**: [ADR 0005](./0005-eval-split-public-synthetic-private-local.md) § "LLM-judge gate layers"
 - **Date**: 2026-05-11
-- **Related**: refines [ADR 0006](./0006-llm-judge-on-real-data-only.md); preserves [ADR 0001](./0001-preserve-naive-baseline.md), [ADR 0003](./0003-structured-answer-citation-contract.md), [ADR 0004](./0004-verifier-retry-policy.md), [ADR 0005](./0005-eval-split-public-synthetic-private-local.md); reuses backend pattern from [ADR 0011](./0011-llm-synthesis-as-additive-ablation.md)
+- **Related**: [ADR 0006](./0006-llm-judge-on-real-data-only.md) 정제; [ADR 0001](./0001-preserve-naive-baseline.md), [ADR 0003](./0003-structured-answer-citation-contract.md), [ADR 0004](./0004-verifier-retry-policy.md), [ADR 0005](./0005-eval-split-public-synthetic-private-local.md) 보존; [ADR 0011](./0011-llm-synthesis-as-additive-ablation.md) 백엔드 패턴 재사용
 - **Deciders**: hskim
 
-## Context
+## TL;DR
 
-[ADR 0006](./0006-llm-judge-on-real-data-only.md) restricted LLM-as-judge to the real-data eval surface for three valid reasons: external dependency, per-query token cost, and harder reproducibility on the public CI path. The decision held — and still holds — for *gating* metrics. But it left a gap visible to senior reviewers:
+- 공개 합성 표면에 RAGAS 4 메트릭 (faithfulness / answer_relevance / context_precision / context_recall) 평가자를 opt-in enrichment 로 추가.
+- 기본 `stub`, 라이브 백엔드는 토큰 budget cap + 콘텐츠 해시 캐싱으로 비용 bound.
+- ADR 0006 gate-only 결정 보존; 본 평가자는 enrichment 메트릭만 기여, 상태 결정 미참여.
 
-> "The public-synthetic accuracy=0.906 number is retrieval-grounded but not LLM-graded. A reviewer's first instinct is *judged by what?*"
+## 배경
 
-The deterministic verifier answers that for **grounding rigor** (claims-citation alignment, evidence coverage, format compliance), but not for the multi-dimensional quality questions a RAGAS-style read surfaces:
+[ADR 0006](./0006-llm-judge-on-real-data-only.md) 이 LLM-as-judge 를 세 가지 유효 사유 (외부 dep, 쿼리당 토큰 비용, 공개 CI 경로의 재현성 난이도) 로 실데이터 eval 표면에 한정. *gating* 메트릭에는 여전히 유효. 그러나 시니어 reviewer 에게 보이는 갭:
 
-1. **Faithfulness** — do answer claims actually appear in the cited evidence?
-2. **Answer relevance** — does the answer address the query, or does it drift?
-3. **Context precision** — what fraction of the retrieved evidence is on-topic?
-4. **Context recall** — does the evidence cover what the answer needs?
+> "공개 합성 accuracy=0.906 수치는 검색-grounded 이나 LLM-graded 아님. reviewer 의 첫 본능은 *judged by what?*"
 
-These are *enrichment* signals, not gates. A senior review wants to see them alongside the deterministic numbers; they do not replace anything.
+결정론 검증기는 **grounding 엄밀성** (claim-인용 정합, 근거 coverage, 형식 준수) 에는 답하지만 RAGAS 스타일 read 가 표면화하는 다차원 품질 질문 미답:
 
-The same engineering shape that worked for [ADR 0011](./0011-llm-synthesis-as-additive-ablation.md) (LLM synthesis as additive ablation, never replacing the extractive baseline) applies here: **add the RAGAS judge alongside the existing surface, never replace any existing metric, keep the CI deterministic and free by default.**
+1. **Faithfulness** — 답변 claim 이 인용된 근거에 실제 등장하는가?
+2. **Answer relevance** — 답변이 쿼리를 다루는가, 드리프트 하는가?
+3. **Context precision** — 검색된 근거의 몇 % 가 on-topic 인가?
+4. **Context recall** — 근거가 답변 필요분을 cover 하는가?
 
-## Decision
+이들은 *enrichment* 신호이지 gate 아님. 시니어 리뷰는 결정론 수치와 함께 보길 원함; 어떤 것도 대체하지 않음.
 
-A RAGAS-style LLM-judge is permitted as an **opt-in additive enrichment** on the **public synthetic eval surface**:
+[ADR 0011](./0011-llm-synthesis-as-additive-ablation.md) 의 같은 형태 (LLM 합성을 추가 분석 변형, 추출형 기준선 미대체) 가 여기 적용: **RAGAS 평가자를 기존 표면 옆에 추가, 기존 메트릭 미대체, 기본 CI 는 결정론·무료.**
 
-- **Default off.** `BIDMATE_JUDGE_BACKEND=stub` is the CI default. Stub is deterministic, network-free, zero-cost, and the public CI workflows (`pr-eval.yml`) do not invoke the judge at all. ADR 0004's reproducibility argument holds.
-- **Opt-in paid mode.** `BIDMATE_JUDGE_BACKEND=openai_compatible` (or `anthropic`) calls the configured model with a per-case prompt that asks for all four RAGAS scores in a single JSON response. Invoked manually via `make smoke-with-judge` or `python3 eval/llm_judge.py`. Never invoked by automated CI.
-- **Cache by content hash.** Each `(query, summary, evidence[:3])` SHA256 hash maps to a cache file under `reports/judge_cache/` (gitignored). A re-run with unchanged inputs has zero token cost. Cache invalidation is by re-hashing; the existing input/output discipline is enough.
-- **Token budget cap.** `BIDMATE_JUDGE_TOKEN_BUDGET` (default 200,000 input-token estimate per full eval run). If reached, the script refuses to continue rather than racking up unbounded cost. Users override the env var deliberately.
+## 결정
 
-### Output schema
+RAGAS 스타일 LLM 평가자가 **공개 합성 eval 표면** 의 **opt-in 추가 enrichment** 로 허용:
 
-Per-case verdict (local-only, gitignored):
+- **기본 off.** `BIDMATE_JUDGE_BACKEND=stub` 가 CI 기본. Stub 은 결정론·네트워크 없음·비용 0, 공개 CI workflow (`pr-eval.yml`) 가 평가자 호출 안 함. ADR 0004 재현성 유지.
+- **Opt-in 유료 모드.** `BIDMATE_JUDGE_BACKEND=openai_compatible` (또는 `anthropic`) 가 케이스별 프롬프트로 RAGAS 4 점수를 JSON 응답 1회로 요구. `make smoke-with-judge` 또는 `python3 eval/llm_judge.py` 로 수동 호출. 자동 CI 호출 없음.
+- **콘텐츠 해시 캐싱.** 각 `(query, summary, evidence[:3])` SHA256 해시가 `reports/judge_cache/` (gitignored) 캐시 파일로 매핑. 입력 불변 재실행은 토큰 비용 0. 캐시 무효화는 재해싱; 기존 입출력 discipline 으로 충분.
+- **토큰 budget cap.** `BIDMATE_JUDGE_TOKEN_BUDGET` (기본 200,000 입력 토큰 추정·전체 eval run 당). 도달 시 무제한 비용 누적 대신 continue refuse. 사용자가 env var 의도 override.
+
+### 출력 스키마
+
+케이스별 verdict (로컬, gitignored):
 
 ```json
 {
@@ -47,7 +53,7 @@ Per-case verdict (local-only, gitignored):
 }
 ```
 
-Committable aggregate (lives at top-level of `reports/eval_summary.json` under `judge_ragas`):
+Commit 가능 집계 (`reports/eval_summary.json` 의 `judge_ragas` 최상단):
 
 ```json
 {
@@ -60,40 +66,40 @@ Committable aggregate (lives at top-level of `reports/eval_summary.json` under `
 }
 ```
 
-The aggregate is mean ± 95% bootstrap CI per metric, reusing [`eval/bootstrap.py`](../../eval/bootstrap.py). No per-case payload crosses the commit boundary; `scripts/run_real_eval_delta.py:SAFE_TOPLEVEL_KEYS` whitelists `judge_ragas` with explicit sub-key allowlisting.
+집계는 메트릭별 평균 ± 95% bootstrap CI, [`eval/bootstrap.py`](../../eval/bootstrap.py) 재사용. 케이스별 페이로드는 commit 경계 미통과; `scripts/run_real_eval_delta.py:SAFE_TOPLEVEL_KEYS` 가 `judge_ragas` 명시 sub-key allowlist whitelisting.
 
-### Refines ADR 0006, doesn't supersede it
+### ADR 0006 정제, supersede 아님
 
-ADR 0006's gate-only restriction stays: the deterministic verifier remains the source of truth for `answer.status` (supported / partial / insufficient). The RAGAS judge contributes *enrichment metrics*, not status decisions. The two surfaces serve different epistemic purposes:
+ADR 0006 gate-only 제한 유지: 결정론 검증기가 `answer.status` (supported / partial / insufficient) 소스 of truth 유지. RAGAS 평가자는 *enrichment 메트릭* 만 기여, 상태 결정 미참여. 두 표면은 다른 epistemic 목적:
 
-- **ADR 0006 judge** (real-data, status-style): "does the model's read of the evidence agree with the verifier's call?" — `agreement_with_verifier` is the headline.
-- **ADR 0014 judge** (synthetic, RAGAS-style): "how does the answer score on four quality dimensions?" — four numeric scores, each with a CI.
+- **ADR 0006 평가자** (실데이터, status 스타일): "모델의 근거 read 가 검증기 호출과 일치하는가?" — `agreement_with_verifier` 가 헤드라인.
+- **ADR 0014 평가자** (합성, RAGAS 스타일): "답변이 4 품질 차원에서 어떻게 점수받는가?" — 각각 CI 동반 4 수치 점수.
 
-They coexist in the same `scripts/llm_judge.py` backend infrastructure (stub / openai_compatible / anthropic) but write to different top-level keys (`judge` for ADR 0006, `judge_ragas` for ADR 0014).
+동일 `scripts/llm_judge.py` 백엔드 인프라 (stub / openai_compatible / anthropic) 공존하되 다른 최상위 키 (`judge` ADR 0006, `judge_ragas` ADR 0014) 기록.
 
-## Consequences
+## 결과
 
 **Wins**
 
-- Public-synthetic numbers gain a second-opinion signal that's *not* trained on the same eval set. Reviewer's "judged by what?" question has a concrete answer.
-- Same backend idiom as ADR 0006 — no new auth flow, no new env vars (`BIDMATE_JUDGE_API_KEY`, `BIDMATE_JUDGE_MODEL`, optional `BIDMATE_JUDGE_BASE_URL` already exist).
-- Caching means re-runs across PRs against the same case set are free, so opt-in cost is bounded to first-time runs and prompt changes.
-- ADR 0001 / 0003 / 0004 / 0005 invariants unchanged.
+- 공개 합성 수치가 동일 eval 셋에 *학습 안 된* 두 번째 의견 신호 획득. reviewer 의 "judged by what?" 에 구체 답.
+- ADR 0006 과 동일 백엔드 관용구 — 새 auth flow·env var 없음 (`BIDMATE_JUDGE_API_KEY`, `BIDMATE_JUDGE_MODEL`, 선택 `BIDMATE_JUDGE_BASE_URL` 기존 존재).
+- 캐싱으로 동일 케이스 셋에 대한 PR 간 재실행 무료 — opt-in 비용은 최초 실행 + 프롬프트 변경에 bound.
+- ADR 0001 / 0003 / 0004 / 0005 불변식 무변경.
 
 **Costs**
 
-- Per-run token cost when opt-in mode is used. Bounded by the budget cap (~$3-5 per full eval run with Sonnet 4.6 + prompt cache, per #164 estimate). Budget enforcement is a hard refusal, not a warning.
-- One more env var combination for users to know about. Mitigated by stub being the default and `make smoke-with-judge` orchestrating the workflow.
-- A judge outage on opt-in runs means RAGAS metrics aren't computed for that PR. The deterministic eval still completes; the `judge_ragas` block is simply absent.
+- opt-in 모드 사용 시 run 당 토큰 비용. budget cap (~$3-5 per 전체 eval run, Sonnet 4.6 + prompt cache, #164 추정) bound. budget enforcement 는 경고 아닌 hard refuse.
+- 사용자가 알 env var 조합 1개 추가. stub 기본 + `make smoke-with-judge` 워크플로 오케스트레이션으로 완화.
+- opt-in run 평가자 outage 시 해당 PR 의 RAGAS 메트릭 미계산. 결정론 eval 은 완료; `judge_ragas` 블록만 부재.
 
-**Constraints (unchanged from prior ADRs)**
+**Constraints (이전 ADR 들로부터 불변)**
 
-- Public CI must not call out to any external LLM. Enforced by convention: `pr-eval.yml` does not invoke the judge, and stub is the default everywhere else.
-- Aggregate-only commit boundary stays intact. Per-case judge text under `reports/judge_cache/` is gitignored. Aggregate sub-keys are explicit-allowlist extracted by `scripts/run_real_eval_delta.py`.
+- 공개 CI 는 외부 LLM 호출 금지. 컨벤션 강제: `pr-eval.yml` 가 평가자 호출 안 함 + stub 가 그 외 어디든 기본.
+- Aggregate-only commit 경계 유지. `reports/judge_cache/` 케이스별 평가자 텍스트는 gitignored. 집계 sub-key 는 `scripts/run_real_eval_delta.py` 가 명시 allowlist 추출.
 
-## Alternatives considered
+## 검토한 대안
 
-- **Use RAGAS directly (the upstream library).** Rejected: adds a paid framework dependency and its own opinion on which model to call. The four metrics are well-defined; a 50-line backend-agnostic implementation gives us the same signal with full control over prompt, caching, and budget enforcement.
-- **Compute the four metrics deterministically (token overlap / cosine).** Rejected: that's just a fancier version of the existing groundedness / citation_precision metrics. The point is *another model's read* — the same Goodhart concern (#169) applies if we generate metrics from the same retrieval scaffolding being evaluated.
-- **Gate CI on RAGAS thresholds.** Rejected for the same reasons as ADR 0006: reproducibility, cost, and external dependency on the *public* path. Future tightening would need a Judge↔Human agreement floor (#169 / ADR 0013-pending), not a raw RAGAS gate.
-- **Merge under existing `judge` top-level key.** Rejected: the schemas differ (status-style vs four-numeric-metrics), and the surfaces differ (real-data vs synthetic). Coexistence via separate top-level keys keeps the privacy boundary easier to audit.
+- **RAGAS 직접 사용 (upstream 라이브러리).** Reject: 유료 framework dep 추가 + 어떤 모델 호출할지에 대한 자체 의견. 4 메트릭은 잘 정의됨; 50줄 백엔드 중립 구현이 프롬프트·캐싱·budget enforcement 완전 제어 + 동일 신호.
+- **4 메트릭 결정론 계산 (토큰 overlap / cosine).** Reject: 기존 groundedness / citation_precision 의 fancier 버전. 핵심은 *다른 모델의 read* — 평가 받는 동일 검색 scaffolding 으로 메트릭 생성 시 동일 Goodhart 우려 (#169) 적용.
+- **CI 를 RAGAS threshold 로 gate.** ADR 0006 과 같은 사유로 reject: 재현성·비용·외부 dep on *공개* 경로. 향후 강화는 raw RAGAS gate 아닌 Judge↔Human agreement floor (#169 / ADR 0013-pending) 필요.
+- **기존 `judge` 최상위 키 합치기.** Reject: 스키마 차이 (status 스타일 vs 4 수치) + 표면 차이 (실데이터 vs 합성). 별도 최상위 키 공존이 privacy 경계 audit 더 쉬움.

@@ -1,46 +1,52 @@
-# 0050: M4-A axis-A real_scale_v2_distractor rebuild + H/I/J/K corpus expansion
+# 0050: M4-A axis-A real_scale_v2_distractor 재구축 + H/I/J/K 코퍼스 확장
 
 - **Status**: proposed
 - **Date**: 2026-05-17
 - **Deciders**: hskim
-- **Related**: [ADR 0001](./0001-preserve-naive-baseline.md) (naive_baseline ranking invariance), [ADR 0003](./0003-structured-answer-citation-contract.md) (answer contract schema_version=2), [ADR 0005](./0005-eval-split-public-synthetic-private-local.md) (eval split boundary), [ADR 0030](./0030-leaderboard-silence-threshold.md) (silence threshold; axis-A signal recovery), [ADR 0044](./0044-realN-eval-case-expansion.md) (realN case expansion lineage), issue [#911](https://github.com/hskim-solv/BidMate-DocAgent/issues/911) (this ADR)
+- **Related**: [ADR 0001](./0001-preserve-naive-baseline.md) (naive_baseline ranking 불변), [ADR 0003](./0003-structured-answer-citation-contract.md) (답변 계약 schema_version=2), [ADR 0005](./0005-eval-split-public-synthetic-private-local.md) (eval 분리 경계), [ADR 0030](./0030-leaderboard-silence-threshold.md) (silence threshold; axis-A 신호 회복), [ADR 0044](./0044-realN-eval-case-expansion.md) (realN 케이스 확장 lineage), issue [#911](https://github.com/hskim-solv/BidMate-DocAgent/issues/911) (본 ADR)
 
-## Context
+## TL;DR
 
-axis-A annotation v1 capped synthetic doc-A/B/C at 9 sections each. Every measured run on the public-synthetic surface returned 13/13 PASS — a **ceiling effect** that silently saturated the axis-A signal. Phase 1 Step 2.5 trajectory dumps (PR #910) had no axis-A discriminating power because every case fit inside the 9-section budget.
+- axis-A 9-section ceiling 효과 제거 위해 `real_scale_v2_distractor` 새 annotation scale 도입 (doc-A/B/C 100+ sections)
+- H/I/J/K 4개 신규 corpus 파일 추가 (Phase 1 Step 3 hook, 현재 consumer 0)
+- ADR 0001 naive_baseline scoring logic + ADR 0003 schema_version=2 미터치
 
-A 100-document profiling pass on the private corpus (`docs/eval/axis-a-rebuild/axis_b_real_measurement.md` v4) gave the calibration anchor: Upstage `heading1` median ≈ 100 main headings/doc, kordoc cross-checked median 39,511 Korean chars/doc. v1's 9 sections was 1/10 the real distribution — every axis-A measurement was answering "does the pipeline handle tiny portfolios" rather than "does it handle real RFPs."
+## 배경
 
-Separately, four corpus variants were drafted for the Phase 1 Step 3 (n=200) expansion: **H** (long-context marker, 70KB body), **I** (distractor marker — adversarial near-miss sections), **J** (lexical-overlap — vocabulary that collides with golden top-k queries), **K** (medical-imaging domain — vocabulary shift). All four are *future hooks* (consumer count 0 inside this PR) but landing them now keeps the corpus expansion stack additive rather than touching axis-A twice.
+axis-A annotation v1 이 합성 doc-A/B/C 를 각 9 sections 로 cap. 공개 합성 표면 모든 측정 run 이 13/13 PASS 반환 — axis-A 신호를 silent 포화시킨 **ceiling effect**. Phase 1 Step 2.5 trajectory dump (PR #910) 가 모든 케이스가 9-section 예산 내 fit 해 axis-A 판별력 0.
 
-## Decision
+비공개 코퍼스 100-doc profiling pass (`docs/eval/axis-a-rebuild/axis_b_real_measurement.md` v4) 가 calibration anchor 제공: Upstage `heading1` 중앙값 ≈ doc 당 100 main 헤딩, kordoc cross-check 중앙값 39,511 한국어 자/doc. v1 의 9 sections 가 실제 분포의 1/10 — 모든 axis-A 측정이 "파이프라인이 tiny portfolio 처리 가능한가" 답이지 "실제 RFP 처리 가능한가" 아님.
 
-Adopt `axis_a_scale="real_scale_v2_distractor"` as the new axis-A annotation scale for synthetic doc-A/B/C, and add four new corpus files H/I/J/K to `data/raw/`.
+별도로, Phase 1 Step 3 (n=200) 확장용 4개 corpus 변형 draft: **H** (long-context 마커, 70KB body), **I** (distractor 마커 — adversarial near-miss 섹션), **J** (lexical-overlap — golden top-k 쿼리와 collide 하는 vocabulary), **K** (medical-imaging 도메인 — vocabulary shift). 4개 모두 *미래 hook* (본 PR 내 consumer count 0) 이지만 지금 land 가 corpus 확장 stack 을 axis-A 두 번 터치 안 하고 additive 유지.
 
-- **Scale anchor**: Upstage `heading1` equivalence — sections are top-level outline entries, sub-bullets and table rows do not count. Section counts: doc-A = 103, doc-B = 105, doc-C = 102.
-- **Six supporting metadata fields** added per doc (additive — `evidence[].metadata` is open per ADR 0003): `axis_a_acceptance_verdict`, `axis_a_scale_anchor`, `axis_a_scale_distractor_ref`, `axis_a_scale_measurement_ref`, `axis_a_scale_outline_ref`, `section_definition`.
-- **Reference documents** that the metadata cites (`distractor_definitions.md`, `m4a_doc_{a,b,c}_outline.md`, `axis_b_real_measurement.md`) move from `reports/axis_a_rebuild/` (gitignored under the `reports/*` rule) to `docs/eval/axis-a-rebuild/` so the cited URLs resolve in-tree.
-- **H/I/J/K** are committed but unused — no preset, no eval config, no test references them inside this PR. They become hooks for the Phase 1 Step 3 n=200 expansion.
-- **Index + golden regenerated** (`data/index/{index.json,embeddings.npy}` + `tests/data/{naive_baseline_top_k,answer_contract_shape}.json`). chunks: 9 → 383 (~42× growth, driven by the 9 → 310 section-count fan-out and the 4 new corpora).
-- **ADR 0001 naive_baseline scoring logic untouched**. The golden shift is the *necessary consequence* of changing the corpus, not a ranking-algorithm change — `naive_baseline_top_k.json` records new (chunk_id, score) pairs against the new corpus, but the same `rag_core.run_rag_query(pipeline="naive_baseline")` call produces them.
-- **ADR 0003 answer contract `schema_version=2` preserved**. The new metadata fields are additive inside `evidence[].metadata`; the contract surface (`answer.{status, status_reason, query_type, claims, summary, insufficiency}` + top-level `evidence` + `answer_text`) is shape-identical.
+## 결정
 
-## Consequences
+`axis_a_scale="real_scale_v2_distractor"` 을 합성 doc-A/B/C 의 새 axis-A annotation scale 로 채택 + `data/raw/` 에 4개 새 corpus 파일 H/I/J/K 추가.
 
-- **axis-A signal capacity recovered**. The 9-section ceiling is gone — axis-A measurements can now distinguish portfolios with 100+ sections from ones with 50 from ones with 10. The 13/13 saturation is expected to spread into a measurable pass/fail distribution as Phase 1 Step 3 cases land.
-- **Index 5MB → not yet** (`embeddings.npy` 13,952 → 588,416 bytes, ~42×). Below the 50MB git-friendly threshold; if Phase 1 Step 3 adds n=200 cases the binary will need an LFS reconsideration.
-- **`tests/data/naive_baseline_top_k.json` golden shifted**. New corpus produces new chunk_ids and scores. The test's invariance contract — "same pipeline call gives same answer" — is preserved (`tests/test_naive_baseline_ranking_invariance.py` passes against the new golden); the underlying expected values legitimately drift.
-- **H/I/J/K consumer-0 until Phase 1 Step 3**. The four new corpus files exist but no preset or eval case loads them yet. This is intentional staging — landing them inside the corpus rebuild keeps the corpus-expansion stack to one ADR, but it does create a window where the files are declarative-only.
-- **Reference doc location migrated**. The `reports/axis_a_rebuild/*.md` paths cited from prior measurement notes and from the metadata `*_ref` fields are now `docs/eval/axis-a-rebuild/*.md`. Five files (axis_b_real_measurement, distractor_definitions, m4a_doc_{a,b,c}_outline) plus their `*_ref` strings inside doc-A/B/C JSON are sed-rewritten in lockstep. Operator-local raw measurement files (`reports/axis_a_rebuild/*.json`) stay outside the tree as audit-trail (not reproducibility surface).
-- **ADR 0001 baseline-comparison contract intact**. `make real-eval-delta` runs against the new index — its `kordoc_rate` / `by_metadata_field` / `abstention_calibration` aggregations are corpus-shaped (deterministic for a given corpus), so the metric reads shift but the *contract* (those keys present, values within their declared ranges) holds.
-- **`reports/axis_a_rebuild/` directory remains operator-local**. The directory is still gitignored under `reports/*`; only the five `.md` reference documents migrate into the tree. The raw JSON measurement dumps stay local.
+- **Scale anchor**: Upstage `heading1` 동등성 — sections 는 top-level outline 항목, sub-bullet 과 테이블 row 는 count 안 함. Section 수: doc-A = 103, doc-B = 105, doc-C = 102
+- **지원 메타데이터 필드 6개** doc 당 추가 (additive — `evidence[].metadata` 는 ADR 0003 따라 open): `axis_a_acceptance_verdict`, `axis_a_scale_anchor`, `axis_a_scale_distractor_ref`, `axis_a_scale_measurement_ref`, `axis_a_scale_outline_ref`, `section_definition`
+- **메타데이터가 cite 하는 reference 문서** (`distractor_definitions.md`, `m4a_doc_{a,b,c}_outline.md`, `axis_b_real_measurement.md`) 가 `reports/axis_a_rebuild/` (`reports/*` 규칙 아래 gitignored) 에서 `docs/eval/axis-a-rebuild/` 로 이동, cite URL 이 in-tree resolve
+- **H/I/J/K** committed 되지만 unused — 본 PR 내 어떤 프리셋, eval config, 테스트도 참조 안 함. Phase 1 Step 3 n=200 확장 hook
+- **인덱스 + golden 재생성** (`data/index/{index.json,embeddings.npy}` + `tests/data/{naive_baseline_top_k,answer_contract_shape}.json`). chunks: 9 → 383 (~42× 성장, 9 → 310 section-count fan-out + 4개 새 코퍼스 driven)
+- **ADR 0001 naive_baseline scoring logic 미터치**. golden shift 는 corpus 변경의 *필연적 결과*, ranking-algorithm 변경 아님 — `naive_baseline_top_k.json` 가 새 corpus 대비 새 (chunk_id, score) pair 기록, 그러나 같은 `rag_core.run_rag_query(pipeline="naive_baseline")` 호출이 생산
+- **ADR 0003 답변 계약 `schema_version=2` 보존**. 새 메타데이터 필드는 `evidence[].metadata` 내 additive; 계약 surface (`answer.{status, status_reason, query_type, claims, summary, insufficiency}` + top-level `evidence` + `answer_text`) 모양 동일
 
-## Alternatives considered
+## 결과
 
-- **Keep v1 9-section scale and defer rebuild to Phase 1 Step 3**. Rejected: the 13/13 ceiling makes every measurement between now and Phase 1 Step 3 axis-A-blind. Phase 1 Step 2.5 trajectory dumps (just merged in PR #910) lose half their diagnostic value if axis-A is saturated for every case in the trajectory.
-- **Rebuild doc-A only, hold doc-B/C at v1**. Rejected: axis-A comparisons across docs become noisy when one doc is on a different scale. Single-doc rebuild trades the ceiling problem for a calibration problem.
-- **Split this into 2 PRs (axis-A rebuild first, H/I/J/K corpus second)**. Rejected: the H/I/J/K corpus also forces an `data/index/` rebuild, which forces a golden regeneration. Doing index rebuild + golden regen twice doubles the main-red risk window for no organizational benefit — both are pure corpus changes with no production-code impact.
-- **Use a smaller scale anchor (e.g. Upstage `heading2` instead of `heading1`)**. Rejected: 100-doc measurement showed `heading1` is the level that matches "main section" in domain experts' reading model; `heading2` would produce 300+ sections per doc (table rows, sub-clauses), past the chunking-strategy headroom.
+- **axis-A 신호 capacity 회복**. 9-section ceiling 사라짐 — axis-A 측정이 이제 100+ sections portfolio 를 50, 10 과 구분 가능. 13/13 포화는 Phase 1 Step 3 케이스 land 시 측정 가능 pass/fail 분포로 spread 예상
+- **인덱스 5MB → 아직** (`embeddings.npy` 13,952 → 588,416 bytes, ~42×). 50MB git-friendly threshold 미만; Phase 1 Step 3 가 n=200 케이스 추가하면 binary 가 LFS 재고 필요
+- **`tests/data/naive_baseline_top_k.json` golden shift**. 새 corpus 가 새 chunk_id + score 생산. 테스트 불변 계약 — "같은 파이프라인 호출이 같은 답변" — 보존 (`tests/test_naive_baseline_ranking_invariance.py` 새 golden 대비 통과); 기저 expected 값이 정당하게 drift
+- **H/I/J/K Phase 1 Step 3 까지 consumer-0**. 4개 새 corpus 파일 존재하나 아직 어떤 프리셋이나 eval 케이스도 load 안 함. 의도적 staging — corpus rebuild 내 land 가 corpus-확장 stack 을 1개 ADR 로 유지, 그러나 파일이 declarative-only 인 window 생성
+- **Reference doc 위치 마이그레이션**. 사전 측정 노트 + 메타데이터 `*_ref` 필드에서 cite 한 `reports/axis_a_rebuild/*.md` 경로가 이제 `docs/eval/axis-a-rebuild/*.md`. 5개 파일 (axis_b_real_measurement, distractor_definitions, m4a_doc_{a,b,c}_outline) + doc-A/B/C JSON 내 `*_ref` 문자열이 lockstep sed-rewrite. 운영자-로컬 raw 측정 파일 (`reports/axis_a_rebuild/*.json`) 은 audit-trail 로 tree 외부 유지 (재현성 surface 아님)
+- **ADR 0001 baseline-비교 계약 intact**. `make real-eval-delta` 가 새 인덱스 대비 실행 — `kordoc_rate` / `by_metadata_field` / `abstention_calibration` aggregation 이 corpus 모양 (주어진 corpus 에 deterministic) 이라 메트릭 read 는 shift 하지만 *계약* (키 존재, 값이 선언 범위 내) 은 유지
+- **`reports/axis_a_rebuild/` 디렉토리 운영자-로컬 유지**. 디렉토리는 `reports/*` 아래 gitignored 유지; 5개 `.md` reference 문서만 tree 로 마이그레이션. raw JSON 측정 dump 는 로컬 유지
+
+## 검토한 대안
+
+- **v1 9-section scale 유지 + rebuild 를 Phase 1 Step 3 로 연기**. 거부: 13/13 ceiling 이 지금부터 Phase 1 Step 3 까지 모든 측정을 axis-A-blind 화. Phase 1 Step 2.5 trajectory dump (PR #910 에서 막 머지) 가 axis-A 가 trajectory 모든 케이스에 포화면 진단 가치의 절반 잃음
+- **doc-A 만 rebuild, doc-B/C 는 v1 hold**. 거부: doc 간 axis-A 비교가 한 doc 이 다른 scale 일 때 noisy 화. Single-doc rebuild 가 ceiling 문제를 calibration 문제로 trade
+- **2개 PR 로 split (axis-A rebuild 먼저, H/I/J/K corpus 두 번째)**. 거부: H/I/J/K corpus 도 `data/index/` rebuild 강제, golden 재생성 강제. 인덱스 rebuild + golden regen 2회 수행은 조직적 이득 없이 main-red 위험 window 2배 — 둘 다 production-code 영향 없는 순수 corpus 변경
+- **더 작은 scale anchor 사용 (예: Upstage `heading1` 대신 `heading2`)**. 거부: 100-doc 측정이 `heading1` 이 도메인 전문가 reading model 의 "main section" 매치 레벨임 보임; `heading2` 는 doc 당 300+ sections (테이블 row, sub-clause) 생산, 청킹 전략 headroom 초과
 
 ## Verification
 

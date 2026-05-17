@@ -1,199 +1,119 @@
-# 0009: External baseline comparison via a separate script
+# 0009: 별도 스크립트로 외부 기준선 비교
 
-(Originally drafted as ADR 0008 alongside [#155](https://github.com/hskim-solv/BidMate-DocAgent/pull/155); renumbered to 0009 to avoid collision with the concurrent evidence-boundary ADR in [#144](https://github.com/hskim-solv/BidMate-DocAgent/pull/144), per the "numbers are never reused" rule in [docs/adr/README.md](./README.md).)
+(원래 [#155](https://github.com/hskim-solv/BidMate-DocAgent/pull/155) 와 함께 ADR 0008 로 작성, [#144](https://github.com/hskim-solv/BidMate-DocAgent/pull/144) 의 동시 evidence-boundary ADR 와 충돌 회피 위해 0009 로 renumber — [docs/adr/README.md](./README.md) 의 "numbers are never reused" rule.)
 
 - **Status**: accepted
 - **Date**: 2026-05-11
-- **Related**: extends [ADR 0001](./0001-preserve-naive-baseline.md); reuses backend pattern from [ADR 0006](./0006-llm-judge-on-real-data-only.md)
+- **Related**: [ADR 0001](./0001-preserve-naive-baseline.md) 확장; [ADR 0006](./0006-llm-judge-on-real-data-only.md) 백엔드 패턴 재사용
 - **Deciders**: hskim
 
-## Context
+## TL;DR
 
-[ADR 0001](./0001-preserve-naive-baseline.md) preserves `naive_baseline`
-as the *internal* control, so every ablation has a "is the extra
-machinery earning its keep?" comparison built in. The
-[Limitations section of the README](../../README.md) explicitly flags a
-gap: there is no comparison against an *external* framework. A
-reviewer asking *"why build a custom pipeline instead of using
-LangChain `RetrievalQA` or LlamaIndex `QueryEngine`?"* gets a prose
-answer in `Why extractive, not generative?`, but no measurement.
+- 외부 기준선(LangChain·LlamaIndex) 비교를 별도 스크립트 + 별도 리포트로 분리.
+- `eval/config.yaml` ablation 에 추가 안 함 — 의존성·비용·메트릭 비대칭이 부적합.
+- 대칭 가능 메트릭만 비교 표, 비대칭은 `null` 로 명시(공백 아님).
 
-Adding LangChain / LlamaIndex to `eval/config.yaml` as additional
-ablations is the wrong shape because:
+## 배경
 
-1. **Different dependency profile.** `langchain`, `langchain-community`,
-   `faiss-cpu`, `llama-index`, `sentence-transformers` are
-   100–300 MB of transitive deps that the rest of the project does not
-   need. Adding them to `requirements.txt` taxes every contributor and
-   every CI job.
-2. **Different cost profile.** A faithful LangChain comparison needs
-   an LLM (Anthropic / OpenAI). Per ADR 0004 / ADR 0006 the public CI
-   path stays deterministic and free; tying the eval delta job to a
-   paid API would break that invariant.
-3. **Asymmetric metric coverage.** LangChain `RetrievalQA` returns
-   `result` (free-text answer) + `source_documents`. It does not
-   emit our structured `claims[].citations[].chunk_id` shape (ADR 0003).
-   Some of our metrics (`citation_precision`, `citation_region_precision`,
-   `claim_citation_alignment`, `answer_format_compliance`) have no
-   defensible meaning when the external system does not produce the
-   underlying signal.
+[ADR 0001](./0001-preserve-naive-baseline.md) 가 *내부* 컨트롤로 `naive_baseline` 보존 — 모든 분석 변형이 "추가 기제 값 하나?" 비교 내장. [README Limitations](../../README.md) 가 명시 갭 flag: *외부* 프레임워크 대비 비교 없음. *"왜 LangChain `RetrievalQA` 또는 LlamaIndex `QueryEngine` 안 쓰고 커스텀?"* reviewer 질문에 `Why extractive, not generative?` 의 prose 답변만 있고 측정 없음.
 
-The right shape is **a separate orchestration script** that produces a
-parallel, smaller report covering only the metrics where both systems
-can fairly compete.
+LangChain/LlamaIndex 를 `eval/config.yaml` 의 추가 분석 변형으로 넣는 건 잘못된 shape:
 
-## Decision
+1. **다른 의존성 프로필.** `langchain`·`langchain-community`·`faiss-cpu`·`llama-index`·`sentence-transformers` 가 100–300 MB 전이 의존 — 나머지 프로젝트 불필요. `requirements.txt` 추가가 기여자·CI job 모두 과세
+2. **다른 비용 프로필.** 충실한 LangChain 비교는 LLM(Anthropic/OpenAI) 필요. ADR 0004 / ADR 0006 에 따라 공개 CI 경로는 deterministic + free 유지; paid API 묶이면 invariant 깨짐
+3. **비대칭 메트릭 커버리지.** LangChain `RetrievalQA` 는 `result`(free-text) + `source_documents` 반환. 우리 구조화 `claims[].citations[].chunk_id` shape(ADR 0003) emit 안 함. 우리 메트릭 일부(`citation_precision`·`citation_region_precision`·`claim_citation_alignment`·`answer_format_compliance`)는 외부 시스템이 underlying 신호 생성 안 할 때 defensible 의미 없음
 
-External baselines live in `scripts/compare_external_baselines.py` and
-write to `reports/external_baselines.json`. They are **not** part of
-`eval/config.yaml`'s `ablation_runs` and **not** part of
-`make smoke` / `pr-eval.yml` / `make eval`.
+올바른 shape: **별도 orchestration 스크립트** + 양 시스템이 fair 경쟁 가능한 메트릭만 커버하는 작은 parallel 리포트.
 
-### Symmetric metric subset
+## 결정
 
-Only metrics whose definition is fair across systems are reported in
-the comparison table:
+외부 기준선은 `scripts/compare_external_baselines.py` 에 위치, `reports/external_baselines.json` 에 기록. `eval/config.yaml` 의 `ablation_runs` **아님**, `make smoke` / `pr-eval.yml` / `make eval` 의 일부 **아님**.
 
-| Metric | Our pipeline | LangChain RetrievalQA | LlamaIndex QueryEngine |
+### 대칭 메트릭 subset
+
+시스템 간 fair 정의 메트릭만 비교 표에 보고:
+
+| 메트릭 | 우리 파이프라인 | LangChain RetrievalQA | LlamaIndex QueryEngine |
 |---|---|---|---|
-| `accuracy` (term match + doc match) | ✓ | ✓ | ✓ |
+| `accuracy` (term 매치 + doc 매치) | ✓ | ✓ | ✓ |
 | `retrieval_recall@k` (expected_doc_ids ⊆ retrieved) | ✓ | ✓ | ✓ |
-| `latency_ms` (wall-clock per query) | ✓ | ✓ | ✓ |
+| `latency_ms` (쿼리당 wall-clock) | ✓ | ✓ | ✓ |
 | `citation_precision` (chunk-level) | ✓ | ✗ (no chunk_id contract) | ✗ |
 | `claim_citation_alignment` | ✓ | ✗ | ✗ |
 | `abstention_accuracy` | ✓ (first-class status) | ✗ (free-text "I don't know" only) | ✗ |
 | `answer_format_compliance` | ✓ (ADR 0003 JSON) | ✗ | ✗ |
 
-The asymmetric columns are recorded as `null` in the external
-columns, not omitted, so a future reader can see *which* dimensions the
-external systems do not address — that is itself the answer to the
-"why custom?" question.
+비대칭 컬럼은 외부 컬럼에 `null` 로 기록(생략 아님) — 향후 reader 가 외부 시스템이 *어떤* 차원을 address 안 하는지 확인 가능. 이 자체가 "왜 커스텀?" 질문의 답이다.
 
-### Backend pluggability
+### 백엔드 pluggability
 
-Reusing the ADR 0006 pattern, `BIDMATE_EXTERNAL_BACKEND` selects:
+ADR 0006 패턴 재사용, `BIDMATE_EXTERNAL_BACKEND` 선택:
 
-* `stub` (default) — deterministic fixture. Mirrors the API shape
-  (free-text answer + source_documents) using a templated response
-  derived from `expected_terms`. No network. Used by tests and by
-  contributors without API keys. Stub *does not claim to compete* —
-  it exists so the plumbing is exercised in CI.
-* `langchain` — `langchain.chains.RetrievalQA` with
-  `HuggingFaceEmbeddings` (matches our default embedding) + FAISS +
-  `ChatAnthropic` (Claude). Requires `pip install langchain
-  langchain-community langchain-anthropic faiss-cpu sentence-transformers`
-  and `ANTHROPIC_API_KEY`.
-* `llamaindex` — `llama_index.core.query_engine.RetrieverQueryEngine`
-  with the same embedding + LLM. Same install footprint.
+* `stub` (default) — deterministic fixture. `expected_terms` 파생 템플릿 응답으로 API shape(free-text + source_documents) 모방. 네트워크 없음. 테스트 + API key 없는 기여자용. stub 은 *경쟁 주장 안 함* — CI 에서 plumbing 검증용
+* `langchain` — `langchain.chains.RetrievalQA` + `HuggingFaceEmbeddings`(우리 default 임베딩 매치) + FAISS + `ChatAnthropic`(Claude). `pip install langchain langchain-community langchain-anthropic faiss-cpu sentence-transformers` + `ANTHROPIC_API_KEY` 필요
+* `llamaindex` — `llama_index.core.query_engine.RetrieverQueryEngine` + 동일 임베딩 + LLM. 동일 install footprint
 
 ### Cadence
 
-Manual. The author of a PR that materially changes retrieval or
-answer generation re-runs the external comparison locally:
+수동. retrieval/답변 생성 중대 변경 PR 작성자가 외부 비교를 로컬 재실행:
 
 ```bash
 BIDMATE_EXTERNAL_BACKEND=langchain ANTHROPIC_API_KEY=... \\
   python3 scripts/compare_external_baselines.py
 ```
 
-and attaches the resulting aggregate (`reports/external_baselines.json`)
-to the PR if the relative comparison materially shifts. CI itself
-never invokes the live backends.
+relative 비교가 중대 shift 시 결과 aggregate(`reports/external_baselines.json`)를 PR 첨부. CI 자체는 live 백엔드 호출 절대 X.
 
-### Commit boundary
+### Commit 경계
 
-`reports/external_baselines.json` is **committable** at the aggregate
-level (mean ± CI per metric, n cases, backend, model). Per-case
-external answers contain LLM-generated text whose privacy / licensing
-implications we have not audited; they live in
-`reports/external_baselines.local.json` which is git-ignored,
-mirroring ADR 0005's split for the real-data surface.
+`reports/external_baselines.json` 은 aggregate 레벨에서 **committable**(메트릭당 mean ± CI, n 케이스, 백엔드, 모델). 케이스별 외부 답변은 privacy/licensing 미audit LLM 생성 텍스트 포함; git-ignored `reports/external_baselines.local.json` 에 위치 — real-data 표면용 ADR 0005 split 미러.
 
-## Consequences
+## 결과
 
 **Wins**
 
-- The "why not LangChain?" question gets a measurable answer for the
-  metrics that both systems address.
-- ADR 0001 invariant intact: `naive_baseline` and `agentic_full` /
-  `agentic_full_llm` remain the internal controls.
-- Public CI stays deterministic, free, and offline (ADR 0004 /
-  ADR 0006). External backends are an opt-in side road.
-- Backend abstraction is the same idiom already established by ADR 0006
-  (`BIDMATE_JUDGE_BACKEND`) and ADR 0011
-  (`BIDMATE_SYNTHESIS_BACKEND`) — readers learn it once.
+- "왜 LangChain 안 써?" 질문이 양 시스템이 address 하는 메트릭에서 측정 가능한 답 확보
+- ADR 0001 invariant 유지: `naive_baseline` + `agentic_full` / `agentic_full_llm` 은 내부 컨트롤
+- 공개 CI 는 deterministic·free·offline 유지(ADR 0004 / ADR 0006). 외부 백엔드는 opt-in side road
+- 백엔드 추상화는 ADR 0006(`BIDMATE_JUDGE_BACKEND`) + ADR 0011(`BIDMATE_SYNTHESIS_BACKEND`)이 이미 확립한 동일 idiom — reader 1회 학습
 
 **Costs**
 
-- The comparison is **asymmetric by design**. A casual reader could
-  misread N/A columns as a weakness of the external system; the
-  README narrative must frame the asymmetry as a feature surface
-  decision, not a bug.
-- Two extra scripts to keep alive (`langchain` backend and
-  `llamaindex` backend each have their own upstream API churn). Each
-  backend is < 50 lines so the bus factor cost is small, but it is
-  non-zero.
-- Pre-computed sample comparisons committed to
-  `reports/external_baselines.json` go stale if not refreshed. Same
-  cadence convention as `reports/real100/` mitigates this.
+- 비교가 **설계상 비대칭**. 캐주얼 reader 가 N/A 컬럼을 외부 시스템 약점으로 오독 가능; README 내러티브가 비대칭을 feature 표면 결정으로 framing 필요, 버그 아님
+- 유지할 추가 스크립트 2개(`langchain`/`llamaindex` 백엔드 각각 upstream API churn 자체 보유). 각 백엔드 < 50 라인이라 bus factor 비용은 작지만 non-zero
+- `reports/external_baselines.json` 의 pre-computed 샘플 비교는 refresh 안 하면 stale. `reports/real100/` 의 동일 cadence 컨벤션이 완화
 
-**Constraints (unchanged)**
+**Constraint (불변)**
 
-- ADR 0001 — `naive_baseline` stays in `pipeline_cli_choices()`.
-- ADR 0003 — answer schema is not touched.
-- ADR 0004 — public CI does not invoke external LLM endpoints.
-- ADR 0005 — per-case LLM-generated text stays local.
+- ADR 0001 — `naive_baseline` 은 `pipeline_cli_choices()` 유지
+- ADR 0003 — 답변 schema 손대지 않음
+- ADR 0004 — 공개 CI 는 외부 LLM endpoint 호출 X
+- ADR 0005 — 케이스별 LLM 생성 텍스트는 local 유지
 
-## Alternatives considered
+## 검토한 대안
 
-- **Add LangChain / LlamaIndex as ablation runs in
-  `eval/config.yaml`.** Rejected for the three reasons in the
-  Context section (dependencies, cost, asymmetric metrics).
-- **Compare only on accuracy.** Rejected: accuracy alone hides the
-  citation / abstention / format dimensions where the divergence
-  actually matters for an RFP system, and the n=42 CI on accuracy
-  (see ADR-free measurement work in [`eval/bootstrap.py`](../../eval/bootstrap.py))
-  is too wide to be informative as a sole criterion.
-- **Skip the external comparison entirely; rely on prose.**
-  Rejected: prose claims about external systems are exactly the kind
-  of unmeasured assertion the project tries to avoid. ADR 0001's
-  defense of the internal baseline applies recursively — if the
-  agentic pipeline is worth measuring against a naive one, it is
-  also worth measuring against the most popular external framework.
+- **LangChain/LlamaIndex 를 `eval/config.yaml` 분석 변형 run 으로 추가.** Context 섹션 세 이유(의존성·비용·비대칭 메트릭)로 reject
+- **accuracy 만 비교.** Reject: accuracy 단독은 RFP 시스템에서 divergence 가 실제 중요한 citation/abstention/format 차원 은닉, n=42 의 accuracy CI([`eval/bootstrap.py`](../../eval/bootstrap.py))는 단독 기준으로 쓰기엔 너무 넓음
+- **외부 비교 완전 스킵, prose 의존.** Reject: 외부 시스템에 대한 prose 주장은 정확히 프로젝트가 회피하려는 unmeasured 단언. ADR 0001 의 내부 기준선 방어가 재귀 적용 — agentic 파이프라인이 naive 대비 측정 가치 있다면 가장 인기 외부 프레임워크 대비도 측정 가치
 
-## First execution results
+## 첫 실행 결과
 
-**Stub backend (committed, 2026-05-11)**
+**Stub 백엔드 (committed, 2026-05-11)**
 
-`python3 scripts/compare_external_baselines.py` with the default
-`BIDMATE_EXTERNAL_BACKEND=stub` was run against the public synthetic
-n=42 surface and the aggregate committed to
-`reports/external_baselines.json`:
+`python3 scripts/compare_external_baselines.py` 를 default `BIDMATE_EXTERNAL_BACKEND=stub` 으로 공개 synthetic n=42 표면에 실행, aggregate 를 `reports/external_baselines.json` 에 commit:
 
 | metric | stub result | note |
 |---|---|---|
-| `accuracy` | 1.000 (CI: [1.000, 1.000]) | stub returns perfect templated answers — not a quality claim |
-| `retrieval_recall@k` | 1.000 (CI: [1.000, 1.000], n=32) | stub retrieves all expected docs |
-| `latency_ms` (p50/p95) | 0 ms / 0 ms | no real retrieval |
-| `citation_precision` | null | asymmetric metric — external system produces no chunk_ids |
-| `claim_citation_alignment` | null | asymmetric metric |
-| `abstention_accuracy` | null | asymmetric metric |
-| `answer_format_compliance` | null | asymmetric metric |
+| `accuracy` | 1.000 (CI: [1.000, 1.000]) | stub 가 완벽한 템플릿 답변 반환 — 품질 주장 아님 |
+| `retrieval_recall@k` | 1.000 (CI: [1.000, 1.000], n=32) | stub 가 모든 expected doc 검색 |
+| `latency_ms` (p50/p95) | 0 ms / 0 ms | 실제 retrieval 없음 |
+| `citation_precision` | null | 비대칭 메트릭 — 외부 시스템이 chunk_id 미생성 |
+| `claim_citation_alignment` | null | 비대칭 메트릭 |
+| `abstention_accuracy` | null | 비대칭 메트릭 |
+| `answer_format_compliance` | null | 비대칭 메트릭 |
 
-The stub run proves the plumbing end-to-end: `compare_external_baselines.py`
-loads cases from `eval/dev_queries_v1_summary.md`, runs the stub backend,
-aggregates bootstrap CIs, and writes the committable aggregate shape.
-`tests/test_external_baselines.py` covers this path in CI.
+stub run 이 plumbing end-to-end 입증: `compare_external_baselines.py` 가 `eval/dev_queries_v1_summary.md` 에서 케이스 로드, stub 백엔드 실행, bootstrap CI aggregate, committable aggregate shape 작성. `tests/test_external_baselines.py` 가 CI 에서 이 경로 커버.
 
-**Real LangChain backend (deferred)**
+**실제 LangChain 백엔드 (deferred)**
 
-Running `BIDMATE_EXTERNAL_BACKEND=langchain` requires
-`langchain langchain-community langchain-anthropic faiss-cpu
-sentence-transformers` and `ANTHROPIC_API_KEY`. Per ADR 0004 / ADR 0006,
-public CI stays deterministic and free; the real-backend run is an
-opt-in local operation. Tracked in
-[issue #449](https://github.com/hskim-solv/BidMate-DocAgent/issues/449).
-When that run lands, `reports/external_baselines.json` will be updated
-with a row whose `"backend": "langchain"` and the ADR 0025 re-open
-condition (`reports/external_baselines.json` gets ≥ 1 entry with
-`backend != "stub"`, n ≥ 32) will be satisfied.
+`BIDMATE_EXTERNAL_BACKEND=langchain` 실행은 `langchain langchain-community langchain-anthropic faiss-cpu sentence-transformers` + `ANTHROPIC_API_KEY` 필요. ADR 0004 / ADR 0006 에 따라 공개 CI 는 deterministic + free 유지; 실제 백엔드 run 은 opt-in 로컬 operation. [issue #449](https://github.com/hskim-solv/BidMate-DocAgent/issues/449) 추적. 그 run 랜딩 시 `reports/external_baselines.json` 에 `"backend": "langchain"` row 갱신 + ADR 0025 재오픈 조건(`reports/external_baselines.json` 가 `backend != "stub"` 인 ≥1 항목, n ≥ 32) 충족.

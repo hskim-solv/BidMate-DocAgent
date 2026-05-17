@@ -1,4 +1,4 @@
-# ADR 0044 — real100 Eval Case Expansion: In-Place n-Increase Policy
+# 0044: real100 Eval Case 확장 — In-Place n 증가 정책
 
 | Field       | Value                                     |
 |-------------|-------------------------------------------|
@@ -8,99 +8,70 @@
 | **Authors** | hskim-solv                                |
 | **Tags**    | eval, real-data, dataset-cardinality      |
 
-## Context
+## TL;DR
 
-The real100 private eval surface (`eval/real_config.local.yaml`,
-`reports/real100/`) indexes 100 private RFP documents but evaluates
-only **n = 21 cases**. At n = 21 the statistical signal is weak:
+- ADR 0044: real100 eval 케이스를 n=21 → n≥30 → n≥50 로 in-place 확장 (같은 100-doc 코퍼스, 같은 path)
+- 새 시리즈 분기 안 함 — `num_predictions` 가 n 추적, 비교 항상 n-aware
+- 케이스 정의는 `eval/real_config.local.yaml` (gitignored) 유지, aggregate 만 공개
 
-- Pool-recall 100% confidence interval is ±21 pp (Wilson 95%).
-- Single-case accuracy flip swings the headline by +4.8 pp.
-- Silence threshold `max(5e-4, 0.5 / n_min)` (ADR 0030) resolves
-  to 0.024 — far larger than intended convergence signal.
+## 배경
 
-All 100 documents are already ingested into `data/index/real100/`;
-the gap is cases, not documents. Expanding n using the existing corpus
-is low-risk and high-signal.
+real100 비공개 eval 표면 (`eval/real_config.local.yaml`, `reports/real100/`) 은 100개 비공개 RFP 문서를 인덱싱하지만 **n = 21 케이스** 만 평가한다. n = 21 에서 통계 신호 약함:
 
-## Decision
+- Pool-recall 100% 신뢰구간 ±21pp (Wilson 95%)
+- 단일 케이스 정확도 flip 이 헤드라인 +4.8pp 변동
+- Silence threshold `max(5e-4, 0.5 / n_min)` (ADR 0030) 가 0.024 로 해소 — 의도한 수렴 신호보다 훨씬 큼
 
-**Expand the case set in-place** (same `reports/real100/` series,
-same `eval/real_config.local.yaml` path) rather than starting a new
-parallel eval series.
+100개 문서 모두 이미 `data/index/real100/` 에 수집됨; 갭은 케이스지 문서 아님. 기존 코퍼스로 n 확장은 low-risk + high-signal.
 
-Rationale:
+## 결정
 
-1. **Same corpus, same index.** The 100-document corpus and index are
-   unchanged. Cardinality refers to _cases_ (queries), not documents.
-   Adding cases does not invalidate historical retrieval measurements —
-   it improves their statistical power.
+새 병렬 eval 시리즈 시작 대신 **같은 위치에서 케이스셋 확장** (같은 `reports/real100/` 시리즈, 같은 `eval/real_config.local.yaml` path).
 
-2. **`num_predictions` tracks n.** Every `eval_summary.json` snapshot
-   already records `num_predictions`, which is the authoritative n for
-   any baseline comparison. The `reports/real100/baseline.aggregate.json`
-   also records `num_predictions` at commit time, so delta comparisons
-   are always n-aware.
+근거:
 
-3. **Silence threshold self-adjusts.** ADR 0030 defines
-   `δ_silence = max(5e-4, 0.5 / n_min)`. Increasing n automatically
-   tightens the threshold without config changes.
+1. **같은 코퍼스, 같은 인덱스.** 100-doc 코퍼스와 인덱스 미변경. Cardinality 는 *케이스* (쿼리) 지 문서 아님. 케이스 추가는 과거 검색 측정 무효화 안 함 — 통계 검정력 향상.
 
-4. **ADR 0005 boundary preserved.** Case definitions (queries +
-   expected answers referencing private RFP content) stay in
-   `eval/real_config.local.yaml` (gitignored). Only aggregate
-   statistics are committed publicly per ADR 0005. This ADR records
-   the expansion decision; the operator applies case additions locally.
+2. **`num_predictions` 가 n 추적.** 모든 `eval_summary.json` 스냅샷이 이미 `num_predictions` 기록 — 모든 기준선 비교의 권위 있는 n. `reports/real100/baseline.aggregate.json` 도 커밋 시점에 `num_predictions` 기록하므로 델타 비교 항상 n-aware.
 
-## Target Cardinality
+3. **Silence threshold 자동 조정.** ADR 0030 정의 `δ_silence = max(5e-4, 0.5 / n_min)`. n 증가가 config 변경 없이 자동 threshold tighten.
 
-**n ≥ 30** as the near-term target (from n = 21). At n = 30:
+4. **ADR 0005 경계 보존.** 케이스 정의 (쿼리 + 비공개 RFP 콘텐츠 참조 예상 답변) 는 `eval/real_config.local.yaml` (gitignored) 유지. ADR 0005 에 따라 aggregate 통계만 공개 커밋. 본 ADR 은 확장 결정 기록; 운영자가 로컬에서 케이스 추가 적용.
 
-- Wilson 95% CI on recall narrows from ±21 pp → ±18 pp.
-- Single-case flip swings headline by +3.3 pp (vs +4.8 pp at n = 21).
-- Silence threshold tightens to 0.017 (vs 0.024).
+## 목표 Cardinality
 
-Longer-term target: n ≥ 50 (silence threshold ≤ 0.010, CI ≤ ±14 pp).
+**n ≥ 30** 단기 목표 (n = 21 에서). n = 30 일 때:
 
-## Case Selection Criteria
+- Wilson 95% CI on recall 이 ±21pp → ±18pp 좁아짐
+- 단일 케이스 flip 이 헤드라인 +3.3pp 변동 (n = 21 의 +4.8pp 대비)
+- Silence threshold 0.017 로 tighten (0.024 대비)
 
-New cases must satisfy:
+장기 목표: n ≥ 50 (silence threshold ≤ 0.010, CI ≤ ±14pp).
 
-1. **Verifiable expected terms** — the expected_terms must appear
-   verbatim in indexed chunk text (not synthesized or paraphrased).
-2. **Diverse query types** — include single_doc, comparison, and
-   abstention cases to balance the distribution.
-3. **Document coverage** — prefer documents not yet covered by
-   existing cases to maximize corpus utilization.
-4. **Stable ground truth** — expected answers must be factual (budget
-   amounts, dates, technical requirements) rather than subjective.
+## 케이스 선정 기준
 
-## Consequences
+새 케이스 충족 조건:
 
-- `reports/real100/eval_summary.json` will show higher `num_predictions`
-  after each expansion run. Downstream scripts (leaderboard, delta
-  reports) automatically read `num_predictions` from the summary.
-- The committed `reports/real100/baseline.aggregate.json` must be
-  updated via `make real-eval-baseline-update` after each expansion
-  run to record the new n in the public provenance chain.
-- Historical baselines with lower n remain valid for sign-comparison
-  (direction of delta) but not for magnitude comparison — reviewers
-  should note the n-change in PR descriptions when baseline is bumped.
+1. **검증 가능 expected terms** — expected_terms 가 인덱싱된 청크 텍스트에 verbatim 으로 출현 (합성/패러프레이즈 아님)
+2. **다양한 query type** — single_doc, comparison, abstention 케이스 포함해 분포 균형
+3. **문서 커버리지** — 기존 케이스가 다루지 않은 문서 선호해 코퍼스 활용 최대화
+4. **안정적 ground truth** — expected 답변이 주관적 아닌 사실적 (예산, 날짜, 기술 요구사항)
 
-## Alternatives Considered
+## 결과
 
-**New separate series (`reports/real30/`)**: Rejected. Splits the
-leaderboard time-series without benefit; the 100-doc corpus is shared
-so retrieval measurements are directly comparable.
+- `reports/real100/eval_summary.json` 이 각 확장 run 후 더 높은 `num_predictions` 보임. 다운스트림 스크립트 (리더보드, 델타 보고서) 가 summary 에서 `num_predictions` 자동 읽음
+- 커밋된 `reports/real100/baseline.aggregate.json` 은 각 확장 run 후 `make real-eval-baseline-update` 로 업데이트해 새 n 을 공개 provenance chain 에 기록 필요
+- 더 낮은 n 의 과거 기준선은 부호 비교 (델타 방향) 에 유효하지만 크기 비교에는 무효 — reviewer 가 기준선 bump 시 PR 설명에 n 변경 명시 필요
 
-**Increase only via private data expansion** (new documents):
-Deferred. New document ingestion requires ADR 0005 review + index
-rebuild. Case expansion within the existing 100-doc corpus is a
-lower-friction immediate improvement.
+## 검토한 대안
 
-## References
+**새 별도 시리즈 (`reports/real30/`)**: 거부. 리더보드 시계열을 이득 없이 분할; 100-doc 코퍼스 공유라 검색 측정 직접 비교 가능.
 
-- ADR 0001 — naive_baseline invariant (unaffected; public synthetic eval)
-- ADR 0005 — eval split boundary (private data stays gitignored)
-- ADR 0030 — leaderboard silence threshold + n-aware formula
-- Issue #732 — implementation tracking
+**비공개 데이터 확장 (새 문서) 으로만 증가**: 연기. 새 문서 수집은 ADR 0005 리뷰 + 인덱스 재빌드 필요. 기존 100-doc 코퍼스 내 케이스 확장이 마찰 더 낮은 즉시 개선.
+
+## 참조
+
+- ADR 0001 — naive_baseline 불변량 (영향 없음; 공개 합성 eval)
+- ADR 0005 — eval 분리 경계 (비공개 데이터 gitignored 유지)
+- ADR 0030 — 리더보드 silence threshold + n-aware 공식
+- Issue #732 — 구현 추적
