@@ -5,6 +5,7 @@ import datetime
 import hashlib
 import importlib.util
 import json
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -786,6 +787,45 @@ def safe_path_part(value: str) -> str:
     return re.sub(r"[^A-Za-z0-9_.-]+", "_", value).strip("_") or "unknown"
 
 
+_TRACE_VERBOSE_ENV = "BIDMATE_TRACE_VERBOSE"
+_TRACE_VERBOSE_DIAG_KEYS = (
+    "retry_count",
+    "verification_topics",
+    "verification_reasons",
+    "final_relaxation_reason",
+    "filter_stage_attempts",
+    "answer_status",
+)
+
+
+def _trace_verbose_evidence(evidence: Any, *, text_chars: int = 240) -> list[dict[str, Any]]:
+    """Project ``prediction['evidence']`` into a compact form for verbose traces.
+
+    Drops internal-only fields (e.g. ``child_chunk_ids``) and truncates
+    ``text`` to ``text_chars`` so trace files stay manageable. Used by
+    Phase 1 Step 2.5 verifier-trajectory cataloging; gated by env var so
+    default ``make smoke`` dumps stay byte-identical (ADR 0001 safe).
+    """
+    out: list[dict[str, Any]] = []
+    for item in evidence or []:
+        if not isinstance(item, dict):
+            continue
+        text = item.get("text") or ""
+        out.append(
+            {
+                "chunk_id": item.get("chunk_id"),
+                "doc_id": item.get("doc_id"),
+                "score": item.get("score"),
+                "agency": item.get("agency"),
+                "section": item.get("section"),
+                "title": item.get("title"),
+                "text_preview": text[:text_chars],
+                "text_chars_total": len(text),
+            }
+        )
+    return out
+
+
 def prediction_trace_payload(
     case: dict[str, Any],
     run_config: dict[str, Any],
@@ -796,7 +836,7 @@ def prediction_trace_payload(
     trace = prediction.get("trace") if isinstance(prediction.get("trace"), dict) else {}
     if redact_options and isinstance(trace, dict):
         trace = redact_trace(trace, **redact_options)
-    return {
+    payload: dict[str, Any] = {
         "schema_version": 1,
         "case_id": case.get("id"),
         "run": run_config.get("name"),
@@ -806,6 +846,18 @@ def prediction_trace_payload(
         "answer_status": answer_status(prediction),
         "trace": trace,
     }
+    # Env-gated enrichment for Phase 1 Step 2.5 verifier-trajectory dumps.
+    # Off by default → existing trace files byte-identical (ADR 0001 invariant
+    # preserved; see reports/phase1_step2_5_report.md for rationale).
+    if os.environ.get(_TRACE_VERBOSE_ENV) == "1":
+        diagnostics = prediction.get("diagnostics") if isinstance(prediction.get("diagnostics"), dict) else {}
+        payload["evidence"] = _trace_verbose_evidence(prediction.get("evidence"))
+        payload["answer_text"] = prediction.get("answer_text") or ""
+        payload["answer"] = prediction.get("answer") if isinstance(prediction.get("answer"), dict) else {}
+        payload["diagnostics_subset"] = {
+            k: diagnostics.get(k) for k in _TRACE_VERBOSE_DIAG_KEYS if k in diagnostics
+        }
+    return payload
 
 
 def write_prediction_trace(
