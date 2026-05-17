@@ -75,10 +75,38 @@ def format_ci_band(ci: dict[str, float | int] | None, *, digits: int = 3) -> str
     return f"{mean:.{digits}f} ({lo:.{digits}f}–{hi:.{digits}f})"
 
 
+def paired_bootstrap_ci(
+    values_a: list[float],
+    values_b: list[float],
+    *,
+    num_resamples: int = DEFAULT_NUM_RESAMPLES,
+    alpha: float = DEFAULT_ALPHA,
+    seed: int = DEFAULT_SEED,
+) -> dict[str, float | int] | None:
+    """Paired-delta CI by resampling case indices once and applying to both arrays."""
+    if not values_a or not values_b or len(values_a) != len(values_b):
+        return None
+    arr_a = np.asarray(values_a, dtype=float)
+    arr_b = np.asarray(values_b, dtype=float)
+    n = int(arr_a.shape[0])
+    rng = np.random.default_rng(seed)
+    idx = rng.integers(low=0, high=n, size=(num_resamples, n))
+    diffs = (arr_a[idx] - arr_b[idx]).mean(axis=1)
+    return {
+        "mean_diff": float(arr_a.mean() - arr_b.mean()),
+        "ci_lo": float(np.percentile(diffs, 100 * alpha / 2, method="linear")),
+        "ci_hi": float(np.percentile(diffs, 100 * (1 - alpha / 2), method="linear")),
+        "n": n,
+        "num_resamples": int(num_resamples),
+        "alpha": float(alpha),
+    }
+
+
 __all__ = [
     "DEFAULT_NUM_RESAMPLES",
     "DEFAULT_ALPHA",
     "DEFAULT_SEED",
     "bootstrap_ci",
+    "paired_bootstrap_ci",
     "format_ci_band",
 ]
