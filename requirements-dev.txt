@@ -22,3 +22,13 @@ cohere>=5.0
 # Dev-only: not imported by the production pipeline. Fresh-clone reproducibility
 # requires this to be declared so `pip install -r requirements-dev.txt` suffices.
 pandas>=2.0,<3.0
+# Issue #915 — parallel pytest. scripts/test.sh runs `pytest -n auto --dist
+# loadfile`; loadfile keeps file-internal state (env mutation, golden writes,
+# qdrant collections, langgraph globals) on a single worker without needing a
+# `@pytest.mark.heavy` scheme. 1010s → ~200s on M-series 8-core.
+pytest-xdist>=3.5
+# Issue #915 (closes G8 of issue #334) — CI lint gate. pyproject.toml
+# [tool.ruff.lint] is pinned to fatal pyflakes only (E9/F63/F7/F82) — zero
+# finding on current main, no codebase sweep required. Wider rules sweep
+# (E402/F401/F841) tracked in #334.
+ruff>=0.15.12
