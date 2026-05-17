@@ -21,8 +21,23 @@ env:
 
 jobs:
   test:
-    name: Pytest
+    # Issue #931: matrix shard pytest x8 fans the suite across 8 parallel
+    # ubuntu-latest runners. `scripts/test.sh` honors `BIDMATE_PYTEST_SPLITS`
+    # + `BIDMATE_PYTEST_SHARD` env vars (passes `--splits N --group K` to
+    # pytest-split). `fail-fast: false` so we see every failing shard, not
+    # just the first. ~25min serial wall-clock → ~3-4min per-shard.
+    # Per-shard coverage.xml uploads to Codecov with `shard-N` flags;
+    # Codecov merges them server-side. Leaderboard --check runs only on
+    # shard 1 (single-runner invariant; not test-suite-dependent).
+    name: Pytest (shard ${{ matrix.shard }})
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
     runs-on: ubuntu-latest
+    env:
+      BIDMATE_PYTEST_SPLITS: "8"
+      BIDMATE_PYTEST_SHARD: ${{ matrix.shard }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -44,7 +59,7 @@ jobs:
         run: |
           if [ -f coverage.xml ] && command -v coverage >/dev/null 2>&1; then
             {
-              echo "## Coverage";
+              echo "## Coverage (shard ${{ matrix.shard }})";
               echo '```';
               coverage report --skip-empty || true;
               echo '```';
@@ -55,7 +70,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: coverage-xml
+          name: coverage-xml-shard-${{ matrix.shard }}
           path: coverage.xml
           if-no-files-found: warn
 
@@ -64,10 +79,15 @@ jobs:
         uses: codecov/codecov-action@v6
         with:
           files: coverage.xml
+          flags: shard-${{ matrix.shard }}
           fail_ci_if_error: false
           verbose: false
 
       - name: Verify leaderboard artifacts are in sync with history
+        # Single-runner invariant — leaderboard history is not test-suite
+        # dependent. Gating to shard 1 avoids 8× duplicate runs and a
+        # racey artifact diff if shards complete out of order.
+        if: matrix.shard == 1
         run: python3 scripts/leaderboard.py --check
 
   baseline-provenance:
