@@ -231,7 +231,6 @@ python3 scripts/update_readme_metrics.py --report reports/eval_summary.json --re
 | 비공개 100-doc aggregate 정책 + placeholder | [`docs/real-data/private-100-doc-experiments.md`](docs/real-data/private-100-doc-experiments.md) |
 | 엔지니어링 블로그 (GitHub Pages) | [hskim-solv.github.io/BidMate-DocAgent](https://hskim-solv.github.io/BidMate-DocAgent/) |
 | 전체 문서 인덱스 | [`docs/README.md`](docs/README.md) |
-| 번역 용어집 (한국어 docs 번역 규약) | [`docs/translation-glossary.md`](docs/translation-glossary.md) |
 
 ---
 
