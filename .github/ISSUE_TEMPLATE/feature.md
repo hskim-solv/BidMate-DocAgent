@@ -1,42 +1,39 @@
 ---
 name: Feature / enhancement
-about: A new capability or improvement to an existing one.
+about: 신규 기능 또는 기존 기능 개선.
 title: "[feat] "
 labels: enhancement
 ---
 
 <!--
-Per ADR 0007, every PR must be linked to an issue. Open this first;
-your branch will be `feat/issue-<N>-<slug>` once this issue is filed.
+ADR 0007 에 따라 모든 PR 은 issue 와 연결. 이 issue 를 먼저 열고,
+브랜치명은 `feat/issue-<N>-<slug>` 로.
 -->
 
-## Motivation
+## 동기
 
-<!-- What user-visible / reviewer-visible problem does this solve?
-Link to a failure taxonomy entry, ADR, or prior PR if applicable. -->
+<!-- 사용자/reviewer 가 보는 어떤 문제를 푸는가? 해당 failure taxonomy
+항목, ADR, 또는 이전 PR 링크. -->
 
-## Proposed scope
+## 제안 범위
 
-<!-- Bulleted list of the smallest change that delivers the motivation.
-"One PR, one concern" — if this needs more than ~3 bullets,
-consider splitting into multiple issues. -->
+<!-- 동기를 충족하는 가장 작은 변경의 bullet list. "One PR, one concern" —
+bullet 이 ~3개 넘으면 issue 분할 고려. -->
 
-## Out of scope
+## 범위 외
 
-<!-- What this issue is deliberately NOT going to touch. Helps the
-implementer resist "while I'm here" scope creep (CLAUDE.md). -->
+<!-- 이 issue 가 의도적으로 안 건드릴 것. 구현자가 "여기 온 김에" scope creep
+저항하는 데 도움 (CLAUDE.md). -->
 
-## Acceptance signal
+## 완료 신호
 
-<!-- How the reviewer will know it's done. A metric, a test name, a
-demo command, or an artifact. If it's RAG-related, name the eval
-metric you'd expect to move (or "No behavior change in retrieval /
-verifier path" for governance-only work). -->
+<!-- reviewer 가 완료를 어떻게 알 것인가. 메트릭, test 명, demo 명령, 또는
+artifact. RAG 관련이면 움직일 eval metric 명시 (governance-only 면
+"검색/검증 path 동작 변화 없음"). -->
 
-## Surface
+## 영역
 
-<!-- Tick all that apply, but the implementer's PR will declare a
-single PR concern. -->
+<!-- 해당되는 것 모두 체크. 단, 구현자의 PR 은 single concern 선언. -->
 
 - [ ] Ingestion (`ingestion.py`, `visual_ingestion.py`)
 - [ ] Retrieval / verifier / answer (`rag_core.py`)

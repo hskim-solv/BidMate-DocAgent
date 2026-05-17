@@ -1,33 +1,30 @@
 ---
 name: Bug report
-about: Something in the pipeline produced the wrong answer, failed, or regressed.
+about: 파이프라인이 잘못된 답을 내거나, 실패하거나, 회귀했다.
 title: "[bug] "
 labels: bug
 ---
 
 <!--
-Per ADR 0007, every PR must be linked to an issue. Open this first;
-your branch will be `fix/issue-<N>-<slug>` once this issue is filed.
+ADR 0007 에 따라 모든 PR 은 issue 와 연결. 이 issue 를 먼저 열고,
+브랜치명은 `fix/issue-<N>-<slug>` 로.
 -->
 
-## What happened
+## 무슨 일이 벌어졌나
 
-<!-- The shortest concrete reproduction. Include the query, the expected
-answer, and the observed answer (or stack trace). -->
+<!-- 가장 짧은 재현 방법. 쿼리, 기대 답변, 실제 답변 (또는 stack trace). -->
 
-## Expected behavior
+## 기대 동작
 
-<!-- What the answer / log / output should have been, and which doc /
-ADR / test makes that the expected baseline. -->
+<!-- 답변/로그/출력의 정답과 그 baseline 을 정한 doc/ADR/test. -->
 
-## Suggested next step
+## 다음 단계 제안
 
-<!-- One sentence: where you'd start looking. Filename + line if you
-can. Useful even if you don't intend to take the fix yourself. -->
+<!-- 한 문장. 어디부터 살펴볼지. 파일명 + 라인. 직접 안 고쳐도 유용. -->
 
-## Surface
+## 영역
 
-<!-- Tick one. Most bugs live in exactly one. -->
+<!-- 하나 체크. 대부분의 버그는 정확히 한 영역에 속함. -->
 
 - [ ] Ingestion (`ingestion.py`, `visual_ingestion.py`)
 - [ ] Retrieval / verifier / answer (`rag_core.py`)
