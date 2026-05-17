@@ -168,8 +168,15 @@ class HybridRetrievalRegressionTest(unittest.TestCase):
         """Different ``rrf_k`` values produce observably different scores.
 
         k=10 makes the top rank dominate; k=200 flattens the fusion. The
-        normalized RRF score for the top-ranked chunk must differ
-        between these two regimes by more than rounding noise.
+        normalized RRF score spread across the top-K must differ between
+        these two regimes by more than rounding noise.
+
+        Note: under ADR 0050's expanded corpus the top-1 chunk is rank 0
+        in BOTH dense and BM25 channels for the answerable query, so its
+        normalized score saturates at 1.0 in every ``rrf_k`` regime
+        (``rrf * rrf_norm`` = ``N/k * k/N`` = 1). The differentiation
+        shows up on lower-ranked chunks where ranks diverge across
+        channels — pin the last-of-top-K score, which moves cleanly.
         """
         evidence_k10 = self._retrieve_with_backend(
             ANSWERABLE_QUERY, "hybrid", rrf_k=10
@@ -177,13 +184,14 @@ class HybridRetrievalRegressionTest(unittest.TestCase):
         evidence_k200 = self._retrieve_with_backend(
             ANSWERABLE_QUERY, "hybrid", rrf_k=200
         )
-        self.assertGreater(len(evidence_k10), 0)
-        self.assertGreater(len(evidence_k200), 0)
+        self.assertGreater(len(evidence_k10), 1)
+        self.assertGreater(len(evidence_k200), 1)
+        self.assertEqual(len(evidence_k10), len(evidence_k200))
         self.assertNotAlmostEqual(
-            evidence_k10[0]["score"],
-            evidence_k200[0]["score"],
+            evidence_k10[-1]["score"],
+            evidence_k200[-1]["score"],
             places=3,
-            msg="rrf_k override should change the normalized top score",
+            msg="rrf_k override should change the lower-ranked normalized scores",
         )
 
     def test_resolve_pipeline_config_rejects_out_of_range_rrf_k(self) -> None:

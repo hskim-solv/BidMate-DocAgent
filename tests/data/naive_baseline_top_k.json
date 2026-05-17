@@ -1,52 +1,48 @@
 {
   "기관A의 보안 통제 요구사항은?": [
     [
-      "rfp-agency-a-ai-quality::chunk-001",
-      0.7109
+      "rfp-agency-a-ai-quality::chunk-070",
+      0.7527
     ],
     [
-      "rfp-agency-g-traffic-hwp::chunk-002",
-      0.5605
+      "rfp-agency-b-mlops-governance::chunk-097",
+      0.7375
     ]
   ],
   "기관 C의 챗봇 응답 시간 목표는?": [
     [
       "rfp-agency-c-chatbot::chunk-001",
-      0.6671
+      0.6342
     ],
     [
-      "rfp-common-submission::chunk-001",
-      0.5553
+      "rfp-agency-c-chatbot::chunk-002",
+      0.6103
     ]
   ],
   "기관 B의 개인정보 보안 요구사항은?": [
     [
-      "rfp-agency-b-mlops-governance::chunk-001",
-      0.6489
+      "rfp-agency-b-mlops-governance::chunk-094",
+      0.6342
     ],
     [
-      "rfp-agency-a-ai-quality::chunk-001",
-      0.5372
+      "rfp-agency-b-mlops-governance::chunk-104",
+      0.6328
     ]
   ],
   "공통 제출조건에서 모든 제안사가 제출해야 하는 것은?": [
     [
       "rfp-common-submission::chunk-001",
       0.6787
-    ],
-    [
-      "rfp-agency-a-ai-quality::chunk-001",
-      0.5
     ]
   ],
   "AI 모델 학습 데이터 품질 기준은?": [
     [
-      "rfp-agency-a-ai-quality::chunk-001",
-      0.6087
+      "rfp-agency-j-disaster-decision::chunk-002",
+      0.6659
     ],
     [
-      "rfp-agency-b-mlops-governance::chunk-001",
-      0.6004
+      "rfp-agency-a-ai-quality::chunk-027",
+      0.662
     ]
   ]
 }
