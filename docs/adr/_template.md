@@ -46,7 +46,7 @@ reads these markers, confirms `<relative-path>` exists, and looks for
 surface," not "this exact JSON path resolves." Example marker (drop the
 ones that do not apply, add as many as the Consequences imply):
 
-<!-- verifies-key: reports/eval_summary.json:stage_attempts -->
+<!-- verifies-key: reports/eval_summary.json:stage_latency -->
 
 The pre-commit hook (`.githooks/pre-commit`) refuses new ADRs that lack
 this section or contain zero markers (issue #793). Existing ADRs are
