@@ -24,7 +24,7 @@
 .PHONY: real-eval real-eval-delta real-eval-baseline-update real-eval-history-render real-eval-with-judge harness-real
 
 # Real-data case proposer cycle (ADR 0029; gitignored I/O).
-.PHONY: case-propose case-review case-promote
+.PHONY: case-propose case-propose-metadata case-review case-promote
 
 # API / demo (FastAPI + Streamlit; local + docker variants)
 .PHONY: api api-docker demo demo-docker docker-publish
@@ -358,6 +358,23 @@ case-propose:
 	  --index-dir data/index/real100 \
 	  --out reports/proposed/proposed_cases.local.yaml \
 	  --real-config eval/real_config.local.yaml
+
+# CSV-metadata backend (ADR 0048): emits up to 4 single-doc cases per
+# seed row (one per metadata_field ∈ {agency, project, budget, deadline})
+# with expected_terms populated verbatim from data_list.csv. Each case
+# carries the metadata_field tag, so `by_metadata_field` in
+# eval_summary.json (ADR 0048) buckets them automatically. Default
+# n-seed-docs=25 yields up to 100 candidate cases — enough to cover the
+# n=50 baseline target with margin after reviewer trimming. Output yaml
+# is gitignored under reports/proposed/ per ADR 0005.
+case-propose-metadata:
+	$(PYTHON) -m eval.case_proposer \
+	  --metadata-csv data/data_list.csv \
+	  --index-dir data/index/real100 \
+	  --out reports/proposed/proposed_cases.local.yaml \
+	  --real-config eval/real_config.local.yaml \
+	  --backend csv_metadata \
+	  --n-seed-docs 25
 
 case-review:
 	$(PYTHON) scripts/case_proposer_review.py \

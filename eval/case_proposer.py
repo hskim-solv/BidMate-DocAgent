@@ -32,6 +32,15 @@ Backends:
   ``query_type``. Byte-equal across runs given the same inputs and
   ``now_iso``. Used by tests and CI plumbing. Never invokes a
   network call or LLM SDK.
+* ``csv_metadata`` — programmatic single-doc cases driven by
+  ``data/data_list.csv``. For each seed row, emits up to four
+  cases (one per metadata field: ``agency`` / ``project`` /
+  ``budget`` / ``deadline``) with ``expected_terms`` populated
+  verbatim from the CSV cell. Each case carries the ADR 0048
+  ``metadata_field`` tag so the ``by_metadata_field`` aggregate in
+  PR #879 buckets it correctly. Fields whose cell is empty are
+  skipped. Deterministic; no LLM call; no human review needed for
+  the gold label (CSV is authoritative).
 * ``openai_compatible`` (PR3) — generic OpenAI-compatible endpoint.
   Will reuse ``BIDMATE_JUDGE_API_KEY`` / ``BIDMATE_JUDGE_MODEL`` /
   ``BIDMATE_JUDGE_BASE_URL`` (shared with the real-data judge).
@@ -44,8 +53,8 @@ Per-case proposed schema (never committed; ADR 0005):
       "id": "proposed_<YYYYMMDD>_<NNN>",
       "source": "proposed-then-reviewed",
       "proposer_meta": {
-        "backend": "stub" | "openai_compatible",
-        "model": "<model-id or 'stub'>",
+        "backend": "stub" | "csv_metadata" | "openai_compatible",
+        "model": "<model-id or 'stub' or 'csv_metadata'>",
         "seed_doc_id": "<doc-id from index>",
         "generated_at": "<ISO8601Z>",
         "proposer_version": 1,
@@ -57,6 +66,9 @@ Per-case proposed schema (never committed; ADR 0005):
       "expected_citation_terms": [...],
       "expected_claim_targets": [...],
       "answerable": bool,
+      # Optional (ADR 0048): only emitted by csv_metadata backend.
+      # Drives by_metadata_field aggregate in eval/run_eval.py.
+      "metadata_field": "agency" | "project" | "budget" | "deadline",
     }
 
 Importantly, this module does NOT import ``rag_core`` or any
@@ -102,6 +114,21 @@ CSV_COLUMN_AGENCY = "발주 기관"
 CSV_COLUMN_FILE_FORMAT = "파일형식"
 CSV_COLUMN_FILE_NAME = "파일명"
 CSV_COLUMN_TEXT = "텍스트"
+
+# ADR 0048: column mappings for the four single-doc metadata fields the
+# CSV-metadata backend emits as gold cases. Each tuple is
+# ``(metadata_field, query_template, csv_column)``. Optional — these
+# columns are not in REQUIRED_CSV_COLUMNS (the existing ``stub`` backend
+# does not need them) so the backend gracefully skips a field when its
+# cell is empty or the column is absent.
+CSV_COLUMN_BUDGET = "사업 금액"
+CSV_COLUMN_DEADLINE = "입찰 참여 마감일"
+CSV_METADATA_FIELD_SOURCES: tuple[tuple[str, str, str], ...] = (
+    ("agency", "{agency} {project} 사업의 발주 기관을 알려줘", CSV_COLUMN_AGENCY),
+    ("project", "{agency} 사업의 사업명을 알려줘", CSV_COLUMN_PROJECT),
+    ("budget", "{agency} {project}의 사업 예산을 알려줘", CSV_COLUMN_BUDGET),
+    ("deadline", "{agency} {project}의 입찰 참여 마감일을 알려줘", CSV_COLUMN_DEADLINE),
+)
 
 REQUIRED_CSV_COLUMNS = (
     CSV_COLUMN_NOTICE_ID,
@@ -244,6 +271,74 @@ def _stub_backend(
     return cases
 
 
+def _csv_metadata_backend(
+    rows: list[dict[str, Any]],
+    *,
+    model: str,
+    now_iso: str,
+) -> list[dict[str, Any]]:
+    """Programmatic CSV-metadata backend (ADR 0048 tagging surface).
+
+    For each seed-doc row, emits up to four ``single_doc`` cases — one
+    per metadata field (``agency`` / ``project`` / ``budget`` /
+    ``deadline``, see :data:`CSV_METADATA_FIELD_SOURCES`). The
+    ``expected_terms`` / ``expected_citation_terms`` /
+    ``expected_claim_targets`` are populated verbatim from the CSV cell
+    so the case is immediately reviewable without an LLM pass — the CSV
+    is the gold source.
+
+    A field is **skipped** (no case emitted) when its cell is empty —
+    ``입찰 참여 마감일`` is at 92% fill rate in real100, so ~8% of rows
+    emit only 3 of the 4 cases. That's by design; ``by_metadata_field``
+    aggregation handles the imbalanced bucket sizes via its own n
+    count.
+
+    Each emitted case carries ``metadata_field`` matching ADR 0048's
+    ``METADATA_FIELD_KEYS``, so PR #879's ``by_metadata_field``
+    aggregate buckets them correctly.
+
+    Determinism: byte-equal across runs given the same ``rows`` +
+    ``now_iso``. The (row, field) iteration order is fixed by
+    :data:`CSV_METADATA_FIELD_SOURCES` declaration order.
+    """
+    cases: list[dict[str, Any]] = []
+    counter = 1
+    backend_model = model or "csv_metadata"
+    for row in rows:
+        doc_id = str(row.get("doc_id") or "").strip()
+        if not doc_id:
+            continue
+        agency = (row.get(CSV_COLUMN_AGENCY) or "").strip()
+        project = (row.get(CSV_COLUMN_PROJECT) or "").strip()
+        for field_key, template, cell_column in CSV_METADATA_FIELD_SOURCES:
+            cell_value = (row.get(cell_column) or "").strip()
+            if not cell_value:
+                continue
+            query = template.format(agency=agency, project=project).strip()
+            cases.append(
+                {
+                    "id": _make_proposed_id(now_iso, counter),
+                    "source": "proposed-then-reviewed",
+                    "proposer_meta": _make_proposer_meta(
+                        backend="csv_metadata",
+                        model=backend_model,
+                        seed_doc_id=doc_id,
+                        now_iso=now_iso,
+                    ),
+                    "query_type": "single_doc",
+                    "query": query,
+                    "expected_doc_ids": [doc_id],
+                    "expected_terms": [cell_value],
+                    "expected_citation_terms": [cell_value],
+                    "expected_claim_targets": [cell_value],
+                    "answerable": True,
+                    "metadata_field": field_key,
+                }
+            )
+            counter += 1
+    return cases
+
+
 def _openai_compatible_backend(  # pragma: no cover - PR3
     rows: list[dict[str, Any]],
     *,
@@ -261,12 +356,13 @@ def _openai_compatible_backend(  # pragma: no cover - PR3
     _ = now_iso
     raise NotImplementedError(
         "openai_compatible backend lands in PR3 (ADR 0029). "
-        "Use BIDMATE_CASE_PROPOSER_BACKEND=stub for now."
+        "Use BIDMATE_CASE_PROPOSER_BACKEND=stub or =csv_metadata for now."
     )
 
 
 _BACKENDS: dict[str, CaseProposerBackend] = {
     "stub": _stub_backend,
+    "csv_metadata": _csv_metadata_backend,
     "openai_compatible": _openai_compatible_backend,
 }
 
@@ -461,6 +557,13 @@ def _write_case_yaml_block(case: dict[str, Any], lines: list[str]) -> None:
             for item in values:
                 lines.append(f"      - {_yaml_escape_scalar(item)}")
     lines.append(f"    answerable: {_yaml_escape_scalar(case['answerable'])}")
+    # ADR 0048 opt-in tag — only emit when the backend populated it
+    # (currently csv_metadata; stub keeps the field absent so its
+    # historical byte-output is preserved for existing fixtures).
+    if "metadata_field" in case:
+        lines.append(
+            f"    metadata_field: {_yaml_escape_scalar(case['metadata_field'])}"
+        )
 
 
 def write_proposed_yaml(cases: list[dict[str, Any]], path: Path) -> None:
