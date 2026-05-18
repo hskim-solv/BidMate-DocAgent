@@ -13,27 +13,27 @@
       }
     },
     "answer_format_compliance": {
-      "default": 0.2081447963800905,
+      "default": 0.14634146341463414,
       "signal_alive": false,
       "vs_random": {
-        "gap": -0.2398190045248869,
-        "normalized": -0.4344262295081967
+        "gap": -0.006436314363143653,
+        "normalized": -0.00759696121551382
       },
       "vs_single": {
-        "gap": -0.2398190045248869,
-        "normalized": -0.4344262295081967
+        "gap": -0.28356507864144065,
+        "normalized": -0.4974010395841664
       }
     },
     "citation_precision": {
-      "default": 0.19019607843137254,
-      "signal_alive": false,
+      "default": 0.22062146892655365,
+      "signal_alive": true,
       "vs_random": {
-        "gap": -0.15822021116138762,
-        "normalized": -0.24282407407407405
+        "gap": 0.22062146892655365,
+        "normalized": 0.22062146892655365
       },
       "vs_single": {
-        "gap": 0.1358974358974359,
-        "normalized": 0.14370015948963316
+        "gap": 0.17824858757062145,
+        "normalized": 0.1861356932153392
       }
     },
     "claim_citation_alignment": {
@@ -49,40 +49,49 @@
       }
     },
     "groundedness": {
-      "default": 0.25339366515837103,
-      "signal_alive": false,
+      "default": 0.3389830508474576,
+      "signal_alive": true,
       "vs_random": {
-        "gap": -0.1085972850678733,
-        "normalized": -0.17021276595744683
+        "gap": 0.3135593220338983,
+        "normalized": 0.32173913043478264
       },
       "vs_single": {
-        "gap": 0.17194570135746606,
-        "normalized": 0.187192118226601
+        "gap": 0.24576271186440676,
+        "normalized": 0.27102803738317754
       }
     }
   },
   "num_predictions": 221,
   "runs": {
     "full": {
+      "abstention_rate": 0.1553398058252427,
       "accuracy": 0.2966101694915254,
-      "answer_format_compliance": 0.2081447963800905,
-      "citation_precision": 0.19019607843137254,
+      "answer_format_compliance": 0.14634146341463414,
+      "citation_precision": 0.22062146892655365,
       "claim_citation_alignment": 0.9627659574468085,
-      "groundedness": 0.25339366515837103
+      "effective_n": 118,
+      "groundedness": 0.3389830508474576,
+      "num_predictions": 221
     },
     "random_retrieval": {
+      "abstention_rate": 0.8932038834951457,
       "accuracy": 0.025423728813559324,
-      "answer_format_compliance": 0.4479638009049774,
-      "citation_precision": 0.34841628959276016,
+      "answer_format_compliance": 0.1527777777777778,
+      "citation_precision": 0.0,
       "claim_citation_alignment": 0.8823529411764706,
-      "groundedness": 0.36199095022624433
+      "effective_n": 118,
+      "groundedness": 0.025423728813559324,
+      "num_predictions": 221
     },
     "single_chunk": {
+      "abstention_rate": 0.06796116504854369,
       "accuracy": 0.06779661016949153,
-      "answer_format_compliance": 0.4479638009049774,
-      "citation_precision": 0.05429864253393665,
+      "answer_format_compliance": 0.42990654205607476,
+      "citation_precision": 0.0423728813559322,
       "claim_citation_alignment": 0.9335106382978723,
-      "groundedness": 0.08144796380090498
+      "effective_n": 118,
+      "groundedness": 0.09322033898305085,
+      "num_predictions": 221
     }
   }
 }
