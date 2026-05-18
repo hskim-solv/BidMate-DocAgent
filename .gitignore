@@ -178,6 +178,23 @@ reports/retrieval/phase3_mode_*/*
 !reports/retrieval/phase3_mode_*/mode_specs.json
 !reports/retrieval/phase3_mode_*/deltas.json
 !reports/retrieval/phase3_mode_*/raw_results.json
+# Issue #957 — Phase 3.5 retrieval-eval (m3 BGE-M3 semantic mode ablation)
+# timestamped runs. Same aggregate-only commit boundary as phase3_mode_*
+# above. All 3 variants share data/index/real100_m3 (semantic BGE-M3
+# 1024-dim dense; m3 variant's _m3_cache populates in-memory only per
+# ADR 0025 spike-mode). Raw scores carry no doc/chunk IDs or text —
+# qid + categories + metric values only, ADR 0005 boundary preserved.
+!reports/retrieval/phase35_m3_*/
+reports/retrieval/phase35_m3_*/*
+!reports/retrieval/phase35_m3_*/REPORT.md
+!reports/retrieval/phase35_m3_*/mode_specs.json
+!reports/retrieval/phase35_m3_*/deltas.json
+!reports/retrieval/phase35_m3_*/raw_results.json
+# data/index/real100_m3 — BGE-M3 semantic index, ~103MB embeddings.npy.
+# Reproducible from data/raw via scripts/build_index.py --embedding_backend
+# sentence-transformers --model BAAI/bge-m3 (~3min wall-time, FlagEmbedding
+# opt-in dep per ADR 0010 deferred + ADR 0032 torch>=2.6 unblock).
+data/index/real100_m3/
 # Issue #237 — harness aggregate snapshots. Generated per ``run_harness``
 # invocation; untracked by default to keep developer working trees
 # clean. The leaderboard time-series lives under reports/history/
