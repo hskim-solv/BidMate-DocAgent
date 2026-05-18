@@ -210,6 +210,22 @@ jobs:
             --title "Eval delta — \`full\` pipeline" > delta.md
           cat delta.md
 
+      - name: Validate improvement claims (ADR 0055)
+        # Opt-in PR-body convention: ``Claim: <metric>=<+X.Xpp>`` lines are
+        # parsed and checked against paired bootstrap CI (eval/bootstrap.py
+        # :paired_bootstrap_ci). PR body without ``Claim:`` lines → step skipped.
+        # ``ALLOW_OVERCLAIM`` escape intentionally absent (ADR 0055 §Consequences).
+        if: contains(github.event.pull_request.body, 'Claim:')
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          echo "$PR_BODY" > /tmp/pr-body.txt
+          python pr/scripts/validate_claim.py \
+            --pr-body /tmp/pr-body.txt \
+            --baseline base/reports/eval_summary.json \
+            --candidate pr/reports/eval_summary.json \
+            --min-sample 200
+
       - name: Upload eval summaries
         if: always()
         uses: actions/upload-artifact@v7
