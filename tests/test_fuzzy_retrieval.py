@@ -576,7 +576,7 @@ class FuzzyMetadataRetrievalTest(unittest.TestCase):
         self.assertEqual(6, follow_up["plan"]["top_k"])
         self.assertEqual("follow_up_default", follow_up["plan"]["retrieval_budget"]["reason"])
         self.assertEqual(6, follow_up["diagnostics"]["selected_top_k"])
-        self.assertEqual(1, follow_up["trace"]["schema_version"])
+        self.assertEqual(2, follow_up["trace"]["schema_version"])  # bumped 1→2 in #967
         self.assertTrue(follow_up["trace"]["query_rewrite"]["rewritten"])
         self.assertEqual(
             "conversation_state_prefix",
@@ -592,7 +592,7 @@ class FuzzyMetadataRetrievalTest(unittest.TestCase):
         )
 
         trace = result["trace"]
-        self.assertEqual(1, trace["schema_version"])
+        self.assertEqual(2, trace["schema_version"])  # bumped 1→2 in #967
         self.assertFalse(trace["query_rewrite"]["rewritten"])
         self.assertEqual("single_doc", trace["planner"]["query_type"])
         self.assertEqual("agentic_full", trace["planner"]["pipeline"])
