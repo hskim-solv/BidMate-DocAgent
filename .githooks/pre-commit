@@ -44,6 +44,11 @@ ALLOWED_PATTERNS=(
   # the `!`-rule in `.gitignore`.
   '^reports/real100/distinguishing_power\.md$'
   '^reports/real100/distinguishing_power\.aggregate\.json$'
+  # Issue #969 — trajectory-rationality judge aggregate (script:
+  # scripts/run_rationality_judge.py, ADR 0056).  Mirrors the `!`-rule
+  # in `.gitignore`.  Per-case rationality.local.json stays ignored.
+  '^reports/real100/rationality\.md$'
+  '^reports/real100/rationality\.aggregate\.json$'
 )
 
 # Guard: ADR file deletion/rename (CLAUDE.md Prohibited).
