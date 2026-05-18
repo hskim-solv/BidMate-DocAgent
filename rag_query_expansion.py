@@ -31,7 +31,6 @@ import time
 from typing import Any, Protocol, runtime_checkable
 
 # Env-var contract (mirrors rag_synthesis.py / rag_rerank.py idioms).
-ENV_BACKEND = "BIDMATE_QUERY_EXPANSION_BACKEND"
 ENV_MODEL = "BIDMATE_QUERY_EXPANSION_MODEL"
 ENV_ANTHROPIC_KEY = "ANTHROPIC_API_KEY"
 ENV_MAX_TOKENS = "BIDMATE_QUERY_EXPANSION_MAX_TOKENS"
@@ -250,7 +249,6 @@ def default_expander(plan: dict[str, Any] | None = None) -> QueryExpander:
 __all__ = [
     "DEFAULT_BACKEND",
     "DEFAULT_HYDE_MODEL",
-    "ENV_BACKEND",
     "ENV_MODEL",
     "ENV_ANTHROPIC_KEY",
     "ENV_MAX_TOKENS",
