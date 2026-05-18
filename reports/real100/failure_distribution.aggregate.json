@@ -1,0 +1,33 @@
+{
+  "abstention_outcomes": {
+    "boundary_partial": 7,
+    "correct_refusal": 47,
+    "incorrect_answer": 49
+  },
+  "failure_category_counts": {
+    "context_dilution": 0,
+    "generator_hallucination": 0,
+    "planner_under_decomposition": 0,
+    "retrieval_miss": 83,
+    "unknown": 31,
+    "verifier_false_negative": 49,
+    "verifier_false_positive": 1
+  },
+  "failure_category_percent_of_failed": {
+    "context_dilution": 0.0,
+    "generator_hallucination": 0.0,
+    "planner_under_decomposition": 0.0,
+    "retrieval_miss": 50.61,
+    "unknown": 18.9,
+    "verifier_false_negative": 29.88,
+    "verifier_false_positive": 0.61
+  },
+  "finding_1_contract": {
+    "incorrect_answer": 49,
+    "match": true,
+    "verifier_false_negative": 49
+  },
+  "num_predictions": 221,
+  "schema_version": 1,
+  "total_failures": 164
+}

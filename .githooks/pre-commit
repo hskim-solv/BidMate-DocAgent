@@ -49,6 +49,12 @@ ALLOWED_PATTERNS=(
   # in `.gitignore`.  Per-case rationality.local.json stays ignored.
   '^reports/real100/rationality\.md$'
   '^reports/real100/rationality\.aggregate\.json$'
+  # Issue #1002 — failure-mode distribution dashboard (script:
+  # scripts/render_failure_distribution.py, ADR 0059 Phase 5 supply 2).
+  # Mirrors the `!`-rule in `.gitignore`. Aggregate-only — read-only
+  # consumer of the ADR 0059 failure_category_counts surface.
+  '^reports/real100/failure_distribution\.md$'
+  '^reports/real100/failure_distribution\.aggregate\.json$'
 )
 
 # Guard: ADR file deletion/rename (CLAUDE.md Prohibited).
