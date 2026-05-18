@@ -1,0 +1,33 @@
+{
+  "axis_cis": {
+    "planner_decomposition": {
+      "alpha": 0.05,
+      "ci_hi": 0.5171547668471324,
+      "ci_lo": 0.44022596363585886,
+      "mean": 0.47874358398165506,
+      "n": 221,
+      "num_resamples": 1000
+    },
+    "retrieval_recalls": {
+      "alpha": 0.05,
+      "ci_hi": 0.5439565760997993,
+      "ci_lo": 0.4693946896787718,
+      "mean": 0.5080500066532189,
+      "n": 221,
+      "num_resamples": 1000
+    }
+  },
+  "axis_means": {
+    "answer_reasoning": null,
+    "planner_decomposition": 0.47874358398165506,
+    "retrieval_recalls": 0.5080500066532186
+  },
+  "cases_with_synthesis_llm_call": 0,
+  "effective_n": {
+    "answer_reasoning": 0,
+    "planner_decomposition": 221,
+    "retrieval_recalls": 221
+  },
+  "n": 221,
+  "skipped_no_trace": 0
+}
