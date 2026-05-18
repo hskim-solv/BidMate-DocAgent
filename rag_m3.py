@@ -25,6 +25,7 @@ extraction was deferred to its own ablation.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from typing import Any
 
@@ -68,7 +69,14 @@ class M3Encoder:
                 "Install with `pip install -r requirements-m3.txt` "
                 "or use `retrieval_backend=hybrid`."
             ) from exc
-        self._model = BGEM3FlagModel(model_name, use_fp16=False)
+        # ``BIDMATE_M3_USE_FP16=1`` opts into half-precision weights — cuts
+        # peak RAM ~2x at the cost of <0.1% recall on the BGE-M3 paper
+        # benchmarks. Default fp32 preserves byte-identical reproducibility
+        # of every existing m3 result; the env var is for memory-constrained
+        # measurement (e.g. Phase 3.5 on 16GB MPS systems where the
+        # _m3_cache for 1k+ chunks would otherwise OOM-kill the process).
+        use_fp16 = os.environ.get("BIDMATE_M3_USE_FP16", "").strip() in {"1", "true", "True"}
+        self._model = BGEM3FlagModel(model_name, use_fp16=use_fp16)
         self.model_name = model_name
 
     def encode(self, texts: list[str]) -> M3Output:

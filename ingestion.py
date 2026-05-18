@@ -282,10 +282,49 @@ def _kordoc_convert_batch(source_paths: list[Path]) -> dict[str, str]:
 
     On success returns a dict mapping ``Path.stem`` (NFC-normalized) to
     the Markdown text content of the corresponding output file.
+
+    ``BIDMATE_KORDOC_CACHE_DIR`` env var enables a pre-extracted markdown
+    cache bypass: if every ``source_paths`` stem has a matching
+    ``<stem>.md`` file in the cache dir, the subprocess is skipped and
+    the cached content is returned directly. Partial cache hits fall
+    through to the subprocess (which extracts ALL files; partial-miss
+    merging is not worth the complexity). The cached files are
+    expected to be the output of an earlier kordoc run on the same
+    source files — same demote/scrub/normalize pipeline applies so
+    downstream readers see identical text. Enables ~30x ingestion
+    speed-up for reproducible builds against a vendored kordoc cache
+    (Phase 3.5 closeout, real100 corpus).
     """
     import subprocess  # noqa: PLC0415 — local import keeps module load fast for non-HWP paths
     import shutil  # noqa: PLC0415
     import tempfile  # noqa: PLC0415
+
+    cache_dir_env = os.environ.get("BIDMATE_KORDOC_CACHE_DIR", "").strip()
+    if cache_dir_env:
+        cache_dir = Path(cache_dir_env)
+        if cache_dir.is_dir():
+            markdown_by_stem: dict[str, str] = {}
+            for src in source_paths:
+                stem = unicodedata.normalize("NFC", src.stem)
+                md_path = cache_dir / f"{stem}.md"
+                if not md_path.exists():
+                    continue
+                try:
+                    content = md_path.read_text(encoding="utf-8")
+                except OSError:
+                    continue
+                # Same post-processing pipeline as the subprocess path
+                # (issue #904 demote + issue #906 ToC scrub + body normalize)
+                # so the cached output is byte-identical to a fresh kordoc run.
+                demoted = _demote_over_promoted_bullet_headings(content)
+                scrubbed = _strip_kordoc_toc_noise(demoted)
+                normalized = normalize_body_text(scrubbed)
+                if normalized:
+                    markdown_by_stem[stem] = normalized
+            if markdown_by_stem and len(markdown_by_stem) == len(source_paths):
+                return markdown_by_stem
+            # partial hit → fall through to npx subprocess (which extracts
+            # ALL files; partial-miss merging is not worth the complexity).
 
     if shutil.which("node") is None or shutil.which("npx") is None:
         raise _KordocFallback("node/npx not on PATH") from FileNotFoundError(

@@ -1,0 +1,26 @@
+[
+  {
+    "name": "dense_m3",
+    "retrieval_backend": "dense",
+    "rrf_k": null,
+    "index_dir": "data/index/real100_m3",
+    "num_documents": 100,
+    "num_chunks": 898
+  },
+  {
+    "name": "hybrid_bm25_k60_m3",
+    "retrieval_backend": "hybrid",
+    "rrf_k": 60,
+    "index_dir": "data/index/real100_m3",
+    "num_documents": 100,
+    "num_chunks": 898
+  },
+  {
+    "name": "m3",
+    "retrieval_backend": "m3",
+    "rrf_k": null,
+    "index_dir": "data/index/real100_m3",
+    "num_documents": 100,
+    "num_chunks": 898
+  }
+]
