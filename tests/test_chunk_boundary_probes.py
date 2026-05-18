@@ -102,7 +102,12 @@ class ChunkBoundaryProbeRetrievalTest(unittest.TestCase):
     def _expect_supported_with_term(
         self, query: str, expected_term: str
     ) -> dict:
-        result = run_rag_query(self.index, query)
+        # ADR 0058 (Scenario A, 2026-05-19) — `agentic_full` preset default
+        # `retrieval_backend` flipped from `dense` to `hybrid`. Chunk
+        # boundary probes are a chunking diagnostic (not a retrieval-mode
+        # diagnostic), so pin `retrieval_backend="dense"` to keep the
+        # top-1 chunk deterministic regardless of the production default.
+        result = run_rag_query(self.index, query, retrieval_backend="dense")
         self.assertEqual(
             result["answer"]["status"],
             "supported",
