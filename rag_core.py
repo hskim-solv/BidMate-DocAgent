@@ -1071,6 +1071,7 @@ def _phase_build_answer(ctx: _RunContext) -> dict[str, Any]:
         stage_attempts,
         answer,
         stage_latencies_ms=stage_latency,
+        synthesis_meta=synthesis_meta,  # issue #967 — trace v2 synthesis_llm_call
     )
     diagnostics: dict[str, Any] = {
         "latency_ms": round(latency_ms, 2),

@@ -50,7 +50,7 @@ from typing import Any
 from rag_metadata_processing import normalize_page_span, normalize_regions
 
 
-TRACE_SCHEMA_VERSION = 1
+TRACE_SCHEMA_VERSION = 2  # bumped 1→2 in issue #967 (synthesis full I/O env-gated)
 
 REDACTED_LIST_PLACEHOLDER = "<redacted>"
 
@@ -267,7 +267,18 @@ def build_result_trace(
     answer: dict[str, Any],
     *,
     stage_latencies_ms: dict[str, float] | None = None,
+    synthesis_meta: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    """Build the per-prediction trace dict.
+
+    The ``synthesis_meta`` kwarg (issue #967, trace schema v2) is the meta
+    dict returned by ``rag_synthesis.synthesize_summary``. When the
+    ``BIDMATE_TRACE_FULL=1`` env was set during the synthesis call,
+    ``synthesis_meta["user_prompt_text"]`` and ``["completion_text"]`` are
+    present and surface here as ``synthesis_llm_call``. Default (env=off)
+    keeps ``synthesis_llm_call=None`` so consumers can detect the trace
+    flavour without inspecting env state.
+    """
     return {
         "schema_version": TRACE_SCHEMA_VERSION,
         "query_rewrite": build_query_rewrite_trace(
@@ -290,6 +301,35 @@ def build_result_trace(
             "query_type": answer.get("query_type"),
             "claim_count": len(answer.get("claims") or []),
         },
+        "synthesis_llm_call": _synthesis_llm_call_payload(synthesis_meta),
+    }
+
+
+def _synthesis_llm_call_payload(meta: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Return the trace v2 synthesis_llm_call payload, or None when full I/O
+    is not present in ``meta`` (env=off or synthesis fell back).
+
+    Schema (when populated):
+        {
+          "backend": str,
+          "model": str | None,
+          "tokens_in": int | None,
+          "tokens_out": int | None,
+          "user_prompt_text": str,
+          "completion_text": str,
+        }
+    """
+    if not isinstance(meta, dict):
+        return None
+    if "user_prompt_text" not in meta or "completion_text" not in meta:
+        return None
+    return {
+        "backend": meta.get("backend"),
+        "model": meta.get("model"),
+        "tokens_in": meta.get("tokens_in"),
+        "tokens_out": meta.get("tokens_out"),
+        "user_prompt_text": meta.get("user_prompt_text"),
+        "completion_text": meta.get("completion_text"),
     }
 
 

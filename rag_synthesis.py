@@ -43,6 +43,17 @@ ENV_API_KEY = "BIDMATE_SYNTHESIS_API_KEY"
 ENV_ANTHROPIC_KEY = "ANTHROPIC_API_KEY"
 ENV_BASE_URL = "BIDMATE_SYNTHESIS_BASE_URL"
 ENV_MAX_TOKENS = "BIDMATE_SYNTHESIS_MAX_TOKENS"
+# Trace v2 surface (issue #967) — when set to "1", backends capture full
+# ``user_prompt_text`` + ``completion_text`` on the returned dict, and
+# ``rag_tracing.build_result_trace`` surfaces them as ``synthesis_llm_call``.
+# Default off so ADR 0001 run-to-run determinism + ADR 0005 commit boundary
+# are unchanged; only env=on traces add the new fields.
+ENV_TRACE_FULL = "BIDMATE_TRACE_FULL"
+
+
+def _trace_full_enabled() -> bool:
+    return os.environ.get(ENV_TRACE_FULL) == "1"
+
 
 DEFAULT_BACKEND = "stub"
 DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-6"
@@ -236,6 +247,12 @@ def synthesize_answer(
     meta["tokens_out"] = payload.get("tokens_out")
     meta["cache_read_tokens"] = payload.get("cache_read_tokens")
     meta["cache_write_tokens"] = payload.get("cache_write_tokens")
+    # Trace v2 (issue #967) — env-gated full I/O surface for synthesis.
+    # ``meta["user_prompt_text"]`` / ``["completion_text"]`` are absent when
+    # env=off (existing consumers see no schema change).
+    if _trace_full_enabled() and "user_prompt_text" in payload:
+        meta["user_prompt_text"] = payload.get("user_prompt_text")
+        meta["completion_text"] = payload.get("completion_text")
     meta["cost_estimate_usd"] = compute_cost_usd(
         model=meta["model"],
         tokens_in=meta["tokens_in"],
@@ -411,7 +428,7 @@ def _anthropic_backend(  # pragma: no cover - network
 
     payload = _extract_tool_payload(response)
     usage = getattr(response, "usage", None)
-    return {
+    result: dict[str, Any] = {
         "summary": payload.get("summary", ""),
         "used_chunk_ids": payload.get("used_chunk_ids", []),
         "model": model,
@@ -420,6 +437,15 @@ def _anthropic_backend(  # pragma: no cover - network
         "cache_read_tokens": getattr(usage, "cache_read_input_tokens", None) if usage else None,
         "cache_write_tokens": getattr(usage, "cache_creation_input_tokens", None) if usage else None,
     }
+    if _trace_full_enabled():
+        # Trace v2 (issue #967): capture full prompt + tool-call payload JSON
+        # so rationality_judge (Step 3) can score planner/answer reasoning.
+        # ``completion_text`` is the JSON payload of the tool_use block (the
+        # actual structured answer); the raw response.content list is not
+        # serialisable as-is so we render the extracted payload.
+        result["user_prompt_text"] = user_prompt
+        result["completion_text"] = json.dumps(payload, ensure_ascii=False)
+    return result
 
 
 def _openai_compatible_backend(  # pragma: no cover - network
@@ -465,13 +491,18 @@ def _openai_compatible_backend(  # pragma: no cover - network
     content = response.choices[0].message.content or "{}"
     parsed = json.loads(content)
     usage = getattr(response, "usage", None)
-    return {
+    result: dict[str, Any] = {
         "summary": str(parsed.get("summary") or ""),
         "used_chunk_ids": list(parsed.get("used_chunk_ids") or []),
         "model": model,
         "tokens_in": getattr(usage, "prompt_tokens", None) if usage else None,
         "tokens_out": getattr(usage, "completion_tokens", None) if usage else None,
     }
+    if _trace_full_enabled():
+        # Trace v2 (issue #967): capture full prompt + JSON completion text.
+        result["user_prompt_text"] = user_prompt
+        result["completion_text"] = content
+    return result
 
 
 def _extract_tool_payload(response: Any) -> dict[str, Any]:
