@@ -110,6 +110,12 @@ SAFE_TOPLEVEL_KEYS = frozenset(
         # into 3 outcome bins. The extractor whitelists the bin names below
         # and casts to int — no per-case text crosses the boundary.
         "abstention_outcomes",
+        # Issue #996 / ADR 0059: 7-category failure taxonomy counts (Phase 5
+        # audit #992 supply 1). Integer counts only; categories whitelisted
+        # in SAFE_FAILURE_CATEGORY_KEYS (fail-closed). Sibling to
+        # abstention_outcomes — refusal-axis 3-bin lives there, root-cause
+        # stage 7-category lives here. No per-case text crosses the boundary.
+        "failure_category_counts",
         # Issue #476 / ADR 0029: headline metrics of the `agentic_full`
         # ablation run, surfaced so the synthetic leaderboard renders the
         # `full` pipeline as a parallel time series alongside `naive_baseline`.
@@ -170,6 +176,22 @@ SAFE_CALIBRATION_KEYS = ("ece", "brier", "n", "num_bins")
 
 # Whitelisted bin names for ``abstention_outcomes``. Integer counts only.
 SAFE_ABSTENTION_OUTCOME_KEYS = ("correct_refusal", "incorrect_answer", "boundary_partial")
+
+# Whitelisted category names for ``failure_category_counts`` (ADR 0059 /
+# Phase 5 audit #992 supply 1). Mirrors
+# ``eval.scorers.failure_classifier.FAILURE_CATEGORIES`` (frozen 7-tuple).
+# Integer counts only; fail-closed — any unknown category is silently
+# dropped before commit so the taxonomy can never be widened on the
+# committable surface without an ADR.
+SAFE_FAILURE_CATEGORY_KEYS = (
+    "retrieval_miss",
+    "planner_under_decomposition",
+    "verifier_false_negative",
+    "verifier_false_positive",
+    "generator_hallucination",
+    "context_dilution",
+    "unknown",
+)
 
 # Headline scalars allowed inside ``ablation_full``. Mirrors the top-level
 # scalar inventory (run_eval.py:838-847) so the two surfaces never carry
@@ -421,6 +443,17 @@ def extract_aggregate(summary: dict[str, Any]) -> dict[str, Any]:
             }
             if bin_out:
                 out[key] = bin_out
+        elif key == "failure_category_counts" and isinstance(value, dict):
+            # ADR 0059: 7-category failure taxonomy aggregate. Mirror the
+            # abstention_outcomes extraction above — int-cast each
+            # whitelisted category, drop unknown keys (fail-closed).
+            cat_out = {
+                sub: int(value[sub])
+                for sub in SAFE_FAILURE_CATEGORY_KEYS
+                if isinstance(value.get(sub), (int, float))
+            }
+            if cat_out:
+                out[key] = cat_out
         elif key == "abstention_calibration":
             if value is None:
                 out[key] = None

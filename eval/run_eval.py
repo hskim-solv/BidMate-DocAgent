@@ -31,6 +31,10 @@ from rag_core import (
 )
 from eval.bootstrap import bootstrap_ci
 from eval.scorers import derive_gold_chunk_ids, score_case
+from eval.scorers.failure_classifier import (
+    aggregate_failure_categories,
+    classify_failure,
+)
 from eval.scorers._shared import (
     METADATA_FIELD_KEYS,
     QUERY_TYPE_ALIASES,
@@ -502,6 +506,12 @@ def metric_block(case_results: list[dict[str, Any]]) -> dict[str, Any]:
     # crosses the ADR 0005 commit boundary intact.
     abstention_outcomes = _abstention_outcomes(case_results)
     abstention_calibration = _abstention_calibration(case_results)
+    # ADR 0059 / Phase 5 audit (#992) item 1 supply — 7-category failure
+    # taxonomy. Sibling to abstention_outcomes (refusal-axis 3-bin); this
+    # one covers root-cause stage classification (retrieval / verifier /
+    # planner / generator / context_dilution). Read-only consumer of the
+    # case_result dict — no production code path touched.
+    failure_category_counts = aggregate_failure_categories(case_results)
     comparison_recall_scores = [
         r["comparison_target_recall"]
         for r in case_results
@@ -599,6 +609,11 @@ def metric_block(case_results: list[dict[str, Any]]) -> dict[str, Any]:
         "claim_citation_alignment": rate(claim_alignment_scores),
         "abstention": rate(abstention_scores),
         "abstention_outcomes": abstention_outcomes,
+        # ADR 0059 — 7-category failure taxonomy aggregate (Phase 5
+        # supply 1). Always emits all 7 keys (count = 0 if no case hit
+        # that branch) so supply 2 dashboard + supply 3 regression test
+        # consumers can rely on the dict shape.
+        "failure_category_counts": failure_category_counts,
         "abstention_calibration": abstention_calibration,
         "answer_format_compliance": rate(format_scores),
         "ci": ci_block,
@@ -721,6 +736,14 @@ def summarize_run(
     *,
     index_dir: Path | None = None,
 ) -> dict[str, Any]:
+    # ADR 0059 — per-case failure_category label (Phase 5 supply 1).
+    # Set once here so every downstream metric_block call (headline +
+    # by_query_type + by_hardcase_category + by_metadata_field + by_format)
+    # sees the same per-case label, and so `eval_summary.json::case_results`
+    # carries the label for supply 2 dashboard drill-downs. Idempotent —
+    # classify_failure is deterministic and re-computing is cheap.
+    for cr in case_results:
+        cr["failure_category"] = classify_failure(cr)
     summary = {
         "name": name,
         "pipeline": str(run_config.get("pipeline") or ""),
@@ -1133,6 +1156,11 @@ def main() -> int:
         "claim_citation_alignment": primary_summary["claim_citation_alignment"],
         "abstention": primary_summary["abstention"],
         "abstention_outcomes": primary_summary.get("abstention_outcomes"),
+        # ADR 0059 — 7-category failure taxonomy aggregate (Phase 5
+        # supply 1). Mirrors the abstention_outcomes hand-off above so
+        # the top-level eval_summary surface matches the per-ablation
+        # surface.
+        "failure_category_counts": primary_summary.get("failure_category_counts"),
         "answer_format_compliance": primary_summary["answer_format_compliance"],
         "ci": primary_summary.get("ci", {}),
         "latency": primary_summary["latency"],
