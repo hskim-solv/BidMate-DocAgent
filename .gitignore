@@ -162,6 +162,15 @@ reports/retrieval/phase2_chunking_*/*
 !reports/retrieval/phase2_chunking_*/chunking_specs.json
 !reports/retrieval/phase2_chunking_*/deltas.json
 !reports/retrieval/phase2_chunking_*/raw_results.json
+# Issue #955 — Phase 3 retrieval-eval (mode ablation) timestamped runs.
+# Same aggregate-only commit boundary as phase2_chunking_* above. No
+# index build artifacts here — all 4 variants share data/index/real100.
+!reports/retrieval/phase3_mode_*/
+reports/retrieval/phase3_mode_*/*
+!reports/retrieval/phase3_mode_*/REPORT.md
+!reports/retrieval/phase3_mode_*/mode_specs.json
+!reports/retrieval/phase3_mode_*/deltas.json
+!reports/retrieval/phase3_mode_*/raw_results.json
 # Issue #237 — harness aggregate snapshots. Generated per ``run_harness``
 # invocation; untracked by default to keep developer working trees
 # clean. The leaderboard time-series lives under reports/history/
