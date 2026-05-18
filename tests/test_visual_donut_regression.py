@@ -41,10 +41,10 @@ class GetOcrProviderFactoryTest(unittest.TestCase):
 
 
 class DonutStringOutputNormalizationTest(unittest.TestCase):
-    @unittest.skipIf(importlib.util.find_spec("fitz") is None, "pymupdf is not installed")
+    @unittest.skipIf(importlib.util.find_spec("pymupdf") is None, "pymupdf is not installed")
     def test_donut_string_output_wrapped_to_block_via_existing_pipeline(self) -> None:
         """Donut returns a single text blob per image; ensure it lands as a block."""
-        import fitz  # type: ignore
+        import pymupdf  # type: ignore
 
         donut_text = "Project: Donut Spike\nRequirement: Layout-aware extraction"
 
@@ -53,7 +53,7 @@ class DonutStringOutputNormalizationTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             pdf_path = Path(tmp_dir) / "donut_sample.pdf"
-            doc = fitz.open()
+            doc = pymupdf.open()
             page = doc.new_page()
             page.insert_text((72, 72), "")
             doc.save(pdf_path)

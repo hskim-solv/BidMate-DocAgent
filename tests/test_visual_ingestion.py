@@ -30,13 +30,13 @@ FIELDNAMES = [
 
 
 class VisualIngestionTest(unittest.TestCase):
-    @unittest.skipIf(importlib.util.find_spec("fitz") is None, "pymupdf is not installed")
+    @unittest.skipIf(importlib.util.find_spec("pymupdf") is None, "pymupdf is not installed")
     def test_parses_synthetic_pdf_to_v2_artifact(self) -> None:
-        import fitz  # type: ignore
+        import pymupdf  # type: ignore
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             pdf_path = Path(tmp_dir) / "visual_sample.pdf"
-            doc = fitz.open()
+            doc = pymupdf.open()
             page = doc.new_page()
             page.insert_text((72, 72), "사업명: 시각 파싱 사업\n1. 보안 요구사항\n접근 통제를 포함합니다.")
             doc.save(pdf_path)

@@ -330,13 +330,13 @@ def parse_pdf_artifact(
 ) -> dict[str, Any]:
     artifact = base_visual_artifact(source_path, doc_id, "pdf", title, agency, project, metadata)
     try:
-        import fitz  # type: ignore
+        import pymupdf  # type: ignore
     except Exception as exc:
         mark_failed(artifact, "pdf_parser_unavailable", {"dependency": "pymupdf", "error": str(exc)})
         return artifact
 
     try:
-        pdf_doc = fitz.open(str(source_path))
+        pdf_doc = pymupdf.open(str(source_path))
     except Exception as exc:
         mark_failed(artifact, "pdf_open_failed", {"error": str(exc)})
         return artifact
@@ -431,13 +431,13 @@ def ocr_pdf_page(
     ocr_provider: OcrProvider | None,
 ) -> tuple[list[dict[str, Any]], str | None]:
     try:
-        import fitz  # type: ignore
+        import pymupdf  # type: ignore
         from PIL import Image
     except Exception:
         return [], "ocr_unavailable"
 
     try:
-        pixmap = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
+        pixmap = page.get_pixmap(matrix=pymupdf.Matrix(2, 2), alpha=False)
         image = Image.frombytes("RGB", (pixmap.width, pixmap.height), pixmap.samples)
         blocks = ocr_blocks_from_image(
             image,
