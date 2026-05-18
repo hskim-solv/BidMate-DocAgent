@@ -58,6 +58,7 @@ gates.
 
 from __future__ import annotations
 
+import os
 import re
 from typing import Any, Iterable
 
@@ -80,6 +81,52 @@ try:  # noqa: SIM105 — import errors must keep _BM25Okapi defined
     from rank_bm25 import BM25Okapi as _BM25Okapi
 except ImportError:
     _BM25Okapi = None  # type: ignore[assignment]
+
+# Issue #988 / ADR 0057 — additive bm25s backend (numpy sparse matrix).
+# Opt-in via BIDMATE_BM25_BACKEND=bm25s env var OR `bm25_backend: bm25s`
+# config key in eval/config.yaml ablation rows. Default = "okapi" keeps
+# the rank-bm25 path unchanged (ADR 0001 byte-identical). bm25s import is
+# lazy so the base `requirements.txt` install (no bm25s) keeps working —
+# the backend dispatch raises a typed RuntimeError with an install hint
+# only when the user explicitly opts into bm25s.
+try:  # noqa: SIM105 — opt-in import; missing module is normal default
+    import bm25s as _bm25s  # type: ignore[import-not-found]
+except ImportError:
+    _bm25s = None  # type: ignore[assignment]
+
+
+def _make_bm25_instance(corpus: list[list[str]], backend: str) -> Any:
+    """Construct a BM25 index over ``corpus`` for the chosen ``backend``.
+
+    Both backends expose the same minimal ``get_scores(query_tokens)``
+    method that ``bm25_scores_for_index`` relies on. ``backend="okapi"``
+    returns a ``rank_bm25.BM25Okapi`` (pure Python, base requirements).
+    ``backend="bm25s"`` returns a ``bm25s.BM25(method="robertson", k1=1.5,
+    b=0.75).index(corpus)`` — pre-validated to produce ranking 100%
+    identical to BM25Okapi on the same tokens (absolute scores differ via
+    IDF treatment; RRF fusion uses only ordering).
+
+    Raises ``RuntimeError`` with an install hint if the requested backend
+    is missing — never silent fallback (matches the existing ADR 0001
+    invariant that a missing backend is loud, not silent).
+    """
+    if backend == "bm25s":
+        if _bm25s is None:
+            raise RuntimeError(
+                "bm25_backend='bm25s' requires the 'bm25s' package "
+                "(install via `pip install -r requirements-bm25s.txt` "
+                "or set BIDMATE_BM25_BACKEND=okapi for the default backend)."
+            )
+        retriever = _bm25s.BM25(method="robertson", k1=1.5, b=0.75)
+        retriever.index(corpus, show_progress=False)
+        return retriever
+    # Default: rank-bm25 BM25Okapi
+    if _BM25Okapi is None:
+        raise RuntimeError(
+            "bm25_backend='okapi' requires the 'rank_bm25' package "
+            "(install via requirements.txt)."
+        )
+    return _BM25Okapi(corpus)
 
 
 def apply_fusion_and_reranking(
@@ -419,11 +466,21 @@ def retrieve_candidates(
 
     bm25_score_by_chunk: dict[str, float] = {}
     if retrieval_backend == "hybrid":
+        # Issue #988 / ADR 0057 — bm25_backend dispatch. Config key wins;
+        # env var `BIDMATE_BM25_BACKEND` is the process-wide fallback when
+        # the row config omits the key. Default "okapi" preserves ADR 0001
+        # naive_baseline invariant.
+        bm25_backend = str(
+            plan.get("bm25_backend")
+            or os.environ.get("BIDMATE_BM25_BACKEND")
+            or "okapi"
+        ).lower()
         bm25_score_by_chunk = bm25_scores_for_index(
             index,
             list(query_tokens),
             stopword_profile=str(plan.get("bm25_stopword_profile", "shared")),
             tokenizer=str(plan.get("bm25_tokenizer", "regex")),
+            backend=bm25_backend,
         )
 
     # Issue #151 — BGE-M3 multi-channel spike. Lazy: only entered when
@@ -742,36 +799,35 @@ def get_or_build_bm25(
     index: dict[str, Any],
     stopword_profile: str = "shared",
     tokenizer: str = "regex",
+    backend: str = "okapi",
 ) -> tuple[Any, list[str]]:
-    """Lazy-build and cache a BM25Okapi index over chunk tokens.
+    """Lazy-build and cache a BM25 index over chunk tokens.
 
     Returns the cached ``(bm25, chunk_ids)`` tuple keyed by
-    ``(stopword_profile, tokenizer)`` (issue #150 + #486). The
-    ``shared`` profile uses the common tokens cached on each chunk;
+    ``(stopword_profile, tokenizer, backend)`` (issue #150 + #486 + #988).
+    The ``shared`` profile uses the common tokens cached on each chunk;
     the ``bm25_extra`` profile applies :func:`_apply_bm25_extra_filter`
     (strips the BM25-only extension particle set and drops short
-    BM25-only stopwords) before constructing BM25Okapi. The
-    ``tokenizer`` axis is orthogonal: ``regex`` reuses the regex-built
-    chunk token cache (or falls back to ``tokenize`` for fixtures
-    without it); ``kiwi`` re-tokenizes via kiwipiepy morpheme analysis
-    (ADR 0031, never-raise — silent fallback to regex when kiwipiepy
-    is missing). Each ``(profile, tokenizer)`` combo gets its own
-    ``BM25Okapi`` instance inside ``index["_bm25_by_profile"]`` so the
-    IDF distribution stays consistent between corpus build and query
-    side.
+    BM25-only stopwords) before constructing BM25. The ``tokenizer``
+    axis is orthogonal: ``regex`` reuses the regex-built chunk token
+    cache (or falls back to ``tokenize`` for fixtures without it);
+    ``kiwi`` re-tokenizes via kiwipiepy morpheme analysis (ADR 0031,
+    never-raise — silent fallback to regex when kiwipiepy is missing).
+    The ``backend`` axis (ADR 0057) is also orthogonal: ``okapi`` (default)
+    uses ``rank_bm25.BM25Okapi`` (pure Python, ADR 0001 byte-identical);
+    ``bm25s`` uses ``bm25s.BM25(method="robertson")`` (numpy sparse,
+    opt-in via ``requirements-bm25s.txt``). Each ``(profile, tokenizer,
+    backend)`` combo gets its own BM25 instance inside
+    ``index["_bm25_by_profile"]`` so the IDF distribution stays
+    consistent between corpus build and query side.
 
-    For back-compat the ``(shared, regex)`` build is mirrored at
+    For back-compat the ``(shared, regex, okapi)`` build is mirrored at
     ``index["_bm25"]`` / ``index["_bm25_chunk_ids"]`` so any external
     code that inspected those keys keeps working.
 
-    Raises RuntimeError if the optional ``rank_bm25`` dependency is
+    Raises RuntimeError if the chosen backend's optional dependency is
     missing — the caller must gate on ``retrieval_backend == "hybrid"``.
     """
-    if _BM25Okapi is None:
-        raise RuntimeError(
-            "retrieval_backend='hybrid' requires the 'rank_bm25' package "
-            "(install via requirements.txt)."
-        )
     if stopword_profile not in VALID_BM25_STOPWORD_PROFILES:
         choices = ", ".join(sorted(VALID_BM25_STOPWORD_PROFILES))
         raise ValueError(f"bm25_stopword_profile must be one of: {choices}")
@@ -784,9 +840,13 @@ def get_or_build_bm25(
     # exception or warning. Including ``schema_version`` + ``chunk_count``
     # in the key lets the cache invalidate automatically when the
     # corpus identity changes; both lookups are O(1).
+    # Issue #988 / ADR 0057 — ``backend`` axis added so okapi + bm25s
+    # caches stay separate (different score distributions, different
+    # internal state objects).
     cache_key = (
         stopword_profile,
         tokenizer,
+        backend,
         index.get("schema_version"),
         len(chunks),
     )
@@ -795,18 +855,18 @@ def get_or_build_bm25(
     if isinstance(entry, tuple) and len(entry) == 2:
         return entry  # type: ignore[return-value]
     corpus = [_chunk_tokens_for_bm25(c, stopword_profile, tokenizer) for c in chunks]
-    # rank_bm25 requires at least one non-empty document. If the corpus
+    # BM25 backends require at least one non-empty document. If the corpus
     # is entirely empty (degenerate test fixture) substitute a single
-    # placeholder token so BM25Okapi doesn't divide by zero.
+    # placeholder token so neither backend divides by zero.
     if not any(corpus):
         corpus = [["__empty__"] for _ in chunks] or [["__empty__"]]
-    bm25 = _BM25Okapi(corpus)
+    bm25 = _make_bm25_instance(corpus, backend)
     chunk_ids = [str(c.get("chunk_id")) for c in chunks]
     profile_cache[cache_key] = (bm25, chunk_ids)
-    if stopword_profile == "shared" and tokenizer == "regex":
+    if stopword_profile == "shared" and tokenizer == "regex" and backend == "okapi":
         # Back-compat: legacy callers may still inspect ``_bm25`` /
-        # ``_bm25_chunk_ids``. Mirror the ``(shared, regex)`` entry
-        # (the default for ADR 0001 / 0029 invariants) there without
+        # ``_bm25_chunk_ids``. Mirror the ``(shared, regex, okapi)`` entry
+        # (the default for ADR 0001 / 0029 / 0057 invariants) there without
         # exposing the per-profile dict to them.
         index["_bm25"] = bm25
         index["_bm25_chunk_ids"] = chunk_ids
@@ -818,13 +878,16 @@ def bm25_scores_for_index(
     query_tokens: list[str],
     stopword_profile: str = "shared",
     tokenizer: str = "regex",
+    backend: str = "okapi",
 ) -> dict[str, float]:
     """Return a ``chunk_id -> bm25_score`` map across all chunks in the
-    index for the given ``(stopword_profile, tokenizer)``. Callers
+    index for the given ``(stopword_profile, tokenizer, backend)``. Callers
     filter to their candidate slice. Empty query tokens (or tokens
     that the ``bm25_extra`` filter strips to empty) yield an all-zero
     map. ``tokenizer="kiwi"`` re-tokenizes both corpus + query via
     kiwipiepy morpheme analysis (ADR 0031, never-raise fallback).
+    ``backend="bm25s"`` uses the numpy-sparse opt-in backend (ADR 0057);
+    both backends expose the same ``get_scores(query_tokens)`` interface.
     """
     chunks = index.get("chunks") or []
     if not query_tokens:
@@ -861,7 +924,7 @@ def bm25_scores_for_index(
         effective_tokens = _apply_bm25_extra_filter(effective_tokens)
         if not effective_tokens:
             return {str(c.get("chunk_id")): 0.0 for c in chunks}
-    bm25, chunk_ids = get_or_build_bm25(index, stopword_profile, tokenizer)
+    bm25, chunk_ids = get_or_build_bm25(index, stopword_profile, tokenizer, backend)
     raw = bm25.get_scores(effective_tokens)
     return {chunk_id: float(score) for chunk_id, score in zip(chunk_ids, raw)}
 

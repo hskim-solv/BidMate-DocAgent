@@ -1,0 +1,21 @@
+# Issue #988 / ADR 0057 — opt-in bm25s additive BM25 backend.
+# Default backend = `okapi` (rank-bm25, in `requirements.txt`).
+# Install this file only when activating `BIDMATE_BM25_BACKEND=bm25s`
+# (env-var opt-in) or the `full_bm25s` ablation row in `eval/config.yaml`
+# (`bm25_backend: bm25s` config-key opt-in).
+#
+# Pattern: mirrors `requirements-m3.txt` / `requirements-graph.txt` /
+# `requirements-lora.txt` / `requirements-observability.txt` — additive
+# capability surfaces that don't bloat the base install (`requirements.txt`).
+#
+# Selection rationale (pre-validated 2026-05-18):
+# - `bm25s.BM25(method="robertson", k1=1.5, b=0.75)` produces ranking
+#   100% identical to `rank_bm25.BM25Okapi` on our corpus tokens
+#   (absolute scores differ due to IDF treatment, but RRF fusion uses
+#   only ordering). `lucene` (bm25s default) and `atire` differ on the
+#   trailing positions and are NOT used.
+# - numpy sparse-matrix indexing is 100-500x faster than pure-Python
+#   rank-bm25 at scale (1000+ docs). At 100-doc scale the latency
+#   improvement is sub-millisecond — value is future scale-out + opt-in
+#   pattern strengthening (ADR 0011 / ADR 0023 / ADR 0031 inherits).
+bm25s>=0.2,<1.0

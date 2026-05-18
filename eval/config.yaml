@@ -40,6 +40,13 @@ latency_budgets:
   full_khaiii:
     # Issue #561 / ADR 0031 — Khaiii tokenizer. Same budget as full_kiwi.
     p95_ms: 200
+  full_bm25s:
+    # Issue #988 / ADR 0057 — bm25s additive BM25 backend (numpy sparse).
+    # Same budget as full_kiwi (same retrieval + verifier shape, only
+    # BM25 scoring backend swaps). On CI/hashing-backend, bm25s sparse
+    # matrix is faster than rank-bm25 pure-Python BM25Okapi at the
+    # n=100+ corpus scale; budget kept identical to flag any regression.
+    p95_ms: 200
   hwp_csv_text:
     # Issue #652 / ADR 0039 — HWP loader ablation (csv-text loader, text only).
     # Per-query latency mirrors `full`; actual HWP parsing is ingest-time.
@@ -302,6 +309,26 @@ ablation_runs:
     retrieval_mode: flat
     retrieval_backend: hybrid
     bm25_tokenizer: kiwi
+  # Issue #988 / ADR 0057 — additive bm25s BM25 backend (numpy sparse,
+  # method="robertson" pre-validated to produce ranking 100% identical to
+  # rank-bm25 BM25Okapi on the same tokens). Same retrieval + verifier as
+  # `hybrid_bm25` (control row); only the BM25 backend swaps from
+  # `rank_bm25.BM25Okapi` to `bm25s.BM25(method="robertson")`. Never-raise:
+  # if the bm25s wheel is missing from the runtime, `_make_bm25_instance`
+  # raises a typed RuntimeError with an install hint (no silent fallback
+  # for this opt-in backend — matches existing dependency-missing semantics
+  # for `retrieval_backend="m3"`). Under that condition this row will fail
+  # the build step. In CI without `requirements-bm25s.txt` installed, this
+  # row is effectively skipped and the eval matrix shows the failure as
+  # missing — install `bm25s` to surface the lift.
+  - name: full_bm25s
+    pipeline: agentic_full
+    metadata_first: true
+    rerank: true
+    verifier_retry: true
+    retrieval_mode: flat
+    retrieval_backend: hybrid
+    bm25_backend: bm25s
   # Issue #561 / ADR 0031 valid-set expansion — Mecab-ko BM25 tokenizer.
   # Same retrieval + verifier as `full_kiwi` (kiwi control row); only
   # the BM25 tokenizer swaps to Mecab-ko morpheme analysis.
