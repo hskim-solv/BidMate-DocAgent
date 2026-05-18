@@ -51,6 +51,7 @@ import statistics
 import subprocess
 import sys
 import time
+import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -577,7 +578,7 @@ def _git_state() -> tuple[str, bool]:
 
 def _resolve_specs(args: argparse.Namespace) -> list[VariantSpec]:
     index_dir = Path(args.index_dir_m3)
-    return [
+    specs = [
         VariantSpec(name="dense_m3", retrieval_backend="dense", rrf_k=None, index_dir=index_dir),
         VariantSpec(
             name="hybrid_bm25_k60_m3",
@@ -587,6 +588,15 @@ def _resolve_specs(args: argparse.Namespace) -> list[VariantSpec]:
         ),
         VariantSpec(name="m3", retrieval_backend="m3", rrf_k=None, index_dir=index_dir),
     ]
+    # Phase 3.5 closeout (2026-05-19): BIDMATE_SKIP_M3_VARIANT env var to skip
+    # the m3 (3-way RRF) variant. On CPU mode the m3 cache build (sparse +
+    # colbert encoding of 26k chunks) takes 20h+ (observed 12 min/batch x 104
+    # batches). MPS attempts hung in earlier closeout runs. Setting this env
+    # var measures only dense_m3 + hybrid_bm25_k60_m3 (Phase 3 BM25 question
+    # on semantic embeddings) while m3 multi-channel question stays deferred.
+    if os.environ.get("BIDMATE_SKIP_M3_VARIANT", "").strip() == "1":
+        specs = [s for s in specs if s.name != "m3"]
+    return specs
 
 
 def _spec_meta(
