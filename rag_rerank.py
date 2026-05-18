@@ -176,7 +176,12 @@ def _cohere_backend(  # pragma: no cover - network
     model_id = model or os.environ.get(ENV_MODEL) or DEFAULT_COHERE_MODEL
     client = cohere.ClientV2(api_key=api_key)
     documents = [str(c.get("text") or "") for c in candidates]
-    response = client.rerank(model=model_id, query=query, documents=documents)
+    # Use the explicit `client.v2.rerank()` path recommended by the
+    # cohere-python 5.x reference docs. `ClientV2.rerank()` (the
+    # alias used historically) routes to the same v2 endpoint, but
+    # the explicit form is future-proof if `ClientV2` later exposes
+    # additional non-v2 methods.
+    response = client.v2.rerank(model=model_id, query=query, documents=documents)
     by_index = {item.index: float(item.relevance_score) for item in response.results}
     reordered = []
     for idx, candidate in enumerate(candidates):
