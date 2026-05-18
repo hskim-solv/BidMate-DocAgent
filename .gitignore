@@ -128,6 +128,14 @@ reports/real100/history/*
 # payload at rationality.local.json stays ignored under reports/real100/*.
 !reports/real100/rationality.md
 !reports/real100/rationality.aggregate.json
+# Issue #1002 — failure-mode distribution dashboard (ADR 0059 Phase 5
+# supply 2, script: scripts/render_failure_distribution.py). Reads
+# eval_summary.json::failure_category_counts (top-level) + abstention_outcomes,
+# emits 7-category composition table + ADR 0059 first-match contract check.
+# Aggregate-only (no per-case data); the renderer is a read-only consumer
+# of the surface introduced by ADR 0059 (PR #1001).
+!reports/real100/failure_distribution.md
+!reports/real100/failure_distribution.aggregate.json
 # Issue #896 + #897 — EDA figures (PNG + SVG). Same allowlist pattern
 # as cost_frontier.png above. corpus EDA: scripts/eda_real100.py /
 # RAG EDA: scripts/rag_pipeline_eda.py.
