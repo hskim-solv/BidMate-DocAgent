@@ -63,7 +63,7 @@ from eval.scorers.chunk_metrics import (  # noqa: E402
     derive_gold_chunk_ids,
 )
 from rag_indexing import load_index  # noqa: E402
-from rag_retrieval import retrieve_candidates  # noqa: E402
+from rag_retrieval import apply_fusion_and_reranking, retrieve_candidates  # noqa: E402
 from rag_text_processing import tokenize  # noqa: E402
 from scripts._ablation_common import (  # noqa: E402
     _fmt_ci,
@@ -118,10 +118,22 @@ def run_single_case(
     analysis = _analysis_stub(query)
     plan = _plan_for_variant(spec, top_k)
     t0 = time.perf_counter()
-    retrieved = retrieve_candidates(index, query, analysis, plan)
+    # ``retrieve_candidates`` is the candidate-generation stage only; for
+    # the hybrid backend it returns ``score=0.0`` placeholders with the
+    # raw per-channel signals living in ``score_parts``. The RRF fusion +
+    # final top-k truncation live in ``apply_fusion_and_reranking`` —
+    # without this second call hybrid ranks degenerate to chunk_id
+    # alphabetic order (every score equal so Python's stable sort falls
+    # back to insertion order). The original PR #956 commit omitted the
+    # fusion call, which is why all 3 ``hybrid_bm25_k{30,60,100}``
+    # variants looked byte-identical in the first run — the chunk_id
+    # insertion order was the same for every k. Phase 3.5 PR #966 fixed
+    # the same omission in its runner; issue #983 backports the fix
+    # here.
+    candidates = retrieve_candidates(index, query, analysis, plan)
+    final = apply_fusion_and_reranking(candidates, index, query, analysis, plan)
     latency_ms = (time.perf_counter() - t0) * 1000.0
-    retrieved_sorted = sorted(retrieved, key=lambda c: c["score"], reverse=True)[:top_k]
-    return [str(c["chunk_id"]) for c in retrieved_sorted], latency_ms
+    return [str(c["chunk_id"]) for c in final[:top_k]], latency_ms
 
 
 def measure_variant(
