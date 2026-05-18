@@ -131,7 +131,16 @@ PIPELINE_PRESETS: dict[str, dict[str, Any]] = {
         "rerank_cross_encoder": False,
         "verifier_retry": True,
         "retrieval_mode": "flat",
-        "retrieval_backend": "dense",
+        # ADR 0058 (Scenario A, 2026-05-19) — production preset default flipped
+        # from `dense` to `hybrid` based on kordoc 26k chunks measurement
+        # (n=221, paired CI 95%): chunk_recall@10 +0.052 SIG / MRR +0.110 SIG /
+        # ndcg@10 +0.065 SIG overall, with per-category SIG wins on multi_hop /
+        # distractor_heavy / long_context. Latency 1.35x (757 vs 559 ms p50).
+        # `naive_baseline` preset stays `dense` (ADR 0001 byte-identity).
+        # `eval/config.yaml` `full` row was already explicit `hybrid`, so this
+        # change does not affect eval rows — it changes the default for
+        # ad-hoc preset use (CLI / API / pipeline_runner direct invocation).
+        "retrieval_backend": "hybrid",
         "prompt_profile": "structured_grounded_claims",
         "rrf_k": RRF_K,
         "bm25_stopword_profile": "shared",
@@ -148,7 +157,7 @@ PIPELINE_PRESETS: dict[str, dict[str, Any]] = {
         # stays byte-equal; the new "full_hyde" row sets this to "hyde".
         "query_expansion": "identity",
         "comparison_balance": dict(DEFAULT_COMPARISON_BALANCE),
-        "description": "Metadata-first retrieval with lexical/metadata rerank and verifier retry.",
+        "description": "Metadata-first hybrid (BGE-M3 dense + BM25, RRF k=60) retrieval with lexical/metadata rerank and verifier retry (ADR 0058).",
     },
     # ADR 0011 — additive LLM synthesis path. Same retrieval/verifier as
     # agentic_full; only the summary/answer_text rendering swaps to a
@@ -161,6 +170,13 @@ PIPELINE_PRESETS: dict[str, dict[str, Any]] = {
         "rerank_cross_encoder": False,
         "verifier_retry": True,
         "retrieval_mode": "flat",
+        # ADR 0058 (Scenario A, 2026-05-19) — explicit `hybrid` to match
+        # the agentic_full retrieval path (this preset's description is
+        # "agentic_full retrieval; LLM-synthesized summary"). Previously
+        # this key was absent and fell back to "dense" via
+        # `config.get("retrieval_backend") or "dense"`; making it
+        # explicit aligns intent with the production preset.
+        "retrieval_backend": "hybrid",
         "prompt_profile": "llm_synthesis",
         "rrf_k": RRF_K,
         "bm25_stopword_profile": "shared",
@@ -170,7 +186,7 @@ PIPELINE_PRESETS: dict[str, dict[str, Any]] = {
         "bm25_backend": "okapi",
         "query_expansion": "identity",
         "comparison_balance": dict(DEFAULT_COMPARISON_BALANCE),
-        "description": "agentic_full retrieval; LLM-synthesized summary under ADR 0011 guard.",
+        "description": "agentic_full hybrid retrieval (BGE-M3 dense + BM25 RRF k=60); LLM-synthesized summary under ADR 0011 guard.",
     },
     # ADR 0040 — additive ReAct agent loop preset.  Same retrieval/verifier
     # stack as agentic_full; planner_backend controls the orchestration
@@ -184,7 +200,12 @@ PIPELINE_PRESETS: dict[str, dict[str, Any]] = {
         "rerank_cross_encoder": False,
         "verifier_retry": True,
         "retrieval_mode": "flat",
-        "retrieval_backend": "dense",
+        # ADR 0058 (Scenario A, 2026-05-19) — production agent preset uses
+        # hybrid retrieval (same Scenario A rationale as agentic_full).
+        # Existing eval row in `eval/config.yaml` is already explicit
+        # `retrieval_backend: hybrid` so eval results unchanged; this
+        # changes only the default for ad-hoc preset use.
+        "retrieval_backend": "hybrid",
         "prompt_profile": "structured_grounded_claims",
         "rrf_k": RRF_K,
         "bm25_stopword_profile": "shared",
