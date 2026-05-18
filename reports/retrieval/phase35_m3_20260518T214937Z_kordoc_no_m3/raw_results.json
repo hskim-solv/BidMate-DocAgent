@@ -1,0 +1,5892 @@
+{
+  "dense_m3": {
+    "variant": "dense_m3",
+    "per_case": [
+      {
+        "qid": "real_hanyeong_budget_schedule",
+        "query_type": "single_doc",
+        "categories": [
+          "uncategorized"
+        ],
+        "gold_chunk_n": 2,
+        "latency_ms": 397.447,
+        "chunk_recall@5": 1.0,
+        "chunk_recall@10": 1.0,
+        "mrr": 1.0,
+        "ndcg@10": 1.0
+      },
+      {
+        "qid": "real_nrf_uicc_budget_schedule",
+        "query_type": "single_doc",
+        "categories": [
+          "uncategorized"
+        ],
+        "gold_chunk_n": 4,
+        "latency_ms": 395.578,
+        "chunk_recall@5": 1.0,
+        "chunk_recall@10": 1.0,
+        "mrr": 1.0,
+        "ndcg@10": 1.0
+      },
+      {
+        "qid": "real_goyang_homepage_budget_schedule",
+        "query_type": "single_doc",
+        "categories": [
+          "uncategorized"
+        ],
+        "gold_chunk_n": 1,
+        "latency_ms": 363.141,
+        "chunk_recall@5": 1.0,
+        "chunk_recall@10": 1.0,
+        "mrr": 1.0,
+        "ndcg@10": 1.0
+      },
+      {
+        "qid": "real_bus_info_compare",
+        "query_type": "multi_doc",
+        "categories": [
+          "uncategorized"
+        ],
+        "gold_chunk_n": 88,
+        "latency_ms": 656.639,
+        "chunk_recall@5": 0.03409090909090909,
+        "chunk_recall@10": 0.06818181818181818,
+        "mrr": 1.0,
+        "ndcg@10": 0.6473362615659566
+      },
+      {
+        "qid": "real_hanyeong_followup_budget",
+        "query_type": "follow_up",
+        "categories": [
+          "uncategorized"
+        ],
+        "gold_chunk_n": 1,
+        "latency_ms": 435.958,
+        "chunk_recall@5": 0.0,
+        "chunk_recall@10": 0.0,
+        "mrr": 0.0,
+        "ndcg@10": 0.0
+      },
+      {
+        "qid": "real_hanyeong_absent_blockchain_delivery",
+        "query_type": "abstention",
+        "categories": [
+          "uncategorized"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 510.998,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "probe_01_partial_agency_sahak",
+        "query_type": "single_doc",
+        "categories": [
+          "uncategorized"
+        ],
+        "gold_chunk_n": 2,
+        "latency_ms": 458.244,
+        "chunk_recall@5": 1.0,
+        "chunk_recall@10": 1.0,
+        "mrr": 1.0,
+        "ndcg@10": 1.0
+      },
+      {
+        "qid": "probe_02_acronym_only_kusf",
+        "query_type": "single_doc",
+        "categories": [
+          "uncategorized"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 438.376,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "probe_03_synonym_uniabbrev_jbnu",
+        "query_type": "single_doc",
+        "categories": [
+          "uncategorized"
+        ],
+        "gold_chunk_n": 1,
+        "latency_ms": 595.968,
+        "chunk_recall@5": 1.0,
+        "chunk_recall@10": 1.0,
+        "mrr": 1.0,
+        "ndcg@10": 1.0
+      },
+      {
+        "qid": "probe_04_ambig_incheon_only",
+        "query_type": "single_doc",
+        "categories": [
+          "uncategorized"
+        ],
+        "gold_chunk_n": 1,
+        "latency_ms": 396.803,
+        "chunk_recall@5": 1.0,
+        "chunk_recall@10": 1.0,
+        "mrr": 0.5,
+        "ndcg@10": 0.6309297535714575
+      },
+      {
+        "qid": "probe_05_ambig_nrf_two_projects",
+        "query_type": "single_doc",
+        "categories": [
+          "uncategorized"
+        ],
+        "gold_chunk_n": 52,
+        "latency_ms": 385.2,
+        "chunk_recall@5": 0.019230769230769232,
+        "chunk_recall@10": 0.038461538461538464,
+        "mrr": 0.5,
+        "ndcg@10": 0.21222636597291458
+      },
+      {
+        "qid": "probe_06_chunk_kepco_three_facts",
+        "query_type": "single_doc",
+        "categories": [
+          "uncategorized"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 441.285,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "probe_07_chunk_eip_amount_scope",
+        "query_type": "single_doc",
+        "categories": [
+          "uncategorized"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 569.46,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "probe_08_followup_hanyeong_bid_deadline",
+        "query_type": "follow_up",
+        "categories": [
+          "uncategorized"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 573.753,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "probe_09_followup_cross_doc_switch_nrf",
+        "query_type": "follow_up",
+        "categories": [
+          "uncategorized"
+        ],
+        "gold_chunk_n": 3,
+        "latency_ms": 391.874,
+        "chunk_recall@5": 0.3333333333333333,
+        "chunk_recall@10": 0.6666666666666666,
+        "mrr": 0.2,
+        "ndcg@10": 0.3171937659698004
+      },
+      {
+        "qid": "probe_10_followup_goyang_double_implicit",
+        "query_type": "follow_up",
+        "categories": [
+          "uncategorized"
+        ],
+        "gold_chunk_n": 13,
+        "latency_ms": 500.305,
+        "chunk_recall@5": 0.0,
+        "chunk_recall@10": 0.0,
+        "mrr": 0.0,
+        "ndcg@10": 0.0
+      },
+      {
+        "qid": "probe_11_citation_goyang_when_done",
+        "query_type": "single_doc",
+        "categories": [
+          "uncategorized"
+        ],
+        "gold_chunk_n": 1,
+        "latency_ms": 426.037,
+        "chunk_recall@5": 0.0,
+        "chunk_recall@10": 0.0,
+        "mrr": 0.07142857142857142,
+        "ndcg@10": 0.0
+      },
+      {
+        "qid": "probe_12_citation_kosaf_aggregate",
+        "query_type": "single_doc",
+        "categories": [
+          "uncategorized"
+        ],
+        "gold_chunk_n": 2,
+        "latency_ms": 507.356,
+        "chunk_recall@5": 0.5,
+        "chunk_recall@10": 0.5,
+        "mrr": 0.25,
+        "ndcg@10": 0.2640681225725909
+      },
+      {
+        "qid": "probe_13_abstention_lh_not_in_corpus",
+        "query_type": "abstention",
+        "categories": [
+          "uncategorized"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 543.168,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "probe_14_abstention_near_miss_kri",
+        "query_type": "abstention",
+        "categories": [
+          "uncategorized"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 387.148,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "probe_15_abstention_kepco_quantum",
+        "query_type": "abstention",
+        "categories": [
+          "uncategorized"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 609.871,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_보험개발원_요양기관_연계_DB_지원범위",
+        "query_type": "single_doc",
+        "categories": [
+          "long_context",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 2,
+        "latency_ms": 547.168,
+        "chunk_recall@5": 0.5,
+        "chunk_recall@10": 0.5,
+        "mrr": 1.0,
+        "ndcg@10": 0.6131471927654584
+      },
+      {
+        "qid": "real_보험개발원_청구내역_보관기간_변경주체",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 453.279,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_kace_security_requirement_crossref",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 21,
+        "latency_ms": 690.614,
+        "chunk_recall@5": 0.09523809523809523,
+        "chunk_recall@10": 0.14285714285714285,
+        "mrr": 1.0,
+        "ndcg@10": 0.42838543210841196
+      },
+      {
+        "qid": "real_kace_pm_replacement_penalty",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 702.556,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_ventureassoc_stockoption_region_vs_permission",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 13,
+        "latency_ms": 576.917,
+        "chunk_recall@5": 0.38461538461538464,
+        "chunk_recall@10": 0.5384615384615384,
+        "mrr": 1.0,
+        "ndcg@10": 0.7819835854675755
+      },
+      {
+        "qid": "real_ventureassoc_ip_ownership_ratio_change",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 486.605,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_경기도사회서비스원_security_penalty_cross_ref",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 20,
+        "latency_ms": 454.546,
+        "chunk_recall@5": 0.0,
+        "chunk_recall@10": 0.0,
+        "mrr": 0.0,
+        "ndcg@10": 0.0
+      },
+      {
+        "qid": "real_경기도사회서비스원_next_vendor_obligation_scope",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer",
+          "long_context"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 578.655,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_jeongeup_response_time_scope",
+        "query_type": "single_doc",
+        "categories": [
+          "distractor_heavy",
+          "ambiguous_query"
+        ],
+        "gold_chunk_n": 1,
+        "latency_ms": 478.443,
+        "chunk_recall@5": 1.0,
+        "chunk_recall@10": 1.0,
+        "mrr": 1.0,
+        "ndcg@10": 1.0
+      },
+      {
+        "qid": "real_jeongeup_access_log_retention_penalty",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 461.092,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_seoul_geocoding_limit_vs_performance",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 142,
+        "latency_ms": 493.206,
+        "chunk_recall@5": 0.007042253521126761,
+        "chunk_recall@10": 0.02112676056338028,
+        "mrr": 0.5,
+        "ndcg@10": 0.2906246349515899
+      },
+      {
+        "qid": "real_seoul_security_disposal_method",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 477.642,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_GKL_security_law_scope",
+        "query_type": "single_doc",
+        "categories": [
+          "distractor_heavy",
+          "multi_hop"
+        ],
+        "gold_chunk_n": 5,
+        "latency_ms": 585.119,
+        "chunk_recall@5": 0.2,
+        "chunk_recall@10": 0.2,
+        "mrr": 1.0,
+        "ndcg@10": 0.3391602052736161
+      },
+      {
+        "qid": "real_GKL_mobile_sns_bookmark_penalty",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 399.4,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_KICOX_multihop_subcontract_eval_threshold",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 3,
+        "latency_ms": 483.136,
+        "chunk_recall@5": 0.0,
+        "chunk_recall@10": 0.0,
+        "mrr": 0.0,
+        "ndcg@10": 0.0
+      },
+      {
+        "qid": "real_KICOX_noanswer_web_server_failover_rto",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer",
+          "long_context"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 406.775,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_적십자사의료원_DR서버설치시간_vs_DBMS설치시간",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 2,
+        "latency_ms": 473.174,
+        "chunk_recall@5": 0.5,
+        "chunk_recall@10": 0.5,
+        "mrr": 0.5,
+        "ndcg@10": 0.38685280723454163
+      },
+      {
+        "qid": "real_적십자사의료원_유사실적_하한기준",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 737.782,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_KWRI_multihop_securecoding_vs_adminpage",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 5,
+        "latency_ms": 537.018,
+        "chunk_recall@5": 0.0,
+        "chunk_recall@10": 0.0,
+        "mrr": 0.0,
+        "ndcg@10": 0.0
+      },
+      {
+        "qid": "real_KWRI_noanswer_budget_breakdown",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 441.726,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_KFIS_accessibility_diagnosis_scope_vs_certification",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 13,
+        "latency_ms": 542.501,
+        "chunk_recall@5": 0.07692307692307693,
+        "chunk_recall@10": 0.15384615384615385,
+        "mrr": 1.0,
+        "ndcg@10": 0.28952298823485745
+      },
+      {
+        "qid": "real_KFIS_ip_ownership_ratio",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 462.248,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_부산관광공사_security_violation_abstention",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 379.992,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_부산관광공사_credit_eval_crossref",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 1,
+        "latency_ms": 531.698,
+        "chunk_recall@5": 0.0,
+        "chunk_recall@10": 1.0,
+        "mrr": 0.16666666666666666,
+        "ndcg@10": 0.3562071871080222
+      },
+      {
+        "qid": "real_gjcf_multisite_newurl_hop",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop",
+          "long_context"
+        ],
+        "gold_chunk_n": 31,
+        "latency_ms": 416.376,
+        "chunk_recall@5": 0.0967741935483871,
+        "chunk_recall@10": 0.12903225806451613,
+        "mrr": 1.0,
+        "ndcg@10": 0.5321408435198608
+      },
+      {
+        "qid": "real_gjcf_security_password_scope",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 468.809,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_arko_multihop_evaluation_quorum",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 1,
+        "latency_ms": 473.659,
+        "chunk_recall@5": 1.0,
+        "chunk_recall@10": 1.0,
+        "mrr": 1.0,
+        "ndcg@10": 1.0
+      },
+      {
+        "qid": "real_arko_noanswer_penalty_replacement",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 622.091,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_나노종합기술원_secs_equipment_count_multihop",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop",
+          "long_context"
+        ],
+        "gold_chunk_n": 92,
+        "latency_ms": 812.269,
+        "chunk_recall@5": 0.043478260869565216,
+        "chunk_recall@10": 0.07608695652173914,
+        "mrr": 1.0,
+        "ndcg@10": 0.7529694065526482
+      },
+      {
+        "qid": "real_나노종합기술원_copyright_ownership_noanswer",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 467.947,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_kochildcare_security_obligation_scope",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 36,
+        "latency_ms": 508.364,
+        "chunk_recall@5": 0.0,
+        "chunk_recall@10": 0.027777777777777776,
+        "mrr": 0.14285714285714285,
+        "ndcg@10": 0.07336392209936005
+      },
+      {
+        "qid": "real_kochildcare_업무인계_deadline_basis",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 458.233,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_bonghwa_security_obligation_scope",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 3,
+        "latency_ms": 499.04,
+        "chunk_recall@5": 0.0,
+        "chunk_recall@10": 0.0,
+        "mrr": 0.0,
+        "ndcg@10": 0.0
+      },
+      {
+        "qid": "real_bonghwa_ai_tts_language_penalty",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 585.766,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_incheon_security_education_timing_vs_personnel_change",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 1,
+        "latency_ms": 430.71,
+        "chunk_recall@5": 1.0,
+        "chunk_recall@10": 1.0,
+        "mrr": 0.3333333333333333,
+        "ndcg@10": 0.5
+      },
+      {
+        "qid": "real_incheon_pm_presentation_evaluation_score_weight",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 442.897,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_축산물품질평가원_하도급_인건비_기준_multihop",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 10,
+        "latency_ms": 478.834,
+        "chunk_recall@5": 0.1,
+        "chunk_recall@10": 0.1,
+        "mrr": 1.0,
+        "ndcg@10": 0.22009176629808017
+      },
+      {
+        "qid": "real_축산물품질평가원_PM_재직요건_처벌규정_noanswer",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 467.846,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_축산물품질평가원_하자담보_vs_웹접근성_인증시점",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 11,
+        "latency_ms": 671.269,
+        "chunk_recall@5": 0.09090909090909091,
+        "chunk_recall@10": 0.09090909090909091,
+        "mrr": 0.5,
+        "ndcg@10": 0.13886244387355454
+      },
+      {
+        "qid": "real_축산물품질평가원_소프트웨어보안_진단인력_자격기준",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 403.59,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_ulsan_BIT_display_spec_vs_haza_support",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 13,
+        "latency_ms": 535.29,
+        "chunk_recall@5": 0.23076923076923078,
+        "chunk_recall@10": 0.23076923076923078,
+        "mrr": 1.0,
+        "ndcg@10": 0.424926013816671
+      },
+      {
+        "qid": "real_ulsan_no_answer_penalty_rate",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 472.867,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_대검찰청_TTS_scope_vs_security_crossref",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 3,
+        "latency_ms": 594.687,
+        "chunk_recall@5": 0.0,
+        "chunk_recall@10": 0.0,
+        "mrr": 0.0,
+        "ndcg@10": 0.0
+      },
+      {
+        "qid": "real_대검찰청_3D_SLA_penalty_no_answer",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 701.883,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_서울여성가족재단_삭제지원시스템_하도급비율_평가점수_연계",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 90,
+        "latency_ms": 517.137,
+        "chunk_recall@5": 0.0,
+        "chunk_recall@10": 0.0,
+        "mrr": 0.0,
+        "ndcg@10": 0.0
+      },
+      {
+        "qid": "real_서울여성가족재단_AI삭제지원_모델정확도기준",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 1079.973,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_KICE_multihop_haza_repair_scope",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 10,
+        "latency_ms": 808.04,
+        "chunk_recall@5": 0.3,
+        "chunk_recall@10": 0.3,
+        "mrr": 1.0,
+        "ndcg@10": 0.4690000933206748
+      },
+      {
+        "qid": "real_KICE_noanswer_penalty_rate",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 1161.244,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_NMC_encryption_standard_crossref",
+        "query_type": "single_doc",
+        "categories": [
+          "distractor_heavy",
+          "multi_hop"
+        ],
+        "gold_chunk_n": 6,
+        "latency_ms": 1251.202,
+        "chunk_recall@5": 0.16666666666666666,
+        "chunk_recall@10": 0.16666666666666666,
+        "mrr": 1.0,
+        "ndcg@10": 0.30260241349881345
+      },
+      {
+        "qid": "real_NMC_ipphone_max_extension_sla",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer",
+          "multi_hop"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 1459.925,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_kiom_security_penalty_vs_quality_penalty",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 5,
+        "latency_ms": 948.535,
+        "chunk_recall@5": 0.0,
+        "chunk_recall@10": 0.0,
+        "mrr": 0.0,
+        "ndcg@10": 0.0
+      },
+      {
+        "qid": "real_kiom_sw_direct_purchase_threshold",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer",
+          "long_context"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 1038.17,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_어촌어항공단_security_violation_penalty_multihop",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 210,
+        "latency_ms": 1253.224,
+        "chunk_recall@5": 0.0,
+        "chunk_recall@10": 0.0,
+        "mrr": 0.0,
+        "ndcg@10": 0.0
+      },
+      {
+        "qid": "real_어촌어항공단_sw_output_ownership_supplier_rights",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 1447.792,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_KITECH_PM_qualification_multihop",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 8,
+        "latency_ms": 2221.378,
+        "chunk_recall@5": 0.125,
+        "chunk_recall@10": 0.125,
+        "mrr": 1.0,
+        "ndcg@10": 0.2529427027676571
+      },
+      {
+        "qid": "real_KITECH_performance_test_env_noans",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 1409.935,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_KRC_sensor_spec_crossref",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 10,
+        "latency_ms": 1773.023,
+        "chunk_recall@5": 0.5,
+        "chunk_recall@10": 0.7,
+        "mrr": 1.0,
+        "ndcg@10": 0.793584067764911
+      },
+      {
+        "qid": "real_KRC_nimis_java_penalty",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 2684.724,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_파주도시관광공사_system_access_method_multihop",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 4,
+        "latency_ms": 2034.292,
+        "chunk_recall@5": 0.25,
+        "chunk_recall@10": 0.25,
+        "mrr": 1.0,
+        "ndcg@10": 0.3903800499921017
+      },
+      {
+        "qid": "real_파주도시관광공사_password_change_cycle_noans",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 3394.086,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_수협중앙회_ismp_rfp_작성주체_및_단계별책임",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 11,
+        "latency_ms": 2983.084,
+        "chunk_recall@5": 0.2727272727272727,
+        "chunk_recall@10": 0.2727272727272727,
+        "mrr": 0.5,
+        "ndcg@10": 0.3436966913921454
+      },
+      {
+        "qid": "real_수협중앙회_ismp_보안등급_산출물폐기기준",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 3029.759,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_KCCI_multi_hop_performance_security",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 3,
+        "latency_ms": 3644.951,
+        "chunk_recall@5": 0.3333333333333333,
+        "chunk_recall@10": 0.3333333333333333,
+        "mrr": 1.0,
+        "ndcg@10": 0.46927872602275644
+      },
+      {
+        "qid": "real_KCCI_no_answer_penalty_rate",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 2106.329,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_pyeongtaek_bis_maintenance_sla_crossref",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 3,
+        "latency_ms": 3623.178,
+        "chunk_recall@5": 0.0,
+        "chunk_recall@10": 0.0,
+        "mrr": 0.08333333333333333,
+        "ndcg@10": 0.0
+      },
+      {
+        "qid": "real_pyeongtaek_bis_penalty_subdomain_rate",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 3863.438,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_서민금융진흥원_license_and_encryption_multihop",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 5,
+        "latency_ms": 2211.121,
+        "chunk_recall@5": 0.2,
+        "chunk_recall@10": 0.2,
+        "mrr": 1.0,
+        "ndcg@10": 0.3391602052736161
+      },
+      {
+        "qid": "real_서민금융진흥원_subcontract_penalty_noanswer",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 1620.028,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_BIFF_response_time_vs_security_encryption",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 26,
+        "latency_ms": 1526.469,
+        "chunk_recall@5": 0.0,
+        "chunk_recall@10": 0.0,
+        "mrr": 0.0,
+        "ndcg@10": 0.0
+      },
+      {
+        "qid": "real_BIFF_penalty_clause_no_answer",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 2170.094,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_KHOA_technical_score_threshold_and_negotiation_eligibility",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 2,
+        "latency_ms": 1743.325,
+        "chunk_recall@5": 0.0,
+        "chunk_recall@10": 0.0,
+        "mrr": 0.07692307692307693,
+        "ndcg@10": 0.0
+      },
+      {
+        "qid": "real_KHOA_security_inspection_penalty_basis",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 1471.959,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_서울특별시교육청_PM자격요건과참여인력평가기준교차",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 4,
+        "latency_ms": 1307.121,
+        "chunk_recall@5": 0.0,
+        "chunk_recall@10": 0.25,
+        "mrr": 0.16666666666666666,
+        "ndcg@10": 0.13905617951077562
+      },
+      {
+        "qid": "real_서울특별시교육청_ISP수립기간산출근거없음",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 1599.301,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_KOIPA_security_deadline_multihop",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 12,
+        "latency_ms": 1392.153,
+        "chunk_recall@5": 0.0,
+        "chunk_recall@10": 0.0,
+        "mrr": 0.07692307692307693,
+        "ndcg@10": 0.0
+      },
+      {
+        "qid": "real_KOIPA_penalty_criteria_noanswer",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 3119.646,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_인천공항운영서비스_수행실적_창업기업기준",
+        "query_type": "single_doc",
+        "categories": [
+          "distractor_heavy",
+          "long_context"
+        ],
+        "gold_chunk_n": 2,
+        "latency_ms": 2357.526,
+        "chunk_recall@5": 0.0,
+        "chunk_recall@10": 0.0,
+        "mrr": 0.0,
+        "ndcg@10": 0.0
+      },
+      {
+        "qid": "real_hrdk_multihop_pm_qualification_and_deliverable_timing",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 3,
+        "latency_ms": 1479.326,
+        "chunk_recall@5": 0.0,
+        "chunk_recall@10": 0.3333333333333333,
+        "mrr": 0.125,
+        "ndcg@10": 0.1480409554829326
+      },
+      {
+        "qid": "real_hrdk_noanswer_rfid_tag_unit_cost",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 1379.224,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_kaeri_sfr_multi_hop_test_requirement",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 9,
+        "latency_ms": 1242.213,
+        "chunk_recall@5": 0.0,
+        "chunk_recall@10": 0.1111111111111111,
+        "mrr": 0.125,
+        "ndcg@10": 0.07414861528507455
+      },
+      {
+        "qid": "real_kaeri_security_penalty_no_answer",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 1686.086,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_anyang_homepage_vs_kiosk_sameday_reservation",
+        "query_type": "single_doc",
+        "categories": [
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 31,
+        "latency_ms": 1469.897,
+        "chunk_recall@5": 0.12903225806451613,
+        "chunk_recall@10": 0.16129032258064516,
+        "mrr": 1.0,
+        "ndcg@10": 0.6177639991612475
+      },
+      {
+        "qid": "real_anyang_security_penalty_offset_basis",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 2196.381,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_NRF_security_education_frequency_multihop",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 5,
+        "latency_ms": 1569.116,
+        "chunk_recall@5": 0.2,
+        "chunk_recall@10": 0.2,
+        "mrr": 0.5,
+        "ndcg@10": 0.21398626473452756
+      },
+      {
+        "qid": "real_NRF_openaccess_expansion_target_metric",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 1474.767,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_seoyeong_security_login_policy_multihop",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 5,
+        "latency_ms": 1644.811,
+        "chunk_recall@5": 0.0,
+        "chunk_recall@10": 0.2,
+        "mrr": 0.1,
+        "ndcg@10": 0.09803928583135704
+      },
+      {
+        "qid": "real_seoyeong_warranty_penalty_noanswer",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 1133.501,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_KUSF_haza_vs_performance_period",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 6,
+        "latency_ms": 1625.473,
+        "chunk_recall@5": 0.0,
+        "chunk_recall@10": 0.0,
+        "mrr": 0.0,
+        "ndcg@10": 0.0
+      },
+      {
+        "qid": "real_KUSF_security_penalty_clause",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 1451.69,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_한국사학진흥재단_dbms_migration_hop",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 2,
+        "latency_ms": 1462.369,
+        "chunk_recall@5": 0.0,
+        "chunk_recall@10": 0.0,
+        "mrr": 0.0,
+        "ndcg@10": 0.0
+      },
+      {
+        "qid": "real_한국사학진흥재단_penalty_no_answer",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 1727.542,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_스포츠윤리센터_lms_personal_info_retention_multihop",
+        "query_type": "single_doc",
+        "categories": [
+          "long_context",
+          "no_answer"
+        ],
+        "gold_chunk_n": 1,
+        "latency_ms": 1038.254,
+        "chunk_recall@5": 1.0,
+        "chunk_recall@10": 1.0,
+        "mrr": 0.5,
+        "ndcg@10": 0.6309297535714575
+      },
+      {
+        "qid": "real_스포츠윤리센터_lms_presenter_change_deadline",
+        "query_type": "abstention",
+        "categories": [
+          "distractor_heavy",
+          "multi_hop"
+        ],
+        "gold_chunk_n": 2,
+        "latency_ms": 1073.672,
+        "chunk_recall@5": 1.0,
+        "chunk_recall@10": 1.0,
+        "mrr": 1.0,
+        "ndcg@10": 1.0
+      },
+      {
+        "qid": "real_ADD_transfer_redundancy_user_capacity",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 11,
+        "latency_ms": 706.577,
+        "chunk_recall@5": 0.09090909090909091,
+        "chunk_recall@10": 0.09090909090909091,
+        "mrr": 1.0,
+        "ndcg@10": 0.22009176629808017
+      },
+      {
+        "qid": "real_ADD_warranty_penalty_rate",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 669.921,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_KITECH_integration_test_minimum_rounds",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 36,
+        "latency_ms": 918.271,
+        "chunk_recall@5": 0.027777777777777776,
+        "chunk_recall@10": 0.027777777777777776,
+        "mrr": 1.0,
+        "ndcg@10": 0.22009176629808017
+      },
+      {
+        "qid": "real_KITECH_subcontract_penalty_threshold",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 638.749,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_고양도시관리공사_접속기록보관기간_vs_보안점검기준",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 3,
+        "latency_ms": 1031.303,
+        "chunk_recall@5": 0.0,
+        "chunk_recall@10": 0.0,
+        "mrr": 0.0,
+        "ndcg@10": 0.0
+      },
+      {
+        "qid": "real_고양도시관리공사_응답속도_모바일앱기준",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 821.435,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_jbnu_cloud_security_cert_scope",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 2,
+        "latency_ms": 891.31,
+        "chunk_recall@5": 1.0,
+        "chunk_recall@10": 1.0,
+        "mrr": 1.0,
+        "ndcg@10": 0.8772153153380493
+      },
+      {
+        "qid": "real_jbnu_ip_ownership_contractor",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 657.671,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_khidi_webcapacity_vs_responsetime_requirement",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 2,
+        "latency_ms": 870.722,
+        "chunk_recall@5": 0.5,
+        "chunk_recall@10": 0.5,
+        "mrr": 1.0,
+        "ndcg@10": 0.6131471927654584
+      },
+      {
+        "qid": "real_khidi_penalty_clause_ip_violation",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 614.506,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_gumi2025_registration_access_control_multihop",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 3,
+        "latency_ms": 743.679,
+        "chunk_recall@5": 0.0,
+        "chunk_recall@10": 0.0,
+        "mrr": 0.0,
+        "ndcg@10": 0.0
+      },
+      {
+        "qid": "real_gumi2025_response_time_concurrent_users_noanswer",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 674.52,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_koreaexim_its_pm_evaluation_scoring_crossref",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 17,
+        "latency_ms": 814.453,
+        "chunk_recall@5": 0.17647058823529413,
+        "chunk_recall@10": 0.29411764705882354,
+        "mrr": 1.0,
+        "ndcg@10": 0.6207622843987103
+      },
+      {
+        "qid": "real_koreaexim_its_local_tax_subcontract_penalty",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 2267.074,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_hanyeong_multihop_障害복구기준_vs_보안요건",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 5,
+        "latency_ms": 1266.234,
+        "chunk_recall@5": 0.0,
+        "chunk_recall@10": 0.0,
+        "mrr": 0.09090909090909091,
+        "ndcg@10": 0.0
+      },
+      {
+        "qid": "real_hanyeong_noanswer_트랙시스템_예산규모",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 706.707,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_국립민속박물관_security_contract_scope",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 9,
+        "latency_ms": 793.128,
+        "chunk_recall@5": 0.0,
+        "chunk_recall@10": 0.0,
+        "mrr": 0.0,
+        "ndcg@10": 0.0
+      },
+      {
+        "qid": "real_국립민속박물관_ip_commercial_use_penalty",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 1386.98,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_NRF_security_education_frequency_crossref",
+        "query_type": "single_doc",
+        "categories": [
+          "distractor_heavy",
+          "multi_hop"
+        ],
+        "gold_chunk_n": 3,
+        "latency_ms": 2179.637,
+        "chunk_recall@5": 0.3333333333333333,
+        "chunk_recall@10": 0.3333333333333333,
+        "mrr": 0.5,
+        "ndcg@10": 0.2960819109658652
+      },
+      {
+        "qid": "real_NRF_IP_ownership_contractor_usage_condition",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 712.863,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_아시아물위원회_multi_hop_pm_실적_건수_환산",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 8,
+        "latency_ms": 620.34,
+        "chunk_recall@5": 0.0,
+        "chunk_recall@10": 0.0,
+        "mrr": 0.0,
+        "ndcg@10": 0.0
+      },
+      {
+        "qid": "real_아시아물위원회_no_answer_현지전문가_체재비_일단가",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 598.193,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_남서울대학교_encryption_scope_multihop",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 7,
+        "latency_ms": 552.676,
+        "chunk_recall@5": 0.0,
+        "chunk_recall@10": 0.14285714285714285,
+        "mrr": 0.14285714285714285,
+        "ndcg@10": 0.09162544430476362
+      },
+      {
+        "qid": "real_남서울대학교_warranty_penalty_noans",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 747.37,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_광주연구원_security_password_vs_access_control",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 10,
+        "latency_ms": 535.348,
+        "chunk_recall@5": 0.1,
+        "chunk_recall@10": 0.1,
+        "mrr": 1.0,
+        "ndcg@10": 0.22009176629808017
+      },
+      {
+        "qid": "real_광주연구원_no_answer_penalty_rate",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 481.546,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_GIST_haja_bojeung_cross",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 6,
+        "latency_ms": 568.916,
+        "chunk_recall@5": 0.0,
+        "chunk_recall@10": 0.0,
+        "mrr": 0.05555555555555555,
+        "ndcg@10": 0.0
+      },
+      {
+        "qid": "real_GIST_rcms_security_vendor_year",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 498.148,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_chosun_security_penalty_threshold",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 1,
+        "latency_ms": 651.342,
+        "chunk_recall@5": 0.0,
+        "chunk_recall@10": 0.0,
+        "mrr": 0.0,
+        "ndcg@10": 0.0
+      },
+      {
+        "qid": "real_chosun_remote_maintenance_approval_criteria",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 437.801,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_중앙선거관리위원회_security_device_provider",
+        "query_type": "single_doc",
+        "categories": [
+          "distractor_heavy",
+          "multi_hop"
+        ],
+        "gold_chunk_n": 2,
+        "latency_ms": 475.435,
+        "chunk_recall@5": 0.0,
+        "chunk_recall@10": 0.0,
+        "mrr": 0.09090909090909091,
+        "ndcg@10": 0.0
+      },
+      {
+        "qid": "real_중앙선거관리위원회_penalty_criteria_detail",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer",
+          "long_context"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 499.278,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_IBS_cryogenic_responsibility_boundary",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 8,
+        "latency_ms": 532.222,
+        "chunk_recall@5": 0.625,
+        "chunk_recall@10": 0.875,
+        "mrr": 1.0,
+        "ndcg@10": 0.9098999913476323
+      },
+      {
+        "qid": "real_IBS_cryogenic_penalty_formula",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 490.143,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_aT_multiHop_security_audit_timing",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 32,
+        "latency_ms": 657.397,
+        "chunk_recall@5": 0.03125,
+        "chunk_recall@10": 0.03125,
+        "mrr": 0.5,
+        "ndcg@10": 0.13886244387355454
+      },
+      {
+        "qid": "real_aT_noAnswer_penalty_rate",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 516.651,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_경기도일자리재단_security_penalty_grade_threshold",
+        "query_type": "single_doc",
+        "categories": [
+          "long_context",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 6,
+        "latency_ms": 551.888,
+        "chunk_recall@5": 0.0,
+        "chunk_recall@10": 0.0,
+        "mrr": 0.0,
+        "ndcg@10": 0.0
+      },
+      {
+        "qid": "real_경기도일자리재단_worker_dispatch_legal_basis",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 486.772,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_eulji_haja_period_conflict",
+        "query_type": "single_doc",
+        "categories": [
+          "distractor_heavy",
+          "multi_hop"
+        ],
+        "gold_chunk_n": 17,
+        "latency_ms": 485.188,
+        "chunk_recall@5": 0.11764705882352941,
+        "chunk_recall@10": 0.11764705882352941,
+        "mrr": 1.0,
+        "ndcg@10": 0.31488013066763093
+      },
+      {
+        "qid": "real_eulji_pm_replacement_penalty",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 635.082,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_대전대학교_개인정보파기기한_vs_위탁기간종료",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 7,
+        "latency_ms": 472.351,
+        "chunk_recall@5": 0.14285714285714285,
+        "chunk_recall@10": 0.2857142857142857,
+        "mrr": 0.2,
+        "ndcg@10": 0.18908270233554988
+      },
+      {
+        "qid": "real_대전대학교_수행실적평가_사업예산비율_노답",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer",
+          "long_context"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 499.093,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_인천해양박물관_보안약점진단도구요건",
+        "query_type": "single_doc",
+        "categories": [
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 4,
+        "latency_ms": 462.6,
+        "chunk_recall@5": 0.5,
+        "chunk_recall@10": 0.5,
+        "mrr": 1.0,
+        "ndcg@10": 0.5585075862632192
+      },
+      {
+        "qid": "real_인천해양박물관_동점처리낙찰기준",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 484.688,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_kevinlab_interface_requirement_vs_functional_overlap",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 9,
+        "latency_ms": 697.294,
+        "chunk_recall@5": 0.1111111111111111,
+        "chunk_recall@10": 0.1111111111111111,
+        "mrr": 0.2,
+        "ndcg@10": 0.09092803061897883
+      },
+      {
+        "qid": "real_kevinlab_ip_ownership_penalty_clause",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 509.664,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_GIST_defect_warranty_vs_advance_payment",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 143,
+        "latency_ms": 499.721,
+        "chunk_recall@5": 0.0,
+        "chunk_recall@10": 0.0,
+        "mrr": 0.0,
+        "ndcg@10": 0.0
+      },
+      {
+        "qid": "real_GIST_project_duration_basis",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 543.849,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_KIRIA_multihop_eval_exclusion_threshold",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 4,
+        "latency_ms": 494.725,
+        "chunk_recall@5": 0.0,
+        "chunk_recall@10": 0.0,
+        "mrr": 0.0,
+        "ndcg@10": 0.0
+      },
+      {
+        "qid": "real_KIRIA_noanswer_security_penalty_grade_amount",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 625.387,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_한국건강가정진흥원_backup_policy_vs_security_incident",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 35,
+        "latency_ms": 450.614,
+        "chunk_recall@5": 0.0,
+        "chunk_recall@10": 0.0,
+        "mrr": 0.08333333333333333,
+        "ndcg@10": 0.0
+      },
+      {
+        "qid": "real_한국건강가정진흥원_pm_work_location_penalty",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 426.184,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_BioIN_webcapacity_vs_responsetime_multihop",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 1,
+        "latency_ms": 512.503,
+        "chunk_recall@5": 1.0,
+        "chunk_recall@10": 1.0,
+        "mrr": 0.25,
+        "ndcg@10": 0.43067655807339306
+      },
+      {
+        "qid": "real_BioIN_security_penalty_clause_noanswer",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 508.176,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_KOICA_multihop_budget_year_breakdown",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 1,
+        "latency_ms": 652.926,
+        "chunk_recall@5": 1.0,
+        "chunk_recall@10": 1.0,
+        "mrr": 1.0,
+        "ndcg@10": 1.0
+      },
+      {
+        "qid": "real_KOICA_noanswer_pmc_contractor_name",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 467.924,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_KESCO_KCMVP_bo안적합성_절차",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 22,
+        "latency_ms": 478.437,
+        "chunk_recall@5": 0.22727272727272727,
+        "chunk_recall@10": 0.3181818181818182,
+        "mrr": 1.0,
+        "ndcg@10": 0.7846170207230129
+      },
+      {
+        "qid": "real_KESCO_통신서버_SLA기준",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 463.761,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_충북연구원_evaluation_score_breakdown",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 4,
+        "latency_ms": 450.155,
+        "chunk_recall@5": 0.25,
+        "chunk_recall@10": 0.25,
+        "mrr": 0.3333333333333333,
+        "ndcg@10": 0.19519002499605084
+      },
+      {
+        "qid": "real_충북연구원_penalty_grade_threshold",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer",
+          "long_context"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 516.667,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_KRC_PMC_multihop_evaluation_score",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 169,
+        "latency_ms": 621.834,
+        "chunk_recall@5": 0.0,
+        "chunk_recall@10": 0.0,
+        "mrr": 0.0,
+        "ndcg@10": 0.0
+      },
+      {
+        "qid": "real_KRC_PMC_noanswer_consortium_penalty",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 472.826,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_incheon_isp_multihop_pm_qualification",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 24,
+        "latency_ms": 553.982,
+        "chunk_recall@5": 0.0,
+        "chunk_recall@10": 0.041666666666666664,
+        "mrr": 0.125,
+        "ndcg@10": 0.06943122193677727
+      },
+      {
+        "qid": "real_incheon_isp_noanswer_penalty_rate",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 456.409,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_ADD_security_compliance_crossref",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 6,
+        "latency_ms": 558.865,
+        "chunk_recall@5": 0.16666666666666666,
+        "chunk_recall@10": 0.16666666666666666,
+        "mrr": 1.0,
+        "ndcg@10": 0.30260241349881345
+      },
+      {
+        "qid": "real_ADD_manual_ui_penalty",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 669.358,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_대한장애인체육회_multi_hop_evaluation_ratio",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 6,
+        "latency_ms": 463.82,
+        "chunk_recall@5": 0.0,
+        "chunk_recall@10": 0.0,
+        "mrr": 0.0,
+        "ndcg@10": 0.0
+      },
+      {
+        "qid": "real_대한장애인체육회_no_answer_security_penalty",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 497.568,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_incheon_donggu_beacon_zonning_vs_db_standard",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 6,
+        "latency_ms": 496.981,
+        "chunk_recall@5": 0.16666666666666666,
+        "chunk_recall@10": 0.16666666666666666,
+        "mrr": 1.0,
+        "ndcg@10": 0.30260241349881345
+      },
+      {
+        "qid": "real_incheon_donggu_cloud_private_vendor_sla",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 475.293,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_KSSA_multihop_evaluation_scoring",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 12,
+        "latency_ms": 715.128,
+        "chunk_recall@5": 0.0,
+        "chunk_recall@10": 0.08333333333333333,
+        "mrr": 0.14285714285714285,
+        "ndcg@10": 0.07336392209936005
+      },
+      {
+        "qid": "real_KSSA_noans_local_counterpart_budget",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 627.44,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_수협중앙회_videowallcontroller_connected_devices_multihop",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 14,
+        "latency_ms": 503.799,
+        "chunk_recall@5": 0.14285714285714285,
+        "chunk_recall@10": 0.21428571428571427,
+        "mrr": 1.0,
+        "ndcg@10": 0.43231813227099475
+      },
+      {
+        "qid": "real_수협중앙회_wireless_mic_install_location_no_answer",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 606.81,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_경희대학교_multihop_contract_deadline_and_penalty",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 11,
+        "latency_ms": 538.419,
+        "chunk_recall@5": 0.0,
+        "chunk_recall@10": 0.09090909090909091,
+        "mrr": 0.14285714285714285,
+        "ndcg@10": 0.07336392209936005
+      },
+      {
+        "qid": "real_경희대학교_noanswer_penalty_rate",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 621.011,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_고려대학교_budget_payment_vs_maintenance_crossref",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 2,
+        "latency_ms": 458.185,
+        "chunk_recall@5": 0.5,
+        "chunk_recall@10": 0.5,
+        "mrr": 1.0,
+        "ndcg@10": 0.6131471927654584
+      },
+      {
+        "qid": "real_고려대학교_SFR_graduation_vs_transfer_quota_no_answer",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 457.906,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_NTIS_security_penalty_calculation",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 5,
+        "latency_ms": 473.649,
+        "chunk_recall@5": 0.2,
+        "chunk_recall@10": 0.2,
+        "mrr": 0.2,
+        "ndcg@10": 0.13120507751234178
+      },
+      {
+        "qid": "real_NTIS_sw_quality_test_scope",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 430.555,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_국가철도공단_security_education_timing_multihop",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 1,
+        "latency_ms": 589.721,
+        "chunk_recall@5": 1.0,
+        "chunk_recall@10": 1.0,
+        "mrr": 0.5,
+        "ndcg@10": 0.6309297535714575
+      },
+      {
+        "qid": "real_국가철도공단_penalty_legal_basis_no_answer",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 466.452,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_국민연금공단_수료기준_과정유형별_교차",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 1,
+        "latency_ms": 488.314,
+        "chunk_recall@5": 1.0,
+        "chunk_recall@10": 1.0,
+        "mrr": 1.0,
+        "ndcg@10": 1.0
+      },
+      {
+        "qid": "real_국민연금공단_콘텐츠단가_모바일연동비용",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 522.385,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_국민연금공단_SFR006_환수금_산출물_cross",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 16,
+        "latency_ms": 458.294,
+        "chunk_recall@5": 0.0,
+        "chunk_recall@10": 0.0,
+        "mrr": 0.0,
+        "ndcg@10": 0.0
+      },
+      {
+        "qid": "real_국민연금공단_보안USB_암호모듈_인증기관",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 455.14,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_서울시립대학교_하도급비율_담합제한_교차",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 13,
+        "latency_ms": 820.47,
+        "chunk_recall@5": 0.0,
+        "chunk_recall@10": 0.15384615384615385,
+        "mrr": 0.14285714285714285,
+        "ndcg@10": 0.14279514403613733
+      },
+      {
+        "qid": "real_서울시립대학교_여성고용우수기업_가점기준_abstention",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 490.918,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_세종테크노파크_유연근무유형별설정기능_multihop",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 3,
+        "latency_ms": 442.805,
+        "chunk_recall@5": 0.3333333333333333,
+        "chunk_recall@10": 0.6666666666666666,
+        "mrr": 1.0,
+        "ndcg@10": 0.6257049680303419
+      },
+      {
+        "qid": "real_세종테크노파크_보안서약서제출기한_noanswer",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 506.457,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_kogas_erp_hana_infra_server_spec_crossref",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop",
+          "long_context"
+        ],
+        "gold_chunk_n": 6,
+        "latency_ms": 518.548,
+        "chunk_recall@5": 0.5,
+        "chunk_recall@10": 0.5,
+        "mrr": 1.0,
+        "ndcg@10": 0.6105858728157117
+      },
+      {
+        "qid": "real_kogas_erp_warranty_penalty_no_answer",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 657.351,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_한국발명진흥회_무상하자보수_PM교체_연계",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 4,
+        "latency_ms": 448.889,
+        "chunk_recall@5": 0.25,
+        "chunk_recall@10": 0.25,
+        "mrr": 1.0,
+        "ndcg@10": 0.3903800499921017
+      },
+      {
+        "qid": "real_한국발명진흥회_CPU사용률_야간시간대_보장여부",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer",
+          "long_context"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 518.246,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_kwater_cms_security_penalty_grade",
+        "query_type": "single_doc",
+        "categories": [
+          "long_context",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 4,
+        "latency_ms": 497.989,
+        "chunk_recall@5": 0.0,
+        "chunk_recall@10": 0.0,
+        "mrr": 0.07142857142857142,
+        "ndcg@10": 0.0
+      },
+      {
+        "qid": "real_kwater_cms_cts_external_access",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer",
+          "ambiguous_query"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 449.458,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_kwater_iwater-hmi-sites-crossref",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop",
+          "long_context"
+        ],
+        "gold_chunk_n": 2,
+        "latency_ms": 698.007,
+        "chunk_recall@5": 0.5,
+        "chunk_recall@10": 0.5,
+        "mrr": 1.0,
+        "ndcg@10": 0.6131471927654584
+      },
+      {
+        "qid": "real_kwater_sourcecode-security-contradiction",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 529.986,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_한국수자원공사_supply-volume-multihop",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop",
+          "no_answer"
+        ],
+        "gold_chunk_n": 10,
+        "latency_ms": 616.654,
+        "chunk_recall@5": 0.2,
+        "chunk_recall@10": 0.2,
+        "mrr": 1.0,
+        "ndcg@10": 0.31488013066763093
+      },
+      {
+        "qid": "real_한국수자원공사_yongji-abstention",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 564.586,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_korail_multi_hop_safety_analysis_scope",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 8,
+        "latency_ms": 526.357,
+        "chunk_recall@5": 0.25,
+        "chunk_recall@10": 0.375,
+        "mrr": 1.0,
+        "ndcg@10": 0.43499603382932295
+      },
+      {
+        "qid": "real_korail_no_answer_defect_penalty_rate",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 806.043,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_korail_network-dualization-cc-cert-requirement",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 8,
+        "latency_ms": 513.714,
+        "chunk_recall@5": 0.125,
+        "chunk_recall@10": 0.125,
+        "mrr": 1.0,
+        "ndcg@10": 0.2529427027676571
+      },
+      {
+        "qid": "real_korail_slowquery-tuning-penalty-clause",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 692.582,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_korail_산출물_보안준수_crossref",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 10,
+        "latency_ms": 531.492,
+        "chunk_recall@5": 0.0,
+        "chunk_recall@10": 0.0,
+        "mrr": 0.0,
+        "ndcg@10": 0.0
+      },
+      {
+        "qid": "real_korail_ISMP_구축예산산정기준_nonanswer",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 501.893,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_인천공항운영서비스_평가비율_기술가격분리",
+        "query_type": "abstention",
+        "categories": [
+          "multi_hop",
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 845.815,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      }
+    ],
+    "latency_ms": {
+      "p50": 558.865,
+      "p95": 2220.352,
+      "mean": 847.273,
+      "n": 221
+    }
+  },
+  "hybrid_bm25_k60_m3": {
+    "variant": "hybrid_bm25_k60_m3",
+    "per_case": [
+      {
+        "qid": "real_hanyeong_budget_schedule",
+        "query_type": "single_doc",
+        "categories": [
+          "uncategorized"
+        ],
+        "gold_chunk_n": 2,
+        "latency_ms": 726.506,
+        "chunk_recall@5": 0.5,
+        "chunk_recall@10": 0.5,
+        "mrr": 1.0,
+        "ndcg@10": 0.6131471927654584
+      },
+      {
+        "qid": "real_nrf_uicc_budget_schedule",
+        "query_type": "single_doc",
+        "categories": [
+          "uncategorized"
+        ],
+        "gold_chunk_n": 4,
+        "latency_ms": 550.323,
+        "chunk_recall@5": 0.75,
+        "chunk_recall@10": 0.75,
+        "mrr": 1.0,
+        "ndcg@10": 0.8318724637288826
+      },
+      {
+        "qid": "real_goyang_homepage_budget_schedule",
+        "query_type": "single_doc",
+        "categories": [
+          "uncategorized"
+        ],
+        "gold_chunk_n": 1,
+        "latency_ms": 560.729,
+        "chunk_recall@5": 1.0,
+        "chunk_recall@10": 1.0,
+        "mrr": 1.0,
+        "ndcg@10": 1.0
+      },
+      {
+        "qid": "real_bus_info_compare",
+        "query_type": "multi_doc",
+        "categories": [
+          "uncategorized"
+        ],
+        "gold_chunk_n": 88,
+        "latency_ms": 561.447,
+        "chunk_recall@5": 0.022727272727272728,
+        "chunk_recall@10": 0.045454545454545456,
+        "mrr": 0.3333333333333333,
+        "ndcg@10": 0.34948673995165525
+      },
+      {
+        "qid": "real_hanyeong_followup_budget",
+        "query_type": "follow_up",
+        "categories": [
+          "uncategorized"
+        ],
+        "gold_chunk_n": 1,
+        "latency_ms": 510.126,
+        "chunk_recall@5": 0.0,
+        "chunk_recall@10": 0.0,
+        "mrr": 0.0,
+        "ndcg@10": 0.0
+      },
+      {
+        "qid": "real_hanyeong_absent_blockchain_delivery",
+        "query_type": "abstention",
+        "categories": [
+          "uncategorized"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 807.205,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "probe_01_partial_agency_sahak",
+        "query_type": "single_doc",
+        "categories": [
+          "uncategorized"
+        ],
+        "gold_chunk_n": 2,
+        "latency_ms": 576.305,
+        "chunk_recall@5": 0.5,
+        "chunk_recall@10": 1.0,
+        "mrr": 0.3333333333333333,
+        "ndcg@10": 0.5249810332008933
+      },
+      {
+        "qid": "probe_02_acronym_only_kusf",
+        "query_type": "single_doc",
+        "categories": [
+          "uncategorized"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 569.296,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "probe_03_synonym_uniabbrev_jbnu",
+        "query_type": "single_doc",
+        "categories": [
+          "uncategorized"
+        ],
+        "gold_chunk_n": 1,
+        "latency_ms": 562.385,
+        "chunk_recall@5": 1.0,
+        "chunk_recall@10": 1.0,
+        "mrr": 1.0,
+        "ndcg@10": 1.0
+      },
+      {
+        "qid": "probe_04_ambig_incheon_only",
+        "query_type": "single_doc",
+        "categories": [
+          "uncategorized"
+        ],
+        "gold_chunk_n": 1,
+        "latency_ms": 540.707,
+        "chunk_recall@5": 1.0,
+        "chunk_recall@10": 1.0,
+        "mrr": 1.0,
+        "ndcg@10": 1.0
+      },
+      {
+        "qid": "probe_05_ambig_nrf_two_projects",
+        "query_type": "single_doc",
+        "categories": [
+          "uncategorized"
+        ],
+        "gold_chunk_n": 52,
+        "latency_ms": 654.742,
+        "chunk_recall@5": 0.057692307692307696,
+        "chunk_recall@10": 0.09615384615384616,
+        "mrr": 0.5,
+        "ndcg@10": 0.4760705018418426
+      },
+      {
+        "qid": "probe_06_chunk_kepco_three_facts",
+        "query_type": "single_doc",
+        "categories": [
+          "uncategorized"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 569.898,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "probe_07_chunk_eip_amount_scope",
+        "query_type": "single_doc",
+        "categories": [
+          "uncategorized"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 538.437,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "probe_08_followup_hanyeong_bid_deadline",
+        "query_type": "follow_up",
+        "categories": [
+          "uncategorized"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 551.81,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "probe_09_followup_cross_doc_switch_nrf",
+        "query_type": "follow_up",
+        "categories": [
+          "uncategorized"
+        ],
+        "gold_chunk_n": 3,
+        "latency_ms": 583.113,
+        "chunk_recall@5": 0.6666666666666666,
+        "chunk_recall@10": 0.6666666666666666,
+        "mrr": 0.3333333333333333,
+        "ndcg@10": 0.41618115554873086
+      },
+      {
+        "qid": "probe_10_followup_goyang_double_implicit",
+        "query_type": "follow_up",
+        "categories": [
+          "uncategorized"
+        ],
+        "gold_chunk_n": 13,
+        "latency_ms": 712.542,
+        "chunk_recall@5": 0.0,
+        "chunk_recall@10": 0.0,
+        "mrr": 0.0,
+        "ndcg@10": 0.0
+      },
+      {
+        "qid": "probe_11_citation_goyang_when_done",
+        "query_type": "single_doc",
+        "categories": [
+          "uncategorized"
+        ],
+        "gold_chunk_n": 1,
+        "latency_ms": 550.805,
+        "chunk_recall@5": 1.0,
+        "chunk_recall@10": 1.0,
+        "mrr": 0.25,
+        "ndcg@10": 0.43067655807339306
+      },
+      {
+        "qid": "probe_12_citation_kosaf_aggregate",
+        "query_type": "single_doc",
+        "categories": [
+          "uncategorized"
+        ],
+        "gold_chunk_n": 2,
+        "latency_ms": 643.078,
+        "chunk_recall@5": 0.5,
+        "chunk_recall@10": 1.0,
+        "mrr": 1.0,
+        "ndcg@10": 0.8065735963827293
+      },
+      {
+        "qid": "probe_13_abstention_lh_not_in_corpus",
+        "query_type": "abstention",
+        "categories": [
+          "uncategorized"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 549.844,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "probe_14_abstention_near_miss_kri",
+        "query_type": "abstention",
+        "categories": [
+          "uncategorized"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 585.353,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "probe_15_abstention_kepco_quantum",
+        "query_type": "abstention",
+        "categories": [
+          "uncategorized"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 687.559,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_보험개발원_요양기관_연계_DB_지원범위",
+        "query_type": "single_doc",
+        "categories": [
+          "long_context",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 2,
+        "latency_ms": 653.257,
+        "chunk_recall@5": 0.5,
+        "chunk_recall@10": 0.5,
+        "mrr": 1.0,
+        "ndcg@10": 0.6131471927654584
+      },
+      {
+        "qid": "real_보험개발원_청구내역_보관기간_변경주체",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 610.744,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_kace_security_requirement_crossref",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 21,
+        "latency_ms": 713.321,
+        "chunk_recall@5": 0.047619047619047616,
+        "chunk_recall@10": 0.047619047619047616,
+        "mrr": 1.0,
+        "ndcg@10": 0.22009176629808017
+      },
+      {
+        "qid": "real_kace_pm_replacement_penalty",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 648.822,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_ventureassoc_stockoption_region_vs_permission",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 13,
+        "latency_ms": 785.802,
+        "chunk_recall@5": 0.38461538461538464,
+        "chunk_recall@10": 0.7692307692307693,
+        "mrr": 1.0,
+        "ndcg@10": 1.0
+      },
+      {
+        "qid": "real_ventureassoc_ip_ownership_ratio_change",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 641.662,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_경기도사회서비스원_security_penalty_cross_ref",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 20,
+        "latency_ms": 646.567,
+        "chunk_recall@5": 0.05,
+        "chunk_recall@10": 0.05,
+        "mrr": 0.25,
+        "ndcg@10": 0.09478836436955078
+      },
+      {
+        "qid": "real_경기도사회서비스원_next_vendor_obligation_scope",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer",
+          "long_context"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 635.667,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_jeongeup_response_time_scope",
+        "query_type": "single_doc",
+        "categories": [
+          "distractor_heavy",
+          "ambiguous_query"
+        ],
+        "gold_chunk_n": 1,
+        "latency_ms": 837.525,
+        "chunk_recall@5": 1.0,
+        "chunk_recall@10": 1.0,
+        "mrr": 0.5,
+        "ndcg@10": 0.6309297535714575
+      },
+      {
+        "qid": "real_jeongeup_access_log_retention_penalty",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 653.354,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_seoul_geocoding_limit_vs_performance",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 142,
+        "latency_ms": 753.281,
+        "chunk_recall@5": 0.014084507042253521,
+        "chunk_recall@10": 0.028169014084507043,
+        "mrr": 0.5,
+        "ndcg@10": 0.36933625363427164
+      },
+      {
+        "qid": "real_seoul_security_disposal_method",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 691.437,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_GKL_security_law_scope",
+        "query_type": "single_doc",
+        "categories": [
+          "distractor_heavy",
+          "multi_hop"
+        ],
+        "gold_chunk_n": 5,
+        "latency_ms": 854.09,
+        "chunk_recall@5": 0.2,
+        "chunk_recall@10": 0.2,
+        "mrr": 1.0,
+        "ndcg@10": 0.3391602052736161
+      },
+      {
+        "qid": "real_GKL_mobile_sns_bookmark_penalty",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 1070.041,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_KICOX_multihop_subcontract_eval_threshold",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 3,
+        "latency_ms": 828.411,
+        "chunk_recall@5": 0.0,
+        "chunk_recall@10": 0.0,
+        "mrr": 0.07142857142857142,
+        "ndcg@10": 0.0
+      },
+      {
+        "qid": "real_KICOX_noanswer_web_server_failover_rto",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer",
+          "long_context"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 650.679,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_적십자사의료원_DR서버설치시간_vs_DBMS설치시간",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 2,
+        "latency_ms": 667.331,
+        "chunk_recall@5": 0.5,
+        "chunk_recall@10": 0.5,
+        "mrr": 0.5,
+        "ndcg@10": 0.38685280723454163
+      },
+      {
+        "qid": "real_적십자사의료원_유사실적_하한기준",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 635.06,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_KWRI_multihop_securecoding_vs_adminpage",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 5,
+        "latency_ms": 834.045,
+        "chunk_recall@5": 0.0,
+        "chunk_recall@10": 0.0,
+        "mrr": 0.08333333333333333,
+        "ndcg@10": 0.0
+      },
+      {
+        "qid": "real_KWRI_noanswer_budget_breakdown",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 641.308,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_KFIS_accessibility_diagnosis_scope_vs_certification",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 13,
+        "latency_ms": 664.883,
+        "chunk_recall@5": 0.07692307692307693,
+        "chunk_recall@10": 0.15384615384615385,
+        "mrr": 1.0,
+        "ndcg@10": 0.2934556883974402
+      },
+      {
+        "qid": "real_KFIS_ip_ownership_ratio",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 757.248,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_부산관광공사_security_violation_abstention",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 719.762,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_부산관광공사_credit_eval_crossref",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 1,
+        "latency_ms": 862.425,
+        "chunk_recall@5": 1.0,
+        "chunk_recall@10": 1.0,
+        "mrr": 0.25,
+        "ndcg@10": 0.43067655807339306
+      },
+      {
+        "qid": "real_gjcf_multisite_newurl_hop",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop",
+          "long_context"
+        ],
+        "gold_chunk_n": 31,
+        "latency_ms": 662.156,
+        "chunk_recall@5": 0.12903225806451613,
+        "chunk_recall@10": 0.12903225806451613,
+        "mrr": 1.0,
+        "ndcg@10": 0.5388856921828065
+      },
+      {
+        "qid": "real_gjcf_security_password_scope",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 639.501,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_arko_multihop_evaluation_quorum",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 1,
+        "latency_ms": 689.154,
+        "chunk_recall@5": 1.0,
+        "chunk_recall@10": 1.0,
+        "mrr": 1.0,
+        "ndcg@10": 1.0
+      },
+      {
+        "qid": "real_arko_noanswer_penalty_replacement",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 701.747,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_나노종합기술원_secs_equipment_count_multihop",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop",
+          "long_context"
+        ],
+        "gold_chunk_n": 92,
+        "latency_ms": 866.602,
+        "chunk_recall@5": 0.05434782608695652,
+        "chunk_recall@10": 0.10869565217391304,
+        "mrr": 1.0,
+        "ndcg@10": 1.0
+      },
+      {
+        "qid": "real_나노종합기술원_copyright_ownership_noanswer",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 689.846,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_kochildcare_security_obligation_scope",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 36,
+        "latency_ms": 678.883,
+        "chunk_recall@5": 0.027777777777777776,
+        "chunk_recall@10": 0.05555555555555555,
+        "mrr": 0.3333333333333333,
+        "ndcg@10": 0.18340980524840012
+      },
+      {
+        "qid": "real_kochildcare_업무인계_deadline_basis",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 620.943,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_bonghwa_security_obligation_scope",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 3,
+        "latency_ms": 683.647,
+        "chunk_recall@5": 0.0,
+        "chunk_recall@10": 0.0,
+        "mrr": 0.0,
+        "ndcg@10": 0.0
+      },
+      {
+        "qid": "real_bonghwa_ai_tts_language_penalty",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 838.561,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_incheon_security_education_timing_vs_personnel_change",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 1,
+        "latency_ms": 627.267,
+        "chunk_recall@5": 1.0,
+        "chunk_recall@10": 1.0,
+        "mrr": 1.0,
+        "ndcg@10": 1.0
+      },
+      {
+        "qid": "real_incheon_pm_presentation_evaluation_score_weight",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 636.489,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_축산물품질평가원_하도급_인건비_기준_multihop",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 10,
+        "latency_ms": 648.582,
+        "chunk_recall@5": 0.1,
+        "chunk_recall@10": 0.1,
+        "mrr": 1.0,
+        "ndcg@10": 0.22009176629808017
+      },
+      {
+        "qid": "real_축산물품질평가원_PM_재직요건_처벌규정_noanswer",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 788.901,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_축산물품질평가원_하자담보_vs_웹접근성_인증시점",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 11,
+        "latency_ms": 622.549,
+        "chunk_recall@5": 0.09090909090909091,
+        "chunk_recall@10": 0.18181818181818182,
+        "mrr": 0.5,
+        "ndcg@10": 0.20248323207250624
+      },
+      {
+        "qid": "real_축산물품질평가원_소프트웨어보안_진단인력_자격기준",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 565.583,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_ulsan_BIT_display_spec_vs_haza_support",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 13,
+        "latency_ms": 632.476,
+        "chunk_recall@5": 0.15384615384615385,
+        "chunk_recall@10": 0.15384615384615385,
+        "mrr": 1.0,
+        "ndcg@10": 0.3589542101716347
+      },
+      {
+        "qid": "real_ulsan_no_answer_penalty_rate",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 612.633,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_대검찰청_TTS_scope_vs_security_crossref",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 3,
+        "latency_ms": 853.276,
+        "chunk_recall@5": 0.0,
+        "chunk_recall@10": 0.0,
+        "mrr": 0.0,
+        "ndcg@10": 0.0
+      },
+      {
+        "qid": "real_대검찰청_3D_SLA_penalty_no_answer",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 588.974,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_서울여성가족재단_삭제지원시스템_하도급비율_평가점수_연계",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 90,
+        "latency_ms": 634.767,
+        "chunk_recall@5": 0.0,
+        "chunk_recall@10": 0.011111111111111112,
+        "mrr": 0.125,
+        "ndcg@10": 0.06943122193677727
+      },
+      {
+        "qid": "real_서울여성가족재단_AI삭제지원_모델정확도기준",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 605.608,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_KICE_multihop_haza_repair_scope",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 10,
+        "latency_ms": 646.648,
+        "chunk_recall@5": 0.2,
+        "chunk_recall@10": 0.2,
+        "mrr": 1.0,
+        "ndcg@10": 0.3589542101716347
+      },
+      {
+        "qid": "real_KICE_noanswer_penalty_rate",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 727.628,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_NMC_encryption_standard_crossref",
+        "query_type": "single_doc",
+        "categories": [
+          "distractor_heavy",
+          "multi_hop"
+        ],
+        "gold_chunk_n": 6,
+        "latency_ms": 611.938,
+        "chunk_recall@5": 0.3333333333333333,
+        "chunk_recall@10": 0.3333333333333333,
+        "mrr": 1.0,
+        "ndcg@10": 0.41966500663677697
+      },
+      {
+        "qid": "real_NMC_ipphone_max_extension_sla",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer",
+          "multi_hop"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 650.137,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_kiom_security_penalty_vs_quality_penalty",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 5,
+        "latency_ms": 617.784,
+        "chunk_recall@5": 0.0,
+        "chunk_recall@10": 0.0,
+        "mrr": 0.0,
+        "ndcg@10": 0.0
+      },
+      {
+        "qid": "real_kiom_sw_direct_purchase_threshold",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer",
+          "long_context"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 622.785,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_어촌어항공단_security_violation_penalty_multihop",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 210,
+        "latency_ms": 827.735,
+        "chunk_recall@5": 0.0,
+        "chunk_recall@10": 0.0,
+        "mrr": 0.0,
+        "ndcg@10": 0.0
+      },
+      {
+        "qid": "real_어촌어항공단_sw_output_ownership_supplier_rights",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 659.42,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_KITECH_PM_qualification_multihop",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 8,
+        "latency_ms": 655.54,
+        "chunk_recall@5": 0.125,
+        "chunk_recall@10": 0.125,
+        "mrr": 1.0,
+        "ndcg@10": 0.2529427027676571
+      },
+      {
+        "qid": "real_KITECH_performance_test_env_noans",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 613.478,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_KRC_sensor_spec_crossref",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 10,
+        "latency_ms": 638.14,
+        "chunk_recall@5": 0.5,
+        "chunk_recall@10": 0.7,
+        "mrr": 1.0,
+        "ndcg@10": 0.7819835854675755
+      },
+      {
+        "qid": "real_KRC_nimis_java_penalty",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 762.276,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_파주도시관광공사_system_access_method_multihop",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 4,
+        "latency_ms": 606.947,
+        "chunk_recall@5": 0.25,
+        "chunk_recall@10": 0.5,
+        "mrr": 1.0,
+        "ndcg@10": 0.5294362295028773
+      },
+      {
+        "qid": "real_파주도시관광공사_password_change_cycle_noans",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 637.927,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_수협중앙회_ismp_rfp_작성주체_및_단계별책임",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 11,
+        "latency_ms": 742.157,
+        "chunk_recall@5": 0.2727272727272727,
+        "chunk_recall@10": 0.45454545454545453,
+        "mrr": 1.0,
+        "ndcg@10": 0.6136525857537393
+      },
+      {
+        "qid": "real_수협중앙회_ismp_보안등급_산출물폐기기준",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 701.343,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_KCCI_multi_hop_performance_security",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 3,
+        "latency_ms": 756.231,
+        "chunk_recall@5": 0.3333333333333333,
+        "chunk_recall@10": 0.3333333333333333,
+        "mrr": 0.3333333333333333,
+        "ndcg@10": 0.23463936301137822
+      },
+      {
+        "qid": "real_KCCI_no_answer_penalty_rate",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 576.554,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_pyeongtaek_bis_maintenance_sla_crossref",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 3,
+        "latency_ms": 680.596,
+        "chunk_recall@5": 0.3333333333333333,
+        "chunk_recall@10": 0.3333333333333333,
+        "mrr": 0.5,
+        "ndcg@10": 0.2960819109658652
+      },
+      {
+        "qid": "real_pyeongtaek_bis_penalty_subdomain_rate",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 583.068,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_서민금융진흥원_license_and_encryption_multihop",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 5,
+        "latency_ms": 647.525,
+        "chunk_recall@5": 0.2,
+        "chunk_recall@10": 0.2,
+        "mrr": 1.0,
+        "ndcg@10": 0.3391602052736161
+      },
+      {
+        "qid": "real_서민금융진흥원_subcontract_penalty_noanswer",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 767.788,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_BIFF_response_time_vs_security_encryption",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 26,
+        "latency_ms": 624.595,
+        "chunk_recall@5": 0.038461538461538464,
+        "chunk_recall@10": 0.038461538461538464,
+        "mrr": 0.5,
+        "ndcg@10": 0.13886244387355454
+      },
+      {
+        "qid": "real_BIFF_penalty_clause_no_answer",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 599.559,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_KHOA_technical_score_threshold_and_negotiation_eligibility",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 2,
+        "latency_ms": 645.119,
+        "chunk_recall@5": 0.5,
+        "chunk_recall@10": 0.5,
+        "mrr": 1.0,
+        "ndcg@10": 0.6131471927654584
+      },
+      {
+        "qid": "real_KHOA_security_inspection_penalty_basis",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 917.485,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_서울특별시교육청_PM자격요건과참여인력평가기준교차",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 4,
+        "latency_ms": 657.928,
+        "chunk_recall@5": 0.25,
+        "chunk_recall@10": 0.25,
+        "mrr": 0.5,
+        "ndcg@10": 0.24630238874073
+      },
+      {
+        "qid": "real_서울특별시교육청_ISP수립기간산출근거없음",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 636.739,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_KOIPA_security_deadline_multihop",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 12,
+        "latency_ms": 702.137,
+        "chunk_recall@5": 0.16666666666666666,
+        "chunk_recall@10": 0.16666666666666666,
+        "mrr": 0.5,
+        "ndcg@10": 0.2489083270225946
+      },
+      {
+        "qid": "real_KOIPA_penalty_criteria_noanswer",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 677.522,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_인천공항운영서비스_수행실적_창업기업기준",
+        "query_type": "single_doc",
+        "categories": [
+          "distractor_heavy",
+          "long_context"
+        ],
+        "gold_chunk_n": 2,
+        "latency_ms": 933.742,
+        "chunk_recall@5": 0.0,
+        "chunk_recall@10": 0.5,
+        "mrr": 0.16666666666666666,
+        "ndcg@10": 0.21840743681816419
+      },
+      {
+        "qid": "real_hrdk_multihop_pm_qualification_and_deliverable_timing",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 3,
+        "latency_ms": 692.283,
+        "chunk_recall@5": 0.3333333333333333,
+        "chunk_recall@10": 0.3333333333333333,
+        "mrr": 1.0,
+        "ndcg@10": 0.46927872602275644
+      },
+      {
+        "qid": "real_hrdk_noanswer_rfid_tag_unit_cost",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 622.407,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_kaeri_sfr_multi_hop_test_requirement",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 9,
+        "latency_ms": 634.137,
+        "chunk_recall@5": 0.1111111111111111,
+        "chunk_recall@10": 0.1111111111111111,
+        "mrr": 1.0,
+        "ndcg@10": 0.23504554941448536
+      },
+      {
+        "qid": "real_kaeri_security_penalty_no_answer",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 839.61,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_anyang_homepage_vs_kiosk_sameday_reservation",
+        "query_type": "single_doc",
+        "categories": [
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 31,
+        "latency_ms": 799.555,
+        "chunk_recall@5": 0.12903225806451613,
+        "chunk_recall@10": 0.1935483870967742,
+        "mrr": 1.0,
+        "ndcg@10": 0.6745711375739728
+      },
+      {
+        "qid": "real_anyang_security_penalty_offset_basis",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 581.147,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_NRF_security_education_frequency_multihop",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 5,
+        "latency_ms": 578.007,
+        "chunk_recall@5": 0.2,
+        "chunk_recall@10": 0.2,
+        "mrr": 0.5,
+        "ndcg@10": 0.21398626473452756
+      },
+      {
+        "qid": "real_NRF_openaccess_expansion_target_metric",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 584.205,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_seoyeong_security_login_policy_multihop",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 5,
+        "latency_ms": 612.987,
+        "chunk_recall@5": 0.0,
+        "chunk_recall@10": 0.2,
+        "mrr": 0.1,
+        "ndcg@10": 0.09803928583135704
+      },
+      {
+        "qid": "real_seoyeong_warranty_penalty_noanswer",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 708.666,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_KUSF_haza_vs_performance_period",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 6,
+        "latency_ms": 576.833,
+        "chunk_recall@5": 0.0,
+        "chunk_recall@10": 0.0,
+        "mrr": 0.0,
+        "ndcg@10": 0.0
+      },
+      {
+        "qid": "real_KUSF_security_penalty_clause",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 606.193,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_한국사학진흥재단_dbms_migration_hop",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 2,
+        "latency_ms": 606.194,
+        "chunk_recall@5": 0.0,
+        "chunk_recall@10": 0.0,
+        "mrr": 0.0,
+        "ndcg@10": 0.0
+      },
+      {
+        "qid": "real_한국사학진흥재단_penalty_no_answer",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 610.417,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_스포츠윤리센터_lms_personal_info_retention_multihop",
+        "query_type": "single_doc",
+        "categories": [
+          "long_context",
+          "no_answer"
+        ],
+        "gold_chunk_n": 1,
+        "latency_ms": 758.616,
+        "chunk_recall@5": 1.0,
+        "chunk_recall@10": 1.0,
+        "mrr": 0.5,
+        "ndcg@10": 0.6309297535714575
+      },
+      {
+        "qid": "real_스포츠윤리센터_lms_presenter_change_deadline",
+        "query_type": "abstention",
+        "categories": [
+          "distractor_heavy",
+          "multi_hop"
+        ],
+        "gold_chunk_n": 2,
+        "latency_ms": 598.732,
+        "chunk_recall@5": 1.0,
+        "chunk_recall@10": 1.0,
+        "mrr": 1.0,
+        "ndcg@10": 1.0
+      },
+      {
+        "qid": "real_ADD_transfer_redundancy_user_capacity",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 11,
+        "latency_ms": 675.955,
+        "chunk_recall@5": 0.09090909090909091,
+        "chunk_recall@10": 0.18181818181818182,
+        "mrr": 1.0,
+        "ndcg@10": 0.2934556883974402
+      },
+      {
+        "qid": "real_ADD_warranty_penalty_rate",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 631.299,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_KITECH_integration_test_minimum_rounds",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 36,
+        "latency_ms": 817.496,
+        "chunk_recall@5": 0.027777777777777776,
+        "chunk_recall@10": 0.027777777777777776,
+        "mrr": 1.0,
+        "ndcg@10": 0.22009176629808017
+      },
+      {
+        "qid": "real_KITECH_subcontract_penalty_threshold",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 661.531,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_고양도시관리공사_접속기록보관기간_vs_보안점검기준",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 3,
+        "latency_ms": 599.052,
+        "chunk_recall@5": 0.0,
+        "chunk_recall@10": 0.0,
+        "mrr": 0.0,
+        "ndcg@10": 0.0
+      },
+      {
+        "qid": "real_고양도시관리공사_응답속도_모바일앱기준",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 650.615,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_jbnu_cloud_security_cert_scope",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 2,
+        "latency_ms": 601.919,
+        "chunk_recall@5": 1.0,
+        "chunk_recall@10": 1.0,
+        "mrr": 1.0,
+        "ndcg@10": 0.9197207891481876
+      },
+      {
+        "qid": "real_jbnu_ip_ownership_contractor",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 737.673,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_khidi_webcapacity_vs_responsetime_requirement",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 2,
+        "latency_ms": 642.048,
+        "chunk_recall@5": 0.5,
+        "chunk_recall@10": 0.5,
+        "mrr": 1.0,
+        "ndcg@10": 0.6131471927654584
+      },
+      {
+        "qid": "real_khidi_penalty_clause_ip_violation",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 633.173,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_gumi2025_registration_access_control_multihop",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 3,
+        "latency_ms": 663.133,
+        "chunk_recall@5": 0.3333333333333333,
+        "chunk_recall@10": 0.3333333333333333,
+        "mrr": 0.3333333333333333,
+        "ndcg@10": 0.23463936301137822
+      },
+      {
+        "qid": "real_gumi2025_response_time_concurrent_users_noanswer",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 714.508,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_koreaexim_its_pm_evaluation_scoring_crossref",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 17,
+        "latency_ms": 1504.883,
+        "chunk_recall@5": 0.17647058823529413,
+        "chunk_recall@10": 0.23529411764705882,
+        "mrr": 1.0,
+        "ndcg@10": 0.5384313152574521
+      },
+      {
+        "qid": "real_koreaexim_its_local_tax_subcontract_penalty",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 1741.787,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_hanyeong_multihop_障害복구기준_vs_보안요건",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 5,
+        "latency_ms": 1276.953,
+        "chunk_recall@5": 0.0,
+        "chunk_recall@10": 0.0,
+        "mrr": 0.0,
+        "ndcg@10": 0.0
+      },
+      {
+        "qid": "real_hanyeong_noanswer_트랙시스템_예산규모",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 1325.832,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_국립민속박물관_security_contract_scope",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 9,
+        "latency_ms": 1066.427,
+        "chunk_recall@5": 0.0,
+        "chunk_recall@10": 0.0,
+        "mrr": 0.0,
+        "ndcg@10": 0.0
+      },
+      {
+        "qid": "real_국립민속박물관_ip_commercial_use_penalty",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 1085.292,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_NRF_security_education_frequency_crossref",
+        "query_type": "single_doc",
+        "categories": [
+          "distractor_heavy",
+          "multi_hop"
+        ],
+        "gold_chunk_n": 3,
+        "latency_ms": 836.682,
+        "chunk_recall@5": 0.3333333333333333,
+        "chunk_recall@10": 0.3333333333333333,
+        "mrr": 0.5,
+        "ndcg@10": 0.2960819109658652
+      },
+      {
+        "qid": "real_NRF_IP_ownership_contractor_usage_condition",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 808.8,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_아시아물위원회_multi_hop_pm_실적_건수_환산",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 8,
+        "latency_ms": 829.788,
+        "chunk_recall@5": 0.0,
+        "chunk_recall@10": 0.0,
+        "mrr": 0.0,
+        "ndcg@10": 0.0
+      },
+      {
+        "qid": "real_아시아물위원회_no_answer_현지전문가_체재비_일단가",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 746.918,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_남서울대학교_encryption_scope_multihop",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 7,
+        "latency_ms": 1103.167,
+        "chunk_recall@5": 0.14285714285714285,
+        "chunk_recall@10": 0.14285714285714285,
+        "mrr": 0.25,
+        "ndcg@10": 0.11838279295536291
+      },
+      {
+        "qid": "real_남서울대학교_warranty_penalty_noans",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 833.437,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_광주연구원_security_password_vs_access_control",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 10,
+        "latency_ms": 1393.939,
+        "chunk_recall@5": 0.1,
+        "chunk_recall@10": 0.2,
+        "mrr": 1.0,
+        "ndcg@10": 0.28371255449703187
+      },
+      {
+        "qid": "real_광주연구원_no_answer_penalty_rate",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 1378.511,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_GIST_haja_bojeung_cross",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 6,
+        "latency_ms": 878.407,
+        "chunk_recall@5": 0.16666666666666666,
+        "chunk_recall@10": 0.16666666666666666,
+        "mrr": 0.3333333333333333,
+        "ndcg@10": 0.15130120674940672
+      },
+      {
+        "qid": "real_GIST_rcms_security_vendor_year",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 1009.155,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_chosun_security_penalty_threshold",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 1,
+        "latency_ms": 936.151,
+        "chunk_recall@5": 0.0,
+        "chunk_recall@10": 0.0,
+        "mrr": 0.0,
+        "ndcg@10": 0.0
+      },
+      {
+        "qid": "real_chosun_remote_maintenance_approval_criteria",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 820.032,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_중앙선거관리위원회_security_device_provider",
+        "query_type": "single_doc",
+        "categories": [
+          "distractor_heavy",
+          "multi_hop"
+        ],
+        "gold_chunk_n": 2,
+        "latency_ms": 806.263,
+        "chunk_recall@5": 1.0,
+        "chunk_recall@10": 1.0,
+        "mrr": 1.0,
+        "ndcg@10": 0.9197207891481876
+      },
+      {
+        "qid": "real_중앙선거관리위원회_penalty_criteria_detail",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer",
+          "long_context"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 1023.876,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_IBS_cryogenic_responsibility_boundary",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 8,
+        "latency_ms": 951.881,
+        "chunk_recall@5": 0.5,
+        "chunk_recall@10": 0.625,
+        "mrr": 1.0,
+        "ndcg@10": 0.7240829646115214
+      },
+      {
+        "qid": "real_IBS_cryogenic_penalty_formula",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 976.639,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_aT_multiHop_security_audit_timing",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 32,
+        "latency_ms": 970.274,
+        "chunk_recall@5": 0.03125,
+        "chunk_recall@10": 0.03125,
+        "mrr": 1.0,
+        "ndcg@10": 0.22009176629808017
+      },
+      {
+        "qid": "real_aT_noAnswer_penalty_rate",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 852.978,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_경기도일자리재단_security_penalty_grade_threshold",
+        "query_type": "single_doc",
+        "categories": [
+          "long_context",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 6,
+        "latency_ms": 1201.235,
+        "chunk_recall@5": 0.0,
+        "chunk_recall@10": 0.16666666666666666,
+        "mrr": 0.14285714285714285,
+        "ndcg@10": 0.10086747116627115
+      },
+      {
+        "qid": "real_경기도일자리재단_worker_dispatch_legal_basis",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 856.588,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_eulji_haja_period_conflict",
+        "query_type": "single_doc",
+        "categories": [
+          "distractor_heavy",
+          "multi_hop"
+        ],
+        "gold_chunk_n": 17,
+        "latency_ms": 786.153,
+        "chunk_recall@5": 0.11764705882352941,
+        "chunk_recall@10": 0.11764705882352941,
+        "mrr": 1.0,
+        "ndcg@10": 0.3589542101716347
+      },
+      {
+        "qid": "real_eulji_pm_replacement_penalty",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 858.433,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_대전대학교_개인정보파기기한_vs_위탁기간종료",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 7,
+        "latency_ms": 1055.896,
+        "chunk_recall@5": 0.14285714285714285,
+        "chunk_recall@10": 0.2857142857142857,
+        "mrr": 1.0,
+        "ndcg@10": 0.3615901614084106
+      },
+      {
+        "qid": "real_대전대학교_수행실적평가_사업예산비율_노답",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer",
+          "long_context"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 1239.685,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_인천해양박물관_보안약점진단도구요건",
+        "query_type": "single_doc",
+        "categories": [
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 4,
+        "latency_ms": 968.495,
+        "chunk_recall@5": 0.5,
+        "chunk_recall@10": 0.5,
+        "mrr": 1.0,
+        "ndcg@10": 0.5855700749881525
+      },
+      {
+        "qid": "real_인천해양박물관_동점처리낙찰기준",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 987.589,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_kevinlab_interface_requirement_vs_functional_overlap",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 9,
+        "latency_ms": 1324.306,
+        "chunk_recall@5": 0.1111111111111111,
+        "chunk_recall@10": 0.3333333333333333,
+        "mrr": 1.0,
+        "ndcg@10": 0.37713756561785067
+      },
+      {
+        "qid": "real_kevinlab_ip_ownership_penalty_clause",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 1016.509,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_GIST_defect_warranty_vs_advance_payment",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 143,
+        "latency_ms": 1065.384,
+        "chunk_recall@5": 0.0,
+        "chunk_recall@10": 0.0,
+        "mrr": 0.0,
+        "ndcg@10": 0.0
+      },
+      {
+        "qid": "real_GIST_project_duration_basis",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 992.76,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_KIRIA_multihop_eval_exclusion_threshold",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 4,
+        "latency_ms": 2018.798,
+        "chunk_recall@5": 0.0,
+        "chunk_recall@10": 0.0,
+        "mrr": 0.05,
+        "ndcg@10": 0.0
+      },
+      {
+        "qid": "real_KIRIA_noanswer_security_penalty_grade_amount",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 2085.702,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_한국건강가정진흥원_backup_policy_vs_security_incident",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 35,
+        "latency_ms": 1152.674,
+        "chunk_recall@5": 0.05714285714285714,
+        "chunk_recall@10": 0.05714285714285714,
+        "mrr": 1.0,
+        "ndcg@10": 0.33013764944712026
+      },
+      {
+        "qid": "real_한국건강가정진흥원_pm_work_location_penalty",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 1040.076,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_BioIN_webcapacity_vs_responsetime_multihop",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 1,
+        "latency_ms": 825.983,
+        "chunk_recall@5": 1.0,
+        "chunk_recall@10": 1.0,
+        "mrr": 0.3333333333333333,
+        "ndcg@10": 0.5
+      },
+      {
+        "qid": "real_BioIN_security_penalty_clause_noanswer",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 790.239,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_KOICA_multihop_budget_year_breakdown",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 1,
+        "latency_ms": 773.771,
+        "chunk_recall@5": 1.0,
+        "chunk_recall@10": 1.0,
+        "mrr": 1.0,
+        "ndcg@10": 1.0
+      },
+      {
+        "qid": "real_KOICA_noanswer_pmc_contractor_name",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 783.103,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_KESCO_KCMVP_bo안적합성_절차",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 22,
+        "latency_ms": 1057.12,
+        "chunk_recall@5": 0.22727272727272727,
+        "chunk_recall@10": 0.36363636363636365,
+        "mrr": 1.0,
+        "ndcg@10": 0.8643145546088337
+      },
+      {
+        "qid": "real_KESCO_통신서버_SLA기준",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 831.369,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_충북연구원_evaluation_score_breakdown",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 4,
+        "latency_ms": 795.395,
+        "chunk_recall@5": 0.0,
+        "chunk_recall@10": 0.25,
+        "mrr": 0.1111111111111111,
+        "ndcg@10": 0.11751610475642714
+      },
+      {
+        "qid": "real_충북연구원_penalty_grade_threshold",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer",
+          "long_context"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 848.946,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_KRC_PMC_multihop_evaluation_score",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 169,
+        "latency_ms": 797.505,
+        "chunk_recall@5": 0.0,
+        "chunk_recall@10": 0.005917159763313609,
+        "mrr": 0.14285714285714285,
+        "ndcg@10": 0.07336392209936005
+      },
+      {
+        "qid": "real_KRC_PMC_noanswer_consortium_penalty",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 975.982,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_incheon_isp_multihop_pm_qualification",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 24,
+        "latency_ms": 1375.887,
+        "chunk_recall@5": 0.041666666666666664,
+        "chunk_recall@10": 0.041666666666666664,
+        "mrr": 0.5,
+        "ndcg@10": 0.13886244387355454
+      },
+      {
+        "qid": "real_incheon_isp_noanswer_penalty_rate",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 966.813,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_ADD_security_compliance_crossref",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 6,
+        "latency_ms": 844.876,
+        "chunk_recall@5": 0.16666666666666666,
+        "chunk_recall@10": 0.16666666666666666,
+        "mrr": 1.0,
+        "ndcg@10": 0.30260241349881345
+      },
+      {
+        "qid": "real_ADD_manual_ui_penalty",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 1044.751,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_대한장애인체육회_multi_hop_evaluation_ratio",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 6,
+        "latency_ms": 766.737,
+        "chunk_recall@5": 0.0,
+        "chunk_recall@10": 0.0,
+        "mrr": 0.07142857142857142,
+        "ndcg@10": 0.0
+      },
+      {
+        "qid": "real_대한장애인체육회_no_answer_security_penalty",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 884.315,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_incheon_donggu_beacon_zonning_vs_db_standard",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 6,
+        "latency_ms": 852.406,
+        "chunk_recall@5": 0.16666666666666666,
+        "chunk_recall@10": 0.16666666666666666,
+        "mrr": 1.0,
+        "ndcg@10": 0.30260241349881345
+      },
+      {
+        "qid": "real_incheon_donggu_cloud_private_vendor_sla",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 822.37,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_KSSA_multihop_evaluation_scoring",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 12,
+        "latency_ms": 1005.455,
+        "chunk_recall@5": 0.08333333333333333,
+        "chunk_recall@10": 0.08333333333333333,
+        "mrr": 1.0,
+        "ndcg@10": 0.22009176629808017
+      },
+      {
+        "qid": "real_KSSA_noans_local_counterpart_budget",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 811.754,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_수협중앙회_videowallcontroller_connected_devices_multihop",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 14,
+        "latency_ms": 1007.507,
+        "chunk_recall@5": 0.21428571428571427,
+        "chunk_recall@10": 0.42857142857142855,
+        "mrr": 1.0,
+        "ndcg@10": 0.652370608445272
+      },
+      {
+        "qid": "real_수협중앙회_wireless_mic_install_location_no_answer",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 877.539,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_경희대학교_multihop_contract_deadline_and_penalty",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 11,
+        "latency_ms": 756.429,
+        "chunk_recall@5": 0.09090909090909091,
+        "chunk_recall@10": 0.18181818181818182,
+        "mrr": 0.3333333333333333,
+        "ndcg@10": 0.17947710508581735
+      },
+      {
+        "qid": "real_경희대학교_noanswer_penalty_rate",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 966.541,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_고려대학교_budget_payment_vs_maintenance_crossref",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 2,
+        "latency_ms": 774.683,
+        "chunk_recall@5": 0.5,
+        "chunk_recall@10": 0.5,
+        "mrr": 1.0,
+        "ndcg@10": 0.6131471927654584
+      },
+      {
+        "qid": "real_고려대학교_SFR_graduation_vs_transfer_quota_no_answer",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 757.954,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_NTIS_security_penalty_calculation",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 5,
+        "latency_ms": 879.369,
+        "chunk_recall@5": 0.0,
+        "chunk_recall@10": 0.2,
+        "mrr": 0.14285714285714285,
+        "ndcg@10": 0.11305340175787204
+      },
+      {
+        "qid": "real_NTIS_sw_quality_test_scope",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 832.386,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_국가철도공단_security_education_timing_multihop",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 1,
+        "latency_ms": 948.112,
+        "chunk_recall@5": 1.0,
+        "chunk_recall@10": 1.0,
+        "mrr": 1.0,
+        "ndcg@10": 1.0
+      },
+      {
+        "qid": "real_국가철도공단_penalty_legal_basis_no_answer",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 859.414,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_국민연금공단_수료기준_과정유형별_교차",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 1,
+        "latency_ms": 933.051,
+        "chunk_recall@5": 1.0,
+        "chunk_recall@10": 1.0,
+        "mrr": 1.0,
+        "ndcg@10": 1.0
+      },
+      {
+        "qid": "real_국민연금공단_콘텐츠단가_모바일연동비용",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 922.225,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_국민연금공단_SFR006_환수금_산출물_cross",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 16,
+        "latency_ms": 747.707,
+        "chunk_recall@5": 0.0,
+        "chunk_recall@10": 0.0,
+        "mrr": 0.0,
+        "ndcg@10": 0.0
+      },
+      {
+        "qid": "real_국민연금공단_보안USB_암호모듈_인증기관",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 1063.461,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_서울시립대학교_하도급비율_담합제한_교차",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 13,
+        "latency_ms": 967.021,
+        "chunk_recall@5": 0.07692307692307693,
+        "chunk_recall@10": 0.07692307692307693,
+        "mrr": 0.5,
+        "ndcg@10": 0.13886244387355454
+      },
+      {
+        "qid": "real_서울시립대학교_여성고용우수기업_가점기준_abstention",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 854.911,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_세종테크노파크_유연근무유형별설정기능_multihop",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 3,
+        "latency_ms": 822.211,
+        "chunk_recall@5": 0.6666666666666666,
+        "chunk_recall@10": 0.6666666666666666,
+        "mrr": 1.0,
+        "ndcg@10": 0.6508205185601091
+      },
+      {
+        "qid": "real_세종테크노파크_보안서약서제출기한_noanswer",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 949.583,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_kogas_erp_hana_infra_server_spec_crossref",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop",
+          "long_context"
+        ],
+        "gold_chunk_n": 6,
+        "latency_ms": 795.766,
+        "chunk_recall@5": 0.5,
+        "chunk_recall@10": 0.5,
+        "mrr": 1.0,
+        "ndcg@10": 0.644824486427155
+      },
+      {
+        "qid": "real_kogas_erp_warranty_penalty_no_answer",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 844.192,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_한국발명진흥회_무상하자보수_PM교체_연계",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 4,
+        "latency_ms": 942.152,
+        "chunk_recall@5": 0.25,
+        "chunk_recall@10": 0.25,
+        "mrr": 0.3333333333333333,
+        "ndcg@10": 0.19519002499605084
+      },
+      {
+        "qid": "real_한국발명진흥회_CPU사용률_야간시간대_보장여부",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer",
+          "long_context"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 1161.722,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_kwater_cms_security_penalty_grade",
+        "query_type": "single_doc",
+        "categories": [
+          "long_context",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 4,
+        "latency_ms": 1212.296,
+        "chunk_recall@5": 0.5,
+        "chunk_recall@10": 0.5,
+        "mrr": 0.5,
+        "ndcg@10": 0.44149241373678083
+      },
+      {
+        "qid": "real_kwater_cms_cts_external_access",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer",
+          "ambiguous_query"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 902.94,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_kwater_iwater-hmi-sites-crossref",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop",
+          "long_context"
+        ],
+        "gold_chunk_n": 2,
+        "latency_ms": 806.146,
+        "chunk_recall@5": 0.5,
+        "chunk_recall@10": 0.5,
+        "mrr": 1.0,
+        "ndcg@10": 0.6131471927654584
+      },
+      {
+        "qid": "real_kwater_sourcecode-security-contradiction",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 752.395,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_한국수자원공사_supply-volume-multihop",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop",
+          "no_answer"
+        ],
+        "gold_chunk_n": 10,
+        "latency_ms": 728.416,
+        "chunk_recall@5": 0.2,
+        "chunk_recall@10": 0.2,
+        "mrr": 1.0,
+        "ndcg@10": 0.30523488393970116
+      },
+      {
+        "qid": "real_한국수자원공사_yongji-abstention",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 912.419,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_korail_multi_hop_safety_analysis_scope",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 8,
+        "latency_ms": 792.624,
+        "chunk_recall@5": 0.375,
+        "chunk_recall@10": 0.5,
+        "mrr": 1.0,
+        "ndcg@10": 0.5835002129716238
+      },
+      {
+        "qid": "real_korail_no_answer_defect_penalty_rate",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 859.17,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_korail_network-dualization-cc-cert-requirement",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop"
+        ],
+        "gold_chunk_n": 8,
+        "latency_ms": 787.339,
+        "chunk_recall@5": 0.125,
+        "chunk_recall@10": 0.125,
+        "mrr": 1.0,
+        "ndcg@10": 0.2529427027676571
+      },
+      {
+        "qid": "real_korail_slowquery-tuning-penalty-clause",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 746.924,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_korail_산출물_보안준수_crossref",
+        "query_type": "single_doc",
+        "categories": [
+          "multi_hop",
+          "distractor_heavy"
+        ],
+        "gold_chunk_n": 10,
+        "latency_ms": 977.178,
+        "chunk_recall@5": 0.1,
+        "chunk_recall@10": 0.1,
+        "mrr": 0.2,
+        "ndcg@10": 0.08514311764162098
+      },
+      {
+        "qid": "real_korail_ISMP_구축예산산정기준_nonanswer",
+        "query_type": "abstention",
+        "categories": [
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 834.157,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      },
+      {
+        "qid": "real_인천공항운영서비스_평가비율_기술가격분리",
+        "query_type": "abstention",
+        "categories": [
+          "multi_hop",
+          "no_answer"
+        ],
+        "gold_chunk_n": 0,
+        "latency_ms": 935.191,
+        "chunk_recall@5": null,
+        "chunk_recall@10": null,
+        "mrr": null,
+        "ndcg@10": null
+      }
+    ],
+    "latency_ms": {
+      "p50": 757.248,
+      "p95": 1236.946,
+      "mean": 801.259,
+      "n": 221
+    }
+  }
+}

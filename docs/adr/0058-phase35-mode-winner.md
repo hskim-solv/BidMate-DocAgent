@@ -1,9 +1,9 @@
-# 0058: Phase 3.5 mode-winner decision — BGE-M3 multi-channel vs dense vs BM25-hybrid on real100
+# 0058: Phase 3.5 mode-winner decision — Scenario A (switch default to hybrid BM25+BGE-M3 dense, RRF k=60)
 
-- **Status**: proposed (finalize after kordoc-corpus measurement lands)
-- **Date**: 2026-05-18
+- **Status**: accepted (kordoc-corpus measurement landed 2026-05-19; Scenario A finalized)
+- **Date**: 2026-05-19 (Status accepted); 2026-05-18 (Status proposed)
 - **Deciders**: hskim
-- **Related**: [ADR 0001](0001-preserve-naive-baseline.md), [ADR 0010](0010-hybrid-bm25-dense-retrieval-rrf.md), [ADR 0021](0021-real-eval-axis-design.md), [ADR 0025](0025-spike-mode-m3-channels.md), [ADR 0032](0032-torch-26-unblock.md), [ADR 0049](0049-kordoc-replaces-pyhwp-backend.md), PR #966 (Phase 3.5 measurement), PR #956 (Phase 3, retracted), issue #957
+- **Related**: [ADR 0001](0001-preserve-naive-baseline.md), [ADR 0010](0010-hybrid-bm25-dense-retrieval-rrf.md), [ADR 0021](0021-real-eval-axis-design.md), [ADR 0025](0025-spike-mode-m3-channels.md), [ADR 0032](0032-torch-26-unblock.md), [ADR 0049](0049-kordoc-replaces-pyhwp-backend.md), PR #966 (Phase 3.5 measurement), PR #956 (Phase 3, retracted), issue #957, issue #997
 
 > **ADR number renumbered 0056 → 0057 → 0058** (2026-05-19) to avoid two concurrent collisions: ADR 0056 was merged via PR #987 (`rationality_judge`, issue #969) + ADR 0057 was merged via PR #988 (`bm25s additive backend`). Final number `0058` per ADR README.md "Reserve the next number with the CLI before drafting" convention.
 
@@ -17,33 +17,45 @@ This ADR's evidence is the kordoc-rebuilt re-measurement: same 100 docs, same ch
 
 ## Decision
 
-<!-- FINALIZE: pick scenario A or B based on kordoc measurement results landing in
-     reports/retrieval/phase35_m3_<TS>_kordoc/REPORT.md -->
+**Scenario A wins**: Switch `retrieval_backend` default from `dense` to `hybrid` (RRF k=60 over BGE-M3 dense + BM25) for the `agentic_full` and `metadata_first` presets. **`naive_baseline` preset stays on `dense` (ADR 0001 invariant byte-identical)** — the default change applies only to non-baseline presets.
 
-**Scenario A — kordoc measurement shows SIG hybrid or m3 lift on recall@10 + MRR**:
-> Switch `retrieval_backend` default from `dense` to `hybrid` (RRF k=60 over BGE-M3 dense + BM25). Preserve `ADR 0001` `naive_baseline` byte-identical by leaving the `naive_baseline` preset on `dense`; the default change applies only to `agentic_full` and `metadata_first`. `m3` (3-way RRF over BGE-M3 dense + sparse + colbert) remains opt-in for research-scale workloads (2.2x latency vs hybrid).
+`m3` (3-way RRF over BGE-M3 dense + sparse + colbert) **deferred to cloud-GPU follow-up** — local measurement attempts on 16GB Apple Silicon exhausted unified memory (33GB swap pool consumption + system crash) before completing the m3 cache build. The deferral is honest reporting per absolute rule #5; m3 multi-channel question remains open for a cloud-GPU one-off run (~$1 budget; A10/T4 GPU expected to complete in <30 min).
 
-**Scenario B — recall@10 NULL WINNER + partial SIG MRR on multi_hop (csv_text result pattern)**:
-> Keep `retrieval_backend: dense` default per ADR 0010 (default validated, not contradicted by measurement). Document `hybrid_bm25_k60` as a measured-positive ranking-quality knob for multi_hop-heavy workloads (paired CI MRR multi_hop +X SIG; 1.2x latency vs dense). `m3` is NOT recommended for production — partial MRR lift + 2.2x latency does not justify the operational cost (~10GB colbert cache, FlagEmbedding opt-in dep).
+### Evidence (from `reports/retrieval/phase35_m3_20260518T214937Z_kordoc_no_m3/REPORT.md`)
 
-In both scenarios the production knob `retrieval_backend` remains the single point of swap. The default `naive_baseline` preset stays `dense` regardless of scenario.
+Measurement: kordoc 26,376 chunks, n=221 cases, dense_m3 vs hybrid_bm25_k60_m3, paired bootstrap CI 95%, seeds 17/23/29.
+
+**Overall metrics** (hybrid_bm25_k60_m3 vs dense_m3, all SIG = paired CI fully above 0):
+- `chunk_recall@10`: 0.288 → 0.340 (**+0.052 SIG**, CI +0.020/+0.088)
+- `MRR`: 0.515 → 0.625 (**+0.110 SIG**, CI +0.056/+0.165)
+- `ndcg@10`: 0.318 → 0.383 (**+0.065 SIG**, CI +0.032/+0.099)
+- Latency p50: 559ms → 757ms (1.35x; acceptable for ranking quality lift)
+
+**Per-category winners** (recall@10, paired CI vs dense_m3):
+- `overall`: hybrid +0.052 SIG
+- `multi_hop` (n=93): hybrid +0.043 SIG
+- `distractor_heavy` (n=42): hybrid +0.067 SIG
+- `long_context` (n=9): hybrid +0.133 SIG
+- `no_answer` (n=2), `ambiguous_query` (n=1), `uncategorized` (n=13): NOT SIGNIFICANT (small N or all-equal CI)
+
+**Phase 3 PR #956 conclusion retracted**: "BM25 channel dominance → hybrid_bm25 SIG-negative" was wrong. The Phase 3 runner bug (missing `apply_fusion_and_reranking` call, fixed in PR-H #994) collapsed hybrid_k variants to chunk_id insertion order. With the fix + semantic embeddings, hybrid_bm25 is SIG-positive on the dominant hardcase categories.
 
 ## Consequences
 
-**Scenario A wins** (default switches to `hybrid`):
-- README must update default-mode framing; `eval/config.yaml` `agentic_full` preset annotation flips
+**Scenario A applied** (default switches to `hybrid`):
+- README must update default-mode framing; `eval/config.yaml` `agentic_full` preset annotation flips (follow-up implementation PR, not blocked by this ADR)
 - BM25 dependency (`rank_bm25`) becomes load-bearing for production (was already in `requirements.txt` so install footprint unchanged)
-- Latency budget: ~1.2x dense at p50 (~853 vs ~699 ms on the csv_text 898-chunk measurement; kordoc 26k may differ)
+- Latency budget: 1.35x dense at p50 (757ms vs 559ms on kordoc 26k measurement)
 
-**Scenario B wins** (default stays `dense`):
-- ADR 0010's default validated by measurement (the gauge ADR 0010 promised has now fired)
-- `hybrid_bm25_k60` documented as a per-route knob for multi_hop-heavy workloads — README "When to use" section gains an entry
-- `m3` formally moves from "deferred" to "tested-and-rejected for prod" status (still available for research)
-
-**Both scenarios lock**:
-- The `apply_fusion_and_reranking` wire-up in any future ablation runner — Phase 3 PR #956 bug must not recur (PR-H optional retraction note proposed)
-- The kordoc-as-source-of-truth convention for `data/index/real100_m3` (no csv_text fallback for production semantic indexes)
+**Locked by this ADR**:
+- The `apply_fusion_and_reranking` wire-up in any future ablation runner — Phase 3 PR #956 bug must not recur (fixed for Phase 3 in PR-H #994)
+- The kordoc-as-source-of-truth convention for `data/index/real100_m3` (no csv_text fallback for production semantic indexes; PR #966 closeout 의 `BIDMATE_KORDOC_CACHE_DIR` bypass 가 enable)
 - The runner-side m3 colbert batching pattern (`scripts/phase35_m3_ablation.py::_prime_m3_index_cache_and_colbert`) for future m3-channel measurements on Apple Silicon
+- The `BIDMATE_SKIP_M3_VARIANT=1` env var (introduced in issue #997) for memory-constrained measurement environments
+
+**Deferred** (m3 multi-channel question):
+- 16GB Apple Silicon unified memory cannot hold the BGE-M3 colbert cache for 26k chunks (per-token per-chunk vectors ≈ 10-15GB, plus model weights + activations → swap thrashing + system crash observed). Local-only m3 measurement infeasible.
+- Cloud-GPU one-off (Modal/RunPod ~$1, A10/T4 GPU expected <30 min): Φ deferred until interview demo or strong product motivation. No blocker for `agentic_full` default flip — m3 was always going to be opt-in for research per ADR 0010.
 
 ## Alternatives considered
 
@@ -53,7 +65,7 @@ In both scenarios the production knob `retrieval_backend` remains the single poi
 
 ## Verification
 
-<!-- verifies-key: reports/retrieval/phase35_m3_20260518T??????Z_kordoc/REPORT.md:Per-category winner -->
+<!-- verifies-key: reports/retrieval/phase35_m3_20260518T214937Z_kordoc_no_m3/REPORT.md:Per-category winner -->
 <!-- verifies-key: docs/adr/0010-hybrid-bm25-dense-retrieval-rrf.md:BGE-M3 ablation closeout -->
 <!-- verifies-key: eval/config.yaml:retrieval_backend -->
 
