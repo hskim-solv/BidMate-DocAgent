@@ -61,10 +61,10 @@ class PipelineResult:
 def generate_complex_layout_pdf(path: Path) -> GroundTruth:
     """Generate a 1-page PDF with title / metadata / fields / table / paragraph.
 
-    Uses ASCII-only content so fitz base14 fonts render correctly without
+    Uses ASCII-only content so pymupdf base14 fonts render correctly without
     requiring a system Korean font. Real Korean RFPs can be passed via --input.
     """
-    import fitz  # type: ignore
+    import pymupdf  # type: ignore
 
     headings = ["1. Overview", "2. Requirements", "3. Evaluation"]
     fields_dict = {
@@ -84,7 +84,7 @@ def generate_complex_layout_pdf(path: Path) -> GroundTruth:
         "on a single complex-layout RFP page. See docs/vision/vision-spike.md for context."
     )
 
-    doc = fitz.open()
+    doc = pymupdf.open()
     page = doc.new_page(width=595, height=842)
     y = 56
     page.insert_text((56, y), "RFP Visual Parsing Spike", fontsize=16)
@@ -164,7 +164,7 @@ def run_baseline(pdf_path: Path) -> PipelineResult:
 
 def run_donut(pdf_path: Path) -> PipelineResult:
     try:
-        import fitz  # type: ignore
+        import pymupdf  # type: ignore
         from PIL import Image  # type: ignore
     except Exception as exc:
         return PipelineResult(
@@ -193,10 +193,10 @@ def run_donut(pdf_path: Path) -> PipelineResult:
     page_texts: list[str] = []
     error: str | None = None
     try:
-        pdf_doc = fitz.open(str(pdf_path))
+        pdf_doc = pymupdf.open(str(pdf_path))
         with pdf_doc:
             for page in pdf_doc:
-                pixmap = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
+                pixmap = page.get_pixmap(matrix=pymupdf.Matrix(2, 2), alpha=False)
                 image = Image.frombytes("RGB", (pixmap.width, pixmap.height), pixmap.samples)
                 page_texts.append(donut_ocr_provider(image))
     except Exception as exc:
@@ -233,7 +233,7 @@ def run_donut(pdf_path: Path) -> PipelineResult:
 
 def run_paddleocr(pdf_path: Path) -> PipelineResult:
     try:
-        import fitz  # type: ignore
+        import pymupdf  # type: ignore
         from PIL import Image  # type: ignore
     except Exception as exc:
         return PipelineResult(
