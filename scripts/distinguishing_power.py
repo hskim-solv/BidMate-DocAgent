@@ -125,6 +125,54 @@ def _safe_metric(run: dict[str, Any], metric: str) -> float | None:
         return None
 
 
+def _safe_abstention(run: dict[str, Any]) -> dict[str, Any]:
+    """Extract per-run abstention transparency fields (ADR 0054 §Consequences).
+
+    Returns a dict with three keys:
+
+    * ``abstention_rate`` — float | None. The existing ``abstention`` field
+      from ``metric_block`` (eval/run_eval.py:597) — fraction of *unanswerable*
+      cases on which the model correctly refused. High values (e.g. 0.89 for
+      random_retrieval at n=221) explain why pre-ADR-0054 quality means
+      inflated: 89% of the unanswerable subset got vacuous-truth 1.0s folded
+      into groundedness / citation_precision / answer_format_compliance.
+      Post-ADR-0054 the quality means are computed on the substantive subset
+      only, so this field is a *transparency signal*, not a metric.
+    * ``num_predictions`` — int | None. Total cases the run scored.
+    * ``effective_n`` — int | None. Approximate count of substantive answer
+      attempts (= ``num_predictions - n_unanswerable``). Computed from the
+      ``abstention_outcomes`` 3-bin (PR #464) when available. This is the
+      denominator for the quality metrics under ADR 0054.
+
+    Per ADR 0054 §Consequences: these fields are surfaced for transparency
+    only. ``signal_alive`` is computed strictly from the GAUGED_METRICS and
+    is NOT modified by abstention_rate — the scorer fix (eval/scorers/case.py)
+    is the primary defense; this gauge transparency is the secondary one.
+    """
+    abstention_rate = _safe_metric(run, "abstention")
+    num_predictions = run.get("num_predictions")
+    if not isinstance(num_predictions, int):
+        num_predictions = None
+    outcomes = run.get("abstention_outcomes") or {}
+    n_unanswerable: int | None
+    if isinstance(outcomes, dict) and outcomes:
+        try:
+            n_unanswerable = sum(int(v) for v in outcomes.values() if v is not None)
+        except (TypeError, ValueError):
+            n_unanswerable = None
+    else:
+        n_unanswerable = None
+    if num_predictions is not None and n_unanswerable is not None:
+        effective_n: int | None = max(num_predictions - n_unanswerable, 0)
+    else:
+        effective_n = None
+    return {
+        "abstention_rate": abstention_rate,
+        "num_predictions": num_predictions,
+        "effective_n": effective_n,
+    }
+
+
 def _gauge_row(default: float | None, floor: float | None) -> dict[str, Any]:
     """Compute the raw gap + normalized headroom score for one (metric, floor).
 
@@ -179,7 +227,13 @@ def compute_gauge(summary: dict[str, Any]) -> dict[str, Any]:
     n = default.get("num_predictions") or summary.get("num_predictions")
 
     out_runs = {
-        name: {m: _safe_metric(runs[name], m) for m in GAUGED_METRICS}
+        name: {
+            **{m: _safe_metric(runs[name], m) for m in GAUGED_METRICS},
+            # ADR 0054 — transparency fields next to metrics so a reader can
+            # see at a glance why a high-abstention run's pre-fix means were
+            # inflated. signal_alive logic is intentionally NOT modified.
+            **_safe_abstention(runs[name]),
+        }
         for name in REQUIRED_RUNS
     }
     gauge: dict[str, Any] = {}
@@ -251,6 +305,32 @@ def render_markdown(gauge: dict[str, Any]) -> str:
         for run_name in REQUIRED_RUNS:
             row.append(_fmt_pct(gauge["runs"][run_name][metric]))
         lines.append("| " + " | ".join(row) + " |")
+
+    # ADR 0054 §Consequences — transparency block. Surfaces per-run
+    # abstention_rate (correct-refusal rate on the unanswerable subset)
+    # + effective_n (substantive-attempt count, the denominator for the
+    # quality metrics above). Helps a reader see why a high-abstention
+    # run's metric means are based on a small denominator. signal_alive
+    # is NOT influenced by these numbers.
+    lines += [
+        "",
+        "## Per-run abstention transparency (ADR 0054)",
+        "",
+        "| run | num_predictions | abstention_rate (unanswerable subset) | effective_n (substantive attempts) |",
+        "|---|---:|---:|---:|",
+    ]
+    for run_name in REQUIRED_RUNS:
+        r = gauge["runs"][run_name]
+        n_pred = r.get("num_predictions")
+        eff_n = r.get("effective_n")
+        lines.append(
+            "| " + " | ".join([
+                run_name,
+                str(n_pred) if n_pred is not None else "n/a",
+                _fmt_pct(r.get("abstention_rate")),
+                str(eff_n) if eff_n is not None else "n/a",
+            ]) + " |"
+        )
 
     lines += [
         "",

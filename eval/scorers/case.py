@@ -84,12 +84,28 @@ def score_case(
         citation_precision = citation_doc_precision if citation_term_match else 0.0
         abstention = None
     else:
+        # ADR 0054 — quality metrics are conditional on a substantive answer
+        # attempt. For unanswerable cases, refusal correctness is measured
+        # separately by `abstention` (rate) + `abstention_outcomes` 3-bin
+        # (PR #464). Folding a vacuous 1.0 into groundedness/citation_precision
+        # here double-counts the abstention signal and inflates the means of
+        # high-abstention runs (e.g. random_retrieval at 89% abstention on
+        # n=221 real-eval, gauge surfaced 2026-05-17 in PR #946).
         doc_match = not evidence
         term_match = abstained
         accuracy = None
-        groundedness = 1.0 if abstained and not evidence else 0.0
-        citation_precision = 1.0 if abstained and not evidence else 0.0
+        groundedness = None
+        citation_precision = None
         abstention = 1.0 if abstained else 0.0
+
+    # ADR 0054 — answer_format_compliance is also vacuously 1.0 for
+    # well-formed abstentions (insufficient + empty claims + min_claims=0
+    # trivially satisfy every check in score_answer_format). Mark N/A for the
+    # correct_refusal path so this metric, too, reflects only substantive
+    # answer attempts.
+    answer_format_payload: dict[str, Any] = dict(answer_format)
+    if not answerable and abstained and not evidence:
+        answer_format_payload["answer_format_compliance"] = None
 
     retrieved_chunk_ids = [
         str(chunk_id)
@@ -196,7 +212,7 @@ def score_case(
         "context_resolution_reason": context_resolution.get("reason"),
         "resolved_query": prediction.get("resolved_query"),
         "abstained": abstained,
-        **answer_format,
+        **answer_format_payload,
         "answer": answer,
         "evidence": [
             {

@@ -90,3 +90,7 @@ Without these two floors the leaderboard cannot answer **"does our retrieval pul
 - `tests/test_random_retrieval_regression.py` + `tests/test_single_chunk_preset_regression.py` — locked contracts
 - ADR 0001 (naive_baseline invariance) — the invariant being preserved
 - ADR 0044 → ADR 0052 (real-eval case expansion) — sequencing rationale for landing floors before n=200 regen
+
+## Augmented by
+
+- **ADR 0054** (`docs/adr/0054-conditional-on-answer-scorer-semantics.md`) — the first gauge measurement (n=221, PR #946) surfaced a Goodhart trap: 3/5 quality metrics scored vacuously-truthful 1.0 on correct_refusal cases, inflating high-abstention runs' means. ADR 0054 fixes the scorer semantics (quality metrics now conditional on substantive answer attempts); the gauge formula in this ADR is unchanged.
