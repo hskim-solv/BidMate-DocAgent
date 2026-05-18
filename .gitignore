@@ -121,6 +121,13 @@ reports/real100/history/*
 # boundary preserved by the gauge formula itself.
 !reports/real100/distinguishing_power.md
 !reports/real100/distinguishing_power.aggregate.json
+# Issue #969 — trajectory-rationality judge aggregate (ADR 0056, script:
+# scripts/run_rationality_judge.py). Reads eval_summary.json + per-case
+# trace JSON, emits 3-axis mean + 95% bootstrap CI + effective_n.
+# Aggregate-only (no per-case rationale text or trace data); per-case
+# payload at rationality.local.json stays ignored under reports/real100/*.
+!reports/real100/rationality.md
+!reports/real100/rationality.aggregate.json
 # Issue #896 + #897 — EDA figures (PNG + SVG). Same allowlist pattern
 # as cost_frontier.png above. corpus EDA: scripts/eda_real100.py /
 # RAG EDA: scripts/rag_pipeline_eda.py.
