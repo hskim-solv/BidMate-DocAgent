@@ -80,10 +80,16 @@ class HybridRetrievalRegressionTest(unittest.TestCase):
         )
         return retrieve(self.index, query, analysis, plan)
 
-    def test_default_backend_is_dense_when_unspecified(self) -> None:
+    def test_default_backend_is_hybrid_when_unspecified(self) -> None:
+        # ADR 0058 (Scenario A, 2026-05-19) — `agentic_full` preset default
+        # (which is also `DEFAULT_RAG_PIPELINE_NAME`) flipped from `dense`
+        # to `hybrid`. When no pipeline is specified, run_rag_query routes
+        # to agentic_full → hybrid retrieval. `naive_baseline` preset still
+        # uses `dense` (ADR 0001 invariant, covered by
+        # test_naive_baseline_ranking_invariance.py).
         result = run_rag_query(self.index, ANSWERABLE_QUERY)
-        self.assertEqual("dense", result["diagnostics"]["retrieval_backend"])
-        self.assertEqual("dense", result["plan"]["retrieval_backend"])
+        self.assertEqual("hybrid", result["diagnostics"]["retrieval_backend"])
+        self.assertEqual("hybrid", result["plan"]["retrieval_backend"])
         self.assertGreater(len(result["evidence"]), 0)
 
     def test_dense_retrieve_omits_rank_rrf_diagnostic(self) -> None:
