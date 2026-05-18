@@ -164,7 +164,7 @@ def embed_texts(
 
 def _embed_with_openai(texts: list[str], *, model_name: str) -> EmbeddingResult:
     try:
-        import openai  # type: ignore[import-not-found]
+        from openai import OpenAI  # type: ignore[import-not-found]
     except Exception as exc:
         raise RuntimeError(
             "openai backend requires the openai SDK. "
@@ -175,7 +175,7 @@ def _embed_with_openai(texts: list[str], *, model_name: str) -> EmbeddingResult:
         raise RuntimeError(
             "BIDMATE_OPENAI_API_KEY (or OPENAI_API_KEY) is not set for embedding_backend=openai."
         )
-    client = openai.OpenAI(api_key=api_key)
+    client = OpenAI(api_key=api_key)
     vectors: list[list[float]] = []
     batch_size = 100
     for start in range(0, len(texts), batch_size):
