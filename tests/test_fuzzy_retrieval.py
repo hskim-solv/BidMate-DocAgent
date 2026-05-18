@@ -531,7 +531,15 @@ class FuzzyMetadataRetrievalTest(unittest.TestCase):
         )
 
         self.assertFalse(result["plan"]["rerank"])
-        self.assertEqual("dense", result["plan"]["strategy"].replace("metadata-first ", ""))
+        # ADR 0058 (Scenario A, 2026-05-19) — `agentic_full` preset default
+        # flipped from `dense` to `hybrid`. The strategy now reflects the
+        # hybrid wrapper around the dense scoring base; this test asserts
+        # that `rerank=False` keeps `rerank` False and that the strategy
+        # carries the new hybrid wrapping without any rerank tokens.
+        self.assertEqual(
+            "hybrid (bm25 + dense) rrf",
+            result["plan"]["strategy"].replace("metadata-first ", ""),
+        )
 
     def test_verifier_retry_can_be_disabled_for_ablation(self) -> None:
         result = run_rag_query(
