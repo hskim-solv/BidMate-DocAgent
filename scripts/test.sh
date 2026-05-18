@@ -53,7 +53,22 @@ if command -v pytest >/dev/null 2>&1; then
       echo "pytest-split not importable; ignoring BIDMATE_PYTEST_SPLITS/SHARD." >&2
     fi
   fi
-  pytest -q "${XDIST_FLAGS[@]}" "${COV_FLAGS[@]}" "${SPLIT_FLAGS[@]}"
+  # Issue #978 — opt-in `--store-durations` for refreshing the
+  # `.test_durations` baseline that pytest-split consults for balanced
+  # shard partitioning. Off by default (CI runs leave `.test_durations`
+  # untouched). To refresh locally: run the FULL suite (unset
+  # BIDMATE_PYTEST_SPLITS/SHARD so the resulting file isn't partial),
+  # then commit the updated `.test_durations`:
+  #   BIDMATE_PYTEST_STORE_DURATIONS=1 bash scripts/test.sh
+  STORE_DURATIONS_FLAGS=()
+  if [[ "${BIDMATE_PYTEST_STORE_DURATIONS:-}" == "1" ]]; then
+    if python -c "import pytest_split" >/dev/null 2>&1; then
+      STORE_DURATIONS_FLAGS=(--store-durations)
+    else
+      echo "pytest-split not importable; ignoring BIDMATE_PYTEST_STORE_DURATIONS." >&2
+    fi
+  fi
+  pytest -q "${XDIST_FLAGS[@]}" "${COV_FLAGS[@]}" "${SPLIT_FLAGS[@]}" "${STORE_DURATIONS_FLAGS[@]}"
 else
   echo "pytest not found. Install dev dependencies or add pytest to requirements." >&2
   exit 1
