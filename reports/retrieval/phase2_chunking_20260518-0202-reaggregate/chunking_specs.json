@@ -1,0 +1,46 @@
+[
+  {
+    "name": "current",
+    "chunking_strategy": "fixed",
+    "chunk_max_chars": 520,
+    "chunk_overlap_sentences": 1,
+    "num_documents": 100,
+    "num_chunks": 26376,
+    "section_detection_rate": 0.0,
+    "heuristic_engagement_rate": null,
+    "index_dir": "/Users/hskim/Desktop/projects/BidMate-DocAgent/data/index/real100"
+  },
+  {
+    "name": "smaller",
+    "chunking_strategy": "fixed",
+    "chunk_max_chars": 260,
+    "chunk_overlap_sentences": 1,
+    "num_documents": 100,
+    "num_chunks": 55281,
+    "section_detection_rate": 0.0,
+    "heuristic_engagement_rate": null,
+    "index_dir": "/Users/hskim/Desktop/projects/BidMate-DocAgent/data/index/phase2_smaller"
+  },
+  {
+    "name": "larger",
+    "chunking_strategy": "fixed",
+    "chunk_max_chars": 1040,
+    "chunk_overlap_sentences": 1,
+    "num_documents": 100,
+    "num_chunks": 12843,
+    "section_detection_rate": 0.0,
+    "heuristic_engagement_rate": null,
+    "index_dir": "/Users/hskim/Desktop/projects/BidMate-DocAgent/data/index/phase2_larger"
+  },
+  {
+    "name": "structure_aware",
+    "chunking_strategy": "section",
+    "chunk_max_chars": 520,
+    "chunk_overlap_sentences": 1,
+    "num_documents": 100,
+    "num_chunks": 30937,
+    "section_detection_rate": 1.0,
+    "heuristic_engagement_rate": 1.0,
+    "index_dir": "/Users/hskim/Desktop/projects/BidMate-DocAgent/data/index/phase2_structure_aware"
+  }
+]
