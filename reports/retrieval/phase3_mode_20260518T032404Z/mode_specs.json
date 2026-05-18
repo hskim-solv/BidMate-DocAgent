@@ -1,0 +1,34 @@
+[
+  {
+    "name": "dense",
+    "retrieval_backend": "dense",
+    "rrf_k": null,
+    "index_dir": "/Users/hskim/Desktop/projects/BidMate-DocAgent/data/index/real100",
+    "num_documents": 100,
+    "num_chunks": 26376
+  },
+  {
+    "name": "hybrid_bm25_k30",
+    "retrieval_backend": "hybrid",
+    "rrf_k": 30,
+    "index_dir": "/Users/hskim/Desktop/projects/BidMate-DocAgent/data/index/real100",
+    "num_documents": 100,
+    "num_chunks": 26376
+  },
+  {
+    "name": "hybrid_bm25_k60",
+    "retrieval_backend": "hybrid",
+    "rrf_k": 60,
+    "index_dir": "/Users/hskim/Desktop/projects/BidMate-DocAgent/data/index/real100",
+    "num_documents": 100,
+    "num_chunks": 26376
+  },
+  {
+    "name": "hybrid_bm25_k100",
+    "retrieval_backend": "hybrid",
+    "rrf_k": 100,
+    "index_dir": "/Users/hskim/Desktop/projects/BidMate-DocAgent/data/index/real100",
+    "num_documents": 100,
+    "num_chunks": 26376
+  }
+]
