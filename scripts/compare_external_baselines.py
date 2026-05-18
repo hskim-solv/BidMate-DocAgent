@@ -362,7 +362,7 @@ def _llamaindex_backend_query(state: dict[str, Any], case: dict[str, Any]) -> di
 def _ollama_backend_init(corpus: list[dict[str, Any]]) -> dict[str, Any]:  # pragma: no cover - external SDK
     try:
         import numpy as np
-        import openai
+        from openai import OpenAI
         from sentence_transformers import SentenceTransformer
     except ImportError as exc:
         raise RuntimeError(
@@ -386,7 +386,7 @@ def _ollama_backend_init(corpus: list[dict[str, Any]]) -> dict[str, Any]:  # pra
         normalize_embeddings=True,
         show_progress_bar=True,
     )
-    client = openai.OpenAI(base_url=base_url, api_key="ollama")
+    client = OpenAI(base_url=base_url, api_key="ollama")
 
     return {
         "client": client,
