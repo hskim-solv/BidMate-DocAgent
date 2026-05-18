@@ -149,6 +149,19 @@ reports/history/*
 # so reviewers can see the frontier without running the script.
 !reports/cost_frontier.md
 !reports/cost_frontier.png
+# Issue #951 — Phase 2 retrieval-eval (chunking ablation) timestamped runs.
+# Aggregate artifacts (REPORT.md / specs / deltas / per-case raw scores)
+# cross the commit boundary so reviewers can rerun --reaggregate against
+# the same per-case scores. Raw scores carry no doc/chunk IDs or text —
+# just qid + category + metric values, ADR 0005 boundary preserved.
+!reports/retrieval/
+reports/retrieval/*
+!reports/retrieval/phase2_chunking_*/
+reports/retrieval/phase2_chunking_*/*
+!reports/retrieval/phase2_chunking_*/REPORT.md
+!reports/retrieval/phase2_chunking_*/chunking_specs.json
+!reports/retrieval/phase2_chunking_*/deltas.json
+!reports/retrieval/phase2_chunking_*/raw_results.json
 # Issue #237 — harness aggregate snapshots. Generated per ``run_harness``
 # invocation; untracked by default to keep developer working trees
 # clean. The leaderboard time-series lives under reports/history/
