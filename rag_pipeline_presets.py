@@ -62,6 +62,16 @@ PIPELINE_CONFIG_KEYS = (
     # raise: if kiwipiepy is missing the dispatch silently falls back to
     # regex. See ``korean_lexicon.kiwi_tokens``.
     "bm25_tokenizer",
+    # Issue #988 / ADR 0057 — string discriminator for the BM25 backend
+    # implementation. "okapi" (default) uses ``rank_bm25.BM25Okapi`` —
+    # ADR 0001 byte-identical preservation. "bm25s" opts into the
+    # numpy-sparse-matrix ``bm25s.BM25(method="robertson")`` backend
+    # (100-500x faster at scale, ranking 100% identical to BM25Okapi on
+    # the same corpus tokens — pre-validated). Never-raise: if bm25s is
+    # missing the dispatch raises RuntimeError at build time with an
+    # install hint (the caller already gates on retrieval_backend="hybrid"
+    # OR opt-in ablation row).
+    "bm25_backend",
     # Issue #396 — string discriminator for the query-side rewrite stage.
     # "identity" (default) preserves the ADR 0001 naive_baseline invariant;
     # "hyde" opts into Hypothetical Document Embeddings (LLM rewrite of
@@ -102,6 +112,10 @@ PIPELINE_PRESETS: dict[str, dict[str, Any]] = {
         # but the explicit value documents intent + protects future changes
         # that might enable BM25 here.
         "bm25_tokenizer": "regex",
+        # ADR 0057 invariant — naive_baseline MUST stay at "okapi" BM25
+        # backend. rank-bm25 BM25Okapi is the ADR 0001 byte-identical
+        # baseline; bm25s is opt-in per-row in eval/config.yaml.
+        "bm25_backend": "okapi",
         # ADR 0001 invariant — naive_baseline MUST stay at identity. Any
         # change here breaks the bit-identical top-K golden test.
         "query_expansion": "identity",
@@ -125,6 +139,10 @@ PIPELINE_PRESETS: dict[str, dict[str, Any]] = {
         # agentic_full default is regex so existing "full" eval row stays
         # byte-equal; the new "full_kiwi" row sets this to "kiwi".
         "bm25_tokenizer": "regex",
+        # ADR 0057 — bm25s backend is opt-in per-row in eval/config.yaml.
+        # agentic_full default is okapi so existing "full" eval row stays
+        # byte-equal; the new "full_bm25s" row sets this to "bm25s".
+        "bm25_backend": "okapi",
         # ADR 0023 — query expansion is opt-in per-row in eval/config.yaml.
         # agentic_full default is identity so the existing "full" eval row
         # stays byte-equal; the new "full_hyde" row sets this to "hyde".
@@ -147,6 +165,9 @@ PIPELINE_PRESETS: dict[str, dict[str, Any]] = {
         "rrf_k": RRF_K,
         "bm25_stopword_profile": "shared",
         "bm25_tokenizer": "regex",
+        # ADR 0057 — bm25s backend is opt-in per-row; default okapi keeps
+        # agentic_full_llm byte-equal with the existing eval rows.
+        "bm25_backend": "okapi",
         "query_expansion": "identity",
         "comparison_balance": dict(DEFAULT_COMPARISON_BALANCE),
         "description": "agentic_full retrieval; LLM-synthesized summary under ADR 0011 guard.",
@@ -170,6 +191,9 @@ PIPELINE_PRESETS: dict[str, dict[str, Any]] = {
         # ADR 0031 invariant — keep regex so the agent_react eval row
         # does not conflate tokenizer change with agent-loop effect.
         "bm25_tokenizer": "regex",
+        # ADR 0057 invariant — keep okapi so the agent_react eval row
+        # does not conflate BM25 backend change with agent-loop effect.
+        "bm25_backend": "okapi",
         # ADR 0023 — identity default preserves retrievals comparability
         # with agentic_full baseline (agent adds planning, not expansion).
         "query_expansion": "identity",
@@ -203,6 +227,8 @@ PIPELINE_PRESETS: dict[str, dict[str, Any]] = {
         "rrf_k": RRF_K,
         "bm25_stopword_profile": "shared",
         "bm25_tokenizer": "regex",
+        # ADR 0057 — every preset declares bm25_backend explicitly (default okapi).
+        "bm25_backend": "okapi",
         "query_expansion": "identity",
         "description": (
             "Single top-1 dense chunk, no rerank or verifier retry — "
@@ -271,6 +297,14 @@ VALID_BM25_STOPWORD_PROFILES = {"shared", "bm25_extra"}
 # 외래어 POS filter). Missing kiwipiepy → silent fallback to regex,
 # enforced by `korean_lexicon.kiwi_tokens` returning ``None``.
 VALID_BM25_TOKENIZERS = {"regex", "kiwi", "mecab", "khaiii"}
+# Issue #988 / ADR 0057 — additive BM25 backend discriminator.
+# "okapi" (default) = ``rank_bm25.BM25Okapi`` (pure Python, base requirements.txt).
+# "bm25s" = ``bm25s.BM25(method="robertson", k1=1.5, b=0.75)`` (numpy sparse,
+# opt-in requirements-bm25s.txt). Pre-validated: robertson produces ranking
+# 100% identical to BM25Okapi on the same corpus tokens (absolute scores
+# differ via IDF treatment but RRF fusion uses only ordering). Default
+# "okapi" preserves ADR 0001 naive_baseline invariant + back-compat.
+VALID_BM25_BACKENDS = {"okapi", "bm25s"}
 # Issue #561 / ADR 0031 valid-set expansion: "mecab" (python-mecab-ko /
 # konlpy.tag.Mecab) and "khaiii" (Khaiii C++ binding) added as opt-in
 # ablation tokenizers. Both have the same never-raise contract as "kiwi":
@@ -337,6 +371,15 @@ def resolve_pipeline_config(
     if bm25_tokenizer not in VALID_BM25_TOKENIZERS:
         choices = ", ".join(sorted(VALID_BM25_TOKENIZERS))
         raise ValueError(f"bm25_tokenizer must be one of: {choices}")
+    # Issue #988 / ADR 0057 — bm25_backend validation. Env-var fallback
+    # `BIDMATE_BM25_BACKEND` is read in `rag_retrieval.get_or_build_bm25`
+    # when this config key is unset; config-key takes precedence so per-
+    # ablation-row overrides (e.g., `full_bm25s` row in eval/config.yaml)
+    # work without env mutation.
+    bm25_backend = str(config.get("bm25_backend") or "okapi").lower()
+    if bm25_backend not in VALID_BM25_BACKENDS:
+        choices = ", ".join(sorted(VALID_BM25_BACKENDS))
+        raise ValueError(f"bm25_backend must be one of: {choices}")
     query_expansion = str(config.get("query_expansion") or "identity").lower()
     if query_expansion not in VALID_QUERY_EXPANSIONS:
         choices = ", ".join(sorted(VALID_QUERY_EXPANSIONS))
@@ -353,5 +396,6 @@ def resolve_pipeline_config(
     config["rrf_k"] = rrf_k
     config["bm25_stopword_profile"] = bm25_stopword_profile
     config["bm25_tokenizer"] = bm25_tokenizer
+    config["bm25_backend"] = bm25_backend
     config["query_expansion"] = query_expansion
     return config

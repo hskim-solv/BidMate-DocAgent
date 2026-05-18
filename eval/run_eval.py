@@ -145,6 +145,9 @@ def normalize_run_config(run: dict[str, Any]) -> dict[str, Any]:
         "rrf_k": int(config.get("rrf_k", RRF_K)),
         "bm25_stopword_profile": str(config.get("bm25_stopword_profile", "shared")),
         "bm25_tokenizer": str(config.get("bm25_tokenizer", "regex")),
+        # Issue #988 / ADR 0057 — bm25_backend metadata for measurement
+        # surface. Default `okapi` keeps existing summaries byte-equal.
+        "bm25_backend": str(config.get("bm25_backend", "okapi")),
     }
 
 
@@ -731,6 +734,10 @@ def summarize_run(
         "rrf_k": int(run_config.get("rrf_k", RRF_K)),
         "bm25_stopword_profile": str(run_config.get("bm25_stopword_profile", "shared")),
         "bm25_tokenizer": str(run_config.get("bm25_tokenizer", "regex")),
+        # Issue #988 / ADR 0057 — bm25_backend per-run metadata so
+        # `full_bm25s` row's bm25s usage is visible alongside the parity
+        # measurements in eval_summary.json.
+        "bm25_backend": str(run_config.get("bm25_backend", "okapi")),
         **metric_block(case_results),
         "by_query_type": {},
         "by_slice": {},
