@@ -60,3 +60,11 @@ ADR 0031 이 이 ADR 의 hybrid BM25 표면 위에 직교 분석 변형으로 `b
 - **Weighted dense + BM25 fusion** — viable 하나 이종 score scale 에 가중치 둘 선택·방어 필요. RRF 가 그 튜닝 표면 완전 제거; RRF 가 너무 coarse 증명되면 follow-up RRF-k sweep 이 가중치 재튜닝보다 저렴
 - **기존 Jaccard lexical scorer 를 BM25 로 교체** — Reject: `naive_baseline` 동작 silent 변경(ADR 0001 위반) + BM25 효과를 preserved-baseline 계약과 분리 불가
 - **SPLADE / ColBERT late interaction** — 범위 외; hybrid_bm25 가 여전히 측정 가능한 real-data 갭 남기면 재고
+
+## BGE-M3 ablation closeout
+
+(2026-05-19, [ADR 0058](0058-phase35-mode-winner.md) / PR #966 / issue #957)
+
+본 ADR 라인 59 의 "BGE-M3 sparse 채널 deferred" 가 Phase 3.5 PR #966 의 kordoc full-corpus 측정 (n=221, 3 variants × paired CI 95%) 으로 closeout. 결정은 [ADR 0058](0058-phase35-mode-winner.md) 에서 finalize — 본 ADR 의 `retrieval_backend` knob 인터페이스 + default 정책은 ADR 0058 의 시나리오 선택에 따름. 두 시나리오 모두 본 ADR 의 hybrid knob 자체는 retain (Scenario A = default `hybrid`, Scenario B = default `dense` + hybrid 는 multi_hop knob 으로 문서화).
+
+Status 는 `accepted` 유지 — closeout 은 deferred ablation 의 측정 완료 sync only, runtime 동작 변경 0.
