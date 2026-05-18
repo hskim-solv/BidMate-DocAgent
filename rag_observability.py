@@ -196,7 +196,10 @@ def _build_langfuse_backend() -> TraceBackend:
         client = Langfuse(
             public_key=public_key,
             secret_key=secret_key,
-            host=os.environ.get(ENV_LANGFUSE_HOST) or DEFAULT_LANGFUSE_HOST,
+            # Langfuse 4.x docs recommend `base_url=`; `host=` remains a
+            # backwards-compatible alias today but may be deprecated in
+            # a future major. Verified against langfuse 4.6.1 (issue #976).
+            base_url=os.environ.get(ENV_LANGFUSE_HOST) or DEFAULT_LANGFUSE_HOST,
         )
     except Exception as exc:
         return _make_unavailable(f"backend_init_error:langfuse:{type(exc).__name__}")
