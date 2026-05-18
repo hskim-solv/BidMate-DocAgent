@@ -128,7 +128,19 @@ def embed_texts(
                 cache_key = (model_name, local_only or backend == "auto", adapter_path)
                 model = MODEL_CACHE.get(cache_key)
                 if model is None:
-                    model = SentenceTransformer(model_name)
+                    # ``BIDMATE_TORCH_DEVICE`` is an opt-in device override
+                    # (Phase 3.5 closeout, issue #957). Default unset =
+                    # sentence-transformers' own auto-detect (CUDA → MPS
+                    # → CPU). Force ``cpu`` on Apple Silicon when MPS
+                    # backend hangs on large indexes (BGE-M3 26k chunks
+                    # observed an indefinite MPSStream::synchronize on
+                    # a 16GB MBP — CPU is ~2x slower per batch but
+                    # predictable and avoids unified-memory thrashing).
+                    torch_device = os.environ.get("BIDMATE_TORCH_DEVICE", "").strip()
+                    st_kwargs: dict[str, Any] = {}
+                    if torch_device:
+                        st_kwargs["device"] = torch_device
+                    model = SentenceTransformer(model_name, **st_kwargs)
                     if adapter_path:
                         # PEFT is lazy-imported (optional dep in
                         # requirements-lora.txt) — the hashing-only CI
@@ -140,12 +152,28 @@ def embed_texts(
                         adapted = PeftModel.from_pretrained(underlying, adapter_path)
                         model[0].auto_model = adapted.merge_and_unload()
                     MODEL_CACHE[cache_key] = model
-            vectors = model.encode(
-                texts,
-                convert_to_numpy=True,
-                normalize_embeddings=True,
-                show_progress_bar=False,
-            )
+            # ``BIDMATE_ST_BATCH_SIZE`` is an opt-in memory-pressure knob
+            # for large indexes on memory-constrained hardware (Phase 3.5
+            # closeout, issue #957). Default is sentence-transformers' own
+            # default (32) which is fine for short corpora but for the
+            # real100_m3 BGE-M3 build (26k chunks, ~196 avg tokens) it
+            # causes MPS unified-memory pressure + swap thrash on 16GB
+            # MBPs. ``BIDMATE_ST_BATCH_SIZE=8`` cuts the peak ~4x with
+            # no impact on the produced vectors (sentence-transformers
+            # is deterministic across batch boundaries by construction —
+            # each text is encoded independently).
+            st_batch_size = os.environ.get("BIDMATE_ST_BATCH_SIZE", "").strip()
+            encode_kwargs: dict[str, Any] = {
+                "convert_to_numpy": True,
+                "normalize_embeddings": True,
+                "show_progress_bar": False,
+            }
+            if st_batch_size:
+                try:
+                    encode_kwargs["batch_size"] = int(st_batch_size)
+                except ValueError:
+                    pass
+            vectors = model.encode(texts, **encode_kwargs)
             return EmbeddingResult(
                 vectors=np.asarray(vectors, dtype=np.float32),
                 backend="sentence-transformers",

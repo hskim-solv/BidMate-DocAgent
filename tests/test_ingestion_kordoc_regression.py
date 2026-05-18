@@ -317,5 +317,134 @@ class PrimeKordocBatchesTest(unittest.TestCase):
             self.assertNotIn(str(pdf_path), cmd)
 
 
+class KordocCacheDirBypassTest(unittest.TestCase):
+    """``BIDMATE_KORDOC_CACHE_DIR`` env var bypass (Phase 3.5 closeout, #957).
+
+    Pins the cache-hit path that avoids the npx subprocess entirely when
+    every source file has a matching ``<stem>.md`` in the cache dir.
+    Backward-compat: cache miss + cache unset both leave subprocess
+    behavior unchanged (covered by existing tests above).
+    """
+
+    def setUp(self) -> None:
+        self._env_backup = {
+            "BIDMATE_KORDOC_CACHE_DIR": os.environ.get("BIDMATE_KORDOC_CACHE_DIR"),
+        }
+        os.environ.pop("BIDMATE_KORDOC_CACHE_DIR", None)
+
+    def tearDown(self) -> None:
+        for key, value in self._env_backup.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+
+    def test_full_cache_hit_bypasses_npx_subprocess(self) -> None:
+        # When every source path's stem has a matching .md in the cache,
+        # _kordoc_convert_batch returns cached content WITHOUT invoking
+        # ``subprocess.run``. This is the Phase 3.5 closeout path that
+        # turns 8-16h kordoc subprocess calls into a ~2-3min cache read.
+        from ingestion import _kordoc_convert_batch
+
+        with TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            cache_dir = tmp_path / "kordoc_cache"
+            cache_dir.mkdir()
+            # Two source files with stem-matched .md in cache.
+            src_a = tmp_path / "doc_a.hwp"
+            src_b = tmp_path / "doc_b.hwp"
+            src_a.touch()
+            src_b.touch()
+            (cache_dir / "doc_a.md").write_text(
+                "# Heading A\n\nBody of doc A.\n", encoding="utf-8"
+            )
+            (cache_dir / "doc_b.md").write_text(
+                "# Heading B\n\nBody of doc B.\n", encoding="utf-8"
+            )
+            os.environ["BIDMATE_KORDOC_CACHE_DIR"] = str(cache_dir)
+
+            # Sentinel: subprocess.run must NOT be called. If the bypass
+            # fails, ``run`` would be invoked and raise here.
+            def must_not_run(*args, **kwargs):  # type: ignore[no-untyped-def]
+                raise AssertionError(
+                    "subprocess.run must not be invoked on full cache hit"
+                )
+
+            with mock.patch.object(subprocess, "run", side_effect=must_not_run):
+                result = _kordoc_convert_batch([src_a, src_b])
+
+            self.assertEqual(set(result.keys()), {"doc_a", "doc_b"})
+            # Content is post-processed by the same pipeline (normalize_body_text),
+            # so we check the body survives (heading + body).
+            self.assertIn("doc A", result["doc_a"])
+            self.assertIn("doc B", result["doc_b"])
+
+    def test_partial_cache_hit_falls_through_to_subprocess(self) -> None:
+        # When the cache covers only SOME source paths, the bypass falls
+        # through to the npx subprocess (which extracts ALL files; partial-
+        # miss merging is not worth the complexity).
+        from ingestion import _kordoc_convert_batch
+
+        with TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            cache_dir = tmp_path / "kordoc_cache"
+            cache_dir.mkdir()
+            src_a = tmp_path / "cached.hwp"
+            src_b = tmp_path / "not_cached.hwp"
+            src_a.touch()
+            src_b.touch()
+            # Only cached.md is in the cache; not_cached.md is missing.
+            (cache_dir / "cached.md").write_text("body", encoding="utf-8")
+            os.environ["BIDMATE_KORDOC_CACHE_DIR"] = str(cache_dir)
+
+            captured: list[list[str]] = []
+
+            def fake_run(cmd, **kwargs):  # type: ignore[no-untyped-def]
+                captured.append(list(cmd))
+                out_dir = Path(cmd[cmd.index("-d") + 1])
+                (out_dir / "cached.md").write_text("subprocess body A\n", encoding="utf-8")
+                (out_dir / "not_cached.md").write_text(
+                    "subprocess body B\n", encoding="utf-8"
+                )
+                return subprocess.CompletedProcess(cmd, 0, "", "")
+
+            with mock.patch.object(shutil, "which", return_value="/usr/bin/npx"):
+                with mock.patch.object(subprocess, "run", side_effect=fake_run):
+                    result = _kordoc_convert_batch([src_a, src_b])
+
+            # Partial cache → subprocess was invoked (which extracted both).
+            self.assertEqual(len(captured), 1)
+            self.assertEqual(set(result.keys()), {"cached", "not_cached"})
+            # Both come from subprocess output (cache result was discarded
+            # on partial-hit fallback).
+            self.assertIn("subprocess body B", result["not_cached"])
+
+    def test_unset_env_var_uses_subprocess_path(self) -> None:
+        # Backward-compat: env var unset → no cache check, subprocess invoked.
+        from ingestion import _kordoc_convert_batch
+
+        with TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            src = tmp_path / "doc.hwp"
+            src.touch()
+            # No env var set (setUp pops it).
+            self.assertNotIn("BIDMATE_KORDOC_CACHE_DIR", os.environ)
+
+            captured: list[list[str]] = []
+
+            def fake_run(cmd, **kwargs):  # type: ignore[no-untyped-def]
+                captured.append(list(cmd))
+                out_dir = Path(cmd[cmd.index("-d") + 1])
+                (out_dir / "doc.md").write_text("subprocess body\n", encoding="utf-8")
+                return subprocess.CompletedProcess(cmd, 0, "", "")
+
+            with mock.patch.object(shutil, "which", return_value="/usr/bin/npx"):
+                with mock.patch.object(subprocess, "run", side_effect=fake_run):
+                    result = _kordoc_convert_batch([src])
+
+            self.assertEqual(len(captured), 1)
+            self.assertIn("subprocess body", result["doc"])
+
+
 if __name__ == "__main__":
     unittest.main()
