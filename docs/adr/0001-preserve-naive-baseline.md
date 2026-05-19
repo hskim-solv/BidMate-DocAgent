@@ -34,6 +34,12 @@ knob: [`rag_core.py`](../../rag_core.py) 의 `pipeline_cli_choices()` 가 프리
 - 두 코드 경로 유지 부담. CLI(`app.py`)·API(`api/main.py`)·`eval/run_eval.py` 모두 추상화 비용 부담
 - README headline 메트릭에 baseline-vs-full gap 을 명시해야 함 — 아니면 시스템이 실제보다 약해 보임
 
+## 보존 범위
+
+- **보존되는 것**: [`rag_core.py`](../../rag_core.py) 의 `pipeline_cli_choices()` 가 dispatch 하는 `naive_baseline` ranking 함수. 같은 입력 (query, corpus index) 에 같은 (chunk_id, score) 순위 산출.
+- **보존되지 않는 것**: 평가 corpus 와 golden expected outputs (예: `tests/data/naive_baseline_top_k.json`). corpus 자체가 변경되면 새 chunk_id 가 생성되고 golden 도 같이 drift — 이는 ranking 함수 byte-identity 와 독립적인 부수효과로 이 ADR 의 보존 범위 밖.
+- 이 구분은 ADR 0050 처럼 corpus 만 변경하는 후속 ADR 이 "baseline bit-identical" 을 주장할 때 의미가 모호하지 않도록 못박는다. ranking 알고리즘은 그대로, corpus 는 갈아도 OK — 둘은 다른 축.
+
 ## 기본 선택 재평가 기준 (ADR 0019, 통합)
 
 ADR 0019 는 "default 유지" 결정을 재검토하는 패턴을 확립했다. 그 ADR 은 여기서 Superseded; 재오픈 조건만 load-bearing 으로 남는다.
