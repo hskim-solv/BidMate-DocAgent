@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Claude Code PreToolUse hook for BidMate-DocAgent — ADR Verification template.
 #
+# Enforcement: block (exit 2 refuses Write of new ADR missing Verification section).
+# Classification rationale: refuses tool calls. See scripts/claude-hooks/README.md.
+#
 # Registered in `.claude/settings.json` with matcher `Edit|MultiEdit|Write`.
 # Fires before Claude writes/edits a file. Refuses Write calls that create
 # a *new* ADR file (``docs/adr/<NNNN>-*.md``) whose payload does not include
