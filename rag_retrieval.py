@@ -502,6 +502,16 @@ def retrieve_candidates(
         query_m3 = encoder.encode([query])
         q_sparse = query_m3.sparse[0] if query_m3.sparse else {}
         q_colbert = query_m3.colbert[0] if query_m3.colbert else np.zeros((0, 0), dtype=np.float32)
+        # Issue #1010 — per-chunk dequantization scale when the cache
+        # uses int8 storage. ``q_scale`` is the query's own scale (or
+        # 1.0 when the query encoder didn't quantize, which is the
+        # default since queries are tiny and recomputed per call).
+        q_scale = (
+            query_m3.colbert_scales[0]
+            if query_m3.colbert_scales
+            else 1.0
+        )
+        cache_scales = getattr(cache, "colbert_scales", None) or []
         # Score every chunk against the query on the two new channels.
         # Dense score is reused from the existing ``raw_cosine_by_idx``
         # path below — BGE-M3 dense vectors aren't re-routed through the
@@ -519,7 +529,14 @@ def retrieve_candidates(
                 if chunk_idx < len(cache.colbert)
                 else np.zeros((0, 0), dtype=np.float32)
             )
-            m3_colbert_by_chunk[chunk_id] = encoder.colbert_score(q_colbert, colbert_vec)
+            d_scale = (
+                cache_scales[chunk_idx]
+                if chunk_idx < len(cache_scales)
+                else 1.0
+            )
+            m3_colbert_by_chunk[chunk_id] = encoder.colbert_score(
+                q_colbert, colbert_vec, q_scale=q_scale, d_scale=d_scale
+            )
 
     vector_store = index.get("_vector_store")
     # #176 Stage 2c: drive dense scoring through ``VectorStore.query``
