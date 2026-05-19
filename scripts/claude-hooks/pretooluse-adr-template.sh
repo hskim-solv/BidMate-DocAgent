@@ -123,9 +123,10 @@ missing=""
 [[ "$has_marker" == "no" ]] && missing="${missing:+${missing},}marker"
 
 adr_basename=$(basename "$file_path")
-printf '%s|blocked|adr-template|%s|missing=%s\n' \
-  "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$adr_basename" "$missing" \
-  >> "$REPO_ROOT/.claude/.hook-fires.log" 2>/dev/null || true
+# v2-5field telemetry (ADR 0060).
+python3 "$REPO_ROOT/scripts/_governance.py" --emit-fire \
+  --outcome blocked --hook adr-template --category missing-verification \
+  --path "$adr_basename" --extra "missing=$missing" 2>/dev/null || true
 
 cat >&2 <<EOF
 ⛔ Refusing Write of new ADR \`$adr_basename\`: missing Verification surface.

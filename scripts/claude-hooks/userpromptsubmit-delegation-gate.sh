@@ -52,9 +52,10 @@ if printf '%s' "$prompt" | grep -qiE "리팩토링|refactor|구현해|implement|
 Trivial 변경(오타/단일 라인/단일 함수)은 직접 진행 OK.
 EOF
 
-  printf '%s|nudged|agent-delegation|<user-prompt>\n' \
-    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-    >> "$REPO_ROOT/.claude/.hook-fires.log" 2>/dev/null || true
+  # v2-5field telemetry (ADR 0060).
+  python3 "$REPO_ROOT/scripts/_governance.py" --emit-fire \
+    --outcome nudged --hook delegation-gate --category agent-delegation \
+    --path "<user-prompt>" 2>/dev/null || true
 fi
 
 exit 0

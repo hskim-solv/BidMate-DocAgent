@@ -34,9 +34,10 @@ fi
 # truth, also consumed by .githooks/pre-push and the §5b CI gate).
 if python3 "$REPO_ROOT/scripts/_governance.py" --is-load-bearing "$file_path" 2>/dev/null; then
   # Fire log for /self-review-quarterly governance ROI axis (issue #495).
-  # Gitignored via `.claude/*` in repo root .gitignore.
-  printf '%s|aware|load-bearing|%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$file_path" \
-    >> "$REPO_ROOT/.claude/.hook-fires.log" 2>/dev/null || true
+  # v2-5field format per ADR 0060 (issue #1039). Gitignored via `.claude/*`.
+  python3 "$REPO_ROOT/scripts/_governance.py" --emit-fire \
+    --outcome aware --hook loadbearing --category file-edit \
+    --path "$file_path" 2>/dev/null || true
   cat >&2 <<EOF
 ⚠️  Load-bearing file: $file_path
 

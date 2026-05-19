@@ -128,9 +128,10 @@ for part in re.split(r"[;&|\n]", sys.stdin.read()):
     exit 0
   fi
 
-  printf '%s|blocked|gh-pr-create-stacked|%s|on=%s\n' \
-    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$current_branch" "$stacked_on" \
-    >> "$REPO_ROOT/.claude/.hook-fires.log" 2>/dev/null || true
+  # v2-5field telemetry (ADR 0060) — hook field added to canonical pattern.
+  python3 "$REPO_ROOT/scripts/_governance.py" --emit-fire \
+    --outcome blocked --hook bash-guard --category gh-pr-create-stacked \
+    --path "$current_branch" --extra "on=$stacked_on" 2>/dev/null || true
 
   cat >&2 <<EOF
 ⛔ Refusing \`gh pr create\` without \`--base\`: current branch is stacked.
@@ -201,8 +202,10 @@ try:
 except Exception:
     pass' 2>/dev/null)
 
-printf '%s|blocked|gh-merge-delete-branch|%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$head_branch" \
-  >> "$REPO_ROOT/.claude/.hook-fires.log" 2>/dev/null || true
+# v2-5field telemetry (ADR 0060) — hook field added to canonical pattern.
+python3 "$REPO_ROOT/scripts/_governance.py" --emit-fire \
+  --outcome blocked --hook bash-guard --category gh-merge-delete-branch \
+  --path "$head_branch" 2>/dev/null || true
 
 cat >&2 <<EOF
 ⛔ Refusing \`gh pr merge --delete-branch\`: stacked dependents exist on \`$head_branch\`.

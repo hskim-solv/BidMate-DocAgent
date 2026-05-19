@@ -74,9 +74,10 @@ fi
 #   <ts>|<action>|<reason>|<path>
 # The exact line count is in stderr for the human; the ROI collector
 # only needs the action/reason counters.
-printf '%s|%s|memory-lines|%s\n' \
-  "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$action" "$file_path" \
-  >> "$REPO_ROOT/.claude/.hook-fires.log" 2>/dev/null || true
+# v2-5field telemetry (ADR 0060). action ∈ {ok, aware, blocked}.
+python3 "$REPO_ROOT/scripts/_governance.py" --emit-fire \
+  --outcome "$action" --hook memory-lines --category line-count \
+  --path "$file_path" 2>/dev/null || true
 
 if [[ "$action" = "blocked" ]]; then
   cat >&2 <<EOF

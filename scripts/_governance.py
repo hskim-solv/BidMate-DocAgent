@@ -61,6 +61,81 @@ THRESHOLDS: dict[str, int] = {
 }
 
 
+# ---------------------------------------------------------------------------
+# Outcome telemetry — v2-5field hook-fires.log emit (ADR 0060, issue #1039).
+#
+# Canonical fire-log format:
+#     <ts>|<outcome>|<hook>|<category>|<path>[|<extra>]
+#
+# emit_hook_fire() is the single helper used by both bash hooks (via the
+# `--emit-fire` CLI subcommand) and Python collectors. KNOWN_OUTCOMES /
+# KNOWN_HOOKS enforce typo guard so silent drift between hook scripts is
+# caught at emit time, not at analysis time.
+# ---------------------------------------------------------------------------
+
+KNOWN_OUTCOMES: set[str] = {
+    "aware",            # stderr warning only, exit 0
+    "blocked",          # exit 2 refuse
+    "bypassed",         # user explicitly skipped (--no-verify, env var)
+    "false_positive",   # hook fired but action was legitimate (manual tag)
+    "false_negative",   # hook should have fired but didn't (manual tag)
+    "nudged",           # UserPromptSubmit stdout context injection
+    "pipeline_start",   # stop-ship pipeline began
+    "pipeline_end",     # stop-ship pipeline completed (success or abort)
+    "ok",               # legacy memory-lines silent pass
+}
+
+KNOWN_HOOKS: set[str] = {
+    "bash-guard",
+    "loadbearing",
+    "memory-lines",
+    "adr-template",
+    "plan-slug-race",
+    "delegation-gate",
+    "stop-ship",
+}
+
+
+def emit_hook_fire(
+    outcome: str,
+    hook: str,
+    category: str = "",
+    path: str = "",
+    extra: str = "",
+    log_path: str | Path = ".claude/.hook-fires.log",
+) -> None:
+    """Append a v2-5field event to the canonical hook-fires log.
+
+    Format (ADR 0060):
+        <ts>|<outcome>|<hook>|<category>|<path>[|<extra>]
+
+    Raises ``ValueError`` on unknown outcome / hook (silent-drift guard).
+    I/O errors are swallowed — telemetry must never block the hook.
+    """
+    if outcome not in KNOWN_OUTCOMES:
+        raise ValueError(
+            f"unknown outcome: {outcome!r}; valid: {sorted(KNOWN_OUTCOMES)}"
+        )
+    if hook not in KNOWN_HOOKS:
+        raise ValueError(
+            f"unknown hook: {hook!r}; valid: {sorted(KNOWN_HOOKS)}"
+        )
+    import datetime as _dt
+    ts = _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    fields = [ts, outcome, hook, category, path]
+    if extra:
+        fields.append(extra)
+    line = "|".join(fields) + "\n"
+    p = Path(log_path)
+    try:
+        p.parent.mkdir(parents=True, exist_ok=True)
+        with p.open("a", encoding="utf-8") as f:
+            f.write(line)
+    except OSError:
+        # Telemetry must never block the hook. Swallow silently.
+        pass
+
+
 def _normalize(path: str) -> str:
     if path.startswith("./"):
         return path[2:]
@@ -482,6 +557,25 @@ def _cmd_threshold(key: str) -> int:
     return 0
 
 
+def _cmd_emit_fire(
+    outcome: str,
+    hook: str,
+    category: str,
+    path: str,
+    extra: str,
+    log_path: str,
+) -> int:
+    """CLI entrypoint for `--emit-fire` — wraps emit_hook_fire()."""
+    try:
+        emit_hook_fire(
+            outcome, hook, category, path, extra, log_path=log_path
+        )
+    except ValueError as exc:
+        sys.stderr.write(f"emit-fire: {exc}\n")
+        return 1
+    return 0
+
+
 def main() -> int:
     p = argparse.ArgumentParser(
         description="Load-bearing paths + numeric thresholds SSoT "
@@ -529,6 +623,39 @@ def main() -> int:
              "docs/adr/README.md (issue #803). Used by the pre-commit hook "
              "to shift-left the test_no_unlinked_adr_files_on_disk CI gate.",
     )
+    g.add_argument(
+        "--emit-fire", action="store_true",
+        help="Append a v2-5field event to .claude/.hook-fires.log "
+             "(ADR 0060). Requires --outcome and --hook. Optional: "
+             "--category --path --extra --fire-log.",
+    )
+    p.add_argument(
+        "--outcome",
+        help="Outcome enum for --emit-fire. "
+             f"One of {sorted(KNOWN_OUTCOMES)}.",
+    )
+    p.add_argument(
+        "--hook",
+        help="Hook id for --emit-fire. "
+             f"One of {sorted(KNOWN_HOOKS)}.",
+    )
+    p.add_argument(
+        "--category", default="",
+        help="Sub-category for --emit-fire (optional).",
+    )
+    p.add_argument(
+        "--path", default="",
+        help="Affected file/branch path for --emit-fire (optional).",
+    )
+    p.add_argument(
+        "--extra", default="",
+        help="Free-form extra metadata for --emit-fire (optional).",
+    )
+    p.add_argument(
+        "--fire-log", default=".claude/.hook-fires.log",
+        help="Override fire-log path (default: .claude/.hook-fires.log). "
+             "Used by tests; production hooks should not set this.",
+    )
     p.add_argument(
         "--readme-staged", action="store_true",
         help="When set with --check-adr-readme-parity, read README content "
@@ -572,6 +699,16 @@ def main() -> int:
             args.check_adr_readme_parity,
             readme_staged=args.readme_staged,
             readme_path=args.readme_path,
+        )
+    if args.emit_fire:
+        if not args.outcome or not args.hook:
+            sys.stderr.write(
+                "--emit-fire requires --outcome and --hook\n"
+            )
+            return 2
+        return _cmd_emit_fire(
+            args.outcome, args.hook, args.category,
+            args.path, args.extra, args.fire_log,
         )
     return 2
 
