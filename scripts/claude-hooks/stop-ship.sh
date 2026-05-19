@@ -193,6 +193,13 @@ stage_1_commit() {
   # Filter staged candidate paths through pre-commit's BLOCKED_PATTERNS.
   # We rely on `.githooks/pre-commit` as the actual second-line gate,
   # but pre-filter so we don't propose to stage obviously private files.
+  #
+  # NOTE (issue #1041): this case list is the **PRIVATE PATH EXCLUSION**
+  # (data/private files that must never reach origin), NOT a mirror of
+  # scripts/_governance.py::LOAD_BEARING_PATHS (= "needs 5b real-eval
+  # delta" surface). The two have different intent and must not be merged.
+  # When adding new private paths, update HERE; load-bearing entries do
+  # not belong in this exclusion.
   local files=()
   while IFS= read -r line; do
     [[ -z "$line" ]] && continue
