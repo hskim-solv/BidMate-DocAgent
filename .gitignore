@@ -23,12 +23,14 @@ venv/
 
 # Claude Code: local state (worktrees, transcripts, per-user permissions)
 # is ignored; the shared `.claude/settings.json` (hooks etc.) IS committed.
-# `.claude/skills/` is also committed — project-local skills shared across
-# clones and worktrees, alongside settings.json.
+# `.claude/skills/` and `.claude/agents/` are also committed — project-local
+# skills/agents shared across clones and worktrees, alongside settings.json.
 .claude/*
 !.claude/settings.json
 !.claude/skills/
 !.claude/skills/**
+!.claude/agents/
+!.claude/agents/**
 
 # Local/private source data
 data/files/
