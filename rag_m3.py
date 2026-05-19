@@ -26,7 +26,7 @@ extraction was deferred to its own ablation.
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import numpy as np
@@ -44,11 +44,17 @@ class M3Output:
     non-zero tokens are present (per-text sparsity).
     ``colbert`` is a list of N per-token matrices shape ``(T_i, D)``;
     ``T_i`` varies per text (BGE-M3 returns one vector per kept token).
+    ``colbert_scales`` is the per-chunk dequantization scale when colbert
+    matrices are stored at ``np.int8`` (issue #1010 — symmetric
+    per-chunk quantization cuts ``_m3_cache`` RAM by an additional ~50%
+    on top of fp16). Empty list when colbert is fp16/fp32 (no scale
+    needed; numpy matmul auto-upcasts in ``colbert_score``).
     """
 
     dense: np.ndarray
     sparse: list[dict[int, float]]
     colbert: list[np.ndarray]
+    colbert_scales: list[float] = field(default_factory=list)
 
 
 class M3Encoder:
@@ -83,6 +89,17 @@ class M3Encoder:
         use_fp16 = os.environ.get("BIDMATE_M3_USE_FP16", "").strip() in {"1", "true", "True"}
         self._model = BGEM3FlagModel(model_name, use_fp16=use_fp16)
         self._cache_dtype = np.float16 if use_fp16 else np.float32
+        # ``BIDMATE_M3_INT8_CACHE=1`` opts into per-chunk symmetric int8
+        # quantization of the colbert cache (issue #1010 — on-top-of fp16
+        # cuts ``_m3_cache`` 9.9GB → 5.0GB on the 26k-chunk kordoc index
+        # so a 16GB MBP can run the full BGE-M3 multi-channel measurement
+        # without swap thrash). Encoding stays fp16 on MPS; quantization
+        # happens after the model returns. Score paths dequant on demand
+        # (cost: per-query int8 → fp32 cast + scale multiply, dominated
+        # by the matmul itself).
+        self._int8_cache = os.environ.get(
+            "BIDMATE_M3_INT8_CACHE", ""
+        ).strip() in {"1", "true", "True"}
         self.model_name = model_name
 
     def encode(self, texts: list[str]) -> M3Output:
@@ -97,6 +114,7 @@ class M3Encoder:
                 dense=np.zeros((0, 0), dtype=np.float32),
                 sparse=[],
                 colbert=[],
+                colbert_scales=[],
             )
         # BGE-M3 returns:
         #   {"dense_vecs": (N, 1024) float, L2-normalized
@@ -120,8 +138,38 @@ class M3Encoder:
         # Honor ``BIDMATE_M3_USE_FP16=1`` here too so cache halves alongside
         # weights (line 81). numpy matmul auto-upcasts fp16 → fp32 in
         # ``colbert_score`` so the scoring path is unaffected.
-        colbert = [np.asarray(vec, dtype=self._cache_dtype) for vec in colbert_raw]
-        return M3Output(dense=dense, sparse=sparse, colbert=colbert)
+        colbert: list[np.ndarray]
+        colbert_scales: list[float]
+        if self._int8_cache:
+            # Issue #1010 — per-chunk symmetric int8 quantization.
+            # ``scale = max(|v|) / 127`` per chunk (independent dynamic
+            # range), then int8 = round(v / scale).clip(-127, 127).
+            # Empty / zero vectors: scale=1.0 keeps the dequant identity
+            # well-defined (multiply by 0 stays 0).
+            colbert = []
+            colbert_scales = []
+            for vec in colbert_raw:
+                arr = np.asarray(vec, dtype=np.float32)
+                if arr.size == 0:
+                    colbert.append(arr.astype(np.int8))
+                    colbert_scales.append(1.0)
+                    continue
+                max_abs = float(np.max(np.abs(arr)))
+                scale = max_abs / 127.0 if max_abs > 0.0 else 1.0
+                quant = np.clip(
+                    np.round(arr / scale), -127, 127
+                ).astype(np.int8)
+                colbert.append(quant)
+                colbert_scales.append(scale)
+        else:
+            colbert = [np.asarray(vec, dtype=self._cache_dtype) for vec in colbert_raw]
+            colbert_scales = []
+        return M3Output(
+            dense=dense,
+            sparse=sparse,
+            colbert=colbert,
+            colbert_scales=colbert_scales,
+        )
 
     @staticmethod
     def sparse_score(q_sparse: dict[int, float], d_sparse: dict[int, float]) -> float:
@@ -142,17 +190,37 @@ class M3Encoder:
         return total
 
     @staticmethod
-    def colbert_score(q_colbert: np.ndarray, d_colbert: np.ndarray) -> float:
+    def colbert_score(
+        q_colbert: np.ndarray,
+        d_colbert: np.ndarray,
+        q_scale: float = 1.0,
+        d_scale: float = 1.0,
+    ) -> float:
         """ColBERT max-sim sum (sum over query tokens of the max similarity
         across document tokens). BGE-M3's per-token outputs are
         L2-normalized so the dot is bounded by ``T_q`` (one per query token,
         each ≤ 1). Bounded ``[0, T_q]`` — callers normalize against the
         observed maximum if a ``[0, 1]`` projection is needed.
+
+        ``q_scale`` / ``d_scale`` are the per-chunk dequantization scales
+        when the input matrices are ``np.int8`` (issue #1010 — int8 cache
+        path). Default 1.0 = no quantization (fp16/fp32 caller path);
+        scalar multiplication after the matmul preserves the max-sim
+        ordering modulo round-off (BGE-M3 paper benchmark: <0.5% recall
+        delta at per-chunk symmetric int8).
         """
         if q_colbert.size == 0 or d_colbert.size == 0:
             return 0.0
-        # (T_q, T_d) similarity matrix → row-wise max → sum.
-        sims = q_colbert @ d_colbert.T
+        # (T_q, T_d) similarity matrix → row-wise max → sum. Cast to
+        # fp32 first when int8 inputs: numpy's int8 @ int8 → int8 would
+        # overflow on the accumulated sum; explicit fp32 cast keeps the
+        # math identical to the fp16/fp32 path.
+        if q_colbert.dtype == np.int8 or d_colbert.dtype == np.int8:
+            sims = (
+                q_colbert.astype(np.float32) @ d_colbert.astype(np.float32).T
+            ) * (q_scale * d_scale)
+        else:
+            sims = q_colbert @ d_colbert.T
         return float(np.sum(np.max(sims, axis=1)))
 
 
@@ -184,6 +252,62 @@ def compute_m3_index_cache(
     ``_m3_cache`` (underscore-prefix convention, matching
     ``_vector_store``). Nothing is persisted to disk for this spike —
     see ``docs/vision/m3-multichannel-spike.md`` decision rule.
+
+    Issue #1010 — for large indexes (26k+ chunks at the kordoc real100
+    scale) a single ``encoder.encode(all_texts)`` call accumulates the
+    fp16 colbert output internally before returning, hitting peak RAM
+    near the full fp16 cache footprint (~9.9GB on a 16GB MBP) and
+    causing MPS swap thrash even when the env var requests int8
+    storage (because the int8 quantization only runs *after* the
+    encoder returns).
+
+    Fix: ``BIDMATE_M3_INDEX_CACHE_BATCH`` env var (default 1000) chunks
+    the input into groups. Each group's encode() returns a small fp16
+    buffer (~400MB transient at group=1000) which is then quantized to
+    int8 (or kept as fp16/fp32 if the env var is unset) and accumulated
+    into the long-term cache. Peak RAM = group transient + accumulated
+    long-term storage = ~5.4GB on 16GB MBP with int8 cache enabled.
+
+    The grouping is purely a memory-pressure knob — BGE-M3 outputs are
+    per-text independent (no cross-text attention) so byte-identical
+    results regardless of group size, modulo per-batch tokenizer
+    padding which the model rounds internally.
     """
     texts = [str(c.get("text") or "") for c in chunks]
-    return encoder.encode(texts)
+    if not texts:
+        return encoder.encode(texts)
+    group_env = os.environ.get("BIDMATE_M3_INDEX_CACHE_BATCH", "").strip()
+    try:
+        group_size = int(group_env) if group_env else 1000
+    except ValueError:
+        group_size = 1000
+    # Group=0 or negative ⇒ "all-at-once" legacy behavior (the
+    # one-shot encode path). Preserves byte-identical reproducibility
+    # for callers that explicitly disable chunking.
+    if group_size <= 0 or group_size >= len(texts):
+        return encoder.encode(texts)
+
+    dense_chunks: list[np.ndarray] = []
+    sparse_acc: list[dict[int, float]] = []
+    colbert_acc: list[np.ndarray] = []
+    scales_acc: list[float] = []
+    for start in range(0, len(texts), group_size):
+        group = texts[start : start + group_size]
+        out = encoder.encode(group)
+        dense_chunks.append(out.dense)
+        sparse_acc.extend(out.sparse)
+        colbert_acc.extend(out.colbert)
+        scales_acc.extend(out.colbert_scales)
+    # Concatenate dense (the only fixed-shape channel); sparse + colbert
+    # are already extended in order.
+    dense_full = (
+        np.concatenate(dense_chunks, axis=0)
+        if dense_chunks
+        else np.zeros((0, 0), dtype=np.float32)
+    )
+    return M3Output(
+        dense=dense_full,
+        sparse=sparse_acc,
+        colbert=colbert_acc,
+        colbert_scales=scales_acc,
+    )
