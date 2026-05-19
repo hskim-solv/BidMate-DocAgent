@@ -37,6 +37,16 @@
           }
         ]
       }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash scripts/claude-hooks/userpromptsubmit-delegation-gate.sh"
+          }
+        ]
+      }
     ]
   }
 }
