@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # Claude Code PreToolUse hook for BidMate-DocAgent (issue #720).
 #
+# Enforcement: graduated (awareness ≥AWARE_THRESHOLD, block ≥BLOCK_THRESHOLD).
+# Classification rationale: dual-mode — stderr warning then exit 2 refuse.
+# See scripts/claude-hooks/README.md for the full enforcement taxonomy.
+#
 # Registered in `.claude/settings.json` with matcher `Edit|MultiEdit|Write`.
 # Fires only when the edit target is a `MEMORY.md` index file. Counts the
 # *resulting* line count (existing file lines OR Write payload lines) and:

@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # Claude Code PreToolUse hook for BidMate-DocAgent.
 #
+# Enforcement: awareness (stderr message only, never refuses tool call).
+# Classification rationale: NEVER blocks (line below); pure reminder layer.
+# See scripts/claude-hooks/README.md for the full enforcement taxonomy.
+#
 # Registered in `.claude/settings.json` with matcher `Edit|MultiEdit|Write`.
 # Fires before Claude modifies a file; prints a stderr awareness warning
 # when the target is a load-bearing path (per CLAUDE.md), reminding Claude

@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Claude Code PreToolUse hook — plan-slug race detector (issue #779).
 #
+# Enforcement: block (exit 2 refuses Write within 5-min cross-worktree window).
+# Classification rationale: refuses tool calls. See scripts/claude-hooks/README.md.
+#
 # Registered (user-globally) in `~/.claude/settings.json` with matcher
 # `Write`. Fires before Claude writes any file. Refuses to overwrite a
 # `~/.claude/plans/<slug>.md` that was last touched within the past 5
