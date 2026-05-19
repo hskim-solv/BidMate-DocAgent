@@ -3,7 +3,7 @@
 - **Status**: accepted (kordoc-corpus measurement landed 2026-05-19; Scenario A finalized)
 - **Date**: 2026-05-19 (Status accepted); 2026-05-18 (Status proposed)
 - **Deciders**: hskim
-- **Related**: [ADR 0001](0001-preserve-naive-baseline.md), [ADR 0010](0010-hybrid-bm25-dense-retrieval-rrf.md), [ADR 0021](0021-real-eval-axis-design.md), [ADR 0025](0025-spike-mode-m3-channels.md), [ADR 0032](0032-torch-26-unblock.md), [ADR 0049](0049-kordoc-replaces-pyhwp-backend.md), PR #966 (Phase 3.5 measurement), PR #956 (Phase 3, retracted), issue #957, issue #997
+- **Related**: [ADR 0001](0001-preserve-naive-baseline.md), [ADR 0010](0010-hybrid-bm25-dense-retrieval-rrf.md), [ADR 0021](0021-real-eval-axis-design.md), [ADR 0025](0025-spike-mode-m3-channels.md), [ADR 0032](0032-torch-26-unblock.md), [ADR 0049](0049-kordoc-replaces-pyhwp-backend.md), PR #966 (Phase 3.5 measurement), PR #956 (Phase 3, retracted), issue #957, issue #997, issue #1022 (m3 cloud-GPU follow-up)
 
 > **ADR number renumbered 0056 → 0057 → 0058** (2026-05-19) to avoid two concurrent collisions: ADR 0056 was merged via PR #987 (`rationality_judge`, issue #969) + ADR 0057 was merged via PR #988 (`bm25s additive backend`). Final number `0058` per ADR README.md "Reserve the next number with the CLI before drafting" convention.
 
@@ -55,7 +55,8 @@ Measurement: kordoc 26,376 chunks, n=221 cases, dense_m3 vs hybrid_bm25_k60_m3, 
 
 **Deferred** (m3 multi-channel question):
 - 16GB Apple Silicon unified memory cannot hold the BGE-M3 colbert cache for 26k chunks (per-token per-chunk vectors ≈ 10-15GB, plus model weights + activations → swap thrashing + system crash observed). Local-only m3 measurement infeasible.
-- Cloud-GPU one-off (Modal/RunPod ~$1, A10/T4 GPU expected <30 min): Φ deferred until interview demo or strong product motivation. No blocker for `agentic_full` default flip — m3 was always going to be opt-in for research per ADR 0010.
+- **50-doc subset confirmation (2026-05-19)**: Post-ADR-0058 attempt to run a 50-doc subset on-prem proxy build (`data/index/real50_m3`, ~13k chunks) stalled for 40m55s with 8GB swap pool fully consumed and ~12.5% CPU efficiency (swap-thrash dominated compute). Subset half-size did NOT halve wall-time → on-prem fallback strategy fails regardless of `BIDMATE_M3_USE_FP16=1` + `BIDMATE_M3_INT8_CACHE=1` tunings.
+- Cloud-GPU one-off (Modal/RunPod ~$1, A10/T4 GPU expected <30 min) — **tracked in [issue #1022](https://github.com/hskim-solv/BidMate-DocAgent/issues/1022)**. No blocker for `agentic_full` default flip — m3 was always going to be opt-in for research per ADR 0010.
 
 ## Alternatives considered
 
