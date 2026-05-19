@@ -268,5 +268,94 @@ class M3Fp16CacheRegressionTest(unittest.TestCase):  # pragma: no cover — opt-
         np.testing.assert_allclose(s_fp32, s_fp16, rtol=1e-2)
 
 
+@unittest.skipUnless(
+    _flag_embedding_available(), "FlagEmbedding not installed — m3 spike test skipped"
+)
+class M3Int8CacheRegressionTest(unittest.TestCase):  # pragma: no cover — opt-in
+    """Issue #1010 — ``BIDMATE_M3_INT8_CACHE=1`` quantizes the colbert
+    cache to per-chunk symmetric int8 (additional ~50% RAM cut on top
+    of fp16). Encoding stays unchanged; storage layer only.
+
+    Tests assert: (1) cache dtype switches to int8 with scales list
+    populated; (2) dequantized colbert_score is numerically close to
+    the fp16 baseline (BGE-M3 paper: <0.5% recall delta).
+    """
+
+    def _encode_one(self, int8: bool):
+        import rag_m3
+        from rag_m3 import get_m3_encoder
+
+        # Force fp16 model + cache as the baseline path so the only
+        # delta between branches is int8 cache enablement.
+        os.environ["BIDMATE_M3_USE_FP16"] = "1"
+        cache_env = "BIDMATE_M3_INT8_CACHE"
+        original = os.environ.get(cache_env)
+        rag_m3._ENCODER_CACHE.clear()
+        try:
+            if int8:
+                os.environ[cache_env] = "1"
+            else:
+                os.environ.pop(cache_env, None)
+            encoder = get_m3_encoder()
+            return encoder.encode(["기관 A의 보안 통제 요구사항은?"])
+        finally:
+            if original is None:
+                os.environ.pop(cache_env, None)
+            else:
+                os.environ[cache_env] = original
+            rag_m3._ENCODER_CACHE.clear()
+
+    def test_colbert_cache_dtype_switches_to_int8(self) -> None:
+        out_fp = self._encode_one(int8=False)
+        out_q8 = self._encode_one(int8=True)
+        # fp16 path: dtype fp16, no scales.
+        self.assertEqual(out_fp.colbert[0].dtype, np.float16)
+        self.assertEqual(out_fp.colbert_scales, [])
+        # int8 path: dtype int8, one scale per chunk.
+        self.assertEqual(out_q8.colbert[0].dtype, np.int8)
+        self.assertEqual(len(out_q8.colbert_scales), len(out_q8.colbert))
+        self.assertGreater(out_q8.colbert_scales[0], 0.0)
+        # Shape preserved (only dtype changes).
+        self.assertEqual(out_fp.colbert[0].shape, out_q8.colbert[0].shape)
+
+    def test_colbert_score_parity_int8_vs_fp16(self) -> None:
+        """Self-score (chunk against itself) — int8 dequant scoring
+        should match the fp16 baseline within the ~1% rounding error
+        from per-chunk symmetric quantization. ``rtol=2e-2`` is a
+        conservative bound that still catches systemic scale-handling
+        bugs (e.g. forgetting to multiply by q_scale * d_scale)."""
+        from rag_m3 import M3Encoder
+
+        out_fp = self._encode_one(int8=False)
+        out_q8 = self._encode_one(int8=True)
+        s_fp = M3Encoder.colbert_score(out_fp.colbert[0], out_fp.colbert[0])
+        s_q8 = M3Encoder.colbert_score(
+            out_q8.colbert[0],
+            out_q8.colbert[0],
+            q_scale=out_q8.colbert_scales[0],
+            d_scale=out_q8.colbert_scales[0],
+        )
+        # Self-score is a sum-of-max-sim where each query token
+        # contributes ~1.0 (perfect self-match). The two paths should
+        # agree to within ~1-2% (per-chunk symmetric int8 quantization
+        # error compounds quadratically through the matmul + scale).
+        self.assertGreater(s_fp, 0.0)
+        np.testing.assert_allclose(s_fp, s_q8, rtol=2e-2)
+
+    def test_colbert_score_handles_default_scale_for_fp16_inputs(self) -> None:
+        """The scale parameters default to 1.0 so existing callers that
+        pass only ``(q_colbert, d_colbert)`` work unchanged — this is
+        the backward-compat contract for every call site that built
+        before issue #1010."""
+        from rag_m3 import M3Encoder
+
+        out_fp = self._encode_one(int8=False)
+        s_no_scale = M3Encoder.colbert_score(out_fp.colbert[0], out_fp.colbert[0])
+        s_explicit_1 = M3Encoder.colbert_score(
+            out_fp.colbert[0], out_fp.colbert[0], q_scale=1.0, d_scale=1.0
+        )
+        self.assertEqual(s_no_scale, s_explicit_1)
+
+
 if __name__ == "__main__":
     unittest.main()
