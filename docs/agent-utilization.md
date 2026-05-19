@@ -49,6 +49,46 @@
 
 각 follow-up = 1 PR / 1 concern. 본 PR 은 **전략 + 활성화 가이드**까지만.
 
+> **Status (2026-05-19)**: 위 4개 follow-up 은 PR #745-#748 로 모두 머지. 측정 인프라 가동 중. Q3-2026 보강은 아래 섹션.
+
+## Q3-2026 보강 컴포넌트
+
+외부 `agency-agents` (191개, MIT) 평가 결과 **0개 채택** 결론을 거쳐 자체 갭만 보강. PR #1013 (PR-A agent 2개) + PR #1015 (PR-B hook 1개) + 본 PR (PR-C 문서) 묶음.
+
+### 컴포넌트 × 5축 cover
+
+| 컴포넌트 | 종류 | 5축 cover | 트리거 | 위치 |
+|---|---|---|---|---|
+| `eval-to-adr-bridge` | agent | #3 (부분) + #4 (trigger→proposed lag) | `/retrieval-eval` Phase STOP / `/eval-framework-progressive-audit` phase / `make real-eval` 후 | [`.claude/agents/eval-to-adr-bridge.md`](../.claude/agents/eval-to-adr-bridge.md) |
+| `memory-curator` | agent | #5 (incremental gate) | 메모리 저장 직전 / `MEMORY.md` ≥180줄 / 사용자 명시 | [`.claude/agents/memory-curator.md`](../.claude/agents/memory-curator.md) |
+| `agent-delegation-gate` | hook | #2 (prompt-time delegation nudge) | UserPromptSubmit (모든 prompt, 키워드 매치 시 메시지 emit + fires.log append) | [`scripts/claude-hooks/userpromptsubmit-delegation-gate.sh`](../scripts/claude-hooks/userpromptsubmit-delegation-gate.sh) |
+
+### 갭 분석 (왜 이 3개만)
+
+외부 191개 검토 결과 채택 0개. 근본 원인은 enterprise persona vs research 1인 RAG 결 미스매치. 보편 원칙은 이미 `karpathy-guidelines` skill + CLAUDE.md 로 cover. 자체 갭만 1:1 보강:
+
+- **#2 위임 부족**: UserPromptSubmit hook 0개였음 → prompt 시점 위임 권유 강제 (CLAUDE.md "위임 기본값" 인용). `_self_review.py` `collect_governance_hooks` 가 4-field 포맷의 `agent-delegation` reason 카운터를 기존 `memory-lines` / `load-bearing` 옆에 자동 인식
+- **#3 자동화 ROI 일부 + #4 사이클 타임 trigger→proposed**: 측정 결과 → ADR 후보 변환 빈 칸. `reports/cycle_time.json` 에 `adr_proposed` 이벤트 + `trigger_to_proposal_seconds` append 로 정량화. PR open→merge / ADR proposed→accepted lag 는 `_self_review.py` git history 기반 사후 측정으로 이미 가동
+- **#5 메모리 위생**: `anthropic-skills:consolidate-memory` skill 은 batch consolidation (주기적). per-save dedup / type 균형 / stale 판단은 LLM judgment 필요한 incremental gate → agent 영역
+
+### 사용 가이드
+
+- `eval-to-adr-bridge`: 측정 후 ADR 작성 결정 단계에서 호출. commit / PR / Status 변경은 영역 외 (`ship-pr` skill 영역)
+- `memory-curator`: 메모리 저장 결정 게이트. batch 정리는 `consolidate-memory` skill 영역 (호출 권유만)
+- `agent-delegation-gate`: 자동 (사용자 prompt 시점). 항상 exit 0, fail-safe. 트리거 키워드 false-positive 시 description 어휘 조정
+
+### 30일 monitoring 항목
+
+- 각 컴포넌트 호출 빈도 — 0회 시 제거 검토, 양성 시 효과 검증
+- agent-delegation-gate false-positive 비율 (트리거 키워드 정확성)
+- Q3 self-review 5축 재진단 — 4△ → ✓ 회복 측정 (`/self-review-quarterly Q3-2026`)
+
+### Out-of-scope (별도 작업)
+
+- Agent/Skill 호출도 `.hook-fires.log` 에 기록 (PreToolUse matcher 를 `Agent|Skill|Task` 까지 확장) — 별도 PR
+- 트리거 키워드 어휘 조정 — 30일 monitoring 데이터 기반 별도 PR
+- ADR 작성 — 새 측정 표면 아님 (기존 surface 위 추가 컴포넌트)
+
 ## References
 
 - [`docs/self-review/Q2-2026.md`](self-review/Q2-2026.md) — 5축 진단 원본
