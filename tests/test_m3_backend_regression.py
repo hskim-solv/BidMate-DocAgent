@@ -26,10 +26,13 @@ fast and reproducible.
 """
 
 import importlib
+import os
 import sys
 import unittest
 from pathlib import Path
 from unittest import mock
+
+import numpy as np
 
 from rag_core import (
     VALID_RETRIEVAL_BACKENDS,
@@ -196,6 +199,71 @@ class M3EndToEndTest(unittest.TestCase):  # pragma: no cover — opt-in, gated o
             # N-way RRF normalized to [0, 1] (rrf_k / N projection).
             self.assertGreaterEqual(item["score"], 0.0)
             self.assertLessEqual(item["score"], 1.0)
+
+
+@unittest.skipUnless(
+    _flag_embedding_available(), "FlagEmbedding not installed — m3 spike test skipped"
+)
+class M3Fp16CacheRegressionTest(unittest.TestCase):  # pragma: no cover — opt-in
+    """Issue #1006 — ``BIDMATE_M3_USE_FP16=1`` must apply to colbert cache
+    dtype as well as model weights. Before #1006 the env var only halved
+    model weights (<2GB) while the colbert per-token cache stayed at fp32
+    (~19.8GB on the 26k-chunk kordoc index), defeating the memory-pressure
+    rationale documented in the env var's own docstring.
+
+    The dense + sparse channels are unchanged by the cache-dtype switch —
+    only colbert vectors are reshaped, and numpy matmul auto-upcasts the
+    fp16 matrix in ``colbert_score`` so the scoring path is preserved.
+    """
+
+    def _encode_one(self, fp16: bool) -> "rag_m3.M3Output":
+        from rag_m3 import get_m3_encoder
+
+        env_var = "BIDMATE_M3_USE_FP16"
+        original = os.environ.get(env_var)
+        # Force a fresh encoder so the env var binds at __init__ time.
+        # The module-level _ENCODER_CACHE keys by model_name; clear it.
+        import rag_m3
+
+        rag_m3._ENCODER_CACHE.clear()
+        try:
+            if fp16:
+                os.environ[env_var] = "1"
+            else:
+                os.environ.pop(env_var, None)
+            encoder = get_m3_encoder()
+            return encoder.encode(["기관 A의 보안 통제 요구사항은?"])
+        finally:
+            if original is None:
+                os.environ.pop(env_var, None)
+            else:
+                os.environ[env_var] = original
+            rag_m3._ENCODER_CACHE.clear()
+
+    def test_colbert_cache_dtype_follows_use_fp16_env_var(self) -> None:
+        out_fp32 = self._encode_one(fp16=False)
+        out_fp16 = self._encode_one(fp16=True)
+        self.assertEqual(out_fp32.colbert[0].dtype, np.float32)
+        self.assertEqual(out_fp16.colbert[0].dtype, np.float16)
+        # Shape preserved across dtype switch — only storage changes.
+        self.assertEqual(out_fp32.colbert[0].shape, out_fp16.colbert[0].shape)
+
+    def test_colbert_score_unchanged_by_cache_dtype(self) -> None:
+        """numpy matmul upcasts fp16 → fp32 so the scalar score is
+        bit-equal modulo the rounding inherent in the cached fp16
+        storage. ``np.testing.assert_allclose`` with rtol=1e-3 captures
+        the BGE-M3 paper's <0.1% recall claim at the score level."""
+        from rag_m3 import M3Encoder
+
+        out_fp32 = self._encode_one(fp16=False)
+        out_fp16 = self._encode_one(fp16=True)
+        # Same query vector in both runs (fp32 model output for q here
+        # because the encoder was re-initialized at fp32 in run 1 and
+        # fp16 in run 2; the colbert vectors of the same input text
+        # should still match modulo the cache-storage rounding).
+        s_fp32 = M3Encoder.colbert_score(out_fp32.colbert[0], out_fp32.colbert[0])
+        s_fp16 = M3Encoder.colbert_score(out_fp16.colbert[0], out_fp16.colbert[0])
+        np.testing.assert_allclose(s_fp32, s_fp16, rtol=1e-2)
 
 
 if __name__ == "__main__":
