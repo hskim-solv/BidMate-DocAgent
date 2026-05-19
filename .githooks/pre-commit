@@ -55,6 +55,13 @@ ALLOWED_PATTERNS=(
   # consumer of the ADR 0059 failure_category_counts surface.
   '^reports/real100/failure_distribution\.md$'
   '^reports/real100/failure_distribution\.aggregate\.json$'
+  # Issue #1021 — variance source inspection (script:
+  # scripts/measure_variance.py, ADR 0059 Issue J audit). N=5 same-HEAD
+  # runs → per-category mean/std/min/max + per-case stability + transition
+  # matrix. Aggregate-only (no per-case text); raw run snapshots under
+  # variance_runs/ stay ignored.
+  '^reports/real100/variance_measurement/REPORT\.md$'
+  '^reports/real100/variance_measurement/aggregate\.json$'
 )
 
 # Guard: ADR file deletion/rename (CLAUDE.md Prohibited).

@@ -138,6 +138,16 @@ reports/real100/history/*
 # of the surface introduced by ADR 0059 (PR #1001).
 !reports/real100/failure_distribution.md
 !reports/real100/failure_distribution.aggregate.json
+# Issue #1021 — variance source inspection (Issue J, ADR 0059 audit
+# follow-up, script: scripts/measure_variance.py). N=5 same-HEAD runs →
+# per-category mean/std/min/max + per-case stability + transition matrix.
+# Aggregate-only (no per-case query/answer text); raw per-run
+# eval_summary.json snapshots stay under variance_runs/ which remains
+# ignored under reports/real100/* (line 95 above).
+!reports/real100/variance_measurement/
+reports/real100/variance_measurement/*
+!reports/real100/variance_measurement/REPORT.md
+!reports/real100/variance_measurement/aggregate.json
 # Issue #896 + #897 — EDA figures (PNG + SVG). Same allowlist pattern
 # as cost_frontier.png above. corpus EDA: scripts/eda_real100.py /
 # RAG EDA: scripts/rag_pipeline_eda.py.
