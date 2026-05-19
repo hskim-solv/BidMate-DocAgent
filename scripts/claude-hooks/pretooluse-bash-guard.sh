@@ -49,20 +49,10 @@ if [[ -z "$cmd" ]]; then
 fi
 
 # Classify the gh subcommand once: "merge" | "create" | "".
-# We split on shell separators so `foo && gh pr create …` is still caught,
-# but anything inside quotes or comments is preserved by shlex.
-gh_subcommand=$(printf '%s' "$cmd" | python3 -c '
-import sys, shlex, re
-for part in re.split(r"[;&|\n]", sys.stdin.read()):
-    part = part.strip().lstrip("(")
-    try:
-        tokens = shlex.split(part)
-    except ValueError:
-        continue
-    if len(tokens) >= 3 and tokens[0] == "gh" and tokens[1] == "pr":
-        if tokens[2] in ("merge", "create"):
-            print(tokens[2]); break
-' 2>/dev/null)
+# Parsing extracted to scripts/claude-hooks/_bash_guard_parse.py (issue #1045)
+# so tests/test_bash_guard_adversarial.py can pin the false-negative surface.
+gh_subcommand=$(python3 "$REPO_ROOT/scripts/claude-hooks/_bash_guard_parse.py" \
+                  --detect-gh "$cmd" 2>/dev/null | tr -d '\n')
 
 if [[ -z "$gh_subcommand" ]]; then
   exit 0
@@ -73,19 +63,9 @@ if [[ "$gh_subcommand" == "create" ]]; then
   # Bypass: explicit --base is intentional. Catches both `--base X` and
   # `--base=X` forms. `--base main` is the documented escape for
   # "I really do want to flatten this onto main."
-  has_base=$(printf '%s' "$cmd" | python3 -c '
-import sys, shlex, re
-for part in re.split(r"[;&|\n]", sys.stdin.read()):
-    part = part.strip().lstrip("(")
-    try:
-        tokens = shlex.split(part)
-    except ValueError:
-        continue
-    if len(tokens) >= 3 and tokens[0] == "gh" and tokens[1] == "pr" and tokens[2] == "create":
-        if any(t == "--base" or t.startswith("--base=") for t in tokens[3:]):
-            print("yes"); break
-' 2>/dev/null)
-  if [[ "$has_base" == "yes" ]]; then
+  # Parsing extracted (issue #1045) — see _bash_guard_parse.py.
+  if python3 "$REPO_ROOT/scripts/claude-hooks/_bash_guard_parse.py" \
+       --has-base "$cmd" >/dev/null 2>&1; then
     exit 0
   fi
 

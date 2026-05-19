@@ -28,6 +28,7 @@ from pathlib import Path
 
 REPO = Path(__file__).parents[1]
 HOOK = REPO / "scripts" / "claude-hooks" / "pretooluse-bash-guard.sh"
+HOOK_HELPER = REPO / "scripts" / "claude-hooks" / "_bash_guard_parse.py"
 
 _GIT_ENV: dict[str, str] = {
     "GIT_AUTHOR_NAME": "t",
@@ -49,6 +50,11 @@ class TestPreToolUseBashGuard(unittest.TestCase):
         (self._tmp_repo / ".claude").mkdir(parents=True)
         (self._tmp_repo / "scripts" / "claude-hooks").mkdir(parents=True)
         shutil.copy(HOOK, self._tmp_repo / "scripts" / "claude-hooks" / HOOK.name)
+        # The hook delegates parsing to _bash_guard_parse.py (issue #1045).
+        # Copy it alongside so the temp REPO_ROOT resolves the helper.
+        shutil.copy(
+            HOOK_HELPER, self._tmp_repo / "scripts" / "claude-hooks" / HOOK_HELPER.name
+        )
         self._hook = self._tmp_repo / "scripts" / "claude-hooks" / HOOK.name
         self._fires_log = self._tmp_repo / ".claude" / ".hook-fires.log"
 
