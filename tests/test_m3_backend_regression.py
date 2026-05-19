@@ -216,15 +216,17 @@ class M3Fp16CacheRegressionTest(unittest.TestCase):  # pragma: no cover — opt-
     fp16 matrix in ``colbert_score`` so the scoring path is preserved.
     """
 
-    def _encode_one(self, fp16: bool) -> "rag_m3.M3Output":
+    def _encode_one(self, fp16: bool):
+        # Local imports — the test class is gated on
+        # ``_flag_embedding_available()`` so this branch only runs when
+        # FlagEmbedding is installed.
+        import rag_m3
         from rag_m3 import get_m3_encoder
 
         env_var = "BIDMATE_M3_USE_FP16"
         original = os.environ.get(env_var)
         # Force a fresh encoder so the env var binds at __init__ time.
         # The module-level _ENCODER_CACHE keys by model_name; clear it.
-        import rag_m3
-
         rag_m3._ENCODER_CACHE.clear()
         try:
             if fp16:
