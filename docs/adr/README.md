@@ -212,6 +212,11 @@ co-regression cannot pass undetected.
 [ADR 0007](./0007-issue-linked-branch-naming.md) lifts the issue↔branch
 convention from informal practice to a CI-enforced rule. Without 0007
 the rest of this index could not be maintained at scale.
+[ADR 0051](./0051-flat-root-module-layout.md) extends the same axis by
+codifying the *flat-root module layout* as the active organization
+convention — `src/` migration rejected because the ADR 0045 leaf DAG
+already captured the packaging benefit. Both 0007 and 0051 promote
+informal practice to a referenceable decision.
 
 #### Additive ablation surface — extend, don't replace (0009, 0010, 0011)
 
@@ -236,6 +241,51 @@ multi-axis judgment on top — both strictly additive (not gating).
 LangFuse / OpenTelemetry trace emission optional, pluggable, and
 fail-closed. It extends 0001, preserves 0003, reuses the 0006 and 0011
 backend pattern, and respects 0005's eval split.
+
+#### Real-data input layer — ingestion + corpus realism (0049, 0050)
+
+The Phase 2–5 retrieval-eval sequence (cluster below) only means
+something if the *input* is realistic.
+[ADR 0049](./0049-kordoc-replaces-pyhwp-backend.md) swaps the HWP
+backend from `pyhwp`/`hwp5` to `kordoc` (npm subprocess, Node 18+) and
+extends the swap to the PDF cover/TOC path; both flip independently and
+the `csv_text` fallback preserves the 0001 invariant offline (supersedes
+0036).
+[ADR 0050](./0050-m4a-axis-a-real-scale-v2-distractor-rebuild.md)
+rebuilds the axis-A annotation scale so synthetic doc-A/B/C carry
+100+ sections (was 9), removing the ceiling effect that silently
+saturated axis-A measurement. 0001 ranking byte-identity preserved;
+golden expected outputs drift with the corpus by design.
+
+#### Eval framework hardening — measurement self-defense (0052–0059)
+
+Once the eval surface itself becomes load-bearing, the next failure
+mode is the eval *measuring its own confirmation bias*. Eight ADRs
+harden the measurement layer against that:
+[ADR 0052](./0052-real-eval-hardcase-expansion-to-200.md) expands
+hardcase budget n=21 → n=221 (supersedes 0044).
+[ADR 0053](./0053-distinguishing-power-floor-ablations.md) adds
+falsifiable lower bounds (`random` retrieval + `single_chunk` preset)
+so "does retrieval pull weight?" gets a yes/no.
+[ADR 0054](./0054-conditional-on-answer-scorer-semantics.md) fixes the
+Goodhart trap where quality metrics returned vacuous 1.0 on the
+(unanswerable AND abstained AND no-evidence) path.
+[ADR 0055](./0055-claim-validator-as-pr-gate.md) reverses the
+`[ALLOW_REGRESSION]` escape into a `Claim:` PR gate that paired
+bootstrap CI must support (no symmetric `ALLOW_OVERCLAIM`).
+[ADR 0056](./0056-rationality-judge-measurement-surface.md) adds a
+trajectory-rationality judge across planner / retrieval / answer
+reasoning, reusing the 0006 backend pattern.
+[ADR 0057](./0057-bm25s-additive-backend.md) lands `bm25s` as an
+additive BM25 backend with 100 % ranking parity to the default (opt-in
+`bm25_backend: "bm25s"`).
+[ADR 0058](./0058-phase35-mode-winner.md) accepts Scenario A — switch
+default `retrieval_backend` from `dense` to `hybrid` for `agentic_full`
++ `metadata_first` presets (`chunk_recall@10 +0.052 SIG` on n=221
+kordoc 26k); `naive_baseline` stays `dense` per 0001.
+[ADR 0059](./0059-failure-mode-classifier-as-measurement-surface.md)
+adds a 7-category rule-based failure classifier so error attribution
+is auditable rather than folkloric.
 
 ### Dependency graph
 
