@@ -69,14 +69,20 @@ class M3Encoder:
                 "Install with `pip install -r requirements-m3.txt` "
                 "or use `retrieval_backend=hybrid`."
             ) from exc
-        # ``BIDMATE_M3_USE_FP16=1`` opts into half-precision weights — cuts
-        # peak RAM ~2x at the cost of <0.1% recall on the BGE-M3 paper
-        # benchmarks. Default fp32 preserves byte-identical reproducibility
-        # of every existing m3 result; the env var is for memory-constrained
-        # measurement (e.g. Phase 3.5 on 16GB MPS systems where the
-        # _m3_cache for 1k+ chunks would otherwise OOM-kill the process).
+        # ``BIDMATE_M3_USE_FP16=1`` opts into half-precision weights AND
+        # fp16 colbert cache storage — cuts peak RAM ~2x at the cost of
+        # <0.1% recall on the BGE-M3 paper benchmarks. Default fp32
+        # preserves byte-identical reproducibility of every existing m3
+        # result; the env var is for memory-constrained measurement (e.g.
+        # Phase 3.5 on 16GB MPS systems where the _m3_cache for 26k+ chunks
+        # at fp32 would otherwise OOM-kill the process). The cache dtype
+        # mirrors the model dtype because the colbert per-token vectors
+        # are the dominant footprint (issue #1006 evidence: 26k chunks ×
+        # ~196 avg tokens × 1024 dim × 4 bytes fp32 = 19.8GB, vs 9.9GB
+        # at fp16; the model weights themselves are <2GB regardless).
         use_fp16 = os.environ.get("BIDMATE_M3_USE_FP16", "").strip() in {"1", "true", "True"}
         self._model = BGEM3FlagModel(model_name, use_fp16=use_fp16)
+        self._cache_dtype = np.float16 if use_fp16 else np.float32
         self.model_name = model_name
 
     def encode(self, texts: list[str]) -> M3Output:
@@ -110,7 +116,11 @@ class M3Encoder:
         for sd in sparse_raw:
             sparse.append({int(tok): float(weight) for tok, weight in sd.items()})
         colbert_raw = raw.get("colbert_vecs") or []
-        colbert = [np.asarray(vec, dtype=np.float32) for vec in colbert_raw]
+        # Issue #1006 — colbert per-token cache dominates memory footprint.
+        # Honor ``BIDMATE_M3_USE_FP16=1`` here too so cache halves alongside
+        # weights (line 81). numpy matmul auto-upcasts fp16 → fp32 in
+        # ``colbert_score`` so the scoring path is unaffected.
+        colbert = [np.asarray(vec, dtype=self._cache_dtype) for vec in colbert_raw]
         return M3Output(dense=dense, sparse=sparse, colbert=colbert)
 
     @staticmethod
