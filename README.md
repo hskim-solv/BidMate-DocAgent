@@ -17,7 +17,7 @@
 
 ```text
 $ make ask
-python3 app.py --input_dir data/index --query "기관 A와 기관 B의 보안 요구사항 차이를 알려줘" --pipeline agentic_full
+python3 app.py --input_dir data/index --output_dir outputs --query "기관 A와 기관 B의 보안 요구사항 차이를 알려줘" --pipeline agentic_full
 
 INFO bidmate.rag_core: query_complete  status='supported'  query_type='comparison'
                                        latency_ms=5.79      retry_count=0
@@ -34,7 +34,7 @@ INFO bidmate.rag_core: query_complete  status='supported'  query_type='compariso
 ```
 
 - 두 기관이 **모두** 인용된 점이 핵심 — [comparison-aware balanced top-k](#key-technical-contribution--comparison-aware-balanced-top-k) 가 한쪽 문서 starvation 방지
-- 외부 API 호출 없음 (extractive). 5.79 ms 는 in-memory index, n=2 docs 실측
+- 외부 API 호출 없음 (extractive). 5.79 ms 는 in-memory index, n=2 docs 실측 — 대표 예시이며 `data/index` 전체(13-doc) 실행 시 출력·latency 상이 (hero 재현성 복원 추적: [issue #1102](https://github.com/hskim-solv/BidMate-DocAgent/issues/1102))
 - 5초 터미널 재생: `asciinema play docs/assets/demo.cast`. 풀 워크스루: [`docs/operations/deployment.md`](docs/operations/deployment.md#recording-the-demo-video)
 
 ## Live demo
