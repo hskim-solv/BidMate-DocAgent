@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 # Auto-ship Stop hook dispatcher for BidMate-DocAgent.
 #
+# Enforcement: pipeline (orchestrates 8-gate + 5-stage ship; not a tool-call gate).
+# Classification rationale: Stop-hook only fires after Claude reply ends; runs
+# its own external commands (git/gh/test) and can fail at any gate. Failure
+# does not refuse a tool call — it disarms and surfaces stderr.
+# See scripts/claude-hooks/README.md for the full enforcement taxonomy.
+#
 # Registered in `.claude/settings.json` as a Stop hook. Fires on every
 # Claude reply termination. The dominant case is no-op (no arm-file
 # present) — that path must complete in well under 100ms.
