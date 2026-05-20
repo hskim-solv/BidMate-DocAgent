@@ -22,7 +22,7 @@ closed-loop 위험은 private-100 표면에 구체적: 높은 `judge.agreement_w
 **평가자 ↔ 사람 agreement** 를 LLM 평가자의 calibration gate 로. 메커니즘:
 
 - 사람이 42-케이스 실데이터 표면의 stratified subset (20-30개) 을 `single_doc`, `comparison`, `follow_up`, `abstention` 쿼리 타입 가로질러 spot-label. 첫 iteration 은 pass 당 labeler 1명 충분 (inter-annotator κ deferred).
-- [`eval/judge_agreement.py`](../../eval/judge_agreement.py) 가 side-by-side CSV (`case_id, judge_status, human_status`) 받아 **Spearman ρ** + **Cohen κ** + 클래스별 confusion matrix 보고. 상태 어휘는 ADR 0006 `judge_status` 와 동일 `(supported, partial, insufficient)` 3종.
+- [`eval/judge_agreement.py`](../../eval/judges/judge_agreement.py) 가 side-by-side CSV (`case_id, judge_status, human_status`) 받아 **Spearman ρ** + **Cohen κ** + 클래스별 confusion matrix 보고. 상태 어휘는 ADR 0006 `judge_status` 와 동일 `(supported, partial, insufficient)` 3종.
 - **임계: κ ≥ 0.6** ("substantial agreement", Landis & Koch 1977). κ 임계 미달 = 해당 pass 평가자 verdict 가 품질 신호로 미신뢰; reviewer 가 정제 프롬프트로 재실행하거나 직접 사람 리뷰로 폴백.
 - calibration 은 해당 *run-window 에서 평가자 신뢰 gate*, CI 단계 아님 — 라벨이 희소 + 임계 판단이 자동화 아닌 reviewer 판단.
 

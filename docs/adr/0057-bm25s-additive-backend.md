@@ -3,7 +3,7 @@
 - **Status**: proposed
 - **Date**: 2026-05-18
 - **Deciders**: hskim
-- **Related**: [ADR 0001](./0001-preserve-naive-baseline.md) (naive_baseline 불변식), [ADR 0010](./0010-hybrid-bm25-dense-retrieval-rrf.md) (하이브리드 BM25 기준선), [ADR 0011](./0011-llm-synthesis-as-additive-ablation.md) / [ADR 0013](./0013-observability-as-additive-pluggable-surface.md) / [ADR 0023](./0023-hyde-query-expansion.md) / [ADR 0031](./0031-bm25-korean-morphology-additive.md) (재사용되는 additive opt-in 백엔드 패턴), [issue #988](https://github.com/hskim-solv/BidMate-DocAgent/issues/988), context7 audit sweep 2026-05-18 (`~/.claude/plans/context7-fizzy-glade.md`)
+- **Related**: [ADR 0001](./0001-preserve-naive-baseline.md) (naive_baseline 불변식), [ADR 0010](./0010-hybrid-bm25-dense-retrieval-rrf.md) (하이브리드 BM25 기준선), [ADR 0011](./0011-llm-synthesis-as-additive-ablation.md) / [ADR 0013](./0013-observability-as-additive-pluggable-surface.md) / [ADR 0023](./0023-hyde-query-expansion-ablation.md) / [ADR 0031](./0031-bm25-korean-morphology-additive.md) (재사용되는 additive opt-in 백엔드 패턴), [issue #988](https://github.com/hskim-solv/BidMate-DocAgent/issues/988), context7 audit sweep 2026-05-18 (`~/.claude/plans/context7-fizzy-glade.md`)
 
 ## Context
 

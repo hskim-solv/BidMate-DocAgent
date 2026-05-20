@@ -104,7 +104,7 @@ unsupported 질문은 다음처럼 답한다.
 
 ### 1단계 — extractive (락 단계)
 
-[`rag_core.py`](../rag_core.py) 안의 함수가 verifier 출력을 그대로 status로 굳힌다.
+[`rag_core.py`](../../rag_core.py) 안의 함수가 verifier 출력을 그대로 status로 굳힌다.
 
 | 단계 | 함수 (rag_core.py) | 강제 내용 |
 |---|---|---|
@@ -116,7 +116,7 @@ unsupported 질문은 다음처럼 답한다.
 
 ### 2단계 — LLM synthesis (additive 단계, 옵션)
 
-[`rag_synthesis.py`](../rag_synthesis.py) `synthesize_answer`는 위 단계 출력을 입력으로 받아 `summary`와 `answer_text`만 다시 쓴다. 6개 게이트가 직렬로 실행되며 하나라도 실패하면 fallback flag와 reason을 메타에 박은 채 extractive 답변을 그대로 반환한다.
+[`rag_synthesis.py`](../../rag_synthesis.py) `synthesize_answer`는 위 단계 출력을 입력으로 받아 `summary`와 `answer_text`만 다시 쓴다. 6개 게이트가 직렬로 실행되며 하나라도 실패하면 fallback flag와 reason을 메타에 박은 채 extractive 답변을 그대로 반환한다.
 
 | Gate | Trigger | `fallback_reason` |
 |---|---|---|
@@ -137,9 +137,9 @@ unsupported 질문은 다음처럼 답한다.
 
 | 테스트 | 잠그는 contract |
 |---|---|
-| [`tests/test_llm_synthesis.py`](../tests/test_llm_synthesis.py) | 6개 게이트의 fallback reason 정확성, ADR 0011 additive 불변(extractive와 LLM 경로가 같은 `claims`/`citations` 반환) |
-| [`tests/test_partial_topic_grounding.py`](../tests/test_partial_topic_grounding.py) | partial-topic 통과 시 `status=partial` 강제 (#69 회귀 가드) |
-| [`tests/test_followup_entity_injection.py`](../tests/test_followup_entity_injection.py) | follow-up entity carryover에서 `status=partial` 비강등 |
+| [`tests/test_llm_synthesis.py`](../../tests/test_llm_synthesis.py) | 6개 게이트의 fallback reason 정확성, ADR 0011 additive 불변(extractive와 LLM 경로가 같은 `claims`/`citations` 반환) |
+| [`tests/test_partial_topic_grounding.py`](../../tests/test_partial_topic_grounding.py) | partial-topic 통과 시 `status=partial` 강제 (#69 회귀 가드) |
+| [`tests/test_followup_entity_injection.py`](../../tests/test_followup_entity_injection.py) | follow-up entity carryover에서 `status=partial` 비강등 |
 | `eval/run_eval.py`의 `score_answer_format` | `Answer Format Compliance` metric — claim 단위 citation 누락 시 점수 차감 |
 
 ### 평가 surface와의 연결

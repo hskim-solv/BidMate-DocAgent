@@ -79,7 +79,7 @@ CR=correct\_refusal / IA=incorrect\_answer / BP=boundary\_partial (ADR 0005 §ab
 
 ## Chunk-level retrieval (PR #147 + human-annotated gold from #175)
 
-이슈 [#147](https://github.com/hskim-solv/BidMate-DocAgent/issues/147)에서 추가된 chunk-level retrieval 메트릭 (recall@k / MRR / nDCG@10) — gold chunk 는 `expected_doc_ids` + `expected_terms` 휴리스틱으로 자동 유도되며 case 단위로 `gold_chunk_ids` override 가능 ([`eval/run_eval.py` `derive_gold_chunk_ids`](../eval/run_eval.py)).
+이슈 [#147](https://github.com/hskim-solv/BidMate-DocAgent/issues/147)에서 추가된 chunk-level retrieval 메트릭 (recall@k / MRR / nDCG@10) — gold chunk 는 `expected_doc_ids` + `expected_terms` 휴리스틱으로 자동 유도되며 case 단위로 `gold_chunk_ids` override 가능 ([`eval/run_eval.py` `derive_gold_chunk_ids`](../../eval/run_eval.py)).
 
 `naive_baseline` 기준 (2026-05-11 re-run, `eval/config.yaml` n=42):
 

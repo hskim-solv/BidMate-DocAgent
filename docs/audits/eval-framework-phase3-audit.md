@@ -174,7 +174,7 @@
 - Predecessor Phase 2 / 1 acceptance: 본 audit 미산출 (별 plan turn)
 - Item 1 코드 근거: [`eval/run_eval.py:975-989`](../../eval/run_eval.py) (token/cost capture from synthesis)
 - Item 2 코드 근거: [`eval/run_eval.py:829-890`](../../eval/run_eval.py) (`prediction_trace_payload` + `write_prediction_trace`)
-- Item 2 reference dump: [`scripts/dump_verifier_trajectories.py`](../../scripts/dump_verifier_trajectories.py) (Phase 1 Step 2.5 verifier-only)
+- Item 2 reference dump: `scripts/dump_verifier_trajectories.py` (Phase 1 Step 2.5 verifier-only)
 - Item 3 referenced rubric ADRs (비-rationality 비교용): [ADR 0006](../adr/0006-llm-judge-on-real-data-only.md) (answer-quality judge), [ADR 0012](../adr/0012-llm-judge-on-public-synthetic.md), [ADR 0033](../adr/0033-multihop-cross-section-eval-slice.md) (`multihop_valid` case validity)
 - Item 4 코드 근거: [`scripts/plot_cost_frontier.py`](../../scripts/plot_cost_frontier.py) (cost_usd field line 43, pareto line 196)
 - Sibling skill (다른 surface): [`.claude/skills/retrieval-eval/SKILL.md`](../../.claude/skills/retrieval-eval/SKILL.md) (4-phase retrieval measurement, PR #889)

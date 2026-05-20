@@ -26,10 +26,10 @@ BidMate-DocAgent의 "agentic"은 **metadata filter를 단계적으로 완화하�
 
 | 컴포넌트 | 파일 | 함수 |
 |---|---|---|
-| 단계 루프 | [`rag_core.py:1315`](../rag_core.py) | `_phase_retrieve_loop` |
-| 단계 시퀀스 생성 | [`rag_core.py:868`](../rag_core.py) | `metadata_stage_sequence` |
-| 반복 횟수 상한 | [`rag_core.py:278`](../rag_core.py) | `MAX_AGENT_ITERATIONS = 3` |
-| 단계 조건 판정 | [`rag_verifier.py`](../rag_verifier.py) | `verify_evidence` |
+| 단계 루프 | [`rag_core.py:1315`](../../rag_core.py) | `_phase_retrieve_loop` |
+| 단계 시퀀스 생성 | [`rag_core.py:868`](../../rag_core.py) | `metadata_stage_sequence` |
+| 반복 횟수 상한 | [`rag_core.py:278`](../../rag_core.py) | `MAX_AGENT_ITERATIONS = 3` |
+| 단계 조건 판정 | [`rag_verifier.py`](../../rag_verifier.py) | `verify_evidence` |
 
 ### 단계 시퀀스 (최대 3단계)
 
@@ -81,6 +81,6 @@ BidMate-DocAgent의 "agentic"은 **metadata filter를 단계적으로 완화하�
 
 ## 참고
 
-- 파이프라인 실행 흐름: [`rag_core.py`](../rag_core.py) `run_rag_query` → `_phase_retrieve_loop`
+- 파이프라인 실행 흐름: [`rag_core.py`](../../rag_core.py) `run_rag_query` → `_phase_retrieve_loop`
 - LangGraph Stage 1 case study: [`docs/agentic/agent-system-design-case-study.md`](./agent-system-design-case-study.md)
 - 아키텍처 다이어그램: [`README.md § 아키텍처`](../README.md#아키텍처-요약)

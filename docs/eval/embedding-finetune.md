@@ -7,7 +7,7 @@
 
 - **Related**: issue [#179](https://github.com/hskim-solv/BidMate-DocAgent/issues/179), [ADR 0027](../adr/0027-lora-finetuned-embedding-additive.md), [ADR 0019](../adr/0019-embedding-default-stays-minilm.md), [ADR 0021](../adr/0021-bge-m3-completes-phase-1-3.md).
 - **Notebook**: [`notebooks/embedding_finetune.ipynb`](../notebooks/embedding_finetune.ipynb) — Colab T4-runnable end-to-end.
-- **Adapter**: `bidmate/embedding-lora-kure-rfp-ko-v1` on Hugging Face Hub *(uploaded in #179; SHA pinned in [`eval/config.yaml`](../eval/config.yaml))*.
+- **Adapter**: `bidmate/embedding-lora-kure-rfp-ko-v1` on Hugging Face Hub *(uploaded in #179; SHA pinned in [`eval/config.yaml`](../../eval/config.yaml))*.
 
 ## TL;DR
 
@@ -36,7 +36,7 @@
 | Hard negatives per positive | 3 (BM25 rank window [3, 15]) |
 | Train / val split | 90 / 10 deterministic by `sha1(query) % 10` |
 
-**Schema reference**: [`data/training/sample.jsonl`](../data/training/sample.jsonl) — 25-row representative sample (committed; full 5k JSONL is `.gitignore`'d).
+**Schema reference**: [`data/training/sample.jsonl`](../../data/training/sample.jsonl) — 25-row representative sample (committed; full 5k JSONL is `.gitignore`'d).
 
 **Contamination guard**: the script rejects any generated query that
 matches (lowercased, particle-stripped, 3-gram Jaccard ≥ 0.70) anything in
@@ -171,4 +171,4 @@ diff <(jq '.ablation.runs[] | select(.name=="naive_baseline")'           reports
 Without `BIDMATE_EMBEDDING_LORA_ADAPTER` set, `rag_core.embed_texts` is
 bit-identical to pre-#434 behavior — the additive-ablation invariant
 (ADR 0001 / 0025) is pinned by
-[`tests/test_finetuned_ablation_baseline_invariant.py`](../tests/test_finetuned_ablation_baseline_invariant.py).
+[`tests/test_finetuned_ablation_baseline_invariant.py`](../../tests/test_finetuned_ablation_baseline_invariant.py).

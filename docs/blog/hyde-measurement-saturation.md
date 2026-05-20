@@ -103,7 +103,7 @@ Spread (top-vs-bottom): **0.0pp**. Threshold 가 +3pp 였으니, "임베딩 차�
 이건 hashing-backend artifact 가 *아니다*. 두 가설이 남는다.
 
 - **Corpus 규모 saturation.** Public synthetic 은 7 문서 / 9 chunk. 9개 중 top-k=3 회수는 어떤 임베딩으로도 trivial.
-- **Verifier ceiling.** [ADR 0004](../adr/0004-evaluation-loop-strict-contract.md) 의 strict exact-term match 정책이 retrieval 품질 이전에 ceiling 을 만든다 — `agentic_full_routed` 도 0.500 이 cap.
+- **Verifier ceiling.** [ADR 0004](../adr/0004-verifier-retry-policy.md) 의 strict exact-term match 정책이 retrieval 품질 이전에 ceiling 을 만든다 — `agentic_full_routed` 도 0.500 이 cap.
 
 ADR 0032 는 `accepted` 상태로 닫혔다 — verdict 는 `saturation_cross_validated`. 결론: **현 측정 surface 로는 어떤 retrieval 기법도 lift 를 측정할 수 없다.** Hashing backend 에서는 backend 자체가 변별력을 차단하고, real backend 에서는 corpus + verifier 가 차단한다.
 
