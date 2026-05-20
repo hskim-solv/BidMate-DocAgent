@@ -57,9 +57,10 @@ class TestMemoryLinesHook(unittest.TestCase):
         shutil.rmtree(self._tmp, ignore_errors=True)
 
     def _run(self, payload: dict) -> subprocess.CompletedProcess:
-        # cwd=tmp_repo so the hook's `--emit-fire` (which uses the default
-        # relative --fire-log `.claude/.hook-fires.log`) writes into this
-        # isolated REPO_ROOT rather than the developer's cwd (issue #1039).
+        # cwd is tmp_repo, but the hook now passes an explicit
+        # `--fire-log "$REPO_ROOT/.claude/.hook-fires.log"` (issue #1039), so
+        # the fire-log is anchored to REPO_ROOT (= tmp_repo here) regardless
+        # of cwd. test_hook_telemetry.py pins that cwd-independence directly.
         return subprocess.run(
             ["bash", str(self._hook)],
             input=json.dumps(payload),

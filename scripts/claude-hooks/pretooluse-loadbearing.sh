@@ -41,7 +41,8 @@ if python3 "$REPO_ROOT/scripts/_governance.py" --is-load-bearing "$file_path" 2>
   # v2-5field format per ADR 0060 (issue #1039). Gitignored via `.claude/*`.
   python3 "$REPO_ROOT/scripts/_governance.py" --emit-fire \
     --outcome aware --hook loadbearing --category file-edit \
-    --path "$file_path" 2>/dev/null || true
+    --path "$file_path" \
+    --fire-log "$REPO_ROOT/.claude/.hook-fires.log" 2>/dev/null || true
   cat >&2 <<EOF
 ⚠️  Load-bearing file: $file_path
 

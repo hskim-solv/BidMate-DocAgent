@@ -81,7 +81,8 @@ fi
 # v2-5field telemetry (ADR 0060). action ∈ {ok, aware, blocked}.
 python3 "$REPO_ROOT/scripts/_governance.py" --emit-fire \
   --outcome "$action" --hook memory-lines --category line-count \
-  --path "$file_path" 2>/dev/null || true
+  --path "$file_path" \
+  --fire-log "$REPO_ROOT/.claude/.hook-fires.log" 2>/dev/null || true
 
 if [[ "$action" = "blocked" ]]; then
   cat >&2 <<EOF

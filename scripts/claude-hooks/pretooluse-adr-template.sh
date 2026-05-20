@@ -129,7 +129,8 @@ adr_basename=$(basename "$file_path")
 # v2-5field telemetry (ADR 0060).
 python3 "$REPO_ROOT/scripts/_governance.py" --emit-fire \
   --outcome blocked --hook adr-template --category missing-verification \
-  --path "$adr_basename" --extra "missing=$missing" 2>/dev/null || true
+  --path "$adr_basename" --extra "missing=$missing" \
+  --fire-log "$REPO_ROOT/.claude/.hook-fires.log" 2>/dev/null || true
 
 cat >&2 <<EOF
 ⛔ Refusing Write of new ADR \`$adr_basename\`: missing Verification surface.
