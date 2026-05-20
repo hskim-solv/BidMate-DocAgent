@@ -1,6 +1,7 @@
 # ADR 0059 — Failure-mode classifier as a new measurement surface
 
-- Status: Proposed
+- Status: Accepted
+- Implemented: #1001 (2026-05-19) — `eval/scorers/failure_classifier.py` 7-category taxonomy
 - Date: 2026-05-19
 - Authors: Hyunsoo Kim
 - Related: ADR 0006 (real-data LLM-judge), ADR 0054 (conditional-on-substantive-answer scorer semantics), ADR 0055 (claim_validator PR gate), ADR 0056 (rationality_judge measurement surface)
