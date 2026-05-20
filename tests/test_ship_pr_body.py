@@ -113,6 +113,38 @@ def test_validate_5b_skipped_when_no_load_bearing():
     assert pb.validate_5b(body, []) is True
 
 
+# ---- check_body_5b standalone validation (issue #1097) ----
+
+def test_check_body_5b_no_load_bearing_passes(monkeypatch):
+    monkeypatch.setattr(pb, "changed_files", lambda base: ["README.md", "docs/x.md"])
+    assert pb.check_body_5b("anything, no 5b section here", "origin/main") == 0
+
+
+def test_check_body_5b_load_bearing_with_escape_passes(monkeypatch):
+    monkeypatch.setattr(pb, "changed_files", lambda base: ["rag_core.py"])
+    body = (
+        "### 5b. Real-data delta\n\n"
+        "No behavior change in retrieval / verifier path.\n"
+    )
+    assert pb.check_body_5b(body, "origin/main") == 0
+
+
+def test_check_body_5b_load_bearing_with_table_passes(monkeypatch):
+    monkeypatch.setattr(pb, "changed_files", lambda base: ["api/main.py"])
+    body = (
+        "### 5b. Real-data delta\n\n"
+        "| metric | base | head |\n|---|---|---|\n| f1 | 0.7 | 0.8 |\n"
+        "\n## 6. Backward compatibility\n"
+    )
+    assert pb.check_body_5b(body, "origin/main") == 0
+
+
+def test_check_body_5b_load_bearing_missing_5b_returns_3(monkeypatch):
+    monkeypatch.setattr(pb, "changed_files", lambda base: ["rag_core.py"])
+    body = "## 1. What changed\n\nsome text without any 5b section\n"
+    assert pb.check_body_5b(body, "origin/main") == 3
+
+
 # ---- end-to-end build_body shape ----
 
 def test_build_body_includes_required_sections(monkeypatch):
