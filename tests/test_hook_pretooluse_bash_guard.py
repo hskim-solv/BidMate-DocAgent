@@ -29,6 +29,10 @@ from pathlib import Path
 REPO = Path(__file__).parents[1]
 HOOK = REPO / "scripts" / "claude-hooks" / "pretooluse-bash-guard.sh"
 HOOK_HELPER = REPO / "scripts" / "claude-hooks" / "_bash_guard_parse.py"
+# The hook emits telemetry via scripts/_governance.py --emit-fire; copy it
+# under the temp REPO_ROOT or emit silently no-ops and .hook-fires.log is
+# never written (issue #1039).
+GOVERNANCE = REPO / "scripts" / "_governance.py"
 
 _GIT_ENV: dict[str, str] = {
     "GIT_AUTHOR_NAME": "t",
@@ -50,11 +54,13 @@ class TestPreToolUseBashGuard(unittest.TestCase):
         (self._tmp_repo / ".claude").mkdir(parents=True)
         (self._tmp_repo / "scripts" / "claude-hooks").mkdir(parents=True)
         shutil.copy(HOOK, self._tmp_repo / "scripts" / "claude-hooks" / HOOK.name)
-        # The hook delegates parsing to _bash_guard_parse.py (issue #1045).
-        # Copy it alongside so the temp REPO_ROOT resolves the helper.
+        # The hook delegates parsing to _bash_guard_parse.py (issue #1045)
+        # and emits telemetry via _governance.py --emit-fire (issue #1039).
+        # Copy both alongside so the temp REPO_ROOT resolves them.
         shutil.copy(
             HOOK_HELPER, self._tmp_repo / "scripts" / "claude-hooks" / HOOK_HELPER.name
         )
+        shutil.copy(GOVERNANCE, self._tmp_repo / "scripts" / GOVERNANCE.name)
         self._hook = self._tmp_repo / "scripts" / "claude-hooks" / HOOK.name
         self._fires_log = self._tmp_repo / ".claude" / ".hook-fires.log"
 
@@ -196,7 +202,7 @@ class TestPreToolUseBashGuard(unittest.TestCase):
         # Hook fires log records the block.
         self.assertTrue(self._fires_log.exists())
         line = self._fires_log.read_text().strip()
-        self.assertIn("|blocked|gh-pr-create-stacked|", line)
+        self.assertIn("|blocked|bash-guard|gh-pr-create-stacked|", line)
         self.assertIn("on=feat/A", line)
 
     def test_block_message_quotes_recovery_options(self) -> None:
