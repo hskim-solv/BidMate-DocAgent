@@ -1,6 +1,7 @@
 # ADR 0053 — Distinguishing-power floor ablations (`random` retrieval + `single_chunk` preset)
 
-- Status: Proposed
+- Status: Accepted
+- Implemented: #939 (2026-05-17) — `scripts/distinguishing_power.py` + `eval/config.yaml` floor ablations (`random_retrieval`, `single_chunk`)
 - Date: 2026-05-17
 - Authors: Hyunsoo Kim
 - Related: ADR 0001 (naive_baseline invariance), ADR 0005 (eval split), ADR 0030 (leaderboard surfaces), ADR 0044 (real-eval n trajectory — being superseded by ADR 0052 in PR-B)
