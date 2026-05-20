@@ -1,6 +1,7 @@
 # ADR 0055 — `claim_validator` as PR gate (improvement-claim statistical honesty)
 
-- Status: Proposed
+- Status: Accepted
+- Implemented: #965 (2026-05-18) — `scripts/validate_claim.py`, wired as PR gate in `.github/workflows/pr-eval.yml`
 - Date: 2026-05-18
 - Authors: Hyunsoo Kim
 - Related: ADR 0050 (ALLOW_REGRESSION pattern), ADR 0053 (distinguishing-power gauge), ADR 0054 (conditional-on-substantive-answer scorer semantics — paired pairs filter)

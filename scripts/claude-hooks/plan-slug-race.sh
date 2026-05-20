@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Claude Code PreToolUse hook — plan-slug race detector (issue #779).
 #
+# Enforcement: block (exit 2 refuses Write within 5-min cross-worktree window).
+# Classification rationale: refuses tool calls. See scripts/claude-hooks/README.md.
+#
 # Registered (user-globally) in `~/.claude/settings.json` with matcher
 # `Write`. Fires before Claude writes any file. Refuses to overwrite a
 # `~/.claude/plans/<slug>.md` that was last touched within the past 5
@@ -144,4 +147,15 @@ fi
   echo "   worktree's plan): set PLAN_SLUG_RACE_THRESHOLD=0 in the hook"
   echo "   environment for this invocation."
 } >&2
+
+# v2-5field telemetry (ADR 0060, issue #1039). plan-slug-race is registered
+# user-globally; resolve the governance script via cwd (the user's session
+# cwd inside a worktree is where the fire-log belongs). Silent on absence.
+if [[ -f "$(pwd)/scripts/_governance.py" ]]; then
+  python3 "$(pwd)/scripts/_governance.py" --emit-fire \
+    --outcome blocked --hook plan-slug-race --category cross-worktree-window \
+    --path "$target" --extra "from=${cwd_slug},by=${marker_slug},age=${age}s" \
+    2>/dev/null || true
+fi
+
 exit 2

@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # Claude Code PreToolUse hook for BidMate-DocAgent.
 #
+# Enforcement: awareness (stderr message only, never refuses tool call).
+# Classification rationale: NEVER blocks (line below); pure reminder layer.
+# See scripts/claude-hooks/README.md for the full enforcement taxonomy.
+#
 # Registered in `.claude/settings.json` with matcher `Edit|MultiEdit|Write`.
 # Fires before Claude modifies a file; prints a stderr awareness warning
 # when the target is a load-bearing path (per CLAUDE.md), reminding Claude
@@ -34,9 +38,11 @@ fi
 # truth, also consumed by .githooks/pre-push and the §5b CI gate).
 if python3 "$REPO_ROOT/scripts/_governance.py" --is-load-bearing "$file_path" 2>/dev/null; then
   # Fire log for /self-review-quarterly governance ROI axis (issue #495).
-  # Gitignored via `.claude/*` in repo root .gitignore.
-  printf '%s|aware|load-bearing|%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$file_path" \
-    >> "$REPO_ROOT/.claude/.hook-fires.log" 2>/dev/null || true
+  # v2-5field format per ADR 0060 (issue #1039). Gitignored via `.claude/*`.
+  python3 "$REPO_ROOT/scripts/_governance.py" --emit-fire \
+    --outcome aware --hook loadbearing --category file-edit \
+    --path "$file_path" \
+    --fire-log "$REPO_ROOT/.claude/.hook-fires.log" 2>/dev/null || true
   cat >&2 <<EOF
 ⚠️  Load-bearing file: $file_path
 

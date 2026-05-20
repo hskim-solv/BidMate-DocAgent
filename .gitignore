@@ -251,6 +251,14 @@ reports/judge_disagreements.local.json
 reports/proposed/*
 !reports/proposed/proposer.aggregate.json
 
+# ADR 0064 — self-review external-judge cross-rating. Each quarter's
+# <Qx-YYYY>.json carries verdicts + agreement stats only (✓/△/✗, Cohen's κ,
+# confusion counts) — no body text, no per-case excerpts — so the rubric↔anchor
+# agreement is auditable in-repo. Mirrors the ADR 0005 metadata-only boundary.
+!reports/self_review_agreement/
+reports/self_review_agreement/*
+!reports/self_review_agreement/*.json
+
 # ADR 0032 — routed-subset measurement aggregate is committable.
 # Hashing-backend framework-validation + future sentence-transformers
 # spread results land here (embedding_routed.json).

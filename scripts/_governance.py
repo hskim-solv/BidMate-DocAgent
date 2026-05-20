@@ -25,7 +25,9 @@ from __future__ import annotations
 import argparse
 import re
 import sys
+from datetime import date
 from pathlib import Path
+from typing import Callable, NamedTuple
 
 
 # Canonical load-bearing path list. The order is not significant; add
@@ -58,7 +60,85 @@ THRESHOLDS: dict[str, int] = {
     "MEMORY_LINE_BLOCK": 30,
     # PR #745 axis #2 (Agent delegation) non-trivial-PR LOC cut-off
     "AXIS_2_LOC": 50,
+    # ADR 0047 proposed-status lifecycle SLA, in days. proposed_adr_age()
+    # flags proposed ADRs first committed on/after 2026-05-15 that exceed it.
+    "ADR_PROPOSED_SLA_DAYS": 30,
 }
+
+
+# ---------------------------------------------------------------------------
+# Outcome telemetry — v2-5field hook-fires.log emit (ADR 0060, issue #1039).
+#
+# Canonical fire-log format:
+#     <ts>|<outcome>|<hook>|<category>|<path>[|<extra>]
+#
+# emit_hook_fire() is the single helper used by both bash hooks (via the
+# `--emit-fire` CLI subcommand) and Python collectors. KNOWN_OUTCOMES /
+# KNOWN_HOOKS enforce typo guard so silent drift between hook scripts is
+# caught at emit time, not at analysis time.
+# ---------------------------------------------------------------------------
+
+KNOWN_OUTCOMES: set[str] = {
+    "aware",            # stderr warning only, exit 0
+    "blocked",          # exit 2 refuse
+    "bypassed",         # user explicitly skipped (--no-verify, env var)
+    "false_positive",   # hook fired but action was legitimate (manual tag)
+    "false_negative",   # hook should have fired but didn't (manual tag)
+    "nudged",           # UserPromptSubmit stdout context injection
+    "pipeline_start",   # stop-ship pipeline began
+    "pipeline_end",     # stop-ship pipeline completed (success or abort)
+    "ok",               # legacy memory-lines silent pass
+}
+
+KNOWN_HOOKS: set[str] = {
+    "bash-guard",
+    "loadbearing",
+    "memory-lines",
+    "adr-template",
+    "plan-slug-race",
+    "delegation-gate",
+    "stop-ship",
+}
+
+
+def emit_hook_fire(
+    outcome: str,
+    hook: str,
+    category: str = "",
+    path: str = "",
+    extra: str = "",
+    log_path: str | Path = ".claude/.hook-fires.log",
+) -> None:
+    """Append a v2-5field event to the canonical hook-fires log.
+
+    Format (ADR 0060):
+        <ts>|<outcome>|<hook>|<category>|<path>[|<extra>]
+
+    Raises ``ValueError`` on unknown outcome / hook (silent-drift guard).
+    I/O errors are swallowed — telemetry must never block the hook.
+    """
+    if outcome not in KNOWN_OUTCOMES:
+        raise ValueError(
+            f"unknown outcome: {outcome!r}; valid: {sorted(KNOWN_OUTCOMES)}"
+        )
+    if hook not in KNOWN_HOOKS:
+        raise ValueError(
+            f"unknown hook: {hook!r}; valid: {sorted(KNOWN_HOOKS)}"
+        )
+    import datetime as _dt
+    ts = _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    fields = [ts, outcome, hook, category, path]
+    if extra:
+        fields.append(extra)
+    line = "|".join(fields) + "\n"
+    p = Path(log_path)
+    try:
+        p.parent.mkdir(parents=True, exist_ok=True)
+        with p.open("a", encoding="utf-8") as f:
+            f.write(line)
+    except OSError:
+        # Telemetry must never block the hook. Swallow silently.
+        pass
 
 
 def _normalize(path: str) -> str:
@@ -337,6 +417,142 @@ def lint_adr_verification(
     return errors
 
 
+# ---------------------------------------------------------------------------
+# Proposed-ADR lifecycle SLA collector (ADR 0047 — deferred follow-up).
+#
+# ADR 0047 declared a 30-day SLA: a `Status: proposed` ADR first committed
+# on/after 2026-05-15 must resolve (accepted / superseded by NNNN /
+# deprecated) within 30 days. 0047 fixed the contract but explicitly
+# deferred the measurement collector ("proposed_adr_age(); 측정 collector 는
+# 나중에"). This implements that collector — reporting only (exit 0). The
+# promote/supersede *decision* is a judgment layer (the adr-lifecycle-manager
+# skill); any hard CI gate is a separate later policy choice.
+#
+# Pure/I-O split mirrors the readme-parity pair: status parsing is
+# filesystem-pure, and the git first-commit-date lookup is injected via
+# `date_resolver` so the core is unit-testable without a git repo.
+# ---------------------------------------------------------------------------
+
+# ADR 0047 acceptance date. Proposed ADRs first committed before this are
+# grandfathered: reported, but never flagged OVER_SLA.
+ADR_SLA_GRANDFATHER_DATE = date(2026, 5, 15)
+
+# Tolerant of the two formats live in docs/adr/ — `- **Status**: proposed`
+# and `- Status: Proposed`. First match on the file wins.
+ADR_STATUS_RE = re.compile(
+    r"^\s*[-*]?\s*(?:\*\*)?status(?:\*\*)?\s*:\s*(.+?)\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+
+class ProposedADR(NamedTuple):
+    number: int
+    filename: str
+    status: str
+    first_commit: date | None
+    age_days: int | None
+    grandfathered: bool
+    over_sla: bool
+
+
+def parse_adr_status(adr_path: str | Path) -> str | None:
+    """Return the first `Status:` meta-line value (lowercased), or None.
+
+    None if the file is missing or has no Status meta-line. Tolerant of
+    the bold (`- **Status**: proposed`) and plain (`- Status: Proposed`)
+    variants both present in docs/adr/.
+    """
+    p = Path(adr_path)
+    if not p.is_file():
+        return None
+    text = p.read_text(encoding="utf-8", errors="replace")
+    m = ADR_STATUS_RE.search(text)
+    return m.group(1).strip().lower() if m else None
+
+
+def _git_first_commit_date(path: str | Path) -> date | None:
+    """First-add author date of `path` via git, or None if untracked/unknown."""
+    import subprocess
+
+    try:
+        out = subprocess.check_output(
+            ["git", "log", "--diff-filter=A", "--reverse",
+             "--format=%aI", "--", str(path)],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        )
+    except (subprocess.CalledProcessError, OSError):
+        return None
+    lines = [ln for ln in out.splitlines() if ln.strip()]
+    if not lines:
+        return None
+    try:
+        return date.fromisoformat(lines[0][:10])
+    except ValueError:
+        return None
+
+
+def proposed_adr_age(
+    adr_dir: str | Path = ADR_DIR_DEFAULT,
+    *,
+    date_resolver: Callable[[Path], date | None] | None = None,
+    now: date | None = None,
+    sla_days: int | None = None,
+    grandfather_date: date = ADR_SLA_GRANDFATHER_DATE,
+) -> list[ProposedADR]:
+    """Return one ``ProposedADR`` per `Status: proposed` ADR, oldest first.
+
+    ``over_sla`` is True iff the ADR was first committed on/after
+    ``grandfather_date`` AND its age exceeds ``sla_days`` (ADR 0047). ADRs
+    first committed earlier carry ``grandfathered=True`` and are never
+    flagged. Uncommitted files (no first-commit date) get ``age_days=None``
+    and ``over_sla=False``.
+
+    ``date_resolver`` defaults to a git lookup; inject a stub for testing.
+    ``sla_days`` defaults to ``THRESHOLDS["ADR_PROPOSED_SLA_DAYS"]``.
+    """
+    resolver = date_resolver or _git_first_commit_date
+    today = now or date.today()
+    sla = THRESHOLDS["ADR_PROPOSED_SLA_DAYS"] if sla_days is None else sla_days
+
+    records: list[ProposedADR] = []
+    p = Path(adr_dir)
+    if not p.is_dir():
+        return records
+    for entry in sorted(p.iterdir()):
+        if not entry.is_file():
+            continue
+        m = ADR_FILENAME_RE.match(entry.name)
+        if not m:
+            continue
+        status = parse_adr_status(entry)
+        if status is None or not status.startswith("proposed"):
+            continue
+        first_commit = resolver(entry)
+        if first_commit is None:
+            age_days: int | None = None
+            grandfathered = False
+            over_sla = False
+        else:
+            age_days = (today - first_commit).days
+            grandfathered = first_commit < grandfather_date
+            over_sla = (not grandfathered) and age_days > sla
+        records.append(
+            ProposedADR(
+                number=int(m.group(1)),
+                filename=entry.name,
+                status=status,
+                first_commit=first_commit,
+                age_days=age_days,
+                grandfathered=grandfathered,
+                over_sla=over_sla,
+            )
+        )
+    # Oldest first; uncommitted (age None) sort last.
+    records.sort(key=lambda r: (r.age_days is None, -(r.age_days or 0)))
+    return records
+
+
 def _cmd_next_adr_number(adr_dir: str) -> int:
     sys.stdout.write(f"{next_adr_number(adr_dir):04d}\n")
     return 0
@@ -446,6 +662,29 @@ def _cmd_check_adr_collision(adr_dir: str) -> int:
     return 1
 
 
+def _cmd_proposed_adr_age(adr_dir: str) -> int:
+    records = proposed_adr_age(adr_dir)
+    if not records:
+        sys.stdout.write("(no proposed-status ADRs)\n")
+        return 0
+    for r in records:
+        fc = r.first_commit.isoformat() if r.first_commit else "uncommitted"
+        age = "?" if r.age_days is None else str(r.age_days)
+        flag = (
+            "OVER_SLA" if r.over_sla
+            else ("grandfathered" if r.grandfathered else "ok")
+        )
+        sys.stdout.write(f"{r.number:04d}\t{age}\t{flag}\t{fc}\t{r.filename}\n")
+    n_over = sum(1 for r in records if r.over_sla)
+    sla = THRESHOLDS["ADR_PROPOSED_SLA_DAYS"]
+    sys.stderr.write(
+        f"\n{len(records)} proposed ADR(s); {n_over} over the {sla}-day SLA "
+        "(ADR 0047). Reporting only — resolve via the adr-lifecycle-manager "
+        "skill (promote / supersede / deprecate).\n"
+    )
+    return 0
+
+
 def _cmd_is_load_bearing(path: str) -> int:
     return 0 if is_load_bearing(path) else 1
 
@@ -479,6 +718,25 @@ def _cmd_threshold(key: str) -> int:
         )
         return 1
     sys.stdout.write(f"{val}\n")
+    return 0
+
+
+def _cmd_emit_fire(
+    outcome: str,
+    hook: str,
+    category: str,
+    path: str,
+    extra: str,
+    log_path: str,
+) -> int:
+    """CLI entrypoint for `--emit-fire` — wraps emit_hook_fire()."""
+    try:
+        emit_hook_fire(
+            outcome, hook, category, path, extra, log_path=log_path
+        )
+    except ValueError as exc:
+        sys.stderr.write(f"emit-fire: {exc}\n")
+        return 1
     return 0
 
 
@@ -529,6 +787,46 @@ def main() -> int:
              "docs/adr/README.md (issue #803). Used by the pre-commit hook "
              "to shift-left the test_no_unlinked_adr_files_on_disk CI gate.",
     )
+    g.add_argument(
+        "--emit-fire", action="store_true",
+        help="Append a v2-5field event to .claude/.hook-fires.log "
+             "(ADR 0060). Requires --outcome and --hook. Optional: "
+             "--category --path --extra --fire-log.",
+    )
+    g.add_argument(
+        "--proposed-adr-age", action="store_true",
+        help="Report each proposed-status ADR's age + 30-day SLA flag "
+             "(ADR 0047). Tab-separated columns: NNNN, age_days, flag "
+             "(OVER_SLA/grandfathered/ok), first_commit, filename. "
+             "Reporting only; exit 0.",
+    )
+    p.add_argument(
+        "--outcome",
+        help="Outcome enum for --emit-fire. "
+             f"One of {sorted(KNOWN_OUTCOMES)}.",
+    )
+    p.add_argument(
+        "--hook",
+        help="Hook id for --emit-fire. "
+             f"One of {sorted(KNOWN_HOOKS)}.",
+    )
+    p.add_argument(
+        "--category", default="",
+        help="Sub-category for --emit-fire (optional).",
+    )
+    p.add_argument(
+        "--path", default="",
+        help="Affected file/branch path for --emit-fire (optional).",
+    )
+    p.add_argument(
+        "--extra", default="",
+        help="Free-form extra metadata for --emit-fire (optional).",
+    )
+    p.add_argument(
+        "--fire-log", default=".claude/.hook-fires.log",
+        help="Override fire-log path (default: .claude/.hook-fires.log). "
+             "Used by tests; production hooks should not set this.",
+    )
     p.add_argument(
         "--readme-staged", action="store_true",
         help="When set with --check-adr-readme-parity, read README content "
@@ -544,7 +842,8 @@ def main() -> int:
     p.add_argument(
         "--adr-dir", default=ADR_DIR_DEFAULT,
         help=f"ADR directory (default: {ADR_DIR_DEFAULT}). "
-             "Only used by --next-adr-number / --check-adr-collision.",
+             "Only used by --next-adr-number / --check-adr-collision / "
+             "--proposed-adr-age.",
     )
     p.add_argument(
         "--repo-root", default=".",
@@ -573,6 +872,18 @@ def main() -> int:
             readme_staged=args.readme_staged,
             readme_path=args.readme_path,
         )
+    if args.emit_fire:
+        if not args.outcome or not args.hook:
+            sys.stderr.write(
+                "--emit-fire requires --outcome and --hook\n"
+            )
+            return 2
+        return _cmd_emit_fire(
+            args.outcome, args.hook, args.category,
+            args.path, args.extra, args.fire_log,
+        )
+    if args.proposed_adr_age:
+        return _cmd_proposed_adr_age(args.adr_dir)
     return 2
 
 

@@ -2,7 +2,7 @@
 
 - **Status**: accepted
 - **Date**: 2026-05-11
-- **Related**: [`eval/config.yaml`](../../eval/config.yaml), [`eval/real_config.example.yaml`](../../eval/real_config.example.yaml), [`docs/real-data/private-100-doc-experiments.md`](../real-data/private-100-doc-experiments.md), [`docs/real-data/private-hardcase-benchmark.md`](../real-data/private-hardcase-benchmark.md), [`docs/real-data/real-data-failure-taxonomy.md`](../real-data/real-data-failure-taxonomy.md)
+- **Related**: [ADR 0058](0058-phase35-mode-winner.md) (real100 measurement = 이 표면의 private-local slice), [`eval/config.yaml`](../../eval/config.yaml), [`eval/real_config.example.yaml`](../../eval/real_config.example.yaml), [`docs/real-data/private-100-doc-experiments.md`](../real-data/private-100-doc-experiments.md), [`docs/real-data/private-hardcase-benchmark.md`](../real-data/private-hardcase-benchmark.md), [`docs/real-data/real-data-failure-taxonomy.md`](../real-data/real-data-failure-taxonomy.md)
 
 ## TL;DR
 
@@ -27,6 +27,8 @@
 - **비공개 local** (`eval/real_config.example.yaml` 가 scaffold; 실제 config 와 corpus 는 git 외부). 실제 조달 문서에서 로컬 실행. *"어떤 실패 모드가 real 인가?"* 의 단일 출처. 출력(`reports/real100/`)·입력(`data/files/`, `data/data_list.csv`, 로컬 config)은 `.gitignore`d
 
 경계는 example 파일 컨벤션(`*.example.yaml`) + `.gitignore` 가 강제. 모든 새 eval 표면은 한쪽을 선택 — public-redistributable 또는 strictly local.
+
+예: Phase 3.5 retrieval mode-winner 결정([ADR 0058](0058-phase35-mode-winner.md))의 evidence 인 real100 measurement(kordoc 26k chunks, n=221)는 **strictly-local** surface 에 속한다 — corpus·case 텍스트는 gitignored, aggregate REPORT 만 committable. 이 cross-ref 가 없으면 새 측정 표면이 어느 slice 인지 모호해진다.
 
 ## 결과
 

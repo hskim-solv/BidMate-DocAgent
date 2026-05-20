@@ -4,14 +4,15 @@ RFP 문서 이해를 위한 DocAgent 시스템. **입찰/RFP 문서 인텔리전
 
 파이프라인: ingestion → 메타데이터 정규화 → 청킹 → 검색 → 재순위/계획 → 근거 집계 → 근거 기반 답변 → 검증 → 평가 → reviewer 문서.
 
-자동화 표면: `.gitignore`, CI ([`pr-eval.yml`](.github/workflows/pr-eval.yml), [`branch-and-issue-check.yml`](.github/workflows/branch-and-issue-check.yml)), `.githooks/`, [`scripts/check_branch_and_issue.py`](scripts/check_branch_and_issue.py) (브랜치+이슈 컨벤션 regex 단일 출처, ADR 0007), [`.github/pull_request_template.md`](.github/pull_request_template.md), [`.github/ISSUE_TEMPLATE/`](.github/ISSUE_TEMPLATE/), [`.claude/settings.json`](.claude/settings.json) (load-bearing 편집 awareness 훅 + stacked dependent 있을 때 `gh pr merge --delete-branch` 차단 Bash matcher). 이 파일은 자동 강제되지 않는 원칙·포인터를 담는다.
+자동화 표면: `.gitignore`, CI ([`pr-eval.yml`](.github/workflows/pr-eval.yml), [`branch-and-issue-check.yml`](.github/workflows/branch-and-issue-check.yml), [`pr-judge.yml`](.github/workflows/pr-judge.yml) (live LLM-judge 게이트, ADR 0043), [`leaderboard.yml`](.github/workflows/leaderboard.yml), [`deploy-fly.yml`](.github/workflows/deploy-fly.yml) + [`docker-publish.yml`](.github/workflows/docker-publish.yml) (api/main.py 데모 배포 — 제품화 아님)), `.githooks/`, [`scripts/check_branch_and_issue.py`](scripts/check_branch_and_issue.py) (브랜치+이슈 컨벤션 regex 단일 출처, ADR 0007), [`.github/pull_request_template.md`](.github/pull_request_template.md), [`.github/ISSUE_TEMPLATE/`](.github/ISSUE_TEMPLATE/), [`.claude/settings.json`](.claude/settings.json) (load-bearing 편집 awareness 훅 + stacked dependent 있을 때 `gh pr merge --delete-branch` 차단 Bash matcher). 이 파일은 자동 강제되지 않는 원칙·포인터를 담는다.
 
 ## 여기서 시작
 
 - [`docs/engineering-governance.md`](docs/engineering-governance.md) — 워크플로 맵
 - [`docs/adr/README.md`](docs/adr/README.md) — 결정 인덱스
 - [`docs/multi-agent-ownership.md`](docs/multi-agent-ownership.md) — 여러 agent 가 병행 작업할 때 조율 모델
-- retrieval / answer / eval 손볼 시 추가 필독: [ADR 0001](docs/adr/0001-preserve-naive-baseline.md) (기준선), [ADR 0003](docs/adr/0003-structured-answer-citation-contract.md) (답변 계약), [ADR 0005](docs/adr/0005-eval-split-public-synthetic-private-local.md) (eval 분리), [ADR 0012](docs/adr/0012-llm-judge-on-public-synthetic.md) (합성 LLM-judge)
+- [`docs/audits/`](docs/audits/) — Phase 3/4/5 eval-framework 감사 + failure inspection (retrieval-miss / verifier-false-negative / variance-source)
+- retrieval / answer / eval 손볼 시 추가 필독: [ADR 0001](docs/adr/0001-preserve-naive-baseline.md) (기준선), [ADR 0003](docs/adr/0003-structured-answer-citation-contract.md) (답변 계약), [ADR 0005](docs/adr/0005-eval-split-public-synthetic-private-local.md) (eval 분리), [ADR 0012](docs/adr/0012-llm-judge-on-public-synthetic.md) (합성 LLM-judge), [ADR 0048](docs/adr/0048-realN-metrics-extension.md) (by_metadata_field + abstention calibration), [ADR 0052](docs/adr/0052-real-eval-hardcase-expansion-to-200.md) (n=221), [ADR 0056](docs/adr/0056-rationality-judge-measurement-surface.md) (rationality-judge), [ADR 0058](docs/adr/0058-phase35-mode-winner.md) (hybrid 기본 전환), [ADR 0059](docs/adr/0059-failure-mode-classifier-as-measurement-surface.md) (failure-mode classifier)
 
 ## 저장소 맵
 
@@ -29,9 +30,9 @@ RFP 문서 이해를 위한 DocAgent 시스템. **입찰/RFP 문서 인텔리전
 - `app.py` — CLI 쿼리 진입점
 - `rag_vector_store.py` — `VectorStore` Protocol (#232). `BIDMATE_INDEX_BACKEND` = `memory`(기본) / `qdrant`; `pgvector` 는 Stage 3 (#176) 예약. in-memory ↔ Qdrant ranking bit-identical
 - `rag_reranker.py` — `Reranker` Protocol + 기본 `CrossEncoderReranker` (#345)
-- `rag_retrieval.py` — 검색 파이프라인 (#459 + #461). `retrieve_candidates`, 4 유사도 primitive, BM25, fusion·재순위·comparison balance·parent-section 재조립
+- `rag_retrieval.py` — 검색 파이프라인 (#459 + #461). `retrieve_candidates`, 4 유사도 primitive, BM25, fusion·재순위·comparison balance·parent-section 재조립. 기본 `retrieval_backend` = `hybrid` (RRF k=60, BGE-M3 dense + BM25; ADR 0058) — `agentic_full`/`metadata_first` 한정, `naive_baseline` 은 `dense` 유지 (ADR 0001 불변)
 - `rag_verifier.py` — 검증기 (#465, PR-J1). `verify_evidence`, topic 추출, `EVIDENCE_BOUNDARY` 상수 + 명령 패턴 regex, `neutralize_instruction_patterns` (ADR 0008)
-- `rag_answer.py` — 답변 생성 (#468, PR-J2). 20 함수가 검증된 근거를 ADR 0003 답변 dict 로 변환. `schema_version: 2` 계약 유지
+- `rag_answer.py` — 답변 생성 (#468, PR-J2). 21 함수가 검증된 근거를 ADR 0003 답변 dict 로 변환. `schema_version: 2` 계약 유지
 - `rag_query.py` — 쿼리 분석·계획 (#478, PR-J3). 15 함수, `analyze_query`/`make_plan`/`comparison_targets_for_analysis` 등
 - `rag_query_expansion.py` — `QueryExpander` Protocol + 기본 `IdentityExpander` + opt-in `HyDEExpander` (#396, ADR 0023)
 - `scripts/` — `build_index.py`, `update_readme_metrics.py`, `run_real_eval_delta.py` 등
@@ -54,6 +55,7 @@ RFP 문서 이해를 위한 DocAgent 시스템. **입찰/RFP 문서 인텔리전
 - **읽기 다발 시 Explore subagent.** Read ≥5회 누적 또는 단일 파일 >200줄 → Explore 위임
 - **Shipping 경로는 commit-0 에 확정.** `ship-pr` skill (수동 게이트, ADR 예약 + stacked 안전) vs `make ship-arm` (Stop-hook 자동 ship) 둘은 mutually exclusive — 동시 활성화 금지
 - 5축 ↔ 4-pillar 매핑 전체: [`docs/agent-utilization.md`](docs/agent-utilization.md). `self-review-quarterly` skill 이 해당 표 기준으로 채점
+- **측정·감사 skill.** `retrieval-eval` (4-phase retrieval 측정), `eval-framework-progressive-audit` (5-phase 프레임워크 감사), `adr-portfolio-signals` (ADR→시니어 시그널 매핑) — 해당 범위 작업 시 우선 호출
 
 ## 핵심 원칙
 

@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Claude Code PreToolUse hook for BidMate-DocAgent — Bash matcher.
 #
+# Enforcement: block (exit 2 refuses gh pr merge/create with stacked-dependency violation).
+# Classification rationale: refuses tool calls. See scripts/claude-hooks/README.md.
+#
 # Registered in `.claude/settings.json` with matcher `Bash`. Fires before
 # Claude runs any Bash command. Two responsibilities:
 #
@@ -49,20 +52,10 @@ if [[ -z "$cmd" ]]; then
 fi
 
 # Classify the gh subcommand once: "merge" | "create" | "".
-# We split on shell separators so `foo && gh pr create …` is still caught,
-# but anything inside quotes or comments is preserved by shlex.
-gh_subcommand=$(printf '%s' "$cmd" | python3 -c '
-import sys, shlex, re
-for part in re.split(r"[;&|\n]", sys.stdin.read()):
-    part = part.strip().lstrip("(")
-    try:
-        tokens = shlex.split(part)
-    except ValueError:
-        continue
-    if len(tokens) >= 3 and tokens[0] == "gh" and tokens[1] == "pr":
-        if tokens[2] in ("merge", "create"):
-            print(tokens[2]); break
-' 2>/dev/null)
+# Parsing extracted to scripts/claude-hooks/_bash_guard_parse.py (issue #1045)
+# so tests/test_bash_guard_adversarial.py can pin the false-negative surface.
+gh_subcommand=$(python3 "$REPO_ROOT/scripts/claude-hooks/_bash_guard_parse.py" \
+                  --detect-gh "$cmd" 2>/dev/null | tr -d '\n')
 
 if [[ -z "$gh_subcommand" ]]; then
   exit 0
@@ -70,22 +63,63 @@ fi
 
 # --- Branch (2): gh pr create stacked guard (#826 Hook B / #865) ---
 if [[ "$gh_subcommand" == "create" ]]; then
+  # --- §5b soft-warn (issue #1097): load-bearing PR body must carry §5b ---
+  # Runs for every `gh pr create` (independent of the --base / stacked guard
+  # below): warns when a load-bearing-touching PR's body has no §5b
+  # (real-data delta) section. The CI `--check-5b` gate only runs post-create
+  # (gh pr view), so this is the pre-create early warning. Reuses the exact
+  # validate_5b + is_load_bearing logic via _ship_pr_body.py — no duplicated
+  # regex. Warns only; never exits — control falls through to the stacked
+  # guard which owns exit 0 / 2.
+  #
+  # Scope limit: only statically-extractable bodies are checked. A body built
+  # with command substitution / heredoc (`--body "$(cat <<EOF…)"`) cannot be
+  # parsed before execution, so it is skipped (fail-open, no false positive);
+  # the CI gate still catches it.
+  five_b_body_file=$(python3 "$REPO_ROOT/scripts/claude-hooks/_bash_guard_parse.py" \
+                       --get-body-file "$cmd" 2>/dev/null)
+  five_b_body_text=$(python3 "$REPO_ROOT/scripts/claude-hooks/_bash_guard_parse.py" \
+                       --get-body "$cmd" 2>/dev/null)
+  # Command-substitution / backtick bodies can't be statically inspected.
+  case "$five_b_body_text" in
+    *'$('*|*'`'*) five_b_body_text="" ;;
+  esac
+
+  five_b_rc=0
+  if [[ -n "$five_b_body_file" && -f "$five_b_body_file" ]]; then
+    python3 "$REPO_ROOT/scripts/claude-hooks/_ship_pr_body.py" \
+      --check-body-file "$five_b_body_file" --base-ref origin/main >/dev/null 2>&1
+    five_b_rc=$?
+  elif [[ -n "$five_b_body_text" ]]; then
+    printf '%s' "$five_b_body_text" | python3 \
+      "$REPO_ROOT/scripts/claude-hooks/_ship_pr_body.py" \
+      --check-body-stdin --base-ref origin/main >/dev/null 2>&1
+    five_b_rc=$?
+  fi
+
+  if [[ "$five_b_rc" == "3" ]]; then
+    python3 "$REPO_ROOT/scripts/_governance.py" --emit-fire \
+      --outcome aware --hook bash-guard --category pr-body-5b-missing \
+      --path "$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)" \
+      --fire-log "$REPO_ROOT/.claude/.hook-fires.log" 2>/dev/null || true
+    cat >&2 <<'EOF'
+⚠️  load-bearing 변경 PR 인데 --body 에 §5b (real-data delta) 섹션이 없습니다.
+
+    추가하세요: `### 5b. Real-data delta` 헤더 + `make real-eval-delta` 표,
+    또는 escape 문장: `No behavior change in retrieval / verifier path.`
+
+    PR #69 교훈: 합성 CI 델타만으론 의도된 보류(abstention) 회귀를 놓침.
+    PR 생성은 그대로 진행됩니다(경고만). CI `--check-5b` 가 생성 후 hard-gate 합니다.
+EOF
+  fi
+  # NB: do NOT exit here — fall through to the stacked guard below.
+
   # Bypass: explicit --base is intentional. Catches both `--base X` and
   # `--base=X` forms. `--base main` is the documented escape for
   # "I really do want to flatten this onto main."
-  has_base=$(printf '%s' "$cmd" | python3 -c '
-import sys, shlex, re
-for part in re.split(r"[;&|\n]", sys.stdin.read()):
-    part = part.strip().lstrip("(")
-    try:
-        tokens = shlex.split(part)
-    except ValueError:
-        continue
-    if len(tokens) >= 3 and tokens[0] == "gh" and tokens[1] == "pr" and tokens[2] == "create":
-        if any(t == "--base" or t.startswith("--base=") for t in tokens[3:]):
-            print("yes"); break
-' 2>/dev/null)
-  if [[ "$has_base" == "yes" ]]; then
+  # Parsing extracted (issue #1045) — see _bash_guard_parse.py.
+  if python3 "$REPO_ROOT/scripts/claude-hooks/_bash_guard_parse.py" \
+       --has-base "$cmd" >/dev/null 2>&1; then
     exit 0
   fi
 
@@ -128,9 +162,11 @@ for part in re.split(r"[;&|\n]", sys.stdin.read()):
     exit 0
   fi
 
-  printf '%s|blocked|gh-pr-create-stacked|%s|on=%s\n' \
-    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$current_branch" "$stacked_on" \
-    >> "$REPO_ROOT/.claude/.hook-fires.log" 2>/dev/null || true
+  # v2-5field telemetry (ADR 0060) — hook field added to canonical pattern.
+  python3 "$REPO_ROOT/scripts/_governance.py" --emit-fire \
+    --outcome blocked --hook bash-guard --category gh-pr-create-stacked \
+    --path "$current_branch" --extra "on=$stacked_on" \
+    --fire-log "$REPO_ROOT/.claude/.hook-fires.log" 2>/dev/null || true
 
   cat >&2 <<EOF
 ⛔ Refusing \`gh pr create\` without \`--base\`: current branch is stacked.
@@ -201,8 +237,11 @@ try:
 except Exception:
     pass' 2>/dev/null)
 
-printf '%s|blocked|gh-merge-delete-branch|%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$head_branch" \
-  >> "$REPO_ROOT/.claude/.hook-fires.log" 2>/dev/null || true
+# v2-5field telemetry (ADR 0060) — hook field added to canonical pattern.
+python3 "$REPO_ROOT/scripts/_governance.py" --emit-fire \
+  --outcome blocked --hook bash-guard --category gh-merge-delete-branch \
+  --path "$head_branch" \
+  --fire-log "$REPO_ROOT/.claude/.hook-fires.log" 2>/dev/null || true
 
 cat >&2 <<EOF
 ⛔ Refusing \`gh pr merge --delete-branch\`: stacked dependents exist on \`$head_branch\`.

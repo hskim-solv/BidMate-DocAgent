@@ -6,7 +6,7 @@ permalink: /leaderboard/
 
 # Synthetic Eval Leaderboard
 
-Time-series view of headline metrics across commits to main. Two pipelines render as overlaid series: `naive_baseline` (ADR 0001 — intentionally stable extractive floor) and `agentic_full` (ADR 0029 — production surface where pipeline merges actually move metrics). Bootstrap 95% CI bands are shaded on the baseline series; wide bands mean *we cannot yet detect a difference*, which is just as informative as a narrow band showing a trend.
+Time-series view of headline metrics across commits to main. Two pipelines render as overlaid series: `naive_baseline` (ADR 0001 — intentionally stable extractive floor) and `agentic_full` (ADR 0029 — production surface where pipeline merges actually move metrics). The `agentic_full` series begins 2026-05-13 (PR #476 / ADR 0030); earlier snapshots show only `naive_baseline`, since `ablation_full` was introduced forward-only and pre-#476 snapshots predate the schema. Bootstrap 95% CI bands are shaded on the baseline series; wide bands mean *we cannot yet detect a difference*, which is just as informative as a narrow band showing a trend.
 
 Source data is in `reports/history/` and the rendering source is in `scripts/leaderboard.py`. ADR 0005 aggregate-only boundary respected.
 

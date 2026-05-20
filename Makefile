@@ -10,7 +10,7 @@
 # Governance gates (branch + issue, README metrics, latency SLO, leaderboard
 # freshness, real-eval history freshness, benchmark manifest check). Run
 # `make governance-check` to invoke the pre-PR subset in sequence.
-.PHONY: check-branch governance-check check check-latency leaderboard-check real-eval-history-check benchmark-check check-baseline-provenance
+.PHONY: check-branch governance-check check check-latency leaderboard-check real-eval-history-check benchmark-check check-baseline-provenance regen-golden check-golden
 
 # Index build + ad-hoc ask
 .PHONY: index ask
@@ -88,7 +88,7 @@ index:
 	$(PYTHON) scripts/build_index.py --input_dir data/raw --output_dir data/index
 
 ask:
-	$(PYTHON) app.py --input_dir data/index --output_dir outputs --query "기관 A와 기관 B의 AI 요구사항 차이 알려줘"
+	$(PYTHON) app.py --input_dir data/index --output_dir outputs --query "기관 A와 기관 B의 보안 요구사항 차이를 알려줘" --pipeline agentic_full
 
 eval:
 	$(PYTHON) eval/run_eval.py --index_dir data/index --output_dir reports --config eval/config.yaml
@@ -152,6 +152,19 @@ benchmark-check:
 
 check:
 	$(PYTHON) scripts/update_readme_metrics.py --report reports/eval_summary.json --readme README.md --check
+
+# naive_baseline ranking golden (tests/data/naive_baseline_top_k.json) regen +
+# staleness check. The golden drifts when the data/raw/ corpus changes (PR #648,
+# #914); content drift is hard-gated by
+# tests/test_naive_baseline_ranking_invariance.py. `regen-golden` refreshes the
+# committed snapshot in place (ADR 0001: pipeline code untouched); `check-golden`
+# exits non-zero if the committed golden is stale (also used by the pre-push
+# soft-warn reminder in .githooks/_pre-push-real-eval-reminder.sh).
+regen-golden:
+	$(PYTHON) scripts/regen_naive_baseline_golden.py
+
+check-golden:
+	$(PYTHON) scripts/regen_naive_baseline_golden.py --check
 
 # Absolute p95 latency SLO gate. Reads per-ablation budgets from
 # eval/config.yaml::latency_budgets and fails if any observed p95

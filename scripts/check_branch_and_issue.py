@@ -41,8 +41,19 @@ ALLOWED_PREFIXES = "feat, fix, docs, chore, refactor, test, ci, perf, build, sty
 HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 FIVE_B_HEADER_RE = re.compile(r"###\s+5b\.\s*Real-data delta", re.IGNORECASE)
 FIVE_B_TABLE_RE = re.compile(r"^\s*\|.+\|.+\|", re.MULTILINE)
+# Accepts the §5b "no behavior change" attestation in EITHER language so the
+# gate matches the (Korean-first) PR template example, not just the English
+# sentinel (issue #1048 — template↔gate drift made template-following PRs fail
+# CI). The Korean branch anchors "변(화|경|동)" immediately before "없(음|다|습니다)"
+# (only whitespace allowed between) so a sentence asserting that behavior DID
+# change cannot accidentally satisfy the escape — that false-escape is exactly
+# the PR #69 regression class §5b guards against.
 FIVE_B_ESCAPE_RE = re.compile(
-    r"No behavior change in\s+(?:retrieval|verifier|eval|api|ingestion)\b",
+    r"No behavior change in\s+(?:retrieval|verifier|eval|api|ingestion)\b"
+    r"|"
+    r"(?:검색|검증|수집|평가|retrieval|verifier|eval|api|ingestion)"
+    r"[^\n]{0,16}?"
+    r"(?:변화|변경|변동)\s*없(?:음|다|습니다)",
     re.IGNORECASE,
 )
 
@@ -233,8 +244,9 @@ def check_5b_mode(pr_number: int) -> int:
       3. If none match → exit 0 (skip; non-load-bearing PR).
       4. If any match → require body to contain the '### 5b. Real-data delta'
          header AND, beneath it (HTML comments stripped), either a markdown
-         table row OR the escape sentence
-         'No behavior change in retrieval/verifier/eval/api/ingestion path'.
+         table row OR the escape sentence in English ('No behavior change in
+         retrieval/verifier/eval/api/ingestion path') or Korean ('검색/검증
+         path 동작 변화 없음.') — see FIVE_B_ESCAPE_RE.
       5. On failure: print actionable error pointing to PR #69 lesson.
     """
     if not gh_available():
@@ -274,7 +286,8 @@ def check_5b_mode(pr_number: int) -> int:
         "   Either:\n"
         "     (a) attach the `make real-eval-delta` aggregate table under\n"
         "         '### 5b. Real-data delta', or\n"
-        "     (b) state explicitly: 'No behavior change in retrieval / verifier path.'\n"
+        "     (b) state explicitly, e.g. '검색/검증 path 동작 변화 없음.'\n"
+        "         (English also accepted: 'No behavior change in retrieval / verifier path.')\n"
         "   See: .github/pull_request_template.md and CLAUDE.md.\n"
     )
     if section is None:

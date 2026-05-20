@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 # Claude Code UserPromptSubmit hook for BidMate-DocAgent (issue #1014).
 #
+# Enforcement: nudge (stdout context injection only, never blocks).
+# Classification rationale: injects suggestion text into next-turn context;
+# user/Claude free to ignore. Always exit 0.
+# See scripts/claude-hooks/README.md for the full enforcement taxonomy.
+#
 # Registered in `.claude/settings.json` with matcher `.*`. Inspects every
 # user prompt for non-trivial change-intent keywords (Korean + English) and,
 # when matched, emits a CLAUDE.md "위임 기본값" suggestion to stdout — which
@@ -52,9 +57,11 @@ if printf '%s' "$prompt" | grep -qiE "리팩토링|refactor|구현해|implement|
 Trivial 변경(오타/단일 라인/단일 함수)은 직접 진행 OK.
 EOF
 
-  printf '%s|nudged|agent-delegation|<user-prompt>\n' \
-    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-    >> "$REPO_ROOT/.claude/.hook-fires.log" 2>/dev/null || true
+  # v2-5field telemetry (ADR 0060).
+  python3 "$REPO_ROOT/scripts/_governance.py" --emit-fire \
+    --outcome nudged --hook delegation-gate --category agent-delegation \
+    --path "<user-prompt>" \
+    --fire-log "$REPO_ROOT/.claude/.hook-fires.log" 2>/dev/null || true
 fi
 
 exit 0

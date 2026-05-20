@@ -1,6 +1,7 @@
 # ADR 0056 — Trajectory-rationality judge as a new measurement surface
 
-- Status: Proposed
+- Status: Accepted
+- Implemented: #987 (2026-05-18) — `eval/judges/rationality_judge.py` 3-axis trajectory measurement
 - Date: 2026-05-18
 - Authors: Hyunsoo Kim
 - Related: ADR 0006 (real-data LLM-judge), ADR 0012 (synthetic LLM-judge), ADR 0014 (RAGAS enrichment, Gate 3), ADR 0054 (conditional-on-substantive-answer scorer semantics), ADR 0055 (claim_validator)

@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # Claude Code PreToolUse hook for BidMate-DocAgent (issue #720).
 #
+# Enforcement: graduated (awareness ≥AWARE_THRESHOLD, block ≥BLOCK_THRESHOLD).
+# Classification rationale: dual-mode — stderr warning then exit 2 refuse.
+# See scripts/claude-hooks/README.md for the full enforcement taxonomy.
+#
 # Registered in `.claude/settings.json` with matcher `Edit|MultiEdit|Write`.
 # Fires only when the edit target is a `MEMORY.md` index file. Counts the
 # *resulting* line count (existing file lines OR Write payload lines) and:
@@ -74,9 +78,11 @@ fi
 #   <ts>|<action>|<reason>|<path>
 # The exact line count is in stderr for the human; the ROI collector
 # only needs the action/reason counters.
-printf '%s|%s|memory-lines|%s\n' \
-  "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$action" "$file_path" \
-  >> "$REPO_ROOT/.claude/.hook-fires.log" 2>/dev/null || true
+# v2-5field telemetry (ADR 0060). action ∈ {ok, aware, blocked}.
+python3 "$REPO_ROOT/scripts/_governance.py" --emit-fire \
+  --outcome "$action" --hook memory-lines --category line-count \
+  --path "$file_path" \
+  --fire-log "$REPO_ROOT/.claude/.hook-fires.log" 2>/dev/null || true
 
 if [[ "$action" = "blocked" ]]; then
   cat >&2 <<EOF

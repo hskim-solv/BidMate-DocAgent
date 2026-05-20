@@ -388,6 +388,13 @@ def _compute_adr_lags(repo: str, start: str, end: str) -> list[dict[str, Any]]:
             "proposed_date": proposed_dt.date().isoformat(),
             "accepted_date": accepted_dt.date().isoformat(),
             "lag_days": lag_days,
+            # lag_days == 0 means proposed and accepted commits land the same
+            # day. That is either a genuine same-day decision or a *retrofit*
+            # (the `-S "**Status**: accepted"` search finds the original
+            # acceptance commit, so a later Verification-surface add looks
+            # zero-lag). Flag it so the LLM rubric layer can separate the two
+            # instead of silently averaging retrofits into the lag p50/p90.
+            "is_retrofit": lag_days == 0,
         })
     return results
 
@@ -574,7 +581,14 @@ def compute_adr_lag_summary(adr_lags: list[dict[str, Any]]) -> dict[str, Any]:
         v = entry.get("lag_days")
         if isinstance(v, (int, float)):
             days.append(float(v))
-    return _summary_p50_p90(days)
+    summary = _summary_p50_p90(days)
+    # Axis #4 honesty: a lag p50 near 0 can be inflated by retrofits (see
+    # `_compute_adr_lags`). Surface the count so the rubric can subtract
+    # them rather than read a flattering near-zero median at face value.
+    summary["retrofit_count"] = sum(
+        1 for e in adr_lags if e.get("is_retrofit")
+    )
+    return summary
 
 
 def compute_axis_2_skip_rate(

@@ -20,6 +20,8 @@ ADR-aware, approval-gated single-PR shipping. The skill replaces an ad-hoc seque
 
 ## Workflow
 
+0. **Mutex guard (issue #1043).** Before any other step, check that `.claude/.ship-armed` does NOT exist. If it does, refuse and tell the user to run `make ship-disarm` first — the two ship surfaces are mutually exclusive and `make ship-arm` is currently active. Then `touch .claude/.ship-pr-active` so `make ship-arm` will refuse if invoked while this skill is running. The cleanup (step 13) removes the marker; if the skill aborts, the marker auto-expires after 6h (`_ship_arm.py` stale-marker safety).
+
 1. **Scope confirmation.** Ask the user (inline or via `AskUserQuestion`): "Which issue does this PR close, and what's the one-line summary?" If no issue exists yet, propose a title + body and require **explicit approval** before `gh issue create`.
 
 2. **ADR-necessity check.** Does this change remove or replace a load-bearing decision (baseline / pipeline / answer contract / eval surface — see `docs/adr/README.md` criteria)? If yes → steps 3-5. If no → jump to step 6.
@@ -69,7 +71,7 @@ ADR-aware, approval-gated single-PR shipping. The skill replaces an ad-hoc seque
     ```
     Wait for explicit go-ahead. Then execute.
 
-13. **Aftermath.** `git checkout main` (if the worktree owns main) or `git fetch origin main` + branch advance (worktree case). If the user has another PR stacked on top, prompt them to re-invoke the skill for the next layer.
+13. **Aftermath.** `git checkout main` (if the worktree owns main) or `git fetch origin main` + branch advance (worktree case). **Remove the mutex marker** (`rm -f .claude/.ship-pr-active`) so `make ship-arm` is unblocked. If the user has another PR stacked on top, prompt them to re-invoke the skill for the next layer (which re-touches the marker at step 0).
 
 ## Approval-gate language
 
