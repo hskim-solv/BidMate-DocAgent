@@ -75,7 +75,7 @@ CR=correct\_refusal / IA=incorrect\_answer / BP=boundary\_partial (ADR 0005 §ab
 - `agreement_with_verifier`: deterministic verifier 와 동의한 비율 — **drop 이 actionable signal**.
 - `by_query_type`: single_doc / comparison / follow_up / abstention 슬라이스별 같은 메트릭.
 
-현재 commit 된 aggregate 는 **stub backend** 기준 — verifier status 를 거울처럼 반사하므로 `agreement_with_verifier=1.0` 이고 RAGAS 점수는 status-derived fixture (supported→0.85, partial→0.5, insufficient→0.1) 이다. 진짜 신호가 아니다. 실제 LLM judge 수치를 보려면 live 백엔드로 다시 돌려 aggregate 를 갱신한다.
+현재 commit 된 aggregate 는 **live backend** (`openai_compatible`, `model=gpt-5.4-nano`, issue #878 첫 실행) 기준 — n=105, `agreement_with_verifier=0.343`, faithfulness 0.436 / answer_relevance 0.730 / grounded_rate 0.248. (직전 stub fixture 는 verifier status 를 거울 반사해 `agreement_with_verifier=1.0` 이었음 — 가짜 신호.) **낮은 agreement (0.343) 가 actionable signal** — nano-tier judge 의 보수적 채점 + `naive_baseline` (hashing eval) 답변과 deterministic verifier 간 calibration 차이가 합쳐진 결과. 더 강한 judge 모델 또는 production 임베딩 답변으로 재측정 시 변동 가능 (follow-up). 재현: `BIDMATE_JUDGE_BASE_URL=https://api.openai.com/v1 BIDMATE_JUDGE_API_KEY=$OPENAI_API_KEY BIDMATE_JUDGE_MODEL=gpt-5.4-nano make synthetic-judge`.
 
 ## Chunk-level retrieval (PR #147 + human-annotated gold from #175)
 
@@ -98,7 +98,7 @@ CR=correct\_refusal / IA=incorrect\_answer / BP=boundary\_partial (ADR 0005 §ab
 
 ## Pending rows
 
-- **Live synthetic judge aggregate** (ADR 0012, issue #164): stub-mode aggregate 만 commit 되어 있음. live 백엔드(openai_compatible) 로 갱신한 aggregate diff 를 별도 PR 로 commit 하면 RAGAS-style 실측 노출.
+- **Live synthetic judge aggregate** (ADR 0012, issue #164 → #878): ✅ 완료 — live `openai_compatible` (gpt-5.4-nano) 로 갱신, `agreement_with_verifier=0.343` (n=105). 위 §Synthetic LLM-judge (RAGAS-style) 참조.
 - **`hybrid_bm25`** (ADR 0010, issue #119): `eval/config.yaml` 에 추가됨. `make eval` 의 ablation 블록에는 이미 채워지지만 (`accuracy=0.906`, `groundedness=0.929` — `full` 과 동일 ceiling), 본 문서의 committed snapshot 은 `make benchmark` 의 manifest 기반이므로 다음 benchmark 실행 후 row 를 추가한다. 실측 차이는 private real-data eval (`make real-eval-delta`) 에서 드러날 가능성이 크다.
 - **KO RFP per-axis** (issue #126): `eval/ko_axes.py` 에 `detect_ko_axes()` 가 추가되어 dev 결과 CSV 를 `eval/evaluate_dev_results.py` 로 평가할 때 `summary["by_ko_axes"]` 블록으로 per-axis (`금액단위 / 날짜형식 / 한자 / 사업번호 / 약칭`) accuracy 가 emit 된다. 차기 dev-side run 결과를 본 표에 별도 row 로 누적한다. `eval/run_eval.py` (CI 표면) 으로의 승격은 후속 PR.
 - **Multi-turn decay** (issue #125): `eval/multiturn_eval.py` 에 `derive_turn_depth()` + `build_qid_parent_map()` 가 추가되어 `summary["by_turn_depth"]` 블록으로 per-turn (turn 1 / 2 / 3 / …) accuracy 가 emit 된다. ADR 0001 invariant 준수 — `naive_baseline` / `agentic_full` 위에 *측정 축* 만 추가, 어느 파이프라인도 대체하지 않음. 초기 시나리오 fixture: `eval/multiturn_scenarios_v1.jsonl` (2 시나리오 × 3 turns, entity carryover + graceful-degradation abstention 포함). 차기 dev-side run 결과로 decay 커브를 본 표에 누적.
