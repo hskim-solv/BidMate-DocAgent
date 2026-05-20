@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""External-LLM cross-rating of self-review 5-axis verdicts (ADR 0060).
+"""External-LLM cross-rating of self-review 5-axis verdicts (ADR 0064).
 
 Reads a self-review ``stats.json`` (from
 ``scripts/claude-hooks/_self_review.py --quarter <Qx-YYYY> --emit-stats``),
@@ -9,7 +9,7 @@ deterministic stub (SKILL.md rubric thresholds) or an external LLM
 operator's own verdicts (parsed from ``docs/self-review/Qx-YYYY.md``) using
 ``eval/judges/judge_agreement.compute_agreement``.
 
-The point (ADR 0060): the self-review rubric is currently graded by the same
+The point (ADR 0064): the self-review rubric is currently graded by the same
 LLM that writes the report — a self-referential cycle with no external
 anchor. An independent rater (stub = deterministic, or a different LLM)
 breaks that cycle. Low agreement (Cohen's κ < 0.6, ADR 0016 "substantial")
@@ -32,6 +32,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -47,7 +48,7 @@ from eval.judges.judge_common import (  # noqa: E402
 from eval.judges.judge_agreement import compute_agreement  # noqa: E402
 
 
-# Verdict ↔ JUDGE_STATUSES mapping (ADR 0060). Lets us reuse the existing
+# Verdict ↔ JUDGE_STATUSES mapping (ADR 0064). Lets us reuse the existing
 # judge_agreement.cohens_kappa / compute_agreement (LABELS = the same 3
 # statuses) with only a label translation.
 VERDICT_TO_STATUS: dict[str, str] = {
@@ -57,6 +58,14 @@ VERDICT_TO_STATUS: dict[str, str] = {
 }
 STATUS_TO_VERDICT: dict[str, str] = {v: k for k, v in VERDICT_TO_STATUS.items()}
 VALID_VERDICTS: tuple[str, ...] = tuple(VERDICT_TO_STATUS)
+
+# Ordinal rank (✓ > △ > ✗) for distance-weighted Cohen's κ, matching
+# judge_agreement._LABEL_RANK. The unweighted κ that compute_agreement returns
+# penalises ✓↔△ (adjacent) and ✓↔✗ (opposite) equally — too harsh for an
+# ordinal scale, so the agreement block also reports linear- and quadratic-
+# weighted κ, which are less extreme when disagreements are mostly adjacent
+# (ADR 0064 Verification).
+STATUS_RANK: dict[str, int] = {"supported": 2, "partial": 1, "insufficient": 0}
 
 # The 5 collaboration axes, collapsed from SKILL.md's 7 rows (#4-A/#4-B and
 # #5-A/#5-B are combined here) so they line up 1:1 with the operator's
@@ -124,7 +133,7 @@ def _band(value: float | None, good: float, bad: float) -> str:
 
 
 def _guard_downgrade(verdict: str, evidence_age_days: float | None) -> str:
-    """ADR 0060 time-separation guard: evidence_age < 1.0 day downgrades ✓→△.
+    """ADR 0064 time-separation guard: evidence_age < 1.0 day downgrades ✓→△.
 
     Q2-2026's evidence (ADR 0038, hook-fires.log) was produced the *same
     day* the review was written. A ✓ that rests on same-day evidence cannot
@@ -140,7 +149,7 @@ def _guard_downgrade(verdict: str, evidence_age_days: float | None) -> str:
 
 
 def stub_verdicts(stats: dict[str, Any]) -> dict[str, str]:
-    """Deterministic verdicts straight from SKILL.md thresholds (ADR 0060).
+    """Deterministic verdicts straight from SKILL.md thresholds (ADR 0064).
 
     This is the stub backend — it absorbs what was the standalone
     "deterministic scorer". Three self-pass guards are baked in:
@@ -196,7 +205,7 @@ def stub_verdicts(stats: dict[str, Any]) -> dict[str, str]:
     # axis #5 — memory hygiene (5-B content freshness only). 5-A index
     # hygiene needs fires_by_reason["memory-lines"], but the collector emits
     # fires_by_action (action key, not reason) — a known SKILL.md↔collector
-    # mismatch documented in ADR 0060 Context. 5-A is deferred until the
+    # mismatch documented in ADR 0064 Context. 5-A is deferred until the
     # collector emits fires_by_action_reason; axis_5 grades on 5-B alone.
     fr = sig["axis_5"]["content_fresh_rate"]
     if fr is None:
@@ -261,6 +270,43 @@ def openai_verdicts(stats: dict[str, Any]) -> dict[str, str]:
     return out
 
 
+def _weighted_kappa(
+    judge_statuses: list[str], human_statuses: list[str], *, mode: str
+) -> float:
+    """Distance-weighted Cohen's κ over the ordinal STATUS_RANK scale.
+
+    ``mode`` is ``"linear"`` (disagreement weight |i-j|/(k-1)) or
+    ``"quadratic"`` ((i-j)²/(k-1)²), k=3. Adjacent disagreements (✓↔△) cost
+    less than opposite ones (✓↔✗) — unlike the unweighted κ. Returns NaN when
+    the expected disagreement is zero (no marginal spread).
+    """
+    n = len(judge_statuses)
+    if n == 0:
+        return float("nan")
+    jr = [STATUS_RANK[s] for s in judge_statuses]
+    hr = [STATUS_RANK[s] for s in human_statuses]
+    cats = (0, 1, 2)
+
+    def weight(i: int, j: int) -> float:
+        dist = abs(i - j)
+        return dist / 2.0 if mode == "linear" else (dist * dist) / 4.0
+
+    cj, ch = Counter(jr), Counter(hr)
+    observed: dict[tuple[int, int], int] = {}
+    for a, b in zip(jr, hr):
+        observed[(a, b)] = observed.get((a, b), 0) + 1
+    num = sum(weight(i, j) * observed.get((i, j), 0) for i in cats for j in cats)
+    den = sum(weight(i, j) * cj[i] * ch[j] / n for i in cats for j in cats)
+    if num == 0:
+        # All observations on the diagonal → perfect agreement. Mirrors
+        # cohens_kappa's observed>=1.0 special case (avoids 0/0 when there
+        # is no marginal spread, e.g. both raters all-✓).
+        return 1.0
+    if den == 0:
+        return float("nan")
+    return 1.0 - num / den
+
+
 def judge_self_review(
     stats: dict[str, Any],
     operator_verdicts: dict[str, str] | None = None,
@@ -273,7 +319,8 @@ def judge_self_review(
         verdicts only, no body text).
     aggregate: ``{backend, judge_verdicts}`` plus, when operator_verdicts is
         supplied, an ``agreement`` block from compute_agreement (n,
-        cohens_kappa, spearman_rho, confusion, passes).
+        cohens_kappa, spearman_rho, confusion, passes) augmented with
+        weighted_kappa_linear / weighted_kappa_quadratic (ordinal).
     """
     if backend == "stub":
         judge = stub_verdicts(stats)
@@ -303,12 +350,25 @@ def judge_self_review(
             for key in AXIS_KEYS
             if key in judge and operator_verdicts.get(key) in VERDICT_TO_STATUS
         ]
-        aggregate["agreement"] = compute_agreement(rows)
+        agreement = compute_agreement(rows)
+        # Augment the (unweighted) compute_agreement output with ordinal
+        # distance-weighted κ. The `passes` gate stays on the unweighted κ
+        # (ADR 0016 convention); weighted κ is reported for honesty on the
+        # ordinal ✓>△>✗ scale (ADR 0064 Verification).
+        judge_statuses = [r[1] for r in rows]
+        human_statuses = [r[2] for r in rows]
+        agreement["weighted_kappa_linear"] = _weighted_kappa(
+            judge_statuses, human_statuses, mode="linear"
+        )
+        agreement["weighted_kappa_quadratic"] = _weighted_kappa(
+            judge_statuses, human_statuses, mode="quadratic"
+        )
+        aggregate["agreement"] = agreement
     return local, aggregate
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(description="ADR 0060 self-review external judge")
+    p = argparse.ArgumentParser(description="ADR 0064 self-review external judge")
     p.add_argument(
         "--stats", required=True, type=Path,
         help="stats.json from _self_review.py --quarter <Qx-YYYY> --emit-stats",

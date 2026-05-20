@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regression tests for eval/judges/self_review_judge.py (ADR 0060).
+"""Regression tests for eval/judges/self_review_judge.py (ADR 0064).
 
 Covers the deterministic stub backend, the ✓/△/✗ ↔ JUDGE_STATUSES mapping,
 agreement aggregation against operator verdicts, and the three self-pass
@@ -19,6 +19,7 @@ if str(ROOT) not in sys.path:
 
 from eval.judges.self_review_judge import (  # noqa: E402
     VERDICT_TO_STATUS,
+    _weighted_kappa,
     judge_self_review,
     stub_verdicts,
 )
@@ -51,7 +52,7 @@ def _base_stats(**overrides):
 
 
 def test_stub_backend_deterministic():
-    """Same stats → identical verdicts across calls (ADR 0060 reproducibility)."""
+    """Same stats → identical verdicts across calls (ADR 0064 reproducibility)."""
     stats = _base_stats()
     v1 = stub_verdicts(stats)
     v2 = stub_verdicts(stats)
@@ -87,6 +88,34 @@ def test_agreement_against_operator():
     # all-✓ stub vs all-✓ operator → perfect agreement
     assert agreement["cohens_kappa"] == 1.0
     assert agreement["passes"] is True
+    # ordinal weighted κ is also reported and = 1.0 on perfect agreement
+    assert agreement["weighted_kappa_linear"] == 1.0
+    assert agreement["weighted_kappa_quadratic"] == 1.0
+
+
+def test_weighted_kappa_ordinal_distance():
+    """Weighted κ penalises adjacent (✓↔△) less than opposite (✓↔✗) disagreement.
+
+    Three anchors (statuses, not verdicts):
+    - perfect agreement → 1.0 both modes;
+    - pure opposite inversion (all ✓↔✗) → -1.0 both (weighting is irrelevant
+      at the extremes, so it equals the unweighted κ);
+    - a mixed case where unweighted κ = 0 but weighted κ is negative — i.e.
+      the ordinal distance changes the verdict, which is the whole point.
+    """
+    sup, par, ins = "supported", "partial", "insufficient"
+    # perfect (with marginal spread so expected disagreement > 0)
+    perfect = [sup, par, ins]
+    assert _weighted_kappa(perfect, perfect, mode="linear") == 1.0
+    assert _weighted_kappa(perfect, perfect, mode="quadratic") == 1.0
+    # pure opposite inversion → both weighted κ = unweighted = -1.0
+    inv_j, inv_h = [sup, sup, ins, ins], [ins, ins, sup, sup]
+    assert _weighted_kappa(inv_j, inv_h, mode="linear") == pytest.approx(-1.0)
+    assert _weighted_kappa(inv_j, inv_h, mode="quadratic") == pytest.approx(-1.0)
+    # mixed: unweighted κ = 0, but linear = -1/7, quadratic = -1/3
+    mix_j, mix_h = [sup, par, ins, sup], [par, par, par, ins]
+    assert _weighted_kappa(mix_j, mix_h, mode="linear") == pytest.approx(-1 / 7)
+    assert _weighted_kappa(mix_j, mix_h, mode="quadratic") == pytest.approx(-1 / 3)
 
 
 def test_agreement_absent_without_operator():
@@ -97,7 +126,7 @@ def test_agreement_absent_without_operator():
 
 
 def test_evidence_age_under_24h_forces_partial():
-    """ADR 0060 guard: evidence_age < 1.0 day downgrades every ✓ → △."""
+    """ADR 0064 guard: evidence_age < 1.0 day downgrades every ✓ → △."""
     guarded = stub_verdicts(_base_stats(evidence_age_days=0.5))
     assert all(v == "△" for v in guarded.values()), guarded
     # the same stats with age ≥ 1.0 stay ✓ (guard is the only difference)
@@ -106,7 +135,7 @@ def test_evidence_age_under_24h_forces_partial():
 
 
 def test_hook_fires_zero_forces_fail():
-    """ADR 0060 guard: axis #3 fires=0 → ✗ (silence is not a pass)."""
+    """ADR 0064 guard: axis #3 fires=0 → ✗ (silence is not a pass)."""
     stats = _base_stats(
         governance_hooks={
             "pretooluse_loadbearing_fires": 0,
@@ -117,7 +146,7 @@ def test_hook_fires_zero_forces_fail():
 
 
 def test_axis_2_low_sample_forces_partial():
-    """ADR 0060 guard: axis #2 prs_evaluated < 10 → △ (sample too small)."""
+    """ADR 0064 guard: axis #2 prs_evaluated < 10 → △ (sample too small)."""
     stats = _base_stats(
         axis_2_plan_subagent_skip_rate={"skip_rate": 0.0, "prs_evaluated": 3}
     )

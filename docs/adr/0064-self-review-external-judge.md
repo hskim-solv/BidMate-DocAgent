@@ -64,11 +64,33 @@
 <!-- verifies-key: tests/test_self_review_judge.py:test_stub_backend_deterministic -->
 <!-- verifies-key: tests/test_self_review_judge.py:test_verdict_status_mapping -->
 <!-- verifies-key: tests/test_self_review_judge.py:test_agreement_against_operator -->
+<!-- verifies-key: tests/test_self_review_judge.py:test_weighted_kappa_ordinal_distance -->
 
-후속 검증:
+### 첫 실행 결과 (Q2-2026, stub backend)
 
-- Q2-2026 stats 로 stub + (사용자 key 설정 시) openai backend 1회 실행 → operator (1✓4△) 와 agreement.
-- agreement κ < 0.6 → SKILL.md rubric 또는 임계값 재설계 (ADR 0016 substantial-agreement 기준 차용).
+`reports/self_review_agreement/Q2-2026.json` (재현: `python eval/judges/self_review_judge.py --stats <Q2 stats> --operator-verdicts <Q2 verdicts> --backend stub`):
+
+| 지표 | 값 |
+|---|---|
+| n | 5 (분기 1개, 축 전체) |
+| raw 일치 | **0/5** (5축 전부 불일치) |
+| Cohen's κ (unweighted) | −0.389 |
+| weighted κ (linear / quadratic) | −0.316 / −0.190 |
+| Spearman ρ | −0.395 |
+| passes (κ ≥ 0.6) | false |
+
+**해석 — "rubric 신뢰성의 정량적 반증" 이 아니라 1차 방향성 신호.** 세 caveat 가 주장 강도를 제한한다:
+
+1. **n=5, 분기 1개.** 5는 표본이 아니라 축 전체 모집단이라 축 resample bootstrap 은 부적절 — 진짜 불확실성은 *분기 수* 로만 줄어든다. 다분기 누적 전까지는 점추정.
+2. **Ordinal 척도에 unweighted κ 는 과벌점.** ✓↔△(인접)와 ✓↔✗(반대)를 동일 처벌한다. 거리 가중 κ (linear −0.316, quadratic −0.190) 가 덜 극단적 — 본 PR 이 aggregate 에 두 값을 함께 기록하는 이유 (gate 는 ADR 0016 관례대로 unweighted κ 유지, 가중치는 정직성용 병기).
+3. **stats 시점 드리프트 (가장 큰 교란).** axis_3 stub=✓ (오늘 재생성분 `fires=66`) vs operator=△ (Q2 보고서 사유 "`.hook-fires.log` 미생성, 정량화 불가") — operator 는 Q2 시점 빈 로그로, stub 은 누적 후 stats 로 채점. 이 불일치는 rubric 결함이 아니라 위 Consequences 의 "stats 시점 불일치" 위험의 실측 사례. agreement ≠ validity (κ 는 "누가 맞나" 가 아니라 "둘이 다르다" 만 잰다).
+
+→ **외부/결정론 anchor 가 operator Q2 verdict 와 0/5 불일치** — 자기참조 cycle 에 외부 anchor 1개 도입이라는 본 ADR 의 목적 자체는 달성. 단 "rubric 재설계 트리거" 로 승격하기 전 (a) 시점정합 stats (operator 채점 시점 = stub 입력 시점), (b) 다분기 n 확보, (c) weighted κ gate 채택 여부 결정이 선행되어야 한다.
+
+후속:
+
+- 사용자 key 설정 시 `--backend openai_compatible` 1회 실행 → 외부 LLM verdict 와의 agreement (same-family 편향은 다른 vendor 모델로 완화).
+- collector 가 `evidence_age_days` 를 emit 하면 시간분리 가드가 실제 발화 (현재 null → 미발화) — axis_3 시점 드리프트의 근본 해결 경로.
 
 ## Alternatives considered
 
