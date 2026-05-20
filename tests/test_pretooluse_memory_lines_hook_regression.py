@@ -2,7 +2,8 @@
 
 Pins the basename match (MEMORY.md only), the aware/blocked thresholds,
 Write-payload counting (file-does-not-exist-yet path), exit code contract
-(0 silent / 0 aware / 2 blocked), and the 4-field `.hook-fires.log` format.
+(0 silent / 0 aware / 2 blocked), and the 5-field `.hook-fires.log` format
+(`<ts>|<outcome>|memory-lines|<category>|<path>`, issue #1039 telemetry).
 
 Tests isolate `.hook-fires.log` writes into a temp dir so local self-review
 artifacts are never polluted.
@@ -20,6 +21,10 @@ from pathlib import Path
 
 REPO = Path(__file__).parents[1]
 HOOK = REPO / "scripts" / "claude-hooks" / "pretooluse-memory-lines.sh"
+# The hook emits telemetry via scripts/_governance.py --emit-fire; copy it
+# under the temp REPO_ROOT or emit silently no-ops and .hook-fires.log is
+# never written (issue #1039).
+GOVERNANCE = REPO / "scripts" / "_governance.py"
 
 
 def _run_hook(payload: dict, env_overrides: dict[str, str] | None = None) -> subprocess.CompletedProcess:
@@ -44,6 +49,7 @@ class TestMemoryLinesHook(unittest.TestCase):
         (self._tmp_repo / ".claude").mkdir(parents=True)
         (self._tmp_repo / "scripts" / "claude-hooks").mkdir(parents=True)
         shutil.copy(HOOK, self._tmp_repo / "scripts" / "claude-hooks" / HOOK.name)
+        shutil.copy(GOVERNANCE, self._tmp_repo / "scripts" / GOVERNANCE.name)
         self._hook = self._tmp_repo / "scripts" / "claude-hooks" / HOOK.name
         self._fires_log = self._tmp_repo / ".claude" / ".hook-fires.log"
 
@@ -51,12 +57,16 @@ class TestMemoryLinesHook(unittest.TestCase):
         shutil.rmtree(self._tmp, ignore_errors=True)
 
     def _run(self, payload: dict) -> subprocess.CompletedProcess:
+        # cwd=tmp_repo so the hook's `--emit-fire` (which uses the default
+        # relative --fire-log `.claude/.hook-fires.log`) writes into this
+        # isolated REPO_ROOT rather than the developer's cwd (issue #1039).
         return subprocess.run(
             ["bash", str(self._hook)],
             input=json.dumps(payload),
             text=True,
             capture_output=True,
             check=False,
+            cwd=str(self._tmp_repo),
         )
 
     def test_non_memory_path_is_noop(self) -> None:
