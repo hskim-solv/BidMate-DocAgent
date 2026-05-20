@@ -224,6 +224,22 @@ def render_markdown_table(rows: list[dict[str, Any]]) -> str:
     )
 
 
+def _agentic_full_start_date(rows: list[dict[str, Any]]) -> str | None:
+    """First date where ``ablation_full.accuracy`` is non-null.
+
+    Returns ``None`` if no snapshot ever carries an ``agentic_full``
+    measurement. ADR 0030 forward-only migration: pre-#476 snapshots
+    surface ``—`` in tables and ``null`` (gap) in charts; this helper
+    lets the chart caption name the inflection date dynamically rather
+    than hard-coding a date that drifts as backfill PRs land.
+    """
+    for row in rows:
+        full = row.get("ablation_full") or {}
+        if full.get("accuracy") is not None:
+            return row.get("date") or None
+    return None
+
+
 def _chart_data(rows: list[dict[str, Any]]) -> dict[str, Any]:
     """Build the JSON payload consumed by Chart.js.
 
@@ -284,6 +300,18 @@ def render_page(rows: list[dict[str, Any]]) -> str:
     table_md = _render_table_only(rows)
     metric_keys_js = json.dumps([k for k, _ in HEADLINE_METRICS])
     data_json = json.dumps(chart_payload, ensure_ascii=False)
+    full_start = _agentic_full_start_date(rows)
+    if full_start:
+        series_start_note = (
+            f"The `agentic_full` series begins {full_start} (PR #476 / ADR 0030); "
+            "earlier snapshots show only `naive_baseline`, since `ablation_full` "
+            "was introduced forward-only and pre-#476 snapshots predate the schema."
+        )
+    else:
+        series_start_note = (
+            "The `agentic_full` series is empty — no snapshot in `reports/history/` "
+            "carries `ablation_full` yet (pre-#476)."
+        )
 
     return f"""---
 title: Synthetic Eval Leaderboard
@@ -293,7 +321,7 @@ permalink: /leaderboard/
 
 # Synthetic Eval Leaderboard
 
-Time-series view of headline metrics across commits to main. Two pipelines render as overlaid series: `naive_baseline` (ADR 0001 — intentionally stable extractive floor) and `agentic_full` (ADR 0029 — production surface where pipeline merges actually move metrics). Bootstrap 95% CI bands are shaded on the baseline series; wide bands mean *we cannot yet detect a difference*, which is just as informative as a narrow band showing a trend.
+Time-series view of headline metrics across commits to main. Two pipelines render as overlaid series: `naive_baseline` (ADR 0001 — intentionally stable extractive floor) and `agentic_full` (ADR 0029 — production surface where pipeline merges actually move metrics). {series_start_note} Bootstrap 95% CI bands are shaded on the baseline series; wide bands mean *we cannot yet detect a difference*, which is just as informative as a narrow band showing a trend.
 
 Source data is in `reports/history/` and the rendering source is in `scripts/leaderboard.py`. ADR 0005 aggregate-only boundary respected.
 
