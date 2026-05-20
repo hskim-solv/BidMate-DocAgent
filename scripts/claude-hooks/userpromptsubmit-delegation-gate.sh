@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 # Claude Code UserPromptSubmit hook for BidMate-DocAgent (issue #1014).
 #
+# Enforcement: nudge (stdout context injection only, never blocks).
+# Classification rationale: injects suggestion text into next-turn context;
+# user/Claude free to ignore. Always exit 0.
+# See scripts/claude-hooks/README.md for the full enforcement taxonomy.
+#
 # Registered in `.claude/settings.json` with matcher `.*`. Inspects every
 # user prompt for non-trivial change-intent keywords (Korean + English) and,
 # when matched, emits a CLAUDE.md "위임 기본값" suggestion to stdout — which

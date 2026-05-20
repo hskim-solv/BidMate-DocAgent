@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Claude Code PreToolUse hook for BidMate-DocAgent — Bash matcher.
 #
+# Enforcement: block (exit 2 refuses gh pr merge/create with stacked-dependency violation).
+# Classification rationale: refuses tool calls. See scripts/claude-hooks/README.md.
+#
 # Registered in `.claude/settings.json` with matcher `Bash`. Fires before
 # Claude runs any Bash command. Two responsibilities:
 #
