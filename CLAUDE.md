@@ -32,7 +32,7 @@ RFP 문서 이해를 위한 DocAgent 시스템. **입찰/RFP 문서 인텔리전
 - `rag_reranker.py` — `Reranker` Protocol + 기본 `CrossEncoderReranker` (#345)
 - `rag_retrieval.py` — 검색 파이프라인 (#459 + #461). `retrieve_candidates`, 4 유사도 primitive, BM25, fusion·재순위·comparison balance·parent-section 재조립. 기본 `retrieval_backend` = `hybrid` (RRF k=60, BGE-M3 dense + BM25; ADR 0058) — `agentic_full`/`metadata_first` 한정, `naive_baseline` 은 `dense` 유지 (ADR 0001 불변)
 - `rag_verifier.py` — 검증기 (#465, PR-J1). `verify_evidence`, topic 추출, `EVIDENCE_BOUNDARY` 상수 + 명령 패턴 regex, `neutralize_instruction_patterns` (ADR 0008)
-- `rag_answer.py` — 답변 생성 (#468, PR-J2). 20 함수가 검증된 근거를 ADR 0003 답변 dict 로 변환. `schema_version: 2` 계약 유지
+- `rag_answer.py` — 답변 생성 (#468, PR-J2). 21 함수가 검증된 근거를 ADR 0003 답변 dict 로 변환. `schema_version: 2` 계약 유지
 - `rag_query.py` — 쿼리 분석·계획 (#478, PR-J3). 15 함수, `analyze_query`/`make_plan`/`comparison_targets_for_analysis` 등
 - `rag_query_expansion.py` — `QueryExpander` Protocol + 기본 `IdentityExpander` + opt-in `HyDEExpander` (#396, ADR 0023)
 - `scripts/` — `build_index.py`, `update_readme_metrics.py`, `run_real_eval_delta.py` 등
