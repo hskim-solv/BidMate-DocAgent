@@ -3,7 +3,7 @@
 - **Status**: accepted (kordoc-corpus measurement landed 2026-05-19; Scenario A finalized)
 - **Date**: 2026-05-19 (Status accepted); 2026-05-18 (Status proposed)
 - **Deciders**: hskim
-- **Related**: [ADR 0001](0001-preserve-naive-baseline.md), [ADR 0010](0010-hybrid-bm25-dense-retrieval-rrf.md), [ADR 0021](0021-real-eval-axis-design.md), [ADR 0025](0025-spike-mode-m3-channels.md), [ADR 0032](0032-torch-26-unblock.md), [ADR 0049](0049-kordoc-replaces-pyhwp-backend.md), PR #966 (Phase 3.5 measurement), PR #956 (Phase 3, retracted), issue #957, issue #997, issue #1022 (m3 cloud-GPU follow-up)
+- **Related**: [ADR 0001](0001-preserve-naive-baseline.md), [ADR 0005](0005-eval-split-public-synthetic-private-local.md), [ADR 0010](0010-hybrid-bm25-dense-retrieval-rrf.md), [ADR 0021](0021-real-eval-axis-design.md), [ADR 0025](0025-spike-mode-m3-channels.md), [ADR 0032](0032-torch-26-unblock.md), [ADR 0049](0049-kordoc-replaces-pyhwp-backend.md), PR #966 (Phase 3.5 measurement), PR #956 (Phase 3, retracted), issue #957, issue #997, issue #1022 (m3 cloud-GPU follow-up)
 
 > **ADR number renumbered 0056 → 0057 → 0058** (2026-05-19) to avoid two concurrent collisions: ADR 0056 was merged via PR #987 (`rationality_judge`, issue #969) + ADR 0057 was merged via PR #988 (`bm25s additive backend`). Final number `0058` per ADR README.md "Reserve the next number with the CLI before drafting" convention.
 
@@ -24,6 +24,8 @@ This ADR's evidence is the kordoc-rebuilt re-measurement: same 100 docs, same ch
 ### Evidence (from `reports/retrieval/phase35_m3_20260518T214937Z_kordoc_no_m3/REPORT.md`)
 
 Measurement: kordoc 26,376 chunks, n=221 cases, dense_m3 vs hybrid_bm25_k60_m3, paired bootstrap CI 95%, seeds 17/23/29.
+
+This measurement runs on the [ADR 0005](0005-eval-split-public-synthetic-private-local.md) **private-local** surface (real100 corpus, gitignored; only the aggregate REPORT is committable) — not the public-synthetic surface. Per ADR 0005, every new eval surface picks one side; this one is strictly-local, so absolute `chunk_recall@k` numbers here are not reviewer-reproducible (paired CI deltas + the committed REPORT are the audit trail).
 
 **Overall metrics** (hybrid_bm25_k60_m3 vs dense_m3, all SIG = paired CI fully above 0):
 - `chunk_recall@10`: 0.288 → 0.340 (**+0.052 SIG**, CI +0.020/+0.088)
