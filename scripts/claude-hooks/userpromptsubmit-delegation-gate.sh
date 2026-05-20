@@ -60,7 +60,8 @@ EOF
   # v2-5field telemetry (ADR 0060).
   python3 "$REPO_ROOT/scripts/_governance.py" --emit-fire \
     --outcome nudged --hook delegation-gate --category agent-delegation \
-    --path "<user-prompt>" 2>/dev/null || true
+    --path "<user-prompt>" \
+    --fire-log "$REPO_ROOT/.claude/.hook-fires.log" 2>/dev/null || true
 fi
 
 exit 0
