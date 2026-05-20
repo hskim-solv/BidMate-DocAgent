@@ -280,9 +280,9 @@ reasoning, reusing the 0006 backend pattern.
 additive BM25 backend with 100 % ranking parity to the default (opt-in
 `bm25_backend: "bm25s"`).
 [ADR 0058](./0058-phase35-mode-winner.md) accepts Scenario A — switch
-default `retrieval_backend` from `dense` to `hybrid` for `agentic_full`
-+ `metadata_first` presets (`chunk_recall@10 +0.052 SIG` on n=221
-kordoc 26k); `naive_baseline` stays `dense` per 0001.
+default `retrieval_backend` from `dense` to `hybrid` for the
+`agentic_full` + `metadata_first` presets (`chunk_recall@10 +0.052 SIG`
+on n=221 kordoc 26k); `naive_baseline` stays `dense` per 0001.
 [ADR 0059](./0059-failure-mode-classifier-as-measurement-surface.md)
 adds a 7-category rule-based failure classifier so error attribution
 is auditable rather than folkloric.
