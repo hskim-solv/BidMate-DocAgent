@@ -104,17 +104,56 @@ def has_explicit_base_flag(cmd: str) -> bool:
     return False
 
 
+def get_create_flag_value(cmd: str, flag: str) -> str:
+    """Return the value of `flag` in the first `gh pr create` segment ('' if absent).
+
+    Handles both `--flag VALUE` and `--flag=VALUE`. Same shlex-based
+    false-negative surface as the sibling parsers — a body built with
+    command substitution / heredoc (`--body "$(cat <<EOF…)"`) is NOT
+    statically extractable and returns '' (the caller treats that as
+    "skip", fail-open). Used by the §5b soft-warn (issue #1097).
+    """
+    for tokens in _segments(cmd):
+        if (
+            len(tokens) >= 3
+            and tokens[0] == "gh"
+            and tokens[1] == "pr"
+            and tokens[2] == "create"
+        ):
+            rest = tokens[3:]
+            for i, t in enumerate(rest):
+                if t == flag and i + 1 < len(rest):
+                    return rest[i + 1]
+                if t.startswith(flag + "="):
+                    return t.split("=", 1)[1]
+    return ""
+
+
 def _cli(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__)
     g = p.add_mutually_exclusive_group(required=True)
     g.add_argument("--detect-gh", metavar="CMD")
     g.add_argument("--has-base", metavar="CMD")
+    g.add_argument(
+        "--get-body", metavar="CMD",
+        help="Echo the value of --body in a `gh pr create` segment ('' if absent).",
+    )
+    g.add_argument(
+        "--get-body-file", metavar="CMD",
+        help="Echo the value of --body-file in a `gh pr create` segment ('' if absent).",
+    )
     args = p.parse_args(argv)
     if args.detect_gh is not None:
         sys.stdout.write(detect_gh_subcommand(args.detect_gh) + "\n")
         return 0
     if args.has_base is not None:
         return 0 if has_explicit_base_flag(args.has_base) else 1
+    if args.get_body is not None:
+        sys.stdout.write(get_create_flag_value(args.get_body, "--body") + "\n")
+        return 0
+    if args.get_body_file is not None:
+        sys.stdout.write(get_create_flag_value(args.get_body_file, "--body-file") + "\n")
+        return 0
     return 2
 
 

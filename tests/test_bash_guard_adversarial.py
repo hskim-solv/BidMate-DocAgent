@@ -196,3 +196,71 @@ def test_cli_has_base_exit_codes(bgp):
         capture_output=True, text=True,
     )
     assert r.returncode == 1
+
+
+# ---------------------------------------------------------------------------
+# get_create_flag_value — §5b body extraction (issue #1097)
+# ---------------------------------------------------------------------------
+
+
+def test_get_body_simple(bgp):
+    assert bgp.get_create_flag_value("gh pr create --title T --body hello", "--body") == "hello"
+
+
+def test_get_body_equals_form(bgp):
+    assert bgp.get_create_flag_value("gh pr create --body=hello", "--body") == "hello"
+
+
+def test_get_body_file(bgp):
+    assert bgp.get_create_flag_value(
+        "gh pr create --body-file /tmp/b.md", "--body-file"
+    ) == "/tmp/b.md"
+
+
+def test_get_body_quoted_multiword(bgp):
+    assert bgp.get_create_flag_value(
+        'gh pr create --body "hello world"', "--body"
+    ) == "hello world"
+
+
+def test_get_body_absent_returns_empty(bgp):
+    assert bgp.get_create_flag_value("gh pr create --title T", "--body") == ""
+
+
+def test_get_body_only_on_create_segment(bgp):
+    """`--body` on a non-create gh segment must not match."""
+    assert bgp.get_create_flag_value("gh pr merge --body x", "--body") == ""
+
+
+def test_get_body_compound_command(bgp):
+    assert bgp.get_create_flag_value(
+        "echo start && gh pr create --body hi", "--body"
+    ) == "hi"
+
+
+def test_get_body_does_not_confuse_body_file(bgp):
+    """`--body` must not pick up `--body-file`'s value (and vice versa)."""
+    cmd = "gh pr create --body-file /tmp/x --body inline"
+    assert bgp.get_create_flag_value(cmd, "--body") == "inline"
+    assert bgp.get_create_flag_value(cmd, "--body-file") == "/tmp/x"
+
+
+def test_cli_get_body_stdout(bgp):
+    import subprocess, sys
+    r = subprocess.run(
+        [sys.executable, str(PARSE_PATH), "--get-body", "gh pr create --body hello"],
+        capture_output=True, text=True,
+    )
+    assert r.returncode == 0
+    assert r.stdout.strip() == "hello"
+
+
+def test_cli_get_body_file_stdout(bgp):
+    import subprocess, sys
+    r = subprocess.run(
+        [sys.executable, str(PARSE_PATH), "--get-body-file",
+         "gh pr create --body-file /tmp/b.md"],
+        capture_output=True, text=True,
+    )
+    assert r.returncode == 0
+    assert r.stdout.strip() == "/tmp/b.md"

@@ -278,16 +278,64 @@ def validate_5b(body: str, load_bearing: list[str]) -> bool:
     return bool(FIVE_B_TABLE_RE.search(section) or FIVE_B_ESCAPE_RE.search(section))
 
 
+def check_body_5b(body: str, base_ref: str) -> int:
+    """Validate an externally-provided PR body's §5b section (issue #1097).
+
+    Used by `pretooluse-bash-guard.sh` to soft-warn *before* `gh pr create`.
+    The CI `--check-5b` gate only runs post-create (via `gh pr view`), so a
+    body missing §5b is not caught until after the PR exists. This shares
+    the exact same `validate_5b` / `is_load_bearing` logic the auto-ship
+    path and the CI gate use — no duplicated regex.
+
+    Exit codes:
+        0  body OK, OR no load-bearing path changed (§5b not required)
+        3  a load-bearing path changed but the body has no valid §5b section
+    """
+    files = changed_files(base_ref)
+    load_bearing = [f for f in files if is_load_bearing(f)]
+    if not load_bearing:
+        return 0
+    return 0 if validate_5b(body, load_bearing) else 3
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--branch", required=True)
+    p.add_argument("--branch")
     p.add_argument("--base-ref", default="origin/main")
     p.add_argument(
         "--real-eval-mode", default="auto",
         choices=["auto", "skip", "async"],
     )
     p.add_argument("--extra-body", default="")
+    # Standalone §5b validation of an externally-provided body (issue #1097).
+    # Mutually exclusive with the --branch body-generation mode below.
+    p.add_argument(
+        "--check-body-file", metavar="PATH",
+        help="Validate the §5b section of the PR body read from PATH instead "
+             "of generating one; exit 3 if a load-bearing change lacks §5b.",
+    )
+    p.add_argument(
+        "--check-body-stdin", action="store_true",
+        help="Like --check-body-file but read the body from stdin.",
+    )
     args = p.parse_args()
+
+    # --- Standalone validation mode (no body generation, no --branch) ---
+    if args.check_body_file or args.check_body_stdin:
+        if args.check_body_file:
+            try:
+                with open(args.check_body_file, encoding="utf-8") as f:
+                    body = f.read()
+            except OSError as exc:
+                _log(f"cannot read --check-body-file {args.check_body_file}: {exc}")
+                return 0  # fail-open: a hook must not block on a read error
+        else:
+            body = sys.stdin.read()
+        return check_body_5b(body, args.base_ref)
+
+    # --- Body generation mode (auto-ship Stage 3; behavior unchanged) ---
+    if not args.branch:
+        p.error("--branch is required unless --check-body-file/--check-body-stdin is given")
 
     try:
         body = build_body(
