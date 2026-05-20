@@ -124,4 +124,4 @@
 | `build_answer` | LLM synthesis 실패 | extractive fallback | `synthesis.fallback_reason` | ✅ (opt-in 전용) |
 | `build_answer` | 빈 evidence cascade | insufficient | `claim_count=0, citation_count=0` | ✅ (abstention) |
 
-> 성능 측정과 overhead quantification: [tests/test_langgraph_performance_profile.py](../tests/test_langgraph_performance_profile.py). 시스템 설계 STAR: [docs/agentic/agent-system-design-case-study.md](./agent-system-design-case-study.md).
+> 성능 측정과 overhead quantification: [tests/test_langgraph_performance_profile.py](../../tests/test_langgraph_performance_profile.py). 시스템 설계 STAR: [docs/agentic/agent-system-design-case-study.md](./agent-system-design-case-study.md).

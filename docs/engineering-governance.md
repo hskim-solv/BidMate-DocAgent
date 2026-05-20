@@ -110,6 +110,8 @@ Meta/parent issue (예: #118 포트폴리오, #187 phase 향상 백로그) 는 �
 
 - **ADR 번호 worktree 충돌.** 관측 페어 3개 — 0022→0023, 0023→0025, 0029→0030 — 두 worktree 가 독립적으로 `ls docs/adr/` 에서 같은 ADR 번호 예약 후 머지 시점 충돌. 수정은 procedural (번호는 공유 자원). *사후 추가*: `CLAUDE.md > Core principles > "Reserve ADR numbers up front"` 가 dual check (`ls docs/adr/` + `gh pr list --search "ADR" --state open`) 강제 + 사용자 확인 요구 (worktree 간 직렬화)
 
+- **docs cross-reference dead-link 재발 (≥6회).** docs/ batch 재구성마다 상대경로 링크가 깨짐 — 파일 이동 시 그 파일을 가리키는 *다른(미수정)* 파일의 inbound 링크가 끊기는데 수동 grep + 사후 cleanup PR 에만 의존 (커밋 627a63b "80 links", 9754f69, da80073 "restore ADR 0020 to fix broken links" 등). 기존 ADR↔README 번호 parity 가드 ([`scripts/_governance.py`](../scripts/_governance.py)) 는 ADR *번호* 만 검사, 일반 cross-doc 링크는 미검사. *사후 추가*: [`scripts/check_doc_links.py`](../scripts/check_doc_links.py) — 모든 tracked `*.md` 의 상대경로 링크 + prose `ADR NNNN` 참조가 실재 파일을 가리키는지 검사 (외부 URL / Jekyll permalink 제외, stdlib-only). pre-commit 훅 (shift-left, `.md` staged 시 전체 트리 스캔) + [`tests/test_doc_links.py`](../tests/test_doc_links.py) real-repo sentinel (canonical CI gate, post-push) + `make check-doc-links` 3곳에서 강제 (issue #1060). 도입 시 기존 broken link 101개 동시 cleanup (대부분 docs/<sub>/ 의 `../`→`../../` off-by-one + renumber 된 ADR slug)
+
 각 인시던트 = 1회 지불된 실제 비용. 신규 인시던트 (거버넌스 갭 → 수정 → 무재발) 는 여기 추가.
 
 ## 온보딩 shortcut

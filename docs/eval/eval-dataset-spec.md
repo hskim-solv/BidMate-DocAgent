@@ -90,7 +90,7 @@ Q: "기관 C의 데이터센터 운영 비용은?" → should_abstain: true
 - **Resamples**: 1000
 - **Seed**: 17 (고정 — 재현성)
 - **Coverage**: 95% 양측
-- **구현**: [`eval/bootstrap.py`](../eval/bootstrap.py)
+- **구현**: [`eval/bootstrap.py`](../../eval/bootstrap.py)
 - **비-CI 컬럼** (Format, Abstention, Retry): point estimate — CIs는 메인 성능표 별도 열에 보고
 
 ### LLM-as-judge (ADR 0012)
@@ -98,7 +98,7 @@ Q: "기관 C의 데이터센터 운영 비용은?" → should_abstain: true
 - `eval/synthetic_judge.py` — stub 기본값 (CI 비용 0)
 - live 점수: `BIDMATE_SYNTHETIC_JUDGE_BACKEND=openai_compatible`로 개발자 수동 실행 후 commit
 - 공개 synthetic 표면 한정 (ADR 0006 real-data-only 원칙 준수)
-- aggregate 결과: [`reports/synthetic_judge.aggregate.json`](../reports/synthetic_judge.aggregate.json)
+- aggregate 결과: [`reports/synthetic_judge.aggregate.json`](../../reports/synthetic_judge.aggregate.json)
 
 ---
 
