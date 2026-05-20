@@ -25,6 +25,10 @@ from pathlib import Path
 
 REPO = Path(__file__).parents[1]
 HOOK = REPO / "scripts" / "claude-hooks" / "pretooluse-adr-template.sh"
+# The hook emits telemetry via scripts/_governance.py --emit-fire; copy it
+# under the temp REPO_ROOT or emit silently no-ops and .hook-fires.log is
+# never written (issue #1039).
+GOVERNANCE = REPO / "scripts" / "_governance.py"
 
 
 _GOOD_BODY = (
@@ -61,6 +65,7 @@ class TestPreToolUseAdrTemplate(unittest.TestCase):
         (self._tmp_repo / "scripts" / "claude-hooks").mkdir(parents=True)
         (self._tmp_repo / "docs" / "adr").mkdir(parents=True)
         shutil.copy(HOOK, self._tmp_repo / "scripts" / "claude-hooks" / HOOK.name)
+        shutil.copy(GOVERNANCE, self._tmp_repo / "scripts" / GOVERNANCE.name)
         self._hook = self._tmp_repo / "scripts" / "claude-hooks" / HOOK.name
         self._fires_log = self._tmp_repo / ".claude" / ".hook-fires.log"
 
