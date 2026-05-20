@@ -5,7 +5,7 @@
 #   git config core.hooksPath .githooks
 #   (or: make install-hooks)
 #
-# Behavior (two phases, in order):
+# Behavior (four phases, in order):
 #
 # 1. `_pre-push-branch-check.sh` — HARD-FAILS if the current branch does not
 #    match the ADR 0007 convention `<type>/issue-<N>[-<slug>]`. Exit code
@@ -17,10 +17,20 @@
 #    - README metrics freshness reminder when `reports/eval_summary.json`
 #      diverges from the committed README block.
 #
-# Both sub-scripts are independently runnable for manual debugging:
+# 3. `_pre-push-test-coverage.sh` — SOFT-WARNS when the push touches a
+#    load-bearing behavior path but changes zero files under tests/
+#    (CLAUDE.md "동작 변경 ↔ 테스트 변경", PR #69 lesson).
+#
+# 4. `_pre-push-worktree-hygiene.sh` — SOFT-WARNS when a worktree's branch
+#    is already merged into main but the worktree was never removed (the
+#    "동시 worktree → ADR 번호 충돌" root cause).
+#
+# All sub-scripts are independently runnable for manual debugging:
 #
 #     bash .githooks/_pre-push-branch-check.sh
 #     bash .githooks/_pre-push-real-eval-reminder.sh
+#     bash .githooks/_pre-push-test-coverage.sh
+#     bash .githooks/_pre-push-worktree-hygiene.sh
 #
 # Skip the whole hook with `git push --no-verify` only if you have a
 # documented reason (e.g. doc-only follow-up of a measured PR).
@@ -34,5 +44,11 @@ bash "$HOOK_DIR/_pre-push-branch-check.sh" || exit $?
 
 # Phase 2: soft-warn reminders (real-eval §5b + README freshness).
 bash "$HOOK_DIR/_pre-push-real-eval-reminder.sh" || true
+
+# Phase 3: soft-warn test-coverage gate (behavior change without a test).
+bash "$HOOK_DIR/_pre-push-test-coverage.sh" || true
+
+# Phase 4: soft-warn orphan-worktree hygiene.
+bash "$HOOK_DIR/_pre-push-worktree-hygiene.sh" || true
 
 exit 0

@@ -100,6 +100,24 @@ class TestComputeAdrLagSummary(unittest.TestCase):
         result = sr.compute_adr_lag_summary(lags)
         self.assertEqual(result["count"], 0)
 
+    def test_retrofit_count_from_is_retrofit_flag(self) -> None:
+        lags = [
+            {"adr_id": "0040", "lag_days": 0, "is_retrofit": True},
+            {"adr_id": "0041", "lag_days": 0, "is_retrofit": True},
+            {"adr_id": "0042", "lag_days": 5, "is_retrofit": False},
+        ]
+        result = sr.compute_adr_lag_summary(lags)
+        self.assertEqual(result["retrofit_count"], 2)
+        # retrofit flag must not perturb the existing lag aggregation
+        self.assertEqual(result["count"], 3)
+
+    def test_retrofit_count_absent_flag_counts_zero(self) -> None:
+        # Defensive: entries without is_retrofit (e.g. older callers) must
+        # not raise and contribute 0 to the retrofit count.
+        lags = [{"adr_id": "0040", "lag_days": 3}]
+        result = sr.compute_adr_lag_summary(lags)
+        self.assertEqual(result["retrofit_count"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()

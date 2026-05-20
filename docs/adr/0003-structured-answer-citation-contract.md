@@ -29,6 +29,17 @@
 
 [`docs/agentic/answer-policy.md`](../agentic/answer-policy.md) 가 working reference; 이 ADR 이 load-bearing 결정.
 
+## 계약의 범위 — shape vs 분포
+
+이 계약은 **shape**(필드·enum 값·back-pointing 구조)만 lock 한다. status 분류의 **분포**(비율·평균 개수)는 lock 하지 **않는다**.
+
+- **Lock (shape — `schema_version` bump 트리거)**: `status` enum 집합, `claims[].citations[]` → top-level `evidence[]` back-pointing, `evidence[]`·`status_reason` shape, `schema_version` integer. 이 중 하나라도 깨지면 `schema_version` 을 올린다.
+- **Lock 안 함 (분포 — eval 표면에 위임)**: `insufficient`/`partial`/`supported` 의 *비율*, `claims` 평균 개수, `evidence` 평균 길이.
+
+따라서 verifier 강화(예: #1008 unanswerable hardening), answer-policy 개정, 새 abstention 패턴이 status *분포* 를 크게 흔들어도 — 그것은 이 계약의 **위반이 아니며** `schema_version` bump 트리거도 아니다. shape 이 동일하면 계약은 유지된다.
+
+분포 변화의 *측정* 은 [ADR 0005](0005-eval-split-public-synthetic-private-local.md) 의 두 eval 표면(public synthetic + private local)에 위임한다. eval delta 가 의미 있는 분포 이동을 보이면 reviewer 가 그 변화를 정당화하면 되고, 이 ADR 은 그 정당화가 딛고 설 *형식 계약* 만 강제한다.
+
 ## 결과
 
 **Wins**
