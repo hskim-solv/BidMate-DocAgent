@@ -149,12 +149,21 @@ def test_five_b_table_regex_matches_real_eval_delta_aggregate():
 
 
 @pytest.mark.parametrize("sentence", [
+    # English sentinel (original contract).
     "No behavior change in retrieval path.",
     "No behavior change in verifier path.",
     "No behavior change in retrieval / verifier path.",
     "no behavior change in eval path",
     "No behavior change in API path.",
     "No behavior change in ingestion path.",
+    # Korean attestation — must be accepted too, because the PR template's
+    # §5b example is Korean (issue #1048). The first item is verbatim the
+    # template example.
+    "검색/검증 path 동작 변화 없음.",
+    "검증 path 동작 변경 없음",
+    "검색 경로 동작 변화 없습니다",
+    "수집 path 변동 없음",
+    "eval path 동작 변화 없음",
 ])
 def test_five_b_escape_regex_accepts_documented_escape(sentence):
     assert cbi.FIVE_B_ESCAPE_RE.search(sentence), (
@@ -163,13 +172,56 @@ def test_five_b_escape_regex_accepts_documented_escape(sentence):
 
 
 @pytest.mark.parametrize("sentence", [
+    # English off-pattern (original contract).
     "No behavior change anywhere.",
     "We changed retrieval behavior.",
     "TODO: add real-eval delta.",
+    # Korean false-escapes — these assert behavior DID/MIGHT change, so they
+    # must NOT satisfy the escape. The anchor 변(화|경|동)\s*없(음|다|습니다)
+    # keeps the PR #69 guard intact for Korean bodies.
+    "검증 동작이 대폭 변화했다.",
+    "검증 path 동작 변화 분석 예정",
+    "retrieval 동작 변경 있음",
+    "검색 결과가 변했지만 회귀는 없음",
+    "검증 로직 일부 변경, 그러나 외부 schema 변동 없음",
 ])
 def test_five_b_escape_regex_rejects_off_pattern(sentence):
     assert not cbi.FIVE_B_ESCAPE_RE.search(sentence), (
         f"Should not match escape: {sentence!r}"
+    )
+
+
+# `명시:` 다음 줄의 따옴표 예시를 뽑는다. PR #1030 이 §5b 코멘트에 텍스트를
+# 덧붙여도 이 추출 위치는 안정적이다.
+_TEMPLATE_5B_EXAMPLE_RE = re.compile(r"명시[:：]\s*\n\s*\"([^\"]+)\"")
+
+
+def test_pr_template_5b_escape_example_matches_regex():
+    """The §5b escape example shown to authors must be one the gate accepts.
+
+    Root cause of issue #1048: the PR template's §5b example was Korean
+    ('검색/검증 path 동작 변화 없음.') but `FIVE_B_ESCAPE_RE` matched English
+    only — so authors who followed the template verbatim failed CI, and no
+    test caught the template↔gate drift. This guard ties the two together:
+    if either side changes such that the documented example no longer
+    satisfies the gate, this fails at PR time instead of in a contributor's
+    CI run.
+    """
+    template = (
+        ROOT_DIR / ".github" / "pull_request_template.md"
+    ).read_text(encoding="utf-8")
+    m = _TEMPLATE_5B_EXAMPLE_RE.search(template)
+    assert m, (
+        "Could not find the §5b escape example (a quoted string after '명시:') "
+        "in .github/pull_request_template.md. If the template wording moved, "
+        "update _TEMPLATE_5B_EXAMPLE_RE here too."
+    )
+    example = m.group(1)
+    assert cbi.FIVE_B_ESCAPE_RE.search(example), (
+        f"PR template §5b escape example {example!r} is NOT accepted by "
+        f"FIVE_B_ESCAPE_RE — template↔gate drift (issue #1048). Fix by aligning "
+        f"the regex in scripts/check_branch_and_issue.py with the example in "
+        f".github/pull_request_template.md (or vice-versa)."
     )
 
 
