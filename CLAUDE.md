@@ -59,6 +59,7 @@ RFP 문서 이해를 위한 DocAgent 시스템. **입찰/RFP 문서 인텔리전
 
 - **Issue first, 컨벤션 브랜치.** 모든 PR 은 issue 참조 (`Closes #N` in body) + 브랜치 `<type>/issue-<N>[-<slug>]` (ADR 0007). `branch-and-issue-check.yml` 이 PR 시점에 강제
 - **새로 만들기보다 재사용.** 코딩 전 기존 구현 확인. 재사용 유틸리티 먼저 검색
+- **외부/paid API 도입 허용 (ADR 0061).** 신규 외부·유료 API 의존성은 ① opt-in (env/preset), ② ADR 0001 baseline byte-identical 보존 (기본 오프라인 경로 = `hashing`/`identity`/`regex`/`stub` 가 SSoT), ③ 데이터 경계 (외부 페이로드는 public/synthetic·마스킹 한정, 비공개 데이터 전송은 ADR 0005/0012 관할) 3조건 동시 충족 시 허용
 - **One PR, one concern.** 범위 밖 수정 → 별도 issue/follow-up PR. 같은 도메인을 같은 날 N PR 로 분해는 valid 패턴 (예: 2026-05-15 PR-A0~A3 4-PR stacked-day). `gh pr create --base <parent>` 사용 + 부모 머지 시 `--delete-branch` 회피 (child auto-close 방지)
 - **PR 크기는 surface 별.** "one concern" 은 LOC 가 아니라 surface 기준. `eval/` PR 은 200–2500 LOC 정상 (dataset + config + plot 한 묶음 = 한 concern); `docs/` PR 은 보통 <100 LOC. 2000-LOC `eval/` PR 을 크기만으로 reject 금지, 두 ADR 섞인 200-LOC `docs/` PR 은 분할. memory `project_pr_size_heuristic.md` 참조
 - **동작 변경 ↔ 테스트 변경.** 테스트 없는 동작 변경은 실수로 간주. 회귀 테스트는 `tests/test_*_regression.py` (예: `tests/test_retrieval_loop_regression.py`)
@@ -93,8 +94,7 @@ RFP 문서 이해를 위한 DocAgent 시스템. **입찰/RFP 문서 인텔리전
 
 - UI 추가, 웹 서비스 제품화
 - 대규모 아키텍처 재작성
-- 신규 paid-API 의존성
-- 비공개 RFP 데이터 재구성
+- 비공개 RFP 데이터 외부 전송·재구성 (ADR 0005/0012 관할 — 외부 API 페이로드는 public/synthetic·마스킹 데이터로 제한)
 
 ## 막혔을 때
 
