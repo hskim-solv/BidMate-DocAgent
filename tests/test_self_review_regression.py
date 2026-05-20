@@ -109,6 +109,9 @@ class TestRuleToAutomationLagBasic(unittest.TestCase):
         self.assertEqual(len(lags), 1)
         self.assertEqual(lags[0]["adr_id"], "0001")
         self.assertEqual(lags[0]["lag_days"], 10)
+        # is_retrofit must be present and False for a genuine multi-day lag.
+        self.assertIn("is_retrofit", lags[0])
+        self.assertFalse(lags[0]["is_retrofit"])
 
 
 class TestRuleToAutomationLagSkipsUnaccepted(unittest.TestCase):
