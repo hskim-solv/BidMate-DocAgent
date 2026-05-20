@@ -46,7 +46,7 @@ By construction(`scripts/write_synthetic_history.py:42`) 각 snapshot은 **prima
 - `SAFE_TOPLEVEL_KEYS`에 엔트리 1 추가. `ablation_full` 향후 schema drift는 sub-key whitelist 갱신 필요(`judge_ragas`와 동일 유지보수 패턴).
 - `reports/leaderboard.md` width / row 수 증가. CI gate `scripts/leaderboard.py --check`가 렌더링을 계약으로 계속 pin.
 - Chart.js 페이지가 메트릭당 2 series 수용 필요. legend + tooltip 갱신.
-- pre-#476 snapshot backfill은 opt-in; 리더보드 chart가 backfill 없으면 ~21일간 `agentic_full`을 partial series로 표시.
+- pre-#476 snapshot backfill은 opt-in; 리더보드 chart가 backfill 없으면 ~21일간 `agentic_full`을 partial series로 표시. **완화 (#1028, 2026-05-19)**: `scripts/leaderboard.py:render_page`가 `_agentic_full_start_date` helper로 첫 non-null `ablation_full` 날짜(현재 2026-05-13)를 차트 캡션에 동적 inject — backfill 컴퓨트(~7-15h) 없이 외부 reviewer가 forward-only 마이그레이션을 즉시 파악. backfill PR이 머지되면 라벨은 자동 갱신.
 
 **Locked in:**
 
