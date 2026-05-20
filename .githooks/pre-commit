@@ -184,6 +184,28 @@ if [[ -n "$adr_added" ]]; then
   fi
 fi
 
+# Guard: markdown cross-reference dead links (issue #1060).
+# Whenever any `.md` is staged, scan the WHOLE doc tree (not just the staged
+# files): the recurring failure is a file MOVE that breaks an inbound link
+# from a file this commit never touched (commits 627a63b / 9754f69 / da80073,
+# "repair cross-references after batch reorg"). A staged-only scan structurally
+# cannot catch that. The scan is stdlib regex over the tracked `*.md` set
+# (<1s). Canonical enforcement is tests/test_doc_links.py (CI, post-push); this
+# is the shift-left copy so the author finds out at `git commit` time.
+#
+# Residual gap: renaming a link TARGET (e.g. rag_core.py) without staging any
+# `.md` will not trip this hook — the pytest CI gate catches that case.
+#
+# Bypass with --no-verify only mid-merge; open a follow-up to fix the link.
+md_staged=$(git diff --cached --name-only --diff-filter=ACMR -- '*.md' 2>/dev/null || true)
+if [[ -n "$md_staged" ]]; then
+  links_out=$(python3 scripts/check_doc_links.py --check-all 2>&1)
+  if [[ $? -ne 0 ]]; then
+    echo "$links_out" >&2
+    exit 1
+  fi
+fi
+
 staged=$(git diff --cached --name-only --diff-filter=ACMR 2>/dev/null || true)
 
 if [[ -z "$staged" ]]; then

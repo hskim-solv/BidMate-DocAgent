@@ -5,7 +5,7 @@
 - **Deciders**: hskim
 - **Related**: [ADR 0040](./0040-react-agent-loop-additive-preset.md) (ReAct 프리셋),
   [ADR 0003](./0003-structured-answer-citation-contract.md) (답변 계약),
-  [ADR 0015](./0015-cost-model-telemetry.md) (cost telemetry),
+  [ADR 0015](./0015-cost-telemetry-additive.md) (cost telemetry),
   issue #673
 
 ## TL;DR

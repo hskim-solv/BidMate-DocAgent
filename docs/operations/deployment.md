@@ -44,7 +44,7 @@ registry dependency.
 ## Fly.io
 
 Free tier comfortably hosts the demo (1 shared-CPU machine, 1 GB
-RAM). [`fly.toml`](../fly.toml) at the repo root is the source of
+RAM). [`fly.toml`](../../fly.toml) at the repo root is the source of
 truth — adjust `app`, `primary_region`, and `[[vm]].size` before
 your first deploy.
 
@@ -72,7 +72,7 @@ to stay under the free-tier budget.
 ### Continuous deploy
 
 Every push to `main` that touches a runtime path runs
-[`.github/workflows/deploy-fly.yml`](../.github/workflows/deploy-fly.yml)
+[`.github/workflows/deploy-fly.yml`](../../.github/workflows/deploy-fly.yml)
 and re-deploys the live demo. The path filter mirrors the Dockerfile
 COPY set: every top-level `*.py`, `api/**`, `demo/**`,
 `scripts/build_index.py`, `data/raw/**`, `data/lexicon/**`, the
@@ -143,10 +143,10 @@ operations:
   Manual trigger via Space web UI *Settings → Restart this Space*
   (warm) or *Factory rebuild* (cold, re-installs requirements).
 - **Dependency pinning** — Spaces picks up the repo-root
-  [`requirements.txt`](../requirements.txt) automatically. The
+  [`requirements.txt`](../../requirements.txt) automatically. The
   Streamlit / FastAPI / retrieval deps are pinned there; the
   heavier observability extras live in
-  [`requirements-observability.txt`](../requirements-observability.txt)
+  [`requirements-observability.txt`](../../requirements-observability.txt)
   and are *not* pulled into the Space image, keeping cold-start
   under a minute.
 - **Secrets rotation** — set `ANTHROPIC_API_KEY` and

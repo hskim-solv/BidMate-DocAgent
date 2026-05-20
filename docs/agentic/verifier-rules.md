@@ -12,23 +12,23 @@ This is a behavioral specification, not a tutorial. Read alongside:
 
 - [ADR 0003 — answer / citation contract](../adr/0003-structured-answer-citation-contract.md) — the schema each rule writes into.
 - [ADR 0004 — verifier retry policy](../adr/0004-verifier-retry-policy.md) — the strict → relaxed staging this implements.
-- [`rag_answer_schema.py`](../rag_answer_schema.py) — canonical definitions of `ANSWER_STATUS_*` and `ANSWER_SCHEMA_VERSION`.
+- [`rag_answer_schema.py`](../../rag_answer_schema.py) — canonical definitions of `ANSWER_STATUS_*` and `ANSWER_SCHEMA_VERSION`.
 
 ## Constants
 
 | Constant | Value | Defined in |
 |---|---|---|
-| `ANSWER_SCHEMA_VERSION` | `2` | [`rag_answer_schema.py:42`](../rag_answer_schema.py) |
-| `ANSWER_STATUS_SUPPORTED` | `"supported"` | [`rag_answer_schema.py:38`](../rag_answer_schema.py) |
-| `ANSWER_STATUS_PARTIAL` | `"partial"` | [`rag_answer_schema.py:39`](../rag_answer_schema.py) |
-| `ANSWER_STATUS_INSUFFICIENT` | `"insufficient"` | [`rag_answer_schema.py:40`](../rag_answer_schema.py) |
-| `PARTIAL_TOPIC_GROUNDING_MIN_MATCHED` | `2` | [`rag_core.py:2278`](../rag_core.py) |
-| `PARTIAL_TOPIC_GROUNDING_MIN_FRACTION` | `0.5` | [`rag_core.py:2277`](../rag_core.py) |
-| Low-score floor (literal) | `0.18` | [`rag_core.py:2313`](../rag_core.py) |
+| `ANSWER_SCHEMA_VERSION` | `2` | [`rag_answer_schema.py:42`](../../rag_answer_schema.py) |
+| `ANSWER_STATUS_SUPPORTED` | `"supported"` | [`rag_answer_schema.py:38`](../../rag_answer_schema.py) |
+| `ANSWER_STATUS_PARTIAL` | `"partial"` | [`rag_answer_schema.py:39`](../../rag_answer_schema.py) |
+| `ANSWER_STATUS_INSUFFICIENT` | `"insufficient"` | [`rag_answer_schema.py:40`](../../rag_answer_schema.py) |
+| `PARTIAL_TOPIC_GROUNDING_MIN_MATCHED` | `2` | [`rag_core.py:2278`](../../rag_core.py) |
+| `PARTIAL_TOPIC_GROUNDING_MIN_FRACTION` | `0.5` | [`rag_core.py:2277`](../../rag_core.py) |
+| Low-score floor (literal) | `0.18` | [`rag_core.py:2313`](../../rag_core.py) |
 
 ## Decision tree — `verify_evidence`
 
-The verifier ([`verify_evidence`](../rag_core.py), `rag_core.py:2282-2368`)
+The verifier ([`verify_evidence`](../../rag_core.py), `rag_core.py:2282-2368`)
 is a four-stage gate. Each stage either short-circuits, blocks, or
 appends a `verification_reason`; the final verdict is `verified =
 not blocking_reasons`. Only `partial_topic_grounding` is non-blocking.
@@ -105,10 +105,10 @@ both documented as regression guards:
 - The fraction floor (`50%`) rejects weakly-balanced cases like 2-of-5.
 - The matched-count floor (`≥ 2`) cuts the 1-of-2 incidental-overlap
   pattern that flipped real-data intended-abstention queries to
-  `partial` after issue #69 (see issue #89, [`rag_core.py:2301-2304`](../rag_core.py)).
+  `partial` after issue #69 (see issue #89, [`rag_core.py:2301-2304`](../../rag_core.py)).
 
 An LLM verifier prompt that drops either floor will regress
-[`tests/test_partial_topic_grounding.py`](../tests/test_partial_topic_grounding.py).
+[`tests/test_partial_topic_grounding.py`](../../tests/test_partial_topic_grounding.py).
 
 ### Stage D — comparison coverage (strict, entity-level)
 
@@ -160,8 +160,8 @@ return not blocking_reasons, reasons
 
 ## Status mapping — `answer_status`
 
-[`answer_status`](../rag_core.py) (`rag_core.py:2641-2666`) and
-[`answer_status_reason`](../rag_core.py) (`rag_core.py:2516-2539`)
+[`answer_status`](../../rag_core.py) (`rag_core.py:2641-2666`) and
+[`answer_status_reason`](../../rag_core.py) (`rag_core.py:2516-2539`)
 translate the `(verified, reasons)` tuple into the ADR 0003 contract
 fields. The matrix:
 
@@ -192,7 +192,7 @@ fields. The matrix:
 
 ## Citation gating — `build_claims`
 
-[`build_claims`](../rag_core.py) (`rag_core.py:2542-2547`) is only
+[`build_claims`](../../rag_core.py) (`rag_core.py:2542-2547`) is only
 called when the verifier accepts evidence OR when the query is a
 comparison with at least partial entity coverage. Claims emit
 `citations[]` where each citation pins `doc_id` + `chunk_id` to the
@@ -203,17 +203,17 @@ top-level `evidence` list (ADR 0003 invariant).
 > list. A claim without a resolving citation is treated as
 > hallucinated and excluded.
 
-For comparison queries, [`build_comparison_claims`](../rag_core.py)
+For comparison queries, [`build_comparison_claims`](../../rag_core.py)
 (`rag_core.py:2549-2564`) emits one claim per entity that has at least
 one evidence chunk; the remaining entities feed the `insufficiency`
 block instead. For extract queries,
-[`build_extract_claims`](../rag_core.py) (`rag_core.py:2567-2601`)
+[`build_extract_claims`](../../rag_core.py) (`rag_core.py:2567-2601`)
 selects up to two claims, preferring metadata-bound sentences.
 
 ## Retry policy — ADR 0004 mapping
 
 The retrieval orchestrator
-([`rag_core.py:3886-3906`](../rag_core.py)) schedules verification
+([`rag_core.py:3886-3906`](../../rag_core.py)) schedules verification
 attempts:
 
 ```python
@@ -252,13 +252,13 @@ following tests are the contract the LLM must satisfy
 
 | Test | Line | Pins |
 |---|---|---|
-| `test_strict_rejects_partial_topic_match` | [`tests/test_partial_topic_grounding.py:52`](../tests/test_partial_topic_grounding.py) | strict mode rejects any unmatched topic |
-| `test_relaxed_accepts_partial_topic_match_above_threshold` | [`tests/test_partial_topic_grounding.py:60`](../tests/test_partial_topic_grounding.py) | relaxed mode accepts 3-of-4 = 0.75 |
-| `test_relaxed_rejects_one_of_two_partial_topic_match` | [`tests/test_partial_topic_grounding.py:79`](../tests/test_partial_topic_grounding.py) | issue #89 — relaxed mode rejects 1-of-2 = 0.5 (matched-count floor) |
-| `test_relaxed_still_rejects_zero_topic_match` | [`tests/test_partial_topic_grounding.py:102`](../tests/test_partial_topic_grounding.py) | relaxed mode rejects 0-of-N (out-of-corpus preservation) |
-| `test_relaxed_still_rejects_below_fraction` | [`tests/test_partial_topic_grounding.py:114`](../tests/test_partial_topic_grounding.py) | relaxed mode rejects 1-of-4 = 0.25 (fraction floor) |
-| `test_low_top_score_still_blocking_in_relaxed_stage` | [`tests/test_partial_topic_grounding.py:125`](../tests/test_partial_topic_grounding.py) | `0.18` hallucination floor holds in both stages |
-| `test_out_of_corpus_query_still_abstains` | [`tests/test_partial_topic_grounding.py:149`](../tests/test_partial_topic_grounding.py) | end-to-end abstention preserved |
+| `test_strict_rejects_partial_topic_match` | [`tests/test_partial_topic_grounding.py:52`](../../tests/test_partial_topic_grounding.py) | strict mode rejects any unmatched topic |
+| `test_relaxed_accepts_partial_topic_match_above_threshold` | [`tests/test_partial_topic_grounding.py:60`](../../tests/test_partial_topic_grounding.py) | relaxed mode accepts 3-of-4 = 0.75 |
+| `test_relaxed_rejects_one_of_two_partial_topic_match` | [`tests/test_partial_topic_grounding.py:79`](../../tests/test_partial_topic_grounding.py) | issue #89 — relaxed mode rejects 1-of-2 = 0.5 (matched-count floor) |
+| `test_relaxed_still_rejects_zero_topic_match` | [`tests/test_partial_topic_grounding.py:102`](../../tests/test_partial_topic_grounding.py) | relaxed mode rejects 0-of-N (out-of-corpus preservation) |
+| `test_relaxed_still_rejects_below_fraction` | [`tests/test_partial_topic_grounding.py:114`](../../tests/test_partial_topic_grounding.py) | relaxed mode rejects 1-of-4 = 0.25 (fraction floor) |
+| `test_low_top_score_still_blocking_in_relaxed_stage` | [`tests/test_partial_topic_grounding.py:125`](../../tests/test_partial_topic_grounding.py) | `0.18` hallucination floor holds in both stages |
+| `test_out_of_corpus_query_still_abstains` | [`tests/test_partial_topic_grounding.py:149`](../../tests/test_partial_topic_grounding.py) | end-to-end abstention preserved |
 
 ## LLM migration counter-checks
 
