@@ -59,20 +59,23 @@
 
 | 컴포넌트 | 종류 | 5축 cover | 트리거 | 위치 |
 |---|---|---|---|---|
+| `eval-anomaly-investigator` | agent | #3 (closed error loop) + #4 (anomaly→audit) | `make real-eval` 후 dominant/이상 failure category · variance 의심 · 사용자 명시 | [`.claude/agents/eval-anomaly-investigator.md`](../.claude/agents/eval-anomaly-investigator.md) |
 | `eval-to-adr-bridge` | agent | #3 (부분) + #4 (trigger→proposed lag) | `/retrieval-eval` Phase STOP / `/eval-framework-progressive-audit` phase / `make real-eval` 후 | [`.claude/agents/eval-to-adr-bridge.md`](../.claude/agents/eval-to-adr-bridge.md) |
 | `memory-curator` | agent | #5 (incremental gate) | 메모리 저장 직전 / `MEMORY.md` ≥180줄 / 사용자 명시 | [`.claude/agents/memory-curator.md`](../.claude/agents/memory-curator.md) |
 | `agent-delegation-gate` | hook | #2 (prompt-time delegation nudge) | UserPromptSubmit (모든 prompt, 키워드 매치 시 메시지 emit + fires.log append) | [`scripts/claude-hooks/userpromptsubmit-delegation-gate.sh`](../scripts/claude-hooks/userpromptsubmit-delegation-gate.sh) |
 
-### 갭 분석 (왜 이 3개만)
+### 갭 분석 (왜 이 컴포넌트만)
 
 외부 191개 검토 결과 채택 0개. 근본 원인은 enterprise persona vs research 1인 RAG 결 미스매치. 보편 원칙은 이미 `karpathy-guidelines` skill + CLAUDE.md 로 cover. 자체 갭만 1:1 보강:
 
 - **#2 위임 부족**: UserPromptSubmit hook 0개였음 → prompt 시점 위임 권유 강제 (CLAUDE.md "위임 기본값" 인용). `_self_review.py` `collect_governance_hooks` 가 4-field 포맷의 `agent-delegation` reason 카운터를 기존 `memory-lines` / `load-bearing` 옆에 자동 인식
 - **#3 자동화 ROI 일부 + #4 사이클 타임 trigger→proposed**: 측정 결과 → ADR 후보 변환 빈 칸. `reports/cycle_time.json` 에 `adr_proposed` 이벤트 + `trigger_to_proposal_seconds` append 로 정량화. PR open→merge / ADR proposed→accepted lag 는 `_self_review.py` git history 기반 사후 측정으로 이미 가동
 - **#5 메모리 위생**: `anthropic-skills:consolidate-memory` skill 은 batch consolidation (주기적). per-save dedup / type 균형 / stale 판단은 LLM judgment 필요한 incremental gate → agent 영역
+- **(2026-05-20 추가) #3 closed error loop**: 측정 이상치 → root-cause audit 수작업 3회 반복 (#1003/#1008/#1021) → `eval-anomaly-investigator` 로 코드화. `eval-to-adr-bridge` 의 앞단 (anomaly→audit→ADR 후보 체인 완성). issue #1050, PR-C 묶음 외 별도 후속
 
 ### 사용 가이드
 
+- `eval-anomaly-investigator`: `make real-eval` 후 failure category 이상치를 ADR 0005-safe slice + 가설 ranking → `docs/audits/*-inspection.md`. 산출 audit 는 `eval-to-adr-bridge` 의 입력. 실 fix / 측정 실행은 영역 외
 - `eval-to-adr-bridge`: 측정 후 ADR 작성 결정 단계에서 호출. commit / PR / Status 변경은 영역 외 (`ship-pr` skill 영역)
 - `memory-curator`: 메모리 저장 결정 게이트. batch 정리는 `consolidate-memory` skill 영역 (호출 권유만)
 - `agent-delegation-gate`: 자동 (사용자 prompt 시점). 항상 exit 0, fail-safe. 트리거 키워드 false-positive 시 description 어휘 조정
