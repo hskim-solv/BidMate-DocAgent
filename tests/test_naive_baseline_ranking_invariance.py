@@ -13,48 +13,41 @@ pipeline against a freshly built hashing-backend index (deterministic
 across machines) and asserts the top-K chunk_ids + scores match a
 committed golden file (`tests/data/naive_baseline_top_k.json`).
 
+The rebuild is delegated to `scripts.regen_naive_baseline_golden.build_golden`
+— the single source of truth for *how* the golden is built — so this guard
+and the `make regen-golden` regenerator can never drift apart.
+
 If a later PR legitimately needs to change `naive_baseline` ranking
-(e.g. a chunking-strategy default change), regenerate the golden
-intentionally inside that PR and call it out in the PR body.
+(e.g. a chunking-strategy default change), run `make regen-golden`
+inside that PR and call it out in the PR body.
 """
 
 import json
 import unittest
-from pathlib import Path
 
-from rag_core import build_index_payload, run_rag_query
-
-
-GOLDEN_PATH = Path(__file__).parent / "data" / "naive_baseline_top_k.json"
+from scripts.regen_naive_baseline_golden import GOLDEN_PATH, build_golden
 
 
 class NaiveBaselineRankingInvarianceTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        # Hashing backend + fixed chunking = deterministic across machines
-        # and across the Phase 3 stack — every PR's CI run reproduces the
-        # same vectors.
-        cls.index = build_index_payload(
-            Path("data/raw"),
-            embedding_backend="hashing",
-            chunking_strategy="fixed",
-        )
+        # build_golden rebuilds with the hashing backend + fixed chunking
+        # (deterministic across machines and across the Phase 3 stack), keyed
+        # to the committed golden's query set.
         cls.golden = json.loads(GOLDEN_PATH.read_text(encoding="utf-8"))
+        cls.rebuilt = build_golden(cls.golden)
 
     def test_top_k_chunk_ids_match_golden(self) -> None:
         for query, golden_top in self.golden.items():
             with self.subTest(query=query):
-                result = run_rag_query(self.index, query, pipeline="naive_baseline")
-                citations = result.get("citations") or result.get("evidence") or []
-                observed = [[c.get("chunk_id"), c.get("score")] for c in citations[: len(golden_top)]]
                 self.assertEqual(
                     golden_top,
-                    observed,
+                    self.rebuilt[query],
                     f"naive_baseline ranking drifted for query: {query!r}.\n"
                     f"  golden:   {golden_top}\n"
-                    f"  observed: {observed}\n"
-                    f"If this drift is intentional, regenerate "
-                    f"{GOLDEN_PATH} inside the PR and explain in the PR body.",
+                    f"  observed: {self.rebuilt[query]}\n"
+                    f"If this drift is intentional, run `make regen-golden` "
+                    f"inside the PR and explain in the PR body.",
                 )
 
 
