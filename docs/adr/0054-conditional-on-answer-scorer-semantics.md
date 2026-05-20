@@ -1,6 +1,7 @@
 # ADR 0054 — Conditional-on-answer scorer semantics
 
-- Status: Proposed
+- Status: Accepted
+- Implemented: #959 (2026-05-18) — `eval/scorers/case.py` conditional-on-substantive-answer semantics + n=221 gauge regen
 - Date: 2026-05-18
 - Authors: Hyunsoo Kim
 - Related: ADR 0001 (naive_baseline invariance), ADR 0003 (answer-contract schema_version=2), ADR 0005 (eval split), ADR 0030 (leaderboard surfaces), ADR 0053 (distinguishing-power floors — **augmented by this ADR, not superseded**)
