@@ -4,7 +4,7 @@ This document is the reviewer-facing reference for the local trace artifacts pro
 
 The goal is that a reviewer can open one `.trace.json` file and reconstruct *what the planner decided, why it rewrote (or didn't rewrite) the query, and where time was spent* — without having to re-run the pipeline.
 
-Builders live in [rag_core.py](../rag_core.py): `build_query_rewrite_trace`, `build_planner_trace`, `build_result_trace`.
+Builders live in [rag_core.py](../../rag_core.py): `build_query_rewrite_trace`, `build_planner_trace`, `build_result_trace`.
 
 ## Top-level shape
 

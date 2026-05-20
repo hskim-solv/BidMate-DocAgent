@@ -3,7 +3,7 @@
 - **Status**: accepted (kordoc-corpus measurement landed 2026-05-19; Scenario A finalized)
 - **Date**: 2026-05-19 (Status accepted); 2026-05-18 (Status proposed)
 - **Deciders**: hskim
-- **Related**: [ADR 0001](0001-preserve-naive-baseline.md), [ADR 0005](0005-eval-split-public-synthetic-private-local.md), [ADR 0010](0010-hybrid-bm25-dense-retrieval-rrf.md), [ADR 0021](0021-real-eval-axis-design.md), [ADR 0025](0025-spike-mode-m3-channels.md), [ADR 0032](0032-torch-26-unblock.md), [ADR 0049](0049-kordoc-replaces-pyhwp-backend.md), PR #966 (Phase 3.5 measurement), PR #956 (Phase 3, retracted), issue #957, issue #997, issue #1022 (m3 cloud-GPU follow-up)
+- **Related**: [ADR 0001](0001-preserve-naive-baseline.md), [ADR 0005](0005-eval-split-public-synthetic-private-local.md), [ADR 0010](0010-hybrid-bm25-dense-retrieval-rrf.md), [ADR 0021](0021-bge-m3-completes-phase-1-3.md), [ADR 0025](0025-cost-frontier-defer-until-real-baselines.md), [ADR 0032](0032-eval-saturation-routed-subset.md), [ADR 0049](0049-kordoc-replaces-pyhwp-backend.md), PR #966 (Phase 3.5 measurement), PR #956 (Phase 3, retracted), issue #957, issue #997, issue #1022 (m3 cloud-GPU follow-up)
 
 > **ADR number renumbered 0056 → 0057 → 0058** (2026-05-19) to avoid two concurrent collisions: ADR 0056 was merged via PR #987 (`rationality_judge`, issue #969) + ADR 0057 was merged via PR #988 (`bm25s additive backend`). Final number `0058` per ADR README.md "Reserve the next number with the CLI before drafting" convention.
 

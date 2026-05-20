@@ -84,7 +84,7 @@ def _analyze_node(state):
   direct: A ms  langgraph: B ms  ratio: R× (최대 허용: 2.5×)
 ```
 
-실제 수치는 `make smoke` 실행 환경 (CPU, index 크기) 에 따라 다름. 측정 결과를 [reports/eval_summary.json](../reports/eval_summary.json) 의 `stage_latency` 블록과 비교해 phase 별 bottleneck 을 파악.
+실제 수치는 `make smoke` 실행 환경 (CPU, index 크기) 에 따라 다름. 측정 결과를 `reports/eval_summary.json` 의 `stage_latency` 블록과 비교해 phase 별 bottleneck 을 파악.
 
 **정성**:
 - 3노드 분해로 conditional edge 가시화 — 코드 없이 StateGraph 다이어그램 만으로 orchestration 흐름 전달 가능.
@@ -99,12 +99,12 @@ def _analyze_node(state):
 
 | 심볼 | 파일 | 설명 |
 |---|---|---|
-| `_RunContext` | [rag_core.py](../rag_core.py) | phase 간 공유 mutable 컨텍스트 |
-| `_phase_analyze` | [rag_core.py:1204](../rag_core.py) | query 분석 + context resolution + ambiguity check |
-| `_phase_retrieve_loop` | [rag_core.py:1315](../rag_core.py) | metadata-stage retry loop + verifier |
-| `_phase_build_answer` | [rag_core.py:1406](../rag_core.py) | extractive answer + result dict 조립 |
-| `AgenticFullState` | [rag_graph_agentic_full.py](../rag_graph_agentic_full.py) | LangGraph TypedDict state |
-| `_route_after_analyze` | [rag_graph_agentic_full.py](../rag_graph_agentic_full.py) | conditional edge router |
-| `_build_graph` | [rag_graph_agentic_full.py](../rag_graph_agentic_full.py) | StateGraph 빌더 (캐시됨) |
-| JSON-identity 회귀 | [tests/test_langgraph_orchestrator_regression.py](../tests/test_langgraph_orchestrator_regression.py) | 계약 검증 |
-| 성능 프로파일 | [tests/test_langgraph_performance_profile.py](../tests/test_langgraph_performance_profile.py) | per-node 타이밍 측정 |
+| `_RunContext` | [rag_core.py](../../rag_core.py) | phase 간 공유 mutable 컨텍스트 |
+| `_phase_analyze` | [rag_core.py:1204](../../rag_core.py) | query 분석 + context resolution + ambiguity check |
+| `_phase_retrieve_loop` | [rag_core.py:1315](../../rag_core.py) | metadata-stage retry loop + verifier |
+| `_phase_build_answer` | [rag_core.py:1406](../../rag_core.py) | extractive answer + result dict 조립 |
+| `AgenticFullState` | [rag_graph_agentic_full.py](../../rag_graph_agentic_full.py) | LangGraph TypedDict state |
+| `_route_after_analyze` | [rag_graph_agentic_full.py](../../rag_graph_agentic_full.py) | conditional edge router |
+| `_build_graph` | [rag_graph_agentic_full.py](../../rag_graph_agentic_full.py) | StateGraph 빌더 (캐시됨) |
+| JSON-identity 회귀 | [tests/test_langgraph_orchestrator_regression.py](../../tests/test_langgraph_orchestrator_regression.py) | 계약 검증 |
+| 성능 프로파일 | [tests/test_langgraph_performance_profile.py](../../tests/test_langgraph_performance_profile.py) | per-node 타이밍 측정 |

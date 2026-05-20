@@ -98,7 +98,7 @@ CI bootstrap parameter (n_resamples=1000, alpha=0.05, seed=17) 는
   "왜 baseline은 교체되지 않는가" 의 commit-level 결정.
 - [ADR 0011 — LLM synthesis as additive ablation](../adr/0011-llm-synthesis-as-additive-ablation.md) —
   `full_llm` / `full_llm_metadata` 가 *추가* surface 이지 replacement 가 아닌 이유.
-- [ADR 0030 — Real-eval leaderboard schema](../adr/0030-real-eval-leaderboard-schema.md) —
+- [ADR 0030 — Real-eval leaderboard schema](../adr/0030-leaderboard-headline-includes-agentic-full.md) —
   n 확장 후 leaderboard 표현 형식.
 - [Issue #570](https://github.com/hskim-solv/BidMate-DocAgent/issues/570) —
   n=42 → n=100 expansion (re-measurement pending).

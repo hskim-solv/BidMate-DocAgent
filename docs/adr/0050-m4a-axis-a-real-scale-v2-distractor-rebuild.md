@@ -3,7 +3,7 @@
 - **Status**: proposed
 - **Date**: 2026-05-17
 - **Deciders**: hskim
-- **Related**: [ADR 0001](./0001-preserve-naive-baseline.md) (naive_baseline ranking 불변), [ADR 0003](./0003-structured-answer-citation-contract.md) (답변 계약 schema_version=2), [ADR 0005](./0005-eval-split-public-synthetic-private-local.md) (eval 분리 경계), [ADR 0030](./0030-leaderboard-silence-threshold.md) (silence threshold; axis-A 신호 회복), [ADR 0044](./0044-realN-eval-case-expansion.md) (realN 케이스 확장 lineage), issue [#911](https://github.com/hskim-solv/BidMate-DocAgent/issues/911) (본 ADR)
+- **Related**: [ADR 0001](./0001-preserve-naive-baseline.md) (naive_baseline ranking 불변), [ADR 0003](./0003-structured-answer-citation-contract.md) (답변 계약 schema_version=2), [ADR 0005](./0005-eval-split-public-synthetic-private-local.md) (eval 분리 경계), [ADR 0030](./0030-leaderboard-headline-includes-agentic-full.md) (silence threshold; axis-A 신호 회복), [ADR 0044](./0044-realN-eval-case-expansion.md) (realN 케이스 확장 lineage), issue [#911](https://github.com/hskim-solv/BidMate-DocAgent/issues/911) (본 ADR)
 
 ## TL;DR
 

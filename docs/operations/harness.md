@@ -152,4 +152,4 @@ python3 scripts/run_harness.py --compare \
   --out compare.md
 ```
 
-Metric 목록·formatting은 [`scripts/_eval_delta.py`](../scripts/_eval_delta.py)가 단일 source-of-truth이며, PR eval comment(`scripts/compare_eval.py`)와 matrix `compare.md`가 같은 정의를 공유한다.
+Metric 목록·formatting은 [`scripts/_eval_delta.py`](../../scripts/_eval_delta.py)가 단일 source-of-truth이며, PR eval comment(`scripts/compare_eval.py`)와 matrix `compare.md`가 같은 정의를 공유한다.

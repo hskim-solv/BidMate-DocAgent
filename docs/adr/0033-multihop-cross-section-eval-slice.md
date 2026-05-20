@@ -122,7 +122,7 @@
 - [ADR 0032](./0032-eval-saturation-routed-subset.md) — 동반 routing 축 saturation falsifier.
 - [ADR 0019](./0019-embedding-default-stays-minilm.md) + [ADR 0021](./0021-bge-m3-completes-phase-1-3.md) — 이 ADR이 보완하는 임베딩 default lock re-open 조건.
 - [`eval/routed_config.yaml`](../../eval/routed_config.yaml) — 이 ADR의 `eval/multihop_config.yaml`이 따를 패턴.
-- [`eval/synthetic_judge.py`](../../eval/synthetic_judge.py) / [`eval/llm_judge.py`](../../eval/llm_judge.py) — 품질 필터가 재사용할 LLM 평가자 인프라.
+- [`eval/synthetic_judge.py`](../../eval/judges/synthetic_judge.py) / [`eval/llm_judge.py`](../../eval/judges/llm_judge.py) — 품질 필터가 재사용할 LLM 평가자 인프라.
 - `eval/dev_queries_multihop_v1.jsonl` — 데이터셋 산출물 (Phase 1.5: n=15 stubs).
 - `scripts/synthesize_multihop_queries.py` — 실 LLM 합성 follow-up PR 스크립트.
 - `docs/eval/embedding-ablation.md` — Phase 1.4 섹션; 실 합성으로 stub 대체 후 Phase 1.5 결과 추가.

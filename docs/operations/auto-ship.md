@@ -9,11 +9,11 @@ This page documents the operational contract: how to arm it, what each
 gate / stage enforces, where the safety nets live, and which discipline
 rules (notably the stacked-PR gate) must be respected when bypassing
 them. The implementation lives in
-[`scripts/claude-hooks/stop-ship.sh`](../scripts/claude-hooks/stop-ship.sh)
+[`scripts/claude-hooks/stop-ship.sh`](../../scripts/claude-hooks/stop-ship.sh)
 (Stop hook entry point) and
-[`scripts/claude-hooks/_ship_pr_body.py`](../scripts/claude-hooks/_ship_pr_body.py)
+[`scripts/claude-hooks/_ship_pr_body.py`](../../scripts/claude-hooks/_ship_pr_body.py)
 (PR body generator). Registration:
-[`.claude/settings.json`](../.claude/settings.json) `Stop` hook.
+[`.claude/settings.json`](../../.claude/settings.json) `Stop` hook.
 
 ## Arming: `make ship-arm`
 
@@ -33,7 +33,7 @@ event. Knobs (env-var overrides):
 `make ship-disarm` removes the arm file and pid file. `make ship-status`
 prints a human-readable summary. See
 [`Makefile:289-339`](../Makefile) and
-[`scripts/claude-hooks/_ship_arm.py`](../scripts/claude-hooks/_ship_arm.py).
+[`scripts/claude-hooks/_ship_arm.py`](../../scripts/claude-hooks/_ship_arm.py).
 
 ## Pipeline overview
 
@@ -63,14 +63,14 @@ unarmed turns stay under 100ms:
 
 | # | Gate | Behaviour | Source |
 |---|---|---|---|
-| 1 | armed file exists | no file → `exit 0` | [`stop-ship.sh:39-41`](../scripts/claude-hooks/stop-ship.sh) |
-| 2 | armed file parses | malformed JSON → silent disarm | [`stop-ship.sh:43-69`](../scripts/claude-hooks/stop-ship.sh) |
-| 3 | not expired | past TTL → silent disarm | [`stop-ship.sh:71-81`](../scripts/claude-hooks/stop-ship.sh) |
-| 4 | branch matches arm | switched branch → silent disarm | [`stop-ship.sh:83-91`](../scripts/claude-hooks/stop-ship.sh) |
-| 5 | not on protected branch | main/master/develop/HEAD/release/* → **hard abort** (tier-3 firewall) | [`stop-ship.sh:93-98`](../scripts/claude-hooks/stop-ship.sh) |
-| 6 | has work to ship | clean tree + no unpushed commits → silent exit | [`stop-ship.sh:100-108`](../scripts/claude-hooks/stop-ship.sh) |
-| 7 | no git transition in progress | merge / rebase / cherry-pick / revert detected → silent exit | [`stop-ship.sh:110-119`](../scripts/claude-hooks/stop-ship.sh) |
-| 8 | no live pid | previous run still alive → silent exit | [`stop-ship.sh:121-131`](../scripts/claude-hooks/stop-ship.sh) |
+| 1 | armed file exists | no file → `exit 0` | [`stop-ship.sh:39-41`](../../scripts/claude-hooks/stop-ship.sh) |
+| 2 | armed file parses | malformed JSON → silent disarm | [`stop-ship.sh:43-69`](../../scripts/claude-hooks/stop-ship.sh) |
+| 3 | not expired | past TTL → silent disarm | [`stop-ship.sh:71-81`](../../scripts/claude-hooks/stop-ship.sh) |
+| 4 | branch matches arm | switched branch → silent disarm | [`stop-ship.sh:83-91`](../../scripts/claude-hooks/stop-ship.sh) |
+| 5 | not on protected branch | main/master/develop/HEAD/release/* → **hard abort** (tier-3 firewall) | [`stop-ship.sh:93-98`](../../scripts/claude-hooks/stop-ship.sh) |
+| 6 | has work to ship | clean tree + no unpushed commits → silent exit | [`stop-ship.sh:100-108`](../../scripts/claude-hooks/stop-ship.sh) |
+| 7 | no git transition in progress | merge / rebase / cherry-pick / revert detected → silent exit | [`stop-ship.sh:110-119`](../../scripts/claude-hooks/stop-ship.sh) |
+| 8 | no live pid | previous run still alive → silent exit | [`stop-ship.sh:121-131`](../../scripts/claude-hooks/stop-ship.sh) |
 
 The "silent" disposition matters: a contributor who arms once and then
 keeps working on unrelated branches doesn't accidentally trigger a ship
@@ -79,14 +79,14 @@ self-cleaned.
 
 ## Stages 1–5
 
-### Stage 1 — commit ([`stop-ship.sh:183-279`](../scripts/claude-hooks/stop-ship.sh))
+### Stage 1 — commit ([`stop-ship.sh:183-279`](../../scripts/claude-hooks/stop-ship.sh))
 
 1. **Filter private paths** out of the staging candidate set:
    `data/files/`, `data/data_list.{csv,xlsx}`, `eval/*.local.yaml`,
    `reports/real*/`. Pre-commit hook (`.githooks/pre-commit`) is the
    second-line gate; this filter just prevents proposing them.
 2. **Multi-agent lock check** via
-   [`_ship_lock_check.py`](../scripts/claude-hooks/_ship_lock_check.py).
+   [`_ship_lock_check.py`](../../scripts/claude-hooks/_ship_lock_check.py).
    Cross-owner edits abort unless `CROSS_OWNER=ack`.
 3. **Tier-7 heterogeneous-prefix gate** — see [Stacked-PR discipline](#stacked-pr-discipline-tier-7).
 4. Run `bash scripts/test.sh`; cache the summary at
@@ -95,30 +95,30 @@ self-cleaned.
    `<type>: <issue title> (#<N>)`, body containing `Closes #<N>` and
    the Co-Authored-By footer.
 
-### Stage 2 — push ([`stop-ship.sh:285-297`](../scripts/claude-hooks/stop-ship.sh))
+### Stage 2 — push ([`stop-ship.sh:285-297`](../../scripts/claude-hooks/stop-ship.sh))
 
 Runs `python3 scripts/check_branch_and_issue.py --branch <X> --check-issue`
 (ADR 0007 + issue-exists check), then `git push` (with `-u` if no
 upstream yet).
 
-### Stage 3 — PR create ([`stop-ship.sh:303-346`](../scripts/claude-hooks/stop-ship.sh))
+### Stage 3 — PR create ([`stop-ship.sh:303-346`](../../scripts/claude-hooks/stop-ship.sh))
 
 Idempotent: reuses an existing PR if one already targets the head
 branch. Otherwise calls
-[`_ship_pr_body.py`](../scripts/claude-hooks/_ship_pr_body.py) to
+[`_ship_pr_body.py`](../../scripts/claude-hooks/_ship_pr_body.py) to
 generate the body (template §1–§7, including the §5b cascade below),
 then `gh pr create --base main --head <branch> --title ... --body-file ...`
 (plus `--draft` if `DRAFT=true`). The PR title is the squash-merge
 commit subject, so the merged commit on `main` lands with the title as
 the first line.
 
-### Stage 4 — CI wait ([`stop-ship.sh:352-368`](../scripts/claude-hooks/stop-ship.sh))
+### Stage 4 — CI wait ([`stop-ship.sh:352-368`](../../scripts/claude-hooks/stop-ship.sh))
 
 `timeout 1800 gh pr checks <N> --watch --interval 30`. On timeout
 (rc 124): post a PR comment and abort, **leaving the PR open**. On any
 non-zero rc: comment + abort. The pipeline never merges on red.
 
-### Stage 5 — squash-merge ([`stop-ship.sh:374-424`](../scripts/claude-hooks/stop-ship.sh))
+### Stage 5 — squash-merge ([`stop-ship.sh:374-424`](../../scripts/claude-hooks/stop-ship.sh))
 
 `gh pr merge <N> --squash --admin --delete-branch`. Verifies the
 post-merge state is `MERGED` (otherwise leaves the arm file in place
@@ -183,7 +183,7 @@ The bypass is logged in `.claude/.ship-armed` and printed by
 
 ## §5b real-data delta cascade
 
-[`_ship_pr_body.py:126-162`](../scripts/claude-hooks/_ship_pr_body.py)
+[`_ship_pr_body.py:126-162`](../../scripts/claude-hooks/_ship_pr_body.py)
 `render_5b()` decides what to write under "### 5b. Real-data delta" in
 the PR body. The decision tree:
 
@@ -199,10 +199,10 @@ the PR body. The decision tree:
 The PR body is round-trip-validated against the CI gate
 (`scripts/check_branch_and_issue.py --check-5b` regexes:
 `FIVE_B_TABLE_RE`, `FIVE_B_ESCAPE_RE`); the generator refuses to emit a
-body the CI would reject ([`_ship_pr_body.py:266-278`](../scripts/claude-hooks/_ship_pr_body.py)).
+body the CI would reject ([`_ship_pr_body.py:266-278`](../../scripts/claude-hooks/_ship_pr_body.py)).
 
 Load-bearing paths are defined once in
-[`scripts/_governance.py`](../scripts/_governance.py) `LOAD_BEARING_PATHS`
+[`scripts/_governance.py`](../../scripts/_governance.py) `LOAD_BEARING_PATHS`
 — the single source of truth referenced from `CLAUDE.md`,
 `.githooks/pre-push`, the pre-commit hook, and `_ship_pr_body.py`.
 
@@ -254,4 +254,4 @@ mutating commands echo to `.claude/.ship-dryrun.log`.
 - [`docs/multi-agent-ownership.md`](../multi-agent-ownership.md) — owner lock map consumed by Stage 1.
 - [ADR 0007](../adr/0007-issue-linked-branch-naming.md) — branch convention enforced in Gate 0 / Stage 2.
 - [`.github/pull_request_template.md`](../../.github/pull_request_template.md) — the template `_ship_pr_body.py` fills in.
-- [`scripts/_governance.py`](../scripts/_governance.py) — load-bearing SSoT.
+- [`scripts/_governance.py`](../../scripts/_governance.py) — load-bearing SSoT.
