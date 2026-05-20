@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import importlib.util
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -253,6 +254,55 @@ def test_no_hook_uses_legacy_printf_fire_log():
             assert ".hook-fires.log" not in line or "emit-fire" in content, (
                 f"{relpath} contains legacy fire-log redirect: {line}"
             )
+
+
+# ---------------------------------------------------------------------------
+# Fire-log path anchored to REPO_ROOT, not the caller's cwd
+#
+# The bash hooks pass an explicit `--fire-log "$REPO_ROOT/.claude/.hook-fires.log"`,
+# so a hook invoked from a subdirectory or sibling worktree still routes its
+# fire into the repo it belongs to — not into whatever cwd the Bash command
+# happened to run in (which would scatter fires past collect_governance_hooks).
+# Without the explicit flag the CLI default (`.claude/.hook-fires.log`,
+# relative) resolves against cwd. All five REPO_ROOT-resolving hooks share the
+# identical arg; loadbearing is the simplest representative (no git/helper dep).
+# (plan-slug-race is intentionally cwd-local — it has no REPO_ROOT, registered
+# user-globally — and is deliberately excluded.)
+# ---------------------------------------------------------------------------
+
+
+def test_hook_fire_log_anchored_to_repo_root_not_cwd(tmp_path):
+    repo = tmp_path / "repo"
+    (repo / "scripts" / "claude-hooks").mkdir(parents=True)
+    hook_name = "pretooluse-loadbearing.sh"
+    shutil.copy(
+        REPO_ROOT / "scripts" / "claude-hooks" / hook_name,
+        repo / "scripts" / "claude-hooks" / hook_name,
+    )
+    shutil.copy(GOVERNANCE_PATH, repo / "scripts" / GOVERNANCE_PATH.name)
+
+    # Invoke the hook from a foreign cwd that is NOT the repo root.
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    result = subprocess.run(
+        ["bash", str(repo / "scripts" / "claude-hooks" / hook_name)],
+        input='{"tool_input": {"file_path": "rag_core.py"}}',
+        cwd=str(elsewhere),
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+
+    repo_log = repo / ".claude" / ".hook-fires.log"
+    cwd_log = elsewhere / ".claude" / ".hook-fires.log"
+    # Fire lands in the repo the hook belongs to …
+    assert repo_log.is_file(), f"fire-log not under REPO_ROOT; stderr={result.stderr!r}"
+    assert "|aware|loadbearing|" in repo_log.read_text(encoding="utf-8")
+    # … and NOT in the unrelated caller cwd (the relative-default scatter bug).
+    assert not cwd_log.exists(), (
+        "fire-log leaked into the caller's cwd — --fire-log not anchored to "
+        "REPO_ROOT"
+    )
 
 
 # ---------------------------------------------------------------------------
