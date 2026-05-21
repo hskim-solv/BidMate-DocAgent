@@ -132,6 +132,8 @@ Stage 5 는 disarm 후 `git worktree remove --force <path>` 를 호출한다.
 방지한다. 실패는 non-blocking — 경고가 로깅되고 호출자가 수동으로
 정리해야 한다(`git worktree prune`).
 
+<a id="stacked-pr-discipline-tier-7"></a>
+
 ## Stacked-PR 규율 (tier 7)
 
 [`CLAUDE.md`](../../CLAUDE.md) 의 "one PR, one concern" 규칙은 브랜치의

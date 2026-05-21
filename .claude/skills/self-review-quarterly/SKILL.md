@@ -109,7 +109,7 @@ This skill writes to a **committed git file**. Privacy violations cannot be retr
 | 1 | 컨텍스트 효율 | ... | `sessions.tool_call_distribution`, `sessions.agent_delegations` | ... |
 | 2 | Agent 위임 패턴 | ... | `axis_2_plan_subagent_skip_rate.skip_rate` (PR #745) | ... |
 | 3 | 거버넌스 자동화 ROI | ... | `governance_hooks.pretooluse_loadbearing_fires`, `governance_hooks.fires_by_action` | ... |
-| 4 | 사이클 타임 | ... | `axis_4_cycle_time.adr_lag_days`, `axis_4_cycle_time.pr_turnaround_hours` (PR #748) | ... |
+| 4 | 사이클 타임 | ... | `axis_4_cycle_time.adr_lag_days.non_zero_lag`, `…adr_lag_days.zero_lag_count`, `axis_4_cycle_time.pr_turnaround_hours` (PR #748) | ... |
 | 5 | 메모리 위생 | ... | #5-A `governance_hooks.fires_by_action["memory-lines"]` (PR #747) + #5-B `axis_5_memory_hygiene.content_freshness.fresh_rate` (issue #877) | ... |
 
 ## 5축 채점 임계값 (Q3-2026~)
@@ -129,7 +129,7 @@ SoT — 두 SoT는 직교한다 (값 vs 채점 등급).
 | #1 컨텍스트 효율 | `sessions.agent_delegations["Explore"]` 호출 / 분기 | ≥ 2 + Read 평균 ≤ 메인 대화당 10회 | 둘 중 하나 미달 | 둘 다 미달 |
 | #2 Agent 위임 | `axis_2_plan_subagent_skip_rate.skip_rate` | ≤ 0.2 | 0.2–0.5 | > 0.5 |
 | #3 자동화 ROI | `governance_hooks.pretooluse_loadbearing_fires` + `fires_by_action` 다양성 | fires > 0 **그리고** ≥ 2개 reason 발화 (e.g. `load-bearing` + `memory-lines`) | fires > 0 그러나 1개 reason만 | fires = 0 |
-| #4-A 사이클 타임 (ADR) | `axis_4_cycle_time.adr_lag_days.mean` (days) | ≤ 5 | 5–10 | > 10 |
+| #4-A 사이클 타임 (ADR) | `axis_4_cycle_time.adr_lag_days.non_zero_lag.mean` (zero-lag 제외 days) | ≤ 5 | 5–10 | > 10 |
 | #4-B 사이클 타임 (PR) | `axis_4_cycle_time.pr_turnaround_hours.mean` (hours) | ≤ 48 | 48–120 | > 120 |
 | #5-A 메모리 인덱스 위생 | `governance_hooks.fires_by_action["memory-lines"]` 카운트 (action="aware" / "blocked") | blocked=0 + aware ≤ 2 | aware ≥ 3 + blocked=0 | blocked ≥ 1 (편집 차단 = 인덱스 폭발) |
 | #5-B 메모리 콘텐츠 신선도 | `axis_5_memory_hygiene.content_freshness.fresh_rate` (분기 내 수정된 메모리 파일 비율) | ≥ 0.5 | 0.2–0.5 | < 0.2 또는 `null` |
@@ -137,6 +137,8 @@ SoT — 두 SoT는 직교한다 (값 vs 채점 등급).
 **판정 규칙:**
 - 동일 축이 sub-signal 두 개를 가질 때(예: #4-A + #4-B), **둘 다 ✓** 이어야 ✓; 하나라도 ✗면 ✗; 그 외 △.
 - raw signal 이 `null` / `count=0` 이면 측정 부재 — △ 표기 + "측정 인프라 미작동" 한 줄.
+- **#4-A 는 반드시 `non_zero_lag.mean` 으로 채점** (`adr_lag_days.mean` 아님). zero-lag ADR (same-day proposed→accepted) 은 진짜 빠른 결정인지 retrofit 인지 날짜만으로 구분 불가 → 전체 mean 을 0 쪽으로 끌어내려 ✓ 를 부풀린다. `zero_lag_count` 가 전체 `count` 의 ≥ 1/3 이면 코멘트에 "zero-lag N/총M, 수동 retrofit 검토 필요" 한 줄 명시.
+- `non_zero_lag.count == 0` (모든 ADR 이 zero-lag) → lag 측정 불가 → △ + "전체 N개 ADR zero-lag, lag 측정 불가, 수동 retrofit 검토" 한 줄. ✓ 금지 (mean=0 을 빠른 사이클로 오독 방지).
 - `p90` 이 `mean` 보다 현저히 크면 (> 2×) outlier 가능성 — `pr_turnaround_hours.max` 확인 후 reopened-PR 영향 한 줄 명시.
 
 ## 최우선 개선점 (ROI)

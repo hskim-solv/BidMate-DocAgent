@@ -109,9 +109,38 @@ class TestRuleToAutomationLagBasic(unittest.TestCase):
         self.assertEqual(len(lags), 1)
         self.assertEqual(lags[0]["adr_id"], "0001")
         self.assertEqual(lags[0]["lag_days"], 10)
-        # is_retrofit must be present and False for a genuine multi-day lag.
-        self.assertIn("is_retrofit", lags[0])
-        self.assertFalse(lags[0]["is_retrofit"])
+        # zero_lag must be present and False for a genuine multi-day lag.
+        self.assertIn("zero_lag", lags[0])
+        self.assertFalse(lags[0]["zero_lag"])
+        # the misleading is_retrofit name (#1067) is gone (#1147).
+        self.assertNotIn("is_retrofit", lags[0])
+
+
+class TestSameDayAdrIsZeroLagNotRetrofit(unittest.TestCase):
+    def test_genuine_same_day_decision_is_zero_lag_not_retrofit(self):
+        # Issue #1147: a real same-day proposed→accepted decision yields
+        # lag_days == 0. It must be labeled honestly as zero_lag (a fact),
+        # NOT silently asserted to be a retrofit. The is_retrofit field from
+        # #1067 is gone; grading runs on non_zero_lag so this fast decision
+        # is neither mislabeled nor penalized.
+        with tempfile.TemporaryDirectory() as td:
+            repo = _make_repo_with_adr(
+                td,
+                "0003-same-day.md",
+                content_at_add="- **Status**: proposed\n",
+                content_at_accept="- **Status**: accepted\n",
+                add_date="2026-04-05T09:00:00+00:00",
+                accept_date="2026-04-05T15:00:00+00:00",
+            )
+            lags = sr._compute_adr_lags(str(repo), "2026-04-01", "2026-06-30")
+        self.assertEqual(len(lags), 1)
+        self.assertEqual(lags[0]["lag_days"], 0)
+        self.assertTrue(lags[0]["zero_lag"])
+        self.assertNotIn("is_retrofit", lags[0])
+        # excluded from the grading mean rather than dragging it toward 0
+        summary = sr.compute_adr_lag_summary(lags)
+        self.assertEqual(summary["zero_lag_count"], 1)
+        self.assertEqual(summary["non_zero_lag"]["count"], 0)
 
 
 class TestRuleToAutomationLagSkipsUnaccepted(unittest.TestCase):

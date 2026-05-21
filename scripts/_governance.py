@@ -95,6 +95,7 @@ KNOWN_HOOKS: set[str] = {
     "loadbearing",
     "memory-lines",
     "adr-template",
+    "adr-collision",
     "plan-slug-race",
     "delegation-gate",
     "stop-ship",
@@ -354,6 +355,69 @@ def adr_readme_parity_violations(
     return missing
 
 
+# ---------------------------------------------------------------------------
+# Top-level README ADR-count parity (issue #1156).
+#
+# README.md states the ADR count in two human-facing spots — the prose
+# headline ("… 59개 설계 결정 (ADR).") and the 주요 링크 table row
+# ("| ADR 인덱스 (59개 결정) | … |"). Both were hand-edited and re-staled
+# every time an ADR landed in a concurrent worktree (#1059 corrected the
+# number but not the mechanism — it was off-by-one the moment it merged).
+#
+# Source of truth for the count is the number of NNNN-slug.md ADR *files*,
+# i.e. `len(existing_adr_numbers())` — the same canonical introspection
+# `--next-adr-number` and the collision scanner already use. The
+# docs/adr/README.md index is deliberately NOT the count SoT: its
+# reopen-condition tables re-list ADRs (e.g. one row for `0019 + 0021`), so
+# its row count exceeds the file count. File ↔ index-row parity is held by
+# `test_repo_adr_dir_parity_today`, so the headline count and the ADR index
+# cannot disagree once both are pinned to the file set.
+#
+# `rewrite_readme_adr_count` regenerates both spots (scripts/update_readme_
+# metrics.py calls it on every metrics refresh); `readme_adr_count_violations`
+# is the read-only check the pytest gate uses so drift cannot merge silently.
+# Each pattern's *full match* is only the digit run (the surrounding Korean
+# is a zero-width look-around), so a sub replaces just the number and a
+# rewrite is idempotent.
+# ---------------------------------------------------------------------------
+
+_README_ADR_COUNT_PATTERNS: tuple[tuple[str, "re.Pattern[str]"], ...] = (
+    ("prose headline", re.compile(r"\d+(?=개 설계 결정)")),
+    ("주요 링크 table", re.compile(r"(?<=ADR 인덱스 \()\d+(?=개 결정\))")),
+)
+
+
+def rewrite_readme_adr_count(readme_text: str, count: int) -> str:
+    """Return ``readme_text`` with every ADR-count claim set to ``count``.
+
+    Idempotent — re-running with the already-correct count is a no-op. Only
+    the digit run is rewritten; the surrounding text is preserved verbatim.
+    """
+    out = readme_text
+    for _, pattern in _README_ADR_COUNT_PATTERNS:
+        out = pattern.sub(str(count), out)
+    return out
+
+
+def readme_adr_count_violations(readme_text: str, expected_count: int) -> list[str]:
+    """Return human-readable messages for ADR-count claims that disagree
+    with ``expected_count`` (the SoT = number of NNNN-slug.md files).
+
+    A claim already equal to ``expected_count`` is clean. Absence of any
+    claim is NOT a violation — dropping the count (e.g. switching the
+    headline to a bare ``docs/adr/README.md`` pointer) is an intentional act.
+    """
+    violations: list[str] = []
+    for label, pattern in _README_ADR_COUNT_PATTERNS:
+        for m in pattern.finditer(readme_text):
+            stated = int(m.group(0))
+            if stated != expected_count:
+                violations.append(
+                    f"README {label}: states {stated} ADRs, actual is {expected_count}"
+                )
+    return violations
+
+
 def adr_has_verification_section(adr_path: str | Path) -> bool:
     """Return True if the ADR file contains a `## Verification` H2 header."""
     p = Path(adr_path)
@@ -460,10 +524,19 @@ def lint_adr_verification(
 # grandfathered: reported, but never flagged OVER_SLA.
 ADR_SLA_GRANDFATHER_DATE = date(2026, 5, 15)
 
-# Tolerant of the two formats live in docs/adr/ — `- **Status**: proposed`
-# and `- Status: Proposed`. First match on the file wins.
+# Tolerant of the three Status metablock forms live in docs/adr/:
+#   - **Status**: proposed       (bold list item)
+#   - Status: Proposed           (plain list item)
+#   | **Status** | Proposed |    (2-column table — value in the next cell,
+#                                  no colon; e.g. ADR 0052/0044/0034)
+# First match on the file wins. The table branch must open with a pipe and
+# terminate the value with one, since it lives between cells not after a colon.
 ADR_STATUS_RE = re.compile(
-    r"^\s*[-*]?\s*(?:\*\*)?status(?:\*\*)?\s*:\s*(.+?)\s*$",
+    r"^\s*(?:"
+    r"[-*]?\s*(?:\*\*)?status(?:\*\*)?\s*:\s*(?P<colon>.+?)"
+    r"|"
+    r"\|\s*(?:\*\*)?status(?:\*\*)?\s*\|\s*(?P<table>.+?)\s*\|"
+    r")\s*$",
     re.IGNORECASE | re.MULTILINE,
 )
 
@@ -479,18 +552,25 @@ class ProposedADR(NamedTuple):
 
 
 def parse_adr_status(adr_path: str | Path) -> str | None:
-    """Return the first `Status:` meta-line value (lowercased), or None.
+    """Return the first Status meta-value (lowercased), or None.
 
-    None if the file is missing or has no Status meta-line. Tolerant of
-    the bold (`- **Status**: proposed`) and plain (`- Status: Proposed`)
-    variants both present in docs/adr/.
+    None if the file is missing or has no Status meta-line. Tolerant of the
+    three variants present in docs/adr/: the bold (`- **Status**: proposed`)
+    and plain (`- Status: Proposed`) list forms, and the 2-column metablock
+    table form (`| **Status** | Proposed |`, e.g. ADR 0052) where the value
+    lives in the next cell with no colon.
     """
     p = Path(adr_path)
     if not p.is_file():
         return None
     text = p.read_text(encoding="utf-8", errors="replace")
     m = ADR_STATUS_RE.search(text)
-    return m.group(1).strip().lower() if m else None
+    if not m:
+        return None
+    value = m.group("colon")
+    if value is None:
+        value = m.group("table")
+    return value.strip().lower()
 
 
 def _git_first_commit_date(path: str | Path) -> date | None:

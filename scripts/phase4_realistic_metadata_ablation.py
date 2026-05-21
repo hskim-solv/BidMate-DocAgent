@@ -145,40 +145,18 @@ def _extracted_agency_project(
 
 
 def _categories_for_row(
-    case: dict[str, Any], has_gold_agency: bool, agency_match: bool
+    case: dict[str, Any], gold_agency: str | None, agency_match: bool
 ) -> list[str]:
     """``hardcase_categories`` + ``follow_up`` (query_type) + the derived
-    extractor cohort. Depends only on the *presence* of a gold agency and
-    the ``agency_match`` flag — never the agency string — so this is
-    identical in measure and reaggregate AND keeps the persisted row inside
-    the ADR 0005 boundary (ADR 0065: qid + categories + metric values only).
+    extractor cohort. The extractor tags depend only on the persisted
+    ``agency_match`` flag, so this is identical in measure and reaggregate.
     """
     cats = list(categories_from_case(case))
     if str(case.get("query_type") or "") == FOLLOW_UP_TAG:
         cats.append(FOLLOW_UP_TAG)
-    if has_gold_agency:
+    if gold_agency:
         cats.append(EXTRACTOR_HIT_TAG if agency_match else EXTRACTOR_MISS_TAG)
     return cats
-
-
-def _sanitize_persisted_row(row: dict[str, Any]) -> None:
-    """In-place: collapse any raw agency/project label fields to PRESENCE
-    booleans and drop the strings. Idempotent on already-sanitized rows.
-
-    The fresh measure path never writes the label strings, but ``--reaggregate``
-    may read a local ``raw_results.json`` produced before the booleanized
-    schema; this guarantees the regenerated *committable* artifact carries no
-    private labels (ADR 0005 / ADR 0065) regardless of the source's age.
-    """
-    for label_field, has_field in (
-        ("gold_agency", "has_gold_agency"),
-        ("gold_project", "has_gold_project"),
-        ("extracted_agency", "has_extracted_agency"),
-        ("extracted_project", "has_extracted_project"),
-    ):
-        if label_field in row:
-            row.setdefault(has_field, bool(row.get(label_field)))
-            del row[label_field]
 
 
 def _plan_for_variant(
@@ -247,7 +225,7 @@ def _prepare_case(
         "_ext_project": ext_project,
         "_agency_match": agency_match,
         "_project_match": project_match,
-        "_categories": _categories_for_row(case, bool(gold_agency), agency_match),
+        "_categories": _categories_for_row(case, gold_agency, agency_match),
     }
 
 
@@ -287,19 +265,15 @@ def measure_variant(
         gold_chunk_ids = derive_gold_chunk_ids(case, index)
         retrieved_chunk_ids, latency_ms = run_single_case(index, case, spec, top_k)
         latency_vals.append(latency_ms)
-        # Persist only PRESENCE booleans for agency/project, never the raw
-        # labels — the strings are private real-eval metadata (ADR 0005 /
-        # ADR 0065). Every downstream consumer (_extraction_quality,
-        # _categories_for_row, reaggregate) reads presence + match flags only.
         row: dict[str, Any] = {
             "qid": qid,
             "query_type": qt,
             "categories": list(case["_categories"]),
             "gold_chunk_n": len(gold_chunk_ids),
-            "has_gold_agency": bool(case["_gold_agency"]),
-            "has_gold_project": bool(case["_gold_project"]),
-            "has_extracted_agency": bool(case["_ext_agency"]),
-            "has_extracted_project": bool(case["_ext_project"]),
+            "gold_agency": case["_gold_agency"],
+            "gold_project": case["_gold_project"],
+            "extracted_agency": case["_ext_agency"],
+            "extracted_project": case["_ext_project"],
             "agency_match": case["_agency_match"],
             "project_match": case["_project_match"],
             "latency_ms": round(latency_ms, 3),
@@ -331,14 +305,12 @@ def measure_variant(
 def _extraction_quality(rows: list[dict[str, Any]]) -> dict[str, Any]:
     """Aggregate extraction precision / recall vs gold over the answerable
     cohort (gold present). Variant-independent, so any variant's rows work.
-    Reads only PRESENCE booleans + match flags (never the agency/project
-    strings), so it operates on the privacy-safe persisted schema.
     """
-    answerable = [r for r in rows if r.get("has_gold_agency")]
-    ag_extracted = [r for r in answerable if r.get("has_extracted_agency")]
+    answerable = [r for r in rows if r.get("gold_agency")]
+    ag_extracted = [r for r in answerable if r.get("extracted_agency")]
     ag_correct = [r for r in answerable if r.get("agency_match")]
-    proj_answerable = [r for r in rows if r.get("has_gold_project")]
-    proj_extracted = [r for r in proj_answerable if r.get("has_extracted_project")]
+    proj_answerable = [r for r in rows if r.get("gold_project")]
+    proj_extracted = [r for r in proj_answerable if r.get("extracted_project")]
     proj_correct = [r for r in proj_answerable if r.get("project_match")]
     follow_up = [r for r in rows if r.get("query_type") == FOLLOW_UP_TAG]
 
@@ -663,10 +635,9 @@ def _run_reaggregate(
     for variant_name, m in measurements.items():
         rows = m.get("per_case", []) or []
         for row in rows:
-            _sanitize_persisted_row(row)
             case = cases_by_qid.get(str(row.get("qid"))) or {}
             row["categories"] = _categories_for_row(
-                case, bool(row.get("has_gold_agency")), bool(row.get("agency_match"))
+                case, row.get("gold_agency"), bool(row.get("agency_match"))
             )
         print(f"[reaggregate] {variant_name}: {len(rows)} rows", flush=True)
 

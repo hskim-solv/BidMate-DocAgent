@@ -1,9 +1,14 @@
-"""Contract test for strict mode in scripts/write_real_eval_baseline.py (#414).
+"""Contract test for strict mode in scripts/write_real_eval_baseline.py (#414, #1148).
 
 Locks (a) the default warn-only behavior preserved for back-compat and
 (b) the strict-mode escalation: ``--strict`` and
-``BIDMATE_BASELINE_STRICT=1`` must both flip the two existing
-provenance warnings to hard failures (exit 2, no baseline written).
+``BIDMATE_BASELINE_STRICT=1`` must both flip the provenance warnings to
+hard failures (exit 2, no baseline written).
+
+Also locks the dirty-worktree gate (#1148): a SHA-matched but *dirty*
+eval run must hard-fail under ``--strict`` (the residual #160 hole the
+skew check does not catch), and ``--allow-dirty`` /
+``BIDMATE_BASELINE_ALLOW_DIRTY=1`` must be the only way to override it.
 """
 
 from __future__ import annotations
@@ -100,6 +105,93 @@ class WarnIfStaleUnit(unittest.TestCase):
             self.fail("matching SHAs must not raise in either mode")
 
 
+# ---- _resolve_allow_dirty unit (#1148) ------------------------------------
+
+
+class ResolveAllowDirtyUnit(unittest.TestCase):
+    def test_flag_true_returns_true(self) -> None:
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop(writer.ALLOW_DIRTY_ENV_VAR, None)
+            self.assertTrue(writer._resolve_allow_dirty(True))
+
+    def test_flag_false_env_unset_returns_false(self) -> None:
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop(writer.ALLOW_DIRTY_ENV_VAR, None)
+            self.assertFalse(writer._resolve_allow_dirty(False))
+
+    def test_env_truthy_values(self) -> None:
+        for value in ("1", "true", "TRUE", "yes", "Yes"):
+            with mock.patch.dict(os.environ, {writer.ALLOW_DIRTY_ENV_VAR: value}):
+                self.assertTrue(
+                    writer._resolve_allow_dirty(False),
+                    f"expected {value!r} to be truthy",
+                )
+
+    def test_env_falsy_values(self) -> None:
+        for value in ("0", "false", "no", "", "off", "garbage"):
+            with mock.patch.dict(os.environ, {writer.ALLOW_DIRTY_ENV_VAR: value}):
+                self.assertFalse(
+                    writer._resolve_allow_dirty(False),
+                    f"expected {value!r} to be falsy",
+                )
+
+    def test_flag_overrides_falsy_env(self) -> None:
+        with mock.patch.dict(os.environ, {writer.ALLOW_DIRTY_ENV_VAR: "0"}):
+            self.assertTrue(writer._resolve_allow_dirty(True))
+
+
+# ---- _warn_if_dirty unit (#1148) ------------------------------------------
+
+
+class WarnIfDirtyUnit(unittest.TestCase):
+    CLEAN = {"git_commit": "abc123", "git_dirty": False}
+    DIRTY = {"git_commit": "abc123", "git_dirty": True}
+
+    def test_all_clean_silent_in_both_modes(self) -> None:
+        try:
+            writer._warn_if_dirty(self.CLEAN, self.CLEAN, self.CLEAN)
+            writer._warn_if_dirty(self.CLEAN, self.CLEAN, self.CLEAN, strict=True)
+        except SystemExit:
+            self.fail("clean provenance must not raise in either mode")
+
+    def test_absent_eval_blocks_treated_as_clean(self) -> None:
+        # eval_summary may legitimately lack provenance/run_manifest; absence
+        # is not dirtiness, so a clean write-time worktree must still pass.
+        try:
+            writer._warn_if_dirty(None, None, self.CLEAN, strict=True)
+        except SystemExit:
+            self.fail("absent eval blocks must not raise when write-time is clean")
+
+    def test_default_warns_on_dirty_eval_and_returns(self) -> None:
+        try:
+            writer._warn_if_dirty(self.DIRTY, None, self.CLEAN)
+        except SystemExit:
+            self.fail("default mode must not raise on dirty eval")
+
+    def test_strict_raises_on_dirty_eval_provenance(self) -> None:
+        with self.assertRaises(SystemExit) as cm:
+            writer._warn_if_dirty(self.DIRTY, None, self.CLEAN, strict=True)
+        self.assertEqual(cm.exception.code, 2)
+
+    def test_strict_raises_on_dirty_run_manifest(self) -> None:
+        with self.assertRaises(SystemExit) as cm:
+            writer._warn_if_dirty(self.CLEAN, self.DIRTY, self.CLEAN, strict=True)
+        self.assertEqual(cm.exception.code, 2)
+
+    def test_strict_raises_on_dirty_baseline_writetime(self) -> None:
+        with self.assertRaises(SystemExit) as cm:
+            writer._warn_if_dirty(self.CLEAN, None, self.DIRTY, strict=True)
+        self.assertEqual(cm.exception.code, 2)
+
+    def test_allow_dirty_overrides_strict(self) -> None:
+        try:
+            writer._warn_if_dirty(
+                self.DIRTY, self.DIRTY, self.DIRTY, strict=True, allow_dirty=True
+            )
+        except SystemExit:
+            self.fail("allow_dirty must suppress the strict dirty failure")
+
+
 # ---- CLI integration ------------------------------------------------------
 
 
@@ -116,7 +208,9 @@ class WriterCli(unittest.TestCase):
         self._baseline = self._reports / "baseline.aggregate.json"
         self._history = self._reports / "history"
 
-    def _write_eval_summary(self, eval_sha: str | None) -> None:
+    def _write_eval_summary(
+        self, eval_sha: str | None, *, eval_dirty: bool = False
+    ) -> None:
         body: dict[str, object] = {
             "num_predictions": 21,
             "accuracy": 0.47,
@@ -127,11 +221,20 @@ class WriterCli(unittest.TestCase):
             body["provenance"] = {
                 "generated_at": "2026-05-12T00:00:00.000000Z",
                 "git_commit": eval_sha,
-                "git_dirty": False,
+                "git_dirty": eval_dirty,
             }
         self._eval_summary.write_text(
             json.dumps(body, ensure_ascii=False), encoding="utf-8"
         )
+
+    def _head_sha(self) -> str:
+        return subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=REPO_ROOT,
+            check=True,
+            text=True,
+            stdout=subprocess.PIPE,
+        ).stdout.strip()[:12]
 
     def _invoke(
         self,
@@ -216,6 +319,41 @@ class WriterCli(unittest.TestCase):
             "[ERROR] eval_summary.json has no `provenance` block", result.stderr
         )
         self.assertFalse(self._baseline.exists())
+
+    # ---- dirty-worktree gate (#1148) --------------------------------------
+    # SHA matches HEAD (no skew) but the eval ran dirty — the residual #160
+    # hole the skew check does not catch.
+
+    def test_warn_mode_dirty_eval_still_writes_baseline(self) -> None:
+        self._write_eval_summary(eval_sha=self._head_sha(), eval_dirty=True)
+        result = self._invoke()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("[WARN] Dirty worktree detected", result.stderr)
+        self.assertTrue(self._baseline.exists(), "warn mode must still write")
+
+    def test_strict_flag_blocks_on_dirty_eval(self) -> None:
+        self._write_eval_summary(eval_sha=self._head_sha(), eval_dirty=True)
+        result = self._invoke("--strict")
+        self.assertEqual(result.returncode, 2, result.stdout)
+        self.assertIn("[ERROR] Dirty worktree detected", result.stderr)
+        self.assertFalse(
+            self._baseline.exists(), "baseline must NOT be written on strict-dirty"
+        )
+
+    def test_strict_env_blocks_on_dirty_eval(self) -> None:
+        self._write_eval_summary(eval_sha=self._head_sha(), eval_dirty=True)
+        result = self._invoke(env_strict="1")
+        self.assertEqual(result.returncode, 2, result.stdout)
+        self.assertIn("[ERROR] Dirty worktree detected", result.stderr)
+        self.assertFalse(self._baseline.exists())
+
+    def test_allow_dirty_lets_strict_pass_on_dirty_eval(self) -> None:
+        self._write_eval_summary(eval_sha=self._head_sha(), eval_dirty=True)
+        result = self._invoke("--strict", "--allow-dirty")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(
+            self._baseline.exists(), "baseline must be written with --allow-dirty"
+        )
 
 
 if __name__ == "__main__":

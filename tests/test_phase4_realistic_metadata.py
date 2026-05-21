@@ -102,15 +102,15 @@ def test_plan_uses_extraction_not_gold() -> None:
 
 def test_categories_followup_and_extractor_cohorts() -> None:
     base = {"hardcase_categories": ["multi_hop"], "query_type": "single_doc"}
-    hit = _categories_for_row(base, has_gold_agency=True, agency_match=True)
-    miss = _categories_for_row(base, has_gold_agency=True, agency_match=False)
+    hit = _categories_for_row(base, gold_agency="A기관", agency_match=True)
+    miss = _categories_for_row(base, gold_agency="A기관", agency_match=False)
     assert EXTRACTOR_HIT_TAG in hit and EXTRACTOR_MISS_TAG not in hit
     assert EXTRACTOR_MISS_TAG in miss and EXTRACTOR_HIT_TAG not in miss
     assert "multi_hop" in hit
 
     fu = _categories_for_row(
         {"hardcase_categories": [], "query_type": "follow_up"},
-        has_gold_agency=False,
+        gold_agency=None,
         agency_match=False,
     )
     assert FOLLOW_UP_TAG in fu
@@ -120,15 +120,15 @@ def test_categories_followup_and_extractor_cohorts() -> None:
 
 def test_extraction_quality_hand_calc() -> None:
     rows = [
-        # agency: 3 answerable, 2 extracted, 1 correct (presence booleans only)
-        {"has_gold_agency": True, "has_extracted_agency": True, "agency_match": True,
-         "has_gold_project": False, "has_extracted_project": False, "project_match": False,
+        # agency: 3 answerable, 2 extracted, 1 correct
+        {"gold_agency": "A", "extracted_agency": "A", "agency_match": True,
+         "gold_project": None, "extracted_project": None, "project_match": False,
          "query_type": "single_doc"},
-        {"has_gold_agency": True, "has_extracted_agency": True, "agency_match": False,
-         "has_gold_project": True, "has_extracted_project": True, "project_match": True,
+        {"gold_agency": "B", "extracted_agency": "X", "agency_match": False,
+         "gold_project": "P", "extracted_project": "P", "project_match": True,
          "query_type": "single_doc"},
-        {"has_gold_agency": True, "has_extracted_agency": False, "agency_match": False,
-         "has_gold_project": False, "has_extracted_project": False, "project_match": False,
+        {"gold_agency": "C", "extracted_agency": None, "agency_match": False,
+         "gold_project": None, "extracted_project": None, "project_match": False,
          "query_type": "follow_up"},
     ]
     q = _extraction_quality(rows)
@@ -146,10 +146,7 @@ def test_extraction_quality_hand_calc() -> None:
 
 def test_reaggregate_byte_identical_scores(tmp_path: Path) -> None:
     """--reaggregate must regenerate REPORT.md + re-derive categories WITHOUT
-    altering the persisted retrieval scores (determinism guarantee), AND must
-    sanitize any raw agency/project label strings from a legacy source raw
-    into PRESENCE booleans (ADR 0005 / ADR 0065). The fixture below carries
-    the old string-label schema on purpose to exercise that migration.
+    altering the persisted retrieval scores (determinism guarantee).
     """
     measurements = {
         "no_metadata": {
@@ -236,13 +233,3 @@ def test_reaggregate_byte_identical_scores(tmp_path: Path) -> None:
     assert "stale" not in row_a["categories"]
     assert "multi_hop" in row_a["categories"]
     assert EXTRACTOR_HIT_TAG in row_a["categories"]  # agency_match True + gold present
-    # Privacy: the source raw's label strings are sanitized to presence
-    # booleans; no agency/project string survives into the committable output.
-    for variant in out_raw.values():
-        for row in variant["per_case"]:
-            assert "gold_agency" not in row
-            assert "gold_project" not in row
-            assert "extracted_agency" not in row
-            assert "extracted_project" not in row
-    assert row_a["has_gold_agency"] is True
-    assert row_a["has_extracted_agency"] is True
