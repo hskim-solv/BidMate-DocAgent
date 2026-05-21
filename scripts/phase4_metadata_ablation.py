@@ -40,7 +40,7 @@ Output lives under ``reports/retrieval/phase4_metadata_<TIMESTAMP>/``:
 * ``raw_results.json``    — per-case scores for all 4 variants
 * ``deltas.json``         — paired CI vs no_metadata per (variant, metric, category)
 * ``REPORT.md``           — <=200 line markdown with per-category winner or
-  ``NOT SIGNIFICANT`` (CI crosses 0) per absolute rule #5
+  ``유의하지 않음`` (CI crosses 0) per absolute rule #5
 
 Reuses (no new abstraction — absolute rule #3):
 
@@ -328,14 +328,14 @@ def render_report(
     lines.append("")
     lines.append(
         f"winner = `chunk_recall@10` 평균이 가장 높으면서 `{baseline}` 대비 paired CI "
-        f"가 완전히 0 위인 변형. \"NOT SIGNIFICANT\" = 어떤 변형의 CI 도 0 을 넘지 "
+        f"가 완전히 0 위인 변형. \"유의하지 않음\" = 어떤 변형의 CI 도 0 을 넘지 "
         f"못함 (절대 규칙 #5)."
     )
     lines.append("")
     lines.append("| 카테고리 | winner | 평균 recall@10 | " + f"`{baseline}` 대비 delta CI |")
     lines.append("|---|---|---|---|")
     for category in categories:
-        winner = "NOT SIGNIFICANT"
+        winner = "유의하지 않음"
         winner_mean: float | None = None
         winner_ci: dict[str, Any] | None = None
         for spec in specs:

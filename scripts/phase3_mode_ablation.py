@@ -19,7 +19,7 @@ Output lives under ``reports/retrieval/phase3_mode_<TIMESTAMP>/``:
 * ``raw_results.json`` — per-case scores for all 4 variants
 * ``deltas.json``      — paired CI vs dense per (variant, metric, category)
 * ``REPORT.md``        — <=200 line markdown with per-category winner or
-  ``NOT SIGNIFICANT`` (CI crosses 0) per absolute rule #5
+  ``유의하지 않음`` (CI crosses 0) per absolute rule #5
 
 Reuses (no new abstraction — absolute rule #3):
 
@@ -206,7 +206,7 @@ def render_report(
     baseline = config["baseline"]
     lines: list[str] = []
     lines.append(
-        f"# Phase 3 retrieval-eval — mode ablation (real100 n={config['num_cases']})"
+        f"# Phase 3 retrieval-eval — 검색 모드(mode) ablation (real100 n={config['num_cases']})"
     )
     lines.append("")
     lines.append(
@@ -216,9 +216,9 @@ def render_report(
         f"seeds={config['seeds']} · top_k={config['top_k']} · ks={config['ks']}"
     )
     lines.append("")
-    lines.append("## Variants")
+    lines.append("## 변형(variants)")
     lines.append("")
-    lines.append("| Variant | Backend | RRF k | Docs | Chunks |")
+    lines.append("| 변형 | backend | RRF k | 문서 | 청크 |")
     lines.append("|---|---|---|---|---|")
     for spec in specs:
         rrf = spec.get("rrf_k")
@@ -228,9 +228,9 @@ def render_report(
             f"{spec['num_documents']} | {spec['num_chunks']} |"
         )
     lines.append("")
-    lines.append("## Latency (ms)")
+    lines.append("## 지연시간(latency, ms)")
     lines.append("")
-    lines.append("| Variant | p50 | p95 | mean | n |")
+    lines.append("| 변형 | p50 | p95 | mean | n |")
     lines.append("|---|---|---|---|---|")
     for variant_name in [s["name"] for s in specs]:
         lat = measurements[variant_name]["latency_ms"]
@@ -253,7 +253,7 @@ def render_report(
     for metric in metrics_to_report:
         lines.append(f"## {metric}")
         lines.append("")
-        header_cols = ["Category"] + [f"`{s['name']}`" for s in specs]
+        header_cols = ["카테고리"] + [f"`{s['name']}`" for s in specs]
         lines.append("| " + " | ".join(header_cols) + " |")
         lines.append("|" + "|".join(["---"] * len(header_cols)) + "|")
         for category in categories:
@@ -265,9 +265,9 @@ def render_report(
                 )
             lines.append("| " + " | ".join(cells) + " |")
         lines.append("")
-        lines.append(f"### {metric} — paired CI delta vs `{baseline}` (seed-averaged)")
+        lines.append(f"### {metric} — `{baseline}` 대비 paired CI delta (seed 평균)")
         lines.append("")
-        header_cols = ["Category"] + [
+        header_cols = ["카테고리"] + [
             f"`{s['name']}`" for s in specs if s["name"] != baseline
         ]
         lines.append("| " + " | ".join(header_cols) + " |")
@@ -282,18 +282,18 @@ def render_report(
             lines.append("| " + " | ".join(cells) + " |")
         lines.append("")
 
-    lines.append("## Per-category winner")
+    lines.append("## 카테고리별 winner")
     lines.append("")
     lines.append(
-        f"Winner = variant with highest `chunk_recall@10` mean AND paired CI vs "
-        f"`{baseline}` fully above 0. \"NOT SIGNIFICANT\" = no variant's CI clears 0 "
-        f"(absolute rule #5)."
+        f"winner = `chunk_recall@10` 평균이 가장 높으면서 `{baseline}` 대비 paired CI "
+        f"가 완전히 0 위인 변형. \"유의하지 않음\" = 어떤 변형의 CI 도 0 을 넘지 못함 "
+        f"(절대 규칙 #5)."
     )
     lines.append("")
-    lines.append("| Category | Winner | Mean recall@10 | Delta CI vs " + f"`{baseline}` |")
+    lines.append("| 카테고리 | winner | 평균 recall@10 | " + f"`{baseline}` 대비 delta CI |")
     lines.append("|---|---|---|---|")
     for category in categories:
-        winner = "NOT SIGNIFICANT"
+        winner = "유의하지 않음"
         winner_mean: float | None = None
         winner_ci: dict[str, Any] | None = None
         for spec in specs:
@@ -310,54 +310,54 @@ def render_report(
         ci_str = _fmt_ci(winner_ci) if winner_ci is not None else "—"
         lines.append(f"| {category} | `{winner}` | {mean_str} | {ci_str} |")
     lines.append("")
-    lines.append("## Notes")
+    lines.append("## 비고(notes)")
     lines.append("")
     lines.append(
-        "* Planner-bypass: full query as the only sub-query, identity expansion, "
-        "no rerank, `metadata_first=False` — isolates retrieval-mode impact from "
-        "expansion / rerank / metadata-filter effects."
+        "* Planner-bypass: 전체 query 를 유일한 sub-query 로, identity expansion, "
+        "rerank 없음, `metadata_first=False` — 검색 모드 효과를 expansion / rerank / "
+        "metadata-filter 효과로부터 격리한다."
     )
     lines.append(
-        "* All 4 variants share `data/index/real100`; only `plan['retrieval_backend']` "
-        "and `plan['rrf_k']` differ. BM25 lazy-builds on the first hybrid call via "
-        "`rag_retrieval.get_or_build_bm25` and is cached on the index dict, so "
-        "`hybrid_bm25_k30` pays the BM25 build cost once and `k60`/`k100` are cache hits."
+        "* 4 변형 모두 `data/index/real100` 을 공유한다; `plan['retrieval_backend']` "
+        "와 `plan['rrf_k']` 만 다르다. BM25 는 첫 hybrid 호출 시 "
+        "`rag_retrieval.get_or_build_bm25` 로 lazy-build 되어 index dict 에 캐시되므로 "
+        "`hybrid_bm25_k30` 가 BM25 build 비용을 1회 지불하고 `k60`/`k100` 은 캐시 hit 이다."
     )
     lines.append(
-        "* `chunk_recall@k` is None for cases without `expected_terms` / "
-        "`expected_doc_ids` (e.g. abstention) — those are dropped pairwise to "
-        "preserve case alignment between variants."
+        "* `chunk_recall@k` 는 `expected_terms` / `expected_doc_ids` 가 없는 케이스"
+        "(예: abstention(보류))에서 None 이다 — 변형 간 케이스 정렬을 보존하기 위해 "
+        "pairwise 에서 제외된다."
     )
     lines.append(
-        "* Seeds drive only the bootstrap RNG; retrieval itself is deterministic "
-        "for the same query+index+backend+rrf_k (dense + BM25 both)."
+        "* Seed 는 bootstrap RNG 만 구동한다; retrieval 자체는 동일 "
+        "query+index+backend+rrf_k 에 대해 결정적(deterministic)이다 (dense + BM25 모두)."
     )
     lines.append(
-        "* Category bucketing uses `hardcase_categories` (semantic difficulty tags). "
-        "Multi-tag cases appear in multiple buckets, so per-category counts overlap "
-        "and per-category paired CIs share cases."
+        "* 카테고리 버킷팅은 `hardcase_categories`(의미 난이도 태그)를 쓴다. 멀티태그 "
+        "케이스는 여러 버킷에 나타나므로 카테고리별 카운트는 겹치고 paired CI 가 "
+        "케이스를 공유한다."
     )
     lines.append(
-        f"* `{baseline}` is the delta baseline because ADR 0010's accept rationale "
-        "for `hybrid` framed the question as \"is hybrid actually better than dense?\". "
-        "Deltas above 0 favor the hybrid variant; below 0 favor dense."
+        f"* `{baseline}` 이 delta baseline 인 이유: ADR 0010 의 `hybrid` 채택 근거가 "
+        "질문을 \"hybrid 가 실제로 dense 보다 나은가?\" 로 프레이밍했기 때문이다. "
+        "0 위 delta 는 hybrid 변형에, 0 아래는 dense 에 유리하다."
     )
     lines.append(
-        "* m3 (FlagEmbedding 3-channel RRF) is **out of scope** for Phase 3 — it "
-        "requires a separate index build (`build_m3_index`), so deferring to "
-        "Phase 3.5 keeps Phase 3 measurement narrow (mode ↔ index decoupled)."
+        "* m3 (FlagEmbedding 3-channel RRF)는 Phase 3 **범위 외**다 — 별도 인덱스 "
+        "빌드(`build_m3_index`)가 필요하므로 Phase 3.5 로 미뤄 Phase 3 측정을 좁게 "
+        "유지한다 (mode ↔ index 분리)."
     )
     lines.append(
-        "* k=10 / k=200 are **out of scope** for Phase 3 — k∈{30,60,100} brackets "
-        "ADR 0010's k=60 default without inflating the variant count. Tighter/looser "
-        "k swings can be added in a follow-up if k=30 vs k=100 shows a clean gradient."
+        "* k=10 / k=200 은 Phase 3 **범위 외**다 — k∈{30,60,100} 이 변형 수를 부풀리지 "
+        "않으면서 ADR 0010 의 k=60 default 를 감싼다. k=30 vs k=100 이 깔끔한 gradient "
+        "를 보이면 후속에서 더 좁은/넓은 k 를 추가할 수 있다."
     )
     if config.get("reaggregate_source"):
         lines.append(
-            "* This report was regenerated via `--reaggregate` from "
-            f"`{config['reaggregate_source']}` — categorization re-derived from "
-            "`hardcase_categories`; retrieval scores in `raw_results.json` are "
-            "unchanged byte-for-byte modulo the injected `categories` field."
+            "* 이 리포트는 `--reaggregate` 로 "
+            f"`{config['reaggregate_source']}` 로부터 재생성됨 — 카테고리는 "
+            "`hardcase_categories` 에서 재유도; `raw_results.json` 의 retrieval "
+            "점수는 주입된 `categories` 필드를 제외하면 byte-for-byte 불변."
         )
 
     report_path = out_dir / "REPORT.md"

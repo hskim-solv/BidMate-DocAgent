@@ -125,7 +125,7 @@ def _fmt_ci(ci: dict[str, Any] | None, digits: int = 3) -> str:
     md = ci["mean_diff"]
     lo = ci["ci_lo"]
     hi = ci["ci_hi"]
-    significance = "**NOT SIGNIFICANT**" if lo <= 0 <= hi else "significant"
+    significance = "**유의하지 않음**" if lo <= 0 <= hi else "유의함"
     return f"{md:+.{digits}f} ({lo:+.{digits}f}, {hi:+.{digits}f}) {significance}"
 
 

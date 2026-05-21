@@ -1,6 +1,6 @@
 # Phase 4 retrieval-eval — 현실 query-time 메타데이터 라우팅(realistic routing) (real100 n=221)
 
-Run: `20260521-0257-phase4-realistic-reaggregate` · commit `f4600721a9` · index_dir=`data/index/real100_kordoc` · eval_config=`eval/real_config.local.yaml` · seeds=[17, 23, 29] · top_k=20 · ks=[5, 10]
+Run: `20260521-0334-phase4-realistic-reaggregate` · commit `5e5f07bc96` · index_dir=`data/index/real100_kordoc` · eval_config=`eval/real_config.local.yaml` · seeds=[17, 23, 29] · top_k=20 · ks=[5, 10]
 
 ## 변형(variants)
 
@@ -50,16 +50,16 @@ follow_up cohort: n=4, agency 정확 추출 1 (단일 query 만 보므로 contex
 
 | 카테고리 | `extractor_soft_agency` | `extractor_prefilter_agency` | `extractor_prefilter_project` |
 |---|---|---|---|
-| overall | +0.000 (-0.000, +0.002) **NOT SIGNIFICANT** | +0.001 (+0.000, +0.002) **NOT SIGNIFICANT** | -0.006 (-0.017, +0.004) **NOT SIGNIFICANT** |
-| extractor_hit_agency | +0.007 (+0.000, +0.017) **NOT SIGNIFICANT** | +0.007 (+0.000, +0.017) **NOT SIGNIFICANT** | +0.005 (+0.000, +0.015) **NOT SIGNIFICANT** |
-| extractor_miss_agency | -0.000 (-0.001, +0.000) **NOT SIGNIFICANT** | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** | -0.007 (-0.019, +0.003) **NOT SIGNIFICANT** |
-| multi_hop | +0.000 (-0.001, +0.002) **NOT SIGNIFICANT** | +0.001 (+0.000, +0.002) **NOT SIGNIFICANT** | -0.008 (-0.022, +0.004) **NOT SIGNIFICANT** |
-| distractor_heavy | +0.001 (+0.000, +0.004) **NOT SIGNIFICANT** | +0.001 (+0.000, +0.004) **NOT SIGNIFICANT** | -0.015 (-0.041, +0.004) **NOT SIGNIFICANT** |
-| long_context | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** | -0.004 (-0.011, +0.000) **NOT SIGNIFICANT** |
-| no_answer | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** |
-| ambiguous_query | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** |
-| follow_up | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** |
-| uncategorized | +0.002 (+0.000, +0.005) **NOT SIGNIFICANT** | +0.002 (+0.000, +0.005) **NOT SIGNIFICANT** | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** |
+| overall | +0.000 (-0.000, +0.002) **유의하지 않음** | +0.001 (+0.000, +0.002) **유의하지 않음** | -0.006 (-0.017, +0.004) **유의하지 않음** |
+| extractor_hit_agency | +0.007 (+0.000, +0.017) **유의하지 않음** | +0.007 (+0.000, +0.017) **유의하지 않음** | +0.005 (+0.000, +0.015) **유의하지 않음** |
+| extractor_miss_agency | -0.000 (-0.001, +0.000) **유의하지 않음** | +0.000 (+0.000, +0.000) **유의하지 않음** | -0.007 (-0.019, +0.003) **유의하지 않음** |
+| multi_hop | +0.000 (-0.001, +0.002) **유의하지 않음** | +0.001 (+0.000, +0.002) **유의하지 않음** | -0.008 (-0.022, +0.004) **유의하지 않음** |
+| distractor_heavy | +0.001 (+0.000, +0.004) **유의하지 않음** | +0.001 (+0.000, +0.004) **유의하지 않음** | -0.015 (-0.041, +0.004) **유의하지 않음** |
+| long_context | +0.000 (+0.000, +0.000) **유의하지 않음** | +0.000 (+0.000, +0.000) **유의하지 않음** | -0.004 (-0.011, +0.000) **유의하지 않음** |
+| no_answer | +0.000 (+0.000, +0.000) **유의하지 않음** | +0.000 (+0.000, +0.000) **유의하지 않음** | +0.000 (+0.000, +0.000) **유의하지 않음** |
+| ambiguous_query | +0.000 (+0.000, +0.000) **유의하지 않음** | +0.000 (+0.000, +0.000) **유의하지 않음** | +0.000 (+0.000, +0.000) **유의하지 않음** |
+| follow_up | +0.000 (+0.000, +0.000) **유의하지 않음** | +0.000 (+0.000, +0.000) **유의하지 않음** | +0.000 (+0.000, +0.000) **유의하지 않음** |
+| uncategorized | +0.002 (+0.000, +0.005) **유의하지 않음** | +0.002 (+0.000, +0.005) **유의하지 않음** | +0.000 (+0.000, +0.000) **유의하지 않음** |
 
 ## chunk_recall@10
 
@@ -80,16 +80,16 @@ follow_up cohort: n=4, agency 정확 추출 1 (단일 query 만 보므로 contex
 
 | 카테고리 | `extractor_soft_agency` | `extractor_prefilter_agency` | `extractor_prefilter_project` |
 |---|---|---|---|
-| overall | -0.001 (-0.005, +0.002) **NOT SIGNIFICANT** | +0.001 (+0.000, +0.003) **NOT SIGNIFICANT** | -0.007 (-0.019, +0.004) **NOT SIGNIFICANT** |
-| extractor_hit_agency | +0.010 (+0.000, +0.024) **NOT SIGNIFICANT** | +0.010 (+0.000, +0.024) **NOT SIGNIFICANT** | +0.005 (+0.000, +0.015) **NOT SIGNIFICANT** |
-| extractor_miss_agency | -0.002 (-0.007, +0.000) **NOT SIGNIFICANT** | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** | -0.008 (-0.022, +0.004) **NOT SIGNIFICANT** |
-| multi_hop | -0.002 (-0.007, +0.001) **NOT SIGNIFICANT** | +0.001 (+0.000, +0.002) **NOT SIGNIFICANT** | -0.008 (-0.025, +0.005) **NOT SIGNIFICANT** |
-| distractor_heavy | -0.003 (-0.014, +0.004) **NOT SIGNIFICANT** | +0.001 (+0.000, +0.004) **NOT SIGNIFICANT** | -0.018 (-0.050, +0.004) **NOT SIGNIFICANT** |
-| long_context | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** | -0.004 (-0.011, +0.000) **NOT SIGNIFICANT** |
-| no_answer | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** |
-| ambiguous_query | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** |
-| follow_up | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** |
-| uncategorized | +0.004 (+0.000, +0.013) **NOT SIGNIFICANT** | +0.004 (+0.000, +0.013) **NOT SIGNIFICANT** | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** |
+| overall | -0.001 (-0.005, +0.002) **유의하지 않음** | +0.001 (+0.000, +0.003) **유의하지 않음** | -0.007 (-0.019, +0.004) **유의하지 않음** |
+| extractor_hit_agency | +0.010 (+0.000, +0.024) **유의하지 않음** | +0.010 (+0.000, +0.024) **유의하지 않음** | +0.005 (+0.000, +0.015) **유의하지 않음** |
+| extractor_miss_agency | -0.002 (-0.007, +0.000) **유의하지 않음** | +0.000 (+0.000, +0.000) **유의하지 않음** | -0.008 (-0.022, +0.004) **유의하지 않음** |
+| multi_hop | -0.002 (-0.007, +0.001) **유의하지 않음** | +0.001 (+0.000, +0.002) **유의하지 않음** | -0.008 (-0.025, +0.005) **유의하지 않음** |
+| distractor_heavy | -0.003 (-0.014, +0.004) **유의하지 않음** | +0.001 (+0.000, +0.004) **유의하지 않음** | -0.018 (-0.050, +0.004) **유의하지 않음** |
+| long_context | +0.000 (+0.000, +0.000) **유의하지 않음** | +0.000 (+0.000, +0.000) **유의하지 않음** | -0.004 (-0.011, +0.000) **유의하지 않음** |
+| no_answer | +0.000 (+0.000, +0.000) **유의하지 않음** | +0.000 (+0.000, +0.000) **유의하지 않음** | +0.000 (+0.000, +0.000) **유의하지 않음** |
+| ambiguous_query | +0.000 (+0.000, +0.000) **유의하지 않음** | +0.000 (+0.000, +0.000) **유의하지 않음** | +0.000 (+0.000, +0.000) **유의하지 않음** |
+| follow_up | +0.000 (+0.000, +0.000) **유의하지 않음** | +0.000 (+0.000, +0.000) **유의하지 않음** | +0.000 (+0.000, +0.000) **유의하지 않음** |
+| uncategorized | +0.004 (+0.000, +0.013) **유의하지 않음** | +0.004 (+0.000, +0.013) **유의하지 않음** | +0.000 (+0.000, +0.000) **유의하지 않음** |
 
 ## mrr
 
@@ -110,16 +110,16 @@ follow_up cohort: n=4, agency 정확 추출 1 (단일 query 만 보므로 contex
 
 | 카테고리 | `extractor_soft_agency` | `extractor_prefilter_agency` | `extractor_prefilter_project` |
 |---|---|---|---|
-| overall | -0.002 (-0.004, +0.001) **NOT SIGNIFICANT** | +0.002 (+0.000, +0.004) **NOT SIGNIFICANT** | -0.021 (-0.057, +0.013) **NOT SIGNIFICANT** |
-| extractor_hit_agency | +0.011 (+0.000, +0.026) **NOT SIGNIFICANT** | +0.015 (+0.000, +0.037) **NOT SIGNIFICANT** | +0.010 (+0.000, +0.031) **NOT SIGNIFICANT** |
-| extractor_miss_agency | -0.003 (-0.006, -0.001) significant | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** | -0.025 (-0.063, +0.013) **NOT SIGNIFICANT** |
-| multi_hop | -0.002 (-0.004, +0.001) **NOT SIGNIFICANT** | +0.001 (+0.000, +0.004) **NOT SIGNIFICANT** | -0.033 (-0.075, +0.005) **NOT SIGNIFICANT** |
-| distractor_heavy | -0.003 (-0.009, +0.003) **NOT SIGNIFICANT** | +0.003 (+0.000, +0.009) **NOT SIGNIFICANT** | -0.016 (-0.081, +0.042) **NOT SIGNIFICANT** |
-| long_context | -0.006 (-0.017, +0.000) **NOT SIGNIFICANT** | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** | -0.018 (-0.083, +0.030) **NOT SIGNIFICANT** |
-| no_answer | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** |
-| ambiguous_query | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** |
-| follow_up | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** |
-| uncategorized | +0.004 (-0.001, +0.012) **NOT SIGNIFICANT** | +0.004 (+0.000, +0.012) **NOT SIGNIFICANT** | -0.006 (-0.018, +0.000) **NOT SIGNIFICANT** |
+| overall | -0.002 (-0.004, +0.001) **유의하지 않음** | +0.002 (+0.000, +0.004) **유의하지 않음** | -0.021 (-0.057, +0.013) **유의하지 않음** |
+| extractor_hit_agency | +0.011 (+0.000, +0.026) **유의하지 않음** | +0.015 (+0.000, +0.037) **유의하지 않음** | +0.010 (+0.000, +0.031) **유의하지 않음** |
+| extractor_miss_agency | -0.003 (-0.006, -0.001) 유의함 | +0.000 (+0.000, +0.000) **유의하지 않음** | -0.025 (-0.063, +0.013) **유의하지 않음** |
+| multi_hop | -0.002 (-0.004, +0.001) **유의하지 않음** | +0.001 (+0.000, +0.004) **유의하지 않음** | -0.033 (-0.075, +0.005) **유의하지 않음** |
+| distractor_heavy | -0.003 (-0.009, +0.003) **유의하지 않음** | +0.003 (+0.000, +0.009) **유의하지 않음** | -0.016 (-0.081, +0.042) **유의하지 않음** |
+| long_context | -0.006 (-0.017, +0.000) **유의하지 않음** | +0.000 (+0.000, +0.000) **유의하지 않음** | -0.018 (-0.083, +0.030) **유의하지 않음** |
+| no_answer | +0.000 (+0.000, +0.000) **유의하지 않음** | +0.000 (+0.000, +0.000) **유의하지 않음** | +0.000 (+0.000, +0.000) **유의하지 않음** |
+| ambiguous_query | +0.000 (+0.000, +0.000) **유의하지 않음** | +0.000 (+0.000, +0.000) **유의하지 않음** | +0.000 (+0.000, +0.000) **유의하지 않음** |
+| follow_up | +0.000 (+0.000, +0.000) **유의하지 않음** | +0.000 (+0.000, +0.000) **유의하지 않음** | +0.000 (+0.000, +0.000) **유의하지 않음** |
+| uncategorized | +0.004 (-0.001, +0.012) **유의하지 않음** | +0.004 (+0.000, +0.012) **유의하지 않음** | -0.006 (-0.018, +0.000) **유의하지 않음** |
 
 ## ndcg@10
 
@@ -140,37 +140,37 @@ follow_up cohort: n=4, agency 정확 추출 1 (단일 query 만 보므로 contex
 
 | 카테고리 | `extractor_soft_agency` | `extractor_prefilter_agency` | `extractor_prefilter_project` |
 |---|---|---|---|
-| overall | +0.002 (-0.004, +0.012) **NOT SIGNIFICANT** | +0.005 (+0.000, +0.014) **NOT SIGNIFICANT** | -0.010 (-0.027, +0.007) **NOT SIGNIFICANT** |
-| extractor_hit_agency | +0.045 (+0.000, +0.126) **NOT SIGNIFICANT** | +0.046 (+0.000, +0.128) **NOT SIGNIFICANT** | +0.008 (+0.000, +0.025) **NOT SIGNIFICANT** |
-| extractor_miss_agency | -0.003 (-0.005, -0.001) significant | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** | -0.012 (-0.031, +0.006) **NOT SIGNIFICANT** |
-| multi_hop | -0.002 (-0.005, +0.001) **NOT SIGNIFICANT** | +0.001 (+0.000, +0.003) **NOT SIGNIFICANT** | -0.014 (-0.036, +0.005) **NOT SIGNIFICANT** |
-| distractor_heavy | -0.001 (-0.008, +0.005) **NOT SIGNIFICANT** | +0.002 (+0.000, +0.007) **NOT SIGNIFICANT** | -0.014 (-0.051, +0.013) **NOT SIGNIFICANT** |
-| long_context | -0.006 (-0.012, -0.001) significant | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** | -0.011 (-0.032, +0.000) **NOT SIGNIFICANT** |
-| no_answer | -0.002 (-0.004, +0.000) **NOT SIGNIFICANT** | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** |
-| ambiguous_query | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** |
-| follow_up | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** |
-| uncategorized | +0.035 (+0.000, +0.106) **NOT SIGNIFICANT** | +0.035 (+0.000, +0.106) **NOT SIGNIFICANT** | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** |
+| overall | +0.002 (-0.004, +0.012) **유의하지 않음** | +0.005 (+0.000, +0.014) **유의하지 않음** | -0.010 (-0.027, +0.007) **유의하지 않음** |
+| extractor_hit_agency | +0.045 (+0.000, +0.126) **유의하지 않음** | +0.046 (+0.000, +0.128) **유의하지 않음** | +0.008 (+0.000, +0.025) **유의하지 않음** |
+| extractor_miss_agency | -0.003 (-0.005, -0.001) 유의함 | +0.000 (+0.000, +0.000) **유의하지 않음** | -0.012 (-0.031, +0.006) **유의하지 않음** |
+| multi_hop | -0.002 (-0.005, +0.001) **유의하지 않음** | +0.001 (+0.000, +0.003) **유의하지 않음** | -0.014 (-0.036, +0.005) **유의하지 않음** |
+| distractor_heavy | -0.001 (-0.008, +0.005) **유의하지 않음** | +0.002 (+0.000, +0.007) **유의하지 않음** | -0.014 (-0.051, +0.013) **유의하지 않음** |
+| long_context | -0.006 (-0.012, -0.001) 유의함 | +0.000 (+0.000, +0.000) **유의하지 않음** | -0.011 (-0.032, +0.000) **유의하지 않음** |
+| no_answer | -0.002 (-0.004, +0.000) **유의하지 않음** | +0.000 (+0.000, +0.000) **유의하지 않음** | +0.000 (+0.000, +0.000) **유의하지 않음** |
+| ambiguous_query | +0.000 (+0.000, +0.000) **유의하지 않음** | +0.000 (+0.000, +0.000) **유의하지 않음** | +0.000 (+0.000, +0.000) **유의하지 않음** |
+| follow_up | +0.000 (+0.000, +0.000) **유의하지 않음** | +0.000 (+0.000, +0.000) **유의하지 않음** | +0.000 (+0.000, +0.000) **유의하지 않음** |
+| uncategorized | +0.035 (+0.000, +0.106) **유의하지 않음** | +0.035 (+0.000, +0.106) **유의하지 않음** | +0.000 (+0.000, +0.000) **유의하지 않음** |
 
 ## 카테고리별 winner
 
-winner = `chunk_recall@10` 평균이 가장 높으면서 `no_metadata` 대비 paired CI 가 완전히 0 위인 변형. "NOT SIGNIFICANT" = 어떤 변형의 CI 도 0 을 넘지 못함 (절대 규칙 #5).
+winner = `chunk_recall@10` 평균이 가장 높으면서 `no_metadata` 대비 paired CI 가 완전히 0 위인 변형. "유의하지 않음" = 어떤 변형의 CI 도 0 을 넘지 못함 (절대 규칙 #5).
 
 | 카테고리 | winner | 평균 recall@10 | `no_metadata` 대비 delta CI |
 |---|---|---|---|
-| overall | `NOT SIGNIFICANT` | — | — |
-| extractor_hit_agency | `NOT SIGNIFICANT` | — | — |
-| extractor_miss_agency | `NOT SIGNIFICANT` | — | — |
-| multi_hop | `NOT SIGNIFICANT` | — | — |
-| distractor_heavy | `NOT SIGNIFICANT` | — | — |
-| long_context | `NOT SIGNIFICANT` | — | — |
-| no_answer | `NOT SIGNIFICANT` | — | — |
-| ambiguous_query | `NOT SIGNIFICANT` | — | — |
-| follow_up | `NOT SIGNIFICANT` | — | — |
-| uncategorized | `NOT SIGNIFICANT` | — | — |
+| overall | `유의하지 않음` | — | — |
+| extractor_hit_agency | `유의하지 않음` | — | — |
+| extractor_miss_agency | `유의하지 않음` | — | — |
+| multi_hop | `유의하지 않음` | — | — |
+| distractor_heavy | `유의하지 않음` | — | — |
+| long_context | `유의하지 않음` | — | — |
+| no_answer | `유의하지 않음` | — | — |
+| ambiguous_query | `유의하지 않음` | — | — |
+| follow_up | `유의하지 않음` | — | — |
+| uncategorized | `유의하지 않음` | — | — |
 
 ## 비고(notes)
 
-* **결론 (NULL-WINNER)**: 위 추출 품질 표의 agency recall 과 카테고리별 winner 표가 보여주듯, 현실 추출기는 answerable cohort 의 소수에서만 정답 agency 를 회수하며(coverage 분석의 char-4gram proxy ~34% 보다 낮다 — 운영 matcher 는 compact-contains / 강한 토큰 중첩을 요구), 회수에 성공한 cohort(`extractor_hit_agency`)에서도 oracle ceiling(PR #1108, recall@10 +0.22)을 통계적으로 회복하지 못한다(모든 카테고리 NOT SIGNIFICANT). 이는 ADR 0065 의 "메타데이터 라우팅 = 좁은 opt-in 부가 기능, 운영 기본값 변경 아님" 결정을 측정으로 지지한다. 또한 `extractor_prefilter_project` 는 oracle 의 ~15배 지연시간 Pareto 와 달리 부정확한 project 매칭으로 p95 지연시간이 오히려 악화된다 — hard project 필터의 이득은 현실 추출 정밀도에 종속된다.
+* **결론 (NULL-WINNER)**: 위 추출 품질 표의 agency recall 과 카테고리별 winner 표가 보여주듯, 현실 추출기는 answerable cohort 의 소수에서만 정답 agency 를 회수하며(coverage 분석의 char-4gram proxy ~34% 보다 낮다 — 운영 matcher 는 compact-contains / 강한 토큰 중첩을 요구), 회수에 성공한 cohort(`extractor_hit_agency`)에서도 oracle ceiling(PR #1108, recall@10 +0.22)을 통계적으로 회복하지 못한다(모든 카테고리 유의하지 않음). 이는 ADR 0065 의 "메타데이터 라우팅 = 좁은 opt-in 부가 기능, 운영 기본값 변경 아님" 결정을 측정으로 지지한다. 또한 `extractor_prefilter_project` 는 oracle 의 ~15배 지연시간 Pareto 와 달리 부정확한 project 매칭으로 p95 지연시간이 오히려 악화된다 — hard project 필터의 이득은 현실 추출 정밀도에 종속된다.
 * **현실 추출기, oracle 아님**: agency / project 는 `match_metadata_targets` 가 query 텍스트만으로 corpus catalog(`metadata_targets`)에 매칭해 도출한다 (gold 미사용, 결정적, 새 의존성 0). gold 는 추출 품질 채점에만 쓰고 retrieval 에 주입하지 않는다. 이 측정의 delta 는 oracle ceiling(PR #1108, recall@10 +0.21~0.22) 대비 **실제 회수율**이다 — ADR 0065 decision #3.
 * **`extractor_hit_agency` cohort**: 추출기가 정답 agency 를 맞춘 케이스. oracle 의 ~34% metadata-identifiable cohort 의 현실 대응물 — 추출이 성공한 곳에서의 retrieval lift 를 보여준다. `extractor_miss_agency` = gold 는 있으나 추출 실패(라우팅 신호 없음 → baseline 으로 수렴).
 * **False-positive 라우팅 위험**: 잘못 추출된 agency 로 hard pre-filter 시 정답 doc 이 후보 풀에서 제거될 수 있다 → overall delta 가 음수일 수 있어 `extractor_hit_agency` / `extractor_miss_agency` cohort 를 분리 보고한다.

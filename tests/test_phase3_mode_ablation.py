@@ -134,12 +134,12 @@ class ReaggregateMainTest(unittest.TestCase):
             for metric in ["chunk_recall@5", "chunk_recall@10", "mrr", "ndcg@10"]:
                 self.assertIn(f"## {metric}", report)
                 self.assertIn(
-                    f"### {metric} — paired CI delta vs `dense`", report
+                    f"### {metric} — `dense` 대비 paired CI delta", report
                 )
-            # Variant header + per-category winner + Notes section.
-            self.assertIn("## Variants", report)
-            self.assertIn("## Per-category winner", report)
-            self.assertIn("## Notes", report)
+            # Variant header + per-category winner + Notes section (Korean).
+            self.assertIn("## 변형(variants)", report)
+            self.assertIn("## 카테고리별 winner", report)
+            self.assertIn("## 비고(notes)", report)
             # Line budget: REPORT.md must stay <=200 lines per skill spec.
             self.assertLessEqual(report.count("\n"), 200)
             # Sidecar artifacts written.

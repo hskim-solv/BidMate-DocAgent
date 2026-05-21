@@ -451,14 +451,14 @@ def render_report(
     lines.append("")
     lines.append(
         f"winner = `chunk_recall@10` 평균이 가장 높으면서 `{baseline}` 대비 paired CI "
-        f"가 완전히 0 위인 변형. \"NOT SIGNIFICANT\" = 어떤 변형의 CI 도 0 을 넘지 "
+        f"가 완전히 0 위인 변형. \"유의하지 않음\" = 어떤 변형의 CI 도 0 을 넘지 "
         f"못함 (절대 규칙 #5)."
     )
     lines.append("")
     lines.append("| 카테고리 | winner | 평균 recall@10 | " + f"`{baseline}` 대비 delta CI |")
     lines.append("|---|---|---|---|")
     for category in categories:
-        winner = "NOT SIGNIFICANT"
+        winner = "유의하지 않음"
         winner_mean: float | None = None
         winner_ci: dict[str, Any] | None = None
         for spec in specs:
@@ -483,7 +483,7 @@ def render_report(
         "회수하며(coverage 분석의 char-4gram proxy ~34% 보다 낮다 — 운영 matcher 는 "
         "compact-contains / 강한 토큰 중첩을 요구), 회수에 성공한 cohort"
         "(`extractor_hit_agency`)에서도 oracle ceiling(PR #1108, recall@10 +0.22)을 "
-        "통계적으로 회복하지 못한다(모든 카테고리 NOT SIGNIFICANT). 이는 ADR 0065 의 "
+        "통계적으로 회복하지 못한다(모든 카테고리 유의하지 않음). 이는 ADR 0065 의 "
         "\"메타데이터 라우팅 = 좁은 opt-in 부가 기능, 운영 기본값 변경 아님\" 결정을 "
         "측정으로 지지한다. 또한 `extractor_prefilter_project` 는 oracle 의 ~15배 "
         "지연시간 Pareto 와 달리 부정확한 project 매칭으로 p95 지연시간이 오히려 "

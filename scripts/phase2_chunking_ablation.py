@@ -11,7 +11,7 @@ category. Output lives under
 * ``chunking_specs.json``  — variant metadata + section_detection_rate
 * ``raw_results.json``     — per-case scores for all 4 variants
 * ``REPORT.md``            — <=200 line markdown with per-category
-  winner or "NOT SIGNIFICANT" (CI crosses 0)
+  winner or "유의하지 않음" (CI crosses 0)
 
 Reuses (no new abstraction):
 
@@ -370,7 +370,7 @@ def render_report(
     ``{other_name: {metric: {category: ci}}}``.
     """
     lines: list[str] = []
-    lines.append(f"# Phase 2 retrieval-eval — chunking ablation (real100 n={config['num_cases']})")
+    lines.append(f"# Phase 2 retrieval-eval — 청킹(chunking) ablation (real100 n={config['num_cases']})")
     lines.append("")
     lines.append(
         f"Run: `{config['run_id']}` · commit `{config['git_commit'][:10]}` · "
@@ -379,9 +379,9 @@ def render_report(
         f"seeds={config['seeds']} · top_k={config['top_k']} · ks={config['ks']}"
     )
     lines.append("")
-    lines.append("## Variants")
+    lines.append("## 변형(variants)")
     lines.append("")
-    lines.append("| Variant | Strategy | Max chars | Overlap | Docs | Chunks | Section detect | Heuristic engaged |")
+    lines.append("| 변형 | 전략(strategy) | max chars | overlap | 문서 | 청크 | 섹션 감지 | heuristic 발화 |")
     lines.append("|---|---|---|---|---|---|---|---|")
     for spec in specs:
         sd = spec.get("section_detection_rate")
@@ -395,9 +395,9 @@ def render_report(
             f"{sd_str} | {he_str} |"
         )
     lines.append("")
-    lines.append("## Latency (ms)")
+    lines.append("## 지연시간(latency, ms)")
     lines.append("")
-    lines.append("| Variant | p50 | p95 | mean | n |")
+    lines.append("| 변형 | p50 | p95 | mean | n |")
     lines.append("|---|---|---|---|---|")
     for variant_name in [s["name"] for s in specs]:
         lat = measurements[variant_name]["latency_ms"]
@@ -420,7 +420,7 @@ def render_report(
     for metric in metrics_to_report:
         lines.append(f"## {metric}")
         lines.append("")
-        header_cols = ["Category"] + [f"`{s['name']}`" for s in specs]
+        header_cols = ["카테고리"] + [f"`{s['name']}`" for s in specs]
         lines.append("| " + " | ".join(header_cols) + " |")
         lines.append("|" + "|".join(["---"] * len(header_cols)) + "|")
         for category in categories:
@@ -432,9 +432,9 @@ def render_report(
                 )
             lines.append("| " + " | ".join(cells) + " |")
         lines.append("")
-        lines.append(f"### {metric} — paired CI delta vs `current` (seed-averaged)")
+        lines.append(f"### {metric} — `current` 대비 paired CI delta (seed 평균)")
         lines.append("")
-        header_cols = ["Category"] + [
+        header_cols = ["카테고리"] + [
             f"`{s['name']}`" for s in specs if s["name"] != "current"
         ]
         lines.append("| " + " | ".join(header_cols) + " |")
@@ -449,17 +449,18 @@ def render_report(
             lines.append("| " + " | ".join(cells) + " |")
         lines.append("")
 
-    lines.append("## Per-category winner")
+    lines.append("## 카테고리별 winner")
     lines.append("")
     lines.append(
-        "Winner = variant with highest `chunk_recall@10` mean AND paired CI vs `current` "
-        "fully above 0. \"NOT SIGNIFICANT\" = no variant's CI clears 0 (absolute rule #5)."
+        "winner = `chunk_recall@10` 평균이 가장 높으면서 `current` 대비 paired CI 가 "
+        "완전히 0 위인 변형. \"유의하지 않음\" = 어떤 변형의 CI 도 0 을 넘지 못함 "
+        "(절대 규칙 #5)."
     )
     lines.append("")
-    lines.append("| Category | Winner | Mean recall@10 | Delta CI vs current |")
+    lines.append("| 카테고리 | winner | 평균 recall@10 | `current` 대비 delta CI |")
     lines.append("|---|---|---|---|")
     for category in categories:
-        winner = "NOT SIGNIFICANT"
+        winner = "유의하지 않음"
         winner_mean: float | None = None
         winner_ci: dict[str, Any] | None = None
         for spec in specs:
@@ -476,49 +477,45 @@ def render_report(
         ci_str = _fmt_ci(winner_ci) if winner_ci is not None else "—"
         lines.append(f"| {category} | `{winner}` | {mean_str} | {ci_str} |")
     lines.append("")
-    lines.append("## Notes")
+    lines.append("## 비고(notes)")
     lines.append("")
     lines.append(
-        "* Planner-bypass: full query as the only sub-query, identity expansion, "
-        "no rerank — isolates chunking impact from query expansion / rerank effects."
+        "* Planner-bypass: 전체 query 를 유일한 sub-query 로, identity expansion, "
+        "rerank 없음 — 청킹 효과를 query expansion / rerank 효과로부터 격리한다."
     )
     lines.append(
-        "* `chunk_recall@k` is None for cases without `expected_terms` / "
-        "`expected_doc_ids` (e.g. abstention) — those are dropped pairwise to "
-        "preserve case alignment between current and the variant."
+        "* `chunk_recall@k` 는 `expected_terms` / `expected_doc_ids` 가 없는 케이스"
+        "(예: abstention(보류))에서 None 이다 — current 와 변형 간 케이스 정렬을 "
+        "보존하기 위해 pairwise 에서 제외된다."
     )
     lines.append(
-        "* Seeds drive only the bootstrap RNG; retrieval itself is deterministic "
-        "for the same query+index (hashing-backend / dense backend both)."
+        "* Seed 는 bootstrap RNG 만 구동한다; retrieval 자체는 동일 query+index 에 "
+        "대해 결정적(deterministic)이다 (hashing-backend / dense backend 모두)."
     )
-    lines.append("* Index storage: `data/index/phase2_smaller`, `phase2_larger`, `phase2_structure_aware`.")
+    lines.append("* 인덱스 저장 위치: `data/index/phase2_smaller`, `phase2_larger`, `phase2_structure_aware`.")
     lines.append(
-        "* Category bucketing uses `hardcase_categories` (semantic difficulty tags) "
-        "from the eval config. The legacy `query_type` field "
-        "(single_doc / multi_doc / follow_up / abstention) is **not** used here. "
-        "A case tagged with N categories appears in N buckets, so per-category "
-        "counts overlap and per-category paired CIs share cases — combining "
-        "multiple categories via OR inflates family-wise error rate."
-    )
-    lines.append(
-        "* `uncategorized` covers cases without `hardcase_categories` tags "
-        "(typically the initial seed + probe cases authored before the tag "
-        "schema). They still contribute to `overall`."
+        "* 카테고리 버킷팅은 eval config 의 `hardcase_categories`(의미 난이도 태그)를 "
+        "쓴다. 레거시 `query_type` 필드(single_doc / multi_doc / follow_up / "
+        "abstention)는 여기서 **쓰지 않는다**. N 개 카테고리로 태깅된 케이스는 N 개 "
+        "버킷에 나타나므로 카테고리별 카운트는 겹치고 paired CI 가 케이스를 공유한다 "
+        "— 여러 카테고리를 OR 로 합치면 family-wise 오류율이 부풀려진다."
     )
     lines.append(
-        "* Phase 1 baseline (`UNIFIED_PHASE1_REPORT.md`) categorized by "
-        "`query_type` (e.g. `multi_doc → multi_hop` with n=1); direct "
-        "cross-phase category-by-category trend comparison is not meaningful "
-        "until Phase 1 is re-aggregated against the same `hardcase_categories` "
-        "field."
+        "* `uncategorized` 는 `hardcase_categories` 태그가 없는 케이스(보통 태그 "
+        "스키마 이전에 작성된 초기 seed + probe 케이스)를 포함한다. 이들도 `overall` "
+        "에는 기여한다."
+    )
+    lines.append(
+        "* Phase 1 baseline(`UNIFIED_PHASE1_REPORT.md`)은 `query_type` 으로 분류했다 "
+        "(예: `multi_doc → multi_hop` n=1); Phase 1 을 동일 `hardcase_categories` "
+        "필드로 재집계하기 전에는 phase 간 카테고리별 추세 직접 비교는 의미가 없다."
     )
     if config.get("reaggregate_source"):
         lines.append(
-            "* This report was regenerated via `--reaggregate` from "
-            f"`{config['reaggregate_source']}` — categorization re-derived "
-            "from `hardcase_categories`; retrieval scores in "
-            "`raw_results.json` are unchanged byte-for-byte modulo the "
-            "injected `categories` field."
+            "* 이 리포트는 `--reaggregate` 로 "
+            f"`{config['reaggregate_source']}` 로부터 재생성됨 — 카테고리는 "
+            "`hardcase_categories` 에서 재유도; `raw_results.json` 의 retrieval "
+            "점수는 주입된 `categories` 필드를 제외하면 byte-for-byte 불변."
         )
 
     report_path = out_dir / "REPORT.md"
