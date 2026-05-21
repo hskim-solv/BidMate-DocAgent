@@ -68,8 +68,8 @@ ADR 0010 (2026-05-11) 은 `retrieval_backend ∈ {dense, hybrid}` 를 default `d
 
 ## Verification
 
-<!-- verifies-key: reports/retrieval/phase35_m3_20260518T214937Z_kordoc_no_m3/REPORT.md:Per-category winner -->
+<!-- verifies-key: reports/retrieval/phase35_m3_20260518T214937Z_kordoc_no_m3/REPORT.md:카테고리별 winner -->
 <!-- verifies-key: docs/adr/0010-hybrid-bm25-dense-retrieval-rrf.md:BGE-M3 ablation closeout -->
 <!-- verifies-key: eval/config.yaml:retrieval_backend -->
 
-kordoc-corpus REPORT.md 의 Per-category winner 섹션이 본 결정의 load-bearing 근거다. ADR 0010 은 여기로 되짚는 closeout 섹션을 획득해야 함 (PR-G). `eval/config.yaml` 은 scenario A 또는 B default 를 명시 반영해야 함 (annotation 또는 value 변경). 참조 파일이 keyed 섹션을 잃으면 `scripts/_governance.py --lint-adr-consequences` linter 가 본 ADR 을 flag 한다.
+kordoc-corpus REPORT.md 의 카테고리별 winner 섹션이 본 결정의 load-bearing 근거다. ADR 0010 은 여기로 되짚는 closeout 섹션을 획득해야 함 (PR-G). `eval/config.yaml` 은 scenario A 또는 B default 를 명시 반영해야 함 (annotation 또는 value 변경). 참조 파일이 keyed 섹션을 잃으면 `scripts/_governance.py --lint-adr-consequences` linter 가 본 ADR 을 flag 한다.
