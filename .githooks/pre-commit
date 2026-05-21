@@ -184,6 +184,26 @@ if [[ -n "$adr_added" ]]; then
   fi
 fi
 
+# Guard: ADR ↔ README index *status* parity (issue #1181 — extends the
+# #803 filename-parity guard above to the Status column). A proposed->
+# accepted flip that updates an ADR file's `- **Status**:` header but leaves
+# the docs/adr/README.md index row stale passes the filename-parity check
+# (the row still exists) and test_no_unlinked_adr_files_on_disk, yet drifts
+# the reviewer-facing index. Unlike the #803 guard (ADR *additions* only),
+# this fires on any ADR-file OR index-README *modification* (ACMR), since a
+# status flip is an edit, not an add. Working-tree scan (like the deadlink
+# guard below); the canonical gate is tests/test_governance.py post-push.
+#
+# Bypass with --no-verify only mid-merge; open a follow-up to re-sync.
+adr_or_readme_touched=$(git diff --cached --name-only --diff-filter=ACMR -- 'docs/adr/[0-9]*.md' 'docs/adr/README.md' 2>/dev/null || true)
+if [[ -n "$adr_or_readme_touched" ]]; then
+  status_out=$(python3 scripts/_governance.py --check-adr-readme-status 2>&1)
+  if [[ $? -ne 0 ]]; then
+    echo "$status_out" >&2
+    exit 1
+  fi
+fi
+
 # Guard: markdown cross-reference dead links (issue #1060).
 # Whenever any `.md` is staged, scan the WHOLE doc tree (not just the staged
 # files): the recurring failure is a file MOVE that breaks an inbound link
