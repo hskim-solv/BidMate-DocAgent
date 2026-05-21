@@ -561,6 +561,12 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
+    # This comparison runs strictly on public synthetic eval cases
+    # (eval/config.yaml). Attest that surface so the external-payload guard
+    # (bidmate_data_boundary, ADR 0061 ③) permits any opt-in external
+    # metadata / synthesis backend the operator enables. setdefault keeps an
+    # explicit operator override authoritative.
+    os.environ.setdefault("BIDMATE_DATA_SURFACE", "public_synthetic")
     args = parse_args()
     config_path = Path(args.config)
     corpus_dir = Path(args.corpus)
