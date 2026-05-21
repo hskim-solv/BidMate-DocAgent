@@ -409,6 +409,15 @@ def judge_self_review(
             f"unknown backend: {backend!r} (expected stub|openai_compatible)"
         )
 
+    # ADR 0064 time-separation guard, enforced post-dispatch so every backend
+    # is symmetric. stub_verdicts already self-guards, but openai_verdicts
+    # returns the LLM's raw verdicts — the guard is only *described* in
+    # _build_prompt, never enforced — so same-day or unmeasured evidence
+    # (evidence_age_days < 1.0 or None) could promote a ✓ on the openai path
+    # that the stub path forbids. Re-application on the stub path is idempotent.
+    ev_age = extract_signals(stats)["evidence_age_days"]
+    judge = {k: _guard_downgrade(v, ev_age) for k, v in judge.items()}
+
     local = {
         key: {
             "axis": label,
