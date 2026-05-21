@@ -286,8 +286,14 @@ class M3Int8CacheRegressionTest(unittest.TestCase):  # pragma: no cover — opt-
         from rag_m3 import get_m3_encoder
 
         # Force fp16 model + cache as the baseline path so the only
-        # delta between branches is int8 cache enablement.
-        os.environ["BIDMATE_M3_USE_FP16"] = "1"
+        # delta between branches is int8 cache enablement. Save/restore
+        # the original — leaking ``=1`` here forced the later
+        # M3ChunkedIndexCacheRegressionTest's model into fp16, ballooning
+        # its batch-shape dense delta past atol (flaky in full-suite runs,
+        # passed in isolation).
+        fp16_env = "BIDMATE_M3_USE_FP16"
+        fp16_original = os.environ.get(fp16_env)
+        os.environ[fp16_env] = "1"
         cache_env = "BIDMATE_M3_INT8_CACHE"
         original = os.environ.get(cache_env)
         rag_m3._ENCODER_CACHE.clear()
@@ -303,6 +309,10 @@ class M3Int8CacheRegressionTest(unittest.TestCase):  # pragma: no cover — opt-
                 os.environ.pop(cache_env, None)
             else:
                 os.environ[cache_env] = original
+            if fp16_original is None:
+                os.environ.pop(fp16_env, None)
+            else:
+                os.environ[fp16_env] = fp16_original
             rag_m3._ENCODER_CACHE.clear()
 
     def test_colbert_cache_dtype_switches_to_int8(self) -> None:
@@ -408,9 +418,14 @@ class M3ChunkedIndexCacheRegressionTest(unittest.TestCase):  # pragma: no cover 
         self.assertEqual(len(out_oneshot.sparse), len(out_chunked.sparse))
         self.assertEqual(len(out_oneshot.colbert), len(out_chunked.colbert))
         self.assertEqual(out_oneshot.dense.shape, out_chunked.dense.shape)
-        # Dense vectors: numerically identical (BGE-M3 is per-text
-        # independent; chunking is only a memory-pressure knob).
-        np.testing.assert_allclose(out_oneshot.dense, out_chunked.dense, atol=1e-5)
+        # Dense matches to fp32 batch-shape round-off, not bit-identically:
+        # one-shot (6 texts) vs chunked (2 at a time) drive different,
+        # non-associative GEMM reduction orders (compute_m3_index_cache
+        # docstring). atol=1e-4 covers that noise with headroom yet stays
+        # 200x tighter than the int8 colbert rtol above; a real row-
+        # misalignment regression differs by O(0.01+). Shape/len asserts
+        # above stay exact so a structural drift still fails hard.
+        np.testing.assert_allclose(out_oneshot.dense, out_chunked.dense, atol=1e-4)
 
     def test_legacy_path_when_group_size_is_zero(self) -> None:
         """``BIDMATE_M3_INDEX_CACHE_BATCH=0`` ⇒ one-shot encode (legacy).
