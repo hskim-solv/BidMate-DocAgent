@@ -31,6 +31,13 @@ fix lands ──▶ lower committed rate ──▶ TIGHTEN ceiling in same PR �
 래칫은 **한 방향**으로만 돌아간다: 천장은 fix 가 landing 되면 내려가며,
 명시적 `[ALLOW_REGRESSION]` 정당화 없이는 절대 올라가지 않는다.
 
+이 방향성은 이제 CI 가 강제한다 — `branch-and-issue-check.yml` 의
+ceiling-ratchet gate (`scripts/check_branch_and_issue.py
+--check-ceiling-ratchet`) 가 base 브랜치 대비 ceiling 상향/제거를 PR 본문의
+`[ALLOW_REGRESSION: <category> ...]` 토큰 없이는 차단한다 (issue #1150).
+in-test `test_ceilings_are_monotone_sane` 은 역전(천장 < 현재 rate)만 가드하므로,
+상향 차단은 이 CI gate 가 담당한다.
+
 ## 각 표면의 역할
 
 | surface | file | role |
@@ -39,6 +46,7 @@ fix lands ──▶ lower committed rate ──▶ TIGHTEN ceiling in same PR �
 | classifier lock | `tests/test_failure_classifier.py` | ordering 을 고정해 Finding #1 이 `verifier_false_negative` 로 유지되게 함 |
 | dashboard | `scripts/render_failure_distribution.py` | distribution + ADR 0059 계약 ✓ 렌더 (supply 2) |
 | **regression gate** | `tests/test_failure_rate_regression.py` | **커밋된 baseline 의 래칫 천장 (ADR 0062)** |
+| **ratchet gate** | `scripts/check_branch_and_issue.py --check-ceiling-ratchet` | **base 대비 ceiling 상향/제거를 `[ALLOW_REGRESSION]` 없이 차단 (CI, issue #1150)** |
 | baseline | `reports/real100/baseline.aggregate.json` | 게이트가 읽는 커밋된 aggregate (ADR 0005 경계) |
 
 ## 새로 표면화된 실패 모드 추가하기
@@ -74,6 +82,11 @@ fix PR 이 게이트된 rate 를 낮출 때:
    `current_rate + small_margin` 으로 **같은 PR 에서** 낮춘다.
 3. `test_ceilings_are_monotone_sane` 은 천장을 현재 rate
    *아래로* 설정하는 것(역전된 래칫)을 가드한다.
+
+의도적으로 천장을 **상향**해야 한다면 (예: ADR 0058 같은 cross-HEAD 변경으로
+variance 가 커진 경우), PR 본문에 `[ALLOW_REGRESSION: <category> 0.X→0.Y 사유]`
+토큰을 추가한다 — CI ceiling-ratchet gate 가 이를 확인하고, 없으면 PR 을
+차단한다.
 
 ## 절대 카운트가 아닌 rate 인 이유
 

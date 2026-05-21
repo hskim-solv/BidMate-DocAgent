@@ -23,6 +23,7 @@ Exit codes:
 from __future__ import annotations
 
 import argparse
+import ast
 import re
 import sys
 from datetime import date
@@ -551,6 +552,119 @@ def proposed_adr_age(
     # Oldest first; uncommitted (age None) sort last.
     records.sort(key=lambda r: (r.age_days is None, -(r.age_days or 0)))
     return records
+
+
+# ---------------------------------------------------------------------------
+# Failure-rate ceiling ratchet enforcement (ADR 0062, issue #1150).
+#
+# ADR 0062 documents a "monotone-ratchet" contract: the failure-rate ceilings
+# in tests/test_failure_rate_regression.py may only ratchet DOWN as fixes land
+# — never up without an explicit [ALLOW_REGRESSION] justification in the PR
+# body. But the in-test guard (test_ceilings_are_monotone_sane) only asserts
+# ceiling >= the *current committed rate*; it never compares against the base
+# branch, so a PR could RAISE a ceiling (loosening the gate) with every test
+# still green. The ratchet was operator-discipline-only.
+#
+# These pure helpers + the check_branch_and_issue.py --check-ceiling-ratchet CI
+# mode close that hole: diff the committed ceilings against the base branch and
+# FAIL when any ceiling loosened (raised, or a gated category removed) unless
+# the PR body carries [ALLOW_REGRESSION: <category> ...]. Parsing is AST-based
+# (no import) so it works on a base-branch source string fetched via the GitHub
+# contents API — importing it would pull in eval.scorers.failure_classifier.
+# ---------------------------------------------------------------------------
+
+# Flat-dict key for the scalar CEILING_TOTAL_FAILURE_RATE. Not one of the 7
+# ADR 0059 FAILURE_CATEGORIES, so it cannot collide with a real category key.
+TOTAL_FAILURE_RATE_KEY = "total_failure_rate"
+
+_CEILING_DICT_NAME = "CEILING_RATE_BY_CATEGORY"
+_CEILING_TOTAL_NAME = "CEILING_TOTAL_FAILURE_RATE"
+
+# An [ALLOW_REGRESSION: <category> <old>→<new> reason] token. Only the leading
+# category name is captured; old→new/reason are free-form (the token's job is
+# to force acknowledgment, per ADR 0062, not to be machine-validated).
+ALLOW_REGRESSION_RE = re.compile(r"\[ALLOW_REGRESSION:\s*([A-Za-z_][A-Za-z0-9_]*)")
+
+
+def parse_failure_rate_ceilings(source: str) -> dict[str, float]:
+    """Extract the ratchet ceilings from a test_failure_rate_regression.py source.
+
+    Returns a flat ``{category: ceiling}`` dict with the scalar
+    ``CEILING_TOTAL_FAILURE_RATE`` stored under ``TOTAL_FAILURE_RATE_KEY``.
+    AST-based (``ast.literal_eval`` on the assignment values) so it parses a
+    base-branch string fetched via ``git show`` / the GitHub contents API,
+    which would fail to *import* (it pulls in eval.scorers.failure_classifier).
+
+    Raises ``ValueError`` if either expected assignment is absent or is not a
+    plain literal — a refactor that hides the ceilings from this parser must
+    fail loudly rather than silently disable the ratchet gate.
+    """
+    tree = ast.parse(source)
+    ceilings: dict[str, float] = {}
+    found_dict = False
+    found_total = False
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign):
+            continue
+        names = {t.id for t in node.targets if isinstance(t, ast.Name)}
+        if _CEILING_DICT_NAME in names:
+            value = ast.literal_eval(node.value)
+            if not isinstance(value, dict):
+                raise ValueError(f"{_CEILING_DICT_NAME} is not a dict literal")
+            for k, v in value.items():
+                ceilings[str(k)] = float(v)
+            found_dict = True
+        elif _CEILING_TOTAL_NAME in names:
+            ceilings[TOTAL_FAILURE_RATE_KEY] = float(ast.literal_eval(node.value))
+            found_total = True
+    if not found_dict:
+        raise ValueError(f"{_CEILING_DICT_NAME} assignment not found")
+    if not found_total:
+        raise ValueError(f"{_CEILING_TOTAL_NAME} assignment not found")
+    return ceilings
+
+
+def parse_allow_regression_categories(pr_body: str) -> set[str]:
+    """Return the category names named in ``[ALLOW_REGRESSION: <category> ...]``.
+
+    Empty set for an empty/None body or no tokens.
+    """
+    if not pr_body:
+        return set()
+    return {m.group(1) for m in ALLOW_REGRESSION_RE.finditer(pr_body)}
+
+
+def ceiling_ratchet_violations(
+    base: dict[str, float],
+    head: dict[str, float],
+    allowed: set[str],
+    *,
+    epsilon: float = 1e-9,
+) -> list[str]:
+    """Return one message per unjustified ceiling *loosening*; empty = clean.
+
+    A loosening is either a RAISED ceiling (``head > base``) or a REMOVED gated
+    category (present in ``base``, absent in ``head`` — drops the gate, strictly
+    more permissive than any value). Each must be justified by an
+    ``[ALLOW_REGRESSION: <category> ...]`` token (i.e. ``category in allowed``);
+    otherwise it is a violation. New categories (absent in ``base``) and
+    lowered/equal ceilings never violate — that is the monotone ratchet.
+    """
+    violations: list[str] = []
+    for category, base_ceiling in sorted(base.items()):
+        if category in head:
+            head_ceiling = head[category]
+            if head_ceiling > base_ceiling + epsilon and category not in allowed:
+                violations.append(
+                    f"{category}: ceiling raised {base_ceiling} → {head_ceiling} "
+                    f"without [ALLOW_REGRESSION: {category} ...] in the PR body"
+                )
+        elif category not in allowed:
+            violations.append(
+                f"{category}: gated ceiling removed ({base_ceiling} → absent) "
+                f"without [ALLOW_REGRESSION: {category} ...] in the PR body"
+            )
+    return violations
 
 
 def _cmd_next_adr_number(adr_dir: str) -> int:
