@@ -1,9 +1,9 @@
-# eval-framework-progressive-audit — Phase 3 (process + trajectory)
+# eval-framework-progressive-audit — Phase 3 (프로세스 + trajectory)
 
 | field | value |
 |---|---|
 | Skill | [`.claude/skills/eval-framework-progressive-audit/SKILL.md`](../../.claude/skills/eval-framework-progressive-audit/SKILL.md) (PR #889) |
-| Phase | **3 — Process + trajectory audit** (skill line 133-149) |
+| Phase | **3 — 프로세스 + trajectory audit** (skill line 133-149) |
 | Date | 2026-05-18 |
 | Author | Hyunsoo Kim |
 | Issue | #960 |
@@ -11,7 +11,7 @@
 | Successor | Phase 4 (Statistical rigor audit) — 별 plan turn (스킬 본문 STOP gate, 사용자 승인 영수증 필요) |
 | Strict-forbid | **실제 로깅 추가 / trajectory writer 작성 0건** (skill body line 148-149) |
 
-## Executive summary
+## 요약(Executive summary)
 
 | # | item | 상태 | 핵심 evidence |
 |---|---|:---:|---|
@@ -46,7 +46,7 @@
   ```
   → schema 는 wired ✓, **하지만 `prediction["diagnostics"]["synthesis"]` 가 채워지는 path 가 answer LLM call 부 (anthropic/openai SDK response.usage) 에서 wiring 됐는지** grep 으로 확정 어려움 (RAG production 경로의 prediction 생성 다층 함수).
 
-**Gap**:
+**갭(Gap)**:
 - (a) per-case retrieval call count / verifier retry count — schema 없음 (aggregate `retry` 만).
 - (b) token / cost propagation 의 end-to-end 검증 (real-eval surface 에서 `tokens_in` 이 None 외 값으로 채워지는지) 부재. 본 audit 시점에 1 case_results row 인용해 검증 가능하나 trace surface 외부 — 별 PR scope.
 
@@ -78,7 +78,7 @@
 - **Env-gated 확장** (`BIDMATE_TRACE_VERBOSE=1`): `evidence`, `answer_text`, `answer`, `diagnostics_subset` 추가 — Phase 1 Step 2.5 의 verifier-trajectory dump 용 (line 849-858, ADR 0001 invariant 위해 default off).
 - **Verifier 전용 별 dump**: `scripts/dump_verifier_trajectories.py` — `reports/phase1_step2_5_trajectories.jsonl` 로 verifier 의 (claim, evidence, sufficiency) 결정 trace 만 dump (스크립트 docstring line 1-12).
 
-**Gap**:
+**갭(Gap)**:
 - (a) **Retrieval LLM call I/O** (query expansion / HyDE 등) — 부재.
 - (b) **Answer LLM call I/O** (full prompt + completion + token usage) — `answer_schema` 만 있고 prompt 자체는 trace 외부.
 - (c) Verifier LLM I/O 는 별 dump 로만 존재 — main trace 와 join 가능하나 schema 통합 안 됨.
@@ -103,7 +103,7 @@
   - `docs/adr/0040-react-agent-loop-additive-preset.md:27` — senior-positioning rubric reference (포트폴리오 surface)
 - `eval/judges/{llm_judge,synthetic_judge,judge_common}.py` — ADR 0006 / 0012 answer-quality judge. 입력 = (query, answer, gold_answer), 출력 = 정답-여부 / 점수. **trajectory 입력 안 받음**.
 
-**Gap**: process rationality 가 0차원 측정. trajectory file (`*.trace.json`) + verifier dump (`reports/phase1_step2_5_trajectories.jsonl`) 가 raw 자료를 이미 emit 하지만 그것을 채점하는 rubric 자산 부재.
+**갭(Gap)**: process rationality 가 0차원 측정. trajectory file (`*.trace.json`) + verifier dump (`reports/phase1_step2_5_trajectories.jsonl`) 가 raw 자료를 이미 emit 하지만 그것을 채점하는 rubric 자산 부재.
 
 **Supply 제안** (별 PR — **ADR-worthy**):
 - 신규 `eval/judges/rationality_judge.py` — `eval/judges/judge_common.py` 의 stub/llm 백엔드 패턴 재사용. 3-axis prompt:
@@ -133,7 +133,7 @@
 - **그러나** `reports/real100/cost_frontier.{png,md,aggregate.json}` 산출물 0건. `reports/real100/` 내 frontier 매칭 file 부재.
 - 비교: `reports/real100/eda.{md,aggregate.json}` 는 EDA report 의 별 surface — pareto 와 무관.
 
-**Gap**: plotter 는 ✓ 그러나 ADR 0054 n=221 baseline 으로 산출물 regen 안 됨. 즉 1-command 실행 시 산출 가능하나 자동화 (Makefile / CI) 미연동.
+**갭(Gap)**: plotter 는 ✓ 그러나 ADR 0054 n=221 baseline 으로 산출물 regen 안 됨. 즉 1-command 실행 시 산출 가능하나 자동화 (Makefile / CI) 미연동.
 
 **Supply 제안** (별 PR — small):
 - `Makefile` 신규 target `real-eval-frontier-regen`:
@@ -160,7 +160,7 @@
 
 → **Phase 3 acceptance 통과**. 사용자 머지 행위 자체가 STOP gate 영수증 (skill line 102: "사용자 명시 승인 전 Phase 4 진입 금지").
 
-## Out of scope (별 PR / 별 plan turn)
+## 범위 밖(Out of scope) (별 PR / 별 plan turn)
 
 - **위 4 supply 의 실제 구현** — 스킬 본문 strictly forbid.
 - **Skill Phase 4 (Statistical rigor)** + **Phase 5 (Closed error loop)** audit — 별 plan turn. 본 audit 머지 후 사용자 승인 영수증 받고 진행.
@@ -168,14 +168,14 @@
 - **`answer_format_compliance −0.64pp` 잔여 false-negative** — ADR 0054 머지 직후 식별된 별 축. ADR 0055 (가칭) 의 다른 후보 (gauge per-metric weighting) 와 함께 검토.
 - **Portfolio repo `BidMate-DocAgent-portfolio` blog narrative 갱신** — D층 surface, 본 audit 와 독립.
 
-## References
+## 참고(References)
 
 - 본 audit 의 mother skill: [`.claude/skills/eval-framework-progressive-audit/SKILL.md`](../../.claude/skills/eval-framework-progressive-audit/SKILL.md) (PR #889)
-- Predecessor Phase 2 / 1 acceptance: 본 audit 미산출 (별 plan turn)
-- Item 1 코드 근거: [`eval/run_eval.py:975-989`](../../eval/run_eval.py) (token/cost capture from synthesis)
+- 선행(predecessor) Phase 2 / 1 acceptance: 본 audit 미산출 (별 plan turn)
+- Item 1 코드 근거: [`eval/run_eval.py:975-989`](../../eval/run_eval.py) (synthesis 에서 token/cost capture)
 - Item 2 코드 근거: [`eval/run_eval.py:829-890`](../../eval/run_eval.py) (`prediction_trace_payload` + `write_prediction_trace`)
 - Item 2 reference dump: `scripts/dump_verifier_trajectories.py` (Phase 1 Step 2.5 verifier-only)
-- Item 3 referenced rubric ADRs (비-rationality 비교용): [ADR 0006](../adr/0006-llm-judge-on-real-data-only.md) (answer-quality judge), [ADR 0012](../adr/0012-llm-judge-on-public-synthetic.md), [ADR 0033](../adr/0033-multihop-cross-section-eval-slice.md) (`multihop_valid` case validity)
+- Item 3 에서 참조한 rubric ADR (비-rationality 비교용): [ADR 0006](../adr/0006-llm-judge-on-real-data-only.md) (answer-quality judge), [ADR 0012](../adr/0012-llm-judge-on-public-synthetic.md), [ADR 0033](../adr/0033-multihop-cross-section-eval-slice.md) (`multihop_valid` case validity)
 - Item 4 코드 근거: [`scripts/plot_cost_frontier.py`](../../scripts/plot_cost_frontier.py) (cost_usd field line 43, pareto line 196)
-- Sibling skill (다른 surface): [`.claude/skills/retrieval-eval/SKILL.md`](../../.claude/skills/retrieval-eval/SKILL.md) (4-phase retrieval measurement, PR #889)
-- Recent Goodhart 폐루프 (Phase 2 산출물): [ADR 0053](../adr/0053-distinguishing-power-floor-ablations.md) (gauge), [ADR 0054](../adr/0054-conditional-on-answer-scorer-semantics.md) (scorer fix)
+- 자매(sibling) skill (다른 surface): [`.claude/skills/retrieval-eval/SKILL.md`](../../.claude/skills/retrieval-eval/SKILL.md) (4-phase retrieval measurement, PR #889)
+- 최근 Goodhart 폐루프 (Phase 2 산출물): [ADR 0053](../adr/0053-distinguishing-power-floor-ablations.md) (gauge), [ADR 0054](../adr/0054-conditional-on-answer-scorer-semantics.md) (scorer fix)

@@ -1,8 +1,8 @@
-# Ablation Results
+# 절제실험(Ablation) 결과
 
 이 문서는 커밋 가능한 집계 지표만 남긴다. 원시 예측, 진단 로그, 지연시간 샘플, 오류 예시는 `artifacts/benchmarks/` 아래에 생성되며 Git에 커밋하지 않는다.
 
-## Latest Run
+## 최신 실행(Latest Run)
 
 - Run ID: `public_synthetic_rfp_20260511T101606Z`
 - Suite: `public_synthetic_rfp` / Dataset: `public_synthetic_rfp_v1`
@@ -11,7 +11,7 @@
 - Primary: `full`
 - Local manifest: `artifacts/benchmarks/public_synthetic_rfp_20260511T101606Z/run_manifest.json`
 
-## Baseline To Primary
+## Baseline 에서 Primary 로
 
 | Metric | Baseline | Primary | Delta |
 |---|---:|---:|---:|
@@ -26,7 +26,7 @@
 | Retry Rate | 0.000 | 0.310 | +0.310 |
 | Latency p95 | 2.9ms | 3.0ms | +0.063 |
 
-## Ablation Table
+## 절제실험(Ablation) 표
 
 | Run | Pipeline | Top-k | Metadata-first | Rerank | Verifier/Retry | Retrieval | Backend | Prompt | Accuracy | Groundedness | Citation | Citation Grounding | Format | Abstention (CR/IA/BP) | Retry | Latency p95 |
 |---|---|---:|---:|---:|---:|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -42,7 +42,7 @@ CR=correct\_refusal / IA=incorrect\_answer / BP=boundary\_partial (ADR 0005 §ab
 
 †`no_verifier_retry` bin 분포는 n=42 헤드라인 비율에서 추산(naive\_baseline과 동일 headline=0.300); 정확한 breakdown은 다음 benchmark 실행(`make benchmark`) 후 `eval_summary.json`에서 확인.
 
-## Hard-case Slices
+## Hard-case 슬라이스(Slices)
 
 | Category | Cases | Accuracy | Groundedness | Citation | Citation Grounding | Format | Abstention | Retry |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -56,7 +56,7 @@ CR=correct\_refusal / IA=incorrect\_answer / BP=boundary\_partial (ADR 0005 §ab
 | partial_comparison | 1 | 1.000 | 1.000 | 1.000 | N/A | 1.000 | N/A | 1.000 |
 | retrieval_hardening | 5 | 1.000 | 1.000 | 1.000 | N/A | 1.000 | 1.000 | 0.000 |
 
-## Interpretation
+## 해석(Interpretation)
 
 - `naive_baseline`는 fixed chunk + dense top-k만 쓰는 naive control baseline이다.
 - `full`는 비교 대상 primary run이다.
@@ -77,7 +77,7 @@ CR=correct\_refusal / IA=incorrect\_answer / BP=boundary\_partial (ADR 0005 §ab
 
 현재 commit 된 aggregate 는 **live backend** (`openai_compatible`, `model=gpt-5.4-nano`, issue #878 첫 실행) 기준 — n=105, `agreement_with_verifier=0.343`, faithfulness 0.436 / answer_relevance 0.730 / grounded_rate 0.248. (직전 stub fixture 는 verifier status 를 거울 반사해 `agreement_with_verifier=1.0` 이었음 — 가짜 신호.) **낮은 agreement (0.343) 가 actionable signal** — nano-tier judge 의 보수적 채점 + `naive_baseline` (hashing eval) 답변과 deterministic verifier 간 calibration 차이가 합쳐진 결과. 더 강한 judge 모델 또는 production 임베딩 답변으로 재측정 시 변동 가능 (follow-up). 재현: `BIDMATE_JUDGE_BASE_URL=https://api.openai.com/v1 BIDMATE_JUDGE_API_KEY=$OPENAI_API_KEY BIDMATE_JUDGE_MODEL=gpt-5.4-nano make synthetic-judge`.
 
-## Chunk-level retrieval (PR #147 + human-annotated gold from #175)
+## Chunk 단위 검색(retrieval) (PR #147 + #175 의 사람 주석 gold)
 
 이슈 [#147](https://github.com/hskim-solv/BidMate-DocAgent/issues/147)에서 추가된 chunk-level retrieval 메트릭 (recall@k / MRR / nDCG@10) — gold chunk 는 `expected_doc_ids` + `expected_terms` 휴리스틱으로 자동 유도되며 case 단위로 `gold_chunk_ids` override 가능 ([`eval/run_eval.py` `derive_gold_chunk_ids`](../../eval/run_eval.py)).
 
@@ -96,7 +96,7 @@ CR=correct\_refusal / IA=incorrect\_answer / BP=boundary\_partial (ADR 0005 §ab
 
 후속 PR 후보: `metric_block` 에 chunk metric aggregation roll-up 추가 (현재 case 단위로만 emit). 본 표 수치는 case_results 평균으로 계산.
 
-## Pending rows
+## 보류 중인 행(Pending rows)
 
 - **Live synthetic judge aggregate** (ADR 0012, issue #164 → #878): ✅ 완료 — live `openai_compatible` (gpt-5.4-nano) 로 갱신, `agreement_with_verifier=0.343` (n=105). 위 §Synthetic LLM-judge (RAGAS-style) 참조.
 - **`hybrid_bm25`** (ADR 0010, issue #119): `eval/config.yaml` 에 추가됨. `make eval` 의 ablation 블록에는 이미 채워지지만 (`accuracy=0.906`, `groundedness=0.929` — `full` 과 동일 ceiling), 본 문서의 committed snapshot 은 `make benchmark` 의 manifest 기반이므로 다음 benchmark 실행 후 row 를 추가한다. 실측 차이는 private real-data eval (`make real-eval-delta`) 에서 드러날 가능성이 크다.
@@ -104,7 +104,7 @@ CR=correct\_refusal / IA=incorrect\_answer / BP=boundary\_partial (ADR 0005 §ab
 - **Multi-turn decay** (issue #125): `eval/multiturn_eval.py` 에 `derive_turn_depth()` + `build_qid_parent_map()` 가 추가되어 `summary["by_turn_depth"]` 블록으로 per-turn (turn 1 / 2 / 3 / …) accuracy 가 emit 된다. ADR 0001 invariant 준수 — `naive_baseline` / `agentic_full` 위에 *측정 축* 만 추가, 어느 파이프라인도 대체하지 않음. 초기 시나리오 fixture: `eval/multiturn_scenarios_v1.jsonl` (2 시나리오 × 3 turns, entity carryover + graceful-degradation abstention 포함). 차기 dev-side run 결과로 decay 커브를 본 표에 누적.
 - **Cost-quality Pareto** (issue #124): `scripts/plot_pareto.py` 가 `reports/eval_summary.json` 을 읽어 `(latency_p95, citation_precision)` 평면 위 ablation runs 의 Pareto frontier 를 `reports/pareto.md` 로 emit 한다 (matplotlib 설치 시 `reports/pareto.png` 도 함께). 호출: `make pareto`. 본 utility 는 retrieval / verifier / answer-generation 경로를 수정하지 않으며 (`scripts/` + `tests/` 만 추가), `reports/eval_summary.json` 의 read-only consumer 다.
 
-## Next Actions
+## 다음 액션(Next Actions)
 
 - 평가셋을 늘릴 때는 suite YAML을 추가하고 registry에는 집계 지표만 편입한다.
 - private RFP 기반 실험은 local artifact로만 보관하고 문서에는 익명화된 집계 결과만 남긴다.

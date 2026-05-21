@@ -7,7 +7,7 @@
 > 네 번째 cluster (#965 + #968) 가 통계 정직성을 PR 게이트로 박았고,
 > 다섯 번째 (#987) 가 process rationality 측정 표면을 새로 도입했다.
 >
-> Sibling posts:
+> 자매 글(Sibling posts):
 > [`hyde-measurement-saturation.md`](./hyde-measurement-saturation.md),
 > [`2026-05-extractive-baseline.md`](./2026-05-extractive-baseline.md).
 
@@ -24,7 +24,7 @@
 
 `scripts/distinguishing_power.py` 가 measurement 한 결과 (n=221, real-eval surface):
 
-| metric | default (full) | random_retrieval | gap | signal_alive |
+| 지표(metric) | default (full) | random_retrieval | gap | signal_alive |
 |---|---:|---:|---:|:---:|
 | accuracy | 29.66% | 2.54% | **+27.12pp** | ✓ |
 | claim_citation_alignment | 96.28% | 88.24% | **+8.04pp** | ✓ |
@@ -65,13 +65,13 @@ else:
 
 같은 신호가 다른 곳에서 *별도로* 측정되고 있었다는 것이 더 중요한 발견이었다. PR #464 가 도입한 `abstention_outcomes` 3-bin (`correct_refusal` / `incorrect_answer` / `boundary_partial`) 이 refusal 정확성을 *이미* 측정 중. 그러므로 quality metric 의 vacuous 1.0 은 **double-count**.
 
-### Fix
+### Fix (수정)
 
 `groundedness` / `citation_precision` / `answer_format_compliance` 의 의미를 "substantive answer 시도 (`answerable=True AND not abstained`)" 에 한정. 비-substantive 케이스 (`correct_refusal`, `incorrect_answer`, `boundary_partial`) 는 `None` → mean 분모 제외.
 
 `[ALLOW_REGRESSION: ADR 0054 metric-semantics shift]` 게이트로 baseline regen, 5/5 metric 양수 gap 회복.
 
-### 일반화 lesson
+### 일반화한 교훈(lesson)
 
 함정 발견에는 *두 번째 측정 surface* 가 필요했다. 단일 metric (accuracy) 만 봤으면 "+27pp" 통과시켰을 거. distinguishing-power gauge (Step 1) 가 함정 차단의 trigger. 이게 ADR 0053 의 진짜 가치 — gauge 자체가 의미있는 게 아니라, *다른 measurement 의 sanity check 로서의 gauge 가* 의미.
 
@@ -83,7 +83,7 @@ scorer fix 후, 다음 질문은 "*이런 함정이 다른 곳에 또 있나?*" 
 
 4-item 진단 결과:
 
-| # | item | 상태 |
+| # | 항목(item) | 상태 |
 |---|---|:---:|
 | 1 | per-query 로깅 (latency / call count / token / cost) | ◐ partial |
 | 2 | trajectory 직렬화 (모든 LLM call I/O) | ◐ partial |
@@ -96,7 +96,7 @@ scorer fix 후, 다음 질문은 "*이런 함정이 다른 곳에 또 있나?*" 
 
 3-item 진단:
 
-| # | item | 상태 |
+| # | 항목(item) | 상태 |
 |---|---|:---:|
 | 1 | Multi-seed 운영 (variant 별 3 seed mean ± std) | ◐ partial |
 | 2 | Paired bootstrap CI 운영 | ✓ present |
@@ -110,7 +110,7 @@ audit 의 핵심 패턴 — *audit 자체가 코드 추가 0건*. 스킬 본문�
 
 Phase 4 item 3 supply: [ADR 0055 — `claim_validator` as PR gate](../adr/0055-claim-validator-as-pr-gate.md).
 
-### `Claim:` convention
+### `Claim:` 컨벤션(convention)
 
 PR body 에 다음 한 줄을 *옵션* 으로 도입:
 
@@ -135,7 +135,7 @@ ADR 0050 / ADR 0054 가 의도적 regression 의 `[ALLOW_REGRESSION]` escape 를
 - ALLOW_OVERCLAIM 의 정당화 가능 케이스 부재. "이번 claim 은 over 인 거 알지만 narrative 상 +5pp 라고 쓰고 싶다" 는 정직성 위반.
 - 비대칭이 옳은 이유 = *escape 의 비용 비대칭*. ALLOW_REGRESSION 은 baseline 1회 reset 비용, ALLOW_OVERCLAIM 은 portfolio claim 의 신뢰 영구 손실.
 
-### Trace schema v2 (PR #968, issue #967)
+### Trace schema v2 (PR #968, 이슈 #967)
 
 `TRACE_SCHEMA_VERSION` 1→2. `prediction["trace"]` dict 에 `synthesis_llm_call` 키 추가 — `BIDMATE_TRACE_FULL=1` env-gated 로 anthropic / openai_compatible synthesis backend 가 `user_prompt_text + completion_text` 채움. ADR 미발행 (env-gated, default off → ADR 0001 byte-identical 합성 baseline 영향 0).
 
@@ -151,7 +151,7 @@ Phase 3 item 3 supply: [ADR 0056 — rationality_judge measurement surface](../a
 
 3 axes, 각 `[0.0, 1.0]`:
 
-| axis | input source |
+| 축(axis) | 입력 출처(input source) |
 |---|---|
 | `planner_decomposition` | `trace["planner"]` subset — query_type / pipeline / stage_sequence / selected_top_k / retrieval_budget.reason |
 | `retrieval_recalls` | `trace["planner"]["attempts"][*]["verification_reasons"]` (retry 사유) |
@@ -159,7 +159,7 @@ Phase 3 item 3 supply: [ADR 0056 — rationality_judge measurement surface](../a
 
 `answer_reasoning` 이 Step 4 의 raw 자료를 *consume*. `BIDMATE_TRACE_FULL=1` 미설정 시 `synthesis_llm_call=None` → `answer_reasoning=None` → aggregate `effective_n["answer_reasoning"]=0` 로 honest 보고. ADR 0054 substantive-only semantics 를 trajectory layer 에 propagate.
 
-### Verifier-axis 의도적 제외
+### Verifier 축 의도적 제외
 
 audit sketch 의 원래 3축에 "verifier 판정 정합성" 이 있었으나 Step 4 (trace v2) 작성 중 발견 — `rag_verifier.py` 가 rule-based (LLM call 0건). LLM judge 의 ROI 약함 (sufficiency rule 의 재검증일 뿐). `answer_reasoning` 으로 대체.
 
@@ -186,7 +186,7 @@ audit sketch 의 원래 3축에 "verifier 판정 정합성" 이 있었으나 Ste
 
 stub backend 는 SHA-256 uniform [0,1] → 0.5 근처 mean 은 *statistical artifact, signal 아님*. 첫 측정의 의미 = mechanical pipeline 검증 (n=221 cover, bootstrap CI emit, env-off None-skip 정상 작동). 실제 변별력 측정은 LLM backend regen (별 PR scope).
 
-## Cascade pattern
+## Cascade 패턴
 
 5 step 을 같은 표로 보면:
 
@@ -236,10 +236,10 @@ Phase 5 audit 의 finding #1 (`verifier_false_negative_on_unanswerable` 84%) 가
 - [ADR 0056 — rationality_judge measurement surface](../adr/0056-rationality-judge-measurement-surface.md)
 - [Phase 3 audit](../audits/eval-framework-phase3-audit.md) + [Phase 4 audit](../audits/eval-framework-phase4-audit.md) + [Phase 5 audit](../audits/eval-framework-phase5-audit.md)
 - [`scripts/distinguishing_power.py`](../../scripts/distinguishing_power.py) — gauge runner
-- [`eval/scorers/case.py`](../../eval/scorers/case.py) — scorer (post-ADR 0054)
+- [`eval/scorers/case.py`](../../eval/scorers/case.py) — scorer (ADR 0054 이후)
 - [`scripts/validate_claim.py`](../../scripts/validate_claim.py) — PR-body claim 검증 (ADR 0055)
 - [`eval/judges/rationality_judge.py`](../../eval/judges/rationality_judge.py) — 3-axis judge (ADR 0056)
-- [`reports/real100/rationality.aggregate.json`](../../reports/real100/rationality.aggregate.json) + [`rationality.md`](../../reports/real100/rationality.md) — Step 5 first measurement
+- [`reports/real100/rationality.aggregate.json`](../../reports/real100/rationality.aggregate.json) + [`rationality.md`](../../reports/real100/rationality.md) — Step 5 첫 측정
 
 **관련 ADR family**
 

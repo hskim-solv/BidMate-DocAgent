@@ -1,4 +1,4 @@
-# `verifier_false_negative = 76` root-cause inspection
+# `verifier_false_negative = 76` 근본 원인(root-cause) inspection
 
 | field | value |
 |---|---|
@@ -9,7 +9,7 @@
 | Author | Hyunsoo Kim |
 | Strict-forbid | **실 verifier fix 0건** (본 문서는 audit 만; 후속 issue 로 분기) |
 
-## Executive summary
+## 요약(Executive summary)
 
 ADR 0059 (PR #1001) 가 정량화한 Phase 5 audit Finding #1 의 fresh remeasurement. PR #1001 측정 (65) / PR #1004 측정 (49) / 본 audit fresh (76) — run-to-run variance 크지만 ADR 0059 first-match contract `verifier_false_negative == abstention_outcomes.incorrect_answer` 매 run 유지 (76 == 76 ✓).
 
@@ -26,34 +26,34 @@ retrieval_miss=83 audit (#1005) 와 sibling — 본 문서는 **verifier layer �
 
 ## 데이터 inspection (n=76)
 
-### Slice by `hardcase_categories`
+### `hardcase_categories` 별 slice
 
 | hardcase | count | % of 76 | notes |
 |---|---:|---:|---|
 | `no_answer` | 75 | 98.7% | **dominant** — intentional unanswerable case 가 거의 전부 |
-| `long_context` | 5 | 6.6% | cross-tag with no_answer |
+| `long_context` | 5 | 6.6% | no_answer 와 cross-tag |
 | `distractor_heavy` | 4 | 5.3% | cross-tag |
 | `multi_hop` | 2 | 2.6% | edge case |
 | `ambiguous_query` | 1 | 1.3% | edge case |
 | (no hardcase tag) | 1 | 1.3% | 1 case 만 untagged |
 
-### Slice by `query_type`
+### `query_type` 별 slice
 
 | query_type | count | % of 76 | notes |
 |---|---:|---:|---|
 | `abstention` | 76 | 100% | 단일 — YAML 의 `answerable=false` case 가 모두 이 카테고리 |
 
-### Slice by evidence cardinality
+### evidence cardinality 별 slice
 
-| evidence | count | % of 76 | interpretation |
+| evidence | count | % of 76 | 해석 |
 |---|---:|---:|---|
 | empty (0 docs) | 0 | 0% | retrieval 이 *항상* 무언가 가져옴. abstain 으로 fall through 안 함. |
 | single-doc | 14 | 18.4% | minority — 단일 doc evidence 에서도 topic match |
 | multi-doc | 62 | 81.6% | **dominant** — 여러 doc 의 chunk 혼합, topic 이 cross-doc 산재 |
 
-### Slice by `expected_doc_ids` coverage
+### `expected_doc_ids` coverage 별 slice
 
-| 패턴 | count | % of 76 | interpretation |
+| 패턴 | count | % of 76 | 해석 |
 |---|---:|---:|---|
 | no expected (pure unanswerable) | 1 | 1.3% | edge case |
 | expected ∈ evidence (correct doc retrieved) | 22 | 28.9% | **retrieval 성공인데도 verifier 실패** — 의미 검증 부재 |
@@ -74,7 +74,7 @@ retrieval_miss=83 audit (#1005) 와 sibling — 본 문서는 **verifier layer �
 
 쿼리 텍스트에 정량/구체성 키워드 포함 비율:
 
-| pattern | match | interpretation |
+| pattern | match | 해석 |
 |---|---:|---|
 | `얼마` / `몇 ` / `몇%` / `%` | (subset of 65) | 정량 답 요구 |
 | `구체적으로` / `구체적인` | (subset of 65) | 구체적 답 요구 |
@@ -82,9 +82,9 @@ retrieval_miss=83 audit (#1005) 와 sibling — 본 문서는 **verifier layer �
 | **any specificity keyword** | **65 / 76 (85.5%)** | dominant — query 가 specific value 요구 |
 | no specificity keyword | 11 / 76 (14.5%) | minority |
 
-## Run-to-run variance 분석
+## Run-to-run 분산(variance) 분석
 
-| measurement event | run | verifier_false_negative count | contract status |
+| 측정 이벤트 | run | verifier_false_negative count | contract status |
 |---|---|---:|:---:|
 | PR #1001 wire-up (HEAD `a931a49`) | initial | 65 | ✓ vs incorrect_answer=65 |
 | PR #1004 supply 2 dashboard | midpoint | 49 | ✓ vs incorrect_answer=49 |
@@ -139,7 +139,7 @@ ADR 0059 first-match contract (`verifier_false_negative == incorrect_answer`) �
 | Issue J — Variance source 진단 audit (가설 6) | ~100 LOC measurement runner + audit doc | medium |
 | Issue K — Retrieval refinement on verifier retry (가설 5) | ADR 0004 retry policy 확장 — Track C audit 의 sibling | low |
 
-## Out-of-scope (별 PR / 별 audit)
+## 범위 밖(Out-of-scope) (별 PR / 별 audit)
 
 - 실제 verifier fix (위 6 가설 중 어느 하나) — 본 audit 가 가설 ranking 만 emit; fix 는 가설별 별 PR.
 - retrieval_miss=83 의 fix (#1005 의 후속 Issue A-E) — sibling failure surface.
