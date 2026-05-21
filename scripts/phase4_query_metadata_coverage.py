@@ -118,6 +118,10 @@ def analyze_coverage(
         cases_b = buckets[name]
         sizes = gold_sizes[name]
         nonzero = [s for s in sizes if s > 0]
+        # No raw query text: coverage.json is committable, so it stays inside
+        # the ADR 0005 private-local boundary (ADR 0065: qid + categories +
+        # metric values only). Counts/percentiles below carry the signal; the
+        # private query strings must never enter git.
         return {
             "n": len(cases_b),
             "pct": round(100.0 * len(cases_b) / n, 1) if n else 0.0,
@@ -125,9 +129,6 @@ def analyze_coverage(
             "gold_size_median": statistics.median(nonzero) if nonzero else 0,
             "gold_size_mean": round(statistics.mean(nonzero), 1) if nonzero else 0.0,
             "query_types": dict(query_type_by_bucket[name]),
-            "sample_queries": [
-                str(c.get("query") or "")[:70] for c in cases_b[:5]
-            ],
         }
 
     return {
