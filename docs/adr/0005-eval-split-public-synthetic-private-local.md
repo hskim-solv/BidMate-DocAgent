@@ -28,7 +28,7 @@
 
 경계는 example 파일 컨벤션(`*.example.yaml`) + `.gitignore` 가 강제. 모든 새 eval 표면은 한쪽을 선택 — public-redistributable 또는 strictly local.
 
-예: Phase 3.5 retrieval mode-winner 결정([ADR 0058](0058-phase35-mode-winner.md))의 evidence 인 real100 measurement(kordoc 26k chunks, n=221)는 **strictly-local** surface 에 속한다 — corpus·case 텍스트는 gitignored, aggregate REPORT 만 committable. 이 cross-ref 가 없으면 새 측정 표면이 어느 slice 인지 모호해진다.
+예: Phase 3.5 retrieval mode-winner 결정([ADR 0058](0058-phase35-mode-winner.md))의 evidence 인 real100 measurement(csv_text-fallback 인덱스 898 chunks — kordoc-full ~26,376 은 미사용 reference, n=221)는 **strictly-local** surface 에 속한다 — corpus·case 텍스트·doc/chunk ID 는 gitignored, committable 은 aggregate 산출물 4개 (`REPORT.md` + `mode_specs.json` + `deltas.json` + `raw_results.json`, qid/categories/metric 값만). 이 cross-ref 가 없으면 새 측정 표면이 어느 slice 인지 모호해진다.
 
 ## 결과
 
