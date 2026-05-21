@@ -1,11 +1,11 @@
-# ADR 0059 — Failure-mode classifier as a new measurement surface
+# ADR 0059 — Failure-mode classifier 를 새 측정 표면(measurement surface)으로
 
 - Status: Accepted
 - Implemented: #1001 (2026-05-19) — `eval/scorers/failure_classifier.py` 7-category taxonomy
 - Date: 2026-05-19
 - Authors: Hyunsoo Kim
 - Related: ADR 0006 (real-data LLM-judge), ADR 0054 (conditional-on-substantive-answer scorer semantics), ADR 0055 (claim_validator PR gate), ADR 0056 (rationality_judge measurement surface)
-- Augments: Phase 5 audit (`docs/audits/eval-framework-phase5-audit.md`, PR #992) item 1 supply ("Failure taxonomy 정의 ◐ partial — 3-bin abstention_outcomes 만 존재, 7-category taxonomy 부재")
+- Augments: Phase 5 audit (`docs/audits/eval-framework-phase5-audit.md`, PR #992) item 1 공급(supply) ("Failure taxonomy 정의 ◐ partial — 3-bin abstention_outcomes 만 존재, 7-category taxonomy 부재")
 - Issue: #996
 
 ## Context

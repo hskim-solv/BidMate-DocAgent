@@ -58,20 +58,20 @@ real-data 사이클 나머지처럼 수동. retrieval/verifier 변경 후 `make 
 
 ## 결과
 
-**Wins**
+**이득**
 
 - real-data 품질의 독립 신호, `agreement_with_verifier` 통해 deterministic verifier 출력 게이트
 - ADR 0005 commit 경계 보존: judge 케이스별 텍스트는 절대 commit 안 됨
 - ADR 0004 공개 경로 보존: synthetic CI 는 여전히 deterministic·free·offline·reproducible
 - 향후 threshold 튜닝(예: #89)에 synthetic eval set 보다 overfit 어려운 second-opinion 체크 확보
 
-**Costs**
+**비용**
 
 - real-data run 당 토큰 비용 (현재 ~21 케이스 × judge 호출). 수동 cadence + 작은 N 으로 bound
 - real-data 표면에 외부 의존성 존재. judge outage 가 deterministic eval 을 깨진 않음 — 그 run 에서 `agreement_with_verifier` 가 단순 미계산
 - 사용자가 기억할 것 하나 추가. `make real-eval-with-judge` 가 단계 오케스트레이션으로 완화
 
-**Constraint (ADR 0004 + ADR 0005 불변)**
+**제약 (ADR 0004 + ADR 0005 불변)**
 
 - 공개 CI 는 외부 LLM 호출 금지. 컨벤션 강제; 공개 표면 스크립트가 `scripts/llm_judge.py` import 안 함
 - aggregate-only commit 경계는 `extract_aggregate` + `_assert_no_forbidden` 재귀 가드 재사용으로 강제
