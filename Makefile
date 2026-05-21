@@ -339,11 +339,13 @@ real-eval-delta:
 # not on every eval. Diff the result with `git diff` before committing.
 #
 # Pass STRICT=1 (or set BIDMATE_BASELINE_STRICT=1, issue #414) to escalate
-# the two existing provenance warnings (no eval-side provenance; eval/
-# baseline SHA skew per issue #160) to hard failures — for CI/pre-push
-# or any gate that requires a self-consistent baseline.
+# the provenance warnings (no eval-side provenance; eval/baseline SHA skew
+# per issue #160; dirty worktree per issue #1148) to hard failures — for
+# CI/pre-push or any gate that requires a self-consistent baseline.
+# Pass ALLOW_DIRTY=1 (or BIDMATE_BASELINE_ALLOW_DIRTY=1) to override the
+# dirty-worktree gate for a deliberate dirty baseline (#1148).
 real-eval-baseline-update:
-	$(PYTHON) scripts/write_real_eval_baseline.py $(if $(STRICT),--strict,)
+	$(PYTHON) scripts/write_real_eval_baseline.py $(if $(STRICT),--strict,) $(if $(ALLOW_DIRTY),--allow-dirty,)
 
 # Render the chronological real-data history table into
 # docs/real-data/private-100-doc-experiments.md (between the
