@@ -56,3 +56,22 @@ ADR 0064 의 stub first-run 은 operator(Q2) 대비 raw 0/5 / κ −0.389 를 �
 
 - 제시 순서 교정 (Q2-2026.json + ADR Verification 의 5행 매트릭스 head / κ 패밀리 각주 강등) — 별도 follow-up.
 - 시점정합 stats 수집 메커니즘 (collector `evidence_age_days` emit + same-snapshot 재채점) — 별도 follow-up, 단 위 전제조건상 openai run 보다 먼저.
+
+## Outcome (2026-05-21) — 예측 falsified
+
+원 prior·Lock 절은 위 그대로 둔다 (규약: 사후 이동 금지, 추가 기록만).
+
+- **실행**: `--backend openai_compatible`, model `gpt-4.1`. (gpt-5.x 계열 전체가 `temperature=0` 거부 → 판정자 코드의 temp=0 하드코딩과 비호환. temp=0 지원 최신 OpenAI 모델로 폴백. 별도 follow-up: `judge_common` temperature 설정화로 gpt-5.x 해금.)
+- **스냅샷**: `ae08bc6c8ffb2f0e8514ace0bbb0596f7796fe4b46268834ef33640d38356ce2` (stub과 동일 = 시점정합 충족, (b) 통제).
+- **결과**: openai-vs-stub **raw 5/5, κ = +1.000** (weighted linear/quadratic +1.0/+1.0, ρ +1.0). 산출: `reports/self_review_agreement/Q2-openai-vs-stub.json`. (gpt-4.1 은 프롬프트에 신호+임계값만 받음 — stub 판정 미노출, 독립 일치.)
+
+**판정 (잠긴 규칙 적용):**
+
+- 예측 κ ∈ 0.3–0.6 / lean (a) ~55% → **빗나감 (falsified).**
+- κ = 1.0 ≥ 0.7 → **(c) 구간.** 결정론 stub 과 독립 외부 LLM 이 동일 스냅샷에서 판정 100% 일치 = 규칙(rubric)은 **operationalize 된다.** → **(a) underspecified 반증.** 따라서 Q2 operator-vs-stub 0/5 불일치는 규칙 모호성이 아니라 **operator 가 outlier** → **(c) 지지** (자기채점 deviation; 원 red-team 비판 뒷받침).
+
+**남은 caveat:**
+
+1. **n=5, 단일 스냅샷.** 완전 일치는 *이 스냅샷의 값들이 임계값 경계에서 멀어* 두 구현이 안 갈렸다는 것. 모든 신호값에서 무모호 증명 아님 — 경계 근처 값 재검정 필요.
+2. **(c) ↔ (b) 완전 분리는 미완.** 이 실험은 openai·stub 를 같은 스냅샷에 돌려 (b) 를 통제했으므로 (a) 반증은 깨끗하다. 하지만 "operator 가 부풀렸다" 의 직접 증명은 **operator 가 동일 스냅샷을 *blind* (consensus 미노출) 재채점**해야 닫힌다. Q2 operator 는 복원불가 스냅샷 → 그 비교엔 (b) 잔존. → 남은 깨끗한 검정.
+3. **gpt-4.1 (gpt-5.x 아님).** temp=0 제약. 단 *약한* 모델이 결정론 인코딩과 완전 일치한 것은 "규칙 무모호" 를 약화가 아니라 **강화**한다 (강한 모델이 더 갈릴 이유 없음).

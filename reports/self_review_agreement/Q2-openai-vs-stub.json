@@ -1,0 +1,65 @@
+{
+  "local": {
+    "axis_1_context_efficiency": {
+      "axis": "컨텍스트 효율",
+      "judge_verdict": "△",
+      "operator_verdict": "△"
+    },
+    "axis_2_agent_delegation": {
+      "axis": "Agent 위임 패턴",
+      "judge_verdict": "✗",
+      "operator_verdict": "✗"
+    },
+    "axis_3_governance_roi": {
+      "axis": "거버넌스 자동화 ROI",
+      "judge_verdict": "✓",
+      "operator_verdict": "✓"
+    },
+    "axis_4_cycle_time": {
+      "axis": "사이클 타임",
+      "judge_verdict": "✓",
+      "operator_verdict": "✓"
+    },
+    "axis_5_memory_hygiene": {
+      "axis": "메모리 위생",
+      "judge_verdict": "✓",
+      "operator_verdict": "✓"
+    }
+  },
+  "aggregate": {
+    "backend": "openai_compatible",
+    "judge_verdicts": {
+      "axis_1_context_efficiency": "△",
+      "axis_2_agent_delegation": "✗",
+      "axis_3_governance_roi": "✓",
+      "axis_4_cycle_time": "✓",
+      "axis_5_memory_hygiene": "✓"
+    },
+    "agreement": {
+      "n": 5,
+      "cohens_kappa": 1.0,
+      "spearman_rho": 1.0,
+      "confusion": {
+        "supported": {
+          "supported": 3,
+          "partial": 0,
+          "insufficient": 0
+        },
+        "partial": {
+          "supported": 0,
+          "partial": 1,
+          "insufficient": 0
+        },
+        "insufficient": {
+          "supported": 0,
+          "partial": 0,
+          "insufficient": 1
+        }
+      },
+      "threshold": 0.6,
+      "passes": true,
+      "weighted_kappa_linear": 1.0,
+      "weighted_kappa_quadratic": 1.0
+    }
+  }
+}
