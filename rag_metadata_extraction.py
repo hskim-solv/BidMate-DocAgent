@@ -33,6 +33,8 @@ import re
 from dataclasses import asdict, dataclass
 from typing import Any
 
+from bidmate_data_boundary import assert_external_payload_allowed
+
 
 METADATA_SCHEMA_VERSION = 1
 ENV_BACKEND = "BIDMATE_METADATA_BACKEND"
@@ -257,6 +259,10 @@ def _stub_backend(document: dict[str, Any]) -> MetadataExtraction:
 def _anthropic_tool_use_backend(  # pragma: no cover - network
     document: dict[str, Any],
 ) -> MetadataExtraction:
+    # Fail closed before any SDK import / network call: the joined body
+    # text below leaves the process, so the data-surface attestation must
+    # pass first (ADR 0061 ③ / ADR 0005).
+    assert_external_payload_allowed(channel="metadata_extraction:anthropic_tool_use")
     try:
         import anthropic  # type: ignore[import-not-found]
     except Exception as exc:
@@ -302,6 +308,7 @@ def _anthropic_tool_use_backend(  # pragma: no cover - network
 def _openai_function_call_backend(  # pragma: no cover - network
     document: dict[str, Any],
 ) -> MetadataExtraction:
+    assert_external_payload_allowed(channel="metadata_extraction:openai_function_call")
     try:
         from openai import OpenAI  # type: ignore[import-not-found]
     except Exception as exc:

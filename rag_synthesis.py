@@ -36,6 +36,8 @@ import os
 import time
 from typing import Any
 
+from bidmate_data_boundary import assert_external_payload_allowed
+
 SYNTHESIS_SCHEMA_VERSION = 2
 ENV_BACKEND = "BIDMATE_SYNTHESIS_BACKEND"
 ENV_MODEL = "BIDMATE_SYNTHESIS_MODEL"
@@ -387,6 +389,10 @@ def _anthropic_backend(  # pragma: no cover - network
     answer: dict[str, Any],
     evidence: list[dict[str, Any]],
 ) -> dict[str, Any]:
+    # Fail closed before any SDK import / network call: the evidence chunk
+    # text in the prompt below leaves the process, so the data-surface
+    # attestation must pass first (ADR 0061 ③ / ADR 0005).
+    assert_external_payload_allowed(channel="synthesis:anthropic")
     try:
         import anthropic  # type: ignore[import-not-found]
     except Exception as exc:
@@ -455,6 +461,7 @@ def _openai_compatible_backend(  # pragma: no cover - network
     answer: dict[str, Any],
     evidence: list[dict[str, Any]],
 ) -> dict[str, Any]:
+    assert_external_payload_allowed(channel="synthesis:openai_compatible")
     try:
         from openai import OpenAI  # type: ignore[import-not-found]
     except Exception as exc:
