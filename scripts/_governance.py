@@ -95,6 +95,7 @@ KNOWN_HOOKS: set[str] = {
     "loadbearing",
     "memory-lines",
     "adr-template",
+    "adr-collision",
     "plan-slug-race",
     "delegation-gate",
     "stop-ship",
