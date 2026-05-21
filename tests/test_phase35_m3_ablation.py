@@ -156,12 +156,12 @@ class ReaggregateMainTest(unittest.TestCase):
             for metric in ["chunk_recall@5", "chunk_recall@10", "mrr", "ndcg@10"]:
                 self.assertIn(f"## {metric}", report)
                 self.assertIn(
-                    f"### {metric} — paired CI delta vs `dense_m3`", report
+                    f"### {metric} — `dense_m3` 대비 paired CI delta", report
                 )
-            # Variant header + per-category winner + Notes section.
-            self.assertIn("## Variants", report)
-            self.assertIn("## Per-category winner", report)
-            self.assertIn("## Notes", report)
+            # Variant header + per-category winner + Notes section (Korean).
+            self.assertIn("## 변형(variants)", report)
+            self.assertIn("## 카테고리별 winner", report)
+            self.assertIn("## 비고(notes)", report)
             # 3-variant grid must be in the variants table (m3 is the
             # one that distinguishes Phase 3.5 from Phase 3).
             self.assertIn("`dense_m3`", report)
