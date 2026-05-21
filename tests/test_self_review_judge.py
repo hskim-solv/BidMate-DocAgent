@@ -173,6 +173,45 @@ def test_axis_5_null_freshness_is_fail():
     assert stub_verdicts(stats)["axis_5_memory_hygiene"] == "✗"
 
 
+def _gov_with_memory_lines(aware: int, blocked: int) -> dict:
+    """governance_hooks block keeping axis #3 ✓ + a 5-A memory_lines signal."""
+    return {
+        "pretooluse_loadbearing_fires": 20,
+        "fires_by_action": {"aware": 18, "ok": 2},
+        "memory_lines": {"aware": aware, "blocked": blocked},
+    }
+
+
+def test_axis_5_absent_memory_lines_falls_back_to_5b():
+    """5-A field absent (old collector) → grade on 5-B alone (✓ here)."""
+    # _base_stats has no governance_hooks.memory_lines key.
+    assert stub_verdicts(_base_stats())["axis_5_memory_hygiene"] == "✓"
+
+
+def test_axis_5_blocked_forces_fail():
+    """5-A: blocked ≥1 (index edit refused) → ✗, dominates a ✓ 5-B."""
+    stats = _base_stats(governance_hooks=_gov_with_memory_lines(aware=0, blocked=1))
+    assert stub_verdicts(stats)["axis_5_memory_hygiene"] == "✗"
+
+
+def test_axis_5_zero_count_is_partial():
+    """5-A: present but count=0 → △ (측정 부재), combined with ✓ 5-B → △."""
+    stats = _base_stats(governance_hooks=_gov_with_memory_lines(aware=0, blocked=0))
+    assert stub_verdicts(stats)["axis_5_memory_hygiene"] == "△"
+
+
+def test_axis_5_high_aware_is_partial():
+    """5-A: blocked=0 + aware≥3 → △, combined with ✓ 5-B → △."""
+    stats = _base_stats(governance_hooks=_gov_with_memory_lines(aware=3, blocked=0))
+    assert stub_verdicts(stats)["axis_5_memory_hygiene"] == "△"
+
+
+def test_axis_5_both_subsignals_pass():
+    """5-A ✓ (blocked=0 + aware≤2) AND 5-B ✓ → combined ✓."""
+    stats = _base_stats(governance_hooks=_gov_with_memory_lines(aware=2, blocked=0))
+    assert stub_verdicts(stats)["axis_5_memory_hygiene"] == "✓"
+
+
 def test_unknown_backend_raises():
     """Unknown backend → ValueError."""
     with pytest.raises(ValueError):
