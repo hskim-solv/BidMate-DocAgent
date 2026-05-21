@@ -638,7 +638,9 @@ def proposed_adr_age(
             grandfathered = False
             over_sla = False
         else:
-            age_days = (today - first_commit).days
+            # Floor at 0: a commit author-dated ahead of `today` (KST/+09:00
+            # vs the runner's UTC clock) would otherwise yield a negative age.
+            age_days = max(0, (today - first_commit).days)
             grandfathered = first_commit < grandfather_date
             over_sla = (not grandfathered) and age_days > sla
         records.append(
