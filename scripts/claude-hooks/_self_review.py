@@ -363,7 +363,15 @@ def _compute_adr_lags(repo: str, start: str, end: str) -> list[dict[str, Any]]:
             ).stdout.strip().splitlines()
             if not proposed_lines:
                 continue
-            proposed_dt = datetime.fromisoformat(proposed_lines[-1])
+            # git's `%aI` emits a trailing `Z` for UTC, which
+            # `datetime.fromisoformat` only accepts on Python 3.11+. Route both
+            # timestamps through `_parse_gh_iso` (which normalizes `Z`) so the
+            # parse also works on 3.9/3.10 — otherwise the ValueError is
+            # swallowed by the `except` below and the entire ADR-lag signal
+            # silently empties on older interpreters.
+            proposed_dt = _parse_gh_iso(proposed_lines[-1])
+            if proposed_dt is None:
+                continue
             if proposed_dt.tzinfo is None:
                 proposed_dt = proposed_dt.replace(tzinfo=timezone.utc)
 
@@ -374,7 +382,9 @@ def _compute_adr_lags(repo: str, start: str, end: str) -> list[dict[str, Any]]:
             ).stdout.strip().splitlines()
             if not accepted_lines:
                 continue
-            accepted_dt = datetime.fromisoformat(accepted_lines[0])
+            accepted_dt = _parse_gh_iso(accepted_lines[0])
+            if accepted_dt is None:
+                continue
             if accepted_dt.tzinfo is None:
                 accepted_dt = accepted_dt.replace(tzinfo=timezone.utc)
         except (subprocess.TimeoutExpired, ValueError, OSError):
