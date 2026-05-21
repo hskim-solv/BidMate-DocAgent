@@ -11,7 +11,13 @@ Exercises ``scripts/claude-hooks/pretooluse-adr-collision.sh``:
 The hook shells out to ``gh pr list``, which is non-deterministic in CI, so
 a fake ``gh`` is written into a temp ``bin/`` and prepended to PATH. The
 stub touches a marker file so tests can assert the early-exit gates never
-reach the network. The hook is copied into a per-test temp REPO_ROOT so
+reach the network, records its argv so a test can assert the query shape,
+and *simulates GitHub's ``in:title`` search filter* — the load-bearing part
+of the issue #1155 regression: a stub that echoed unconditionally let the
+title-prefilter bug (defect #1) pass unnoticed, because a branch-only
+reservation with no "ADR" in its title was returned anyway. The hook +
+``scripts/_governance.py`` are copied into a per-test temp REPO_ROOT so the
+gate-2b regex import and the ``--emit-fire`` telemetry call resolve, and
 ``.hook-fires.log`` writes stay isolated from the developer's machine.
 """
 from __future__ import annotations
@@ -40,11 +46,16 @@ class TestPreToolUseAdrCollision(unittest.TestCase):
         (self._tmp_repo / "docs" / "adr").mkdir(parents=True)
         (self._tmp_repo / "src").mkdir(parents=True)
         shutil.copy(HOOK, self._tmp_repo / "scripts" / "claude-hooks" / HOOK.name)
+        # Gate 2b imports ADR_FILENAME_RE and the block path calls --emit-fire;
+        # both need _governance.py resolvable under the temp REPO_ROOT.
+        shutil.copy(REPO / "scripts" / "_governance.py",
+                    self._tmp_repo / "scripts" / "_governance.py")
         self._hook = self._tmp_repo / "scripts" / "claude-hooks" / HOOK.name
         self._fires_log = self._tmp_repo / ".claude" / ".hook-fires.log"
         self._bin = self._tmp_repo / "bin"
         self._bin.mkdir()
         self._gh_marker = self._tmp_repo / "gh_called"
+        self._gh_args = self._tmp_repo / "gh_args"
 
     def tearDown(self) -> None:
         shutil.rmtree(self._tmp, ignore_errors=True)
@@ -54,18 +65,49 @@ class TestPreToolUseAdrCollision(unittest.TestCase):
     # ------------------------------------------------------------------
 
     def _write_gh_stub(self, json_output: str, exit_code: int = 0) -> None:
-        """Fake `gh` that records invocation then echoes canned JSON."""
+        """Fake `gh` that records argv, simulates GitHub's `in:title` search
+        filter, then echoes the (possibly filtered) JSON.
+
+        The `in:title` simulation is the regression's teeth: real
+        `gh pr list --search "ADR in:title"` drops PRs whose *title* lacks
+        the term even when the head branch reserves the number, so a hook
+        that re-adds an `in:title` prefilter would see `[]` here and the
+        branch-only collision tests would fail (defect #1, issue #1155).
+        When the hook lists open PRs without `--search`, the stub returns
+        every canned PR unchanged.
+        """
         gh = self._bin / "gh"
         gh.write_text(
-            "#!/usr/bin/env bash\n"
-            f"touch '{self._gh_marker}'\n"
-            f"cat <<'JSON'\n{json_output}\nJSON\n"
-            f"exit {exit_code}\n"
+            "#!/usr/bin/env python3\n"
+            "import json, sys, pathlib\n"
+            f"pathlib.Path({str(self._gh_marker)!r}).touch()\n"
+            f"pathlib.Path({str(self._gh_args)!r}).write_text("
+            "' '.join(sys.argv[1:]))\n"
+            f"raw = {json_output!r}\n"
+            "argv = sys.argv[1:]\n"
+            "try:\n"
+            "    prs = json.loads(raw)\n"
+            "except Exception:\n"
+            "    sys.stdout.write(raw)\n"
+            f"    sys.exit({exit_code})\n"
+            "if '--search' in argv:\n"
+            "    i = argv.index('--search')\n"
+            "    val = argv[i + 1] if i + 1 < len(argv) else ''\n"
+            "    if 'in:title' in val:\n"
+            "        term = val.split('in:title')[0].strip().lower()\n"
+            "        prs = [p for p in prs\n"
+            "               if term in (p.get('title', '') or '').lower()]\n"
+            "print(json.dumps(prs))\n"
+            f"sys.exit({exit_code})\n"
         )
         gh.chmod(0o755)
 
     def _gh_was_called(self) -> bool:
         return self._gh_marker.exists()
+
+    def _gh_argv(self) -> str:
+        """Recorded argv of the last fake-`gh` invocation ('' if never run)."""
+        return self._gh_args.read_text() if self._gh_args.exists() else ""
 
     def _run(self, file_path: str, tool_name: str = "Write"):
         payload = {"tool_name": tool_name, "tool_input": {"file_path": file_path}}
@@ -141,7 +183,10 @@ class TestPreToolUseAdrCollision(unittest.TestCase):
         self.assertIn("open_pr=900", line)
 
     def test_collision_via_branch_name_blocks(self) -> None:
-        # title lacks the number; only the head branch reserves it.
+        # The title lacks BOTH the number AND "ADR"; only the head branch
+        # reserves it. With the stub's `in:title` simulation, a hook that
+        # prefilters by title (defect #1) would never see this PR and would
+        # pass — so this is now a genuine cross-worktree-branch regression.
         self._write_gh_stub(
             '[{"number":901,"title":"sync stuff","headRefName":"docs/issue-5-adr-0060-foo"}]'
         )
@@ -149,11 +194,39 @@ class TestPreToolUseAdrCollision(unittest.TestCase):
         self.assertEqual(r.returncode, 2, msg=r.stderr)
         self.assertIn("901", r.stderr)
 
+    def test_gh_query_does_not_prefilter_by_title(self) -> None:
+        # Defect #1 (issue #1155): `gh pr list --search "ADR in:title"` drops
+        # PRs whose title lacks "ADR" even when the head branch reserves the
+        # number. The hook must list open PRs (with a --limit above gh's
+        # default 30) and filter title+headRefName locally instead.
+        self._write_gh_stub(
+            '[{"number":910,"title":"sync stuff","headRefName":"docs/issue-5-adr-0060-foo"}]'
+        )
+        r = self._run(self._adr_path("0060-mine.md"))
+        self.assertEqual(r.returncode, 2, msg=r.stderr)
+        argv = self._gh_argv()
+        self.assertIn("--state open", argv)
+        self.assertIn("--limit", argv)
+        self.assertNotIn("in:title", argv)
+
     def test_zero_pad_insensitive_match_blocks(self) -> None:
         self._write_gh_stub('[{"number":902,"title":"ADR-60 thing","headRefName":"x"}]')
         r = self._run(self._adr_path("0060-mine.md"))
         self.assertEqual(r.returncode, 2, msg=r.stderr)
         self.assertIn("902", r.stderr)
+
+    def test_mixed_case_adr_filename_is_guarded(self) -> None:
+        # Defect #2 (issue #1155): governance ADR_FILENAME_RE accepts
+        # [a-zA-Z0-9] (widened for realN ADRs, #818). A lowercase-only gate
+        # regex silently skipped the collision check for a mixed-case slug;
+        # reusing the SSoT regex guards it.
+        self._write_gh_stub(
+            '[{"number":911,"title":"ADR 0060 realN","headRefName":"docs/issue-9-adr-0060"}]'
+        )
+        r = self._run(self._adr_path("0060-realN-metrics.md"))
+        self.assertEqual(r.returncode, 2, msg=r.stderr)
+        self.assertIn("911", r.stderr)
+        self.assertIn("0060", r.stderr)
 
     # ------------------------------------------------------------------
     # no collision / fail-open — pass (exit 0)

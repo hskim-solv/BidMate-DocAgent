@@ -212,7 +212,7 @@ def filter_window(events: list[dict], window: str) -> list[dict]:
 # Canonical hook inventory — matches scripts/claude-hooks/README.md table.
 ALL_HOOKS = [
     "bash-guard", "loadbearing", "memory-lines",
-    "adr-template", "plan-slug-race",
+    "adr-template", "adr-collision", "plan-slug-race",
     "delegation-gate", "stop-ship",
 ]
 
