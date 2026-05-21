@@ -225,6 +225,41 @@ def test_axis_5_both_subsignals_pass():
     assert stub_verdicts(stats)["axis_5_memory_hygiene"] == "✓"
 
 
+def test_openai_backend_applies_time_separation_guard(monkeypatch):
+    """ADR 0064 backend symmetry: the openai backend's raw verdicts pass
+    through _guard_downgrade too (evidence_age_days < 1.0 → ✓→△), matching
+    the stub path.
+
+    Regression for the asymmetry deferred out of PR #1187: _guard_downgrade
+    was applied only inside stub_verdicts, so an all-✓ openai verdict on
+    same-day evidence stayed ✓ while stub forced it to △. We monkeypatch
+    openai_verdicts to a fixed all-✓ dict so the assertion isolates the
+    guard, not the (unmocked) LLM call.
+    """
+    all_pass = {
+        "axis_1_context_efficiency": "✓",
+        "axis_2_agent_delegation": "✓",
+        "axis_3_governance_roi": "✓",
+        "axis_4_cycle_time": "✓",
+        "axis_5_memory_hygiene": "✓",
+    }
+    monkeypatch.setattr(
+        "eval.judges.self_review_judge.openai_verdicts",
+        lambda *_: dict(all_pass),
+    )
+    # same-day evidence (< 1.0 day) → the guard must fire on the openai path.
+    _, agg = judge_self_review(
+        _base_stats(evidence_age_days=0.5), backend="openai_compatible"
+    )
+    assert agg["judge_verdicts"] == {k: "△" for k in all_pass}, agg
+    # control: age ≥ 1.0 leaves the verdicts untouched, proving the downgrade
+    # is the time-separation guard and not an unconditional rewrite.
+    _, agg_old = judge_self_review(
+        _base_stats(evidence_age_days=2.0), backend="openai_compatible"
+    )
+    assert agg_old["judge_verdicts"] == all_pass, agg_old
+
+
 def test_unknown_backend_raises():
     """Unknown backend → ValueError."""
     with pytest.raises(ValueError):
