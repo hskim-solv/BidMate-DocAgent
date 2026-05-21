@@ -25,7 +25,7 @@ variance audit (#1025) 는 또한 절대 failure count 가
 
 ## Decision
 
-두 부분으로 구성된 **failure-rate regression contract** 를 도입한다:
+세 부분으로 구성된 **failure-rate regression contract** 를 도입한다:
 
 1. `tests/test_failure_rate_regression.py` 가 커밋된
    `reports/real100/baseline.aggregate.json` (aggregate-only, ADR 0005
@@ -45,13 +45,37 @@ variance audit (#1025) 는 또한 절대 failure count 가
    (b) real-eval set 에 대표 예시 ≥5 추가, (c) `test_failure_rate_regression.py` 에서
    그 ceiling 설정 또는 tighten, (d) supply 2 dashboard 가 렌더링. 이것이 closed loop 다.
 
+3. `scripts/check_branch_and_issue.py --check-ceiling-ratchet` (CI 의
+   `branch-and-issue-check.yml` 에 wired) 가 커밋된 ceiling 을 base 브랜치와
+   diff 하여, gate 대상 ceiling 을 **상향**하거나 gated 카테고리를 **제거**하는
+   PR 을 PR 본문에 명시적 `[ALLOW_REGRESSION: <category> ...]` 토큰이 없으면
+   실패시킨다. 이것이 "정당화 없이는 절대 올라가지 않는다" 를 운영자 규율이
+   아닌 실제 gate 로 만든다. in-test `test_ceilings_are_monotone_sane` 은
+   ceiling 을 현재 rate *아래로* 두는 역전(inversion)만 가드하며 상향 자체는
+   잡지 못하므로, 이 CI gate 가 그 갭을 닫는다 (issue #1150).
+
 테스트는 또한 ADR 0059 first-match 계약
 (`verifier_false_negative == abstention_outcomes.incorrect_answer`) 을 재단언하여
 이를 깨뜨리는 향후 ordering 변경도 regression gate 를 실패시키도록 한다.
 
+**CI 강제 vs 운영자(operator) 실행 (정직한 경계).** CI 가 강제하는 것:
+(i) 커밋된 baseline 의 rate ≤ ceiling (위 pytest gate — 커밋된 aggregate 를
+읽으므로 private 데이터 없이 CI 에서 실행), (ii) ceiling ratchet (위 #3 CI gate
+— 정당화 없는 ceiling 상향/제거 차단). CI 가 강제하지 **못하는** 것:
+head-vs-baseline 회귀 탐지 — "이 코드 변경이 *실제로* failure mode 를
+악화시켰는가". real-eval 은 private-local (ADR 0005) 이라 CI 에 head eval 을
+실행할 수 없다. 그 탐지는 운영자가 `make real-eval` + `make real-eval-delta` 를
+돌리는 단계이며, delta 는 `failure_category_counts` 도 표면화한다
+(`scripts/run_real_eval_delta.py`). load-bearing 변경의 §5b 요구가 운영자에게
+그 실행을 촉구하는 discipline hook 이다. **잔여 갭(residual gap)**: failure mode 를
+악화시키지만 baseline 을 regen 하지 않는 코드 변경은 CI 에 보이지 않는다 —
+폐루프는 운영자가 real-eval 을 돌려 회귀가 커밋된 baseline 에 반영될 때 비로소
+ceiling 테스트가 발화하는 것에 의존한다.
+
 production code path 변경 없음 (`rag_*.py`, `api/`, `eval/config.yaml`
 미터치). 테스트는 커밋된 baseline 의 read-only consumer 이며, private 데이터
-없이 CI 에서 실행된다.
+없이 CI 에서 실행된다. ceiling-ratchet gate 도 커밋된 ceiling 소스만 비교하므로
+마찬가지로 private 데이터 없이 동작한다.
 
 ## Consequences
 
@@ -66,8 +90,9 @@ production code path 변경 없음 (`rag_*.py`, `api/`, `eval/config.yaml`
   Issue G multi-doc topic spread) 은 구체적 ratchet 목표를 가진다: 커밋된
   rate 를 낮추고, 같은 PR 에서 ceiling 을 tighten.
 - 비용: gate 대상 rate 를 악화시키는 baseline regen 은 이제 수정이나
-  명시적 `[ALLOW_REGRESSION]` ceiling bump 중 하나가 필요 — 설계상 regen PR 에
-  약간 더 많은 마찰.
+  명시적 `[ALLOW_REGRESSION]` ceiling bump 중 하나가 필요하고, ceiling 상향/제거는
+  PR 본문의 `[ALLOW_REGRESSION: <category> ...]` 토큰을 CI 가 확인한다
+  (issue #1150) — 설계상 regen PR 에 약간 더 많은 마찰.
 - ADR 0001 (naive_baseline byte-identical) / 0003 (answer dict) / 0005
   (eval-split aggregate-only) / 0059 (classifier additive) 불변식 모두
   보존.
@@ -90,3 +115,6 @@ production code path 변경 없음 (`rag_*.py`, `api/`, `eval/config.yaml`
 <!-- verifies-key: tests/test_failure_rate_regression.py:def test_gated_category_rates_under_ceiling -->
 <!-- verifies-key: tests/test_failure_rate_regression.py:def test_adr_0059_first_match_contract -->
 <!-- verifies-key: docs/operations/failure-mode-harden-process.md:monotone-harden -->
+<!-- verifies-key: scripts/_governance.py:def ceiling_ratchet_violations -->
+<!-- verifies-key: scripts/check_branch_and_issue.py:def check_ceiling_ratchet_mode -->
+<!-- verifies-key: .github/workflows/branch-and-issue-check.yml:check-ceiling-ratchet -->
