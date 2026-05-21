@@ -32,21 +32,21 @@ Env-var precedence (높음 → 낮음):
 
 ## 결과
 
-**Easier:**
+**쉬워진 점:**
 - pyhwp 설치된 한국어 RFP 사용자가 기본적으로 테이블 구조 획득 — env-var 문서 조회 불필요.
 - 관측 가능한 `last_fallback_reason` 필드(issue #363)가 env-var-never-set 케이스가 아닌 실제 pyhwp 실패를 surface해 유용한 signal이 됨.
 - `BIDMATE_HWP_LOADER=csv`가 발견 가능한, 문서화된 opt-out이지 invisible default 아님.
 
-**Harder / constrained:**
+**어려워진 점 / 제약:**
 - pyhwp가 문서화된 optional 의존성; `requirements-dev.txt` 또는 별도 `requirements-hwp.txt`가 선언해 기여자가 opt-in 가능해야.
 - pyhwp 없는 CI smoke/test 실행이 case 5 (CSV fallback) cover해 import-detection 회귀 catch. 기존 `EMBEDDING_BACKEND=hashing` minimal 설치가 이미 충족.
 - ADR 0001 naive-baseline 불변식 보존: `naive_baseline` eval preset이 HWP 파일을 로드 안 함; loader 기본값 변경이 eval bit-stability에 무영향.
 
-**Re-open 조건:**
+**재오픈(Re-open) 조건:**
 `BIDMATE_HWP_LOADER` unset으로 1회 `make real-eval` cycle 후 비공개 100-doc corpus에서 native-loader fallback rate가 20% 초과면 기본값 또는 pyhwp 감지 로직 재검토.
 
 ## 검토한 대안
 
-- **Option 1 — Deprecate**: 한국어 RFP 사용자에게서 테이블 추출 capability 제거 — 사용 측정 없이 시기상조. pyhwp가 이미 동작하는데 premature.
-- **Option 3 — visual_ingestion v2에 통합**: 올바른 장기 seam이나 `visual_ingestion.py` v2가 아직 미scoped. 이 결정을 phase-3 리팩토링에 블로킹하면 발견 가능성 수정이 무기한 지연.
-- **Option 4 — Keep + Observe**: status quo env-var 게이트. Issue #363 landed 후 관측성이 측정 가능. 추가 deferral은 증거 축적이지만 더 나은 파서를 또 한 eval cycle invisible 유지.
+- **옵션 1 — 폐기(Deprecate)**: 한국어 RFP 사용자에게서 테이블 추출 capability 제거 — 사용 측정 없이 시기상조. pyhwp가 이미 동작하는데 premature.
+- **옵션 3 — visual_ingestion v2에 통합**: 올바른 장기 seam이나 `visual_ingestion.py` v2가 아직 미scoped. 이 결정을 phase-3 리팩토링에 블로킹하면 발견 가능성 수정이 무기한 지연.
+- **옵션 4 — 유지 + 관측(Keep + Observe)**: status quo env-var 게이트. Issue #363 landed 후 관측성이 측정 가능. 추가 deferral은 증거 축적이지만 더 나은 파서를 또 한 eval cycle invisible 유지.

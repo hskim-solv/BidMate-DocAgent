@@ -2,7 +2,7 @@
 
 - **Status**: accepted
 - **Date**: 2026-05-11
-- **Related**: [`docs/agentic/answer-policy.md`](../agentic/answer-policy.md) (working reference, 강제 walkthrough 는 [§계약 강제 메커니즘](../agentic/answer-policy.md#계약-강제-메커니즘)), [`docs/eval/citation-grounding-eval.md`](../eval/citation-grounding-eval.md), [`docs/agentic/verifier-rules.md`](../agentic/verifier-rules.md) (deterministic verifier rules as pseudo-prompts; status / citation mapping table), [`eval/run_eval.py`](../../eval/run_eval.py)
+- **Related**: [`docs/agentic/answer-policy.md`](../agentic/answer-policy.md) (작업 참조(working reference), 강제 walkthrough 는 [§계약 강제 메커니즘](../agentic/answer-policy.md#계약-강제-메커니즘)), [`docs/eval/citation-grounding-eval.md`](../eval/citation-grounding-eval.md), [`docs/agentic/verifier-rules.md`](../agentic/verifier-rules.md) (결정론적 verifier 규칙을 pseudo-prompt 형태로; status / citation 매핑 표), [`eval/run_eval.py`](../../eval/run_eval.py)
 
 ## TL;DR
 

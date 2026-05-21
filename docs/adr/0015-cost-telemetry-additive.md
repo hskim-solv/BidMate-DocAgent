@@ -38,13 +38,13 @@ LLM 합성 경로 (ADR 0011) 가 이미 `diagnostics.synthesis` 에 `tokens_in` 
 
 ## 결과
 
-Easier:
+쉬워지는 점:
 
 - 실데이터 리뷰가 `diagnostics.synthesis.cost_estimate_usd` 직접 읽어 "쿼리당 $" 답 가능. `eval/run_eval.py` 집계는 follow-up PR.
 - "프롬프트 캐싱 활성" 이 더 이상 wish 아님 — 2번째 호출의 `cache_read_tokens > 0` 가 증명. 계약 테스트 (`test_meta_promotes_payload_cache_tokens`) 가 표면 lock.
 - ADR 0003 답변 계약 미접촉; 비용은 `diagnostics` 에 거주, 명시적으로 비계약 표면.
 
-Harder / costs:
+어려워지는 점 / 비용:
 
 - `SYNTHESIS_SCHEMA_VERSION` 2 로 bump. v1 pin 한 consumer 는 업데이트 필요 — ADR 0003 의 "조용한 drift 없음" 가드를 합성 meta 블록에 적용. 병행 v2 dict 도입보다 저렴 판단.
 - Anthropic 가 새 tier 발표 시 가격 카드 종종 업데이트. owner: 다음 ADR-noteworthy 합성 변경 여는 자. 상수는 `rag_synthesis.py:PRICING_PER_MTOK_USD`.
