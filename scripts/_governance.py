@@ -331,6 +331,69 @@ def adr_readme_parity_violations(
     return missing
 
 
+# ---------------------------------------------------------------------------
+# Top-level README ADR-count parity (issue #1156).
+#
+# README.md states the ADR count in two human-facing spots — the prose
+# headline ("… 59개 설계 결정 (ADR).") and the 주요 링크 table row
+# ("| ADR 인덱스 (59개 결정) | … |"). Both were hand-edited and re-staled
+# every time an ADR landed in a concurrent worktree (#1059 corrected the
+# number but not the mechanism — it was off-by-one the moment it merged).
+#
+# Source of truth for the count is the number of NNNN-slug.md ADR *files*,
+# i.e. `len(existing_adr_numbers())` — the same canonical introspection
+# `--next-adr-number` and the collision scanner already use. The
+# docs/adr/README.md index is deliberately NOT the count SoT: its
+# reopen-condition tables re-list ADRs (e.g. one row for `0019 + 0021`), so
+# its row count exceeds the file count. File ↔ index-row parity is held by
+# `test_repo_adr_dir_parity_today`, so the headline count and the ADR index
+# cannot disagree once both are pinned to the file set.
+#
+# `rewrite_readme_adr_count` regenerates both spots (scripts/update_readme_
+# metrics.py calls it on every metrics refresh); `readme_adr_count_violations`
+# is the read-only check the pytest gate uses so drift cannot merge silently.
+# Each pattern's *full match* is only the digit run (the surrounding Korean
+# is a zero-width look-around), so a sub replaces just the number and a
+# rewrite is idempotent.
+# ---------------------------------------------------------------------------
+
+_README_ADR_COUNT_PATTERNS: tuple[tuple[str, "re.Pattern[str]"], ...] = (
+    ("prose headline", re.compile(r"\d+(?=개 설계 결정)")),
+    ("주요 링크 table", re.compile(r"(?<=ADR 인덱스 \()\d+(?=개 결정\))")),
+)
+
+
+def rewrite_readme_adr_count(readme_text: str, count: int) -> str:
+    """Return ``readme_text`` with every ADR-count claim set to ``count``.
+
+    Idempotent — re-running with the already-correct count is a no-op. Only
+    the digit run is rewritten; the surrounding text is preserved verbatim.
+    """
+    out = readme_text
+    for _, pattern in _README_ADR_COUNT_PATTERNS:
+        out = pattern.sub(str(count), out)
+    return out
+
+
+def readme_adr_count_violations(readme_text: str, expected_count: int) -> list[str]:
+    """Return human-readable messages for ADR-count claims that disagree
+    with ``expected_count`` (the SoT = number of NNNN-slug.md files).
+
+    A claim already equal to ``expected_count`` is clean. Absence of any
+    claim is NOT a violation — dropping the count (e.g. switching the
+    headline to a bare ``docs/adr/README.md`` pointer) is an intentional act.
+    """
+    violations: list[str] = []
+    for label, pattern in _README_ADR_COUNT_PATTERNS:
+        for m in pattern.finditer(readme_text):
+            stated = int(m.group(0))
+            if stated != expected_count:
+                violations.append(
+                    f"README {label}: states {stated} ADRs, actual is {expected_count}"
+                )
+    return violations
+
+
 def adr_has_verification_section(adr_path: str | Path) -> bool:
     """Return True if the ADR file contains a `## Verification` H2 header."""
     p = Path(adr_path)

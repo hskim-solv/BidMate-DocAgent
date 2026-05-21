@@ -12,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from eval.bootstrap import format_ci_band  # noqa: E402
 from _utils import fmt_rate  # noqa: E402
+from _governance import existing_adr_numbers, rewrite_readme_adr_count  # noqa: E402
 
 START_MARKER = "<!-- METRICS_TABLE:START -->"
 END_MARKER = "<!-- METRICS_TABLE:END -->"
@@ -440,21 +441,33 @@ def main() -> int:
 
     summary = load_summary(report_path)
     original = readme_path.read_text(encoding="utf-8")
-    updated = replace_section(original, render_table(summary))
+    adr_count = len(existing_adr_numbers(ROOT_DIR / "docs" / "adr"))
+    updated = rewrite_readme_adr_count(
+        replace_section(original, render_table(summary)), adr_count
+    )
 
-    if normalize_outside_markers(original) != normalize_outside_markers(updated):
+    # Guard: outside the metrics marker block, the ONLY sanctioned rewrite is
+    # the ADR count (issue #1156). Apply that same rewrite to the original
+    # before comparing, so the count delta cancels while any *other*
+    # outside-marker drift — e.g. a render_table/replace_section regression —
+    # still trips the guard.
+    baseline = rewrite_readme_adr_count(original, adr_count)
+    if normalize_outside_markers(baseline) != normalize_outside_markers(updated):
         print("[ERROR] Guard failed: changes detected outside metrics marker block", file=sys.stderr)
         return 3
 
     if args.check:
         if original != updated:
-            print("[FAIL] README metrics table is out of date. Run scripts/update_readme_metrics.py")
+            print(
+                "[FAIL] README metrics table or ADR count is out of date. "
+                "Run scripts/update_readme_metrics.py"
+            )
             return 1
-        print("[OK] README metrics table is up-to-date")
+        print("[OK] README metrics table + ADR count up-to-date")
         return 0
 
     readme_path.write_text(updated, encoding="utf-8")
-    print(f"[OK] Updated metrics table in {readme_path}")
+    print(f"[OK] Updated metrics table + ADR count ({adr_count}) in {readme_path}")
     return 0
 
 
