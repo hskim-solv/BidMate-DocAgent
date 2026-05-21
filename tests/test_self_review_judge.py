@@ -9,6 +9,7 @@ guards (time separation, hook-fire silence, low sample).
 from __future__ import annotations
 
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -16,12 +17,20 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+SCRIPTS_HOOKS = ROOT / "scripts" / "claude-hooks"
+if str(SCRIPTS_HOOKS) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_HOOKS))
 
 from eval.judges.self_review_judge import (  # noqa: E402
+    AXIS_KEYS,
     VERDICT_TO_STATUS,
     _weighted_kappa,
     judge_self_review,
     stub_verdicts,
+)
+from _self_review import (  # noqa: E402
+    assemble_stats,
+    compute_evidence_age_days,
 )
 
 
@@ -46,6 +55,10 @@ def _base_stats(**overrides):
             "pr_turnaround_hours": {"mean": 24.0},
         },
         "axis_5_memory_hygiene": {"content_freshness": {"fresh_rate": 0.8}},
+        # Time-separated evidence by default (≥1 day) so the baseline grades
+        # to ✓; guard tests override this. A missing key is exercised
+        # separately (test_missing_evidence_age_downgrades_all_passes).
+        "evidence_age_days": 2.0,
     }
     stats.update(overrides)
     return stats
@@ -216,3 +229,145 @@ def test_unknown_backend_raises():
     """Unknown backend → ValueError."""
     with pytest.raises(ValueError):
         judge_self_review(_base_stats(), backend="bogus")
+
+
+# --- Bug 1: incomplete/invalid operator verdicts no longer pass the gate ---
+
+_OPERATOR_FULL = {key: "✓" for key in AXIS_KEYS}
+
+
+def test_agreement_spans_all_axes():
+    """A complete operator file → agreement over all 5 axes (n == len(AXIS_KEYS))."""
+    _, aggregate = judge_self_review(
+        _base_stats(), dict(_OPERATOR_FULL), backend="stub"
+    )
+    assert aggregate["agreement"]["n"] == len(AXIS_KEYS)
+
+
+def test_partial_operator_raises():
+    """1-of-5 operator file raises, not a silent n=1 / κ=1.0 / passes=True.
+
+    This is the core Bug-1 regression: before the fix, a single valid axis
+    survived the filter and hit compute_agreement's perfect-agreement special
+    case, passing the gate with 4 axes unverified.
+    """
+    partial = {"axis_1_context_efficiency": "✓"}
+    with pytest.raises(ValueError):
+        judge_self_review(_base_stats(), partial, backend="stub")
+
+
+def test_typoed_operator_value_raises():
+    """An out-of-vocabulary verdict raises rather than being silently dropped."""
+    bad = dict(_OPERATOR_FULL)
+    bad["axis_3_governance_roi"] = "yes"  # not one of ✓/△/✗
+    with pytest.raises(ValueError):
+        judge_self_review(_base_stats(), bad, backend="stub")
+
+
+def test_extra_key_operator_raises():
+    """An unexpected extra axis key raises (strict exactly-5-axes contract)."""
+    extra = dict(_OPERATOR_FULL)
+    extra["axis_6_made_up"] = "✓"
+    with pytest.raises(ValueError):
+        judge_self_review(_base_stats(), extra, backend="stub")
+
+
+def test_empty_operator_dict_raises():
+    """An explicit empty operator object raises (missing all axes), not a skip.
+
+    None still means 'no operator provided' (no agreement block); {} is a
+    parse mistake and must fail loudly.
+    """
+    with pytest.raises(ValueError):
+        judge_self_review(_base_stats(), {}, backend="stub")
+
+
+# --- Bug 2: missing evidence_age_days is treated conservatively (downgrade) ---
+
+
+def test_missing_evidence_age_downgrades_all_passes():
+    """A stats dict with no evidence_age_days downgrades every ✓ → △.
+
+    Regression for the dead-guard path: when the producer emits no datable
+    evidence age, the guard must default to the conservative (cannot-confirm)
+    branch rather than no-op and let same-day evidence promote to ✓.
+    """
+    stats = _base_stats()
+    del stats["evidence_age_days"]
+    verdicts = stub_verdicts(stats)
+    assert all(v == "△" for v in verdicts.values()), verdicts
+
+
+def test_compute_evidence_age_days_uses_freshest_timestamp():
+    """Age is measured from the newest datable evidence across all sources."""
+    now = datetime(2026, 5, 21, tzinfo=timezone.utc)
+    stats = {
+        "git": {"prs_merged": [{"date": "2026-05-01"}, {"date": "2026-05-20"}]},
+        "memory": {"files": [{"mtime": "2026-05-10"}]},
+        "governance_hooks": {
+            "rule_to_automation_lag_days": [{"accepted_date": "2026-04-15"}]
+        },
+        "pr_diff_stats": [],
+    }
+    # freshest = 2026-05-20 → exactly 1 day before now
+    assert compute_evidence_age_days(stats, now=now) == pytest.approx(1.0)
+
+
+def test_compute_evidence_age_days_handles_iso_merged_at():
+    """gh merged_at (full ISO with Z) is parsed alongside date-only fields."""
+    now = datetime(2026, 5, 21, 12, 0, tzinfo=timezone.utc)
+    stats = {
+        "git": {"prs_merged": [{"date": "2026-05-01"}]},
+        "pr_diff_stats": [{"merged_at": "2026-05-21T00:00:00Z"}],
+    }
+    # freshest = 2026-05-21T00:00Z, now = +12h → 0.5 day
+    assert compute_evidence_age_days(stats, now=now) == pytest.approx(0.5)
+
+
+def test_compute_evidence_age_days_none_when_no_dates():
+    """No datable evidence → None (the judge then downgrades conservatively)."""
+    now = datetime(2026, 5, 21, tzinfo=timezone.utc)
+    assert compute_evidence_age_days({}, now=now) is None
+    assert (
+        compute_evidence_age_days(
+            {"git": {"prs_merged": []}, "memory": {"files": []}}, now=now
+        )
+        is None
+    )
+
+
+def test_compute_evidence_age_days_floors_at_zero():
+    """A future timestamp (clock skew) floors to 0.0, never negative."""
+    now = datetime(2026, 5, 21, tzinfo=timezone.utc)
+    stats = {"git": {"prs_merged": [{"date": "2026-05-25"}]}}
+    assert compute_evidence_age_days(stats, now=now) == 0.0
+
+
+def test_compute_evidence_age_days_same_day_under_one():
+    """Same-day evidence → age < 1.0 so the time-separation guard fires."""
+    now = datetime(2026, 5, 21, 18, 0, tzinfo=timezone.utc)
+    stats = {"git": {"prs_merged": [{"date": "2026-05-21"}]}}
+    assert compute_evidence_age_days(stats, now=now) < 1.0
+
+
+def test_assemble_stats_emits_evidence_age_and_judge_consumes_it(tmp_path):
+    """Real assemble_stats() shape carries evidence_age_days through the judge.
+
+    Integration regression for the missing producer (Bug 2): before the fix,
+    assemble_stats never emitted the key, so ``"evidence_age_days" in stats``
+    would have been False and this test would have failed. Empty
+    transcripts/memory globs isolate the git-only path (gh fails soft to []).
+    """
+    stats = assemble_stats(
+        quarter="Q2-2026",
+        transcripts_glob=str(tmp_path / "none" / "*.jsonl"),
+        memory_dir=str(tmp_path / "no-memory"),
+        repo=str(ROOT),
+    )
+    assert "evidence_age_days" in stats
+    assert stats["evidence_age_days"] is None or isinstance(
+        stats["evidence_age_days"], float
+    )
+    operator = {key: "△" for key in AXIS_KEYS}
+    _, aggregate = judge_self_review(stats, operator, backend="stub")
+    assert aggregate["agreement"]["n"] == len(AXIS_KEYS)

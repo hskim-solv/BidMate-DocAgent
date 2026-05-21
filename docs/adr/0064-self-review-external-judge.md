@@ -61,10 +61,15 @@
 ## Verification
 
 <!-- verifies-key: eval/judges/self_review_judge.py:judge_self_review -->
+<!-- verifies-key: eval/judges/self_review_judge.py:_validate_operator_verdicts -->
+<!-- verifies-key: scripts/claude-hooks/_self_review.py:compute_evidence_age_days -->
 <!-- verifies-key: tests/test_self_review_judge.py:test_stub_backend_deterministic -->
 <!-- verifies-key: tests/test_self_review_judge.py:test_verdict_status_mapping -->
 <!-- verifies-key: tests/test_self_review_judge.py:test_agreement_against_operator -->
 <!-- verifies-key: tests/test_self_review_judge.py:test_weighted_kappa_ordinal_distance -->
+<!-- verifies-key: tests/test_self_review_judge.py:test_partial_operator_raises -->
+<!-- verifies-key: tests/test_self_review_judge.py:test_missing_evidence_age_downgrades_all_passes -->
+<!-- verifies-key: tests/test_self_review_judge.py:test_assemble_stats_emits_evidence_age_and_judge_consumes_it -->
 
 ### 첫 실행 결과 (Q2-2026, stub backend)
 
@@ -90,7 +95,7 @@
 후속:
 
 - 사용자 key 설정 시 `--backend openai_compatible` 1회 실행 → 외부 LLM verdict 와의 agreement (same-family 편향은 다른 vendor 모델로 완화).
-- collector 가 `evidence_age_days` 를 emit 하면 시간분리 가드가 실제 발화 (현재 null → 미발화) — axis_3 시점 드리프트의 근본 해결 경로.
+- **[완료 #1166]** collector 가 `evidence_age_days` 를 emit → 시간분리 가드 실제 발화. `_self_review.compute_evidence_age_days` 가 freshest 근거 timestamp (PR merge·ADR accepted·memory mtime·gh `merged_at`) 대비 나이를 산출하고, 가드는 `None`(미측정)도 보수적으로 ✓→△ 처리. **재실행 델타** (Q2-2026, 2026-05-21, `evidence_age_days≈0.014 < 1.0`): 가드 발화로 stub axis_3/4/5 가 ✓→△ → operator (axis_1=✓, 나머지 △) 대비 raw 일치 **0/5 → 3/5**, κ **−0.389 → −0.111** (여전히 `passes=False`). 첫 실행 결과(위 표, 2026-05-19 스냅샷)가 진단한 "axis_3 시점 드리프트"의 근본 해결 경로가 실제로 작동함을 확인. 합쳐서, operator JSON 이 5축 전체·유효 verdict 가 아니면 `_validate_operator_verdicts` 가 `ValueError` (이전엔 누락 축이 조용히 drop → n=1 → κ=1.0 통과).
 
 ## Alternatives considered
 
