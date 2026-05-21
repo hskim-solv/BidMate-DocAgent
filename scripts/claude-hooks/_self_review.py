@@ -388,13 +388,15 @@ def _compute_adr_lags(repo: str, start: str, end: str) -> list[dict[str, Any]]:
             "proposed_date": proposed_dt.date().isoformat(),
             "accepted_date": accepted_dt.date().isoformat(),
             "lag_days": lag_days,
-            # lag_days == 0 means proposed and accepted commits land the same
-            # day. That is either a genuine same-day decision or a *retrofit*
-            # (the `-S "**Status**: accepted"` search finds the original
-            # acceptance commit, so a later Verification-surface add looks
-            # zero-lag). Flag it so the LLM rubric layer can separate the two
-            # instead of silently averaging retrofits into the lag p50/p90.
-            "is_retrofit": lag_days == 0,
+            # lag_days == 0 means the proposed and accepted commits land on the
+            # same calendar day. By date alone we cannot tell a genuine same-day
+            # decision from a retrofit (the `-S "**Status**: accepted"` search
+            # finds the original acceptance commit, so a later Verification-surface
+            # add also reads zero-lag). So the flag is named for what it actually
+            # measures — zero lag — not for the retrofit it might be. The rubric
+            # layer treats zero-lag ADRs as needing manual review and grades axis
+            # #4-A on the zero-lag-excluded mean (see compute_adr_lag_summary).
+            "zero_lag": lag_days == 0,
         })
     return results
 
@@ -598,12 +600,14 @@ def compute_adr_lag_summary(adr_lags: list[dict[str, Any]]) -> dict[str, Any]:
         if isinstance(v, (int, float)):
             days.append(float(v))
     summary = _summary_p50_p90(days)
-    # Axis #4 honesty: a lag p50 near 0 can be inflated by retrofits (see
-    # `_compute_adr_lags`). Surface the count so the rubric can subtract
-    # them rather than read a flattering near-zero median at face value.
-    summary["retrofit_count"] = sum(
-        1 for e in adr_lags if e.get("is_retrofit")
-    )
+    # Axis #4 honesty: zero-lag ADRs (same-day proposed→accepted; see
+    # `_compute_adr_lags`) pull the lag mean toward 0 whether they are genuine
+    # fast decisions or retrofits. Surface their count AND a zero-lag-excluded
+    # summary so the rubric grades #4-A on decisions that actually had a lag
+    # instead of reading a flattering near-zero mean at face value.
+    summary["zero_lag_count"] = sum(1 for e in adr_lags if e.get("zero_lag"))
+    non_zero_days = [d for d in days if d != 0.0]
+    summary["non_zero_lag"] = _summary_p50_p90(non_zero_days)
     return summary
 
 
@@ -709,6 +713,8 @@ def assemble_stats(
 def emit_report(stats: dict[str, Any]) -> str:
     """Render Markdown skeleton from stats. LLM (SKILL.md) fills verdicts."""
     quarter = stats["quarter"]
+    adr_lag = stats["axis_4_cycle_time"]["adr_lag_days"]
+    adr_non_zero = adr_lag.get("non_zero_lag", {})
     lines: list[str] = [
         f"# Self-Review {quarter}",
         "",
@@ -726,9 +732,11 @@ def emit_report(stats: dict[str, Any]) -> str:
         ),
         (
             f"- Axis #4 ADR lag (days) mean/p90: "
-            f"{stats['axis_4_cycle_time']['adr_lag_days'].get('mean')} / "
-            f"{stats['axis_4_cycle_time']['adr_lag_days'].get('p90')} "
-            f"(n={stats['axis_4_cycle_time']['adr_lag_days'].get('count')})"
+            f"{adr_lag.get('mean')} / {adr_lag.get('p90')} "
+            f"(n={adr_lag.get('count')}; "
+            f"zero-lag={adr_lag.get('zero_lag_count')}, "
+            f"non-zero mean={adr_non_zero.get('mean')} "
+            f"n={adr_non_zero.get('count')})"
         ),
         (
             f"- Axis #4 PR turnaround (hours) mean/p90: "
