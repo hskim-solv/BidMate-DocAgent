@@ -1,7 +1,7 @@
 {
   "mode": "rag",
-  "query": "기관 A와 기관 B의 AI 요구사항 차이 알려줘",
-  "resolved_query": "기관 A와 기관 B의 AI 요구사항 차이 알려줘",
+  "query": "기관 A와 기관 B의 보안 요구사항 차이를 알려줘",
+  "resolved_query": "기관 A와 기관 B의 보안 요구사항 차이를 알려줘",
   "analysis": {
     "query_type": "comparison",
     "entities": [
@@ -14,14 +14,14 @@
     ],
     "missing_requested_entities": [],
     "topics": [
-      "AI"
+      "보안"
     ],
     "context_entities": [],
     "context_used": false,
     "tokens": [
       "a",
       "b",
-      "ai"
+      "보안"
     ],
     "metadata_matches": [
       {
@@ -48,20 +48,6 @@
         "match_type": "compact_contains",
         "matched_terms": [
           "b"
-        ]
-      },
-      {
-        "doc_id": "rfp-agency-a-ai-quality",
-        "agency": "기관 A",
-        "project": "AI 품질관리 플랫폼 구축",
-        "field": "title",
-        "value": "기관 A AI 품질관리 플랫폼 구축 RFP",
-        "confidence": 0.795,
-        "stage": "reduced",
-        "match_type": "partial_tokens",
-        "matched_terms": [
-          "a",
-          "ai"
         ]
       }
     ],
@@ -128,46 +114,68 @@
       "source": "query",
       "confidence": 1.0,
       "reason": "",
-      "resolved_query": "기관 A와 기관 B의 AI 요구사항 차이 알려줘",
+      "resolved_query": "기관 A와 기관 B의 보안 요구사항 차이를 알려줘",
       "context_entities": [],
       "context_projects": [],
       "active_doc_ids": []
     }
   },
   "plan": {
-    "strategy": "dense",
-    "pipeline": "naive_baseline",
-    "prompt_profile": "minimal_grounded_extractive",
-    "filter_stage": "relaxed",
-    "metadata_first": false,
-    "rerank": false,
-    "verifier_retry": false,
+    "strategy": "metadata-first hybrid (bm25 + dense + lexical + metadata rerank) rrf",
+    "pipeline": "agentic_full",
+    "prompt_profile": "structured_grounded_claims",
+    "filter_stage": "strict",
+    "metadata_first": true,
+    "rerank": true,
+    "rerank_cross_encoder": false,
+    "verifier_retry": true,
     "retrieval_mode": "flat",
-    "retrieval_backend": "dense",
+    "retrieval_backend": "hybrid",
     "rrf_k": 60,
     "bm25_stopword_profile": "shared",
     "bm25_tokenizer": "regex",
-    "metadata_filters": {},
-    "top_k": 4,
+    "metadata_filters": {
+      "doc_ids": [
+        "rfp-agency-a-ai-quality",
+        "rfp-agency-b-mlops-governance"
+      ],
+      "agencies": [
+        "기관 A",
+        "기관 B"
+      ],
+      "projects": [
+        "AI 품질관리 플랫폼 구축",
+        "데이터 거버넌스 및 MLOps 자동화"
+      ],
+      "confidence": 1.0
+    },
+    "top_k": 8,
     "retrieval_budget": {
-      "selected_top_k": 4,
+      "selected_top_k": 8,
       "query_type": "comparison",
-      "reason": "pipeline_or_explicit_override",
+      "reason": "comparison_coverage_adaptive",
       "defaults": {
         "single_doc": 4,
         "follow_up": 6,
         "comparison": 6
       }
     },
-    "relaxed": true,
+    "relaxed": false,
     "retry_policy": "try strict metadata filters, then reduced fuzzy filters, then relaxed retrieval",
+    "comparison_balance": {
+      "enabled": true,
+      "min_per_target": 1,
+      "k_per_target": 3,
+      "headroom": 2,
+      "max_top_k": 12
+    },
     "comparison_targets": [
       "rfp-agency-a-ai-quality",
       "rfp-agency-b-mlops-governance"
     ],
     "comparison_target_field": "doc_id",
-    "candidate_count": 9,
-    "total_chunks": 9,
+    "candidate_count": 237,
+    "total_chunks": 383,
     "filter_fallback_used": false,
     "query_expansion_meta": {
       "backend": "identity",
@@ -175,7 +183,7 @@
       "fell_back": false,
       "fallback_reason": null,
       "latency_ms": 0.0,
-      "expanded_length": 26
+      "expanded_length": 27
     },
     "comparison_coverage": {
       "targets": [
@@ -184,14 +192,15 @@
       ],
       "target_field": "doc_id",
       "before": {
-        "rfp-agency-a-ai-quality": 1,
-        "rfp-agency-b-mlops-governance": 1
+        "rfp-agency-a-ai-quality": 100,
+        "rfp-agency-b-mlops-governance": 137
       },
       "after": {
-        "rfp-agency-a-ai-quality": 1,
-        "rfp-agency-b-mlops-governance": 1
+        "rfp-agency-a-ai-quality": 5,
+        "rfp-agency-b-mlops-governance": 3
       },
-      "balanced": false
+      "balanced": true,
+      "min_per_target": 1
     }
   },
   "answer": {
@@ -203,16 +212,16 @@
       "verification_reasons": []
     },
     "query_type": "comparison",
-    "summary": "기관 A: 사업 개요\n기관 A는 AI 품질관리 플랫폼 구축을 추진한다. 기관 B: AI 요구사항\n기관 B의 핵심 AI 요구사항은 데이터 거버넌스, MLOps 배포 자동화, 모델 모니터링이다.",
+    "summary": "기관 A: 연계 시스템은 보안 관제 콘솔이다. 기관 B: 보안 정책은 기관 B 정보보호 매뉴얼과 정합 운영된다.",
     "claims": [
       {
         "target": "기관 A",
-        "claim": "사업 개요\n기관 A는 AI 품질관리 플랫폼 구축을 추진한다.",
-        "support": "사업 개요\n기관 A는 AI 품질관리 플랫폼 구축을 추진한다. 목표는 모델 성능 저하를 조기에 감지하고 품질 지표를 표준화하는 것이다. AI 요구사항\n기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 시스템은 모델별 정확도와 오류 유형을 수집하고 위험 이벤트를 감사 로그로 남겨야 한다. 일정 및 산출물\n기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. 필수 산출물은 모델 점검 리포트, 보안 통제 매뉴얼, 운영자 교육 자료이다. 제출조건\n제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다.",
+        "claim": "연계 시스템은 보안 관제 콘솔이다.",
+        "support": "검증 기준은 성능 (응답시간 / 처리량 / 동시접속) 임계값 미달 시 재시험을 요청한다. | 지표 | 목표 |\n|---|---|\n| 응답시간 | 평균 2초 이내 |\n| 처리량 | 600건/분 |\n| 동시접속 | 200명 |\n\n보안 (K-ISMS-P / 암호화 / 망분리)\n보안 요구사항은 K-ISMS-P 적용 영역의 항목 100% 적용을 전제로 한다. 전송 구간 암호화는 TLS 1.2 이상을 요구한다. 망분리 구간은 내부 운영망과 외부 연계망으로 구분한다. 보안 정책은 §2.5 FR-009 보안 통제와 §2.7 데이터 보호 등급에 의해 보강된다. 모든 운영 단계에서 보안 통제 미적용 영역이 발견되면 즉시 시정한다. 보안 통제 운영 점검은 분기 1회 수행한다. 이상 감지 시 보안 통제 매트릭스의 적용 항목을 재검토한다. 확인 단계는 보안 점검 3건 진행이다. 연계 시스템은 보안 관제 콘솔이다. 운영 절차는 보안 (K-ISMS-P / 암호화 / 망분리) 적용 시 책임자 승인 후 진행한다.",
         "citations": [
           {
             "doc_id": "rfp-agency-a-ai-quality",
-            "chunk_id": "rfp-agency-a-ai-quality::chunk-001",
+            "chunk_id": "rfp-agency-a-ai-quality::chunk-056",
             "title": "기관 A AI 품질관리 플랫폼 구축 RFP",
             "section": "문서 전체",
             "agency": "기관 A"
@@ -221,12 +230,12 @@
       },
       {
         "target": "기관 B",
-        "claim": "AI 요구사항\n기관 B의 핵심 AI 요구사항은 데이터 거버넌스, MLOps 배포 자동화, 모델 모니터링이다.",
-        "support": "사업 개요\n기관 B는 데이터 거버넌스와 MLOps 자동화를 결합한 운영 체계를 구축한다. 목표는 모델 배포 절차를 표준화하고 데이터 변경 영향을 추적하는 것이다. AI 요구사항\n기관 B의 핵심 AI 요구사항은 데이터 거버넌스, MLOps 배포 자동화, 모델 모니터링이다. 시스템은 데이터 lineage, 모델 drift, 배포 승인 이력을 대시보드로 제공해야 한다. 보안 및 개인정보\n기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다. 보안 통제는 데이터셋 반출 승인과 관리자 작업 기록을 중심으로 설계한다. 일정 및 산출물\n기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다. 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다.",
+        "claim": "보안 정책은 기관 B 정보보호 매뉴얼과 정합 운영된다.",
+        "support": "데이터 입수부터 모델 학습까지의 전 구간에 대해 접근 권한 분리와 감사 로그 자동 보존을 적용하며, 보안 위반 사례는 보안 사고 대응 절차로 즉시 escalation 된다. 보안 정책 위반 발견 시 단계 게이트에서 산출물 회수와 재검증 절차가 발동되며, 위반 영향 범위는 영향 평가 보고서로 별도 정리된다. 보안 정책은 기관 B 정보보호 매뉴얼과 정합 운영된다. 데이터 보존은 데이터 보안 개요 항목의 raw 와 가공 모두를 별도 저장한다. | 보안 영역 | 핵심 정책 |\n|---|---|\n| 개인정보 | 비식별화 + 접근 분리 |\n| 데이터 무결성 | 자동 검증 + 변경 불가 보존 |\n| 감사 로그 | 자동 보존 + 24시간 출력 |\n| 위반 대응 | 즉시 escalation |\n\n개인정보 비식별화 정책\n개인정보 비식별화 정책은 입수 단계에서 자동 식별 및 비식별화를 수행하며, 식별자 마스킹, 준식별자 일반화, 민감 속성 통계적 처리의 3 단계 비식별화 절차를 표준으로 운영한다.",
         "citations": [
           {
             "doc_id": "rfp-agency-b-mlops-governance",
-            "chunk_id": "rfp-agency-b-mlops-governance::chunk-001",
+            "chunk_id": "rfp-agency-b-mlops-governance::chunk-094",
             "title": "기관 B 데이터 거버넌스 및 MLOps 자동화 RFP",
             "section": "문서 전체",
             "agency": "기관 B"
@@ -236,14 +245,14 @@
     ],
     "insufficiency": null
   },
-  "answer_text": "기관 A: 사업 개요\n기관 A는 AI 품질관리 플랫폼 구축을 추진한다. 기관 B: AI 요구사항\n기관 B의 핵심 AI 요구사항은 데이터 거버넌스, MLOps 배포 자동화, 모델 모니터링이다.\n- 기관 A: 사업 개요\n기관 A는 AI 품질관리 플랫폼 구축을 추진한다. [rfp-agency-a-ai-quality::chunk-001]\n- 기관 B: AI 요구사항\n기관 B의 핵심 AI 요구사항은 데이터 거버넌스, MLOps 배포 자동화, 모델 모니터링이다. [rfp-agency-b-mlops-governance::chunk-001]",
+  "answer_text": "기관 A: 연계 시스템은 보안 관제 콘솔이다. 기관 B: 보안 정책은 기관 B 정보보호 매뉴얼과 정합 운영된다.\n- 기관 A: 연계 시스템은 보안 관제 콘솔이다. [rfp-agency-a-ai-quality::chunk-056]\n- 기관 B: 보안 정책은 기관 B 정보보호 매뉴얼과 정합 운영된다. [rfp-agency-b-mlops-governance::chunk-094]",
   "evidence": [
     {
       "doc_id": "rfp-agency-a-ai-quality",
-      "chunk_id": "rfp-agency-a-ai-quality::chunk-001",
+      "chunk_id": "rfp-agency-a-ai-quality::chunk-056",
       "title": "기관 A AI 품질관리 플랫폼 구축 RFP",
-      "text": "사업 개요\n기관 A는 AI 품질관리 플랫폼 구축을 추진한다. 목표는 모델 성능 저하를 조기에 감지하고 품질 지표를 표준화하는 것이다. AI 요구사항\n기관 A의 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다. 시스템은 모델별 정확도와 오류 유형을 수집하고 위험 이벤트를 감사 로그로 남겨야 한다. 일정 및 산출물\n기관 A 일정은 착수 후 4개월 내 MVP를 제출하고 6개월 내 최종 검수를 완료하는 방식이다. 필수 산출물은 모델 점검 리포트, 보안 통제 매뉴얼, 운영자 교육 자료이다. 제출조건\n제안사는 PM, ML 엔지니어, 보안 담당자를 포함한 수행 조직을 제시해야 한다. 보안 통제 경험과 AI 품질관리 프로젝트 경험은 정성평가에 반영된다.",
-      "score": 0.5744,
+      "text": "검증 기준은 성능 (응답시간 / 처리량 / 동시접속) 임계값 미달 시 재시험을 요청한다. | 지표 | 목표 |\n|---|---|\n| 응답시간 | 평균 2초 이내 |\n| 처리량 | 600건/분 |\n| 동시접속 | 200명 |\n\n보안 (K-ISMS-P / 암호화 / 망분리)\n보안 요구사항은 K-ISMS-P 적용 영역의 항목 100% 적용을 전제로 한다. 전송 구간 암호화는 TLS 1.2 이상을 요구한다. 망분리 구간은 내부 운영망과 외부 연계망으로 구분한다. 보안 정책은 §2.5 FR-009 보안 통제와 §2.7 데이터 보호 등급에 의해 보강된다. 모든 운영 단계에서 보안 통제 미적용 영역이 발견되면 즉시 시정한다. 보안 통제 운영 점검은 분기 1회 수행한다. 이상 감지 시 보안 통제 매트릭스의 적용 항목을 재검토한다. 확인 단계는 보안 점검 3건 진행이다. 연계 시스템은 보안 관제 콘솔이다. 운영 절차는 보안 (K-ISMS-P / 암호화 / 망분리) 적용 시 책임자 승인 후 진행한다.",
+      "score": 0.960553,
       "agency": "기관 A",
       "metadata": {
         "domain": "AI quality",
@@ -251,7 +260,14 @@
         "project_aliases": [
           "품관플",
           "AI품플"
-        ]
+        ],
+        "axis_a_scale": "real_scale_v2_distractor",
+        "axis_a_scale_anchor": "Upstage heading1 (main heading) median ~100 + kordoc 39511 chars cross-check (v4 100-doc 갱신)",
+        "axis_a_scale_measurement_ref": "docs/eval/axis-a-rebuild/axis_b_real_measurement.md v4",
+        "axis_a_scale_outline_ref": "docs/eval/axis-a-rebuild/m4a_doc_a_outline.md v4",
+        "section_definition": "main_heading (Upstage heading1 등가, sub-bullet 미포함)",
+        "axis_a_scale_distractor_ref": "docs/eval/axis-a-rebuild/distractor_definitions.md v3",
+        "axis_a_acceptance_verdict": "13/13 PASS (sub-STOP 2c alpha-prime v2, dup 31.51% within p75 bootstrap 95% CI upper 31.71%, all guards verified)"
       },
       "section": "문서 전체",
       "section_id": "rfp-agency-a-ai-quality::section-001",
@@ -259,18 +275,18 @@
       "section_path": [
         "문서 전체"
       ],
-      "chunk_seq_in_section": 1,
-      "total_chunks_in_section": 1,
+      "chunk_seq_in_section": 56,
+      "total_chunks_in_section": 100,
       "chunking_strategy": "fixed",
       "retrieval_mode": "flat",
       "child_chunk_ids": []
     },
     {
       "doc_id": "rfp-agency-b-mlops-governance",
-      "chunk_id": "rfp-agency-b-mlops-governance::chunk-001",
+      "chunk_id": "rfp-agency-b-mlops-governance::chunk-094",
       "title": "기관 B 데이터 거버넌스 및 MLOps 자동화 RFP",
-      "text": "사업 개요\n기관 B는 데이터 거버넌스와 MLOps 자동화를 결합한 운영 체계를 구축한다. 목표는 모델 배포 절차를 표준화하고 데이터 변경 영향을 추적하는 것이다. AI 요구사항\n기관 B의 핵심 AI 요구사항은 데이터 거버넌스, MLOps 배포 자동화, 모델 모니터링이다. 시스템은 데이터 lineage, 모델 drift, 배포 승인 이력을 대시보드로 제공해야 한다. 보안 및 개인정보\n기관 B는 개인정보 비식별화와 접근 권한 분리를 요구한다. 보안 통제는 데이터셋 반출 승인과 관리자 작업 기록을 중심으로 설계한다. 일정 및 산출물\n기관 B 일정은 착수 후 3개월 내 파일럿 환경을 구성하고 5개월 내 운영 전환을 완료하는 방식이다. 필수 산출물은 데이터 표준 사전, MLOps 운영 가이드, 모니터링 대시보드이다.",
-      "score": 0.5916,
+      "text": "데이터 입수부터 모델 학습까지의 전 구간에 대해 접근 권한 분리와 감사 로그 자동 보존을 적용하며, 보안 위반 사례는 보안 사고 대응 절차로 즉시 escalation 된다. 보안 정책 위반 발견 시 단계 게이트에서 산출물 회수와 재검증 절차가 발동되며, 위반 영향 범위는 영향 평가 보고서로 별도 정리된다. 보안 정책은 기관 B 정보보호 매뉴얼과 정합 운영된다. 데이터 보존은 데이터 보안 개요 항목의 raw 와 가공 모두를 별도 저장한다. | 보안 영역 | 핵심 정책 |\n|---|---|\n| 개인정보 | 비식별화 + 접근 분리 |\n| 데이터 무결성 | 자동 검증 + 변경 불가 보존 |\n| 감사 로그 | 자동 보존 + 24시간 출력 |\n| 위반 대응 | 즉시 escalation |\n\n개인정보 비식별화 정책\n개인정보 비식별화 정책은 입수 단계에서 자동 식별 및 비식별화를 수행하며, 식별자 마스킹, 준식별자 일반화, 민감 속성 통계적 처리의 3 단계 비식별화 절차를 표준으로 운영한다.",
+      "score": 0.859951,
       "agency": "기관 B",
       "metadata": {
         "domain": "MLOps",
@@ -278,7 +294,17 @@
         "project_aliases": [
           "엠엘옵스 자동화",
           "데이터 MLOps"
-        ]
+        ],
+        "axis_a_scale": "real_scale_v2_distractor",
+        "axis_a_scale_anchor": "Upstage heading1 (main heading) median ~100 + kordoc 39511 chars cross-check (doc-A 와 동일)",
+        "axis_a_scale_measurement_ref": "docs/eval/axis-a-rebuild/axis_b_real_measurement.md v4 (100-doc 재측정, 2026-05-17)",
+        "axis_a_scale_outline_ref": "docs/eval/axis-a-rebuild/m4a_doc_b_outline.md v4",
+        "section_definition": "main_heading (Upstage heading1 등가, sub-bullet 미포함)",
+        "axis_a_scale_distractor_ref": "docs/eval/axis-a-rebuild/distractor_definitions.md v3 (bootstrap CI margin + topical dict, 2026-05-17)",
+        "axis_a_scale_partial_2a_ref": "docs/eval/axis-a-rebuild/m4a_doc_b_partial_2a_v4.json (54 sec, distractor 6 inject)",
+        "axis_a_scale_partial_2b_ref": "docs/eval/axis-a-rebuild/m4a_doc_b_partial_2b.json (51 sec, distractor inject + sec 50 신규 부속서)",
+        "axis_a_scale_full_v2_ref": "docs/eval/axis-a-rebuild/m4a_doc_b_full_v2.json (sub-STOP 2c α' v2 25-template heading inject)",
+        "axis_a_scale_verdict": "13/13 PASS (sub-STOP 2c α' v2; n_sec=105, kor=30,710, dup=29.24%, GFM=105, positive=17/17, negative=5/5 absent (word-boundary 강화), topical=5/5, lexical=8/8, counterfactual=60 tokens, near-dup=43 pairs, 2026-05-17)"
       },
       "section": "문서 전체",
       "section_id": "rfp-agency-b-mlops-governance::section-001",
@@ -286,18 +312,18 @@
       "section_path": [
         "문서 전체"
       ],
-      "chunk_seq_in_section": 1,
-      "total_chunks_in_section": 1,
+      "chunk_seq_in_section": 94,
+      "total_chunks_in_section": 137,
       "chunking_strategy": "fixed",
       "retrieval_mode": "flat",
       "child_chunk_ids": []
     }
   ],
   "trace": {
-    "schema_version": 1,
+    "schema_version": 2,
     "query_rewrite": {
-      "original_query": "기관 A와 기관 B의 AI 요구사항 차이 알려줘",
-      "resolved_query": "기관 A와 기관 B의 AI 요구사항 차이 알려줘",
+      "original_query": "기관 A와 기관 B의 보안 요구사항 차이를 알려줘",
+      "resolved_query": "기관 A와 기관 B의 보안 요구사항 차이를 알려줘",
       "rewritten": false,
       "rewrite_type": "none",
       "context_source": "query",
@@ -311,30 +337,34 @@
     },
     "planner": {
       "query_type": "comparison",
-      "pipeline": "naive_baseline",
-      "prompt_profile": "minimal_grounded_extractive",
-      "strategy": "dense",
+      "pipeline": "agentic_full",
+      "prompt_profile": "structured_grounded_claims",
+      "strategy": "metadata-first hybrid (bm25 + dense + lexical + metadata rerank) rrf",
       "retrieval_mode": "flat",
-      "metadata_first": false,
-      "rerank": false,
-      "verifier_retry": false,
+      "metadata_first": true,
+      "rerank": true,
+      "verifier_retry": true,
       "stage_sequence": [
+        "strict",
         "relaxed"
       ],
-      "selected_stage": "relaxed",
-      "selected_top_k": 4,
+      "selected_stage": "strict",
+      "selected_top_k": 8,
       "retrieval_budget": {
-        "selected_top_k": 4,
+        "selected_top_k": 8,
         "query_type": "comparison",
-        "reason": "pipeline_or_explicit_override",
+        "reason": "comparison_coverage_adaptive",
         "defaults": {
           "single_doc": 4,
           "follow_up": 6,
           "comparison": 6
         }
       },
-      "metadata_candidate_count": 3,
-      "metadata_selected_doc_ids": [],
+      "metadata_candidate_count": 2,
+      "metadata_selected_doc_ids": [
+        "rfp-agency-a-ai-quality",
+        "rfp-agency-b-mlops-governance"
+      ],
       "metadata_ambiguous": false,
       "comparison_coverage": {
         "targets": [
@@ -343,30 +373,34 @@
         ],
         "target_field": "doc_id",
         "before": {
-          "rfp-agency-a-ai-quality": 1,
-          "rfp-agency-b-mlops-governance": 1
+          "rfp-agency-a-ai-quality": 100,
+          "rfp-agency-b-mlops-governance": 137
         },
         "after": {
-          "rfp-agency-a-ai-quality": 1,
-          "rfp-agency-b-mlops-governance": 1
+          "rfp-agency-a-ai-quality": 5,
+          "rfp-agency-b-mlops-governance": 3
         },
-        "balanced": false
+        "balanced": true,
+        "min_per_target": 1
       },
       "stage_latencies_ms": {
-        "query_analysis_ms": 0.74,
-        "context_resolution_ms": 0.0,
-        "answer_generation_ms": 0.36
+        "query_analysis_ms": 3.87,
+        "context_resolution_ms": 0.01,
+        "answer_generation_ms": 1.1
       },
       "attempts": [
         {
-          "stage": "relaxed",
-          "top_k": 4,
+          "stage": "strict",
+          "top_k": 8,
           "verified": true,
           "verification_reasons": [],
-          "metadata_doc_ids": []
+          "metadata_doc_ids": [
+            "rfp-agency-a-ai-quality",
+            "rfp-agency-b-mlops-governance"
+          ]
         }
       ],
-      "readable_summary": "comparison planned with naive_baseline stage=relaxed top_k=4 metadata_docs=none"
+      "readable_summary": "comparison planned with agentic_full stage=strict top_k=8 metadata_docs=['rfp-agency-a-ai-quality', 'rfp-agency-b-mlops-governance']"
     },
     "answer_schema": {
       "schema_version": 2,
@@ -378,7 +412,8 @@
       },
       "query_type": "comparison",
       "claim_count": 2
-    }
+    },
+    "synthesis_llm_call": null
   },
   "conversation_state": {
     "schema_version": 1,
@@ -391,7 +426,7 @@
       "데이터 거버넌스 및 MLOps 자동화"
     ],
     "active_topics": [
-      "AI"
+      "보안"
     ],
     "active_doc_ids": [
       "rfp-agency-a-ai-quality",
@@ -414,8 +449,8 @@
     "turns": [
       {
         "turn": 1,
-        "query": "기관 A와 기관 B의 AI 요구사항 차이 알려줘",
-        "resolved_query": "기관 A와 기관 B의 AI 요구사항 차이 알려줘",
+        "query": "기관 A와 기관 B의 보안 요구사항 차이를 알려줘",
+        "resolved_query": "기관 A와 기관 B의 보안 요구사항 차이를 알려줘",
         "active_agencies": [
           "기관 A",
           "기관 B"
@@ -425,7 +460,7 @@
           "데이터 거버넌스 및 MLOps 자동화"
         ],
         "active_topics": [
-          "AI"
+          "보안"
         ],
         "active_doc_ids": [
           "rfp-agency-a-ai-quality",
@@ -444,7 +479,7 @@
     ]
   },
   "diagnostics": {
-    "latency_ms": 2.71,
+    "latency_ms": 36.81,
     "retry_count": 0,
     "abstained": false,
     "answer_status": "supported",
@@ -452,33 +487,49 @@
     "claim_count": 2,
     "citation_count": 2,
     "verification_reasons": [],
-    "verification_topics": [],
+    "verification_topics": [
+      "보안"
+    ],
     "filter_stage_attempts": [
       {
-        "stage": "relaxed",
-        "pipeline": "naive_baseline",
-        "prompt_profile": "minimal_grounded_extractive",
-        "metadata_filters": {},
-        "top_k": 4,
+        "stage": "strict",
+        "pipeline": "agentic_full",
+        "prompt_profile": "structured_grounded_claims",
+        "metadata_filters": {
+          "doc_ids": [
+            "rfp-agency-a-ai-quality",
+            "rfp-agency-b-mlops-governance"
+          ],
+          "agencies": [
+            "기관 A",
+            "기관 B"
+          ],
+          "projects": [
+            "AI 품질관리 플랫폼 구축",
+            "데이터 거버넌스 및 MLOps 자동화"
+          ],
+          "confidence": 1.0
+        },
+        "top_k": 8,
         "retrieval_budget": {
-          "selected_top_k": 4,
+          "selected_top_k": 8,
           "query_type": "comparison",
-          "reason": "pipeline_or_explicit_override",
+          "reason": "comparison_coverage_adaptive",
           "defaults": {
             "single_doc": 4,
             "follow_up": 6,
             "comparison": 6
           }
         },
-        "candidate_count": 9,
+        "candidate_count": 237,
         "parent_candidate_count": null,
-        "total_chunks": 9,
+        "total_chunks": 383,
         "filter_fallback_used": false,
         "retrieval_mode": "flat",
         "verified": true,
         "verification_reasons": [],
-        "retrieve_ms": 0.56,
-        "verify_ms": 0.0,
+        "retrieve_ms": 22.33,
+        "verify_ms": 4.42,
         "comparison_coverage": {
           "targets": [
             "rfp-agency-a-ai-quality",
@@ -486,22 +537,27 @@
           ],
           "target_field": "doc_id",
           "before": {
-            "rfp-agency-a-ai-quality": 1,
-            "rfp-agency-b-mlops-governance": 1
+            "rfp-agency-a-ai-quality": 100,
+            "rfp-agency-b-mlops-governance": 137
           },
           "after": {
-            "rfp-agency-a-ai-quality": 1,
-            "rfp-agency-b-mlops-governance": 1
+            "rfp-agency-a-ai-quality": 5,
+            "rfp-agency-b-mlops-governance": 3
           },
-          "balanced": false
+          "balanced": true,
+          "min_per_target": 1
         }
       }
     ],
     "retrieved_chunk_ids": [
-      "rfp-agency-b-mlops-governance::chunk-001",
-      "rfp-agency-a-ai-quality::chunk-001",
-      "rfp-agency-c-chatbot::chunk-001",
-      "rfp-agency-d-spectrometer-probe::chunk-001"
+      "rfp-agency-a-ai-quality::chunk-056",
+      "rfp-agency-a-ai-quality::chunk-070",
+      "rfp-agency-b-mlops-governance::chunk-094",
+      "rfp-agency-b-mlops-governance::chunk-131",
+      "rfp-agency-a-ai-quality::chunk-044",
+      "rfp-agency-a-ai-quality::chunk-029",
+      "rfp-agency-b-mlops-governance::chunk-044",
+      "rfp-agency-a-ai-quality::chunk-057"
     ],
     "final_relaxation_reason": [],
     "context_resolution": {
@@ -509,20 +565,20 @@
       "source": "query",
       "confidence": 1.0,
       "reason": "",
-      "resolved_query": "기관 A와 기관 B의 AI 요구사항 차이 알려줘",
+      "resolved_query": "기관 A와 기관 B의 보안 요구사항 차이를 알려줘",
       "context_entities": [],
       "context_projects": [],
       "active_doc_ids": []
     },
     "metadata_resolution": {
-      "normalized_query": "기관 A와 기관 B의 AI 요구사항 차이 알려줘",
-      "normalized_query_compact": "기관a와기관b의ai요구사항차이알려줘",
+      "normalized_query": "기관 A와 기관 B의 보안 요구사항 차이를 알려줘",
+      "normalized_query_compact": "기관a와기관b의보안요구사항차이를알려줘",
       "normalized_query_tokens": [
         "a",
         "b",
-        "ai"
+        "보안"
       ],
-      "candidate_count": 3,
+      "candidate_count": 2,
       "candidates": [
         {
           "doc_id": "rfp-agency-a-ai-quality",
@@ -549,23 +605,9 @@
           "matched_terms": [
             "b"
           ]
-        },
-        {
-          "doc_id": "rfp-agency-a-ai-quality",
-          "field": "title",
-          "value": "기관 A AI 품질관리 플랫폼 구축 RFP",
-          "agency": "기관 A",
-          "project": "AI 품질관리 플랫폼 구축",
-          "confidence": 0.795,
-          "stage": "reduced",
-          "match_type": "partial_tokens",
-          "matched_terms": [
-            "a",
-            "ai"
-          ]
         }
       ],
-      "selected_stage": "relaxed",
+      "selected_stage": "strict",
       "selected_candidates_by_stage": {
         "strict": [
           {
@@ -621,26 +663,42 @@
             "matched_terms": [
               "b"
             ]
-          },
-          {
-            "doc_id": "rfp-agency-a-ai-quality",
-            "field": "title",
-            "value": "기관 A AI 품질관리 플랫폼 구축 RFP",
-            "agency": "기관 A",
-            "project": "AI 품질관리 플랫폼 구축",
-            "confidence": 0.795,
-            "stage": "reduced",
-            "match_type": "partial_tokens",
-            "matched_terms": [
-              "a",
-              "ai"
-            ]
           }
         ],
         "relaxed": []
       },
-      "selected_candidates": [],
-      "selected_doc_ids": [],
+      "selected_candidates": [
+        {
+          "doc_id": "rfp-agency-a-ai-quality",
+          "field": "agency",
+          "value": "기관 A",
+          "agency": "기관 A",
+          "project": "AI 품질관리 플랫폼 구축",
+          "confidence": 1.0,
+          "stage": "strict",
+          "match_type": "compact_contains",
+          "matched_terms": [
+            "a"
+          ]
+        },
+        {
+          "doc_id": "rfp-agency-b-mlops-governance",
+          "field": "agency",
+          "value": "기관 B",
+          "agency": "기관 B",
+          "project": "데이터 거버넌스 및 MLOps 자동화",
+          "confidence": 1.0,
+          "stage": "strict",
+          "match_type": "compact_contains",
+          "matched_terms": [
+            "b"
+          ]
+        }
+      ],
+      "selected_doc_ids": [
+        "rfp-agency-a-ai-quality",
+        "rfp-agency-b-mlops-governance"
+      ],
       "matched_doc_ids": [
         "rfp-agency-a-ai-quality",
         "rfp-agency-b-mlops-governance"
@@ -655,23 +713,23 @@
         "decision_reason": "comparison_allows_multiple_targets"
       }
     },
-    "selected_top_k": 4,
+    "selected_top_k": 8,
     "embedding_backend": "hashing",
     "embedding_model": "local-hashing-bow",
-    "metadata_first": false,
-    "rerank": false,
-    "verifier_retry": false,
+    "metadata_first": true,
+    "rerank": true,
+    "verifier_retry": true,
     "retrieval_mode": "flat",
-    "retrieval_backend": "dense",
+    "retrieval_backend": "hybrid",
     "rrf_k": 60,
     "bm25_stopword_profile": "shared",
-    "pipeline": "naive_baseline",
-    "prompt_profile": "minimal_grounded_extractive",
+    "pipeline": "agentic_full",
+    "prompt_profile": "structured_grounded_claims",
     "cold_start": true,
     "stage_latency": {
-      "query_analysis_ms": 0.74,
-      "context_resolution_ms": 0.0,
-      "answer_generation_ms": 0.36
+      "query_analysis_ms": 3.87,
+      "context_resolution_ms": 0.01,
+      "answer_generation_ms": 1.1
     },
     "synthesis": null,
     "trace_url": null,
