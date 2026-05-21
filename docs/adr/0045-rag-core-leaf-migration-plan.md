@@ -132,9 +132,9 @@ $ grep -nE "^from rag_|^import rag_" rag_query.py
 
 ## Verification
 
-본 ADR 은 plan-only. PR 시점 워킹 트리에 존재해야 할 두 전제조건 (G2 가 코드 이동 후 *제거* 검증):
+본 ADR 은 plan-only. G2 (#459/#461) 마이그레이션 완료 후 검증 앵커 — rag_retrieval 의 rag_core back-edge 0 불변량은 회귀 테스트가 강제하고, rag_query 로 재배치된 함수는 존재로 확인:
 
-<!-- verifies-key: rag_retrieval.py:from rag_core import -->
+<!-- verifies-key: tests/test_dependency_graph_invariance.py:test_leaf_module_has_zero_rag_core_back_edges -->
 <!-- verifies-key: rag_query.py:def comparison_targets_for_analysis -->
 
 G2 구현 PR 은 다음을 보여야 함:
