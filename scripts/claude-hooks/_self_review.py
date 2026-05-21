@@ -414,6 +414,7 @@ def collect_governance_hooks(repo: str, start: str, end: str) -> dict[str, Any]:
             "pretooluse_loadbearing_fires": 0,
             "fires_by_path": {},
             "fires_by_action": {},
+            "memory_lines": {"aware": 0, "blocked": 0},
             "rule_to_automation_lag_days": _compute_adr_lags(repo, start, end),
             "note": "Hook fire log absent at .claude/.hook-fires.log; emit 0.",
         }
@@ -424,6 +425,11 @@ def collect_governance_hooks(repo: str, start: str, end: str) -> dict[str, Any]:
     fires = 0
     by_path: Counter[str] = Counter()
     by_action: Counter[str] = Counter()
+    # axis #5-A index hygiene: count `memory-lines` category fires split by
+    # action so the rubric can separate aware (soft-warn) from blocked
+    # (edit refused = index exploded). The category lives in parts[2]; the
+    # historical aggregation above only kept action + path, dropping it.
+    memory_lines: Counter[str] = Counter()
     try:
         for line in log_path.read_text().splitlines():
             line = line.strip()
@@ -438,14 +444,20 @@ def collect_governance_hooks(repo: str, start: str, end: str) -> dict[str, Any]:
             if fire_dt < start_dt or fire_dt > end_dt:
                 continue
             if len(parts) >= 4:
-                action, path = parts[1], parts[3]
+                action, category, path = parts[1], parts[2], parts[3]
             else:
-                action, path = "aware", parts[1] if len(parts) > 1 else ""
+                action, category, path = (
+                    "aware",
+                    "",
+                    parts[1] if len(parts) > 1 else "",
+                )
             fires += 1
             if path:
                 by_path[path] += 1
             if action:
                 by_action[action] += 1
+            if category == "memory-lines" and action:
+                memory_lines[action] += 1
     except OSError:
         pass
     lags = _compute_adr_lags(repo, start, end)
@@ -454,6 +466,10 @@ def collect_governance_hooks(repo: str, start: str, end: str) -> dict[str, Any]:
         "pretooluse_loadbearing_fires": fires,
         "fires_by_path": dict(by_path.most_common(10)),
         "fires_by_action": dict(by_action),
+        "memory_lines": {
+            "aware": memory_lines.get("aware", 0),
+            "blocked": memory_lines.get("blocked", 0),
+        },
         "rule_to_automation_lag_days": lags,
         "note": note,
     }
@@ -719,6 +735,11 @@ def emit_report(stats: dict[str, Any]) -> str:
             f"{stats['axis_4_cycle_time']['pr_turnaround_hours'].get('mean')} / "
             f"{stats['axis_4_cycle_time']['pr_turnaround_hours'].get('p90')} "
             f"(n={stats['axis_4_cycle_time']['pr_turnaround_hours'].get('count')})"
+        ),
+        (
+            f"- Axis #5-A Memory index hygiene (memory-lines fires): "
+            f"aware={stats['governance_hooks'].get('memory_lines', {}).get('aware', 0)}"
+            f" / blocked={stats['governance_hooks'].get('memory_lines', {}).get('blocked', 0)}"
         ),
         (
             f"- Axis #5-B Memory freshness (fresh/total): "
