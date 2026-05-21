@@ -20,7 +20,7 @@ Output lives under ``reports/retrieval/phase35_m3_<TIMESTAMP>/``:
 * ``raw_results.json`` — per-case scores for all 3 variants
 * ``deltas.json``      — paired CI vs dense_m3 per (variant, metric, category)
 * ``REPORT.md``        — <=200 line markdown with per-category winner or
-  ``NOT SIGNIFICANT`` (CI crosses 0) per absolute rule #5
+  ``유의하지 않음`` (CI crosses 0) per absolute rule #5
 
 Reuses (no new abstraction — absolute rule #3):
 
@@ -361,8 +361,8 @@ def render_report(
     baseline = config["baseline"]
     lines: list[str] = []
     lines.append(
-        f"# Phase 3.5 retrieval-eval — m3 mode ablation "
-        f"(real100 n={config['num_cases']}, semantic embeddings)"
+        f"# Phase 3.5 retrieval-eval — m3 검색 모드(mode) ablation "
+        f"(real100 n={config['num_cases']}, 의미 임베딩(semantic embeddings))"
     )
     lines.append("")
     lines.append(
@@ -372,9 +372,9 @@ def render_report(
         f"seeds={config['seeds']} · top_k={config['top_k']} · ks={config['ks']}"
     )
     lines.append("")
-    lines.append("## Variants")
+    lines.append("## 변형(variants)")
     lines.append("")
-    lines.append("| Variant | Backend | RRF k | Docs | Chunks |")
+    lines.append("| 변형 | backend | RRF k | 문서 | 청크 |")
     lines.append("|---|---|---|---|---|")
     for spec in specs:
         rrf = spec.get("rrf_k")
@@ -384,9 +384,9 @@ def render_report(
             f"{spec['num_documents']} | {spec['num_chunks']} |"
         )
     lines.append("")
-    lines.append("## Latency (ms)")
+    lines.append("## 지연시간(latency, ms)")
     lines.append("")
-    lines.append("| Variant | p50 | p95 | mean | n |")
+    lines.append("| 변형 | p50 | p95 | mean | n |")
     lines.append("|---|---|---|---|---|")
     for variant_name in [s["name"] for s in specs]:
         lat = measurements[variant_name]["latency_ms"]
@@ -409,7 +409,7 @@ def render_report(
     for metric in metrics_to_report:
         lines.append(f"## {metric}")
         lines.append("")
-        header_cols = ["Category"] + [f"`{s['name']}`" for s in specs]
+        header_cols = ["카테고리"] + [f"`{s['name']}`" for s in specs]
         lines.append("| " + " | ".join(header_cols) + " |")
         lines.append("|" + "|".join(["---"] * len(header_cols)) + "|")
         for category in categories:
@@ -421,9 +421,9 @@ def render_report(
                 )
             lines.append("| " + " | ".join(cells) + " |")
         lines.append("")
-        lines.append(f"### {metric} — paired CI delta vs `{baseline}` (seed-averaged)")
+        lines.append(f"### {metric} — `{baseline}` 대비 paired CI delta (seed 평균)")
         lines.append("")
-        header_cols = ["Category"] + [
+        header_cols = ["카테고리"] + [
             f"`{s['name']}`" for s in specs if s["name"] != baseline
         ]
         lines.append("| " + " | ".join(header_cols) + " |")
@@ -438,18 +438,18 @@ def render_report(
             lines.append("| " + " | ".join(cells) + " |")
         lines.append("")
 
-    lines.append("## Per-category winner")
+    lines.append("## 카테고리별 winner")
     lines.append("")
     lines.append(
-        f"Winner = variant with highest `chunk_recall@10` mean AND paired CI vs "
-        f"`{baseline}` fully above 0. \"NOT SIGNIFICANT\" = no variant's CI clears 0 "
-        f"(absolute rule #5)."
+        f"winner = `chunk_recall@10` 평균이 가장 높으면서 `{baseline}` 대비 paired CI "
+        f"가 완전히 0 위인 변형. \"유의하지 않음\" = 어떤 변형의 CI 도 0 을 넘지 못함 "
+        f"(절대 규칙 #5)."
     )
     lines.append("")
-    lines.append("| Category | Winner | Mean recall@10 | Delta CI vs " + f"`{baseline}` |")
+    lines.append("| 카테고리 | winner | 평균 recall@10 | " + f"`{baseline}` 대비 delta CI |")
     lines.append("|---|---|---|---|")
     for category in categories:
-        winner = "NOT SIGNIFICANT"
+        winner = "유의하지 않음"
         winner_mean: float | None = None
         winner_ci: dict[str, Any] | None = None
         for spec in specs:
@@ -466,98 +466,96 @@ def render_report(
         ci_str = _fmt_ci(winner_ci) if winner_ci is not None else "—"
         lines.append(f"| {category} | `{winner}` | {mean_str} | {ci_str} |")
     lines.append("")
-    lines.append("## Notes")
+    lines.append("## 비고(notes)")
     lines.append("")
     lines.append(
-        "* Planner-bypass: full query as the only sub-query, identity expansion, "
-        "no rerank, `metadata_first=False` — isolates retrieval-mode impact from "
-        "expansion / rerank / metadata-filter effects (same discipline as Phase 3)."
+        "* Planner-bypass: 전체 query 를 유일한 sub-query 로, identity expansion, "
+        "rerank 없음, `metadata_first=False` — 검색 모드 효과를 expansion / rerank / "
+        "metadata-filter 효과로부터 격리한다 (Phase 3 과 동일 규율)."
     )
     lines.append(
-        "* All 3 variants share `data/index/real100_m3` (BGE-M3 1024-dim dense). "
-        "`hybrid_bm25_k60_m3` uses BM25 lazy-built on the index dict; `m3` populates "
-        "`index['_m3_cache']` (sparse + colbert per chunk, in-memory only per ADR 0025 "
-        "spike-mode, no disk persist) on its first call. `--warmup` absorbs the "
-        "~2 min cache cold-start so per-case latency reflects cache-hit cost."
+        "* 3 변형 모두 `data/index/real100_m3`(BGE-M3 1024-dim dense)를 공유한다. "
+        "`hybrid_bm25_k60_m3` 는 index dict 에 lazy-build 된 BM25 를 쓰고; `m3` 는 첫 "
+        "호출 시 `index['_m3_cache']`(청크별 sparse + colbert, ADR 0025 spike-mode 라 "
+        "in-memory only, 디스크 미persist)를 채운다. `--warmup` 이 ~2 분 캐시 "
+        "cold-start 를 흡수하므로 케이스별 지연시간은 캐시 hit 비용을 반영한다."
     )
     lines.append(
-        "* m3's RRF dense channel reuses the index's existing dense channel "
-        "(`rag_retrieval.py:449-454`) — for this run it IS the BGE-M3 dense (the "
-        "index was built with `--model BAAI/bge-m3`), so the 3 channels are all "
-        "BGE-M3 (dense + sparse + colbert). On hashing-built indexes the dense "
-        "channel would be hashing, mixing embedding families."
+        "* m3 의 RRF dense 채널은 인덱스의 기존 dense 채널을 재사용한다"
+        "(`rag_retrieval.py:449-454`) — 이 run 에서는 그것이 BGE-M3 dense 다(인덱스가 "
+        "`--model BAAI/bge-m3` 로 빌드됨), 따라서 3 채널 모두 BGE-M3(dense + sparse + "
+        "colbert)다. hashing 으로 빌드된 인덱스에서는 dense 채널이 hashing 이라 임베딩 "
+        "패밀리가 섞이게 된다."
     )
     lines.append(
-        "* `chunk_recall@k` is None for cases without `expected_terms` / "
-        "`expected_doc_ids` (e.g. abstention) — those are dropped pairwise to "
-        "preserve case alignment between variants."
+        "* `chunk_recall@k` 는 `expected_terms` / `expected_doc_ids` 가 없는 케이스"
+        "(예: abstention(보류))에서 None 이다 — 변형 간 케이스 정렬을 보존하기 위해 "
+        "pairwise 에서 제외된다."
     )
     lines.append(
-        "* Seeds drive only the bootstrap RNG; retrieval itself is deterministic "
-        "for the same query+index+backend+rrf_k (dense + BM25 + m3 sparse/colbert)."
+        "* Seed 는 bootstrap RNG 만 구동한다; retrieval 자체는 동일 "
+        "query+index+backend+rrf_k 에 대해 결정적(deterministic)이다 "
+        "(dense + BM25 + m3 sparse/colbert)."
     )
     lines.append(
-        "* Category bucketing uses `hardcase_categories` (semantic difficulty tags). "
-        "Multi-tag cases appear in multiple buckets, so per-category counts overlap "
-        "and per-category paired CIs share cases."
+        "* 카테고리 버킷팅은 `hardcase_categories`(의미 난이도 태그)를 쓴다. 멀티태그 "
+        "케이스는 여러 버킷에 나타나므로 카테고리별 카운트는 겹치고 paired CI 가 "
+        "케이스를 공유한다."
     )
     lines.append(
-        f"* `{baseline}` is the delta baseline because Phase 3.5 isolates "
-        "**multi-channel vs single-channel under semantic embeddings**. Deltas above "
-        "0 favor the multi-channel variant (hybrid or m3); below 0 favor dense alone."
+        f"* `{baseline}` 이 delta baseline 인 이유: Phase 3.5 는 **의미 임베딩 위에서 "
+        "multi-channel vs single-channel** 을 격리하기 때문이다. 0 위 delta 는 "
+        "multi-channel 변형(hybrid 또는 m3)에, 0 아래는 dense 단독에 유리하다."
     )
     lines.append(
-        "* **Phase 3 cross-ref + runner bug retraction**: "
-        "`reports/retrieval/phase3_mode_20260518T032404Z/` reported all 3 "
-        "`hybrid_bm25_k{30,60,100}` variants byte-identical and attributed it to "
-        "BM25 channel dominance. **That conclusion was wrong**: the Phase 3 "
-        "runner called `retrieve_candidates` (candidate generation only) without "
-        "the second-stage `apply_fusion_and_reranking` (RRF fusion + final top-k). "
-        "For hybrid + m3 backends `retrieve_candidates` returns `score=0.0` "
-        "placeholders, so the per-case ranking collapsed to chunk_id insertion "
-        "order — making every k value byte-identical. Phase 3.5 fixes the wire-up "
-        "(both calls in `run_single_case`); the hashing-index re-run is a "
-        "follow-up. Cross-backend delta math (hashing `dense` vs `dense_m3`) "
-        "remains confounded by the embedding family swap and is NOT computed."
+        "* **Phase 3 cross-ref + runner 버그 retraction(철회)**: "
+        "`reports/retrieval/phase3_mode_20260518T032404Z/` 는 3 개 "
+        "`hybrid_bm25_k{30,60,100}` 변형이 byte-identical 이라 보고하고 이를 BM25 채널 "
+        "dominance 로 귀인했다. **그 결론은 틀렸다**: Phase 3 runner 가 "
+        "`retrieve_candidates`(후보 생성만)를 호출하고 2단계 "
+        "`apply_fusion_and_reranking`(RRF fusion + 최종 top-k)를 누락했다. hybrid + m3 "
+        "backend 에서 `retrieve_candidates` 는 `score=0.0` placeholder 를 반환하므로 "
+        "케이스별 순위가 chunk_id 삽입 순서로 붕괴해 모든 k 값이 byte-identical 이 됐다. "
+        "Phase 3.5 는 wire-up 을 고친다(`run_single_case` 에 두 호출 모두); hashing "
+        "인덱스 재측정은 후속이다. Cross-backend delta(hashing `dense` vs `dense_m3`)는 "
+        "임베딩 패밀리 교체로 confounded 되어 산출하지 않는다."
     )
     lines.append(
-        "* **Chunk count caveat**: the BGE-M3 index used the `data_list_csv_text` "
-        "loader for both HWP and PDF (per ADR 0049 graceful fallback), yielding "
-        "~9 chunks/doc vs real100's ~264 chunks/doc with `kordoc` full extraction. "
-        "Re-embedding 26k kordoc chunks with BGE-M3 on MPS would take >2h (per-batch "
-        "GPU dispatch overhead); the csv_text fallback keeps the build under 20 min "
-        "while preserving the within-Phase-3.5 paired CI claim. Absolute "
-        "`chunk_recall@k` on this index is NOT directly comparable to Phase 3's "
-        "kordoc-built numbers — only Phase 3.5 internal deltas are."
+        "* **청크 수 caveat**: BGE-M3 인덱스가 HWP/PDF 모두에 `data_list_csv_text` "
+        "loader 를 썼고(ADR 0049 graceful fallback), doc 당 ~9 청크였다(`kordoc` 전체 "
+        "추출의 real100 ~264 청크/doc 대비). 26k kordoc 청크를 BGE-M3 로 MPS 에서 "
+        "재임베딩하면 >2h 걸린다(배치별 GPU dispatch overhead); csv_text fallback 은 "
+        "build 를 20 분 미만으로 유지하면서 Phase 3.5 내부 paired CI 주장을 보존한다. "
+        "이 인덱스의 절대 `chunk_recall@k` 는 Phase 3 의 kordoc 빌드 수치와 직접 비교 "
+        "불가 — Phase 3.5 내부 delta 만 비교 가능하다."
     )
     lines.append(
-        "* **Runner-side m3 batching (measurement-only optimization)**: per-query "
-        "colbert max-sim is the dominant cost on this index (per-chunk Python-loop "
-        "matmul × ~900 chunks × ~50s/query observed on the unoptimized path). The "
-        "runner concatenates all chunk colbert vectors into one `(Σ T_d, 1024)` "
-        "matrix and does **one** matmul per unique query, then splits the columns "
-        "back per chunk for the row-wise max+sum. Mathematically identical to the "
-        "per-chunk path (each chunk's column slice is independent), but ~100× faster. "
-        "The patch lives in the runner (`_prime_m3_index_cache_and_colbert`); "
-        "`rag_m3.py` / `rag_retrieval.py` unchanged."
+        "* **Runner 측 m3 batching (측정 전용 최적화)**: 이 인덱스에서 query 별 colbert "
+        "max-sim 이 지배적 비용이다(청크별 Python-loop matmul × ~900 청크 × 최적화 전 "
+        "경로에서 관측된 ~50s/query). runner 는 모든 청크 colbert 벡터를 하나의 "
+        "`(Σ T_d, 1024)` 행렬로 concat 해 unique query 당 **1회** matmul 후 행별 "
+        "max+sum 을 위해 컬럼을 청크별로 다시 split 한다. 청크별 경로와 수학적으로 "
+        "동일하나(각 청크의 컬럼 슬라이스는 독립) ~100× 빠르다. 패치는 runner 에 "
+        "있다(`_prime_m3_index_cache_and_colbert`); `rag_m3.py` / `rag_retrieval.py` "
+        "는 미변경."
     )
     lines.append(
-        "* **Out of scope**: per-channel m3 ablation (sparse-only, colbert-only — "
-        "see ADR 0010 'Alternatives considered'); RRF-k sweep on hybrid_bm25 (Phase 3 "
-        "already showed k=30/60/100 byte-identical on hashing); cross-encoder rerank "
-        "stacked on top (Phase 4)."
+        "* **범위 외**: 채널별 m3 ablation(sparse-only, colbert-only — ADR 0010 "
+        "'Alternatives considered' 참조); hybrid_bm25 의 RRF-k sweep(Phase 3 이 이미 "
+        "hashing 에서 k=30/60/100 byte-identical 을 보임); 위에 stack 된 cross-encoder "
+        "rerank(Phase 4)."
     )
     lines.append(
-        "* ADR cross-refs: ADR 0010 (BGE-M3 multi-channel deferred), ADR 0021 "
-        "(m3_full analysis row), ADR 0032 (torch>=2.6 unblock — closes the install "
-        "blocker that originally deferred this measurement)."
+        "* ADR cross-ref: ADR 0010(BGE-M3 multi-channel deferred), ADR 0021"
+        "(m3_full 분석 행), ADR 0032(torch>=2.6 unblock — 본 측정을 원래 미뤘던 install "
+        "blocker 를 해소)."
     )
     if config.get("reaggregate_source"):
         lines.append(
-            "* This report was regenerated via `--reaggregate` from "
-            f"`{config['reaggregate_source']}` — categorization re-derived from "
-            "`hardcase_categories`; retrieval scores in `raw_results.json` are "
-            "unchanged byte-for-byte modulo the injected `categories` field."
+            "* 이 리포트는 `--reaggregate` 로 "
+            f"`{config['reaggregate_source']}` 로부터 재생성됨 — 카테고리는 "
+            "`hardcase_categories` 에서 재유도; `raw_results.json` 의 retrieval "
+            "점수는 주입된 `categories` 필드를 제외하면 byte-for-byte 불변."
         )
 
     report_path = out_dir / "REPORT.md"

@@ -1,19 +1,19 @@
-# Phase 3 retrieval-eval — mode ablation (real100 n=221)
+# Phase 3 retrieval-eval — 검색 모드(mode) ablation (real100 n=221)
 
-Run: `20260518-0352-phase3-mode` · commit `7aaa6a3931` · index_dir=`/Users/hskim/Desktop/projects/BidMate-DocAgent/data/index/real100` · eval_config=`/Users/hskim/Desktop/projects/BidMate-DocAgent/eval/real_config.local.yaml` · seeds=[17, 23, 29] · top_k=20 · ks=[5, 10]
+Run: `20260521-0334-phase3-mode-reaggregate` · commit `5e5f07bc96` · index_dir=`/Users/hskim/Desktop/projects/BidMate-DocAgent/data/index/real100` · eval_config=`eval/real_config.local.yaml` · seeds=[17, 23, 29] · top_k=20 · ks=[5, 10]
 
-## Variants
+## 변형(variants)
 
-| Variant | Backend | RRF k | Docs | Chunks |
+| 변형 | backend | RRF k | 문서 | 청크 |
 |---|---|---|---|---|
 | `dense` | dense | — | 100 | 26376 |
 | `hybrid_bm25_k30` | hybrid | 30 | 100 | 26376 |
 | `hybrid_bm25_k60` | hybrid | 60 | 100 | 26376 |
 | `hybrid_bm25_k100` | hybrid | 100 | 100 | 26376 |
 
-## Latency (ms)
+## 지연시간(latency, ms)
 
-| Variant | p50 | p95 | mean | n |
+| 변형 | p50 | p95 | mean | n |
 |---|---|---|---|---|
 | `dense` | 1270.701 | 3214.817 | 1551.449 | 221 |
 | `hybrid_bm25_k30` | 1535.016 | 4130.334 | 1851.968 | 221 |
@@ -22,7 +22,7 @@ Run: `20260518-0352-phase3-mode` · commit `7aaa6a3931` · index_dir=`/Users/hsk
 
 ## chunk_recall@5
 
-| Category | `dense` | `hybrid_bm25_k30` | `hybrid_bm25_k60` | `hybrid_bm25_k100` |
+| 카테고리 | `dense` | `hybrid_bm25_k30` | `hybrid_bm25_k60` | `hybrid_bm25_k100` |
 |---|---|---|---|---|
 | overall | 0.055 (n=114) | 0.018 (n=114) | 0.018 (n=114) | 0.018 (n=114) |
 | multi_hop | 0.056 (n=93) | 0.000 (n=93) | 0.000 (n=93) | 0.000 (n=93) |
@@ -32,21 +32,21 @@ Run: `20260518-0352-phase3-mode` · commit `7aaa6a3931` · index_dir=`/Users/hsk
 | ambiguous_query | 0.000 (n=1) | 0.000 (n=1) | 0.000 (n=1) | 0.000 (n=1) |
 | uncategorized | 0.080 (n=13) | 0.154 (n=13) | 0.154 (n=13) | 0.154 (n=13) |
 
-### chunk_recall@5 — paired CI delta vs `dense` (seed-averaged)
+### chunk_recall@5 — `dense` 대비 paired CI delta (seed 평균)
 
-| Category | `hybrid_bm25_k30` | `hybrid_bm25_k60` | `hybrid_bm25_k100` |
+| 카테고리 | `hybrid_bm25_k30` | `hybrid_bm25_k60` | `hybrid_bm25_k100` |
 |---|---|---|---|
-| overall | -0.037 (-0.074, -0.003) significant | -0.037 (-0.074, -0.003) significant | -0.037 (-0.074, -0.003) significant |
-| multi_hop | -0.056 (-0.094, -0.025) significant | -0.056 (-0.094, -0.025) significant | -0.056 (-0.094, -0.025) significant |
-| distractor_heavy | -0.083 (-0.157, -0.023) significant | -0.083 (-0.157, -0.023) significant | -0.083 (-0.157, -0.023) significant |
-| long_context | -0.038 (-0.113, +0.000) **NOT SIGNIFICANT** | -0.038 (-0.113, +0.000) **NOT SIGNIFICANT** | -0.038 (-0.113, +0.000) **NOT SIGNIFICANT** |
-| no_answer | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** |
-| ambiguous_query | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** |
-| uncategorized | +0.074 (-0.080, +0.268) **NOT SIGNIFICANT** | +0.074 (-0.080, +0.268) **NOT SIGNIFICANT** | +0.074 (-0.080, +0.268) **NOT SIGNIFICANT** |
+| overall | -0.037 (-0.074, -0.003) 유의함 | -0.037 (-0.074, -0.003) 유의함 | -0.037 (-0.074, -0.003) 유의함 |
+| multi_hop | -0.056 (-0.094, -0.025) 유의함 | -0.056 (-0.094, -0.025) 유의함 | -0.056 (-0.094, -0.025) 유의함 |
+| distractor_heavy | -0.083 (-0.157, -0.023) 유의함 | -0.083 (-0.157, -0.023) 유의함 | -0.083 (-0.157, -0.023) 유의함 |
+| long_context | -0.038 (-0.113, +0.000) **유의하지 않음** | -0.038 (-0.113, +0.000) **유의하지 않음** | -0.038 (-0.113, +0.000) **유의하지 않음** |
+| no_answer | +0.000 (+0.000, +0.000) **유의하지 않음** | +0.000 (+0.000, +0.000) **유의하지 않음** | +0.000 (+0.000, +0.000) **유의하지 않음** |
+| ambiguous_query | +0.000 (+0.000, +0.000) **유의하지 않음** | +0.000 (+0.000, +0.000) **유의하지 않음** | +0.000 (+0.000, +0.000) **유의하지 않음** |
+| uncategorized | +0.074 (-0.080, +0.268) **유의하지 않음** | +0.074 (-0.080, +0.268) **유의하지 않음** | +0.074 (-0.080, +0.268) **유의하지 않음** |
 
 ## chunk_recall@10
 
-| Category | `dense` | `hybrid_bm25_k30` | `hybrid_bm25_k60` | `hybrid_bm25_k100` |
+| 카테고리 | `dense` | `hybrid_bm25_k30` | `hybrid_bm25_k60` | `hybrid_bm25_k100` |
 |---|---|---|---|---|
 | overall | 0.064 (n=114) | 0.018 (n=114) | 0.018 (n=114) | 0.018 (n=114) |
 | multi_hop | 0.067 (n=93) | 0.000 (n=93) | 0.000 (n=93) | 0.000 (n=93) |
@@ -56,21 +56,21 @@ Run: `20260518-0352-phase3-mode` · commit `7aaa6a3931` · index_dir=`/Users/hsk
 | ambiguous_query | 0.000 (n=1) | 0.000 (n=1) | 0.000 (n=1) | 0.000 (n=1) |
 | uncategorized | 0.081 (n=13) | 0.154 (n=13) | 0.154 (n=13) | 0.154 (n=13) |
 
-### chunk_recall@10 — paired CI delta vs `dense` (seed-averaged)
+### chunk_recall@10 — `dense` 대비 paired CI delta (seed 평균)
 
-| Category | `hybrid_bm25_k30` | `hybrid_bm25_k60` | `hybrid_bm25_k100` |
+| 카테고리 | `hybrid_bm25_k30` | `hybrid_bm25_k60` | `hybrid_bm25_k100` |
 |---|---|---|---|
-| overall | -0.046 (-0.084, -0.011) significant | -0.046 (-0.084, -0.011) significant | -0.046 (-0.084, -0.011) significant |
-| multi_hop | -0.067 (-0.106, -0.035) significant | -0.067 (-0.106, -0.035) significant | -0.067 (-0.106, -0.035) significant |
-| distractor_heavy | -0.087 (-0.162, -0.026) significant | -0.087 (-0.162, -0.026) significant | -0.087 (-0.162, -0.026) significant |
-| long_context | -0.094 (-0.216, -0.001) significant | -0.094 (-0.216, -0.001) significant | -0.094 (-0.216, -0.001) significant |
-| no_answer | -0.050 (-0.100, +0.000) **NOT SIGNIFICANT** | -0.050 (-0.100, +0.000) **NOT SIGNIFICANT** | -0.050 (-0.100, +0.000) **NOT SIGNIFICANT** |
-| ambiguous_query | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** |
-| uncategorized | +0.073 (-0.083, +0.268) **NOT SIGNIFICANT** | +0.073 (-0.083, +0.268) **NOT SIGNIFICANT** | +0.073 (-0.083, +0.268) **NOT SIGNIFICANT** |
+| overall | -0.046 (-0.084, -0.011) 유의함 | -0.046 (-0.084, -0.011) 유의함 | -0.046 (-0.084, -0.011) 유의함 |
+| multi_hop | -0.067 (-0.106, -0.035) 유의함 | -0.067 (-0.106, -0.035) 유의함 | -0.067 (-0.106, -0.035) 유의함 |
+| distractor_heavy | -0.087 (-0.162, -0.026) 유의함 | -0.087 (-0.162, -0.026) 유의함 | -0.087 (-0.162, -0.026) 유의함 |
+| long_context | -0.094 (-0.216, -0.001) 유의함 | -0.094 (-0.216, -0.001) 유의함 | -0.094 (-0.216, -0.001) 유의함 |
+| no_answer | -0.050 (-0.100, +0.000) **유의하지 않음** | -0.050 (-0.100, +0.000) **유의하지 않음** | -0.050 (-0.100, +0.000) **유의하지 않음** |
+| ambiguous_query | +0.000 (+0.000, +0.000) **유의하지 않음** | +0.000 (+0.000, +0.000) **유의하지 않음** | +0.000 (+0.000, +0.000) **유의하지 않음** |
+| uncategorized | +0.073 (-0.083, +0.268) **유의하지 않음** | +0.073 (-0.083, +0.268) **유의하지 않음** | +0.073 (-0.083, +0.268) **유의하지 않음** |
 
 ## mrr
 
-| Category | `dense` | `hybrid_bm25_k30` | `hybrid_bm25_k60` | `hybrid_bm25_k100` |
+| 카테고리 | `dense` | `hybrid_bm25_k30` | `hybrid_bm25_k60` | `hybrid_bm25_k100` |
 |---|---|---|---|---|
 | overall | 0.129 (n=114) | 0.006 (n=114) | 0.006 (n=114) | 0.006 (n=114) |
 | multi_hop | 0.132 (n=93) | 0.000 (n=93) | 0.000 (n=93) | 0.000 (n=93) |
@@ -80,21 +80,21 @@ Run: `20260518-0352-phase3-mode` · commit `7aaa6a3931` · index_dir=`/Users/hsk
 | ambiguous_query | 0.000 (n=1) | 0.000 (n=1) | 0.000 (n=1) | 0.000 (n=1) |
 | uncategorized | 0.179 (n=13) | 0.051 (n=13) | 0.051 (n=13) | 0.051 (n=13) |
 
-### mrr — paired CI delta vs `dense` (seed-averaged)
+### mrr — `dense` 대비 paired CI delta (seed 평균)
 
-| Category | `hybrid_bm25_k30` | `hybrid_bm25_k60` | `hybrid_bm25_k100` |
+| 카테고리 | `hybrid_bm25_k30` | `hybrid_bm25_k60` | `hybrid_bm25_k100` |
 |---|---|---|---|
-| overall | -0.123 (-0.177, -0.075) significant | -0.123 (-0.177, -0.075) significant | -0.123 (-0.177, -0.075) significant |
-| multi_hop | -0.132 (-0.192, -0.082) significant | -0.132 (-0.192, -0.082) significant | -0.132 (-0.192, -0.082) significant |
-| distractor_heavy | -0.121 (-0.202, -0.050) significant | -0.121 (-0.202, -0.050) significant | -0.121 (-0.202, -0.050) significant |
-| long_context | -0.110 (-0.225, -0.023) significant | -0.110 (-0.225, -0.023) significant | -0.110 (-0.225, -0.023) significant |
-| no_answer | -0.062 (-0.125, +0.000) **NOT SIGNIFICANT** | -0.062 (-0.125, +0.000) **NOT SIGNIFICANT** | -0.062 (-0.125, +0.000) **NOT SIGNIFICANT** |
-| ambiguous_query | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** |
-| uncategorized | -0.128 (-0.368, +0.051) **NOT SIGNIFICANT** | -0.128 (-0.368, +0.051) **NOT SIGNIFICANT** | -0.128 (-0.368, +0.051) **NOT SIGNIFICANT** |
+| overall | -0.123 (-0.177, -0.075) 유의함 | -0.123 (-0.177, -0.075) 유의함 | -0.123 (-0.177, -0.075) 유의함 |
+| multi_hop | -0.132 (-0.192, -0.082) 유의함 | -0.132 (-0.192, -0.082) 유의함 | -0.132 (-0.192, -0.082) 유의함 |
+| distractor_heavy | -0.121 (-0.202, -0.050) 유의함 | -0.121 (-0.202, -0.050) 유의함 | -0.121 (-0.202, -0.050) 유의함 |
+| long_context | -0.110 (-0.225, -0.023) 유의함 | -0.110 (-0.225, -0.023) 유의함 | -0.110 (-0.225, -0.023) 유의함 |
+| no_answer | -0.062 (-0.125, +0.000) **유의하지 않음** | -0.062 (-0.125, +0.000) **유의하지 않음** | -0.062 (-0.125, +0.000) **유의하지 않음** |
+| ambiguous_query | +0.000 (+0.000, +0.000) **유의하지 않음** | +0.000 (+0.000, +0.000) **유의하지 않음** | +0.000 (+0.000, +0.000) **유의하지 않음** |
+| uncategorized | -0.128 (-0.368, +0.051) **유의하지 않음** | -0.128 (-0.368, +0.051) **유의하지 않음** | -0.128 (-0.368, +0.051) **유의하지 않음** |
 
 ## ndcg@10
 
-| Category | `dense` | `hybrid_bm25_k30` | `hybrid_bm25_k60` | `hybrid_bm25_k100` |
+| 카테고리 | `dense` | `hybrid_bm25_k30` | `hybrid_bm25_k60` | `hybrid_bm25_k100` |
 |---|---|---|---|---|
 | overall | 0.067 (n=114) | 0.009 (n=114) | 0.009 (n=114) | 0.009 (n=114) |
 | multi_hop | 0.065 (n=93) | 0.000 (n=93) | 0.000 (n=93) | 0.000 (n=93) |
@@ -104,39 +104,40 @@ Run: `20260518-0352-phase3-mode` · commit `7aaa6a3931` · index_dir=`/Users/hsk
 | ambiguous_query | 0.000 (n=1) | 0.000 (n=1) | 0.000 (n=1) | 0.000 (n=1) |
 | uncategorized | 0.119 (n=13) | 0.080 (n=13) | 0.080 (n=13) | 0.080 (n=13) |
 
-### ndcg@10 — paired CI delta vs `dense` (seed-averaged)
+### ndcg@10 — `dense` 대비 paired CI delta (seed 평균)
 
-| Category | `hybrid_bm25_k30` | `hybrid_bm25_k60` | `hybrid_bm25_k100` |
+| 카테고리 | `hybrid_bm25_k30` | `hybrid_bm25_k60` | `hybrid_bm25_k100` |
 |---|---|---|---|
-| overall | -0.058 (-0.089, -0.030) significant | -0.058 (-0.089, -0.030) significant | -0.058 (-0.089, -0.030) significant |
-| multi_hop | -0.065 (-0.095, -0.040) significant | -0.065 (-0.095, -0.040) significant | -0.065 (-0.095, -0.040) significant |
-| distractor_heavy | -0.068 (-0.116, -0.028) significant | -0.068 (-0.116, -0.028) significant | -0.068 (-0.116, -0.028) significant |
-| long_context | -0.073 (-0.152, -0.007) significant | -0.073 (-0.152, -0.007) significant | -0.073 (-0.152, -0.007) significant |
-| no_answer | -0.035 (-0.069, +0.000) **NOT SIGNIFICANT** | -0.035 (-0.069, +0.000) **NOT SIGNIFICANT** | -0.035 (-0.069, +0.000) **NOT SIGNIFICANT** |
-| ambiguous_query | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** |
-| uncategorized | -0.039 (-0.200, +0.109) **NOT SIGNIFICANT** | -0.039 (-0.200, +0.109) **NOT SIGNIFICANT** | -0.039 (-0.200, +0.109) **NOT SIGNIFICANT** |
+| overall | -0.058 (-0.089, -0.030) 유의함 | -0.058 (-0.089, -0.030) 유의함 | -0.058 (-0.089, -0.030) 유의함 |
+| multi_hop | -0.065 (-0.095, -0.040) 유의함 | -0.065 (-0.095, -0.040) 유의함 | -0.065 (-0.095, -0.040) 유의함 |
+| distractor_heavy | -0.068 (-0.116, -0.028) 유의함 | -0.068 (-0.116, -0.028) 유의함 | -0.068 (-0.116, -0.028) 유의함 |
+| long_context | -0.073 (-0.152, -0.007) 유의함 | -0.073 (-0.152, -0.007) 유의함 | -0.073 (-0.152, -0.007) 유의함 |
+| no_answer | -0.035 (-0.069, +0.000) **유의하지 않음** | -0.035 (-0.069, +0.000) **유의하지 않음** | -0.035 (-0.069, +0.000) **유의하지 않음** |
+| ambiguous_query | +0.000 (+0.000, +0.000) **유의하지 않음** | +0.000 (+0.000, +0.000) **유의하지 않음** | +0.000 (+0.000, +0.000) **유의하지 않음** |
+| uncategorized | -0.039 (-0.200, +0.109) **유의하지 않음** | -0.039 (-0.200, +0.109) **유의하지 않음** | -0.039 (-0.200, +0.109) **유의하지 않음** |
 
-## Per-category winner
+## 카테고리별 winner
 
-Winner = variant with highest `chunk_recall@10` mean AND paired CI vs `dense` fully above 0. "NOT SIGNIFICANT" = no variant's CI clears 0 (absolute rule #5).
+winner = `chunk_recall@10` 평균이 가장 높으면서 `dense` 대비 paired CI 가 완전히 0 위인 변형. "유의하지 않음" = 어떤 변형의 CI 도 0 을 넘지 못함 (절대 규칙 #5).
 
-| Category | Winner | Mean recall@10 | Delta CI vs `dense` |
+| 카테고리 | winner | 평균 recall@10 | `dense` 대비 delta CI |
 |---|---|---|---|
-| overall | `NOT SIGNIFICANT` | — | — |
-| multi_hop | `NOT SIGNIFICANT` | — | — |
-| distractor_heavy | `NOT SIGNIFICANT` | — | — |
-| long_context | `NOT SIGNIFICANT` | — | — |
-| no_answer | `NOT SIGNIFICANT` | — | — |
-| ambiguous_query | `NOT SIGNIFICANT` | — | — |
-| uncategorized | `NOT SIGNIFICANT` | — | — |
+| overall | `유의하지 않음` | — | — |
+| multi_hop | `유의하지 않음` | — | — |
+| distractor_heavy | `유의하지 않음` | — | — |
+| long_context | `유의하지 않음` | — | — |
+| no_answer | `유의하지 않음` | — | — |
+| ambiguous_query | `유의하지 않음` | — | — |
+| uncategorized | `유의하지 않음` | — | — |
 
-## Notes
+## 비고(notes)
 
-* Planner-bypass: full query as the only sub-query, identity expansion, no rerank, `metadata_first=False` — isolates retrieval-mode impact from expansion / rerank / metadata-filter effects.
-* All 4 variants share `data/index/real100`; only `plan['retrieval_backend']` and `plan['rrf_k']` differ. BM25 lazy-builds on the first hybrid call via `rag_retrieval.get_or_build_bm25` and is cached on the index dict, so `hybrid_bm25_k30` pays the BM25 build cost once and `k60`/`k100` are cache hits.
-* `chunk_recall@k` is None for cases without `expected_terms` / `expected_doc_ids` (e.g. abstention) — those are dropped pairwise to preserve case alignment between variants.
-* Seeds drive only the bootstrap RNG; retrieval itself is deterministic for the same query+index+backend+rrf_k (dense + BM25 both).
-* Category bucketing uses `hardcase_categories` (semantic difficulty tags). Multi-tag cases appear in multiple buckets, so per-category counts overlap and per-category paired CIs share cases.
-* `dense` is the delta baseline because ADR 0010's accept rationale for `hybrid` framed the question as "is hybrid actually better than dense?". Deltas above 0 favor the hybrid variant; below 0 favor dense.
-* m3 (FlagEmbedding 3-channel RRF) is **out of scope** for Phase 3 — it requires a separate index build (`build_m3_index`), so deferring to Phase 3.5 keeps Phase 3 measurement narrow (mode ↔ index decoupled).
-* k=10 / k=200 are **out of scope** for Phase 3 — k∈{30,60,100} brackets ADR 0010's k=60 default without inflating the variant count. Tighter/looser k swings can be added in a follow-up if k=30 vs k=100 shows a clean gradient.
+* Planner-bypass: 전체 query 를 유일한 sub-query 로, identity expansion, rerank 없음, `metadata_first=False` — 검색 모드 효과를 expansion / rerank / metadata-filter 효과로부터 격리한다.
+* 4 변형 모두 `data/index/real100` 을 공유한다; `plan['retrieval_backend']` 와 `plan['rrf_k']` 만 다르다. BM25 는 첫 hybrid 호출 시 `rag_retrieval.get_or_build_bm25` 로 lazy-build 되어 index dict 에 캐시되므로 `hybrid_bm25_k30` 가 BM25 build 비용을 1회 지불하고 `k60`/`k100` 은 캐시 hit 이다.
+* `chunk_recall@k` 는 `expected_terms` / `expected_doc_ids` 가 없는 케이스(예: abstention(보류))에서 None 이다 — 변형 간 케이스 정렬을 보존하기 위해 pairwise 에서 제외된다.
+* Seed 는 bootstrap RNG 만 구동한다; retrieval 자체는 동일 query+index+backend+rrf_k 에 대해 결정적(deterministic)이다 (dense + BM25 모두).
+* 카테고리 버킷팅은 `hardcase_categories`(의미 난이도 태그)를 쓴다. 멀티태그 케이스는 여러 버킷에 나타나므로 카테고리별 카운트는 겹치고 paired CI 가 케이스를 공유한다.
+* `dense` 이 delta baseline 인 이유: ADR 0010 의 `hybrid` 채택 근거가 질문을 "hybrid 가 실제로 dense 보다 나은가?" 로 프레이밍했기 때문이다. 0 위 delta 는 hybrid 변형에, 0 아래는 dense 에 유리하다.
+* m3 (FlagEmbedding 3-channel RRF)는 Phase 3 **범위 외**다 — 별도 인덱스 빌드(`build_m3_index`)가 필요하므로 Phase 3.5 로 미뤄 Phase 3 측정을 좁게 유지한다 (mode ↔ index 분리).
+* k=10 / k=200 은 Phase 3 **범위 외**다 — k∈{30,60,100} 이 변형 수를 부풀리지 않으면서 ADR 0010 의 k=60 default 를 감싼다. k=30 vs k=100 이 깔끔한 gradient 를 보이면 후속에서 더 좁은/넓은 k 를 추가할 수 있다.
+* 이 리포트는 `--reaggregate` 로 `reports/retrieval/phase3_mode_20260518T032404Z/raw_results.json` 로부터 재생성됨 — 카테고리는 `hardcase_categories` 에서 재유도; `raw_results.json` 의 retrieval 점수는 주입된 `categories` 필드를 제외하면 byte-for-byte 불변.

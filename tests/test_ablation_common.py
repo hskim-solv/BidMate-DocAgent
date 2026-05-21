@@ -117,19 +117,20 @@ class SeedAveragedPairedCITest(unittest.TestCase):
 
 class FmtCiTest(unittest.TestCase):
     def test_fmt_ci_significance_boundary(self) -> None:
-        # CI that straddles 0 → NOT SIGNIFICANT.
+        # CI that straddles 0 → 유의하지 않음 (not significant).
         ci_straddle = {"mean_diff": 0.0, "ci_lo": -0.001, "ci_hi": 0.001}
-        self.assertIn("NOT SIGNIFICANT", _fmt_ci(ci_straddle))
-        # CI strictly above 0 → significant.
+        self.assertIn("유의하지 않음", _fmt_ci(ci_straddle))
+        # CI strictly above 0 → 유의함 (significant). The token "유의함" is
+        # not a substring of "유의하지 않음", so the assertions stay disjoint.
         ci_above = {"mean_diff": 0.003, "ci_lo": 0.001, "ci_hi": 0.005}
         out_above = _fmt_ci(ci_above)
-        self.assertIn("significant", out_above)
-        self.assertNotIn("NOT SIGNIFICANT", out_above)
-        # CI strictly below 0 → significant.
+        self.assertIn("유의함", out_above)
+        self.assertNotIn("유의하지 않음", out_above)
+        # CI strictly below 0 → 유의함 (significant).
         ci_below = {"mean_diff": -0.003, "ci_lo": -0.005, "ci_hi": -0.001}
         out_below = _fmt_ci(ci_below)
-        self.assertIn("significant", out_below)
-        self.assertNotIn("NOT SIGNIFICANT", out_below)
+        self.assertIn("유의함", out_below)
+        self.assertNotIn("유의하지 않음", out_below)
         # None → "N/A" so caller never sees a fabricated band.
         self.assertEqual(_fmt_ci(None), "N/A")
 
