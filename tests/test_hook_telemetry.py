@@ -133,7 +133,7 @@ def test_known_outcomes_includes_required_set(gov):
 def test_known_hooks_matches_inventory(gov):
     expected = {
         "bash-guard", "loadbearing", "memory-lines",
-        "adr-template", "plan-slug-race",
+        "adr-template", "adr-collision", "plan-slug-race",
         "delegation-gate", "stop-ship",
     }
     assert gov.KNOWN_HOOKS == expected
@@ -222,6 +222,8 @@ HOOK_EMIT_EXPECTATIONS = [
      "--hook delegation-gate", "--outcome nudged"),
     ("scripts/claude-hooks/pretooluse-adr-template.sh",
      "--hook adr-template", "--outcome blocked"),
+    ("scripts/claude-hooks/pretooluse-adr-collision.sh",
+     "--hook adr-collision", "--outcome blocked"),
     ("scripts/claude-hooks/plan-slug-race.sh",
      "--hook plan-slug-race", "--outcome blocked"),
     ("scripts/claude-hooks/pretooluse-bash-guard.sh",
