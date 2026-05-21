@@ -58,6 +58,18 @@ jobs:
         run: |
           python scripts/check_branch_and_issue.py --check-5b ${{ github.event.pull_request.number }}
 
+      - name: Enforce failure-rate ceiling ratchet (ADR 0062)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          # Fail when a PR raises/removes a ceiling in
+          # tests/test_failure_rate_regression.py without an explicit
+          # [ALLOW_REGRESSION: <category> ...] token in the body. Fetches the
+          # base + head versions of the test file via the contents API, so no
+          # extra checkout is needed. Skips when the file isn't in the diff.
+          python scripts/check_branch_and_issue.py --check-ceiling-ratchet ${{ github.event.pull_request.number }}
+
       - name: Guard ADR file deletion/rename (CLAUDE.md Prohibited)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
