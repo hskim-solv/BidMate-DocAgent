@@ -676,6 +676,66 @@ def compute_axis_5_memory_hygiene(
     }
 
 
+def compute_evidence_age_days(
+    stats: dict[str, Any], now: datetime | None = None
+) -> float | None:
+    """Days between the freshest datable evidence and ``now`` (ADR 0064).
+
+    The time-separation guard in ``eval/judges/self_review_judge.py``
+    downgrades a ✓ to △ when this is < 1.0 — evidence produced the same day
+    as the review cannot be independently confirmed. Derived purely from the
+    datable timestamps already in the assembled stats (PR merge dates, ADR
+    accepted dates, memory mtimes, gh ``merged_at``), so it is recomputable
+    and verifiable with no extra collection pass. Returns ``None`` when no
+    datable evidence exists; the judge treats that conservatively (downgrade),
+    never as a pass.
+
+    ``now`` is injectable so callers can compute a deterministic age in tests;
+    production passes the current UTC time.
+    """
+    if now is None:
+        now = datetime.now(timezone.utc)
+
+    def _ts(value: Any) -> datetime | None:
+        # Reuse the gh-ISO parser (handles the trailing `Z`); it returns a
+        # naive datetime for date-only `YYYY-MM-DD` strings, so normalise to
+        # UTC before comparing across the mixed-format candidates.
+        dt = _parse_gh_iso(value if isinstance(value, str) else None)
+        if dt is not None and dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+
+    candidates: list[datetime] = []
+    git = stats.get("git") or {}
+    for pr in git.get("prs_merged") or []:
+        if isinstance(pr, dict):
+            dt = _ts(pr.get("date"))
+            if dt is not None:
+                candidates.append(dt)
+    for pr in stats.get("pr_diff_stats") or []:
+        if isinstance(pr, dict):
+            dt = _ts(pr.get("merged_at"))
+            if dt is not None:
+                candidates.append(dt)
+    gov = stats.get("governance_hooks") or {}
+    for lag in gov.get("rule_to_automation_lag_days") or []:
+        if isinstance(lag, dict):
+            dt = _ts(lag.get("accepted_date"))
+            if dt is not None:
+                candidates.append(dt)
+    memory = stats.get("memory") or {}
+    for f in memory.get("files") or []:
+        if isinstance(f, dict):
+            dt = _ts(f.get("mtime"))
+            if dt is not None:
+                candidates.append(dt)
+
+    if not candidates:
+        return None
+    newest = max(candidates)
+    return max((now - newest).total_seconds() / 86400.0, 0.0)
+
+
 def assemble_stats(
     quarter: str, transcripts_glob: str, memory_dir: str, repo: str
 ) -> dict[str, Any]:
@@ -696,18 +756,21 @@ def assemble_stats(
     axis_5 = {
         "content_freshness": compute_axis_5_memory_hygiene(memory_data, start),
     }
-    return {
+    git_data = collect_git(repo, start, end)
+    stats: dict[str, Any] = {
         "quarter": quarter,
         "date_range": [start, end],
         "sessions": sessions,
         "memory": memory_data,
-        "git": collect_git(repo, start, end),
+        "git": git_data,
         "governance_hooks": governance,
         "pr_diff_stats": pr_diff_stats,
         "axis_2_plan_subagent_skip_rate": axis_2,
         "axis_4_cycle_time": axis_4,
         "axis_5_memory_hygiene": axis_5,
     }
+    stats["evidence_age_days"] = compute_evidence_age_days(stats)
+    return stats
 
 
 def emit_report(stats: dict[str, Any]) -> str:
