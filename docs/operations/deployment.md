@@ -184,6 +184,8 @@ Railway 의 도메인 생성기는
 `bidmate-docagent-demo.up.railway.app` 같은 URL 을 만든다. 포트폴리오
 링크용으로 커스텀 서브도메인을 고정하라.
 
+<a id="recording-the-demo-video"></a>
+
 ## 데모 비디오 녹화
 
 *코드 리뷰* 와 *제품 현실* 사이의 간극을 메우는 2–3분
