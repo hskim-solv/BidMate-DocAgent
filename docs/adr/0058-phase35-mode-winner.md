@@ -1,6 +1,6 @@
 # 0058: Phase 3.5 mode-winner 결정 — Scenario A (default 를 hybrid BM25+BGE-M3 dense, RRF k=60 으로 전환)
 
-- **Status**: accepted (kordoc-corpus measurement landed 2026-05-19; Scenario A finalized)
+- **Status**: accepted (Phase 3.5 measurement landed 2026-05-19; Scenario A finalized)
 - **Date**: 2026-05-19 (Status accepted); 2026-05-18 (Status proposed)
 - **Deciders**: hskim
 - **Related**: [ADR 0001](0001-preserve-naive-baseline.md), [ADR 0005](0005-eval-split-public-synthetic-private-local.md), [ADR 0010](0010-hybrid-bm25-dense-retrieval-rrf.md), [ADR 0021](0021-bge-m3-completes-phase-1-3.md), [ADR 0025](0025-cost-frontier-defer-until-real-baselines.md), [ADR 0032](0032-eval-saturation-routed-subset.md), [ADR 0049](0049-kordoc-replaces-pyhwp-backend.md), PR #966 (Phase 3.5 measurement), PR #956 (Phase 3, retracted), issue #957, issue #997, issue #1022 (m3 cloud-GPU follow-up)
@@ -13,7 +13,7 @@ ADR 0010 (2026-05-11) 은 `retrieval_backend ∈ {dense, hybrid}` 를 default `d
 
 처음 두 시도는 오도하는(misleading) 근거(evidence)를 냈다. Phase 3 (PR #956) 는 `hybrid_bm25_k{30,60,100}` 세 변형이 모두 byte-identical 이라 보고하고 그 평탄함을 BM25 채널 지배(dominance) 탓으로 돌렸다. 그 결론은 틀렸다 — Phase 3 runner 가 second-stage `apply_fusion_and_reranking` 없이 `retrieve_candidates` (candidate 생성만) 를 호출해서 hybrid·m3 backend 의 per-case ranking 이 chunk_id 삽입 순서로 collapse 했다 (placeholder score = 0.0). Phase 3.5 (PR #966) 는 runner 배선(wire-up)을 고쳤지만 인덱스 빌드에 `--src data/data_list.csv` 를 써서 CSV `text`-column loader 로 라우팅됐고, Phase 3 가 쓴 26,376-chunk kordoc-추출 코퍼스 대신 898-chunk 코퍼스를 냈다. 그 측정은 internally valid 하지만 (3 변형이 동일 898-chunk 코퍼스 공유, paired CI delta 는 unbiased) 절대 `chunk_recall@k` 수치는 Phase 3 와 비교 불가이고 chunk-count caveat 가 REPORT.md Notes 를 지배했다.
 
-본 ADR 의 근거는 kordoc-rebuilt 재측정이다: 동일 100 docs, 동일 chunking 전략 (`fixed`, `max_chars=520`, `overlap_sentences=1`), Phase 3 가 쓴 동일 chunking config, 단 이번엔 BGE-M3 1024-dim semantic 임베딩 위에서 `apply_fusion_and_reranking` 배선을 고쳐 실행. retraction 이력은 PR #966 의 REPORT.md Notes 와 본 ADR 의 Context 에 보존해 audit trail 을 정직하게 유지한다 (absolute rule #5).
+본 ADR 의 근거는 동일 100 docs · 동일 chunking 전략 (`fixed`, `max_chars=520`, `overlap_sentences=1`, Phase 3 와 동일 config) 위에서 BGE-M3 1024-dim semantic 임베딩 + `apply_fusion_and_reranking` 배선 수정으로 다시 실행한 측정이다. 측정 인덱스(`data/index/real100_m3`)는 csv_text-fallback loader 로 빌드된 **898-chunk** 코퍼스다 (real100 의 HWP/PDF 가 `data_list_csv_text` 로 fallback — ADR 0049); kordoc 전체 추출 (~264 chunks/doc ≈ **26,376**) 은 16GB MPS 재임베딩 비용으로 본 측정에 미사용한 reference 값이다 (REPORT 'chunk 수 caveat' 참조). retraction 이력은 PR #966 의 REPORT.md Notes 와 본 ADR 의 Context 에 보존해 audit trail 을 정직하게 유지한다 (absolute rule #5).
 
 ## Decision
 
@@ -23,9 +23,9 @@ ADR 0010 (2026-05-11) 은 `retrieval_backend ∈ {dense, hybrid}` 를 default `d
 
 ### Evidence (from `reports/retrieval/phase35_m3_20260518T214937Z_kordoc_no_m3/REPORT.md`)
 
-측정: kordoc 26,376 chunks, n=221 cases, dense_m3 vs hybrid_bm25_k60_m3, paired bootstrap CI 95%, seeds 17/23/29.
+측정: csv_text-fallback 인덱스 **898 chunks** (kordoc-full ~26,376 은 미사용 reference — Context + REPORT '청크 수 caveat' 참조), n=221 cases, dense_m3 vs hybrid_bm25_k60_m3, paired bootstrap CI 95%, seeds 17/23/29.
 
-이 측정은 [ADR 0005](0005-eval-split-public-synthetic-private-local.md) **private-local** 표면 (real100 코퍼스, gitignored; aggregate REPORT 만 commit 가능) 에서 실행 — public-synthetic 표면 아님. ADR 0005 에 따라 모든 신규 eval 표면은 한 쪽을 택하고, 이건 strictly-local 이므로 여기 절대 `chunk_recall@k` 수치는 reviewer-reproducible 아님 (paired CI delta + commit 된 REPORT 가 audit trail).
+이 측정은 [ADR 0005](0005-eval-split-public-synthetic-private-local.md) **private-local** 표면 (real100 코퍼스, gitignored; committable = `REPORT.md` + `mode_specs.json` + `deltas.json` + `raw_results.json` — qid/categories/metric 값만, doc/chunk ID·케이스 텍스트 없음) 에서 실행 — public-synthetic 표면 아님. ADR 0005 에 따라 모든 신규 eval 표면은 한 쪽을 택하고, 이건 strictly-local 이므로 여기 절대 `chunk_recall@k` 수치는 reviewer-reproducible 아님 (paired CI delta + commit 된 aggregate 산출물이 audit trail).
 
 **Overall metrics** (hybrid_bm25_k60_m3 vs dense_m3, all SIG = paired CI fully above 0):
 - `chunk_recall@10`: 0.288 → 0.340 (**+0.052 SIG**, CI +0.020/+0.088)
@@ -47,11 +47,11 @@ ADR 0010 (2026-05-11) 은 `retrieval_backend ∈ {dense, hybrid}` 를 default `d
 **Scenario A 적용** (default 가 `hybrid` 로 전환):
 - README 가 default-mode framing 을 업데이트해야 함; `eval/config.yaml` `agentic_full` preset annotation 이 뒤집힘 (follow-up 구현 PR, 본 ADR 에 의해 블록 안 됨)
 - BM25 의존성 (`rank_bm25`) 이 production 에 load-bearing 화 (이미 `requirements.txt` 에 있어 install footprint 불변)
-- Latency 예산: kordoc 26k 측정에서 p50 기준 dense 의 1.35x (757ms vs 559ms)
+- Latency 예산: csv_text-fallback 898-chunk 측정에서 p50 기준 dense 의 1.35x (757ms vs 559ms)
 
 **본 ADR 이 lock 하는 것**:
 - 향후 모든 ablation runner 의 `apply_fusion_and_reranking` 배선 — Phase 3 PR #956 버그 재발 금지 (Phase 3 는 PR-H #994 에서 수정)
-- `data/index/real100_m3` 의 kordoc-as-source-of-truth 규약 (production semantic 인덱스에 csv_text fallback 없음; PR #966 closeout 의 `BIDMATE_KORDOC_CACHE_DIR` bypass 가 enable)
+- `data/index/real100_m3` 의 kordoc-as-source-of-truth **목표** (`BIDMATE_KORDOC_CACHE_DIR` bypass 로 enable) — 단 본 Phase 3.5 측정 인덱스는 16GB MPS 제약으로 csv_text loader 로 fallback(898 chunks)했다 (REPORT '청크 수 caveat'); 이 lock 의 취지는 향후 production 빌드가 csv_text 로 silent fallback 하지 않도록 강제하는 것
 - Apple Silicon 에서 향후 m3-channel 측정을 위한 runner-side m3 colbert batching 패턴 (`scripts/phase35_m3_ablation.py::_prime_m3_index_cache_and_colbert`)
 - memory-constrained 측정 환경을 위한 `BIDMATE_SKIP_M3_VARIANT=1` env var (issue #997 에서 도입)
 
