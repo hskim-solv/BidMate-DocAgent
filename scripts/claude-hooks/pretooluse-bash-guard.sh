@@ -66,8 +66,9 @@ if [[ "$gh_subcommand" == "create" ]]; then
   # --- §5b soft-warn (issue #1097): load-bearing PR body must carry §5b ---
   # Runs for every `gh pr create` (independent of the --base / stacked guard
   # below): warns when a load-bearing-touching PR's body has no §5b
-  # (real-data delta) section. The CI `--check-5b` gate only runs post-create
-  # (gh pr view), so this is the pre-create early warning. Reuses the exact
+  # (real-data delta) section. The CI `--check-5b` gate runs post-create
+  # (gh pr view) on EVERY PR base incl. stacked (base≠main) since issue #1159,
+  # so this is purely the pre-create early warning. Reuses the exact
   # validate_5b + is_load_bearing logic via _ship_pr_body.py — no duplicated
   # regex. Warns only; never exits — control falls through to the stacked
   # guard which owns exit 0 / 2.
@@ -109,7 +110,8 @@ if [[ "$gh_subcommand" == "create" ]]; then
     또는 escape 문장: `No behavior change in retrieval / verifier path.`
 
     PR #69 교훈: 합성 CI 델타만으론 의도된 보류(abstention) 회귀를 놓침.
-    PR 생성은 그대로 진행됩니다(경고만). CI `--check-5b` 가 생성 후 hard-gate 합니다.
+    PR 생성은 그대로 진행됩니다(경고만). CI `--check-5b` 가 생성 후 hard-gate 합니다
+    — base 가 main 이든 stacked(base≠main) 든 모두 (branch-and-issue-check.yml).
 EOF
   fi
   # NB: do NOT exit here — fall through to the stacked guard below.

@@ -1,8 +1,12 @@
 name: PR Eval Delta
 
 on:
+  # No `branches:` filter — the eval-delta + pytest + provenance gates must
+  # fire on EVERY PR base, incl. stacked PRs (base≠main). A `branches: [main]`
+  # filter exempted stacked PRs from these gates, part of the §5b bypass in
+  # issue #1159; pr-judge.yml (ADR 0043) is the base-agnostic precedent.
+  # Guarded by tests/test_pr_gate_workflow_triggers_regression.py.
   pull_request:
-    branches: [main]
 
 permissions:
   contents: read
