@@ -9,10 +9,12 @@ RFP/제안요청서 문서 이해를 위한 Agentic RAG 시스템 [BidMate-DocAg
 
 ## 진입점
 
-- **[엔지니어링 블로그](./blog/)** — Phase 4 시리즈 3편
+- **[엔지니어링 블로그](./blog/)** — 측정-주도 엔지니어링 회고
   - [Extractive를 1급 baseline로 유지하는 이유](./blog/2026-05-extractive-baseline/)
-  - [Public synthetic + Private real, 두 평가 surface](./blog/2026-05-public-synthetic-private-real/)
-  - [실패 분류로 백로그 생성하기](./blog/2026-05-failure-taxonomy-backlog/)
+  - [측정 도구가 자기 함정을 발견했을 때 — 5-step closed loop](./blog/2026-05-goodhart-closed-loop.md)
+  - [0pp lift 가 가리킨 것 — 측정 surface 안의 진짜 신호](./blog/hyde-measurement-saturation.md)
+  - [Observability를 baseline 깨지 않고 추가하는 패턴](./blog/2026-05-observability-fail-closed/)
+  - [외부 시니어 리뷰 → 사실 정정 + ADR 매트릭스](./blog/2026-05-external-review-followup/)
 - **[1-page Architecture deep-dive](./architecture-deep-dive/)** — 파이프라인 / ADR 매핑 / 측정 highlight 한 페이지 요약
 - **[저장소 문서 인덱스](./)** — ADR, 설계 노트, 벤치마크, 평가
 
