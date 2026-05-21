@@ -192,6 +192,7 @@ class AssembleStatsStructuralTest(unittest.TestCase):
             "axis_2_plan_subagent_skip_rate",
             "axis_4_cycle_time",
             "axis_5_memory_hygiene",
+            "evidence_age_days",
         }
         self.assertEqual(set(stats.keys()), expected_keys)
 

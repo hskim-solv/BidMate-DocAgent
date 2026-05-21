@@ -139,16 +139,16 @@ def _band(value: float | None, good: float, bad: float) -> str:
 
 
 def _guard_downgrade(verdict: str, evidence_age_days: float | None) -> str:
-    """ADR 0064 time-separation guard: evidence_age < 1.0 day downgrades ✓→△.
+    """ADR 0064 time-separation guard: same-day/unknown evidence downgrades ✓→△.
 
     Q2-2026's evidence (ADR 0038, hook-fires.log) was produced the *same
     day* the review was written. A ✓ that rests on same-day evidence cannot
-    be confirmed, so it is forced to △.
+    be confirmed, so it is forced to △. ``None`` — the collector emitted no
+    datable evidence age — is treated the same way (conservative): a missing
+    freshness signal can only ever lower a verdict, never falsely promote one.
     """
-    if (
-        evidence_age_days is not None
-        and evidence_age_days < 1.0
-        and verdict == "✓"
+    if verdict == "✓" and (
+        evidence_age_days is None or evidence_age_days < 1.0
     ):
         return "△"
     return verdict
@@ -160,7 +160,7 @@ def stub_verdicts(stats: dict[str, Any]) -> dict[str, str]:
     This is the stub backend — it absorbs what was the standalone
     "deterministic scorer". Three self-pass guards are baked in:
 
-    - ``evidence_age_days < 1.0`` → any ✓ downgraded to △ (time separation)
+    - ``evidence_age_days < 1.0`` (or ``None``/unmeasured) → ✓ downgraded to △
     - axis #3 ``fires == 0`` → ✗ (silence is infra-dead, not a pass)
     - axis #2 ``prs_evaluated < 10`` → △ (sample too small to grade)
     """
@@ -346,6 +346,39 @@ def _weighted_kappa(
     return 1.0 - num / den
 
 
+def _validate_operator_verdicts(operator_verdicts: object) -> None:
+    """Reject an operator verdict file that isn't exactly the 5 valid axes.
+
+    ADR 0064's agreement gate is only meaningful when every axis is rated by
+    *both* raters. A file missing an axis (or with a typo'd / out-of-vocab
+    value) used to silently shrink the row set; a single surviving diagonal
+    row (n=1) then hit ``compute_agreement``'s perfect-agreement special case
+    (κ=1.0, passes=True) — defeating the external-anchor purpose. Validate at
+    this boundary (the operator JSON is an external input) so one parse
+    mistake fails loudly instead of passing the gate with axes unverified.
+    """
+    if not isinstance(operator_verdicts, dict):
+        raise ValueError(
+            "operator verdicts must be a JSON object, got "
+            f"{type(operator_verdicts).__name__}"
+        )
+    keys = set(operator_verdicts)
+    expected = set(AXIS_KEYS)
+    if keys != expected:
+        raise ValueError(
+            "operator verdicts must cover exactly the 5 axes "
+            f"(missing={sorted(expected - keys)}, extra={sorted(keys - expected)})"
+        )
+    bad = {
+        k: v for k, v in operator_verdicts.items() if v not in VERDICT_TO_STATUS
+    }
+    if bad:
+        raise ValueError(
+            "operator verdicts have invalid values (must be one of "
+            f"{VALID_VERDICTS}): {bad}"
+        )
+
+
 def judge_self_review(
     stats: dict[str, Any],
     operator_verdicts: dict[str, str] | None = None,
@@ -361,6 +394,12 @@ def judge_self_review(
         cohens_kappa, spearman_rho, confusion, passes) augmented with
         weighted_kappa_linear / weighted_kappa_quadratic (ordinal).
     """
+    # Validate the operator JSON *before* dispatching the backend so an
+    # invalid file fails fast (no wasted openai call) — and so a parse
+    # mistake can never reach the agreement gate (see _validate_operator_verdicts).
+    if operator_verdicts is not None:
+        _validate_operator_verdicts(operator_verdicts)
+
     if backend == "stub":
         judge = stub_verdicts(stats)
     elif backend == "openai_compatible":
@@ -379,7 +418,10 @@ def judge_self_review(
         for key, label in AXES
     }
     aggregate: dict[str, Any] = {"backend": backend, "judge_verdicts": judge}
-    if operator_verdicts:
+    if operator_verdicts is not None:
+        # operator_verdicts is validated to span exactly AXIS_KEYS with
+        # in-vocab values, and the backend always emits all 5 axes, so rows
+        # span all 5 — n == len(AXIS_KEYS), never a silently truncated set.
         rows = [
             (
                 key,
@@ -387,7 +429,6 @@ def judge_self_review(
                 VERDICT_TO_STATUS[operator_verdicts[key]],
             )
             for key in AXIS_KEYS
-            if key in judge and operator_verdicts.get(key) in VERDICT_TO_STATUS
         ]
         agreement = compute_agreement(rows)
         # Augment the (unweighted) compute_agreement output with ordinal
