@@ -445,6 +445,62 @@ class KordocCacheDirBypassTest(unittest.TestCase):
             self.assertEqual(len(captured), 1)
             self.assertIn("subprocess body", result["doc"])
 
+    def test_sibling_default_cache_dir_bypasses_npx(self) -> None:
+        # env var UNSET but a sibling ``<files_dir>_kordoc`` exists → the cache
+        # is used automatically (no manual env needed), so the default build
+        # stops silently falling back to CSV text when npx is unavailable.
+        from ingestion import _kordoc_convert_batch
+
+        with TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            files_dir = tmp_path / "files"
+            cache_dir = tmp_path / "files_kordoc"  # sibling convention
+            files_dir.mkdir()
+            cache_dir.mkdir()
+            src = files_dir / "doc.hwp"
+            src.touch()
+            (cache_dir / "doc.md").write_text(
+                "# 2024. 8.\n\n사업 개요·········· 3\n\n소요예산: 1억 5천만 원\n",
+                encoding="utf-8",
+            )
+            self.assertNotIn("BIDMATE_KORDOC_CACHE_DIR", os.environ)
+
+            def must_not_run(*args, **kwargs):  # type: ignore[no-untyped-def]
+                raise AssertionError(
+                    "subprocess.run must not be invoked on sibling-default cache hit"
+                )
+
+            # node "present" so a regression would actually call npx and trip the sentinel.
+            with mock.patch.object(shutil, "which", return_value="/usr/bin/npx"):
+                with mock.patch.object(subprocess, "run", side_effect=must_not_run):
+                    result = _kordoc_convert_batch([src])
+
+            self.assertEqual(set(result.keys()), {"doc"})
+            self.assertIn("소요예산", result["doc"])
+            self.assertIn("1억 5천만 원", result["doc"])
+            self.assertNotIn("··········", result["doc"])  # ToC leader dots scrubbed (#906)
+
+    def test_sibling_default_works_when_node_missing(self) -> None:
+        # Sibling cache covers the source AND node/npx is absent → still
+        # returns kordoc text (no CSV fallback). This is the real-eval-on-CI
+        # case the fix targets.
+        from ingestion import _kordoc_convert_batch
+
+        with TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            files_dir = tmp_path / "files"
+            cache_dir = tmp_path / "files_kordoc"
+            files_dir.mkdir()
+            cache_dir.mkdir()
+            src = files_dir / "doc.hwp"
+            src.touch()
+            (cache_dir / "doc.md").write_text("# H\n\nkordoc body\n", encoding="utf-8")
+
+            with mock.patch.object(shutil, "which", return_value=None):
+                result = _kordoc_convert_batch([src])
+
+            self.assertIn("kordoc body", result["doc"])
+
 
 if __name__ == "__main__":
     unittest.main()
