@@ -184,6 +184,32 @@ def get_judge_model() -> str:
     return model
 
 
+def get_judge_temperature() -> float:
+    """Read the sampling temperature for judge calls from the environment.
+
+    Returns ``BIDMATE_JUDGE_TEMPERATURE`` parsed as a float, defaulting to
+    ``0.0`` when unset — the deterministic path that keeps existing judge
+    behaviour byte-identical (ADR 0012 stub-default reproducibility).
+
+    The override exists because some reasoning models (e.g. the gpt-5.x
+    family) reject ``temperature=0`` outright ("only the default (1) value
+    is supported"); setting ``BIDMATE_JUDGE_TEMPERATURE=1`` unblocks them
+    without changing the default for every other backend.
+
+    Raises:
+        ValueError: when the env var is set but not parseable as a float.
+    """
+    raw = os.environ.get("BIDMATE_JUDGE_TEMPERATURE")
+    if raw is None or raw.strip() == "":
+        return 0.0
+    try:
+        return float(raw)
+    except ValueError as exc:
+        raise ValueError(
+            f"BIDMATE_JUDGE_TEMPERATURE is not a valid float: {raw!r}"
+        ) from exc
+
+
 def call_openai_json(
     client: Any,
     model: str,
@@ -191,8 +217,10 @@ def call_openai_json(
 ) -> dict[str, Any] | None:
     """Call an OpenAI-compatible endpoint and return a parsed JSON dict.
 
-    Uses ``temperature=0.0`` and ``response_format={"type": "json_object"}``
-    for deterministic, structured output.
+    Uses ``response_format={"type": "json_object"}`` for structured output.
+    Temperature defaults to ``0.0`` (deterministic) but is overridable via
+    ``BIDMATE_JUDGE_TEMPERATURE`` (see :func:`get_judge_temperature`) so that
+    reasoning models which reject ``temperature=0`` can still be called.
 
     Args:
         client: An ``openai.OpenAI`` instance (from :func:`build_openai_client`).
@@ -211,7 +239,7 @@ def call_openai_json(
     response = client.chat.completions.create(
         model=model,
         messages=[{"role": "user", "content": prompt}],
-        temperature=0.0,
+        temperature=get_judge_temperature(),
         response_format={"type": "json_object"},
     )
     content = response.choices[0].message.content or "{}"

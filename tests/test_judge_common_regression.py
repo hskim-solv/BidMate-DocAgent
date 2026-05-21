@@ -9,6 +9,7 @@ All tests use no network access and no external API keys.
 """
 from __future__ import annotations
 
+import os
 import unittest
 
 from eval.judges.judge_common import (
@@ -16,6 +17,7 @@ from eval.judges.judge_common import (
     build_evidence_block,
     clamp_score,
     extract_summary,
+    get_judge_temperature,
     normalize_status_verdict,
 )
 
@@ -232,6 +234,39 @@ class JudgeStatusesConstantTest(unittest.TestCase):
         self.assertIn("supported", JUDGE_STATUSES)
         self.assertIn("partial", JUDGE_STATUSES)
         self.assertIn("insufficient", JUDGE_STATUSES)
+
+
+class GetJudgeTemperatureTest(unittest.TestCase):
+    """get_judge_temperature: env override with deterministic 0.0 default."""
+
+    def setUp(self) -> None:
+        self._saved = os.environ.pop("BIDMATE_JUDGE_TEMPERATURE", None)
+
+    def tearDown(self) -> None:
+        if self._saved is None:
+            os.environ.pop("BIDMATE_JUDGE_TEMPERATURE", None)
+        else:
+            os.environ["BIDMATE_JUDGE_TEMPERATURE"] = self._saved
+
+    def test_unset_defaults_to_zero(self) -> None:
+        self.assertEqual(0.0, get_judge_temperature())
+
+    def test_empty_string_defaults_to_zero(self) -> None:
+        os.environ["BIDMATE_JUDGE_TEMPERATURE"] = "   "
+        self.assertEqual(0.0, get_judge_temperature())
+
+    def test_explicit_one_parsed(self) -> None:
+        os.environ["BIDMATE_JUDGE_TEMPERATURE"] = "1"
+        self.assertAlmostEqual(1.0, get_judge_temperature())
+
+    def test_fractional_value_parsed(self) -> None:
+        os.environ["BIDMATE_JUDGE_TEMPERATURE"] = "0.7"
+        self.assertAlmostEqual(0.7, get_judge_temperature())
+
+    def test_invalid_value_raises(self) -> None:
+        os.environ["BIDMATE_JUDGE_TEMPERATURE"] = "hot"
+        with self.assertRaises(ValueError):
+            get_judge_temperature()
 
 
 if __name__ == "__main__":
