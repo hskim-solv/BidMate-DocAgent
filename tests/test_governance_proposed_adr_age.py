@@ -8,6 +8,7 @@ injected date resolver so they run without a git repo.
 
 from __future__ import annotations
 
+import re
 from datetime import date
 from pathlib import Path
 
@@ -50,6 +51,32 @@ def test_parse_status_no_status_line_returns_none(tmp_path: Path) -> None:
     assert parse_adr_status(tmp_path / "0003-c.md") is None
 
 
+def test_parse_status_table_metablock_form(tmp_path: Path) -> None:
+    # ADR 0052 shape: 2-column metablock table, value in the next cell with
+    # no colon. The pre-#1151 colon-only regex returned None here (fail-open).
+    (tmp_path / "0052-t.md").write_text(
+        "# 0052: x\n\n"
+        "| Field       | Value                                    |\n"
+        "|-------------|------------------------------------------|\n"
+        "| **Status**  | Proposed                                 |\n"
+        "| **Date**    | 2026-05-17                               |\n",
+        encoding="utf-8",
+    )
+    assert parse_adr_status(tmp_path / "0052-t.md") == "proposed"
+
+
+def test_parse_status_table_form_with_annotation(tmp_path: Path) -> None:
+    # ADR 0044 shape: table value carries a trailing annotation; not proposed.
+    (tmp_path / "0044-t.md").write_text(
+        "# 0044: x\n\n"
+        "| Field       | Value                              |\n"
+        "|-------------|------------------------------------|\n"
+        "| **Status**  | Accepted (Superseded by ADR 0052)  |\n",
+        encoding="utf-8",
+    )
+    assert parse_adr_status(tmp_path / "0044-t.md") == "accepted (superseded by adr 0052)"
+
+
 # ---- proposed_adr_age: status filtering ----------------------------------
 
 
@@ -64,6 +91,22 @@ def test_only_proposed_status_returned(tmp_path: Path) -> None:
         now=date(2026, 6, 2),
     )
     assert [r.number for r in recs] == [1]
+
+
+def test_table_form_proposed_included_in_collector(tmp_path: Path) -> None:
+    # Regression for #1151: a table-form proposed ADR must reach the collector
+    # (and be SLA-flaggable), not be silently exempted.
+    (tmp_path / "0052-t.md").write_text(
+        "# 0052: x\n\n| Field | Value |\n|---|---|\n| **Status** | Proposed |\n",
+        encoding="utf-8",
+    )
+    recs = proposed_adr_age(
+        tmp_path,
+        date_resolver=lambda p: date(2026, 5, 16),  # after grandfather
+        now=date(2026, 6, 25),  # 40 days > 30
+    )
+    assert [r.number for r in recs] == [52]
+    assert recs[0].over_sla is True
 
 
 def test_non_adr_files_ignored(tmp_path: Path) -> None:
@@ -191,3 +234,41 @@ def test_repo_proposed_adr_age_runs() -> None:
         assert r.status.startswith("proposed")
         assert r.number > 0
         assert (r.age_days is None) or (r.age_days >= 0)
+
+
+# ---- README ↔ collector parity (anti-fail-open) --------------------------
+
+
+def test_readme_proposed_rows_all_in_collector() -> None:
+    """Every ADR the README main index marks `proposed` must be returned by
+    the collector. This is the format-agnostic guard: it fails whenever a live
+    ADR uses a Status form `parse_adr_status` cannot read — the table-form
+    fail-open (#1151, ADR 0052) was the original instance.
+
+    Forward direction only. The `## Roadmap (proposed, not yet committed)`
+    section is excluded: its rows carry a *title* in column 2, not a status,
+    so the collector legitimately reports more than the main index. An injected
+    date_resolver keeps this a pure status-parity check (no git, no ages).
+    """
+    readme = Path("docs/adr/README.md").read_text(encoding="utf-8")
+    main_index = readme.split("## Roadmap", 1)[0]
+    row_re = re.compile(
+        r"^\|\s*\[(\d{4})\]\([^)]+\)\s*\|\s*([^|]+?)\s*\|", re.MULTILINE
+    )
+    readme_proposed = {
+        int(num)
+        for num, status in row_re.findall(main_index)
+        if status.strip().lower().startswith("proposed")
+    }
+    # Guard against a silently-empty README parse making this vacuously pass.
+    assert readme_proposed, "README main index parsed zero proposed rows"
+
+    collector = {
+        r.number
+        for r in proposed_adr_age("docs/adr", date_resolver=lambda p: date(2026, 1, 1))
+    }
+    missing = readme_proposed - collector
+    assert not missing, (
+        "README marks these ADRs proposed but the collector missed them "
+        f"(Status-format fail-open): {sorted(missing)}"
+    )
