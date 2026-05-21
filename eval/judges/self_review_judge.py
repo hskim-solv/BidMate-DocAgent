@@ -116,7 +116,13 @@ def extract_signals(stats: dict[str, Any]) -> dict[str, Any]:
                 axis_4.get("pr_turnaround_hours", {}) or {}
             ).get("mean"),
         },
-        "axis_5": {"content_fresh_rate": axis_5.get("fresh_rate")},
+        "axis_5": {
+            "content_fresh_rate": axis_5.get("fresh_rate"),
+            # 5-A index hygiene. ``None`` when the collector did not emit the
+            # field (old data) → grade on 5-B alone; a dict (even all-zero)
+            # means the collector measured it → SKILL.md count=0 → △ applies.
+            "memory_lines": gov.get("memory_lines"),
+        },
         "evidence_age_days": stats.get("evidence_age_days"),
     }
 
@@ -202,20 +208,48 @@ def stub_verdicts(stats: dict[str, Any]) -> dict[str, str]:
         else ("✗" if ("✗" in (v4a, v4b)) else "△")
     )
 
-    # axis #5 — memory hygiene (5-B content freshness only). 5-A index
-    # hygiene needs fires_by_reason["memory-lines"], but the collector emits
-    # fires_by_action (action key, not reason) — a known SKILL.md↔collector
-    # mismatch documented in ADR 0064 Context. 5-A is deferred until the
-    # collector emits fires_by_action_reason; axis_5 grades on 5-B alone.
-    fr = sig["axis_5"]["content_fresh_rate"]
+    # axis #5 — memory hygiene = 5-A index hygiene + 5-B content freshness,
+    # combined by the SKILL.md dual-sub-signal rule (both ✓ → ✓; any ✗ → ✗;
+    # else △). 5-A reads governance_hooks.memory_lines, emitted by the
+    # collector as the count of `memory-lines` category fires split by action.
+    a5 = sig["axis_5"]
+
+    # 5-B content freshness band.
+    fr = a5["content_fresh_rate"]
     if fr is None:
-        out["axis_5_memory_hygiene"] = "✗"
+        v5b = "✗"
     elif fr >= 0.5:
-        out["axis_5_memory_hygiene"] = "✓"
+        v5b = "✓"
     elif fr >= 0.2:
-        out["axis_5_memory_hygiene"] = "△"
+        v5b = "△"
     else:
-        out["axis_5_memory_hygiene"] = "✗"
+        v5b = "✗"
+
+    # 5-A index hygiene. ``None`` = collector did not emit the field (old
+    # data) → fall back to 5-B alone (backward-compatible). Otherwise grade:
+    # count=0 → △ (측정 부재); blocked≥1 → ✗ (edit refused = index exploded);
+    # blocked=0 + aware≤2 → ✓; blocked=0 + aware≥3 → △.
+    ml = a5["memory_lines"]
+    if ml is None:
+        out["axis_5_memory_hygiene"] = v5b
+    else:
+        aware = int(ml.get("aware", 0) or 0)
+        blocked = int(ml.get("blocked", 0) or 0)
+        if aware + blocked == 0:
+            v5a = "△"
+        elif blocked >= 1:
+            v5a = "✗"
+        elif aware <= 2:
+            v5a = "✓"
+        else:
+            v5a = "△"
+        # dual-sub-signal combine
+        if v5a == "✓" and v5b == "✓":
+            out["axis_5_memory_hygiene"] = "✓"
+        elif "✗" in (v5a, v5b):
+            out["axis_5_memory_hygiene"] = "✗"
+        else:
+            out["axis_5_memory_hygiene"] = "△"
 
     return {k: _guard_downgrade(v, ev_age) for k, v in out.items()}
 
@@ -236,8 +270,13 @@ def _build_prompt(stats: dict[str, Any]) -> str:
         "fires >0 with 1 action; ✗ if fires=0.\n"
         "4. cycle_time: ✓ if adr_lag_days_mean ≤5 AND pr_turnaround_hours_mean "
         "≤48; ✗ if adr_lag >10 or pr_turnaround >120; △ otherwise (null=△).\n"
-        "5. memory_hygiene: ✓ if content_fresh_rate ≥0.5; △ if 0.2–0.5; ✗ if "
-        "<0.2 or null.\n\n"
+        "5. memory_hygiene = 5-A index hygiene + 5-B content freshness, "
+        "combined (both ✓ → ✓; any ✗ → ✗; else △). "
+        "5-B: ✓ if content_fresh_rate ≥0.5; △ if 0.2–0.5; ✗ if <0.2 or null. "
+        "5-A from memory_lines {aware, blocked}: if the field is null grade on "
+        "5-B alone; else count=aware+blocked=0 → △ (not measured), blocked ≥1 "
+        "→ ✗ (index-edit refused), blocked=0 and aware ≤2 → ✓, blocked=0 and "
+        "aware ≥3 → △.\n\n"
         "If evidence_age_days <1.0, downgrade any ✓ to △ (evidence and review "
         "produced the same day — cannot be independently confirmed).\n\n"
         f"Raw signals:\n{json.dumps(signals, indent=2, ensure_ascii=False)}\n\n"
