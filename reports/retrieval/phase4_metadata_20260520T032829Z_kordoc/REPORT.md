@@ -1,6 +1,6 @@
 # Phase 4 retrieval-eval — 메타데이터 / 필터링 ablation (real100 n=221)
 
-Run: `20260520-1419-phase4-metadata-reaggregate` · commit `9af8d73a63` · index_dir=`data/index/real100_kordoc` · eval_config=`eval/real_config.local.yaml` · seeds=[17, 23, 29] · top_k=20 · ks=[5, 10]
+Run: `20260521-0334-phase4-metadata-reaggregate` · commit `5e5f07bc96` · index_dir=`data/index/real100_kordoc` · eval_config=`eval/real_config.local.yaml` · seeds=[17, 23, 29] · top_k=20 · ks=[5, 10]
 
 ## 변형(variants)
 
@@ -36,13 +36,13 @@ Run: `20260520-1419-phase4-metadata-reaggregate` · commit `9af8d73a63` · index
 
 | 카테고리 | `soft_agency` | `prefilter_agency` | `prefilter_project` |
 |---|---|---|---|
-| overall | +0.198 (+0.147, +0.251) significant | +0.198 (+0.147, +0.251) significant | +0.203 (+0.152, +0.255) significant |
-| multi_hop | +0.212 (+0.160, +0.269) significant | +0.212 (+0.160, +0.269) significant | +0.218 (+0.165, +0.275) significant |
-| distractor_heavy | +0.179 (+0.106, +0.263) significant | +0.179 (+0.106, +0.263) significant | +0.179 (+0.107, +0.263) significant |
-| long_context | +0.096 (+0.002, +0.223) significant | +0.096 (+0.002, +0.223) significant | +0.096 (+0.002, +0.223) significant |
-| no_answer | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** |
-| ambiguous_query | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** |
-| uncategorized | +0.156 (+0.001, +0.385) significant | +0.156 (+0.001, +0.385) significant | +0.154 (-0.001, +0.384) **NOT SIGNIFICANT** |
+| overall | +0.198 (+0.147, +0.251) 유의함 | +0.198 (+0.147, +0.251) 유의함 | +0.203 (+0.152, +0.255) 유의함 |
+| multi_hop | +0.212 (+0.160, +0.269) 유의함 | +0.212 (+0.160, +0.269) 유의함 | +0.218 (+0.165, +0.275) 유의함 |
+| distractor_heavy | +0.179 (+0.106, +0.263) 유의함 | +0.179 (+0.106, +0.263) 유의함 | +0.179 (+0.107, +0.263) 유의함 |
+| long_context | +0.096 (+0.002, +0.223) 유의함 | +0.096 (+0.002, +0.223) 유의함 | +0.096 (+0.002, +0.223) 유의함 |
+| no_answer | +0.000 (+0.000, +0.000) **유의하지 않음** | +0.000 (+0.000, +0.000) **유의하지 않음** | +0.000 (+0.000, +0.000) **유의하지 않음** |
+| ambiguous_query | +0.000 (+0.000, +0.000) **유의하지 않음** | +0.000 (+0.000, +0.000) **유의하지 않음** | +0.000 (+0.000, +0.000) **유의하지 않음** |
+| uncategorized | +0.156 (+0.001, +0.385) 유의함 | +0.156 (+0.001, +0.385) 유의함 | +0.154 (-0.001, +0.384) **유의하지 않음** |
 
 ## chunk_recall@10
 
@@ -60,13 +60,13 @@ Run: `20260520-1419-phase4-metadata-reaggregate` · commit `9af8d73a63` · index
 
 | 카테고리 | `soft_agency` | `prefilter_agency` | `prefilter_project` |
 |---|---|---|---|
-| overall | +0.213 (+0.162, +0.265) significant | +0.219 (+0.169, +0.271) significant | +0.223 (+0.174, +0.274) significant |
-| multi_hop | +0.225 (+0.167, +0.286) significant | +0.233 (+0.177, +0.293) significant | +0.238 (+0.183, +0.297) significant |
-| distractor_heavy | +0.188 (+0.109, +0.275) significant | +0.194 (+0.118, +0.279) significant | +0.192 (+0.121, +0.274) significant |
-| long_context | +0.127 (+0.012, +0.280) significant | +0.127 (+0.012, +0.280) significant | +0.127 (+0.012, +0.280) significant |
-| no_answer | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** |
-| ambiguous_query | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** |
-| uncategorized | +0.158 (+0.003, +0.386) significant | +0.158 (+0.003, +0.386) significant | +0.157 (+0.000, +0.385) significant |
+| overall | +0.213 (+0.162, +0.265) 유의함 | +0.219 (+0.169, +0.271) 유의함 | +0.223 (+0.174, +0.274) 유의함 |
+| multi_hop | +0.225 (+0.167, +0.286) 유의함 | +0.233 (+0.177, +0.293) 유의함 | +0.238 (+0.183, +0.297) 유의함 |
+| distractor_heavy | +0.188 (+0.109, +0.275) 유의함 | +0.194 (+0.118, +0.279) 유의함 | +0.192 (+0.121, +0.274) 유의함 |
+| long_context | +0.127 (+0.012, +0.280) 유의함 | +0.127 (+0.012, +0.280) 유의함 | +0.127 (+0.012, +0.280) 유의함 |
+| no_answer | +0.000 (+0.000, +0.000) **유의하지 않음** | +0.000 (+0.000, +0.000) **유의하지 않음** | +0.000 (+0.000, +0.000) **유의하지 않음** |
+| ambiguous_query | +0.000 (+0.000, +0.000) **유의하지 않음** | +0.000 (+0.000, +0.000) **유의하지 않음** | +0.000 (+0.000, +0.000) **유의하지 않음** |
+| uncategorized | +0.158 (+0.003, +0.386) 유의함 | +0.158 (+0.003, +0.386) 유의함 | +0.157 (+0.000, +0.385) 유의함 |
 
 ## mrr
 
@@ -84,13 +84,13 @@ Run: `20260520-1419-phase4-metadata-reaggregate` · commit `9af8d73a63` · index
 
 | 카테고리 | `soft_agency` | `prefilter_agency` | `prefilter_project` |
 |---|---|---|---|
-| overall | +0.402 (+0.329, +0.476) significant | +0.407 (+0.335, +0.481) significant | +0.435 (+0.362, +0.507) significant |
-| multi_hop | +0.443 (+0.359, +0.523) significant | +0.445 (+0.360, +0.525) significant | +0.477 (+0.396, +0.558) significant |
-| distractor_heavy | +0.416 (+0.302, +0.535) significant | +0.429 (+0.314, +0.546) significant | +0.464 (+0.350, +0.576) significant |
-| long_context | +0.197 (+0.016, +0.439) significant | +0.197 (+0.016, +0.439) significant | +0.197 (+0.016, +0.439) significant |
-| no_answer | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** |
-| ambiguous_query | +0.500 (+0.500, +0.500) significant | +0.500 (+0.500, +0.500) significant | +0.500 (+0.500, +0.500) significant |
-| uncategorized | +0.121 (+0.007, +0.295) significant | +0.120 (+0.007, +0.295) significant | +0.133 (+0.018, +0.306) significant |
+| overall | +0.402 (+0.329, +0.476) 유의함 | +0.407 (+0.335, +0.481) 유의함 | +0.435 (+0.362, +0.507) 유의함 |
+| multi_hop | +0.443 (+0.359, +0.523) 유의함 | +0.445 (+0.360, +0.525) 유의함 | +0.477 (+0.396, +0.558) 유의함 |
+| distractor_heavy | +0.416 (+0.302, +0.535) 유의함 | +0.429 (+0.314, +0.546) 유의함 | +0.464 (+0.350, +0.576) 유의함 |
+| long_context | +0.197 (+0.016, +0.439) 유의함 | +0.197 (+0.016, +0.439) 유의함 | +0.197 (+0.016, +0.439) 유의함 |
+| no_answer | +0.000 (+0.000, +0.000) **유의하지 않음** | +0.000 (+0.000, +0.000) **유의하지 않음** | +0.000 (+0.000, +0.000) **유의하지 않음** |
+| ambiguous_query | +0.500 (+0.500, +0.500) 유의함 | +0.500 (+0.500, +0.500) 유의함 | +0.500 (+0.500, +0.500) 유의함 |
+| uncategorized | +0.121 (+0.007, +0.295) 유의함 | +0.120 (+0.007, +0.295) 유의함 | +0.133 (+0.018, +0.306) 유의함 |
 
 ## ndcg@10
 
@@ -108,27 +108,27 @@ Run: `20260520-1419-phase4-metadata-reaggregate` · commit `9af8d73a63` · index
 
 | 카테고리 | `soft_agency` | `prefilter_agency` | `prefilter_project` |
 |---|---|---|---|
-| overall | +0.300 (+0.248, +0.353) significant | +0.306 (+0.254, +0.359) significant | +0.324 (+0.270, +0.378) significant |
-| multi_hop | +0.324 (+0.266, +0.381) significant | +0.330 (+0.273, +0.387) significant | +0.352 (+0.296, +0.411) significant |
-| distractor_heavy | +0.276 (+0.197, +0.363) significant | +0.282 (+0.204, +0.366) significant | +0.290 (+0.216, +0.370) significant |
-| long_context | +0.213 (+0.051, +0.400) significant | +0.214 (+0.053, +0.401) significant | +0.214 (+0.053, +0.401) significant |
-| no_answer | -0.002 (-0.004, +0.000) **NOT SIGNIFICANT** | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** | +0.000 (+0.000, +0.000) **NOT SIGNIFICANT** |
-| ambiguous_query | +0.369 (+0.369, +0.369) significant | +0.369 (+0.369, +0.369) significant | +0.369 (+0.369, +0.369) significant |
-| uncategorized | +0.161 (+0.023, +0.354) significant | +0.161 (+0.023, +0.354) significant | +0.156 (+0.014, +0.347) significant |
+| overall | +0.300 (+0.248, +0.353) 유의함 | +0.306 (+0.254, +0.359) 유의함 | +0.324 (+0.270, +0.378) 유의함 |
+| multi_hop | +0.324 (+0.266, +0.381) 유의함 | +0.330 (+0.273, +0.387) 유의함 | +0.352 (+0.296, +0.411) 유의함 |
+| distractor_heavy | +0.276 (+0.197, +0.363) 유의함 | +0.282 (+0.204, +0.366) 유의함 | +0.290 (+0.216, +0.370) 유의함 |
+| long_context | +0.213 (+0.051, +0.400) 유의함 | +0.214 (+0.053, +0.401) 유의함 | +0.214 (+0.053, +0.401) 유의함 |
+| no_answer | -0.002 (-0.004, +0.000) **유의하지 않음** | +0.000 (+0.000, +0.000) **유의하지 않음** | +0.000 (+0.000, +0.000) **유의하지 않음** |
+| ambiguous_query | +0.369 (+0.369, +0.369) 유의함 | +0.369 (+0.369, +0.369) 유의함 | +0.369 (+0.369, +0.369) 유의함 |
+| uncategorized | +0.161 (+0.023, +0.354) 유의함 | +0.161 (+0.023, +0.354) 유의함 | +0.156 (+0.014, +0.347) 유의함 |
 
 ## 카테고리별 winner
 
-winner = `chunk_recall@10` 평균이 가장 높으면서 `no_metadata` 대비 paired CI 가 완전히 0 위인 변형. "NOT SIGNIFICANT" = 어떤 변형의 CI 도 0 을 넘지 못함 (절대 규칙 #5).
+winner = `chunk_recall@10` 평균이 가장 높으면서 `no_metadata` 대비 paired CI 가 완전히 0 위인 변형. "유의하지 않음" = 어떤 변형의 CI 도 0 을 넘지 못함 (절대 규칙 #5).
 
 | 카테고리 | winner | 평균 recall@10 | `no_metadata` 대비 delta CI |
 |---|---|---|---|
-| overall | `prefilter_project` | 0.425 | +0.223 (+0.174, +0.274) significant |
-| multi_hop | `prefilter_project` | 0.427 | +0.238 (+0.183, +0.297) significant |
-| distractor_heavy | `prefilter_agency` | 0.453 | +0.194 (+0.118, +0.279) significant |
-| long_context | `soft_agency` | 0.429 | +0.127 (+0.012, +0.280) significant |
-| no_answer | `NOT SIGNIFICANT` | — | — |
-| ambiguous_query | `NOT SIGNIFICANT` | — | — |
-| uncategorized | `soft_agency` | 0.342 | +0.158 (+0.003, +0.386) significant |
+| overall | `prefilter_project` | 0.425 | +0.223 (+0.174, +0.274) 유의함 |
+| multi_hop | `prefilter_project` | 0.427 | +0.238 (+0.183, +0.297) 유의함 |
+| distractor_heavy | `prefilter_agency` | 0.453 | +0.194 (+0.118, +0.279) 유의함 |
+| long_context | `soft_agency` | 0.429 | +0.127 (+0.012, +0.280) 유의함 |
+| no_answer | `유의하지 않음` | — | — |
+| ambiguous_query | `유의하지 않음` | — | — |
+| uncategorized | `soft_agency` | 0.342 | +0.158 (+0.003, +0.386) 유의함 |
 
 ## 비고(notes)
 
