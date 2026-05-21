@@ -116,7 +116,7 @@ OOD 분석 변형은 `agentic_full` 이 OOD 에서 `≥ 0.6 × accuracy(RFP-full
 본 ADR 은 plan-only. 의존하는 두 전제조건은 PR 시점에 체크; E2 / E3 / E4 PR 이 바닥 불변량 lift.
 
 <!-- verifies-key: eval/config.yaml:naive_baseline -->
-<!-- verifies-key: docs/adr/0018-korean-public-rag-bench.md:Korean public -->
+<!-- verifies-key: docs/adr/0018-korean-public-rag-bench.md:한국어 공개 RAG bench -->
 
 E2 / E3 / E4 PR 은 다음을 보여야:
 
