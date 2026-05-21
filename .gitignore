@@ -230,16 +230,18 @@ reports/retrieval/phase4_metadata_*/*
 !reports/retrieval/phase4_metadata_*/coverage.json
 # Phase 4 realistic query-time metadata routing (ADR 0065 decision #3).
 # Same kordoc 26k index as the oracle ablation; metadata derived from query
-# text via match_metadata_targets (no gold injected). Raw rows carry qid +
-# categories + metric values + agency/project field VALUES (public
-# procurement catalog metadata from data_list.csv, NOT doc/chunk body text)
-# — ADR 0005 boundary preserved.
+# text via match_metadata_targets (no gold injected). Only the aggregate
+# REPORT/deltas/specs are committable — qid + categories + metric values
+# only, ADR 0005 boundary preserved. raw_results.json stays strictly-local:
+# its per-case rows carry gold/extracted agency+project VALUES, i.e. the
+# private corpus catalog from data/data_list.csv (a gitignored, pre-commit
+# hard-blocked ADR 0005 input) — NOT committable. Regenerate locally via
+# scripts/phase4_realistic_metadata_ablation.py.
 !reports/retrieval/phase4_realistic_metadata_*/
 reports/retrieval/phase4_realistic_metadata_*/*
 !reports/retrieval/phase4_realistic_metadata_*/REPORT.md
 !reports/retrieval/phase4_realistic_metadata_*/metadata_specs.json
 !reports/retrieval/phase4_realistic_metadata_*/deltas.json
-!reports/retrieval/phase4_realistic_metadata_*/raw_results.json
 # data/index/real100_kordoc — hashing-backend kordoc 26k index (Phase 4
 # corpus, matches Phase 3's kordoc corpus). Reproducible from data/files
 # via scripts/build_index.py --hwp_loader kordoc --pdf_loader kordoc
