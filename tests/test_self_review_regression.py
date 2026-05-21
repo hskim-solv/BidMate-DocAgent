@@ -12,6 +12,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts", "claude-hooks"))
 import _self_review as sr
@@ -156,6 +157,33 @@ class TestRuleToAutomationLagSkipsUnaccepted(unittest.TestCase):
             )
             lags = sr._compute_adr_lags(str(repo), "2026-04-01", "2026-06-30")
         self.assertEqual(lags, [])
+
+
+class TestComputeAdrLagsHandlesZSuffix(unittest.TestCase):
+    def test_z_suffixed_git_timestamps_are_parsed(self):
+        # Issue #1185: git `%aI` emits a `Z` UTC suffix. `_compute_adr_lags`
+        # must parse it on every supported interpreter (3.9+), but raw
+        # `datetime.fromisoformat("...Z")` raises ValueError on Python ≤3.10 —
+        # which the function's `except` swallows, silently emptying the entire
+        # axis-4 ADR-lag signal. We mock the two `git log` subprocess calls so
+        # the test is deterministic regardless of the local git's actual
+        # timestamp format or the interpreter version: before the fix this
+        # asserted len 0 on ≤3.10; after the fix it parses on all Pythons.
+        with tempfile.TemporaryDirectory() as td:
+            adr_dir = Path(td) / "docs" / "adr"
+            adr_dir.mkdir(parents=True)
+            (adr_dir / "0001-z.md").write_text("- **Status**: accepted\n")
+
+            proposed = mock.Mock(stdout="2026-04-01T10:00:00Z\n")
+            accepted = mock.Mock(stdout="2026-04-09T10:00:00Z\n")
+            with mock.patch.object(
+                sr.subprocess, "run", side_effect=[proposed, accepted]
+            ):
+                lags = sr._compute_adr_lags(td, "2026-04-01", "2026-06-30")
+
+        self.assertEqual(len(lags), 1)
+        self.assertEqual(lags[0]["adr_id"], "0001")
+        self.assertEqual(lags[0]["lag_days"], 8)
 
 
 if __name__ == "__main__":
