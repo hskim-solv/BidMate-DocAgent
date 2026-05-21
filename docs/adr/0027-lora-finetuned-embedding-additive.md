@@ -44,13 +44,13 @@ CLI default는 `naive_baseline` 유지(ADR 0001). `embed_texts`의 함수-level 
 
 ## 결과
 
-**Easier:**
+**쉬워지는 점:**
 
 - "have you fine-tuned a model?" 인터뷰 신호가 재현 artifact에 grounding: Colab-runnable training notebook(`notebooks/embedding_finetune.ipynb`), `eval/config.yaml` SHA-pinned HF Hub adapter, byte-equality invariance 테스트(`tests/test_finetuned_ablation_baseline_invariant.py`).
 - additive-ablation 패턴(ADR 0011/0017/0023)이 4번째 인스턴스 획득 — "new capability = new env-var + new 분석 변형 row, never a default swap" 강화.
 - adapter 후일 제거는 1줄 변경: `BIDMATE_EMBEDDING_LORA_ADAPTER` unset. default 경로는 pre-#434 동작과 byte-identical; migration 불필요.
 
-**Costs / 정직:**
+**비용 / 정직:**
 
 - 신규 optional dep(PEFT) — install 경로는 `requirements-lora.txt`, `requirements.txt` 아님. hashing-only CI 경로는 PEFT import 안 함.
 - 신규 artifact class: HF Hub 호스팅 binary. SHA-pinning 규칙(`eval/config.yaml` `<repo>@<sha>`)이 silent-republish supply-chain 구멍 close; 모든 adapter bump이 git diff.

@@ -1,4 +1,4 @@
-# ADR 0055 — `claim_validator` as PR gate (improvement-claim statistical honesty)
+# ADR 0055 — `claim_validator` 를 PR 게이트로 (개선-주장 통계적 정직성)
 
 - Status: Accepted
 - Implemented: #965 (2026-05-18) — `scripts/validate_claim.py`, wired as PR gate in `.github/workflows/pr-eval.yml`

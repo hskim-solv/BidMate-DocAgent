@@ -35,20 +35,20 @@ By construction(`scripts/write_synthetic_history.py:42`) 각 snapshot은 **prima
 
 ## 결과
 
-**Wins:**
+**이득:**
 
 - agentic-pipeline merge가 리더보드 headline에 하루 내 가시화(cron 주기, ADR 0029-인접 issue #471).
 - 2-파이프라인 패턴이 ADR 0001 강화: 기준선이 활발 움직이는 `full` series 옆에서 *의도적* flat — apparent stagnation 아닌 의도된 story.
 - Portfolio: 명시 "stable baseline + moving agentic" framing이 rigor(#0001) + progress(#0024) 축을 동시 표면화.
 
-**Costs / locks-in:**
+**비용 / 고착(locks-in):**
 
 - `SAFE_TOPLEVEL_KEYS`에 엔트리 1 추가. `ablation_full` 향후 schema drift는 sub-key whitelist 갱신 필요(`judge_ragas`와 동일 유지보수 패턴).
 - `reports/leaderboard.md` width / row 수 증가. CI gate `scripts/leaderboard.py --check`가 렌더링을 계약으로 계속 pin.
 - Chart.js 페이지가 메트릭당 2 series 수용 필요. legend + tooltip 갱신.
 - pre-#476 snapshot backfill은 opt-in; 리더보드 chart가 backfill 없으면 ~21일간 `agentic_full`을 partial series로 표시. **완화 (#1028, 2026-05-19)**: `scripts/leaderboard.py:render_page`가 `_agentic_full_start_date` helper로 첫 non-null `ablation_full` 날짜(현재 2026-05-13)를 차트 캡션에 동적 inject — backfill 컴퓨트(~7-15h) 없이 외부 reviewer가 forward-only 마이그레이션을 즉시 파악. backfill PR이 머지되면 라벨은 자동 갱신.
 
-**Locked in:**
+**고착(Locked in):**
 
 - `ablation_full` key 이름 + sub-key whitelist가 aggregate schema 계약 일부. rename은 deprecation cycle 또는 별도 ADR 필요.
 - 리더보드 headline에서 `naive_baseline` + `agentic_full` 페어링(구체적 — "임의 분석 변형" 아님). 3번째 파이프라인(예: ADR 0027의 `agentic_full_finetuned`) 추가는 ADR 또는 본 ADR 수정 필요.
