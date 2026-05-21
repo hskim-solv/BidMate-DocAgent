@@ -68,7 +68,15 @@ if command -v pytest >/dev/null 2>&1; then
       echo "pytest-split not importable; ignoring BIDMATE_PYTEST_STORE_DURATIONS." >&2
     fi
   fi
-  pytest -q "${XDIST_FLAGS[@]}" "${COV_FLAGS[@]}" "${SPLIT_FLAGS[@]}" "${STORE_DURATIONS_FLAGS[@]}"
+  # Each optional flag array may be empty (deps missing / env vars unset).
+  # macOS system bash (3.2) aborts on `"${ARR[@]}"` for an empty array under
+  # `set -u`; the `+` idiom expands to nothing instead. Linux CI (bash 4+) is
+  # unaffected either way. See issue #1179.
+  pytest -q \
+    "${XDIST_FLAGS[@]+"${XDIST_FLAGS[@]}"}" \
+    "${COV_FLAGS[@]+"${COV_FLAGS[@]}"}" \
+    "${SPLIT_FLAGS[@]+"${SPLIT_FLAGS[@]}"}" \
+    "${STORE_DURATIONS_FLAGS[@]+"${STORE_DURATIONS_FLAGS[@]}"}"
 else
   echo "pytest not found. Install dev dependencies or add pytest to requirements." >&2
   exit 1
