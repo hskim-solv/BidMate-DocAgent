@@ -1,0 +1,38 @@
+[
+  {
+    "name": "no_metadata",
+    "metadata_first": false,
+    "prefilter": "none",
+    "inject_entities": false,
+    "index_dir": "data/index/real100_kordoc",
+    "num_documents": 100,
+    "num_chunks": 26376
+  },
+  {
+    "name": "soft_agency",
+    "metadata_first": true,
+    "prefilter": "none",
+    "inject_entities": true,
+    "index_dir": "data/index/real100_kordoc",
+    "num_documents": 100,
+    "num_chunks": 26376
+  },
+  {
+    "name": "prefilter_agency",
+    "metadata_first": false,
+    "prefilter": "agency",
+    "inject_entities": false,
+    "index_dir": "data/index/real100_kordoc",
+    "num_documents": 100,
+    "num_chunks": 26376
+  },
+  {
+    "name": "prefilter_project",
+    "metadata_first": false,
+    "prefilter": "project",
+    "inject_entities": false,
+    "index_dir": "data/index/real100_kordoc",
+    "num_documents": 100,
+    "num_chunks": 26376
+  }
+]

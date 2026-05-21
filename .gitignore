@@ -215,6 +215,24 @@ reports/retrieval/phase35_m3_*/*
 # sentence-transformers --model BAAI/bge-m3 (~3min wall-time, FlagEmbedding
 # opt-in dep per ADR 0010 deferred + ADR 0032 torch>=2.6 unblock).
 data/index/real100_m3/
+# Phase 4 retrieval-eval (metadata / filtering ablation) timestamped runs.
+# Same aggregate-only commit boundary as phase3_mode_* above. All 4 variants
+# share the kordoc 26k index; only plan['metadata_first'] / metadata_filters
+# differ. Raw scores carry no doc/chunk text — qid + categories + metric
+# values only, ADR 0005 boundary preserved.
+!reports/retrieval/phase4_metadata_*/
+reports/retrieval/phase4_metadata_*/*
+!reports/retrieval/phase4_metadata_*/REPORT.md
+!reports/retrieval/phase4_metadata_*/metadata_specs.json
+!reports/retrieval/phase4_metadata_*/deltas.json
+!reports/retrieval/phase4_metadata_*/raw_results.json
+!reports/retrieval/phase4_metadata_*/COVERAGE.md
+!reports/retrieval/phase4_metadata_*/coverage.json
+# data/index/real100_kordoc — hashing-backend kordoc 26k index (Phase 4
+# corpus, matches Phase 3's kordoc corpus). Reproducible from data/files
+# via scripts/build_index.py --hwp_loader kordoc --pdf_loader kordoc
+# --embedding_backend hashing with BIDMATE_KORDOC_CACHE_DIR=data/files_kordoc.
+data/index/real100_kordoc/
 # Issue #237 — harness aggregate snapshots. Generated per ``run_harness``
 # invocation; untracked by default to keep developer working trees
 # clean. The leaderboard time-series lives under reports/history/
