@@ -6,8 +6,8 @@ Run: `20260521-0334-phase35-m3-reaggregate` · commit `5e5f07bc96` · index_dir=
 
 | 변형 | backend | RRF k | 문서 | 청크 |
 |---|---|---|---|---|
-| `dense_m3` | dense | — | 100 | 26376 |
-| `hybrid_bm25_k60_m3` | hybrid | 60 | 100 | 26376 |
+| `dense_m3` | dense | — | 100 | 898 |
+| `hybrid_bm25_k60_m3` | hybrid | 60 | 100 | 898 |
 
 ## 지연시간(latency, ms)
 
@@ -136,7 +136,7 @@ winner = `chunk_recall@10` 평균이 가장 높으면서 `dense_m3` 대비 paire
 * 카테고리 버킷팅은 `hardcase_categories`(의미 난이도 태그)를 쓴다. 멀티태그 케이스는 여러 버킷에 나타나므로 카테고리별 카운트는 겹치고 paired CI 가 케이스를 공유한다.
 * `dense_m3` 이 delta baseline 인 이유: Phase 3.5 는 **의미 임베딩 위에서 multi-channel vs single-channel** 을 격리하기 때문이다. 0 위 delta 는 multi-channel 변형(hybrid 또는 m3)에, 0 아래는 dense 단독에 유리하다.
 * **Phase 3 cross-ref + runner 버그 retraction(철회)**: `reports/retrieval/phase3_mode_20260518T032404Z/` 는 3 개 `hybrid_bm25_k{30,60,100}` 변형이 byte-identical 이라 보고하고 이를 BM25 채널 dominance 로 귀인했다. **그 결론은 틀렸다**: Phase 3 runner 가 `retrieve_candidates`(후보 생성만)를 호출하고 2단계 `apply_fusion_and_reranking`(RRF fusion + 최종 top-k)를 누락했다. hybrid + m3 backend 에서 `retrieve_candidates` 는 `score=0.0` placeholder 를 반환하므로 케이스별 순위가 chunk_id 삽입 순서로 붕괴해 모든 k 값이 byte-identical 이 됐다. Phase 3.5 는 wire-up 을 고친다(`run_single_case` 에 두 호출 모두); hashing 인덱스 재측정은 후속이다. Cross-backend delta(hashing `dense` vs `dense_m3`)는 임베딩 패밀리 교체로 confounded 되어 산출하지 않는다.
-* **청크 수 caveat**: BGE-M3 인덱스가 HWP/PDF 모두에 `data_list_csv_text` loader 를 썼고(ADR 0049 graceful fallback), doc 당 ~9 청크였다(`kordoc` 전체 추출의 real100 ~264 청크/doc 대비). 26k kordoc 청크를 BGE-M3 로 MPS 에서 재임베딩하면 >2h 걸린다(배치별 GPU dispatch overhead); csv_text fallback 은 build 를 20 분 미만으로 유지하면서 Phase 3.5 내부 paired CI 주장을 보존한다. 이 인덱스의 절대 `chunk_recall@k` 는 Phase 3 의 kordoc 빌드 수치와 직접 비교 불가 — Phase 3.5 내부 delta 만 비교 가능하다.
+* **청크 수 caveat**: 측정 인덱스(`data/index/real100_m3`)는 HWP/PDF 모두에 `data_list_csv_text` loader 를 써서(ADR 0049 graceful fallback) doc 당 ~9 청크 = **총 898 청크**다. 위 변형 표의 청크 수(898)가 측정값이며, `kordoc` 전체 추출(real100 ~264 청크/doc ≈ **26,376**)은 본 측정에 **미사용한 reference** 값이다 — 26k kordoc 청크를 BGE-M3 로 MPS 에서 재임베딩하면 >2h 걸려(배치별 GPU dispatch overhead), csv_text fallback 으로 build 를 20 분 미만으로 유지하면서 Phase 3.5 내부 paired CI 주장을 보존했다. 이 인덱스의 절대 `chunk_recall@k` 는 Phase 3 의 kordoc 빌드 수치와 직접 비교 불가 — Phase 3.5 내부 delta 만 비교 가능하다.
 * **Runner 측 m3 batching (측정 전용 최적화)**: 이 인덱스에서 query 별 colbert max-sim 이 지배적 비용이다(청크별 Python-loop matmul × ~900 청크 × 최적화 전 경로에서 관측된 ~50s/query). runner 는 모든 청크 colbert 벡터를 하나의 `(Σ T_d, 1024)` 행렬로 concat 해 unique query 당 **1회** matmul 후 행별 max+sum 을 위해 컬럼을 청크별로 다시 split 한다. 청크별 경로와 수학적으로 동일하나(각 청크의 컬럼 슬라이스는 독립) ~100× 빠르다. 패치는 runner 에 있다(`_prime_m3_index_cache_and_colbert`); `rag_m3.py` / `rag_retrieval.py` 는 미변경.
 * **범위 외**: 채널별 m3 ablation(sparse-only, colbert-only — ADR 0010 'Alternatives considered' 참조); hybrid_bm25 의 RRF-k sweep(Phase 3 이 이미 hashing 에서 k=30/60/100 byte-identical 을 보임); 위에 stack 된 cross-encoder rerank(Phase 4).
 * ADR cross-ref: ADR 0010(BGE-M3 multi-channel deferred), ADR 0021(m3_full 분석 행), ADR 0032(torch>=2.6 unblock — 본 측정을 원래 미뤘던 install blocker 를 해소).
