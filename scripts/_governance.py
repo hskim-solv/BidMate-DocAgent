@@ -437,10 +437,19 @@ def lint_adr_verification(
 # grandfathered: reported, but never flagged OVER_SLA.
 ADR_SLA_GRANDFATHER_DATE = date(2026, 5, 15)
 
-# Tolerant of the two formats live in docs/adr/ — `- **Status**: proposed`
-# and `- Status: Proposed`. First match on the file wins.
+# Tolerant of the three Status metablock forms live in docs/adr/:
+#   - **Status**: proposed       (bold list item)
+#   - Status: Proposed           (plain list item)
+#   | **Status** | Proposed |    (2-column table — value in the next cell,
+#                                  no colon; e.g. ADR 0052/0044/0034)
+# First match on the file wins. The table branch must open with a pipe and
+# terminate the value with one, since it lives between cells not after a colon.
 ADR_STATUS_RE = re.compile(
-    r"^\s*[-*]?\s*(?:\*\*)?status(?:\*\*)?\s*:\s*(.+?)\s*$",
+    r"^\s*(?:"
+    r"[-*]?\s*(?:\*\*)?status(?:\*\*)?\s*:\s*(?P<colon>.+?)"
+    r"|"
+    r"\|\s*(?:\*\*)?status(?:\*\*)?\s*\|\s*(?P<table>.+?)\s*\|"
+    r")\s*$",
     re.IGNORECASE | re.MULTILINE,
 )
 
@@ -456,18 +465,25 @@ class ProposedADR(NamedTuple):
 
 
 def parse_adr_status(adr_path: str | Path) -> str | None:
-    """Return the first `Status:` meta-line value (lowercased), or None.
+    """Return the first Status meta-value (lowercased), or None.
 
-    None if the file is missing or has no Status meta-line. Tolerant of
-    the bold (`- **Status**: proposed`) and plain (`- Status: Proposed`)
-    variants both present in docs/adr/.
+    None if the file is missing or has no Status meta-line. Tolerant of the
+    three variants present in docs/adr/: the bold (`- **Status**: proposed`)
+    and plain (`- Status: Proposed`) list forms, and the 2-column metablock
+    table form (`| **Status** | Proposed |`, e.g. ADR 0052) where the value
+    lives in the next cell with no colon.
     """
     p = Path(adr_path)
     if not p.is_file():
         return None
     text = p.read_text(encoding="utf-8", errors="replace")
     m = ADR_STATUS_RE.search(text)
-    return m.group(1).strip().lower() if m else None
+    if not m:
+        return None
+    value = m.group("colon")
+    if value is None:
+        value = m.group("table")
+    return value.strip().lower()
 
 
 def _git_first_commit_date(path: str | Path) -> date | None:
