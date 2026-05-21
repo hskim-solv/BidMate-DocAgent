@@ -1,4 +1,4 @@
-# `retrieval_miss = 83` root-cause inspection
+# `retrieval_miss = 83` 근본 원인(root-cause) inspection
 
 | field | value |
 |---|---|
@@ -9,7 +9,7 @@
 | Author | Hyunsoo Kim |
 | Strict-forbid | **실 retrieval fix 0건** (본 문서는 audit 만; 후속 issue 로 분기) |
 
-## Executive summary
+## 요약(Executive summary)
 
 ADR 0059 가 도입한 7-category 분류기 (`eval/scorers/failure_classifier.py`, PR #1001) 가 n=221 real-eval 에서 **`retrieval_miss = 83`** 측정 — Phase 5 audit (#992) 의 finding #1 (`verifier_false_negative = 49` at HEAD) 보다 큰 *dominant failure mode* (전체 164 failure 의 50.6%).
 
@@ -24,7 +24,7 @@ ADR 0059 가 도입한 7-category 분류기 (`eval/scorers/failure_classifier.py
 
 ## 데이터 inspection (n=83)
 
-### Slice by `query_type`
+### `query_type` 별 slice
 
 | query_type | count | % of 83 retrieval_miss | notes |
 |---|---:|---:|---|
@@ -32,7 +32,7 @@ ADR 0059 가 도입한 7-category 분류기 (`eval/scorers/failure_classifier.py
 | `follow_up` | 2 | 2.4% | marginal |
 | `abstention` | 1 | 1.2% | edge case (no_answer 가 retrieval 도 fail) |
 
-### Slice by `hardcase_categories` (multi-tag)
+### `hardcase_categories` 별 slice (multi-tag)
 
 | hardcase | count | % of 83 | notes |
 |---|---:|---:|---|
@@ -44,7 +44,7 @@ ADR 0059 가 도입한 7-category 분류기 (`eval/scorers/failure_classifier.py
 
 multi-tag 합이 83 초과인 이유 — 73 multi_hop case 중 31개가 *동시에* distractor_heavy. 즉 가장 어려운 케이스 = **multi_hop AND distractor_heavy** (실제 단일 doc 안에서 여러 section 을 cross-reference 해야 하는데 distractor 가 ranking 을 흔드는 패턴).
 
-### `expected_doc_ids` cardinality
+### `expected_doc_ids` cardinality (개수)
 
 | cardinality | count | notes |
 |---|---:|---|
@@ -54,7 +54,7 @@ multi-tag 합이 83 초과인 이유 — 73 multi_hop case 중 31개가 *동시�
 
 ### `evidence_doc_ids` empty vs wrong
 
-| pattern | count | % of 83 | interpretation |
+| pattern | count | % of 83 | 해석 |
 |---|---:|---:|---|
 | evidence non-empty but wrong | 54 | 65.1% | **dominant** — retrieval API 가 *결과 가져옴*, ranking 이 expected 를 top-4 밖으로 push. embedding / scoring 문제. |
 | evidence empty (0 docs) | 29 | 34.9% | hard miss — ADR 0058 hybrid 도 expected doc 을 top-4 에 못 올림. chunking / embedding mismatch 가설. |
@@ -96,7 +96,7 @@ multi-tag 합이 83 초과인 이유 — 73 multi_hop case 중 31개가 *동시�
 | Issue D — 29 empty-evidence case 의 oracle retrieval analysis (가설 3) | per-case query↔doc cosine inspection; ~100 LOC + audit doc | medium |
 | Issue E — ADR 0004 retry policy 확장 (가설 4) | retry 가 retrieval refinement 도 trigger; production code 변경 + ADR | low |
 
-## Out-of-scope (별 PR / 별 audit)
+## 범위 밖(Out-of-scope) (별 PR / 별 audit)
 
 - 실제 retrieval fix (top_k bump / embedding swap / chunking 변경) — 본 audit 가 root cause 가설 ranking 만 emit; fix 는 가설별 별 PR.
 - retrieval-eval skill Phase 4 (Metadata / filtering ablation) — sibling skill surface.

@@ -75,15 +75,15 @@ RAG 파이프라인은 단계별 (ingestion → 검색 → 계획 → 검증 →
 
 ## 시나리오 → owner 매핑
 
-| 시나리오 | owner | Stacking |
+| 시나리오 | owner | 스태킹(Stacking) |
 | --- | --- | --- |
 | 신규 검색 backend (예: ColBERT) | Pipeline Core + Evaluation | Eval PR 이 Pipeline Core PR 위로 stack |
-| 신규 문서 포맷 (예: HWPX) | Ingestion | Standalone |
-| LLM-judge / RAGAS 메트릭 개선 | Evaluation | Standalone |
-| 신규 데모 화면 또는 Colab 노트북 | API & Demo | Standalone |
-| 신규 CI gate (예: `schema_version` assertion) | Infra & CI | Standalone |
+| 신규 문서 포맷 (예: HWPX) | Ingestion | 독립(Standalone) |
+| LLM-judge / RAGAS 메트릭 개선 | Evaluation | 독립(Standalone) |
+| 신규 데모 화면 또는 Colab 노트북 | API & Demo | 독립(Standalone) |
+| 신규 CI gate (예: `schema_version` assertion) | Infra & CI | 독립(Standalone) |
 | 답변 스키마 확장 | Pipeline Core → API & Demo + Evaluation | 소비자 PR 이 스키마 PR 위로 stack |
-| 신규 Otel exporter | Observability | Standalone |
+| 신규 Otel exporter | Observability | 독립(Standalone) |
 
 ## 검증
 

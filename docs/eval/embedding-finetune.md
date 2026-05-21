@@ -1,13 +1,13 @@
-# Embedding LoRA fine-tune — KURE-v1 on Korean RFP pairs
+# Embedding LoRA 미세조정(fine-tune) — 한국어 RFP 쌍 위 KURE-v1
 
-> **Status.** Skeleton committed in #435; measured numbers + model-card
-> rationale filled in #179 after the adapter is trained on Colab.
-> Sections marked `TODO(user)` are the *cognitive-ownership* surfaces —
-> author them in your own framing rather than letting the agent draft them.
+> **Status.** 골격은 #435 에서 커밋; 측정 수치 + 모델 카드(model-card)
+> 근거는 어댑터(adapter)를 Colab 에서 학습한 뒤 #179 에서 채움.
+> `TODO(user)` 로 표시된 섹션은 *인지적 소유권(cognitive-ownership)* 표면이다 —
+> 에이전트(agent)가 초안을 작성하게 두지 말고 본인의 프레이밍으로 직접 작성하라.
 
 - **Related**: issue [#179](https://github.com/hskim-solv/BidMate-DocAgent/issues/179), [ADR 0027](../adr/0027-lora-finetuned-embedding-additive.md), [ADR 0019](../adr/0019-embedding-default-stays-minilm.md), [ADR 0021](../adr/0021-bge-m3-completes-phase-1-3.md).
-- **Notebook**: [`notebooks/embedding_finetune.ipynb`](../notebooks/embedding_finetune.ipynb) — Colab T4-runnable end-to-end.
-- **Adapter**: `bidmate/embedding-lora-kure-rfp-ko-v1` on Hugging Face Hub *(uploaded in #179; SHA pinned in [`eval/config.yaml`](../../eval/config.yaml))*.
+- **Notebook**: [`notebooks/embedding_finetune.ipynb`](../notebooks/embedding_finetune.ipynb) — Colab T4 에서 end-to-end 실행 가능.
+- **Adapter**: Hugging Face Hub 의 `bidmate/embedding-lora-kure-rfp-ko-v1` *(#179 에서 업로드; SHA 는 [`eval/config.yaml`](../../eval/config.yaml) 에 고정)*.
 
 ## TL;DR
 
@@ -23,7 +23,7 @@
 
   Write this in your own words — interview answers come out of this paragraph. -->
 
-## Training data
+## 학습 데이터(Training data)
 
 | Statistic | Value |
 |---|---|
@@ -36,14 +36,14 @@
 | Hard negatives per positive | 3 (BM25 rank window [3, 15]) |
 | Train / val split | 90 / 10 deterministic by `sha1(query) % 10` |
 
-**Schema reference**: [`data/training/sample.jsonl`](../../data/training/sample.jsonl) — 25-row representative sample (committed; full 5k JSONL is `.gitignore`'d).
+**Schema reference**: [`data/training/sample.jsonl`](../../data/training/sample.jsonl) — 25행 대표 샘플 (커밋됨; 전체 5k JSONL 은 `.gitignore` 처리).
 
-**Contamination guard**: the script rejects any generated query that
-matches (lowercased, particle-stripped, 3-gram Jaccard ≥ 0.70) anything in
-`eval/dev_queries_v1.jsonl`, `eval/multiturn_scenarios_v1.jsonl`, or
-`eval/config.yaml` cases + `prior_turns`. Loud-fails if rejection rate > 5%.
+**오염 가드(Contamination guard)**: 스크립트는 생성된 쿼리(query) 중
+`eval/dev_queries_v1.jsonl`, `eval/multiturn_scenarios_v1.jsonl`, 또는
+`eval/config.yaml` cases + `prior_turns` 에 있는 항목과 일치하는(소문자화·조사 제거·3-gram Jaccard ≥ 0.70) 것을 모두 거부한다.
+거부율(rejection rate)이 5% 를 넘으면 loud-fail 한다.
 
-## Hyper-parameters
+## 하이퍼파라미터(Hyper-parameters)
 
 | | Value |
 |---|---|
@@ -61,20 +61,19 @@ matches (lowercased, particle-stripped, 3-gram Jaccard ≥ 0.70) anything in
 | AMP | on |
 | Seed | 17 |
 
-## Training curve
+## 학습 곡선(Training curve)
 
 <!-- TODO(user): export `notebooks/_artifacts/training_curve.png` from the
      notebook and embed below. The image is gitignored — commit it to the
      HF Hub repo's model card README instead, or convert to a small inline
      ASCII summary. -->
 
-## Eval deltas
+## Eval 델타
 
-### A. Dense-only surface (the headline)
+### A. Dense-only 표면 (헤드라인)
 
-`naive_baseline_finetuned` vs `naive_baseline` (KURE-v1 base) on the
-public n=42 synthetic eval. **This is where the embedding actually
-matters** — metadata-first (ADR 0002) does NOT route around dense here.
+public n=42 synthetic eval 위 `naive_baseline_finetuned` vs `naive_baseline` (KURE-v1 base).
+**여기가 임베딩(embedding)이 실제로 중요한 지점이다** — metadata-first (ADR 0002) 가 여기서는 dense 를 우회하지 않는다.
 
 | Metric | KURE-v1 base | KURE-v1 + LoRA | Δ | 95 % bootstrap CI |
 |---|---|---|---|---|
@@ -82,22 +81,21 @@ matters** — metadata-first (ADR 0002) does NOT route around dense here.
 | groundedness | <!-- TODO --> | <!-- TODO --> | <!-- TODO --> | <!-- TODO --> |
 | citation_precision | <!-- TODO --> | <!-- TODO --> | <!-- TODO --> | <!-- TODO --> |
 
-### B. Chunk-level retrieval (gold-annotated subset)
+### B. Chunk 단위 검색(retrieval) (gold-annotated 부분집합)
 
-The 13 cases in `eval/config.yaml` with `gold_chunk_ids` — the
-embedding-isolating surface, immune to metadata-first routing.
+`gold_chunk_ids` 가 있는 `eval/config.yaml` 의 13 cases — 임베딩을 격리하는 표면으로,
+metadata-first 라우팅(routing)의 영향을 받지 않는다.
 
 | Metric | KURE-v1 base | KURE-v1 + LoRA | Δ |
 |---|---|---|---|
 | chunk_recall@5 | <!-- TODO --> | <!-- TODO --> | <!-- TODO --> |
 | chunk_MRR | <!-- TODO --> | <!-- TODO --> | <!-- TODO --> |
 
-### C. `full` pipeline — the published null delta
+### C. `full` 파이프라인 — 공개되는 null 델타
 
-`agentic_full_finetuned` vs `full` (KURE-v1 base). Per Phase 1.2 (ADR 0019)
-the metadata-first pipeline absorbs embedding variance; expect ~0 pp ± 2 pp
-with overlapping CIs. **Publish this anyway** — hiding it would misrepresent
-where LoRA helps and where it doesn't.
+`agentic_full_finetuned` vs `full` (KURE-v1 base). Phase 1.2 (ADR 0019) 에 따르면
+metadata-first 파이프라인이 임베딩 분산(variance)을 흡수한다; CI 가 겹치는 ~0 pp ± 2 pp 를 예상한다.
+**그래도 공개하라** — 숨기면 LoRA 가 도움이 되는 지점과 그렇지 않은 지점을 잘못 표현하게 된다.
 
 | Metric | KURE-v1 base | KURE-v1 + LoRA | Δ | 95 % bootstrap CI |
 |---|---|---|---|---|
@@ -105,7 +103,7 @@ where LoRA helps and where it doesn't.
 | groundedness | <!-- TODO --> | <!-- TODO --> | <!-- TODO --> | <!-- TODO --> |
 | citation_precision | <!-- TODO --> | <!-- TODO --> | <!-- TODO --> | <!-- TODO --> |
 
-## Model card
+## 모델 카드(Model card)
 
 <!-- TODO(user): own this section. Suggested headings:
 
@@ -126,9 +124,9 @@ where LoRA helps and where it doesn't.
   These are the parts an external reader uses to judge the work — author
   in your own voice. -->
 
-## Reproducibility
+## 재현성(Reproducibility)
 
-Pair regeneration (deterministic, byte-stable with `seed=17`):
+쌍(pair) 재생성 (`seed=17` 으로 결정론적, byte-stable):
 
 ```bash
 python scripts/generate_finetune_pairs.py \
@@ -139,7 +137,7 @@ python scripts/generate_finetune_pairs.py \
 # Anthropic backend (paid): BIDMATE_PAIRGEN_BACKEND=anthropic + API key env vars
 ```
 
-Training (Colab T4, ~30 min):
+학습 (Colab T4, ~30 min):
 
 ```
 # Open notebooks/embedding_finetune.ipynb in Colab.
@@ -147,10 +145,9 @@ Training (Colab T4, ~30 min):
 # Run All. Adapter saves to lora_adapter/ and pushes to HF Hub.
 ```
 
-Eval (operator-side, after the adapter is on HF Hub). `scripts/run_embedding_ablation.py`
-appends an `__lora_<adapter>` suffix to its output slug when
-`BIDMATE_EMBEDDING_LORA_ADAPTER` is set, so the two runs below write
-to *separate* directories — no manual `mv` between runs.
+Eval (operator 측, 어댑터가 HF Hub 에 올라간 뒤). `scripts/run_embedding_ablation.py`
+는 `BIDMATE_EMBEDDING_LORA_ADAPTER` 가 설정되면 출력 slug 에 `__lora_<adapter>` 접미사를 붙이므로,
+아래 두 run 은 *별도* 디렉터리에 기록된다 — run 간 수동 `mv` 불필요.
 
 ```bash
 # Run A — baseline KURE-v1 (no adapter)
@@ -168,7 +165,7 @@ diff <(jq '.ablation.runs[] | select(.name=="naive_baseline")'           reports
      <(jq '.ablation.runs[] | select(.name=="naive_baseline_finetuned")' reports/embedding-ablation/nlpai_lab_KURE_v1__lora_bidmate_embedding_lora_kure_rfp_ko_v1/eval_summary.json)
 ```
 
-Without `BIDMATE_EMBEDDING_LORA_ADAPTER` set, `rag_core.embed_texts` is
-bit-identical to pre-#434 behavior — the additive-ablation invariant
-(ADR 0001 / 0025) is pinned by
+`BIDMATE_EMBEDDING_LORA_ADAPTER` 가 설정되지 않으면 `rag_core.embed_texts` 는
+#434 이전 동작과 bit-identical 하다 — additive-ablation 불변식
+(ADR 0001 / 0025) 은 다음에 의해 고정된다:
 [`tests/test_finetuned_ablation_baseline_invariant.py`](../../tests/test_finetuned_ablation_baseline_invariant.py).

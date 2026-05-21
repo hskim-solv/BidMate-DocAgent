@@ -1,31 +1,31 @@
 # Cross-encoder reranker ablation
 
-Tracks issue #163 (Phase 1.3). Adds a cross-encoder reranker as an additive ablation on top of the existing 60/25/15 dense + lexical + metadata blend.
+issue #163(Phase 1.3)를 추적한다. 기존 60/25/15 dense + lexical + metadata 블렌드 위에 additive ablation 으로 cross-encoder 재순위(reranker)를 추가한다.
 
-## Scope
+## 범위(scope)
 
-The current `agentic_full` rerank in [`rag_core.retrieve`](../../rag_core.py) is a hardcoded score blend (0.60 dense + 0.25 lexical + 0.15 metadata when `metadata_first=True`). Cross-encoder rerankers are the next standard layer in modern retrieval stacks — adding one as an ablation tests whether the blend leaves precision on the table.
+현재 [`rag_core.retrieve`](../../rag_core.py) 의 `agentic_full` 재순위는 하드코딩된 점수 블렌드(`metadata_first=True` 일 때 0.60 dense + 0.25 lexical + 0.15 metadata)다. cross-encoder 재순위는 현대 검색 스택의 다음 표준 레이어다 — 하나를 ablation 으로 추가하여 블렌드가 정밀도(precision)를 놓치고 있는지 검증한다.
 
-This page documents the integration; measurement is the local-run step (see *Reproduction* below).
+이 페이지는 통합(integration)을 문서화한다. 측정은 로컬 실행 단계다(아래 *Reproduction* 참조).
 
-## Design
+## 설계(design)
 
-* **Dispatch point**: after the existing 60/25/15 blend's `scored.sort()` and **before** the `top_k` cut + comparison balance. The cross-encoder re-scores the top-N highest-blend-score candidates (N = `min(30, top_k × 3)`), squashes logits via sigmoid into `[0,1]`, and re-sorts. The blend supplies the recall funnel; the cross-encoder adds precision-at-k.
-* **Module**: [`rag_rerank.py`](../../rag_rerank.py) — mirrors the `rag_synthesis.py` lazy-import + stub-default + env-var-gated pattern.
-* **Preset flag**: `rerank_cross_encoder: bool`, defaults `False` on all 3 existing presets (`naive_baseline`, `agentic_full`, `agentic_full_llm`). New ablation row `full_reranker` in [`eval/config.yaml`](../../eval/config.yaml) flips it to `true`.
-* **Postcondition guard**: every reordered `chunk_id` must be a subset of the input. Violations fall back to input order with `meta["fallback_reason"] = "chunk_id_postcondition_violation"`.
-* **Score normalization**: cross-encoder logits aren't in `[0,1]`. The verifier's score floor at `rag_core.py` ~L2254 (threshold 0.18) was tuned for the normalized blend; sigmoid squash keeps it working without per-backend branches. Cohere's `relevance_score` is already normalized, so the Cohere branch skips sigmoid and clamps instead.
+* **Dispatch point**: 기존 60/25/15 블렌드의 `scored.sort()` 이후, `top_k` 컷 + comparison balance **이전**. cross-encoder 는 블렌드 점수가 가장 높은 top-N 후보(N = `min(30, top_k × 3)`)를 재채점하고, sigmoid 로 logit 을 `[0,1]` 로 스쿼시한 뒤 재정렬한다. 블렌드는 recall 깔때기를 공급하고, cross-encoder 는 precision-at-k 를 더한다.
+* **Module**: [`rag_rerank.py`](../../rag_rerank.py) — `rag_synthesis.py` 의 lazy-import + stub-default + env-var-gated 패턴을 그대로 따른다.
+* **Preset flag**: `rerank_cross_encoder: bool`, 기존 3개 preset(`naive_baseline`, `agentic_full`, `agentic_full_llm`) 모두에서 기본 `False`. [`eval/config.yaml`](../../eval/config.yaml) 의 새 ablation 행 `full_reranker` 가 이를 `true` 로 뒤집는다.
+* **Postcondition guard**: 재정렬된 모든 `chunk_id` 는 입력의 부분집합이어야 한다. 위반 시 `meta["fallback_reason"] = "chunk_id_postcondition_violation"` 와 함께 입력 순서로 fallback 한다.
+* **Score normalization**: cross-encoder logit 은 `[0,1]` 범위가 아니다. `rag_core.py` ~L2254 의 검증기 점수 하한선(임계값 0.18)은 정규화된 블렌드에 맞춰 튜닝되었는데, sigmoid 스쿼시가 backend 별 분기 없이 이를 계속 동작하게 한다. Cohere 의 `relevance_score` 는 이미 정규화되어 있으므로 Cohere 분기는 sigmoid 를 건너뛰고 대신 clamp 한다.
 
 ## Backends
 
-Selected via `BIDMATE_RERANK_BACKEND` (defaults `stub`):
+`BIDMATE_RERANK_BACKEND` 로 선택(기본 `stub`):
 
 | backend | model default | env vars | cost | notes |
 |---|---|---|---|---|
-| `stub` | (none) | — | free | Identity pass-through. **CI default.** `full_reranker` row byte-equals `full` under stub. |
-| `bge` | `BAAI/bge-reranker-v2-m3` | `BIDMATE_RERANK_MODEL` | free | ~1.1GB local download. ~80–200ms / query CPU. |
-| `bge_ko` | `dragonkue/bge-reranker-v2-m3-ko` | `BIDMATE_RERANK_MODEL` | free | Korean-finetuned. Same FlagEmbedding code path as `bge`. |
-| `cohere` | `rerank-3.5-multilingual` | `BIDMATE_COHERE_API_KEY` or `COHERE_API_KEY`, `BIDMATE_RERANK_MODEL` | ~$2 / 1k searches (~$0.084 for n=42) | Network call. Scores already in [0,1] (no sigmoid). |
+| `stub` | (none) | — | free | Identity pass-through. **CI 기본.** stub 에서 `full_reranker` 행은 `full` 과 byte 동일. |
+| `bge` | `BAAI/bge-reranker-v2-m3` | `BIDMATE_RERANK_MODEL` | free | ~1.1GB 로컬 다운로드. CPU 에서 query 당 ~80–200ms. |
+| `bge_ko` | `dragonkue/bge-reranker-v2-m3-ko` | `BIDMATE_RERANK_MODEL` | free | 한국어 파인튜닝. `bge` 와 동일한 FlagEmbedding 코드 경로. |
+| `cohere` | `rerank-3.5-multilingual` | `BIDMATE_COHERE_API_KEY` 또는 `COHERE_API_KEY`, `BIDMATE_RERANK_MODEL` | ~$2 / 1k searches (n=42 시 ~$0.084) | 네트워크 호출. 점수가 이미 [0,1] (sigmoid 없음). |
 
 ## Reproduction
 
@@ -49,21 +49,21 @@ export BIDMATE_RERANK_BACKEND=cohere BIDMATE_COHERE_API_KEY=...
 python3 eval/run_eval.py --config eval/config.yaml --index_dir data/index --output_dir reports/cohere_rerank
 ```
 
-## Headline numbers
+## 핵심 수치(headline numbers)
 
-### Pipeline bug fix (issue #448)
+### 파이프라인 버그 수정 (issue #448)
 
-Prior to this fix, `rerank_cross_encoder: true` in `eval/config.yaml`'s `full_reranker` row was
-silently discarded — the flag was read in `eval/run_eval.py` but never propagated through
-`run_rag_query → _build_run_context → _RunContext → make_plan → plan dict`. As a result,
-`full_reranker` was byte-equal to `full` regardless of `BIDMATE_RERANK_BACKEND`.
+이 수정 이전에는 `eval/config.yaml` 의 `full_reranker` 행에 있는 `rerank_cross_encoder: true` 가
+조용히 버려졌다 — 플래그는 `eval/run_eval.py` 에서 읽혔으나
+`run_rag_query → _build_run_context → _RunContext → make_plan → plan dict` 로 전파되지 않았다. 그 결과
+`full_reranker` 는 `BIDMATE_RERANK_BACKEND` 와 무관하게 `full` 과 byte 동일했다.
 
-Fixed in the same PR by wiring `rerank_cross_encoder` through:
-- `rag_query.py:make_plan` (added parameter + plan dict key)
+같은 PR 에서 `rerank_cross_encoder` 를 다음을 통해 연결하여 수정:
+- `rag_query.py:make_plan` (파라미터 + plan dict 키 추가)
 - `rag_core.py:_build_run_context` / `_RunContext` / `_phase_retrieve_loop`
-- `eval/run_eval.py` call to `run_rag_query`
+- `eval/run_eval.py` 의 `run_rag_query` 호출
 
-### Measurement: bge_ko backend (2026-05-13, n=100 synthetic, hashing embeddings)
+### 측정: bge_ko backend (2026-05-13, n=100 synthetic, hashing embeddings)
 
 ```
 EMBEDDING_BACKEND=hashing BIDMATE_RERANK_BACKEND=bge_ko
@@ -71,7 +71,7 @@ eval config: /tmp/eval_reranker_only.yaml (naive_baseline + full + full_reranker
 index:       data/index (hashing embeddings, ADR 0001 public synthetic)
 ```
 
-**Overall metrics (95% bootstrap CI, n=100):**
+**전체 지표 (95% bootstrap CI, n=100):**
 
 | run | accuracy | Δ vs full | citation_precision | Δ vs full | n |
 |---|---|---|---|---|---|
@@ -79,7 +79,7 @@ index:       data/index (hashing embeddings, ADR 0001 public synthetic)
 | full | 0.718 [0.615–0.821] | — | 0.705 [0.625–0.780] | — | 100 |
 | full_reranker (bge_ko) | 0.590 [0.487–0.692] | **−12.8pp** | 0.705 [0.620–0.785] | 0pp | 100 |
 
-**Per-query-type accuracy (full vs full_reranker):**
+**query-type 별 accuracy (full vs full_reranker):**
 
 | query_type | full | full_reranker | Δ |
 |---|---|---|---|
@@ -88,7 +88,7 @@ index:       data/index (hashing embeddings, ADR 0001 public synthetic)
 | follow_up (n=21) | 0.700 | 0.700 | 0pp |
 | abstention (n=21) | 0.000 | 0.000 | 0pp |
 
-**Abstention decomposition (correct_refusal / incorrect_answer / boundary_partial):**
+**보류(abstention) 분해 (correct_refusal / incorrect_answer / boundary_partial):**
 
 | run | correct_refusal | incorrect_answer | boundary_partial |
 |---|---|---|---|
@@ -96,7 +96,7 @@ index:       data/index (hashing embeddings, ADR 0001 public synthetic)
 | full | 18 | 4 | 0 |
 | full_reranker (bge_ko) | **22** | **0** | 0 |
 
-**Latency (ms per query, warm):**
+**Latency (query 당 ms, warm):**
 
 | run | p50 | p95 | mean |
 |---|---|---|---|
@@ -104,47 +104,47 @@ index:       data/index (hashing embeddings, ADR 0001 public synthetic)
 | full | 2.6 ms | 4.6 ms | 2.6 ms |
 | full_reranker (bge_ko) | 2822 ms | 9435 ms | 3559 ms |
 
-### ADR 0026 re-open verdict (issue #448)
+### ADR 0026 재개(re-open) 판정 (issue #448)
 
-**Condition** (ADR 0026 re-open threshold): ≥+3pp accuracy **or** citation_precision lift with
-non-overlapping 95% CIs vs `full`.
+**조건** (ADR 0026 re-open 임계값): `full` 대비 비중첩(non-overlapping) 95% CI 와 함께
+accuracy **또는** citation_precision 이 ≥+3pp 상승.
 
-**Result**: −12.8pp accuracy, 0pp citation_precision. CIs overlap (full: [0.615–0.821],
-full_reranker: [0.487–0.692]; overlap region [0.615–0.692]).
+**결과**: accuracy −12.8pp, citation_precision 0pp. CI 가 중첩됨 (full: [0.615–0.821],
+full_reranker: [0.487–0.692]; 중첩 구간 [0.615–0.692]).
 
-**Verdict: REJECTED.** The "0pp-on-full pattern holds" — bge_ko reranker does not meet the
-re-open threshold on hashing embeddings.
+**판정: REJECTED.** "0pp-on-full 패턴이 유지됨" — bge_ko reranker 는 hashing embeddings 에서
+re-open 임계값을 충족하지 못한다.
 
-**Root cause**: hashing embeddings are non-semantic (bag-of-character n-grams); the reranker
-re-scores semantic relevance, but the top-k input candidates are already ordered by a non-semantic
-blend. The reranker's semantic preference diverges from the hashing blend's ordering, producing
-worse recall for answerable queries. The comparison query type is hit hardest (−20.8pp) because
-comparison needs multi-source diversity that the reranker collapses.
+**근본 원인**: hashing embeddings 는 비의미적(non-semantic)이다(bag-of-character n-grams). reranker 는
+의미적 관련성을 재채점하지만, top-k 입력 후보는 이미 비의미적 블렌드로 정렬되어 있다.
+reranker 의 의미적 선호가 hashing 블렌드의 정렬과 어긋나, 답변 가능한 쿼리에 대해 더 나쁜
+recall 을 낳는다. 비교(comparison) query 타입이 가장 크게 타격받는데(−20.8pp), 비교는
+reranker 가 무너뜨리는 multi-source 다양성을 필요로 하기 때문이다.
 
-**Abstention improvement is real but insufficient**: bge_ko pushes all incorrect_answer abstentions
-to correct_refusal (4→0 incorrect, 18→22 correct). This is a precision gain on unanswerable cases,
-but accuracy on answerable cases dominates.
+**보류 개선은 실재하나 불충분**: bge_ko 는 모든 incorrect_answer 보류를 correct_refusal 로
+밀어낸다(incorrect 4→0, correct 18→22). 이는 답변 불가 케이스에서의 정밀도 이득이지만,
+답변 가능 케이스에서의 accuracy 가 지배적이다.
 
-**Follow-up gate**: re-evaluate with semantic embeddings (e.g. `BAAI/bge-m3`) once a real-embedding
-index is available in CI. On a semantically-ranked candidate list, the reranker's precision-at-k
-benefit has a fair opportunity to manifest. Track as a blocked follow-up on ADR 0026.
+**Follow-up 게이트**: CI 에 real-embedding 인덱스가 마련되면 의미적 embeddings(예: `BAAI/bge-m3`)로
+재평가한다. 의미적으로 순위 매겨진 후보 리스트에서는 reranker 의 precision-at-k 이득이
+드러날 공정한 기회를 갖는다. ADR 0026 의 blocked follow-up 으로 추적한다.
 
-## Why no ADR
+## ADR 이 없는 이유
 
-This is a stub-default additive ablation under [ADR 0011](../adr/0011-llm-synthesis-as-additive-ablation.md): an opt-in backend pipeline, gated behind an env var, with CI continuing to run the stub identity path. No load-bearing decision is replaced — the 60/25/15 blend remains the recall funnel; the cross-encoder is a *precision-at-k* refinement on top. If a future PR replaces the blend with a cross-encoder (or removes it), that requires a new ADR per the CLAUDE.md "ADR threshold".
+이는 [ADR 0011](../adr/0011-llm-synthesis-as-additive-ablation.md) 하의 stub-default additive ablation 이다: env var 뒤에 게이팅된 opt-in backend 파이프라인이며, CI 는 계속 stub identity 경로를 실행한다. load-bearing 결정은 교체되지 않는다 — 60/25/15 블렌드가 recall 깔때기로 남고, cross-encoder 는 그 위의 *precision-at-k* 정제(refinement)다. 향후 PR 이 블렌드를 cross-encoder 로 교체(또는 제거)한다면, CLAUDE.md 의 "ADR threshold" 에 따라 새 ADR 이 필요하다.
 
-## Risks
+## 위험(risks)
 
-* **Score-floor regression** — verifier `min_evidence_score` is tuned for normalized scores. The sigmoid squash + Cohere `[0,1]`-clamp both ensure scores stay in range. Tests assert this in `tests/test_cross_encoder_rerank.py::RerankSigmoidSquashTest`.
-* **Verifier retry interaction** — verifier may re-call `retrieve()`. `plan["rerank_cross_encoder"]` propagates through the retry since it's a plan dict key like `rerank`. Validated by the end-to-end normalize_run_config test.
-* **Stub determinism** — stub MUST be pure identity (no re-sort, no score change). Otherwise `full` vs `full_reranker` under stub backend diverges and CI's hashing-backend invariant breaks. Locked by `RerankStubBackendTest::test_stub_backend_is_identity`.
-* **Latency** — BGE-reranker on CPU adds ~80–200ms per query × 42 queries ≈ 5–10s extra eval time. Real-data eval over 100 docs scales linearly. Document the latency cost in PR descriptions when switching default.
+* **점수 하한선 회귀** — 검증기 `min_evidence_score` 는 정규화된 점수에 맞춰 튜닝되어 있다. sigmoid 스쿼시 + Cohere `[0,1]`-clamp 둘 다 점수가 범위 안에 머물도록 보장한다. `tests/test_cross_encoder_rerank.py::RerankSigmoidSquashTest` 가 이를 assert 한다.
+* **검증기 재시도 상호작용** — 검증기가 `retrieve()` 를 재호출할 수 있다. `plan["rerank_cross_encoder"]` 는 `rerank` 같은 plan dict 키이므로 재시도를 통해 전파된다. end-to-end normalize_run_config 테스트로 검증됨.
+* **stub 결정론** — stub 은 순수 identity 여야 한다(재정렬 없음, 점수 변경 없음). 그렇지 않으면 stub backend 에서 `full` vs `full_reranker` 가 어긋나고 CI 의 hashing-backend 불변식이 깨진다. `RerankStubBackendTest::test_stub_backend_is_identity` 가 고정한다.
+* **Latency** — CPU 에서 BGE-reranker 는 query 당 ~80–200ms × 42 queries ≈ eval 시간 5–10s 추가. 100 docs 에 대한 real-data eval 은 선형으로 확장된다. 기본값 전환 시 PR 설명에 latency 비용을 문서화할 것.
 
-## See also
+## 참고
 
 - [`rag_rerank.py`](../../rag_rerank.py) — backend dispatch
-- [`rag_synthesis.py`](../../rag_synthesis.py) — pattern this module mirrors
-- [`tests/test_cross_encoder_rerank.py`](../../tests/test_cross_encoder_rerank.py) — contract tests
-- [ADR 0011](../adr/0011-llm-synthesis-as-additive-ablation.md) — additive-ablation pattern
-- [ADR 0001](../adr/0001-preserve-naive-baseline.md) — naive_baseline invariant (cross-encoder never triggers on naive_baseline)
-- [`docs/eval/embedding-ablation.md`](../eval/embedding-ablation.md) — Phase 1.2 sibling cycle (#161)
+- [`rag_synthesis.py`](../../rag_synthesis.py) — 이 모듈이 따르는 패턴
+- [`tests/test_cross_encoder_rerank.py`](../../tests/test_cross_encoder_rerank.py) — 계약 테스트
+- [ADR 0011](../adr/0011-llm-synthesis-as-additive-ablation.md) — additive-ablation 패턴
+- [ADR 0001](../adr/0001-preserve-naive-baseline.md) — naive_baseline 불변식 (cross-encoder 는 naive_baseline 에서 절대 발동하지 않음)
+- [`docs/eval/embedding-ablation.md`](../eval/embedding-ablation.md) — Phase 1.2 자매 사이클 (#161)

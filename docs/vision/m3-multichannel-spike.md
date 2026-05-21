@@ -1,45 +1,43 @@
-# BGE-M3 multi-channel retrieval spike (`retrieval_backend = "m3"`)
+# BGE-M3 multi-channel 검색(retrieval) spike (`retrieval_backend = "m3"`)
 
-Tracks issue #151. Honest measurement of BGE-M3's three retrieval channels
-fused via N-way RRF, compared head-to-head against the MiniLM hybrid
-baseline (`hybrid_bm25`, ADR 0010).
+issue #151 추적. BGE-M3 의 세 검색(retrieval) 채널을 N-way RRF 로 융합(fusion)한
+결과를 정직하게 측정하고, MiniLM hybrid 기준선(`hybrid_bm25`, ADR 0010)과
+정면 비교한다.
 
-## Why a spike (not an ADR yet)
+## 왜 ADR 가 아니라 spike 인가
 
-ADR 0010's "Alternatives considered" (lines 72-85) explicitly defers the
-BGE-M3 sparse + ColBERT multi-vector channels to a separate ablation,
-because the original hybrid PR bundled an embedding-model swap and the
-sparse-channel contribution would have been confounded. ADR 0021 then
-measured BGE-M3 as a **dense embedding** on `full` and found no lift, so
-the model stayed un-defaulted. The hypothesis this spike tests is the
-one ADR 0021 could not: **BGE-M3's value lives in the multi-channel
-output, not the dense channel alone.**
+ADR 0010 의 "Alternatives considered"(72-85행)는 BGE-M3 sparse + ColBERT
+multi-vector 채널을 별도 ablation 으로 명시적으로 미룬다. 원래 hybrid PR 이
+임베딩 모델 교체를 함께 묶었기 때문에 sparse-채널 기여도가 교란(confound)되었을
+것이기 때문이다. 이어서 ADR 0021 은 BGE-M3 를 **dense embedding** 으로 `full`
+에서 측정해 향상(lift)을 찾지 못했고, 모델은 기본값으로 채택되지 않았다. 이
+spike 가 검증하는 가설은 ADR 0021 이 검증하지 못한 것이다: **BGE-M3 의 가치는
+dense 채널 단독이 아니라 multi-channel 출력에 있다.**
 
-This is the same measure-first pattern that took ADR 0019 → ADR 0021. If
-this spike shows meaningful lift over `hybrid_bm25`, a follow-up PR
-persists the sparse + colbert vectors on disk (index schema bump 2 → 3)
-and writes ADR 0025 as a supplement to ADR 0010. If the lift isn't
-there, this doc records the negative result and the channels stay
-deferred.
+이는 ADR 0019 → ADR 0021 로 이어진 것과 동일한 measure-first 패턴이다. 이
+spike 가 `hybrid_bm25` 대비 의미 있는 향상(lift)을 보이면, 후속 PR 이 sparse +
+colbert 벡터를 디스크에 영속화(index schema bump 2 → 3)하고 ADR 0010 의 보완으로
+ADR 0025 를 작성한다. 향상이 없으면 이 문서가 음성 결과(negative result)를
+기록하고 채널은 미뤄진 채로 둔다.
 
-## Scope
+## 범위(Scope)
 
-- **Three-channel encoding** via `FlagEmbedding.BGEM3FlagModel`:
-  - dense (1024-dim L2-normalized vector per text — replaces nothing,
-    parallels the existing dense channel from whatever the index used)
-  - sparse (SPLADE-style `{token_id: weight}` dict per text)
-  - multi-vector / ColBERT (per-token `(T_i, 1024)` matrix per text;
-    late-interaction max-sim sum at scoring time)
-- **N-way RRF fusion** in [`rag_core.apply_fusion_and_reranking`](../../rag_core.py)
-  — the existing 2-way `hybrid` math (`rrf_k / 2.0` normalization)
-  generalizes to `rrf_k / N` for N=3.
-- **Opt-in, in-memory only.** Sparse + colbert outputs are computed once
-  per index per process at the first m3 query and cached as
-  `index["_m3_cache"]`. No disk format change, no `index.json` schema
-  bump for the spike (`INDEX_SCHEMA_VERSION` stays at 2).
-- **Public-CI surface unchanged.** `pr-eval.yml` runs with
-  `EMBEDDING_BACKEND=hashing` and the `m3_*` ablation rows are opt-in,
-  so the synthetic CI never installs `FlagEmbedding`.
+- `FlagEmbedding.BGEM3FlagModel` 을 통한 **3-채널 인코딩**:
+  - dense(텍스트당 1024-dim L2-normalized 벡터 — 아무것도 대체하지 않고,
+    인덱스가 사용한 기존 dense 채널과 병행)
+  - sparse(텍스트당 SPLADE-style `{token_id: weight}` dict)
+  - multi-vector / ColBERT(텍스트당 per-token `(T_i, 1024)` 행렬;
+    채점 시 late-interaction max-sim 합산)
+- [`rag_core.apply_fusion_and_reranking`](../../rag_core.py) 의 **N-way RRF 융합(fusion)**
+  — 기존 2-way `hybrid` 수식(`rrf_k / 2.0` 정규화)이 N=3 에 대해
+  `rrf_k / N` 으로 일반화된다.
+- **Opt-in, in-memory 전용.** Sparse + colbert 출력은 첫 m3 쿼리 시 프로세스당
+  인덱스당 한 번 계산되어 `index["_m3_cache"]` 로 캐시된다. spike 를 위한
+  디스크 포맷 변경이나 `index.json` 스키마 bump 는 없다(`INDEX_SCHEMA_VERSION`
+  은 2 유지).
+- **공개 CI 표면 불변.** `pr-eval.yml` 은 `EMBEDDING_BACKEND=hashing` 으로
+  실행되고 `m3_*` ablation 행은 opt-in 이므로, 합성(synthetic) CI 는 절대
+  `FlagEmbedding` 을 설치하지 않는다.
 
 ## Runner
 
@@ -63,22 +61,21 @@ python3 eval/run_eval.py \
   --runs m3_full
 ```
 
-For the real-data eval (load-bearing per CLAUDE.md item 5b — `rag_core.py`
-and `eval/config.yaml` are both in `LOAD_BEARING_PATHS`):
+real-data eval(CLAUDE.md 항목 5b 에 따라 load-bearing — `rag_core.py` 와
+`eval/config.yaml` 둘 다 `LOAD_BEARING_PATHS` 에 포함)의 경우:
 
 ```bash
 make real-eval
 make real-eval-delta
 ```
 
-Results land in `reports/eval_summary.json` under the `m3_full` row, and
-the deltas vs the `hybrid_bm25` and `full` controls appear in
-`reports/real_eval_delta.json`.
+결과는 `reports/eval_summary.json` 의 `m3_full` 행에 기록되고, `hybrid_bm25`
+및 `full` 대조군 대비 델타는 `reports/real_eval_delta.json` 에 나타난다.
 
-## Results
+## 결과(Results)
 
-_To be filled in by the implementer after the eval runs. Append rows
-to the table below and to `docs/eval/ablation-results.md`._
+_eval 실행 후 구현자가 채워 넣는다. 아래 표와 `docs/eval/ablation-results.md`
+에 행을 추가한다._
 
 | Ablation | recall@5 | MRR@10 | faithfulness | citation_precision | p50 latency (s) | p95 latency (s) | peak RSS delta (MB) |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -87,60 +84,50 @@ to the table below and to `docs/eval/ablation-results.md`._
 | `hybrid_bm25` (control) | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
 | `m3_full` | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
 
-## Decision rule
+## 결정 규칙(Decision rule)
 
-Ship the ADR 0025 supplement (and the follow-up PR that persists sparse
-+ colbert to disk via `INDEX_SCHEMA_VERSION = 3`) iff **all three** hold
-on the private 100-doc real-data surface:
+private 100-doc real-data 표면에서 **세 조건 모두** 충족될 때만 ADR 0025 보완(및
+`INDEX_SCHEMA_VERSION = 3` 으로 sparse + colbert 를 디스크에 영속화하는 후속
+PR)을 출하한다:
 
-1. `m3_full` recall@5 ≥ `hybrid_bm25` recall@5 + 0.03 (3 absolute
-   percentage points; the synthetic-eval noise floor is well below
-   this).
-2. `m3_full` faithfulness ≥ `hybrid_bm25` faithfulness − 0.01 (no
-   meaningful regression).
-3. `m3_full` p95 latency ≤ 2 × `hybrid_bm25` p95 (the multi-vector path
-   is expected to be slower; this is the budget before it becomes
-   user-visible).
+1. `m3_full` recall@5 ≥ `hybrid_bm25` recall@5 + 0.03(절대 3 percentage
+   point; 합성(synthetic) eval 노이즈 바닥은 이보다 한참 낮다).
+2. `m3_full` faithfulness ≥ `hybrid_bm25` faithfulness − 0.01(의미 있는
+   회귀 없음).
+3. `m3_full` p95 latency ≤ 2 × `hybrid_bm25` p95(multi-vector 경로는 더 느릴
+   것으로 예상되며, 이는 사용자에게 체감되기 전까지의 예산이다).
 
-Otherwise, this spike stands as the negative result and the channels
-stay deferred. The ablation row remains in `eval/config.yaml` as opt-in
-so future implementers can re-run with different BGE-M3 model sizes or
-fusion weights without re-introducing the wiring.
+그렇지 않으면 이 spike 는 음성 결과(negative result)로 남고 채널은 미뤄진다.
+ablation 행은 `eval/config.yaml` 에 opt-in 으로 남아, 미래 구현자가 배선(wiring)을
+다시 도입하지 않고도 다른 BGE-M3 모델 크기나 융합(fusion) 가중치로 재실행할 수
+있다.
 
-## Why option (a) for the corpus-side compute
+## corpus-side 연산에 왜 옵션 (a) 인가
 
-Three options were considered for the corpus-side sparse + colbert
-computation:
+corpus-side sparse + colbert 연산에 대해 세 가지 옵션을 검토했다:
 
-- **(a) Compute every chunk at first m3 query, cache in-memory.** —
-  Chosen. One forward pass per process. Cheap engineering, honest
-  sparse-recall measurement.
-- (b) Lazy on dense top-K only. Cheaper but caps sparse recall to
-  whatever the dense channel already surfaced — defeats the spike's
-  measurement intent (sparse's contribution gets confounded with dense
-  recall).
-- (c) Sparse upfront, colbert lazy on top-K. Best memory profile but
-  two code paths to maintain for a measurement-only change. Re-visit if
-  (a)'s in-memory colbert tensors blow the runner — the spike report
-  records peak RSS so the trade-off can be revisited.
+- **(a) 첫 m3 쿼리 시 모든 청크 계산, in-memory 캐시.** — 채택. 프로세스당
+  forward pass 1회. 저렴한 엔지니어링, 정직한 sparse-recall 측정.
+- (b) dense top-K 에 대해서만 lazy. 더 저렴하지만 dense 채널이 이미 표면화한
+  범위로 sparse recall 을 제한 — spike 의 측정 의도를 무력화한다(sparse 의
+  기여가 dense recall 과 교란(confound)된다).
+- (c) sparse 는 사전(upfront), colbert 는 top-K 에 대해 lazy. 메모리 프로파일은
+  최선이지만 측정 전용 변경에 대해 코드 경로 두 개를 유지해야 한다. (a)의
+  in-memory colbert 텐서가 runner 를 터뜨리면 재검토 — spike 리포트가 peak RSS
+  를 기록하므로 trade-off 를 재검토할 수 있다.
 
-## Known risks
+## 알려진 리스크(Known risks)
 
-- **FlagEmbedding install footprint.** Pulls torch (already pinned),
-  datasets, peft. Mitigation: opt-in `requirements-m3.txt`;
-  `M3Encoder.__init__` raises a clear actionable error on missing dep.
-  Public CI never installs it.
-- **In-memory ColBERT cost.** ~1k chunks × T_i × 1024 × float32 ≈
-  100 MB ballpark for the real-data corpus. The spike report's
-  peak-RSS row records the actual cost; if it overwhelms the eval
-  runner, option (c) becomes the productionization path.
-- **`naive_baseline` bit-identity.** The m3 path is gated on
-  `retrieval_backend == "m3"`. The default `dense` path never imports
-  `rag_m3`. The existing
-  `tests/test_naive_baseline_ranking_invariance.py` snapshot is the
-  ratchet.
-- **Encoding asymmetry.** BGE-M3's reference docs use `is_query` to
-  differentiate query vs document encoding; the model itself is
-  symmetric and the wrapper omits the flag for simplicity. If a
-  follow-up measurement shows asymmetric scoring lift, the flag adds
-  cleanly.
+- **FlagEmbedding 설치 footprint.** torch(이미 pin), datasets, peft 를 끌어온다.
+  완화책: opt-in `requirements-m3.txt`; `M3Encoder.__init__` 은 의존성 부재 시
+  명확하고 조치 가능한 에러를 발생시킨다. 공개 CI 는 절대 설치하지 않는다.
+- **In-memory ColBERT 비용.** real-data corpus 의 경우 ~1k chunks × T_i × 1024
+  × float32 ≈ 100 MB 수준. spike 리포트의 peak-RSS 행이 실제 비용을 기록한다.
+  eval runner 를 압도하면 옵션 (c) 가 제품화 경로가 된다.
+- **`naive_baseline` bit-동일성.** m3 경로는 `retrieval_backend == "m3"` 로
+  게이트된다. 기본 `dense` 경로는 절대 `rag_m3` 를 import 하지 않는다. 기존
+  `tests/test_naive_baseline_ranking_invariance.py` 스냅샷이 ratchet 이다.
+- **인코딩 비대칭성.** BGE-M3 의 레퍼런스 문서는 query vs document 인코딩을
+  구분하기 위해 `is_query` 를 사용한다. 모델 자체는 대칭이며 wrapper 는 단순성을
+  위해 이 플래그를 생략한다. 후속 측정이 비대칭 채점 향상(lift)을 보이면 플래그를
+  깔끔하게 추가할 수 있다.
