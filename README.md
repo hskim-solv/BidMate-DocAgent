@@ -8,7 +8,7 @@
 ![BidMate-DocAgent live demo (5s walkthrough — comparison query, extractive, no LLM)](docs/assets/demo.gif)
 
 > 한국 공공·B2B 입찰 RFP 에서 비교·요건 추출 질의를 **근거 기반 답변**으로 돌려주는 한국어 도메인 특화 RAG. 외부 LLM 호출 없이 추출형(extractive) grounding 으로 hallucination 을 구조적으로 차단.
-> **차별점**: 비교 질의에서 두 기관 문서를 균등 인용하는 [comparison-aware balanced retrieval](#key-technical-contribution--comparison-aware-balanced-top-k), 메타데이터 우선 검색 ([ADR 0002](docs/adr/0002-metadata-first-retrieval.md)), 근거 불충분 시 보류(abstention) 명시 ([ADR 0003](docs/adr/0003-structured-answer-citation-contract.md)).
+> **차별점**: 비교 질의에서 두 기관 문서를 균등 인용하는 [comparison-aware balanced retrieval](#핵심-기술-기여--comparison-aware-balanced-top-k), 메타데이터 우선 검색 ([ADR 0002](docs/adr/0002-metadata-first-retrieval.md)), 근거 불충분 시 보류(abstention) 명시 ([ADR 0003](docs/adr/0003-structured-answer-citation-contract.md)).
 > **측정**: 공개 합성 (`agentic_full`, n=100): accuracy 0.718 ± 0.10, citation_precision 0.705 ± 0.08 (95% CI). 비공개 real-eval (100-doc RFP, n=221 hardcase, [ADR 0052](docs/adr/0052-real-eval-hardcase-expansion-to-200.md)): accuracy 29.66%, **distinguishing-power gauge 4/5 signal alive** (groundedness +31.36pp · citation_precision +22.06pp · accuracy +27.12pp · claim_citation_alignment +8.04pp vs random_retrieval; answer_format_compliance −0.64pp 남은 false-negative) — Goodhart 함정 ([ADR 0053](docs/adr/0053-distinguishing-power-floor-ablations.md) 첫 측정에서 발견 → [ADR 0054](docs/adr/0054-conditional-on-answer-scorer-semantics.md) 에서 scorer 정정) 폐루프 ([reports/real100/distinguishing_power.md](reports/real100/distinguishing_power.md)). 공개 합성 + 비공개 real-data 분리 평가 ([ADR 0005](docs/adr/0005-eval-split-public-synthetic-private-local.md)), 59개 설계 결정 (ADR).
 
 ### 5초 비주얼 훅 — 실제 `comparison` 질의 한 건 (extractive, no LLM)
@@ -33,11 +33,11 @@ INFO bidmate.rag_core: query_complete  status='supported'  query_type='compariso
 ────────────────────────────────────────────────────────────────────────────
 ```
 
-- 두 기관이 **모두** 인용된 점이 핵심 — [comparison-aware balanced top-k](#key-technical-contribution--comparison-aware-balanced-top-k) 가 한쪽 문서 starvation 방지
+- 두 기관이 **모두** 인용된 점이 핵심 — [comparison-aware balanced top-k](#핵심-기술-기여--comparison-aware-balanced-top-k) 가 한쪽 문서 starvation 방지
 - 외부 API 호출 없음 (extractive). 위 출력은 **현재 `data/index`(13-doc) 실측** — `make ask` 복붙 시 동일 claim·citation(chunk-056 / chunk-094) 재현. ~30 ms 는 in-memory hybrid 검색 ([ADR 0058](docs/adr/0058-phase35-mode-winner.md) 기본값) 단발 wall-clock (머신별 상이, 리포트 p95 메트릭 아님)
 - 5초 터미널 재생: `asciinema play docs/assets/demo.cast`. 풀 워크스루: [`docs/operations/deployment.md`](docs/operations/deployment.md#recording-the-demo-video)
 
-## Live demo
+## 라이브 데모
 
 | 경로 | 상태 | 비고 |
 |---|---|---|
@@ -76,7 +76,7 @@ LLM synthesis opt-in (`agentic_full_llm`, [ADR 0011](docs/adr/0011-llm-synthesis
 
 ---
 
-## Key technical contribution — comparison-aware balanced top-k
+## 핵심 기술 기여 — comparison-aware balanced top-k
 
 RFP 비교 질의 (`query_type == "comparison"`) 에서 발생하는 한쪽 문서 starvation 을 막는 **balanced top-k 검색 ranking**. 일반 agentic RAG 튜토리얼에 없는 RFP 도메인 특화 결정.
 
@@ -88,7 +88,7 @@ RFP 비교 질의 (`query_type == "comparison"`) 에서 발생하는 한쪽 문�
 - 테스트: [tests/test_fuzzy_retrieval.py](tests/test_fuzzy_retrieval.py) — asymmetric corpus 균등 보장, disabled 시 global ordering 보존, single-doc no-op
 - 설계: [`docs/retrieval/comparison-ranking.md`](docs/retrieval/comparison-ranking.md)
 
-> **One-line pitch**: RFP 비교 질의 실패 패턴 (한쪽 문서 starvation → verifier 재시도 → 보류) 을 발견하고, 이를 막는 검색 ranking 전략을 설계·구현·테스트로 검증한 것이 본 프로젝트의 핵심 기여
+> **한 줄 피치**: RFP 비교 질의 실패 패턴 (한쪽 문서 starvation → verifier 재시도 → 보류) 을 발견하고, 이를 막는 검색 ranking 전략을 설계·구현·테스트로 검증한 것이 본 프로젝트의 핵심 기여
 
 ---
 
@@ -198,7 +198,7 @@ flowchart TD
     class P,G highlight
 ```
 
-> 강조 2 노드: Planner 의 `comparison-aware top_k` → [Key technical contribution](#key-technical-contribution--comparison-aware-balanced-top-k), Answer Generator 의 `extractive — no LLM` → [Why extractive?](#왜-추출형extractive인가-생성형generative이-아닌가)
+> 강조 2 노드: Planner 의 `comparison-aware top_k` → [핵심 기술 기여](#핵심-기술-기여--comparison-aware-balanced-top-k), Answer Generator 의 `extractive — no LLM` → [왜 추출형인가?](#왜-추출형extractive인가-생성형generative이-아닌가)
 
 비교 질의 (`query_type == "comparison"`) 에서는 balanced top-k cut 으로 각 비교 대상에 최소 1개 evidence 보장. 메타데이터 filter staging, alias lexicon, follow-up carryover: [`docs/retrieval/retrieval-hardening.md`](docs/retrieval/retrieval-hardening.md). `retrieval_backend` hybrid (BM25+RRF) 근거: [ADR 0010](docs/adr/0010-hybrid-bm25-dense-retrieval-rrf.md). "agentic" 의 의미 (bounded 재시도 vs ReAct/Reflexion 비교): [`docs/agentic/agentic-definition.md`](docs/agentic/agentic-definition.md).
 
@@ -255,7 +255,7 @@ python3 scripts/update_readme_metrics.py --report reports/eval_summary.json --re
 
 ---
 
-## Notice
+## 안내
 - 원본 RFP 문서는 외부 공유 제한으로 저장소 미포함
 - `data/raw` 는 공개 재현용 합성 RFP 샘플
 - 본 저장소 = 재현 가능 구조/평가 관점의 포트폴리오 문서화 목표
