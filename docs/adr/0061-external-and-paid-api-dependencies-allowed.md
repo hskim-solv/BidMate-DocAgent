@@ -32,9 +32,17 @@ Cohere Rerank 3.5 multilingual (`rag_rerank.py:_cohere_backend` 는 이미 배�
 2. **Baseline 보존 (ADR 0001)** — `naive_baseline` 및 CI 기본 경로는 외부 호출
    없이 byte-identical 을 유지. 외부 백엔드는 분석 변형으로만 비교에 진입.
 3. **데이터 경계 (ADR 0005/0012)** — 외부로 나가는 페이로드는 public/synthetic
-   또는 마스킹된 데이터로 제한. **비공개 real-eval 데이터·private RFP 본문의 외부
-   전송은 이 ADR 의 범위 밖** 이며 ADR 0005/0012 가 계속 관할한다 (해제하려면
-   별도 ADR 로 supersede).
+   surface 로 제한. 이 경계는 이제 `bidmate_data_boundary.assert_external_payload_allowed`
+   가 **코드로 강제**한다 (fail-closed, issue #1154): 외부 backend 진입점이 SDK
+   import·네트워크 호출 **전에** 이 guard 를 호출하고, `BIDMATE_DATA_SURFACE` 가
+   public/synthetic 으로 명시 attestation 된 경우만 egress 를 허용한다 —
+   unset·`private`·`local`·미인식 값은 차단되어 backend 가 오프라인 fallback
+   (regex baseline / 결정론 synthesis) 으로 복귀한다. **"마스킹된 데이터" 는 아직
+   sanctioned escape hatch 가 아니다**: `bidmate_security.redact_pii` 는
+   phone/email/RRN 만 가리고 조달 본문(기관명·예산·사업 내용)은 그대로 남기므로
+   "마스킹 후 전송" 을 신뢰 근거로 삼지 않는다. **비공개 real-eval 데이터·private
+   RFP 본문의 외부 전송은 이 ADR 의 범위 밖** 이며 ADR 0005/0012 가 계속 관할한다
+   (해제하려면 별도 ADR 로 supersede + 신뢰 가능한 sanitizer 정의).
 
 이 ADR 은 데이터 전송 정책을 바꾸지 않는다 — 오직 "외부/유료 API 를 코드/모델
 레이어에 둘 수 있는가" 의 답을 No→Yes 로 바꾼다.
@@ -47,6 +55,17 @@ Cohere Rerank 3.5 multilingual (`rag_rerank.py:_cohere_backend` 는 이미 배�
 - **constrained (lock-in)**: 모든 외부 백엔드는 위 3조건을 만족해야 한다. 특히
   조건 2 가 깨지면 ADR 0001 회귀로 간주. 조건 3 위반 (비공개 데이터 외부 전송) 은
   ADR 0005/0012 위반.
+- **조건 ③ 코드 강제 (issue #1154)**: `bidmate_data_boundary` guard 가 metadata
+  (`rag_metadata_extraction._anthropic_tool_use_backend`/`_openai_function_call_backend`)
+  + synthesis (`rag_synthesis._anthropic_backend`/`_openai_compatible_backend`) 외부
+  진입점에 적용. 기본 `BIDMATE_DATA_SURFACE` unset → fail-closed 이므로 외부 backend
+  는 surface attestation 없이는 못 켜진다 (조건 ① opt-in 위에 데이터 경계 attestation
+  한 겹 추가). 공개 synthetic 외부 비교(`scripts/compare_external_baselines.py`)는
+  `public_synthetic` 를 setdefault 로 선언해 동작 유지.
+- **잔여 egress (follow-up)**: `rag_rerank._cohere_backend`, `rag_embedding` 외부
+  백엔드, `rag_query_expansion` HyDE, `rag_planner` 외부 경로, eval judges 는 동일
+  guard 미적용 — 같은 데이터 경계 위험이 있으므로 별도 PR 로 확장 필요. 중앙 guard 는
+  한 줄 호출로 재사용 가능.
 - **비용**: 외부 백엔드 활성화 시 latency·과금·가용성 의존이 생긴다. p95 budget
   (ADR 0041) 과 cost telemetry (`rag_synthesis.compute_cost_usd`) 로 관측.
 - **남는 결정**: 비공개 데이터의 외부 전송을 허용할지는 미해결 — 필요 시 ADR 0005/
@@ -64,3 +83,5 @@ Cohere Rerank 3.5 multilingual (`rag_rerank.py:_cohere_backend` 는 이미 배�
 
 <!-- verifies-key: CLAUDE.md:외부/paid API 도입 허용 -->
 <!-- verifies-key: docs/adr/0061-external-and-paid-api-dependencies-allowed.md:Opt-in only -->
+<!-- verifies-key: bidmate_data_boundary.py:assert_external_payload_allowed -->
+<!-- verifies-key: tests/test_external_payload_boundary_regression.py:fail_closed -->
