@@ -1,17 +1,17 @@
-# eval-framework-progressive-audit — Phase 5 (closed error loop)
+# eval-framework-progressive-audit — Phase 5 (닫힌 오류 루프, closed error loop)
 
 | field | value |
 |---|---|
 | Skill | [`.claude/skills/eval-framework-progressive-audit/SKILL.md`](../../.claude/skills/eval-framework-progressive-audit/SKILL.md) (PR #889) |
-| Phase | **5 — Closed error loop audit** (skill line 166-184) |
+| Phase | **5 — 닫힌 오류 루프(closed error loop) audit** (skill line 166-184) |
 | Date | 2026-05-18 |
 | Author | Hyunsoo Kim |
 | Issue | #990 |
 | Predecessor | Phase 4 audit (#962 / PR #963, merged `e65f792`) — STOP gate 영수증; gap fixes Step 1-3 (PR #965/#968/#987) merged |
-| Successor | None — sequence A closure. 5-phase progressive audit completed. |
+| Successor | 없음 — 시퀀스 A closure. 5-phase progressive audit 완료. |
 | Strict-forbid | **실제 taxonomy / dashboard / harden-process 구현 0건** (skill body 통일 — audit only) |
 
-## Executive summary
+## 요약(Executive summary)
 
 | # | item | 상태 | 핵심 evidence |
 |---|---|:---:|---|
@@ -77,7 +77,7 @@ bottom-3 planner_decomposition 모두 abstention slice. 단 — 현재 측정은
 - **answerable=True 의 실패 분류 부재**: answerable case 가 fail 했을 때 root-cause stage (retrieval / verifier / generator) 추적 0건.
 - **trace v2 (PR #968, ADR 0001 invariance 유지)** 가 raw 자료 (planner attempts / synthesis prompt+completion) 는 dump 하지만, *category 라벨* 은 emit 안 함.
 
-**Gap**:
+**갭(Gap)**:
 - 7-category 분류기 (e.g. `eval/scorers/failure_classifier.py:classify(case, trace, expected) -> str`) 부재.
 - 분류 없이는 distribution dashboard (item 2) / harden process (item 3) 모두 의미 불충분.
 
@@ -104,7 +104,7 @@ bottom-3 planner_decomposition 모두 abstention slice. 단 — 현재 측정은
 - **Markdown 표 부재**: `reports/real100/` 어디에도 abstention_outcomes 의 percentage 표 render 안 됨. `reports/real100/eda.md` 는 corpus shape 만, `distinguishing_power.md` 는 gauge 만, `rag_pipeline.md` 는 retry/cost 만.
 - **per-category bar chart 부재**: `scripts/plot_*.py` 중 failure-category-axis plotter 0건.
 
-**Gap**:
+**갭(Gap)**:
 - Item 1 의 7-category 분류기 도입 이후 부산물로 자동 emit 되어야 할 distribution table 부재.
 - 현 3-bin (refusal-axis) 만으로도 표 + Markdown render 가능한데 안 됨.
 
@@ -125,7 +125,7 @@ bottom-3 planner_decomposition 모두 abstention slice. 단 — 현재 측정은
 - **(b) hardcase generator 존재 ✓**: `scripts/generate_real_cases.py` (PR #936, ADR 0052) — 5 enum (distractor_heavy / ambiguous_query / multi_hop / no_answer / long_context) 기반 LLM-assisted generator. 단 enum 은 **query-shape** axis (어떤 모양의 query?), failure-mode axis (왜 fail?) 아님. cross-mapping 부재.
 - **(c) regression test 부재**: `tests/test_*_regression.py` 가 specific bug fix 의 lock-in 은 보호 (e.g. `test_retrieval_loop_regression.py`) 하지만 *category fail rate ceiling* 같은 aggregate invariant 는 lock-in 안 됨.
 
-**Gap**:
+**갭(Gap)**:
 - 본 audit 의 finding #1 (87/103 incorrect_answer) 가 들어와도 *어디에도 누적 안 됨* — 다음 분기에 같은 신호가 나와도 다시 raw inspection 으로 발견해야 함.
 - ADR 0055 (claim_validator) 가 *improvement claim* 의 자동 검증을 도입했듯, 본 item 의 supply 는 *failure regression* 의 자동 차단을 도입할 수 있음.
 
@@ -144,9 +144,9 @@ bottom-3 planner_decomposition 모두 abstention slice. 단 — 현재 측정은
 |---|---|---|---|
 | 1 (component-level isolation) | (skill 본문 Phase 1) | — | (본 시퀀스 외) |
 | 2 (oracle ceilings) | (skill 본문 Phase 2) | — | (본 시퀀스 외) |
-| 3 (process + trajectory) | **#961** `c50a3e7` | item 2 → **#968** `9cb6c00` (trace v2) / item 3 → **#987** `8307819f` (rationality_judge ADR 0056) | ✓ |
+| 3 (프로세스 + trajectory) | **#961** `c50a3e7` | item 2 → **#968** `9cb6c00` (trace v2) / item 3 → **#987** `8307819f` (rationality_judge ADR 0056) | ✓ |
 | 4 (statistical rigor) | **#963** `e65f792` | item 3 → **#965** `7370fa0` (claim_validator ADR 0055) | ✓ |
-| 5 (closed error loop, **본 audit**) | **#990 / 본 PR** | — (audit only per skill) | ◐ 진단 완료, supply 별 PR |
+| 5 (closed error loop, **본 audit**) | **#990 / 본 PR** | — (skill 상 audit only) | ◐ 진단 완료, supply 별 PR |
 
 **시퀀스 A 의 5-step portfolio narrative**:
 1. 측정 표면 도입 (PR #946 distinguishing-power gauge)
@@ -156,7 +156,7 @@ bottom-3 planner_decomposition 모두 abstention slice. 단 — 현재 측정은
 5. Process rationality 측정 표면 도입 (PR #987 ADR 0056 rationality_judge)
 6. **Closed error loop audit (본 PR)** — 5-phase progressive audit 완주
 
-## Out-of-scope (별 PR / 별 plan turn)
+## 범위 밖(Out-of-scope) (별 PR / 별 plan turn)
 
 - Item 1 supply (failure_classifier.py + ADR 0057) — 별 PR scope.
 - Item 2 supply (failure_distribution.{md,aggregate.json} + plot) — 별 PR scope.
@@ -164,15 +164,15 @@ bottom-3 planner_decomposition 모두 abstention slice. 단 — 현재 측정은
 - LLM backend 로 rationality_judge regen (n=221 × 1 LLM call) — Step 3 (ADR 0056) Out-of-scope 와 동일.
 - Phase 1/2 retro-fill audit (시퀀스 A 외, skill body 의 Phase 1/2 spec 그대로) — 별 시퀀스.
 
-## Critical files (read-only inspect 대상)
+## 핵심 파일(Critical files) (read-only inspect 대상)
 
 - `reports/real100/baseline.aggregate.json` (post-PR #987 8307819f) — abstention_outcomes raw counts
-- `reports/real100/rationality.aggregate.json` + `rationality.md` (PR #987 산출) — bottom-3 per axis
+- `reports/real100/rationality.aggregate.json` + `rationality.md` (PR #987 산출) — 축별 bottom-3
 - `eval/run_eval.py:377-411` `compute_abstention_outcome` (PR #464 wiring)
 - `rag_verifier.py` (rule-based, LLM call 0 — Step 2 audit finding)
 - `scripts/generate_real_cases.py` (PR #936 ADR 0052) — hardcase generator (현 query-shape axis)
-- `docs/audits/eval-framework-phase3-audit.md` (PR #961) — Phase 3 audit format reference
-- `docs/audits/eval-framework-phase4-audit.md` (PR #963) — Phase 4 audit format reference
+- `docs/audits/eval-framework-phase3-audit.md` (PR #961) — Phase 3 audit 포맷 reference
+- `docs/audits/eval-framework-phase4-audit.md` (PR #963) — Phase 4 audit 포맷 reference
 - `.claude/skills/eval-framework-progressive-audit/SKILL.md:166-184` — Phase 5 spec
 
 ## Verification

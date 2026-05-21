@@ -1,9 +1,9 @@
-# eval-framework-progressive-audit — Phase 4 (statistical rigor)
+# eval-framework-progressive-audit — Phase 4 (통계적 엄밀성)
 
 | field | value |
 |---|---|
 | Skill | [`.claude/skills/eval-framework-progressive-audit/SKILL.md`](../../.claude/skills/eval-framework-progressive-audit/SKILL.md) (PR #889) |
-| Phase | **4 — Statistical rigor audit** (skill line 151-164) |
+| Phase | **4 — 통계적 엄밀성(statistical rigor) audit** (skill line 151-164) |
 | Date | 2026-05-18 |
 | Author | Hyunsoo Kim |
 | Issue | #962 |
@@ -11,7 +11,7 @@
 | Successor | Phase 5 (Closed error loop audit) — 별 plan turn (skill STOP gate, 사용자 승인 영수증 필요) |
 | Strict-forbid | **실제 validator 구현 / seed 스윕 추가 0건** (skill body line 163-164) |
 
-## Executive summary
+## 요약(Executive summary)
 
 | # | item | 상태 | 핵심 evidence |
 |---|---|:---:|---|
@@ -39,7 +39,7 @@
   - `eval/korean_public/run.py:204` — KorQuAD bootstrap_ci 도 단일 `seed=DEFAULT_SEED`.
 - **Hashing artifact surface ✓ (단, 다른 의미)**: `scripts/generate_finetune_pairs.py:475`, `scripts/generate_real_cases.py:420` 의 `--seed` 는 stub backend determinism 용 (재현성), variant 비교용 아님.
 
-**Gap**:
+**갭(Gap)**:
 - 본 eval pipeline 의 variant 비교 (e.g. `naive_baseline` vs `agentic_full` accuracy delta) 는 single seed 산출. variant 의 randomness 가 LLM judge stochasticity / retrieval scoring tie-break / bootstrap resampling 에 잠재. seed 1개 산출의 CI 가 seed 별로 얼마나 흔들리는지 측정 안 됨.
 
 **Supply 제안** (별 PR):
@@ -70,7 +70,7 @@
 - **Consumer ✓** — `scripts/_ablation_common.py:21,58` (PR #950→#952→#956), seed averaging wrapper 포함.
 - **Main eval pipeline ◐** — `reports/real100/eval_summary.json` 의 top-level `ci:` block 12 metric 보유하나 이는 **unpaired bootstrap_ci** (각 metric 분포의 absolute CI). variant 비교 paired CI 는 ablation runner 가 별도 산출.
 
-**Gap**:
+**갭(Gap)**:
 - 본 eval 의 `naive_baseline` vs `agentic_full` 같은 default-vs-baseline pair 의 paired CI 가 `eval_summary.json` 에 미surface (현재는 단일 run aggregate). `make real-eval-delta` 결과의 paired CI 가 명시적 metric output 으로 노출되는지 추가 grep 필요.
 
 **Supply 제안** (별 PR — small):
@@ -88,7 +88,7 @@
 - `grep -rE "claim_validator|validate_claim" --include="*.py"` → 0건.
 - Convention 으로 PR body 에 SIG/NS 표기는 존재 — e.g. PR #956 "**−0.046 SIG** (−0.084, −0.011)" 패턴 — 그러나 작성자 손으로 짝지어진 ci_lo/ci_hi 부호 확인 + SIG 라벨 부여. 자동 게이트 부재.
 
-**Gap**: improvement claim 의 통계적 정직성이 reviewer (사람) 의 spot check 에만 의존. PR description 에 "improved X by Y" 라고 적어도 CI 가 0을 가로지르면 (NS) 그 자체를 차단할 자동화 0.
+**갭(Gap)**: improvement claim 의 통계적 정직성이 reviewer (사람) 의 spot check 에만 의존. PR description 에 "improved X by Y" 라고 적어도 CI 가 0을 가로지르면 (NS) 그 자체를 차단할 자동화 0.
 
 **Supply 제안** (별 PR — **ADR-worthy**):
 - 신규 `scripts/validate_claim.py`:
@@ -120,7 +120,7 @@
 
 → **Phase 4 acceptance 통과**. 사용자 머지 행위 자체가 STOP gate 영수증 (skill 본문 line 116: "사용자 승인 전 다음 phase 진입 금지" 동일 패턴).
 
-## Out of scope (별 PR / 별 plan turn)
+## 범위 밖(Out of scope) (별 PR / 별 plan turn)
 
 - **위 3 supply 의 실제 구현** — 스킬 본문 strictly forbid.
 - **Skill Phase 5 (Closed error loop)** audit — 별 plan turn. 본 audit 머지 후 사용자 승인 영수증 받고 진행.
@@ -129,10 +129,10 @@
 - **`answer_format_compliance −0.64pp` 잔여 false-negative** — 별 축, ADR 0054 wrap-up surface.
 - **Portfolio repo blog narrative 갱신** — D층 surface, 본 audit 와 독립.
 
-## References
+## 참고(References)
 
 - 본 audit 의 mother skill: [`.claude/skills/eval-framework-progressive-audit/SKILL.md`](../../.claude/skills/eval-framework-progressive-audit/SKILL.md) (PR #889)
-- Predecessor: [Phase 3 audit](./eval-framework-phase3-audit.md) (#960 / PR #961, merged `914489c`)
+- 선행(predecessor): [Phase 3 audit](./eval-framework-phase3-audit.md) (#960 / PR #961, merged `914489c`)
 - Item 1 코드 근거 (multi-seed):
   - [`eval/bootstrap.py:28`](../../eval/bootstrap.py) (DEFAULT_SEED=17, single)
   - [`scripts/phase2_chunking_ablation.py:711`](../../scripts/phase2_chunking_ablation.py) (`--seeds 17,23,29` ablation default)
@@ -142,6 +142,6 @@
   - [`eval/bootstrap.py:78-104`](../../eval/bootstrap.py) (`paired_bootstrap_ci`)
   - [`scripts/_ablation_common.py:21,58`](../../scripts/_ablation_common.py) (1 consumer + seed averaging)
   - PR #950 (paired CI helper introduction), PR #952 (chunking), PR #956 (retrieval mode)
-- Item 3: `find/grep` 0건 — 부재의 evidence.
-- Sibling skill (다른 surface): [`.claude/skills/retrieval-eval/SKILL.md`](../../.claude/skills/retrieval-eval/SKILL.md)
+- Item 3: `find/grep` 0건 — 부재(absent)의 evidence.
+- 자매(sibling) skill (다른 surface): [`.claude/skills/retrieval-eval/SKILL.md`](../../.claude/skills/retrieval-eval/SKILL.md)
 - Convention 으로 PR body SIG/NS 표기 사례: PR #956 body 의 "**−0.046 SIG** (−0.084, −0.011)" 표.

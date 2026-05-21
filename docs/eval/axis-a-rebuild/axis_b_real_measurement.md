@@ -1,8 +1,8 @@
-# Axis B real ground truth — kordoc measurement (18 doc subset, v2)
+# Axis B real ground truth — kordoc 측정(measurement) (18 doc subset, v2)
 
 측정일: 2026-05-15.
-Source: `reports/parser_experiment/kordoc.jsonl` (18 row, 모두 `ok=true`).
-Scope: **kordoc only** (anchor 박제). cross-check 1회는 Upstage `categories.heading1` 로 kordoc `headings_count` 의 *정의* 검증 — anchor 박제 아님, 진단 reasoning.
+출처(Source): `reports/parser_experiment/kordoc.jsonl` (18 row, 모두 `ok=true`).
+범위(Scope): **kordoc only** (anchor 박제). cross-check 1회는 Upstage `categories.heading1` 로 kordoc `headings_count` 의 *정의* 검증 — anchor 박제 아님, 진단용 추론(reasoning).
 용도: axis A real-scale rebuild (ADR 0048 reserved) 의 size/structure anchor.
 
 ## v2 변경점 (2026-05-15, sub-STOP 2a undershoot 후속)
@@ -18,7 +18,7 @@ Scope: **kordoc only** (anchor 박제). cross-check 1회는 Upstage `categories.
 
 | 지표 | median | p25 | p75 | min | max | 비고 |
 |---|---:|---:|---:|---:|---:|---|
-| `korean_chars` | **39,511** | 31,326 | 46,015 | 26,924 | 121,010 | 한글 (가-힣) 추출 char |
+| `korean_chars` | **39,511** | 31,326 | 46,015 | 26,924 | 121,010 | 한글 (가-힣) 추출 char 수 |
 | `headings_count` | **282** | 149 | 477 | 10 | 519 | kordoc outline node 수 ≈ section 등가 |
 | `tables_count` (gfm+html) | **165** | 131 | 208 | 76 | 426 | GFM + HTML 표 합 (작은 cell merge 분리 포함) |
 | `tables_blocks` | **106.5** | 93 | 134 | 51 | 240 | semantic table block 단위 |
@@ -51,11 +51,11 @@ Scope: **kordoc only** (anchor 박제). cross-check 1회는 Upstage `categories.
 | doc_17.hwp | 23,546 | 78,059 | 505 | 209 | 163 | 895 | 154.6 | 373.5 |
 | doc_16.pdf | 7,090 | 121,010 | 484 | 426 | 240 | 2,149 | 250.0 | 284.1 |
 
-### Outlier note
+### Outlier 메모
 
-- **doc_05.hwp / doc_02.hwp** — headings_count 10 / 11 (median 282 대비 4%). heading 인식 실패 가능성. chars/section 2,950 / 2,847 는 본 비율 계산에서 제외해야 정직. 단 raw median 158 은 18 doc 전체 기준 (outlier 포함도 변동 1 미만이므로 그대로 anchor).
+- **doc_05.hwp / doc_02.hwp** — headings_count 10 / 11 (median 282 대비 4%). heading 인식 실패 가능성. chars/section 2,950 / 2,847 는 본 비율 계산에서 제외해야 정직. 단 raw median 158 은 18 doc 전체 기준 (outlier 포함해도 변동 1 미만이므로 그대로 anchor).
 - **doc_16.pdf** — 121k chars (median 의 3.0x). 단일 outlier. axis A target 산정에는 median 사용.
-- **healthy subset** (headings ≥ 50, n=16): chars/section median 158 동일. outlier 영향 minor.
+- **healthy subset** (headings ≥ 50, n=16): chars/section median 158 동일. outlier 영향 미미.
 
 ## 3. Axis A real-scale rebuild target (kordoc median 의 70-80%)
 
@@ -99,7 +99,7 @@ Scope: **kordoc only** (anchor 박제). cross-check 1회는 Upstage `categories.
 
 ### 6.1 측정값 (kordoc + cross-check parser, median)
 
-| metric | kordoc | Upstage | Polaris | 의미 |
+| 지표(metric) | kordoc | Upstage | Polaris | 의미 |
 |---|---:|---:|---:|---|
 | pages | — | **81** | **89.5** | RFP 페이지 수 |
 | outline node / tree heading | **282** (headings_count) | — | — | 전체 outline node (kordoc) |
@@ -267,7 +267,7 @@ Scope: **kordoc only** (anchor 박제). cross-check 1회는 Upstage `categories.
 
 ### 11.1 측정 method 명시 (v4 박제, 모호성 제거)
 
-| metric | 측정 방법 | 비고 |
+| 지표(metric) | 측정 방법 | 비고 |
 |---|---|---|
 | `chars` | `len(text)` | raw markdown 전체 char |
 | `korean_chars` | `len([c for c in text if '가' <= c <= '힣'])` | 한글 음절 char only (영문/숫자/기호/markdown 문법 제외) |
@@ -280,8 +280,8 @@ Scope: **kordoc only** (anchor 박제). cross-check 1회는 Upstage `categories.
 | `GFM blocks` | `line.strip().startswith('|') and '|---' in line` | GFM 표만 카운트 |
 | `HTML blocks` | `re.findall(r'<table\b', text)` | HTML 표만 카운트 |
 | `paragraph blocks` | `\n\n` split 중 표/heading 제외 | 본문 단락 추정 |
-| `chars / section` | `chars / (h1+h2)` | section density |
-| `chars / table block` | `chars / tables_blocks` | table density |
+| `chars / section` | `chars / (h1+h2)` | section 밀도(density) |
+| `chars / table block` | `chars / tables_blocks` | table 밀도(density) |
 
 ### 11.2 100-doc 분포 (n=100)
 

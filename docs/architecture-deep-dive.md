@@ -1,6 +1,6 @@
 ---
 layout: page
-title: 1-page Architecture deep-dive
+title: 1-page 아키텍처 deep-dive
 permalink: /architecture-deep-dive/
 ---
 
@@ -32,7 +32,7 @@ flowchart TD
 
 ## 단계별 한 줄 요약
 
-| Stage | 역할 | 핵심 코드 | ADR | 측정 신호 |
+| 단계(Stage) | 역할 | 핵심 코드 | ADR | 측정 신호 |
 |---|---|---|---|---|
 | Ingestion | HWP CSV fallback · 메타 6컬럼 | `ingestion.py:21,103` · `visual_ingestion.py:659` | — | `ingestion_report.json` |
 | Chunking | fixed(baseline) vs section | `rag_core.py:712,809,824` | — | `chunk_seq_in_section` |
@@ -75,4 +75,4 @@ real-data 측정 결과는 aggregate-only commit boundary로 관리된다 (ADR 0
 
 - [README §핵심 성능표](https://github.com/hskim-solv/BidMate-DocAgent#%ED%95%B5%EC%8B%AC-%EC%84%B1%EB%8A%A5%ED%91%9C-%EC%8B%A4%EC%B8%A1) — bootstrap CI 표 전체
 - [ADR 인덱스](https://github.com/hskim-solv/BidMate-DocAgent/blob/main/docs/adr/README.md)
-- [Engineering governance](https://github.com/hskim-solv/BidMate-DocAgent/blob/main/docs/engineering-governance.md) — workflow map
+- [Engineering governance](https://github.com/hskim-solv/BidMate-DocAgent/blob/main/docs/engineering-governance.md) — 워크플로 맵

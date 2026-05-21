@@ -2,7 +2,7 @@
 
 이 문서는 이슈 #55, #56, #57, #59, #61에서 요구한 retrieval robustness 변경을 검토할 때 확인할 코드 경로와 진단 필드를 정리한다.
 
-## What changed
+## 변경 사항(what changed)
 
 - Metadata filter는 `strict`, `reduced`, `relaxed` 단계로 실행된다. 후보가 없는 `strict`는 더 이상 이름만 strict인 전체 검색으로 기록하지 않고 `relaxed`로 기록한다.
 - Agency/project/title matching은 spacing/punctuation compact normalization, partial token overlap, fuzzy similarity, explicit alias lexicon을 함께 사용한다.
@@ -11,15 +11,15 @@
 - Single/follow-up query에서 metadata 후보가 낮은 confidence 차이로 충돌하면 retrieval을 진행하지 않고 clarification 형태의 `insufficient` 응답을 반환한다. Comparison query는 여러 후보를 정상 target set으로 허용한다.
 - Planner는 query type별 기본 retrieval budget을 사용한다. `single_doc=4`, `follow_up=6`, `comparison=6`이며 comparison은 coverage-aware top-k가 필요한 경우 기존 adaptive budget을 사용한다.
 
-## Diagnostics to inspect
+## 검사할 진단(diagnostics to inspect)
 
-- `diagnostics.filter_stage_attempts[]`: stage, filters, candidate count, selected top_k, verifier reasons.
-- `diagnostics.metadata_resolution`: normalized query/tokens, all metadata candidates, selected candidates by stage, selected doc ids, ambiguity decision.
-- `diagnostics.context_resolution`: follow-up carryover source, reused agencies/projects/doc ids, confidence, clarification reason.
-- `plan.retrieval_budget`: selected top_k, query type, reason, defaults.
+- `diagnostics.filter_stage_attempts[]`: stage, filters, 후보 수, selected top_k, verifier reasons.
+- `diagnostics.metadata_resolution`: 정규화된 query/tokens, 모든 metadata 후보, stage 별 선택 후보, selected doc ids, ambiguity 결정.
+- `diagnostics.context_resolution`: follow-up carryover 출처, 재사용된 agencies/projects/doc ids, confidence, clarification 사유.
+- `plan.retrieval_budget`: selected top_k, query type, 사유, 기본값.
 - `reports/eval_summary.json.case_results[]`: `filter_stage`, `selected_top_k`, `metadata_ambiguous`, `ambiguity_decision`, `metadata_candidate_count`, `metadata_selected_doc_ids`.
 
-## How to validate
+## 검증 방법(how to validate)
 
 ```bash
 python3 -m unittest tests.test_fuzzy_retrieval -v
@@ -57,11 +57,11 @@ Known limitations:
 - `parse_budget` ingestion semantics는 변경 없음. Verification-time OR-match가
   stale `"15억"` budget metadata를 reindex 없이 처리한다.
 
-## Issue coverage
+## 이슈 커버리지(issue coverage)
 
-- #55: staged metadata filters and per-stage diagnostics.
-- #56: explicit alias lexicon plus fuzzy/partial candidate expansion.
-- #57: persistent follow-up state and retrieval-query carryover.
-- #59: ambiguity detection with clarification-before-retrieval behavior.
-- #61: planner-owned query-type top_k selection and diagnostics.
-- #170: Korean money/date canonical-form OR-match at query/verify time.
+- #55: 단계화된(staged) metadata 필터와 stage 별 진단.
+- #56: 명시적 alias lexicon 과 fuzzy/partial 후보 확장.
+- #57: 영속적(persistent) follow-up 상태와 retrieval-query carryover.
+- #59: 검색 전 clarification 동작을 갖춘 ambiguity 탐지.
+- #61: planner 가 소유하는 query-type 별 top_k 선택과 진단.
+- #170: query/verify 시점의 한국어 금액/날짜 canonical-form OR-match.
