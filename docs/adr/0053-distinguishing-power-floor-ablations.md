@@ -1,7 +1,7 @@
 # ADR 0053 — Distinguishing-power 바닥(floor) ablation (`random` retrieval + `single_chunk` preset)
 
 - Status: Accepted
-- Implemented: #939 (2026-05-17) — `scripts/distinguishing_power.py` + `eval/config.yaml` floor ablation (`random_retrieval`, `single_chunk`)
+- Implemented: #939 (2026-05-17) — `random` retrieval backend + `single_chunk` preset + `eval/config.yaml` floor ablation rows (`random_retrieval`, `single_chunk`) + regression tests (PR-5a); #946 (2026-05-17) — `scripts/distinguishing_power.py` gauge + 첫 n=221 측정 + `reports/real100/distinguishing_power.{md,aggregate.json}` (PR-5b)
 - Date: 2026-05-17
 - Authors: Hyunsoo Kim
 - Related: ADR 0001 (naive_baseline 불변성), ADR 0005 (eval 분리(split)), ADR 0030 (leaderboard 표면), ADR 0044 (real-eval n trajectory — PR-B 에서 ADR 0052 로 superseded 진행 중)
