@@ -20,13 +20,19 @@ Scope (deliberately narrow to keep false positives near zero):
   - Sources: all tracked `*.md` EXCEPT under `.claude/` (agent/skill
     definitions legitimately carry placeholder/example links).
   - Targets: any repo path, resolved relative to the SOURCE file's dir.
-  - Checked: inline `[text](path)` links to a real file, and prose
-    `ADR NNNN` references to a real `docs/adr/NNNN-*.md`.
-  - NOT checked: external URLs (network dependency), same-file `#anchor`
-    fragments (anchor validation deferred — the recurrence is file-level),
-    site-absolute `/...` and directory-style Jekyll permalinks (the docs
-    render via `permalink: pretty`, so `[x](../foo/)` is a valid page link
-    that has no filesystem target).
+  - Checked: inline `[text](path)` links to a real file; prose
+    `ADR NNNN` references to a real `docs/adr/NNNN-*.md`; and `#fragment`
+    anchors — both same-file `[x](#frag)` and cross-file `[x](other.md#frag)`
+    — against the target `.md`'s heading slugs (GitHub `github-slugger`
+    rules) plus explicit `<a id=…>`/`<a name=…>`/`{#id}` anchors. Fragment
+    validation was added after issue #1152: Korean-izing a heading changes
+    its auto-generated slug, silently breaking inbound `#old-english-anchor`
+    links that a file-existence-only check cannot see.
+  - NOT checked: external URLs (network dependency), site-absolute `/...`
+    and directory-style Jekyll permalinks (the docs render via
+    `permalink: pretty`, so `[x](../foo/)` is a valid page link that has no
+    filesystem target), and `#fragment`s on non-`.md` targets (e.g. a
+    `foo.py#L10` GitHub line anchor — we only enumerate markdown anchors).
 
 Zero runtime dependencies (Python stdlib + `git ls-files`).
 
@@ -76,6 +82,202 @@ _KNOWN_EXT_RE = re.compile(
 
 # Tracked-file source set excludes these prefixes (see module docstring).
 _EXCLUDED_SOURCE_PREFIXES = (".claude/",)
+
+
+# ---------------------------------------------------------------------------
+# Fragment-anchor validation (issue #1152)
+# ---------------------------------------------------------------------------
+
+# GitHub's heading→anchor algorithm (the `github-slugger` package its markdown
+# renderer uses): lowercase, drop this fixed punctuation set, then turn every
+# whitespace char into a hyphen. The two unicode ranges (general + supplemental
+# punctuation) drop the em-/en-dash etc. Hyphen `-` and underscore `_` are
+# DELIBERATELY absent from the set — GitHub keeps them in slugs.
+_SLUG_STRIP_RE = re.compile(
+    "[\\u2000-\\u206f\\u2e00-\\u2e7f"          # general + supplemental punctuation
+    "\\\\'!\"#$%&()*+,./:;<=>?@\\[\\]^`{|}~]"  # ASCII punctuation (keeps - and _)
+)
+
+# ATX heading line: 1–6 leading `#` then a space. Captures the text, dropping
+# an optional trailing run of `#`. Setext (`===`/`---` underline) headings are
+# not handled — the repo uses ATX exclusively and `---` collides with both the
+# YAML front-matter delimiter and a thematic break.
+_HEADING_RE = re.compile(r"^\s{0,3}#{1,6}\s+(.*?)\s*#*\s*$")
+
+# Inline link inside a heading, reduced to its visible text for slugging:
+# `## see [foo](x.md)` → GitHub slugs the rendered text "see foo".
+_HEADING_LINK_RE = re.compile(r"\[([^\]]*)\]\([^)]*\)")
+
+# Explicit anchors that GitHub/Jekyll honor in addition to heading slugs.
+# `{#id}` is kramdown-only (GitHub ignores it) but is treated as VALID anyway:
+# an extra anchor can only suppress a false positive, never create one.
+_HTML_ANCHOR_RE = re.compile(
+    r"""<a\s+(?:id|name)\s*=\s*["']([^"']+)["']""", re.IGNORECASE
+)
+_KRAMDOWN_ANCHOR_RE = re.compile(r"\{#([\w-]+)\}")
+
+# Only markdown targets have an enumerable anchor set.
+_MD_TARGET_RE = re.compile(r"\.(?:md|markdown)$", re.IGNORECASE)
+
+
+def slugify_heading(text: str) -> str:
+    """Return the GitHub anchor slug for a heading.
+
+    Mirrors `github-slugger`. Accepts either a raw heading line (`## Title`)
+    or already-extracted heading text (`Title`); a leading `#{1,6} ` run is
+    stripped when present. Inline links are reduced to their visible text
+    before slugging.
+    """
+    m = _HEADING_RE.match(text)
+    if m:
+        text = m.group(1)
+    text = _HEADING_LINK_RE.sub(r"\1", text)
+    s = _SLUG_STRIP_RE.sub("", text.strip().lower())
+    return re.sub(r"\s", "-", s)
+
+
+def _iter_heading_lines(text: str):
+    """Yield ATX heading lines, skipping regions that produce no GitHub anchor:
+    leading YAML front-matter, fenced code blocks, and HTML comment blocks.
+    """
+    lines = text.splitlines()
+    n = len(lines)
+    i = 0
+    # Leading YAML front-matter: only when the very first line is exactly `---`.
+    if n and lines[0].strip() == "---":
+        i = 1
+        while i < n and lines[i].strip() != "---":
+            i += 1
+        i += 1  # consume the closing `---`
+    in_fence = False
+    fence_char = ""
+    in_comment = False
+    while i < n:
+        line = lines[i]
+        i += 1
+        if in_comment:
+            if "-->" in line:
+                in_comment = False
+            continue
+        fence = re.match(r"\s*(`{3,}|~{3,})", line)
+        if not in_fence and fence:
+            in_fence = True
+            fence_char = fence.group(1)[0]
+            continue
+        if in_fence:
+            if fence and fence.group(1)[0] == fence_char:
+                in_fence = False
+            continue
+        stripped = line.strip()
+        if stripped.startswith("<!--"):
+            if "-->" not in stripped:
+                in_comment = True
+            continue
+        if _HEADING_RE.match(line):
+            yield line
+
+
+def collect_anchors(text: str) -> set[str]:
+    """Return the set of valid lowercase fragment targets in a markdown doc:
+    every heading's slug (with GitHub's per-document `-1`/`-2`… duplicate
+    suffixing) plus explicit `<a id=…>`/`<a name=…>`/`{#id}` anchors.
+    """
+    anchors: set[str] = set()
+    for m in _HTML_ANCHOR_RE.finditer(text):
+        anchors.add(m.group(1).strip().lower())
+    for m in _KRAMDOWN_ANCHOR_RE.finditer(text):
+        anchors.add(m.group(1).strip().lower())
+    counts: dict[str, int] = {}
+    for line in _iter_heading_lines(text):
+        slug = slugify_heading(line)
+        seen = counts.get(slug, 0)
+        anchors.add(slug if seen == 0 else f"{slug}-{seen}")
+        counts[slug] = seen + 1
+    return anchors
+
+
+def split_fragment(raw: str) -> tuple[str, str] | None:
+    """Parse an inline href into ``(path_without_fragment, fragment)`` when the
+    link carries a checkable `#fragment`, else None.
+
+    Returns ``("", frag)`` for a same-file `#frag` link. Returns None for:
+    links with no `#`, external/protocol-relative/site-absolute links, an
+    empty fragment, and cross-file links whose target is not a `.md`/`.markdown`
+    file (only markdown anchors are enumerable). Mirrors `normalize_target`'s
+    angle-bracket and trailing-``"title"`` stripping, but — unlike it — KEEPS
+    the fragment, which is the whole point.
+    """
+    t = raw.strip()
+    if t.startswith("<") and t.endswith(">"):
+        t = t[1:-1].strip()
+    t = re.sub(r"""\s+["'].*$""", "", t).strip()
+    if "#" not in t:
+        return None
+    if _EXTERNAL_RE.match(t) or t.startswith("//") or t.startswith("/"):
+        return None
+    path_part, frag = t.split("#", 1)
+    frag = frag.strip()
+    if not frag:
+        return None
+    if path_part == "":
+        return ("", frag)
+    path_part = re.sub(r":\d+(?:-\d+)?$", "", path_part)  # drop `path:line`
+    final_segment = path_part.rstrip("/").rsplit("/", 1)[-1]
+    if not _MD_TARGET_RE.search(final_segment):
+        return None
+    return (path_part, frag)
+
+
+def find_broken_fragments(
+    md_files: list[str],
+    repo_root: str | Path = ".",
+) -> list[tuple[str, str, str]]:
+    """Return ``[(source, raw_href, fragment), ...]`` for links whose `#anchor`
+    has no matching heading slug / explicit anchor in the target markdown file.
+
+    A missing TARGET FILE is intentionally NOT reported here — that is
+    `find_broken_links`' job; this check stays silent so a single broken link
+    does not double-report. Anchor sets are computed once per target file.
+    """
+    root = Path(repo_root)
+    anchor_cache: dict[str, set[str] | None] = {}
+
+    def anchors_for(relpath: str) -> set[str] | None:
+        if relpath not in anchor_cache:
+            try:
+                body = (root / relpath).read_text(
+                    encoding="utf-8", errors="replace"
+                )
+            except OSError:
+                anchor_cache[relpath] = None
+            else:
+                anchor_cache[relpath] = collect_anchors(body)
+        return anchor_cache[relpath]
+
+    broken: list[tuple[str, str, str]] = []
+    for src in md_files:
+        try:
+            text = (root / src).read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        src_dir = os.path.dirname(src)
+        for href in extract_links(strip_code_spans(text)):
+            parsed = split_fragment(href)
+            if parsed is None:
+                continue
+            path_part, frag = parsed
+            if path_part == "":
+                target = src
+            else:
+                target = os.path.normpath(os.path.join(src_dir, path_part))
+                if not (root / target).exists():
+                    continue  # missing file → reported by find_broken_links
+            anchors = anchors_for(target)
+            if anchors is None:
+                continue
+            if frag.lower() not in anchors:
+                broken.append((src, href, frag))
+    return broken
 
 
 def _err(msg: str) -> None:
@@ -284,9 +486,29 @@ def _report_broken_adr_refs(broken: list[tuple[str, str]]) -> None:
     )
 
 
+def _report_broken_fragments(broken: list[tuple[str, str, str]]) -> None:
+    _err(
+        f"\n❌ Markdown fragment-anchor check failed (issue #1152): "
+        f"{len(broken)} link(s) point to a #anchor that does not exist.\n"
+    )
+    for src, href, frag in broken:
+        _err(f"     {src}\n         [{href}]  →  no heading/anchor '#{frag}'\n")
+    _err(
+        "\n   The target file exists but has no heading whose GitHub slug is\n"
+        "   this #fragment (and no explicit <a id=…>/<a name=…>/{#id} anchor).\n"
+        "   The usual cause is a renamed/translated heading whose old\n"
+        "   #english-anchor is still linked (issue #1152). Fix: point the\n"
+        "   #fragment at the new slug, or add a stable `<a id=\"old-anchor\">"
+        "</a>`\n"
+        "   on its own line before the heading to keep external links alive.\n"
+        "   Run locally: make check-doc-links\n\n"
+    )
+
+
 def _run(
     check_links: bool,
     check_adr: bool,
+    check_fragments: bool,
     paths: list[str] | None,
     repo_root: str | Path,
     allow_forward: bool,
@@ -303,9 +525,25 @@ def _run(
         if dead:
             _report_broken_adr_refs(dead)
             rc = 1
+    if check_fragments:
+        bad_frags = find_broken_fragments(md_files, repo_root)
+        if bad_frags:
+            _report_broken_fragments(bad_frags)
+            rc = 1
     if rc == 0:
-        scope = "links + ADR refs" if (check_links and check_adr) else (
-            "links" if check_links else "ADR refs"
+        scopes = [
+            name
+            for name, on in (
+                ("links", check_links),
+                ("ADR refs", check_adr),
+                ("fragments", check_fragments),
+            )
+            if on
+        ]
+        scope = (
+            " + ".join(scopes[:-1]) + " + " + scopes[-1]
+            if len(scopes) > 1
+            else scopes[0]
         )
         sys.stdout.write(
             f"OK: {len(md_files)} markdown file(s) scanned; no broken {scope}.\n"
@@ -327,8 +565,13 @@ def main() -> int:
         help="Check prose `ADR NNNN` references resolve to a real ADR file.",
     )
     g.add_argument(
+        "--check-fragments", action="store_true",
+        help="Check `#anchor` fragments resolve to a heading slug / explicit "
+             "anchor in the target `.md` (issue #1152).",
+    )
+    g.add_argument(
         "--check-all", action="store_true",
-        help="Run both checks (used by the pre-commit hook + Makefile).",
+        help="Run all checks (used by the pre-commit hook + Makefile).",
     )
     p.add_argument(
         "--paths", nargs="*", default=None, metavar="MD_FILE",
@@ -348,9 +591,11 @@ def main() -> int:
 
     check_links = args.check_links or args.check_all
     check_adr = args.check_adr_refs or args.check_all
+    check_fragments = args.check_fragments or args.check_all
     return _run(
         check_links,
         check_adr,
+        check_fragments,
         args.paths,
         args.repo_root,
         allow_forward=not args.no_allow_forward_adr,

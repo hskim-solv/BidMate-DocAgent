@@ -142,6 +142,6 @@ Public synthetic eval (n=100): Abstention Accuracy **1.000** (naive_baseline 0.2
 | Groundedness | 0.714 ± 0.14 | 0.929 ± 0.07 | +21.5pp |
 | Latency p95 | 7.5ms | 4.4ms | −3.1ms (−41%) |
 
-각 개선은 독립 ablation row 로 검증되어 어느 컴포넌트가 무슨 효과를 냈는지 추적 가능하다 ([ablation 상세](../README.md#ablation-breakdown)).
+각 개선은 독립 ablation row 로 검증되어 어느 컴포넌트가 무슨 효과를 냈는지 추적 가능하다 ([ablation 상세](../README.md#ablation-comparison)).
 
 > **주**: 상세 ablation breakdown 과 n=42→n=100 CI 수축 히스토리는 [docs/performance-evolution.md](performance-evolution.md) 를 참조.
