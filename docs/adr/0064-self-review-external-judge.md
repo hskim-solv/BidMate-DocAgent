@@ -70,6 +70,7 @@
 <!-- verifies-key: tests/test_self_review_judge.py:test_partial_operator_raises -->
 <!-- verifies-key: tests/test_self_review_judge.py:test_missing_evidence_age_downgrades_all_passes -->
 <!-- verifies-key: tests/test_self_review_judge.py:test_assemble_stats_emits_evidence_age_and_judge_consumes_it -->
+<!-- verifies-key: tests/test_self_review_judge.py:test_openai_backend_applies_time_separation_guard -->
 
 ### 첫 실행 결과 (Q2-2026, stub backend)
 
