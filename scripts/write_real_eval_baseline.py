@@ -18,10 +18,20 @@ Intended cadence: deliberate, after a decision lands (PR merged,
 threshold tightened). Not every run.
 
 Strict mode (issue #414): pass ``--strict`` or set
-``BIDMATE_BASELINE_STRICT=1`` to escalate the two existing provenance
+``BIDMATE_BASELINE_STRICT=1`` to escalate the existing provenance
 warnings (no eval-side provenance block; eval/baseline SHA skew per
-issue #160) from stderr-only to hard failures (exit 2, no baseline
-written). Default behavior is unchanged.
+issue #160; dirty worktree per issue #1148) from stderr-only to hard
+failures (exit 2, no baseline written). Default behavior is unchanged.
+
+Dirty gate (issue #1148): the SHA-only skew check passes whenever the
+eval and the baseline share a commit, but says nothing about
+*uncommitted* changes at that commit. An eval run from a dirty worktree
+(uncommitted scorer/config/code) therefore bakes unreproducible metrics
+into the committed baseline even under ``--strict``. The dirty gate
+inspects the eval-side ``provenance``/``run_manifest`` dirty flags and
+the write-time worktree; ``--allow-dirty`` /
+``BIDMATE_BASELINE_ALLOW_DIRTY=1`` is the documented escape hatch for a
+deliberate dirty baseline.
 """
 from __future__ import annotations
 
@@ -39,6 +49,7 @@ from scripts._utils import build_provenance, make_run_id
 from scripts.run_real_eval_delta import extract_aggregate
 
 STRICT_ENV_VAR = "BIDMATE_BASELINE_STRICT"
+ALLOW_DIRTY_ENV_VAR = "BIDMATE_BASELINE_ALLOW_DIRTY"
 _TRUTHY = {"1", "true", "yes"}
 
 EVAL_SUMMARY = ROOT / "reports" / "real100" / "eval_summary.json"
@@ -57,6 +68,19 @@ def _resolve_strict(flag: bool) -> bool:
     if flag:
         return True
     raw = os.environ.get(STRICT_ENV_VAR, "").strip().lower()
+    return raw in _TRUTHY
+
+
+def _resolve_allow_dirty(flag: bool) -> bool:
+    """Effective allow-dirty = ``--allow-dirty`` flag OR
+    ``BIDMATE_BASELINE_ALLOW_DIRTY`` truthy.
+
+    Uses the same truthy set as :func:`_resolve_strict` (``1``/``true``/
+    ``yes``, case-insensitive); any other value is falsy.
+    """
+    if flag:
+        return True
+    raw = os.environ.get(ALLOW_DIRTY_ENV_VAR, "").strip().lower()
     return raw in _TRUTHY
 
 
@@ -106,6 +130,60 @@ def _warn_if_stale(
         raise SystemExit(2)
 
 
+def _warn_if_dirty(
+    eval_prov: dict[str, object] | None,
+    run_manifest: dict[str, object] | None,
+    baseline_prov: dict[str, object],
+    *,
+    strict: bool = False,
+    allow_dirty: bool = False,
+) -> None:
+    """Warn — or, in strict mode, hard-fail — when the baseline would
+    capture an unreproducible *dirty* code state.
+
+    The SHA-only skew check (:func:`_warn_if_stale`) passes whenever the
+    eval and the baseline share a commit, but says nothing about
+    uncommitted changes *at* that commit. An eval run from a dirty
+    worktree (uncommitted scorer/config/code) therefore bakes
+    unreproducible metrics into the committed baseline even under
+    ``--strict`` — the residual #160-class hole reported in issue #1148.
+
+    Three dirty signals are inspected: the eval-side ``provenance`` and
+    ``run_manifest`` blocks from ``eval_summary.json`` (the eval was run
+    dirty) and ``baseline_prov`` (the baseline is being written from a
+    dirty worktree). Any true flag warns; under ``strict`` it is a hard
+    failure (exit 2, no baseline written). ``allow_dirty``
+    (``--allow-dirty`` / ``BIDMATE_BASELINE_ALLOW_DIRTY=1``) is the
+    documented override for a deliberate dirty baseline.
+    """
+    if allow_dirty:
+        return
+    dirty_sources: list[str] = []
+    if isinstance(eval_prov, dict) and eval_prov.get("git_dirty"):
+        dirty_sources.append("eval_summary.json `provenance` (git_dirty=true)")
+    if isinstance(run_manifest, dict) and run_manifest.get("git_dirty"):
+        dirty_sources.append("eval_summary.json `run_manifest` (git_dirty=true)")
+    if isinstance(baseline_prov, dict) and baseline_prov.get("git_dirty"):
+        dirty_sources.append("baseline write-time worktree (git_dirty=true)")
+    if not dirty_sources:
+        return
+    level = "ERROR" if strict else "WARN"
+    detail = "".join(f"        - {src}\n" for src in dirty_sources)
+    print(
+        f"[{level}] Dirty worktree detected — the baseline would capture an\n"
+        f"        unreproducible code state:\n"
+        f"{detail}"
+        f"        Re-run `make real-eval` and the baseline update from a clean\n"
+        f"        worktree (commit or stash first). This is the residual #160\n"
+        f"        failure mode the SHA-only skew check does not catch (#1148).\n"
+        f"        Override with --allow-dirty / {ALLOW_DIRTY_ENV_VAR}=1 only for\n"
+        f"        a deliberate dirty baseline.",
+        file=sys.stderr,
+    )
+    if strict:
+        raise SystemExit(2)
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument(
@@ -117,12 +195,23 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             f"baseline NOT written. Equivalent to {STRICT_ENV_VAR}=1."
         ),
     )
+    ap.add_argument(
+        "--allow-dirty",
+        action="store_true",
+        help=(
+            "Override the dirty-worktree gate (issue #1148): write the "
+            "baseline even when the eval provenance/run_manifest or the "
+            "write-time worktree is dirty. For a deliberate dirty baseline "
+            f"only. Equivalent to {ALLOW_DIRTY_ENV_VAR}=1."
+        ),
+    )
     return ap.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     strict = _resolve_strict(args.strict)
+    allow_dirty = _resolve_allow_dirty(args.allow_dirty)
 
     if not EVAL_SUMMARY.exists():
         print(
@@ -134,8 +223,12 @@ def main(argv: list[str] | None = None) -> int:
     raw = json.loads(EVAL_SUMMARY.read_text(encoding="utf-8"))
     agg = extract_aggregate(raw)
     eval_prov = raw.get("provenance") if isinstance(raw, dict) else None
+    run_manifest = raw.get("run_manifest") if isinstance(raw, dict) else None
     baseline_prov = build_provenance()
     _warn_if_stale(eval_prov, baseline_prov, strict=strict)
+    _warn_if_dirty(
+        eval_prov, run_manifest, baseline_prov, strict=strict, allow_dirty=allow_dirty
+    )
     agg["provenance"] = baseline_prov
 
     # If a judge run is present (ADR 0006), fold its aggregate into the
