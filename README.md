@@ -20,21 +20,21 @@ $ make ask
 python3 app.py --input_dir data/index --output_dir outputs --query "기관 A와 기관 B의 보안 요구사항 차이를 알려줘" --pipeline agentic_full
 
 INFO bidmate.rag_core: query_complete  status='supported'  query_type='comparison'
-                                       latency_ms=5.79      retry_count=0
+                                       latency_ms=29.63     retrieval_backend='hybrid'
                                        claim_count=2        citation_count=2
 
 [OK] Answer written: outputs/answer.json
 
 ─ Answer ───────────────────────────────────────────────────────────────────
-기관 A — 모델 품질관리, 보안 통제, 로그 추적
-        [rfp-agency-a-ai-quality::chunk-001]
-기관 B — 개인정보 비식별화, 접근 권한 분리
-        [rfp-agency-b-mlops-governance::chunk-001]
+기관 A — 연계 시스템은 보안 관제 콘솔이다.
+        [rfp-agency-a-ai-quality::chunk-056]
+기관 B — 보안 정책은 기관 B 정보보호 매뉴얼과 정합 운영된다.
+        [rfp-agency-b-mlops-governance::chunk-094]
 ────────────────────────────────────────────────────────────────────────────
 ```
 
 - 두 기관이 **모두** 인용된 점이 핵심 — [comparison-aware balanced top-k](#key-technical-contribution--comparison-aware-balanced-top-k) 가 한쪽 문서 starvation 방지
-- 외부 API 호출 없음 (extractive). 5.79 ms 는 in-memory index, n=2 docs 실측 — 대표 예시이며 `data/index` 전체(13-doc) 실행 시 출력·latency 상이 (hero 재현성 복원 추적: [issue #1102](https://github.com/hskim-solv/BidMate-DocAgent/issues/1102))
+- 외부 API 호출 없음 (extractive). 위 출력은 **현재 `data/index`(13-doc) 실측** — `make ask` 복붙 시 동일 claim·citation(chunk-056 / chunk-094) 재현. ~30 ms 는 in-memory hybrid 검색 ([ADR 0058](docs/adr/0058-phase35-mode-winner.md) 기본값) 단발 wall-clock (머신별 상이, 리포트 p95 메트릭 아님)
 - 5초 터미널 재생: `asciinema play docs/assets/demo.cast`. 풀 워크스루: [`docs/operations/deployment.md`](docs/operations/deployment.md#recording-the-demo-video)
 
 ## Live demo
