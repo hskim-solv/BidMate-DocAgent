@@ -40,13 +40,13 @@ KorQuAD 2.x 가 dominant 한국어 MRC benchmark (CC BY-ND 2.0 KR, SQuAD-shape, 
 
 ## 결과
 
-Easier:
+쉬워진 점:
 
 - "한국어 일반 텍스트 일반화" 질문에 reviewer 가 <2 분 안에 실행 가능한 구체·재현 수치.
 - 합성 표면의 동일 `bootstrap_ci` 머신 + 재현성 해시 레시피 자연 확장 — Linux host eval 실행이 macOS 와 (wall-clock 지연 modulo) 동일 헤드라인 수치 생산해야.
 - 새 한국어 공개 benchmark (AI Hub 행정문서, MIRAcL Korean, …) 가 `eval/korean_public/` sibling 으로 동일 shape 랜딩 가능 — KorQuAD 위가 아닌 옆 슬롯.
 
-Costs / 정직성:
+비용 / 정직성:
 
 - **헤드라인 수치가 합성 표면 대비 나쁘게 보임.** hashing 백엔드 + naive_baseline 파이프라인 첫 사이클 측정 retrieval_recall@5 ~ 0.500, answer_substring_match ~ 0.013. **이는 정확 + load-bearing**: 파이프라인이 RFP 도메인 특화이며 일반 한국어 QA 시스템 아님을 문서화. README + senior-positioning 이 *일반화 sanity check* 로 framing, target benchmark 아님.
 - raw KorQuAD archive 큼 (~93MB). fetch 단계 무료 아님; 스크립트가 적극 캐시 → 후속 run 거의 즉시.

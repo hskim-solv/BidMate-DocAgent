@@ -37,14 +37,14 @@ knob: 본 결정에는 토글이 없다. 재검토 trigger 가 충족되면 별�
 
 ## 결과
 
-**Wins**
+**이득**
 
 - ADR 0045 leaf DAG 불변량이 패키지화 이득의 95%를 무료로 제공. `src/` 추가 비용 0
 - `pythonpath = ["."]` + `sys.path.insert(0, str(ROOT))` 패턴이 pytest / 스크립트 / CI 에서 균일 동작 — 자동화 안정성 확보
 - `LOAD_BEARING_PATHS` 가 짧은 파일명(`rag_core.py`, `rag_retrieval.py` 등) 그대로 사용 → governance regex 단순, hook 빠름
 - CLAUDE.md "저장소 맵" 의 load-bearing/supporting 분류가 디렉토리 hierarchy 없이도 명시적 — reviewer 가 한 화면에서 의도 파악 가능
 
-**Costs**
+**비용**
 
 - `tests/` 76개 파일에 `sys.path.insert(0, str(ROOT))` 보일러플레이트 잔존. 통증 누적 시 `tests/conftest.py` 단일화로 **구조 변경 없이** 별도 해결 가능 (deferred to issue)
 - 신규 루트 모듈 추가 시 naming rule 모호(`rag_*` 도메인 vs `bidmate_*` 인프라 vs bare 일반). CLAUDE.md "저장소 맵" 갱신으로 흡수 (deferred to issue)

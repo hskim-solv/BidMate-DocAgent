@@ -1,4 +1,4 @@
-# ADR 0056 — Trajectory-rationality judge as a new measurement surface
+# ADR 0056 — Trajectory-rationality judge 를 새 측정 표면으로
 
 - Status: Accepted
 - Implemented: #987 (2026-05-18) — `eval/judges/rationality_judge.py` 3-axis trajectory measurement

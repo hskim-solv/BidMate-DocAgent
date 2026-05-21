@@ -70,7 +70,7 @@ LLM-as-judge 가 **공개 합성 eval 표면** 에서 다음 조건으로 허용
 
 ## 결과
 
-**Wins**
+**이득**
 
 - 공개 reviewer 가 결정론 메트릭과 함께 RAGAS 스타일 faithfulness / answer-relevance 신호를 commit 된 집계 스냅샷에서 확인.
 - ADR 0004 유지: CI 라이브 LLM 호출 없음, 모든 run 재현 가능·무료.
@@ -78,13 +78,13 @@ LLM-as-judge 가 **공개 합성 eval 표면** 에서 다음 조건으로 허용
 - ADR 0006 유지: 실데이터 평가자 불변 (`scripts/llm_judge.py` 리팩터 없음).
 - [ADR 0011](./0011-llm-synthesis-as-additive-ablation.md) 백엔드 dispatch 패턴 재사용 (stub vs openai_compatible) — 코드베이스 전반 "LLM 추가 방법" 일관 관용구.
 
-**Costs**
+**비용**
 
 - commit 집계는 검색·검증기 변경 후 재렌더 없으면 stale. 수동 주기로 완화 — 집계는 CI gate 가 아닌 스냅샷이므로 staleness 는 회귀가 아니라 "이 수치는 commit X 부터" 형태로 나타남.
 - stub 모드 집계 값 (supported 시 faithfulness 0.85 등) 은 *실* 신호 아님. README 가 stub 모드 (plumbing) 와 라이브 run (실 신호) 출처를 명시.
 - ADR 0005 allowlist 파일 1개 추가 (`reports/synthetic_judge.aggregate.json`). `reports/external_baselines.json` (ADR 0009) 기존 예외 미러링.
 
-**Constraints (불변)**
+**제약 (불변)**
 
 - 공개 CI 는 외부 LLM 호출 금지. CI 가 `BIDMATE_SYNTHETIC_JUDGE_BACKEND=stub` 기본 + `pr-eval.yml` / `make smoke` 에서 `make synthetic-judge` 누락으로 컨벤션 강제.
 - Aggregate-only commit 경계는 `judge_synthetic_summary` API 가 강제 — 집계 dict 만 commit 경로에 `write_text`; 케이스별 로컬 페이로드는 git-ignored 경로.

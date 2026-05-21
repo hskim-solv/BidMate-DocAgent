@@ -106,14 +106,14 @@ $ grep -nE "^from rag_|^import rag_" rag_query.py
 
 ## 결과
 
-**Wins**
+**이득**
 
 - `rag_retrieval.py` 가 `rag_core` 에 대해 진정한 leaf — back-edge 없음
 - `rag_core.py` 가 ~150 LOC 축소 (embedding 블록). GEF loop 가 명명한 ~600-LOC orchestration-only 목표로의 step
 - `scripts/build_index.py` 가 embed 위해 rag_core 불필요 — 인덱스 빌드가 원칙적으로 full retrieval/answer 스택 로딩 없이 실행 가능
 - IDE / 정적 분석기가 진정한 의존성 그래프 보고
 
-**Costs**
+**비용**
 
 - 유지할 새 모듈 파일 1개. 완화: 기존 `rag_*_processing.py` 패턴 따르므로 온보딩 비용 0 에 가까움
 - `rag_core` 의 re-export alias 는 그래프 깨끗함 관점에서 dead weight. eval 스크립트 안 깨지도록 첫 마이그레이션에서 **의도적 유지**; import site audit 후 제거 스케줄링 follow-up ADR 가능
