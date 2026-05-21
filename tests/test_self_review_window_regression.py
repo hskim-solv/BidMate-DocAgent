@@ -58,6 +58,32 @@ class TestWindowDaysMode(unittest.TestCase):
             data["governance_hooks"]["pretooluse_loadbearing_fires"], 0
         )
 
+    def test_memory_lines_category_split_by_action(self):
+        """axis #5-A: `memory-lines` category fires cross-tabbed by action."""
+        today = datetime.now(timezone.utc).date()
+        ts = (today - timedelta(days=1)).isoformat()
+        with tempfile.TemporaryDirectory() as td:
+            repo = Path(td)
+            (repo / ".claude").mkdir()
+            (repo / ".claude" / ".hook-fires.log").write_text(
+                f"{ts}T10:00:00Z|aware|load-bearing|rag_core.py\n"
+                f"{ts}T10:01:00Z|aware|memory-lines|MEMORY.md\n"
+                f"{ts}T10:02:00Z|aware|memory-lines|MEMORY.md\n"
+                f"{ts}T10:03:00Z|blocked|memory-lines|MEMORY.md\n"
+            )
+            result = _run("--window-days", "7", "--repo", str(repo))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        gov = json.loads(result.stdout)["governance_hooks"]
+        # 2 aware + 1 blocked memory-lines fires; load-bearing excluded.
+        self.assertEqual(gov["memory_lines"], {"aware": 2, "blocked": 1})
+
+    def test_absent_log_emits_zero_memory_lines(self):
+        """No log → memory_lines present as all-zero (measured, not absent)."""
+        with tempfile.TemporaryDirectory() as td:
+            result = _run("--window-days", "7", "--repo", td)
+        gov = json.loads(result.stdout)["governance_hooks"]
+        self.assertEqual(gov["memory_lines"], {"aware": 0, "blocked": 0})
+
     def test_quarter_and_window_mutually_exclusive(self):
         result = _run("--quarter", "Q2-2026", "--window-days", "7")
         self.assertNotEqual(result.returncode, 0)
