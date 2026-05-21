@@ -333,6 +333,9 @@ class TestBashGuard5bSoftWarn(unittest.TestCase):
         r = self._run("gh pr create --title T --body 'no 5b section here'")
         self.assertEqual(r.returncode, 0, msg=r.stderr)  # not stacked
         self.assertIn("§5b", r.stderr)
+        # Message-alignment (issue #1159): the soft-warn must point at the CI
+        # hard-gate that now fires on every base, not imply main-only.
+        self.assertIn("hard-gate", r.stderr)
         self.assertTrue(self._fires_log.exists())
         self.assertIn("|aware|bash-guard|pr-body-5b-missing|", self._fires_log.read_text())
 
