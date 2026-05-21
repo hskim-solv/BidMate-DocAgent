@@ -186,6 +186,29 @@ def is_load_bearing(path: str) -> bool:
 # ---------------------------------------------------------------------------
 
 ADR_DIR_DEFAULT = "docs/adr"
+
+# Phase 4 retrieval-eval artifacts under reports/retrieval/phase4*/ are
+# committable (allowlisted in .gitignore) but live OUTSIDE the pre-commit ADR
+# 0005 path block, which only matches `^reports/real[^/]*/` and so never sees
+# `reports/retrieval/...`. Two merged PRs leaked private real-eval data this
+# way — #1108 (coverage.json sample_queries = raw query text) and #1123
+# (raw_results.json per-case agency/project labels). The committable boundary
+# is "qid + categories + metric values only" (ADR 0005 private-local + ADR
+# 0065). This set is the forbidden dict-key list for a CONTENT scan the
+# path-regex hook structurally cannot perform. Exact-key match, so safe
+# siblings (`query_type`, `agency_match`, `has_gold_agency`, …) never trip it.
+PHASE4_PRIVATE_KEYS: frozenset[str] = frozenset(
+    {
+        "query",              # raw query text
+        "sample_queries",     # raw query text (coverage.json buckets, #1108)
+        "gold_agency",        # private 발주기관 label (raw_results.json, #1123)
+        "gold_project",       # private 사업명 label
+        "extracted_agency",   # query-time extracted agency string
+        "extracted_project",  # query-time extracted project string
+    }
+)
+PHASE4_ARTIFACT_GLOB = "reports/retrieval/phase4*"
+
 # Issue #818: detection-only relaxation. The kebab-lowercase slug remains the
 # *convention* (see ``docs/adr/README.md`` File layout), but the live bug
 # discovery on ``0044-realN-eval-case-expansion.md`` showed that a strict
@@ -685,6 +708,92 @@ def _cmd_proposed_adr_age(adr_dir: str) -> int:
     return 0
 
 
+def find_private_keys(obj: object) -> dict[str, int]:
+    """Recursively count occurrences of each PHASE4_PRIVATE_KEYS member used
+    as a dict key anywhere in ``obj`` (a parsed JSON value). Exact-key match,
+    so safe siblings like ``query_type`` / ``agency_match`` / ``has_*`` never
+    trip it. Returns ``{key: count}`` for the forbidden keys actually found.
+    """
+    found: dict[str, int] = {}
+
+    def _walk(node: object) -> None:
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if key in PHASE4_PRIVATE_KEYS:
+                    found[key] = found.get(key, 0) + 1
+                _walk(value)
+        elif isinstance(node, list):
+            for item in node:
+                _walk(item)
+
+    _walk(obj)
+    return found
+
+
+def phase4_artifact_paths(repo_root: str = ".") -> list[str]:
+    """git-tracked ``*.json`` files under reports/retrieval/phase4*/ (the
+    committable Phase 4 artifacts). Empty when none are tracked or git is
+    unavailable.
+    """
+    import subprocess
+
+    try:
+        out = subprocess.check_output(
+            ["git", "-C", repo_root, "ls-files", PHASE4_ARTIFACT_GLOB],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        )
+    except (subprocess.CalledProcessError, OSError):
+        return []
+    return [p for p in out.splitlines() if p.endswith(".json")]
+
+
+def scan_phase4_artifacts_for_private_fields(
+    repo_root: str = ".",
+) -> list[tuple[str, dict[str, int]]]:
+    """Scan every git-tracked Phase 4 JSON artifact for PHASE4_PRIVATE_KEYS.
+    Returns ``[(relpath, {key: count}), ...]`` for files carrying at least one
+    forbidden key. A clean repo returns ``[]``.
+    """
+    import json
+
+    violations: list[tuple[str, dict[str, int]]] = []
+    for rel in phase4_artifact_paths(repo_root):
+        try:
+            data = json.loads((Path(repo_root) / rel).read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        found = find_private_keys(data)
+        if found:
+            violations.append((rel, found))
+    return violations
+
+
+def _cmd_check_phase4_privacy(repo_root: str) -> int:
+    violations = scan_phase4_artifacts_for_private_fields(repo_root)
+    if not violations:
+        return 0
+    # Print key NAMES + counts only — never the private values themselves.
+    sys.stderr.write(
+        "\n❌ Phase 4 eval artifact privacy gate: committed artifact(s) carry "
+        "private real-eval fields.\n\n"
+        "   The committable boundary is qid + categories + metric values only "
+        "(ADR 0005 private-local + ADR 0065). These git-tracked files contain "
+        "forbidden key(s):\n\n"
+    )
+    for rel, found in violations:
+        detail = ", ".join(f"{k}×{n}" for k, n in sorted(found.items()))
+        sys.stderr.write(f"     - {rel}: {detail}\n")
+    sys.stderr.write(
+        "\n   Fix: regenerate with the sanitized scripts "
+        "(phase4_query_metadata_coverage.py drops sample_queries; "
+        "phase4_realistic_metadata_ablation.py persists has_* presence "
+        "booleans, not labels), or `git rm --cached` the file. Raw labels / "
+        "query text must stay local (gitignored).\n\n"
+    )
+    return 1
+
+
 def _cmd_is_load_bearing(path: str) -> int:
     return 0 if is_load_bearing(path) else 1
 
@@ -794,6 +903,13 @@ def main() -> int:
              "--category --path --extra --fire-log.",
     )
     g.add_argument(
+        "--check-phase4-privacy", action="store_true",
+        help="Scan git-tracked reports/retrieval/phase4*/*.json for private "
+             "real-eval fields (raw query text, agency/project labels) that "
+             "break the ADR 0005 / ADR 0065 committable boundary; exit 1 with "
+             "the offending files + forbidden keys if any are found.",
+    )
+    g.add_argument(
         "--proposed-adr-age", action="store_true",
         help="Report each proposed-status ADR's age + 30-day SLA flag "
              "(ADR 0047). Tab-separated columns: NNNN, age_days, flag "
@@ -847,8 +963,9 @@ def main() -> int:
     )
     p.add_argument(
         "--repo-root", default=".",
-        help="Repo root for verifies-key marker resolution "
-             "(default: current directory). Only used by --lint-adr-consequences.",
+        help="Repo root for verifies-key marker resolution + the Phase 4 "
+             "artifact scan (default: current directory). Used by "
+             "--lint-adr-consequences and --check-phase4-privacy.",
     )
     args = p.parse_args()
 
@@ -884,6 +1001,8 @@ def main() -> int:
         )
     if args.proposed_adr_age:
         return _cmd_proposed_adr_age(args.adr_dir)
+    if args.check_phase4_privacy:
+        return _cmd_check_phase4_privacy(args.repo_root)
     return 2
 
 

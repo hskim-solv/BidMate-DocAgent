@@ -206,6 +206,31 @@ if [[ -n "$md_staged" ]]; then
   fi
 fi
 
+# Guard: Phase 4 eval-artifact privacy (CONTENT scan).
+# reports/retrieval/phase4*/ artifacts are committable (allowlisted in
+# .gitignore) but sit OUTSIDE the ADR 0005 path block below (which only
+# matches ^reports/real[^/]*/ and never sees reports/retrieval/...). PRs
+# #1108 / #1123 leaked private real-eval data through this gap — coverage.json
+# sample_queries (raw query text) + raw_results.json per-case agency/project
+# labels. The path-regex below structurally cannot inspect JSON contents, so
+# whenever a phase4 JSON artifact is staged we run a field-level scan that
+# enforces the "qid + categories + metric values only" boundary (ADR 0065).
+#
+# Residual gap: the scan reads the working-tree content of tracked files, so a
+# stage-clean-then-dirty race is not caught here — the pytest CI gate
+# tests/test_phase4_artifact_privacy_regression.py is the backstop.
+#
+# Bypass with --no-verify only if deliberately committing a sanitized artifact
+# the scan mis-flags — and fix PHASE4_PRIVATE_KEYS in the same change.
+phase4_staged=$(git diff --cached --name-only --diff-filter=ACMR -- 'reports/retrieval/phase4*' 2>/dev/null || true)
+if [[ -n "$phase4_staged" ]]; then
+  phase4_out=$(python3 scripts/_governance.py --check-phase4-privacy 2>&1)
+  if [[ $? -ne 0 ]]; then
+    echo "$phase4_out" >&2
+    exit 1
+  fi
+fi
+
 staged=$(git diff --cached --name-only --diff-filter=ACMR 2>/dev/null || true)
 
 if [[ -z "$staged" ]]; then
