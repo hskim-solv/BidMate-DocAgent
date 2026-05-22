@@ -421,10 +421,16 @@ def lint_adr_verification(
 # Proposed-ADR lifecycle SLA collector (ADR 0047 — deferred follow-up).
 #
 # ADR 0047 declared a 30-day SLA: a `Status: proposed` ADR first committed
-# on/after 2026-05-15 must resolve (accepted / superseded by NNNN /
-# deprecated) within 30 days. 0047 fixed the contract but explicitly
-# deferred the measurement collector ("proposed_adr_age(); 측정 collector 는
-# 나중에"). This implements that collector — reporting only (exit 0). The
+# on/after 2026-05-15 must resolve within 30 days. 0047 decision #2 defines
+# resolution two ways: a git-history Status mutation (accepted / superseded
+# by NNNN / deprecated) — which drops the ADR out of the proposed filter
+# entirely — OR an in-place `## Resolution` H2 paragraph append that records
+# the outcome while Status legitimately stays `proposed`. The collector
+# honors both: the latter surfaces as `resolved_in_place` instead of
+# OVER_SLA (issue #1178), so an append-resolved ADR stops being a false
+# OVER_SLA signal. 0047 fixed the contract but explicitly deferred the
+# measurement collector ("proposed_adr_age(); 측정 collector 는 나중에").
+# This implements that collector — reporting only (exit 0). The
 # promote/supersede *decision* is a judgment layer (the adr-lifecycle-manager
 # skill); any hard CI gate is a separate later policy choice.
 #
@@ -453,6 +459,12 @@ ADR_STATUS_RE = re.compile(
     re.IGNORECASE | re.MULTILINE,
 )
 
+# ADR 0047 decision #2 sanctions an in-place `## Resolution` H2 append as a
+# resolution even when Status stays `proposed`. Mirrors the
+# `ADR_VERIFICATION_HEADER_RE` `## Verification` detector — exact H2, so
+# `### Resolution` (H3) and `## Resolution notes` do NOT match.
+ADR_RESOLUTION_HEADER_RE = re.compile(r"^##\s+Resolution\s*$", re.MULTILINE)
+
 
 class ProposedADR(NamedTuple):
     number: int
@@ -462,6 +474,9 @@ class ProposedADR(NamedTuple):
     age_days: int | None
     grandfathered: bool
     over_sla: bool
+    # ADR 0047 in-place resolution: a `## Resolution` H2 was appended while
+    # Status legitimately stays `proposed`. True suppresses `over_sla`.
+    resolved_in_place: bool
 
 
 def parse_adr_status(adr_path: str | Path) -> str | None:
@@ -484,6 +499,21 @@ def parse_adr_status(adr_path: str | Path) -> str | None:
     if value is None:
         value = m.group("table")
     return value.strip().lower()
+
+
+def adr_has_resolution_section(adr_path: str | Path) -> bool:
+    """Return True if the ADR file contains a `## Resolution` H2 header.
+
+    This is the in-place resolution marker ADR 0047 decision #2 sanctions:
+    a proposed ADR that appends `## Resolution` is resolved even though its
+    Status stays `proposed`, so the SLA collector should stop flagging it
+    OVER_SLA. Missing file → False. Mirrors ``adr_has_verification_section``.
+    """
+    p = Path(adr_path)
+    if not p.is_file():
+        return False
+    text = p.read_text(encoding="utf-8", errors="replace")
+    return bool(ADR_RESOLUTION_HEADER_RE.search(text))
 
 
 def _git_first_commit_date(path: str | Path) -> date | None:
@@ -519,10 +549,15 @@ def proposed_adr_age(
     """Return one ``ProposedADR`` per `Status: proposed` ADR, oldest first.
 
     ``over_sla`` is True iff the ADR was first committed on/after
-    ``grandfather_date`` AND its age exceeds ``sla_days`` (ADR 0047). ADRs
-    first committed earlier carry ``grandfathered=True`` and are never
-    flagged. Uncommitted files (no first-commit date) get ``age_days=None``
-    and ``over_sla=False``.
+    ``grandfather_date`` AND its age exceeds ``sla_days`` (ADR 0047) AND it
+    carries no in-place resolution. ADRs first committed earlier carry
+    ``grandfathered=True`` and are never flagged. Uncommitted files (no
+    first-commit date) get ``age_days=None`` and ``over_sla=False``.
+
+    ``resolved_in_place`` is True when the ADR appended a `## Resolution` H2
+    section — ADR 0047 decision #2's sanctioned in-place resolution. Such an
+    ADR is reported (Status still `proposed`) but never flagged ``over_sla``,
+    so an append-resolved ADR is no longer a false OVER_SLA signal.
 
     ``date_resolver`` defaults to a git lookup; inject a stub for testing.
     ``sla_days`` defaults to ``THRESHOLDS["ADR_PROPOSED_SLA_DAYS"]``.
@@ -544,6 +579,7 @@ def proposed_adr_age(
         status = parse_adr_status(entry)
         if status is None or not status.startswith("proposed"):
             continue
+        resolved_in_place = adr_has_resolution_section(entry)
         first_commit = resolver(entry)
         if first_commit is None:
             age_days: int | None = None
@@ -552,7 +588,7 @@ def proposed_adr_age(
         else:
             age_days = (today - first_commit).days
             grandfathered = first_commit < grandfather_date
-            over_sla = (not grandfathered) and age_days > sla
+            over_sla = (not grandfathered) and (not resolved_in_place) and age_days > sla
         records.append(
             ProposedADR(
                 number=int(m.group(1)),
@@ -562,6 +598,7 @@ def proposed_adr_age(
                 age_days=age_days,
                 grandfathered=grandfathered,
                 over_sla=over_sla,
+                resolved_in_place=resolved_in_place,
             )
         )
     # Oldest first; uncommitted (age None) sort last.
@@ -687,16 +724,23 @@ def _cmd_proposed_adr_age(adr_dir: str) -> int:
         fc = r.first_commit.isoformat() if r.first_commit else "uncommitted"
         age = "?" if r.age_days is None else str(r.age_days)
         flag = (
-            "OVER_SLA" if r.over_sla
-            else ("grandfathered" if r.grandfathered else "ok")
+            "resolved_in_place" if r.resolved_in_place
+            else "OVER_SLA" if r.over_sla
+            else "grandfathered" if r.grandfathered
+            else "ok"
         )
         sys.stdout.write(f"{r.number:04d}\t{age}\t{flag}\t{fc}\t{r.filename}\n")
     n_over = sum(1 for r in records if r.over_sla)
+    n_resolved = sum(1 for r in records if r.resolved_in_place)
     sla = THRESHOLDS["ADR_PROPOSED_SLA_DAYS"]
+    resolved_note = (
+        f" {n_resolved} resolved in place (## Resolution appended, ADR 0047)."
+        if n_resolved else ""
+    )
     sys.stderr.write(
         f"\n{len(records)} proposed ADR(s); {n_over} over the {sla}-day SLA "
-        "(ADR 0047). Reporting only — resolve via the adr-lifecycle-manager "
-        "skill (promote / supersede / deprecate).\n"
+        f"(ADR 0047).{resolved_note} Reporting only — resolve via the "
+        "adr-lifecycle-manager skill (promote / supersede / deprecate).\n"
     )
     return 0
 
@@ -813,7 +857,9 @@ def main() -> int:
         "--proposed-adr-age", action="store_true",
         help="Report each proposed-status ADR's age + 30-day SLA flag "
              "(ADR 0047). Tab-separated columns: NNNN, age_days, flag "
-             "(OVER_SLA/grandfathered/ok), first_commit, filename. "
+             "(resolved_in_place/OVER_SLA/grandfathered/ok), first_commit, "
+             "filename. `resolved_in_place` = a `## Resolution` H2 was "
+             "appended (0047 in-place resolution) so it is not flagged. "
              "Reporting only; exit 0.",
     )
     p.add_argument(
