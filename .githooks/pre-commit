@@ -55,6 +55,11 @@ ALLOWED_PATTERNS=(
   # consumer of the ADR 0059 failure_category_counts surface.
   '^reports/real100/failure_distribution\.md$'
   '^reports/real100/failure_distribution\.aggregate\.json$'
+  # Issue #1243 — per-category failure-mode slices (script:
+  # scripts/render_failure_slices.py). Per-case decomposition of the ADR
+  # 0059 failure surface for audit verifiability. Aggregate-only — counts/
+  # cardinalities only, no text/doc_id/chunk_id.
+  '^reports/real100/failure_slices\.aggregate\.json$'
   # Issue #1021 — variance source inspection (script:
   # scripts/measure_variance.py, ADR 0059 Issue J audit). N=5 same-HEAD
   # runs → per-category mean/std/min/max + per-case stability + transition
