@@ -92,6 +92,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
         help=f"Input-token estimate budget per run (default {DEFAULT_TOKEN_BUDGET}).",
     )
+    ap.add_argument(
+        "--expect-full-trace",
+        action="store_true",
+        help=(
+            "Fail (exit 3) if answer_reasoning has effective_n == 0 — i.e. no "
+            "synthesis LLM call was captured. Use for runs produced with "
+            "BIDMATE_TRACE_FULL=1 where the answer_reasoning axis must be "
+            "populated; surfaces a silently-incomplete 3-axis measurement."
+        ),
+    )
     return ap.parse_args(argv)
 
 
@@ -134,6 +144,18 @@ def main(argv: list[str] | None = None) -> int:
     out_md.parent.mkdir(parents=True, exist_ok=True)
     out_md.write_text(render_markdown(aggregate, local_payload), encoding="utf-8")
     print(f"[OK] Markdown: {out_md}")
+
+    if args.expect_full_trace:
+        answer_n = (aggregate.get("effective_n") or {}).get("answer_reasoning", 0)
+        if answer_n == 0:
+            print(
+                "[INCOMPLETE] --expect-full-trace set but answer_reasoning "
+                "effective_n == 0 (no synthesis LLM call captured). Re-run the "
+                "eval with BIDMATE_TRACE_FULL=1 and a synthesis backend that "
+                "populates trace v2 synthesis_llm_call.",
+                file=sys.stderr,
+            )
+            return 3
 
     return 0
 
