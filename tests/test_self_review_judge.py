@@ -385,6 +385,9 @@ def test_compute_evidence_age_days_same_day_under_one():
     assert compute_evidence_age_days(stats, now=now) < 1.0
 
 
+# Real assemble_stats() over the live repo (~84s); the rest of this file is
+# fast stub-based unit tests. Slow → deselected by `make test-fast`, run in CI.
+@pytest.mark.slow
 def test_assemble_stats_emits_evidence_age_and_judge_consumes_it(tmp_path):
     """Real assemble_stats() shape carries evidence_age_days through the judge.
 

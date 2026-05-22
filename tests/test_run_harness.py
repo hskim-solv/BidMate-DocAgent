@@ -20,6 +20,7 @@ import sys
 import unittest
 from pathlib import Path
 
+import pytest
 import yaml
 
 
@@ -240,6 +241,10 @@ class CompareCliTest(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 
+# E2E: full harness run via subprocess + index build (~100s); the pure unit
+# tests above (DeepMerge / MatrixValidation / CompareRendering / ...) stay fast.
+# Slow → deselected by `make test-fast`, still run in CI.
+@pytest.mark.slow
 class HarnessE2ETest(unittest.TestCase):
     """E2E: invoke run_harness.py as a subprocess against committed synthetic data.
 
@@ -529,6 +534,7 @@ class IndexCacheHelperTest(unittest.TestCase):
             self.assertEqual(run_harness.resolve_cached_index(root, "unknown"), (None, None))
 
 
+@pytest.mark.slow  # E2E index-cache roundtrip (~57s) — see HarnessE2ETest note
 class IndexCacheE2ETest(unittest.TestCase):
     """E2E: same dataset+index config across two runs hits the cache.
 

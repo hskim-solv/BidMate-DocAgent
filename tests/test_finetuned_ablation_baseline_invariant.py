@@ -36,6 +36,7 @@ import sys
 import unittest
 from pathlib import Path
 
+import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -264,6 +265,10 @@ class EmbedTextsAdapterGatingTest(unittest.TestCase):
         )
 
 
+# Runs eval/run_eval.py end-to-end in setUp (~30s); the YamlRowsLanded /
+# NormalizedConfigEquality / EmbedTextsAdapterGating classes above stay fast.
+# Slow → deselected by `make test-fast`, still run in CI.
+@pytest.mark.slow
 class EvalSummaryMetricEqualityTest(unittest.TestCase):
     """End-to-end invariance: run ``eval/run_eval.py`` once and assert
     that the finetuned rows produce byte-equal correctness metrics to

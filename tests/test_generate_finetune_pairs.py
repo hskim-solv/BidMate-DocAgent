@@ -20,6 +20,8 @@ from tempfile import TemporaryDirectory
 
 import sys
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -32,6 +34,11 @@ from scripts.generate_finetune_pairs import (  # noqa: E402
     generate_pairs,
     load_eval_queries,
 )
+
+# Most cases here mine BM25 hard negatives over the full data/raw corpus
+# (383 chunks, ADR 0050) — query-by-query get_scores/sort dominates, tens
+# of seconds. Marked slow so `make test-fast` deselects them; CI still runs.
+pytestmark = pytest.mark.slow
 
 
 def _run(tmpdir: Path, **overrides) -> tuple[Path, dict]:
