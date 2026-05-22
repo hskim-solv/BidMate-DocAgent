@@ -9,7 +9,9 @@
 - ship-pr-active marker 없을 때 → 0 반환 (정상 진행)
 - 신선한 marker 존재 시 → 1 반환 + stderr 메시지 (refuse)
 - 6h 이상 stale marker → marker 자동 삭제 + 0 반환 (stale 우회)
-- marker 가 stat 불가 (perm error 등) → 0 반환 (fail open)
+- marker 가 stat 불가 (perm error 등) → 1 반환 (fail closed: staleness 증명 불가)
+- ship-pr 진입 가드 (`enter_ship_pr`) — ship-arm 활성 시 refuse, 아니면 marker 생성
+- ship-pr 종료 가드 (`exit_ship_pr`) — marker 제거 (idempotent)
 """
 
 from __future__ import annotations
@@ -86,8 +88,12 @@ def test_marker_at_boundary_still_refuses(ship_arm, capsys):
     assert marker.exists()
 
 
-def test_marker_stat_failure_fails_open(ship_arm, monkeypatch):
-    """os.path.getmtime() raises → check returns 0 (fail open)."""
+def test_marker_stat_failure_fails_closed(ship_arm, monkeypatch, capsys):
+    """os.path.getmtime() raises while marker exists → 1 (fail closed).
+
+    Cannot prove the marker is stale, so refuse rather than risk activating
+    both ship surfaces at once.
+    """
     Path(ship_arm.SHIP_PR_ACTIVE_FILE).write_text("")
 
     def _raise(_path):
@@ -95,4 +101,46 @@ def test_marker_stat_failure_fails_open(ship_arm, monkeypatch):
 
     monkeypatch.setattr(os.path, "getmtime", _raise)
     result = ship_arm.check_ship_pr_mutex()
-    assert result == 0  # fail open
+    assert result == 1  # fail closed
+    captured = capsys.readouterr()
+    assert "cannot be stat" in captured.err
+    assert "refuse" in captured.err
+
+
+def test_enter_ship_pr_refuses_when_armed(ship_arm, tmp_path, monkeypatch, capsys):
+    """ship-arm active (.ship-armed exists) → enter_ship_pr refuses (1)."""
+    armed = tmp_path / ".ship-armed"
+    armed.write_text("{}")
+    monkeypatch.setattr(ship_arm, "ARMED_FILE", str(armed))
+    result = ship_arm.enter_ship_pr()
+    assert result == 1
+    assert not Path(ship_arm.SHIP_PR_ACTIVE_FILE).exists()
+    captured = capsys.readouterr()
+    assert "ship-arm is active" in captured.err
+
+
+def test_enter_ship_pr_creates_marker_when_clear(ship_arm, tmp_path, monkeypatch):
+    """No .ship-armed → enter_ship_pr acquires marker (0)."""
+    monkeypatch.setattr(ship_arm, "ARMED_FILE", str(tmp_path / ".ship-armed"))
+    result = ship_arm.enter_ship_pr()
+    assert result == 0
+    marker = Path(ship_arm.SHIP_PR_ACTIVE_FILE)
+    assert marker.exists()
+    # Marker carries a timestamp so check_ship_pr_mutex staleness still works.
+    assert marker.read_text().strip()
+
+
+def test_enter_then_arm_mutex_refuses(ship_arm, tmp_path, monkeypatch):
+    """End-to-end: enter_ship_pr then check_ship_pr_mutex refuses (1)."""
+    monkeypatch.setattr(ship_arm, "ARMED_FILE", str(tmp_path / ".ship-armed"))
+    assert ship_arm.enter_ship_pr() == 0
+    assert ship_arm.check_ship_pr_mutex() == 1
+
+
+def test_exit_ship_pr_removes_marker(ship_arm):
+    """exit_ship_pr removes the marker and is idempotent."""
+    Path(ship_arm.SHIP_PR_ACTIVE_FILE).write_text("ts\n")
+    assert ship_arm.exit_ship_pr() == 0
+    assert not Path(ship_arm.SHIP_PR_ACTIVE_FILE).exists()
+    # Idempotent: second call on missing marker still succeeds.
+    assert ship_arm.exit_ship_pr() == 0
