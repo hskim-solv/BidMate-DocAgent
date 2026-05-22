@@ -293,7 +293,13 @@ on n=221, csv_text-fallback 898 chunks); `naive_baseline` stays `dense` per 0001
 adds a 7-category rule-based failure classifier so error attribution
 is auditable rather than folkloric.
 
-### Dependency graph
+### Dependency graph — Foundation ADRs (0001–0016) excerpt
+
+This is a **curated excerpt**, not the full dependency graph: it shows how the
+foundation-era ADRs (0001–0016) build on each other. Newer ADRs (0017+) are
+not drawn here — each ADR's `Related` field is the authoritative per-ADR
+dependency record (the table above lists all 65). The graph is kept small on
+purpose so the foundational invariants stay legible.
 
 ```mermaid
 graph LR
