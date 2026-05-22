@@ -14,11 +14,40 @@ only repo-internal dependency.
 """
 from __future__ import annotations
 
+import hashlib
+import re
 import statistics
 from collections import defaultdict
 from typing import Any
 
 from eval.bootstrap import paired_bootstrap_ci
+
+# Hangul (가-힣) + Jamo blocks. Real-eval case ids embed agency / project /
+# topic names in Korean; synthetic CI ids are opaque ASCII ("q1", "a"). Any
+# Hangul in a committable eval artifact is, by the ADR 0005 private-local +
+# ADR 0065 boundary ("qid + categories + metric values only"), a private leak.
+_HANGUL_RE = re.compile(r"[가-힣ᄀ-ᇿ㄰-㆏ꥠ-꥿]")
+
+
+def contains_hangul(text: str) -> bool:
+    """True when ``text`` carries any Korean syllable/Jamo codepoint."""
+    return bool(_HANGUL_RE.search(text))
+
+
+def anon_qid(qid: str) -> str:
+    """Map a possibly-identifying case id to an opaque, deterministic token.
+
+    Real-eval qids embed agency/topic names (Korean), so emitting them into a
+    committable ``raw_results.json`` leaks private RFP metadata. Synthetic CI
+    qids are already opaque ASCII and stay readable. Only Hangul-bearing ids
+    are hashed (``real_<sha1(qid)[:10]>``), so the transform is a pure,
+    index-free function that can re-derive the same token from the private
+    eval config at re-aggregation time (see the runners' ``cases_by_qid``).
+    """
+    s = str(qid)
+    if not contains_hangul(s):
+        return s
+    return "real_" + hashlib.sha1(s.encode("utf-8")).hexdigest()[:10]
 
 
 def categories_from_case(case: dict[str, Any]) -> list[str]:
@@ -147,6 +176,8 @@ def _fmt_mean(rows: list[dict[str, Any]], metric: str, category: str | None) -> 
 
 
 __all__ = [
+    "contains_hangul",
+    "anon_qid",
     "categories_from_case",
     "_drop_paired_nones",
     "_seed_averaged_paired_ci",

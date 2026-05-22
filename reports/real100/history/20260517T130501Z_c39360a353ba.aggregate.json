@@ -279,16 +279,9 @@
         "retry_resolution_rate": 0.8831168831168831
       },
       "retry_reason_counts": {
-        "missing_comparison_doc:20240327871-0.0,20240330003-0.0,20240404154-0.0,한국발명진흥회-입찰공고_2024년-건설기술에-관한-특허·실용신안-활용실,20240419765-0.0,20240611774-0.0": 1,
-        "missing_comparison_doc:20240327871-0.0,20240611774-0.0": 1,
-        "missing_comparison_doc:20240615212-0.0": 1,
-        "missing_comparison_doc:20241139040-0.0": 1,
-        "missing_comparison_entity:대전대학교": 1,
-        "missing_comparison_entity:서울특별시교육청": 1,
-        "missing_comparison_entity:재단법인 한국장애인문화예술원,(사)벤처기업협회,서울특별시,한국발명진흥회 입찰공고,재단법인 광주광역시 광주문화재단,(사)부산국제영화제": 1,
-        "missing_comparison_entity:재단법인 한국장애인문화예술원,(사)부산국제영화제": 1,
-        "missing_comparison_topic:재단법인충북연구원": 2,
-        "missing_comparison_topic:한국수자원공사": 2,
+        "missing_comparison_doc": 4,
+        "missing_comparison_entity": 4,
+        "missing_comparison_topic": 4,
         "partial_topic_grounding": 2,
         "topic_not_grounded": 167
       },
@@ -650,7 +643,7 @@
         "retry_resolution_rate": 0.90625
       },
       "retry_reason_counts": {
-        "missing_comparison_topic:재단법인충북연구원": 2,
+        "missing_comparison_topic": 2,
         "partial_topic_grounding": 1,
         "topic_not_grounded": 39
       },
@@ -1018,14 +1011,9 @@
         "retry_resolution_rate": 0.8656716417910447
       },
       "retry_reason_counts": {
-        "missing_comparison_doc:20240327871-0.0,20240330003-0.0,20240404154-0.0,한국발명진흥회-입찰공고_2024년-건설기술에-관한-특허·실용신안-활용실,20240419765-0.0,20240611774-0.0": 1,
-        "missing_comparison_doc:20240327871-0.0,20240611774-0.0": 1,
-        "missing_comparison_doc:20240615212-0.0": 1,
-        "missing_comparison_entity:서울특별시교육청": 1,
-        "missing_comparison_entity:재단법인 한국장애인문화예술원,(사)벤처기업협회,서울특별시,한국발명진흥회 입찰공고,재단법인 광주광역시 광주문화재단,(사)부산국제영화제": 1,
-        "missing_comparison_entity:재단법인 한국장애인문화예술원,(사)부산국제영화제": 1,
-        "missing_comparison_topic:재단법인충북연구원": 2,
-        "missing_comparison_topic:한국수자원공사": 2,
+        "missing_comparison_doc": 3,
+        "missing_comparison_entity": 3,
+        "missing_comparison_topic": 4,
         "partial_topic_grounding": 2,
         "topic_not_grounded": 75
       },
@@ -1197,8 +1185,8 @@
         "retry_resolution_rate": null
       },
       "retry_reason_counts": {
-        "missing_comparison_doc:20241139040-0.0": 1,
-        "missing_comparison_entity:대전대학교": 1,
+        "missing_comparison_doc": 1,
+        "missing_comparison_entity": 1,
         "topic_not_grounded": 84
       },
       "stage_latency": {
@@ -1402,16 +1390,9 @@
     "retry_resolution_rate": 0.8831168831168831
   },
   "retry_reason_counts": {
-    "missing_comparison_doc:20240327871-0.0,20240330003-0.0,20240404154-0.0,한국발명진흥회-입찰공고_2024년-건설기술에-관한-특허·실용신안-활용실,20240419765-0.0,20240611774-0.0": 1,
-    "missing_comparison_doc:20240327871-0.0,20240611774-0.0": 1,
-    "missing_comparison_doc:20240615212-0.0": 1,
-    "missing_comparison_doc:20241139040-0.0": 1,
-    "missing_comparison_entity:대전대학교": 1,
-    "missing_comparison_entity:서울특별시교육청": 1,
-    "missing_comparison_entity:재단법인 한국장애인문화예술원,(사)벤처기업협회,서울특별시,한국발명진흥회 입찰공고,재단법인 광주광역시 광주문화재단,(사)부산국제영화제": 1,
-    "missing_comparison_entity:재단법인 한국장애인문화예술원,(사)부산국제영화제": 1,
-    "missing_comparison_topic:재단법인충북연구원": 2,
-    "missing_comparison_topic:한국수자원공사": 2,
+    "missing_comparison_doc": 4,
+    "missing_comparison_entity": 4,
+    "missing_comparison_topic": 4,
     "partial_topic_grounding": 2,
     "topic_not_grounded": 171
   },
