@@ -393,8 +393,17 @@ stage_5_merge() {
   commit_body_file=$(mktemp /tmp/ship-merge-body.XXXXXX)
   git log -1 --format=%b HEAD > "$commit_body_file"
 
+  # NOTE (issue #1283): we deliberately do NOT pass `--delete-branch`.
+  # gh's --delete-branch couples remote-branch deletion with a local
+  # checkout-to-default + local-branch-delete; in this repo's multi-worktree
+  # setup `main` is usually checked out in another worktree, so gh's local
+  # checkout fails (`fatal: 'main' is already checked out`) and *aborts the
+  # whole command before the remote ref is removed* — the server merge
+  # succeeds but the remote branch lingers. The remote branch is instead
+  # deleted below via `git push origin --delete`, a pure remote op that
+  # needs no local checkout.
   mut gh pr merge "$PR_NUMBER" \
-    --squash --admin --delete-branch \
+    --squash --admin \
     --subject "$commit_subject" \
     --body-file "$commit_body_file" || \
     abort_disarm "s5" "gh pr merge failed (admin merge unavailable?)"
@@ -410,6 +419,10 @@ stage_5_merge() {
       exit 1
     fi
   fi
+
+  # Worktree-safe remote-branch deletion (replaces gh's --delete-branch; #1283).
+  mut git push origin --delete "$ARM_BRANCH" 2>/dev/null || \
+    log "s5" "remote branch delete non-fatal: $ARM_BRANCH may already be gone"
 
   mut git checkout main || true
   mut git pull --ff-only origin main || log "s5" "git pull --ff-only had non-zero exit (continuing)"

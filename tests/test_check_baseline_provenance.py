@@ -84,14 +84,16 @@ def _write_baseline(
     path: Path,
     provenance_sha: str,
     run_manifest_sha: str | None = "match",
+    provenance_tree: str | None = None,
 ) -> None:
-    body: dict[str, object] = {
-        "provenance": {
-            "generated_at": "2026-05-12T00:00:00.000000Z",
-            "git_commit": provenance_sha,
-            "git_dirty": False,
-        }
+    provenance: dict[str, object] = {
+        "generated_at": "2026-05-12T00:00:00.000000Z",
+        "git_commit": provenance_sha,
+        "git_dirty": False,
     }
+    if provenance_tree is not None:
+        provenance["git_tree"] = provenance_tree
+    body: dict[str, object] = {"provenance": provenance}
     if run_manifest_sha == "match":
         body["run_manifest"] = {
             "config_sha256": "deadbeefcafe",
@@ -192,6 +194,115 @@ class CheckBaselineProvenanceUnit(unittest.TestCase):
         )
         code, _ = check(self._baseline, "main", None, repo_root=self._td)
         self.assertEqual(code, 0)
+
+
+class CheckBaselineProvenanceSquashTwin(unittest.TestCase):
+    """Tree-based reachability fallback for squash-merged baselines (#1222).
+
+    Squash-merge lands an identical-tree commit on main under a NEW SHA,
+    so the recorded ``provenance.git_commit`` (pre-squash PR tip) dangles
+    while the tree stays reachable. The gate must accept on tree match.
+    """
+
+    def setUp(self) -> None:
+        self._td = Path(tempfile.mkdtemp())
+        self._shas = _init_repo(self._td)
+
+        # A real-tree commit on main; its tree is the "squash-invariant" key.
+        (self._td / "f.txt").write_text("payload\n", encoding="utf-8")
+        _git(["add", "f.txt"], cwd=self._td)
+        _git(["commit", "-m", "real-tree commit on main"], cwd=self._td)
+        self._tree_main = _git(["rev-parse", "HEAD^{tree}"], cwd=self._td)
+
+        # Dangling twin: same tree as main commit, different SHA, off main.
+        self._twin = subprocess.run(
+            ["git", "commit-tree", self._tree_main, "-p", self._shas["a"],
+             "-m", "pre-squash twin"],
+            cwd=self._td, check=True, text=True, stdout=subprocess.PIPE,
+        ).stdout.strip()
+
+        # A commit on a side branch with a tree NOT present on main.
+        _git(["checkout", "-b", "prhead", self._shas["a"]], cwd=self._td)
+        (self._td / "g.txt").write_text("only-on-prhead\n", encoding="utf-8")
+        _git(["add", "g.txt"], cwd=self._td)
+        _git(["commit", "-m", "side-branch real-tree commit"], cwd=self._td)
+        self._prhead = _git(["rev-parse", "HEAD"], cwd=self._td)
+        self._tree_prhead = _git(["rev-parse", "HEAD^{tree}"], cwd=self._td)
+        _git(["checkout", "main"], cwd=self._td)
+
+        self._baseline = self._td / "baseline.aggregate.json"
+
+    def test_dangling_twin_in_db_passes_via_tree(self) -> None:
+        # git_commit present but not ancestor of main; tree is on main.
+        _write_baseline(
+            self._baseline,
+            self._twin[:12],
+            run_manifest_sha=None,
+            provenance_tree=self._tree_main[:12],
+        )
+        code, msg = check(self._baseline, "main", None, repo_root=self._td)
+        self.assertEqual(code, 0, msg)
+        self.assertIn("squash-merge-invariant", msg)
+
+    def test_absent_twin_commit_passes_via_tree(self) -> None:
+        # Faithful CI repro: twin commit object is absent (sparse fetch),
+        # only the tree survives on main. Must still pass.
+        _write_baseline(
+            self._baseline,
+            "deadbeefcafe",
+            run_manifest_sha=None,
+            provenance_tree=self._tree_main[:12],
+        )
+        code, msg = check(self._baseline, "main", None, repo_root=self._td)
+        self.assertEqual(code, 0, msg)
+        self.assertIn("[OK]", msg)
+
+    def test_tree_not_on_main_still_fails(self) -> None:
+        _write_baseline(
+            self._baseline,
+            "deadbeefcafe",
+            run_manifest_sha=None,
+            provenance_tree=self._tree_prhead[:12],
+        )
+        code, msg = check(self._baseline, "main", None, repo_root=self._td)
+        self.assertEqual(code, 1, msg)
+        self.assertIn("not reachable", msg)
+
+    def test_commit_ancestor_short_circuits_before_tree(self) -> None:
+        # git_commit is a genuine ancestor of main — tier-1 wins even
+        # though git_tree is also set.
+        _write_baseline(
+            self._baseline,
+            self._shas["a"],
+            run_manifest_sha=None,
+            provenance_tree=self._tree_main[:12],
+        )
+        code, msg = check(self._baseline, "main", None, repo_root=self._td)
+        self.assertEqual(code, 0, msg)
+        self.assertNotIn("squash-merge-invariant", msg)
+
+    def test_tree_escape_hatch_via_allow_equal_to(self) -> None:
+        # In-flight: tree lives on the PR head ref but not yet on main.
+        _write_baseline(
+            self._baseline,
+            "deadbeefcafe",
+            run_manifest_sha=None,
+            provenance_tree=self._tree_prhead[:12],
+        )
+        code, msg = check(
+            self._baseline, "main", self._prhead, repo_root=self._td
+        )
+        self.assertEqual(code, 0, msg)
+        self.assertIn("escape hatch", msg)
+
+    def test_absent_commit_without_tree_keeps_object_db_error(self) -> None:
+        # No git_tree to fall back on — legacy object-DB error preserved.
+        _write_baseline(
+            self._baseline, "deadbeefcafe", run_manifest_sha=None
+        )
+        code, msg = check(self._baseline, "main", None, repo_root=self._td)
+        self.assertEqual(code, 1, msg)
+        self.assertIn("does not exist in the git object database", msg)
 
 
 class CheckBaselineProvenanceCli(unittest.TestCase):

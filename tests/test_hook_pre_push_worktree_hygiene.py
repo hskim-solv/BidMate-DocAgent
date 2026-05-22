@@ -1,4 +1,4 @@
-"""Regression: pre-push orphan-worktree hygiene (issue #1052, #1163).
+"""Regression: pre-push orphan-worktree hygiene (issue #1052, #1163, #1270).
 
 Pins the soft-warn contract (always exit 0; warning only on stderr) for
 `.githooks/_pre-push-worktree-hygiene.sh`:
@@ -11,6 +11,7 @@ Pins the soft-warn contract (always exit 0; warning only on stderr) for
   6. branch with a '[gone]' upstream            → exit 0, stderr names it
   7. gh PR MERGED + opt-in env                  → exit 0, stderr names it
   8. gh PR MERGED but opt-in OFF (default)      → exit 0, stderr quiet
+  9. cherry walk capped by divergence (#1270)   → exit 0, walk skipped past cap
 
 Scenarios 5-8 are the #1163 fix: `git branch --merged` only lists ancestor
 tips, so squash-merges (this repo's default merge path) were a silent
@@ -189,6 +190,23 @@ class TestPrePushWorktreeHygiene(unittest.TestCase):
         self.assertEqual(0, r.returncode, r.stderr)
         self.assertIn("feat-gh", r.stderr)
         self.assertIn("wt_gh", r.stderr)
+
+    def test_cherry_walk_is_capped_by_divergence(self) -> None:
+        # #1270: `git cherry` (signal b) is O(commits-ahead) in time AND
+        # memory; on branches diverged hundreds of commits past base it spiked
+        # memory enough to get the hook OOM-killed mid-push. A cheap
+        # rev-list --count pre-check now gates the walk to branches within
+        # $cherry_max of base. Force the cap to 0 and confirm the patch-id walk
+        # is skipped: a squash-merged branch (only signal b can flag it — it is
+        # non-ancestor, has no gone upstream) stays quiet, proving the gate
+        # controls the expensive walk.
+        self._add_worktree("wt_squash", "feat-squash", extra_commit=True)
+        self._squash_merge("feat-squash")
+        env = {**os.environ, "BIDMATE_WORKTREE_HYGIENE_CHERRY_MAX": "0"}
+        r = self._run_hook(env=env)
+        self.assertEqual(0, r.returncode, r.stderr)
+        # Walk skipped → signal (b) never fires → branch not flagged.
+        self.assertNotIn("feat-squash", r.stderr)
 
     def test_gh_signal_is_off_by_default(self) -> None:
         # Same setup, fake gh on PATH reports MERGED — but without the opt-in

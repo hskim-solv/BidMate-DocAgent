@@ -1,7 +1,7 @@
 ---
 name: ship-pr
 description: |
-  Ship the current worktree's changes as a single PR while honouring ADR 0007 (issue-first, convention-matched branch) and CLAUDE.md's `## Autonomy & Approvals` rule. Bundles three friction-prone steps into one workflow: ADR number reservation (avoids concurrent-worktree collisions), stacked-dependent audit (refuses `--delete-branch` on a base with open children), and explicit-approval gates at push + merge.
+  Ship the current worktree's changes as a single PR while honouring ADR 0007 (issue-first, convention-matched branch) and CLAUDE.md's `## Autonomy & Approvals` rule. Bundles three friction-prone steps into one workflow: ADR number reservation (avoids concurrent-worktree collisions), stacked-dependent audit (skips the remote-branch delete on a base with open children), and explicit-approval gates at push + merge.
 
   Trigger phrases: "PR 만들어줘", "이거 스택해서 올려", "ADR 쓰고 PR 열어", "ship", "출하", "PR 올려줘", "이 변경 PR로 가자". Trigger even if the user does not say "skill" — driving a change to a merged PR is exactly this skill's scope. Also trigger when the user explicitly references stacked PRs or ADR-then-PR sequencing.
 
@@ -20,7 +20,12 @@ ADR-aware, approval-gated single-PR shipping. The skill replaces an ad-hoc seque
 
 ## Workflow
 
-0. **Mutex guard (issue #1043).** Before any other step, check that `.claude/.ship-armed` does NOT exist. If it does, refuse and tell the user to run `make ship-disarm` first — the two ship surfaces are mutually exclusive and `make ship-arm` is currently active. Then `touch .claude/.ship-pr-active` so `make ship-arm` will refuse if invoked while this skill is running. The cleanup (step 13) removes the marker; if the skill aborts, the marker auto-expires after 6h (`_ship_arm.py` stale-marker safety).
+0. **Mutex guard (issue #1043).** Before any other step, run:
+   `python3 scripts/claude-hooks/_ship_arm.py --enter-ship-pr`
+   Code-enforced (symmetric with the ship-arm side): non-zero exit if
+   `.claude/.ship-armed` exists (run `make ship-disarm` first) — otherwise it
+   creates `.claude/.ship-pr-active`. If it exits non-zero, STOP. Step 13
+   releases it; aborts auto-expire after 6h.
 
 1. **Scope confirmation.** Ask the user (inline or via `AskUserQuestion`): "Which issue does this PR close, and what's the one-line summary?" If no issue exists yet, propose a title + body and require **explicit approval** before `gh issue create`.
 
@@ -61,21 +66,21 @@ ADR-aware, approval-gated single-PR shipping. The skill replaces an ad-hoc seque
       --json number,title,headRefName
     ```
 
-    - Empty array → `--delete-branch` is safe to include.
+    - Empty array → the remote head branch is safe to delete after merge.
     - Non-empty → the branch has stacked dependents. Two recovery options:
-      - **(a)** Drop `--delete-branch` from the merge command (the dependents survive but the base branch lingers — fine for a short-lived stack).
+      - **(a)** Skip the remote-branch delete (the dependents survive but the base branch lingers — fine for a short-lived stack).
       - **(b)** Rebase each dependent onto main first: `gh pr edit <M> --base main`, then re-run this step.
 
     Show the user the dependent list. Wait for them to pick (a) or (b). Never auto-choose.
 
-12. **MERGE GATE (explicit approval required).** Display the merge command literally — including the resolved `--delete-branch` flag from step 11. Example:
+12. **MERGE GATE (explicit approval required).** The merge and the remote-branch delete are **two separate commands**. Never pass `gh pr merge --delete-branch`: its local checkout-to-default step aborts when `main` is checked out in another worktree (this repo runs 20-30 concurrent worktrees), leaving the remote branch behind after a successful server merge (issue #1283, MEMORY `feedback_merge_admin_gate` §2). Delete the remote branch with `git push origin --delete` instead — a pure remote op that needs no local checkout. Display both commands literally:
     ```
-    gh pr merge 493 --squash --admin                   # stacked dependents present
-    gh pr merge 493 --squash --admin --delete-branch   # no dependents
+    gh pr merge 493 --squash --admin                       # always; never --delete-branch
+    git push origin --delete <head-branch>                 # only if step 11 was empty (no dependents)
     ```
-    **If the step-6 real-model fallback (`make test-fast`) was used, local coverage was partial — this merge is hard-gated on CI green: confirm `gh pr checks <N>` reports all-green before displaying the merge command.** Wait for explicit go-ahead. Then execute.
+    For the no-dependents case, run both in sequence. For the stacked case (option (a)), run only the merge and tell the user the base branch lingers. **If the step-6 real-model fallback (`make test-fast`) was used, local coverage was partial — this merge is hard-gated on CI green: confirm `gh pr checks <N>` reports all-green before displaying the merge command.** Wait for explicit go-ahead. Then execute.
 
-13. **Aftermath.** `git checkout main` (if the worktree owns main) or `git fetch origin main` + branch advance (worktree case). **Remove the mutex marker** (`rm -f .claude/.ship-pr-active`) so `make ship-arm` is unblocked. If the user has another PR stacked on top, prompt them to re-invoke the skill for the next layer (which re-touches the marker at step 0).
+   **Release the mutex marker** (`python3 scripts/claude-hooks/_ship_arm.py --exit-ship-pr`) so `make ship-arm` is unblocked.
 
 ## Approval-gate language
 
@@ -94,7 +99,7 @@ When uncertain → ask, don't act.
 
 - "그냥 한 번에 다 진행해" → Run steps 1-13 in sequence but still print each gate's intent line ("PUSH executing", "MERGE executing") so the user can interrupt within ~5s. Never collapse gates 8 + 11 + 12 into a single unattended action.
 - "ADR 안 만들어도 돼" → Confirm the change is not load-bearing per `scripts/_governance.py --is-load-bearing <path>`. If it is, push back with the load-bearing path that triggered ADR-necessity.
-- "stacked PR 그냥 닫혀도 돼" → Acceptable, but show the cost explicitly: "If `--delete-branch` is used, PR #M will auto-close and need recreation. Recovery cost ~5 min per dependent (#423→#431 precedent)." Then take whatever the user picks.
+- "stacked PR 그냥 닫혀도 돼" → Acceptable, but show the cost explicitly: "If the remote base branch is deleted (`git push origin --delete`), PR #M will auto-close and need recreation. Recovery cost ~5 min per dependent (#423→#431 precedent)." Then take whatever the user picks.
 
 ## References
 

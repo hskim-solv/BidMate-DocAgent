@@ -5,15 +5,25 @@ The committed baseline pairs metrics with the ``provenance.git_commit``
 they were generated at. If that commit is later force-pushed, rebased,
 or otherwise made unreachable from ``origin/main``, then every
 subsequent ``make real-eval-delta`` silently diffs against a phantom
-code state. This script is the gate: CI verifies the baseline's SHA is
-still an ancestor of ``origin/main`` (or of an explicitly allowed ref,
-for PRs that are themselves bumping the baseline).
+code state. This script is the gate: CI verifies the baseline's commit
+is still an ancestor of ``origin/main`` (or of an explicitly allowed
+ref, for PRs that are themselves bumping the baseline).
 
-Operational tail of issue #160; tracked as issue #413.
+Because the repo squash-merges, the recorded ``provenance.git_commit``
+(the pre-squash PR tip) never lands on main — main gets an
+identical-tree commit under a new SHA — so commit ancestry fails for
+every PR after a baseline bump. The gate therefore falls back to
+``provenance.git_tree``: a baseline is accepted if any commit reachable
+from --ref carries that tree (squash-merge invariant, CI-feasible since
+only main history is walked). See ADR 0067.
+
+Operational tail of issue #160; tracked as issue #413; squash-twin
+durable fix is issue #1222.
 
 Exit codes:
-  0 — provenance.git_commit is reachable from --ref (or --allow-equal-to).
-  1 — SHA is not reachable from any allowed ref (dangling / unmerged).
+  0 — provenance commit OR tree is reachable from --ref (or
+      --allow-equal-to).
+  1 — neither commit nor tree is reachable (dangling / unmerged).
   2 — config error: baseline missing/malformed, provenance/run_manifest
       commit mismatch, or git unavailable.
 
@@ -61,6 +71,44 @@ def _extract_provenance_sha(baseline: dict[str, Any]) -> str:
     return sha.strip()
 
 
+def _extract_provenance_tree(baseline: dict[str, Any]) -> str | None:
+    """Return ``provenance.git_tree`` if present and meaningful, else None.
+
+    Older baselines (pre-ADR 0067) have no ``git_tree`` field; the gate
+    then falls back to commit-only reachability. ``"unknown"`` (the
+    ``build_provenance`` sentinel when git is unavailable) is treated as
+    absent so a degenerate snapshot never matches a real tree.
+    """
+    prov = baseline.get("provenance")
+    if not isinstance(prov, dict):
+        return None
+    tree = prov.get("git_tree")
+    if not isinstance(tree, str):
+        return None
+    tree = tree.strip()
+    if not tree or tree == "unknown":
+        return None
+    return tree
+
+
+def _tree_reachable(tree: str, ref: str, repo_root: Path) -> bool:
+    """True if any commit reachable from ``ref`` has root tree ``tree``.
+
+    Squash-merge invariant: the squash commit on the target branch
+    carries the same tree as the dangling pre-squash tip, so matching on
+    tree accepts a baseline whose ``git_commit`` no longer lives on the
+    branch. Walks only ``ref``'s history (``git log <ref> --format=%T``),
+    so it works in CI's sparse + ``fetch-depth:0`` checkout where the
+    dangling twin commit object is absent. ``tree`` may be a 12-char
+    prefix (the ``build_provenance`` convention), matched against the
+    full 40-char ``%T`` output.
+    """
+    rc, out, _ = _run_git(["log", ref, "--format=%T"], cwd=repo_root)
+    if rc != 0 or not out:
+        return False
+    return any(line.startswith(tree) for line in out.splitlines())
+
+
 def _extract_run_manifest_sha(baseline: dict[str, Any]) -> str | None:
     manifest = baseline.get("run_manifest")
     if not isinstance(manifest, dict):
@@ -95,6 +143,8 @@ def check(
     except ValueError as exc:
         return (2, f"[ERROR] {exc}")
 
+    provenance_tree = _extract_provenance_tree(baseline)
+
     manifest_sha = _extract_run_manifest_sha(baseline)
     if manifest_sha is not None and manifest_sha != provenance_sha:
         return (
@@ -104,46 +154,80 @@ def check(
             f"run_manifest.git_commit={manifest_sha}",
         )
 
-    rc, _, stderr = _run_git(["cat-file", "-e", provenance_sha], cwd=repo_root)
-    if rc != 0:
-        return (
-            1,
-            f"[ERROR] baseline `provenance.git_commit`={provenance_sha} does not "
-            "exist in the git object database. The commit was likely "
-            "force-pushed or rebased away. "
-            "Run `make real-eval` then `make real-eval-baseline-update` at a "
-            f"commit reachable from {ref}. ({stderr or 'no stderr'})",
-        )
-
-    rc, _, _ = _run_git(
-        ["merge-base", "--is-ancestor", provenance_sha, ref], cwd=repo_root
+    # Tier 1 — commit reachability (precise, backward-compatible). When the
+    # commit object is present and is an ancestor of an allowed ref, accept.
+    commit_in_db, _, stderr = _run_git(
+        ["cat-file", "-e", provenance_sha], cwd=repo_root
     )
-    if rc == 0:
-        return (
-            0,
-            f"[OK] baseline.aggregate.json git_commit={provenance_sha} "
-            f"is reachable from {ref}.",
-        )
-
-    if allow_equal_to:
+    commit_in_db = commit_in_db == 0
+    if commit_in_db:
         rc, _, _ = _run_git(
-            ["merge-base", "--is-ancestor", provenance_sha, allow_equal_to],
-            cwd=repo_root,
+            ["merge-base", "--is-ancestor", provenance_sha, ref], cwd=repo_root
         )
         if rc == 0:
             return (
                 0,
                 f"[OK] baseline.aggregate.json git_commit={provenance_sha} "
+                f"is reachable from {ref}.",
+            )
+        if allow_equal_to:
+            rc, _, _ = _run_git(
+                ["merge-base", "--is-ancestor", provenance_sha, allow_equal_to],
+                cwd=repo_root,
+            )
+            if rc == 0:
+                return (
+                    0,
+                    f"[OK] baseline.aggregate.json git_commit={provenance_sha} "
+                    f"is reachable from {allow_equal_to} (--allow-equal-to escape "
+                    f"hatch; will be ancestor of {ref} after merge).",
+                )
+
+    # Tier 2 — tree reachability (squash-merge invariant, ADR 0067). The
+    # recorded git_commit dangles the moment a squash-merge lands an
+    # identical-tree commit under a new SHA on the target branch. Match on
+    # the tree so the baseline stays accepted; only main history is needed,
+    # so this works even when the dangling twin object is absent in CI.
+    if provenance_tree:
+        if _tree_reachable(provenance_tree, ref, repo_root):
+            return (
+                0,
+                f"[OK] baseline.aggregate.json git_tree={provenance_tree} "
+                f"is reachable from {ref} (squash-merge-invariant match; "
+                f"git_commit={provenance_sha} dangles after squash).",
+            )
+        if allow_equal_to and _tree_reachable(
+            provenance_tree, allow_equal_to, repo_root
+        ):
+            return (
+                0,
+                f"[OK] baseline.aggregate.json git_tree={provenance_tree} "
                 f"is reachable from {allow_equal_to} (--allow-equal-to escape "
-                f"hatch; will be ancestor of {ref} after merge).",
+                f"hatch; squash-merge-invariant tree match).",
             )
 
+    if not commit_in_db and not provenance_tree:
+        return (
+            1,
+            f"[ERROR] baseline `provenance.git_commit`={provenance_sha} does not "
+            "exist in the git object database and no `provenance.git_tree` is "
+            "recorded to fall back on. The commit was likely force-pushed or "
+            "rebased away. Run `make real-eval` then "
+            f"`make real-eval-baseline-update` at a commit reachable from {ref}. "
+            f"({stderr or 'no stderr'})",
+        )
+
     refs_msg = ref if not allow_equal_to else f"{ref} or {allow_equal_to}"
+    tree_msg = (
+        f" (git_tree={provenance_tree} also not reachable)"
+        if provenance_tree
+        else ""
+    )
     return (
         1,
         f"[ERROR] baseline `provenance.git_commit`={provenance_sha} is not "
-        f"reachable from {refs_msg}. This is the #160 / #413 failure mode: "
-        "the baseline points at a code state that no longer lives on the "
+        f"reachable from {refs_msg}{tree_msg}. This is the #160 / #413 failure "
+        "mode: the baseline points at a code state that no longer lives on the "
         "target branch. Run `make real-eval` then "
         "`make real-eval-baseline-update` on the current HEAD before merging.",
     )

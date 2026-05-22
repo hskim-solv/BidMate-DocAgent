@@ -102,6 +102,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--query", default=None, help="Unused in this command; accepted for CLI consistency.")
     parser.add_argument("--config", required=True, help="Path to eval config YAML file.")
     parser.add_argument(
+        "--no-config-banner",
+        dest="no_config_banner",
+        action="store_true",
+        help="Suppress the effective-config provenance banner (#1212). Also via BIDMATE_NO_CONFIG_BANNER=1.",
+    )
+    parser.add_argument(
         "--trace_dir",
         default=None,
         help="Directory for local planner/rewrite trace JSON files. Defaults to <output_dir>/traces.",
@@ -972,6 +978,7 @@ def evaluate_run(
                 rrf_k=int(run_config.get("rrf_k", RRF_K)),
                 bm25_stopword_profile=str(run_config.get("bm25_stopword_profile", "shared")),
                 bm25_tokenizer=str(run_config.get("bm25_tokenizer", "regex")),
+                bm25_backend=str(run_config.get("bm25_backend", "okapi")),
             )
             conversation_state = prior_prediction.get("conversation_state") or conversation_state
 
@@ -992,6 +999,7 @@ def evaluate_run(
             rrf_k=int(run_config.get("rrf_k", RRF_K)),
             bm25_stopword_profile=str(run_config.get("bm25_stopword_profile", "shared")),
             bm25_tokenizer=str(run_config.get("bm25_tokenizer", "regex")),
+            bm25_backend=str(run_config.get("bm25_backend", "okapi")),
         )
         trace_path = write_prediction_trace(
             trace_dir,
@@ -1091,6 +1099,12 @@ def main() -> int:
     except Exception as exc:
         print(f"[ERROR] Eval setup failed: {exc}", file=sys.stderr)
         return 2
+
+    # #1212: effective-config provenance banner. Surfaces the two artifact
+    # classes (hashing-embedding index, CSV-fallback ingestion) at run start.
+    from rag_provenance import emit_eval_banner
+
+    emit_eval_banner(index, config, args.index_dir, cli_flag=args.no_config_banner)
 
     run_summaries = []
     primary_summary = None

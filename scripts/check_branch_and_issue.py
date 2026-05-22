@@ -343,6 +343,9 @@ def check_5b_mode(pr_number: int) -> int:
         f"OK: PR #{pr_number} touches load-bearing path "
         f"({example}); §5b contains "
         f"{'table' if has_table else 'escape sentence'}.\n"
+        "   NOTE: this gate enforces §5b *presence* only. The accuracy of the\n"
+        "   numbers / truth of the attestation is the reviewer's responsibility\n"
+        "   — CI green != §5b content verified (issue #1027).\n"
     )
     return 0
 

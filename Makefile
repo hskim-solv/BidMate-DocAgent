@@ -13,7 +13,7 @@
 .PHONY: check-branch governance-check check check-latency leaderboard-check real-eval-history-check benchmark-check check-baseline-provenance check-doc-links regen-golden check-golden
 
 # Index build + ad-hoc ask
-.PHONY: index ask
+.PHONY: index ask build-kordoc-manifest
 
 # Synthetic eval surface (public corpus). Includes smoke, full eval, harness
 # matrix, judges, leaderboard render, pareto, korean public bench, external
@@ -21,7 +21,7 @@
 .PHONY: eval smoke smoke-with-judge reproduce benchmark synthetic-judge judge-disagreements leaderboard pareto cost-frontier korean-public-fetch korean-public-eval external-baselines-stub external-baselines-langchain external-baselines-llamaindex external-baselines-ollama harness-smoke harness-ablation harness-compare synthesize-multihop eval-multihop
 
 # Real-data eval cycle (private; ADR 0005 commit boundary).
-.PHONY: real-eval real-eval-delta real-eval-baseline-update real-eval-history-render real-eval-with-judge harness-real
+.PHONY: real-eval real-eval-semantic real-eval-delta real-eval-baseline-update real-eval-history-render real-eval-with-judge harness-real
 
 # Real-data case proposer cycle (ADR 0029; gitignored I/O).
 .PHONY: case-propose case-propose-metadata case-review case-promote
@@ -94,6 +94,14 @@ check-doc-links:
 
 index:
 	$(PYTHON) scripts/build_index.py --input_dir data/raw --output_dir data/index
+
+# Re-prime a kordoc cache's manifest.json so ingestion can trust the bypass
+# (issue #1278). Required once after this gate landed for any pre-existing
+# committed cache; override SOURCE_DIR / CACHE_DIR for non-default layouts.
+SOURCE_DIR ?= data/files
+CACHE_DIR ?= data/files_kordoc
+build-kordoc-manifest:
+	$(PYTHON) scripts/build_kordoc_manifest.py --source-dir $(SOURCE_DIR) --cache-dir $(CACHE_DIR)
 
 ask:
 	$(PYTHON) app.py --input_dir data/index --output_dir outputs --query "기관 A와 기관 B의 보안 요구사항 차이를 알려줘" --pipeline agentic_full
@@ -330,8 +338,23 @@ demo-docker:
 
 # Run the private real-data eval end-to-end (build index, sample query,
 # eval). Writes reports/real100/eval_summary.json locally (gitignored).
+# NOTE: builds a `hashing` (feature-hashing BoW) index — deterministic +
+# offline, but semantic-blind, so dense/hybrid retrieval recall is NOT
+# meaningful here (issue #1295). Use `real-eval-semantic` for that.
 real-eval:
 	bash scripts/smoke_real.sh
+
+# Semantic variant of real-eval (issue #1295): builds a sentence-transformers
+# BGE-M3 index into a SEPARATE dir (real100_m3) so the canonical hashing
+# real100 index is untouched. Requires the model to be downloadable/cached
+# (not offline/CI-safe). Use this — not `real-eval` — when measuring dense or
+# hybrid retrieval recall, since hashing embeddings carry no semantic signal.
+real-eval-semantic:
+	EMBEDDING_BACKEND=sentence-transformers MODEL=BAAI/bge-m3 \
+	  INDEX_DIR=data/index/real100_m3 \
+	  OUTPUT_DIR=outputs/real100_m3 \
+	  REPORT_DIR=reports/real100_m3 \
+	  bash scripts/smoke_real.sh
 
 # Render an aggregate-only markdown delta between the current
 # real-data run and the committed baseline. Aggregate-only by

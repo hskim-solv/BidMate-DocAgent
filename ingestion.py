@@ -241,6 +241,15 @@ class _KordocFallback(RuntimeError):
 
 _KORDOC_VERSION_FILE = Path(__file__).resolve().parent / ".kordoc-version"
 
+# Bump this when the demote/scrub/normalize postprocess pipeline
+# (``_demote_over_promoted_bullet_headings`` / ``_strip_kordoc_toc_noise`` /
+# ``normalize_body_text``) changes the shape of cached kordoc output. A cache
+# manifest recording an older version is rejected so stale text never bypasses
+# a fresh extraction (issue #1278).
+_KORDOC_POSTPROCESS_VERSION = 1
+_KORDOC_MANIFEST_FILENAME = "manifest.json"
+_KORDOC_MANIFEST_SCHEMA_VERSION = 1
+
 
 def _read_kordoc_version_spec() -> str:
     """Read the pinned kordoc npm spec from ``.kordoc-version``.
@@ -292,6 +301,87 @@ def _resolve_kordoc_cache_dir(source_paths: list[Path]) -> Path | None:
     return sibling if sibling.is_dir() else None
 
 
+def sha256_file(path: Path) -> str:
+    """Stream-hash ``path`` so large HWP/PDF sources never load fully into RAM.
+
+    Shared single source of truth for both the cache-bypass integrity check
+    (``_kordoc_cache_entry_valid``) and the manifest generator
+    (``scripts/build_kordoc_manifest.py``), so the digest both sides compare
+    is computed identically (issue #1278).
+    """
+    import hashlib  # noqa: PLC0415
+
+    digest = hashlib.sha256()
+    with path.open("rb") as fh:
+        for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _load_kordoc_manifest(cache_dir: Path) -> dict[str, Any] | None:
+    """Load ``cache_dir/manifest.json``, or None when it cannot be trusted.
+
+    Returns None — which forces the caller to reject the cache bypass and fall
+    through to a fresh extraction — on any of: file absent, unreadable,
+    malformed JSON, wrong ``schema_version``, or a missing ``entries`` map. A
+    None result is the safe signal: it never lets unverified cached text reach
+    the index (issue #1278).
+    """
+    import json  # noqa: PLC0415
+
+    manifest_path = cache_dir / _KORDOC_MANIFEST_FILENAME
+    try:
+        raw = manifest_path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    try:
+        manifest = json.loads(raw)
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(manifest, dict):
+        return None
+    if manifest.get("schema_version") != _KORDOC_MANIFEST_SCHEMA_VERSION:
+        return None
+    if not isinstance(manifest.get("entries"), dict):
+        return None
+    return manifest
+
+
+def _kordoc_cache_entry_valid(
+    manifest: dict[str, Any],
+    stem: str,
+    source_path: Path,
+    kordoc_spec: str,
+) -> bool:
+    """True iff the cached ``<stem>.md`` provably came from ``source_path``.
+
+    Requires the manifest to carry an entry for ``stem`` whose recorded
+    ``source_sha256`` matches the current source bytes, and whose global
+    ``kordoc_spec`` / ``postprocess_version`` match the running extractor. Any
+    mismatch (stale source, wrong-source ``.md`` sharing an NFC stem, drifted
+    kordoc/postprocess version) returns False so the bypass is refused
+    (issue #1278). ``source_size`` is a cheap pre-filter before hashing.
+    """
+    if manifest.get("kordoc_spec") != kordoc_spec:
+        return False
+    if manifest.get("postprocess_version") != _KORDOC_POSTPROCESS_VERSION:
+        return False
+    entry = manifest.get("entries", {}).get(stem)
+    if not isinstance(entry, dict):
+        return False
+    try:
+        actual_size = source_path.stat().st_size
+    except OSError:
+        return False
+    recorded_size = entry.get("source_size")
+    if recorded_size is not None and recorded_size != actual_size:
+        return False
+    recorded_sha = entry.get("source_sha256")
+    if not isinstance(recorded_sha, str) or not recorded_sha:
+        return False
+    return recorded_sha == sha256_file(source_path)
+
+
 def _kordoc_convert_batch(source_paths: list[Path]) -> dict[str, str]:
     """Invoke ``npx kordoc`` on the file list, return ``{stem: markdown}``.
 
@@ -307,52 +397,84 @@ def _kordoc_convert_batch(source_paths: list[Path]) -> dict[str, str]:
 
     Pre-extracted markdown cache (``_resolve_kordoc_cache_dir``:
     ``BIDMATE_KORDOC_CACHE_DIR`` env, else sibling ``<files_dir>_kordoc``)
-    is consulted first: if every ``source_paths`` stem has a matching
-    ``<stem>.md`` file in the cache dir, the subprocess is skipped and the
-    cached content is returned directly. Partial cache hits fall through to
-    the subprocess (which extracts ALL files; partial-miss merging is not
-    worth the complexity). The cached files are the output of an earlier
-    kordoc run on the same source files — the same demote/scrub/normalize
-    pipeline applies so downstream readers see identical text. The sibling
-    default means committed kordoc output (``data/files_kordoc``) is used
-    automatically, so the build no longer silently falls back to CSV text
-    when ``npx`` is missing / times out (Phase 3.5 closeout, real100 corpus).
+    is consulted first, but the bypass is gated on a ``manifest.json`` that
+    proves the cached ``<stem>.md`` files came from *these* source bytes
+    (issue #1278). The subprocess is skipped only when, for every
+    ``source_paths`` entry: a manifest entry exists, its ``source_sha256``
+    matches the current file, and the manifest's ``kordoc_spec`` /
+    ``postprocess_version`` match the running extractor. Without that proof
+    (manifest absent, sha mismatch, stale/wrong-source ``.md`` sharing an NFC
+    stem, version drift) the bypass is refused and we fall through to a fresh
+    extraction — never returning unverified cached text as a kordoc success.
+    Partial cache hits also fall through (the subprocess extracts ALL files;
+    partial-miss merging is not worth the complexity). The same
+    demote/scrub/normalize pipeline applies to cached and freshly-extracted
+    text so downstream readers see identical output. Regenerate a manifest for
+    a committed cache with ``scripts/build_kordoc_manifest.py``
+    (``make build-kordoc-manifest``).
+
+    The subprocess path writes to a throwaway tempdir and never emits a
+    manifest — manifests are authored only by the generator for a persistent
+    cache, so there is no self-write race here.
     """
     import subprocess  # noqa: PLC0415 — local import keeps module load fast for non-HWP paths
     import shutil  # noqa: PLC0415
     import tempfile  # noqa: PLC0415
 
+    kordoc_spec = _read_kordoc_version_spec()
+
     cache_dir = _resolve_kordoc_cache_dir(source_paths)
     if cache_dir is not None:
-        markdown_by_stem: dict[str, str] = {}
-        for src in source_paths:
-            stem = unicodedata.normalize("NFC", src.stem)
-            md_path = cache_dir / f"{stem}.md"
-            if not md_path.exists():
-                continue
-            try:
-                content = md_path.read_text(encoding="utf-8")
-            except OSError:
-                continue
-            # Same post-processing pipeline as the subprocess path
-            # (issue #904 demote + issue #906 ToC scrub + body normalize)
-            # so the cached output is byte-identical to a fresh kordoc run.
-            demoted = _demote_over_promoted_bullet_headings(content)
-            scrubbed = _strip_kordoc_toc_noise(demoted)
-            normalized = normalize_body_text(scrubbed)
-            if normalized:
-                markdown_by_stem[stem] = normalized
-        if markdown_by_stem and len(markdown_by_stem) == len(source_paths):
-            return markdown_by_stem
-        # partial hit → fall through to npx subprocess (which extracts
-        # ALL files; partial-miss merging is not worth the complexity).
+        manifest = _load_kordoc_manifest(cache_dir)
+        if manifest is None:
+            warnings.warn(
+                f"kordoc cache {cache_dir} has no usable manifest.json — "
+                "refusing bypass, re-extracting (run "
+                "scripts/build_kordoc_manifest.py to re-prime). [#1278]",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+        else:
+            markdown_by_stem: dict[str, str] = {}
+            for src in source_paths:
+                stem = unicodedata.normalize("NFC", src.stem)
+                md_path = cache_dir / f"{stem}.md"
+                if not md_path.exists():
+                    continue
+                # Integrity gate: the cached .md must provably come from THIS
+                # source (sha256) at the running kordoc/postprocess version.
+                # A stale or wrong-source file sharing the NFC stem is rejected
+                # here so it never reaches the index as a kordoc success.
+                if not _kordoc_cache_entry_valid(manifest, stem, src, kordoc_spec):
+                    warnings.warn(
+                        f"kordoc cache {md_path} failed manifest integrity check "
+                        "(sha/spec/version mismatch) — refusing bypass. [#1278]",
+                        RuntimeWarning,
+                        stacklevel=2,
+                    )
+                    continue
+                try:
+                    content = md_path.read_text(encoding="utf-8")
+                except OSError:
+                    continue
+                # Same post-processing pipeline as the subprocess path
+                # (issue #904 demote + issue #906 ToC scrub + body normalize)
+                # so the cached output is byte-identical to a fresh kordoc run.
+                demoted = _demote_over_promoted_bullet_headings(content)
+                scrubbed = _strip_kordoc_toc_noise(demoted)
+                normalized = normalize_body_text(scrubbed)
+                if normalized:
+                    markdown_by_stem[stem] = normalized
+            if markdown_by_stem and len(markdown_by_stem) == len(source_paths):
+                return markdown_by_stem
+        # manifest missing / integrity failure / partial hit → fall through to
+        # npx subprocess (which extracts ALL files; partial-miss merging is not
+        # worth the complexity).
 
     if shutil.which("node") is None or shutil.which("npx") is None:
         raise _KordocFallback("node/npx not on PATH") from FileNotFoundError(
             "node/npx not found"
         )
-
-    kordoc_spec = _read_kordoc_version_spec()
 
     with tempfile.TemporaryDirectory(prefix="bidmate_kordoc_") as tmpdir:
         out_dir = Path(tmpdir)

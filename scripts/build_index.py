@@ -64,6 +64,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--query", default=None, help="Unused in this command; accepted for CLI consistency.")
     parser.add_argument("--config", default=None, help="Unused in this command; accepted for CLI consistency.")
     parser.add_argument(
+        "--no-config-banner",
+        dest="no_config_banner",
+        action="store_true",
+        help="Suppress the effective-config provenance banner (#1212). Also via BIDMATE_NO_CONFIG_BANNER=1.",
+    )
+    parser.add_argument(
         "--model",
         default=DEFAULT_EMBEDDING_MODEL,
         help="Embedding model name (sentence-transformers ID, or OpenAI model name when --embedding_backend=openai).",
@@ -182,6 +188,11 @@ def main() -> int:
             os.environ["BIDMATE_HWP_LOADER"] = args.hwp_loader
         if args.pdf_loader is not None:
             os.environ["BIDMATE_PDF_LOADER"] = args.pdf_loader
+        # #1212: effective-config provenance banner BEFORE the long ingestion
+        # so operators see "what backends am I actually running" up front.
+        from rag_provenance import emit_build_banner
+
+        emit_build_banner(args)
         output_dir = Path(args.output_dir)
         visual_artifact_dir = (
             Path(args.visual_artifact_dir)
