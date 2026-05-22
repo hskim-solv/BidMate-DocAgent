@@ -15,16 +15,20 @@ from pathlib import Path
 from scripts._governance import (
     ADR_SLA_GRANDFATHER_DATE,
     THRESHOLDS,
+    _cmd_proposed_adr_age,
+    adr_has_resolution_section,
     parse_adr_status,
     proposed_adr_age,
 )
 
 
-def _adr(dir_: Path, name: str, status: str) -> None:
-    (dir_ / name).write_text(
-        f"# {name}\n\n- **Status**: {status}\n\n## Context\nstub\n",
-        encoding="utf-8",
-    )
+def _adr(dir_: Path, name: str, status: str, *, resolution: bool = False) -> None:
+    body = f"# {name}\n\n- **Status**: {status}\n\n## Context\nstub\n"
+    if resolution:
+        # ADR 0047 decision #2 in-place resolution: a `## Resolution` H2 append
+        # while Status legitimately stays as-is.
+        body += "\n## Resolution\n\nResolved in place per ADR 0047 decision #2.\n"
+    (dir_ / name).write_text(body, encoding="utf-8")
 
 
 # ---- parse_adr_status ----------------------------------------------------
@@ -75,6 +79,41 @@ def test_parse_status_table_form_with_annotation(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     assert parse_adr_status(tmp_path / "0044-t.md") == "accepted (superseded by adr 0052)"
+
+
+# ---- adr_has_resolution_section (ADR 0047 in-place marker) ----------------
+
+
+def test_resolution_section_detected(tmp_path: Path) -> None:
+    _adr(tmp_path, "0050-x.md", "proposed", resolution=True)
+    assert adr_has_resolution_section(tmp_path / "0050-x.md") is True
+
+
+def test_resolution_section_absent(tmp_path: Path) -> None:
+    _adr(tmp_path, "0050-x.md", "proposed")  # only `## Context`, no Resolution
+    assert adr_has_resolution_section(tmp_path / "0050-x.md") is False
+
+
+def test_resolution_section_h3_not_detected(tmp_path: Path) -> None:
+    # H3 is not the sanctioned marker — exact `## Resolution` H2 only.
+    (tmp_path / "0050-x.md").write_text(
+        "# t\n\n- **Status**: proposed\n\n### Resolution\n\nnot an H2\n",
+        encoding="utf-8",
+    )
+    assert adr_has_resolution_section(tmp_path / "0050-x.md") is False
+
+
+def test_resolution_section_inline_suffix_not_detected(tmp_path: Path) -> None:
+    # `## Resolution notes` is a different heading; the detector is anchored.
+    (tmp_path / "0050-x.md").write_text(
+        "# t\n\n- **Status**: proposed\n\n## Resolution notes\n\ntext\n",
+        encoding="utf-8",
+    )
+    assert adr_has_resolution_section(tmp_path / "0050-x.md") is False
+
+
+def test_resolution_section_missing_file_returns_false(tmp_path: Path) -> None:
+    assert adr_has_resolution_section(tmp_path / "nope.md") is False
 
 
 # ---- proposed_adr_age: status filtering ----------------------------------
@@ -210,6 +249,91 @@ def test_missing_dir_returns_empty(tmp_path: Path) -> None:
     assert proposed_adr_age(tmp_path / "nope") == []
 
 
+# ---- proposed_adr_age: ## Resolution in-place resolution (#1178) ----------
+# ADR 0047 decision #2 sanctions a `## Resolution` append as a resolution even
+# when Status stays `proposed`. The collector must stop flagging such an ADR
+# OVER_SLA and surface `resolved_in_place` instead.
+
+
+def test_resolution_append_suppresses_over_sla(tmp_path: Path) -> None:
+    # The before/after pair: an otherwise-OVER_SLA ADR (40d > 30d, post-
+    # grandfather) flips to resolved_in_place once `## Resolution` is appended.
+    _adr(tmp_path, "0050-x.md", "proposed", resolution=True)
+    recs = proposed_adr_age(
+        tmp_path,
+        date_resolver=lambda p: date(2026, 5, 16),  # after grandfather
+        now=date(2026, 6, 25),  # 40 days > 30
+    )
+    assert recs[0].age_days == 40
+    assert recs[0].grandfathered is False
+    assert recs[0].resolved_in_place is True
+    assert recs[0].over_sla is False
+    assert recs[0].status == "proposed"  # Status legitimately unchanged
+
+
+def test_no_resolution_still_over_sla(tmp_path: Path) -> None:
+    # Control for the pair above: identical dates, no `## Resolution` → still
+    # OVER_SLA, resolved_in_place False.
+    _adr(tmp_path, "0050-x.md", "proposed")
+    recs = proposed_adr_age(
+        tmp_path,
+        date_resolver=lambda p: date(2026, 5, 16),
+        now=date(2026, 6, 25),
+    )
+    assert recs[0].over_sla is True
+    assert recs[0].resolved_in_place is False
+
+
+def test_resolution_independent_of_grandfather(tmp_path: Path) -> None:
+    # A grandfathered ADR with a `## Resolution` is marked resolved_in_place;
+    # over_sla stays False either way (grandfather already exempts it).
+    _adr(tmp_path, "0011-old.md", "proposed", resolution=True)
+    recs = proposed_adr_age(
+        tmp_path,
+        date_resolver=lambda p: date(2026, 5, 1),  # before grandfather
+        now=date(2026, 7, 1),  # 61 days
+    )
+    assert recs[0].grandfathered is True
+    assert recs[0].resolved_in_place is True
+    assert recs[0].over_sla is False
+
+
+def test_resolution_within_sla_still_marked_resolved(tmp_path: Path) -> None:
+    # resolved_in_place reflects file content, not age — a young ADR resolved
+    # early is still resolved_in_place (not merely "ok").
+    _adr(tmp_path, "0050-x.md", "proposed", resolution=True)
+    recs = proposed_adr_age(
+        tmp_path,
+        date_resolver=lambda p: date(2026, 5, 16),
+        now=date(2026, 6, 10),  # 25 days <= 30
+    )
+    assert recs[0].over_sla is False
+    assert recs[0].resolved_in_place is True
+
+
+def test_resolved_in_place_defaults_false_without_marker(tmp_path: Path) -> None:
+    # Every record carries the new field; absent the marker it is False.
+    _adr(tmp_path, "0050-x.md", "proposed")
+    recs = proposed_adr_age(
+        tmp_path, date_resolver=lambda p: date(2026, 5, 16), now=date(2026, 6, 1)
+    )
+    assert recs[0].resolved_in_place is False
+
+
+def test_cmd_output_shows_resolved_in_place_flag(tmp_path, capsys) -> None:
+    # CLI flag-string mapping: resolved_in_place outranks ok/OVER_SLA in the
+    # printed flag column, and the summary notes the resolved count.
+    _adr(tmp_path, "0099-x.md", "proposed", resolution=True)
+    rc = _cmd_proposed_adr_age(str(tmp_path))
+    captured = capsys.readouterr()
+    assert rc == 0
+    # Data row goes to stdout; the resolved ADR shows the resolved flag.
+    assert "\tresolved_in_place\t" in captured.out
+    assert "OVER_SLA" not in captured.out
+    # Summary (stderr) reports the in-place count.
+    assert "resolved in place" in captured.err
+
+
 # ---- constants -----------------------------------------------------------
 
 
@@ -234,6 +358,11 @@ def test_repo_proposed_adr_age_runs() -> None:
         assert r.status.startswith("proposed")
         assert r.number > 0
         assert (r.age_days is None) or (r.age_days >= 0)
+        # New field is populated for every live record (exercises
+        # adr_has_resolution_section against real ADR files).
+        assert isinstance(r.resolved_in_place, bool)
+        # A resolved-in-place ADR is never simultaneously OVER_SLA.
+        assert not (r.resolved_in_place and r.over_sla)
 
 
 # ---- README ↔ collector parity (anti-fail-open) --------------------------
