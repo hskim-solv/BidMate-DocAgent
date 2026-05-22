@@ -21,7 +21,7 @@ cohere>=5.0
 # Issue #632 — eval/evaluate_dev_results.py uses pandas for result analysis.
 # Dev-only: not imported by the production pipeline. Fresh-clone reproducibility
 # requires this to be declared so `pip install -r requirements-dev.txt` suffices.
-pandas>=2.0,<3.0
+pandas>=3.0.3,<4.0
 # Issue #915 — parallel pytest. scripts/test.sh runs `pytest -n auto --dist
 # loadfile`; loadfile keeps file-internal state (env mutation, golden writes,
 # qdrant collections, langgraph globals) on a single worker without needing a
