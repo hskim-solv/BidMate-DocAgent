@@ -373,13 +373,25 @@ def _stub_backend(
             cid = citation.get("chunk_id")
             if cid and cid not in used:
                 used.append(str(cid))
-    return {
+    payload: dict[str, Any] = {
         "summary": summary,
         "used_chunk_ids": used,
         "model": "stub",
         "tokens_in": None,
         "tokens_out": None,
     }
+    if _trace_full_enabled():
+        # Trace v2 (issue #967): the stub backend must capture the same full
+        # I/O surface as the live backends so a `BIDMATE_TRACE_FULL=1
+        # BIDMATE_SYNTHESIS_BACKEND=stub` eval populates trace
+        # ``synthesis_llm_call`` — the input the ADR 0056 ``answer_reasoning``
+        # axis scores. ``completion_text`` mirrors the live backends' JSON
+        # tool-call payload shape (summary + used_chunk_ids).
+        payload["user_prompt_text"] = _build_user_prompt(query, analysis, answer, evidence)
+        payload["completion_text"] = json.dumps(
+            {"summary": summary, "used_chunk_ids": used}, ensure_ascii=False
+        )
+    return payload
 
 
 def _anthropic_backend(  # pragma: no cover - network
