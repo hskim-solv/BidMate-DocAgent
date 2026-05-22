@@ -609,7 +609,9 @@ def proposed_adr_age(
     ``grandfather_date`` AND its age exceeds ``sla_days`` (ADR 0047). ADRs
     first committed earlier carry ``grandfathered=True`` and are never
     flagged. Uncommitted files (no first-commit date) get ``age_days=None``
-    and ``over_sla=False``.
+    and ``over_sla=False``. Committed ages clamp to ``>= 0`` so a first-commit
+    date that reads ahead of ``now`` across a timezone boundary cannot yield a
+    nonsensical negative SLA age.
 
     ``date_resolver`` defaults to a git lookup; inject a stub for testing.
     ``sla_days`` defaults to ``THRESHOLDS["ADR_PROPOSED_SLA_DAYS"]``.
@@ -637,7 +639,10 @@ def proposed_adr_age(
             grandfathered = False
             over_sla = False
         else:
-            age_days = (today - first_commit).days
+            # max(0,…): a first-commit author-date in a TZ ahead of UTC (e.g.
+            # KST) can read as "tomorrow" vs a UTC runner's date.today(), making
+            # the raw delta negative near the date boundary. Age is never < 0.
+            age_days = max(0, (today - first_commit).days)
             grandfathered = first_commit < grandfather_date
             over_sla = (not grandfathered) and age_days > sla
         records.append(

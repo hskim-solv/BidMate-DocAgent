@@ -178,6 +178,23 @@ def test_uncommitted_age_none_not_over(tmp_path: Path) -> None:
     assert recs[0].grandfathered is False
 
 
+def test_age_clamped_to_zero_when_first_commit_ahead_of_now(tmp_path: Path) -> None:
+    # TZ boundary regression: a first-commit author-date resolved in a zone
+    # ahead of UTC (e.g. KST/UTC+9) can read as "tomorrow" relative to a UTC CI
+    # runner's date.today(). The raw (today - first_commit).days is then
+    # negative; age_days must clamp to 0 so the SLA age is never nonsensical.
+    # (Flaked test_repo_proposed_adr_age_runs in CI on the 2026-05-21→05-22 UTC
+    # boundary.) over_sla stays False since 0 <= sla.
+    _adr(tmp_path, "0050-x.md", "proposed")
+    recs = proposed_adr_age(
+        tmp_path,
+        date_resolver=lambda p: date(2026, 5, 22),  # first_commit "ahead" of now
+        now=date(2026, 5, 21),  # UTC runner "today"
+    )
+    assert recs[0].age_days == 0
+    assert recs[0].over_sla is False
+
+
 def test_sorted_oldest_first_uncommitted_last(tmp_path: Path) -> None:
     _adr(tmp_path, "0001-a.md", "proposed")  # newer
     _adr(tmp_path, "0002-b.md", "proposed")  # older
