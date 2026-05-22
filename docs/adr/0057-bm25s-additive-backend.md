@@ -72,6 +72,35 @@ additive opt-in 백엔드 (`bm25_backend: bm25s`) 추가 자체는 `accepted` �
 
 **결정** — 조건 (1) 충족 + 조건 (2) 실질 미충족 (parity 는 안전성 신호일 뿐 lift 아님; ADR 0019/0021/0031 의 `0pp-on-hybrid` 패턴이 BM25 backend 에도 성립). 위 "Re-open 조건" 의 line — *조건 1 충족 + 조건 2 미충족 시 측정 부록만 추가* — 경로를 따라 **`bm25_backend` 기본값 flip 보류**, `bm25s` 는 opt-in additive 백엔드로 유지. 후속 ADR (조건 3) 은 열지 않는다. 측정 폐루프 작동.
 
+## Measurement
+
+### 2026-05-22 — 풀 파이프라인 end-to-end 측정 (비공개 real-100, n=221)
+
+2026-05-22 의 retrieval-channel A/B (아래 "범위 외" 항목) 는 top-N overlap 만 측정하고 end-to-end accuracy / citation_precision / latency delta 는 deferred 였다. 이번에 그 deferred 분을 실측하여 re-open 조건 (1) + (2)-①② 충족 여부를 확정한다.
+
+- **Surface**: 비공개 real-100 eval, n=221 cases (answerable 118 / abstention 103). subset 없이 전체 — full bootstrap 검정력 유지.
+- **Index**: prebuilt `data/index/real100` (26376 chunks, `EMBEDDING_BACKEND=hashing` 오프라인 기본 경로). 재빌드 없이 prebuilt 재사용.
+- **Control**: `full` (hybrid + okapi, metadata_first + rerank + verifier 풀 agentic 파이프라인). `full_bm25s` 와 **`bm25_backend` 만 차이** (둘 다 `retrieval_backend: hybrid`, `bm25_tokenizer: regex`) — 자연스러운 control. `bm25s` 0.3.9 설치 상태에서 `full_bm25s` 행이 build-fail 아닌 실제 행으로 생성됨 (**조건 (1) ✓**).
+
+| metric | `full` (okapi) | `full_bm25s` | delta |
+|---|---|---|---|
+| accuracy | 0.1610  CI[0.0932, 0.2288] | 0.1610  CI[0.0932, 0.2288] | **+0.00 pp** (CI 완전 중첩) |
+| citation_precision | 0.1045  CI[0.0593, 0.1582] | 0.1059  CI[0.0593, 0.1610] | **+0.14 pp** (CI 중첩) |
+| latency_p95 | 4249.6 ms | 14500.8 ms | **+241%** (느려짐) |
+| retrieve_ms (mean / p95) | 1168 / 2017 ms | 2627 / 7041 ms | +125% / +249% |
+
+(accuracy / citation_precision CI 는 answerable n=118 기반.)
+
+**판정**:
+
+- **조건 (2)-① (≥ +3pp lift, 95% CI 비중첩): ✗ 미충족.** accuracy +0.00pp, citation_precision +0.14pp — 둘 다 임계값 3pp 미달이고 95% bootstrap CI 가 완전히 중첩한다.
+- **조건 (2)-② (latency_p95 ≥ -30% 단축): ✗ 미충족.** 단축은커녕 +241% 악화. 26376-chunk 스케일에서 `bm25s` sparse-matrix 경로의 per-query `retrieve_ms` 가 okapi 대비 mean 2.25배 / p95 3.5배 느리다 — ADR Context 의 "100-doc 도메인에선 latency 차이가 sub-ms, 향후 1000+ docs scale-out 시 의미" 예측과 정합 (현 스케일에선 고정 오버헤드가 우세).
+- 조건 (2)-③ (top-N overlap ≥ 95% on real corpus) 은 2026-05-22 retrieval A/B (overlap mean 98.2%@10) 로 이미 충족이나, 이는 *parity* 신호이지 *lift* 가 아니므로 default flip 의 근거가 되지 못한다.
+
+**결론**: re-open 조건 (1) 충족 + (2)-①② 미충족 → `bm25_backend` 기본값 flip **보류 유지**. ADR 0019 / 0021 / 0031 이 임베딩 / 토크나이저 축에서 발견한 `0pp-on-hybrid` 패턴 (RRF fusion + cross-encoder rerank 가 채널 ranking 차이를 평탄화) 이 BM25 backend 축에서도 성립함이 end-to-end 로 확정. 2026-05-22 retrieval-overlap 기반 0pp 예상과 일치. `bm25s` 는 `okapi` 와 동등 품질이되 현 스케일에선 더 느리므로 opt-in additive 변형으로 유지.
+
+**Caveats**: single run (seed 미평균), `full` → `full_bm25s` 순차 실행 (동일 머신). latency 절대값은 머신 부하 노이즈를 포함한다 — backend 무관 축인 `query_analysis_ms` 도 412 → 813ms 로 변동 (run-order / load 변동 시사). 단 latency 방향성 (bm25s 가 -30% 개선의 정반대로 명백히 느림) 은 robust 하여 조건 (2)-② 판정은 결정적. 결과는 aggregate-only (ADR 0005 경계 — per-case text / doc id 미노출).
+
 ## Consequences
 
 **이득**
