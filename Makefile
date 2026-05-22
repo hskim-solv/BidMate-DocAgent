@@ -13,7 +13,7 @@
 .PHONY: check-branch governance-check check check-latency leaderboard-check real-eval-history-check benchmark-check check-baseline-provenance check-doc-links regen-golden check-golden
 
 # Index build + ad-hoc ask
-.PHONY: index ask
+.PHONY: index ask build-kordoc-manifest
 
 # Synthetic eval surface (public corpus). Includes smoke, full eval, harness
 # matrix, judges, leaderboard render, pareto, korean public bench, external
@@ -94,6 +94,14 @@ check-doc-links:
 
 index:
 	$(PYTHON) scripts/build_index.py --input_dir data/raw --output_dir data/index
+
+# Re-prime a kordoc cache's manifest.json so ingestion can trust the bypass
+# (issue #1278). Required once after this gate landed for any pre-existing
+# committed cache; override SOURCE_DIR / CACHE_DIR for non-default layouts.
+SOURCE_DIR ?= data/files
+CACHE_DIR ?= data/files_kordoc
+build-kordoc-manifest:
+	$(PYTHON) scripts/build_kordoc_manifest.py --source-dir $(SOURCE_DIR) --cache-dir $(CACHE_DIR)
 
 ask:
 	$(PYTHON) app.py --input_dir data/index --output_dir outputs --query "기관 A와 기관 B의 보안 요구사항 차이를 알려줘" --pipeline agentic_full
