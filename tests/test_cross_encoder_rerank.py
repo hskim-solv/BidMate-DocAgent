@@ -191,6 +191,39 @@ class RerankFlagBackendTest(unittest.TestCase):
         self.assertEqual(meta["model"], rag_rerank.DEFAULT_BGE_MODEL)
 
 
+class FlagRerankerConstructorKwargsTest(unittest.TestCase):
+    """Regression for #980 follow-up: the loader must pass the kwargs that
+    FlagReranker actually consumes. ``passage_max_length`` is an
+    AbsEmbedder-only param — passing it to the reranker silently lands in
+    **kwargs and never sets the passage truncation length (self.max_length),
+    so the loader must use ``max_length`` instead."""
+
+    def test_loader_passes_query_and_passage_lengths_reranker_consumes(self) -> None:
+        captured: dict[str, Any] = {}
+
+        class _CapturingFlagReranker:
+            def __init__(self, model_id: str, **kwargs: Any) -> None:
+                captured["model_id"] = model_id
+                captured["kwargs"] = kwargs
+
+        fake_module = type(sys)("FlagEmbedding")
+        fake_module.FlagReranker = _CapturingFlagReranker  # type: ignore[attr-defined]
+
+        rag_rerank._RERANKER_CACHE.clear()
+        try:
+            with mock.patch.dict(sys.modules, {"FlagEmbedding": fake_module}):
+                rag_rerank._get_or_load_flag_reranker("some/model")
+        finally:
+            rag_rerank._RERANKER_CACHE.clear()
+
+        kwargs = captured["kwargs"]
+        self.assertEqual(kwargs.get("query_max_length"), 256)
+        # max_length is the passage length FlagReranker actually consumes.
+        self.assertEqual(kwargs.get("max_length"), 512)
+        # passage_max_length is an embedder-only param — must NOT be passed.
+        self.assertNotIn("passage_max_length", kwargs)
+
+
 class NaiveBaselineInvariantTest(unittest.TestCase):
     """ADR 0001 invariant — naive_baseline must never trigger the cross-encoder."""
 

@@ -210,9 +210,11 @@ def _get_or_load_flag_reranker(model_id: str) -> Any:  # pragma: no cover - larg
             "bge / bge_ko backend requires FlagEmbedding. "
             "Install with `pip install FlagEmbedding` or use BIDMATE_RERANK_BACKEND=stub."
         ) from exc
-    # Issue #980 — make query/passage max_length explicit per FlagEmbedding
+    # Issue #980 — pin query/passage max_length explicitly per FlagEmbedding
     # docs (https://github.com/FlagOpen/FlagEmbedding examples).
-    # Defaults vary by model; pinning to 256/512 (docs-recommended) keeps
+    # FlagReranker takes query_max_length + max_length (the latter is the
+    # passage length; passage_max_length is an AbsEmbedder-only param the
+    # reranker silently absorbs into **kwargs). Pinning to 256/512 keeps
     # reranker behavior stable against future FlagEmbedding default
     # changes. Korean RFP queries fit in 256 tokens; passage chunks fit
     # in 512. use_fp16=False keeps full-precision parity with the
@@ -221,7 +223,7 @@ def _get_or_load_flag_reranker(model_id: str) -> Any:  # pragma: no cover - larg
         model_id,
         use_fp16=False,
         query_max_length=256,
-        passage_max_length=512,
+        max_length=512,
     )
     _RERANKER_CACHE[cache_key] = reranker
     return reranker
