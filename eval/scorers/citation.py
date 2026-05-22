@@ -5,7 +5,7 @@ from typing import Any
 
 from rag_core import rate
 
-from eval.scorers._shared import answer_citations
+from eval.scorers._shared import answer_citations, answer_claims
 
 
 def is_bbox(value: Any) -> bool:
@@ -152,6 +152,56 @@ def score_citation_regions(
             }
         )
     return matched / len(expected_regions), errors
+
+
+def score_citation_coverage(prediction: dict[str, Any]) -> dict[str, Any]:
+    """Gold-free self-measurement of citation metadata completeness.
+
+    Distinct from ``score_citation_grounding`` (which scores citations
+    against gold ``expected_citation_pages``/``expected_citation_regions``):
+    coverage answers "of the claims the model produced, how many carry a
+    citation, and of those citations, how many actually fill page / region
+    metadata." No gold is required, so this surfaces metadata-plumbing gaps
+    even on cases that lack page/region ground truth — the prerequisite for
+    comparing new embedding / parsing backends on citation completeness.
+
+    Returns ``None`` for a rate whose denominator is empty (no claims → no
+    ``citation_claim_coverage``; no citations → no page/region coverage) so
+    the run-level aggregate skips vacuous cases instead of fabricating a
+    1.0/0.0. Mirrors the conditional-on-answer semantics of ADR 0054: a
+    well-formed abstention produces zero claims and is correctly excluded.
+    """
+    claims = answer_claims(prediction)
+    citations = answer_citations(prediction)
+
+    if claims:
+        cited_claims = sum(
+            1
+            for claim in claims
+            if any(isinstance(c, dict) for c in claim.get("citations") or [])
+        )
+        claim_coverage: float | None = cited_claims / len(claims)
+    else:
+        claim_coverage = None
+
+    if citations:
+        page_filled = sum(1 for citation in citations if citation_pages(citation))
+        region_filled = sum(
+            1
+            for citation in citations
+            if any(is_bbox(region.get("bbox")) for region in citation_regions(citation))
+        )
+        page_coverage: float | None = page_filled / len(citations)
+        region_coverage: float | None = region_filled / len(citations)
+    else:
+        page_coverage = None
+        region_coverage = None
+
+    return {
+        "citation_claim_coverage": claim_coverage,
+        "citation_page_coverage": page_coverage,
+        "citation_region_coverage": region_coverage,
+    }
 
 
 def score_citation_grounding(
