@@ -139,6 +139,49 @@ def detect_gh_subcommand(cmd: str) -> GhSubcommand:
     return ""
 
 
+def detect_git_push_delete(cmd: str) -> list[str]:
+    """Return the branch names a ``git push`` segment deletes on a remote.
+
+    Recognizes every spelling of a remote-branch delete::
+
+        git push origin --delete BR        git push --delete origin BR
+        git push origin -d BR              git push -d origin BR
+        git push origin :BR                (colon refspec, empty source side)
+
+    Returns ``[]`` when no segment is a delete-push. Any leading ``:`` or
+    ``refs/heads/`` is stripped. Multiple deletes in one push
+    (``git push origin --delete BR1 BR2``) yield multiple entries.
+
+    The worktree-safe post-merge flow (issue #1283) deletes the remote head
+    branch this way instead of ``gh pr merge --delete-branch`` (whose local
+    checkout-to-default step aborts when ``main`` is checked out in another
+    worktree). The deletion still auto-closes any PR that bases on the
+    branch, so the bash-guard reuses this to extend its stacked-dependent
+    guard to the push form. Same shlex false-negative surface as the sibling
+    parsers (single-quoted whole command, eval-wrap, env-var, command subst).
+    """
+    targets: list[str] = []
+    for tokens in _segments(cmd):
+        if len(tokens) < 3 or tokens[0] != "git" or tokens[1] != "push":
+            continue
+        rest = tokens[2:]
+        has_delete_flag = any(t in ("--delete", "-d") for t in rest)
+        # First positional is the remote; remaining positionals are refspecs.
+        positionals = [t for t in rest if not t.startswith("-")]
+        refspecs = positionals[1:]
+        for refspec in refspecs:
+            if has_delete_flag:
+                branch = refspec.lstrip(":")
+            elif refspec.startswith(":"):
+                branch = refspec[1:]  # colon-refspec delete (empty source)
+            else:
+                continue  # ordinary push of this refspec — not a delete
+            branch = branch[len("refs/heads/"):] if branch.startswith("refs/heads/") else branch
+            if branch:
+                targets.append(branch)
+    return targets
+
+
 def _segment_has_base(tokens: list[str]) -> bool:
     return any(t == "--base" or t.startswith("--base=") for t in tokens[3:])
 
@@ -204,6 +247,10 @@ def _cli(argv: list[str] | None = None) -> int:
         "--get-body-file", metavar="CMD",
         help="Echo the value of --body-file in a `gh pr create` segment ('' if absent).",
     )
+    g.add_argument(
+        "--detect-push-delete", metavar="CMD",
+        help="Echo the branch names a `git push` segment deletes, one per line ('' if none).",
+    )
     args = p.parse_args(argv)
     if args.detect_gh is not None:
         sys.stdout.write(detect_gh_subcommand(args.detect_gh) + "\n")
@@ -215,6 +262,9 @@ def _cli(argv: list[str] | None = None) -> int:
         return 0
     if args.get_body_file is not None:
         sys.stdout.write(get_create_flag_value(args.get_body_file, "--body-file") + "\n")
+        return 0
+    if args.detect_push_delete is not None:
+        sys.stdout.write("\n".join(detect_git_push_delete(args.detect_push_delete)) + "\n")
         return 0
     return 2
 

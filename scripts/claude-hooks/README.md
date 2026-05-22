@@ -24,7 +24,7 @@ Claude Code 의 PreToolUse / Stop / UserPromptSubmit 훅 모음. `.claude/settin
 |---|---|---|---|
 | [`pretooluse-adr-template.sh`](./pretooluse-adr-template.sh) | block | `Edit\|MultiEdit\|Write` | 신규 ADR 의 Verification section + verifies-key marker 누락 차단 (issue #826/#866) |
 | [`pretooluse-adr-collision.sh`](./pretooluse-adr-collision.sh) | block | `Edit\|MultiEdit\|Write` | 신규 ADR 의 NNNN 번호가 다른 worktree 의 open PR (title **또는** head branch) 에 이미 예약돼 있으면 Write 차단 (cross-worktree collision; ADR 0063, issue #1069/#1155) |
-| [`pretooluse-bash-guard.sh`](./pretooluse-bash-guard.sh) | block | `Bash` | (1) stacked-dependent 있을 때 `gh pr merge --delete-branch` 차단, (2) `gh pr create` 시 stacked-base mismatch 차단 (PR #423→#431, #470 incident) |
+| [`pretooluse-bash-guard.sh`](./pretooluse-bash-guard.sh) | block | `Bash` | (1) stacked-dependent 있을 때 `gh pr merge --delete-branch` 차단, (2) `gh pr create` 시 stacked-base mismatch 차단 (PR #423→#431, #470 incident), (3) stacked-dependent 있을 때 `git push origin --delete <branch>` 차단 (worktree-safe 머지 정리, issue #1283) |
 | [`pretooluse-loadbearing.sh`](./pretooluse-loadbearing.sh) | awareness | `Edit\|MultiEdit\|Write` | load-bearing 파일 편집 시 ADR / PR §5b 영향 환기 (CLAUDE.md) |
 | [`pretooluse-memory-lines.sh`](./pretooluse-memory-lines.sh) | graduated | `Edit\|MultiEdit\|Write` | MEMORY.md 라인 수 ≥AWARE 경고 / ≥BLOCK 차단 (issue #720) |
 | [`stop-ship.sh`](./stop-ship.sh) | pipeline | Stop | armed 상태일 때 commit→push→PR→CI→squash-merge 5-stage 자동 실행 (auto-ship) |

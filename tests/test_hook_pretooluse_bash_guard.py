@@ -110,6 +110,39 @@ class TestPreToolUseBashGuard(unittest.TestCase):
             cwd=str(self._tmp_repo),
         )
 
+    def _install_gh_stub(self, pr_list_json: str) -> dict[str, str]:
+        """Put a fake `gh` on PATH that answers `gh pr list` with a fixed JSON.
+
+        Branch (3)'s stacked check calls `gh pr list --base <branch>`; a real
+        gh would fail in a remoteless temp repo (→ fall open). The stub lets
+        us drive the block (non-empty) and allow (`[]`) paths deterministically.
+        """
+        bin_dir = Path(self._tmp) / "stubbin"
+        bin_dir.mkdir(exist_ok=True)
+        gh = bin_dir / "gh"
+        gh.write_text(
+            '#!/usr/bin/env bash\n'
+            'if [[ "$1" == "pr" && "$2" == "list" ]]; then\n'
+            '  printf \'%s\\n\' "${GH_STUB_PR_LIST:-[]}"\n'
+            '  exit 0\n'
+            'fi\n'
+            'exit 0\n'
+        )
+        gh.chmod(0o755)
+        return {
+            "PATH": f"{bin_dir}:{os.environ.get('PATH', '')}",
+            "GH_STUB_PR_LIST": pr_list_json,
+        }
+
+    def _run_env(self, command: str, env_extra: dict[str, str]) -> subprocess.CompletedProcess:
+        payload = {"tool_input": {"command": command}}
+        return subprocess.run(
+            ["bash", str(self._hook)],
+            input=json.dumps(payload), text=True,
+            capture_output=True, check=False,
+            cwd=str(self._tmp_repo), env={**os.environ, **env_extra},
+        )
+
     # ------------------------------------------------------------------
     # Pass-through cases (branch (1) / unrelated commands)
     # ------------------------------------------------------------------
@@ -142,6 +175,46 @@ class TestPreToolUseBashGuard(unittest.TestCase):
             cwd=str(self._tmp_repo),
         )
         self.assertEqual(r.returncode, 0)
+
+    # ------------------------------------------------------------------
+    # Branch (3): git push origin --delete stacked guard (issue #1283)
+    # ------------------------------------------------------------------
+
+    def test_push_delete_without_dependents_is_allowed(self) -> None:
+        """Deleting a branch with no open dependents → fall through (exit 0)."""
+        self._init_repo()
+        env = self._install_gh_stub("[]")
+        r = self._run_env("git push origin --delete feat/issue-1-x", env)
+        self.assertEqual(r.returncode, 0, msg=r.stderr)
+        self.assertEqual(r.stderr, "")
+
+    def test_push_delete_with_dependents_is_blocked(self) -> None:
+        """Deleting a branch that has open stacked dependents → refuse (exit 2)."""
+        self._init_repo()
+        env = self._install_gh_stub(
+            '[{"number":99,"title":"child","headRefName":"feat/C"}]'
+        )
+        r = self._run_env("git push origin --delete feat/B", env)
+        self.assertEqual(r.returncode, 2, msg=r.stderr)
+        self.assertIn("feat/B", r.stderr)
+        self.assertIn("auto-close", r.stderr.lower())
+        self.assertTrue(self._fires_log.exists())
+        self.assertIn(
+            "|blocked|bash-guard|git-push-delete-stacked|feat/B",
+            self._fires_log.read_text(),
+        )
+
+    def test_ordinary_push_is_not_guarded(self) -> None:
+        """A non-delete `git push` never queries dependents → exit 0."""
+        self._init_repo()
+        # Even with a stub that WOULD report dependents, an ordinary push
+        # must not be classified as a delete and must fall through.
+        env = self._install_gh_stub(
+            '[{"number":99,"title":"child","headRefName":"feat/C"}]'
+        )
+        r = self._run_env("git push -u origin feat/B", env)
+        self.assertEqual(r.returncode, 0, msg=r.stderr)
+        self.assertEqual(r.stderr, "")
 
     # ------------------------------------------------------------------
     # gh pr create — explicit --base bypasses the guard
