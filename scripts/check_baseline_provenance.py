@@ -20,6 +20,20 @@ only main history is walked). See ADR 0067.
 Operational tail of issue #160; tracked as issue #413; squash-twin
 durable fix is issue #1222.
 
+Scope (issue #1095): this gate intentionally checks only commit
+*reachability*, not config *content* staleness. ``run_manifest.config_sha256``
+hashes the eval config passed to ``eval/run_eval.py`` — for the real-data
+cycle that is the gitignored, operator-private ``eval/real_config.local.yaml``
+(see ``scripts/smoke_real.sh``), not the committed ``eval/config.yaml``. CI
+cannot recompute it (the bytes are private under ADR 0005), and an
+operator-side hash-mismatch warning would fire on the normal resting state —
+the baseline is a deliberately pinned snapshot, every snapshot is generated
+dirty, and the local config legitimately drifts between deliberate bumps. So
+``config_sha256`` stays reproducibility *metadata*, not a staleness gate; the
+real failure modes are covered here (reachability), by the dirty-gate +
+strict mode in ``scripts/write_real_eval_baseline.py`` (#1148/#414), and by
+the behavioral §5b real-data delta in the PR body.
+
 Exit codes:
   0 — provenance commit OR tree is reachable from --ref (or
       --allow-equal-to).
@@ -145,6 +159,9 @@ def check(
 
     provenance_tree = _extract_provenance_tree(baseline)
 
+    # run_manifest.config_sha256 is deliberately NOT checked for staleness here
+    # — see the module docstring's Scope note (#1095). Only the commit/tree
+    # reachability below guards self-consistency.
     manifest_sha = _extract_run_manifest_sha(baseline)
     if manifest_sha is not None and manifest_sha != provenance_sha:
         return (
