@@ -16,10 +16,16 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+import numpy as np
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from scripts.phase35_m3_ablation import _resolve_specs, main  # noqa: E402
+from scripts.phase35_m3_ablation import (  # noqa: E402
+    _prime_m3_index_cache_and_colbert,
+    _resolve_specs,
+    main,
+)
 
 
 class ResolveSpecsTest(unittest.TestCase):
@@ -178,6 +184,96 @@ class ReaggregateMainTest(unittest.TestCase):
             self.assertTrue((out_dir / "deltas.json").exists())
             self.assertTrue((out_dir / "mode_specs.json").exists())
             self.assertTrue((out_dir / "raw_results.json").exists())
+
+
+class PrimeColbertInt8RegressionTest(unittest.TestCase):
+    """CI-safe (no FlagEmbedding): drive the batched colbert fast-path in
+    ``_prime_m3_index_cache_and_colbert`` against a hand-built int8
+    ``_m3_cache`` and assert two #1012 regressions stay fixed:
+
+    1. The patched static method accepts the ``q_scale``/``d_scale``
+       kwargs ``retrieve_candidates`` passes — the 2-positional signature
+       raised ``TypeError`` on the first primed scoring.
+    2. The fast-path score equals the per-chunk ``M3Encoder.colbert_score``
+       under the same int8 dequant — the old ``q_colbert @ big.T`` skipped
+       fp32 dequant + per-chunk scale, contaminating int8 measurements.
+
+    No FlagEmbedding: a fake ``M3Encoder`` is seeded into the singleton
+    cache via ``__new__`` (bypassing the weight-loading ``__init__``) and
+    ``_m3_cache`` is pre-populated so the encoder is never asked to encode.
+    """
+
+    def setUp(self) -> None:
+        import rag_m3
+        from rag_m3 import DEFAULT_M3_MODEL, M3Encoder
+
+        self.rag_m3 = rag_m3
+        self.M3Encoder = M3Encoder
+        # Real (unpatched) scorer captured before priming swaps it out.
+        self._orig_colbert_score = M3Encoder.__dict__["colbert_score"]
+        self._orig_cache = dict(rag_m3._ENCODER_CACHE)
+        fake_encoder = M3Encoder.__new__(M3Encoder)  # skip __init__/weights
+        rag_m3._ENCODER_CACHE.clear()
+        rag_m3._ENCODER_CACHE[DEFAULT_M3_MODEL] = fake_encoder
+        self.addCleanup(self._restore)
+
+    def _restore(self) -> None:
+        # _prime_ mutates the class-level static method; put it back so
+        # the rest of the suite sees the real scorer.
+        self.M3Encoder.colbert_score = self._orig_colbert_score
+        self.rag_m3._ENCODER_CACHE.clear()
+        self.rag_m3._ENCODER_CACHE.update(self._orig_cache)
+
+    def test_primed_fast_path_int8_kwargs_and_score_parity(self) -> None:
+        from rag_m3 import M3Output
+
+        rng = np.random.default_rng(0)
+
+        def q_int8(rows: int) -> np.ndarray:
+            return np.clip(
+                np.round(rng.standard_normal((rows, 8)) * 40), -127, 127
+            ).astype(np.int8)
+
+        c0, c1 = q_int8(4), q_int8(3)
+        scales = [0.013, 0.021]
+        cache = M3Output(
+            dense=np.zeros((2, 8), dtype=np.float32),
+            sparse=[{}, {}],
+            colbert=[c0, c1],
+            colbert_scales=scales,
+        )
+        index = {
+            "chunks": [
+                {"chunk_id": "a", "text": "x"},
+                {"chunk_id": "b", "text": "y"},
+            ],
+            "_m3_cache": cache,
+        }
+        # Real scorer (per-chunk dequant) for the parity reference.
+        reference = self._orig_colbert_score.__func__
+
+        _prime_m3_index_cache_and_colbert(index)
+        patched = self.M3Encoder.colbert_score  # now the batched fast path
+
+        q = q_int8(5)
+        q_scale = 0.017
+        # (1) kwargs accepted — no TypeError (the core #1012 crash).
+        s0_fast = patched(q, c0, q_scale=q_scale, d_scale=scales[0])
+        s1_fast = patched(q, c1, q_scale=q_scale, d_scale=scales[1])
+        # (2) parity with the per-chunk dequant scorer (same arithmetic →
+        # bit-identical modulo fp32 rounding).
+        s0_ref = reference(q, c0, q_scale=q_scale, d_scale=scales[0])
+        s1_ref = reference(q, c1, q_scale=q_scale, d_scale=scales[1])
+        self.assertGreater(s0_ref, 0.0)  # non-degenerate fixture
+        self.assertAlmostEqual(s0_fast, s0_ref, places=4)
+        self.assertAlmostEqual(s1_fast, s1_ref, places=4)
+        # Without dequant the raw int8 dot sum is ~1000x larger; assert the
+        # fast path is nowhere near the un-scaled value (catches a silent
+        # drop of the scale multiply).
+        raw_unscaled = float(
+            np.sum(np.max(q.astype(np.float32) @ c0.astype(np.float32).T, axis=1))
+        )
+        self.assertLess(s0_fast, raw_unscaled * 0.5)
 
 
 if __name__ == "__main__":
