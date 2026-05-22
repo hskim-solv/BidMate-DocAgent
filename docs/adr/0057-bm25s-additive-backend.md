@@ -1,6 +1,6 @@
 # 0057: BM25 backend을 `bm25s`로 추가 분석 변형
 
-- **Status**: proposed
+- **Status**: accepted
 - **Date**: 2026-05-18
 - **Deciders**: hskim
 - **Related**: [ADR 0001](./0001-preserve-naive-baseline.md) (naive_baseline 불변식), [ADR 0010](./0010-hybrid-bm25-dense-retrieval-rrf.md) (하이브리드 BM25 기준선), [ADR 0011](./0011-llm-synthesis-as-additive-ablation.md) / [ADR 0013](./0013-observability-as-additive-pluggable-surface.md) / [ADR 0023](./0023-hyde-query-expansion-ablation.md) / [ADR 0031](./0031-bm25-korean-morphology-additive.md) (재사용되는 additive opt-in 백엔드 패턴), [issue #988](https://github.com/hskim-solv/BidMate-DocAgent/issues/988), context7 audit sweep 2026-05-18 (`~/.claude/plans/context7-fizzy-glade.md`)
@@ -39,7 +39,7 @@ context7 audit Tier 2 finding — 현재 `rag_retrieval.py:80` 가 `rank_bm25.BM
 
 ## Re-open 조건
 
-이 ADR 이 re-open 되어 `bm25_backend` 기본값이 `bm25s` 로 flip 되는 조건은 다음 **세 가지 모두** 충족:
+additive opt-in 백엔드 (`bm25_backend: bm25s`) 추가 자체는 `accepted` — 구현·머지 완료 (PR #988), opt-in 으로 운영 중. 아래는 **default flip** (네 프리셋 기본값을 `okapi` → `bm25s` 로 변경) 만의 **deferred** 조건이다. 이 ADR 이 re-open 되어 `bm25_backend` 기본값이 `bm25s` 로 flip 되는 조건은 다음 **세 가지 모두** 충족:
 
 1. 메인테이너가 공개 합성 eval surface (n=42) 또는 비공개 real eval (n=100) 에서 `bm25_backend: bm25s` + `bm25s` 설치 상태로 실측 — `eval_summary.json` 에 실제 `full_bm25s` 행 (build-fail 이 아닌) 생성.
 2. `full_bm25s` 가 `hybrid_bm25` (자연스러운 control — 같은 `retrieval_backend: hybrid`, `bm25_backend` 만 차이) 대비 다음 중 **하나 이상** 충족:
@@ -48,7 +48,7 @@ context7 audit Tier 2 finding — 현재 `rag_retrieval.py:80` 가 `rank_bm25.BM
    - [`tests/test_bm25_backend_parity.py`](../../tests/test_bm25_backend_parity.py) 의 `top-N overlap ≥ 95%` 가 real corpus 에서도 유지 (작은 fixture 와 다를 수 있음)
 3. 후속 ADR (`005x` 이상 번호) 이 열려 `bm25_backend` 기본값 flip — CI 설치 footprint 영향 (`bm25s` + numpy sparse 추가) 및 base `requirements.txt` 에 `bm25s` 추가할지 opt-in 유지할지 결정 문서화.
 
-조건 1 충족 + 조건 2 미충족 시 (ADR 0019/0021/0031 이 임베딩/토크나이저에서 발견한 `0pp-on-hybrid` 패턴이 BM25 backend 에도 성립), 이 ADR 은 `accepted` 상태 유지하고 공개 합성 eval surface 에 측정 부록만 추가 — 측정 폐루프 작동.
+조건 1 충족 + 조건 2 미충족 시 (ADR 0019/0021/0031 이 임베딩/토크나이저에서 발견한 `0pp-on-hybrid` 패턴이 BM25 backend 에도 성립), 이 ADR 은 `accepted` 상태 유지 (default flip 만 deferred) 하고 공개 합성 eval surface 에 측정 부록만 추가 — 측정 폐루프 작동.
 
 ## Measurement (real-100, 2026-05-22)
 
