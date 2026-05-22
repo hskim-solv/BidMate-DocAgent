@@ -1,30 +1,38 @@
 {
   "axis_cis": {
+    "answer_reasoning": {
+      "alpha": 0.05,
+      "ci_hi": 0.5387058989343325,
+      "ci_lo": 0.450707228692032,
+      "mean": 0.4980370954329726,
+      "n": 166,
+      "num_resamples": 1000
+    },
     "planner_decomposition": {
       "alpha": 0.05,
-      "ci_hi": 0.5171547668471324,
-      "ci_lo": 0.44022596363585886,
-      "mean": 0.47874358398165506,
+      "ci_hi": 0.5354072553136763,
+      "ci_lo": 0.46229589689616307,
+      "mean": 0.4968477003054273,
       "n": 221,
       "num_resamples": 1000
     },
     "retrieval_recalls": {
       "alpha": 0.05,
-      "ci_hi": 0.5439565760997993,
-      "ci_lo": 0.4693946896787718,
-      "mean": 0.5080500066532189,
+      "ci_hi": 0.5484641410595357,
+      "ci_lo": 0.47494046654659156,
+      "mean": 0.5107880502426011,
       "n": 221,
       "num_resamples": 1000
     }
   },
   "axis_means": {
-    "answer_reasoning": null,
-    "planner_decomposition": 0.47874358398165506,
-    "retrieval_recalls": 0.5080500066532186
+    "answer_reasoning": 0.4980370954329726,
+    "planner_decomposition": 0.4968477003054273,
+    "retrieval_recalls": 0.5107880502426012
   },
-  "cases_with_synthesis_llm_call": 0,
+  "cases_with_synthesis_llm_call": 166,
   "effective_n": {
-    "answer_reasoning": 0,
+    "answer_reasoning": 166,
     "planner_decomposition": 221,
     "retrieval_recalls": 221
   },

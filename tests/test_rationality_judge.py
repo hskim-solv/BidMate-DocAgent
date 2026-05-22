@@ -132,6 +132,22 @@ class TestAnswerReasoningEnvOffSkip(unittest.TestCase):
         self.assertEqual(aggregate["effective_n"]["planner_decomposition"], 3)
 
 
+class TestAnswerReasoningCaptured(unittest.TestCase):
+    """ADR 0056 follow-up (#1312 pending → measured): a trace carrying a
+    populated synthesis_llm_call must yield answer_reasoning effective_n > 0,
+    proving the BIDMATE_TRACE_FULL=1 stub-synthesis wiring reaches the axis."""
+
+    def test_synthesis_populated_trace_scores_answer_reasoning(self):
+        summary = _summary_with_inline_traces(n=4, with_synthesis=True)
+        local, aggregate = judge_rationality(summary, backend="stub")
+        # Every case carries a synthesis_llm_call → all scored.
+        self.assertEqual(aggregate["effective_n"]["answer_reasoning"], 4)
+        self.assertEqual(aggregate["cases_with_synthesis_llm_call"], 4)
+        self.assertIsNotNone(aggregate["axis_means"]["answer_reasoning"])
+        for case in local["cases"]:
+            self.assertIsNotNone(case["answer_reasoning"])
+
+
 class TestAggregateBootstrapCI(unittest.TestCase):
     def test_aggregate_includes_axis_means_and_cis(self):
         summary = _summary_with_inline_traces(n=10)
