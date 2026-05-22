@@ -73,6 +73,18 @@ fi
 # realistically-mergeable branches. Overridable for debugging.
 cherry_max="${BIDMATE_WORKTREE_HYGIENE_CHERRY_MAX:-100}"
 
+# Aggregate cap on how many (b) patch-id walks run in a SINGLE push, across all
+# worktrees. `cherry_max` bounds the cost of ONE walk, but with many stale
+# worktrees the per-walk cost still SUMS: N small walks, layered on git's own
+# pack memory during the push, was enough to get the hook OOM-killed (SIGKILL →
+# broken pipe → push aborts 141) at 37 accumulated worktrees (issue #1251) even
+# though every individual walk was within cherry_max. Once the budget is spent
+# the remaining branches fall back to the cheap signals (a)/(c)/(d) only — they
+# still get flagged by ancestor / gone-upstream / opt-in gh, just not by the
+# patch-id walk. Soft-warn semantics are unchanged. Overridable for debugging.
+cherry_budget="${BIDMATE_WORKTREE_HYGIENE_CHERRY_BUDGET:-20}"
+cherry_walks=0
+
 _is_merged() {
   # Returns 0 (merged/stale) if any signal fires; 1 otherwise. Cheap local
   # signals first; the opt-in network call only for branches still unflagged.
@@ -90,7 +102,8 @@ _is_merged() {
   # ref never flags a branch.
   local ahead
   ahead=$(git rev-list --count "$base_ref..$branch" 2>/dev/null || echo 0)
-  if [[ "$ahead" =~ ^[0-9]+$ && "$ahead" -le "$cherry_max" ]]; then
+  if [[ "$ahead" =~ ^[0-9]+$ && "$ahead" -le "$cherry_max" && "$cherry_walks" -lt "$cherry_budget" ]]; then
+    cherry_walks=$((cherry_walks + 1))
     local cherry
     if cherry=$(git cherry "$base_ref" "$branch" 2>/dev/null); then
       printf '%s\n' "$cherry" | grep -q '^+' || return 0

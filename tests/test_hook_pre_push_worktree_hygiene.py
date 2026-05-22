@@ -1,4 +1,4 @@
-"""Regression: pre-push orphan-worktree hygiene (issue #1052, #1163, #1270).
+"""Regression: pre-push orphan-worktree hygiene (issue #1052, #1163, #1270, #1251).
 
 Pins the soft-warn contract (always exit 0; warning only on stderr) for
 `.githooks/_pre-push-worktree-hygiene.sh`:
@@ -12,6 +12,8 @@ Pins the soft-warn contract (always exit 0; warning only on stderr) for
   7. gh PR MERGED + opt-in env                  → exit 0, stderr names it
   8. gh PR MERGED but opt-in OFF (default)      → exit 0, stderr quiet
   9. cherry walk capped by divergence (#1270)   → exit 0, walk skipped past cap
+ 10. aggregate cherry budget (#1251)             → exit 0, ≤budget walks run
+ 11. default budget never bites a small repo     → exit 0, all small branches flagged
 
 Scenarios 5-8 are the #1163 fix: `git branch --merged` only lists ancestor
 tips, so squash-merges (this repo's default merge path) were a silent
@@ -63,11 +65,15 @@ class TestPrePushWorktreeHygiene(unittest.TestCase):
             check=False,
         )
 
-    def _add_worktree(self, name: str, branch: str, *, extra_commit: bool) -> Path:
+    def _add_worktree(
+        self, name: str, branch: str, *, extra_commit: bool, fname: str = "extra.txt"
+    ) -> Path:
         wt = Path(self._tmp) / name
         self._git("worktree", "add", "-b", branch, str(wt), "main")
         if extra_commit:
-            (wt / "extra.txt").write_text("e\n", encoding="utf-8")
+            # Per-branch filename so two squash-merged branches don't collide on
+            # the same path when both are merged into main (budget tests).
+            (wt / fname).write_text("e\n", encoding="utf-8")
             self._git("add", "-A", cwd=wt)
             self._git("commit", "-q", "-m", "ahead of main", cwd=wt)
         return wt
@@ -207,6 +213,38 @@ class TestPrePushWorktreeHygiene(unittest.TestCase):
         self.assertEqual(0, r.returncode, r.stderr)
         # Walk skipped → signal (b) never fires → branch not flagged.
         self.assertNotIn("feat-squash", r.stderr)
+
+    def test_cherry_budget_bounds_aggregate_walks(self) -> None:
+        # #1251: cherry_max bounds ONE walk, but with many stale worktrees the
+        # per-walk cost SUMS — N small walks plus git's pack memory during the
+        # push OOM-killed the hook (SIGKILL → broken pipe → push aborts 141) at
+        # 37 worktrees. An aggregate budget caps how many (b) patch-id walks run
+        # per push. Two squash-merged branches (only signal b can flag each —
+        # non-ancestor, no gone upstream, no gh) + budget=1 ⇒ at most one walk
+        # runs, so at most one is flagged, order-independent.
+        self._add_worktree("wt_sq1", "feat-sq1", extra_commit=True, fname="a.txt")
+        self._squash_merge("feat-sq1")
+        self._add_worktree("wt_sq2", "feat-sq2", extra_commit=True, fname="b.txt")
+        self._squash_merge("feat-sq2")
+        env = {**os.environ, "BIDMATE_WORKTREE_HYGIENE_CHERRY_BUDGET": "1"}
+        r = self._run_hook(env=env)
+        self.assertEqual(0, r.returncode, r.stderr)
+        flagged = r.stderr.count("git worktree remove")
+        self.assertLessEqual(
+            flagged, 1, f"budget=1 must permit at most one walk: {r.stderr}"
+        )
+
+    def test_cherry_budget_default_flags_all_small_branches(self) -> None:
+        # Sanity: the default budget never bites in a normal small repo — both
+        # squash-merged branches are still flagged by the (b) walk.
+        self._add_worktree("wt_sq1", "feat-sq1", extra_commit=True, fname="a.txt")
+        self._squash_merge("feat-sq1")
+        self._add_worktree("wt_sq2", "feat-sq2", extra_commit=True, fname="b.txt")
+        self._squash_merge("feat-sq2")
+        r = self._run_hook()
+        self.assertEqual(0, r.returncode, r.stderr)
+        self.assertIn("feat-sq1", r.stderr)
+        self.assertIn("feat-sq2", r.stderr)
 
     def test_gh_signal_is_off_by_default(self) -> None:
         # Same setup, fake gh on PATH reports MERGED — but without the opt-in
