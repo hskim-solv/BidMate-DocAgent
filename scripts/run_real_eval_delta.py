@@ -122,23 +122,15 @@ SAFE_TOPLEVEL_KEYS = frozenset(
         # The extractor below explicitly whitelists each scalar + the
         # CI sub-block; case-level fields are dropped.
         "ablation_full",
-        # Issue #650 / ADR 0039: per-format accuracy breakdown keyed by
-        # document source_format (hwp / pdf / synthetic_public_sample).
-        # Bucket keys are whitelisted in SAFE_FORMAT_BUCKET_KEYS (fail-closed);
-        # metric sub-keys mirror SAFE_ABLATION_FULL_SCALAR_KEYS; no per-case
-        # payload crosses the boundary.
-        "by_format",
-        # Issue #845 / ADR 0039: per-hardcase-category accuracy breakdown,
-        # populated by run_eval.py:677-685 when cases carry the
-        # ``hardcase_categories`` field. Bucket keys are whitelisted in
-        # SAFE_HARDCASE_CATEGORY_BUCKET_KEYS (fail-closed) so the public
-        # taxonomy can never be silently widened on the committable surface.
-        "by_hardcase_category",
-        # Issue #870 / ADR 0048: per-metadata-field accuracy breakdown for
-        # the four single-doc fields (agency / project / budget / deadline).
-        # Bucket keys are whitelisted in SAFE_METADATA_FIELD_BUCKET_KEYS so
-        # the enum can never be silently widened on the committable surface.
-        "by_metadata_field",
+        # NOTE: by_format / by_hardcase_category / by_metadata_field are NOT
+        # listed here — like by_query_type, they are handled exclusively by
+        # their dedicated fail-closed extractors below (search "by_format
+        # aggregate"). Listing them here would route them through the main
+        # loop's `else: out[key] = value` raw passthrough, which survives
+        # whenever a slice carries no whitelisted bucket — leaking nested
+        # private payloads (#1286). The dedicated extractors only ever emit
+        # whitelisted buckets + whitelisted metrics, so dropping them from the
+        # top-level passthrough is the fix.
         # Issue #870 / ADR 0048: 10-bin ECE + Brier score over
         # (confidence, correctness) pairs. Numeric scalars only; the
         # extractor whitelists ece / brier / n / num_bins. Block is null
@@ -264,7 +256,11 @@ SAFE_RETRY_EFFECTIVENESS_CI_KEYS = ("recovery_rate", "residual_failure_rate")
 # canonical config identifier.
 SAFE_RUN_MANIFEST_KEYS = ("git_commit", "git_dirty", "config_sha256", "generated_at")
 
-# Per-slice subkeys extracted from `by_query_type`.
+# Per-slice subkeys extracted from `by_query_type` / `by_format` /
+# `by_hardcase_category` / `by_metadata_field`. ``abstention_outcomes`` and
+# ``retry_reason_counts`` are dicts that need their own anonymization in the
+# slice loops below (the latter via :func:`_collapse_retry_reason_counts`,
+# #1286); every other entry is a scalar copied verbatim.
 SAFE_SLICE_METRICS = (
     "num_predictions",
     "accuracy",
@@ -272,6 +268,7 @@ SAFE_SLICE_METRICS = (
     "abstention",
     "abstention_outcomes",
     "answer_format_compliance",
+    "retry_reason_counts",
 )
 
 # Keys that must never be read or written by this script. The
@@ -372,6 +369,25 @@ def _extract_ablation_full(run_summary: dict[str, Any]) -> dict[str, Any] | None
     return out or None
 
 
+def _collapse_retry_reason_counts(value: dict[str, Any]) -> dict[str, int]:
+    """Strip the private payload after the first ``:`` from retry-reason keys.
+
+    Reason keys are MOSTLY taxonomy codes (``topic_not_grounded``), but
+    comparison reasons embed private payloads after a colon — e.g.
+    ``missing_comparison_entity:<agency>`` (Korean agency names) or
+    ``missing_comparison_doc:<공고번호>`` (real doc ids). Persisting them
+    verbatim leaked private real-eval metadata (#1204). Keep only the enum
+    prefix before the first ``:`` and sum the counts of any keys that collapse
+    together. The taxonomy totals are preserved; only the identifying payload
+    is dropped. Shared by the top-level and per-slice extractors (#1286).
+    """
+    collapsed: dict[str, int] = {}
+    for k, v in value.items():
+        prefix = str(k).split(":", 1)[0]
+        collapsed[prefix] = collapsed.get(prefix, 0) + int(v)
+    return collapsed
+
+
 def extract_aggregate(summary: dict[str, Any]) -> dict[str, Any]:
     """Return a dict containing only ADR-0005-safe aggregate fields.
 
@@ -402,19 +418,7 @@ def extract_aggregate(summary: dict[str, Any]) -> dict[str, Any]:
                 if isinstance(v, dict)
             }
         elif key == "retry_reason_counts" and isinstance(value, dict):
-            # Reason keys are MOSTLY taxonomy codes ("topic_not_grounded"),
-            # but comparison reasons embed private payloads after a colon —
-            # e.g. ``missing_comparison_entity:<agency>`` (Korean agency
-            # names) or ``missing_comparison_doc:<공고번호>`` (real doc ids).
-            # Persisting them verbatim leaked private real-eval metadata
-            # (#1204). Keep only the enum prefix before the first ``:`` and
-            # sum the counts of any keys that collapse together. The taxonomy
-            # totals are preserved; only the identifying payload is dropped.
-            collapsed: dict[str, int] = {}
-            for k, v in value.items():
-                prefix = str(k).split(":", 1)[0]
-                collapsed[prefix] = collapsed.get(prefix, 0) + int(v)
-            out[key] = collapsed
+            out[key] = _collapse_retry_reason_counts(value)
         elif key == "retry_effectiveness" and isinstance(value, dict):
             extracted: dict[str, Any] = {
                 sub: value.get(sub)
@@ -555,6 +559,8 @@ def extract_aggregate(summary: dict[str, Any]) -> dict[str, Any]:
                     }
                     if bin_out:
                         extracted_slice[m] = bin_out
+                elif m == "retry_reason_counts" and isinstance(raw, dict):
+                    extracted_slice[m] = _collapse_retry_reason_counts(raw)
                 else:
                     extracted_slice[m] = raw
             slice_out[str(slice_name)] = extracted_slice
@@ -584,6 +590,8 @@ def extract_aggregate(summary: dict[str, Any]) -> dict[str, Any]:
                     }
                     if bin_out:
                         extracted_bucket[m] = bin_out
+                elif m == "retry_reason_counts" and isinstance(raw, dict):
+                    extracted_bucket[m] = _collapse_retry_reason_counts(raw)
                 else:
                     extracted_bucket[m] = raw
             if extracted_bucket:
@@ -616,6 +624,8 @@ def extract_aggregate(summary: dict[str, Any]) -> dict[str, Any]:
                     }
                     if bin_out:
                         extracted_bucket[m] = bin_out
+                elif m == "retry_reason_counts" and isinstance(raw, dict):
+                    extracted_bucket[m] = _collapse_retry_reason_counts(raw)
                 else:
                     extracted_bucket[m] = raw
             if extracted_bucket:
@@ -648,6 +658,8 @@ def extract_aggregate(summary: dict[str, Any]) -> dict[str, Any]:
                     }
                     if bin_out:
                         extracted_bucket[m] = bin_out
+                elif m == "retry_reason_counts" and isinstance(raw, dict):
+                    extracted_bucket[m] = _collapse_retry_reason_counts(raw)
                 else:
                     extracted_bucket[m] = raw
             if extracted_bucket:
