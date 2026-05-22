@@ -61,6 +61,18 @@ if [[ -n "${BIDMATE_WORKTREE_HYGIENE_GH:-}" ]] && command -v gh >/dev/null 2>&1;
   gh_enabled="1"
 fi
 
+# Cap on how far a branch may diverge from base before we SKIP the (b)
+# patch-equivalence walk. `git cherry` computes a patch-id for every commit
+# since the fork point, so its time AND memory scale with commits-ahead. A
+# branch hundreds of commits ahead of base always has unmerged '+' commits and
+# so can never be flagged by (b) anyway — the walk is pure waste. With many
+# stale worktrees that waste spikes memory enough to get the hook OOM-killed
+# mid-push (SIGKILL → broken pipe → push aborts with exit 141), forcing
+# `git push --no-verify` and defeating the hook (issue #1270). A cheap
+# graph-only pre-check (rev-list --count) gates the walk to small,
+# realistically-mergeable branches. Overridable for debugging.
+cherry_max="${BIDMATE_WORKTREE_HYGIENE_CHERRY_MAX:-100}"
+
 _is_merged() {
   # Returns 0 (merged/stale) if any signal fires; 1 otherwise. Cheap local
   # signals first; the opt-in network call only for branches still unflagged.
@@ -71,10 +83,18 @@ _is_merged() {
 
   # (b) patch-equivalent — no '+' line ⇒ every commit since the fork point is
   # already applied on base by patch-id (catches single-commit squash-merge).
-  # Guarded on cherry succeeding so a bad ref never flags a branch.
-  local cherry
-  if cherry=$(git cherry "$base_ref" "$branch" 2>/dev/null); then
-    printf '%s\n' "$cherry" | grep -q '^+' || return 0
+  # Cheap graph-only pre-check first: `git cherry` is O(commits-ahead) in time
+  # AND memory, so skip the patch-id walk for branches diverged past
+  # $cherry_max (they always carry unmerged '+' commits and can never be
+  # flagged here anyway — see #1270). Guarded on cherry succeeding so a bad
+  # ref never flags a branch.
+  local ahead
+  ahead=$(git rev-list --count "$base_ref..$branch" 2>/dev/null || echo 0)
+  if [[ "$ahead" =~ ^[0-9]+$ && "$ahead" -le "$cherry_max" ]]; then
+    local cherry
+    if cherry=$(git cherry "$base_ref" "$branch" 2>/dev/null); then
+      printf '%s\n' "$cherry" | grep -q '^+' || return 0
+    fi
   fi
 
   # (c) remote-tracking branch deleted on the remote (--delete-branch merge).
