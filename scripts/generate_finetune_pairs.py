@@ -292,7 +292,7 @@ def build_subchunks(input_dir: Path, max_chars: int) -> list[dict[str, Any]]:
 def mine_hard_negatives(
     positive: dict[str, Any],
     query: str,
-    subchunks: list[dict[str, Any]],
+    by_id: dict[str, dict[str, Any]],
     bm25_index: dict[str, Any],
     rank_window: tuple[int, int],
     neg_per_pos: int,
@@ -303,6 +303,10 @@ def mine_hard_negatives(
     Drops same-``doc_id`` chunks (likely false negatives) then samples
     from the configured rank window. Window is clamped to the
     available corpus so this stays robust on small fixtures.
+
+    ``by_id`` is the ``chunk_id -> chunk`` lookup, built once by the
+    caller and reused across every query — rebuilding it per call made
+    this O(queries x corpus) and dominated the suite's wall-clock.
     """
     bm25, chunk_ids = get_or_build_bm25(bm25_index)
     query_tokens = tokenize(query)
@@ -311,7 +315,6 @@ def mine_hard_negatives(
     scores = bm25.get_scores(query_tokens)
     ranked = sorted(zip(chunk_ids, scores), key=lambda kv: kv[1], reverse=True)
 
-    by_id = {c["chunk_id"]: c for c in subchunks}
     positive_doc_id = positive["doc_id"]
     candidates: list[tuple[str, float, int]] = []
     for rank, (cid, score) in enumerate(ranked):
@@ -378,6 +381,7 @@ def generate_pairs(
         raise RuntimeError(f"No sub-chunks produced from {input_dir}.")
 
     bm25_index: dict[str, Any] = {"chunks": subchunks}
+    by_id = {c["chunk_id"]: c for c in subchunks}
     guard = ContaminationGuard.from_eval_queries(load_eval_queries())
 
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -400,7 +404,7 @@ def generate_pairs(
                 negs = mine_hard_negatives(
                     chunk,
                     q,
-                    subchunks,
+                    by_id,
                     bm25_index,
                     hard_neg_rank_window,
                     neg_per_pos,

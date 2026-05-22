@@ -29,6 +29,11 @@ import sys
 import unittest
 from pathlib import Path
 
+import pytest
+
+# Every case here runs the harness end-to-end (subprocess + index build) —
+# tens of seconds each. Marked slow so `make test-fast` deselects it; CI runs it.
+pytestmark = pytest.mark.slow
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 
