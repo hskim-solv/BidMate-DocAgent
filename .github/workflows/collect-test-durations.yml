@@ -1,0 +1,61 @@
+name: Collect .test_durations (one-shot)
+
+# TEMPORARY workflow (issue #1281). Manually dispatched to regenerate the
+# `.test_durations` baseline that pytest-split consults for balanced shard
+# partitioning in pr-eval.yml. It MUST run in the exact pr-eval test
+# environment — `hashing` embedding backend + FlagEmbedding installed via
+# requirements-dev.txt — so the real-model `slow` tests
+# (tests/test_m3_backend_regression.py) and their BGE-M3 model downloads are
+# timed as they actually occur in CI. Collecting locally would mis-time these
+# (models are cached), producing a file that re-imbalances CI.
+#
+# Run the FULL suite SERIALLY (no xdist, no --splits): pytest-split's
+# --store-durations only aggregates correctly without xdist, and durations
+# must be the complete unsharded set. The artifact is downloaded, committed as
+# `.test_durations`, and THIS workflow is deleted in the same PR.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  EMBEDDING_BACKEND: hashing
+  PYTHONDONTWRITEBYTECODE: "1"
+
+jobs:
+  collect:
+    name: Run full suite with --store-durations
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Run full suite (serial) and store durations
+        # Direct pytest invocation (NOT scripts/test.sh) to avoid the
+        # `-n auto` xdist flags it injects — xdist breaks --store-durations
+        # aggregation. No --splits/--group so the file is the complete suite.
+        # `|| true`: a single test failure must not abort the run before the
+        # durations file is written; we still get a usable baseline.
+        run: |
+          python -m pytest -q --store-durations \
+            || echo "pytest exited non-zero; .test_durations still written for executed tests"
+
+      - name: Upload .test_durations
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-durations
+          path: .test_durations
+          if-no-files-found: error
