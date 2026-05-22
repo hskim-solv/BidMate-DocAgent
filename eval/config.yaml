@@ -329,6 +329,13 @@ ablation_runs:
     retrieval_mode: flat
     retrieval_backend: hybrid
     bm25_backend: bm25s
+    # Issue #988 / ADR 0057 — bm25s now propagates to the execution plan
+    # (rag_core threading), so `_make_bm25_instance(..., "bm25s")` raises a
+    # typed RuntimeError at build time when the wheel is missing — no silent
+    # okapi fallback. Gate the row on the module like `m3_full` gates on
+    # FlagEmbedding so the public-synthetic CI (no requirements-bm25s.txt)
+    # cleanly skips it instead of crashing the smoke target.
+    requires_module: bm25s
   # Issue #561 / ADR 0031 valid-set expansion — Mecab-ko BM25 tokenizer.
   # Same retrieval + verifier as `full_kiwi` (kiwi control row); only
   # the BM25 tokenizer swaps to Mecab-ko morpheme analysis.

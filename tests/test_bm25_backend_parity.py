@@ -27,8 +27,13 @@ installed (the default minimal CI install).
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
+import rag_retrieval
+from eval.run_eval import normalize_run_config
+from rag_core import build_index_payload, run_rag_query
 from rag_pipeline_presets import PIPELINE_PRESETS, VALID_BM25_BACKENDS
 
 
@@ -187,3 +192,105 @@ def test_cache_isolation_between_backends() -> None:
         "Cache leaked between okapi and bm25s backends — different "
         "get_scores semantics, MUST be separate instances."
     )
+
+
+# ---------------------------------------------------------------------------
+# Contract 4: end-to-end plan plumbing (the measurement-validity guard)
+# ---------------------------------------------------------------------------
+#
+# Issue #988 / ADR 0057 — the `full_bm25s` eval row declares
+# `bm25_backend: bm25s`, but the swap is only MEASURED if the value reaches
+# `rag_retrieval._make_bm25_instance` through the full
+# normalize_run_config -> run_rag_query -> make_plan -> retrieve_candidates
+# chain. The original ADR 0057 PR left a gap: `make_plan` never wrote
+# `bm25_backend` into the plan dict and `run_rag_query` never threaded the
+# kwarg, so `retrieve_candidates` silently fell back to okapi while the
+# eval summary still labelled the run `bm25s` — okapi measured under a
+# bm25s label. Contracts 1-3 above are unit-level (`_make_bm25_instance`
+# parity, preset defaults, cache keys) and did NOT catch this; the missing
+# guard was the eval-row -> executed-plan flow. These tests spy on
+# `_make_bm25_instance` (delegating to okapi so the optional bm25s wheel is
+# not required) to assert which backend the *executed plan* actually requests.
+
+_E2E_QUERY = "기관 A의 보안 통제 요구사항은?"
+
+
+@pytest.fixture
+def fresh_hashing_index() -> dict:
+    """A fresh per-test index so the BM25 cache starts empty — the spy must
+    observe the build call, not a cache hit warmed by an earlier test."""
+    return build_index_payload(Path("data/raw"), embedding_backend="hashing")
+
+
+def _spy_make_bm25_instance(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """Patch `_make_bm25_instance` to record the requested backend and always
+    build okapi, so the threading assertion runs without the bm25s wheel."""
+    recorded: list[str] = []
+    real = rag_retrieval._make_bm25_instance
+
+    def spy(corpus: list[list[str]], backend: str) -> object:
+        recorded.append(backend)
+        return real(corpus, "okapi")
+
+    monkeypatch.setattr(rag_retrieval, "_make_bm25_instance", spy)
+    return recorded
+
+
+def test_full_bm25s_config_row_normalizes_to_bm25s() -> None:
+    """The committed `full_bm25s` ablation row must normalize to a run_config
+    whose `bm25_backend` is `bm25s` (the value that drives the executed plan)."""
+    import yaml
+
+    raw = yaml.safe_load(Path("eval/config.yaml").read_text(encoding="utf-8"))
+    row = next(r for r in raw["ablation_runs"] if r.get("name") == "full_bm25s")
+    run_config = normalize_run_config(row)
+    assert run_config["bm25_backend"] == "bm25s"
+    assert run_config["retrieval_backend"] == "hybrid"
+
+
+def test_bm25s_backend_reaches_make_bm25_instance(
+    fresh_hashing_index: dict, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """End-to-end: bm25_backend='bm25s' threads through run_rag_query ->
+    make_plan -> retrieve_candidates -> _make_bm25_instance(..., 'bm25s').
+
+    The guard the original ADR 0057 PR lacked — it fails on the dropped
+    `plan['bm25_backend']` (okapi-as-bm25s mislabel) regression."""
+    recorded = _spy_make_bm25_instance(monkeypatch)
+
+    result = run_rag_query(
+        fresh_hashing_index,
+        _E2E_QUERY,
+        pipeline="agentic_full",
+        retrieval_backend="hybrid",
+        bm25_backend="bm25s",
+    )
+
+    assert recorded, "BM25 was never built — query did not hit the hybrid path"
+    assert set(recorded) == {"bm25s"}, (
+        f"executed plan requested backends {set(recorded)} — bm25_backend did "
+        "not thread to retrieve_candidates (okapi-as-bm25s mislabel regression)"
+    )
+    assert result["plan"]["bm25_backend"] == "bm25s"
+    assert result["diagnostics"]["bm25_backend"] == "bm25s"
+
+
+def test_okapi_backend_is_default_and_reaches_make_bm25_instance(
+    fresh_hashing_index: dict, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Control: the default hybrid run requests okapi, never bm25s — so the
+    bm25s assertion above is meaningful (not vacuously satisfied by a
+    backend-blind code path). Also pins the ADR 0001 okapi default."""
+    recorded = _spy_make_bm25_instance(monkeypatch)
+
+    result = run_rag_query(
+        fresh_hashing_index,
+        _E2E_QUERY,
+        pipeline="agentic_full",
+        retrieval_backend="hybrid",
+    )
+
+    assert recorded, "BM25 was never built — query did not hit the hybrid path"
+    assert set(recorded) == {"okapi"}
+    assert result["plan"]["bm25_backend"] == "okapi"
+    assert result["diagnostics"]["bm25_backend"] == "okapi"

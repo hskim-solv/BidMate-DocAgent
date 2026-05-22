@@ -972,6 +972,7 @@ def evaluate_run(
                 rrf_k=int(run_config.get("rrf_k", RRF_K)),
                 bm25_stopword_profile=str(run_config.get("bm25_stopword_profile", "shared")),
                 bm25_tokenizer=str(run_config.get("bm25_tokenizer", "regex")),
+                bm25_backend=str(run_config.get("bm25_backend", "okapi")),
             )
             conversation_state = prior_prediction.get("conversation_state") or conversation_state
 
@@ -992,6 +993,7 @@ def evaluate_run(
             rrf_k=int(run_config.get("rrf_k", RRF_K)),
             bm25_stopword_profile=str(run_config.get("bm25_stopword_profile", "shared")),
             bm25_tokenizer=str(run_config.get("bm25_tokenizer", "regex")),
+            bm25_backend=str(run_config.get("bm25_backend", "okapi")),
         )
         trace_path = write_prediction_trace(
             trace_dir,
