@@ -64,6 +64,85 @@ class TestHookFiresQuarterWindowFilter(unittest.TestCase):
         self.assertEqual(result["pretooluse_loadbearing_fires"], 0)
 
 
+class TestHookFiresV2FiveField(unittest.TestCase):
+    """Issue #1196: v2 5-field lines (ADR 0060) must parse with clean
+    fires_by_path keys. The old ad-hoc ``split("|", 3)`` fused
+    ``<category>|<path>`` into the path token, so every v2 fire produced a
+    corrupted key (e.g. ``"file-edit|rag_core.py"``)."""
+
+    def test_v2_5field_fires_by_path_is_clean(self):
+        lines = (
+            "2026-04-01T10:00:00Z|aware|loadbearing|file-edit|rag_core.py\n"
+            "2026-04-02T10:00:00Z|nudged|delegation-gate|agent-delegation|<user-prompt>\n"
+        )
+        with tempfile.TemporaryDirectory() as td:
+            repo = Path(td)
+            (repo / ".claude").mkdir()
+            (repo / ".claude" / ".hook-fires.log").write_text(lines)
+            result = sr.collect_governance_hooks(str(repo), "2026-04-01", "2026-06-30")
+        # path is the 5th field only — NOT "<category>|<path>".
+        self.assertEqual(
+            result["fires_by_path"], {"rag_core.py": 1, "<user-prompt>": 1}
+        )
+        self.assertNotIn("file-edit|rag_core.py", result["fires_by_path"])
+        # outcome (field 2), not the buggy hook field, drives the action split.
+        self.assertEqual(result["fires_by_action"].get("aware"), 1)
+        self.assertEqual(result["fires_by_action"].get("nudged"), 1)
+        self.assertEqual(result["pretooluse_loadbearing_fires"], 2)
+
+    def test_v2_5field_memory_lines_matched_by_hook(self):
+        # memory-lines fires are matched on the parsed hook field, not on a
+        # category that happens to equal "memory-lines". In v2 the real
+        # category is "line-count"; the hook field carries "memory-lines".
+        lines = (
+            "2026-04-01T10:00:00Z|aware|memory-lines|line-count|MEMORY.md\n"
+            "2026-04-01T11:00:00Z|aware|memory-lines|line-count|MEMORY.md\n"
+            "2026-04-01T12:00:00Z|blocked|memory-lines|line-count|MEMORY.md\n"
+            "2026-04-01T13:00:00Z|aware|loadbearing|file-edit|rag_core.py\n"
+        )
+        with tempfile.TemporaryDirectory() as td:
+            repo = Path(td)
+            (repo / ".claude").mkdir()
+            (repo / ".claude" / ".hook-fires.log").write_text(lines)
+            result = sr.collect_governance_hooks(str(repo), "2026-04-01", "2026-06-30")
+        self.assertEqual(result["memory_lines"], {"aware": 2, "blocked": 1})
+        # the v2 memory-lines path key is clean (MEMORY.md, not line-count|MEMORY.md).
+        self.assertIn("MEMORY.md", result["fires_by_path"])
+        self.assertNotIn("line-count|MEMORY.md", result["fires_by_path"])
+
+    def test_mixed_2field_4field_5field_all_parse(self):
+        # 2-field (pre-0060 shim) + 4-field (legacy) + 5-field (v2) all count,
+        # each with a clean path key.
+        lines = (
+            "2026-04-01T10:00:00Z|legacy2.py\n"
+            "2026-04-01T11:00:00Z|aware|load-bearing|legacy4.py\n"
+            "2026-04-01T12:00:00Z|aware|loadbearing|file-edit|v2.py\n"
+        )
+        with tempfile.TemporaryDirectory() as td:
+            repo = Path(td)
+            (repo / ".claude").mkdir()
+            (repo / ".claude" / ".hook-fires.log").write_text(lines)
+            result = sr.collect_governance_hooks(str(repo), "2026-04-01", "2026-06-30")
+        self.assertEqual(result["pretooluse_loadbearing_fires"], 3)
+        self.assertEqual(
+            set(result["fires_by_path"]), {"legacy2.py", "legacy4.py", "v2.py"}
+        )
+
+    def test_v2_5field_with_trailing_extra_field(self):
+        # bash-guard emits a 6th `extra` field; path must still be field 5.
+        lines = (
+            "2026-04-01T10:00:00Z|blocked|bash-guard|gh-pr-create-stacked|"
+            "feat/issue-99-foo|on=feat/issue-88-bar\n"
+        )
+        with tempfile.TemporaryDirectory() as td:
+            repo = Path(td)
+            (repo / ".claude").mkdir()
+            (repo / ".claude" / ".hook-fires.log").write_text(lines)
+            result = sr.collect_governance_hooks(str(repo), "2026-04-01", "2026-06-30")
+        self.assertEqual(result["fires_by_path"], {"feat/issue-99-foo": 1})
+        self.assertEqual(result["fires_by_action"].get("blocked"), 1)
+
+
 def _git(*args, cwd, **kwargs):
     return subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, **kwargs)
 
