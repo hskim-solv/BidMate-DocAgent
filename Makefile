@@ -285,8 +285,19 @@ test:
 # tail latency; deselecting them keeps the local loop snappy. The CI gate
 # (`make test` / scripts/test.sh) still runs EVERYTHING — never rely on
 # test-fast for a merge decision.
+#
+# TEST_WORKERS caps xdist parallelism. Default 4 (not `-n auto`): a dev box
+# hosting many git worktrees runs under memory pressure, and `-n auto`
+# (one worker per logical core, 8–10 here) makes every worker re-collect +
+# import simultaneously at startup, spiking free RAM to near-zero. macOS
+# jetsam then OOM-kills a worker mid-schedule, and xdist references the dead
+# worker → `INTERNALERROR KeyError <WorkerController gwN>` after a 20-min
+# swap-thrash with zero tests run (issue #1318). Capping at 4 completes the
+# same suite in ~80s on that box. Override on a roomy machine/CI:
+# `make test-fast TEST_WORKERS=auto`.
+TEST_WORKERS ?= 4
 test-fast:
-	$(PYTHON) -m pytest -m "not slow" -n auto --dist loadfile -q
+	$(PYTHON) -m pytest -m "not slow" -n $(TEST_WORKERS) --dist loadfile -q
 
 # Fast P0 regression guards for the retrieval loop and answerable smoke path.
 # Run before any change to rag_core retrieval/verification or the eval pipeline.
