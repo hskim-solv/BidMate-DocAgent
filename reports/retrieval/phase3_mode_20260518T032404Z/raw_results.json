@@ -276,7 +276,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_보험개발원_요양기관_연계_DB_지원범위",
+        "qid": "real_da14ea693a",
         "query_type": "single_doc",
         "categories": [
           "long_context",
@@ -290,7 +290,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_보험개발원_청구내역_보관기간_변경주체",
+        "qid": "real_b9dca4f1fe",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -356,7 +356,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_경기도사회서비스원_security_penalty_cross_ref",
+        "qid": "real_0da3616c0d",
         "query_type": "single_doc",
         "categories": [
           "multi_hop",
@@ -370,7 +370,7 @@
         "ndcg@10": 0.07839826897867533
       },
       {
-        "qid": "real_경기도사회서비스원_next_vendor_obligation_scope",
+        "qid": "real_b8c7cd2769",
         "query_type": "abstention",
         "categories": [
           "no_answer",
@@ -493,7 +493,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_적십자사의료원_DR서버설치시간_vs_DBMS설치시간",
+        "qid": "real_3a91d46f90",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -506,7 +506,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_적십자사의료원_유사실적_하한기준",
+        "qid": "real_7433abf473",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -571,7 +571,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_부산관광공사_security_violation_abstention",
+        "qid": "real_a15eea6628",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -584,7 +584,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_부산관광공사_credit_eval_crossref",
+        "qid": "real_9df0b06536",
         "query_type": "single_doc",
         "categories": [
           "multi_hop",
@@ -652,7 +652,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_나노종합기술원_secs_equipment_count_multihop",
+        "qid": "real_40e625127f",
         "query_type": "single_doc",
         "categories": [
           "multi_hop",
@@ -666,7 +666,7 @@
         "ndcg@10": 0.09478836436955078
       },
       {
-        "qid": "real_나노종합기술원_copyright_ownership_noanswer",
+        "qid": "real_5460067ab5",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -692,7 +692,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_kochildcare_업무인계_deadline_basis",
+        "qid": "real_5e99249f57",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -759,7 +759,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_축산물품질평가원_하도급_인건비_기준_multihop",
+        "qid": "real_5ee1457642",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -772,7 +772,7 @@
         "ndcg@10": 0.1681522864689108
       },
       {
-        "qid": "real_축산물품질평가원_PM_재직요건_처벌규정_noanswer",
+        "qid": "real_f1fdacb3e6",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -785,7 +785,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_축산물품질평가원_하자담보_vs_웹접근성_인증시점",
+        "qid": "real_5d6b723969",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -798,7 +798,7 @@
         "ndcg@10": 0.22009176629808017
       },
       {
-        "qid": "real_축산물품질평가원_소프트웨어보안_진단인력_자격기준",
+        "qid": "real_3fcb400994",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -838,7 +838,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_대검찰청_TTS_scope_vs_security_crossref",
+        "qid": "real_d7ae694314",
         "query_type": "single_doc",
         "categories": [
           "multi_hop",
@@ -852,7 +852,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_대검찰청_3D_SLA_penalty_no_answer",
+        "qid": "real_cf07ab02f3",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -865,7 +865,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_서울여성가족재단_삭제지원시스템_하도급비율_평가점수_연계",
+        "qid": "real_b455935dd2",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -878,7 +878,7 @@
         "ndcg@10": 0.06362078819895171
       },
       {
-        "qid": "real_서울여성가족재단_AI삭제지원_모델정확도기준",
+        "qid": "real_74e7549be6",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -973,7 +973,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_어촌어항공단_security_violation_penalty_multihop",
+        "qid": "real_ac763e8792",
         "query_type": "single_doc",
         "categories": [
           "multi_hop",
@@ -987,7 +987,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_어촌어항공단_sw_output_ownership_supplier_rights",
+        "qid": "real_debc70b8f4",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -1053,7 +1053,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_파주도시관광공사_system_access_method_multihop",
+        "qid": "real_77d8bc3697",
         "query_type": "single_doc",
         "categories": [
           "multi_hop",
@@ -1067,7 +1067,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_파주도시관광공사_password_change_cycle_noans",
+        "qid": "real_8faf7276f4",
         "query_type": "abstention",
         "categories": [
           "no_answer",
@@ -1081,7 +1081,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_수협중앙회_ismp_rfp_작성주체_및_단계별책임",
+        "qid": "real_766df2fa69",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -1094,7 +1094,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_수협중앙회_ismp_보안등급_산출물폐기기준",
+        "qid": "real_87430ee98c",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -1159,7 +1159,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_서민금융진흥원_license_and_encryption_multihop",
+        "qid": "real_9422270574",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -1172,7 +1172,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_서민금융진흥원_subcontract_penalty_noanswer",
+        "qid": "real_b251e3bb22",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -1237,7 +1237,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_서울특별시교육청_PM자격요건과참여인력평가기준교차",
+        "qid": "real_fc57e44300",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -1250,7 +1250,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_서울특별시교육청_ISP수립기간산출근거없음",
+        "qid": "real_e780fb0f07",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -1289,7 +1289,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_인천공항운영서비스_수행실적_창업기업기준",
+        "qid": "real_b4c5fd7c35",
         "query_type": "single_doc",
         "categories": [
           "distractor_heavy",
@@ -1461,7 +1461,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_한국사학진흥재단_dbms_migration_hop",
+        "qid": "real_dcf8cf5e93",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -1474,7 +1474,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_한국사학진흥재단_penalty_no_answer",
+        "qid": "real_f060bffb35",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -1487,7 +1487,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_스포츠윤리센터_lms_personal_info_retention_multihop",
+        "qid": "real_887bed8513",
         "query_type": "single_doc",
         "categories": [
           "long_context",
@@ -1501,7 +1501,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_스포츠윤리센터_lms_presenter_change_deadline",
+        "qid": "real_4711117c96",
         "query_type": "abstention",
         "categories": [
           "distractor_heavy",
@@ -1568,7 +1568,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_고양도시관리공사_접속기록보관기간_vs_보안점검기준",
+        "qid": "real_8d59418010",
         "query_type": "single_doc",
         "categories": [
           "multi_hop",
@@ -1582,7 +1582,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_고양도시관리공사_응답속도_모바일앱기준",
+        "qid": "real_ad42ac38e4",
         "query_type": "abstention",
         "categories": [
           "no_answer",
@@ -1702,7 +1702,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_hanyeong_multihop_障害복구기준_vs_보안요건",
+        "qid": "real_873345dc76",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -1715,7 +1715,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_hanyeong_noanswer_트랙시스템_예산규모",
+        "qid": "real_2766a807ff",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -1728,7 +1728,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_국립민속박물관_security_contract_scope",
+        "qid": "real_0e128b5d53",
         "query_type": "single_doc",
         "categories": [
           "multi_hop",
@@ -1742,7 +1742,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_국립민속박물관_ip_commercial_use_penalty",
+        "qid": "real_18b20268a9",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -1782,7 +1782,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_아시아물위원회_multi_hop_pm_실적_건수_환산",
+        "qid": "real_a5d0a6643a",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -1795,7 +1795,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_아시아물위원회_no_answer_현지전문가_체재비_일단가",
+        "qid": "real_b53e739980",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -1808,7 +1808,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_남서울대학교_encryption_scope_multihop",
+        "qid": "real_9c8c910c3a",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -1821,7 +1821,7 @@
         "ndcg@10": 0.10633668103022985
       },
       {
-        "qid": "real_남서울대학교_warranty_penalty_noans",
+        "qid": "real_89d8248789",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -1834,7 +1834,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_광주연구원_security_password_vs_access_control",
+        "qid": "real_009fddd972",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -1847,7 +1847,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_광주연구원_no_answer_penalty_rate",
+        "qid": "real_00a0057ac6",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -1913,7 +1913,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_중앙선거관리위원회_security_device_provider",
+        "qid": "real_c3fd414b11",
         "query_type": "single_doc",
         "categories": [
           "distractor_heavy",
@@ -1927,7 +1927,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_중앙선거관리위원회_penalty_criteria_detail",
+        "qid": "real_80d8376ffd",
         "query_type": "abstention",
         "categories": [
           "no_answer",
@@ -1994,7 +1994,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_경기도일자리재단_security_penalty_grade_threshold",
+        "qid": "real_acb8820a60",
         "query_type": "single_doc",
         "categories": [
           "long_context",
@@ -2008,7 +2008,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_경기도일자리재단_worker_dispatch_legal_basis",
+        "qid": "real_3896276cef",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -2048,7 +2048,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_대전대학교_개인정보파기기한_vs_위탁기간종료",
+        "qid": "real_ee979f6734",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -2061,7 +2061,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_대전대학교_수행실적평가_사업예산비율_노답",
+        "qid": "real_8d9f31a4e8",
         "query_type": "abstention",
         "categories": [
           "no_answer",
@@ -2075,7 +2075,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_인천해양박물관_보안약점진단도구요건",
+        "qid": "real_4216b4d979",
         "query_type": "single_doc",
         "categories": [
           "distractor_heavy"
@@ -2088,7 +2088,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_인천해양박물관_동점처리낙찰기준",
+        "qid": "real_64a1993e22",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -2180,7 +2180,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_한국건강가정진흥원_backup_policy_vs_security_incident",
+        "qid": "real_149a09b54f",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -2193,7 +2193,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_한국건강가정진흥원_pm_work_location_penalty",
+        "qid": "real_749568f4a6",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -2259,7 +2259,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_KESCO_KCMVP_bo안적합성_절차",
+        "qid": "real_0480983d45",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -2272,7 +2272,7 @@
         "ndcg@10": 0.13886244387355454
       },
       {
-        "qid": "real_KESCO_통신서버_SLA기준",
+        "qid": "real_352cf83c93",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -2285,7 +2285,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_충북연구원_evaluation_score_breakdown",
+        "qid": "real_9661c17062",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -2298,7 +2298,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_충북연구원_penalty_grade_threshold",
+        "qid": "real_27e6510685",
         "query_type": "abstention",
         "categories": [
           "no_answer",
@@ -2390,7 +2390,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_대한장애인체육회_multi_hop_evaluation_ratio",
+        "qid": "real_c795f7741a",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -2403,7 +2403,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_대한장애인체육회_no_answer_security_penalty",
+        "qid": "real_1d9381ae61",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -2468,7 +2468,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_수협중앙회_videowallcontroller_connected_devices_multihop",
+        "qid": "real_e667537648",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -2481,7 +2481,7 @@
         "ndcg@10": 0.3589542101716347
       },
       {
-        "qid": "real_수협중앙회_wireless_mic_install_location_no_answer",
+        "qid": "real_4e24947cb4",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -2494,7 +2494,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_경희대학교_multihop_contract_deadline_and_penalty",
+        "qid": "real_f647485aa0",
         "query_type": "single_doc",
         "categories": [
           "multi_hop",
@@ -2508,7 +2508,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_경희대학교_noanswer_penalty_rate",
+        "qid": "real_31e1124b35",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -2521,7 +2521,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_고려대학교_budget_payment_vs_maintenance_crossref",
+        "qid": "real_44122848fa",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -2534,7 +2534,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_고려대학교_SFR_graduation_vs_transfer_quota_no_answer",
+        "qid": "real_4d304c4f9e",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -2574,7 +2574,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_국가철도공단_security_education_timing_multihop",
+        "qid": "real_8fe0bbf4b3",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -2587,7 +2587,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_국가철도공단_penalty_legal_basis_no_answer",
+        "qid": "real_368fcb2475",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -2600,7 +2600,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_국민연금공단_수료기준_과정유형별_교차",
+        "qid": "real_333040630f",
         "query_type": "single_doc",
         "categories": [
           "multi_hop",
@@ -2614,7 +2614,7 @@
         "ndcg@10": 0.6309297535714575
       },
       {
-        "qid": "real_국민연금공단_콘텐츠단가_모바일연동비용",
+        "qid": "real_b0967094fc",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -2627,7 +2627,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_국민연금공단_SFR006_환수금_산출물_cross",
+        "qid": "real_a006765b48",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -2640,7 +2640,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_국민연금공단_보안USB_암호모듈_인증기관",
+        "qid": "real_eddd69f30d",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -2653,7 +2653,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_서울시립대학교_하도급비율_담합제한_교차",
+        "qid": "real_b67696f813",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -2666,7 +2666,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_서울시립대학교_여성고용우수기업_가점기준_abstention",
+        "qid": "real_57a6caff4b",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -2679,7 +2679,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_세종테크노파크_유연근무유형별설정기능_multihop",
+        "qid": "real_cc672a3d14",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -2692,7 +2692,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_세종테크노파크_보안서약서제출기한_noanswer",
+        "qid": "real_68f7975488",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -2732,7 +2732,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_한국발명진흥회_무상하자보수_PM교체_연계",
+        "qid": "real_09ab802e5b",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -2745,7 +2745,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_한국발명진흥회_CPU사용률_야간시간대_보장여부",
+        "qid": "real_0625012a54",
         "query_type": "abstention",
         "categories": [
           "no_answer",
@@ -2815,7 +2815,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_한국수자원공사_supply-volume-multihop",
+        "qid": "real_aa7b5fa892",
         "query_type": "single_doc",
         "categories": [
           "multi_hop",
@@ -2829,7 +2829,7 @@
         "ndcg@10": 0.06943122193677727
       },
       {
-        "qid": "real_한국수자원공사_yongji-abstention",
+        "qid": "real_af41d88a64",
         "query_type": "abstention",
         "categories": [
           "no_answer",
@@ -2896,7 +2896,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_korail_산출물_보안준수_crossref",
+        "qid": "real_4b7b934fee",
         "query_type": "single_doc",
         "categories": [
           "multi_hop",
@@ -2910,7 +2910,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_korail_ISMP_구축예산산정기준_nonanswer",
+        "qid": "real_0681bac3d0",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -2923,7 +2923,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_인천공항운영서비스_평가비율_기술가격분리",
+        "qid": "real_88b2c950ea",
         "query_type": "abstention",
         "categories": [
           "multi_hop",
@@ -3221,7 +3221,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_보험개발원_요양기관_연계_DB_지원범위",
+        "qid": "real_da14ea693a",
         "query_type": "single_doc",
         "categories": [
           "long_context",
@@ -3235,7 +3235,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_보험개발원_청구내역_보관기간_변경주체",
+        "qid": "real_b9dca4f1fe",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -3301,7 +3301,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_경기도사회서비스원_security_penalty_cross_ref",
+        "qid": "real_0da3616c0d",
         "query_type": "single_doc",
         "categories": [
           "multi_hop",
@@ -3315,7 +3315,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_경기도사회서비스원_next_vendor_obligation_scope",
+        "qid": "real_b8c7cd2769",
         "query_type": "abstention",
         "categories": [
           "no_answer",
@@ -3438,7 +3438,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_적십자사의료원_DR서버설치시간_vs_DBMS설치시간",
+        "qid": "real_3a91d46f90",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -3451,7 +3451,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_적십자사의료원_유사실적_하한기준",
+        "qid": "real_7433abf473",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -3516,7 +3516,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_부산관광공사_security_violation_abstention",
+        "qid": "real_a15eea6628",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -3529,7 +3529,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_부산관광공사_credit_eval_crossref",
+        "qid": "real_9df0b06536",
         "query_type": "single_doc",
         "categories": [
           "multi_hop",
@@ -3597,7 +3597,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_나노종합기술원_secs_equipment_count_multihop",
+        "qid": "real_40e625127f",
         "query_type": "single_doc",
         "categories": [
           "multi_hop",
@@ -3611,7 +3611,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_나노종합기술원_copyright_ownership_noanswer",
+        "qid": "real_5460067ab5",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -3637,7 +3637,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_kochildcare_업무인계_deadline_basis",
+        "qid": "real_5e99249f57",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -3704,7 +3704,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_축산물품질평가원_하도급_인건비_기준_multihop",
+        "qid": "real_5ee1457642",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -3717,7 +3717,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_축산물품질평가원_PM_재직요건_처벌규정_noanswer",
+        "qid": "real_f1fdacb3e6",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -3730,7 +3730,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_축산물품질평가원_하자담보_vs_웹접근성_인증시점",
+        "qid": "real_5d6b723969",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -3743,7 +3743,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_축산물품질평가원_소프트웨어보안_진단인력_자격기준",
+        "qid": "real_3fcb400994",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -3783,7 +3783,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_대검찰청_TTS_scope_vs_security_crossref",
+        "qid": "real_d7ae694314",
         "query_type": "single_doc",
         "categories": [
           "multi_hop",
@@ -3797,7 +3797,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_대검찰청_3D_SLA_penalty_no_answer",
+        "qid": "real_cf07ab02f3",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -3810,7 +3810,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_서울여성가족재단_삭제지원시스템_하도급비율_평가점수_연계",
+        "qid": "real_b455935dd2",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -3823,7 +3823,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_서울여성가족재단_AI삭제지원_모델정확도기준",
+        "qid": "real_74e7549be6",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -3918,7 +3918,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_어촌어항공단_security_violation_penalty_multihop",
+        "qid": "real_ac763e8792",
         "query_type": "single_doc",
         "categories": [
           "multi_hop",
@@ -3932,7 +3932,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_어촌어항공단_sw_output_ownership_supplier_rights",
+        "qid": "real_debc70b8f4",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -3998,7 +3998,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_파주도시관광공사_system_access_method_multihop",
+        "qid": "real_77d8bc3697",
         "query_type": "single_doc",
         "categories": [
           "multi_hop",
@@ -4012,7 +4012,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_파주도시관광공사_password_change_cycle_noans",
+        "qid": "real_8faf7276f4",
         "query_type": "abstention",
         "categories": [
           "no_answer",
@@ -4026,7 +4026,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_수협중앙회_ismp_rfp_작성주체_및_단계별책임",
+        "qid": "real_766df2fa69",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -4039,7 +4039,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_수협중앙회_ismp_보안등급_산출물폐기기준",
+        "qid": "real_87430ee98c",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -4104,7 +4104,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_서민금융진흥원_license_and_encryption_multihop",
+        "qid": "real_9422270574",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -4117,7 +4117,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_서민금융진흥원_subcontract_penalty_noanswer",
+        "qid": "real_b251e3bb22",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -4182,7 +4182,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_서울특별시교육청_PM자격요건과참여인력평가기준교차",
+        "qid": "real_fc57e44300",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -4195,7 +4195,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_서울특별시교육청_ISP수립기간산출근거없음",
+        "qid": "real_e780fb0f07",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -4234,7 +4234,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_인천공항운영서비스_수행실적_창업기업기준",
+        "qid": "real_b4c5fd7c35",
         "query_type": "single_doc",
         "categories": [
           "distractor_heavy",
@@ -4406,7 +4406,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_한국사학진흥재단_dbms_migration_hop",
+        "qid": "real_dcf8cf5e93",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -4419,7 +4419,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_한국사학진흥재단_penalty_no_answer",
+        "qid": "real_f060bffb35",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -4432,7 +4432,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_스포츠윤리센터_lms_personal_info_retention_multihop",
+        "qid": "real_887bed8513",
         "query_type": "single_doc",
         "categories": [
           "long_context",
@@ -4446,7 +4446,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_스포츠윤리센터_lms_presenter_change_deadline",
+        "qid": "real_4711117c96",
         "query_type": "abstention",
         "categories": [
           "distractor_heavy",
@@ -4513,7 +4513,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_고양도시관리공사_접속기록보관기간_vs_보안점검기준",
+        "qid": "real_8d59418010",
         "query_type": "single_doc",
         "categories": [
           "multi_hop",
@@ -4527,7 +4527,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_고양도시관리공사_응답속도_모바일앱기준",
+        "qid": "real_ad42ac38e4",
         "query_type": "abstention",
         "categories": [
           "no_answer",
@@ -4647,7 +4647,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_hanyeong_multihop_障害복구기준_vs_보안요건",
+        "qid": "real_873345dc76",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -4660,7 +4660,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_hanyeong_noanswer_트랙시스템_예산규모",
+        "qid": "real_2766a807ff",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -4673,7 +4673,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_국립민속박물관_security_contract_scope",
+        "qid": "real_0e128b5d53",
         "query_type": "single_doc",
         "categories": [
           "multi_hop",
@@ -4687,7 +4687,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_국립민속박물관_ip_commercial_use_penalty",
+        "qid": "real_18b20268a9",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -4727,7 +4727,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_아시아물위원회_multi_hop_pm_실적_건수_환산",
+        "qid": "real_a5d0a6643a",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -4740,7 +4740,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_아시아물위원회_no_answer_현지전문가_체재비_일단가",
+        "qid": "real_b53e739980",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -4753,7 +4753,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_남서울대학교_encryption_scope_multihop",
+        "qid": "real_9c8c910c3a",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -4766,7 +4766,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_남서울대학교_warranty_penalty_noans",
+        "qid": "real_89d8248789",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -4779,7 +4779,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_광주연구원_security_password_vs_access_control",
+        "qid": "real_009fddd972",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -4792,7 +4792,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_광주연구원_no_answer_penalty_rate",
+        "qid": "real_00a0057ac6",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -4858,7 +4858,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_중앙선거관리위원회_security_device_provider",
+        "qid": "real_c3fd414b11",
         "query_type": "single_doc",
         "categories": [
           "distractor_heavy",
@@ -4872,7 +4872,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_중앙선거관리위원회_penalty_criteria_detail",
+        "qid": "real_80d8376ffd",
         "query_type": "abstention",
         "categories": [
           "no_answer",
@@ -4939,7 +4939,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_경기도일자리재단_security_penalty_grade_threshold",
+        "qid": "real_acb8820a60",
         "query_type": "single_doc",
         "categories": [
           "long_context",
@@ -4953,7 +4953,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_경기도일자리재단_worker_dispatch_legal_basis",
+        "qid": "real_3896276cef",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -4993,7 +4993,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_대전대학교_개인정보파기기한_vs_위탁기간종료",
+        "qid": "real_ee979f6734",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -5006,7 +5006,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_대전대학교_수행실적평가_사업예산비율_노답",
+        "qid": "real_8d9f31a4e8",
         "query_type": "abstention",
         "categories": [
           "no_answer",
@@ -5020,7 +5020,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_인천해양박물관_보안약점진단도구요건",
+        "qid": "real_4216b4d979",
         "query_type": "single_doc",
         "categories": [
           "distractor_heavy"
@@ -5033,7 +5033,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_인천해양박물관_동점처리낙찰기준",
+        "qid": "real_64a1993e22",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -5125,7 +5125,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_한국건강가정진흥원_backup_policy_vs_security_incident",
+        "qid": "real_149a09b54f",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -5138,7 +5138,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_한국건강가정진흥원_pm_work_location_penalty",
+        "qid": "real_749568f4a6",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -5204,7 +5204,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_KESCO_KCMVP_bo안적합성_절차",
+        "qid": "real_0480983d45",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -5217,7 +5217,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_KESCO_통신서버_SLA기준",
+        "qid": "real_352cf83c93",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -5230,7 +5230,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_충북연구원_evaluation_score_breakdown",
+        "qid": "real_9661c17062",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -5243,7 +5243,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_충북연구원_penalty_grade_threshold",
+        "qid": "real_27e6510685",
         "query_type": "abstention",
         "categories": [
           "no_answer",
@@ -5335,7 +5335,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_대한장애인체육회_multi_hop_evaluation_ratio",
+        "qid": "real_c795f7741a",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -5348,7 +5348,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_대한장애인체육회_no_answer_security_penalty",
+        "qid": "real_1d9381ae61",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -5413,7 +5413,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_수협중앙회_videowallcontroller_connected_devices_multihop",
+        "qid": "real_e667537648",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -5426,7 +5426,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_수협중앙회_wireless_mic_install_location_no_answer",
+        "qid": "real_4e24947cb4",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -5439,7 +5439,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_경희대학교_multihop_contract_deadline_and_penalty",
+        "qid": "real_f647485aa0",
         "query_type": "single_doc",
         "categories": [
           "multi_hop",
@@ -5453,7 +5453,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_경희대학교_noanswer_penalty_rate",
+        "qid": "real_31e1124b35",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -5466,7 +5466,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_고려대학교_budget_payment_vs_maintenance_crossref",
+        "qid": "real_44122848fa",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -5479,7 +5479,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_고려대학교_SFR_graduation_vs_transfer_quota_no_answer",
+        "qid": "real_4d304c4f9e",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -5519,7 +5519,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_국가철도공단_security_education_timing_multihop",
+        "qid": "real_8fe0bbf4b3",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -5532,7 +5532,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_국가철도공단_penalty_legal_basis_no_answer",
+        "qid": "real_368fcb2475",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -5545,7 +5545,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_국민연금공단_수료기준_과정유형별_교차",
+        "qid": "real_333040630f",
         "query_type": "single_doc",
         "categories": [
           "multi_hop",
@@ -5559,7 +5559,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_국민연금공단_콘텐츠단가_모바일연동비용",
+        "qid": "real_b0967094fc",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -5572,7 +5572,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_국민연금공단_SFR006_환수금_산출물_cross",
+        "qid": "real_a006765b48",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -5585,7 +5585,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_국민연금공단_보안USB_암호모듈_인증기관",
+        "qid": "real_eddd69f30d",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -5598,7 +5598,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_서울시립대학교_하도급비율_담합제한_교차",
+        "qid": "real_b67696f813",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -5611,7 +5611,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_서울시립대학교_여성고용우수기업_가점기준_abstention",
+        "qid": "real_57a6caff4b",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -5624,7 +5624,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_세종테크노파크_유연근무유형별설정기능_multihop",
+        "qid": "real_cc672a3d14",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -5637,7 +5637,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_세종테크노파크_보안서약서제출기한_noanswer",
+        "qid": "real_68f7975488",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -5677,7 +5677,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_한국발명진흥회_무상하자보수_PM교체_연계",
+        "qid": "real_09ab802e5b",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -5690,7 +5690,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_한국발명진흥회_CPU사용률_야간시간대_보장여부",
+        "qid": "real_0625012a54",
         "query_type": "abstention",
         "categories": [
           "no_answer",
@@ -5760,7 +5760,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_한국수자원공사_supply-volume-multihop",
+        "qid": "real_aa7b5fa892",
         "query_type": "single_doc",
         "categories": [
           "multi_hop",
@@ -5774,7 +5774,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_한국수자원공사_yongji-abstention",
+        "qid": "real_af41d88a64",
         "query_type": "abstention",
         "categories": [
           "no_answer",
@@ -5841,7 +5841,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_korail_산출물_보안준수_crossref",
+        "qid": "real_4b7b934fee",
         "query_type": "single_doc",
         "categories": [
           "multi_hop",
@@ -5855,7 +5855,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_korail_ISMP_구축예산산정기준_nonanswer",
+        "qid": "real_0681bac3d0",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -5868,7 +5868,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_인천공항운영서비스_평가비율_기술가격분리",
+        "qid": "real_88b2c950ea",
         "query_type": "abstention",
         "categories": [
           "multi_hop",
@@ -6166,7 +6166,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_보험개발원_요양기관_연계_DB_지원범위",
+        "qid": "real_da14ea693a",
         "query_type": "single_doc",
         "categories": [
           "long_context",
@@ -6180,7 +6180,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_보험개발원_청구내역_보관기간_변경주체",
+        "qid": "real_b9dca4f1fe",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -6246,7 +6246,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_경기도사회서비스원_security_penalty_cross_ref",
+        "qid": "real_0da3616c0d",
         "query_type": "single_doc",
         "categories": [
           "multi_hop",
@@ -6260,7 +6260,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_경기도사회서비스원_next_vendor_obligation_scope",
+        "qid": "real_b8c7cd2769",
         "query_type": "abstention",
         "categories": [
           "no_answer",
@@ -6383,7 +6383,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_적십자사의료원_DR서버설치시간_vs_DBMS설치시간",
+        "qid": "real_3a91d46f90",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -6396,7 +6396,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_적십자사의료원_유사실적_하한기준",
+        "qid": "real_7433abf473",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -6461,7 +6461,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_부산관광공사_security_violation_abstention",
+        "qid": "real_a15eea6628",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -6474,7 +6474,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_부산관광공사_credit_eval_crossref",
+        "qid": "real_9df0b06536",
         "query_type": "single_doc",
         "categories": [
           "multi_hop",
@@ -6542,7 +6542,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_나노종합기술원_secs_equipment_count_multihop",
+        "qid": "real_40e625127f",
         "query_type": "single_doc",
         "categories": [
           "multi_hop",
@@ -6556,7 +6556,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_나노종합기술원_copyright_ownership_noanswer",
+        "qid": "real_5460067ab5",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -6582,7 +6582,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_kochildcare_업무인계_deadline_basis",
+        "qid": "real_5e99249f57",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -6649,7 +6649,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_축산물품질평가원_하도급_인건비_기준_multihop",
+        "qid": "real_5ee1457642",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -6662,7 +6662,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_축산물품질평가원_PM_재직요건_처벌규정_noanswer",
+        "qid": "real_f1fdacb3e6",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -6675,7 +6675,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_축산물품질평가원_하자담보_vs_웹접근성_인증시점",
+        "qid": "real_5d6b723969",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -6688,7 +6688,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_축산물품질평가원_소프트웨어보안_진단인력_자격기준",
+        "qid": "real_3fcb400994",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -6728,7 +6728,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_대검찰청_TTS_scope_vs_security_crossref",
+        "qid": "real_d7ae694314",
         "query_type": "single_doc",
         "categories": [
           "multi_hop",
@@ -6742,7 +6742,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_대검찰청_3D_SLA_penalty_no_answer",
+        "qid": "real_cf07ab02f3",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -6755,7 +6755,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_서울여성가족재단_삭제지원시스템_하도급비율_평가점수_연계",
+        "qid": "real_b455935dd2",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -6768,7 +6768,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_서울여성가족재단_AI삭제지원_모델정확도기준",
+        "qid": "real_74e7549be6",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -6863,7 +6863,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_어촌어항공단_security_violation_penalty_multihop",
+        "qid": "real_ac763e8792",
         "query_type": "single_doc",
         "categories": [
           "multi_hop",
@@ -6877,7 +6877,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_어촌어항공단_sw_output_ownership_supplier_rights",
+        "qid": "real_debc70b8f4",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -6943,7 +6943,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_파주도시관광공사_system_access_method_multihop",
+        "qid": "real_77d8bc3697",
         "query_type": "single_doc",
         "categories": [
           "multi_hop",
@@ -6957,7 +6957,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_파주도시관광공사_password_change_cycle_noans",
+        "qid": "real_8faf7276f4",
         "query_type": "abstention",
         "categories": [
           "no_answer",
@@ -6971,7 +6971,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_수협중앙회_ismp_rfp_작성주체_및_단계별책임",
+        "qid": "real_766df2fa69",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -6984,7 +6984,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_수협중앙회_ismp_보안등급_산출물폐기기준",
+        "qid": "real_87430ee98c",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -7049,7 +7049,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_서민금융진흥원_license_and_encryption_multihop",
+        "qid": "real_9422270574",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -7062,7 +7062,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_서민금융진흥원_subcontract_penalty_noanswer",
+        "qid": "real_b251e3bb22",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -7127,7 +7127,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_서울특별시교육청_PM자격요건과참여인력평가기준교차",
+        "qid": "real_fc57e44300",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -7140,7 +7140,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_서울특별시교육청_ISP수립기간산출근거없음",
+        "qid": "real_e780fb0f07",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -7179,7 +7179,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_인천공항운영서비스_수행실적_창업기업기준",
+        "qid": "real_b4c5fd7c35",
         "query_type": "single_doc",
         "categories": [
           "distractor_heavy",
@@ -7351,7 +7351,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_한국사학진흥재단_dbms_migration_hop",
+        "qid": "real_dcf8cf5e93",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -7364,7 +7364,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_한국사학진흥재단_penalty_no_answer",
+        "qid": "real_f060bffb35",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -7377,7 +7377,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_스포츠윤리센터_lms_personal_info_retention_multihop",
+        "qid": "real_887bed8513",
         "query_type": "single_doc",
         "categories": [
           "long_context",
@@ -7391,7 +7391,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_스포츠윤리센터_lms_presenter_change_deadline",
+        "qid": "real_4711117c96",
         "query_type": "abstention",
         "categories": [
           "distractor_heavy",
@@ -7458,7 +7458,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_고양도시관리공사_접속기록보관기간_vs_보안점검기준",
+        "qid": "real_8d59418010",
         "query_type": "single_doc",
         "categories": [
           "multi_hop",
@@ -7472,7 +7472,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_고양도시관리공사_응답속도_모바일앱기준",
+        "qid": "real_ad42ac38e4",
         "query_type": "abstention",
         "categories": [
           "no_answer",
@@ -7592,7 +7592,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_hanyeong_multihop_障害복구기준_vs_보안요건",
+        "qid": "real_873345dc76",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -7605,7 +7605,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_hanyeong_noanswer_트랙시스템_예산규모",
+        "qid": "real_2766a807ff",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -7618,7 +7618,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_국립민속박물관_security_contract_scope",
+        "qid": "real_0e128b5d53",
         "query_type": "single_doc",
         "categories": [
           "multi_hop",
@@ -7632,7 +7632,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_국립민속박물관_ip_commercial_use_penalty",
+        "qid": "real_18b20268a9",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -7672,7 +7672,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_아시아물위원회_multi_hop_pm_실적_건수_환산",
+        "qid": "real_a5d0a6643a",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -7685,7 +7685,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_아시아물위원회_no_answer_현지전문가_체재비_일단가",
+        "qid": "real_b53e739980",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -7698,7 +7698,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_남서울대학교_encryption_scope_multihop",
+        "qid": "real_9c8c910c3a",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -7711,7 +7711,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_남서울대학교_warranty_penalty_noans",
+        "qid": "real_89d8248789",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -7724,7 +7724,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_광주연구원_security_password_vs_access_control",
+        "qid": "real_009fddd972",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -7737,7 +7737,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_광주연구원_no_answer_penalty_rate",
+        "qid": "real_00a0057ac6",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -7803,7 +7803,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_중앙선거관리위원회_security_device_provider",
+        "qid": "real_c3fd414b11",
         "query_type": "single_doc",
         "categories": [
           "distractor_heavy",
@@ -7817,7 +7817,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_중앙선거관리위원회_penalty_criteria_detail",
+        "qid": "real_80d8376ffd",
         "query_type": "abstention",
         "categories": [
           "no_answer",
@@ -7884,7 +7884,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_경기도일자리재단_security_penalty_grade_threshold",
+        "qid": "real_acb8820a60",
         "query_type": "single_doc",
         "categories": [
           "long_context",
@@ -7898,7 +7898,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_경기도일자리재단_worker_dispatch_legal_basis",
+        "qid": "real_3896276cef",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -7938,7 +7938,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_대전대학교_개인정보파기기한_vs_위탁기간종료",
+        "qid": "real_ee979f6734",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -7951,7 +7951,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_대전대학교_수행실적평가_사업예산비율_노답",
+        "qid": "real_8d9f31a4e8",
         "query_type": "abstention",
         "categories": [
           "no_answer",
@@ -7965,7 +7965,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_인천해양박물관_보안약점진단도구요건",
+        "qid": "real_4216b4d979",
         "query_type": "single_doc",
         "categories": [
           "distractor_heavy"
@@ -7978,7 +7978,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_인천해양박물관_동점처리낙찰기준",
+        "qid": "real_64a1993e22",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -8070,7 +8070,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_한국건강가정진흥원_backup_policy_vs_security_incident",
+        "qid": "real_149a09b54f",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -8083,7 +8083,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_한국건강가정진흥원_pm_work_location_penalty",
+        "qid": "real_749568f4a6",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -8149,7 +8149,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_KESCO_KCMVP_bo안적합성_절차",
+        "qid": "real_0480983d45",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -8162,7 +8162,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_KESCO_통신서버_SLA기준",
+        "qid": "real_352cf83c93",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -8175,7 +8175,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_충북연구원_evaluation_score_breakdown",
+        "qid": "real_9661c17062",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -8188,7 +8188,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_충북연구원_penalty_grade_threshold",
+        "qid": "real_27e6510685",
         "query_type": "abstention",
         "categories": [
           "no_answer",
@@ -8280,7 +8280,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_대한장애인체육회_multi_hop_evaluation_ratio",
+        "qid": "real_c795f7741a",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -8293,7 +8293,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_대한장애인체육회_no_answer_security_penalty",
+        "qid": "real_1d9381ae61",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -8358,7 +8358,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_수협중앙회_videowallcontroller_connected_devices_multihop",
+        "qid": "real_e667537648",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -8371,7 +8371,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_수협중앙회_wireless_mic_install_location_no_answer",
+        "qid": "real_4e24947cb4",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -8384,7 +8384,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_경희대학교_multihop_contract_deadline_and_penalty",
+        "qid": "real_f647485aa0",
         "query_type": "single_doc",
         "categories": [
           "multi_hop",
@@ -8398,7 +8398,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_경희대학교_noanswer_penalty_rate",
+        "qid": "real_31e1124b35",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -8411,7 +8411,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_고려대학교_budget_payment_vs_maintenance_crossref",
+        "qid": "real_44122848fa",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -8424,7 +8424,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_고려대학교_SFR_graduation_vs_transfer_quota_no_answer",
+        "qid": "real_4d304c4f9e",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -8464,7 +8464,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_국가철도공단_security_education_timing_multihop",
+        "qid": "real_8fe0bbf4b3",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -8477,7 +8477,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_국가철도공단_penalty_legal_basis_no_answer",
+        "qid": "real_368fcb2475",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -8490,7 +8490,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_국민연금공단_수료기준_과정유형별_교차",
+        "qid": "real_333040630f",
         "query_type": "single_doc",
         "categories": [
           "multi_hop",
@@ -8504,7 +8504,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_국민연금공단_콘텐츠단가_모바일연동비용",
+        "qid": "real_b0967094fc",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -8517,7 +8517,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_국민연금공단_SFR006_환수금_산출물_cross",
+        "qid": "real_a006765b48",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -8530,7 +8530,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_국민연금공단_보안USB_암호모듈_인증기관",
+        "qid": "real_eddd69f30d",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -8543,7 +8543,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_서울시립대학교_하도급비율_담합제한_교차",
+        "qid": "real_b67696f813",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -8556,7 +8556,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_서울시립대학교_여성고용우수기업_가점기준_abstention",
+        "qid": "real_57a6caff4b",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -8569,7 +8569,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_세종테크노파크_유연근무유형별설정기능_multihop",
+        "qid": "real_cc672a3d14",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -8582,7 +8582,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_세종테크노파크_보안서약서제출기한_noanswer",
+        "qid": "real_68f7975488",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -8622,7 +8622,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_한국발명진흥회_무상하자보수_PM교체_연계",
+        "qid": "real_09ab802e5b",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -8635,7 +8635,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_한국발명진흥회_CPU사용률_야간시간대_보장여부",
+        "qid": "real_0625012a54",
         "query_type": "abstention",
         "categories": [
           "no_answer",
@@ -8705,7 +8705,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_한국수자원공사_supply-volume-multihop",
+        "qid": "real_aa7b5fa892",
         "query_type": "single_doc",
         "categories": [
           "multi_hop",
@@ -8719,7 +8719,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_한국수자원공사_yongji-abstention",
+        "qid": "real_af41d88a64",
         "query_type": "abstention",
         "categories": [
           "no_answer",
@@ -8786,7 +8786,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_korail_산출물_보안준수_crossref",
+        "qid": "real_4b7b934fee",
         "query_type": "single_doc",
         "categories": [
           "multi_hop",
@@ -8800,7 +8800,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_korail_ISMP_구축예산산정기준_nonanswer",
+        "qid": "real_0681bac3d0",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -8813,7 +8813,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_인천공항운영서비스_평가비율_기술가격분리",
+        "qid": "real_88b2c950ea",
         "query_type": "abstention",
         "categories": [
           "multi_hop",
@@ -9111,7 +9111,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_보험개발원_요양기관_연계_DB_지원범위",
+        "qid": "real_da14ea693a",
         "query_type": "single_doc",
         "categories": [
           "long_context",
@@ -9125,7 +9125,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_보험개발원_청구내역_보관기간_변경주체",
+        "qid": "real_b9dca4f1fe",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -9191,7 +9191,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_경기도사회서비스원_security_penalty_cross_ref",
+        "qid": "real_0da3616c0d",
         "query_type": "single_doc",
         "categories": [
           "multi_hop",
@@ -9205,7 +9205,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_경기도사회서비스원_next_vendor_obligation_scope",
+        "qid": "real_b8c7cd2769",
         "query_type": "abstention",
         "categories": [
           "no_answer",
@@ -9328,7 +9328,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_적십자사의료원_DR서버설치시간_vs_DBMS설치시간",
+        "qid": "real_3a91d46f90",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -9341,7 +9341,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_적십자사의료원_유사실적_하한기준",
+        "qid": "real_7433abf473",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -9406,7 +9406,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_부산관광공사_security_violation_abstention",
+        "qid": "real_a15eea6628",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -9419,7 +9419,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_부산관광공사_credit_eval_crossref",
+        "qid": "real_9df0b06536",
         "query_type": "single_doc",
         "categories": [
           "multi_hop",
@@ -9487,7 +9487,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_나노종합기술원_secs_equipment_count_multihop",
+        "qid": "real_40e625127f",
         "query_type": "single_doc",
         "categories": [
           "multi_hop",
@@ -9501,7 +9501,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_나노종합기술원_copyright_ownership_noanswer",
+        "qid": "real_5460067ab5",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -9527,7 +9527,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_kochildcare_업무인계_deadline_basis",
+        "qid": "real_5e99249f57",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -9594,7 +9594,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_축산물품질평가원_하도급_인건비_기준_multihop",
+        "qid": "real_5ee1457642",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -9607,7 +9607,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_축산물품질평가원_PM_재직요건_처벌규정_noanswer",
+        "qid": "real_f1fdacb3e6",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -9620,7 +9620,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_축산물품질평가원_하자담보_vs_웹접근성_인증시점",
+        "qid": "real_5d6b723969",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -9633,7 +9633,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_축산물품질평가원_소프트웨어보안_진단인력_자격기준",
+        "qid": "real_3fcb400994",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -9673,7 +9673,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_대검찰청_TTS_scope_vs_security_crossref",
+        "qid": "real_d7ae694314",
         "query_type": "single_doc",
         "categories": [
           "multi_hop",
@@ -9687,7 +9687,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_대검찰청_3D_SLA_penalty_no_answer",
+        "qid": "real_cf07ab02f3",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -9700,7 +9700,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_서울여성가족재단_삭제지원시스템_하도급비율_평가점수_연계",
+        "qid": "real_b455935dd2",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -9713,7 +9713,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_서울여성가족재단_AI삭제지원_모델정확도기준",
+        "qid": "real_74e7549be6",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -9808,7 +9808,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_어촌어항공단_security_violation_penalty_multihop",
+        "qid": "real_ac763e8792",
         "query_type": "single_doc",
         "categories": [
           "multi_hop",
@@ -9822,7 +9822,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_어촌어항공단_sw_output_ownership_supplier_rights",
+        "qid": "real_debc70b8f4",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -9888,7 +9888,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_파주도시관광공사_system_access_method_multihop",
+        "qid": "real_77d8bc3697",
         "query_type": "single_doc",
         "categories": [
           "multi_hop",
@@ -9902,7 +9902,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_파주도시관광공사_password_change_cycle_noans",
+        "qid": "real_8faf7276f4",
         "query_type": "abstention",
         "categories": [
           "no_answer",
@@ -9916,7 +9916,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_수협중앙회_ismp_rfp_작성주체_및_단계별책임",
+        "qid": "real_766df2fa69",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -9929,7 +9929,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_수협중앙회_ismp_보안등급_산출물폐기기준",
+        "qid": "real_87430ee98c",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -9994,7 +9994,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_서민금융진흥원_license_and_encryption_multihop",
+        "qid": "real_9422270574",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -10007,7 +10007,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_서민금융진흥원_subcontract_penalty_noanswer",
+        "qid": "real_b251e3bb22",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -10072,7 +10072,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_서울특별시교육청_PM자격요건과참여인력평가기준교차",
+        "qid": "real_fc57e44300",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -10085,7 +10085,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_서울특별시교육청_ISP수립기간산출근거없음",
+        "qid": "real_e780fb0f07",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -10124,7 +10124,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_인천공항운영서비스_수행실적_창업기업기준",
+        "qid": "real_b4c5fd7c35",
         "query_type": "single_doc",
         "categories": [
           "distractor_heavy",
@@ -10296,7 +10296,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_한국사학진흥재단_dbms_migration_hop",
+        "qid": "real_dcf8cf5e93",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -10309,7 +10309,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_한국사학진흥재단_penalty_no_answer",
+        "qid": "real_f060bffb35",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -10322,7 +10322,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_스포츠윤리센터_lms_personal_info_retention_multihop",
+        "qid": "real_887bed8513",
         "query_type": "single_doc",
         "categories": [
           "long_context",
@@ -10336,7 +10336,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_스포츠윤리센터_lms_presenter_change_deadline",
+        "qid": "real_4711117c96",
         "query_type": "abstention",
         "categories": [
           "distractor_heavy",
@@ -10403,7 +10403,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_고양도시관리공사_접속기록보관기간_vs_보안점검기준",
+        "qid": "real_8d59418010",
         "query_type": "single_doc",
         "categories": [
           "multi_hop",
@@ -10417,7 +10417,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_고양도시관리공사_응답속도_모바일앱기준",
+        "qid": "real_ad42ac38e4",
         "query_type": "abstention",
         "categories": [
           "no_answer",
@@ -10537,7 +10537,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_hanyeong_multihop_障害복구기준_vs_보안요건",
+        "qid": "real_873345dc76",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -10550,7 +10550,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_hanyeong_noanswer_트랙시스템_예산규모",
+        "qid": "real_2766a807ff",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -10563,7 +10563,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_국립민속박물관_security_contract_scope",
+        "qid": "real_0e128b5d53",
         "query_type": "single_doc",
         "categories": [
           "multi_hop",
@@ -10577,7 +10577,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_국립민속박물관_ip_commercial_use_penalty",
+        "qid": "real_18b20268a9",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -10617,7 +10617,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_아시아물위원회_multi_hop_pm_실적_건수_환산",
+        "qid": "real_a5d0a6643a",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -10630,7 +10630,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_아시아물위원회_no_answer_현지전문가_체재비_일단가",
+        "qid": "real_b53e739980",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -10643,7 +10643,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_남서울대학교_encryption_scope_multihop",
+        "qid": "real_9c8c910c3a",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -10656,7 +10656,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_남서울대학교_warranty_penalty_noans",
+        "qid": "real_89d8248789",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -10669,7 +10669,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_광주연구원_security_password_vs_access_control",
+        "qid": "real_009fddd972",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -10682,7 +10682,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_광주연구원_no_answer_penalty_rate",
+        "qid": "real_00a0057ac6",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -10748,7 +10748,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_중앙선거관리위원회_security_device_provider",
+        "qid": "real_c3fd414b11",
         "query_type": "single_doc",
         "categories": [
           "distractor_heavy",
@@ -10762,7 +10762,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_중앙선거관리위원회_penalty_criteria_detail",
+        "qid": "real_80d8376ffd",
         "query_type": "abstention",
         "categories": [
           "no_answer",
@@ -10829,7 +10829,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_경기도일자리재단_security_penalty_grade_threshold",
+        "qid": "real_acb8820a60",
         "query_type": "single_doc",
         "categories": [
           "long_context",
@@ -10843,7 +10843,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_경기도일자리재단_worker_dispatch_legal_basis",
+        "qid": "real_3896276cef",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -10883,7 +10883,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_대전대학교_개인정보파기기한_vs_위탁기간종료",
+        "qid": "real_ee979f6734",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -10896,7 +10896,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_대전대학교_수행실적평가_사업예산비율_노답",
+        "qid": "real_8d9f31a4e8",
         "query_type": "abstention",
         "categories": [
           "no_answer",
@@ -10910,7 +10910,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_인천해양박물관_보안약점진단도구요건",
+        "qid": "real_4216b4d979",
         "query_type": "single_doc",
         "categories": [
           "distractor_heavy"
@@ -10923,7 +10923,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_인천해양박물관_동점처리낙찰기준",
+        "qid": "real_64a1993e22",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -11015,7 +11015,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_한국건강가정진흥원_backup_policy_vs_security_incident",
+        "qid": "real_149a09b54f",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -11028,7 +11028,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_한국건강가정진흥원_pm_work_location_penalty",
+        "qid": "real_749568f4a6",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -11094,7 +11094,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_KESCO_KCMVP_bo안적합성_절차",
+        "qid": "real_0480983d45",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -11107,7 +11107,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_KESCO_통신서버_SLA기준",
+        "qid": "real_352cf83c93",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -11120,7 +11120,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_충북연구원_evaluation_score_breakdown",
+        "qid": "real_9661c17062",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -11133,7 +11133,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_충북연구원_penalty_grade_threshold",
+        "qid": "real_27e6510685",
         "query_type": "abstention",
         "categories": [
           "no_answer",
@@ -11225,7 +11225,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_대한장애인체육회_multi_hop_evaluation_ratio",
+        "qid": "real_c795f7741a",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -11238,7 +11238,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_대한장애인체육회_no_answer_security_penalty",
+        "qid": "real_1d9381ae61",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -11303,7 +11303,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_수협중앙회_videowallcontroller_connected_devices_multihop",
+        "qid": "real_e667537648",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -11316,7 +11316,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_수협중앙회_wireless_mic_install_location_no_answer",
+        "qid": "real_4e24947cb4",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -11329,7 +11329,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_경희대학교_multihop_contract_deadline_and_penalty",
+        "qid": "real_f647485aa0",
         "query_type": "single_doc",
         "categories": [
           "multi_hop",
@@ -11343,7 +11343,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_경희대학교_noanswer_penalty_rate",
+        "qid": "real_31e1124b35",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -11356,7 +11356,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_고려대학교_budget_payment_vs_maintenance_crossref",
+        "qid": "real_44122848fa",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -11369,7 +11369,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_고려대학교_SFR_graduation_vs_transfer_quota_no_answer",
+        "qid": "real_4d304c4f9e",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -11409,7 +11409,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_국가철도공단_security_education_timing_multihop",
+        "qid": "real_8fe0bbf4b3",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -11422,7 +11422,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_국가철도공단_penalty_legal_basis_no_answer",
+        "qid": "real_368fcb2475",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -11435,7 +11435,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_국민연금공단_수료기준_과정유형별_교차",
+        "qid": "real_333040630f",
         "query_type": "single_doc",
         "categories": [
           "multi_hop",
@@ -11449,7 +11449,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_국민연금공단_콘텐츠단가_모바일연동비용",
+        "qid": "real_b0967094fc",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -11462,7 +11462,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_국민연금공단_SFR006_환수금_산출물_cross",
+        "qid": "real_a006765b48",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -11475,7 +11475,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_국민연금공단_보안USB_암호모듈_인증기관",
+        "qid": "real_eddd69f30d",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -11488,7 +11488,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_서울시립대학교_하도급비율_담합제한_교차",
+        "qid": "real_b67696f813",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -11501,7 +11501,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_서울시립대학교_여성고용우수기업_가점기준_abstention",
+        "qid": "real_57a6caff4b",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -11514,7 +11514,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_세종테크노파크_유연근무유형별설정기능_multihop",
+        "qid": "real_cc672a3d14",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -11527,7 +11527,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_세종테크노파크_보안서약서제출기한_noanswer",
+        "qid": "real_68f7975488",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -11567,7 +11567,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_한국발명진흥회_무상하자보수_PM교체_연계",
+        "qid": "real_09ab802e5b",
         "query_type": "single_doc",
         "categories": [
           "multi_hop"
@@ -11580,7 +11580,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_한국발명진흥회_CPU사용률_야간시간대_보장여부",
+        "qid": "real_0625012a54",
         "query_type": "abstention",
         "categories": [
           "no_answer",
@@ -11650,7 +11650,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_한국수자원공사_supply-volume-multihop",
+        "qid": "real_aa7b5fa892",
         "query_type": "single_doc",
         "categories": [
           "multi_hop",
@@ -11664,7 +11664,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_한국수자원공사_yongji-abstention",
+        "qid": "real_af41d88a64",
         "query_type": "abstention",
         "categories": [
           "no_answer",
@@ -11731,7 +11731,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_korail_산출물_보안준수_crossref",
+        "qid": "real_4b7b934fee",
         "query_type": "single_doc",
         "categories": [
           "multi_hop",
@@ -11745,7 +11745,7 @@
         "ndcg@10": 0.0
       },
       {
-        "qid": "real_korail_ISMP_구축예산산정기준_nonanswer",
+        "qid": "real_0681bac3d0",
         "query_type": "abstention",
         "categories": [
           "no_answer"
@@ -11758,7 +11758,7 @@
         "ndcg@10": null
       },
       {
-        "qid": "real_인천공항운영서비스_평가비율_기술가격분리",
+        "qid": "real_88b2c950ea",
         "query_type": "abstention",
         "categories": [
           "multi_hop",

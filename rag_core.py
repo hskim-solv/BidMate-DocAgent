@@ -1045,7 +1045,7 @@ def _phase_build_answer(ctx: _RunContext) -> dict[str, Any]:
         ctx.retrieval_query,
         analysis,
         evidence,
-        ctx.context_resolution,
+        ctx.context_resolution or {},
     )
     latency_ms = (time.perf_counter() - ctx.started) * 1000
     stage_latency = {
@@ -1066,8 +1066,8 @@ def _phase_build_answer(ctx: _RunContext) -> dict[str, Any]:
         analysis,
         plan,
         metadata_resolution,
-        ctx.context_resolution,
-        ctx.stage_sequence,
+        ctx.context_resolution or {},
+        ctx.stage_sequence or [],
         stage_attempts,
         answer,
         stage_latencies_ms=stage_latency,

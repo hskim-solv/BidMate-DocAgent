@@ -288,17 +288,9 @@
         "retry_resolution_rate": 0.7701149425287356
       },
       "retry_reason_counts": {
-        "missing_comparison_doc:20240419765-0.0,20240611774-0.0": 1,
-        "missing_comparison_doc:20240615212-0.0": 1,
-        "missing_comparison_doc:20241139040-0.0": 1,
-        "missing_comparison_doc:국민연금공단_2024년-이러닝시스템-운영-용역,20240327871-0.0,20240330003-0.0,20240404154-0.0,20240419765-0.0,20240611774-0.0": 1,
-        "missing_comparison_entity:국민연금공단,재단법인 한국장애인문화예술원,(사)벤처기업협회,서울특별시,재단법인 광주광역시 광주문화재단,(사)부산국제영화제": 1,
-        "missing_comparison_entity:대전대학교": 1,
-        "missing_comparison_entity:서울특별시교육청": 1,
-        "missing_comparison_entity:재단법인 광주광역시 광주문화재단,(사)부산국제영화제": 1,
-        "missing_comparison_topic:고양도시관리공사": 2,
-        "missing_comparison_topic:재단법인충북연구원": 2,
-        "missing_comparison_topic:한국수자원공사": 2,
+        "missing_comparison_doc": 4,
+        "missing_comparison_entity": 4,
+        "missing_comparison_topic": 6,
         "partial_topic_grounding": 2,
         "topic_not_grounded": 203
       },
@@ -678,7 +670,7 @@
         "retry_resolution_rate": 0.8333333333333334
       },
       "retry_reason_counts": {
-        "missing_comparison_topic:재단법인충북연구원": 2,
+        "missing_comparison_topic": 2,
         "partial_topic_grounding": 1,
         "topic_not_grounded": 47
       },
@@ -1066,14 +1058,9 @@
         "retry_resolution_rate": 0.7733333333333333
       },
       "retry_reason_counts": {
-        "missing_comparison_doc:20240419765-0.0,20240611774-0.0": 1,
-        "missing_comparison_doc:20240615212-0.0": 1,
-        "missing_comparison_doc:국민연금공단_2024년-이러닝시스템-운영-용역,20240327871-0.0,20240330003-0.0,20240404154-0.0,20240419765-0.0,20240611774-0.0": 1,
-        "missing_comparison_entity:국민연금공단,재단법인 한국장애인문화예술원,(사)벤처기업협회,서울특별시,재단법인 광주광역시 광주문화재단,(사)부산국제영화제": 1,
-        "missing_comparison_entity:서울특별시교육청": 1,
-        "missing_comparison_entity:재단법인 광주광역시 광주문화재단,(사)부산국제영화제": 1,
-        "missing_comparison_topic:재단법인충북연구원": 2,
-        "missing_comparison_topic:한국수자원공사": 2,
+        "missing_comparison_doc": 3,
+        "missing_comparison_entity": 3,
+        "missing_comparison_topic": 4,
         "partial_topic_grounding": 2,
         "topic_not_grounded": 91
       },
@@ -1254,9 +1241,9 @@
         "retry_resolution_rate": null
       },
       "retry_reason_counts": {
-        "missing_comparison_doc:20241139040-0.0": 1,
-        "missing_comparison_entity:대전대학교": 1,
-        "missing_comparison_topic:고양도시관리공사": 2,
+        "missing_comparison_doc": 1,
+        "missing_comparison_entity": 1,
+        "missing_comparison_topic": 2,
         "topic_not_grounded": 99
       },
       "stage_latency": {
@@ -1438,7 +1425,7 @@
   "prompt_profile": "structured_grounded_claims",
   "provenance": {
     "generated_at": "2026-05-19T03:03:10.940691Z",
-    "git_commit": "a7fd711d0573",
+    "git_commit": "de69c5c2d456",
     "git_dirty": true
   },
   "retry": 0.7647058823529411,
@@ -1469,24 +1456,16 @@
     "retry_resolution_rate": 0.7701149425287356
   },
   "retry_reason_counts": {
-    "missing_comparison_doc:20240419765-0.0,20240611774-0.0": 1,
-    "missing_comparison_doc:20240615212-0.0": 1,
-    "missing_comparison_doc:20241139040-0.0": 1,
-    "missing_comparison_doc:국민연금공단_2024년-이러닝시스템-운영-용역,20240327871-0.0,20240330003-0.0,20240404154-0.0,20240419765-0.0,20240611774-0.0": 1,
-    "missing_comparison_entity:국민연금공단,재단법인 한국장애인문화예술원,(사)벤처기업협회,서울특별시,재단법인 광주광역시 광주문화재단,(사)부산국제영화제": 1,
-    "missing_comparison_entity:대전대학교": 1,
-    "missing_comparison_entity:서울특별시교육청": 1,
-    "missing_comparison_entity:재단법인 광주광역시 광주문화재단,(사)부산국제영화제": 1,
-    "missing_comparison_topic:고양도시관리공사": 2,
-    "missing_comparison_topic:재단법인충북연구원": 2,
-    "missing_comparison_topic:한국수자원공사": 2,
+    "missing_comparison_doc": 4,
+    "missing_comparison_entity": 4,
+    "missing_comparison_topic": 6,
     "partial_topic_grounding": 2,
     "topic_not_grounded": 208
   },
   "run_manifest": {
     "config_sha256": "cfb1fc68d994a4b7",
     "generated_at": "2026-05-19T03:01:21.745364Z",
-    "git_commit": "a7fd711d0573",
+    "git_commit": "de69c5c2d456",
     "git_dirty": true
   },
   "stage_latency": {
