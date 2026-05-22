@@ -1,5 +1,11 @@
 # `retrieval_miss = 83` 근본 원인(root-cause) inspection
 
+> **⚠️ STALE (run mismatch) — see #1245.** 본 문서의 headline `retrieval_miss = 83`
+> (+ Verification 의 84) 와 per-case 슬라이스는 earlier run(`a931a49`) 기준이다.
+> 정본 2026-05-19 baseline run(`de69c5c2`, n=221)에서는 `retrieval_miss = 64`
+> (`reports/real100/baseline.aggregate.json` / `failure_distribution.aggregate.json`
+> 가 단일 출처). 슬라이스 재계산은 per-case eval_summary.json 이 필요해 #1245 로 분기.
+
 | field | value |
 |---|---|
 | Issue | #1003 |

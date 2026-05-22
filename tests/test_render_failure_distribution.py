@@ -97,18 +97,44 @@ class TestFinding1Contract(unittest.TestCase):
 
 
 class TestSchemaDriftDefence(unittest.TestCase):
-    """Unknown keys in failure_category_counts are silently dropped."""
+    """Taxonomy drift in failure_category_counts must fail loud, not silent-drop."""
 
-    def test_unknown_category_ignored(self) -> None:
+    def test_unknown_category_raises(self) -> None:
+        # A key outside FAILURE_CATEGORIES means the classifier taxonomy drifted.
+        # Silently dropping it would undercount total_failures (the original
+        # bug: {retrieval_miss:1, new_category:1} reported total 1, not 2).
         counts = {category: 0 for category in SAFE_CATEGORIES}
         counts["retrieval_miss"] = 10
         raw = dict(counts)
-        raw["unknown_future_category"] = 999  # not in SAFE_CATEGORIES
-        agg = build_aggregate(_summary(counts=raw))
-        # Drift key dropped — only 7 SAFE_CATEGORIES.
-        self.assertEqual(set(agg["failure_category_counts"].keys()), set(SAFE_CATEGORIES))
-        self.assertNotIn("unknown_future_category", agg["failure_category_counts"])
-        self.assertEqual(agg["total_failures"], 10)
+        raw["unknown_future_category"] = 999  # not in FAILURE_CATEGORIES
+        with self.assertRaises(ValueError) as ctx:
+            build_aggregate(_summary(counts=raw))
+        self.assertIn("unknown_future_category", str(ctx.exception))
+
+    def test_total_failures_not_undercounted_on_drift(self) -> None:
+        # Regression for the silent-drop total bug: an out-of-taxonomy key
+        # must not be quietly excluded from the sum.
+        with self.assertRaises(ValueError):
+            build_aggregate(_summary(counts={"retrieval_miss": 1, "new_category": 1}))
+
+    def test_non_numeric_count_raises(self) -> None:
+        counts = {category: 0 for category in SAFE_CATEGORIES}
+        counts["retrieval_miss"] = "lots"  # type: ignore[assignment]
+        with self.assertRaises(ValueError):
+            build_aggregate(_summary(counts=counts))
+
+    def test_bool_count_rejected(self) -> None:
+        # bool is an int subclass; a True/False "count" is a schema error.
+        counts = {category: 0 for category in SAFE_CATEGORIES}
+        counts["retrieval_miss"] = True  # type: ignore[assignment]
+        with self.assertRaises(ValueError):
+            build_aggregate(_summary(counts=counts))
+
+    def test_taxonomy_matches_classifier_single_source(self) -> None:
+        # SAFE_CATEGORIES must BE the classifier taxonomy (no hardcoded copy).
+        from eval.scorers.failure_classifier import FAILURE_CATEGORIES
+
+        self.assertEqual(SAFE_CATEGORIES, FAILURE_CATEGORIES)
 
     def test_missing_failure_category_counts_raises(self) -> None:
         with self.assertRaises(ValueError):
