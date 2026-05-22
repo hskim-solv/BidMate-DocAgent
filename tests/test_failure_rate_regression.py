@@ -3,7 +3,7 @@
 Closes the Phase 5 audit (#992) item 3 "closed error loop" gap: the
 ADR 0059 classifier (PR #1001) labels failures and the supply 2 dashboard
 (PR #1004) renders them, but nothing *prevents silent regression* of the
-dominant failure modes the audits surfaced (#1005 retrieval_miss=83,
+dominant failure modes the audits surfaced (#1005 retrieval_miss=67,
 #1020 verifier_false_negative=76, #1025 variance source).
 
 This test reads the committed ``reports/real100/baseline.aggregate.json``
@@ -40,10 +40,10 @@ BASELINE_PATH = REPO_ROOT / "reports" / "real100" / "baseline.aggregate.json"
 # land — never up without an [ALLOW_REGRESSION] justification in the PR that
 # regenerates the baseline.
 #
-# Current committed baseline (HEAD b5ae179, n=221):
+# Current committed baseline (n=221):
 #   total failures            180 / 221 = 0.814
 #   verifier_false_negative    76 / 221 = 0.344  (Finding #1, audit #1020)
-#   retrieval_miss             64 / 221 = 0.290  (dominant, audit #1005)
+#   retrieval_miss             67 / 221 = 0.303  (dominant, audit #1005)
 #
 # Initial ceilings = current rate + margin absorbing the cross-HEAD variance
 # the variance audit (#1025) measured (verifier_false_negative ranged
