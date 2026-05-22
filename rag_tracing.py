@@ -380,6 +380,17 @@ def redact_trace(
             f"metadata_docs={masked_selected or 'none'}"
         )
 
+    # Trace v2 (issue #967 / #1352) — the synthesis prompt is built from raw
+    # doc_id + agency + evidence text, so user_prompt_text/completion_text carry
+    # private doc IDs, entities, and source content as one freeform blob that
+    # cannot be selectively masked. Redact both whenever EITHER doc IDs or
+    # entities are being stripped (ADR 0005 boundary; same class as #1144).
+    synthesis = redacted.get("synthesis_llm_call")
+    if isinstance(synthesis, dict) and (not include_doc_ids or not include_entities):
+        for key in ("user_prompt_text", "completion_text"):
+            if synthesis.get(key) is not None:
+                synthesis[key] = REDACTED_LIST_PLACEHOLDER
+
     return redacted
 
 
