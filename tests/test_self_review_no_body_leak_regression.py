@@ -25,6 +25,8 @@ import textwrap
 import unittest
 from pathlib import Path
 
+import pytest
+
 
 # ---------------------------------------------------------------------------
 # Import helpers
@@ -170,6 +172,10 @@ class CollectMemoryNoBodyLeakTest(unittest.TestCase):
             self.assertIn("user", combined)  # type field
 
 
+# Runs real assemble_stats() over the live repo (~92s); the CollectSessions /
+# CollectMemory tests above use small fixtures and stay fast. Slow →
+# deselected by `make test-fast`, still run in CI.
+@pytest.mark.slow
 class AssembleStatsStructuralTest(unittest.TestCase):
     """assemble_stats output has correct top-level keys, all metadata."""
 

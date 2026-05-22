@@ -33,6 +33,7 @@ from pathlib import Path
 from unittest import mock
 
 import numpy as np
+import pytest
 
 from rag_core import (
     VALID_RETRIEVAL_BACKENDS,
@@ -156,6 +157,7 @@ class NaiveBaselineInvariantTest(unittest.TestCase):
         self.assertNotIn("m3", str(plan["strategy"]).lower())
 
 
+@pytest.mark.slow
 @unittest.skipUnless(
     _flag_embedding_available(), "FlagEmbedding not installed — m3 spike test skipped"
 )
@@ -201,6 +203,7 @@ class M3EndToEndTest(unittest.TestCase):  # pragma: no cover — opt-in, gated o
             self.assertLessEqual(item["score"], 1.0)
 
 
+@pytest.mark.slow
 @unittest.skipUnless(
     _flag_embedding_available(), "FlagEmbedding not installed — m3 spike test skipped"
 )
@@ -268,6 +271,7 @@ class M3Fp16CacheRegressionTest(unittest.TestCase):  # pragma: no cover — opt-
         np.testing.assert_allclose(s_fp32, s_fp16, rtol=1e-2)
 
 
+@pytest.mark.slow
 @unittest.skipUnless(
     _flag_embedding_available(), "FlagEmbedding not installed — m3 spike test skipped"
 )
@@ -367,6 +371,7 @@ class M3Int8CacheRegressionTest(unittest.TestCase):  # pragma: no cover — opt-
         self.assertEqual(s_no_scale, s_explicit_1)
 
 
+@pytest.mark.slow
 @unittest.skipUnless(
     _flag_embedding_available(), "FlagEmbedding not installed — m3 spike test skipped"
 )

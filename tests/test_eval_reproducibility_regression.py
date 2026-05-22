@@ -35,6 +35,11 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+import pytest
+
+# The shared setUp runs two full eval passes (~66s) before any assertion —
+# the whole class is heavy. Marked slow so `make test-fast` deselects it; CI runs it.
+pytestmark = pytest.mark.slow
 
 ROOT = Path(__file__).resolve().parents[1]
 
