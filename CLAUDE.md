@@ -4,7 +4,7 @@ RFP 문서 이해를 위한 DocAgent 시스템. **입찰/RFP 문서 인텔리전
 
 파이프라인: ingestion → 메타데이터 정규화 → 청킹 → 검색 → 재순위/계획 → 근거 집계 → 근거 기반 답변 → 검증 → 평가 → reviewer 문서.
 
-자동화 표면: `.gitignore`, CI ([`pr-eval.yml`](.github/workflows/pr-eval.yml), [`branch-and-issue-check.yml`](.github/workflows/branch-and-issue-check.yml), [`pr-judge.yml`](.github/workflows/pr-judge.yml) (live LLM-judge 게이트, ADR 0043), [`leaderboard.yml`](.github/workflows/leaderboard.yml), [`deploy-fly.yml`](.github/workflows/deploy-fly.yml) + [`docker-publish.yml`](.github/workflows/docker-publish.yml) (api/main.py 데모 배포 — 제품화 아님)), `.githooks/`, [`scripts/check_branch_and_issue.py`](scripts/check_branch_and_issue.py) (브랜치+이슈 컨벤션 regex 단일 출처, ADR 0007), [`.github/pull_request_template.md`](.github/pull_request_template.md), [`.github/ISSUE_TEMPLATE/`](.github/ISSUE_TEMPLATE/), [`.claude/settings.json`](.claude/settings.json) (load-bearing 편집 awareness 훅 + stacked dependent 있을 때 `gh pr merge --delete-branch` 차단 Bash matcher). 이 파일은 자동 강제되지 않는 원칙·포인터를 담는다.
+자동화 표면: `.gitignore`, CI ([`pr-eval.yml`](.github/workflows/pr-eval.yml), [`branch-and-issue-check.yml`](.github/workflows/branch-and-issue-check.yml), [`pr-judge.yml`](.github/workflows/pr-judge.yml) (`live-judge-please` 라벨로만 트리거되는 advisory live LLM-judge 워크플로 — 머지 필수 게이트 아님, 새 push 후 라벨 재부착 필요, ADR 0043), [`leaderboard.yml`](.github/workflows/leaderboard.yml), [`deploy-fly.yml`](.github/workflows/deploy-fly.yml) + [`docker-publish.yml`](.github/workflows/docker-publish.yml) (api/main.py 데모 배포 — 제품화 아님)), `.githooks/`, [`scripts/check_branch_and_issue.py`](scripts/check_branch_and_issue.py) (브랜치+이슈 컨벤션 regex 단일 출처, ADR 0007), [`.github/pull_request_template.md`](.github/pull_request_template.md), [`.github/ISSUE_TEMPLATE/`](.github/ISSUE_TEMPLATE/), [`.claude/settings.json`](.claude/settings.json) (load-bearing 편집 awareness 훅 + stacked dependent 있을 때 `gh pr merge --delete-branch` 차단 Bash matcher). 이 파일은 자동 강제되지 않는 원칙·포인터를 담는다.
 
 ## 여기서 시작
 
@@ -30,7 +30,7 @@ RFP 문서 이해를 위한 DocAgent 시스템. **입찰/RFP 문서 인텔리전
 - `app.py` — CLI 쿼리 진입점
 - `rag_vector_store.py` — `VectorStore` Protocol (#232). `BIDMATE_INDEX_BACKEND` = `memory`(기본) / `qdrant`; `pgvector` 는 Stage 3 (#176) 예약. in-memory ↔ Qdrant ranking bit-identical
 - `rag_reranker.py` — `Reranker` Protocol + 기본 `CrossEncoderReranker` (#345)
-- `rag_retrieval.py` — 검색 파이프라인 (#459 + #461). `retrieve_candidates`, 4 유사도 primitive, BM25, fusion·재순위·comparison balance·parent-section 재조립. 기본 `retrieval_backend` = `hybrid` (RRF k=60, BGE-M3 dense + BM25; ADR 0058) — `agentic_full`/`metadata_first` 한정, `naive_baseline` 은 `dense` 유지 (ADR 0001 불변)
+- `rag_retrieval.py` — 검색 파이프라인 (#459 + #461). `retrieve_candidates`, 4 유사도 primitive, BM25, fusion·재순위·comparison balance·parent-section 재조립. 기본 `retrieval_backend` = `hybrid` (현재 인덱스의 dense 채널 + BM25 를 RRF k=60 융합 — 특정 임베딩 모델 강제 아님; ADR 0058) — `agentic_full`/`metadata_first` 한정, `naive_baseline` 은 `dense` 유지 (ADR 0001 불변). ADR 0058 의 BGE-M3 근거는 BGE-M3 로 빌드한 인덱스 한정 — 기본 빌드/CI/데모 경로는 명시 override 없으면 MiniLM (`DEFAULT_EMBEDDING_MODEL`, [rag_embedding.py](rag_embedding.py)) 또는 hashing ([pr-eval.yml](.github/workflows/pr-eval.yml)·[Dockerfile](Dockerfile))
 - `rag_verifier.py` — 검증기 (#465, PR-J1). `verify_evidence`, topic 추출, `EVIDENCE_BOUNDARY` 상수 + 명령 패턴 regex, `neutralize_instruction_patterns` (ADR 0008)
 - `rag_answer.py` — 답변 생성 (#468, PR-J2). 21 함수가 검증된 근거를 ADR 0003 답변 dict 로 변환. `schema_version: 2` 계약 유지
 - `rag_query.py` — 쿼리 분석·계획 (#478, PR-J3). 15 함수, `analyze_query`/`make_plan`/`comparison_targets_for_analysis` 등
