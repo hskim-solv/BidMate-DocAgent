@@ -62,10 +62,20 @@ Cohere Rerank 3.5 multilingual (`rag_rerank.py:_cohere_backend` 는 이미 배�
   는 surface attestation 없이는 못 켜진다 (조건 ① opt-in 위에 데이터 경계 attestation
   한 겹 추가). 공개 synthetic 외부 비교(`scripts/compare_external_baselines.py`)는
   `public_synthetic` 를 setdefault 로 선언해 동작 유지.
-- **잔여 egress (follow-up)**: `rag_rerank._cohere_backend`, `rag_embedding` 외부
-  백엔드, `rag_query_expansion` HyDE, `rag_planner` 외부 경로, eval judges 는 동일
-  guard 미적용 — 같은 데이터 경계 위험이 있으므로 별도 PR 로 확장 필요. 중앙 guard 는
-  한 줄 호출로 재사용 가능.
+- **잔여 egress (follow-up, issue #1195 완료)**: metadata/synthesis 외 production
+  파이프라인 외부 진입점 4곳에 동일 guard 확장 — `rag_rerank._cohere_backend`
+  (`rerank:cohere`), `rag_embedding._embed_with_openai` (`embedding:openai`),
+  `rag_query_expansion._call_anthropic_hyde` (`query_expansion:hyde_anthropic`),
+  `rag_planner.LLMPlanner.plan_next` (`planner:anthropic`). 앞 셋 + planner 는
+  never-raise 폴백이 ExternalPayloadBlocked 를 잡아 오프라인으로 복귀(rerank=원순서
+  유지·hyde=원쿼리·planner=StaticPlanner)하고, openai 임베딩만 (폴백 없는 백엔드라)
+  raise 로 fail-closed. **eval judges 는 의도적 제외**: ADR 0006 이 real-data judge
+  egress 를 명시 허용하고 그 경계는 commit 레이어(aggregate-only, ADR 0005)가
+  강제하므로, public/synthetic-only egress guard 를 공유 `call_openai_json` 에 걸면
+  ADR 0006 과 충돌하고 `pr-judge.yml` 라이브 게이트(ADR 0043)를 깬다 — 비공개
+  real-eval egress 는 본 ADR 범위 밖(위 ③)이며 ADR 0005/0012 가 계속 관할. 오프라인
+  데이터 생성 스크립트(`scripts/generate_real_cases.py` 등)도 파이프라인 egress 가
+  아니라 범위 밖.
 - **비용**: 외부 백엔드 활성화 시 latency·과금·가용성 의존이 생긴다. p95 budget
   (ADR 0041) 과 cost telemetry (`rag_synthesis.compute_cost_usd`) 로 관측.
 - **남는 결정**: 비공개 데이터의 외부 전송을 허용할지는 미해결 — 필요 시 ADR 0005/
