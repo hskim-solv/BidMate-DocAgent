@@ -68,7 +68,20 @@ if command -v pytest >/dev/null 2>&1; then
       echo "pytest-split not importable; ignoring BIDMATE_PYTEST_STORE_DURATIONS." >&2
     fi
   fi
-  pytest -q "${XDIST_FLAGS[@]}" "${COV_FLAGS[@]}" "${SPLIT_FLAGS[@]}" "${STORE_DURATIONS_FLAGS[@]}"
+  # macOS system bash (3.2.57) treats an empty array expanded as "${ARR[@]}"
+  # under `set -u` as an unbound-variable error and aborts. All four flag groups
+  # can legitimately reach this line empty (xdist/cov/split not installed, or
+  # BIDMATE_PYTEST_SPLITS/SHARD/STORE_DURATIONS unset on a normal local run), so
+  # the plain "${ARR[@]}" form crashes before pytest ever runs (#1179). The
+  # "${ARR[@]+"${ARR[@]}"}" form expands to nothing for an empty array and to the
+  # quoted elements otherwise — safe on bash 3.2 AND 4.4+. Do NOT simplify back
+  # to "${ARR[@]}"; that reintroduces the macOS-bash-3.2 crash. (bash 4.4+ /
+  # Linux CI never hit this, which is why it slipped past the sharded CI gate.)
+  pytest -q \
+    "${XDIST_FLAGS[@]+"${XDIST_FLAGS[@]}"}" \
+    "${COV_FLAGS[@]+"${COV_FLAGS[@]}"}" \
+    "${SPLIT_FLAGS[@]+"${SPLIT_FLAGS[@]}"}" \
+    "${STORE_DURATIONS_FLAGS[@]+"${STORE_DURATIONS_FLAGS[@]}"}"
 else
   echo "pytest not found. Install dev dependencies or add pytest to requirements." >&2
   exit 1
