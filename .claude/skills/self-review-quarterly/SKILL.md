@@ -28,11 +28,11 @@ Given a quarter (`Qx-YYYY`), produce a structured Markdown report with **two rub
    - 5-axis: `~/.claude/projects/-Users-hskim-Desktop-projects-BidMate-DocAgent/memory/feedback_collaboration_axes.md`
    - If either is missing or its referenced docs (e.g. `docs/senior-positioning.md`) are gone, stop and surface the broken pointer.
 
-3. **Collect raw stats.** Invoke the driver via Bash:
+3. **Collect raw stats.** Invoke the driver via Bash, writing to a worktree-unique temp file (never a fixed `/tmp/<name>` — concurrent worktrees would clobber it, issue #1274):
    ```bash
-   python scripts/claude-hooks/_self_review.py --quarter <Qx-YYYY> --emit-stats > /tmp/self-review-<Qx-YYYY>-stats.json
+   STATS=$(mktemp); python scripts/claude-hooks/_self_review.py --quarter <Qx-YYYY> --emit-stats > "$STATS"
    ```
-   Read `/tmp/.../stats.json` into the skill context. The driver guarantees body-free output by schema; trust it but spot-check (see step 8).
+   Read `$STATS` into the skill context. The driver guarantees body-free output by schema; trust it but spot-check (see step 8).
 
 4. **4-axis verdict table.** For each of the 4 portfolio axes, judge `✓` / `△ — <≤30자 사유>` / `✗ — <≤30자 사유>` using the rubric's signals + the stats. Cite metadata only (see "Citation policy" below).
 

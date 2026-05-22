@@ -152,7 +152,7 @@ def test_build_body_includes_required_sections(monkeypatch):
     monkeypatch.setattr(pb, "commit_subject", lambda base: "docs: tweak readme (#999)")
     monkeypatch.setattr(pb, "commit_body", lambda base: "Tweak README.")
     monkeypatch.setattr(pb, "has_schema_version_change", lambda base: False)
-    monkeypatch.setattr(pb, "test_summary", lambda: "Local tests passed.")
+    monkeypatch.setattr(pb, "test_summary", lambda path=None: "Local tests passed.")
     body = pb.build_body("docs/issue-999-readme", "origin/main", "auto")
     for section in (
         "## 1. What changed and why",
@@ -173,9 +173,28 @@ def test_build_body_load_bearing_routes_through_5b(monkeypatch):
     monkeypatch.setattr(pb, "commit_subject", lambda base: "feat: foo (#238)")
     monkeypatch.setattr(pb, "commit_body", lambda base: "")
     monkeypatch.setattr(pb, "has_schema_version_change", lambda base: False)
-    monkeypatch.setattr(pb, "test_summary", lambda: "Local tests passed.")
+    monkeypatch.setattr(pb, "test_summary", lambda path=None: "Local tests passed.")
     monkeypatch.setattr(pb, "can_run_real_eval", lambda: False)
     body = pb.build_body("feat/issue-238-foo", "origin/main", "auto")
     assert "(load-bearing)" in body
     assert "See §5b" in body or "5b" in body
     assert pb.validate_5b(body, ["rag_core.py"]) is True
+
+
+# ---- test_summary path threading (issue #1274) ----
+
+def test_test_summary_reads_dispatcher_path(tmp_path):
+    p = tmp_path / "summary.txt"
+    p.write_text("Local tests passed (bash scripts/test.sh).")
+    assert pb.test_summary(str(p)) == "Local tests passed (bash scripts/test.sh)."
+
+
+def test_test_summary_none_path_not_captured():
+    # No path = dispatcher did not pass one; never falls back to a global
+    # /tmp file that a concurrent worktree could have left behind (#1274).
+    assert pb.test_summary(None) == "Local test run not captured by dispatcher."
+
+
+def test_test_summary_missing_path_not_captured(tmp_path):
+    missing = tmp_path / "does-not-exist.txt"
+    assert pb.test_summary(str(missing)) == "Local test run not captured by dispatcher."
