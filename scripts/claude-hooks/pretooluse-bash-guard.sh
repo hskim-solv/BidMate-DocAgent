@@ -54,8 +54,59 @@ fi
 # Classify the gh subcommand once: "merge" | "create" | "".
 # Parsing extracted to scripts/claude-hooks/_bash_guard_parse.py (issue #1045)
 # so tests/test_bash_guard_adversarial.py can pin the false-negative surface.
+#
+# Finding F1: `--detect-gh` always exits 0 on a successful parse, so a
+# *non-zero* exit means the parser invocation itself failed (missing
+# python3, ImportError, syntax error, or a transient sandbox hiccup). The
+# old code piped through `tr` and only tested for empty output, so a parser
+# failure was indistinguishable from "not a gh command" — silently
+# fail-open, letting a dangerous `gh pr merge --delete-branch` through on
+# any parser breakage. Capture stdout and exit status separately (no pipe —
+# a pipe masks python's exit code behind `tr`'s).
 gh_subcommand=$(python3 "$REPO_ROOT/scripts/claude-hooks/_bash_guard_parse.py" \
-                  --detect-gh "$cmd" 2>/dev/null | tr -d '\n')
+                  --detect-gh "$cmd" 2>/dev/null)
+parse_rc=$?
+gh_subcommand=$(printf '%s' "$gh_subcommand" | tr -d '\n')
+
+if [[ "$parse_rc" -ne 0 ]]; then
+  # Parser failed. *Anchored* fail-closed: refuse only when the command
+  # itself STARTS with `gh pr merge|create` (optionally after one leading
+  # separator/subshell-open), i.e. a direct, high-confidence invocation we
+  # would normally guard. This deliberately narrow scope is the compromise
+  # with the fail-open philosophy at the top of this file: a transient
+  # parser failure was observed to over-block benign commands that merely
+  # *contained* the literal `gh pr create` inside quotes (e.g. an echo or a
+  # nested invocation). Anchoring avoids that false block; the residual cost
+  # is that a directly-typed `gh pr merge|create` is refused during a
+  # transient failure and must be re-run (the hiccup clears). A chained
+  # `foo && gh pr merge` falls open here — acceptable per the philosophy
+  # (one slipped merge is recoverable; blocking arbitrary commands is not).
+  if grep -qiE '^[[:space:]]*[(;&|]*[[:space:]]*gh[[:space:]]+pr[[:space:]]+(merge|create)([[:space:]]|$)' <<<"$cmd"; then
+    python3 "$REPO_ROOT/scripts/_governance.py" --emit-fire \
+      --outcome blocked --hook bash-guard --category parser-failure \
+      --path "$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)" \
+      --fire-log "$REPO_ROOT/.claude/.hook-fires.log" 2>/dev/null || true
+    cat >&2 <<'EOF'
+⛔ Refusing gh pr command: bash-guard parser failed to run.
+
+    scripts/claude-hooks/_bash_guard_parse.py exited non-zero (missing
+    python3? import/syntax error? transient sandbox hiccup?), so the
+    stacked-PR safety check could not run. Refusing out of caution rather
+    than silently allowing a potentially stack-collapsing `gh pr
+    merge|create`.
+
+    If this was a transient failure, just re-run the command. If it
+    persists, fix the parser. To proceed manually, first verify:
+        gh pr list --base <branch> --state open
+EOF
+    exit 2
+  fi
+  # Parser failed but the command does not directly start with a guarded gh
+  # pr invocation — fall open (blocking arbitrary commands violates the
+  # fail-open philosophy, and a transient failure must not wedge unrelated
+  # work).
+  exit 0
+fi
 
 if [[ -z "$gh_subcommand" ]]; then
   exit 0
