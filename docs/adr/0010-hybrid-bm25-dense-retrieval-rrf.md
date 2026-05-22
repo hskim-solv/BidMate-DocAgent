@@ -65,6 +65,13 @@ ADR 0031 이 이 ADR 의 hybrid BM25 표면 위에 직교 분석 변형으로 `b
 
 (2026-05-19, [ADR 0058](0058-phase35-mode-winner.md) / PR #966 / issue #957)
 
-본 ADR 라인 59 의 "BGE-M3 sparse 채널 deferred" 가 Phase 3.5 PR #966 의 kordoc full-corpus 측정 (n=221, 3 variants × paired CI 95%) 으로 closeout. 결정은 [ADR 0058](0058-phase35-mode-winner.md) 에서 finalize — 본 ADR 의 `retrieval_backend` knob 인터페이스 + default 정책은 ADR 0058 의 시나리오 선택에 따름. 두 시나리오 모두 본 ADR 의 hybrid knob 자체는 retain (Scenario A = default `hybrid`, Scenario B = default `dense` + hybrid 는 multi_hop knob 으로 문서화).
+본 ADR 라인 59 의 "BGE-M3 sparse 채널 deferred" 가 Phase 3.5 PR #966 의 csv_text-fallback **898-chunk** 측정 (n=221, paired CI 95%, dense_m3 vs hybrid_bm25_k60_m3) 으로 closeout. kordoc 전체 추출 (~264 chunks/doc ≈ **26,376**) 은 16GB MPS 재임베딩 비용으로 본 측정에 **미사용한 reference** 값이다 (ADR 0058 Context + REPORT '청크 수 caveat' 참조). 측정 디렉터리 이름 `..._kordoc_no_m3` 은 corpus 가 kordoc 임을 뜻하지 **않는다** — 실제 빌드는 `data_list_csv_text` fallback loader (real100 의 HWP/PDF, ADR 0049). 따라서 절대 `chunk_recall@k` 는 Phase 3 kordoc 빌드 수치와 직접 비교 불가, 내부 paired-CI delta 만 유효. 결정은 [ADR 0058](0058-phase35-mode-winner.md) 에서 finalize — 본 ADR 의 `retrieval_backend` knob 인터페이스 + default 정책은 ADR 0058 의 시나리오 선택에 따름. 두 시나리오 모두 본 ADR 의 hybrid knob 자체는 retain (Scenario A = default `hybrid`, Scenario B = default `dense` + hybrid 는 multi_hop knob 으로 문서화).
 
 Status 는 `accepted` 유지 — closeout 은 deferred ablation 의 측정 완료 sync only, runtime 동작 변경 0.
+
+## Verification
+
+<!-- verifies-key: reports/retrieval/phase35_m3_20260518T214937Z_kordoc_no_m3/REPORT.md:898 -->
+<!-- verifies-key: docs/adr/0058-phase35-mode-winner.md:898-chunk -->
+
+closeout 의 corpus 주장(csv_text-fallback 898 chunks, kordoc 26,376 은 미사용 reference)을 커밋된 산출물에 핀한다. REPORT.md 의 변형 표 청크 수(898) + ADR 0058 의 동일 corpus 기재가 본 closeout 의 load-bearing 근거다. 참조 파일이 keyed 값을 잃으면 `scripts/_governance.py --lint-adr-consequences docs/adr/0010-hybrid-bm25-dense-retrieval-rrf.md` 가 본 ADR 을 flag 한다.
