@@ -48,6 +48,7 @@ ADR 0010 (2026-05-11) 은 `retrieval_backend ∈ {dense, hybrid}` 를 default `d
 - README 가 default-mode framing 을 업데이트해야 함; `eval/config.yaml` `agentic_full` preset annotation 이 뒤집힘 (follow-up 구현 PR, 본 ADR 에 의해 블록 안 됨)
 - BM25 의존성 (`rank_bm25`) 이 production 에 load-bearing 화 (이미 `requirements.txt` 에 있어 install footprint 불변)
 - Latency 예산: csv_text-fallback 898-chunk 측정에서 p50 기준 dense 의 1.35x (757ms vs 559ms)
+- **Provenance 정정 (2026-05-22, issue #1285)**: 위 line 48 follow-up 을 구현한 PR #1000 의 `rag_pipeline_presets.py` 주석이 "eval `full` row 는 이미 explicit hybrid 이라 eval 에 영향 없음" 이라 잘못 주장했다. 실제로 `full` row 는 `retrieval_backend` 를 선언하지 않아 preset default 를 상속하므로, 이 flip 은 eval `full` (및 full_llm/no_rerank/retrieval_only/no_metadata_first) 행을 dense → hybrid 로 이동시켰다. 정정 (issue #1285): (1) `full` 행은 hybrid 유지 (canonical headline = production default 반영), (2) 본 ADR 의 dense-vs-hybrid 재현성을 위해 명시적 dense control 행 `full_dense` 를 `eval/config.yaml` 에 추가, (3) 위 false 주석을 정정. `full` 이 `hybrid_bm25` 와 기능적으로 동일해진 것은 의도된 것 (canonical headline vs #149 k=60 anchor) 이며 #800/#804 trap 과 무관함을 양쪽 행 주석에 명시.
 
 **본 ADR 이 lock 하는 것**:
 - 향후 모든 ablation runner 의 `apply_fusion_and_reranking` 배선 — Phase 3 PR #956 버그 재발 금지 (Phase 3 는 PR-H #994 에서 수정)
