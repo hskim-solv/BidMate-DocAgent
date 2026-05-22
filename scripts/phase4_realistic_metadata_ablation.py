@@ -88,6 +88,7 @@ from rag_text_processing import tokenize  # noqa: E402
 from scripts._ablation_common import (  # noqa: E402
     _fmt_ci,
     _fmt_mean,
+    anon_qid,
     categories_from_case,
     compute_deltas,
 )
@@ -266,7 +267,7 @@ def measure_variant(
         retrieved_chunk_ids, latency_ms = run_single_case(index, case, spec, top_k)
         latency_vals.append(latency_ms)
         row: dict[str, Any] = {
-            "qid": qid,
+            "qid": anon_qid(qid),
             "query_type": qt,
             "categories": list(case["_categories"]),
             "gold_chunk_n": len(gold_chunk_ids),
@@ -630,7 +631,15 @@ def _run_reaggregate(
 
     cfg = yaml.safe_load(Path(args.eval_config).read_text(encoding="utf-8"))
     cases = cfg.get("cases", []) or []
-    cases_by_qid = {str(c.get("id")): c for c in cases}
+    cases_by_qid = {}
+    for _c in cases:
+        _cid = str(_c.get("id"))
+        # Tolerant join: committed real-eval artifacts carry anonymized
+        # qids (anon_qid maps Hangul ids -> real_<hash>); synthetic /
+        # legacy files carry the raw id. Map both so re-aggregation
+        # works regardless of which the persisted row used.
+        cases_by_qid[_cid] = _c
+        cases_by_qid[anon_qid(_cid)] = _c
 
     for variant_name, m in measurements.items():
         rows = m.get("per_case", []) or []

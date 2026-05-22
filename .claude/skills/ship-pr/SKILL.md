@@ -20,7 +20,12 @@ ADR-aware, approval-gated single-PR shipping. The skill replaces an ad-hoc seque
 
 ## Workflow
 
-0. **Mutex guard (issue #1043).** Before any other step, check that `.claude/.ship-armed` does NOT exist. If it does, refuse and tell the user to run `make ship-disarm` first — the two ship surfaces are mutually exclusive and `make ship-arm` is currently active. Then `touch .claude/.ship-pr-active` so `make ship-arm` will refuse if invoked while this skill is running. The cleanup (step 13) removes the marker; if the skill aborts, the marker auto-expires after 6h (`_ship_arm.py` stale-marker safety).
+0. **Mutex guard (issue #1043).** Before any other step, run:
+   `python3 scripts/claude-hooks/_ship_arm.py --enter-ship-pr`
+   Code-enforced (symmetric with the ship-arm side): non-zero exit if
+   `.claude/.ship-armed` exists (run `make ship-disarm` first) — otherwise it
+   creates `.claude/.ship-pr-active`. If it exits non-zero, STOP. Step 13
+   releases it; aborts auto-expire after 6h.
 
 1. **Scope confirmation.** Ask the user (inline or via `AskUserQuestion`): "Which issue does this PR close, and what's the one-line summary?" If no issue exists yet, propose a title + body and require **explicit approval** before `gh issue create`.
 
@@ -36,7 +41,11 @@ ADR-aware, approval-gated single-PR shipping. The skill replaces an ad-hoc seque
 
 5. **Update SSoT if load-bearing path changes.** If the change touches files in `scripts/_governance.py` `LOAD_BEARING_PATHS`, update the list there first (single source of truth read by `.githooks/pre-push` + the §5b CI gate).
 
-6. **Local gate.** Run `bash scripts/test.sh` (pytest -q) and `ruff check .`. On failure, stop and report exactly which test / lint rule failed — ask the user whether to fix in this PR or open a follow-up.
+6. **Local gate.** Default: run full `bash scripts/test.sh` (pytest -q, all shards) + `ruff check .`. On failure, stop and report exactly which test / lint rule failed — ask the user whether to fix in this PR or open a follow-up.
+
+   **Real-model fallback.** In a worktree where a heavy real-model dependency is installed (e.g. FlagEmbedding → the `tests/test_m3_backend_regression.py` real-model classes run unconditionally, because `@unittest.skipUnless(_flag_embedding_available())` keys off *import availability*, not `EMBEDDING_BACKEND` — so `EMBEDDING_BACKEND=hashing` does not skip them), the full suite loads the real model and becomes minutes-long-to-hung; local completion is structurally impractical, not a one-off flake. **Only in that case**, and **only if the repo defines a `slow` pytest marker**, you may substitute `make test-fast` (`pytest -m "not slow" -n auto --dist loadfile`) + `ruff check .` as the local gate. This excludes *only* the real-model / heavy integration tests carrying the `slow` marker — it is NOT "skip the tests". The excluded `slow` coverage is carried by CI, where FlagEmbedding is not installed (those tests auto-skip, or run across 8 shards). In an ordinary environment (no real-model dep installed) the full `bash scripts/test.sh` completes normally, so this fallback is unnecessary — do not use it there.
+
+   If you use the fallback you MUST: (a) note it explicitly in the PR body — e.g. "Local gate: `make test-fast` — real-model `slow` tests excluded locally, covered by CI"; and (b) treat **step 12's merge gate as hard-conditional on CI green** — local did not verify full coverage, so the merge MUST NOT proceed until `gh pr checks <N>` is green.
 
 7. **Branch convention check.** Run `python3 scripts/check_branch_and_issue.py --branch "$(git rev-parse --abbrev-ref HEAD)" --check-issue`. If the branch name violates `<type>/issue-<N>[-<slug>]` (ADR 0007), propose a rename and apply `git branch -m` only with explicit approval.
 
@@ -69,9 +78,9 @@ ADR-aware, approval-gated single-PR shipping. The skill replaces an ad-hoc seque
     gh pr merge 493 --squash --admin                   # stacked dependents present
     gh pr merge 493 --squash --admin --delete-branch   # no dependents
     ```
-    Wait for explicit go-ahead. Then execute.
+    **If the step-6 real-model fallback (`make test-fast`) was used, local coverage was partial — this merge is hard-gated on CI green: confirm `gh pr checks <N>` reports all-green before displaying the merge command.** Wait for explicit go-ahead. Then execute.
 
-13. **Aftermath.** `git checkout main` (if the worktree owns main) or `git fetch origin main` + branch advance (worktree case). **Remove the mutex marker** (`rm -f .claude/.ship-pr-active`) so `make ship-arm` is unblocked. If the user has another PR stacked on top, prompt them to re-invoke the skill for the next layer (which re-touches the marker at step 0).
+   **Release the mutex marker** (`python3 scripts/claude-hooks/_ship_arm.py --exit-ship-pr`) so `make ship-arm` is unblocked.
 
 ## Approval-gate language
 

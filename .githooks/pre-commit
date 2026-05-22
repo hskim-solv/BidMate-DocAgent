@@ -55,6 +55,11 @@ ALLOWED_PATTERNS=(
   # consumer of the ADR 0059 failure_category_counts surface.
   '^reports/real100/failure_distribution\.md$'
   '^reports/real100/failure_distribution\.aggregate\.json$'
+  # Issue #1243 — per-category failure-mode slices (script:
+  # scripts/render_failure_slices.py). Per-case decomposition of the ADR
+  # 0059 failure surface for audit verifiability. Aggregate-only — counts/
+  # cardinalities only, no text/doc_id/chunk_id.
+  '^reports/real100/failure_slices\.aggregate\.json$'
   # Issue #1021 — variance source inspection (script:
   # scripts/measure_variance.py, ADR 0059 Issue J audit). N=5 same-HEAD
   # runs → per-category mean/std/min/max + per-case stability + transition
@@ -247,6 +252,27 @@ if [[ -n "$phase4_staged" ]]; then
   phase4_out=$(python3 scripts/_governance.py --check-phase4-privacy 2>&1)
   if [[ $? -ne 0 ]]; then
     echo "$phase4_out" >&2
+    exit 1
+  fi
+fi
+
+# Guard: structural eval-artifact privacy (CONTENT scan, #1204).
+# Broader than the phase4 key-name gate above: any committable JSON under
+# reports/retrieval/ or reports/real100/ must carry zero Hangul (anonymized
+# qids are real_<hex>; categories/metrics are ASCII/numeric) and zero
+# colon-bearing dict keys (retry-reason payloads embed agency names / 공고번호
+# doc-ids). The check uses NO name list — listing the real agency names in
+# committed source would itself re-leak them. Fires whenever such a JSON OR
+# one of the sanitizing generators is staged. tests/
+# test_eval_artifact_privacy_regression.py is the CI backstop.
+eval_priv_staged=$(git diff --cached --name-only --diff-filter=ACMR -- \
+  'reports/retrieval/*.json' 'reports/real100/*.json' \
+  'scripts/_ablation_common.py' 'scripts/run_real_eval_delta.py' \
+  'scripts/eda_real100.py' 'scripts/phase*_ablation.py' 2>/dev/null || true)
+if [[ -n "$eval_priv_staged" ]]; then
+  eval_priv_out=$(python3 scripts/_governance.py --check-eval-privacy 2>&1)
+  if [[ $? -ne 0 ]]; then
+    echo "$eval_priv_out" >&2
     exit 1
   fi
 fi

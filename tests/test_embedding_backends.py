@@ -38,7 +38,11 @@ class OpenAIBackendErrorPathTest(unittest.TestCase):
     def test_missing_api_key_raises(self) -> None:
         import rag_core
 
-        with mock.patch.dict(os.environ, {}, clear=False):
+        # Attest a public surface so the ADR 0061 ③ guard passes and the
+        # missing-key path (not the data-boundary block) is exercised (#1195).
+        with mock.patch.dict(
+            os.environ, {"BIDMATE_DATA_SURFACE": "public_synthetic"}, clear=False
+        ):
             os.environ.pop("BIDMATE_OPENAI_API_KEY", None)
             os.environ.pop("OPENAI_API_KEY", None)
             with mock.patch.dict(sys.modules, {"openai": mock.MagicMock()}):
@@ -49,7 +53,11 @@ class OpenAIBackendErrorPathTest(unittest.TestCase):
     def test_missing_sdk_raises_with_install_hint(self) -> None:
         import rag_core
 
-        with mock.patch.dict(sys.modules, {"openai": None}):
+        # Public-surface attestation passes the ADR 0061 ③ guard so the
+        # missing-SDK install hint (not the boundary block) is asserted (#1195).
+        with mock.patch.dict(
+            os.environ, {"BIDMATE_DATA_SURFACE": "public_synthetic"}, clear=False
+        ), mock.patch.dict(sys.modules, {"openai": None}):
             with self.assertRaises(RuntimeError) as ctx:
                 rag_core.embed_texts(["x"], backend="openai")
             self.assertIn("pip install openai", str(ctx.exception))
@@ -105,7 +113,15 @@ class OpenAIVectorNormalizationTest(unittest.TestCase):
         fake_openai.OpenAI = _FakeOpenAIClient
 
         with mock.patch.dict(sys.modules, {"openai": fake_openai}):
-            with mock.patch.dict(os.environ, {"BIDMATE_OPENAI_API_KEY": "test-key"}):
+            # BIDMATE_DATA_SURFACE attests public so the ADR 0061 ③ guard
+            # passes and the fake client (not the boundary block) runs (#1195).
+            with mock.patch.dict(
+                os.environ,
+                {
+                    "BIDMATE_OPENAI_API_KEY": "test-key",
+                    "BIDMATE_DATA_SURFACE": "public_synthetic",
+                },
+            ):
                 result = rag_core.embed_texts(
                     ["hello", "world", "again"],
                     model_name="text-embedding-3-large",
@@ -128,7 +144,15 @@ class EmbedQueryForIndexOpenAITest(unittest.TestCase):
         fake_openai.OpenAI = _FakeOpenAIClient
 
         with mock.patch.dict(sys.modules, {"openai": fake_openai}):
-            with mock.patch.dict(os.environ, {"BIDMATE_OPENAI_API_KEY": "test-key"}):
+            # Public-surface attestation passes the ADR 0061 ③ guard so this
+            # genuinely routes through the openai backend, not hashing (#1195).
+            with mock.patch.dict(
+                os.environ,
+                {
+                    "BIDMATE_OPENAI_API_KEY": "test-key",
+                    "BIDMATE_DATA_SURFACE": "public_synthetic",
+                },
+            ):
                 vec = rag_core.embed_query_for_index(
                     "안녕",
                     {"backend": "openai", "model": "text-embedding-3-large", "dimension": 4},
@@ -138,7 +162,12 @@ class EmbedQueryForIndexOpenAITest(unittest.TestCase):
     def test_openai_falls_back_to_hashing_when_sdk_missing(self) -> None:
         import rag_core
 
-        with mock.patch.dict(sys.modules, {"openai": None}):
+        # Public-surface attestation passes the ADR 0061 ③ guard so the
+        # SDK-missing branch (not the boundary block) drives the graceful
+        # hashing fallback this test asserts (#1195).
+        with mock.patch.dict(
+            os.environ, {"BIDMATE_DATA_SURFACE": "public_synthetic"}, clear=False
+        ), mock.patch.dict(sys.modules, {"openai": None}):
             vec = rag_core.embed_query_for_index(
                 "안녕",
                 {"backend": "openai", "model": "text-embedding-3-large", "dimension": 8},

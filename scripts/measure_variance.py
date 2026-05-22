@@ -45,6 +45,35 @@ FAILURE_CATEGORIES = (
 )
 
 
+def _validate_run(name: str, run: dict[str, Any]) -> None:
+    """Fail-closed shape check for one eval_summary.json run.
+
+    A wrong glob (e.g. this script's own aggregate.json, or a pre-ADR-0059
+    summary) would otherwise parse with `or {}`/`or []` fallbacks into
+    all-zero counts + a 0==0 contract-ok + total 0 cases, and exit cleanly —
+    emitting a confident report about a file that is not a per-case run.
+    Reject such files loudly instead.
+    """
+    fcc = run.get("failure_category_counts")
+    if not isinstance(fcc, dict):
+        raise SystemExit(
+            f"{name}: missing/invalid 'failure_category_counts' "
+            f"(got {type(fcc).__name__}) — not an ADR 0059 eval_summary.json?"
+        )
+    missing = [cat for cat in FAILURE_CATEGORIES if cat not in fcc]
+    if missing:
+        raise SystemExit(f"{name}: 'failure_category_counts' missing categories: {missing}")
+    case_results = run.get("case_results")
+    if not isinstance(case_results, list) or not case_results:
+        raise SystemExit(
+            f"{name}: 'case_results' missing or empty — "
+            f"run eval with include_cases=True before measuring variance"
+        )
+    ao = run.get("abstention_outcomes")
+    if not isinstance(ao, dict) or "incorrect_answer" not in ao:
+        raise SystemExit(f"{name}: missing/invalid 'abstention_outcomes.incorrect_answer'")
+
+
 def _load_runs(glob_pattern: str) -> list[tuple[str, dict[str, Any]]]:
     """Load N eval_summary.json files matching the glob pattern."""
     paths = sorted(glob.glob(glob_pattern))
@@ -53,34 +82,48 @@ def _load_runs(glob_pattern: str) -> list[tuple[str, dict[str, Any]]]:
     runs = []
     for path in paths:
         with open(path, "r", encoding="utf-8") as fh:
-            runs.append((Path(path).name, json.load(fh)))
+            run = json.load(fh)
+        _validate_run(Path(path).name, run)
+        runs.append((Path(path).name, run))
     return runs
 
 
 def _category_counts(run: dict[str, Any]) -> dict[str, int]:
-    """Extract 7-category counts from a single eval_summary.json (top-level)."""
-    fcc = run.get("failure_category_counts") or {}
+    """Extract 7-category counts from a single eval_summary.json (top-level).
+
+    Shape is guaranteed by `_validate_run`; no missing-key fallback here.
+    """
+    fcc = run["failure_category_counts"]
     return {cat: int(fcc.get(cat, 0)) for cat in FAILURE_CATEGORIES}
 
 
 def _contract_check(run: dict[str, Any]) -> tuple[int, int, bool]:
     """Return (vfn, incorrect_answer, contract_ok)."""
-    vfn = int(run.get("failure_category_counts", {}).get("verifier_false_negative", 0))
-    ao = run.get("abstention_outcomes", {}) or {}
-    incorrect = int(ao.get("incorrect_answer", 0))
+    vfn = int(run["failure_category_counts"]["verifier_false_negative"])
+    incorrect = int(run["abstention_outcomes"]["incorrect_answer"])
     return vfn, incorrect, vfn == incorrect
 
 
-def _per_case_categories(run: dict[str, Any]) -> dict[str, str]:
-    """Return case_id → failure_category (None → 'success')."""
+def _per_case_categories(run: dict[str, Any], name: str) -> dict[str, str]:
+    """Return case_id → failure_category (None → 'success').
+
+    The case-id key in eval_summary.json `case_results` entries is `id`
+    (eval/scorers/case.py); `case_id`/`query_hash` are NOT present, so a
+    `query[:64]` surrogate would merge any two cases sharing a 64-char
+    prefix and silently corrupt the stability / transition matrix. Read
+    `id` directly and fail-closed on a missing or duplicate id.
+    """
     out: dict[str, str] = {}
-    for cr in run.get("case_results", []) or []:
-        cid = cr.get("case_id")
+    for cr in run["case_results"]:
+        cid = cr.get("id") or cr.get("case_id")
         if cid is None:
-            # Fall back to a stable surrogate (query hash if present)
-            cid = cr.get("query_hash") or cr.get("query", "")[:64]
-        cat = cr.get("failure_category") or "success"
-        out[str(cid)] = cat
+            raise SystemExit(
+                f"{name}: case_result missing 'id' — not an ADR 0059 per-case run?"
+            )
+        cid = str(cid)
+        if cid in out:
+            raise SystemExit(f"{name}: duplicate case id {cid!r} in case_results")
+        out[cid] = cr.get("failure_category") or "success"
     return out
 
 
@@ -104,7 +147,7 @@ def build_aggregate(runs: list[tuple[str, dict[str, Any]]]) -> dict[str, Any]:
         }
 
     # Per-case stability
-    per_case_by_run = [_per_case_categories(r) for _, r in runs]
+    per_case_by_run = [_per_case_categories(r, name) for name, r in runs]
     all_case_ids = set()
     for d in per_case_by_run:
         all_case_ids.update(d.keys())
