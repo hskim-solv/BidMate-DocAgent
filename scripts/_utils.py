@@ -103,11 +103,20 @@ def build_provenance() -> dict[str, object]:
     snapshot taken from a workspace with stray files is flagged as
     not-clean — stricter than the ``git_dirty()`` helper used by the
     leaderboard/render side.
+
+    ``git_tree`` is the SHA of HEAD's root tree object. Unlike
+    ``git_commit`` it is squash-merge invariant: a squash merge lands a
+    new commit on main with a different commit SHA but the identical
+    tree, so the recorded ``git_commit`` dangles while ``git_tree`` stays
+    reachable. The baseline provenance gate uses it as the durable
+    reachability key (ADR 0067).
     """
     sha = git_output(["rev-parse", "HEAD"], default="")[:12] or "unknown"
+    tree = git_output(["rev-parse", "HEAD^{tree}"], default="")[:12] or "unknown"
     dirty = git_output(["status", "--porcelain"], default="") != ""
     return {
         "git_commit": sha,
+        "git_tree": tree,
         "git_dirty": bool(dirty),
         "generated_at": utc_now(),
     }
