@@ -396,3 +396,65 @@ def test_f1_parser_crash_chained_gh_falls_open(tmp_path):
     recoverable; over-blocking is not)."""
     r = _run_hook_with_broken_parser(tmp_path, "make build && gh pr merge --delete-branch")
     assert r.returncode == 0
+
+
+# ---------------------------------------------------------------------------
+# detect_git_push_delete — worktree-safe post-merge remote delete (issue #1283)
+# ---------------------------------------------------------------------------
+
+
+def test_push_delete_flag_after_remote(bgp):
+    assert bgp.detect_git_push_delete("git push origin --delete feat/issue-1-x") == ["feat/issue-1-x"]
+
+
+def test_push_delete_flag_before_remote(bgp):
+    assert bgp.detect_git_push_delete("git push --delete origin feat/B") == ["feat/B"]
+
+
+def test_push_delete_short_flag(bgp):
+    assert bgp.detect_git_push_delete("git push origin -d feat/B") == ["feat/B"]
+    assert bgp.detect_git_push_delete("git push -d origin feat/B") == ["feat/B"]
+
+
+def test_push_delete_colon_refspec(bgp):
+    assert bgp.detect_git_push_delete("git push origin :feat/B") == ["feat/B"]
+
+
+def test_push_delete_refs_heads_prefix_stripped(bgp):
+    assert bgp.detect_git_push_delete(
+        "git push origin --delete refs/heads/feat/B"
+    ) == ["feat/B"]
+
+
+def test_push_delete_multiple_targets(bgp):
+    assert bgp.detect_git_push_delete(
+        "git push origin --delete feat/A feat/B"
+    ) == ["feat/A", "feat/B"]
+
+
+def test_ordinary_push_is_not_a_delete(bgp):
+    assert bgp.detect_git_push_delete("git push origin feat/B") == []
+    assert bgp.detect_git_push_delete("git push -u origin feat/B") == []
+    assert bgp.detect_git_push_delete("git push origin HEAD:main") == []
+
+
+def test_push_delete_in_compound_command(bgp):
+    assert bgp.detect_git_push_delete(
+        "gh pr merge 5 --squash && git push origin --delete feat/B"
+    ) == ["feat/B"]
+
+
+def test_non_push_command_is_empty(bgp):
+    assert bgp.detect_git_push_delete("gh pr merge 5 --delete-branch") == []
+    assert bgp.detect_git_push_delete("rm -rf --delete origin x") == []
+
+
+def test_cli_detect_push_delete_stdout(bgp):
+    import subprocess, sys
+    r = subprocess.run(
+        [sys.executable, str(PARSE_PATH), "--detect-push-delete",
+         "git push origin --delete feat/B"],
+        capture_output=True, text=True,
+    )
+    assert r.returncode == 0
+    assert r.stdout.strip() == "feat/B"

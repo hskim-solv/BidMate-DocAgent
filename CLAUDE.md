@@ -90,7 +90,8 @@ RFP 문서 이해를 위한 DocAgent 시스템. **입찰/RFP 문서 인텔리전
 - `run_rag_query` 답변 dict 를 그림자처럼 가리는 parallel pydantic/TypedDict 모델 추가 — dict 가 계약 (ADR 0003)
 - `eval/config.yaml` 에서 `naive_baseline` preset 제거 (ADR 0001)
 - 리뷰 중 무관한 커밋 추가 — follow-up PR 분리
-- `gh pr list --base <this-PR-head> --state open --json number` 확인 없이 `gh pr merge --delete-branch` 실행. 결과가 비어있지 않으면 stacked dependent 존재 — `--delete-branch` 빼거나 child 를 main 위로 rebase 먼저. (후속 PreToolUse Bash 가드 훅이 자동화하지만, 훅 비활성화 시도 살아남도록 규칙 명시)
+- `gh pr merge --delete-branch` 사용. 멀티 worktree 에서 gh 의 로컬 checkout-to-default 단계가 `main` 충돌로 실패해 원격 삭제 전에 명령을 abort 한다 (서버 머지는 성공, 원격 브랜치 잔존 — issue #1283). 머지는 `gh pr merge <N> --squash --admin`, 원격 브랜치 삭제는 별도 `git push origin --delete <branch>` (순수 원격, worktree-safe)
+- `git push origin --delete <branch>` (또는 `gh pr merge --delete-branch`) 를 `gh pr list --base <branch> --state open --json number` 확인 없이 실행. 결과가 비어있지 않으면 stacked dependent 존재 → 원격 삭제 생략하거나 child 를 main 위로 rebase 먼저. (후속 PreToolUse Bash 가드 훅이 두 형태 모두 자동 차단하지만, 훅 비활성화 시도 살아남도록 규칙 명시)
 
 ## Non-goals (명시 요청 없을 시)
 
