@@ -215,6 +215,18 @@ def test_surface_reduction_partial(aho):
     assert "memory-lines" in out  # didn't fire
 
 
+def test_surface_reduction_respects_hook_scope(aho):
+    # F2: when scoped to a single hook, the other hooks must NOT be reported
+    # as idle just because the caller filtered events down to that hook.
+    now = datetime.now(timezone.utc)
+    events = [_make_event(now, "bash-guard", "blocked")]
+    out = aho.surface_reduction_candidates(events, "90d", ["bash-guard"])
+    assert out == []  # bash-guard fired; no other hook in scope to flag
+    # A scoped hook with 0 fires is a legitimate candidate.
+    out2 = aho.surface_reduction_candidates([], "90d", ["memory-lines"])
+    assert out2 == ["memory-lines"]
+
+
 # ---------------------------------------------------------------------------
 # End-to-end: load_log + render_json
 # ---------------------------------------------------------------------------
@@ -252,3 +264,97 @@ def test_render_text_includes_all_hooks(aho):
     # 0-fire 시에도 모든 hook 이 표 안에 있어야 surface 측정 가능
     for hook in aho.ALL_HOOKS:
         assert hook in out
+
+
+# ---------------------------------------------------------------------------
+# load_log_with_stats — parse-failure surfacing (F3)
+# ---------------------------------------------------------------------------
+
+
+def test_load_log_with_stats_counts_dropped(tmp_path, aho):
+    log = tmp_path / ".hook-fires.log"
+    log.write_text(
+        "2026-05-15T09:51:19Z|ok|memory-lines|MEMORY.md\n"
+        "\n"                                  # blank: not a content line
+        "# comment\n"                         # comment: not a content line
+        "malformed line with no timestamp\n"  # content line, parse failure
+        "also|garbage|no-ts\n",               # content line, parse failure
+        encoding="utf-8",
+    )
+    events, stats = aho.load_log_with_stats(log)
+    assert len(events) == 1
+    assert stats["content_lines"] == 3
+    assert stats["parsed"] == 1
+    assert stats["dropped"] == 2
+
+
+def test_load_log_with_stats_missing_file(tmp_path, aho):
+    events, stats = aho.load_log_with_stats(tmp_path / "nope.log")
+    assert events == []
+    assert stats == {"content_lines": 0, "parsed": 0, "dropped": 0}
+
+
+# ---------------------------------------------------------------------------
+# main() — fail-open guard (F3) + single-hook scope (F2)
+# ---------------------------------------------------------------------------
+
+
+def test_main_all_malformed_returns_nonzero(tmp_path, aho, capsys):
+    # F3: file exists with content but every line fails to parse → must NOT
+    # report a false "no fires" all-clear.
+    log = tmp_path / ".hook-fires.log"
+    log.write_text(
+        "garbage one\nnot-a-timestamp|x|y\nstill|bad\n", encoding="utf-8"
+    )
+    rc = aho.main(["--log", str(log)])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "failed to parse" in err
+
+
+def test_main_empty_file_is_clean(tmp_path, aho):
+    # An empty (or blank/comment-only) log is a legitimate 0-fire result.
+    log = tmp_path / ".hook-fires.log"
+    log.write_text("\n# only a comment\n", encoding="utf-8")
+    rc = aho.main(["--log", str(log)])
+    assert rc == 0
+
+
+def test_main_missing_file_returns_one(tmp_path, aho, capsys):
+    rc = aho.main(["--log", str(tmp_path / "nope.log")])
+    assert rc == 1
+    assert "not found" in capsys.readouterr().err
+
+
+def test_main_parse_failures_surfaced_in_json(tmp_path, aho, capsys):
+    log = tmp_path / ".hook-fires.log"
+    log.write_text(
+        "2026-05-15T09:51:19Z|ok|memory-lines|MEMORY.md\n"
+        "malformed\n",
+        encoding="utf-8",
+    )
+    rc = aho.main(["--log", str(log), "--window", "all", "--format", "json"])
+    assert rc == 0
+    js = json.loads(capsys.readouterr().out)
+    assert js["parse_stats"]["dropped"] == 1
+    assert js["parse_stats"]["parsed"] == 1
+
+
+def test_main_single_hook_scopes_surface_reduction(tmp_path, aho, capsys):
+    # F2: --hook X must not flag the other 7 hooks as removal candidates.
+    log = tmp_path / ".hook-fires.log"
+    log.write_text(
+        "2026-05-19T10:30:00Z|blocked|bash-guard|cat|br|on=other\n"
+        "2026-05-15T09:51:19Z|ok|memory-lines|MEMORY.md\n",
+        encoding="utf-8",
+    )
+    rc = aho.main(
+        ["--log", str(log), "--window", "all", "--hook", "bash-guard",
+         "--format", "json"]
+    )
+    assert rc == 0
+    js = json.loads(capsys.readouterr().out)
+    # bash-guard fired → not a candidate; other hooks were filtered out of
+    # scope, so they must NOT appear as surface-reduction candidates.
+    assert js["surface_reduction_candidates"] == []
+    assert "memory-lines" not in js["surface_reduction_candidates"]

@@ -169,17 +169,46 @@ def parse_ts(ts: str) -> datetime | None:
 # ---------------------------------------------------------------------------
 
 
+def load_log_with_stats(path: Path) -> tuple[list[dict], dict]:
+    """Read fire-log; return ``(events, stats)``.
+
+    Blank and comment (``#``) lines are intentional skips, not failures.
+    A *content* line is any other line; one that ``parse_log_line`` rejects
+    is counted as a parse failure so callers can refuse a false "no fires"
+    report when a non-empty log parses to nothing (fail-open guard).
+
+    stats keys::
+
+        content_lines:  non-blank, non-comment lines attempted
+        parsed:         lines successfully parsed into events
+        dropped:        content lines that failed to parse (malformed)
+    """
+    events: list[dict] = []
+    content_lines = 0
+    dropped = 0
+    if path.exists():
+        with path.open("r", encoding="utf-8", errors="replace") as fh:
+            for raw in fh:
+                stripped = raw.rstrip("\n")
+                if not stripped or stripped.startswith("#"):
+                    continue
+                content_lines += 1
+                ev = parse_log_line(raw)
+                if ev is None:
+                    dropped += 1
+                else:
+                    events.append(ev)
+    return events, {
+        "content_lines": content_lines,
+        "parsed": len(events),
+        "dropped": dropped,
+    }
+
+
 def load_log(path: Path) -> list[dict]:
     """Read fire-log file, returning parsed events (malformed lines dropped)."""
-    if not path.exists():
-        return []
-    out: list[dict] = []
-    with path.open("r", encoding="utf-8", errors="replace") as fh:
-        for raw in fh:
-            ev = parse_log_line(raw)
-            if ev is not None:
-                out.append(ev)
-    return out
+    events, _ = load_log_with_stats(path)
+    return events
 
 
 def filter_window(events: list[dict], window: str) -> list[dict]:
@@ -278,10 +307,18 @@ def threshold_recommendation(events: list[dict]) -> dict:
     }
 
 
-def surface_reduction_candidates(events: list[dict], window: str) -> list[str]:
-    """Return hooks with 0 fires in the window — candidates for removal."""
+def surface_reduction_candidates(
+    events: list[dict], window: str, hooks: list[str] | None = None
+) -> list[str]:
+    """Return hooks with 0 fires in the window — candidates for removal.
+
+    ``hooks`` scopes the inventory under consideration. When a single-hook
+    filter is active the caller passes ``[that_hook]`` so the other hooks
+    are not falsely reported as idle just because they were filtered out.
+    """
+    inventory = ALL_HOOKS if hooks is None else hooks
     fired = {ev["hook"] for ev in events}
-    return sorted(h for h in ALL_HOOKS if h not in fired)
+    return sorted(h for h in inventory if h not in fired)
 
 
 # ---------------------------------------------------------------------------
@@ -289,10 +326,16 @@ def surface_reduction_candidates(events: list[dict], window: str) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
-def render_text(events: list[dict], window: str) -> str:
+def render_text(
+    events: list[dict],
+    window: str,
+    hooks: list[str] | None = None,
+    parse_stats: dict | None = None,
+) -> str:
+    inventory = ALL_HOOKS if hooks is None else hooks
     breakdown = outcome_breakdown(events)
     threshold = threshold_recommendation(events)
-    silent = surface_reduction_candidates(events, window)
+    silent = surface_reduction_candidates(events, window, inventory)
     fmt_counts = Counter(ev["format"] for ev in events)
 
     lines: list[str] = []
@@ -303,9 +346,16 @@ def render_text(events: list[dict], window: str) -> str:
         f"v1-4field={fmt_counts.get('v1-4field', 0)}  "
         f"v1-3field={fmt_counts.get('v1-3field', 0)}"
     )
+    if parse_stats and parse_stats.get("dropped"):
+        content = parse_stats.get("content_lines", 0)
+        dropped = parse_stats["dropped"]
+        rate = dropped / content if content else 0.0
+        lines.append(
+            f"Parse failures: {dropped}/{content} content lines ({rate:.1%})"
+        )
     lines.append("")
 
-    for hook in ALL_HOOKS:
+    for hook in inventory:
         counts = breakdown.get(hook, {})
         if not counts:
             lines.append(f"{hook}: (no fires)")
@@ -315,7 +365,7 @@ def render_text(events: list[dict], window: str) -> str:
             lines.append(f"  {outcome:18s} {counts[outcome]:>6d}")
 
     # Any unexpected hook names (e.g. typo'd legacy reason)
-    unknown_hooks = sorted(set(breakdown) - set(ALL_HOOKS))
+    unknown_hooks = sorted(set(breakdown) - set(inventory))
     if unknown_hooks:
         lines.append("")
         lines.append("Unrecognized hook names (legacy / typo):")
@@ -351,15 +401,26 @@ def render_text(events: list[dict], window: str) -> str:
     return "\n".join(lines) + "\n"
 
 
-def render_json(events: list[dict], window: str) -> str:
-    return json.dumps({
+def render_json(
+    events: list[dict],
+    window: str,
+    hooks: list[str] | None = None,
+    parse_stats: dict | None = None,
+) -> str:
+    inventory = ALL_HOOKS if hooks is None else hooks
+    payload = {
         "window": window,
         "total_events": len(events),
         "format_mix": dict(Counter(ev["format"] for ev in events)),
         "outcome_breakdown": outcome_breakdown(events),
         "threshold_memory_lines": threshold_recommendation(events),
-        "surface_reduction_candidates": surface_reduction_candidates(events, window),
-    }, indent=2, ensure_ascii=False) + "\n"
+        "surface_reduction_candidates": surface_reduction_candidates(
+            events, window, inventory
+        ),
+    }
+    if parse_stats is not None:
+        payload["parse_stats"] = parse_stats
+    return json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
 
 
 # ---------------------------------------------------------------------------
@@ -396,9 +457,18 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     log_path = Path(args.log)
-    events = load_log(log_path)
-    if not events and not log_path.exists():
+    if not log_path.exists():
         sys.stderr.write(f"fire-log not found: {log_path}\n")
+        return 1
+
+    events, parse_stats = load_log_with_stats(log_path)
+    # File exists but every content line failed to parse → refuse a false
+    # "no fires" all-clear. An empty log (0 content lines) is legitimate.
+    if parse_stats["content_lines"] > 0 and parse_stats["parsed"] == 0:
+        sys.stderr.write(
+            f"fire-log {log_path}: all {parse_stats['content_lines']} content "
+            f"line(s) failed to parse — refusing false 'no fires' report.\n"
+        )
         return 1
 
     try:
@@ -409,11 +479,14 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.hook != "all":
         events = [e for e in events if e["hook"] == args.hook]
+        hooks_scope = [args.hook]
+    else:
+        hooks_scope = ALL_HOOKS
 
     if args.format == "json":
-        sys.stdout.write(render_json(events, args.window))
+        sys.stdout.write(render_json(events, args.window, hooks_scope, parse_stats))
     else:
-        sys.stdout.write(render_text(events, args.window))
+        sys.stdout.write(render_text(events, args.window, hooks_scope, parse_stats))
     return 0
 
 
