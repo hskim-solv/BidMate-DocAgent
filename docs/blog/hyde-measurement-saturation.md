@@ -87,7 +87,7 @@ ADR 0023 의 promote 조건도 같은 패턴이다. "이 기능이 켜질 자격
 
 [ADR 0032](../adr/0032-eval-saturation-routed-subset.md) 은 *real* embedding backend (sentence-transformers, hashing 아님) 로 측정 surface 자체를 falsify 한다. CI byte-identical 골든은 그대로 유지하면서, 로컬에서 sentence-transformers backend 로 별도 측정해 publish 하는 패턴이다 ([ADR 0005](../adr/0005-eval-split-public-synthetic-private-local.md) public/private split 의 변형).
 
-핵심은 `agentic_full_routed` 라는 새 ablation preset 이다. 기존 `agentic_full` 에서 `metadata_first: false` 를 강제로 켠다 — metadata-first 우회를 비활성화하고 dense + lexical + BM25 로만 retrieval 하게 만든다. 동시에 `eval/synthetic/routed_subset.jsonl` (n=11) 을 따로 작성했다 — multi-turn follow-up + 다문서 비교 ambiguity + metadata-implicit 추론 query 중심으로, metadata-first 라우팅이 *우회되는* 케이스만 모았다.
+핵심은 `agentic_full_routed` 라는 새 ablation preset 이다. 기존 `agentic_full` 에서 `metadata_first: false` 를 강제로 켠다 — metadata-first 우회를 비활성화하고 dense + lexical + BM25 로만 retrieval 하게 만든다. 동시에 `eval/routed_config.yaml` 의 inline `cases:` 섹션에 n=11 routed subset 을 작성했다 — multi-turn follow-up + 다문서 비교 ambiguity + metadata-implicit 추론 query 중심으로, metadata-first 라우팅이 *우회되는* 케이스만 모았다.
 
 이 위에서 5개 임베딩 (MiniLM / e5-large-instruct / KoSimCSE / KURE-v1; BGE-M3 는 torch 2.6 blocker 로 skip) 을 sentence-transformers backend 로 측정했다.
 
@@ -151,7 +151,7 @@ ADR 0023 은 `proposed` 상태로 머무른다. Promote 조건은 변하지 않�
 
 가장 강한 엔지니어링 결정은 default 를 안 바꾸는 결정이다. 가장 강한 결정은 측정 surface 자체를 의심하는 결정이다.
 
-HyDE 는 폐기되지 않았다. 다만 측정 surface 가 HyDE 를 평가할 자격이 없었다는 사실이 측정으로 증명됐다. 그 증명에 든 비용은 ADR 한 페이지 + n=11 짜리 routed_subset.jsonl + leaf module 두 개였다. 그리고 default 는 변하지 않았다.
+HyDE 는 폐기되지 않았다. 다만 측정 surface 가 HyDE 를 평가할 자격이 없었다는 사실이 측정으로 증명됐다. 그 증명에 든 비용은 ADR 한 페이지 + `eval/routed_config.yaml` 의 n=11 inline routed subset + leaf module 두 개였다. 그리고 default 는 변하지 않았다.
 
 다음 cycle 에서 측정 surface 를 재설계할 때, HyDE 는 거기 그대로 기다리고 있을 것이다.
 
@@ -163,7 +163,7 @@ HyDE 는 폐기되지 않았다. 다만 측정 surface 가 HyDE 를 평가할 �
 - [ADR 0032 — Eval-set saturation routed-subset measurement](../adr/0032-eval-saturation-routed-subset.md)
 - [`rag_query_expansion.py`](../../rag_query_expansion.py) — `QueryExpander` Protocol + `IdentityExpander` (default) + `HyDEExpander` (opt-in)
 - [`reports/cost_frontier.md`](../../reports/cost_frontier.md) — 25개 ablation × accuracy + 95% CI
-- [`reports/embedding_routed.json`](../../reports/embedding_routed.json) — 5 임베딩 × routed_subset measurement
+- [`reports/embedding_routed.json`](../../reports/embedding_routed.json) — 5 임베딩 × routed subset (n=11) measurement
 
 **관련 ADR family (측정-gated lockout 패턴)**
 
