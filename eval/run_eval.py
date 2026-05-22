@@ -28,6 +28,7 @@ from rag_core import (
     redact_trace,
     resolve_pipeline_config,
     run_rag_query,
+    run_rag_query_with_oracle_evidence,
 )
 from eval.bootstrap import bootstrap_ci
 from eval.scorers import derive_gold_chunk_ids, score_case
@@ -158,6 +159,11 @@ def normalize_run_config(run: dict[str, Any]) -> dict[str, Any]:
         # Issue #988 / ADR 0057 — bm25_backend metadata for measurement
         # surface. Default `okapi` keeps existing summaries byte-equal.
         "bm25_backend": str(config.get("bm25_backend", "okapi")),
+        # P0-a (#1282) — eval-only oracle-evidence ceiling probe. Read from
+        # the raw run dict, NOT resolve_pipeline_config, so it never enters
+        # PIPELINE_CONFIG_KEYS / product code (ADR 0001 byte-identity). Empty
+        # default => oracle path off, summaries byte-equal.
+        "oracle_evidence_source": str(run.get("oracle_evidence_source") or ""),
     }
 
 
@@ -949,6 +955,81 @@ def _case_source_format(
     return None
 
 
+def build_oracle_evidence(
+    case: dict[str, Any], index: dict[str, Any]
+) -> list[dict[str, Any]]:
+    """Project a case's gold chunks into the retrieval evidence shape (P0-a).
+
+    Reuses :func:`derive_gold_chunk_ids` (the same gold set the chunk-recall
+    scorer uses) and mirrors the evidence-item dict produced by
+    ``rag_retrieval`` (``score_candidates`` ~line 632) so the oracle path
+    feeds verify+answer an identically-shaped payload. ``score`` is pinned to
+    ``1.0`` (above the verifier ``low_top_score`` floor) and
+    ``retrieval_mode="oracle"`` marks the bypass.
+
+    Two ceiling granularities:
+
+    * **chunk-level** (default) — exact gold chunks from
+      ``derive_gold_chunk_ids`` (``expected_doc_ids`` ∩ chunks containing an
+      ``expected_term``): the "perfect chunk retrieval" ceiling.
+    * **doc-level fallback** — when chunk-level resolves nothing but the case
+      has ``expected_doc_ids``, inject *all* chunks of the gold doc(s): the
+      "perfect doc retrieval" ceiling. On real-100, ``expected_terms`` (e.g.
+      ``"150,000,000원"``) often differ in surface form from the csv_text
+      chunk text, so chunk-level gold resolves for only ~⅓ of answerable
+      cases; the doc-level fallback keeps the ceiling measurable for the rest
+      rather than collapsing to all-abstain.
+
+    Abstention cases (no ``expected_doc_ids``) yield ``[]`` → verify naturally
+    fails → answer abstains (the correct ceiling behavior).
+    """
+    by_id = {
+        str(chunk.get("chunk_id") or ""): chunk for chunk in (index.get("chunks") or [])
+    }
+    gold_ids = list(derive_gold_chunk_ids(case, index))
+    if not gold_ids:
+        expected_docs = {str(d) for d in (case.get("expected_doc_ids") or []) if d}
+        if not expected_docs:
+            return []
+        gold_ids = [
+            str(chunk.get("chunk_id") or "")
+            for chunk in (index.get("chunks") or [])
+            if str(chunk.get("doc_id") or "") in expected_docs
+            and chunk.get("chunk_id")
+        ]
+        if not gold_ids:
+            return []
+    evidence: list[dict[str, Any]] = []
+    for chunk_id in gold_ids:
+        chunk = by_id.get(str(chunk_id))
+        if not chunk:
+            continue
+        evidence.append(
+            {
+                "doc_id": chunk["doc_id"],
+                "chunk_id": chunk["chunk_id"],
+                "title": chunk.get("title", ""),
+                "agency": chunk.get("agency", ""),
+                "project": chunk.get("project", ""),
+                "metadata": chunk.get("metadata", {}),
+                "section": chunk.get("section", ""),
+                "section_id": chunk.get("section_id"),
+                "parent_section_id": chunk.get("parent_section_id")
+                or chunk.get("section_id"),
+                "section_path": chunk.get("section_path")
+                or [chunk.get("section", "")],
+                "chunk_seq_in_section": chunk.get("chunk_seq_in_section"),
+                "total_chunks_in_section": chunk.get("total_chunks_in_section"),
+                "chunking_strategy": chunk.get("chunking_strategy", "legacy"),
+                "retrieval_mode": "oracle",
+                "text": chunk.get("text", ""),
+                "score": 1.0,
+                "score_parts": {},
+            }
+        )
+    return evidence
+
+
 def evaluate_run(
     index: dict[str, Any],
     cases: list[dict[str, Any]],
@@ -982,25 +1063,51 @@ def evaluate_run(
             )
             conversation_state = prior_prediction.get("conversation_state") or conversation_state
 
-        prediction = run_rag_query(
-            index,
-            str(case["query"]),
-            pipeline=str(run_config.get("pipeline") or DEFAULT_CLI_PIPELINE_NAME),
-            top_k=run_config.get("top_k"),
-            context_entities=case.get("context_entities") or [],
-            metadata_first=bool(run_config.get("metadata_first", True)),
-            rerank=bool(run_config.get("rerank", True)),
-            rerank_cross_encoder=bool(run_config.get("rerank_cross_encoder", False)),
-            verifier_retry=bool(run_config.get("verifier_retry", True)),
-            retrieval_mode=str(run_config.get("retrieval_mode", "flat")),
-            retrieval_backend=str(run_config.get("retrieval_backend", "dense")),
-            prompt_profile=str(run_config.get("prompt_profile") or ""),
-            conversation_state=conversation_state,
-            rrf_k=int(run_config.get("rrf_k", RRF_K)),
-            bm25_stopword_profile=str(run_config.get("bm25_stopword_profile", "shared")),
-            bm25_tokenizer=str(run_config.get("bm25_tokenizer", "regex")),
-            bm25_backend=str(run_config.get("bm25_backend", "okapi")),
-        )
+        if str(run_config.get("oracle_evidence_source") or "") == "gold":
+            # P0-a (#1282): bypass retrieval, inject gold chunks into
+            # verify+answer to measure the answer/verify ceiling. Retrieval
+            # knobs are still threaded for ctx parity but do not drive
+            # candidate selection (it is replaced by the oracle evidence).
+            prediction = run_rag_query_with_oracle_evidence(
+                index,
+                str(case["query"]),
+                build_oracle_evidence(case, index),
+                pipeline=str(run_config.get("pipeline") or DEFAULT_CLI_PIPELINE_NAME),
+                top_k=run_config.get("top_k"),
+                context_entities=case.get("context_entities") or [],
+                metadata_first=bool(run_config.get("metadata_first", True)),
+                rerank=bool(run_config.get("rerank", True)),
+                rerank_cross_encoder=bool(run_config.get("rerank_cross_encoder", False)),
+                verifier_retry=bool(run_config.get("verifier_retry", True)),
+                retrieval_mode=str(run_config.get("retrieval_mode", "flat")),
+                retrieval_backend=str(run_config.get("retrieval_backend", "dense")),
+                prompt_profile=str(run_config.get("prompt_profile") or ""),
+                conversation_state=conversation_state,
+                rrf_k=int(run_config.get("rrf_k", RRF_K)),
+                bm25_stopword_profile=str(run_config.get("bm25_stopword_profile", "shared")),
+                bm25_tokenizer=str(run_config.get("bm25_tokenizer", "regex")),
+                bm25_backend=str(run_config.get("bm25_backend", "okapi")),
+            )
+        else:
+            prediction = run_rag_query(
+                index,
+                str(case["query"]),
+                pipeline=str(run_config.get("pipeline") or DEFAULT_CLI_PIPELINE_NAME),
+                top_k=run_config.get("top_k"),
+                context_entities=case.get("context_entities") or [],
+                metadata_first=bool(run_config.get("metadata_first", True)),
+                rerank=bool(run_config.get("rerank", True)),
+                rerank_cross_encoder=bool(run_config.get("rerank_cross_encoder", False)),
+                verifier_retry=bool(run_config.get("verifier_retry", True)),
+                retrieval_mode=str(run_config.get("retrieval_mode", "flat")),
+                retrieval_backend=str(run_config.get("retrieval_backend", "dense")),
+                prompt_profile=str(run_config.get("prompt_profile") or ""),
+                conversation_state=conversation_state,
+                rrf_k=int(run_config.get("rrf_k", RRF_K)),
+                bm25_stopword_profile=str(run_config.get("bm25_stopword_profile", "shared")),
+                bm25_tokenizer=str(run_config.get("bm25_tokenizer", "regex")),
+                bm25_backend=str(run_config.get("bm25_backend", "okapi")),
+            )
         trace_path = write_prediction_trace(
             trace_dir,
             case,
