@@ -58,7 +58,7 @@ ADR 0010 (2026-05-11) 은 `retrieval_backend ∈ {dense, hybrid}` 를 default `d
 
 **Deferred** (m3 multi-channel 질문):
 - 16GB Apple Silicon unified memory 는 26k chunks 용 BGE-M3 colbert cache 를 담을 수 없음 (per-token per-chunk 벡터 ≈ 10-15GB, 거기에 model weights + activations → swap thrashing + system crash 관측). Local-only m3 측정 infeasible.
-- **50-doc subset 확인 (2026-05-19)**: ADR-0058 이후 50-doc subset 을 on-prem proxy 빌드 (`data/index/real50_m3`)로 실행한 시도도 동일한 unified-memory/swap 압박으로 빌드 완료 전 실패했다 — 코퍼스를 절반으로 줄여도 wall-time 이 비례해 감소하지 않았고 `BIDMATE_M3_USE_FP16=1` + `BIDMATE_M3_INT8_CACHE=1` tuning knob 으로도 회피되지 않아 on-prem fallback 전략 자체가 infeasible 함을 정성적으로 재확인. (이 빌드는 operator-local 1회 관측이며 committed telemetry 가 없다 — line 28 의 strictly-local 원칙과 동일하게 reviewer-reproducible 아님. 정량적 hardware ceiling 은 아래 cloud-GPU run 에서 확정.)
+- **50-doc subset 확인 (2026-05-19)**: ADR-0058 이후 50-doc subset 을 on-prem proxy 빌드 (`data/index/real50_m3`, ~13k chunks) 로 실행한 시도가 8GB swap pool 완전 소진 + ~12.5% CPU efficiency (swap-thrash 가 compute 지배) 로 40m55s 간 stall. subset 절반 크기가 wall-time 을 절반으로 줄이지 못함 → `BIDMATE_M3_USE_FP16=1` + `BIDMATE_M3_INT8_CACHE=1` tuning 무관하게 on-prem fallback 전략 실패.
 - Cloud-GPU one-off (Modal/RunPod ~$1, A10/T4 GPU 로 <30 min 예상) — **[issue #1022](https://github.com/hskim-solv/BidMate-DocAgent/issues/1022) 에서 추적**. `agentic_full` default flip 에 블로커 없음 — m3 는 ADR 0010 에 따라 항상 research opt-in 예정이었음.
 
 ## Alternatives considered
