@@ -50,17 +50,41 @@ gh pr list --search "ADR" --state open --json number,title,headRefName
 두 출력을 보고 후보 번호 제시. open PR 의 ADR 번호와 충돌 가능성을 표 형식으로 사용자에게 명시한 뒤 확인 대기.
 
 ### Step 5: ADR draft 생성
-파일: `docs/adr/NNNN-<slug>.md`. 필수 섹션:
+파일: `docs/adr/NNNN-<slug>.md`. 필수 섹션 — `.githooks/pre-commit` 의 신규 ADR 게이트
+(`--lint-adr-consequences` + `--check-adr-readme-parity` + `--check-adr-readme-status`,
+issue #793/#803/#1181) 가 강제하는 항목을 **draft 시점에 전부** 채워야 commit 차단을 피한다:
 - **Status**: Proposed
 - **Context**: 트리거 측정 + 신호 (Step 2 수치 그대로 인용)
 - **Decision**: 가장 작은 단위의 제안. 임의 확장 금지
 - **Consequences**: **reviewer 가 의존할 계약** 명시 — 이게 ADR 의 정체성
 - **Alternative considered**: 1-2개 (실행 안 함 표시)
+- **Verification**: `## Verification` 섹션 + 최소 1개 `<!-- verifies-key: <relative-path>:<key-substring> -->`
+  마커. Consequences 의 계약이 어느 측정 표면/코드에 wired 되는지 가리킨다. 마커가 가리키는
+  파일이 이미 존재하면 key substring 도 그 안에 있어야 함 (lenient substring 매칭). 포맷은
+  `docs/adr/_template.md` 의 Verification 섹션 그대로
+- **README index row**: `docs/adr/README.md` 의 `| # | Status | Title |` 표에
+  `| [NNNN](./NNNN-<slug>.md) | Proposed | <한국어 제목> |` 행 추가. parity 가드는 *staged*
+  README 를 읽으므로 ADR 파일과 **같은 commit 에 stage** 되어야 함
 
 slug 은 kebab-case 5단어 이내.
 
-### Step 6: cycle_time stat append
-`reports/cycle_time.json` (없으면 빈 `[]` 로 생성):
+draft 작성 직후, commit 차단을 미리 표면화하기 위해 dry-run 검증:
+
+```bash
+python3 scripts/_governance.py --lint-adr-consequences docs/adr/NNNN-<slug>.md
+python3 scripts/_governance.py --readme-staged --check-adr-readme-parity docs/adr/NNNN-<slug>.md
+python3 scripts/_governance.py --check-adr-readme-status
+```
+
+(parity 두 줄은 README row 를 stage 한 뒤 실행 — staged 내용을 읽음.) 셋 중 하나라도 실패하면
+누락 섹션/행을 보강한 뒤 Step 6 으로 진행. **검증 통과 전에는 cycle_time append 금지** —
+ship 불가 draft 를 `adr_proposed` 로 기록하지 않기 위함.
+
+### Step 6: cycle_time 로컬 timing 노트 (gitignored scratch)
+`reports/cycle_time.json` (없으면 빈 `[]` 로 생성). **이 파일은 `.gitignore` 의 `reports/*`
+규칙으로 git 에 들어가지 않는 로컬 scratch** — 공유/committed 측정 표면이 아니다 (읽는 collector
+코드 없음; `_self_review.py` 의 `axis_4_cycle_time` 은 PR/ADR git 데이터에서 별도 계산하는 다른
+surface). Step 5 의 3개 dry-run 검증을 통과한 draft 에 한해 append:
 
 ```json
 {
@@ -85,9 +109,11 @@ slug 은 kebab-case 5단어 이내.
 
 ## Success Metrics
 
-- ADR 작성 사이클: trigger_report mtime → adr_proposed timestamp 평균 시간 정량화 (5축 #4)
 - ADR 번호 충돌: 0 (Step 4 사전 예약 효과)
+- commit 차단된 draft: 0 (Step 5 가 Verification/verifies-key/README row 를 draft 시점에 충족)
 - 측정 → 결정 빈 칸: 수작업 → agent 호출 1회로 단축
+- (참고) `reports/cycle_time.json` 의 trigger→proposal timing 은 **로컬 scratch** — 세션 내
+  관찰용일 뿐 공유/집계되는 metric 아님 (gitignored, collector 없음)
 
 ## Constraints
 
