@@ -1,0 +1,53 @@
+{
+  "review": "Adversarial Review",
+  "target": {
+    "mode": "branch",
+    "label": "PR feat/issue-9998-retry-loop",
+    "baseRef": "origin/main"
+  },
+  "threadId": "019e4891-test-attention",
+  "context": {
+    "repoRoot": "/repo",
+    "branch": "feat/issue-9998-retry-loop",
+    "summary": "diff vs origin/main"
+  },
+  "codex": {
+    "status": "completed",
+    "stderr": "",
+    "stdout": "{...}",
+    "reasoning": ""
+  },
+  "result": {
+    "verdict": "needs-attention",
+    "summary": "retry_expansion 뒤 partial_topic_grounding 이 verified=True 로 승격되어 intended-abstention 케이스에서 abstain 대신 partial 답변을 생성한다. issue #69 가드의 2-of-N 변종 우회.",
+    "findings": [
+      {
+        "severity": "high",
+        "title": "partial_topic_grounding 이 retry 후 verified=True 로 승격",
+        "body": "rag_core 가 retry 에서 top_k 를 8 로 확장하고 마지막 시도에 allow_partial_topic=True 를 넘긴다. rag_verifier 에서 2개 이상/50% 이상 토픽 부분 일치만으로 verified=True 가 되어 RFP 평가에서 근거 없는 partial 답변이 발생.",
+        "file": "rag_core.py",
+        "line_start": 930,
+        "line_end": 970,
+        "confidence": 0.85,
+        "recommendation": "partial_topic_grounding 을 verified=True 로 취급하지 말고 관측 reason 으로만 남기거나, retry_expansion 마지막 시도에서는 expected fact 전부 근거에 있을 때만 partial 답변 허용."
+      },
+      {
+        "severity": "medium",
+        "title": "LLM judge 가 abstention gold 를 못 본다",
+        "body": "RAGAS judge prompt 는 query/answer summary/evidence 만 넣고 answerable/expected_answer_status/abstained 를 넣지 않아 intended-abstention 케이스에 high score 가능. cache key 도 gold 미포함.",
+        "file": "eval/judges/llm_judge.py",
+        "line_start": 153,
+        "line_end": 185,
+        "confidence": 0.7,
+        "recommendation": "judge 입력 + cache key 에 answerable / expected_answer_status / abstained / status_reason 포함."
+      }
+    ],
+    "next_steps": [
+      "jq 로 expected_answer_status=insufficient and answer_status=partial 케이스 추출",
+      "회귀 테스트: expected insufficient → partial 케이스가 abstained=true 로 고정되는지 검증"
+    ]
+  },
+  "rawOutput": "{...}",
+  "parseError": null,
+  "reasoningSummary": ""
+}

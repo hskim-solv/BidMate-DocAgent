@@ -1,0 +1,31 @@
+{
+  "review": "Adversarial Review",
+  "target": {
+    "mode": "branch",
+    "label": "PR feat/issue-9999-sample",
+    "baseRef": "origin/main"
+  },
+  "threadId": "019e4891-test-approve",
+  "context": {
+    "repoRoot": "/repo",
+    "branch": "feat/issue-9999-sample",
+    "summary": "diff vs origin/main"
+  },
+  "codex": {
+    "status": "completed",
+    "stderr": "",
+    "stdout": "{...}",
+    "reasoning": ""
+  },
+  "result": {
+    "verdict": "approve",
+    "summary": "변경은 ADR 0001 baseline byte-identity 를 보존하고 measurement surface 를 깨지 않는다. opt-in env 게이트가 명확하다.",
+    "findings": [],
+    "next_steps": [
+      "smoke: BIDMATE_NEW_FEATURE=1 으로 eval 1회 추가 측정"
+    ]
+  },
+  "rawOutput": "{...}",
+  "parseError": null,
+  "reasoningSummary": ""
+}

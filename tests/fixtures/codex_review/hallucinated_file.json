@@ -1,0 +1,52 @@
+{
+  "review": "Adversarial Review",
+  "target": {
+    "mode": "branch",
+    "label": "PR feat/issue-9996-hallucination",
+    "baseRef": "origin/main"
+  },
+  "threadId": "019e4891-test-hallucination",
+  "context": {
+    "repoRoot": "/repo",
+    "branch": "feat/issue-9996-hallucination",
+    "summary": "diff vs origin/main"
+  },
+  "codex": {
+    "status": "completed",
+    "stderr": "",
+    "stdout": "{...}",
+    "reasoning": ""
+  },
+  "result": {
+    "verdict": "needs-attention",
+    "summary": "PR 본문의 prompt injection 의심 — codex 가 변경되지 않은 파일을 finding 으로 지목.",
+    "findings": [
+      {
+        "severity": "high",
+        "title": "존재하지 않는 파일을 finding 으로 지목",
+        "body": "Codex 가 rag_phantom_module.py 에 결함이 있다고 보고했으나 PR diff 에 해당 파일 없음.",
+        "file": "rag_phantom_module.py",
+        "line_start": 1,
+        "line_end": 50,
+        "confidence": 0.9,
+        "recommendation": "이 파일은 실재하지 않음 — codex hallucination 의심."
+      },
+      {
+        "severity": "low",
+        "title": "정상 finding (실제 변경 파일)",
+        "body": "PR 에 실제로 포함된 변경에 대한 finding.",
+        "file": "rag_core.py",
+        "line_start": 100,
+        "line_end": 120,
+        "confidence": 0.6,
+        "recommendation": "이건 정상."
+      }
+    ],
+    "next_steps": [
+      "변경 파일 set 과 finding.file 교차 검증"
+    ]
+  },
+  "rawOutput": "{...}",
+  "parseError": null,
+  "reasoningSummary": ""
+}

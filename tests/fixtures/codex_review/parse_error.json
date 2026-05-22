@@ -1,0 +1,24 @@
+{
+  "review": "Adversarial Review",
+  "target": {
+    "mode": "branch",
+    "label": "PR feat/issue-9997-malformed",
+    "baseRef": "origin/main"
+  },
+  "threadId": "019e4891-test-parse-error",
+  "context": {
+    "repoRoot": "/repo",
+    "branch": "feat/issue-9997-malformed",
+    "summary": "diff vs origin/main"
+  },
+  "codex": {
+    "status": "completed",
+    "stderr": "",
+    "stdout": "Sorry, I cannot complete the review structurally.",
+    "reasoning": ""
+  },
+  "result": null,
+  "rawOutput": "Sorry, I cannot complete the review structurally.",
+  "parseError": "Codex did not return valid structured JSON.",
+  "reasoningSummary": ""
+}
