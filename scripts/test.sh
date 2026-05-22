@@ -48,19 +48,13 @@ if command -v pytest >/dev/null 2>&1; then
   SPLIT_FLAGS=()
   if [[ -n "${BIDMATE_PYTEST_SPLITS:-}" && -n "${BIDMATE_PYTEST_SHARD:-}" ]]; then
     if python -c "import pytest_split" >/dev/null 2>&1; then
-      # `least_duration` (LPT) over the default `duration_based_chunks`:
-      # the committed `.test_durations` is dominated by a single 737s test
-      # (test_m3 ...colbert, BGE-M3 download+inference). duration_based_chunks
-      # walks tests in collection order accumulating to total/N, which on that
-      # skew leaves a trailing group EMPTY → `pytest` exit 5 (no tests
-      # collected) → shard fails (issue #1281). least_duration assigns each
-      # test to the currently-shortest group, so no group is ever empty AND
-      # the heaviest tests are spread to minimize the max-shard wall-clock.
-      SPLIT_FLAGS=(
-        --splits "${BIDMATE_PYTEST_SPLITS}"
-        --group "${BIDMATE_PYTEST_SHARD}"
-        --splitting-algorithm least_duration
-      )
+      # No `.test_durations` is committed (issue #1281): the heavy real-model
+      # suite is `slow`-marked and isolated into pr-eval.yml's `slow-tests`
+      # job, leaving this sharded matrix to run only `-m "not slow"`. With no
+      # durations file pytest-split splits by test count — the right model for
+      # the now-homogeneous fast suite (serial per-test durations mis-modelled
+      # the per-shard BGE-M3 download, see #1281 / reverted #1298).
+      SPLIT_FLAGS=(--splits "${BIDMATE_PYTEST_SPLITS}" --group "${BIDMATE_PYTEST_SHARD}")
     else
       echo "pytest-split not importable; ignoring BIDMATE_PYTEST_SPLITS/SHARD." >&2
     fi
