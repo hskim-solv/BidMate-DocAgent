@@ -437,14 +437,27 @@ def render_markdown(aggregate: dict[str, Any], local_payload: dict[str, Any]) ->
     for axis in RATIONALITY_AXES:
         mean = means.get(axis)
         ci = cis.get(axis)
-        mean_str = f"{mean:.3f}" if isinstance(mean, (int, float)) else "N/A"
-        if ci and isinstance(ci.get("ci_lo"), (int, float)):
-            ci_str = f"({ci['ci_lo']:.3f}, {ci['ci_hi']:.3f})"
+        if eff_n.get(axis, 0) == 0:
+            # No scored cases (e.g. answer_reasoning without a captured
+            # synthesis LLM call) — pending a full-trace follow-up, not "N/A".
+            mean_str = "pending"
+            ci_str = "(full-trace)"
         else:
-            ci_str = "N/A"
+            mean_str = f"{mean:.3f}" if isinstance(mean, (int, float)) else "N/A"
+            if ci and isinstance(ci.get("ci_lo"), (int, float)):
+                ci_str = f"({ci['ci_lo']:.3f}, {ci['ci_hi']:.3f})"
+            else:
+                ci_str = "N/A"
         lines.append(f"| `{axis}` | {mean_str} | {ci_str} | {eff_n.get(axis, 0)} |")
     lines.append("")
     lines.append("## Bottom 3 cases per axis (rationale review)")
+    lines.append("")
+    # Case ids stay in the gitignored rationality.local.json (ADR 0005/0056
+    # aggregate-only zone); the committable Markdown shows anonymous ranks.
+    lines.append(
+        "> case ids omitted — full per-case ids live in the gitignored "
+        "`rationality.local.json` (ADR 0005/0056 aggregate-only zone)."
+    )
     cases = local_payload.get("cases", []) or []
     for axis in RATIONALITY_AXES:
         scored = [
@@ -452,15 +465,18 @@ def render_markdown(aggregate: dict[str, Any], local_payload: dict[str, Any]) ->
         ]
         if not scored:
             lines.append("")
-            lines.append(f"### `{axis}` — no scored cases")
+            lines.append(
+                f"### `{axis}` — pending (no synthesis LLM call captured; "
+                "full-trace follow-up)"
+            )
             continue
         bottom = sorted(scored, key=lambda c: c[axis])[:3]
         lines.append("")
         lines.append(f"### `{axis}` — bottom 3")
         lines.append("")
-        for c in bottom:
+        for rank, c in enumerate(bottom, start=1):
             lines.append(
-                f"- `{c.get('id', '?')}` (slice={c.get('slice')}) "
+                f"- #{rank} (slice={c.get('slice')}) "
                 f"= {c[axis]:.3f} — {str(c.get('reason_short', ''))[:100]}"
             )
     lines.append("")
