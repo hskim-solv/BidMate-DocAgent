@@ -38,6 +38,7 @@ ENV_TRACE_URL_TEMPLATE = "BIDMATE_TRACE_URL_TEMPLATE"
 ENV_LANGFUSE_PUBLIC_KEY = "LANGFUSE_PUBLIC_KEY"
 ENV_LANGFUSE_SECRET_KEY = "LANGFUSE_SECRET_KEY"
 ENV_LANGFUSE_HOST = "LANGFUSE_HOST"
+ENV_LANGFUSE_BASE_URL = "LANGFUSE_BASE_URL"
 ENV_OTEL_ENDPOINT = "OTEL_EXPORTER_OTLP_ENDPOINT"
 ENV_OTEL_SERVICE_NAME = "OTEL_SERVICE_NAME"
 
@@ -199,7 +200,13 @@ def _build_langfuse_backend() -> TraceBackend:
             # Langfuse 4.x docs recommend `base_url=`; `host=` remains a
             # backwards-compatible alias today but may be deprecated in
             # a future major. Verified against langfuse 4.6.1 (issue #976).
-            base_url=os.environ.get(ENV_LANGFUSE_HOST) or DEFAULT_LANGFUSE_HOST,
+            # A non-None `base_url=` arg short-circuits the SDK's own
+            # `LANGFUSE_BASE_URL` env lookup, so resolve that SDK-standard
+            # var here to preserve precedence LANGFUSE_BASE_URL >
+            # LANGFUSE_HOST > default (data-residency footgun, issue #1339).
+            base_url=os.environ.get(ENV_LANGFUSE_BASE_URL)
+            or os.environ.get(ENV_LANGFUSE_HOST)
+            or DEFAULT_LANGFUSE_HOST,
         )
     except Exception as exc:
         return _make_unavailable(f"backend_init_error:langfuse:{type(exc).__name__}")
