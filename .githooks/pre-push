@@ -49,6 +49,12 @@ bash "$HOOK_DIR/_pre-push-real-eval-reminder.sh" || true
 bash "$HOOK_DIR/_pre-push-test-coverage.sh" || true
 
 # Phase 4: soft-warn orphan-worktree hygiene.
-bash "$HOOK_DIR/_pre-push-worktree-hygiene.sh" || true
+# Detach this phase from git's ref-list stdin (</dev/null): it never reads the
+# ref list, and detaching guarantees that an abnormal termination of this
+# soft-warn phase — e.g. an OOM SIGKILL under many-worktree memory pressure
+# (#1251) — cannot break git's pre-push stdin pipe and abort the push with
+# SIGPIPE (141). `|| true` swallows ordinary and signal exits alike; a
+# soft-warn phase must never block a push.
+bash "$HOOK_DIR/_pre-push-worktree-hygiene.sh" </dev/null || true
 
 exit 0
