@@ -1,10 +1,17 @@
-# `retrieval_miss = 83` 근본 원인(root-cause) inspection
+# `retrieval_miss` 근본 원인(root-cause) inspection
 
-> **⚠️ STALE (run mismatch) — see #1245.** 본 문서의 headline `retrieval_miss = 83`
-> (+ Verification 의 84) 와 per-case 슬라이스는 earlier run(`a931a49`) 기준이다.
-> 정본 2026-05-19 baseline run(`de69c5c2`, n=221)에서는 `retrieval_miss = 64`
-> (`reports/real100/baseline.aggregate.json` / `failure_distribution.aggregate.json`
-> 가 단일 출처). 슬라이스 재계산은 per-case eval_summary.json 이 필요해 #1245 로 분기.
+> **정합(reconcile) 노트 — #1245 (2026-05-22).** 정본 2026-05-19 baseline
+> run(`de69c5c2`, n=221) 기준 `retrieval_miss = 64` (전체 **180** failure 중 35.6%),
+> `verifier_false_negative = 76` 이 **더 큰** failure mode 다. 단일 출처:
+> `reports/real100/baseline.aggregate.json` + `reports/real100/failure_distribution.aggregate.json`.
+> 따라서 아래 본문의 "retrieval_miss = dominant mode (50.6%)" 서술은 정본에서 더 이상
+> 성립하지 않는다 (요약 정정 참조).
+>
+> 아래 "데이터 inspection" 의 per-case 슬라이스(query_type / hardcase / evidence / 보조 신호)는
+> earlier `a931a49` run (당시 `retrieval_miss = 83`) 스냅샷으로 **보존**한다 — 어떤 종류의
+> retrieval 이 실패하는지에 대한 진단 가치 때문. 정본 run 기준 슬라이스 재계산은 per-case
+> `eval_summary.json`(gitignored, local-only)이 필요해 별도 follow-up(real-eval run 1회) 관할이며
+> 본 issue(#1245, 새 측정 없이 aggregate 정합) 범위 밖이다.
 
 | field | value |
 |---|---|
@@ -17,7 +24,7 @@
 
 ## 요약(Executive summary)
 
-ADR 0059 가 도입한 7-category 분류기 (`eval/scorers/failure_classifier.py`, PR #1001) 가 n=221 real-eval 에서 **`retrieval_miss = 83`** 측정 — Phase 5 audit (#992) 의 finding #1 (`verifier_false_negative = 49` at HEAD) 보다 큰 *dominant failure mode* (전체 164 failure 의 50.6%).
+ADR 0059 가 도입한 7-category 분류기 (`eval/scorers/failure_classifier.py`, PR #1001) 의 inspection. 본 문서의 per-case 슬라이스는 earlier `a931a49` run (당시 `retrieval_miss = 83`, 전체 164 failure 의 50.6%) 에서 추출됐다. **정본 2026-05-19 baseline (`de69c5c2`) 기준으로는 `retrieval_miss = 64` (전체 180 failure 중 35.6%) 이며, `verifier_false_negative = 76` 이 더 큰 failure mode 다** — 즉 아래 슬라이스가 전제하던 "retrieval_miss = dominant mode" 서술은 정본에서 성립하지 않는다 (상단 정합 노트 참조). 본 문서는 *어떤 종류의 retrieval 이 실패하는가* 의 슬라이스 패턴 진단 가치 때문에 보존하되, headline 비중은 정본 수치(64)로 읽어야 한다.
 
 분류 표면 부재 (audit 시점) 일 때는 보이지 않던 신호 — 본 audit 의 **부산물**: "측정 표면이 생기자마자 audit 가 모르던 더 큰 함정이 노출됨" (ADR 0054 → 0056 cascade 와 동일 구조).
 
@@ -28,7 +35,9 @@ ADR 0059 가 도입한 7-category 분류기 (`eval/scorers/failure_classifier.py
 3. **65% has non-empty evidence (wrong doc)** — retrieval 자체는 결과 가져오는 데 성공, *ranking* 이 expected doc 을 top-4 밖으로 밀어냄. embedding / scoring 문제.
 4. **35% has empty evidence** — 완전 0 결과. ADR 0058 hybrid 후에도 expected doc 가 top-4 에 못 들어오는 *hard miss* 케이스. embedding mismatch 또는 chunking 가설.
 
-## 데이터 inspection (n=83)
+## 데이터 inspection (n=83, `a931a49` snapshot)
+
+> 아래 슬라이스 표는 모두 earlier `a931a49` run(`retrieval_miss = 83`) 의 per-case 분포다 (정본 `de69c5c2` run 의 64 가 아님). 상단 정합 노트 참조 — 표 내부 수치는 서로 일관(같은 run)하나 headline 64 와는 run 이 다르다.
 
 ### `query_type` 별 slice
 
@@ -114,7 +123,7 @@ multi-tag 합이 83 초과인 이유 — 73 multi_hop case 중 31개가 *동시�
 
 모든 인용 수치는 **committed, 재현 가능한 aggregate** 를 가리킨다 (gitignored `eval_summary.json` 직접 인용 아님 — 그 파일은 `.gitignore` `reports/real100/*` 로 fresh checkout 에 부재; issue #1243 정정).
 
-- 본 audit 가 인용하는 headline `retrieval_miss = 83` 은 committed `reports/real100/failure_distribution.aggregate.json::failure_category_counts.retrieval_miss == 83` 로 검증 (재생성: `scripts/render_failure_distribution.py`).
-- 각 slice 분포 (query_type / hardcase / expected-doc cardinality / evidence presence / 보조 신호) 는 committed `reports/real100/failure_slices.aggregate.json::categories.retrieval_miss` 에 카운트로 고정 (재생성: `scripts/render_failure_slices.py`). 본문 표의 "evidence non-empty but wrong = 54" 는 retrieval_miss 정의상 expected ∉ evidence 이므로 artifact 의 `by_evidence_presence.non_empty == 54` 와 동치 (empty = 29).
+- **Headline (정본):** `retrieval_miss = 64` 는 committed `reports/real100/baseline.aggregate.json::failure_category_counts.retrieval_miss == 64` + `reports/real100/failure_distribution.aggregate.json::failure_category_counts.retrieval_miss == 64` 로 검증 (2026-05-19 baseline run `de69c5c2`, n=221; 재생성: `scripts/render_failure_distribution.py`). 전체 180 failure 중 35.6% — `verifier_false_negative = 76` 이 더 큰 mode.
+- **Per-case 슬라이스 (스냅샷):** 위 "데이터 inspection (n=83)" 의 slice 분포 (query_type / hardcase / expected-doc cardinality / evidence presence / 보조 신호) 는 committed `reports/real100/failure_slices.aggregate.json::categories.retrieval_miss` (`total == 83`) 에 카운트로 고정 — 이는 earlier `a931a49` run 스냅샷이며 정본 `de69c5c2` run 과 **다른 run** 이다 (재생성: `scripts/render_failure_slices.py`). 본문 표의 "evidence non-empty but wrong = 54" 는 retrieval_miss 정의상 expected ∉ evidence 이므로 artifact 의 `by_evidence_presence.non_empty == 54` 와 동치 (empty = 29). 정본 run 기준 슬라이스 재계산은 per-case `eval_summary.json` 이 필요해 별도 follow-up(real-eval run) 관할.
 - 두 aggregate 모두 카운트/cardinality 만 담는다 — query/answer text, doc_id, chunk_id 는 ADR 0005 commit 경계를 넘지 않음. 분류 라벨은 ADR 0059 classifier (`eval/scorers/failure_classifier.py`) 출력.
-- 위 수치는 origin/main `a931a49` + Scenario A hybrid (#1000) real-eval (n=221) snapshot 이며, 차기 local real-eval 시 위 두 스크립트로 재생성된다. 원본 issue #1003 제목·이전 Verification 의 `84` 는 더 이른 run 의 stale 값으로 정정됨.
+- 원본 issue #1003 제목·이전 Verification 의 `83`·`84` 는 `a931a49` 스냅샷 run 의 headline 으로, 정본 baseline run(`de69c5c2`)의 `64` 로 정정됨 (#1245).

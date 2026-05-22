@@ -13,7 +13,7 @@
 
 ADR 0059 (PR #1001) 가 정량화한 Phase 5 audit Finding #1 의 fresh remeasurement. PR #1001 측정 (65) / PR #1004 측정 (49) / 본 audit fresh (76) — run-to-run variance 크지만 ADR 0059 first-match contract `verifier_false_negative == abstention_outcomes.incorrect_answer` 매 run 유지 (76 == 76 ✓).
 
-retrieval_miss=83 audit (#1005) 와 sibling — 본 문서는 **verifier layer 의 dominant failure**.
+retrieval_miss=64 audit (#1005) 와 sibling — 본 문서는 **verifier layer 의 dominant failure** (정본 baseline 에서 vfn=76 > retrieval_miss=64).
 
 **핵심 발견 6개**:
 
@@ -142,7 +142,7 @@ ADR 0059 first-match contract (`verifier_false_negative == incorrect_answer`) �
 ## 범위 밖(Out-of-scope) (별 PR / 별 audit)
 
 - 실제 verifier fix (위 6 가설 중 어느 하나) — 본 audit 가 가설 ranking 만 emit; fix 는 가설별 별 PR.
-- retrieval_miss=83 의 fix (#1005 의 후속 Issue A-E) — sibling failure surface.
+- retrieval_miss=64 의 fix (#1005 의 후속 Issue A-E) — sibling failure surface.
 - ADR 0058 hybrid switch 의 verifier 영향 분리 측정 — 별 ablation.
 - Supply 3 — `failure-mode-harden-process` + ADR 0060.
 
