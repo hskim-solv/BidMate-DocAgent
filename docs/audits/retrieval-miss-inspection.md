@@ -58,6 +58,8 @@ multi-tag 합이 83 초과인 이유 — 73 multi_hop case 중 31개가 *동시�
 
 본 83 case 는 *모두* 단일 doc 답변 기대. ADR 0059 의 `retrieval_miss` 정의 (`expected_doc_ids and not (expected_doc_ids & evidence_doc_ids)`) 이 multi-doc 패턴 (comparison query) 을 미스했다는 의미 아님 — 본 83 분포는 single-doc retrieval 의 ranking 문제가 dominant.
 
+> **Update (2026-05-22, idx59/F2):** 위 인용한 `retrieval_miss` 정의 (`not (expected_doc_ids & evidence_doc_ids)`, bare intersection) 는 이후 `not expected_doc_ids.issubset(evidence_doc_ids)` 로 정정됨 ([failure_classifier.py](../../eval/scorers/failure_classifier.py) branch 3). bare-intersection 은 comparison `{A,B}` 에 evidence `{A}` (부분 커버리지) 를 retrieval_miss 로 잡지 못해 planner/unknown 으로 새던 버그였고, 이것이 본 표 "comparison 패턴 0" 의 직접 원인이었음. 정정 후 재측정 baseline 은 retrieval_miss 64→67. 본 문서 상단 수치 (n=83 등) 는 측정 HEAD (`a931a49`, 2026-05-19) 스냅샷으로 보존 — 이번 HEAD 기준 전면 재측정 재생성은 별도 follow-up issue 관할.
+
 ### `evidence_doc_ids` empty vs wrong
 
 | pattern | count | % of 83 | 해석 |
