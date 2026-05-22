@@ -20,6 +20,10 @@ from pathlib import Path
 
 import pytest
 
+# Drives the eda_real100 script over the full data/raw corpus via subprocess
+# — tens of seconds. Marked slow so `make test-fast` deselects it; CI still runs.
+pytestmark = pytest.mark.slow
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = REPO_ROOT / "scripts" / "eda_real100.py"
 

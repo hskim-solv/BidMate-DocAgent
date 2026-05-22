@@ -3,6 +3,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import pytest
+
 from ingestion import load_documents_from_metadata_csv
 from rag_core import build_index_payload_from_documents
 
@@ -23,6 +25,10 @@ FIELDNAMES = [
 ]
 
 
+# Real pdf/hwp ingestion via the npx kordoc subprocess (~155s); the sibling
+# RowValidationParityRegression stays fast and unmarked. Slow → deselected by
+# `make test-fast`, still run in CI.
+@pytest.mark.slow
 class MetadataCsvIngestionTest(unittest.TestCase):
     def test_ingests_pdf_hwp_rows_and_reports_missing_file(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

@@ -5,6 +5,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import pytest
+
 from ingestion import (
     FAILURE_TAXONOMY,
     canonical_doc_id,
@@ -78,6 +80,10 @@ class CanonicalDocIdTest(unittest.TestCase):
         )
 
 
+# Several cases here ingest real pdf/hwp rows via the npx kordoc subprocess
+# (~136s); CanonicalDocIdTest above stays fast. Slow → deselected by
+# `make test-fast`, still run in CI.
+@pytest.mark.slow
 class ValidateDataListCsvTest(unittest.TestCase):
     """Issue #51 — schema audit + #53 grouped diagnostics."""
 
@@ -326,6 +332,7 @@ class ValidateDataListCsvTest(unittest.TestCase):
             )
 
 
+@pytest.mark.slow  # real pdf/hwp ingestion (~137s) — see ValidateDataListCsvTest note
 class IngestionDuplicateResolutionTest(unittest.TestCase):
     """Issue #52 — auto-suffix policy keeps the second row indexable."""
 

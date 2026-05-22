@@ -11,6 +11,8 @@ import unittest
 from pathlib import Path
 import sys
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
@@ -19,6 +21,10 @@ from run_chunking_ablation import (  # noqa: E402
     STRATEGIES,
     run_for_strategy,
 )
+
+# Runs every chunking strategy over the full data/raw corpus — ~9s.
+# Marked slow so `make test-fast` deselects it; CI still runs.
+pytestmark = pytest.mark.slow
 
 
 class ChunkingAblationRunnerTest(unittest.TestCase):

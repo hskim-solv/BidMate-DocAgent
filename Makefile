@@ -271,6 +271,15 @@ harness-compare:
 test:
 	bash scripts/test.sh
 
+# Fast local edit loop: the full suite minus `slow`-marked files (full
+# data/raw corpus or real embedding-model tests — see pyproject.toml
+# markers). Those few files dominate wall-clock under `--dist loadfile`
+# tail latency; deselecting them keeps the local loop snappy. The CI gate
+# (`make test` / scripts/test.sh) still runs EVERYTHING — never rely on
+# test-fast for a merge decision.
+test-fast:
+	$(PYTHON) -m pytest -m "not slow" -n auto --dist loadfile -q
+
 # Fast P0 regression guards for the retrieval loop and answerable smoke path.
 # Run before any change to rag_core retrieval/verification or the eval pipeline.
 test-regression:

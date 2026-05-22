@@ -18,6 +18,12 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
+# Every case builds a fixture and runs the eda script via subprocess —
+# tens of seconds each. Marked slow so `make test-fast` deselects it; CI runs it.
+pytestmark = pytest.mark.slow
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = REPO_ROOT / "scripts" / "rag_pipeline_eda.py"
 
