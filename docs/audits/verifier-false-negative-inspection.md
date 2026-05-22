@@ -1,11 +1,20 @@
 # `verifier_false_negative = 76` 근본 원인(root-cause) inspection
 
+> **Reconcile (2026-05-22, #1277).** #1276 (ADR 0059 `classify_failure` 3-bug fix) +
+> #1287 (committed baseline regen, #1321) 이후 정본 baseline 기준으로 재확인했다.
+> `verifier_false_negative` 는 분류기 정정에 **불변(76)** — first-match-wins 순서상 다른
+> 카테고리 fix (vfp 3→0, retrieval_miss 64→67, planner 1→3, unknown 35→33) 보다 앞서므로
+> 본 문서의 모든 slice (hardcase 75/5/4/2/1/1 · query_type 76 · evidence 14/62 ·
+> expected-coverage 1/22/53 · retry 61/14/1 · specificity 65) 는 정정 후 baseline 에서도
+> byte-identical 재현됐다. retrieval_miss 를 가리키던 cross-pointer 2곳 (아래 본문/Out-of-scope)
+> 만 83→67 로 갱신했다.
+
 | field | value |
 |---|---|
-| Issue | #1008 |
-| Trigger PR | #1001 (ADR 0059 failure_classifier) + #1004 (supply 2 dashboard) |
-| Source measurement | `reports/real100/eval_summary.json` regen at HEAD `a7fd711d` (post-#1001/#1004/#1005), n=221 |
-| Date | 2026-05-19 |
+| Issue | #1008 (원본 audit) → #1277 (재확인) |
+| Trigger PR | #1001 (ADR 0059 failure_classifier) + #1004 (supply 2 dashboard) + #1276/#1287 (분류기 fix + baseline regen) |
+| Source measurement | committed `reports/real100/baseline.aggregate.json` / `failure_distribution.aggregate.json` / `failure_slices.aggregate.json` (n=221) |
+| Date | 2026-05-19 (측정) · 2026-05-22 (재확인) |
 | Author | Hyunsoo Kim |
 | Strict-forbid | **실 verifier fix 0건** (본 문서는 audit 만; 후속 issue 로 분기) |
 
@@ -13,7 +22,7 @@
 
 ADR 0059 (PR #1001) 가 정량화한 Phase 5 audit Finding #1 의 fresh remeasurement. PR #1001 측정 (65) / PR #1004 측정 (49) / 본 audit fresh (76) — run-to-run variance 크지만 ADR 0059 first-match contract `verifier_false_negative == abstention_outcomes.incorrect_answer` 매 run 유지 (76 == 76 ✓).
 
-retrieval_miss=83 audit (#1005) 와 sibling — 본 문서는 **verifier layer 의 dominant failure**.
+retrieval_miss=67 audit ([retrieval-miss-inspection.md](retrieval-miss-inspection.md), #1277) 와 sibling — 본 문서는 **verifier layer 의 dominant failure**.
 
 **핵심 발견 6개**:
 
@@ -142,12 +151,15 @@ ADR 0059 first-match contract (`verifier_false_negative == incorrect_answer`) �
 ## 범위 밖(Out-of-scope) (별 PR / 별 audit)
 
 - 실제 verifier fix (위 6 가설 중 어느 하나) — 본 audit 가 가설 ranking 만 emit; fix 는 가설별 별 PR.
-- retrieval_miss=83 의 fix (#1005 의 후속 Issue A-E) — sibling failure surface.
+- retrieval_miss=67 의 fix (#1277 의 후속 Issue A-E) — sibling failure surface.
 - ADR 0058 hybrid switch 의 verifier 영향 분리 측정 — 별 ablation.
 - Supply 3 — `failure-mode-harden-process` + ADR 0060.
 
 ## Verification
 
-- 본 audit 가 인용하는 76 라는 숫자는 `reports/real100/eval_summary.json::failure_category_counts.verifier_false_negative == 76` 로 검증 (post-#1001/#1004 fresh real-eval at HEAD `a7fd711d`).
-- 각 slice 분포는 `case_results[*].failure_category == "verifier_false_negative"` 인 케이스의 `query_type` / `hardcase_categories` / `expected_doc_ids` / `evidence_doc_ids` / `retry_count` 필드에서 직접 추출 (LOC 카운트 형식; no per-case text crosses ADR 0005 boundary).
-- Run-to-run variance (49 ↔ 65 ↔ 76) 은 3 measurement 의 raw output 비교 — 모두 동일 HEAD 가 아니지만 ADR 0059 contract 는 매 run 유지.
+모든 인용 수치는 **committed, 재현 가능한 aggregate** 를 가리킨다 (gitignored `eval_summary.json`
+직접 인용 아님 — issue #1243 정정).
+
+- 본 audit 가 인용하는 76 은 committed `reports/real100/failure_distribution.aggregate.json::failure_category_counts.verifier_false_negative == 76` (= `baseline.aggregate.json` 동일값) 으로 검증. ADR 0059 first-match contract `verifier_false_negative == abstention_outcomes.incorrect_answer == 76` 는 `finding_1_contract.match == true` 로 고정.
+- 각 slice 분포 (hardcase / query_type / evidence presence / expected cardinality / 보조 신호) 는 committed `reports/real100/failure_slices.aggregate.json::categories.verifier_false_negative` 에 카운트로 고정 (재생성: `scripts/render_failure_slices.py`). 본문의 finer slice (evidence distinct-doc 14/62 · expected-coverage 1/22/53 · specificity 65) 는 동일 case 집합에서 도출한 counts-only 값으로, ADR 0005 경계 내 (`scripts/_governance.py::find_eval_private_text` `{}` 확인) — query/answer text, doc_id, chunk_id 비노출.
+- Run-to-run variance (49 ↔ 65 ↔ 76) 은 서로 다른 HEAD 의 measurement 비교 — [variance-source-inspection.md](variance-source-inspection.md) 가 *cross-HEAD* 차이임을 확정 (same-HEAD spread=0). ADR 0059 contract 는 매 run 유지하며, #1276/#1287 정정 후 정본 baseline 에서도 vfn=76 불변.
