@@ -46,6 +46,10 @@ from typing import Any
 # ``python3 scripts/render_failure_distribution.py`` or imported as
 # ``scripts.render_failure_distribution`` from the test suite.
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from eval.scorers.failure_classifier import FAILURE_CATEGORIES  # noqa: E402
 
 DEFAULT_SUMMARY = ROOT / "reports" / "real100" / "eval_summary.json"
 DEFAULT_OUT_MD = ROOT / "reports" / "real100" / "failure_distribution.md"
@@ -53,18 +57,11 @@ DEFAULT_OUT_JSON = (
     ROOT / "reports" / "real100" / "failure_distribution.aggregate.json"
 )
 
-# Fail-closed 7-key taxonomy — mirror
-# ``eval.scorers.failure_classifier.FAILURE_CATEGORIES``. Any other key
-# in ``failure_category_counts`` is ignored (defense against schema drift).
-SAFE_CATEGORIES: tuple[str, ...] = (
-    "retrieval_miss",
-    "planner_under_decomposition",
-    "verifier_false_negative",
-    "verifier_false_positive",
-    "generator_hallucination",
-    "context_dilution",
-    "unknown",
-)
+# Single source of truth for the 7-key taxonomy is
+# ``eval.scorers.failure_classifier.FAILURE_CATEGORIES`` (imported above) —
+# no hardcoded copy here, so a classifier taxonomy change cannot drift away
+# from this renderer. Aliased for readability at the call sites.
+SAFE_CATEGORIES: tuple[str, ...] = FAILURE_CATEGORIES
 
 # Abstention outcomes (PR #464, 3-bin refusal axis) — overlaid on the
 # 7-category surface so reviewers can see how the new taxonomy
@@ -86,9 +83,11 @@ def _load_summary(path: Path) -> dict[str, Any]:
 def _extract_failure_counts(summary: dict[str, Any]) -> dict[str, int]:
     """Pull ``failure_category_counts`` from the primary_run top-level.
 
-    Fail-closed: any non-whitelisted key is silently dropped. Missing
-    keys are emitted as zero so downstream consumers can always count on
-    the full 7-key shape.
+    Fail-loud: a measurement surface must never silently drop cases. Any
+    key outside ``FAILURE_CATEGORIES`` (taxonomy drift) or any non-numeric
+    value raises ``ValueError`` so a schema change surfaces immediately
+    instead of corrupting ``total_failures``. Missing keys are emitted as
+    zero so downstream consumers can always count on the full 7-key shape.
     """
     raw = summary.get("failure_category_counts")
     if not isinstance(raw, dict):
@@ -96,11 +95,25 @@ def _extract_failure_counts(summary: dict[str, Any]) -> dict[str, int]:
             "eval_summary.json::failure_category_counts missing or not a dict "
             "— make sure the file was generated post-PR #1001 (ADR 0059)."
         )
-    return {
-        category: int(raw[category])
-        for category in SAFE_CATEGORIES
-        if isinstance(raw.get(category), (int, float))
-    } | {category: 0 for category in SAFE_CATEGORIES if category not in raw}
+    unexpected = set(raw) - set(FAILURE_CATEGORIES)
+    if unexpected:
+        raise ValueError(
+            "failure_category_counts has keys outside the ADR 0059 taxonomy: "
+            f"{sorted(unexpected)} — drift from "
+            "eval.scorers.failure_classifier.FAILURE_CATEGORIES. A measurement "
+            "surface must fail loud, not silently drop these cases from "
+            "total_failures."
+        )
+    counts: dict[str, int] = {}
+    for category in FAILURE_CATEGORIES:
+        value = raw.get(category, 0)
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError(
+                f"failure_category_counts[{category!r}] = {value!r} is not a "
+                "numeric count — refusing to coerce a malformed measurement."
+            )
+        counts[category] = int(value)
+    return counts
 
 
 def _extract_abstention_outcomes(summary: dict[str, Any]) -> dict[str, int]:
