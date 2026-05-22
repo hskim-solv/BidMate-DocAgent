@@ -1,32 +1,136 @@
 {
   "categories": {
-    "retrieval_miss": {
+    "generator_hallucination": {
       "aux": {
-        "abstained_true": 36,
-        "doc_match_false": 83,
-        "retry_count_eq_1": 67,
-        "term_match_true": 1
+        "abstained_true": 0,
+        "doc_match_false": 0,
+        "retry_count_eq_1": 1,
+        "term_match_true": 0
       },
       "by_evidence_presence": {
-        "empty": 29,
-        "non_empty": 54
+        "empty": 0,
+        "non_empty": 1
       },
       "by_expected_cardinality": {
-        "1": 83
+        "1": 1
       },
       "by_hardcase": {
-        "_untagged": 6,
-        "distractor_heavy": 31,
-        "long_context": 7,
-        "multi_hop": 73,
+        "multi_hop": 1
+      },
+      "by_query_type": {
+        "single_doc": 1
+      },
+      "total": 1
+    },
+    "planner_under_decomposition": {
+      "aux": {
+        "abstained_true": 0,
+        "doc_match_false": 0,
+        "retry_count_eq_1": 0,
+        "term_match_true": 0
+      },
+      "by_evidence_presence": {
+        "empty": 0,
+        "non_empty": 3
+      },
+      "by_expected_cardinality": {
+        "1": 2,
+        "2": 1
+      },
+      "by_hardcase": {
+        "_untagged": 1,
+        "multi_hop": 2,
         "no_answer": 1
       },
       "by_query_type": {
-        "abstention": 1,
-        "follow_up": 2,
-        "single_doc": 80
+        "comparison": 1,
+        "single_doc": 2
       },
-      "total": 83
+      "total": 3
+    },
+    "retrieval_miss": {
+      "aux": {
+        "abstained_true": 31,
+        "doc_match_false": 67,
+        "retry_count_eq_1": 48,
+        "term_match_true": 7
+      },
+      "by_evidence_presence": {
+        "empty": 26,
+        "non_empty": 41
+      },
+      "by_expected_cardinality": {
+        "1": 66,
+        "2": 1
+      },
+      "by_hardcase": {
+        "_untagged": 6,
+        "ambiguous_query": 1,
+        "distractor_heavy": 21,
+        "long_context": 4,
+        "multi_hop": 58
+      },
+      "by_query_type": {
+        "follow_up": 2,
+        "single_doc": 65
+      },
+      "total": 67
+    },
+    "unknown": {
+      "aux": {
+        "abstained_true": 6,
+        "doc_match_false": 5,
+        "retry_count_eq_1": 31,
+        "term_match_true": 5
+      },
+      "by_evidence_presence": {
+        "empty": 0,
+        "non_empty": 33
+      },
+      "by_expected_cardinality": {
+        "1": 33
+      },
+      "by_hardcase": {
+        "_untagged": 5,
+        "distractor_heavy": 12,
+        "long_context": 2,
+        "multi_hop": 22,
+        "no_answer": 5
+      },
+      "by_query_type": {
+        "abstention": 5,
+        "follow_up": 1,
+        "single_doc": 27
+      },
+      "total": 33
+    },
+    "verifier_false_negative": {
+      "aux": {
+        "abstained_true": 0,
+        "doc_match_false": 76,
+        "retry_count_eq_1": 61,
+        "term_match_true": 0
+      },
+      "by_evidence_presence": {
+        "empty": 0,
+        "non_empty": 76
+      },
+      "by_expected_cardinality": {
+        "0": 1,
+        "1": 75
+      },
+      "by_hardcase": {
+        "_untagged": 1,
+        "ambiguous_query": 1,
+        "distractor_heavy": 4,
+        "long_context": 5,
+        "multi_hop": 2,
+        "no_answer": 75
+      },
+      "by_query_type": {
+        "abstention": 76
+      },
+      "total": 76
     }
   },
   "num_predictions": 221,
