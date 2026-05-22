@@ -2,11 +2,15 @@
 """Write `.claude/.ship-armed` from `make ship-arm`.
 
 Centralises TTL parsing, branch capture, and JSON write in Python so the
-Makefile target stays declarative.
+Makefile target stays declarative. Also owns both sides of the ship-arm ↔
+ship-pr mutex (issue #1043): `check_ship_pr_mutex` guards the ship-arm side,
+and `--enter-ship-pr` / `--exit-ship-pr` give the ship-pr skill a code-level
+guard symmetric with it (SKILL.md steps 0 and 13).
 
 Exit codes:
-    0  armed file written
-    1  refused (e.g. on main, branch violates ADR 0007)
+    0  armed file written / mutex acquired / mutex released
+    1  refused (on main, branch violates ADR 0007, or mutex held by the
+       other ship surface)
     2  internal / usage error
 """
 
@@ -65,8 +69,18 @@ def check_ship_pr_mutex() -> int:
         return 0
     try:
         mtime = os.path.getmtime(SHIP_PR_ACTIVE_FILE)
-    except OSError:
-        return 0  # cannot stat — fail open
+    except OSError as e:
+        # Marker exists but cannot be stat'd — we cannot prove it is stale,
+        # so a concurrent ship-pr workflow may be active. Fail closed: refuse
+        # to arm rather than risk activating both ship surfaces at once.
+        sys.stderr.write(
+            f"ship-arm: refuse — ship-pr marker {SHIP_PR_ACTIVE_FILE} exists "
+            f"but cannot be stat'd ({e}); cannot prove it is stale.\n"
+            f"   Two ship surfaces are mutually exclusive (CLAUDE.md).\n"
+            f"   Investigate, or remove it manually if genuinely stale: "
+            f"rm {SHIP_PR_ACTIVE_FILE}\n"
+        )
+        return 1  # fail closed
     age = (datetime.now(timezone.utc).timestamp() - mtime)
     if age >= SHIP_PR_ACTIVE_STALE_SECONDS:
         try:
@@ -90,8 +104,53 @@ def check_ship_pr_mutex() -> int:
     return 1
 
 
+def enter_ship_pr() -> int:
+    """ship-pr skill entry guard — symmetric with ``check_ship_pr_mutex``.
+
+    Refuse to start the ship-pr workflow while ``make ship-arm`` holds the
+    armed file; otherwise create the ship-pr-active marker so a later
+    ``make ship-arm`` will refuse. Code-level enforcement of SKILL.md step 0
+    so the mutex no longer relies on the LLM following a markdown bullet
+    (the ship-arm side was already enforced; this closes the asymmetry).
+    """
+    if os.path.exists(ARMED_FILE):
+        sys.stderr.write(
+            f"ship-pr: refuse — ship-arm is active ({ARMED_FILE}).\n"
+            f"   Two ship surfaces are mutually exclusive (CLAUDE.md).\n"
+            f"   Run `make ship-disarm` (or rm {ARMED_FILE}) first.\n"
+        )
+        return 1
+    os.makedirs(os.path.dirname(SHIP_PR_ACTIVE_FILE), exist_ok=True)
+    with open(SHIP_PR_ACTIVE_FILE, "w") as f:
+        f.write(
+            datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ") + "\n"
+        )
+    sys.stdout.write(f"ship-pr: mutex acquired ({SHIP_PR_ACTIVE_FILE}).\n")
+    return 0
+
+
+def exit_ship_pr() -> int:
+    """Release the ship-pr mutex marker (SKILL.md step 13)."""
+    try:
+        os.unlink(SHIP_PR_ACTIVE_FILE)
+    except FileNotFoundError:
+        pass  # already gone — idempotent
+    except OSError as e:
+        sys.stderr.write(
+            f"ship-pr: warning — could not remove {SHIP_PR_ACTIVE_FILE} ({e}); "
+            f"remove it manually so make ship-arm is unblocked.\n"
+        )
+        return 1
+    sys.stdout.write(f"ship-pr: mutex released ({SHIP_PR_ACTIVE_FILE}).\n")
+    return 0
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument("--enter-ship-pr", action="store_true",
+                   help="acquire the ship-pr mutex (refuse if ship-arm active)")
+    p.add_argument("--exit-ship-pr", action="store_true",
+                   help="release the ship-pr mutex marker")
     p.add_argument("--ttl", default="2h")
     p.add_argument("--real-eval", default="auto",
                    choices=["auto", "skip", "async"])
@@ -100,6 +159,11 @@ def main() -> int:
     p.add_argument("--cross-owner", default="")
     p.add_argument("--stacked", default="")
     args = p.parse_args()
+
+    if args.enter_ship_pr:
+        return enter_ship_pr()
+    if args.exit_ship_pr:
+        return exit_ship_pr()
 
     try:
         ttl = parse_ttl(args.ttl)

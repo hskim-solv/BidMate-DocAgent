@@ -20,7 +20,12 @@ ADR-aware, approval-gated single-PR shipping. The skill replaces an ad-hoc seque
 
 ## Workflow
 
-0. **Mutex guard (issue #1043).** Before any other step, check that `.claude/.ship-armed` does NOT exist. If it does, refuse and tell the user to run `make ship-disarm` first — the two ship surfaces are mutually exclusive and `make ship-arm` is currently active. Then `touch .claude/.ship-pr-active` so `make ship-arm` will refuse if invoked while this skill is running. The cleanup (step 13) removes the marker; if the skill aborts, the marker auto-expires after 6h (`_ship_arm.py` stale-marker safety).
+0. **Mutex guard (issue #1043).** Before any other step, run:
+   `python3 scripts/claude-hooks/_ship_arm.py --enter-ship-pr`
+   Code-enforced (symmetric with the ship-arm side): non-zero exit if
+   `.claude/.ship-armed` exists (run `make ship-disarm` first) — otherwise it
+   creates `.claude/.ship-pr-active`. If it exits non-zero, STOP. Step 13
+   releases it; aborts auto-expire after 6h.
 
 1. **Scope confirmation.** Ask the user (inline or via `AskUserQuestion`): "Which issue does this PR close, and what's the one-line summary?" If no issue exists yet, propose a title + body and require **explicit approval** before `gh issue create`.
 
@@ -75,7 +80,7 @@ ADR-aware, approval-gated single-PR shipping. The skill replaces an ad-hoc seque
     ```
     **If the step-6 real-model fallback (`make test-fast`) was used, local coverage was partial — this merge is hard-gated on CI green: confirm `gh pr checks <N>` reports all-green before displaying the merge command.** Wait for explicit go-ahead. Then execute.
 
-13. **Aftermath.** `git checkout main` (if the worktree owns main) or `git fetch origin main` + branch advance (worktree case). **Remove the mutex marker** (`rm -f .claude/.ship-pr-active`) so `make ship-arm` is unblocked. If the user has another PR stacked on top, prompt them to re-invoke the skill for the next layer (which re-touches the marker at step 0).
+   **Release the mutex marker** (`python3 scripts/claude-hooks/_ship_arm.py --exit-ship-pr`) so `make ship-arm` is unblocked.
 
 ## Approval-gate language
 
