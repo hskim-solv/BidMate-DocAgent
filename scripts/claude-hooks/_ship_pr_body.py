@@ -172,8 +172,13 @@ def has_schema_version_change(base_ref: str) -> bool:
     )
 
 
-def test_summary() -> str:
-    summary_path = "/tmp/ship-test-summary.txt"
+def test_summary(summary_path: str | None) -> str:
+    # The dispatcher (stop-ship.sh) writes the local test output to a
+    # worktree-unique mktemp file (#571) and passes the path here. A fixed
+    # global path would let a concurrent worktree's stale file leak in as a
+    # false success signal (issue #1274).
+    if not summary_path:
+        return "Local test run not captured by dispatcher."
     if not os.path.exists(summary_path):
         return "Local test run not captured by dispatcher."
     try:
@@ -188,6 +193,7 @@ def build_body(
     base_ref: str,
     real_eval_mode: str,
     extra_body: str = "",
+    test_summary_path: str | None = None,
 ) -> str:
     issue_n = parse_branch(branch)
     files = changed_files(base_ref)
@@ -207,7 +213,7 @@ def build_body(
         else "Auto-generated PR; no load-bearing paths changed."
     )
 
-    test_block = test_summary()
+    test_block = test_summary(test_summary_path)
 
     eval_line = (
         "See §5b (load-bearing change touched)."
@@ -307,6 +313,11 @@ def main() -> int:
         choices=["auto", "skip", "async"],
     )
     p.add_argument("--extra-body", default="")
+    p.add_argument(
+        "--test-summary-path", metavar="PATH", default=None,
+        help="Path the dispatcher wrote local test output to (worktree-unique "
+             "mktemp, #1274). Omit for a 'not captured' note.",
+    )
     # Standalone §5b validation of an externally-provided body (issue #1097).
     # Mutually exclusive with the --branch body-generation mode below.
     p.add_argument(
@@ -339,7 +350,8 @@ def main() -> int:
 
     try:
         body = build_body(
-            args.branch, args.base_ref, args.real_eval_mode, args.extra_body
+            args.branch, args.base_ref, args.real_eval_mode, args.extra_body,
+            args.test_summary_path,
         )
     except ValueError:
         _log(f"branch '{args.branch}' violates ADR 0007 — cannot generate body.")

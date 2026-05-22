@@ -28,7 +28,7 @@ escaped per ADR 0055 §Consequences.
 CLI:
 
     python3 scripts/validate_claim.py \\
-        --pr-body /tmp/pr-body.txt \\
+        --pr-body "$(mktemp)" \\
         --baseline base/reports/eval_summary.json \\
         --candidate pr/reports/eval_summary.json \\
         --min-sample 200 [--alpha 0.05]

@@ -92,6 +92,7 @@ RFP 문서 이해를 위한 DocAgent 시스템. **입찰/RFP 문서 인텔리전
 - 리뷰 중 무관한 커밋 추가 — follow-up PR 분리
 - `gh pr merge --delete-branch` 사용. 멀티 worktree 에서 gh 의 로컬 checkout-to-default 단계가 `main` 충돌로 실패해 원격 삭제 전에 명령을 abort 한다 (서버 머지는 성공, 원격 브랜치 잔존 — issue #1283). 머지는 `gh pr merge <N> --squash --admin`, 원격 브랜치 삭제는 별도 `git push origin --delete <branch>` (순수 원격, worktree-safe)
 - `git push origin --delete <branch>` (또는 `gh pr merge --delete-branch`) 를 `gh pr list --base <branch> --state open --json number` 확인 없이 실행. 결과가 비어있지 않으면 stacked dependent 존재 → 원격 삭제 생략하거나 child 를 main 위로 rebase 먼저. (후속 PreToolUse Bash 가드 훅이 두 형태 모두 자동 차단하지만, 훅 비활성화 시도 살아남도록 규칙 명시)
+- 명령 출력을 `/tmp/<고정이름>` 같은 **전역 고정경로**에 redirect (예: `git push > /tmp/push.txt 2>&1`). 상시 20~30 worktree 동시 가동 → 다른 worktree 세션과 같은 파일 공유, 자기 출력 대신 남의 출력을 읽어 false success signal (실측: #1257 작업 중 `/tmp/push3.txt` 가 다른 worktree 의 push 출력 — issue #1274). 임시 파일은 **`mktemp`** (고유 경로) 사용. 그리고 push/머지 성공 판정은 파일 내용이 아니라 `git ls-remote --heads origin <branch>` 등 **원격 상태 직접 조회**로 검증
 
 ## Non-goals (명시 요청 없을 시)
 

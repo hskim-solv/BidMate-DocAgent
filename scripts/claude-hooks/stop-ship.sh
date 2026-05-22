@@ -334,7 +334,8 @@ stage_3_pr() {
   if ! python3 scripts/claude-hooks/_ship_pr_body.py \
         --branch "$ARM_BRANCH" \
         --base-ref origin/main \
-        --real-eval-mode "$ARM_REAL_EVAL_MODE" > "$body_file"; then
+        --real-eval-mode "$ARM_REAL_EVAL_MODE" \
+        --test-summary-path "$TEST_SUMMARY_PATH" > "$body_file"; then
     abort_disarm "s3" "PR body generator failed (likely §5b validation)"
   fi
 
