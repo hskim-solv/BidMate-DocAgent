@@ -17,6 +17,7 @@ installed — the Node-missing case explicitly checks the graceful path.
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
@@ -31,11 +32,27 @@ from ingestion import (
     HwpKordocLoader,
     PdfCsvTextLoader,
     PdfKordocLoader,
+    _KORDOC_MANIFEST_FILENAME,
     _kordoc_output_stem,
     _read_kordoc_version_spec,
     _reset_kordoc_loaders,
     _resolve_loader,
 )
+from scripts.build_kordoc_manifest import build_manifest
+
+
+def _prime_manifest(source_dir: Path, cache_dir: Path) -> None:
+    """Write a valid manifest for ``cache_dir`` using the production generator.
+
+    Tests that exercise the cache-bypass path must first prime a manifest, or
+    the issue #1278 integrity gate refuses the bypass. Reusing the generator
+    (rather than hand-rolling JSON) keeps the test fixture honest against the
+    real schema + sha computation.
+    """
+    manifest = build_manifest(source_dir, cache_dir)
+    (cache_dir / _KORDOC_MANIFEST_FILENAME).write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
 
 
 class HwpKordocLoaderRegressionTest(unittest.TestCase):
@@ -361,6 +378,7 @@ class KordocCacheDirBypassTest(unittest.TestCase):
             (cache_dir / "doc_b.md").write_text(
                 "# Heading B\n\nBody of doc B.\n", encoding="utf-8"
             )
+            _prime_manifest(tmp_path, cache_dir)
             os.environ["BIDMATE_KORDOC_CACHE_DIR"] = str(cache_dir)
 
             # Sentinel: subprocess.run must NOT be called. If the bypass
@@ -463,6 +481,7 @@ class KordocCacheDirBypassTest(unittest.TestCase):
                 "# 2024. 8.\n\n사업 개요·········· 3\n\n소요예산: 1억 5천만 원\n",
                 encoding="utf-8",
             )
+            _prime_manifest(files_dir, cache_dir)
             self.assertNotIn("BIDMATE_KORDOC_CACHE_DIR", os.environ)
 
             def must_not_run(*args, **kwargs):  # type: ignore[no-untyped-def]
@@ -495,11 +514,228 @@ class KordocCacheDirBypassTest(unittest.TestCase):
             src = files_dir / "doc.hwp"
             src.touch()
             (cache_dir / "doc.md").write_text("# H\n\nkordoc body\n", encoding="utf-8")
+            _prime_manifest(files_dir, cache_dir)
 
             with mock.patch.object(shutil, "which", return_value=None):
                 result = _kordoc_convert_batch([src])
 
             self.assertIn("kordoc body", result["doc"])
+
+
+class KordocCacheManifestIntegrityTest(unittest.TestCase):
+    """Manifest integrity gate on the cache bypass (issue #1278).
+
+    The bypass must only fire when a ``manifest.json`` proves each cached
+    ``<stem>.md`` came from the current source bytes at the running
+    kordoc/postprocess version. Stale, wrong-source, version-drifted, or
+    manifest-less caches must be refused — falling through to a fresh
+    subprocess extraction — so unverified text never reaches the index.
+    """
+
+    def setUp(self) -> None:
+        self._env_backup = os.environ.get("BIDMATE_KORDOC_CACHE_DIR")
+        os.environ.pop("BIDMATE_KORDOC_CACHE_DIR", None)
+
+    def tearDown(self) -> None:
+        if self._env_backup is None:
+            os.environ.pop("BIDMATE_KORDOC_CACHE_DIR", None)
+        else:
+            os.environ["BIDMATE_KORDOC_CACHE_DIR"] = self._env_backup
+
+    def _make_layout(self, tmp_path: Path):
+        files_dir = tmp_path / "files"
+        cache_dir = tmp_path / "files_kordoc"
+        files_dir.mkdir()
+        cache_dir.mkdir()
+        return files_dir, cache_dir
+
+    @staticmethod
+    def _fake_run_writing(stem: str, body: str):
+        def fake_run(cmd, **kwargs):  # type: ignore[no-untyped-def]
+            out_dir = Path(cmd[cmd.index("-d") + 1])
+            (out_dir / f"{stem}.md").write_text(body, encoding="utf-8")
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+
+        return fake_run
+
+    def test_missing_manifest_refuses_bypass(self) -> None:
+        # A stem-matched .md with NO manifest must NOT be bypassed (the old
+        # stem-only behavior). It falls through to the subprocess.
+        from ingestion import _kordoc_convert_batch
+
+        with TemporaryDirectory() as tmp:
+            files_dir, cache_dir = self._make_layout(Path(tmp))
+            src = files_dir / "doc.hwp"
+            src.write_bytes(b"real source bytes")
+            (cache_dir / "doc.md").write_text("stale cached body\n", encoding="utf-8")
+            # No manifest written.
+
+            captured: list[list[str]] = []
+
+            def fake_run(cmd, **kwargs):  # type: ignore[no-untyped-def]
+                captured.append(list(cmd))
+                out_dir = Path(cmd[cmd.index("-d") + 1])
+                (out_dir / "doc.md").write_text("fresh subprocess body\n", encoding="utf-8")
+                return subprocess.CompletedProcess(cmd, 0, "", "")
+
+            with mock.patch.object(shutil, "which", return_value="/usr/bin/npx"):
+                with mock.patch.object(subprocess, "run", side_effect=fake_run):
+                    result = _kordoc_convert_batch([src])
+
+            self.assertEqual(len(captured), 1)  # subprocess was invoked
+            self.assertIn("fresh subprocess body", result["doc"])
+            self.assertNotIn("stale cached", result["doc"])
+
+    def test_manifest_match_uses_bypass(self) -> None:
+        # Valid manifest (correct sha/spec/version) → bypass, no subprocess.
+        from ingestion import _kordoc_convert_batch
+
+        with TemporaryDirectory() as tmp:
+            files_dir, cache_dir = self._make_layout(Path(tmp))
+            src = files_dir / "doc.hwp"
+            src.write_bytes(b"real source bytes")
+            (cache_dir / "doc.md").write_text("# H\n\ncached body\n", encoding="utf-8")
+            _prime_manifest(files_dir, cache_dir)
+
+            def must_not_run(*args, **kwargs):  # type: ignore[no-untyped-def]
+                raise AssertionError("bypass must skip subprocess on valid manifest")
+
+            with mock.patch.object(shutil, "which", return_value="/usr/bin/npx"):
+                with mock.patch.object(subprocess, "run", side_effect=must_not_run):
+                    result = _kordoc_convert_batch([src])
+
+            self.assertIn("cached body", result["doc"])
+
+    def test_sha_mismatch_refuses_bypass(self) -> None:
+        # The wrong-source case: a manifest is primed, then the source bytes
+        # change (or the .md came from a different doc sharing the NFC stem).
+        # sha256 no longer matches → bypass refused → subprocess fallback.
+        from ingestion import _kordoc_convert_batch
+
+        with TemporaryDirectory() as tmp:
+            files_dir, cache_dir = self._make_layout(Path(tmp))
+            src = files_dir / "doc.hwp"
+            src.write_bytes(b"original source bytes")
+            (cache_dir / "doc.md").write_text("body from ORIGINAL\n", encoding="utf-8")
+            _prime_manifest(files_dir, cache_dir)
+            # Source mutated after the manifest was built (stale cache).
+            src.write_bytes(b"DIFFERENT source bytes now")
+
+            captured: list[list[str]] = []
+
+            def fake_run(cmd, **kwargs):  # type: ignore[no-untyped-def]
+                captured.append(list(cmd))
+                out_dir = Path(cmd[cmd.index("-d") + 1])
+                (out_dir / "doc.md").write_text("re-extracted body\n", encoding="utf-8")
+                return subprocess.CompletedProcess(cmd, 0, "", "")
+
+            with mock.patch.object(shutil, "which", return_value="/usr/bin/npx"):
+                with mock.patch.object(subprocess, "run", side_effect=fake_run):
+                    result = _kordoc_convert_batch([src])
+
+            self.assertEqual(len(captured), 1)
+            self.assertIn("re-extracted body", result["doc"])
+            self.assertNotIn("ORIGINAL", result["doc"])
+
+    def test_spec_mismatch_refuses_bypass(self) -> None:
+        # Manifest kordoc_spec drifted from the running extractor → refuse.
+        from ingestion import _kordoc_convert_batch
+
+        with TemporaryDirectory() as tmp:
+            files_dir, cache_dir = self._make_layout(Path(tmp))
+            src = files_dir / "doc.hwp"
+            src.write_bytes(b"src")
+            (cache_dir / "doc.md").write_text("cached body\n", encoding="utf-8")
+            _prime_manifest(files_dir, cache_dir)
+            manifest_path = cache_dir / _KORDOC_MANIFEST_FILENAME
+            data = json.loads(manifest_path.read_text(encoding="utf-8"))
+            data["kordoc_spec"] = "kordoc@0.0.0-not-the-running-version"
+            manifest_path.write_text(json.dumps(data), encoding="utf-8")
+
+            with mock.patch.object(shutil, "which", return_value="/usr/bin/npx"):
+                with mock.patch.object(
+                    subprocess, "run", side_effect=self._fake_run_writing("doc", "fresh\n")
+                ) as run_mock:
+                    result = _kordoc_convert_batch([src])
+
+            self.assertEqual(run_mock.call_count, 1)
+            self.assertIn("fresh", result["doc"])
+
+    def test_postprocess_version_mismatch_refuses_bypass(self) -> None:
+        # Manifest postprocess_version != running version → refuse.
+        from ingestion import _kordoc_convert_batch
+
+        with TemporaryDirectory() as tmp:
+            files_dir, cache_dir = self._make_layout(Path(tmp))
+            src = files_dir / "doc.hwp"
+            src.write_bytes(b"src")
+            (cache_dir / "doc.md").write_text("cached body\n", encoding="utf-8")
+            _prime_manifest(files_dir, cache_dir)
+            manifest_path = cache_dir / _KORDOC_MANIFEST_FILENAME
+            data = json.loads(manifest_path.read_text(encoding="utf-8"))
+            data["postprocess_version"] = data["postprocess_version"] + 999
+            manifest_path.write_text(json.dumps(data), encoding="utf-8")
+
+            with mock.patch.object(shutil, "which", return_value="/usr/bin/npx"):
+                with mock.patch.object(
+                    subprocess, "run", side_effect=self._fake_run_writing("doc", "fresh\n")
+                ) as run_mock:
+                    result = _kordoc_convert_batch([src])
+
+            self.assertEqual(run_mock.call_count, 1)
+            self.assertIn("fresh", result["doc"])
+
+    def test_missing_stem_entry_refuses_bypass(self) -> None:
+        # .md + source exist but manifest has no entry for the stem → refuse.
+        from ingestion import _kordoc_convert_batch
+
+        with TemporaryDirectory() as tmp:
+            files_dir, cache_dir = self._make_layout(Path(tmp))
+            src = files_dir / "doc.hwp"
+            src.write_bytes(b"src")
+            (cache_dir / "doc.md").write_text("cached body\n", encoding="utf-8")
+            _prime_manifest(files_dir, cache_dir)
+            manifest_path = cache_dir / _KORDOC_MANIFEST_FILENAME
+            data = json.loads(manifest_path.read_text(encoding="utf-8"))
+            data["entries"] = {}  # drop the entry
+            manifest_path.write_text(json.dumps(data), encoding="utf-8")
+
+            with mock.patch.object(shutil, "which", return_value="/usr/bin/npx"):
+                with mock.patch.object(
+                    subprocess, "run", side_effect=self._fake_run_writing("doc", "fresh\n")
+                ) as run_mock:
+                    result = _kordoc_convert_batch([src])
+
+            self.assertEqual(run_mock.call_count, 1)
+            self.assertIn("fresh", result["doc"])
+
+    def test_generator_roundtrip_enables_bypass(self) -> None:
+        # End-to-end: generator builds the manifest, ingestion trusts it.
+        from ingestion import _kordoc_convert_batch
+        from scripts.build_kordoc_manifest import build_manifest
+
+        with TemporaryDirectory() as tmp:
+            files_dir, cache_dir = self._make_layout(Path(tmp))
+            src = files_dir / "한글문서.hwp"  # NFC round-trip coverage
+            src.write_bytes(b"korean source bytes")
+            stem = _kordoc_output_stem(src)
+            (cache_dir / f"{stem}.md").write_text("# H\n\n근거 본문\n", encoding="utf-8")
+
+            manifest = build_manifest(files_dir, cache_dir)
+            self.assertEqual(manifest["kordoc_spec"], _read_kordoc_version_spec())
+            self.assertIn(stem, manifest["entries"])
+            (cache_dir / _KORDOC_MANIFEST_FILENAME).write_text(
+                json.dumps(manifest, ensure_ascii=False), encoding="utf-8"
+            )
+
+            def must_not_run(*args, **kwargs):  # type: ignore[no-untyped-def]
+                raise AssertionError("generator-built manifest must enable bypass")
+
+            with mock.patch.object(shutil, "which", return_value="/usr/bin/npx"):
+                with mock.patch.object(subprocess, "run", side_effect=must_not_run):
+                    result = _kordoc_convert_batch([src])
+
+            self.assertIn("근거 본문", result[stem])
 
 
 if __name__ == "__main__":
