@@ -133,35 +133,93 @@ def test_unrelated_command(bgp):
 
 
 # ---------------------------------------------------------------------------
-# has_explicit_base_flag — bypass detection
+# all_create_segments_have_base — bypass detection (finding F2: per-segment)
 # ---------------------------------------------------------------------------
 
 
 def test_has_base_explicit_long(bgp):
-    assert bgp.has_explicit_base_flag("gh pr create --base main")
+    assert bgp.all_create_segments_have_base("gh pr create --base main")
 
 
 def test_has_base_explicit_equals(bgp):
-    assert bgp.has_explicit_base_flag("gh pr create --base=foo")
+    assert bgp.all_create_segments_have_base("gh pr create --base=foo")
 
 
 def test_has_base_other_branch(bgp):
-    assert bgp.has_explicit_base_flag("gh pr create --title x --base feature/foo")
+    assert bgp.all_create_segments_have_base("gh pr create --title x --base feature/foo")
 
 
 def test_no_base_means_implicit_main(bgp):
-    assert not bgp.has_explicit_base_flag("gh pr create --title foo --body bar")
+    assert not bgp.all_create_segments_have_base("gh pr create --title foo --body bar")
 
 
 def test_has_base_doesnt_match_gh_merge(bgp):
     """`gh pr merge --base ...` doesn't exist as a real flag, but if a user
-    typed it, we should NOT treat it as a create-bypass."""
-    assert not bgp.has_explicit_base_flag("gh pr merge --base foo")
+    typed it, we should NOT treat it as a create-bypass (0 create segments)."""
+    assert not bgp.all_create_segments_have_base("gh pr merge --base foo")
 
 
 def test_has_base_substring_doesnt_match(bgp):
     """`--basenum=3` shouldn't match `--base`."""
-    assert not bgp.has_explicit_base_flag("gh pr create --basenum=3")
+    assert not bgp.all_create_segments_have_base("gh pr create --basenum=3")
+
+
+def test_f2_compound_one_baseless_create_does_not_bypass(bgp):
+    """Finding F2: a compound where ONE create has --base must NOT bypass —
+    the base-less create would still collapse the stack. The any-segment
+    form returned True here (bug); the per-segment form returns False."""
+    cmd = "gh pr create --title bad && gh pr create --base main --title ok"
+    assert not bgp.all_create_segments_have_base(cmd)
+
+
+def test_f2_compound_all_creates_have_base_bypasses(bgp):
+    """Two creates, both with --base → safe to bypass."""
+    cmd = "gh pr create --base x --title a && gh pr create --base y --title b"
+    assert bgp.all_create_segments_have_base(cmd)
+
+
+def test_f2_baseless_first_then_base(bgp):
+    """Order-independent: base-less first segment still blocks the bypass."""
+    cmd = "gh pr create --base main && gh pr create --title oops"
+    assert not bgp.all_create_segments_have_base(cmd)
+
+
+# ---------------------------------------------------------------------------
+# F3: shlex-first segmentation — quoted separators no longer break parsing
+# ---------------------------------------------------------------------------
+
+
+def test_f3_quoted_semicolon_in_title(bgp):
+    """A `;` inside a quoted --title must not split the create segment."""
+    assert bgp.detect_gh_subcommand('gh pr create --title "a; b"') == "create"
+
+
+def test_f3_quoted_ampersand_in_title(bgp):
+    assert bgp.detect_gh_subcommand('gh pr create --title "a && b"') == "create"
+
+
+def test_f3_quoted_pipe_in_body(bgp):
+    assert bgp.detect_gh_subcommand('gh pr create --body "x | y"') == "create"
+
+
+def test_f3_quoted_separator_preserves_base_check(bgp):
+    """A base-less create with a quoted separator is still seen as base-less
+    (previously the whole segment was dropped → silently 'no create')."""
+    assert not bgp.all_create_segments_have_base('gh pr create --title "a; b"')
+
+
+def test_f3_quoted_separator_get_body(bgp):
+    assert bgp.get_create_flag_value(
+        'gh pr create --body "fixes a; b"', "--body"
+    ) == "fixes a; b"
+
+
+def test_f3_real_merge_after_quoted_separator(bgp):
+    """`echo "...&&..." ; gh pr merge` — the real merge in its own segment
+    is still caught despite the quoted `&&`."""
+    assert bgp.detect_gh_subcommand(
+        'echo "a && b" ; gh pr merge 5 --delete-branch'
+    ) == "merge"
 
 
 # ---------------------------------------------------------------------------
@@ -264,3 +322,77 @@ def test_cli_get_body_file_stdout(bgp):
     )
     assert r.returncode == 0
     assert r.stdout.strip() == "/tmp/b.md"
+
+
+# ---------------------------------------------------------------------------
+# F1: bash-guard fails CLOSED when the parser crashes — but only for a
+# command that DIRECTLY starts with a guarded `gh pr merge|create`
+# (anchored). A command that merely contains the literal (e.g. inside an
+# echo/quote) must fall OPEN, because a transient parser failure was
+# observed to over-block such benign commands.
+#
+# Drives the real pretooluse-bash-guard.sh against a deliberately broken
+# parser stub (exits non-zero) in a throwaway REPO_ROOT layout.
+# ---------------------------------------------------------------------------
+
+HOOK_PATH = REPO_ROOT / "scripts" / "claude-hooks" / "pretooluse-bash-guard.sh"
+
+
+def _run_hook_with_broken_parser(tmp_path, command: str):
+    import json, shutil, subprocess
+
+    ch = tmp_path / "scripts" / "claude-hooks"
+    ch.mkdir(parents=True)
+    shutil.copy(HOOK_PATH, ch / "pretooluse-bash-guard.sh")
+    (ch / "pretooluse-bash-guard.sh").chmod(0o755)
+    # Parser crash: exit non-zero, no stdout.
+    (ch / "_bash_guard_parse.py").write_text("import sys\nsys.exit(1)\n")
+    # Tolerated emit-fire stub (always succeeds, prints nothing).
+    (tmp_path / "scripts" / "_governance.py").write_text("import sys\nsys.exit(0)\n")
+
+    payload = json.dumps({"tool_name": "Bash", "tool_input": {"command": command}})
+    return subprocess.run(
+        ["bash", str(ch / "pretooluse-bash-guard.sh")],
+        input=payload, capture_output=True, text=True,
+    )
+
+
+def test_f1_parser_crash_blocks_direct_gh_pr_merge(tmp_path):
+    """Parser crash + command STARTING with `gh pr merge` → refuse (exit 2)."""
+    r = _run_hook_with_broken_parser(tmp_path, "gh pr merge 5 --delete-branch")
+    assert r.returncode == 2
+    assert "parser failed" in r.stderr.lower()
+
+
+def test_f1_parser_crash_blocks_direct_gh_pr_create(tmp_path):
+    r = _run_hook_with_broken_parser(tmp_path, "gh pr create --title x")
+    assert r.returncode == 2
+
+
+def test_f1_parser_crash_blocks_after_leading_separator(tmp_path):
+    """A single leading subshell-open / separator is still anchored."""
+    r = _run_hook_with_broken_parser(tmp_path, "(gh pr merge --delete-branch)")
+    assert r.returncode == 2
+
+
+def test_f1_parser_crash_falls_open_for_non_gh(tmp_path):
+    """Parser crash but not a gh pr command → must fall OPEN (exit 0)."""
+    r = _run_hook_with_broken_parser(tmp_path, "ls -la")
+    assert r.returncode == 0
+
+
+def test_f1_parser_crash_falls_open_when_literal_only_embedded(tmp_path):
+    """The observed over-block: a benign command that merely *contains*
+    `gh pr create` inside a quote/echo must NOT be blocked on parser crash
+    (anchored check misses it) — exit 0."""
+    cmd = "echo 'see: gh pr create --base main' >> notes.txt"
+    r = _run_hook_with_broken_parser(tmp_path, cmd)
+    assert r.returncode == 0
+
+
+def test_f1_parser_crash_chained_gh_falls_open(tmp_path):
+    """A chained (non-leading) `&& gh pr merge` falls open on crash —
+    acceptable per the fail-open philosophy (one slipped merge is
+    recoverable; over-blocking is not)."""
+    r = _run_hook_with_broken_parser(tmp_path, "make build && gh pr merge --delete-branch")
+    assert r.returncode == 0
