@@ -110,14 +110,12 @@ jobs:
   slow-tests:
     # Issue #1281: the `slow`-marked suite (#1215) runs in ONE serial job, NOT
     # the matrix above. These are the full-corpus + real-model tests; the
-    # heaviest is tests/test_m3_backend_regression.py's BGE-M3 end-to-end test
-    # (~12min, dominated by the one-time model download — no HF cache on a
-    # fresh runner). `scripts/test.sh` runs them under `-n auto --dist
-    # loadfile`, which keeps every test from a single file on one worker, so
-    # BGE-M3 is downloaded exactly once instead of once-per-shard. Wall-clock
-    # is download-bound; a follow-up can cache the HF hub here to drop it
-    # further (issue tracked separately). No `BIDMATE_PYTEST_SPLITS` — this
-    # job runs the whole `-m slow` slice, unsharded.
+    # heaviest is tests/test_m3_backend_regression.py's BGE-M3 end-to-end test,
+    # dominated by the one-time model download. The HF hub is cached (step
+    # below, issue #1314) so a cache hit skips that download — slow job
+    # ~24min → ~8min. `scripts/test.sh` runs the suite under `-n auto --dist
+    # loadfile`. No `BIDMATE_PYTEST_SPLITS` — this job runs the whole
+    # `-m slow` slice, unsharded.
     name: Pytest (slow / real-model suite)
     runs-on: ubuntu-latest
     env:
@@ -135,6 +133,20 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt -r requirements-dev.txt
+      - name: Cache HuggingFace hub (BGE-M3 + rerankers)
+        # Issue #1314: the slow suite's wall-clock is dominated by the
+        # one-time BGE-M3 download on a fresh runner. Cache `~/.cache/
+        # huggingface` (HF's default HF_HOME) so a cache hit skips the
+        # download. The cached model set is fixed by the test code, not by
+        # requirements, so the key is a manual version — bump `v1` when a new
+        # real model is added to the `slow` suite. `restore-keys` lets an
+        # older cache seed a partial restore (only new models re-download).
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: hf-hub-${{ runner.os }}-v1
+          restore-keys: |
+            hf-hub-${{ runner.os }}-
       - name: Run pytest (slow marker)
         run: bash scripts/test.sh
 
