@@ -16,6 +16,7 @@ from scripts._governance import (
     ADR_SLA_GRANDFATHER_DATE,
     THRESHOLDS,
     _cmd_proposed_adr_age,
+    _git_first_commit_date,
     adr_has_resolution_section,
     parse_adr_status,
     proposed_adr_age,
@@ -346,6 +347,39 @@ def test_cmd_output_shows_resolved_in_place_flag(tmp_path, capsys) -> None:
     assert "OVER_SLA" not in captured.out
     # Summary (stderr) reports the in-place count.
     assert "resolved in place" in captured.err
+
+
+# ---- proposed_adr_age: timezone boundary (#1192) -------------------------
+
+
+def test_first_commit_date_normalizes_local_tz_to_utc(monkeypatch) -> None:
+    """`%aI` is the author date in the commit's local tz; the resolver must
+    return the UTC calendar date. 2026-05-22T00:14:01+09:00 == 2026-05-21T15:14
+    UTC, so the first-commit date is 2026-05-21, not the KST 2026-05-22. Pre-fix
+    `%aI[:10]` kept the KST date."""
+    monkeypatch.setattr(
+        "subprocess.check_output",
+        lambda *a, **k: "2026-05-22T00:14:01+09:00\n",
+    )
+    assert _git_first_commit_date("docs/adr/0099-x.md") == date(2026, 5, 21)
+
+
+def test_kst_midnight_commit_not_negative_age(tmp_path: Path, monkeypatch) -> None:
+    """Boundary regression for #1192: a proposed ADR committed just after KST
+    midnight (2026-05-22T00:14:01+09:00 == 2026-05-21T15:14 UTC) must not age to
+    -1 when the UTC `today` is still 2026-05-21. Pre-fix the KST date 05-22 minus
+    the UTC today 05-21 gave age_days == -1, tripping the `assert age_days >= 0`
+    sentinel in test_repo_proposed_adr_age_runs. Uses the default git resolver
+    (no date_resolver injection) so the normalization path is exercised."""
+    _adr(tmp_path, "0099-new.md", "proposed")
+    monkeypatch.setattr(
+        "subprocess.check_output",
+        lambda *a, **k: "2026-05-22T00:14:01+09:00\n",
+    )
+    recs = proposed_adr_age(tmp_path, now=date(2026, 5, 21))
+    assert recs[0].first_commit == date(2026, 5, 21)
+    assert recs[0].age_days == 0
+    assert recs[0].age_days >= 0
 
 
 # ---- constants -----------------------------------------------------------
