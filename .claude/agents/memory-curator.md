@@ -19,6 +19,13 @@ tools: Read, Grep, Glob, Bash
 
 ### Step 1: 메모리 폴더 스캔
 - 경로: `~/.claude/projects/-Users-hskim-Desktop-projects-BidMate-DocAgent/memory/`
+  - 이 경로는 harness 가 **메인 프로젝트 경로**(worktree 가 아닌) 기준으로 제공하는
+    per-project 메모리 루트다. worktree 에서 실행해도 동일 루트를 가리키는 것이 **설계 의도**
+    (메모리는 worktree-local 이 아니라 프로젝트 단위 공유). dedup/stale 판단이 메인 메모리를
+    읽는 것은 정상 — worktree 별 분기 아님.
+  - **Fragility 주의**: 절대 경로 슬러그가 하드코딩돼 있어, 체크아웃을 다른 Desktop 경로로
+    옮기면 stale 된다. system 컨텍스트의 auto-memory 경로와 다르면 그쪽(harness 제공값)을
+    신뢰하고, 둘 다 해소 불가면 사용자에게 알리고 중단 (fail-closed — 엉뚱한 폴더 dedup 금지).
 - `ls` 로 전체 파일 목록 수집
 - `wc -l` 로 MEMORY.md 라인 수 측정 → 180+ 이면 alert 표시 (200 한계 근접)
 - 각 메모리 파일 frontmatter (`name`, `description`, `metadata.type`) 만 head 로 읽어 인덱스 구성. body 전체 읽지 않음 (토큰 절약).
