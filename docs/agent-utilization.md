@@ -68,7 +68,7 @@
 
 외부 191개 검토 결과 채택 0개. 근본 원인은 enterprise persona vs research 1인 RAG 결 미스매치. 보편 원칙은 이미 `karpathy-guidelines` skill + CLAUDE.md 로 cover. 자체 갭만 1:1 보강:
 
-- **#2 위임 부족**: UserPromptSubmit hook 0개였음 → prompt 시점 위임 권유 강제 (CLAUDE.md "위임 기본값" 인용). `_self_review.py` `collect_governance_hooks` 가 4-field 포맷의 `agent-delegation` reason 카운터를 기존 `memory-lines` / `load-bearing` 옆에 자동 인식
+- **#2 위임 부족**: UserPromptSubmit hook 0개였음 → prompt 시점 위임 권유 강제 (CLAUDE.md "위임 기본값" 인용). 발화는 ADR 0060 5-field 포맷(`<ts>|nudged|delegation-gate|agent-delegation|<path>`)으로 `.hook-fires.log` 에 기록되고, `_self_review.py` `collect_governance_hooks` (#1225 이후 `analyze_hook_outcomes.parse_log_line` 재사용) 가 generic `fires_by_action`(outcome 별) + `fires_by_path` 에 집계. **agent-delegation 전용 카운터는 없음** — `memory-lines` 처럼 hook id 기준 dedicated 버킷이 필요하면 별도 follow-up (Out-of-scope)
 - **#3 자동화 ROI 일부 + #4 사이클 타임 trigger→proposed**: 측정 결과 → ADR 후보 변환 빈 칸. `reports/cycle_time.json` 에 `adr_proposed` 이벤트 + `trigger_to_proposal_seconds` append 로 정량화. PR open→merge / ADR proposed→accepted lag 는 `_self_review.py` git history 기반 사후 측정으로 이미 가동
 - **#5 메모리 위생**: `anthropic-skills:consolidate-memory` skill 은 batch consolidation (주기적). per-save dedup / type 균형 / stale 판단은 LLM judgment 필요한 incremental gate → agent 영역
 - **(2026-05-20 추가) #3 closed error loop**: 측정 이상치 → root-cause audit 수작업 3회 반복 (#1003/#1008/#1021) → `eval-anomaly-investigator` 로 코드화. `eval-to-adr-bridge` 의 앞단 (anomaly→audit→ADR 후보 체인 완성). issue #1050, PR-C 묶음 외 별도 후속
