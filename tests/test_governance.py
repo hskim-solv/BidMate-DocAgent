@@ -262,6 +262,41 @@ def test_pr_template_5b_escape_example_matches_regex():
     )
 
 
+def test_pr_template_5b_reviewer_caveat_is_visible():
+    """The reviewer-responsibility caveat must be VISIBLE, not comment-buried.
+
+    Issue #1027 added the caveat ('CI 통과 ≠ §5b 내용 검증 완료 — reviewer
+    책임') inside an HTML comment, so it was invisible in BOTH surfaces: the
+    rendered PR (comments don't render) and the gate's extraction
+    (`_five_b_section` strips comments). A guard whose entire point is to tell
+    reviewers they own §5b content verification was hidden from those very
+    reviewers. This locks the caveat outside the comment.
+
+    It also guards the inverse hazard: visible text lives inside the extracted
+    §5b section, so it must NOT by itself satisfy the gate — otherwise every
+    load-bearing PR would pass §5b with an empty author fill, defeating the
+    PR #69 abstention-regression guard.
+    """
+    template = (
+        ROOT_DIR / ".github" / "pull_request_template.md"
+    ).read_text(encoding="utf-8")
+    section = cbi._five_b_section(template)
+    assert section is not None, "template must contain the §5b header"
+    assert "책임" in section, (
+        "the reviewer-responsibility caveat must be VISIBLE (outside HTML "
+        "comments) so it survives both PR rendering and the gate's comment "
+        "strip — see issue #1027."
+    )
+    assert not cbi.FIVE_B_TABLE_RE.search(section), (
+        "the visible §5b caveat must not look like a markdown table, else an "
+        "empty author fill would auto-satisfy the gate."
+    )
+    assert not cbi.FIVE_B_ESCAPE_RE.search(section), (
+        "the visible §5b caveat must not match the escape sentence, else an "
+        "empty author fill would auto-satisfy the gate (defeating PR #69)."
+    )
+
+
 # ---------------------------------------------------------------------------
 # G2 — `naive_baseline` preset retained in eval/config.yaml (ADR 0001).
 # ---------------------------------------------------------------------------
