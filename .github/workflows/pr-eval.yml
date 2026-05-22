@@ -25,16 +25,20 @@ env:
 
 jobs:
   test:
-    # Issue #931: matrix shard pytest x4 fans the suite across 4 parallel
-    # ubuntu-latest runners. `scripts/test.sh` honors `BIDMATE_PYTEST_SPLITS`
-    # + `BIDMATE_PYTEST_SHARD` env vars (passes `--splits N --group K` to
-    # pytest-split). `fail-fast: false` so we see every failing shard, not
-    # just the first. ~25min serial wall-clock → ~6-8min per-shard.
-    # Shard count was 8; halved to 4 to cut runner-minutes (each shard
-    # re-installs the heavy torch/sentence-transformers stack, so fewer
-    # shards = proportionally fewer redundant installs). CI runs on the
-    # `hashing` backend (no real model load), so the per-shard memory
-    # headroom that motivated 8 shards locally does not bind here.
+    # Issue #931: matrix shard pytest x4 fans the *non-slow* suite across 4
+    # parallel ubuntu-latest runners. `scripts/test.sh` honors
+    # `BIDMATE_PYTEST_SPLITS` + `BIDMATE_PYTEST_SHARD` env vars (passes
+    # `--splits N --group K` to pytest-split). `fail-fast: false` so we see
+    # every failing shard, not just the first.
+    # Issue #1281: this matrix runs `-m "not slow"` (the non-slow suite is
+    # only ~30s of wall-clock). Every heavy test carries the `slow` marker
+    # (#1215) — the BGE-M3 real-model regression + full-corpus suites — and
+    # is pinned to the single serial `slow-tests` job below. Sharding the
+    # slow tests made each shard that drew a model-loading test re-download
+    # BGE-M3 on a fresh runner (no HF cache): the duplicated ~12min cost
+    # behind PR #1263's imbalance, plus a degenerate empty shard when
+    # duration-based split fed on a single 737s test (PR #1298). Isolating
+    # them keeps the download to exactly once.
     # `BIDMATE_PYTEST_SPLITS` MUST equal the matrix length, else pytest-split
     # leaves orphaned groups uncovered.
     # Per-shard coverage.xml uploads to Codecov with `shard-N` flags;
@@ -49,6 +53,8 @@ jobs:
     env:
       BIDMATE_PYTEST_SPLITS: "4"
       BIDMATE_PYTEST_SHARD: ${{ matrix.shard }}
+      # Deselect the slow/real-model suite — it runs in `slow-tests` below.
+      PYTEST_ADDOPTS: "-m 'not slow'"
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -100,6 +106,58 @@ jobs:
         # racey artifact diff if shards complete out of order.
         if: matrix.shard == 1
         run: python3 scripts/leaderboard.py --check
+
+  slow-tests:
+    # Issue #1281: the `slow`-marked suite (#1215) runs in ONE serial job, NOT
+    # the matrix above. These are the full-corpus + real-model tests; the
+    # heaviest is tests/test_m3_backend_regression.py's BGE-M3 end-to-end test
+    # (~12min, dominated by the one-time model download — no HF cache on a
+    # fresh runner). `scripts/test.sh` runs them under `-n auto --dist
+    # loadfile`, which keeps every test from a single file on one worker, so
+    # BGE-M3 is downloaded exactly once instead of once-per-shard. Wall-clock
+    # is download-bound; a follow-up can cache the HF hub here to drop it
+    # further (issue tracked separately). No `BIDMATE_PYTEST_SPLITS` — this
+    # job runs the whole `-m slow` slice, unsharded.
+    name: Pytest (slow / real-model suite)
+    runs-on: ubuntu-latest
+    env:
+      PYTEST_ADDOPTS: "-m 'slow'"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+      - name: Run pytest (slow marker)
+        run: bash scripts/test.sh
+
+      - name: Coverage summary
+        if: always()
+        run: |
+          if [ -f coverage.xml ] && command -v coverage >/dev/null 2>&1; then
+            {
+              echo "## Coverage (slow)";
+              echo '```';
+              coverage report --skip-empty || true;
+              echo '```';
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload coverage to Codecov
+        if: always()
+        uses: codecov/codecov-action@v6
+        with:
+          files: coverage.xml
+          flags: slow
+          fail_ci_if_error: false
+          verbose: false
 
   baseline-provenance:
     # Gate (issue #413): verify reports/real100/baseline.aggregate.json's
