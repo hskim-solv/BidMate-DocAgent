@@ -18,9 +18,10 @@ Claude Code 의 PreToolUse / Stop / UserPromptSubmit 훅 모음. `.claude/settin
 
 ## 현재 hook 인벤토리
 
+아래 표는 `.claude/settings.json` 에 commit 되어 **자동 로드**되는 repo 훅. user-global opt-in 훅 (`plan-slug-race.sh`) 은 별도 — 아래 "Opt-in (자동 등록 아님)" 섹션 참조.
+
 | Hook | Enforcement | Matcher | 주 기능 |
 |---|---|---|---|
-| [`plan-slug-race.sh`](./plan-slug-race.sh) | block | `Write` | `~/.claude/plans/<slug>.md` 5-min 내 cross-worktree race 차단 (issue #779) |
 | [`pretooluse-adr-template.sh`](./pretooluse-adr-template.sh) | block | `Edit\|MultiEdit\|Write` | 신규 ADR 의 Verification section + verifies-key marker 누락 차단 (issue #826/#866) |
 | [`pretooluse-adr-collision.sh`](./pretooluse-adr-collision.sh) | block | `Edit\|MultiEdit\|Write` | 신규 ADR 의 NNNN 번호가 다른 worktree 의 open PR (title **또는** head branch) 에 이미 예약돼 있으면 Write 차단 (cross-worktree collision; ADR 0063, issue #1069/#1155) |
 | [`pretooluse-bash-guard.sh`](./pretooluse-bash-guard.sh) | block | `Bash` | (1) stacked-dependent 있을 때 `gh pr merge --delete-branch` 차단, (2) `gh pr create` 시 stacked-base mismatch 차단 (PR #423→#431, #470 incident) |
@@ -29,11 +30,19 @@ Claude Code 의 PreToolUse / Stop / UserPromptSubmit 훅 모음. `.claude/settin
 | [`stop-ship.sh`](./stop-ship.sh) | pipeline | Stop | armed 상태일 때 commit→push→PR→CI→squash-merge 5-stage 자동 실행 (auto-ship) |
 | [`userpromptsubmit-delegation-gate.sh`](./userpromptsubmit-delegation-gate.sh) | nudge | UserPromptSubmit `.*` | non-trivial 변경 키워드 감지 시 Plan/Explore 위임 힌트 주입 (issue #1014) |
 
+## Opt-in (자동 등록 아님)
+
+| Hook | Enforcement | Matcher | 주 기능 |
+|---|---|---|---|
+| [`plan-slug-race.sh`](./plan-slug-race.sh) | block | `Write` | `~/.claude/plans/<slug>.md` 5-min 내 cross-worktree race 차단 (issue #779) |
+
+이 훅은 `.claude/settings.json` 에 **등록돼 있지 않다**. Claude Code 세션이 여러 repo 에 걸칠 수 있어 repo-local 이 아닌 **user-global** `~/.claude/settings.json` 에 1회 수동 wire 해야 동작한다. wiring 절차·override 환경변수: [`docs/engineering-governance.md`](../../docs/engineering-governance.md) 의 "Claude Code 훅 (opt-in, user-global)" 섹션.
+
 ## 새 hook 추가 시
 
 1. 헤더 docstring 둘째 줄에 **`# Enforcement: <label>`** 1줄 + **`# Classification rationale: <한 문장>`** 1줄 추가.
-2. 위 인벤토리 표에 row 추가 (matcher + 1줄 설명 + 관련 issue/PR).
-3. `.claude/settings.json` 의 hooks 섹션에 등록.
+2. 위 인벤토리 표에 row 추가 (matcher + 1줄 설명 + 관련 issue/PR). user-global opt-in 훅이면 "Opt-in (자동 등록 아님)" 섹션에 추가하고 settings.json 등록은 생략.
+3. (자동 로드 훅 한정) `.claude/settings.json` 의 hooks 섹션에 등록.
 4. (PR4 outcome telemetry 머지 후) `.claude/.hook-fires.log` 에 emit 하는 outcome 카테고리가 위 enforcement 와 일치하는지 회귀 테스트로 확인.
 
 ## Supporting helpers (hook 아님)
