@@ -7,20 +7,20 @@
   "failure_category_counts": {
     "context_dilution": 0,
     "generator_hallucination": 1,
-    "planner_under_decomposition": 1,
-    "retrieval_miss": 64,
-    "unknown": 35,
+    "planner_under_decomposition": 3,
+    "retrieval_miss": 67,
+    "unknown": 33,
     "verifier_false_negative": 76,
-    "verifier_false_positive": 3
+    "verifier_false_positive": 0
   },
   "failure_category_percent_of_failed": {
     "context_dilution": 0.0,
     "generator_hallucination": 0.56,
-    "planner_under_decomposition": 0.56,
-    "retrieval_miss": 35.56,
-    "unknown": 19.44,
+    "planner_under_decomposition": 1.67,
+    "retrieval_miss": 37.22,
+    "unknown": 18.33,
     "verifier_false_negative": 42.22,
-    "verifier_false_positive": 1.67
+    "verifier_false_positive": 0.0
   },
   "finding_1_contract": {
     "incorrect_answer": 76,

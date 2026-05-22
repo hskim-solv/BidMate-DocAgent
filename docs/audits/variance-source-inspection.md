@@ -1,5 +1,18 @@
 # `verifier_false_negative` 분산(variance) 원천 inspection (Issue J)
 
+> **Reconcile (2026-05-22, #1277).** 본 문서의 N=3 측정은 HEAD `300882a` 에서
+> *그 시점의* 분류기 (pre-#1276, bare-intersection) 로 수행됐다. #1276 (ADR 0059
+> `classify_failure` 3-bug fix) + #1287 (baseline regen, #1321) 는 절대 count 를
+> 결정론적으로 재분포한다 (retrieval_miss 64→67, planner 1→3, verifier_false_positive 3→0,
+> unknown 35→33). **단 본 audit 의 중심 결론 — same-HEAD N=3 spread=0 determinism —
+> 은 불변**이다: `classify_failure` 는 byte-identical case_results 에 대한 순수 사후
+> 함수라, 3 run 에 동일하게 재적용되어 spread 가 여전히 0 이고, ADR 0059 contract
+> (`verifier_false_negative == incorrect_answer == 76`) 도 유지된다. `verifier_false_negative`
+> 자체는 정정에 불변(76)이라 cross-HEAD variance 시리즈(49↔65↔76)와 H1-H5 분석도 그대로
+> 성립한다. 아래 N=3 표는 `300882a` 측정 시점의 분류기 산물로 **보존**하며 (raw run 파일
+> `variance_runs/run_{1..3}.json` 은 local-only, 재실행 불가), committed
+> `reports/real100/variance_measurement/aggregate.json` 도 동일 스냅샷이다.
+
 | field | value |
 |---|---|
 | Issue | #1021 |
@@ -52,6 +65,11 @@ ADR 0059 first-match contract (`vfn == abstention_outcomes.incorrect_answer`) �
 | context_dilution | 0, 0, 0 | 0 | 0.0 | **0** |
 
 **모든 7 카테고리 spread = 0** — 같은 HEAD 에서의 N=3 run 에서 absolute count 완전 일치.
+
+> 위 absolute count 는 `300882a` 시점 분류기 (pre-#1276) 산물 (상단 Reconcile 노트 참조).
+> #1276 정정 후 정본 baseline 은 retrieval_miss 67 / planner 3 / verifier_false_positive 0 /
+> unknown 33 (verifier_false_negative 76 불변). spread=0 determinism 결론은 정정과 무관 —
+> 결정론적 사후 relabel 이 3 run 에 동일 적용되기 때문.
 
 ### run 별 ADR 0059 first-match contract
 
