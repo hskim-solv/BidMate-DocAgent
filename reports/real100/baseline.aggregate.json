@@ -1425,7 +1425,7 @@
   "prompt_profile": "structured_grounded_claims",
   "provenance": {
     "generated_at": "2026-05-19T03:03:10.940691Z",
-    "git_commit": "a7fd711d0573",
+    "git_commit": "de69c5c2d456",
     "git_dirty": true
   },
   "retry": 0.7647058823529411,
@@ -1465,7 +1465,7 @@
   "run_manifest": {
     "config_sha256": "cfb1fc68d994a4b7",
     "generated_at": "2026-05-19T03:01:21.745364Z",
-    "git_commit": "a7fd711d0573",
+    "git_commit": "de69c5c2d456",
     "git_dirty": true
   },
   "stage_latency": {
