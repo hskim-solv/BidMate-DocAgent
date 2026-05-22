@@ -1,7 +1,8 @@
 # 0049: kordoc이 HWP/PDF 파서 backend로 pyhwp/hwp5 대체
 
-- **Status**: proposed
+- **Status**: accepted
 - **Date**: 2026-05-15
+- **Accepted**: 2026-05-22 — PR [#895](https://github.com/hskim-solv/BidMate-DocAgent/pull/895) 가 kordoc 코드 + ADR 0036 supersede + real-eval 델타를 머지: silence band ±0.024 기준 accuracy/groundedness/format_compliance/retry_rate 4개 모두 narrow-CI 통과, `text_source_counts` 직접 증거(issue #890 acceptance #7). Verification 4개 마커 wired (`--lint-adr-consequences` exit 0). proposed ADR 이 accepted ADR 0036 을 supersede 하던 논리 모순 해소 (issue [#1093](https://github.com/hskim-solv/BidMate-DocAgent/issues/1093)).
 - **Deciders**: hskim
 - **Related**: [ADR 0001](./0001-preserve-naive-baseline.md) (csv_text 기준선 보존), [ADR 0036](./0036-hwp-native-loader-pyhwp-gated-default.md) (본 ADR 이 superseded), issue [#890](https://github.com/hskim-solv/BidMate-DocAgent/issues/890) (본 ADR), issue [#801](https://github.com/hskim-solv/BidMate-DocAgent/issues/801) (`hwp_native_rate > 0.0` 목표 — superseded 표면), PR [#856](https://github.com/hskim-solv/BidMate-DocAgent/pull/856) (closed: pyhwp 0.1b15 sections API adapt — 본 ADR 이 supersedes), PR [#895](https://github.com/hskim-solv/BidMate-DocAgent/pull/895) (본 PR — kordoc-vs-csv_text PDF 측정이 22×–757× 컨텐츠 크기 갭 보인 후 PDF 까지 mid-review 확장)
 
