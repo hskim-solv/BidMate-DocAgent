@@ -69,6 +69,7 @@ from rag_conversation_state import CONTEXT_RESOLUTION_THRESHOLD
 from rag_pipeline_presets import (
     DEFAULT_RAG_PIPELINE_NAME,
     RRF_K,
+    VALID_BM25_BACKENDS,
     VALID_BM25_STOPWORD_PROFILES,
     VALID_BM25_TOKENIZERS,
     VALID_RETRIEVAL_BACKENDS,
@@ -489,6 +490,7 @@ def make_plan(
     rrf_k: int = RRF_K,
     bm25_stopword_profile: str = "shared",
     bm25_tokenizer: str = "regex",
+    bm25_backend: str = "okapi",
 ) -> dict[str, Any]:
     if retrieval_mode not in VALID_RETRIEVAL_MODES:
         choices = ", ".join(sorted(VALID_RETRIEVAL_MODES))
@@ -505,6 +507,9 @@ def make_plan(
     if bm25_tokenizer not in VALID_BM25_TOKENIZERS:
         choices = ", ".join(sorted(VALID_BM25_TOKENIZERS))
         raise ValueError(f"bm25_tokenizer must be one of: {choices}")
+    if bm25_backend not in VALID_BM25_BACKENDS:
+        choices = ", ".join(sorted(VALID_BM25_BACKENDS))
+        raise ValueError(f"bm25_backend must be one of: {choices}")
     query_type = str(analysis.get("query_type") or "single_doc")
     default_top_k = query_type_default_top_k(query_type)
     budget_reason = top_k_reason or (
@@ -565,6 +570,7 @@ def make_plan(
         "rrf_k": int(rrf_k),
         "bm25_stopword_profile": bm25_stopword_profile,
         "bm25_tokenizer": bm25_tokenizer,
+        "bm25_backend": bm25_backend,
         "metadata_filters": filters,
         "top_k": top_k or default_top_k,
         "retrieval_budget": {

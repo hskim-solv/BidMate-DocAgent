@@ -122,6 +122,7 @@ def _react_loop_node(state: ReactState) -> ReactState:
         "rrf_k": ctx.rrf_k,
         "bm25_stopword_profile": ctx.bm25_stopword_profile,
         "bm25_tokenizer": ctx.bm25_tokenizer,
+        "bm25_backend": ctx.bm25_backend,
         "pipeline": ctx.pipeline_name,
         "prompt_profile": ctx.prompt_profile,
     }
@@ -313,6 +314,7 @@ def run_via_langgraph_react(
         rrf_k=kwargs.get("rrf_k"),
         bm25_stopword_profile=kwargs.get("bm25_stopword_profile"),
         bm25_tokenizer=kwargs.get("bm25_tokenizer"),
+        bm25_backend=kwargs.get("bm25_backend"),
         params=kwargs.get("params"),
     )
 
