@@ -209,6 +209,27 @@ if [[ -n "$adr_or_readme_touched" ]]; then
   fi
 fi
 
+# Guard: ADR ↔ ADR supersede cross-ref integrity (issue #1077). When an ADR
+# supersedes / changes the invariant of an older ADR, the older ADR's Status
+# block + cross-ref must stay in sync. The #1181 guard above covers ADR-file ↔
+# README-index drift; this covers ADR-file ↔ ADR-file drift (a `Superseded by`
+# pointer with a stale Status, a dangling supersede target, or a structured
+# `Supersedes` whose target lacks the reciprocal back-pointer). ADR 0022's
+# proposed->accepted flip surfaced only in a later external-review round
+# because no PR-time gate fired (PR #1068/#1075 patched after the fact).
+# Fires on any ADR-file modification (ACMR); working-tree scan, like the
+# #1181 guard. Canonical gate is tests/test_governance.py post-push.
+#
+# Bypass with --no-verify only mid-merge; open a follow-up to re-sync.
+adr_touched=$(git diff --cached --name-only --diff-filter=ACMR -- 'docs/adr/[0-9]*.md' 2>/dev/null || true)
+if [[ -n "$adr_touched" ]]; then
+  crossref_out=$(python3 scripts/_governance.py --check-adr-crossref 2>&1)
+  if [[ $? -ne 0 ]]; then
+    echo "$crossref_out" >&2
+    exit 1
+  fi
+fi
+
 # Guard: markdown cross-reference dead links (issue #1060).
 # Whenever any `.md` is staged, scan the WHOLE doc tree (not just the staged
 # files): the recurring failure is a file MOVE that breaks an inbound link

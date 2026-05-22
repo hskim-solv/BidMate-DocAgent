@@ -538,6 +538,177 @@ def adr_readme_status_violations(
     return violations
 
 
+# ---------------------------------------------------------------------------
+# ADR ↔ ADR supersede cross-ref integrity (issue #1077). The fourth ADR
+# integrity lint, alongside the README-parity trio (#803 membership / #1156
+# count / #1181 status). Those three compare an ADR file against its
+# docs/adr/README.md row; this one compares *ADR files against each other*.
+#
+# The recurrence #1077 targets: an ADR that supersedes / changes the invariant
+# of an older ADR lands without the older ADR getting its Status block +
+# cross-ref updated (ADR 0022's proposed->accepted flip surfaced only in a
+# later external-review round). PR #1068/#1075 patched instances after the
+# fact; this shifts the *structural* half left to PR time.
+#
+# Hard semantic enforcement is impossible without false positives (issue
+# #1027 philosophy: CI enforces structure, reviewers enforce meaning). The
+# repo's accepted consolidation convention (e.g. ADR 0005/0011 absorb several
+# ADRs in prose, NOT via a structured `Supersedes` field) means a full
+# reciprocity rule would mis-fire on ~10 legitimate pairs. So this lint is
+# scoped to three rules that pass clean on the current tree:
+#
+#   R1 self-consistency : an ADR carrying a `Superseded by NNNN` cross-ref
+#                         must have 'superseded' in its Status (catches a
+#                         back-pointer added without flipping Status).
+#   R2 dangling         : every `Superseded by` / `Supersedes` target NNNN
+#                         must be an ADR file that exists (catches typos).
+#   R3 forward recip.   : an ADR declaring `Supersedes NNNN` via the
+#                         structured field must have the target carry a
+#                         matching `Superseded by` back-pointer (catches the
+#                         #1077 forget-to-update-target case; also nudges new
+#                         ADRs toward the structured field).
+#
+# Deliberately NOT enforced: reverse reciprocity (`Superseded by` ⇒ the
+# superseder must declare a structured `Supersedes`). That conflicts with the
+# prose-consolidation convention. README Status-column drift is already owned
+# by adr_readme_status_violations (#1181), so it is not re-checked here.
+# ---------------------------------------------------------------------------
+
+# Dedicated metablock-or-list fields. Tolerant of a leading table pipe
+# (`| **Superseded by** | ... |`) and a list bullet (`- **Superseded by**:`).
+# `[:|]` accepts both the `: value` (list) and `| value` (table) separators.
+_ADR_SUPERSEDED_BY_FIELD_RE = re.compile(
+    r"^[ \t]*(?:\|[ \t]*)?(?:[-*][ \t]*)?\*\*Superseded by\*\*"
+    r"[ \t]*[:|][ \t]*(?P<val>.+?)[ \t]*\|?[ \t]*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+_ADR_SUPERSEDES_FIELD_RE = re.compile(
+    r"^[ \t]*(?:\|[ \t]*)?(?:[-*][ \t]*)?\*\*Supersedes\*\*"
+    r"[ \t]*[:|][ \t]*(?P<val>.+?)[ \t]*\|?[ \t]*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+# A "superseded by ... NNNN" relationship can also live inside the Status
+# value (e.g. ADR 0036: `Status: superseded by [0049](...)`). Non-greedy so it
+# binds the FIRST 4-digit run after "superseded by" (the target), not a later
+# year/number elsewhere in the value.
+_ADR_STATUS_SUPERSEDED_BY_RE = re.compile(
+    r"superseded\s+by\b.*?(\d{4})", re.IGNORECASE
+)
+# Target extractor for a FIELD value: a markdown link (`[0049]` / `[ADR 0005]`)
+# or an `ADR NNNN` prose ref. Bare 4-digit runs are intentionally NOT matched
+# so a stray year (e.g. "2026") in a free-form field can't become a phantom
+# dangling-pointer target.
+_ADR_FIELD_TARGET_RE = re.compile(
+    r"\[(?:ADR\s*)?(\d{4})\]|ADR\s*(\d{4})", re.IGNORECASE
+)
+
+
+def _adr_field_targets(value: str) -> set[str]:
+    """Return the set of ADR numbers referenced in a supersede field value.
+
+    Em-dash / 'N/A' / empty placeholders (`| **Supersedes** | — |`) yield an
+    empty set because they contain no link or `ADR NNNN` token.
+    """
+    return {
+        next(g for g in m.groups() if g)
+        for m in _ADR_FIELD_TARGET_RE.finditer(value)
+    }
+
+
+def _collect_adr_supersede_pointers(
+    adr_dir: str | Path,
+) -> tuple[dict[str, set[str]], dict[str, set[str]], dict[str, bool]]:
+    """Scan ``adr_dir`` and return three maps keyed by ADR number (NNNN str):
+
+      - ``superseded_by``: NNNN -> {targets it claims supersede it}
+      - ``supersedes``:    NNNN -> {targets it claims to supersede}
+      - ``status_superseded``: NNNN -> Status contains 'superseded'
+
+    ``superseded_by`` unions the dedicated `**Superseded by**` field and any
+    `superseded by NNNN` form embedded in the Status value; ``supersedes``
+    reads only the dedicated `**Supersedes**` field.
+    """
+    superseded_by: dict[str, set[str]] = {}
+    supersedes: dict[str, set[str]] = {}
+    status_superseded: dict[str, bool] = {}
+    for path in sorted(Path(adr_dir).glob("[0-9][0-9][0-9][0-9]-*.md")):
+        num = path.name[:4]
+        text = path.read_text(encoding="utf-8", errors="replace")
+        status = parse_adr_status(path) or ""
+        status_superseded[num] = "superseded" in status
+
+        sb: set[str] = set()
+        for m in _ADR_SUPERSEDED_BY_FIELD_RE.finditer(text):
+            sb |= _adr_field_targets(m.group("val"))
+        for m in _ADR_STATUS_SUPERSEDED_BY_RE.finditer(status):
+            sb.add(m.group(1))
+        if sb:
+            superseded_by[num] = sb
+
+        sup: set[str] = set()
+        for m in _ADR_SUPERSEDES_FIELD_RE.finditer(text):
+            sup |= _adr_field_targets(m.group("val"))
+        if sup:
+            supersedes[num] = sup
+
+    return superseded_by, supersedes, status_superseded
+
+
+def adr_supersede_crossref_violations(adr_dir: str | Path) -> list[str]:
+    """Return messages for broken ADR↔ADR supersede cross-refs (issue #1077).
+
+    Empty list = clean. Implements R1 (self-consistency), R2 (dangling
+    target), R3 (forward reciprocity) described in the section comment above.
+    Pure filesystem read of ``adr_dir``; no git, no README.
+    """
+    superseded_by, supersedes, status_superseded = (
+        _collect_adr_supersede_pointers(adr_dir)
+    )
+    present = {
+        p.name[:4]
+        for p in Path(adr_dir).glob("[0-9][0-9][0-9][0-9]-*.md")
+    }
+    violations: list[str] = []
+
+    # R1 — a Superseded-by cross-ref without a 'superseded' Status.
+    for x, targets in sorted(superseded_by.items()):
+        if not status_superseded.get(x):
+            violations.append(
+                f"{x}: carries a 'Superseded by {sorted(targets)}' cross-ref "
+                "but its Status block does not contain 'superseded' — flip "
+                "the Status (the back-pointer and Status drifted apart)."
+            )
+
+    # R2 — dangling supersede targets in either direction.
+    for x, targets in sorted(superseded_by.items()):
+        for y in sorted(targets):
+            if y not in present:
+                violations.append(
+                    f"{x}: 'Superseded by {y}' points at ADR {y}, which has "
+                    "no file in docs/adr/ (typo'd or deleted cross-ref)."
+                )
+    for x, targets in sorted(supersedes.items()):
+        for y in sorted(targets):
+            if y not in present:
+                violations.append(
+                    f"{x}: 'Supersedes {y}' points at ADR {y}, which has no "
+                    "file in docs/adr/ (typo'd or deleted cross-ref)."
+                )
+
+    # R3 — a structured `Supersedes Y` must be reciprocated by Y's
+    # `Superseded by X` back-pointer. This is the #1077 forget-to-update catch.
+    for x, targets in sorted(supersedes.items()):
+        for y in sorted(targets):
+            if y in present and x not in superseded_by.get(y, set()):
+                violations.append(
+                    f"{x}: declares 'Supersedes {y}' but ADR {y} has no "
+                    f"'Superseded by {x}' back-pointer (add it to {y}'s "
+                    "Status block or a dedicated `**Superseded by**` field)."
+                )
+
+    return violations
+
+
 def adr_has_verification_section(adr_path: str | Path) -> bool:
     """Return True if the ADR file contains a `## Verification` H2 header."""
     p = Path(adr_path)
@@ -1053,6 +1224,36 @@ def _cmd_check_adr_readme_status(adr_dir: str, readme_path: str) -> int:
     return 1
 
 
+def _cmd_check_adr_crossref(adr_dir: str) -> int:
+    """Working-tree ADR↔ADR supersede cross-ref integrity check (issue #1077).
+
+    Scans every ADR file in ``adr_dir`` and reports broken supersede
+    cross-refs (R1 status/back-pointer drift, R2 dangling target, R3 missing
+    reciprocal back-pointer). The canonical gate is the pytest
+    (tests/test_governance.py); the pre-commit hook calls this on the working
+    tree (mirroring --check-adr-readme-status / the deadlink guard).
+    """
+    violations = adr_supersede_crossref_violations(adr_dir)
+    if not violations:
+        return 0
+    sys.stderr.write(
+        "\n❌ ADR ↔ ADR supersede cross-ref check failed (issue #1077):\n\n"
+    )
+    for v in violations:
+        sys.stderr.write(f"     - {v}\n")
+    sys.stderr.write(
+        "\n   When an ADR supersedes another, BOTH files must stay in sync:\n"
+        "     - the superseded ADR's Status block contains 'superseded' and a\n"
+        "       `Superseded by [ADR NNNN]` pointer to the superseder, and\n"
+        "     - if the superseder uses a `**Supersedes**` field, its target\n"
+        "       carries the matching back-pointer.\n"
+        "   This complements the README parity checks (membership / count /\n"
+        "   status); it compares ADR files against each other, not the index.\n\n"
+        "   Bypass with --no-verify only mid-merge; open a follow-up to sync.\n\n"
+    )
+    return 1
+
+
 def _cmd_check_adr_collision(adr_dir: str) -> int:
     dups = find_duplicate_adr_numbers(adr_dir)
     if not dups:
@@ -1410,6 +1611,15 @@ def main() -> int:
              "(issue #1181). Reuses --readme-path / --adr-dir.",
     )
     g.add_argument(
+        "--check-adr-crossref", action="store_true",
+        help="Check ADR↔ADR supersede cross-ref integrity (issue #1077): a "
+             "Superseded-by pointer implies a 'superseded' Status (R1), every "
+             "supersede target file must exist (R2), and a structured "
+             "`**Supersedes**` field must be reciprocated by the target's "
+             "`Superseded by` back-pointer (R3). Compares ADR files against "
+             "each other, not the README index. Reuses --adr-dir.",
+    )
+    g.add_argument(
         "--emit-fire", action="store_true",
         help="Append a v2-5field event to .claude/.hook-fires.log "
              "(ADR 0060). Requires --outcome and --hook. Optional: "
@@ -1515,6 +1725,8 @@ def main() -> int:
         )
     if args.check_adr_readme_status:
         return _cmd_check_adr_readme_status(args.adr_dir, args.readme_path)
+    if args.check_adr_crossref:
+        return _cmd_check_adr_crossref(args.adr_dir)
     if args.emit_fire:
         if not args.outcome or not args.hook:
             sys.stderr.write(
