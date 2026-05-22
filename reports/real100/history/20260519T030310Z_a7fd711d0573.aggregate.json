@@ -214,11 +214,11 @@
       "failure_category_counts": {
         "context_dilution": 0,
         "generator_hallucination": 1,
-        "planner_under_decomposition": 1,
-        "retrieval_miss": 64,
-        "unknown": 35,
+        "planner_under_decomposition": 3,
+        "retrieval_miss": 67,
+        "unknown": 33,
         "verifier_false_negative": 75,
-        "verifier_false_positive": 3
+        "verifier_false_positive": 0
       },
       "groundedness": 0.19491525423728814,
       "iterations": {
@@ -984,11 +984,11 @@
       "failure_category_counts": {
         "context_dilution": 0,
         "generator_hallucination": 1,
-        "planner_under_decomposition": 0,
-        "retrieval_miss": 56,
-        "unknown": 24,
+        "planner_under_decomposition": 2,
+        "retrieval_miss": 58,
+        "unknown": 22,
         "verifier_false_negative": 2,
-        "verifier_false_positive": 2
+        "verifier_false_positive": 0
       },
       "groundedness": 0.13978494623655913,
       "iterations": {
@@ -1184,9 +1184,9 @@
       "failure_category_counts": {
         "context_dilution": 0,
         "generator_hallucination": 0,
-        "planner_under_decomposition": 0,
+        "planner_under_decomposition": 1,
         "retrieval_miss": 0,
-        "unknown": 6,
+        "unknown": 5,
         "verifier_false_negative": 75,
         "verifier_false_positive": 0
       },
@@ -1407,11 +1407,11 @@
   "failure_category_counts": {
     "context_dilution": 0,
     "generator_hallucination": 1,
-    "planner_under_decomposition": 1,
-    "retrieval_miss": 64,
-    "unknown": 35,
+    "planner_under_decomposition": 3,
+    "retrieval_miss": 67,
+    "unknown": 33,
     "verifier_false_negative": 76,
-    "verifier_false_positive": 3
+    "verifier_false_positive": 0
   },
   "groundedness": 0.19491525423728814,
   "latency": {
