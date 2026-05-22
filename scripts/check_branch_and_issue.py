@@ -58,9 +58,36 @@ FIVE_B_ESCAPE_RE = re.compile(
     r"|"
     r"(?:검색|검증|수집|평가|retrieval|verifier|eval|api|ingestion)"
     r"[^\n]{0,16}?"
-    r"(?:변화|변경|변동)\s*없(?:음|다|습니다)",
+    r"(?:변화|변경|변동)\s*없(?:음|다|습니다)"
+    # A trailing negation contradicts the "no change" claim ("없음은 거짓",
+    # "없음이 아닙니다") — that means behavior DID change, so reject the escape
+    # (issue #1236 — over-match bypassed the PR #69 guard).
+    r"(?!\s*(?:은|는|이|가|것은|것이)?\s*(?:거짓|아(?:니|닙|님)|틀))",
     re.IGNORECASE,
 )
+
+# A positive assertion that behavior DID change. If this appears anywhere in
+# the §5b section, the "no change" escape is void even if a separate clause
+# claims no change ("평가 결과 변화 없음. 검색 동작은 변경됨.") — the author
+# must attach the real-eval table instead (issue #1236, PR #69 class). Requires
+# an explicit change marker (있/됨/되/했) so it cannot fire on "변경 없음".
+FIVE_B_CHANGE_RE = re.compile(
+    r"(?:변화|변경|변동)\s*(?:이|가|은|는)?\s*있(?:음|다|었|습니다)"
+    r"|"
+    r"(?:변화|변경|변동)(?:되|돼|됐|됨|했|하였|하게)",
+)
+
+
+def five_b_escape_satisfied(section: str) -> bool:
+    """True iff §5b text contains a valid 'no behavior change' attestation.
+
+    Voided when any positive change assertion appears in the section, so a
+    compound body that admits a change in one clause cannot escape via a
+    'no change' clause elsewhere (issue #1236).
+    """
+    if FIVE_B_CHANGE_RE.search(section):
+        return False
+    return bool(FIVE_B_ESCAPE_RE.search(section))
 
 
 def _err(msg: str) -> None:
@@ -303,7 +330,7 @@ def check_5b_mode(pr_number: int) -> int:
         return 1
 
     has_table = bool(FIVE_B_TABLE_RE.search(section))
-    has_escape = bool(FIVE_B_ESCAPE_RE.search(section))
+    has_escape = five_b_escape_satisfied(section)
     if not (has_table or has_escape):
         _err(
             f"\n❌ Load-bearing change detected (e.g. {example}) but §5b is\n"
