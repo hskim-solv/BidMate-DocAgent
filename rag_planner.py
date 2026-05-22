@@ -34,6 +34,8 @@ import os
 import time
 from typing import Any, Protocol, runtime_checkable
 
+from bidmate_data_boundary import assert_external_payload_allowed
+
 # Env-var contract (mirrors rag_query_expansion.py / rag_synthesis.py).
 ENV_PLANNER_BACKEND = "BIDMATE_PLANNER_BACKEND"
 ENV_PLANNER_MODEL = "BIDMATE_PLANNER_MODEL"
@@ -190,6 +192,12 @@ class LLMPlanner:
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         t0 = time.perf_counter()
         try:
+            # Fail closed before any SDK import / network call: the analysis +
+            # history JSON in the prompt below leaves the process, so the
+            # data-surface attestation must pass first (ADR 0061 ③ / ADR 0005).
+            # The except clause below catches the resulting
+            # ExternalPayloadBlocked and falls back to StaticPlanner.
+            assert_external_payload_allowed(channel="planner:anthropic")
             import anthropic  # type: ignore[import-not-found]
             from rag_agent_tools import AGENT_REACT_SYSTEM_PROMPT, AGENT_REACT_TOOLS
 

@@ -57,6 +57,7 @@ from eval.judges.judge_common import (  # noqa: E402
     clamp_score as clamp_score_common,
     extract_summary,
     get_judge_model,
+    get_judge_temperature,
 )
 from rag_core import neutralize_instruction_patterns  # noqa: E402
 
@@ -164,8 +165,12 @@ def _build_prompt(case: dict[str, Any]) -> str:
 def _cache_key(case: dict[str, Any], backend: str, model: str) -> str:
     """SHA256 over the inputs that determine the verdict.
 
-    Includes backend + model so switching the backend invalidates the
-    cache (we want fresh judgments when changing the underlying judge).
+    Includes backend + model + sampling temperature so switching any of
+    them invalidates the cache (we want fresh judgments when changing the
+    underlying judge or how it samples). Temperature is part of the judge
+    configuration that changes the verdict, so a verdict produced at one
+    temperature must not be served as a cache hit for a re-run at another
+    (ADR 0012 judge reproducibility; temperature added via #1132).
     """
     query = str(case.get("query") or "")
     summary = extract_summary(case)
@@ -181,7 +186,9 @@ def _cache_key(case: dict[str, Any], backend: str, model: str) -> str:
         ensure_ascii=False,
         sort_keys=True,
     )
-    payload = "|".join([backend, model, query, summary, ev_repr])
+    payload = "|".join(
+        [backend, model, f"{get_judge_temperature():.4f}", query, summary, ev_repr]
+    )
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
 
 

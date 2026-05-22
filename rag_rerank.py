@@ -37,6 +37,8 @@ import os
 import time
 from typing import Any
 
+from bidmate_data_boundary import assert_external_payload_allowed
+
 RERANK_SCHEMA_VERSION = 1
 ENV_BACKEND = "BIDMATE_RERANK_BACKEND"
 ENV_MODEL = "BIDMATE_RERANK_MODEL"
@@ -159,6 +161,11 @@ def _cohere_backend(  # pragma: no cover - network
     candidates: list[dict[str, Any]],
     model: str | None,
 ) -> tuple[list[dict[str, Any]], str]:
+    # Fail closed before any SDK import / network call: the candidate chunk
+    # text sent as ``documents`` below leaves the process, so the data-surface
+    # attestation must pass first (ADR 0061 ③ / ADR 0005). ``rerank()`` catches
+    # the resulting ExternalPayloadBlocked and returns candidates unchanged.
+    assert_external_payload_allowed(channel="rerank:cohere")
     try:
         import cohere  # type: ignore[import-not-found]
     except Exception as exc:

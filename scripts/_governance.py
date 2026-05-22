@@ -26,7 +26,7 @@ import argparse
 import ast
 import re
 import sys
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Callable, NamedTuple
 
@@ -210,6 +210,22 @@ PHASE4_PRIVATE_KEYS: frozenset[str] = frozenset(
     }
 )
 PHASE4_ARTIFACT_GLOB = "reports/retrieval/phase4*"
+
+# Issue #1204: a structural (no-name-list) privacy gate for committable
+# eval-data JSON. The Phase 4 key-name gate above only catches a fixed set of
+# forbidden KEYS; it misses private VALUES that hide elsewhere — qids that
+# embed 발주기관/사업명 (`real_<agency>_<topic>`), retry-reason map KEYS that
+# embed agency names or 공고번호 doc-ids after a colon
+# (`missing_comparison_entity:<agency>`), and eda agency labels. Listing the
+# 73 real agency names in this committed source would itself re-leak them, so
+# the gate is purely STRUCTURAL: under the eval-data globs, a committable JSON
+# artifact must contain (a) zero Hangul codepoints anywhere (anonymized qids
+# are `real_<hex>`; categories/query_type are ASCII; metrics are numeric) and
+# (b) zero dict KEYS containing a colon (retry-reason payloads are stripped to
+# their enum prefix). reports/self_review_agreement/ is intentionally NOT in
+# scope — its axis labels are public Korean prose, not private RFP data.
+EVAL_PRIVACY_ARTIFACT_GLOBS = ("reports/retrieval", "reports/real100")
+_EVAL_PRIVACY_HANGUL_RE = re.compile(r"[가-힣ᄀ-ᇿ㄰-㆏ꥠ-꥿]")
 
 # Issue #818: detection-only relaxation. The kebab-lowercase slug remains the
 # *convention* (see ``docs/adr/README.md`` File layout), but the live bug
@@ -419,6 +435,109 @@ def readme_adr_count_violations(readme_text: str, expected_count: int) -> list[s
     return violations
 
 
+# ---------------------------------------------------------------------------
+# ADR file Status header ↔ README *main index* Status-column parity
+# (issue #1181). The third README↔ADR parity dimension, alongside
+# adr_readme_parity_violations (filename membership, #803) and
+# readme_adr_count_violations (count, #1156): this compares the Status
+# *cell*. Catches a proposed->accepted flip that updates the ADR file's
+# `- **Status**:` header but leaves the docs/adr/README.md index row stale —
+# which both the filename-parity check and test_no_unlinked_adr_files_on_disk
+# miss (they only assert the row exists). Re-enables the status-sync
+# guarantee the adr-lifecycle-manager skill had to walk back in #1165.
+# ---------------------------------------------------------------------------
+
+# The main index runs from the `## Index` H2 to the next H2 (or EOF). The
+# `## Roadmap` ("Promote 조건") and `## Deferred decisions` tables reuse the
+# same `| [NNNN](./NNNN-*.md) |` link form, but their 2nd column is a Title /
+# locked-default, NOT a Status — slicing to this section is what keeps them
+# out of the comparison.
+_ADR_INDEX_SECTION_RE = re.compile(
+    r"^##\s+Index\s*$(.*?)(?=^##\s|\Z)", re.MULTILINE | re.DOTALL
+)
+
+# A main-index row: ADR number, filename, then the Status cell (up to the
+# next pipe). Unlike _ADR_INDEX_ROW_RE this also captures the status column.
+# `^`-anchored (MULTILINE) so an inline link in a later column can't be
+# mistaken for a row start.
+_ADR_INDEX_STATUS_ROW_RE = re.compile(
+    r"^\|\s*\[(\d{4})\]\(\./(\d{4}-[^)]+\.md)\)\s*\|\s*([^|]*?)\s*\|",
+    re.MULTILINE,
+)
+
+
+def _normalize_adr_status(raw: str | None) -> str:
+    """Reduce a Status string to its leading lifecycle word, lowercased.
+
+    README index cells are canonical/short (`superseded by 0005`) while ADR
+    file headers carry free-form suffixes (`Superseded`, `accepted
+    (kordoc-corpus measurement landed ...)`). Comparing the first whitespace
+    token lowercased collapses both onto the four states the README "Status
+    lifecycle" table defines (proposed / accepted / superseded / deprecated)
+    — the only distinction a status-drift check needs. Empty / None -> "".
+    """
+    head = (raw or "").strip().lower().split()
+    return head[0] if head else ""
+
+
+def adr_readme_status_violations(
+    adr_dir: str | Path,
+    readme_text: str,
+) -> list[str]:
+    """Return messages where an ADR file's Status disagrees with its row in
+    the docs/adr/README.md *main index* Status column. Empty list = clean.
+
+    Complements ``adr_readme_parity_violations`` (filename membership):
+    compares the Status *column* on the normalized leading lifecycle word
+    (see ``_normalize_adr_status``), so a canonical README cell
+    (`superseded by 0005`) matches a file header of `Superseded`, and a
+    free-form file suffix (`accepted (kordoc-corpus ...)`) matches a bare
+    README `accepted`. Reuses ``parse_adr_status`` for the file side.
+
+    Only the main index (between `## Index` and the next H2) is parsed; the
+    Roadmap / `Promote 조건` and Deferred-decisions tables are excluded. ADRs
+    present on disk but absent from the index (or vice versa) are out of
+    scope here — ``adr_readme_parity_violations`` /
+    ``test_no_unlinked_adr_files_on_disk`` own that membership check.
+
+    Fails *loud* (returns a violation) rather than passing vacuously if the
+    `## Index` section can't be located or parses zero rows; otherwise a
+    renamed header would silently disable the check.
+    """
+    section = _ADR_INDEX_SECTION_RE.search(readme_text)
+    if section is None:
+        return [
+            "docs/adr/README.md: '## Index' section not found — cannot "
+            "verify ADR status parity. If the header was renamed, update "
+            "_ADR_INDEX_SECTION_RE in scripts/_governance.py."
+        ]
+    readme_status = {
+        num: _normalize_adr_status(cell)
+        for num, _, cell in _ADR_INDEX_STATUS_ROW_RE.findall(
+            section.group(1)
+        )
+    }
+    if not readme_status:
+        return [
+            "docs/adr/README.md: main index parsed zero status rows — the "
+            "table format likely changed. Update _ADR_INDEX_STATUS_ROW_RE "
+            "in scripts/_governance.py."
+        ]
+
+    violations: list[str] = []
+    for adr_path in sorted(Path(adr_dir).glob("[0-9][0-9][0-9][0-9]-*.md")):
+        num = adr_path.name[:4]
+        if num not in readme_status:
+            continue  # membership is adr_readme_parity_violations' job
+        file_status = _normalize_adr_status(parse_adr_status(adr_path))
+        if file_status and file_status != readme_status[num]:
+            violations.append(
+                f"{adr_path.name}: file Status '{file_status}' != README "
+                f"index Status '{readme_status[num]}'"
+            )
+    return violations
+
+
 def adr_has_verification_section(adr_path: str | Path) -> bool:
     """Return True if the ADR file contains a `## Verification` H2 header."""
     p = Path(adr_path)
@@ -605,7 +724,12 @@ def adr_has_resolution_section(adr_path: str | Path) -> bool:
 
 
 def _git_first_commit_date(path: str | Path) -> date | None:
-    """First-add author date of `path` via git, or None if untracked/unknown."""
+    """First-add author date of `path` as a UTC calendar date, or None.
+
+    `%aI` carries the commit's local tz (+09:00 KST in this repo); normalizing
+    to UTC keeps the date on the same frame as the UTC `today` — else an ADR
+    committed just after KST midnight ages to -1 until UTC rolls over.
+    """
     import subprocess
 
     try:
@@ -621,9 +745,12 @@ def _git_first_commit_date(path: str | Path) -> date | None:
     if not lines:
         return None
     try:
-        return date.fromisoformat(lines[0][:10])
+        dt = datetime.fromisoformat(lines[0].strip())
     except ValueError:
         return None
+    if dt.tzinfo is not None:
+        dt = dt.astimezone(timezone.utc)
+    return dt.date()
 
 
 def proposed_adr_age(
@@ -651,7 +778,7 @@ def proposed_adr_age(
     ``sla_days`` defaults to ``THRESHOLDS["ADR_PROPOSED_SLA_DAYS"]``.
     """
     resolver = date_resolver or _git_first_commit_date
-    today = now or date.today()
+    today = now or datetime.now(timezone.utc).date()
     sla = THRESHOLDS["ADR_PROPOSED_SLA_DAYS"] if sla_days is None else sla_days
 
     records: list[ProposedADR] = []
@@ -891,6 +1018,41 @@ def _cmd_check_adr_readme_parity(
     return 1
 
 
+def _cmd_check_adr_readme_status(adr_dir: str, readme_path: str) -> int:
+    """Working-tree status-parity check (issue #1181).
+
+    Reads the working-tree README at ``readme_path`` and every ADR file in
+    ``adr_dir``, then reports rows whose index Status cell disagrees with the
+    ADR file's Status header. Unlike --check-adr-readme-parity there is no
+    --readme-staged mode: the canonical gate is the pytest
+    (tests/test_governance.py); the pre-commit hook calls this on the working
+    tree (mirroring the markdown-deadlink hook), and the CI pytest backstops
+    the committed state.
+    """
+    try:
+        readme_text = Path(readme_path).read_text(encoding="utf-8")
+    except OSError as exc:
+        sys.stderr.write(f"\n❌ Could not read {readme_path}: {exc}\n\n")
+        return 1
+    violations = adr_readme_status_violations(adr_dir, readme_text)
+    if not violations:
+        return 0
+    sys.stderr.write(
+        "\n❌ ADR ↔ README index Status parity check failed (issue #1181):\n\n"
+    )
+    for v in violations:
+        sys.stderr.write(f"     - {v}\n")
+    sys.stderr.write(
+        "\n   Update the Status cell in the main index table of\n"
+        f"   {readme_path} to match the ADR file's `- **Status**:` header\n"
+        "   (leading lifecycle word: proposed / accepted / superseded /\n"
+        "   deprecated), or fix the ADR file header. This complements the\n"
+        "   filename-parity check (--check-adr-readme-parity): a row can\n"
+        "   exist yet carry a stale status after a proposed->accepted flip.\n\n"
+    )
+    return 1
+
+
 def _cmd_check_adr_collision(adr_dir: str) -> int:
     dups = find_duplicate_adr_numbers(adr_dir)
     if not dups:
@@ -1034,6 +1196,108 @@ def _cmd_check_phase4_privacy(repo_root: str) -> int:
     return 1
 
 
+def find_eval_private_text(obj: object) -> dict[str, int]:
+    """Structurally scan a parsed JSON value for the two private-text
+    signatures a committable eval artifact must never carry:
+
+    * ``hangul`` — count of Korean codepoints in any string key OR value.
+    * ``colon_keys`` — count of dict keys containing ``:`` (un-stripped
+      retry-reason payloads embed agency names / 공고번호 doc-ids there).
+
+    Returns ``{signature: count}`` for signatures actually present (empty
+    dict when clean). No name list is consulted — the check is purely
+    structural, so it can live in committed source without re-leaking.
+    """
+    found: dict[str, int] = {}
+
+    def _bump(sig: str, n: int = 1) -> None:
+        if n:
+            found[sig] = found.get(sig, 0) + n
+
+    def _walk(node: object) -> None:
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if isinstance(key, str):
+                    _bump("hangul", len(_EVAL_PRIVACY_HANGUL_RE.findall(key)))
+                    if ":" in key:
+                        _bump("colon_keys")
+                _walk(value)
+        elif isinstance(node, list):
+            for item in node:
+                _walk(item)
+        elif isinstance(node, str):
+            _bump("hangul", len(_EVAL_PRIVACY_HANGUL_RE.findall(node)))
+
+    _walk(obj)
+    return found
+
+
+def eval_privacy_artifact_paths(repo_root: str = ".") -> list[str]:
+    """git-tracked ``*.json`` under the EVAL_PRIVACY_ARTIFACT_GLOBS prefixes
+    (committable eval-data artifacts). Empty when none tracked / git absent.
+    """
+    import subprocess
+
+    try:
+        out = subprocess.check_output(
+            ["git", "-C", repo_root, "ls-files", *EVAL_PRIVACY_ARTIFACT_GLOBS],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        )
+    except (subprocess.CalledProcessError, OSError):
+        return []
+    return [p for p in out.splitlines() if p.endswith(".json")]
+
+
+def scan_eval_artifacts_for_private_text(
+    repo_root: str = ".",
+) -> list[tuple[str, dict[str, int]]]:
+    """Scan every git-tracked eval-data JSON for private-text signatures.
+    Returns ``[(relpath, {signature: count}), ...]`` for offending files; a
+    clean repo returns ``[]``.
+    """
+    import json
+
+    violations: list[tuple[str, dict[str, int]]] = []
+    for rel in eval_privacy_artifact_paths(repo_root):
+        try:
+            data = json.loads((Path(repo_root) / rel).read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        found = find_eval_private_text(data)
+        if found:
+            violations.append((rel, found))
+    return violations
+
+
+def _cmd_check_eval_privacy(repo_root: str) -> int:
+    violations = scan_eval_artifacts_for_private_text(repo_root)
+    if not violations:
+        return 0
+    # Print signature names + counts only — never the offending text itself.
+    sys.stderr.write(
+        "\n❌ Eval artifact privacy gate: committed eval-data JSON carries "
+        "private text.\n\n"
+        "   Committable eval artifacts must hold qid + categories + metric "
+        "values only (ADR 0005 private-local + ADR 0065). These git-tracked "
+        "files break that boundary:\n\n"
+    )
+    for rel, found in violations:
+        detail = ", ".join(f"{k}×{n}" for k, n in sorted(found.items()))
+        sys.stderr.write(f"     - {rel}: {detail}\n")
+    sys.stderr.write(
+        "\n   `hangul` = Korean text (agency/사업명) in a qid or value; "
+        "`colon_keys` = un-stripped retry-reason payload "
+        "(`missing_comparison_*:<agency-or-docid>`).\n"
+        "   Fix: regenerate with the sanitized generators — ablation runners "
+        "write `anon_qid(qid)`, run_real_eval_delta strips retry-reason "
+        "payloads, eda_real100 anonymizes every agency rank — or migrate the "
+        "tracked file in place. Raw labels / query text stay local "
+        "(gitignored).\n\n"
+    )
+    return 1
+
+
 def _cmd_is_load_bearing(path: str) -> int:
     return 0 if is_load_bearing(path) else 1
 
@@ -1137,6 +1401,15 @@ def main() -> int:
              "to shift-left the test_no_unlinked_adr_files_on_disk CI gate.",
     )
     g.add_argument(
+        "--check-adr-readme-status", action="store_true",
+        help="Check each ADR file's Status header matches its row's Status "
+             "cell in the docs/adr/README.md MAIN index table (leading "
+             "lifecycle word, case-insensitive); exit 1 with details on "
+             "drift. Complements --check-adr-readme-parity (membership) by "
+             "catching a stale index status after a proposed->accepted flip "
+             "(issue #1181). Reuses --readme-path / --adr-dir.",
+    )
+    g.add_argument(
         "--emit-fire", action="store_true",
         help="Append a v2-5field event to .claude/.hook-fires.log "
              "(ADR 0060). Requires --outcome and --hook. Optional: "
@@ -1148,6 +1421,14 @@ def main() -> int:
              "real-eval fields (raw query text, agency/project labels) that "
              "break the ADR 0005 / ADR 0065 committable boundary; exit 1 with "
              "the offending files + forbidden keys if any are found.",
+    )
+    g.add_argument(
+        "--check-eval-privacy", action="store_true",
+        help="Structurally scan git-tracked reports/retrieval/ + "
+             "reports/real100/ JSON for private text (Hangul anywhere, or "
+             "colon-bearing dict keys) that breaks the ADR 0005 / ADR 0065 "
+             "committable boundary; exit 1 with offending files + signature "
+             "counts (never the text) if any are found. Uses no name list.",
     )
     g.add_argument(
         "--proposed-adr-age", action="store_true",
@@ -1194,20 +1475,21 @@ def main() -> int:
     )
     p.add_argument(
         "--readme-path", default="docs/adr/README.md",
-        help="README path for --check-adr-readme-parity "
-             "(default: docs/adr/README.md).",
+        help="README path for --check-adr-readme-parity / "
+             "--check-adr-readme-status (default: docs/adr/README.md).",
     )
     p.add_argument(
         "--adr-dir", default=ADR_DIR_DEFAULT,
         help=f"ADR directory (default: {ADR_DIR_DEFAULT}). "
              "Only used by --next-adr-number / --check-adr-collision / "
-             "--proposed-adr-age.",
+             "--check-adr-readme-status / --proposed-adr-age.",
     )
     p.add_argument(
         "--repo-root", default=".",
         help="Repo root for verifies-key marker resolution + the Phase 4 "
              "artifact scan (default: current directory). Used by "
-             "--lint-adr-consequences and --check-phase4-privacy.",
+             "--lint-adr-consequences, --check-phase4-privacy, and "
+             "--check-eval-privacy.",
     )
     args = p.parse_args()
 
@@ -1231,6 +1513,8 @@ def main() -> int:
             readme_staged=args.readme_staged,
             readme_path=args.readme_path,
         )
+    if args.check_adr_readme_status:
+        return _cmd_check_adr_readme_status(args.adr_dir, args.readme_path)
     if args.emit_fire:
         if not args.outcome or not args.hook:
             sys.stderr.write(
@@ -1245,6 +1529,8 @@ def main() -> int:
         return _cmd_proposed_adr_age(args.adr_dir)
     if args.check_phase4_privacy:
         return _cmd_check_phase4_privacy(args.repo_root)
+    if args.check_eval_privacy:
+        return _cmd_check_eval_privacy(args.repo_root)
     return 2
 
 

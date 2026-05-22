@@ -411,24 +411,58 @@ def _compute_adr_lags(repo: str, start: str, end: str) -> list[dict[str, Any]]:
     return results
 
 
-def collect_governance_hooks(repo: str, start: str, end: str) -> dict[str, Any]:
-    """Parse `.claude/.hook-fires.log` for PreToolUse load-bearing fires.
+def _load_parse_log_line():
+    """Import the validated fire-log line parser from analyze_hook_outcomes.
 
-    Log line formats (both accepted):
-    - legacy 2-field: ``<ISO8601 UTC>|<file_path>``
-    - current 4-field: ``<ISO8601 UTC>|<action>|<context>|<detail>``
-      loadbearing fires use ``aware|load-bearing|<file_path>``
-      bash-guard blocks use ``blocked|gh-merge-delete-branch|<branch>``
+    ``scripts/analyze_hook_outcomes.py::parse_log_line`` is the single
+    validated parser for the 3/4/5-field hook-fires.log shapes (ADR 0060):
+    reuse it instead of re-deriving the field split here. A prior ad-hoc
+    ``line.split("|", 3)`` mis-parsed v2 5-field lines, fusing
+    ``<category>|<path>`` into one path token. Fail-soft to ``None``
+    (mirrors `load_load_bearing_paths`): the collector then reports fires
+    as unmeasured rather than crashing if the sibling script is absent.
+    """
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+        from analyze_hook_outcomes import parse_log_line  # type: ignore
+        return parse_log_line
+    except Exception:
+        return None
+
+
+def collect_governance_hooks(repo: str, start: str, end: str) -> dict[str, Any]:
+    """Parse `.claude/.hook-fires.log` for governance hook fires.
+
+    Field extraction is delegated to
+    ``analyze_hook_outcomes.parse_log_line`` — the single validated parser
+    for every historical line shape, with parse provenance:
+
+    - v1 3-field: ``<ts>|<category>|<path>``
+    - v1 4-field: ``<ts>|<action>|<reason>|<path>``
+    - v2 5-field: ``<ts>|<outcome>|<hook>|<category>|<path>[|<extra>]`` (ADR 0060)
+
+    The pre-ADR-0060 2-field loadbearing shape (``<ts>|<path>``) predates
+    that parser, so it is reconstructed here as a compat shim. The old
+    ad-hoc ``split("|", 3)`` mis-parsed v2 lines: the 4-way split fused
+    ``<category>|<path>`` into one token, so ``fires_by_path`` keys came out
+    as ``"file-edit|rag_core.py"`` instead of ``"rag_core.py"``.
     """
     log_path = Path(repo) / ".claude" / ".hook-fires.log"
-    if not log_path.is_file():
+    parse_log_line = _load_parse_log_line()
+    if not log_path.is_file() or parse_log_line is None:
+        note = (
+            "Hook fire log absent at .claude/.hook-fires.log; emit 0."
+            if not log_path.is_file()
+            else "fire-log parser unavailable "
+            "(scripts/analyze_hook_outcomes.py); fires unmeasured."
+        )
         return {
             "pretooluse_loadbearing_fires": 0,
             "fires_by_path": {},
             "fires_by_action": {},
             "memory_lines": {"aware": 0, "blocked": 0},
             "rule_to_automation_lag_days": _compute_adr_lags(repo, start, end),
-            "note": "Hook fire log absent at .claude/.hook-fires.log; emit 0.",
+            "note": note,
         }
     start_dt = datetime.fromisoformat(start).replace(tzinfo=timezone.utc)
     end_dt = datetime.fromisoformat(end).replace(
@@ -437,39 +471,44 @@ def collect_governance_hooks(repo: str, start: str, end: str) -> dict[str, Any]:
     fires = 0
     by_path: Counter[str] = Counter()
     by_action: Counter[str] = Counter()
-    # axis #5-A index hygiene: count `memory-lines` category fires split by
-    # action so the rubric can separate aware (soft-warn) from blocked
-    # (edit refused = index exploded). The category lives in parts[2]; the
-    # historical aggregation above only kept action + path, dropping it.
+    # axis #5-A index hygiene: count `memory-lines` hook fires split by
+    # outcome so the rubric can separate aware (soft-warn) from blocked
+    # (edit refused = index exploded). Keyed on the parsed `hook` field —
+    # works for both v2 5-field (hook="memory-lines") and v1 4-field legacy
+    # (LEGACY_CATEGORY_TO_HOOK maps the reason field to "memory-lines"). The
+    # old code matched parts[2] == "memory-lines", which only worked by
+    # luck: in a v2 line parts[2] is the hook, not the category.
     memory_lines: Counter[str] = Counter()
     try:
         for line in log_path.read_text().splitlines():
             line = line.strip()
-            if not line or "|" not in line:
-                continue
-            parts = line.split("|", 3)
-            ts = parts[0]
+            ev = parse_log_line(line)
+            if ev is None:
+                # parse_log_line requires >=3 fields. Reconstruct the
+                # pre-ADR-0060 2-field loadbearing shape `<ts>|<path>` so
+                # historical logs (issue #502) still count; an invalid ts is
+                # dropped by the window parse below, everything else skips.
+                parts = line.split("|")
+                if len(parts) != 2:
+                    continue
+                ev = {
+                    "ts": parts[0], "outcome": "aware",
+                    "hook": "loadbearing", "category": "", "path": parts[1],
+                }
             try:
-                fire_dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                fire_dt = datetime.fromisoformat(ev["ts"].replace("Z", "+00:00"))
             except ValueError:
                 continue
             if fire_dt < start_dt or fire_dt > end_dt:
                 continue
-            if len(parts) >= 4:
-                action, category, path = parts[1], parts[2], parts[3]
-            else:
-                action, category, path = (
-                    "aware",
-                    "",
-                    parts[1] if len(parts) > 1 else "",
-                )
+            outcome, hook, path = ev["outcome"], ev["hook"], ev["path"]
             fires += 1
             if path:
                 by_path[path] += 1
-            if action:
-                by_action[action] += 1
-            if category == "memory-lines" and action:
-                memory_lines[action] += 1
+            if outcome:
+                by_action[outcome] += 1
+            if hook == "memory-lines" and outcome:
+                memory_lines[outcome] += 1
     except OSError:
         pass
     lags = _compute_adr_lags(repo, start, end)
