@@ -31,14 +31,13 @@ jobs:
     # `--splits N --group K` to pytest-split). `fail-fast: false` so we see
     # every failing shard, not just the first.
     # Issue #1281: this matrix runs `-m "not slow"` (the non-slow suite is
-    # only ~30s of wall-clock). Every heavy test carries the `slow` marker
-    # (#1215) — the BGE-M3 real-model regression + full-corpus suites — and
-    # is pinned to the single serial `slow-tests` job below. Sharding the
-    # slow tests made each shard that drew a model-loading test re-download
-    # BGE-M3 on a fresh runner (no HF cache): the duplicated ~12min cost
-    # behind PR #1263's imbalance, plus a degenerate empty shard when
-    # duration-based split fed on a single 737s test (PR #1298). Isolating
-    # them keeps the download to exactly once.
+    # only ~30s of wall-clock). The heavy `slow`-marked suite (#1215) — the
+    # BGE-M3 real-model regression + full-corpus tests — is CPU-bound
+    # (~12min for the BGE-M3 end-to-end test, NOT download-bound: an HF model
+    # cache made no measurable difference, see #1281), so running it on every
+    # PR dominated wall-clock with an irreducible single-test floor. It now
+    # runs nightly + on-demand via the `run-slow-tests` label in
+    # slow-tests.yml, OFF the per-PR critical path.
     # `BIDMATE_PYTEST_SPLITS` MUST equal the matrix length, else pytest-split
     # leaves orphaned groups uncovered.
     # Per-shard coverage.xml uploads to Codecov with `shard-N` flags;
@@ -53,7 +52,8 @@ jobs:
     env:
       BIDMATE_PYTEST_SPLITS: "4"
       BIDMATE_PYTEST_SHARD: ${{ matrix.shard }}
-      # Deselect the slow/real-model suite — it runs in `slow-tests` below.
+      # Deselect the slow/real-model suite — it runs in slow-tests.yml
+      # (nightly + `run-slow-tests` label), off the per-PR critical path.
       PYTEST_ADDOPTS: "-m 'not slow'"
     steps:
       - uses: actions/checkout@v6
@@ -106,70 +106,6 @@ jobs:
         # racey artifact diff if shards complete out of order.
         if: matrix.shard == 1
         run: python3 scripts/leaderboard.py --check
-
-  slow-tests:
-    # Issue #1281: the `slow`-marked suite (#1215) runs in ONE serial job, NOT
-    # the matrix above. These are the full-corpus + real-model tests; the
-    # heaviest is tests/test_m3_backend_regression.py's BGE-M3 end-to-end test,
-    # dominated by the one-time model download. The HF hub is cached (step
-    # below, issue #1314) so a cache hit skips that download — slow job
-    # ~24min → ~8min. `scripts/test.sh` runs the suite under `-n auto --dist
-    # loadfile`. No `BIDMATE_PYTEST_SPLITS` — this job runs the whole
-    # `-m slow` slice, unsharded.
-    name: Pytest (slow / real-model suite)
-    runs-on: ubuntu-latest
-    env:
-      PYTEST_ADDOPTS: "-m 'slow'"
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.11"
-          cache: pip
-          cache-dependency-path: |
-            requirements.txt
-            requirements-dev.txt
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt -r requirements-dev.txt
-      - name: Cache HuggingFace hub (BGE-M3 + rerankers)
-        # Issue #1314: the slow suite's wall-clock is dominated by the
-        # one-time BGE-M3 download on a fresh runner. Cache `~/.cache/
-        # huggingface` (HF's default HF_HOME) so a cache hit skips the
-        # download. The cached model set is fixed by the test code, not by
-        # requirements, so the key is a manual version — bump `v1` when a new
-        # real model is added to the `slow` suite. `restore-keys` lets an
-        # older cache seed a partial restore (only new models re-download).
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/huggingface
-          key: hf-hub-${{ runner.os }}-v1
-          restore-keys: |
-            hf-hub-${{ runner.os }}-
-      - name: Run pytest (slow marker)
-        run: bash scripts/test.sh
-
-      - name: Coverage summary
-        if: always()
-        run: |
-          if [ -f coverage.xml ] && command -v coverage >/dev/null 2>&1; then
-            {
-              echo "## Coverage (slow)";
-              echo '```';
-              coverage report --skip-empty || true;
-              echo '```';
-            } >> "$GITHUB_STEP_SUMMARY"
-          fi
-
-      - name: Upload coverage to Codecov
-        if: always()
-        uses: codecov/codecov-action@v6
-        with:
-          files: coverage.xml
-          flags: slow
-          fail_ci_if_error: false
-          verbose: false
 
   baseline-provenance:
     # Gate (issue #413): verify reports/real100/baseline.aggregate.json's
