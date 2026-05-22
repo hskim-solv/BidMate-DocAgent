@@ -15,7 +15,12 @@ name: Collect .test_durations (one-shot)
 # `.test_durations`, and THIS workflow is deleted in the same PR.
 
 on:
-  workflow_dispatch:
+  # Auto-runs on push to the collection branch. (workflow_dispatch is
+  # unavailable here — GitHub only exposes manual dispatch for workflows
+  # present on the default branch, and this temporary file never lands there.)
+  push:
+    branches:
+      - chore/issue-1281-test-durations
 
 permissions:
   contents: read
