@@ -159,7 +159,7 @@ jobs:
       # (telemetry-visible), but for the eval-delta job we want the
       # kordoc path exercised so the PR's structural-extraction gains
       # are reflected in the delta vs. base.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: "20"
 
