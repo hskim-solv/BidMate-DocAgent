@@ -1,0 +1,231 @@
+name: PR Codex Adversarial Review
+
+# ADR 0066: PR-time Codex adversarial review measurement surface.
+# Informational only — never fails CI. Reviewer judgment overrides.
+#
+# Two-job design:
+#  1. triage   (ubuntu-latest, fast/cheap, no secrets-of-value):
+#       fork/author guard → load-bearing path filter → diff-size cap.
+#       Only emits should_run=true when all gates pass.
+#  2. review   (self-hosted macOS arm64, ~/.codex shared with user shell):
+#       gated on triage.should_run, calls codex-companion adversarial-review,
+#       posts PR comment + Check run via gh CLI (no external actions).
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+  issues: write   # gh api issues/N/comments PATCH — narrow after smoke
+
+concurrency:
+  group: codex-adversarial-review-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  triage:
+    name: Triage (fork / author / load-bearing / size)
+    runs-on: ubuntu-latest
+    # First line of defense: same-repo PR from the repo owner.
+    # Settings → Actions → "Require approval for outside collaborators" is the
+    # second line; GitHub's automatic read-only token strip on fork PRs is the third.
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.user.login == 'hskim-solv'
+    outputs:
+      should_run: ${{ steps.gate.outputs.should_run }}
+      hits: ${{ steps.gate.outputs.hits }}
+      reason: ${{ steps.gate.outputs.reason }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          # Only scripts/_governance.py is needed for path filtering.
+          sparse-checkout: |
+            scripts/_governance.py
+          sparse-checkout-cone-mode: false
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - id: gate
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          paths=$(gh api "repos/$REPO/pulls/$PR/files" --paginate --jq '.[].filename')
+          if [ -z "$paths" ]; then
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+            echo "reason=empty_pr" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # _governance.py --any-match: exit 0 if any stdin line is load-bearing,
+          # printing the first match to stdout. Exit 1 → no load-bearing hit.
+          if hit=$(printf '%s\n' "$paths" | python scripts/_governance.py --any-match); then
+            additions=$(gh api "repos/$REPO/pulls/$PR" --jq '.additions')
+            deletions=$(gh api "repos/$REPO/pulls/$PR" --jq '.deletions')
+            total=$((additions + deletions))
+            if [ "$total" -gt 5000 ]; then
+              # Large diffs cost too much Codex tokens and are usually mass renames
+              # / generated-file drops — manual /codex:adversarial-review is more
+              # surgical for these. Skip with a reason so reviewer can opt in.
+              echo "should_run=false" >> "$GITHUB_OUTPUT"
+              echo "reason=diff_too_large:$total" >> "$GITHUB_OUTPUT"
+            else
+              echo "should_run=true" >> "$GITHUB_OUTPUT"
+              echo "hits=$hit" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+            echo "reason=no_load_bearing_paths" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Log triage decision
+        run: |
+          echo "should_run=${{ steps.gate.outputs.should_run }}"
+          echo "hits=${{ steps.gate.outputs.hits }}"
+          echo "reason=${{ steps.gate.outputs.reason }}"
+
+  review:
+    name: Codex adversarial review
+    needs: triage
+    if: needs.triage.outputs.should_run == 'true'
+    runs-on: [self-hosted, macOS, ARM64, codex]
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0   # codex resolves base ref via git
+
+      - name: Collect PR changed files
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          gh api "repos/$REPO/pulls/$PR/files" --paginate --jq '.[].filename' > changed-files.txt
+          wc -l changed-files.txt
+
+      - name: Run Codex adversarial review
+        id: codex
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          HITS: ${{ needs.triage.outputs.hits }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          # codex-companion.mjs lives in the user HOME under the Claude Code
+          # plugin cache, NOT under $GITHUB_WORKSPACE (the repo checkout). Use
+          # $HOME so the path resolves at shell-eval time on the self-hosted
+          # runner. Plugin version pinned — bump together with the Claude Code
+          # plugin upgrade (ADR 0066 Consequences — symlink/glob is follow-up).
+          CODEX_COMPANION="$HOME/.claude/plugins/cache/openai-codex/codex/1.0.4/scripts/codex-companion.mjs"
+          if [ ! -f "$CODEX_COMPANION" ]; then
+            echo "Codex companion not found at $CODEX_COMPANION" >&2
+            ls -1 "$HOME/.claude/plugins/cache/openai-codex/codex/" 2>&1 >&2 || true
+            echo "rc=127" >> "$GITHUB_OUTPUT"
+            echo "Codex companion path missing on runner." > codex-err.log
+            echo '{}' > codex-out.json
+            exit 0
+          fi
+          # Honor rc !=0 (usage limit, login expired, network) — render handles all
+          # branches and emits a "Codex failed" PR comment instead of crashing.
+          set +e
+          focus="Load-bearing change touched: ${HITS}. PR title: ${PR_TITLE}."
+          node "$CODEX_COMPANION" \
+            adversarial-review \
+            --json \
+            --base "origin/${BASE_REF}" \
+            --scope branch \
+            "$focus" \
+            > codex-out.json \
+            2> codex-err.log
+          rc=$?
+          set -e
+          echo "rc=$rc" >> "$GITHUB_OUTPUT"
+          echo "Codex companion exited rc=$rc"
+          if [ "$rc" -ne 0 ]; then
+            echo "--- codex stderr tail ---"
+            tail -n 30 codex-err.log
+          fi
+
+      - name: Render comment + check artifacts
+        if: always()
+        env:
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          python3 scripts/render_codex_review.py \
+            --input codex-out.json \
+            --rc "${{ steps.codex.outputs.rc }}" \
+            --repo "$REPO" \
+            --sha "$SHA" \
+            --changed-files changed-files.txt \
+            --stderr codex-err.log \
+            --output review-comment.md \
+            --check-summary check-summary.md \
+            --check-conclusion check-conclusion.txt
+          echo "--- comment preview ---"
+          head -n 40 review-comment.md
+          echo "--- check summary ---"
+          cat check-summary.md
+          echo "--- conclusion ---"
+          cat check-conclusion.txt
+
+      - name: Upsert PR comment
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          # pr-eval.yml line 238-253 pattern: marker-bearing comment lookup → PATCH or POST.
+          # No external action; gh CLI only.
+          marker="<!-- codex-adversarial-review-bot -->"
+          body="$(cat review-comment.md)"
+          existing=$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" \
+            --jq ".[] | select(.body | startswith(\"$marker\")) | .id" | head -n1)
+          if [ -n "$existing" ]; then
+            gh api -X PATCH "repos/$REPO/issues/comments/$existing" -f body="$body" >/dev/null
+            echo "Updated existing comment $existing"
+          else
+            gh pr comment "$PR_NUMBER" --repo "$REPO" --body "$body"
+            echo "Posted new comment"
+          fi
+
+      - name: Publish informational check run
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          conclusion=$(cat check-conclusion.txt)
+          summary=$(cat check-summary.md)
+          # Informational only — conclusion is "success" or "neutral", never "failure".
+          gh api -X POST "repos/$REPO/check-runs" \
+            -f name="Codex adversarial review (informational)" \
+            -f head_sha="$SHA" \
+            -f status="completed" \
+            -f conclusion="$conclusion" \
+            -f "output[title]=Codex adversarial verdict" \
+            -f "output[summary]=$summary"
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: codex-review-output
+          path: |
+            codex-out.json
+            codex-err.log
+            review-comment.md
+            check-summary.md
+            check-conclusion.txt
+            changed-files.txt
+          if-no-files-found: warn
