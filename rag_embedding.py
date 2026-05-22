@@ -39,6 +39,7 @@ from typing import Any
 
 import numpy as np
 
+from bidmate_data_boundary import assert_external_payload_allowed
 from rag_text_processing import tokenize
 
 
@@ -191,6 +192,14 @@ def embed_texts(
 
 
 def _embed_with_openai(texts: list[str], *, model_name: str) -> EmbeddingResult:
+    # Fail closed before any SDK import / network call: the corpus text
+    # batched below leaves the process, so the data-surface attestation must
+    # pass first (ADR 0061 ③ / ADR 0005). Unlike the never-raise backends,
+    # this path raises on failure rather than degrading silently, so a blocked
+    # surface surfaces as ExternalPayloadBlocked; the default offline path
+    # (hashing / sentence-transformers) never reaches this function and so
+    # stays byte-identical (ADR 0001).
+    assert_external_payload_allowed(channel="embedding:openai")
     try:
         from openai import OpenAI  # type: ignore[import-not-found]
     except Exception as exc:

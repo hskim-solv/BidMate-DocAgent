@@ -13,10 +13,12 @@ Writes:
   - reports/figures/real100_*.png|.svg         (matplotlib optional, 5-7 figures)
 
 ADR 0005 boundary: raw RFP body / 사업명 / 사업 요약 / 파일명 are read only for
-length statistics — never rendered to md/json. Agency names beyond top-10
-are anonymized to ``agency_NN`` rank labels. The only public-facing string
-fields that survive into output are 공고 번호 (procurement notice ID, public)
-and 파일형식 (hwp/pdf).
+length statistics — never rendered to md/json. ALL agency names (top-N and
+tail alike) are anonymized to ``agency_NN`` rank labels — the eda.aggregate.json
+and eda.md are committed, so raw 발주기관 names must not survive into either
+(#1204; the earlier "raw top-N in md" carve-out leaked them). The only
+public-facing string fields that survive into output are 공고 번호 (procurement
+notice ID, public) and 파일형식 (hwp/pdf).
 
 Usage:
     python scripts/eda_real100.py [--data-list ...] [--index ...] [--baseline ...]
@@ -135,7 +137,8 @@ def safe_mean(values: Iterable[float]) -> float:
 
 
 def anonymize_agency(rank: int) -> str:
-    """rank is 1-based; only called for rank > OUTPUT_TOP_N_AGENCIES."""
+    """rank is 1-based; called for every agency rank (top-N and tail) so no
+    raw 발주기관 name reaches the committed eda artifacts (#1204)."""
     return f"agency_{rank:02d}"
 
 
@@ -194,8 +197,12 @@ def axis1_metadata(rows: list[dict[str, str]]) -> dict[str, Any]:
         "agency": {
             "unique_count": len(agency_counts),
             "top": [
-                {"rank": i + 1, "name": name, "count": cnt}
-                for i, (name, cnt) in enumerate(top)
+                # Anonymize top-N too: raw 발주기관 names must not reach the
+                # committed eda.aggregate.json / eda.md (#1204). Ranks stay
+                # 1..N so the distribution shape is preserved; only the
+                # identifying label is replaced.
+                {"rank": i + 1, "name": anonymize_agency(i + 1), "count": cnt}
+                for i, (_name, cnt) in enumerate(top)
             ],
             "tail_anonymized": [
                 {"rank": OUTPUT_TOP_N_AGENCIES + i + 1, "label": anonymize_agency(OUTPUT_TOP_N_AGENCIES + i + 1), "count": cnt}
@@ -472,8 +479,8 @@ def render_markdown(stats: dict[str, Any]) -> str:
     lines.append(
         "Aggregate-only profile of the private 100-document RFP dataset. "
         "ADR 0005 boundary: 사업명 / 사업 요약 / 텍스트 / 파일명 are read for "
-        "length statistics only; never rendered. Agency names beyond rank "
-        f"{OUTPUT_TOP_N_AGENCIES} are anonymized to `agency_NN` labels."
+        "length statistics only; never rendered. All agency names are "
+        "anonymized to `agency_NN` rank labels."
     )
     lines.append("")
     lines.append(f"Sources: `{stats['_sources']['data_list']}`, `{stats['_sources']['index']}`, "
@@ -684,7 +691,8 @@ def render_figures(stats: dict[str, Any], out_dir: Path) -> list[str]:
     a3 = stats["axis3_text_source"]
 
     # Figure 1: agency top-N bar (rank labels only — keeps figure ascii-safe
-    # and reinforces ADR 0005 anonymization). Raw agency names live in the md.
+    # and reinforces ADR 0005 anonymization). No raw agency name appears in
+    # the figure, the md, or the aggregate json (#1204).
     top = a1["agency"]["top"]
     if top:
         fig, ax = plt.subplots(figsize=(9, 5))
