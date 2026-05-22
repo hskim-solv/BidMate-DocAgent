@@ -28,6 +28,9 @@ import os
 import unittest
 from typing import Any
 
+import rag_embedding
+import rag_query_expansion
+import rag_rerank
 import rag_synthesis
 from bidmate_data_boundary import (
     DATA_SURFACE_ENV,
@@ -42,6 +45,7 @@ from rag_metadata_extraction import (
     _regex_backend,
     extract_rfp_metadata,
 )
+from rag_planner import LLMPlanner, StaticPlanner
 
 
 @contextlib.contextmanager
@@ -63,6 +67,27 @@ def _surface(value: str | None):
             os.environ.pop(DATA_SURFACE_ENV, None)
         else:
             os.environ[DATA_SURFACE_ENV] = saved
+
+
+@contextlib.contextmanager
+def _cleared(*names: str):
+    """Temporarily clear env vars (restore on exit).
+
+    Used by the over-block tests to force the backend's own API-key check
+    to fail *without* a network round-trip, so the test proves the guard
+    is not the blocker regardless of whether the SDK is installed.
+    """
+    saved = {name: os.environ.get(name) for name in names}
+    for name in names:
+        os.environ.pop(name, None)
+    try:
+        yield
+    finally:
+        for name, value in saved.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
 
 
 SAMPLE_DOCUMENT: dict[str, Any] = {
@@ -233,6 +258,203 @@ class GuardDoesNotOverBlockTest(unittest.TestCase):
             "ANTHROPIC_API_KEY" in message or "anthropic SDK" in message,
             f"unexpected error after guard: {message!r}",
         )
+
+
+_CANDIDATES: list[dict[str, Any]] = [
+    {
+        "chunk_id": "rfp-a::chunk-001",
+        "doc_id": "rfp-a",
+        "text": "제안사는 보안 통제 매뉴얼을 구축해야 한다.",
+    },
+    {
+        "chunk_id": "rfp-a::chunk-002",
+        "doc_id": "rfp-a",
+        "text": "사업비는 1억 5천만원으로 한다.",
+    },
+]
+
+
+class RerankBackendFailClosedTest(unittest.TestCase):
+    """rag_rerank cohere backend fails closed; rerank() keeps input order.
+
+    issue #1195 — extends the ADR 0061 ③ guard to the candidate-text
+    egress in ``rag_rerank._cohere_backend``.
+    """
+
+    def test_cohere_backend_entry_fail_closed(self) -> None:
+        for value in (None, "private", "local"):
+            with self.subTest(value=value), _surface(value):
+                with self.assertRaises(ExternalPayloadBlocked):
+                    rag_rerank._cohere_backend(
+                        query="q", candidates=list(_CANDIDATES), model=None
+                    )
+
+    def test_rerank_dispatch_falls_back_unchanged(self) -> None:
+        # never-raise wrapper: blocked surface returns the input candidates
+        # in their original order with fell_back set.
+        with _surface(None):
+            reordered, meta = rag_rerank.rerank(
+                "q", list(_CANDIDATES), backend="cohere"
+            )
+        self.assertEqual(
+            [c["chunk_id"] for c in reordered],
+            [c["chunk_id"] for c in _CANDIDATES],
+        )
+        self.assertTrue(meta["fell_back"])
+        self.assertIn("ExternalPayloadBlocked", meta["fallback_reason"])
+
+    def test_stub_backend_never_invokes_guard(self) -> None:
+        # ADR 0001 invariant: the default stub backend is guard-free and
+        # passes through even on an unset (blocked) surface.
+        with _surface(None):
+            reordered, meta = rag_rerank.rerank(
+                "q", list(_CANDIDATES), backend="stub"
+            )
+        self.assertFalse(meta["fell_back"])
+        self.assertEqual(
+            [c["chunk_id"] for c in reordered],
+            [c["chunk_id"] for c in _CANDIDATES],
+        )
+
+    def test_public_surface_passes_guard_then_sdk_or_key_check(self) -> None:
+        with _surface("public_synthetic"), _cleared(
+            "BIDMATE_COHERE_API_KEY", "COHERE_API_KEY"
+        ):
+            with self.assertRaises(RuntimeError) as ctx:
+                rag_rerank._cohere_backend(
+                    query="q", candidates=list(_CANDIDATES), model=None
+                )
+        # Guard passed — the failure is the backend's own SDK/key check.
+        self.assertNotIsInstance(ctx.exception, ExternalPayloadBlocked)
+
+
+class EmbeddingBackendFailClosedTest(unittest.TestCase):
+    """rag_embedding openai backend fails closed by RAISING.
+
+    issue #1195 — unlike the never-raise backends, the openai embedding
+    path has no offline wrapper, so a blocked surface fails closed by
+    raising ExternalPayloadBlocked rather than degrading to hashing.
+    """
+
+    def test_embed_with_openai_entry_fail_closed(self) -> None:
+        for value in (None, "private", "local"):
+            with self.subTest(value=value), _surface(value):
+                with self.assertRaises(ExternalPayloadBlocked):
+                    rag_embedding._embed_with_openai(
+                        ["문서 본문 텍스트"], model_name="text-embedding-3-small"
+                    )
+
+    def test_embed_texts_openai_raises_not_silent(self) -> None:
+        # Asymmetry vs rerank / hyde / planner: no never-raise wrapper, so
+        # the block surfaces as an exception out of the public entry point.
+        with _surface(None):
+            with self.assertRaises(ExternalPayloadBlocked):
+                rag_embedding.embed_texts(["문서 본문 텍스트"], backend="openai")
+
+    def test_default_backend_never_invokes_guard(self) -> None:
+        # ADR 0001 invariant: the default offline path is not gated. The
+        # hashing backend produces vectors even on an unset (blocked) surface.
+        with _surface(None):
+            result = rag_embedding.embed_texts(["문서 본문 텍스트"], backend="hashing")
+        self.assertEqual(result.backend, "hashing")
+        self.assertEqual(result.vectors.shape[0], 1)
+
+    def test_public_surface_passes_guard_then_sdk_or_key_check(self) -> None:
+        with _surface("public_synthetic"), _cleared(
+            "BIDMATE_OPENAI_API_KEY", "OPENAI_API_KEY"
+        ):
+            with self.assertRaises(RuntimeError) as ctx:
+                rag_embedding._embed_with_openai(
+                    ["문서 본문 텍스트"], model_name="text-embedding-3-small"
+                )
+        self.assertNotIsInstance(ctx.exception, ExternalPayloadBlocked)
+
+
+class QueryExpansionBackendFailClosedTest(unittest.TestCase):
+    """rag_query_expansion HyDE backend fails closed; expand() keeps raw query.
+
+    issue #1195 — extends the ADR 0061 ③ guard to the query-text egress in
+    ``rag_query_expansion._call_anthropic_hyde``.
+    """
+
+    QUERY = "기관 A의 보안 통제 요구사항은?"
+
+    def test_call_anthropic_hyde_entry_fail_closed(self) -> None:
+        for value in (None, "private", "local"):
+            with self.subTest(value=value), _surface(value):
+                with self.assertRaises(ExternalPayloadBlocked):
+                    rag_query_expansion._call_anthropic_hyde(
+                        query=self.QUERY,
+                        model="claude-haiku-4-5-20251001",
+                        max_tokens=256,
+                    )
+
+    def test_hyde_expander_falls_back_to_raw_query(self) -> None:
+        with _surface("private_local"):
+            expanded, meta = rag_query_expansion.HyDEExpander().expand(
+                self.QUERY, plan={}
+            )
+        self.assertEqual(expanded, self.QUERY)
+        self.assertTrue(meta["fell_back"])
+        self.assertIn("ExternalPayloadBlocked", meta["fallback_reason"])
+
+    def test_identity_expander_never_invokes_guard(self) -> None:
+        # ADR 0001 invariant: the default identity expander is guard-free.
+        with _surface(None):
+            expanded, meta = rag_query_expansion.IdentityExpander().expand(
+                self.QUERY, plan={}
+            )
+        self.assertEqual(expanded, self.QUERY)
+        self.assertFalse(meta["fell_back"])
+
+    def test_public_surface_passes_guard_then_sdk_or_key_check(self) -> None:
+        with _surface("public_synthetic"), _cleared("ANTHROPIC_API_KEY"):
+            with self.assertRaises(RuntimeError) as ctx:
+                rag_query_expansion._call_anthropic_hyde(
+                    query=self.QUERY,
+                    model="claude-haiku-4-5-20251001",
+                    max_tokens=256,
+                )
+        self.assertNotIsInstance(ctx.exception, ExternalPayloadBlocked)
+
+
+class PlannerBackendFailClosedTest(unittest.TestCase):
+    """rag_planner LLMPlanner falls back to StaticPlanner when blocked.
+
+    issue #1195 — the guard sits inside plan_next's try block, so a blocked
+    surface is caught by the existing except and routed to StaticPlanner;
+    the never-raise contract (always a valid action) is preserved.
+    """
+
+    @staticmethod
+    def _analysis() -> dict[str, Any]:
+        return {"query_type": "single_doc", "entities": ["기관 A"]}
+
+    def test_llm_planner_falls_back_to_static(self) -> None:
+        with _surface("private_local"):
+            action, meta = LLMPlanner().plan_next(
+                analysis=self._analysis(), history=[], budget={}
+            )
+        self.assertTrue(meta["fell_back"])
+        self.assertEqual(meta["backend"], "anthropic_fallback")
+        self.assertIn("ExternalPayloadBlocked", meta["fallback_reason"])
+        self.assertIn(action["tool"], {"retrieve_evidence", "abstain"})
+
+    def test_static_planner_never_invokes_guard(self) -> None:
+        # ADR 0001 invariant: the default static planner is guard-free.
+        with _surface(None):
+            _, meta = StaticPlanner().plan_next(
+                analysis=self._analysis(), history=[], budget={}
+            )
+        self.assertFalse(meta["fell_back"])
+        self.assertEqual(meta["backend"], "static")
+
+    def test_public_surface_does_not_block_planner_channel(self) -> None:
+        # The guard's allow/block decision is channel-independent, so an
+        # attested public surface must not block the planner channel. Asserted
+        # directly (network-free) since plan_next swallows backend errors.
+        with _surface("public_synthetic"):
+            assert_external_payload_allowed(channel="planner:anthropic")
 
 
 if __name__ == "__main__":
