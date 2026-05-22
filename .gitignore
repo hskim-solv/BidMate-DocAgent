@@ -38,6 +38,9 @@ data/files_kordoc/
 data/data_list.csv
 data/data_list.xlsx
 eval/*.local.yaml
+# Planner decomposition eval (issue #1291): prompt-variant + bootstrap-prompt
+# files are ADR 0005 derivatives (contain real-100-shaped queries) — local only.
+eval/*.local.txt
 원본 데이터/
 
 # Korean public RAG bench (ADR 0018): we fetch KorQuAD on demand and

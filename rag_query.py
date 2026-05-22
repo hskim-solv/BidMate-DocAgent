@@ -584,3 +584,166 @@ def make_plan(
     return plan
 
 
+# --- Query decomposition (Path D component eval, issue #1291) ---------------
+# Single decomposition surface: one function, 5-branch variant routing, prompt
+# strings external (eval/planner_variants.local.txt). No class/Protocol/registry
+# until a 2nd consumer + Phase 2 winner exist (CLAUDE.md "no premature
+# abstraction"). cost_usd is returned as None — the eval orchestrator owns the
+# rate table (MODEL_RATES single source); production rag_query must not import
+# eval.* for pricing.
+
+_VARIANT_PROMPT_CACHE: dict[str, dict[str, str]] = {}
+
+_DECOMPOSE_TOOL = {
+    "name": "emit_sub_queries",
+    "description": "Emit the decomposed retrievable sub-queries for the query.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "sub_queries": {
+                "type": "array",
+                "items": {"type": "string"},
+                "minItems": 1,
+                "maxItems": 5,
+            }
+        },
+        "required": ["sub_queries"],
+    },
+}
+
+
+def _load_variant_prompts(path: "Any") -> dict[str, str]:
+    """Parse ``===Vn===`` delimited prompt blocks (cached by path string).
+
+    Each block is a template containing ``{query}``. Used for V1/V2/V4; V3 uses
+    the V3 block as the user message alongside the tool schema."""
+    key = str(path)
+    if key in _VARIANT_PROMPT_CACHE:
+        return _VARIANT_PROMPT_CACHE[key]
+    from pathlib import Path as _Path
+
+    text = _Path(key).read_text()
+    blocks: dict[str, str] = {}
+    current: str | None = None
+    buf: list[str] = []
+    for line in text.splitlines():
+        marker = re.match(r"^===\s*([vV][0-9])\s*===\s*$", line.strip())
+        if marker:
+            if current is not None:
+                blocks[current] = "\n".join(buf).strip()
+            current = marker.group(1).lower()
+            buf = []
+        elif current is not None:
+            buf.append(line)
+    if current is not None:
+        blocks[current] = "\n".join(buf).strip()
+    _VARIANT_PROMPT_CACHE[key] = blocks
+    return blocks
+
+
+def _parse_json_str_list(text: str) -> tuple[list[str], str | None]:
+    """Extract a JSON array of non-empty strings (cap 5). Mirrors the eval
+    parser; duplicated here to keep rag_query free of eval.* imports."""
+    import json as _json
+
+    t = re.sub(r"\s*```$", "", re.sub(r"^```(?:json)?\s*", "", text.strip()))
+    candidates = [t]
+    m = re.search(r"\[[^\[\]]*\]", t, re.DOTALL)
+    if m:
+        candidates.append(m.group(0))
+    for src in candidates:
+        try:
+            v = _json.loads(src)
+        except _json.JSONDecodeError:
+            continue
+        if isinstance(v, list) and all(isinstance(x, str) and x.strip() for x in v):
+            return [x.strip() for x in v[:5]], None
+    return [], f"could not parse JSON list from {len(text)}-char response"
+
+
+def decompose_query(
+    query: str,
+    *,
+    variant: str,
+    seed: int,
+    prompt_profile_path: "Any",
+    model: str = "claude-sonnet-4-6",
+    max_tokens: int = 512,
+) -> dict[str, Any]:
+    """Decompose ``query`` into retrievable sub-queries under ``variant``.
+
+    Variants: v0 pass-through (no LLM, returns []), v1 naive zero-shot, v2
+    few-shot, v3 structured tool-use, v4 CoT-before-decomposition. Never raises.
+    Returns ``{sub_queries, raw_response, tokens_in, tokens_out, cost_usd,
+    latency_ms, parse_error}``; cost_usd is always None (orchestrator fills).
+
+    Note: Anthropic has no seed param — ``seed`` only labels output dirs and
+    seeds bootstrap. v1/v2/v4 vary via temperature=0.7; v0 no call; v3 temp=0."""
+    import time as _time
+
+    base = {"sub_queries": [], "raw_response": "", "tokens_in": None,
+            "tokens_out": None, "cost_usd": None, "latency_ms": None,
+            "parse_error": None}
+    variant = variant.lower()
+    if variant == "v0":
+        return base  # baseline: current planner emits no sub_queries
+
+    try:
+        import anthropic  # type: ignore[import-not-found]
+    except ImportError as exc:
+        return {**base, "parse_error": f"ImportError: {exc}"}
+
+    prompts = _load_variant_prompts(prompt_profile_path)
+    block = prompts.get(variant)
+    if block is None:
+        return {**base, "parse_error": f"no prompt block for {variant}"}
+    user_msg = block.replace("{query}", query)
+    temperature = 0.0 if variant == "v3" else 0.7
+
+    client = anthropic.Anthropic()
+    t0 = _time.perf_counter()
+    try:
+        kwargs: dict[str, Any] = {
+            "model": model, "max_tokens": max_tokens, "temperature": temperature,
+            "messages": [{"role": "user", "content": user_msg}],
+        }
+        if variant == "v3":
+            kwargs["tools"] = [_DECOMPOSE_TOOL]
+            kwargs["tool_choice"] = {"type": "tool", "name": "emit_sub_queries"}
+        response = client.messages.create(**kwargs)
+    except Exception as exc:  # noqa: BLE001 — never-raise
+        return {**base, "latency_ms": (_time.perf_counter() - t0) * 1000.0,
+                "parse_error": f"{type(exc).__name__}: {exc}"}
+    latency_ms = (_time.perf_counter() - t0) * 1000.0
+    tokens_in = getattr(response.usage, "input_tokens", None)
+    tokens_out = getattr(response.usage, "output_tokens", None)
+
+    if variant == "v3":
+        sub_queries: list[str] = []
+        raw = ""
+        parse_error: str | None = None
+        for b in response.content:
+            if getattr(b, "type", None) == "tool_use":
+                raw = str(getattr(b, "input", ""))
+                sq = (getattr(b, "input", {}) or {}).get("sub_queries", [])
+                sub_queries = [str(x).strip() for x in sq if str(x).strip()][:5]
+                break
+        if not sub_queries:
+            parse_error = "v3 tool_use emitted no sub_queries"
+        return {"sub_queries": sub_queries, "raw_response": raw,
+                "tokens_in": tokens_in, "tokens_out": tokens_out, "cost_usd": None,
+                "latency_ms": latency_ms, "parse_error": parse_error}
+
+    text = "".join(getattr(b, "text", "") for b in response.content
+                   if getattr(b, "type", None) == "text")
+    if variant == "v4":
+        m = re.search(r"<sub_queries>\s*(.*?)\s*</sub_queries>", text, re.DOTALL)
+        payload = m.group(1) if m else text
+        sub_queries, parse_error = _parse_json_str_list(payload)
+    else:  # v1, v2
+        sub_queries, parse_error = _parse_json_str_list(text)
+    return {"sub_queries": sub_queries, "raw_response": text,
+            "tokens_in": tokens_in, "tokens_out": tokens_out, "cost_usd": None,
+            "latency_ms": latency_ms, "parse_error": parse_error}
+
+
