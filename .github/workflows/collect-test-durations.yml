@@ -63,4 +63,8 @@ jobs:
         with:
           name: test-durations
           path: .test_durations
+          # `.test_durations` is a dotfile; upload-artifact (v4+) excludes
+          # hidden files unless this is set, which silently dropped it on the
+          # first run despite the file being written.
+          include-hidden-files: true
           if-no-files-found: error
