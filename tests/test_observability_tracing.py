@@ -29,6 +29,7 @@ from __future__ import annotations
 import importlib
 import os
 import sys
+import types
 import unittest
 from contextlib import contextmanager
 from pathlib import Path
@@ -407,6 +408,79 @@ class ResolveBackendUnitTest(unittest.TestCase):
         finally:
             os.environ.pop("BIDMATE_TRACE_BACKEND", None)
         self.assertEqual(name, "none")
+
+
+class LangfuseBaseUrlPrecedenceTest(unittest.TestCase):
+    """Regression for issue #1339 — endpoint resolution precedence.
+
+    A non-None ``base_url=`` arg short-circuits the Langfuse SDK's own
+    ``LANGFUSE_BASE_URL`` env lookup, so ``_build_langfuse_backend`` must
+    resolve it explicitly. Precedence: LANGFUSE_BASE_URL > LANGFUSE_HOST >
+    DEFAULT_LANGFUSE_HOST. A fake ``Langfuse`` captures the kwargs.
+    """
+
+    _ENV_KEYS = (
+        rag_observability.ENV_LANGFUSE_PUBLIC_KEY,
+        rag_observability.ENV_LANGFUSE_SECRET_KEY,
+        rag_observability.ENV_LANGFUSE_BASE_URL,
+        rag_observability.ENV_LANGFUSE_HOST,
+    )
+
+    def setUp(self) -> None:
+        self._saved_env = {k: os.environ.get(k) for k in self._ENV_KEYS}
+        self._saved_modules: dict[str, Any] = {}
+        for k in list(sys.modules.keys()):
+            if k == "langfuse" or k.startswith("langfuse."):
+                self._saved_modules[k] = sys.modules.pop(k)
+        self.captured: dict[str, Any] = {}
+
+        test_self = self
+
+        class _FakeLangfuse:
+            def __init__(self, **kwargs: Any) -> None:
+                test_self.captured.update(kwargs)
+
+        fake_module = types.ModuleType("langfuse")
+        fake_module.Langfuse = _FakeLangfuse  # type: ignore[attr-defined]
+        sys.modules["langfuse"] = fake_module
+
+        os.environ[rag_observability.ENV_LANGFUSE_PUBLIC_KEY] = "pk-test"
+        os.environ[rag_observability.ENV_LANGFUSE_SECRET_KEY] = "sk-test"
+        os.environ.pop(rag_observability.ENV_LANGFUSE_BASE_URL, None)
+        os.environ.pop(rag_observability.ENV_LANGFUSE_HOST, None)
+
+    def tearDown(self) -> None:
+        sys.modules.pop("langfuse", None)
+        for k, v in self._saved_modules.items():
+            sys.modules[k] = v
+        for k, v in self._saved_env.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+    def _resolved_base_url(self) -> str:
+        backend = rag_observability._build_langfuse_backend()
+        self.assertIsInstance(backend, rag_observability._LangfuseBackend)
+        return self.captured["base_url"]
+
+    def test_only_base_url_set(self) -> None:
+        os.environ[rag_observability.ENV_LANGFUSE_BASE_URL] = "https://jp.cloud.langfuse.com"
+        self.assertEqual(self._resolved_base_url(), "https://jp.cloud.langfuse.com")
+
+    def test_only_host_set(self) -> None:
+        os.environ[rag_observability.ENV_LANGFUSE_HOST] = "https://eu.cloud.langfuse.com"
+        self.assertEqual(self._resolved_base_url(), "https://eu.cloud.langfuse.com")
+
+    def test_base_url_wins_over_host(self) -> None:
+        os.environ[rag_observability.ENV_LANGFUSE_BASE_URL] = "https://jp.cloud.langfuse.com"
+        os.environ[rag_observability.ENV_LANGFUSE_HOST] = "https://eu.cloud.langfuse.com"
+        self.assertEqual(self._resolved_base_url(), "https://jp.cloud.langfuse.com")
+
+    def test_neither_set_uses_default(self) -> None:
+        self.assertEqual(
+            self._resolved_base_url(), rag_observability.DEFAULT_LANGFUSE_HOST
+        )
 
 
 if __name__ == "__main__":
