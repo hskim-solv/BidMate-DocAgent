@@ -48,7 +48,7 @@ Stage 1: commit   (private-path filter → multi-agent lock → tier-7 prefix ga
 Stage 2: push     (ADR 0007 branch check → git push)
 Stage 3: PR       (_ship_pr_body.py → §5b cascade → gh pr create)
 Stage 4: CI wait  (gh pr checks --watch, 30-min timeout)
-Stage 5: merge    (gh pr merge --squash --admin --delete-branch → checkout main → disarm)
+Stage 5: merge    (gh pr merge --squash --admin → git push origin --delete <branch> → checkout main → disarm)
 ```
 
 단발성 disarm: 성공은 Stage 5 끝에서 arm 파일을 삭제한다;
@@ -119,11 +119,20 @@ rc 시: comment + abort. 파이프라인은 red 상태에서 절대 머지하지
 
 ### Stage 5 — squash-merge ([`stop-ship.sh:374-424`](../../scripts/claude-hooks/stop-ship.sh))
 
-`gh pr merge <N> --squash --admin --delete-branch`. 머지 후 상태가
-`MERGED` 인지 검증한다(아니면 검사를 위해 arm 파일을 그대로 둔다).
-그런 다음 `git checkout main && git pull --ff-only`,
-로컬 브랜치 삭제, `S5_OK` 라인을
+`gh pr merge <N> --squash --admin` (의도적으로 `--delete-branch` **없음** — issue #1283).
+머지 후 상태가 `MERGED` 인지 검증한다(아니면 검사를 위해 arm 파일을 그대로 둔다).
+그런 다음 `git push origin --delete <branch>` 로 **원격 브랜치를 삭제**하고,
+`git checkout main && git pull --ff-only`, 로컬 브랜치 삭제, `S5_OK` 라인을
 `.claude/.ship-history.log` 에 기록, arm 파일 제거.
+
+`--delete-branch` 를 쓰지 않는 이유: gh 의 `--delete-branch` 는 원격 삭제를
+로컬 checkout-to-default + 로컬 브랜치 삭제와 한 명령에 묶는다. 이 repo 는
+상시 20~30 worktree 가동이라 `main` 이 다른 worktree 에 체크아웃돼 있고,
+gh 의 로컬 checkout 이 `fatal: 'main' is already checked out` 로 실패하면서
+**원격 삭제 전에 명령 전체를 abort** 한다 — 서버 머지는 성공하지만 원격
+브랜치가 남는다. `git push origin --delete` 는 순수 원격 연산이라 로컬
+체크아웃이 필요 없어 worktree 와 무관하게 동작한다 (memory
+`feedback_merge_admin_gate` §2).
 
 **Worktree 자동 정리 (issue #520):** 파이프라인이
 linked worktree 에서 실행되었다면(즉 `git rev-parse --git-dir` 가 `/worktrees/` 를 포함),
@@ -210,8 +219,8 @@ load-bearing 경로는
 
 ## Squash-merge & multi-concern 추적
 
-Stage 5 는 `gh pr merge --squash --admin --delete-branch` 를 사용하므로,
-`main` 의 최종 커밋은 하나의 squash 된 커밋이며 그 subject 는 PR
+Stage 5 는 `gh pr merge --squash --admin` (그 뒤 별도 `git push origin --delete`)
+를 사용하므로, `main` 의 최종 커밋은 하나의 squash 된 커밋이며 그 subject 는 PR
 title 이고 body 는 각 구성 커밋의 원본 `Closes #<N>` 마커를 담는다.
 
 PR 이 둘 이상의 이슈를 정당하게 닫는다면(`STACKED=ack` 사이클에서

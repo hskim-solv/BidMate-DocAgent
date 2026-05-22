@@ -5,7 +5,7 @@
 # Classification rationale: refuses tool calls. See scripts/claude-hooks/README.md.
 #
 # Registered in `.claude/settings.json` with matcher `Bash`. Fires before
-# Claude runs any Bash command. Two responsibilities:
+# Claude runs any Bash command. Three responsibilities:
 #
 #   (1) Refuses `gh pr merge --delete-branch` when the target branch has
 #       open stacked dependents (i.e. open PRs whose `base` is this
@@ -20,6 +20,12 @@
 #       Hook B (split into #865): a 5-PR stack audit found multiple
 #       cases where a stacked PR was opened against `main` instead of
 #       its upstream branch, collapsing the stack base.
+#
+#   (3) Refuses `git push origin --delete <branch>` when the branch has
+#       open stacked dependents — the worktree-safe post-merge flow
+#       (issue #1283) deletes the remote head branch this way instead of
+#       `gh pr merge --delete-branch`, and the same auto-close failure
+#       mode applies. Extends (1)'s protection to the push form.
 #
 # Behavior:
 #   - exit 0  : safe / not applicable / fail-open
@@ -106,6 +112,52 @@ EOF
   # fail-open philosophy, and a transient failure must not wedge unrelated
   # work).
   exit 0
+fi
+
+# --- Branch (3): `git push origin --delete <branch>` stacked guard (issue #1283) ---
+# The worktree-safe post-merge flow deletes the remote head branch via
+# `git push origin --delete` rather than `gh pr merge --delete-branch`
+# (whose local checkout-to-default step aborts when `main` is checked out in
+# another worktree, leaving the remote branch behind). The remote deletion
+# still auto-closes any open PR that bases on the branch, so the same
+# stacked-dependent protection Branch (1) applies to --delete-branch must
+# cover this form too (precedent PR #423 → #431, #470). Runs independently of
+# the gh subcommand classification above. Parser failure here falls open
+# (no anchored fail-closed) — consistent with the fail-open philosophy: a
+# slipped branch delete is recoverable, blocking arbitrary `git push` is not.
+push_delete_targets=$(python3 "$REPO_ROOT/scripts/claude-hooks/_bash_guard_parse.py" \
+                        --detect-push-delete "$cmd" 2>/dev/null)
+pd_rc=$?
+if [[ "$pd_rc" -eq 0 && -n "${push_delete_targets//[$'\n' ]/}" ]]; then
+  while IFS= read -r del_branch; do
+    [[ -z "$del_branch" ]] && continue
+    pd_deps=$(gh pr list --base "$del_branch" --state open \
+                --json number,title,headRefName 2>/dev/null || true)
+    if [[ -n "$pd_deps" && "$pd_deps" != "[]" ]]; then
+      python3 "$REPO_ROOT/scripts/_governance.py" --emit-fire \
+        --outcome blocked --hook bash-guard --category git-push-delete-stacked \
+        --path "$del_branch" \
+        --fire-log "$REPO_ROOT/.claude/.hook-fires.log" 2>/dev/null || true
+      cat >&2 <<EOF
+⛔ Refusing \`git push origin --delete $del_branch\`: branch has open stacked dependents.
+
+    Open PR(s) base on \`$del_branch\`. Deleting the remote branch now
+    auto-closes them — the same stack-collapse failure mode that
+    \`gh pr merge --delete-branch\` is guarded against (PR #423 → #431, #470):
+
+$pd_deps
+
+    Recovery:
+      (a) Rebase each dependent onto main first, then re-run the delete:
+              gh pr edit <M> --base main
+      (b) Keep the base branch — skip the remote delete; remove it after
+          the dependents land.
+
+    Policy: stacked-PR discipline (CLAUDE.md ## Prohibited, MEMORY feedback_pr_discipline).
+EOF
+      exit 2
+    fi
+  done <<< "$push_delete_targets"
 fi
 
 if [[ -z "$gh_subcommand" ]]; then
