@@ -19,7 +19,7 @@ from eval.scorers.chunk_metrics import (
     chunk_ndcg_at_k,
     chunk_recall_at_k,
 )
-from eval.scorers.citation import score_citation_grounding
+from eval.scorers.citation import score_citation_coverage, score_citation_grounding
 from eval.scorers.format import score_answer_format
 
 
@@ -51,6 +51,7 @@ def score_case(
     abstained = bool(diagnostics.get("abstained"))
     answer_format = score_answer_format(case, prediction, answer_policy)
     citation_grounding = score_citation_grounding(case, prediction)
+    citation_coverage = score_citation_coverage(prediction)
     claim_alignment = score_claim_citation_alignment(case, prediction)
 
     citation_doc_precision = 0.0
@@ -176,6 +177,7 @@ def score_case(
         "groundedness": groundedness,
         "citation_precision": citation_precision,
         **citation_grounding,
+        **citation_coverage,
         **claim_alignment,
         "abstention": abstention,
         "comparison_target_recall": comparison_target_recall,

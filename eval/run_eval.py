@@ -45,6 +45,7 @@ from eval.scorers._shared import (
     retry_trigger_reasons,
 )
 from eval.scorers.citation import is_bbox
+from eval.scorers.chunk_metrics import CHUNK_METRIC_KS
 from scripts._utils import build_provenance
 
 
@@ -71,7 +72,10 @@ def _git(*args: str) -> str:
         return ""
 
 
-def compute_run_manifest(config_path: Path) -> dict[str, Any]:
+def compute_run_manifest(
+    config_path: Path,
+    index: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Build the run_manifest block pinned to git commit + config bytes + UTC time.
 
     Needed for leaderboard time-series (#166) and judge calibration
@@ -79,6 +83,13 @@ def compute_run_manifest(config_path: Path) -> dict[str, Any]:
     ``scripts._utils.build_provenance`` (``git_commit``, ``git_dirty``,
     ``generated_at``) so the real-eval baseline pipeline and the
     synthetic eval pipeline share one schema.
+
+    Also records the embedding ``backend`` + ``model`` id of the loaded
+    index so an eval_summary snapshot is self-describing about which
+    embedding produced its retrieval metrics — config_sha256 pins the
+    pipeline knobs, but the embedding model lives in the index, not the
+    config. Both fields are ``None`` when ``index`` is omitted or carries
+    no embedding meta (forward-compat with pre-versioning snapshots).
     """
     commit = _git("rev-parse", "HEAD")[:12] or "unknown"
     dirty = _git("status", "--porcelain") != ""
@@ -86,12 +97,15 @@ def compute_run_manifest(config_path: Path) -> dict[str, Any]:
         config_sha = hashlib.sha256(config_path.read_bytes()).hexdigest()[:16]
     except (FileNotFoundError, OSError):
         config_sha = "unknown"
+    embedding_meta = (index or {}).get("embedding") or {}
     return {
         "git_commit": commit,
         "git_dirty": dirty,
         "config_path": str(config_path),
         "config_sha256": config_sha,
         "generated_at": datetime.datetime.utcnow().isoformat() + "Z",
+        "embedding_backend": embedding_meta.get("backend"),
+        "embedding_model_id": embedding_meta.get("model"),
     }
 
 
@@ -512,6 +526,29 @@ def metric_block(case_results: list[dict[str, Any]]) -> dict[str, Any]:
         if r.get("claim_citation_alignment") is not None
     ]
     abstention_scores = [r["abstention"] for r in case_results if r["abstention"] is not None]
+    # Retrieval chunk-metric + citation-coverage aggregates. score_case already
+    # emits these per-case (chunk_recall@k / mrr / ndcg / rerank_delta via
+    # chunk_metrics.py; citation_*_coverage via score_citation_coverage), but
+    # without a run-level mean + CI there was no single surface to compare a new
+    # embedding / reranker / chunking / parsing backend against the baseline —
+    # the prerequisite for the recall→precision multi-stage measurement. Gold-
+    # free / answer-free cases return None and are skipped here, matching the
+    # None-skip convention of the answer-quality metrics above.
+    retrieval_metric_keys = [
+        *(f"chunk_recall_at_{k}" for k in CHUNK_METRIC_KS),
+        "chunk_mrr",
+        "chunk_ndcg_at_10",
+        "chunk_ndcg_at_20",
+        "rerank_delta_mrr",
+        "rerank_delta_ndcg_at_10",
+        "citation_claim_coverage",
+        "citation_page_coverage",
+        "citation_region_coverage",
+    ]
+    retrieval_metric_scores = {
+        key: [r[key] for r in case_results if r.get(key) is not None]
+        for key in retrieval_metric_keys
+    }
     # Issue #463: decompose intended-abstention cases into 3 bins so the
     # bimodal abstention score (0.0 / 1.0) stops collapsing distinct
     # failure modes. Counts only — no per-case text — so the aggregate
@@ -672,6 +709,13 @@ def metric_block(case_results: list[dict[str, Any]]) -> dict[str, Any]:
             [1.0 if score >= 1.0 - 1e-9 else 0.0 for score in comparison_pool_recall_scores]
         )
         ci_block["comparison_pool_recall"] = bootstrap_ci(comparison_pool_recall_scores)
+    # Attach retrieval chunk + citation-coverage aggregates. Every key is
+    # always emitted (mean = None when no case in the slice carried it, e.g. an
+    # abstention-only slice for chunk metrics) so every by-slice block keeps a
+    # stable shape for downstream consumers — the measurement-surface contract.
+    for key, scores in retrieval_metric_scores.items():
+        block[key] = rate(scores)
+        ci_block[key] = bootstrap_ci(scores)
     return block
 
 
@@ -1260,7 +1304,7 @@ def main() -> int:
     summary = {
         "mode": "rag",
         "provenance": build_provenance(),
-        "run_manifest": compute_run_manifest(config_path),
+        "run_manifest": compute_run_manifest(config_path, index),
         "config": args.config,
         "index_dir": args.index_dir,
         "primary_run": primary_summary["name"],
