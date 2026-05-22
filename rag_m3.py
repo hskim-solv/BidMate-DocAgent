@@ -48,7 +48,8 @@ class M3Output:
     matrices are stored at ``np.int8`` (issue #1010 — symmetric
     per-chunk quantization cuts ``_m3_cache`` RAM by an additional ~50%
     on top of fp16). Empty list when colbert is fp16/fp32 (no scale
-    needed; numpy matmul auto-upcasts in ``colbert_score``).
+    needed; ``colbert_score`` upcasts the matmul to fp32 regardless of
+    cache dtype — issue #1241).
     """
 
     dense: np.ndarray
@@ -136,8 +137,9 @@ class M3Encoder:
         colbert_raw = raw.get("colbert_vecs") or []
         # Issue #1006 — colbert per-token cache dominates memory footprint.
         # Honor ``BIDMATE_M3_USE_FP16=1`` here too so cache halves alongside
-        # weights (line 81). numpy matmul auto-upcasts fp16 → fp32 in
-        # ``colbert_score`` so the scoring path is unaffected.
+        # weights (line 81). ``colbert_score`` upcasts the matmul to fp32
+        # (issue #1241 — numpy does NOT auto-promote fp16 @ fp16), so the
+        # cache stays fp16 but the scoring math is unaffected.
         colbert: list[np.ndarray]
         colbert_scales: list[float]
         if self._int8_cache:
@@ -211,16 +213,21 @@ class M3Encoder:
         """
         if q_colbert.size == 0 or d_colbert.size == 0:
             return 0.0
-        # (T_q, T_d) similarity matrix → row-wise max → sum. Cast to
-        # fp32 first when int8 inputs: numpy's int8 @ int8 → int8 would
-        # overflow on the accumulated sum; explicit fp32 cast keeps the
-        # math identical to the fp16/fp32 path.
-        if q_colbert.dtype == np.int8 or d_colbert.dtype == np.int8:
-            sims = (
-                q_colbert.astype(np.float32) @ d_colbert.astype(np.float32).T
-            ) * (q_scale * d_scale)
-        else:
-            sims = q_colbert @ d_colbert.T
+        # (T_q, T_d) similarity matrix → row-wise max → sum. Always upcast
+        # to fp32 before the matmul. int8 inputs would overflow the
+        # accumulated sum (int8 @ int8 → int8). fp16 inputs are worse than
+        # they look: numpy keeps ``fp16 @ fp16 → fp16`` (no auto-promotion
+        # when both operands are fp16), so the matmul + max + sum accumulate
+        # entirely in fp16, collapsing near-tie cross-chunk scores and
+        # drifting the RRF rank order — the opposite of what the fp16
+        # memory mode is for. The cache stays fp16/int8; only the math is
+        # fp32 (issue #1241).
+        scale = (q_scale * d_scale) if (
+            q_colbert.dtype == np.int8 or d_colbert.dtype == np.int8
+        ) else 1.0
+        sims = (
+            q_colbert.astype(np.float32) @ d_colbert.astype(np.float32).T
+        ) * scale
         return float(np.sum(np.max(sims, axis=1)))
 
 
