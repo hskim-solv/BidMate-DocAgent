@@ -225,6 +225,16 @@ def synthesize_answer(
         return None, meta
     meta["latency_ms"] = round((time.perf_counter() - started) * 1000, 2)
 
+    # Trace v2 (issue #967 / #1352) — env-gated full I/O surface for synthesis.
+    # Captured here, BEFORE the validation early-returns below, so the
+    # diagnostically richest failure paths (empty_summary, unauthorized_chunk_ids,
+    # chunks_outside_claims) still surface the prompt/completion the model
+    # actually produced. ``user_prompt_text`` / ``completion_text`` are absent
+    # when env=off (existing consumers see no schema change).
+    if _trace_full_enabled() and "user_prompt_text" in payload:
+        meta["user_prompt_text"] = payload.get("user_prompt_text")
+        meta["completion_text"] = payload.get("completion_text")
+
     summary = str(payload.get("summary") or "").strip()
     used_chunk_ids = [str(cid) for cid in (payload.get("used_chunk_ids") or [])]
     if not summary:
@@ -255,12 +265,6 @@ def synthesize_answer(
     meta["tokens_out"] = payload.get("tokens_out")
     meta["cache_read_tokens"] = payload.get("cache_read_tokens")
     meta["cache_write_tokens"] = payload.get("cache_write_tokens")
-    # Trace v2 (issue #967) — env-gated full I/O surface for synthesis.
-    # ``meta["user_prompt_text"]`` / ``["completion_text"]`` are absent when
-    # env=off (existing consumers see no schema change).
-    if _trace_full_enabled() and "user_prompt_text" in payload:
-        meta["user_prompt_text"] = payload.get("user_prompt_text")
-        meta["completion_text"] = payload.get("completion_text")
     meta["cost_estimate_usd"] = compute_cost_usd(
         model=meta["model"],
         tokens_in=meta["tokens_in"],
