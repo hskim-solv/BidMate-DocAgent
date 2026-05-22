@@ -1,7 +1,7 @@
 # ADR 0056 — Trajectory-rationality judge 를 새 측정 표면으로
 
 - Status: Accepted
-- Implemented: #987 (2026-05-18) — `eval/judges/rationality_judge.py` 3-axis trajectory surface (committed 측정은 2-axis 채움 + 1-axis `answer_reasoning` pending — #1297 정정)
+- Implemented: #987 (2026-05-18) — `eval/judges/rationality_judge.py` 3-axis trajectory surface. (#1297 (2026-05-22) 가 committed artifact 와의 모순을 정정해 일시적으로 2-axis measured + 1-axis `answer_reasoning` pending 으로 relabel; #1326 (2026-05-22) 가 stub full-trace 캡처 wiring 을 고쳐 **3-axis 모두 measured** 로 복원 — `answer_reasoning` effective_n=166)
 - Date: 2026-05-18
 - Authors: Hyunsoo Kim
 - Related: ADR 0006 (real-data LLM-judge), ADR 0012 (synthetic LLM-judge), ADR 0014 (RAGAS enrichment, Gate 3), ADR 0054 (conditional-on-substantive-answer scorer semantics), ADR 0055 (claim_validator)
@@ -43,7 +43,7 @@ Step 2 (PR #968, ADR-free) 의 trace schema v2 `synthesis_llm_call` 키 (`BIDMAT
    - aggregate `effective_n["answer_reasoning"]` 가 실제 측정 가능했던 케이스 수 보고.
    - mean 분모 제외 — sample 부재 axis 는 `mean = None`, `ci` 미발행.
 
-6. **첫 측정은 stub backend + n=221**. 비용 0, deterministic. 단 committed artifact (`reports/real100/rationality.aggregate.json`) 는 `cases_with_synthesis_llm_call=0` — `BIDMATE_TRACE_FULL=1` + synthesis trace 캡처가 동작하지 않아 `answer_reasoning` 은 미측정 (effective_n=0). 따라서 본 PR 의 측정 표면은 **2-axis (planner_decomposition / retrieval_recalls) measured + 1-axis (answer_reasoning) pending**. full-trace 캡처 + LLM backend 실측정은 별 PR (token budget + cost analysis 동반). `--expect-full-trace` (#1297) 가 effective_n=0 인 full-trace 기대 run 을 incomplete 로 표면화.
+6. **측정은 stub backend + n=221, 3-axis 모두 measured**. 비용 0, deterministic. committed artifact (`reports/real100/rationality.aggregate.json`) 는 `cases_with_synthesis_llm_call=166` / `answer_reasoning` effective_n=166 (나머지 55 케이스는 abstention 으로 synthesis 미수행 → 정상 drop). 이를 위한 두 전제: ① **`answer_reasoning` 측정은 synthesis 가 도는 run 한정** — eval_summary 의 `case_results` 는 primary run 것만 담으므로(`run_eval.py`), real config 의 `primary_run` 이 `agentic_full_llm`(`prompt_profile=llm_synthesis`) arm 을 가리켜야 한다(또는 judge 를 `--traces-dir .../full_llm` 로 override). extractive `full` primary 로는 synthesis trace 가 case_results 에 없어 effective_n=0. ② **stub synthesis backend 가 `BIDMATE_TRACE_FULL=1` 에서 full I/O 를 캡처** — #1326 이전엔 `_stub_backend` 가 `user_prompt_text`/`completion_text` 를 반환하지 않아 effective_n=0 였다(#1297 이 pending 으로 정직하게 표시했던 상태). #1326 이 stub 캡처를 live backend 와 동일하게 고쳐 ② 를 해소. LLM backend 실측정(`BIDMATE_RATIONALITY_BACKEND=openai_compatible`)은 별 PR (token budget + cost analysis 동반). `--expect-full-trace` (#1297) 가 effective_n=0 인 full-trace 기대 run 을 incomplete 로 표면화.
 
 ## Why these specific choices
 
@@ -61,7 +61,7 @@ Step 2 (PR #968, ADR-free) 의 trace schema v2 `synthesis_llm_call` 키 (`BIDMAT
 - **Phase 3 audit item 3 (✗ absent → ✓ present)** 폐쇄. 5-step portfolio narrative ("측정 → 함정 발견 → 함정 fix → 측정 표면 audit → 자동 게이트 도입 → process rationality 측정 도입") 의 step 3 (= 측정 표면 완비) 까지 달성.
 - 신규 `reports/real100/rationality.{md,aggregate.json}` 두 산출물 → eval surface 의 1-차원 추가.
 - judge LLM backend 의 실 측정 비용 (n=221 × 1 LLM call = 221 LLM call/run) 은 별 PR scope. 본 PR 의 measurement scope = stub backend (0 cost, deterministic).
-- `answer_reasoning` 의 effective_n 는 `BIDMATE_TRACE_FULL=1` + synthesis trace 캡처 여부에 의존. **본 committed 측정에서는 미캡처 → effective_n=0 (cases_with_synthesis_llm_call=0)** — 즉 answer_reasoning 은 full-trace 캡처가 동작하는 follow-up 까지 pending (#1297 정정; 이전 본문의 "모든 case cover" 는 artifact 와 모순이라 철회). `rationality.md` 표/CLI 가 해당 축을 `pending`/`incomplete` 로 표면화.
+- `answer_reasoning` 의 effective_n 는 `BIDMATE_TRACE_FULL=1` + synthesis trace 캡처 여부에 의존. **#1326 측정에서 effective_n=166 (cases_with_synthesis_llm_call=166)** — synthesis-primary run (`agentic_full_llm`) + stub full-trace 캡처 wiring fix 로 3-axis 모두 measured. 나머지 55 케이스는 abstention 으로 synthesis 미수행(정상 drop, ADR 0054 substantive-only semantics). (이력: #987 최초 measured 주장 → #1297 이 effective_n=0 artifact 와의 모순을 pending 으로 정직 정정 → #1326 이 wiring 을 고쳐 measured 복원. 이전 본문의 "모든 case cover" 표현은 abstention drop 을 누락했던 부정확 — "synthesis 수행 case 전부 cover" 가 정확.)
 - 향후 PR 에서 `Claim:` (ADR 0055) 으로 rationality axis 의 변화 보고 가능 — `Claim: planner_decomposition=+0.05pp` 식. 단 본 PR 에서는 baseline 측정만, claim 0건.
 
 ## Invariance check
@@ -86,16 +86,21 @@ Step 2 (PR #968, ADR-free) 의 trace schema v2 `synthesis_llm_call` 키 (`BIDMAT
 # Stub backend determinism + 6-case unit test
 EMBEDDING_BACKEND=hashing python3 -m pytest -q tests/test_rationality_judge.py
 
-# Real-eval regen at n=221 with BIDMATE_TRACE_FULL=1
+# Real-eval regen at n=221 with BIDMATE_TRACE_FULL=1.
+# answer_reasoning 측정은 synthesis 가 도는 run 한정 — local config 의
+# primary_run 이 `agentic_full_llm`(prompt_profile=llm_synthesis) arm 을
+# 가리켜야 case_results 에 synthesis trace 가 담긴다. extractive `full`
+# primary 로는 effective_n["answer_reasoning"]=0 (synthesis 미수행).
 BIDMATE_TRACE_FULL=1 BIDMATE_SYNTHESIS_BACKEND=stub make real-eval
 
-# Score traces (stub backend, 0 cost)
+# Score traces (stub backend, 0 cost). --expect-full-trace 로 answer_reasoning
+# effective_n==0 (silently-incomplete) 인 run 을 exit 3 으로 표면화.
 python3 scripts/run_rationality_judge.py \
   --eval-summary reports/real100/eval_summary.json \
   --output reports/real100/rationality.local.json \
   --out-aggregate reports/real100/rationality.aggregate.json \
   --out-md reports/real100/rationality.md \
-  --backend stub
+  --backend stub --expect-full-trace
 
 # Aggregate inspection
 python3 -c "import json; r=json.load(open('reports/real100/rationality.aggregate.json')); \

@@ -207,6 +207,66 @@ class SynthesisUnitTest(unittest.TestCase):
         self.assertIn("backend_error", meta["fallback_reason"])
 
 
+class SynthesisStubFullTraceTest(unittest.TestCase):
+    """Trace v2 (issue #967) — the stub backend must capture the same
+    full prompt/completion I/O as the live backends under
+    ``BIDMATE_TRACE_FULL=1`` so a ``BIDMATE_SYNTHESIS_BACKEND=stub`` eval
+    populates trace ``synthesis_llm_call`` (the ADR 0056 answer_reasoning
+    axis input). ADR 0001 invariant: env-off keeps the fields absent."""
+
+    def _synthesize(self) -> dict[str, Any]:
+        _, meta = rag_synthesis.synthesize_answer(
+            query=ANSWERABLE_QUERY,
+            analysis={"query_type": "single_doc", "entities": ["기관 A"]},
+            answer=_make_answer(),
+            evidence=_make_evidence(),
+            backend="stub",
+        )
+        return meta
+
+    def test_env_on_captures_prompt_and_completion(self) -> None:
+        import os
+
+        from rag_tracing import _synthesis_llm_call_payload
+
+        prior = os.environ.get("BIDMATE_TRACE_FULL")
+        os.environ["BIDMATE_TRACE_FULL"] = "1"
+        try:
+            meta = self._synthesize()
+        finally:
+            if prior is None:
+                os.environ.pop("BIDMATE_TRACE_FULL", None)
+            else:
+                os.environ["BIDMATE_TRACE_FULL"] = prior
+
+        self.assertIn("user_prompt_text", meta)
+        self.assertIn("completion_text", meta)
+        # build_result_trace surfaces the captured I/O as synthesis_llm_call.
+        payload = _synthesis_llm_call_payload(meta)
+        self.assertIsNotNone(payload)
+        assert payload is not None
+        self.assertEqual(payload["backend"], "stub")
+        self.assertIn("기관", payload["user_prompt_text"])
+        self.assertIn("rfp-a::chunk-001", payload["completion_text"])
+
+    def test_env_off_omits_full_io(self) -> None:
+        import os
+
+        from rag_tracing import _synthesis_llm_call_payload
+
+        prior = os.environ.get("BIDMATE_TRACE_FULL")
+        os.environ.pop("BIDMATE_TRACE_FULL", None)
+        try:
+            meta = self._synthesize()
+        finally:
+            if prior is not None:
+                os.environ["BIDMATE_TRACE_FULL"] = prior
+
+        self.assertNotIn("user_prompt_text", meta)
+        self.assertNotIn("completion_text", meta)
+        self.assertIsNone(_synthesis_llm_call_payload(meta))
+
+
 class SynthesisPipelineIntegrationTest(unittest.TestCase):
     """End-to-end: ``agentic_full_llm`` with stub backend must be a
     zero-regression contract test against ``agentic_full``."""
