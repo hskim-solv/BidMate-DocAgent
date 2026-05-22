@@ -419,6 +419,109 @@ def readme_adr_count_violations(readme_text: str, expected_count: int) -> list[s
     return violations
 
 
+# ---------------------------------------------------------------------------
+# ADR file Status header ↔ README *main index* Status-column parity
+# (issue #1181). The third README↔ADR parity dimension, alongside
+# adr_readme_parity_violations (filename membership, #803) and
+# readme_adr_count_violations (count, #1156): this compares the Status
+# *cell*. Catches a proposed->accepted flip that updates the ADR file's
+# `- **Status**:` header but leaves the docs/adr/README.md index row stale —
+# which both the filename-parity check and test_no_unlinked_adr_files_on_disk
+# miss (they only assert the row exists). Re-enables the status-sync
+# guarantee the adr-lifecycle-manager skill had to walk back in #1165.
+# ---------------------------------------------------------------------------
+
+# The main index runs from the `## Index` H2 to the next H2 (or EOF). The
+# `## Roadmap` ("Promote 조건") and `## Deferred decisions` tables reuse the
+# same `| [NNNN](./NNNN-*.md) |` link form, but their 2nd column is a Title /
+# locked-default, NOT a Status — slicing to this section is what keeps them
+# out of the comparison.
+_ADR_INDEX_SECTION_RE = re.compile(
+    r"^##\s+Index\s*$(.*?)(?=^##\s|\Z)", re.MULTILINE | re.DOTALL
+)
+
+# A main-index row: ADR number, filename, then the Status cell (up to the
+# next pipe). Unlike _ADR_INDEX_ROW_RE this also captures the status column.
+# `^`-anchored (MULTILINE) so an inline link in a later column can't be
+# mistaken for a row start.
+_ADR_INDEX_STATUS_ROW_RE = re.compile(
+    r"^\|\s*\[(\d{4})\]\(\./(\d{4}-[^)]+\.md)\)\s*\|\s*([^|]*?)\s*\|",
+    re.MULTILINE,
+)
+
+
+def _normalize_adr_status(raw: str | None) -> str:
+    """Reduce a Status string to its leading lifecycle word, lowercased.
+
+    README index cells are canonical/short (`superseded by 0005`) while ADR
+    file headers carry free-form suffixes (`Superseded`, `accepted
+    (kordoc-corpus measurement landed ...)`). Comparing the first whitespace
+    token lowercased collapses both onto the four states the README "Status
+    lifecycle" table defines (proposed / accepted / superseded / deprecated)
+    — the only distinction a status-drift check needs. Empty / None -> "".
+    """
+    head = (raw or "").strip().lower().split()
+    return head[0] if head else ""
+
+
+def adr_readme_status_violations(
+    adr_dir: str | Path,
+    readme_text: str,
+) -> list[str]:
+    """Return messages where an ADR file's Status disagrees with its row in
+    the docs/adr/README.md *main index* Status column. Empty list = clean.
+
+    Complements ``adr_readme_parity_violations`` (filename membership):
+    compares the Status *column* on the normalized leading lifecycle word
+    (see ``_normalize_adr_status``), so a canonical README cell
+    (`superseded by 0005`) matches a file header of `Superseded`, and a
+    free-form file suffix (`accepted (kordoc-corpus ...)`) matches a bare
+    README `accepted`. Reuses ``parse_adr_status`` for the file side.
+
+    Only the main index (between `## Index` and the next H2) is parsed; the
+    Roadmap / `Promote 조건` and Deferred-decisions tables are excluded. ADRs
+    present on disk but absent from the index (or vice versa) are out of
+    scope here — ``adr_readme_parity_violations`` /
+    ``test_no_unlinked_adr_files_on_disk`` own that membership check.
+
+    Fails *loud* (returns a violation) rather than passing vacuously if the
+    `## Index` section can't be located or parses zero rows; otherwise a
+    renamed header would silently disable the check.
+    """
+    section = _ADR_INDEX_SECTION_RE.search(readme_text)
+    if section is None:
+        return [
+            "docs/adr/README.md: '## Index' section not found — cannot "
+            "verify ADR status parity. If the header was renamed, update "
+            "_ADR_INDEX_SECTION_RE in scripts/_governance.py."
+        ]
+    readme_status = {
+        num: _normalize_adr_status(cell)
+        for num, _, cell in _ADR_INDEX_STATUS_ROW_RE.findall(
+            section.group(1)
+        )
+    }
+    if not readme_status:
+        return [
+            "docs/adr/README.md: main index parsed zero status rows — the "
+            "table format likely changed. Update _ADR_INDEX_STATUS_ROW_RE "
+            "in scripts/_governance.py."
+        ]
+
+    violations: list[str] = []
+    for adr_path in sorted(Path(adr_dir).glob("[0-9][0-9][0-9][0-9]-*.md")):
+        num = adr_path.name[:4]
+        if num not in readme_status:
+            continue  # membership is adr_readme_parity_violations' job
+        file_status = _normalize_adr_status(parse_adr_status(adr_path))
+        if file_status and file_status != readme_status[num]:
+            violations.append(
+                f"{adr_path.name}: file Status '{file_status}' != README "
+                f"index Status '{readme_status[num]}'"
+            )
+    return violations
+
+
 def adr_has_verification_section(adr_path: str | Path) -> bool:
     """Return True if the ADR file contains a `## Verification` H2 header."""
     p = Path(adr_path)
@@ -891,6 +994,41 @@ def _cmd_check_adr_readme_parity(
     return 1
 
 
+def _cmd_check_adr_readme_status(adr_dir: str, readme_path: str) -> int:
+    """Working-tree status-parity check (issue #1181).
+
+    Reads the working-tree README at ``readme_path`` and every ADR file in
+    ``adr_dir``, then reports rows whose index Status cell disagrees with the
+    ADR file's Status header. Unlike --check-adr-readme-parity there is no
+    --readme-staged mode: the canonical gate is the pytest
+    (tests/test_governance.py); the pre-commit hook calls this on the working
+    tree (mirroring the markdown-deadlink hook), and the CI pytest backstops
+    the committed state.
+    """
+    try:
+        readme_text = Path(readme_path).read_text(encoding="utf-8")
+    except OSError as exc:
+        sys.stderr.write(f"\n❌ Could not read {readme_path}: {exc}\n\n")
+        return 1
+    violations = adr_readme_status_violations(adr_dir, readme_text)
+    if not violations:
+        return 0
+    sys.stderr.write(
+        "\n❌ ADR ↔ README index Status parity check failed (issue #1181):\n\n"
+    )
+    for v in violations:
+        sys.stderr.write(f"     - {v}\n")
+    sys.stderr.write(
+        "\n   Update the Status cell in the main index table of\n"
+        f"   {readme_path} to match the ADR file's `- **Status**:` header\n"
+        "   (leading lifecycle word: proposed / accepted / superseded /\n"
+        "   deprecated), or fix the ADR file header. This complements the\n"
+        "   filename-parity check (--check-adr-readme-parity): a row can\n"
+        "   exist yet carry a stale status after a proposed->accepted flip.\n\n"
+    )
+    return 1
+
+
 def _cmd_check_adr_collision(adr_dir: str) -> int:
     dups = find_duplicate_adr_numbers(adr_dir)
     if not dups:
@@ -1137,6 +1275,15 @@ def main() -> int:
              "to shift-left the test_no_unlinked_adr_files_on_disk CI gate.",
     )
     g.add_argument(
+        "--check-adr-readme-status", action="store_true",
+        help="Check each ADR file's Status header matches its row's Status "
+             "cell in the docs/adr/README.md MAIN index table (leading "
+             "lifecycle word, case-insensitive); exit 1 with details on "
+             "drift. Complements --check-adr-readme-parity (membership) by "
+             "catching a stale index status after a proposed->accepted flip "
+             "(issue #1181). Reuses --readme-path / --adr-dir.",
+    )
+    g.add_argument(
         "--emit-fire", action="store_true",
         help="Append a v2-5field event to .claude/.hook-fires.log "
              "(ADR 0060). Requires --outcome and --hook. Optional: "
@@ -1194,14 +1341,14 @@ def main() -> int:
     )
     p.add_argument(
         "--readme-path", default="docs/adr/README.md",
-        help="README path for --check-adr-readme-parity "
-             "(default: docs/adr/README.md).",
+        help="README path for --check-adr-readme-parity / "
+             "--check-adr-readme-status (default: docs/adr/README.md).",
     )
     p.add_argument(
         "--adr-dir", default=ADR_DIR_DEFAULT,
         help=f"ADR directory (default: {ADR_DIR_DEFAULT}). "
              "Only used by --next-adr-number / --check-adr-collision / "
-             "--proposed-adr-age.",
+             "--check-adr-readme-status / --proposed-adr-age.",
     )
     p.add_argument(
         "--repo-root", default=".",
@@ -1231,6 +1378,8 @@ def main() -> int:
             readme_staged=args.readme_staged,
             readme_path=args.readme_path,
         )
+    if args.check_adr_readme_status:
+        return _cmd_check_adr_readme_status(args.adr_dir, args.readme_path)
     if args.emit_fire:
         if not args.outcome or not args.hook:
             sys.stderr.write(
