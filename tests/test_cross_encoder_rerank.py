@@ -106,8 +106,12 @@ class RerankCohereMissingDepsTest(unittest.TestCase):
         candidates = [_make_candidate("a::001")]
         # The rerank() wrapper catches RuntimeError from backends and converts
         # to fell_back=True. With cohere SDK missing, the backend raises and
-        # the caller gets a clean fallback to input order.
-        with mock.patch.dict(sys.modules, {"cohere": None}):
+        # the caller gets a clean fallback to input order. The public-surface
+        # attestation passes the ADR 0061 ③ guard so this exercises the
+        # missing-SDK path rather than the data-boundary block (issue #1195).
+        with mock.patch.dict(
+            os.environ, {"BIDMATE_DATA_SURFACE": "public_synthetic"}
+        ), mock.patch.dict(sys.modules, {"cohere": None}):
             out, meta = rag_rerank.rerank("q", candidates, backend="cohere")
         self.assertEqual([c["chunk_id"] for c in out], ["a::001"])
         self.assertTrue(meta["fell_back"])

@@ -75,7 +75,7 @@ SAFE_TOPLEVEL_KEYS = frozenset(
         "retry",
         "latency",  # only sub-keys "p50", "p95", "mean" extracted below
         "stage_latency",  # aggregated p50/p95/mean per stage
-        "retry_reason_counts",  # reason strings are non-identifying
+        "retry_reason_counts",  # enum prefix kept; colon payload stripped (#1204)
         # Issue #120: retry effectiveness aggregates. All sub-fields are
         # counts/rates over the case set with no per-case payload; the
         # extractor below whitelists the exact sub-keys.
@@ -402,9 +402,19 @@ def extract_aggregate(summary: dict[str, Any]) -> dict[str, Any]:
                 if isinstance(v, dict)
             }
         elif key == "retry_reason_counts" and isinstance(value, dict):
-            # Reason strings are taxonomy codes ("topic_not_grounded"), not
-            # identifying. Counts are integers. Safe.
-            out[key] = {str(k): int(v) for k, v in value.items()}
+            # Reason keys are MOSTLY taxonomy codes ("topic_not_grounded"),
+            # but comparison reasons embed private payloads after a colon —
+            # e.g. ``missing_comparison_entity:<agency>`` (Korean agency
+            # names) or ``missing_comparison_doc:<공고번호>`` (real doc ids).
+            # Persisting them verbatim leaked private real-eval metadata
+            # (#1204). Keep only the enum prefix before the first ``:`` and
+            # sum the counts of any keys that collapse together. The taxonomy
+            # totals are preserved; only the identifying payload is dropped.
+            collapsed: dict[str, int] = {}
+            for k, v in value.items():
+                prefix = str(k).split(":", 1)[0]
+                collapsed[prefix] = collapsed.get(prefix, 0) + int(v)
+            out[key] = collapsed
         elif key == "retry_effectiveness" and isinstance(value, dict):
             extracted: dict[str, Any] = {
                 sub: value.get(sub)

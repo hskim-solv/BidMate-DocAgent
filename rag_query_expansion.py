@@ -30,6 +30,8 @@ import os
 import time
 from typing import Any, Protocol, runtime_checkable
 
+from bidmate_data_boundary import assert_external_payload_allowed
+
 # Env-var contract (mirrors rag_synthesis.py / rag_rerank.py idioms).
 ENV_MODEL = "BIDMATE_QUERY_EXPANSION_MODEL"
 ENV_ANTHROPIC_KEY = "ANTHROPIC_API_KEY"
@@ -190,6 +192,11 @@ def _call_anthropic_hyde(
     function without instantiating the SDK. Raises on any error — the
     caller is responsible for never-raise wrapping.
     """
+    # Fail closed before any SDK import / network call: the query text in the
+    # message below leaves the process, so the data-surface attestation must
+    # pass first (ADR 0061 ③ / ADR 0005). HyDEExpander.expand catches the
+    # resulting ExternalPayloadBlocked and falls back to the raw query.
+    assert_external_payload_allowed(channel="query_expansion:hyde_anthropic")
     try:
         import anthropic  # type: ignore[import-not-found]
     except Exception as exc:

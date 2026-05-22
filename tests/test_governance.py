@@ -296,6 +296,94 @@ def test_no_unlinked_adr_files_on_disk():
 
 
 # ---------------------------------------------------------------------------
+# G4 (status) — ADR file Status header ↔ docs/adr/README.md MAIN-index
+# Status column parity (issue #1181). Sibling of the membership checks
+# above: those assert each ADR row *exists*; this asserts the row's Status
+# *agrees* with the ADR file. Without it a proposed->accepted flip that
+# edits the ADR file but leaves the index row stale passes both the
+# filename-parity check and test_no_unlinked_adr_files_on_disk. Mirrors the
+# senior-positioning status-parity guard (issue #317) but targets the
+# canonical README index, driving gov.adr_readme_status_violations directly.
+# ---------------------------------------------------------------------------
+
+
+def test_adr_readme_main_index_status_matches_files():
+    readme = (ROOT_DIR / "docs" / "adr" / "README.md").read_text()
+
+    # Vacuous-pass guard: the parity check below is meaningless if the index
+    # can't be parsed. A renamed `## Index` header (e.g. Koreanization) would
+    # make the section regex miss and the check pass trivially — assert real
+    # rows were seen first.
+    section = gov._ADR_INDEX_SECTION_RE.search(readme)
+    assert section is not None, (
+        "docs/adr/README.md '## Index' section not found; "
+        "gov._ADR_INDEX_SECTION_RE needs updating or the status-parity "
+        "check passes vacuously."
+    )
+    rows = gov._ADR_INDEX_STATUS_ROW_RE.findall(section.group(1))
+    assert len(rows) > 40, (
+        f"only {len(rows)} main-index status rows parsed (expected >40); "
+        "the index table format likely changed."
+    )
+
+    violations = gov.adr_readme_status_violations(
+        ROOT_DIR / "docs" / "adr", readme
+    )
+    assert not violations, (
+        "ADR file Status headers disagree with the docs/adr/README.md main "
+        "index Status column:\n"
+        + "\n".join(f"  - {v}" for v in violations)
+        + "\n\nIssue #1181: update the index row's Status cell (or the ADR "
+        "file's `- **Status**:` header) so a proposed->accepted flip can't "
+        "drift the reviewer-facing index."
+    )
+
+
+def test_status_parity_excludes_roadmap_and_deferred_tables(tmp_path):
+    # Roadmap ("Promote 조건") + Deferred tables reuse the | [NNNN](./...) |
+    # link form, but their 2nd column is a Title / locked-default, not a
+    # Status. The check must read a status only from the main index table.
+    readme = (
+        "## Index\n\n| # | Status | Title |\n|---|---|---|\n"
+        "| [0001](./0001-preserve-naive-baseline.md) | accepted | x |\n\n"
+        "## Roadmap\n\n| # | Title | Promote 조건 |\n|---|---|---|\n"
+        "| [0011](./0011-llm-synthesis-as-additive-ablation.md) | LLM answer "
+        "synthesis as additive ablation | cond |\n"
+    )
+    (tmp_path / "0001-preserve-naive-baseline.md").write_text(
+        "- **Status**: accepted\n"
+    )
+    # 0011 lives only in the Roadmap table; 'proposed' must NOT be compared
+    # against its title cell ('LLM answer synthesis ...').
+    (tmp_path / "0011-llm-synthesis-as-additive-ablation.md").write_text(
+        "- **Status**: proposed\n"
+    )
+    assert gov.adr_readme_status_violations(tmp_path, readme) == []
+
+    # ... and a real drift on the indexed ADR IS caught.
+    (tmp_path / "0001-preserve-naive-baseline.md").write_text(
+        "- **Status**: proposed\n"
+    )
+    drift = gov.adr_readme_status_violations(tmp_path, readme)
+    assert len(drift) == 1 and "0001" in drift[0], drift
+
+
+def test_status_parity_fails_loud_and_normalizes():
+    # A missing/renamed Index section or an empty index must surface a
+    # violation, never pass vacuously.
+    assert gov.adr_readme_status_violations(".", "## Other\n\nno index\n")
+    assert gov.adr_readme_status_violations(
+        ".", "## Index\n\n(no rows yet)\n\n## Next\n"
+    )
+    # Leading-lifecycle-word normalization: canonical short README cells and
+    # free-form ADR file suffixes collapse to the same lifecycle state.
+    assert gov._normalize_adr_status("Accepted (Superseded by ADR 0052)") == "accepted"
+    assert gov._normalize_adr_status("superseded by 0005") == "superseded"
+    assert gov._normalize_adr_status("  PROPOSED ") == "proposed"
+    assert gov._normalize_adr_status(None) == ""
+
+
+# ---------------------------------------------------------------------------
 # G5 — rag_core.py must not introduce a pydantic/TypedDict class that
 # shadows the answer dict (CLAUDE.md "Prohibited"; ADR 0003).
 # ---------------------------------------------------------------------------
