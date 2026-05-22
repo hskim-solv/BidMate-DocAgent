@@ -1,7 +1,15 @@
 numpy>=2.4.4,<2.5
 PyYAML>=6.0.3
 rank-bm25>=0.2.2,<1.0
-sentence-transformers>=2.7,<3.0
+# Floor bumped 2.7 → 5.0 (issue #1357): EmbeddingGemma-300M
+# (google/embeddinggemma-300m) ships a Gemma3-based dense+normalize module
+# stack that only loads on sentence-transformers>=5.0; Qwen3-Embedding-0.6B
+# also wants the >=4.x loader. ST 5.x requires transformers>=4.41,<5.0 (matches
+# the pin below) and torch>=2.6 (matches line ~21). naive_baseline stays
+# byte-identical — it runs the EMBEDDING_BACKEND=hashing path, never ST
+# (ADR 0001). Env upgrade kept a separate concern from the measurement PR
+# per ADR 0019 ("env upgrade yak-shaving violates one-PR-one-concern").
+sentence-transformers>=5.0,<6.0
 transformers>=4.41,<5.0
 # ADR 0019 condition 1 — torch>=2.6 is the CVE-2025-32434 mitigation
 # enforced inside sentence_transformers' load path for BAAI/bge-m3 and
