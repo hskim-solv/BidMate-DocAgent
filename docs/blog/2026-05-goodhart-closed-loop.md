@@ -69,7 +69,7 @@ else:
 
 `groundedness` / `citation_precision` / `answer_format_compliance` 의 의미를 "substantive answer 시도 (`answerable=True AND not abstained`)" 에 한정. 비-substantive 케이스 (`correct_refusal`, `incorrect_answer`, `boundary_partial`) 는 `None` → mean 분모 제외.
 
-`[ALLOW_REGRESSION: ADR 0054 metric-semantics shift]` 게이트로 baseline regen, 5/5 metric 양수 gap 회복.
+`[ALLOW_REGRESSION: ADR 0054 metric-semantics shift]` 게이트로 baseline regen, 4/5 metric 양수 gap 회복 (`accuracy` / `groundedness` / `citation_precision` / `claim_citation_alignment`). `answer_format_compliance` 는 잔여 dead signal (−0.64pp vs random) 로, 함정을 닫되 남은 항목은 closed-loop 의 *다음 trigger* 로 투명 추적 — [`reports/real100/distinguishing_power.md`](../../reports/real100/distinguishing_power.md) 가 단일 출처.
 
 ### 일반화한 교훈(lesson)
 
