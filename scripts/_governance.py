@@ -211,6 +211,22 @@ PHASE4_PRIVATE_KEYS: frozenset[str] = frozenset(
 )
 PHASE4_ARTIFACT_GLOB = "reports/retrieval/phase4*"
 
+# Issue #1204: a structural (no-name-list) privacy gate for committable
+# eval-data JSON. The Phase 4 key-name gate above only catches a fixed set of
+# forbidden KEYS; it misses private VALUES that hide elsewhere — qids that
+# embed 발주기관/사업명 (`real_<agency>_<topic>`), retry-reason map KEYS that
+# embed agency names or 공고번호 doc-ids after a colon
+# (`missing_comparison_entity:<agency>`), and eda agency labels. Listing the
+# 73 real agency names in this committed source would itself re-leak them, so
+# the gate is purely STRUCTURAL: under the eval-data globs, a committable JSON
+# artifact must contain (a) zero Hangul codepoints anywhere (anonymized qids
+# are `real_<hex>`; categories/query_type are ASCII; metrics are numeric) and
+# (b) zero dict KEYS containing a colon (retry-reason payloads are stripped to
+# their enum prefix). reports/self_review_agreement/ is intentionally NOT in
+# scope — its axis labels are public Korean prose, not private RFP data.
+EVAL_PRIVACY_ARTIFACT_GLOBS = ("reports/retrieval", "reports/real100")
+_EVAL_PRIVACY_HANGUL_RE = re.compile(r"[가-힣ᄀ-ᇿ㄰-㆏ꥠ-꥿]")
+
 # Issue #818: detection-only relaxation. The kebab-lowercase slug remains the
 # *convention* (see ``docs/adr/README.md`` File layout), but the live bug
 # discovery on ``0044-realN-eval-case-expansion.md`` showed that a strict
@@ -1180,6 +1196,108 @@ def _cmd_check_phase4_privacy(repo_root: str) -> int:
     return 1
 
 
+def find_eval_private_text(obj: object) -> dict[str, int]:
+    """Structurally scan a parsed JSON value for the two private-text
+    signatures a committable eval artifact must never carry:
+
+    * ``hangul`` — count of Korean codepoints in any string key OR value.
+    * ``colon_keys`` — count of dict keys containing ``:`` (un-stripped
+      retry-reason payloads embed agency names / 공고번호 doc-ids there).
+
+    Returns ``{signature: count}`` for signatures actually present (empty
+    dict when clean). No name list is consulted — the check is purely
+    structural, so it can live in committed source without re-leaking.
+    """
+    found: dict[str, int] = {}
+
+    def _bump(sig: str, n: int = 1) -> None:
+        if n:
+            found[sig] = found.get(sig, 0) + n
+
+    def _walk(node: object) -> None:
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if isinstance(key, str):
+                    _bump("hangul", len(_EVAL_PRIVACY_HANGUL_RE.findall(key)))
+                    if ":" in key:
+                        _bump("colon_keys")
+                _walk(value)
+        elif isinstance(node, list):
+            for item in node:
+                _walk(item)
+        elif isinstance(node, str):
+            _bump("hangul", len(_EVAL_PRIVACY_HANGUL_RE.findall(node)))
+
+    _walk(obj)
+    return found
+
+
+def eval_privacy_artifact_paths(repo_root: str = ".") -> list[str]:
+    """git-tracked ``*.json`` under the EVAL_PRIVACY_ARTIFACT_GLOBS prefixes
+    (committable eval-data artifacts). Empty when none tracked / git absent.
+    """
+    import subprocess
+
+    try:
+        out = subprocess.check_output(
+            ["git", "-C", repo_root, "ls-files", *EVAL_PRIVACY_ARTIFACT_GLOBS],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        )
+    except (subprocess.CalledProcessError, OSError):
+        return []
+    return [p for p in out.splitlines() if p.endswith(".json")]
+
+
+def scan_eval_artifacts_for_private_text(
+    repo_root: str = ".",
+) -> list[tuple[str, dict[str, int]]]:
+    """Scan every git-tracked eval-data JSON for private-text signatures.
+    Returns ``[(relpath, {signature: count}), ...]`` for offending files; a
+    clean repo returns ``[]``.
+    """
+    import json
+
+    violations: list[tuple[str, dict[str, int]]] = []
+    for rel in eval_privacy_artifact_paths(repo_root):
+        try:
+            data = json.loads((Path(repo_root) / rel).read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        found = find_eval_private_text(data)
+        if found:
+            violations.append((rel, found))
+    return violations
+
+
+def _cmd_check_eval_privacy(repo_root: str) -> int:
+    violations = scan_eval_artifacts_for_private_text(repo_root)
+    if not violations:
+        return 0
+    # Print signature names + counts only — never the offending text itself.
+    sys.stderr.write(
+        "\n❌ Eval artifact privacy gate: committed eval-data JSON carries "
+        "private text.\n\n"
+        "   Committable eval artifacts must hold qid + categories + metric "
+        "values only (ADR 0005 private-local + ADR 0065). These git-tracked "
+        "files break that boundary:\n\n"
+    )
+    for rel, found in violations:
+        detail = ", ".join(f"{k}×{n}" for k, n in sorted(found.items()))
+        sys.stderr.write(f"     - {rel}: {detail}\n")
+    sys.stderr.write(
+        "\n   `hangul` = Korean text (agency/사업명) in a qid or value; "
+        "`colon_keys` = un-stripped retry-reason payload "
+        "(`missing_comparison_*:<agency-or-docid>`).\n"
+        "   Fix: regenerate with the sanitized generators — ablation runners "
+        "write `anon_qid(qid)`, run_real_eval_delta strips retry-reason "
+        "payloads, eda_real100 anonymizes every agency rank — or migrate the "
+        "tracked file in place. Raw labels / query text stay local "
+        "(gitignored).\n\n"
+    )
+    return 1
+
+
 def _cmd_is_load_bearing(path: str) -> int:
     return 0 if is_load_bearing(path) else 1
 
@@ -1305,6 +1423,14 @@ def main() -> int:
              "the offending files + forbidden keys if any are found.",
     )
     g.add_argument(
+        "--check-eval-privacy", action="store_true",
+        help="Structurally scan git-tracked reports/retrieval/ + "
+             "reports/real100/ JSON for private text (Hangul anywhere, or "
+             "colon-bearing dict keys) that breaks the ADR 0005 / ADR 0065 "
+             "committable boundary; exit 1 with offending files + signature "
+             "counts (never the text) if any are found. Uses no name list.",
+    )
+    g.add_argument(
         "--proposed-adr-age", action="store_true",
         help="Report each proposed-status ADR's age + 30-day SLA flag "
              "(ADR 0047). Tab-separated columns: NNNN, age_days, flag "
@@ -1362,7 +1488,8 @@ def main() -> int:
         "--repo-root", default=".",
         help="Repo root for verifies-key marker resolution + the Phase 4 "
              "artifact scan (default: current directory). Used by "
-             "--lint-adr-consequences and --check-phase4-privacy.",
+             "--lint-adr-consequences, --check-phase4-privacy, and "
+             "--check-eval-privacy.",
     )
     args = p.parse_args()
 
@@ -1402,6 +1529,8 @@ def main() -> int:
         return _cmd_proposed_adr_age(args.adr_dir)
     if args.check_phase4_privacy:
         return _cmd_check_phase4_privacy(args.repo_root)
+    if args.check_eval_privacy:
+        return _cmd_check_eval_privacy(args.repo_root)
     return 2
 
 
