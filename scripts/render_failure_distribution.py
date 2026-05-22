@@ -67,14 +67,10 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from eval.scorers.failure_classifier import FAILURE_CATEGORIES  # noqa: E402
-
-# Ensure ``eval`` is importable when invoked as a bare script (sys.path[0]
-# would otherwise be ``scripts/``, not the repo root).
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-from eval.scorers.failure_classifier import classify_failure  # noqa: E402
+from eval.scorers.failure_classifier import (  # noqa: E402
+    FAILURE_CATEGORIES,
+    classify_failure,
+)
 
 DEFAULT_SUMMARY = ROOT / "reports" / "real100" / "eval_summary.json"
 DEFAULT_OUT_MD = ROOT / "reports" / "real100" / "failure_distribution.md"
