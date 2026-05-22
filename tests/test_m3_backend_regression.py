@@ -39,6 +39,7 @@ from rag_core import (
     VALID_RETRIEVAL_BACKENDS,
     analyze_query,
     build_index_payload,
+    build_index_payload_from_documents,
     make_plan,
     metadata_targets,
     resolve_pipeline_config,
@@ -240,10 +241,44 @@ class M3EndToEndTest(unittest.TestCase):  # pragma: no cover — opt-in, gated o
 
     @classmethod
     def setUpClass(cls) -> None:
-        cls.index = build_index_payload(
-            Path("data/raw"),
+        # Issue #1315 — a ~6-chunk synthetic index, NOT the full 383-chunk
+        # data/raw corpus. The contract asserted below (score_parts carry
+        # all three m3 channels, RRF score normalized to [0, 1]) is
+        # backend-driven and corpus-size-independent, so the full corpus
+        # only inflated this test's m3 colbert encode to 737s (the pr-eval
+        # longest-shard floor, since pytest-split cannot subdivide a single
+        # test). The smaller fixture cuts that encode ~55x while exercising
+        # the identical dense + sparse + colbert wiring.
+        cls.index = build_index_payload_from_documents(
+            [
+                {
+                    "doc_id": "agency-a-security",
+                    "title": "기관 A 보안 통제 RFP",
+                    "agency": "기관 A",
+                    "project": "보안 통제 시스템",
+                    "metadata": {},
+                    "sections": [
+                        {"heading": "보안 통제", "text": "기관 A는 접근 통제와 보안 로그 보관을 요구한다."},
+                        {"heading": "요구사항", "text": "기관 A의 보안 통제 요구사항은 암호화와 감사 추적을 포함한다."},
+                        {"heading": "운영", "text": "보안 관제 센터는 24시간 상시 운영되어야 한다."},
+                    ],
+                    "source_path": "agency-a-security.txt",
+                },
+                {
+                    "doc_id": "agency-b-network",
+                    "title": "기관 B 네트워크 RFP",
+                    "agency": "기관 B",
+                    "project": "네트워크 고도화",
+                    "metadata": {},
+                    "sections": [
+                        {"heading": "네트워크", "text": "기관 B는 네트워크 이중화를 요구한다."},
+                        {"heading": "보안", "text": "기관 B의 방화벽 정책은 별도 보안 통제 대상이다."},
+                    ],
+                    "source_path": "agency-b-network.txt",
+                },
+            ],
+            source_dir="test-fixture",
             embedding_backend="hashing",
-            chunking_strategy="fixed",
         )
 
     def test_m3_score_parts_carry_sparse_and_colbert(self) -> None:

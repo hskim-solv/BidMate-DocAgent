@@ -208,23 +208,44 @@ class PerDocCoverageTest(unittest.TestCase):
 
 class ContaminationRejectionThresholdTest(unittest.TestCase):
     def test_pipeline_fails_when_contamination_too_high(self) -> None:
-        # Force a high rejection rate by lowering the threshold to 0%
-        # and supplying a non-empty eval surface — the stub backend
-        # generates templates that include words like "보안 통제" which
-        # do appear in the eval surface, so some rejection is expected.
-        # The intent: a 0% threshold should always fail when *any*
-        # rejection occurs, proving the threshold is wired up.
+        # Contract: ``fail_threshold=0.0`` MUST raise when any generated
+        # query is contaminated, proving the threshold is wired up.
+        #
+        # Issue #1315 — this used to mine over the full 383-chunk data/raw
+        # corpus at queries_per_chunk=200 (316s, a pr-eval shard floor) and
+        # relied on volume to *probabilistically* trip a rejection — so it
+        # also tolerated the zero-rejection path, which never exercised the
+        # raise. We instead guarantee contamination deterministically: a
+        # 2-chunk tmp corpus whose section headings ARE real eval-surface
+        # queries (load_eval_queries — not a mock). The stub template wraps
+        # each heading verbatim, so the generated query's trigrams overlap
+        # the eval query above the 0.7 Jaccard threshold. Same raise path,
+        # against the real guard, in <1s instead of 316s.
+        eval_queries = load_eval_queries()
+        self.assertGreaterEqual(
+            len(eval_queries), 2, "eval surface must be populated to seed contamination"
+        )
+        doc = {
+            "doc_id": "fixture-contaminating",
+            "title": "오염 유발 픽스처",
+            "agency": "기관 X",
+            "project": "테스트",
+            "metadata": {},
+            "sections": [
+                {"heading": eval_queries[0], "text": f"{eval_queries[0]} 관련 본문."},
+                {"heading": eval_queries[1], "text": f"{eval_queries[1]} 관련 본문."},
+            ],
+        }
         with TemporaryDirectory() as tmp:
-            output = Path(tmp) / "pairs.jsonl"
-            # Inject a contaminating query by patching the eval surface:
-            # we use the real loader but assert that under fail_threshold=0
-            # we either succeed (zero rejections) or raise.
-            try:
+            (Path(tmp) / "doc.json").write_text(
+                json.dumps(doc, ensure_ascii=False), encoding="utf-8"
+            )
+            with self.assertRaises(RuntimeError) as ctx:
                 generate_pairs(
-                    input_dir=ROOT / "data" / "raw",
-                    output=output,
+                    input_dir=Path(tmp),
+                    output=Path(tmp) / "pairs.jsonl",
                     backend="stub",
-                    queries_per_chunk=200,
+                    queries_per_chunk=5,
                     neg_per_pos=3,
                     hard_neg_rank_window=(3, 15),
                     val_frac=0.10,
@@ -232,8 +253,7 @@ class ContaminationRejectionThresholdTest(unittest.TestCase):
                     max_chars=240,
                     fail_threshold=0.0,
                 )
-            except RuntimeError as exc:
-                self.assertIn("rejection rate", str(exc))
+            self.assertIn("rejection rate", str(ctx.exception))
 
 
 if __name__ == "__main__":
