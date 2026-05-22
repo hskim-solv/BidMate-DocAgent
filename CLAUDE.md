@@ -4,7 +4,7 @@ RFP 문서 이해를 위한 DocAgent 시스템. **입찰/RFP 문서 인텔리전
 
 파이프라인: ingestion → 메타데이터 정규화 → 청킹 → 검색 → 재순위/계획 → 근거 집계 → 근거 기반 답변 → 검증 → 평가 → reviewer 문서.
 
-자동화 표면: `.gitignore`, CI ([`pr-eval.yml`](.github/workflows/pr-eval.yml), [`branch-and-issue-check.yml`](.github/workflows/branch-and-issue-check.yml), [`pr-judge.yml`](.github/workflows/pr-judge.yml) (`live-judge-please` 라벨로만 트리거되는 advisory live LLM-judge 워크플로 — 머지 필수 게이트 아님, 새 push 후 라벨 재부착 필요, ADR 0043), [`leaderboard.yml`](.github/workflows/leaderboard.yml), [`deploy-fly.yml`](.github/workflows/deploy-fly.yml) + [`docker-publish.yml`](.github/workflows/docker-publish.yml) (api/main.py 데모 배포 — 제품화 아님)), `.githooks/`, [`scripts/check_branch_and_issue.py`](scripts/check_branch_and_issue.py) (브랜치+이슈 컨벤션 regex 단일 출처, ADR 0007), [`.github/pull_request_template.md`](.github/pull_request_template.md), [`.github/ISSUE_TEMPLATE/`](.github/ISSUE_TEMPLATE/), [`.claude/settings.json`](.claude/settings.json) (load-bearing 편집 awareness 훅 + stacked dependent 있을 때 `gh pr merge --delete-branch` 차단 Bash matcher). 이 파일은 자동 강제되지 않는 원칙·포인터를 담는다.
+자동화 표면: `.gitignore`, CI ([`pr-eval.yml`](.github/workflows/pr-eval.yml), [`branch-and-issue-check.yml`](.github/workflows/branch-and-issue-check.yml), [`pr-judge.yml`](.github/workflows/pr-judge.yml) (`live-judge-please` 라벨로만 트리거되는 advisory live LLM-judge 워크플로 — 머지 필수 게이트 아님, 새 push 후 라벨 재부착 필요, ADR 0043), [`codex-adversarial-review.yml`](.github/workflows/codex-adversarial-review.yml) (PR-time Codex adversarial review, informational, ADR 0066), [`leaderboard.yml`](.github/workflows/leaderboard.yml), [`deploy-fly.yml`](.github/workflows/deploy-fly.yml) + [`docker-publish.yml`](.github/workflows/docker-publish.yml) (api/main.py 데모 배포 — 제품화 아님)), `.githooks/`, [`scripts/check_branch_and_issue.py`](scripts/check_branch_and_issue.py) (브랜치+이슈 컨벤션 regex 단일 출처, ADR 0007), [`.github/pull_request_template.md`](.github/pull_request_template.md), [`.github/ISSUE_TEMPLATE/`](.github/ISSUE_TEMPLATE/), [`.claude/settings.json`](.claude/settings.json) (load-bearing 편집 awareness 훅 + stacked dependent 있을 때 `gh pr merge --delete-branch` 차단 Bash matcher). 이 파일은 자동 강제되지 않는 원칙·포인터를 담는다.
 
 ## 여기서 시작
 
@@ -90,7 +90,9 @@ RFP 문서 이해를 위한 DocAgent 시스템. **입찰/RFP 문서 인텔리전
 - `run_rag_query` 답변 dict 를 그림자처럼 가리는 parallel pydantic/TypedDict 모델 추가 — dict 가 계약 (ADR 0003)
 - `eval/config.yaml` 에서 `naive_baseline` preset 제거 (ADR 0001)
 - 리뷰 중 무관한 커밋 추가 — follow-up PR 분리
-- `gh pr list --base <this-PR-head> --state open --json number` 확인 없이 `gh pr merge --delete-branch` 실행. 결과가 비어있지 않으면 stacked dependent 존재 — `--delete-branch` 빼거나 child 를 main 위로 rebase 먼저. (후속 PreToolUse Bash 가드 훅이 자동화하지만, 훅 비활성화 시도 살아남도록 규칙 명시)
+- `gh pr merge --delete-branch` 사용. 멀티 worktree 에서 gh 의 로컬 checkout-to-default 단계가 `main` 충돌로 실패해 원격 삭제 전에 명령을 abort 한다 (서버 머지는 성공, 원격 브랜치 잔존 — issue #1283). 머지는 `gh pr merge <N> --squash --admin`, 원격 브랜치 삭제는 별도 `git push origin --delete <branch>` (순수 원격, worktree-safe)
+- `git push origin --delete <branch>` (또는 `gh pr merge --delete-branch`) 를 `gh pr list --base <branch> --state open --json number` 확인 없이 실행. 결과가 비어있지 않으면 stacked dependent 존재 → 원격 삭제 생략하거나 child 를 main 위로 rebase 먼저. (후속 PreToolUse Bash 가드 훅이 두 형태 모두 자동 차단하지만, 훅 비활성화 시도 살아남도록 규칙 명시)
+- 명령 출력을 `/tmp/<고정이름>` 같은 **전역 고정경로**에 redirect (예: `git push > /tmp/push.txt 2>&1`). 상시 20~30 worktree 동시 가동 → 다른 worktree 세션과 같은 파일 공유, 자기 출력 대신 남의 출력을 읽어 false success signal (실측: #1257 작업 중 `/tmp/push3.txt` 가 다른 worktree 의 push 출력 — issue #1274). 임시 파일은 **`mktemp`** (고유 경로) 사용. 그리고 push/머지 성공 판정은 파일 내용이 아니라 `git ls-remote --heads origin <branch>` 등 **원격 상태 직접 조회**로 검증
 
 ## Non-goals (명시 요청 없을 시)
 

@@ -14,7 +14,18 @@ OUTPUT_DIR="${OUTPUT_DIR:-outputs/real100}"
 REPORT_DIR="${REPORT_DIR:-reports/real100}"
 QUERY="${QUERY:-한영대학교 특성화 맞춤형 교육환경 구축 사업의 사업기간과 사업예산 알려줘}"
 EVAL_CONFIG="${EVAL_CONFIG:-eval/real_config.local.yaml}"
+# EMBEDDING_BACKEND default `hashing` = feature-hashing BoW (rag_embedding.py::
+# hashing_embeddings) — deterministic + offline + no model download, so it is
+# the CI-safe SSoT baseline (ADR 0061). BUT it is *semantic-blind*: dense/hybrid
+# retrieval recall measured on a hashing index is meaningless (issue #1295).
+# For semantic retrieval measurement build with sentence-transformers + a real
+# model, e.g. `make real-eval-semantic` (EMBEDDING_BACKEND=sentence-transformers
+# MODEL=BAAI/bge-m3). The #1212 provenance banner WARNs at run start when an
+# index is hashing-backed.
 EMBEDDING_BACKEND="${EMBEDDING_BACKEND:-hashing}"
+# MODEL empty → build_index.py uses its DEFAULT_EMBEDDING_MODEL; pass-through
+# only when set so the default `make real-eval` invocation stays byte-identical.
+MODEL="${MODEL:-}"
 INGESTION_MODE="${INGESTION_MODE:-csv-text}"
 HWP_LOADER="${HWP_LOADER:-kordoc}"
 PDF_LOADER="${PDF_LOADER:-kordoc}"
@@ -57,6 +68,10 @@ if ! python3 scripts/validate_data_list.py \
 fi
 
 log "Building real-data index"
+MODEL_ARGS=()
+if [[ -n "$MODEL" ]]; then
+  MODEL_ARGS=(--model "$MODEL")
+fi
 python3 scripts/build_index.py \
   --metadata_csv "$METADATA_CSV" \
   --files_dir "$FILES_DIR" \
@@ -64,7 +79,8 @@ python3 scripts/build_index.py \
   --hwp_loader "$HWP_LOADER" \
   --pdf_loader "$PDF_LOADER" \
   --output_dir "$INDEX_DIR" \
-  --embedding_backend "$EMBEDDING_BACKEND"
+  --embedding_backend "$EMBEDDING_BACKEND" \
+  "${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"}"
 
 log "Running real-data sample query"
 python3 app.py --input_dir "$INDEX_DIR" --output_dir "$OUTPUT_DIR" --query "$QUERY"

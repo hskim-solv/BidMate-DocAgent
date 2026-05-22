@@ -5,7 +5,7 @@
 # Classification rationale: refuses tool calls. See scripts/claude-hooks/README.md.
 #
 # Registered in `.claude/settings.json` with matcher `Bash`. Fires before
-# Claude runs any Bash command. Two responsibilities:
+# Claude runs any Bash command. Three responsibilities:
 #
 #   (1) Refuses `gh pr merge --delete-branch` when the target branch has
 #       open stacked dependents (i.e. open PRs whose `base` is this
@@ -20,6 +20,12 @@
 #       Hook B (split into #865): a 5-PR stack audit found multiple
 #       cases where a stacked PR was opened against `main` instead of
 #       its upstream branch, collapsing the stack base.
+#
+#   (3) Refuses `git push origin --delete <branch>` when the branch has
+#       open stacked dependents — the worktree-safe post-merge flow
+#       (issue #1283) deletes the remote head branch this way instead of
+#       `gh pr merge --delete-branch`, and the same auto-close failure
+#       mode applies. Extends (1)'s protection to the push form.
 #
 # Behavior:
 #   - exit 0  : safe / not applicable / fail-open
@@ -54,8 +60,105 @@ fi
 # Classify the gh subcommand once: "merge" | "create" | "".
 # Parsing extracted to scripts/claude-hooks/_bash_guard_parse.py (issue #1045)
 # so tests/test_bash_guard_adversarial.py can pin the false-negative surface.
+#
+# Finding F1: `--detect-gh` always exits 0 on a successful parse, so a
+# *non-zero* exit means the parser invocation itself failed (missing
+# python3, ImportError, syntax error, or a transient sandbox hiccup). The
+# old code piped through `tr` and only tested for empty output, so a parser
+# failure was indistinguishable from "not a gh command" — silently
+# fail-open, letting a dangerous `gh pr merge --delete-branch` through on
+# any parser breakage. Capture stdout and exit status separately (no pipe —
+# a pipe masks python's exit code behind `tr`'s).
 gh_subcommand=$(python3 "$REPO_ROOT/scripts/claude-hooks/_bash_guard_parse.py" \
-                  --detect-gh "$cmd" 2>/dev/null | tr -d '\n')
+                  --detect-gh "$cmd" 2>/dev/null)
+parse_rc=$?
+gh_subcommand=$(printf '%s' "$gh_subcommand" | tr -d '\n')
+
+if [[ "$parse_rc" -ne 0 ]]; then
+  # Parser failed. *Anchored* fail-closed: refuse only when the command
+  # itself STARTS with `gh pr merge|create` (optionally after one leading
+  # separator/subshell-open), i.e. a direct, high-confidence invocation we
+  # would normally guard. This deliberately narrow scope is the compromise
+  # with the fail-open philosophy at the top of this file: a transient
+  # parser failure was observed to over-block benign commands that merely
+  # *contained* the literal `gh pr create` inside quotes (e.g. an echo or a
+  # nested invocation). Anchoring avoids that false block; the residual cost
+  # is that a directly-typed `gh pr merge|create` is refused during a
+  # transient failure and must be re-run (the hiccup clears). A chained
+  # `foo && gh pr merge` falls open here — acceptable per the philosophy
+  # (one slipped merge is recoverable; blocking arbitrary commands is not).
+  if grep -qiE '^[[:space:]]*[(;&|]*[[:space:]]*gh[[:space:]]+pr[[:space:]]+(merge|create)([[:space:]]|$)' <<<"$cmd"; then
+    python3 "$REPO_ROOT/scripts/_governance.py" --emit-fire \
+      --outcome blocked --hook bash-guard --category parser-failure \
+      --path "$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)" \
+      --fire-log "$REPO_ROOT/.claude/.hook-fires.log" 2>/dev/null || true
+    cat >&2 <<'EOF'
+⛔ Refusing gh pr command: bash-guard parser failed to run.
+
+    scripts/claude-hooks/_bash_guard_parse.py exited non-zero (missing
+    python3? import/syntax error? transient sandbox hiccup?), so the
+    stacked-PR safety check could not run. Refusing out of caution rather
+    than silently allowing a potentially stack-collapsing `gh pr
+    merge|create`.
+
+    If this was a transient failure, just re-run the command. If it
+    persists, fix the parser. To proceed manually, first verify:
+        gh pr list --base <branch> --state open
+EOF
+    exit 2
+  fi
+  # Parser failed but the command does not directly start with a guarded gh
+  # pr invocation — fall open (blocking arbitrary commands violates the
+  # fail-open philosophy, and a transient failure must not wedge unrelated
+  # work).
+  exit 0
+fi
+
+# --- Branch (3): `git push origin --delete <branch>` stacked guard (issue #1283) ---
+# The worktree-safe post-merge flow deletes the remote head branch via
+# `git push origin --delete` rather than `gh pr merge --delete-branch`
+# (whose local checkout-to-default step aborts when `main` is checked out in
+# another worktree, leaving the remote branch behind). The remote deletion
+# still auto-closes any open PR that bases on the branch, so the same
+# stacked-dependent protection Branch (1) applies to --delete-branch must
+# cover this form too (precedent PR #423 → #431, #470). Runs independently of
+# the gh subcommand classification above. Parser failure here falls open
+# (no anchored fail-closed) — consistent with the fail-open philosophy: a
+# slipped branch delete is recoverable, blocking arbitrary `git push` is not.
+push_delete_targets=$(python3 "$REPO_ROOT/scripts/claude-hooks/_bash_guard_parse.py" \
+                        --detect-push-delete "$cmd" 2>/dev/null)
+pd_rc=$?
+if [[ "$pd_rc" -eq 0 && -n "${push_delete_targets//[$'\n' ]/}" ]]; then
+  while IFS= read -r del_branch; do
+    [[ -z "$del_branch" ]] && continue
+    pd_deps=$(gh pr list --base "$del_branch" --state open \
+                --json number,title,headRefName 2>/dev/null || true)
+    if [[ -n "$pd_deps" && "$pd_deps" != "[]" ]]; then
+      python3 "$REPO_ROOT/scripts/_governance.py" --emit-fire \
+        --outcome blocked --hook bash-guard --category git-push-delete-stacked \
+        --path "$del_branch" \
+        --fire-log "$REPO_ROOT/.claude/.hook-fires.log" 2>/dev/null || true
+      cat >&2 <<EOF
+⛔ Refusing \`git push origin --delete $del_branch\`: branch has open stacked dependents.
+
+    Open PR(s) base on \`$del_branch\`. Deleting the remote branch now
+    auto-closes them — the same stack-collapse failure mode that
+    \`gh pr merge --delete-branch\` is guarded against (PR #423 → #431, #470):
+
+$pd_deps
+
+    Recovery:
+      (a) Rebase each dependent onto main first, then re-run the delete:
+              gh pr edit <M> --base main
+      (b) Keep the base branch — skip the remote delete; remove it after
+          the dependents land.
+
+    Policy: stacked-PR discipline (CLAUDE.md ## Prohibited, MEMORY feedback_pr_discipline).
+EOF
+      exit 2
+    fi
+  done <<< "$push_delete_targets"
+fi
 
 if [[ -z "$gh_subcommand" ]]; then
   exit 0

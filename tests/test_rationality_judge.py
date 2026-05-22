@@ -161,6 +161,44 @@ class TestMarkdownRenders(unittest.TestCase):
         self.assertIn("n: 4", md)
 
 
+class TestMarkdownSanitizesCaseIds(unittest.TestCase):
+    """ADR 0056 line 71 / #1297: the committable Markdown must not leak raw
+    descriptive case ids — those stay in the gitignored local payload."""
+
+    def test_bottom_rows_use_anonymous_rank_not_case_id(self):
+        # Descriptive ids that encode an agency name + topic, like the real qids.
+        summary = {
+            "case_results": [
+                {
+                    "id": f"real_광주연구원_no_answer_topic_{i}",
+                    "slice": "abstention",
+                    "query_type": "single_doc",
+                    "query": f"query {i}",
+                    "trace": _make_trace(),
+                }
+                for i in range(5)
+            ]
+        }
+        local, aggregate = judge_rationality(summary, backend="stub")
+        md = render_markdown(aggregate, local)
+        # No raw case id appears in the committable Markdown.
+        for case in local["cases"]:
+            self.assertNotIn(case["id"], md)
+        # Anonymous rank labels are used instead.
+        self.assertIn("- #1 (slice=", md)
+        self.assertIn("case ids omitted", md)
+
+    def test_answer_reasoning_zero_effective_n_renders_pending(self):
+        summary = _summary_with_inline_traces(n=3, with_synthesis=False)
+        local, aggregate = judge_rationality(summary, backend="stub")
+        md = render_markdown(aggregate, local)
+        # Table cell and bottom-3 section both say "pending", never bare "N/A".
+        self.assertIn("| `answer_reasoning` | pending | (full-trace) | 0 |", md)
+        self.assertIn(
+            "`answer_reasoning` — pending (no synthesis LLM call captured", md
+        )
+
+
 class TestEndToEndCLI(unittest.TestCase):
     def test_cli_writes_three_outputs_and_exits_zero(self):
         import tempfile
@@ -196,6 +234,49 @@ class TestEndToEndCLI(unittest.TestCase):
             self.assertTrue(out_md.exists())
             agg = json.loads(out_agg.read_text())
             self.assertEqual(agg["n"], 3)
+
+
+class TestExpectFullTraceGuard(unittest.TestCase):
+    """#1297: --expect-full-trace fails loudly when answer_reasoning is empty
+    (no synthesis LLM call captured), surfacing a silently-incomplete run."""
+
+    def _run(self, *, with_synthesis: bool, expect_full_trace: bool) -> int:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            eval_path = tmp_path / "eval_summary.json"
+            eval_path.write_text(
+                json.dumps(
+                    _summary_with_inline_traces(n=3, with_synthesis=with_synthesis)
+                ),
+                encoding="utf-8",
+            )
+            argv = [
+                "--eval-summary", str(eval_path),
+                "--output", str(tmp_path / "rationality.local.json"),
+                "--out-aggregate", str(tmp_path / "rationality.aggregate.json"),
+                "--out-md", str(tmp_path / "rationality.md"),
+                "--backend", "stub",
+            ]
+            if expect_full_trace:
+                argv.append("--expect-full-trace")
+            return cli_main(argv)
+
+    def test_exits_3_when_answer_reasoning_uncaptured(self):
+        self.assertEqual(
+            self._run(with_synthesis=False, expect_full_trace=True), 3
+        )
+
+    def test_exits_0_when_answer_reasoning_captured(self):
+        self.assertEqual(
+            self._run(with_synthesis=True, expect_full_trace=True), 0
+        )
+
+    def test_without_flag_uncaptured_still_exits_0(self):
+        self.assertEqual(
+            self._run(with_synthesis=False, expect_full_trace=False), 0
+        )
 
 
 if __name__ == "__main__":

@@ -60,10 +60,19 @@ DEFAULT_TOP_K = 4
 # (``eval/scorers/alignment.py:89`` overlap ≥ 0.5 → supported).
 HALLUCINATION_ALIGNMENT_THRESHOLD = 0.5
 
-# ``planner_under_decomposition`` fires only on query types that require
-# decomposition; single-doc / factual queries with a single attempt are
-# the expected steady state, not under-decomposition.
-DECOMPOSITION_REQUIRED_QUERY_TYPES: frozenset[str] = frozenset({"comparison", "multi_hop"})
+# ``planner_under_decomposition`` fires only on queries that require
+# multi-step decomposition; single-doc / factual queries with a single
+# attempt are the expected steady state, not under-decomposition.
+#
+# ``comparison`` is a first-class query_type (eval/run_eval.py QUERY_TYPES).
+# ``multi_hop`` is NOT a query_type — the loader (eval/run_eval.py:166-169)
+# only accepts the 4 canonical types and rejects anything else, so multi-hop
+# cases are tagged via ``hardcase_categories`` (case.py:161) on top of a base
+# query_type. Listing ``multi_hop`` under query types left that arm dead
+# (planner_under_decomposition stuck at 0); the two sets below are matched
+# against ``query_type`` and ``hardcase_categories`` respectively.
+DECOMPOSITION_REQUIRED_QUERY_TYPES: frozenset[str] = frozenset({"comparison"})
+DECOMPOSITION_REQUIRED_HARDCASE_CATEGORIES: frozenset[str] = frozenset({"multi_hop"})
 
 
 def is_failed(case_result: dict[str, Any]) -> bool:
@@ -105,7 +114,12 @@ def classify_failure(case_result: dict[str, Any]) -> FailureCategory | None:
     abstained = bool(case_result.get("abstained"))
     evidence_doc_ids = set(case_result.get("evidence_doc_ids") or [])
     expected_doc_ids = set(case_result.get("expected_doc_ids") or [])
-    term_match = bool(case_result.get("term_match"))
+    # Evidence-only term signal (eval/scorers/case.py:59-60 — computed over
+    # ``evidence_text`` alone). Deliberately NOT ``term_match``, which is
+    # computed over ``combined_text = answer + evidence`` (case.py:44,81) and
+    # so conflates the model's own (possibly fabricated / query-echoing)
+    # output with what retrieval actually surfaced.
+    citation_term_match = bool(case_result.get("citation_term_match"))
 
     # 1. verifier_false_negative — model answered an unanswerable query.
     #    This is Phase 5 audit (#992) finding #1: 87/103 unanswerable
@@ -114,26 +128,50 @@ def classify_failure(case_result: dict[str, Any]) -> FailureCategory | None:
     if not answerable and not abstained:
         return "verifier_false_negative"
 
-    # 2. verifier_false_positive — model refused an answerable query
-    #    even though the right terms WERE in evidence (the evidence
-    #    contained the answer; verifier was the wrong gatekeeper).
-    if answerable and abstained and term_match:
+    # 2. verifier_false_positive — model refused an answerable query whose
+    #    EVIDENCE already contained the answer (the verifier was the wrong
+    #    gatekeeper). Both signals are evidence-derived: the expected docs
+    #    reached evidence AND the citation terms appeared in evidence_text.
+    #    Using ``term_match`` here would fire on a refusal that merely echoes
+    #    the query terms in its summary even when evidence was empty — that
+    #    case is a retrieval_miss, not a verifier false positive.
+    if (
+        answerable
+        and abstained
+        and expected_doc_ids
+        and expected_doc_ids.issubset(evidence_doc_ids)
+        and citation_term_match
+    ):
         return "verifier_false_positive"
 
-    # 3. retrieval_miss — answerable AND the expected doc never reached
-    #    evidence. Comes before planner under-decomposition because a
-    #    single-attempt planner is correct behaviour when retrieval has
-    #    already found everything; the bug is retrieval, not planning.
-    if answerable and expected_doc_ids and not (expected_doc_ids & evidence_doc_ids):
+    # 3. retrieval_miss — answerable AND the expected docs never fully
+    #    reached evidence. Uses ``issubset`` (mirrors the case.py:80
+    #    ``doc_match`` definition) rather than a bare intersection: a
+    #    comparison query expecting {A, B} whose evidence covers only {A}
+    #    IS a retrieval miss, but a non-empty-intersection check let those
+    #    partial-coverage cases leak into planner/unknown (idx57:
+    #    "retrieval_miss 0 comparison"). Comes before planner
+    #    under-decomposition because a single-attempt planner is correct
+    #    behaviour when retrieval has already found everything.
+    if answerable and expected_doc_ids and not expected_doc_ids.issubset(evidence_doc_ids):
         return "retrieval_miss"
 
-    # 4. planner_under_decomposition — comparison / multi_hop queries
-    #    that exited the planner loop after a single attempt. ``attempt_latency``
+    # 4. planner_under_decomposition — decomposition-required queries that
+    #    exited the planner loop after a single attempt. ``comparison`` is a
+    #    first-class query_type, but ``multi_hop`` is NOT (the loader only
+    #    accepts the 4 canonical query types, eval/run_eval.py:166-169) — it
+    #    is carried on ``hardcase_categories`` (case.py:161) layered atop a
+    #    base query_type, so we match on either signal. ``attempt_latency``
     #    is the per-stage attempt log emitted by ``score_case`` from
-    #    ``diagnostics.filter_stage_attempts`` (eval/scorers/case.py:185-192).
+    #    ``diagnostics.filter_stage_attempts`` (eval/scorers/case.py:201-208).
     query_type = case_result.get("query_type")
+    hardcase = set(case_result.get("hardcase_categories") or [])
     attempt_latency = case_result.get("attempt_latency") or []
-    if query_type in DECOMPOSITION_REQUIRED_QUERY_TYPES and len(attempt_latency) <= 1:
+    requires_decomposition = (
+        query_type in DECOMPOSITION_REQUIRED_QUERY_TYPES
+        or bool(hardcase & DECOMPOSITION_REQUIRED_HARDCASE_CATEGORIES)
+    )
+    if requires_decomposition and len(attempt_latency) <= 1:
         return "planner_under_decomposition"
 
     # 5. generator_hallucination — claim ↔ citation alignment fell below

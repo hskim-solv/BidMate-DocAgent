@@ -137,9 +137,15 @@ PIPELINE_PRESETS: dict[str, dict[str, Any]] = {
         # ndcg@10 +0.065 SIG overall, with per-category SIG wins on multi_hop /
         # distractor_heavy / long_context. Latency 1.35x (757 vs 559 ms p50).
         # `naive_baseline` preset stays `dense` (ADR 0001 byte-identity).
-        # `eval/config.yaml` `full` row was already explicit `hybrid`, so this
-        # change does not affect eval rows — it changes the default for
-        # ad-hoc preset use (CLI / API / pipeline_runner direct invocation).
+        # NOTE (corrected, issue #1285): the eval `full` row in eval/config.yaml
+        # does NOT declare `retrieval_backend`, so it inherits this preset
+        # default via resolve_pipeline_config()'s `config.get("retrieval_backend")
+        # or "dense"` fallback. This flip therefore DID move the eval `full`
+        # (and full_llm / no_rerank / retrieval_only / no_metadata_first) rows
+        # dense -> hybrid. A `full_dense` control row was added to eval/config.yaml
+        # to preserve ADR 0058's dense-vs-hybrid reproducibility from the default
+        # config. The earlier claim here ("already explicit hybrid / no eval
+        # effect") was false.
         "retrieval_backend": "hybrid",
         "prompt_profile": "structured_grounded_claims",
         "rrf_k": RRF_K,

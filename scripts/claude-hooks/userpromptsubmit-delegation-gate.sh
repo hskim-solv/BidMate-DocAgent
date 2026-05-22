@@ -17,10 +17,13 @@
 # CLAUDE.md already documents the rule; this hook makes the rule visible
 # right at prompt time instead of relying on Claude to remember.
 #
-# A line is appended to `.claude/.hook-fires.log` in the existing 4-field
-# format (`<ts>|<action>|<reason>|<path>`) so the `_self_review.py`
-# `collect_governance_hooks` parser can count fires alongside the existing
-# `memory-lines` / `load-bearing` reasons.
+# A line is appended to `.claude/.hook-fires.log` in the ADR 0060 5-field
+# format (`<ts>|nudged|delegation-gate|agent-delegation|<path>`) via
+# `scripts/_governance.py --emit-fire`, so the `_self_review.py`
+# `collect_governance_hooks` parser (which reuses
+# `analyze_hook_outcomes.parse_log_line`) counts it in the generic
+# `fires_by_action` / `fires_by_path` aggregates. There is no dedicated
+# agent-delegation counter (unlike the `memory-lines` hook-id bucket).
 #
 # Hook input (stdin, JSON):
 #   { "session_id": "...", "transcript_path": "...", "prompt": "..." }

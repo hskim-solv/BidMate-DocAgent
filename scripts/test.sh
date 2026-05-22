@@ -48,7 +48,19 @@ if command -v pytest >/dev/null 2>&1; then
   SPLIT_FLAGS=()
   if [[ -n "${BIDMATE_PYTEST_SPLITS:-}" && -n "${BIDMATE_PYTEST_SHARD:-}" ]]; then
     if python -c "import pytest_split" >/dev/null 2>&1; then
-      SPLIT_FLAGS=(--splits "${BIDMATE_PYTEST_SPLITS}" --group "${BIDMATE_PYTEST_SHARD}")
+      # `least_duration` (LPT) over the default `duration_based_chunks`:
+      # the committed `.test_durations` is dominated by a single 737s test
+      # (test_m3 ...colbert, BGE-M3 download+inference). duration_based_chunks
+      # walks tests in collection order accumulating to total/N, which on that
+      # skew leaves a trailing group EMPTY → `pytest` exit 5 (no tests
+      # collected) → shard fails (issue #1281). least_duration assigns each
+      # test to the currently-shortest group, so no group is ever empty AND
+      # the heaviest tests are spread to minimize the max-shard wall-clock.
+      SPLIT_FLAGS=(
+        --splits "${BIDMATE_PYTEST_SPLITS}"
+        --group "${BIDMATE_PYTEST_SHARD}"
+        --splitting-algorithm least_duration
+      )
     else
       echo "pytest-split not importable; ignoring BIDMATE_PYTEST_SPLITS/SHARD." >&2
     fi

@@ -1,76 +1,76 @@
 {
   "gauge": {
     "accuracy": {
-      "default": 0.2966101694915254,
+      "default": 0.16101694915254236,
       "signal_alive": true,
       "vs_random": {
-        "gap": 0.2711864406779661,
-        "normalized": 0.2782608695652174
+        "gap": 0.13559322033898302,
+        "normalized": 0.13913043478260867
       },
       "vs_single": {
-        "gap": 0.2288135593220339,
-        "normalized": 0.24545454545454545
+        "gap": 0.09322033898305083,
+        "normalized": 0.09999999999999999
       }
     },
     "answer_format_compliance": {
-      "default": 0.14634146341463414,
+      "default": 0.135678391959799,
       "signal_alive": false,
       "vs_random": {
-        "gap": -0.006436314363143653,
-        "normalized": -0.00759696121551382
+        "gap": -0.01709938581797879,
+        "normalized": -0.020182881621220866
       },
       "vs_single": {
-        "gap": -0.28356507864144065,
-        "normalized": -0.4974010395841664
+        "gap": -0.2942281500962758,
+        "normalized": -0.5161051157426477
       }
     },
     "citation_precision": {
-      "default": 0.22062146892655365,
+      "default": 0.10451977401129943,
       "signal_alive": true,
       "vs_random": {
-        "gap": 0.22062146892655365,
-        "normalized": 0.22062146892655365
+        "gap": 0.10451977401129943,
+        "normalized": 0.10451977401129943
       },
       "vs_single": {
-        "gap": 0.17824858757062145,
-        "normalized": 0.1861356932153392
+        "gap": 0.06214689265536723,
+        "normalized": 0.06489675516224189
       }
     },
     "claim_citation_alignment": {
-      "default": 0.9627659574468085,
+      "default": 0.9450867052023122,
       "signal_alive": true,
       "vs_random": {
-        "gap": 0.08041301627033792,
-        "normalized": 0.6835106382978722
+        "gap": 0.06273376402584163,
+        "normalized": 0.5332369942196538
       },
       "vs_single": {
-        "gap": 0.0292553191489362,
-        "normalized": 0.44000000000000006
+        "gap": 0.011576066904439908,
+        "normalized": 0.17410404624277606
       }
     },
     "groundedness": {
-      "default": 0.3389830508474576,
+      "default": 0.19491525423728814,
       "signal_alive": true,
       "vs_random": {
-        "gap": 0.3135593220338983,
-        "normalized": 0.32173913043478264
+        "gap": 0.1694915254237288,
+        "normalized": 0.17391304347826086
       },
       "vs_single": {
-        "gap": 0.24576271186440676,
-        "normalized": 0.27102803738317754
+        "gap": 0.1016949152542373,
+        "normalized": 0.11214953271028037
       }
     }
   },
   "num_predictions": 221,
   "runs": {
     "full": {
-      "abstention_rate": 0.1553398058252427,
-      "accuracy": 0.2966101694915254,
-      "answer_format_compliance": 0.14634146341463414,
-      "citation_precision": 0.22062146892655365,
-      "claim_citation_alignment": 0.9627659574468085,
+      "abstention_rate": 0.2621359223300971,
+      "accuracy": 0.16101694915254236,
+      "answer_format_compliance": 0.135678391959799,
+      "citation_precision": 0.10451977401129943,
+      "claim_citation_alignment": 0.9450867052023122,
       "effective_n": 118,
-      "groundedness": 0.3389830508474576,
+      "groundedness": 0.19491525423728814,
       "num_predictions": 221
     },
     "random_retrieval": {

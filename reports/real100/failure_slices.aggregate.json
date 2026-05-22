@@ -1,0 +1,35 @@
+{
+  "categories": {
+    "retrieval_miss": {
+      "aux": {
+        "abstained_true": 36,
+        "doc_match_false": 83,
+        "retry_count_eq_1": 67,
+        "term_match_true": 1
+      },
+      "by_evidence_presence": {
+        "empty": 29,
+        "non_empty": 54
+      },
+      "by_expected_cardinality": {
+        "1": 83
+      },
+      "by_hardcase": {
+        "_untagged": 6,
+        "distractor_heavy": 31,
+        "long_context": 7,
+        "multi_hop": 73,
+        "no_answer": 1
+      },
+      "by_query_type": {
+        "abstention": 1,
+        "follow_up": 2,
+        "single_doc": 80
+      },
+      "total": 83
+    }
+  },
+  "num_predictions": 221,
+  "schema_version": 1,
+  "source": "reports/real100/eval_summary.json"
+}

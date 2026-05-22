@@ -76,6 +76,7 @@ from rag_text_processing import tokenize  # noqa: E402
 from scripts._ablation_common import (  # noqa: E402
     _fmt_ci,
     _fmt_mean,
+    anon_qid,
     categories_from_case,
     compute_deltas,
 )
@@ -179,6 +180,15 @@ def _prime_m3_query_cache(cases: list[dict[str, Any]]) -> None:
             dense=bulk.dense[i : i + 1],
             sparse=[bulk.sparse[i]] if i < len(bulk.sparse) else [],
             colbert=[bulk.colbert[i]] if i < len(bulk.colbert) else [],
+            # Carry the query's own dequant scale (issue #1010). Dropping
+            # it forced ``retrieve_candidates`` to read an empty
+            # ``colbert_scales`` → q_scale=1.0 → int8 query colbert scored
+            # without dequant (measurement contamination, issue #1012).
+            colbert_scales=(
+                [bulk.colbert_scales[i]]
+                if i < len(bulk.colbert_scales)
+                else []
+            ),
         )
     original_encode = encoder.encode
 
@@ -225,6 +235,17 @@ def _prime_m3_index_cache_and_colbert(index: dict[str, Any]) -> None:
     total_tokens = sum(chunk_sizes)
     if total_tokens == 0:
         return
+    # Per-chunk dequantization scale (issue #1010 int8 cache). Empty when
+    # the cache is fp16/fp32 → default 1.0 per chunk so the fast-path
+    # math collapses to the unquantized case. Built here once so the
+    # batched matmul below can apply the same dequant the per-chunk
+    # ``M3Encoder.colbert_score`` does — otherwise int8 caches would be
+    # scored on raw int8 dot products and the measurement is invalid.
+    raw_scales = list(getattr(cache, "colbert_scales", []) or [])
+    chunk_scales = [
+        float(raw_scales[i]) if i < len(raw_scales) else 1.0
+        for i in range(len(chunk_colberts))
+    ]
     # Boundaries: cumulative chunk token offsets, length len(chunks)+1.
     boundaries = np.cumsum([0] + chunk_sizes, dtype=np.int64)
     # Concat all chunk colbert into (total_tokens, D); empty chunks
@@ -245,8 +266,18 @@ def _prime_m3_index_cache_and_colbert(index: dict[str, Any]) -> None:
     original_colbert_score = type(encoder).colbert_score
 
     def patched_colbert_score(
-        q_colbert: np.ndarray, d_colbert: np.ndarray
+        q_colbert: np.ndarray,
+        d_colbert: np.ndarray,
+        q_scale: float = 1.0,
+        d_scale: float = 1.0,
     ) -> float:
+        # Signature mirrors ``M3Encoder.colbert_score`` (issue #1010):
+        # ``retrieve_candidates`` calls with ``q_scale=``/``d_scale=``
+        # kwargs, so dropping them here raised ``TypeError`` on the first
+        # primed scoring (issue #1012 regression). ``q_scale`` is the
+        # query's dequant scale (constant per query → applied once at
+        # cache-build time); the per-chunk ``d_scale`` is read from
+        # ``chunk_scales`` so the cached row matches the d_colbert.
         if q_colbert.size == 0 or d_colbert.size == 0:
             return 0.0
         key = id(q_colbert)
@@ -255,14 +286,22 @@ def _prime_m3_index_cache_and_colbert(index: dict[str, Any]) -> None:
             # Single big matmul: (T_q, D) @ (total_tokens, D).T
             # -> (T_q, total_tokens). Row-wise max per chunk slice
             # gives the colbert max-sim. Sum over query tokens then.
-            sims = q_colbert @ big.T
+            # int8 cache: cast the (small) query to fp32 so the matmul
+            # accumulates in float (numpy promotes the int8 ``big`` →
+            # fp32), avoiding int8 overflow exactly like the per-chunk
+            # scorer; then apply ``q_scale * chunk_scales[i]`` per chunk.
+            if big.dtype == np.int8:
+                sims = q_colbert.astype(np.float32) @ big.T
+            else:
+                sims = q_colbert @ big.T
             scores = np.zeros(len(chunk_colberts), dtype=np.float32)
             for i, (start, end) in enumerate(
                 zip(boundaries[:-1], boundaries[1:])
             ):
                 if start == end:
                     continue
-                scores[i] = float(np.sum(np.max(sims[:, int(start):int(end)], axis=1)))
+                raw = float(np.sum(np.max(sims[:, int(start):int(end)], axis=1)))
+                scores[i] = raw * q_scale * chunk_scales[i]
             score_cache[key] = scores
         idx = chunk_id_map.get(id(d_colbert))
         if idx is None:
@@ -270,7 +309,9 @@ def _prime_m3_index_cache_and_colbert(index: dict[str, Any]) -> None:
             # to the original per-chunk matmul. Should never fire for
             # primed indexes (rag_retrieval reads cache.colbert by
             # chunk_idx, so the ndarray identity matches what we built).
-            return original_colbert_score(q_colbert, d_colbert)
+            return original_colbert_score(
+                q_colbert, d_colbert, q_scale=q_scale, d_scale=d_scale
+            )
         return float(scores[idx])
 
     # Patch the static method on the class. The encoder is a process-
@@ -316,7 +357,7 @@ def measure_variant(
         retrieved_chunk_ids, latency_ms = run_single_case(index, case, spec, top_k)
         latency_vals.append(latency_ms)
         row: dict[str, Any] = {
-            "qid": qid,
+            "qid": anon_qid(qid),
             "query_type": qt,
             "categories": categories_from_case(case),
             "gold_chunk_n": len(gold_chunk_ids),
@@ -630,7 +671,15 @@ def _run_reaggregate(
 
     cfg = yaml.safe_load(Path(args.eval_config).read_text(encoding="utf-8"))
     cases = cfg.get("cases", []) or []
-    cases_by_qid = {str(c.get("id")): c for c in cases}
+    cases_by_qid = {}
+    for _c in cases:
+        _cid = str(_c.get("id"))
+        # Tolerant join: committed real-eval artifacts carry anonymized
+        # qids (anon_qid maps Hangul ids -> real_<hash>); synthetic /
+        # legacy files carry the raw id. Map both so re-aggregation
+        # works regardless of which the persisted row used.
+        cases_by_qid[_cid] = _c
+        cases_by_qid[anon_qid(_cid)] = _c
 
     for variant_name, m in measurements.items():
         rows = m.get("per_case", []) or []

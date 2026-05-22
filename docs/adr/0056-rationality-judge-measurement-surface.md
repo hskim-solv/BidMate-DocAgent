@@ -1,7 +1,7 @@
 # ADR 0056 — Trajectory-rationality judge 를 새 측정 표면으로
 
 - Status: Accepted
-- Implemented: #987 (2026-05-18) — `eval/judges/rationality_judge.py` 3-axis trajectory measurement
+- Implemented: #987 (2026-05-18) — `eval/judges/rationality_judge.py` 3-axis trajectory surface (committed 측정은 2-axis 채움 + 1-axis `answer_reasoning` pending — #1297 정정)
 - Date: 2026-05-18
 - Authors: Hyunsoo Kim
 - Related: ADR 0006 (real-data LLM-judge), ADR 0012 (synthetic LLM-judge), ADR 0014 (RAGAS enrichment, Gate 3), ADR 0054 (conditional-on-substantive-answer scorer semantics), ADR 0055 (claim_validator)
@@ -43,7 +43,7 @@ Step 2 (PR #968, ADR-free) 의 trace schema v2 `synthesis_llm_call` 키 (`BIDMAT
    - aggregate `effective_n["answer_reasoning"]` 가 실제 측정 가능했던 케이스 수 보고.
    - mean 분모 제외 — sample 부재 axis 는 `mean = None`, `ci` 미발행.
 
-6. **첫 측정은 stub backend + n=221 with `BIDMATE_TRACE_FULL=1`**. 비용 0, deterministic. LLM backend 실측정은 별 PR (token budget + cost analysis 동반).
+6. **첫 측정은 stub backend + n=221**. 비용 0, deterministic. 단 committed artifact (`reports/real100/rationality.aggregate.json`) 는 `cases_with_synthesis_llm_call=0` — `BIDMATE_TRACE_FULL=1` + synthesis trace 캡처가 동작하지 않아 `answer_reasoning` 은 미측정 (effective_n=0). 따라서 본 PR 의 측정 표면은 **2-axis (planner_decomposition / retrieval_recalls) measured + 1-axis (answer_reasoning) pending**. full-trace 캡처 + LLM backend 실측정은 별 PR (token budget + cost analysis 동반). `--expect-full-trace` (#1297) 가 effective_n=0 인 full-trace 기대 run 을 incomplete 로 표면화.
 
 ## Why these specific choices
 
@@ -61,14 +61,14 @@ Step 2 (PR #968, ADR-free) 의 trace schema v2 `synthesis_llm_call` 키 (`BIDMAT
 - **Phase 3 audit item 3 (✗ absent → ✓ present)** 폐쇄. 5-step portfolio narrative ("측정 → 함정 발견 → 함정 fix → 측정 표면 audit → 자동 게이트 도입 → process rationality 측정 도입") 의 step 3 (= 측정 표면 완비) 까지 달성.
 - 신규 `reports/real100/rationality.{md,aggregate.json}` 두 산출물 → eval surface 의 1-차원 추가.
 - judge LLM backend 의 실 측정 비용 (n=221 × 1 LLM call = 221 LLM call/run) 은 별 PR scope. 본 PR 의 measurement scope = stub backend (0 cost, deterministic).
-- `answer_reasoning` 의 effective_n 는 `BIDMATE_TRACE_FULL=1` 측정 여부에 의존 → 본 측정 환경에서는 모든 case 가 cover 됨 (stub synthesis backend 사용 시도 trace v2 가 prompt/completion 채움).
+- `answer_reasoning` 의 effective_n 는 `BIDMATE_TRACE_FULL=1` + synthesis trace 캡처 여부에 의존. **본 committed 측정에서는 미캡처 → effective_n=0 (cases_with_synthesis_llm_call=0)** — 즉 answer_reasoning 은 full-trace 캡처가 동작하는 follow-up 까지 pending (#1297 정정; 이전 본문의 "모든 case cover" 는 artifact 와 모순이라 철회). `rationality.md` 표/CLI 가 해당 축을 `pending`/`incomplete` 로 표면화.
 - 향후 PR 에서 `Claim:` (ADR 0055) 으로 rationality axis 의 변화 보고 가능 — `Claim: planner_decomposition=+0.05pp` 식. 단 본 PR 에서는 baseline 측정만, claim 0건.
 
 ## Invariance check
 
 - **ADR 0001** (`naive_baseline` byte-identical) — 본 judge 는 read-only consumer, production code path 0 변경 → 합성 baseline 영향 없음.
 - **ADR 0003** (answer dict schema_version=2) — 변경 없음.
-- **ADR 0005** (private real / public synthetic 분리) — `reports/real100/rationality.*` 는 ADR 0005 의 aggregate-only allowlist 패턴 그대로 (eda / distinguishing_power 와 동일). per-case 는 `rationality.local.json` gitignored.
+- **ADR 0005** (private real / public synthetic 분리) — `reports/real100/rationality.*` 는 ADR 0005 의 aggregate-only allowlist 패턴 그대로 (eda / distinguishing_power 와 동일). per-case (case id 포함) 는 `rationality.local.json` gitignored. `rationality.md` 의 bottom-3 행은 발주기관명-인코딩 qid 대신 익명 rank (`#1/#2/#3`) + slice + score 만 노출 (#1297 sanitize; 이전엔 raw qid 가 committed 되어 본 주장과 모순이었음 — `real-data-failure-taxonomy.md` 의 P-NN 컨벤션과 일관화).
 - **ADR 0006** (LLM-judge real-data only) — rationality_judge 도 real eval surface 에서만 의미 (synthetic 의 trajectory 는 deterministic). 본 PR 의 첫 측정은 real n=221, ADR 0006 boundary 준수.
 - **ADR 0054** (substantive-only scorer semantics) — `answer_reasoning` 의 None-skip 이 같은 의미를 trajectory 측정 layer 에 propagate.
 - **ADR 0055** (claim_validator) — rationality axis 는 향후 `Claim:` 검증 대상이 될 수 있음. paired_bootstrap_ci 가 None pair drop 하므로 호환.

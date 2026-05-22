@@ -75,7 +75,7 @@ SAFE_TOPLEVEL_KEYS = frozenset(
         "retry",
         "latency",  # only sub-keys "p50", "p95", "mean" extracted below
         "stage_latency",  # aggregated p50/p95/mean per stage
-        "retry_reason_counts",  # reason strings are non-identifying
+        "retry_reason_counts",  # enum prefix kept; colon payload stripped (#1204)
         # Issue #120: retry effectiveness aggregates. All sub-fields are
         # counts/rates over the case set with no per-case payload; the
         # extractor below whitelists the exact sub-keys.
@@ -319,6 +319,26 @@ METRICS: list[tuple[str, str, bool]] = [
 # -----------------------------------------------------------------------------
 
 
+def _collapse_retry_reason_counts(value: dict[str, Any]) -> dict[str, int]:
+    """Strip the private payload after the first ``:`` from retry-reason keys.
+
+    Reason keys are MOSTLY taxonomy codes (``topic_not_grounded``), but
+    comparison reasons embed private payloads after a colon — e.g.
+    ``missing_comparison_entity:<agency>`` (Korean agency names) or
+    ``missing_comparison_doc:<공고번호>`` (real doc ids). Persisting them
+    verbatim leaked private real-eval metadata (#1204). Keep only the enum
+    prefix before the first ``:`` and sum the counts of any keys that collapse
+    together. The taxonomy totals are preserved; only the identifying payload
+    is dropped. Shared by the top-level handler and the by_format /
+    by_hardcase_category / by_metadata_field slice passthrough (#1286).
+    """
+    collapsed: dict[str, int] = {}
+    for k, v in value.items():
+        prefix = str(k).split(":", 1)[0]
+        collapsed[prefix] = collapsed.get(prefix, 0) + int(v)
+    return collapsed
+
+
 def _extract_ablation_full(run_summary: dict[str, Any]) -> dict[str, Any] | None:
     """Return the ADR 0005-safe headline metrics for one ablation run.
 
@@ -402,9 +422,7 @@ def extract_aggregate(summary: dict[str, Any]) -> dict[str, Any]:
                 if isinstance(v, dict)
             }
         elif key == "retry_reason_counts" and isinstance(value, dict):
-            # Reason strings are taxonomy codes ("topic_not_grounded"), not
-            # identifying. Counts are integers. Safe.
-            out[key] = {str(k): int(v) for k, v in value.items()}
+            out[key] = _collapse_retry_reason_counts(value)
         elif key == "retry_effectiveness" and isinstance(value, dict):
             extracted: dict[str, Any] = {
                 sub: value.get(sub)
@@ -644,6 +662,30 @@ def extract_aggregate(summary: dict[str, Any]) -> dict[str, Any]:
                 metadata_out[str(bucket_name)] = extracted_bucket
         if metadata_out:
             out["by_metadata_field"] = metadata_out
+
+    # #1286: by_format / by_hardcase_category / by_metadata_field are
+    # whitelisted top-level keys, so the main loop raw-passes them through.
+    # The fail-closed bucket sanitizers above only *overwrite* that raw
+    # passthrough when a public bucket name (SAFE_*_BUCKET_KEYS) is present —
+    # real-eval bucket names (``private_pdf_hwp_csv_text`` / ``multi_hop`` …)
+    # never are, so the rich raw bucket is what reaches the committed
+    # aggregate. Its only nested key that embeds a private payload is
+    # ``retry_reason_counts``; collapse it to enum prefixes (same as the
+    # top-level handler) so the surviving raw passthrough cannot leak
+    # 발주기관/공고번호 after a colon. (Sibling by_query_type is not a
+    # top-level key — it is fully rebuilt from SAFE_SLICE_METRICS above and
+    # never carries retry_reason_counts, so it needs no collapse here.)
+    for slice_key in ("by_format", "by_hardcase_category", "by_metadata_field"):
+        slice_val = out.get(slice_key)
+        if not isinstance(slice_val, dict):
+            continue
+        for bucket in slice_val.values():
+            if isinstance(bucket, dict) and isinstance(
+                bucket.get("retry_reason_counts"), dict
+            ):
+                bucket["retry_reason_counts"] = _collapse_retry_reason_counts(
+                    bucket["retry_reason_counts"]
+                )
 
     _assert_no_forbidden(out)
     return out

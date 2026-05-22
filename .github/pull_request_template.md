@@ -43,6 +43,8 @@ CI eval delta 예상은? RAG 외 변경이면 "All `·`" 답변 가능 — 명�
 
 ### 5b. Real-data delta
 
+> **Reviewer 책임 (issue #1027):** §5b CI gate (`scripts/check_branch_and_issue.py --check-5b`) 는 **섹션·표·escape 문장의 *존재* 만** 강제한다. 표 안 숫자의 정확성, escape 문장 claim 의 진위는 자동 검증 불가 — reviewer 가 확인해야 한다. **CI 통과 ≠ §5b 내용 검증 완료.**
+
 <!--
 Load-bearing path 변경 시 필수
 (rag_core.py, rag_retrieval.py, rag_verifier.py, rag_answer.py, rag_query.py,
@@ -51,10 +53,6 @@ ingestion.py, visual_ingestion.py, eval/, api/, docs/adr/, scripts/build_index.p
 "검색/검증 path 동작 변화 없음."
 ADR 0005 참조. 합성 CI delta 만으로는 #69 intended-abstention regression 을
 놓쳤다. §5b CI gate (scripts/check_branch_and_issue.py --check-5b) 가 강제.
-
-**CI 강제 범위 = 섹션 존재만** (markdown 테이블 또는 escape 문장의 *존재*).
-표 안의 숫자 정확성, escape 문장의 claim 진위는 자동 검증 불가 — reviewer
-책임. CI 통과 ≠ 5b 내용 검증 완료. (issue #1027)
 
 README metric sync 는 pr-eval.yml (issue #739) 가 별도 gate — eval surface
 변경 후 `python scripts/update_readme_metrics.py` 실행.

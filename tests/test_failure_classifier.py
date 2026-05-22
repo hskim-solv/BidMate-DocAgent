@@ -102,9 +102,14 @@ class TestVerifierFalseNegative(unittest.TestCase):
 
 class TestVerifierFalsePositive(unittest.TestCase):
     """2. verifier_false_positive — refused an answerable query whose
-    evidence already contained the right terms (verifier was wrong)."""
+    EVIDENCE already contained the answer (verifier was wrong gatekeeper).
 
-    def test_classifies_answerable_refused_with_term_match(self) -> None:
+    The classifier keys on evidence-only signals (expected docs reached
+    evidence AND citation terms appeared in evidence_text), NOT on
+    ``term_match`` (which is computed over answer+evidence, case.py:44,81).
+    """
+
+    def test_classifies_answerable_refused_with_evidence_terms(self) -> None:
         case = {
             "id": "vfp_case",
             "query_type": "single_doc",
@@ -113,19 +118,51 @@ class TestVerifierFalsePositive(unittest.TestCase):
             "expected_terms": ["budget"],
             "expected_citation_terms": ["budget"],
         }
-        # Abstained=True but evidence text contains the expected term;
-        # term_match in case.py is computed over combined_text (answer +
-        # evidence text), so a non-empty answer summary echoing "budget"
-        # ensures term_match=True even though the model abstained.
+        # The model abstained, but the expected doc reached evidence and the
+        # citation term "budget" is present in evidence_text — the answer was
+        # right there. The answer summary deliberately does NOT echo "budget",
+        # so this fires purely on evidence-derived signals.
         prediction = _prediction(
             answer_status="insufficient",
-            summary="The budget question is unclear.",  # contains "budget"
+            summary="The figure is unclear.",  # does NOT contain "budget"
             evidence=[{"doc_id": "doc_a", "chunk_id": "doc_a:0", "text": "budget data"}],
             abstained=True,
         )
         result = score_case(case, prediction)
-        self.assertTrue(result["term_match"], "Fixture must drive term_match=True")
+        self.assertTrue(
+            result["citation_term_match"], "Fixture must drive citation_term_match=True"
+        )
         self.assertEqual(classify_failure(result), "verifier_false_positive")
+
+    def test_abstained_with_empty_evidence_is_not_false_positive(self) -> None:
+        """F1 regression — an abstained answerable case whose ANSWER echoes the
+        expected term but whose EVIDENCE is empty must NOT be a false positive.
+
+        ``term_match`` (answer+evidence) is True here because the summary
+        echoes "budget", but evidence is empty so the answer was never
+        actually grounded. The previous ``term_match`` branch mis-bucketed
+        this as verifier_false_positive; it is a retrieval_miss.
+        """
+        case = {
+            "id": "vfp_empty_evidence",
+            "query_type": "single_doc",
+            "answerable": True,
+            "expected_doc_ids": ["doc_a"],
+            "expected_terms": ["budget"],
+            "expected_citation_terms": ["budget"],
+        }
+        prediction = _prediction(
+            answer_status="insufficient",
+            summary="The budget is unclear.",  # echoes "budget" → term_match=True
+            evidence=[],  # but nothing was actually retrieved
+            abstained=True,
+        )
+        result = score_case(case, prediction)
+        self.assertTrue(result["term_match"], "Fixture must drive term_match=True")
+        self.assertFalse(
+            result["citation_term_match"], "Empty evidence → citation_term_match=False"
+        )
+        self.assertEqual(classify_failure(result), "retrieval_miss")
 
 
 class TestRetrievalMiss(unittest.TestCase):
@@ -152,12 +189,20 @@ class TestRetrievalMiss(unittest.TestCase):
 
 
 class TestPlannerUnderDecomposition(unittest.TestCase):
-    """4. planner_under_decomposition — multi-hop / comparison + single attempt."""
+    """4. planner_under_decomposition — decomposition-required + single attempt.
 
-    def test_classifies_multihop_single_attempt(self) -> None:
+    ``multi_hop`` is carried on ``hardcase_categories`` (NOT query_type — the
+    loader rejects multi_hop as a query_type, see
+    ``TestLoaderRejectsMultiHopQueryType``), so the classifier must detect it
+    there. Base query_type is the valid ``single_doc`` here to isolate the
+    hardcase-driven path.
+    """
+
+    def test_classifies_multihop_hardcase_single_attempt(self) -> None:
         case = {
             "id": "planner_case",
-            "query_type": "multi_hop",
+            "query_type": "single_doc",
+            "hardcase_categories": ["multi_hop"],
             "answerable": True,
             "expected_doc_ids": ["doc_a", "doc_b"],
             "expected_terms": ["term1"],
@@ -181,7 +226,70 @@ class TestPlannerUnderDecomposition(unittest.TestCase):
         result = score_case(case, prediction)
         # Sanity: not retrieval_miss (both expected docs present).
         self.assertEqual(set(result["evidence_doc_ids"]), {"doc_a", "doc_b"})
+        self.assertEqual(result["hardcase_categories"], ["multi_hop"])
         self.assertEqual(classify_failure(result), "planner_under_decomposition")
+
+    def test_classifies_comparison_query_type_single_attempt(self) -> None:
+        """``comparison`` is a first-class query_type and also decomposition-required."""
+        case = {
+            "id": "planner_comparison",
+            "query_type": "comparison",
+            "answerable": True,
+            "expected_doc_ids": ["doc_a", "doc_b"],
+            "expected_terms": ["term1"],
+            "expected_citation_terms": ["term1"],
+        }
+        prediction = _prediction(
+            answer_status="supported",
+            summary="Some answer.",
+            evidence=[
+                {"doc_id": "doc_a", "chunk_id": "doc_a:0", "text": "noise"},
+                {"doc_id": "doc_b", "chunk_id": "doc_b:0", "text": "noise"},
+            ],
+            abstained=False,
+            filter_stage_attempts=[
+                {"stage": "filter", "retrieve_ms": 50.0, "verify_ms": 25.0, "verified": False},
+            ],
+        )
+        result = score_case(case, prediction)
+        self.assertEqual(classify_failure(result), "planner_under_decomposition")
+
+
+class TestLoaderRejectsMultiHopQueryType(unittest.TestCase):
+    """F3 premise — ``multi_hop`` is not a canonical query_type, so the loader
+    rejects it. This is why the classifier must detect multi_hop via
+    ``hardcase_categories`` and not ``query_type``."""
+
+    def test_load_config_rejects_multihop_query_type(self) -> None:
+        import tempfile
+        from pathlib import Path
+
+        import yaml
+
+        from eval.run_eval import QUERY_TYPES, load_config
+
+        self.assertNotIn("multi_hop", QUERY_TYPES)
+        config = {
+            "cases": [
+                {
+                    "id": "mh1",
+                    "query": "compare A and B across hops",
+                    "query_type": "multi_hop",
+                    "answerable": True,
+                    "expected_doc_ids": ["doc_a", "doc_b"],
+                }
+            ]
+        }
+        with tempfile.NamedTemporaryFile(
+            "w", suffix=".yaml", delete=False, encoding="utf-8"
+        ) as fh:
+            yaml.safe_dump(config, fh)
+            path = Path(fh.name)
+        try:
+            with self.assertRaises(ValueError):
+                load_config(path)
+        finally:
+            path.unlink(missing_ok=True)
 
 
 class TestGeneratorHallucination(unittest.TestCase):

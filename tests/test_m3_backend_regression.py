@@ -39,6 +39,7 @@ from rag_core import (
     VALID_RETRIEVAL_BACKENDS,
     analyze_query,
     build_index_payload,
+    build_index_payload_from_documents,
     make_plan,
     metadata_targets,
     resolve_pipeline_config,
@@ -157,6 +158,74 @@ class NaiveBaselineInvariantTest(unittest.TestCase):
         self.assertNotIn("m3", str(plan["strategy"]).lower())
 
 
+class M3ColbertFp16UpcastRegressionTest(unittest.TestCase):
+    """Issue #1241 — ``colbert_score`` must upcast the matmul to fp32 even
+    when the cache stores fp16. numpy does NOT auto-promote ``fp16 @ fp16``
+    (the result, max, and sum all accumulate in fp16), so the un-upcast
+    path collapses near-tie cross-chunk scores and drifts the RRF rank
+    order — defeating the fp16 memory mode's purpose.
+
+    This guard runs WITHOUT FlagEmbedding: ``colbert_score`` is a pure
+    staticmethod over numpy arrays, so synthetic fp16 colbert matrices
+    exercise the exact scoring math the m3 backend uses. The pre-existing
+    ``M3Fp16CacheRegressionTest`` compares a chunk against *itself* (self-
+    score parity), which cannot surface a cross-chunk ordering flip — the
+    bug only shows up when ranking two *different* near-tie documents.
+    """
+
+    def _synthetic_colbert(self):
+        # Deterministic fixture (numpy default_rng is stable across
+        # versions). At fp16 storage, doc A and doc B score a clean strict
+        # ordering under fp32 matmul but collapse to an exact tie under
+        # fp16 matmul — the cross-chunk drift the fix prevents.
+        rng = np.random.default_rng(2)
+        dim, t_q = 16, 24
+        q = rng.standard_normal((t_q, dim)).astype(np.float32)
+        q /= np.linalg.norm(q, axis=1, keepdims=True)
+        a = rng.standard_normal((20, dim)).astype(np.float32)
+        a /= np.linalg.norm(a, axis=1, keepdims=True)
+        b = rng.standard_normal((20, dim)).astype(np.float32)
+        b /= np.linalg.norm(b, axis=1, keepdims=True)
+        return (
+            q.astype(np.float16),
+            a.astype(np.float16),
+            b.astype(np.float16),
+        )
+
+    def test_fp16_colbert_preserves_fp32_cross_chunk_ranking(self) -> None:
+        from rag_m3 import M3Encoder
+
+        q16, a16, b16 = self._synthetic_colbert()
+
+        # fp32 reference ordering (the "correct" ranking the fp16 cache
+        # should reproduce). Computed from the same fp16-rounded storage,
+        # differing only in matmul precision.
+        ref_a = float(
+            np.sum(np.max(q16.astype(np.float32) @ a16.astype(np.float32).T, axis=1))
+        )
+        ref_b = float(
+            np.sum(np.max(q16.astype(np.float32) @ b16.astype(np.float32).T, axis=1))
+        )
+        # Fixture sanity: the two docs are genuinely ordered under fp32.
+        self.assertNotEqual(ref_a, ref_b)
+        self.assertGreater(ref_b, ref_a)
+
+        s_a = M3Encoder.colbert_score(q16, a16)
+        s_b = M3Encoder.colbert_score(q16, b16)
+
+        # The bug (fp16 matmul) collapses s_a == s_b, losing the strict
+        # ordering. The fix (fp32 upcast) reproduces the fp32 reference
+        # exactly, so the cross-chunk ordering is preserved.
+        self.assertGreater(
+            s_b,
+            s_a,
+            msg="colbert_score lost the fp32 cross-chunk ordering — "
+            "fp16 matmul was not upcast (issue #1241)",
+        )
+        self.assertEqual(s_a, ref_a)
+        self.assertEqual(s_b, ref_b)
+
+
 @pytest.mark.slow
 @unittest.skipUnless(
     _flag_embedding_available(), "FlagEmbedding not installed — m3 spike test skipped"
@@ -172,10 +241,44 @@ class M3EndToEndTest(unittest.TestCase):  # pragma: no cover — opt-in, gated o
 
     @classmethod
     def setUpClass(cls) -> None:
-        cls.index = build_index_payload(
-            Path("data/raw"),
+        # Issue #1315 — a ~6-chunk synthetic index, NOT the full 383-chunk
+        # data/raw corpus. The contract asserted below (score_parts carry
+        # all three m3 channels, RRF score normalized to [0, 1]) is
+        # backend-driven and corpus-size-independent, so the full corpus
+        # only inflated this test's m3 colbert encode to 737s (the pr-eval
+        # longest-shard floor, since pytest-split cannot subdivide a single
+        # test). The smaller fixture cuts that encode ~55x while exercising
+        # the identical dense + sparse + colbert wiring.
+        cls.index = build_index_payload_from_documents(
+            [
+                {
+                    "doc_id": "agency-a-security",
+                    "title": "기관 A 보안 통제 RFP",
+                    "agency": "기관 A",
+                    "project": "보안 통제 시스템",
+                    "metadata": {},
+                    "sections": [
+                        {"heading": "보안 통제", "text": "기관 A는 접근 통제와 보안 로그 보관을 요구한다."},
+                        {"heading": "요구사항", "text": "기관 A의 보안 통제 요구사항은 암호화와 감사 추적을 포함한다."},
+                        {"heading": "운영", "text": "보안 관제 센터는 24시간 상시 운영되어야 한다."},
+                    ],
+                    "source_path": "agency-a-security.txt",
+                },
+                {
+                    "doc_id": "agency-b-network",
+                    "title": "기관 B 네트워크 RFP",
+                    "agency": "기관 B",
+                    "project": "네트워크 고도화",
+                    "metadata": {},
+                    "sections": [
+                        {"heading": "네트워크", "text": "기관 B는 네트워크 이중화를 요구한다."},
+                        {"heading": "보안", "text": "기관 B의 방화벽 정책은 별도 보안 통제 대상이다."},
+                    ],
+                    "source_path": "agency-b-network.txt",
+                },
+            ],
+            source_dir="test-fixture",
             embedding_backend="hashing",
-            chunking_strategy="fixed",
         )
 
     def test_m3_score_parts_carry_sparse_and_colbert(self) -> None:
@@ -254,9 +357,9 @@ class M3Fp16CacheRegressionTest(unittest.TestCase):  # pragma: no cover — opt-
         self.assertEqual(out_fp32.colbert[0].shape, out_fp16.colbert[0].shape)
 
     def test_colbert_score_unchanged_by_cache_dtype(self) -> None:
-        """numpy matmul upcasts fp16 → fp32 so the scalar score is
-        bit-equal modulo the rounding inherent in the cached fp16
-        storage. ``np.testing.assert_allclose`` with rtol=1e-3 captures
+        """``colbert_score`` upcasts the matmul to fp32 (issue #1241) so the
+        scalar score is bit-equal modulo the rounding inherent in the cached
+        fp16 storage. ``np.testing.assert_allclose`` with rtol=1e-3 captures
         the BGE-M3 paper's <0.1% recall claim at the score level."""
         from rag_m3 import M3Encoder
 

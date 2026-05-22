@@ -13,7 +13,7 @@
 .PHONY: check-branch governance-check check check-latency leaderboard-check real-eval-history-check benchmark-check check-baseline-provenance check-doc-links regen-golden check-golden
 
 # Index build + ad-hoc ask
-.PHONY: index ask
+.PHONY: index ask build-kordoc-manifest
 
 # Synthetic eval surface (public corpus). Includes smoke, full eval, harness
 # matrix, judges, leaderboard render, pareto, korean public bench, external
@@ -21,7 +21,7 @@
 .PHONY: eval smoke smoke-with-judge reproduce benchmark synthetic-judge judge-disagreements leaderboard pareto cost-frontier korean-public-fetch korean-public-eval external-baselines-stub external-baselines-langchain external-baselines-llamaindex external-baselines-ollama harness-smoke harness-ablation harness-compare synthesize-multihop eval-multihop
 
 # Real-data eval cycle (private; ADR 0005 commit boundary).
-.PHONY: real-eval real-eval-delta real-eval-baseline-update real-eval-history-render real-eval-with-judge harness-real
+.PHONY: real-eval real-eval-semantic real-eval-delta real-eval-baseline-update real-eval-history-render real-eval-with-judge harness-real
 
 # Real-data case proposer cycle (ADR 0029; gitignored I/O).
 .PHONY: case-propose case-propose-metadata case-review case-promote
@@ -94,6 +94,14 @@ check-doc-links:
 
 index:
 	$(PYTHON) scripts/build_index.py --input_dir data/raw --output_dir data/index
+
+# Re-prime a kordoc cache's manifest.json so ingestion can trust the bypass
+# (issue #1278). Required once after this gate landed for any pre-existing
+# committed cache; override SOURCE_DIR / CACHE_DIR for non-default layouts.
+SOURCE_DIR ?= data/files
+CACHE_DIR ?= data/files_kordoc
+build-kordoc-manifest:
+	$(PYTHON) scripts/build_kordoc_manifest.py --source-dir $(SOURCE_DIR) --cache-dir $(CACHE_DIR)
 
 ask:
 	$(PYTHON) app.py --input_dir data/index --output_dir outputs --query "기관 A와 기관 B의 보안 요구사항 차이를 알려줘" --pipeline agentic_full
@@ -277,8 +285,19 @@ test:
 # tail latency; deselecting them keeps the local loop snappy. The CI gate
 # (`make test` / scripts/test.sh) still runs EVERYTHING — never rely on
 # test-fast for a merge decision.
+#
+# TEST_WORKERS caps xdist parallelism. Default 4 (not `-n auto`): a dev box
+# hosting many git worktrees runs under memory pressure, and `-n auto`
+# (one worker per logical core, 8–10 here) makes every worker re-collect +
+# import simultaneously at startup, spiking free RAM to near-zero. macOS
+# jetsam then OOM-kills a worker mid-schedule, and xdist references the dead
+# worker → `INTERNALERROR KeyError <WorkerController gwN>` after a 20-min
+# swap-thrash with zero tests run (issue #1318). Capping at 4 completes the
+# same suite in ~80s on that box. Override on a roomy machine/CI:
+# `make test-fast TEST_WORKERS=auto`.
+TEST_WORKERS ?= 4
 test-fast:
-	$(PYTHON) -m pytest -m "not slow" -n auto --dist loadfile -q
+	$(PYTHON) -m pytest -m "not slow" -n $(TEST_WORKERS) --dist loadfile -q
 
 # Fast P0 regression guards for the retrieval loop and answerable smoke path.
 # Run before any change to rag_core retrieval/verification or the eval pipeline.
@@ -330,8 +349,23 @@ demo-docker:
 
 # Run the private real-data eval end-to-end (build index, sample query,
 # eval). Writes reports/real100/eval_summary.json locally (gitignored).
+# NOTE: builds a `hashing` (feature-hashing BoW) index — deterministic +
+# offline, but semantic-blind, so dense/hybrid retrieval recall is NOT
+# meaningful here (issue #1295). Use `real-eval-semantic` for that.
 real-eval:
 	bash scripts/smoke_real.sh
+
+# Semantic variant of real-eval (issue #1295): builds a sentence-transformers
+# BGE-M3 index into a SEPARATE dir (real100_m3) so the canonical hashing
+# real100 index is untouched. Requires the model to be downloadable/cached
+# (not offline/CI-safe). Use this — not `real-eval` — when measuring dense or
+# hybrid retrieval recall, since hashing embeddings carry no semantic signal.
+real-eval-semantic:
+	EMBEDDING_BACKEND=sentence-transformers MODEL=BAAI/bge-m3 \
+	  INDEX_DIR=data/index/real100_m3 \
+	  OUTPUT_DIR=outputs/real100_m3 \
+	  REPORT_DIR=reports/real100_m3 \
+	  bash scripts/smoke_real.sh
 
 # Render an aggregate-only markdown delta between the current
 # real-data run and the committed baseline. Aggregate-only by

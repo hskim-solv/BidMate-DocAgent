@@ -138,6 +138,12 @@ reports/real100/history/*
 # of the surface introduced by ADR 0059 (PR #1001).
 !reports/real100/failure_distribution.md
 !reports/real100/failure_distribution.aggregate.json
+# Issue #1243 — per-category failure-mode slices (script:
+# scripts/render_failure_slices.py). Per-case decomposition of the ADR 0059
+# failure surface for audit verifiability (retrieval-miss-inspection.md).
+# Aggregate-only — counts/cardinalities only, no query/answer text, doc_id,
+# or chunk_id; raw eval_summary.json::case_results stays ignored (line 95).
+!reports/real100/failure_slices.aggregate.json
 # Issue #1021 — variance source inspection (Issue J, ADR 0059 audit
 # follow-up, script: scripts/measure_variance.py). N=5 same-HEAD runs →
 # per-category mean/std/min/max + per-case stability + transition matrix.

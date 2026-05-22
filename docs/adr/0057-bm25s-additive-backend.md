@@ -1,6 +1,6 @@
 # 0057: BM25 backend을 `bm25s`로 추가 분석 변형
 
-- **Status**: proposed
+- **Status**: accepted
 - **Date**: 2026-05-18
 - **Deciders**: hskim
 - **Related**: [ADR 0001](./0001-preserve-naive-baseline.md) (naive_baseline 불변식), [ADR 0010](./0010-hybrid-bm25-dense-retrieval-rrf.md) (하이브리드 BM25 기준선), [ADR 0011](./0011-llm-synthesis-as-additive-ablation.md) / [ADR 0013](./0013-observability-as-additive-pluggable-surface.md) / [ADR 0023](./0023-hyde-query-expansion-ablation.md) / [ADR 0031](./0031-bm25-korean-morphology-additive.md) (재사용되는 additive opt-in 백엔드 패턴), [issue #988](https://github.com/hskim-solv/BidMate-DocAgent/issues/988), context7 audit sweep 2026-05-18 (`~/.claude/plans/context7-fizzy-glade.md`)
@@ -39,7 +39,7 @@ context7 audit Tier 2 finding — 현재 `rag_retrieval.py:80` 가 `rank_bm25.BM
 
 ## Re-open 조건
 
-이 ADR 이 re-open 되어 `bm25_backend` 기본값이 `bm25s` 로 flip 되는 조건은 다음 **세 가지 모두** 충족:
+additive opt-in 백엔드 (`bm25_backend: bm25s`) 추가 자체는 `accepted` — 구현·머지 완료 (PR #988), opt-in 으로 운영 중. 아래는 **default flip** (네 프리셋 기본값을 `okapi` → `bm25s` 로 변경) 만의 **deferred** 조건이다. 이 ADR 이 re-open 되어 `bm25_backend` 기본값이 `bm25s` 로 flip 되는 조건은 다음 **세 가지 모두** 충족:
 
 1. 메인테이너가 공개 합성 eval surface (n=42) 또는 비공개 real eval (n=100) 에서 `bm25_backend: bm25s` + `bm25s` 설치 상태로 실측 — `eval_summary.json` 에 실제 `full_bm25s` 행 (build-fail 이 아닌) 생성.
 2. `full_bm25s` 가 `hybrid_bm25` (자연스러운 control — 같은 `retrieval_backend: hybrid`, `bm25_backend` 만 차이) 대비 다음 중 **하나 이상** 충족:
@@ -48,7 +48,29 @@ context7 audit Tier 2 finding — 현재 `rag_retrieval.py:80` 가 `rank_bm25.BM
    - [`tests/test_bm25_backend_parity.py`](../../tests/test_bm25_backend_parity.py) 의 `top-N overlap ≥ 95%` 가 real corpus 에서도 유지 (작은 fixture 와 다를 수 있음)
 3. 후속 ADR (`005x` 이상 번호) 이 열려 `bm25_backend` 기본값 flip — CI 설치 footprint 영향 (`bm25s` + numpy sparse 추가) 및 base `requirements.txt` 에 `bm25s` 추가할지 opt-in 유지할지 결정 문서화.
 
-조건 1 충족 + 조건 2 미충족 시 (ADR 0019/0021/0031 이 임베딩/토크나이저에서 발견한 `0pp-on-hybrid` 패턴이 BM25 backend 에도 성립), 이 ADR 은 `accepted` 상태 유지하고 공개 합성 eval surface 에 측정 부록만 추가 — 측정 폐루프 작동.
+조건 1 충족 + 조건 2 미충족 시 (ADR 0019/0021/0031 이 임베딩/토크나이저에서 발견한 `0pp-on-hybrid` 패턴이 BM25 backend 에도 성립), 이 ADR 은 `accepted` 상태 유지 (default flip 만 deferred) 하고 공개 합성 eval surface 에 측정 부록만 추가 — 측정 폐루프 작동.
+
+## Measurement (real-100, 2026-05-22)
+
+[PR #1303](https://github.com/hskim-solv/BidMate-DocAgent/pull/1303) (issue #1299) 이 `bm25_backend` 를 `make_plan` → plan dict → `retrieve_candidates` 로 threading 하기 전까지 `full_bm25s` 행은 plan 에 backend 키가 도달하지 않아 silently okapi 로 fallback 했다 (`bm25s` 라벨이지만 실제 okapi 측정). #1303 머지 + `requirements-bm25s.txt` 설치 후, 비공개 real-100 corpus 에서 Re-open 조건 (1)+(2)-③ 을 실측했다.
+
+**방법** — backend 변수만 격리한 retrieval-channel A/B. [`rag_retrieval.bm25_scores_for_index`](../../rag_retrieval.py) (파이프라인의 BM25 채널 그대로) 를 `backend="okapi"` / `backend="bm25s"` 두 번 호출, 동일 query tokens (regex tokenizer, `shared` stopword profile) 로 top-N chunk 집합 overlap 을 측정. corpus = real-100 인덱스 (26376 chunks, `hashing` 임베딩 빌드), queries = `eval/real_config.local.yaml` 의 221 케이스 질의. 풀 agentic 파이프라인 (planner / verifier / answer / rerank) 은 backend 와 무관하므로 우회 — 같은 run 안 inter-backend 비교. aggregate-only (ADR 0005; per-case chunk 텍스트 미노출).
+
+| top-k | mean overlap | median | min | overlap≥0.95 비율 | exact 순서 일치 |
+|------:|-------------:|-------:|----:|-----------------:|----------------:|
+| 10    | 0.9819       | 1.00   | 0.60 | 91.4%           | 89.6%           |
+| 30    | 0.9836       | 1.00   | 0.70 | 91.0%           | 88.2%           |
+| 50    | 0.9854       | 1.00   | 0.62 | 90.5%           | 88.2%           |
+
+(n=221, empty-token 질의 0건, `bm25s.BM25(method="robertson", k1=1.5, b=0.75)`)
+
+**판정**
+
+- **조건 (1) 충족** — real n=221, `bm25s` 설치 상태에서 실제 `bm25s` 스코어링 실행. divergence 존재 (exact 순서 일치 88–90%, min overlap 0.60) 자체가 okapi silent fallback 이 **아님**을 증명한다 (fallback 이었다면 overlap 이 전부 1.0). #1303 plumbing + backend dispatch 가 진짜로 `bm25s` 경로를 행사.
+- **조건 (2)-③ 은 aggregate 로만 유지** — mean overlap 98.2–98.5% ≥ 0.95 이나, toy fixture 의 100% ranking parity 는 real corpus 에서 약화된다 (약 9–10% 질의가 overlap < 0.95, top-k 순서 완전 일치 ~88–90%). [`tests/test_bm25_backend_parity.py`](../../tests/test_bm25_backend_parity.py) 주석이 예고한 "larger fixtures or real corpora may erode this" 가 26376-chunk corpus 에서 실제 발생 — robertson vs okapi 의 IDF 분포 차이가 큰 corpus 의 tie-breaking 을 일부 바꾼다. 이 overlap 은 swap 의 **안전성** 신호이지 **개선** 신호가 아니다.
+- **조건 (2)-①② 는 별도 측정하지 않음** — rankings 가 거의 동일 (mean 98%+) 한 데다 RRF fusion + rerank 가 다운스트림을 추가로 평탄화하므로 `accuracy` / `citation_precision` 의 ≥ +3pp lift 가능성은 희박하다. 100-doc 도메인 latency 차는 sub-ms (`bm25s` 의 100–500x 이득은 1000+ docs 에서만 발현). end-to-end accuracy delta 의 풀 파이프라인 측정은 parity 가 이미 높아 ROI 가 낮아 deferred.
+
+**결정** — 조건 (1) 충족 + 조건 (2) 실질 미충족 (parity 는 안전성 신호일 뿐 lift 아님; ADR 0019/0021/0031 의 `0pp-on-hybrid` 패턴이 BM25 backend 에도 성립). 위 "Re-open 조건" 의 line — *조건 1 충족 + 조건 2 미충족 시 측정 부록만 추가* — 경로를 따라 **`bm25_backend` 기본값 flip 보류**, `bm25s` 는 opt-in additive 백엔드로 유지. 후속 ADR (조건 3) 은 열지 않는다. 측정 폐루프 작동.
 
 ## Consequences
 
