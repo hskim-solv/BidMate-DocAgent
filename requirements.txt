@@ -11,7 +11,9 @@ transformers>=4.41,<5.0
 # MiniLM / e5 / KoSimCSE — see docs/embedding-ablation.md Phase 1.2
 # "Env state" table.
 torch>=2.6
-pymupdf>=1.24,<2.0
+# Floor is 1.24.3, not 1.24: the canonical `pymupdf` module name (imported by
+# visual_ingestion.py) only exists from 1.24.3+; 1.24.0-1.24.2 expose only `fitz`.
+pymupdf>=1.24.3,<2.0
 pdfplumber>=0.11.9,<1.0
 pytesseract>=0.3.13,<1.0
 Pillow>=10.0
