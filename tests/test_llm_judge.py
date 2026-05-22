@@ -13,15 +13,18 @@ a network / API key. Tests pin:
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest import mock
 
 from eval.judges.llm_judge import (
     DEFAULT_TOKEN_BUDGET,
     RAGAS_METRICS,
+    _cache_key,
     judge_ragas,
 )
 from scripts.llm_judge import judge_summary
@@ -218,6 +221,46 @@ class JudgeRagasStubTest(unittest.TestCase):
         self.assertEqual(0, agg["n"])
         for metric in RAGAS_METRICS:
             self.assertIsNone(agg[metric])
+
+
+class JudgeCacheKeyTemperatureRegressionTest(unittest.TestCase):
+    """Sampling temperature must participate in the verdict cache key.
+
+    Regression for a measurement-integrity bug: ``BIDMATE_JUDGE_TEMPERATURE``
+    became configurable in #1132, but ``_cache_key`` keyed only on
+    backend+model+inputs. A verdict produced at one temperature was served
+    as a cache hit for a re-run at another, silently returning a stale
+    judgment (ADR 0012 judge reproducibility).
+    """
+
+    @staticmethod
+    def _key() -> str:
+        case = {
+            "query": "q",
+            "answer": {"summary": "s"},
+            "evidence": [{"doc_id": "d1", "text": "e"}],
+        }
+        return _cache_key(case, "stub", "stub")
+
+    def test_distinct_temperatures_produce_distinct_keys(self) -> None:
+        """The core fix: temperature 0.0 (default) vs 1 must not collide."""
+        with mock.patch.dict(os.environ, clear=False):
+            os.environ.pop("BIDMATE_JUDGE_TEMPERATURE", None)
+            default_key = self._key()
+        with mock.patch.dict(os.environ, {"BIDMATE_JUDGE_TEMPERATURE": "1"}):
+            hot_key = self._key()
+        self.assertNotEqual(default_key, hot_key)
+
+    def test_unset_temperature_matches_explicit_zero(self) -> None:
+        """Unset resolves to 0.0, so its key equals an explicit 0.0 — the
+        default deterministic path stays stable and self-consistent across
+        runs (ADR 0001: default offline behaviour byte-identical)."""
+        with mock.patch.dict(os.environ, clear=False):
+            os.environ.pop("BIDMATE_JUDGE_TEMPERATURE", None)
+            unset_key = self._key()
+        with mock.patch.dict(os.environ, {"BIDMATE_JUDGE_TEMPERATURE": "0.0"}):
+            zero_key = self._key()
+        self.assertEqual(unset_key, zero_key)
 
 
 class JudgeRagasCLITest(unittest.TestCase):
