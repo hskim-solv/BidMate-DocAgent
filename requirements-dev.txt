@@ -26,7 +26,7 @@ pandas>=2.0,<3.0
 # loadfile`; loadfile keeps file-internal state (env mutation, golden writes,
 # qdrant collections, langgraph globals) on a single worker without needing a
 # `@pytest.mark.heavy` scheme. 1010s → ~200s on M-series 8-core.
-pytest-xdist>=3.5
+pytest-xdist>=3.8.0
 # Issue #915 (closes G8 of issue #334) — CI lint gate. pyproject.toml
 # [tool.ruff.lint] is pinned to fatal pyflakes only (E9/F63/F7/F82) — zero
 # finding on current main, no codebase sweep required. Wider rules sweep
