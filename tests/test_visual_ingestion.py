@@ -30,6 +30,21 @@ FIELDNAMES = [
 
 
 class VisualIngestionTest(unittest.TestCase):
+    def test_canonical_pymupdf_module_importable_when_installed(self) -> None:
+        # visual_ingestion.py imports the PDF backend as `import pymupdf`. That
+        # canonical module name only exists from PyMuPDF 1.24.3+; 1.24.0-1.24.2
+        # expose only the legacy `fitz` name. On such a box `import pymupdf`
+        # fails and ALL PDF parsing silently degrades to pdf_parser_unavailable,
+        # while the other tests here merely skip. This one FAILS instead, so a
+        # floor/code mismatch is caught rather than hidden.
+        installed = (
+            importlib.util.find_spec("fitz") is not None
+            or importlib.util.find_spec("pymupdf") is not None
+        )
+        if not installed:
+            self.skipTest("PyMuPDF not installed in this environment")
+        import pymupdf  # noqa: F401  # must succeed whenever PyMuPDF is present
+
     @unittest.skipIf(importlib.util.find_spec("pymupdf") is None, "pymupdf is not installed")
     def test_parses_synthetic_pdf_to_v2_artifact(self) -> None:
         import pymupdf  # type: ignore
