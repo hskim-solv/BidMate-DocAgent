@@ -26,7 +26,7 @@ import argparse
 import ast
 import re
 import sys
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Callable, NamedTuple
 
@@ -605,7 +605,12 @@ def adr_has_resolution_section(adr_path: str | Path) -> bool:
 
 
 def _git_first_commit_date(path: str | Path) -> date | None:
-    """First-add author date of `path` via git, or None if untracked/unknown."""
+    """First-add author date of `path` as a UTC calendar date, or None.
+
+    `%aI` carries the commit's local tz (+09:00 KST in this repo); normalizing
+    to UTC keeps the date on the same frame as the UTC `today` — else an ADR
+    committed just after KST midnight ages to -1 until UTC rolls over.
+    """
     import subprocess
 
     try:
@@ -621,9 +626,12 @@ def _git_first_commit_date(path: str | Path) -> date | None:
     if not lines:
         return None
     try:
-        return date.fromisoformat(lines[0][:10])
+        dt = datetime.fromisoformat(lines[0].strip())
     except ValueError:
         return None
+    if dt.tzinfo is not None:
+        dt = dt.astimezone(timezone.utc)
+    return dt.date()
 
 
 def proposed_adr_age(
@@ -651,7 +659,7 @@ def proposed_adr_age(
     ``sla_days`` defaults to ``THRESHOLDS["ADR_PROPOSED_SLA_DAYS"]``.
     """
     resolver = date_resolver or _git_first_commit_date
-    today = now or date.today()
+    today = now or datetime.now(timezone.utc).date()
     sla = THRESHOLDS["ADR_PROPOSED_SLA_DAYS"] if sla_days is None else sla_days
 
     records: list[ProposedADR] = []
