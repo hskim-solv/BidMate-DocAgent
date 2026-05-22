@@ -115,6 +115,28 @@ class BuildOracleEvidenceTest(unittest.TestCase):
     def test_empty_gold_yields_no_evidence(self) -> None:
         self.assertEqual(build_oracle_evidence(_ABSTENTION_CASE, _index()), [])
 
+    def test_doc_level_fallback_when_terms_unmatched(self) -> None:
+        # expected_terms that appear in NO chunk → chunk-level gold empty,
+        # but expected_doc_ids present → fall back to all chunks of the doc.
+        index = _index()
+        unmatched_case = {
+            "id": "oracle-doclevel-1",
+            "query": _GOLD_CASE["query"],
+            "query_type": "single_doc",
+            "expected_doc_ids": ["gold-doc"],
+            "expected_terms": ["존재하지않는토큰xyz"],
+        }
+        self.assertEqual(derive_gold_chunk_ids(unmatched_case, index), [])
+        ev = build_oracle_evidence(unmatched_case, index)
+        self.assertTrue(ev, "doc-level fallback must inject the gold doc's chunks")
+        self.assertTrue(all(e["doc_id"] == "gold-doc" for e in ev))
+
+    def test_no_expected_doc_ids_yields_no_evidence(self) -> None:
+        # No doc anchor at all → fallback cannot fire → empty (abstain).
+        case = {"id": "x", "query": "q", "query_type": "abstention",
+                "expected_doc_ids": [], "expected_terms": ["무관"]}
+        self.assertEqual(build_oracle_evidence(case, _index()), [])
+
 
 class OracleBypassTest(unittest.TestCase):
     def test_answer_uses_injected_evidence_not_retrieval(self) -> None:

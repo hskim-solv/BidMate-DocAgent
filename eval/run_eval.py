@@ -965,16 +965,40 @@ def build_oracle_evidence(
     ``rag_retrieval`` (``score_candidates`` ~line 632) so the oracle path
     feeds verify+answer an identically-shaped payload. ``score`` is pinned to
     ``1.0`` (above the verifier ``low_top_score`` floor) and
-    ``retrieval_mode="oracle"`` marks the bypass. Abstention cases (empty
-    gold) yield ``[]`` → verify naturally fails → answer abstains (the
-    correct ceiling behavior).
+    ``retrieval_mode="oracle"`` marks the bypass.
+
+    Two ceiling granularities:
+
+    * **chunk-level** (default) — exact gold chunks from
+      ``derive_gold_chunk_ids`` (``expected_doc_ids`` ∩ chunks containing an
+      ``expected_term``): the "perfect chunk retrieval" ceiling.
+    * **doc-level fallback** — when chunk-level resolves nothing but the case
+      has ``expected_doc_ids``, inject *all* chunks of the gold doc(s): the
+      "perfect doc retrieval" ceiling. On real-100, ``expected_terms`` (e.g.
+      ``"150,000,000원"``) often differ in surface form from the csv_text
+      chunk text, so chunk-level gold resolves for only ~⅓ of answerable
+      cases; the doc-level fallback keeps the ceiling measurable for the rest
+      rather than collapsing to all-abstain.
+
+    Abstention cases (no ``expected_doc_ids``) yield ``[]`` → verify naturally
+    fails → answer abstains (the correct ceiling behavior).
     """
-    gold_ids = set(derive_gold_chunk_ids(case, index))
-    if not gold_ids:
-        return []
     by_id = {
         str(chunk.get("chunk_id") or ""): chunk for chunk in (index.get("chunks") or [])
     }
+    gold_ids = list(derive_gold_chunk_ids(case, index))
+    if not gold_ids:
+        expected_docs = {str(d) for d in (case.get("expected_doc_ids") or []) if d}
+        if not expected_docs:
+            return []
+        gold_ids = [
+            str(chunk.get("chunk_id") or "")
+            for chunk in (index.get("chunks") or [])
+            if str(chunk.get("doc_id") or "") in expected_docs
+            and chunk.get("chunk_id")
+        ]
+        if not gold_ids:
+            return []
     evidence: list[dict[str, Any]] = []
     for chunk_id in gold_ids:
         chunk = by_id.get(str(chunk_id))
