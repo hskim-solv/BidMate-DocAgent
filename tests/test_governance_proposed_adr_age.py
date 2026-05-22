@@ -217,6 +217,20 @@ def test_uncommitted_age_none_not_over(tmp_path: Path) -> None:
     assert recs[0].grandfathered is False
 
 
+def test_future_dated_commit_clamps_to_zero(tmp_path: Path) -> None:
+    # KST/+09:00 author date can resolve a calendar day ahead of the runner's
+    # UTC `now`; age must floor at 0 (not -1) and never flag over_sla.
+    _adr(tmp_path, "0011-x.md", "proposed")
+    recs = proposed_adr_age(
+        tmp_path,
+        date_resolver=lambda p: date(2026, 5, 22),  # one day ahead of `now`
+        now=date(2026, 5, 21),
+    )
+    assert recs[0].age_days == 0
+    assert recs[0].over_sla is False
+    assert recs[0].grandfathered is False
+
+
 def test_sorted_oldest_first_uncommitted_last(tmp_path: Path) -> None:
     _adr(tmp_path, "0001-a.md", "proposed")  # newer
     _adr(tmp_path, "0002-b.md", "proposed")  # older
