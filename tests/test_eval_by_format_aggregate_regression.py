@@ -19,6 +19,7 @@ from eval.run_eval import (
     _case_source_format,
     summarize_run,
 )
+from scripts._governance import find_eval_private_text
 from scripts.run_real_eval_delta import (
     FORBIDDEN_KEYS,
     SAFE_FORMAT_BUCKET_KEYS,
@@ -234,6 +235,87 @@ class TestExtractAggregateByFormat(unittest.TestCase):
         self.assertIn("hwp", SAFE_FORMAT_BUCKET_KEYS)
         self.assertIn("pdf", SAFE_FORMAT_BUCKET_KEYS)
         self.assertIn("synthetic_public_sample", SAFE_FORMAT_BUCKET_KEYS)
+
+
+class TestSliceRetryReasonAnonymization(unittest.TestCase):
+    """#1286: by_format / by_hardcase_category / by_metadata_field are
+    whitelisted top-level keys, so the main loop raw-passes them through. When
+    the bucket name is not in the public SAFE_*_BUCKET_KEYS enum (every
+    real-eval bucket — ``private_pdf_hwp_csv_text`` / ``multi_hop`` …), the
+    fail-closed sanitizer produces an empty result and does not overwrite the
+    raw passthrough. The surviving raw bucket carries a nested
+    ``retry_reason_counts`` whose comparison keys embed 발주기관/공고번호 after a
+    colon; #1204's top-level collapse did not reach these slices, so a baseline
+    regen re-leaked the payload. The fix collapses the nested counts to enum
+    prefixes (identical to the top-level handler).
+    """
+
+    # missing_comparison_entity:<Korean agency> + missing_comparison_doc:<id>
+    # are the exact private signatures find_eval_private_text scans for.
+    PRIVATE_RETRY_REASON_COUNTS = {
+        "topic_not_grounded": 91,
+        "missing_comparison_entity:한국전자통신연구원": 3,
+        "missing_comparison_entity:고양도시관리공사": 1,
+        "missing_comparison_doc:20240419765-0.0": 2,
+        "partial_topic_grounding": 2,
+    }
+    # After collapse the four colon keys fold into two enum prefixes and sum.
+    EXPECTED_COLLAPSED = {
+        "topic_not_grounded": 91,
+        "missing_comparison_entity": 4,
+        "missing_comparison_doc": 2,
+        "partial_topic_grounding": 2,
+    }
+
+    def _summary(self, slice_key: str, bucket_name: str) -> dict[str, Any]:
+        return {
+            "num_predictions": 100,
+            "accuracy": 0.5,
+            slice_key: {
+                bucket_name: {
+                    "num_predictions": 100,
+                    "accuracy": 0.5,
+                    "retry_reason_counts": dict(self.PRIVATE_RETRY_REASON_COUNTS),
+                }
+            },
+        }
+
+    def _assert_clean_and_collapsed(self, out: dict[str, Any], slice_key: str, bucket_name: str) -> None:
+        # The rich raw bucket is preserved (not dropped) ...
+        self.assertIn(slice_key, out)
+        self.assertIn(bucket_name, out[slice_key])
+        rrc = out[slice_key][bucket_name]["retry_reason_counts"]
+        # ... but the colon payload is gone and counts collapsed to prefixes.
+        self.assertEqual(rrc, self.EXPECTED_COLLAPSED)
+        # And the structural privacy scanner finds no Hangul / colon keys.
+        found = find_eval_private_text(out)
+        self.assertNotIn("hangul", found, f"Hangul leaked in {slice_key}: {found}")
+        self.assertNotIn("colon_keys", found, f"colon key leaked in {slice_key}: {found}")
+
+    def test_by_format_private_bucket_retry_reason_collapsed(self) -> None:
+        out = extract_aggregate(self._summary("by_format", "private_pdf_hwp_csv_text"))
+        self._assert_clean_and_collapsed(out, "by_format", "private_pdf_hwp_csv_text")
+
+    def test_by_hardcase_category_private_bucket_retry_reason_collapsed(self) -> None:
+        out = extract_aggregate(self._summary("by_hardcase_category", "multi_hop"))
+        self._assert_clean_and_collapsed(out, "by_hardcase_category", "multi_hop")
+
+    def test_by_metadata_field_private_bucket_retry_reason_collapsed(self) -> None:
+        # by_metadata_field uses a different enum; a non-whitelisted bucket
+        # still exercises the raw passthrough path.
+        out = extract_aggregate(self._summary("by_metadata_field", "issuing_agency"))
+        self._assert_clean_and_collapsed(out, "by_metadata_field", "issuing_agency")
+
+    def test_collapse_matches_top_level_handler(self) -> None:
+        # The slice collapse must be byte-identical to the top-level
+        # retry_reason_counts handler so the two surfaces never diverge.
+        top = extract_aggregate(
+            {
+                "num_predictions": 100,
+                "retry_reason_counts": dict(self.PRIVATE_RETRY_REASON_COUNTS),
+            }
+        )["retry_reason_counts"]
+        self.assertEqual(top, self.EXPECTED_COLLAPSED)
 
 
 if __name__ == "__main__":
