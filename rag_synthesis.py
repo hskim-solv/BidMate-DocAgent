@@ -34,9 +34,15 @@ from __future__ import annotations
 import json
 import os
 import time
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 
 from bidmate_data_boundary import assert_external_payload_allowed
+
+if TYPE_CHECKING:
+    # Type-only: the anthropic SDK is a lazy, optional runtime import inside
+    # ``_anthropic_backend``. Importing ToolParam here keeps the typed-tool
+    # annotation without adding a runtime dependency on the SDK.
+    from anthropic.types import ToolParam
 
 SYNTHESIS_SCHEMA_VERSION = 2
 ENV_BACKEND = "BIDMATE_SYNTHESIS_BACKEND"
@@ -427,7 +433,10 @@ def _anthropic_backend(  # pragma: no cover - network
                 "cache_control": {"type": "ephemeral"},
             }
         ],
-        tools=[cached_tool],
+        # The plain dict is structurally compatible with the SDK's ToolParam
+        # TypedDict but Pyright infers it as ``dict[str, Unknown]``; cast to the
+        # forward-referenced type to satisfy ``create``'s ``tools`` parameter.
+        tools=[cast("ToolParam", cached_tool)],
         tool_choice={"type": "tool", "name": TOOL_DEFINITION["name"]},
         messages=[{"role": "user", "content": user_prompt}],
     )
