@@ -1280,6 +1280,118 @@ def run_rag_query(
     return _phase_build_answer(ctx)
 
 
+def _phase_oracle_inject(
+    ctx: _RunContext, oracle_evidence: list[dict[str, Any]]
+) -> None:
+    """Eval-only ceiling probe: replace the retrieval loop with injected
+    oracle evidence, then mirror the post-conditions of
+    :func:`_phase_retrieve_loop` so :func:`_phase_build_answer` consumes an
+    identically-shaped ``ctx``.
+
+    P0-a (oracle-evidence injection). Only reachable via
+    :func:`run_rag_query_with_oracle_evidence` (the eval-harness oracle
+    path); the default pipeline never calls this, so ADR 0001 byte-identity
+    of the production path holds by construction. Runs the *real*
+    :func:`verify_evidence` and ``select_supporting_evidence`` branch so the
+    verify+answer ceiling is measured honestly — only retrieval is bypassed.
+
+    **Mutation contract** (issue #840 — RAG senior-review critique #5,
+    pinned by ``tests/test_phase_mutation_contract.py``):
+
+    Writes to ``ctx``: ``stage_attempts``, ``retry_count``, ``plan``,
+    ``evidence``, ``verified``, ``verification_reasons``,
+    ``retrieved_chunk_ids``. This mirrors the post-conditions of
+    :func:`_phase_retrieve_loop` (the loop it replaces) so
+    :func:`_phase_build_answer` consumes an identically-shaped ``ctx``.
+    """
+    analysis = ctx.analysis or {}
+    evidence = list(oracle_evidence)
+    if ctx.verifier_retry:
+        # Single shot = last attempt, so allow_partial_topic mirrors the
+        # final-attempt branch of _phase_retrieve_loop (line ~970).
+        verified, verification_reasons = verify_evidence(
+            analysis, evidence, allow_partial_topic=True
+        )
+    else:
+        verified = bool(evidence)
+        verification_reasons = [] if verified else ["no_evidence"]
+    retrieved_chunk_ids: list[str] = [
+        str(item.get("chunk_id") or "") for item in evidence if item.get("chunk_id")
+    ]
+    if verified or analysis.get("query_type") == "comparison":
+        evidence = select_supporting_evidence(analysis, evidence)
+    else:
+        evidence = []
+    ctx.stage_attempts = []
+    ctx.retry_count = 0
+    ctx.plan = {}
+    ctx.evidence = evidence
+    ctx.verified = verified
+    ctx.verification_reasons = verification_reasons
+    ctx.retrieved_chunk_ids = retrieved_chunk_ids
+
+
+def run_rag_query_with_oracle_evidence(
+    index: dict[str, Any],
+    query: str,
+    oracle_evidence: list[dict[str, Any]],
+    *,
+    top_k: int | None = None,
+    context_entities: list[str] | None = None,
+    metadata_first: bool | None = None,
+    rerank: bool | None = None,
+    rerank_cross_encoder: bool | None = None,
+    verifier_retry: bool | None = None,
+    retrieval_mode: str | None = None,
+    retrieval_backend: str | None = None,
+    pipeline: str | None = None,
+    prompt_profile: str | None = None,
+    conversation_state: dict[str, Any] | None = None,
+    comparison_balance: dict[str, Any] | None = None,
+    rrf_k: int | None = None,
+    bm25_stopword_profile: str | None = None,
+    bm25_tokenizer: str | None = None,
+) -> dict[str, Any]:
+    """Eval-only oracle-evidence ceiling probe (P0-a).
+
+    Runs the real ``_phase_analyze`` and ``_phase_build_answer`` but bypasses
+    ``_phase_retrieve_loop`` by injecting ``oracle_evidence`` (gold chunks
+    projected into the retrieval evidence shape). Answers "if retrieval were
+    perfect, what is the verify+answer ceiling?".
+
+    Never on the product path — only the eval harness invokes this, when an
+    ablation row sets ``oracle_evidence_source`` (ADR 0005: oracle evidence
+    is derived at runtime from the gitignored local config; nothing new is
+    committed). Forces the direct phase path (no LangGraph/ReAct dispatch);
+    the production entrypoint :func:`run_rag_query` is untouched, so ADR 0001
+    byte-identity of the default pipeline is unaffected.
+    """
+    ctx = _build_run_context(
+        index,
+        query,
+        top_k=top_k,
+        context_entities=context_entities,
+        metadata_first=metadata_first,
+        rerank=rerank,
+        rerank_cross_encoder=rerank_cross_encoder,
+        verifier_retry=verifier_retry,
+        retrieval_mode=retrieval_mode,
+        retrieval_backend=retrieval_backend,
+        pipeline=pipeline,
+        prompt_profile=prompt_profile,
+        conversation_state=conversation_state,
+        comparison_balance=comparison_balance,
+        rrf_k=rrf_k,
+        bm25_stopword_profile=bm25_stopword_profile,
+        bm25_tokenizer=bm25_tokenizer,
+    )
+    early_result = _phase_analyze(ctx)
+    if early_result is not None:
+        return early_result
+    _phase_oracle_inject(ctx, oracle_evidence)
+    return _phase_build_answer(ctx)
+
+
 async def arun_rag_query(
     index: dict[str, Any],
     query: str,

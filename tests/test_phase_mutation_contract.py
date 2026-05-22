@@ -124,6 +124,11 @@ class TestPhaseMutationContract(unittest.TestCase):
     def test_phase_retrieve_loop_contract(self) -> None:
         self._assert_phase_contract(rag_core._phase_retrieve_loop)
 
+    def test_phase_oracle_inject_contract(self) -> None:
+        # P0-a (#1282): the oracle-evidence bypass mirrors the retrieve-loop
+        # post-conditions, so it writes the same ctx fields.
+        self._assert_phase_contract(rag_core._phase_oracle_inject)
+
     def test_phase_build_answer_contract(self) -> None:
         # This phase's documented contract is "Writes to ``ctx``: none.",
         # so the AST set should be empty.
