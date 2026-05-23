@@ -89,6 +89,13 @@ notebooks/_artifacts/
 outputs/*
 !outputs/answer.json
 reports/*
+# Issue #792 — committed snapshot of the public-synthetic eval that backs the
+# README metric table. `make smoke` (full eval/config.yaml, hashing backend)
+# regenerates reports/eval_summary.json; `make snapshot-update` freezes it here
+# so the CI README-parity gate compares against a committed source of truth
+# instead of re-measuring with a divergent CI config (the #739/#751 failure).
+# Public-synthetic only — no ADR 0005 private boundary applies.
+!reports/eval_summary.snapshot.json
 # Aggregate-only artifacts under reports/real100/ are committable
 # (ADR 0005 commit boundary). The negation chain below allowlists
 # only the explicit aggregate filenames — eval_summary.json and any

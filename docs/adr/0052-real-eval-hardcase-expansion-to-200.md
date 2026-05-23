@@ -37,7 +37,7 @@ ADR 0044 의 incremental trajectory 대체. real-eval 케이스 cardinality 를 
 
 1. **신규 200 hardcase**: `scripts/generate_real_cases.py` 으로 100 doc 각 2 case 생성. 5 enum (`distractor_heavy` / `ambiguous_query` / `multi_hop` / `no_answer` / `long_context`) 분포 target. 평범한 fact-lookup 쿼리 (사업기간 / 예산 단순 lookup) 명시 금지.
 2. **기존 21 케이스 유지**: cross-version 회귀 신호 보존. baseline 의 byte-level reproducibility 침해 없음.
-3. **3 ablation_runs**: `full` (default agentic_full + flat), `random_retrieval` (default + retrieval_backend=random, ADR 0053), `single_chunk` (pipeline=single_chunk preset, ADR 0053).
+3. **3 ablation_runs**: `full` (default agentic_full + flat), `random_retrieval` (default + retrieval_backend=random, ADR 0053), `single_chunk` (pipeline=single_chunk preset, ADR 0053). 단, 이 3-run 은 **eval RUN config** (`eval/real_config.local.yaml`) 의 사실이지 committed baseline 의 사실이 아니다 — `scripts/run_real_eval_delta.py::extract_aggregate` 의 `SAFE_TOPLEVEL_KEYS` 가 `ablation_full` 만 commit 경계를 넘기므로 `reports/real100/baseline.aggregate.json` 에는 `ablation_full` 하나만 존재한다. `random_retrieval` / `single_chunk` 의 distinguishing-power floor 수치는 gitignored `reports/real100/eval_summary.json` 과 `docs/audits/distinguishing_power.md` 에만 산다 (ADR 0005 경계).
 4. **baseline 1회 commit**: `reports/real100/baseline.aggregate.json` 을 n=221 시점 1회 regen 후 ADR 0044 §결과 의 update protocol (= `make real-eval-baseline-update`) 그대로 유지.
 5. **케이스 정의 gitignored 유지**: `eval/real_config.local.yaml` 은 ADR 0005 의 private 경계 보존 — aggregate-only 공개.
 

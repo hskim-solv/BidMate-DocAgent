@@ -2,9 +2,13 @@
 
 Covers:
   - ADR 0005 boundary leak guard: sentinel strings planted in raw CSV fields
-    (사업명 / 사업 요약 / 텍스트 / 파일명) and chunk text never appear in the
-    rendered eda.md or eda.aggregate.json.
-  - Tail agencies (rank > top-N) are anonymized to ``agency_NN`` labels.
+    (사업명 / 사업 요약 / 텍스트 / 파일명 / 발주 기관) and chunk text never appear
+    in the rendered eda.md or eda.aggregate.json.
+  - Every agency (top-N and tail) is anonymized to ``agency_NN`` — the
+    SENTINEL_AGENCY guard in the fixture catches a top-N raw-name regression
+    (the #1389 leak class).
+  - The *committed* reports/real100/eda.{md,aggregate.json} carry no raw 발주
+    기관 name (defense-in-depth against the path-based pre-commit gap, #1177).
   - Deterministic output: running the script twice on the same fixture yields
     byte-identical md and json.
   - Eval cross degrades cleanly when eval_summary.json is absent.
@@ -32,6 +36,7 @@ SENTINEL_SUMMARY = "SECRET_SUMMARY_XYZ_ZZ"
 SENTINEL_BODY = "SECRET_BODY_XYZ_ZZ"
 SENTINEL_FILENAME = "SECRET_FILENAME_XYZ_ZZ"
 SENTINEL_CHUNK_TEXT = "SECRET_CHUNK_TEXT_XYZ_ZZ"
+SENTINEL_AGENCY = "SECRET_AGENCY_XYZ_ZZ"
 
 ALL_SENTINELS = (
     SENTINEL_TITLE,
@@ -39,6 +44,7 @@ ALL_SENTINELS = (
     SENTINEL_BODY,
     SENTINEL_FILENAME,
     SENTINEL_CHUNK_TEXT,
+    SENTINEL_AGENCY,
 )
 
 
@@ -56,7 +62,7 @@ def _make_fixture(tmp_path: Path) -> dict[str, Path]:
     rows: list[dict[str, str]] = []
     chunks: list[dict[str, object]] = []
     for i in range(12):
-        agency = f"발주기관_{i % 11:02d}"  # 11 unique → 1 in tail beyond top-10
+        agency = f"{SENTINEL_AGENCY}_{i % 11:02d}"  # 11 unique → 1 in tail beyond top-10; sentinel guards top-N + tail leak
         notice = f"NOTICE-{i:05d}"
         doc_id = f"{notice}-0.0"
         fmt = "hwp" if i % 4 != 0 else "pdf"
@@ -247,6 +253,38 @@ def test_aggregate_json_keys_allowlist(tmp_path: Path) -> None:
         "axis4_eval_cross",
     }
     assert set(aggregate.keys()) == expected_top, f"unexpected top-level keys: {set(aggregate.keys()) - expected_top}"
+
+
+def test_committed_outputs_no_raw_agency() -> None:
+    """Defense-in-depth on the *shipped* artifact (not the fixture).
+
+    #898 leaked real top-10 발주 기관 names into the committed reports/real100/
+    eda.md + eda.aggregate.json; #1389 fixed the renderer but added no guard.
+    The path-based pre-commit ADR 0005 hook does not scan content of
+    allowlisted files (#1177 gap), so guard the actual files against both the
+    specific names that leaked and the generic public-org suffix pattern — any
+    future regeneration drift on the private machine is caught here.
+    """
+    import re
+
+    reports_dir = REPO_ROOT / "reports" / "real100"
+    targets = [reports_dir / "eda.md", reports_dir / "eda.aggregate.json"]
+    leaked_names = (
+        "한국수자원공사", "한국철도공사", "한국연구재단", "한국생산기술연구원",
+        "인천광역시", "국방과학연구소", "수협중앙회", "한국농어촌공사",
+        "축산물품질평가원", "광주과학기술원",
+    )
+    # Generic Korean public-org suffixes — catches new agency names too.
+    org_suffix = re.compile(r"공사|공단|재단|연구원|연구소|중앙회|광역시")
+
+    for path in targets:
+        if not path.exists():
+            continue
+        text = path.read_text(encoding="utf-8")
+        for name in leaked_names:
+            assert name not in text, f"raw agency {name!r} present in {path.name}"
+        hit = org_suffix.search(text)
+        assert hit is None, f"org-suffix pattern {hit.group()!r} present in {path.name}"
 
 
 if __name__ == "__main__":
