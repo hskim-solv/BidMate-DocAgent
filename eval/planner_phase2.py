@@ -152,7 +152,32 @@ def cmd_phase2(args: argparse.Namespace) -> None:
     # raw[variant][case_id][seed] = {pred, f1@thr, cov, spur, cost, latency, parse_error}
     raw: dict[str, dict[str, dict[int, dict]]] = {v: {} for v in variants}
     total_calls = 0
+    # Per-variant checkpointing (recovery hardening — repeated harness/sleep
+    # kills on the ~30min run). After each variant's full loop, dump raw[v] to
+    # out_dir/_ckpt_{v}.json; on restart, completed variants are loaded and
+    # skipped. JSON keys are str so seed/threshold are restored on load.
+    def _ckpt(v: str) -> Path:
+        return out_dir / f"_ckpt_{v}.json"
+
+    def _save_ckpt(v: str) -> None:
+        ser = {gid: {str(s): cell for s, cell in seedmap.items()}
+               for gid, seedmap in raw[v].items()}
+        _ckpt(v).write_text(json.dumps(ser, ensure_ascii=False))
+
+    def _load_ckpt(v: str) -> bool:
+        p = _ckpt(v)
+        if not p.exists():
+            return False
+        ser = json.loads(p.read_text())
+        raw[v] = {gid: {int(s): {**cell, "metrics": {float(t): m for t, m in cell["metrics"].items()}}
+                        for s, cell in seedmap.items()}
+                  for gid, seedmap in ser.items()}
+        return len(raw[v]) == len(cases)
+
     for v in variants:
+        if _load_ckpt(v):
+            print(f"  {v}: resumed from checkpoint ({len(raw[v])} cases)")
+            continue
         for c in cases:
             gid = c["id"]
             gold_sq = list(gold_by_id[gid]["sub_queries"])
@@ -179,6 +204,7 @@ def cmd_phase2(args: argparse.Namespace) -> None:
             print(f"  {v} {gid}: "
                   f"f1@0.85 seed-mean "
                   f"{_per_case_mean([raw[v][gid][s]['metrics'][0.85]['f1'] for s in seeds]):.3f}")
+        _save_ckpt(v)
 
     # ---- aggregate ----
     def case_seedmean_f1(v: str, gid: str, thr: float) -> float:
