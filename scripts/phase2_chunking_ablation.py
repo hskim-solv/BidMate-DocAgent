@@ -96,8 +96,11 @@ class VariantSpec:
 # Korean section headers (제 N 장/조/항) — common in RFP/contract bodies.
 _KO_HEADER = re.compile(r"^\s*제\s*\d+\s*[장조항편]", re.MULTILINE)
 # Enumeration: "1. " / "1.1 " / "1.1.1 " or "가. " / "(1) ".
+# The optional trailing "." (\.?) lets the single-/multi-level numeric
+# branch match "1. " / "1.1. " — the most common Korean RFP top-level
+# section form — not just dot-less "1 " or interior-dot "1.1 ".
 _ENUM = re.compile(
-    r"^\s*(?:\d+(?:\.\d+)*\s+|\([0-9가-힣]+\)\s+|[가-힣]\.\s+)", re.MULTILINE
+    r"^\s*(?:\d+(?:\.\d+)*\.?\s+|\([0-9가-힣]+\)\s+|[가-힣]\.\s+)", re.MULTILINE
 )
 # Markdown headings.
 _MD_HEADER = re.compile(r"^\s*#{1,6}\s+\S", re.MULTILINE)
