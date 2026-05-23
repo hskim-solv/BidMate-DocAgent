@@ -16,7 +16,12 @@ from tempfile import TemporaryDirectory
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from scripts.phase3_mode_ablation import _resolve_specs, main  # noqa: E402
+from scripts.phase3_mode_ablation import (  # noqa: E402
+    VariantSpec,
+    _resolve_specs,
+    main,
+    run_single_case,
+)
 
 
 class ResolveSpecsTest(unittest.TestCase):
@@ -146,6 +151,127 @@ class ReaggregateMainTest(unittest.TestCase):
             self.assertTrue((out_dir / "deltas.json").exists())
             self.assertTrue((out_dir / "mode_specs.json").exists())
             self.assertTrue((out_dir / "raw_results.json").exists())
+
+
+class RrfApplicationRegressionTest(unittest.TestCase):
+    """Regression guard for issue #1366 — the bug that shipped broken
+    Phase 3 numbers (#956): ``run_single_case`` sorted hybrid candidates
+    by ``c["score"]``, but ``rag_retrieval`` sets ``score = 0.0`` for RRF
+    backends and defers ranking to ``apply_fusion_and_reranking``. With
+    every score equal, Python's stable sort fell back to candidate
+    (index) insertion order, so RRF never ran and ``rrf_k`` had zero
+    effect on the output — all three ``hybrid_bm25_k{30,60,100}``
+    variants were byte-identical and worse than ``dense``. #994 wired
+    the fusion call into the runner; these tests pin the invariant so a
+    future revert is caught in CI instead of in a published REPORT.md.
+    """
+
+    def test_rrf_k_changes_per_item_fusion_score(self) -> None:
+        # ``apply_fusion_and_reranking`` is the stage the broken runner
+        # skipped. Feed it a pre-fusion candidate list where the dense
+        # and bm25 channels disagree, then fuse with rrf_k=30 vs k=100.
+        # The bug signature was "rrf_k has no effect"; the contract is
+        # that (a) every fused score becomes non-zero and (b) the rrf_k
+        # value flows into the numeric score (RRF normalization is
+        # rrf_k / n_channels, so the scores differ even when the final
+        # ranking happens to be stable across k).
+        from rag_retrieval import apply_fusion_and_reranking
+
+        def _candidates() -> list[dict[str, object]]:
+            # dense prefers c0 > c1 > c2; bm25 prefers c2 > c1 > c0.
+            return [
+                {"chunk_id": "c0", "score": 0.0,
+                 "score_parts": {"dense": 0.9, "bm25": 0.1}},
+                {"chunk_id": "c1", "score": 0.0,
+                 "score_parts": {"dense": 0.5, "bm25": 0.5}},
+                {"chunk_id": "c2", "score": 0.0,
+                 "score_parts": {"dense": 0.1, "bm25": 0.9}},
+            ]
+
+        analysis = {"query_type": "single_doc"}
+        base_plan = {
+            "retrieval_backend": "hybrid",
+            "metadata_filters": {},
+            "top_k": 10,
+        }
+
+        fused_k30 = apply_fusion_and_reranking(
+            _candidates(), {}, "q", analysis, {**base_plan, "rrf_k": 30}
+        )
+        fused_k100 = apply_fusion_and_reranking(
+            _candidates(), {}, "q", analysis, {**base_plan, "rrf_k": 100}
+        )
+
+        # (a) RRF actually ran — no fused score is left at the 0.0
+        # placeholder the candidate stage emits for hybrid.
+        self.assertTrue(all(item["score"] > 0.0 for item in fused_k30))
+        self.assertTrue(all(item["score"] > 0.0 for item in fused_k100))
+
+        # (b) rrf_k reaches the output: the per-chunk fused score differs
+        # between k=30 and k=100 for every chunk.
+        scores_k30 = {it["chunk_id"]: it["score"] for it in fused_k30}
+        scores_k100 = {it["chunk_id"]: it["score"] for it in fused_k100}
+        self.assertEqual(set(scores_k30), set(scores_k100))
+        for cid in scores_k30:
+            self.assertNotEqual(
+                scores_k30[cid], scores_k100[cid],
+                f"rrf_k had no effect on {cid}'s fused score — "
+                "RRF fusion likely skipped (issue #1366 regression).",
+            )
+
+    def test_run_single_case_hybrid_is_not_index_order(self) -> None:
+        # End-to-end guard at the runner boundary: with the fusion call
+        # in place, the hybrid top-1 must be the chunk both channels
+        # favor, NOT the first chunk in index insertion order (which is
+        # what the broken score=0.0 stable sort returned). We pin the
+        # disagreement deterministically: the LAST-inserted chunk (c3)
+        # carries the only query-term match (bm25 rank 0) AND its inline
+        # embedding equals the query embedding (dense cosine 1.0), so RRF
+        # must surface c3 first. Under the #956 bug the result would be
+        # c0 (insertion order).
+        import numpy as np
+
+        from rag_retrieval import embed_query_for_index
+
+        dim = 16
+        embedding_cfg = {"backend": "hashing", "model": "local-hashing-bow",
+                         "dimension": dim, "normalized": True}
+        query = "알파베타감마독점토큰"
+        qe = embed_query_for_index(query, embedding_cfg)
+        away = (-np.asarray(qe, dtype=np.float32)).tolist()
+
+        def _chunk(cid: str, text: str, emb: list[float]) -> dict[str, object]:
+            return {
+                "chunk_id": cid, "doc_id": "d0", "title": "t",
+                "section": "s", "section_id": "s0",
+                "text": text, "embedding": emb,
+            }
+
+        # c0..c2 share filler text (no query-term hit); c3 holds the
+        # distinctive query token and the query-aligned embedding.
+        index = {
+            "embedding": embedding_cfg,
+            "chunks": [
+                _chunk("c0", "공통 본문 내용 하나", away),
+                _chunk("c1", "공통 본문 내용 둘", away),
+                _chunk("c2", "공통 본문 내용 셋", away),
+                _chunk("c3", f"공통 본문 {query} 내용 넷", list(qe)),
+            ],
+        }
+        spec = VariantSpec(
+            name="hybrid_bm25_k60", retrieval_backend="hybrid",
+            rrf_k=60, index_dir=Path("data/index/real100"),
+        )
+        retrieved_ids, _ = run_single_case(index, {"query": query}, spec, top_k=10)
+
+        # Insertion (degenerate) order top-1 is c0; RRF must instead rank
+        # c3 first since both channels favor it.
+        self.assertEqual(
+            retrieved_ids[0], "c3",
+            "hybrid top-1 fell back to index insertion order — "
+            "apply_fusion_and_reranking was not applied (issue #1366).",
+        )
+        self.assertNotEqual(retrieved_ids[0], "c0")
 
 
 if __name__ == "__main__":
