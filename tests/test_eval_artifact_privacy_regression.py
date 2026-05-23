@@ -22,6 +22,7 @@ covers a fixed forbidden-key set under ``reports/retrieval/phase4*``.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 from scripts._governance import (
@@ -112,3 +113,38 @@ def test_tracked_artifacts_parse_as_json() -> None:
     # actually valid JSON so a corrupt artifact can't hide a leak.
     for rel in eval_privacy_artifact_paths(str(REPO_ROOT)):
         json.loads((REPO_ROOT / rel).read_text(encoding="utf-8"))
+
+
+_HANGUL_RE = re.compile(r"[가-힣]")
+
+
+def test_eda_md_agency_table_has_no_raw_agency_names() -> None:
+    # eda_real100.py anonymizes every agency rank to ``agency_NN`` (#1204), but
+    # the rendered ``eda.md`` is a ``*.json``-excluded artifact the structural
+    # gate never scans — so a stale committed render can re-leak the top-N
+    # 발주기관 names (the #1387 live leak: #1211 fixed the generator + the JSON
+    # but never regenerated eda.md). The .md elsewhere carries legitimate
+    # Korean prose (header policy line, 사업명/사업 요약 row labels), so this
+    # guard is scoped to the agency-distribution table rows only: the agency
+    # column there must be an ``agency_NN`` label or the anonymized tail marker
+    # — never a raw Hangul name.
+    eda = REPO_ROOT / "reports" / "real100" / "eda.md"
+    if not eda.exists():
+        return
+    in_table = False
+    offenders: list[str] = []
+    for line in eda.read_text(encoding="utf-8").splitlines():
+        if line.startswith("### Agency distribution"):
+            in_table = True
+            continue
+        if in_table:
+            if line.startswith("#"):  # next section ends the table
+                break
+            if not line.startswith("|"):
+                continue
+            if _HANGUL_RE.search(line):
+                offenders.append(line.strip())
+    assert offenders == [], (
+        "eda.md agency-distribution table leaks raw agency names "
+        "(must be agency_NN labels): " + "; ".join(offenders)
+    )
