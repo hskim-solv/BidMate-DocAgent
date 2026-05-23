@@ -16,7 +16,7 @@
 | # | item | 상태 | 핵심 evidence |
 |---|---|:---:|---|
 | 1 | per-query 로깅 (latency / call count / token / cost) | ◐ partial | `eval_summary.json` aggregate `stage_latency` ✓ + per-case `tokens_in/out/cost_estimate_usd/llm_model` schema-wired ✓; 그러나 token/cost 가 `prediction.diagnostics.synthesis` 에 채워질 때만 propagate (`eval/run_eval.py:983-985`) — answer LLM call path 가 SDK `usage` field 를 synthesis dict 로 surface 하는 wiring 미확정. |
-| 2 | trajectory 직렬화 (모든 LLM call I/O) | ◐ partial | `reports/real100/traces/{full,random_retrieval,single_chunk}/*.trace.json` per-case file ✓; `trace` dict default = `{schema_version, query_rewrite, planner, answer_schema}` 만 (`eval/run_eval.py:829-861`). env-gated `BIDMATE_TRACE_VERBOSE=1` 시 `evidence/answer_text/answer/diagnostics_subset` 추가. **verifier full I/O는 별도 dump** (`scripts/dump_verifier_trajectories.py`, Phase 1 Step 2.5). **retrieval / generator (answer LLM) input/output 부재**. |
+| 2 | trajectory 직렬화 (모든 LLM call I/O) | ◐ partial | `reports/real100/traces/{full,random_retrieval,single_chunk}/*.trace.json` per-case file ✓; `trace` dict default = `{schema_version, query_rewrite, planner, answer_schema}` 만 (`eval/run_eval.py:829-861`). env-gated `BIDMATE_TRACE_VERBOSE=1` 시 `evidence/answer_text/answer/diagnostics_subset` 추가. **verifier full I/O dump 부재** (이전 `scripts/dump_verifier_trajectories.py` 는 #942 에서 dead-code 로 제거됨). **retrieval / generator (answer LLM) input/output 부재**. |
 | 3 | trajectory-rationality rubric (LLM-as-judge: planner decomp / retrieval 재호출 / verifier 판정) | ✗ absent | `(planner\|retrieval\|verifier).*rationale\|process.*judg\|trajectory.*judg\|rubric` grep → 0건. 단 매칭은 `eval/synthetic_judge.py` 의 `multihop_valid` (ADR 0033, case validity gate; process rationality 아님). `eval/judges/{llm_judge,synthetic_judge,judge_common}.py` 는 ADR 0006 answer-quality judge surface. |
 | 4 | pareto reporting (quality vs cost 2D plot) | ◐ partial | `scripts/plot_cost_frontier.py` (line 43 `cost_usd` field, line 196 pareto dominance) + `scripts/plot_pareto.py` 둘 다 ✓. **그러나 `reports/real100/cost_frontier*` 산출물 0건** — plotter 가 있고 ADR 0054 n=221 baseline 으로 regen 안 됨. (`reports/real100/eda.{md,aggregate.json}` 는 별 surface — EDA report.) |
 
@@ -75,13 +75,13 @@
   }
   ```
   → **planner ✓**, **query_rewrite ✓**, **answer_schema ✓** (출력만, LLM input prompt 는 아님).
-- **Env-gated 확장** (`BIDMATE_TRACE_VERBOSE=1`): `evidence`, `answer_text`, `answer`, `diagnostics_subset` 추가 — Phase 1 Step 2.5 의 verifier-trajectory dump 용 (line 849-858, ADR 0001 invariant 위해 default off).
-- **Verifier 전용 별 dump**: `scripts/dump_verifier_trajectories.py` — `reports/phase1_step2_5_trajectories.jsonl` 로 verifier 의 (claim, evidence, sufficiency) 결정 trace 만 dump (스크립트 docstring line 1-12).
+- **Env-gated 확장** (`BIDMATE_TRACE_VERBOSE=1`): `evidence`, `answer_text`, `answer`, `diagnostics_subset` 추가 (`eval/run_eval.py:820`, line 849-858, ADR 0001 invariant 위해 default off). 단 이는 main trace dict 내 enrichment 일 뿐 verifier LLM I/O 전용 직렬화는 아님.
+- **Verifier 전용 별 dump 부재**: 이전에 `scripts/dump_verifier_trajectories.py` 가 `reports/phase1_step2_5_trajectories.jsonl` 로 verifier (claim, evidence, sufficiency) trace 를 dump 했으나, 해당 스크립트·산출물 모두 **#942 (cf1b292) "remove 4 unreferenced dead code artifacts" 에서 제거**됨 (#942 머지 2026-05-18 13:28 < 본 audit 914489c 2026-05-18 16:26). 현재 트리에 verifier LLM I/O 전용 dump 자산 없음.
 
 **갭(Gap)**:
 - (a) **Retrieval LLM call I/O** (query expansion / HyDE 등) — 부재.
 - (b) **Answer LLM call I/O** (full prompt + completion + token usage) — `answer_schema` 만 있고 prompt 자체는 trace 외부.
-- (c) Verifier LLM I/O 는 별 dump 로만 존재 — main trace 와 join 가능하나 schema 통합 안 됨.
+- (c) **Verifier LLM I/O dump 부재** — 이전 별 dump (`scripts/dump_verifier_trajectories.py`) 가 #942 에서 dead-code 로 제거되어, 현재 verifier 의 (claim, evidence, sufficiency) 결정 trace 를 직렬화하는 자산이 없음. main trace dict 에도 미통합.
 
 **Supply 제안** (별 PR — ADR-worthy, schema_version bump):
 - `prediction["trace"]` dict 에 신규 key `retrieval_llm_calls`, `answer_llm_call`, `verifier_llm_calls` 추가. 각 record = `{prompt, completion, model, usage: {input_tokens, output_tokens}, latency_ms}`.
@@ -103,7 +103,7 @@
   - `docs/adr/0040-react-agent-loop-additive-preset.md:27` — senior-positioning rubric reference (포트폴리오 surface)
 - `eval/judges/{llm_judge,synthetic_judge,judge_common}.py` — ADR 0006 / 0012 answer-quality judge. 입력 = (query, answer, gold_answer), 출력 = 정답-여부 / 점수. **trajectory 입력 안 받음**.
 
-**갭(Gap)**: process rationality 가 0차원 측정. trajectory file (`*.trace.json`) + verifier dump (`reports/phase1_step2_5_trajectories.jsonl`) 가 raw 자료를 이미 emit 하지만 그것을 채점하는 rubric 자산 부재.
+**갭(Gap)**: process rationality 가 0차원 측정. trajectory file (`*.trace.json`) 이 planner/query_rewrite raw 자료를 emit 하지만 (verifier 전용 dump 는 #942 에서 제거되어 부재) 그것을 채점하는 rubric 자산 부재.
 
 **Supply 제안** (별 PR — **ADR-worthy**):
 - 신규 `eval/judges/rationality_judge.py` — `eval/judges/judge_common.py` 의 stub/llm 백엔드 패턴 재사용. 3-axis prompt:
@@ -130,20 +130,21 @@
 
 - `scripts/plot_cost_frontier.py` — `cost_usd` field 정의 (line 43), pareto dominance 구현 (line 196: `other.cost_usd <= cand.cost_usd ... other.cost_usd < cand.cost_usd`), CLI entrypoint 존재.
 - `scripts/plot_pareto.py` — sibling plotter (별 surface).
-- **그러나** `reports/real100/cost_frontier.{png,md,aggregate.json}` 산출물 0건. `reports/real100/` 내 frontier 매칭 file 부재.
+- **그러나** `reports/real100/cost_frontier.{md,png}` 산출물 0건 (plotter 가 출력하는 두 포맷). `reports/real100/` 내 frontier 매칭 file 부재.
 - 비교: `reports/real100/eda.{md,aggregate.json}` 는 EDA report 의 별 surface — pareto 와 무관.
 
 **갭(Gap)**: plotter 는 ✓ 그러나 ADR 0054 n=221 baseline 으로 산출물 regen 안 됨. 즉 1-command 실행 시 산출 가능하나 자동화 (Makefile / CI) 미연동.
 
 **Supply 제안** (별 PR — small):
-- `Makefile` 신규 target `real-eval-frontier-regen`:
+- `Makefile` 신규 target `real-eval-frontier-regen` (실제 CLI 플래그 = `--summary`/`--external`/`--markdown-out`/`--png-out`/`--floor`):
   ```makefile
   real-eval-frontier-regen:
       python3 scripts/plot_cost_frontier.py \
-        --input reports/real100/eval_summary.json \
-        --out reports/real100/cost_frontier
+        --summary reports/real100/eval_summary.json \
+        --markdown-out reports/real100/cost_frontier.md \
+        --png-out reports/real100/cost_frontier.png
   ```
-- 산출물 1회 commit (`reports/real100/cost_frontier.{md,aggregate.json}`).
+- 산출물 1회 commit (`reports/real100/cost_frontier.{md,png}` — plotter 는 md/png 만 출력; `aggregate.json` 이 필요하면 plotter 에 출력 옵션 추가가 선행돼야 함).
 - 별 ADR 미발행. 추정 ~10 LOC Makefile + 0 code.
 
 ## Acceptance checklist 매핑
@@ -174,7 +175,7 @@
 - 선행(predecessor) Phase 2 / 1 acceptance: 본 audit 미산출 (별 plan turn)
 - Item 1 코드 근거: [`eval/run_eval.py:975-989`](../../eval/run_eval.py) (synthesis 에서 token/cost capture)
 - Item 2 코드 근거: [`eval/run_eval.py:829-890`](../../eval/run_eval.py) (`prediction_trace_payload` + `write_prediction_trace`)
-- Item 2 reference dump: `scripts/dump_verifier_trajectories.py` (Phase 1 Step 2.5 verifier-only)
+- Item 2 verifier-only dump (`scripts/dump_verifier_trajectories.py`): #942 (cf1b292) 에서 dead-code 로 제거됨 — 본 audit 시점 부재
 - Item 3 에서 참조한 rubric ADR (비-rationality 비교용): [ADR 0006](../adr/0006-llm-judge-on-real-data-only.md) (answer-quality judge), [ADR 0012](../adr/0012-llm-judge-on-public-synthetic.md), [ADR 0033](../adr/0033-multihop-cross-section-eval-slice.md) (`multihop_valid` case validity)
 - Item 4 코드 근거: [`scripts/plot_cost_frontier.py`](../../scripts/plot_cost_frontier.py) (cost_usd field line 43, pareto line 196)
 - 자매(sibling) skill (다른 surface): [`.claude/skills/retrieval-eval/SKILL.md`](../../.claude/skills/retrieval-eval/SKILL.md) (4-phase retrieval measurement, PR #889)
