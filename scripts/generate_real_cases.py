@@ -72,6 +72,17 @@ HARDCASE_ENUMS = (
 
 VALID_QUERY_TYPES = ("single_doc", "comparison", "follow_up", "abstention")
 
+
+class CaseValidationError(ValueError):
+    """A backend-produced case violates the generator contract.
+
+    Raised by ``_normalize_case`` for malformed output (non-boolean
+    ``answerable``, empty/unknown ``hardcase_categories``, unrecognized
+    ``query_type``). ``generate_cases`` catches it, reports the offending
+    case to stderr, and drops it rather than coercing silently.
+    """
+
+
 DEFAULT_K = 2
 DEFAULT_MODEL = "claude-sonnet-4-6"
 DEFAULT_TEMPERATURE = 0.0
@@ -147,23 +158,38 @@ def _stub_backend(doc: dict[str, Any], k: int, seed: int) -> list[dict[str, Any]
 
     Cycles through the 5-enum templates so the canonical contract
     (every enum represented at least once when ``k=5``) is preserved
-    for tests.
+    for tests. ``expected_terms`` for answerable cases are derived from
+    the document's own headings/text (``_grounded_terms``) so the stub
+    never emits a positive-evidence assertion that is absent from the
+    source — an ungrounded gold case loads fine but fails eval for the
+    wrong reason (issue #1388 F4). The id carries the slugified
+    ``doc_id`` so same-agency multi-doc batches don't collide (F1).
     """
     rng = random.Random(f"{doc.get('doc_id', '')}-{seed}")
     agency = str(doc.get("agency") or "기관")
     doc_id = str(doc.get("doc_id") or "")
+    agency_slug = _slugify(agency)
+    doc_slug = _slugify(doc_id)
+    grounded = _grounded_terms(doc)
     templates = list(_STUB_TEMPLATES)
     rng.shuffle(templates)
     cases: list[dict[str, Any]] = []
     for i, tmpl in enumerate(templates[:k] or templates):
         category_slug = tmpl["hardcase_categories"][0]
+        if tmpl["answerable"] and grounded:
+            term = grounded[i % len(grounded)]
+            expected_terms = [term]
+            expected_citation_terms = [term]
+        else:
+            expected_terms = []
+            expected_citation_terms = []
         case = {
-            "id": f"real_{_slugify(agency)}_{category_slug}_{i + 1}",
+            "id": f"real_{agency_slug}_{doc_slug}_{category_slug}_{i + 1}",
             "query_type": tmpl["query_type"],
             "query": f"{agency} {tmpl['query_suffix']}",
             "expected_doc_ids": [doc_id] if tmpl["answerable"] and doc_id else [],
-            "expected_terms": list(tmpl["expected_terms"]),
-            "expected_citation_terms": list(tmpl["expected_citation_terms"]),
+            "expected_terms": expected_terms,
+            "expected_citation_terms": expected_citation_terms,
             "answerable": tmpl["answerable"],
             "hardcase_categories": list(tmpl["hardcase_categories"]),
             "generation_notes": tmpl["notes"],
@@ -208,12 +234,14 @@ HARDCASE_INSTRUCTION = """다음 RFP 문서를 기반으로 **하드케이스 �
 
 answerable=false 인 case 는 expected_terms 와 expected_citation_terms 모두 빈 배열 [].
 
+expected_terms / expected_citation_terms 의 각 string 은 **반드시 아래 제공된 문서 본문에 그대로(부분 문자열) 존재**해야 합니다. 원문에 없는 표현을 정답 근거로 쓰지 마세요 — 그런 케이스는 거부됩니다.
+
 문서 정보:
 - 기관: {agency}
 - 사업: {project}
 - doc_id: {doc_id}
 
-섹션 요약 (heading + 200자):
+섹션 발췌 (문서 후반부 / 부록 포함 전체 heading + 본문 발췌):
 {section_summary}
 """
 
@@ -240,11 +268,7 @@ def _anthropic_backend(
     model = os.environ.get("BIDMATE_HARDCASE_MODEL", DEFAULT_MODEL)
     temperature = float(os.environ.get("BIDMATE_HARDCASE_TEMP", DEFAULT_TEMPERATURE))
 
-    sections = doc.get("sections") or []
-    section_summary = "\n".join(
-        f"- {str(s.get('heading') or '')}: {str(s.get('text') or '')[:200]}"
-        for s in sections[:15]
-    )
+    section_summary = _build_section_summary(doc)
 
     prompt = HARDCASE_INSTRUCTION.format(
         k=k,
@@ -291,6 +315,91 @@ def _slugify(text: str) -> str:
     return "_".join(parts)[:40] or "doc"
 
 
+def _doc_text(doc: dict[str, Any]) -> str:
+    """Full searchable text of a doc (title + every heading + every section
+    body), used to verify generated gold terms are grounded in the source."""
+    parts: list[str] = [str(doc.get("title") or "")]
+    for section in doc.get("sections") or []:
+        parts.append(str(section.get("heading") or ""))
+        parts.append(str(section.get("text") or ""))
+    return "\n".join(parts)
+
+
+def _grounded_terms(doc: dict[str, Any]) -> list[str]:
+    """Candidate expected_terms drawn from the doc itself (headings first,
+    then leading body tokens). Every returned term is a substring of
+    ``_doc_text(doc)`` by construction, so the stub backend can assert
+    grounded gold without consulting an external model."""
+    candidates: list[str] = []
+    seen: set[str] = set()
+
+    def _add(term: str) -> None:
+        term = term.strip()
+        if term and term not in seen:
+            candidates.append(term)
+            seen.add(term)
+
+    sections = doc.get("sections") or []
+    for section in sections:
+        _add(str(section.get("heading") or ""))
+    if not candidates:
+        for section in sections:
+            for token in str(section.get("text") or "").split():
+                if len(token) >= 2:
+                    _add(token)
+                    break
+    return candidates
+
+
+def _build_section_summary(
+    doc: dict[str, Any], per_section_chars: int = 300
+) -> str:
+    """Per-section excerpt over **all** sections (no head-of-document cap)
+    so tail/appendix headings reach the model (issue #1388 F3). The
+    grounding gate in ``generate_cases`` is the backstop; this just gives
+    the model a fair shot at producing answerable long_context cases."""
+    lines: list[str] = []
+    for idx, section in enumerate(doc.get("sections") or []):
+        heading = str(section.get("heading") or "")
+        text = str(section.get("text") or "")[:per_section_chars]
+        lines.append(f"- [{idx}] {heading}: {text}")
+    return "\n".join(lines)
+
+
+def _is_grounded(case: dict[str, Any], doc_text: str) -> bool:
+    """Answerable gold must assert only terms present in the source.
+
+    Mirrors ``eval/scorers/_shared.contains_all_terms`` (case-insensitive
+    substring) so a case that passes this gate is one the eval scorer can
+    actually credit against the document. Non-answerable (abstention)
+    cases carry no positive-evidence terms and are vacuously grounded.
+    """
+    if not case.get("answerable"):
+        return True
+    lowered = doc_text.lower()
+    terms = list(case.get("expected_terms") or []) + list(
+        case.get("expected_citation_terms") or []
+    )
+    return all(str(term).lower() in lowered for term in terms)
+
+
+def find_duplicate_ids(cases: list[dict[str, Any]]) -> list[str]:
+    """Return the set of case ids that appear more than once.
+
+    Eval traces and cross-run maps are keyed by case id; a duplicate id
+    silently overwrites a trace and corrupts the metric, so a batch with
+    collisions must fail before any YAML is written (issue #1388 F1).
+    """
+    seen: set[str] = set()
+    dups: set[str] = set()
+    for case in cases:
+        cid = str(case.get("id") or "")
+        if cid in seen:
+            dups.add(cid)
+        seen.add(cid)
+    return sorted(dups)
+
+
 def load_doc(raw_dir: Path, doc_id: str) -> dict[str, Any]:
     """Load a single RFP doc JSON by ``doc_id`` (matches both the JSON's
     ``doc_id`` field and the bare filename stem for convenience)."""
@@ -317,16 +426,61 @@ def list_doc_ids(raw_dir: Path) -> list[str]:
 
 
 def _normalize_case(case: dict[str, Any], doc: dict[str, Any]) -> dict[str, Any]:
-    """Coerce a raw backend output into the run_eval loader's schema.
+    """Validate + normalize a raw backend output for the run_eval loader.
+
+    Strict (issue #1388 F2): malformed cases are rejected with a
+    ``CaseValidationError`` rather than silently coerced —
+
+    * ``answerable`` must be a real JSON boolean (``"false"`` is a bug,
+      not ``True``);
+    * ``hardcase_categories`` must be a non-empty list of recognized
+      enums (hardcase-only policy);
+    * ``query_type`` must be one of ``VALID_QUERY_TYPES`` (unknown is
+      rejected, not rewritten to ``single_doc``).
 
     Enforces the abstention contract: ``answerable=false`` strips
-    ``expected_terms`` and ``expected_citation_terms`` so a regression
-    can't sneak a positive-evidence assertion into a no_answer case.
+    ``expected_terms``/``expected_citation_terms``. The id is forced to
+    carry the slugified ``doc_id`` so same-agency multi-doc batches don't
+    collide (F1).
     """
     if not isinstance(case, dict):
-        raise ValueError(f"Case must be a mapping: {case!r}")
+        raise CaseValidationError(f"Case must be a mapping: {case!r}")
     doc_id = str(doc.get("doc_id") or "")
-    answerable = bool(case.get("answerable", True))
+    doc_slug = _slugify(doc_id)
+
+    answerable = case.get("answerable")
+    if not isinstance(answerable, bool):
+        raise CaseValidationError(
+            f"answerable must be a JSON boolean, got "
+            f"{type(answerable).__name__} {answerable!r} (id={case.get('id')!r})"
+        )
+
+    categories = case.get("hardcase_categories")
+    if isinstance(categories, str):
+        categories = [categories]
+    if not categories or not isinstance(categories, list):
+        raise CaseValidationError(
+            f"hardcase_categories must be a non-empty list (id={case.get('id')!r}); "
+            "every case must carry at least one of "
+            f"{HARDCASE_ENUMS}"
+        )
+    unknown_categories = [c for c in categories if c not in HARDCASE_ENUMS]
+    if unknown_categories:
+        raise CaseValidationError(
+            f"unknown hardcase_categories {unknown_categories!r} (id={case.get('id')!r}); "
+            f"expected a subset of {HARDCASE_ENUMS}"
+        )
+
+    raw_query_type = case.get("query_type")
+    if raw_query_type is None or str(raw_query_type).strip() == "":
+        query_type = "single_doc"
+    else:
+        query_type = str(raw_query_type)
+        if query_type not in VALID_QUERY_TYPES:
+            raise CaseValidationError(
+                f"unknown query_type {query_type!r} (id={case.get('id')!r}); "
+                f"expected one of {VALID_QUERY_TYPES}"
+            )
 
     expected_doc_ids = case.get("expected_doc_ids") or ([doc_id] if answerable and doc_id else [])
     expected_terms = list(case.get("expected_terms") or [])
@@ -335,20 +489,13 @@ def _normalize_case(case: dict[str, Any], doc: dict[str, Any]) -> dict[str, Any]
         expected_terms = []
         expected_citation_terms = []
 
-    categories = case.get("hardcase_categories") or []
-    if isinstance(categories, str):
-        categories = [categories]
-
-    query_type = str(case.get("query_type") or "single_doc")
-    if query_type not in VALID_QUERY_TYPES:
-        query_type = "single_doc"
-
     raw_id = str(case.get("id") or "").strip()
     if not raw_id:
-        slug = categories[0] if categories else "misc"
-        raw_id = f"real_{_slugify(str(doc.get('agency') or 'unknown'))}_{slug}"
+        raw_id = f"real_{_slugify(str(doc.get('agency') or 'unknown'))}_{categories[0]}"
     if not raw_id.startswith("real_"):
         raw_id = "real_" + raw_id
+    if doc_slug and doc_slug not in raw_id:
+        raw_id = f"real_{doc_slug}_" + raw_id[len("real_"):]
 
     return {
         "id": raw_id,
@@ -366,13 +513,39 @@ def _normalize_case(case: dict[str, Any], doc: dict[str, Any]) -> dict[str, Any]
 def generate_cases(
     doc: dict[str, Any], k: int, backend: str, seed: int
 ) -> list[dict[str, Any]]:
-    """Run the chosen backend and normalize each case for the eval loader."""
+    """Run the chosen backend, validate + normalize, and ground-check each
+    case for the eval loader.
+
+    Malformed cases (``CaseValidationError``) and answerable cases whose
+    gold terms are absent from the source (``_is_grounded``) are dropped
+    with an explicit stderr report rather than emitted as silently-wrong
+    gold (issue #1388 F2/F3/F4).
+    """
     if backend not in _BACKENDS:
         raise ValueError(
             f"Unknown backend {backend!r}; expected one of {sorted(_BACKENDS)}"
         )
     raw_cases = _BACKENDS[backend](doc, k, seed)
-    return [_normalize_case(c, doc) for c in raw_cases]
+    doc_text = _doc_text(doc)
+    doc_id = str(doc.get("doc_id") or "")
+    cases: list[dict[str, Any]] = []
+    for raw in raw_cases:
+        try:
+            case = _normalize_case(raw, doc)
+        except CaseValidationError as exc:
+            print(f"  drop (invalid, doc={doc_id}): {exc}", file=sys.stderr)
+            continue
+        if not _is_grounded(case, doc_text):
+            print(
+                f"  drop (ungrounded, doc={doc_id}): id={case['id']!r} "
+                f"expected_terms not found in source: "
+                f"{case.get('expected_terms')!r} / "
+                f"{case.get('expected_citation_terms')!r}",
+                file=sys.stderr,
+            )
+            continue
+        cases.append(case)
+    return cases
 
 
 # -----------------------------------------------------------------------------
@@ -448,6 +621,16 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Skipping: {exc}", file=sys.stderr)
             continue
         all_cases.extend(generate_cases(doc, args.k, args.backend, args.seed))
+
+    duplicate_ids = find_duplicate_ids(all_cases)
+    if duplicate_ids:
+        print(
+            "error: duplicate case ids generated — eval traces are keyed by id "
+            f"and would collide/overwrite: {duplicate_ids}. "
+            "Refusing to write (issue #1388 F1).",
+            file=sys.stderr,
+        )
+        return 2
 
     payload = {"cases": all_cases}
     yaml_str = yaml.safe_dump(

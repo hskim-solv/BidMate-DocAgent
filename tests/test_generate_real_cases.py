@@ -207,5 +207,248 @@ class CLIContractTest(unittest.TestCase):
             self.assertIn("BIDMATE_HARDCASE_API_KEY", str(ctx.exception))
 
 
+SAMPLE_DOC_SAME_AGENCY = {
+    "doc_id": "rfp-test-sample-2",
+    "title": "테스트 기관 X 후속 사업 RFP",
+    "agency": "기관 X",
+    "project": "후속 사업",
+    "sections": [
+        {"heading": "추진 배경", "text": "후속 사업의 배경을 기술한다."},
+        {"heading": "검수 기준", "text": "산출물 검수 위원회를 운영한다."},
+    ],
+}
+
+
+class IdCollisionTest(unittest.TestCase):
+    """F1 — case ids must embed doc_id so same-agency docs don't collide."""
+
+    def test_stub_ids_embed_slugified_doc_id(self) -> None:
+        doc_slug = generate_real_cases._slugify(SAMPLE_DOC["doc_id"])
+        cases = generate_real_cases.generate_cases(
+            SAMPLE_DOC, k=5, backend="stub", seed=17
+        )
+        self.assertTrue(cases)
+        for case in cases:
+            self.assertIn(
+                doc_slug,
+                case["id"],
+                f"case id {case['id']!r} missing doc slug {doc_slug!r}",
+            )
+
+    def test_same_agency_distinct_docs_produce_no_duplicate_ids(self) -> None:
+        # Pre-fix, both docs (same agency "기관 X") emitted
+        # real_x_<category>_<i> with no doc_id — guaranteed collision.
+        cases_a = generate_real_cases.generate_cases(
+            SAMPLE_DOC, k=5, backend="stub", seed=17
+        )
+        cases_b = generate_real_cases.generate_cases(
+            SAMPLE_DOC_SAME_AGENCY, k=5, backend="stub", seed=17
+        )
+        self.assertEqual(
+            [], generate_real_cases.find_duplicate_ids(cases_a + cases_b)
+        )
+
+    def test_find_duplicate_ids_flags_collisions(self) -> None:
+        cases = [
+            {"id": "real_x_a_1"},
+            {"id": "real_x_a_1"},
+            {"id": "real_x_b_2"},
+        ]
+        self.assertEqual(
+            ["real_x_a_1"], generate_real_cases.find_duplicate_ids(cases)
+        )
+
+    def test_main_fails_before_write_on_duplicate_ids(self) -> None:
+        colliding = {
+            "id": "real_dup_collision_1",
+            "query_type": "single_doc",
+            "query": "q",
+            "expected_doc_ids": [],
+            "expected_terms": [],
+            "expected_citation_terms": [],
+            "answerable": False,
+            "hardcase_categories": ["no_answer"],
+            "generation_notes": "",
+        }
+        with tempfile.TemporaryDirectory() as tmpdir:
+            raw_dir = Path(tmpdir) / "raw"
+            raw_dir.mkdir()
+            for stem, doc in (
+                ("d1", SAMPLE_DOC),
+                ("d2", SAMPLE_DOC_SAME_AGENCY),
+            ):
+                (raw_dir / f"{stem}.json").write_text(
+                    json.dumps(doc, ensure_ascii=False), encoding="utf-8"
+                )
+            out_path = Path(tmpdir) / "out.yaml"
+            buf = io.StringIO()
+            with mock.patch.object(
+                generate_real_cases, "generate_cases", return_value=[dict(colliding)]
+            ), redirect_stderr(buf):
+                rc = generate_real_cases.main(
+                    [
+                        "--batch", "2",
+                        "--raw-dir", str(raw_dir),
+                        "--output", str(out_path),
+                    ]
+                )
+            self.assertEqual(2, rc)
+            self.assertIn("duplicate case ids", buf.getvalue())
+            self.assertFalse(
+                out_path.exists(), "must refuse to write when ids collide"
+            )
+
+
+class StrictValidationTest(unittest.TestCase):
+    """F2 — _normalize_case rejects malformed output instead of coercing."""
+
+    def test_string_false_answerable_is_rejected(self) -> None:
+        with self.assertRaises(generate_real_cases.CaseValidationError):
+            generate_real_cases._normalize_case(
+                {
+                    "id": "real_x_no_answer_1",
+                    "query_type": "abstention",
+                    "query": "q",
+                    "answerable": "false",  # truthy string — must not pass as True
+                    "hardcase_categories": ["no_answer"],
+                },
+                SAMPLE_DOC,
+            )
+
+    def test_empty_hardcase_categories_is_rejected(self) -> None:
+        with self.assertRaises(generate_real_cases.CaseValidationError):
+            generate_real_cases._normalize_case(
+                {
+                    "id": "real_x_1",
+                    "query_type": "single_doc",
+                    "query": "q",
+                    "answerable": True,
+                    "hardcase_categories": [],
+                },
+                SAMPLE_DOC,
+            )
+
+    def test_unknown_hardcase_category_is_rejected(self) -> None:
+        with self.assertRaises(generate_real_cases.CaseValidationError):
+            generate_real_cases._normalize_case(
+                {
+                    "id": "real_x_1",
+                    "query_type": "single_doc",
+                    "query": "q",
+                    "answerable": True,
+                    "hardcase_categories": ["totally_made_up"],
+                },
+                SAMPLE_DOC,
+            )
+
+    def test_unknown_query_type_is_rejected_not_rewritten(self) -> None:
+        with self.assertRaises(generate_real_cases.CaseValidationError):
+            generate_real_cases._normalize_case(
+                {
+                    "id": "real_x_1",
+                    "query_type": "freeform_chat",
+                    "query": "q",
+                    "answerable": True,
+                    "hardcase_categories": ["multi_hop"],
+                },
+                SAMPLE_DOC,
+            )
+
+    def test_generate_cases_drops_invalid_and_reports(self) -> None:
+        fake_backend = lambda *_: [  # noqa: E731
+            {
+                "id": "real_x_good_1",
+                "query_type": "single_doc",
+                "query": "q",
+                "answerable": True,
+                "expected_terms": ["거버넌스"],
+                "expected_citation_terms": ["거버넌스"],
+                "hardcase_categories": ["multi_hop"],
+            },
+            {  # malformed: string answerable
+                "id": "real_x_bad_2",
+                "query_type": "single_doc",
+                "query": "q",
+                "answerable": "false",
+                "hardcase_categories": ["multi_hop"],
+            },
+        ]
+        buf = io.StringIO()
+        with mock.patch.dict(
+            generate_real_cases._BACKENDS, {"fake": fake_backend}, clear=False
+        ), redirect_stderr(buf):
+            cases = generate_real_cases.generate_cases(
+                SAMPLE_DOC, k=2, backend="fake", seed=17
+            )
+        self.assertEqual(1, len(cases))
+        self.assertEqual("real_rfp_test_sample_x_good_1", cases[0]["id"])
+        self.assertIn("drop (invalid", buf.getvalue())
+
+
+class GroundingTest(unittest.TestCase):
+    """F3/F4 — answerable gold terms must exist in the source document."""
+
+    def test_stub_answerable_terms_are_grounded_in_doc(self) -> None:
+        doc_text = generate_real_cases._doc_text(SAMPLE_DOC).lower()
+        cases = generate_real_cases.generate_cases(
+            SAMPLE_DOC, k=5, backend="stub", seed=17
+        )
+        answerable = [c for c in cases if c["answerable"]]
+        self.assertTrue(answerable)
+        for case in answerable:
+            for term in case["expected_terms"]:
+                self.assertIn(
+                    term.lower(),
+                    doc_text,
+                    f"stub emitted off-document term {term!r} for {case['id']!r}",
+                )
+
+    def test_stub_does_not_emit_fixed_offdoc_template_terms(self) -> None:
+        # SAMPLE_DOC contains neither "약칭" nor "부속서"; the pre-fix stub
+        # would have emitted them verbatim from its fixed templates.
+        cases = generate_real_cases.generate_cases(
+            SAMPLE_DOC, k=5, backend="stub", seed=17
+        )
+        emitted = {t for c in cases for t in c["expected_terms"]}
+        self.assertNotIn("약칭", emitted)
+        self.assertNotIn("부속서", emitted)
+
+    def test_generate_cases_drops_ungrounded_answerable_case(self) -> None:
+        fake_backend = lambda *_: [  # noqa: E731
+            {
+                "id": "real_x_hallucinated_1",
+                "query_type": "single_doc",
+                "query": "q",
+                "answerable": True,
+                "expected_terms": ["우주선 추진계"],  # absent from SAMPLE_DOC
+                "expected_citation_terms": [],
+                "hardcase_categories": ["long_context"],
+            }
+        ]
+        buf = io.StringIO()
+        with mock.patch.dict(
+            generate_real_cases._BACKENDS, {"fake": fake_backend}, clear=False
+        ), redirect_stderr(buf):
+            cases = generate_real_cases.generate_cases(
+                SAMPLE_DOC, k=1, backend="fake", seed=17
+            )
+        self.assertEqual([], cases)
+        self.assertIn("drop (ungrounded", buf.getvalue())
+
+    def test_build_section_summary_covers_tail_sections(self) -> None:
+        big_doc = {
+            "doc_id": "rfp-big",
+            "agency": "기관 Z",
+            "title": "대형 RFP",
+            "sections": [
+                {"heading": f"섹션 {i}", "text": f"본문 {i}"} for i in range(40)
+            ],
+        }
+        summary = generate_real_cases._build_section_summary(big_doc)
+        # Pre-fix the prompt truncated to sections[:15]; the appendix-style
+        # tail heading must now reach the model.
+        self.assertIn("섹션 39", summary)
+
+
 if __name__ == "__main__":
     unittest.main()
