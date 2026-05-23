@@ -1,4 +1,4 @@
-# ADR 0071 — real100 retrieval 표면도 MiniLM 기본값 유지 (Phase 2.0); KURE-v1은 default-flip 후보
+# ADR 0073 — real100 retrieval 표면도 MiniLM 기본값 유지 (Phase 2.0); KURE-v1은 default-flip 후보
 
 - **Status**: accepted
 - **Date**: 2026-05-23
