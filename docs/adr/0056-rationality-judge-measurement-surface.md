@@ -60,7 +60,7 @@ Step 2 (PR #968, ADR-free) 의 trace schema v2 `synthesis_llm_call` 키 (`BIDMAT
 
 - **Phase 3 audit item 3 (✗ absent → ✓ present)** 폐쇄. 5-step portfolio narrative ("측정 → 함정 발견 → 함정 fix → 측정 표면 audit → 자동 게이트 도입 → process rationality 측정 도입") 의 step 3 (= 측정 표면 완비) 까지 달성.
 - 신규 `reports/real100/rationality.{md,aggregate.json}` 두 산출물 → eval surface 의 1-차원 추가.
-- judge LLM backend 의 실 측정 비용 (n=221 × 1 LLM call = 221 LLM call/run) 은 별 PR scope. 본 PR 의 measurement scope = stub backend (0 cost, deterministic).
+- judge LLM backend 의 실 측정 (n=221 × 1 LLM call) 은 별 PR (#1377, 2026-05-23) 에서 수행 — Claude Sonnet 4.6, ≈$1.5. stub↔LLM Spearman ρ≈0 (모든 축) 으로 stub 이 품질 proxy 가 아닌 분포 floor 임을 확증. 상세는 "Measurement appendix — LLM backend".
 - `answer_reasoning` 의 effective_n 는 `BIDMATE_TRACE_FULL=1` + synthesis trace 캡처 여부에 의존. **#1326 측정에서 effective_n=166 (cases_with_synthesis_llm_call=166)** — synthesis-primary run (`agentic_full_llm`) + stub full-trace 캡처 wiring fix 로 3-axis 모두 measured. 나머지 55 케이스는 abstention 으로 synthesis 미수행(정상 drop, ADR 0054 substantive-only semantics). (이력: #987 최초 measured 주장 → #1297 이 effective_n=0 artifact 와의 모순을 pending 으로 정직 정정 → #1326 이 wiring 을 고쳐 measured 복원. 이전 본문의 "모든 case cover" 표현은 abstention drop 을 누락했던 부정확 — "synthesis 수행 case 전부 cover" 가 정확.)
 - 향후 PR 에서 `Claim:` (ADR 0055) 으로 rationality axis 의 변화 보고 가능 — `Claim: planner_decomposition=+0.05pp` 식. 단 본 PR 에서는 baseline 측정만, claim 0건.
 
@@ -75,7 +75,7 @@ Step 2 (PR #968, ADR-free) 의 trace schema v2 `synthesis_llm_call` 키 (`BIDMAT
 
 ## Out-of-scope
 
-- LLM backend 실측정 (`BIDMATE_RATIONALITY_BACKEND=openai_compatible`, n=221 × 1 call = ~$1 추정) — 별 PR.
+- ~~LLM backend 실측정 (`BIDMATE_RATIONALITY_BACKEND=openai_compatible`, n=221 × 1 call = ~$1 추정) — 별 PR.~~ **완료 (#1377, 2026-05-23)** — 아래 "Measurement appendix — LLM backend" 참조.
 - Verifier-axis rationality (Step 2 audit finding 으로 폐기 — `rag_verifier.py` LLM call 0).
 - Planner full I/O trace dump (Step 2 surgical scope 외).
 - Per-axis weighting / composite "process_health" score — 본 PR 은 raw axis 만, 합성 score 는 portfolio narrative 가 정해진 후 별 ADR.
@@ -108,7 +108,31 @@ python3 -c "import json; r=json.load(open('reports/real100/rationality.aggregate
   print('means:', {k: round(v, 3) if v else None for k, v in r['axis_means'].items()})"
 ```
 
+## Measurement appendix — LLM backend (Sonnet 4.6)
+
+### 2026-05-23 — stub vs LLM 변별력 (비공개 real-100, n=221)
+
+본 ADR Decision 6 의 첫 측정은 stub backend (deterministic SHA-256) 였고, Out-of-scope 가 LLM backend 실측정을 별 PR 로 예약했다. [PR #1377](https://github.com/hskim-solv/BidMate-DocAgent/pull/1377) (issue #1377) 이 그 deferred 분을 실측 — 같은 synthesis-primary trace 셋을 `stub` 과 `openai_compatible` (Claude Sonnet 4.6) 두 backend 로 채점하여 변별력을 비교한다.
+
+- **Surface**: 비공개 real-100, n=221 (synthesis 수행 154 → answer_reasoning 측정 가능). prebuilt `data/index/real100` (`hashing`) + `agentic_full_llm` primary (`prompt_profile=llm_synthesis`) + `BIDMATE_TRACE_FULL=1 BIDMATE_SYNTHESIS_BACKEND=stub` (synthesis 자체는 stub — judge 변별력 측정이 목표, synthesis 품질 측정 아님).
+- **Backends**: stub = SHA-256(trace subset) 분포 floor. LLM = `claude-sonnet-4-6` (Anthropic OpenAI-compat, temp=0). 비용 ≈$1.5 (judge len//3 input estimate 251k tokens, output ~27k).
+- **Enabler**: `eval/judges/judge_common.call_openai_json` 가 `response_format={"type":"json_object"}` 를 하드코딩해 Anthropic compat 엔드포인트가 400 (`Input should be 'json_schema'`) 으로 거부 → `BIDMATE_JUDGE_RESPONSE_FORMAT=none` env (기본 `json_object`, byte-identical) 도입으로 kwarg 생략 가능. `get_judge_temperature` (gpt-5.x temp=0 거부) 와 동일한 endpoint-quirk 우회 패턴.
+
+| axis | stub mean (std) | LLM mean (std) | LLM 95% CI | Spearman ρ (p) | effective_n |
+|---|---:|---:|---|---:|---:|
+| `planner_decomposition` | 0.493 (0.288) | 0.507 (0.194) | (0.482, 0.533) | −0.090 (0.185) | 221 |
+| `retrieval_recalls` | 0.515 (0.285) | 0.468 (0.240) | (0.437, 0.499) | −0.033 (0.623) | 221 |
+| `answer_reasoning` | 0.505 (0.290) | 0.318 (0.163) | (0.292, 0.344) | −0.012 (0.883) | 151 |
+
+**판정**:
+
+- **stub 은 품질 proxy 가 아니다 (의도된 설계 확증).** 세 축 모두 stub↔LLM Spearman ρ≈0 (|ρ|≤0.09, 전부 p>0.18) — stub SHA-256 점수는 LLM judge 의 trajectory 품질 판단을 전혀 추적하지 않는다. stub 은 cross-platform byte-identical *분포 floor* 일 뿐이며, "변별력 비교용 floor" 라는 Decision-table 의 stub 설계 의도가 실측으로 확인됐다.
+- **LLM backend 는 quality-correlated 변별력을 추가한다.** LLM std (0.16–0.24) < stub std (0.29 = uniform[0,1] floor) — 일관된 판단으로 분포가 좁다. slice 별로 `follow_up` 의 degenerate trajectory 를 planner 0.225 / retrieval 0.100 로 페널티 (stub 은 0.387 / 0.569 노이즈), `answer_reasoning` 은 stub synthesis(템플릿 passthrough)를 mean 0.318 로 낮게 채점 — evidence-aware 판단의 신호. 상세 slice/query_type breakdown: [`docs/audits/rationality-llm-judge-comparison.md`](../audits/rationality-llm-judge-comparison.md).
+
+**Caveats**: single judge / single seed (judge-variance 미추정), single run. `answer_reasoning` 의 0.318 은 *stub synthesis* 완성문을 채점한 값이라 synthesis *품질* 지표가 아니다 (judge 변별력 신호일 뿐). committed 산출물은 aggregate/per-slice 만 (ADR 0005 — per-case score + qid 는 `rationality.*.local.json` gitignored). 결과는 비결정적 (LLM) 이라 CI 게이트 baseline 아님 — 본 appendix 가 측정 record.
+
 <!-- verifies-key: eval/judges/rationality_judge.py:judge_rationality -->
 <!-- verifies-key: eval/judges/rationality_judge.py:_stub_backend -->
 <!-- verifies-key: eval/judges/rationality_judge.py:_aggregate -->
 <!-- verifies-key: scripts/run_rationality_judge.py:main -->
+<!-- verifies-key: eval/judges/judge_common.py:get_judge_response_format -->
