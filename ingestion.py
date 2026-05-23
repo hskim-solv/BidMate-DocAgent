@@ -148,6 +148,20 @@ class HwpCsvTextLoader(CsvTextDocumentLoader):
     file_format = "hwp"
 
 
+def _kordoc_required() -> bool:
+    """``BIDMATE_REQUIRE_KORDOC=1`` turns the csv_text fallback into a hard error.
+
+    Opt-in measurement-integrity guard (issue #1359): a real-corpus embedding /
+    parsing ablation must run on native kordoc chunks, never silently degrade to
+    the CSV ``텍스트`` column (which collapses table/heading structure and yields
+    a ~30x smaller chunk set, polluting any retrieval comparison). Default unset
+    → ADR 0049's unconditional csv_text fallback is unchanged, so CI (mocked
+    subprocess) / offline / air-gapped paths keep working. Full removal of the
+    fallback is deferred to a superseding-ADR PR.
+    """
+    return os.environ.get("BIDMATE_REQUIRE_KORDOC", "").strip() in {"1", "true", "True"}
+
+
 class _KordocLoader(CsvTextDocumentLoader):
     """Base loader that shells out to kordoc (npm) to produce Markdown.
 
@@ -198,6 +212,12 @@ class _KordocLoader(CsvTextDocumentLoader):
             markdown_by_stem = _kordoc_convert_batch(unique)
         except _KordocFallback as exc:
             self.last_fallback_reason = f"{type(exc.__cause__).__name__ if exc.__cause__ else 'KordocError'}: {str(exc)[:120]}"
+            if _kordoc_required():
+                raise RuntimeError(
+                    f"{type(self).__name__}: kordoc batch conversion failed and "
+                    f"BIDMATE_REQUIRE_KORDOC=1 forbids the csv_text fallback "
+                    f"({self.last_fallback_reason})"
+                ) from exc
             warnings.warn(
                 f"{type(self).__name__} batch fallback to CSV text: {self.last_fallback_reason}",
                 RuntimeWarning,
@@ -215,6 +235,12 @@ class _KordocLoader(CsvTextDocumentLoader):
         if cached:
             self.last_text_source = "kordoc"
             return cached
+        if _kordoc_required():
+            raise RuntimeError(
+                f"{type(self).__name__}: no kordoc output for {source_path.name} "
+                f"and BIDMATE_REQUIRE_KORDOC=1 forbids the csv_text fallback "
+                f"(last_fallback_reason={self.last_fallback_reason})"
+            )
         text = normalize_body_text(row.get("텍스트", ""))
         if not text:
             raise ValueError("empty_text")

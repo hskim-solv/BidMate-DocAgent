@@ -177,6 +177,66 @@ class EmbedQueryForIndexOpenAITest(unittest.TestCase):
         self.assertEqual(vec.shape, (8,))
 
 
+class _CapturingSentenceTransformer:
+    """Fake SentenceTransformer that records constructor + encode kwargs so the
+    opt-in ``BIDMATE_ST_FP16`` / ``BIDMATE_ST_PROGRESS`` knobs can be asserted
+    without a real model download (issue #1359 real100 ablation memory/ETA)."""
+
+    last_init_kwargs: dict = {}
+    last_encode_kwargs: dict = {}
+
+    def __init__(self, model_name: str, **kwargs: object) -> None:
+        type(self).last_init_kwargs = dict(kwargs)
+
+    def encode(self, texts: list[str], **kwargs: object):
+        import numpy as np
+
+        type(self).last_encode_kwargs = dict(kwargs)
+        return np.ones((len(texts), 4), dtype=np.float32)
+
+
+class StEncodeKnobTest(unittest.TestCase):
+    """``BIDMATE_ST_FP16`` / ``BIDMATE_ST_PROGRESS`` are opt-in: default unset
+    keeps fp32 + silent (byte-identical to pre-#1359); set propagates to the
+    SentenceTransformer constructor / encode call respectively."""
+
+    def _run(self, env: dict) -> tuple[dict, dict]:
+        import importlib
+
+        _CapturingSentenceTransformer.last_init_kwargs = {}
+        _CapturingSentenceTransformer.last_encode_kwargs = {}
+        fake_st = mock.MagicMock()
+        fake_st.SentenceTransformer = _CapturingSentenceTransformer
+        rag_embedding = importlib.import_module("rag_embedding")
+        # Fresh cache so the constructor (and its kwargs) actually runs.
+        rag_embedding.MODEL_CACHE.clear()
+        with mock.patch.dict(sys.modules, {"sentence_transformers": fake_st}), \
+                mock.patch.dict(os.environ, env, clear=False):
+            for k in ("BIDMATE_ST_FP16", "BIDMATE_ST_PROGRESS"):
+                if k not in env:
+                    os.environ.pop(k, None)
+            rag_embedding.embed_texts(["x"], model_name="dummy/model", backend="sentence-transformers")
+        return (
+            _CapturingSentenceTransformer.last_init_kwargs,
+            _CapturingSentenceTransformer.last_encode_kwargs,
+        )
+
+    def test_default_is_fp32_and_silent(self) -> None:
+        init_kwargs, encode_kwargs = self._run({})
+        self.assertNotIn("model_kwargs", init_kwargs)
+        self.assertFalse(encode_kwargs["show_progress_bar"])
+
+    def test_fp16_sets_torch_dtype(self) -> None:
+        import torch
+
+        init_kwargs, _ = self._run({"BIDMATE_ST_FP16": "1"})
+        self.assertEqual(init_kwargs["model_kwargs"], {"torch_dtype": getattr(torch, "float16")})
+
+    def test_progress_enables_bar(self) -> None:
+        _, encode_kwargs = self._run({"BIDMATE_ST_PROGRESS": "1"})
+        self.assertTrue(encode_kwargs["show_progress_bar"])
+
+
 class RunEmbeddingAblationSlugTest(unittest.TestCase):
     def test_openai_model_slug_is_filesystem_safe(self) -> None:
         sys.path.insert(0, str(_repo_scripts_dir()))
