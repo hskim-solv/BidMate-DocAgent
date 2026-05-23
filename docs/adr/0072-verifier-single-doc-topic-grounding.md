@@ -1,4 +1,4 @@
-# ADR 0070 — 비교 아닌 쿼리는 단일 문서(single-doc) 내 topic grounding 요구
+# ADR 0072 — 비교 아닌 쿼리는 단일 문서(single-doc) 내 topic grounding 요구
 
 - Status: Accepted
 - Implemented: #1008 — `rag_verifier._max_single_doc_topic_matches` + `verify_evidence` 의 non-comparison 분기
