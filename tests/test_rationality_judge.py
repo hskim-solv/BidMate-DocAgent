@@ -22,6 +22,9 @@ if str(ROOT) not in sys.path:
 
 from eval.judges.rationality_judge import (  # noqa: E402
     RATIONALITY_AXES,
+    _planner_subset,
+    _retrieval_subset,
+    _synthesis_subset,
     judge_rationality,
     render_markdown,
 )
@@ -213,6 +216,45 @@ class TestMarkdownSanitizesCaseIds(unittest.TestCase):
         self.assertIn(
             "`answer_reasoning` — pending (no synthesis LLM call captured", md
         )
+
+
+class TestMalformedTraceNullSafety(unittest.TestCase):
+    """Guard paths for nested ``None`` values in the trace dict.
+
+    The subset extractors must tolerate ``planner`` / ``attempts`` /
+    ``retrieval_budget`` being ``None`` (or otherwise non-dict/non-list)
+    without raising, falling back to the same empty-defaults the
+    isinstance guards always intended.
+    """
+
+    def test_planner_none_yields_all_none_fields(self):
+        subset = _planner_subset({"trace": {"planner": None}})
+        self.assertEqual(
+            subset,
+            {
+                "query_type": None,
+                "pipeline": None,
+                "stage_sequence": None,
+                "selected_top_k": None,
+                "retrieval_budget_reason": None,
+            },
+        )
+
+    def test_retrieval_budget_non_dict_yields_none_reason(self):
+        subset = _planner_subset(
+            {"trace": {"planner": {"retrieval_budget": "not-a-dict"}}}
+        )
+        self.assertIsNone(subset["retrieval_budget_reason"])
+
+    def test_attempts_none_yields_empty_list(self):
+        self.assertEqual(_retrieval_subset({"trace": {"planner": {"attempts": None}}}), [])
+
+    def test_missing_nested_trace_key_falls_back_to_top_level(self):
+        # No "trace" nesting: planner sits at top level.
+        self.assertEqual(_retrieval_subset({"planner": {"attempts": None}}), [])
+
+    def test_synthesis_call_non_dict_returns_none(self):
+        self.assertIsNone(_synthesis_subset({"trace": {"synthesis_llm_call": None}}))
 
 
 class TestEndToEndCLI(unittest.TestCase):
