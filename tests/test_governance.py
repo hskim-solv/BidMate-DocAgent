@@ -456,6 +456,97 @@ def test_status_parity_fails_loud_and_normalizes():
 
 
 # ---------------------------------------------------------------------------
+# G4 (crossref) — ADR ↔ ADR supersede cross-ref integrity (issue #1077).
+# Fourth ADR integrity lint: the README-parity trio compares an ADR file to
+# its index row; this compares ADR files against each other. Catches the
+# recurrence where an ADR supersedes an older one but the older ADR's Status
+# block / back-pointer is never updated (ADR 0022 flip; PR #1068/#1075).
+# ---------------------------------------------------------------------------
+
+
+def test_adr_supersede_crossref_is_clean_on_disk():
+    # The committed ADR tree must satisfy R1/R2/R3 (this is the canonical CI
+    # gate the pre-commit hook shifts left).
+    violations = gov.adr_supersede_crossref_violations(ROOT_DIR / "docs" / "adr")
+    assert not violations, (
+        "ADR↔ADR supersede cross-refs are broken:\n"
+        + "\n".join(f"  - {v}" for v in violations)
+        + "\n\nIssue #1077: keep the superseded ADR's Status + back-pointer in "
+        "sync with the superseder."
+    )
+
+
+def _write(tmp_path, name, body):
+    (tmp_path / name).write_text(body, encoding="utf-8")
+
+
+def test_crossref_r1_status_must_say_superseded(tmp_path):
+    # A `Superseded by` pointer with a non-superseded Status is an R1 drift.
+    _write(tmp_path, "0001-old.md",
+           "- **Status**: accepted\n- **Superseded by**: [ADR 0002](./0002-new.md)\n")
+    _write(tmp_path, "0002-new.md", "- **Status**: accepted\n")
+    v = gov.adr_supersede_crossref_violations(tmp_path)
+    assert len(v) == 1 and v[0].startswith("0001:") and "does not contain" in v[0], v
+
+    # Flipping the Status to superseded clears it (and the back-pointer keeps
+    # the relationship; 0002 has no structured Supersedes, so no R3 here).
+    _write(tmp_path, "0001-old.md",
+           "- **Status**: superseded\n- **Superseded by**: [ADR 0002](./0002-new.md)\n")
+    assert gov.adr_supersede_crossref_violations(tmp_path) == []
+
+
+def test_crossref_r1_accepts_accepted_superseded_hybrid(tmp_path):
+    # ADR 0044's real form: `Accepted (Superseded by ADR NNNN)` — leading word
+    # is 'accepted' but the value contains 'superseded', so R1 must pass.
+    _write(tmp_path, "0044-old.md",
+           "| **Status** | Accepted (Superseded by ADR 0052) |\n"
+           "| **Superseded by** | ADR 0052 (step-change) |\n")
+    _write(tmp_path, "0052-new.md",
+           "| **Status** | Proposed |\n| **Supersedes** | ADR 0044 (trajectory) |\n")
+    assert gov.adr_supersede_crossref_violations(tmp_path) == []
+
+
+def test_crossref_r2_dangling_target(tmp_path):
+    _write(tmp_path, "0001-old.md",
+           "- **Status**: superseded\n- **Superseded by**: [ADR 0099](./0099-ghost.md)\n")
+    v = gov.adr_supersede_crossref_violations(tmp_path)
+    assert len(v) == 1 and "0099" in v[0] and "no file" in v[0], v
+
+
+def test_crossref_r3_supersedes_needs_back_pointer(tmp_path):
+    # 0002 declares it supersedes 0001, but 0001 carries no `Superseded by`.
+    _write(tmp_path, "0001-old.md", "- **Status**: accepted\n")
+    _write(tmp_path, "0002-new.md",
+           "- **Status**: proposed\n- **Supersedes**: [ADR 0001](./0001-old.md)\n")
+    v = gov.adr_supersede_crossref_violations(tmp_path)
+    assert len(v) == 1 and v[0].startswith("0002:") and "back-pointer" in v[0], v
+
+    # Add the reciprocal back-pointer (+ superseded Status to satisfy R1) → clean.
+    _write(tmp_path, "0001-old.md",
+           "- **Status**: superseded\n- **Superseded by**: [ADR 0002](./0002-new.md)\n")
+    assert gov.adr_supersede_crossref_violations(tmp_path) == []
+
+
+def test_crossref_status_line_superseded_by_is_a_pointer(tmp_path):
+    # The `Superseded by NNNN` form embedded in the Status value (ADR 0036)
+    # counts as a back-pointer — both R1 and R3 are satisfied by it.
+    _write(tmp_path, "0036-old.md",
+           "- **Status**: superseded by [0049](./0049-new.md)\n")
+    _write(tmp_path, "0049-new.md",
+           "- **Status**: accepted\n- **Supersedes**: [ADR 0036](./0036-old.md)\n")
+    assert gov.adr_supersede_crossref_violations(tmp_path) == []
+
+
+def test_crossref_em_dash_placeholder_is_not_a_pointer(tmp_path):
+    # `| **Supersedes** | — |` / `| **Superseded by** | — |` (ADR 0034) carry
+    # no target and must not trip R2/R3.
+    _write(tmp_path, "0034-x.md",
+           "| **Status** | Accepted |\n| **Supersedes** | — |\n"
+           "| **Superseded by** | — |\n")
+    assert gov.adr_supersede_crossref_violations(tmp_path) == []
+
+
+# ---------------------------------------------------------------------------
 # G5 — rag_core.py must not introduce a pydantic/TypedDict class that
 # shadows the answer dict (CLAUDE.md "Prohibited"; ADR 0003).
 # ---------------------------------------------------------------------------
