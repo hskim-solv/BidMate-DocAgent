@@ -10,7 +10,7 @@
 # Governance gates (branch + issue, README metrics, latency SLO, leaderboard
 # freshness, real-eval history freshness, benchmark manifest check). Run
 # `make governance-check` to invoke the pre-PR subset in sequence.
-.PHONY: check-branch governance-check check check-latency leaderboard-check real-eval-history-check benchmark-check check-baseline-provenance check-doc-links regen-golden check-golden
+.PHONY: check-branch governance-check check snapshot-update check-latency leaderboard-check real-eval-history-check benchmark-check check-baseline-provenance check-doc-links regen-golden check-golden
 
 # Index build + ad-hoc ask
 .PHONY: index ask build-kordoc-manifest
@@ -166,8 +166,26 @@ benchmark:
 benchmark-check:
 	$(PYTHON) scripts/summarize_benchmark.py --manifest $${MANIFEST:?set MANIFEST=artifacts/benchmarks/<run_id>/run_manifest.json} --check
 
+# README metric-parity gate (issue #792). Compares the committed snapshot
+# (reports/eval_summary.snapshot.json) against the README metric rows — it does
+# NOT re-measure. #739/#751 failed because the gate re-ran a divergent CI eval
+# (config.ci.yaml / hashing) against a README generated from the full config;
+# the committed snapshot removes the re-measurement source-mismatch entirely.
+# Refresh the snapshot with `make snapshot-update`.
 check:
-	$(PYTHON) scripts/update_readme_metrics.py --report reports/eval_summary.json --readme README.md --check
+	$(PYTHON) scripts/update_readme_metrics.py --report reports/eval_summary.snapshot.json --readme README.md --check
+
+# Freeze the public-synthetic eval that backs the README metric table into the
+# committed snapshot (issue #792). Run after `make smoke` (regenerates
+# reports/eval_summary.json from eval/config.yaml on the hashing backend) when
+# the metric numbers legitimately move. Copies the fresh summary to the
+# snapshot and syncs the README metric rows in place (hand-curated prose
+# preserved). Commit reports/eval_summary.snapshot.json + README.md together.
+snapshot-update:
+	@test -f reports/eval_summary.json || { echo "reports/eval_summary.json missing — run 'make smoke' first"; exit 1; }
+	cp reports/eval_summary.json reports/eval_summary.snapshot.json
+	$(PYTHON) scripts/update_readme_metrics.py --report reports/eval_summary.snapshot.json --readme README.md
+	@echo "snapshot-update: refreshed reports/eval_summary.snapshot.json + README rows. Commit both."
 
 # naive_baseline ranking golden (tests/data/naive_baseline_top_k.json) regen +
 # staleness check. The golden drifts when the data/raw/ corpus changes (PR #648,

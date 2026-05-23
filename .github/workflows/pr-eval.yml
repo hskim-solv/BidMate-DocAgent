@@ -107,6 +107,15 @@ jobs:
         if: matrix.shard == 1
         run: python3 scripts/leaderboard.py --check
 
+      - name: Verify README metrics match the committed snapshot (issue #792)
+        # Compares README metric rows against reports/eval_summary.snapshot.json
+        # — NO re-measurement (the #739/#751 source-mismatch failure). This is
+        # the operator-facing form of the always-on pytest sentinel
+        # tests/test_governance_readme_metric_snapshot.py. Refresh with
+        # `make snapshot-update`. Shard 1 only (not test-suite dependent).
+        if: matrix.shard == 1
+        run: python3 scripts/update_readme_metrics.py --report reports/eval_summary.snapshot.json --readme README.md --check
+
   baseline-provenance:
     # Gate (issue #413): verify reports/real100/baseline.aggregate.json's
     # `provenance.git_commit` is still reachable from origin/<base ref>.
