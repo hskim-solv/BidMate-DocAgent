@@ -149,6 +149,9 @@ def cmd_phase2(args: argparse.Namespace) -> None:
         if sys.stdin.readline().strip().lower() != "y":
             sys.exit(1)
 
+    out_dir = Path(args.out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
     # raw[variant][case_id][seed] = {pred, f1@thr, cov, spur, cost, latency, parse_error}
     raw: dict[str, dict[str, dict[int, dict]]] = {v: {} for v in variants}
     total_calls = 0
@@ -283,8 +286,6 @@ def cmd_phase2(args: argparse.Namespace) -> None:
         "phase1_5_structural_ids": (phase1_5 or {}).get("disagreed_case_ids", []),
         "total_llm_calls": total_calls,
     }
-    out_dir = Path(args.out_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "phase2_summary.json").write_text(
         json.dumps(summary, ensure_ascii=False, indent=2, default=lambda _: None))
     _write_report(out_dir, summary, args)
