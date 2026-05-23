@@ -1,6 +1,6 @@
 # Real-100 Corpus EDA
 
-Aggregate-only profile of the private 100-document RFP dataset. ADR 0005 boundary: 사업명 / 사업 요약 / 텍스트 / 파일명 are read for length statistics only; never rendered. Agency names beyond rank 10 are anonymized to `agency_NN` labels.
+Aggregate-only profile of the private 100-document RFP dataset. ADR 0005 boundary: 사업명 / 사업 요약 / 텍스트 / 파일명 are read for length statistics only; never rendered. All agency names are anonymized to `agency_NN` rank labels.
 
 Sources: `data/data_list.csv`, `data/index/real100/index.json`, `reports/real100/baseline.aggregate.json`
 
