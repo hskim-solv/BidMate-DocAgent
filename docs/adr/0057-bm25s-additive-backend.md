@@ -50,7 +50,9 @@ additive opt-in 백엔드 (`bm25_backend: bm25s`) 추가 자체는 `accepted` �
 
 조건 1 충족 + 조건 2 미충족 시 (ADR 0019/0021/0031 이 임베딩/토크나이저에서 발견한 `0pp-on-hybrid` 패턴이 BM25 backend 에도 성립), 이 ADR 은 `accepted` 상태 유지 (default flip 만 deferred) 하고 공개 합성 eval surface 에 측정 부록만 추가 — 측정 폐루프 작동.
 
-## Measurement (real-100, 2026-05-22)
+## Measurement
+
+### 2026-05-22 — retrieval-channel A/B (top-N overlap, real-100)
 
 [PR #1303](https://github.com/hskim-solv/BidMate-DocAgent/pull/1303) (issue #1299) 이 `bm25_backend` 를 `make_plan` → plan dict → `retrieve_candidates` 로 threading 하기 전까지 `full_bm25s` 행은 plan 에 backend 키가 도달하지 않아 silently okapi 로 fallback 했다 (`bm25s` 라벨이지만 실제 okapi 측정). #1303 머지 + `requirements-bm25s.txt` 설치 후, 비공개 real-100 corpus 에서 Re-open 조건 (1)+(2)-③ 을 실측했다.
 
@@ -72,11 +74,9 @@ additive opt-in 백엔드 (`bm25_backend: bm25s`) 추가 자체는 `accepted` �
 
 **결정** — 조건 (1) 충족 + 조건 (2) 실질 미충족 (parity 는 안전성 신호일 뿐 lift 아님; ADR 0019/0021/0031 의 `0pp-on-hybrid` 패턴이 BM25 backend 에도 성립). 위 "Re-open 조건" 의 line — *조건 1 충족 + 조건 2 미충족 시 측정 부록만 추가* — 경로를 따라 **`bm25_backend` 기본값 flip 보류**, `bm25s` 는 opt-in additive 백엔드로 유지. 후속 ADR (조건 3) 은 열지 않는다. 측정 폐루프 작동.
 
-## Measurement
-
 ### 2026-05-22 — 풀 파이프라인 end-to-end 측정 (비공개 real-100, n=221)
 
-2026-05-22 의 retrieval-channel A/B (아래 "범위 외" 항목) 는 top-N overlap 만 측정하고 end-to-end accuracy / citation_precision / latency delta 는 deferred 였다. 이번에 그 deferred 분을 실측하여 re-open 조건 (1) + (2)-①② 충족 여부를 확정한다.
+2026-05-22 의 retrieval-channel A/B (위 항목) 는 top-N overlap 만 측정하고 end-to-end accuracy / citation_precision / latency delta 는 deferred 였다. 이번에 그 deferred 분을 실측하여 re-open 조건 (1) + (2)-①② 충족 여부를 확정한다.
 
 - **Surface**: 비공개 real-100 eval, n=221 cases (answerable 118 / abstention 103). subset 없이 전체 — full bootstrap 검정력 유지.
 - **Index**: prebuilt `data/index/real100` (26376 chunks, `EMBEDDING_BACKEND=hashing` 오프라인 기본 경로). 재빌드 없이 prebuilt 재사용.
