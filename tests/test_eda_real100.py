@@ -256,35 +256,74 @@ def test_aggregate_json_keys_allowlist(tmp_path: Path) -> None:
 
 
 def test_committed_outputs_no_raw_agency() -> None:
-    """Defense-in-depth on the *shipped* artifact (not the fixture).
+    """Defense-in-depth on the *shipped* real100 artifacts (not the fixture).
 
-    #898 leaked real top-10 발주 기관 names into the committed reports/real100/
-    eda.md + eda.aggregate.json; #1389 fixed the renderer but added no guard.
-    The path-based pre-commit ADR 0005 hook does not scan content of
-    allowlisted files (#1177 gap), so guard the actual files against both the
-    specific names that leaked and the generic public-org suffix pattern — any
-    future regeneration drift on the private machine is caught here.
+    #898 leaked real top-N 발주 기관 names into the committed eda.{md,aggregate.json};
+    a sibling leak embedded agency/doc-id/title strings as suffixes inside
+    retry_reason_counts keys of the baseline/history aggregates. #1389 fixed the
+    eda renderer but shipped no guard, and the path-based pre-commit ADR 0005
+    hook does not scan allowlisted-file *content* (#1177 gap).
+
+    The checks are *structural and name-free* on purpose — asserting a positive
+    shape (agency fields are ``agency_NN``; retry keys are ASCII enums) rather
+    than blocklisting specific names. A blocklist would have to embed the very
+    private names it guards (an ADR 0005 violation in itself) and rots as new
+    agencies appear.
     """
     import re
 
     reports_dir = REPO_ROOT / "reports" / "real100"
-    targets = [reports_dir / "eda.md", reports_dir / "eda.aggregate.json"]
-    leaked_names = (
-        "한국수자원공사", "한국철도공사", "한국연구재단", "한국생산기술연구원",
-        "인천광역시", "국방과학연구소", "수협중앙회", "한국농어촌공사",
-        "축산물품질평가원", "광주과학기술원",
-    )
-    # Generic Korean public-org suffixes — catches new agency names too.
-    org_suffix = re.compile(r"공사|공단|재단|연구원|연구소|중앙회|광역시")
+    hangul = re.compile(r"[가-힣]")
+    agency_label = re.compile(r"^agency_\d+$")
 
-    for path in targets:
-        if not path.exists():
-            continue
-        text = path.read_text(encoding="utf-8")
-        for name in leaked_names:
-            assert name not in text, f"raw agency {name!r} present in {path.name}"
-        hit = org_suffix.search(text)
-        assert hit is None, f"org-suffix pattern {hit.group()!r} present in {path.name}"
+    # --- eda.aggregate.json: every agency name/label must be agency_NN ---
+    eda_json = reports_dir / "eda.aggregate.json"
+    if eda_json.exists():
+        agency = (
+            json.loads(eda_json.read_text(encoding="utf-8"))
+            .get("axis1_metadata", {})
+            .get("agency", {})
+        )
+        for entry in (agency.get("top") or []) + (agency.get("tail_anonymized") or []):
+            for key in ("name", "label"):
+                if key in entry:
+                    assert agency_label.fullmatch(str(entry[key])), (
+                        f"non-anonymized agency {entry[key]!r} in eda.aggregate.json"
+                    )
+
+    # --- eda.md: agency-distribution table cells must be agency_NN ---
+    eda_md = reports_dir / "eda.md"
+    if eda_md.exists():
+        in_table = False
+        for line in eda_md.read_text(encoding="utf-8").splitlines():
+            if line.strip() == "| rank | agency | doc count |":
+                in_table = True
+                continue
+            if in_table:
+                m = re.match(r"^\| (\d+) \| (.+?) \| (\d+) \|$", line)
+                if m:
+                    assert agency_label.fullmatch(m.group(2).strip()), (
+                        f"non-anonymized agency {m.group(2)!r} in eda.md"
+                    )
+                elif line.strip() == "":
+                    in_table = False
+
+    # --- aggregates: retry_reason_counts keys must be ASCII enums (no Hangul) ---
+    def assert_retry_keys_ascii(obj: object, src: str) -> None:
+        if isinstance(obj, dict):
+            for k, v in obj.items():
+                if k == "retry_reason_counts" and isinstance(v, dict):
+                    for kk in v:
+                        assert not hangul.search(kk), (
+                            f"Hangul (likely agency/title) in retry key {kk!r} of {src}"
+                        )
+                assert_retry_keys_ascii(v, src)
+        elif isinstance(obj, list):
+            for item in obj:
+                assert_retry_keys_ascii(item, src)
+
+    for agg in sorted(reports_dir.rglob("*.aggregate.json")):
+        assert_retry_keys_ascii(json.loads(agg.read_text(encoding="utf-8")), agg.name)
 
 
 if __name__ == "__main__":
