@@ -7,9 +7,27 @@
 
 ![BidMate-DocAgent live demo (5s walkthrough — comparison query, extractive, no LLM)](docs/assets/demo.gif)
 
-> 한국 공공·B2B 입찰 RFP 에서 비교·요건 추출 질의를 **근거 기반 답변**으로 돌려주는 한국어 도메인 특화 RAG. 외부 LLM 호출 없이 추출형(extractive) grounding 으로 hallucination 을 구조적으로 차단.
-> **차별점**: 비교 질의에서 두 기관 문서를 균등 인용하는 [comparison-aware balanced retrieval](#핵심-기술-기여--comparison-aware-balanced-top-k), 메타데이터 우선 검색 ([ADR 0002](docs/adr/0002-metadata-first-retrieval.md)), 근거 불충분 시 보류(abstention) 명시 ([ADR 0003](docs/adr/0003-structured-answer-citation-contract.md)).
+## 30초 요약 — What this proves
+
+> 한 줄: 한국 공공·B2B 입찰 RFP 에서 발생하는 **검색 실패 · 근거 부족 · 비교 질의 편향을 failure mode 로 정의**하고, 이를 baseline / ablation / eval / CI 로 검증 가능하게 만든 **근거 기반(citation-grounded) 추출형 RAG** 시스템.
+
+| | |
+|---|---|
+| **무엇을 (what)** | RFP 문서용 citation-grounded **extractive** RAG — 외부 LLM 호출 없이 retrieved evidence 에서 claim 추출 + citation 잠금 ([ADR 0003](docs/adr/0003-structured-answer-citation-contract.md)) |
+| **왜 어려운지 (why hard)** | 한국어 공공/B2B RFP 는 길고 noisy 하며, 기관·사업명이 유사해 문서 간 비교·요건 추출이 구조적으로 어렵다 |
+| **무엇을 엔지니어링 (engineered)** | 메타데이터 우선 검색 ([ADR 0002](docs/adr/0002-metadata-first-retrieval.md)) + [comparison-aware balanced top-k](#핵심-기술-기여--comparison-aware-balanced-top-k) + verifier/retry + 근거 불충분 시 보류(abstention) |
+| **어떻게 평가 (evaluated)** | baseline 보존 ablation ([ADR 0001](docs/adr/0001-preserve-naive-baseline.md)) + 공개 합성·비공개 real-eval 분리 ([ADR 0005](docs/adr/0005-eval-split-public-synthetic-private-local.md)) + PR 마다 회귀 게이트 ([pr-eval.yml](.github/workflows/pr-eval.yml)) + 73 ADR |
+| **어떻게 실행 (run it)** | `make index && make demo`, 또는 [5분 quickstart](#실행-5분-quickstart) · [Colab](https://colab.research.google.com/github/hskim-solv/BidMate-DocAgent/blob/main/demo/bidmate_quickstart.ipynb) · [Live demo](https://bidmate-docagent-demo.fly.dev/) |
+
+> **Portfolio signal**: 외부 LLM API 를 호출하는 RAG 데모가 아니라, RFP 도메인의 실패 모드를 직접 정의하고 그것을 막는 평가·CI·provenance 게이트를 **소유(system ownership)** 한 사례. 리뷰어용 진입점 → [모듈 맵](docs/architecture/module-map.md) · [실패 모드 케이스 스터디](docs/case-studies/failure-modes.md) · [면접 피치](docs/portfolio-pitch.md).
+
+> **real-eval 읽는 법 (오해 방지)**: 비공개 real-eval (n=221) accuracy 16.10% 는 *제품 성공 지표가 아니라 hardcase 스트레스 테스트* 다 — 실패 모드를 노출하고, ablation 의 distinguishing power(변별력) 를 시험하며, 다음 개선을 안내하는 용도. 공개 합성 eval(품질 회귀 감시)과 비공개 real-eval(난이도 상한 탐침)은 **목적이 다르다** ([ADR 0005](docs/adr/0005-eval-split-public-synthetic-private-local.md)). 낮은 hardcase 수치는 숨기지 않고 **엔지니어링 증거로 의도적으로 노출**한다 ([ADR 0052](docs/adr/0052-real-eval-hardcase-expansion-to-200.md)).
+
+<details><summary><b>측정 상세 (over-claim 가드 — 펼치기)</b></summary>
+
 > **측정**: 공개 합성 (`agentic_full`, n=100): accuracy 0.718 ± 0.10, citation_precision 0.705 ± 0.08 (95% CI). 비공개 real-eval (100-doc RFP, n=221 hardcase, [ADR 0052](docs/adr/0052-real-eval-hardcase-expansion-to-200.md)): accuracy 16.10%. distinguishing-power gauge — 점추정(point estimate)으로는 4/5 metric 이 `random_retrieval` + `single_chunk` 두 floor 를 상회 (groundedness +16.95pp · accuracy +13.56pp · citation_precision +10.45pp · claim_citation_alignment +6.10pp vs random_retrieval) 하나, **CI-aware 비중첩 95% CI 테스트에서는 n=221 에서 5/5 모두 분리 미달 — 4 metric `uncertain`, answer_format_compliance −4.02pp `dead`** (게이지의 보수적 판정이 over-claim 을 차단). Goodhart 폐루프 ([ADR 0053](docs/adr/0053-distinguishing-power-floor-ablations.md) 첫 측정 발견 → [ADR 0054](docs/adr/0054-conditional-on-answer-scorer-semantics.md) scorer 정정 → CI-aware 판정, [reports/real100/distinguishing_power.md](reports/real100/distinguishing_power.md)). 공개 합성 + 비공개 real-data 분리 평가 ([ADR 0005](docs/adr/0005-eval-split-public-synthetic-private-local.md)), 73개 설계 결정 (ADR).
+
+</details>
 
 ### 5초 비주얼 훅 — 실제 `comparison` 질의 한 건 (extractive, no LLM)
 
@@ -51,6 +69,8 @@ INFO bidmate.rag_core: query_complete  status='supported'  query_type='compariso
 
 데모 UI 는 3 파이프라인 preset (`naive_baseline` · `agentic_full` · `agentic_full_llm`) 을 라디오 버튼으로 전환, extractive vs LLM 합성 답변 side-by-side 비교.
 
+<a id="why-extractive-not-generative"></a>
+
 ## 왜 추출형(extractive)인가, 생성형(generative)이 아닌가?
 
 기본 파이프라인 (`naive_baseline`, `agentic_full`) 은 외부 LLM 호출 없이 retrieved evidence 에서 claim 을 추출하는 **추출형 근거 답변**. 생성기를 의도적으로 추출형으로 한정한 4가지 이유:
@@ -65,16 +85,6 @@ INFO bidmate.rag_core: query_complete  status='supported'  query_type='compariso
 LLM synthesis opt-in (`agentic_full_llm`, [ADR 0011](docs/adr/0011-llm-synthesis-as-additive-ablation.md)) 과 LLM Ops observability ([ADR 0013](docs/adr/0013-observability-as-additive-pluggable-surface.md)) 는 추출형 파이프라인을 *교체하지 않고* additive 분석 변형으로 추가 — [`docs/agentic/answer-policy.md`](docs/agentic/answer-policy.md) / [`docs/operations/observability.md`](docs/operations/observability.md).
 
 > **완료 ([issue #570](https://github.com/hskim-solv/BidMate-DocAgent/issues/570))**: 공개 합성 n=42 → **n=100 확장** (single_doc 34 / comparison 24 / follow_up 21 / abstention 21). Bootstrap CI 폭 이론 수축 ×0.65 (√42/100). **비공개 real-eval n=21 → n=221 확장** ([ADR 0052](docs/adr/0052-real-eval-hardcase-expansion-to-200.md), [issue #942](https://github.com/hskim-solv/BidMate-DocAgent/issues/942)) — LLM-assisted hardcase generator + distinguishing-power floor ([ADR 0053](docs/adr/0053-distinguishing-power-floor-ablations.md)) 으로 ablation 통계 분리 가능 단계 도달. Detection-blind 분석 변형 real-eval 측정은 별도 follow-up
-
-## TL;DR
-
-- **문제**: 길고 복잡한 RFP 문서에서 실무 의사결정용 핵심 조건 (예산/일정/요구사항/제출조건) 을 빠르게 찾기 어려움
-- **해결**: 질문 유형 분석 + 메타데이터 우선 검색 + local dense retrieval/reranking + 근거 검증/재시도를 결합한 Agentic RAG
-- **시스템 설계**: 외부 LLM 호출 없이 evidence 에서 claim 추출 + citation 연결하는 **추출형 근거 답변 파이프라인** ([ADR 0003](docs/adr/0003-structured-answer-citation-contract.md))
-- **성과**: 공개 합성 n=100 (single_doc 34 / comparison 24 / follow_up 21 / abstention 21) 기준 근거 기반 응답 품질 검증. Abstention **+77.8pp** / Citation Precision **+39.3pp** (CI 분리, 통계 유의). [평가셋 spec](docs/eval/eval-dataset-spec.md)
-- **Latency** (naive_baseline, hashing, macOS CPU, n=100): p50 1.7ms / p95 3.1ms
-
----
 
 ## 핵심 기술 기여 — comparison-aware balanced top-k
 
@@ -104,6 +114,8 @@ RFP 비교 질의 (`query_type == "comparison"`) 에서 발생하는 한쪽 문�
 - **헤드라인 latency 기준**: naive_baseline p95 (3.1ms) 가 CI source of truth. `agentic_full_llm` 은 LLM 레이턴시 포함 환경 의존이라 CI 고정 대상 아님
 - **`agentic_full_llm` backend**: 분석 변형 표의 `full_llm` 행은 `BIDMATE_SYNTHESIS_BACKEND=stub` (token-less, deterministic; [ADR 0011](docs/adr/0011-llm-synthesis-as-additive-ablation.md)). stub 은 pass-through 합성이라 `full` 과 동일 메트릭이 *정상*
 - **Rerank 종류**: `Rerank on` 행 대부분 weighted-score rerank. `full_reranker` 만 cross-encoder rerank ([rag_rerank.py](rag_rerank.py)) — CI default `stub` 이라 `full` 과 수치 일치
+
+> **표 읽는 법 — 안전성/품질 trade-off (over-claim 아님)**: `agentic_full` 은 **raw answer rate 를 극대화하도록 튜닝된 파이프라인이 아니다.** 답변율(answer rate) 일부를 내주는 대신 **citation precision +18.0pp** (0.705 vs 0.525) 과 **abstention accuracy +57.1pp** (0.810 vs 0.238) 을 얻는 **safety-oriented** 설계다. 그래서 overall accuracy 는 `naive_baseline` 이 더 높을 수 있고 (0.782 vs 0.718, −6.4pp), 이는 *실패한 최적화가 아니라 의도된 trade-off* 다 — 근거 없는 답변보다 근거 있는 보류를 우선한다 ([ADR 0003](docs/adr/0003-structured-answer-citation-contract.md) · [ADR 0004](docs/adr/0004-verifier-retry-policy.md)). 따라서 아래 표는 **하나의 평탄한 leaderboard 가 아니라 slice 별로** 읽어야 한다 — comparison · follow-up · hardcase 는 각각 다른 실패 모드를 측정한다. slice 별 설계 대응: [실패 모드 케이스 스터디](docs/case-studies/failure-modes.md).
 
 <!-- METRICS_TABLE:START -->
 | Category | Metric | agentic_full (95% CI) | naive_baseline (95% CI) | Δ |
@@ -215,6 +227,18 @@ python3 scripts/update_readme_metrics.py --report reports/eval_summary.json --re
 ```
 
 상세 실행 (FastAPI 데모, PDF/HWP ingestion, visual parsing v2, 비공개 100-doc eval, harness): [`docs/operations/api-demo.md`](docs/operations/api-demo.md).
+
+---
+
+## 면접에서 이 프로젝트를 설명하는 법
+
+> 이 프로젝트에서 저는 RAG 파이프라인을 단순 구현한 것이 아니라, RFP 문서에서 실제로 발생하는 **검색 실패 · 근거 부족 · 비교 질의 편향을 failure mode 로 정의**하고, 이를 **baseline / ablation / eval / CI 로 검증 가능한 시스템**으로 만들었습니다.
+
+- **Baseline preservation** — `naive_baseline` 을 byte-identical 로 보존해 모든 개선을 *additive ablation* 으로만 측정 ([ADR 0001](docs/adr/0001-preserve-naive-baseline.md))
+- **Failure-mode-driven design** — comparison starvation · metadata ambiguity · abstention · follow-up · citation drift 5개 실패 모드를 명시하고 각각에 설계로 대응 ([실패 모드](docs/case-studies/failure-modes.md))
+- **Eval/CI regression prevention** — PR 마다 회귀 게이트 + failure-rate ratchet 으로 품질 후퇴 차단 ([pr-eval.yml](.github/workflows/pr-eval.yml) · [ADR 0062](docs/adr/0062-failure-rate-regression-contract.md))
+
+전체 피치 (STAR 정리 + 인터뷰 답변): [`docs/portfolio-pitch.md`](docs/portfolio-pitch.md).
 
 ---
 

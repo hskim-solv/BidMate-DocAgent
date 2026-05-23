@@ -100,6 +100,8 @@ Meta/parent issue (예: #118 포트폴리오, #187 phase 향상 백로그) 는 �
 - **결정 세탁** — load-bearing 선택이 리팩터 PR 에 묻힘. *방지*: CLAUDE.md Core principles 의 ADR 임계값 + [`docs/adr/README.md`](./adr/README.md); PR 템플릿이 질문 강제
 - **리뷰 중 scope 증가** — "while I was here" fix 가 PR 비대화. *방지*: CLAUDE.md "one PR, one concern"; follow-up issue spawn
 
+<a id="governance-saves-real-incidents-prevented"></a>
+
 ## Governance saves: 실제 막은 인시던트
 
 위 목록은 *설계* — 규칙과 가드. 이 섹션은 *증거* — 실제 발생한 인시던트와 사후 추가된 hook/ADR/규칙. 거버넌스가 *있다* 가 아니라 *rent 를 냈다* 가 reviewer 의 30초 질문. 각 항목 = rent 1회.
