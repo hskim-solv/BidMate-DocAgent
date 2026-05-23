@@ -213,8 +213,14 @@ def print_table(per_model: dict[str, dict[str, dict]]) -> None:
     baseline_id = models[0]
     base_label = baseline_id.split("/")[-1]
     all_metrics = list(METRICS) + list(RETRIEVAL_METRICS)
-    # n= is read from the eval config rather than hardcoded; keep header generic
-    # so it stays accurate as eval/config.yaml grows (was n=42, now n=100+).
+    # Ablation run names are read from the eval_summary itself, not hardcoded:
+    # the public-synthetic config and the real config define different runs
+    # (e.g. real100 has full / random_retrieval / single_chunk / full_bm25s and
+    # no naive_baseline). Use the baseline model's run order; intersect so a run
+    # missing from a candidate model is skipped rather than KeyError-ing.
+    ablation_names = [
+        name for name in per_model[baseline_id] if all(name in per_model[m] for m in models)
+    ]
     print(f"\nEMBEDDING ABLATION (baseline = {baseline_id})\n")
     header = f"{'metric':<22}"
     for m in models:
@@ -222,7 +228,7 @@ def print_table(per_model: dict[str, dict[str, dict]]) -> None:
     print(header)
     print("-" * len(header))
 
-    for ablation in ABLATION_NAMES:
+    for ablation in ablation_names:
         print(f"\n--- {ablation}:")
         # Point-estimate rows: answer-quality + retrieval metrics, one column
         # per model. Retrieval rows are the ADR 0069 addition.

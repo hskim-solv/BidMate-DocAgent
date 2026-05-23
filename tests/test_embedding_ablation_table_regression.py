@@ -142,6 +142,40 @@ class PrintTableRetrievalSurfaceTest(unittest.TestCase):
         self.assertNotIn("CI[", out)
 
 
+class ConfigAgnosticAblationNamesTest(unittest.TestCase):
+    """The real100 config defines different run names than the public-synthetic
+    one (full / random_retrieval / single_chunk / full_bm25s, no naive_baseline).
+    print_table must read run names from the data, not the hardcoded tuple, or a
+    multi-model real run KeyErrors on the missing naive_baseline."""
+
+    def _block(self, recall10: float) -> dict:
+        return {
+            "accuracy": 0.8,
+            "chunk_recall_at_10": recall10,
+            "ci": {"chunk_recall_at_10": {"ci_lo": recall10 - 0.05, "ci_hi": recall10 + 0.05}},
+        }
+
+    def test_real_config_run_names_do_not_crash(self) -> None:
+        real_runs = ("full", "random_retrieval", "single_chunk", "full_bm25s")
+        per_model = {
+            "MiniLM": {n: self._block(0.20) for n in real_runs},
+            "KURE-v1": {n: self._block(0.28) for n in real_runs},
+        }
+        out = _capture(per_model)  # must not raise
+        self.assertIn("--- full:", out)
+        self.assertIn("--- full_bm25s:", out)
+        self.assertNotIn("naive_baseline", out)
+
+    def test_run_missing_from_candidate_is_skipped(self) -> None:
+        per_model = {
+            "MiniLM": {"full": self._block(0.20), "full_bm25s": self._block(0.30)},
+            "KURE-v1": {"full": self._block(0.28)},  # missing full_bm25s
+        }
+        out = _capture(per_model)  # must not KeyError
+        self.assertIn("--- full:", out)
+        self.assertNotIn("--- full_bm25s:", out)
+
+
 class BuildIndexArgvTest(unittest.TestCase):
     def setUp(self) -> None:
         self._captured: list[list[str]] = []
