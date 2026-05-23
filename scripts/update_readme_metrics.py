@@ -3,7 +3,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
@@ -412,14 +412,55 @@ def render_table(summary: Dict[str, Any]) -> str:
     return "\n\n".join(parts)
 
 
-def replace_section(readme_text: str, new_table: str) -> str:
-    start = readme_text.find(START_MARKER)
-    end = readme_text.find(END_MARKER)
-    if start == -1 or end == -1 or end < start:
-        raise ValueError("README marker block not found")
-    end += len(END_MARKER)
-    block = f"{START_MARKER}\n{new_table}\n{END_MARKER}"
-    return readme_text[:start] + block + readme_text[end:]
+def _table_rows(text: str) -> List[str]:
+    """Pipe-delimited rows (header + separator + data) of a rendered table."""
+    return [ln for ln in text.splitlines() if ln.lstrip().startswith("|")]
+
+
+def splice_table_rows(readme_text: str, new_table: str) -> Tuple[str, bool]:
+    """Replace only the ``|``-delimited rows inside the metrics marker block
+    with freshly rendered rows, leaving every non-table line untouched.
+
+    The block's ``<details>``/``<summary>`` and trailing caption are
+    hand-curated Korean prose (Koreanized in PR #1116) that the renderer does
+    not own — it still emits the older English strings. Re-rendering the whole
+    block would clobber that prose, so the sync is scoped to the numeric rows
+    (issue #792). The header / separator rows are byte-identical between the
+    renderer and the README, so they round-trip cleanly.
+
+    Returns ``(spliced_text, structural_match)``. ``structural_match`` is True
+    iff the README block and the rendered table have the same ``|``-row count;
+    a mismatch means a run was added/removed and the block needs a manual
+    structural edit, not an in-place numeric splice.
+    """
+    new_rows = _table_rows(new_table)
+    out: List[str] = []
+    inside = False
+    consumed = 0
+    readme_rows = 0
+    for line in readme_text.splitlines():
+        if START_MARKER in line:
+            inside = True
+            out.append(line)
+            continue
+        if END_MARKER in line:
+            inside = False
+            out.append(line)
+            continue
+        if inside and line.lstrip().startswith("|"):
+            readme_rows += 1
+            if consumed < len(new_rows):
+                out.append(new_rows[consumed])
+                consumed += 1
+            else:
+                out.append(line)
+        else:
+            out.append(line)
+    result = "\n".join(out)
+    if readme_text.endswith("\n"):
+        result += "\n"
+    structural_match = consumed == len(new_rows) == readme_rows
+    return result, structural_match
 
 
 def normalize_outside_markers(text: str) -> str:
@@ -442,32 +483,36 @@ def main() -> int:
     summary = load_summary(report_path)
     original = readme_path.read_text(encoding="utf-8")
     adr_count = len(existing_adr_numbers(ROOT_DIR / "docs" / "adr"))
-    updated = rewrite_readme_adr_count(
-        replace_section(original, render_table(summary)), adr_count
-    )
+    spliced, structural_match = splice_table_rows(original, render_table(summary))
+    updated = rewrite_readme_adr_count(spliced, adr_count)
 
     # Guard: outside the metrics marker block, the ONLY sanctioned rewrite is
     # the ADR count (issue #1156). Apply that same rewrite to the original
     # before comparing, so the count delta cancels while any *other*
-    # outside-marker drift — e.g. a render_table/replace_section regression —
-    # still trips the guard.
+    # outside-marker drift still trips the guard.
     baseline = rewrite_readme_adr_count(original, adr_count)
     if normalize_outside_markers(baseline) != normalize_outside_markers(updated):
         print("[ERROR] Guard failed: changes detected outside metrics marker block", file=sys.stderr)
         return 3
 
     if args.check:
-        if original != updated:
+        if not structural_match:
             print(
-                "[FAIL] README metrics table or ADR count is out of date. "
-                "Run scripts/update_readme_metrics.py"
+                "[FAIL] README metrics table row count differs from the snapshot — "
+                "a run was added/removed. Regenerate with `make snapshot-update`."
             )
             return 1
-        print("[OK] README metrics table + ADR count up-to-date")
+        if original != updated:
+            print(
+                "[FAIL] README metric numbers or ADR count are out of date vs the "
+                "committed snapshot. Run `make snapshot-update`."
+            )
+            return 1
+        print("[OK] README metric rows + ADR count match the committed snapshot")
         return 0
 
     readme_path.write_text(updated, encoding="utf-8")
-    print(f"[OK] Updated metrics table + ADR count ({adr_count}) in {readme_path}")
+    print(f"[OK] Synced metric rows + ADR count ({adr_count}) in {readme_path}")
     return 0
 
 
