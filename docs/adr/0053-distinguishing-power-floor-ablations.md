@@ -74,6 +74,14 @@
 - **`eval/real_config.local.yaml` 의 real-eval `random_retrieval` row** — eval-row provenance 일관성 위해 PR-B (n=200 baseline regen 과 페어) 에서 추가.
 - **`_build_candidate_item` helper 추출 리팩터** — cleanup PR 까지 연기; 30-LOC 중복은 의도된 명료성이지 아직 technical debt 아님.
 
+## Amended by
+
+- **issue #1367** (`scripts/distinguishing_power.py` 측정 신뢰성 hardening, 2026-05-23) — 두 결함 정정:
+  - **F1 — `signal_alive` 가 CI-aware 로 강화.** 도입 당시 구현은 점추정 gap(default−floor)>0 만으로 `signal_alive=True` 를 확정했다 — 이 ADR §Context/§"Why these two, why now" 의 noise-aware 동기("noise floor 가 gap 아래인 n=200 에서만 의미")와 불일치. 이제 default 의 95% bootstrap CI 하한이 **두 floor 의 CI 상한을 모두 초과**할 때만 `signal_alive=True`. 새 3-state `signal_state`: `alive`(CI 분리) / `uncertain`(점추정은 양수지만 CI 겹침 또는 CI 부재) / `dead`(점추정상 floor 미달) / `n/a`(floor 결측). `signal_alive == (signal_state == "alive")`. 이로써 게이지가 noise 내 미세 양수 차이를 'alive' 로 과장하지 않는다. **이것이 ADR §Decision 의 "반증 가능한 하한선" 의도의 정확한 통계적 구현** — 점추정 비교는 그 의도의 약한 근사였다.
+  - **F2 — committed aggregate 에 provenance 전파.** 도입 당시 `distinguishing_power.aggregate.json` 은 `{gauge, num_predictions, runs}` 만 담아, 원본 eval_summary (private/gitignored) 가 어느 commit·dirty·config 에서 나왔는지 검증 불가였다. 이제 aggregate 가 source eval_summary 의 `provenance` + `run_manifest` 를 전파하고, `check_provenance_skew` 가 현재 HEAD 대비 commit skew / dirty source 를 경고 (`--strict` 시 비0 종료). sibling `baseline.aggregate.json` 의 baseline-provenance 패턴 (pr-eval.yml, #160/#413) 을 게이지 표면에 재사용.
+  - 회귀 테스트: `tests/test_distinguishing_power.py` 의 `CISignalTest` (alive/uncertain/dead/CI 부재) + `ProvenanceTest` (전파 + skew + strict).
+  - **주의 (stale 발견):** 이 amendment 시점의 committed `distinguishing_power.{md,aggregate.json}` (full accuracy 0.2966, "4/5 alive") 은 provenance 부재로 stale 상태였고, 같은 디렉터리 `baseline.aggregate.json` (full accuracy 0.1610, post-ADR-0054) 및 현재 canonical eval_summary 와 불일치 — 정확히 F2 가 잡으려던 문제. committed artifact + README.md:12 헤드라인 숫자 재생성은 통제된 clean-checkout run + eval-baseline-regen 규율로 다루는 **별도 follow-up (#1371)** (이 PR 범위 밖, one-PR-one-concern).
+
 ## Verification
 
 <!-- verifies-key: rag_pipeline_presets.py:VALID_RETRIEVAL_BACKENDS -->

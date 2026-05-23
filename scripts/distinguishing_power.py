@@ -42,6 +42,13 @@ from typing import Any
 # ``scripts.distinguishing_power`` from the test suite.
 ROOT = Path(__file__).resolve().parents[1]
 
+# scripts-dir-on-path so ``build_provenance`` imports cleanly whether the
+# script is run directly (sys.path[0] == scripts/) or imported as
+# ``scripts.distinguishing_power`` from pytest (repo root on path). Matches
+# the sibling pattern documented in scripts/_utils.py.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _utils import build_provenance  # noqa: E402
+
 # Default I/O paths — all relative to repo root. Overridable via CLI.
 DEFAULT_SUMMARY = ROOT / "reports" / "real100" / "eval_summary.json"
 DEFAULT_OUT_MD = ROOT / "reports" / "real100" / "distinguishing_power.md"
@@ -199,6 +206,74 @@ def _safe_abstention(run: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _safe_ci(run: dict[str, Any], metric: str) -> dict[str, float] | None:
+    """Pull a metric's bootstrap CI ``{ci_lo, ci_hi}`` from an ablation run.
+
+    The eval_summary writes a per-run ``ci`` block keyed by metric name, each
+    value ``{mean, ci_lo, ci_hi, n, num_resamples, alpha}`` (eval/bootstrap.py).
+    Returns ``None`` (rather than raising) when the block, the metric, or either
+    bound is absent — the gauge then reports CI separation as ``n/a`` for that
+    metric instead of over-claiming ``alive``.
+    """
+    ci = run.get("ci")
+    if not isinstance(ci, dict):
+        return None
+    block = ci.get(metric)
+    if not isinstance(block, dict):
+        return None
+    lo = block.get("ci_lo")
+    hi = block.get("ci_hi")
+    if lo is None or hi is None:
+        return None
+    try:
+        return {"ci_lo": float(lo), "ci_hi": float(hi)}
+    except (TypeError, ValueError):
+        return None
+
+
+def _ci_separated(
+    default_ci: dict[str, float] | None, floor_ci: dict[str, float] | None
+) -> bool | None:
+    """Is the default CI strictly above the floor CI?
+
+    Returns ``True`` when ``default.ci_lo > floor.ci_hi`` (the two 95% CIs do
+    not overlap and the default is the higher one), ``False`` when they overlap
+    or the default is below, and ``None`` when either CI is missing — the
+    "cannot verify separation" state. This is a deliberately conservative
+    non-overlap test (stricter than a paired-difference test) per ADR 0053's
+    noise-aware framing.
+    """
+    if not default_ci or not floor_ci:
+        return None
+    return default_ci["ci_lo"] > floor_ci["ci_hi"]
+
+
+def _signal_state(vs_random: dict[str, Any], vs_single: dict[str, Any]) -> str:
+    """Derive the 3-state distinguishing-power verdict for one metric.
+
+    States (ADR 0053 §Consequences, CI-aware amendment):
+
+    * ``n/a``       — a floor is missing this metric (gap is ``None``).
+    * ``dead``      — default at or below a floor on the point estimate
+                      (``gap <= 0``). The Goodhart warning state.
+    * ``alive``     — default beats both floors AND its CI is strictly above
+                      both floors' CIs (separated). The only state that licenses
+                      a "distinguishing power" claim in README / portfolio.
+    * ``uncertain`` — default beats both floors on the point estimate but at
+                      least one CI overlaps (or is missing). Positive but not
+                      yet distinguishable from noise.
+    """
+    gr = vs_random["gap"]
+    gs = vs_single["gap"]
+    if gr is None or gs is None:
+        return "n/a"
+    if gr <= 0 or gs <= 0:
+        return "dead"
+    if vs_random["ci_separated"] is True and vs_single["ci_separated"] is True:
+        return "alive"
+    return "uncertain"
+
+
 def _gauge_row(default: float | None, floor: float | None) -> dict[str, Any]:
     """Compute the raw gap + normalized headroom score for one (metric, floor).
 
@@ -230,6 +305,8 @@ def compute_gauge(summary: dict[str, Any]) -> dict[str, Any]:
 
         {
           "num_predictions": int,
+          "provenance":   {git_commit, git_dirty, generated_at} | None,
+          "run_manifest": {git_commit, config_sha256, ...}        | None,
           "runs": {
             "full":             {"accuracy": 0.297, ...},
             "random_retrieval": {"accuracy": 0.025, ...},
@@ -238,13 +315,22 @@ def compute_gauge(summary: dict[str, Any]) -> dict[str, Any]:
           "gauge": {
             "accuracy": {
               "default":      0.297,
-              "vs_random":    {"gap": 0.272, "normalized": 0.279},
-              "vs_single":    {"gap": 0.229, "normalized": 0.245},
-              "signal_alive": True,  # both gauges > 0
+              "default_ci":   {"ci_lo": 0.21, "ci_hi": 0.38} | None,
+              "vs_random":    {"gap": 0.272, "normalized": 0.279,
+                               "floor_ci": {...} | None, "ci_separated": True},
+              "vs_single":    {"gap": 0.229, "normalized": 0.245,
+                               "floor_ci": {...} | None, "ci_separated": True},
+              "signal_state": "alive",  # alive | uncertain | dead | n/a
+              "signal_alive": True,     # == (signal_state == "alive")
             },
             ...
           }
         }
+
+    ``signal_alive`` is CI-aware (ADR 0053 amendment): it is ``True`` only when
+    the default's 95% CI is strictly above both floors' CIs. A positive point
+    gap whose CI overlaps a floor yields ``signal_state == "uncertain"`` and
+    ``signal_alive == False`` — the gauge no longer over-claims on noise.
     """
     runs = _runs_by_name(summary)
     default = runs[DEFAULT_RUN]
@@ -263,7 +349,8 @@ def compute_gauge(summary: dict[str, Any]) -> dict[str, Any]:
             "metric_n": {m: _safe_metric_n(runs[name], m) for m in GAUGED_METRICS},
             # ADR 0054 — transparency fields next to metrics so a reader can
             # see at a glance why a high-abstention run's pre-fix means were
-            # inflated. signal_alive logic is intentionally NOT modified.
+            # inflated. These are independent of signal_state (which is driven
+            # by GAUGED_METRICS + their CIs only).
             **_safe_abstention(runs[name]),
         }
         for name in REQUIRED_RUNS
@@ -273,25 +360,77 @@ def compute_gauge(summary: dict[str, Any]) -> dict[str, Any]:
         d = _safe_metric(default, metric)
         r = _safe_metric(random_run, metric)
         s = _safe_metric(single_run, metric)
-        vs_random = _gauge_row(d, r)
-        vs_single = _gauge_row(d, s)
-        signal_alive = (
-            vs_random["gap"] is not None
-            and vs_single["gap"] is not None
-            and vs_random["gap"] > 0
-            and vs_single["gap"] > 0
-        )
+        d_ci = _safe_ci(default, metric)
+        vs_random = {
+            **_gauge_row(d, r),
+            "floor_ci": _safe_ci(random_run, metric),
+            "ci_separated": None,
+        }
+        vs_random["ci_separated"] = _ci_separated(d_ci, vs_random["floor_ci"])
+        vs_single = {
+            **_gauge_row(d, s),
+            "floor_ci": _safe_ci(single_run, metric),
+            "ci_separated": None,
+        }
+        vs_single["ci_separated"] = _ci_separated(d_ci, vs_single["floor_ci"])
+        state = _signal_state(vs_random, vs_single)
         gauge[metric] = {
             "default": d,
+            "default_ci": d_ci,
             "vs_random": vs_random,
             "vs_single": vs_single,
-            "signal_alive": signal_alive,
+            "signal_state": state,
+            "signal_alive": state == "alive",
         }
     return {
         "num_predictions": n,
+        "provenance": summary.get("provenance"),
+        "run_manifest": summary.get("run_manifest"),
         "runs": out_runs,
         "gauge": gauge,
     }
+
+
+def check_provenance_skew(
+    gauge: dict[str, Any], head_provenance: dict[str, Any] | None = None
+) -> list[str]:
+    """Return human-readable warnings about source-vs-HEAD provenance skew.
+
+    The committed gauge aggregate is derived from a private (gitignored)
+    eval_summary, so a reviewer cannot otherwise tell which commit / dirty
+    state produced the numbers (issue #1367 F2). This mirrors the
+    baseline-provenance guard (pr-eval.yml, #160/#413) at the gauge surface:
+
+    * no ``provenance`` block → cannot verify at all.
+    * source ``git_commit`` != current HEAD → numbers are stale relative to HEAD.
+    * source ``git_dirty`` → numbers may include uncommitted changes.
+
+    ``head_provenance`` is injectable for tests; defaults to the current HEAD
+    via ``build_provenance()``.
+    """
+    warnings: list[str] = []
+    prov = gauge.get("provenance") or {}
+    src_commit = prov.get("git_commit")
+    if not src_commit:
+        warnings.append(
+            "source eval_summary has no provenance block — cannot verify which "
+            "commit produced these numbers. Regenerate with `make real-eval` on "
+            "a clean checkout of a known HEAD."
+        )
+        return warnings
+    head = head_provenance or build_provenance()
+    head_commit = str(head.get("git_commit"))
+    if str(src_commit) != head_commit:
+        warnings.append(
+            f"provenance skew — gauge numbers were produced at {src_commit} but "
+            f"current HEAD is {head_commit}. Regenerate on a clean checkout of HEAD."
+        )
+    if prov.get("git_dirty"):
+        warnings.append(
+            f"source run at {src_commit} was git_dirty=True — numbers may include "
+            f"uncommitted changes (regenerate from a clean tree)."
+        )
+    return warnings
 
 
 def _fmt_pct(value: float | None) -> str:
@@ -307,6 +446,18 @@ def _fmt_pp(value: float | None) -> str:
     return f"{sign}{value * 100:.2f}pp"
 
 
+def _fmt_ci(ci: dict[str, float] | None) -> str:
+    if not ci:
+        return "n/a"
+    return f"[{ci['ci_lo'] * 100:.1f}, {ci['ci_hi'] * 100:.1f}]"
+
+
+def _fmt_sep(value: bool | None) -> str:
+    if value is None:
+        return "n/a"
+    return "yes" if value else "no"
+
+
 def render_markdown(gauge: dict[str, Any]) -> str:
     """Render the gauge as a markdown report.
 
@@ -317,10 +468,24 @@ def render_markdown(gauge: dict[str, Any]) -> str:
     * One-line verdict per metric
     """
     n = gauge["num_predictions"]
+    prov = gauge.get("provenance") or {}
+    if prov.get("git_commit"):
+        prov_line = (
+            f"source: `{prov.get('git_commit')}` "
+            f"(git_dirty={prov.get('git_dirty')}) · generated_at {prov.get('generated_at')}"
+        )
+    else:
+        prov_line = "source: _provenance unavailable — regenerate via `make real-eval` (issue #1367 F2)._"
     lines: list[str] = [
         "# Distinguishing-power gauge (real-eval, ADR 0053 §Consequences)",
         "",
         f"`num_predictions = {n}` · 3 ablation_runs: `full` / `random_retrieval` / `single_chunk`",
+        "",
+        prov_line,
+        "",
+        "`signal` is CI-aware (ADR 0053 amendment, issue #1367): `alive` only when the "
+        "default's 95% CI is strictly above **both** floors' CIs; a positive point gap "
+        "with overlapping CI is `uncertain`, not `alive`.",
         "",
         "Per ADR 0053 §Consequences:",
         "> PR-5b's `scripts/distinguishing_power.py` can compute "
@@ -388,22 +553,22 @@ def render_markdown(gauge: dict[str, Any]) -> str:
 
     lines += [
         "",
-        "## Gauge — default vs floors",
+        "## Gauge — default vs floors (CI-aware)",
         "",
-        "| metric | default | gap vs random | normalized vs random | gap vs single_chunk | normalized vs single_chunk | signal alive |",
-        "|---|---:|---:|---:|---:|---:|:---:|",
+        "| metric | default | default 95% CI | gap vs random | CI-sep vs random | gap vs single_chunk | CI-sep vs single_chunk | signal |",
+        "|---|---:|---:|---:|:---:|---:|:---:|:---:|",
     ]
     for metric in GAUGED_METRICS:
         g = gauge["gauge"][metric]
-        signal_glyph = "yes" if g["signal_alive"] else "no"
         row = [
             metric,
             _fmt_pct(g["default"]),
+            _fmt_ci(g.get("default_ci")),
             _fmt_pp(g["vs_random"]["gap"]),
-            _fmt_pct(g["vs_random"]["normalized"]),
+            _fmt_sep(g["vs_random"].get("ci_separated")),
             _fmt_pp(g["vs_single"]["gap"]),
-            _fmt_pct(g["vs_single"]["normalized"]),
-            signal_glyph,
+            _fmt_sep(g["vs_single"].get("ci_separated")),
+            g["signal_state"],
         ]
         lines.append("| " + " | ".join(row) + " |")
 
@@ -414,17 +579,26 @@ def render_markdown(gauge: dict[str, Any]) -> str:
     ]
     for metric in GAUGED_METRICS:
         g = gauge["gauge"][metric]
-        if g["signal_alive"]:
+        state = g["signal_state"]
+        if state == "alive":
             lines.append(
-                f"- **{metric}**: signal alive — default beats both floors "
-                f"({_fmt_pp(g['vs_random']['gap'])} vs random, "
-                f"{_fmt_pp(g['vs_single']['gap'])} vs single_chunk)."
+                f"- **{metric}**: signal alive — default's CI is strictly above "
+                f"both floors ({_fmt_pp(g['vs_random']['gap'])} vs random, "
+                f"{_fmt_pp(g['vs_single']['gap'])} vs single_chunk; CIs non-overlapping)."
             )
-        elif g["vs_random"]["gap"] is None or g["vs_single"]["gap"] is None:
+        elif state == "n/a":
             lines.append(
                 f"- **{metric}**: n/a — one or both floors missing this metric."
             )
-        else:
+        elif state == "uncertain":
+            lines.append(
+                f"- **{metric}**: ⚠️ signal uncertain — default beats both floors on "
+                f"the point estimate ({_fmt_pp(g['vs_random']['gap'])} vs random, "
+                f"{_fmt_pp(g['vs_single']['gap'])} vs single_chunk) but its 95% CI "
+                f"overlaps at least one floor (not CI-separated). Not yet "
+                f"distinguishable from noise."
+            )
+        else:  # dead
             lines.append(
                 f"- **{metric}**: ⚠️ signal NOT alive — default does not beat "
                 f"both floors ({_fmt_pp(g['vs_random']['gap'])} vs random, "
@@ -464,11 +638,28 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Print markdown to stdout, do not write files.",
     )
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="Exit non-zero if the source eval_summary is stale relative to the "
+        "current HEAD or was produced from a dirty tree (provenance skew, #1367 F2).",
+    )
     args = parser.parse_args(argv)
 
     summary = _load_summary(args.summary)
     gauge = compute_gauge(summary)
     md = render_markdown(gauge)
+
+    skew_warnings = check_provenance_skew(gauge)
+    for warning in skew_warnings:
+        print(f"[WARN] {warning}", file=sys.stderr)
+    if args.strict and skew_warnings:
+        print(
+            "[ERROR] --strict: provenance skew detected (see warnings above). "
+            "Refusing to write stale gauge artifacts.",
+            file=sys.stderr,
+        )
+        return 1
 
     if args.print_only:
         sys.stdout.write(md)
