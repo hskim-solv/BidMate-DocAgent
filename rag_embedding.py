@@ -141,6 +141,18 @@ def embed_texts(
                     st_kwargs: dict[str, Any] = {}
                     if torch_device:
                         st_kwargs["device"] = torch_device
+                    # ``BIDMATE_ST_FP16=1`` loads the transformer in half
+                    # precision — opt-in for memory-constrained MPS/CUDA runs
+                    # where a 568M+ model over the real100 26k-chunk corpus
+                    # OOM-kills (-9) at fp32 even at batch=8. Halves weight +
+                    # activation memory; fp16 inference is standard and the
+                    # recall@k delta vs fp32 is far below the embedding-model
+                    # gap being measured. Default off → fp32, byte-identical to
+                    # before. Pair with an accelerator (fp16 on CPU is slow).
+                    if os.environ.get("BIDMATE_ST_FP16", "").strip() in {"1", "true", "True"}:
+                        import torch
+
+                        st_kwargs["model_kwargs"] = {"torch_dtype": getattr(torch, "float16")}
                     model = SentenceTransformer(model_name, **st_kwargs)
                     if adapter_path:
                         # PEFT is lazy-imported (optional dep in
@@ -164,10 +176,16 @@ def embed_texts(
             # is deterministic across batch boundaries by construction —
             # each text is encoded independently).
             st_batch_size = os.environ.get("BIDMATE_ST_BATCH_SIZE", "").strip()
+            # ``BIDMATE_ST_PROGRESS=1`` surfaces sentence-transformers' tqdm
+            # batch bar on stderr — opt-in observability for the long real100
+            # ablation builds (26k chunks × a 300–600M model can run tens of
+            # minutes; without this there is no ETA signal). Default off keeps
+            # CI / smoke logs clean and the produced vectors unchanged.
+            show_progress = os.environ.get("BIDMATE_ST_PROGRESS", "").strip() in {"1", "true", "True"}
             encode_kwargs: dict[str, Any] = {
                 "convert_to_numpy": True,
                 "normalize_embeddings": True,
-                "show_progress_bar": False,
+                "show_progress_bar": show_progress,
             }
             if st_batch_size:
                 try:
