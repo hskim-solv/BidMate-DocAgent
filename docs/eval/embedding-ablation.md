@@ -314,11 +314,94 @@ Runner: `scripts/run_routed_measurement.py --backend sentence-transformers`. 결
 3. **Issue #447 closed**: 세 가지 re-open 조건 모두 처리됨 — 조건 1 (스크립트 추가, docstring 이미 존재), 조건 2 (n=100 실행 완료), 조건 3 (NOT triggered). 결과는 MiniLM 기본값 유지를 지지한다.
 4. **ADR 0019 default lock은 이제 6-pivot empirical basis**: 2019–2024, multilingual / SoTA / Korean-specialized / multi-functional / Korean-specialized-v2 범주를 모두 커버했으며, 어느 것도 `full` 파이프라인 메트릭을 움직이지 못했다.
 
+## Phase 2.0 — real100 retrieval-surface (issue #1359, 2026-05-23): 5-model Korean embedding ablation
+
+Phase 1.x는 전부 **public-synthetic** corpus + **end-to-end answer-quality**(accuracy/groundedness) 측정이었다. 두 가지 구조적 한계가 누적됐다:
+
+1. **합성 corpus saturation** — Phase 1.4 falsifier([ADR 0032](../adr/0032-eval-saturation-routed-subset.md))가 routed subset에서 측정 천장을 입증.
+2. **answer-surface가 임베딩 차이를 가린다** — Phase 1.5에서 KURE-v1이 `naive_baseline`(dense)에서 accuracy +19.2pp였지만 `full`에서 −1.3pp. metadata-first routing(ADR 0002) + hybrid(ADR 0058)가 dense 채널을 우회하기 때문. 즉 answer accuracy로는 임베딩 품질 자체를 분리 측정할 수 없다.
+
+Phase 2.0은 두 축을 모두 바꾼다: (a) corpus를 **real100**(비공개 26k kordoc 청크, harder)로, (b) 측정 표면을 **[ADR 0069](../adr/0069-retrieval-aggregate-and-citation-coverage-surface.md)가 노출한 run-level retrieval aggregate**(`chunk_recall@{5,10,20}` / `chunk_mrr` / `chunk_ndcg@10` + bootstrap CI)로. 이렇게 하면 dense 검색이 실제로 끌어올리는 청크를 직접 측정 — answer 단계가 가리지 못한다. 이 작업이 ADR 0069 surface의 첫 소비자다.
+
+**측정 표면 — 모델 간 `full`(hybrid) recall 변동이 곧 임베딩 효과**: real100 ablation 4종은 `full`(hybrid = dense 채널 + BM25 RRF 융합, ADR 0058) / `random_retrieval`(backend=random, floor) / `single_chunk`(backend=dense·단일청크 파이프라인, degenerate) / `full_bm25s`(역시 hybrid이며 `bm25_backend`만 bm25s로 스왑 — [ADR 0057](../adr/0057-bm25s-additive-backend.md) 라이브러리 비교 행)이다. **주의: `full_bm25s`는 순수-BM25 임베딩-독립 control이 아니다** — `full`과 동일한 hybrid 파이프라인에서 BM25 구현체만 바뀌므로 dense 채널(임베딩)에 똑같이 민감하다.
+
+임베딩 효과는 **모델 간 비교 그 자체**로 분리된다: 청크 텍스트·청크 ID·BM25 입력이 모든 빌드에서 **바이트-동일**(5모델 인덱스 모두 26376 청크, MiniLM↔KURE 26376/26376 동일-위치-동일-텍스트 검증)하므로, 빌드 사이에 바뀌는 유일한 변수는 dense 임베딩이다. 따라서 `full`(또는 `full_bm25s`) recall의 모델 간 차이는 전적으로 dense 채널 = 임베딩 품질에 귀속된다. condition-3([ADR 0019](../adr/0019-embedding-default-stays-minilm.md))는 candidate의 `full` recall@10이 baseline 대비 ≥+5pp **and** non-overlapping CI일 때 default re-eval을 trigger한다.
+
+> **Gold 주석 안정성**: gold chunk는 `derive_gold_chunk_ids`(eval/scorers/chunk_metrics.py)가 인덱스에서 동적으로 도출한다 (doc_id ∈ expected_doc_ids AND text가 expected_term 포함). 동결된 `gold_chunk_ids`가 없으므로 csv_text→kordoc 청킹 변화에도 재주석 없이 유효하다.
+
+### 모델 5종 + env
+
+| 모델 | HF id | params | dtype |
+|---|---|---:|---|
+| MiniLM (baseline) | sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 | 118M | fp32 |
+| EmbeddingGemma-300M | google/embeddinggemma-300m | 300M | fp32 (bf16-native) |
+| bge-m3-korean | upskyy/bge-m3-korean | 568M | fp16 |
+| KURE-v1 | nlpai-lab/KURE-v1 | 568M | fp16 |
+| Qwen3-Embedding-0.6B | Qwen/Qwen3-Embedding-0.6B | 600M | fp16 |
+
+env: sentence-transformers ≥5.0 (PR #1358 핀 bump — EmbeddingGemma/Qwen3 요구), torch 2.6, MPS. 메모리: real100 OOM([ADR 0058](../adr/0058-phase35-mode-winner.md))은 m3 multi-vector였고 본 작업은 single-vector dense. 568M+ 모델은 fp32에서 16GB MPS OOM-kill(-9) → `BIDMATE_ST_FP16=1`로 적합 (XLM-R-large class). Gemma3는 bf16-native라 fp16 overflow 회피 위해 fp32. EmbeddingGemma는 gated → HF 토큰 필요. **Qwen3는 eval의 query 인코딩에서 MPS+fp16+GQA 비호환으로 크래시** → 빌드(MPS)는 정상, eval만 CPU로 우회(아래 결과 읽기 §4).
+
+### 재현(Reproduction)
+
+```bash
+# kordoc native HWP 파싱 강제(csv_text fallback 금지) + MPS + batch=8 + progress
+export BIDMATE_REQUIRE_KORDOC=1 BIDMATE_TORCH_DEVICE=mps BIDMATE_ST_BATCH_SIZE=8 BIDMATE_ST_PROGRESS=1
+export HF_TOKEN=...   # gated EmbeddingGemma
+
+# fp32 그룹 (Gemma3 bf16-native)
+python3 scripts/run_embedding_ablation.py --reuse-existing \
+    --metadata-csv data/data_list.csv --files-dir data/files \
+    --eval-config eval/real_config.local.yaml \
+    --models sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 \
+             google/embeddinggemma-300m
+
+# fp16 그룹 (568M+ XLM-R-large class) — BIDMATE_ST_FP16=1 추가
+BIDMATE_ST_FP16=1 python3 scripts/run_embedding_ablation.py --reuse-existing \
+    --metadata-csv data/data_list.csv --files-dir data/files \
+    --eval-config eval/real_config.local.yaml \
+    --models upskyy/bge-m3-korean nlpai-lab/KURE-v1 Qwen/Qwen3-Embedding-0.6B
+
+# Qwen3는 위에서 빌드는 되지만 eval query-encode가 MPS GQA로 크래시.
+# 빌드된 인덱스를 재사용해 eval만 CPU로 재실행:
+BIDMATE_TORCH_DEVICE=cpu python3 eval/run_eval.py \
+    --index_dir data/embedding-ablation_real/Qwen_Qwen3_Embedding_0_6B \
+    --output_dir reports/embedding-ablation_real/Qwen_Qwen3_Embedding_0_6B \
+    --config eval/real_config.local.yaml
+```
+
+real100 인덱스/raw_results는 로컬·uncommitted ([ADR 0005](../adr/0005-eval-split-public-synthetic-private-local.md) 경계). commit에는 **aggregate retrieval 델타(means + CI)만** — per-case 텍스트 미노출. 5종 모두 로컬 HF·무료·네트워크 egress 없음 → [ADR 0061](../adr/0061-external-and-paid-api-dependencies-allowed.md) opt-in/baseline-byte-identity/data-boundary 3조건 충족 (외부 전송 백엔드와 달리 페이로드 유출 0).
+
+### 헤드라인 수치 — Phase 2.0 (real100, n=114 retrieval-evaluable cases)
+
+**`full` (hybrid — 임베딩-민감 표면, ADR 0069 retrieval aggregate). baseline = MiniLM**:
+
+| metric | MiniLM | EmbeddingGemma | bge-m3-korean | KURE-v1 | Qwen3-0.6B |
+|---|---:|---:|---:|---:|---:|
+| chunk_recall@5  | 0.200 [0.143,0.259] | 0.210 [0.157,0.264] | 0.232 [0.171,0.293] | 0.259 [0.201,0.323] | 0.245 [0.183,0.311] |
+| chunk_recall@10 | 0.235 [0.174,0.298] | 0.262 [0.202,0.328] | 0.255 [0.195,0.321] | **0.298** [0.233,0.367] | 0.265 [0.204,0.333] |
+| chunk_recall@20 | 0.235 [0.174,0.298] | 0.262 [0.202,0.328] | 0.255 [0.195,0.321] | **0.298** [0.233,0.367] | 0.265 [0.204,0.333] |
+| chunk_mrr       | 0.415 [0.332,0.499] | 0.462 [0.381,0.540] | 0.463 [0.377,0.544] | **0.548** [0.472,0.630] | 0.483 [0.402,0.569] |
+| chunk_ndcg@10   | 0.239 [0.187,0.294] | 0.278 [0.224,0.333] | 0.280 [0.224,0.336] | **0.332** [0.272,0.394] | 0.294 [0.236,0.354] |
+
+**Δ vs MiniLM (recall@10, pp)**: EmbeddingGemma +2.7 · bge-m3-korean +2.0 · KURE-v1 **+6.3** · Qwen3-0.6B +3.0. **5모델 전부 MiniLM CI와 중첩(overlap)** — 점추정은 모두 양(+)이나 통계적으로 분리되지 않음. (mrr 델타: KURE +13.3 · Qwen3 +6.8 · Gemma +4.7 · bge +4.8 / ndcg@10: KURE +9.3 · Qwen3 +5.5 · bge +4.1 · Gemma +3.8 — 역시 전부 overlap.)
+
+**`full_bm25s` (hybrid + bm25s 라이브러리, ADR 0057 — `full`과 동일하게 임베딩-민감)** recall@10: MiniLM 0.226 · EmbeddingGemma 0.265 · bge-m3-korean 0.258 · KURE-v1 0.300 · Qwen3-0.6B 0.266. 모델별로 `full`과 ≤0.5pp 차 (BM25 라이브러리 스왑은 ranking 거의 불변 → ADR 0057 parity 재확인). 모델 간 변동 폭은 `full`과 동일 → 변동의 출처가 BM25 구현이 아니라 dense 채널임을 교차 확인.
+
+**floor controls** (모든 모델 공통 — 인덱스 sanity): `random_retrieval` recall@10 = 0.009, `single_chunk`(backend=dense, 단일청크) = 0.031. `full`이 random 대비 ~26x → 인덱스·gold 도출 정상.
+
+### Phase 2.0 결과 읽기
+
+1. **real100에서 임베딩이 hybrid recall을 움직인다 — Phase 1.x와 정반대**: `full` recall@10이 MiniLM 0.235 대비 4모델 모두 양(+)으로 상승 — KURE-v1 +6.3pp(0.298, 최고), Qwen3-0.6B +3.0pp, EmbeddingGemma +2.7pp, bge-m3-korean +2.0pp. mrr·ndcg도 동일 순위(KURE가 mrr +13.3pp / ndcg +9.3pp로 압도적). Phase 1.5에서 KURE의 한국어 특화는 `full` answer accuracy를 −1.3pp로 전혀 못 움직였는데(routing이 dense 우회), **retrieval 표면 + harder real corpus**에서는 dense 채널이 실제로 더 많은 gold 청크를 끌어올린다. 즉 ADR 0069 retrieval surface가 answer surface가 가렸던 임베딩-품질 신호를 드러냈다 — 본 Phase의 핵심 발견. 한국어 특화 모델(KURE)이 범용 multilingual(MiniLM) 대비 우위, 모델 크기보다 한국어 도메인 정합이 신호.
+2. **그러나 condition-3 NOT triggered (CI 중첩)**: KURE +6.3pp는 +5pp 임계를 넘지만 CI [0.233,0.367]가 MiniLM [0.174,0.298]와 중첩한다. ADR 0019 condition-3은 ≥+5pp **and** non-overlapping CI 둘 다 요구하므로 default-flip은 trigger되지 않는다. n=114의 검정력 한계 — 점추정 신호는 강하나 통계적 분리는 미달. follow-up: n 확대 또는 paired bootstrap로 검정력 보강 시 KURE 재평가 가치(가장 유력한 default-flip 후보).
+3. **`full_bm25s` 교차검증**: `full`과 `full_bm25s`(BM25 lib만 스왑)가 모델별 ≤0.5pp로 일치하고, 모델 간 변동 폭은 양쪽 동일. BM25 입력(청크 텍스트)이 빌드 간 바이트-동일이므로 변동의 원천은 dense 임베딩 하나로 확정 — 측정 타당성 확인.
+4. **Qwen3는 MPS-incompatible(eval 단계), CPU로 우회**: Qwen3-0.6B 인덱스 빌드(26k 청크 인코딩)는 fp16/MPS로 성공했으나 eval의 **query 인코딩**에서 `mps.matmul`이 GQA(grouped-query attention, 16 query heads / 8 KV heads) head-broadcast의 result type 추론에 실패(`LLVM ERROR: Failed to infer result type`, tensor `1×16×25×128` vs `1×8×128×25`) — OOM이 아닌 MPS+fp16+GQA 하드 비호환. 빌드 산출 인덱스를 재사용해 **eval만 `BIDMATE_TORCH_DEVICE=cpu`로 재실행**(query 인코딩만 CPU, passage 인덱스는 재사용)하여 우회. 다른 4모델(MiniLM/Gemma/bge/KURE)은 GQA 미사용이라 MPS fp16에서 정상.
+
 ## 함께 보기
 
-- [`scripts/run_embedding_ablation.py`](../../scripts/run_embedding_ablation.py) — Phase 1.1~1.3, 1.5 러너
+- [`scripts/run_embedding_ablation.py`](../../scripts/run_embedding_ablation.py) — Phase 1.1~1.3, 1.5, 2.0 러너
 - [`scripts/run_routed_measurement.py`](../../scripts/run_routed_measurement.py) — Phase 1.4 routed 측정 러너
 - [`reports/embedding_routed.json`](../../reports/embedding_routed.json) — Phase 1.4 기계 판독 결과
+- [`reports/real100/embedding_ablation_retrieval.aggregate.json`](../../reports/real100/embedding_ablation_retrieval.aggregate.json) — Phase 2.0 기계 판독 결과 (means + CI, ADR 0005 aggregate-only)
 - [`docs/eval/ablation-results.md`](ablation-results.md) — 더 넓은 ablation 맥락
 - [ADR 0001](../adr/0001-preserve-naive-baseline.md) — `naive_baseline` 을 보존하는 이유
 - [ADR 0002](../adr/0002-metadata-first-retrieval.md) — metadata-first 가 지배적인 이유
@@ -326,3 +409,6 @@ Runner: `scripts/run_routed_measurement.py --backend sentence-transformers`. 결
 - [ADR 0021](../adr/0021-bge-m3-completes-phase-1-3.md) — Phase 1.3 closure
 - [ADR 0032](../adr/0032-eval-saturation-routed-subset.md) — Phase 1.4 saturation falsifier (accepted)
 - [ADR 0037](../adr/0037-kure-v1-closes-phase-1-5.md) — Phase 1.5 KURE-v1 closure (accepted)
+- [ADR 0057](../adr/0057-bm25s-additive-backend.md) — `full_bm25s` 행이 비교하는 bm25s 백엔드
+- [ADR 0058](../adr/0058-phase35-mode-winner.md) — hybrid 기본 전환 (`full`의 retrieval_backend)
+- [ADR 0069](../adr/0069-retrieval-aggregate-and-citation-coverage-surface.md) — Phase 2.0이 소비하는 retrieval aggregate 표면
