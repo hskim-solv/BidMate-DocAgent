@@ -119,6 +119,63 @@ def _count_target_doc_topic_matches(
     )
 
 
+def _max_single_doc_topic_matches(
+    analysis: dict[str, Any],
+    evidence: list[dict[str, Any]],
+    topics: list[str],
+) -> int:
+    """Return the largest number of ``topics`` grounded *within one document*.
+
+    Phase 5 audit finding #1 (issue #1008): for non-comparison queries the
+    answer to a single-document question must be grounded inside ONE
+    document. The pre-existing combined-pool topic count in
+    :func:`verify_evidence` treated topics merely *scattered across multiple
+    unrelated documents* as full grounding, which let unanswerable queries
+    pass the verifier — 81.6% of ``verifier_false_negative`` cases retrieved
+    multi-doc evidence whose topics were cross-doc spread (see
+    ``docs/audits/verifier-false-negative-inspection.md``).
+
+    Like :func:`_count_target_doc_topic_matches`, this honours the issue #687
+    cross-entity guard: when ``analysis["matched_doc_ids"]`` is non-empty the
+    pool is first restricted to those target documents. Evidence is then
+    grouped by ``doc_id`` and the maximum per-document match count is
+    returned. An empty pool yields 0.
+
+    Comparison queries are NOT routed here — they legitimately span documents
+    (one per entity) and keep the combined-pool count in
+    :func:`verify_evidence`, guarded by the entity/doc coverage checks.
+    """
+    target_doc_ids: set[str] = set(analysis.get("matched_doc_ids") or [])
+    if target_doc_ids:
+        pool = [item for item in evidence if item.get("doc_id", "") in target_doc_ids]
+    else:
+        pool = evidence
+    if not pool:
+        return 0
+
+    by_doc: dict[str, list[dict[str, Any]]] = {}
+    for item in pool:
+        by_doc.setdefault(str(item.get("doc_id", "")), []).append(item)
+
+    best = 0
+    for items in by_doc.values():
+        doc_text = " ".join(
+            evidence_text_for_verification(item) for item in items
+        ).lower()
+        doc_canonical = normalize_text(doc_text)
+        matched = sum(
+            1
+            for topic in topics
+            if any(
+                form in doc_text or form in doc_canonical
+                for form in expand_forms(topic.lower())
+            )
+        )
+        if matched > best:
+            best = matched
+    return best
+
+
 def verify_evidence(
     analysis: dict[str, Any],
     evidence: list[dict[str, Any]],
@@ -161,16 +218,30 @@ def verify_evidence(
     combined_canonical = normalize_text(combined)
     topics = verification_topics(analysis)
     if topics:
-        matched_topic_count = sum(
-            1
-            for topic in topics
-            if any(
-                form in combined or form in combined_canonical
-                for form in expand_forms(topic.lower())
+        is_comparison = analysis.get("query_type") == "comparison"
+        # Single-doc grounding (issue #1008 / Phase 5 audit finding #1): for
+        # non-comparison queries the answer must be grounded *within one
+        # document*. Counting topic matches over the combined multi-doc
+        # evidence pool let unanswerable queries pass when topics were merely
+        # scattered across unrelated documents (81.6% of the
+        # verifier_false_negative cases were multi-doc cross-spread). Comparison
+        # queries legitimately span documents (one per entity) so they keep the
+        # combined-pool count, guarded by the entity/doc coverage checks below.
+        if is_comparison:
+            matched_topic_count = sum(
+                1
+                for topic in topics
+                if any(
+                    form in combined or form in combined_canonical
+                    for form in expand_forms(topic.lower())
+                )
             )
-        )
+        else:
+            matched_topic_count = _max_single_doc_topic_matches(
+                analysis, evidence, topics
+            )
         if matched_topic_count < len(topics):
-            if allow_partial_topic:
+            if allow_partial_topic and is_comparison:
                 # Cross-entity guard (issue #687): recount topics only in
                 # target-doc evidence so incidental matches from unrelated
                 # agencies retrieved in relaxed mode can't flip the decision.
@@ -178,6 +249,10 @@ def verify_evidence(
                     analysis, evidence, topics
                 )
             else:
+                # Non-comparison: matched_topic_count is already the single-doc,
+                # target-aware count (issue #1008), so partial recovery on the
+                # last attempt must clear the same per-document floor — a
+                # cross-doc spread can no longer be recovered as `partial`.
                 partial_count = matched_topic_count
             if (
                 allow_partial_topic
