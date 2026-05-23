@@ -1,6 +1,6 @@
 # Real-100 Corpus EDA
 
-Aggregate-only profile of the private 100-document RFP dataset. ADR 0005 boundary: 사업명 / 사업 요약 / 텍스트 / 파일명 are read for length statistics only; never rendered. Agency names beyond rank 10 are anonymized to `agency_NN` labels.
+Aggregate-only profile of the private 100-document RFP dataset. ADR 0005 boundary: 사업명 / 사업 요약 / 텍스트 / 파일명 are read for length statistics only; never rendered. All agency names are anonymized to `agency_NN` rank labels.
 
 Sources: `data/data_list.csv`, `data/index/real100/index.json`, `reports/real100/baseline.aggregate.json`
 
@@ -14,16 +14,16 @@ Sources: `data/data_list.csv`, `data/index/real100/index.json`, `reports/real100
 
 | rank | agency | doc count |
 |---|---|---|
-| 1 | 한국수자원공사 | 3 |
-| 2 | 한국철도공사 (용역) | 3 |
-| 3 | 한국연구재단 | 2 |
-| 4 | 한국생산기술연구원 | 2 |
-| 5 | 인천광역시 | 2 |
-| 6 | 국방과학연구소 | 2 |
-| 7 | 수협중앙회 | 2 |
-| 8 | 한국농어촌공사 | 2 |
-| 9 | 축산물품질평가원 | 2 |
-| 10 | 광주과학기술원 | 2 |
+| 1 | agency_01 | 3 |
+| 2 | agency_02 | 3 |
+| 3 | agency_03 | 2 |
+| 4 | agency_04 | 2 |
+| 5 | agency_05 | 2 |
+| 6 | agency_06 | 2 |
+| 7 | agency_07 | 2 |
+| 8 | agency_08 | 2 |
+| 9 | agency_09 | 2 |
+| 10 | agency_10 | 2 |
 | … | _(rank 11+, anonymized)_ | 78 |
 
 ### Budget (KRW) — available rows only
