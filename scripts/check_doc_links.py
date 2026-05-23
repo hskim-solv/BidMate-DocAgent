@@ -28,11 +28,16 @@ Scope (deliberately narrow to keep false positives near zero):
     validation was added after issue #1152: Korean-izing a heading changes
     its auto-generated slug, silently breaking inbound `#old-english-anchor`
     links that a file-existence-only check cannot see.
-  - NOT checked: external URLs (network dependency), site-absolute `/...`
-    and directory-style Jekyll permalinks (the docs render via
+  - NOT checked: external URLs (network dependency), site-absolute `/...`,
+    the EXISTENCE of directory-style Jekyll permalinks (the docs render via
     `permalink: pretty`, so `[x](../foo/)` is a valid page link that has no
     filesystem target), and `#fragment`s on non-`.md` targets (e.g. a
     `foo.py#L10` GitHub line anchor — we only enumerate markdown anchors).
+  - Partially checked: a `#fragment` on a directory-style permalink. The page
+    has no filesystem target for the existence check, but `permalink: pretty`
+    maps `[x](../foo/#frag)` to the backing `docs/foo.md`, so the anchor IS
+    validated against that file's slugs when it exists (issue #1406 closed the
+    blind spot where a translated heading could break such a link unseen).
 
 Zero runtime dependencies (Python stdlib + `git ls-files`).
 
@@ -202,10 +207,15 @@ def split_fragment(raw: str) -> tuple[str, str] | None:
 
     Returns ``("", frag)`` for a same-file `#frag` link. Returns None for:
     links with no `#`, external/protocol-relative/site-absolute links, an
-    empty fragment, and cross-file links whose target is not a `.md`/`.markdown`
-    file (only markdown anchors are enumerable). Mirrors `normalize_target`'s
-    angle-bracket and trailing-``"title"`` stripping, but — unlike it — KEEPS
-    the fragment, which is the whole point.
+    empty fragment, and cross-file links whose target is a non-markdown file
+    with a recognized extension (`foo.py#L10`, `img.png#x` — only markdown
+    anchors are enumerable). A direct `.md`/`.markdown` target and a
+    directory-style Jekyll permalink (extensionless / trailing-slash, e.g.
+    `../engineering-governance/#frag`) are BOTH kept: the permalink's
+    `<path>/` → `<path>.md` resolution is deferred to `find_broken_fragments`,
+    which validates the anchor only when a backing markdown file exists.
+    Mirrors `normalize_target`'s angle-bracket and trailing-``"title"``
+    stripping, but — unlike it — KEEPS the fragment, which is the whole point.
     """
     t = raw.strip()
     if t.startswith("<") and t.endswith(">"):
@@ -223,9 +233,37 @@ def split_fragment(raw: str) -> tuple[str, str] | None:
         return ("", frag)
     path_part = re.sub(r":\d+(?:-\d+)?$", "", path_part)  # drop `path:line`
     final_segment = path_part.rstrip("/").rsplit("/", 1)[-1]
-    if not _MD_TARGET_RE.search(final_segment):
-        return None
+    if _MD_TARGET_RE.search(final_segment):
+        return (path_part, frag)  # direct markdown target
+    if _KNOWN_EXT_RE.search(final_segment):
+        return None  # non-md file (.py/.png/…): no enumerable anchor set
+    # Extensionless / trailing-slash → Jekyll `permalink: pretty` directory
+    # permalink (docs/_config.yml). Keep it; find_broken_fragments resolves
+    # `<path>/` → `<path>.md` and only checks the anchor when that file exists.
     return (path_part, frag)
+
+
+def _resolve_fragment_target(
+    src_dir: str, path_part: str, root: Path
+) -> str | None:
+    """Resolve a fragment link's path (``#`` already stripped) to an existing
+    markdown file relative to its source dir, or None.
+
+    A direct `.md`/`.markdown` target resolves to itself when present. An
+    extensionless / trailing-slash target is a Jekyll `permalink: pretty`
+    directory permalink (docs/_config.yml): it maps to the sibling
+    `<path>.md`, then `<path>/index.md`. Returns None when no markdown file
+    backs the link — a missing `.md` is `find_broken_links`' job, and an
+    unresolvable permalink has no anchor set to check, so staying silent keeps
+    false positives at zero.
+    """
+    base = os.path.normpath(os.path.join(src_dir, path_part))
+    if _MD_TARGET_RE.search(base):
+        return base if (root / base).exists() else None
+    for cand in (f"{base}.md", os.path.join(base, "index.md")):
+        if (root / cand).exists():
+            return cand
+    return None
 
 
 def find_broken_fragments(
@@ -269,9 +307,10 @@ def find_broken_fragments(
             if path_part == "":
                 target = src
             else:
-                target = os.path.normpath(os.path.join(src_dir, path_part))
-                if not (root / target).exists():
-                    continue  # missing file → reported by find_broken_links
+                resolved = _resolve_fragment_target(src_dir, path_part, root)
+                if resolved is None:
+                    continue  # missing file / unresolvable permalink → not our report
+                target = resolved
             anchors = anchors_for(target)
             if anchors is None:
                 continue
