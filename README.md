@@ -69,6 +69,8 @@ INFO bidmate.rag_core: query_complete  status='supported'  query_type='compariso
 
 데모 UI 는 3 파이프라인 preset (`naive_baseline` · `agentic_full` · `agentic_full_llm`) 을 라디오 버튼으로 전환, extractive vs LLM 합성 답변 side-by-side 비교.
 
+<a id="why-extractive-not-generative"></a>
+
 ## 왜 추출형(extractive)인가, 생성형(generative)이 아닌가?
 
 기본 파이프라인 (`naive_baseline`, `agentic_full`) 은 외부 LLM 호출 없이 retrieved evidence 에서 claim 을 추출하는 **추출형 근거 답변**. 생성기를 의도적으로 추출형으로 한정한 4가지 이유:
