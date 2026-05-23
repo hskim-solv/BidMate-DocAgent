@@ -125,6 +125,32 @@ def _safe_metric(run: dict[str, Any], metric: str) -> float | None:
         return None
 
 
+def _safe_metric_n(run: dict[str, Any], metric: str) -> int | None:
+    """Pull the CI denominator (``n``) for one (run, metric) pair.
+
+    ADR 0054 makes the quality metrics conditional on a substantive answer
+    attempt, so ``accuracy`` / ``groundedness`` / ``citation_precision`` are
+    ``None`` on the correct-refusal path and excluded from their mean — giving
+    them a *smaller* denominator (e.g. 118) than ``answer_format_compliance``
+    (199) and ``claim_citation_alignment`` (173), which stay measurable on
+    over-answered / answered cases. The single per-run ``effective_n`` only
+    approximates the accuracy/groundedness/citation_precision denominator, so
+    the gauge surfaces this per-(metric, run) ``n`` to keep the divergence
+    visible rather than implying every quality metric shares one denominator.
+
+    Returns ``None`` when the run has no ``ci`` block for the metric (e.g. the
+    inline test fixtures, or a metric absent from the slice).
+    """
+    ci = run.get("ci")
+    if isinstance(ci, dict):
+        entry = ci.get(metric)
+        if isinstance(entry, dict):
+            n = entry.get("n")
+            if isinstance(n, int):
+                return n
+    return None
+
+
 def _safe_abstention(run: dict[str, Any]) -> dict[str, Any]:
     """Extract per-run abstention transparency fields (ADR 0054 §Consequences).
 
@@ -229,6 +255,12 @@ def compute_gauge(summary: dict[str, Any]) -> dict[str, Any]:
     out_runs = {
         name: {
             **{m: _safe_metric(runs[name], m) for m in GAUGED_METRICS},
+            # ADR 0054 — per-(metric, run) CI denominator. The quality metrics
+            # are conditional on a substantive answer attempt, so their n
+            # diverges from answer_format_compliance / claim_citation_alignment;
+            # surfacing it here keeps that divergence from being hidden behind a
+            # single per-run effective_n. See _safe_metric_n.
+            "metric_n": {m: _safe_metric_n(runs[name], m) for m in GAUGED_METRICS},
             # ADR 0054 — transparency fields next to metrics so a reader can
             # see at a glance why a high-abstention run's pre-fix means were
             # inflated. signal_alive logic is intentionally NOT modified.
@@ -303,20 +335,42 @@ def render_markdown(gauge: dict[str, Any]) -> str:
     for metric in GAUGED_METRICS:
         row = [metric]
         for run_name in REQUIRED_RUNS:
-            row.append(_fmt_pct(gauge["runs"][run_name][metric]))
+            run = gauge["runs"][run_name]
+            cell = _fmt_pct(run[metric])
+            n = run.get("metric_n", {}).get(metric)
+            if n is not None:
+                cell += f" (n={n})"
+            row.append(cell)
         lines.append("| " + " | ".join(row) + " |")
+
+    # ADR 0054 — disclose the per-(metric, run) denominator divergence so the
+    # single per-run effective_n below is not read as a shared denominator.
+    lines += [
+        "",
+        "_Per-cell `n` = CI denominator for that (metric, run). Quality metrics "
+        "(`accuracy` / `groundedness` / `citation_precision`) are conditional on a "
+        "substantive answer attempt (ADR 0054) and so share the smaller "
+        "`effective_n` below. `answer_format_compliance` and "
+        "`claim_citation_alignment` stay measurable on over-answered / answered "
+        "cases (format and alignment need no gold), so their `n` is larger and "
+        "differs per run — disclosed per-cell here, not folded into one denominator. "
+        "Each `gap vs floor` therefore compares means on per-metric denominators, "
+        "not a single shared `n`._",
+    ]
 
     # ADR 0054 §Consequences — transparency block. Surfaces per-run
     # abstention_rate (correct-refusal rate on the unanswerable subset)
-    # + effective_n (substantive-attempt count, the denominator for the
-    # quality metrics above). Helps a reader see why a high-abstention
-    # run's metric means are based on a small denominator. signal_alive
-    # is NOT influenced by these numbers.
+    # + effective_n (substantive-attempt count, ≈ the denominator for
+    # accuracy/groundedness/citation_precision only — answer_format_compliance
+    # and claim_citation_alignment use the larger per-metric n shown per-cell
+    # in the raw-values table above). Helps a reader see why a high-abstention
+    # run's quality means are based on a small denominator. signal_alive is
+    # NOT influenced by these numbers.
     lines += [
         "",
         "## Per-run abstention transparency (ADR 0054)",
         "",
-        "| run | num_predictions | abstention_rate (unanswerable subset) | effective_n (substantive attempts) |",
+        "| run | num_predictions | abstention_rate (unanswerable subset) | effective_n (≈ accuracy/groundedness/citation_precision denom) |",
         "|---|---:|---:|---:|",
     ]
     for run_name in REQUIRED_RUNS:

@@ -42,15 +42,25 @@ def _make_summary(
     random_retrieval: dict[str, float | None],
     single_chunk: dict[str, float | None],
     n: int = 221,
+    ci_n: dict[str, dict[str, int]] | None = None,
 ) -> dict:
-    """Build a minimal eval_summary.json shape with 3 ablation runs."""
+    """Build a minimal eval_summary.json shape with 3 ablation runs.
+
+    ``ci_n`` (optional) attaches a per-run ``ci`` block carrying per-metric
+    ``n`` denominators — mirrors the real eval_summary shape so tests can
+    assert the ADR 0054 per-metric denominator disclosure. Omitting it keeps
+    the legacy (ci-less) fixture shape that the older tests rely on.
+    """
 
     def _run(name: str, values: dict[str, float | None]) -> dict:
-        return {
+        run = {
             "name": name,
             "num_predictions": n,
             **values,
         }
+        if ci_n and name in ci_n:
+            run["ci"] = {m: {"n": cnt} for m, cnt in ci_n[name].items()}
+        return run
 
     return {
         "num_predictions": n,
@@ -253,6 +263,94 @@ class MarkdownRenderTest(unittest.TestCase):
         # The verdict line uses the warning glyph + 'NOT alive' phrase.
         self.assertIn("⚠️", md)
         self.assertIn("signal NOT alive", md)
+
+
+class PerMetricDenominatorTest(unittest.TestCase):
+    """ADR 0054 — gauge discloses per-(metric, run) CI n (issue #1368).
+
+    The quality metrics are conditional on a substantive answer attempt, so
+    accuracy/groundedness/citation_precision carry a smaller denominator (118
+    in the real run) than answer_format_compliance (199) and
+    claim_citation_alignment (173), which stay measurable on over-answered /
+    answered cases. The gauge must surface this divergence rather than imply
+    every quality metric shares the single per-run effective_n.
+    """
+
+    # Mirrors the real baseline.aggregate.json denominator divergence.
+    _CI_N = {
+        "full": {
+            "accuracy": 118,
+            "groundedness": 118,
+            "citation_precision": 118,
+            "answer_format_compliance": 199,
+            "claim_citation_alignment": 173,
+        },
+        "random_retrieval": {
+            "accuracy": 118,
+            "groundedness": 118,
+            "citation_precision": 118,
+            "answer_format_compliance": 144,
+            "claim_citation_alignment": 68,
+        },
+        "single_chunk": {
+            "accuracy": 118,
+            "groundedness": 118,
+            "citation_precision": 118,
+            "answer_format_compliance": 214,
+            "claim_citation_alignment": 188,
+        },
+    }
+
+    def _summary_with_ci(self) -> dict:
+        return _make_summary(
+            full={m: 0.30 for m in GAUGED_METRICS},
+            random_retrieval={m: 0.10 for m in GAUGED_METRICS},
+            single_chunk={m: 0.05 for m in GAUGED_METRICS},
+            ci_n=self._CI_N,
+        )
+
+    def test_per_metric_n_in_json(self) -> None:
+        g = compute_gauge(self._summary_with_ci())
+        for run_name, per_metric in self._CI_N.items():
+            run = g["runs"][run_name]
+            self.assertIn("metric_n", run)
+            for metric, expected_n in per_metric.items():
+                self.assertEqual(run["metric_n"][metric], expected_n)
+
+    def test_quality_and_format_denominators_diverge(self) -> None:
+        # The whole point: a reader must NOT assume one shared denominator.
+        g = compute_gauge(self._summary_with_ci())
+        full = g["runs"]["full"]["metric_n"]
+        self.assertEqual(full["accuracy"], 118)
+        self.assertEqual(full["answer_format_compliance"], 199)
+        self.assertEqual(full["claim_citation_alignment"], 173)
+        self.assertNotEqual(full["accuracy"], full["answer_format_compliance"])
+        self.assertNotEqual(full["accuracy"], full["claim_citation_alignment"])
+
+    def test_per_metric_n_rendered_in_markdown(self) -> None:
+        md = render_markdown(compute_gauge(self._summary_with_ci()))
+        # Raw-values table cells carry their own denominator.
+        self.assertIn("(n=118)", md)  # accuracy/groundedness/citation_precision
+        self.assertIn("(n=199)", md)  # answer_format_compliance (full)
+        self.assertIn("(n=173)", md)  # claim_citation_alignment (full)
+        # The effective_n column is scoped to the quality-metric subset, not
+        # presented as a shared denominator for every metric.
+        self.assertIn("accuracy/groundedness/citation_precision denom", md)
+
+    def test_missing_ci_renders_without_n_suffix(self) -> None:
+        # Backward-compat: a ci-less summary (older fixtures / absent slice)
+        # must not crash and must omit the "(n=...)" suffix entirely.
+        g = compute_gauge(
+            _make_summary(
+                full={m: 0.5 for m in GAUGED_METRICS},
+                random_retrieval={m: 0.1 for m in GAUGED_METRICS},
+                single_chunk={m: 0.2 for m in GAUGED_METRICS},
+            )
+        )
+        for run_name in REQUIRED_RUNS:
+            for metric in GAUGED_METRICS:
+                self.assertIsNone(g["runs"][run_name]["metric_n"][metric])
+        self.assertNotIn("(n=", render_markdown(g))
 
 
 if __name__ == "__main__":
