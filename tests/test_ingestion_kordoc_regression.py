@@ -738,5 +738,73 @@ class KordocCacheManifestIntegrityTest(unittest.TestCase):
             self.assertIn("근거 본문", result[stem])
 
 
+class KordocRequiredGuardTest(unittest.TestCase):
+    """``BIDMATE_REQUIRE_KORDOC=1`` opt-in guard (issue #1359).
+
+    A real-corpus embedding/parsing ablation must run on native kordoc chunks;
+    the guard turns the silent csv_text fallback into a hard error so a
+    degraded build can never pollute the measurement. Default unset keeps the
+    ADR 0049 fallback unchanged (covered by the suite above).
+    """
+
+    def setUp(self) -> None:
+        self._backup = os.environ.get("BIDMATE_REQUIRE_KORDOC")
+        os.environ.pop("BIDMATE_REQUIRE_KORDOC", None)
+
+    def tearDown(self) -> None:
+        if self._backup is None:
+            os.environ.pop("BIDMATE_REQUIRE_KORDOC", None)
+        else:
+            os.environ["BIDMATE_REQUIRE_KORDOC"] = self._backup
+
+    def test_load_text_raises_instead_of_csv_fallback_when_required(self) -> None:
+        os.environ["BIDMATE_REQUIRE_KORDOC"] = "1"
+        loader = HwpKordocLoader()
+        with self.assertRaises(RuntimeError) as ctx:
+            loader.load_text({"텍스트": "csv body text"}, Path("/no/such/file.hwp"))
+        self.assertIn("BIDMATE_REQUIRE_KORDOC", str(ctx.exception))
+
+    def test_default_unset_still_falls_back(self) -> None:
+        loader = HwpKordocLoader()
+        result = loader.load_text({"텍스트": "csv body text"}, Path("/no/such/file.hwp"))
+        self.assertEqual(result, "csv body text")
+        self.assertEqual(loader.last_text_source, "data_list_csv_text")
+
+    def test_cache_hit_returns_kordoc_even_when_required(self) -> None:
+        os.environ["BIDMATE_REQUIRE_KORDOC"] = "1"
+        loader = HwpKordocLoader()
+        source_path = Path("/files/doc.hwp")
+        loader._batch_cache[str(source_path)] = "kordoc markdown body"
+        # guard only blocks the fallback path; a real kordoc hit is unaffected
+        result = loader.load_text({"텍스트": "csv fallback"}, source_path)
+        self.assertEqual(result, "kordoc markdown body")
+        self.assertEqual(loader.last_text_source, "kordoc")
+
+    def test_prime_batch_raises_on_kordoc_failure_when_required(self) -> None:
+        from ingestion import _KordocFallback
+
+        os.environ["BIDMATE_REQUIRE_KORDOC"] = "1"
+        loader = HwpKordocLoader()
+        with mock.patch(
+            "ingestion._kordoc_convert_batch",
+            side_effect=_KordocFallback("node/npx not on PATH"),
+        ):
+            with self.assertRaises(RuntimeError) as ctx:
+                loader.prime_batch([Path("/files/doc.hwp")])
+        self.assertIn("BIDMATE_REQUIRE_KORDOC", str(ctx.exception))
+
+    def test_prime_batch_unset_swallows_failure(self) -> None:
+        from ingestion import _KordocFallback
+
+        loader = HwpKordocLoader()
+        with mock.patch(
+            "ingestion._kordoc_convert_batch",
+            side_effect=_KordocFallback("node/npx not on PATH"),
+        ):
+            with self.assertWarns(RuntimeWarning):
+                loader.prime_batch([Path("/files/doc.hwp")])
+        self.assertIsNotNone(loader.last_fallback_reason)
+
+
 if __name__ == "__main__":
     unittest.main()
