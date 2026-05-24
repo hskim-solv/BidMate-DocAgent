@@ -20,6 +20,10 @@ agentic 풀 파이프라인(메타데이터 우선 검색·재순위·검증기 
 
 knob: [`rag_core.py`](../../rag_core.py) 의 `pipeline_cli_choices()` 가 프리셋 목록의 단일 출처다. 여기서 `naive_baseline` 제거가 곧 이 ADR 재검토 신호다.
 
+**2026-05-24 contract update:** RFP 문서 QA용 naive baseline target 정의에 맞춰 `naive_baseline` 기본 검색 폭을 기존 `top_k=4` 에서 `top_k=5` 로 갱신한다. 이는 알고리즘 보존 범위를 깨는 고급 retrieval 기능 추가가 아니라 baseline 측정 계약 갱신이다. historical 비교가 필요하면 기존 snapshot 의 `top_k=4` row 를 legacy 기준으로 따로 해석하고, production/default preset 은 하나만 유지한다.
+
+**Embedding fairness note:** `hashing` 인덱스는 CI 재현성과 빠른 smoke 검사용이다. feature-hashing BoW 성격이라 의미 검색을 대표하지 못하므로, RFP QA용 공정 naive baseline 의 품질 판단은 같은 `naive_baseline` 알고리즘 계약에 실제 dense embedding index(예: `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`)를 붙인 run 으로 한다.
+
 ## 결과
 
 **Wins**
@@ -36,7 +40,7 @@ knob: [`rag_core.py`](../../rag_core.py) 의 `pipeline_cli_choices()` 가 프리
 
 ## 보존 범위
 
-- **보존되는 것**: [`rag_pipeline_presets.py`](../../rag_pipeline_presets.py) 의 `PIPELINE_PRESETS["naive_baseline"]` config + [`rag_core.py`](../../rag_core.py) `run_rag_query(pipeline="naive_baseline")` direct path (byte-identity 가드 포함). 이 둘이 `naive_baseline` ranking 을 결정한다 — `pipeline_cli_choices()` 는 preset **이름 목록만** 반환할 뿐 ranking 을 dispatch 하지 않는다 (line 21 의 knob 은 "어떤 preset 이 CLI 에 노출되나" 의 단일 출처일 뿐). 같은 입력 (query, corpus index) 에 같은 (chunk_id, score) 순위 산출.
+- **보존되는 것**: [`rag_pipeline_presets.py`](../../rag_pipeline_presets.py) 의 `PIPELINE_PRESETS["naive_baseline"]` 알고리즘 계약(dense-only, fixed chunk, direct evidence answer, simple citation) + [`rag_core.py`](../../rag_core.py) `run_rag_query(pipeline="naive_baseline")` direct path. 이 둘이 `naive_baseline` ranking 을 결정한다 — `pipeline_cli_choices()` 는 preset **이름 목록만** 반환할 뿐 ranking 을 dispatch 하지 않는다 (line 21 의 knob 은 "어떤 preset 이 CLI 에 노출되나" 의 단일 출처일 뿐). 같은 입력 (query, corpus index, contract `top_k=5`) 에 같은 (chunk_id, score) 순위 산출.
 - **보존되지 않는 것**: 평가 corpus 와 golden expected outputs (예: `tests/data/naive_baseline_top_k.json`). corpus 자체가 변경되면 새 chunk_id 가 생성되고 golden 도 같이 drift — 이는 ranking 함수 byte-identity 와 독립적인 부수효과로 이 ADR 의 보존 범위 밖.
 - 이 구분은 ADR 0050 처럼 corpus 만 변경하는 후속 ADR 이 "baseline bit-identical" 을 주장할 때 의미가 모호하지 않도록 명시한다. ranking 알고리즘은 불변이며 corpus 는 교체 가능하다 — 서로 다른 축이다.
 

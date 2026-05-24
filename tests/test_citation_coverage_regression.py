@@ -55,17 +55,27 @@ class CitationCoverageTest(unittest.TestCase):
         # 2 citations, both expose a page; only 1 exposes a bbox region
         self.assertAlmostEqual(cov["citation_page_coverage"], 1.0)
         self.assertAlmostEqual(cov["citation_region_coverage"], 0.5)
+        self.assertEqual(cov["citation_page_coverage_denominator"], 2)
+        self.assertEqual(cov["citation_region_coverage_denominator"], 2)
+        self.assertEqual(cov["citation_page_coverage_reason"], "ok")
+        self.assertEqual(cov["citation_region_coverage_reason"], "region_metadata_missing")
 
     def test_no_claims_returns_none(self) -> None:
         cov = score_citation_coverage(_pred([]))
         for key in COVERAGE_KEYS:
             self.assertIsNone(cov[key])
+        self.assertEqual(cov["citation_claim_coverage_denominator"], 0)
+        self.assertEqual(cov["citation_page_coverage_denominator"], 0)
+        self.assertEqual(cov["citation_page_coverage_reason"], "no_citations")
 
     def test_claims_without_citations_have_none_metadata_coverage(self) -> None:
         cov = score_citation_coverage(_pred([{"claim": "a", "citations": []}]))
         self.assertEqual(cov["citation_claim_coverage"], 0.0)
         self.assertIsNone(cov["citation_page_coverage"])
         self.assertIsNone(cov["citation_region_coverage"])
+        self.assertEqual(cov["citation_claim_coverage_denominator"], 1)
+        self.assertEqual(cov["citation_page_coverage_denominator"], 0)
+        self.assertEqual(cov["citation_page_coverage_reason"], "no_citations")
 
     def test_aggregate_skips_none_cases(self) -> None:
         base = {
@@ -91,6 +101,7 @@ class CitationCoverageTest(unittest.TestCase):
         for key in COVERAGE_KEYS:
             self.assertIn(key, block)
             self.assertIn(key, block["ci"])
+        self.assertIn("citation_coverage_reason_counts", block)
 
 
 if __name__ == "__main__":

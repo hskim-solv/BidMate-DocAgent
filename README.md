@@ -106,7 +106,7 @@ RFP 비교 질의 (`query_type == "comparison"`) 에서 발생하는 한쪽 문�
 
 **측정 환경**:
 - **시스템 타입**: 추출형 only — 외부 LLM (GPT/Claude 등) 호출 없음, 의도된 설계
-- **임베딩 backend**: 메트릭 표는 `hashing` (CI source of truth). `MiniLM-L12-v2` 비교: [`docs/benchmarking.md`](docs/benchmarking.md)
+- **임베딩 backend**: 메트릭 표는 `hashing` (CI deterministic smoke source of truth). `hashing` 은 BoW/term-overlap 성격이라 공정한 semantic RFP baseline 으로 보지 않는다. 공정 naive RAG 비교는 동일 `naive_baseline` 계약에 실제 dense embedding index (`MiniLM-L12-v2` 등)를 붙여 별도 측정한다. `MiniLM-L12-v2` 비교: [`docs/benchmarking.md`](docs/benchmarking.md)
 - **측정 범위**: `Latency p95` 컬럼 = query_analysis + context_resolution + answer_generation walltime 합. retrieve/verify stage = `reports/eval_summary.json` `stage_latency` 블록
 - **실행 환경**: macOS / CPU-only / Python 3.11 / 단일 워커
 - **Cold start 분리**: hashing ≈ 2.1ms / sentence-transformers ≈ 5.7s
@@ -114,6 +114,7 @@ RFP 비교 질의 (`query_type == "comparison"`) 에서 발생하는 한쪽 문�
 - **헤드라인 latency 기준**: naive_baseline p95 (3.1ms) 가 CI source of truth. `agentic_full_llm` 은 LLM 레이턴시 포함 환경 의존이라 CI 고정 대상 아님
 - **`agentic_full_llm` backend**: 분석 변형 표의 `full_llm` 행은 `BIDMATE_SYNTHESIS_BACKEND=stub` (token-less, deterministic; [ADR 0011](docs/adr/0011-llm-synthesis-as-additive-ablation.md)). stub 은 pass-through 합성이라 `full` 과 동일 메트릭이 *정상*
 - **Rerank 종류**: `Rerank on` 행 대부분 weighted-score rerank. `full_reranker` 만 cross-encoder rerank ([rag_rerank.py](rag_rerank.py)) — CI default `stub` 이라 `full` 과 수치 일치
+- **Naive baseline 계약**: 2026-05-24 측정 계약부터 `naive_baseline` 기본 `top_k=5` 로 갱신. 이전 snapshot 의 `top_k=4` 값은 historical 비교 대상으로만 해석한다 ([ADR 0001](docs/adr/0001-preserve-naive-baseline.md)).
 
 > **표 읽는 법 — 안전성/품질 trade-off (over-claim 아님)**: `agentic_full` 은 **raw answer rate 를 극대화하도록 튜닝된 파이프라인이 아니다.** 답변율(answer rate) 일부를 내주는 대신 **citation precision +18.0pp** (0.705 vs 0.525) 과 **abstention accuracy +57.1pp** (0.810 vs 0.238) 을 얻는 **safety-oriented** 설계다. 그래서 overall accuracy 는 `naive_baseline` 이 더 높을 수 있고 (0.782 vs 0.718, −6.4pp), 이는 *실패한 최적화가 아니라 의도된 trade-off* 다 — 근거 없는 답변보다 근거 있는 보류를 우선한다 ([ADR 0003](docs/adr/0003-structured-answer-citation-contract.md) · [ADR 0004](docs/adr/0004-verifier-retry-policy.md)). 따라서 아래 표는 **하나의 평탄한 leaderboard 가 아니라 slice 별로** 읽어야 한다 — comparison · follow-up · hardcase 는 각각 다른 실패 모드를 측정한다. slice 별 설계 대응: [실패 모드 케이스 스터디](docs/case-studies/failure-modes.md).
 
@@ -135,7 +136,7 @@ RFP 비교 질의 (`query_type == "comparison"`) 에서 발생하는 한쪽 문�
 
 | Run | Pipeline | Top-k | Metadata-first | Rerank | Verifier/Retry | Accuracy | Groundedness | Citation | Claim Align | Format | Abstention | Retry | Latency p95 |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| naive_baseline | naive_baseline | 4 | off | off | off | 0.782±0.10 | 0.700±0.09 | 0.525±0.08 | 0.972±0.03 | 0.630 | 0.273 (6/16/0) | 0.000 | 3.1ms |
+| naive_baseline | naive_baseline | 5 | off | off | off | 0.782±0.10 | 0.700±0.09 | 0.525±0.08 | 0.972±0.03 | 0.630 | 0.273 (6/16/0) | 0.000 | 3.1ms |
 | full | agentic_full | auto | on | on | on | 0.718±0.10 | 0.750±0.08 | 0.705±0.08 | 0.979±0.03 | 0.620 | 0.818 (18/4/0) | 0.490 | 4.6ms |
 | no_metadata_first | agentic_full | auto | off | on | on | 0.692±0.10 | 0.740±0.09 | 0.595±0.07 | 0.965±0.04 | 0.600 | 0.818 (18/4/0) | 0.000 | 3.6ms |
 | no_verifier_retry | agentic_full | auto | on | on | off | 0.821±0.09 | 0.720±0.09 | 0.705±0.09 | 0.983±0.03 | 0.660 | 0.273 (6/16/0) | 0.000 | 2.7ms |
@@ -158,7 +159,7 @@ RFP 비교 질의 (`query_type == "comparison"`) 에서 발생하는 한쪽 문�
 | full_reranker | agentic_full | auto | on | on | on | 0.718±0.10 | 0.750±0.08 | 0.705±0.08 | 0.979±0.03 | 0.620 | 0.818 (18/4/0) | 0.490 | 4.8ms |
 | full_hyde | agentic_full | auto | on | on | on | 0.718±0.10 | 0.750±0.08 | 0.705±0.08 | 0.979±0.03 | 0.620 | 0.818 (18/4/0) | 0.490 | 4.8ms |
 | agentic_full_finetuned | agentic_full | auto | on | on | on | 0.718±0.10 | 0.750±0.08 | 0.705±0.08 | 0.979±0.03 | 0.620 | 0.818 (18/4/0) | 0.490 | 4.8ms |
-| naive_baseline_finetuned | naive_baseline | 4 | off | off | off | 0.782±0.10 | 0.700±0.09 | 0.525±0.08 | 0.972±0.03 | 0.630 | 0.273 (6/16/0) | 0.000 | 2.5ms |
+| naive_baseline_finetuned | naive_baseline | 5 | off | off | off | 0.782±0.10 | 0.700±0.09 | 0.525±0.08 | 0.972±0.03 | 0.630 | 0.273 (6/16/0) | 0.000 | 2.5ms |
 
 </details>
 
@@ -234,7 +235,7 @@ python3 scripts/update_readme_metrics.py --report reports/eval_summary.json --re
 
 > 이 프로젝트에서 저는 RAG 파이프라인을 단순 구현한 것이 아니라, RFP 문서에서 실제로 발생하는 **검색 실패 · 근거 부족 · 비교 질의 편향을 failure mode 로 정의**하고, 이를 **baseline / ablation / eval / CI 로 검증 가능한 시스템**으로 만들었습니다.
 
-- **Baseline preservation** — `naive_baseline` 을 byte-identical 로 보존해 모든 개선을 *additive ablation* 으로만 측정 ([ADR 0001](docs/adr/0001-preserve-naive-baseline.md))
+- **Baseline preservation** — `naive_baseline` 알고리즘 계약(dense-only, fixed chunk, direct evidence answer, simple citation)을 보존해 모든 개선을 *additive ablation* 으로만 측정 ([ADR 0001](docs/adr/0001-preserve-naive-baseline.md))
 - **Failure-mode-driven design** — comparison starvation · metadata ambiguity · abstention · follow-up · citation drift 5개 실패 모드를 명시하고 각각에 설계로 대응 ([실패 모드](docs/case-studies/failure-modes.md))
 - **Eval/CI regression prevention** — PR 마다 회귀 게이트 + failure-rate ratchet 으로 품질 후퇴 차단 ([pr-eval.yml](.github/workflows/pr-eval.yml) · [ADR 0062](docs/adr/0062-failure-rate-regression-contract.md))
 

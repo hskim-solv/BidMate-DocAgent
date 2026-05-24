@@ -10,18 +10,20 @@ Sources: ``reports/eval_summary.json``, ``reports/real100/baseline.aggregate.jso
 
 | metric | n | p10 | p50 | p90 | mean |
 |---|---|---|---|---|---|
-| recall@5 | 82 | 0.275 | 1.000 | 1.000 | 0.864 |
-| recall@10 | 82 | 0.275 | 1.000 | 1.000 | 0.864 |
-| recall@20 | 82 | 0.275 | 1.000 | 1.000 | 0.864 |
-| MRR | 82 | 0.250 | 1.000 | 1.000 | 0.825 |
-| NDCG@10 | 82 | 0.315 | 1.000 | 1.000 | 0.816 |
-| NDCG@20 | 82 | 0.315 | 1.000 | 1.000 | 0.816 |
+| recall@5 | 82 | 0.000 | 0.068 | 1.000 | 0.283 |
+| recall@10 | 82 | 0.000 | 0.068 | 1.000 | 0.283 |
+| recall@20 | 82 | 0.000 | 0.068 | 1.000 | 0.283 |
+| MRR@5 | 82 | 0.000 | 0.500 | 1.000 | 0.515 |
+| MRR | 82 | 0.000 | 0.500 | 1.000 | 0.515 |
+| NDCG@5 | 82 | 0.000 | 0.339 | 1.000 | 0.378 |
+| NDCG@10 | 82 | 0.000 | 0.222 | 1.000 | 0.324 |
+| NDCG@20 | 82 | 0.000 | 0.172 | 1.000 | 0.300 |
 
 ### Selected top_k histogram
 
 | top_k | n |
 |---|---|
-| 4 | 92 |
+| 5 | 92 |
 
 ## Axis 2 — Reranker contribution
 
@@ -41,26 +43,26 @@ Sources: ``reports/eval_summary.json``, ``reports/real100/baseline.aggregate.jso
 |---|---|---|
 | 1 | 105 | 100.0% |
 
-_Baseline retry_effectiveness:_ recovery_rate=0.333, residual_failure=—, retry_lift_vs_no_retry=-0.212
+_Baseline retry_effectiveness:_ recovery_rate=0.124, residual_failure=—, retry_lift_vs_no_retry=-0.152
 
 ## Axis 4 — Stage latency composition
 
-- end-to-end latency_ms (n=105): p50=2.010, p95=3.406, mean=2.136
+- end-to-end latency_ms (n=105): p50=9.320, p95=19.230, mean=10.615
 
 | stage | n | p50 | p95 | mean | share_of_e2e |
 |---|---|---|---|---|---|
-| `query_analysis_ms` | 105 | 1.150 | 2.556 | 1.314 | 61.5% |
-| `context_resolution_ms` | 105 | 0.000 | 0.008 | 0.001 | 0.0% |
+| `query_analysis_ms` | 105 | 2.490 | 6.788 | 2.967 | 28.0% |
+| `context_resolution_ms` | 105 | 0.000 | 0.010 | 0.003 | 0.0% |
 | `retrieve_ms` | 0 | — | — | — | — |
 | `verify_ms` | 0 | — | — | — | — |
-| `answer_generation_ms` | 105 | 0.270 | 0.418 | 0.247 | 11.6% |
+| `answer_generation_ms` | 105 | 0.390 | 1.128 | 0.493 | 4.6% |
 
 ### Cold vs warm e2e latency (ms)
 
 | cohort | n | p50 | p95 | mean |
 |---|---|---|---|---|
-| cold | 1 | 2.640 | 2.640 | 2.640 |
-| warm | 104 | 2.010 | 3.417 | 2.131 |
+| cold | 1 | 8.800 | 8.800 | 8.800 |
+| warm | 104 | 9.380 | 19.235 | 10.633 |
 
 ## Axis 5 — Answer synthesis & confidence
 
@@ -92,7 +94,7 @@ _Baseline retry_effectiveness:_ recovery_rate=0.333, residual_failure=—, retry
 | `insufficient` | 13 |
 | `supported` | 92 |
 
-- overall answer_format_compliance mean: 0.619
+- overall answer_format_compliance mean: 0.525
 
 ## Axis 6 — Evidence quality (recall × citation × groundedness)
 
@@ -100,21 +102,21 @@ _Baseline retry_effectiveness:_ recovery_rate=0.333, residual_failure=—, retry
 
 | | cite_hi | cite_lo |
 |---|---|---|
-| recall_hi | 75.6% | 13.4% |
-| recall_lo | 0.0% | 11.0% |
+| recall_hi | 19.5% | 4.9% |
+| recall_lo | 19.5% | 56.1% |
 
-- Pearson(recall@10, citation_precision) = 0.552
-- Pearson(recall@10, groundedness) = 0.681
+- Pearson(recall@10, citation_precision) = 0.527
+- Pearson(recall@10, groundedness) = 0.535
 
 ## Axis 7 — Cold-start vs warm
 
 | cohort | n | e2e_p50 | e2e_p95 | retrieve_p50 |
 |---|---|---|---|---|
-| cold | 1 | 2.640 | 2.640 | — |
-| warm | 104 | 2.010 | 3.417 | — |
+| cold | 1 | 8.800 | 8.800 | — |
+| warm | 104 | 9.380 | 19.235 | — |
 
 - Δ retrieve_ms p50 (cold − warm) = —
-- Δ e2e_ms p50 (cold − warm) = 0.630
+- Δ e2e_ms p50 (cold − warm) = -0.580
 
 ## Figures
 

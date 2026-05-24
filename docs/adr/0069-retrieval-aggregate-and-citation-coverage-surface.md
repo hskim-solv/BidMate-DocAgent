@@ -8,7 +8,8 @@
 ## Context
 
 The repo already computes chunk-level retrieval metrics per case
-(`chunk_recall_at_{5,10,20}` / `chunk_mrr` / `chunk_ndcg_at_{10,20}` /
+(`chunk_recall_at_{5,10,20}` / `chunk_mrr_at_5` / `chunk_mrr` /
+`chunk_ndcg_at_{5,10,20}` /
 `rerank_delta_*` in `eval/scorers/case.py`) but never aggregated them — there
 was no run-level mean + CI in `reports/eval_summary.json`. Comparing a candidate
 embedding / reranker / chunking / parsing backend against the baseline therefore
@@ -34,7 +35,8 @@ Expose three deterministic, LLM-free measurement surfaces in
 
 1. **Retrieval aggregate** — `metric_block` folds the per-case chunk metrics
    into a run-level mean (`block[key]`) + bootstrap CI (`block["ci"][key]`) for
-   `chunk_recall_at_{5,10,20}`, `chunk_mrr`, `chunk_ndcg_at_{10,20}`,
+   `chunk_recall_at_{5,10,20}`, `chunk_mrr_at_5`, `chunk_mrr`,
+   `chunk_ndcg_at_{5,10,20}`,
    `rerank_delta_mrr`, `rerank_delta_ndcg_at_10`. Every key is always emitted;
    `None`-valued (gold-free) cases are skipped, and an all-`None` slice reports
    `None` mean + `None` CI rather than a fabricated 0.0. Because `metric_block`
@@ -73,6 +75,11 @@ Expose three deterministic, LLM-free measurement surfaces in
   `context_recall` (LLM-judge, ADR 0014 boundary) into the aggregate CI — that
   is a separate concern with a live-backend dependency.
 
+**2026-05-24 update:** RFP QA naive-baseline measurement added explicit
+`MRR@5` and `nDCG@5`, plus raw `retrieved_chunks` diagnostics and failure-case
+JSONL artifacts. This extends the measurement surface without adding rerank,
+hybrid search, query rewriting, or verifier retry to `naive_baseline`.
+
 ## Alternatives considered
 
 - **Aggregate in a separate script** (like `eval/llm_judge.py` writes
@@ -88,7 +95,9 @@ Expose three deterministic, LLM-free measurement surfaces in
 ## Verification
 
 <!-- verifies-key: reports/eval_summary.json:chunk_recall_at_5 -->
+<!-- verifies-key: reports/eval_summary.json:chunk_mrr_at_5 -->
 <!-- verifies-key: reports/eval_summary.json:chunk_mrr -->
+<!-- verifies-key: reports/eval_summary.json:chunk_ndcg_at_5 -->
 <!-- verifies-key: reports/eval_summary.json:citation_claim_coverage -->
 <!-- verifies-key: reports/eval_summary.json:embedding_model_id -->
 

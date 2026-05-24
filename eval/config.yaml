@@ -208,7 +208,8 @@ ablation_runs:
   # (same pipeline/metadata_first/rerank/verifier_retry/retrieval_mode) so
   # the two leaderboard columns always produced identical values.  This row
   # is now the canonical "post-retrieval enhancement off" slot for tracking
-  # raw retrieval quality (chunk_recall_at_5/10/20, chunk_ndcg_at_10/20);
+  # raw retrieval quality (chunk_recall_at_5/10/20, chunk_mrr_at_5,
+  # chunk_ndcg_at_5/10/20);
   # `no_verifier_retry` remains the verifier-retry-contribution reference.
   # Difference vs `no_verifier_retry`: rerank=false (cross-encoder rerank off).
   # Difference vs `no_rerank`: verifier_retry=false (no retry-and-relax loop).

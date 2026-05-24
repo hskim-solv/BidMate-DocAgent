@@ -181,8 +181,10 @@ def score_citation_coverage(prediction: dict[str, Any]) -> dict[str, Any]:
             if any(isinstance(c, dict) for c in claim.get("citations") or [])
         )
         claim_coverage: float | None = cited_claims / len(claims)
+        claim_coverage_reason = "ok" if cited_claims == len(claims) else "missing_claim_citation"
     else:
         claim_coverage = None
+        claim_coverage_reason = "no_claims"
 
     if citations:
         page_filled = sum(1 for citation in citations if citation_pages(citation))
@@ -193,14 +195,24 @@ def score_citation_coverage(prediction: dict[str, Any]) -> dict[str, Any]:
         )
         page_coverage: float | None = page_filled / len(citations)
         region_coverage: float | None = region_filled / len(citations)
+        page_reason = "ok" if page_filled == len(citations) else "page_metadata_missing"
+        region_reason = "ok" if region_filled == len(citations) else "region_metadata_missing"
     else:
         page_coverage = None
         region_coverage = None
+        page_reason = "no_citations"
+        region_reason = "no_citations"
 
     return {
         "citation_claim_coverage": claim_coverage,
+        "citation_claim_coverage_denominator": len(claims),
+        "citation_claim_coverage_reason": claim_coverage_reason,
         "citation_page_coverage": page_coverage,
+        "citation_page_coverage_denominator": len(citations),
+        "citation_page_coverage_reason": page_reason,
         "citation_region_coverage": region_coverage,
+        "citation_region_coverage_denominator": len(citations),
+        "citation_region_coverage_reason": region_reason,
     }
 
 

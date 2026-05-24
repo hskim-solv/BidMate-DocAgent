@@ -47,7 +47,7 @@
 |---|---|
 | SHA-256 해시 대신 **`random.shuffle(candidates)`** | run 전반 비결정적 — eval 재현성 깨짐 (같은 eval row 가 매 CI run 마다 다른 메트릭 생산 → 실제 회귀 masking + flaky 실패 유발). |
 | **Python `random.Random(seed=hash(query))` 사용** | `hash(query)` 가 Python 3 에서 프로세스별 salting (PEP 456) — 프로세스 전반 다른 결과 생산. SHA-256 은 portable. |
-| **`single_chunk` 을 `eval/config.yaml` 전용 knob 로 (`naive_baseline` 에 `top_k: 1` override)** | preset 레벨 lock-in 상실. `top_k=4` 기본을 추가하는 미래 PR 이 floor 를 silently 깸. preset 항목이 의도를 명시화 + regression 테스트로 보호. |
+| **`single_chunk` 을 `eval/config.yaml` 전용 knob 로 (`naive_baseline` 에 `top_k: 1` override)** | preset 레벨 lock-in 상실. `top_k=5` 기본을 추가하는 미래 PR 이 floor 를 silently 깸. preset 항목이 의도를 명시화 + regression 테스트로 보호. |
 | **`no_filter` 와 `no_chunking` 바닥도 추가 (full audit 목록)** | PR-5a 범위 밖 — `no_filter` 는 더 깊은 retrieval-side carve-out 필요, `no_chunking` 은 ingest-side 변경 필요. 첫 측정이 정당화하면 PR-5c/5d follow-up 으로 추적. |
 
 ## Consequences
@@ -62,7 +62,7 @@
 - `retrieve_candidates` 의 `random` 분기가 아래 dense/hybrid/m3 경로와 공유하는 candidate-dict 빌드 코드(~30 LOC)를 중복. 비용이 유지보수 noise 가 되면 미래 cleanup 이 `_build_candidate_item` helper 로 factor out 가능.
 
 ### Invariance check
-- **ADR 0001 (naive_baseline preset, byte-identity top-k)**: 무변경 — `naive_baseline` preset 항목 + `retrieval_backend="dense"` 기본 미수정.
+- **ADR 0001 (naive_baseline preset, contract top-k)**: 무변경 — `naive_baseline` preset 항목 + `retrieval_backend="dense"` 기본 미수정.
 - **ADR 0003 (answer contract schema_version=2)**: 무변경 — random/single_chunk 가 동일 evidence-dict shape 생산; answer renderer 는 retrieval backend 에 불변.
 - **ADR 0005 (eval split public/private)**: 무변경 — 두 새 row 모두 `eval/config.yaml` (public synthetic 표면) 거주. real-eval 표면 (PR-B) 이 동일 preset registry 소비 → n=200 baseline.aggregate.json 이 floor 를 자동으로 pick up.
 - **ADR 0030 (leaderboard surfaces)**: 확장이지 수정 아님 — 두 새 row 가 추가 컬럼으로 등장; 기존 컬럼 변화 없음.

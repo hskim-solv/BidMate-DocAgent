@@ -159,8 +159,10 @@ def axis1_retrieval_efficiency(cases: list[dict]) -> dict[str, Any]:
     recall: dict[str, dict[str, Any]] = {}
     for k in recall_ks:
         recall[f"at_{k}"] = _distribution([c.get(f"chunk_recall_at_{k}") for c in cases])
+    mrr_at_5 = _distribution([c.get("chunk_mrr_at_5") for c in cases])
     mrr = _distribution([c.get("chunk_mrr") for c in cases])
     ndcg = {
+        "at_5": _distribution([c.get("chunk_ndcg_at_5") for c in cases]),
         "at_10": _distribution([c.get("chunk_ndcg_at_10") for c in cases]),
         "at_20": _distribution([c.get("chunk_ndcg_at_20") for c in cases]),
     }
@@ -171,6 +173,7 @@ def axis1_retrieval_efficiency(cases: list[dict]) -> dict[str, Any]:
         "n_cases": len(cases),
         "n_cases_with_gold_chunks": n_with_gold,
         "recall": recall,
+        "mrr_at_5": mrr_at_5,
         "mrr": mrr,
         "ndcg": ndcg,
         "selected_top_k_histogram": dict(sorted(top_k_hist.items())),
@@ -524,10 +527,15 @@ def render_markdown(stats: dict[str, Any]) -> str:
             f"{_fmt_num(d['p90'])} | {_fmt_num(d['mean'])} |"
         )
     lines.append(
+        f"| MRR@5 | {a1['mrr_at_5']['n']} | {_fmt_num(a1['mrr_at_5']['p10'])} | "
+        f"{_fmt_num(a1['mrr_at_5']['p50'])} | {_fmt_num(a1['mrr_at_5']['p90'])} | "
+        f"{_fmt_num(a1['mrr_at_5']['mean'])} |"
+    )
+    lines.append(
         f"| MRR | {a1['mrr']['n']} | {_fmt_num(a1['mrr']['p10'])} | {_fmt_num(a1['mrr']['p50'])} | "
         f"{_fmt_num(a1['mrr']['p90'])} | {_fmt_num(a1['mrr']['mean'])} |"
     )
-    for k in (10, 20):
+    for k in (5, 10, 20):
         d = a1["ndcg"][f"at_{k}"]
         lines.append(
             f"| NDCG@{k} | {d['n']} | {_fmt_num(d['p10'])} | {_fmt_num(d['p50'])} | "

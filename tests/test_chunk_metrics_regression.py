@@ -16,8 +16,10 @@ if str(ROOT) not in sys.path:
 
 from eval.scorers import (  # noqa: E402
     chunk_mrr,
+    chunk_mrr_at_k,
     chunk_ndcg_at_k,
     chunk_recall_at_k,
+    derive_gold_evidence,
     derive_gold_chunk_ids,
 )
 from eval.scorers.chunk_metrics import CHUNK_METRIC_KS
@@ -45,6 +47,10 @@ class ChunkMetricsTest(unittest.TestCase):
 
     def test_mrr_returns_none_for_no_gold(self) -> None:
         self.assertIsNone(chunk_mrr(["c1"], []))
+
+    def test_mrr_at_k_ignores_hits_below_cutoff(self) -> None:
+        self.assertEqual(chunk_mrr_at_k(["c1", "c2", "c3", "c4"], ["c4"], 3), 0.0)
+        self.assertEqual(chunk_mrr_at_k(["c1", "c2", "c3", "c4"], ["c4"], 4), 0.25)
 
     def test_ndcg_at_k_perfect_when_gold_is_top(self) -> None:
         # 2 gold items, both at top → ideal DCG = actual DCG → 1.0
@@ -87,6 +93,26 @@ class DeriveGoldChunkIdsTest(unittest.TestCase):
         }
         gold = derive_gold_chunk_ids(case, self.INDEX)
         self.assertEqual(gold, ["override-chunk-001"])
+
+    def test_gold_evidence_overrides_legacy_gold_chunk_ids(self) -> None:
+        case = {
+            "gold_evidence": [
+                {
+                    "doc_id": "doc-a",
+                    "chunk_id": "doc-a::chunk-002",
+                    "page_span": [2, 2],
+                    "required_terms": ["납기"],
+                    "support_claim": "납기 일정 기준",
+                }
+            ],
+            "gold_chunk_ids": ["override-chunk-001"],
+            "expected_doc_ids": ["doc-a"],
+            "expected_terms": ["보안 통제"],
+        }
+        self.assertEqual(derive_gold_chunk_ids(case, self.INDEX), ["doc-a::chunk-002"])
+        evidence = derive_gold_evidence(case, self.INDEX)
+        self.assertEqual("doc-a::chunk-002", evidence[0]["chunk_id"])
+        self.assertEqual(["납기"], evidence[0]["required_terms"])
 
     def test_returns_empty_when_no_expectations(self) -> None:
         case = {"answerable": False}
@@ -156,6 +182,15 @@ class ScoreCaseChunkMetrics20Test(unittest.TestCase):
         )
         result = score_case(self._CASE, pred, gold_chunk_ids=["doc-a::chunk-001"])
         self.assertIn("chunk_ndcg_at_20", result)
+
+    def test_chunk_mrr_at_5_and_ndcg_at_5_present_in_output(self) -> None:
+        pred = _minimal_prediction(
+            retrieved_chunk_ids=["doc-a::chunk-001"],
+            evidence=[{"doc_id": "doc-a", "text": "보안 요구사항"}],
+        )
+        result = score_case(self._CASE, pred, gold_chunk_ids=["doc-a::chunk-001"])
+        self.assertEqual(1.0, result["chunk_mrr_at_5"])
+        self.assertEqual(1.0, result["chunk_ndcg_at_5"])
 
     def test_chunk_recall_at_20_is_1_when_gold_in_top20(self) -> None:
         retrieved = [f"doc-a::chunk-{i:03d}" for i in range(1, 22)]  # 21 chunks

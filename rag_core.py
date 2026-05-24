@@ -568,6 +568,7 @@ class _RunContext:
     verified: bool = False
     verification_reasons: list[str] | None = None
     retrieved_chunk_ids: list[str] | None = None
+    retrieved_chunks: list[dict[str, Any]] | None = None
 
 
 def _build_run_context(
@@ -903,6 +904,49 @@ def _phase_analyze(ctx: _RunContext) -> dict[str, Any] | None:
     return None
 
 
+def _retrieved_chunk_diagnostics(
+    evidence: list[dict[str, Any]],
+    *,
+    text_chars: int = 240,
+) -> list[dict[str, Any]]:
+    """Compact raw retrieval ranking for eval diagnostics."""
+    rows: list[dict[str, Any]] = []
+    for rank, item in enumerate(evidence, start=1):
+        if not isinstance(item, dict):
+            continue
+        regions = normalize_regions(item.get("regions"))
+        page_span = normalize_page_span(item.get("page_span"), regions)
+        score = item.get("score")
+        score_value = (
+            float(score)
+            if isinstance(score, (int, float)) and not isinstance(score, bool)
+            else None
+        )
+        score_parts_raw = item.get("score_parts") or {}
+        score_parts: dict[str, Any] = {}
+        if isinstance(score_parts_raw, dict):
+            for key, value in score_parts_raw.items():
+                score_parts[str(key)] = (
+                    float(value)
+                    if isinstance(value, (int, float)) and not isinstance(value, bool)
+                    else value
+                )
+        text = str(item.get("text") or "")
+        rows.append(
+            {
+                "rank": rank,
+                "chunk_id": str(item.get("chunk_id") or ""),
+                "doc_id": str(item.get("doc_id") or ""),
+                "score": score_value,
+                "score_parts": score_parts,
+                "section": str(item.get("section") or ""),
+                "page_span": page_span,
+                "text_preview": text[:text_chars],
+            }
+        )
+    return rows
+
+
 def _phase_retrieve_loop(ctx: _RunContext) -> None:
     """Run the metadata-stage retry loop (ADR 0022 stage 2).
 
@@ -911,7 +955,7 @@ def _phase_retrieve_loop(ctx: _RunContext) -> None:
 
     Writes to ``ctx``: ``stage_attempts``, ``retry_count``, ``plan``,
     ``evidence``, ``verified``, ``verification_reasons``,
-    ``retrieved_chunk_ids``.
+    ``retrieved_chunk_ids``, ``retrieved_chunks``.
 
     Adding or removing a write here without updating both this docstring
     and the regression test is the contract drift the critique flagged.
@@ -992,6 +1036,7 @@ def _phase_retrieve_loop(ctx: _RunContext) -> None:
     retrieved_chunk_ids: list[str] = [
         str(item.get("chunk_id") or "") for item in evidence if item.get("chunk_id")
     ]
+    retrieved_chunks = _retrieved_chunk_diagnostics(evidence)
 
     if verified or analysis.get("query_type") == "comparison":
         evidence = select_supporting_evidence(analysis, evidence)
@@ -1005,6 +1050,7 @@ def _phase_retrieve_loop(ctx: _RunContext) -> None:
     ctx.verified = verified
     ctx.verification_reasons = verification_reasons
     ctx.retrieved_chunk_ids = retrieved_chunk_ids
+    ctx.retrieved_chunks = retrieved_chunks
 
 
 def _phase_build_answer(ctx: _RunContext) -> dict[str, Any]:
@@ -1094,6 +1140,7 @@ def _phase_build_answer(ctx: _RunContext) -> dict[str, Any]:
         "verification_topics": verification_topics(analysis),
         "filter_stage_attempts": stage_attempts,
         "retrieved_chunk_ids": ctx.retrieved_chunk_ids,
+        "retrieved_chunks": ctx.retrieved_chunks or [],
         "final_relaxation_reason": stage_attempts[-2]["verification_reasons"] if ctx.retry_count and len(stage_attempts) >= 2 else [],
         "context_resolution": ctx.context_resolution,
         "metadata_resolution": metadata_resolution,
@@ -1300,7 +1347,7 @@ def _phase_oracle_inject(
 
     Writes to ``ctx``: ``stage_attempts``, ``retry_count``, ``plan``,
     ``evidence``, ``verified``, ``verification_reasons``,
-    ``retrieved_chunk_ids``. This mirrors the post-conditions of
+    ``retrieved_chunk_ids``, ``retrieved_chunks``. This mirrors the post-conditions of
     :func:`_phase_retrieve_loop` (the loop it replaces) so
     :func:`_phase_build_answer` consumes an identically-shaped ``ctx``.
     """
@@ -1318,6 +1365,7 @@ def _phase_oracle_inject(
     retrieved_chunk_ids: list[str] = [
         str(item.get("chunk_id") or "") for item in evidence if item.get("chunk_id")
     ]
+    retrieved_chunks = _retrieved_chunk_diagnostics(evidence)
     if verified or analysis.get("query_type") == "comparison":
         evidence = select_supporting_evidence(analysis, evidence)
     else:
@@ -1329,6 +1377,7 @@ def _phase_oracle_inject(
     ctx.verified = verified
     ctx.verification_reasons = verification_reasons
     ctx.retrieved_chunk_ids = retrieved_chunk_ids
+    ctx.retrieved_chunks = retrieved_chunks
 
 
 def run_rag_query_with_oracle_evidence(
@@ -1446,5 +1495,4 @@ async def arun_rag_query(
         bm25_tokenizer=bm25_tokenizer,
         bm25_backend=bm25_backend,
     )
-
 

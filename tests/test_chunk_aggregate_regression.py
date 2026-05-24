@@ -1,7 +1,8 @@
 """Regression guards for the run-level chunk-metric aggregate in eval_summary.
 
-``score_case`` already emits per-case ``chunk_recall_at_{5,10,20}`` / ``chunk_mrr``
-/ ``chunk_ndcg_at_{10,20}`` / ``rerank_delta_*`` (pinned by
+``score_case`` already emits per-case ``chunk_recall_at_{5,10,20}`` /
+``chunk_mrr_at_5`` / ``chunk_mrr`` / ``chunk_ndcg_at_{5,10,20}`` /
+``rerank_delta_*`` (pinned by
 ``test_chunk_metrics_regression``). This pins the *aggregate* half added by the
 measurement-surface PR: ``metric_block`` now folds those per-case values into a
 run-level mean + bootstrap CI, skips ``None`` (gold-free) cases instead of
@@ -22,7 +23,9 @@ from eval.scorers.chunk_metrics import CHUNK_METRIC_KS  # noqa: E402
 
 CHUNK_AGG_KEYS = (
     *(f"chunk_recall_at_{k}" for k in CHUNK_METRIC_KS),
+    "chunk_mrr_at_5",
     "chunk_mrr",
+    "chunk_ndcg_at_5",
     "chunk_ndcg_at_10",
     "chunk_ndcg_at_20",
     "rerank_delta_mrr",
@@ -51,7 +54,9 @@ class ChunkAggregateTest(unittest.TestCase):
                 chunk_recall_at_5=1.0,
                 chunk_recall_at_10=1.0,
                 chunk_recall_at_20=1.0,
+                chunk_mrr_at_5=1.0,
                 chunk_mrr=1.0,
+                chunk_ndcg_at_5=1.0,
                 chunk_ndcg_at_10=1.0,
                 chunk_ndcg_at_20=1.0,
                 rerank_delta_mrr=0.2,
@@ -61,7 +66,9 @@ class ChunkAggregateTest(unittest.TestCase):
                 chunk_recall_at_5=0.0,
                 chunk_recall_at_10=0.0,
                 chunk_recall_at_20=0.0,
+                chunk_mrr_at_5=0.0,
                 chunk_mrr=0.0,
+                chunk_ndcg_at_5=0.0,
                 chunk_ndcg_at_10=0.0,
                 chunk_ndcg_at_20=0.0,
                 rerank_delta_mrr=0.0,
@@ -70,7 +77,9 @@ class ChunkAggregateTest(unittest.TestCase):
         ]
         block = metric_block(rows)
         self.assertAlmostEqual(block["chunk_recall_at_5"], 0.5)
+        self.assertAlmostEqual(block["chunk_mrr_at_5"], 0.5)
         self.assertAlmostEqual(block["chunk_mrr"], 0.5)
+        self.assertAlmostEqual(block["chunk_ndcg_at_5"], 0.5)
         self.assertAlmostEqual(block["rerank_delta_mrr"], 0.1)
         for key in CHUNK_AGG_KEYS:
             self.assertIn(key, block)
@@ -83,7 +92,9 @@ class ChunkAggregateTest(unittest.TestCase):
         rows = [
             _row(
                 chunk_recall_at_5=1.0,
+                chunk_mrr_at_5=1.0,
                 chunk_mrr=1.0,
+                chunk_ndcg_at_5=1.0,
                 chunk_ndcg_at_10=1.0,
                 chunk_ndcg_at_20=1.0,
                 rerank_delta_mrr=None,
@@ -91,7 +102,9 @@ class ChunkAggregateTest(unittest.TestCase):
             ),
             _row(
                 chunk_recall_at_5=None,
+                chunk_mrr_at_5=None,
                 chunk_mrr=None,
+                chunk_ndcg_at_5=None,
                 chunk_ndcg_at_10=None,
                 chunk_ndcg_at_20=None,
                 rerank_delta_mrr=None,
