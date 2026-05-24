@@ -1,0 +1,90 @@
+{
+  "candidate_pool_expansion": {
+    "all_missing_gold_seen_after_top10": 0,
+    "missing_gold_seen_after_top10": 0,
+    "not_observable_due_to_depth": 97
+  },
+  "citation_guardrails": {
+    "citation_claim_coverage_lt_1": 0,
+    "citation_page_coverage_lt_1": 0,
+    "citation_region_coverage_lt_1": 0,
+    "claim_citation_alignment_lt_1": 4
+  },
+  "evidence_split": {
+    "multi_doc": 0,
+    "same_doc": 0,
+    "unknown": 99
+  },
+  "expected_impact": {
+    "pool_or_rerank_candidate": 0,
+    "query_decomposition_candidate": 0,
+    "section_expansion_candidate": 0,
+    "unknown_due_to_limited_depth": 97
+  },
+  "population": {
+    "multi_chunk_gold_cases": 99,
+    "multi_chunk_top10_evidence_failures": 97,
+    "num_predictions": 221
+  },
+  "retrieval_outcome_by_k": {
+    "10": {
+      "all_gold_retrieved": 2,
+      "no_gold_retrieved": 14,
+      "not_observable": 83,
+      "partial_gold_retrieved": 0
+    },
+    "20": {
+      "all_gold_retrieved": 2,
+      "no_gold_retrieved": 14,
+      "not_observable": 83,
+      "partial_gold_retrieved": 0
+    },
+    "5": {
+      "all_gold_retrieved": 2,
+      "no_gold_retrieved": 57,
+      "not_observable": 5,
+      "partial_gold_retrieved": 35
+    }
+  },
+  "schema_version": 1,
+  "source": {
+    "basename": "eval_summary.json",
+    "location": "external_private/eval_summary.json",
+    "location_redacted": true,
+    "sha256_12": "714c08f9996d"
+  },
+  "structured_overlap": {
+    "multi_chunk_gold_cases": {
+      "case_source_format": {
+        "csv": 0,
+        "docx": 0,
+        "hwp": 0,
+        "json": 0,
+        "other": 99,
+        "pdf": 0,
+        "pptx": 0,
+        "txt": 0,
+        "unknown": 0,
+        "xlsx": 0
+      },
+      "hardcase_table_heavy": 0,
+      "metadata_field_structured": 0
+    },
+    "top10_evidence_failures": {
+      "case_source_format": {
+        "csv": 0,
+        "docx": 0,
+        "hwp": 0,
+        "json": 0,
+        "other": 97,
+        "pdf": 0,
+        "pptx": 0,
+        "txt": 0,
+        "unknown": 0,
+        "xlsx": 0
+      },
+      "hardcase_table_heavy": 0,
+      "metadata_field_structured": 0
+    }
+  }
+}
