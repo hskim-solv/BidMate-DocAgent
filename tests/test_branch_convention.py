@@ -29,6 +29,7 @@ import check_branch_and_issue as cbi  # noqa: E402
     "chore/issue-150-update-deps",
     "refactor/issue-12-extract-helper",
     "test/issue-50-regression",
+    "eval/issue-1439-private-real-eval",
     "ci/issue-100-add-workflow",
     "perf/issue-66-cache-embeddings",
     "build/issue-200",
@@ -72,6 +73,7 @@ def test_exempt_regex_matches_bot_branches(name):
 @pytest.mark.parametrize("name,expected", [
     ("feat/issue-79-foo", 79),
     ("fix/issue-104", 104),
+    ("eval/issue-1439-private-real-eval", 1439),
     ("revert-123-old", None),
     ("dependabot/pip/x", None),
 ])

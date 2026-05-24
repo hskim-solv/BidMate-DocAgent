@@ -166,11 +166,15 @@ def test_governance_redacted_summary_scanner_flags_forbidden_keys() -> None:
         {
             "question": "PLACEHOLDER",
             "nested": {"support_text": "PLACEHOLDER"},
+            "doc_id": "PRIVATE-DOC",
+            "chunk_id": "PRIVATE-DOC::chunk-001",
             "path": "/Users/example/private/file.pdf",
         }
     )
     assert found["question"] == 1
     assert found["support_text"] == 1
+    assert found["doc_id"] == 1
+    assert found["chunk_id"] == 1
     assert found["absolute_path_value"] == 1
 
 

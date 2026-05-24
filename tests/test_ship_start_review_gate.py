@@ -27,6 +27,10 @@ def test_ship_start_korean_title_needs_explicit_slug() -> None:
     assert ship_start.slugify("이슈 생성부터 머지까지 자동화") == "work"
 
 
+def test_ship_start_allows_eval_type() -> None:
+    assert "eval" in ship_start.ALLOWED_TYPES
+
+
 def test_ship_start_creates_issue_then_switches_branch(monkeypatch, capsys) -> None:
     calls: list[list[str]] = []
 

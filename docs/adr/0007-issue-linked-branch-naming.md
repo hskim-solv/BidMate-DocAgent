@@ -29,9 +29,9 @@
 
 1. **브랜치명 컨벤션 매치:**
    ```
-   ^(?:feat|fix|docs|chore|refactor|test|ci|perf|build|style)/issue-(\d+)(?:-[a-z0-9]+(?:-[a-z0-9]+)*)?$
+   ^(?:feat|fix|docs|chore|refactor|test|eval|ci|perf|build|style)/issue-(\d+)(?:-[a-z0-9]+(?:-[a-z0-9]+)*)?$
    ```
-   - prefix 는 위 conventional-commit 타입 중 하나. **`claude/` 거부** — Claude Code auto-named worktree 브랜치는 PR 전 rename 필요
+   - prefix 는 위 conventional-commit 타입 + measurement/evaluation 전용 `eval` 중 하나. **`claude/` 거부** — Claude Code auto-named worktree 브랜치는 PR 전 rename 필요
    - `issue-<N>` 필수; 뒤 slug 는 선택이나 human readability 위해 권장
    - 예: `feat/issue-79-senior-positioning`, `fix/issue-104`
 

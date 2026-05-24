@@ -33,7 +33,7 @@ from _governance import (
 
 
 BRANCH_REGEX = re.compile(
-    r"^(?:feat|fix|docs|chore|refactor|test|ci|perf|build|style)"
+    r"^(?:feat|fix|docs|chore|refactor|test|eval|ci|perf|build|style)"
     r"/issue-(\d+)(?:-[a-z0-9]+(?:-[a-z0-9]+)*)?$"
 )
 
@@ -41,7 +41,7 @@ EXEMPT_REGEX = re.compile(r"^(?:revert-|dependabot/|renovate/|pre-commit-ci/)")
 
 CLOSES_REGEX = re.compile(r"(?i)\b(?:closes|fixes|resolves)\s+#(\d+)\b")
 
-ALLOWED_PREFIXES = "feat, fix, docs, chore, refactor, test, ci, perf, build, style"
+ALLOWED_PREFIXES = "feat, fix, docs, chore, refactor, test, eval, ci, perf, build, style"
 
 HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 FIVE_B_HEADER_RE = re.compile(r"###\s+5b\.\s*Real-data delta", re.IGNORECASE)
