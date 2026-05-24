@@ -11,9 +11,13 @@
 
 ADR 0010 (2026-05-11) 은 `retrieval_backend ∈ {dense, hybrid}` 를 default `dense` 로 accept 하면서 BGE-M3 multi-channel (sparse + colbert) 은 자체 ablation 으로 deferred 했다. hybrid knob 의 real-data 측정(measurement)은 ADR 0032 (torch≥2.6 install) 에 의해 2026-05-13 까지 막혀 있었다. Phase 3 (PR #956) 가 첫 real-data 측정이고, Phase 3.5 (PR #966) 가 BGE-M3 을 세 번째 arm 으로 추가했다.
 
-처음 두 시도는 오도하는(misleading) 근거(evidence)를 냈다. Phase 3 (PR #956) 는 `hybrid_bm25_k{30,60,100}` 세 변형이 모두 byte-identical 이라 보고하고 그 평탄함을 BM25 채널 지배(dominance) 탓으로 돌렸다. 그 결론은 틀렸다 — Phase 3 runner 가 second-stage `apply_fusion_and_reranking` 없이 `retrieve_candidates` (candidate 생성만) 를 호출해서 hybrid·m3 backend 의 per-case ranking 이 chunk_id 삽입 순서로 collapse 했다 (placeholder score = 0.0). Phase 3.5 (PR #966) 는 runner 배선(wire-up)을 고쳤지만 인덱스 빌드에 `--src data/data_list.csv` 를 써서 CSV `text`-column loader 로 라우팅됐고, Phase 3 가 쓴 26,376-chunk kordoc-추출 코퍼스 대신 898-chunk 코퍼스를 냈다. 그 측정은 internally valid 하지만 (3 변형이 동일 898-chunk 코퍼스 공유, paired CI delta 는 unbiased) 절대 `chunk_recall@k` 수치는 Phase 3 와 비교 불가이고 chunk-count caveat 가 REPORT.md Notes 를 지배했다.
+처음 두 시도는 오도하는(misleading) 근거(evidence)를 냈다. Phase 3 (PR #956) 는 `hybrid_bm25_k{30,60,100}` 세 변형이 모두 byte-identical 이라 보고하고 그 평탄함을 BM25 채널 지배(dominance) 탓으로 돌렸다. 그 결론은 틀렸다 — Phase 3 runner 가 second-stage `apply_fusion_and_reranking` 없이 `retrieve_candidates` (candidate 생성만) 를 호출해서 hybrid·m3 backend 의 per-case ranking 이 chunk_id 삽입 순서로 collapse 했다 (placeholder score = 0.0). Phase 3.5 (PR #966) 는 runner 배선(wire-up)을 고쳤지만 인덱스 빌드가 CSV `text` fallback 로 라우팅되어 Phase 3 가 쓴 26,376-chunk kordoc-추출 코퍼스 대신 **898-chunk insufficient corpus artifact** 를 냈다. 이 산출물은 retired invalid evidence 이며, 더 이상 본 ADR 의 load-bearing 근거로 쓰지 않는다.
 
-본 ADR 의 근거는 동일 100 docs · 동일 chunking 전략 (`fixed`, `max_chars=520`, `overlap_sentences=1`, Phase 3 와 동일 config) 위에서 BGE-M3 1024-dim semantic 임베딩 + `apply_fusion_and_reranking` 배선 수정으로 다시 실행한 측정이다. 측정 인덱스(`data/index/real100_m3`)는 csv_text-fallback loader 로 빌드된 **898-chunk** 코퍼스다 (real100 의 HWP/PDF 가 `data_list_csv_text` 로 fallback — ADR 0049); kordoc 전체 추출 (~264 chunks/doc ≈ **26,376**) 은 16GB MPS 재임베딩 비용으로 본 측정에 미사용한 reference 값이다 (REPORT 'chunk 수 caveat' 참조). retraction 이력은 PR #966 의 REPORT.md Notes 와 본 ADR 의 Context 에 보존해 audit trail 을 정직하게 유지한다 (absolute rule #5).
+본 ADR 의 역사적 결정은 남기되, 측정 근거(evidence) 상태는 정정한다.
+현재 허용되는 private real100 Phase 3.5 측정 기준은 동일 100 docs · 동일
+chunking 전략 위에서 kordoc cache/source 로 재빌드한 26k급 index 다. `scripts/phase35_m3_ablation.py`
+는 `num_documents >= 50` 이고 `0 < num_chunks <= 1000` 인 index 를 측정 전
+실패시켜 CSV fallback 산출물이 다시 근거로 들어오지 못하게 한다.
 
 ## Decision
 
@@ -27,24 +31,15 @@ eval claim의 암묵 근거로 쓰지 않는다. Claim-bearing eval row는
 `full_dense`처럼 명시적으로 남긴다. API/demo default 또는 production preset
 default는 retrieval 평가 baseline을 이동시키지 않는다.
 
-### Evidence (from `reports/retrieval/phase35_m3_20260518T214937Z_kordoc_no_m3/REPORT.md`)
+### Retired Evidence
 
-측정: csv_text-fallback 인덱스 **898 chunks** (kordoc-full ~26,376 은 미사용 reference — Context + REPORT '청크 수 caveat' 참조), n=221 cases, dense_m3 vs hybrid_bm25_k60_m3, paired bootstrap CI 95%, seeds 17/23/29.
+Retired invalid / insufficient corpus artifact: CSV fallback **898 chunks**,
+n=221 cases, dense_m3 vs hybrid_bm25_k60_m3. 이 artifact 는 private real100
+계열에서 요구하는 kordoc 26k급 corpus 가 아니므로 deleted report path 를
+참조하지 않고, 수치도 future claim 의 근거로 사용하지 않는다.
 
-이 측정은 [ADR 0005](0005-eval-split-public-synthetic-private-local.md) **private-local** 표면 (real100 코퍼스, gitignored; committable = `REPORT.md` + `mode_specs.json` + `deltas.json` + `raw_results.json` — qid/categories/metric 값만, doc/chunk ID·케이스 텍스트 없음) 에서 실행 — public-fixture-smoke 표면 아님. ADR 0005 에 따라 모든 신규 eval 표면은 한 쪽을 택하고, 이건 strictly-local 이므로 여기 절대 `chunk_recall@k` 수치는 reviewer-reproducible 아님 (paired CI delta + commit 된 aggregate 산출물이 audit trail).
-
-**Overall metrics** (hybrid_bm25_k60_m3 vs dense_m3, all SIG = paired CI fully above 0):
-- `chunk_recall@10`: 0.288 → 0.340 (**+0.052 SIG**, CI +0.020/+0.088)
-- `MRR`: 0.515 → 0.625 (**+0.110 SIG**, CI +0.056/+0.165)
-- `ndcg@10`: 0.318 → 0.383 (**+0.065 SIG**, CI +0.032/+0.099)
-- Latency p50: 559ms → 757ms (1.35x; ranking 품질 향상 대비 수용 가능)
-
-**Per-category winners** (recall@10, paired CI vs dense_m3):
-- `overall`: hybrid +0.052 SIG
-- `multi_hop` (n=93): hybrid +0.043 SIG
-- `distractor_heavy` (n=42): hybrid +0.067 SIG
-- `long_context` (n=9): hybrid +0.133 SIG
-- `no_answer` (n=2), `ambiguous_query` (n=1), `uncategorized` (n=13): NOT SIGNIFICANT (small N 또는 all-equal CI)
+이 정정은 public-fixture-smoke 표면에는 적용하지 않는다. Small fixture index 는
+CI smoke 용이고, `num_documents >= 50` private real100 계열 산출물만 guard 대상이다.
 
 **Phase 3 PR #956 결론 retracted**: "BM25 channel dominance → hybrid_bm25 SIG-negative" 는 틀렸다. Phase 3 runner 버그 (`apply_fusion_and_reranking` 호출 누락, PR-H #994 에서 수정) 가 hybrid_k 변형을 chunk_id 삽입 순서로 collapse 시켰다. 수정 + semantic 임베딩 적용 시 hybrid_bm25 는 지배적 hardcase 카테고리에서 SIG-positive 다.
 
@@ -53,12 +48,12 @@ default는 retrieval 평가 baseline을 이동시키지 않는다.
 **Scenario A 적용** (default 가 `hybrid` 로 전환):
 - README 가 default-mode framing 을 업데이트해야 함; `eval/config.yaml` `agentic_full` preset annotation 이 뒤집힘 (follow-up 구현 PR, 본 ADR 에 의해 블록 안 됨)
 - BM25 의존성 (`rank_bm25`) 이 production 에 load-bearing 화 (이미 `requirements.txt` 에 있어 install footprint 불변)
-- Latency 예산: csv_text-fallback 898-chunk 측정에서 p50 기준 dense 의 1.35x (757ms vs 559ms)
+- Latency 예산: retired 898-chunk artifact 의 latency 수치는 더 이상 claim-bearing 근거가 아니다. Future Phase 3.5 수치는 kordoc 26k급 index 에서 다시 측정해야 한다.
 - **Provenance 정정 (2026-05-22, issue #1285)**: 위 line 48 follow-up 을 구현한 PR #1000 의 `rag_pipeline_presets.py` 주석이 "eval `full` row 는 이미 explicit hybrid 이라 eval 에 영향 없음" 이라 잘못 주장했다. 실제로 `full` row 는 `retrieval_backend` 를 선언하지 않아 preset default 를 상속하므로, 이 flip 은 eval `full` (및 full_llm/no_rerank/retrieval_only/no_metadata_first) 행을 dense → hybrid 로 이동시켰다. 정정 (issue #1285): (1) `full` 행은 hybrid 유지 (canonical headline = production default 반영), (2) 본 ADR 의 dense-vs-hybrid 재현성을 위해 명시적 dense control 행 `full_dense` 를 `eval/config.yaml` 에 추가, (3) 위 false 주석을 정정. `full` 이 `hybrid_bm25` 와 기능적으로 동일해진 것은 의도된 것 (canonical headline vs #149 k=60 anchor) 이며 #800/#804 trap 과 무관함을 양쪽 행 주석에 명시.
 
 **본 ADR 이 lock 하는 것**:
 - 향후 모든 ablation runner 의 `apply_fusion_and_reranking` 배선 — Phase 3 PR #956 버그 재발 금지 (Phase 3 는 PR-H #994 에서 수정)
-- `data/index/real100_m3` 의 kordoc-as-source-of-truth **목표** (`BIDMATE_KORDOC_CACHE_DIR` bypass 로 enable) — 단 본 Phase 3.5 측정 인덱스는 16GB MPS 제약으로 csv_text loader 로 fallback(898 chunks)했다 (REPORT '청크 수 caveat'); 이 lock 의 취지는 향후 production 빌드가 csv_text 로 silent fallback 하지 않도록 강제하는 것
+- `data/index/real100_m3` 의 kordoc-as-source-of-truth **목표** (`BIDMATE_KORDOC_CACHE_DIR` bypass 로 enable) — 898-chunk CSV fallback 산출물은 retired invalid artifact 이며, 향후 production 빌드가 csv_text 로 silent fallback 하지 않도록 guard 한다.
 - Apple Silicon 에서 향후 m3-channel 측정을 위한 runner-side m3 colbert batching 패턴 (`scripts/phase35_m3_ablation.py::_prime_m3_index_cache_and_colbert`)
 - memory-constrained 측정 환경을 위한 `BIDMATE_SKIP_M3_VARIANT=1` env var (issue #997 에서 도입)
 
@@ -75,8 +70,11 @@ default는 retrieval 평가 baseline을 이동시키지 않는다.
 
 ## Verification
 
-<!-- verifies-key: reports/retrieval/phase35_m3_20260518T214937Z_kordoc_no_m3/REPORT.md:카테고리별 winner -->
-<!-- verifies-key: docs/adr/0010-hybrid-bm25-dense-retrieval-rrf.md:BGE-M3 ablation closeout -->
+<!-- verifies-key: docs/private-real-eval-inventory.md:Removed 898-Chunk History -->
+<!-- verifies-key: tests/test_phase35_m3_ablation.py:test_guard_rejects_low_chunk_private_real100_index -->
 <!-- verifies-key: eval/config.yaml:retrieval_backend -->
 
-kordoc-corpus REPORT.md 의 카테고리별 winner 섹션이 본 결정의 load-bearing 근거다. ADR 0010 은 여기로 되짚는 closeout 섹션을 획득해야 함 (PR-G). `eval/config.yaml` 은 scenario A 또는 B default 를 명시 반영해야 함 (annotation 또는 value 변경). 참조 파일이 keyed 섹션을 잃으면 `scripts/_governance.py --lint-adr-consequences` linter 가 본 ADR 을 flag 한다.
+Inventory 문서와 Phase 3.5 guard test 가 retired 898-chunk artifact 의 재커밋과
+재측정을 막는다. `eval/config.yaml` 은 scenario A 또는 B default 를 명시 반영해야
+함 (annotation 또는 value 변경). 참조 파일이 keyed 섹션을 잃으면
+`scripts/_governance.py --lint-adr-consequences` linter 가 본 ADR 을 flag 한다.

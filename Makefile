@@ -21,7 +21,7 @@
 .PHONY: eval smoke reproduce benchmark pareto cost-frontier korean-public-fetch korean-public-eval harness-smoke harness-ablation harness-compare
 
 # Real-data eval cycle (private; ADR 0005 commit boundary).
-.PHONY: real-eval real-eval-semantic real-eval-delta real-eval-baseline-update real-eval-history-render real-eval-with-judge harness-real
+.PHONY: real-eval real-eval-check real-eval-inventory real-eval-semantic real-eval-delta real-eval-baseline-update real-eval-history-render real-eval-with-judge harness-real
 
 # Real-data case proposer cycle (ADR 0029; gitignored I/O).
 .PHONY: case-propose case-propose-metadata case-review case-promote
@@ -279,9 +279,19 @@ demo-docker:
 
 # ---------------------------------------------------------------------------
 # Real-data eval cycle (private; ADR 0005 commit boundary). Requires
-# eval/real_config.local.yaml + data/files/ + data/data_list.csv to
-# exist locally. None of these are committed.
+# local/private inputs resolved by scripts/real_eval_paths.py. None of these
+# private inputs, caches, indexes, or generated reports are committed.
 # ---------------------------------------------------------------------------
+
+# Show the local/private path inventory for the current environment. This is
+# read-only and never prints private file contents.
+real-eval-inventory:
+	$(PYTHON) scripts/real_eval_paths.py inventory
+
+# Validate required local/private inputs. Missing cache/index/report dirs are
+# reported as regenerable/output, not as hard failures.
+real-eval-check:
+	$(PYTHON) scripts/real_eval_paths.py check
 
 # Run the private real-data eval end-to-end (build index, sample query,
 # eval). Writes reports/real100/eval_summary.json locally (gitignored).
@@ -298,18 +308,16 @@ real-eval:
 # hybrid retrieval recall, since hashing embeddings carry no semantic signal.
 real-eval-semantic:
 	EMBEDDING_BACKEND=sentence-transformers MODEL=BAAI/bge-m3 \
-	  INDEX_DIR=data/index/real100_m3 \
+	  REAL_EVAL_INDEX_DIR=data/index/real100_m3 \
 	  OUTPUT_DIR=outputs/real100_m3 \
-	  REPORT_DIR=reports/real100_m3 \
+	  REAL_EVAL_REPORT_DIR=reports/real100_m3 \
 	  bash scripts/smoke_real.sh
 
 # Render an aggregate-only markdown delta between the current
 # real-data run and the committed baseline. Aggregate-only by
 # construction; no per-case data is read or printed.
 real-eval-delta:
-	$(PYTHON) scripts/run_real_eval_delta.py \
-	  --head reports/real100/eval_summary.json \
-	  --base reports/real100/baseline.aggregate.json
+	$(PYTHON) scripts/run_real_eval_delta.py
 
 # Deliberate baseline bump. Reads the current eval_summary.json and
 # writes BOTH the current baseline AND an append-only history archive

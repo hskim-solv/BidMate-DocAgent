@@ -5,15 +5,33 @@ set -euo pipefail
 # Run from the repository root:
 #   bash scripts/smoke_real.sh
 # Optional overrides:
-#   METADATA_CSV=data/data_list.csv FILES_DIR=data/files INDEX_DIR=data/index/real100 bash scripts/smoke_real.sh
+#   REAL_EVAL_ROOT=/path/to/private-root bash scripts/smoke_real.sh
+#   REAL_EVAL_DATA_LIST=/path/data_list.csv REAL_EVAL_DATA_DIR=/path/files bash scripts/smoke_real.sh
+# Legacy METADATA_CSV / FILES_DIR / INDEX_DIR / REPORT_DIR / EVAL_CONFIG env
+# vars are still accepted and are translated into resolver CLI overrides.
 
-METADATA_CSV="${METADATA_CSV:-data/data_list.csv}"
-FILES_DIR="${FILES_DIR:-data/files}"
-INDEX_DIR="${INDEX_DIR:-data/index/real100}"
+RESOLVE_ARGS=()
+if [[ -n "${EVAL_CONFIG:-}" ]]; then
+  RESOLVE_ARGS+=(--config "$EVAL_CONFIG")
+fi
+if [[ -n "${METADATA_CSV:-}" ]]; then
+  RESOLVE_ARGS+=(--data-list "$METADATA_CSV")
+fi
+if [[ -n "${FILES_DIR:-}" ]]; then
+  RESOLVE_ARGS+=(--data-dir "$FILES_DIR")
+fi
+if [[ -n "${KORDOC_DATA_DIR:-}" ]]; then
+  RESOLVE_ARGS+=(--kordoc-data-dir "$KORDOC_DATA_DIR")
+fi
+if [[ -n "${INDEX_DIR:-}" ]]; then
+  RESOLVE_ARGS+=(--index-dir "$INDEX_DIR")
+fi
+if [[ -n "${REPORT_DIR:-}" ]]; then
+  RESOLVE_ARGS+=(--report-dir "$REPORT_DIR")
+fi
+
 OUTPUT_DIR="${OUTPUT_DIR:-outputs/real100}"
-REPORT_DIR="${REPORT_DIR:-reports/real100}"
 QUERY="${QUERY:-한영대학교 특성화 맞춤형 교육환경 구축 사업의 사업기간과 사업예산 알려줘}"
-EVAL_CONFIG="${EVAL_CONFIG:-eval/real_config.local.yaml}"
 # EMBEDDING_BACKEND default `hashing` = feature-hashing BoW (rag_embedding.py::
 # hashing_embeddings) — deterministic + offline + no model download, so it is
 # the CI-safe SSoT baseline (ADR 0061). BUT it is *semantic-blind*: dense/hybrid
@@ -54,10 +72,24 @@ require_file "scripts/build_index.py"
 require_file "scripts/validate_data_list.py"
 require_file "app.py"
 require_file "eval/run_eval.py"
-require_file "$METADATA_CSV"
-require_dir "$FILES_DIR"
+
+eval "$(python3 scripts/real_eval_paths.py inventory --format shell "${RESOLVE_ARGS[@]}")"
+
+METADATA_CSV="$REAL_EVAL_RESOLVED_DATA_LIST"
+FILES_DIR="$REAL_EVAL_RESOLVED_DATA_DIR"
+KORDOC_DATA_DIR="$REAL_EVAL_RESOLVED_KORDOC_DATA_DIR"
+INDEX_DIR="$REAL_EVAL_RESOLVED_INDEX_DIR"
+REPORT_DIR="$REAL_EVAL_RESOLVED_REPORT_DIR"
+EVAL_CONFIG="$REAL_EVAL_RESOLVED_CONFIG"
+
+log "Checking private real-eval path inventory"
+python3 scripts/real_eval_paths.py check "${RESOLVE_ARGS[@]}"
 
 mkdir -p "$INDEX_DIR" "$OUTPUT_DIR" "$REPORT_DIR"
+
+if [[ -z "${BIDMATE_KORDOC_CACHE_DIR:-}" && -d "$KORDOC_DATA_DIR" ]]; then
+  export BIDMATE_KORDOC_CACHE_DIR="$KORDOC_DATA_DIR"
+fi
 
 log "Validating data_list.csv schema"
 if ! python3 scripts/validate_data_list.py \
@@ -84,16 +116,6 @@ python3 scripts/build_index.py \
 
 log "Running real-data sample query"
 python3 app.py --input_dir "$INDEX_DIR" --output_dir "$OUTPUT_DIR" --query "$QUERY"
-
-if [[ ! -f "$EVAL_CONFIG" ]]; then
-  log "Skipping real-data eval"
-  echo "Local eval config not found: $EVAL_CONFIG"
-  echo "Create it from eval/real_config.example.yaml to run real-data gold evaluation."
-  echo "Generated artifacts:"
-  echo "- Index dir:   $INDEX_DIR"
-  echo "- Outputs dir: $OUTPUT_DIR"
-  exit 0
-fi
 
 log "Running real-data evaluation"
 python3 eval/run_eval.py --index_dir "$INDEX_DIR" --output_dir "$REPORT_DIR" --config "$EVAL_CONFIG"

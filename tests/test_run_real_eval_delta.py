@@ -20,6 +20,7 @@ from scripts.run_real_eval_delta import (
     _min_num_predictions,
     _silence_threshold,
     extract_aggregate,
+    parse_args,
     render_markdown,
 )
 
@@ -63,6 +64,24 @@ FULL_SUMMARY = {
     ],
     "trace_dir": "reports/real100/traces",
 }
+
+
+def test_parse_args_defaults_follow_real_eval_report_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("REAL_EVAL_REPORT_DIR", "tmp/private-reports")
+    monkeypatch.delenv("REAL_EVAL_BASELINE_SUMMARY", raising=False)
+    monkeypatch.setattr("sys.argv", ["run_real_eval_delta.py"])
+    args = parse_args()
+    assert args.head == "tmp/private-reports/eval_summary.json"
+    assert args.base == "tmp/private-reports/baseline.aggregate.json"
+
+
+def test_parse_args_baseline_env_overrides_report_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("REAL_EVAL_REPORT_DIR", "tmp/private-reports")
+    monkeypatch.setenv("REAL_EVAL_BASELINE_SUMMARY", "tmp/baseline.json")
+    monkeypatch.setattr("sys.argv", ["run_real_eval_delta.py"])
+    args = parse_args()
+    assert args.head == "tmp/private-reports/eval_summary.json"
+    assert args.base == "tmp/baseline.json"
 
 
 class ExtractAggregateTest(unittest.TestCase):

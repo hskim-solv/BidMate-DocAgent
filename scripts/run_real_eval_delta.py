@@ -953,16 +953,30 @@ def append_decision_log_stub(
 # -----------------------------------------------------------------------------
 
 
+def _default_report_dir() -> Path:
+    return Path(os.environ.get("REAL_EVAL_REPORT_DIR") or "reports/real100")
+
+
+def _default_head_path() -> str:
+    return str(_default_report_dir() / "eval_summary.json")
+
+
+def _default_base_path() -> str:
+    return os.environ.get("REAL_EVAL_BASELINE_SUMMARY") or str(
+        _default_report_dir() / "baseline.aggregate.json"
+    )
+
+
 def parse_args() -> argparse.Namespace:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument(
         "--head",
-        default="reports/real100/eval_summary.json",
+        default=_default_head_path(),
         help="Current real-data eval_summary.json path.",
     )
     ap.add_argument(
         "--base",
-        default="reports/real100/baseline.aggregate.json",
+        default=_default_base_path(),
         help="Committed baseline aggregate snapshot path.",
     )
     ap.add_argument("--title", default="Real-data eval delta")

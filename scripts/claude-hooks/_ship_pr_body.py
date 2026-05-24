@@ -36,6 +36,7 @@ from check_branch_and_issue import (  # noqa: E402
     HTML_COMMENT_RE,
     parse_branch,
 )
+from real_eval_paths import missing_required, resolve_entries  # noqa: E402
 
 
 REAL_EVAL_SUMMARY = "reports/real100/eval_summary.json"
@@ -89,25 +90,38 @@ def issue_title(issue_n: int) -> Optional[str]:
 
 
 def can_run_real_eval() -> bool:
-    if not os.path.isdir("data/files"):
+    try:
+        entries = resolve_entries()
+    except Exception:
+        return False
+    if missing_required(entries):
+        return False
+    data_dir = next((e for e in entries if e.name == "data_dir"), None)
+    if data_dir is None or not os.path.isdir(data_dir.path):
         return False
     try:
-        if not os.listdir("data/files"):
+        if not os.listdir(data_dir.path):
             return False
     except OSError:
-        return False
-    if not os.path.exists("data/data_list.csv"):
-        return False
-    if not os.path.exists("eval/real_config.local.yaml"):
         return False
     return True
 
 
+def real_eval_summary_path() -> str:
+    try:
+        entries = resolve_entries()
+    except Exception:
+        return REAL_EVAL_SUMMARY
+    summary = next((e for e in entries if e.name == "eval_summary"), None)
+    return summary.path if summary is not None else REAL_EVAL_SUMMARY
+
+
 def real_eval_cache_valid() -> bool:
-    if not os.path.exists(REAL_EVAL_SUMMARY):
+    summary_path = real_eval_summary_path()
+    if not os.path.exists(summary_path):
         return False
     try:
-        with open(REAL_EVAL_SUMMARY) as f:
+        with open(summary_path) as f:
             data = json.load(f)
     except (OSError, json.JSONDecodeError):
         return False
@@ -133,8 +147,8 @@ def render_5b(load_bearing: list[str], real_eval_mode: str) -> str:
     if not can_run_real_eval():
         return (
             f"{ESCAPE_SENTENCE} "
-            "(real-eval not runnable in this worktree: data/files / "
-            "data/data_list.csv / eval/real_config.local.yaml unavailable.)"
+            "(real-eval not runnable in this worktree; run "
+            "`make real-eval-check` for missing private inputs.)"
         )
 
     if real_eval_mode == "async":

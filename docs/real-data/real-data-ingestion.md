@@ -59,12 +59,22 @@ bash scripts/smoke_real.sh
 
 기본값은 다음과 같다.
 - 입력: `data/data_list.csv`, `data/files/`
+- kordoc cache: `data/files_kordoc/` (있으면 사용, 없으면 원본에서 재생성)
 - 인덱스: `data/index/real100/`
 - 질의 출력: `outputs/real100/answer.json`
 - 평가 출력: `reports/real100/eval_summary.json`
 - 평가 설정: `eval/real_config.local.yaml`
 
-`eval/real_config.local.yaml`이 없으면 인덱싱과 대표 질의까지만 실행하고, 실데이터 gold 평가를 건너뛴다. 새 환경에서는 `eval/real_config.example.yaml`을 복사해 로컬 expected doc id/term/target을 채운다(상세 가이드: [`docs/local-gold-authoring.md`](../local-gold-authoring.md)). `eval/*.local.yaml`, 실데이터 원본, 실데이터 산출물은 Git 추적 대상이 아니다.
+현재 경로 해소(path resolution)는 `scripts/real_eval_paths.py` 가 담당한다.
+우선순위는 CLI argument > `REAL_EVAL_*` env var > `real_eval:` config key >
+default local path 이다. 새 worktree 에서는 먼저 `make real-eval-check` 또는
+`make real-eval-inventory` 로 required input / regenerable cache / output
+artifact 를 확인한다. `eval/real_config.local.yaml` 은 private real-eval 실행의
+required input 이며, 새 환경에서는 `eval/real_config.local.example.yaml` 또는
+`eval/real_config.example.yaml` 을 복사해 로컬 expected doc id/term/target을
+채운다(상세 가이드: [`docs/local-gold-authoring.md`](../local-gold-authoring.md)).
+`eval/*.local.yaml`, 실데이터 원본, 실데이터 cache/index/report 산출물은 Git
+추적 대상이 아니다.
 
 ## 출력
 - `data/index/index.json`: 기존 RAG index schema를 유지하되, 문서와 chunk에 normalized metadata를 포함한다.

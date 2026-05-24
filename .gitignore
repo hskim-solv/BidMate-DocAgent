@@ -39,6 +39,12 @@ data/data_list.csv
 data/data_list.xlsx
 eval/*.local.yaml
 원본 데이터/
+.cache/
+.cache/real_eval/
+*.sqlite
+*.sqlite3
+*.db
+*.parquet
 
 # Korean public RAG bench (ADR 0018): we fetch KorQuAD on demand and
 # never redistribute the raw corpus or the sampled derivative. Sample
@@ -48,6 +54,14 @@ data/korean_public/
 # Generated artifacts: keep committed portfolio samples, ignore extra outputs
 data/index/*
 !data/index/index.json
+data/index/real100*/
+data/index/**/*.faiss
+data/index/**/*.index
+data/index/**/*.sqlite
+data/index/**/*.sqlite3
+data/index/**/*.db
+data/index/**/*.parquet
+data/index/**/*.jsonl
 # Local-only OOD experiment indexes and reports stay untracked.
 data/ood_legal_index/
 reports/ood_legal/
@@ -80,6 +94,12 @@ notebooks/_artifacts/
 outputs/*
 !outputs/answer.json
 reports/*
+reports/**/*.local.json
+reports/**/*.jsonl
+reports/**/*.parquet
+reports/**/*.sqlite
+reports/**/*.sqlite3
+reports/**/*.db
 # Aggregate-only artifacts under reports/real100/ are committable
 # (ADR 0005 commit boundary). The negation chain below allowlists
 # only the explicit aggregate filenames — eval_summary.json and any
@@ -194,24 +214,11 @@ reports/retrieval/phase3_mode_*/*
 !reports/retrieval/phase3_mode_*/mode_specs.json
 !reports/retrieval/phase3_mode_*/deltas.json
 !reports/retrieval/phase3_mode_*/raw_results.json
-# Issue #957 — Phase 3.5 retrieval-eval (m3 BGE-M3 semantic mode ablation)
-# timestamped runs. Same aggregate-only commit boundary as phase3_mode_*
-# above. All 3 variants share data/index/real100_m3 (semantic BGE-M3
-# 1024-dim dense; m3 variant's _m3_cache populates in-memory only per
-# ADR 0025 spike-mode). Raw scores carry no doc/chunk IDs or text —
-# qid + categories + metric values only, ADR 0005 boundary preserved.
-!reports/retrieval/phase35_m3_*/
-reports/retrieval/phase35_m3_*/*
-!reports/retrieval/phase35_m3_*/REPORT.md
-!reports/retrieval/phase35_m3_*/mode_specs.json
-!reports/retrieval/phase35_m3_*/deltas.json
-!reports/retrieval/phase35_m3_*/raw_results.json
-# data/index/real100_m3 — BGE-M3 semantic index, ~103MB embeddings.npy.
-# Reproducible from the private/local corpus via scripts/build_index.py
-# --embedding_backend sentence-transformers --model BAAI/bge-m3
-# (~3min wall-time, FlagEmbedding opt-in dep per ADR 0010 deferred +
-# ADR 0032 torch>=2.6 unblock).
-data/index/real100_m3/
+# Phase 3.5 phase35_m3_* runs generated from the 898-chunk csv_text fallback
+# are retired invalid private real100 artifacts. Future phase35_m3 reports must
+# pass the tracked-artifact regression guard before any explicit allowlist is
+# reintroduced.
+reports/retrieval/phase35_m3_*/
 # Phase 4 retrieval-eval (metadata / filtering ablation) timestamped runs.
 # Same aggregate-only commit boundary as phase3_mode_* above. All 4 variants
 # share the kordoc 26k index; only plan['metadata_first'] / metadata_filters
