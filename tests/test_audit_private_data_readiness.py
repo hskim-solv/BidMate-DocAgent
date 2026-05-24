@@ -8,6 +8,7 @@ import pytest
 import yaml
 
 from scripts.audit_private_data_readiness import (
+    DEFAULT_CONFIG,
     DEFAULT_OUT_DIR,
     ROOT_DIR,
     assert_public_safe_payload,
@@ -150,6 +151,109 @@ def _make_fixture(tmp_path: Path) -> Path:
     return config_path
 
 
+def _make_legacy_real_config_fixture(tmp_path: Path) -> Path:
+    files_dir = tmp_path / "data" / "files"
+    index_dir = tmp_path / "data" / "index" / "real100"
+    report_dir = tmp_path / "reports" / "real100"
+    eval_dir = tmp_path / "eval"
+    files_dir.mkdir(parents=True)
+    index_dir.mkdir(parents=True)
+    report_dir.mkdir(parents=True)
+    eval_dir.mkdir()
+    (files_dir / "doc_a.pdf").write_text("placeholder", encoding="utf-8")
+    (files_dir / "doc_b.pdf").write_text("placeholder", encoding="utf-8")
+
+    long_a = (
+        "Budget 100000원 and schedule 2026.05.24 are specified. "
+        "| item | score | table | "
+        * 20
+    )
+    long_b = (
+        "Evaluation score 90점 and amount 200000원 are present. "
+        "The appendix has page metadata. "
+        * 20
+    )
+    (tmp_path / "data" / "data_list.csv").write_text(
+        "\n".join(
+            [
+                "공고 번호,사업명,발주 기관,파일형식,파일명,텍스트",
+                f"notice-a,project-a,agency-a,pdf,doc_a.pdf,{long_a}",
+                f"notice-b,project-b,agency-b,pdf,doc_b.pdf,{long_b}",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (index_dir / "index.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "mode": "rag",
+                "build": {"num_documents": 2, "num_chunks": 2},
+                "chunks": [
+                    {
+                        "chunk_id": "notice-a::chunk-001",
+                        "doc_id": "notice-a",
+                        "text": long_a,
+                        "page_span": [1, 1],
+                    },
+                    {
+                        "chunk_id": "notice-b::chunk-001",
+                        "doc_id": "notice-b",
+                        "text": long_b,
+                        "page_span": [2, 2],
+                    },
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    (report_dir / "eval_summary.json").write_text(
+        json.dumps(
+            {
+                "chunk_recall_at_5": 0.5,
+                "chunk_recall_at_10": 0.5,
+                "chunk_mrr_at_5": 0.5,
+                "chunk_ndcg_at_5": 0.5,
+                "failure_category_counts": {"retrieval_miss": 1, "unknown": 0},
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    config_path = eval_dir / "real_config.local.yaml"
+    config_path.write_text(
+        yaml.safe_dump(
+            {
+                "mode": "rag",
+                "index_dir": "data/index/real100",
+                "cases": [
+                    {
+                        "id": "q1",
+                        "query": "private question placeholder",
+                        "query_type": "single_doc",
+                        "expected_doc_ids": ["notice-a"],
+                        "expected_terms": ["Budget"],
+                        "answerable": True,
+                    },
+                    {
+                        "id": "q2",
+                        "query": "private unanswerable placeholder",
+                        "query_type": "abstention",
+                        "expected_doc_ids": [],
+                        "expected_terms": [],
+                        "answerable": False,
+                    },
+                ],
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    return config_path
+
+
 def _flag_codes(flags: list[dict]) -> set[str]:
     return {str(flag["code"]) for flag in flags}
 
@@ -281,6 +385,25 @@ def test_readiness_audit_missing_baseline_artifacts_fixture_fails(tmp_path: Path
     assert "failure_cases_missing" in _flag_codes(flags)
 
 
+def test_readiness_audit_accepts_legacy_real_config_local_cases(tmp_path: Path) -> None:
+    config_path = _make_legacy_real_config_fixture(tmp_path)
+    out_dir = tmp_path.parent / f"{tmp_path.name}-readiness-audit"
+
+    summary, flags, _ = build_readiness_audit(config_path, out_dir, repo_root=tmp_path)
+
+    assert flags == []
+    assert summary["ready_for_improvement"] is True
+    assert summary["config_format"] == "real_config_local_cases"
+    assert summary["parse_quality"]["document_count"] == 2
+    assert summary["eval_dataset_quality"]["question_count"] == 2
+    assert summary["eval_dataset_quality"]["answerable_without_gold_evidence_count"] == 0
+    assert summary["eval_dataset_quality"]["gold_chunk_missing_from_index_count"] == 0
+    assert summary["baseline_metric_validity"]["metrics_source"] == "eval_summary_json"
+    assert summary["failure_taxonomy_readiness"]["source"] == (
+        "eval_summary_failure_category_counts"
+    )
+
+
 def test_readiness_summary_schema_and_outputs(tmp_path: Path) -> None:
     config_path = _make_fixture(tmp_path)
     out_dir = tmp_path / "audit"
@@ -291,6 +414,7 @@ def test_readiness_summary_schema_and_outputs(tmp_path: Path) -> None:
     assert summary["schema_version"] == 1
     assert summary["audit_type"] == "private_data_readiness"
     assert summary["benchmark_type"] == "private_real_eval"
+    assert summary["config_format"] == "private_real_eval_path_config"
     assert summary["local_only"] is True
     assert summary["public_safe"] is True
     assert summary["ready_for_improvement"] is True
@@ -304,6 +428,7 @@ def test_readiness_summary_schema_and_outputs(tmp_path: Path) -> None:
 
 
 def test_default_readiness_audit_output_path_is_gitignored() -> None:
+    assert DEFAULT_CONFIG == "eval/real_config.local.yaml"
     assert is_gitignored_or_outside(ROOT_DIR / DEFAULT_OUT_DIR)
     result = subprocess.run(
         [

@@ -113,9 +113,7 @@ measurement warning, not as a system performance claim.
 After both audits pass, run the private real-eval validator:
 
 ```bash
-python3 -m eval.naive_rag.private_real_eval \
-  --config configs/eval/private_real_eval.local.yaml \
-  --validate-only
+python3 scripts/check_private_real_eval_readiness.py --config eval/real_config.local.yaml
 ```
 
 Then run the private baseline only after validate-only passes. Review only

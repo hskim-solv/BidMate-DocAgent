@@ -22,9 +22,14 @@ from typing import Any, Mapping, Sequence
 
 import yaml
 
+try:
+    from scripts.real_eval_paths import resolve_entries
+except ImportError:  # pragma: no cover - direct script execution
+    from real_eval_paths import resolve_entries  # type: ignore
+
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
-DEFAULT_CONFIG = "configs/eval/private_real_eval.local.yaml"
+DEFAULT_CONFIG = "eval/real_config.local.yaml"
 DEFAULT_OUT_DIR = "experiments/private_runs/readiness_audit"
 SCHEMA_VERSION = 1
 
@@ -204,6 +209,137 @@ def _csv_rows(path: Path) -> tuple[list[dict[str, str]], list[str]]:
         return [], ["csv_unreadable"]
 
 
+def _real_eval_path_map(config_path: Path, repo_root: Path) -> dict[str, Path]:
+    args = argparse.Namespace(
+        root=None,
+        config=str(config_path),
+        data_list=None,
+        data_dir=None,
+        kordoc_data_dir=None,
+        cache_dir=None,
+        index_dir=None,
+        report_dir=None,
+        baseline_summary=None,
+    )
+    return {
+        entry.name: Path(entry.path)
+        for entry in resolve_entries(args=args, repo_root=repo_root)
+    }
+
+
+def _string_list(value: Any) -> list[str]:
+    if isinstance(value, str):
+        return [value] if value.strip() else []
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    return []
+
+
+def _case_question_id(case: Mapping[str, Any]) -> str:
+    return str(case.get("question_id") or case.get("id") or "").strip()
+
+
+def _legacy_question_rows(cases: Sequence[Any]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for case in cases:
+        if not isinstance(case, Mapping):
+            continue
+        expected_doc_ids = _string_list(case.get("expected_doc_ids"))
+        rows.append(
+            {
+                "question_id": _case_question_id(case),
+                "question": case.get("query") or case.get("question") or "",
+                "answerable": _as_bool(
+                    case.get("answerable"),
+                    default=bool(expected_doc_ids),
+                ),
+                "expected_terms": _string_list(case.get("expected_terms")),
+                "query_type": case.get("query_type"),
+            }
+        )
+    return rows
+
+
+def _legacy_gold_evidence(case: Mapping[str, Any]) -> list[dict[str, Any]]:
+    explicit = case.get("gold_evidence")
+    if isinstance(explicit, list):
+        return [dict(item) for item in explicit if isinstance(item, Mapping)]
+
+    gold_chunk_ids = _string_list(case.get("gold_chunk_ids"))
+    if gold_chunk_ids:
+        return [{"chunk_id": chunk_id} for chunk_id in gold_chunk_ids]
+
+    if not _as_bool(case.get("answerable"), default=bool(case.get("expected_doc_ids"))):
+        return []
+
+    expected_terms = _string_list(case.get("expected_terms"))
+    return [
+        {"doc_id": doc_id, "required_terms": expected_terms}
+        for doc_id in _string_list(case.get("expected_doc_ids"))
+    ]
+
+
+def _legacy_gold_rows(cases: Sequence[Any]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for case in cases:
+        if not isinstance(case, Mapping):
+            continue
+        rows.append(
+            {
+                "question_id": _case_question_id(case),
+                "gold_evidence": _legacy_gold_evidence(case),
+            }
+        )
+    return rows
+
+
+def _normalize_audit_config(
+    config: Mapping[str, Any],
+    config_path: Path,
+    repo_root: Path,
+) -> dict[str, Any]:
+    normalized = dict(config)
+    cases = config.get("cases")
+    has_embedded_cases = isinstance(cases, list)
+    has_external_eval_files = bool(
+        config.get("questions_path") or config.get("gold_evidence_path")
+    )
+
+    if not has_embedded_cases or has_external_eval_files:
+        normalized["_config_format"] = "private_real_eval_path_config"
+        return normalized
+
+    entries = _real_eval_path_map(config_path, repo_root)
+    normalized.setdefault(
+        "documents_dir",
+        str(entries.get("data_dir") or repo_root / "data" / "files"),
+    )
+    normalized.setdefault(
+        "data_list_path",
+        str(entries.get("data_list") or repo_root / "data" / "data_list.csv"),
+    )
+    normalized.setdefault(
+        "index_dir",
+        str(
+            config.get("index_dir")
+            or entries.get("index_dir")
+            or repo_root / "data" / "index" / "real100"
+        ),
+    )
+    normalized.setdefault(
+        "output_dir",
+        str(
+            config.get("output_dir")
+            or entries.get("report_dir")
+            or repo_root / "reports" / "real100"
+        ),
+    )
+    normalized["_question_rows"] = _legacy_question_rows(cases)
+    normalized["_gold_rows"] = _legacy_gold_rows(cases)
+    normalized["_config_format"] = "real_config_local_cases"
+    return normalized
+
+
 def _text_from_manifest_row(row: Mapping[str, Any]) -> str:
     for key in ("텍스트", "text", "body", "content"):
         value = row.get(key)
@@ -349,8 +485,40 @@ def _evidence_items(row: Mapping[str, Any]) -> tuple[list[dict[str, Any]], bool]
     return items, invalid
 
 
+def _required_terms(item: Mapping[str, Any]) -> list[str]:
+    return _string_list(item.get("required_terms") or item.get("expected_terms"))
+
+
+def _resolve_gold_items(
+    items: Sequence[Mapping[str, Any]],
+    chunks_by_doc_id: Mapping[str, Sequence[Mapping[str, str]]],
+) -> list[dict[str, Any]]:
+    resolved: list[dict[str, Any]] = []
+    for item in items:
+        chunk_id = str(item.get("chunk_id") or "").strip()
+        if chunk_id:
+            resolved.append(dict(item))
+            continue
+        doc_id = str(item.get("doc_id") or "").strip()
+        terms = _required_terms(item)
+        if not doc_id or not terms:
+            resolved.append(dict(item))
+            continue
+        matched = False
+        for chunk in chunks_by_doc_id.get(doc_id, []):
+            text = str(chunk.get("text") or "")
+            if any(term in text for term in terms):
+                derived = dict(item)
+                derived["chunk_id"] = str(chunk.get("chunk_id") or "")
+                resolved.append(derived)
+                matched = True
+        if not matched:
+            resolved.append(dict(item))
+    return resolved
+
+
 def _evidence_has_payload(item: Mapping[str, Any]) -> bool:
-    for key in ("doc_id", "chunk_id", "page_span", "support_text"):
+    for key in ("doc_id", "chunk_id", "page_span", "support_text", "required_terms"):
         if item.get(key) not in (None, "", []):
             return True
     return False
@@ -372,11 +540,86 @@ def _metric_mean(block: Any) -> float | None:
     return None
 
 
+def _mean_case_metric(case_results: Any, key: str) -> float | None:
+    if not isinstance(case_results, list):
+        return None
+    values: list[float] = []
+    for row in case_results:
+        if not isinstance(row, Mapping):
+            continue
+        value = row.get(key)
+        if isinstance(value, bool):
+            continue
+        if isinstance(value, (int, float)):
+            values.append(float(value))
+    if not values:
+        return None
+    return round(statistics.mean(values), 6)
+
+
+def _retrieval_metrics_from_payload(payload: Mapping[str, Any]) -> dict[str, float]:
+    retrieval = (
+        payload.get("retrieval_metrics")
+        if isinstance(payload.get("retrieval_metrics"), Mapping)
+        else {}
+    )
+    candidates = {
+        "recall_at_5": [
+            retrieval.get("recall_at_5"),
+            payload.get("chunk_recall_at_5"),
+            _mean_case_metric(payload.get("case_results"), "chunk_recall_at_5"),
+        ],
+        "recall_at_10": [
+            retrieval.get("recall_at_10"),
+            payload.get("chunk_recall_at_10"),
+            _mean_case_metric(payload.get("case_results"), "chunk_recall_at_10"),
+        ],
+        "mrr_at_5": [
+            retrieval.get("mrr_at_5"),
+            payload.get("chunk_mrr_at_5"),
+            _mean_case_metric(payload.get("case_results"), "chunk_mrr_at_5"),
+        ],
+        "ndcg_at_5": [
+            retrieval.get("ndcg_at_5"),
+            payload.get("chunk_ndcg_at_5"),
+            _mean_case_metric(payload.get("case_results"), "chunk_ndcg_at_5"),
+        ],
+    }
+    safe_metrics: dict[str, float] = {}
+    for key, values in candidates.items():
+        for value in values:
+            metric = _metric_mean(value)
+            if metric is not None:
+                safe_metrics[key] = metric
+                break
+    return safe_metrics
+
+
 def _latest_metrics(output_dir: Path, audit_out_dir: Path) -> tuple[dict[str, Any] | None, int]:
     if not output_dir.is_dir():
         return None, 0
     candidates: list[Path] = []
     for path in output_dir.rglob("metrics.json"):
+        try:
+            path.resolve().relative_to(audit_out_dir.resolve())
+            continue
+        except ValueError:
+            pass
+        candidates.append(path)
+    if not candidates:
+        return None, 0
+    candidates.sort(key=lambda item: item.stat().st_mtime, reverse=True)
+    payload, errors = _load_json(candidates[0])
+    if errors:
+        return None, len(candidates)
+    return payload, len(candidates)
+
+
+def _latest_eval_summary(output_dir: Path, audit_out_dir: Path) -> tuple[dict[str, Any] | None, int]:
+    if not output_dir.is_dir():
+        return None, 0
+    candidates: list[Path] = []
+    for path in output_dir.rglob("eval_summary.json"):
         try:
             path.resolve().relative_to(audit_out_dir.resolve())
             continue
@@ -425,6 +668,31 @@ def _safe_failure_counts(rows: Sequence[Mapping[str, Any]]) -> tuple[dict[str, i
                 rejected += 1
                 continue
             counts[label] = counts.get(label, 0) + 1
+    return counts, rejected
+
+
+def _safe_failure_count_mapping(raw: Any) -> tuple[dict[str, int], int]:
+    if not isinstance(raw, Mapping):
+        return {}, 0
+    counts: dict[str, int] = {}
+    rejected = 0
+    for key, value in raw.items():
+        label = str(key or "").strip()
+        if not label or not SAFE_FAILURE_TYPE_RE.fullmatch(label):
+            rejected += 1
+            continue
+        if isinstance(value, bool):
+            rejected += 1
+            continue
+        try:
+            count = int(value)
+        except (TypeError, ValueError):
+            rejected += 1
+            continue
+        if count < 0:
+            rejected += 1
+            continue
+        counts[label] = count
     return counts, rejected
 
 
@@ -536,13 +804,14 @@ def _audit_index(
     config: Mapping[str, Any],
     repo_root: Path,
     flags: list[dict[str, Any]],
-) -> tuple[dict[str, Any], dict[str, str], set[str]]:
+) -> tuple[dict[str, Any], dict[str, str], set[str], dict[str, list[dict[str, str]]]]:
     index_dir = repo_path(str(config.get("index_dir") or ""), repo_root)
     chunks, payload, errors = _index_chunks(index_dir)
     for error in errors:
         _flag(flags, severity="blocker", surface="index_integrity", code=error)
 
     chunk_text_by_id: dict[str, str] = {}
+    chunks_by_doc_id: dict[str, list[dict[str, str]]] = {}
     chunk_ids: set[str] = set()
     missing_chunk_id = 0
     lengths: list[int] = []
@@ -553,12 +822,17 @@ def _audit_index(
     chunk_texts: list[str] = []
     for chunk in chunks:
         chunk_id = str(chunk.get("chunk_id") or "").strip()
+        doc_id = str(chunk.get("doc_id") or "").strip()
         text = str(chunk.get("text") or "")
         if not chunk_id:
             missing_chunk_id += 1
         else:
             chunk_ids.add(chunk_id)
             chunk_text_by_id[chunk_id] = text
+            if doc_id:
+                chunks_by_doc_id.setdefault(doc_id, []).append(
+                    {"chunk_id": chunk_id, "text": text}
+                )
         length = _char_len(text)
         lengths.append(length)
         chunk_texts.append(text)
@@ -609,7 +883,7 @@ def _audit_index(
         "index_document_count": _build_count(payload, "num_documents"),
         "chunk_id_missing_count": missing_chunk_id,
     }
-    return summary, chunk_text_by_id, chunk_ids
+    return summary, chunk_text_by_id, chunk_ids, chunks_by_doc_id
 
 
 def _audit_eval_dataset(
@@ -617,12 +891,25 @@ def _audit_eval_dataset(
     repo_root: Path,
     chunk_text_by_id: Mapping[str, str],
     index_chunk_ids: set[str],
+    chunks_by_doc_id: Mapping[str, Sequence[Mapping[str, str]]],
     flags: list[dict[str, Any]],
 ) -> dict[str, Any]:
-    gold_path = repo_path(str(config.get("gold_evidence_path") or ""), repo_root)
-    questions_path = repo_path(str(config.get("questions_path") or config.get("gold_evidence_path") or ""), repo_root)
-    question_rows, question_errors = _jsonl_rows(questions_path)
-    gold_rows, gold_errors = _jsonl_rows(gold_path)
+    if isinstance(config.get("_question_rows"), list):
+        question_rows = [row for row in config["_question_rows"] if isinstance(row, Mapping)]
+        question_errors: list[str] = []
+    else:
+        questions_path = repo_path(
+            str(config.get("questions_path") or config.get("gold_evidence_path") or ""),
+            repo_root,
+        )
+        question_rows, question_errors = _jsonl_rows(questions_path)
+
+    if isinstance(config.get("_gold_rows"), list):
+        gold_rows = [row for row in config["_gold_rows"] if isinstance(row, Mapping)]
+        gold_errors: list[str] = []
+    else:
+        gold_path = repo_path(str(config.get("gold_evidence_path") or ""), repo_root)
+        gold_rows, gold_errors = _jsonl_rows(gold_path)
     for error in question_errors:
         _flag(flags, severity="blocker", surface="eval_dataset_quality", code="questions_" + error)
     for error in gold_errors:
@@ -659,7 +946,7 @@ def _audit_eval_dataset(
             continue
         items, invalid = _evidence_items(row)
         invalid_gold_shape += int(invalid)
-        gold_by_qid.setdefault(qid, []).extend(items)
+        gold_by_qid.setdefault(qid, []).extend(_resolve_gold_items(items, chunks_by_doc_id))
 
     answerable_without_gold = 0
     unanswerable_with_gold = 0
@@ -781,6 +1068,10 @@ def _audit_baseline_metrics(
 ) -> dict[str, Any]:
     output_dir = repo_path(str(config.get("output_dir") or "experiments/private_runs"), repo_root)
     metrics, candidate_count = _latest_metrics(output_dir, audit_out_dir)
+    source = "metrics_json"
+    if metrics is None:
+        metrics, candidate_count = _latest_eval_summary(output_dir, audit_out_dir)
+        source = "eval_summary_json"
     if metrics is None:
         _flag(
             flags,
@@ -791,14 +1082,24 @@ def _audit_baseline_metrics(
         return {
             "available": False,
             "metrics_file_count": candidate_count,
+            "metrics_source": None,
             "retrieval_saturation_warning": False,
         }
-    retrieval = metrics.get("retrieval_metrics") if isinstance(metrics.get("retrieval_metrics"), Mapping) else {}
-    safe_metrics = {
-        key: _metric_mean(retrieval.get(key))
-        for key in ("recall_at_5", "recall_at_10", "mrr_at_5", "ndcg_at_5")
-        if _metric_mean(retrieval.get(key)) is not None
-    }
+    safe_metrics = _retrieval_metrics_from_payload(metrics)
+    if not safe_metrics:
+        _flag(
+            flags,
+            severity="blocker",
+            surface="baseline_metric_validity",
+            code="existing_baseline_metrics_missing",
+        )
+        return {
+            "available": False,
+            "metrics_file_count": candidate_count,
+            "metrics_source": source,
+            "retrieval_saturation_warning": False,
+        }
+
     recall10 = safe_metrics.get("recall_at_10")
     saturation = recall10 is not None and recall10 >= RETRIEVAL_SATURATION_RECALL10
     if saturation:
@@ -811,6 +1112,7 @@ def _audit_baseline_metrics(
     return {
         "available": True,
         "metrics_file_count": candidate_count,
+        "metrics_source": source,
         "retrieval_metrics": safe_metrics,
         "retrieval_saturation_warning": saturation,
     }
@@ -825,6 +1127,33 @@ def _audit_failure_taxonomy(
     output_dir = repo_path(str(config.get("output_dir") or "experiments/private_runs"), repo_root)
     failure_path = _failure_case_path(output_dir, audit_out_dir)
     if failure_path is None:
+        eval_summary, _ = _latest_eval_summary(output_dir, audit_out_dir)
+        if eval_summary is not None:
+            counts, rejected = _safe_failure_count_mapping(
+                eval_summary.get("failure_category_counts")
+            )
+            total = sum(counts.values())
+            top = sorted(
+                ((label, count) for label, count in counts.items() if count > 0),
+                key=lambda item: (-item[1], item[0]),
+            )[:5]
+            if top:
+                return {
+                    "available": True,
+                    "failure_case_count": total,
+                    "unique_failure_type_count": len(counts),
+                    "top_failure_type_available": True,
+                    "top_failure_types": [
+                        {
+                            "failure_type": label,
+                            "count": count,
+                            "share": _rate(count, total),
+                        }
+                        for label, count in top
+                    ],
+                    "rejected_failure_type_label_count": rejected,
+                    "source": "eval_summary_failure_category_counts",
+                }
         _flag(
             flags,
             severity="blocker",
@@ -836,6 +1165,7 @@ def _audit_failure_taxonomy(
             "failure_case_count": 0,
             "unique_failure_type_count": 0,
             "top_failure_type_available": False,
+            "source": None,
         }
     rows, errors = _jsonl_rows(failure_path)
     for error in errors:
@@ -869,6 +1199,7 @@ def _audit_failure_taxonomy(
             for label, count in top
         ],
         "rejected_failure_type_label_count": rejected,
+        "source": "failure_cases_jsonl",
     }
 
 
@@ -893,14 +1224,20 @@ def build_readiness_audit(
     config, config_errors = _load_yaml(resolved_config_path)
     for error in config_errors:
         _flag(flags, severity="blocker", surface="config", code=error)
+    config = _normalize_audit_config(config, resolved_config_path, repo_root)
 
     documents, document_texts = _audit_documents(config, repo_root, flags)
-    index, chunk_text_by_id, index_chunk_ids = _audit_index(config, repo_root, flags)
+    index, chunk_text_by_id, index_chunk_ids, chunks_by_doc_id = _audit_index(
+        config,
+        repo_root,
+        flags,
+    )
     eval_dataset = _audit_eval_dataset(
         config,
         repo_root,
         chunk_text_by_id,
         index_chunk_ids,
+        chunks_by_doc_id,
         flags,
     )
     baseline = _audit_baseline_metrics(config, repo_root, resolved_out_dir, flags)
@@ -922,6 +1259,7 @@ def build_readiness_audit(
         "schema_version": SCHEMA_VERSION,
         "audit_type": "private_data_readiness",
         "benchmark_type": "private_real_eval",
+        "config_format": str(config.get("_config_format") or "unknown"),
         "local_only": True,
         "public_safe": True,
         "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(),
