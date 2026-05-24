@@ -87,7 +87,18 @@ def test_redacted_summary_path_is_not_gitignored() -> None:
 
 def test_readiness_validator_fails_clearly_when_private_files_are_missing(tmp_path: Path) -> None:
     local_config = tmp_path / "real_config.local.yaml"
-    local_config.write_text(TEMPLATE.read_text(encoding="utf-8"), encoding="utf-8")
+    payload = yaml.safe_load(TEMPLATE.read_text(encoding="utf-8"))
+    payload.update(
+        {
+            "documents_dir": str(tmp_path / "missing-documents"),
+            "data_list_path": str(tmp_path / "missing-data-list.csv"),
+            "questions_path": str(tmp_path / "missing-questions.jsonl"),
+            "gold_evidence_path": str(tmp_path / "missing-gold.jsonl"),
+            "index_dir": str(tmp_path / "missing-index"),
+            "output_dir": str(tmp_path / "missing-runs"),
+        }
+    )
+    local_config.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
 
     result = subprocess.run(
         [
