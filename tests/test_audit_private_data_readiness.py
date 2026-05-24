@@ -404,6 +404,135 @@ def test_readiness_audit_accepts_legacy_real_config_local_cases(tmp_path: Path) 
     )
 
 
+def test_readiness_audit_reports_page_metadata_go_fixture(tmp_path: Path) -> None:
+    config_path = _make_legacy_real_config_fixture(tmp_path)
+    index_path = tmp_path / "data" / "index" / "real100" / "index.json"
+    index = json.loads(index_path.read_text(encoding="utf-8"))
+    index["documents"] = [
+        {"doc_id": "notice-a", "page_span": [1, 1]},
+        {"doc_id": "notice-b", "page_span": [2, 2]},
+    ]
+    index["parent_sections"] = [
+        {"section_id": "notice-a::section-001", "doc_id": "notice-a", "page_span": [1, 1]},
+        {"section_id": "notice-b::section-001", "doc_id": "notice-b", "page_span": [2, 2]},
+    ]
+    index_path.write_text(json.dumps(index, ensure_ascii=False), encoding="utf-8")
+    (tmp_path / "reports" / "private_real_eval_summary.redacted.json").write_text(
+        json.dumps(
+            {
+                "comparison_table": [
+                    {"citation_accuracy": 0.25},
+                    {"citation_accuracy": 0.75},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    out_dir = tmp_path.parent / f"{tmp_path.name}-page-go-audit"
+
+    summary, flags, report = build_readiness_audit(config_path, out_dir, repo_root=tmp_path)
+
+    assert flags == []
+    page = summary["index_integrity"]["page_metadata"]
+    assert page["citation_page_claim_go_no_go"] == "GO"
+    assert page["chunk"]["any_page_metadata_coverage"] == 1.0
+    assert page["parent_section"]["any_page_metadata_coverage"] == 1.0
+    assert page["source_groups"][0]["page_span_coverage"] == 1.0
+    relation = summary["baseline_metric_validity"]["citation_page_relationship"]
+    assert relation["redacted_summary_citation_accuracy"]["mean"] == 0.5
+    assert "Page citation/page claim: `GO`" in report
+
+
+def test_readiness_audit_reports_page_metadata_no_go_by_source(tmp_path: Path) -> None:
+    config_path = _make_legacy_real_config_fixture(tmp_path)
+    index_path = tmp_path / "data" / "index" / "real100" / "index.json"
+    index = json.loads(index_path.read_text(encoding="utf-8"))
+    for chunk in index["chunks"]:
+        chunk.pop("page_span", None)
+        chunk["metadata"] = {
+            "document_type": "private_pdf_hwp_csv_text",
+            "text_source": "kordoc",
+            "file_format": "hwp",
+        }
+        chunk["chunking_strategy"] = "fixed"
+    index["parent_sections"] = [
+        {
+            "section_id": "synthetic-parent",
+            "metadata": {
+                "document_type": "private_pdf_hwp_csv_text",
+                "text_source": "kordoc",
+                "file_format": "hwp",
+            },
+            "chunking_strategy": "fixed",
+        }
+    ]
+    index_path.write_text(json.dumps(index, ensure_ascii=False), encoding="utf-8")
+    eval_summary_path = tmp_path / "reports" / "real100" / "eval_summary.json"
+    eval_summary_path.write_text(
+        json.dumps(
+            {
+                "chunk_recall_at_5": 0.5,
+                "chunk_recall_at_10": 0.5,
+                "chunk_mrr_at_5": 0.5,
+                "chunk_ndcg_at_5": 0.5,
+                "case_results": [
+                    {
+                        "citation_precision": 1.0,
+                        "claim_citation_alignment": 1.0,
+                        "citation_page_precision": None,
+                        "citation_region_precision": None,
+                    },
+                    {
+                        "citation_precision": 0.0,
+                        "claim_citation_alignment": 0.5,
+                        "citation_page_precision": None,
+                        "citation_region_precision": None,
+                    },
+                ],
+                "failure_category_counts": {"retrieval_miss": 1, "unknown": 0},
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "reports" / "private_real_eval_summary.redacted.json").write_text(
+        json.dumps({"comparison_table": [{"citation_accuracy": 0.25}]}),
+        encoding="utf-8",
+    )
+    out_dir = tmp_path.parent / f"{tmp_path.name}-page-no-go-audit"
+
+    summary, flags, report = build_readiness_audit(config_path, out_dir, repo_root=tmp_path)
+
+    assert "page_metadata_missing" in _flag_codes(flags)
+    page = summary["index_integrity"]["page_metadata"]
+    assert page["citation_page_claim_go_no_go"] == "NO-GO"
+    assert page["recoverability"] == "not_recoverable_from_current_index"
+    assert page["chunk"]["missing_page_metadata_rate"] == 1.0
+    assert page["document"]["any_page_metadata_coverage"] == 0.0
+    assert page["parent_section"]["any_page_metadata_coverage"] == 0.0
+    assert page["source_groups"] == [
+        {
+            "document_type": "private_pdf_hwp_csv_text",
+            "text_source": "kordoc",
+            "file_format": "hwp",
+            "chunking_strategy": "fixed",
+            "doc_count": 2,
+            "chunk_count": 2,
+            "any_page_metadata_coverage": 0.0,
+            "page_span_coverage": 0.0,
+            "regions_page_number_coverage": 0.0,
+        }
+    ]
+    relation = summary["baseline_metric_validity"]["citation_page_relationship"]
+    assert relation["case_results_with_any_page_metadata_count"] == 0
+    assert relation["metrics"]["citation_precision"]["mean"] == 0.5
+    assert relation["metrics"]["claim_citation_alignment"]["mean"] == 0.75
+    assert relation["metrics"]["citation_page_precision"]["mean"] is None
+    assert relation["redacted_summary_citation_accuracy"]["mean"] == 0.25
+    assert "Page citation/page claim: `NO-GO`" in report
+    assert_public_safe_payload(summary)
+
+
 def test_readiness_summary_schema_and_outputs(tmp_path: Path) -> None:
     config_path = _make_fixture(tmp_path)
     out_dir = tmp_path / "audit"

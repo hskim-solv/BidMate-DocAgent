@@ -37,6 +37,14 @@ SHORT_DOCUMENT_CHARS = 500
 SUSPICIOUS_GARBLED_RATE = 0.01
 LOW_EXPECTED_TERM_COVERAGE = 0.5
 RETRIEVAL_SATURATION_RECALL10 = 0.95
+PAGE_METADATA_KEYS = ("page", "page_number", "page_span", "page_start", "page_end", "pages")
+CITATION_RELATION_METRICS = (
+    "citation_accuracy",
+    "citation_precision",
+    "claim_citation_alignment",
+    "citation_page_precision",
+    "citation_region_precision",
+)
 
 FORBIDDEN_PUBLIC_KEYS = frozenset(
     {
@@ -419,11 +427,131 @@ def _coverage_summary(texts: Sequence[str]) -> dict[str, Any]:
 def _has_page_metadata(item: Mapping[str, Any]) -> bool:
     metadata = item.get("metadata") if isinstance(item.get("metadata"), Mapping) else {}
     for node in (item, metadata):
-        for key in ("page", "page_number", "page_span", "page_start", "page_end", "pages"):
+        for key in PAGE_METADATA_KEYS:
             value = node.get(key)
             if value not in (None, "", []):
                 return True
+    regions = item.get("regions")
+    if isinstance(regions, list):
+        return any(
+            isinstance(region, Mapping) and isinstance(region.get("page_number"), int)
+            for region in regions
+        )
     return False
+
+
+def _page_metadata_key_counts(items: Sequence[Mapping[str, Any]]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for item in items:
+        metadata = item.get("metadata") if isinstance(item.get("metadata"), Mapping) else {}
+        for node_name, node in (("top_level", item), ("metadata", metadata)):
+            for key in PAGE_METADATA_KEYS:
+                if node.get(key) not in (None, "", []):
+                    count_key = f"{node_name}.{key}"
+                    counts[count_key] = counts.get(count_key, 0) + 1
+        regions = item.get("regions")
+        if isinstance(regions, list) and any(
+            isinstance(region, Mapping) and isinstance(region.get("page_number"), int)
+            for region in regions
+        ):
+            counts["regions.page_number"] = counts.get("regions.page_number", 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def _page_metadata_coverage(items: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    total = len(items)
+    with_page = sum(1 for item in items if _has_page_metadata(item))
+    return {
+        "count": total,
+        "with_any_page_metadata_count": with_page,
+        "any_page_metadata_coverage": _rate(with_page, total),
+        "missing_page_metadata_rate": _rate(total - with_page, total),
+        "page_key_counts": _page_metadata_key_counts(items),
+    }
+
+
+def _safe_aggregate_label(value: Any) -> str:
+    label = str(value or "").strip()
+    if not label:
+        return "<missing>"
+    return label if SAFE_FAILURE_TYPE_RE.fullmatch(label) else "<redacted_label>"
+
+
+def _page_metadata_source_groups(
+    chunks: Sequence[Mapping[str, Any]],
+    documents: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    docs_by_id = {str(doc.get("doc_id") or ""): doc for doc in documents}
+    groups: dict[tuple[str, str, str, str], dict[str, Any]] = {}
+    for chunk in chunks:
+        chunk_metadata = chunk.get("metadata") if isinstance(chunk.get("metadata"), Mapping) else {}
+        doc = docs_by_id.get(str(chunk.get("doc_id") or ""), {})
+        doc_metadata = doc.get("metadata") if isinstance(doc.get("metadata"), Mapping) else {}
+
+        def pick(key: str) -> str:
+            return _safe_aggregate_label(chunk_metadata.get(key) or doc_metadata.get(key))
+
+        group_key = (
+            pick("document_type"),
+            pick("text_source"),
+            pick("file_format"),
+            _safe_aggregate_label(chunk.get("chunking_strategy")),
+        )
+        group = groups.setdefault(
+            group_key,
+            {
+                "chunk_count": 0,
+                "with_any_page_metadata_count": 0,
+                "with_page_span_count": 0,
+                "with_regions_page_number_count": 0,
+                "doc_ids": set(),
+            },
+        )
+        group["chunk_count"] += 1
+        group["with_any_page_metadata_count"] += int(_has_page_metadata(chunk))
+        group["with_page_span_count"] += int(
+            chunk.get("page_span") not in (None, "", [])
+            or chunk_metadata.get("page_span") not in (None, "", [])
+        )
+        regions = chunk.get("regions")
+        group["with_regions_page_number_count"] += int(
+            isinstance(regions, list)
+            and any(
+                isinstance(region, Mapping) and isinstance(region.get("page_number"), int)
+                for region in regions
+            )
+        )
+        if chunk.get("doc_id"):
+            group["doc_ids"].add(str(chunk.get("doc_id")))
+
+    results = []
+    for (
+        document_type,
+        text_source,
+        file_format,
+        chunking_strategy,
+    ), group in sorted(groups.items()):
+        chunk_count = int(group["chunk_count"])
+        results.append(
+            {
+                "document_type": document_type,
+                "text_source": text_source,
+                "file_format": file_format,
+                "chunking_strategy": chunking_strategy,
+                "doc_count": len(group["doc_ids"]),
+                "chunk_count": chunk_count,
+                "any_page_metadata_coverage": _rate(
+                    int(group["with_any_page_metadata_count"]),
+                    chunk_count,
+                ),
+                "page_span_coverage": _rate(int(group["with_page_span_count"]), chunk_count),
+                "regions_page_number_coverage": _rate(
+                    int(group["with_regions_page_number_count"]),
+                    chunk_count,
+                ),
+            }
+        )
+    return results
 
 
 def _index_chunks(index_dir: Path) -> tuple[list[dict[str, Any]], dict[str, Any], list[str]]:
@@ -555,6 +683,107 @@ def _mean_case_metric(case_results: Any, key: str) -> float | None:
     if not values:
         return None
     return round(statistics.mean(values), 6)
+
+
+def _case_metric_distribution(case_results: Any, key: str) -> dict[str, Any]:
+    if not isinstance(case_results, list):
+        return {
+            "present_non_null_count": 0,
+            "numeric_count": 0,
+            "null_or_missing_count": 0,
+            "mean": None,
+            "min": None,
+            "max": None,
+        }
+    values: list[float] = []
+    present = 0
+    for row in case_results:
+        if not isinstance(row, Mapping):
+            continue
+        value = row.get(key)
+        if value is not None:
+            present += 1
+        if isinstance(value, bool):
+            continue
+        if isinstance(value, (int, float)):
+            values.append(float(value))
+    total = len(case_results)
+    return {
+        "present_non_null_count": present,
+        "numeric_count": len(values),
+        "null_or_missing_count": total - present,
+        "mean": round(statistics.mean(values), 6) if values else None,
+        "min": round(min(values), 6) if values else None,
+        "max": round(max(values), 6) if values else None,
+    }
+
+
+def _node_contains_page_metadata(node: Any) -> bool:
+    if isinstance(node, Mapping):
+        for key, value in node.items():
+            if key in PAGE_METADATA_KEYS and value not in (None, "", []):
+                return True
+            if key == "regions" and isinstance(value, list):
+                if any(
+                    isinstance(region, Mapping)
+                    and isinstance(region.get("page_number"), int)
+                    for region in value
+                ):
+                    return True
+            if _node_contains_page_metadata(value):
+                return True
+    if isinstance(node, list):
+        return any(_node_contains_page_metadata(item) for item in node)
+    return False
+
+
+def _redacted_citation_accuracy_summary(repo_root: Path) -> dict[str, Any]:
+    path = repo_root / "reports" / "private_real_eval_summary.redacted.json"
+    payload, errors = _load_json(path)
+    if errors:
+        return {"available": False, "run_count": 0, "mean": None, "min": None, "max": None}
+    rows = payload.get("comparison_table")
+    if not isinstance(rows, list):
+        return {"available": False, "run_count": 0, "mean": None, "min": None, "max": None}
+    values = [
+        float(row["citation_accuracy"])
+        for row in rows
+        if isinstance(row, Mapping)
+        and isinstance(row.get("citation_accuracy"), (int, float))
+        and not isinstance(row.get("citation_accuracy"), bool)
+    ]
+    return {
+        "available": bool(values),
+        "run_count": len(values),
+        "mean": round(statistics.mean(values), 6) if values else None,
+        "min": round(min(values), 6) if values else None,
+        "max": round(max(values), 6) if values else None,
+    }
+
+
+def _citation_page_relationship(payload: Mapping[str, Any], repo_root: Path) -> dict[str, Any]:
+    case_results = payload.get("case_results")
+    case_count = len(case_results) if isinstance(case_results, list) else 0
+    page_case_count = (
+        sum(1 for row in case_results if _node_contains_page_metadata(row))
+        if isinstance(case_results, list)
+        else 0
+    )
+    return {
+        "case_count": case_count,
+        "case_results_with_any_page_metadata_count": page_case_count,
+        "case_results_page_metadata_coverage": _rate(page_case_count, case_count),
+        "metrics": {
+            key: _case_metric_distribution(case_results, key)
+            for key in CITATION_RELATION_METRICS
+        },
+        "redacted_summary_citation_accuracy": _redacted_citation_accuracy_summary(repo_root),
+        "interpretation": (
+            "page-level citation metrics are measurable"
+            if page_case_count
+            else "citation metrics are chunk/doc-level only; page-level citation metrics are not measurable"
+        ),
+    }
 
 
 def _retrieval_metrics_from_payload(payload: Mapping[str, Any]) -> dict[str, float]:
@@ -809,6 +1038,12 @@ def _audit_index(
     chunks, payload, errors = _index_chunks(index_dir)
     for error in errors:
         _flag(flags, severity="blocker", surface="index_integrity", code=error)
+    documents = [
+        item for item in payload.get("documents", []) if isinstance(item, Mapping)
+    ]
+    parent_sections = [
+        item for item in payload.get("parent_sections", []) if isinstance(item, Mapping)
+    ]
 
     chunk_text_by_id: dict[str, str] = {}
     chunks_by_doc_id: dict[str, list[dict[str, str]]] = {}
@@ -873,6 +1108,13 @@ def _audit_index(
         )
 
     chunk_count = len(chunks) or _build_count(payload, "num_chunks") or 0
+    chunk_page_coverage = _page_metadata_coverage(chunks)
+    document_page_coverage = _page_metadata_coverage(documents)
+    parent_page_coverage = _page_metadata_coverage(parent_sections)
+    page_claim_go = (
+        chunk_page_coverage["count"] > 0
+        and chunk_page_coverage["missing_page_metadata_rate"] == 0.0
+    )
     summary = {
         "chunk_count": chunk_count,
         "chunk_length": _length_summary(lengths),
@@ -882,6 +1124,25 @@ def _audit_index(
         "token_coverage": _coverage_summary(chunk_texts),
         "index_document_count": _build_count(payload, "num_documents"),
         "chunk_id_missing_count": missing_chunk_id,
+        "page_metadata": {
+            "keys_checked": list(PAGE_METADATA_KEYS) + ["regions.page_number"],
+            "chunk": chunk_page_coverage,
+            "document": document_page_coverage,
+            "parent_section": parent_page_coverage,
+            "source_groups": _page_metadata_source_groups(chunks, documents),
+            "citation_page_claim_go_no_go": "GO" if page_claim_go else "NO-GO",
+            "page_claim_possible": page_claim_go,
+            "recoverability": (
+                "available_in_current_index"
+                if page_claim_go
+                else "not_recoverable_from_current_index"
+            ),
+            "recommended_action": (
+                "page claims may be evaluated from current index metadata"
+                if page_claim_go
+                else "rebuild with visual ingestion or a page-aware parser artifact before page claims"
+            ),
+        },
     }
     return summary, chunk_text_by_id, chunk_ids, chunks_by_doc_id
 
@@ -1084,6 +1345,7 @@ def _audit_baseline_metrics(
             "metrics_file_count": candidate_count,
             "metrics_source": None,
             "retrieval_saturation_warning": False,
+            "citation_page_relationship": _citation_page_relationship({}, repo_root),
         }
     safe_metrics = _retrieval_metrics_from_payload(metrics)
     if not safe_metrics:
@@ -1098,6 +1360,7 @@ def _audit_baseline_metrics(
             "metrics_file_count": candidate_count,
             "metrics_source": source,
             "retrieval_saturation_warning": False,
+            "citation_page_relationship": _citation_page_relationship(metrics, repo_root),
         }
 
     recall10 = safe_metrics.get("recall_at_10")
@@ -1115,6 +1378,7 @@ def _audit_baseline_metrics(
         "metrics_source": source,
         "retrieval_metrics": safe_metrics,
         "retrieval_saturation_warning": saturation,
+        "citation_page_relationship": _citation_page_relationship(metrics, repo_root),
     }
 
 
@@ -1296,8 +1560,10 @@ def build_readiness_audit(
 def render_report(summary: Mapping[str, Any], flags: Sequence[Mapping[str, Any]]) -> str:
     parse = summary["parse_quality"]
     index = summary["index_integrity"]
+    page = index["page_metadata"]
     dataset = summary["eval_dataset_quality"]
     baseline = summary["baseline_metric_validity"]
+    citation_relation = baseline["citation_page_relationship"]
     taxonomy = summary["failure_taxonomy_readiness"]
     lines = [
         "# Private Data Readiness Audit",
@@ -1331,33 +1597,83 @@ def render_report(summary: Mapping[str, Any], flags: Sequence[Mapping[str, Any]]
         f"{index['chunk_length']['max']}",
         f"- Duplicate chunk ratio: {index['duplicate_chunk_ratio']}",
         f"- Missing page metadata rate: {index['missing_page_metadata_rate']}",
+        f"- Page citation/page claim: `{page['citation_page_claim_go_no_go']}`",
+        f"- Chunk/document/parent page coverage: "
+        f"{page['chunk']['any_page_metadata_coverage']} / "
+        f"{page['document']['any_page_metadata_coverage']} / "
+        f"{page['parent_section']['any_page_metadata_coverage']}",
         f"- Gold chunks missing from index: {dataset['gold_chunk_missing_from_index_count']}",
         "",
-        "## Eval Dataset Quality",
-        "",
-        f"- Questions: {dataset['question_count']}",
-        f"- Answerable / unanswerable: {dataset['answerable_count']} / "
-        f"{dataset['unanswerable_count']}",
-        f"- Duplicate question IDs: {dataset['duplicate_question_id_count']}",
-        f"- Answerable without gold: {dataset['answerable_without_gold_evidence_count']}",
-        f"- Unanswerable with gold: {dataset['unanswerable_with_gold_evidence_count']}",
-        f"- Expected terms questions: {dataset['expected_terms']['question_count']}",
-        f"- Expected terms mean gold-text coverage: "
-        f"{dataset['expected_terms']['gold_text_mean_term_coverage']}",
-        "",
-        "## Baseline Metric Validity",
-        "",
-        f"- Existing baseline metrics available: `{baseline['available']}`",
-        f"- Retrieval saturation warning: `{baseline['retrieval_saturation_warning']}`",
-        "",
-        "## Failure Taxonomy Readiness",
-        "",
-        f"- Failure cases available: `{taxonomy['available']}`",
-        f"- Top failure type available: `{taxonomy['top_failure_type_available']}`",
-        "",
-        "## Flags",
+        "## Page Metadata Source Coverage",
         "",
     ]
+    if page["source_groups"]:
+        for group in page["source_groups"]:
+            lines.append(
+                "- "
+                f"document_type={group['document_type']}, "
+                f"text_source={group['text_source']}, "
+                f"file_format={group['file_format']}, "
+                f"chunking_strategy={group['chunking_strategy']}: "
+                f"docs={group['doc_count']}, chunks={group['chunk_count']}, "
+                f"page={group['any_page_metadata_coverage']}, "
+                f"page_span={group['page_span_coverage']}, "
+                f"regions_page={group['regions_page_number_coverage']}"
+            )
+    else:
+        lines.append("- No source groups available.")
+    lines.extend(
+        [
+            f"- Recoverability: `{page['recoverability']}`",
+            f"- Recommended action: {page['recommended_action']}",
+            "",
+            "## Citation/Page Relationship",
+            "",
+            f"- Case results with page metadata: "
+            f"{citation_relation['case_results_with_any_page_metadata_count']} / "
+            f"{citation_relation['case_count']}",
+            f"- Case page metadata coverage: "
+            f"{citation_relation['case_results_page_metadata_coverage']}",
+            f"- citation_precision mean: "
+            f"{citation_relation['metrics']['citation_precision']['mean']}",
+            f"- claim_citation_alignment mean: "
+            f"{citation_relation['metrics']['claim_citation_alignment']['mean']}",
+            f"- citation_page_precision mean: "
+            f"{citation_relation['metrics']['citation_page_precision']['mean']}",
+            f"- citation_region_precision mean: "
+            f"{citation_relation['metrics']['citation_region_precision']['mean']}",
+            f"- redacted citation_accuracy min/mean/max: "
+            f"{citation_relation['redacted_summary_citation_accuracy']['min']} / "
+            f"{citation_relation['redacted_summary_citation_accuracy']['mean']} / "
+            f"{citation_relation['redacted_summary_citation_accuracy']['max']}",
+            f"- Interpretation: {citation_relation['interpretation']}",
+            "",
+            "## Eval Dataset Quality",
+            "",
+            f"- Questions: {dataset['question_count']}",
+            f"- Answerable / unanswerable: {dataset['answerable_count']} / "
+            f"{dataset['unanswerable_count']}",
+            f"- Duplicate question IDs: {dataset['duplicate_question_id_count']}",
+            f"- Answerable without gold: {dataset['answerable_without_gold_evidence_count']}",
+            f"- Unanswerable with gold: {dataset['unanswerable_with_gold_evidence_count']}",
+            f"- Expected terms questions: {dataset['expected_terms']['question_count']}",
+            f"- Expected terms mean gold-text coverage: "
+            f"{dataset['expected_terms']['gold_text_mean_term_coverage']}",
+            "",
+            "## Baseline Metric Validity",
+            "",
+            f"- Existing baseline metrics available: `{baseline['available']}`",
+            f"- Retrieval saturation warning: `{baseline['retrieval_saturation_warning']}`",
+            "",
+            "## Failure Taxonomy Readiness",
+            "",
+            f"- Failure cases available: `{taxonomy['available']}`",
+            f"- Top failure type available: `{taxonomy['top_failure_type_available']}`",
+            "",
+            "## Flags",
+            "",
+        ]
+    )
     if flags:
         for flag in flags:
             lines.append(
