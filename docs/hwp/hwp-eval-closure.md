@@ -6,7 +6,7 @@ permalink: /hwp-eval-closure/
 
 # HWP Eval 갭 해소 (ADR 0039)
 
-이 문서는 2026년 5월에 공개 합성(synthetic) eval 표면과 private 100-doc
+이 문서는 2026년 5월에 공개 fixture smoke eval 표면과 private 100-doc
 corpus(96% HWP) 사이에서 식별된 네 가지 갭, 그리고 이를 해소한 PR 스택을
 기록한다.
 
@@ -25,7 +25,7 @@ private corpus 는 96 HWP + 4 PDF
 
 | # | 갭 | Before | After |
 |---|-----|--------|-------|
-| 1 | 공개 synthetic eval에 HWP fixture 없음 | 100 cases, JSON corpus only | 105 cases (+5 HWP hardcase) |
+| 1 | 공개 fixture smoke eval에 HWP fixture 없음 | 100 cases, JSON corpus only | 105 cases (+5 HWP hardcase) |
 | 2 | `eval_summary.json`에 `by_format` 없음 | HWP vs PDF 분리 불가 | `by_format.hwp` aggregate 추가 |
 | 3 | HWP loader ablation preset 없음 | `naive_baseline` / `agentic_full`만 | `hwp_csv_text` / `hwp_native` / `hwp_native_tables` 3-way |
 | 4 | 공개 hardcase에 구조 카테고리 없음 | retrieval/abstention 변별만 (22 cases) | +4 구조 카테고리 활성 (ADR 0039) |
@@ -35,21 +35,21 @@ private corpus 는 96 HWP + 4 PDF
 ```
 main
  └─ PR-0  ADR 0039 — HWP structural hardcase taxonomy (docs only)
-     └─ PR-A  공개 synthetic HWP fixture 2개 + 5 eval cases
+     └─ PR-A  공개 fixture smoke HWP fixture 2개 + 5 eval cases
          └─ PR-B  eval_summary by_format aggregate + SAFE_FORMAT_BUCKET_KEYS
              └─ PR-C  hwp_csv_text / hwp_native / hwp_native_tables ablation preset
                  └─ PR-D  ADR 0039 rotated_or_skewed + ocr_noisy 카테고리 활성
-                     └─ PR-E  leaderboard HWP slice (this PR)
+                     └─ PR-E  retired public HWP aggregate slice
 ```
 
 | PR | Issue | Branch | 핵심 파일 |
 |----|-------|--------|-----------|
 | PR-0 | #646 | `docs/issue-646-adr-0039-hwp-hardcase` | `docs/adr/0039-hwp-structural-hardcase-taxonomy.md` |
-| PR-A | #648 | `feat/issue-648-hwp-synthetic-fixture` | `data/raw/rfp_agency_f/g_hwp.json`, `eval/config.yaml` (+5 cases) |
+| PR-A | #648 | `feat/issue-648-hwp-synthetic-fixture` | `eval/fixtures/smoke_rfp/raw/rfp_agency_f/g_hwp.json`, `eval/config.yaml` (+5 cases) |
 | PR-B | #650 | `feat/issue-650-eval-by-format-breakdown` | `eval/run_eval.py`, `scripts/run_real_eval_delta.py`, `tests/test_eval_by_format_aggregate_regression.py` |
 | PR-C | #652 | `feat/issue-652-hwp-loader-ablation` | `eval/config.yaml` (+3 ablation rows), `scripts/build_index.py` (`--hwp_loader`) |
 | PR-D | #654 | `feat/issue-654-hwp-hardcase-tagging` | `eval/config.yaml` (tagging only) |
-| PR-E | #657 | `feat/issue-657-leaderboard-hwp-surface` | `scripts/leaderboard.py`, `docs/hwp/hwp-eval-closure.md` (this file) |
+| PR-E | #657 | retired public HWP aggregate surface | `docs/hwp/hwp-eval-closure.md` (this file) |
 
 ## 각 갭 해소가 전달하는 것
 
@@ -72,12 +72,12 @@ public/private 경계).
 {
   "by_format": {
     "hwp": { "num_predictions": 2, "accuracy": 0.85, ... },
-    "synthetic_public_sample": { "num_predictions": 103, ... }
+    "public_fixture": { "num_predictions": 103, ... }
   }
 }
 ```
 
-`SAFE_FORMAT_BUCKET_KEYS = frozenset({"hwp", "pdf", "synthetic_public_sample"})`
+`SAFE_FORMAT_BUCKET_KEYS = frozenset({"hwp", "pdf", "public_fixture"})`
 는 `run_real_eval_delta.py` 의 fail-closed whitelist 다(ADR 0005 guard).
 
 ### Gap 3: Loader ablation preset (PR-C)
@@ -102,22 +102,18 @@ public/private 경계).
 `eval/run_eval.py` 의 `by_hardcase_category` 는 어떤 카테고리 키든 자동으로
 흡수한다 — 코드 변경 불필요.
 
-## Leaderboard 가시성 (PR-E)
+## HWP evidence visibility
 
-`scripts/leaderboard.py` 는 이제 다음을 렌더링한다:
-- `reports/leaderboard.md` 에 세 번째 **HWP Slice** 표
-  (`## HWP Slice: by_format[hwp]`)
-- GitHub Pages leaderboard 의 각 headline metric chart 에 `hwp_format`
-  Chart.js series(teal line)
-
-과거 스냅샷은 ADR 0030 forward-only 정책에 따라 `—` 를 표시한다. `main` 의 새
-CI 실행이 앞으로 series 를 채운다.
+Public ranking artifacts for HWP slices are retired. Current HWP visibility
+comes from `by_format` aggregate fields in fixture smoke runs and
+private/internal eval summaries. The public fixture is a schema and regression
+check only; HWP performance claims require private/internal aggregate evidence.
 
 ## Invariant 체크리스트
 
 - [x] ADR 0001: `naive_baseline` preset 불변; 새 ablation 행은 additive
 - [x] ADR 0005: 커밋된 aggregate 에 per-case payload 없음; `SAFE_FORMAT_BUCKET_KEYS` 는 fail-closed
 - [x] ADR 0007: 모든 브랜치는 `<type>/issue-<N>[-<slug>]`; 모든 PR 에 `Closes #N`
-- [x] ADR 0030: Leaderboard 는 forward-only; PR-B 이전 스냅샷은 HWP slice 에서 `—` 표시
+- [x] Aggregate report 는 forward-only; PR-B 이전 스냅샷은 HWP slice 에서 `—` 표시
 - [x] ADR 0036: pyhwp-absent CI 안전 — fixture 는 JSON, `.hwp` 바이너리 미커밋
 - [x] ADR 0039: PR-D 머지로 Status 가 proposed → accepted 로 승격

@@ -74,7 +74,7 @@ API 는 `https://<app>.fly.dev:8000/docs` 에 있다.
 [`.github/workflows/deploy-fly.yml`](../../.github/workflows/deploy-fly.yml)
 을 실행해 라이브 데모를 재배포한다. 경로 필터는 Dockerfile 의
 COPY 집합을 미러링한다: 모든 top-level `*.py`, `api/**`, `demo/**`,
-`scripts/build_index.py`, `data/raw/**`, `data/lexicon/**`,
+`scripts/build_index.py`, `eval/fixtures/smoke_rfp/raw/**`, `data/lexicon/**`,
 컨테이너 primitive(`Dockerfile`, `docker-entrypoint.sh`,
 `requirements.txt`, `fly.toml`), 그리고 workflow 자체. doc 전용
 변경은 배포를 트리거하지 *않는다*. workflow 는 `flyctl status --json`
@@ -224,7 +224,7 @@ Railway 의 도메인 생성기는
    `BIDMATE_LOG_FORMAT=json make demo` 를 한 번 실행해 구조화된
    `query_start` / `query_complete` JSON 이벤트를 보여준 뒤,
    `make reproduce` 로 SHA-256 재현성 해시
-   (ADR 0005 표면)를 출력한다 — public synthetic 표면이
+   (ADR 0005 표면)를 출력한다 — public fixture smoke 표면이
    호스트 전반에 결정론적임을 증명한다.
 
 QuickTime / OBS 로 1080p 로 녹화한다. YouTube 에 업로드(unlisted 도

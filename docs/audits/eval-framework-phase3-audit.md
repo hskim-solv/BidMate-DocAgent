@@ -17,7 +17,7 @@
 |---|---|:---:|---|
 | 1 | per-query 로깅 (latency / call count / token / cost) | ◐ partial | `eval_summary.json` aggregate `stage_latency` ✓ + per-case `tokens_in/out/cost_estimate_usd/llm_model` schema-wired ✓; 그러나 token/cost 가 `prediction.diagnostics.synthesis` 에 채워질 때만 propagate (`eval/run_eval.py:983-985`) — answer LLM call path 가 SDK `usage` field 를 synthesis dict 로 surface 하는 wiring 미확정. |
 | 2 | trajectory 직렬화 (모든 LLM call I/O) | ◐ partial | `reports/real100/traces/{full,random_retrieval,single_chunk}/*.trace.json` per-case file ✓; `trace` dict default = `{schema_version, query_rewrite, planner, answer_schema}` 만 (`eval/run_eval.py:829-861`). env-gated `BIDMATE_TRACE_VERBOSE=1` 시 `evidence/answer_text/answer/diagnostics_subset` 추가. **verifier full I/O dump 부재** (이전 `scripts/dump_verifier_trajectories.py` 는 #942 에서 dead-code 로 제거됨). **retrieval / generator (answer LLM) input/output 부재**. |
-| 3 | trajectory-rationality rubric (LLM-as-judge: planner decomp / retrieval 재호출 / verifier 판정) | ✗ absent | `(planner\|retrieval\|verifier).*rationale\|process.*judg\|trajectory.*judg\|rubric` grep → 0건. 단 매칭은 `eval/synthetic_judge.py` 의 `multihop_valid` (ADR 0033, case validity gate; process rationality 아님). `eval/judges/{llm_judge,synthetic_judge,judge_common}.py` 는 ADR 0006 answer-quality judge surface. |
+| 3 | trajectory-rationality rubric (LLM-as-judge: planner decomp / retrieval 재호출 / verifier 판정) | ✗ absent | `(planner\|retrieval\|verifier).*rationale\|process.*judg\|trajectory.*judg\|rubric` grep → 0건. 기존 answer-quality judge surface는 process rationality를 입력으로 받지 않았다. |
 | 4 | pareto reporting (quality vs cost 2D plot) | ◐ partial | `scripts/plot_cost_frontier.py` (line 43 `cost_usd` field, line 196 pareto dominance) + `scripts/plot_pareto.py` 둘 다 ✓. **그러나 `reports/real100/cost_frontier*` 산출물 0건** — plotter 가 있고 ADR 0054 n=221 baseline 으로 regen 안 됨. (`reports/real100/eda.{md,aggregate.json}` 는 별 surface — EDA report.) |
 
 **판정**: partial 3 + absent 1. 가장 큰 갭 = **item 3 (rationality rubric 0건)** — Phase 3 의 "process rationality 가 측정 가능한가?" 질문에 현재 답이 "측정 불가능".
@@ -97,11 +97,11 @@
 
 **Evidence**:
 - `(planner|retrieval|verifier).*rationale|process.*judg|trajectory.*judg|rubric` grep across `eval/`, `scripts/`, `docs/adr/` → 단 5건 매칭, 모두 비-rationality:
-  - `scripts/synthesize_multihop_queries.py:223` — `multihop_valid` filter (case validity gate, ADR 0033)
+  - Retired public multi-hop generator — case validity gate였고 process rationality가 아님
   - `scripts/claude-hooks/_self_review.py:546,591,621,725` — self-review LLM rubric (Claude 사용 검토용, eval surface 아님)
   - `docs/adr/0033-multihop-cross-section-eval-slice.md:57` — `multihop_valid` rubric (case validity)
   - `docs/adr/0040-react-agent-loop-additive-preset.md:27` — senior-positioning rubric reference (포트폴리오 surface)
-- `eval/judges/{llm_judge,synthetic_judge,judge_common}.py` — ADR 0006 / 0012 answer-quality judge. 입력 = (query, answer, gold_answer), 출력 = 정답-여부 / 점수. **trajectory 입력 안 받음**.
+- `eval/judges/{llm_judge,judge_common}.py` — ADR 0006 answer-quality judge. 입력 = (query, answer, gold_answer), 출력 = 정답-여부 / 점수. **trajectory 입력 안 받음**.
 
 **갭(Gap)**: process rationality 가 0차원 측정. trajectory file (`*.trace.json`) 이 planner/query_rewrite raw 자료를 emit 하지만 (verifier 전용 dump 는 #942 에서 제거되어 부재) 그것을 채점하는 rubric 자산 부재.
 
@@ -176,7 +176,7 @@
 - Item 1 코드 근거: [`eval/run_eval.py:975-989`](../../eval/run_eval.py) (synthesis 에서 token/cost capture)
 - Item 2 코드 근거: [`eval/run_eval.py:829-890`](../../eval/run_eval.py) (`prediction_trace_payload` + `write_prediction_trace`)
 - Item 2 verifier-only dump (`scripts/dump_verifier_trajectories.py`): #942 (cf1b292) 에서 dead-code 로 제거됨 — 본 audit 시점 부재
-- Item 3 에서 참조한 rubric ADR (비-rationality 비교용): [ADR 0006](../adr/0006-llm-judge-on-real-data-only.md) (answer-quality judge), [ADR 0012](../adr/0012-llm-judge-on-public-synthetic.md), [ADR 0033](../adr/0033-multihop-cross-section-eval-slice.md) (`multihop_valid` case validity)
+- Item 3 에서 참조한 rubric ADR (비-rationality 비교용): [ADR 0006](../adr/0006-llm-judge-on-real-data-only.md) (answer-quality judge), [ADR 0033](../adr/0033-multihop-cross-section-eval-slice.md) (retired case-validity slice)
 - Item 4 코드 근거: [`scripts/plot_cost_frontier.py`](../../scripts/plot_cost_frontier.py) (cost_usd field line 43, pareto line 196)
 - 자매(sibling) skill (다른 surface): [`.claude/skills/retrieval-eval/SKILL.md`](../../.claude/skills/retrieval-eval/SKILL.md) (4-phase retrieval measurement, PR #889)
 - 최근 Goodhart 폐루프 (Phase 2 산출물): [ADR 0053](../adr/0053-distinguishing-power-floor-ablations.md) (gauge), [ADR 0054](../adr/0054-conditional-on-answer-scorer-semantics.md) (scorer fix)

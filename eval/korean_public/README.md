@@ -2,7 +2,7 @@
 
 Supplementary out-of-domain Korean evaluation surface for the
 BidMate pipeline. **Never CI-gated** and **never replaces** the
-public synthetic ([`eval/config.yaml`](../config.yaml)) or private
+public fixture smoke ([`eval/config.yaml`](../config.yaml)) or private
 real-data surfaces. See [ADR 0018](../../docs/adr/0018-korean-public-rag-bench.md)
 for the scope boundary and rationale.
 
@@ -64,7 +64,7 @@ system, documented for the senior reviewer who asks "한국어 일반 텍스트
 ## What this surface deliberately does **not** measure
 
 - **SOTA Korean RAG** — not the goal. Use HAE-RAE, K-MMLU, or KLUE-MRC
-  leaderboards for that comparison.
+  public benchmark tables for that comparison.
 - **Predictiveness of RFP performance** — KorQuAD scores do not
   forecast our private 100-doc real-data numbers. The two surfaces
   measure orthogonal axes.

@@ -60,7 +60,7 @@ Expose three deterministic, LLM-free measurement surfaces in
 - **Locked contract**: `reports/eval_summary.json` headline and every by-slice
   block carry the chunk + coverage keys above, each with a parallel entry under
   `block["ci"]`; `run_manifest` carries `embedding_backend` /
-  `embedding_model_id`. Downstream consumers (leaderboard, README metrics,
+  `embedding_model_id`. Downstream consumers (aggregate report, README metrics,
   baseline regression) may rely on these keys existing (value may be `None`).
 - **ADR 0005 boundary**: all new keys are numeric means / counts / CI bands —
   no per-case text — so the aggregate crosses the private-real commit boundary
@@ -72,7 +72,7 @@ Expose three deterministic, LLM-free measurement surfaces in
 - **Cost**: every slice now serialises ~9 extra float keys + CI bands. Negligible
   for JSON size; the bootstrap is already run for the answer-quality metrics.
 - **Out of scope (follow-up PR)**: surfacing RAGAS `context_precision` /
-  `context_recall` (LLM-judge, ADR 0014 boundary) into the aggregate CI — that
+  `context_recall` (LLM-judge, retired RAGAS enrichment boundary) into the aggregate CI — that
   is a separate concern with a live-backend dependency.
 
 **2026-05-24 update:** RFP QA naive-baseline measurement added explicit

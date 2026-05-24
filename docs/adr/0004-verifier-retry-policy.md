@@ -47,7 +47,7 @@ knob:
 `verify_evidence` 의 strict/relaxed threshold 는 policy 선택(위 **Costs** 에 이미 기술), issue #828 까지 ADR 은 변경 정당화 근거를 노출 안 했다. 코드에 묻히는 대신 결정 레이어에 갭이 보이도록 여기 문서화:
 
 - **audit 대상 magic constant**: `PARTIAL_TOPIC_GROUNDING_MIN_FRACTION = 0.5`, `PARTIAL_TOPIC_GROUNDING_MIN_MATCHED = 2` ([`rag_verifier.py:73-75`](../../rag_verifier.py))
-- **실행할 sweep** (tracking [#829](https://github.com/hskim-solv/BidMate-DocAgent/issues/829)): grid `MIN_FRACTION ∈ {0.3, 0.4, 0.5, 0.6, 0.7}` × `MIN_MATCHED ∈ {1, 2, 3}` = 15 cell, ADR 0005 의 private-100 + public-synthetic split 에서 채점
+- **실행할 sweep** (tracking [#829](https://github.com/hskim-solv/BidMate-DocAgent/issues/829)): grid `MIN_FRACTION ∈ {0.3, 0.4, 0.5, 0.6, 0.7}` × `MIN_MATCHED ∈ {1, 2, 3}` = 15 cell, ADR 0005 의 private-100 + public-fixture-smoke split 에서 채점
 - **값 변경 결정 규칙**: real-100 에서 ≥3pp accuracy 개선 + abstention 회귀 ≤2pp. (sweep 랜딩 시 숫자 정제; 그 전까지 현재 값은 `tests/test_partial_topic_grounding.py` 회귀로 방어되는 spike-grade default 로 취급, optimum 도출 아님)
 - **sweep 미진행 이유**: real-eval 예산이 eval-set 확장 작업(ADR 0044 / issue #732) 에 게이트. 닫히면 #829 가 다음 게이트
 

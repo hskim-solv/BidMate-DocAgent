@@ -13,7 +13,7 @@ This file locks in two improvements made for #72:
   project name straight from the response.
 * The single-turn ambiguity probe fixtures
   (`rfp_agency_e_water_quality_*.json`) trigger the clarification
-  path on the public synthetic surface so a regression that drops
+  path on the public fixture surface so a regression that drops
   the early gate or breaks the message format is caught in CI.
 """
 
@@ -85,7 +85,7 @@ class SingleTurnAmbiguityProbeTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.index = build_index_payload(
-            Path("data/raw"), embedding_backend="hashing"
+            Path("eval/fixtures/smoke_rfp/raw"), embedding_backend="hashing"
         )
 
     def _expect_clarification(self, query: str) -> dict:

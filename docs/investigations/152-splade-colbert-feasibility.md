@@ -53,7 +53,7 @@ ADR 0010 채택 시 SPLADE / ColBERT 는 "hybrid_bm25 가 측정 가능한 real-
 | C3 hybrid tuned | hybrid | **30** | **bm25_extra** | **NEW**: `hybrid_bm25_k30_extra` |
 | C4 hybrid k best | hybrid | best ∈ {10, 30, 100} | shared | `hybrid_bm25_k{10,30,100}` |
 
-C3 가 두 knob 을 동시에 켜는 유일한 cell 이다. k=30 을 single pick 으로 둔 이유: 공개 synthetic 의 k-sweep 이 평탄했고 (`docs/eval/ablation-results.md` 의 `hybrid_bm25_k{10,30,60,100}` 동일 metric), 작은 k 는 top-rank 비중을 키워 BM25 noise hit 의 영향을 줄일 가능성이 큼. 4-cell 풀스윕 (`k × profile`) 은 eval cost 두 배이므로 1-axis-collapsed 가 최소 비용 선택.
+C3 가 두 knob 을 동시에 켜는 유일한 cell 이다. k=30 을 single pick 으로 둔 이유: 공개 fixture smoke 의 k-sweep 이 평탄했고 (`docs/eval/ablation-results.md` 의 `hybrid_bm25_k{10,30,60,100}` 동일 metric), 작은 k 는 top-rank 비중을 키워 BM25 noise hit 의 영향을 줄일 가능성이 큼. 4-cell 풀스윕 (`k × profile`) 은 eval cost 두 배이므로 1-axis-collapsed 가 최소 비용 선택.
 
 ### 3.2 절차(Procedure) ([ADR 0005](../adr/0005-eval-split-public-synthetic-private-local.md) boundary)
 
@@ -197,7 +197,7 @@ Private real100 의 N 은 gitignored — `docs/real-data/real-data-failure-taxon
 
 - [docs/adr/0010-hybrid-bm25-dense-retrieval-rrf.md:84](../adr/0010-hybrid-bm25-dense-retrieval-rrf.md) — deferral 근거(anchor).
 - [docs/adr/0021-bge-m3-completes-phase-1-3.md](../adr/0021-bge-m3-completes-phase-1-3.md) — BGE-M3 상태.
-- [docs/eval/ablation-results.md](../eval/ablation-results.md) — 공개 synthetic ablation rows (hybrid_bm25 k-sweep, bm25_extra).
+- [docs/eval/ablation-results.md](../eval/ablation-results.md) — 공개 fixture smoke ablation rows (hybrid_bm25 k-sweep, bm25_extra).
 - [docs/real-data/private-100-doc-experiments.md](../real-data/private-100-doc-experiments.md) — ADR 0005 commit boundary.
 - [docs/eval/embedding-ablation.md](../eval/embedding-ablation.md) — 모델 size / latency 기준값.
 - [eval/config.yaml:89](../../eval/config.yaml:89) — `hybrid_bm25` 및 k-sweep / bm25_extra row 위치.

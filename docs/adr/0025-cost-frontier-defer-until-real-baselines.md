@@ -76,5 +76,5 @@ ADR 0026(accepted, 동일 일자)이 동일 measurement-gated 보류 패턴을 c
 ## See also
 
 - [`scripts/plot_pareto.py`](../../scripts/plot_pareto.py) — 오늘 ship되는 latency-quality Pareto frontier(#124 close).
-- [`reports/external_baselines.json`](../../reports/external_baselines.json) — 현재 stub; real-backend 엔트리 획득 시 재개 trigger.
+- `reports/external_baselines.json` — retired public external-baseline aggregate; real-backend 엔트리는 private/internal aggregate flow에서만 다룬다.
 - [ADR 0019](./0019-embedding-default-stays-minilm.md) → [ADR 0021](./0021-bge-m3-completes-phase-1-3.md) — 본 ADR이 따르는 measurement-gated 보류 패턴.

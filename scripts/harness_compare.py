@@ -57,7 +57,7 @@ def render_pair(base: dict[str, Any], head: dict[str, Any], *, title: str,
     lines.append("")
     lines.append(
         "_✅ direction-of-improvement; ⚠️ direction-of-regression. "
-        "Synthetic-data delta — does not gate CI._"
+        "Fixture smoke delta — does not gate CI._"
     )
     return "\n".join(lines) + "\n"
 
@@ -117,7 +117,7 @@ def render_matrix_compare(
     lines.append("")
     lines.append(
         "_✅ direction-of-improvement; ⚠️ direction-of-regression. "
-        "Synthetic-data delta — does not gate CI._"
+        "Fixture smoke delta — does not gate CI._"
     )
     return "\n".join(lines) + "\n"
 

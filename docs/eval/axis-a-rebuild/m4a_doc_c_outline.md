@@ -21,7 +21,7 @@ Stage: **sub-STOP 1 (v2)** (outline distractor 갱신 → user review → sub-ST
 
 ## 0. doc-C 원본 + plan target
 
-원본 `data/raw/rfp_agency_c_chatbot.json` (3 sec / ~440 chars / 0 표):
+원본 `eval/fixtures/smoke_rfp/raw/rfp_agency_c_chatbot.json` (3 sec / ~440 chars / 0 표):
 - title: "기관 C 고객지원 챗봇 고도화 RFP"
 - agency: "기관 C", project: "고객지원 챗봇 고도화"
 - project_aliases: ["챗봇 고도화", "고객지원 챗봇"]
@@ -43,7 +43,7 @@ Plan v3 target (M4-A 표 row 56):
   "project": "고객지원 챗봇 고도화",
   "metadata": {
     "domain": "chatbot",
-    "document_type": "synthetic_public_sample",
+    "document_type": "public_fixture",
     "axis_a_scale": "real_scale_v2_distractor",
     "axis_a_scale_anchor": "Upstage heading1 (main heading) median ~100 + kordoc 39511 chars cross-check",
     "axis_a_scale_measurement_ref": "docs/eval/axis-a-rebuild/axis_b_real_measurement.md v4 (100-doc 재측정)",
@@ -415,7 +415,7 @@ FR-001~016 의 16개 FR section 들의 acceptance criteria 1 sentence 가 거의
 | 2a v1 | §2.2~§2.5 사업/배경/범위/FR (~54 sec, distractor 6 inject 포함) | `m4a_doc_c_partial_2a_v1.json` | 2a 단독 가드 일부 + 2b 합본 후 13 가드 전체 |
 | 2b v1 | §2.6~§2.10 NFR/보안/일정/평가/부속서 (~50 sec, distractor inject + sec 51 신규 변경 이력 부속서) | `m4a_doc_c_partial_2b_v1.json` | 합본 후 13 가드 전체 |
 | 2c α' v2 | 합본 + α' 25-template × 1 sentence heading inject | `m4a_doc_c_full_v2.json` | 13/13 PASS 목표 |
-| 3 promote | data/raw 갱신 + verdict 박제 | `data/raw/rfp_agency_c_chatbot.json` 갱신 (LIVE) | live 13 가드 final |
+| 3 promote | eval/fixtures/smoke_rfp/raw 갱신 + verdict 박제 | `eval/fixtures/smoke_rfp/raw/rfp_agency_c_chatbot.json` 갱신 (LIVE) | live 13 가드 final |
 
 ## 7. doc-A vs doc-B vs doc-C 패턴 차이 (정직 박제)
 

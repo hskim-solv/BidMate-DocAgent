@@ -68,7 +68,7 @@ python3 eval/run_eval.py --config eval/config.yaml --index_dir data/index --outp
 ```
 EMBEDDING_BACKEND=hashing BIDMATE_RERANK_BACKEND=bge_ko
 eval config: /tmp/eval_reranker_only.yaml (naive_baseline + full + full_reranker)
-index:       data/index (hashing embeddings, ADR 0001 public synthetic)
+index:       data/index (hashing embeddings, ADR 0001 public fixture smoke)
 ```
 
 **전체 지표 (95% bootstrap CI, n=100):**

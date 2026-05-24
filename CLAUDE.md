@@ -4,7 +4,7 @@ RFP 문서 이해를 위한 DocAgent 시스템. **입찰/RFP 문서 인텔리전
 
 파이프라인: ingestion → 메타데이터 정규화 → 청킹 → 검색 → 재순위/계획 → 근거 집계 → 근거 기반 답변 → 검증 → 평가 → reviewer 문서.
 
-자동화 표면: `.gitignore`, CI ([`pr-eval.yml`](.github/workflows/pr-eval.yml), [`branch-and-issue-check.yml`](.github/workflows/branch-and-issue-check.yml), [`pr-judge.yml`](.github/workflows/pr-judge.yml) (`live-judge-please` 라벨로만 트리거되는 advisory live LLM-judge 워크플로 — 머지 필수 게이트 아님, 새 push 후 라벨 재부착 필요, ADR 0043), [`codex-adversarial-review.yml`](.github/workflows/codex-adversarial-review.yml) (PR-time Codex adversarial review, informational, ADR 0066), [`leaderboard.yml`](.github/workflows/leaderboard.yml), [`deploy-fly.yml`](.github/workflows/deploy-fly.yml) + [`docker-publish.yml`](.github/workflows/docker-publish.yml) (api/main.py 데모 배포 — 제품화 아님)), `.githooks/`, [`scripts/check_branch_and_issue.py`](scripts/check_branch_and_issue.py) (브랜치+이슈 컨벤션 regex 단일 출처, ADR 0007), [`.github/pull_request_template.md`](.github/pull_request_template.md), [`.github/ISSUE_TEMPLATE/`](.github/ISSUE_TEMPLATE/), [`.claude/settings.json`](.claude/settings.json) (load-bearing 편집 awareness 훅 + stacked dependent 있을 때 `gh pr merge --delete-branch` 차단 Bash matcher). 이 파일은 자동 강제되지 않는 원칙·포인터를 담는다.
+자동화 표면: `.gitignore`, CI ([`pr-eval.yml`](.github/workflows/pr-eval.yml), [`branch-and-issue-check.yml`](.github/workflows/branch-and-issue-check.yml), [`codex-adversarial-review.yml`](.github/workflows/codex-adversarial-review.yml) (PR-time Codex adversarial review, informational, ADR 0066), [`deploy-fly.yml`](.github/workflows/deploy-fly.yml) + [`docker-publish.yml`](.github/workflows/docker-publish.yml) (api/main.py 데모 배포 — 제품화 아님)), `.githooks/`, [`scripts/check_branch_and_issue.py`](scripts/check_branch_and_issue.py) (브랜치+이슈 컨벤션 regex 단일 출처, ADR 0007), [`.github/pull_request_template.md`](.github/pull_request_template.md), [`.github/ISSUE_TEMPLATE/`](.github/ISSUE_TEMPLATE/), [`.claude/settings.json`](.claude/settings.json) (load-bearing 편집 awareness 훅 + stacked dependent 있을 때 `gh pr merge --delete-branch` 차단 Bash matcher). 이 파일은 자동 강제되지 않는 원칙·포인터를 담는다.
 
 ## 여기서 시작
 
@@ -12,7 +12,7 @@ RFP 문서 이해를 위한 DocAgent 시스템. **입찰/RFP 문서 인텔리전
 - [`docs/adr/README.md`](docs/adr/README.md) — 결정 인덱스
 - [`docs/multi-agent-ownership.md`](docs/multi-agent-ownership.md) — 여러 agent 가 병행 작업할 때 조율 모델
 - [`docs/audits/`](docs/audits/) — Phase 3/4/5 eval-framework 감사 + failure inspection (retrieval-miss / verifier-false-negative / variance-source)
-- retrieval / answer / eval 손볼 시 추가 필독: [ADR 0001](docs/adr/0001-preserve-naive-baseline.md) (기준선), [ADR 0003](docs/adr/0003-structured-answer-citation-contract.md) (답변 계약), [ADR 0005](docs/adr/0005-eval-split-public-synthetic-private-local.md) (eval 분리), [ADR 0012](docs/adr/0012-llm-judge-on-public-synthetic.md) (합성 LLM-judge), [ADR 0048](docs/adr/0048-realN-metrics-extension.md) (by_metadata_field + abstention calibration), [ADR 0052](docs/adr/0052-real-eval-hardcase-expansion-to-200.md) (n=221), [ADR 0056](docs/adr/0056-rationality-judge-measurement-surface.md) (rationality-judge), [ADR 0058](docs/adr/0058-phase35-mode-winner.md) (hybrid 기본 전환), [ADR 0059](docs/adr/0059-failure-mode-classifier-as-measurement-surface.md) (failure-mode classifier)
+- retrieval / answer / eval 손볼 시 추가 필독: [ADR 0001](docs/adr/0001-preserve-naive-baseline.md) (기준선), [ADR 0003](docs/adr/0003-structured-answer-citation-contract.md) (답변 계약), [ADR 0005](docs/adr/0005-eval-split-public-synthetic-private-local.md) (public fixture smoke / private internal eval 분리), [ADR 0048](docs/adr/0048-realN-metrics-extension.md) (by_metadata_field + abstention calibration), [ADR 0052](docs/adr/0052-real-eval-hardcase-expansion-to-200.md) (n=221), [ADR 0056](docs/adr/0056-rationality-judge-measurement-surface.md) (rationality-judge), [ADR 0058](docs/adr/0058-phase35-mode-winner.md) (hybrid 기본 전환), [ADR 0059](docs/adr/0059-failure-mode-classifier-as-measurement-surface.md) (failure-mode classifier)
 
 ## 저장소 맵
 
@@ -35,8 +35,8 @@ RFP 문서 이해를 위한 DocAgent 시스템. **입찰/RFP 문서 인텔리전
 - `rag_answer.py` — 답변 생성 (#468, PR-J2). 21 함수가 검증된 근거를 ADR 0003 답변 dict 로 변환. `schema_version: 2` 계약 유지
 - `rag_query.py` — 쿼리 분석·계획 (#478, PR-J3). 15 함수, `analyze_query`/`make_plan`/`comparison_targets_for_analysis` 등
 - `rag_query_expansion.py` — `QueryExpander` Protocol + 기본 `IdentityExpander` + opt-in `HyDEExpander` (#396, ADR 0023)
-- `scripts/` — `build_index.py`, `update_readme_metrics.py`, `run_real_eval_delta.py` 등
-- `data/raw/` → `data/index/` → `outputs/` → `reports/` (파이프라인 산출물)
+- `scripts/` — `build_index.py`, `check_latency_slo.py`, `run_real_eval_delta.py` 등
+- `eval/fixtures/smoke_rfp/raw/` → `data/index/` → `outputs/` → `reports/` (public fixture smoke 파이프라인 산출물)
 - `docs/` — 설계 노트, ADR, 실패 분석, reviewer 문서
 
 ## 소통
@@ -61,18 +61,18 @@ RFP 문서 이해를 위한 DocAgent 시스템. **입찰/RFP 문서 인텔리전
 
 - **Issue first, 컨벤션 브랜치.** 모든 PR 은 issue 참조 (`Closes #N` in body) + 브랜치 `<type>/issue-<N>[-<slug>]` (ADR 0007). `branch-and-issue-check.yml` 이 PR 시점에 강제
 - **새로 만들기보다 재사용.** 코딩 전 기존 구현 확인. 재사용 유틸리티 먼저 검색
-- **외부/paid API 도입 허용 (ADR 0061).** 신규 외부·유료 API 의존성은 ① opt-in (env/preset), ② ADR 0001 baseline byte-identical 보존 (기본 오프라인 경로 = `hashing`/`identity`/`regex`/`stub` 가 SSoT), ③ 데이터 경계 (외부 페이로드는 public/synthetic·마스킹 한정, 비공개 데이터 전송은 ADR 0005/0012 관할) 3조건 동시 충족 시 허용
+- **외부/paid API 도입 허용 (ADR 0061).** 신규 외부·유료 API 의존성은 ① opt-in (env/preset), ② ADR 0001 baseline byte-identical 보존 (기본 오프라인 경로 = `hashing`/`identity`/`regex`/`stub` 가 SSoT), ③ 데이터 경계 (외부 페이로드는 명시적 public fixture 또는 별도 승인된 공개 데이터만 허용, 비공개 데이터 전송은 ADR 0005 관할) 3조건 동시 충족 시 허용
 - **One PR, one concern.** 범위 밖 수정 → 별도 issue/follow-up PR. 같은 도메인을 같은 날 N PR 로 분해는 valid 패턴 (예: 2026-05-15 PR-A0~A3 4-PR stacked-day). `gh pr create --base <parent>` 사용 + 부모 머지 시 `--delete-branch` 회피 (child auto-close 방지)
 - **PR 크기는 surface 별.** "one concern" 은 LOC 가 아니라 surface 기준. `eval/` PR 은 200–2500 LOC 정상 (dataset + config + plot 한 묶음 = 한 concern); `docs/` PR 은 보통 <100 LOC. 2000-LOC `eval/` PR 을 크기만으로 reject 금지, 두 ADR 섞인 200-LOC `docs/` PR 은 분할. memory `project_pr_size_heuristic.md` 참조
 - **동작 변경 ↔ 테스트 변경.** 테스트 없는 동작 변경은 실수로 간주. 회귀 테스트는 `tests/test_*_regression.py` (예: `tests/test_retrieval_loop_regression.py`)
 - **하위 호환성.** Breaking 변경은 명시적 사유 필요. 답변 계약 (ADR 0003) 깨질 시 `schema_version` 증가
-- **ADR 임계값.** load-bearing 결정 (기준선/파이프라인/답변 계약/eval 표면) 제거·교체 시 ADR 필요. **새 측정 표면** (eval 슬라이스, 리더보드 신호, self-review 축) 도입도 포함 (reviewer 가 의존할 계약 고정). 기준: [`docs/adr/README.md`](docs/adr/README.md)
+- **ADR 임계값.** load-bearing 결정 (기준선/파이프라인/답변 계약/eval 표면) 제거·교체 시 ADR 필요. **새 측정 표면** (eval slice, reviewer evidence artifact, self-review 축) 도입도 포함 (reviewer 가 의존할 계약 고정). 기준: [`docs/adr/README.md`](docs/adr/README.md)
 - **ADR 번호 사전 예약.** ADR 작성 전 `ls docs/adr/` + `gh pr list --search "ADR" --state open` 양쪽 확인. 사용자 확인 후 파일 생성 — 동시 worktree 작업으로 0022→0023, 0023→0025, 0029→0030 충돌 반복 발생
 - **LLM 코딩 편향 가드.** `karpathy-guidelines` skill ([upstream](https://github.com/multica-ai/andrej-karpathy-skills), 2026-05-15 fetch) 의 4 원칙 (Think Before / Simplicity First / Surgical Changes / Goal-Driven). **충돌 정책**: 위 프로젝트 규칙 (인시던트 유래) 이 karpathy 4 원칙 (범용) 보다 우선 — karpathy 는 프로젝트 규칙이 침묵할 때 leaning 기본값
 
 ## PR 설명
 
-[`.github/pull_request_template.md`](.github/pull_request_template.md) 채워야 함. 모든 섹션 필수 — 삭제 대신 "N/A" + 사유. load-bearing 파일 변경 시 **5b (real-data 델타)** 가 가장 중요 — 합성 CI 델타만으로 #69 의도된 보류 회귀를 놓친 사례
+[`.github/pull_request_template.md`](.github/pull_request_template.md) 채워야 함. 모든 섹션 필수 — 삭제 대신 "N/A" + 사유. load-bearing 파일 변경 시 **5b (real-data 델타)** 가 가장 중요 — fixture smoke 델타만으로 #69 의도된 보류 회귀를 놓친 사례
 
 ## 자주 쓰는 명령
 
@@ -100,7 +100,7 @@ RFP 문서 이해를 위한 DocAgent 시스템. **입찰/RFP 문서 인텔리전
 
 - UI 추가, 웹 서비스 제품화
 - 대규모 아키텍처 재작성
-- 비공개 RFP 데이터 외부 전송·재구성 (ADR 0005/0012 관할 — 외부 API 페이로드는 public/synthetic·마스킹 데이터로 제한)
+- 비공개 RFP 데이터 외부 전송·재구성 (ADR 0005 관할 — 외부 API 페이로드는 명시적 public fixture 또는 별도 승인된 공개 데이터로 제한)
 
 ## 막혔을 때
 

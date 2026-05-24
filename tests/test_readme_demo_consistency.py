@@ -2,9 +2,8 @@
 
 The README front-page hero code block and its terminal replay
 (``docs/assets/demo.cast`` → ``docs/assets/demo.gif``) must cite the *same*
-evidence. PR #1117 refreshed the README hero to the current hybrid run
-(``chunk-056`` / ``chunk-094``) but left ``demo.cast`` on the stale 2-doc-corpus
-output (``chunk-001``, ``latency_ms=5.79``), so the code block a reviewer reads
+evidence. The README hero and ``demo.cast`` must be refreshed together when
+the public fixture index changes, so the code block a reviewer reads
 and the replay they click diverged — the exact drift this gate pins.
 
 The chunk-id set equality is the load-bearing invariant: it is what the README
@@ -76,9 +75,10 @@ def test_hero_and_cast_share_command_and_backend() -> None:
 
 def test_cast_has_no_stale_markers() -> None:
     cast = _cast_text()
-    # The literal PR #1117 drift fingerprint: 2-doc-corpus latency + chunk.
+    # The literal PR #1117 drift fingerprint: old 13-doc-corpus latency + chunks.
     assert "5.79" not in cast, "stale latency_ms=5.79 — demo.cast not regenerated"
-    assert "chunk-001" not in cast, "stale chunk-001 citation — demo.cast not regenerated"
+    assert "chunk-056" not in cast, "stale chunk-056 citation — demo.cast not regenerated"
+    assert "chunk-094" not in cast, "stale chunk-094 citation — demo.cast not regenerated"
 
 
 def test_hero_assets_present_and_nonempty() -> None:

@@ -272,7 +272,7 @@ class EmbedTextsAdapterGatingTest(unittest.TestCase):
 class EvalSummaryMetricEqualityTest(unittest.TestCase):
     """End-to-end invariance: run ``eval/run_eval.py`` once and assert
     that the finetuned rows produce byte-equal correctness metrics to
-    their parents on the public synthetic surface.
+    their parents on the public fixture smoke surface.
 
     Slow-ish (single eval invocation, ~10 s). Latency / stage_latency
     keys are *not* compared — they vary μs-scale run-to-run regardless

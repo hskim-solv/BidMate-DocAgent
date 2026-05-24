@@ -8,8 +8,8 @@ layer into a single leaf module.
 Public surface:
 
 - ``load_raw_documents`` / ``normalize_json_document`` /
-  ``normalize_text_document`` — read JSON/MD/TXT under ``data/raw/``
-  and produce the normalized in-memory document shape.
+  ``normalize_text_document`` — read JSON/MD/TXT under the configured
+  corpus directory and produce the normalized in-memory document shape.
 - ``validate_chunking_options`` / ``resolve_chunking_strategy`` —
   guard rails around the ``auto`` / ``section`` / ``fixed`` choice.
 - ``build_chunk_records`` / ``build_chunks`` / ``make_chunk`` —
@@ -91,12 +91,11 @@ def load_raw_documents(input_dir: Path) -> list[dict[str, Any]]:
     for path in files:
         if path.name.startswith("."):
             continue
-        # E2 OOD corpus (data/ood_synthetic_legal/, ADR 0046) writes
-        # ``manifest.json`` and ``README.md`` siblings recording corpus
-        # metadata. Neither is a document — skip both so ``build_index``
-        # treats the directory as exactly the contract files. RFP corpora
-        # under ``data/raw/`` ship neither file, so the existing path
-        # stays byte-identical (ADR 0001 invariant preserved).
+        # Some local-only corpora write ``manifest.json`` and ``README.md``
+        # siblings recording corpus metadata. Neither is a document — skip
+        # both so ``build_index`` treats the directory as exactly the contract
+        # files. The public fixture path ships neither file, so the standard
+        # path stays byte-identical (ADR 0001 invariant preserved).
         if path.name in {"manifest.json", "README.md"}:
             continue
         if path.suffix.lower() == ".json":
@@ -330,7 +329,7 @@ def build_index_payload(
         chunking_strategy=chunking_strategy,
         chunk_max_chars=chunk_max_chars,
         chunk_overlap_sentences=chunk_overlap_sentences,
-        message="Public synthetic RFP index for local minimum E2E RAG.",
+        message="Public fixture RFP index for local minimum E2E RAG.",
     )
 
 

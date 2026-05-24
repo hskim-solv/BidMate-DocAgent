@@ -115,7 +115,7 @@ class ObservabilityTracingTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.index = build_index_payload(
-            Path("data/raw"),
+            Path("eval/fixtures/smoke_rfp/raw"),
             embedding_backend="hashing",
         )
 

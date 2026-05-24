@@ -3,7 +3,7 @@
 - **Status**: proposed
 - **Date**: 2026-05-17
 - **Deciders**: hskim
-- **Related**: [ADR 0001](./0001-preserve-naive-baseline.md) (naive_baseline ranking 불변), [ADR 0003](./0003-structured-answer-citation-contract.md) (답변 계약 schema_version=2), [ADR 0005](./0005-eval-split-public-synthetic-private-local.md) (eval 분리 경계), [ADR 0030](./0030-leaderboard-headline-includes-agentic-full.md) (silence threshold; axis-A 신호 회복), [ADR 0044](./0044-realN-eval-case-expansion.md) (realN 케이스 확장 lineage), issue [#911](https://github.com/hskim-solv/BidMate-DocAgent/issues/911) (본 ADR)
+- **Related**: [ADR 0001](./0001-preserve-naive-baseline.md) (naive_baseline ranking 불변), [ADR 0003](./0003-structured-answer-citation-contract.md) (답변 계약 schema_version=2), [ADR 0005](./0005-eval-split-public-synthetic-private-local.md) (eval 분리 경계), [ADR 0044](./0044-realN-eval-case-expansion.md) (realN 케이스 확장 lineage), issue [#911](https://github.com/hskim-solv/BidMate-DocAgent/issues/911) (본 ADR)
 
 ## TL;DR
 
@@ -13,7 +13,7 @@
 
 ## 배경
 
-axis-A annotation v1 이 합성 doc-A/B/C 를 각 9 sections 로 cap. 공개 합성 표면 모든 측정 run 이 13/13 PASS 반환 — axis-A 신호를 silent 포화시킨 **ceiling effect**. Phase 1 Step 2.5 trajectory dump (PR #910) 가 모든 케이스가 9-section 예산 내 fit 해 axis-A 판별력 0.
+axis-A annotation v1 이 합성 doc-A/B/C 를 각 9 sections 로 cap. 공개 fixture smoke 표면 모든 측정 run 이 13/13 PASS 반환 — axis-A 신호를 silent 포화시킨 **ceiling effect**. Phase 1 Step 2.5 trajectory dump (PR #910) 가 모든 케이스가 9-section 예산 내 fit 해 axis-A 판별력 0.
 
 비공개 코퍼스 100-doc profiling pass (`docs/eval/axis-a-rebuild/axis_b_real_measurement.md` v4) 가 calibration anchor 제공: Upstage `heading1` 중앙값 ≈ doc 당 100 main 헤딩, kordoc cross-check 중앙값 39,511 한국어 자/doc. v1 의 9 sections 가 실제 분포의 1/10 — 모든 axis-A 측정이 "파이프라인이 tiny portfolio 처리 가능한가" 답이지 "실제 RFP 처리 가능한가" 아님.
 
@@ -21,7 +21,7 @@ axis-A annotation v1 이 합성 doc-A/B/C 를 각 9 sections 로 cap. 공개 합
 
 ## 결정
 
-`axis_a_scale="real_scale_v2_distractor"` 을 합성 doc-A/B/C 의 새 axis-A annotation scale 로 채택 + `data/raw/` 에 4개 새 corpus 파일 H/I/J/K 추가.
+`axis_a_scale="real_scale_v2_distractor"` 을 합성 doc-A/B/C 의 새 axis-A annotation scale 로 채택 + `eval/fixtures/smoke_rfp/raw/` 에 4개 새 corpus 파일 H/I/J/K 추가.
 
 - **Scale anchor**: Upstage `heading1` 동등성 — sections 는 top-level outline 항목, sub-bullet 과 테이블 row 는 count 안 함. Section 수: doc-A = 103, doc-B = 105, doc-C = 102
 - **지원 메타데이터 필드 6개** doc 당 추가 (additive — `evidence[].metadata` 는 ADR 0003 따라 open): `axis_a_acceptance_verdict`, `axis_a_scale_anchor`, `axis_a_scale_distractor_ref`, `axis_a_scale_measurement_ref`, `axis_a_scale_outline_ref`, `section_definition`
@@ -50,9 +50,9 @@ axis-A annotation v1 이 합성 doc-A/B/C 를 각 9 sections 로 cap. 공개 합
 
 ## Verification
 
-<!-- verifies-key: data/raw/rfp_agency_a_ai_quality.json:"axis_a_scale": "real_scale_v2_distractor" -->
-<!-- verifies-key: data/raw/rfp_agency_b_mlops_governance.json:"axis_a_scale": "real_scale_v2_distractor" -->
-<!-- verifies-key: data/raw/rfp_agency_c_chatbot.json:"axis_a_scale": "real_scale_v2_distractor" -->
+<!-- verifies-key: eval/fixtures/smoke_rfp/raw/rfp_agency_a_ai_quality.json:"axis_a_scale": "real_scale_v2_distractor" -->
+<!-- verifies-key: eval/fixtures/smoke_rfp/raw/rfp_agency_b_mlops_governance.json:"axis_a_scale": "real_scale_v2_distractor" -->
+<!-- verifies-key: eval/fixtures/smoke_rfp/raw/rfp_agency_c_chatbot.json:"axis_a_scale": "real_scale_v2_distractor" -->
 <!-- verifies-key: docs/eval/axis-a-rebuild/distractor_definitions.md:real_scale_v2_distractor -->
 <!-- verifies-key: tests/test_naive_baseline_ranking_invariance.py:GOLDEN_PATH -->
 <!-- verifies-key: tests/test_answer_contract_snapshot.py:GOLDEN_PATH -->

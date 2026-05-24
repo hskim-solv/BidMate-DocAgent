@@ -1,6 +1,7 @@
 # 0046: Out-of-distribution evaluation 도메인 — 한국어 법률 계약서
 
-- **Status**: accepted
+- **Status**: Superseded
+- **Superseded by**: [ADR 0005](./0005-eval-split-public-synthetic-private-local.md) (public fixture smoke / private internal eval boundary)
 - **Date**: 2026-05-15
 - **Related**: [ADR 0005](./0005-eval-split-public-synthetic-private-local.md)
   · [ADR 0018](./0018-korean-public-rag-bench.md) · [ADR 0002](./0002-metadata-first-retrieval.md)

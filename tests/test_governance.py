@@ -60,6 +60,7 @@ def test_canonical_list_contains_claude_md_entries(entry):
     "api/main.py",
     "docs/adr/0001-preserve-naive-baseline.md",
     "scripts/build_index.py",
+    "eval/fixtures/smoke_rfp/raw/example.pdf",
     "/Users/x/proj/rag_core.py",
     "/abs/path/to/api/main.py",
     "/abs/path/to/docs/adr/0007.md",
@@ -76,7 +77,6 @@ def test_is_load_bearing_accepts(path):
     "preeval/foo.py",
     "tests/test_governance.py",
     "scripts/check_branch_and_issue.py",
-    "data/raw/example.pdf",
     "rag_core_helper.py",
 ])
 def test_is_load_bearing_rejects(path):

@@ -8,10 +8,9 @@ never ran ``--check-5b``: the PR #69 hard-gate was silently bypassable on the
 stacked path. ``pr-eval.yml`` carried the same ``branches: [main]`` filter, so
 its eval-delta / pytest gates were also exempt on stacked PRs.
 
-``pr-judge.yml`` (ADR 0043) was already correctly base-agnostic and is the
-in-repo precedent. These tests pin "PR-correctness gates fire on all bases" so
-that re-adding a ``branches:`` filter — which reintroduces the §5b bypass —
-fails CI before it can merge.
+These tests pin "PR-correctness gates fire on all bases" so that re-adding a
+``branches:`` filter — which reintroduces the §5b bypass — fails CI before it
+can merge.
 """
 
 from __future__ import annotations
@@ -29,7 +28,6 @@ WORKFLOWS = REPO_ROOT / ".github" / "workflows"
 PR_GATE_WORKFLOWS = (
     "branch-and-issue-check.yml",
     "pr-eval.yml",
-    "pr-judge.yml",
 )
 
 
@@ -71,8 +69,7 @@ class PrGateBaseAgnosticTest(unittest.TestCase):
                     f"{name}: `pull_request.branches` is {branches!r}, but PR "
                     f"gates must fire on EVERY base. A `branches: [main]` "
                     f"filter exempts stacked PRs (base≠main) from the gate and "
-                    f"reintroduces the §5b bypass (issue #1159). pr-judge.yml "
-                    f"is the base-agnostic precedent.",
+                    f"reintroduces the §5b bypass (issue #1159).",
                 )
 
 

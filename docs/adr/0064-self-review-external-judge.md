@@ -3,7 +3,7 @@
 - Status: Proposed
 - Date: 2026-05-19
 - Authors: Hyunsoo Kim
-- Related: ADR 0006 (real-data LLM-judge), ADR 0012 (synthetic stub-default judge), ADR 0016 (judge↔human agreement gate), ADR 0056 (rationality_judge measurement surface)
+- Related: ADR 0006 (real-data LLM-judge), ADR 0016 (judge↔human agreement gate), ADR 0056 (rationality_judge measurement surface)
 - Augments: red-team self-critique (private plan `~/.claude/plans/iterative-stirring-balloon.md`) — 자기참조 cycle (외부 anchor 0개) + 인프라:사용 15:1 + signal 6 외부 노출
 - Issue: #1032
 
@@ -16,15 +16,15 @@
 3. **판정 비재현성** — 같은 분기에 `docs/self-review/Q2-2026.md` (5축 1✓4△, 2026-05-13 관측) 와 메모리 `feedback_q2_2026_collaboration_review.md` (재진단 거버넌스ROI △→✓ 회복) 가 불일치. 같은 raw signal 에 LLM session/시점마다 다른 등급.
 4. **signal 6 외부 노출 위험** — PR #505 가 "Claude 협업 측정" 을 채용 시그널로 포지셔닝. 외부 reviewer 가 코드를 열면 위 결함 발견 → signal 6 가 역효과.
 
-해결 = **외부 LLM anchor** 도입으로 자기참조 cycle 을 깸. 단 paid-API "신규" 의존성을 만들지 않기 위해 **기존 LLM judge 인프라 재사용** (ADR 0006 / 0012 / 0056 의 `eval/judges/judge_common.build_openai_client` + stub-default 패턴).
+해결 = **외부 LLM anchor** 도입으로 자기참조 cycle 을 깸. 단 paid-API "신규" 의존성을 만들지 않기 위해 **기존 LLM judge 인프라 재사용** (ADR 0006 / 0056 의 `eval/judges/judge_common.build_openai_client` + stub-default 패턴).
 
 ## Decision
 
-1. **신규 judge `eval/judges/self_review_judge.py`** — 기존 judge 패턴 (`synthetic_judge.py` / `rationality_judge.py`) 동일 구조.
+1. **신규 judge `eval/judges/self_review_judge.py`** — 기존 judge 패턴 (`llm_judge.py` / `rationality_judge.py`) 동일 구조.
    - 시그니처: `judge_self_review(stats: dict, operator_verdicts: dict[str, str] | None = None, *, backend: str = "stub") -> tuple[dict, dict]` — `(local, aggregate)`.
    - 입력: `scripts/claude-hooks/_self_review.py --quarter <Qx-YYYY> --emit-stats` 출력 stats.
 
-2. **두 backend** (ADR 0012 stub-default 패턴):
+2. **두 backend** (stub-default 패턴):
    - **`stub`** — deterministic. SKILL.md 라인 127-140 임계값 표를 직접 적용 (보류했던 결정론 채점기를 흡수). 비용 0, CI 경로. **3 자기 통과 가드 포함**: `evidence_age_days < 1.0` 자동 △ (시계열 순환논증 차단) / `pretooluse_loadbearing_fires == 0` 자동 ✗ (Goodhart 침묵 차단) / `prs_evaluated < 10` 자동 △ (sample sanity).
    - **`openai_compatible`** — `build_openai_client()` + `call_openai_json()` 로 외부 LLM (`BIDMATE_JUDGE_MODEL`, vendor-agnostic) 에게 같은 rubric prompt 전달. opt-in (env 미설정 시 `RuntimeError`, stub-only 경로 무비용).
 

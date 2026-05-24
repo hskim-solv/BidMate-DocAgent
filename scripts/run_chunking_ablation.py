@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Chunking strategy ablation runner (issue #62).
 
-Builds the public synthetic index three times — once per
+Builds the public fixture index three times — once per
 `chunking_strategy` (fixed / section / auto) — and runs the
 `chunk_boundary` probe queries from `eval/config.yaml` against each.
 Prints an aggregate table reviewers can transcribe into the
@@ -69,7 +69,7 @@ STRATEGIES = ("fixed", "section", "auto")
 
 def run_for_strategy(strategy: str) -> dict:
     index = build_index_payload(
-        Path("data/raw"),
+        Path("eval/fixtures/smoke_rfp/raw"),
         embedding_backend="hashing",
         chunking_strategy=strategy,
     )

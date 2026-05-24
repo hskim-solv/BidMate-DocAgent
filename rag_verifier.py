@@ -22,9 +22,8 @@ Constants:
   :data:`PARTIAL_TOPIC_GROUNDING_MIN_MATCHED` /
   :data:`PARTIAL_TOPIC_GROUNDING_REASON` — the policy floors for
   partial-topic acceptance (issue #69 / #89, ADR 0004).
-- :data:`EVIDENCE_BOUNDARY` — the chunk-separator token the synthetic
-  LLM-judge surface and the OSS llm_judge script join evidence with
-  (ADR 0008 / ADR 0012).
+- :data:`EVIDENCE_BOUNDARY` — the chunk-separator token judge/verifier
+  consumers use when joining evidence (ADR 0008).
 
 Circular-import avoidance: ``rag_core`` symbols that this module's
 functions need (``normalize_metadata_token``, ``metadata_tokens``,
@@ -37,7 +36,7 @@ JSON-identity guarantee: every function moves byte-for-byte from
 ``tests/test_naive_baseline_ranking_invariance.py`` (ADR 0001),
 ``tests/test_retrieval_loop_regression.py``,
 ``tests/test_prompt_injection_regression.py`` (ADR 0008 surface),
-``tests/test_synthetic_judge.py`` (EVIDENCE_BOUNDARY contract),
+``tests/test_prompt_injection_regression.py`` (EVIDENCE_BOUNDARY contract),
 ``tests/test_langgraph_orchestrator_regression.py``.
 """
 

@@ -2,7 +2,7 @@
 
 - **Status**: Proposed
 - **Date**: 2026-05-21
-- **Related**: [0007](./0007-issue-linked-branch-naming.md) (issue-first 컨벤션), [0047](./0047-solo-author-adr-governance.md) (30일 SLA), [0061](./0061-external-and-paid-api-dependencies-allowed.md) (외부 API 3조건), [0030](./0030-leaderboard-headline-includes-agentic-full.md) (자동화 표면 패턴); issue #1126
+- **Related**: [0007](./0007-issue-linked-branch-naming.md) (issue-first 컨벤션), [0047](./0047-solo-author-adr-governance.md) (30일 SLA), [0061](./0061-external-and-paid-api-dependencies-allowed.md) (외부 API 3조건); issue #1126
 
 ## Context
 
@@ -12,7 +12,7 @@ PR 리뷰 시 `/codex:adversarial-review` 슬래시 명령을 수동 호출해 �
 - 단일 reviewer 가 같은 코드에 대해 challenge framing + 기능 검토 + 규약 점검을 동시에 하기 어렵다.
 - Codex 의 adversarial verdict + finding 은 reviewer 가 결정에 의존할 정도로 신호값이 있다 — 즉 **새 reviewer-facing measurement surface** 로 격상해야 한다.
 
-기존 자동화 표면 (`pr-eval.yml` eval delta, `pr-judge.yml` live LLM-judge, `leaderboard.yml` portfolio signal) 은 모두 PR-time 게이트로 진화했다. Codex adversarial review 도 같은 자리로 옮긴다.
+기존 자동화 표면 (`pr-eval.yml` fixture smoke eval, `aggregate report.yml` portfolio signal) 은 PR-time 또는 reviewer-facing evidence 경로로 진화했다. Codex adversarial review 도 같은 자리로 옮긴다.
 
 ## Decision
 
@@ -23,7 +23,7 @@ PR 리뷰 시 `/codex:adversarial-review` 슬래시 명령을 수동 호출해 �
 5. **외부/유료 API 의존 (ADR 0061 3조건) 명시적 부합**:
    - **opt-in**: workflow 가 load-bearing 변경 + 본인 PR + non-fork 모두 충족 시만 fire. 다른 경로 (eval pipeline, baseline) 에 영향 X.
    - **baseline byte-identical**: ADR 0001 baseline 은 codex 호출과 무관. `reports/` 산출물에 codex output 들어가지 않음.
-   - **데이터 경계**: codex 가 받는 prompt = PR diff (public repo 의 git history) + PR title + LOAD_BEARING_PATHS hit. 비공개 RFP 데이터 (`data/raw/`) 는 `.gitignore` 로 인덱스에 없음 — diff 에 안 잡힘.
+   - **데이터 경계**: codex 가 받는 prompt = PR diff (public repo 의 git history) + PR title + LOAD_BEARING_PATHS hit. 공개 fixture 는 smoke 재현성 확인용이며, private/internal eval data 는 커밋하지 않는다.
 6. **소유는 단일 PR + 단일 ADR**. follow-up 자동화 (다른 codex review surface, API-key 경로, fork PR 지원) 는 별도 issue/ADR 로 분리.
 
 ## Consequences
@@ -41,7 +41,7 @@ PR 리뷰 시 `/codex:adversarial-review` 슬래시 명령을 수동 호출해 �
 - **OpenAI API key 경로**: 비용 별도 청구 (월 N PR × ~$1) + key rotation 관리. ChatGPT 로그인 보존 + self-hosted runner 가 cost-zero 라 1차 안으로 기각.
 - **모든 PR 자동 트리거**: docs-only / dependabot PR 까지 codex 깨움 → 의미 없는 노이즈 + usage limit 빠르게 소진. Load-bearing 한정으로 ~95% 노이즈 차단.
 - **Merge gate 화 (verdict=needs-attention → CI fail)**: 오탐 시 머지 막힘. 본 ADR 단계는 informational 우선, 신뢰도 측정 후 향후 옵션으로 검토.
-- **`pr-judge.yml` 패턴 (label trigger)**: 수동 label 의존 → 호출 누락 동일 문제 재현. 자동 트리거로 직행.
+- **수동 label trigger 패턴**: 수동 label 의존 → 호출 누락 동일 문제 재현. 자동 트리거로 직행.
 - **Self-hosted runner 대신 GitHub-hosted + OpenAI API key**: cost + key rotation + secrets noise. 본인 머신 idle 자원 활용이 ROI 우위.
 
 ## Verification

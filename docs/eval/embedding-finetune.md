@@ -27,7 +27,7 @@
 
 | Statistic | Value |
 |---|---|
-| Source corpus | `data/raw/` — 7 public synthetic RFP JSON files (~10.7 KB) |
+| Source corpus | `eval/fixtures/smoke_rfp/raw/` — 7 public fixture smoke RFP JSON files (~10.7 KB) |
 | Sub-chunks (at `max_chars=240`) | 25 |
 | Queries per chunk | 200 (Anthropic backend, Claude Sonnet 4-6) |
 | Total generated queries | <!-- TODO(user): paste stats.queries_generated from script output --> |
@@ -72,7 +72,7 @@
 
 ### A. Dense-only 표면 (헤드라인)
 
-public n=42 synthetic eval 위 `naive_baseline_finetuned` vs `naive_baseline` (KURE-v1 base).
+public n=42 fixture smoke eval 위 `naive_baseline_finetuned` vs `naive_baseline` (KURE-v1 base).
 **여기가 임베딩(embedding)이 실제로 중요한 지점이다** — metadata-first (ADR 0002) 가 여기서는 dense 를 우회하지 않는다.
 
 | Metric | KURE-v1 base | KURE-v1 + LoRA | Δ | 95 % bootstrap CI |

@@ -4,12 +4,12 @@
 - Implemented: #939 (2026-05-17) — `random` retrieval backend + `single_chunk` preset + `eval/config.yaml` floor ablation rows (`random_retrieval`, `single_chunk`) + regression tests (PR-5a); #946 (2026-05-17) — `scripts/distinguishing_power.py` gauge + 첫 n=221 측정 + `reports/real100/distinguishing_power.{md,aggregate.json}` (PR-5b)
 - Date: 2026-05-17
 - Authors: Hyunsoo Kim
-- Related: ADR 0001 (naive_baseline 불변성), ADR 0005 (eval 분리(split)), ADR 0030 (leaderboard 표면), ADR 0044 (real-eval n trajectory — PR-B 에서 ADR 0052 로 superseded 진행 중)
+- Related: ADR 0001 (naive_baseline 불변성), ADR 0005 (eval 분리(split)), retired aggregate policy (aggregate report 표면), ADR 0044 (real-eval n trajectory — PR-B 에서 ADR 0052 로 superseded 진행 중)
 - Issue: #938
 
 ## Context
 
-`eval-framework-progressive-audit` skill (Phase 1, step 2) 은 **세 개의 "broken" 기준선(baseline)** 을 요구한다 — 유일한 역할은 눈에 띄게 실패하는 것이며, `random_retrieval`, `no_verifier`, `single_chunk` 이다. 기본 경로의 정확도(accuracy) / 근거성(groundedness)이 이들 중 하나의 noise 범위 안으로 무너지면, 기본 경로가 실질적 작업을 안 하고 있다는 신호다 — leaderboard 는 움직이지만 실제 역량은 측정되지 않는 Goodhart 형 함정.
+`eval-framework-progressive-audit` skill (Phase 1, step 2) 은 **세 개의 "broken" 기준선(baseline)** 을 요구한다 — 유일한 역할은 눈에 띄게 실패하는 것이며, `random_retrieval`, `no_verifier`, `single_chunk` 이다. 기본 경로의 정확도(accuracy) / 근거성(groundedness)이 이들 중 하나의 noise 범위 안으로 무너지면, 기본 경로가 실질적 작업을 안 하고 있다는 신호다 — aggregate report 는 움직이지만 실제 역량은 측정되지 않는 Goodhart 형 함정.
 
 `origin/main` 의 현재 상태:
 
@@ -17,7 +17,7 @@
 - ❌ `random_retrieval` row 없음 — `VALID_RETRIEVAL_BACKENDS` 가 `{"dense", "hybrid", "m3"}` 였음. 결정적(deterministic) random ranking primitive 부재.
 - ❌ `single_chunk` preset 없음 — 기존 모든 preset 은 `top_k ≥ 4` 검색.
 
-이 두 바닥 없이는 leaderboard 가 **"우리 검색(retrieval)이 제 몫을 하는가?"** 에 답할 수 없다. Companion: PR-5b (issue TBD) 가 실제 delta-vs-floor 신호 계산용 `scripts/distinguishing_power.py` 추가.
+이 두 바닥 없이는 aggregate report 가 **"우리 검색(retrieval)이 제 몫을 하는가?"** 에 답할 수 없다. Companion: PR-5b (issue TBD) 가 실제 delta-vs-floor 신호 계산용 `scripts/distinguishing_power.py` 추가.
 
 ## Decision
 
@@ -53,8 +53,8 @@
 ## Consequences
 
 ### Positive
-- leaderboard 가 두 개의 **반증 가능한(falsifiable) 하한(lower bound)** 획득 — `random_retrieval` 을 못 이기는 미래 "개선" 은 정의상 실제 개선 아님. 직접적 portfolio 주장: "우리는 절대 메트릭만이 아니라 distinguishing power 를 측정한다."
-- PR-5b 의 `scripts/distinguishing_power.py` (follow-up) 가 모든 leaderboard 메트릭에 대해 `(default - floor) / (ceiling - floor)` 계산 가능 — "신호가 살아있는가" 단일 숫자 게이지(gauge).
+- aggregate report 가 두 개의 **반증 가능한(falsifiable) 하한(lower bound)** 획득 — `random_retrieval` 을 못 이기는 미래 "개선" 은 정의상 실제 개선 아님. 직접적 portfolio 주장: "우리는 절대 메트릭만이 아니라 distinguishing power 를 측정한다."
+- PR-5b 의 `scripts/distinguishing_power.py` (follow-up) 가 모든 aggregate report 메트릭에 대해 `(default - floor) / (ceiling - floor)` 계산 가능 — "신호가 살아있는가" 단일 숫자 게이지(gauge).
 - production 코드 경로 영향 0 — `random` short-circuit 은 `retrieval_backend` config 경유 opt-in; 기본 `dense` 무변경 (ADR 0001 byte-identity 불변식 보존).
 
 ### Negative
@@ -64,8 +64,8 @@
 ### Invariance check
 - **ADR 0001 (naive_baseline preset, contract top-k)**: 무변경 — `naive_baseline` preset 항목 + `retrieval_backend="dense"` 기본 미수정.
 - **ADR 0003 (answer contract schema_version=2)**: 무변경 — random/single_chunk 가 동일 evidence-dict shape 생산; answer renderer 는 retrieval backend 에 불변.
-- **ADR 0005 (eval split public/private)**: 무변경 — 두 새 row 모두 `eval/config.yaml` (public synthetic 표면) 거주. real-eval 표면 (PR-B) 이 동일 preset registry 소비 → n=200 baseline.aggregate.json 이 floor 를 자동으로 pick up.
-- **ADR 0030 (leaderboard surfaces)**: 확장이지 수정 아님 — 두 새 row 가 추가 컬럼으로 등장; 기존 컬럼 변화 없음.
+- **ADR 0005 (eval split public/private)**: 무변경 — 두 새 row 모두 `eval/config.yaml` (public fixture smoke 표면) 거주. real-eval 표면 (PR-B) 이 동일 preset registry 소비 → n=200 baseline.aggregate.json 이 floor 를 자동으로 pick up.
+- **retired aggregate policy (aggregate report surfaces)**: 확장이지 수정 아님 — 두 새 row 가 추가 컬럼으로 등장; 기존 컬럼 변화 없음.
 
 ## Out of scope
 

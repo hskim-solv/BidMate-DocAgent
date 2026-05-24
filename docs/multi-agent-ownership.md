@@ -19,7 +19,7 @@ RAG 파이프라인은 단계별 (ingestion → 검색 → 계획 → 검증 →
 
 1. **ADR 소유권.** agent 1명 = ADR 계약 1개 이상의 단독 저자. 해당 ADR 수정은 그 agent 의 PR 으로만
 2. **허브 lock holder.** `rag_core.py` 는 Pipeline Core owner 만 수정. 다른 owner 는 hook, callback, `run_rag_query` public surface 경유
-3. **Additive only.** 신규 기능은 분석 변형 또는 확장 preset (ADR 0001/0011/0014). 추출형 기준선은 절대 교체 금지
+3. **Additive only.** 신규 기능은 분석 변형 또는 확장 preset (ADR 0001/0011). 추출형 기준선은 절대 교체 금지
 4. **Stacked PR.** 의존 작업은 상위 PR 위로 rebase, `gh pr create --base <upstream>`. 독립 작업은 `main` 으로 직접
 
 ## 7개 소유권 역할
@@ -44,9 +44,9 @@ RAG 파이프라인은 단계별 (ingestion → 검색 → 계획 → 검증 →
 
 ### 4. Evaluation — [#241](https://github.com/hskim-solv/BidMate-DocAgent/issues/241)
 
-- **파일**: [`eval/`](../eval/) 전체, [`scripts/run_real_eval_delta.py`](../scripts/run_real_eval_delta.py), [`scripts/compare_eval.py`](../scripts/compare_eval.py), [`scripts/compare_external_baselines.py`](../scripts/compare_external_baselines.py), [`scripts/leaderboard.py`](../scripts/leaderboard.py), [`scripts/update_readme_metrics.py`](../scripts/update_readme_metrics.py), [`scripts/write_real_eval_baseline.py`](../scripts/write_real_eval_baseline.py), [`scripts/write_synthetic_history.py`](../scripts/write_synthetic_history.py)
-- **ADR**: 0005 (eval 분리), 0006 (real-only judge), 0009 (외부 baseline), 0012 (합성 judge stub-default), 0014 (RAGAS additive)
-- **금지**: `eval/config.yaml` 에서 `naive_baseline` 제거 (ADR 0001); 공개 CI 에서 live LLM judge 기본 활성 (ADR 0012); 비공개 real-data 산출물 commit (ADR 0005)
+- **파일**: [`eval/`](../eval/) 전체, [`scripts/run_real_eval_delta.py`](../scripts/run_real_eval_delta.py), [`scripts/compare_eval.py`](../scripts/compare_eval.py), [`scripts/check_latency_slo.py`](../scripts/check_latency_slo.py), [`scripts/write_real_eval_baseline.py`](../scripts/write_real_eval_baseline.py)
+- **ADR**: 0005 (eval 분리), 0006 (real-only judge), 0009 (외부 baseline)
+- **금지**: `eval/config.yaml` 에서 `naive_baseline` 제거 (ADR 0001); 공개 CI 에서 live LLM judge 기본 활성; 비공개 real-data 산출물 commit (ADR 0005)
 
 ### 5. Observability — [#242](https://github.com/hskim-solv/BidMate-DocAgent/issues/242)
 

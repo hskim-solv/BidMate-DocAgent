@@ -28,7 +28,7 @@ python3 scripts/run_embedding_ablation.py --reuse-existing
 
 ## 첫 번째 비교 — MiniLM-L12-v2 vs multilingual-e5-base
 
-실행일: 2026-05-11. Public synthetic corpus (n=42; single_doc 14 / comparison 10 / follow_up 9 / abstention 9).
+실행일: 2026-05-11. Public fixture smoke corpus (n=42; single_doc 14 / comparison 10 / follow_up 9 / abstention 9).
 
 ### 헤드라인 수치 (full 파이프라인)
 
@@ -117,7 +117,7 @@ Phase 1.2 는 원래 ADR 0019 분석의 두 env blocker 중 하나를 해소했�
 
 ### 헤드라인 수치 — Phase 1.2 (측정 2026-05-12, n=42)
 
-Public synthetic corpus (첫 비교와 동일한 n=42 split). 95% bootstrap CI 는 괄호 안에.
+Public fixture smoke corpus (첫 비교와 동일한 n=42 split). 95% bootstrap CI 는 괄호 안에.
 
 #### `full` agentic 파이프라인 — **ADR 0019 condition 3 이 설정한 기준선**
 
@@ -178,7 +178,7 @@ Phase 1.3 는 "새 venv 를 만들고, BGE-M3 단독으로 러너를 실행하�
 
 ### 헤드라인 수치 — Phase 1.3 (측정 2026-05-12, n=42)
 
-Phase 1.1 / 1.2 와 동일한 n=42 public synthetic corpus.
+Phase 1.1 / 1.2 와 동일한 n=42 public fixture smoke corpus.
 
 #### `full` agentic 파이프라인 — **ADR 0019 condition 3 평가자**
 
@@ -316,7 +316,7 @@ Runner: `scripts/run_routed_measurement.py --backend sentence-transformers`. 결
 
 ## Phase 2.0 — real100 retrieval-surface (issue #1359, 2026-05-23): 5-model Korean embedding ablation
 
-Phase 1.x는 전부 **public-synthetic** corpus + **end-to-end answer-quality**(accuracy/groundedness) 측정이었다. 두 가지 구조적 한계가 누적됐다:
+Phase 1.x는 전부 **public-fixture-smoke** corpus + **end-to-end answer-quality**(accuracy/groundedness) 측정이었다. 두 가지 구조적 한계가 누적됐다:
 
 1. **합성 corpus saturation** — Phase 1.4 falsifier([ADR 0032](../adr/0032-eval-saturation-routed-subset.md))가 routed subset에서 측정 천장을 입증.
 2. **answer-surface가 임베딩 차이를 가린다** — Phase 1.5에서 KURE-v1이 `naive_baseline`(dense)에서 accuracy +19.2pp였지만 `full`에서 −1.3pp. metadata-first routing(ADR 0002) + hybrid(ADR 0058)가 dense 채널을 우회하기 때문. 즉 answer accuracy로는 임베딩 품질 자체를 분리 측정할 수 없다.

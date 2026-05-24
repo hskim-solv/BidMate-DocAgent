@@ -4,7 +4,7 @@
 - Implemented: #959 (2026-05-18) — `eval/scorers/case.py` conditional-on-substantive-answer semantics + n=221 gauge regen
 - Date: 2026-05-18
 - Authors: Hyunsoo Kim
-- Related: ADR 0001 (naive_baseline 불변량), ADR 0003 (answer-contract schema_version=2), ADR 0005 (eval 분리), ADR 0030 (리더보드 표면), ADR 0053 (변별력(distinguishing-power) floor — **본 ADR 이 보강(augment), supersede 아님**)
+- Related: ADR 0001 (naive_baseline 불변량), ADR 0003 (answer-contract schema_version=2), ADR 0005 (eval 분리), retired aggregate policy (리더보드 표면), ADR 0053 (변별력(distinguishing-power) floor — **본 ADR 이 보강(augment), supersede 아님**)
 - Augments: ADR 0053
 - Issue: #958
 

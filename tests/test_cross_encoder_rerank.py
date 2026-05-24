@@ -110,7 +110,7 @@ class RerankCohereMissingDepsTest(unittest.TestCase):
         # attestation passes the ADR 0061 ③ guard so this exercises the
         # missing-SDK path rather than the data-boundary block (issue #1195).
         with mock.patch.dict(
-            os.environ, {"BIDMATE_DATA_SURFACE": "public_synthetic"}
+            os.environ, {"BIDMATE_DATA_SURFACE": "public_fixture"}
         ), mock.patch.dict(sys.modules, {"cohere": None}):
             out, meta = rag_rerank.rerank("q", candidates, backend="cohere")
         self.assertEqual([c["chunk_id"] for c in out], ["a::001"])

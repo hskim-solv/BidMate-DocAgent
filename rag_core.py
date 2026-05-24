@@ -99,9 +99,8 @@ from rag_retrieval import (
 )
 # PR-J1 (issue #465): verifier path extracted to rag_verifier. Re-exports
 # kept stable for external callers — EVIDENCE_BOUNDARY is consumed by
-# tests/test_synthetic_judge.py, tests/test_prompt_injection_regression.py,
-# scripts/llm_judge.py, eval/synthetic_judge.py; neutralize_instruction_patterns
-# by scripts/llm_judge.py and eval/synthetic_judge.py; verify_evidence and
+# tests/test_prompt_injection_regression.py and judge/verifier consumers;
+# neutralize_instruction_patterns by judge/verifier consumers; verify_evidence and
 # specific_topics by orchestration / answer-generation paths inside this module.
 from rag_verifier import (
     EVIDENCE_BOUNDARY,

@@ -20,7 +20,7 @@ Locks in six contracts:
   short discourse stopwords from BM25 only, leaving dense/Jaccard
   scoring bit-stable.
 
-Lightweight (hashing embedding backend + ``data/raw`` fixture) so
+Lightweight (hashing embedding backend + ``eval/fixtures/smoke_rfp/raw`` fixture) so
 ``make test-regression`` stays fast.
 """
 
@@ -54,7 +54,7 @@ class HybridRetrievalRegressionTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.index = build_index_payload(
-            Path("data/raw"),
+            Path("eval/fixtures/smoke_rfp/raw"),
             embedding_backend="hashing",
         )
 
@@ -129,7 +129,7 @@ class HybridRetrievalRegressionTest(unittest.TestCase):
         """Lexical-specific rare term should retrieve its chunk under hybrid.
 
         The probe fixture
-        ``data/raw/rfp_agency_d_spectrometer_probe.json`` carries the
+        ``eval/fixtures/smoke_rfp/raw/rfp_agency_d_spectrometer_probe.json`` carries the
         exact term "라만 캘리브레이션". BM25 weights that term sharply
         even when the hashing dense backend collides on neighbours, so
         the correct doc must appear in the top retrieval results.

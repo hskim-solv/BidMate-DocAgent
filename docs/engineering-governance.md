@@ -10,8 +10,8 @@
 | Multi-agent 조율 | [`docs/multi-agent-ownership.md`](./multi-agent-ownership.md) | 7-way 소유권, `rag_core.py` lock holder, 병행 작업 충돌 해결 |
 | Load-bearing 결정 | [`docs/adr/`](./adr/README.md) | 결정 당 짧은 파일 1개, status 추적 |
 | 동작 계약 | [ADR 0003](./adr/0003-structured-answer-citation-contract.md), [`docs/agentic/answer-policy.md`](./agentic/answer-policy.md) | 답변 JSON shape, `schema_version`, status 값 |
-| Eval 표면 | [ADR 0005](./adr/0005-eval-split-public-synthetic-private-local.md), [`eval/config.yaml`](../eval/config.yaml), `eval/*.example.yaml` | 공개 합성은 commit, 비공개 local 은 `.gitignore` |
-| Reviewer 메트릭 | `reports/eval_summary.json`, README headline 표 | PR eval 델타 워크플로가 PR 코멘트에 diff upsert |
+| Eval 표면 | [ADR 0005](./adr/0005-eval-split-public-synthetic-private-local.md), [`eval/config.yaml`](../eval/config.yaml), `eval/*.example.yaml` | 공개 fixture smoke는 commit 가능, private/internal eval은 local-only |
+| Reviewer 메트릭 | `reports/eval_summary.json`, private/internal aggregate docs | PR eval 델타 워크플로가 fixture smoke + latency diff를 PR 코멘트에 upsert |
 | 실패 분석 | [`docs/real-data/real-data-failure-taxonomy.md`](./real-data/real-data-failure-taxonomy.md), [`docs/real-data/failure-cases.md`](./real-data/failure-cases.md) | 우선순위 백로그의 원천 |
 | API 데모 | [`docs/operations/api-demo.md`](./operations/api-demo.md), `api/main.py` | reviewer 놀이터, 측정 기준 아님 |
 | Issue/PR triage | 본 페이지 ["Milestones & 이슈 lifecycle"](#milestones--이슈-lifecycle) | 마일스톤, stale 정책, 현재 카테고리 스냅샷 |
@@ -25,12 +25,12 @@ non-trivial 변경의 체크리스트 (사람·AI 공용):
 3. **기존 코드 점검.** 읽은 파일, 재사용 함수, 놀란 점 명시
 4. **Branch + worktree (병렬 시).** `<type>/issue-<N>[-<slug>]` (ADR 0007) — 예: `feat/issue-79-hybrid-retrieval`. Claude Code 기본 worktree 명 (`claude/<auto>`) 은 PR 전 rename (`git branch -m feat/issue-<N>-<slug>`)
 5. **변경 + 테스트.** 재사용 우선, one concern per PR. 동작 변경 무 테스트 = 사고. 회귀는 `tests/test_*_regression.py`
-6. **Eval 로컬 실행 (해당 시).** `make eval` 공개 합성. `main` 의 `reports/eval_summary.json` 과 비교
+6. **Eval 로컬 실행 (해당 시).** `make eval` 공개 fixture smoke. 실제 성능 변경은 private/internal eval aggregate와 비교
 7. **Push + PR.** PR body 는 [`.github/pull_request_template.md`](../.github/pull_request_template.md) 채움
 8. **CI 검증.** 3개 체크 (모든 PR): `Pytest` + `Eval delta vs base` + `Validate branch name + issue link` (ADR 0007, required status check)
 9. **리뷰 응답.** 리뷰 중 scope 추가 금지 — follow-up issue
 10. **Merge.** Squash-merge, 브랜치 삭제, worktree 정리
-11. **문서 갱신** (reviewer 가 알아야 할 변경 시): README headline 메트릭, ADR status, taxonomy entry
+11. **문서 갱신** (reviewer 가 알아야 할 변경 시): 평가 경계, private/internal aggregate evidence, ADR status, taxonomy entry
 
 ## Milestones & 이슈 lifecycle
 
@@ -95,7 +95,7 @@ Meta/parent issue (예: #118 포트폴리오, #187 phase 향상 백로그) 는 �
 ## 본 거버넌스가 막는 안티패턴
 
 - **Silent 계약 drift** — 답변 필드가 사라져도 테스트가 못 잡음. *방지*: ADR 0003 + `score_answer_format` (`eval/run_eval.py`)
-- **Headline 메트릭 인플레이션** — README 가 산출물 없는 숫자 주장. *방지*: `scripts/update_readme_metrics.py --check` (in `make check`) + 공개/비공개 eval 분리 (ADR 0005)
+- **Headline 메트릭 인플레이션** — README 가 공개 fixture 숫자를 성능 주장처럼 사용. *방지*: 공개 fixture smoke / private internal eval 분리 (ADR 0005) + private aggregate-only evidence 정책
 - **기준선 rot** — naive_baseline 이 import 되지만 아무도 안 돌림. *방지*: `naive_baseline` = `eval/config.yaml` 의 named 분석 변형, 매 eval run 마다 보고
 - **결정 세탁** — load-bearing 선택이 리팩터 PR 에 묻힘. *방지*: CLAUDE.md Core principles 의 ADR 임계값 + [`docs/adr/README.md`](./adr/README.md); PR 템플릿이 질문 강제
 - **리뷰 중 scope 증가** — "while I was here" fix 가 PR 비대화. *방지*: CLAUDE.md "one PR, one concern"; follow-up issue spawn
@@ -106,7 +106,7 @@ Meta/parent issue (예: #118 포트폴리오, #187 phase 향상 백로그) 는 �
 
 위 목록은 *설계* — 규칙과 가드. 이 섹션은 *증거* — 실제 발생한 인시던트와 사후 추가된 hook/ADR/규칙. 거버넌스가 *있다* 가 아니라 *rent 를 냈다* 가 reviewer 의 30초 질문. 각 항목 = rent 1회.
 
-- **#69 의도된 보류 회귀 — 합성 CI 의 real-data 사각.** 합성 n=42 CI 델타는 녹색이었으나 비공개 100-doc real-eval 에서 근거 불충분 시 의도된 보류 손실. eval 분리 규율 ([ADR 0005](./adr/0005-eval-split-public-synthetic-private-local.md)) 은 이미 있었지만 PR 시점 gate 가 advisory. *사후 추가*: PR 템플릿 **5b (real-data 델타)** 필수 CI 체크 ([`scripts/check_branch_and_issue.py --check-5b`](../scripts/check_branch_and_issue.py), [`scripts/_governance.py`](../scripts/_governance.py) load-bearing 경로 리스트 경유 강제). `rag_*.py` / `ingestion.py` / `eval/` / `api/` / `docs/adr/` 손대는 PR 은 real-data aggregate 첨부 또는 behavior-no-op 사유 명시 필요
+- **#69 의도된 보류 회귀 — smoke CI 의 real-data 사각.** 공개 fixture smoke 델타는 녹색이었으나 비공개 100-doc real-eval 에서 근거 불충분 시 의도된 보류 손실. eval 분리 규율 ([ADR 0005](./adr/0005-eval-split-public-synthetic-private-local.md)) 은 이미 있었지만 PR 시점 gate 가 advisory. *사후 추가*: PR 템플릿 **5b (real-data 델타)** 필수 CI 체크 ([`scripts/check_branch_and_issue.py --check-5b`](../scripts/check_branch_and_issue.py), [`scripts/_governance.py`](../scripts/_governance.py) load-bearing 경로 리스트 경유 강제). `rag_*.py` / `ingestion.py` / `eval/` / `api/` / `docs/adr/` 손대는 PR 은 real-data aggregate 첨부 또는 behavior-no-op 사유 명시 필요
 
 - **Stacked-PR child auto-close on `--delete-branch` merge.** base 브랜치를 `gh pr merge --delete-branch` 로 머지하면서 stacked dependent PR 이 여전히 그 브랜치를 target 으로 함 → GitHub 기본 동작이 dependent PR auto-close, 진행 중 리뷰 상태 손실. *사후 추가*: [`.claude/settings.json`](../.claude/settings.json) 의 `PreToolUse` Bash matcher 가 `gh pr list --base <this-PR-head> --state open --json number` 비어있지 않을 때 `gh pr merge --delete-branch` 거부. 명령이 GitHub 에 도달 전 차단. 규칙 텍스트는 `CLAUDE.md > Prohibited` 에 살아남도록 명시
 

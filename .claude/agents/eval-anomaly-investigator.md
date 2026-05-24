@@ -23,7 +23,7 @@ eval 산출물에서 dominant/이상한 failure category(또는 run-to-run·cros
 ### Step 1: anomaly + 측정 source 확정
 - 집계 신호(커밋됨, fresh run 불요): `jq '.failure_category_counts' reports/real100/failure_distribution.aggregate.json`
 - per-case slice 원천 = **`reports/real100/eval_summary.json` 로 고정** (`make real-eval` build artifact, `case_results[]` 포함, **미커밋·gitignored**). 다른 path 는 사용자가 명시적으로 지정한 경우만 허용 — **mtime 기준 "최신" Glob 선택 금지**.
-  - **이유**: repo 에 `eval_summary.json` 생산자 10+ 존재(`artifacts/benchmarks/*`, `artifacts/runs/*/metrics/`, `reports/embedding-ablation/*`, `tests/_tmp_harness_artifacts/`, 다른 worktree 의 `reports/real100/` 등). mtime-최신 선택은 방금 돌린 public-synthetic / harness / ablation 산출물을 real100 anomaly 의 slice 원천으로 오인 → 잘못된 root-cause audit + 잘못된 downstream ADR 후보로 전파.
+  - **이유**: repo 에 `eval_summary.json` 생산자 10+ 존재(`artifacts/benchmarks/*`, `artifacts/runs/*/metrics/`, `reports/embedding-ablation/*`, `tests/_tmp_harness_artifacts/`, 다른 worktree 의 `reports/real100/` 등). mtime-최신 선택은 방금 돌린 public-fixture-smoke / harness / ablation 산출물을 real100 anomaly 의 slice 원천으로 오인 → 잘못된 root-cause audit + 잘못된 downstream ADR 후보로 전파.
   - 진단 전 `find . -path '*eval_summary.json' -type f` 로 후보를 나열하고, 고정 경로 외 2개+ 가 보이면 **STOP** 후 사용자에게 어느 summary 인지 확인 요청.
   - 선택된 summary 가 기대 provenance 에 맞는지 검증: `jq '.failure_category_counts' <path>` 가 존재 + `case_results | length` 의 n 이 real100 기대치(예: 100 또는 ADR 0052 의 221)와 일치 + 아래 HEAD 캡처와 정합.
   - 고정 경로 부재 시 **STOP**: "`make real-eval` 선행 필요 — 본 agent 는 측정 미실행. 집계 레벨 진단만 가능." 보고하고 사용자 확인 대기.

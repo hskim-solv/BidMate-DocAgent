@@ -17,7 +17,7 @@ on:
       - 'api/**'
       - 'demo/**'
       - 'scripts/build_index.py'
-      - 'data/raw/**'
+      - 'eval/fixtures/smoke_rfp/raw/**'
       - 'data/lexicon/**'
       # Container + deploy primitives
       - 'Dockerfile'

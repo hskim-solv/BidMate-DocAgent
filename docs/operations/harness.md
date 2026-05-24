@@ -42,7 +42,7 @@ artifacts/runs/<run_id>/
   logs/eval.log
 ```
 
-`artifacts/runs/`는 Git 추적 대상이 아니다. 공개 synthetic smoke라도 raw prediction과 로그는 로컬 검증 산출물로 유지한다.
+`artifacts/runs/`는 Git 추적 대상이 아니다. 공개 fixture smoke라도 raw prediction과 로그는 로컬 검증 산출물로 유지한다.
 
 ## 스키마
 
@@ -73,12 +73,12 @@ artifacts/runs/<run_id>/
 
 ## Smoke 범위
 
-`harness/smoke.yaml`은 공개 synthetic RFP만 사용하고 hashing embedding으로 인덱스를 만든다. `harness/smoke_eval.yaml`은 작은 고정 case set만 포함한다.
+`harness/smoke.yaml`은 `eval/fixtures/smoke_rfp/raw/`의 공개 fixture만 사용하고 hashing embedding으로 인덱스를 만든다. 목적은 benchmark가 아니라 CI 재현성 확인이다.
 
 - 단일 문서 보안 요구사항
 - 기관 A/B AI 요구사항 비교
 
-전체 품질 평가는 계속 `eval/run_eval.py --config eval/config.yaml`과 benchmark flow가 담당한다.
+전체 품질 평가는 private/internal eval set과 aggregate-only benchmark flow가 담당한다. 공개 fixture smoke 결과를 성능 기준으로 사용하지 않는다.
 
 ## Real-data profile
 
@@ -142,8 +142,8 @@ artifacts/matrices/<matrix_id>/
 
 ```bash
 make harness-compare \
-  RUN_A=artifacts/runs/public_synthetic_smoke_20260511T120000Z \
-  RUN_B=artifacts/runs/public_synthetic_smoke_20260511T140000Z
+  RUN_A=artifacts/runs/public_fixture_smoke_20260511T120000Z \
+  RUN_B=artifacts/runs/public_fixture_smoke_20260511T140000Z
 
 # 또는 eval_summary.json 직접 지정
 python3 scripts/run_harness.py --compare \

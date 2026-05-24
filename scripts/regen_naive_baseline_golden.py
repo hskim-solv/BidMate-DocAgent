@@ -2,10 +2,10 @@
 """Regenerate (or --check) the naive_baseline ranking golden (ADR 0001).
 
 ``tests/data/naive_baseline_top_k.json`` pins the top-K ``(chunk_id, score)``
-for a fixed query set, built from ``data/raw/`` through the ``naive_baseline``
-pipeline with the deterministic hashing backend + fixed chunking. It drifts
-whenever the ``data/raw/`` corpus changes (e.g. PR #648 HWP fixtures, PR #914
-H/I/J/K corpus), and until now each drift was repaired by hand with tribal
+for a fixed query set, built from ``eval/fixtures/smoke_rfp/raw/`` through the
+``naive_baseline`` pipeline with the deterministic hashing backend + fixed
+chunking. It drifts whenever the public fixture smoke corpus changes, and
+until now each drift was repaired by hand with tribal
 ``EMBEDDING_BACKEND=hashing chunking_strategy=fixed`` commands.
 
 Write mode (default): rebuild and overwrite the golden in place, preserving the
@@ -40,7 +40,7 @@ if str(REPO_ROOT) not in sys.path:
 from rag_core import build_index_payload, run_rag_query  # noqa: E402
 
 GOLDEN_PATH = REPO_ROOT / "tests" / "data" / "naive_baseline_top_k.json"
-CORPUS_DIR = REPO_ROOT / "data" / "raw"
+CORPUS_DIR = REPO_ROOT / "eval" / "fixtures" / "smoke_rfp" / "raw"
 
 # Hashing backend + fixed chunking = deterministic across machines and across
 # the Phase 3 stack (see the invariance test docstring). These must stay in

@@ -19,7 +19,7 @@ license: mit
 
 This directory holds the **reviewer-facing** demo UI. The Streamlit
 front-page lets anyone exercise the RAG pipeline (extractive +
-LLM-synthesis ablation) against the public synthetic RFP corpus
+LLM-synthesis ablation) against the public fixture smoke RFP corpus
 without writing any code.
 
 The YAML frontmatter above is the **Hugging Face Spaces** config —
@@ -28,7 +28,7 @@ mirror it into the Space's `README.md` when you create the Space.
 ## Run locally
 
 ```bash
-make index            # one-time, builds data/index from data/raw
+make index            # one-time, builds data/index from eval/fixtures/smoke_rfp/raw
 make demo             # streamlit run demo/streamlit_app.py
 # open http://localhost:8501
 ```

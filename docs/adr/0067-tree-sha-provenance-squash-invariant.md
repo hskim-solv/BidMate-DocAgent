@@ -35,9 +35,8 @@ ancestry 검사가 실패한다.
 1. `build_provenance()` 가 `git rev-parse HEAD^{tree}` 의 12-char SHA 를
    `provenance.git_tree` 로 기록한다. squash-merge 는 동일 tree 를 main 에
    올리므로 `git_commit` 은 dangle 해도 `git_tree` 는 도달 가능하게 남는다.
-   두 writer(`scripts/write_real_eval_baseline.py`,
-   `scripts/write_synthetic_history.py`)가 모두 `build_provenance()` 를
-   호출하므로 자동 상속된다.
+   writer(`scripts/write_real_eval_baseline.py`)와 future aggregate writers가
+   `build_provenance()` 를 호출하면 같은 키를 자동 상속한다.
 
 2. `check_baseline_provenance.py` 의 도달성 검사를 2-tier 로:
    - **Tier 1 (commit, backward-compatible)**: `git_commit` 이 object DB 에

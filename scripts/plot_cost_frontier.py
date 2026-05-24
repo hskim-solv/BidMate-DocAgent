@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Cost-accuracy frontier extractor (ADR 0038, follow-up to issue #177).
 
-Reads ``reports/eval_summary.json`` (in-repo ablations) and
-``reports/external_baselines.json`` (real-API backends) and emits a Markdown
-table at ``reports/cost_frontier.md``. Optionally renders
+Reads ``reports/eval_summary.json`` (in-repo ablations) and optionally an
+external-baseline aggregate supplied by a private/internal workflow, then emits
+a Markdown table at ``reports/cost_frontier.md``. Optionally renders
 ``reports/cost_frontier.png`` when matplotlib is available; the PNG render is
 skipped cleanly otherwise so the same script runs in CI containers that don't
 install matplotlib.
@@ -143,10 +143,10 @@ def extract_inrepo_points(summary: dict) -> list[FrontierPoint]:
 
 
 def extract_external_points(external: dict) -> list[FrontierPoint]:
-    """Extract one FrontierPoint from external_baselines.json (single backend).
+    """Extract one FrontierPoint from an external-baseline aggregate.
 
     Per ADR 0038, cost is ``sum(case_results[i].cost_estimate_usd)``. If the
-    external file lacks per-case cost data (e.g. the langchain runner did not
+    external file lacks per-case cost data (e.g. the private runner did not
     emit ``cost_estimate_usd`` per case), the point is excluded from the plot
     with a stderr note — without cost, there is nothing to put on the x-axis.
     """
@@ -163,9 +163,9 @@ def extract_external_points(external: dict) -> list[FrontierPoint]:
     if cost is None:
         sys.stderr.write(
             "[plot_cost_frontier] external_baselines.json has no per-case "
-            f"cost (backend={backend}, model={model}). Run "
-            "`make external-baselines-langchain` with ANTHROPIC_API_KEY to "
-            "populate case_results[i].cost_estimate_usd; external point "
+            f"cost (backend={backend}, model={model}). Populate "
+            "case_results[i].cost_estimate_usd in a private/internal "
+            "external-baseline aggregate; external point "
             "excluded.\n"
         )
         return []
@@ -448,7 +448,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--external",
         default="reports/external_baselines.json",
         help=(
-            "Path to external_baselines.json "
+            "Path to an optional external-baseline aggregate "
             "(default: reports/external_baselines.json)."
         ),
     )
@@ -502,8 +502,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     else:
         sys.stderr.write(
             f"[plot_cost_frontier] {external_path} not found; skipping "
-            "external baselines. Run `make external-baselines-langchain` to "
-            "generate.\n"
+            "external baselines.\n"
         )
 
     all_points = in_repo + external

@@ -1,6 +1,7 @@
 # ADR 0071 — Committed README metric snapshot as parity source of truth
 
-- Status: accepted
+- Status: Superseded
+- Superseded by: [ADR 0005](./0005-eval-split-public-synthetic-private-local.md) (public fixture smoke / private internal eval boundary)
 - Date: 2026-05-23
 - Authors: Hyunsoo Kim
 - Related: ADR 0005 (eval split public-synthetic/private-local), ADR 0001 (naive baseline 보존), CLAUDE.md "PR 설명" §5b, PR #1116 (docs 한국어화)

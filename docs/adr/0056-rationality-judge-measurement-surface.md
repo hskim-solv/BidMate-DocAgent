@@ -4,7 +4,7 @@
 - Implemented: #987 (2026-05-18) — `eval/judges/rationality_judge.py` 3-axis trajectory surface. (#1297 (2026-05-22) 가 committed artifact 와의 모순을 정정해 일시적으로 2-axis measured + 1-axis `answer_reasoning` pending 으로 relabel; #1326 (2026-05-22) 가 stub full-trace 캡처 wiring 을 고쳐 **3-axis 모두 measured** 로 복원 — `answer_reasoning` effective_n=166)
 - Date: 2026-05-18
 - Authors: Hyunsoo Kim
-- Related: ADR 0006 (real-data LLM-judge), ADR 0012 (synthetic LLM-judge), ADR 0014 (RAGAS enrichment, Gate 3), ADR 0054 (conditional-on-substantive-answer scorer semantics), ADR 0055 (claim_validator)
+- Related: ADR 0006 (real-data LLM-judge), ADR 0054 (conditional-on-substantive-answer scorer semantics), ADR 0055 (claim_validator)
 - Augments: Phase 3 audit (`docs/audits/eval-framework-phase3-audit.md`, PR #961) item 3 supply ("trajectory-rationality rubric ✗ absent")
 - Issue: #969
 
@@ -68,7 +68,7 @@ Step 2 (PR #968, ADR-free) 의 trace schema v2 `synthesis_llm_call` 키 (`BIDMAT
 
 - **ADR 0001** (`naive_baseline` byte-identical) — 본 judge 는 read-only consumer, production code path 0 변경 → 합성 baseline 영향 없음.
 - **ADR 0003** (answer dict schema_version=2) — 변경 없음.
-- **ADR 0005** (private real / public synthetic 분리) — `reports/real100/rationality.*` 는 ADR 0005 의 aggregate-only allowlist 패턴 그대로 (eda / distinguishing_power 와 동일). per-case (case id 포함) 는 `rationality.local.json` gitignored. `rationality.md` 의 bottom-3 행은 발주기관명-인코딩 qid 대신 익명 rank (`#1/#2/#3`) + slice + score 만 노출 (#1297 sanitize; 이전엔 raw qid 가 committed 되어 본 주장과 모순이었음 — `real-data-failure-taxonomy.md` 의 P-NN 컨벤션과 일관화).
+- **ADR 0005** (private real / public fixture smoke 분리) — `reports/real100/rationality.*` 는 ADR 0005 의 aggregate-only allowlist 패턴 그대로 (eda / distinguishing_power 와 동일). per-case (case id 포함) 는 `rationality.local.json` gitignored. `rationality.md` 의 bottom-3 행은 발주기관명-인코딩 qid 대신 익명 rank (`#1/#2/#3`) + slice + score 만 노출 (#1297 sanitize; 이전엔 raw qid 가 committed 되어 본 주장과 모순이었음 — `real-data-failure-taxonomy.md` 의 P-NN 컨벤션과 일관화).
 - **ADR 0006** (LLM-judge real-data only) — rationality_judge 도 real eval surface 에서만 의미 (synthetic 의 trajectory 는 deterministic). 본 PR 의 첫 측정은 real n=221, ADR 0006 boundary 준수.
 - **ADR 0054** (substantive-only scorer semantics) — `answer_reasoning` 의 None-skip 이 같은 의미를 trajectory 측정 layer 에 propagate.
 - **ADR 0055** (claim_validator) — rationality axis 는 향후 `Claim:` 검증 대상이 될 수 있음. paired_bootstrap_ci 가 None pair drop 하므로 호환.

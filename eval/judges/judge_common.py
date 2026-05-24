@@ -1,24 +1,23 @@
 """Shared utilities for BidMate-DocAgent LLM-judge surfaces.
 
-Extracted from the three judge surface files per ADR 0012 *Alternatives*:
+Extracted from judge surface files after a third judge consumer appeared:
 
     *"If a third judge surface appears, revisit and extract
     eval/judge_common.py."*
 
-Three surfaces now exist:
+Active surfaces:
 
 * ``scripts/llm_judge.py``   — Gate 1: real-data (ADR 0006)
-* ``eval/synthetic_judge.py`` — Gate 2: synthetic stub-default (ADR 0012)
-* ``eval/llm_judge.py``       — Gate 3: RAGAS enrichment (ADR 0014)
+* ``eval/llm_judge.py``       — additive RAGAS enrichment
 
-All three import from here. Nothing outside the judge surfaces should
+Nothing outside the judge surfaces should
 import this module — it is an implementation helper, not part of the
 pipeline contract.
 
 Shared items
 ------------
 :data:`JUDGE_STATUSES`
-    Three-value status vocabulary shared by Gate 1 and Gate 2.
+    Three-value status vocabulary used by status-style judge outputs.
 :data:`EVIDENCE_BOUNDARY`
     Re-exported from ``rag_core`` so surface files need only one import.
 :func:`clamp_score`
@@ -34,7 +33,7 @@ Shared items
 :func:`call_openai_json`
     Call an OpenAI-compatible endpoint and return a parsed JSON dict.
 :func:`normalize_status_verdict`
-    Normalise a raw backend payload into the Gate 1/2 verdict schema.
+    Normalise a raw backend payload into the status-style verdict schema.
 """
 from __future__ import annotations
 
@@ -59,9 +58,7 @@ __all__ = [
     "normalize_status_verdict",
 ]
 
-# Three-value status vocabulary shared by Gate 1 (scripts/llm_judge.py) and
-# Gate 2 (eval/synthetic_judge.py).  Gate 3 uses continuous RAGAS metrics
-# instead and does not import this constant.
+# Three-value status vocabulary shared by status-style judge outputs.
 JUDGE_STATUSES: tuple[str, ...] = ("supported", "partial", "insufficient")
 
 
@@ -189,7 +186,7 @@ def get_judge_temperature() -> float:
 
     Returns ``BIDMATE_JUDGE_TEMPERATURE`` parsed as a float, defaulting to
     ``0.0`` when unset — the deterministic path that keeps existing judge
-    behaviour byte-identical (ADR 0012 stub-default reproducibility).
+    behaviour byte-identical (stub-default reproducibility).
 
     The override exists because some reasoning models (e.g. the gpt-5.x
     family) reject ``temperature=0`` outright ("only the default (1) value
@@ -250,7 +247,7 @@ def call_openai_json(
 
 
 # ---------------------------------------------------------------------------
-# Status-verdict normalisation (Gate 1 + Gate 2)
+# Status-verdict normalisation
 # ---------------------------------------------------------------------------
 
 
@@ -258,12 +255,11 @@ def normalize_status_verdict(
     payload: dict[str, Any],
     fallback_status: str,
 ) -> dict[str, Any]:
-    """Normalise a raw backend payload into the Gate 1/2 verdict schema.
+    """Normalise a raw backend payload into the status-style verdict schema.
 
-    Used by :mod:`scripts.llm_judge` (Gate 1, real-data) and
-    :mod:`eval.synthetic_judge` (Gate 2, synthetic stub-default).
-    Gate 3 (:mod:`eval.llm_judge`) uses continuous RAGAS metrics and
-    does **not** call this function.
+    Used by :mod:`scripts.llm_judge` (real-data). The RAGAS enrichment path
+    (:mod:`eval.llm_judge`) uses continuous metrics and does **not** call this
+    function.
 
     Args:
         payload: Parsed JSON dict from the backend.
@@ -288,9 +284,8 @@ def normalize_status_verdict(
         "judge_grounded": grounded,
         "judge_reason_short": reason,
     }
-    # Gate 2 (synthetic_judge) appends RAGAS 2-metric scores to the same
-    # verdict dict.  Forward them when present so this helper is usable
-    # by both gates without a separate normalisation step.
+    # Forward optional RAGAS-style scores when present so callers do not need a
+    # separate normalisation step.
     for key in ("faithfulness", "answer_relevance"):
         if key in payload:
             out[key] = clamp_score(payload[key])

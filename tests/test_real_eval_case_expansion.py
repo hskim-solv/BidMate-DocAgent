@@ -3,7 +3,7 @@
 Verifies structural invariants of eval/real_config.local.yaml when the
 file is present (operator-side private file, gitignored per ADR 0005).
 Tests are skipped silently when the file does not exist — CI runs on the
-public synthetic surface and has no access to the private config.
+public fixture smoke surface and has no access to the private config.
 
 Invariants checked:
 1. Case count meets the ADR 0044 minimum (≥ 25 after first expansion,

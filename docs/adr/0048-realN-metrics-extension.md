@@ -3,7 +3,7 @@
 - **Status**: accepted
 - **Date**: 2026-05-15
 - **Deciders**: hskim-solv
-- **Related**: issue #870, ADR 0001, ADR 0003, ADR 0005, ADR 0030, ADR 0039, ADR 0044, ADR 0046
+- **Related**: issue #870, ADR 0001, ADR 0003, ADR 0005, retired aggregate policy, ADR 0039, ADR 0044, retired OOD-domain decision
 
 ## TL;DR
 
@@ -43,7 +43,7 @@ ADR 0044 가 real100 케이스를 n=21 → n≥30 (장기 n≥50) 으로 확장�
 ## 결과
 
 - `reports/eval_summary.json` 가 `by_metadata_field` (dict, 비어있을 수 있음) + `abstention_calibration` (dict 또는 null) 키 획득. 둘 다 `reports/real100/baseline.aggregate.json` 스냅샷으로 flow
-- 리더보드 (ADR 0030) 가 real100 케이스 태깅 후 두 새 컬럼 render 가능: per-필드 정확도 strip (4셀) + ECE/Brier (2셀). 본 ADR 은 리더보드 변경 안 함; 스택의 PR3 가 함
+- 리더보드 (retired aggregate policy) 가 real100 케이스 태깅 후 두 새 컬럼 render 가능: per-필드 정확도 strip (4셀) + ECE/Brier (2셀). 본 ADR 은 리더보드 변경 안 함; 스택의 PR3 가 함
 - ADR 0001 불변량: 파이프라인 동작 미변경. 두 aggregate 모두 `run_rag_query` 다운스트림 계산. 케이스셋 미변경 한 `naive_baseline` row 가 pre-0048 run 과 bit-identical
 - ADR 0044 in-place 확장: `metadata_field` 태깅된 새 케이스가 `by_metadata_field` 자동 populate. 태그 없는 기존 21개 케이스는 헤드라인 `accuracy` 만 유지
 - ADR 0039 영향 없음: 본 ADR 은 `by_metadata_field` 키 추가 (per RFP 필드), `by_hardcase_category` 키 (per HWP 구조 실패 모드) 와 평행하지만 구별

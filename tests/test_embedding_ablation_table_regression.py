@@ -6,7 +6,7 @@ print the ADR 0069 retrieval aggregates (``chunk_recall@k`` / ``mrr`` /
 per-non-baseline-model delta block (the old single-column delta only compared
 the *last* model), and to build from the real PDF/HWP corpus via
 ``--metadata-csv`` / ``--files-dir`` / ``--eval-config`` instead of the
-public-synthetic ``--input-dir``.
+public fixture ``--input-dir``.
 
 These are pure table-rendering + argv-construction guards — no model download,
 no eval run — so they stay deterministic and offline in CI.
@@ -143,7 +143,7 @@ class PrintTableRetrievalSurfaceTest(unittest.TestCase):
 
 
 class ConfigAgnosticAblationNamesTest(unittest.TestCase):
-    """The real100 config defines different run names than the public-synthetic
+    """The real100 config defines different run names than the public fixture
     one (full / random_retrieval / single_chunk / full_bm25s, no naive_baseline).
     print_table must read run names from the data, not the hardcoded tuple, or a
     multi-model real run KeyErrors on the missing naive_baseline."""
@@ -185,18 +185,18 @@ class BuildIndexArgvTest(unittest.TestCase):
     def tearDown(self) -> None:
         rea._run = self._orig_run  # type: ignore[assignment]
 
-    def test_public_synthetic_uses_input_dir(self) -> None:
+    def test_public_fixture_uses_input_dir(self) -> None:
         rea.build_index(
             "nlpai-lab/KURE-v1",
             Path("/tmp/idx"),
             backend="sentence-transformers",
-            input_dir="data/raw",
+            input_dir="eval/fixtures/smoke_rfp/raw",
             metadata_csv=None,
             files_dir="data/files",
         )
         cmd = self._captured[-1]
         self.assertIn("--input_dir", cmd)
-        self.assertIn("data/raw", cmd)
+        self.assertIn("eval/fixtures/smoke_rfp/raw", cmd)
         self.assertNotIn("--metadata_csv", cmd)
         self.assertEqual(cmd[cmd.index("--model") + 1], "nlpai-lab/KURE-v1")
 
@@ -205,7 +205,7 @@ class BuildIndexArgvTest(unittest.TestCase):
             "Qwen/Qwen3-Embedding-0.6B",
             Path("/tmp/idx_real"),
             backend="sentence-transformers",
-            input_dir="data/raw",
+            input_dir="eval/fixtures/smoke_rfp/raw",
             metadata_csv="data/data_list.csv",
             files_dir="data/files",
         )

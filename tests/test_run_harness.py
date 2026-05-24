@@ -4,13 +4,14 @@ Covers issue #235 (Harness v2 — profile expansion + matrix/compare):
 
 * single-run roundtrip & config_hash determinism
 * matrix executor with deep-merge + ADR 0001 guard
-* compare mode rendering on synthetic eval_summary.json fixtures
+* compare mode rendering on fixture eval_summary.json objects
 * errors.jsonl contract pinned (failure shape)
 * validation guards (zero cells, missing naive_baseline, missing compare.base)
 
 Pure-rendering and validation tests are fast. The end-to-end subprocess test
-uses the existing hashing-backend smoke surface (data/raw committed + the
-3-case harness/smoke_eval.yaml) and runs in well under a minute.
+uses the existing hashing-backend smoke surface
+(eval/fixtures/smoke_rfp/raw committed + eval/config.yaml) and runs in
+well under a minute.
 """
 from __future__ import annotations
 
@@ -40,12 +41,12 @@ from harness_compare import render_matrix_compare, render_pair, resolve_summary 
 class DeepMergeTest(unittest.TestCase):
     def test_overrides_nested_keys_only_in_whitelist(self) -> None:
         base = {
-            "dataset": {"id": "x", "input_dir": "data/raw"},
+            "dataset": {"id": "x", "input_dir": "eval/fixtures/smoke_rfp/raw"},
             "index": {"embedding_backend": "hashing"},
         }
         override = {"index": {"embedding_backend": "openai", "chunking_strategy": "paragraph"}}
         merged = run_harness._deep_merge(base, override)
-        self.assertEqual(merged["dataset"], {"id": "x", "input_dir": "data/raw"})
+        self.assertEqual(merged["dataset"], {"id": "x", "input_dir": "eval/fixtures/smoke_rfp/raw"})
         self.assertEqual(
             merged["index"],
             {"embedding_backend": "openai", "chunking_strategy": "paragraph"},
@@ -246,9 +247,9 @@ class CompareCliTest(unittest.TestCase):
 # Slow → deselected by `make test-fast`, still run in CI.
 @pytest.mark.slow
 class HarnessE2ETest(unittest.TestCase):
-    """E2E: invoke run_harness.py as a subprocess against committed synthetic data.
+    """E2E: invoke run_harness.py as a subprocess against committed fixture data.
 
-    Runs the harness with hashing backend on the 3-case harness/smoke_eval.yaml
+    Runs the harness with hashing backend on the smoke fixture eval config
     fixture. Each run is ~10-15 s; total file run-time under a minute.
     """
 
@@ -326,16 +327,16 @@ class HarnessE2ETest(unittest.TestCase):
             "artifact_root": str(self.tmp_root),
             "base": {
                 "dataset": {
-                    "id": "public_synthetic_rfp_v1",
-                    "input_dir": "data/raw",
-                    "privacy": "public_synthetic_only",
+                    "id": "public_fixture_rfp_smoke_v1",
+                    "input_dir": "eval/fixtures/smoke_rfp/raw",
+                    "privacy": "public_fixture_only",
                 },
                 "index": {"embedding_backend": "hashing", "chunking_strategy": "fixed"},
                 "query": {
                     "text": "기관 A와 기관 B의 AI 요구사항 차이 알려줘",
                     "pipeline": "naive_baseline",
                 },
-                "eval": {"config": "harness/smoke_eval.yaml"},
+                "eval": {"config": "eval/config.yaml"},
             },
             "matrix": [
                 {"name": "naive_baseline", "override": {}},
@@ -397,16 +398,16 @@ class HarnessE2ETest(unittest.TestCase):
             "id": "t4_errors",
             "description": "failure case — invalid pipeline name",
             "dataset": {
-                "id": "public_synthetic_rfp_v1",
-                "input_dir": "data/raw",
-                "privacy": "public_synthetic_only",
+                "id": "public_fixture_rfp_smoke_v1",
+                "input_dir": "eval/fixtures/smoke_rfp/raw",
+                "privacy": "public_fixture_only",
             },
             "index": {"embedding_backend": "hashing", "chunking_strategy": "fixed"},
             "query": {
                 "text": "기관 A와 기관 B의 AI 요구사항 차이 알려줘",
                 "pipeline": "definitely_not_a_real_pipeline_xyz",
             },
-            "eval": {"config": "harness/smoke_eval.yaml"},
+            "eval": {"config": "eval/config.yaml"},
         }
         config_path = self.tmp_root / "fail.yaml"
         config_path.write_text(
@@ -464,14 +465,14 @@ class IndexCacheHelperTest(unittest.TestCase):
 
     def test_subkey_depends_only_on_dataset_and_index(self) -> None:
         base = {
-            "dataset": {"id": "public_synthetic_rfp_v1", "input_dir": "data/raw"},
+            "dataset": {"id": "public_fixture_rfp_smoke_v1", "input_dir": "eval/fixtures/smoke_rfp/raw"},
             "index": {"embedding_backend": "hashing", "chunking_strategy": "fixed"},
             "query": {"text": "q1", "pipeline": "naive_baseline"},
-            "eval": {"config": "harness/smoke_eval.yaml"},
+            "eval": {"config": "eval/config.yaml"},
         }
         same_index_diff_query = {**base, "query": {"text": "q2", "pipeline": "naive_baseline"}}
         diff_index = {**base, "index": {"embedding_backend": "minilm", "chunking_strategy": "fixed"}}
-        diff_dataset = {**base, "dataset": {"id": "other", "input_dir": "data/raw"}}
+        diff_dataset = {**base, "dataset": {"id": "other", "input_dir": "eval/fixtures/smoke_rfp/raw"}}
 
         self.assertEqual(
             run_harness.index_cache_subkey(base),

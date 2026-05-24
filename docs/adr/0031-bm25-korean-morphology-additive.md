@@ -54,11 +54,11 @@ kiwi 경로는 **strictly opt-in이며 silently degrade**된다:
 
 이 ADR이 re-open되어 `bm25_tokenizer` 기본값이 `kiwi`로 flip되는 조건은 다음 **세 가지 모두** 충족:
 
-1. 메인테이너가 공개 합성 eval surface(n=42)에서 `bm25_tokenizer: kiwi` + `kiwipiepy` 설치 상태로 실측 — `eval_summary.json`에 실제 `full_kiwi` 행 (fallback byte-equal이 아님) 생성.
+1. 메인테이너가 공개 fixture smoke eval surface(n=42)에서 `bm25_tokenizer: kiwi` + `kiwipiepy` 설치 상태로 실측 — `eval_summary.json`에 실제 `full_kiwi` 행 (fallback byte-equal이 아님) 생성.
 2. `full_kiwi`가 `hybrid_bm25`(자연스러운 control — 같은 `retrieval_backend: hybrid`, `bm25_tokenizer`만 차이) 대비 `accuracy` OR `citation_precision`에서 **≥ +3pp** lift, 95% bootstrap CI 비중첩. +3pp 임계값은 ADR 0026의 reranker 게이트와 일치 (precision 타깃 post/pre-retrieval 변경에는 더 작은 절대 lift 허용).
 3. 후속 ADR(`003x` 이상 번호)이 열려 `bm25_tokenizer` 기본값 flip — CI 설치 footprint 영향(~30MB 추가) 및 `kiwipiepy`를 hard CI 의존성으로 만들지 silent fallback 유지할지 결정 문서화.
 
-조건 1 충족 + 조건 2 미충족 시 (ADR 0019/0021이 임베딩에서 발견한 `0pp-on-hybrid` 패턴이 BM25 토크나이저에도 성립), 이 ADR은 `accepted` 상태 유지하고 공개 합성 eval surface에 측정 부록만 추가 — ADR 0019 → 0021 동일 루프.
+조건 1 충족 + 조건 2 미충족 시 (ADR 0019/0021이 임베딩에서 발견한 `0pp-on-hybrid` 패턴이 BM25 토크나이저에도 성립), 이 ADR은 `accepted` 상태 유지하고 공개 fixture smoke eval surface에 측정 부록만 추가 — ADR 0019 → 0021 동일 루프.
 
 ## 결과
 

@@ -9,8 +9,7 @@ each candidate before it can be appended to
 strictly separate from, the active eval input.
 
 This is the case-input sibling of ``scripts/llm_judge.py`` (ADR 0006
-real-data judge) and ``eval/synthetic_judge.py`` (ADR 0012 synthetic
-judge). All three reuse the stub-default + opt-in live backend
+real-data judge). It reuses the stub-default + opt-in live backend
 pattern from ADR 0011.
 
 Scope status:
@@ -348,8 +347,7 @@ def _openai_compatible_backend(  # pragma: no cover - PR3
     """Generic OpenAI-compatible endpoint (PR3).
 
     Will lazily import the openai SDK so the stub-only path has no
-    network / SDK dependency, mirroring ``eval/synthetic_judge.py``
-    and ``scripts/llm_judge.py``.
+    network / SDK dependency, mirroring ``scripts/llm_judge.py``.
     """
     _ = rows
     _ = model

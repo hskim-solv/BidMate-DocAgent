@@ -112,7 +112,7 @@ class TestRetrievalOnlyAblationRow(unittest.TestCase):
 
         The original PR #694 definition violated this — both rows had
         identical pipeline/metadata_first/rerank/verifier_retry/retrieval_mode,
-        so ablation runner produced identical leaderboard values for two
+        so ablation runner produced identical summary values for two
         named columns.  This invariant prevents the regression.
         """
         retrieval_only = self.ablation_by_name["retrieval_only"]

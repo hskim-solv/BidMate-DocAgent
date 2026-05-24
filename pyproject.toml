@@ -4,14 +4,13 @@ testpaths = ["tests"]
 # Marker registry. Tests under unregistered markers warn under
 # pytest-strict-markers. ``qdrant_integration`` flags suites that
 # need a live Qdrant HTTP server (see Makefile `qdrant-up`, issue #853).
-# ``slow`` flags suites that process the full data/raw corpus (383 chunks,
-# ADR 0050) or load a real embedding model — each runs tens of seconds and
-# dominates the wall-clock under ``--dist loadfile`` tail latency. The CI
-# gate (scripts/test.sh) still runs them; ``make test-fast`` deselects them
-# via ``-m "not slow"`` for the local edit loop.
+# ``slow`` flags suites that process larger local/private corpora or load a real
+# embedding model. The PR/local gate (scripts/test.sh) defaults to
+# ``-m "not slow"``; slow tests run via the dedicated slow-tests workflow or
+# explicit PYTEST_ADDOPTS.
 markers = [
     "qdrant_integration: requires a live Qdrant HTTP server on BIDMATE_QDRANT_URL (default http://localhost:6333); not run in CI",
-    "slow: full-corpus or real-model suite (tens of seconds); deselected by `make test-fast`, still run in CI",
+    "slow: full-corpus or real-model suite; run via slow-tests workflow or explicit PYTEST_ADDOPTS",
 ]
 
 # Issue #334 (G8 of #284): opt-in ruff lint gate from scripts/test.sh.

@@ -1,6 +1,6 @@
 # Private Hard-case Benchmark
 
-이 문서는 이슈 #24의 private hard-case benchmark 운영 기준을 정리한다. 목적은 공개 synthetic benchmark를 대체하는 것이 아니라, scanned PDF, rotated/skewed page, table-heavy page, mixed layout, noisy OCR 조건에서 parser/retrieval/answer failure가 얼마나 늘어나는지 aggregate로 비교하는 것이다.
+이 문서는 이슈 #24의 private hard-case benchmark 운영 기준을 정리한다. 목적은 공개 fixture smoke benchmark를 대체하는 것이 아니라, scanned PDF, rotated/skewed page, table-heavy page, mixed layout, noisy OCR 조건에서 parser/retrieval/answer failure가 얼마나 늘어나는지 aggregate로 비교하는 것이다.
 
 private 100-doc 실험처럼 corpus-level aggregate를 장기 추적할 때는 [`private-100-doc-experiments.md`](./private-100-doc-experiments.md)의 naming과 commit boundary도 함께 따른다.
 
@@ -68,7 +68,7 @@ python3 eval/run_parser_eval.py \
   --parser_version 2
 ```
 
-분석 문서에는 public synthetic benchmark와 private hard-case slice의 aggregate 차이만 적는다. 예를 들어 public에서는 citation precision이 유지되지만 `table_heavy`에서 table cell F1과 citation precision이 같이 떨어지면 table reconstruction failure가 grounded answer 품질에 미치는 영향으로 분류한다.
+분석 문서에는 public fixture smoke schema 결과와 private hard-case slice의 aggregate 차이만 적는다. 예를 들어 fixture smoke에서는 citation precision 산출 schema가 유지되고, private `table_heavy`에서 table cell F1과 citation precision이 같이 떨어지면 table reconstruction failure가 grounded answer 품질에 미치는 영향으로 분류한다.
 
 ## Aggregate Comparison Report
 

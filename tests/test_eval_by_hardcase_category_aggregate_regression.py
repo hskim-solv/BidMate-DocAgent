@@ -4,8 +4,8 @@ Companion to test_eval_by_format_aggregate_regression.py — same fail-closed
 contract, different bucket dimension. Verifies that:
 
 1. ``extract_aggregate`` in ``scripts/run_real_eval_delta`` retains buckets
-   whose name is in :data:`SAFE_HARDCASE_CATEGORY_BUCKET_KEYS` (the public
-   ADR 0039 4-category enum).
+   whose name is in :data:`SAFE_HARDCASE_CATEGORY_BUCKET_KEYS` (the committable
+   ADR 0039 4-category aggregate enum).
 2. Unknown bucket names — including the private 5-slice category names from
    ``docs/real-data/private-hardcase-benchmark.md`` (``scanned_pdf``,
    ``mixed_layout``, ``noisy_ocr``) — are silently dropped (fail-closed),
@@ -13,9 +13,8 @@ contract, different bucket dimension. Verifies that:
    the private taxonomy through the ADR 0005 commit boundary.
 3. No per-case payload (``FORBIDDEN_KEYS``) appears in the by_hardcase_category
    output.
-4. The bucket key set agrees with the inventory regression in
-   ``test_hwp_hardcase_category_inventory_regression.py`` (single source of
-   truth for the public 4-category enum).
+4. The bucket key set remains the ADR 0039 whitelist even though public fixture
+   smoke config no longer carries HWP hardcase inventory cases.
 """
 from __future__ import annotations
 
@@ -26,6 +25,11 @@ from scripts.run_real_eval_delta import (
     FORBIDDEN_KEYS,
     SAFE_HARDCASE_CATEGORY_BUCKET_KEYS,
     extract_aggregate,
+)
+
+
+ADR_0039_AGGREGATE_BUCKETS = frozenset(
+    {"table_heavy", "ocr_noisy", "rotated_or_skewed", "layout_broken"}
 )
 
 
@@ -132,19 +136,11 @@ class TestExtractAggregateByHardcaseCategory(unittest.TestCase):
             )
 
     def test_safe_hardcase_category_bucket_keys_match_adr_0039(self) -> None:
-        """Single source of truth: the bucket whitelist here must agree with
-        ``ADR_0039_CATEGORIES`` in
-        ``tests/test_hwp_hardcase_category_inventory_regression.py``. Drift
-        between the two means either a new public category was added without
-        an extractor update (silent drop) or a private category was promoted
-        without an inventory test update (silent leak)."""
-        from tests.test_hwp_hardcase_category_inventory_regression import (
-            ADR_0039_CATEGORIES,
-        )
-
+        """The private/internal aggregate can expose only the ADR 0039 bucket
+        names, not arbitrary local hardcase taxonomy labels."""
         self.assertEqual(
             SAFE_HARDCASE_CATEGORY_BUCKET_KEYS,
-            ADR_0039_CATEGORIES,
+            ADR_0039_AGGREGATE_BUCKETS,
             "Extractor whitelist drifted from ADR 0039 4-category enum",
         )
 

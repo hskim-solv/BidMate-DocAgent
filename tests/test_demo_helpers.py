@@ -17,6 +17,8 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
+SMOKE_FIXTURE_RAW = ROOT_DIR / "eval" / "fixtures" / "smoke_rfp" / "raw"
+
 from demo.helpers import (
     SAMPLE_QUERIES,
     STATUS_BADGE,
@@ -118,7 +120,7 @@ class RunPipelineIntegrationTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.index = build_index_payload(
-            ROOT_DIR / "data" / "raw",
+            SMOKE_FIXTURE_RAW,
             embedding_backend="hashing",
         )
 

@@ -1,28 +1,26 @@
 name: 'Run BidMate eval'
 description: >-
   Build the index and run eval/run_eval.py, with two `actions/cache`
-  layers: the index cache (#400) lets unchanged-data PRs skip the build
+  layers: the index cache (#400) lets unchanged-fixture PRs skip the build
   step, and the eval-summary cache (#469) lets unchanged-code base
   checkouts skip run_eval entirely. PR-side is keyed on the head commit
   so it remains a cache miss almost always; base-side is keyed on main
   state and hits on every repeat PR against the same merge.
-  Shared by .github/workflows/pr-eval.yml (PR + base checkouts) and
-  .github/workflows/leaderboard.yml (main merge).
+  Shared by .github/workflows/pr-eval.yml (PR + base checkouts).
 
 inputs:
   working-directory:
     description: >-
       Subdirectory holding the checked-out repo (e.g. `pr` or `base`
       when pr-eval.yml uses dual checkouts). Use `.` for a default
-      single-checkout layout (leaderboard.yml).
+      single-checkout layout.
     required: false
     default: '.'
   config:
     description: >-
       Eval config path relative to `working-directory`. PR/base
       pipelines pass `eval/config.ci.yaml` (full-pipeline-only
-      variant built earlier in the job); leaderboard uses the
-      default committed config.
+      variant built earlier in the job).
     required: false
     default: 'eval/config.yaml'
   embedding-backend:
@@ -41,14 +39,14 @@ runs:
       uses: actions/cache@v4
       with:
         path: ${{ inputs.working-directory }}/data/index
-        # Invalidate when raw data changes (the inputs the index is
+        # Invalidate when fixture data changes (the inputs the index is
         # built from) OR when the builder code changes (build_index +
         # ingestion). Backend is part of the key because different
         # embedding backends produce different index payloads even
         # for the same raw inputs.
         key: >-
           bidmate-index-${{ inputs.embedding-backend }}-${{
-          hashFiles(format('{0}/data/raw/**', inputs.working-directory))
+          hashFiles(format('{0}/eval/fixtures/smoke_rfp/raw/**', inputs.working-directory))
           }}-${{
           hashFiles(
             format('{0}/scripts/build_index.py', inputs.working-directory),
@@ -62,7 +60,7 @@ runs:
       shell: bash
       run: >-
         python scripts/build_index.py
-        --input_dir data/raw
+        --input_dir eval/fixtures/smoke_rfp/raw
         --output_dir data/index
         --embedding_backend ${{ inputs.embedding-backend }}
 
@@ -71,14 +69,14 @@ runs:
       uses: actions/cache@v4
       with:
         path: ${{ inputs.working-directory }}/reports/eval_summary.json
-        # Invalidate when raw data changes, when the eval config / cases
+        # Invalidate when fixture data changes, when the eval config / cases
         # / scorers change, or when any RAG / ingestion code that
         # run_eval actually executes changes. `inputs.config` is part of
         # the key so PR-side `eval/config.ci.yaml` keeps a cache scope
-        # separate from leaderboard's `eval/config.yaml`.
+        # separate from full local `eval/config.yaml` runs.
         key: >-
           bidmate-eval-${{ inputs.embedding-backend }}-${{ inputs.config }}-${{
-          hashFiles(format('{0}/data/raw/**', inputs.working-directory))
+          hashFiles(format('{0}/eval/fixtures/smoke_rfp/raw/**', inputs.working-directory))
           }}-${{
           hashFiles(
             format('{0}/eval/**', inputs.working-directory),

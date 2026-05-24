@@ -37,7 +37,7 @@ from rag_core import (
 
 @st.cache_resource(show_spinner="📥 Loading RAG index…")
 def get_index() -> dict:
-    """Load the prebuilt index, or build one from ``data/raw`` on first run.
+    """Load the prebuilt index, or build one from ``eval/fixtures/smoke_rfp/raw`` on first run.
 
     Cached for the lifetime of the Streamlit session so each query
     skips the rebuild cost.

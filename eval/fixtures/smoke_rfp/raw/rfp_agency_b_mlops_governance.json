@@ -1,0 +1,25 @@
+{
+  "doc_id": "rfp-agency-b-mlops-governance",
+  "title": "기관 B 데이터 거버넌스 및 MLOps 자동화 RFP",
+  "agency": "기관 B",
+  "project": "데이터 거버넌스 및 MLOps 자동화",
+  "metadata": {
+    "domain": "mlops_governance",
+    "document_type": "public_fixture_smoke",
+    "project_aliases": ["MLOps 자동화", "엠엘옵스 자동화", "데이터 거버넌스"]
+  },
+  "sections": [
+    {
+      "heading": "사업 개요",
+      "text": "기관 B는 데이터 거버넌스와 MLOps 자동화를 결합한 운영 체계를 구축한다. 데이터 계보, 학습 파이프라인 배포, 모델 승인 이력, 배포 후 모니터링을 하나의 콘솔에서 관리해야 한다."
+    },
+    {
+      "heading": "AI 운영 요구사항",
+      "text": "MLOps 자동화는 실험 등록, 모델 버전 관리, 재학습 승인, 배포 롤백 기능을 포함한다. 품질관리 항목은 데이터 드리프트, 성능 저하, 배포 실패율이다. 데이터 거버넌스 항목은 소유자, 보존 기간, 접근 권한, 변경 이력으로 구분한다."
+    },
+    {
+      "heading": "보안 및 감사",
+      "text": "모든 승인 이력은 감사 로그로 남겨야 하며 운영자는 월간 감사 리포트를 생성할 수 있어야 한다. 외부 연계 API는 토큰 기반 인증을 사용한다."
+    }
+  ]
+}

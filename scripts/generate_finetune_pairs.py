@@ -3,7 +3,7 @@
 
 Pipeline:
 
-  1. Load raw docs from ``data/raw/``.
+  1. Load raw docs from ``eval/fixtures/smoke_rfp/raw/``.
   2. Re-chunk them with a smaller ``max_chars`` (default 240) to expand
      the prod 9-chunk default index into ~25 sub-chunks without
      touching prod chunking.

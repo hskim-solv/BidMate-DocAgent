@@ -182,7 +182,7 @@ flyctl deploy
 
 ## 케이스 스터디 — 12분 만의 retry-rate 급증 분류(triage)
 
-지난주 synthetic eval 에서 chunking-config 변경이 landing 됐다. 배포 후
+지난주 fixture smoke eval 에서 chunking-config 변경이 landing 됐다. 배포 후
 LangFuse 대시보드는 **`verify` span 속성
 `verifier_retry=true` 발화율이 한 시간 내에 8% 에서 31% 로 급증**한 것을
 보여줬다. attempt 별 span 속성(`retrieve` span 의 `attempt_index=1`)은

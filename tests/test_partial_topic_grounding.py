@@ -15,7 +15,7 @@ C6 ("false abstention"):
   intended-abstention cases after #69.
 
 Both tests use the deterministic hashing embedding backend on the
-existing ``data/raw`` fixture, matching the pattern in
+existing ``eval/fixtures/smoke_rfp/raw`` fixture, matching the pattern in
 ``tests/test_retrieval_loop_regression.py``.
 """
 
@@ -143,7 +143,7 @@ class OutOfCorpusAbstentionPreservedTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.index = build_index_payload(
-            Path("data/raw"), embedding_backend="hashing"
+            Path("eval/fixtures/smoke_rfp/raw"), embedding_backend="hashing"
         )
 
     def test_out_of_corpus_query_still_abstains(self) -> None:

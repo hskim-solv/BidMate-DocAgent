@@ -50,10 +50,8 @@ from rag_observability import (  # noqa: E402
     resolve_trace_backend,
 )
 
-# Harness aggregate snapshots use a sibling directory of
-# ``reports/history/`` so they coexist with the real-eval leaderboard
-# time series (``scripts/write_synthetic_history.py``) without
-# polluting it. The on-disk shape mirrors that script.
+# Harness aggregate snapshots use an isolated reports directory so they
+# coexist with private/internal real-eval history without polluting it.
 HARNESS_HISTORY_DIR = ROOT_DIR / "reports" / "harness_history"
 
 
@@ -126,11 +124,11 @@ def build_commands(config: dict[str, Any], run_dir: Path) -> dict[str, list[str]
     query_config = require_mapping(config, "query")
     eval_config = require_mapping(config, "eval")
 
-    input_dir = str(dataset.get("input_dir") or "data/raw")
+    input_dir = str(dataset.get("input_dir") or "eval/fixtures/smoke_rfp/raw")
     index_dir = run_dir / "index"
     output_dir = run_dir / "outputs"
     metrics_dir = run_dir / "metrics"
-    eval_config_path = str(eval_config.get("config") or "harness/smoke_eval.yaml")
+    eval_config_path = str(eval_config.get("config") or "eval/config.yaml")
 
     index_command = [
         "python3",
@@ -510,7 +508,7 @@ def _execute_pipeline(
     if failure:
         manifest["failure"] = failure
 
-    # Aggregate snapshot mirror of write_synthetic_history.py — only on
+    # Aggregate snapshot mirror for harness observability — only on
     # successful runs and only when observability is enabled. Failures
     # here must NEVER break the harness run, so any exception is
     # recorded back into the observability block.
@@ -544,13 +542,11 @@ def _append_harness_history_snapshot(
     manifest: dict[str, Any],
     eval_summary_path: Path,
 ) -> Path:
-    """Mirror ``write_synthetic_history.py`` for harness runs.
+    """Append an aggregate-only harness history snapshot.
 
     Lives under ``reports/harness_history/`` (sibling of
-    ``reports/history/``) so the leaderboard time-series stays
-    pure-real-eval. The on-disk filename + JSON shape match the
-    sibling script so ``scripts/leaderboard.py:load_history`` can be
-    pointed at this directory for harness-only views.
+    real-eval history) so private/internal evidence artifacts stay
+    separate from fixture smoke runs.
     """
     HARNESS_HISTORY_DIR.mkdir(parents=True, exist_ok=True)
     sha = (manifest.get("git_commit") or "unknown")[:12]
@@ -614,7 +610,7 @@ def execute_single(
         shutil.rmtree(run_dir)
     run_dir.mkdir(parents=True, exist_ok=True)
 
-    eval_config_path = repo_path(require_mapping(config, "eval").get("config") or "harness/smoke_eval.yaml")
+    eval_config_path = repo_path(require_mapping(config, "eval").get("config") or "eval/config.yaml")
     source_paths = {
         "harness": rel_path(config_path),
         "eval": rel_path(eval_config_path),
@@ -765,7 +761,7 @@ def execute_matrix(matrix_path: Path, *, force: bool, no_observability: bool = F
 
         try:
             eval_config_path = repo_path(
-                require_mapping(merged, "eval").get("config") or "harness/smoke_eval.yaml"
+                require_mapping(merged, "eval").get("config") or "eval/config.yaml"
             )
         except ValueError as exc:
             raise SystemExit(f"[ERROR] cell '{cell_name}': {exc}") from exc

@@ -1,8 +1,8 @@
 """External-payload data-boundary guard (ADR 0061 ③ / ADR 0005).
 
 ADR 0061 permits opt-in external/paid API backends, but its condition ③
-restricts the *outbound* payload to public/synthetic data — private
-real-eval data and private RFP bodies stay off the wire (ADR 0005/0012,
+restricts the *outbound* payload to explicitly public fixture data — private
+real-eval data and private RFP bodies stay off the wire (ADR 0005,
 which can only be relaxed by a superseding ADR). Until now that was a
 *policy* with no code enforcement: the ``anthropic`` / ``openai`` backends
 in ``rag_metadata_extraction`` and ``rag_synthesis`` joined the full
@@ -12,7 +12,7 @@ This module is the central choke point. Every external backend calls
 :func:`assert_external_payload_allowed` before any SDK import or network
 I/O. The data surface is declared by the ``BIDMATE_DATA_SURFACE`` env var
 and the guard is **fail-closed** — egress is permitted only when the
-surface is explicitly attested public/synthetic. Unset, ``private`` /
+surface is explicitly attested public fixture. Unset, ``private`` /
 ``local``, or any unrecognized value blocks the call; the backend then
 falls back to its offline path (regex baseline / deterministic synthesis),
 so the guard never breaks the pipeline.
@@ -25,7 +25,7 @@ Deliberate non-goals (why this is an attestation, not content inspection):
   carry a trustworthy "I came from a private corpus" tag at the egress
   point.
 * Content classification ("does this text look private?") is unreliable
-  and would false-positive on public synthetic data.
+  and would false-positive on public fixture data.
 
 The env attestation is therefore an explicit, auditable opt-in. It closes
 the *accidental*-leak path (enabling an external backend without
@@ -49,7 +49,7 @@ DATA_SURFACE_ENV = "BIDMATE_DATA_SURFACE"
 # unrecognized token — fails closed. Hyphen and underscore spellings of the
 # compound form are both accepted so callers need not memorize one.
 PUBLIC_SURFACES: frozenset[str] = frozenset(
-    {"public", "synthetic", "public_synthetic", "public-synthetic"}
+    {"public", "public_fixture", "public-fixture"}
 )
 
 
@@ -70,12 +70,12 @@ def resolve_data_surface() -> str:
 
 
 def is_public_surface() -> bool:
-    """True only when the surface is explicitly attested public/synthetic."""
+    """True only when the surface is explicitly attested public fixture."""
     return resolve_data_surface() in PUBLIC_SURFACES
 
 
 def assert_external_payload_allowed(*, channel: str) -> None:
-    """Fail closed unless the data surface is attested public/synthetic.
+    """Fail closed unless the data surface is attested public fixture.
 
     Call this at the very top of every external backend — before any SDK
     import or network call — so a blocked surface never reaches the vendor.
@@ -91,9 +91,9 @@ def assert_external_payload_allowed(*, channel: str) -> None:
     declared = resolve_data_surface() or "<unset>"
     raise ExternalPayloadBlocked(
         f"external egress blocked for channel={channel!r}: "
-        f"{DATA_SURFACE_ENV}={declared} is not an attested public/synthetic "
+        f"{DATA_SURFACE_ENV}={declared} is not an attested public fixture "
         f"surface (ADR 0061 ③ / ADR 0005). Set {DATA_SURFACE_ENV}="
-        "public_synthetic only when the corpus is public/synthetic; "
+        "public_fixture only when the corpus is the committed public fixture; "
         "private/local RFP data must not be sent to external APIs."
     )
 

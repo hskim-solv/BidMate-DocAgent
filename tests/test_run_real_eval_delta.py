@@ -290,7 +290,7 @@ class ExtractAggregateTest(unittest.TestCase):
         self.assertIn("0.800", md)
 
     def test_judge_ragas_sub_keys_whitelisted(self) -> None:
-        """ADR 0012: judge_ragas aggregate must round-trip the four metric
+        """judge_ragas aggregate must round-trip the four metric
         means + CI sub-block, and drop any unexpected sub-keys (e.g.,
         per-case payload smuggled in by a future maintainer)."""
         summary = {
@@ -346,7 +346,7 @@ class ExtractAggregateTest(unittest.TestCase):
 
 
 class CIBlockExtractTest(unittest.TestCase):
-    """Bootstrap CI block (#166 leaderboard / #267 chart bands) must
+    """Bootstrap CI block must
     round-trip the headline-metric subset and drop unknown sub-keys
     or per-case payload smuggled in by a future maintainer."""
 

@@ -1,5 +1,5 @@
 schema_version: 1
-description: Public synthetic parser-stage gold fixture for visual parsing v2.
+description: Public fixture parser-stage gold fixture for visual parsing v2.
 documents:
   - doc_id: parser-fixture-doc
     artifact: parser-fixture-doc.visual.json

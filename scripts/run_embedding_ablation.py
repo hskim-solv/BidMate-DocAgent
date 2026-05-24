@@ -13,7 +13,7 @@ Two surfaces are printed per ablation (issue #1359): the answer-quality
 directly. Δ is computed per non-baseline model, so a 3+-model sweep is read
 correctly.
 
-Corpus: public-synthetic ``--input-dir data/raw`` by default, or the real
+Corpus: public fixture ``--input-dir eval/fixtures/smoke_rfp/raw`` by default, or the real
 PDF/HWP corpus via ``--metadata-csv data/data_list.csv --files-dir data/files
 --eval-config eval/real_config.local.yaml``. Real runs write to a ``*_real``
 subtree and stay local — commit only the aggregate deltas (ADR 0005).
@@ -163,8 +163,8 @@ def build_index(
 ) -> None:
     """Build one index for ``model_id``.
 
-    Corpus source is either the public-synthetic ``--input_dir`` (default
-    ``data/raw``, backward-compatible with Phase 1.x) or the real PDF/HWP
+    Corpus source is either the public fixture ``--input_dir`` (default
+    ``eval/fixtures/smoke_rfp/raw``, backward-compatible with Phase 1.x) or the real PDF/HWP
     corpus via ``--metadata_csv`` + ``--files_dir`` (build_index.py requires
     files_dir when metadata_csv is given). ``metadata_csv`` takes precedence.
     """
@@ -175,14 +175,14 @@ def build_index(
         if files_dir:
             cmd += ["--files_dir", files_dir]
     else:
-        cmd += ["--input_dir", input_dir or "data/raw"]
+        cmd += ["--input_dir", input_dir or "eval/fixtures/smoke_rfp/raw"]
     cmd += ["--embedding_backend", backend, "--model", model_id]
     _run(cmd)
 
 
 def run_eval(index_dir: Path, output_dir: Path, config: str = "eval/config.yaml") -> Path:
-    """Run the ablation suite. ``config`` defaults to the public-synthetic
-    ``eval/config.yaml``; real100 runs pass ``eval/real_config.local.yaml``
+    """Run the ablation suite. ``config`` defaults to the public fixture
+    smoke ``eval/config.yaml``; real100 runs pass ``eval/real_config.local.yaml``
     (private, gitignored per ADR 0005)."""
     _run(
         [
@@ -214,7 +214,7 @@ def print_table(per_model: dict[str, dict[str, dict]]) -> None:
     base_label = baseline_id.split("/")[-1]
     all_metrics = list(METRICS) + list(RETRIEVAL_METRICS)
     # Ablation run names are read from the eval_summary itself, not hardcoded:
-    # the public-synthetic config and the real config define different runs
+    # the public fixture config and the real config define different runs
     # (e.g. real100 has full / random_retrieval / single_chunk / full_bm25s and
     # no naive_baseline). Use the baseline model's run order; intersect so a run
     # missing from a candidate model is skipped rather than KeyError-ing.
@@ -291,8 +291,8 @@ def main() -> int:
     )
     parser.add_argument(
         "--input-dir",
-        default="data/raw",
-        help="Public-synthetic corpus dir (default data/raw). Ignored when --metadata-csv is set.",
+        default="eval/fixtures/smoke_rfp/raw",
+        help="Public fixture corpus dir (default eval/fixtures/smoke_rfp/raw). Ignored when --metadata-csv is set.",
     )
     parser.add_argument(
         "--metadata-csv",
@@ -312,14 +312,14 @@ def main() -> int:
         "--eval-config",
         default="eval/config.yaml",
         help=(
-            "Eval config. Default eval/config.yaml (public-synthetic cases); real100 runs "
+            "Eval config. Default eval/config.yaml (public fixture cases); real100 runs "
             "pass eval/real_config.local.yaml (private, gitignored)."
         ),
     )
     args = parser.parse_args()
 
     # Real-corpus runs land under a *_real subtree so they never collide with
-    # cached public-synthetic indexes/reports of the same model slug.
+    # cached public fixture indexes/reports of the same model slug.
     suffix = "_real" if args.metadata_csv else ""
     base_index = REPO_ROOT / "data" / f"embedding-ablation{suffix}"
     base_reports = REPO_ROOT / "reports" / f"embedding-ablation{suffix}"

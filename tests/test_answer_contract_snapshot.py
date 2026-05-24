@@ -4,7 +4,7 @@ ADR 0003 commits `run_rag_query` to a structured answer + citation
 contract identified by `schema_version: 2`. Drift in that surface
 (renaming `status` to `state`, dropping `status_reason.verified`,
 turning `citations` into a flat string, ...) silently breaks every
-downstream consumer — eval scoring, FastAPI demo, leaderboard.
+downstream consumer — eval scoring, FastAPI demo, and aggregate summaries.
 
 This test extracts the **contract surface only** (intentionally
 excluding `analysis` / `plan` / `diagnostics` / `trace` /
@@ -37,6 +37,7 @@ from rag_core import build_index_payload, run_rag_query
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 GOLDEN_PATH = ROOT_DIR / "tests" / "data" / "answer_contract_shape.json"
+SMOKE_FIXTURE_RAW = ROOT_DIR / "eval" / "fixtures" / "smoke_rfp" / "raw"
 
 # Fixed query chosen because the naive_baseline pipeline yields
 # status=supported with claims and evidence both non-empty, so the
@@ -101,7 +102,7 @@ def _build_contract_shape() -> dict[str, Any]:
     the regenerate-golden helper documented in this module's docstring.
     """
     index = build_index_payload(
-        ROOT_DIR / "data" / "raw",
+        SMOKE_FIXTURE_RAW,
         embedding_backend="hashing",
         chunking_strategy="fixed",
     )
@@ -120,7 +121,7 @@ class AnswerContractShapeTest(unittest.TestCase):
         # captures the type "int"), so we re-read the answer dict
         # directly to ensure the version constant matches ADR 0003.
         index = build_index_payload(
-            ROOT_DIR / "data" / "raw",
+            SMOKE_FIXTURE_RAW,
             embedding_backend="hashing",
             chunking_strategy="fixed",
         )

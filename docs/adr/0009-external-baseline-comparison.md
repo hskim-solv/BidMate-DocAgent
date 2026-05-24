@@ -100,7 +100,7 @@ relative 비교가 중대 shift 시 결과 aggregate(`reports/external_baselines
 
 **Stub 백엔드 (committed, 2026-05-11)**
 
-`python3 scripts/compare_external_baselines.py` 를 default `BIDMATE_EXTERNAL_BACKEND=stub` 으로 공개 synthetic n=42 표면에 실행, aggregate 를 `reports/external_baselines.json` 에 commit:
+`python3 scripts/compare_external_baselines.py` 를 default `BIDMATE_EXTERNAL_BACKEND=stub` 으로 공개 fixture smoke n=42 표면에 실행, aggregate 를 `reports/external_baselines.json` 에 commit:
 
 | metric | stub result | note |
 |---|---|---|

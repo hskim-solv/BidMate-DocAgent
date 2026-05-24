@@ -95,18 +95,18 @@ class TestBuildDocFormatMap(unittest.TestCase):
                     "doc_id": "doc-hwp",
                     "metadata": {
                         "source_format": "hwp",
-                        "document_type": "synthetic_public_sample",
+                        "document_type": "public_fixture",
                     },
                 },
                 {
                     "doc_id": "doc-json",
-                    "metadata": {"document_type": "synthetic_public_sample"},
+                    "metadata": {"document_type": "public_fixture"},
                 },
             ]
         )
         fmt_map = _build_doc_format_map(index)
         self.assertEqual(fmt_map["doc-hwp"], "hwp")
-        self.assertEqual(fmt_map["doc-json"], "synthetic_public_sample")
+        self.assertEqual(fmt_map["doc-json"], "public_fixture")
 
     def test_unknown_fallback(self) -> None:
         index = _make_index([{"doc_id": "bare", "metadata": {}}])
@@ -144,14 +144,14 @@ class TestSummarizeRunByFormat(unittest.TestCase):
         case_results = [
             _make_result("hwp-case-1", ["doc-hwp"], "hwp"),
             _make_result("hwp-case-2", ["doc-hwp"], "hwp"),
-            _make_result("json-case", ["doc-json"], "synthetic_public_sample"),
+            _make_result("json-case", ["doc-json"], "public_fixture"),
         ]
         summary = summarize_run("naive_baseline", self._run_config(), case_results)
         self.assertIn("by_format", summary)
         self.assertIn("hwp", summary["by_format"])
-        self.assertIn("synthetic_public_sample", summary["by_format"])
+        self.assertIn("public_fixture", summary["by_format"])
         self.assertEqual(summary["by_format"]["hwp"]["num_predictions"], 2)
-        self.assertEqual(summary["by_format"]["synthetic_public_sample"]["num_predictions"], 1)
+        self.assertEqual(summary["by_format"]["public_fixture"]["num_predictions"], 1)
 
     def test_by_format_absent_when_no_source_format(self) -> None:
         case_results = [_make_result("case", ["doc-a"], None)]
@@ -234,7 +234,7 @@ class TestExtractAggregateByFormat(unittest.TestCase):
     def test_safe_format_bucket_keys_coverage(self) -> None:
         self.assertIn("hwp", SAFE_FORMAT_BUCKET_KEYS)
         self.assertIn("pdf", SAFE_FORMAT_BUCKET_KEYS)
-        self.assertIn("synthetic_public_sample", SAFE_FORMAT_BUCKET_KEYS)
+        self.assertIn("public_fixture", SAFE_FORMAT_BUCKET_KEYS)
 
 
 class TestSliceRetryReasonAnonymization(unittest.TestCase):

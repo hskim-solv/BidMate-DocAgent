@@ -52,7 +52,7 @@ ADR 0019 는 "default 유지" 결정을 재검토하는 패턴을 확립했다. 
 
 **재오픈 조건** (네 가지 모두 충족 시 default 교체):
 1. `requirements.txt` 업그레이드로 `torch >= 2.6` + `huggingface-hub < 1.0` blocker 해소
-2. `python3 scripts/run_embedding_ablation.py --models <miniLM> BAAI/bge-m3 intfloat/multilingual-e5-large-instruct` 가 public synthetic corpus(n=42) 에서 완주
+2. `python3 scripts/run_embedding_ablation.py --models <miniLM> BAAI/bge-m3 intfloat/multilingual-e5-large-instruct` 가 public fixture smoke corpus(n=42) 에서 완주
 3. 후보 중 최소 하나가 **`full` 파이프라인 기준** accuracy 또는 groundedness 에서 MiniLM 대비 ≥ +5pp 향상 + 비중첩 bootstrap 95% CI. (*`naive_baseline` 만의 향상은 카운트 X*)
 4. 교체 후보를 문서화하는 후속 ADR
 

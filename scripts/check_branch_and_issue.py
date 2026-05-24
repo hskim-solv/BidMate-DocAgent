@@ -314,7 +314,7 @@ def check_5b_mode(pr_number: int) -> int:
     section = _five_b_section(body)
     example = load_bearing_hits[0]
     remediation = (
-        "   PR #69 lesson: the synthetic CI delta alone missed an intended-abstention regression.\n"
+        "   PR #69 lesson: the fixture smoke delta alone missed an intended-abstention regression.\n"
         "   Either:\n"
         "     (a) attach the `make real-eval-delta` aggregate table under\n"
         "         '### 5b. Real-data delta', or\n"

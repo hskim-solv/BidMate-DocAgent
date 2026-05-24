@@ -243,7 +243,7 @@ def main() -> int:
         help="Embedding backend. 'hashing' is fast but always gives spread=0 (sanity-check only).",
     )
     parser.add_argument(
-        "--input_dir", default="data/raw", help="Raw JSON document directory."
+        "--input_dir", default="eval/fixtures/smoke_rfp/raw", help="Raw JSON document directory."
     )
     parser.add_argument(
         "--routed_config", default="eval/routed_config.yaml", help="Routed eval config YAML."

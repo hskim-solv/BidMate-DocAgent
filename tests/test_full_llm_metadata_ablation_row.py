@@ -4,7 +4,7 @@ Found while investigating #800.  ``eval/config.yaml`` had two ablation rows
 — ``full`` and ``full_llm_metadata`` — that were byte-identical once the
 ``name`` field was excluded.  Both shared the same
 ``pipeline / metadata_first / rerank / verifier_retry / retrieval_mode``
-five-tuple, so the eval runner produced the same leaderboard values for
+five-tuple, so the eval runner produced the same summary values for
 two named columns.
 
 The real dimension that differentiates them is the **metadata extraction
@@ -95,14 +95,14 @@ class TestFullLlmMetadataAblationRow(unittest.TestCase):
 
         The original config defined both rows with identical
         pipeline/metadata_first/rerank/verifier_retry/retrieval_mode, so
-        the ablation runner produced identical leaderboard values for
+        the ablation runner produced identical summary values for
         two named columns.  This is the same Goodhart failure mode that
         #800 pinned for retrieval_only/no_verifier_retry, generalized to
         the full vs full_llm_metadata pair.
 
         Fix: explicit ``metadata_backend`` discriminator.  If a future
         refactor removes or aliases that key, this test catches it
-        before the leaderboard ships two columns with the same number.
+        before the summary ships two columns with the same number.
         """
         full = self.ablation_by_name["full"]
         full_llm_metadata = self.ablation_by_name["full_llm_metadata"]

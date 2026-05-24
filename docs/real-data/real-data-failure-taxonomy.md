@@ -4,7 +4,7 @@
 
 ## 배경
 
-저장소에는 이미 공개 합성 baseline, private hard-case 스캐폴딩, 재현 가능한 smoke harness, 리뷰어용 문서가 정비되어 있다. 다음 단계의 고가치 작업은 (a) 실데이터에서 어디가 실제로 깨지는지 검증하고, (b) 그 실패를 코드 경로에 매핑한 뒤, (c) impact·effort로 정렬된 백로그를 만드는 것이다. 본 문서는 그 결과물이며, 실제 fix 구현은 후속 이슈로 분리한다.
+저장소에는 이미 공개 fixture smoke baseline, private hard-case 스캐폴딩, 재현 가능한 smoke harness, 리뷰어용 문서가 정비되어 있다. 다음 단계의 고가치 작업은 (a) 실데이터에서 어디가 실제로 깨지는지 검증하고, (b) 그 실패를 코드 경로에 매핑한 뒤, (c) impact·effort로 정렬된 백로그를 만드는 것이다. 본 문서는 그 결과물이며, 실제 fix 구현은 후속 이슈로 분리한다.
 
 ## 분석 방법
 
@@ -80,7 +80,7 @@ OCR/parser-stage 실패는 `eval/run_parser_eval.py`의 `FAILURE_TAXONOMY`로 �
 
 ### C2. 발주기관/사업명 모호성 (빈도 2/12, Impact M, Effort M)
 
-**사용자 관점 증상**: 동일 substring을 가진 여러 발주기관이 코퍼스에 있을 때(예: 광역시 본청 vs 산하 자치구), 또는 한 발주기관에 다수 사업이 있을 때 retrieval 자체가 실패하고 clarification도 발생하지 않는다. **(부분 해결, issue #72)** single-turn metadata ambiguity는 `metadata_ambiguity_details` (rag_core.py:1313)가 이미 검출하고 `make_metadata_clarification_result` (rag_core.py:3029)가 clarification 응답을 만든다. #72에서 clarification 메시지를 `agency · project (doc_id)` 형식으로 강화해 사용자가 후보 사업명을 직접 보고 재질의할 수 있게 했다. 합성 표면 probe set: `data/raw/rfp_agency_e_water_quality_*.json` + `eval/config.yaml`의 `single_turn_ambiguity_water_*` 케이스.
+**사용자 관점 증상**: 동일 substring을 가진 여러 발주기관이 코퍼스에 있을 때(예: 광역시 본청 vs 산하 자치구), 또는 한 발주기관에 다수 사업이 있을 때 retrieval 자체가 실패하고 clarification도 발생하지 않는다. **(부분 해결, issue #72)** single-turn metadata ambiguity는 `metadata_ambiguity_details` (rag_core.py:1313)가 이미 검출하고 `make_metadata_clarification_result` (rag_core.py:3029)가 clarification 응답을 만든다. #72에서 clarification 메시지를 `agency · project (doc_id)` 형식으로 강화해 사용자가 후보 사업명을 직접 보고 재질의할 수 있게 했다. 합성 표면 probe set: `eval/fixtures/smoke_rfp/raw/rfp_agency_e_water_quality_*.json` + `eval/config.yaml`의 `single_turn_ambiguity_water_*` 케이스.
 
 **추정 원인**: ~~`resolve_conversation_context`는 conversation state 기반 모호성만 처리하고, 단일 질의 안에 내재된 entity 모호성은 처리하지 않는다.~~ **(검출 자체는 이미 동작; 메시지 가독성과 합성 회귀 가드만 부족했음)**. 단, real-data에서는 metadata 매칭이 노이즈가 많아 0.05 confidence delta를 통과 못 해 verifier 단계까지 도달하는 케이스가 있을 수 있음 — scoring 개선은 후속 작업.
 
@@ -89,7 +89,7 @@ OCR/parser-stage 실패는 `eval/run_parser_eval.py`의 `FAILURE_TAXONOMY`로 �
 - [rag_core.py:1313](../../rag_core.py#L1313) — `metadata_ambiguity_details`의 0.05 confidence_delta 튜닝(real-data noisy matching에 대응)
 - [rag_core.py:2069](../../rag_core.py#L2069) — `answer_status`에 명시적 `clarification` status 추가(#72에서는 `insufficient + code=metadata_ambiguity_clarification`로 surface; 별도 status로 격상은 ADR 0003 contract 변경이라 보류)
 
-**수용 조건 힌트**: 동일 발주기관에 ≥2 사업이 있는 질의에서 `supported` 또는 `clarification`으로 응답, abstain 없음. **(공개 합성 표면 충족, real-data 측정은 후속 작업)**
+**수용 조건 힌트**: 동일 발주기관에 ≥2 사업이 있는 질의에서 `supported` 또는 `clarification`으로 응답, abstain 없음. **(공개 fixture smoke 표면 충족, real-data 측정은 후속 작업)**
 
 ### C3. 청크 경계/섹션 오류 (직접 evidence 없음, Impact M, Effort M)
 

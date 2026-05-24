@@ -2,7 +2,7 @@
 
 These tests bypass uvicorn and use FastAPI's ``TestClient`` so they
 remain fast and offline. The index is built in-memory from the
-existing ``data/raw`` fixture using the hashing embedding backend,
+existing ``eval/fixtures/smoke_rfp/raw`` fixture using the hashing embedding backend,
 matching the pattern used by other retrieval regression tests.
 """
 from __future__ import annotations

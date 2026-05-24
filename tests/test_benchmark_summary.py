@@ -79,18 +79,18 @@ class BenchmarkSummaryTest(unittest.TestCase):
 
     def test_private100_fixture_preserves_privacy_metadata_and_comparison(self) -> None:
         private_manifest = self.load_private100_fixture()
-        public_entry = registry_entry(
+        fixture_entry = registry_entry(
             {
-                "run_id": "public_synthetic_unit",
+                "run_id": "public_fixture_unit",
                 "generated_at": "2026-05-07T00:00:00Z",
                 "git_commit": "public123",
                 "git_dirty": False,
                 "suite": {
-                    "id": "public_synthetic_rfp",
+                    "id": "public_fixture_rfp_smoke",
                     "dataset": {
-                        "id": "public_synthetic_rfp_v1",
-                        "type": "public_synthetic",
-                        "privacy": "public_synthetic",
+                        "id": "public_fixture_rfp_smoke_v1",
+                        "type": "public_fixture",
+                        "privacy": "public_fixture",
                         "corpus_size": 4,
                         "anonymized": False,
                     },
@@ -128,7 +128,7 @@ class BenchmarkSummaryTest(unittest.TestCase):
         )
 
         private_entry = registry_entry(private_manifest)
-        docs = render_docs({"schema_version": 1, "entries": [public_entry, private_entry]})
+        docs = render_docs({"schema_version": 1, "entries": [fixture_entry, private_entry]})
 
         self.assertEqual(
             {
@@ -136,7 +136,7 @@ class BenchmarkSummaryTest(unittest.TestCase):
                 "privacy": "private_aggregate_only",
                 "corpus_size": 100,
                 "anonymized": True,
-                "comparison_group": "public_synthetic_rfp",
+                "comparison_group": "private_internal_rfp",
             },
             private_entry["dataset"],
         )

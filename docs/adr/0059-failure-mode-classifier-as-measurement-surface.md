@@ -69,7 +69,7 @@ ADR 0006 의 read-only consumer boundary 가 본 분류기에도 그대로 — p
 
 - **ADR 0001** (`naive_baseline` byte-identical) — read-only consumer, production 코드 0 변경 → 합성 baseline 영향 없음. 신규 키만 추가되므로 합성 `naive_baseline_top_k.json` golden 무영향.
 - **ADR 0003** (answer dict `schema_version=2`) — 변경 없음. 본 PR 의 schema 추가는 `case_results` (eval scorer 출력) 이지 answer contract 와 무관.
-- **ADR 0005** (private real / public synthetic 분리) — `reports/real100/baseline.aggregate.json` 의 신규 키 (`failure_category_counts`) 는 기존 aggregate-only 패턴 그대로. per-case `failure_category` 는 trace 와 동일 boundary (per-case eval_summary.json 은 gitignored, aggregate 만 commit).
+- **ADR 0005** (private real / public fixture smoke 분리) — `reports/real100/baseline.aggregate.json` 의 신규 키 (`failure_category_counts`) 는 기존 aggregate-only 패턴 그대로. per-case `failure_category` 는 trace 와 동일 boundary (per-case eval_summary.json 은 gitignored, aggregate 만 commit).
 - **ADR 0006** (LLM-judge real-data only) — 본 분류기는 LLM 미사용 → ADR 0006 의 비용/정직성 contract 무관.
 - **ADR 0054** (substantive-only scorer semantics) — `is_failed` 정의가 ADR 0054 의 None-skip semantic 을 그대로 받아 처리 (None accuracy 케이스 = unanswerable, abstention 별도 branch 로 처리).
 - **ADR 0055** (claim_validator PR gate) — 향후 `Claim: verifier_false_negative_rate=-X.Xpp` 같은 claim 도 `failure_category_counts` aggregate 으로 paired bootstrap CI 가능.

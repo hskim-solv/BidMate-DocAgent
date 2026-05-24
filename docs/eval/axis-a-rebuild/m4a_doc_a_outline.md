@@ -57,7 +57,7 @@ Stage: **sub-STOP 1 (v3+distractor)** (outline 갱신 박제 → user review →
   "project": "AI 품질관리 플랫폼 구축",
   "metadata": {
     "domain": "AI quality",
-    "document_type": "synthetic_public_sample",
+    "document_type": "public_fixture",
     "axis_a_scale": "real_scale_v2_distractor",
     "axis_a_scale_anchor": "Upstage heading1 (main heading) median ~100 + kordoc 39511 chars cross-check",
     "axis_a_scale_measurement_ref": "docs/eval/axis-a-rebuild/axis_b_real_measurement.md v3",

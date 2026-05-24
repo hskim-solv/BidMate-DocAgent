@@ -30,7 +30,7 @@ CI 겹침은 "동등" 의 증거가 아니라 *현재 n*에서 두 분포를 구
 - [LangChain Evals — Bootstrap CI on aggregated runs](https://docs.smith.langchain.com/evaluation/concepts) —
   표본 변동성을 명시.
 
-## Current measurement (n=42, public synthetic, hashing backend)
+## Current measurement (n=42, public fixture smoke, hashing backend)
 
 [README ablation table](../../README.md#ablation-comparison) snapshot에서 4 surfaced
 + 15 detection-blind = **19개 ablation** 를 `naive_baseline` 대비 평가했다.
@@ -70,7 +70,7 @@ selection*한다. 이 저장소는 반대로 한다:
 ## n=100 expansion (issue #570 완료)
 
 [Issue #570](https://github.com/hskim-solv/BidMate-DocAgent/issues/570) 로
-public synthetic 데이터셋이 n=42 → n=100 으로 확장됐다. Bootstrap CI 폭의 이론적
+public fixture smoke 데이터셋이 n=42 → n=100 으로 확장됐다. Bootstrap CI 폭의 이론적
 축소율은 `√(42/100) ≈ 0.65` 이므로 half-width 가 ±0.12 → ±0.078 로 좁아진다.
 n=100 에서의 detection limit 는 minimum detectable difference ≈ ~8.5pp.
 
@@ -98,8 +98,8 @@ CI bootstrap parameter (n_resamples=1000, alpha=0.05, seed=17) 는
   "왜 baseline은 교체되지 않는가" 의 commit-level 결정.
 - [ADR 0011 — LLM synthesis as additive ablation](../adr/0011-llm-synthesis-as-additive-ablation.md) —
   `full_llm` / `full_llm_metadata` 가 *추가* surface 이지 replacement 가 아닌 이유.
-- [ADR 0030 — Real-eval leaderboard schema](../adr/0030-leaderboard-headline-includes-agentic-full.md) —
-  n 확장 후 leaderboard 표현 형식.
+- Real-eval aggregate schema —
+  n 확장 후 aggregate 표현 형식.
 - [Issue #570](https://github.com/hskim-solv/BidMate-DocAgent/issues/570) —
   n=42 → n=100 expansion (re-measurement pending).
 - [Issue #782](https://github.com/hskim-solv/BidMate-DocAgent/issues/782) —

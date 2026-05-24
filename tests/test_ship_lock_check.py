@@ -29,7 +29,7 @@ import _ship_lock_check as lc  # noqa: E402
     ("rag_synthesis.py", 240),
     ("eval/config.yaml", 241),
     ("eval/run_eval.py", 241),
-    ("scripts/leaderboard.py", 241),
+    ("scripts/run_real_eval_delta.py", 241),
     ("rag_observability.py", 242),
     ("api/main.py", 243),
     ("app.py", 243),
