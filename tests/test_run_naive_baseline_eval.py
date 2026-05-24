@@ -49,6 +49,50 @@ class NaiveBaselineEvalWrapperTest(unittest.TestCase):
                 }
             )
 
+    def test_validate_metrics_fails_when_required_metric_null(self) -> None:
+        metrics = self._valid_metrics()
+        metrics["Retrieval metrics"]["Recall@5"] = None
+
+        with self.assertRaisesRegex(ValueError, "Retrieval metrics.Recall@5"):
+            nb.validate_metrics(metrics)
+
+    def test_comparison_retrieval_gap_is_not_double_counted(self) -> None:
+        summary = {
+            "index_citation_metadata_coverage": {"coverage_reason": "ok"},
+            "case_results": [
+                {
+                    "id": "c1",
+                    "query": "Compare A and B requirements",
+                    "query_type": "comparison",
+                    "hardcase_categories": [],
+                    "answerable": True,
+                    "chunk_recall_at_5": 0.5,
+                    "chunk_recall_at_10": 0.5,
+                    "comparison_target_recall": 0.5,
+                    "accuracy": 1.0,
+                    "groundedness": 1.0,
+                    "citation_precision": 1.0,
+                    "claim_citation_alignment": 1.0,
+                    "abstained": False,
+                    "failure_category": None,
+                    "answer": "answer",
+                }
+            ],
+        }
+
+        analysis = nb.categorize_failures(summary, metric_errors=[])
+
+        self.assertEqual(
+            1,
+            analysis["buckets"]["retrieval_failures"]["multi-chunk evidence missing"],
+        )
+        self.assertEqual(
+            1,
+            analysis["representative_cases"][0]["labels"].count(
+                "retrieval: multi-chunk evidence missing"
+            ),
+        )
+
     def test_export_artifacts_writes_required_files(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -106,6 +150,31 @@ class NaiveBaselineEvalWrapperTest(unittest.TestCase):
                 result["metrics"]["Retrieval metrics"]["Recall@5"],
             )
             self.assertIn("retrieval_failures", result["analysis"]["buckets"])
+
+    @staticmethod
+    def _valid_metrics() -> dict:
+        return {
+            "Retrieval metrics": {
+                "Recall@5": 1.0,
+                "Recall@10": 1.0,
+                "MRR@5": 1.0,
+                "nDCG@5": 1.0,
+            },
+            "Answer/evidence metrics": {
+                "Faithfulness": 1.0,
+                "Answer relevancy": 1.0,
+                "Citation accuracy": 1.0,
+                "Hallucination rate": 0.0,
+                "Unanswerable detection rate": 1.0,
+            },
+            "Operational metrics": {
+                "total latency ms": 10.0,
+                "retrieval latency mean ms": 2.0,
+                "generation latency mean ms": 4.0,
+                "P50 latency ms": 10.0,
+                "P95 latency ms": 20.0,
+            },
+        }
 
     @staticmethod
     def _summary_fixture() -> dict:

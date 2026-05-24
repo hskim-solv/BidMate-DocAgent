@@ -325,7 +325,7 @@ def validate_metrics(metrics: dict[str, Any]) -> None:
             missing.append(group)
             continue
         for key in keys:
-            if key not in block:
+            if key not in block or block[key] is None:
                 missing.append(f"{group}.{key}")
     if missing:
         raise ValueError("metrics.json missing required keys: " + ", ".join(sorted(missing)))
@@ -428,10 +428,12 @@ def categorize_failures(
         hardcase = set(case.get("hardcase_categories") or [])
         query = str(case.get("query") or "")
 
+        retrieval_gap_counted = False
         if answerable and isinstance(recall5, (int, float)):
             if recall5 == 0.0:
                 buckets["retrieval_failures"]["gold evidence not in top-k"] += 1
                 case_labels.append("retrieval: gold evidence not in top-k")
+                retrieval_gap_counted = True
             elif recall5 < 1.0:
                 if isinstance(recall10, (int, float)) and recall10 > recall5:
                     buckets["retrieval_failures"]["gold evidence ranked too low"] += 1
@@ -439,6 +441,7 @@ def categorize_failures(
                 else:
                     buckets["retrieval_failures"]["multi-chunk evidence missing"] += 1
                     case_labels.append("retrieval: multi-chunk evidence missing")
+                retrieval_gap_counted = True
             if "chunk_boundary" in hardcase and recall5 < 1.0:
                 buckets["retrieval_failures"]["chunk boundary split"] += 1
                 case_labels.append("retrieval: chunk boundary split")
@@ -448,6 +451,7 @@ def categorize_failures(
             and case.get("query_type") == "comparison"
             and isinstance(case.get("comparison_target_recall"), (int, float))
             and case.get("comparison_target_recall") < 1.0
+            and not retrieval_gap_counted
         ):
             buckets["retrieval_failures"]["multi-chunk evidence missing"] += 1
             case_labels.append("retrieval: multi-chunk evidence missing")
