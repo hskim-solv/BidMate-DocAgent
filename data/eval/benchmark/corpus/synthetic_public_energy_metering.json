@@ -1,0 +1,74 @@
+{
+  "doc_id": "synthetic-public-energy-metering",
+  "title": "Synthetic Public Energy Metering RFP",
+  "agency": "Synthetic Energy Agency",
+  "project": "스마트 계량 데이터 수집 플랫폼",
+  "metadata": {
+    "document_type": "synthetic_public_benchmark_v1",
+    "synthetic": true,
+    "domain": "energy_metering",
+    "note": "Public synthetic RFP-style document. Does not copy private procurement text."
+  },
+  "sections": [
+    {
+      "heading": "1. 사업 개요",
+      "page_span": [1, 1],
+      "text": "Synthetic Energy Agency는 스마트 계량기 데이터를 수집하고 이상 사용량을 탐지하는 플랫폼을 구축한다. 본 문서는 공개 합성 벤치마크용이며 실제 계량망 정보는 포함하지 않는다. 수집 대상은 전력, 열, 수도 계량 데이터이다."
+    },
+    {
+      "heading": "2. 입찰 일정",
+      "page_span": [2, 2],
+      "text": "제안서 제출 마감은 2026년 11월 18일 14:00이다. 질의응답 접수 마감은 2026년 11월 9일 18:00이다. 보완자료 제출 마감은 기술평가 종료 후 2영업일 이내로 제한한다."
+    },
+    {
+      "heading": "3. 가격제안 일정",
+      "page_span": [3, 3],
+      "text": "가격제안서 제출 마감은 2026년 11월 18일 14:00이며 제안서 제출 마감과 동일하다. 가격 산출내역서는 별도 양식으로 제출한다. 기술평가 발표자료 제출일은 2026년 11월 21일이다."
+    },
+    {
+      "heading": "4. 평가 배점",
+      "page_span": [4, 4],
+      "text": "평가표: 기술평가 75점, 가격평가 25점, 합계 100점. 기술평가는 수집 안정성 30점, 보안 20점, 운영 편의성 15점, 수행 경험 10점으로 구성한다. 가격평가 점수는 수집 안정성 점수와 혼동하지 않는다."
+    },
+    {
+      "heading": "5. 계량 보안",
+      "page_span": [5, 5],
+      "text": "계량 보안 요구사항은 장비 인증서 등록, 전송 구간 TLS 1.3, 명령 메시지 서명 검증을 포함한다. Cloud Security 요구사항은 수집 API private endpoint와 KMS 암호화를 포함한다. LoRaWAN 주파수 대역은 본 문서에 명시하지 않는다."
+    },
+    {
+      "heading": "6. 유지보수와 SLA",
+      "page_span": [6, 6],
+      "text": "무상 유지보수 기간은 검수 완료 후 18개월이다. SLA는 월간 수집 성공률 99.8퍼센트 이상, 장애 1등급 3시간 내 임시 복구를 요구한다. 유지보수 갱신 단가는 본 문서에 포함하지 않는다."
+    },
+    {
+      "heading": "7. 투입 인력",
+      "page_span": [7, 7],
+      "text": "필수 투입 인력은 PM 1명, IoT 개발자 2명, 데이터 엔지니어 2명, 보안 담당자 1명으로 총 6명이다. 전력 계통 자문위원 1명은 권장 인력이다. 권장 인력은 상주 필수 조건이 아니다."
+    },
+    {
+      "heading": "8. 산출물과 검수",
+      "page_span": [8, 8],
+      "text": "최종 산출물 제출일은 2027년 4월 7일이며 수집 API 명세서, 장비 연동 시험서, 운영 매뉴얼을 포함한다. 최종 검수일은 2027년 4월 21일이다. 검수는 샘플 계량기 200대의 연속 수집 결과를 확인한다."
+    },
+    {
+      "heading": "9. 계량 데이터 표",
+      "page_span": [9, 9],
+      "text": "수집 표: 전력 계량값은 15분 주기, 열 계량값은 30분 주기, 수도 계량값은 60분 주기로 수집한다. 이상 사용량 탐지는 전력과 열 데이터에 우선 적용한다. 수집 주기는 보관 기간과 다른 개념이다."
+    },
+    {
+      "heading": "10. 인프라 구성",
+      "page_span": [10, 10],
+      "text": "인프라는 메시지 브로커 이중화, 시계열 DB 복제, 배치 분석 노드 분리를 포함한다. 월간 원시 데이터 적재량은 12TB로 산정한다. 데이터베이스 라이선스 비용 상한은 본 문서에 제시하지 않는다."
+    },
+    {
+      "heading": "11. Edge Gateway and MQTT",
+      "page_span": [11, 11],
+      "text": "Edge Gateway는 MQTT QoS 1 이상을 지원해야 하며 offline buffer는 최소 24시간 데이터를 보관해야 한다. Gateway health check는 5분 주기로 수행한다. MQTT topic name은 Korean site code와 English device type을 조합한다."
+    },
+    {
+      "heading": "12. 준수 사항",
+      "page_span": [12, 12],
+      "text": "준수 사항은 개인정보 최소 수집, 운영자 권한 분리, 장애 조치 이력 보관을 포함한다. 계량 원문 데이터는 식별자를 암호화한 뒤 분석 영역으로 이동한다. 외부 반출은 승인 워크플로를 거쳐야 한다."
+    }
+  ]
+}

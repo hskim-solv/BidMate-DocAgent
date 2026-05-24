@@ -1,0 +1,69 @@
+schema_version: 1
+name: benchmark_naive_rag_v1
+benchmark_type: naive_rag_benchmark
+not_ci_smoke: true
+description: Public synthetic benchmark for exposing Naive RAG retrieval and answer-grounding failures before optimization work.
+
+corpus_dir: data/eval/benchmark/corpus
+index_dir: data/eval/benchmark/index
+questions_path: data/eval/benchmark/rag_questions_v1.jsonl
+gold_evidence_path: data/eval/benchmark/gold_evidence_v1.jsonl
+output_root: experiments/runs
+
+dataset_metadata:
+  dataset_id: synthetic_naive_rag_benchmark_v1
+  privacy: public_synthetic
+  intended_use: public reproducibility, ablation setup, and failure-mode discovery
+  not_for_claims: final real-world RAG performance claims require private real-eval
+  minimum_questions: 50
+  minimum_answerable: 35
+  minimum_unanswerable: 15
+  minimum_chunk_to_top_k_ratio: 3.0
+  saturation_warning_chunk_to_top_k_ratio: 5.0
+
+index_build:
+  input_dir: data/eval/benchmark/corpus
+  output_dir: data/eval/benchmark/index
+  embedding_backend: hashing
+  chunking_strategy: section
+  chunk_max_chars: 520
+  chunk_overlap_sentences: 1
+  command: python3 scripts/build_index.py --input_dir data/eval/benchmark/corpus --output_dir data/eval/benchmark/index --embedding_backend hashing --chunking_strategy section --chunk_max_chars 520 --chunk_overlap_sentences 1
+
+validator:
+  command: python3 eval/naive_rag/validate_benchmark_dataset.py --config configs/eval/benchmark_naive_rag_v1.yaml
+  leakage_report: reports/benchmark/naive_rag_v1_validation.json
+
+pipeline:
+  name: naive_baseline
+  top_k: 10
+  retrieval_mode: flat
+  retrieval_backend: dense
+  metadata_first: false
+  rerank: false
+  verifier_retry: false
+  query_expansion: identity
+  prompt_profile: minimal_grounded_extractive
+  bm25_tokenizer: regex
+  bm25_backend: okapi
+
+metrics:
+  retrieval:
+    - recall_at_5
+    - recall_at_10
+    - mrr_at_5
+    - ndcg_at_5
+  answer:
+    - faithfulness
+    - answer_relevancy
+    - citation_accuracy
+    - hallucination_flag
+    - unanswerable_detection_flag
+
+metric_display_names:
+  answer:
+    faithfulness: citation-in-retrieved-context placeholder
+    answer_relevancy: expected-answer lexical coverage placeholder
+    citation_accuracy: gold-citation match rate
+    hallucination_flag: rule-based hallucination flag
+    unanswerable_detection_flag: rule-based abstention detection flag

@@ -1,0 +1,74 @@
+{
+  "doc_id": "synthetic-public-archive-search",
+  "title": "Synthetic Public Archive Search RFP",
+  "agency": "Synthetic Archive Center",
+  "project": "기록물 OCR 검색 시스템 구축",
+  "metadata": {
+    "document_type": "synthetic_public_benchmark_v1",
+    "synthetic": true,
+    "domain": "archive_search",
+    "note": "Public synthetic RFP-style document. Does not copy private procurement text."
+  },
+  "sections": [
+    {
+      "heading": "1. 사업 개요",
+      "page_span": [1, 1],
+      "text": "Synthetic Archive Center는 스캔 기록물의 OCR 검색과 메타데이터 검증을 지원하는 시스템을 구축한다. 본 문서는 공개 합성 RFP이며 실제 기록물 원문이나 소유자 이름을 포함하지 않는다. 대상 자료는 공개 가능한 가상 기록물로만 설명한다."
+    },
+    {
+      "heading": "2. 제출 일정",
+      "page_span": [2, 2],
+      "text": "제안서 제출 마감은 2026년 12월 2일 16:00이다. 질의응답 접수 마감은 2026년 11월 23일 12:00이다. 현장설명회는 2026년 11월 20일 10:00에 온라인으로 진행한다."
+    },
+    {
+      "heading": "3. 평가 배점",
+      "page_span": [3, 3],
+      "text": "평가표: OCR 품질 30점, 검색 정확도 25점, 보안 20점, 수행 역량 10점, 가격평가 15점, 합계 100점. 검색 정확도 점수는 OCR 품질 점수와 별도이다. 가격평가는 기술 항목 합산 후 더한다."
+    },
+    {
+      "heading": "4. OCR 및 표 추출",
+      "page_span": [4, 4],
+      "text": "OCR confidence 평균은 0.92 이상이어야 하며 표 구조 추출은 셀 병합 정보를 유지해야 한다. 표 추출 결과는 CSV와 JSON으로 모두 제공한다. 특정 OCR 상용 제품명은 지정하지 않는다."
+    },
+    {
+      "heading": "5. 보안 및 준법",
+      "page_span": [5, 5],
+      "text": "보안 요구사항은 원문 이미지 접근 권한 분리, 다운로드 승인, 열람 이력 5년 보관이다. 개인정보가 포함된 페이지는 마스킹 후 검색 색인에 반영한다. 비공개 기록물 원문은 외부 API로 전송할 수 없다."
+    },
+    {
+      "heading": "6. Cloud 구성",
+      "page_span": [6, 6],
+      "text": "Cloud 구성은 검색 API private subnet 배치, 색인 스토리지 암호화, 백업 버킷 버전 관리를 포함한다. Cloud Security 점검은 월 1회 수행한다. 일반 보안 교육 일정은 이 항목에서 다루지 않는다."
+    },
+    {
+      "heading": "7. 사업기간과 유지보수",
+      "page_span": [7, 7],
+      "text": "구축 사업기간은 계약일로부터 7개월이다. 무상 유지보수 기간은 최종 검수 완료 후 15개월이다. 유지보수 기간에는 색인 오류 샘플링 리포트를 월 1회 제출한다."
+    },
+    {
+      "heading": "8. 투입 인력",
+      "page_span": [8, 8],
+      "text": "필수 투입 인력은 PM 1명, OCR 엔지니어 2명, 검색 엔지니어 2명, 보안 담당자 1명, QA 담당자 1명으로 총 7명이다. 기록관리 자문위원 1명은 권장 인력이다. 권장 인력은 필수 인력 수에 포함하지 않는다."
+    },
+    {
+      "heading": "9. 산출물과 검수",
+      "page_span": [9, 9],
+      "text": "최종 산출물 제출일은 2027년 6월 18일이며 OCR 품질 리포트, 색인 설계서, 운영 매뉴얼을 포함한다. 최종 검수일은 2027년 6월 30일이다. 검수는 샘플 페이지 1,000장의 검색 가능 여부를 확인한다."
+    },
+    {
+      "heading": "10. 보존 및 이관 표",
+      "page_span": [10, 10],
+      "text": "보존 표: 원문 이미지 10년, OCR 텍스트 7년, 검색 로그 5년, 임시 변환 파일 30일. 임시 변환 파일은 검수 후 삭제해야 한다. 검색 로그 보존 기간은 원문 이미지 보존 기간과 다르다."
+    },
+    {
+      "heading": "11. OCR API Terms",
+      "page_span": [11, 11],
+      "text": "OCR API는 batch_id, page_id, confidence_score를 응답해야 한다. Search API는 Korean keyword와 English metadata field를 동시에 필터링할 수 있어야 한다. API rate limit 값은 운영 협의에서 정하되 본문에는 숫자로 명시하지 않는다."
+    },
+    {
+      "heading": "12. 선택 기능",
+      "page_span": [12, 12],
+      "text": "자동 요약 기능은 선택 기능으로 제안할 수 있으나 필수 요구사항이 아니다. 선택 기능은 OCR 품질과 검색 정확도 평가를 대체하지 않는다. 영상 기록물 음성 인식은 본 사업 범위에서 제외한다."
+    }
+  ]
+}
