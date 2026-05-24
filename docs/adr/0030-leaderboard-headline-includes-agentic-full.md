@@ -1,6 +1,7 @@
 # 0030: 리더보드 headline에 `naive_baseline`과 함께 `agentic_full` 포함
 
-- **Status**: accepted
+- **Status**: Superseded
+- **Superseded by**: [ADR 0005](./0005-eval-split-public-synthetic-private-local.md) (public fixture smoke / private internal eval boundary)
 - **Date**: 2026-05-13
 - **Deciders**: maintainer (hskim-solv)
 - **Related**: issue #476, PR (forthcoming); ADR 0001(기준선 보존) + ADR 0024(agentic_full LLM as API default) 강화

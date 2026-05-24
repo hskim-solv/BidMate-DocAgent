@@ -58,7 +58,7 @@ class SingleChunkPresetEndToEndTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.index = build_index_payload(
-            Path("data/raw"), embedding_backend="hashing"
+            Path("eval/fixtures/smoke_rfp/raw"), embedding_backend="hashing"
         )
 
     def test_single_chunk_returns_exactly_one_evidence_item(self) -> None:

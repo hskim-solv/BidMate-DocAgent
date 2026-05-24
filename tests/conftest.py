@@ -10,12 +10,13 @@ from rag_core import build_index_payload, clear_model_caches
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
+SMOKE_FIXTURE_RAW = ROOT_DIR / "eval" / "fixtures" / "smoke_rfp" / "raw"
 
 
 @pytest.fixture(scope="session")
 def shared_raw_index() -> dict:
-    """Hashing-backend index built once per session from data/raw."""
-    return build_index_payload(ROOT_DIR / "data" / "raw", embedding_backend="hashing")
+    """Hashing-backend index built once per session from eval/fixtures/smoke_rfp/raw."""
+    return build_index_payload(SMOKE_FIXTURE_RAW, embedding_backend="hashing")
 
 
 @pytest.fixture(autouse=True, scope="session")

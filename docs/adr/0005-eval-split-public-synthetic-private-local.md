@@ -1,66 +1,62 @@
-# 0005: Eval 분리 — public synthetic vs private local
+# 0005: Eval 분리 — public fixture smoke vs private/internal eval
 
 - **Status**: accepted
 - **Date**: 2026-05-11
-- **Related**: [ADR 0058](0058-phase35-mode-winner.md) (real100 measurement = 이 표면의 private-local slice), [`eval/config.yaml`](../../eval/config.yaml), [`eval/real_config.example.yaml`](../../eval/real_config.example.yaml), [`docs/real-data/private-100-doc-experiments.md`](../real-data/private-100-doc-experiments.md), [`docs/real-data/private-hardcase-benchmark.md`](../real-data/private-hardcase-benchmark.md), [`docs/real-data/real-data-failure-taxonomy.md`](../real-data/real-data-failure-taxonomy.md)
+- **Updated**: 2026-05-24
+- **Related**: [`eval/config.yaml`](../../eval/config.yaml), [`eval/real_config.example.yaml`](../../eval/real_config.example.yaml), [`eval/fixtures/smoke_rfp/raw`](../../eval/fixtures/smoke_rfp/raw), [`docs/real-data/private-100-doc-experiments.md`](../real-data/private-100-doc-experiments.md), [`docs/real-data/private-hardcase-benchmark.md`](../real-data/private-hardcase-benchmark.md), [`docs/real-data/real-data-failure-taxonomy.md`](../real-data/real-data-failure-taxonomy.md)
 
 ## TL;DR
 
-- 공개 synthetic + 비공개 local 두 eval 표면을 나란히 유지한다.
-- 공개 표면이 README 메트릭 anchor, 비공개 표면이 실패 taxonomy 근거.
-- 어떤 새 eval 표면도 한쪽을 선택 — public-redistributable 또는 strictly local.
+- 공개 저장소에는 작은 public fixture smoke eval만 둔다.
+- public fixture smoke는 CI 재현성(reproducibility), wiring, latency SLO, metric schema를 확인하는 용도다.
+- 실제 성능 평가는 저장소에 커밋하지 않는 private/internal eval set과 aggregate-only evidence artifact를 기준으로 한다.
 
 ## 배경
 
-평가에 상반된 두 요구가 있다:
+평가에는 서로 다른 두 요구가 있다.
 
-- **공개 재현성.** repo clone 만으로 secret·paid API·재배포 불가 데이터 없이 의미 있는 eval 실행 가능해야. README 메트릭은 공개 artifact 로 뒷받침되어야
-- **정직한 신호.** synthetic RFP 는 실제 조달 문서의 실패 모드(모호 메타데이터·스캔 PDF·distribution 외 phrasing)를 자극 안 함. 실패 taxonomy 의 실제 출처는 real-data eval
+- **공개 재현성.** repo clone만으로 secret, paid API, 비공개 RFP 없이 eval framework와 CI wiring이 동작해야 한다.
+- **정직한 성능 신호.** 실제 RFP 성능은 공개 fixture가 아니라 private/internal eval set에서 측정해야 한다. 공개 가능한 작은 fixture는 분포·난이도·문서 다양성이 제한되어 성능 benchmark 역할을 할 수 없다.
 
-단일 eval set 으로 양쪽 다 못한다. 공개된 것은 그 자체로 최적화 대상이 되고, 공개 못 하는 것은 공개 주장의 anchor 가 될 수 없다.
+단일 공개 데이터셋으로 두 목적을 모두 만족시키면 reviewer에게 과한 신호를 준다. 따라서 공개 fixture는 smoke test로만 쓰고, 성능 주장은 private/internal aggregate evidence에 연결한다.
 
 ## 결정
 
-두 eval 표면을 side-by-side 유지:
+두 eval 표면을 분리한다.
 
-- **공개 synthetic** (`eval/config.yaml`, `data/raw/`). 커밋, 매 PR 에서 CI 실행 가능(`make eval`, eval delta workflow), README 메트릭 구동. *"시스템이 여전히 주장한 계약을 출하 중인가?"* 의 단일 출처. 오프라인 실행 위해 hashing 임베딩 백엔드 사용
-- **비공개 local** (`eval/real_config.example.yaml` 가 scaffold; 실제 config 와 corpus 는 git 외부). 실제 조달 문서에서 로컬 실행. *"어떤 실패 모드가 real 인가?"* 의 단일 출처. 출력(`reports/real100/`)·입력(`data/files/`, `data/data_list.csv`, 로컬 config)은 `.gitignore`d
+- **Public fixture smoke**: `eval/fixtures/smoke_rfp/raw` + `eval/config.yaml`. 커밋 가능하고 네트워크 없이 CI에서 실행한다. 목적은 eval framework, retrieval metrics, answer metrics, citation/evidence metrics, latency logging, trace artifact가 계속 살아 있는지 확인하는 것이다.
+- **Private/internal eval**: `eval/real_config.example.yaml`가 scaffold 역할을 하며 실제 config/corpus는 git 외부에 둔다. 실제 성능 평가는 이 표면에서 실행하고, 커밋 가능한 산출물은 aggregate-only 보고서와 provenance만 허용한다.
 
-경계는 example 파일 컨벤션(`*.example.yaml`) + `.gitignore` 가 강제. 모든 새 eval 표면은 한쪽을 선택 — public-redistributable 또는 strictly local.
+모든 새 eval 표면은 둘 중 하나로 분류해야 한다.
 
-예: Phase 3.5 retrieval mode-winner 결정([ADR 0058](0058-phase35-mode-winner.md))의 evidence 인 real100 measurement(csv_text-fallback 인덱스 898 chunks — kordoc-full ~26,376 은 미사용 reference, n=221)는 **strictly-local** surface 에 속한다 — corpus·case 텍스트·doc/chunk ID 는 gitignored, committable 은 aggregate 산출물 4개 (`REPORT.md` + `mode_specs.json` + `deltas.json` + `raw_results.json`, qid/categories/metric 값만). 이 cross-ref 가 없으면 새 측정 표면이 어느 slice 인지 모호해진다.
+- public fixture smoke: 공개 가능한 작은 fixture, benchmark 표현 금지
+- private/internal eval: raw data와 per-case output은 local-only, aggregate evidence만 commit-safe
 
 ## 결과
 
-**Wins**
+**유지되는 것**
 
-- CI eval delta job(`.github/workflows/pr-eval.yml`)이 자기가 무엇을 cover 하고 안 하는지 정직 — 공개 synthetic 표면만 측정
-- 실패 taxonomy 와 우선순위 backlog 가 문서 leak 없이 real-data 관찰에 ground 가능
-- 비밀유지가 파일별 판단이 아니라 컨벤션화
+- retrieval quality metrics
+- answer quality metrics
+- citation accuracy / evidence verification
+- latency logging and SLO check
+- private/internal eval hook
+- fixture 기반 smoke test
+- reviewer-friendly aggregate evidence artifact
 
-**Costs**
+**의도적으로 제거한 것**
 
-- config 두 벌 유지 부담. case schema 진화(필수 필드 추가·메트릭 키 추가) 시 양쪽 동시 갱신 필요 — 안 그러면 비공개 표면 silent drift
-- README 메트릭이 real-data 가 보는 실패율을 under-report. 정직하게 메우려면 aggregate-delta 리포트(`docs/real-data/private-100-doc-experiments.md`) 필요
-- reviewer 는 비공개 표면 숫자 재현 불가. aggregate/delta 리포트 + 공개 표면 재현성을 신뢰해야
+- public data를 primary benchmark처럼 보이게 하는 dataset, generator, aggregate report, judge aggregate, README metric snapshot
+- public fixture score를 실제 성능 주장으로 읽히게 만드는 문서 표현
 
-## LLM-judge gate 레이어 (ADR 0006 / 0012 / 0014, 통합)
+## 운영 규칙
 
-세 연속 ADR 이 두 eval split 위에 LLM-judge 표면을 쌓았다. 그 ADR 들은 여기서 Superseded; 결정은 유효.
+이 레포지토리는 공개 가능한 작은 fixture를 smoke test 용도로만 사용합니다. 실제 성능 평가는 레포지토리에 커밋하지 않는 private/internal eval set을 기준으로 수행하는 것을 전제로 합니다.
 
-**Gate 1 — real-data only (ADR 0006, accepted)**  
-LLM-judge 는 `eval/real_config.local.yaml` run 에만 허용. 출력: 케이스별 `judge.local.json` (gitignored) + aggregate `judge.agreement_with_verifier` (committable). 백엔드: `BIDMATE_JUDGE_BACKEND` — `stub` | `openai_compatible`. deterministic verifier 가 게이트, judge 는 second opinion.
+CI는 public fixture smoke eval과 unit test, latency budget check만 요구한다. Private/internal data는 CI 필수 조건이 아니며, raw private data는 저장소에 포함하지 않는다.
 
-**Gate 2 — public synthetic stub-default (ADR 0012, accepted)**  
-LLM-judge 는 `eval/config.yaml` 에 허용 — 단 CI 는 stub-only(`BIDMATE_SYNTHETIC_JUDGE_BACKEND=stub`, deterministic, network-free). live backend 는 `make synthetic-judge` 로 offline opt-in. committable aggregate: `reports/synthetic_judge.aggregate.json` (ADR 0005 allowlist). `faithfulness`·`answer_relevance`·`agreement_with_verifier` 추가.
+## 대안
 
-**Gate 3 — RAGAS-style enrichment (ADR 0014, accepted)**  
-4-metric RAGAS-style judge(`faithfulness`·`answer_relevance`·`context_precision`·`context_recall`)를 synthetic 표면에 additive 강화. content hash 캐시(`reports/judge_cache/`, gitignored). `BIDMATE_JUDGE_TOKEN_BUDGET` 로 hard token-budget cap. 케이스별 verdict 는 local 유지, `eval_summary.json:judge_ragas` aggregate 는 committable.
-
-**공유 invariant (불변):** ADR 0004 재현성(CI 는 live LLM 호출 절대 X); ADR 0003 답변 계약(judge 는 `answer.status` 에 영향 절대 X); ADR 0005 commit 경계(케이스별 텍스트는 local 유지).
-
-## 검토한 대안
-
-- **공개만.** Reject: synthetic 데이터가 중요한 실패 모드 은닉; 잘못된 대상을 최적화하게 됨
-- **비공개만.** Reject: 공개할 재현 가능한 것 없음; reviewer 가 주장 검증 불가
-- **단일 config + 비공개 case 확장을 조건부 로드.** 고려. Reject: 두 표면이 다른 목적(PR gating vs real-data taxonomy)이고, 섞으면 둘 다 리뷰 방어 난도 ↑
+- **공개 fixture를 benchmark로 유지.** Reject: 공개 가능한 작은 데이터가 성능 증거처럼 보이며 평가 story의 신뢰도를 약화한다.
+- **비공개 평가만 유지.** Reject: clone 후 eval framework와 CI 재현성을 확인할 수 없다.
+- **단일 config에서 public/private를 조건부 로드.** Reject: PR gate와 실제 성능 평가의 목적이 달라 reviewer가 결과를 오해하기 쉽다.

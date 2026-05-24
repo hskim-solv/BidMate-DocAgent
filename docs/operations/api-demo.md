@@ -45,7 +45,7 @@ answer / citation 계약을 보존한다 — 스키마 세부사항은 `docs/age
 ## 로컬 시작 (Docker 없이)
 
 ```bash
-make index          # builds data/index from data/raw (one-time)
+make index          # builds data/index from eval/fixtures/smoke_rfp/raw (one-time)
 make api            # uvicorn on :8000 with --reload
 ```
 
@@ -69,7 +69,7 @@ make api-docker
 
 `docker-entrypoint.sh` 는 컨테이너 안의 `data/index/index.json` 을
 확인하고, 첫 시작 시 hashing embedding 백엔드(네트워크 불필요)를 사용해
-`data/raw` 로부터 빌드한다. 이후 시작은
+`eval/fixtures/smoke_rfp/raw` 로부터 빌드한다. 이후 시작은
 기존 인덱스를 재사용한다.
 
 실행 간 인덱스를 영속화하려면 호스트 볼륨을 마운트한다:

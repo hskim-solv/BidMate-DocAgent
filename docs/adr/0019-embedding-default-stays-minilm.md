@@ -7,7 +7,7 @@
 - **Related**: [ADR 0001](./0001-preserve-naive-baseline.md) (기준선 보존), [ADR 0002](./0002-metadata-first-retrieval.md) (메타데이터 우선 우세), [ADR 0021](./0021-bge-m3-completes-phase-1-3.md) (조건 2 봉쇄하는 Phase 1.3 보조), [`docs/eval/embedding-ablation.md`](../eval/embedding-ablation.md), 이슈 #161 (Phase 1.2 runner) + #300 (본 결정)
 - **Update (Phase 1.3, issue #389, 2026-05-12)**: 조건 1 완전 충족 (`torch >= 2.6` `requirements.txt:8` pin, `huggingface-hub 0.36.2 < 1.0` 기존 보유), 조건 2 4 후보 모두 완전 충족 (BGE-M3 측정이 마지막 갭 봉쇄), 조건 3 **어떤 후보도 트리거 안 됨** (`0pp-on-full` 패턴이 측정한 5 임베딩 가로질러 성립). 본 ADR accepted 유지; 보조는 [ADR 0021](./0021-bge-m3-completes-phase-1-3.md) 참조.
 - **Update (ADR 0032 라우팅-축 falsifier, issue #550, 2026-05-13)**: [ADR 0032](./0032-eval-saturation-routed-subset.md) 가 보완 gate 추가: "라우티드 (메타데이터 우선 우회) subset 에서 spread ≥ +3pp". 5-임베딩 × 라우티드 subset 측정 (n=11, `eval/routed_config.yaml`) spread = **0.0pp** — `saturation_cross_validated`. 조건 3 라우티드 축에서도 **트리거 안 됨**. MiniLM 기본 lock 이 메타데이터 우선 마스킹 너머에서도 empirical 정당. 집계는 `reports/embedding_routed.json` 출시.
-- **Update (Phase 1.5, issue #447, 2026-05-14)**: [ADR 0037](./0037-kure-v1-closes-phase-1-5.md) 이 확장 n=100 공개 합성 corpus 에 공식 `nlpai-lab/KURE-v1` 측정 전달. `full` 파이프라인: accuracy Δ = **−1.3pp**, groundedness Δ = **+0.0pp**. 조건 3 **트리거 안 됨**. `naive_baseline` 상승 (+19.2pp accuracy) 은 카운트 안 됨. 이슈 #447 close. 기본 lock 이 **6개** 측정 임베딩 pivot 가로질러 성립.
+- **Update (Phase 1.5, issue #447, 2026-05-14)**: [ADR 0037](./0037-kure-v1-closes-phase-1-5.md) 이 확장 n=100 공개 fixture smoke corpus 에 공식 `nlpai-lab/KURE-v1` 측정 전달. `full` 파이프라인: accuracy Δ = **−1.3pp**, groundedness Δ = **+0.0pp**. 조건 3 **트리거 안 됨**. `naive_baseline` 상승 (+19.2pp accuracy) 은 카운트 안 됨. 이슈 #447 close. 기본 lock 이 **6개** 측정 임베딩 pivot 가로질러 성립.
 
 ## TL;DR
 
@@ -42,7 +42,7 @@ README Limitations 리스트와 `docs/eval/embedding-ablation.md` 가 미완 결
 ADR 0019 가 재오픈 (즉, 본 결정 재검토 + 기본 잠재 flip) 되려면 **4개 모두** 성립:
 
 1. contributor 가 양 차단자 (`torch >= 2.6`, 일치 `transformers` pin 통한 `huggingface-hub < 1.0`) 해소하는 `requirements.txt` 업그레이드 랜딩.
-2. `python3 scripts/run_embedding_ablation.py --models <miniLM> BAAI/bge-m3 intfloat/multilingual-e5-large-instruct` 가 공개 합성 corpus (n=42) 대해 완료 실행.
+2. `python3 scripts/run_embedding_ablation.py --models <miniLM> BAAI/bge-m3 intfloat/multilingual-e5-large-instruct` 가 공개 fixture smoke corpus (n=42) 대해 완료 실행.
 3. BGE-M3 / e5-large-instruct 중 최소 1개가 MiniLM 대비 non-overlapping bootstrap 95% CI 동반 **`full` 파이프라인** accuracy 또는 groundedness ≥ +5pp 상승. *(`naive_baseline` 상승은 카운트 안 됨 — ADR 0001 에 의거 분석 변형 보존된 표면.)*
 4. follow-up ADR (번호 002x) 가 교체 문서화 + 후보 측정 출력을 `docs/eval/embedding-ablation.md` Phase 1.2 섹션에 append.
 

@@ -3,7 +3,7 @@
 - Status: Proposed
 - Date: 2026-05-19
 - Authors: Hyunsoo Kim
-- Related: ADR 0007 (issue-first + branch convention), ADR 0030 (leaderboard surface), CLAUDE.md "거버넌스 ROI" + Q2-2026 self-review 5축 #3
+- Related: ADR 0007 (issue-first + branch convention), retired aggregate policy (aggregate report surface), CLAUDE.md "거버넌스 ROI" + Q2-2026 self-review 5축 #3
 - Issue: #1039
 - Augments: governance critique 2026-05-19 (plan file `parsed-rolling-liskov-governance.md`) 메타 발견 + 약점 #1·#4·#7·#8 동시 해소
 
@@ -84,7 +84,7 @@
 
 - **ADR 0001** (naive baseline byte-identical): hook telemetry 는 production code path 0 변경 → 합성 baseline 영향 없음.
 - **ADR 0003** (answer dict schema_version=2): hook 표면이지 answer contract 아님.
-- **ADR 0005** (public synthetic / private real 분리): `.claude/.hook-fires.log` 가 이미 `.claude/*` gitignore (issue #495) — 동일 boundary.
+- **ADR 0005** (public fixture smoke / private real 분리): `.claude/.hook-fires.log` 가 이미 `.claude/*` gitignore (issue #495) — 동일 boundary.
 - **ADR 0007** (issue-first + branch convention): 본 ADR 은 issue #1039 + branch `feat/issue-1039-outcome-telemetry` 자체가 ADR 0007 준수.
 
 ## Alternatives considered

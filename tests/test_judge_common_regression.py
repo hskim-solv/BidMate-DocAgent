@@ -1,9 +1,8 @@
-"""Regression tests for eval/judge_common.py (PR #671, ADR 0012 deferred).
+"""Regression tests for eval/judge_common.py.
 
-Guards the shared utilities extracted from three judge surface files:
-  - scripts/llm_judge.py   (Gate 1)
-  - eval/synthetic_judge.py (Gate 2)
-  - eval/llm_judge.py       (Gate 3)
+Guards the shared utilities used by the active judge surface files:
+  - scripts/llm_judge.py
+  - eval/llm_judge.py
 
 All tests use no network access and no external API keys.
 """

@@ -48,7 +48,7 @@ ADR 0031 이 이 ADR 의 hybrid BM25 표면 위에 직교 분석 변형으로 `b
 **결정 (ADR 0031, accepted 2026-05-13):** `rag_pipeline_presets.py` 에 `bm25_tokenizer` config 키 도입. 세 프리셋 모두 `"regex"` default(ADR 0001 + ADR 0010 baseline byte-equality 보존). `eval/config.yaml` 에 신규 분석 변형 row `full_kiwi` — `bm25_tokenizer: kiwi` + `retrieval_backend: hybrid`. `korean_lexicon.kiwi_tokens` 가 `kiwipiepy` lazy import — import 실패 시 regex 로 fallback(never-raise contract).
 
 **재오픈 조건** (셋 모두 충족 시 kiwi 가 default):
-1. 공개 synthetic eval (n=42) 가 kiwipiepy 설치 상태로 실행, real(non-fallback) `full_kiwi` row 생성
+1. 공개 fixture smoke eval (n=42) 가 kiwipiepy 설치 상태로 실행, real(non-fallback) `full_kiwi` row 생성
 2. `full_kiwi` 가 `hybrid_bm25` 대비 `accuracy` 또는 `citation_precision` 에서 ≥ +3pp 향상 + 비중첩 95% CI
 3. install footprint(~30MB `kiwipiepy`) + hard CI dep 화 여부를 문서화하는 후속 ADR
 

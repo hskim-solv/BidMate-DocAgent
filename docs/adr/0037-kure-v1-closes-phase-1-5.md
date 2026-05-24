@@ -12,7 +12,7 @@
 
 ## TL;DR
 
-- KURE-v1(한국어 특화 임베딩) n=100 공개 합성 측정 결과: accuracy −1.3pp / groundedness +0.0pp vs MiniLM, 6번째 임베딩에서도 `0pp-on-full` 패턴 성립.
+- KURE-v1(한국어 특화 임베딩) n=100 공개 fixture smoke 측정 결과: accuracy −1.3pp / groundedness +0.0pp vs MiniLM, 6번째 임베딩에서도 `0pp-on-full` 패턴 성립.
 - ADR 0019 re-open 조건 3(`full` lift ≥ +5pp)이 트리거되지 않음 → `DEFAULT_EMBEDDING_MODEL`은 MiniLM 유지.
 - 환경 blocker(`torch≥2.6`, `torchvision≥0.21`) 해소 + `requires_torch_min_version` 게이트 추가로 미래 contributor가 skip log를 보게 함.
 
@@ -21,7 +21,7 @@
 [Issue #447](https://github.com/hskim-solv/BidMate-DocAgent/issues/447)이 ADR 0019 / 0021 re-open 윈도우를 명시 3 조건과 함께 열었다 (모두 충족해야 기본값 변경 트리거):
 
 1. 이전 5개 측정 임베딩(MiniLM, e5-base, e5-large-instruct, KoSimCSE, BGE-M3)에 **포함되지 않은** 신규 후보가 `scripts/run_embedding_ablation.py`에 추가.
-2. 후보가 **공개 합성 corpus** (n=100; 원래 n=42, issue #570로 확장)에 대해 완전 실행.
+2. 후보가 **공개 fixture smoke corpus** (n=100; 원래 n=42, issue #570로 확장)에 대해 완전 실행.
 3. 후보가 MiniLM 대비 **`full` 파이프라인** accuracy 또는 groundedness **≥ +5pp** lift, bootstrap 95% CI 비중첩. `naive_baseline` lift는 **불인정** (ADR 0001 불변식).
 
 `nlpai-lab/KURE-v1`이 이슈 primary 후보로 listed — 한국어 NLP 태스크 fine-tuned 한국어 특화 임베딩 (~1.1 GB, 768-dim). [ADR 0032](./0032-eval-saturation-routed-subset.md) (Phase 1.4) n=11 routed subset에서 부분 측정 — routed accuracy 0.400, spread 0.0pp vs MiniLM. 이 ADR이 조건 2 요구 n=100 full corpus 실행 공식 전달.
@@ -82,7 +82,7 @@ KURE-v1은 accuracy(−1.3pp)와 citation(−1.5pp)에서 marginally 더 나쁨;
 | condition | Phase 1.5 후 status |
 |---|---|
 | 1. 후보가 `scripts/run_embedding_ablation.py`에 추가 | ✅ KURE-v1이 이미 docstring 예제(line 23)에 있음 |
-| 2. n=100 공개 합성 corpus 완전 실행 | ✅ 이 ADR |
+| 2. n=100 공개 fixture smoke corpus 완전 실행 | ✅ 이 ADR |
 | 3. 비중첩 CIs로 `full` lift ≥ +5pp | ❌ 미트리거 (Δ = −1.3pp accuracy, +0.0pp groundedness) |
 | 4. 결과 문서화 follow-up ADR | ✅ 이 ADR |
 

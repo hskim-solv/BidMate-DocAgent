@@ -28,7 +28,7 @@ Dense retrieval 에서 [짧은 구어체 query 임베딩] ↔ [긴 합니다체 
 
 [ADR 0023](../adr/0023-hyde-query-expansion-ablation.md) 에 다음 promote 조건을 코드 작성 *전*에 박았다.
 
-> `full_hyde` real backend 가 `full` 대비 **≥ +3pp lift + non-overlapping 95% CI on public synthetic n ≥ 100**
+> `full_hyde` real backend 가 `full` 대비 **≥ +3pp lift + non-overlapping 95% CI on public fixture smoke n ≥ 100**
 
 사후가 아니라 사전에 박은 이유는 명확하다. 측정 후에 임계값을 정하면 무의식적으로 결과에 맞춰 임계값을 조정하게 된다 (Goodhart's law 의 self-applied 버전). 사전에 박아두면 측정 결과가 조건 미달일 때 "그래도 좋아 보이는데" 로 도망갈 수 없다.
 
@@ -73,9 +73,9 @@ ADR 0023 의 promote 조건도 같은 패턴이다. "이 기능이 켜질 자격
 
 `full` 을 기반으로 한 *모든* ablation 이 정확히 같은 숫자다. HyDE 만 0pp 가 아니라 reranker 도, BM25 morphology tokenizer 도, finetune 도, hybrid 도 다 0pp. 95% CI 도 단 하나의 소수점 자리까지 동일.
 
-여기서 "saturation" 으로 결론짓고 싶지만, 첫 번째 정직한 진단은 더 무미건조하다. **CI public synthetic 은 deterministic `hashing` embedding backend 로 측정한다** (`eval/config.yaml` 에 주석으로 박혀있다):
+여기서 "saturation" 으로 결론짓고 싶지만, 첫 번째 정직한 진단은 더 무미건조하다. **CI public fixture smoke 은 deterministic `hashing` embedding backend 로 측정한다** (`eval/config.yaml` 에 주석으로 박혀있다):
 
-> "the public synthetic surface, which runs the deterministic `hashing` embedding backend in CI"
+> "the public fixture smoke surface, which runs the deterministic `hashing` embedding backend in CI"
 
 이유는 [ADR 0001](../adr/0001-preserve-naive-baseline.md) 의 골든 byte-identical 보존 — sentence-transformers 는 환경/버전에 따라 미세한 float drift 를 만들 수 있어 CI 에서 deterministic byte-identical 골든을 깰 위험이 있다. 그래서 `hashing` backend 는 placeholder embedding (query / chunk 텍스트를 hash 함수로 deterministic 벡터로 매핑) 을 쓴다. 이 backend 는 *임베딩 차이를 본질적으로 표현할 수 없다* — HyDE expanded text 든 원본 query 든 hash 함수를 거치면 임의의 deterministic 벡터로 매핑될 뿐이다.
 
@@ -102,7 +102,7 @@ Spread (top-vs-bottom): **0.0pp**. Threshold 가 +3pp 였으니, "임베딩 차�
 
 이건 hashing-backend artifact 가 *아니다*. 두 가설이 남는다.
 
-- **Corpus 규모 saturation.** Public synthetic 은 7 문서 / 9 chunk. 9개 중 top-k=3 회수는 어떤 임베딩으로도 trivial.
+- **Corpus 규모 saturation.** Public fixture smoke 은 7 문서 / 9 chunk. 9개 중 top-k=3 회수는 어떤 임베딩으로도 trivial.
 - **Verifier ceiling.** [ADR 0004](../adr/0004-verifier-retry-policy.md) 의 strict exact-term match 정책이 retrieval 품질 이전에 ceiling 을 만든다 — `agentic_full_routed` 도 0.500 이 cap.
 
 ADR 0032 는 `accepted` 상태로 닫혔다 — verdict 는 `saturation_cross_validated`. 결론: **현 측정 surface 로는 어떤 retrieval 기법도 lift 를 측정할 수 없다.** Hashing backend 에서는 backend 자체가 변별력을 차단하고, real backend 에서는 corpus + verifier 가 차단한다.

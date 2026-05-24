@@ -489,7 +489,7 @@ def render_markdown(gauge: dict[str, Any]) -> str:
         "",
         "Per ADR 0053 §Consequences:",
         "> PR-5b's `scripts/distinguishing_power.py` can compute "
-        "`(default - floor) / (ceiling - floor)` for every leaderboard metric "
+        "`(default - floor) / (ceiling - floor)` for every headline metric "
         "— a single-number 'is the signal alive' gauge.",
         "",
         "## Ablation raw values",

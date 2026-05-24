@@ -61,7 +61,7 @@ PaddleOCR는 (1) + (2) 동시 충족해야 baseline 교체. 현재 실측은 (1)
 real-data 재검증 시 코드 변경 없이 환경 변수 하나로 provider 교체 가능:
 
 ```bash
-BIDMATE_VISUAL_OCR=paddleocr python3 scripts/build_index.py --input_dir data/raw
+BIDMATE_VISUAL_OCR=paddleocr python3 scripts/build_index.py --input_dir eval/fixtures/smoke_rfp/raw
 python3 eval/run_parser_eval.py --artifacts artifacts/visual_paddleocr/ --gold eval/parser_gold.yaml
 ```
 

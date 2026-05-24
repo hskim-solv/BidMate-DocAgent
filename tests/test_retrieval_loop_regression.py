@@ -10,7 +10,7 @@ Covers two real-data regressions documented in
   ``retry_count > 0`` but ``len(stage_attempts) < 2``.
 
 These tests are intentionally lightweight (hashing embedding backend, the
-existing ``data/raw`` fixture) so they can be run on every change without
+existing ``eval/fixtures/smoke_rfp/raw`` fixture) so they can be run on every change without
 slowing down the dev loop. See ``make test-regression``.
 """
 
@@ -33,7 +33,7 @@ class RetrievalLoopRegressionTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.index = build_index_payload(
-            Path("data/raw"),
+            Path("eval/fixtures/smoke_rfp/raw"),
             embedding_backend="hashing",
         )
 

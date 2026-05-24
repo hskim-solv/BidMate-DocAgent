@@ -49,7 +49,7 @@ if python3 "$REPO_ROOT/scripts/_governance.py" --is-load-bearing "$file_path" 2>
     ADRs to consider (CLAUDE.md):
       - ADR 0001 (preserve naive baseline)
       - ADR 0003 (answer contract — bump schema_version if breaking)
-      - ADR 0005 (eval split — public synthetic / private local)
+      - ADR 0005 (eval split — public fixture smoke / private internal)
 
     PR template item 5b (real-eval-delta aggregate table) will be required
     when this change ships.

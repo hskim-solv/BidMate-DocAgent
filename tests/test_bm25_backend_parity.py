@@ -219,7 +219,7 @@ _E2E_QUERY = "기관 A의 보안 통제 요구사항은?"
 def fresh_hashing_index() -> dict:
     """A fresh per-test index so the BM25 cache starts empty — the spy must
     observe the build call, not a cache hit warmed by an earlier test."""
-    return build_index_payload(Path("data/raw"), embedding_backend="hashing")
+    return build_index_payload(Path("eval/fixtures/smoke_rfp/raw"), embedding_backend="hashing")
 
 
 def _spy_make_bm25_instance(monkeypatch: pytest.MonkeyPatch) -> list[str]:

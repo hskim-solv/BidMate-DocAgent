@@ -1,7 +1,7 @@
 """Regression tests for the external-payload data-boundary guard.
 
-ADR 0061 ③ restricts external egress to public/synthetic surfaces and
-keeps private RFP bodies off the wire (ADR 0005/0012). Before issue #1154
+ADR 0061 ③ restricts external egress to public fixture surfaces and
+keeps private RFP bodies off the wire (ADR 0005). Before issue #1154
 that was policy-only — the anthropic / openai backends in
 ``rag_metadata_extraction`` and ``rag_synthesis`` sent the full document /
 evidence text to the vendor with no surface check.
@@ -9,7 +9,7 @@ evidence text to the vendor with no surface check.
 These tests lock the *fail_closed* contract on three surfaces:
 
 * the central guard (``bidmate_data_boundary``) — only an explicit
-  public/synthetic attestation permits egress; unset / private / unknown
+  public fixture attestation permits egress; unset / private / unknown
   values raise ``ExternalPayloadBlocked``;
 * the four external backend entry points fail closed *before* any SDK
   import or network call (so the guard, not the SDK, is the blocker);
@@ -126,7 +126,7 @@ def _make_evidence() -> list[dict[str, Any]]:
 
 
 class GuardSurfaceTest(unittest.TestCase):
-    """The central guard is fail_closed: only public/synthetic passes."""
+    """The central guard is fail_closed: only public fixture surfaces pass."""
 
     def test_fail_closed_when_surface_unset(self) -> None:
         with _surface(None):
@@ -145,15 +145,15 @@ class GuardSurfaceTest(unittest.TestCase):
             assert_external_payload_allowed(channel="test:unknown")
 
     def test_allows_attested_public_surfaces(self) -> None:
-        for value in ("public", "synthetic", "public_synthetic", "public-synthetic"):
+        for value in ("public", "public_fixture", "public-fixture"):
             with self.subTest(value=value), _surface(value):
                 # Must not raise.
                 assert_external_payload_allowed(channel="test:public")
                 self.assertTrue(is_public_surface())
 
     def test_resolve_normalizes_case_and_whitespace(self) -> None:
-        with _surface("  Public_Synthetic  "):
-            self.assertEqual(resolve_data_surface(), "public_synthetic")
+        with _surface("  Public_Fixture  "):
+            self.assertEqual(resolve_data_surface(), "public_fixture")
             self.assertTrue(is_public_surface())
 
     def test_blocked_message_names_channel_and_env(self) -> None:
@@ -240,7 +240,7 @@ class GuardDoesNotOverBlockTest(unittest.TestCase):
     """
 
     def test_public_surface_passes_guard_then_key_check(self) -> None:
-        with _surface("public_synthetic"):
+        with _surface("public_fixture"):
             saved = os.environ.get("ANTHROPIC_API_KEY")
             os.environ["ANTHROPIC_API_KEY"] = ""
             try:
@@ -317,7 +317,7 @@ class RerankBackendFailClosedTest(unittest.TestCase):
         )
 
     def test_public_surface_passes_guard_then_sdk_or_key_check(self) -> None:
-        with _surface("public_synthetic"), _cleared(
+        with _surface("public_fixture"), _cleared(
             "BIDMATE_COHERE_API_KEY", "COHERE_API_KEY"
         ):
             with self.assertRaises(RuntimeError) as ctx:
@@ -360,7 +360,7 @@ class EmbeddingBackendFailClosedTest(unittest.TestCase):
         self.assertEqual(result.vectors.shape[0], 1)
 
     def test_public_surface_passes_guard_then_sdk_or_key_check(self) -> None:
-        with _surface("public_synthetic"), _cleared(
+        with _surface("public_fixture"), _cleared(
             "BIDMATE_OPENAI_API_KEY", "OPENAI_API_KEY"
         ):
             with self.assertRaises(RuntimeError) as ctx:
@@ -408,7 +408,7 @@ class QueryExpansionBackendFailClosedTest(unittest.TestCase):
         self.assertFalse(meta["fell_back"])
 
     def test_public_surface_passes_guard_then_sdk_or_key_check(self) -> None:
-        with _surface("public_synthetic"), _cleared("ANTHROPIC_API_KEY"):
+        with _surface("public_fixture"), _cleared("ANTHROPIC_API_KEY"):
             with self.assertRaises(RuntimeError) as ctx:
                 rag_query_expansion._call_anthropic_hyde(
                     query=self.QUERY,
@@ -453,7 +453,7 @@ class PlannerBackendFailClosedTest(unittest.TestCase):
         # The guard's allow/block decision is channel-independent, so an
         # attested public surface must not block the planner channel. Asserted
         # directly (network-free) since plan_next swallows backend errors.
-        with _surface("public_synthetic"):
+        with _surface("public_fixture"):
             assert_external_payload_allowed(channel="planner:anthropic")
 
 

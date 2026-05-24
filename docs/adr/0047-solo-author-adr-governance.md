@@ -9,7 +9,7 @@
 
 - 1인 저자 ADR 거버넌스 명시화: 4개 기계적 가드 (Deciders 단일, 30일 proposed SLA, Verification 계약, 번호 예약 자동화)
 - peer review 부재를 hook + lint 로 대체
-- 저자 시점에 ADR 0046 → 0047 번호 충돌 3회 발생, audit 가치 실시간 입증
+- 저자 시점에 retired OOD-domain decision → 0047 번호 충돌 3회 발생, audit 가치 실시간 입증
 
 ## 배경
 
@@ -79,6 +79,6 @@ repo root 에서 `python3 scripts/_governance.py --lint-adr-consequences docs/ad
 
 1. PR #740 가 ADR 0044 (`0044-realN-eval-case-expansion.md`) 예약 — 본 branch 첫 commit 전 수동 catch; draft 0044 → 0046 renumber
 2. A2 merge 후, regex 가 mixed-case `realN` slug 거부해 0044 파일이 main 에 존재함에도 `--next-adr-number` 가 `0044` 반환. follow-up issue #818 로 capture
-3. 본 branch 가 0046 번호로 PR #820 push 후, PR #824 가 다른 ADR 0046 (`0046-ood-evaluation-domain-selection.md`) merge + PR #766 가 0045 (`0045-rag-core-leaf-migration-plan.md`) merge. GitHub 가 PR `CONFLICTING` flag. 0046 → 0047 renumber + rebase
+3. 본 branch 가 0046 번호로 PR #820 push 후, PR #824 가 다른 retired OOD-domain decision (``) merge + PR #766 가 0045 (`0045-rag-core-leaf-migration-plan.md`) merge. GitHub 가 PR `CONFLICTING` flag. 0046 → 0047 renumber + rebase
 
-90분 window 의 3개 live 충돌이 audit 전제 검증: 이 단일 ADR 가 자신의 작성 중 audit 가 catch 한 실패 모드 **3회** 만남. 기계적 가드 (A2 CLI + B3 lint + `gh pr list` cross-check) 가 해소 비용을 "silent merge 충돌" 에서 "rebase + renumber + comment" 로 축소. 없었다면 ADR 0046 이 두 다른 body 로 두 번 ship, regex 버그 (#818) 가 여전히 invisible.
+90분 window 의 3개 live 충돌이 audit 전제 검증: 이 단일 ADR 가 자신의 작성 중 audit 가 catch 한 실패 모드 **3회** 만남. 기계적 가드 (A2 CLI + B3 lint + `gh pr list` cross-check) 가 해소 비용을 "silent merge 충돌" 에서 "rebase + renumber + comment" 로 축소. 없었다면 retired OOD-domain decision 이 두 다른 body 로 두 번 ship, regex 버그 (#818) 가 여전히 invisible.

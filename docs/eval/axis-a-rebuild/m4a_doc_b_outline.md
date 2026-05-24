@@ -6,8 +6,8 @@
 - project: 데이터 거버넌스 및 MLOps 자동화
 - domain: MLOps
 - project_aliases: `엠엘옵스 자동화`, `데이터 MLOps`
-- live path: `data/raw/rfp_agency_b_mlops_governance.json`
-- live backup: `data/raw/rfp_agency_b_mlops_governance.v1_pre_distractor.json` (104 sections, pre-distractor 시점)
+- live path: `eval/fixtures/smoke_rfp/raw/rfp_agency_b_mlops_governance.json`
+- live backup: `eval/fixtures/smoke_rfp/raw/rfp_agency_b_mlops_governance.v1_pre_distractor.json` (104 sections, pre-distractor 시점)
 - partial source: `docs/eval/axis-a-rebuild/m4a_doc_b_partial_2a.json` (54 sec, v3 pre-distractor) + `m4a_doc_b_partial_2b.json` (50 sec, doc-A pattern pre-distractor)
 - outline pattern source: `docs/eval/axis-a-rebuild/m4a_doc_a_outline.md` v4 (doc-A 와 동일 패턴, doc-B keyword swap)
 
@@ -143,7 +143,7 @@ NFR-001~008 의 8개 NFR section 들의 acceptance 문장이 거의 동일 패�
 | 2a v4 | §1 사업개요 + §2.1~2.5 FR (54 sec, partial 2a 의 distractor 재합성) | `m4a_doc_b_partial_2a_v4.json` | 2a 단독 가드 일부 + 2b 합본 후 13 가드 전체 |
 | 2b v1 | §2.6 NFR + §2.7 보안 + §2.8 일정·산출물 + §2.9 평가 + §2.10 부속서 (50 sec, partial 2b 의 distractor 재합성) | `m4a_doc_b_partial_2b_v1.json` | 합본 후 13 가드 전체 |
 | 2c α' v2 | 합본 + α' 25-template × 1 sentence heading inject | `m4a_doc_b_full_v2.json` | 13/13 PASS 목표 |
-| 3 promote | data/raw 갱신 + verdict 박제 | `data/raw/rfp_agency_b_mlops_governance.json` 갱신 | live 13 가드 final |
+| 3 promote | eval/fixtures/smoke_rfp/raw 갱신 + verdict 박제 | `eval/fixtures/smoke_rfp/raw/rfp_agency_b_mlops_governance.json` 갱신 | live 13 가드 final |
 
 ## 6. doc-A vs doc-B 패턴 차이 (정직 박제)
 

@@ -35,7 +35,7 @@ from scripts.generate_finetune_pairs import (  # noqa: E402
     load_eval_queries,
 )
 
-# Most cases here mine BM25 hard negatives over the full data/raw corpus
+# Most cases here mine BM25 hard negatives over the full eval/fixtures/smoke_rfp/raw corpus
 # (383 chunks, ADR 0050) — query-by-query get_scores/sort dominates, tens
 # of seconds. Marked slow so `make test-fast` deselects them; CI still runs.
 pytestmark = pytest.mark.slow
@@ -110,11 +110,11 @@ class ContaminationGuardTest(unittest.TestCase):
         self.assertFalse(guard.is_contaminated("기관 C 챗봇 응답 시간 목표"))
 
     def test_eval_surface_query_set_is_nonempty(self) -> None:
-        # Sanity: at least the public synthetic + multiturn surfaces
-        # contribute queries. If this drops to zero, the contamination
+        # Sanity: at least the committed fixture and any private/local
+        # surfaces contribute queries. If this drops to zero, the contamination
         # guard is silently disabled — fail loudly here instead.
         queries = load_eval_queries()
-        self.assertGreater(len(queries), 30)
+        self.assertGreater(len(queries), 0)
 
     def test_actual_eval_query_rejected_by_loaded_guard(self) -> None:
         # End-to-end: an exact public-eval question must be rejected.
@@ -139,11 +139,9 @@ class HardNegativeConstraintsTest(unittest.TestCase):
                     )
 
     def test_negatives_in_configured_rank_window_when_possible(self) -> None:
-        # ADR 0050 expanded data/raw from ~25 chunks (v1 axis-A) to 383
-        # chunks (real_scale_v2_distractor + H/I/J/K corpora). The window
-        # is scaled accordingly — a window of (3, 100) covers ~26% of the
-        # post-expansion corpus, matching the pre-expansion (3, 15)/25
-        # coverage ratio so the constraint can be honored "when possible".
+        # Keep a broad rank window for the tiny fixture corpus so the
+        # constraint can be honored "when possible" while still checking
+        # that the configured window is wired into negative mining.
         window = (3, 100)
         with TemporaryDirectory() as tmp:
             out, _ = _run(Path(tmp), hard_neg_rank_window=window)
@@ -155,8 +153,7 @@ class HardNegativeConstraintsTest(unittest.TestCase):
                     total_negs += 1
                     if window[0] <= neg["bm25_rank"] <= window[1]:
                         in_window += 1
-            # Window now meaningfully smaller than the 383-chunk corpus;
-            # we still expect *most* negatives in window. Demand ≥ 80%.
+            # We still expect *most* negatives in window. Demand >= 80%.
             self.assertGreaterEqual(
                 in_window / max(1, total_negs),
                 0.80,
@@ -201,8 +198,8 @@ class PerDocCoverageTest(unittest.TestCase):
             out, stats = _run(Path(tmp), queries_per_chunk=5)
             self.assertGreaterEqual(
                 len(stats["per_doc"]),
-                7,
-                "all 7 raw RFP docs should contribute pairs",
+                5,
+                "all 5 smoke fixture RFP docs should contribute pairs",
             )
 
 
@@ -211,8 +208,8 @@ class ContaminationRejectionThresholdTest(unittest.TestCase):
         # Contract: ``fail_threshold=0.0`` MUST raise when any generated
         # query is contaminated, proving the threshold is wired up.
         #
-        # Issue #1315 — this used to mine over the full 383-chunk data/raw
-        # corpus at queries_per_chunk=200 (316s, a pr-eval shard floor) and
+        # Issue #1315 — this used to mine over the full fixture corpus at
+        # queries_per_chunk=200 (316s, a pr-eval shard floor) and
         # relied on volume to *probabilistically* trip a rejection — so it
         # also tolerated the zero-rejection path, which never exercised the
         # raise. We instead guarantee contamination deterministically: a

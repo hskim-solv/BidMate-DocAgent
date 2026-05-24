@@ -8,7 +8,7 @@
 
 ## TL;DR
 
-- LLM-judge 는 `eval/real_config.local.yaml` run 에서만 허용 (synthetic CI 금지).
+- LLM-judge 는 `eval/real_config.local.yaml` run 에서만 허용 (public fixture CI 금지).
 - deterministic verifier 가 게이트, judge 는 second opinion (`answer.status` 변경 X).
 - 핵심 신규 지표: `judge.agreement_with_verifier`.
 
@@ -16,7 +16,7 @@
 
 [ADR 0004](./0004-verifier-retry-policy.md) 는 **공개** 경로에서 LLM-as-judge 를 거부했다 — 외부 의존성·쿼리당 토큰 비용·재현성 저하의 세 이유. 그러면서 hedge: *"deterministic 검증기가 천장 닿으면 재고."*
 
-#69 가 천장을 가시화. deterministic 검증기의 `PARTIAL_TOPIC_GROUNDING_MIN_FRACTION` knob 가 real-data 에서 4건의 false-abstain 회복 **+** 의도된 보류 2건 뒤집음(`docs/real-data/private-100-doc-experiments.md` Real-data Decision Log 참조). Decision Log 가 trade-off 를 정직하게 기록하지만 **threshold 자체가 임의적** — synthetic eval 튜닝으로는 "real partial answer" 와 "weak hallucination" 을 분리 불가, 둘 다 fraction-of-topics 규칙을 통과한다면. 실제 변별 신호는 *다른 모델의 답변-근거 지지 여부 판독*.
+#69 가 천장을 가시화. deterministic 검증기의 `PARTIAL_TOPIC_GROUNDING_MIN_FRACTION` knob 가 real-data 에서 4건의 false-abstain 회복 **+** 의도된 보류 2건 뒤집음(`docs/real-data/private-100-doc-experiments.md` Real-data Decision Log 참조). Decision Log 가 trade-off 를 정직하게 기록하지만 **threshold 자체가 임의적** — fixture smoke eval 튜닝으로는 "real partial answer" 와 "weak hallucination" 을 분리 불가, 둘 다 fraction-of-topics 규칙을 통과한다면. 실제 변별 신호는 *다른 모델의 답변-근거 지지 여부 판독*.
 
 그 신호는 공개 CI 게이트 하기엔 너무 비싸고(토큰) 너무 비재현적. 그러나 **real-data 사이클** 은 이미 수동·aggregate-only·ADR 0005 commit 경계 뒤. second-opinion judge 를 거기 추가는 in-scope; 공개 CI 추가는 out.
 
@@ -25,7 +25,7 @@
 LLM-as-judge 는 **local real-data eval 표면 전용** 허용:
 
 - **허용**: `eval/real_config.local.yaml` run, judge 출력은 `reports/real100/judge.local.json` (케이스별, git-ignored) + aggregate/agreement 메트릭은 `reports/real100/baseline.aggregate.json` (ADR 0005 allowlist 하 committable)
-- **불허**: `eval/config.yaml` (공개 synthetic), `.github/workflows/pr-eval.yml`, `make smoke`, `make eval`. 이 경로는 ADR 0004 따라 deterministic·free·offline·reproducible 유지
+- **불허**: `eval/config.yaml` (공개 fixture smoke), `.github/workflows/pr-eval.yml`, `make smoke`, `make eval`. 이 경로는 ADR 0004 따라 deterministic·free·offline·reproducible 유지
 
 ### 계약
 
@@ -62,8 +62,8 @@ real-data 사이클 나머지처럼 수동. retrieval/verifier 변경 후 `make 
 
 - real-data 품질의 독립 신호, `agreement_with_verifier` 통해 deterministic verifier 출력 게이트
 - ADR 0005 commit 경계 보존: judge 케이스별 텍스트는 절대 commit 안 됨
-- ADR 0004 공개 경로 보존: synthetic CI 는 여전히 deterministic·free·offline·reproducible
-- 향후 threshold 튜닝(예: #89)에 synthetic eval set 보다 overfit 어려운 second-opinion 체크 확보
+- ADR 0004 공개 경로 보존: public fixture CI 는 여전히 deterministic·free·offline·reproducible
+- 향후 threshold 튜닝(예: #89)에 fixture smoke eval set 보다 overfit 어려운 second-opinion 체크 확보
 
 **비용**
 

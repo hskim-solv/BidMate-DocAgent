@@ -253,15 +253,15 @@ doc-B/C/... 도 outline §3.5 박제 시점에 동일 dict 신규 정의. 측정
 doc-A/B 의 현재 v1 (distractor 없는 상태) 을 별도 backup 으로 박제 후 retro 진입:
 
 ```bash
-cp data/raw/rfp_agency_a_ai_quality.json \
+cp eval/fixtures/smoke_rfp/raw/rfp_agency_a_ai_quality.json \
    docs/eval/axis-a-rebuild/rfp_agency_a_ai_quality.v1_pre_distractor.json
-cp data/raw/rfp_agency_b_mlops_governance.json \
+cp eval/fixtures/smoke_rfp/raw/rfp_agency_b_mlops_governance.json \
    docs/eval/axis-a-rebuild/rfp_agency_b_mlops_governance.v1_pre_distractor.json
 ```
 
 - 기존 `.original.json` (axis A original 3 sec) 은 그대로 유지
 - 신규 `.v1_pre_distractor.json` 은 v1 (axis A real-scale, distractor 없음) 박제
-- retro 합성 후 production: `data/raw/*.json` 은 v2 (axis A real-scale + distractor)
+- retro 합성 후 production: `eval/fixtures/smoke_rfp/raw/*.json` 은 v2 (axis A real-scale + distractor)
 
 ## 9. axis_a_scale marker 갱신
 

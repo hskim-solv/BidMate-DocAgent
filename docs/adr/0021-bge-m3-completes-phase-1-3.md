@@ -17,7 +17,7 @@
 [ADR 0019](./0019-embedding-default-stays-minilm.md)는 embedding 기본값 결정을 4개 명시 재개 조건으로 보류했다:
 
 1. 두 환경 제약(`torch >= 2.6`, `huggingface-hub < 1.0`) 해소를 위한 `requirements.txt` 업그레이드.
-2. `python3 scripts/run_embedding_ablation.py --models <MiniLM> BAAI/bge-m3 intfloat/multilingual-e5-large-instruct` 가 n=42 public synthetic corpus에 완주.
+2. `python3 scripts/run_embedding_ablation.py --models <MiniLM> BAAI/bge-m3 intfloat/multilingual-e5-large-instruct` 가 n=42 public fixture smoke corpus에 완주.
 3. BGE-M3 / e5-large-instruct 중 최소 하나가 **`full` 파이프라인**에서 accuracy 또는 groundedness ≥ +5pp lift, 95% CI 비중첩. *(ADR 0001에 따라 `naive_baseline` lift는 분석 변형으로 보존되므로 미카운트.)*
 4. 후속 ADR(002x) 생성 + 후보 측정 출력이 `docs/eval/embedding-ablation.md` Phase 1.2에 추가.
 
@@ -78,7 +78,7 @@ BGE-M3는 e5-large-instruct만큼 dense-only 검색을 lift. agentic 파이프�
 - `rag_core.py`의 `DEFAULT_EMBEDDING_MODEL`은 `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` 유지.
 - `EMBEDDING_BACKEND=hashing`은 CI / smoke-test 기본값 유지(다운로드/GPU 불필요).
 - "0pp-on-full" 결과는 이제 5 측정 pivot(MiniLM 2019, e5-base 2023, e5-large-instruct 2024 SoTA, KoSimCSE 한국어 특화, BGE-M3 multi-functional) 기반. 재개를 원하면 `full` 행을 visibly shift하는 후보 필요 — 현대 multilingual / 한국어 특화는 고갈.
-- 본 ADR + `docs/eval/embedding-ablation.md` Phase 1.3 머지 시 issue #389 close. raw `eval_summary.json`은 `reports/embedding-ablation/` (gitignore, public synthetic corpus 재실행으로 재현).
+- 본 ADR + `docs/eval/embedding-ablation.md` Phase 1.3 머지 시 issue #389 close. raw `eval_summary.json`은 `reports/embedding-ablation/` (gitignore, public fixture smoke corpus 재실행으로 재현).
 
 ## 재개 조건 (ADR 0019 승계)
 

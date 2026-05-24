@@ -140,8 +140,7 @@ class EvalMetricsTest(unittest.TestCase):
 
     def test_score_case_emits_evidence_for_judge_consumers(self) -> None:
         """score_case must expose top-3 evidence with {text, doc_id,
-        chunk_id, page} for scripts/llm_judge.py + eval/synthetic_judge.py
-        (ADR 0006 + ADR 0012). Text is truncated to 600 chars."""
+        chunk_id, page} for judge consumers. Text is truncated to 600 chars."""
         long_text = "가" * 1000
         prediction = {
             "answer": {
@@ -362,7 +361,7 @@ class EvalMetricsTest(unittest.TestCase):
         )
 
     def test_evaluate_run_writes_readable_trace_files(self) -> None:
-        index = build_index_payload(Path("data/raw"), embedding_backend="hashing")
+        index = build_index_payload(Path("eval/fixtures/smoke_rfp/raw"), embedding_backend="hashing")
         case = {
             "id": "trace-case",
             "query_type": "single_doc",
@@ -394,7 +393,7 @@ class EvalMetricsTest(unittest.TestCase):
     def test_evaluate_run_case_results_contain_synthesis_telemetry_keys(self) -> None:
         # Verify that tokens_in/out/cost/llm_model keys are always present in
         # case_results (values may be null for stub/hashing backends).
-        index = build_index_payload(Path("data/raw"), embedding_backend="hashing")
+        index = build_index_payload(Path("eval/fixtures/smoke_rfp/raw"), embedding_backend="hashing")
         case = {
             "id": "synth-telemetry-case",
             "query_type": "single_doc",

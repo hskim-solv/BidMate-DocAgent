@@ -19,7 +19,7 @@ def _make_doc(doc_id: str, sections: list[dict]) -> dict:
         "agency": "테스트기관",
         "project": "테스트사업",
         "metadata": {},
-        "source_path": f"data/raw/{doc_id}.pdf",
+        "source_path": f"eval/fixtures/smoke_rfp/raw/{doc_id}.pdf",
         "sections": sections,
     }
 

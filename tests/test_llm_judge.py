@@ -1,10 +1,10 @@
 """Tests for the LLM-judge plumbing on the real-data surface (ADR 0006)
-and the additive RAGAS-style judge on the synthetic surface (ADR 0014).
+and the additive RAGAS-style judge on local eval summaries.
 
 The stub backends are deterministic, so plumbing is testable without
 a network / API key. Tests pin:
 
-* per-case verdict shape (ADR 0006: status; ADR 0014: four RAGAS scores)
+* per-case verdict shape (ADR 0006: status; four RAGAS scores)
 * aggregate shape stays inside the ADR 0005 commit boundary
 * per-case content caching makes re-runs cost-free
 * token budget enforcement refuses past the cap
@@ -129,7 +129,7 @@ class JudgeCLIInvocationTest(unittest.TestCase):
 
 
 class JudgeRagasStubTest(unittest.TestCase):
-    """ADR 0014: RAGAS-style judge on the synthetic surface (additive)."""
+    """RAGAS-style judge remains additive."""
 
     def test_stub_returns_four_metrics_with_fixed_scores(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -230,7 +230,7 @@ class JudgeCacheKeyTemperatureRegressionTest(unittest.TestCase):
     became configurable in #1132, but ``_cache_key`` keyed only on
     backend+model+inputs. A verdict produced at one temperature was served
     as a cache hit for a re-run at another, silently returning a stale
-    judgment (ADR 0012 judge reproducibility).
+    judgment (judge reproducibility).
     """
 
     @staticmethod

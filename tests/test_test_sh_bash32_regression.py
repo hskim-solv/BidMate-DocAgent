@@ -54,8 +54,9 @@ class TestTestShBash32(unittest.TestCase):
         tmp = tempfile.mkdtemp(prefix="test-sh-bash32-")
         self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
         binp = Path(tmp)
-        # `python` whose every `-c "import ..."` probe fails -> all 4 arrays empty.
+        # `python`/`python3` whose every `-c "import ..."` probe fails -> all 4 arrays empty.
         _stub(binp / "python", "#!/bin/sh\nexit 1\n")
+        _stub(binp / "python3", "#!/bin/sh\nexit 1\n")
         # `ruff` no-op so the top lint gate passes instantly.
         _stub(binp / "ruff", "#!/bin/sh\nexit 0\n")
         # `pytest` records that it was reached, then exits 0 (never runs the suite).
@@ -68,8 +69,12 @@ class TestTestShBash32(unittest.TestCase):
             "BIDMATE_PYTEST_SPLITS",
             "BIDMATE_PYTEST_SHARD",
             "BIDMATE_PYTEST_STORE_DURATIONS",
+            "BIDMATE_PYTEST_COV",
+            "BIDMATE_PYTEST_XDIST",
+            "PYTEST_ADDOPTS",
         ):
             env.pop(var, None)
+        env["BIDMATE_PYTEST_DEFAULT_NOT_SLOW"] = "0"
 
         # Prefer /bin/bash: on macOS it is the 3.2 build that reproduces the
         # crash. On Linux it is bash 4+/5 and the test still passes.

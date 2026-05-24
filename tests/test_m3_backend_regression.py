@@ -147,7 +147,7 @@ class NaiveBaselineInvariantTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.index = build_index_payload(
-            Path("data/raw"),
+            Path("eval/fixtures/smoke_rfp/raw"),
             embedding_backend="hashing",
             chunking_strategy="fixed",
         )
@@ -242,7 +242,7 @@ class M3EndToEndTest(unittest.TestCase):  # pragma: no cover — opt-in, gated o
     @classmethod
     def setUpClass(cls) -> None:
         # Issue #1315 — a ~6-chunk synthetic index, NOT the full 383-chunk
-        # data/raw corpus. The contract asserted below (score_parts carry
+        # eval/fixtures/smoke_rfp/raw corpus. The contract asserted below (score_parts carry
         # all three m3 channels, RRF score normalized to [0, 1]) is
         # backend-driven and corpus-size-independent, so the full corpus
         # only inflated this test's m3 colbert encode to 737s (the pr-eval

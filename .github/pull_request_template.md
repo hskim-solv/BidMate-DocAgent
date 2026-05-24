@@ -70,7 +70,6 @@ README metric sync 는 pr-eval.yml (issue #739) 가 별도 gate — eval surface
 <!-- 알아챘으나 의도적으로 안 고친 것. -->
 
 <!--
-선택: **`live-judge-please`** 라벨 부착 시 `.github/workflows/pr-judge.yml`
-(ADR 0043) 실행. live LLM-judge 1회 수행 후 RAGAS 집계를 PR 코멘트로 게시.
-push 후 갱신은 라벨 재부착 (Goodhart guard).
+PR CI는 public fixture smoke eval + unit tests + latency check만 수행.
+실제 성능 평가는 커밋하지 않는 private/internal eval aggregate로 별도 증빙.
 -->

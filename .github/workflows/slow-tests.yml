@@ -11,8 +11,7 @@ name: Slow / real-model tests
 #   - schedule: nightly on the default branch (regression coverage on main).
 #   - workflow_dispatch: manual on-demand run against any ref.
 #   - pull_request (labeled): attach `run-slow-tests` to a PR to exercise the
-#     real-model suite before merge (advisory, NOT a required gate — mirrors
-#     pr-judge.yml's ADR 0043 label cadence).
+#     real-model suite before merge (advisory, NOT a required gate).
 #
 # Coverage uploads under the `slow` Codecov flag so the nightly main run keeps
 # the m3 / full-corpus paths represented; Codecov merges with pr-eval.yml's

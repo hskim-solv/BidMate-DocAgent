@@ -13,15 +13,15 @@
 
 ## TL;DR
 
-- 5모델(MiniLM/EmbeddingGemma-300M/bge-m3-korean/KURE-v1/Qwen3-0.6B)을 **real100 비공개 corpus**(26376 kordoc 청크)에서 **retrieval 표면**(ADR 0069 `chunk_recall@k`/`mrr`/`ndcg` + bootstrap CI)으로 측정. Phase 1.x의 public-synthetic answer-quality 표면에서 처음 벗어남.
+- 5모델(MiniLM/EmbeddingGemma-300M/bge-m3-korean/KURE-v1/Qwen3-0.6B)을 **real100 비공개 corpus**(26376 kordoc 청크)에서 **retrieval 표면**(ADR 0069 `chunk_recall@k`/`mrr`/`ndcg` + bootstrap CI)으로 측정. Phase 1.x의 public-fixture-smoke answer-quality 표면에서 처음 벗어남.
 - `full`(hybrid) recall@10이 baseline MiniLM(0.235) 대비 4후보 전부 양(+): KURE-v1 **+6.3pp**(0.298, mrr +13.3pp 최고), Qwen3 +3.0, EmbeddingGemma +2.7, bge-m3-korean +2.0. **Phase 1.5와 정반대** — 그때 KURE는 `full` answer accuracy를 −1.3pp로 못 움직였다(routing이 dense 우회). ADR 0069 retrieval 표면이 answer 표면이 가렸던 임베딩-품질 신호를 드러냄.
 - ADR 0019 condition-3은 ≥+5pp **and** non-overlapping CI 둘 다 요구. KURE +6.3pp는 임계 초과하나 **CI 중첩**(n=114 검정력 한계) → **미트리거 → `DEFAULT_EMBEDDING_MODEL`은 MiniLM 유지**. KURE-v1을 더 큰 n에서 재평가할 가장 유력한 default-flip 후보로 기록.
 
 ## Context
 
-[ADR 0019](./0019-embedding-default-stays-minilm.md)가 MiniLM 기본값을 보류 결정하며 condition-3을 명시했다: 후보가 MiniLM 대비 `full` 파이프라인에서 ≥+5pp lift를 **비중첩 95% bootstrap CI**로 보일 때만 default-flip 트리거. [ADR 0037](./0037-kure-v1-closes-phase-1-5.md)(Phase 1.5)이 KURE-v1을 public-synthetic n=100 answer 표면에서 측정 — `full` accuracy −1.3pp로 미트리거. 6개 임베딩 pivot 전부 `0pp-on-full` 패턴.
+[ADR 0019](./0019-embedding-default-stays-minilm.md)가 MiniLM 기본값을 보류 결정하며 condition-3을 명시했다: 후보가 MiniLM 대비 `full` 파이프라인에서 ≥+5pp lift를 **비중첩 95% bootstrap CI**로 보일 때만 default-flip 트리거. [ADR 0037](./0037-kure-v1-closes-phase-1-5.md)(Phase 1.5)이 KURE-v1을 public-fixture-smoke n=100 answer 표면에서 측정 — `full` accuracy −1.3pp로 미트리거. 6개 임베딩 pivot 전부 `0pp-on-full` 패턴.
 
-Phase 1.x의 두 구조적 한계: (1) public-synthetic corpus가 saturate([ADR 0032](./0032-eval-saturation-routed-subset.md) Phase 1.4 falsifier), (2) **answer 표면이 임베딩 차이를 가린다** — metadata-first routing([ADR 0002](./0002-metadata-first-retrieval.md)) + hybrid([ADR 0058](./0058-phase35-mode-winner.md))가 dense 채널을 우회하므로 answer accuracy로는 임베딩 품질을 분리 측정 불가.
+Phase 1.x의 두 구조적 한계: (1) public-fixture-smoke corpus가 saturate([ADR 0032](./0032-eval-saturation-routed-subset.md) Phase 1.4 falsifier), (2) **answer 표면이 임베딩 차이를 가린다** — metadata-first routing([ADR 0002](./0002-metadata-first-retrieval.md)) + hybrid([ADR 0058](./0058-phase35-mode-winner.md))가 dense 채널을 우회하므로 answer accuracy로는 임베딩 품질을 분리 측정 불가.
 
 [ADR 0069](./0069-retrieval-aggregate-and-citation-coverage-surface.md)가 `eval_summary.json`에 run-level retrieval aggregate(`chunk_recall@{5,10,20}`/`chunk_mrr`/`chunk_ndcg@{10,20}` + bootstrap CI)를 노출했다. 이 ADR(Phase 2.0)이 그 표면의 첫 소비자로, 두 축을 모두 바꿔 측정: corpus를 **real100**(harder, 비공개)로, 표면을 **retrieval**로.
 

@@ -1,7 +1,7 @@
 # 0012: 공개 합성 eval 에서 stub-기본 LLM 평가자
 
 - **Status**: Superseded
-- **Superseded by**: [ADR 0005](./0005-eval-split-public-synthetic-private-local.md) § "LLM-judge gate layers"
+- **Superseded by**: [ADR 0005](./0005-eval-split-public-synthetic-private-local.md) (public fixture smoke / private internal eval boundary)
 - **Date**: 2026-05-11
 - **Related**: [ADR 0006](./0006-llm-judge-on-real-data-only.md) 정제; [ADR 0011](./0011-llm-synthesis-as-additive-ablation.md) 백엔드 패턴 재사용; [ADR 0004](./0004-verifier-retry-policy.md) 재현성 보존
 - **Deciders**: hskim

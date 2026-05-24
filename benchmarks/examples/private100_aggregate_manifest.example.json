@@ -12,7 +12,7 @@
       "privacy": "private_aggregate_only",
       "corpus_size": 100,
       "anonymized": true,
-      "comparison_group": "public_synthetic_rfp"
+      "comparison_group": "private_internal_rfp"
     }
   },
   "ablation_suite": {

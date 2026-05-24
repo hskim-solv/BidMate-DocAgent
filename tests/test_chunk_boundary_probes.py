@@ -15,7 +15,7 @@ Two complementary checks:
   metadata flips these probes from `supported` to `insufficient`.
 
 Both tests use the deterministic hashing embedding backend on the
-existing `data/raw` fixture, matching the pattern in
+existing `eval/fixtures/smoke_rfp/raw` fixture, matching the pattern in
 `tests/test_retrieval_loop_regression.py`.
 """
 

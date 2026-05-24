@@ -77,6 +77,6 @@ Phase 1 audit (2026-05-14)가 BidMate-DocAgent가 stage (B) "agentic RAG"임을 
 `agent_react`가 "언제 업그레이드?" 답. `agentic_full`로부터 upgrade 조건:
 - 외부 리뷰어가 실 eval에서 p95 latency ≤ budget cap 확인.
 - Cost telemetry가 per-query cost가 operator budget 내임을 표시.
-- `agent_react`가 LLM-judge recall@20 메트릭에서 공개 합성 슬라이스(ADR 0012 eval surface)에서 `agentic_full` 대비 ≥ 2pp.
+- `agent_react`가 LLM-judge recall@20 메트릭에서 공개 fixture smoke 슬라이스(retired public judge surface eval surface)에서 `agentic_full` 대비 ≥ 2pp.
 
 세 조건 모두 충족까지 `agentic_full`이 함수 레벨 기본값 유지 (ADR 0024).

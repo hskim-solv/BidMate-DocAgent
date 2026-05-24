@@ -1,6 +1,6 @@
 # Visual parsing v2
 
-이 문서는 이슈 #14의 PDF/image visual parsing v2 경로를 설명한다. 기존 공개 baseline(`data/raw`)과 CSV-text v1 ingestion은 기본 동작으로 유지한다.
+이 문서는 이슈 #14의 PDF/image visual parsing v2 경로를 설명한다. 기존 공개 baseline(`eval/fixtures/smoke_rfp/raw`)과 CSV-text v1 ingestion은 기본 동작으로 유지한다.
 
 ## 목적
 - 원본 PDF/이미지에서 text, page, bbox, region metadata를 함께 추출한다.
@@ -91,7 +91,7 @@ python3 scripts/build_index.py \
 
 ```bash
 python3 -m unittest discover -s tests -q
-python3 scripts/build_index.py --input_dir data/raw --output_dir /private/tmp/agentic-vlm-index --embedding_backend hashing
+python3 scripts/build_index.py --input_dir eval/fixtures/smoke_rfp/raw --output_dir /private/tmp/agentic-vlm-index --embedding_backend hashing
 python3 app.py --input_dir /private/tmp/agentic-vlm-index --output_dir /private/tmp/agentic-vlm-outputs --query "기관 A와 기관 B의 AI 요구사항 차이 알려줘"
 python3 eval/run_eval.py --index_dir /private/tmp/agentic-vlm-index --output_dir /private/tmp/agentic-vlm-reports --config eval/config.yaml
 python3 eval/run_parser_eval.py --artifact_dir eval/fixtures/parser_visual_v2 --gold eval/parser_visual_v2_gold.yaml --output_dir /private/tmp/agentic-vlm-parser-reports --run_name visual_v2_fixture --parser_version 2

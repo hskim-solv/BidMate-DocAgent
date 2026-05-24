@@ -23,7 +23,7 @@ from typing import Any
 from eval.bootstrap import paired_bootstrap_ci
 
 # Hangul (가-힣) + Jamo blocks. Real-eval case ids embed agency / project /
-# topic names in Korean; synthetic CI ids are opaque ASCII ("q1", "a"). Any
+# topic names in Korean; fixture smoke ids are opaque ASCII ("q1", "a"). Any
 # Hangul in a committable eval artifact is, by the ADR 0005 private-local +
 # ADR 0065 boundary ("qid + categories + metric values only"), a private leak.
 _HANGUL_RE = re.compile(r"[가-힣ᄀ-ᇿ㄰-㆏ꥠ-꥿]")
@@ -38,7 +38,7 @@ def anon_qid(qid: str) -> str:
     """Map a possibly-identifying case id to an opaque, deterministic token.
 
     Real-eval qids embed agency/topic names (Korean), so emitting them into a
-    committable ``raw_results.json`` leaks private RFP metadata. Synthetic CI
+    committable ``raw_results.json`` leaks private RFP metadata. Fixture smoke CI
     qids are already opaque ASCII and stay readable. Only Hangul-bearing ids
     are hashed (``real_<sha1(qid)[:10]>``), so the transform is a pure,
     index-free function that can re-derive the same token from the private

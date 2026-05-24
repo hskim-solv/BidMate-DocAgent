@@ -6,7 +6,7 @@
 
 - Metadata filter는 `strict`, `reduced`, `relaxed` 단계로 실행된다. 후보가 없는 `strict`는 더 이상 이름만 strict인 전체 검색으로 기록하지 않고 `relaxed`로 기록한다.
 - Agency/project/title matching은 spacing/punctuation compact normalization, partial token overlap, fuzzy similarity, explicit alias lexicon을 함께 사용한다.
-- 문서 metadata의 `aliases`, `agency_aliases`, `project_aliases`, `title_aliases`가 alias lexicon으로 읽힌다. Public synthetic docs에는 축약 project alias만 최소로 추가했다.
+- 문서 metadata의 `aliases`, `agency_aliases`, `project_aliases`, `title_aliases`가 alias lexicon으로 읽힌다. Public fixture smoke docs에는 축약 project alias만 최소로 추가했다.
 - Follow-up query는 session state의 active agency와 project를 retrieval query 앞에 주입한다. 세션 상태에는 active doc/project/agency 후보와 ambiguity flag가 남는다.
 - Single/follow-up query에서 metadata 후보가 낮은 confidence 차이로 충돌하면 retrieval을 진행하지 않고 clarification 형태의 `insufficient` 응답을 반환한다. Comparison query는 여러 후보를 정상 target set으로 허용한다.
 - Planner는 query type별 기본 retrieval budget을 사용한다. `single_doc=4`, `follow_up=6`, `comparison=6`이며 comparison은 coverage-aware top-k가 필요한 경우 기존 adaptive budget을 사용한다.
@@ -24,7 +24,7 @@
 ```bash
 python3 -m unittest tests.test_fuzzy_retrieval -v
 python3 -m unittest tests.test_eval_metrics -v
-python3 scripts/build_index.py --input_dir data/raw --output_dir data/index
+python3 scripts/build_index.py --input_dir eval/fixtures/smoke_rfp/raw --output_dir data/index
 python3 app.py --input_dir data/index --output_dir outputs --query "기관 A와 기관 B의 AI 요구사항 차이 알려줘" --pipeline agentic_full
 python3 eval/run_eval.py --index_dir data/index --output_dir reports --config eval/config.yaml
 python3 scripts/update_readme_metrics.py --report reports/eval_summary.json --readme README.md --check

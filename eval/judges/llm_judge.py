@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
-"""RAGAS-style LLM-judge as additive enrichment on the synthetic surface.
+"""RAGAS-style LLM-judge as additive enrichment for local eval summaries.
 
-Refines [ADR 0006](../docs/adr/0006-llm-judge-on-real-data-only.md)'s
-real-data-only restriction by adding an opt-in additive judge on the
-public synthetic eval (see [ADR 0014](../docs/adr/0014-ragas-judge-
-additive-synthetic.md)). Same backend pluggability as
-``scripts/llm_judge.py`` — ``stub`` (deterministic, default) /
-``openai_compatible`` — and the same environment variable contract.
+This module keeps the judge hook available for private/internal review
+workflows without making judge scores part of public fixture smoke claims.
+Same backend pluggability as ``scripts/llm_judge.py`` — ``stub``
+(deterministic, default) / ``openai_compatible`` — and the same environment
+variable contract.
 
 Four metrics per case, each a float in [0.0, 1.0]:
 
@@ -170,7 +169,7 @@ def _cache_key(case: dict[str, Any], backend: str, model: str) -> str:
     underlying judge or how it samples). Temperature is part of the judge
     configuration that changes the verdict, so a verdict produced at one
     temperature must not be served as a cache hit for a re-run at another
-    (ADR 0012 judge reproducibility; temperature added via #1132).
+    (judge reproducibility; temperature added via #1132).
     """
     query = str(case.get("query") or "")
     summary = extract_summary(case)
@@ -305,7 +304,7 @@ def parse_args() -> argparse.Namespace:
     ap.add_argument(
         "--eval-summary",
         default=str(DEFAULT_EVAL_SUMMARY),
-        help="Path to reports/eval_summary.json (default: public synthetic).",
+        help="Path to reports/eval_summary.json.",
     )
     ap.add_argument(
         "--output",

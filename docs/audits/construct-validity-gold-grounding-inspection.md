@@ -84,7 +84,7 @@ lever 1–4 (파이프라인/채점 측 변형) 는 catalog gold 위에서 전�
 ## 범위 밖(Out-of-scope)
 
 - production 파이프라인 fix (검색/검증/임베딩) — 본 audit 는 *천장의 위치*만 확정; 교정 gold 위에서 재측정 후 별 PR.
-- 비공개 RFP 본문/카탈로그 실값의 외부 전송·커밋 (ADR 0005/0012 관할).
+- 비공개 RFP 본문/카탈로그 실값의 외부 전송·커밋 (ADR 0005 관할).
 
 ## Verification
 

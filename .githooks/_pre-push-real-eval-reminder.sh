@@ -103,7 +103,7 @@ fi
 # 3. naive_baseline golden freshness reminder.
 # ---------------------------------------------------------------------------
 #
-# tests/data/naive_baseline_top_k.json drifts when the data/raw/ corpus changes
+# tests/data/naive_baseline_top_k.json drifts when the eval/fixtures/smoke_rfp/raw/ corpus changes
 # (PR #648 HWP fixtures, PR #914 H/I/J/K corpus). Content drift is hard-gated
 # by tests/test_naive_baseline_ranking_invariance.py, but that signal only
 # fires at test time; this surfaces it earlier — and ONLY when the corpus
@@ -111,13 +111,13 @@ fi
 # drift (so a no-op corpus edit never nags). Uses `$changed` from reminder 1.
 
 if [[ -n "$changed" ]] && command -v python3 >/dev/null 2>&1; then
-  raw_changed=$(printf '%s\n' "$changed" | grep -E '^data/raw/.+\.json$' || true)
+  raw_changed=$(printf '%s\n' "$changed" | grep -E '^eval/fixtures/smoke_rfp/raw/.+\.json$' || true)
   golden_changed=$(printf '%s\n' "$changed" | grep -Fx 'tests/data/naive_baseline_top_k.json' || true)
   if [[ -n "$raw_changed" && -z "$golden_changed" ]]; then
     if ! python3 scripts/regen_naive_baseline_golden.py --check >/dev/null 2>&1; then
       cat >&2 <<EOF
 
-⚠️  data/raw/ corpus changed but the naive_baseline golden was not updated,
+⚠️  eval/fixtures/smoke_rfp/raw/ corpus changed but the naive_baseline golden was not updated,
     and a rebuild shows the ranking drifted.
 
     Refresh the committed snapshot before reviewers see a red invariance test:

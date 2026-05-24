@@ -66,7 +66,7 @@ Root 트레이스 태그: `pipeline`, `prompt_profile`, `embedding_backend`, `re
 
 ### 주기
 
-- **공개 합성 CI** (`pr-eval.yml`): `BIDMATE_TRACE_BACKEND` unset → noop. SDK 설치 없음. 파이프라인 동작 불변.
+- **공개 fixture smoke CI** (`pr-eval.yml`): `BIDMATE_TRACE_BACKEND` unset → noop. SDK 설치 없음. 파이프라인 동작 불변.
 - **실데이터 eval**: 선택. noop 기본. reviewer 가 `BIDMATE_TRACE_BACKEND=langfuse` 로 일회성 디버깅 opt-in 가능 — ADR 0005 commit 경계 영향 없음 (집계 메트릭 불변; 쿼리별 트레이스만 export).
 - **라이브 데모**: Fly.io secret 통해 `BIDMATE_TRACE_BACKEND=langfuse` 구성. Streamlit 데모가 각 답변 하단에 "View trace" 링크 노출 (이슈 acceptance 기준).
 

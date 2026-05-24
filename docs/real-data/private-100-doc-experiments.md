@@ -100,8 +100,8 @@ python3 scripts/summarize_benchmark.py \
 **해석(Interpretation).**
 
 - **회복(Recovery)이 작동한다.** answerable case 4 / 17 이 `insufficient` → `partial` 로 회복; 순(net) accuracy 향상 +0.118. `topic_not_grounded` retry 신호가 1/3 줄어(18 → 12), strict→relaxed staging 이 설계대로 작동함을 확인했다.
-- **intended abstention 에서 false-positive.** intended-abstention case 4개 중 2개가 `insufficient` → `partial` 로 뒤집혔다. Issue #69 자신의 acceptance 기준("intended abstention cases remain abstentions")이 fraction=0.5 에서 **부분적으로 위반**된다. 공개 합성(synthetic) eval 은 이를 잡지 못했는데, out-of-corpus case 가 corpus 와 명확히 분리되어 있기 때문이다; real-data abstention 쿼리는 in-corpus 콘텐츠와 우연한 topic token 을 공유한다.
-- **citation precision 하락은 기계적(mechanical)이다.** Partial 답변은 요청된 topic 중 일부만 근거 연결(ground)하는 청크를 인용한다; `partial` status 자체가 답변이 약하다고 caller 에게 알리는 계약이다. PR #88 의 공개 합성(synthetic) 델타와 같은 형태.
+- **intended abstention 에서 false-positive.** intended-abstention case 4개 중 2개가 `insufficient` → `partial` 로 뒤집혔다. Issue #69 자신의 acceptance 기준("intended abstention cases remain abstentions")이 fraction=0.5 에서 **부분적으로 위반**된다. 공개 fixture smoke eval 은 이를 잡지 못했는데, out-of-corpus case 가 corpus 와 명확히 분리되어 있기 때문이다; real-data abstention 쿼리는 in-corpus 콘텐츠와 우연한 topic token 을 공유한다.
+- **citation precision 하락은 기계적(mechanical)이다.** Partial 답변은 요청된 topic 중 일부만 근거 연결(ground)하는 청크를 인용한다; `partial` status 자체가 답변이 약하다고 caller 에게 알리는 계약이다. PR #88 의 공개 fixture smoke 델타와 같은 형태.
 
 **결정(Decision).**
 
@@ -183,7 +183,7 @@ abstention). 동일 index, 동일 case set, 동일 tooling; 실행 간 `rag_core
 - **Abstention 복원.** matched≥2 바닥은 #69 이후 intended-abstention
   real-data case 를 뒤집었던 1-of-2 우연 중첩(incidental-overlap) 패턴을
   잘라낸다. 진짜 partial-recovery(2-of-3 등)는 계속 통과한다 — 같은 PR 에서
-  2-of-3 으로 갱신된 공개 합성(synthetic) guard
+  2-of-3 으로 갱신된 공개 fixture smoke guard
   `partial_topic_security_quantum` 참조.
 - **순(net) answerable trade-off.** 1-of-2 매칭에 의존했던 #69 의 회복된
   answerable case 4개 중 일부가 `insufficient` 로 되돌아간다. acceptance

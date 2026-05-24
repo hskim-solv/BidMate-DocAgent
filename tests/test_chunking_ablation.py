@@ -1,6 +1,6 @@
 """Smoke test for the chunking strategy ablation runner (issue #62).
 
-Just runs the script's main code paths against `data/raw/` and checks
+Just runs the script's main code paths against `eval/fixtures/smoke_rfp/raw/` and checks
 the report shape — every probe returns a verdict per strategy and the
 strategy comparison table includes all three strategies. The script is
 a measurement tool that reviewers run by hand; this guard catches
@@ -22,7 +22,7 @@ from run_chunking_ablation import (  # noqa: E402
     run_for_strategy,
 )
 
-# Runs every chunking strategy over the full data/raw corpus — ~9s.
+# Runs every chunking strategy over the full eval/fixtures/smoke_rfp/raw corpus — ~9s.
 # Marked slow so `make test-fast` deselects it; CI still runs.
 pytestmark = pytest.mark.slow
 

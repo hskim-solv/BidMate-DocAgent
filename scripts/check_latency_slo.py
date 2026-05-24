@@ -5,7 +5,7 @@ The regression gate in ``scripts/compare_eval.py`` deliberately
 excludes latency because CI runner host variance makes relative
 comparison flaky. This script applies an *absolute* p95 ceiling per
 ablation run as declared in ``eval/config.yaml::latency_budgets`` —
-which is the right framing for an operational SLO ("our public synthetic
+which is the right framing for a fixture smoke SLO ("the reproducibility
 surface returns within X ms p95") and is robust to runner noise as
 long as the ceiling is set with headroom.
 

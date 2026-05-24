@@ -4,7 +4,7 @@
 #   docker build -t bidmate-demo .
 #   docker run --rm -p 8000:8000 bidmate-demo
 #
-# The entrypoint builds the index from data/raw on first start if it is
+# The entrypoint builds the index from eval/fixtures/smoke_rfp/raw on first start if it is
 # missing, then launches uvicorn. Mount a volume on /app/data/index to
 # persist the index across runs.
 FROM python:3.11-slim
@@ -45,7 +45,7 @@ COPY *.py ./
 COPY api/ ./api/
 COPY demo/ ./demo/
 COPY scripts/build_index.py ./scripts/build_index.py
-COPY data/raw/ ./data/raw/
+COPY eval/fixtures/smoke_rfp/raw/ ./eval/fixtures/smoke_rfp/raw/
 COPY data/lexicon/ ./data/lexicon/
 COPY docker-entrypoint.sh ./docker-entrypoint.sh
 RUN chmod +x docker-entrypoint.sh

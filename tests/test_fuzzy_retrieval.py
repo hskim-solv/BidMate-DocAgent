@@ -62,7 +62,7 @@ class FuzzyMetadataRetrievalTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.index = build_index_payload(
-            Path("data/raw"),
+            Path("eval/fixtures/smoke_rfp/raw"),
             embedding_backend="hashing",
         )
 
@@ -107,7 +107,7 @@ class FuzzyMetadataRetrievalTest(unittest.TestCase):
         )
 
     def test_korean_project_alias_matches_mlops_document(self) -> None:
-        result = run_rag_query(self.index, "엠엘옵스 자동화의 필수 산출물은?")
+        result = run_rag_query(self.index, "엠엘옵스 자동화의 재학습 승인 기능은?")
 
         self.assertEqual(["rfp-agency-b-mlops-governance"], result["analysis"]["matched_doc_ids"])
         self.assertEqual(["데이터 거버넌스 및 MLOps 자동화"], result["analysis"]["matched_projects"])
@@ -118,19 +118,15 @@ class FuzzyMetadataRetrievalTest(unittest.TestCase):
         chunk = self.index["chunks"][0]
 
         self.assertEqual("section", chunk["chunking_strategy"])
-        # ADR 0050: doc-A first section under real_scale_v2_distractor is
-        # "사업 명칭 및 발주 기관" (was "사업 개요" in the v1 9-section scale).
-        self.assertEqual(["사업 명칭 및 발주 기관"], chunk["section_path"])
+        self.assertEqual(["사업 개요"], chunk["section_path"])
         self.assertEqual(1, chunk["chunk_seq_in_section"])
         self.assertTrue(chunk["section_id"].startswith("rfp-agency-a-ai-quality::section-"))
 
         result = run_rag_query(self.index, "기관 A의 보안 통제 요구사항은?")
         evidence = result["evidence"][0]
 
-        # ADR 0050: under real_scale_v2_distractor doc-A has dedicated "보안 통제
-        # 운영 절차" sections; the v1 corpus only had a single "AI 요구사항"
-        # block. The assertion targets whatever section the security query
-        # now grounds against — invariant is that section metadata is stored.
+        # The smoke fixture is intentionally tiny; the invariant is that section
+        # metadata is still carried onto evidence rows.
         self.assertIsInstance(evidence["section_path"], list)
         self.assertGreater(len(evidence["section_path"]), 0)
         self.assertEqual(evidence["section_id"], evidence["parent_section_id"])
@@ -321,7 +317,7 @@ class FuzzyMetadataRetrievalTest(unittest.TestCase):
         self.assertEqual({"기관 A"}, {claim["target"] for claim in result["answer"]["claims"]})
 
     def test_retry_relaxes_filters_when_verifier_rejects_evidence(self) -> None:
-        # Use an isolated index so that documents added to data/raw/ after
+        # Use an isolated index so that documents added to eval/fixtures/smoke_rfp/raw/ after
         # the test was written (e.g. HWP fixtures from PR #648) cannot
         # supply "납품"-adjacent evidence that triggers partial_topic_grounding
         # and converts the expected abstention into status='partial'.

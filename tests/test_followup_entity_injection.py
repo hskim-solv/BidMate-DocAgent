@@ -129,13 +129,13 @@ class FollowUpRetrievalAnchorRegressionTest(unittest.TestCase):
     A regression that drops the entity injection flips the diagnostic
     field even when the metadata-first path happens to still pick the
     right doc — so this test guards the inject path independently of
-    retrieval success on the public synthetic surface.
+    retrieval success on the public fixture surface.
     """
 
     @classmethod
     def setUpClass(cls) -> None:
         cls.index = build_index_payload(
-            Path("data/raw"), embedding_backend="hashing"
+            Path("eval/fixtures/smoke_rfp/raw"), embedding_backend="hashing"
         )
 
     def test_resolved_query_contains_entity_anchor(self) -> None:

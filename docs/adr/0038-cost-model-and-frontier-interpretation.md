@@ -8,7 +8,7 @@
   [ADR 0009](./0009-external-baseline-comparison.md) (외부 baseline 인프라),
   [`rag_synthesis.py`](../../rag_synthesis.py) `PRICING_PER_MTOK_USD` / `compute_cost_usd()`,
   [`eval/run_eval.py`](../../eval/run_eval.py) `evaluate_run()`,
-  [`reports/external_baselines.json`](../../reports/external_baselines.json),
+  retired external-baseline aggregate artifacts,
   issue #449, issue #177
 
 ## TL;DR
@@ -61,7 +61,7 @@ Easier:
 
 비용 / 제약:
 
-- `case_results[i]`가 이제 네 추가 키 보유. 알려진 키를 iterate하는 downstream consumer(예: tight 스키마 validator)는 extras 허용 필요. 기존 consumer(`summarize_run`, `metric_block`, leaderboard renderer)는 `.get()` 접근 → 무영향.
+- `case_results[i]`가 이제 네 추가 키 보유. 알려진 키를 iterate하는 downstream consumer(예: tight 스키마 validator)는 extras 허용 필요. 기존 consumer(`summarize_run`, `metric_block`, aggregate report renderer)는 `.get()` 접근 → 무영향.
 - Frontier 플롯은 issue #177 재개까지 미구축. 이 ADR은 이미지 생산 안 함 — 데이터 파이프라인 wiring만 보장.
 - `PRICING_PER_MTOK_USD`가 2026-Q2 공개 list price 사용. Anthropic 가격 변경 시 `rag_synthesis.py` constant 업데이트 필수. 자동 업데이트 메커니즘 미계획.
 

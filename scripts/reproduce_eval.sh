@@ -2,7 +2,7 @@
 # Cross-machine reproducibility check (ADR 0001 baseline preservation + ADR 0005
 # determinism). Runs the smoke eval and prints a SHA-256 hash of the
 # environment-invariant subset of reports/eval_summary.json. The same hash on
-# two machines is positive evidence that the public synthetic surface is
+# two machines is positive evidence that the public fixture smoke surface is
 # deterministic across hosts; a mismatch surfaces a regression in pinning.
 #
 # Usage:

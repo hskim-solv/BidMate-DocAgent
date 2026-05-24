@@ -56,7 +56,7 @@ ADR 0006 패턴 재사용: `BIDMATE_SYNTHESIS_BACKEND`:
 
 ### 주기
 
-- **공개 합성 CI**: `BIDMATE_SYNTHESIS_BACKEND=stub`. Eval 델타 job 은 `naive_baseline` vs `agentic_full` (둘 다 결정론) 비교 유지 + `agentic_full_llm` 를 stub 백엔드로 *추가* 컬럼 보고. stub 은 plumbing 운동 + 계약 lock 용도 — 실 LLM 품질 주장 아님.
+- **공개 fixture smoke CI**: `BIDMATE_SYNTHESIS_BACKEND=stub`. Eval 델타 job 은 `naive_baseline` vs `agentic_full` (둘 다 결정론) 비교 유지 + `agentic_full_llm` 를 stub 백엔드로 *추가* 컬럼 보고. stub 은 plumbing 운동 + 계약 lock 용도 — 실 LLM 품질 주장 아님.
 - **실데이터 eval**: `BIDMATE_SYNTHESIS_BACKEND=anthropic`. LLM 컬럼 집계 메트릭은 ADR 0005 commit 경계 넘김; raw 프롬프트·raw 응답은 로컬. 토큰 수·쿼리당 비용은 집계되어 commit 가능.
 - **라이브 데모**: `anthropic` 백엔드, rate-limit, prompt-cached.
 

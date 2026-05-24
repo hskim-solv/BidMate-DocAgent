@@ -43,7 +43,7 @@ permalink: /blog/2026-05-extractive-baseline/
 - **Citation Precision**: `agentic_full` 0.705 vs `naive_baseline` 0.525 — **+18.0pp** 우위.
 - **Abstention Accuracy (intended)**: `agentic_full` 0.810 vs `naive_baseline` 0.238 — **+57.1pp** 우위.
 
-겉으로 보면 accuracy에서 baseline이 이기는 *불편한 표*다. 일반 leaderboard 패션이라면 이걸 표 밖으로 빼버리거나 ablation을 변형해 baseline을 떨어뜨릴 것이다. 그러지 않은 이유:
+겉으로 보면 accuracy에서 baseline이 이기는 *불편한 표*다. 일반 aggregate report 패션이라면 이걸 표 밖으로 빼버리거나 ablation을 변형해 baseline을 떨어뜨릴 것이다. 그러지 않은 이유:
 
 1. **Accuracy 단일 metric은 RFP 도메인에서 거짓말을 한다.** 평가위원에게는 "답을 잘하느냐"보다 "근거를 명시하느냐(citation precision)"와 "모르면 모른다고 하느냐(abstention)"가 더 비싸다. `agentic_full`이 두 컬럼에서 모두 baseline을 큰 폭으로 이긴다.
 2. **n=42 → n=100 확장 중([issue #570](https://github.com/hskim-solv/BidMate-DocAgent/issues/570))에서 CI 폭이 ×0.65 수축**할 예정. 현재 accuracy -6.4pp의 통계적 의미는 CI band 안에 들어있다.
@@ -53,7 +53,7 @@ permalink: /blog/2026-05-extractive-baseline/
 
 - [ADR 0001](../adr/0001-preserve-naive-baseline/) — `naive_baseline`은 `eval/config.yaml`에 영구 ablation 행. 절대 삭제 금지.
 - [ADR 0003](../adr/0003-structured-answer-citation-contract/) — answer dict의 `status` 필드에 `supported` / `insufficient` / `error` 3-state. **insufficient는 fallback이 아니라 1급 상태다.**
-- [ADR 0005](../adr/0005-eval-split-public-synthetic-private-local/) — public synthetic + private real-eval의 이중 평가 surface. synthetic CI가 통과해도 real-eval에서 abstention 회귀가 잡히면 PR이 block된다 (실제 사례: [`#69` intended-abstention regression](../engineering-governance/#governance-saves-real-incidents-prevented)).
+- [ADR 0005](../adr/0005-eval-split-public-synthetic-private-local.md) — public fixture smoke + private real-eval의 이중 평가 surface. fixture smoke가 통과해도 real-eval에서 abstention 회귀가 잡히면 PR이 block된다 (실제 사례: [`#69` intended-abstention regression](../engineering-governance/#governance-saves-real-incidents-prevented)).
 - [ADR 0011](../adr/0011-llm-synthesis-as-additive-ablation/) — `agentic_full_llm`은 *추가*되는 ablation. extractive를 *교체*하지 않는다.
 
 ## Trade-off — 솔직하게
@@ -76,4 +76,4 @@ Extractive를 1급 baseline로 유지한다는 결정은 *generative를 거부*�
 
 ---
 
-*시리즈 다른 글: Public synthetic + Private real 이중 평가 surface, 실패 분류로 백로그 생성하기 — 작성 중.*
+*시리즈 다른 글: Public fixture smoke + Private real 이중 평가 surface, 실패 분류로 백로그 생성하기 — 작성 중.*

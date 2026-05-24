@@ -21,7 +21,7 @@ real100 비공개 eval 표면 (`eval/real_config.local.yaml`, `reports/real100/`
 
 - Pool-recall 100% 신뢰구간 ±21pp (Wilson 95%)
 - 단일 케이스 정확도 flip 이 헤드라인 +4.8pp 변동
-- Silence threshold `max(5e-4, 0.5 / n_min)` (ADR 0030) 가 0.024 로 해소 — 의도한 수렴 신호보다 훨씬 큼
+- Silence threshold `max(5e-4, 0.5 / n_min)` (retired aggregate policy) 가 0.024 로 해소 — 의도한 수렴 신호보다 훨씬 큼
 
 100개 문서 모두 이미 `data/index/real100/` 에 수집됨; 갭은 케이스지 문서 아님. 기존 코퍼스로 n 확장은 low-risk + high-signal.
 
@@ -35,7 +35,7 @@ real100 비공개 eval 표면 (`eval/real_config.local.yaml`, `reports/real100/`
 
 2. **`num_predictions` 가 n 추적.** 모든 `eval_summary.json` 스냅샷이 이미 `num_predictions` 기록 — 모든 기준선 비교의 권위 있는 n. `reports/real100/baseline.aggregate.json` 도 커밋 시점에 `num_predictions` 기록하므로 델타 비교 항상 n-aware.
 
-3. **Silence threshold 자동 조정.** ADR 0030 정의 `δ_silence = max(5e-4, 0.5 / n_min)`. n 증가가 config 변경 없이 자동 threshold tighten.
+3. **Silence threshold 자동 조정.** retired aggregate policy 정의 `δ_silence = max(5e-4, 0.5 / n_min)`. n 증가가 config 변경 없이 자동 threshold tighten.
 
 4. **ADR 0005 경계 보존.** 케이스 정의 (쿼리 + 비공개 RFP 콘텐츠 참조 예상 답변) 는 `eval/real_config.local.yaml` (gitignored) 유지. ADR 0005 에 따라 aggregate 통계만 공개 커밋. 본 ADR 은 확장 결정 기록; 운영자가 로컬에서 케이스 추가 적용.
 
@@ -72,7 +72,7 @@ real100 비공개 eval 표면 (`eval/real_config.local.yaml`, `reports/real100/`
 
 ## 참조
 
-- ADR 0001 — naive_baseline 불변량 (영향 없음; 공개 합성 eval)
+- ADR 0001 — naive_baseline 불변량 (영향 없음; 공개 fixture smoke eval)
 - ADR 0005 — eval 분리 경계 (비공개 데이터 gitignored 유지)
-- ADR 0030 — 리더보드 silence threshold + n-aware 공식
+- retired aggregate policy — 리더보드 silence threshold + n-aware 공식
 - Issue #732 — 구현 추적

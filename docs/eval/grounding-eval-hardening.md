@@ -25,7 +25,7 @@
 ## 검증 방법
 
 ```bash
-python3 scripts/build_index.py --input_dir data/raw --output_dir data/index
+python3 scripts/build_index.py --input_dir eval/fixtures/smoke_rfp/raw --output_dir data/index
 python3 app.py --input_dir data/index --output_dir outputs --query "기관 A와 기관 B의 AI 요구사항 차이 알려줘"
 python3 eval/run_eval.py --index_dir data/index --output_dir reports --config eval/config.yaml
 python3 scripts/update_readme_metrics.py --report reports/eval_summary.json --readme README.md --check
@@ -96,7 +96,7 @@ strict-vs-relaxed 노브(knob)다. trade-off 는
 명시적이다:
 
 - **얻은 것**: 유의미한 비율의 false-abstention 쿼리가
-  `insufficient` 대신 `partial` 로 회복된다. public synthetic eval 에서는
+  `insufficient` 대신 `partial` 로 회복된다. public fixture smoke eval 에서는
   새 `partial_topic_security_quantum` 케이스가 in-tree
   가드로 함께 머지된다; real-data 영향은 C6 backlog (9 케이스)에서 기대된다.
 - **비용**: `citation_precision` 이 약간 떨어질 수 있는데, partial
@@ -108,7 +108,7 @@ strict-vs-relaxed 노브(knob)다. trade-off 는
 ### 로컬 검증 방법
 
 ```bash
-python3 scripts/build_index.py --input_dir data/raw --output_dir data/index --embedding_backend hashing
+python3 scripts/build_index.py --input_dir eval/fixtures/smoke_rfp/raw --output_dir data/index --embedding_backend hashing
 python3 eval/run_eval.py --index_dir data/index --output_dir reports --config eval/config.yaml
 python3 -m pytest tests/test_partial_topic_grounding.py -v
 ```

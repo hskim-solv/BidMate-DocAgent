@@ -16,16 +16,16 @@
 | **무엇을 (what)** | RFP 문서용 citation-grounded **extractive** RAG — 외부 LLM 호출 없이 retrieved evidence 에서 claim 추출 + citation 잠금 ([ADR 0003](docs/adr/0003-structured-answer-citation-contract.md)) |
 | **왜 어려운지 (why hard)** | 한국어 공공/B2B RFP 는 길고 noisy 하며, 기관·사업명이 유사해 문서 간 비교·요건 추출이 구조적으로 어렵다 |
 | **무엇을 엔지니어링 (engineered)** | 메타데이터 우선 검색 ([ADR 0002](docs/adr/0002-metadata-first-retrieval.md)) + [comparison-aware balanced top-k](#핵심-기술-기여--comparison-aware-balanced-top-k) + verifier/retry + 근거 불충분 시 보류(abstention) |
-| **어떻게 평가 (evaluated)** | baseline 보존 ablation ([ADR 0001](docs/adr/0001-preserve-naive-baseline.md)) + 공개 합성·비공개 real-eval 분리 ([ADR 0005](docs/adr/0005-eval-split-public-synthetic-private-local.md)) + PR 마다 회귀 게이트 ([pr-eval.yml](.github/workflows/pr-eval.yml)) + 73 ADR |
+| **어떻게 평가 (evaluated)** | baseline 보존 ablation ([ADR 0001](docs/adr/0001-preserve-naive-baseline.md)) + 공개 fixture smoke / private internal eval 분리 ([ADR 0005](docs/adr/0005-eval-split-public-synthetic-private-local.md)) + PR 마다 회귀 게이트 ([pr-eval.yml](.github/workflows/pr-eval.yml)) + 74 ADR |
 | **어떻게 실행 (run it)** | `make index && make demo`, 또는 [5분 quickstart](#실행-5분-quickstart) · [Colab](https://colab.research.google.com/github/hskim-solv/BidMate-DocAgent/blob/main/demo/bidmate_quickstart.ipynb) · [Live demo](https://bidmate-docagent-demo.fly.dev/) |
 
 > **Portfolio signal**: 외부 LLM API 를 호출하는 RAG 데모가 아니라, RFP 도메인의 실패 모드를 직접 정의하고 그것을 막는 평가·CI·provenance 게이트를 **소유(system ownership)** 한 사례. 리뷰어용 진입점 → [모듈 맵](docs/architecture/module-map.md) · [실패 모드 케이스 스터디](docs/case-studies/failure-modes.md) · [면접 피치](docs/portfolio-pitch.md).
 
-> **real-eval 읽는 법 (오해 방지)**: 비공개 real-eval (n=221) accuracy 16.10% 는 *제품 성공 지표가 아니라 hardcase 스트레스 테스트* 다 — 실패 모드를 노출하고, ablation 의 distinguishing power(변별력) 를 시험하며, 다음 개선을 안내하는 용도. 공개 합성 eval(품질 회귀 감시)과 비공개 real-eval(난이도 상한 탐침)은 **목적이 다르다** ([ADR 0005](docs/adr/0005-eval-split-public-synthetic-private-local.md)). 낮은 hardcase 수치는 숨기지 않고 **엔지니어링 증거로 의도적으로 노출**한다 ([ADR 0052](docs/adr/0052-real-eval-hardcase-expansion-to-200.md)).
+> **real-eval 읽는 법 (오해 방지)**: 비공개 real-eval (n=221) accuracy 16.10% 는 *제품 성공 지표가 아니라 hardcase 스트레스 테스트* 다 — 실패 모드를 노출하고, ablation 의 distinguishing power(변별력) 를 시험하며, 다음 개선을 안내하는 용도. 공개 fixture smoke eval은 CI 재현성과 평가 harness 동작 확인만 담당하고, 실제 성능 판단은 private/internal eval set aggregate를 기준으로 한다 ([ADR 0005](docs/adr/0005-eval-split-public-synthetic-private-local.md)). 낮은 hardcase 수치는 숨기지 않고 **엔지니어링 증거로 의도적으로 노출**한다 ([ADR 0052](docs/adr/0052-real-eval-hardcase-expansion-to-200.md)).
 
 <details><summary><b>측정 상세 (over-claim 가드 — 펼치기)</b></summary>
 
-> **측정**: 공개 합성 (`agentic_full`, n=100): accuracy 0.718 ± 0.10, citation_precision 0.705 ± 0.08 (95% CI). 비공개 real-eval (100-doc RFP, n=221 hardcase, [ADR 0052](docs/adr/0052-real-eval-hardcase-expansion-to-200.md)): accuracy 16.10%. distinguishing-power gauge — 점추정(point estimate)으로는 4/5 metric 이 `random_retrieval` + `single_chunk` 두 floor 를 상회 (groundedness +16.95pp · accuracy +13.56pp · citation_precision +10.45pp · claim_citation_alignment +6.10pp vs random_retrieval) 하나, **CI-aware 비중첩 95% CI 테스트에서는 n=221 에서 5/5 모두 분리 미달 — 4 metric `uncertain`, answer_format_compliance −4.02pp `dead`** (게이지의 보수적 판정이 over-claim 을 차단). Goodhart 폐루프 ([ADR 0053](docs/adr/0053-distinguishing-power-floor-ablations.md) 첫 측정 발견 → [ADR 0054](docs/adr/0054-conditional-on-answer-scorer-semantics.md) scorer 정정 → CI-aware 판정, [reports/real100/distinguishing_power.md](reports/real100/distinguishing_power.md)). 공개 합성 + 비공개 real-data 분리 평가 ([ADR 0005](docs/adr/0005-eval-split-public-synthetic-private-local.md)), 74개 설계 결정 (ADR).
+> **측정**: 공개 가능한 작은 fixture는 `make smoke`와 PR CI에서 평가 harness, metrics schema, latency SLO가 깨지지 않는지 확인하는 용도다. 실제 성능 수치는 private/internal eval set aggregate로 관리하며, 비공개 real-eval (100-doc RFP, n=221 hardcase, [ADR 0052](docs/adr/0052-real-eval-hardcase-expansion-to-200.md))은 hardcase 스트레스와 distinguishing-power 분석에 사용한다. Goodhart 폐루프 ([ADR 0053](docs/adr/0053-distinguishing-power-floor-ablations.md) 첫 측정 발견 → [ADR 0054](docs/adr/0054-conditional-on-answer-scorer-semantics.md) scorer 정정 → CI-aware 판정, [reports/real100/distinguishing_power.md](reports/real100/distinguishing_power.md)). 공개 fixture smoke + private/internal eval 분리 평가 ([ADR 0005](docs/adr/0005-eval-split-public-synthetic-private-local.md)), 74개 설계 결정 (ADR).
 
 </details>
 
@@ -38,21 +38,21 @@ $ make ask
 python3 app.py --input_dir data/index --output_dir outputs --query "기관 A와 기관 B의 보안 요구사항 차이를 알려줘" --pipeline agentic_full
 
 INFO bidmate.rag_core: query_complete  status='supported'  query_type='comparison'
-                                       latency_ms=29.63     retrieval_backend='hybrid'
+                                       latency_ms=6.18      retrieval_backend='hybrid'
                                        claim_count=2        citation_count=2
 
 [OK] Answer written: outputs/answer.json
 
 ─ Answer ───────────────────────────────────────────────────────────────────
-기관 A — 연계 시스템은 보안 관제 콘솔이다.
-        [rfp-agency-a-ai-quality::chunk-056]
-기관 B — 보안 정책은 기관 B 정보보호 매뉴얼과 정합 운영된다.
-        [rfp-agency-b-mlops-governance::chunk-094]
+기관 A — 핵심 AI 요구사항은 모델 품질관리, 보안 통제, 로그 추적이다.
+        [rfp-agency-a-ai-quality::chunk-001]
+기관 B — 모든 승인 이력은 감사 로그로 남겨야 하며 운영자는 월간 감사 리포트를 생성할 수 있어야 한다.
+        [rfp-agency-b-mlops-governance::chunk-001]
 ────────────────────────────────────────────────────────────────────────────
 ```
 
 - 두 기관이 **모두** 인용된 점이 핵심 — [comparison-aware balanced top-k](#핵심-기술-기여--comparison-aware-balanced-top-k) 가 한쪽 문서 starvation 방지
-- 외부 API 호출 없음 (extractive). 위 출력은 **현재 `data/index`(13-doc) 실측** — `make ask` 복붙 시 동일 claim·citation(chunk-056 / chunk-094) 재현. ~30 ms 는 in-memory hybrid 검색 ([ADR 0058](docs/adr/0058-phase35-mode-winner.md) 기본값) 단발 wall-clock (머신별 상이, 리포트 p95 메트릭 아님)
+- 외부 API 호출 없음 (extractive). 위 출력은 **현재 public fixture index(5-doc) 실측** — `make ask` 복붙 시 동일 claim·citation(chunk-001 / chunk-001) 재현. ~6 ms 는 in-memory hybrid 검색 ([ADR 0058](docs/adr/0058-phase35-mode-winner.md) 기본값) 단발 wall-clock (머신별 상이, 리포트 p95 메트릭 아님)
 - 5초 터미널 재생: `asciinema play docs/assets/demo.cast`. 풀 워크스루: [`docs/operations/deployment.md`](docs/operations/deployment.md#recording-the-demo-video)
 
 ## 라이브 데모
@@ -65,7 +65,6 @@ INFO bidmate.rag_core: query_complete  status='supported'  query_type='compariso
 | **One-line docker** | `docker run -p 8501:8501 -p 8000:8000 -e BIDMATE_DEMO_MODE=both ghcr.io/hskim-solv/bidmate-demo:latest` | 클론 없이 Streamlit + FastAPI 동시 |
 | **FastAPI Swagger** | `make api` 후 [/docs](http://localhost:8000/docs) | 프로그래매틱 사용·통합 테스트 |
 | **로컬 1분 시작** | `make index && make demo` | `http://localhost:8501` |
-| **Live leaderboard** | [https://hskim-solv.github.io/BidMate-DocAgent/leaderboard/](https://hskim-solv.github.io/BidMate-DocAgent/leaderboard/) | 메인 머지마다 누적 headline metric time-series (ADR 0030) |
 
 데모 UI 는 3 파이프라인 preset (`naive_baseline` · `agentic_full` · `agentic_full_llm`) 을 라디오 버튼으로 전환, extractive vs LLM 합성 답변 side-by-side 비교.
 
@@ -84,7 +83,7 @@ INFO bidmate.rag_core: query_complete  status='supported'  query_type='compariso
 
 LLM synthesis opt-in (`agentic_full_llm`, [ADR 0011](docs/adr/0011-llm-synthesis-as-additive-ablation.md)) 과 LLM Ops observability ([ADR 0013](docs/adr/0013-observability-as-additive-pluggable-surface.md)) 는 추출형 파이프라인을 *교체하지 않고* additive 분석 변형으로 추가 — [`docs/agentic/answer-policy.md`](docs/agentic/answer-policy.md) / [`docs/operations/observability.md`](docs/operations/observability.md).
 
-> **완료 ([issue #570](https://github.com/hskim-solv/BidMate-DocAgent/issues/570))**: 공개 합성 n=42 → **n=100 확장** (single_doc 34 / comparison 24 / follow_up 21 / abstention 21). Bootstrap CI 폭 이론 수축 ×0.65 (√42/100). **비공개 real-eval n=21 → n=221 확장** ([ADR 0052](docs/adr/0052-real-eval-hardcase-expansion-to-200.md), [issue #942](https://github.com/hskim-solv/BidMate-DocAgent/issues/942)) — LLM-assisted hardcase generator + distinguishing-power floor ([ADR 0053](docs/adr/0053-distinguishing-power-floor-ablations.md)) 으로 ablation 통계 분리 가능 단계 도달. Detection-blind 분석 변형 real-eval 측정은 별도 follow-up
+> **평가 경계**: 이 레포지토리는 공개 가능한 작은 fixture를 smoke test 용도로만 사용합니다. 실제 성능 평가는 레포지토리에 커밋하지 않는 private/internal eval set을 기준으로 수행하는 것을 전제로 합니다. 비공개 real-eval n=21 → n=221 확장 ([ADR 0052](docs/adr/0052-real-eval-hardcase-expansion-to-200.md), [issue #942](https://github.com/hskim-solv/BidMate-DocAgent/issues/942))은 LLM-assisted hardcase generator + distinguishing-power floor ([ADR 0053](docs/adr/0053-distinguishing-power-floor-ablations.md))로 aggregate evidence를 남기는 구조다. Detection-blind 분석 변형 real-eval 측정은 별도 follow-up.
 
 ## 핵심 기술 기여 — comparison-aware balanced top-k
 
@@ -102,90 +101,26 @@ RFP 비교 질의 (`query_type == "comparison"`) 에서 발생하는 한쪽 문�
 
 ---
 
-## 핵심 성능표 (실측)
+<a id="ablation-comparison"></a>
 
-**측정 환경**:
-- **시스템 타입**: 추출형 only — 외부 LLM (GPT/Claude 등) 호출 없음, 의도된 설계
-- **임베딩 backend**: 메트릭 표는 `hashing` (CI deterministic smoke source of truth). `hashing` 은 BoW/term-overlap 성격이라 공정한 semantic RFP baseline 으로 보지 않는다. 공정 naive RAG 비교는 동일 `naive_baseline` 계약에 실제 dense embedding index (`MiniLM-L12-v2` 등)를 붙여 별도 측정한다. `MiniLM-L12-v2` 비교: [`docs/benchmarking.md`](docs/benchmarking.md)
-- **측정 범위**: `Latency p95` 컬럼 = query_analysis + context_resolution + answer_generation walltime 합. retrieve/verify stage = `reports/eval_summary.json` `stage_latency` 블록
-- **실행 환경**: macOS / CPU-only / Python 3.11 / 단일 워커
-- **Cold start 분리**: hashing ≈ 2.1ms / sentence-transformers ≈ 5.7s
-- **평가셋**: 공개 합성 n=100. 비공개 RFP eval 은 [ADR 0005](docs/adr/0005-eval-split-public-synthetic-private-local.md) 분리. 상세: [docs/eval/eval-dataset-spec.md](docs/eval/eval-dataset-spec.md)
-- **헤드라인 latency 기준**: naive_baseline p95 (3.1ms) 가 CI source of truth. `agentic_full_llm` 은 LLM 레이턴시 포함 환경 의존이라 CI 고정 대상 아님
-- **`agentic_full_llm` backend**: 분석 변형 표의 `full_llm` 행은 `BIDMATE_SYNTHESIS_BACKEND=stub` (token-less, deterministic; [ADR 0011](docs/adr/0011-llm-synthesis-as-additive-ablation.md)). stub 은 pass-through 합성이라 `full` 과 동일 메트릭이 *정상*
-- **Rerank 종류**: `Rerank on` 행 대부분 weighted-score rerank. `full_reranker` 만 cross-encoder rerank ([rag_rerank.py](rag_rerank.py)) — CI default `stub` 이라 `full` 과 수치 일치
-- **Naive baseline 계약**: 2026-05-24 측정 계약부터 `naive_baseline` 기본 `top_k=5` 로 갱신. 이전 snapshot 의 `top_k=4` 값은 historical 비교 대상으로만 해석한다 ([ADR 0001](docs/adr/0001-preserve-naive-baseline.md)).
+## 평가 스토리
 
-> **표 읽는 법 — 안전성/품질 trade-off (over-claim 아님)**: `agentic_full` 은 **raw answer rate 를 극대화하도록 튜닝된 파이프라인이 아니다.** 답변율(answer rate) 일부를 내주는 대신 **citation precision +18.0pp** (0.705 vs 0.525) 과 **abstention accuracy +57.1pp** (0.810 vs 0.238) 을 얻는 **safety-oriented** 설계다. 그래서 overall accuracy 는 `naive_baseline` 이 더 높을 수 있고 (0.782 vs 0.718, −6.4pp), 이는 *실패한 최적화가 아니라 의도된 trade-off* 다 — 근거 없는 답변보다 근거 있는 보류를 우선한다 ([ADR 0003](docs/adr/0003-structured-answer-citation-contract.md) · [ADR 0004](docs/adr/0004-verifier-retry-policy.md)). 따라서 아래 표는 **하나의 평탄한 leaderboard 가 아니라 slice 별로** 읽어야 한다 — comparison · follow-up · hardcase 는 각각 다른 실패 모드를 측정한다. slice 별 설계 대응: [실패 모드 케이스 스터디](docs/case-studies/failure-modes.md).
+이 레포지토리는 공개 가능한 작은 fixture를 smoke test 용도로만 사용합니다. 실제 성능 평가는 레포지토리에 커밋하지 않는 private/internal eval set을 기준으로 수행하는 것을 전제로 합니다.
 
-<!-- METRICS_TABLE:START -->
-| Category | Metric | agentic_full (95% CI) | naive_baseline (95% CI) | Δ |
-|---|---|---:|---:|---:|
-| Overall | Answer Accuracy | 0.718 (0.615–0.821) | 0.782 (0.679–0.872) | -6.4pp |
-| Single-doc extraction | Answer Accuracy | 0.882 (0.765–0.971) | 0.941 (0.853–1.000) | -5.9pp |
-| Multi-doc comparison | Groundedness Rate | 0.542 (0.333–0.708) | 0.708 (0.542–0.875) | -16.7pp |
-| Follow-up | Answer Accuracy | 0.700 (0.500–0.900) | 0.750 (0.550–0.901) | -5.0pp |
-| Evidence | Citation Precision | 0.705 (0.625–0.780) | 0.525 (0.450–0.610) | +18.0pp |
-| Evidence | Claim Citation Alignment | 0.979 (0.944–1.000) | 0.972 (0.938–1.000) | +0.7pp |
-| Evidence | Answer Format Compliance | 0.620 (0.530–0.710) | 0.630 (0.530–0.730) | -1.0pp |
-| Abstention | Abstention Accuracy (CR/IA/BP) | 0.810 (18/4/0) (0.810 (0.619–0.952) 95% CI) | 0.238 (6/16/0) (0.238 (0.048–0.429) 95% CI) | +57.1pp |
-| System | Latency (p50/p95) | p50 2.6ms / p95 4.6ms (`agentic_full`) | p50 1.7ms / p95 3.1ms (`naive_baseline` — CI source of truth) | — |
-| System | Retry Rate | 0.490 (0.390–0.580) | 0.000 (0.000–0.000) | — |
+공개 fixture smoke eval의 목적은 성능 주장(benchmark)이 아니라 CI 재현성 확인입니다. `eval/fixtures/smoke_rfp/raw/`의 작은 RFP fixture와 `eval/config.yaml`을 사용해 검색(retrieval), 답변 품질(answer quality), 인용 정확도(citation accuracy), 근거 검증(evidence verification), 지연시간(latency) 집계가 모두 생성되는지 확인합니다.
 
-### Ablation comparison
+실제 성능 평가는 private/internal eval set에서 수행합니다. 원문 RFP, case-level prediction, trace는 커밋하지 않고 aggregate-only artifact와 reviewer-friendly evidence 문서만 공개 가능한 범위에서 남깁니다. 이 경계는 [ADR 0005](docs/adr/0005-eval-split-public-synthetic-private-local.md)가 정의합니다.
 
-| Run | Pipeline | Top-k | Metadata-first | Rerank | Verifier/Retry | Accuracy | Groundedness | Citation | Claim Align | Format | Abstention | Retry | Latency p95 |
-|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| naive_baseline | naive_baseline | 5 | off | off | off | 0.782±0.10 | 0.700±0.09 | 0.525±0.08 | 0.972±0.03 | 0.630 | 0.273 (6/16/0) | 0.000 | 3.1ms |
-| full | agentic_full | auto | on | on | on | 0.718±0.10 | 0.750±0.08 | 0.705±0.08 | 0.979±0.03 | 0.620 | 0.818 (18/4/0) | 0.490 | 4.6ms |
-| no_metadata_first | agentic_full | auto | off | on | on | 0.692±0.10 | 0.740±0.09 | 0.595±0.07 | 0.965±0.04 | 0.600 | 0.818 (18/4/0) | 0.000 | 3.6ms |
-| no_verifier_retry | agentic_full | auto | on | on | off | 0.821±0.09 | 0.720±0.09 | 0.705±0.09 | 0.983±0.03 | 0.660 | 0.273 (6/16/0) | 0.000 | 2.7ms |
+평가 지표는 하나의 순위표가 아니라 다음 축으로 읽습니다.
 
-<details><summary>Detection-blind 분석 변형 — n=42 에서 <code>full</code> 과 통계 분리 불가 (CI band 겹침). n=100 확장 완료 (issue #570); real-eval n=221 ([ADR 0052](docs/adr/0052-real-eval-hardcase-expansion-to-200.md)) 측정 완료, ablation surface 후속 ([ADR 0053](docs/adr/0053-distinguishing-power-floor-ablations.md) distinguishing-power floor 기반). <strong>19개 분석 변형 · ≥5pp + non-overlap CI = 0 winners</strong> — null-result 는 [ADR 0001](docs/adr/0001-preserve-naive-baseline.md) 기준선 결정성의 mechanical proof 로 표면화 ([docs/eval/ablation-discriminability.md](docs/eval/ablation-discriminability.md), [issue #782](https://github.com/hskim-solv/BidMate-DocAgent/issues/782)).</summary>
+| 축 | 확인 내용 | 공개 fixture smoke에서의 역할 | private/internal eval에서의 역할 |
+|---|---|---|---|
+| Retrieval quality | `chunk_recall@k`, MRR, nDCG, rerank delta | metric schema와 deterministic 실행 확인 | 실제 검색 품질 비교 |
+| Answer quality | accuracy, groundedness, format compliance, abstention outcome | scorer wiring과 edge-case 회귀 확인 | 제품 품질·hardcase 분석 |
+| Citation / evidence | citation precision, claim-citation alignment, evidence coverage | citation/evidence 산출물 존재 확인 | reviewer-facing 근거 검증 |
+| Latency | p50/p95, stage latency, retry cost | CI latency SLO smoke check | 운영 trade-off 분석 |
 
-| Run | Pipeline | Top-k | Metadata-first | Rerank | Verifier/Retry | Accuracy | Groundedness | Citation | Claim Align | Format | Abstention | Retry | Latency p95 |
-|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| full_llm | agentic_full_llm | auto | on | on | on | 0.718±0.10 | 0.750±0.08 | 0.705±0.08 | 0.979±0.03 | 0.620 | 0.818 (18/4/0) | 0.490 | 5.8ms |
-| full_llm_metadata | agentic_full | auto | on | on | on | 0.718±0.10 | 0.750±0.08 | 0.705±0.08 | 0.979±0.03 | 0.620 | 0.818 (18/4/0) | 0.490 | 4.7ms |
-| hierarchical | agentic_full | auto | on | on | on | 0.718±0.10 | 0.750±0.08 | 0.695±0.08 | 0.979±0.03 | 0.620 | 0.818 (18/4/0) | 0.490 | 5.0ms |
-| no_rerank | agentic_full | auto | on | off | on | 0.705±0.10 | 0.740±0.08 | 0.695±0.08 | 0.979±0.03 | 0.620 | 0.818 (18/4/0) | 0.490 | 4.5ms |
-| hybrid_bm25 | agentic_full | auto | on | on | on | 0.731±0.10 | 0.750±0.08 | 0.705±0.08 | 0.979±0.03 | 0.620 | 0.818 (18/4/0) | 0.490 | 4.5ms |
-| hybrid_bm25_k10 | agentic_full | auto | on | on | on | 0.731±0.10 | 0.750±0.08 | 0.705±0.08 | 0.979±0.03 | 0.620 | 0.818 (18/4/0) | 0.490 | 4.9ms |
-| hybrid_bm25_k30 | agentic_full | auto | on | on | on | 0.731±0.10 | 0.750±0.08 | 0.705±0.08 | 0.979±0.03 | 0.620 | 0.818 (18/4/0) | 0.490 | 4.8ms |
-| hybrid_bm25_k100 | agentic_full | auto | on | on | on | 0.731±0.10 | 0.750±0.08 | 0.705±0.08 | 0.979±0.03 | 0.620 | 0.818 (18/4/0) | 0.490 | 4.6ms |
-| hybrid_bm25_extra_stopwords | agentic_full | auto | on | on | on | 0.731±0.10 | 0.750±0.08 | 0.705±0.08 | 0.979±0.03 | 0.620 | 0.818 (18/4/0) | 0.490 | 5.0ms |
-| hybrid_bm25_k30_extra | agentic_full | auto | on | on | on | 0.731±0.10 | 0.750±0.08 | 0.705±0.08 | 0.979±0.03 | 0.620 | 0.818 (18/4/0) | 0.490 | 4.7ms |
-| full_kiwi | agentic_full | auto | on | on | on | 0.731±0.10 | 0.750±0.08 | 0.705±0.08 | 0.979±0.03 | 0.620 | 0.818 (18/4/0) | 0.490 | 4.7ms |
-| full_reranker | agentic_full | auto | on | on | on | 0.718±0.10 | 0.750±0.08 | 0.705±0.08 | 0.979±0.03 | 0.620 | 0.818 (18/4/0) | 0.490 | 4.8ms |
-| full_hyde | agentic_full | auto | on | on | on | 0.718±0.10 | 0.750±0.08 | 0.705±0.08 | 0.979±0.03 | 0.620 | 0.818 (18/4/0) | 0.490 | 4.8ms |
-| agentic_full_finetuned | agentic_full | auto | on | on | on | 0.718±0.10 | 0.750±0.08 | 0.705±0.08 | 0.979±0.03 | 0.620 | 0.818 (18/4/0) | 0.490 | 4.8ms |
-| naive_baseline_finetuned | naive_baseline | 5 | off | off | off | 0.782±0.10 | 0.700±0.09 | 0.525±0.08 | 0.972±0.03 | 0.630 | 0.273 (6/16/0) | 0.000 | 2.5ms |
-
-</details>
-
-> 수치는 `mean±half-width` (95% bootstrap CI, n=cases, 1000 resample, seed=17). 행 간 CI 겹침 = 해당 n 에서의 통계 검출 한계, equivalence 아님. n=42 half-width ≈ ±0.12; n=100 으로 ×0.65 (√42/100) 수축. 비-CI 컬럼 (Format, Abstention, Retry) 은 point estimate; 그 CI 는 위 main 표 참조
-<!-- METRICS_TABLE:END -->
-
-> **분석 변형 → ADR Status 매핑** ([issue #813](https://github.com/hskim-solv/BidMate-DocAgent/issues/813)) — 각 행이 어느 ADR 의 지배를 받는지, 외부 reader 에게 *accepted 결정* vs *제안/superseded 측정 중* 표시:
->
-> | 분석 변형 행 | ADR | Status |
-> |---|---|---|
-> | `full`, `naive_baseline` | [ADR 0001](docs/adr/0001-preserve-naive-baseline.md) | accepted |
-> | `no_metadata_first` (역 분석 변형) | [ADR 0002](docs/adr/0002-metadata-first-retrieval.md) | accepted |
-> | `no_verifier_retry` (역 분석 변형) | [ADR 0004](docs/adr/0004-verifier-retry-policy.md) | accepted |
-> | `hybrid_bm25*` family | [ADR 0010](docs/adr/0010-hybrid-bm25-dense-retrieval-rrf.md) | accepted |
-> | `full_llm`, `full_llm_metadata` | [ADR 0011](docs/adr/0011-llm-synthesis-as-additive-ablation.md) | **proposed** |
-> | `full_hyde` | [ADR 0023](docs/adr/0023-hyde-query-expansion-ablation.md) | **proposed** |
-> | `full_reranker` | [ADR 0026](docs/adr/0026-cross-encoder-reranker-deferral.md) | superseded (deferral) |
-> | `agentic_full_finetuned`, `naive_baseline_finetuned` | [ADR 0027](docs/adr/0027-lora-finetuned-embedding-additive.md) | superseded |
-> | `full_kiwi` | [ADR 0031](docs/adr/0031-bm25-korean-morphology-additive.md) | superseded |
-> | `hierarchical`, `no_rerank` | (청킹/rerank 토글, 전용 ADR 없음) | n/a |
->
-> *proposed* 행은 accepted 미진입 — 보통 [ADR 0001](docs/adr/0001-preserve-naive-baseline.md) additive 분석 변형 측에 머물다 real-eval n=221 ([ADR 0052](docs/adr/0052-real-eval-hardcase-expansion-to-200.md)) 재측정 + [ADR 0053](docs/adr/0053-distinguishing-power-floor-ablations.md) distinguishing-power gauge 로 `full` 과 통계 분리되어야 진입. *superseded* 는 후속 결정 (ADR 0027 → ADR 0037 KURE v1) 에 흡수 또는 기준선 조건 미충족 시 보류. Status drift = ADR 미동기 — `scripts/check_ablation_adr_sync.py` 가 매핑 lint 할 때까지 수동 reminder (issue #813 § 시정 액션 ②)
-
-> **더 읽기**: [docs/rag-challenges-solved.md](docs/rag-challenges-solved.md) — 이 숫자를 만든 3가지 핵심 결정 (STAR 회고). [docs/performance-evolution.md](docs/performance-evolution.md) — n=42→n=100 CI 수축 히스토리 + 기능별 분석 변형 효과 분해
-
-> **분석 변형 해석 — CI 검출 한계 vs 실측 trade-off**: `no_rerank` / `hierarchical` / `full_llm` 이 `full` 과 동일 메트릭을 보이는 것은 *기능 동등* 이 아니라 *n=42 + bootstrap CI 가 차이 미검출* 때문 — CI 폭이 너무 넓어 미세 차이가 noise 에 묻힘. n=100 확장 완료 (issue #570); real-eval n=221 ([ADR 0052](docs/adr/0052-real-eval-hardcase-expansion-to-200.md)) 완료 — distinguishing-power gauge ([ADR 0053](docs/adr/0053-distinguishing-power-floor-ablations.md)) 가 default vs random_retrieval / single_chunk 의 분리 가능성 입증 ([reports/real100/distinguishing_power.md](reports/real100/distinguishing_power.md)). **CI 분리되는 진짜 효과**: `no_metadata_first` citation 0.679±0.11 (CI 0.571–0.786) vs `full` 0.905±0.08 (0.821–0.976) — CI 비겹침으로 메타데이터 우선 효용 통계 입증. `no_verifier_retry` groundedness 0.762±0.14 (CI 0.619–0.881) vs `full` 0.929±0.07 — verifier loop 효용 시사. 상세: [`docs/benchmarking.md`](docs/benchmarking.md)
+분석 변형(ablation)은 `naive_baseline`을 보존한 상태에서 additive preset으로 비교합니다. 공개 fixture 결과는 “harness가 깨지지 않는다”는 신호로만 사용하고, 성능 claim은 private/internal aggregate와 paired delta 문서에서만 다룹니다.
 
 ---
 
@@ -221,10 +156,10 @@ flowchart TD
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
-python3 scripts/build_index.py --input_dir data/raw --output_dir data/index
+python3 scripts/build_index.py --input_dir eval/fixtures/smoke_rfp/raw --output_dir data/index
 python3 app.py --input_dir data/index --query "기관 A와 기관 B의 AI 요구사항 차이 알려줘" --pipeline agentic_full
 python3 eval/run_eval.py --index_dir data/index --output_dir reports --config eval/config.yaml
-python3 scripts/update_readme_metrics.py --report reports/eval_summary.json --readme README.md
+python3 scripts/check_latency_slo.py --config eval/config.yaml --summary reports/eval_summary.json
 ```
 
 상세 실행 (FastAPI 데모, PDF/HWP ingestion, visual parsing v2, 비공개 100-doc eval, harness): [`docs/operations/api-demo.md`](docs/operations/api-demo.md).
@@ -235,7 +170,7 @@ python3 scripts/update_readme_metrics.py --report reports/eval_summary.json --re
 
 > 이 프로젝트에서 저는 RAG 파이프라인을 단순 구현한 것이 아니라, RFP 문서에서 실제로 발생하는 **검색 실패 · 근거 부족 · 비교 질의 편향을 failure mode 로 정의**하고, 이를 **baseline / ablation / eval / CI 로 검증 가능한 시스템**으로 만들었습니다.
 
-- **Baseline preservation** — `naive_baseline` 알고리즘 계약(dense-only, fixed chunk, direct evidence answer, simple citation)을 보존해 모든 개선을 *additive ablation* 으로만 측정 ([ADR 0001](docs/adr/0001-preserve-naive-baseline.md))
+- **Baseline preservation** — `naive_baseline` 을 byte-identical 로 보존해 모든 개선을 *additive ablation* 으로만 측정 ([ADR 0001](docs/adr/0001-preserve-naive-baseline.md))
 - **Failure-mode-driven design** — comparison starvation · metadata ambiguity · abstention · follow-up · citation drift 5개 실패 모드를 명시하고 각각에 설계로 대응 ([실패 모드](docs/case-studies/failure-modes.md))
 - **Eval/CI regression prevention** — PR 마다 회귀 게이트 + failure-rate ratchet 으로 품질 후퇴 차단 ([pr-eval.yml](.github/workflows/pr-eval.yml) · [ADR 0062](docs/adr/0062-failure-rate-regression-contract.md))
 
@@ -252,7 +187,7 @@ python3 scripts/update_readme_metrics.py --report reports/eval_summary.json --re
 | 설계 배경 (한국 RFP 적응 5가지) | [`docs/design-background.md`](docs/design-background.md) |
 | 답변 출력 정책 + Evidence boundary + Baseline policy | [`docs/agentic/answer-policy.md`](docs/agentic/answer-policy.md) |
 | 한계 + 실패 사례 (real-data taxonomy) | [`docs/real-data/failure-cases.md`](docs/real-data/failure-cases.md) / [`docs/real-data/real-data-failure-taxonomy.md`](docs/real-data/real-data-failure-taxonomy.md) |
-| 공개 평가셋 spec (n=100, 7-doc corpus, 방법론) | [`docs/eval/eval-dataset-spec.md`](docs/eval/eval-dataset-spec.md) |
+| 공개 fixture smoke eval spec | [`docs/eval/eval-dataset-spec.md`](docs/eval/eval-dataset-spec.md) |
 | 비공개 100-doc aggregate 정책 + placeholder | [`docs/real-data/private-100-doc-experiments.md`](docs/real-data/private-100-doc-experiments.md) |
 | 엔지니어링 블로그 (GitHub Pages) | [hskim-solv.github.io/BidMate-DocAgent](https://hskim-solv.github.io/BidMate-DocAgent/) |
 | 전체 문서 인덱스 | [`docs/README.md`](docs/README.md) |
@@ -282,5 +217,5 @@ python3 scripts/update_readme_metrics.py --report reports/eval_summary.json --re
 
 ## 안내
 - 원본 RFP 문서는 외부 공유 제한으로 저장소 미포함
-- `data/raw` 는 공개 재현용 합성 RFP 샘플
+- `eval/fixtures/smoke_rfp/raw` 는 CI 재현성 확인용 공개 fixture
 - 본 저장소 = 재현 가능 구조/평가 관점의 포트폴리오 문서화 목표

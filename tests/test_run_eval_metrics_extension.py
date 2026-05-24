@@ -184,7 +184,7 @@ class TestAbstentionCalibrationBlock(unittest.TestCase):
 class TestMetricBlockEmitsCalibrationKey(unittest.TestCase):
     """``metric_block`` must always carry the ``abstention_calibration``
     key — value may be ``None`` (forward-compat) but the key cannot be
-    absent or downstream consumers (extract_aggregate, leaderboard
+    absent or downstream consumers (extract_aggregate, aggregate summaries
     writer) will fail-closed silently drop it."""
 
     def test_key_present_even_when_value_is_null(self) -> None:

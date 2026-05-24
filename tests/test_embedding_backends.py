@@ -41,7 +41,7 @@ class OpenAIBackendErrorPathTest(unittest.TestCase):
         # Attest a public surface so the ADR 0061 ③ guard passes and the
         # missing-key path (not the data-boundary block) is exercised (#1195).
         with mock.patch.dict(
-            os.environ, {"BIDMATE_DATA_SURFACE": "public_synthetic"}, clear=False
+            os.environ, {"BIDMATE_DATA_SURFACE": "public_fixture"}, clear=False
         ):
             os.environ.pop("BIDMATE_OPENAI_API_KEY", None)
             os.environ.pop("OPENAI_API_KEY", None)
@@ -56,7 +56,7 @@ class OpenAIBackendErrorPathTest(unittest.TestCase):
         # Public-surface attestation passes the ADR 0061 ③ guard so the
         # missing-SDK install hint (not the boundary block) is asserted (#1195).
         with mock.patch.dict(
-            os.environ, {"BIDMATE_DATA_SURFACE": "public_synthetic"}, clear=False
+            os.environ, {"BIDMATE_DATA_SURFACE": "public_fixture"}, clear=False
         ), mock.patch.dict(sys.modules, {"openai": None}):
             with self.assertRaises(RuntimeError) as ctx:
                 rag_core.embed_texts(["x"], backend="openai")
@@ -119,7 +119,7 @@ class OpenAIVectorNormalizationTest(unittest.TestCase):
                 os.environ,
                 {
                     "BIDMATE_OPENAI_API_KEY": "test-key",
-                    "BIDMATE_DATA_SURFACE": "public_synthetic",
+                    "BIDMATE_DATA_SURFACE": "public_fixture",
                 },
             ):
                 result = rag_core.embed_texts(
@@ -150,7 +150,7 @@ class EmbedQueryForIndexOpenAITest(unittest.TestCase):
                 os.environ,
                 {
                     "BIDMATE_OPENAI_API_KEY": "test-key",
-                    "BIDMATE_DATA_SURFACE": "public_synthetic",
+                    "BIDMATE_DATA_SURFACE": "public_fixture",
                 },
             ):
                 vec = rag_core.embed_query_for_index(
@@ -166,7 +166,7 @@ class EmbedQueryForIndexOpenAITest(unittest.TestCase):
         # SDK-missing branch (not the boundary block) drives the graceful
         # hashing fallback this test asserts (#1195).
         with mock.patch.dict(
-            os.environ, {"BIDMATE_DATA_SURFACE": "public_synthetic"}, clear=False
+            os.environ, {"BIDMATE_DATA_SURFACE": "public_fixture"}, clear=False
         ), mock.patch.dict(sys.modules, {"openai": None}):
             vec = rag_core.embed_query_for_index(
                 "안녕",

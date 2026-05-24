@@ -4,8 +4,7 @@ on:
   # No `branches:` filter — the eval-delta + pytest + provenance gates must
   # fire on EVERY PR base, incl. stacked PRs (base≠main). A `branches: [main]`
   # filter exempted stacked PRs from these gates, part of the §5b bypass in
-  # issue #1159; pr-judge.yml (ADR 0043) is the base-agnostic precedent.
-  # Guarded by tests/test_pr_gate_workflow_triggers_regression.py.
+  # issue #1159. Guarded by tests/test_pr_gate_workflow_triggers_regression.py.
   pull_request:
 
 permissions:
@@ -41,8 +40,7 @@ jobs:
     # `BIDMATE_PYTEST_SPLITS` MUST equal the matrix length, else pytest-split
     # leaves orphaned groups uncovered.
     # Per-shard coverage.xml uploads to Codecov with `shard-N` flags;
-    # Codecov merges them server-side. Leaderboard --check runs only on
-    # shard 1 (single-runner invariant; not test-suite-dependent).
+    # Codecov merges them server-side.
     name: Pytest (shard ${{ matrix.shard }})
     strategy:
       fail-fast: false
@@ -100,22 +98,6 @@ jobs:
           flags: shard-${{ matrix.shard }}
           fail_ci_if_error: false
           verbose: false
-
-      - name: Verify leaderboard artifacts are in sync with history
-        # Single-runner invariant — leaderboard history is not test-suite
-        # dependent. Gating to shard 1 avoids 8× duplicate runs and a
-        # racey artifact diff if shards complete out of order.
-        if: matrix.shard == 1
-        run: python3 scripts/leaderboard.py --check
-
-      - name: Verify README metrics match the committed snapshot (issue #792)
-        # Compares README metric rows against reports/eval_summary.snapshot.json
-        # — NO re-measurement (the #739/#751 source-mismatch failure). This is
-        # the operator-facing form of the always-on pytest sentinel
-        # tests/test_governance_readme_metric_snapshot.py. Refresh with
-        # `make snapshot-update`. Shard 1 only (not test-suite dependent).
-        if: matrix.shard == 1
-        run: python3 scripts/update_readme_metrics.py --report reports/eval_summary.snapshot.json --readme README.md --check
 
   baseline-provenance:
     # Gate (issue #413): verify reports/real100/baseline.aggregate.json's
@@ -178,10 +160,10 @@ jobs:
           files=$(gh api --paginate \
             "repos/$REPO/pulls/$PR_NUMBER/files" --jq '.[].filename')
           echo "Changed files:"; echo "$files"
-          # Any of: a .py module, the eval/ tree, raw corpus, requirements,
+          # Any of: a .py module, the eval/ tree, smoke fixture corpus, requirements,
           # the run-eval composite action, or this workflow → run eval-delta.
           if echo "$files" | grep -qE \
-            '\.py$|^eval/|^data/raw/|^requirements.*\.txt$|^\.github/actions/run-eval/|^\.github/workflows/pr-eval\.yml$'; then
+            '\.py$|^eval/|^eval/fixtures/smoke_rfp/raw/|^requirements.*\.txt$|^\.github/actions/run-eval/|^\.github/workflows/pr-eval\.yml$'; then
             echo "runtime=true" >> "$GITHUB_OUTPUT"
             echo "→ runtime-affecting; eval-delta will run."
           else
@@ -190,7 +172,7 @@ jobs:
           fi
 
   eval-delta:
-    name: Eval delta vs base
+    name: Fixture smoke eval vs base
     needs: changes
     if: needs.changes.outputs.runtime == 'true'
     runs-on: ubuntu-latest
@@ -248,6 +230,10 @@ jobs:
           config: eval/config.ci.yaml
           embedding-backend: hashing
 
+      - name: Check latency budget — PR
+        working-directory: pr
+        run: python scripts/check_latency_slo.py --config eval/config.ci.yaml --summary reports/eval_summary.json
+
       - name: Build index + run eval — base
         uses: ./pr/.github/actions/run-eval
         with:
@@ -255,14 +241,17 @@ jobs:
           config: eval/config.ci.yaml
           embedding-backend: hashing
 
+      - name: Check latency budget — base
+        working-directory: base
+        run: python scripts/check_latency_slo.py --config eval/config.ci.yaml --summary reports/eval_summary.json
+
       - name: Render delta table
         # Wire the PR-body `[ALLOW_REGRESSION: <reason>]` convention
         # documented in scripts/compare_eval.py:17 to the script's env.
         # The docstring promised reviewer-acknowledged regressions would
         # exit 0 with annotation; without this env propagation the
-        # workflow ignored the tag (e.g. ADR 0050 corpus expansion
-        # legitimately shifts every quality metric on the synthetic
-        # surface — the gate must accept the acknowledged trade-off).
+        # workflow ignored the tag. The fixture smoke delta is a regression
+        # check only; private/internal eval aggregates carry performance claims.
         env:
           ALLOW_REGRESSION: ${{ contains(github.event.pull_request.body, '[ALLOW_REGRESSION') && 'true' || '' }}
         run: |

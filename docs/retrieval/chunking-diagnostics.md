@@ -7,7 +7,7 @@ RFP 문서는 heading, 요구사항 목록, 제출조건 같은 구조가 검색
 각 chunk에는 아래 진단 필드가 포함된다.
 
 - `section_id` / `parent_section_id`: parent section과 child chunk를 연결한다.
-- `section_path`: heading 계층을 보존한다. 공개 synthetic 문서는 1단계 heading을 사용한다.
+- `section_path`: heading 계층을 보존한다. 공개 fixture smoke 문서는 1단계 heading을 사용한다.
 - `chunk_seq_in_section`: 같은 parent section 안에서 child chunk 순서를 나타낸다 (1-indexed).
 - `total_chunks_in_section`: 같은 parent section을 구성하는 child chunk의 총 수. issue #73 진단 필드 — `chunk_seq_in_section`과 함께 보면 "section을 N등분 중 M번째를 가져왔다"가 evidence 단계에서 바로 읽힌다.
 - `chunking_strategy`: 실제 적용된 전략이다. 값은 `section` 또는 `fixed`이다.
@@ -20,7 +20,7 @@ baseline 인덱싱 명령은 다음 옵션과 같다.
 
 ```bash
 python3 scripts/build_index.py \
-  --input_dir data/raw \
+  --input_dir eval/fixtures/smoke_rfp/raw \
   --output_dir data/index \
   --chunking_strategy fixed \
   --chunk_max_chars 520 \
@@ -33,7 +33,7 @@ python3 scripts/build_index.py \
 
 질의 기본값은 `flat` retrieval이다. `--retrieval_mode hierarchical`은 child chunk를 먼저 점수화한 뒤 `parent_section_id` 기준으로 section text를 재조립해 evidence로 반환한다.
 
-## 공개 synthetic 평가 결과
+## 공개 fixture smoke 평가 결과
 2026-04-30에 hashing embedding으로 동일 평가셋을 비교했다.
 
 | Index strategy | Chunks | Parent sections | Retrieval | Accuracy | Groundedness | Citation | Abstention | Retry |
@@ -43,7 +43,7 @@ python3 scripts/build_index.py \
 | fixed | 4 | 4 | flat | 1.000 | 1.000 | 1.000 | 1.000 | 0.250 |
 | fixed | 4 | 4 | hierarchical | 1.000 | 1.000 | 1.000 | 1.000 | 0.250 |
 
-현재 공개 synthetic 문서는 짧고 heading이 명확해 fixed와 section-aware의 품질 차이가 지표로 드러나지 않는다. 대신 section-aware 인덱스는 chunk별 `section_path`와 parent-child 연결을 제공해 citation 해석과 긴 문서 디버깅에 더 유리하다.
+현재 공개 fixture smoke 문서는 짧고 heading이 명확해 fixed와 section-aware의 품질 차이가 지표로 드러나지 않는다. 대신 section-aware 인덱스는 chunk별 `section_path`와 parent-child 연결을 제공해 citation 해석과 긴 문서 디버깅에 더 유리하다.
 
 ## 해석 기준
 - 기본 flat retrieval은 naive baseline과 agentic full pipeline 모두의 기본 retrieval mode다.
@@ -52,9 +52,9 @@ python3 scripts/build_index.py \
 
 ## Chunk-boundary probe set (issue #73)
 
-공개 synthetic 문서는 모두 1 chunk 안에 들어갈 만큼 짧아서 chunk-boundary 실패 모드(real-data taxonomy C3)를 자연스럽게 노출시키지 못한다. 이 격차를 메우기 위해 의도적으로 multi-chunk로 분할되는 probe fixture와 probe query를 별도로 추가했다.
+공개 fixture smoke 문서는 모두 1 chunk 안에 들어갈 만큼 짧아서 chunk-boundary 실패 모드(real-data taxonomy C3)를 자연스럽게 노출시키지 못한다. 이 격차를 메우기 위해 의도적으로 multi-chunk로 분할되는 probe fixture와 probe query를 별도로 추가했다.
 
-**Probe fixture**: [`data/raw/rfp_agency_d_spectrometer_probe.json`](../../data/raw/rfp_agency_d_spectrometer_probe.json)
+**Probe fixture**: [`eval/fixtures/smoke_rfp/raw/rfp_agency_d_spectrometer_probe.json`](../../eval/fixtures/smoke_rfp/raw/rfp_agency_d_spectrometer_probe.json)
 - 기관 D · 분광기 시스템 운영 (현존하지 않는 가상 기관 — 다른 eval case와 metadata 충돌 없음)
 - 두 개 본문 section: 사업 개요 (~1100자) + 운영 자동화 세부 요구사항 (~750자)
 - 기본 `max_chars=520` + `auto`/`section` 전략에서 각 section이 2 chunk로 분할되어 총 4 chunk 생성
@@ -79,7 +79,7 @@ python3 scripts/build_index.py \
 
 ## Strategy ablation (issue #62)
 
-issue #73의 probe set이 갖춰진 뒤, chunking 전략 차이를 정량적으로 비교 가능해졌다. [`scripts/run_chunking_ablation.py`](../../scripts/run_chunking_ablation.py)는 동일 코퍼스(`data/raw/`)를 fixed / section / auto 세 전략으로 인덱싱한 뒤 chunk_boundary probe queries에 대한 top-evidence score를 표로 출력한다.
+issue #73의 probe set이 갖춰진 뒤, chunking 전략 차이를 정량적으로 비교 가능해졌다. [`scripts/run_chunking_ablation.py`](../../scripts/run_chunking_ablation.py)는 동일 코퍼스(`eval/fixtures/smoke_rfp/raw/`)를 fixed / section / auto 세 전략으로 인덱싱한 뒤 chunk_boundary probe queries에 대한 top-evidence score를 표로 출력한다.
 
 ```bash
 python3 scripts/run_chunking_ablation.py

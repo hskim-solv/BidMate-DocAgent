@@ -24,7 +24,7 @@ from pathlib import Path
 
 import pytest
 
-# Drives the eda_real100 script over the full data/raw corpus via subprocess
+# Drives the eda_real100 script over the full eval/fixtures/smoke_rfp/raw corpus via subprocess
 # — tens of seconds. Marked slow so `make test-fast` deselects it; CI still runs.
 pytestmark = pytest.mark.slow
 

@@ -51,9 +51,9 @@ ADR 0019 → 0021의 **deferred-then-closed loop** 패턴이 본 저장소의 �
 | A4-S8: cost-accuracy frontier (LLM-on 행 + cost 컬럼) | [ADR 0025](https://github.com/hskim-solv/BidMate-DocAgent/blob/main/docs/adr/0025-cost-frontier-defer-until-real-baselines.md) | 인-리포 ablation 14개 모두 token cost = 0 (README §Limitations "비용 영점"). `external_baselines.json`이 stub인 동안 frontier는 1차원으로 붕괴. 실측 external baseline 1개+ + ADR 0015 token 집계 wiring 후 재오픈. |
 | A1-S3: README "Agentic" 1단락 (수사 수정) | [ADR 0024](https://github.com/hskim-solv/BidMate-DocAgent/blob/main/docs/adr/0024-agentic-full-llm-as-api-default.md) | "behavior, not prose" 원칙으로 API 기본 preset을 `agentic_full_llm`으로 flip하여 해결 완료. CLI default는 ADR 0001로 `naive_baseline` 보존. |
 | A1-S2: ADR "Why custom Python over LangGraph" | [ADR 0022](https://github.com/hskim-solv/BidMate-DocAgent/blob/main/docs/adr/0022-langgraph-orchestration-stage-1.md) | 실제 방향은 **반대** — LangGraph stage 1 (single-node passthrough)은 [PR #404](https://github.com/hskim-solv/BidMate-DocAgent/pull/404)로, stage 2 (3-node decomposition)는 [PR #458](https://github.com/hskim-solv/BidMate-DocAgent/pull/458)로 머지 완료. opt-in `BIDMATE_ORCHESTRATOR=langgraph`. "Why not LangGraph" ADR은 의도와 충돌. |
-| A2-S5: Ragas / DeepEval 도입 | [ADR 0014](https://github.com/hskim-solv/BidMate-DocAgent/blob/main/docs/adr/0014-ragas-judge-additive-synthetic.md) | 이미 accepted (RAGAS-style multi-axis judge, additive). |
+| A2-S5: Ragas / DeepEval 도입 | retired public judge surface | Public judge surface는 제거됐고, private/internal eval hook에서만 다룬다. |
 | A4-S3: Langfuse 통합 도입 | [ADR 0013](https://github.com/hskim-solv/BidMate-DocAgent/blob/main/docs/adr/0013-observability-as-additive-pluggable-surface.md) | 패턴 accepted. Langfuse는 backend 추가로만 가능 (별도 issue로 추적). |
-| A2-S4: Pydantic v2 answer schema | [CLAUDE.md](https://github.com/hskim-solv/BidMate-DocAgent/blob/main/CLAUDE.md) "Prohibited" | dict가 ADR 0003 contract. "왜 dict인가" 보강 ADR 0030이 별도 issue로 트래킹. |
+| A2-S4: Pydantic v2 answer schema | [CLAUDE.md](https://github.com/hskim-solv/BidMate-DocAgent/blob/main/CLAUDE.md) "Prohibited" | dict가 ADR 0003 contract. |
 
 각 거부 ADR은 *재오픈 조건을 명문화*하므로, 외부 리뷰가 동일 권고를 다시 가져왔을 때 "이미 ADR에서 거부됨"보다 더 정확한 답은 *"재오픈 조건 N개 중 X개가 미충족이다, 그 X개를 채우는 방법은…"* 가 된다. 게으른 답이 아니라 *측정 가능한 답*이 된다.
 
@@ -132,7 +132,7 @@ ADR 0019 → 0021의 **deferred-then-closed loop** 패턴이 본 저장소의 �
 
 적대적 리뷰의 메타비판 중 사실에 부합하거나 측정 surface 추가 가치 있는 항목:
 
-1. **Eval set saturation 가설** — ADR 0019의 "0pp on full" 패턴이 시스템 robustness 증거가 아니라 metadata-first가 흡수한 saturation 신호일 가능성. ADR 0019 본문이 "metadata-first filtering routes around dense retrieval for most queries"를 인정 → 가설 표지판 존재. **action**: `eval/synthetic/`에 metadata-first가 우회되는 subset (multi-turn 후속, 다문서 비교 ambiguity) 추가 + 5개 임베딩 × routed-subset 측정. spread ≥3pp → ADR 0019 re-open trigger; spread <3pp → 신규 ADR 0029로 saturation 결론 강화. **별도 PR + 신규 ADR 후보.**
+1. **Eval set saturation 가설** — ADR 0019의 "0pp on full" 패턴이 시스템 robustness 증거가 아니라 metadata-first가 흡수한 saturation 신호일 가능성. ADR 0019 본문이 "metadata-first filtering routes around dense retrieval for most queries"를 인정 → 가설 표지판 존재. **action**: private/internal routed eval backlog에 metadata-first가 우회되는 subset (multi-turn 후속, 다문서 비교 ambiguity) 추가 + 5개 임베딩 × routed-subset 측정. spread ≥3pp → ADR 0019 re-open trigger; spread <3pp → 신규 ADR 0029로 saturation 결론 강화. **별도 PR + 신규 ADR 후보.**
 2. **README headline representativeness** — API default가 `agentic_full_llm`인데 headline 수치는 `naive_baseline` 기준. **action**: README headline 옆에 explicit "headline은 naive_baseline 측정; `agentic_full_llm` walltime은 LLM backend 환경 의존" 라벨링.
 3. **PII regex의 adversarial 측정 부재** — ADR 0028은 accepted이고 `bidmate_security.py`는 머지되었지만 false-negative rate 측정 surface가 없음. **action**: PR-D 후속으로 Lakera Gandalf / PromptBench 스타일 한국어 attack subset (n≥50) + FN rate threshold assertion 테스트.
 4. **PR-B1 Kiwi-only 비판** — 한국어 tokenizer 선택지 비교 ablation 부재. **action**: `bm25_tokenizer` config valid set을 Kiwi + Mecab-ko + Khaiii로 확장 + ablation 표 row 추가.

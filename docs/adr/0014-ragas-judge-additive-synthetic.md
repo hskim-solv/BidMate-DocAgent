@@ -1,7 +1,7 @@
 # 0014: 합성 표면에 RAGAS 스타일 LLM 평가자를 추가 enrichment 로
 
 - **Status**: Superseded
-- **Superseded by**: [ADR 0005](./0005-eval-split-public-synthetic-private-local.md) § "LLM-judge gate layers"
+- **Superseded by**: [ADR 0005](./0005-eval-split-public-synthetic-private-local.md) (public fixture smoke / private internal eval boundary)
 - **Date**: 2026-05-11
 - **Related**: [ADR 0006](./0006-llm-judge-on-real-data-only.md) 정제; [ADR 0001](./0001-preserve-naive-baseline.md), [ADR 0003](./0003-structured-answer-citation-contract.md), [ADR 0004](./0004-verifier-retry-policy.md), [ADR 0005](./0005-eval-split-public-synthetic-private-local.md) 보존; [ADR 0011](./0011-llm-synthesis-as-additive-ablation.md) 백엔드 패턴 재사용
 - **Deciders**: hskim

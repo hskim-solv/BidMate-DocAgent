@@ -14,7 +14,7 @@
 
 ## 배경
 
-LLM 합성 경로 (ADR 0011) 가 이미 `diagnostics.synthesis` 에 `tokens_in` / `tokens_out` 포착, 그러나 공개 합성 표면 기본은 stub 백엔드라 CI 비용은 늘 0. 실데이터 흐름 (`BIDMATE_SYNTHESIS_BACKEND=anthropic`) 에선 operator 가 *답변 비용* 이나 *프롬프트 캐싱이 실제 도움 되는지* 에 대한 in-repo 신호 부재 — 둘 다 시니어 LLM-Ops 리뷰 1순위 질문.
+LLM 합성 경로 (ADR 0011) 가 이미 `diagnostics.synthesis` 에 `tokens_in` / `tokens_out` 포착, 그러나 공개 fixture smoke 표면 기본은 stub 백엔드라 CI 비용은 늘 0. 실데이터 흐름 (`BIDMATE_SYNTHESIS_BACKEND=anthropic`) 에선 operator 가 *답변 비용* 이나 *프롬프트 캐싱이 실제 도움 되는지* 에 대한 in-repo 신호 부재 — 둘 다 시니어 LLM-Ops 리뷰 1순위 질문.
 
 트레이스 백엔드 (ADR 0013) 가 span 데이터를 LangFuse/OTel 에 송신하나, 그 백엔드들은 선택·쿼리 downstream. 파이프라인 자체가 비용 추정을 운반해야 — noop 트레이스 백엔드 케이스 ("operator 가 로컬 실행, LangFuse 계정 없음") 에서도 감사 흔적이 남도록.
 

@@ -1,15 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 export PYTHONDONTWRITEBYTECODE=1
+# Avoid macOS arm64 libomp shared-memory aborts during local smoke eval.
+export OMP_NUM_THREADS="${OMP_NUM_THREADS:-1}"
+export KMP_USE_SHM="${KMP_USE_SHM:-FALSE}"
 
 # Minimal end-to-end smoke test for Agentic-VLM.
 # Run from the repository root:
 #   bash scripts/smoke.sh
 # Optional overrides:
-#   INPUT_DIR=data/raw INDEX_DIR=data/index OUTPUT_DIR=outputs REPORT_DIR=reports QUERY="..." bash scripts/smoke.sh
+#   INPUT_DIR=eval/fixtures/smoke_rfp/raw INDEX_DIR=data/index OUTPUT_DIR=outputs REPORT_DIR=reports QUERY="..." bash scripts/smoke.sh
 #   EMBEDDING_BACKEND=auto bash scripts/smoke.sh
 
-INPUT_DIR="${INPUT_DIR:-data/raw}"
+INPUT_DIR="${INPUT_DIR:-eval/fixtures/smoke_rfp/raw}"
 INDEX_DIR="${INDEX_DIR:-data/index}"
 OUTPUT_DIR="${OUTPUT_DIR:-outputs}"
 REPORT_DIR="${REPORT_DIR:-reports}"
@@ -41,10 +44,9 @@ require_dir() {
 require_file "scripts/build_index.py"
 require_file "app.py"
 require_file "eval/run_eval.py"
-require_file "scripts/update_readme_metrics.py"
+require_file "scripts/check_latency_slo.py"
 require_file "scripts/run_benchmark.py"
 require_file "scripts/summarize_benchmark.py"
-require_file "benchmarks/suites/public_synthetic_rfp.yaml"
 require_file "benchmarks/ablations/rag_quality_axes.yaml"
 require_file "benchmarks/registry.schema.json"
 require_file "benchmarks/registry.json"
@@ -71,13 +73,8 @@ python3 eval/run_eval.py --index_dir "$INDEX_DIR" --output_dir "$REPORT_DIR" --c
 REPORT_JSON="$REPORT_DIR/eval_summary.json"
 require_file "$REPORT_JSON"
 
-log "Checking README metrics consistency"
-if [[ "$REPORT_DIR" == "reports" ]]; then
-  python3 scripts/update_readme_metrics.py --report "$REPORT_JSON" --readme "$README_PATH"
-  python3 scripts/update_readme_metrics.py --report "$REPORT_JSON" --readme "$README_PATH" --check
-else
-  echo "Skipping README metrics check for non-default REPORT_DIR=$REPORT_DIR"
-fi
+log "Checking latency budgets"
+python3 scripts/check_latency_slo.py --config "$EVAL_CONFIG" --summary "$REPORT_JSON"
 
 log "Smoke test completed successfully"
 echo "Generated artifacts:"

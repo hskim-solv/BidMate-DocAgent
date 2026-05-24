@@ -2,13 +2,13 @@
 # Entrypoint for the BidMate-DocAgent demo container.
 #
 # If no index.json is present under BIDMATE_INDEX_DIR, build one from
-# data/raw using the hashing embedding backend (no network needed),
+# eval/fixtures/smoke_rfp/raw using the hashing embedding backend (no network needed),
 # then launch uvicorn. This keeps the reviewer flow to a single
 # ``docker run`` command without burying the index inside the image.
 set -euo pipefail
 
 INDEX_DIR="${BIDMATE_INDEX_DIR:-/app/data/index}"
-INPUT_DIR="${BIDMATE_RAW_DIR:-/app/data/raw}"
+INPUT_DIR="${BIDMATE_RAW_DIR:-/app/eval/fixtures/smoke_rfp/raw}"
 EMBEDDING_BACKEND="${EMBEDDING_BACKEND:-hashing}"
 HOST="${BIDMATE_API_HOST:-0.0.0.0}"
 PORT="${BIDMATE_API_PORT:-8000}"

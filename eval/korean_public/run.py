@@ -5,7 +5,7 @@ Wires the sample produced by ``fetch_korquad.py`` into the existing
 ``rag_core.run_rag_query`` pipeline so we can measure Korean-language
 generalization on a publicly verifiable, out-of-domain corpus. See
 [ADR 0018](../docs/adr/0018-korean-public-rag-bench.md) for the
-surface boundary (this never replaces the synthetic CI or private
+surface boundary (this never replaces the fixture smoke or private
 real-data surfaces — it is supplementary by construction).
 
 Metrics:

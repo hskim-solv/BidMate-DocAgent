@@ -38,7 +38,7 @@
 
 따라서 verifier 강화(예: #1008 unanswerable hardening), answer-policy 개정, 새 abstention 패턴이 status *분포* 를 크게 흔들어도 — 그것은 이 계약의 **위반이 아니며** `schema_version` bump 트리거도 아니다. shape 이 동일하면 계약은 유지된다.
 
-분포 변화의 *측정* 은 [ADR 0005](0005-eval-split-public-synthetic-private-local.md) 의 두 eval 표면(public synthetic + private local)에 위임한다. eval delta 가 의미 있는 분포 이동을 보이면 reviewer 가 그 변화를 정당화하면 되고, 이 ADR 은 그 정당화가 딛고 설 *형식 계약* 만 강제한다.
+분포 변화의 *측정* 은 [ADR 0005](0005-eval-split-public-synthetic-private-local.md) 의 두 eval 표면(public fixture smoke + private local)에 위임한다. eval delta 가 의미 있는 분포 이동을 보이면 reviewer 가 그 변화를 정당화하면 되고, 이 ADR 은 그 정당화가 딛고 설 *형식 계약* 만 강제한다.
 
 ## 결과
 

@@ -61,7 +61,7 @@
         "type": { "type": "string" },
         "privacy": {
           "type": "string",
-          "enum": ["public_synthetic", "private_local_only", "private_aggregate_only"]
+          "enum": ["public_fixture", "private_local_only", "private_aggregate_only"]
         },
         "corpus_size": { "type": "integer", "minimum": 0 },
         "anonymized": { "type": "boolean" },

@@ -17,8 +17,7 @@ on:
     # No `branches:` filter — these gates (esp. §5b `--check-5b`) must fire on
     # EVERY PR base, not just main. A `branches: [main]` filter let a
     # load-bearing change ride in via a stacked PR (base≠main) with §5b never
-    # checked, neutralizing the PR #69 hard-gate (issue #1159). pr-judge.yml
-    # (ADR 0043) is the in-repo precedent: PR gates are base-agnostic.
+    # checked, neutralizing the PR #69 hard-gate (issue #1159).
     # Guarded by tests/test_pr_gate_workflow_triggers_regression.py.
 
 permissions:

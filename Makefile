@@ -7,18 +7,18 @@
 # Setup / hooks
 .PHONY: setup install-hooks
 
-# Governance gates (branch + issue, README metrics, latency SLO, leaderboard
-# freshness, real-eval history freshness, benchmark manifest check). Run
+# Governance gates (branch + issue, fixture latency SLO, real-eval history
+# freshness, benchmark manifest check). Run
 # `make governance-check` to invoke the pre-PR subset in sequence.
-.PHONY: check-branch governance-check check snapshot-update check-latency leaderboard-check real-eval-history-check benchmark-check check-baseline-provenance check-doc-links regen-golden check-golden
+.PHONY: check-branch governance-check check check-latency real-eval-history-check benchmark-check check-baseline-provenance check-doc-links regen-golden check-golden
 
 # Index build + ad-hoc ask
 .PHONY: index ask build-kordoc-manifest
 
-# Synthetic eval surface (public corpus). Includes smoke, full eval, harness
-# matrix, judges, leaderboard render, pareto, korean public bench, external
-# baselines.
-.PHONY: eval smoke smoke-with-judge reproduce benchmark synthetic-judge judge-disagreements leaderboard pareto cost-frontier korean-public-fetch korean-public-eval external-baselines-stub external-baselines-langchain external-baselines-llamaindex external-baselines-ollama harness-smoke harness-ablation harness-compare synthesize-multihop eval-multihop
+# Public fixture smoke eval surface. Includes deterministic smoke, eval,
+# harness matrix, pareto, and Korean public bench helpers. Real performance
+# measurement remains on private/internal eval sets.
+.PHONY: eval smoke reproduce benchmark pareto cost-frontier korean-public-fetch korean-public-eval harness-smoke harness-ablation harness-compare
 
 # Real-data eval cycle (private; ADR 0005 commit boundary).
 .PHONY: real-eval real-eval-semantic real-eval-delta real-eval-baseline-update real-eval-history-render real-eval-with-judge harness-real
@@ -66,14 +66,14 @@ check-branch:
 	$(PYTHON) scripts/check_branch_and_issue.py \
 	  --branch "$$(git rev-parse --abbrev-ref HEAD)" --check-issue
 
-# Composite governance gate. Runs the three pre-PR freshness checks in
-# sequence: branch + issue convention (ADR 0007), leaderboard render
-# freshness, and real-data history-table freshness. Each sub-target is
+# Composite governance gate. Runs the pre-PR checks in sequence:
+# branch + issue convention (ADR 0007), real-data history-table freshness,
+# baseline provenance, docs links, and fixture latency. Each sub-target is
 # already wired into CI / hooks individually; this target just shortens
 # the local pre-PR checklist into a single invocation. Fails on the
 # first sub-target that exits non-zero.
-governance-check: check-branch leaderboard-check real-eval-history-check check-baseline-provenance check-doc-links check
-	@echo "governance-check: branch + leaderboard + real-eval-history + baseline-provenance + doc-links + readme-metric-sync OK."
+governance-check: check-branch real-eval-history-check check-baseline-provenance check-doc-links check
+	@echo "governance-check: branch + real-eval-history + baseline-provenance + doc-links + fixture-latency OK."
 
 # Verify reports/real100/baseline.aggregate.json's provenance.git_commit is
 # still reachable from origin/main (issue #413). Catches the silent-breakage
@@ -93,7 +93,7 @@ check-doc-links:
 	$(PYTHON) scripts/check_doc_links.py --check-all
 
 index:
-	$(PYTHON) scripts/build_index.py --input_dir data/raw --output_dir data/index
+	$(PYTHON) scripts/build_index.py --input_dir eval/fixtures/smoke_rfp/raw --output_dir data/index
 
 # Re-prime a kordoc cache's manifest.json so ingestion can trust the bypass
 # (issue #1278). Required once after this gate landed for any pre-existing
@@ -109,33 +109,6 @@ ask:
 eval:
 	$(PYTHON) eval/run_eval.py --index_dir data/index --output_dir reports --config eval/config.yaml
 
-# OOD evaluation surface (ADR 0046 / issue #864). Builds a separate
-# index from data/ood_synthetic_legal/ (E2 corpus) and runs the
-# ood_legal_config.yaml ablation pair (naive_baseline + full).
-# Output: reports/ood_legal/eval_summary.json. RFP eval is untouched
-# and the ADR 0001 baseline guard is not affected (separate index +
-# config + report directory).
-.PHONY: ood-legal-index ood-legal-eval
-ood-legal-index:
-	$(PYTHON) scripts/build_index.py --input_dir data/ood_synthetic_legal --output_dir data/ood_legal_index
-
-ood-legal-eval: ood-legal-index
-	$(PYTHON) eval/run_eval.py --index_dir data/ood_legal_index --output_dir reports/ood_legal --config eval/ood_legal_config.yaml
-
-# Multi-hop cross-section eval slice (ADR 0033).
-# synthesize-multihop: generate eval/dev_queries_multihop_v1.jsonl.
-#   Stub backend (default): placeholder queries, CI-safe, no API calls.
-#   Live backend: set BIDMATE_SYNTHESIZER_BACKEND=openai_compatible + BIDMATE_JUDGE_API_KEY.
-# eval-multihop: run the multi-hop ablation surface against the generated dataset.
-synthesize-multihop:
-	$(PYTHON) scripts/synthesize_multihop_queries.py \
-	    --out eval/dev_queries_multihop_v1.jsonl \
-	    --n $${MULTIHOP_N:-50}
-
-eval-multihop:
-	$(PYTHON) eval/run_eval.py --index_dir data/index --output_dir reports/multihop \
-	    --config eval/multihop_config.yaml
-
 # Cost-quality Pareto frontier table (and PNG if matplotlib installed)
 # from the latest reports/eval_summary.json. Read-only consumer — see
 # scripts/plot_pareto.py for cost/quality axis choice (latency p95 vs
@@ -143,12 +116,10 @@ eval-multihop:
 pareto:
 	$(PYTHON) scripts/plot_pareto.py --summary reports/eval_summary.json --markdown-out reports/pareto.md --png-out reports/pareto.png
 
-# Cost-accuracy frontier (ADR 0038 / issue #798). Reads
-# reports/eval_summary.json (in-repo ablations placed at x=0 per the
-# self-hosted rule) and reports/external_baselines.json (external real-API
-# backends, cost from case_results[i].cost_estimate_usd). Writes
-# reports/cost_frontier.md + reports/cost_frontier.png (PNG when matplotlib
-# is installed; the .md is always produced).
+# Cost-accuracy frontier (ADR 0038 / issue #798). Reads local aggregate
+# summaries only; private/internal eval aggregates are the intended input for
+# performance claims. Writes reports/cost_frontier.md + reports/cost_frontier.png
+# when enough source data is available.
 cost-frontier:
 	$(PYTHON) scripts/plot_cost_frontier.py
 
@@ -161,34 +132,19 @@ docker-publish:
 	docker push $(IMAGE_TAG)
 
 benchmark:
-	$(PYTHON) scripts/run_benchmark.py --suite benchmarks/suites/public_synthetic_rfp.yaml --ablations benchmarks/ablations/rag_quality_axes.yaml
+	$(PYTHON) scripts/run_benchmark.py --suite $${SUITE:?set SUITE=benchmarks/suites/<suite>.yaml} --ablations benchmarks/ablations/rag_quality_axes.yaml
 
 benchmark-check:
 	$(PYTHON) scripts/summarize_benchmark.py --manifest $${MANIFEST:?set MANIFEST=artifacts/benchmarks/<run_id>/run_manifest.json} --check
 
-# README metric-parity gate (issue #792). Compares the committed snapshot
-# (reports/eval_summary.snapshot.json) against the README metric rows — it does
-# NOT re-measure. #739/#751 failed because the gate re-ran a divergent CI eval
-# (config.ci.yaml / hashing) against a README generated from the full config;
-# the committed snapshot removes the re-measurement source-mismatch entirely.
-# Refresh the snapshot with `make snapshot-update`.
+# Fixture smoke latency gate. Run `make smoke` first so reports/eval_summary.json
+# exists; this does not compare public fixture scores as benchmark evidence.
 check:
-	$(PYTHON) scripts/update_readme_metrics.py --report reports/eval_summary.snapshot.json --readme README.md --check
-
-# Freeze the public-synthetic eval that backs the README metric table into the
-# committed snapshot (issue #792). Run after `make smoke` (regenerates
-# reports/eval_summary.json from eval/config.yaml on the hashing backend) when
-# the metric numbers legitimately move. Copies the fresh summary to the
-# snapshot and syncs the README metric rows in place (hand-curated prose
-# preserved). Commit reports/eval_summary.snapshot.json + README.md together.
-snapshot-update:
 	@test -f reports/eval_summary.json || { echo "reports/eval_summary.json missing — run 'make smoke' first"; exit 1; }
-	cp reports/eval_summary.json reports/eval_summary.snapshot.json
-	$(PYTHON) scripts/update_readme_metrics.py --report reports/eval_summary.snapshot.json --readme README.md
-	@echo "snapshot-update: refreshed reports/eval_summary.snapshot.json + README rows. Commit both."
+	$(PYTHON) scripts/check_latency_slo.py --config eval/config.yaml --summary reports/eval_summary.json
 
 # naive_baseline ranking golden (tests/data/naive_baseline_top_k.json) regen +
-# staleness check. The golden drifts when the data/raw/ corpus changes (PR #648,
+# staleness check. The golden drifts when the smoke fixture corpus changes (PR #648,
 # #914); content drift is hard-gated by
 # tests/test_naive_baseline_ranking_invariance.py. `regen-golden` refreshes the
 # committed snapshot in place (ADR 0001: pipeline code untouched); `check-golden`
@@ -218,34 +174,6 @@ korean-public-fetch:
 korean-public-eval: korean-public-fetch
 	$(PYTHON) eval/korean_public/run.py
 
-# External baseline comparison (ADR 0009 / issue #157).
-# Stub backend is deterministic and free — exercises the comparison
-# infrastructure without API cost. Live backends require ANTHROPIC_API_KEY
-# and a one-time install of the SDK extras (~$2 / 42 cases at Sonnet 4.6).
-external-baselines-stub:
-	BIDMATE_EXTERNAL_BACKEND=stub $(PYTHON) scripts/compare_external_baselines.py
-
-external-baselines-langchain:
-	@if [ -z "$$ANTHROPIC_API_KEY" ]; then \
-		echo "ANTHROPIC_API_KEY not set. Live LangChain run needs an Anthropic key (~\$$2 / 42 cases)."; \
-		exit 1; \
-	fi
-	BIDMATE_EXTERNAL_BACKEND=langchain $(PYTHON) scripts/compare_external_baselines.py
-
-external-baselines-llamaindex:
-	@if [ -z "$$ANTHROPIC_API_KEY" ]; then \
-		echo "ANTHROPIC_API_KEY not set. Live LlamaIndex run needs an Anthropic key (~\$$2 / 42 cases)."; \
-		exit 1; \
-	fi
-	BIDMATE_EXTERNAL_BACKEND=llamaindex $(PYTHON) scripts/compare_external_baselines.py
-
-external-baselines-ollama:
-	@if ! curl -sf http://localhost:11434 > /dev/null 2>&1; then \
-		echo "Ollama server not running at http://localhost:11434. Start with: ollama serve"; \
-		exit 1; \
-	fi
-	BIDMATE_EXTERNAL_BACKEND=ollama $(PYTHON) scripts/compare_external_baselines.py
-
 # `install-hooks` is a prerequisite so the first `make smoke` on a fresh
 # worktree activates `.githooks/` (closes #719). install-hooks is
 # idempotent (`git config` only, ~5ms), so transitively re-running adds
@@ -261,16 +189,6 @@ smoke: install-hooks
 reproduce:
 	bash scripts/reproduce_eval.sh
 
-# Run the synthetic smoke eval, then ask a RAGAS-style LLM judge for
-# enrichment metrics (ADR 0012). Opt-in additive only — never replaces
-# the deterministic verifier. Default backend is `stub` (zero-cost,
-# deterministic); set BIDMATE_JUDGE_BACKEND=openai_compatible plus
-# BIDMATE_JUDGE_* env vars for a paid judge call. Pass --fold-aggregate
-# to merge the judge_ragas block into reports/eval_summary.json.
-smoke-with-judge: smoke
-	$(PYTHON) eval/judges/llm_judge.py --fold-aggregate
-	@echo "RAGAS scores written. Per-case verdicts in reports/eval_summary.judge.local.json (gitignored)."
-
 harness-smoke:
 	$(PYTHON) scripts/run_harness.py --config harness/smoke.yaml
 
@@ -280,7 +198,7 @@ harness-smoke:
 harness-real:
 	$(PYTHON) scripts/run_harness.py --config harness/real.local.yaml
 
-# Run a matrix of harness cells on the committed public synthetic corpus.
+# Run a matrix of harness cells on the committed public fixture corpus.
 # Writes artifacts/matrices/<matrix_id>/{matrix_summary.json, compare.md}.
 # Pass MATRIX=harness/your.yaml to use a different matrix file.
 MATRIX ?= harness/ablation.example.yaml
@@ -297,12 +215,13 @@ harness-compare:
 test:
 	bash scripts/test.sh
 
-# Fast local edit loop: the full suite minus `slow`-marked files (full
-# data/raw corpus or real embedding-model tests — see pyproject.toml
+# Fast local edit loop: the full suite minus `slow`-marked files (fixture
+# corpus or real embedding-model tests — see pyproject.toml
 # markers). Those few files dominate wall-clock under `--dist loadfile`
 # tail latency; deselecting them keeps the local loop snappy. The CI gate
-# (`make test` / scripts/test.sh) still runs EVERYTHING — never rely on
-# test-fast for a merge decision.
+# (`make test` / scripts/test.sh) defaults to the same non-slow PR gate;
+# slow tests run via `.github/workflows/slow-tests.yml` or explicit
+# PYTEST_ADDOPTS.
 #
 # TEST_WORKERS caps xdist parallelism. Default 4 (not `-n auto`): a dev box
 # hosting many git worktrees runs under memory pressure, and `-n auto`
@@ -348,8 +267,7 @@ api-docker:
 	docker run --rm -p 8000:8000 bidmate-demo
 
 # Run the Streamlit live demo UI locally on http://localhost:8501.
-# Requires data/index to exist (run `make index` first) — the app will
-# rebuild from data/raw on first invocation if it does not.
+# Requires data/index to exist (run `make index` first).
 demo:
 	$(PYTHON) -m streamlit run demo/streamlit_app.py
 
@@ -469,39 +387,6 @@ case-promote:
 	$(PYTHON) scripts/case_proposer_promote.py \
 	  --reviewed reports/proposed/reviewed_cases.local.yaml \
 	  --real-config eval/real_config.local.yaml
-
-# Run the LLM judge over the public synthetic eval summary (ADR 0012).
-# Default backend `stub` is deterministic and runs in CI; set
-# BIDMATE_SYNTHETIC_JUDGE_BACKEND=openai_compatible plus the shared
-# BIDMATE_JUDGE_* credentials for a live RAGAS-style signal. Writes a
-# committable aggregate and a git-ignored per-case file.
-synthetic-judge:
-	$(PYTHON) -m eval.judges.synthetic_judge \
-	  --summary reports/eval_summary.json \
-	  --aggregate reports/synthetic_judge.aggregate.json \
-	  --local reports/synthetic_judge.local.json
-
-## Dump verifier↔judge disagreement cases from the synthetic judge local file.
-## Requires reports/synthetic_judge.local.json (run make synthetic-judge first).
-## Output: reports/judge_disagreements.local.json (gitignored) + stdout aggregate.
-judge-disagreements:
-	$(PYTHON) scripts/dump_judge_disagreements.py \
-	  --local reports/synthetic_judge.local.json \
-	  --output reports/judge_disagreements.local.json
-
-# Append a history snapshot of the current eval_summary.json + render
-# the leaderboard markdown table and the docs/eval/leaderboard.md Chart.js
-# page. Mirrors the real-data history pattern but for the public
-# synthetic surface (issue #166). CI runs this automatically on every
-# merge to main via .github/workflows/leaderboard.yml.
-leaderboard:
-	$(PYTHON) scripts/write_synthetic_history.py
-	$(PYTHON) scripts/leaderboard.py
-
-# Verify the rendered leaderboard artifacts are up to date with the
-# current reports/history/ contents. Suitable for pre-PR gating.
-leaderboard-check:
-	$(PYTHON) scripts/leaderboard.py --check
 
 clean:
 	rm -rf data/index outputs reports

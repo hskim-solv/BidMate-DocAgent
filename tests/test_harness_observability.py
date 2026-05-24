@@ -5,10 +5,8 @@ Each successful ``scripts/run_harness.py`` run must:
 1. Write an ``observability`` block into ``run_manifest.json`` carrying
    ``backend`` / ``trace_url`` / ``unavailable_reason`` / ``schema_version``.
 2. Append a chronological aggregate snapshot to
-   ``reports/harness_history/`` whose on-disk shape mirrors
-   ``scripts/write_synthetic_history.py`` (so
-   ``scripts/leaderboard.py:load_history`` can be retargeted to
-   harness runs without code changes).
+   ``reports/harness_history/`` as a reviewer-friendly fixture smoke
+   artifact.
 3. Honour ``--no-observability``: no trace setup, no history file,
    manifest still carries an ``observability`` block with
    ``unavailable_reason == "disabled"`` so downstream consumers can
@@ -129,8 +127,7 @@ class HarnessObservabilityE2ETest(unittest.TestCase):
         history_path = ROOT_DIR / block["history_path"]
         self.assertTrue(history_path.exists(), f"missing {history_path}")
         snapshot = json.loads(history_path.read_text(encoding="utf-8"))
-        # Mirror the public synthetic-history schema so the
-        # leaderboard loader is reusable on this directory.
+        # Mirror the aggregate-history schema used by reviewer artifacts.
         for key in (
             "schema_version",
             "source",
@@ -142,8 +139,8 @@ class HarnessObservabilityE2ETest(unittest.TestCase):
             self.assertIn(key, snapshot, f"history snapshot missing key {key!r}")
         self.assertEqual(snapshot["source"], "run_harness")
         self.assertEqual(snapshot["run_id"], "obs_history")
-        # Provenance must carry git_commit / generated_at so the
-        # leaderboard can sort chronologically and link back to a sha.
+        # Provenance must carry git_commit / generated_at so downstream
+        # summaries can sort chronologically and link back to a sha.
         for key in ("git_commit", "generated_at"):
             self.assertIn(key, snapshot["provenance"])
 
@@ -151,9 +148,7 @@ class HarnessObservabilityE2ETest(unittest.TestCase):
         manifest = self._run_harness("obs_filename")
         history_path = ROOT_DIR / manifest["observability"]["history_path"]
         name = history_path.name
-        # ``<YYYYMMDDTHHMMSSZ>_<sha12>.aggregate.json`` — mirrors
-        # write_synthetic_history.py so the loader's filename parser
-        # works on both directories.
+        # ``<YYYYMMDDTHHMMSSZ>_<sha12>.aggregate.json``.
         self.assertTrue(name.endswith(".aggregate.json"))
         stem = name.removesuffix(".aggregate.json")
         self.assertIn("_", stem)

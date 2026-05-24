@@ -78,11 +78,11 @@ def compute_run_manifest(
 ) -> dict[str, Any]:
     """Build the run_manifest block pinned to git commit + config bytes + UTC time.
 
-    Needed for leaderboard time-series (#166) and judge calibration
+    Needed for aggregate history and judge calibration
     reproducibility (#169). Field naming mirrors
     ``scripts._utils.build_provenance`` (``git_commit``, ``git_dirty``,
     ``generated_at``) so the real-eval baseline pipeline and the
-    synthetic eval pipeline share one schema.
+    fixture smoke eval pipeline share one schema.
 
     Also records the embedding ``backend`` + ``model`` id of the loaded
     index so an eval_summary snapshot is self-describing about which
@@ -1374,7 +1374,7 @@ def ablation_runs(config: dict[str, Any]) -> list[dict[str, Any]]:
 
     Issue #151 — the ``m3_full`` row needs ``FlagEmbedding`` (~2GB
     weights, opt-in via ``pip install -r requirements-m3.txt``). The
-    public synthetic CI runs with ``EMBEDDING_BACKEND=hashing`` and
+    fixture smoke CI runs with ``EMBEDDING_BACKEND=hashing`` and
     doesn't install the dep, so the row would otherwise crash the
     smoke target. ``requires_module`` lets the row declare its own
     opt-in gate; missing modules trigger a clear stderr log and the

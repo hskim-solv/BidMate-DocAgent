@@ -31,7 +31,7 @@ default는 retrieval 평가 baseline을 이동시키지 않는다.
 
 측정: csv_text-fallback 인덱스 **898 chunks** (kordoc-full ~26,376 은 미사용 reference — Context + REPORT '청크 수 caveat' 참조), n=221 cases, dense_m3 vs hybrid_bm25_k60_m3, paired bootstrap CI 95%, seeds 17/23/29.
 
-이 측정은 [ADR 0005](0005-eval-split-public-synthetic-private-local.md) **private-local** 표면 (real100 코퍼스, gitignored; committable = `REPORT.md` + `mode_specs.json` + `deltas.json` + `raw_results.json` — qid/categories/metric 값만, doc/chunk ID·케이스 텍스트 없음) 에서 실행 — public-synthetic 표면 아님. ADR 0005 에 따라 모든 신규 eval 표면은 한 쪽을 택하고, 이건 strictly-local 이므로 여기 절대 `chunk_recall@k` 수치는 reviewer-reproducible 아님 (paired CI delta + commit 된 aggregate 산출물이 audit trail).
+이 측정은 [ADR 0005](0005-eval-split-public-synthetic-private-local.md) **private-local** 표면 (real100 코퍼스, gitignored; committable = `REPORT.md` + `mode_specs.json` + `deltas.json` + `raw_results.json` — qid/categories/metric 값만, doc/chunk ID·케이스 텍스트 없음) 에서 실행 — public-fixture-smoke 표면 아님. ADR 0005 에 따라 모든 신규 eval 표면은 한 쪽을 택하고, 이건 strictly-local 이므로 여기 절대 `chunk_recall@k` 수치는 reviewer-reproducible 아님 (paired CI delta + commit 된 aggregate 산출물이 audit trail).
 
 **Overall metrics** (hybrid_bm25_k60_m3 vs dense_m3, all SIG = paired CI fully above 0):
 - `chunk_recall@10`: 0.288 → 0.340 (**+0.052 SIG**, CI +0.020/+0.088)

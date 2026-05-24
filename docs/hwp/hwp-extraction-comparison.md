@@ -229,7 +229,7 @@ chunking 이 자동으로 표를 별도 retrieval 단위로 다룬다. 셀 텍�
 - 사촌 spike: [#167](https://github.com/hskim-solv/BidMate-DocAgent/issues/167)
   — pyhwp Python API vs CSV baseline, [`docs/hwp/hwp-native-spike.md`](./hwp-native-spike.md)
 - ADR: [0001 — preserve naive baseline](../adr/0001-preserve-naive-baseline.md),
-  [0005 — eval-split public-synthetic / private-local](../adr/0005-eval-split-public-synthetic-private-local.md)
+  [0005 — eval-split public-fixture-smoke / private-local](../adr/0005-eval-split-public-synthetic-private-local.md)
 - 선행 문서: [`docs/vision/visual-ingestion-v2.md`](../vision/visual-ingestion-v2.md) "What this is NOT" §
 - 후속: HWPX 별도 이슈, native adopt 시 ADR 작성
 

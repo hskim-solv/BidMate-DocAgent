@@ -80,7 +80,7 @@ SAFE_TOPLEVEL_KEYS = frozenset(
         # counts/rates over the case set with no per-case payload; the
         # extractor below whitelists the exact sub-keys.
         "retry_effectiveness",
-        # Run identity for leaderboard (#166) + judge calibration (#169).
+        # Run identity for aggregate history + judge calibration.
         # Only git_commit / git_dirty / config_sha256 / generated_at cross
         # the commit boundary — the local filesystem path is dropped.
         "run_manifest",
@@ -97,12 +97,12 @@ SAFE_TOPLEVEL_KEYS = frozenset(
         # boundary; per-case judge text stays in
         # reports/real100/judge.local.json.
         "judge",
-        # ADR 0012 RAGAS-style judge aggregates on the synthetic surface.
+        # RAGAS-style judge aggregates when explicitly folded into summaries.
         # Only the four metric means + their 95% bootstrap CIs cross the
         # commit boundary; per-case verdicts stay in
         # reports/eval_summary.judge.local.json and reports/judge_cache/.
         "judge_ragas",
-        # Bootstrap 95% CI per headline metric (issue #166 / #267 leaderboard).
+        # Bootstrap 95% CI per headline metric.
         # The block is {metric: {mean, ci_lo, ci_hi, n, num_resamples, alpha}};
         # the extractor below whitelists both the metric and sub-key sets.
         "ci",
@@ -117,13 +117,13 @@ SAFE_TOPLEVEL_KEYS = frozenset(
         # stage 7-category lives here. No per-case text crosses the boundary.
         "failure_category_counts",
         # Issue #476 / ADR 0029: headline metrics of the `agentic_full`
-        # ablation run, surfaced so the synthetic leaderboard renders the
-        # `full` pipeline as a parallel time series alongside `naive_baseline`.
+        # ablation run, kept as aggregate-only evidence alongside
+        # `naive_baseline`.
         # The extractor below explicitly whitelists each scalar + the
         # CI sub-block; case-level fields are dropped.
         "ablation_full",
         # Issue #650 / ADR 0039: per-format accuracy breakdown keyed by
-        # document source_format (hwp / pdf / synthetic_public_sample).
+        # document source_format (hwp / pdf / public_fixture).
         # Bucket keys are whitelisted in SAFE_FORMAT_BUCKET_KEYS (fail-closed);
         # metric sub-keys mirror SAFE_ABLATION_FULL_SCALAR_KEYS; no per-case
         # payload crosses the boundary.
@@ -149,7 +149,7 @@ SAFE_TOPLEVEL_KEYS = frozenset(
 
 # Allowed bucket keys inside ``by_format``. Fail-closed: any key not in
 # this set is silently dropped before the aggregate is committed.
-SAFE_FORMAT_BUCKET_KEYS = frozenset({"hwp", "pdf", "synthetic_public_sample"})
+SAFE_FORMAT_BUCKET_KEYS = frozenset({"hwp", "pdf", "public_fixture"})
 
 # Allowed bucket keys inside ``by_hardcase_category``. Mirrors ADR 0039's
 # public 4-category enum (same set as ADR_0039_CATEGORIES in
@@ -347,7 +347,7 @@ def _extract_ablation_full(run_summary: dict[str, Any]) -> dict[str, Any] | None
     ``ablation_full`` key. Sub-keys are explicitly whitelisted: scalar
     metrics, the latency p50/p95/mean, the 3-bin abstention outcomes,
     and the bootstrap CI sub-block — same defense-in-depth pattern as
-    `judge_ragas` (ADR 0012) and `retry_effectiveness` (#120). Case-level
+    `judge_ragas` and `retry_effectiveness` (#120). Case-level
     fields and per-attempt latencies are dropped.
     """
     if not isinstance(run_summary, dict):
@@ -527,10 +527,9 @@ def extract_aggregate(summary: dict[str, Any]) -> dict[str, Any]:
 
     # Issue #476 / ADR 0029: when fed a raw eval_summary.json (i.e. the
     # `ablation.runs[]` shape rather than the aggregate-form `ablation_full`
-    # key), pull the `full` run's headline metrics into our schema. This
-    # is what `scripts/write_synthetic_history.py` relies on so its writer
-    # stays a one-liner: it just hands the raw summary to extract_aggregate
-    # and the surface conversion happens here.
+    # key), pull the `full` run's headline metrics into our schema. Private
+    # aggregate writers can hand the raw summary to extract_aggregate and the
+    # surface conversion happens here.
     if "ablation_full" not in out:
         ablation = summary.get("ablation")
         if isinstance(ablation, dict):
@@ -858,7 +857,7 @@ def render_markdown(
     head_ragas = head.get("judge_ragas") or {}
     if base_ragas or head_ragas:
         lines.append("")
-        lines.append("#### RAGAS judge (ADR 0012, opt-in)")
+        lines.append("#### RAGAS judge (opt-in)")
         lines.append("")
         lines.append("| metric | base | head | Δ |")
         lines.append("|---|---|---|---|")

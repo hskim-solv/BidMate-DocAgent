@@ -43,7 +43,7 @@ backend default도 `anthropic` / `openai_compatible`로 flip하면:
 
 - `pytest`가 `ANTHROPIC_API_KEY` / `BIDMATE_SYNTHESIS_API_KEY` 요구. CI는 실제 API 호출용 key fake 불가 → 공공 테스트 스위트 skip / fail.
 - healthcheck probe + demo traffic 포함 모든 API hit에 per-query 실비 추가.
-- 공공 `eval/run_eval.py` 분석 변형 결정성 깨짐(`full_llm` row가 현재 stub-backend 결과 보고; `docs/eval/embedding-ablation.md` + ADR 0012 동일 패턴).
+- 공공 `eval/run_eval.py` 분석 변형 결정성 깨짐(`full_llm` row가 현재 stub-backend 결과 보고; `docs/eval/embedding-ablation.md`와 동일한 stub-default 패턴).
 - ADR 0011의 핵심 trade-off 소거: *agentic synthesis 프리셋은 observable, backend는 opt-in.*
 
 preset만 flip하면 위 모두 보존. API 소비자는 `diagnostics.pipeline == "agentic_full_llm"`("Agentic" label이 응답과 일치) 확인 가능, 렌더러는 결정적 실행. 실제 LLM 응답 원하는 reviewer는 로컬에서 backend env var 설정 — 이전 flow 동일, 단 default preset만 변경 노출.

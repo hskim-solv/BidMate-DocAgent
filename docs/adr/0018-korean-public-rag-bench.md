@@ -3,7 +3,7 @@
 - **Status**: accepted
 - **Date**: 2026-05-12
 - **Deciders**: hskim
-- **Related**: [ADR 0001](./0001-preserve-naive-baseline.md) (기준선 보존), [ADR 0005](./0005-eval-split-public-synthetic-private-local.md) (eval 분리 discipline), [ADR 0012](./0012-llm-judge-on-public-synthetic.md) (추가 표면 패턴), [`eval/korean_public/`](../../eval/korean_public/), 이슈 #295
+- **Related**: [ADR 0001](./0001-preserve-naive-baseline.md) (기준선 보존), [ADR 0005](./0005-eval-split-public-synthetic-private-local.md) (eval 분리 discipline), [`eval/korean_public/`](../../eval/korean_public/), 이슈 #295
 
 ## TL;DR
 
@@ -15,7 +15,7 @@
 
 "한국 스택" 포트폴리오 포지셔닝은 코드에 존재 — `text_normalize.py` 의 조사 stripper, RFP 스타일 multi-doc 쿼리용 `apply_comparison_balance`, alias 자동 추출 — 그러나 **공개 검증 가능 한국어 수치** 뒷받침 부재. 두 기존 eval 표면 모두 본 갭 보유:
 
-- **공개 합성** (`eval/config.yaml`, n=42): in-domain 손으로 쓴 RFP 케이스. reviewer 가 수치 재현 가능하나 corpus *자체* 가 파이프라인 튜닝된 shape.
+- **공개 fixture smoke** (`eval/config.yaml`, n=42): in-domain 손으로 쓴 RFP 케이스. reviewer 가 수치 재현 가능하나 corpus *자체* 가 파이프라인 튜닝된 shape.
 - **Private 실데이터** (operator-side, n=21, ADR 0005 commit 경계): in-domain 실 RFP. reviewer 재현 불가.
 
 "한국어 일반 텍스트에서 retrieval / citation 파이프라인이 어떻게 동작합니까?" 묻는 시니어 reviewer 에게 repo 에 가리킬 게 없음. *어떤* commodity 한국어 RAG benchmark — 낮은 점수라도 — 추가가 검증 가능 artifact 로 갭 봉쇄.
@@ -63,4 +63,4 @@ KorQuAD 2.x 가 dominant 한국어 MRC benchmark (CC BY-ND 2.0 KR, SQuAD-shape, 
 - **AI Hub 한국어 행정문서 QA** — 가장 도메인 일치, 그러나 배포가 한국 학술/기관 로그인 필요. reviewer 재현성 죽이는 ("다운로드 한국 학술 이메일 필요") hard no.
 - **MIRAcL Korean dev** — retrieval-only multilingual benchmark, 답-문자열 ground truth 없음. 3 신호 중 1개만 테스트; 합성 표면 측정 인용-grounding 축 누락.
 - **소규모 in-house 한국어 RAG fixture 빌드** — 라이선스 이슈 우회, 그러나 reviewer 가 외부 세계 대비 검증 불가한 in-house 데이터셋 또 추가.
-- **합성 표면을 KorQuAD 로 대체** — ADR 0001 (기준선 보존) + ADR 0005 (합성-CI 가 계약 테스트 거주) 위반. ADR 0011, 0013, 0014, 0015, 0017 과 같은 strict 추가-표면 discipline 적용.
+- **공개 fixture smoke를 KorQuAD 로 대체** — ADR 0001 (기준선 보존) + ADR 0005 (fixture smoke가 계약 테스트 거주) 위반. ADR 0011, 0013, 0015, 0017 과 같은 strict 추가-표면 discipline 적용.

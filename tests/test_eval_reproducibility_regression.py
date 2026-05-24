@@ -1,4 +1,4 @@
-"""Reproducibility regression guard for the public synthetic eval pipeline.
+"""Reproducibility regression guard for the public fixture smoke eval pipeline.
 
 Issue #160 surfaced two coupled problems with `make real-eval-delta`:
 the policy gate that flags #69-class intended-abstention regressions
@@ -7,7 +7,7 @@ git, and (b) re-running real-eval at the *same* commit produced
 different aggregate metrics and even different slice keys
 (``by_query_type.multi_doc`` → ``by_query_type.comparison``).
 
-This test exercises the analogous public-synthetic pipeline ×2 against
+This test exercises the analogous public fixture pipeline ×2 against
 an identical index, and asserts byte-equivalence of the aggregate
 metrics and slice keys that the real-data delta gate consumes. If a
 future change reintroduces ordering non-determinism (a sort missing a
@@ -140,7 +140,7 @@ def _run_eval(index_dir: Path, output_dir: Path, config_path: Path) -> dict:
 
 
 class EvalReproducibilityRegressionTest(unittest.TestCase):
-    """Guard against the #160 failure mode on the public synthetic surface."""
+    """Guard against the #160 failure mode on the public fixture surface."""
 
     @classmethod
     def setUpClass(cls) -> None:
@@ -165,7 +165,7 @@ class EvalReproducibilityRegressionTest(unittest.TestCase):
                 sys.executable,
                 "scripts/build_index.py",
                 "--input_dir",
-                "data/raw",
+                "eval/fixtures/smoke_rfp/raw",
                 "--output_dir",
                 str(cls.index_dir),
                 "--embedding_backend",

@@ -42,7 +42,7 @@
 
 ### 순수 regex, ML 아닌 이유
 
-Llama Guard / OpenAI moderation / fine-tuned classifier는 더 많은 패턴 catch하나 비용 증가: 모델 다운로드, 런타임 latency, 호스팅 backend용 신규 네트워크 의존, CI 결정성 invariant(ADR 0011 / ADR 0012 패턴)를 깨는 non-deterministic 신호. 7개 명명 패턴이 real attempt에 나타나는 high-leverage shape hit; long tail은 후일 추가 regex 또는 — real Llama Guard 분석 변형 머지 시 — `BIDMATE_RERANK_BACKEND`(ADR 0026)와 동일 shape의 `BIDMATE_SECURITY_BACKEND` dispatch 갖는 신규 `SecurityScreener` Protocol로 추가.
+Llama Guard / OpenAI moderation / fine-tuned classifier는 더 많은 패턴 catch하나 비용 증가: 모델 다운로드, 런타임 latency, 호스팅 backend용 신규 네트워크 의존, CI 결정성 invariant(ADR 0011 stub-default 패턴)를 깨는 non-deterministic 신호. 7개 명명 패턴이 real attempt에 나타나는 high-leverage shape hit; long tail은 후일 추가 regex 또는 — real Llama Guard 분석 변형 머지 시 — `BIDMATE_RERANK_BACKEND`(ADR 0026)와 동일 shape의 `BIDMATE_SECURITY_BACKEND` dispatch 갖는 신규 `SecurityScreener` Protocol로 추가.
 
 ## 결과
 

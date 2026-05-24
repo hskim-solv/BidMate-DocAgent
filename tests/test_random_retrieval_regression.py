@@ -16,7 +16,7 @@ returns filtered candidates ranked by a deterministic SHA-256 hash of
    proving the embedding / scoring path was skipped (dense would be > 0
    for a non-trivial query against the hashing embedding fixture).
 
-The test runs on the synthetic ``data/raw`` fixture with the hashing
+The test runs on the synthetic ``eval/fixtures/smoke_rfp/raw`` fixture with the hashing
 embedding backend so it stays fast and CI-safe (no real model deps).
 """
 
@@ -35,7 +35,7 @@ class RandomRetrievalBackendTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.index = build_index_payload(
-            Path("data/raw"), embedding_backend="hashing"
+            Path("eval/fixtures/smoke_rfp/raw"), embedding_backend="hashing"
         )
 
     def test_random_is_in_valid_retrieval_backends(self) -> None:

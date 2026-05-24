@@ -16,7 +16,7 @@ ADR 번호 충돌은 두 worktree/세션이 동시에 ADR 을 작성할 때마�
 PreToolUse 훅 [`scripts/claude-hooks/pretooluse-adr-collision.sh`](../../scripts/claude-hooks/pretooluse-adr-collision.sh) (matcher `Edit|MultiEdit|Write`) 추가 — *새로운* `docs/adr/<NNNN>-*.md` Write 시점에 open PR 을 조회하고, `<NNNN>` 가 다른 PR 의 title 또는 head branch 에 이미 예약돼 있으면 거부 (exit 2) 한다.
 
 - **Cross-worktree 한정**: 로컬 동일 번호 충돌은 pre-commit 의 몫으로 유지 — single responsibility, SSoT 중복 없음.
-- **번호 출처**: PR `title` + `headRefName`, zero-pad 무관 (`ADR 0063`, `ADR-63`, `adr#63`, `…-adr-0063-…` 모두 63 으로 해석). PR body 는 무시 — body 는 *다른* ADR 을 상시 인용 ("supersedes 0012") 하므로 false positive 를 양산한다. 매치는 로컬에서 정확한 정수로 재필터되므로 느슨한 `--search "ADR in:title"` 도 절대 over-block 할 수 없다.
+- **번호 출처**: PR `title` + `headRefName`, zero-pad 무관 (`ADR 0063`, `ADR-63`, `adr#63`, `…-adr-0063-…` 모두 63 으로 해석). PR body 는 무시 — body 는 *다른* ADR 을 상시 인용 ("supersedes number 0012") 하므로 false positive 를 양산한다. 매치는 로컬에서 정확한 정수로 재필터되므로 느슨한 `--search "ADR in:title"` 도 절대 over-block 할 수 없다.
 - **Fail-open**: gh 부재 / 네트워크 실패 / 토큰 누락 / 빈 리스트 / 파싱 실패 모두 → exit 0. pre-commit 이 머지 시점 backstop 으로 남는다. 명시적으로 이름 붙은 충돌만 차단한다.
 - **Early-exit**: non-Write / non-ADR-filename / existing-file 게이트가 어떤 `gh` 호출보다 먼저 실행되므로, 네트워크는 진짜 new-ADR Write (주당 몇 회) 에서만 건드려지고, 가능한 곳에서는 `timeout 8` 로 제한된다.
 

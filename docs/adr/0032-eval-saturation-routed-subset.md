@@ -14,7 +14,7 @@
 
 ## 배경
 
-[ADR 0019](./0019-embedding-default-stays-minilm.md) / [ADR 0021](./0021-bge-m3-completes-phase-1-3.md)은 5개 임베딩 후보(MiniLM-L12-v2, multilingual-e5-base, multilingual-e5-large-instruct, KoSimCSE-roberta-multitask, BGE-M3)를 공개 합성 n=42 surface에서 측정한 결과 "the `0pp-on-full` pattern holds across all five measured embeddings"로 결론지었다. 이 패턴이 *시스템 robustness*의 증거로 사용되어 ADR 0019 default lock의 정당화 근거가 된다.
+[ADR 0019](./0019-embedding-default-stays-minilm.md) / [ADR 0021](./0021-bge-m3-completes-phase-1-3.md)은 5개 임베딩 후보(MiniLM-L12-v2, multilingual-e5-base, multilingual-e5-large-instruct, KoSimCSE-roberta-multitask, BGE-M3)를 공개 fixture smoke n=42 surface에서 측정한 결과 "the `0pp-on-full` pattern holds across all five measured embeddings"로 결론지었다. 이 패턴이 *시스템 robustness*의 증거로 사용되어 ADR 0019 default lock의 정당화 근거가 된다.
 
 그러나 ADR 0019 본문이 직접 인정하듯 — *"Metadata-first filtering (ADR 0002) routes around dense retrieval for most queries; `accuracy / groundedness / citation_precision / abstention / format_compliance` move 0pp"* — `full` 파이프라인의 0pp 패턴은 dense 검색이 *호출되지 않기 때문에* 발생할 가능성이 있다. metric이 saturation되어 임베딩 차이를 *측정 불가능한* 상태일 수 있다. 그렇다면 ADR 0019 re-open trigger 조건 3 ("≥ +5pp on `full` with non-overlapping 95% CIs")는 *영구히 충족 불가능*, default lock이 measurement-gated가 아니라 *measurement-precluded*가 된다. ADR 0027도 인정한다: *"the metadata-first design makes that nearly impossible to clear with embeddings alone"*.
 
@@ -26,7 +26,7 @@
 
 구체:
 
-1. **신규 합성 eval subset** `eval/synthetic/routed_subset.jsonl` (n ≥ 10): 메타데이터 우선 라우팅이 *우회*되는 케이스.
+1. **private/internal routed eval subset** private/internal routed eval subset (n ≥ 10): 메타데이터 우선 라우팅이 *우회*되는 케이스.
    - Multi-turn follow-up (다중 query 의존성, 메타데이터 매칭 비결정적)
    - 다문서 비교 ambiguity (동일 메타데이터 후보가 ≥ 2 문서에 분포해 dense disambiguation 필요)
    - 메타데이터 키가 명시되지 않은 추론 질의 (예: "이 사업의 핵심 리스크는?")
@@ -51,7 +51,7 @@ ADR 0001 보존: `routed_subset.jsonl`은 별도 분석 변형 surface로 추가
 
 비용 / honesty:
 
-- `routed_subset.jsonl`은 합성이라 representativeness 한계. 진짜 long-tail RFP 케이스의 일부만 cover — 측정 signal이 실제 production lift를 보장하지 않음. ADR 0005 (공개 합성 vs 비공개 로컬) 분리 보존 — private 100-doc surface 결과는 [`docs/real-data/private-100-doc-experiments.md`](../real-data/private-100-doc-experiments.md)에 published.
+- `routed_subset.jsonl`은 합성이라 representativeness 한계. 진짜 long-tail RFP 케이스의 일부만 cover — 측정 signal이 실제 production lift를 보장하지 않음. ADR 0005 (공개 fixture smoke vs 비공개 로컬) 분리 보존 — private 100-doc surface 결과는 [`docs/real-data/private-100-doc-experiments.md`](../real-data/private-100-doc-experiments.md)에 published.
 - Sentence-transformers 측정은 CI에서 자동 reproducible하지 않음. 5 임베딩 측정은 로컬 빌드 필요(~30분, ADR 0019의 env 업그레이드 조건 1 충족 시 BGE-M3 / e5-large-instruct 실행 가능). 결과는 commit-pinned PR로 published.
 - ADR 0019 final이 spread < +3pp로 닫히면 "default lock empirically justified"로 강화되지만 *dense 검색의 system-level 가치가 낮음을 인정*하는 톤. 그러나 ADR 0001 (naive baseline 보존)이 dense-only surface를 따로 잡고 있어 시스템 정합성 유지.
 

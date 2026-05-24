@@ -24,7 +24,7 @@
 
 ### 3. Eval/CI regression prevention (평가·CI 회귀 차단)
 
-- PR 마다 회귀 게이트가 돌고, failure-rate ceiling 이 ratchet(단조 강화)되어 품질 후퇴를 머지 전에 차단한다. 공개 합성 / 비공개 real-eval 을 분리해 서로 다른 목적(품질 회귀 감시 vs 난이도 상한 탐침)으로 운용한다.
+- PR 마다 회귀 게이트가 돌고, failure-rate ceiling 이 ratchet(단조 강화)되어 품질 후퇴를 머지 전에 차단한다. 공개 fixture smoke / 비공개 real-eval 을 분리해 서로 다른 목적(품질 회귀 감시 vs 난이도 상한 탐침)으로 운용한다.
 - 근거: [pr-eval.yml](../.github/workflows/pr-eval.yml) · [ADR 0062](adr/0062-failure-rate-regression-contract.md) (회귀 ceiling 계약) · [ADR 0005](adr/0005-eval-split-public-synthetic-private-local.md) (eval 분리).
 - 면접 답변: "측정은 일회성이 아니라 *상시 게이트*입니다. 회귀가 들어오면 CI 가 막고, 실패율 상한은 내려가기만 합니다."
 
@@ -32,7 +32,7 @@
 
 면접관이 "그런데 `agentic_full` 이 raw accuracy 는 더 낮네요?"라고 물으면:
 
-> "맞습니다. 그건 *실패한 최적화가 아니라 의도된 trade-off* 입니다. `agentic_full` 은 답변율을 극대화하도록 튜닝한 게 아니라, citation precision **+18.0pp** 와 abstention accuracy **+57.1pp** 를 얻는 safety-oriented 파이프라인입니다. RFP 의사결정 맥락에서는 근거 없는 답변보다 근거 있는 보류가 더 안전하니까요. 그래서 메트릭은 하나의 평탄한 leaderboard 가 아니라 slice 별로 읽어야 합니다."
+> "맞습니다. 그건 *실패한 최적화가 아니라 의도된 trade-off* 입니다. `agentic_full` 은 답변율을 극대화하도록 튜닝한 게 아니라, citation precision **+18.0pp** 와 abstention accuracy **+57.1pp** 를 얻는 safety-oriented 파이프라인입니다. RFP 의사결정 맥락에서는 근거 없는 답변보다 근거 있는 보류가 더 안전하니까요. 그래서 메트릭은 하나의 평탄한 aggregate report 가 아니라 slice 별로 읽어야 합니다."
 
 real-eval hardcase(n=221, accuracy 16.10%)를 물으면:
 

@@ -92,17 +92,16 @@ def git_dirty() -> bool:
 def build_provenance() -> dict[str, object]:
     """Provenance block for the current git HEAD.
 
-    Shared by the synthetic history writer
-    (``scripts/write_synthetic_history.py``) and the real-data baseline
-    writer (``scripts/write_real_eval_baseline.py``). Format is
+    Shared by aggregate artifact writers such as
+    ``scripts/write_real_eval_baseline.py``. Format is
     intentionally narrow: 12-char SHA, dirty flag, ISO-8601 UTC
     timestamp.
 
     The dirty flag intentionally includes untracked files
     (``git status --porcelain`` without ``--untracked-files=no``) so a
     snapshot taken from a workspace with stray files is flagged as
-    not-clean — stricter than the ``git_dirty()`` helper used by the
-    leaderboard/render side.
+    not-clean — stricter than the ``git_dirty()`` helper used by lightweight
+    render paths.
 
     ``git_tree`` is the SHA of HEAD's root tree object. Unlike
     ``git_commit`` it is squash-merge invariant: a squash merge lands a
@@ -143,9 +142,7 @@ def fmt_rate(value: Any) -> str:
 def fmt_cell(value: Any) -> str:
     """Format a cell value for a markdown history table.
 
-    Conventions shared by the real-data history renderer
-    (``scripts/render_real_eval_history.py``) and the synthetic
-    leaderboard (``scripts/leaderboard.py``):
+    Conventions shared by aggregate history renderers:
 
     - ``None`` renders as ``"—"`` (em dash), not ``"None"`` — missing
       metrics on older snapshots should look intentional, not broken.
@@ -174,8 +171,8 @@ def render_history_table(
 ) -> str:
     """Render aggregate-history rows as a GitHub markdown table.
 
-    Shared kernel for ``render_real_eval_history.render_table()`` and
-    ``leaderboard._render_table_only()``. Conventions:
+    Shared kernel for ``render_real_eval_history.render_table()`` and related
+    aggregate table renderers. Conventions:
 
     - ``columns`` is a list of ``(row_key, header_label)`` tuples.
     - The ``"commit"`` column gets backtick-wrapped (``" `abc123`"``);
@@ -183,10 +180,8 @@ def render_history_table(
     - Every other column flows through :func:`fmt_cell`.
     - ``empty_message`` is returned verbatim when ``rows`` is empty —
       callers want different "no data" prose.
-    - ``trailing_newline=True`` appends ``"\\n"`` after the last row;
-      matches ``leaderboard._render_table_only`` (which embeds the
-      table under a ``## Tabular view`` section that expects a final
-      newline). Default ``False`` matches ``render_real_eval_history``
+    - ``trailing_newline=True`` appends ``"\\n"`` after the last row.
+      Default ``False`` matches ``render_real_eval_history``
       (which feeds the table into a marker-spliced block).
     """
     if not rows:

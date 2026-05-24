@@ -73,10 +73,10 @@ ADR 0044 의 incremental trajectory 대체. real-eval 케이스 cardinality 를 
 
 ### Invariance check
 
-- **ADR 0001** (naive_baseline preset 불변): 영향 없음 — 공개 합성 eval surface 미변경.
+- **ADR 0001** (naive_baseline preset 불변): 영향 없음 — 공개 fixture smoke eval surface 미변경.
 - **ADR 0003** (answer contract schema_version=2): 영향 없음 — 답변 계약 미변경.
 - **ADR 0005** (eval-split public/private 경계): **보존** — 케이스 정의는 gitignored `eval/real_config.local.yaml` 에만; aggregate 만 `reports/real100/baseline.aggregate.json` 으로 공개.
-- **ADR 0030** (leaderboard silence threshold n-aware): 자동 적용 — n=221 에서 `δ_silence = max(5e-4, 0.5/221) ≈ 2.3e-3` 으로 tighten.
+- **retired aggregate policy** (aggregate report silence threshold n-aware): 자동 적용 — n=221 에서 `δ_silence = max(5e-4, 0.5/221) ≈ 2.3e-3` 으로 tighten.
 - **ADR 0044**: **Superseded** — 본 ADR 이 incremental trajectory 를 step-change 로 대체.
 - **ADR 0053** (distinguishing-power floor: random + single_chunk): 첫 measurement surface 로 본 baseline 사용.
 
@@ -101,7 +101,7 @@ ADR 0044 의 incremental trajectory 대체. real-eval 케이스 cardinality 를 
 - ADR 0001 — naive_baseline 불변량 (영향 없음)
 - ADR 0003 — 답변 계약 schema_version=2 (영향 없음)
 - ADR 0005 — eval 분리 public/private 경계 (보존)
-- ADR 0030 — 리더보드 silence threshold n-aware 공식
+- retired aggregate policy — 리더보드 silence threshold n-aware 공식
 - ADR 0044 — real100 in-place n 증가 정책 (**Superseded by 본 ADR**)
 - ADR 0053 — distinguishing-power floor (`random` retrieval + `single_chunk` preset) — 본 baseline 의 측정 대상
 - PR #936 — `scripts/generate_real_cases.py` LLM-assisted generator (PR-A)

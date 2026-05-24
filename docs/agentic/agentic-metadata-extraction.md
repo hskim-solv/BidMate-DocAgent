@@ -67,7 +67,7 @@ document["metadata"]["extracted"] = extract_rfp_metadata(document).as_dict()
 
 최상위 `agency` / `project` 필드는 의도적으로 손대지 않는다 — 이들은
 answer/citation 계약(ADR 0003)과 metadata-first 검색에 투입되며,
-파이프라인 중간에 LLM 값으로 재바인딩하면 public synthetic surface 의
+파이프라인 중간에 LLM 값으로 재바인딩하면 public fixture smoke surface 의
 결정론이 깨진다. LLM 값은 sidecar 에 두어 reviewer 가 필드별로 A/B
 할 수 있게 한다.
 
@@ -99,7 +99,7 @@ BIDMATE_INDEX_DIR=data/index_llm_metadata \
 #    acceptance criteria for the per-field accuracy table).
 ```
 
-필드별 정확도 표(`data/raw` + 비공개 100-doc 코퍼스에서 regex vs.
+필드별 정확도 표(`eval/fixtures/smoke_rfp/raw` + 비공개 100-doc 코퍼스에서 regex vs.
 `anthropic_tool_use`)는 ADR 0005 에 따라 operator 측에서 캡처되며 여기에
 커밋하지 않고 `reports/eval_summary.json` 델타로 표면화된다 — 비공개
 코퍼스 행이 권위 있는 신호이며 절대 public 저장소에 들어가지 않는다.
