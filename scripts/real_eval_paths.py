@@ -20,6 +20,11 @@ from typing import Any, Mapping, Sequence
 
 import yaml
 
+try:
+    from scripts._governance import private_real_eval_gitignore_violations
+except ImportError:  # pragma: no cover - direct script execution
+    from _governance import private_real_eval_gitignore_violations  # type: ignore
+
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 PRIVATE_REAL_MIN_DOCS = 50
@@ -458,6 +463,11 @@ def missing_required(entries: Sequence[PathEntry]) -> list[PathEntry]:
     return [e for e in entries if e.required_before_run and not e.exists]
 
 
+def privacy_guard_violations(repo_root: Path | str = ROOT_DIR) -> dict[str, list[str]]:
+    """Return private real-eval gitignore drift from the governance SSoT."""
+    return private_real_eval_gitignore_violations(str(repo_root))
+
+
 def _table(entries: Sequence[PathEntry]) -> str:
     headers = [
         "name",
@@ -561,6 +571,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             "REAL_EVAL_* env vars at the private eval root.",
             file=sys.stderr,
         )
+        return 1
+    privacy_violations = privacy_guard_violations(ROOT_DIR)
+    if privacy_violations:
+        print("\nPrivate real-eval privacy guard violations:", file=sys.stderr)
+        for rel in privacy_violations.get("missing_ignored", []):
+            print(f"- must be ignored: {rel}", file=sys.stderr)
+        for rel in privacy_violations.get("unexpectedly_ignored", []):
+            print(f"- redacted summary should be committable after checks: {rel}", file=sys.stderr)
         return 1
     invalid = [e for e in entries if e.status == "invalid"]
     if invalid:

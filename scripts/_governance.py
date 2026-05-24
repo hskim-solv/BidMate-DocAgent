@@ -227,6 +227,43 @@ PHASE4_ARTIFACT_GLOB = "reports/retrieval/phase4*"
 EVAL_PRIVACY_ARTIFACT_GLOBS = ("reports/retrieval", "reports/real100")
 _EVAL_PRIVACY_HANGUL_RE = re.compile(r"[가-힣ᄀ-ᇿ㄰-㆏ꥠ-꥿]")
 
+# Private real-eval readiness scaffold: local inputs, raw outputs, and private
+# indexes must remain ignored. The redacted aggregate summary is the only
+# default private-real output path that may cross the commit boundary after
+# exporter + governance checks pass.
+PRIVATE_REAL_EVAL_REQUIRED_IGNORES: tuple[str, ...] = (
+    "eval/real_config.local.yaml",
+    "configs/eval/private_real_eval.local.yaml",
+    "data/files/",
+    "data/files_kordoc/",
+    "data/private/",
+    "data/data_list.csv",
+    "data/index/real100/",
+    "data/index/real100_kordoc/",
+    "data/index-private-hardcase/",
+    "experiments/private_runs/",
+    "reports/real100/eval_summary.json",
+    "reports/real100/raw/",
+    "reports/private_real_eval_summary.raw.json",
+)
+PRIVATE_REAL_EVAL_REDACTED_SUMMARIES: tuple[str, ...] = (
+    "reports/private_real_eval_summary.redacted.json",
+)
+PRIVATE_REDACTED_FORBIDDEN_KEYS: frozenset[str] = frozenset(
+    {
+        "question",
+        "answer",
+        "support_text",
+        "document_text",
+        "raw_text",
+        "file_path",
+        "absolute_path",
+    }
+)
+_ABSOLUTE_LOCAL_PATH_RE = re.compile(
+    r"(^|[\s'\"])/(Users|home|private|var|tmp|Volumes)/[^\s'\"]+"
+)
+
 # Issue #818: detection-only relaxation. The kebab-lowercase slug remains the
 # *convention* (see ``docs/adr/README.md`` File layout), but the live bug
 # discovery on ``0044-realN-eval-case-expansion.md`` showed that a strict
@@ -1471,31 +1508,164 @@ def scan_eval_artifacts_for_private_text(
     return violations
 
 
+def _git_check_ignored(repo_root: str, rel_path: str) -> bool:
+    import subprocess
+
+    try:
+        result = subprocess.run(
+            ["git", "-C", repo_root, "check-ignore", "-q", "--", rel_path],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+    except OSError:
+        return False
+    return result.returncode == 0
+
+
+def private_real_eval_gitignore_violations(repo_root: str = ".") -> dict[str, list[str]]:
+    """Return private real-eval path ignore drift.
+
+    ``missing_ignored`` entries are local/private paths that must be ignored.
+    ``unexpectedly_ignored`` entries are redacted aggregate paths that must be
+    committable after privacy checks.
+    """
+    missing_ignored = [
+        rel
+        for rel in PRIVATE_REAL_EVAL_REQUIRED_IGNORES
+        if not _git_check_ignored(repo_root, rel)
+    ]
+    unexpectedly_ignored = [
+        rel
+        for rel in PRIVATE_REAL_EVAL_REDACTED_SUMMARIES
+        if _git_check_ignored(repo_root, rel)
+    ]
+    out: dict[str, list[str]] = {}
+    if missing_ignored:
+        out["missing_ignored"] = missing_ignored
+    if unexpectedly_ignored:
+        out["unexpectedly_ignored"] = unexpectedly_ignored
+    return out
+
+
+def find_redacted_summary_forbidden_fields(obj: object) -> dict[str, int]:
+    """Scan a redacted summary candidate for forbidden raw/private keys.
+
+    This is intentionally exact-key based for the requested contract:
+    ``question`` is forbidden, while aggregate names such as
+    ``question_count`` remain valid.
+    """
+    found: dict[str, int] = {}
+
+    def _bump(sig: str, n: int = 1) -> None:
+        found[sig] = found.get(sig, 0) + n
+
+    def _walk(node: object) -> None:
+        if isinstance(node, dict):
+            for key, value in node.items():
+                key_text = str(key).lower()
+                if key_text in PRIVATE_REDACTED_FORBIDDEN_KEYS:
+                    _bump(key_text)
+                _walk(value)
+        elif isinstance(node, list):
+            for item in node:
+                _walk(item)
+        elif isinstance(node, str):
+            if _ABSOLUTE_LOCAL_PATH_RE.search(node):
+                _bump("absolute_path_value")
+
+    _walk(obj)
+    return found
+
+
+def redacted_summary_artifact_paths(repo_root: str = ".") -> list[str]:
+    """Return tracked or present redacted private summary JSON paths."""
+    import subprocess
+
+    paths: set[str] = set()
+    try:
+        out = subprocess.check_output(
+            ["git", "-C", repo_root, "ls-files", *PRIVATE_REAL_EVAL_REDACTED_SUMMARIES],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        )
+        paths.update(p for p in out.splitlines() if p.endswith(".json"))
+    except (subprocess.CalledProcessError, OSError):
+        pass
+    for rel in PRIVATE_REAL_EVAL_REDACTED_SUMMARIES:
+        if (Path(repo_root) / rel).is_file():
+            paths.add(rel)
+    return sorted(paths)
+
+
+def scan_redacted_summaries_for_forbidden_fields(
+    repo_root: str = ".",
+) -> list[tuple[str, dict[str, int]]]:
+    import json
+
+    violations: list[tuple[str, dict[str, int]]] = []
+    for rel in redacted_summary_artifact_paths(repo_root):
+        try:
+            data = json.loads((Path(repo_root) / rel).read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        found = find_redacted_summary_forbidden_fields(data)
+        if found:
+            violations.append((rel, found))
+    return violations
+
+
 def _cmd_check_eval_privacy(repo_root: str) -> int:
     violations = scan_eval_artifacts_for_private_text(repo_root)
-    if not violations:
+    ignore_violations = private_real_eval_gitignore_violations(repo_root)
+    redacted_violations = scan_redacted_summaries_for_forbidden_fields(repo_root)
+    if not violations and not ignore_violations and not redacted_violations:
         return 0
     # Print signature names + counts only — never the offending text itself.
-    sys.stderr.write(
-        "\n❌ Eval artifact privacy gate: committed eval-data JSON carries "
-        "private text.\n\n"
-        "   Committable eval artifacts must hold qid + categories + metric "
-        "values only (ADR 0005 private-local + ADR 0065). These git-tracked "
-        "files break that boundary:\n\n"
-    )
-    for rel, found in violations:
-        detail = ", ".join(f"{k}×{n}" for k, n in sorted(found.items()))
-        sys.stderr.write(f"     - {rel}: {detail}\n")
-    sys.stderr.write(
-        "\n   `hangul` = Korean text (agency/사업명) in a qid or value; "
-        "`colon_keys` = un-stripped retry-reason payload "
-        "(`missing_comparison_*:<agency-or-docid>`).\n"
-        "   Fix: regenerate with the sanitized generators — ablation runners "
-        "write `anon_qid(qid)`, run_real_eval_delta strips retry-reason "
-        "payloads, eda_real100 anonymizes every agency rank — or migrate the "
-        "tracked file in place. Raw labels / query text stay local "
-        "(gitignored).\n\n"
-    )
+    if violations:
+        sys.stderr.write(
+            "\n❌ Eval artifact privacy gate: committed eval-data JSON carries "
+            "private text.\n\n"
+            "   Committable eval artifacts must hold qid + categories + metric "
+            "values only (ADR 0005 private-local + ADR 0065). These git-tracked "
+            "files break that boundary:\n\n"
+        )
+        for rel, found in violations:
+            detail = ", ".join(f"{k}×{n}" for k, n in sorted(found.items()))
+            sys.stderr.write(f"     - {rel}: {detail}\n")
+        sys.stderr.write(
+            "\n   `hangul` = Korean text (agency/사업명) in a qid or value; "
+            "`colon_keys` = un-stripped retry-reason payload "
+            "(`missing_comparison_*:<agency-or-docid>`).\n"
+            "   Fix: regenerate with the sanitized generators — ablation runners "
+            "write `anon_qid(qid)`, run_real_eval_delta strips retry-reason "
+            "payloads, eda_real100 anonymizes every agency rank — or migrate the "
+            "tracked file in place. Raw labels / query text stay local "
+            "(gitignored).\n\n"
+        )
+    if ignore_violations:
+        sys.stderr.write(
+            "\n❌ Private real-eval gitignore gate: local private paths are not "
+            "covered correctly.\n\n"
+        )
+        for rel in ignore_violations.get("missing_ignored", []):
+            sys.stderr.write(f"     - must be ignored: {rel}\n")
+        for rel in ignore_violations.get("unexpectedly_ignored", []):
+            sys.stderr.write(f"     - redacted summary should be committable after checks: {rel}\n")
+        sys.stderr.write("\n")
+    if redacted_violations:
+        sys.stderr.write(
+            "\n❌ Redacted private real-eval summary gate: forbidden raw/private "
+            "fields are present.\n\n"
+        )
+        for rel, found in redacted_violations:
+            detail = ", ".join(f"{k}×{n}" for k, n in sorted(found.items()))
+            sys.stderr.write(f"     - {rel}: {detail}\n")
+        sys.stderr.write(
+            "\n   Redacted summaries may include aggregate counts/metrics only. "
+            "Raw question, answer, support_text, document_text, raw_text, "
+            "file_path, and absolute_path fields stay local.\n\n"
+        )
     return 1
 
 
@@ -1637,8 +1807,10 @@ def main() -> int:
         help="Structurally scan git-tracked reports/retrieval/ + "
              "reports/real100/ JSON for private text (Hangul anywhere, or "
              "colon-bearing dict keys) that breaks the ADR 0005 / ADR 0065 "
-             "committable boundary; exit 1 with offending files + signature "
-             "counts (never the text) if any are found. Uses no name list.",
+             "committable boundary; also verify private real-eval local paths "
+             "are gitignored and redacted private summaries omit forbidden raw "
+             "keys; exit 1 with offending files + signature counts (never the "
+             "text) if any are found. Uses no name list.",
     )
     g.add_argument(
         "--proposed-adr-age", action="store_true",

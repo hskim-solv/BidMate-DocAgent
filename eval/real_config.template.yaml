@@ -1,0 +1,54 @@
+eval_type: private_real_eval
+benchmark_type: private_real_eval
+baseline_system: naive_rag
+not_ci_smoke: true
+is_private_data: true
+
+documents_dir: data/files_kordoc
+data_list_path: data/data_list.csv
+questions_path: data/private/questions.jsonl
+gold_evidence_path: data/private/gold_evidence.jsonl
+index_dir: data/index/real100_kordoc
+output_dir: experiments/private_runs
+redacted_summary_path: reports/private_real_eval_summary.redacted.json
+
+top_k: 10
+
+metrics:
+  retrieval:
+    - recall_at_5
+    - recall_at_10
+    - mrr_at_5
+    - ndcg_at_5
+  citation:
+    - citation_accuracy
+    - citation_page_coverage
+  answer_control:
+    - rule_based_groundedness
+    - term_coverage_accuracy
+    - hallucination_flag
+    - unanswerable_detection_flag
+
+answer_metric_mode: rule_based_proxy_not_semantic_judge
+
+latency_scope:
+  query_latency: warm_in_process
+  includes_index_load: false
+  includes_ingestion: false
+  includes_index_build: false
+  report_stage_latency: true
+
+privacy_policy:
+  local_config_path: eval/real_config.local.yaml
+  no_private_raw_content_in_git: true
+  raw_outputs_must_be_gitignored: true
+  redacted_summary_only: true
+  forbidden_redacted_keys:
+    - question
+    - answer
+    - support_text
+    - document_text
+    - raw_text
+    - file_path
+    - absolute_path
+
