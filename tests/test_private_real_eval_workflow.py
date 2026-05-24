@@ -4,6 +4,7 @@ import json
 import subprocess
 from pathlib import Path
 
+import pytest
 import yaml
 
 from eval.naive_rag import private_real_eval as pre
@@ -117,6 +118,60 @@ def test_private_runner_fails_clearly_when_private_files_missing(tmp_path: Path)
     assert "documents_dir does not exist" in result.stderr
     assert "data_list_path does not exist" in result.stderr
     assert "gold_evidence_path does not exist" in result.stderr
+
+
+def test_private_runner_requires_private_inputs_to_be_gitignored() -> None:
+    config = {
+        "benchmark_type": "private_real_eval",
+        "not_ci_smoke": True,
+        "is_private_data": True,
+        "documents_dir": "docs",
+        "data_list_path": "docs/not_ignored_data_list.csv",
+        "gold_evidence_path": "docs/not_ignored_gold_evidence.jsonl",
+        "questions_path": "docs/not_ignored_gold_evidence.jsonl",
+        "index_dir": "data/private/index",
+        "output_dir": "experiments/private_runs/not_ignored_guard",
+        "top_k": 10,
+        "metrics": {
+            "retrieval": ["recall_at_5"],
+            "citation": ["citation_accuracy"],
+            "answer_control": ["unanswerable_detection_flag"],
+        },
+        "latency_scope": "private_runner_wall_clock",
+        "answer_metric_mode": "deterministic_contract_v1",
+        "redaction_policy": {"summary_only": True},
+        "minimums": {
+            "min_documents": 1,
+            "min_questions": 1,
+            "min_answerable_questions": 1,
+            "min_unanswerable_questions": 0,
+        },
+    }
+
+    with pytest.raises(pre.PrivateRealEvalError) as exc_info:
+        pre.validate_private_inputs(config)
+
+    message = str(exc_info.value)
+    assert "documents_dir must be ignored by git or outside the repo" in message
+    assert "data_list_path must be ignored by git or outside the repo" in message
+    assert "gold_evidence_path must be ignored by git or outside the repo" in message
+    assert "questions_path must be ignored by git or outside the repo" in message
+
+
+def test_answerable_strings_are_parsed_strictly() -> None:
+    questions = pre._questions_from_rows(
+        [
+            {"question_id": "q1", "question": "Answerable?", "answerable": "true"},
+            {"question_id": "q2", "question": "Unanswerable?", "answerable": "false"},
+        ]
+    )
+
+    assert [question["answerable"] for question in questions] == [True, False]
+
+    with pytest.raises(pre.PrivateRealEvalError, match="answerable must be a boolean"):
+        pre._questions_from_rows(
+            [{"question_id": "q3", "question": "Ambiguous?", "answerable": "no"}]
+        )
 
 
 def test_redacted_summary_excludes_private_raw_fields() -> None:

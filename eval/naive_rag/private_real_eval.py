@@ -263,6 +263,22 @@ def _gold_items(row: Mapping[str, Any]) -> list[dict[str, Any]]:
     return cleaned
 
 
+def _parse_answerable(row: Mapping[str, Any]) -> bool:
+    value = row.get("answerable", True)
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized == "true":
+            return True
+        if normalized == "false":
+            return False
+    raise PrivateRealEvalError(
+        "answerable must be a boolean or explicit 'true'/'false' string "
+        f"for question_id={row.get('question_id')}"
+    )
+
+
 def _questions_from_rows(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
     by_id: dict[str, dict[str, Any]] = {}
     for row in rows:
@@ -277,7 +293,7 @@ def _questions_from_rows(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, An
         by_id[qid] = {
             "question_id": qid,
             "question": question,
-            "answerable": bool(row.get("answerable", True)),
+            "answerable": _parse_answerable(row),
             "query_type": row.get("query_type"),
             "expected_answer": row.get("expected_answer"),
             "expected_terms": row.get("expected_terms") or [],
@@ -331,6 +347,15 @@ def validate_private_inputs(
         errors.append(f"gold_evidence_path does not exist: {gold_evidence_path}")
     if config.get("questions_path") and not questions_path.is_file():
         errors.append(f"questions_path does not exist: {questions_path}")
+    private_input_paths = {
+        "documents_dir": documents_dir,
+        "data_list_path": data_list_path,
+        "gold_evidence_path": gold_evidence_path,
+        "questions_path": questions_path,
+    }
+    for name, private_path in private_input_paths.items():
+        if not git_ignores_path(private_path, root):
+            errors.append(f"{name} must be ignored by git or outside the repo: {private_path}")
     if not git_ignores_path(output_dir, root):
         errors.append(f"output_dir must be ignored by git or outside the repo: {output_dir}")
     if not git_ignores_path(index_dir, root):
