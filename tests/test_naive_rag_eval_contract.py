@@ -102,12 +102,16 @@ def test_runner_writes_contract_artifacts(tmp_path: Path) -> None:
     metrics = json.loads((output_dir / "metrics.json").read_text(encoding="utf-8"))
     assert set(metrics["retrieval_metrics"]) >= {"recall_at_5", "recall_at_10", "mrr_at_5", "ndcg_at_5"}
     assert set(metrics["answer_metrics"]) >= {
-        "faithfulness",
-        "answer_relevancy",
-        "citation_accuracy",
-        "hallucination_flag",
+        "rule_based_groundedness",
+        "term_coverage_accuracy",
+        "citation_chunk_accuracy",
+        "generator_hallucination_flag",
+        "failed_abstention_flag",
+        "unsupported_answer_flag",
         "unanswerable_detection_flag",
     }
+    assert metrics["evaluation_type"] == "public_fixture_smoke_regression"
+    assert metrics["valid_for_performance_claims"] is False
     assert metrics["dataset"]["answerable_count"] >= 10
     assert metrics["dataset"]["unanswerable_count"] >= 3
     assert metrics["pipeline"]["name"] == "naive_baseline"

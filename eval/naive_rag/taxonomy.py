@@ -88,7 +88,7 @@ def classify_failure(
             labels.append("retrieval_failure.multi_chunk_evidence_missing")
 
     if answerable:
-        citation_accuracy = answer_metrics.get("citation_accuracy")
+        citation_accuracy = answer_metrics.get("citation_chunk_accuracy")
         if not cited_chunk_ids:
             labels.append("citation_failure.insufficient_citation")
         elif citation_accuracy == 0.0:
@@ -97,13 +97,13 @@ def classify_failure(
             else:
                 labels.append("citation_failure.correct_answer_wrong_citation")
 
-        relevancy = answer_metrics.get("answer_relevancy")
+        relevancy = answer_metrics.get("term_coverage_accuracy")
         if relevancy == 0.0:
             labels.append("answer_failure.partial_answer")
-        if answer_metrics.get("hallucination_flag") == 1:
+        if answer_metrics.get("generator_hallucination_flag") == 1:
             labels.append("answer_failure.hallucinated_requirement")
     else:
-        if answer_metrics.get("unanswerable_detection_flag") == 0:
+        if answer_metrics.get("failed_abstention_flag") == 1:
             labels.append("answer_failure.failed_to_abstain")
 
     primary = labels[0] if labels else None

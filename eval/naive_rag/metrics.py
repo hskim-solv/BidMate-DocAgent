@@ -7,10 +7,12 @@ from typing import Any
 
 RETRIEVAL_METRIC_KEYS = ("recall_at_5", "recall_at_10", "mrr_at_5", "ndcg_at_5")
 ANSWER_METRIC_KEYS = (
-    "faithfulness",
-    "answer_relevancy",
-    "citation_accuracy",
-    "hallucination_flag",
+    "rule_based_groundedness",
+    "term_coverage_accuracy",
+    "citation_chunk_accuracy",
+    "generator_hallucination_flag",
+    "failed_abstention_flag",
+    "unsupported_answer_flag",
     "unanswerable_detection_flag",
 )
 BENCHMARK_CITATION_PAGE_METRIC_KEYS = (

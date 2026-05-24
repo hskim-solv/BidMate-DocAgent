@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
-"""Run and package the current naive RAG baseline evaluation.
+"""Run and package the current naive RAG public fixture smoke evaluation.
 
 This is an eval wrapper only. It filters an existing eval config down to the
 ADR 0001 naive_baseline row, delegates execution to eval/run_eval.py, then
 exports the requested experiment artifacts without changing retrieval,
 chunking, prompting, verifier, or answer behavior.
+
+The output is a deterministic CI smoke/regression measurement. It is not a
+real RAG performance benchmark.
 """
 
 from __future__ import annotations
@@ -34,10 +37,16 @@ RETRIEVAL_LABELS = {
     "nDCG@5": "chunk_ndcg_at_5",
 }
 ANSWER_LABELS = {
-    "Faithfulness": "groundedness",
-    "Answer relevancy": "accuracy",
-    "Citation accuracy": "citation_precision",
+    "rule_based_groundedness": "groundedness",
+    "term_coverage_accuracy": "accuracy",
+    "citation_chunk_accuracy": "citation_precision",
 }
+SMOKE_WARNING = (
+    "CI SMOKE/REGRESSION ONLY: this public fixture run uses 5 questions over "
+    "a tiny public index and derived gold labels. Do not use Recall@k, MRR, "
+    "nDCG, rule-based answer metrics, generator_hallucination_rate, or warm "
+    "P95 latency from this report for RAG performance claims."
+)
 REQUIRED_FAILURE_BUCKETS = {
     "retrieval_failures": (
         "gold evidence not in top-k",
@@ -228,6 +237,78 @@ def _failure_rate(summary: dict[str, Any], key: str) -> float | None:
     return count / total
 
 
+def _case_results(summary: dict[str, Any]) -> list[dict[str, Any]]:
+    return [case for case in summary.get("case_results") or [] if isinstance(case, dict)]
+
+
+def _is_failed_abstention(case: dict[str, Any]) -> bool:
+    return case.get("answerable") is False and case.get("abstention") != 1.0
+
+
+def _failed_abstention_count(summary: dict[str, Any]) -> int:
+    return sum(1 for case in _case_results(summary) if _is_failed_abstention(case))
+
+
+def _failed_abstention_rate(summary: dict[str, Any]) -> float | None:
+    unanswerable = [case for case in _case_results(summary) if case.get("answerable") is False]
+    if not unanswerable:
+        return None
+    return sum(1 for case in unanswerable if _is_failed_abstention(case)) / len(unanswerable)
+
+
+def _unsafe_answer_rate(summary: dict[str, Any]) -> float | None:
+    cases = _case_results(summary)
+    if not cases:
+        return None
+    unsafe = 0
+    for case in cases:
+        if _is_failed_abstention(case):
+            unsafe += 1
+        elif case.get("failure_category") == "answer_synthesis_issue":
+            unsafe += 1
+    return unsafe / len(cases)
+
+
+def _citation_has_page(citation: dict[str, Any]) -> bool:
+    page_span = citation.get("page_span")
+    if isinstance(page_span, list) and len(page_span) == 2:
+        return True
+    for region in citation.get("regions") or []:
+        if isinstance(region, dict) and isinstance(region.get("page_number"), int):
+            return True
+    return False
+
+
+def _citation_page_counts(summary: dict[str, Any]) -> dict[str, Any]:
+    citations: list[dict[str, Any]] = []
+    for case in _case_results(summary):
+        for citation in case.get("citation") or []:
+            if isinstance(citation, dict):
+                citations.append(citation)
+    total = len(citations)
+    with_page = sum(1 for citation in citations if _citation_has_page(citation))
+    missing = total - with_page
+    return {
+        "citation_count": total,
+        "citation_with_page_count": with_page,
+        "missing_page_number_count": missing,
+        "citation_with_page_rate": (with_page / total) if total else None,
+        "missing_page_number_rate": (missing / total) if total else None,
+    }
+
+
+def _index_page_metadata_coverage(summary: dict[str, Any]) -> float | None:
+    coverage = summary.get("index_citation_metadata_coverage") or {}
+    total = coverage.get("chunks_total")
+    if not isinstance(total, int) or total <= 0:
+        return None
+    with_page = max(
+        int(coverage.get("chunks_with_page_span") or 0),
+        int(coverage.get("chunks_with_region_page") or 0),
+    )
+    return with_page / total
+
+
 def _total_latency_ms(summary: dict[str, Any]) -> float | None:
     values = [
         float(case["latency_ms"])
@@ -254,10 +335,26 @@ def build_metrics_json(
 ) -> dict[str, Any]:
     failure_counts = summary.get("failure_category_counts") or {}
     answer_synthesis_count = int(failure_counts.get("answer_synthesis_issue") or 0)
+    citation_page_counts = _citation_page_counts(summary)
+    failed_abstention_count = _failed_abstention_count(summary)
     metrics = {
         "schema_version": 1,
         "run_id": run_id,
         "system": "Naive Dense RAG",
+        "evaluation_type": "public_fixture_smoke_regression",
+        "valid_for_performance_claims": False,
+        "warning": SMOKE_WARNING,
+        "invalid_performance_claim_metrics": [
+            "Recall@5",
+            "Recall@10",
+            "MRR@5",
+            "nDCG@5",
+            "term_coverage_accuracy",
+            "rule_based_groundedness",
+            "generator_hallucination_rate",
+            "warm_query_latency_ms",
+            "P95 latency ms",
+        ],
         "evaluation_command": " ".join(command),
         "config": summary.get("config"),
         "index_dir": summary.get("index_dir"),
@@ -266,16 +363,32 @@ def build_metrics_json(
         "Retrieval metrics": {
             label: _metric(summary, key) for label, key in RETRIEVAL_LABELS.items()
         },
+        "Citation metrics": {
+            "citation_chunk_accuracy": _metric(summary, "citation_precision"),
+            "citation_page_precision": _metric(summary, "citation_page_precision"),
+            "citation_page_coverage": _metric(summary, "citation_page_coverage"),
+            "citation_with_page_rate": citation_page_counts["citation_with_page_rate"],
+            "missing_page_number_count": citation_page_counts["missing_page_number_count"],
+            "missing_page_number_rate": citation_page_counts["missing_page_number_rate"],
+            "page_metadata_coverage": _index_page_metadata_coverage(summary),
+        },
         "Answer/evidence metrics": {
-            "Faithfulness": _metric(summary, "groundedness"),
-            "Answer relevancy": _metric(summary, "accuracy"),
-            "Citation accuracy": _metric(summary, "citation_precision"),
-            "Hallucination rate": _failure_rate(summary, "answer_synthesis_issue"),
-            "Hallucination count": answer_synthesis_count,
-            "Unanswerable detection rate": _metric(summary, "abstention"),
+            "rule_based_groundedness": _metric(summary, "groundedness"),
+            "term_coverage_accuracy": _metric(summary, "accuracy"),
+            "generator_hallucination_rate": _failure_rate(summary, "answer_synthesis_issue"),
+            "generator_hallucination_count": answer_synthesis_count,
+            "failed_abstention_rate": _failed_abstention_rate(summary),
+            "failed_abstention_count": failed_abstention_count,
+            "unsafe_answer_rate": _unsafe_answer_rate(summary),
+            "unanswerable_detection_rate": _metric(summary, "abstention"),
             "Unanswerable outcomes": summary.get("abstention_outcomes"),
         },
         "Operational metrics": {
+            "latency_scope": "warm in-process public fixture query latency",
+            "benchmark_excludes_setup_costs": True,
+            "excludes_ingestion_parsing_chunking_embedding_index_build": True,
+            "excludes_index_loading": True,
+            "llm_generation_enabled": False,
             "total latency ms": _total_latency_ms(summary),
             "retrieval latency mean ms": _stage_value(summary, "retrieve_ms", "mean"),
             "retrieval latency p50 ms": _stage_value(summary, "retrieve_ms", "p50"),
@@ -303,12 +416,19 @@ def build_metrics_json(
 def validate_metrics(metrics: dict[str, Any]) -> None:
     required = {
         "Retrieval metrics": ("Recall@5", "Recall@10", "MRR@5", "nDCG@5"),
+        "Citation metrics": (
+            "citation_chunk_accuracy",
+            "missing_page_number_count",
+            "missing_page_number_rate",
+            "page_metadata_coverage",
+        ),
         "Answer/evidence metrics": (
-            "Faithfulness",
-            "Answer relevancy",
-            "Citation accuracy",
-            "Hallucination rate",
-            "Unanswerable detection rate",
+            "rule_based_groundedness",
+            "term_coverage_accuracy",
+            "generator_hallucination_rate",
+            "failed_abstention_rate",
+            "unsafe_answer_rate",
+            "unanswerable_detection_rate",
         ),
         "Operational metrics": (
             "total latency ms",
@@ -348,13 +468,14 @@ def answers_rows(summary: dict[str, Any]) -> list[dict[str, Any]]:
                 "answer": case.get("answer"),
                 "citations": case.get("citation") or [],
                 "metrics": {
-                    "faithfulness": case.get("groundedness"),
-                    "answer_relevancy": case.get("accuracy"),
-                    "citation_accuracy": case.get("citation_precision"),
+                    "rule_based_groundedness": case.get("groundedness"),
+                    "term_coverage_accuracy": case.get("accuracy"),
+                    "citation_chunk_accuracy": case.get("citation_precision"),
                     "claim_citation_alignment": case.get("claim_citation_alignment"),
                     "abstention": case.get("abstention"),
                 },
-                "hallucination_flag": hallucination_flag,
+                "generator_hallucination_flag": hallucination_flag,
+                "failed_abstention_flag": _is_failed_abstention(case),
                 "unanswerable_detection_flag": unanswerable_flag,
                 "failure_category": case.get("failure_category"),
             }
@@ -578,7 +699,7 @@ def recommend_issues(analysis: dict[str, Any], metrics: dict[str, Any]) -> list[
                 "title": "Audit citation support gaps in naive baseline answers",
                 "problem": "Observed citations are incomplete, vague, or not aligned with the generated claims.",
                 "why_it_matters": "RFP review needs claim-to-evidence traceability even when the textual answer is mostly correct.",
-                "expected_metric_impact": "Citation accuracy and claim-citation alignment should become explainable before verifier work starts.",
+                "expected_metric_impact": "citation_chunk_accuracy and claim-citation alignment should become explainable before verifier work starts.",
                 "files_likely_to_change": "eval/scorers/citation.py, eval/scorers/alignment.py, docs/evaluation/naive_rag_baseline_report.md",
                 "acceptance_criteria": "Each citation failure case has a deterministic reason code and a representative example.",
                 "parallel_ai_assisted": "Yes",
@@ -602,7 +723,7 @@ def recommend_issues(analysis: dict[str, Any], metrics: dict[str, Any]) -> list[
                 "title": "Catalog naive answer failure modes without prompt tuning",
                 "problem": "The baseline produced an answer-policy failure on observed cases, including failed abstention when evidence was insufficient.",
                 "why_it_matters": "Answer failures must be separated from retrieval misses before prompt or verifier experiments.",
-                "expected_metric_impact": "Faithfulness, answer relevancy, hallucination, and abstention error rates get cleaner attribution.",
+                "expected_metric_impact": "rule_based_groundedness, term_coverage_accuracy, generator hallucination, and failed_abstention_rate get cleaner attribution.",
                 "files_likely_to_change": "docs/evaluation/naive_rag_baseline_report.md, eval/scorers/case.py",
                 "acceptance_criteria": "Failure cases distinguish partial answer, weak evidence, wrong synthesis, and failed abstention.",
                 "parallel_ai_assisted": "Yes",
@@ -627,7 +748,7 @@ def recommend_issues(analysis: dict[str, Any], metrics: dict[str, Any]) -> list[
                 "title": "Expand public fixture baseline slices with observed weak areas",
                 "problem": "The current public fixture is small, so observed gaps need a few targeted cases to avoid overfitting interpretation.",
                 "why_it_matters": "A measurable baseline needs enough cases to separate retrieval, citation, answer, and parsing failures.",
-                "expected_metric_impact": "Recall@k, citation accuracy, faithfulness, and abstention rates become less brittle.",
+                "expected_metric_impact": "Recall@k, citation_chunk_accuracy, rule_based_groundedness, and failed_abstention_rate become less brittle.",
                 "files_likely_to_change": "eval/config.yaml, eval/fixtures/smoke_rfp/raw/*, docs/evaluation/naive_rag_baseline_report.md",
                 "acceptance_criteria": "New cases are public-fixture safe and each maps to one observed failure category.",
                 "parallel_ai_assisted": "Yes",
@@ -656,11 +777,14 @@ def render_summary_md(
     analysis: dict[str, Any],
 ) -> str:
     retrieval = metrics["Retrieval metrics"]
+    citation = metrics["Citation metrics"]
     answer = metrics["Answer/evidence metrics"]
     ops = metrics["Operational metrics"]
     top = _top_nonzero(analysis["buckets"])
     lines = [
-        f"# Naive RAG Baseline Run: {run_id}",
+        f"# Naive RAG Smoke/Regression Run: {run_id}",
+        "",
+        f"> **Warning:** {SMOKE_WARNING}",
         "",
         "## Command",
         "",
@@ -670,17 +794,19 @@ def render_summary_md(
         "",
         "## Experiment Summary",
         "",
-        "| System | Recall@5 | Recall@10 | MRR@5 | nDCG@5 | Citation Acc. | Faithfulness | Hallucination | P95 Latency |",
-        "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "| System | Recall@5 | Recall@10 | MRR@5 | nDCG@5 | citation_chunk_accuracy | rule_based_groundedness | term_coverage_accuracy | failed_abstention_rate | citation_with_page_rate | Warm P95 |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
         (
             "| Naive Dense RAG | "
             f"{_fmt_number(retrieval['Recall@5'])} | "
             f"{_fmt_number(retrieval['Recall@10'])} | "
             f"{_fmt_number(retrieval['MRR@5'])} | "
             f"{_fmt_number(retrieval['nDCG@5'])} | "
-            f"{_fmt_number(answer['Citation accuracy'])} | "
-            f"{_fmt_number(answer['Faithfulness'])} | "
-            f"{_fmt_number(answer['Hallucination rate'])} | "
+            f"{_fmt_number(citation['citation_chunk_accuracy'])} | "
+            f"{_fmt_number(answer['rule_based_groundedness'])} | "
+            f"{_fmt_number(answer['term_coverage_accuracy'])} | "
+            f"{_fmt_number(answer['failed_abstention_rate'])} | "
+            f"{_fmt_number(citation['citation_with_page_rate'])} | "
             f"{_fmt_ms(ops['P95 latency ms'])} |"
         ),
         "",
@@ -705,13 +831,16 @@ def render_report(
 ) -> str:
     counts = metrics["dataset"]
     retrieval = metrics["Retrieval metrics"]
+    citation = metrics["Citation metrics"]
     answer = metrics["Answer/evidence metrics"]
     ops = metrics["Operational metrics"]
     top = _top_nonzero(analysis["buckets"])
     lines = [
-        "# Naive RAG Baseline Report",
+        "# Naive RAG Smoke/Regression Report",
         "",
-        "이 문서는 공개 fixture smoke 계약으로 현재 naive baseline을 측정한 첫 재현 가능 baseline report입니다. 실제 성능 claim은 private/internal eval aggregate에서만 판단합니다.",
+        "> **Warning:** CI smoke/regression 전용입니다. 이 공개 fixture 결과의 Recall@5, MRR@5, nDCG@5, `rule_based_groundedness`, `term_coverage_accuracy`, `generator_hallucination_rate`, P95 latency는 RAG 성능(performance) claim에 사용할 수 없습니다.",
+        "",
+        "이 문서는 공개 fixture smoke/regression 계약으로 현재 `naive_baseline` 경로가 깨지지 않았는지 확인합니다. 실제 benchmark와 성능 claim은 별도 `naive_rag_benchmark_v1` 설정과 명시 gold evidence에서만 판단합니다.",
         "",
         "## Evaluation Command",
         "",
@@ -726,22 +855,33 @@ def render_report(
         f"- answerable questions: {counts['answerable_questions']}",
         f"- unanswerable questions: {counts['unanswerable_questions']}",
         f"- gold evidence source: {counts['explicit_gold_evidence_cases']} explicit, {counts['derived_gold_evidence_cases']} derived from `expected_doc_ids` + `expected_terms`",
+        "- latency scope: warm in-process public fixture query latency; ingestion/parsing/chunking/embedding/index build/index loading/LLM generation 비용 제외",
         "",
-        "## Metric Summary",
+        "## Metric Summary (Smoke Only)",
         "",
-        "| System | Recall@5 | Recall@10 | MRR@5 | nDCG@5 | Citation Acc. | Faithfulness | Hallucination | P95 Latency |",
-        "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "| System | Recall@5 | Recall@10 | MRR@5 | nDCG@5 | citation_chunk_accuracy | rule_based_groundedness | term_coverage_accuracy | failed_abstention_rate | citation_with_page_rate | Warm P95 |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
         (
             "| Naive Dense RAG | "
             f"{_fmt_number(retrieval['Recall@5'])} | "
             f"{_fmt_number(retrieval['Recall@10'])} | "
             f"{_fmt_number(retrieval['MRR@5'])} | "
             f"{_fmt_number(retrieval['nDCG@5'])} | "
-            f"{_fmt_number(answer['Citation accuracy'])} | "
-            f"{_fmt_number(answer['Faithfulness'])} | "
-            f"{_fmt_number(answer['Hallucination rate'])} | "
+            f"{_fmt_number(citation['citation_chunk_accuracy'])} | "
+            f"{_fmt_number(answer['rule_based_groundedness'])} | "
+            f"{_fmt_number(answer['term_coverage_accuracy'])} | "
+            f"{_fmt_number(answer['failed_abstention_rate'])} | "
+            f"{_fmt_number(citation['citation_with_page_rate'])} | "
             f"{_fmt_ms(ops['P95 latency ms'])} |"
         ),
+        "",
+        "## Metric Semantics",
+        "",
+        "- Retrieval metrics use exact `chunk_id` equality, but this smoke fixture has too few chunks and derived gold labels, so they are regression signals only.",
+        "- `rule_based_groundedness` is a rule-based placeholder over retrieved/cited chunks, not semantic Faithfulness.",
+        "- `term_coverage_accuracy` is expected-term containment, not semantic Answer Relevancy.",
+        "- `generator_hallucination_rate` counts only generator hallucination failures; failed abstention is surfaced separately as `failed_abstention_rate`.",
+        "- Citation page fields report metadata coverage; document/chunk citation precision is not page/span citation accuracy.",
         "",
         "## Failure Categories",
         "",
@@ -783,10 +923,10 @@ def render_report(
     good = []
     if retrieval["Recall@5"] == 1.0:
         good.append("Dense top-k retrieval found all derived gold chunks in the public fixture smoke set.")
-    if answer["Unanswerable detection rate"] == 1.0:
+    if answer["unanswerable_detection_rate"] == 1.0:
         good.append("The unanswerable smoke case was detected as insufficient.")
-    if answer["Answer relevancy"] == 1.0 and answer["Faithfulness"] == 1.0:
-        good.append("Answerable fixture cases scored as relevant and faithful under the current rule-based scorer.")
+    if answer["term_coverage_accuracy"] == 1.0 and answer["rule_based_groundedness"] == 1.0:
+        good.append("Answerable fixture cases passed current term-coverage and rule-based groundedness checks.")
     if not good:
         good.append("The run is reproducible and emits separated retrieval, answer/evidence, citation, failure, and latency artifacts.")
     lines.append("## What The Naive Baseline Does Reasonably Well")
@@ -797,11 +937,11 @@ def render_report(
     weak = []
     if retrieval["Recall@5"] != 1.0:
         weak.append("Dense-only retrieval has observable recall/ranking gaps before any answer logic is considered.")
-    if answer["Citation accuracy"] != 1.0:
-        weak.append("Citation accuracy is below perfect, so answers are not always tied to sufficient evidence.")
-    if answer["Faithfulness"] != 1.0:
-        weak.append("Faithfulness is below perfect, showing unsupported or partial evidence use.")
-    if answer["Unanswerable detection rate"] != 1.0:
+    if citation["citation_chunk_accuracy"] != 1.0:
+        weak.append("Citation chunk accuracy is below perfect, so answers are not always tied to sufficient evidence chunks.")
+    if answer["rule_based_groundedness"] != 1.0:
+        weak.append("Rule-based groundedness is below perfect, showing unsupported or partial evidence use under the placeholder scorer.")
+    if answer["failed_abstention_rate"] not in (None, 0.0):
         weak.append("The baseline failed to abstain on at least one unanswerable case and answered with weak evidence.")
     if analysis["totals"].get("parsing_failures", 0):
         weak.append("Parser/index metadata limitations affect simple source references such as page numbers.")

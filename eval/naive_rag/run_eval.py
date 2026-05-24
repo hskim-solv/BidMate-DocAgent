@@ -186,35 +186,48 @@ def answer_metrics_for_case(
     status = _answer_status(prediction)
 
     if answerable:
-        relevancy = contains_terms(answer_text, [str(term) for term in question.get("expected_terms") or []])
+        term_coverage = contains_terms(answer_text, [str(term) for term in question.get("expected_terms") or []])
         if cited_chunk_ids:
-            citation_accuracy: float | None = (
+            citation_chunk_accuracy: float | None = (
                 sum(1 for chunk_id in cited_chunk_ids if chunk_id in set(gold_chunk_ids))
                 / len(cited_chunk_ids)
             )
-            faithfulness: float | None = (
+            rule_based_groundedness: float | None = (
                 1.0 if set(cited_chunk_ids).issubset(set(retrieved_chunk_ids)) else 0.0
             )
         else:
-            citation_accuracy = 0.0
-            faithfulness = 0.0
-        hallucination = 1 if status == "supported" and cited_chunk_ids and citation_accuracy == 0.0 else 0
+            citation_chunk_accuracy = 0.0
+            rule_based_groundedness = 0.0
+        generator_hallucination = (
+            1 if status == "supported" and cited_chunk_ids and citation_chunk_accuracy == 0.0 else 0
+        )
+        unsupported_answer = (
+            1
+            if status == "supported"
+            and (not cited_chunk_ids or citation_chunk_accuracy == 0.0 or rule_based_groundedness == 0.0)
+            else 0
+        )
+        failed_abstention = None
         unanswerable_detection = None
     else:
-        relevancy = None
-        citation_accuracy = None
-        faithfulness = None
+        term_coverage = None
+        citation_chunk_accuracy = None
+        rule_based_groundedness = None
         unanswerable_detected = status == "insufficient" or bool(
             (prediction.get("diagnostics") or {}).get("abstained")
         )
         unanswerable_detection = 1 if unanswerable_detected else 0
-        hallucination = 0 if unanswerable_detected else 1
+        failed_abstention = 0 if unanswerable_detected else 1
+        unsupported_answer = failed_abstention
+        generator_hallucination = None
 
     return {
-        "faithfulness": faithfulness,
-        "answer_relevancy": relevancy,
-        "citation_accuracy": citation_accuracy,
-        "hallucination_flag": hallucination,
+        "rule_based_groundedness": rule_based_groundedness,
+        "term_coverage_accuracy": term_coverage,
+        "citation_chunk_accuracy": citation_chunk_accuracy,
+        "generator_hallucination_flag": generator_hallucination,
+        "failed_abstention_flag": failed_abstention,
+        "unsupported_answer_flag": unsupported_answer,
         "unanswerable_detection_flag": unanswerable_detection,
     }
 
@@ -237,7 +250,9 @@ def _summary_markdown(metrics: dict[str, Any]) -> str:
     retrieval = metrics["retrieval_metrics"]
     answer = metrics["answer_metrics"]
     lines = [
-        "# Naive RAG Evaluation Summary",
+        "# Naive RAG Smoke/Regression Evaluation Summary",
+        "",
+        "> Warning: this public fixture contract is for CI smoke/regression only, not RAG performance benchmarking.",
         "",
         f"- Run ID: `{metrics['run_id']}`",
         f"- Questions: {metrics['dataset']['num_questions']} "
@@ -267,6 +282,9 @@ def _summary_markdown(metrics: dict[str, Any]) -> str:
             "This run uses dense top-k retrieval only. Reranking, hybrid BM25+dense search, "
             "metadata filtering, query rewriting, self-correction, agentic retrieval, VLM "
             "grounding, and citation verification are intentionally out of scope.",
+            "",
+            "Answer metrics are rule-based smoke signals: `rule_based_groundedness` is not "
+            "semantic Faithfulness, and `term_coverage_accuracy` is not semantic Answer Relevancy.",
             "",
         ]
     )
@@ -410,6 +428,8 @@ def run_from_config(
     metrics_payload: dict[str, Any] = {
         "schema_version": 1,
         "contract": "naive_rag_quality_v1",
+        "evaluation_type": "public_fixture_smoke_regression",
+        "valid_for_performance_claims": False,
         "run_id": run_id,
         "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(),
         "config_path": _relative(config_path),

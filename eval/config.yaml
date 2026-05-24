@@ -1,8 +1,12 @@
 mode: rag
+evaluation_type: public_fixture_smoke_regression
+not_a_benchmark: true
 description: >
   Public fixture smoke evaluation for deterministic CI reproducibility.
   This config is not a public benchmark; private/internal eval sets carry
-  real performance claims.
+  real performance claims. Recall@k, MRR, nDCG, rule-based answer metrics,
+  hallucination rate, and warm P95 latency from this config must not be used
+  for RAG performance claims.
 index_dir: data/index
 primary_run: naive_baseline
 

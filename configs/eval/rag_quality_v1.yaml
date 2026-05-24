@@ -1,6 +1,11 @@
 schema_version: 1
 name: rag_quality_v1
-description: Naive RAG baseline quality contract over public fixture data.
+evaluation_type: public_fixture_smoke_regression
+not_a_benchmark: true
+description: >
+  Naive RAG public fixture smoke/regression contract. This config is useful
+  for deterministic CI stability only and must not be used for RAG performance
+  claims.
 
 index_dir: data/index
 questions_path: data/eval/rag_questions.jsonl
@@ -27,8 +32,10 @@ metrics:
     - mrr_at_5
     - ndcg_at_5
   answer:
-    - faithfulness
-    - answer_relevancy
-    - citation_accuracy
-    - hallucination_flag
+    - rule_based_groundedness
+    - term_coverage_accuracy
+    - citation_chunk_accuracy
+    - generator_hallucination_flag
+    - failed_abstention_flag
+    - unsupported_answer_flag
     - unanswerable_detection_flag

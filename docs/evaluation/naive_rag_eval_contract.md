@@ -1,14 +1,17 @@
-# Naive RAG Evaluation Contract
+# Naive RAG Smoke/Regression Evaluation Contract
 
 ## TL;DR
 
-- 이 문서는 `naive_baseline`의 성능을 개선하지 않고, 현재 기준선(baseline)을 측정 가능하게 만드는 평가(evaluation) 계약(contract)이다.
-- 실행 명령은 `python -m eval.naive_rag.run_eval --config configs/eval/rag_quality_v1.yaml`이다.
+- 이 문서는 `naive_baseline`의 성능을 개선하지 않고, public fixture smoke/regression 경로를 안정적으로 유지하는 평가(evaluation) 계약(contract)이다.
+- 실행 명령은 `python3 -m eval.naive_rag.run_eval --config configs/eval/rag_quality_v1.yaml`이다.
 - 출력은 `experiments/runs/<run_id>/` 아래에 저장되며, 검색(retrieval) 지표와 답변(answer) 지표를 분리한다.
+- 이 계약의 Recall@k, MRR, nDCG, answer metric, latency는 benchmark 또는 성능(performance) claim에 사용하지 않는다.
 
 ## 목적
 
-이 계약은 RFP/document QA RAG 시스템에서 후속 개선을 비교하기 위한 첫 기준선을 고정한다. 재순위(reranking), hybrid 검색(retrieval), 메타데이터 필터링(metadata filtering), query rewriting, self-correction, agentic retrieval을 붙이기 전에 naive RAG가 무엇을 맞히고 어디서 실패하는지 기록한다.
+이 계약은 RFP/document QA RAG 시스템에서 public fixture가 깨지지 않는지 확인하는 smoke/regression 표면이다. 재순위(reranking), hybrid 검색(retrieval), 메타데이터 필터링(metadata filtering), query rewriting, self-correction, agentic retrieval을 붙이기 전에 eval 산출물 형식과 기본 경로를 고정한다.
+
+실제 naive RAG benchmark는 `configs/eval/benchmark_naive_rag_v1.yaml`, `data/eval/benchmark/rag_questions_v1.jsonl`, `data/eval/benchmark/gold_evidence_v1.jsonl`을 사용한다.
 
 ## Naive Baseline 범위
 
@@ -38,22 +41,24 @@
 ## 실행
 
 ```bash
-python -m eval.naive_rag.run_eval --config configs/eval/rag_quality_v1.yaml
+python3 -m eval.naive_rag.run_eval --config configs/eval/rag_quality_v1.yaml
 ```
 
 재현 가능한 run id가 필요하면:
 
 ```bash
-python -m eval.naive_rag.run_eval \
+python3 -m eval.naive_rag.run_eval \
   --config configs/eval/rag_quality_v1.yaml \
   --run-id local-check
 ```
 
 ## 입력 데이터
 
-Config:
+Smoke config:
 
 - `configs/eval/rag_quality_v1.yaml`
+- `evaluation_type: public_fixture_smoke_regression`
+- `not_a_benchmark: true`
 - `pipeline.name: naive_baseline`
 - `pipeline.top_k: 10`
 - `pipeline.retrieval_backend: dense`
@@ -73,7 +78,7 @@ Gold evidence:
 - answerable 질문은 `gold_evidence[].chunk_id`가 기존 `data/index/index.json`의 chunk id를 가리킨다.
 - unanswerable 질문은 `gold_evidence: []`를 사용한다.
 
-샘플 세트는 public fixture 기반이며 answerable 13개, unanswerable 3개를 포함한다. 비공개 RFP 데이터는 사용하지 않는다.
+샘플 세트는 public fixture 기반이며 answerable 13개, unanswerable 3개를 포함한다. 비공개 RFP 데이터는 사용하지 않는다. 이 샘플은 smoke/regression용이며 real benchmark dataset이 아니다.
 
 ## 출력
 
@@ -98,13 +103,22 @@ Runner는 `experiments/runs/<run_id>/` 아래에 다음 파일을 쓴다.
 
 답변(answer) 지표:
 
-- `faithfulness`: citation chunk가 retrieved evidence 안에 있는지 보는 placeholder 지표
-- `answer_relevancy`: `expected_terms`가 answer text에 포함된 비율
-- `citation_accuracy`: citation chunk 중 gold chunk에 해당하는 비율
-- `hallucination_flag`: unanswerable 답변 생성 또는 gold와 무관한 supported citation 여부
+- `rule_based_groundedness`: citation chunk가 retrieved evidence 안에 있는지 보는 placeholder 지표. semantic Faithfulness가 아니다.
+- `term_coverage_accuracy`: `expected_terms`가 answer text에 포함된 비율. semantic Answer Relevancy가 아니다.
+- `citation_chunk_accuracy`: citation chunk 중 gold chunk에 해당하는 비율. page/span citation accuracy가 아니다.
+- `generator_hallucination_flag`: gold와 무관한 supported citation 여부만 본다. failed abstention과 분리한다.
+- `failed_abstention_flag`: `answerable=false`인데 시스템이 `insufficient`로 보류(abstention)하지 않은 경우
+- `unsupported_answer_flag`: unsupported answer 또는 failed abstention을 별도 headline rate로 집계하기 위한 flag
 - `unanswerable_detection_flag`: unanswerable 질문에서 `insufficient` 또는 abstained 상태가 나왔는지
 
-이 답변 지표들은 simple/placeholder이다. LLM judge, verifier, citation verifier, RAGAS류 평가는 이 계약의 범위 밖이다.
+이 답변 지표들은 simple/placeholder이다. LLM judge, verifier, citation verifier, RAGAS류 평가는 이 계약의 범위 밖이다. 보고서와 JSON에서 `Faithfulness` / `Answer Relevancy`라는 이름으로 표기하지 않는다.
+
+Citation metadata headline:
+
+- `page_metadata_coverage`: index/corpus chunk 중 page metadata가 있는 비율
+- `citation_with_page_rate`: 생성 citation 중 page metadata가 있는 비율
+- `missing_page_number_count`
+- `missing_page_number_rate`
 
 ## Failure Taxonomy
 
@@ -155,4 +169,4 @@ Evaluation failures:
 - chunking strategy를 바꾸지 않는다.
 - `naive_baseline` preset 기본값을 바꾸지 않는다.
 - 기존 `eval/run_eval.py`의 aggregate surface를 대체하지 않는다.
-- private/internal eval claim을 만들지 않는다.
+- public fixture smoke 결과로 private/internal 또는 benchmark claim을 만들지 않는다.
