@@ -289,6 +289,7 @@ reports/self_review_agreement/*
 artifacts/benchmarks/
 artifacts/runs/
 artifacts/matrices/
+experiments/runs/
 
 # Naive RAG eval contract run artifacts. The contract/config/sample data are
 # committed; timestamped run outputs are reproducible and stay local.

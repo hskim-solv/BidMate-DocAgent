@@ -330,6 +330,7 @@ class TestPreToolUseBashGuard(unittest.TestCase):
 # Scripts the §5b check (issue #1097) pulls in beyond the base harness.
 SHIP_PR_BODY = REPO / "scripts" / "claude-hooks" / "_ship_pr_body.py"
 CHECK_BRANCH = REPO / "scripts" / "check_branch_and_issue.py"
+REAL_EVAL_PATHS = REPO / "scripts" / "real_eval_paths.py"
 
 
 class TestBashGuard5bSoftWarn(unittest.TestCase):
@@ -352,6 +353,7 @@ class TestBashGuard5bSoftWarn(unittest.TestCase):
         shutil.copy(SHIP_PR_BODY, ch / SHIP_PR_BODY.name)
         shutil.copy(GOVERNANCE, self._tmp_repo / "scripts" / GOVERNANCE.name)
         shutil.copy(CHECK_BRANCH, self._tmp_repo / "scripts" / CHECK_BRANCH.name)
+        shutil.copy(REAL_EVAL_PATHS, self._tmp_repo / "scripts" / REAL_EVAL_PATHS.name)
         self._hook = ch / HOOK.name
         self._fires_log = self._tmp_repo / ".claude" / ".hook-fires.log"
 
