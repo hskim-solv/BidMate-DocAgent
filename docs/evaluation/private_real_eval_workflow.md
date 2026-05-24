@@ -62,6 +62,41 @@ Use `configs/eval/private_real_eval.local.yaml` when the goal is the Naive RAG
 baseline contract runner. Use `eval/real_config.local.yaml` and the readiness
 scripts when checking whether the local private corpus is prepared.
 
+## Local Inventory And Canonical Mapping
+
+As of 2026-05-24, the maintainer local working copy has enough private corpus
+cache to prepare the Naive RAG baseline runner, but not in the preferred
+`data/private/` layout:
+
+| Candidate category | Observed local state | Canonical target | Action |
+|---|---:|---|---|
+| Source documents | 100 files | `data/private/files/` | Symlink or copy locally; never commit. |
+| Kordoc cache | 101 files | `data/private/files_kordoc/` | Symlink as the sibling cache for `data/private/files/`. |
+| Manifest | 100 rows | `data/private/data_list.csv` | Symlink or copy locally; never commit. |
+| Existing index | 100 documents / 26,376 chunks | `data/private/index/` | Symlink only if it matches the manifest and corpus; otherwise rebuild. |
+| Gold labels/questions | No canonical file found | `data/private/gold_evidence.jsonl` | Regenerate or curate local-only labels with raw questions and explicit `gold_evidence[].chunk_id`. |
+| Redacted summary | Not present | `reports/private_real_eval_summary.redacted.json` | Generate only after a successful private run and redaction checks. |
+
+Use a local shell variable for the private cache root. Do not write its value
+into committed files:
+
+```bash
+PRIVATE_CACHE_ROOT=/path/to/local/main/worktree
+mkdir -p data/private
+ln -s "$PRIVATE_CACHE_ROOT/data/files" data/private/files
+ln -s "$PRIVATE_CACHE_ROOT/data/files_kordoc" data/private/files_kordoc
+ln -s "$PRIVATE_CACHE_ROOT/data/data_list.csv" data/private/data_list.csv
+ln -s "$PRIVATE_CACHE_ROOT/data/index/real100" data/private/index
+```
+
+If labels are converted from an older `eval/real_config.local.yaml`, write the
+result only to `data/private/gold_evidence.jsonl`. The converted file is
+runnable only after every answerable row has explicit chunk-level gold evidence
+and every unanswerable row has an empty `gold_evidence` list. Any answerable
+row that cannot be resolved to a chunk should be omitted from a temporary
+runnable subset or manually labeled before using the result for performance
+claims.
+
 ## Local Config
 
 For readiness checks:
@@ -170,6 +205,12 @@ evidence, missing answerable/unanswerable split, missing explicit
 unanswerable rows, and private paths that are not gitignored or outside the
 repo.
 
+On failure, the private runner reports only field names, categories, and
+counts, for example `missing_required_input: gold_evidence_path` or
+`missing_explicit_gold_chunk_id: answerable_questions count=N`. It must not
+print raw questions, raw answers, support text, document names, `doc_id`,
+`chunk_id`, or exact local paths.
+
 ## Run Private Naive RAG Eval
 
 Preferred contract runner:
@@ -177,6 +218,14 @@ Preferred contract runner:
 ```bash
 python3 -m eval.naive_rag.private_real_eval \
   --config configs/eval/private_real_eval.local.yaml
+```
+
+To also write the committable aggregate candidate:
+
+```bash
+python3 -m eval.naive_rag.private_real_eval \
+  --config configs/eval/private_real_eval.local.yaml \
+  --redacted-summary-path reports/private_real_eval_summary.redacted.json
 ```
 
 Readiness scaffold wrapper:

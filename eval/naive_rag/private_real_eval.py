@@ -78,6 +78,16 @@ SAFE_ANSWER_METRIC_KEYS = {
 }
 SAFE_METRIC_VALUE_KEYS = {"mean", "n", "missing"}
 ENV_DEFAULT_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}")
+SAFE_FAILURE_COUNT_KEY_RE = re.compile(r"^[A-Za-z0-9_.:-]+$")
+ABSOLUTE_PATH_VALUE_RE = re.compile(r"(^|[\s:])(?:/Users/|/private/|/home/|[A-Za-z]:[\\/])")
+PRIVATE_PATH_MARKERS = (
+    "data/private/",
+    "data/files/",
+    "data/files_kordoc/",
+    "data/index/real",
+    "experiments/private_runs/",
+    "reports/real",
+)
 
 
 class PrivateRealEvalError(ValueError):
@@ -151,6 +161,10 @@ def validate_template_schema(config: Mapping[str, Any]) -> None:
         raise PrivateRealEvalError("Private real-eval config is invalid:\n- " + "\n- ".join(errors))
 
 
+def _minimum_error(label: str, *, count: int, required: int) -> str:
+    return f"minimum_not_met: {label} count={count} required={required}"
+
+
 def _jsonl_rows(path: Path) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
@@ -178,11 +192,19 @@ def _write_jsonl(path: Path, rows: Sequence[Mapping[str, Any]]) -> None:
 def _count_documents(documents_dir: Path) -> int:
     if not documents_dir.is_dir():
         return 0
-    return sum(
-        1
-        for path in documents_dir.rglob("*")
-        if path.is_file() and not any(part.startswith(".") for part in path.parts)
-    )
+    search_dir = documents_dir.resolve() if documents_dir.is_symlink() else documents_dir
+    count = 0
+    for path in search_dir.rglob("*"):
+        if not path.is_file():
+            continue
+        try:
+            relative_parts = path.relative_to(search_dir).parts
+        except ValueError:
+            relative_parts = (path.name,)
+        if any(part.startswith(".") for part in relative_parts):
+            continue
+        count += 1
+    return count
 
 
 def _index_counts(index_dir: Path) -> tuple[int | None, int | None]:
@@ -211,6 +233,30 @@ def _index_counts(index_dir: Path) -> tuple[int | None, int | None]:
     except (TypeError, ValueError):
         chunk_count = None
     return doc_count, chunk_count
+
+
+def _index_embedding_summary(index_dir: Path) -> dict[str, Any]:
+    index_json = index_dir / "index.json"
+    if not index_json.is_file():
+        return {}
+    try:
+        payload = json.loads(index_json.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    embedding = payload.get("embedding") if isinstance(payload, dict) else {}
+    if not isinstance(embedding, Mapping):
+        return {}
+    summary: dict[str, Any] = {}
+    backend = str(embedding.get("backend") or "").strip()
+    if backend and not ABSOLUTE_PATH_VALUE_RE.search(backend):
+        summary["embedding_backend"] = backend
+    try:
+        dimension = int(embedding.get("dimension"))
+    except (TypeError, ValueError):
+        dimension = 0
+    if dimension > 0:
+        summary["embedding_dimension"] = dimension
+    return summary
 
 
 def _is_inside_repo(path: Path, root: Path = ROOT_DIR) -> bool:
@@ -340,13 +386,13 @@ def validate_private_inputs(
 
     errors: list[str] = []
     if not documents_dir.is_dir():
-        errors.append(f"documents_dir does not exist: {documents_dir}")
+        errors.append("missing_required_input: documents_dir")
     if not data_list_path.is_file():
-        errors.append(f"data_list_path does not exist: {data_list_path}")
+        errors.append("missing_required_input: data_list_path")
     if not gold_evidence_path.is_file():
-        errors.append(f"gold_evidence_path does not exist: {gold_evidence_path}")
+        errors.append("missing_required_input: gold_evidence_path")
     if config.get("questions_path") and not questions_path.is_file():
-        errors.append(f"questions_path does not exist: {questions_path}")
+        errors.append("missing_required_input: questions_path")
     private_input_paths = {
         "documents_dir": documents_dir,
         "data_list_path": data_list_path,
@@ -355,15 +401,13 @@ def validate_private_inputs(
     }
     for name, private_path in private_input_paths.items():
         if not git_ignores_path(private_path, root):
-            errors.append(f"{name} must be ignored by git or outside the repo: {private_path}")
+            errors.append(f"private_path_not_gitignored: {name}")
     if not git_ignores_path(output_dir, root):
-        errors.append(f"output_dir must be ignored by git or outside the repo: {output_dir}")
+        errors.append("private_path_not_gitignored: output_dir")
     if not git_ignores_path(index_dir, root):
-        errors.append(f"index_dir must be ignored by git or outside the repo: {index_dir}")
+        errors.append("private_path_not_gitignored: index_dir")
     if not (index_dir / "index.json").is_file() and not can_build_index:
-        errors.append(
-            f"index_dir has no index.json and index_build.mode={build_mode!r} cannot build it: {index_dir}"
-        )
+        errors.append(f"missing_private_index: index_dir mode={build_mode}")
 
     document_count = _count_documents(documents_dir)
     questions: list[dict[str, Any]] = []
@@ -371,52 +415,77 @@ def validate_private_inputs(
     if documents_dir.is_dir():
         min_docs = _minimums(config)["min_documents"]
         if document_count < min_docs:
-            errors.append(
-                f"documents_dir has {document_count} documents; require at least {min_docs}"
-            )
+            errors.append(_minimum_error("documents", count=document_count, required=min_docs))
     if gold_evidence_path.is_file() and (
         questions_path.is_file() or not config.get("questions_path")
     ):
-        gold_rows = _jsonl_rows(gold_evidence_path)
-        question_rows = _jsonl_rows(questions_path) if config.get("questions_path") else gold_rows
-        questions = _questions_from_rows(question_rows)
-        gold_by_qid = _gold_by_question(gold_rows)
-        mins = _minimums(config)
-        answerable = [q for q in questions if q.get("answerable", True)]
-        unanswerable = [q for q in questions if not q.get("answerable", True)]
-        if len(questions) < mins["min_questions"]:
-            errors.append(
-                f"question set has {len(questions)} questions; require at least {mins['min_questions']}"
+        try:
+            gold_rows = _jsonl_rows(gold_evidence_path)
+        except PrivateRealEvalError:
+            gold_rows = []
+            errors.append("invalid_jsonl: gold_evidence_path")
+        try:
+            question_rows = (
+                _jsonl_rows(questions_path) if config.get("questions_path") else gold_rows
             )
-        if len(answerable) < mins["min_answerable_questions"]:
-            errors.append(
-                f"answerable split has {len(answerable)} questions; require at least {mins['min_answerable_questions']}"
-            )
-        if len(unanswerable) < mins["min_unanswerable_questions"]:
-            errors.append(
-                f"unanswerable split has {len(unanswerable)} questions; require at least {mins['min_unanswerable_questions']}"
-            )
-        missing_gold = [
-            str(q["question_id"])
-            for q in answerable
-            if not any(
-                str(item.get("chunk_id") or "").strip()
-                for item in gold_by_qid.get(str(q["question_id"]), [])
-            )
-        ]
-        if missing_gold:
-            errors.append(
-                "answerable questions require explicit gold_evidence[].chunk_id; missing for: "
-                + ", ".join(missing_gold[:10])
-            )
-        unanswerable_with_gold = [
-            str(q["question_id"]) for q in unanswerable if gold_by_qid.get(str(q["question_id"]))
-        ]
-        if unanswerable_with_gold:
-            errors.append(
-                "unanswerable questions must use empty gold_evidence; found gold for: "
-                + ", ".join(unanswerable_with_gold[:10])
-            )
+        except PrivateRealEvalError:
+            question_rows = []
+            errors.append("invalid_jsonl: questions_path")
+        try:
+            questions = _questions_from_rows(question_rows)
+        except PrivateRealEvalError:
+            questions = []
+            errors.append("invalid_question_rows: questions_path")
+        try:
+            gold_by_qid = _gold_by_question(gold_rows)
+        except PrivateRealEvalError:
+            gold_by_qid = {}
+            errors.append("invalid_gold_evidence_rows: gold_evidence_path")
+        if questions:
+            mins = _minimums(config)
+            answerable = [q for q in questions if q.get("answerable", True)]
+            unanswerable = [q for q in questions if not q.get("answerable", True)]
+            if len(questions) < mins["min_questions"]:
+                errors.append(
+                    _minimum_error("questions", count=len(questions), required=mins["min_questions"])
+                )
+            if len(answerable) < mins["min_answerable_questions"]:
+                errors.append(
+                    _minimum_error(
+                        "answerable_questions",
+                        count=len(answerable),
+                        required=mins["min_answerable_questions"],
+                    )
+                )
+            if len(unanswerable) < mins["min_unanswerable_questions"]:
+                errors.append(
+                    _minimum_error(
+                        "unanswerable_questions",
+                        count=len(unanswerable),
+                        required=mins["min_unanswerable_questions"],
+                    )
+                )
+            missing_gold = [
+                q
+                for q in answerable
+                if not any(
+                    str(item.get("chunk_id") or "").strip()
+                    for item in gold_by_qid.get(str(q["question_id"]), [])
+                )
+            ]
+            if missing_gold:
+                errors.append(
+                    "missing_explicit_gold_chunk_id: "
+                    f"answerable_questions count={len(missing_gold)}"
+                )
+            unanswerable_with_gold = [
+                q for q in unanswerable if gold_by_qid.get(str(q["question_id"]))
+            ]
+            if unanswerable_with_gold:
+                errors.append(
+                    "unanswerable_gold_evidence_not_empty: "
+                    f"questions count={len(unanswerable_with_gold)}"
+                )
 
     index_docs, index_chunks = _index_counts(index_dir)
     if errors:
@@ -484,7 +553,7 @@ def build_or_load_private_index(
 ) -> list[str] | None:
     command = build_index_command(config, validation)
     if command is None:
-        print(f"[OK] Loading existing private index: {validation['index_dir']}")
+        print("[OK] Loading existing private index")
         return None
     print("[INFO] Building private index for Naive RAG eval")
     result = subprocess.run(command, cwd=ROOT_DIR, check=False, text=True)
@@ -576,6 +645,23 @@ def _safe_metric_block(block: Any, allowed_keys: set[str]) -> dict[str, Any]:
     return safe
 
 
+def _safe_count_block(block: Any) -> dict[str, int | float]:
+    if not isinstance(block, Mapping):
+        return {}
+    safe: dict[str, int | float] = {}
+    for key, value in block.items():
+        key_text = str(key)
+        if not SAFE_FAILURE_COUNT_KEY_RE.fullmatch(key_text):
+            continue
+        if key_text in FORBIDDEN_REDACTED_KEYS:
+            continue
+        if isinstance(value, bool):
+            continue
+        if isinstance(value, (int, float)):
+            safe[key_text] = value
+    return safe
+
+
 def build_redacted_summary(
     metrics_payload: Mapping[str, Any],
     validation: Mapping[str, Any],
@@ -615,6 +701,7 @@ def build_redacted_summary(
             "verifier_retry": False,
             "query_expansion": "identity",
         },
+        "index_provenance": _index_embedding_summary(Path(validation["index_dir"])),
         "metrics": {
             "retrieval": _safe_metric_block(
                 metrics_payload.get("retrieval_metrics"),
@@ -625,7 +712,7 @@ def build_redacted_summary(
                 SAFE_ANSWER_METRIC_KEYS,
             ),
         },
-        "failure_type_counts": dict(metrics_payload.get("failure_counts") or {}),
+        "failure_type_counts": _safe_count_block(metrics_payload.get("failure_counts")),
         "latency_summary": {
             "scope": str(config.get("latency_scope") or "private_runner_wall_clock"),
             "total_wall_clock_ms": round(float(elapsed_ms), 3),
@@ -661,10 +748,19 @@ def assert_redacted_summary_safe(payload: Mapping[str, Any]) -> None:
                 key_text = str(key)
                 if key_text in FORBIDDEN_REDACTED_KEYS:
                     violations.append(f"{trail}.{key_text}".strip("."))
+                if ABSOLUTE_PATH_VALUE_RE.search(key_text):
+                    violations.append(f"{trail}.{key_text}".strip("."))
+                if any(marker in key_text for marker in PRIVATE_PATH_MARKERS):
+                    violations.append(f"{trail}.{key_text}".strip("."))
                 walk(item, f"{trail}.{key_text}".strip("."))
         elif isinstance(value, list):
             for index, item in enumerate(value):
                 walk(item, f"{trail}[{index}]")
+        elif isinstance(value, str):
+            if ABSOLUTE_PATH_VALUE_RE.search(value) or any(
+                marker in value for marker in PRIVATE_PATH_MARKERS
+            ):
+                violations.append(trail)
 
     walk(payload, "")
     if violations:
@@ -773,8 +869,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"[ERROR] Private real-eval failed: {exc}", file=sys.stderr)
         return 2
 
-    print(f"[OK] Private Naive RAG eval artifacts written: {run_dir}")
-    print(f"[OK] Redacted summary written: {summary_path}")
+    print(f"[OK] Private Naive RAG eval artifacts written: {rel_or_abs(run_dir)}")
+    print(f"[OK] Redacted summary written: {rel_or_abs(summary_path)}")
     print("[INFO] No RAG performance improvement was implemented by this runner.")
     return 0
 
