@@ -184,10 +184,13 @@ def validate_dataset(config_path: Path) -> dict[str, Any]:
 
     if config.get("benchmark_type") != "naive_rag_benchmark":
         errors.append("config.benchmark_type must be naive_rag_benchmark")
+    if str(config.get("benchmark_version") or "") != "v1":
+        errors.append("config.benchmark_version must be v1")
     if config.get("not_ci_smoke") is not True:
         errors.append("config.not_ci_smoke must be true")
 
     corpus_dir = repo_path(config.get("corpus_dir") or "")
+    corpus_path = repo_path(config.get("corpus_path") or "")
     questions_path = repo_path(config.get("questions_path") or "")
     gold_path = repo_path(config.get("gold_evidence_path") or "")
 
@@ -223,7 +226,15 @@ def validate_dataset(config_path: Path) -> dict[str, Any]:
         chunking_strategy=chunking_strategy,
         overlap_sentences=chunk_overlap_sentences,
     )
-    chunk_by_id = {str(chunk["chunk_id"]): chunk for chunk in chunks}
+    corpus_chunks = jsonl_rows(corpus_path) if corpus_path.is_file() else []
+    if not corpus_chunks:
+        errors.append(f"corpus_path must exist and contain JSONL chunks: {corpus_path}")
+        corpus_chunks = chunks
+    raw_chunk_ids = {str(chunk["chunk_id"]) for chunk in chunks}
+    corpus_chunk_ids = {str(chunk.get("chunk_id") or "") for chunk in corpus_chunks}
+    if raw_chunk_ids != corpus_chunk_ids:
+        errors.append("corpus_path chunk ids must match configured corpus_dir chunking output")
+    chunk_by_id = {str(chunk.get("chunk_id") or ""): chunk for chunk in corpus_chunks}
 
     answerable = [row for row in questions if bool(row.get("answerable", True))]
     unanswerable = [row for row in questions if not bool(row.get("answerable", True))]
@@ -330,7 +341,7 @@ def validate_dataset(config_path: Path) -> dict[str, Any]:
                 errors.append(f"{evidence_id}: support_text is not present in chunk {chunk_id}")
 
     top_k = int((config.get("pipeline") or {}).get("top_k") or 10)
-    chunk_top_k_ratio = len(chunks) / top_k if top_k else 0.0
+    chunk_top_k_ratio = len(corpus_chunks) / top_k if top_k else 0.0
     minimum_ratio = float(
         (config.get("dataset_metadata") or {}).get(
             "minimum_chunk_to_top_k_ratio",
@@ -367,18 +378,19 @@ def validate_dataset(config_path: Path) -> dict[str, Any]:
         )
 
     page_gold_count = sum(1 for item in gold_evidence if item.get("page") is not None)
-    page_chunk_count = sum(1 for chunk in chunks if chunk.get("page_span"))
+    page_chunk_count = sum(1 for chunk in corpus_chunks if chunk.get("page_span"))
     summary = {
         "config_path": str(config_path.relative_to(ROOT_DIR)),
         "errors": errors,
         "warnings": warnings,
         "dataset_summary": {
             "num_docs": len(documents),
-            "num_chunks": len(chunks),
+            "num_chunks": len(corpus_chunks),
             "num_questions": len(questions),
             "answerable_count": len(answerable),
             "unanswerable_count": len(unanswerable),
             "chunk_count_top_k_ratio": round(chunk_top_k_ratio, 3),
+            "corpus_path": str(corpus_path.relative_to(ROOT_DIR)) if corpus_path.is_absolute() else str(corpus_path),
             "chunking_strategy": chunking_strategy,
             "chunking": chunking_diagnostics,
         },
@@ -400,8 +412,8 @@ def validate_dataset(config_path: Path) -> dict[str, Any]:
             "page_metadata_gold_coverage": round(page_gold_count / len(gold_evidence), 3)
             if gold_evidence
             else 0.0,
-            "page_metadata_chunk_coverage": round(page_chunk_count / len(chunks), 3)
-            if chunks
+            "page_metadata_chunk_coverage": round(page_chunk_count / len(corpus_chunks), 3)
+            if corpus_chunks
             else 0.0,
         },
         "leakage_report": leakage_report,

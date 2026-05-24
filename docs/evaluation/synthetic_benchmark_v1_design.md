@@ -19,10 +19,11 @@ Synthetic data는 failure probe와 ablation 준비에는 유용하지만 실제 
 ## Dataset Composition
 
 - Corpus path: `data/eval/benchmark/corpus/`
+- Corpus chunks: `data/eval/benchmark/corpus_chunks_v1.jsonl`
 - Config: `configs/eval/benchmark_naive_rag_v1.yaml`
 - Questions: `data/eval/benchmark/rag_questions_v1.jsonl`
 - Gold evidence: `data/eval/benchmark/gold_evidence_v1.jsonl`
-- Benchmark index path: `data/eval/benchmark/index/`
+- Benchmark index path: `data/eval/benchmark/index_v1/`
 - Documents: 6 synthetic RFP-style documents
 - Chunks: 72 section chunks
 - Questions: 55 total, 40 answerable and 15 unanswerable
@@ -95,25 +96,20 @@ The report path is local generated output. It includes dataset counts, question 
 Run:
 
 ```bash
-python3 scripts/build_index.py \
-  --input_dir data/eval/benchmark/corpus \
-  --output_dir data/eval/benchmark/index \
-  --embedding_backend hashing \
-  --chunking_strategy section \
-  --chunk_max_chars 520 \
-  --chunk_overlap_sentences 1
+python3 -m eval.naive_rag.build_benchmark_index \
+  --corpus data/eval/benchmark/corpus_chunks_v1.jsonl \
+  --output data/eval/benchmark/index_v1
 ```
 
-This index is separate from the smoke fixture index at `data/index/`. The benchmark config must not point to the smoke fixture index.
+This index is built only from frozen corpus chunks. It must not read questions, gold evidence, expected answers, or expected terms. It is separate from the smoke fixture index at `data/index/`, and the benchmark config must not point to the smoke fixture index.
 
 ## Run Benchmark
 
 Run:
 
 ```bash
-python3 -m eval.naive_rag.run_eval \
-  --config configs/eval/benchmark_naive_rag_v1.yaml \
-  --run-id synthetic-naive-rag-v1-local
+python3 -m eval.naive_rag.benchmark \
+  --config configs/eval/benchmark_naive_rag_v1.yaml
 ```
 
 This command runs dense top-k retrieval only. It does not enable reranking, hybrid BM25+dense fusion, metadata-first retrieval, query expansion, verifier retry, self-correction, or prompt tuning.
@@ -123,7 +119,7 @@ This command runs dense top-k retrieval only. It does not enable reranking, hybr
 Use this benchmark for public reproducibility, ablation setup, and failure-mode discovery. Do not use it as final evidence of production RAG quality. In particular:
 
 - Perfect scores on this synthetic benchmark do not imply real RFP performance.
-- The answer metrics named `faithfulness` and `answer_relevancy` are placeholder/rule-based metrics in the current runner, not semantic RAGAS-style judges.
+- The answer metrics are rule-based/provisional lexical and citation checks, not semantic RAGAS-style judges.
 - Retrieval failures are more meaningful than headline answer quality until semantic judging or verifier-backed scoring is added.
 - Private real-eval remains required for credible real-world baseline claims.
 

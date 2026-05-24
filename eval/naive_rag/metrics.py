@@ -13,6 +13,25 @@ ANSWER_METRIC_KEYS = (
     "hallucination_flag",
     "unanswerable_detection_flag",
 )
+BENCHMARK_CITATION_PAGE_METRIC_KEYS = (
+    "citation_chunk_accuracy",
+    "citation_page_coverage",
+    "citation_page_precision",
+    "missing_page_number_rate",
+    "page_metadata_coverage",
+)
+RULE_BASED_ANSWER_METRIC_KEYS = (
+    "rule_based_groundedness",
+    "term_coverage_accuracy",
+    "failed_abstention_rate",
+    "unsafe_answer_rate",
+    "rule_based_hallucination_rate",
+)
+BENCHMARK_LATENCY_METRIC_KEYS = (
+    "warm_query_latency_ms",
+    "retrieval_latency_ms",
+    "generation_latency_ms",
+)
 
 
 def unique_ids(values: list[str]) -> list[str]:
@@ -92,4 +111,19 @@ def summarize_case_metrics(
     return {
         key: summarize_metric([metrics.get(key) for metrics in case_metrics], total)
         for key in keys
+    }
+
+
+def summarize_latency(values: list[float | int | None]) -> dict[str, Any]:
+    numeric = sorted(float(value) for value in values if isinstance(value, (int, float)))
+    if not numeric:
+        return {"mean": None, "p50": None, "p95": None, "n": 0, "missing": len(values)}
+    p50_idx = min(int(0.50 * (len(numeric) - 1)), len(numeric) - 1)
+    p95_idx = min(int(0.95 * (len(numeric) - 1)), len(numeric) - 1)
+    return {
+        "mean": sum(numeric) / len(numeric),
+        "p50": numeric[p50_idx],
+        "p95": numeric[p95_idx],
+        "n": len(numeric),
+        "missing": max(len(values) - len(numeric), 0),
     }
