@@ -1,0 +1,74 @@
+{
+  "doc_id": "synthetic-public-cloud-migration",
+  "title": "Synthetic Public Cloud Migration RFP",
+  "agency": "Synthetic Transit Authority",
+  "project": "교통 서비스 클라우드 전환",
+  "metadata": {
+    "document_type": "synthetic_public_benchmark_v1",
+    "synthetic": true,
+    "domain": "cloud_migration",
+    "note": "Public synthetic RFP-style document. Does not copy private procurement text."
+  },
+  "sections": [
+    {
+      "heading": "1. 사업 개요",
+      "page_span": [1, 1],
+      "text": "Synthetic Transit Authority는 교통 민원, 배차 통계, 노선 공지 시스템을 클라우드로 전환한다. 본 문서는 공개 합성 벤치마크용이며 실제 노선 또는 실제 예산을 포함하지 않는다. 전환 대상은 업무 시스템과 대민 서비스가 혼재되어 있다."
+    },
+    {
+      "heading": "2. 제안 및 질의 일정",
+      "page_span": [2, 2],
+      "text": "제안서 제출 마감은 2026년 9월 3일 15:00이다. 질의응답 접수 마감은 2026년 8월 24일 17:00이다. 보완자료 제출 마감은 우선협상대상자 통보 후 5영업일 이내로 별도 통지한다."
+    },
+    {
+      "heading": "3. 기술 및 가격 제출",
+      "page_span": [3, 3],
+      "text": "기술제안 발표자료 제출 마감은 2026년 9월 6일 13:00이다. 가격제안서 제출 마감은 2026년 9월 3일 15:00으로 제안서 제출 마감과 동일하다. 발표자료 마감은 가격제안 마감이 아니다."
+    },
+    {
+      "heading": "4. 일반 보안과 클라우드 보안",
+      "page_span": [4, 4],
+      "text": "일반 보안 요구사항은 사용자 계정 잠금, 접속 로그 보관, 관리자 승인 절차를 포함한다. 클라우드 보안 요구사항은 Transit Gateway 분리, private endpoint 사용, KMS key rotation 정책 수립을 포함한다. 두 요구사항은 모두 필수이나 적용 계층이 다르다."
+    },
+    {
+      "heading": "5. 클라우드 인프라 요건",
+      "page_span": [5, 5],
+      "text": "운영 서비스는 2개 Availability Zone에 active-active로 배치해야 한다. 컨테이너 플랫폼은 Kubernetes 1.29 이상을 기준으로 하며, 배포 자동화는 blue-green 방식을 지원해야 한다. 특정 CSP 계정 ID는 본 문서에 기재하지 않는다."
+    },
+    {
+      "heading": "6. 평가 배점",
+      "page_span": [6, 6],
+      "text": "평가표: 기술평가 70점, 가격평가 30점, 합계 100점. 기술평가 안에는 전환 방법론 25점, 보안 설계 20점, 운영 자동화 15점, 조직 역량 10점이 포함된다. 가격평가 30점은 기술평가 70점과 별도 계산한다."
+    },
+    {
+      "heading": "7. 전환 범위 표",
+      "page_span": [7, 7],
+      "text": "전환 표: Pilot wave는 내부 시스템 30개, Main wave는 대민 서비스 120개, Stabilization wave는 배치 작업 45개를 포함한다. Pilot wave 완료 후 main wave 착수 여부를 검토한다. wave 명칭은 산출물 명칭이 아니다."
+    },
+    {
+      "heading": "8. 산출물과 검수",
+      "page_span": [8, 8],
+      "text": "마이그레이션 실행계획서 제출일은 착수 후 30일 이내이다. 최종 산출물 제출일은 2027년 2월 12일이며 최종 검수일은 2027년 2월 26일이다. 검수는 장애 전환 테스트와 롤백 리허설 결과를 확인한다."
+    },
+    {
+      "heading": "9. 사업기간과 유지보수",
+      "page_span": [9, 9],
+      "text": "구축 사업기간은 계약일로부터 6개월이다. 무상 유지보수 기간은 검수 완료 후 18개월이다. 사업기간 중에는 월간 전환 리포트를 제출하고 유지보수 기간에는 분기별 안정화 리포트를 제출한다."
+    },
+    {
+      "heading": "10. 투입 인력",
+      "page_span": [10, 10],
+      "text": "필수 투입 인력은 클라우드 아키텍트 2명, 네트워크 엔지니어 1명, DevOps 엔지니어 2명, 보안 담당자 1명으로 총 6명이다. FinOps 분석가 1명은 권장 인력이다. 필수 인력은 모두 유사 전환 경험을 제시해야 한다."
+    },
+    {
+      "heading": "11. 재해복구 요건",
+      "page_span": [11, 11],
+      "text": "재해복구 목표는 RTO 4시간, RPO 15분이다. 월 1회 백업 복구 훈련과 반기 1회 재해복구 모의훈련을 수행해야 한다. 백업 보관 위치는 운영 리전과 다른 리전을 사용한다."
+    },
+    {
+      "heading": "12. FinOps and IaC",
+      "page_span": [12, 12],
+      "text": "FinOps dashboard는 service tag, owner tag, monthly cost variance를 표시해야 한다. IaC 코드는 pull request review 후 main branch에 병합해야 하며 drift detection 결과를 주간 리포트에 포함한다. Cloud cost anomaly alert는 이메일로 발송한다."
+    }
+  ]
+}
