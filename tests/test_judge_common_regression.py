@@ -16,6 +16,7 @@ from eval.judges.judge_common import (
     build_evidence_block,
     clamp_score,
     extract_summary,
+    get_judge_response_format,
     get_judge_temperature,
     normalize_status_verdict,
 )
@@ -266,6 +267,43 @@ class GetJudgeTemperatureTest(unittest.TestCase):
         os.environ["BIDMATE_JUDGE_TEMPERATURE"] = "hot"
         with self.assertRaises(ValueError):
             get_judge_temperature()
+
+
+class GetJudgeResponseFormatTest(unittest.TestCase):
+    """get_judge_response_format: json_object default, 'none' omits the kwarg."""
+
+    def setUp(self) -> None:
+        self._saved = os.environ.pop("BIDMATE_JUDGE_RESPONSE_FORMAT", None)
+
+    def tearDown(self) -> None:
+        if self._saved is None:
+            os.environ.pop("BIDMATE_JUDGE_RESPONSE_FORMAT", None)
+        else:
+            os.environ["BIDMATE_JUDGE_RESPONSE_FORMAT"] = self._saved
+
+    def test_unset_defaults_to_json_object(self) -> None:
+        self.assertEqual({"type": "json_object"}, get_judge_response_format())
+
+    def test_empty_string_defaults_to_json_object(self) -> None:
+        os.environ["BIDMATE_JUDGE_RESPONSE_FORMAT"] = "   "
+        self.assertEqual({"type": "json_object"}, get_judge_response_format())
+
+    def test_none_returns_none(self) -> None:
+        os.environ["BIDMATE_JUDGE_RESPONSE_FORMAT"] = "none"
+        self.assertIsNone(get_judge_response_format())
+
+    def test_none_case_insensitive(self) -> None:
+        os.environ["BIDMATE_JUDGE_RESPONSE_FORMAT"] = "NONE"
+        self.assertIsNone(get_judge_response_format())
+
+    def test_explicit_json_object_parsed(self) -> None:
+        os.environ["BIDMATE_JUDGE_RESPONSE_FORMAT"] = "json_object"
+        self.assertEqual({"type": "json_object"}, get_judge_response_format())
+
+    def test_invalid_value_raises(self) -> None:
+        os.environ["BIDMATE_JUDGE_RESPONSE_FORMAT"] = "json_schema"
+        with self.assertRaises(ValueError):
+            get_judge_response_format()
 
 
 if __name__ == "__main__":

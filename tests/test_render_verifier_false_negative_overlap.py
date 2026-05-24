@@ -36,6 +36,7 @@ def _retrieved(score: float | None, *, chunk_id: str = "chunk-x") -> list[dict[s
 def _vfn_case(**overrides: object) -> dict[str, object]:
     base: dict[str, object] = {
         "answerable": False,
+        "abstention": 0.0,
         "abstained": False,
         "query_type": "abstention",
         "hardcase_categories": ["no_answer"],

@@ -54,6 +54,7 @@ __all__ = [
     "build_evidence_block",
     "build_openai_client",
     "get_judge_model",
+    "get_judge_response_format",
     "call_openai_json",
     "normalize_status_verdict",
 ]
@@ -207,6 +208,38 @@ def get_judge_temperature() -> float:
         ) from exc
 
 
+def get_judge_response_format() -> dict[str, str] | None:
+    """Read the ``response_format`` kwarg for judge calls from the environment.
+
+    Returns ``{"type": "json_object"}`` by default (unset/empty) — the
+    structured-output path that keeps existing judge behaviour byte-identical.
+    Setting ``BIDMATE_JUDGE_RESPONSE_FORMAT=none`` returns ``None`` so the
+    kwarg is omitted entirely.
+
+    The override exists because Anthropic's OpenAI-compatibility endpoint
+    rejects ``response_format={"type": "json_object"}`` ("response_format.type:
+    Input should be 'json_schema'"); the Claude models there reliably emit
+    valid JSON from the prompt instruction alone, so omitting the kwarg
+    unblocks them without changing the default for every other backend
+    (mirrors the :func:`get_judge_temperature` accommodation for gpt-5.x).
+
+    Raises:
+        ValueError: when the env var is set but not one of ``json_object`` /
+            ``none``.
+    """
+    raw = os.environ.get("BIDMATE_JUDGE_RESPONSE_FORMAT")
+    if raw is None or raw.strip() == "":
+        return {"type": "json_object"}
+    value = raw.strip().lower()
+    if value == "none":
+        return None
+    if value == "json_object":
+        return {"type": "json_object"}
+    raise ValueError(
+        f"BIDMATE_JUDGE_RESPONSE_FORMAT must be 'json_object' or 'none': {raw!r}"
+    )
+
+
 def call_openai_json(
     client: Any,
     model: str,
@@ -214,10 +247,13 @@ def call_openai_json(
 ) -> dict[str, Any] | None:
     """Call an OpenAI-compatible endpoint and return a parsed JSON dict.
 
-    Uses ``response_format={"type": "json_object"}`` for structured output.
-    Temperature defaults to ``0.0`` (deterministic) but is overridable via
-    ``BIDMATE_JUDGE_TEMPERATURE`` (see :func:`get_judge_temperature`) so that
-    reasoning models which reject ``temperature=0`` can still be called.
+    Uses ``response_format={"type": "json_object"}`` for structured output by
+    default, omittable via ``BIDMATE_JUDGE_RESPONSE_FORMAT=none`` (see
+    :func:`get_judge_response_format`) for endpoints that reject it (Anthropic
+    OpenAI-compat).  Temperature defaults to ``0.0`` (deterministic) but is
+    overridable via ``BIDMATE_JUDGE_TEMPERATURE`` (see
+    :func:`get_judge_temperature`) so that reasoning models which reject
+    ``temperature=0`` can still be called.
 
     Args:
         client: An ``openai.OpenAI`` instance (from :func:`build_openai_client`).
@@ -233,12 +269,15 @@ def call_openai_json(
         allows the verifier's own status to be used, which is the desired
         graceful-degradation behaviour (ADR 0004 / PR #218).
     """
-    response = client.chat.completions.create(
-        model=model,
-        messages=[{"role": "user", "content": prompt}],
-        temperature=get_judge_temperature(),
-        response_format={"type": "json_object"},
-    )
+    kwargs: dict[str, Any] = {
+        "model": model,
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": get_judge_temperature(),
+    }
+    response_format = get_judge_response_format()
+    if response_format is not None:
+        kwargs["response_format"] = response_format
+    response = client.chat.completions.create(**kwargs)
     content = response.choices[0].message.content or "{}"
     try:
         return json.loads(content)
