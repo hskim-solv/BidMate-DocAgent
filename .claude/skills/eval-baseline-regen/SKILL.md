@@ -5,7 +5,7 @@ description: |
 
   Trigger phrases: "real100 baseline regen", "eval baseline 재생성", "베이스라인 갱신 PR", "chore(eval) regen", "post-#N baseline 갱신", "real-eval baseline 업데이트해줘". Trigger when the user wants to refresh the committed real100 baseline after merges. Trigger even if the user does not say "skill".
 
-  Do NOT trigger for: retrieval measurement (use `retrieval-eval`), eval-framework gap audit (use `eval-framework-progressive-audit`), drafting an ADR from eval results (use the `eval-to-adr-bridge` agent), generic PR shipping (use `ship-pr`), synthetic leaderboard / cost_frontier / README freshness (already CI-gated via `make leaderboard-check`), or running the eval itself (`make real-eval` — that produces the local eval_summary this skill consumes).
+  Do NOT trigger for: retrieval measurement (use `retrieval-eval`), eval-framework gap audit (use `eval-framework-progressive-audit`), drafting an ADR from eval results (use the `eval-to-adr-bridge` agent), generic PR shipping (use `ship-pr`), removed public-eval artifact freshness (former leaderboard / cost_frontier / judge aggregate / README freshness), or running the eval itself (`make real-eval` — that produces the local eval_summary this skill consumes).
 ---
 
 # /eval-baseline-regen — real100 baseline 재생성 (provenance·판단·컨벤션 레이어)
@@ -14,7 +14,7 @@ private real-100 eval 베이스라인(`reports/real100/baseline.aggregate.json` 
 
 ## Scope
 
-- `reports/real100/baseline.aggregate.json` + `reports/real100/history/*.aggregate.json` regen 한정. **synthetic 산출물(leaderboard / cost_frontier / synthetic_judge / README) 은 out of scope** — 이미 `make leaderboard-check` CI freshness gate 가 강제.
+- `reports/real100/baseline.aggregate.json` + `reports/real100/history/*.aggregate.json` regen 한정. **삭제된 public-eval 산출물(구 leaderboard / cost_frontier / judge aggregate / README freshness) 재생성은 out of scope** — 이 skill 은 private/internal baseline 만 다룬다.
 - One regen per invocation. 여러 베이스라인 표면(예: `failure_distribution`, `distinguishing_power`)을 한 번에 묶지 않음 — 각각 별도 호출.
 - Helper code inline 작성 금지. 새 측정 로직·스크립트가 필요하면 별개 PR 로 선행.
 - ADR 초안 / push / PR / merge 안 함. eval→ADR 는 `eval-to-adr-bridge` agent, remote shipping 은 `ship-pr` 담당.
@@ -70,11 +70,11 @@ go-ahead(진행): "진행" / "ㄱㄱ" / "ㅇㅋ" / "ok" / "go". 질문(답변만
 - **"real-eval 생략하고 베이스라인만 갱신"** → 거부. `eval_summary.json` 없이는 baseline 작성 불가([`write_real_eval_baseline.py`](../../../scripts/write_real_eval_baseline.py) `main`), private 데이터(ADR 0005)라 skill 이 대신 생성 못 함.
 - **"provenance skew 무시"** → `STRICT` 끄면 가능하나 #160 사유(metric/provenance 불일치 침묵 오염) 경고 후 사용자 선택. 기본은 `STRICT=1` 권장.
 - **"dirty 인데 그냥 baseline 떠"** → 비용 명시: dirty eval 은 SHA 가 HEAD 와 같아도 uncommitted 변경의 metric 을 박제 → 재현 불가, 이후 모든 델타 비교의 기준선 오염(#1148, skew check 가 못 잡는 #160 잔여 구멍). 권고는 commit/stash 후 clean 재실행. 의도적이면 1회 명시 확인 후 `ALLOW_DIRTY=1`.
-- **"synthetic leaderboard 도 같이 갱신"** → out of scope. `make leaderboard` / `make cost-frontier` 는 별도, leaderboard freshness 는 이미 `make leaderboard-check` CI 가 강제. 묶지 않음.
+- **"legacy public eval artifacts 도 같이 갱신"** → out of scope. public eval leaderboard / public judge aggregate 는 제거된 표면이므로 재생성하지 않고, private/internal baseline regen 과 묶지 않음.
 
 ## References
 
-- [Makefile](../../../Makefile) `real-eval-baseline-update` (`STRICT` 지원), `real-eval-delta`, `leaderboard-check`.
+- [Makefile](../../../Makefile) `real-eval-baseline-update` (`STRICT` 지원), `real-eval-delta`.
 - [scripts/write_real_eval_baseline.py](../../../scripts/write_real_eval_baseline.py) — baseline + history 작성, provenance skew 가드(`_warn_if_stale`) + dirty-state 가드(`_warn_if_dirty`, #1148), `STRICT`/`--allow-dirty` 해석, eval_summary 부재 처리(`main`), `provenance` 기록.
 - [scripts/check_baseline_provenance.py](../../../scripts/check_baseline_provenance.py) — committed baseline 의 `provenance.git_commit` reachability(origin/main).
 - [.githooks/pre-commit](../../../.githooks/pre-commit) — ADR 0005 allowlist(real100 baseline / history 만 통과).
@@ -85,7 +85,7 @@ go-ahead(진행): "진행" / "ㄱㄱ" / "ㅇㅋ" / "ok" / "go". 질문(답변만
 ## What this skill does NOT do
 
 - Does NOT write helper code — 기존 make 타깃 / 스크립트만 오케스트레이션.
-- Does NOT regen synthetic 산출물(leaderboard / cost_frontier / synthetic_judge / README). `make leaderboard-check` CI 가 freshness 강제.
+- Does NOT regen or recreate removed public-eval artifacts (former leaderboard / cost_frontier / judge aggregate / README freshness).
 - Does NOT run `make real-eval` — private 데이터 필요, 사용자가 HEAD 에서 실행. skill 은 결과(`eval_summary.json`)를 소비.
 - Does NOT draft an ADR — `eval-to-adr-bridge` agent 담당.
 - Does NOT push / open PR / merge — `ship-pr` 담당.

@@ -99,8 +99,8 @@ reports/real100/history/*
 # Issue #897 — RAG pipeline EDA aggregate (script:
 # scripts/rag_pipeline_eda.py). 7-axis pipeline-dynamics profile derived
 # from eval_summary.json::case_results. Two surfaces:
-#   - reports/rag_pipeline.* (synthetic public eval, ADR 0012 surface)
-#   - reports/real100/rag_pipeline.* (private 100-doc real eval, ADR 0005)
+#   - reports/rag_pipeline.* (public fixture smoke / local pipeline aggregate)
+#   - reports/real100/rag_pipeline.* (private/internal real eval, ADR 0005)
 # ADR 0005 boundary preserved by the script (no case IDs, chunk IDs, or
 # raw text; retry reason prefixes only).
 !reports/rag_pipeline.md
