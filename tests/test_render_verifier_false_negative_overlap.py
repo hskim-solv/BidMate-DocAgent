@@ -38,6 +38,7 @@ def _vfn_case(**overrides: object) -> dict[str, object]:
         "answerable": False,
         "abstention": 0.0,
         "abstained": False,
+        "abstention": 0.0,
         "query_type": "abstention",
         "hardcase_categories": ["no_answer"],
         "evidence_doc_ids": ["wrong-doc"],
