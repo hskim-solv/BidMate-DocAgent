@@ -2,8 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 import yaml
 
+from eval.naive_rag.benchmark import REQUIRED_OUTPUTS, run_from_config as run_benchmark_from_config
+from eval.naive_rag.build_benchmark_index import build_benchmark_index
 from eval.naive_rag.run_eval import load_contract_config
 from eval.naive_rag.validate_benchmark_dataset import validate_dataset
 
@@ -15,6 +18,18 @@ SMOKE_CONFIG = ROOT / "configs" / "eval" / "rag_quality_v1.yaml"
 
 def _yaml(path: Path) -> dict:
     return yaml.safe_load(path.read_text(encoding="utf-8"))
+
+
+def _write_temp_benchmark_config(tmp_path: Path, *, index_dir: Path) -> Path:
+    config = _yaml(BENCHMARK_CONFIG)
+    config["index_dir"] = str(index_dir)
+    config["output_root"] = str(tmp_path / "runs")
+    config_path = tmp_path / "benchmark_naive_rag_v1.yaml"
+    config_path.write_text(
+        yaml.safe_dump(config, allow_unicode=True, sort_keys=False),
+        encoding="utf-8",
+    )
+    return config_path
 
 
 def test_benchmark_config_pins_naive_dense_only_without_optimizations() -> None:
@@ -35,8 +50,10 @@ def test_benchmark_eval_is_separate_from_smoke_eval() -> None:
     smoke = _yaml(SMOKE_CONFIG)
 
     assert benchmark["benchmark_type"] == "naive_rag_benchmark"
+    assert benchmark["benchmark_version"] == "v1"
     assert benchmark["not_ci_smoke"] is True
-    assert benchmark["index_dir"] == "data/eval/benchmark/index"
+    assert benchmark["corpus_path"] == "data/eval/benchmark/corpus_chunks_v1.jsonl"
+    assert benchmark["index_dir"] == "data/eval/benchmark/index_v1"
     assert benchmark["corpus_dir"] == "data/eval/benchmark/corpus"
     assert benchmark["questions_path"] == "data/eval/benchmark/rag_questions_v1.jsonl"
     assert benchmark["gold_evidence_path"] == "data/eval/benchmark/gold_evidence_v1.jsonl"
@@ -50,17 +67,114 @@ def test_benchmark_eval_is_separate_from_smoke_eval() -> None:
 
 def test_placeholder_answer_metrics_are_not_named_as_semantic_claims() -> None:
     config = _yaml(BENCHMARK_CONFIG)
+    answer_metrics = config["metrics"]["answer"]
     display_names = config["metric_display_names"]["answer"]
 
-    assert display_names["faithfulness"] == "citation-in-retrieved-context placeholder"
-    assert display_names["answer_relevancy"] == "expected-answer lexical coverage placeholder"
+    assert "faithfulness" not in answer_metrics
+    assert "answer_relevancy" not in answer_metrics
+    assert display_names["rule_based_groundedness"] == "provisional citation-in-retrieved-context check"
+    assert display_names["term_coverage_accuracy"] == "provisional expected-term lexical coverage check"
     assert "semantic Faithfulness" not in repr(display_names)
     assert "semantic Answer Relevancy" not in repr(display_names)
 
 
-def test_benchmark_index_path_is_ready_and_validator_passes() -> None:
+def test_benchmark_dataset_validator_reports_counts() -> None:
     summary = validate_dataset(BENCHMARK_CONFIG)
+    dataset = summary["dataset_summary"]
 
     assert summary["errors"] == []
-    assert (ROOT / "data" / "eval" / "benchmark" / "index" / "index.json").is_file()
-    assert (ROOT / "data" / "eval" / "benchmark" / "index" / "embeddings.npy").is_file()
+    assert dataset["corpus_path"] == "data/eval/benchmark/corpus_chunks_v1.jsonl"
+    assert dataset["num_docs"] == 6
+    assert dataset["num_chunks"] == 72
+    assert dataset["num_questions"] == 55
+    assert dataset["answerable_count"] == 40
+    assert dataset["unanswerable_count"] == 15
+    assert summary["gold_evidence_summary"]["num_evidence_records"] == 47
+
+
+def test_benchmark_index_can_be_built_from_corpus_chunks_v1(tmp_path: Path) -> None:
+    output_dir = tmp_path / "index_v1"
+    build_benchmark_index(
+        ROOT / "data" / "eval" / "benchmark" / "corpus_chunks_v1.jsonl",
+        output_dir,
+    )
+
+    index_path = output_dir / "index.json"
+    assert index_path.is_file()
+    assert (output_dir / "embeddings.npy").is_file()
+    index = yaml.safe_load(index_path.read_text(encoding="utf-8"))
+    assert index["build"]["input_kind"] == "corpus_chunks_jsonl"
+    assert index["build"]["num_chunks"] == 72
+    assert index["build"]["leakage_guard"] == "query_and_gold_label_files_not_read"
+
+
+def test_benchmark_index_build_does_not_persist_questions_or_gold_labels(tmp_path: Path) -> None:
+    output_dir = tmp_path / "index_v1"
+    build_benchmark_index(
+        ROOT / "data" / "eval" / "benchmark" / "corpus_chunks_v1.jsonl",
+        output_dir,
+    )
+
+    index_text = (output_dir / "index.json").read_text(encoding="utf-8")
+    assert "brag_q" not in index_text
+    assert "brag_ev" not in index_text
+    assert "expected_answer" not in index_text
+    assert "expected_terms" not in index_text
+    assert "gold_evidence" not in index_text
+
+
+def test_benchmark_runner_fails_when_index_v1_is_missing(tmp_path: Path) -> None:
+    config_path = _write_temp_benchmark_config(tmp_path, index_dir=tmp_path / "missing_index_v1")
+
+    with pytest.raises(FileNotFoundError, match="Build it with"):
+        run_benchmark_from_config(config_path)
+
+
+def test_benchmark_runner_writes_required_artifacts(tmp_path: Path) -> None:
+    index_dir = tmp_path / "index_v1"
+    build_benchmark_index(
+        ROOT / "data" / "eval" / "benchmark" / "corpus_chunks_v1.jsonl",
+        index_dir,
+    )
+    config_path = _write_temp_benchmark_config(tmp_path, index_dir=index_dir)
+
+    output_dir = run_benchmark_from_config(
+        config_path,
+        run_id_override="pytest-naive-rag-benchmark-v1",
+    )
+
+    for name in REQUIRED_OUTPUTS:
+        assert (output_dir / name).is_file(), name
+
+    metrics = yaml.safe_load((output_dir / "metrics.json").read_text(encoding="utf-8"))
+    assert metrics["benchmark_type"] == "naive_rag_benchmark"
+    assert metrics["benchmark_version"] == "v1"
+    assert metrics["dataset"]["chunk_count"] == 72
+    assert set(metrics["retrieval_metrics"]) >= {"recall_at_5", "recall_at_10", "mrr_at_5", "ndcg_at_5"}
+    assert set(metrics["citation_page_metrics"]) >= {
+        "citation_chunk_accuracy",
+        "citation_page_coverage",
+        "citation_page_precision",
+        "missing_page_number_rate",
+        "page_metadata_coverage",
+    }
+    assert set(metrics["rule_based_answer_metrics"]) >= {
+        "rule_based_groundedness",
+        "term_coverage_accuracy",
+        "failed_abstention_rate",
+        "unsafe_answer_rate",
+    }
+    assert metrics["latency_metrics"]["benchmark_excludes_setup_costs"] is True
+    assert metrics["latency_metrics"]["generation_latency_ms"] is None
+    assert "semantic Faithfulness" not in repr(metrics["metric_labels"])
+    assert "semantic Answer Relevancy" not in repr(metrics["metric_labels"])
+
+
+def test_benchmark_result_report_contains_conservative_warnings() -> None:
+    report = ROOT / "docs" / "evaluation" / "naive_rag_benchmark_v1_results.md"
+    text = report.read_text(encoding="utf-8")
+
+    assert "synthetic-public" in text
+    assert "not sufficient for performance claims" in text
+    assert "Latency Scope Warning" in text
+    assert "Rule-Based" in text

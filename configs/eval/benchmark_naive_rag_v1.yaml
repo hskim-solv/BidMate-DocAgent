@@ -1,11 +1,13 @@
 schema_version: 1
 name: benchmark_naive_rag_v1
 benchmark_type: naive_rag_benchmark
+benchmark_version: v1
 not_ci_smoke: true
 description: Public synthetic benchmark for exposing Naive RAG retrieval and answer-grounding failures before optimization work.
 
 corpus_dir: data/eval/benchmark/corpus
-index_dir: data/eval/benchmark/index
+corpus_path: data/eval/benchmark/corpus_chunks_v1.jsonl
+index_dir: data/eval/benchmark/index_v1
 questions_path: data/eval/benchmark/rag_questions_v1.jsonl
 gold_evidence_path: data/eval/benchmark/gold_evidence_v1.jsonl
 output_root: experiments/runs
@@ -22,13 +24,11 @@ dataset_metadata:
   saturation_warning_chunk_to_top_k_ratio: 5.0
 
 index_build:
-  input_dir: data/eval/benchmark/corpus
-  output_dir: data/eval/benchmark/index
+  input_path: data/eval/benchmark/corpus_chunks_v1.jsonl
+  output_dir: data/eval/benchmark/index_v1
   embedding_backend: hashing
-  chunking_strategy: section
-  chunk_max_chars: 520
-  chunk_overlap_sentences: 1
-  command: python3 scripts/build_index.py --input_dir data/eval/benchmark/corpus --output_dir data/eval/benchmark/index --embedding_backend hashing --chunking_strategy section --chunk_max_chars 520 --chunk_overlap_sentences 1
+  input_kind: corpus_chunks_jsonl
+  command: python3 -m eval.naive_rag.build_benchmark_index --corpus data/eval/benchmark/corpus_chunks_v1.jsonl --output data/eval/benchmark/index_v1
 
 validator:
   command: python3 eval/naive_rag/validate_benchmark_dataset.py --config configs/eval/benchmark_naive_rag_v1.yaml
@@ -53,17 +53,42 @@ metrics:
     - recall_at_10
     - mrr_at_5
     - ndcg_at_5
+  citation_page:
+    - citation_chunk_accuracy
+    - citation_page_coverage
+    - citation_page_precision
+    - missing_page_number_rate
+    - page_metadata_coverage
   answer:
-    - faithfulness
-    - answer_relevancy
-    - citation_accuracy
-    - hallucination_flag
-    - unanswerable_detection_flag
+    - rule_based_groundedness
+    - term_coverage_accuracy
+    - failed_abstention_rate
+    - unsafe_answer_rate
+    - rule_based_hallucination_rate
+  latency:
+    - warm_query_latency_ms
+    - retrieval_latency_ms
+    - generation_latency_ms
 
 metric_display_names:
+  retrieval:
+    recall_at_5: explicit-gold-evidence Recall@5
+    recall_at_10: explicit-gold-evidence Recall@10
+    mrr_at_5: explicit-gold-evidence MRR@5
+    ndcg_at_5: explicit-gold-evidence nDCG@5
+  citation_page:
+    citation_chunk_accuracy: rule-based gold citation chunk accuracy
+    citation_page_coverage: rule-based gold page coverage
+    citation_page_precision: rule-based cited page precision
+    missing_page_number_rate: page metadata missing rate
+    page_metadata_coverage: corpus chunk page metadata coverage
   answer:
-    faithfulness: citation-in-retrieved-context placeholder
-    answer_relevancy: expected-answer lexical coverage placeholder
-    citation_accuracy: gold-citation match rate
-    hallucination_flag: rule-based hallucination flag
-    unanswerable_detection_flag: rule-based abstention detection flag
+    rule_based_groundedness: provisional citation-in-retrieved-context check
+    term_coverage_accuracy: provisional expected-term lexical coverage check
+    failed_abstention_rate: rule-based unanswerable failure rate
+    unsafe_answer_rate: rule-based unsafe answer rate
+    rule_based_hallucination_rate: rule-based answerable wrong-citation hallucination rate
+  latency:
+    warm_query_latency_ms: warm query latency excluding setup costs
+    retrieval_latency_ms: retrieval stage latency when available
+    generation_latency_ms: external generation latency only if measured
