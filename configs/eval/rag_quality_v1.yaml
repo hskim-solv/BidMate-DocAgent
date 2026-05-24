@@ -1,0 +1,34 @@
+schema_version: 1
+name: rag_quality_v1
+description: Naive RAG baseline quality contract over public fixture data.
+
+index_dir: data/index
+questions_path: data/eval/rag_questions.jsonl
+gold_evidence_path: data/eval/gold_evidence.jsonl
+output_root: experiments/runs
+
+pipeline:
+  name: naive_baseline
+  top_k: 10
+  retrieval_mode: flat
+  retrieval_backend: dense
+  metadata_first: false
+  rerank: false
+  verifier_retry: false
+  query_expansion: identity
+  prompt_profile: minimal_grounded_extractive
+  bm25_tokenizer: regex
+  bm25_backend: okapi
+
+metrics:
+  retrieval:
+    - recall_at_5
+    - recall_at_10
+    - mrr_at_5
+    - ndcg_at_5
+  answer:
+    - faithfulness
+    - answer_relevancy
+    - citation_accuracy
+    - hallucination_flag
+    - unanswerable_detection_flag

@@ -290,6 +290,10 @@ artifacts/benchmarks/
 artifacts/runs/
 artifacts/matrices/
 
+# Naive RAG eval contract run artifacts. The contract/config/sample data are
+# committed; timestamped run outputs are reproducible and stay local.
+experiments/runs/
+
 # Harness private overlays (paired with eval/*.local.yaml). Only the
 # *.example.yaml templates are committed.
 harness/*.local.yaml

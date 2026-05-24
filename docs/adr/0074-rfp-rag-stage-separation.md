@@ -1,9 +1,9 @@
 # 0074: RFP RAG 단계 분리 — retrieval, answer, demo default
 
-- **Status**: proposed
+- **Status**: accepted
 - **Date**: 2026-05-24
 - **Deciders**: hskim
-- **Related**: [ADR 0001](./0001-preserve-naive-baseline.md), [ADR 0002](./0002-metadata-first-retrieval.md), [ADR 0024](./0024-agentic-full-llm-as-api-default.md), [ADR 0058](./0058-phase35-mode-winner.md), [ADR 0065](./0065-metadata-routing-bounded-by-query-coverage.md), [ADR 0068](./0068-oracle-evidence-injection-ceiling-surface.md), [ADR 0069](./0069-retrieval-aggregate-and-citation-coverage-surface.md)
+- **Related**: [ADR 0001](./0001-preserve-naive-baseline.md), [ADR 0002](./0002-metadata-first-retrieval.md), [ADR 0024](./0024-agentic-full-llm-as-api-default.md), [ADR 0051](./0051-flat-root-module-layout.md), [ADR 0058](./0058-phase35-mode-winner.md), [ADR 0065](./0065-metadata-routing-bounded-by-query-coverage.md), [ADR 0068](./0068-oracle-evidence-injection-ceiling-surface.md), [ADR 0069](./0069-retrieval-aggregate-and-citation-coverage-surface.md), [naive RAG eval contract](../evaluation/naive_rag_eval_contract.md)
 
 ## Context
 
@@ -39,6 +39,7 @@ RFP RAG를 다음 단계로 해석한다.
 3. **Answer-evaluation stage**: verifier, refusal, synthesis, oracle evidence, LLM judge는 retrieval 개선과 별도로 평가한다.
 4. **Agentic stage**: LangGraph, ReAct, planner, self-correction은 명시적 opt-in 또는 후속 stage다.
 5. **Demo/API default**: API default는 제품 경험일 수 있지만 eval baseline이나 성능 근거가 아니다.
+6. **Naive RAG eval contract**: `configs/eval/rag_quality_v1.yaml` + `eval.naive_rag.run_eval` 은 `naive_baseline`을 dense-only top10으로 측정하는 독립 계약이다. ADR 0051에 따라 `src/` 경로를 만들지 않고 `python -m eval.naive_rag.run_eval --config configs/eval/rag_quality_v1.yaml`을 canonical command로 삼는다.
 
 ADR 0002는 metadata-first가 전역 기본 검색 전략이라는 해석을 더 이상 유지하지
 않는다. Metadata routing은 ADR 0065의 query coverage 제한 안에서만 improved
@@ -65,6 +66,9 @@ control과 retrieval knob을 명시해야 한다.
 - `docs/adr/0058-phase35-mode-winner.md`
 - `docs/adr/README.md`
 - `eval/config.yaml`
+- `configs/eval/rag_quality_v1.yaml`
+- `eval/naive_rag/`
+- `docs/evaluation/naive_rag_eval_contract.md`
 - `tests/test_full_dense_control_row_regression.py`
 - `tests/test_api_default_pipeline_regression.py`
 
@@ -79,5 +83,8 @@ control과 retrieval knob을 명시해야 한다.
 <!-- verifies-key: docs/adr/README.md:0074 -->
 <!-- verifies-key: eval/config.yaml:full_dense -->
 <!-- verifies-key: eval/config.yaml:retrieval_backend -->
+<!-- verifies-key: configs/eval/rag_quality_v1.yaml:naive_baseline -->
+<!-- verifies-key: docs/evaluation/naive_rag_eval_contract.md:Naive RAG Evaluation Contract -->
+<!-- verifies-key: eval/naive_rag/run_eval.py:run_from_config -->
 <!-- verifies-key: tests/test_full_dense_control_row_regression.py:full_dense -->
 <!-- verifies-key: tests/test_api_default_pipeline_regression.py:DEFAULT_API_PIPELINE -->
