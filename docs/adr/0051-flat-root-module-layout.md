@@ -100,9 +100,9 @@ knob: 본 결정에는 토글이 없다. 재검토 trigger 가 충족되면 별�
 
 본 결정의 commitment 는 세 measurement surface 에 wired:
 
-<!-- verifies-key: pyproject.toml:pythonpath -->
+<!-- verifies-key: pyproject.toml:pythonpath = ["."] -->
 <!-- verifies-key: scripts/_governance.py:LOAD_BEARING_PATHS -->
-<!-- verifies-key: tests/test_dependency_graph_invariance.py:rag_core -->
+<!-- verifies-key: tests/test_dependency_graph_invariance.py:test_leaf_module_has_zero_rag_core_back_edges -->
 
 - `pyproject.toml::pythonpath = ["."]` 가 사라지면 본 결정의 핵심 메커니즘 손실 — 재검토 트리거
 - `LOAD_BEARING_PATHS` 가 파일명 hard-code 를 떠나면 디렉토리 재구성 비용 가설(본 ADR consequences) 무효화 — 재검토 트리거
