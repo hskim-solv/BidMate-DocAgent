@@ -31,7 +31,7 @@ from rag_core import (
     run_rag_query_with_oracle_evidence,
 )
 from eval.bootstrap import bootstrap_ci
-from eval.scorers import derive_gold_chunk_ids, score_case
+from eval.scorers import derive_gold_chunk_ids, derive_gold_evidence, score_case
 from eval.scorers.failure_classifier import (
     aggregate_failure_categories,
     classify_failure,
@@ -270,6 +270,33 @@ def load_config(path: Path) -> dict[str, Any]:
                     raise ValueError(
                         f"expected_claim_citations {field} must be a list: {case.get('id')}"
                     )
+        gold_evidence = case.get("gold_evidence") or []
+        if not isinstance(gold_evidence, list):
+            raise ValueError(f"Eval case gold_evidence must be a list: {case.get('id')}")
+        for item in gold_evidence:
+            if not isinstance(item, dict):
+                raise ValueError(
+                    f"Each gold_evidence item must be a mapping: {case.get('id')}"
+                )
+            for field in ("doc_id", "chunk_id", "support_claim"):
+                if item.get(field) is not None and not str(item.get(field)).strip():
+                    raise ValueError(
+                        f"gold_evidence {field} must be non-empty when provided: {case.get('id')}"
+                    )
+            page_span = item.get("page_span")
+            if page_span is not None and (
+                not isinstance(page_span, list)
+                or len(page_span) != 2
+                or not all(isinstance(page, int) for page in page_span)
+            ):
+                raise ValueError(
+                    f"gold_evidence page_span must be [start:int, end:int]: {case.get('id')}"
+                )
+            required_terms = item.get("required_terms") or []
+            if not isinstance(required_terms, list):
+                raise ValueError(
+                    f"gold_evidence required_terms must be a list: {case.get('id')}"
+                )
 
     runs = data.get("ablation_runs", DEFAULT_ABLATION_RUNS)
     if not isinstance(runs, list) or not runs:
@@ -536,7 +563,9 @@ def metric_block(case_results: list[dict[str, Any]]) -> dict[str, Any]:
     # None-skip convention of the answer-quality metrics above.
     retrieval_metric_keys = [
         *(f"chunk_recall_at_{k}" for k in CHUNK_METRIC_KS),
+        "chunk_mrr_at_5",
         "chunk_mrr",
+        "chunk_ndcg_at_5",
         "chunk_ndcg_at_10",
         "chunk_ndcg_at_20",
         "rerank_delta_mrr",
@@ -587,6 +616,16 @@ def metric_block(case_results: list[dict[str, Any]]) -> dict[str, Any]:
         for result in case_results
         for error in result.get("citation_grounding_errors") or []
         if isinstance(error, dict) and error.get("code")
+    )
+    citation_coverage_reason_counts = Counter(
+        str(result.get(key))
+        for result in case_results
+        for key in (
+            "citation_claim_coverage_reason",
+            "citation_page_coverage_reason",
+            "citation_region_coverage_reason",
+        )
+        if result.get(key)
     )
     claim_citation_error_counts = Counter(
         error["code"]
@@ -695,6 +734,7 @@ def metric_block(case_results: list[dict[str, Any]]) -> dict[str, Any]:
         "retry_reason_counts": dict(sorted(retry_reason_counts.items())),
         "retry_effectiveness": retry_effectiveness_block(case_results),
         "citation_grounding_error_counts": dict(sorted(citation_grounding_error_counts.items())),
+        "citation_coverage_reason_counts": dict(sorted(citation_coverage_reason_counts.items())),
         "claim_citation_error_counts": dict(sorted(claim_citation_error_counts.items())),
     }
     if comparison_recall_scores:
@@ -716,6 +756,14 @@ def metric_block(case_results: list[dict[str, Any]]) -> dict[str, Any]:
     for key, scores in retrieval_metric_scores.items():
         block[key] = rate(scores)
         ci_block[key] = bootstrap_ci(scores)
+    block["retrieval_metric_coverage"] = {
+        key: {
+            "n": len(scores),
+            "missing": len(case_results) - len(scores),
+            "reason": None if scores else "no_gold_evidence_or_not_applicable",
+        }
+        for key, scores in retrieval_metric_scores.items()
+    }
     return block
 
 
@@ -873,6 +921,100 @@ def safe_path_part(value: str) -> str:
     return re.sub(r"[^A-Za-z0-9_.-]+", "_", value).strip("_") or "unknown"
 
 
+_FAILURE_ROOT_CAUSE = {
+    "retrieval_miss": "gold evidence was not fully retrieved into the answer evidence set",
+    "planner_under_decomposition": "query likely required multi-step or multi-section handling",
+    "verifier_false_negative": "system answered when evidence or answerability was weak",
+    "verifier_false_positive": "system abstained even though retrieved evidence contained support",
+    "generator_hallucination": "generated claim was not sufficiently supported by cited evidence",
+    "context_dilution": "retrieval context likely diluted the relevant evidence",
+    "unknown": "failure did not match a more specific rule",
+}
+
+_FAILURE_SUGGESTED_FIX = {
+    "retrieval_miss": "inspect retrieved_chunks ranks and gold_evidence labels before changing retrieval",
+    "planner_under_decomposition": "collect decomposition evidence; do not add query decomposition to naive_baseline",
+    "verifier_false_negative": "inspect answerability labels and verifier policy outside the naive baseline",
+    "verifier_false_positive": "inspect citation_term_match and verification reasons",
+    "generator_hallucination": "inspect claim-to-citation alignment and answer prompt contract",
+    "context_dilution": "inspect top-k sensitivity with the same dense-only retriever",
+    "unknown": "manually label the root cause from retrieved_chunks, citations, and answer text",
+}
+
+_FAILURE_METRIC_KEYS = (
+    "chunk_recall_at_5",
+    "chunk_recall_at_10",
+    "chunk_mrr_at_5",
+    "chunk_ndcg_at_5",
+    "chunk_ndcg_at_10",
+    "accuracy",
+    "groundedness",
+    "citation_precision",
+    "citation_page_coverage",
+    "citation_region_coverage",
+    "claim_citation_alignment",
+    "abstention",
+)
+
+
+def failure_case_record(
+    result: dict[str, Any],
+    run_config: dict[str, Any],
+) -> dict[str, Any]:
+    failure_type = str(result.get("failure_category") or classify_failure(result) or "unknown")
+    expected_answer = result.get("expected_answer") or ""
+    if not expected_answer:
+        expected_terms = [str(term) for term in result.get("expected_terms") or [] if term]
+        expected_answer = "; ".join(expected_terms)
+    return {
+        "question_id": result.get("id"),
+        "question": result.get("query"),
+        "expected_answer": expected_answer,
+        "gold_evidence": result.get("gold_evidence") or [],
+        "retrieved_chunks": result.get("retrieved_chunks") or [],
+        "generated_answer": result.get("answer") or "",
+        "citation": result.get("citation") or [],
+        "failure_type": failure_type,
+        "root_cause": _FAILURE_ROOT_CAUSE.get(failure_type, _FAILURE_ROOT_CAUSE["unknown"]),
+        "suggested_fix": _FAILURE_SUGGESTED_FIX.get(failure_type, _FAILURE_SUGGESTED_FIX["unknown"]),
+        "metrics": {key: result.get(key) for key in _FAILURE_METRIC_KEYS},
+        "run": {
+            "name": run_config.get("name"),
+            "pipeline": run_config.get("pipeline"),
+            "top_k": run_config.get("top_k"),
+            "retrieval_backend": run_config.get("retrieval_backend"),
+            "metadata_first": run_config.get("metadata_first"),
+            "rerank": run_config.get("rerank"),
+            "verifier_retry": run_config.get("verifier_retry"),
+        },
+    }
+
+
+def write_failure_artifact(
+    output_dir: Path,
+    run_name: str,
+    run_config: dict[str, Any],
+    case_results: list[dict[str, Any]],
+) -> str:
+    failures = [
+        result
+        for result in case_results
+        if result.get("failure_category") or classify_failure(result)
+    ]
+    path = output_dir / "failures" / f"{safe_path_part(run_name)}.jsonl"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lines = [
+        json.dumps(
+            failure_case_record(result, run_config),
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+        for result in failures
+    ]
+    path.write_text(("\n".join(lines) + "\n") if lines else "", encoding="utf-8")
+    return str(path)
+
+
 _TRACE_VERBOSE_ENV = "BIDMATE_TRACE_VERBOSE"
 _TRACE_VERBOSE_DIAG_KEYS = (
     "retry_count",
@@ -997,6 +1139,36 @@ def _case_source_format(
         if fmt:
             return fmt
     return None
+
+
+def index_citation_metadata_coverage(index: dict[str, Any]) -> dict[str, Any]:
+    """Summarize page/region metadata availability at index level."""
+    chunks = [chunk for chunk in index.get("chunks") or [] if isinstance(chunk, dict)]
+    total = len(chunks)
+    with_page_span = 0
+    with_region_page = 0
+    with_region_bbox = 0
+    for chunk in chunks:
+        page_span = chunk.get("page_span")
+        if isinstance(page_span, list) and len(page_span) == 2:
+            with_page_span += 1
+        regions = chunk.get("regions") or []
+        if not isinstance(regions, list):
+            continue
+        if any(isinstance(region, dict) and isinstance(region.get("page_number"), int) for region in regions):
+            with_region_page += 1
+        if any(isinstance(region, dict) and is_bbox(region.get("bbox")) for region in regions):
+            with_region_bbox += 1
+    return {
+        "chunks_total": total,
+        "chunks_with_page_span": with_page_span,
+        "chunks_with_region_page": with_region_page,
+        "chunks_with_region_bbox": with_region_bbox,
+        "page_span_coverage": (with_page_span / total) if total else None,
+        "region_page_coverage": (with_region_page / total) if total else None,
+        "region_bbox_coverage": (with_region_bbox / total) if total else None,
+        "coverage_reason": "ok" if with_page_span or with_region_page else "index_lacks_page_region_metadata",
+    }
 
 
 def build_oracle_evidence(
@@ -1159,12 +1331,18 @@ def evaluate_run(
             prediction,
             redact_options=redact_options,
         )
-        gold_chunk_ids = derive_gold_chunk_ids(case, index)
+        gold_evidence = derive_gold_evidence(case, index)
+        gold_chunk_ids = [
+            str(item.get("chunk_id") or "")
+            for item in gold_evidence
+            if isinstance(item, dict) and item.get("chunk_id")
+        ]
         result = score_case(
             case,
             prediction,
             answer_policy,
             gold_chunk_ids=gold_chunk_ids,
+            gold_evidence=gold_evidence,
         )
         if trace_path:
             result["trace_path"] = trace_path
@@ -1263,6 +1441,7 @@ def main() -> int:
     trace_root = Path(args.trace_dir) if args.trace_dir else Path(args.output_dir) / "traces"
     redact_options = trace_redact_options(args.redact_trace)
     all_case_results: dict[str, list[dict[str, Any]]] = {}
+    failure_artifacts: dict[str, str] = {}
     try:
         for run_config in ablation_runs(config):
             case_results = evaluate_run(
@@ -1282,6 +1461,14 @@ def main() -> int:
                 include_cases=is_primary,
                 index_dir=Path(args.index_dir),
             )
+            failure_path = write_failure_artifact(
+                Path(args.output_dir),
+                run_config["name"],
+                run_config,
+                case_results,
+            )
+            run_summary["failure_artifact_path"] = failure_path
+            failure_artifacts[run_config["name"]] = failure_path
             run_summaries.append(run_summary)
             if is_primary:
                 primary_summary = run_summary
@@ -1307,6 +1494,7 @@ def main() -> int:
         "run_manifest": compute_run_manifest(config_path, index),
         "config": args.config,
         "index_dir": args.index_dir,
+        "index_citation_metadata_coverage": index_citation_metadata_coverage(index),
         "primary_run": primary_summary["name"],
         "pipeline": primary_summary.get("pipeline"),
         "prompt_profile": primary_summary.get("prompt_profile"),
@@ -1319,6 +1507,15 @@ def main() -> int:
         "citation_region_precision": primary_summary["citation_region_precision"],
         "citation_grounding": primary_summary["citation_grounding"],
         "claim_citation_alignment": primary_summary["claim_citation_alignment"],
+        "chunk_recall_at_5": primary_summary.get("chunk_recall_at_5"),
+        "chunk_recall_at_10": primary_summary.get("chunk_recall_at_10"),
+        "chunk_recall_at_20": primary_summary.get("chunk_recall_at_20"),
+        "chunk_mrr_at_5": primary_summary.get("chunk_mrr_at_5"),
+        "chunk_mrr": primary_summary.get("chunk_mrr"),
+        "chunk_ndcg_at_5": primary_summary.get("chunk_ndcg_at_5"),
+        "chunk_ndcg_at_10": primary_summary.get("chunk_ndcg_at_10"),
+        "chunk_ndcg_at_20": primary_summary.get("chunk_ndcg_at_20"),
+        "retrieval_metric_coverage": primary_summary.get("retrieval_metric_coverage", {}),
         "abstention": primary_summary["abstention"],
         "abstention_outcomes": primary_summary.get("abstention_outcomes"),
         # ADR 0059 — 7-category failure taxonomy aggregate (Phase 5
@@ -1341,12 +1538,14 @@ def main() -> int:
         "retry_reason_counts": primary_summary["retry_reason_counts"],
         "retry_effectiveness": retry_effectiveness,
         "citation_grounding_error_counts": primary_summary["citation_grounding_error_counts"],
+        "citation_coverage_reason_counts": primary_summary.get("citation_coverage_reason_counts", {}),
         "claim_citation_error_counts": primary_summary["claim_citation_error_counts"],
         "trace_dir": str(trace_root),
         "trace_redaction": {
             "include_doc_ids": redact_options["include_doc_ids"],
             "include_entities": redact_options["include_entities"],
         },
+        "failure_artifacts": failure_artifacts,
         "ablation": {"runs": run_summaries},
         "case_results": primary_summary.get("case_results", []),
     }

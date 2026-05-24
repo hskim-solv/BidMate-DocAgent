@@ -9,8 +9,10 @@ from eval.scorers.case import score_case
 from eval.scorers.chunk_health import compute_chunk_health
 from eval.scorers.chunk_metrics import (
     chunk_mrr,
+    chunk_mrr_at_k,
     chunk_ndcg_at_k,
     chunk_recall_at_k,
+    derive_gold_evidence,
     derive_gold_chunk_ids,
 )
 from eval.scorers.citation import score_citation_grounding
@@ -18,9 +20,11 @@ from eval.scorers.format import score_answer_format
 
 __all__ = [
     "chunk_mrr",
+    "chunk_mrr_at_k",
     "chunk_ndcg_at_k",
     "chunk_recall_at_k",
     "compute_chunk_health",
+    "derive_gold_evidence",
     "derive_gold_chunk_ids",
     "score_case",
     "score_citation_grounding",

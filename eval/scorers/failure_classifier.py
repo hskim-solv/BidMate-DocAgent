@@ -51,7 +51,7 @@ FAILURE_CATEGORIES: tuple[FailureCategory, ...] = (
 # disabled (see classify_failure body) because case_result lacks a direct
 # chunk_id → doc_id mapping; supply 2's dashboard will surface the real
 # distribution and that informs the v2 wiring.
-DEFAULT_TOP_K = 4
+DEFAULT_TOP_K = 5
 
 # ``generator_hallucination`` threshold on claim_citation_alignment. Set
 # arbitrarily at v1; supply 2's distribution should inform tuning. Lower

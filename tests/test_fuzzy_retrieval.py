@@ -503,7 +503,7 @@ class FuzzyMetadataRetrievalTest(unittest.TestCase):
 
         self.assertEqual("naive_baseline", result["plan"]["pipeline"])
         self.assertEqual("minimal_grounded_extractive", result["plan"]["prompt_profile"])
-        self.assertEqual(4, result["plan"]["top_k"])
+        self.assertEqual(5, result["plan"]["top_k"])
         self.assertFalse(result["plan"]["metadata_first"])
         self.assertFalse(result["plan"]["rerank"])
         self.assertFalse(result["diagnostics"]["verifier_retry"])

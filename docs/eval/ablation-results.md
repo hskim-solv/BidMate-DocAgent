@@ -33,7 +33,7 @@
 | full | agentic_full | auto | on | on | on | flat | dense | structured_grounded_claims | 0.906 | 0.929 | 0.905 | N/A | 0.905 | 1.000 (10/0/0) | 0.310 | 3.0ms |
 | hierarchical | agentic_full | auto | on | on | on | hierarchical | dense | structured_grounded_claims | 0.906 | 0.929 | 0.905 | N/A | 0.905 | 1.000 (10/0/0) | 0.310 | 2.9ms |
 | hybrid_bm25 | agentic_full | auto | on | on | on | flat | hybrid | structured_grounded_claims | 0.906 | 0.929 | 0.905 | N/A | 0.905 | 1.000 (10/0/0) | 0.310 | 3.1ms |
-| naive_baseline | naive_baseline | 4 | off | off | off | flat | dense | minimal_grounded_extractive | 0.844 | 0.714 | 0.512 | N/A | 0.667 | 0.300 (3/7/0) | 0.000 | 2.9ms |
+| naive_baseline | naive_baseline | 5 | off | off | off | flat | dense | minimal_grounded_extractive | 0.844 | 0.714 | 0.512 | N/A | 0.667 | 0.300 (3/7/0) | 0.000 | 2.9ms |
 | no_metadata_first | agentic_full | auto | off | on | on | flat | dense | structured_grounded_claims | 0.844 | 0.881 | 0.679 | N/A | 0.857 | 1.000 (10/0/0) | 0.000 | 3.0ms |
 | no_rerank | agentic_full | auto | on | off | on | flat | dense | structured_grounded_claims | 0.906 | 0.929 | 0.905 | N/A | 0.905 | 1.000 (10/0/0) | 0.310 | 3.2ms |
 | no_verifier_retry | agentic_full | auto | on | on | off | flat | dense | structured_grounded_claims | 0.906 | 0.762 | 0.762 | N/A | 0.714 | 0.300 (3/7/0)† | 0.000 | 2.8ms |

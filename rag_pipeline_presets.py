@@ -97,7 +97,7 @@ DEFAULT_COMPARISON_BALANCE: dict[str, Any] = {
 
 PIPELINE_PRESETS: dict[str, dict[str, Any]] = {
     "naive_baseline": {
-        "top_k": 4,
+        "top_k": 5,
         "metadata_first": False,
         "rerank": False,
         "rerank_cross_encoder": False,
@@ -241,7 +241,7 @@ PIPELINE_PRESETS: dict[str, dict[str, Any]] = {
     # The distinguishing-power floor for the "is multi-chunk retrieval pulling
     # weight?" question — pairs with the ``random_retrieval`` ablation row in
     # eval/config.yaml. Retrieval backend stays "dense" so the only knob being
-    # varied vs naive_baseline is ``top_k`` (1 vs 4).
+    # varied vs naive_baseline is ``top_k`` (1 vs 5).
     "single_chunk": {
         "top_k": 1,
         "metadata_first": False,

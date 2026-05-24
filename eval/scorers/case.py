@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import Any
 
 from eval.scorers._shared import (
+    answer_citations,
     answer_payload,
     answer_to_text,
     canonical_query_type,
@@ -16,11 +17,56 @@ from eval.scorers.alignment import score_claim_citation_alignment
 from eval.scorers.chunk_metrics import (
     CHUNK_METRIC_KS,
     chunk_mrr,
+    chunk_mrr_at_k,
     chunk_ndcg_at_k,
     chunk_recall_at_k,
 )
 from eval.scorers.citation import score_citation_coverage, score_citation_grounding
 from eval.scorers.format import score_answer_format
+
+
+def _compact_retrieved_chunks(diagnostics: dict[str, Any]) -> list[dict[str, Any]]:
+    raw = diagnostics.get("retrieved_chunks")
+    rows: list[dict[str, Any]] = []
+    if isinstance(raw, list):
+        for rank, item in enumerate(raw, start=1):
+            if not isinstance(item, dict):
+                continue
+            chunk_id = str(item.get("chunk_id") or "")
+            if not chunk_id:
+                continue
+            rows.append(
+                {
+                    "rank": int(item.get("rank") or rank),
+                    "chunk_id": chunk_id,
+                    "doc_id": str(item.get("doc_id") or ""),
+                    "score": item.get("score"),
+                    "score_parts": (
+                        dict(item.get("score_parts") or {})
+                        if isinstance(item.get("score_parts") or {}, dict)
+                        else {}
+                    ),
+                    "section": str(item.get("section") or ""),
+                    "page_span": item.get("page_span"),
+                    "text_preview": str(item.get("text_preview") or "")[:240],
+                }
+            )
+    if rows:
+        return rows
+    return [
+        {
+            "rank": rank,
+            "chunk_id": str(chunk_id),
+            "doc_id": "",
+            "score": None,
+            "score_parts": {},
+            "section": "",
+            "page_span": None,
+            "text_preview": "",
+        }
+        for rank, chunk_id in enumerate(diagnostics.get("retrieved_chunk_ids") or [], start=1)
+        if chunk_id
+    ]
 
 
 def score_case(
@@ -29,6 +75,7 @@ def score_case(
     answer_policy: dict[str, Any] | None = None,
     *,
     gold_chunk_ids: list[str] | None = None,
+    gold_evidence: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     answerable = bool(case.get("answerable", True))
     query_type = canonical_query_type(case.get("query_type"))
@@ -108,17 +155,29 @@ def score_case(
     if not answerable and abstained and not evidence:
         answer_format_payload["answer_format_compliance"] = None
 
+    retrieved_chunks = _compact_retrieved_chunks(diagnostics)
     retrieved_chunk_ids = [
-        str(chunk_id)
-        for chunk_id in diagnostics.get("retrieved_chunk_ids") or []
-        if chunk_id
+        str(item.get("chunk_id") or "")
+        for item in retrieved_chunks
+        if item.get("chunk_id")
     ]
-    gold_for_chunks = [str(item) for item in gold_chunk_ids or [] if item]
+    gold_evidence_rows = [
+        dict(item)
+        for item in (gold_evidence or [])
+        if isinstance(item, dict)
+    ]
+    gold_for_chunks = [
+        str(item.get("chunk_id") or "")
+        for item in gold_evidence_rows
+        if item.get("chunk_id")
+    ] or [str(item) for item in gold_chunk_ids or [] if item]
     chunk_metrics: dict[str, float | None] = {
         f"chunk_recall_at_{k}": chunk_recall_at_k(retrieved_chunk_ids, gold_for_chunks, k)
         for k in CHUNK_METRIC_KS
     }
+    chunk_metrics["chunk_mrr_at_5"] = chunk_mrr_at_k(retrieved_chunk_ids, gold_for_chunks, 5)
     chunk_metrics["chunk_mrr"] = chunk_mrr(retrieved_chunk_ids, gold_for_chunks)
+    chunk_metrics["chunk_ndcg_at_5"] = chunk_ndcg_at_k(retrieved_chunk_ids, gold_for_chunks, 5)
     chunk_metrics["chunk_ndcg_at_10"] = chunk_ndcg_at_k(retrieved_chunk_ids, gold_for_chunks, 10)
     chunk_metrics["chunk_ndcg_at_20"] = chunk_ndcg_at_k(retrieved_chunk_ids, gold_for_chunks, 20)
 
@@ -165,8 +224,12 @@ def score_case(
         "query": case.get("query"),
         "answerable": answerable,
         "expected_doc_ids": sorted(expected_doc_ids),
+        "expected_terms": expected_terms,
+        "expected_answer": case.get("expected_answer") or case.get("gold_answer") or "",
         "evidence_doc_ids": sorted(doc_id for doc_id in evidence_doc_ids if doc_id),
+        "gold_evidence": gold_evidence_rows,
         "gold_chunk_ids": gold_for_chunks,
+        "retrieved_chunks": retrieved_chunks,
         "retrieved_chunk_ids": retrieved_chunk_ids,
         **chunk_metrics,
         "doc_match": doc_match,
@@ -216,6 +279,7 @@ def score_case(
         "abstained": abstained,
         **answer_format_payload,
         "answer": answer,
+        "citation": answer_citations(prediction),
         "evidence": [
             {
                 "text": str(item.get("text") or "")[:600],

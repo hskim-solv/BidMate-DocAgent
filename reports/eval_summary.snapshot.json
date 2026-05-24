@@ -88,7 +88,7 @@
       {
         "name": "naive_baseline",
         "pipeline": "naive_baseline",
-        "top_k": 4,
+        "top_k": 5,
         "metadata_first": false,
         "rerank": false,
         "verifier_retry": false,
@@ -968,7 +968,7 @@
       {
         "name": "naive_baseline_finetuned",
         "pipeline": "naive_baseline",
-        "top_k": 4,
+        "top_k": 5,
         "metadata_first": false,
         "rerank": false,
         "verifier_retry": false,

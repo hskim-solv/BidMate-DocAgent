@@ -88,7 +88,9 @@ def _build_case(
         "chunk_recall_at_5": chunk_recall_at_10,
         "chunk_recall_at_10": chunk_recall_at_10,
         "chunk_recall_at_20": chunk_recall_at_10,
+        "chunk_mrr_at_5": chunk_recall_at_10,
         "chunk_mrr": chunk_recall_at_10,
+        "chunk_ndcg_at_5": chunk_recall_at_10,
         "chunk_ndcg_at_10": chunk_recall_at_10,
         "chunk_ndcg_at_20": chunk_recall_at_10,
         "rerank_delta_mrr": rerank_delta_mrr if has_rerank else None,
@@ -96,7 +98,7 @@ def _build_case(
         "last_attempt_verified": True,
         "retry_count": retry_count,
         "retry_trigger_reasons": retry_reasons or [],
-        "selected_top_k": 4,
+        "selected_top_k": 5,
         "metadata_candidate_count": 3,
         "stage_latency": {
             "query_analysis_ms": 1.0,

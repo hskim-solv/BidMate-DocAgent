@@ -1,3 +1,4 @@
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -6,9 +7,12 @@ from eval.run_eval import (
     compute_run_manifest,
     cross_ablation_retry_precision,
     evaluate_run,
+    failure_case_record,
+    index_citation_metadata_coverage,
     load_config,
     retry_effectiveness_block,
     summarize_run,
+    write_failure_artifact,
 )
 from eval.scorers import score_case
 from rag_core import build_index_payload
@@ -176,6 +180,86 @@ class EvalMetricsTest(unittest.TestCase):
         }
         result = score_case(self.visual_case(), prediction)
         self.assertEqual(result["evidence"], [])
+
+    def test_score_case_uses_retrieved_chunks_for_retrieval_metrics(self) -> None:
+        prediction = {
+            "answer": {"schema_version": 2, "status": "supported", "claims": []},
+            "answer_text": "answer",
+            "evidence": [{"doc_id": "visual-doc", "text": "보안 요구사항 접근 통제"}],
+            "diagnostics": {
+                "latency_ms": 1.0,
+                "retry_count": 0,
+                "retrieved_chunk_ids": ["wrong-legacy-id"],
+                "retrieved_chunks": [
+                    {
+                        "rank": 1,
+                        "chunk_id": "visual-doc::chunk-001",
+                        "doc_id": "visual-doc",
+                        "score": 0.9,
+                        "score_parts": {"dense": 0.9},
+                        "section": "보안",
+                        "page_span": [2, 2],
+                        "text_preview": "보안 요구사항 접근 통제",
+                    }
+                ],
+            },
+        }
+        result = score_case(
+            self.visual_case(expected_citation_pages=[], expected_citation_regions=[]),
+            prediction,
+            gold_evidence=[
+                {
+                    "doc_id": "visual-doc",
+                    "chunk_id": "visual-doc::chunk-001",
+                    "page_span": [2, 2],
+                    "required_terms": ["보안 요구사항"],
+                    "support_claim": "보안 요구사항 접근 통제",
+                }
+            ],
+        )
+
+        self.assertEqual(["visual-doc::chunk-001"], result["retrieved_chunk_ids"])
+        self.assertEqual(1.0, result["chunk_recall_at_5"])
+        self.assertEqual(1.0, result["chunk_mrr_at_5"])
+        self.assertEqual(1.0, result["chunk_ndcg_at_5"])
+        self.assertEqual("보안", result["retrieved_chunks"][0]["section"])
+
+    def test_failure_artifact_record_schema(self) -> None:
+        case_result = {
+            "id": "q1",
+            "query": "기관 V의 보안 요구사항은?",
+            "query_type": "single_doc",
+            "answerable": True,
+            "accuracy": 0.0,
+            "expected_doc_ids": ["visual-doc"],
+            "evidence_doc_ids": [],
+            "expected_terms": ["보안 요구사항"],
+            "gold_evidence": [{"doc_id": "visual-doc", "chunk_id": "visual-doc::chunk-001"}],
+            "retrieved_chunks": [{"rank": 1, "chunk_id": "other::chunk-001"}],
+            "answer": "not found",
+            "citation": [],
+            "chunk_recall_at_5": 0.0,
+        }
+        run_config = {"name": "naive_baseline", "pipeline": "naive_baseline", "top_k": 5}
+        with tempfile.TemporaryDirectory() as tmp:
+            path = write_failure_artifact(Path(tmp), "naive_baseline", run_config, [case_result])
+            payload = json.loads(Path(path).read_text(encoding="utf-8").splitlines()[0])
+
+        self.assertEqual("q1", payload["question_id"])
+        self.assertEqual("retrieval_miss", payload["failure_type"])
+        self.assertIn("root_cause", payload)
+        self.assertIn("suggested_fix", payload)
+        self.assertEqual(5, payload["run"]["top_k"])
+        self.assertEqual(
+            failure_case_record(case_result, run_config)["failure_type"],
+            payload["failure_type"],
+        )
+
+    def test_index_citation_metadata_coverage_reports_missing_reason(self) -> None:
+        coverage = index_citation_metadata_coverage({"chunks": [{"chunk_id": "c1"}]})
+        self.assertEqual(1, coverage["chunks_total"])
+        self.assertEqual(0, coverage["chunks_with_page_span"])
+        self.assertEqual("index_lacks_page_region_metadata", coverage["coverage_reason"])
 
     def test_summarize_run_groups_metrics_by_hardcase_category(self) -> None:
         case_results = [
