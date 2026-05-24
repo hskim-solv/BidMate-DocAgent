@@ -35,9 +35,11 @@ venv/
 # Local/private source data
 data/files/
 data/files_kordoc/
+data/private/
 data/data_list.csv
 data/data_list.xlsx
 eval/*.local.yaml
+configs/eval/*.local.yaml
 원본 데이터/
 .cache/
 .cache/real_eval/
@@ -251,6 +253,7 @@ reports/retrieval/phase4_realistic_metadata_*/*
 # via scripts/build_index.py --hwp_loader kordoc --pdf_loader kordoc
 # --embedding_backend hashing with BIDMATE_KORDOC_CACHE_DIR=data/files_kordoc.
 data/index/real100_kordoc/
+data/index-private-hardcase/
 # Issue #237 — harness aggregate snapshots. Generated per ``run_harness``
 # invocation; untracked by default to keep developer working trees
 # clean. Harness history is isolated from committed private/internal
@@ -260,6 +263,12 @@ reports/harness_history/
 # aggregate is folded into baseline.aggregate.json. Explicit ignore
 # for clarity (already caught by reports/real100/* above).
 reports/real100/judge.local.json
+reports/real100/eval_summary.json
+reports/real100/raw/
+reports/private_real_eval_summary.raw.json
+# Aggregate-only private real-eval summaries may cross the commit boundary
+# only after the exporter/governance redaction checks pass.
+!reports/private_real_eval_summary.redacted.json
 
 # ADR 0032 — routed-subset embedding comparison aggregate is committable;
 # raw per-model index dirs + trace files stay local (.routed_measurement_tmp/).
@@ -294,6 +303,7 @@ experiments/runs/
 # Naive RAG eval contract run artifacts. The contract/config/sample data are
 # committed; timestamped run outputs are reproducible and stay local.
 experiments/runs/
+experiments/private_runs/
 
 # Harness private overlays (paired with eval/*.local.yaml). Only the
 # *.example.yaml templates are committed.
