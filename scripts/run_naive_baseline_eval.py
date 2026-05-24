@@ -253,7 +253,7 @@ def build_metrics_json(
     artifact_paths: dict[str, str],
 ) -> dict[str, Any]:
     failure_counts = summary.get("failure_category_counts") or {}
-    hallucination_count = int(failure_counts.get("generator_hallucination") or 0)
+    answer_synthesis_count = int(failure_counts.get("answer_synthesis_issue") or 0)
     metrics = {
         "schema_version": 1,
         "run_id": run_id,
@@ -270,8 +270,8 @@ def build_metrics_json(
             "Faithfulness": _metric(summary, "groundedness"),
             "Answer relevancy": _metric(summary, "accuracy"),
             "Citation accuracy": _metric(summary, "citation_precision"),
-            "Hallucination rate": _failure_rate(summary, "generator_hallucination"),
-            "Hallucination count": hallucination_count,
+            "Hallucination rate": _failure_rate(summary, "answer_synthesis_issue"),
+            "Hallucination count": answer_synthesis_count,
             "Unanswerable detection rate": _metric(summary, "abstention"),
             "Unanswerable outcomes": summary.get("abstention_outcomes"),
         },
@@ -334,7 +334,7 @@ def validate_metrics(metrics: dict[str, Any]) -> None:
 def answers_rows(summary: dict[str, Any]) -> list[dict[str, Any]]:
     rows = []
     for case in summary.get("case_results") or []:
-        hallucination_flag = case.get("failure_category") == "generator_hallucination"
+        hallucination_flag = case.get("failure_category") == "answer_synthesis_issue"
         unanswerable_flag = (
             bool(case.get("abstained")) if case.get("answerable") is False else None
         )
@@ -477,7 +477,7 @@ def categorize_failures(
             buckets["citation_failures"]["missing page number"] += 1
 
         if answerable and accuracy != 1.0:
-            if failure_category == "generator_hallucination":
+            if failure_category == "answer_synthesis_issue":
                 buckets["answer_failures"]["hallucinated requirement"] += 1
                 case_labels.append("answer: hallucinated requirement")
             elif case.get("groundedness") != 1.0:

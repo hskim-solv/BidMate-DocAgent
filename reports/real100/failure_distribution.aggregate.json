@@ -1,33 +1,435 @@
 {
   "abstention_outcomes": {
     "boundary_partial": 5,
-    "correct_refusal": 22,
-    "incorrect_answer": 76
+    "correct_refusal": 30,
+    "incorrect_answer": 68
   },
   "failure_category_counts": {
-    "context_dilution": 0,
-    "generator_hallucination": 1,
-    "planner_under_decomposition": 3,
-    "retrieval_miss": 67,
-    "unknown": 33,
-    "verifier_false_negative": 76,
+    "abstention_failure": 6,
+    "answer_synthesis_issue": 0,
+    "citation_or_page_metadata_issue": 0,
+    "evaluation_label_issue": 0,
+    "parse_or_metadata_issue": 98,
+    "retrieval_miss": 0,
+    "unknown": 0,
+    "verifier_false_negative": 68,
     "verifier_false_positive": 0
   },
   "failure_category_percent_of_failed": {
-    "context_dilution": 0.0,
-    "generator_hallucination": 0.56,
-    "planner_under_decomposition": 1.67,
-    "retrieval_miss": 37.22,
-    "unknown": 18.33,
-    "verifier_false_negative": 42.22,
+    "abstention_failure": 3.49,
+    "answer_synthesis_issue": 0.0,
+    "citation_or_page_metadata_issue": 0.0,
+    "evaluation_label_issue": 0.0,
+    "parse_or_metadata_issue": 56.98,
+    "retrieval_miss": 0.0,
+    "unknown": 0.0,
+    "verifier_false_negative": 39.53,
     "verifier_false_positive": 0.0
   },
   "finding_1_contract": {
-    "incorrect_answer": 76,
+    "incorrect_answer": 68,
     "match": true,
-    "verifier_false_negative": 76
+    "verifier_false_negative": 68
   },
   "num_predictions": 221,
-  "schema_version": 1,
-  "total_failures": 180
+  "schema_version": 3,
+  "slice_counts": {
+    "abstention_failure": {
+      "aux_true": {
+        "abstained": 6,
+        "doc_match": 1,
+        "term_match": 5
+      },
+      "evidence_cardinality": {
+        "empty": 0,
+        "multi_doc": 5,
+        "single_doc": 1
+      },
+      "expected_doc_coverage": {
+        "expected_in_evidence": 3,
+        "expected_not_in_evidence": 3,
+        "no_expected": 0
+      },
+      "hardcase_categories": {
+        "ambiguous_query": 0,
+        "distractor_heavy": 1,
+        "long_context": 0,
+        "multi_hop": 1,
+        "no_answer": 5,
+        "other": 0,
+        "untagged": 0
+      },
+      "n": 6,
+      "query_specificity": {
+        "keyword_hit": 5,
+        "no_hit": 1
+      },
+      "query_type": {
+        "abstention": 5,
+        "comparison": 0,
+        "follow_up": 0,
+        "other": 0,
+        "single_doc": 1
+      },
+      "retry_count": {
+        "0": 0,
+        "1": 6,
+        "2": 0,
+        "3plus": 0
+      }
+    },
+    "answer_synthesis_issue": {
+      "aux_true": {
+        "abstained": 0,
+        "doc_match": 0,
+        "term_match": 0
+      },
+      "evidence_cardinality": {
+        "empty": 0,
+        "multi_doc": 0,
+        "single_doc": 0
+      },
+      "expected_doc_coverage": {
+        "expected_in_evidence": 0,
+        "expected_not_in_evidence": 0,
+        "no_expected": 0
+      },
+      "hardcase_categories": {
+        "ambiguous_query": 0,
+        "distractor_heavy": 0,
+        "long_context": 0,
+        "multi_hop": 0,
+        "no_answer": 0,
+        "other": 0,
+        "untagged": 0
+      },
+      "n": 0,
+      "query_specificity": {
+        "keyword_hit": 0,
+        "no_hit": 0
+      },
+      "query_type": {
+        "abstention": 0,
+        "comparison": 0,
+        "follow_up": 0,
+        "other": 0,
+        "single_doc": 0
+      },
+      "retry_count": {
+        "0": 0,
+        "1": 0,
+        "2": 0,
+        "3plus": 0
+      }
+    },
+    "citation_or_page_metadata_issue": {
+      "aux_true": {
+        "abstained": 0,
+        "doc_match": 0,
+        "term_match": 0
+      },
+      "evidence_cardinality": {
+        "empty": 0,
+        "multi_doc": 0,
+        "single_doc": 0
+      },
+      "expected_doc_coverage": {
+        "expected_in_evidence": 0,
+        "expected_not_in_evidence": 0,
+        "no_expected": 0
+      },
+      "hardcase_categories": {
+        "ambiguous_query": 0,
+        "distractor_heavy": 0,
+        "long_context": 0,
+        "multi_hop": 0,
+        "no_answer": 0,
+        "other": 0,
+        "untagged": 0
+      },
+      "n": 0,
+      "query_specificity": {
+        "keyword_hit": 0,
+        "no_hit": 0
+      },
+      "query_type": {
+        "abstention": 0,
+        "comparison": 0,
+        "follow_up": 0,
+        "other": 0,
+        "single_doc": 0
+      },
+      "retry_count": {
+        "0": 0,
+        "1": 0,
+        "2": 0,
+        "3plus": 0
+      }
+    },
+    "evaluation_label_issue": {
+      "aux_true": {
+        "abstained": 0,
+        "doc_match": 0,
+        "term_match": 0
+      },
+      "evidence_cardinality": {
+        "empty": 0,
+        "multi_doc": 0,
+        "single_doc": 0
+      },
+      "expected_doc_coverage": {
+        "expected_in_evidence": 0,
+        "expected_not_in_evidence": 0,
+        "no_expected": 0
+      },
+      "hardcase_categories": {
+        "ambiguous_query": 0,
+        "distractor_heavy": 0,
+        "long_context": 0,
+        "multi_hop": 0,
+        "no_answer": 0,
+        "other": 0,
+        "untagged": 0
+      },
+      "n": 0,
+      "query_specificity": {
+        "keyword_hit": 0,
+        "no_hit": 0
+      },
+      "query_type": {
+        "abstention": 0,
+        "comparison": 0,
+        "follow_up": 0,
+        "other": 0,
+        "single_doc": 0
+      },
+      "retry_count": {
+        "0": 0,
+        "1": 0,
+        "2": 0,
+        "3plus": 0
+      }
+    },
+    "parse_or_metadata_issue": {
+      "aux_true": {
+        "abstained": 35,
+        "doc_match": 28,
+        "term_match": 7
+      },
+      "evidence_cardinality": {
+        "empty": 30,
+        "multi_doc": 59,
+        "single_doc": 9
+      },
+      "expected_doc_coverage": {
+        "expected_in_evidence": 28,
+        "expected_not_in_evidence": 70,
+        "no_expected": 0
+      },
+      "hardcase_categories": {
+        "ambiguous_query": 1,
+        "distractor_heavy": 32,
+        "long_context": 6,
+        "multi_hop": 82,
+        "no_answer": 1,
+        "other": 0,
+        "untagged": 12
+      },
+      "n": 98,
+      "query_specificity": {
+        "keyword_hit": 40,
+        "no_hit": 58
+      },
+      "query_type": {
+        "abstention": 0,
+        "comparison": 1,
+        "follow_up": 3,
+        "other": 0,
+        "single_doc": 94
+      },
+      "retry_count": {
+        "0": 21,
+        "1": 76,
+        "2": 1,
+        "3plus": 0
+      }
+    },
+    "retrieval_miss": {
+      "aux_true": {
+        "abstained": 0,
+        "doc_match": 0,
+        "term_match": 0
+      },
+      "evidence_cardinality": {
+        "empty": 0,
+        "multi_doc": 0,
+        "single_doc": 0
+      },
+      "expected_doc_coverage": {
+        "expected_in_evidence": 0,
+        "expected_not_in_evidence": 0,
+        "no_expected": 0
+      },
+      "hardcase_categories": {
+        "ambiguous_query": 0,
+        "distractor_heavy": 0,
+        "long_context": 0,
+        "multi_hop": 0,
+        "no_answer": 0,
+        "other": 0,
+        "untagged": 0
+      },
+      "n": 0,
+      "query_specificity": {
+        "keyword_hit": 0,
+        "no_hit": 0
+      },
+      "query_type": {
+        "abstention": 0,
+        "comparison": 0,
+        "follow_up": 0,
+        "other": 0,
+        "single_doc": 0
+      },
+      "retry_count": {
+        "0": 0,
+        "1": 0,
+        "2": 0,
+        "3plus": 0
+      }
+    },
+    "unknown": {
+      "aux_true": {
+        "abstained": 0,
+        "doc_match": 0,
+        "term_match": 0
+      },
+      "evidence_cardinality": {
+        "empty": 0,
+        "multi_doc": 0,
+        "single_doc": 0
+      },
+      "expected_doc_coverage": {
+        "expected_in_evidence": 0,
+        "expected_not_in_evidence": 0,
+        "no_expected": 0
+      },
+      "hardcase_categories": {
+        "ambiguous_query": 0,
+        "distractor_heavy": 0,
+        "long_context": 0,
+        "multi_hop": 0,
+        "no_answer": 0,
+        "other": 0,
+        "untagged": 0
+      },
+      "n": 0,
+      "query_specificity": {
+        "keyword_hit": 0,
+        "no_hit": 0
+      },
+      "query_type": {
+        "abstention": 0,
+        "comparison": 0,
+        "follow_up": 0,
+        "other": 0,
+        "single_doc": 0
+      },
+      "retry_count": {
+        "0": 0,
+        "1": 0,
+        "2": 0,
+        "3plus": 0
+      }
+    },
+    "verifier_false_negative": {
+      "aux_true": {
+        "abstained": 0,
+        "doc_match": 0,
+        "term_match": 0
+      },
+      "evidence_cardinality": {
+        "empty": 0,
+        "multi_doc": 54,
+        "single_doc": 14
+      },
+      "expected_doc_coverage": {
+        "expected_in_evidence": 22,
+        "expected_not_in_evidence": 45,
+        "no_expected": 1
+      },
+      "hardcase_categories": {
+        "ambiguous_query": 1,
+        "distractor_heavy": 4,
+        "long_context": 5,
+        "multi_hop": 2,
+        "no_answer": 67,
+        "other": 0,
+        "untagged": 1
+      },
+      "n": 68,
+      "query_specificity": {
+        "keyword_hit": 58,
+        "no_hit": 10
+      },
+      "query_type": {
+        "abstention": 68,
+        "comparison": 0,
+        "follow_up": 0,
+        "other": 0,
+        "single_doc": 0
+      },
+      "retry_count": {
+        "0": 13,
+        "1": 54,
+        "2": 1,
+        "3plus": 0
+      }
+    },
+    "verifier_false_positive": {
+      "aux_true": {
+        "abstained": 0,
+        "doc_match": 0,
+        "term_match": 0
+      },
+      "evidence_cardinality": {
+        "empty": 0,
+        "multi_doc": 0,
+        "single_doc": 0
+      },
+      "expected_doc_coverage": {
+        "expected_in_evidence": 0,
+        "expected_not_in_evidence": 0,
+        "no_expected": 0
+      },
+      "hardcase_categories": {
+        "ambiguous_query": 0,
+        "distractor_heavy": 0,
+        "long_context": 0,
+        "multi_hop": 0,
+        "no_answer": 0,
+        "other": 0,
+        "untagged": 0
+      },
+      "n": 0,
+      "query_specificity": {
+        "keyword_hit": 0,
+        "no_hit": 0
+      },
+      "query_type": {
+        "abstention": 0,
+        "comparison": 0,
+        "follow_up": 0,
+        "other": 0,
+        "single_doc": 0
+      },
+      "retry_count": {
+        "0": 0,
+        "1": 0,
+        "2": 0,
+        "3plus": 0
+      }
+    }
+  },
+  "total_failures": 172
 }

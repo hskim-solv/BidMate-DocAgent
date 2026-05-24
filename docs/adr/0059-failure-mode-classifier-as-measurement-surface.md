@@ -1,6 +1,6 @@
 # ADR 0059 — Failure-mode classifier 를 새 측정 표면(measurement surface)으로
 
-- Status: Accepted
+- Status: Superseded by [ADR 0075](./0075-normalized-failure-taxonomy.md) for primary category names; measurement surface and first-match contract remain active.
 - Implemented: #1001 (2026-05-19) — `eval/scorers/failure_classifier.py` 7-category taxonomy
 - Date: 2026-05-19
 - Authors: Hyunsoo Kim

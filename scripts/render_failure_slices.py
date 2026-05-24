@@ -17,7 +17,7 @@ artifact the audit's Verification section can point at.
 Sibling renderers (same "gitignored summary -> committed aggregate"
 pattern, all aggregate-only / ADR 0005-safe):
 
-* ``scripts/render_failure_distribution.py`` (ADR 0059 supply 2 — top-level
+* ``scripts/render_failure_distribution.py`` (ADR 0075 top-level
   ``failure_category_counts``; this script is its per-case decomposition)
 * ``scripts/distinguishing_power.py`` (ADR 0053 gauge)
 * ``scripts/eda_real100.py`` (corpus EDA)
@@ -28,9 +28,9 @@ renderer counts categorical buckets (``query_type`` label, ``hardcase``
 tag, len of ``expected_doc_ids``, empty-vs-non-empty evidence, boolean
 aux signals) and discards the underlying values.
 
-The per-case ``failure_category`` label is the ADR 0059 classifier output
-(``eval/scorers/failure_classifier.py``, attached to each case_result at
-``eval/run_eval.py:746``); this renderer is a read-only consumer.
+The per-case ``failure_category`` label is the ADR 0075 classifier output
+(``eval/scorers/failure_classifier.py``); this renderer is a read-only
+consumer.
 
 CLI::
 
@@ -52,21 +52,17 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 DEFAULT_SUMMARY = ROOT / "reports" / "real100" / "eval_summary.json"
 DEFAULT_OUT_JSON = ROOT / "reports" / "real100" / "failure_slices.aggregate.json"
 
-# Mirror ``eval.scorers.failure_classifier.FAILURE_CATEGORIES`` so a schema
-# drift surfaces as a test failure rather than silently dropping a bucket.
-SAFE_CATEGORIES: tuple[str, ...] = (
-    "retrieval_miss",
-    "planner_under_decomposition",
-    "verifier_false_negative",
-    "verifier_false_positive",
-    "generator_hallucination",
-    "context_dilution",
-    "unknown",
-)
+from eval.scorers.failure_classifier import FAILURE_CATEGORIES  # noqa: E402
+
+# Mirror ``eval.scorers.failure_classifier.FAILURE_CATEGORIES`` via import so a
+# schema drift surfaces in one place.
+SAFE_CATEGORIES: tuple[str, ...] = FAILURE_CATEGORIES
 
 # Bucket label used for cases whose ``hardcase_categories`` list is empty.
 UNTAGGED = "_untagged"
@@ -84,7 +80,7 @@ def _case_results(summary: dict[str, Any]) -> list[dict[str, Any]]:
     if not isinstance(raw, list):
         raise ValueError(
             "eval_summary.json::case_results missing or not a list — make "
-            "sure the file was generated post-PR #1001 (ADR 0059) so each "
+            "sure the file was generated with ADR 0075 taxonomy support so each "
             "case carries a `failure_category` label."
         )
     return raw
@@ -172,7 +168,7 @@ def build_aggregate(summary: dict[str, Any]) -> dict[str, Any]:
         if cases
     }
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "source": "reports/real100/eval_summary.json",
         "num_predictions": int(summary.get("num_predictions") or 0),
         "categories": categories,
