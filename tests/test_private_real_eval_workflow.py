@@ -38,7 +38,19 @@ def _is_ignored(path: str) -> bool:
         capture_output=True,
         text=True,
     )
-    return result.returncode == 0
+    if result.returncode == 0:
+        return True
+    candidate = REPO_ROOT / path
+    for parent in [candidate, *candidate.parents]:
+        try:
+            rel = parent.relative_to(REPO_ROOT)
+        except ValueError:
+            break
+        if str(rel) == ".":
+            break
+        if parent.is_symlink():
+            return _is_ignored(str(rel))
+    return False
 
 
 def test_private_local_configs_and_data_paths_are_gitignored() -> None:
@@ -72,10 +84,10 @@ def test_private_runner_fails_clearly_when_private_files_missing(tmp_path: Path)
                 "benchmark_type": "private_real_eval",
                 "not_ci_smoke": True,
                 "is_private_data": True,
-                "documents_dir": "data/private/files",
-                "data_list_path": "data/private/data_list.csv",
-                "gold_evidence_path": "data/private/gold_evidence.jsonl",
-                "index_dir": "data/private/index",
+                "documents_dir": "data/private/missing/files",
+                "data_list_path": "data/private/missing/data_list.csv",
+                "gold_evidence_path": "data/private/missing/gold_evidence.jsonl",
+                "index_dir": "data/private/missing/index",
                 "output_dir": "experiments/private_runs/missing",
                 "top_k": 10,
                 "metrics": {
@@ -115,9 +127,11 @@ def test_private_runner_fails_clearly_when_private_files_missing(tmp_path: Path)
 
     assert result.returncode == 2
     assert "Private real-eval validation failed" in result.stderr
-    assert "documents_dir does not exist" in result.stderr
-    assert "data_list_path does not exist" in result.stderr
-    assert "gold_evidence_path does not exist" in result.stderr
+    assert "missing_required_input: documents_dir" in result.stderr
+    assert "missing_required_input: data_list_path" in result.stderr
+    assert "missing_required_input: gold_evidence_path" in result.stderr
+    assert str(REPO_ROOT) not in result.stderr
+    assert "data/private" not in result.stderr
 
 
 def test_private_runner_requires_private_inputs_to_be_gitignored() -> None:
@@ -152,10 +166,85 @@ def test_private_runner_requires_private_inputs_to_be_gitignored() -> None:
         pre.validate_private_inputs(config)
 
     message = str(exc_info.value)
-    assert "documents_dir must be ignored by git or outside the repo" in message
-    assert "data_list_path must be ignored by git or outside the repo" in message
-    assert "gold_evidence_path must be ignored by git or outside the repo" in message
-    assert "questions_path must be ignored by git or outside the repo" in message
+    assert "private_path_not_gitignored: documents_dir" in message
+    assert "private_path_not_gitignored: data_list_path" in message
+    assert "private_path_not_gitignored: gold_evidence_path" in message
+    assert "private_path_not_gitignored: questions_path" in message
+    assert str(REPO_ROOT) not in message
+
+
+def test_private_runner_reports_label_gaps_without_private_ids(tmp_path: Path) -> None:
+    docs_dir = tmp_path / "files"
+    docs_dir.mkdir()
+    (docs_dir / "private.pdf").write_text("placeholder", encoding="utf-8")
+    data_list = tmp_path / "data_list.csv"
+    data_list.write_text("placeholder\n", encoding="utf-8")
+    gold = tmp_path / "gold_evidence.jsonl"
+    gold.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "question_id": "PRIVATE-QID-001",
+                        "question": "PRIVATE RAW QUESTION",
+                        "answerable": True,
+                        "gold_evidence": [],
+                    },
+                    ensure_ascii=False,
+                ),
+                json.dumps(
+                    {
+                        "question_id": "PRIVATE-QID-002",
+                        "question": "PRIVATE RAW UNANSWERABLE",
+                        "answerable": False,
+                        "gold_evidence": [
+                            {"doc_id": "PRIVATE-DOC", "chunk_id": "PRIVATE-CHUNK"}
+                        ],
+                    },
+                    ensure_ascii=False,
+                ),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    config = {
+        "benchmark_type": "private_real_eval",
+        "not_ci_smoke": True,
+        "is_private_data": True,
+        "documents_dir": str(docs_dir),
+        "data_list_path": str(data_list),
+        "gold_evidence_path": str(gold),
+        "questions_path": str(gold),
+        "index_dir": str(tmp_path / "index"),
+        "output_dir": str(tmp_path / "runs"),
+        "top_k": 10,
+        "metrics": {
+            "retrieval": ["recall_at_5"],
+            "citation": ["citation_accuracy"],
+            "answer_control": ["unanswerable_detection_flag"],
+        },
+        "latency_scope": "private_runner_wall_clock",
+        "answer_metric_mode": "deterministic_contract_v1",
+        "redaction_policy": {"summary_only": True},
+        "minimums": {
+            "min_documents": 1,
+            "min_questions": 1,
+            "min_answerable_questions": 1,
+            "min_unanswerable_questions": 0,
+        },
+    }
+
+    with pytest.raises(pre.PrivateRealEvalError) as exc_info:
+        pre.validate_private_inputs(config)
+
+    message = str(exc_info.value)
+    assert "missing_explicit_gold_chunk_id: answerable_questions count=1" in message
+    assert "unanswerable_gold_evidence_not_empty: questions count=1" in message
+    assert "PRIVATE-QID" not in message
+    assert "PRIVATE-DOC" not in message
+    assert "PRIVATE-CHUNK" not in message
+    assert "PRIVATE RAW" not in message
 
 
 def test_answerable_strings_are_parsed_strictly() -> None:
@@ -174,6 +263,17 @@ def test_answerable_strings_are_parsed_strictly() -> None:
         )
 
 
+def test_document_count_follows_private_symlink_layout(tmp_path: Path) -> None:
+    source = tmp_path / "source-files"
+    source.mkdir()
+    (source / "one.pdf").write_text("placeholder", encoding="utf-8")
+    linked = tmp_path / "data" / "private" / "files"
+    linked.parent.mkdir(parents=True)
+    linked.symlink_to(source, target_is_directory=True)
+
+    assert pre._count_documents(linked) == 1
+
+
 def test_redacted_summary_excludes_private_raw_fields() -> None:
     metrics_payload = {
         "dataset": {
@@ -187,7 +287,12 @@ def test_redacted_summary_excludes_private_raw_fields() -> None:
             "citation_accuracy": {"mean": 0.5, "n": 1, "missing": 0},
             "answer_text": "PRIVATE RAW ANSWER",
         },
-        "failure_counts": {"retrieval_failure.gold_evidence_not_in_top_k": 1},
+        "failure_counts": {
+            "retrieval_failure.gold_evidence_not_in_top_k": 1,
+            "path": 1,
+            "/Users/example/private/file.pdf": 1,
+            "unsafe": "data/private/file.pdf",
+        },
         "case_results": [
             {
                 "question": "PRIVATE RAW QUESTION",
@@ -214,6 +319,38 @@ def test_redacted_summary_excludes_private_raw_fields() -> None:
     assert "questions_path" not in rendered
     assert "answer_text" not in rendered
     assert "retrieved_chunks" not in rendered
+    assert "/Users/example" not in rendered
+    assert "data/private" not in rendered
+    assert '"path"' not in rendered
+    assert "retrieval_failure.gold_evidence_not_in_top_k" in rendered
+    assert summary["index_provenance"] == {}
+
+
+def test_redacted_summary_rejects_path_like_values() -> None:
+    with pytest.raises(pre.PrivateRealEvalError, match="forbidden private fields"):
+        pre.assert_redacted_summary_safe({"safe_key": "/Users/example/private/file.pdf"})
+
+
+def test_index_embedding_summary_is_aggregate_only(tmp_path: Path) -> None:
+    index_dir = tmp_path / "index"
+    index_dir.mkdir()
+    (index_dir / "index.json").write_text(
+        json.dumps(
+            {
+                "embedding": {
+                    "backend": "hashing",
+                    "dimension": 384,
+                    "model": "/Users/example/private/model",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert pre._index_embedding_summary(index_dir) == {
+        "embedding_backend": "hashing",
+        "embedding_dimension": 384,
+    }
 
 
 def test_public_smoke_and_synthetic_configs_remain_unaffected() -> None:

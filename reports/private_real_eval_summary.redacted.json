@@ -1,0 +1,124 @@
+{
+  "benchmark_type": "private_real_eval",
+  "dataset": {
+    "answerable_count": 114,
+    "num_chunks": 26376,
+    "num_documents": 100,
+    "num_questions": 217,
+    "unanswerable_count": 103
+  },
+  "failure_type_counts": {
+    "answer_failure.failed_to_abstain": 96,
+    "answer_failure.hallucinated_requirement": 0,
+    "answer_failure.overconfident_weak_evidence": 0,
+    "answer_failure.partial_answer": 0,
+    "answer_failure.wrong_synthesis": 0,
+    "citation_failure.citation_does_not_support_claim": 2,
+    "citation_failure.correct_answer_wrong_citation": 0,
+    "citation_failure.insufficient_citation": 0,
+    "citation_failure.missing_page_number": 0,
+    "citation_failure.vague_citation_for_multiple_claims": 0,
+    "evaluation_failure.failure_case_not_saved": 0,
+    "evaluation_failure.metric_missing": 0,
+    "evaluation_failure.no_gold_evidence": 0,
+    "parsing_failure.figure_content_ignored": 0,
+    "parsing_failure.header_footer_noise": 0,
+    "parsing_failure.korean_english_mixed_text_issue": 0,
+    "parsing_failure.page_metadata_missing": 0,
+    "parsing_failure.table_content_lost": 0,
+    "retrieval_failure.chunk_boundary_split": 0,
+    "retrieval_failure.gold_evidence_not_in_top_k": 89,
+    "retrieval_failure.gold_evidence_ranked_too_low": 9,
+    "retrieval_failure.multi_chunk_evidence_missing": 14,
+    "retrieval_failure.query_wording_mismatch": 0,
+    "retrieval_failure.wrong_similar_clause": 0
+  },
+  "generated_at": "2026-05-24T10:52:50.831164+00:00",
+  "index_provenance": {
+    "embedding_backend": "hashing",
+    "embedding_dimension": 384
+  },
+  "is_private_data": true,
+  "known_limitations": [
+    "Private aggregate only; raw cases and traces remain local.",
+    "Answer metrics are deterministic contract checks, not an LLM judge.",
+    "Latency is runner wall-clock unless a narrower local profiler is added.",
+    "This run does not improve retrieval, reranking, prompts, chunking, or verification."
+  ],
+  "latency_summary": {
+    "mean_wall_clock_ms_per_question": 621.58,
+    "scope": "private_runner_wall_clock",
+    "total_wall_clock_ms": 134882.874
+  },
+  "metrics": {
+    "citation_and_answer_control": {
+      "answer_relevancy": {
+        "mean": 0.20942982456140352,
+        "missing": 103,
+        "n": 114
+      },
+      "citation_accuracy": {
+        "mean": 0.07017543859649122,
+        "missing": 103,
+        "n": 114
+      },
+      "faithfulness": {
+        "mean": 0.8421052631578947,
+        "missing": 103,
+        "n": 114
+      },
+      "hallucination_flag": {
+        "mean": 0.8387096774193549,
+        "missing": 0,
+        "n": 217
+      },
+      "unanswerable_detection_flag": {
+        "mean": 0.06796116504854369,
+        "missing": 114,
+        "n": 103
+      }
+    },
+    "retrieval": {
+      "mrr_at_5": {
+        "mean": 0.1043859649122807,
+        "missing": 103,
+        "n": 114
+      },
+      "ndcg_at_5": {
+        "mean": 0.06334448644544977,
+        "missing": 103,
+        "n": 114
+      },
+      "recall_at_10": {
+        "mean": 0.053285064194591045,
+        "missing": 103,
+        "n": 114
+      },
+      "recall_at_5": {
+        "mean": 0.0485062112249486,
+        "missing": 103,
+        "n": 114
+      }
+    }
+  },
+  "not_ci_smoke": true,
+  "pipeline": {
+    "metadata_first": false,
+    "name": "naive_baseline",
+    "query_expansion": "identity",
+    "rerank": false,
+    "retrieval_backend": "dense",
+    "top_k": 10,
+    "verifier_retry": false
+  },
+  "redaction_policy": {
+    "document_names_excluded": true,
+    "document_text_excluded": true,
+    "private_paths_excluded": true,
+    "raw_answers_excluded": true,
+    "raw_questions_excluded": true,
+    "summary_only": true
+  },
+  "schema_version": 1,
+  "system": "Naive Dense RAG"
+}
