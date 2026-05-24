@@ -60,22 +60,25 @@ content가 제거된 aggregate summary 또는 문서화된 checklist뿐이다.
 
 ## Exact Local Commands
 
+이 readiness workflow의 단일 local config는 `eval/real_config.local.yaml`이다.
+별도의 `configs/eval/private_real_eval.local.yaml`를 만들지 않는다.
+
 Parse/data readiness audit:
 
 ```bash
-python3 scripts/audit_private_data_readiness.py --config configs/eval/private_real_eval.local.yaml --out-dir experiments/private_runs/readiness_audit
+python3 scripts/audit_private_data_readiness.py --config eval/real_config.local.yaml --out-dir experiments/private_runs/readiness_audit
 ```
 
 Validate-only:
 
 ```bash
-python3 -m eval.naive_rag.private_real_eval --config configs/eval/private_real_eval.local.yaml --validate-only
+python3 scripts/check_private_real_eval_readiness.py --config eval/real_config.local.yaml
 ```
 
 Baseline run:
 
 ```bash
-python3 -m eval.naive_rag.private_real_eval --config configs/eval/private_real_eval.local.yaml
+python3 scripts/run_private_real_eval.py --config eval/real_config.local.yaml
 ```
 
 ## Privacy Boundary
