@@ -365,13 +365,15 @@ stage_3_pr() {
 # ---------------------------------------------------------------------------
 
 stage_4_ci() {
-  log "s4" "Stage 4: CI wait (timeout 30min)"
+  log "s4" "Stage 4: CI wait + review gate (timeout 30min)"
   if [[ "$DRY_RUN" == "1" ]]; then
     log "s4" "[dry-run] gh pr checks $PR_NUMBER --watch --interval 30"
+    log "s4" "[dry-run] python3 scripts/claude-hooks/_ship_review_gate.py --pr $PR_NUMBER"
     return 0
   fi
-  if ! timeout 1800 gh pr checks "$PR_NUMBER" --watch --interval 30; then
-    local rc=$?
+  timeout 1800 gh pr checks "$PR_NUMBER" --watch --interval 30
+  local rc=$?
+  if (( rc != 0 )); then
     if (( rc == 124 )); then
       gh pr comment "$PR_NUMBER" --body "Auto-ship: CI timeout after 30min; PR left open." || true
       abort_disarm "s4" "CI timeout (30min)"
@@ -380,6 +382,13 @@ stage_4_ci() {
     abort_disarm "s4" "required CI check failed"
   fi
   log "s4" "all required checks green"
+  python3 scripts/claude-hooks/_ship_review_gate.py --pr "$PR_NUMBER"
+  local review_rc=$?
+  if (( review_rc != 0 )); then
+    gh pr comment "$PR_NUMBER" --body "Auto-ship: review gate blocked merge (rc=$review_rc). Address requested changes or unresolved review threads, push fixes, then re-arm with \`make ship-arm\`." || true
+    abort_disarm "s4" "review gate blocked merge"
+  fi
+  log "s4" "review gate clear"
 }
 
 # ---------------------------------------------------------------------------

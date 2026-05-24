@@ -81,7 +81,9 @@ RFP 문서 이해를 위한 DocAgent 시스템. **입찰/RFP 문서 인텔리전
 - `bash scripts/test.sh` — `pytest -q`, CI gate 와 동일
 - `make check-branch` — 현재 브랜치 ADR 0007 검증
 - `make real-eval` + `make real-eval-delta` — 비공개 100-doc eval, load-bearing 변경 시 필수
-- `make ship-arm` — Stop-hook 자동 ship 파이프라인 (commit → push → PR → CI → squash-merge). 게이트/단계/`STACKED=ack` 규율: [`docs/operations/auto-ship.md`](docs/operations/auto-ship.md)
+- `make ship-start TITLE="..." TYPE=chore` — issue 생성 + ADR 0007 브랜치 생성 front door.
+- `make ship-arm` — Stop-hook 자동 ship 파이프라인 (commit → push → PR → CI/review gate → squash-merge). 게이트/단계/`STACKED=ack` 규율: [`docs/operations/auto-ship.md`](docs/operations/auto-ship.md)
+- `make ship-review-gate PR=<N>` — requested changes / unresolved review thread 가 merge 를 막아야 하는지 수동 확인.
 - Latency 수치는 `reports/eval_summary.json` `stage_latency` 블록 — ad-hoc 측정 금지
 
 ## 금지 (자동화 비강제)

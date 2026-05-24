@@ -34,7 +34,7 @@
 
 # Auto-ship pipeline (Stop hook driven). See scripts/claude-hooks/stop-ship.sh
 # and the plan at /Users/hskim/.claude/plans/prci-synchronous-newell.md.
-.PHONY: ship-arm ship-disarm ship-status
+.PHONY: ship-start ship-arm ship-disarm ship-status ship-review-gate
 
 # Self-review (quarterly meta-feedback loop). Combines 4-axis portfolio
 # rubric + 5-axis Claude collaboration rubric. See SKILL at
@@ -532,6 +532,21 @@ DRAFT ?= false
 DRY_RUN ?= 0
 CROSS_OWNER ?=
 STACKED ?=
+TYPE ?= chore
+SLUG ?=
+LABELS ?=
+
+ship-start:
+	@if [ -z "$(TITLE)" ]; then \
+	  echo "Usage: make ship-start TITLE='Issue title' [TYPE=docs] [SLUG=short-slug] [BODY='...'] [LABELS=a,b]"; \
+	  exit 1; \
+	fi
+	@$(PYTHON) scripts/claude-hooks/_ship_start.py \
+	  --title "$(TITLE)" \
+	  --body "$(BODY)" \
+	  --type "$(TYPE)" \
+	  --slug "$(SLUG)" \
+	  --labels "$(LABELS)"
 
 ship-arm:
 	@$(PYTHON) scripts/claude-hooks/_ship_arm.py \
@@ -556,6 +571,9 @@ ship-status:
 	@if [ -f .claude/.ship-running.pid ]; then \
 	  echo "ship: pipeline running (pid=$$(cat .claude/.ship-running.pid))"; \
 	fi
+
+ship-review-gate:
+	@$(PYTHON) scripts/claude-hooks/_ship_review_gate.py $(if $(PR),--pr "$(PR)",)
 
 # ---------------------------------------------------------------------------
 # Self-review quarterly: meta-feedback loop over the past quarter.

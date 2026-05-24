@@ -2,8 +2,9 @@
 
 auto-ship 파이프라인은 Stop-hook 가 구동하는 시퀀스로, feature 브랜치를
 로컬 커밋에서 `main` 의 squash-merge 된 PR 까지 한 번의 ack 으로
-가져간다: `make ship-arm`. 모든 사이클은 단발성(single-shot) — 성공이든
-실패든 트리거를 해제(disarm)한다.
+가져간다: `make ship-arm`. 이슈와 브랜치 생성까지 포함한 시작점은
+`make ship-start TITLE="..."` 이다. 모든 ship-arm 사이클은
+단발성(single-shot) — 성공이든 실패든 트리거를 해제(disarm)한다.
 
 이 페이지는 운영 계약을 문서화한다: 어떻게 arm 하는지, 각 게이트 / 스테이지가
 무엇을 강제하는지, 안전망(safety net)이 어디에 있는지, 그리고 우회할 때
@@ -12,8 +13,29 @@ auto-ship 파이프라인은 Stop-hook 가 구동하는 시퀀스로, feature �
 [`scripts/claude-hooks/stop-ship.sh`](../../scripts/claude-hooks/stop-ship.sh)
 (Stop hook 진입점)과
 [`scripts/claude-hooks/_ship_pr_body.py`](../../scripts/claude-hooks/_ship_pr_body.py)
-(PR body 생성기)에 있다. 등록 위치:
+(PR body 생성기),
+[`scripts/claude-hooks/_ship_start.py`](../../scripts/claude-hooks/_ship_start.py)
+(issue-linked branch 생성기), 그리고
+[`scripts/claude-hooks/_ship_review_gate.py`](../../scripts/claude-hooks/_ship_review_gate.py)
+(merge 전 review gate)에 있다. 등록 위치:
 [`.claude/settings.json`](../../.claude/settings.json) 의 `Stop` hook.
+
+## Start: `make ship-start`
+
+새 작업은 먼저 이슈와 ADR 0007 브랜치를 만든다:
+
+```bash
+make ship-start TITLE="자동화 범위 설명" TYPE=chore SLUG=short-slug
+```
+
+동작:
+
+1. dirty worktree 를 거부한다. 이 명령은 편집 전 front door 다.
+2. `gh issue create` 로 이슈를 만든다.
+3. 제목 또는 `SLUG` 로 `<type>/issue-<N>-<slug>` 브랜치를 만든다.
+4. `origin/main` 을 fetch 한 뒤 새 브랜치로 switch 한다.
+
+그 다음 파일을 수정하고 focused test 를 실행한 뒤 `make ship-arm` 한다.
 
 ## Arming: `make ship-arm`
 
@@ -38,6 +60,10 @@ auto-ship 파이프라인은 Stop-hook 가 구동하는 시퀀스로, feature �
 ## 파이프라인 개요
 
 ```
+make ship-start TITLE="..." TYPE=chore  (issue + branch)
+    ↓
+edit + local verification
+    ↓
 make ship-arm  (writes .claude/.ship-armed)
     ↓
 Claude Stop event  →  scripts/claude-hooks/stop-ship.sh fires
@@ -47,7 +73,7 @@ Gate 0 — 8 pre-checks (silent exit on any failure)
 Stage 1: commit   (private-path filter → multi-agent lock → tier-7 prefix gate → bash scripts/test.sh → git commit)
 Stage 2: push     (ADR 0007 branch check → git push)
 Stage 3: PR       (_ship_pr_body.py → §5b cascade → gh pr create)
-Stage 4: CI wait  (gh pr checks --watch, 30-min timeout)
+Stage 4: CI/review gate  (gh pr checks --watch → requested-changes/unresolved-thread gate)
 Stage 5: merge    (gh pr merge --squash --admin → git push origin --delete <branch> → checkout main → disarm)
 ```
 
@@ -111,11 +137,25 @@ body 를 생성하고(template §1–§7, 아래 §5b cascade 포함),
 커밋 subject 이므로, `main` 에 머지된 커밋은 title 을 첫 줄로 하여
 landing 된다.
 
-### Stage 4 — CI wait ([`stop-ship.sh:352-368`](../../scripts/claude-hooks/stop-ship.sh))
+### Stage 4 — CI wait + review gate ([`stop-ship.sh`](../../scripts/claude-hooks/stop-ship.sh))
 
 `timeout 1800 gh pr checks <N> --watch --interval 30`. 타임아웃 시
 (rc 124): PR 코멘트를 달고 abort 하며, **PR 을 열린 채로 둔다**. 0 이 아닌
 rc 시: comment + abort. 파이프라인은 red 상태에서 절대 머지하지 않는다.
+
+CI 가 green 이면
+[`_ship_review_gate.py`](../../scripts/claude-hooks/_ship_review_gate.py) 가
+merge 직전에 다음을 fail-closed 로 검사한다:
+
+- PR 이 open 이고 draft 가 아님.
+- `reviewDecision` 이 `CHANGES_REQUESTED` 가 아님.
+- unresolved 이고 outdated 가 아닌 review thread 가 없음.
+
+review gate 가 막으면 PR 을 열린 채로 두고 disarm 한다. 그 상태에서 Codex 의
+GitHub review-fix 루프를 실행해 코멘트를 처리하고, fix 커밋을 push 한 뒤
+다시 `make ship-arm` 한다. Shell hook 은 reviewer 코멘트를 임의로 수정하지
+않는다; patch 선택은 코드 맥락과 reviewer 의도를 읽어야 하므로 agent 판단
+단계로 남긴다.
 
 ### Stage 5 — squash-merge ([`stop-ship.sh:374-424`](../../scripts/claude-hooks/stop-ship.sh))
 
@@ -250,6 +290,7 @@ ADR 을 도입하는 커밋의 경우, 두 개의 분리된 PR 보다 같은 PR 
 | 브랜치 컨벤션 위반 또는 이슈 누락 | Stage 2 | push 전 abort |
 | §5b 검증 실패 (load-bearing 변경, body 에 delta 없음) | Stage 3 | `_ship_pr_body.py` exit 1, Stage 3 abort |
 | CI red 또는 timeout | Stage 4 | PR 코멘트 게시, abort, PR 열린 채 유지 |
+| requested changes / unresolved review thread | Stage 4 | PR 코멘트 게시, abort, PR 열린 채 유지 |
 | `gh pr merge` 거부 (admin merge 불가, branch protection) | Stage 5 | abort, PR 열린 채 유지 |
 | 머지 후 상태 ≠ `MERGED` | Stage 5 | arm 파일 그대로 두고 exit 1 |
 
