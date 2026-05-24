@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Match scripts/smoke.sh: OpenMP SHM can SIGABRT under macOS sandboxed
+# subprocess-heavy pytest runs, so default to the stable local settings.
+export OMP_NUM_THREADS="${OMP_NUM_THREADS:-1}"
+export KMP_USE_SHM="${KMP_USE_SHM:-FALSE}"
+export KMP_INIT_AT_FORK="${KMP_INIT_AT_FORK:-FALSE}"
+
 # Issue #334 (G8 of #284): opt-in ruff lint gate.
 # Ruff is treated as an optional dev dependency — if it is not on PATH we
 # print a one-line install hint and continue, so minimal envs (smoke runs,

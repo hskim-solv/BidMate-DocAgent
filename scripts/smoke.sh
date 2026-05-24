@@ -4,6 +4,7 @@ export PYTHONDONTWRITEBYTECODE=1
 # Avoid macOS arm64 libomp shared-memory aborts during local smoke eval.
 export OMP_NUM_THREADS="${OMP_NUM_THREADS:-1}"
 export KMP_USE_SHM="${KMP_USE_SHM:-FALSE}"
+export KMP_INIT_AT_FORK="${KMP_INIT_AT_FORK:-FALSE}"
 
 # Minimal end-to-end smoke test for Agentic-VLM.
 # Run from the repository root:

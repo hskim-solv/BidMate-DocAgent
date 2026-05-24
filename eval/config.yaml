@@ -53,12 +53,20 @@ stage_latency_budgets:
 ablation_runs:
   - name: naive_baseline
     pipeline: naive_baseline
+    metadata_first: false
+    rerank: false
+    verifier_retry: false
+    retrieval_mode: flat
+    retrieval_backend: dense
+    query_expansion: identity
   - name: full
     pipeline: agentic_full
     metadata_first: true
     rerank: true
     verifier_retry: true
     retrieval_mode: flat
+    retrieval_backend: hybrid
+    query_expansion: identity
     metadata_backend: regex
   - name: full_dense
     pipeline: agentic_full
@@ -66,6 +74,7 @@ ablation_runs:
     rerank: true
     verifier_retry: true
     retrieval_mode: flat
+    query_expansion: identity
     metadata_backend: regex
     retrieval_backend: dense
   - name: full_llm
@@ -74,12 +83,16 @@ ablation_runs:
     rerank: true
     verifier_retry: true
     retrieval_mode: flat
+    retrieval_backend: hybrid
+    query_expansion: identity
   - name: full_llm_metadata
     pipeline: agentic_full
     metadata_first: true
     rerank: true
     verifier_retry: true
     retrieval_mode: flat
+    retrieval_backend: hybrid
+    query_expansion: identity
     metadata_backend: anthropic_tool_use
   - name: no_metadata_first
     pipeline: agentic_full
@@ -87,33 +100,49 @@ ablation_runs:
     rerank: true
     verifier_retry: true
     retrieval_mode: flat
+    retrieval_backend: hybrid
+    query_expansion: identity
   - name: no_rerank
     pipeline: agentic_full
     metadata_first: true
     rerank: false
     verifier_retry: true
     retrieval_mode: flat
+    retrieval_backend: hybrid
+    query_expansion: identity
   - name: no_verifier_retry
     pipeline: agentic_full
     metadata_first: true
     rerank: true
     verifier_retry: false
     retrieval_mode: flat
+    retrieval_backend: hybrid
+    query_expansion: identity
   - name: retrieval_only
     pipeline: agentic_full
     metadata_first: true
     rerank: false
     verifier_retry: false
     retrieval_mode: flat
+    retrieval_backend: hybrid
+    query_expansion: identity
   - name: full_bm25s
     pipeline: agentic_full
     metadata_first: true
     rerank: true
     verifier_retry: true
     retrieval_mode: flat
+    retrieval_backend: hybrid
+    query_expansion: identity
     bm25_backend: bm25s
   - name: single_chunk
     pipeline: single_chunk
+    metadata_first: false
+    rerank: false
+    verifier_retry: false
+    retrieval_mode: flat
+    retrieval_backend: dense
+    query_expansion: identity
   - name: random_retrieval
     pipeline: agentic_full
     metadata_first: false
@@ -121,12 +150,15 @@ ablation_runs:
     verifier_retry: false
     retrieval_mode: flat
     retrieval_backend: random
+    query_expansion: identity
   - name: agent_react
     pipeline: agent_react
     metadata_first: true
     rerank: true
     verifier_retry: true
     retrieval_mode: flat
+    retrieval_backend: hybrid
+    query_expansion: identity
     planner_backend: static
   - name: agentic_full_finetuned
     pipeline: agentic_full
@@ -134,11 +166,19 @@ ablation_runs:
     rerank: true
     verifier_retry: true
     retrieval_mode: flat
+    retrieval_backend: hybrid
+    query_expansion: identity
     metadata_backend: regex
     embedding_model: nlpai-lab/KURE-v1
     embedding_lora_adapter: bidmate/embedding-lora-kure-rfp-ko-v1@<sha>
   - name: naive_baseline_finetuned
     pipeline: naive_baseline
+    metadata_first: false
+    rerank: false
+    verifier_retry: false
+    retrieval_mode: flat
+    retrieval_backend: dense
+    query_expansion: identity
     embedding_model: nlpai-lab/KURE-v1
     embedding_lora_adapter: bidmate/embedding-lora-kure-rfp-ko-v1@<sha>
 
