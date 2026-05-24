@@ -131,32 +131,39 @@ def _load_trace(case: dict[str, Any], traces_dir: Path | None) -> dict[str, Any]
         return None
 
 
+def _inner_planner(trace: dict[str, Any]) -> dict[str, Any]:
+    """Resolve the planner dict, tolerating the optional ``trace`` nesting.
+
+    Hoists each ``.get`` result into a local so the ``isinstance`` guard
+    narrows it — behaviour is identical to inlining the checks, but the
+    type checker can no longer see a ``None`` member access.
+    """
+    nested = trace.get("trace")
+    inner = nested if isinstance(nested, dict) else trace
+    planner = inner.get("planner")
+    return planner if isinstance(planner, dict) else {}
+
+
 def _planner_subset(trace: dict[str, Any]) -> dict[str, Any]:
     """Extract the planner-side input subset for the planner_decomposition axis."""
-    inner = trace.get("trace") if isinstance(trace.get("trace"), dict) else trace
-    planner = (
-        inner.get("planner") if isinstance(inner.get("planner"), dict) else {}
-    )
+    planner = _inner_planner(trace)
+    budget = planner.get("retrieval_budget")
     return {
         "query_type": planner.get("query_type"),
         "pipeline": planner.get("pipeline"),
         "stage_sequence": planner.get("stage_sequence"),
         "selected_top_k": planner.get("selected_top_k"),
         "retrieval_budget_reason": (
-            (planner.get("retrieval_budget") or {}).get("reason")
-            if isinstance(planner.get("retrieval_budget"), dict)
-            else None
+            budget.get("reason") if isinstance(budget, dict) else None
         ),
     }
 
 
 def _retrieval_subset(trace: dict[str, Any]) -> list[list[str]]:
     """Extract per-attempt verification_reasons for the retrieval_recalls axis."""
-    inner = trace.get("trace") if isinstance(trace.get("trace"), dict) else trace
-    planner = (
-        inner.get("planner") if isinstance(inner.get("planner"), dict) else {}
-    )
-    attempts = planner.get("attempts") if isinstance(planner.get("attempts"), list) else []
+    planner = _inner_planner(trace)
+    attempts_raw = planner.get("attempts")
+    attempts = attempts_raw if isinstance(attempts_raw, list) else []
     return [
         list(att.get("verification_reasons") or [])
         for att in attempts
@@ -170,7 +177,8 @@ def _synthesis_subset(trace: dict[str, Any]) -> dict[str, Any] | None:
     Returns ``None`` when the case ran without ``BIDMATE_TRACE_FULL=1`` —
     the synthesis_llm_call key is then absent or ``None``.
     """
-    inner = trace.get("trace") if isinstance(trace.get("trace"), dict) else trace
+    nested = trace.get("trace")
+    inner = nested if isinstance(nested, dict) else trace
     # Step 2 (#968) puts synthesis_llm_call at trace top-level (sibling of
     # planner / answer_schema); some older shapes may nest under "trace".
     call = inner.get("synthesis_llm_call") or trace.get("synthesis_llm_call")
