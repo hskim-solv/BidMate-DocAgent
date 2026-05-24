@@ -289,6 +289,7 @@ reports/self_review_agreement/*
 artifacts/benchmarks/
 artifacts/runs/
 artifacts/matrices/
+experiments/runs/
 
 # Harness private overlays (paired with eval/*.local.yaml). Only the
 # *.example.yaml templates are committed.
