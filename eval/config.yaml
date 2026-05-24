@@ -110,6 +110,12 @@ answer_policy:
 ablation_runs:
   - name: naive_baseline
     pipeline: naive_baseline
+    metadata_first: false
+    rerank: false
+    verifier_retry: false
+    retrieval_mode: flat
+    retrieval_backend: dense
+    query_expansion: identity
   # ADR 0040 — additive ReAct agent loop. BIDMATE_PLANNER_BACKEND=static
   # keeps this CI-deterministic (no LLM call). Real-agent runs set
   # BIDMATE_PLANNER_BACKEND=anthropic; real-eval delta measured separately
@@ -121,6 +127,8 @@ ablation_runs:
     rerank: true
     verifier_retry: true
     retrieval_mode: flat
+    retrieval_backend: hybrid
+    query_expansion: identity
     planner_backend: static
   - name: full
     pipeline: agentic_full
@@ -128,6 +136,8 @@ ablation_runs:
     rerank: true
     verifier_retry: true
     retrieval_mode: flat
+    retrieval_backend: hybrid
+    query_expansion: identity
     # ADR 0001 default: regex-based RFP metadata extraction
     # (``rag_metadata_extraction.RegexBackend``). The discriminator is
     # consumed by the byte-identity invariant test that pairs this row
@@ -147,6 +157,7 @@ ablation_runs:
     verifier_retry: true
     retrieval_mode: flat
     retrieval_backend: dense
+    query_expansion: identity
     metadata_backend: regex
   # ADR 0011 — additive LLM synthesis path. Default backend is `stub`
   # (deterministic, offline, free) so public CI stays per ADR 0004.
@@ -157,6 +168,8 @@ ablation_runs:
     rerank: true
     verifier_retry: true
     retrieval_mode: flat
+    retrieval_backend: hybrid
+    query_expansion: identity
   # Issue #180 / ADR 0017 — additive LLM-driven RFP metadata extraction
   # via Claude tool use. Metadata extraction happens at ingest time
   # (``ingestion.normalize_ingestion_row``), so this row is meaningful
@@ -178,6 +191,8 @@ ablation_runs:
     rerank: true
     verifier_retry: true
     retrieval_mode: flat
+    retrieval_backend: hybrid
+    query_expansion: identity
     metadata_backend: anthropic_tool_use
   - name: hierarchical
     pipeline: agentic_full
@@ -185,24 +200,32 @@ ablation_runs:
     rerank: true
     verifier_retry: true
     retrieval_mode: hierarchical
+    retrieval_backend: hybrid
+    query_expansion: identity
   - name: no_metadata_first
     pipeline: agentic_full
     metadata_first: false
     rerank: true
     verifier_retry: true
     retrieval_mode: flat
+    retrieval_backend: hybrid
+    query_expansion: identity
   - name: no_rerank
     pipeline: agentic_full
     metadata_first: true
     rerank: false
     verifier_retry: true
     retrieval_mode: flat
+    retrieval_backend: hybrid
+    query_expansion: identity
   - name: no_verifier_retry
     pipeline: agentic_full
     metadata_first: true
     rerank: true
     verifier_retry: false
     retrieval_mode: flat
+    retrieval_backend: hybrid
+    query_expansion: identity
   # Issue #800 (fix follow-up to #694) — re-defined as raw retrieval ablation.
   # Original PR #694 definition was byte-identical to `no_verifier_retry`
   # (same pipeline/metadata_first/rerank/verifier_retry/retrieval_mode) so
@@ -221,6 +244,8 @@ ablation_runs:
     rerank: false
     verifier_retry: false
     retrieval_mode: flat
+    retrieval_backend: hybrid
+    query_expansion: identity
   # Issue #149 anchor + post-ADR-0058 note (issue #1285): since #1000 flipped the
   # agentic_full preset default to hybrid, the `full` row now resolves to the
   # SAME retrieval five-tuple + hybrid backend + rrf_k=60 as this row. Unlike the
@@ -236,6 +261,7 @@ ablation_runs:
     verifier_retry: true
     retrieval_mode: flat
     retrieval_backend: hybrid
+    query_expansion: identity
   # Issue #149 — RRF k sweep. The default `hybrid_bm25` row above runs
   # at the current `RRF_K = 60` default; the three rows below sweep
   # k ∈ {10, 30, 100} so a real-data ablation can pick a robust k as
@@ -247,6 +273,7 @@ ablation_runs:
     verifier_retry: true
     retrieval_mode: flat
     retrieval_backend: hybrid
+    query_expansion: identity
     rrf_k: 10
   - name: hybrid_bm25_k30
     pipeline: agentic_full
@@ -255,6 +282,7 @@ ablation_runs:
     verifier_retry: true
     retrieval_mode: flat
     retrieval_backend: hybrid
+    query_expansion: identity
     rrf_k: 30
   - name: hybrid_bm25_k100
     pipeline: agentic_full
@@ -263,6 +291,7 @@ ablation_runs:
     verifier_retry: true
     retrieval_mode: flat
     retrieval_backend: hybrid
+    query_expansion: identity
     rrf_k: 100
   # Issue #151 — BGE-M3 multi-channel measurement spike. ``m3`` backend
   # fuses BGE-M3 의 dense + sparse + multi-vector (ColBERT-style) 세 채널을
@@ -280,6 +309,7 @@ ablation_runs:
     verifier_retry: true
     retrieval_mode: flat
     retrieval_backend: m3
+    query_expansion: identity
     # ``eval/run_eval.py.ablation_runs`` checks this and silently drops
     # the row when FlagEmbedding isn't importable, so the public
     # synthetic CI (hashing backend, no opt-in dep installed) stays
@@ -298,6 +328,7 @@ ablation_runs:
     verifier_retry: true
     retrieval_mode: flat
     retrieval_backend: hybrid
+    query_expansion: identity
     bm25_stopword_profile: bm25_extra
   # Issue #152 — feasibility investigation (docs/investigations/152-splade-
   # colbert-feasibility.md). Cell C3 of the 2×2 gap-quantification sweep:
@@ -312,6 +343,7 @@ ablation_runs:
     verifier_retry: true
     retrieval_mode: flat
     retrieval_backend: hybrid
+    query_expansion: identity
     rrf_k: 30
     bm25_stopword_profile: bm25_extra
   # Issue #486 / ADR 0031 — Korean morphology BM25 ablation. Same retrieval +
@@ -329,6 +361,7 @@ ablation_runs:
     verifier_retry: true
     retrieval_mode: flat
     retrieval_backend: hybrid
+    query_expansion: identity
     bm25_tokenizer: kiwi
   # Issue #988 / ADR 0057 — additive bm25s BM25 backend (numpy sparse,
   # method="robertson" pre-validated to produce ranking 100% identical to
@@ -349,6 +382,7 @@ ablation_runs:
     verifier_retry: true
     retrieval_mode: flat
     retrieval_backend: hybrid
+    query_expansion: identity
     bm25_backend: bm25s
     # Issue #988 / ADR 0057 — bm25s now propagates to the execution plan
     # (rag_core threading), so `_make_bm25_instance(..., "bm25s")` raises a
@@ -371,6 +405,7 @@ ablation_runs:
     verifier_retry: true
     retrieval_mode: flat
     retrieval_backend: hybrid
+    query_expansion: identity
     bm25_tokenizer: mecab
   # Issue #561 / ADR 0031 valid-set expansion — Khaiii BM25 tokenizer.
   # Khaiii requires a compiled C++ shared library (optional dependency).
@@ -382,6 +417,7 @@ ablation_runs:
     verifier_retry: true
     retrieval_mode: flat
     retrieval_backend: hybrid
+    query_expansion: identity
     bm25_tokenizer: khaiii
   # Issue #163 / ADR 0011 pattern — additive cross-encoder reranker. The
   # existing `full` row is the natural negative (rerank_cross_encoder
@@ -397,6 +433,8 @@ ablation_runs:
     rerank_cross_encoder: true
     verifier_retry: true
     retrieval_mode: flat
+    retrieval_backend: hybrid
+    query_expansion: identity
   # Issue #396 / ADR 0023 — additive query-side rewrite (HyDE). The
   # existing `full` row is the natural negative (`query_expansion`
   # defaults to identity). Under the public CI hashing-backend +
@@ -411,6 +449,7 @@ ablation_runs:
     rerank: true
     verifier_retry: true
     retrieval_mode: flat
+    retrieval_backend: hybrid
     query_expansion: hyde
   # Issue #179 / ADR 0027 — additive LoRA-fine-tuned embedding adapter.
   # The ``embedding_model`` / ``embedding_lora_adapter`` keys are
@@ -431,10 +470,18 @@ ablation_runs:
     rerank: true
     verifier_retry: true
     retrieval_mode: flat
+    retrieval_backend: hybrid
+    query_expansion: identity
     embedding_model: nlpai-lab/KURE-v1
     embedding_lora_adapter: bidmate/embedding-lora-kure-rfp-ko-v1@<sha>
   - name: naive_baseline_finetuned
     pipeline: naive_baseline
+    metadata_first: false
+    rerank: false
+    verifier_retry: false
+    retrieval_mode: flat
+    retrieval_backend: dense
+    query_expansion: identity
     embedding_model: nlpai-lab/KURE-v1
     embedding_lora_adapter: bidmate/embedding-lora-kure-rfp-ko-v1@<sha>
   # Issue #652 / ADR 0039 — HWP loader 3-way ablation.
@@ -449,6 +496,8 @@ ablation_runs:
     rerank: true
     verifier_retry: true
     retrieval_mode: flat
+    retrieval_backend: hybrid
+    query_expansion: identity
     hwp_loader: csv
   - name: hwp_native
     pipeline: agentic_full
@@ -456,6 +505,8 @@ ablation_runs:
     rerank: true
     verifier_retry: true
     retrieval_mode: flat
+    retrieval_backend: hybrid
+    query_expansion: identity
     hwp_loader: native
   - name: hwp_native_tables
     pipeline: agentic_full
@@ -463,6 +514,8 @@ ablation_runs:
     rerank: true
     verifier_retry: true
     retrieval_mode: flat
+    retrieval_backend: hybrid
+    query_expansion: identity
     hwp_loader: native_tables
   # Issue #938 / ADR 0053 — distinguishing-power floor ablations.
   # The eval-framework-progressive-audit skill (Phase 1 step 2) calls
@@ -477,6 +530,7 @@ ablation_runs:
     rerank: true
     verifier_retry: true
     retrieval_mode: flat
+    query_expansion: identity
     # Deterministic per (query, chunk_id) via SHA-256; no vector /
     # BM25 / M3 forward pass — see ``rag_retrieval.retrieve_candidates``.
     retrieval_backend: random
@@ -491,6 +545,7 @@ ablation_runs:
     verifier_retry: false
     retrieval_mode: flat
     retrieval_backend: dense
+    query_expansion: identity
 cases:
   - id: single_doc_security
     query_type: single_doc

@@ -1,8 +1,8 @@
 # 0002: 메타데이터 우선 검색 전략
 
-- **Status**: accepted
+- **Status**: accepted, amended by [ADR 0074](./0074-rfp-rag-stage-separation.md)
 - **Date**: 2026-05-11
-- **Related**: [`rag_core.py`](../../rag_core.py), [`docs/design-background.md`](../design-background.md), [`docs/real-data/real-data-failure-taxonomy.md`](../real-data/real-data-failure-taxonomy.md)
+- **Related**: [`rag_core.py`](../../rag_core.py), [`docs/design-background.md`](../design-background.md), [`docs/real-data/real-data-failure-taxonomy.md`](../real-data/real-data-failure-taxonomy.md), [ADR 0065](./0065-metadata-routing-bounded-by-query-coverage.md), [ADR 0074](./0074-rfp-rag-stage-separation.md)
 
 ## TL;DR
 
@@ -21,6 +21,12 @@ RFP 쿼리는 보통 *특정 기관/사업/섹션* 에 대한 것이다(예: "�
 기본 검색 전략은 콘텐츠 유사도 ranking **전** 메타데이터 target(기관/사업/섹션)을 해결한다. 메타데이터 해결 가능 시 해당 슬라이스로 검색을 필터링하고 그 안에서만 콘텐츠 점수를 사용한다. 모호 시 silent 선택 대신 모호성을 표면화한다. 메타데이터 신호가 없을 때만 콘텐츠-only ranking 으로 fallback.
 
 knob: 파이프라인 프리셋의 `metadata_first` 플래그. `agentic_full` 은 `true`, `naive_baseline` 은 `false` — `no_metadata_first` 분석 변형으로 기여 측정 가능.
+
+**Amendment (ADR 0074):** 이 ADR의 metadata-first 결정은 더 이상 전역
+기본 검색 전략으로 해석하지 않는다. ADR 0065가 측정한 query coverage 제한에
+따라 metadata routing은 metadata-identifiable 질의 집단에 대한 명시적
+retrieval-improvement stage로 다룬다. `naive_baseline`은 계속 metadata-first를
+쓰지 않으며, claim-bearing eval row는 metadata knob을 명시해야 한다.
 
 ## 결과
 

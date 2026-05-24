@@ -1,9 +1,9 @@
 # 0024: agentic_full_llm을 API default로 (preset만; backend default는 stub 유지)
 
-- **Status**: accepted
+- **Status**: accepted, amended by [ADR 0074](./0074-rfp-rag-stage-separation.md)
 - **Date**: 2026-05-12
 - **Deciders**: hskim
-- **Related**: [ADR 0001](./0001-preserve-naive-baseline.md) (CLI default는 naive_baseline 유지), [ADR 0011](./0011-llm-synthesis-as-additive-ablation.md) (보완 — backend additive opt-in 유지), [ADR 0022](./0022-langgraph-orchestration-stage-1.md) (직교 — orchestrator 경로도 opt-in), issue #405
+- **Related**: [ADR 0001](./0001-preserve-naive-baseline.md) (CLI default는 naive_baseline 유지), [ADR 0011](./0011-llm-synthesis-as-additive-ablation.md) (보완 — backend additive opt-in 유지), [ADR 0022](./0022-langgraph-orchestration-stage-1.md) (직교 — orchestrator 경로도 opt-in), [ADR 0074](./0074-rfp-rag-stage-separation.md) (API default와 eval baseline 분리), issue #405
 
 ## TL;DR
 
@@ -30,6 +30,12 @@ reviewer 비판은 *API 표면에서* 정당: `agentic_full_llm` 존재해도 �
 *backend* default는 `BIDMATE_SYNTHESIS_BACKEND=stub` 유지(ADR 0011 무변경). 기본 API 호출은 `agentic_full_llm` 프리셋의 structured-grounded-claims 검색 + **stub synthesis** 렌더러 실행 — 결정적, token-less, CI-reproducible. 실제 LLM 합성은 operator가 `BIDMATE_SYNTHESIS_BACKEND=anthropic`(또는 `openai_compatible`) 설정 시에만 활성 — ADR 0011 표면 그대로.
 
 3 경계는 명시 회귀 테스트(`tests/test_api_default_pipeline_regression.py`)로 pin → 후일 기여자가 silently collapse 불가.
+
+**Amendment (ADR 0074):** `agentic_full_llm` API default는 demo/API product
+surface 결정일 뿐 eval baseline 또는 answer-synthesis 우월성의 근거가 아니다.
+평가와 PR claim은 실제 eval row와 retrieval/answer stage knob을 명시해야 하며,
+API default 변경은 `naive_baseline` 또는 retrieval 비교의 기준선을 이동시키지
+않는다.
 
 ## "preset만, backend 아님" 분리 이유
 

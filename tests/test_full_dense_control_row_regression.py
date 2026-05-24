@@ -2,17 +2,17 @@
 
 Commit 6c1c414 (#1000, ADR 0058 Scenario A) flipped the ``agentic_full``
 preset ``retrieval_backend`` from ``dense`` to ``hybrid``.  The eval ``full``
-row in ``eval/config.yaml`` does NOT declare ``retrieval_backend``, so it
-inherits the preset default via
-``resolve_pipeline_config()``'s ``config.get("retrieval_backend") or "dense"``
-fallback.  The flip therefore silently moved the eval ``full`` row
-(and full_llm / no_rerank / retrieval_only / no_metadata_first) dense -> hybrid,
-collapsing the dense agentic_full arm that ADR 0058's own win evidence
-(dense_m3 vs hybrid_bm25_k60_m3, all SIG) requires for reproducibility.
+row originally inherited that default, so the flip silently moved the eval
+``full`` row (and full_llm / no_rerank / retrieval_only / no_metadata_first)
+dense -> hybrid, collapsing the dense agentic_full arm that ADR 0058's own win
+evidence (dense_m3 vs hybrid_bm25_k60_m3, all SIG) requires for reproducibility.
 
 Direction B (issue #1285): keep ``full`` hybrid (canonical headline reflects
 the production default) and add an explicit ``full_dense`` control row so the
 dense-vs-hybrid comparison is reproducible from the default config.
+
+ADR 0074 then tightened the contract: claim-bearing eval rows must declare the
+stage-separation knobs directly instead of relying on preset inheritance.
 
 These tests pin the resolved retrieval backend through the runner's own
 ``normalize_run_config`` contract (which calls ``resolve_pipeline_config``),
@@ -24,6 +24,7 @@ so the assertions match what the eval runner actually executes:
 4.  ``naive_baseline`` resolves to dense (ADR 0001 byte-identity sentinel).
 5.  ``full`` and ``full_dense`` differ by exactly ``{name, retrieval_backend}``
     (the control row varies exactly one knob).
+6.  Every eval row explicitly declares the core stage-separation knobs.
 """
 from __future__ import annotations
 
@@ -37,6 +38,15 @@ from eval.run_eval import normalize_run_config
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 CONFIG_PATH = ROOT_DIR / "eval" / "config.yaml"
+
+EXPLICIT_STAGE_KNOBS = {
+    "metadata_first",
+    "rerank",
+    "verifier_retry",
+    "retrieval_mode",
+    "retrieval_backend",
+    "query_expansion",
+}
 
 
 class TestFullDenseControlRow(unittest.TestCase):
@@ -64,7 +74,7 @@ class TestFullDenseControlRow(unittest.TestCase):
             resolved["retrieval_backend"],
             "hybrid",
             "full must resolve to 'hybrid' (ADR 0058 Scenario A, #1000). "
-            "It inherits the agentic_full preset default.",
+            "It is explicit in eval/config.yaml per ADR 0074.",
         )
 
     def test_full_dense_resolves_to_dense(self) -> None:
@@ -107,6 +117,18 @@ class TestFullDenseControlRow(unittest.TestCase):
             f"Got differing keys: {differing}. The control row should be identical "
             "to full except for the explicit dense backend.",
         )
+
+    def test_all_rows_declare_stage_separation_knobs(self) -> None:
+        """ADR 0074: eval rows must be readable without following preset
+        defaults for the core retrieval/answer-stage switches."""
+        for row in self.ablation_runs:
+            with self.subTest(row=row["name"]):
+                missing = sorted(EXPLICIT_STAGE_KNOBS - row.keys())
+                self.assertEqual(
+                    missing,
+                    [],
+                    f"{row['name']} must explicitly declare ADR 0074 stage knobs",
+                )
 
 
 if __name__ == "__main__":

@@ -25,7 +25,7 @@
 
 <details><summary><b>측정 상세 (over-claim 가드 — 펼치기)</b></summary>
 
-> **측정**: 공개 합성 (`agentic_full`, n=100): accuracy 0.718 ± 0.10, citation_precision 0.705 ± 0.08 (95% CI). 비공개 real-eval (100-doc RFP, n=221 hardcase, [ADR 0052](docs/adr/0052-real-eval-hardcase-expansion-to-200.md)): accuracy 16.10%. distinguishing-power gauge — 점추정(point estimate)으로는 4/5 metric 이 `random_retrieval` + `single_chunk` 두 floor 를 상회 (groundedness +16.95pp · accuracy +13.56pp · citation_precision +10.45pp · claim_citation_alignment +6.10pp vs random_retrieval) 하나, **CI-aware 비중첩 95% CI 테스트에서는 n=221 에서 5/5 모두 분리 미달 — 4 metric `uncertain`, answer_format_compliance −4.02pp `dead`** (게이지의 보수적 판정이 over-claim 을 차단). Goodhart 폐루프 ([ADR 0053](docs/adr/0053-distinguishing-power-floor-ablations.md) 첫 측정 발견 → [ADR 0054](docs/adr/0054-conditional-on-answer-scorer-semantics.md) scorer 정정 → CI-aware 판정, [reports/real100/distinguishing_power.md](reports/real100/distinguishing_power.md)). 공개 합성 + 비공개 real-data 분리 평가 ([ADR 0005](docs/adr/0005-eval-split-public-synthetic-private-local.md)), 73개 설계 결정 (ADR).
+> **측정**: 공개 합성 (`agentic_full`, n=100): accuracy 0.718 ± 0.10, citation_precision 0.705 ± 0.08 (95% CI). 비공개 real-eval (100-doc RFP, n=221 hardcase, [ADR 0052](docs/adr/0052-real-eval-hardcase-expansion-to-200.md)): accuracy 16.10%. distinguishing-power gauge — 점추정(point estimate)으로는 4/5 metric 이 `random_retrieval` + `single_chunk` 두 floor 를 상회 (groundedness +16.95pp · accuracy +13.56pp · citation_precision +10.45pp · claim_citation_alignment +6.10pp vs random_retrieval) 하나, **CI-aware 비중첩 95% CI 테스트에서는 n=221 에서 5/5 모두 분리 미달 — 4 metric `uncertain`, answer_format_compliance −4.02pp `dead`** (게이지의 보수적 판정이 over-claim 을 차단). Goodhart 폐루프 ([ADR 0053](docs/adr/0053-distinguishing-power-floor-ablations.md) 첫 측정 발견 → [ADR 0054](docs/adr/0054-conditional-on-answer-scorer-semantics.md) scorer 정정 → CI-aware 판정, [reports/real100/distinguishing_power.md](reports/real100/distinguishing_power.md)). 공개 합성 + 비공개 real-data 분리 평가 ([ADR 0005](docs/adr/0005-eval-split-public-synthetic-private-local.md)), 74개 설계 결정 (ADR).
 
 </details>
 
@@ -246,7 +246,7 @@ python3 scripts/update_readme_metrics.py --report reports/eval_summary.json --re
 
 | 목적 | 링크 |
 |---|---|
-| ADR 인덱스 (73개 결정) | [`docs/adr/README.md`](docs/adr/README.md) |
+| ADR 인덱스 (74개 결정) | [`docs/adr/README.md`](docs/adr/README.md) |
 | 분석 변형 결과 + benchmarking + latency 비교 | [`docs/benchmarking.md`](docs/benchmarking.md) / [`docs/eval/ablation-results.md`](docs/eval/ablation-results.md) |
 | 설계 배경 (한국 RFP 적응 5가지) | [`docs/design-background.md`](docs/design-background.md) |
 | 답변 출력 정책 + Evidence boundary + Baseline policy | [`docs/agentic/answer-policy.md`](docs/agentic/answer-policy.md) |

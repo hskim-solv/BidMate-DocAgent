@@ -18,13 +18,19 @@ pins them with explicit assertions.
 from __future__ import annotations
 
 import unittest
+from pathlib import Path
 
 import pytest
+import yaml
 from fastapi.testclient import TestClient
 
 import rag_core
 import rag_pipeline_presets
 from api import main as api_main
+
+
+ROOT_DIR = Path(__file__).resolve().parents[1]
+CONFIG_PATH = ROOT_DIR / "eval" / "config.yaml"
 
 
 class ApiDefaultPipelineTest(unittest.TestCase):
@@ -85,6 +91,15 @@ class ApiDefaultPipelineTest(unittest.TestCase):
         """
         self.assertEqual(rag_pipeline_presets.DEFAULT_RAG_PIPELINE_NAME, "agentic_full")
         self.assertEqual(rag_core.DEFAULT_RAG_PIPELINE_NAME, "agentic_full")
+
+    def test_api_default_is_not_eval_baseline(self) -> None:
+        """ADR 0074: API/demo default must not be treated as eval evidence."""
+        with open(CONFIG_PATH) as f:
+            config = yaml.safe_load(f)
+
+        self.assertEqual(api_main.DEFAULT_API_PIPELINE, "agentic_full_llm")
+        self.assertEqual(config["primary_run"], "naive_baseline")
+        self.assertNotEqual(api_main.DEFAULT_API_PIPELINE, config["primary_run"])
 
 
 if __name__ == "__main__":
