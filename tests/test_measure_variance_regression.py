@@ -39,11 +39,13 @@ def _valid_run(case_results: list[dict] | None = None) -> dict:
     return {
         "failure_category_counts": {
             "retrieval_miss": 1,
-            "planner_under_decomposition": 0,
+            "citation_or_page_metadata_issue": 0,
             "verifier_false_negative": 2,
             "verifier_false_positive": 0,
-            "generator_hallucination": 0,
-            "context_dilution": 0,
+            "answer_synthesis_issue": 0,
+            "abstention_failure": 0,
+            "evaluation_label_issue": 0,
+            "parse_or_metadata_issue": 0,
             "unknown": 0,
         },
         "abstention_outcomes": {

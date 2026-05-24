@@ -1065,8 +1065,8 @@ def proposed_adr_age(
 # contents API — importing it would pull in eval.scorers.failure_classifier.
 # ---------------------------------------------------------------------------
 
-# Flat-dict key for the scalar CEILING_TOTAL_FAILURE_RATE. Not one of the 7
-# ADR 0059 FAILURE_CATEGORIES, so it cannot collide with a real category key.
+# Flat-dict key for the scalar CEILING_TOTAL_FAILURE_RATE. Not one of the ADR
+# 0075 FAILURE_CATEGORIES, so it cannot collide with a real category key.
 TOTAL_FAILURE_RATE_KEY = "total_failure_rate"
 
 _CEILING_DICT_NAME = "CEILING_RATE_BY_CATEGORY"

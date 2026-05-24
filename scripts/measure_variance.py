@@ -1,12 +1,13 @@
 """N-run variance measurement for real-eval `eval_summary.json` snapshots.
 
-Issue J — variance source 진단 audit (ADR 0059 supply 3 prerequisite).
+Issue J — variance source 진단 audit (ADR 0059 supply 3 prerequisite,
+normalized by ADR 0075).
 
 Reads N eval_summary.json files produced at the same git HEAD + same config,
 and emits:
 
-1. per-category run mean / std / min / max for the 7 ADR 0059 categories.
-2. ADR 0059 first-match contract check per run
+    1. per-category run mean / std / min / max for ADR 0075 categories.
+    2. ADR 0075 first-match contract check per run
    (`failure_category_counts.verifier_false_negative ==
    abstention_outcomes.incorrect_answer`).
 3. Per-case "stable / fluctuating" classification — how many distinct
@@ -19,7 +20,7 @@ consumer of N eval_summary.json files that the user has already produced
 (e.g. via a `for i in 1..5; do make real-eval; cp ...; done` loop).
 
 ADR 0005 boundary: outputs are aggregate-only (no per-case query / answer
-text crosses the boundary). Only case_id + 7-category counts.
+text crosses the boundary). Only case_id + normalized category counts.
 """
 
 from __future__ import annotations
@@ -36,11 +37,13 @@ from typing import Any
 
 FAILURE_CATEGORIES = (
     "retrieval_miss",
-    "planner_under_decomposition",
+    "citation_or_page_metadata_issue",
     "verifier_false_negative",
     "verifier_false_positive",
-    "generator_hallucination",
-    "context_dilution",
+    "answer_synthesis_issue",
+    "abstention_failure",
+    "evaluation_label_issue",
+    "parse_or_metadata_issue",
     "unknown",
 )
 
@@ -58,7 +61,7 @@ def _validate_run(name: str, run: dict[str, Any]) -> None:
     if not isinstance(fcc, dict):
         raise SystemExit(
             f"{name}: missing/invalid 'failure_category_counts' "
-            f"(got {type(fcc).__name__}) — not an ADR 0059 eval_summary.json?"
+            f"(got {type(fcc).__name__}) — not an ADR 0075 eval_summary.json?"
         )
     missing = [cat for cat in FAILURE_CATEGORIES if cat not in fcc]
     if missing:
@@ -89,7 +92,7 @@ def _load_runs(glob_pattern: str) -> list[tuple[str, dict[str, Any]]]:
 
 
 def _category_counts(run: dict[str, Any]) -> dict[str, int]:
-    """Extract 7-category counts from a single eval_summary.json (top-level).
+    """Extract normalized category counts from a single eval_summary.json (top-level).
 
     Shape is guaranteed by `_validate_run`; no missing-key fallback here.
     """
@@ -118,7 +121,7 @@ def _per_case_categories(run: dict[str, Any], name: str) -> dict[str, str]:
         cid = cr.get("id") or cr.get("case_id")
         if cid is None:
             raise SystemExit(
-                f"{name}: case_result missing 'id' — not an ADR 0059 per-case run?"
+                f"{name}: case_result missing 'id' — not an ADR 0075 per-case run?"
             )
         cid = str(cid)
         if cid in out:
@@ -207,7 +210,7 @@ def render_markdown(agg: dict[str, Any]) -> str:
     lines.append("min/max + per-case stability + transition matrix.\n")
 
     # Per-category stats
-    lines.append("## 7-category run statistics\n")
+    lines.append("## Normalized category run statistics\n")
     lines.append("| category | values | mean | stdev | min | max | spread |")
     lines.append("|---|---|---:|---:|---:|---:|---:|")
     stats = agg["category_stats"]
@@ -221,7 +224,7 @@ def render_markdown(agg: dict[str, Any]) -> str:
     lines.append("")
 
     # Contract check
-    lines.append("## ADR 0059 first-match contract per run\n")
+    lines.append("## ADR 0075 first-match contract per run\n")
     lines.append("`failure_category_counts.verifier_false_negative == abstention_outcomes.incorrect_answer`\n")
     lines.append("| run | vfn | incorrect_answer | contract |")
     lines.append("|---|---:|---:|:---:|")

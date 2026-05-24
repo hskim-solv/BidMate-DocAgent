@@ -5,13 +5,10 @@ Reads ``reports/real100/eval_summary.json`` (gitignored, local-only) and
 emits a committable markdown + aggregate JSON pair under
 ``reports/real100/failure_distribution.{md,aggregate.json}``.
 
-The data this renderer surfaces was introduced by ADR 0059 (PR #1001) —
-top-level ``failure_category_counts: dict[str, int]`` with a fail-closed
-7-key taxonomy (retrieval_miss / planner_under_decomposition /
-verifier_false_negative / verifier_false_positive /
-generator_hallucination / context_dilution / unknown). The classifier
-is in ``eval/scorers/failure_classifier.py``; this renderer is a
-read-only consumer.
+The data this renderer surfaces was introduced by ADR 0059 and normalized by
+ADR 0075 — top-level ``failure_category_counts: dict[str, int]`` with a
+fail-closed taxonomy. The classifier is in
+``eval/scorers/failure_classifier.py``; this renderer is a read-only consumer.
 
 Sibling renderers (same pattern):
 
@@ -27,8 +24,8 @@ enum bucket name from a fail-closed whitelist; no raw ``query`` text,
 ``answer``, doc identifier, or other per-case string is ever copied into
 the aggregate (issue #1239; #1286 raw-passthrough leak precedent).
 
-The ``slice_counts`` block (schema_version 2, issue #1239) re-derives
-the ADR 0059 per-category label via
+The ``slice_counts`` block (schema_version 3, issue #1239 + ADR 0075)
+re-derives the normalized per-category label via
 ``eval.scorers.failure_classifier.classify_failure`` (single source of
 truth — no reimplementation) and counts, *per failure category*, the
 distribution of: ``query_type``, ``hardcase_categories`` (multi-tag),
@@ -78,14 +75,14 @@ DEFAULT_OUT_JSON = (
     ROOT / "reports" / "real100" / "failure_distribution.aggregate.json"
 )
 
-# Single source of truth for the 7-key taxonomy is
+# Single source of truth for the normalized taxonomy is
 # ``eval.scorers.failure_classifier.FAILURE_CATEGORIES`` (imported above) —
 # no hardcoded copy here, so a classifier taxonomy change cannot drift away
 # from this renderer. Aliased for readability at the call sites.
 SAFE_CATEGORIES: tuple[str, ...] = FAILURE_CATEGORIES
 
 # Abstention outcomes (PR #464, 3-bin refusal axis) — overlaid on the
-# 7-category surface so reviewers can see how the new taxonomy
+# normalized surface so reviewers can see how the taxonomy
 # decomposes the old refusal bins.
 SAFE_OUTCOME_KEYS: tuple[str, ...] = (
     "correct_refusal",
@@ -225,7 +222,7 @@ def _accumulate_case(slice_payload: dict[str, Any], case: dict[str, Any]) -> Non
 def _build_slice_counts(summary: dict[str, Any]) -> dict[str, dict[str, Any]]:
     """Per-category slice counts derived from ``case_results``.
 
-    Re-uses ``classify_failure`` (ADR 0059 SoT) so the per-category ``n``
+    Re-uses ``classify_failure`` (ADR 0075 SoT) so the per-category ``n``
     matches the top-level ``failure_category_counts``. When ``case_results``
     is absent (e.g. a pre-#1239 summary), every category is emitted with a
     zeroed slice so downstream consumers can rely on the full shape.
@@ -260,18 +257,18 @@ def _extract_failure_counts(summary: dict[str, Any]) -> dict[str, int]:
     key outside ``FAILURE_CATEGORIES`` (taxonomy drift) or any non-numeric
     value raises ``ValueError`` so a schema change surfaces immediately
     instead of corrupting ``total_failures``. Missing keys are emitted as
-    zero so downstream consumers can always count on the full 7-key shape.
+    zero so downstream consumers can always count on the full taxonomy shape.
     """
     raw = summary.get("failure_category_counts")
     if not isinstance(raw, dict):
         raise ValueError(
             "eval_summary.json::failure_category_counts missing or not a dict "
-            "— make sure the file was generated post-PR #1001 (ADR 0059)."
+            "— make sure the file was generated with ADR 0075 taxonomy support."
         )
     unexpected = set(raw) - set(FAILURE_CATEGORIES)
     if unexpected:
         raise ValueError(
-            "failure_category_counts has keys outside the ADR 0059 taxonomy: "
+            "failure_category_counts has keys outside the ADR 0075 taxonomy: "
             f"{sorted(unexpected)} — drift from "
             "eval.scorers.failure_classifier.FAILURE_CATEGORIES. A measurement "
             "surface must fail loud, not silently drop these cases from "
@@ -308,8 +305,8 @@ def build_aggregate(summary: dict[str, Any]) -> dict[str, Any]:
     num_predictions = int(summary.get("num_predictions") or 0)
     total_failures = sum(counts.values())
     return {
-        # v2 (issue #1239): adds the ADR 0005-safe ``slice_counts`` block.
-        "schema_version": 2,
+        # v3 (ADR 0075): normalized taxonomy replacing ADR 0059 category names.
+        "schema_version": 3,
         "num_predictions": num_predictions,
         "total_failures": total_failures,
         "failure_category_counts": counts,
@@ -323,10 +320,9 @@ def build_aggregate(summary: dict[str, Any]) -> dict[str, Any]:
             )
             for category in SAFE_CATEGORIES
         },
-        # ADR 0059 first-match-wins contract — verifier_false_negative
-        # must equal abstention_outcomes.incorrect_answer (Phase 5 audit
-        # #992 finding #1). Emit both alongside so a future ordering bug
-        # surfaces in the rendered markdown immediately.
+        # ADR 0075 preserves the ADR 0059 first-match contract:
+        # verifier_false_negative must equal abstention_outcomes.incorrect_answer.
+        # Emit both alongside so a future ordering bug surfaces immediately.
         "abstention_outcomes": outcomes,
         "finding_1_contract": {
             "verifier_false_negative": counts["verifier_false_negative"],
@@ -360,7 +356,7 @@ def render_markdown(aggregate: dict[str, Any]) -> str:
         f"`reports/real100/eval_summary.json`. Aggregate-only artifact "
         f"under the ADR 0005 commit boundary (no per-case data). "
         f"Source classifier: `eval/scorers/failure_classifier.py` "
-        f"(ADR 0059, PR #1001 — Phase 5 audit #992 supply 1)."
+        f"(ADR 0075 normalized taxonomy; ADR 0059 original surface)."
     )
     lines.append("")
     lines.append(
@@ -381,10 +377,10 @@ def render_markdown(aggregate: dict[str, Any]) -> str:
         )
     lines.append("")
 
-    # ADR 0059 first-match-wins contract check — verifier_false_negative
+    # ADR 0075 preserves the first-match contract check: verifier_false_negative
     # MUST equal abstention_outcomes.incorrect_answer.
     contract_emoji = "✓" if finding["match"] else "✗"
-    lines.append(f"## ADR 0059 first-match contract: {contract_emoji}")
+    lines.append(f"## ADR 0075 first-match contract: {contract_emoji}")
     lines.append("")
     lines.append(
         f"- `failure_category_counts.verifier_false_negative` = "
@@ -399,7 +395,7 @@ def render_markdown(aggregate: dict[str, Any]) -> str:
             "- ✓ First-match-wins ordering is intact — Phase 5 audit "
             "(#992) finding #1 pattern (`answerable=False AND not "
             "abstained`) accumulates into `verifier_false_negative` "
-            "as required by ADR 0059."
+            "as required by ADR 0075."
         )
     else:
         lines.append(
@@ -407,14 +403,13 @@ def render_markdown(aggregate: dict[str, Any]) -> str:
             "diverges from `abstention_outcomes.incorrect_answer`. "
             "The first-match-wins ordering in "
             "`eval/scorers/failure_classifier.py::classify_failure` "
-            "has likely been broken; see Phase 5 audit "
-            "`docs/audits/eval-framework-phase5-audit.md` finding #1 "
-            "for the contract."
+            "has likely been broken; see ADR 0075 and Phase 5 audit "
+            "`docs/audits/eval-framework-phase5-audit.md` finding #1."
         )
     lines.append("")
 
     # Refusal-axis decomposition — show how the 3-bin overlays the
-    # 7-category surface so reviewers can correlate (esp. for the
+    # normalized surface so reviewers can correlate (esp. for the
     # unanswerable subset).
     lines.append("## Refusal-axis cross-reference (PR #464, 3-bin)")
     lines.append("")
@@ -448,7 +443,7 @@ def _render_slice_markdown(aggregate: dict[str, Any]) -> list[str]:
     lines: list[str] = ["## Per-category slices (issue #1239)", ""]
     lines.append(
         "Counts re-derived from `case_results` via "
-        "`eval.scorers.failure_classifier.classify_failure` (ADR 0059 SoT). "
+        "`eval.scorers.failure_classifier.classify_failure` (ADR 0075 SoT). "
         "Every value is a count or a fail-closed enum bucket — no per-case "
         "text, query, or doc id crosses the ADR 0005 boundary."
     )

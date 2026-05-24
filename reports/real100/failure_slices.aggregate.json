@@ -1,123 +1,74 @@
 {
   "categories": {
-    "generator_hallucination": {
-      "aux": {
-        "abstained_true": 0,
-        "doc_match_false": 0,
-        "retry_count_eq_1": 1,
-        "term_match_true": 0
-      },
-      "by_evidence_presence": {
-        "empty": 0,
-        "non_empty": 1
-      },
-      "by_expected_cardinality": {
-        "1": 1
-      },
-      "by_hardcase": {
-        "multi_hop": 1
-      },
-      "by_query_type": {
-        "single_doc": 1
-      },
-      "total": 1
-    },
-    "planner_under_decomposition": {
-      "aux": {
-        "abstained_true": 0,
-        "doc_match_false": 0,
-        "retry_count_eq_1": 0,
-        "term_match_true": 0
-      },
-      "by_evidence_presence": {
-        "empty": 0,
-        "non_empty": 3
-      },
-      "by_expected_cardinality": {
-        "1": 2,
-        "2": 1
-      },
-      "by_hardcase": {
-        "_untagged": 1,
-        "multi_hop": 2,
-        "no_answer": 1
-      },
-      "by_query_type": {
-        "comparison": 1,
-        "single_doc": 2
-      },
-      "total": 3
-    },
-    "retrieval_miss": {
-      "aux": {
-        "abstained_true": 31,
-        "doc_match_false": 67,
-        "retry_count_eq_1": 48,
-        "term_match_true": 7
-      },
-      "by_evidence_presence": {
-        "empty": 26,
-        "non_empty": 41
-      },
-      "by_expected_cardinality": {
-        "1": 66,
-        "2": 1
-      },
-      "by_hardcase": {
-        "_untagged": 6,
-        "ambiguous_query": 1,
-        "distractor_heavy": 21,
-        "long_context": 4,
-        "multi_hop": 58
-      },
-      "by_query_type": {
-        "follow_up": 2,
-        "single_doc": 65
-      },
-      "total": 67
-    },
-    "unknown": {
+    "abstention_failure": {
       "aux": {
         "abstained_true": 6,
         "doc_match_false": 5,
-        "retry_count_eq_1": 31,
+        "retry_count_eq_1": 6,
         "term_match_true": 5
       },
       "by_evidence_presence": {
         "empty": 0,
-        "non_empty": 33
+        "non_empty": 6
       },
       "by_expected_cardinality": {
-        "1": 33
+        "1": 6
       },
       "by_hardcase": {
-        "_untagged": 5,
-        "distractor_heavy": 12,
-        "long_context": 2,
-        "multi_hop": 22,
+        "distractor_heavy": 1,
+        "multi_hop": 1,
         "no_answer": 5
       },
       "by_query_type": {
         "abstention": 5,
-        "follow_up": 1,
-        "single_doc": 27
+        "single_doc": 1
       },
-      "total": 33
+      "total": 6
+    },
+    "parse_or_metadata_issue": {
+      "aux": {
+        "abstained_true": 35,
+        "doc_match_false": 70,
+        "retry_count_eq_1": 76,
+        "term_match_true": 7
+      },
+      "by_evidence_presence": {
+        "empty": 30,
+        "non_empty": 68
+      },
+      "by_expected_cardinality": {
+        "1": 96,
+        "2": 2
+      },
+      "by_hardcase": {
+        "_untagged": 12,
+        "ambiguous_query": 1,
+        "distractor_heavy": 32,
+        "long_context": 6,
+        "multi_hop": 82,
+        "no_answer": 1
+      },
+      "by_query_type": {
+        "comparison": 1,
+        "follow_up": 3,
+        "single_doc": 94
+      },
+      "total": 98
     },
     "verifier_false_negative": {
       "aux": {
         "abstained_true": 0,
-        "doc_match_false": 76,
-        "retry_count_eq_1": 61,
+        "doc_match_false": 68,
+        "retry_count_eq_1": 54,
         "term_match_true": 0
       },
       "by_evidence_presence": {
         "empty": 0,
-        "non_empty": 76
+        "non_empty": 68
       },
       "by_expected_cardinality": {
         "0": 1,
-        "1": 75
+        "1": 67
       },
       "by_hardcase": {
         "_untagged": 1,
@@ -125,15 +76,15 @@
         "distractor_heavy": 4,
         "long_context": 5,
         "multi_hop": 2,
-        "no_answer": 75
+        "no_answer": 67
       },
       "by_query_type": {
-        "abstention": 76
+        "abstention": 68
       },
-      "total": 76
+      "total": 68
     }
   },
   "num_predictions": 221,
-  "schema_version": 1,
+  "schema_version": 2,
   "source": "reports/real100/eval_summary.json"
 }

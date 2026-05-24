@@ -584,11 +584,10 @@ def metric_block(case_results: list[dict[str, Any]]) -> dict[str, Any]:
     # crosses the ADR 0005 commit boundary intact.
     abstention_outcomes = _abstention_outcomes(case_results)
     abstention_calibration = _abstention_calibration(case_results)
-    # ADR 0059 / Phase 5 audit (#992) item 1 supply — 7-category failure
-    # taxonomy. Sibling to abstention_outcomes (refusal-axis 3-bin); this
-    # one covers root-cause stage classification (retrieval / verifier /
-    # planner / generator / context_dilution). Read-only consumer of the
-    # case_result dict — no production code path touched.
+    # ADR 0075 — normalized failure taxonomy. Sibling to abstention_outcomes
+    # (refusal-axis 3-bin); this covers root-cause stage classification with a
+    # residual unknown fallback. Read-only consumer of the case_result dict —
+    # no production code path touched.
     failure_category_counts = aggregate_failure_categories(case_results)
     comparison_recall_scores = [
         r["comparison_target_recall"]
@@ -697,10 +696,9 @@ def metric_block(case_results: list[dict[str, Any]]) -> dict[str, Any]:
         "claim_citation_alignment": rate(claim_alignment_scores),
         "abstention": rate(abstention_scores),
         "abstention_outcomes": abstention_outcomes,
-        # ADR 0059 — 7-category failure taxonomy aggregate (Phase 5
-        # supply 1). Always emits all 7 keys (count = 0 if no case hit
-        # that branch) so supply 2 dashboard + supply 3 regression test
-        # consumers can rely on the dict shape.
+        # ADR 0075 — normalized failure taxonomy aggregate. Always emits all
+        # keys (count = 0 if no case hit that branch) so dashboard and
+        # regression consumers can rely on the dict shape.
         "failure_category_counts": failure_category_counts,
         "abstention_calibration": abstention_calibration,
         "answer_format_compliance": rate(format_scores),
@@ -840,7 +838,7 @@ def summarize_run(
     *,
     index_dir: Path | None = None,
 ) -> dict[str, Any]:
-    # ADR 0059 — per-case failure_category label (Phase 5 supply 1).
+    # ADR 0075 — per-case normalized failure_category label.
     # Set once here so every downstream metric_block call (headline +
     # by_query_type + by_hardcase_category + by_metadata_field + by_format)
     # sees the same per-case label, and so `eval_summary.json::case_results`
@@ -923,21 +921,25 @@ def safe_path_part(value: str) -> str:
 
 _FAILURE_ROOT_CAUSE = {
     "retrieval_miss": "gold evidence was not fully retrieved into the answer evidence set",
-    "planner_under_decomposition": "query likely required multi-step or multi-section handling",
+    "citation_or_page_metadata_issue": "answer evidence reached the right document but citation/page metadata was weak",
     "verifier_false_negative": "system answered when evidence or answerability was weak",
     "verifier_false_positive": "system abstained even though retrieved evidence contained support",
-    "generator_hallucination": "generated claim was not sufficiently supported by cited evidence",
-    "context_dilution": "retrieval context likely diluted the relevant evidence",
+    "answer_synthesis_issue": "generated answer failed despite sufficient retrieved evidence",
+    "abstention_failure": "refusal behavior was incorrect or only partially grounded",
+    "evaluation_label_issue": "gold labels were insufficient or internally inconsistent for root-cause attribution",
+    "parse_or_metadata_issue": "parser, source-format, or metadata-resolution signals indicate upstream data issues",
     "unknown": "failure did not match a more specific rule",
 }
 
 _FAILURE_SUGGESTED_FIX = {
     "retrieval_miss": "inspect retrieved_chunks ranks and gold_evidence labels before changing retrieval",
-    "planner_under_decomposition": "collect decomposition evidence; do not add query decomposition to naive_baseline",
+    "citation_or_page_metadata_issue": "inspect citation metadata coverage and page/region grounding aggregates",
     "verifier_false_negative": "inspect answerability labels and verifier policy outside the naive baseline",
     "verifier_false_positive": "inspect citation_term_match and verification reasons",
-    "generator_hallucination": "inspect claim-to-citation alignment and answer prompt contract",
-    "context_dilution": "inspect top-k sensitivity with the same dense-only retriever",
+    "answer_synthesis_issue": "inspect claim-to-citation alignment and answer prompt contract",
+    "abstention_failure": "inspect abstention_outcomes and boundary_partial cases before verifier changes",
+    "evaluation_label_issue": "repair gold labels before treating the case as a runtime failure",
+    "parse_or_metadata_issue": "inspect ingestion_report, source_format, and metadata resolution aggregates",
     "unknown": "manually label the root cause from retrieved_chunks, citations, and answer text",
 }
 
@@ -1518,10 +1520,9 @@ def main() -> int:
         "retrieval_metric_coverage": primary_summary.get("retrieval_metric_coverage", {}),
         "abstention": primary_summary["abstention"],
         "abstention_outcomes": primary_summary.get("abstention_outcomes"),
-        # ADR 0059 — 7-category failure taxonomy aggregate (Phase 5
-        # supply 1). Mirrors the abstention_outcomes hand-off above so
-        # the top-level eval_summary surface matches the per-ablation
-        # surface.
+        # ADR 0075 — normalized failure taxonomy aggregate. Mirrors the
+        # abstention_outcomes hand-off above so the top-level eval_summary
+        # surface matches the per-ablation surface.
         "failure_category_counts": primary_summary.get("failure_category_counts"),
         "answer_format_compliance": primary_summary["answer_format_compliance"],
         "ci": primary_summary.get("ci", {}),

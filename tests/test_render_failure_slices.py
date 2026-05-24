@@ -122,7 +122,7 @@ class MainCliTest(unittest.TestCase):
             self.assertEqual(rc, 0)
             written = json.loads(out_path.read_text())
             self.assertEqual(written["categories"]["retrieval_miss"]["total"], 1)
-            self.assertEqual(written["schema_version"], 1)
+            self.assertEqual(written["schema_version"], 2)
 
     def test_main_missing_summary_returns_1(self) -> None:
         with TemporaryDirectory() as tmp:

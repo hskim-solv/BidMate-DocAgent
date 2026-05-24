@@ -65,7 +65,7 @@ class TestParseFailureRateCeilings(unittest.TestCase):
             self.assertGreaterEqual(v, 0.0)
 
     def test_real_file_gated_keys_are_known_categories(self) -> None:
-        """Integrity: every gated key is an ADR 0059 category or the total
+        """Integrity: every gated key is an ADR 0075 category or the total
         sentinel. Catches a constant rename that would silently blind the gate.
         """
         c = gov.parse_failure_rate_ceilings(CEILING_TEST.read_text(encoding="utf-8"))

@@ -1,6 +1,6 @@
 """Phase 5 audit item 2 supply — failure_distribution renderer regression guard.
 
-Verifies the renderer's output schema + percentage math + ADR 0059
+Verifies the renderer's output schema + percentage math + ADR 0075
 first-match-wins contract surfacing. Stub eval_summary.json inputs only
 — no real-eval dependency.
 """
@@ -51,6 +51,7 @@ def _vfn_case(**overrides: object) -> dict[str, object]:
     base: dict[str, object] = {
         "answerable": False,
         "abstained": False,
+        "abstention": 0.0,
         "query_type": "abstention",
         "hardcase_categories": ["no_answer"],
         "evidence_doc_ids": ["d1", "d2"],
@@ -87,9 +88,9 @@ def _retrieval_miss_case(**overrides: object) -> dict[str, object]:
 
 
 class TestBuildAggregateSchema(unittest.TestCase):
-    """Aggregate JSON always has the same shape, with all 7 categories."""
+    """Aggregate JSON always has the same shape, with all categories."""
 
-    def test_all_seven_categories_present(self) -> None:
+    def test_all_categories_present(self) -> None:
         agg = build_aggregate(_summary(counts={"retrieval_miss": 50}))
         self.assertEqual(set(agg["failure_category_counts"].keys()), set(SAFE_CATEGORIES))
         self.assertEqual(
@@ -98,7 +99,7 @@ class TestBuildAggregateSchema(unittest.TestCase):
         self.assertEqual(set(agg["abstention_outcomes"].keys()), set(SAFE_OUTCOME_KEYS))
         self.assertIn("finding_1_contract", agg)
         self.assertIn("slice_counts", agg)
-        self.assertEqual(agg["schema_version"], 2)
+        self.assertEqual(agg["schema_version"], 3)
 
     def test_percentage_math(self) -> None:
         # 60 retrieval_miss + 40 verifier_false_negative = 100 failures.
@@ -123,7 +124,7 @@ class TestBuildAggregateSchema(unittest.TestCase):
 
 
 class TestFinding1Contract(unittest.TestCase):
-    """ADR 0059 — verifier_false_negative MUST equal incorrect_answer."""
+    """ADR 0075 — verifier_false_negative MUST equal incorrect_answer."""
 
     def test_contract_match_reports_true(self) -> None:
         counts = {category: 0 for category in SAFE_CATEGORIES}
@@ -206,7 +207,7 @@ class TestMarkdownRender(unittest.TestCase):
         md = render_markdown(agg)
         self.assertIn("Failure-mode distribution (real100, n=221)", md)
         self.assertIn("Composition (% of failed cases)", md)
-        self.assertIn("ADR 0059 first-match contract: ✓", md)
+        self.assertIn("ADR 0075 first-match contract: ✓", md)
         self.assertIn("Refusal-axis cross-reference (PR #464, 3-bin)", md)
         # Rank 1 should be the dominant category (retrieval_miss=84).
         # Verify by searching for the count after the rank-1 row marker.
@@ -220,7 +221,7 @@ class TestMarkdownRender(unittest.TestCase):
         outcomes = {key: 0 for key in SAFE_OUTCOME_KEYS}
         outcomes["incorrect_answer"] = 65
         md = render_markdown(build_aggregate(_summary(counts=counts, outcomes=outcomes)))
-        self.assertIn("ADR 0059 first-match contract: ✗", md)
+        self.assertIn("ADR 0075 first-match contract: ✗", md)
         self.assertIn("CONTRACT VIOLATED", md)
 
 
@@ -275,7 +276,7 @@ class TestEndToEndCLI(unittest.TestCase):
 
 
 class TestSliceCountsShape(unittest.TestCase):
-    """slice_counts always has all 7 categories with the full sub-shape."""
+    """slice_counts always has all categories with the full sub-shape."""
 
     def test_all_categories_zeroed_when_no_case_results(self) -> None:
         agg = build_aggregate(_summary())

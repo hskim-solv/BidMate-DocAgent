@@ -1,7 +1,7 @@
 """ADR 0062 — failure-rate regression contract (Phase 5 supply 3).
 
 Closes the Phase 5 audit (#992) item 3 "closed error loop" gap: the
-ADR 0059 classifier (PR #1001) labels failures and the supply 2 dashboard
+ADR 0075 classifier labels failures and the supply 2 dashboard
 (PR #1004) renders them, but nothing *prevents silent regression* of the
 dominant failure modes the audits surfaced (#1005 retrieval_miss=67,
 #1020 verifier_false_negative=76, #1025 variance source).
@@ -72,14 +72,14 @@ class FailureRateRegressionTest(unittest.TestCase):
         cls.fcc = cls.baseline.get("failure_category_counts") or {}
 
     def test_baseline_has_failure_category_counts(self) -> None:
-        """ADR 0059 surface must be present in the committed baseline."""
+        """ADR 0075 surface must be present in the committed baseline."""
         self.assertTrue(
             self.fcc,
             "baseline.aggregate.json missing failure_category_counts — "
-            "regen with ADR 0059 wired (PR #1001+).",
+            "regen with ADR 0075 wired.",
         )
         self.assertGreater(self.n, 0, "num_predictions must be > 0")
-        # All 7 ADR 0059 categories present (the aggregator always emits them).
+        # All ADR 0075 categories present (the aggregator always emits them).
         for category in FAILURE_CATEGORIES:
             self.assertIn(
                 category,
@@ -133,10 +133,10 @@ class FailureRateRegressionTest(unittest.TestCase):
                     f"{rate:.3f} — ratchet inverted. Set ceiling ≥ current.",
                 )
 
-    def test_adr_0059_first_match_contract(self) -> None:
+    def test_adr_0075_first_match_contract(self) -> None:
         """Integrity: verifier_false_negative == abstention_outcomes.incorrect_answer.
 
-        ADR 0059 first-match-wins ordering guarantees the Finding #1 pattern
+        ADR 0075 first-match-wins ordering guarantees the Finding #1 pattern
         accumulates into verifier_false_negative. The supply 2 dashboard
         (#1004) surfaces this; we re-assert it here so a future ordering
         tweak that breaks the contract fails the regression gate too.
@@ -149,7 +149,7 @@ class FailureRateRegressionTest(unittest.TestCase):
         self.assertEqual(
             vfn,
             incorrect,
-            f"ADR 0059 contract broken: verifier_false_negative={vfn} != "
+            f"ADR 0075 contract broken: verifier_false_negative={vfn} != "
             f"abstention_outcomes.incorrect_answer={incorrect}.",
         )
 
