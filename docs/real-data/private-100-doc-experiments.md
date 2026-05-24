@@ -69,6 +69,14 @@ python3 scripts/summarize_benchmark.py \
 
 이 섹션은 retrieval / verifier policy 변경의 **real-data aggregate-only** before/after를 기록한다. ADR 0005의 commit boundary를 준수해 case ID·query text·doc ID·파일명은 절대 포함하지 않는다. 목적은 "왜 이렇게 짰는가?" 그리고 "그 결정이 real-data에서 어떻게 작동했는가?" 두 질문에 답할 수 있는 자료를 남기는 것이다.
 
+### Note: `retrieval_miss` 해석 기준
+
+`retrieval_miss` 는 `eval/scorers/failure_classifier.py::classify_failure` 가 만든 per-case `failure_category` 를 `aggregate_failure_categories` 로 합산한 `failure_category_counts.retrieval_miss` 이다. `failure_type_counts`, Recall@K, MRR, nDCG 에서 파생하지 않는다.
+
+GO/NO-GO 표에서 이 값은 양쪽 run 이 같은 case set 과 호환되는 taxonomy/classifier 버전으로 생성한 `failure_category_counts.retrieval_miss` 를 명시적으로 포함할 때만 비교한다. selected ablation run 에 이 key 가 없으면 `0` 이 아니라 missing/`—` 로 해석한다.
+
+PR #1448 의 `full_dense` vs `hybrid_bm25_dense_v1` 표에서 `retrieval_miss 0 -> 0` 은 두 selected run 의 `eval_summary.json::ablation.runs[]::failure_category_counts.retrieval_miss` 에 명시된 값이었다. 같은 시점 readiness audit 에서 보인 meaningful `retrieval_miss` count 는 별도 latest eval summary aggregate 에서 온 것이므로, #1448 selected-run delta 의 GO/NO-GO 근거와 직접 비교하지 않는다.
+
 ### Entry: 2026-05-11 — Partial-topic grounding @ fraction=0.5 (#69)
 
 **변경(Change).** `verify_evidence`에 `allow_partial_topic` 추가, 마지막 retrieval 시도에서 verification topics의 ≥50%가 evidence에 매칭되면 `partial_topic_grounding` reason으로 `verified=True`를 반환하고 status는 `partial`로 surface ([ADR 0004](../adr/0004-verifier-retry-policy.md) anticipated knob).

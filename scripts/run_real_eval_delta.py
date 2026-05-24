@@ -318,6 +318,8 @@ METRICS: list[tuple[str, str, bool]] = [
     ("chunk_mrr_at_5", "MRR@5", True),
     ("chunk_ndcg_at_5", "nDCG@5", True),
     ("citation_precision", "citation_accuracy", True),
+    # ADR 0075 taxonomy count. Missing stays missing (`—`) via `_get_path`;
+    # never coerce absent selected-run failure counts to numeric zero.
     ("failure_category_counts.retrieval_miss", "retrieval_miss", False),
     ("accuracy", "accuracy", True),
     ("groundedness", "groundedness", True),

@@ -222,6 +222,44 @@ class ExtractAggregateTest(unittest.TestCase):
         ):
             self.assertIn(label, md)
 
+    def test_render_retrieval_miss_nonzero_count_as_numeric(self) -> None:
+        base = extract_aggregate(FULL_SUMMARY)
+        head = extract_aggregate(
+            {
+                **FULL_SUMMARY,
+                "failure_category_counts": {
+                    **FULL_SUMMARY["failure_category_counts"],
+                    "retrieval_miss": 1,
+                },
+            }
+        )
+        md = render_markdown(base, head, "test")
+        self.assertIn("| retrieval_miss | 2 | 1 | -1.000 ✅ |", md)
+
+    def test_render_retrieval_miss_missing_as_dash_not_zero(self) -> None:
+        base_summary = {k: v for k, v in FULL_SUMMARY.items() if k != "failure_category_counts"}
+        head_summary = {
+            **FULL_SUMMARY,
+            "failure_category_counts": {
+                "verifier_false_negative": 1,
+            },
+        }
+        base = extract_aggregate(base_summary)
+        head = extract_aggregate(head_summary)
+        md = render_markdown(base, head, "test")
+        self.assertIn("| retrieval_miss | — | — | — |", md)
+        self.assertNotIn("| retrieval_miss | 0 | 0 |", md)
+
+    def test_render_retrieval_miss_explicit_zero_as_zero(self) -> None:
+        zero_counts = {
+            **FULL_SUMMARY["failure_category_counts"],
+            "retrieval_miss": 0,
+        }
+        base = extract_aggregate({**FULL_SUMMARY, "failure_category_counts": zero_counts})
+        head = extract_aggregate({**FULL_SUMMARY, "failure_category_counts": zero_counts})
+        md = render_markdown(base, head, "test")
+        self.assertIn("| retrieval_miss | 0 | 0 | · |", md)
+
     def test_render_includes_slice_abstention(self) -> None:
         base = extract_aggregate(FULL_SUMMARY)
         head = extract_aggregate({**FULL_SUMMARY, "accuracy": 0.6})
@@ -240,6 +278,10 @@ class ExtractAggregateTest(unittest.TestCase):
                         "name": "full_dense",
                         "primary_run": "full_dense",
                         "chunk_recall_at_5": 0.1,
+                        "run_manifest": {
+                            "config_path": "/Users/hskim/private/real_config.local.yaml",
+                            "config_sha256": "safe-sha",
+                        },
                         "case_results": [{"query": "private base leak"}],
                     },
                     {
@@ -247,7 +289,22 @@ class ExtractAggregateTest(unittest.TestCase):
                         "name": "hybrid_bm25_dense_v1",
                         "primary_run": "hybrid_bm25_dense_v1",
                         "chunk_recall_at_5": 0.2,
-                        "case_results": [{"query": "private head leak"}],
+                        "trace_dir": "/Users/hskim/private/run/traces",
+                        "case_results": [
+                            {
+                                "query": "private head leak",
+                                "answer": "private generated answer leak",
+                                "answer_text": "private answer text leak",
+                                "evidence": [
+                                    {
+                                        "doc_id": "private_doc_1",
+                                        "chunk_id": "private_chunk_1",
+                                        "text": "private evidence text",
+                                        "filename": "private_file.pdf",
+                                    }
+                                ],
+                            }
+                        ],
                     },
                 ]
             },
@@ -261,7 +318,81 @@ class ExtractAggregateTest(unittest.TestCase):
         self.assertEqual(agg["primary_run"], "hybrid_bm25_dense_v1")
         self.assertEqual(agg["chunk_recall_at_5"], 0.2)
         flat = json.dumps(agg, ensure_ascii=False)
-        self.assertNotIn("private head leak", flat)
+        md = render_markdown(
+            extract_aggregate(select_ablation_run(summary, "full_dense", source_label="base")),
+            agg,
+            "test",
+        )
+        for payload in (
+            "private head leak",
+            "private generated answer leak",
+            "private answer text leak",
+            "private evidence text",
+            "private_doc_1",
+            "private_chunk_1",
+            "private_file.pdf",
+            "/Users/hskim/private",
+        ):
+            self.assertNotIn(payload, flat)
+            self.assertNotIn(payload, md)
+
+    def test_selected_ablation_run_does_not_inherit_top_level_failure_counts(self) -> None:
+        summary = {
+            **FULL_SUMMARY,
+            "failure_category_counts": {
+                **FULL_SUMMARY["failure_category_counts"],
+                "retrieval_miss": 99,
+            },
+            "ablation": {
+                "runs": [
+                    {
+                        "name": "full_dense",
+                        "primary_run": "full_dense",
+                        "num_predictions": 21,
+                        "chunk_recall_at_5": 0.1,
+                    },
+                ]
+            },
+        }
+        selected = select_ablation_run(summary, "full_dense", source_label="base")
+        agg = extract_aggregate(selected)
+        self.assertNotIn("failure_category_counts", agg)
+
+    def test_selected_run_missing_retrieval_miss_renders_missing_not_zero(self) -> None:
+        summary = {
+            **FULL_SUMMARY,
+            "failure_category_counts": {
+                **FULL_SUMMARY["failure_category_counts"],
+                "retrieval_miss": 99,
+            },
+            "ablation": {
+                "runs": [
+                    {
+                        **FULL_SUMMARY,
+                        "name": "full_dense",
+                        "primary_run": "full_dense",
+                        "failure_category_counts": {
+                            "verifier_false_negative": 1,
+                        },
+                    },
+                    {
+                        **FULL_SUMMARY,
+                        "name": "hybrid_bm25_dense_v1",
+                        "primary_run": "hybrid_bm25_dense_v1",
+                        "failure_category_counts": {
+                            "verifier_false_negative": 2,
+                        },
+                    },
+                ]
+            },
+        }
+        base = extract_aggregate(select_ablation_run(summary, "full_dense", source_label="base"))
+        head = extract_aggregate(
+            select_ablation_run(summary, "hybrid_bm25_dense_v1", source_label="head")
+        )
+        md = render_markdown(base, head, "test")
+        self.assertIn("| retrieval_miss | — | — | — |", md)
+        self.assertNotIn("| retrieval_miss | 0 | 0 |", md)
 
     def test_select_ablation_run_missing_fails_loudly(self) -> None:
         with self.assertRaisesRegex(ValueError, "not found"):
