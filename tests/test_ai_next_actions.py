@@ -48,6 +48,25 @@ def _run(tmp_path: Path, *, summary: dict | None = None, prs: list[dict] | None 
     return out_md.read_text(encoding="utf-8"), tasks
 
 
+def _pr(**overrides: object) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "number": 12,
+        "title": "chore: fixture PR",
+        "url": "https://github.com/example/repo/pull/12",
+        "headRefName": "chore/issue-12-fixture",
+        "baseRefName": "main",
+        "isDraft": False,
+        "reviewDecision": "REVIEW_REQUIRED",
+        "mergeStateStatus": "CLEAN",
+        "statusCheckRollup": [],
+        "labels": [],
+        "body": "",
+        "updatedAt": "2026-05-24T00:00:00Z",
+    }
+    payload.update(overrides)
+    return payload
+
+
 def test_blocker_present_recommends_blocker_fix(tmp_path: Path) -> None:
     md, tasks = _run(
         tmp_path,
@@ -67,18 +86,16 @@ def test_1448_pending_private_delta_recommends_private_delta(tmp_path: Path) -> 
         tmp_path,
         summary=_summary(),
         prs=[
-            {
-                "number": 1449,
-                "title": "feat: pending private delta for #1448",
-                "headRefName": "feat/issue-1448-private-delta",
-                "baseRefName": "main",
-                "isDraft": False,
-                "reviewDecision": "REVIEW_REQUIRED",
-                "mergeStateStatus": "CLEAN",
-                "statusCheckRollup": [{"name": "test", "status": "COMPLETED", "conclusion": "SUCCESS"}],
-                "labels": [{"name": "private delta"}],
-                "body": "Needs private delta evidence before merge.",
-            }
+            _pr(
+                number=1449,
+                title="feat: pending private delta for #1448",
+                headRefName="feat/issue-1448-private-delta",
+                statusCheckRollup=[
+                    {"name": "test", "status": "COMPLETED", "conclusion": "SUCCESS"}
+                ],
+                labels=[{"name": "private delta"}],
+                body="Needs private delta evidence before merge.",
+            )
         ],
     )
 
@@ -131,18 +148,12 @@ def test_forbidden_private_keys_do_not_leak_to_generated_reports(tmp_path: Path)
 def test_output_is_deterministic_from_fixture_inputs(tmp_path: Path) -> None:
     summary = _summary()
     prs = [
-        {
-            "number": 12,
-            "title": "chore: continue draft",
-            "headRefName": "chore/issue-12-draft",
-            "baseRefName": "main",
-            "isDraft": True,
-            "reviewDecision": "",
-            "mergeStateStatus": "CLEAN",
-            "statusCheckRollup": [],
-            "labels": [],
-            "body": "",
-        }
+        _pr(
+            number=12,
+            title="chore: continue draft",
+            headRefName="chore/issue-12-draft",
+            isDraft=True,
+        )
     ]
 
     first_md, first_tasks = _run(tmp_path / "first", summary=summary, prs=prs)
@@ -161,3 +172,22 @@ def test_default_outputs_are_gitignored() -> None:
             check=False,
         )
         assert result.returncode == 0, rel
+
+
+def test_missing_required_pr_json_fields_fail_closed(tmp_path: Path) -> None:
+    incomplete = _pr()
+    incomplete.pop("mergeStateStatus")
+
+    md, tasks = _run(tmp_path, summary=_summary(), prs=[incomplete])
+
+    assert "Top task: `blocked` - Unblock PR #12" in md
+    assert "missing required PR JSON fields" in md
+    assert any("Resolve review, merge, or CI blockers" in body for body in tasks.values())
+
+
+def test_unstable_merge_state_is_blocked(tmp_path: Path) -> None:
+    md, tasks = _run(tmp_path, summary=_summary(), prs=[_pr(mergeStateStatus="UNSTABLE")])
+
+    assert "Top task: `blocked` - Unblock PR #12" in md
+    assert "merge state is UNSTABLE" in md
+    assert any("Resolve review, merge, or CI blockers" in body for body in tasks.values())

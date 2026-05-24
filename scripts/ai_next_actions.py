@@ -39,7 +39,17 @@ FAILED_CHECK_CONCLUSIONS = {
     "STARTUP_FAILURE",
     "TIMED_OUT",
 }
-BLOCKING_MERGE_STATES = {"BLOCKED", "DIRTY", "UNKNOWN"}
+BLOCKING_MERGE_STATES = {"BLOCKED", "DIRTY", "UNKNOWN", "UNSTABLE"}
+REQUIRED_PR_FIELDS = (
+    "number",
+    "title",
+    "headRefName",
+    "baseRefName",
+    "isDraft",
+    "reviewDecision",
+    "mergeStateStatus",
+    "statusCheckRollup",
+)
 PRIVATE_DELTA_RE = re.compile(r"(#1448|\b1448\b|private[-_\s]+delta)", re.IGNORECASE)
 LOAD_BEARING_RE = re.compile(r"(load[-_\s]+bearing|\b5b\b|real[-_\s]+data\s+delta)", re.IGNORECASE)
 NEGATIVE_EXPERIMENT_RE = re.compile(
@@ -240,12 +250,15 @@ def _pr_work_items(prs: Sequence[Mapping[str, Any]], readiness_blocked: bool) ->
         number = _as_int(pr.get("number"), 0)
         source = f"PR #{number}" if number else "PR"
         title = str(pr.get("title") or "(untitled)")
+        missing_fields = [field for field in REQUIRED_PR_FIELDS if field not in pr]
         review = str(pr.get("reviewDecision") or "").upper()
         merge_state = str(pr.get("mergeStateStatus") or "").upper()
         failing = _failing_checks(pr)
         draft = bool(pr.get("isDraft"))
         text = _pr_text(pr)
         blocked_reasons: list[str] = []
+        if missing_fields:
+            blocked_reasons.append("missing required PR JSON fields")
         if review == "CHANGES_REQUESTED":
             blocked_reasons.append("review changes requested")
         if merge_state in BLOCKING_MERGE_STATES:
