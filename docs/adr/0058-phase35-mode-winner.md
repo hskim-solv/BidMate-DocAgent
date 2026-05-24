@@ -1,9 +1,9 @@
 # 0058: Phase 3.5 mode-winner 결정 — Scenario A (default 를 hybrid BM25+BGE-M3 dense, RRF k=60 으로 전환)
 
-- **Status**: accepted (Phase 3.5 measurement landed 2026-05-19; Scenario A finalized)
+- **Status**: accepted, amended by [ADR 0074](./0074-rfp-rag-stage-separation.md) (Phase 3.5 measurement landed 2026-05-19; Scenario A finalized)
 - **Date**: 2026-05-19 (Status accepted); 2026-05-18 (Status proposed)
 - **Deciders**: hskim
-- **Related**: [ADR 0001](0001-preserve-naive-baseline.md), [ADR 0005](0005-eval-split-public-synthetic-private-local.md), [ADR 0010](0010-hybrid-bm25-dense-retrieval-rrf.md), [ADR 0021](0021-bge-m3-completes-phase-1-3.md), [ADR 0025](0025-cost-frontier-defer-until-real-baselines.md), [ADR 0032](0032-eval-saturation-routed-subset.md), [ADR 0049](0049-kordoc-replaces-pyhwp-backend.md), PR #966 (Phase 3.5 measurement), PR #956 (Phase 3, retracted), issue #957, issue #997, issue #1022 (m3 cloud-GPU follow-up)
+- **Related**: [ADR 0001](0001-preserve-naive-baseline.md), [ADR 0005](0005-eval-split-public-synthetic-private-local.md), [ADR 0010](0010-hybrid-bm25-dense-retrieval-rrf.md), [ADR 0021](0021-bge-m3-completes-phase-1-3.md), [ADR 0025](0025-cost-frontier-defer-until-real-baselines.md), [ADR 0032](0032-eval-saturation-routed-subset.md), [ADR 0049](0049-kordoc-replaces-pyhwp-backend.md), [ADR 0074](./0074-rfp-rag-stage-separation.md), PR #966 (Phase 3.5 measurement), PR #956 (Phase 3, retracted), issue #957, issue #997, issue #1022 (m3 cloud-GPU follow-up)
 
 > **ADR number renumbered 0056 → 0057 → 0058** (2026-05-19) — 동시 충돌 두 건을 피하기 위함: ADR 0056 은 PR #987 (`rationality_judge`, issue #969) 로 머지 + ADR 0057 은 PR #988 (`bm25s additive backend`) 로 머지. 최종 번호 `0058` 은 ADR README.md 의 "Reserve the next number with the CLI before drafting" 규약을 따름.
 
@@ -20,6 +20,12 @@ ADR 0010 (2026-05-11) 은 `retrieval_backend ∈ {dense, hybrid}` 를 default `d
 **Scenario A 승리**: `agentic_full` 과 `metadata_first` preset 의 `retrieval_backend` default 를 `dense` 에서 `hybrid` (BGE-M3 dense + BM25 위 RRF k=60) 로 전환. **`naive_baseline` preset 은 `dense` 유지 (ADR 0001 불변량 byte-identical)** — default 변경은 non-baseline preset 에만 적용.
 
 `m3` (BGE-M3 dense + sparse + colbert 위 3-way RRF) 은 **cloud-GPU follow-up 으로 deferred** — 16GB Apple Silicon 의 로컬 측정 시도가 m3 cache 빌드 완료 전에 unified memory 를 소진했다 (33GB swap pool 소비 + system crash). 이 deferral 은 absolute rule #5 에 따른 정직한 보고; m3 multi-channel 질문은 cloud-GPU one-off run 을 위해 open 상태로 남는다 (~$1 budget; A10/T4 GPU 로 <30 min 완료 예상).
+
+**Amendment (ADR 0074):** hybrid retrieval 채택은 유지하지만, preset default를
+eval claim의 암묵 근거로 쓰지 않는다. Claim-bearing eval row는
+`retrieval_backend` 등 retrieval stage knob을 직접 선언해야 하며, dense control은
+`full_dense`처럼 명시적으로 남긴다. API/demo default 또는 production preset
+default는 retrieval 평가 baseline을 이동시키지 않는다.
 
 ### Evidence (from `reports/retrieval/phase35_m3_20260518T214937Z_kordoc_no_m3/REPORT.md`)
 
