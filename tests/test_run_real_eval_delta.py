@@ -36,6 +36,11 @@ FULL_SUMMARY = {
     "citation_precision": 0.286,
     "abstention": 0.5,
     "retry": 0.429,
+    "failure_category_counts": {
+        "retrieval_miss": 2,
+        "verifier_false_negative": 1,
+        "unknown": 0,
+    },
     "latency": {"p50": 100.0, "p95": 300.0, "mean": 150.0},
     "stage_latency": {
         "retrieve_ms": {"p50": 5.0, "p95": 20.0, "mean": 8.0, "count": 21}
@@ -58,7 +63,15 @@ FULL_SUMMARY = {
             "id": "real_secret_case",
             "query": "이건 진짜 비공개 질의 텍스트",
             "answer": "case-level answer leak",
-            "evidence": [{"doc_id": "private_doc_1", "text": "private text"}],
+            "evidence": [
+                {
+                    "doc_id": "private_doc_1",
+                    "chunk_id": "private_chunk_7",
+                    "filename": "private_contract.pdf",
+                    "local_path": "/redacted/private/private_contract.pdf",
+                    "text": "private text",
+                }
+            ],
             "expected_doc_ids": ["private_doc_1"],
         }
     ],
@@ -149,6 +162,9 @@ class ExtractAggregateTest(unittest.TestCase):
             "real_secret_case",
             "진짜 비공개",
             "private_doc_1",
+            "private_chunk_7",
+            "private_contract.pdf",
+            "/redacted/private",
             "case-level answer leak",
         ]:
             self.assertNotIn(leak, md)
@@ -156,6 +172,96 @@ class ExtractAggregateTest(unittest.TestCase):
         self.assertIn("accuracy", md)
         self.assertIn("0.471", md)
         self.assertIn("0.600", md)
+
+    def test_render_retrieval_miss_nonzero_count_as_numeric(self) -> None:
+        base = extract_aggregate(FULL_SUMMARY)
+        head = extract_aggregate(
+            {
+                **FULL_SUMMARY,
+                "failure_category_counts": {
+                    **FULL_SUMMARY["failure_category_counts"],
+                    "retrieval_miss": 1,
+                },
+            }
+        )
+        md = render_markdown(base, head, "test")
+        self.assertIn("| retrieval_miss | 2 | 1 | -1.000 ✅ |", md)
+
+    def test_render_retrieval_miss_missing_as_dash_not_zero(self) -> None:
+        base_summary = {k: v for k, v in FULL_SUMMARY.items() if k != "failure_category_counts"}
+        head_summary = {
+            **FULL_SUMMARY,
+            "failure_category_counts": {
+                "verifier_false_negative": 1,
+            },
+        }
+        base = extract_aggregate(base_summary)
+        head = extract_aggregate(head_summary)
+        md = render_markdown(base, head, "test")
+        self.assertIn("| retrieval_miss | — | — | — |", md)
+        self.assertNotIn("| retrieval_miss | 0 | 0 |", md)
+
+    def test_render_retrieval_miss_explicit_zero_as_zero(self) -> None:
+        zero_counts = {
+            **FULL_SUMMARY["failure_category_counts"],
+            "retrieval_miss": 0,
+        }
+        base = extract_aggregate({**FULL_SUMMARY, "failure_category_counts": zero_counts})
+        head = extract_aggregate({**FULL_SUMMARY, "failure_category_counts": zero_counts})
+        md = render_markdown(base, head, "test")
+        self.assertIn("| retrieval_miss | 0 | 0 | · |", md)
+
+    def test_render_retrieval_miss_unequal_n_has_no_directional_delta(self) -> None:
+        base = extract_aggregate(
+            {
+                **FULL_SUMMARY,
+                "num_predictions": 100,
+                "failure_category_counts": {
+                    **FULL_SUMMARY["failure_category_counts"],
+                    "retrieval_miss": 20,
+                },
+            }
+        )
+        head = extract_aggregate(
+            {
+                **FULL_SUMMARY,
+                "num_predictions": 50,
+                "failure_category_counts": {
+                    **FULL_SUMMARY["failure_category_counts"],
+                    "retrieval_miss": 15,
+                },
+            }
+        )
+        md = render_markdown(base, head, "test")
+        self.assertIn("| retrieval_miss | 20 | 15 | — |", md)
+        self.assertNotIn("| retrieval_miss | 20 | 15 | -5.000 ✅ |", md)
+
+    def test_render_markdown_has_no_nested_fences(self) -> None:
+        base = extract_aggregate(FULL_SUMMARY)
+        head = extract_aggregate({**FULL_SUMMARY, "accuracy": 0.6})
+        md = render_markdown(base, head, "test")
+        self.assertNotIn("```", md)
+
+    def test_render_markdown_tables_have_stable_column_counts(self) -> None:
+        base = extract_aggregate(FULL_SUMMARY)
+        head = extract_aggregate({**FULL_SUMMARY, "accuracy": 0.6})
+        md = render_markdown(base, head, "test")
+
+        table: list[str] = []
+        tables: list[list[str]] = []
+        for line in md.splitlines():
+            if line.startswith("|"):
+                table.append(line)
+            elif table:
+                tables.append(table)
+                table = []
+        if table:
+            tables.append(table)
+
+        self.assertGreaterEqual(len(tables), 1)
+        for table_lines in tables:
+            counts = [len(line.strip("|").split("|")) for line in table_lines]
+            self.assertEqual([counts[0]] * len(counts), counts)
 
     def test_render_includes_slice_abstention(self) -> None:
         base = extract_aggregate(FULL_SUMMARY)
