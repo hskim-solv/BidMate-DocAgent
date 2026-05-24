@@ -231,7 +231,7 @@ def test_collect_anchors_dedup_explicit_and_skips() -> None:
         "https://x.com#frag",  # external
         "/site/abs.md#frag",  # site-absolute
         "../code.py#L10",  # non-markdown target (anchors not enumerable)
-        "../dir/#frag",  # directory-style permalink
+        "../img.png#x",  # non-markdown target with recognized extension
         "../foo.md#",  # empty fragment
     ],
 )
@@ -247,6 +247,10 @@ def test_split_fragment_skips(href: str) -> None:
         ("../foo.md:120#section", ("../foo.md", "section")),  # path:line dropped
         ("<../foo.md#section>", ("../foo.md", "section")),  # angle brackets
         ('../foo.md#section "Title"', ("../foo.md", "section")),  # link title
+        # Directory-style Jekyll permalink: kept (was None before #1406), the
+        # `<path>/` → `<path>.md` resolution happens in find_broken_fragments.
+        ("../dir/#frag", ("../dir/", "frag")),
+        ("../engineering-governance#frag", ("../engineering-governance", "frag")),
     ],
 )
 def test_split_fragment_parses(href: str, expected: tuple[str, str]) -> None:
@@ -307,6 +311,69 @@ def test_find_broken_fragments_valid_anchor_and_no_false_positives(
         "[gone](../nope.md#frag)\n"  # missing FILE — find_broken_links' job
         "[dir](../somedir/#frag)\n",  # directory permalink — skipped
     )
+    assert cdl.find_broken_fragments(["docs/src.md"], tmp_path) == []
+
+
+# ---- fragment anchors: Jekyll directory permalinks (issue #1406) -----------
+
+
+def test_find_broken_fragments_dir_permalink_broken(tmp_path: Path) -> None:
+    # The #1406 blind spot: a blog page links a directory-style permalink
+    # (`permalink: pretty`, no `.md`), and the backing page's heading was
+    # translated, so the old English #anchor no longer resolves. The link
+    # existence check skips permalinks, so only the fragment check can see it.
+    _write(tmp_path / "docs" / "engineering-governance.md", "# 거버넌스 노트\n")
+    _write(
+        tmp_path / "docs" / "blog" / "post.md",
+        "[x](../engineering-governance/#governance-saves-real-incidents)\n",
+    )
+    broken = cdl.find_broken_fragments(
+        ["docs/blog/post.md", "docs/engineering-governance.md"], tmp_path
+    )
+    assert broken == [
+        (
+            "docs/blog/post.md",
+            "../engineering-governance/#governance-saves-real-incidents",
+            "governance-saves-real-incidents",
+        )
+    ]
+
+
+def test_find_broken_fragments_dir_permalink_stable_anchor(tmp_path: Path) -> None:
+    # The PR #1403 fix: a stable <a id> on the backing page keeps the legacy
+    # English anchor alive through the directory permalink.
+    _write(
+        tmp_path / "docs" / "engineering-governance.md",
+        '<a id="governance-saves-real-incidents"></a>\n\n# 거버넌스 노트\n',
+    )
+    _write(
+        tmp_path / "docs" / "blog" / "post.md",
+        "[x](../engineering-governance/#governance-saves-real-incidents)\n",
+    )
+    assert (
+        cdl.find_broken_fragments(
+            ["docs/blog/post.md", "docs/engineering-governance.md"], tmp_path
+        )
+        == []
+    )
+
+
+def test_find_broken_fragments_dir_permalink_index_md(tmp_path: Path) -> None:
+    # `permalink: pretty` also serves `<path>/index.md` at `<path>/`.
+    _write(tmp_path / "docs" / "guide" / "index.md", "## 시작\n")
+    _write(tmp_path / "docs" / "src.md", "[x](guide/#시작)\n")
+    assert cdl.find_broken_fragments(["docs/src.md"], tmp_path) == []
+    _write(tmp_path / "docs" / "bad.md", "[x](guide/#missing)\n")
+    broken = cdl.find_broken_fragments(["docs/bad.md"], tmp_path)
+    assert broken == [("docs/bad.md", "guide/#missing", "missing")]
+
+
+def test_find_broken_fragments_dir_permalink_no_backing_md_skipped(
+    tmp_path: Path,
+) -> None:
+    # No backing `<path>.md` (and no `<path>/index.md`) → unresolvable
+    # permalink → skipped, never a false positive.
+    _write(tmp_path / "docs" / "src.md", "[x](../nonexistent-page/#frag)\n")
     assert cdl.find_broken_fragments(["docs/src.md"], tmp_path) == []
 
 
