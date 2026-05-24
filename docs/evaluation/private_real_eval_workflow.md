@@ -3,6 +3,8 @@
 Smoke eval is CI/regression only.
 Synthetic benchmark is public reproducibility and ablation only.
 Private real-eval is required for credible real-world baseline claims.
+No private raw content should be committed.
+Redacted aggregate summaries may be committed only if they pass privacy checks.
 
 This workflow prepares and runs a local-only private real-eval path for the
 Naive RAG baseline. It is not itself proof that a private baseline has been
@@ -262,6 +264,8 @@ They must not include raw document text, raw questions, raw generated answers,
 Current repository status remains **A. Not ready** until local private files and
 explicit gold evidence are provided. No Naive RAG real baseline has been
 measured by this repository state.
+
+No Naive RAG real baseline has been measured yet.
 
 ## Next Manual Steps
 
