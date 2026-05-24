@@ -16,6 +16,7 @@ latency_budgets:
   naive_baseline: {p95_ms: 1200}
   full: {p95_ms: 2500}
   full_dense: {p95_ms: 2500}
+  hybrid_bm25_dense_v1: {p95_ms: 2500}
   full_llm: {p95_ms: 3000}
   full_llm_metadata: {p95_ms: 2500}
   no_metadata_first: {p95_ms: 2500}
@@ -77,6 +78,18 @@ ablation_runs:
     query_expansion: identity
     metadata_backend: regex
     retrieval_backend: dense
+  - name: hybrid_bm25_dense_v1
+    pipeline: agentic_full
+    metadata_first: true
+    rerank: true
+    verifier_retry: true
+    retrieval_mode: flat
+    retrieval_backend: hybrid
+    rrf_k: 60
+    bm25_backend: okapi
+    bm25_tokenizer: regex
+    query_expansion: identity
+    metadata_backend: regex
   - name: full_llm
     pipeline: agentic_full_llm
     metadata_first: true

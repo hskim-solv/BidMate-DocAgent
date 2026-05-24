@@ -22,6 +22,7 @@ from scripts.run_real_eval_delta import (
     extract_aggregate,
     parse_args,
     render_markdown,
+    select_ablation_run,
 )
 
 
@@ -34,8 +35,21 @@ FULL_SUMMARY = {
     "accuracy": 0.471,
     "groundedness": 0.476,
     "citation_precision": 0.286,
+    "chunk_recall_at_5": 0.111,
+    "chunk_recall_at_10": 0.222,
+    "chunk_mrr_at_5": 0.333,
+    "chunk_ndcg_at_5": 0.444,
     "abstention": 0.5,
     "retry": 0.429,
+    "failure_category_counts": {
+        "retrieval_miss": 2,
+        "planner_under_decomposition": 0,
+        "verifier_false_negative": 1,
+        "verifier_false_positive": 0,
+        "generator_hallucination": 0,
+        "context_dilution": 0,
+        "unknown": 0,
+    },
     "latency": {"p50": 100.0, "p95": 300.0, "mean": 150.0},
     "stage_latency": {
         "retrieve_ms": {"p50": 5.0, "p95": 20.0, "mean": 8.0, "count": 21}
@@ -84,6 +98,22 @@ def test_parse_args_baseline_env_overrides_report_default(monkeypatch: pytest.Mo
     assert args.base == "tmp/baseline.json"
 
 
+def test_parse_args_accepts_ablation_run_selection(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_real_eval_delta.py",
+            "--base-run",
+            "full_dense",
+            "--head-run",
+            "hybrid_bm25_dense_v1",
+        ],
+    )
+    args = parse_args()
+    assert args.base_run == "full_dense"
+    assert args.head_run == "hybrid_bm25_dense_v1"
+
+
 class ExtractAggregateTest(unittest.TestCase):
     def test_extracts_top_level_aggregates(self) -> None:
         agg = extract_aggregate(FULL_SUMMARY)
@@ -94,6 +124,14 @@ class ExtractAggregateTest(unittest.TestCase):
         self.assertEqual(
             agg["retry_reason_counts"], {"topic_not_grounded": 12}
         )
+
+    def test_extracts_retrieval_delta_metrics(self) -> None:
+        agg = extract_aggregate(FULL_SUMMARY)
+        self.assertEqual(agg["chunk_recall_at_5"], 0.111)
+        self.assertEqual(agg["chunk_recall_at_10"], 0.222)
+        self.assertEqual(agg["chunk_mrr_at_5"], 0.333)
+        self.assertEqual(agg["chunk_ndcg_at_5"], 0.444)
+        self.assertEqual(agg["failure_category_counts"]["retrieval_miss"], 2)
 
     def test_drops_case_results(self) -> None:
         agg = extract_aggregate(FULL_SUMMARY)
@@ -157,6 +195,33 @@ class ExtractAggregateTest(unittest.TestCase):
         self.assertIn("0.471", md)
         self.assertIn("0.600", md)
 
+    def test_render_markdown_includes_retrieval_and_failure_metrics(self) -> None:
+        base = extract_aggregate(FULL_SUMMARY)
+        head = extract_aggregate(
+            {
+                **FULL_SUMMARY,
+                "chunk_recall_at_5": 0.211,
+                "chunk_recall_at_10": 0.322,
+                "chunk_mrr_at_5": 0.433,
+                "chunk_ndcg_at_5": 0.544,
+                "citation_precision": 0.386,
+                "failure_category_counts": {
+                    **FULL_SUMMARY["failure_category_counts"],
+                    "retrieval_miss": 1,
+                },
+            }
+        )
+        md = render_markdown(base, head, "test")
+        for label in (
+            "Recall@5",
+            "Recall@10",
+            "MRR@5",
+            "nDCG@5",
+            "citation_accuracy",
+            "retrieval_miss",
+        ):
+            self.assertIn(label, md)
+
     def test_render_includes_slice_abstention(self) -> None:
         base = extract_aggregate(FULL_SUMMARY)
         head = extract_aggregate({**FULL_SUMMARY, "accuracy": 0.6})
@@ -164,6 +229,47 @@ class ExtractAggregateTest(unittest.TestCase):
         # Slice section should be present.
         self.assertIn("Slice abstention", md)
         self.assertIn("abstention", md)
+
+    def test_select_ablation_run_by_name(self) -> None:
+        summary = {
+            **FULL_SUMMARY,
+            "ablation": {
+                "runs": [
+                    {
+                        **FULL_SUMMARY,
+                        "name": "full_dense",
+                        "primary_run": "full_dense",
+                        "chunk_recall_at_5": 0.1,
+                        "case_results": [{"query": "private base leak"}],
+                    },
+                    {
+                        **FULL_SUMMARY,
+                        "name": "hybrid_bm25_dense_v1",
+                        "primary_run": "hybrid_bm25_dense_v1",
+                        "chunk_recall_at_5": 0.2,
+                        "case_results": [{"query": "private head leak"}],
+                    },
+                ]
+            },
+        }
+        selected = select_ablation_run(
+            summary,
+            "hybrid_bm25_dense_v1",
+            source_label="head",
+        )
+        agg = extract_aggregate(selected)
+        self.assertEqual(agg["primary_run"], "hybrid_bm25_dense_v1")
+        self.assertEqual(agg["chunk_recall_at_5"], 0.2)
+        flat = json.dumps(agg, ensure_ascii=False)
+        self.assertNotIn("private head leak", flat)
+
+    def test_select_ablation_run_missing_fails_loudly(self) -> None:
+        with self.assertRaisesRegex(ValueError, "not found"):
+            select_ablation_run(
+                {"ablation": {"runs": [{"name": "full_dense"}]}},
+                "hybrid_bm25_dense_v1",
+                source_label="head",
+            )
 
     def test_provenance_passes_through_extraction(self) -> None:
         """Issue #160: provenance is metadata about run state (no per-case
@@ -675,6 +781,62 @@ class FullScriptInvocationTest(unittest.TestCase):
             self.assertIn("0.600", result.stdout)
             self.assertIn("+0.129", result.stdout)
             # Privacy assertion at the CLI boundary:
+            for leak in ["real_secret_case", "진짜 비공개", "private_doc_1"]:
+                self.assertNotIn(leak, result.stdout)
+
+    def test_end_to_end_selects_ablation_runs(self) -> None:
+        import subprocess
+        import sys
+
+        summary = {
+            **FULL_SUMMARY,
+            "ablation": {
+                "runs": [
+                    {
+                        **FULL_SUMMARY,
+                        "name": "full_dense",
+                        "primary_run": "full_dense",
+                        "chunk_recall_at_5": 0.1,
+                    },
+                    {
+                        **FULL_SUMMARY,
+                        "name": "hybrid_bm25_dense_v1",
+                        "primary_run": "hybrid_bm25_dense_v1",
+                        "chunk_recall_at_5": 0.2,
+                        "failure_category_counts": {
+                            **FULL_SUMMARY["failure_category_counts"],
+                            "retrieval_miss": 1,
+                        },
+                    },
+                ]
+            },
+        }
+        with TemporaryDirectory() as tmp:
+            path = Path(tmp) / "eval_summary.json"
+            path.write_text(json.dumps(summary))
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "scripts/run_real_eval_delta.py",
+                    "--base",
+                    str(path),
+                    "--head",
+                    str(path),
+                    "--base-run",
+                    "full_dense",
+                    "--head-run",
+                    "hybrid_bm25_dense_v1",
+                    "--title",
+                    "hybrid delta",
+                ],
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("hybrid delta", result.stdout)
+            self.assertIn("primary run: `hybrid_bm25_dense_v1`", result.stdout)
+            self.assertIn("Recall@5", result.stdout)
+            self.assertIn("retrieval_miss", result.stdout)
             for leak in ["real_secret_case", "진짜 비공개", "private_doc_1"]:
                 self.assertNotIn(leak, result.stdout)
 

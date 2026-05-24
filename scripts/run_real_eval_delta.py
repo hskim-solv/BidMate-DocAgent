@@ -70,6 +70,10 @@ SAFE_TOPLEVEL_KEYS = frozenset(
         "citation_precision",
         "citation_grounding",
         "claim_citation_alignment",
+        "chunk_recall_at_5",
+        "chunk_recall_at_10",
+        "chunk_mrr_at_5",
+        "chunk_ndcg_at_5",
         "answer_format_compliance",
         "abstention",
         "retry",
@@ -203,6 +207,10 @@ SAFE_ABLATION_FULL_SCALAR_KEYS = (
     "citation_precision",
     "citation_grounding",
     "claim_citation_alignment",
+    "chunk_recall_at_5",
+    "chunk_recall_at_10",
+    "chunk_mrr_at_5",
+    "chunk_ndcg_at_5",
     "answer_format_compliance",
     "abstention",
     "retry",
@@ -220,6 +228,10 @@ SAFE_CI_METRIC_KEYS = (
     "citation_region_precision",
     "citation_grounding",
     "claim_citation_alignment",
+    "chunk_recall_at_5",
+    "chunk_recall_at_10",
+    "chunk_mrr_at_5",
+    "chunk_ndcg_at_5",
     "answer_format_compliance",
     "abstention",
     "retry",
@@ -301,9 +313,14 @@ FORBIDDEN_KEYS = frozenset(
 # Metric direction for the rendered delta arrow.
 # (path, label, higher_is_better)
 METRICS: list[tuple[str, str, bool]] = [
+    ("chunk_recall_at_5", "Recall@5", True),
+    ("chunk_recall_at_10", "Recall@10", True),
+    ("chunk_mrr_at_5", "MRR@5", True),
+    ("chunk_ndcg_at_5", "nDCG@5", True),
+    ("citation_precision", "citation_accuracy", True),
+    ("failure_category_counts.retrieval_miss", "retrieval_miss", False),
     ("accuracy", "accuracy", True),
     ("groundedness", "groundedness", True),
-    ("citation_precision", "citation_precision", True),
     ("citation_grounding", "citation_grounding", True),
     ("claim_citation_alignment", "claim_citation_alignment", True),
     ("answer_format_compliance", "answer_format_compliance", True),
@@ -948,6 +965,54 @@ def append_decision_log_stub(
         fh.write(body)
 
 
+def select_ablation_run(
+    summary: dict[str, Any],
+    run_name: str | None,
+    *,
+    source_label: str,
+) -> dict[str, Any]:
+    """Select a named run from ``eval_summary.json::ablation.runs[]``.
+
+    The returned dict is still passed through :func:`extract_aggregate`, so
+    choosing a primary run that carries ``case_results`` cannot leak private
+    payload into the rendered delta.  This is used for intra-summary private
+    comparisons such as ``full_dense`` vs ``hybrid_bm25_dense_v1``.
+    """
+    if not run_name:
+        return summary
+    if not isinstance(summary, dict):
+        raise ValueError(f"{source_label} summary must be a JSON object")
+
+    if summary.get("name") == run_name or summary.get("primary_run") == run_name:
+        selected = dict(summary)
+    else:
+        ablation = summary.get("ablation")
+        runs = (ablation or {}).get("runs") if isinstance(ablation, dict) else []
+        selected = next(
+            (
+                dict(run)
+                for run in runs or []
+                if isinstance(run, dict) and run.get("name") == run_name
+            ),
+            None,
+        )
+        if selected is None:
+            available = [
+                str(run.get("name"))
+                for run in runs or []
+                if isinstance(run, dict) and run.get("name")
+            ]
+            raise ValueError(
+                f"{source_label} run {run_name!r} not found in ablation.runs"
+                + (f" (available: {', '.join(available)})" if available else "")
+            )
+    selected.setdefault("primary_run", run_name)
+    for inherited_key in ("provenance", "run_manifest"):
+        if inherited_key not in selected and isinstance(summary.get(inherited_key), dict):
+            selected[inherited_key] = dict(summary[inherited_key])
+    return selected
+
+
 # -----------------------------------------------------------------------------
 # CLI
 # -----------------------------------------------------------------------------
@@ -978,6 +1043,16 @@ def parse_args() -> argparse.Namespace:
         "--base",
         default=_default_base_path(),
         help="Committed baseline aggregate snapshot path.",
+    )
+    ap.add_argument(
+        "--base-run",
+        default=None,
+        help="Select this ablation run from --base before rendering the delta.",
+    )
+    ap.add_argument(
+        "--head-run",
+        default=None,
+        help="Select this ablation run from --head before rendering the delta.",
     )
     ap.add_argument("--title", default="Real-data eval delta")
     ap.add_argument(
@@ -1018,6 +1093,12 @@ def main() -> int:
 
     head_raw = json.loads(head_path.read_text(encoding="utf-8"))
     base_raw = json.loads(base_path.read_text(encoding="utf-8"))
+    try:
+        head_raw = select_ablation_run(head_raw, args.head_run, source_label="head")
+        base_raw = select_ablation_run(base_raw, args.base_run, source_label="base")
+    except ValueError as exc:
+        print(f"[ERROR] {exc}", file=sys.stderr)
+        return 2
 
     head = extract_aggregate(head_raw)
 
@@ -1027,7 +1108,7 @@ def main() -> int:
     # user just ran `make real-eval-with-judge`. The per-case judge
     # text is never copied into the head aggregate.
     judge_local = head_path.parent / "judge.local.json"
-    if judge_local.exists():
+    if not args.head_run and judge_local.exists():
         from collections import Counter
 
         judge_payload = json.loads(judge_local.read_text(encoding="utf-8"))

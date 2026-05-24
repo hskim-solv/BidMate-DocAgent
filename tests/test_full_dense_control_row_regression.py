@@ -21,10 +21,11 @@ so the assertions match what the eval runner actually executes:
 1.  ``full_dense`` row exists.
 2.  ``full`` resolves to hybrid (ADR 0058 Scenario A on the headline row).
 3.  ``full_dense`` resolves to dense (the restored control arm).
-4.  ``naive_baseline`` resolves to dense (ADR 0001 byte-identity sentinel).
-5.  ``full`` and ``full_dense`` differ by exactly ``{name, retrieval_backend}``
+4.  ``hybrid_bm25_dense_v1`` resolves to hybrid + RRF k=60 + okapi BM25.
+5.  ``naive_baseline`` resolves to dense (ADR 0001 byte-identity sentinel).
+6.  ``full`` and ``full_dense`` differ by exactly ``{name, retrieval_backend}``
     (the control row varies exactly one knob).
-6.  Every eval row explicitly declares the core stage-separation knobs.
+7.  Every eval row explicitly declares the core stage-separation knobs.
 """
 from __future__ import annotations
 
@@ -86,6 +87,30 @@ class TestFullDenseControlRow(unittest.TestCase):
             "dense",
             "full_dense must resolve to 'dense' — it is the explicit dense "
             "control arm for ADR 0058 reproducibility (issue #1285).",
+        )
+
+    def test_hybrid_bm25_dense_v1_row_exists(self) -> None:
+        self.assertIn(
+            "hybrid_bm25_dense_v1",
+            self.ablation_by_name,
+            "Ablation row 'hybrid_bm25_dense_v1' missing from eval/config.yaml. "
+            "It is the explicit BM25+dense RRF v1 row for issue #1447.",
+        )
+
+    def test_hybrid_bm25_dense_v1_resolves_to_rrf_hybrid(self) -> None:
+        resolved = normalize_run_config(self.ablation_by_name["hybrid_bm25_dense_v1"])
+        self.assertEqual(resolved["retrieval_backend"], "hybrid")
+        self.assertEqual(resolved["rrf_k"], 60)
+        self.assertEqual(resolved["bm25_backend"], "okapi")
+        self.assertEqual(resolved["bm25_tokenizer"], "regex")
+
+    def test_hybrid_bm25_dense_v1_has_latency_budget(self) -> None:
+        budgets = self.config.get("latency_budgets") or {}
+        self.assertIn(
+            "hybrid_bm25_dense_v1",
+            budgets,
+            "hybrid_bm25_dense_v1 must have a latency budget so the SLO "
+            "checker can report the row when public smoke eval runs.",
         )
 
     def test_naive_baseline_stays_dense(self) -> None:
