@@ -23,6 +23,7 @@ sys.path.insert(0, str(REPO_ROOT))
 
 from scripts.phase35_m3_ablation import (  # noqa: E402
     VariantSpec,
+    guard_private_real100_chunk_count,
     _prime_m3_index_cache_and_colbert,
     _resolve_specs,
     main,
@@ -55,6 +56,21 @@ class ResolveSpecsTest(unittest.TestCase):
         self.assertEqual(
             {str(s.index_dir) for s in specs}, {"data/index/real100_m3"}
         )
+
+
+class PrivateReal100ChunkGuardTest(unittest.TestCase):
+    def test_guard_rejects_low_chunk_private_real100_index(self) -> None:
+        index = {"build": {"num_documents": 100, "num_chunks": 898}}
+        with self.assertRaisesRegex(ValueError, "CSV-fallback real100 index"):
+            guard_private_real100_chunk_count(index, Path("data/index/real100_m3"))
+
+    def test_guard_allows_26k_private_real100_index(self) -> None:
+        index = {"build": {"num_documents": 100, "num_chunks": 26376}}
+        guard_private_real100_chunk_count(index, Path("data/index/real100_m3"))
+
+    def test_guard_allows_small_public_fixture_index(self) -> None:
+        index = {"build": {"num_documents": 5, "num_chunks": 6}}
+        guard_private_real100_chunk_count(index, Path("data/index"))
 
 
 class ReaggregateMainTest(unittest.TestCase):

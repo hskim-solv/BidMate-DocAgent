@@ -64,6 +64,9 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
+PRIVATE_REAL_MIN_DOCS = 50
+LOW_CHUNK_REAL_MAX = 1000
+
 from eval.scorers.chunk_metrics import (  # noqa: E402
     chunk_mrr,
     chunk_ndcg_at_k,
@@ -88,6 +91,42 @@ class VariantSpec:
     retrieval_backend: str  # "dense" | "hybrid" | "m3"
     rrf_k: int | None       # 60 for hybrid_bm25_k60_m3; None for dense_m3 + m3
     index_dir: Path         # 3 entries share data/index/real100_m3
+
+
+def index_build_counts(index: dict[str, Any]) -> tuple[int | None, int | None]:
+    build = index.get("build")
+    if not isinstance(build, dict):
+        build = {}
+    docs = build.get("num_documents")
+    chunks = build.get("num_chunks")
+    if docs is None:
+        docs = len(index.get("documents") or [])
+    if chunks is None:
+        chunks = len(index.get("chunks") or [])
+    try:
+        docs_int = int(docs) if docs is not None else None
+    except (TypeError, ValueError):
+        docs_int = None
+    try:
+        chunks_int = int(chunks) if chunks is not None else None
+    except (TypeError, ValueError):
+        chunks_int = None
+    return docs_int, chunks_int
+
+
+def guard_private_real100_chunk_count(index: dict[str, Any], index_dir: Path) -> None:
+    docs, chunks = index_build_counts(index)
+    if (
+        docs is not None
+        and chunks is not None
+        and docs >= PRIVATE_REAL_MIN_DOCS
+        and 0 < chunks <= LOW_CHUNK_REAL_MAX
+    ):
+        raise ValueError(
+            f"{index_dir} looks like a stale/invalid CSV-fallback real100 index "
+            f"({docs} docs, {chunks} chunks). Rebuild from kordoc cache/source "
+            "before running phase35_m3 measurement."
+        )
 
 
 def _plan_for_variant(spec: VariantSpec, top_k: int) -> dict[str, Any]:
@@ -208,10 +247,10 @@ def _prime_m3_index_cache_and_colbert(index: dict[str, Any]) -> None:
     (cached) instead of N per-chunk matmuls (where N = len(chunks)).
     Mathematically identical to the per-chunk path — colbert max-sim is
     decomposable per chunk because each chunk's column slice is
-    independent. For the real100_m3 csv_text-fallback index (898 chunks ×
-    long avg tokens/chunk), per-chunk Python-loop matmul dominates wall
-    time (>50s/query observed on PID 25363); batched matmul drops the m3
-    phase from ~3h to <10min on the same MPS box.
+    independent. This was introduced after the retired low-chunk CSV fallback
+    run exposed per-chunk Python-loop matmul overhead; the current measurement
+    path rejects that insufficient corpus before execution and expects a
+    kordoc-scale index.
 
     Cache lifetime: per-process. The score cache uses ``id(q_colbert)`` as
     the key — primed queries always return the same ndarray (from the
@@ -827,6 +866,11 @@ def main(argv: list[str] | None = None) -> int:
     # dense / hybrid branches of retrieve_candidates).
     print(f"[measure] loading shared semantic index from {args.index_dir_m3}", flush=True)
     index = load_index(Path(args.index_dir_m3))
+    try:
+        guard_private_real100_chunk_count(index, Path(args.index_dir_m3))
+    except ValueError as exc:
+        print(f"[ERROR] {exc}", file=sys.stderr)
+        return 2
     spec_metas = [_spec_meta(spec, index) for spec in specs]
     (out_dir / "mode_specs.json").write_text(
         json.dumps(spec_metas, ensure_ascii=False, indent=2), encoding="utf-8"

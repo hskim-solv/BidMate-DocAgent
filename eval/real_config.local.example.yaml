@@ -27,18 +27,6 @@ ablation_runs:
     rerank: true
     verifier_retry: true
     retrieval_mode: flat
-  # ADR 0056 answer_reasoning axis (rationality judge) 를 측정하려면 synthesis 가
-  # 도는 run 이 필요하다. eval_summary 의 case_results 는 primary run 것만 담으므로
-  # (eval/run_eval.py), 아래 full_llm arm 을 활성화하고 `primary_run: full_llm` 로
-  # 설정한 뒤 `BIDMATE_TRACE_FULL=1 BIDMATE_SYNTHESIS_BACKEND=stub` 로 real-eval 을
-  # 돌린다 (또는 run_rationality_judge.py 를 `--traces-dir <out>/traces/full_llm`
-  # 로 override). extractive `full` primary 로는 answer_reasoning effective_n=0.
-  # - name: full_llm
-  #   pipeline: agentic_full_llm
-  #   metadata_first: true
-  #   rerank: true
-  #   verifier_retry: true
-  #   retrieval_mode: flat
 cases:
   - id: replace_single_doc_budget_schedule
     query_type: single_doc
@@ -53,13 +41,6 @@ cases:
     expected_claim_targets:
       - "replace-with-agency"
     answerable: true
-    # Optional: ADR 0039 hardcase taxonomy tags (multi-label list).
-    # Allowed values: table_heavy / ocr_noisy / rotated_or_skewed / layout_broken.
-    # Unknown values are dropped by scripts/run_real_eval_delta.py before any
-    # aggregate crosses the ADR 0005 commit boundary, so the private 5-slice
-    # taxonomy (scanned_pdf / mixed_layout / noisy_ocr) stays local-only.
-    # hardcase_categories:
-    #   - table_heavy
 
   - id: replace_absent_fact
     query_type: abstention
