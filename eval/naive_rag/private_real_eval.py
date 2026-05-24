@@ -77,8 +77,26 @@ SAFE_ANSWER_METRIC_KEYS = {
     "unanswerable_detection_flag",
 }
 SAFE_METRIC_VALUE_KEYS = {"mean", "n", "missing"}
+PREFERRED_SEMANTIC_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 ENV_DEFAULT_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}")
 SAFE_FAILURE_COUNT_KEY_RE = re.compile(r"^[A-Za-z0-9_.:-]+$")
+SAFE_MODEL_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*(?:/[A-Za-z0-9][A-Za-z0-9._-]*)?$")
+SAFE_COMPARISON_ROW_KEYS = {
+    "workflow",
+    "embedding_backend",
+    "model",
+    "num_questions",
+    "recall_at_5",
+    "recall_at_10",
+    "mrr_at_5",
+    "ndcg_at_5",
+    "citation_accuracy",
+    "answer_relevancy",
+    "faithfulness",
+    "unanswerable_detection_flag",
+    "mean_wall_clock_ms_per_question",
+    "total_wall_clock_ms",
+}
 ABSOLUTE_PATH_VALUE_RE = re.compile(r"(^|[\s:])(?:/Users/|/private/|/home/|[A-Za-z]:[\\/])")
 PRIVATE_PATH_MARKERS = (
     "data/private/",
@@ -246,17 +264,63 @@ def _index_embedding_summary(index_dir: Path) -> dict[str, Any]:
     embedding = payload.get("embedding") if isinstance(payload, dict) else {}
     if not isinstance(embedding, Mapping):
         return {}
+    build = payload.get("build") if isinstance(payload.get("build"), Mapping) else {}
     summary: dict[str, Any] = {}
     backend = str(embedding.get("backend") or "").strip()
     if backend and not ABSOLUTE_PATH_VALUE_RE.search(backend):
         summary["embedding_backend"] = backend
+    model = _safe_model_id(embedding.get("model"))
+    if model:
+        summary["model"] = model
     try:
         dimension = int(embedding.get("dimension"))
     except (TypeError, ValueError):
         dimension = 0
     if dimension > 0:
         summary["embedding_dimension"] = dimension
+    try:
+        chunk_count = int(build.get("num_chunks"))
+    except (TypeError, ValueError):
+        chunks = payload.get("chunks") if isinstance(payload.get("chunks"), list) else []
+        chunk_count = len(chunks) if chunks else 0
+    if chunk_count > 0:
+        summary["chunk_count"] = chunk_count
+    generated_at = _safe_generated_at(payload, build, index_json)
+    if generated_at:
+        summary["generated_at"] = generated_at
     return summary
+
+
+def _safe_model_id(value: Any) -> str | None:
+    model = str(value or "").strip()
+    if not model:
+        return None
+    if (
+        ABSOLUTE_PATH_VALUE_RE.search(model)
+        or any(marker in model for marker in PRIVATE_PATH_MARKERS)
+        or "\\" in model
+        or "://" in model
+        or model.startswith((".", "~"))
+    ):
+        return None
+    if not SAFE_MODEL_ID_RE.fullmatch(model):
+        return None
+    return model
+
+
+def _safe_generated_at(
+    payload: Mapping[str, Any],
+    build: Mapping[str, Any],
+    index_json: Path,
+) -> str | None:
+    for value in (payload.get("generated_at"), build.get("generated_at")):
+        generated_at = str(value or "").strip()
+        if generated_at and not ABSOLUTE_PATH_VALUE_RE.search(generated_at):
+            return generated_at
+    try:
+        return dt.datetime.fromtimestamp(index_json.stat().st_mtime, dt.timezone.utc).isoformat()
+    except OSError:
+        return None
 
 
 def _is_inside_repo(path: Path, root: Path = ROOT_DIR) -> bool:
@@ -662,12 +726,167 @@ def _safe_count_block(block: Any) -> dict[str, int | float]:
     return safe
 
 
+def _metric_mean(summary: Mapping[str, Any], metric: str) -> int | float | None:
+    metrics = summary.get("metrics") if isinstance(summary.get("metrics"), Mapping) else {}
+    for group_name in ("retrieval", "citation_and_answer_control"):
+        group = metrics.get(group_name) if isinstance(metrics.get(group_name), Mapping) else {}
+        block = group.get(metric) if isinstance(group.get(metric), Mapping) else {}
+        mean = block.get("mean")
+        if isinstance(mean, bool):
+            return None
+        if isinstance(mean, (int, float)):
+            return mean
+    return None
+
+
+def _workflow_label(summary: Mapping[str, Any]) -> str:
+    provenance = (
+        summary.get("index_provenance")
+        if isinstance(summary.get("index_provenance"), Mapping)
+        else {}
+    )
+    backend = str(provenance.get("embedding_backend") or "")
+    model = str(provenance.get("model") or "")
+    if backend == "hashing":
+        return "hashing workflow-validation run"
+    if backend == "sentence-transformers" and model == PREFERRED_SEMANTIC_MODEL:
+        return "semantic dense baseline run"
+    if backend == "sentence-transformers":
+        return "semantic dense baseline run"
+    return "private dense baseline run"
+
+
+def _comparison_row(summary: Mapping[str, Any]) -> dict[str, Any]:
+    provenance = (
+        summary.get("index_provenance")
+        if isinstance(summary.get("index_provenance"), Mapping)
+        else {}
+    )
+    dataset = summary.get("dataset") if isinstance(summary.get("dataset"), Mapping) else {}
+    latency = (
+        summary.get("latency_summary")
+        if isinstance(summary.get("latency_summary"), Mapping)
+        else {}
+    )
+    row: dict[str, Any] = {
+        "workflow": _workflow_label(summary),
+        "embedding_backend": provenance.get("embedding_backend"),
+        "model": provenance.get("model"),
+        "num_questions": dataset.get("num_questions"),
+    }
+    for metric in (
+        "recall_at_5",
+        "recall_at_10",
+        "mrr_at_5",
+        "ndcg_at_5",
+        "citation_accuracy",
+        "answer_relevancy",
+        "faithfulness",
+        "unanswerable_detection_flag",
+    ):
+        row[metric] = _metric_mean(summary, metric)
+    for key in ("mean_wall_clock_ms_per_question", "total_wall_clock_ms"):
+        value = latency.get(key)
+        row[key] = value if isinstance(value, (int, float, type(None))) else None
+    return row
+
+
+def _safe_existing_comparison_row(row: Any) -> dict[str, Any] | None:
+    if not isinstance(row, Mapping):
+        return None
+    safe: dict[str, Any] = {}
+    for key, value in row.items():
+        key_text = str(key)
+        if key_text not in SAFE_COMPARISON_ROW_KEYS:
+            continue
+        if isinstance(value, bool):
+            continue
+        if isinstance(value, str):
+            if ABSOLUTE_PATH_VALUE_RE.search(value) or any(
+                marker in value for marker in PRIVATE_PATH_MARKERS
+            ):
+                continue
+            safe[key_text] = value
+        elif isinstance(value, (int, float, type(None))):
+            safe[key_text] = value
+    if safe.get("workflow"):
+        return safe
+    return None
+
+
+def _build_comparison_table(
+    current_summary: Mapping[str, Any],
+    previous_summary: Mapping[str, Any] | None,
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    if previous_summary:
+        previous_rows = previous_summary.get("comparison_table")
+        if isinstance(previous_rows, list):
+            for row in previous_rows:
+                safe = _safe_existing_comparison_row(row)
+                if safe and safe.get("workflow") == "hashing workflow-validation run":
+                    rows.append(safe)
+        previous_row = _comparison_row(previous_summary)
+        if previous_row.get("workflow") == "hashing workflow-validation run":
+            rows.append(previous_row)
+
+    current_row = _comparison_row(current_summary)
+    rows.append(current_row)
+
+    deduped: list[dict[str, Any]] = []
+    seen: set[tuple[Any, Any, Any]] = set()
+    for row in rows:
+        key = (row.get("workflow"), row.get("embedding_backend"), row.get("model"))
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(row)
+    return deduped
+
+
+def _claim_readiness(summary: Mapping[str, Any]) -> dict[str, Any]:
+    provenance = (
+        summary.get("index_provenance")
+        if isinstance(summary.get("index_provenance"), Mapping)
+        else {}
+    )
+    dataset = summary.get("dataset") if isinstance(summary.get("dataset"), Mapping) else {}
+    backend = provenance.get("embedding_backend")
+    model = provenance.get("model")
+    question_count = dataset.get("num_questions")
+    if (
+        backend == "sentence-transformers"
+        and model == PREFERRED_SEMANTIC_MODEL
+        and question_count == 217
+    ):
+        return {
+            "status": "claim-ready",
+            "scope": (
+                "aggregate semantic dense Naive RAG baseline on the private "
+                "217-question set"
+            ),
+            "caveat": "answer proxy metrics and local wall-clock latency remain caveated",
+        }
+    if backend == "hashing":
+        return {
+            "status": "workflow-validation-only",
+            "scope": "hashing index validates the workflow but is not a semantic dense baseline",
+            "caveat": "do not use this row for semantic retrieval quality claims",
+        }
+    return {
+        "status": "provisional",
+        "scope": "private aggregate measurement",
+        "caveat": "semantic model provenance or expected question count is incomplete",
+    }
+
+
 def build_redacted_summary(
     metrics_payload: Mapping[str, Any],
     validation: Mapping[str, Any],
     config: Mapping[str, Any],
     *,
     elapsed_ms: float,
+    comparison_summary: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     dataset = (
         metrics_payload.get("dataset")
@@ -735,6 +954,8 @@ def build_redacted_summary(
             "This run does not improve retrieval, reranking, prompts, chunking, or verification.",
         ],
     }
+    payload["claim_readiness"] = _claim_readiness(payload)
+    payload["comparison_table"] = _build_comparison_table(payload, comparison_summary)
     assert_redacted_summary_safe(payload)
     return payload
 
@@ -774,6 +995,22 @@ def write_json(path: Path, payload: Mapping[str, Any]) -> None:
     path.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
+
+
+def load_existing_redacted_summary(path: Path) -> dict[str, Any] | None:
+    if not path.is_file():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    try:
+        assert_redacted_summary_safe(payload)
+    except PrivateRealEvalError:
+        return None
+    return payload
 
 
 def write_private_run_metadata(
@@ -853,16 +1090,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         write_private_run_metadata(
             run_dir, validation, build_command=build_command, elapsed_ms=elapsed_ms
         )
+        summary_path = (
+            repo_path(args.redacted_summary_path)
+            if args.redacted_summary_path
+            else run_dir / "redacted_summary.json"
+        )
+        comparison_summary = load_existing_redacted_summary(summary_path)
         redacted_summary = build_redacted_summary(
             metrics_payload,
             validation,
             config,
             elapsed_ms=elapsed_ms,
-        )
-        summary_path = (
-            repo_path(args.redacted_summary_path)
-            if args.redacted_summary_path
-            else run_dir / "redacted_summary.json"
+            comparison_summary=comparison_summary,
         )
         write_json(summary_path, redacted_summary)
     except Exception as exc:

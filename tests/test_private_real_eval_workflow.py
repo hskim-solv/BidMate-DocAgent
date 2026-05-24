@@ -341,7 +341,11 @@ def test_index_embedding_summary_is_aggregate_only(tmp_path: Path) -> None:
                     "backend": "hashing",
                     "dimension": 384,
                     "model": "/Users/example/private/model",
-                }
+                },
+                "build": {
+                    "num_chunks": 26,
+                    "generated_at": "2026-05-24T00:00:00+00:00",
+                },
             }
         ),
         encoding="utf-8",
@@ -350,7 +354,92 @@ def test_index_embedding_summary_is_aggregate_only(tmp_path: Path) -> None:
     assert pre._index_embedding_summary(index_dir) == {
         "embedding_backend": "hashing",
         "embedding_dimension": 384,
+        "chunk_count": 26,
+        "generated_at": "2026-05-24T00:00:00+00:00",
     }
+
+
+def test_redacted_summary_includes_semantic_provenance_and_comparison(tmp_path: Path) -> None:
+    index_dir = tmp_path / "index"
+    index_dir.mkdir()
+    (index_dir / "index.json").write_text(
+        json.dumps(
+            {
+                "embedding": {
+                    "backend": "sentence-transformers",
+                    "model": pre.PREFERRED_SEMANTIC_MODEL,
+                    "dimension": 384,
+                },
+                "build": {
+                    "num_documents": 100,
+                    "num_chunks": 26376,
+                    "generated_at": "2026-05-24T00:00:00+00:00",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    metrics_payload = {
+        "dataset": {"num_questions": 217, "answerable_count": 114, "unanswerable_count": 103},
+        "retrieval_metrics": {
+            "recall_at_5": {"mean": 0.1, "n": 114, "missing": 103},
+            "recall_at_10": {"mean": 0.2, "n": 114, "missing": 103},
+            "mrr_at_5": {"mean": 0.3, "n": 114, "missing": 103},
+            "ndcg_at_5": {"mean": 0.4, "n": 114, "missing": 103},
+        },
+        "answer_metrics": {
+            "citation_accuracy": {"mean": 0.5, "n": 114, "missing": 103},
+            "answer_relevancy": {"mean": 0.6, "n": 114, "missing": 103},
+            "faithfulness": {"mean": 0.7, "n": 114, "missing": 103},
+            "unanswerable_detection_flag": {"mean": 0.8, "n": 103, "missing": 114},
+        },
+        "failure_counts": {"retrieval_failure.gold_evidence_not_in_top_k": 1},
+    }
+    validation = {
+        "document_count": 100,
+        "question_count": 217,
+        "answerable_count": 114,
+        "unanswerable_count": 103,
+        "index_dir": index_dir,
+    }
+    config = {"top_k": 10, "latency_scope": "private_runner_wall_clock"}
+    hashing_summary = {
+        "benchmark_type": "private_real_eval",
+        "dataset": {"num_questions": 217},
+        "index_provenance": {
+            "embedding_backend": "hashing",
+            "model": "local-hashing-bow",
+            "embedding_dimension": 384,
+            "chunk_count": 26376,
+            "generated_at": "2026-05-23T00:00:00+00:00",
+        },
+        "metrics": {"retrieval": {"recall_at_5": {"mean": 0.05}}},
+        "latency_summary": {"mean_wall_clock_ms_per_question": 621.58},
+    }
+
+    summary = pre.build_redacted_summary(
+        metrics_payload,
+        validation,
+        config,
+        elapsed_ms=2000.0,
+        comparison_summary=hashing_summary,
+    )
+
+    assert summary["index_provenance"] == {
+        "embedding_backend": "sentence-transformers",
+        "model": pre.PREFERRED_SEMANTIC_MODEL,
+        "embedding_dimension": 384,
+        "chunk_count": 26376,
+        "generated_at": "2026-05-24T00:00:00+00:00",
+    }
+    assert summary["claim_readiness"]["status"] == "claim-ready"
+    assert [row["workflow"] for row in summary["comparison_table"]] == [
+        "hashing workflow-validation run",
+        "semantic dense baseline run",
+    ]
+    rendered = json.dumps(summary, ensure_ascii=False)
+    assert "doc_id" not in rendered
+    assert "chunk_id" not in rendered
 
 
 def test_public_smoke_and_synthetic_configs_remain_unaffected() -> None:

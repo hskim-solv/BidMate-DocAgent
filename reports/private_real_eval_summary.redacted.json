@@ -1,5 +1,44 @@
 {
   "benchmark_type": "private_real_eval",
+  "claim_readiness": {
+    "caveat": "answer proxy metrics and local wall-clock latency remain caveated",
+    "scope": "aggregate semantic dense Naive RAG baseline on the private 217-question set",
+    "status": "claim-ready"
+  },
+  "comparison_table": [
+    {
+      "answer_relevancy": 0.20942982456140352,
+      "citation_accuracy": 0.07017543859649122,
+      "embedding_backend": "hashing",
+      "faithfulness": 0.8421052631578947,
+      "mean_wall_clock_ms_per_question": 621.58,
+      "model": null,
+      "mrr_at_5": 0.1043859649122807,
+      "ndcg_at_5": 0.06334448644544977,
+      "num_questions": 217,
+      "recall_at_10": 0.053285064194591045,
+      "recall_at_5": 0.0485062112249486,
+      "total_wall_clock_ms": 134882.874,
+      "unanswerable_detection_flag": 0.06796116504854369,
+      "workflow": "hashing workflow-validation run"
+    },
+    {
+      "answer_relevancy": 0.28681077694235596,
+      "citation_accuracy": 0.15643274853801173,
+      "embedding_backend": "sentence-transformers",
+      "faithfulness": 0.8421052631578947,
+      "mean_wall_clock_ms_per_question": 1053.747,
+      "model": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+      "mrr_at_5": 0.17982456140350875,
+      "ndcg_at_5": 0.11622410092112531,
+      "num_questions": 217,
+      "recall_at_10": 0.12538014693115238,
+      "recall_at_5": 0.10396223444136156,
+      "total_wall_clock_ms": 228663.11,
+      "unanswerable_detection_flag": 0.06796116504854369,
+      "workflow": "semantic dense baseline run"
+    }
+  ],
   "dataset": {
     "answerable_count": 114,
     "num_chunks": 26376,
@@ -13,7 +52,7 @@
     "answer_failure.overconfident_weak_evidence": 0,
     "answer_failure.partial_answer": 0,
     "answer_failure.wrong_synthesis": 0,
-    "citation_failure.citation_does_not_support_claim": 2,
+    "citation_failure.citation_does_not_support_claim": 3,
     "citation_failure.correct_answer_wrong_citation": 0,
     "citation_failure.insufficient_citation": 0,
     "citation_failure.missing_page_number": 0,
@@ -27,16 +66,19 @@
     "parsing_failure.page_metadata_missing": 0,
     "parsing_failure.table_content_lost": 0,
     "retrieval_failure.chunk_boundary_split": 0,
-    "retrieval_failure.gold_evidence_not_in_top_k": 89,
-    "retrieval_failure.gold_evidence_ranked_too_low": 9,
-    "retrieval_failure.multi_chunk_evidence_missing": 14,
+    "retrieval_failure.gold_evidence_not_in_top_k": 71,
+    "retrieval_failure.gold_evidence_ranked_too_low": 16,
+    "retrieval_failure.multi_chunk_evidence_missing": 21,
     "retrieval_failure.query_wording_mismatch": 0,
     "retrieval_failure.wrong_similar_clause": 0
   },
-  "generated_at": "2026-05-24T10:52:50.831164+00:00",
+  "generated_at": "2026-05-24T12:40:08.888779+00:00",
   "index_provenance": {
-    "embedding_backend": "hashing",
-    "embedding_dimension": 384
+    "chunk_count": 26376,
+    "embedding_backend": "sentence-transformers",
+    "embedding_dimension": 384,
+    "generated_at": "2026-05-24T12:30:24.259039+00:00",
+    "model": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
   },
   "is_private_data": true,
   "known_limitations": [
@@ -46,19 +88,19 @@
     "This run does not improve retrieval, reranking, prompts, chunking, or verification."
   ],
   "latency_summary": {
-    "mean_wall_clock_ms_per_question": 621.58,
+    "mean_wall_clock_ms_per_question": 1053.747,
     "scope": "private_runner_wall_clock",
-    "total_wall_clock_ms": 134882.874
+    "total_wall_clock_ms": 228663.11
   },
   "metrics": {
     "citation_and_answer_control": {
       "answer_relevancy": {
-        "mean": 0.20942982456140352,
+        "mean": 0.28681077694235596,
         "missing": 103,
         "n": 114
       },
       "citation_accuracy": {
-        "mean": 0.07017543859649122,
+        "mean": 0.15643274853801173,
         "missing": 103,
         "n": 114
       },
@@ -68,7 +110,7 @@
         "n": 114
       },
       "hallucination_flag": {
-        "mean": 0.8387096774193549,
+        "mean": 0.7788018433179723,
         "missing": 0,
         "n": 217
       },
@@ -80,22 +122,22 @@
     },
     "retrieval": {
       "mrr_at_5": {
-        "mean": 0.1043859649122807,
+        "mean": 0.17982456140350875,
         "missing": 103,
         "n": 114
       },
       "ndcg_at_5": {
-        "mean": 0.06334448644544977,
+        "mean": 0.11622410092112531,
         "missing": 103,
         "n": 114
       },
       "recall_at_10": {
-        "mean": 0.053285064194591045,
+        "mean": 0.12538014693115238,
         "missing": 103,
         "n": 114
       },
       "recall_at_5": {
-        "mean": 0.0485062112249486,
+        "mean": 0.10396223444136156,
         "missing": 103,
         "n": 114
       }

@@ -27,6 +27,7 @@ ALLOWED_TYPES = {
     "chore",
     "refactor",
     "test",
+    "eval",
     "ci",
     "perf",
     "build",
