@@ -1,0 +1,79 @@
+benchmark_type: private_real_eval
+not_ci_smoke: true
+is_private_data: true
+description: Local-only private real-data evaluation for the true Naive RAG baseline. Copy to configs/eval/private_real_eval.local.yaml before use.
+
+# Local private inputs. These are placeholders only; do not commit real paths,
+# private filenames, raw questions, raw answers, or private document text.
+documents_dir: data/private/files
+data_list_path: data/private/data_list.csv
+questions_path: data/private/gold_evidence.jsonl
+gold_evidence_path: data/private/gold_evidence.jsonl
+index_dir: data/private/index
+output_dir: experiments/private_runs
+
+top_k: 10
+minimums:
+  min_documents: 50
+  min_questions: 13
+  min_answerable_questions: 10
+  min_unanswerable_questions: 3
+
+pipeline:
+  name: naive_baseline
+  retrieval_mode: flat
+  retrieval_backend: dense
+  metadata_first: false
+  rerank: false
+  verifier_retry: false
+  query_expansion: identity
+  prompt_profile: minimal_grounded_extractive
+  bm25_tokenizer: regex
+  bm25_backend: okapi
+
+index_build:
+  mode: build_if_missing
+  embedding_backend: sentence-transformers
+  model: sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
+  ingestion_mode: csv-text
+  hwp_loader: kordoc
+  pdf_loader: kordoc
+  chunking_strategy: fixed
+
+metrics:
+  retrieval:
+    - recall_at_5
+    - recall_at_10
+    - mrr_at_5
+    - ndcg_at_5
+  citation:
+    - citation_accuracy
+  answer_control:
+    - faithfulness
+    - answer_relevancy
+    - hallucination_flag
+    - unanswerable_detection_flag
+
+latency_scope: private_runner_wall_clock
+answer_metric_mode: deterministic_contract_v1
+redaction_policy:
+  summary_only: true
+  redact_private_paths: true
+  redact_document_names: true
+  redact_questions: true
+  redact_answers: true
+  redact_document_text: true
+  excluded_fields:
+    - question
+    - answer
+    - answer_text
+    - claims
+    - citations
+    - gold_evidence
+    - retrieved_chunks
+    - text
+    - text_preview
+    - doc_id
+    - chunk_id
+    - file_name
+    - path

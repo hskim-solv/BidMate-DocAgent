@@ -1,0 +1,758 @@
+"""Private real-data runner for the Naive RAG baseline.
+
+This module adds only a local/private evaluation workflow. It does not change
+retrieval, reranking, chunking, prompts, verifier behavior, or answer policy.
+"""
+
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import json
+import os
+from pathlib import Path
+import re
+import subprocess
+import sys
+import time
+from typing import Any, Mapping, Sequence
+
+import yaml
+
+ROOT_DIR = Path(__file__).resolve().parents[2]
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+
+from eval.naive_rag.run_eval import run_from_config  # noqa: E402
+
+
+REQUIRED_CONFIG_KEYS = (
+    "benchmark_type",
+    "not_ci_smoke",
+    "is_private_data",
+    "documents_dir",
+    "data_list_path",
+    "gold_evidence_path",
+    "index_dir",
+    "output_dir",
+    "top_k",
+    "metrics",
+    "latency_scope",
+    "answer_metric_mode",
+    "redaction_policy",
+)
+DEFAULT_MINIMUMS = {
+    "min_documents": 50,
+    "min_questions": 13,
+    "min_answerable_questions": 10,
+    "min_unanswerable_questions": 3,
+}
+FORBIDDEN_REDACTED_KEYS = {
+    "question",
+    "questions_path",
+    "answer",
+    "answer_text",
+    "claims",
+    "citations",
+    "gold_evidence",
+    "retrieved_chunks",
+    "text",
+    "text_preview",
+    "doc_id",
+    "chunk_id",
+    "file",
+    "file_name",
+    "filename",
+    "path",
+    "config_path",
+    "index_dir",
+    "output_dir",
+}
+SAFE_RETRIEVAL_METRIC_KEYS = {"recall_at_5", "recall_at_10", "mrr_at_5", "ndcg_at_5"}
+SAFE_ANSWER_METRIC_KEYS = {
+    "faithfulness",
+    "answer_relevancy",
+    "citation_accuracy",
+    "hallucination_flag",
+    "unanswerable_detection_flag",
+}
+SAFE_METRIC_VALUE_KEYS = {"mean", "n", "missing"}
+ENV_DEFAULT_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}")
+
+
+class PrivateRealEvalError(ValueError):
+    """Raised when local-only private eval validation fails."""
+
+
+def _expand_env_defaults(value: Any, environ: Mapping[str, str] | None = None) -> Any:
+    env = environ if environ is not None else os.environ
+    if isinstance(value, dict):
+        return {key: _expand_env_defaults(item, env) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_expand_env_defaults(item, env) for item in value]
+    if not isinstance(value, str):
+        return value
+
+    def repl(match: re.Match[str]) -> str:
+        env_key = match.group(1)
+        default = match.group(2) or ""
+        return env.get(env_key) or default
+
+    return ENV_DEFAULT_RE.sub(repl, value)
+
+
+def repo_path(value: str | Path, root: Path = ROOT_DIR) -> Path:
+    path = Path(str(value))
+    return path if path.is_absolute() else root / path
+
+
+def rel_or_abs(path: Path, root: Path = ROOT_DIR) -> str:
+    try:
+        return str(path.resolve().relative_to(root.resolve()))
+    except ValueError:
+        return str(path)
+
+
+def load_private_config(path: Path) -> dict[str, Any]:
+    payload = yaml.safe_load(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise PrivateRealEvalError(f"Config must be a mapping: {path}")
+    return _expand_env_defaults(payload)
+
+
+def validate_template_schema(config: Mapping[str, Any]) -> None:
+    missing = [key for key in REQUIRED_CONFIG_KEYS if key not in config]
+    errors: list[str] = []
+    if missing:
+        errors.append("missing required config keys: " + ", ".join(missing))
+    if config.get("benchmark_type") != "private_real_eval":
+        errors.append("benchmark_type must be private_real_eval")
+    if config.get("not_ci_smoke") is not True:
+        errors.append("not_ci_smoke must be true")
+    if config.get("is_private_data") is not True:
+        errors.append("is_private_data must be true")
+    try:
+        top_k = int(config.get("top_k"))
+    except (TypeError, ValueError):
+        top_k = 0
+    if top_k < 10:
+        errors.append("top_k must be >= 10 for the Naive RAG contract")
+    metrics = config.get("metrics")
+    if not isinstance(metrics, Mapping):
+        errors.append("metrics must be a mapping")
+    else:
+        for group in ("retrieval", "citation", "answer_control"):
+            if not isinstance(metrics.get(group), list) or not metrics.get(group):
+                errors.append(f"metrics.{group} must be a non-empty list")
+    redaction = config.get("redaction_policy")
+    if not isinstance(redaction, Mapping):
+        errors.append("redaction_policy must be a mapping")
+    if errors:
+        raise PrivateRealEvalError("Private real-eval config is invalid:\n- " + "\n- ".join(errors))
+
+
+def _jsonl_rows(path: Path) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        text = line.strip()
+        if not text:
+            continue
+        try:
+            payload = json.loads(text)
+        except json.JSONDecodeError as exc:
+            raise PrivateRealEvalError(f"Invalid JSONL at {path}:{lineno}: {exc}") from exc
+        if not isinstance(payload, dict):
+            raise PrivateRealEvalError(f"JSONL row must be an object at {path}:{lineno}")
+        rows.append(payload)
+    return rows
+
+
+def _write_jsonl(path: Path, rows: Sequence[Mapping[str, Any]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        "".join(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n" for row in rows),
+        encoding="utf-8",
+    )
+
+
+def _count_documents(documents_dir: Path) -> int:
+    if not documents_dir.is_dir():
+        return 0
+    return sum(
+        1
+        for path in documents_dir.rglob("*")
+        if path.is_file() and not any(part.startswith(".") for part in path.parts)
+    )
+
+
+def _index_counts(index_dir: Path) -> tuple[int | None, int | None]:
+    index_json = index_dir / "index.json"
+    if not index_json.is_file():
+        return None, None
+    try:
+        payload = json.loads(index_json.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None, None
+    build = payload.get("build") if isinstance(payload, dict) else {}
+    if not isinstance(build, dict):
+        build = {}
+    docs = build.get("num_documents")
+    chunks = build.get("num_chunks")
+    if docs is None and isinstance(payload, dict):
+        docs = len(payload.get("documents") or [])
+    if chunks is None and isinstance(payload, dict):
+        chunks = len(payload.get("chunks") or [])
+    try:
+        doc_count = int(docs) if docs is not None else None
+    except (TypeError, ValueError):
+        doc_count = None
+    try:
+        chunk_count = int(chunks) if chunks is not None else None
+    except (TypeError, ValueError):
+        chunk_count = None
+    return doc_count, chunk_count
+
+
+def _is_inside_repo(path: Path, root: Path = ROOT_DIR) -> bool:
+    try:
+        path.resolve().relative_to(root.resolve())
+        return True
+    except ValueError:
+        return False
+
+
+def git_ignores_path(path: Path, root: Path = ROOT_DIR) -> bool:
+    """Return true when git ignores the path or the path is outside the repo."""
+    if not _is_inside_repo(path, root):
+        return True
+    candidates = [path, path / ".private_real_eval_probe"]
+    for candidate in candidates:
+        rel = rel_or_abs(candidate, root)
+        result = subprocess.run(
+            ["git", "check-ignore", "--quiet", rel],
+            cwd=root,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode == 0:
+            return True
+    return False
+
+
+def _gold_items(row: Mapping[str, Any]) -> list[dict[str, Any]]:
+    evidence = row.get("gold_evidence")
+    if evidence is None:
+        direct = {
+            key: row.get(key)
+            for key in ("doc_id", "chunk_id", "page_span", "support_claim", "required_terms")
+            if row.get(key) is not None
+        }
+        evidence = [direct] if direct else []
+    if not isinstance(evidence, list):
+        raise PrivateRealEvalError(
+            f"gold_evidence must be a list for question_id={row.get('question_id')}"
+        )
+    cleaned: list[dict[str, Any]] = []
+    for item in evidence:
+        if not isinstance(item, dict):
+            raise PrivateRealEvalError(
+                f"gold_evidence item must be an object for question_id={row.get('question_id')}"
+            )
+        cleaned.append(dict(item))
+    return cleaned
+
+
+def _questions_from_rows(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    by_id: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        qid = str(row.get("question_id") or "").strip()
+        if not qid:
+            raise PrivateRealEvalError("Every question/gold row must include question_id")
+        if qid in by_id:
+            continue
+        question = str(row.get("question") or "").strip()
+        if not question:
+            raise PrivateRealEvalError(f"Question row missing question text: {qid}")
+        by_id[qid] = {
+            "question_id": qid,
+            "question": question,
+            "answerable": bool(row.get("answerable", True)),
+            "query_type": row.get("query_type"),
+            "expected_answer": row.get("expected_answer"),
+            "expected_terms": row.get("expected_terms") or [],
+        }
+    return list(by_id.values())
+
+
+def _gold_by_question(rows: Sequence[Mapping[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    by_question: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        qid = str(row.get("question_id") or "").strip()
+        if not qid:
+            raise PrivateRealEvalError("Every gold evidence row must include question_id")
+        by_question.setdefault(qid, []).extend(_gold_items(row))
+    return by_question
+
+
+def _minimums(config: Mapping[str, Any]) -> dict[str, int]:
+    raw = config.get("minimums") if isinstance(config.get("minimums"), Mapping) else {}
+    result = dict(DEFAULT_MINIMUMS)
+    for key in result:
+        if key in raw:
+            result[key] = max(int(raw[key]), DEFAULT_MINIMUMS[key])
+    return result
+
+
+def validate_private_inputs(
+    config: Mapping[str, Any],
+    *,
+    root: Path = ROOT_DIR,
+) -> dict[str, Any]:
+    validate_template_schema(config)
+    documents_dir = repo_path(str(config["documents_dir"]), root)
+    data_list_path = repo_path(str(config["data_list_path"]), root)
+    gold_evidence_path = repo_path(str(config["gold_evidence_path"]), root)
+    questions_path = repo_path(str(config.get("questions_path") or gold_evidence_path), root)
+    index_dir = repo_path(str(config["index_dir"]), root)
+    output_dir = repo_path(str(config["output_dir"]), root)
+    index_build = (
+        config.get("index_build") if isinstance(config.get("index_build"), Mapping) else {}
+    )
+    build_mode = str(index_build.get("mode") or "build_if_missing")
+    can_build_index = build_mode in {"build_if_missing", "rebuild"}
+
+    errors: list[str] = []
+    if not documents_dir.is_dir():
+        errors.append(f"documents_dir does not exist: {documents_dir}")
+    if not data_list_path.is_file():
+        errors.append(f"data_list_path does not exist: {data_list_path}")
+    if not gold_evidence_path.is_file():
+        errors.append(f"gold_evidence_path does not exist: {gold_evidence_path}")
+    if config.get("questions_path") and not questions_path.is_file():
+        errors.append(f"questions_path does not exist: {questions_path}")
+    if not git_ignores_path(output_dir, root):
+        errors.append(f"output_dir must be ignored by git or outside the repo: {output_dir}")
+    if not git_ignores_path(index_dir, root):
+        errors.append(f"index_dir must be ignored by git or outside the repo: {index_dir}")
+    if not (index_dir / "index.json").is_file() and not can_build_index:
+        errors.append(
+            f"index_dir has no index.json and index_build.mode={build_mode!r} cannot build it: {index_dir}"
+        )
+
+    document_count = _count_documents(documents_dir)
+    questions: list[dict[str, Any]] = []
+    gold_by_qid: dict[str, list[dict[str, Any]]] = {}
+    if documents_dir.is_dir():
+        min_docs = _minimums(config)["min_documents"]
+        if document_count < min_docs:
+            errors.append(
+                f"documents_dir has {document_count} documents; require at least {min_docs}"
+            )
+    if gold_evidence_path.is_file() and (
+        questions_path.is_file() or not config.get("questions_path")
+    ):
+        gold_rows = _jsonl_rows(gold_evidence_path)
+        question_rows = _jsonl_rows(questions_path) if config.get("questions_path") else gold_rows
+        questions = _questions_from_rows(question_rows)
+        gold_by_qid = _gold_by_question(gold_rows)
+        mins = _minimums(config)
+        answerable = [q for q in questions if q.get("answerable", True)]
+        unanswerable = [q for q in questions if not q.get("answerable", True)]
+        if len(questions) < mins["min_questions"]:
+            errors.append(
+                f"question set has {len(questions)} questions; require at least {mins['min_questions']}"
+            )
+        if len(answerable) < mins["min_answerable_questions"]:
+            errors.append(
+                f"answerable split has {len(answerable)} questions; require at least {mins['min_answerable_questions']}"
+            )
+        if len(unanswerable) < mins["min_unanswerable_questions"]:
+            errors.append(
+                f"unanswerable split has {len(unanswerable)} questions; require at least {mins['min_unanswerable_questions']}"
+            )
+        missing_gold = [
+            str(q["question_id"])
+            for q in answerable
+            if not any(
+                str(item.get("chunk_id") or "").strip()
+                for item in gold_by_qid.get(str(q["question_id"]), [])
+            )
+        ]
+        if missing_gold:
+            errors.append(
+                "answerable questions require explicit gold_evidence[].chunk_id; missing for: "
+                + ", ".join(missing_gold[:10])
+            )
+        unanswerable_with_gold = [
+            str(q["question_id"]) for q in unanswerable if gold_by_qid.get(str(q["question_id"]))
+        ]
+        if unanswerable_with_gold:
+            errors.append(
+                "unanswerable questions must use empty gold_evidence; found gold for: "
+                + ", ".join(unanswerable_with_gold[:10])
+            )
+
+    index_docs, index_chunks = _index_counts(index_dir)
+    if errors:
+        raise PrivateRealEvalError("Private real-eval validation failed:\n- " + "\n- ".join(errors))
+    return {
+        "documents_dir": documents_dir,
+        "data_list_path": data_list_path,
+        "questions_path": questions_path,
+        "gold_evidence_path": gold_evidence_path,
+        "index_dir": index_dir,
+        "output_dir": output_dir,
+        "document_count": document_count,
+        "question_count": len(questions),
+        "answerable_count": sum(1 for q in questions if q.get("answerable", True)),
+        "unanswerable_count": sum(1 for q in questions if not q.get("answerable", True)),
+        "index_exists": (index_dir / "index.json").is_file(),
+        "index_document_count": index_docs,
+        "index_chunk_count": index_chunks,
+        "build_mode": build_mode,
+    }
+
+
+def build_index_command(
+    config: Mapping[str, Any], validation: Mapping[str, Any]
+) -> list[str] | None:
+    index_dir = Path(validation["index_dir"])
+    index_build = (
+        config.get("index_build") if isinstance(config.get("index_build"), Mapping) else {}
+    )
+    mode = str(index_build.get("mode") or "build_if_missing")
+    if (index_dir / "index.json").is_file() and mode != "rebuild":
+        return None
+    if mode == "load_only":
+        raise PrivateRealEvalError(f"index_build.mode=load_only but index is missing: {index_dir}")
+
+    command = [
+        sys.executable,
+        "scripts/build_index.py",
+        "--metadata_csv",
+        rel_or_abs(Path(validation["data_list_path"])),
+        "--files_dir",
+        rel_or_abs(Path(validation["documents_dir"])),
+        "--output_dir",
+        rel_or_abs(index_dir),
+        "--embedding_backend",
+        str(index_build.get("embedding_backend") or "auto"),
+        "--ingestion_mode",
+        str(index_build.get("ingestion_mode") or "csv-text"),
+        "--chunking_strategy",
+        str(index_build.get("chunking_strategy") or "fixed"),
+    ]
+    for key, flag in (
+        ("model", "--model"),
+        ("hwp_loader", "--hwp_loader"),
+        ("pdf_loader", "--pdf_loader"),
+    ):
+        value = str(index_build.get(key) or "").strip()
+        if value:
+            command.extend([flag, value])
+    return command
+
+
+def build_or_load_private_index(
+    config: Mapping[str, Any], validation: Mapping[str, Any]
+) -> list[str] | None:
+    command = build_index_command(config, validation)
+    if command is None:
+        print(f"[OK] Loading existing private index: {validation['index_dir']}")
+        return None
+    print("[INFO] Building private index for Naive RAG eval")
+    result = subprocess.run(command, cwd=ROOT_DIR, check=False, text=True)
+    if result.returncode != 0:
+        raise PrivateRealEvalError("private index build failed: " + " ".join(command))
+    return command
+
+
+def _private_questions_path(
+    config: Mapping[str, Any], validation: Mapping[str, Any], run_dir: Path
+) -> Path:
+    if config.get("questions_path"):
+        return Path(validation["questions_path"])
+    rows = _jsonl_rows(Path(validation["gold_evidence_path"]))
+    questions = _questions_from_rows(rows)
+    generated = run_dir / "_inputs" / "questions.generated.jsonl"
+    _write_jsonl(generated, questions)
+    return generated
+
+
+def write_contract_config(
+    config: Mapping[str, Any],
+    validation: Mapping[str, Any],
+    *,
+    run_id: str,
+) -> Path:
+    output_dir = Path(validation["output_dir"])
+    run_dir = output_dir / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+    questions_path = _private_questions_path(config, validation, run_dir)
+    pipeline = config.get("pipeline") if isinstance(config.get("pipeline"), Mapping) else {}
+    top_k = int(config["top_k"])
+    contract = {
+        "schema_version": 1,
+        "name": "private_real_eval_naive_baseline",
+        "description": "Generated local-only config for private real-data Naive RAG eval.",
+        "index_dir": str(Path(validation["index_dir"])),
+        "questions_path": str(questions_path),
+        "gold_evidence_path": str(Path(validation["gold_evidence_path"])),
+        "output_root": str(output_dir),
+        "pipeline": {
+            "name": "naive_baseline",
+            "top_k": top_k,
+            "retrieval_mode": str(pipeline.get("retrieval_mode", "flat")),
+            "retrieval_backend": "dense",
+            "metadata_first": False,
+            "rerank": False,
+            "verifier_retry": False,
+            "query_expansion": "identity",
+            "prompt_profile": str(pipeline.get("prompt_profile") or "minimal_grounded_extractive"),
+            "bm25_tokenizer": str(pipeline.get("bm25_tokenizer") or "regex"),
+            "bm25_backend": str(pipeline.get("bm25_backend") or "okapi"),
+        },
+        "metrics": {
+            "retrieval": list((config.get("metrics") or {}).get("retrieval") or []),
+            "answer": [
+                *list((config.get("metrics") or {}).get("citation") or []),
+                *list((config.get("metrics") or {}).get("answer_control") or []),
+            ],
+        },
+    }
+    path = run_dir / "_inputs" / "contract.naive_baseline.generated.yaml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(yaml.safe_dump(contract, sort_keys=False, allow_unicode=True), encoding="utf-8")
+    return path
+
+
+def default_run_id() -> str:
+    return "private_real_eval_" + dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
+
+def _safe_metric_block(block: Any, allowed_keys: set[str]) -> dict[str, Any]:
+    if not isinstance(block, Mapping):
+        return {}
+    safe: dict[str, Any] = {}
+    for key, value in block.items():
+        key_text = str(key)
+        if key_text not in allowed_keys:
+            continue
+        if isinstance(value, Mapping):
+            safe[key_text] = {
+                str(metric_key): metric_value
+                for metric_key, metric_value in value.items()
+                if str(metric_key) in SAFE_METRIC_VALUE_KEYS
+                and isinstance(metric_value, (int, float, type(None)))
+            }
+        elif isinstance(value, (int, float, type(None))):
+            safe[key_text] = value
+    return safe
+
+
+def build_redacted_summary(
+    metrics_payload: Mapping[str, Any],
+    validation: Mapping[str, Any],
+    config: Mapping[str, Any],
+    *,
+    elapsed_ms: float,
+) -> dict[str, Any]:
+    dataset = (
+        metrics_payload.get("dataset")
+        if isinstance(metrics_payload.get("dataset"), Mapping)
+        else {}
+    )
+    question_count = int(dataset.get("num_questions") or validation.get("question_count") or 0)
+    index_docs, index_chunks = _index_counts(Path(validation["index_dir"]))
+    payload = {
+        "schema_version": 1,
+        "benchmark_type": "private_real_eval",
+        "system": "Naive Dense RAG",
+        "not_ci_smoke": True,
+        "is_private_data": True,
+        "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "dataset": {
+            "num_documents": index_docs or validation.get("document_count"),
+            "num_chunks": index_chunks,
+            "num_questions": question_count,
+            "answerable_count": dataset.get("answerable_count")
+            or validation.get("answerable_count"),
+            "unanswerable_count": dataset.get("unanswerable_count")
+            or validation.get("unanswerable_count"),
+        },
+        "pipeline": {
+            "name": "naive_baseline",
+            "top_k": int(config["top_k"]),
+            "retrieval_backend": "dense",
+            "metadata_first": False,
+            "rerank": False,
+            "verifier_retry": False,
+            "query_expansion": "identity",
+        },
+        "metrics": {
+            "retrieval": _safe_metric_block(
+                metrics_payload.get("retrieval_metrics"),
+                SAFE_RETRIEVAL_METRIC_KEYS,
+            ),
+            "citation_and_answer_control": _safe_metric_block(
+                metrics_payload.get("answer_metrics"),
+                SAFE_ANSWER_METRIC_KEYS,
+            ),
+        },
+        "failure_type_counts": dict(metrics_payload.get("failure_counts") or {}),
+        "latency_summary": {
+            "scope": str(config.get("latency_scope") or "private_runner_wall_clock"),
+            "total_wall_clock_ms": round(float(elapsed_ms), 3),
+            "mean_wall_clock_ms_per_question": (
+                round(float(elapsed_ms) / question_count, 3) if question_count else None
+            ),
+        },
+        "redaction_policy": {
+            "summary_only": True,
+            "raw_questions_excluded": True,
+            "raw_answers_excluded": True,
+            "document_text_excluded": True,
+            "document_names_excluded": True,
+            "private_paths_excluded": True,
+        },
+        "known_limitations": [
+            "Private aggregate only; raw cases and traces remain local.",
+            "Answer metrics are deterministic contract checks, not an LLM judge.",
+            "Latency is runner wall-clock unless a narrower local profiler is added.",
+            "This run does not improve retrieval, reranking, prompts, chunking, or verification.",
+        ],
+    }
+    assert_redacted_summary_safe(payload)
+    return payload
+
+
+def assert_redacted_summary_safe(payload: Mapping[str, Any]) -> None:
+    violations: list[str] = []
+
+    def walk(value: Any, trail: str) -> None:
+        if isinstance(value, Mapping):
+            for key, item in value.items():
+                key_text = str(key)
+                if key_text in FORBIDDEN_REDACTED_KEYS:
+                    violations.append(f"{trail}.{key_text}".strip("."))
+                walk(item, f"{trail}.{key_text}".strip("."))
+        elif isinstance(value, list):
+            for index, item in enumerate(value):
+                walk(item, f"{trail}[{index}]")
+
+    walk(payload, "")
+    if violations:
+        raise PrivateRealEvalError(
+            "redacted summary includes forbidden private fields: " + ", ".join(violations)
+        )
+
+
+def write_json(path: Path, payload: Mapping[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+
+
+def write_private_run_metadata(
+    run_dir: Path,
+    validation: Mapping[str, Any],
+    *,
+    build_command: Sequence[str] | None,
+    elapsed_ms: float,
+) -> None:
+    payload = {
+        "schema_version": 1,
+        "benchmark_type": "private_real_eval",
+        "local_only": True,
+        "validation": {
+            "document_count": validation.get("document_count"),
+            "question_count": validation.get("question_count"),
+            "answerable_count": validation.get("answerable_count"),
+            "unanswerable_count": validation.get("unanswerable_count"),
+            "index_exists_before_run": validation.get("index_exists"),
+        },
+        "index_build_command": list(build_command) if build_command else None,
+        "elapsed_ms": round(float(elapsed_ms), 3),
+    }
+    write_json(run_dir / "private_real_eval_run.json", payload)
+
+
+def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Run local/private real-data eval for the Naive RAG baseline."
+    )
+    parser.add_argument(
+        "--config",
+        default="configs/eval/private_real_eval.local.yaml",
+        help="Local private config copied from configs/eval/private_real_eval.template.yaml.",
+    )
+    parser.add_argument("--run-id", default=None, help="Optional deterministic run id.")
+    parser.add_argument(
+        "--validate-only",
+        action="store_true",
+        help="Validate local private inputs without building/running.",
+    )
+    parser.add_argument(
+        "--redacted-summary-path",
+        default=None,
+        help="Optional safe aggregate summary path. Defaults to <output_dir>/<run_id>/redacted_summary.json.",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    args = parse_args(argv)
+    config_path = repo_path(args.config)
+    try:
+        config = load_private_config(config_path)
+        validation = validate_private_inputs(config)
+        print(
+            "[OK] Private real-eval inputs validated: "
+            f"{validation['document_count']} docs, "
+            f"{validation['question_count']} questions "
+            f"({validation['answerable_count']} answerable, "
+            f"{validation['unanswerable_count']} unanswerable)"
+        )
+        if args.validate_only:
+            return 0
+        build_command = build_or_load_private_index(config, validation)
+        run_id = args.run_id or str(config.get("run_id") or "").strip() or default_run_id()
+        contract_path = write_contract_config(config, validation, run_id=run_id)
+        started = time.perf_counter()
+        run_dir = run_from_config(
+            contract_path,
+            output_root_override=Path(validation["output_dir"]),
+            run_id_override=run_id,
+        )
+        elapsed_ms = (time.perf_counter() - started) * 1000.0
+        metrics_path = run_dir / "metrics.json"
+        metrics_payload = json.loads(metrics_path.read_text(encoding="utf-8"))
+        write_private_run_metadata(
+            run_dir, validation, build_command=build_command, elapsed_ms=elapsed_ms
+        )
+        redacted_summary = build_redacted_summary(
+            metrics_payload,
+            validation,
+            config,
+            elapsed_ms=elapsed_ms,
+        )
+        summary_path = (
+            repo_path(args.redacted_summary_path)
+            if args.redacted_summary_path
+            else run_dir / "redacted_summary.json"
+        )
+        write_json(summary_path, redacted_summary)
+    except Exception as exc:
+        print(f"[ERROR] Private real-eval failed: {exc}", file=sys.stderr)
+        return 2
+
+    print(f"[OK] Private Naive RAG eval artifacts written: {run_dir}")
+    print(f"[OK] Redacted summary written: {summary_path}")
+    print("[INFO] No RAG performance improvement was implemented by this runner.")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
