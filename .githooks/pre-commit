@@ -60,6 +60,10 @@ ALLOWED_PATTERNS=(
   # 0059 failure surface for audit verifiability. Aggregate-only — counts/
   # cardinalities only, no text/doc_id/chunk_id.
   '^reports/real100/failure_slices\.aggregate\.json$'
+  # Issue #1451 — verifier_false_negative overlap analysis (script:
+  # scripts/render_verifier_false_negative_overlap.py). Aggregate-only
+  # counts/buckets for retrieval/citation/unsupported overlap.
+  '^reports/real100/verifier_false_negative_overlap\.aggregate\.json$'
   # Issue #1021 — variance source inspection (script:
   # scripts/measure_variance.py, ADR 0059 Issue J audit). N=5 same-HEAD
   # runs → per-category mean/std/min/max + per-case stability + transition

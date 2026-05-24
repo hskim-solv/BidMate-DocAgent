@@ -81,6 +81,7 @@ RFP 문서 이해를 위한 DocAgent 시스템. **입찰/RFP 문서 인텔리전
 - `bash scripts/test.sh` — `pytest -q`, CI gate 와 동일
 - `make check-branch` — 현재 브랜치 ADR 0007 검증
 - `make real-eval` + `make real-eval-delta` — 비공개 100-doc eval, load-bearing 변경 시 필수
+- private 관련 로컬 입력/산출물(비공개 config, data, index, `reports/real100/eval_summary.json`, raw run artifact 등)은 현재 worktree 에서 재탐색하지 말고 `/Users/hskim/Desktop/projects/BidMate-DocAgent/` 아래에서 찾는다. 예: real100 summary 는 `/Users/hskim/Desktop/projects/BidMate-DocAgent/reports/real100/eval_summary.json` 를 `--summary` 입력으로 사용
 - `make ship-start TITLE="..." TYPE=chore` — issue 생성 + ADR 0007 브랜치 생성 front door.
 - `make ship-arm` — Stop-hook 자동 ship 파이프라인 (commit → push → PR → CI/review gate → squash-merge). 게이트/단계/`STACKED=ack` 규율: [`docs/operations/auto-ship.md`](docs/operations/auto-ship.md)
 - `make ship-review-gate PR=<N>` — requested changes / unresolved review thread 가 merge 를 막아야 하는지 수동 확인.

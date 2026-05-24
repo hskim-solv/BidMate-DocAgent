@@ -1,0 +1,160 @@
+{
+  "failure_category_by_answerability": {
+    "context_dilution": {
+      "answerable": 0,
+      "unanswerable": 0
+    },
+    "generator_hallucination": {
+      "answerable": 1,
+      "unanswerable": 0
+    },
+    "planner_under_decomposition": {
+      "answerable": 3,
+      "unanswerable": 0
+    },
+    "retrieval_miss": {
+      "answerable": 67,
+      "unanswerable": 0
+    },
+    "unknown": {
+      "answerable": 28,
+      "unanswerable": 5
+    },
+    "verifier_false_negative": {
+      "answerable": 0,
+      "unanswerable": 76
+    },
+    "verifier_false_positive": {
+      "answerable": 0,
+      "unanswerable": 0
+    }
+  },
+  "failure_category_counts": {
+    "context_dilution": 0,
+    "generator_hallucination": 1,
+    "planner_under_decomposition": 3,
+    "retrieval_miss": 67,
+    "unknown": 33,
+    "verifier_false_negative": 76,
+    "verifier_false_positive": 0
+  },
+  "num_predictions": 221,
+  "schema_version": 1,
+  "source": {
+    "basename": "eval_summary.json",
+    "location": "external_private/eval_summary.json",
+    "location_redacted": true,
+    "sha256_12": "714c08f9996d"
+  },
+  "verifier_false_negative": {
+    "decision": "mixed",
+    "decision_inputs": {
+      "citation_missing_rate": 1.0,
+      "expected_in_evidence_rate": 0.2895,
+      "independent_verifier_threshold": 0.2,
+      "retrieval_fault_signal_rate": 0.6974,
+      "retrieval_first_threshold": 0.6,
+      "unsupported_answer_rate": 0.0921
+    },
+    "overlap": {
+      "citation_missing": {
+        "citation_claim_coverage_reason": {
+          "missing": 76,
+          "missing_claim_citation": 0,
+          "no_claims": 0,
+          "ok": 0,
+          "other": 0
+        },
+        "count": 76,
+        "empty_citation_count": 76
+      },
+      "low_top_score": {
+        "buckets": {
+          "above_low_top_score": 0,
+          "low_top_score": 0,
+          "score_missing": 76
+        },
+        "count": 0,
+        "threshold": null
+      },
+      "pairwise_intersections": {
+        "citation_missing+unsupported_answer": 7,
+        "low_top_score+citation_missing": 0,
+        "low_top_score+unsupported_answer": 0,
+        "retrieval_fault_signal+citation_missing": 53,
+        "retrieval_fault_signal+low_top_score": 0,
+        "retrieval_fault_signal+unsupported_answer": 5
+      },
+      "retrieval_fault_signal": {
+        "components": {
+          "expected_chunk_missing": 0,
+          "expected_doc_missing": 53,
+          "low_top_score": 0,
+          "partial_or_zero_chunk_recall": 0
+        },
+        "count": 53
+      },
+      "retrieval_miss_label_overlap": {
+        "count": 0,
+        "expected_zero_due_to_first_match_wins": true
+      },
+      "unsupported_answer": {
+        "claim_citation_error_codes": {
+          "citation_not_in_evidence": 0,
+          "claim_missing_citation": 0,
+          "claim_text_not_supported_by_citation": 7,
+          "expected_claim_doc_mismatch": 0,
+          "expected_claim_missing": 0,
+          "expected_claim_terms_missing": 0,
+          "other": 0
+        },
+        "count": 7
+      }
+    },
+    "slices": {
+      "evidence_cardinality": {
+        "empty": 0,
+        "multi_doc": 62,
+        "single_doc": 14
+      },
+      "expected_cardinality": {
+        "0": 1,
+        "1": 75,
+        "2": 0,
+        "3plus": 0
+      },
+      "expected_coverage": {
+        "expected_in_evidence": 22,
+        "expected_not_in_evidence": 53,
+        "no_expected": 1
+      },
+      "hardcase": {
+        "ambiguous_query": 1,
+        "distractor_heavy": 4,
+        "long_context": 5,
+        "multi_hop": 2,
+        "no_answer": 75,
+        "other": 0,
+        "untagged": 1
+      },
+      "query_type": {
+        "abstention": 76,
+        "comparison": 0,
+        "follow_up": 0,
+        "other": 0,
+        "single_doc": 0
+      },
+      "retry_count": {
+        "0": 14,
+        "1": 61,
+        "2": 1,
+        "3plus": 0
+      },
+      "specificity": {
+        "keyword_hit": 65,
+        "no_hit": 11
+      }
+    },
+    "total": 76
+  }
+}
