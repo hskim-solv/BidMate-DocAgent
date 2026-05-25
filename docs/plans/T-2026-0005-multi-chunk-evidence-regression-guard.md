@@ -3,7 +3,7 @@
 - Status: review
 - Owner role: Planner -> Implementer -> Benchmark Auditor -> Reviewer
 - Related task: `tasks/queue.md::T-2026-0005`
-- Related issue / PR: #1484 / PR TBD
+- Related issue / PR: #1484 / #1491
 - Related ADR: [ADR 0001](../adr/0001-preserve-naive-baseline.md), [ADR 0005](../adr/0005-eval-split-public-synthetic-private-local.md), [ADR 0058](../adr/0058-phase35-mode-winner.md), [ADR 0076](../adr/0076-multi-chunk-evidence-failure-analysis-surface.md)
 - Created: 2026-05-25
 - Last updated: 2026-05-25
@@ -122,20 +122,20 @@ Attack claim wording, additive-only output shape, baseline preservation, and whe
 - Lifecycle stage: stacked draft PR preparation
 - Branch / worktree: eval/issue-1484-multi-chunk-evidence-profile / /Users/hskim/.codex/worktrees/1484/BidMate-DocAgent
 - Base branch: fix/issue-1485-benchmark-integrity-followup (#1488)
-- Issue / PR: #1484 / PR TBD
+- Issue / PR: #1484 / #1491
 - Task: T-2026-0005
 - Plan: docs/plans/T-2026-0005-multi-chunk-evidence-regression-guard.md
-- Current status: split from the mixed integration worktree onto a stacked issue-linked branch based on #1488; focused validation passed and draft PR publication is next.
+- Current status: split from the mixed integration worktree onto a stacked issue-linked branch based on #1488; focused validation passed and draft PR #1491 is open.
 - Files touched: docs/plans/T-2026-0005-multi-chunk-evidence-regression-guard.md, eval/naive_rag/benchmark.py, tests/test_naive_rag_benchmark_v1.py
 - Decisions made: stack this PR on #1488 because both changes touch `eval/naive_rag/benchmark.py` and `tests/test_naive_rag_benchmark_v1.py`; keep this checkpoint additive and observability-only.
 - Commands run: git worktree add -b eval/issue-1484-multi-chunk-evidence-profile /Users/hskim/.codex/worktrees/1484/BidMate-DocAgent origin/fix/issue-1485-benchmark-integrity-followup; git diff origin/fix/issue-1485-benchmark-integrity-followup -- eval/naive_rag/benchmark.py tests/test_naive_rag_benchmark_v1.py | git -C /Users/hskim/.codex/worktrees/1484/BidMate-DocAgent apply; git diff --no-index ... plan copy via mktemp + git apply; python3 -m pytest -q tests/test_render_multi_chunk_evidence_failures.py tests/test_naive_rag_benchmark_v1.py; python3 -m py_compile scripts/render_multi_chunk_evidence_failures.py rag_retrieval.py rag_core.py eval/naive_rag/benchmark.py; python3 scripts/check_doc_links.py --check-all; git diff --check; make check-branch; python3 -m eval.naive_rag.benchmark --config configs/eval/benchmark_naive_rag_v1.yaml --run-id integration-profile-check --output-root "$tmpdir".
-- Results: branch split completed; all listed validation commands exited 0. Observed public fixture profile: case_count=7, same_doc=7, all_gold_retrieved=6, partial_gold_retrieved=1, top10_failure_count=1, top10_not_observable_count=0.
+- Results: branch split completed; all listed validation commands exited 0; draft PR #1491 opened. Observed public fixture profile: case_count=7, same_doc=7, all_gold_retrieved=6, partial_gold_retrieved=1, top10_failure_count=1, top10_not_observable_count=0.
 - Validation evidence: focused pytest passed; py_compile passed; doc link check reported no broken links; diff check passed; benchmark entrypoint generated `multi_chunk_evidence_profile` under a mktemp output directory.
 - Eval surface: public synthetic benchmark.
 - Evidence artifacts: none.
 - Blockers: none.
 - Open risks: stacked PR depends on #1488; wording must remain public synthetic benchmark observability only, not retrieval quality improvement.
-- Next action: commit, push, and open draft PR for #1484 based on #1488.
+- Next action: review stacked draft PR #1491 after #1488, then retarget/rebase as needed.
 - Next safe command: python3 -m pytest -q tests/test_render_multi_chunk_evidence_failures.py tests/test_naive_rag_benchmark_v1.py
 - Reviewer focus: additive-only metrics payload, current fixture bucket assertions, no retrieval/scoring behavior drift, no private real-eval or performance claim.
 
