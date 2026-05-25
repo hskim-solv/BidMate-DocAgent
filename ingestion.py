@@ -688,6 +688,10 @@ def build_sections_with_native_tables(
     ``native_tables`` parameter is retained for signature compatibility
     but is asserted empty — ADR 0049 supersedes the per-table-section
     surface ADR 0036 introduced.
+
+    TODO(page-aware parser contract): kordoc/HWP and PDF text extraction stays
+    page-blind here until the adapter can emit section-level ``page_span`` or
+    ``regions[].page_number``. Do not infer pages from plain text offsets.
     """
     return [{"heading": "본문", "text": body_text}]
 

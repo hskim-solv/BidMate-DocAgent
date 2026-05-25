@@ -1,0 +1,34 @@
+{
+  "doc_id": "synthetic-page-contract-doc",
+  "title": "Synthetic Page Contract RFP",
+  "agency": "Synthetic Public Agency",
+  "project": "Page Metadata Contract Validation",
+  "metadata": {
+    "document_type": "public_synthetic_page_contract",
+    "file_format": "pdf",
+    "text_source": "visual_parsing_v2",
+    "synthetic": true
+  },
+  "sections": [
+    {
+      "heading": "1. Scope",
+      "section_path": ["1. Scope"],
+      "text": "This public synthetic section validates page_span propagation.",
+      "page_span": [1, 2]
+    },
+    {
+      "heading": "2. Region Evidence",
+      "section_path": ["2. Region Evidence"],
+      "text": "This public synthetic section validates region page metadata.",
+      "regions": [
+        {
+          "page_number": 3,
+          "bbox": [10.0, 20.0, 110.0, 160.0],
+          "source": "synthetic_fixture",
+          "type": "text",
+          "block_id": "synthetic-page-contract-doc::p003::b001"
+        }
+      ]
+    }
+  ]
+}

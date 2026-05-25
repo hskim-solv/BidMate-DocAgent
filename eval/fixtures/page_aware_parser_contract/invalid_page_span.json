@@ -1,0 +1,15 @@
+{
+  "doc_id": "synthetic-page-contract-invalid-span",
+  "title": "Synthetic Invalid Page Span",
+  "metadata": {
+    "document_type": "public_synthetic_page_contract",
+    "synthetic": true
+  },
+  "sections": [
+    {
+      "heading": "Invalid Span",
+      "text": "This public synthetic section has malformed page metadata.",
+      "page_span": [4, 2]
+    }
+  ]
+}

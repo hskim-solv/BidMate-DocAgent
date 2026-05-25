@@ -12,6 +12,12 @@ chunking, reranker, or answer runtime behavior.
 
 Single recommendation: **full re-index** after page-aware parser output exists.
 
+Phase A is now explicitly contract/adapter/test/docs only. It adds the
+page-aware parser output contract documented in
+[`page_aware_parser_contract.md`](page_aware_parser_contract.md), but does not
+perform a full re-index and does not change retrieval, verifier, prompt,
+reranker, answer generation, citation selection, or other RAG runtime behavior.
+
 ## Current Boundary
 
 | boundary | current page metadata state | readiness implication |
@@ -23,6 +29,7 @@ Single recommendation: **full re-index** after page-aware parser output exists.
 | index build payload | `index.json` schema v2 can store optional chunk/parent page metadata. | Re-index is required once parser output is page-aware. |
 | eval summary rendering | Citation page/region coverage and precision aggregates already exist. | Re-evaluation can stay aggregate-only. |
 | citation renderer | `make_citation()` already propagates optional `regions` and `page_span`. | No citation selection or answer behavior change is required. |
+| parser output contract | `sections[].page_span` and `sections[].regions[].page_number` now have a fail-loud validation surface. | Re-index remains blocked until validated parser output coverage is greater than zero. |
 
 ## Recoverability
 
@@ -54,6 +61,8 @@ Phase A: restore page metadata only.
 - Run `scripts/page_metadata_recovery_audit.py` against local private index and optional local artifacts.
 - Keep outputs aggregate-only and commit no raw private text, evidence, filenames, `doc_id`, `chunk_id`, or local paths.
 - Rebuild a page-aware index only after parser output has `sections[].page_span` or `sections[].regions`.
+- Validate parser section output with `parser_page_metadata_contract.py`; malformed page metadata fails loudly, while missing page metadata is allowed and counted as uncovered.
+- Treat Phase A as contract/adapter/test/docs only. Full HWP/PDF parsing and full re-index remain follow-up work.
 
 Phase B: page-aware chunk serialization.
 
@@ -76,6 +85,7 @@ Phase D: optional visual/table-aware ingestion.
 ## Readiness Checks
 
 - `page_metadata_coverage_gt_0`: at least one chunk has `page_span` or `regions.page_number`.
+- `parser_output_page_metadata_coverage_gt_0`: at least one parser section has valid `page_span` or `regions.page_number`.
 - `chunk_page_span_integrity`: page spans are valid and region pages do not fall outside spans.
 - `citation_renderer_compatible`: existing renderer can propagate page metadata without behavior changes.
 - `no_private_path_leakage`: committed artifacts omit exact local paths and filenames.

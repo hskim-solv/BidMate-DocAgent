@@ -1,0 +1,22 @@
+{
+  "doc_id": "synthetic-page-contract-invalid-region",
+  "title": "Synthetic Invalid Region Page",
+  "metadata": {
+    "document_type": "public_synthetic_page_contract",
+    "synthetic": true
+  },
+  "sections": [
+    {
+      "heading": "Invalid Region",
+      "text": "This public synthetic section has a region outside its page span.",
+      "page_span": [2, 2],
+      "regions": [
+        {
+          "page_number": 3,
+          "bbox": [10.0, 20.0, 110.0, 160.0],
+          "source": "synthetic_fixture"
+        }
+      ]
+    }
+  ]
+}

@@ -18,6 +18,12 @@ import re
 import sys
 from typing import Any, Iterable, Mapping, Sequence
 
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from parser_page_metadata_contract import classify_parser_source_group
+
 
 SAFE_LABEL_RE = re.compile(r"^[A-Za-z0-9_.:-]+$")
 PAGE_LIKE_KEY_RE = re.compile(r"page|bbox|region", re.IGNORECASE)
@@ -402,6 +408,13 @@ def source_group_coverage(
             "regions_bbox_coverage": chunk_block["regions_bbox_coverage"],
             "parent_any_page_metadata_coverage": parent_block["any_page_metadata_coverage"],
         }
+        result["page_metadata_capability"] = classify_parser_source_group(
+            file_format=result["file_format"],
+            text_source=result["text_source"],
+            document_type=result["document_type"],
+            any_page_metadata_coverage=result["any_page_metadata_coverage"],
+            parent_any_page_metadata_coverage=result["parent_any_page_metadata_coverage"],
+        )
         result["decision"] = _group_decision(result)
         results.append(result)
     return results
@@ -531,6 +544,7 @@ def visual_artifact_audit(artifact_dir: Path | None) -> dict[str, Any]:
                 blocks_with_page += int(isinstance(block.get("page_number"), int))
                 blocks_with_bbox += int(_is_bbox(block.get("bbox")))
 
+    section_page_coverage = _rate(sections_with_page, section_count)
     return {
         "present": True,
         "status": "ok",
@@ -538,10 +552,15 @@ def visual_artifact_audit(artifact_dir: Path | None) -> dict[str, Any]:
         "page_count": page_count,
         "section_count": section_count,
         "sections_with_any_page_metadata_count": sections_with_page,
-        "section_page_metadata_coverage": _rate(sections_with_page, section_count),
+        "section_page_metadata_coverage": section_page_coverage,
         "blocks_with_page_number_count": blocks_with_page,
         "blocks_with_bbox_count": blocks_with_bbox,
         "has_recoverable_page_metadata": sections_with_page > 0 or blocks_with_page > 0,
+        "page_metadata_capability": classify_parser_source_group(
+            text_source="visual_artifacts",
+            document_type="visual_artifacts",
+            any_page_metadata_coverage=section_page_coverage,
+        ),
     }
 
 
@@ -709,6 +728,7 @@ def render_markdown(report: Mapping[str, Any]) -> str:
             f"page_span=`{group['page_span_coverage']}`, "
             f"regions.page_number=`{group['regions_page_number_coverage']}`, "
             f"regions.bbox=`{group['regions_bbox_coverage']}`, "
+            f"capability=`{group.get('page_metadata_capability')}`, "
             f"decision=`{group['decision']}`"
         )
     lines.extend(
