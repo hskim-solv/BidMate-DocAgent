@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -90,6 +91,96 @@ def test_benchmark_dataset_validator_reports_counts() -> None:
     assert dataset["answerable_count"] == 40
     assert dataset["unanswerable_count"] == 15
     assert summary["gold_evidence_summary"]["num_evidence_records"] == 47
+
+
+def test_benchmark_dataset_validator_reports_corpus_only_index_boundary() -> None:
+    summary = validate_dataset(BENCHMARK_CONFIG)
+    boundary = summary["index_build_boundary"]
+
+    assert summary["errors"] == []
+    assert boundary["status"] == "pass"
+    assert boundary["surface"] == "public_synthetic_benchmark"
+    assert boundary["input_kind"] == "corpus_chunks_jsonl"
+    assert boundary["allowed_input_path"] == "data/eval/benchmark/corpus_chunks_v1.jsonl"
+    assert boundary["configured_input_path"] == "data/eval/benchmark/corpus_chunks_v1.jsonl"
+    assert boundary["input_matches_corpus_path"] is True
+    assert boundary["command_uses_corpus_path"] is True
+    assert boundary["command_references_question_or_gold_paths"] is False
+    assert boundary["corpus_rows_with_query_or_gold_fields"] == 0
+    assert boundary["prohibited_corpus_fields_detected"] == []
+
+
+def test_benchmark_dataset_validator_rejects_index_build_from_questions(tmp_path: Path) -> None:
+    config = _yaml(BENCHMARK_CONFIG)
+    config["index_build"]["input_path"] = config["questions_path"]
+    config_path = tmp_path / "benchmark_naive_rag_v1.yaml"
+    config_path.write_text(
+        yaml.safe_dump(config, allow_unicode=True, sort_keys=False),
+        encoding="utf-8",
+    )
+
+    summary = validate_dataset(config_path)
+
+    assert summary["index_build_boundary"]["status"] == "fail"
+    assert "index_build.input_path must match corpus_path" in summary["errors"]
+
+
+def test_benchmark_dataset_validator_parses_actual_corpus_arg(tmp_path: Path) -> None:
+    config = _yaml(BENCHMARK_CONFIG)
+    config["index_build"]["command"] = (
+        "python3 -m eval.naive_rag.build_benchmark_index "
+        f"--corpus {config['questions_path']} "
+        f"--note {config['corpus_path']} "
+        "--output data/eval/benchmark/index_v1"
+    )
+    config_path = tmp_path / "benchmark_naive_rag_v1.yaml"
+    config_path.write_text(
+        yaml.safe_dump(config, allow_unicode=True, sort_keys=False),
+        encoding="utf-8",
+    )
+
+    summary = validate_dataset(config_path)
+
+    assert summary["index_build_boundary"]["status"] == "fail"
+    assert summary["index_build_boundary"]["command_uses_corpus_path"] is False
+    assert summary["index_build_boundary"]["command_corpus_args"] == [
+        "data/eval/benchmark/rag_questions_v1.jsonl"
+    ]
+    assert (
+        "index_build.command must pass exactly one --corpus argument matching corpus_path"
+        in summary["errors"]
+    )
+
+
+def test_benchmark_dataset_validator_rejects_label_fields_in_corpus_chunks(tmp_path: Path) -> None:
+    source = ROOT / "data" / "eval" / "benchmark" / "corpus_chunks_v1.jsonl"
+    rows = [json.loads(line) for line in source.read_text(encoding="utf-8").splitlines()]
+    rows[0]["expected_answer"] = "leaked label"
+    contaminated = tmp_path / "corpus_chunks_v1.jsonl"
+    contaminated.write_text(
+        "\n".join(json.dumps(row, ensure_ascii=False) for row in rows) + "\n",
+        encoding="utf-8",
+    )
+    config = _yaml(BENCHMARK_CONFIG)
+    config["corpus_path"] = str(contaminated)
+    config["index_build"]["input_path"] = str(contaminated)
+    config["index_build"]["command"] = (
+        "python3 -m eval.naive_rag.build_benchmark_index "
+        f"--corpus {contaminated} --output data/eval/benchmark/index_v1"
+    )
+    config_path = tmp_path / "benchmark_naive_rag_v1.yaml"
+    config_path.write_text(
+        yaml.safe_dump(config, allow_unicode=True, sort_keys=False),
+        encoding="utf-8",
+    )
+
+    summary = validate_dataset(config_path)
+    boundary = summary["index_build_boundary"]
+
+    assert boundary["status"] == "fail"
+    assert boundary["corpus_rows_with_query_or_gold_fields"] == 1
+    assert boundary["prohibited_corpus_fields_detected"] == ["expected_answer"]
+    assert "corpus_path rows must not contain query/gold label fields" in summary["errors"]
 
 
 def test_benchmark_index_can_be_built_from_corpus_chunks_v1(tmp_path: Path) -> None:
