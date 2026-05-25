@@ -54,6 +54,21 @@ REQUIRED_OUTPUTS = (
 GOLD_DERIVED_FIELDS = frozenset(
     {"expected_terms", "required_terms", "derived_from_expected_terms"}
 )
+MULTI_CHUNK_DOC_CARDINALITY_BUCKETS = ("same_doc", "multi_doc", "unknown")
+MULTI_CHUNK_RETRIEVAL_OUTCOME_BUCKETS = (
+    "all_gold_retrieved",
+    "partial_gold_retrieved",
+    "no_gold_retrieved",
+    "not_observable",
+)
+MULTI_CHUNK_TOP10_FAILURE_MODE_BUCKETS = (
+    "same_doc_single_gold_hit",
+    "same_doc_multi_gold_partial_hit",
+    "multi_doc_partial_hit",
+    "same_document_distractor_without_gold",
+    "cross_document_distractor_only",
+    "not_observable",
+)
 EXPECTED_INDEX_LEAKAGE_GUARD = "query_and_gold_label_files_not_read"
 
 
@@ -302,6 +317,119 @@ def _compat_answer_metrics(
     }
 
 
+def _empty_bucket_counts(keys: tuple[str, ...]) -> dict[str, int]:
+    return {key: 0 for key in keys}
+
+
+def _multi_chunk_doc_cardinality(gold_evidence: list[dict[str, Any]]) -> str:
+    doc_ids = unique_ids([str(item.get("doc_id") or "") for item in gold_evidence])
+    if len(doc_ids) == 1:
+        return "same_doc"
+    if len(doc_ids) > 1:
+        return "multi_doc"
+    return "unknown"
+
+
+def _multi_chunk_evidence_profile_for_case(
+    gold_evidence: list[dict[str, Any]],
+    retrieved_chunks: list[dict[str, Any]],
+    *,
+    k: int = 10,
+) -> dict[str, Any] | None:
+    gold_chunk_ids = unique_ids([str(item.get("chunk_id") or "") for item in gold_evidence])
+    if len(gold_chunk_ids) < 2:
+        return None
+
+    top_retrieved = retrieved_chunks[:k]
+    retrieved_chunk_ids = unique_ids(
+        [str(item.get("chunk_id") or "") for item in top_retrieved]
+    )
+    gold_doc_ids = set(unique_ids([str(item.get("doc_id") or "") for item in gold_evidence]))
+    retrieved_doc_ids = set(
+        unique_ids([str(item.get("doc_id") or "") for item in top_retrieved])
+    )
+    gold_hits = set(gold_chunk_ids) & set(retrieved_chunk_ids)
+    doc_cardinality = _multi_chunk_doc_cardinality(gold_evidence)
+
+    if len(gold_hits) == len(gold_chunk_ids):
+        retrieval_outcome = "all_gold_retrieved"
+    elif len(top_retrieved) < k:
+        retrieval_outcome = "not_observable"
+    elif gold_hits:
+        retrieval_outcome = "partial_gold_retrieved"
+    else:
+        retrieval_outcome = "no_gold_retrieved"
+
+    failure_mode = None
+    if retrieval_outcome == "not_observable":
+        failure_mode = "not_observable"
+    elif retrieval_outcome == "partial_gold_retrieved":
+        if doc_cardinality == "same_doc":
+            failure_mode = (
+                "same_doc_single_gold_hit"
+                if len(gold_hits) == 1
+                else "same_doc_multi_gold_partial_hit"
+            )
+        elif doc_cardinality == "multi_doc":
+            failure_mode = "multi_doc_partial_hit"
+        else:
+            failure_mode = "not_observable"
+    elif retrieval_outcome == "no_gold_retrieved":
+        if not gold_doc_ids or not retrieved_doc_ids:
+            failure_mode = "not_observable"
+        elif retrieved_doc_ids.isdisjoint(gold_doc_ids):
+            failure_mode = "cross_document_distractor_only"
+        else:
+            failure_mode = "same_document_distractor_without_gold"
+
+    return {
+        "gold_chunk_count": len(gold_chunk_ids),
+        "gold_doc_cardinality": doc_cardinality,
+        "retrieval_outcome_at_10": retrieval_outcome,
+        "top10_failure_mode": failure_mode,
+    }
+
+
+def _summarize_multi_chunk_evidence_profiles(
+    case_profiles: list[dict[str, Any]],
+) -> dict[str, Any]:
+    summary = {
+        "case_count": len(case_profiles),
+        "top_k": 10,
+        "gold_doc_cardinality": _empty_bucket_counts(MULTI_CHUNK_DOC_CARDINALITY_BUCKETS),
+        "retrieval_outcome_at_10": _empty_bucket_counts(MULTI_CHUNK_RETRIEVAL_OUTCOME_BUCKETS),
+        "top10_failure_count": 0,
+        "top10_not_observable_count": 0,
+        "top10_failure_modes": _empty_bucket_counts(MULTI_CHUNK_TOP10_FAILURE_MODE_BUCKETS),
+        "definition": (
+            "answerable benchmark cases with two or more explicit gold chunk ids; "
+            "closed buckets only, no question text or document ids"
+        ),
+    }
+    for profile in case_profiles:
+        doc_bucket = str(profile.get("gold_doc_cardinality") or "unknown")
+        if doc_bucket not in summary["gold_doc_cardinality"]:
+            doc_bucket = "unknown"
+        summary["gold_doc_cardinality"][doc_bucket] += 1
+
+        outcome = str(profile.get("retrieval_outcome_at_10") or "not_observable")
+        if outcome not in summary["retrieval_outcome_at_10"]:
+            outcome = "not_observable"
+        summary["retrieval_outcome_at_10"][outcome] += 1
+
+        failure_mode = profile.get("top10_failure_mode")
+        if failure_mode:
+            mode = str(failure_mode)
+            if mode not in summary["top10_failure_modes"]:
+                mode = "not_observable"
+            summary["top10_failure_modes"][mode] += 1
+            if mode == "not_observable":
+                summary["top10_not_observable_count"] += 1
+            else:
+                summary["top10_failure_count"] += 1
+    return summary
+
+
 def _mean(metrics: dict[str, dict[str, Any]], key: str) -> float | None:
     block = metrics.get(key) or {}
     value = block.get("mean")
@@ -516,6 +644,7 @@ def run_from_config(
     answer_case_metrics: list[dict[str, Any]] = []
     latency_case_metrics: list[dict[str, float | None]] = []
     primary_failures: list[str | None] = []
+    multi_chunk_case_profiles: list[dict[str, Any]] = []
 
     for question in questions:
         qid = str(question["question_id"])
@@ -559,6 +688,13 @@ def run_from_config(
             citations=citations,
         )
         compat_metric = _compat_answer_metrics(rule_metric, citation_metric)
+        multi_chunk_profile = _multi_chunk_evidence_profile_for_case(
+            gold_evidence,
+            retrieved_chunks,
+            k=10,
+        )
+        if multi_chunk_profile is not None:
+            multi_chunk_case_profiles.append(multi_chunk_profile)
         primary_failure, all_failures = classify_failure(
             question=question,
             gold_chunk_ids=gold_chunk_ids,
@@ -715,6 +851,9 @@ def run_from_config(
         },
         "failure_counts": count_failures(primary_failures),
         "failure_taxonomy": list(ALL_FAILURE_TYPES),
+        "multi_chunk_evidence_profile": _summarize_multi_chunk_evidence_profiles(
+            multi_chunk_case_profiles
+        ),
         "artifact_paths": {name: _relative(path) for name, path in artifact_paths.items()},
     }
     metrics_payload["benchmark_validity_warnings"] = _warnings(metrics_payload)
