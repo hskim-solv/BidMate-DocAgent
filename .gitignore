@@ -178,6 +178,10 @@ reports/real100/history/*
 # raw eval_summary.json::case_results and index chunk text stay ignored.
 !reports/real100/difficulty_profile.md
 !reports/real100/difficulty_profile.aggregate.json
+# Multi-chunk retrieval strategy decision (script:
+# scripts/render_multi_chunk_retrieval_strategy.py). Aggregate-only decision
+# over the multi-chunk evidence failure aggregate; no raw case rows.
+!reports/real100/multi_chunk_retrieval_strategy.aggregate.json
 # Issue #1021 — variance source inspection (Issue J, ADR 0059 audit
 # follow-up, script: scripts/measure_variance.py). N=5 same-HEAD runs →
 # per-category mean/std/min/max + per-case stability + transition matrix.
