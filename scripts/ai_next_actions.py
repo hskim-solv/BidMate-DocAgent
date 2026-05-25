@@ -26,11 +26,12 @@ DEFAULT_OUT_MD = ROOT_DIR / "reports" / "ai_next_actions.md"
 DEFAULT_TASKS_DIR = ROOT_DIR / "reports" / "codex_tasks"
 
 CLASSIFICATION_ORDER = {
-    "blocked": 0,
-    "needs_private_delta": 1,
-    "ready_for_review": 2,
-    "failed_experiment": 3,
-    "next_experiment_candidate": 4,
+    "failed_experiment": 0,
+    "close_superseded": 1,
+    "blocked": 2,
+    "needs_private_delta": 3,
+    "ready_for_review": 4,
+    "next_experiment_candidate": 5,
 }
 FAILED_CHECK_CONCLUSIONS = {
     "ACTION_REQUIRED",
@@ -53,8 +54,25 @@ REQUIRED_PR_FIELDS = (
 PRIVATE_DELTA_RE = re.compile(r"(#1448|\b1448\b|private[-_\s]+delta)", re.IGNORECASE)
 LOAD_BEARING_RE = re.compile(r"(load[-_\s]+bearing|\b5b\b|real[-_\s]+data\s+delta)", re.IGNORECASE)
 NEGATIVE_EXPERIMENT_RE = re.compile(
-    r"(NO-GO|negative\s+delta|regression|failed\s+experiment)",
+    r"(NO-GO|not\s+claim[-\s]+ready|negative\s+delta|failed\s+experiment|"
+    r"\bregressed\b|materially\s+regress)",
     re.IGNORECASE,
+)
+STALE_SUPERSEDED_RE = re.compile(
+    r"(stale|superseded|obsolete|replaced\s+by|closed\s+by|do\s+not\s+merge|"
+    r"separate\s+smoke\s+eval\s+from\s+naive\s+rag\s+benchmark)",
+    re.IGNORECASE,
+)
+MAPPING_DOC_CANDIDATES = (
+    "docs/audits/retrieval-miss-inspection.md",
+    "docs/audits/variance-source-inspection.md",
+    "docs/adr/0075-normalized-failure-taxonomy.md",
+)
+REAL100_AGGREGATE_FILES = (
+    "failure_distribution.aggregate.json",
+    "failure_slices.aggregate.json",
+    "variance_measurement/aggregate.json",
+    "multi_chunk_evidence_failures.aggregate.json",
 )
 
 
@@ -155,6 +173,76 @@ def _failing_checks(pr: Mapping[str, Any]) -> list[str]:
         elif status == "COMPLETED" and conclusion and conclusion not in {"SUCCESS", "SKIPPED", "NEUTRAL"}:
             failed.append(name)
     return sorted(set(failed))
+
+
+def _nested_int(payload: Mapping[str, Any], path: Sequence[str]) -> int | None:
+    value: Any = payload
+    for key in path:
+        if not isinstance(value, Mapping):
+            return None
+        value = value.get(key)
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _nested_float(payload: Mapping[str, Any], path: Sequence[str]) -> float | None:
+    value: Any = payload
+    for key in path:
+        if not isinstance(value, Mapping):
+            return None
+        value = value.get(key)
+    return _as_float(value)
+
+
+def _retrieval_miss_mapping_fix_available(repo_root: Path = ROOT_DIR) -> bool:
+    """Return whether the retrieval_miss mapping audit is already covered.
+
+    The planner should not keep recommending a mapping audit when the delta
+    renderer distinguishes missing values from numeric zero and the docs pin
+    the retrieval_miss source/comparability contract.
+    """
+    try:
+        delta_text = (repo_root / "scripts" / "run_real_eval_delta.py").read_text(
+            encoding="utf-8"
+        )
+    except OSError:
+        return False
+    has_delta_handling = all(
+        token in delta_text
+        for token in (
+            "SAFE_FAILURE_CATEGORY_KEYS",
+            '"retrieval_miss"',
+            "failure_category_counts",
+        )
+    )
+    try:
+        helper_text = (repo_root / "scripts" / "_eval_delta.py").read_text(
+            encoding="utf-8"
+        )
+    except OSError:
+        helper_text = ""
+    has_missing_vs_zero = "if value is None" in helper_text and 'return "—"' in helper_text
+    doc_text_parts: list[str] = []
+    for rel in MAPPING_DOC_CANDIDATES:
+        try:
+            doc_text_parts.append((repo_root / rel).read_text(encoding="utf-8"))
+        except OSError:
+            continue
+    doc_text = "\n".join(doc_text_parts)
+    has_source_docs = all(
+        token in doc_text
+        for token in (
+            "retrieval_miss",
+            "failure_distribution.aggregate.json",
+            "failure_slices.aggregate.json",
+        )
+    )
+    has_comparability_docs = "cross-HEAD" in doc_text or "정본 baseline" in doc_text
+    return has_delta_handling and has_missing_vs_zero and has_source_docs and has_comparability_docs
 
 
 def _readiness_page_state(summary: Mapping[str, Any]) -> tuple[str, float | None]:
@@ -266,6 +354,39 @@ def _pr_work_items(prs: Sequence[Mapping[str, Any]], readiness_blocked: bool) ->
         if failing:
             blocked_reasons.append("failing checks: " + ", ".join(failing[:3]))
 
+        if NEGATIVE_EXPERIMENT_RE.search(text):
+            not_ready_reason = "PR reports NO-GO/not claim-ready failed measurement"
+            if merge_state:
+                not_ready_reason += f"; not merge-ready (merge state is {merge_state})"
+            items.append(
+                WorkItem(
+                    classification="failed_experiment",
+                    title=f"Do not merge {source}: {title}",
+                    reason=not_ready_reason,
+                    source=source,
+                    slug="failed-measurement-pr",
+                    goal="Convert the failed measurement into a documented no-go or a narrower follow-up task.",
+                    expected_evidence="The PR remains draft or explicitly documents NO-GO aggregate evidence without claiming improvement.",
+                    verification=f"gh pr view {number} --json isDraft,reviewDecision,mergeStateStatus,statusCheckRollup,body",
+                )
+            )
+            continue
+
+        if draft and STALE_SUPERSEDED_RE.search(text):
+            items.append(
+                WorkItem(
+                    classification="close_superseded",
+                    title=f"Close superseded {source}: {title}",
+                    reason="draft PR appears stale or superseded; do not treat as an unblock candidate",
+                    source=source,
+                    slug="close-superseded-pr",
+                    goal="Close or clearly mark the stale draft so active next-action planning is not polluted.",
+                    expected_evidence="The PR is closed, or its body explicitly points to the replacement work.",
+                    verification=f"gh pr view {number} --json state,isDraft,title,body,updatedAt",
+                )
+            )
+            continue
+
         if blocked_reasons:
             items.append(
                 WorkItem(
@@ -323,6 +444,107 @@ def _pr_work_items(prs: Sequence[Mapping[str, Any]], readiness_blocked: bool) ->
                 )
             )
     return items
+
+
+def _real100_aggregate_items(
+    real100_dir: Path,
+    *,
+    retrieval_miss_mapping_fix_done: bool = False,
+) -> list[WorkItem]:
+    items: list[WorkItem] = []
+    payloads: dict[str, Mapping[str, Any]] = {}
+    for rel in REAL100_AGGREGATE_FILES:
+        path = real100_dir / rel
+        try:
+            payload = _load_json(path)
+        except (OSError, json.JSONDecodeError):
+            continue
+        if isinstance(payload, Mapping):
+            payloads[rel] = payload
+
+    distribution = payloads.get("failure_distribution.aggregate.json", {})
+    slices = payloads.get("failure_slices.aggregate.json", {})
+    variance = payloads.get("variance_measurement/aggregate.json", {})
+    distribution_miss = _nested_int(distribution, ("failure_category_counts", "retrieval_miss"))
+    slices_miss = _nested_int(slices, ("categories", "retrieval_miss", "total"))
+    variance_miss = _nested_int(variance, ("category_stats", "retrieval_miss", "mean"))
+    observed = {
+        "failure_distribution": distribution_miss,
+        "failure_slices": slices_miss,
+        "variance": variance_miss,
+    }
+    present_values = {key: value for key, value in observed.items() if value is not None}
+    if len(set(present_values.values())) > 1 and not retrieval_miss_mapping_fix_done:
+        reason = ", ".join(f"{key}={value}" for key, value in present_values.items())
+        items.append(
+            WorkItem(
+                classification="next_experiment_candidate",
+                title="Audit retrieval_miss aggregate mapping",
+                reason=f"retrieval_miss aggregate signals differ: {reason}",
+                source=_repo_display(real100_dir),
+                slug="retrieval-miss-mapping-audit",
+                goal="Reconcile failure taxonomy and aggregate renderers before planning retrieval behavior changes.",
+                expected_evidence="A counts-only audit identifies whether the difference is taxonomy drift, run mismatch, or renderer mapping.",
+                verification="python3 -m pytest -q tests/test_render_failure_distribution.py tests/test_render_failure_slices.py tests/test_measure_variance_regression.py",
+            )
+        )
+
+    multi = payloads.get("multi_chunk_evidence_failures.aggregate.json", {})
+    multi_cases = _nested_int(multi, ("population", "multi_chunk_gold_cases"))
+    top10_failures = _nested_int(multi, ("population", "multi_chunk_top10_evidence_failures"))
+    unknown_limited = _nested_int(multi, ("expected_impact", "unknown_due_to_limited_depth"))
+    if multi_cases:
+        items.append(
+            WorkItem(
+                classification="next_experiment_candidate",
+                title="Use multi-chunk evidence analysis for the next retrieval follow-up",
+                reason=(
+                    f"multi-chunk aggregate is available: {top10_failures or 0}/"
+                    f"{multi_cases} top-10 failures; "
+                    f"{unknown_limited or 0} limited-depth cases"
+                ),
+                source=_repo_display(real100_dir / "multi_chunk_evidence_failures.aggregate.json"),
+                slug="multi-chunk-follow-up",
+                goal="Turn the aggregate multi-chunk evidence split into one scoped measurement follow-up.",
+                expected_evidence="The follow-up chooses pool/rerank, decomposition, or section-expansion measurement using aggregate counts only.",
+                verification="python3 -m pytest -q tests/test_render_multi_chunk_evidence_failures.py",
+            )
+        )
+
+    return items
+
+
+def _page_metadata_audit_item(index_dir: Path) -> tuple[WorkItem | None, str]:
+    try:
+        from scripts.page_metadata_recovery_audit import build_audit_report
+    except ImportError:
+        return None, "UNKNOWN"
+    report = build_audit_report(index_dir)
+    if not isinstance(report, Mapping):
+        return None, "UNKNOWN"
+    decision = report.get("decision")
+    gate = "UNKNOWN"
+    if isinstance(decision, Mapping):
+        raw_gate = decision.get("citation_page_claim_go_no_go")
+        if raw_gate in {"GO", "NO-GO"}:
+            gate = str(raw_gate)
+    coverage = _nested_float(report, ("index", "chunk", "any_page_metadata_coverage"))
+    if gate != "NO-GO":
+        return None, gate
+    coverage_text = "unknown" if coverage is None else f"{coverage:.1f}"
+    return (
+        WorkItem(
+            classification="failed_experiment",
+            title="Keep page-level citation claims disabled",
+            reason=f"page metadata recovery audit is NO-GO; chunk page coverage is {coverage_text}",
+            source=_repo_display(index_dir),
+            slug="page-level-citation-no-go",
+            goal="Keep page-level citation claims disabled until page metadata is recoverable from the index.",
+            expected_evidence="A fresh page metadata recovery audit reports non-zero page metadata coverage before any page-level claim.",
+            verification=f"python3 scripts/page_metadata_recovery_audit.py --index-dir {_repo_display(index_dir)} --format markdown",
+        ),
+        gate,
+    )
 
 
 def _read_report_items(reports: Sequence[Path]) -> list[WorkItem]:
@@ -443,6 +665,7 @@ def render_task_markdown(item: WorkItem) -> str:
             "",
             f"- Classification: `{item.classification}`",
             f"- Source: `{item.source}`",
+            f"- Reason: {item.reason}",
             "",
             "## Goal",
             "",
@@ -483,6 +706,8 @@ def build_plan(
     readiness_summaries: Sequence[Path],
     readiness_reports: Sequence[Path],
     pr_json: Path | None,
+    real100_dir: Path | None = None,
+    page_metadata_index_dir: Path | None = None,
 ) -> tuple[list[WorkItem], list[SourceState], str, bool]:
     sources: list[SourceState] = []
     items: list[WorkItem] = []
@@ -508,6 +733,23 @@ def build_plan(
     for path in sorted(readiness_reports, key=lambda p: _repo_display(p)):
         sources.append(SourceState("readiness_report", _repo_display(path), False))
     items.extend(_read_report_items(readiness_reports))
+
+    if real100_dir is not None:
+        sources.append(SourceState("real100_aggregates", _repo_display(real100_dir), False))
+        items.extend(
+            _real100_aggregate_items(
+                real100_dir,
+                retrieval_miss_mapping_fix_done=_retrieval_miss_mapping_fix_available(),
+            )
+        )
+
+    if page_metadata_index_dir is not None:
+        sources.append(SourceState("page_metadata_index", _repo_display(page_metadata_index_dir), False))
+        item, current_gate = _page_metadata_audit_item(page_metadata_index_dir)
+        if current_gate == "NO-GO" or page_gate == "UNKNOWN":
+            page_gate = current_gate
+        if item is not None:
+            items.append(item)
 
     if pr_json is not None:
         payload = _load_json(pr_json)
@@ -542,6 +784,18 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="Optional JSON array exported by gh pr list --json ...",
     )
+    parser.add_argument(
+        "--real100-dir",
+        type=Path,
+        default=None,
+        help="Optional directory containing public-safe reports/real100 aggregate JSON files.",
+    )
+    parser.add_argument(
+        "--page-metadata-index-dir",
+        type=Path,
+        default=None,
+        help="Optional index directory to audit for page metadata recovery.",
+    )
     parser.add_argument("--out-md", type=Path, default=DEFAULT_OUT_MD)
     parser.add_argument("--tasks-dir", type=Path, default=DEFAULT_TASKS_DIR)
     args = parser.parse_args(argv)
@@ -550,6 +804,8 @@ def main(argv: list[str] | None = None) -> int:
         args.readiness_summary,
         args.readiness_report,
         args.pr_json,
+        args.real100_dir,
+        args.page_metadata_index_dir,
     )
     markdown = render_summary_markdown(
         items,
