@@ -21,6 +21,13 @@ from typing import Any, Iterable, Mapping, Sequence
 
 SAFE_LABEL_RE = re.compile(r"^[A-Za-z0-9_.:-]+$")
 PAGE_LIKE_KEY_RE = re.compile(r"page|bbox|region", re.IGNORECASE)
+ABSOLUTE_PATH_VALUE_RE = re.compile(
+    r"(^|[\s\"'`])(/Users/|/private/|/tmp/|/var/|/home/|/Volumes/|[A-Za-z]:\\)"
+)
+FILENAME_VALUE_RE = re.compile(
+    r"(^|[\s\"'`])[^/\s\"'`]+\.(pdf|hwp|hwpx|docx|xlsx|csv|jsonl|md|txt)\b",
+    re.IGNORECASE,
+)
 
 
 def _rate(numerator: int, denominator: int) -> float:
@@ -142,6 +149,190 @@ def _group_decision(group: Mapping[str, Any]) -> str:
     if file_format == "pdf" and text_source == "kordoc":
         return "requires_pdf_visual_ingestion_or_page_aware_parser"
     return "requires_page_aware_reindex"
+
+
+def _source_type(group: Mapping[str, Any]) -> str:
+    file_format = str(group.get("file_format") or "")
+    text_source = str(group.get("text_source") or "")
+    document_type = str(group.get("document_type") or "")
+    if float(group.get("any_page_metadata_coverage") or 0.0) > 0:
+        return "existing_index_with_page_fields"
+    if float(group.get("parent_any_page_metadata_coverage") or 0.0) > 0:
+        return "existing_index_parent_only_page_fields"
+    if document_type == "public_fixture_smoke":
+        return "public_json_md_fixtures"
+    if "visual" in text_source or "visual" in document_type:
+        return "visual_pdf_image_artifacts"
+    if text_source == "data_list_csv_text":
+        return "csv_text_fallback"
+    if file_format == "pdf" and text_source == "kordoc":
+        return "pdf_via_kordoc_or_csv_text"
+    if file_format == "hwp" and text_source == "kordoc":
+        return "hwp_via_kordoc"
+    return "existing_index_with_no_page_fields"
+
+
+def _matrix_row_for_group(group: Mapping[str, Any]) -> dict[str, Any]:
+    source_type = _source_type(group)
+    coverage = float(group.get("any_page_metadata_coverage") or 0.0)
+    parent_coverage = float(group.get("parent_any_page_metadata_coverage") or 0.0)
+
+    matrix_by_type: dict[str, dict[str, Any]] = {
+        "existing_index_with_page_fields": {
+            "recoverable": True,
+            "requires_parser_change": False,
+            "requires_reindex": False,
+            "requires_ocr_visual_ingestion": False,
+            "estimated_engineering_cost": "S",
+            "expected_eval_impact": "Citation page claims can be GO for covered source groups.",
+        },
+        "existing_index_parent_only_page_fields": {
+            "recoverable": True,
+            "requires_parser_change": False,
+            "requires_reindex": True,
+            "requires_ocr_visual_ingestion": False,
+            "estimated_engineering_cost": "S-M",
+            "expected_eval_impact": "Citation page coverage can become GO after rechunk/reindex.",
+        },
+        "visual_pdf_image_artifacts": {
+            "recoverable": True,
+            "requires_parser_change": False,
+            "requires_reindex": True,
+            "requires_ocr_visual_ingestion": False,
+            "estimated_engineering_cost": "M",
+            "expected_eval_impact": "Strongest near-term page citation lift for PDFs/images.",
+        },
+        "pdf_via_kordoc_or_csv_text": {
+            "recoverable": False,
+            "requires_parser_change": True,
+            "requires_reindex": True,
+            "requires_ocr_visual_ingestion": True,
+            "estimated_engineering_cost": "M-L",
+            "expected_eval_impact": "Page citation GO only after parser output carries page spans.",
+        },
+        "hwp_via_kordoc": {
+            "recoverable": False,
+            "requires_parser_change": True,
+            "requires_reindex": True,
+            "requires_ocr_visual_ingestion": False,
+            "estimated_engineering_cost": "M-L",
+            "expected_eval_impact": "Page citation GO requires page-aware HWP extraction or render+visual path.",
+        },
+        "csv_text_fallback": {
+            "recoverable": False,
+            "requires_parser_change": False,
+            "requires_reindex": True,
+            "requires_ocr_visual_ingestion": False,
+            "estimated_engineering_cost": "S-M",
+            "expected_eval_impact": "Low confidence unless raw source can be reparsed.",
+        },
+        "public_json_md_fixtures": {
+            "recoverable": bool(coverage or parent_coverage),
+            "requires_parser_change": False,
+            "requires_reindex": True,
+            "requires_ocr_visual_ingestion": False,
+            "estimated_engineering_cost": "S",
+            "expected_eval_impact": "Useful regression fixture, not a real performance claim.",
+        },
+        "existing_index_with_no_page_fields": {
+            "recoverable": False,
+            "requires_parser_change": False,
+            "requires_reindex": True,
+            "requires_ocr_visual_ingestion": False,
+            "estimated_engineering_cost": "S",
+            "expected_eval_impact": "Enables coverage measurement only after rebuild.",
+        },
+    }
+    row = dict(matrix_by_type[source_type])
+    row.update(
+        {
+            "source_type": source_type,
+            "current_coverage": coverage,
+            "parent_current_coverage": parent_coverage,
+            "source_group": (
+                f"{group['file_format']}/{group['text_source']}/"
+                f"{group['document_type']}/{group['chunking_strategy']}"
+            ),
+            "decision": group["decision"],
+        }
+    )
+    return row
+
+
+def implementation_matrix(source_groups: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    return [_matrix_row_for_group(group) for group in source_groups]
+
+
+def _page_span_integrity(items: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    checked = 0
+    invalid = 0
+    region_outside_span = 0
+    for item in items:
+        page_span = item.get("page_span")
+        if page_span is None:
+            continue
+        checked += 1
+        if not _is_page_span(page_span) or int(page_span[0]) > int(page_span[1]):
+            invalid += 1
+            continue
+        start, end = int(page_span[0]), int(page_span[1])
+        for region in _regions(item.get("regions")):
+            page_number = region.get("page_number")
+            if isinstance(page_number, int) and not (start <= page_number <= end):
+                region_outside_span += 1
+    return {
+        "checked_count": checked,
+        "invalid_page_span_count": invalid,
+        "region_outside_page_span_count": region_outside_span,
+        "ok": invalid == 0 and region_outside_span == 0,
+    }
+
+
+def readiness_checks(
+    chunks: Sequence[Mapping[str, Any]],
+    report_payload: Mapping[str, Any],
+) -> dict[str, Any]:
+    chunk_coverage = coverage_block(chunks)
+    integrity = _page_span_integrity(chunks)
+    return {
+        "page_metadata_coverage_gt_0": chunk_coverage["any_page_metadata_coverage"] > 0,
+        "chunk_page_span_integrity": integrity,
+        "citation_renderer_compatible": integrity["ok"],
+        "no_private_path_leakage": not _has_private_path_or_filename_value(report_payload),
+        "aggregate_only_outputs": bool(
+            (report_payload.get("privacy") or {}).get("aggregate_only")
+        ),
+    }
+
+
+def _iter_string_values(node: Any) -> Iterable[str]:
+    if isinstance(node, Mapping):
+        for value in node.values():
+            yield from _iter_string_values(value)
+    elif isinstance(node, list):
+        for item in node:
+            yield from _iter_string_values(item)
+    elif isinstance(node, str):
+        yield node
+
+
+def _has_private_path_or_filename_value(payload: Mapping[str, Any]) -> bool:
+    for value in _iter_string_values(payload):
+        if ABSOLUTE_PATH_VALUE_RE.search(value) or FILENAME_VALUE_RE.search(value):
+            return True
+    return False
+
+
+def recovery_recommendation(recoverability: str, requires_reindex: bool) -> str:
+    if not requires_reindex and recoverability == "recoverable_from_current_index":
+        return "lightweight metadata recovery"
+    if recoverability == "possibly_recoverable_from_kordoc_cache_requires_adapter":
+        return "parser patch"
+    if recoverability == "recoverable_from_visual_artifacts_requires_reindex":
+        return "visual ingestion rebuild"
+    if requires_reindex:
+        return "full re-index"
+    return "impossible with current artifacts"
 
 
 def source_group_coverage(
@@ -428,17 +619,19 @@ def build_audit_report(
     recoverability = _artifact_recoverability(chunk_coverage, parent_coverage, visual, kordoc)
     requires_reindex = recoverability != "recoverable_from_current_index"
     requires_parser_change = _requires_parser_change(source_groups, recoverability)
-
-    return {
+    privacy = {
+        "aggregate_only": True,
+        "omits_raw_text": True,
+        "omits_doc_ids": True,
+        "omits_chunk_ids": True,
+        "omits_file_names": True,
+        "omits_source_paths": True,
+    }
+    matrix = implementation_matrix(source_groups)
+    report = {
         "schema_version": 1,
         "status": "ok",
-        "privacy": {
-            "aggregate_only": True,
-            "omits_raw_text": True,
-            "omits_doc_ids": True,
-            "omits_file_names": True,
-            "omits_source_paths": True,
-        },
+        "privacy": privacy,
         "index": {
             "schema_version": index_payload.get("schema_version"),
             "document_count": len(documents),
@@ -454,6 +647,7 @@ def build_audit_report(
             "kordoc_cache": kordoc,
             "visual_artifacts": visual,
         },
+        "implementation_matrix": matrix,
         "decision": {
             "citation_page_claim_go_no_go": "GO" if max_source_page_coverage > 0 else "NO-GO",
             "page_claim_scope": (
@@ -466,6 +660,7 @@ def build_audit_report(
             "requires_parser_change": requires_parser_change,
             "current_index_behavior_change": False,
             "retrieval_verifier_prompt_answer_change": False,
+            "recommendation": recovery_recommendation(recoverability, requires_reindex),
         },
         "follow_up_issue_plan": [
             "Keep page-level citation claims disabled while source-group page coverage is zero.",
@@ -475,6 +670,8 @@ def build_audit_report(
             "Commit only aggregate reports; keep private raw content, filenames, doc_ids, and source paths out of artifacts.",
         ],
     }
+    report["readiness_checks"] = readiness_checks(chunks, report)
+    return report
 
 
 def render_markdown(report: Mapping[str, Any]) -> str:
@@ -514,8 +711,44 @@ def render_markdown(report: Mapping[str, Any]) -> str:
             f"regions.bbox=`{group['regions_bbox_coverage']}`, "
             f"decision=`{group['decision']}`"
         )
+    lines.extend(
+        [
+            "",
+            "## Implementation Matrix",
+            "| source type | current coverage | recoverable? | parser change? | re-index? | OCR/visual? | cost | expected eval impact |",
+            "|---|---:|---|---|---|---|---|---|",
+        ]
+    )
+    for row in report.get("implementation_matrix") or []:
+        lines.append(
+            "| "
+            f"`{row['source_type']}` | "
+            f"{row['current_coverage']:.6f} | "
+            f"{row['recoverable']} | "
+            f"{row['requires_parser_change']} | "
+            f"{row['requires_reindex']} | "
+            f"{row['requires_ocr_visual_ingestion']} | "
+            f"{row['estimated_engineering_cost']} | "
+            f"{row['expected_eval_impact']} |"
+        )
+    readiness = report.get("readiness_checks") or {}
+    integrity = readiness.get("chunk_page_span_integrity") or {}
+    lines.extend(
+        [
+            "",
+            "## Readiness Checks",
+            f"- Page metadata coverage > 0: `{readiness.get('page_metadata_coverage_gt_0')}`",
+            f"- Chunk page_span integrity: `{integrity.get('ok')}` "
+            f"(checked=`{integrity.get('checked_count')}`, invalid=`{integrity.get('invalid_page_span_count')}`, "
+            f"region_outside=`{integrity.get('region_outside_page_span_count')}`)",
+            f"- Citation renderer compatible: `{readiness.get('citation_renderer_compatible')}`",
+            f"- No private path leakage: `{readiness.get('no_private_path_leakage')}`",
+            f"- Aggregate-only outputs: `{readiness.get('aggregate_only_outputs')}`",
+        ]
+    )
     lines.extend(["", "## Follow-Up Issue Plan"])
     lines.extend(f"- {item}" for item in report["follow_up_issue_plan"])
+    lines.extend(["", "## Recommendation", f"`{decision['recommendation']}`"])
     lines.append("")
     return "\n".join(lines)
 
