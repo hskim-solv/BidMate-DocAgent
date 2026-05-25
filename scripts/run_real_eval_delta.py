@@ -301,6 +301,10 @@ FORBIDDEN_KEYS = frozenset(
 # Metric direction for the rendered delta arrow.
 # (path, label, higher_is_better)
 METRICS: list[tuple[str, str, bool]] = [
+    # ADR 0075 taxonomy count. Missing stays missing (`—`) via `_get_path`;
+    # never coerce absent failure counts to numeric zero. Directional deltas
+    # are only meaningful when both summaries cover the same number of cases.
+    ("failure_category_counts.retrieval_miss", "retrieval_miss", False),
     ("accuracy", "accuracy", True),
     ("groundedness", "groundedness", True),
     ("citation_precision", "citation_precision", True),
@@ -312,6 +316,14 @@ METRICS: list[tuple[str, str, bool]] = [
     ("latency.p50", "latency_p50_ms", False),
     ("latency.p95", "latency_p95_ms", False),
 ]
+
+EQUAL_N_DELTA_METRICS = frozenset({"failure_category_counts.retrieval_miss"})
+
+
+def _same_num_predictions(base: dict[str, Any], head: dict[str, Any]) -> bool:
+    b = base.get("num_predictions")
+    h = head.get("num_predictions")
+    return isinstance(b, int) and isinstance(h, int) and b == h
 
 
 # -----------------------------------------------------------------------------
@@ -767,10 +779,14 @@ def render_markdown(
     for path, label, higher in METRICS:
         b = _get_path(base, path)
         h = _get_path(head, path)
+        if path in EQUAL_N_DELTA_METRICS and not _same_num_predictions(base, head):
+            delta = "—"
+        else:
+            delta = _fmt_delta(b, h, higher, n_min=n_min)
         lines.append(
             f"| {label} | {_fmt_value(b)}{_fmt_ci(base, path)} "
             f"| {_fmt_value(h)}{_fmt_ci(head, path)} "
-            f"| {_fmt_delta(b, h, higher, n_min=n_min)} |"
+            f"| {delta} |"
         )
 
     # Slice-level abstention is the most important signal we surfaced
