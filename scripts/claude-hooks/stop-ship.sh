@@ -430,6 +430,14 @@ stage_5_merge() {
     fi
   fi
 
+  local desktop_repo="${BIDMATE_DESKTOP_REPO:-/Users/hskim/Desktop/projects/BidMate-DocAgent}"
+  if [[ "$DRY_RUN" == "1" ]]; then
+    log "s5" "[dry-run] python3 scripts/sync_desktop_main.py --repo '$desktop_repo'"
+  else
+    python3 scripts/sync_desktop_main.py --repo "$desktop_repo" || \
+      log "s5" "desktop main sync skipped/non-fatal; run manually if needed"
+  fi
+
   # Worktree-safe remote-branch deletion (replaces gh's --delete-branch; #1283).
   mut git push origin --delete "$ARM_BRANCH" 2>/dev/null || \
     log "s5" "remote branch delete non-fatal: $ARM_BRANCH may already be gone"
