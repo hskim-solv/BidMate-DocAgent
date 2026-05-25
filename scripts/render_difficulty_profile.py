@@ -286,6 +286,10 @@ def _safe_failure_category(value: Any) -> str:
     return text if SAFE_FAILURE_RE.fullmatch(text) else "other"
 
 
+def _is_failed_case(case: dict[str, Any]) -> bool:
+    return _safe_failure_category(case.get("failure_category")) != "no_failure"
+
+
 def _metric_block(cases: list[dict[str, Any]]) -> dict[str, Any]:
     metrics = [_case_metrics(case) for case in cases]
     failures = Counter(_safe_failure_category(case.get("failure_category")) for case in cases)
@@ -367,13 +371,17 @@ def _slice_axes(
     validity = Counter()
     easy_cases: list[dict[str, Any]] = []
     failure_dominance: Counter[str] = Counter()
+    unique_failed_cases = 0
 
     for case in cases:
         buckets, case_validity = _case_features(case, chunk_texts)
         validity.update(case_validity)
+        is_failed = _is_failed_case(case)
+        if is_failed:
+            unique_failed_cases += 1
         for axis, bucket in buckets.items():
             axis_cases[axis][bucket].append(case)
-            if case.get("failure_category"):
+            if is_failed:
                 failure_dominance[f"{axis}__{bucket}"] += 1
         if (
             bool(case.get("answerable", True))
@@ -398,10 +406,11 @@ def _slice_axes(
                 "axis": key.split("__", 1)[0],
                 "bucket": key.split("__", 1)[1],
                 "failed_count": count,
-                "share_of_all_failures": count / max(1, sum(failure_dominance.values())),
+                "share_of_all_failures": count / max(1, unique_failed_cases),
             }
             for key, count in failure_dominance.most_common(8)
-        ]
+        ],
+        "unique_failed_cases": unique_failed_cases,
     }
     return axes, special, {"validity_counters": dict(validity), **dominance}
 

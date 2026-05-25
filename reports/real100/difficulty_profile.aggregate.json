@@ -6,49 +6,49 @@
         "axis": "gold_doc_cardinality",
         "bucket": "single_doc",
         "failed_count": 199,
-        "share_of_all_failures": 0.08129084967320262
+        "share_of_all_failures": 0.9754901960784313
       },
       {
         "axis": "score_like_question",
         "bucket": "false",
         "failed_count": 190,
-        "share_of_all_failures": 0.07761437908496732
+        "share_of_all_failures": 0.9313725490196079
       },
       {
         "axis": "similar_clause_distractor_proxy",
         "bucket": "false",
         "failed_count": 160,
-        "share_of_all_failures": 0.06535947712418301
+        "share_of_all_failures": 0.7843137254901961
       },
       {
         "axis": "date_like_question",
         "bucket": "false",
         "failed_count": 159,
-        "share_of_all_failures": 0.06495098039215687
+        "share_of_all_failures": 0.7794117647058824
       },
       {
         "axis": "amount_like_question",
         "bucket": "false",
         "failed_count": 139,
-        "share_of_all_failures": 0.056781045751633986
+        "share_of_all_failures": 0.6813725490196079
       },
       {
         "axis": "answerability",
         "bucket": "answerable",
         "failed_count": 108,
-        "share_of_all_failures": 0.04411764705882353
+        "share_of_all_failures": 0.5294117647058824
       },
       {
         "axis": "table_like_evidence",
         "bucket": "false",
         "failed_count": 104,
-        "share_of_all_failures": 0.042483660130718956
+        "share_of_all_failures": 0.5098039215686274
       },
       {
         "axis": "table_like_evidence",
         "bucket": "true",
         "failed_count": 100,
-        "share_of_all_failures": 0.04084967320261438
+        "share_of_all_failures": 0.49019607843137253
       }
     ],
     "easy_single_doc_single_chunk_solvable": true,
@@ -96,51 +96,52 @@
         "axis": "gold_doc_cardinality",
         "bucket": "single_doc",
         "failed_count": 199,
-        "share_of_all_failures": 0.08129084967320262
+        "share_of_all_failures": 0.9754901960784313
       },
       {
         "axis": "score_like_question",
         "bucket": "false",
         "failed_count": 190,
-        "share_of_all_failures": 0.07761437908496732
+        "share_of_all_failures": 0.9313725490196079
       },
       {
         "axis": "similar_clause_distractor_proxy",
         "bucket": "false",
         "failed_count": 160,
-        "share_of_all_failures": 0.06535947712418301
+        "share_of_all_failures": 0.7843137254901961
       },
       {
         "axis": "date_like_question",
         "bucket": "false",
         "failed_count": 159,
-        "share_of_all_failures": 0.06495098039215687
+        "share_of_all_failures": 0.7794117647058824
       },
       {
         "axis": "amount_like_question",
         "bucket": "false",
         "failed_count": 139,
-        "share_of_all_failures": 0.056781045751633986
+        "share_of_all_failures": 0.6813725490196079
       },
       {
         "axis": "answerability",
         "bucket": "answerable",
         "failed_count": 108,
-        "share_of_all_failures": 0.04411764705882353
+        "share_of_all_failures": 0.5294117647058824
       },
       {
         "axis": "table_like_evidence",
         "bucket": "false",
         "failed_count": 104,
-        "share_of_all_failures": 0.042483660130718956
+        "share_of_all_failures": 0.5098039215686274
       },
       {
         "axis": "table_like_evidence",
         "bucket": "true",
         "failed_count": 100,
-        "share_of_all_failures": 0.04084967320261438
+        "share_of_all_failures": 0.49019607843137253
       }
     ],
+    "unique_failed_cases": 204,
     "validity_counters": {
       "answerable_missing_gold_count": 0,
       "missing_index_gold_reference_count": 0

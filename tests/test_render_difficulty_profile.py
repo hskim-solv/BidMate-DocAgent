@@ -161,6 +161,9 @@ def test_schema_bucketization_and_no_raw_content_rendered() -> None:
     assert aggregate["difficulty_axes"]["similar_clause_distractor_proxy"]["true"]["n"] == 1
     assert aggregate["difficulty_axes"]["lexical_overlap"]["high"]["n"] >= 1
     assert aggregate["overall_outcomes"]["metrics"]["recall_at_10"]["mean"] == 1.0
+    assert aggregate["diagnostics"]["unique_failed_cases"] == 1
+    assert aggregate["diagnostics"]["top_failure_slices"]
+    assert aggregate["diagnostics"]["top_failure_slices"][0]["share_of_all_failures"] == 1.0
 
     rendered = _serialize_outputs(aggregate)
     for forbidden in (
