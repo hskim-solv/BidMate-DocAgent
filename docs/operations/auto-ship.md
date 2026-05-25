@@ -51,6 +51,7 @@ make ship-start TITLE="자동화 범위 설명" TYPE=chore SLUG=short-slug
 | `DRY_RUN` | `0` | `1` 일 때, 모든 mutating 명령이 실행 대신 `.claude/.ship-dryrun.log` 로 echo 된다. |
 | `CROSS_OWNER` | _(empty)_ | `ack` 은 multi-agent lock 검사([`docs/multi-agent-ownership.md`](../multi-agent-ownership.md))를 우회한다. |
 | `STACKED` | _(empty)_ | `ack` 은 heterogeneous-prefix 거부를 우회한다(아래 [Stacked-PR 규율](#stacked-pr-discipline-tier-7) 참조). |
+| `BIDMATE_DESKTOP_REPO` | `/Users/hskim/Desktop/projects/BidMate-DocAgent` | Stage 5 merge 직후 fast-forward 동기화할 canonical Desktop checkout. |
 
 `make ship-disarm` 은 arm 파일과 pid 파일을 제거한다. `make ship-status`
 는 사람이 읽을 수 있는 요약을 출력한다.
@@ -161,9 +162,12 @@ GitHub review-fix 루프를 실행해 코멘트를 처리하고, fix 커밋을 p
 
 `gh pr merge <N> --squash --admin` (의도적으로 `--delete-branch` **없음** — issue #1283).
 머지 후 상태가 `MERGED` 인지 검증한다(아니면 검사를 위해 arm 파일을 그대로 둔다).
-그런 다음 `git push origin --delete <branch>` 로 **원격 브랜치를 삭제**하고,
-`git checkout main && git pull --ff-only`, 로컬 브랜치 삭제, `S5_OK` 라인을
-`.claude/.ship-history.log` 에 기록, arm 파일 제거.
+그런 다음 [`scripts/sync_desktop_main.py`](../../scripts/sync_desktop_main.py)로
+canonical Desktop checkout의 `main`을 `origin/main`에 맞게 fast-forward 한다.
+이 동기화는 fail-soft다: 대상이 없거나 dirty/divergent 상태면 로그만 남기고
+merge 성공을 되돌리지 않는다. 이어서 `git push origin --delete <branch>` 로
+**원격 브랜치를 삭제**하고, `git checkout main && git pull --ff-only`, 로컬 브랜치
+삭제, `S5_OK` 라인을 `.claude/.ship-history.log` 에 기록, arm 파일 제거.
 
 `--delete-branch` 를 쓰지 않는 이유: gh 의 `--delete-branch` 는 원격 삭제를
 로컬 checkout-to-default + 로컬 브랜치 삭제와 한 명령에 묶는다. 이 repo 는

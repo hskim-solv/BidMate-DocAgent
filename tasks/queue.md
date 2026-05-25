@@ -11,8 +11,9 @@ PR이 생기면 각 task에 링크를 추가한다. 예제 task는 `tasks/exampl
 
 | Order | ID | Status | Owner role | Why ready / not ready |
 |---:|---|---|---|---|
-| 1 | `T-2026-0001` | `review` | Implementer -> Benchmark Auditor -> Reviewer | corpus-only benchmark index boundary report와 focused tests 추가됨. |
-| 2 | `T-2026-0002` | `review` | Implementer -> Reviewer | eval summary surface label + opt-in mismatch gate와 focused tests 추가됨. |
+| 1 | `T-2026-0001` | `done` | Implementer -> Benchmark Auditor -> Reviewer | merged in PR #1481. |
+| 2 | `T-2026-0002` | `done` | Implementer -> Reviewer | merged in PR #1481. |
+| 3 | `T-2026-0003` | `review` | Implementer -> Reviewer | auto-ship Stage 5 Desktop main fast-forward sync 구현됨. |
 
 ## Examples
 
@@ -23,7 +24,7 @@ PR이 생기면 각 task에 링크를 추가한다. 예제 task는 `tasks/exampl
 
 - ID: T-2026-0001
 - Title: Benchmark hardening against synthetic contamination
-- Status: review
+- Status: done
 - Owner role: Implementer -> Benchmark Auditor -> Reviewer
 - Created: 2026-05-25
 - Last updated: 2026-05-25
@@ -56,7 +57,7 @@ contaminated index inputs, or over-claiming.
 
 - [x] Benchmark index build is documented/tested as corpus-only.
 - [x] Benchmark claim wording is synthetic-only and links to the surface map.
-- [ ] Benchmark Auditor checklist is satisfied.
+- [x] Benchmark Auditor checklist is satisfied.
 
 ### Validation Commands
 
@@ -83,7 +84,7 @@ python3 -m pytest tests/test_naive_rag_benchmark_v1.py -q
 
 - Plan: [`docs/plans/T-2026-0001-benchmark-contamination-guard.md`](../docs/plans/T-2026-0001-benchmark-contamination-guard.md)
 - Issue: [#1480](https://github.com/hskim-solv/BidMate-DocAgent/issues/1480)
-- PR: TBD
+- PR: [#1481](https://github.com/hskim-solv/BidMate-DocAgent/pull/1481)
 - ADR: [ADR 0005](../docs/adr/0005-eval-split-public-synthetic-private-local.md)
 - Report: TBD
 
@@ -106,21 +107,21 @@ python3 -m pytest tests/test_naive_rag_benchmark_v1.py -q
 ## Session Handoff — 2026-05-25 18:49 KST
 
 - Role: Implementer
-- Lifecycle stage: review
+- Lifecycle stage: done
 - Branch / worktree: fix/issue-1480-benchmark-eval-surface-guards / /Users/hskim/.codex/worktrees/cd0b/BidMate-DocAgent
 - Task: T-2026-0001
 - Plan: docs/plans/T-2026-0001-benchmark-contamination-guard.md
-- Current status: corpus-only index boundary report and regression tests added.
+- Current status: merged in PR #1481.
 - Files touched: eval/naive_rag/validate_benchmark_dataset.py, tests/test_naive_rag_benchmark_v1.py
 - Decisions made: Additive validator report only; no benchmark scoring or retrieval behavior change.
 - Commands run: python3 eval/naive_rag/validate_benchmark_dataset.py --config configs/eval/benchmark_naive_rag_v1.yaml --report reports/benchmark/naive_rag_v1_validation.json; python3 -m pytest tests/test_naive_rag_benchmark_v1.py -q; python3 -m py_compile eval/naive_rag/validate_benchmark_dataset.py scripts/compare_eval.py; git diff --check
-- Results: pass; validation report index_build_boundary.status=pass.
+- Results: pass; validation report index_build_boundary.status=pass; PR #1481 merged.
 - Validation evidence: reports/benchmark/naive_rag_v1_validation.json generated locally.
 - Eval surface: public synthetic benchmark.
 - Evidence artifacts: local validation JSON only.
-- Open risks: Benchmark Auditor still needs to confirm no real-world performance claim is implied.
-- Next action: Review diff and benchmark validity checklist.
-- Next safe command: python3 -m pytest tests/test_naive_rag_benchmark_v1.py -q
+- Open risks: none for this task; follow-up benchmark expansion remains separate.
+- Next action: N/A
+- Next safe command: N/A
 - Reviewer focus: corpus-only proof, prohibited label fields, no metric semantics change.
 ```
 
@@ -128,7 +129,7 @@ python3 -m pytest tests/test_naive_rag_benchmark_v1.py -q
 
 - ID: T-2026-0002
 - Title: Eval regression safety surface separation
-- Status: review
+- Status: done
 - Owner role: Implementer -> Reviewer
 - Created: 2026-05-25
 - Last updated: 2026-05-25
@@ -161,7 +162,7 @@ regression evidence.
 
 - [x] Future agents can identify which `eval_summary.json` they are reading.
 - [x] Smoke/synthetic/private claims are explicitly separated.
-- [ ] Reviewer checklist catches incompatible artifact comparisons.
+- [x] Reviewer checklist catches incompatible artifact comparisons.
 
 ### Validation Commands
 
@@ -185,7 +186,7 @@ python3 -m pytest tests/test_eval_artifact_privacy_regression.py -q
 
 - Plan: [`docs/plans/T-2026-0002-eval-artifact-surface-guard.md`](../docs/plans/T-2026-0002-eval-artifact-surface-guard.md)
 - Issue: [#1480](https://github.com/hskim-solv/BidMate-DocAgent/issues/1480)
-- PR: TBD
+- PR: [#1481](https://github.com/hskim-solv/BidMate-DocAgent/pull/1481)
 - ADR: [ADR 0005](../docs/adr/0005-eval-split-public-synthetic-private-local.md)
 - Report: TBD
 
@@ -208,20 +209,100 @@ python3 -m pytest tests/test_eval_artifact_privacy_regression.py -q
 ## Session Handoff — 2026-05-25 18:49 KST
 
 - Role: Implementer
-- Lifecycle stage: review
+- Lifecycle stage: done
 - Branch / worktree: fix/issue-1480-benchmark-eval-surface-guards / /Users/hskim/.codex/worktrees/cd0b/BidMate-DocAgent
 - Task: T-2026-0002
 - Plan: docs/plans/T-2026-0002-eval-artifact-surface-guard.md
-- Current status: compare_eval surface labels and opt-in surface mismatch gate added.
+- Current status: merged in PR #1481.
 - Files touched: scripts/compare_eval.py, tests/test_compare_eval_regression_gate.py
 - Decisions made: Unknown surfaces remain visible but non-blocking by default to preserve PR eval compatibility.
 - Commands run: python3 -m pytest tests/test_compare_eval_regression_gate.py -q; python3 scripts/check_doc_links.py --check-all; python3 -m pytest tests/test_eval_artifact_privacy_regression.py -q; python3 -m py_compile eval/naive_rag/validate_benchmark_dataset.py scripts/compare_eval.py; git diff --check
-- Results: pass.
-- Validation evidence: focused tests and doc link check.
+- Results: pass; PR #1481 merged.
+- Validation evidence: focused tests, doc link check, PR Eval Delta.
 - Eval surface: eval governance; no benchmark metric semantics changed.
 - Evidence artifacts: none committed.
 - Open risks: Reviewer should decide whether CI should enable --fail-on-surface-mismatch later.
-- Next action: Review diff and normal/governance checklist.
-- Next safe command: python3 -m pytest tests/test_compare_eval_regression_gate.py -q
+- Next action: no action; follow-up CI wiring would be a separate task.
+- Next safe command: N/A
 - Reviewer focus: backward-compatible output shape, no private raw data dependency, no incompatible surface overclaim.
+```
+
+## T-2026-0003 — Desktop main auto-sync after auto-ship merge
+
+- ID: T-2026-0003
+- Title: Desktop main auto-sync after auto-ship merge
+- Status: review
+- Owner role: Implementer -> Reviewer
+- Created: 2026-05-25
+- Last updated: 2026-05-25
+
+### Goal
+
+After a successful auto-ship merge, make the canonical Desktop checkout's
+`main` match GitHub `origin/main` without requiring a manual pull.
+
+### Context
+
+- Surface: developer tooling / auto-ship.
+- Relevant docs: [`docs/operations/auto-ship.md`](../docs/operations/auto-ship.md).
+- Primary risk: stale Desktop `main` causing follow-up work to branch from an old base.
+
+### Scope
+
+- Add a fail-soft sync helper.
+- Call it from auto-ship Stage 5 after merge success.
+- Add focused temp-repo tests.
+
+### Non-Goals
+
+- Do not reset or discard local Desktop work.
+- Do not make Desktop sync a merge blocker.
+- Do not alter eval/runtime behavior.
+
+### Acceptance Criteria
+
+- [x] Clean Desktop `main` fast-forwards to `origin/main`.
+- [x] Dirty or divergent Desktop `main` is skipped.
+- [x] Auto-ship Stage 5 invokes the helper after merge success.
+
+### Validation Commands
+
+```bash
+python3 -m pytest tests/test_sync_desktop_main.py -q
+python3 -m py_compile scripts/sync_desktop_main.py
+git diff --check
+```
+
+### Evidence Required
+
+- Focused pytest output.
+- Manual note that Desktop main was synced after #1481 merge.
+
+### Related Plan / Issue / PR Links
+
+- Plan: [`docs/plans/T-2026-0003-desktop-main-auto-sync.md`](../docs/plans/T-2026-0003-desktop-main-auto-sync.md)
+- Issue: [#1482](https://github.com/hskim-solv/BidMate-DocAgent/issues/1482)
+- PR: TBD
+- ADR: N/A
+
+### Handoff Notes
+
+```markdown
+## Session Handoff — 2026-05-25 19:20 KST
+
+- Role: Implementer
+- Lifecycle stage: review
+- Branch / worktree: chore/issue-1482-desktop-main-sync / /Users/hskim/.codex/worktrees/cd0b/BidMate-DocAgent
+- Task: T-2026-0003
+- Plan: docs/plans/T-2026-0003-desktop-main-auto-sync.md
+- Current status: fail-soft sync helper and Stage 5 hook added.
+- Files touched: scripts/sync_desktop_main.py, scripts/claude-hooks/stop-ship.sh, tests/test_sync_desktop_main.py, docs/operations/auto-ship.md, tasks/queue.md
+- Decisions made: dirty/divergent/missing Desktop repo skips; merge remains successful.
+- Commands run: python3 -m pytest tests/test_sync_desktop_main.py -q; python3 -m py_compile scripts/sync_desktop_main.py; bash -n scripts/claude-hooks/stop-ship.sh; python3 scripts/check_doc_links.py --check-all; git diff --check; python3 scripts/sync_desktop_main.py --repo /Users/hskim/Desktop/projects/BidMate-DocAgent
+- Results: pass; Desktop main already matches origin/main after manual fast-forward.
+- Eval surface: none.
+- Open risks: Reviewer should verify branch update cannot discard local work.
+- Next action: Run validation and ship.
+- Next safe command: python3 -m pytest tests/test_sync_desktop_main.py -q
+- Reviewer focus: no reset/destructive behavior, fail-soft Stage 5 behavior.
 ```
