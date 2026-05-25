@@ -47,6 +47,14 @@ def parse_args() -> argparse.Namespace:
     ap.add_argument("--head", required=True, help="Head (PR) eval_summary.json")
     ap.add_argument("--title", default="Eval delta")
     ap.add_argument(
+        "--scope-note",
+        default="",
+        help=(
+            "Optional markdown note rendered immediately under the title, "
+            "used by CI to make the measurement surface explicit."
+        ),
+    )
+    ap.add_argument(
         "--regression-threshold",
         type=float,
         default=DEFAULT_REGRESSION_THRESHOLD,
@@ -191,6 +199,9 @@ def main() -> int:
     lines: list[str] = []
     lines.append(f"### {args.title}")
     lines.append("")
+    if args.scope_note:
+        lines.append(f"> {args.scope_note}")
+        lines.append("")
     lines.append(
         f"- pipeline: `{head.get('pipeline', '?')}` "
         f"(primary run: `{head.get('primary_run', '?')}`)"
