@@ -7,10 +7,11 @@
 | 관심사 | 단일 출처 | 비고 |
 |---|---|---|
 | 코딩 & 리뷰 규칙 | [`CLAUDE.md`](../CLAUDE.md) | Pre-PR 체크리스트, 금지 shortcut, 성능 기대치 |
+| AI-agent 운영 모델 | [`docs/operations/ai-engineering-operating-system.md`](./operations/ai-engineering-operating-system.md), [`tasks/queue.md`](../tasks/queue.md) | 역할(role), persistent task queue, plan doc, review/eval handoff |
 | Multi-agent 조율 | [`docs/multi-agent-ownership.md`](./multi-agent-ownership.md) | 7-way 소유권, `rag_core.py` lock holder, 병행 작업 충돌 해결 |
 | Load-bearing 결정 | [`docs/adr/`](./adr/README.md) | 결정 당 짧은 파일 1개, status 추적 |
 | 동작 계약 | [ADR 0003](./adr/0003-structured-answer-citation-contract.md), [`docs/agentic/answer-policy.md`](./agentic/answer-policy.md) | 답변 JSON shape, `schema_version`, status 값 |
-| Eval 표면 | [ADR 0005](./adr/0005-eval-split-public-synthetic-private-local.md), [`eval/config.yaml`](../eval/config.yaml), `eval/*.example.yaml` | 공개 fixture smoke는 commit 가능, private/internal eval은 local-only |
+| Eval 표면 | [ADR 0005](./adr/0005-eval-split-public-synthetic-private-local.md), [`docs/evaluation/surface-map.md`](./evaluation/surface-map.md), [`eval/config.yaml`](../eval/config.yaml), `eval/*.example.yaml` | 공개 fixture smoke는 commit 가능, private/internal eval은 local-only |
 | Reviewer 메트릭 | `reports/eval_summary.json`, private/internal aggregate docs | PR eval 델타 워크플로가 fixture smoke + latency diff를 PR 코멘트에 upsert |
 | 실패 분석 | [`docs/real-data/real-data-failure-taxonomy.md`](./real-data/real-data-failure-taxonomy.md), [`docs/real-data/failure-cases.md`](./real-data/failure-cases.md) | 우선순위 백로그의 원천 |
 | API 데모 | [`docs/operations/api-demo.md`](./operations/api-demo.md), `api/main.py` | reviewer 놀이터, 측정 기준 아님 |
@@ -22,15 +23,17 @@ non-trivial 변경의 체크리스트 (사람·AI 공용):
 
 1. **Issue 열기 또는 픽업 (필수, ADR 0007).** 실패 taxonomy + 우선순위 백로그가 1차 source. [`.github/ISSUE_TEMPLATE/`](../.github/ISSUE_TEMPLATE/) 사용. 브랜치+PR 은 이 issue 번호 참조 필수 — 컨벤션 체크 (CI) 가 merge 차단
 2. **ADR 필요한지 판단.** [`docs/adr/README.md`](./adr/README.md) 기준 사용. 대부분 불필요, 모호하면 issue 에 질문
-3. **기존 코드 점검.** 읽은 파일, 재사용 함수, 놀란 점 명시
-4. **Branch + worktree (병렬 시).** `<type>/issue-<N>[-<slug>]` (ADR 0007) — 예: `feat/issue-79-hybrid-retrieval`. Claude Code 기본 worktree 명 (`claude/<auto>`) 은 PR 전 rename (`git branch -m feat/issue-<N>-<slug>`)
-5. **변경 + 테스트.** 재사용 우선, one concern per PR. 동작 변경 무 테스트 = 사고. 회귀는 `tests/test_*_regression.py`
-6. **Eval 로컬 실행 (해당 시).** `make eval` 공개 fixture smoke. 실제 성능 변경은 private/internal eval aggregate와 비교
-7. **Push + PR.** PR body 는 [`.github/pull_request_template.md`](../.github/pull_request_template.md) 채움
-8. **CI 검증.** 3개 체크 (모든 PR): `Pytest` + `Eval delta vs base` + `Validate branch name + issue link` (ADR 0007, required status check)
-9. **리뷰 응답.** 리뷰 중 scope 추가 금지 — follow-up issue
-10. **Merge.** Squash-merge, 브랜치 삭제, worktree 정리
-11. **문서 갱신** (reviewer 가 알아야 할 변경 시): 평가 경계, private/internal aggregate evidence, ADR status, taxonomy entry
+3. **Task queue / plan 판단.** multi-session, load-bearing, eval/benchmark, 또는 >1 파일/>50 LOC 작업은 [`tasks/queue.md`](../tasks/queue.md)에 task를 남기고 [`docs/plans/TEMPLATE.md`](./plans/TEMPLATE.md) 기반 plan doc를 작성
+4. **기존 코드 점검.** 읽은 파일, 재사용 함수, 놀란 점 명시
+5. **Branch + worktree (병렬 시).** `<type>/issue-<N>[-<slug>]` (ADR 0007) — 예: `feat/issue-79-hybrid-retrieval`. Claude Code 기본 worktree 명 (`claude/<auto>`) 은 PR 전 rename (`git branch -m feat/issue-<N>-<slug>`)
+6. **변경 + 테스트.** 재사용 우선, one concern per PR. 동작 변경 무 테스트 = 사고. 회귀는 `tests/test_*_regression.py`
+7. **Eval 로컬 실행 (해당 시).** `make eval` 공개 fixture smoke. 실제 성능 변경은 private/internal eval aggregate와 비교. Claim boundary는 [`docs/evaluation/surface-map.md`](./evaluation/surface-map.md) 기준
+8. **Review checklist 선택.** 일반 review 외에 load-bearing은 deep review, eval/benchmark claim은 benchmark auditor checklist ([`docs/reviews/ai-review-checklists.md`](./reviews/ai-review-checklists.md))를 적용
+9. **Push + PR.** PR body 는 [`.github/pull_request_template.md`](../.github/pull_request_template.md) 채움
+10. **CI 검증.** 3개 체크 (모든 PR): `Pytest` + `Eval delta vs base` + `Validate branch name + issue link` (ADR 0007, required status check)
+11. **리뷰 응답.** 리뷰 중 scope 추가 금지 — follow-up issue
+12. **Merge.** Squash-merge, 브랜치 삭제, worktree 정리
+13. **문서/queue 갱신** (reviewer 가 알아야 할 변경 시): task status, 평가 경계, private/internal aggregate evidence, ADR status, taxonomy entry
 
 ## Milestones & 이슈 lifecycle
 

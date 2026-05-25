@@ -9,6 +9,10 @@ RFP 문서 이해를 위한 DocAgent 시스템. **입찰/RFP 문서 인텔리전
 ## 여기서 시작
 
 - [`docs/engineering-governance.md`](docs/engineering-governance.md) — 워크플로 맵
+- [`docs/operations/ai-engineering-operating-system.md`](docs/operations/ai-engineering-operating-system.md) — AI-agent 역할(role) / task queue / plan / review / eval evidence 운영 모델
+- [`tasks/queue.md`](tasks/queue.md) — 세션 간 이어지는 persistent task queue
+- [`docs/evaluation/surface-map.md`](docs/evaluation/surface-map.md) — smoke / synthetic benchmark / private real-eval claim 경계
+- [`docs/reviews/ai-review-checklists.md`](docs/reviews/ai-review-checklists.md) — normal / adversarial / benchmark / regression review 체크리스트
 - [`docs/adr/README.md`](docs/adr/README.md) — 결정 인덱스
 - [`docs/multi-agent-ownership.md`](docs/multi-agent-ownership.md) — 여러 agent 가 병행 작업할 때 조율 모델
 - [`docs/audits/`](docs/audits/) — Phase 3/4/5 eval-framework 감사 + failure inspection (retrieval-miss / verifier-false-negative / variance-source)
@@ -53,6 +57,8 @@ RFP 문서 이해를 위한 DocAgent 시스템. **입찰/RFP 문서 인텔리전
 
 - **non-trivial 변경 전 Plan subagent.** >1 파일 또는 >50 LOC, 또는 plan mode 진입 시 Plan subagent 우선. 오타/단일 라인만 예외
 - **읽기 다발 시 Explore subagent.** Read ≥5회 누적 또는 단일 파일 >200줄 → Explore 위임
+- **장기 작업은 queue + plan.** multi-session, load-bearing, eval/benchmark, 또는 >1 파일/>50 LOC 작업은 [`tasks/queue.md`](tasks/queue.md)에 상태를 남기고 [`docs/plans/TEMPLATE.md`](docs/plans/TEMPLATE.md) 기반 plan doc 를 사용. context loss 전후 handoff 는 [`docs/operations/long-session-workflow.md`](docs/operations/long-session-workflow.md) 형식으로 남김
+- **Eval/benchmark claim 은 surface 먼저.** smoke / synthetic benchmark / private real-eval 중 어느 표면인지 [`docs/evaluation/surface-map.md`](docs/evaluation/surface-map.md) 기준으로 명시하고, benchmark/eval claim 은 [`docs/reviews/ai-review-checklists.md`](docs/reviews/ai-review-checklists.md)의 Benchmark Validity Audit 대상
 - **Shipping 경로는 commit-0 에 확정.** `ship-pr` skill (수동 게이트, ADR 예약 + stacked 안전) vs `make ship-arm` (Stop-hook 자동 ship) 둘은 mutually exclusive — 동시 활성화 금지
 - 5축 ↔ 4-pillar 매핑 전체: [`docs/agent-utilization.md`](docs/agent-utilization.md). `self-review-quarterly` skill 이 해당 표 기준으로 채점
 - **측정·감사 skill.** `retrieval-eval` (4-phase retrieval 측정), `eval-framework-progressive-audit` (5-phase 프레임워크 감사), `adr-portfolio-signals` (ADR→시니어 시그널 매핑) — 해당 범위 작업 시 우선 호출
