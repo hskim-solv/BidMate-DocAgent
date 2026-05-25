@@ -755,6 +755,69 @@ def _fmt_ci(summary: dict[str, Any], metric_key: str) -> str:
     return f" [{lo:.3f}, {hi:.3f}]"
 
 
+def _md_cell(value: Any) -> str:
+    """Escape one GitHub Markdown table cell."""
+    text = str(value)
+    return text.replace("\\", "\\\\").replace("|", "\\|").replace("\n", " ")
+
+
+def _md_row(cells: list[Any]) -> str:
+    return "| " + " | ".join(_md_cell(cell) for cell in cells) + " |"
+
+
+def _numeric_path(summary: dict[str, Any], path: str) -> float | None:
+    value = _get_path(summary, path)
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value)
+
+
+def _no_go_interpretation_lines(base: dict[str, Any], head: dict[str, Any]) -> list[str]:
+    """Return the #1448 private-delta interpretation when all signals match."""
+    recall10_base = _numeric_path(base, "chunk_recall_at_10")
+    recall10_head = _numeric_path(head, "chunk_recall_at_10")
+    mrr5_base = _numeric_path(base, "chunk_mrr_at_5")
+    mrr5_head = _numeric_path(head, "chunk_mrr_at_5")
+    ndcg5_base = _numeric_path(base, "chunk_ndcg_at_5")
+    ndcg5_head = _numeric_path(head, "chunk_ndcg_at_5")
+    citation_base = _numeric_path(base, "citation_precision")
+    citation_head = _numeric_path(head, "citation_precision")
+    p50_base = _numeric_path(base, "latency.p50")
+    p50_head = _numeric_path(head, "latency.p50")
+    p95_base = _numeric_path(base, "latency.p95")
+    p95_head = _numeric_path(head, "latency.p95")
+
+    recall10_up = (
+        recall10_base is not None
+        and recall10_head is not None
+        and recall10_head > recall10_base
+    )
+    mrr5_down = mrr5_base is not None and mrr5_head is not None and mrr5_head < mrr5_base
+    ndcg5_down = ndcg5_base is not None and ndcg5_head is not None and ndcg5_head < ndcg5_base
+    citation_down = (
+        citation_base is not None
+        and citation_head is not None
+        and citation_head < citation_base
+    )
+    latency_up = (
+        (p50_base is not None and p50_head is not None and p50_head > p50_base)
+        or (p95_base is not None and p95_head is not None and p95_head > p95_base)
+    )
+    if not (recall10_up and mrr5_down and ndcg5_down and citation_down and latency_up):
+        return []
+    return [
+        "",
+        "#### GO/NO-GO interpretation",
+        "",
+        "- Recall@10 slightly improved.",
+        "- MRR@5 regressed.",
+        "- nDCG@5 regressed.",
+        "- citation_accuracy regressed.",
+        "- latency regressed.",
+        "- Decision: NO-GO; this result is not merge-ready as an improvement claim.",
+    ]
+
+
 def render_markdown(
     base: dict[str, Any],
     head: dict[str, Any],
@@ -781,16 +844,19 @@ def render_markdown(
             f"- silence band: ±{_silence_threshold(n_min):.3f} (N={n_min})"
         )
     lines.append("")
-    lines.append("| metric | base (95% CI) | head (95% CI) | Δ |")
+    lines.append(_md_row(["metric", "base (95% CI)", "head (95% CI)", "Δ"]))
     lines.append("|---|---|---|---|")
     for path, label, higher in METRICS:
         b = _get_path(base, path)
         h = _get_path(head, path)
-        lines.append(
-            f"| {label} | {_fmt_value(b)}{_fmt_ci(base, path)} "
-            f"| {_fmt_value(h)}{_fmt_ci(head, path)} "
-            f"| {_fmt_delta(b, h, higher, n_min=n_min)} |"
-        )
+        lines.append(_md_row([
+            label,
+            f"{_fmt_value(b)}{_fmt_ci(base, path)}",
+            f"{_fmt_value(h)}{_fmt_ci(head, path)}",
+            _fmt_delta(b, h, higher, n_min=n_min),
+        ]))
+
+    lines.extend(_no_go_interpretation_lines(base, head))
 
     # Slice-level abstention is the most important signal we surfaced
     # from #69 — render it explicitly so future regressions are obvious.
@@ -801,15 +867,17 @@ def render_markdown(
         lines.append("")
         lines.append("#### Slice abstention rate (intended-abstention preservation)")
         lines.append("")
-        lines.append("| slice | base | head | Δ |")
+        lines.append(_md_row(["slice", "base", "head", "Δ"]))
         lines.append("|---|---|---|---|")
         for name in slice_names:
             b = (base_slices.get(name) or {}).get("abstention")
             h = (head_slices.get(name) or {}).get("abstention")
-            lines.append(
-                f"| {name} | {_fmt_value(b)} | {_fmt_value(h)} | "
-                f"{_fmt_delta(b, h, True, n_min=n_min)} |"
-            )
+            lines.append(_md_row([
+                name,
+                _fmt_value(b),
+                _fmt_value(h),
+                _fmt_delta(b, h, True, n_min=n_min),
+            ]))
 
     # Issue #463: 3-bin breakdown so a confident-refusal → hallucination
     # regression and a confident-refusal → boundary-partial regression
@@ -820,12 +888,12 @@ def render_markdown(
         lines.append("")
         lines.append("#### Abstention outcome breakdown (intended-abstention slice)")
         lines.append("")
-        lines.append("| outcome | base | head |")
+        lines.append(_md_row(["outcome", "base", "head"]))
         lines.append("|---|---:|---:|")
         for outcome_key in SAFE_ABSTENTION_OUTCOME_KEYS:
             b_count = (base_outcomes or {}).get(outcome_key, 0)
             h_count = (head_outcomes or {}).get(outcome_key, 0)
-            lines.append(f"| {outcome_key} | {b_count} | {h_count} |")
+            lines.append(_md_row([outcome_key, b_count, h_count]))
 
     base_reasons = base.get("retry_reason_counts") or {}
     head_reasons = head.get("retry_reason_counts") or {}
@@ -833,13 +901,14 @@ def render_markdown(
         lines.append("")
         lines.append("#### Retry reason counts")
         lines.append("")
-        lines.append("| reason | base | head |")
+        lines.append(_md_row(["reason", "base", "head"]))
         lines.append("|---|---:|---:|")
         for reason in sorted(set(base_reasons) | set(head_reasons)):
-            lines.append(
-                f"| `{reason}` | {base_reasons.get(reason, 0)} | "
-                f"{head_reasons.get(reason, 0)} |"
-            )
+            lines.append(_md_row([
+                f"`{reason}`",
+                base_reasons.get(reason, 0),
+                head_reasons.get(reason, 0),
+            ]))
 
     base_retry_eff = base.get("retry_effectiveness") or {}
     head_retry_eff = head.get("retry_effectiveness") or {}
@@ -847,7 +916,7 @@ def render_markdown(
         lines.append("")
         lines.append("#### Retry effectiveness (#120)")
         lines.append("")
-        lines.append("| metric | base | head | Δ |")
+        lines.append(_md_row(["metric", "base", "head", "Δ"]))
         lines.append("|---|---|---|---|")
         for key, label, higher in (
             ("recovery_rate", "recovery_rate", True),
@@ -857,10 +926,12 @@ def render_markdown(
         ):
             b = base_retry_eff.get(key)
             h = head_retry_eff.get(key)
-            lines.append(
-                f"| {label} | {_fmt_value(b)} | {_fmt_value(h)} | "
-                f"{_fmt_delta(b, h, higher, n_min=n_min)} |"
-            )
+            lines.append(_md_row([
+                label,
+                _fmt_value(b),
+                _fmt_value(h),
+                _fmt_delta(b, h, higher, n_min=n_min),
+            ]))
         base_cross = base_retry_eff.get("cross_ablation") or {}
         head_cross = head_retry_eff.get("cross_ablation") or {}
         if base_cross or head_cross:
@@ -878,15 +949,17 @@ def render_markdown(
         lines.append("")
         lines.append("#### RAGAS judge (opt-in)")
         lines.append("")
-        lines.append("| metric | base | head | Δ |")
+        lines.append(_md_row(["metric", "base", "head", "Δ"]))
         lines.append("|---|---|---|---|")
         for metric in SAFE_JUDGE_RAGAS_METRIC_KEYS:
             b = base_ragas.get(metric)
             h = head_ragas.get(metric)
-            lines.append(
-                f"| {metric} | {_fmt_value(b)} | {_fmt_value(h)} | "
-                f"{_fmt_delta(b, h, True, n_min=n_min)} |"
-            )
+            lines.append(_md_row([
+                metric,
+                _fmt_value(b),
+                _fmt_value(h),
+                _fmt_delta(b, h, True, n_min=n_min),
+            ]))
 
     base_judge = base.get("judge") or {}
     head_judge = head.get("judge") or {}
@@ -894,7 +967,7 @@ def render_markdown(
         lines.append("")
         lines.append("#### LLM-judge aggregate (ADR 0006)")
         lines.append("")
-        lines.append("| metric | base | head | Δ |")
+        lines.append(_md_row(["metric", "base", "head", "Δ"]))
         lines.append("|---|---|---|---|")
         for key, label, higher in (
             ("grounded_rate", "judge_grounded_rate", True),
@@ -902,22 +975,21 @@ def render_markdown(
         ):
             b = base_judge.get(key)
             h = head_judge.get(key)
-            lines.append(
-                f"| {label} | {_fmt_value(b)} | {_fmt_value(h)} | "
-                f"{_fmt_delta(b, h, higher, n_min=n_min)} |"
-            )
+            lines.append(_md_row([
+                label,
+                _fmt_value(b),
+                _fmt_value(h),
+                _fmt_delta(b, h, higher, n_min=n_min),
+            ]))
         base_dist = base_judge.get("status_distribution") or {}
         head_dist = head_judge.get("status_distribution") or {}
         statuses = sorted(set(base_dist) | set(head_dist))
         if statuses:
             lines.append("")
-            lines.append("| judge_status | base count | head count |")
+            lines.append(_md_row(["judge_status", "base count", "head count"]))
             lines.append("|---|---:|---:|")
             for status in statuses:
-                lines.append(
-                    f"| {status} | {base_dist.get(status, 0)} | "
-                    f"{head_dist.get(status, 0)} |"
-                )
+                lines.append(_md_row([status, base_dist.get(status, 0), head_dist.get(status, 0)]))
 
     lines.append("")
     lines.append(

@@ -80,6 +80,25 @@ FULL_SUMMARY = {
 }
 
 
+def _unescaped_pipe_count(line: str) -> int:
+    return sum(1 for i, char in enumerate(line) if char == "|" and (i == 0 or line[i - 1] != "\\"))
+
+
+def _markdown_table_blocks(md: str) -> list[list[str]]:
+    blocks: list[list[str]] = []
+    current: list[str] = []
+    for line in md.splitlines():
+        if line.startswith("|"):
+            current.append(line)
+            continue
+        if current:
+            blocks.append(current)
+            current = []
+    if current:
+        blocks.append(current)
+    return blocks
+
+
 def test_parse_args_defaults_follow_real_eval_report_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("REAL_EVAL_REPORT_DIR", "tmp/private-reports")
     monkeypatch.delenv("REAL_EVAL_BASELINE_SUMMARY", raising=False)
@@ -195,6 +214,41 @@ class ExtractAggregateTest(unittest.TestCase):
         self.assertIn("0.471", md)
         self.assertIn("0.600", md)
 
+    def test_render_markdown_has_no_fenced_code_blocks(self) -> None:
+        base = extract_aggregate(FULL_SUMMARY)
+        head = extract_aggregate({**FULL_SUMMARY, "accuracy": 0.6})
+        md = render_markdown(base, head, "test")
+        self.assertNotIn("```", md)
+
+    def test_generated_markdown_tables_have_stable_column_count(self) -> None:
+        base = extract_aggregate(
+            {
+                **FULL_SUMMARY,
+                "by_query_type": {
+                    "single|doc": {"num_predictions": 1, "abstention": 0.0},
+                },
+                "retry_reason_counts": {"topic|not_grounded": 1},
+                "judge": {"status_distribution": {"needs|review": 1}},
+            }
+        )
+        head = extract_aggregate(
+            {
+                **FULL_SUMMARY,
+                "by_query_type": {
+                    "single|doc": {"num_predictions": 1, "abstention": 1.0},
+                },
+                "retry_reason_counts": {"topic|not_grounded": 2},
+                "judge": {"status_distribution": {"needs|review": 2}},
+            }
+        )
+        md = render_markdown(base, head, "test")
+        self.assertIn("single\\|doc", md)
+        self.assertIn("topic\\|not_grounded", md)
+        for block in _markdown_table_blocks(md):
+            expected = _unescaped_pipe_count(block[0])
+            for row in block:
+                self.assertEqual(expected, _unescaped_pipe_count(row), row)
+
     def test_render_markdown_includes_retrieval_and_failure_metrics(self) -> None:
         base = extract_aggregate(FULL_SUMMARY)
         head = extract_aggregate(
@@ -259,6 +313,28 @@ class ExtractAggregateTest(unittest.TestCase):
         head = extract_aggregate({**FULL_SUMMARY, "failure_category_counts": zero_counts})
         md = render_markdown(base, head, "test")
         self.assertIn("| retrieval_miss | 0 | 0 | · |", md)
+
+    def test_render_includes_private_delta_no_go_interpretation(self) -> None:
+        base = extract_aggregate(FULL_SUMMARY)
+        head = extract_aggregate(
+            {
+                **FULL_SUMMARY,
+                "chunk_recall_at_10": 0.244,
+                "chunk_mrr_at_5": 0.300,
+                "chunk_ndcg_at_5": 0.400,
+                "citation_precision": 0.200,
+                "latency": {"p50": 200.0, "p95": 500.0, "mean": 250.0},
+            }
+        )
+        md = render_markdown(base, head, "test")
+        self.assertIn("GO/NO-GO interpretation", md)
+        self.assertIn("Recall@10 slightly improved", md)
+        self.assertIn("MRR@5 regressed", md)
+        self.assertIn("nDCG@5 regressed", md)
+        self.assertIn("citation_accuracy regressed", md)
+        self.assertIn("latency regressed", md)
+        self.assertIn("NO-GO", md)
+        self.assertIn("not merge-ready", md)
 
     def test_render_includes_slice_abstention(self) -> None:
         base = extract_aggregate(FULL_SUMMARY)
