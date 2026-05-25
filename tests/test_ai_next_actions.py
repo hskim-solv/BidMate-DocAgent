@@ -29,7 +29,14 @@ def _summary(**overrides: object) -> dict[str, object]:
     return payload
 
 
-def _run(tmp_path: Path, *, summary: dict | None = None, prs: list[dict] | None = None) -> tuple[str, dict[str, str]]:
+def _run(
+    tmp_path: Path,
+    *,
+    summary: dict | None = None,
+    prs: list[dict] | None = None,
+    real100_dir: Path | None = None,
+    page_metadata_index_dir: Path | None = None,
+) -> tuple[str, dict[str, str]]:
     tmp_path.mkdir(parents=True, exist_ok=True)
     args: list[str] = []
     if summary is not None:
@@ -40,6 +47,10 @@ def _run(tmp_path: Path, *, summary: dict | None = None, prs: list[dict] | None 
         pr_path = tmp_path / "prs.json"
         pr_path.write_text(json.dumps(prs, sort_keys=True), encoding="utf-8")
         args.extend(["--pr-json", str(pr_path)])
+    if real100_dir is not None:
+        args.extend(["--real100-dir", str(real100_dir)])
+    if page_metadata_index_dir is not None:
+        args.extend(["--page-metadata-index-dir", str(page_metadata_index_dir)])
     out_md = tmp_path / "reports" / "ai_next_actions.md"
     tasks_dir = tmp_path / "reports" / "codex_tasks"
     rc = planner.main([*args, "--out-md", str(out_md), "--tasks-dir", str(tasks_dir)])
@@ -104,6 +115,57 @@ def test_1448_pending_private_delta_recommends_private_delta(tmp_path: Path) -> 
     assert any(name.endswith("run-private-delta.md") for name in tasks)
 
 
+def test_no_go_pr_is_failed_experiment_before_unstable_merge_state(tmp_path: Path) -> None:
+    md, tasks = _run(
+        tmp_path,
+        summary=_summary(),
+        prs=[
+            _pr(
+                number=1448,
+                title="Add hybrid BM25 dense retrieval v1 eval row",
+                headRefName="feat/issue-1447-hybrid-bm25-dense-v1",
+                isDraft=True,
+                mergeStateStatus="UNSTABLE",
+                body=(
+                    "Latest private aggregate experiment is NO-GO and not "
+                    "claim-ready; keep this as a draft measurement PR."
+                ),
+            ),
+            _pr(
+                number=1430,
+                title="[codex] Separate smoke eval from naive RAG benchmark",
+                isDraft=True,
+                mergeStateStatus="UNSTABLE",
+            ),
+        ],
+    )
+
+    assert "Top task: `failed_experiment` - Do not merge PR #1448" in md
+    assert "not merge-ready" in md
+    assert "Latest private aggregate experiment" not in "\n".join(tasks.values())
+    assert any(name.endswith("failed-measurement-pr.md") for name in tasks)
+
+
+def test_superseded_draft_pr_is_close_candidate_not_unblock(tmp_path: Path) -> None:
+    md, tasks = _run(
+        tmp_path,
+        summary=_summary(),
+        prs=[
+            _pr(
+                number=1430,
+                title="[codex] Separate smoke eval from naive RAG benchmark",
+                isDraft=True,
+                mergeStateStatus="UNSTABLE",
+                body="Superseded by the newer planner PR; do not merge.",
+            )
+        ],
+    )
+
+    assert "Close superseded PR #1430" in md
+    assert "Unblock PR #1430" not in md
+    assert any(name.endswith("close-superseded-pr.md") for name in tasks)
+
+
 def test_missing_page_metadata_rate_marks_page_citation_no_go(tmp_path: Path) -> None:
     md, tasks = _run(
         tmp_path,
@@ -122,6 +184,101 @@ def test_missing_page_metadata_rate_marks_page_citation_no_go(tmp_path: Path) ->
     joined_tasks = "\n".join(tasks.values())
     assert "page citation accuracy claims" in joined_tasks
     assert "Readiness summary reports page citation/page claim as GO." in joined_tasks
+
+
+def test_real100_aggregates_add_retrieval_miss_task_when_mapping_fix_absent(tmp_path: Path) -> None:
+    real100_dir = tmp_path / "real100"
+    variance_dir = real100_dir / "variance_measurement"
+    variance_dir.mkdir(parents=True)
+    (real100_dir / "failure_distribution.aggregate.json").write_text(
+        json.dumps({"failure_category_counts": {"retrieval_miss": 0}}),
+        encoding="utf-8",
+    )
+    (real100_dir / "failure_slices.aggregate.json").write_text(
+        json.dumps({"categories": {"retrieval_miss": {"total": 67}}}),
+        encoding="utf-8",
+    )
+    (variance_dir / "aggregate.json").write_text(
+        json.dumps({"category_stats": {"retrieval_miss": {"mean": 64}}}),
+        encoding="utf-8",
+    )
+    (real100_dir / "multi_chunk_evidence_failures.aggregate.json").write_text(
+        json.dumps(
+            {
+                "population": {
+                    "multi_chunk_gold_cases": 99,
+                    "multi_chunk_top10_evidence_failures": 97,
+                },
+                "expected_impact": {"unknown_due_to_limited_depth": 97},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    items = planner._real100_aggregate_items(
+        real100_dir,
+        retrieval_miss_mapping_fix_done=False,
+    )
+    generated = "\n".join(planner.render_task_markdown(item) for item in items)
+
+    assert "Audit retrieval_miss aggregate mapping" in generated
+    assert "retrieval_miss aggregate signals differ" in generated
+    assert "Use multi-chunk evidence analysis" in generated
+    assert "97/99 top-10 failures" in generated
+
+
+def test_real100_aggregates_skip_retrieval_miss_task_when_mapping_fix_exists(tmp_path: Path) -> None:
+    real100_dir = tmp_path / "real100"
+    variance_dir = real100_dir / "variance_measurement"
+    variance_dir.mkdir(parents=True)
+    (real100_dir / "failure_distribution.aggregate.json").write_text(
+        json.dumps({"failure_category_counts": {"retrieval_miss": 0}}),
+        encoding="utf-8",
+    )
+    (variance_dir / "aggregate.json").write_text(
+        json.dumps({"category_stats": {"retrieval_miss": {"mean": 64}}}),
+        encoding="utf-8",
+    )
+    (real100_dir / "multi_chunk_evidence_failures.aggregate.json").write_text(
+        json.dumps(
+            {
+                "population": {
+                    "multi_chunk_gold_cases": 99,
+                    "multi_chunk_top10_evidence_failures": 97,
+                },
+                "expected_impact": {"unknown_due_to_limited_depth": 97},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    md, tasks = _run(tmp_path, real100_dir=real100_dir)
+    generated = md + "\n".join(tasks.values())
+
+    assert planner._retrieval_miss_mapping_fix_available()
+    assert "Audit retrieval_miss aggregate mapping" not in generated
+    assert "Use multi-chunk evidence analysis" in generated
+
+
+def test_page_metadata_index_dir_marks_page_level_claim_no_go(tmp_path: Path) -> None:
+    index_dir = tmp_path / "index"
+    index_dir.mkdir()
+    (index_dir / "index.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "documents": [{"doc_id": "doc-a", "metadata": {}}],
+                "parent_sections": [],
+                "chunks": [{"chunk_id": "doc-a::chunk-1", "doc_id": "doc-a"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    md, tasks = _run(tmp_path, page_metadata_index_dir=index_dir)
+
+    assert "Page citation claim: `NO-GO`" in md
+    assert any("Keep page-level citation claims disabled" in body for body in tasks.values())
 
 
 def test_forbidden_private_keys_do_not_leak_to_generated_reports(tmp_path: Path) -> None:
