@@ -182,6 +182,9 @@ python3 scripts/check_latency_slo.py --config eval/config.yaml --summary reports
 
 | 목적 | 링크 |
 |---|---|
+| AI-agent 장기 작업 운영 모델 | [`docs/operations/ai-engineering-operating-system.md`](docs/operations/ai-engineering-operating-system.md) |
+| Persistent task queue | [`tasks/queue.md`](tasks/queue.md) |
+| Eval surface / claim boundary | [`docs/evaluation/surface-map.md`](docs/evaluation/surface-map.md) |
 | ADR 인덱스 (77개 결정) | [`docs/adr/README.md`](docs/adr/README.md) |
 | 분석 변형 결과 + benchmarking + latency 비교 | [`docs/benchmarking.md`](docs/benchmarking.md) / [`docs/eval/ablation-results.md`](docs/eval/ablation-results.md) |
 | 설계 배경 (한국 RFP 적응 5가지) | [`docs/design-background.md`](docs/design-background.md) |
