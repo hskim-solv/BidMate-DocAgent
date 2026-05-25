@@ -250,6 +250,18 @@ class CompareEvalCliGateTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("Gated quality metrics passed", result.stdout)
 
+    def test_scope_note_renders_under_title(self) -> None:
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            result = self._run(
+                Path(td),
+                _base_summary(),
+                _base_summary(),
+                scope_note="Scope: public fixture smoke only.",
+            )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("### Test\n\n> Scope: public fixture smoke only.", result.stdout)
+
     def test_regression_exits_one(self) -> None:
         import tempfile
         base = _base_summary()

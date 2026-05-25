@@ -258,7 +258,8 @@ jobs:
           python pr/scripts/compare_eval.py \
             --base base/reports/eval_summary.json \
             --head pr/reports/eval_summary.json \
-            --title "Eval delta — \`full\` pipeline" > delta.md
+            --title "Public fixture smoke only - not real-data / not naive_baseline / not performance evidence" \
+            --scope-note 'Scope: public fixture smoke only (5 cases, hashing embedding, `full` run). This is a regression guard, not real-data evidence; use PR section 5b for private real-data decisions.' > delta.md
           cat delta.md
 
       - name: Validate improvement claims (ADR 0055)
