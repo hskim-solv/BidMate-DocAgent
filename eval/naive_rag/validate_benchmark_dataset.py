@@ -12,6 +12,7 @@ from collections import Counter, defaultdict
 import json
 from pathlib import Path
 import re
+import shlex
 import sys
 from typing import Any
 
@@ -27,6 +28,7 @@ from rag_indexing import (  # noqa: E402
     build_chunk_records,
     load_raw_documents,
 )
+from eval.naive_rag.build_benchmark_index import PROHIBITED_CORPUS_FIELDS  # noqa: E402
 
 
 MIN_TOTAL_QUESTIONS = 50
@@ -55,6 +57,13 @@ TOKEN_RE = re.compile(r"[A-Za-z0-9]+|[가-힣]{2,}")
 def repo_path(value: str | Path) -> Path:
     path = Path(value)
     return path if path.is_absolute() else ROOT_DIR / path
+
+
+def display_path(value: Path) -> str:
+    try:
+        return str(value.relative_to(ROOT_DIR))
+    except ValueError:
+        return str(value)
 
 
 def compact_text(value: str) -> str:
@@ -176,6 +185,100 @@ def has_korean_and_latin(text: str) -> bool:
     return bool(re.search(r"[가-힣]", text)) and bool(re.search(r"[A-Za-z]", text))
 
 
+def command_corpus_args(command: str) -> list[str]:
+    try:
+        tokens = shlex.split(command)
+    except ValueError:
+        return []
+
+    values: list[str] = []
+    idx = 0
+    while idx < len(tokens):
+        token = tokens[idx]
+        if token == "--corpus":
+            if idx + 1 < len(tokens):
+                values.append(tokens[idx + 1])
+                idx += 2
+                continue
+            values.append("")
+        elif token.startswith("--corpus="):
+            values.append(token.split("=", 1)[1])
+        idx += 1
+    return values
+
+
+def index_build_boundary_report(
+    config: dict[str, Any],
+    *,
+    corpus_path: Path,
+    questions_path: Path,
+    gold_path: Path,
+    corpus_chunks: list[dict[str, Any]],
+) -> dict[str, Any]:
+    build_config = config.get("index_build") if isinstance(config.get("index_build"), dict) else {}
+    raw_input_path = str(build_config.get("input_path") or "").strip()
+    input_path = repo_path(raw_input_path) if raw_input_path else None
+    command = str(build_config.get("command") or "").strip()
+    raw_corpus_path = str(config.get("corpus_path") or "").strip()
+    raw_questions_path = str(config.get("questions_path") or "").strip()
+    raw_gold_path = str(config.get("gold_evidence_path") or "").strip()
+    corpus_args = command_corpus_args(command)
+    normalized_corpus_args = [repo_path(value) for value in corpus_args]
+
+    prohibited_rows = [
+        {
+            "row": idx,
+            "fields": sorted(PROHIBITED_CORPUS_FIELDS & set(row)),
+        }
+        for idx, row in enumerate(corpus_chunks, start=1)
+        if PROHIBITED_CORPUS_FIELDS & set(row)
+    ]
+    prohibited_fields = sorted({field for row in prohibited_rows for field in row["fields"]})
+    question_gold_tokens = {
+        token
+        for token in {
+            raw_questions_path,
+            raw_gold_path,
+            display_path(questions_path),
+            display_path(gold_path),
+        }
+        if token
+    }
+    command_refs = sorted(token for token in question_gold_tokens if token in command)
+    command_uses_corpus = len(normalized_corpus_args) == 1 and normalized_corpus_args[0] == corpus_path
+    input_matches_corpus = input_path == corpus_path if input_path is not None else False
+
+    errors: list[str] = []
+    if not raw_input_path:
+        errors.append("index_build.input_path must be set to corpus_path")
+    elif not input_matches_corpus:
+        errors.append("index_build.input_path must match corpus_path")
+    if str(build_config.get("input_kind") or "") != "corpus_chunks_jsonl":
+        errors.append("index_build.input_kind must be corpus_chunks_jsonl")
+    if not command_uses_corpus:
+        errors.append("index_build.command must pass exactly one --corpus argument matching corpus_path")
+    if command_refs:
+        errors.append("index_build.command must not reference questions_path or gold_evidence_path")
+    if prohibited_rows:
+        errors.append("corpus_path rows must not contain query/gold label fields")
+
+    return {
+        "status": "pass" if not errors else "fail",
+        "surface": "public_synthetic_benchmark",
+        "input_kind": str(build_config.get("input_kind") or ""),
+        "allowed_input_path": display_path(corpus_path),
+        "configured_input_path": display_path(input_path) if input_path is not None else "",
+        "input_matches_corpus_path": input_matches_corpus,
+        "command_uses_corpus_path": command_uses_corpus,
+        "command_corpus_args": [display_path(path) for path in normalized_corpus_args],
+        "command_references_question_or_gold_paths": bool(command_refs),
+        "command_reference_matches": command_refs,
+        "corpus_rows_with_query_or_gold_fields": len(prohibited_rows),
+        "prohibited_corpus_fields_detected": prohibited_fields,
+        "errors": errors,
+    }
+
+
 def validate_dataset(config_path: Path) -> dict[str, Any]:
     config_path = repo_path(config_path)
     config = load_config(config_path)
@@ -235,6 +338,14 @@ def validate_dataset(config_path: Path) -> dict[str, Any]:
     if raw_chunk_ids != corpus_chunk_ids:
         errors.append("corpus_path chunk ids must match configured corpus_dir chunking output")
     chunk_by_id = {str(chunk.get("chunk_id") or ""): chunk for chunk in corpus_chunks}
+    index_boundary = index_build_boundary_report(
+        config,
+        corpus_path=corpus_path,
+        questions_path=questions_path,
+        gold_path=gold_path,
+        corpus_chunks=corpus_chunks,
+    )
+    errors.extend(index_boundary["errors"])
 
     answerable = [row for row in questions if bool(row.get("answerable", True))]
     unanswerable = [row for row in questions if not bool(row.get("answerable", True))]
@@ -380,7 +491,7 @@ def validate_dataset(config_path: Path) -> dict[str, Any]:
     page_gold_count = sum(1 for item in gold_evidence if item.get("page") is not None)
     page_chunk_count = sum(1 for chunk in corpus_chunks if chunk.get("page_span"))
     summary = {
-        "config_path": str(config_path.relative_to(ROOT_DIR)),
+        "config_path": display_path(config_path),
         "errors": errors,
         "warnings": warnings,
         "dataset_summary": {
@@ -390,10 +501,11 @@ def validate_dataset(config_path: Path) -> dict[str, Any]:
             "answerable_count": len(answerable),
             "unanswerable_count": len(unanswerable),
             "chunk_count_top_k_ratio": round(chunk_top_k_ratio, 3),
-            "corpus_path": str(corpus_path.relative_to(ROOT_DIR)) if corpus_path.is_absolute() else str(corpus_path),
+            "corpus_path": display_path(corpus_path),
             "chunking_strategy": chunking_strategy,
             "chunking": chunking_diagnostics,
         },
+        "index_build_boundary": index_boundary,
         "question_type_distribution": dict(sorted(type_counts.items())),
         "difficulty_distribution": dict(sorted(Counter(row.get("difficulty") for row in questions).items())),
         "gold_evidence_summary": {

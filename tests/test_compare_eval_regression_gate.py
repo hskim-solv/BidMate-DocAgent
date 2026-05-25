@@ -35,6 +35,7 @@ from _eval_delta import (  # noqa: E402
     min_num_predictions,
     silence_threshold,
 )
+from compare_eval import classify_eval_surface  # noqa: E402
 
 
 def _base_summary() -> dict:
@@ -211,6 +212,26 @@ class AbstentionOutcomeRegressionTest(unittest.TestCase):
         self.assertEqual(detect_abstention_outcome_regressions(base, head), [])
 
 
+class EvalSurfaceClassificationTest(unittest.TestCase):
+    def test_classifies_repo_relative_public_smoke_path(self) -> None:
+        self.assertEqual(
+            classify_eval_surface({}, path="reports/eval_summary.json"),
+            "public_fixture_smoke",
+        )
+
+    def test_classifies_repo_relative_private_real_eval_path(self) -> None:
+        self.assertEqual(
+            classify_eval_surface({}, path="reports/real100/eval_summary.json"),
+            "private_real_eval",
+        )
+
+    def test_classifies_repo_relative_harness_path(self) -> None:
+        self.assertEqual(
+            classify_eval_surface({}, path="artifacts/runs/run-1/metrics/eval_summary.json"),
+            "harness_run",
+        )
+
+
 class CompareEvalCliGateTest(unittest.TestCase):
     """Exit-code contract for the workflow.
 
@@ -261,6 +282,54 @@ class CompareEvalCliGateTest(unittest.TestCase):
             )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("### Test\n\n> Scope: public fixture smoke only.", result.stdout)
+
+    def test_surface_classification_renders_in_default_output(self) -> None:
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            result = self._run(Path(td), _base_summary(), _base_summary())
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("- surface: base=`unknown_eval_summary` · head=`unknown_eval_summary`", result.stdout)
+
+    def test_surface_mismatch_warning_is_non_blocking_by_default(self) -> None:
+        import tempfile
+        base = dict(_base_summary(), benchmark_type="private_real_eval")
+        head = dict(_base_summary(), benchmark_type="naive_rag_benchmark")
+        with tempfile.TemporaryDirectory() as td:
+            result = self._run(Path(td), base, head, regression_threshold=0)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("base=`private_real_eval` · head=`public_synthetic_benchmark`", result.stdout)
+        self.assertIn("Surface mismatch", result.stdout)
+
+    def test_surface_mismatch_can_fail_closed(self) -> None:
+        import tempfile
+        base = dict(_base_summary(), benchmark_type="private_real_eval")
+        head = dict(_base_summary(), benchmark_type="naive_rag_benchmark")
+        with tempfile.TemporaryDirectory() as td:
+            result = self._run(
+                Path(td),
+                base,
+                head,
+                regression_threshold=0,
+                fail_on_surface_mismatch=True,
+            )
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertIn("Surface mismatch", result.stdout)
+
+    def test_unknown_surface_does_not_fail_closed_against_known_surface(self) -> None:
+        import tempfile
+        base = _base_summary()
+        head = dict(_base_summary(), benchmark_type="private_real_eval")
+        with tempfile.TemporaryDirectory() as td:
+            result = self._run(
+                Path(td),
+                base,
+                head,
+                regression_threshold=0,
+                fail_on_surface_mismatch=True,
+            )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("base=`unknown_eval_summary` · head=`private_real_eval`", result.stdout)
+        self.assertNotIn("Surface mismatch", result.stdout)
 
     def test_regression_exits_one(self) -> None:
         import tempfile

@@ -11,8 +11,8 @@ PR이 생기면 각 task에 링크를 추가한다. 예제 task는 `tasks/exampl
 
 | Order | ID | Status | Owner role | Why ready / not ready |
 |---:|---|---|---|---|
-| 1 | `T-2026-0001` | `ready` | Planner -> Benchmark Auditor -> Implementer | synthetic benchmark contamination 방지 범위, validation command, evidence가 명확하다. |
-| 2 | `T-2026-0002` | `ready` | Planner -> Implementer -> Reviewer | smoke/synthetic/private real-eval 분리 기준과 regression evidence가 명확하다. |
+| 1 | `T-2026-0001` | `review` | Implementer -> Benchmark Auditor -> Reviewer | corpus-only benchmark index boundary report와 focused tests 추가됨. |
+| 2 | `T-2026-0002` | `review` | Implementer -> Reviewer | eval summary surface label + opt-in mismatch gate와 focused tests 추가됨. |
 
 ## Examples
 
@@ -23,8 +23,8 @@ PR이 생기면 각 task에 링크를 추가한다. 예제 task는 `tasks/exampl
 
 - ID: T-2026-0001
 - Title: Benchmark hardening against synthetic contamination
-- Status: ready
-- Owner role: Planner -> Benchmark Auditor -> Implementer
+- Status: review
+- Owner role: Implementer -> Benchmark Auditor -> Reviewer
 - Created: 2026-05-25
 - Last updated: 2026-05-25
 
@@ -54,8 +54,8 @@ contaminated index inputs, or over-claiming.
 
 ### Acceptance Criteria
 
-- [ ] Benchmark index build is documented/tested as corpus-only.
-- [ ] Benchmark claim wording is synthetic-only and links to the surface map.
+- [x] Benchmark index build is documented/tested as corpus-only.
+- [x] Benchmark claim wording is synthetic-only and links to the surface map.
 - [ ] Benchmark Auditor checklist is satisfied.
 
 ### Validation Commands
@@ -81,8 +81,8 @@ python3 -m pytest tests/test_naive_rag_benchmark_v1.py -q
 
 ### Related Plan / Issue / PR Links
 
-- Plan: [`docs/plans/EXAMPLE-benchmark-hardening.md`](../docs/plans/EXAMPLE-benchmark-hardening.md)
-- Issue: TBD
+- Plan: [`docs/plans/T-2026-0001-benchmark-contamination-guard.md`](../docs/plans/T-2026-0001-benchmark-contamination-guard.md)
+- Issue: [#1480](https://github.com/hskim-solv/BidMate-DocAgent/issues/1480)
 - PR: TBD
 - ADR: [ADR 0005](../docs/adr/0005-eval-split-public-synthetic-private-local.md)
 - Report: TBD
@@ -102,12 +102,34 @@ python3 -m pytest tests/test_naive_rag_benchmark_v1.py -q
 - Risks: Scope creep into scoring semantics or unsupported real-eval claims.
 ```
 
+```markdown
+## Session Handoff — 2026-05-25 18:49 KST
+
+- Role: Implementer
+- Lifecycle stage: review
+- Branch / worktree: fix/issue-1480-benchmark-eval-surface-guards / /Users/hskim/.codex/worktrees/cd0b/BidMate-DocAgent
+- Task: T-2026-0001
+- Plan: docs/plans/T-2026-0001-benchmark-contamination-guard.md
+- Current status: corpus-only index boundary report and regression tests added.
+- Files touched: eval/naive_rag/validate_benchmark_dataset.py, tests/test_naive_rag_benchmark_v1.py
+- Decisions made: Additive validator report only; no benchmark scoring or retrieval behavior change.
+- Commands run: python3 eval/naive_rag/validate_benchmark_dataset.py --config configs/eval/benchmark_naive_rag_v1.yaml --report reports/benchmark/naive_rag_v1_validation.json; python3 -m pytest tests/test_naive_rag_benchmark_v1.py -q; python3 -m py_compile eval/naive_rag/validate_benchmark_dataset.py scripts/compare_eval.py; git diff --check
+- Results: pass; validation report index_build_boundary.status=pass.
+- Validation evidence: reports/benchmark/naive_rag_v1_validation.json generated locally.
+- Eval surface: public synthetic benchmark.
+- Evidence artifacts: local validation JSON only.
+- Open risks: Benchmark Auditor still needs to confirm no real-world performance claim is implied.
+- Next action: Review diff and benchmark validity checklist.
+- Next safe command: python3 -m pytest tests/test_naive_rag_benchmark_v1.py -q
+- Reviewer focus: corpus-only proof, prohibited label fields, no metric semantics change.
+```
+
 ## T-2026-0002 — Eval regression safety surface separation
 
 - ID: T-2026-0002
 - Title: Eval regression safety surface separation
-- Status: ready
-- Owner role: Planner -> Implementer -> Reviewer
+- Status: review
+- Owner role: Implementer -> Reviewer
 - Created: 2026-05-25
 - Last updated: 2026-05-25
 
@@ -137,8 +159,8 @@ regression evidence.
 
 ### Acceptance Criteria
 
-- [ ] Future agents can identify which `eval_summary.json` they are reading.
-- [ ] Smoke/synthetic/private claims are explicitly separated.
+- [x] Future agents can identify which `eval_summary.json` they are reading.
+- [x] Smoke/synthetic/private claims are explicitly separated.
 - [ ] Reviewer checklist catches incompatible artifact comparisons.
 
 ### Validation Commands
@@ -161,8 +183,8 @@ python3 -m pytest tests/test_eval_artifact_privacy_regression.py -q
 
 ### Related Plan / Issue / PR Links
 
-- Plan: TBD
-- Issue: TBD
+- Plan: [`docs/plans/T-2026-0002-eval-artifact-surface-guard.md`](../docs/plans/T-2026-0002-eval-artifact-surface-guard.md)
+- Issue: [#1480](https://github.com/hskim-solv/BidMate-DocAgent/issues/1480)
 - PR: TBD
 - ADR: [ADR 0005](../docs/adr/0005-eval-split-public-synthetic-private-local.md)
 - Report: TBD
@@ -180,4 +202,26 @@ python3 -m pytest tests/test_eval_artifact_privacy_regression.py -q
 - Results: Task is ready when an implementer can prove artifact provenance or document manual validation.
 - Next safe command: inspect eval artifact docs and existing regression tests.
 - Risks: Accidentally requiring private raw data or comparing incompatible summaries.
+```
+
+```markdown
+## Session Handoff — 2026-05-25 18:49 KST
+
+- Role: Implementer
+- Lifecycle stage: review
+- Branch / worktree: fix/issue-1480-benchmark-eval-surface-guards / /Users/hskim/.codex/worktrees/cd0b/BidMate-DocAgent
+- Task: T-2026-0002
+- Plan: docs/plans/T-2026-0002-eval-artifact-surface-guard.md
+- Current status: compare_eval surface labels and opt-in surface mismatch gate added.
+- Files touched: scripts/compare_eval.py, tests/test_compare_eval_regression_gate.py
+- Decisions made: Unknown surfaces remain visible but non-blocking by default to preserve PR eval compatibility.
+- Commands run: python3 -m pytest tests/test_compare_eval_regression_gate.py -q; python3 scripts/check_doc_links.py --check-all; python3 -m pytest tests/test_eval_artifact_privacy_regression.py -q; python3 -m py_compile eval/naive_rag/validate_benchmark_dataset.py scripts/compare_eval.py; git diff --check
+- Results: pass.
+- Validation evidence: focused tests and doc link check.
+- Eval surface: eval governance; no benchmark metric semantics changed.
+- Evidence artifacts: none committed.
+- Open risks: Reviewer should decide whether CI should enable --fail-on-surface-mismatch later.
+- Next action: Review diff and normal/governance checklist.
+- Next safe command: python3 -m pytest tests/test_compare_eval_regression_gate.py -q
+- Reviewer focus: backward-compatible output shape, no private raw data dependency, no incompatible surface overclaim.
 ```

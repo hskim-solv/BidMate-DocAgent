@@ -55,6 +55,15 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     ap.add_argument(
+        "--fail-on-surface-mismatch",
+        action="store_true",
+        help=(
+            "Exit 2 when the compared eval_summary.json files are classified "
+            "as different evaluation surfaces. Unknown surfaces are rendered "
+            "but do not fail the gate."
+        ),
+    )
+    ap.add_argument(
         "--regression-threshold",
         type=float,
         default=DEFAULT_REGRESSION_THRESHOLD,
@@ -92,6 +101,45 @@ def parse_args() -> argparse.Namespace:
 
 def _env_flag(name: str) -> bool:
     return (os.environ.get(name) or "").strip().lower() in ("1", "true", "yes", "y")
+
+
+def classify_eval_surface(summary: dict, *, path: str | Path | None = None) -> str:
+    """Best-effort eval surface classification for reviewer-visible output.
+
+    The classifier is intentionally conservative: unknown summaries are labeled
+    as unknown instead of being coerced into a claim-bearing surface.
+    """
+    benchmark_type = str(summary.get("benchmark_type") or summary.get("eval_type") or "").strip().lower()
+    if benchmark_type == "private_real_eval":
+        return "private_real_eval"
+    if benchmark_type == "naive_rag_benchmark":
+        return "public_synthetic_benchmark"
+    if benchmark_type == "public_fixture_smoke_regression":
+        return "public_fixture_smoke"
+
+    if path is not None:
+        normalized = Path(path).as_posix()
+        relativeish = normalized.lstrip("./")
+        if (
+            relativeish.startswith("reports/real")
+            or "/reports/real" in relativeish
+        ) and relativeish.endswith("/eval_summary.json"):
+            return "private_real_eval"
+        if relativeish == "reports/eval_summary.json" or relativeish.endswith("/reports/eval_summary.json"):
+            return "public_fixture_smoke"
+        if (
+            relativeish.startswith("artifacts/runs/")
+            or "/artifacts/runs/" in relativeish
+        ) and relativeish.endswith("/metrics/eval_summary.json"):
+            return "harness_run"
+
+    return "unknown_eval_summary"
+
+
+def surfaces_compatible(base_surface: str, head_surface: str) -> bool:
+    if base_surface.startswith("unknown") or head_surface.startswith("unknown"):
+        return True
+    return base_surface == head_surface
 
 
 def _render_gate_block(regressions: list[dict], *, allow: bool) -> list[str]:
@@ -195,6 +243,9 @@ def main() -> int:
     args = parse_args()
     base = json.loads(Path(args.base).read_text(encoding="utf-8"))
     head = json.loads(Path(args.head).read_text(encoding="utf-8"))
+    base_surface = classify_eval_surface(base, path=args.base)
+    head_surface = classify_eval_surface(head, path=args.head)
+    surface_mismatch = not surfaces_compatible(base_surface, head_surface)
 
     lines: list[str] = []
     lines.append(f"### {args.title}")
@@ -206,10 +257,17 @@ def main() -> int:
         f"- pipeline: `{head.get('pipeline', '?')}` "
         f"(primary run: `{head.get('primary_run', '?')}`)"
     )
+    lines.append(f"- surface: base=`{base_surface}` · head=`{head_surface}`")
     lines.append(
         f"- cases: base={base.get('num_predictions', '?')} · "
         f"head={head.get('num_predictions', '?')}"
     )
+    if surface_mismatch:
+        lines.append(
+            "> ⚠️ Surface mismatch: compare smoke, synthetic benchmark, "
+            "private real-eval, and harness artifacts only with matching "
+            "dataset/config/index provenance."
+        )
     lines.append("")
     n_min = min_num_predictions(base, head)
     lines.append("| metric | main | PR | Δ |")
@@ -236,6 +294,8 @@ def main() -> int:
 
     print("\n".join(lines))
 
+    if surface_mismatch and args.fail_on_surface_mismatch:
+        return 2
     if regressions and not args.allow_regression:
         return 1
     return 0
