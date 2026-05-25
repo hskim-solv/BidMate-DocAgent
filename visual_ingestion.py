@@ -780,6 +780,9 @@ def finalize_visual_artifact(artifact: dict[str, Any]) -> None:
     if heuristic_tables:
         artifact["tables"].extend(heuristic_tables)
     artifact["field_candidates"] = extract_field_candidates(blocks)
+    # TODO(page-aware parser contract): visual PDF/image artifacts are the
+    # intended page-aware path; keep this boundary explicit when adding richer
+    # layout/OCR adapters so section ``page_span`` remains parser-owned.
     artifact["sections"] = build_sections_from_blocks(blocks)
 
     if not artifact["sections"]:
@@ -823,6 +826,8 @@ def make_hwp_fallback_document(
         mark_failed(artifact, "empty_text")
         return None, artifact
 
+    # TODO(page-aware parser contract): replace this page-blind fallback only
+    # with a real HWP render-to-PDF/image path or page-aware HWP extraction.
     region = {
         "page_number": None,
         "bbox": None,
@@ -1231,4 +1236,3 @@ def make_visual_report(
         "summary": summary,
         "records": [asdict(record) for record in records],
     }
-
