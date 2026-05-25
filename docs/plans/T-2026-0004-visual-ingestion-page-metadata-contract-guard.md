@@ -3,7 +3,7 @@
 - Status: review
 - Owner role: Planner + Implementer
 - Related task: `tasks/queue.md::T-2026-0004`
-- Related issue / PR: #1486 / PR TBD
+- Related issue / PR: #1486 / #1490
 - Related ADR: N/A - no decision-level change
 - Created: 2026-05-25
 - Last updated: 2026-05-25
@@ -164,20 +164,20 @@ metric semantics changed.
 - Lifecycle stage: draft PR preparation
 - Branch / worktree: fix/issue-1486-visual-page-metadata-contract / /Users/hskim/.codex/worktrees/1486/BidMate-DocAgent
 - Base branch: main
-- Issue / PR: #1486 / PR TBD
+- Issue / PR: #1486 / #1490
 - Task: T-2026-0004
 - Plan: docs/plans/T-2026-0004-visual-ingestion-page-metadata-contract-guard.md
-- Current status: split from the mixed integration worktree onto an issue-linked ADR 0007 branch; focused validation passed and draft PR publication is next.
+- Current status: split from the mixed integration worktree onto an issue-linked ADR 0007 branch; focused validation passed and draft PR #1490 is open.
 - Files touched: docs/plans/T-2026-0004-visual-ingestion-page-metadata-contract-guard.md, visual_ingestion.py, tests/test_visual_ingestion.py
 - Decisions made: keep the first executable checkpoint at the visual parser output boundary; malformed `page_span` or `regions.page_number` fails loudly via the existing page metadata contract; missing page metadata remains valid.
 - Commands run: git worktree add -b fix/issue-1486-visual-page-metadata-contract /Users/hskim/.codex/worktrees/1486/BidMate-DocAgent origin/main; git diff -- visual_ingestion.py tests/test_visual_ingestion.py | git -C /Users/hskim/.codex/worktrees/1486/BidMate-DocAgent apply; git diff --no-index ... plan copy via mktemp + git apply; python3 -m pytest -q tests/test_page_aware_parser_contract.py tests/test_page_metadata_recovery_audit.py tests/test_visual_ingestion.py tests/test_ingestion_kordoc_regression.py; python3 -m py_compile parser_page_metadata_contract.py scripts/page_metadata_recovery_audit.py ingestion.py visual_ingestion.py rag_indexing.py; python3 scripts/check_doc_links.py --check-all; git diff --check.
-- Results: branch split completed; all listed validation commands exited 0.
+- Results: branch split completed; all listed validation commands exited 0; draft PR #1490 opened.
 - Validation evidence: focused pytest passed; py_compile passed; doc link check reported no broken links; diff check passed.
 - Eval surface: page-aware parser contract / ingestion guard; no benchmark metric or private real-eval claim.
 - Evidence artifacts: none.
 - Blockers: none.
 - Open risks: malformed visual page metadata now raises before normal failed-artifact conversion; PR reviewer should confirm this fail-loud behavior is acceptable.
-- Next action: commit, push, and open draft PR for #1486.
+- Next action: review draft PR #1490 and confirm the fail-loud visual parser boundary behavior.
 - Next safe command: python3 -m pytest -q tests/test_page_aware_parser_contract.py tests/test_page_metadata_recovery_audit.py tests/test_visual_ingestion.py tests/test_ingestion_kordoc_regression.py
 - Reviewer focus: privacy-safe exception/report content, missing metadata acceptance, no retrieval/ranking/answer/citation/metric behavior change.
 
