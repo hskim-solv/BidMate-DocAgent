@@ -26,11 +26,12 @@
 
 ### 현재 약점
 
-- AI-agent가 "지금 무엇을 해야 하는가"를 읽을 persistent task queue가 없다.
-- 계획(plan) 문서가 worktree/session 밖으로 안정적으로 남지 않아 context
-  compaction 이후 같은 결정을 다시 탐색한다.
+- AI-agent가 "지금 무엇을 해야 하는가"를 찾는 진입점이 GitHub issue, audit,
+  local TODO, PR review에 흩어져 있었다.
+- 계획(plan) 문서가 worktree/session 밖으로 항상 남지는 않아 context compaction
+  이후 같은 결정을 다시 탐색했다.
 - reviewer checklist가 PR 템플릿, ADR, audit 문서에 흩어져 있어 리뷰어 역할을
-  맡은 agent가 무엇을 공격적으로 확인해야 하는지 즉시 알기 어렵다.
+  맡은 agent가 무엇을 공격적으로 확인해야 하는지 즉시 알기 어려웠다.
 - `reports/eval_summary.json`, `reports/real100/eval_summary.json`,
   `artifacts/runs/*/metrics/eval_summary.json`가 모두 존재할 수 있어 잘못된
   산출물을 비교할 위험이 있다.
@@ -88,6 +89,19 @@
 | active task state | [`tasks/queue.md`](../../tasks/queue.md) | 세션 간 handoff 상태 저장 |
 | large-work plan | [`docs/plans/`](../plans/) | context loss 후 이어서 구현 가능한 설계 단위 |
 | review gate | [`docs/reviews/ai-review-checklists.md`](../reviews/ai-review-checklists.md) | reviewer/deep reviewer/benchmark auditor가 사용할 기준 |
+
+## Operating Questions
+
+| 질문 | 답하는 문서 |
+|---|---|
+| What should I work on next? | [`tasks/queue.md`](../../tasks/queue.md)의 `Ready Order` |
+| What role am I acting as? | 이 문서의 [Agent Role Model](#agent-role-model) |
+| What plan should I follow? | task의 plan link 또는 [`docs/plans/TEMPLATE.md`](../plans/TEMPLATE.md) |
+| What evidence must I produce? | task의 `Evidence Required`와 plan의 `Validation Strategy` |
+| What claims am I allowed to make? | [`docs/evaluation/surface-map.md`](../evaluation/surface-map.md) |
+| What review checklist will be used? | [`docs/reviews/ai-review-checklists.md`](../reviews/ai-review-checklists.md) |
+| How do I continue after context loss? | [`docs/operations/long-session-workflow.md`](./long-session-workflow.md) |
+| How do I avoid corrupting evals? | ADR 0005, `surface-map.md`, Benchmark Validity Audit |
 
 ## Definition Of The Minimum Viable Operating System
 

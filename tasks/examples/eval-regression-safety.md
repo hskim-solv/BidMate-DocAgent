@@ -1,10 +1,9 @@
 # T-EXAMPLE-002 — Eval regression safety surface separation
 
-- Status: example
+- ID: T-EXAMPLE-002
+- Title: Eval regression safety surface separation
+- Status: ready
 - Owner role: Reviewer
-- Related issue: example only
-- Related PR: example only
-- Related plan: TBD
 - Created: 2026-05-25
 - Last updated: 2026-05-25
 
@@ -56,3 +55,26 @@ python3 -m pytest tests/test_eval_artifact_privacy_regression.py -q
 - Stop if raw private questions, answers, evidence, doc IDs, chunk IDs, or exact
   local paths would be needed.
 - Stop if metric semantics are being changed; create a new plan and benchmark audit.
+
+## Related Plan / Issue / PR Links
+
+- Plan: example only
+- Issue: example only
+- PR: example only
+- ADR: [ADR 0005](../../docs/adr/0005-eval-split-public-synthetic-private-local.md)
+- Report: example only
+
+## Handoff Notes
+
+```markdown
+## Session Handoff — 2026-05-25 00:00 KST
+
+- Role: Reviewer
+- Branch / worktree: example only
+- Current status: ready
+- Decisions made: Regression evidence must name the surface before making a claim.
+- Commands run: None; example task.
+- Results: N/A.
+- Next safe command: inspect docs/evaluation/surface-map.md and current eval artifact references.
+- Risks: Incompatible eval_summary.json comparisons or accidental private artifact disclosure.
+```
