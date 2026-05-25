@@ -173,6 +173,11 @@ reports/real100/history/*
 # counts/buckets over gold/retrieved chunk diagnostics; raw
 # eval_summary.json::case_results stays ignored.
 !reports/real100/multi_chunk_evidence_failures.aggregate.json
+# Difficulty profiler (script: scripts/render_difficulty_profile.py).
+# Aggregate-only buckets and means over private real-eval difficulty slices;
+# raw eval_summary.json::case_results and index chunk text stay ignored.
+!reports/real100/difficulty_profile.md
+!reports/real100/difficulty_profile.aggregate.json
 # Issue #1021 — variance source inspection (Issue J, ADR 0059 audit
 # follow-up, script: scripts/measure_variance.py). N=5 same-HEAD runs →
 # per-category mean/std/min/max + per-case stability + transition matrix.

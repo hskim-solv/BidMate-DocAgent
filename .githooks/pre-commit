@@ -68,6 +68,12 @@ ALLOWED_PATTERNS=(
   # scripts/render_multi_chunk_evidence_failures.py). Aggregate-only
   # counts/buckets for gold/retrieved chunk coverage and expected impact.
   '^reports/real100/multi_chunk_evidence_failures\.aggregate\.json$'
+  # Issue #1469 — difficulty profiler (script:
+  # scripts/render_difficulty_profile.py, ADR 0077). Aggregate-only
+  # difficulty buckets and outcome means; raw case rows and index text stay
+  # ignored.
+  '^reports/real100/difficulty_profile\.md$'
+  '^reports/real100/difficulty_profile\.aggregate\.json$'
   # Issue #1021 — variance source inspection (script:
   # scripts/measure_variance.py, ADR 0059 Issue J audit). N=5 same-HEAD
   # runs → per-category mean/std/min/max + per-case stability + transition
