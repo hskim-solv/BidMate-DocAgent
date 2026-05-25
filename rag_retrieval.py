@@ -152,6 +152,17 @@ def apply_fusion_and_reranking(
     elif retrieval_backend == "m3":
         rrf_channel_keys = ("dense", "m3_sparse", "m3_colbert")
     if rrf_channel_keys and scored:
+        rrf_channel_pools_raw = plan.get("rrf_channel_pools")
+        rrf_channel_pools: dict[str, int] = {}
+        if retrieval_backend == "hybrid" and isinstance(rrf_channel_pools_raw, dict):
+            for key in rrf_channel_keys:
+                value = rrf_channel_pools_raw.get(key)
+                if value is None:
+                    continue
+                limit = int(value)
+                if limit < 1:
+                    raise ValueError("rrf_channel_pools values must be positive integers.")
+                rrf_channel_pools[key] = limit
         # Stable rank-by-channel: sort by (channel_score desc, chunk_id) so
         # ties resolve deterministically. Same idiom as the ADR 0010
         # hybrid path it replaces.
@@ -162,6 +173,8 @@ def apply_fusion_and_reranking(
                 key=lambda it, k=key: (it["score_parts"].get(k, 0.0), it["chunk_id"]),
                 reverse=True,
             )
+            if key in rrf_channel_pools:
+                ordered = ordered[: rrf_channel_pools[key]]
             channel_ranks[key] = {it["chunk_id"]: rank for rank, it in enumerate(ordered)}
         # Raw N-way RRF tops out at N/k. Normalize to [0,1] so the
         # verifier's score floor (rag_core.py:2254, threshold 0.18 tuned
@@ -172,7 +185,11 @@ def apply_fusion_and_reranking(
         rrf_norm = rrf_k / float(len(rrf_channel_keys))
         for item in scored:
             cid = item["chunk_id"]
-            rrf = sum(1.0 / (rrf_k + ranks[cid]) for ranks in channel_ranks.values())
+            rrf = sum(
+                1.0 / (rrf_k + ranks[cid])
+                for ranks in channel_ranks.values()
+                if cid in ranks
+            )
             item["score"] = round(float(rrf * rrf_norm), 6)
             item["score_parts"]["rank_rrf"] = round(float(rrf * rrf_norm), 6)
 
