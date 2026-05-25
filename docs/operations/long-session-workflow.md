@@ -18,10 +18,12 @@ eval validity를 유지하며, reviewer가 검증 가능한 근거(evidence)를 
 
 1. [`CLAUDE.md`](../../CLAUDE.md)와 현재 task entry를 읽는다.
 2. [`tasks/queue.md`](../../tasks/queue.md)에서 task status와 owner role을 확인한다.
-3. plan doc가 있으면 먼저 읽고, 없는데 필요한 범위면 구현 전에 만든다.
-4. `git status --short --branch`로 worktree 상태를 확인한다.
-5. 관련 ADR과 eval surface를 확인한다.
-6. 다음 safe command를 정하고 실행한다.
+3. [`docs/operations/ai-engineering-operating-system.md`](./ai-engineering-operating-system.md)에서
+   role, evidence, review escalation을 확인한다.
+4. plan doc가 있으면 먼저 읽고, 없는데 필요한 범위면 구현 전에 만든다.
+5. `git status --short --branch`로 worktree 상태를 확인한다.
+6. 관련 ADR과 eval surface를 확인한다.
+7. 다음 safe command를 정하고 실행한다.
 
 ## Context Preservation Rules
 
@@ -43,7 +45,9 @@ eval validity를 유지하며, reviewer가 검증 가능한 근거(evidence)를 
 ## Session Handoff — YYYY-MM-DD HH:MM TZ
 
 - Role:
+- Lifecycle stage:
 - Branch / worktree:
+- Base branch:
 - Issue / PR:
 - Task:
 - Plan:
@@ -52,12 +56,14 @@ eval validity를 유지하며, reviewer가 검증 가능한 근거(evidence)를 
 - Decisions made:
 - Commands run:
 - Results:
+- Validation evidence:
 - Eval surface:
 - Evidence artifacts:
 - Blockers:
+- Open risks:
+- Next action:
 - Next safe command:
 - Reviewer focus:
-- Risks:
 ```
 
 ## Branch And Worktree Guidance
@@ -115,6 +121,7 @@ Repo: BidMate-DocAgent
 Task: <task id and title>
 Read first:
 - CLAUDE.md
+- docs/operations/ai-engineering-operating-system.md
 - tasks/queue.md entry <id>
 - docs/plans/<plan>.md
 - docs/evaluation/surface-map.md if eval/benchmark is touched

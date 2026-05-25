@@ -1,67 +1,74 @@
 # Plan: <task-id> <title>
 
-- Status: proposed
-- Owner role: Planner
-- Related task: `tasks/queue.md::<task-id>`
-- Related issue / PR:
-- Created:
-- Last updated:
+- Status: proposed | running | blocked | review | done
+- Owner role: <Planner | Implementer | Evaluator | Reviewer | other role>
+- Related task: `tasks/queue.md::<task-id>` | N/A
+- Related issue / PR: <links or N/A>
+- Related ADR: <links or "N/A - no decision-level change">
+- Created: YYYY-MM-DD
+- Last updated: YYYY-MM-DD
 
 ## Problem Statement
 
-What concrete failure, bottleneck, or missing capability does this plan address?
+State the concrete failure, bottleneck, missing capability, or coordination risk.
+Name the user-visible or reviewer-visible consequence if this plan is not done.
 
 ## Current Behavior
 
-Describe the current code/docs/eval workflow. Include relevant files, commands,
-ADR, and observed failure modes.
+Describe the current workflow or implementation enough for a new session to
+resume without rediscovery. Include relevant files, commands, docs, ADRs,
+observed outputs, and known failure modes.
 
 ## Desired Behavior
 
-Describe the smallest useful end state. This must be testable.
-
-## Scope
-
-- In scope:
-- In scope:
-
-## Non-Goals
-
-- Out of scope:
-- Out of scope:
+Describe the smallest useful end state. This must be observable through a
+command, artifact, review checklist, or explicit non-change claim.
 
 ## Constraints
 
+- Scope constraints:
 - Architecture constraints:
-- Eval/privacy constraints:
 - Compatibility constraints:
+- Eval/privacy constraints:
 - Tooling/CI constraints:
+- Non-goals:
 
 ## Architecture Impact
 
-- Affected modules:
-- Affected contracts:
+- Affected modules or docs:
+- Affected contracts or invariants:
 - Load-bearing paths:
-- ADR impact:
+- ADR required: yes/no, with reason:
+- Backward compatibility expectation:
 
 ## Affected Interfaces
 
 - CLI/API/config:
+- Input data:
 - Output artifacts:
-- Docs:
-- Tests:
+- Docs/review surfaces:
+- Tests/eval entrypoints:
+
+## Data / Eval Impact
+
+- Surface: public fixture smoke | public synthetic benchmark | private real-eval | none
+- Data boundary: public fixture | aggregate-only private output | no data touched | other:
+- Allowed claim:
+- Disallowed claim:
+- Baseline or control affected: yes/no, with reason:
+- Benchmark/eval auditor required: yes/no:
 
 ## Task Breakdown
 
-1. Step:
-2. Step:
-3. Step:
+1. <Actionable step and target file/surface>
+2. <Actionable step and target file/surface>
+3. <Actionable step and target file/surface>
 
 ## Acceptance Criteria
 
-- [ ] Criterion:
-- [ ] Criterion:
-- [ ] Criterion:
+- [ ] <Observable criterion tied to desired behavior>
+- [ ] <Contract or documentation criterion>
+- [ ] <Validation evidence criterion>
 
 ## Validation Strategy
 
@@ -74,38 +81,40 @@ Commands that must be run:
 Expected evidence:
 
 - Test/eval output:
-- Artifact:
-- Reviewer check:
+- Generated or updated artifact:
+- Reviewer checklist or manual inspection:
+- Explicitly not validated, with reason:
 
 ## Rollback Strategy
 
-How to revert safely if the change creates regression or invalidates evaluation.
+Explain how to revert safely if the change regresses behavior, invalidates an
+eval claim, or creates operational risk. Name any data/artifacts that must not
+be deleted during rollback.
 
 ## Failure Modes
 
 - Failure mode:
-- Failure mode:
+- Detection signal:
+- Stop condition or fallback:
 
 ## Observability
 
-What logs, reports, metrics, traces, or artifacts will show whether the change
-works or fails?
-
-## Eval / Benchmark Impact
-
-- Surface: public fixture smoke / public synthetic benchmark / private real-eval / none
-- Allowed claim:
-- Disallowed claim:
-- Benchmark auditor required: yes/no
+List the logs, reports, metrics, traces, CI checks, or review artifacts that
+show whether the work is succeeding or failing. Prefer stable paths and command
+outputs over narrative promises.
 
 ## Reviewer Notes
 
-What should the reviewer attack first?
+Tell the reviewer what to attack first: claim wording, contract drift,
+baseline preservation, data boundary, rollback path, missing tests, or another
+specific risk.
 
-## Session Handoff
+## Handoff Notes
+
+Update this section at every session boundary or context compaction.
 
 ```markdown
-## Session Handoff — YYYY-MM-DD HH:MM TZ
+## Session Handoff - YYYY-MM-DD HH:MM TZ
 
 - Role:
 - Branch / worktree:
@@ -117,5 +126,6 @@ What should the reviewer attack first?
 - Commands run:
 - Results:
 - Next safe command:
+- Open questions:
 - Risks:
 ```

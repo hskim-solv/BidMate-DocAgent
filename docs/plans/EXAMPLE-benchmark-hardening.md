@@ -1,9 +1,10 @@
 # Plan: T-2026-0001 Benchmark Hardening Against Synthetic Contamination
 
-- Status: example
+- Status: proposed
 - Owner role: Planner
 - Related task: [`tasks/examples/benchmark-hardening.md`](../../tasks/examples/benchmark-hardening.md)
 - Related issue / PR: example only
+- Related ADR: [ADR 0005](../adr/0005-eval-split-public-synthetic-private-local.md)
 - Created: 2026-05-25
 - Last updated: 2026-05-25
 
@@ -28,40 +29,41 @@ Benchmark runs should remain useful for controlled synthetic failure discovery
 without becoming evidence for real RFP performance. The benchmark validation path
 should make contamination and over-claiming harder to miss.
 
-## Scope
-
-- Add or verify checks that benchmark index build reads only corpus chunks.
-- Add reviewer-facing documentation that benchmark claims are synthetic-only.
-- Add regression tests for validator behavior if code changes are needed.
-
-## Non-Goals
-
-- Do not improve retrieval, reranking, answer generation, or verifier behavior.
-- Do not change private real-eval scoring.
-- Do not add a new benchmark dataset.
-- Do not claim product-quality improvement.
-
 ## Constraints
 
-- ADR 0005 privacy and public/private split remain unchanged.
-- `naive_baseline` remains the control.
-- Public synthetic data may be committed; generated run artifacts remain local.
-- Any claim-bearing doc must link to [`docs/evaluation/surface-map.md`](../evaluation/surface-map.md).
+- Scope constraints: add or verify benchmark validity checks and claim wording only.
+- Architecture constraints: `naive_baseline` remains the control.
+- Compatibility constraints: existing benchmark config and public synthetic data stay valid.
+- Eval/privacy constraints: ADR 0005 privacy and public/private split remain unchanged.
+- Tooling/CI constraints: generated run artifacts remain local unless explicitly allowed.
+- Non-goals: do not improve retrieval, reranking, answer generation, verifier behavior,
+  private real-eval scoring, or product-quality claims.
 
 ## Architecture Impact
 
-- Affected modules: `eval/naive_rag/validate_benchmark_dataset.py`,
+- Affected modules or docs: `eval/naive_rag/validate_benchmark_dataset.py`,
   `eval/naive_rag/build_benchmark_index.py`, docs under `docs/evaluation/`.
-- Affected contracts: synthetic benchmark v1 input separation and claim boundary.
+- Affected contracts or invariants: synthetic benchmark v1 input separation and claim boundary.
 - Load-bearing paths: `eval/` if validator or runner changes.
-- ADR impact: no new ADR unless a new measurement surface or claim contract is created.
+- ADR required: no unless a new measurement surface or claim contract is created.
+- Backward compatibility expectation: existing benchmark corpus/config remains readable.
 
 ## Affected Interfaces
 
-- CLI: benchmark validation and index build commands.
+- CLI/API/config: benchmark validation and index build commands.
+- Input data: `data/eval/benchmark/corpus_chunks_v1.jsonl` only for index build.
 - Output artifacts: validation report under `reports/benchmark/`.
-- Docs: benchmark design/results wording.
-- Tests: focused validator/index-build regression tests.
+- Docs/review surfaces: benchmark design/results wording and Benchmark Auditor checklist.
+- Tests/eval entrypoints: focused validator/index-build regression tests.
+
+## Data / Eval Impact
+
+- Surface: public synthetic benchmark.
+- Data boundary: public synthetic corpus; generated run artifacts remain local.
+- Allowed claim: benchmark hardening improved contamination resistance.
+- Disallowed claim: RAG model quality improved on real RFPs.
+- Baseline or control affected: no; `naive_baseline` remains the control.
+- Benchmark/eval auditor required: yes.
 
 ## Task Breakdown
 
@@ -116,14 +118,26 @@ explicitly changes dataset versioning.
 - Test result: benchmark input separation and schema checks.
 - Review output: Benchmark Auditor verdict.
 
-## Eval / Benchmark Impact
-
-- Surface: public synthetic benchmark.
-- Allowed claim: benchmark hardening improved contamination resistance.
-- Disallowed claim: RAG model quality improved on real RFPs.
-- Benchmark auditor required: yes.
-
 ## Reviewer Notes
 
 Attack the claim wording first. Then inspect whether any code path can read
 questions, expected answers, expected terms, or gold evidence during index build.
+
+## Handoff Notes
+
+```markdown
+## Session Handoff - 2026-05-25 00:00 KST
+
+- Role: Planner
+- Branch / worktree: example only
+- Issue / PR: example only
+- Task: T-EXAMPLE-001
+- Current status: proposed example plan
+- Files touched: N/A
+- Decisions made: Treat this as benchmark validity hardening, not model improvement.
+- Commands run: None; example only.
+- Results: N/A
+- Next safe command: python3 eval/naive_rag/validate_benchmark_dataset.py --help
+- Open questions: whether a concrete validator gap exists.
+- Risks: unsupported real-world claim wording or benchmark leakage.
+```

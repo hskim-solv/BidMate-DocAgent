@@ -1,10 +1,9 @@
 # <task-id> — <title>
 
+- ID: <task-id>
+- Title: <title>
 - Status: backlog
 - Owner role:
-- Related issue:
-- Related PR:
-- Related plan:
 - Created:
 - Last updated:
 
@@ -50,7 +49,7 @@ Relevant ADRs, docs, code paths, incidents, reports, or prior decisions.
 - Stop if:
 - Stop if:
 
-## Related Links
+## Related Plan / Issue / PR Links
 
 - Plan:
 - Issue:
@@ -58,7 +57,7 @@ Relevant ADRs, docs, code paths, incidents, reports, or prior decisions.
 - ADR:
 - Report:
 
-## Session Handoff
+## Handoff Notes
 
 ```markdown
 ## Session Handoff — YYYY-MM-DD HH:MM TZ

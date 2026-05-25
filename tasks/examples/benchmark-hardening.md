@@ -1,10 +1,9 @@
 # T-EXAMPLE-001 — Benchmark hardening against synthetic contamination
 
-- Status: example
+- ID: T-EXAMPLE-001
+- Title: Benchmark hardening against synthetic contamination
+- Status: ready
 - Owner role: Benchmark Auditor
-- Related issue: example only
-- Related PR: example only
-- Related plan: [`docs/plans/EXAMPLE-benchmark-hardening.md`](../../docs/plans/EXAMPLE-benchmark-hardening.md)
 - Created: 2026-05-25
 - Last updated: 2026-05-25
 
@@ -57,3 +56,26 @@ python3 -m pytest tests/test_naive_rag_benchmark_v1.py -q
 
 - Stop if benchmark scoring semantics need to change.
 - Stop if the task starts optimizing model quality instead of hardening validity.
+
+## Related Plan / Issue / PR Links
+
+- Plan: [`docs/plans/EXAMPLE-benchmark-hardening.md`](../../docs/plans/EXAMPLE-benchmark-hardening.md)
+- Issue: example only
+- PR: example only
+- ADR: [ADR 0005](../../docs/adr/0005-eval-split-public-synthetic-private-local.md)
+- Report: example only
+
+## Handoff Notes
+
+```markdown
+## Session Handoff — 2026-05-25 00:00 KST
+
+- Role: Benchmark Auditor
+- Branch / worktree: example only
+- Current status: ready
+- Decisions made: Separate synthetic benchmark claims from private real-eval claims.
+- Commands run: None; example task.
+- Results: N/A.
+- Next safe command: inspect benchmark dataset validator and index build inputs.
+- Risks: Metric inflation, benchmark leakage, or unsupported real-world quality claims.
+```
