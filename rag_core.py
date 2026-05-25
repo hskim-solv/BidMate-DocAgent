@@ -568,6 +568,7 @@ class _RunContext:
     verification_reasons: list[str] | None = None
     retrieved_chunk_ids: list[str] | None = None
     retrieved_chunks: list[dict[str, Any]] | None = None
+    plan_overrides: dict[str, Any] | None = None
 
 
 def _build_run_context(
@@ -591,6 +592,7 @@ def _build_run_context(
     bm25_tokenizer: str | None = None,
     bm25_backend: str | None = None,
     params: QueryParams | None = None,
+    plan_overrides: dict[str, Any] | None = None,
 ) -> _RunContext:
     """Normalize raw ``run_rag_query`` inputs into a :class:`_RunContext`.
 
@@ -765,6 +767,7 @@ def _build_run_context(
         trace_unavailable_reason=trace_unavailable_reason,
         trace_error=trace_error,
         trace_handle=trace_handle,
+        plan_overrides=plan_overrides,
     )
 
 
@@ -946,6 +949,39 @@ def _retrieved_chunk_diagnostics(
     return rows
 
 
+def _eval_plan_overrides(overrides: dict[str, Any] | None) -> dict[str, Any]:
+    """Validate private eval-only plan overrides.
+
+    The production query surface intentionally has no public
+    ``rrf_channel_pools`` argument. Private measurement harnesses can
+    use this narrow hook to alter retrieval fusion parameters after the
+    normal planner has produced its plan, without changing verifier,
+    prompt, chunking, reranker, or answer generation behavior.
+    """
+    if not overrides:
+        return {}
+    allowed = {"rrf_channel_pools"}
+    unknown = sorted(set(overrides) - allowed)
+    if unknown:
+        raise ValueError(f"unsupported eval plan override(s): {unknown}")
+    result: dict[str, Any] = {}
+    pools = overrides.get("rrf_channel_pools")
+    if pools is not None:
+        if not isinstance(pools, dict):
+            raise ValueError("rrf_channel_pools must be a mapping.")
+        coerced: dict[str, int] = {}
+        for key, value in pools.items():
+            channel = str(key)
+            if channel not in {"dense", "bm25"}:
+                raise ValueError("rrf_channel_pools only supports dense and bm25.")
+            limit = int(value)
+            if limit < 1:
+                raise ValueError("rrf_channel_pools values must be positive integers.")
+            coerced[channel] = limit
+        result["rrf_channel_pools"] = coerced
+    return result
+
+
 def _phase_retrieve_loop(ctx: _RunContext) -> None:
     """Run the metadata-stage retry loop (ADR 0022 stage 2).
 
@@ -1007,6 +1043,7 @@ def _phase_retrieve_loop(ctx: _RunContext) -> None:
                 bm25_tokenizer=ctx.bm25_tokenizer,
                 bm25_backend=ctx.bm25_backend,
             )
+            plan.update(_eval_plan_overrides(ctx.plan_overrides))
             evidence = retrieve(ctx.index, ctx.retrieval_query, analysis, plan)
         with _StageTimer(
             attempt_timings,
@@ -1440,6 +1477,63 @@ def run_rag_query_with_oracle_evidence(
     return _phase_build_answer(ctx)
 
 
+def _run_rag_query_with_plan_overrides(
+    index: dict[str, Any],
+    query: str,
+    *,
+    plan_overrides: dict[str, Any],
+    top_k: int | None = None,
+    context_entities: list[str] | None = None,
+    metadata_first: bool | None = None,
+    rerank: bool | None = None,
+    rerank_cross_encoder: bool | None = None,
+    verifier_retry: bool | None = None,
+    retrieval_mode: str | None = None,
+    retrieval_backend: str | None = None,
+    pipeline: str | None = None,
+    prompt_profile: str | None = None,
+    conversation_state: dict[str, Any] | None = None,
+    comparison_balance: dict[str, Any] | None = None,
+    rrf_k: int | None = None,
+    bm25_stopword_profile: str | None = None,
+    bm25_tokenizer: str | None = None,
+    bm25_backend: str | None = None,
+) -> dict[str, Any]:
+    """Private eval-only entry point for retrieval plan override probes.
+
+    This deliberately bypasses LangGraph/ReAct routing and only exists so
+    local measurement harnesses can compare retrieval-fusion knobs while
+    keeping the verifier and answer phases identical to the direct
+    ``run_rag_query`` path.
+    """
+    ctx = _build_run_context(
+        index,
+        query,
+        top_k=top_k,
+        context_entities=context_entities,
+        metadata_first=metadata_first,
+        rerank=rerank,
+        rerank_cross_encoder=rerank_cross_encoder,
+        verifier_retry=verifier_retry,
+        retrieval_mode=retrieval_mode,
+        retrieval_backend=retrieval_backend,
+        pipeline=pipeline,
+        prompt_profile=prompt_profile,
+        conversation_state=conversation_state,
+        comparison_balance=comparison_balance,
+        rrf_k=rrf_k,
+        bm25_stopword_profile=bm25_stopword_profile,
+        bm25_tokenizer=bm25_tokenizer,
+        bm25_backend=bm25_backend,
+        plan_overrides=_eval_plan_overrides(plan_overrides),
+    )
+    early_result = _phase_analyze(ctx)
+    if early_result is not None:
+        return early_result
+    _phase_retrieve_loop(ctx)
+    return _phase_build_answer(ctx)
+
+
 async def arun_rag_query(
     index: dict[str, Any],
     query: str,
@@ -1494,4 +1588,3 @@ async def arun_rag_query(
         bm25_tokenizer=bm25_tokenizer,
         bm25_backend=bm25_backend,
     )
-

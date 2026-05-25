@@ -232,6 +232,8 @@ reports/retrieval/phase3_mode_*/*
 # pass the tracked-artifact regression guard before any explicit allowlist is
 # reintroduced.
 reports/retrieval/phase35_m3_*/
+# Private hybrid retrieval sweeps are local aggregate-only measurement outputs.
+reports/retrieval/hybrid_sweep_*/
 # Phase 4 retrieval-eval (metadata / filtering ablation) timestamped runs.
 # Same aggregate-only commit boundary as phase3_mode_* above. All 4 variants
 # share the kordoc 26k index; only plan['metadata_first'] / metadata_filters
