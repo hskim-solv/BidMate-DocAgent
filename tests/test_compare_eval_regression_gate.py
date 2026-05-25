@@ -17,6 +17,7 @@ What the gate must do:
 
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
 import sys
@@ -35,7 +36,11 @@ from _eval_delta import (  # noqa: E402
     min_num_predictions,
     silence_threshold,
 )
-from compare_eval import classify_eval_surface  # noqa: E402
+from compare_eval import (  # noqa: E402
+    classify_eval_surface,
+    missing_required_provenance,
+    provenance_mismatches,
+)
 
 
 def _base_summary() -> dict:
@@ -53,6 +58,38 @@ def _base_summary() -> dict:
         "retry": 0.20,
         "latency": {"p50": 200.0, "p95": 800.0},
     }
+
+
+def _provenanced_summary(**overrides: object) -> dict:
+    summary = dict(
+        _base_summary(),
+        benchmark_type="public_fixture_smoke_regression",
+        provenance={
+            "git_commit": "abc123def456",
+            "git_dirty": False,
+            "generated_at": "2026-05-25T00:00:00Z",
+        },
+        run_manifest={
+            "git_commit": "abc123def456",
+            "git_dirty": False,
+            "config_sha256": "cfg1111111111111",
+            "embedding_backend": "hashing",
+            "embedding_model_id": "hashing",
+            "generated_at": "2026-05-25T00:00:00Z",
+        },
+        dataset_summary={
+            "id": "public-fixture-smoke-v1",
+            "num_questions": 42,
+            "num_docs": 5,
+            "num_chunks": 100,
+        },
+    )
+    summary.update(overrides)
+    return summary
+
+
+def _path_label(value: str) -> str:
+    return f"{Path(value).name}#{hashlib.sha256(value.encode('utf-8')).hexdigest()[:12]}"
 
 
 class DetectRegressionsTest(unittest.TestCase):
@@ -232,6 +269,121 @@ class EvalSurfaceClassificationTest(unittest.TestCase):
         )
 
 
+class EvalProvenanceTest(unittest.TestCase):
+    def test_missing_required_provenance_reports_run_config_index(self) -> None:
+        self.assertEqual(
+            missing_required_provenance(_base_summary()),
+            ["run", "config", "index", "dataset"],
+        )
+
+    def test_unknown_sentinel_does_not_count_as_present_provenance(self) -> None:
+        summary = dict(
+            _base_summary(),
+            provenance={"git_commit": "unknown"},
+            run_manifest={
+                "config_sha256": "unknown",
+                "embedding_backend": "unknown",
+                "embedding_model_id": "unknown",
+            },
+            dataset={"id": "unknown"},
+        )
+        self.assertEqual(
+            missing_required_provenance(summary),
+            ["run", "config", "index", "dataset"],
+        )
+
+    def test_dataset_counts_without_identity_do_not_satisfy_required_provenance(self) -> None:
+        summary = _provenanced_summary(
+            dataset_summary={
+                "num_questions": 42,
+                "num_docs": 5,
+                "num_chunks": 100,
+            }
+        )
+
+        self.assertEqual(missing_required_provenance(summary), ["dataset"])
+
+    def test_provenance_mismatch_ignores_run_commit_but_compares_config_index_dataset(self) -> None:
+        base = _provenanced_summary(
+            provenance={
+                "git_commit": "basecommit",
+                "generated_at": "2026-05-25T00:00:00Z",
+            },
+            run_manifest={
+                "git_commit": "basecommit",
+                "config_sha256": "cfg-base",
+                "embedding_backend": "hashing",
+                "embedding_model_id": "hashing",
+            },
+        )
+        head = _provenanced_summary(
+            provenance={
+                "git_commit": "headcommit",
+                "generated_at": "2026-05-25T01:00:00Z",
+            },
+            run_manifest={
+                "git_commit": "headcommit",
+                "config_sha256": "cfg-head",
+                "embedding_backend": "sentence-transformers",
+                "embedding_model_id": "model-v2",
+            },
+            dataset_summary={
+                "id": "public-fixture-smoke-v2",
+                "num_questions": 41,
+                "num_docs": 5,
+                "num_chunks": 100,
+            },
+        )
+        mismatches = provenance_mismatches(base, head)
+        self.assertEqual(set(mismatches), {"config", "index", "dataset"})
+        self.assertNotIn("run", mismatches)
+
+    def test_dataset_aliases_participate_in_provenance_mismatch(self) -> None:
+        base = _provenanced_summary(
+            dataset_summary={
+                "id": "public-fixture-smoke-v1",
+                "question_count": 42,
+                "corpus_size": 5,
+                "chunk_count": 100,
+            }
+        )
+        head = _provenanced_summary(
+            dataset_summary={
+                "id": "public-fixture-smoke-v1",
+                "question_count": 42,
+                "corpus_size": 5,
+                "chunk_count": 101,
+            }
+        )
+        self.assertEqual(set(provenance_mismatches(base, head)), {"dataset"})
+
+    def test_same_basename_paths_still_participate_in_provenance_mismatch(self) -> None:
+        base = _provenanced_summary(
+            run_manifest={
+                "git_commit": "abc123def456",
+                "git_dirty": False,
+                "config_path": "/private/base/config.yaml",
+                "embedding_backend": "hashing",
+                "embedding_model_id": "hashing",
+            },
+        )
+        head = _provenanced_summary(
+            run_manifest={
+                "git_commit": "abc123def456",
+                "git_dirty": False,
+                "config_path": "/private/head/config.yaml",
+                "embedding_backend": "hashing",
+                "embedding_model_id": "hashing",
+            },
+        )
+
+        mismatches = provenance_mismatches(base, head)
+
+        self.assertEqual(set(mismatches), {"config"})
+        self.assertIn("config.yaml#", mismatches["config"][0])
+        self.assertIn("config.yaml#", mismatches["config"][1])
+
+
 class CompareEvalCliGateTest(unittest.TestCase):
     """Exit-code contract for the workflow.
 
@@ -314,6 +466,82 @@ class CompareEvalCliGateTest(unittest.TestCase):
             )
         self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
         self.assertIn("Surface mismatch", result.stdout)
+
+    def test_missing_provenance_can_fail_closed(self) -> None:
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            result = self._run(
+                Path(td),
+                _base_summary(),
+                _base_summary(),
+                regression_threshold=0,
+                fail_on_missing_provenance=True,
+            )
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertIn("Missing provenance", result.stdout)
+        self.assertIn("base missing `run`, `config`, `index`, `dataset`", result.stdout)
+
+    def test_provenance_mismatch_can_fail_closed(self) -> None:
+        import tempfile
+        base = _provenanced_summary()
+        head = _provenanced_summary(
+            run_manifest={
+                "git_commit": "abc123def456",
+                "git_dirty": False,
+                "config_sha256": "cfg2222222222222",
+                "embedding_backend": "hashing",
+                "embedding_model_id": "hashing",
+                "generated_at": "2026-05-25T00:00:00Z",
+            }
+        )
+        with tempfile.TemporaryDirectory() as td:
+            result = self._run(
+                Path(td),
+                base,
+                head,
+                regression_threshold=0,
+                fail_on_provenance_mismatch=True,
+        )
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertIn("Provenance mismatch", result.stdout)
+        self.assertIn(
+            "`config` base=`sha=cfg1111111111111` "
+            "head=`sha=cfg2222222222222`",
+            result.stdout,
+        )
+
+    def test_provenance_renders_before_metric_table_and_redacts_paths(self) -> None:
+        import tempfile
+        base = dict(
+            _base_summary(),
+            provenance={"generated_at": "2026-05-25T00:00:00Z"},
+            run_manifest={
+                "config_path": "/Users/hskim/private/real_config.local.yaml",
+                "embedding_backend": "local",
+                "embedding_model_id": "data/private/model.bin",
+                "generated_at": "2026-05-25T00:00:00Z",
+            },
+            dataset_path="file:///Users/hskim/private/questions.jsonl",
+        )
+        head = dict(base)
+        with tempfile.TemporaryDirectory() as td:
+            result = self._run(Path(td), base, head, regression_threshold=0)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertLess(
+            result.stdout.index("- provenance(base):"),
+            result.stdout.index("| metric |"),
+        )
+        self.assertIn(
+            f"config=`path={_path_label('/Users/hskim/private/real_config.local.yaml')}`",
+            result.stdout,
+        )
+        self.assertIn("index=`embedding=local/model.bin`", result.stdout)
+        self.assertIn(
+            f"dataset=`path={_path_label('file:///Users/hskim/private/questions.jsonl')}`",
+            result.stdout,
+        )
+        self.assertNotIn("/Users/hskim/private", result.stdout)
+        self.assertNotIn("data/private", result.stdout)
 
     def test_unknown_surface_does_not_fail_closed_against_known_surface(self) -> None:
         import tempfile
