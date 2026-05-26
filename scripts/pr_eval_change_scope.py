@@ -25,6 +25,7 @@ RUNTIME_FILES = {
     "text_normalize.py",
     "korean_lexicon.py",
     "scripts/build_index.py",
+    "scripts/_eval_delta.py",
     "scripts/check_latency_slo.py",
     "scripts/compare_eval.py",
     "scripts/validate_claim.py",

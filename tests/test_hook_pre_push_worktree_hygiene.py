@@ -18,6 +18,7 @@ Pins the soft-warn contract (always exit 0; warning only on stderr) for
  13. --clean --dry-run does not remove candidates
  14. --clean removes clean orphan worktrees without deleting branches
  15. --clean skips dirty/untracked orphan worktrees
+ 16. --clean --prune prunes even when there are no clean removals
 
 Scenarios 5-8 are the #1163 fix: `git branch --merged` only lists ancestor
 tips, so squash-merges (this repo's default merge path) were a silent
@@ -310,6 +311,18 @@ class TestPrePushWorktreeHygiene(unittest.TestCase):
         self.assertTrue(wt.exists())
         self.assertIn("skip dirty/untracked", r.stderr)
         self.assertIn("no clean orphan worktrees", r.stderr)
+
+    def test_clean_prune_runs_even_when_only_dirty_orphans_exist(self) -> None:
+        wt = self._add_worktree("wt_merged", "feat-merged", extra_commit=False)
+        (wt / "untracked.txt").write_text("local work\n", encoding="utf-8")
+
+        r = self._run_hook("--clean", "--prune")
+
+        self.assertEqual(0, r.returncode, r.stderr)
+        self.assertTrue(wt.exists())
+        self.assertIn("skip dirty/untracked", r.stderr)
+        self.assertIn("no clean orphan worktrees", r.stderr)
+        self.assertIn("pruned stale worktree admin files", r.stderr)
 
 
 if __name__ == "__main__":  # pragma: no cover

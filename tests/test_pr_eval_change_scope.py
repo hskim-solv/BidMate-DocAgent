@@ -52,6 +52,13 @@ def test_pr_eval_workflow_runs_pytest_and_fixture_smoke() -> None:
     assert scope.runtime is True
 
 
+def test_eval_delta_helper_runs_pytest_and_fixture_smoke() -> None:
+    scope = classify(["scripts/_eval_delta.py"])
+
+    assert scope.pytest is True
+    assert scope.runtime is True
+
+
 def test_other_workflow_runs_pytest_but_skips_fixture_smoke() -> None:
     scope = classify([".github/workflows/agent-loop-artifacts.yml"])
 

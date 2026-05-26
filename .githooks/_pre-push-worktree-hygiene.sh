@@ -172,6 +172,17 @@ _is_clean_worktree() {
   [[ -z "$untracked" ]]
 }
 
+_prune_if_requested() {
+  if [[ "$prune_after" == "1" ]]; then
+    if [[ "$dry_run" == "1" ]]; then
+      printf 'worktree cleanup: would run git worktree prune\n' >&2
+    else
+      git worktree prune >/dev/null 2>&1 || true
+      printf 'worktree cleanup: pruned stale worktree admin files.\n' >&2
+    fi
+  fi
+}
+
 _flush() {
   # detached (no branch line) → skip; main → skip (it's never an orphan);
   # current worktree → skip.
@@ -201,7 +212,12 @@ done < <(git worktree list --porcelain 2>/dev/null)
 # Flush the final block (porcelain may not end with a trailing blank line).
 _flush
 
-[[ -z "$orphans" ]] && exit 0
+if [[ -z "$orphans" ]]; then
+  if [[ "$clean_mode" == "1" ]]; then
+    _prune_if_requested
+  fi
+  exit 0
+fi
 
 if [[ "$clean_mode" == "1" ]]; then
   cat >&2 <<EOF
@@ -239,6 +255,7 @@ fi
 
 if [[ -z "$clean_orphans" ]]; then
   printf 'worktree cleanup: no clean orphan worktrees to remove.\n' >&2
+  _prune_if_requested
   exit 0
 fi
 
@@ -258,13 +275,6 @@ while IFS=$'\t' read -r orphan_path orphan_branch; do
   fi
 done <<< "$clean_orphans"
 
-if [[ "$prune_after" == "1" ]]; then
-  if [[ "$dry_run" == "1" ]]; then
-    printf 'worktree cleanup: would run git worktree prune\n' >&2
-  else
-    git worktree prune >/dev/null 2>&1 || true
-    printf 'worktree cleanup: pruned stale worktree admin files.\n' >&2
-  fi
-fi
+_prune_if_requested
 
 exit 0
