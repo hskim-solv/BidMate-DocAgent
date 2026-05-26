@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -27,6 +28,15 @@ DEFAULT_OUTPUTS = {
     "verifier_overlap": Path("reports/real100/verifier_overlap.html"),
     "parser_readiness": Path("reports/parser_page_citation_readiness.html"),
     "benchmark_validity": Path("reports/benchmark_validity.html"),
+    "eval_surface_boundary": Path("reports/eval_surface_boundary.html"),
+    "rag_pipeline_eda": Path("reports/real100/rag_pipeline_eda.html"),
+    "rationality_judge": Path("reports/real100/rationality_judge_agreement.html"),
+    "task_queue": Path("reports/task_queue_board.html"),
+    "open_pr_merge": Path("reports/open_pr_merge_readiness.html"),
+    "private_data_quality": Path("reports/private_data_quality_inventory.html"),
+    "hwp_extraction": Path("reports/hwp_extraction_comparison.html"),
+    "governance_automation": Path("reports/governance_automation.html"),
+    "claim_validator": Path("reports/claim_validator.html"),
 }
 
 FLAT_OUTPUT_NAMES = {
@@ -36,6 +46,15 @@ FLAT_OUTPUT_NAMES = {
     "verifier_overlap": "verifier_overlap.html",
     "parser_readiness": "parser_page_citation_readiness.html",
     "benchmark_validity": "benchmark_validity.html",
+    "eval_surface_boundary": "eval_surface_boundary.html",
+    "rag_pipeline_eda": "rag_pipeline_eda.html",
+    "rationality_judge": "rationality_judge_agreement.html",
+    "task_queue": "task_queue_board.html",
+    "open_pr_merge": "open_pr_merge_readiness.html",
+    "private_data_quality": "private_data_quality_inventory.html",
+    "hwp_extraction": "hwp_extraction_comparison.html",
+    "governance_automation": "governance_automation.html",
+    "claim_validator": "claim_validator.html",
 }
 
 
@@ -102,6 +121,18 @@ def _metric_mean(metric: Any) -> str:
     if "mean" in metric_map:
         return _pct(metric_map.get("mean"))
     return _pct(metric)
+
+
+def _stat_cell(stats: Any, key: str = "p50") -> str:
+    value = _as_mapping(stats).get(key)
+    number = _number(value)
+    if number is None:
+        return "-"
+    return f"{number:.2f}"
+
+
+def _mean_cell(stats: Any) -> str:
+    return _stat_cell(stats, "mean")
 
 
 def _delta(value: Any) -> str:
@@ -565,6 +596,459 @@ def render_benchmark_validity(root: Path) -> str:
     )
 
 
+def render_eval_surface_boundary(root: Path) -> str:
+    surface_path = root / "docs" / "evaluation" / "surface-map.md"
+    adr5_path = root / "docs" / "adr" / "0005-eval-split-public-synthetic-private-local.md"
+    checklist_path = root / "docs" / "reviews" / "ai-review-checklists.md"
+    pr_template_path = root / ".github" / "pull_request_template.md"
+    benchmark_path = root / "reports" / "benchmark_validity.html"
+    real_summary_path = root / "reports" / "private_real_eval_summary.redacted.json"
+    real_summary = _load_json(real_summary_path)
+    claim_readiness = _as_mapping(real_summary.get("claim_readiness"))
+    boundary_rows = [
+        ["Public fixture smoke", "CI regression and contract sanity", "pass/fail, fixture-only delta", "private/production RFP performance"],
+        ["Public synthetic benchmark", "method, contamination, scoring behavior", "synthetic-only benchmark comparison", "real-data quality claim"],
+        ["Private real-eval aggregate", "local reviewer evidence", "aggregate trend with caveats", "raw private case disclosure"],
+        ["Docs / governance", "claim policy and review checklist", "review requirement and allowed wording", "metric improvement without evidence"],
+    ]
+    reviewer_rows = [
+        ["PR §5", "state eval impact or N/A", _rel(pr_template_path, root)],
+        ["PR §5b", "load-bearing real-data delta or explicit no-op", _rel(pr_template_path, root)],
+        ["Benchmark auditor", "required for eval/benchmark claims", _rel(checklist_path, root)],
+        ["Surface map", "source of claim boundaries", _rel(surface_path, root)],
+    ]
+    cards = [
+        render_status_card("Surface types", 4, detail="claim families", tone="accent"),
+        render_status_card("Private claim status", claim_readiness.get("status", "-"), tone="neutral"),
+        render_status_card("Raw private payloads", "not allowed", tone="danger"),
+        render_status_card("Canonical source", "Markdown", detail="HTML is generated view", tone="ok"),
+    ]
+    body = "\n".join(
+        [
+            f'<section class="grid">{"".join(cards)}</section>',
+            _panel("Surface Boundaries", render_table(["Surface", "Purpose", "Allowed", "Disallowed"], boundary_rows)),
+            _panel("Reviewer Gates", render_table(["Gate", "What to check", "Source"], reviewer_rows)),
+            _source_panel(root, [surface_path, adr5_path, checklist_path, pr_template_path, benchmark_path, real_summary_path]),
+        ]
+    )
+    return render_document(
+        title="Eval Surface Boundary Board",
+        subtitle="Human review map for keeping smoke, synthetic benchmark, and private real-eval claims separate.",
+        body=body,
+        footer="Generated from governance docs and redacted aggregate summaries; no eval is run.",
+    )
+
+
+def _rag_axis_rows(label: str, data: Mapping[str, Any]) -> list[list[Any]]:
+    axis1 = _as_mapping(data.get("axis1_retrieval_efficiency"))
+    axis3 = _as_mapping(data.get("axis3_verification_retry"))
+    axis4 = _as_mapping(data.get("axis4_stage_latency"))
+    axis5 = _as_mapping(data.get("axis5_answer_synthesis"))
+    axis6 = _as_mapping(data.get("axis6_evidence_quality"))
+    return [
+        [label, "retrieval cases", axis1.get("n_cases"), "gold chunk cases", axis1.get("n_cases_with_gold_chunks")],
+        [label, "recall@10 mean", _metric_mean(_metric_from_nested(axis1, "recall", "at_10")), "mrr mean", _metric_mean(axis1.get("mrr"))],
+        [label, "verify rate", _pct(axis3.get("verify_rate")), "attempts", _as_mapping(axis3.get("attempts_distribution"))],
+        [label, "e2e p50 ms", _stat_cell(axis4.get("e2e_latency_ms")), "e2e p95 ms", _stat_cell(axis4.get("e2e_latency_ms"), "p95")],
+        [label, "format compliance", _pct(axis5.get("answer_format_compliance_mean")), "status mix", _as_mapping(axis5.get("answer_status_distribution"))],
+        [label, "paired evidence cases", axis6.get("n_paired_cases"), "recall/citation corr", axis6.get("pearson_recall_at_10_vs_citation_precision")],
+    ]
+
+
+def render_rag_pipeline_eda(root: Path) -> str:
+    public_path = root / "reports" / "rag_pipeline.aggregate.json"
+    real_path = root / "reports" / "real100" / "rag_pipeline.aggregate.json"
+    public_data = _load_json(public_path)
+    real_data = _load_json(real_path)
+    real_axis1 = _as_mapping(real_data.get("axis1_retrieval_efficiency"))
+    real_axis3 = _as_mapping(real_data.get("axis3_verification_retry"))
+    real_axis4 = _as_mapping(real_data.get("axis4_stage_latency"))
+    real_axis5 = _as_mapping(real_data.get("axis5_answer_synthesis"))
+    stage_rows = [
+        [stage, _mean_cell(stats), _stat_cell(stats), _stat_cell(stats, "p95"), _pct(_as_mapping(stats).get("share_of_e2e"))]
+        for stage, stats in _as_mapping(real_axis4.get("per_stage")).items()
+    ]
+    answer_rows = _top_counter_rows(_as_mapping(real_axis5.get("answer_status_distribution")), limit=20)
+    cards = [
+        render_status_card("Real pipeline cases", real_axis1.get("n_cases", "-"), tone="accent"),
+        render_status_card("Verify rate", _pct(real_axis3.get("verify_rate")), tone="ok"),
+        render_status_card("E2E p50 ms", _stat_cell(real_axis4.get("e2e_latency_ms")), tone="neutral"),
+        render_status_card("Format compliance", _pct(real_axis5.get("answer_format_compliance_mean")), tone="warn"),
+    ]
+    body = "\n".join(
+        [
+            f'<section class="grid">{"".join(cards)}</section>',
+            _panel(
+                "Pipeline Axis Summary",
+                render_table(["Surface", "Metric", "Value", "Secondary", "Secondary value"], _rag_axis_rows("public fixture", public_data) + _rag_axis_rows("real100 aggregate", real_data)),
+                "This board orients bottleneck triage; source Markdown/JSON remain canonical.",
+            ),
+            _panel("Real100 Stage Latency", render_table(["Stage", "Mean", "P50", "P95", "Share of E2E"], stage_rows)),
+            _panel("Real100 Answer Status", render_table(["Status", "Count"], answer_rows)),
+            _source_panel(root, [public_path, real_path, root / "reports" / "rag_pipeline.md", root / "reports" / "real100" / "rag_pipeline.md"]),
+        ]
+    )
+    return render_document(
+        title="RAG Pipeline EDA Board",
+        subtitle="Human-readable bottleneck map over existing RAG pipeline aggregate reports.",
+        body=body,
+        footer="Generated from committed aggregate reports; no query or eval execution occurs.",
+    )
+
+
+def _agreement_rows(path: Path, root: Path) -> list[list[Any]]:
+    data = _load_json(path)
+    aggregate = _as_mapping(data.get("aggregate"))
+    agreement = _as_mapping(aggregate.get("agreement"))
+    rows = [
+        [_rel(path, root), "backend", aggregate.get("backend"), "passes", _cell(agreement.get("passes"))],
+        [_rel(path, root), "n", agreement.get("n"), "threshold", agreement.get("threshold")],
+        [_rel(path, root), "cohens_kappa", agreement.get("cohens_kappa"), "spearman_rho", agreement.get("spearman_rho")],
+        [_rel(path, root), "weighted_kappa_linear", agreement.get("weighted_kappa_linear"), "weighted_kappa_quadratic", agreement.get("weighted_kappa_quadratic")],
+    ]
+    for axis, values in _as_mapping(data.get("local")).items():
+        value_map = _as_mapping(values)
+        rows.append([axis, value_map.get("axis"), value_map.get("operator_verdict"), "judge", value_map.get("judge_verdict")])
+    return rows
+
+
+def render_rationality_judge(root: Path) -> str:
+    rationality_path = root / "reports" / "real100" / "rationality.aggregate.json"
+    q2_stub_path = root / "reports" / "self_review_agreement" / "Q2-2026.json"
+    q2_openai_path = root / "reports" / "self_review_agreement" / "Q2-openai-vs-stub.json"
+    rationality = _load_json(rationality_path)
+    axis_rows = []
+    for axis, mean in _as_mapping(rationality.get("axis_means")).items():
+        ci = _as_mapping(_as_mapping(rationality.get("axis_cis")).get(axis))
+        axis_rows.append([axis, _pct(mean), ci.get("n"), _pct(ci.get("ci_lo")), _pct(ci.get("ci_hi"))])
+    agreement_rows = _agreement_rows(q2_stub_path, root) + _agreement_rows(q2_openai_path, root)
+    cards = [
+        render_status_card("Rationality N", rationality.get("n", "-"), tone="accent"),
+        render_status_card("Synthesis calls", rationality.get("cases_with_synthesis_llm_call", "-"), tone="neutral"),
+        render_status_card("Skipped traces", rationality.get("skipped_no_trace", "-"), tone="ok"),
+        render_status_card("Agreement reports", sum(path.exists() for path in [q2_stub_path, q2_openai_path]), tone="neutral"),
+    ]
+    body = "\n".join(
+        [
+            f'<section class="grid">{"".join(cards)}</section>',
+            _panel("Rationality Axes", render_table(["Axis", "Mean", "N", "CI low", "CI high"], axis_rows)),
+            _panel("Judge Agreement Reports", render_table(["Source / Axis", "Metric / Label", "Value", "Secondary", "Secondary value"], agreement_rows)),
+            _source_panel(root, [rationality_path, q2_stub_path, q2_openai_path, root / "docs" / "audits" / "rationality-llm-judge-comparison.md"]),
+        ]
+    )
+    return render_document(
+        title="Rationality / Judge Agreement Board",
+        subtitle="Aggregate view for rationality judge scores and self-review agreement checks.",
+        body=body,
+        footer="Generated from aggregate reports only; judge output details remain in source artifacts.",
+    )
+
+
+def _queue_rows(markdown: str) -> list[list[str]]:
+    rows: list[list[str]] = []
+    in_table = False
+    for line in markdown.splitlines():
+        if line.startswith("| Order | ID | Status |"):
+            in_table = True
+            continue
+        if in_table and line.startswith("|---"):
+            continue
+        if in_table and not line.startswith("|"):
+            break
+        if in_table:
+            cells = [cell.strip().strip("`") for cell in line.strip("|").split("|")]
+            if len(cells) >= 5:
+                rows.append(cells[:5])
+    return rows
+
+
+def render_task_queue(root: Path) -> str:
+    queue_path = root / "tasks" / "queue.md"
+    plan_dir = root / "docs" / "plans"
+    queue_md = _read_text(queue_path)
+    rows = _queue_rows(queue_md)
+    status_counts: dict[str, int] = {}
+    for row in rows:
+        status_counts[row[2]] = status_counts.get(row[2], 0) + 1
+    plan_count = len(list(plan_dir.glob("T-*.md"))) if plan_dir.exists() else 0
+    cards = [
+        render_status_card("Ready-order rows", len(rows), tone="accent"),
+        render_status_card("Review tasks", status_counts.get("review", 0), tone="warn"),
+        render_status_card("Done tasks", status_counts.get("done", 0), tone="ok"),
+        render_status_card("Plan docs", plan_count, tone="neutral"),
+    ]
+    status_rows = [[status, count] for status, count in sorted(status_counts.items())]
+    body = "\n".join(
+        [
+            f'<section class="grid">{"".join(cards)}</section>',
+            _panel("Ready Order", render_table(["Order", "ID", "Status", "Owner role", "Why ready / not ready"], rows)),
+            _panel("Status Mix", render_table(["Status", "Count"], status_rows)),
+            _source_panel(root, [queue_path, plan_dir, root / "docs" / "operations" / "ai-engineering-operating-system.md"]),
+        ]
+    )
+    return render_document(
+        title="Plan / Task Queue Board",
+        subtitle="Human scan view over the Markdown task queue and plan inventory.",
+        body=body,
+        footer="Markdown queue and plan files remain the AI source-of-truth.",
+    )
+
+
+def _live_pr_rows(root: Path) -> tuple[list[list[Any]], str]:
+    try:
+        result = subprocess.run(
+            [
+                "gh",
+                "pr",
+                "list",
+                "--state",
+                "open",
+                "--json",
+                "number,title,isDraft,mergeStateStatus,reviewDecision,headRefName,baseRefName,updatedAt",
+                "--limit",
+                "50",
+            ],
+            cwd=root,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=8,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return [], f"live PR snapshot unavailable: {exc}"
+    if result.returncode != 0:
+        return [], "live PR snapshot unavailable; gh pr list failed"
+    try:
+        payload = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return [], "live PR snapshot unavailable; gh output was not JSON"
+    rows = []
+    for item in payload if isinstance(payload, list) else []:
+        if not isinstance(item, Mapping):
+            continue
+        if item.get("isDraft"):
+            readiness = "draft"
+        elif item.get("mergeStateStatus") not in {"CLEAN", "HAS_HOOKS"}:
+            readiness = f"hold: {item.get('mergeStateStatus') or 'unknown'}"
+        elif item.get("reviewDecision") == "CHANGES_REQUESTED":
+            readiness = "hold: changes requested"
+        else:
+            readiness = "candidate"
+        rows.append(
+            [
+                f"#{item.get('number')}",
+                item.get("title"),
+                item.get("headRefName"),
+                item.get("baseRefName"),
+                _cell(item.get("isDraft")),
+                item.get("mergeStateStatus"),
+                item.get("reviewDecision") or "-",
+                readiness,
+            ]
+        )
+    return rows, "live snapshot via gh pr list"
+
+
+def render_open_pr_merge(root: Path) -> str:
+    rows, note = _live_pr_rows(root)
+    checklist_rows = [
+        ["Draft", "do not merge", "mark ready only after validation evidence exists"],
+        ["UNSTABLE / DIRTY", "hold", "inspect CI, dirty worktree, or base branch drift"],
+        ["CHANGES_REQUESTED", "hold", "run review gate and address blockers"],
+        ["Stacked base", "protect", "check open dependents before branch deletion"],
+        ["Merged", "cleanup", "sync Desktop main and delete remote branch after dependent check"],
+    ]
+    cards = [
+        render_status_card("Open PRs", len(rows), detail=note, tone="accent" if rows else "neutral"),
+        render_status_card("Merge candidates", sum(1 for row in rows if row[-1] == "candidate"), tone="ok"),
+        render_status_card("Drafts", sum(1 for row in rows if row[4] == "yes"), tone="warn"),
+        render_status_card("Holds", sum(1 for row in rows if str(row[-1]).startswith("hold")), tone="danger"),
+    ]
+    body = "\n".join(
+        [
+            f'<section class="grid">{"".join(cards)}</section>',
+            _panel(
+                "Open PR Snapshot",
+                render_table(["PR", "Title", "Head", "Base", "Draft", "Merge state", "Review", "Readiness"], rows, empty_message=note),
+                "This is a live local snapshot when gh is available; GitHub remains authoritative.",
+            ),
+            _panel("Merge Readiness Rules", render_table(["Signal", "Classification", "Action"], checklist_rows)),
+            _source_panel(root, [root / "CLAUDE.md", root / "docs" / "engineering-governance.md", root / "scripts" / "claude-hooks" / "_ship_review_gate.py"]),
+        ]
+    )
+    return render_document(
+        title="Open PR Merge Readiness Board",
+        subtitle="Human scan view for draft/hold/candidate PR states and merge cleanup rules.",
+        body=body,
+        footer="Live PR rows are convenience snapshots; rerun the renderer before acting.",
+    )
+
+
+def render_private_data_quality(root: Path) -> str:
+    summary_path = root / "reports" / "private_real_eval_summary.redacted.json"
+    audit_doc_path = root / "docs" / "evaluation" / "private_data_quality_audit.md"
+    parse_script = root / "scripts" / "audit_private_parse_quality.py"
+    eval_script = root / "scripts" / "audit_private_eval_dataset.py"
+    readiness_script = root / "scripts" / "check_private_real_eval_readiness.py"
+    summary = _load_json(summary_path)
+    dataset = _as_mapping(summary.get("dataset"))
+    failures = _as_mapping(summary.get("failure_type_counts"))
+    grouped: dict[str, int] = {}
+    for key, value in failures.items():
+        group = str(key).split(".", 1)[0]
+        grouped[group] = grouped.get(group, 0) + int(_number(value) or 0)
+    cards = [
+        render_status_card("Documents", dataset.get("num_documents", "-"), tone="accent"),
+        render_status_card("Chunks", dataset.get("num_chunks", "-"), tone="neutral"),
+        render_status_card("Questions", dataset.get("num_questions", "-"), tone="neutral"),
+        render_status_card("Raw payloads", "not committed", tone="ok"),
+    ]
+    workflow_rows = [
+        ["1", "Parse audit", "aggregate parse quality only", f"`{_rel(parse_script, root)}`"],
+        ["2", "Eval dataset audit", "label/reference integrity", f"`{_rel(eval_script, root)}`"],
+        ["3", "Validate-only", "config/data readiness", f"`{_rel(readiness_script, root)}`"],
+        ["4", "Private real-eval run", "local only", "redacted aggregate review"],
+        ["5", "Redacted summary", "commit candidate", _rel(summary_path, root)],
+    ]
+    body = "\n".join(
+        [
+            f'<section class="grid">{"".join(cards)}</section>',
+            _panel("Private Dataset Snapshot", render_table(["Field", "Value"], [[key, value] for key, value in dataset.items()])),
+            _panel("Failure Counter Groups", render_table(["Group", "Count"], _top_counter_rows(grouped, limit=20))),
+            _panel("Audit Workflow", render_table(["Order", "Step", "What it proves", "Source"], workflow_rows)),
+            _source_panel(root, [summary_path, audit_doc_path, parse_script, eval_script, readiness_script]),
+        ]
+    )
+    return render_document(
+        title="Data Quality / Private Inventory Board",
+        subtitle="Redacted, aggregate-only view of private corpus and private eval readiness workflow.",
+        body=body,
+        footer="Generated without reading private raw documents, labels, paths, or per-case payloads.",
+    )
+
+
+def render_hwp_extraction(root: Path) -> str:
+    comparison_path = root / "docs" / "hwp" / "hwp-extraction-comparison.md"
+    closure_path = root / "docs" / "hwp" / "hwp-eval-closure.md"
+    native_path = root / "docs" / "hwp" / "hwp-native-spike.md"
+    compare_script = root / "scripts" / "compare_hwp_extraction.py"
+    kordoc_adr = root / "docs" / "adr" / "0049-kordoc-replaces-pyhwp-backend.md"
+    page_adr = root / "docs" / "adr" / "0078-pymupdf4llm-canonical-page-citation.md"
+    rows = [
+        ["hwp5txt", "text-only", "table structure lost", "local experiment documented"],
+        ["libreoffice -> visual-v2", "layout/table target", "HWP filter missing in measured environment", "documented as failed path"],
+        ["pyhwp native tables", "table cell extraction", "opt-in historical path", "documented follow-up"],
+        ["kordoc", "current backend", "Node subprocess dependency", "ADR 0049"],
+        ["PyMuPDF4LLM page citation", "canonical page-aware PDF path", "page metadata contract required", "ADR 0078"],
+    ]
+    source_rows = [
+        ["Comparison doc", _cell(bool(_read_text(comparison_path))), _rel(comparison_path, root)],
+        ["Closure doc", _cell(bool(_read_text(closure_path))), _rel(closure_path, root)],
+        ["Native spike", _cell(bool(_read_text(native_path))), _rel(native_path, root)],
+        ["Comparison script", _cell(compare_script.exists()), _rel(compare_script, root)],
+    ]
+    cards = [
+        render_status_card("Comparison paths", len(rows), tone="accent"),
+        render_status_card("Raw HWP samples", "not read", tone="ok"),
+        render_status_card("Current backend ADR", "0049", tone="neutral"),
+        render_status_card("Page citation ADR", "0078", tone="neutral"),
+    ]
+    body = "\n".join(
+        [
+            f'<section class="grid">{"".join(cards)}</section>',
+            _panel("Extraction Path Matrix", render_table(["Path", "Strength", "Main risk", "Status"], rows)),
+            _panel("Source Inventory", render_table(["Source", "Present", "Path"], source_rows)),
+            _source_panel(root, [comparison_path, closure_path, native_path, compare_script, kordoc_adr, page_adr]),
+        ]
+    )
+    return render_document(
+        title="HWP Extraction Comparison Board",
+        subtitle="Human review board for HWP extraction path decisions and documented trade-offs.",
+        body=body,
+        footer="Generated from committed docs/scripts only; no private HWP sample is read.",
+    )
+
+
+def render_governance_automation(root: Path) -> str:
+    workflow_dir = root / ".github" / "workflows"
+    workflow_paths = sorted(workflow_dir.glob("*.yml")) if workflow_dir.exists() else []
+    automation_rows = [
+        ["Branch & issue convention", "hard CI gate", ".github/workflows/branch-and-issue-check.yml"],
+        ["PR eval delta", "pytest shards + eval scope/provenance", ".github/workflows/pr-eval.yml"],
+        ["Codex adversarial review", "informational review", ".github/workflows/codex-adversarial-review.yml"],
+        ["Load-bearing awareness", "pre-tool reminder", "scripts/claude-hooks/pretooluse-loadbearing.sh"],
+        ["Ship review gate", "requested changes / unresolved blocker check", "make ship-review-gate"],
+        ["Desktop main sync", "post-merge canonical checkout sync", "scripts/sync_desktop_main.py"],
+        ["Doc links", "markdown link/ADR reference validation", "scripts/check_doc_links.py"],
+    ]
+    source_rows = [[_rel(path, root), "present"] for path in workflow_paths]
+    cards = [
+        render_status_card("Workflow files", len(workflow_paths), tone="accent"),
+        render_status_card("Automation checks", len(automation_rows), tone="neutral"),
+        render_status_card("Load-bearing SSoT", "scripts/_governance.py", tone="ok"),
+        render_status_card("Human override risk", "reviewer-owned", tone="warn"),
+    ]
+    body = "\n".join(
+        [
+            f'<section class="grid">{"".join(cards)}</section>',
+            _panel("Automation Map", render_table(["Surface", "Guarantee", "Entry point"], automation_rows)),
+            _panel("Workflow Inventory", render_table(["Workflow", "Status"], source_rows)),
+            _source_panel(root, [root / "CLAUDE.md", root / "docs" / "engineering-governance.md", root / "scripts" / "_governance.py"] + workflow_paths),
+        ]
+    )
+    return render_document(
+        title="Governance Automation Board",
+        subtitle="Human scan view of what automation enforces versus what reviewers still own.",
+        body=body,
+        footer="Generated from committed governance docs, scripts, and workflow files.",
+    )
+
+
+def render_claim_validator(root: Path) -> str:
+    pr_template = root / ".github" / "pull_request_template.md"
+    surface_map = root / "docs" / "evaluation" / "surface-map.md"
+    checklist = root / "docs" / "reviews" / "ai-review-checklists.md"
+    adr1 = root / "docs" / "adr" / "0001-preserve-naive-baseline.md"
+    adr3 = root / "docs" / "adr" / "0003-structured-answer-citation-contract.md"
+    adr5 = root / "docs" / "adr" / "0005-eval-split-public-synthetic-private-local.md"
+    validation_rows = [
+        ["Performance improved", "Needs matching eval surface + command + aggregate", "Reject if only smoke/synthetic supports real claim"],
+        ["No behavior change", "Needs affected files consistent with claim", "Reject if load-bearing path changed without §5b escape"],
+        ["Private real-eval claim", "Needs redacted aggregate + caveat", "Reject raw case/path disclosure"],
+        ["Answer contract unchanged", "Needs ADR 0003/schema_version review", "Reject shadow contract/model drift"],
+        ["Naive baseline preserved", "Needs ADR 0001 no-op or explicit eval proof", "Reject default baseline removal"],
+        ["Reviewer HTML", "Markdown canonical + generated HTML view", "Reject HTML-only source-of-truth"],
+    ]
+    source_rows = [
+        ["PR template", _cell(pr_template.exists()), _rel(pr_template, root)],
+        ["Surface map", _cell(surface_map.exists()), _rel(surface_map, root)],
+        ["Review checklists", _cell(checklist.exists()), _rel(checklist, root)],
+        ["ADR 0001", _cell(adr1.exists()), _rel(adr1, root)],
+        ["ADR 0003", _cell(adr3.exists()), _rel(adr3, root)],
+        ["ADR 0005", _cell(adr5.exists()), _rel(adr5, root)],
+    ]
+    cards = [
+        render_status_card("Claim checks", len(validation_rows), tone="accent"),
+        render_status_card("Required PR sections", "1-7 + 5b", tone="warn"),
+        render_status_card("Canonical claim policy", "surface-map.md", tone="ok"),
+        render_status_card("HTML role", "human view only", tone="neutral"),
+    ]
+    body = "\n".join(
+        [
+            f'<section class="grid">{"".join(cards)}</section>',
+            _panel("Claim Validation Rules", render_table(["Claim pattern", "Required evidence", "Reject when"], validation_rows)),
+            _panel("Source Inventory", render_table(["Source", "Present", "Path"], source_rows)),
+            _source_panel(root, [pr_template, surface_map, checklist, adr1, adr3, adr5]),
+        ]
+    )
+    return render_document(
+        title="Claim Validator Board",
+        subtitle="Human review board for matching PR/report claims to required evidence surfaces.",
+        body=body,
+        footer="Generated from claim policy docs; it does not validate a specific PR body automatically.",
+    )
+
+
 def output_paths(root: Path, out_dir: Path | None) -> dict[str, Path]:
     if out_dir is not None:
         return {key: out_dir / name for key, name in FLAT_OUTPUT_NAMES.items()}
@@ -580,6 +1064,15 @@ def render_all(root: Path, out_dir: Path | None = None) -> dict[Path, str]:
         paths["verifier_overlap"]: render_verifier_overlap(root),
         paths["parser_readiness"]: render_parser_readiness(root),
         paths["benchmark_validity"]: render_benchmark_validity(root),
+        paths["eval_surface_boundary"]: render_eval_surface_boundary(root),
+        paths["rag_pipeline_eda"]: render_rag_pipeline_eda(root),
+        paths["rationality_judge"]: render_rationality_judge(root),
+        paths["task_queue"]: render_task_queue(root),
+        paths["open_pr_merge"]: render_open_pr_merge(root),
+        paths["private_data_quality"]: render_private_data_quality(root),
+        paths["hwp_extraction"]: render_hwp_extraction(root),
+        paths["governance_automation"]: render_governance_automation(root),
+        paths["claim_validator"]: render_claim_validator(root),
     }
 
 
@@ -599,7 +1092,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--out-dir",
         type=Path,
         default=None,
-        help="optional flat output directory for all six HTML boards",
+        help="optional flat output directory for all HTML boards",
     )
     return parser.parse_args(argv)
 
