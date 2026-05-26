@@ -5099,7 +5099,7 @@ def render_ship_command_pack(*, pr: str | None, branch: str | None, repo_root: P
     lines = [
         "# Ship Command Pack",
         "",
-        "- Command suggestions only. Do not run human-gated commands without explicit approval.",
+        "- Command suggestions only. Choose one shipping path after explicit approval.",
         "- This command did not push, create/merge/close PRs, delete branches, or force-push.",
         "",
         "## Safe Local Checks",
@@ -5113,14 +5113,17 @@ def render_ship_command_pack(*, pr: str | None, branch: str | None, repo_root: P
         "git diff --check",
         "```",
         "",
-        "## Existing Auto-Ship Bridge",
+        "## Primary End-to-End Ship Path",
         "",
         "```bash",
         "# plan only: python3 scripts/agent_loop.py auto-ship-plan --from-git --draft --dry-run",
-        "# arm existing Stop-hook pipeline after approval: make ship-arm REAL_EVAL=skip DRAFT=true DRY_RUN=1",
+        "# after approval, arm the single end-to-end Stop-hook pipeline:",
+        "# make ship-arm REAL_EVAL=skip DRAFT=true DRY_RUN=1",
         "```",
         "",
-        "## Human-Gated Commands",
+        "## Manual Fallback Commands",
+        "",
+        "Use these action-by-action commands only when the end-to-end `make ship-arm` path is not appropriate.",
         "",
         "```bash",
         f"# create PR after approval: python3 scripts/agent_loop.py human-gated-exec --action pr-create --branch {shell_branch} --body reports/agent_loop/pr_body.md --confirm-human-approved",
@@ -6992,8 +6995,10 @@ flowchart TD
   A --> INT["integration-pack and scheduled-status recipes"]
   INT --> MCP
   Q --> R{"Human gate: review, claims, merge, close, push, delete?"}
-  R -->|approved| EXEC["human-gated-exec or make ship-arm: explicit approved shipping mutation"]
-  EXEC --> S["Existing ship/manual workflow"]
+  R -->|end-to-end approved| SHIP["make ship-arm: approved single end-to-end ship pipeline"]
+  R -->|manual fallback approved| EXEC["human-gated-exec: action-by-action remote mutation fallback"]
+  SHIP --> S["Existing ship workflow"]
+  EXEC --> S["Manual fallback workflow"]
   R -->|more work| A
 ```
 
@@ -7024,10 +7029,10 @@ Automation points:
 - architecture-brief: summarize ADR/load-bearing trade-offs without choosing an architecture.
 - adr-reserve: propose ADR number and local draft without touching `docs/adr/`.
 - ship-simulate: predict auto-ship stop points without push/PR/merge/close/delete.
-- auto-ship-prepare: prepare or create a local ADR 0007 branch for existing `make ship-arm`; branch creation requires `--confirm-human-approved`.
-- auto-ship-plan: render a readiness-backed bridge to the existing `make ship-arm` Stop-hook pipeline without arming it.
+- auto-ship-prepare: prepare or create a local ADR 0007 branch for the primary `make ship-arm` pipeline; branch creation requires `--confirm-human-approved`.
+- auto-ship-plan: render a readiness-backed bridge to the primary `make ship-arm` Stop-hook pipeline without arming it.
 - ship-command-pack: render human-gated ship commands without executing them.
-- human-gated-exec: execute push/PR create/merge/close/remote branch delete/force-with-lease only with `--confirm-human-approved` and action-specific gates.
+- human-gated-exec: execute push/PR create/merge/close/remote branch delete/force-with-lease only as an action-by-action fallback with `--confirm-human-approved` and action-specific gates.
 - dependency-graph: render stacked PR graph without merge/delete mutation.
 - stacked-risk: detect dependent PR risk before merge/delete cleanup.
 - pr-body-check: verify `Closes`, §5b, claim, and privacy boundaries before PR creation.
@@ -7059,7 +7064,7 @@ Human intervention points:
 - Create or switch the local shipping branch when detached HEAD or protected branch state is detected.
 - Decide architecture tradeoffs, benchmark/performance claims, or private real-eval meaning.
 - Push, create/merge/close PRs, delete branches, or force-push.
-- For the above, use `human-gated-exec` or existing `make ship-arm` only after explicit human approval and action-specific preflight.
+- Prefer `make ship-arm` for approved end-to-end shipping; use `human-gated-exec` only as a manual fallback after explicit approval and action-specific preflight.
 - Approve reviewer findings and shipping path.
 """
 
