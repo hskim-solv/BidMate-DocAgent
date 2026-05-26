@@ -21,10 +21,12 @@ Regression gate:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import sys
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
+from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _eval_delta import (  # noqa: E402
@@ -39,6 +41,28 @@ from _eval_delta import (  # noqa: E402
 
 DEFAULT_REGRESSION_THRESHOLD = 0.05
 ENV_ALLOW_REGRESSION = "ALLOW_REGRESSION"
+REQUIRED_PROVENANCE_FIELDS = ("run", "config", "index", "dataset")
+COMPARABLE_PROVENANCE_FIELDS = ("config", "index", "dataset")
+UNKNOWN_PROVENANCE_SENTINELS = {"unknown", "none", "null", "n/a", "na", "?"}
+DATASET_COUNT_ONLY_PREFIX = "counts_only: "
+PRIVATE_RELATIVE_PATH_PREFIXES = (
+    "data/private/",
+    "experiments/private",
+    "reports/real",
+)
+PRIVATE_PATH_SUFFIXES = {
+    ".bin",
+    ".csv",
+    ".json",
+    ".jsonl",
+    ".npy",
+    ".pkl",
+    ".pt",
+    ".safetensors",
+    ".txt",
+    ".yaml",
+    ".yml",
+}
 
 
 def parse_args() -> argparse.Namespace:
@@ -61,6 +85,24 @@ def parse_args() -> argparse.Namespace:
             "Exit 2 when the compared eval_summary.json files are classified "
             "as different evaluation surfaces. Unknown surfaces are rendered "
             "but do not fail the gate."
+        ),
+    )
+    ap.add_argument(
+        "--fail-on-missing-provenance",
+        action="store_true",
+        help=(
+            "Exit 2 when either eval_summary.json is missing run/config/index/"
+            "dataset provenance needed to interpret metric claims. Missing "
+            "provenance is always rendered before the metric table."
+        ),
+    )
+    ap.add_argument(
+        "--fail-on-provenance-mismatch",
+        action="store_true",
+        help=(
+            "Exit 2 when comparable config/index/dataset provenance is present "
+            "on both eval_summary.json files but differs. The run provenance "
+            "itself may differ across base/head and is not compared."
         ),
     )
     ap.add_argument(
@@ -140,6 +182,233 @@ def surfaces_compatible(base_surface: str, head_surface: str) -> bool:
     if base_surface.startswith("unknown") or head_surface.startswith("unknown"):
         return True
     return base_surface == head_surface
+
+
+def _present(value: Any) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, str):
+        text = value.strip()
+        return bool(text) and text.lower() not in UNKNOWN_PROVENANCE_SENTINELS
+    return True
+
+
+def _first_present(summary: dict, *paths: str) -> Any:
+    for path in paths:
+        value = get_path(summary, path)
+        if _present(value):
+            return value
+    return None
+
+
+def _short_scalar(value: Any) -> str:
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (int, float)):
+        return str(value)
+    text = " ".join(str(value or "").strip().split())
+    return text if text else "unknown"
+
+
+def _privacy_safe_scalar(value: Any) -> str:
+    text = _short_scalar(value)
+    if text == "unknown":
+        return text
+    if _looks_like_local_path(text) or _looks_like_private_relative_path(text):
+        return _basename_label(text)
+    return text
+
+
+def _looks_like_local_path(text: str) -> bool:
+    if text.startswith(("file://", "/", "~", "\\\\")):
+        return True
+    return len(text) >= 3 and text[1] == ":" and text[2] in ("\\", "/")
+
+
+def _looks_like_private_relative_path(text: str) -> bool:
+    normalized = text.replace("\\", "/")
+    if any(normalized.startswith(prefix) for prefix in PRIVATE_RELATIVE_PATH_PREFIXES):
+        return True
+    return "/" in normalized and Path(normalized).suffix.lower() in PRIVATE_PATH_SUFFIXES
+
+
+def _basename_label(value: Any) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return "unknown"
+    if text.startswith("file://"):
+        text = text[len("file://"):]
+    if "\\" in text or (len(text) >= 2 and text[1] == ":"):
+        return PureWindowsPath(text).name or "path-present"
+    return Path(text).name or "path-present"
+
+
+def _path_provenance_label(value: Any) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return "unknown"
+    return f"{_basename_label(text)}#{hashlib.sha256(text.encode('utf-8')).hexdigest()[:12]}"
+
+
+def eval_provenance_summary(summary: dict) -> dict[str, str]:
+    """Return privacy-safe provenance labels for reviewer-visible output.
+
+    Only aggregate metadata is read. Local filesystem paths are reduced to a
+    basename so the comparator can surface that provenance exists without
+    rendering private absolute paths.
+    """
+    git_commit = _first_present(
+        summary,
+        "provenance.git_commit",
+        "run_manifest.git_commit",
+    )
+    git_tree = _first_present(summary, "provenance.git_tree")
+    git_dirty = _first_present(summary, "provenance.git_dirty", "run_manifest.git_dirty")
+    generated_at = _first_present(
+        summary,
+        "provenance.generated_at",
+        "run_manifest.generated_at",
+        "generated_at",
+    )
+    run_bits: list[str] = []
+    if _present(git_commit):
+        run_bits.append(f"git={_short_scalar(git_commit)}")
+    if _present(git_tree):
+        run_bits.append(f"tree={_short_scalar(git_tree)}")
+    if _present(generated_at):
+        run_bits.append(f"generated={_short_scalar(generated_at)}")
+    if run_bits and _present(git_dirty):
+        run_bits.append(f"dirty={_short_scalar(git_dirty)}")
+
+    config_sha = _first_present(summary, "run_manifest.config_sha256", "config_sha256")
+    config_path = _first_present(summary, "run_manifest.config_path", "config_path")
+    if _present(config_sha):
+        config = f"sha={_short_scalar(config_sha)}"
+    elif _present(config_path):
+        config = f"path={_path_provenance_label(config_path)}"
+    else:
+        config = "unknown"
+
+    embedding_backend = _first_present(
+        summary,
+        "run_manifest.embedding_backend",
+        "index_provenance.embedding_backend",
+        "model_config.backend",
+        "embedding.backend",
+    )
+    embedding_model = _first_present(
+        summary,
+        "run_manifest.embedding_model_id",
+        "index_provenance.model",
+        "model_config.model",
+        "embedding.model",
+    )
+    index_dir = _first_present(summary, "index_dir")
+    if _present(embedding_backend) or _present(embedding_model):
+        index = (
+            f"embedding={_privacy_safe_scalar(embedding_backend)}/"
+            f"{_privacy_safe_scalar(embedding_model)}"
+        )
+    elif _present(index_dir):
+        index = f"path={_path_provenance_label(index_dir)}"
+    else:
+        index = "unknown"
+
+    dataset_source = summary.get("dataset")
+    if not isinstance(dataset_source, dict):
+        dataset_source = summary.get("dataset_summary")
+    dataset_bits: list[str] = []
+    dataset_identity_present = False
+    if isinstance(dataset_source, dict):
+        dataset_id = _first_present(
+            dataset_source,
+            "id",
+            "name",
+            "sha256",
+            "fingerprint",
+        )
+        if _present(dataset_id):
+            dataset_identity_present = True
+            dataset_bits.append(f"id={_privacy_safe_scalar(dataset_id)}")
+        for label, keys in (
+            ("questions", ("num_questions", "question_count", "n_questions")),
+            (
+                "docs",
+                ("num_documents", "num_docs", "document_count", "doc_count", "corpus_size"),
+            ),
+            ("chunks", ("num_chunks", "chunk_count", "n_chunks")),
+            ("answerable", ("answerable_count", "answerable_question_count")),
+            ("unanswerable", ("unanswerable_count", "unanswerable_question_count")),
+        ):
+            value = _first_present(dataset_source, *keys)
+            if isinstance(value, int):
+                dataset_bits.append(f"{label}={value}")
+    dataset_id = _first_present(
+        summary,
+        "dataset_id",
+        "dataset_sha256",
+        "dataset_hash",
+        "dataset_fingerprint",
+    )
+    dataset_path = _first_present(summary, "dataset_path", "questions_path", "corpus_path")
+    if _present(dataset_id) and not dataset_bits:
+        dataset_identity_present = True
+        dataset_bits.append(f"id={_privacy_safe_scalar(dataset_id)}")
+    elif _present(dataset_path):
+        dataset_identity_present = True
+        if not any(bit.startswith(("id=", "path=")) for bit in dataset_bits):
+            dataset_bits.insert(0, f"path={_path_provenance_label(dataset_path)}")
+
+    return {
+        "run": ", ".join(run_bits) if run_bits else "unknown",
+        "config": config,
+        "index": index,
+        "dataset": (
+            ", ".join(dataset_bits)
+            if dataset_identity_present
+            else (
+                DATASET_COUNT_ONLY_PREFIX + ", ".join(dataset_bits)
+                if dataset_bits
+                else "unknown"
+            )
+        ),
+    }
+
+
+def missing_required_provenance(summary: dict) -> list[str]:
+    provenance = eval_provenance_summary(summary)
+    return [
+        field
+        for field in REQUIRED_PROVENANCE_FIELDS
+        if provenance.get(field) == "unknown"
+        or (
+            field == "dataset"
+            and str(provenance.get(field) or "").startswith(DATASET_COUNT_ONLY_PREFIX)
+        )
+    ]
+
+
+def provenance_mismatches(base: dict, head: dict) -> dict[str, tuple[str, str]]:
+    base_provenance = eval_provenance_summary(base)
+    head_provenance = eval_provenance_summary(head)
+    out: dict[str, tuple[str, str]] = {}
+    for field in COMPARABLE_PROVENANCE_FIELDS:
+        base_value = base_provenance.get(field, "unknown")
+        head_value = head_provenance.get(field, "unknown")
+        if "unknown" in (base_value, head_value):
+            continue
+        if base_value != head_value:
+            out[field] = (base_value, head_value)
+    return out
+
+
+def _render_provenance(label: str, summary: dict) -> str:
+    provenance = eval_provenance_summary(summary)
+    return (
+        f"- provenance({label}): run=`{provenance['run']}` · "
+        f"config=`{provenance['config']}` · index=`{provenance['index']}` · "
+        f"dataset=`{provenance['dataset']}`"
+    )
 
 
 def _render_gate_block(regressions: list[dict], *, allow: bool) -> list[str]:
@@ -246,6 +515,10 @@ def main() -> int:
     base_surface = classify_eval_surface(base, path=args.base)
     head_surface = classify_eval_surface(head, path=args.head)
     surface_mismatch = not surfaces_compatible(base_surface, head_surface)
+    base_missing_provenance = missing_required_provenance(base)
+    head_missing_provenance = missing_required_provenance(head)
+    missing_provenance = bool(base_missing_provenance or head_missing_provenance)
+    mismatched_provenance = provenance_mismatches(base, head)
 
     lines: list[str] = []
     lines.append(f"### {args.title}")
@@ -258,6 +531,8 @@ def main() -> int:
         f"(primary run: `{head.get('primary_run', '?')}`)"
     )
     lines.append(f"- surface: base=`{base_surface}` · head=`{head_surface}`")
+    lines.append(_render_provenance("base", base))
+    lines.append(_render_provenance("head", head))
     lines.append(
         f"- cases: base={base.get('num_predictions', '?')} · "
         f"head={head.get('num_predictions', '?')}"
@@ -267,6 +542,33 @@ def main() -> int:
             "> ⚠️ Surface mismatch: compare smoke, synthetic benchmark, "
             "private real-eval, and harness artifacts only with matching "
             "dataset/config/index provenance."
+        )
+    if missing_provenance:
+        missing_bits = []
+        if base_missing_provenance:
+            missing_bits.append(
+                "base missing "
+                + ", ".join(f"`{field}`" for field in base_missing_provenance)
+            )
+        if head_missing_provenance:
+            missing_bits.append(
+                "head missing "
+                + ", ".join(f"`{field}`" for field in head_missing_provenance)
+            )
+        lines.append(
+            "> ⚠️ Missing provenance: " + "; ".join(missing_bits) + ". "
+            "Metric deltas should not be used as benchmark/performance claims "
+            "until run/config/index/dataset provenance is explicit."
+        )
+    if mismatched_provenance:
+        mismatch_bits = [
+            f"`{field}` base=`{base_value}` head=`{head_value}`"
+            for field, (base_value, head_value) in mismatched_provenance.items()
+        ]
+        lines.append(
+            "> ⚠️ Provenance mismatch: " + "; ".join(mismatch_bits) + ". "
+            "Treat metric deltas as non-comparable unless this is an intentional "
+            "config/index/dataset change."
         )
     lines.append("")
     n_min = min_num_predictions(base, head)
@@ -295,6 +597,10 @@ def main() -> int:
     print("\n".join(lines))
 
     if surface_mismatch and args.fail_on_surface_mismatch:
+        return 2
+    if missing_provenance and args.fail_on_missing_provenance:
+        return 2
+    if mismatched_provenance and args.fail_on_provenance_mismatch:
         return 2
     if regressions and not args.allow_regression:
         return 1
