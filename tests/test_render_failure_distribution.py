@@ -16,6 +16,7 @@ from scripts.render_failure_distribution import (
     SAFE_OUTCOME_KEYS,
     build_aggregate,
     main,
+    render_html,
     render_markdown,
 )
 
@@ -225,10 +226,57 @@ class TestMarkdownRender(unittest.TestCase):
         self.assertIn("CONTRACT VIOLATED", md)
 
 
-class TestEndToEndCLI(unittest.TestCase):
-    """Main writes both artifacts to disk."""
+class TestHtmlRender(unittest.TestCase):
+    """HTML surface is reviewer-readable while staying aggregate-only."""
 
-    def test_writes_md_and_json(self) -> None:
+    def test_html_has_all_required_sections(self) -> None:
+        counts = {category: 0 for category in SAFE_CATEGORIES}
+        counts["retrieval_miss"] = 84
+        counts["verifier_false_negative"] = 65
+        outcomes = {key: 0 for key in SAFE_OUTCOME_KEYS}
+        outcomes["incorrect_answer"] = 65
+        agg = build_aggregate(
+            _summary(
+                num_predictions=221,
+                counts=counts,
+                outcomes=outcomes,
+                case_results=[_retrieval_miss_case(), _vfn_case()],
+            )
+        )
+        html = render_html(agg)
+        self.assertIn("<!doctype html>", html)
+        self.assertIn("Failure-mode distribution (real100, n=221)", html)
+        self.assertIn("Total failures", html)
+        self.assertIn("ADR 0075 First-match Contract", html)
+        self.assertIn("Refusal-axis Cross-reference", html)
+        self.assertIn("Per-category Slices", html)
+        self.assertIn("retrieval_miss", html)
+
+    def test_html_flags_contract_violation(self) -> None:
+        counts = {category: 0 for category in SAFE_CATEGORIES}
+        counts["verifier_false_negative"] = 60
+        outcomes = {key: 0 for key in SAFE_OUTCOME_KEYS}
+        outcomes["incorrect_answer"] = 65
+        html = render_html(build_aggregate(_summary(counts=counts, outcomes=outcomes)))
+        self.assertIn("FAIL", html)
+        self.assertIn("CONTRACT VIOLATED", html)
+
+    def test_html_escapes_dynamic_text(self) -> None:
+        counts = {category: 0 for category in SAFE_CATEGORIES}
+        counts["verifier_false_negative"] = 1
+        outcomes = {key: 0 for key in SAFE_OUTCOME_KEYS}
+        outcomes["incorrect_answer"] = 1
+        agg = build_aggregate(_summary(counts=counts, outcomes=outcomes))
+        agg["finding_1_contract"]["incorrect_answer"] = "<script>alert(1)</script>"
+        html = render_html(agg)
+        self.assertNotIn("<script>", html)
+        self.assertIn("&lt;script&gt;alert(1)&lt;/script&gt;", html)
+
+
+class TestEndToEndCLI(unittest.TestCase):
+    """Main writes artifacts to disk."""
+
+    def test_writes_md_json_and_html(self) -> None:
         counts = {category: 0 for category in SAFE_CATEGORIES}
         counts["retrieval_miss"] = 84
         counts["verifier_false_negative"] = 65
@@ -239,6 +287,7 @@ class TestEndToEndCLI(unittest.TestCase):
             summary_path = tmp_path / "eval_summary.json"
             md_path = tmp_path / "failure_distribution.md"
             json_path = tmp_path / "failure_distribution.aggregate.json"
+            html_path = tmp_path / "failure_distribution.html"
             summary_path.write_text(
                 json.dumps(_summary(counts=counts, outcomes=outcomes))
             )
@@ -250,14 +299,43 @@ class TestEndToEndCLI(unittest.TestCase):
                     str(md_path),
                     "--out-json",
                     str(json_path),
+                    "--out-html",
+                    str(html_path),
                 ]
             )
             self.assertEqual(exit_code, 0)
             self.assertTrue(md_path.exists())
             self.assertTrue(json_path.exists())
+            self.assertTrue(html_path.exists())
             written = json.loads(json_path.read_text())
             self.assertEqual(written["total_failures"], 149)
             self.assertTrue(written["finding_1_contract"]["match"])
+            self.assertIn("Failure-mode distribution", html_path.read_text())
+
+    def test_out_html_empty_disables_html(self) -> None:
+        with TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            summary_path = tmp_path / "eval_summary.json"
+            md_path = tmp_path / "failure_distribution.md"
+            json_path = tmp_path / "failure_distribution.aggregate.json"
+            html_path = tmp_path / "failure_distribution.html"
+            summary_path.write_text(json.dumps(_summary()))
+            exit_code = main(
+                [
+                    "--summary",
+                    str(summary_path),
+                    "--out-md",
+                    str(md_path),
+                    "--out-json",
+                    str(json_path),
+                    "--out-html",
+                    "",
+                ]
+            )
+            self.assertEqual(exit_code, 0)
+            self.assertTrue(md_path.exists())
+            self.assertTrue(json_path.exists())
+            self.assertFalse(html_path.exists())
 
     def test_missing_summary_returns_nonzero(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -270,6 +348,8 @@ class TestEndToEndCLI(unittest.TestCase):
                     str(tmp_path / "x.md"),
                     "--out-json",
                     str(tmp_path / "x.json"),
+                    "--out-html",
+                    str(tmp_path / "x.html"),
                 ]
             )
             self.assertEqual(exit_code, 1)
@@ -422,6 +502,25 @@ class TestSliceNoPrivateLeak(unittest.TestCase):
         self.assertNotIn(secret_query, md)
         self.assertNotIn(secret_doc, md)
         self.assertIn("Per-category slices", md)
+
+    def test_html_has_no_private_strings(self) -> None:
+        secret_query = "비밀쿼리텍스트 얼마"
+        secret_doc = "secret-doc-id-zzz"
+        agg = build_aggregate(
+            _summary(
+                case_results=[
+                    _vfn_case(
+                        query=secret_query,
+                        evidence_doc_ids=[secret_doc],
+                        expected_doc_ids=[secret_doc],
+                    )
+                ]
+            )
+        )
+        html = render_html(agg)
+        self.assertNotIn(secret_query, html)
+        self.assertNotIn(secret_doc, html)
+        self.assertIn("Per-category Slices", html)
 
 
 if __name__ == "__main__":

@@ -3,7 +3,8 @@
 
 Reads ``reports/real100/eval_summary.json`` (gitignored, local-only) and
 emits a committable markdown + aggregate JSON pair under
-``reports/real100/failure_distribution.{md,aggregate.json}``.
+``reports/real100/failure_distribution.{md,aggregate.json}`` plus a local
+human-readable HTML board at ``reports/real100/failure_distribution.html``.
 
 The data this renderer surfaces was introduced by ADR 0059 and normalized by
 ADR 0075 — top-level ``failure_category_counts: dict[str, int]`` with a
@@ -42,6 +43,7 @@ CLI::
     python3 scripts/render_failure_distribution.py
     python3 scripts/render_failure_distribution.py --summary path/to/eval_summary.json
     python3 scripts/render_failure_distribution.py --out-md X.md --out-json Y.json
+    python3 scripts/render_failure_distribution.py --out-html X.html
 
 Exit codes::
 
@@ -68,12 +70,20 @@ from eval.scorers.failure_classifier import (  # noqa: E402
     FAILURE_CATEGORIES,
     classify_failure,
 )
+from scripts.html_report import (  # noqa: E402
+    html_text,
+    render_badge,
+    render_document,
+    render_status_card,
+    render_table,
+)
 
 DEFAULT_SUMMARY = ROOT / "reports" / "real100" / "eval_summary.json"
 DEFAULT_OUT_MD = ROOT / "reports" / "real100" / "failure_distribution.md"
 DEFAULT_OUT_JSON = (
     ROOT / "reports" / "real100" / "failure_distribution.aggregate.json"
 )
+DEFAULT_OUT_HTML = ROOT / "reports" / "real100" / "failure_distribution.html"
 
 # Single source of truth for the normalized taxonomy is
 # ``eval.scorers.failure_classifier.FAILURE_CATEGORIES`` (imported above) —
@@ -424,6 +434,117 @@ def render_markdown(aggregate: dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def render_html(aggregate: dict[str, Any]) -> str:
+    """Render the aggregate dict as a local human-readable HTML board."""
+    counts = aggregate["failure_category_counts"]
+    pcts = aggregate["failure_category_percent_of_failed"]
+    outcomes = aggregate["abstention_outcomes"]
+    total_failures = aggregate["total_failures"]
+    num_predictions = aggregate["num_predictions"]
+    finding = aggregate["finding_1_contract"]
+    slice_counts = aggregate.get("slice_counts") or {}
+
+    ranked = sorted(SAFE_CATEGORIES, key=lambda c: counts[c], reverse=True)
+    top_category = ranked[0] if ranked else "unknown"
+    failure_rate = 100.0 * total_failures / max(1, num_predictions)
+    nonzero_slice_count = sum(
+        1 for category in SAFE_CATEGORIES if slice_counts.get(category, {}).get("n", 0) > 0
+    )
+    slice_status = "case_results" if nonzero_slice_count > 0 else "zeroed"
+
+    cards = [
+        render_status_card(
+            "Total failures",
+            f"{total_failures} / {num_predictions}",
+            detail=f"{failure_rate:.1f}% of cases",
+            tone="warn" if total_failures else "ok",
+        ),
+        render_status_card(
+            "Top category",
+            top_category,
+            detail=f"{counts[top_category]} failures, {pcts[top_category]:.2f}% of failed",
+            tone="accent" if counts[top_category] else "ok",
+        ),
+        render_status_card(
+            "ADR 0075 contract",
+            "PASS" if finding["match"] else "FAIL",
+            detail=(
+                f"verifier_false_negative={finding['verifier_false_negative']} / "
+                f"incorrect_answer={finding['incorrect_answer']}"
+            ),
+            tone="ok" if finding["match"] else "danger",
+        ),
+        render_status_card(
+            "Slice source",
+            slice_status,
+            detail=f"{nonzero_slice_count} populated category slice(s)",
+            tone="accent" if nonzero_slice_count else "neutral",
+        ),
+    ]
+
+    composition_rows = [
+        [rank, category, counts[category], f"{pcts[category]:.2f}%"]
+        for rank, category in enumerate(ranked, start=1)
+    ]
+    outcome_rows = [[key, outcomes[key]] for key in SAFE_OUTCOME_KEYS]
+
+    contract_badge = render_badge(
+        "PASS" if finding["match"] else "FAIL",
+        tone="ok" if finding["match"] else "danger",
+    )
+    contract_text = (
+        "First-match-wins ordering is intact."
+        if finding["match"]
+        else (
+            "CONTRACT VIOLATED: verifier_false_negative diverges from "
+            "abstention_outcomes.incorrect_answer."
+        )
+    )
+
+    body_sections = [
+        f'<section class="grid">{"".join(cards)}</section>',
+        '<section class="panel"><h2>Composition</h2>'
+        '<p class="note">% of failures uses failed cases as the denominator.</p>'
+        + render_table(
+            ["Rank", "Category", "Count", "% of failures"],
+            composition_rows,
+        )
+        + "</section>",
+        '<section class="panel"><h2>ADR 0075 First-match Contract</h2>'
+        f'<p class="note">{contract_badge} {html_text(contract_text)}</p>'
+        + render_table(
+            ["Field", "Count"],
+            [
+                [
+                    "failure_category_counts.verifier_false_negative",
+                    finding["verifier_false_negative"],
+                ],
+                ["abstention_outcomes.incorrect_answer", finding["incorrect_answer"]],
+            ],
+        )
+        + "</section>",
+        '<section class="panel"><h2>Refusal-axis Cross-reference</h2>'
+        '<p class="note">PR #464 3-bin refusal-axis counts overlaid on the normalized surface.</p>'
+        + render_table(["Bin", "Count"], outcome_rows)
+        + "</section>",
+        _render_slice_html(aggregate),
+    ]
+
+    return render_document(
+        title=f"Failure-mode distribution (real100, n={num_predictions})",
+        subtitle=(
+            "Aggregate-only reviewer board generated from "
+            "reports/real100/eval_summary.json. No per-case query text, answer text, "
+            "doc id, or chunk id is emitted."
+        ),
+        body="\n".join(body_sections),
+        footer=(
+            "Local workflow artifact. The committable evidence remains "
+            "failure_distribution.md and failure_distribution.aggregate.json."
+        ),
+    )
+
+
 def _render_dim_table(title: str, dim: dict[str, int]) -> list[str]:
     """One sub-table for a single slice dimension (bucket → count)."""
     out = [f"**{title}**", "", "| bucket | count |", "|---|---:|"]
@@ -489,6 +610,50 @@ def _render_slice_markdown(aggregate: dict[str, Any]) -> list[str]:
     return lines
 
 
+def _render_slice_html(aggregate: dict[str, Any]) -> str:
+    """Per-category slice panels for the HTML report."""
+    slice_counts = aggregate.get("slice_counts") or {}
+    ranked = sorted(
+        (c for c in SAFE_CATEGORIES if slice_counts.get(c, {}).get("n", 0) > 0),
+        key=lambda c: slice_counts[c]["n"],
+        reverse=True,
+    )
+    if not ranked:
+        return (
+            '<section class="panel"><h2>Per-category Slices</h2>'
+            '<p class="note">No case_results in the source summary. The slice block '
+            "is zeroed; regenerate from a post-#1239 real-eval run for populated "
+            "slice tables.</p></section>"
+        )
+
+    panels: list[str] = [
+        '<section class="panel"><h2>Per-category Slices</h2>'
+        '<p class="note">Counts re-derived from case_results via '
+        "eval.scorers.failure_classifier.classify_failure. Values are counts or "
+        "fail-closed enum buckets only.</p>"
+    ]
+    for category in ranked:
+        payload = slice_counts[category]
+        panels.append(
+            f"<h3>{html_text(category)} (n={html_text(payload['n'])})</h3>"
+        )
+        for title, key in (
+            ("query_type", "query_type"),
+            ("hardcase_categories (multi-tag)", "hardcase_categories"),
+            ("evidence cardinality", "evidence_cardinality"),
+            ("expected_doc coverage", "expected_doc_coverage"),
+            ("retry_count", "retry_count"),
+            ("query specificity", "query_specificity"),
+            ("aux signals (True count)", "aux_true"),
+        ):
+            dim = payload[key]
+            rows = [[bucket, count] for bucket, count in dim.items()]
+            panels.append(f"<h3>{html_text(title)}</h3>")
+            panels.append(render_table(["Bucket", "Count"], rows))
+    panels.append("</section>")
+    return "\n".join(panels)
+
+
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Render failure-mode distribution dashboard.",
@@ -511,6 +676,14 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=DEFAULT_OUT_JSON,
         help=f"Aggregate JSON output path (default: {DEFAULT_OUT_JSON})",
     )
+    parser.add_argument(
+        "--out-html",
+        default=str(DEFAULT_OUT_HTML),
+        help=(
+            "Optional human-readable HTML output path "
+            f"(default: {DEFAULT_OUT_HTML}). Pass an empty string to skip."
+        ),
+    )
     return parser.parse_args(argv)
 
 
@@ -527,12 +700,19 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Failed to build aggregate: {exc}", file=sys.stderr)
         return 1
     markdown = render_markdown(aggregate)
+    out_html = Path(args.out_html) if args.out_html else None
+    html_report = render_html(aggregate) if out_html is not None else None
     args.out_md.parent.mkdir(parents=True, exist_ok=True)
     args.out_md.write_text(markdown)
     args.out_json.parent.mkdir(parents=True, exist_ok=True)
     args.out_json.write_text(json.dumps(aggregate, indent=2, sort_keys=True) + "\n")
+    if out_html is not None and html_report is not None:
+        out_html.parent.mkdir(parents=True, exist_ok=True)
+        out_html.write_text(html_report)
     print(f"[OK] Wrote {args.out_md}")
     print(f"[OK] Wrote {args.out_json}")
+    if out_html is not None:
+        print(f"[OK] Wrote {out_html}")
     return 0
 
 

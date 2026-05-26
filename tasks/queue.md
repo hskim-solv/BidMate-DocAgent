@@ -16,6 +16,7 @@ PR이 생기면 각 task에 링크를 추가한다. 예제 task는 `tasks/exampl
 | 3 | `T-2026-0003` | `review` | Implementer -> Reviewer | auto-ship Stage 5 Desktop main fast-forward sync 구현됨. |
 | 4 | `T-2026-0004` | `review` | Implementer -> Reviewer | HWP -> PDF -> PyMuPDF4LLM opt-in loader 구현됨. |
 | 5 | `T-2026-0006` | `review` | Implementer -> Reviewer | `ai_next_actions` human-readable HTML review surface 구현됨. |
+| 6 | `T-2026-0007` | `review` | Implementer -> Reviewer | failure distribution local HTML board 구현됨. |
 
 ## Examples
 
@@ -480,4 +481,94 @@ make check-branch
 - Open risks: reviewer should inspect whether the inline HTML/CSS is acceptable for a local-only generated report.
 - Next safe command: python3 -m pytest -q tests/test_ai_next_actions.py
 - Reviewer focus: privacy-safe rendering, deterministic output, and no evidence over-claim.
+```
+
+## T-2026-0007 — Human-readable failure case board
+
+- ID: T-2026-0007
+- Title: Human-readable failure case board
+- Status: review
+- Owner role: Implementer -> Reviewer
+- Created: 2026-05-26
+- Last updated: 2026-05-26
+
+### Goal
+
+Give reviewers a compact local HTML view of failure-mode distribution and
+per-category slices without replacing the committed Markdown/aggregate JSON
+evidence.
+
+### Context
+
+- Surface: private real-eval aggregate viewer.
+- Relevant docs: [`docs/operations/failure-mode-harden-process.md`](../docs/operations/failure-mode-harden-process.md),
+  [ADR 0005](../docs/adr/0005-eval-split-public-synthetic-private-local.md),
+  [ADR 0075](../docs/adr/0075-normalized-failure-taxonomy.md).
+- Primary risk: raw private query/doc strings leaking into a human-facing local
+  report, or HTML being mistaken for model-quality evidence.
+
+### Scope
+
+- Add `reports/real100/failure_distribution.html` as a generated local artifact.
+- Keep `reports/real100/failure_distribution.md` and
+  `reports/real100/failure_distribution.aggregate.json` behavior unchanged.
+- Add a small shared HTML report shell for future local report surfaces.
+
+### Non-Goals
+
+- Do not change failure classifier ordering, taxonomy, eval scoring, retrieval,
+  verifier, answer generation, or private raw data.
+- Do not introduce JavaScript, external services, or runtime dependencies.
+- Do not publish local HTML artifacts.
+
+### Acceptance Criteria
+
+- [x] Renderer emits Markdown, aggregate JSON, and self-contained HTML by default.
+- [x] HTML output can be disabled with `--out-html ""`.
+- [x] HTML escapes dynamic text and does not leak raw query/doc strings.
+- [x] Existing aggregate schema remains unchanged.
+- [x] Workflow docs mention the local HTML dashboard.
+
+### Validation Commands
+
+```bash
+python3 -m py_compile scripts/html_report.py scripts/render_failure_distribution.py
+python3 -m pytest -q tests/test_render_failure_distribution.py
+python3 scripts/check_doc_links.py --check-all --paths docs/plans/T-2026-0007-failure-case-board.md tasks/queue.md docs/operations/failure-mode-harden-process.md
+git diff --check
+make check-branch
+```
+
+### Evidence Required
+
+- Focused pytest output.
+- Doc-link check output.
+- Note that no real-eval performance claim is made.
+
+### Related Plan / Issue / PR Links
+
+- Plan: [`docs/plans/T-2026-0007-failure-case-board.md`](../docs/plans/T-2026-0007-failure-case-board.md)
+- Issue: [#1510](https://github.com/hskim-solv/BidMate-DocAgent/issues/1510)
+- PR: TBD
+- ADR: N/A
+
+### Handoff Notes
+
+```markdown
+## Session Handoff — 2026-05-26 00:00 KST
+
+- Role: Implementer
+- Lifecycle stage: review
+- Branch / worktree: chore/issue-1510-failure-case-board / /Users/hskim/.codex/worktrees/8ed1/BidMate-DocAgent
+- Task: T-2026-0007
+- Plan: docs/plans/T-2026-0007-failure-case-board.md
+- Current status: HTML failure board implemented on top of scripts/render_failure_distribution.py.
+- Files touched: scripts/html_report.py, scripts/render_failure_distribution.py, tests/test_render_failure_distribution.py, docs/operations/failure-mode-harden-process.md, tasks/queue.md, docs/plans/T-2026-0007-failure-case-board.md
+- Decisions made: Generate a self-contained local HTML file next to the existing Markdown/aggregate JSON output; keep source-of-truth classification in build_aggregate and failure_classifier.
+- Commands run: python3 -m py_compile scripts/html_report.py scripts/render_failure_distribution.py; python3 -m pytest -q tests/test_render_failure_distribution.py; git diff --check
+- Results: pass.
+- Eval surface: private real-eval aggregate viewer only.
+- Open risks: reviewer should inspect whether a later PR should migrate ai_next_actions HTML to the shared shell.
+- Next safe command: python3 -m pytest -q tests/test_render_failure_distribution.py
+- Reviewer focus: privacy-safe rendering, aggregate-only data boundary, and no evidence over-claim.
 ```
