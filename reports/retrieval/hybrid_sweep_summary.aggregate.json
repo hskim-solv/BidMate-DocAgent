@@ -1,0 +1,1073 @@
+{
+  "artifact_type": "private_hybrid_sweep_decision_summary",
+  "baseline": {
+    "metrics": {
+      "citation_metric": null,
+      "citation_value": null,
+      "latency_p50_ms": 1318.55,
+      "latency_p95_ms": 3162.16,
+      "mrr_at_5": 0.4101694915254237,
+      "ndcg_at_5": 0.2673650847088794,
+      "recall_at_10": 0.25359818758849834,
+      "recall_at_5": 0.19497305668075882,
+      "retrieval_miss_count": 0,
+      "retrieval_miss_denominator": 221,
+      "retrieval_miss_rate": 0.0
+    },
+    "name": "full_dense_top20"
+  },
+  "decision": {
+    "candidate_count": 27,
+    "failed_candidate_count": 0,
+    "final": "keep dense baseline and abandon hybrid for now",
+    "selected_variant": "hybrid_bm25_dense_v1_k20_dense100_bm2520",
+    "winner_found": false
+  },
+  "notes": [
+    "Recall@10-only gains are insufficient when ranking, citation, or latency guardrails regress.",
+    "#1448 remains NO-GO unless a sweep winner is found."
+  ],
+  "privacy_boundary": "aggregate_only_no_raw_content_or_identifiers",
+  "reference": {
+    "dense_baseline": "full_dense_top20",
+    "pr_1448": {
+      "decision": "NO-GO",
+      "rule": "NO-GO unless a sweep candidate is classified as winner_found"
+    }
+  },
+  "schema_version": 1,
+  "thresholds": {
+    "latency_regression_ms": 10.0,
+    "latency_regression_ratio": 0.05,
+    "material_recall_delta": 0.005,
+    "metric_regression_tolerance": 0.001
+  },
+  "variants": [
+    {
+      "classifications": [
+        "ranking_regression",
+        "latency_regression"
+      ],
+      "deltas_vs_dense": {
+        "citation": 0.0,
+        "latency_p50_ms": 452.81999999999994,
+        "latency_p95_ms": -564.0099999999998,
+        "mrr_at_5": -0.09096045197740105,
+        "ndcg_at_5": -0.04835109956481079,
+        "recall_at_10": 0.0026513691204420597,
+        "recall_at_5": -0.004632588447644553,
+        "retrieval_miss": 0
+      },
+      "metrics": {
+        "citation_metric": "citation_chunk_guardrail",
+        "citation_value": null,
+        "latency_p50_ms": 1771.37,
+        "latency_p95_ms": 2598.15,
+        "mrr_at_5": 0.31920903954802266,
+        "ndcg_at_5": 0.21901398514406858,
+        "recall_at_10": 0.2562495567089404,
+        "recall_at_5": 0.19034046823311426,
+        "retrieval_miss_count": 0,
+        "retrieval_miss_denominator": 221,
+        "retrieval_miss_rate": 0.0
+      },
+      "missing_metrics": [],
+      "name": "hybrid_bm25_dense_v1_k20_dense20_bm2520",
+      "parameters": {
+        "bm25_pool": 20,
+        "dense_pool": 20,
+        "rrf_k": 20,
+        "top_k": 20
+      },
+      "primary_classification": "ranking_regression"
+    },
+    {
+      "classifications": [
+        "ranking_regression",
+        "latency_regression"
+      ],
+      "deltas_vs_dense": {
+        "citation": 0.0,
+        "latency_p50_ms": 790.4600000000003,
+        "latency_p95_ms": 46.470000000000255,
+        "mrr_at_5": -0.10296610169491521,
+        "ndcg_at_5": -0.06065846584134027,
+        "recall_at_10": -0.0049734835941414035,
+        "recall_at_5": -0.01691017603545153,
+        "retrieval_miss": 0
+      },
+      "metrics": {
+        "citation_metric": "citation_chunk_guardrail",
+        "citation_value": null,
+        "latency_p50_ms": 2109.01,
+        "latency_p95_ms": 3208.63,
+        "mrr_at_5": 0.3072033898305085,
+        "ndcg_at_5": 0.2067066188675391,
+        "recall_at_10": 0.24862470399435693,
+        "recall_at_5": 0.1780628806453073,
+        "retrieval_miss_count": 0,
+        "retrieval_miss_denominator": 221,
+        "retrieval_miss_rate": 0.0
+      },
+      "missing_metrics": [],
+      "name": "hybrid_bm25_dense_v1_k20_dense20_bm2550",
+      "parameters": {
+        "bm25_pool": 50,
+        "dense_pool": 20,
+        "rrf_k": 20,
+        "top_k": 20
+      },
+      "primary_classification": "ranking_regression"
+    },
+    {
+      "classifications": [
+        "ranking_regression",
+        "latency_regression"
+      ],
+      "deltas_vs_dense": {
+        "citation": 0.0,
+        "latency_p50_ms": 592.1000000000001,
+        "latency_p95_ms": -384.5799999999999,
+        "mrr_at_5": -0.10663841807909608,
+        "ndcg_at_5": -0.06143251667725899,
+        "recall_at_10": -0.006666258803865788,
+        "recall_at_5": -0.0160627184083329,
+        "retrieval_miss": 0
+      },
+      "metrics": {
+        "citation_metric": "citation_chunk_guardrail",
+        "citation_value": null,
+        "latency_p50_ms": 1910.65,
+        "latency_p95_ms": 2777.58,
+        "mrr_at_5": 0.3035310734463276,
+        "ndcg_at_5": 0.20593256803162038,
+        "recall_at_10": 0.24693192878463255,
+        "recall_at_5": 0.17891033827242592,
+        "retrieval_miss_count": 0,
+        "retrieval_miss_denominator": 221,
+        "retrieval_miss_rate": 0.0
+      },
+      "missing_metrics": [],
+      "name": "hybrid_bm25_dense_v1_k20_dense20_bm25100",
+      "parameters": {
+        "bm25_pool": 100,
+        "dense_pool": 20,
+        "rrf_k": 20,
+        "top_k": 20
+      },
+      "primary_classification": "ranking_regression"
+    },
+    {
+      "classifications": [
+        "ranking_regression",
+        "latency_regression"
+      ],
+      "deltas_vs_dense": {
+        "citation": 0.0,
+        "latency_p50_ms": 1039.8700000000001,
+        "latency_p95_ms": 378.3900000000003,
+        "mrr_at_5": -0.11200564971751414,
+        "ndcg_at_5": -0.059230047163491395,
+        "recall_at_10": 0.0049975623933118385,
+        "recall_at_5": -0.011217182055543229,
+        "retrieval_miss": 0
+      },
+      "metrics": {
+        "citation_metric": "citation_chunk_guardrail",
+        "citation_value": null,
+        "latency_p50_ms": 2358.42,
+        "latency_p95_ms": 3540.55,
+        "mrr_at_5": 0.29816384180790956,
+        "ndcg_at_5": 0.20813503754538798,
+        "recall_at_10": 0.2585957499818102,
+        "recall_at_5": 0.1837558746252156,
+        "retrieval_miss_count": 0,
+        "retrieval_miss_denominator": 221,
+        "retrieval_miss_rate": 0.0
+      },
+      "missing_metrics": [],
+      "name": "hybrid_bm25_dense_v1_k20_dense50_bm2520",
+      "parameters": {
+        "bm25_pool": 20,
+        "dense_pool": 50,
+        "rrf_k": 20,
+        "top_k": 20
+      },
+      "primary_classification": "ranking_regression"
+    },
+    {
+      "classifications": [
+        "ranking_regression",
+        "latency_regression"
+      ],
+      "deltas_vs_dense": {
+        "citation": 0.0,
+        "latency_p50_ms": 1029.3999999999999,
+        "latency_p95_ms": 235.6800000000003,
+        "mrr_at_5": -0.12062146892655373,
+        "ndcg_at_5": -0.0695200877886814,
+        "recall_at_10": -0.0074452678461285615,
+        "recall_at_5": -0.026587040919114513,
+        "retrieval_miss": 0
+      },
+      "metrics": {
+        "citation_metric": "citation_chunk_guardrail",
+        "citation_value": null,
+        "latency_p50_ms": 2347.95,
+        "latency_p95_ms": 3397.84,
+        "mrr_at_5": 0.28954802259886997,
+        "ndcg_at_5": 0.19784499692019797,
+        "recall_at_10": 0.24615291974236977,
+        "recall_at_5": 0.1683860157616443,
+        "retrieval_miss_count": 0,
+        "retrieval_miss_denominator": 221,
+        "retrieval_miss_rate": 0.0
+      },
+      "missing_metrics": [],
+      "name": "hybrid_bm25_dense_v1_k20_dense50_bm2550",
+      "parameters": {
+        "bm25_pool": 50,
+        "dense_pool": 50,
+        "rrf_k": 20,
+        "top_k": 20
+      },
+      "primary_classification": "ranking_regression"
+    },
+    {
+      "classifications": [
+        "ranking_regression",
+        "latency_regression"
+      ],
+      "deltas_vs_dense": {
+        "citation": 0.0,
+        "latency_p50_ms": 1156.82,
+        "latency_p95_ms": 434.02,
+        "mrr_at_5": -0.12203389830508476,
+        "ndcg_at_5": -0.06932087922545027,
+        "recall_at_10": -0.00829272547324722,
+        "recall_at_5": -0.025739583291995882,
+        "retrieval_miss": 0
+      },
+      "metrics": {
+        "citation_metric": "citation_chunk_guardrail",
+        "citation_value": null,
+        "latency_p50_ms": 2475.37,
+        "latency_p95_ms": 3596.18,
+        "mrr_at_5": 0.28813559322033894,
+        "ndcg_at_5": 0.1980442054834291,
+        "recall_at_10": 0.24530546211525112,
+        "recall_at_5": 0.16923347338876293,
+        "retrieval_miss_count": 0,
+        "retrieval_miss_denominator": 221,
+        "retrieval_miss_rate": 0.0
+      },
+      "missing_metrics": [],
+      "name": "hybrid_bm25_dense_v1_k20_dense50_bm25100",
+      "parameters": {
+        "bm25_pool": 100,
+        "dense_pool": 50,
+        "rrf_k": 20,
+        "top_k": 20
+      },
+      "primary_classification": "ranking_regression"
+    },
+    {
+      "classifications": [
+        "recall_only_gain",
+        "ranking_regression",
+        "latency_regression"
+      ],
+      "deltas_vs_dense": {
+        "citation": 0.0,
+        "latency_p50_ms": 296.30999999999995,
+        "latency_p95_ms": -849.2599999999998,
+        "mrr_at_5": -0.10805084745762716,
+        "ndcg_at_5": -0.05571780589961861,
+        "recall_at_10": 0.005802093245200646,
+        "recall_at_5": -0.0044210121237800715,
+        "retrieval_miss": 0
+      },
+      "metrics": {
+        "citation_metric": "citation_chunk_guardrail",
+        "citation_value": null,
+        "latency_p50_ms": 1614.86,
+        "latency_p95_ms": 2312.9,
+        "mrr_at_5": 0.30211864406779654,
+        "ndcg_at_5": 0.21164727880926076,
+        "recall_at_10": 0.259400280833699,
+        "recall_at_5": 0.19055204455697874,
+        "retrieval_miss_count": 0,
+        "retrieval_miss_denominator": 221,
+        "retrieval_miss_rate": 0.0
+      },
+      "missing_metrics": [],
+      "name": "hybrid_bm25_dense_v1_k20_dense100_bm2520",
+      "parameters": {
+        "bm25_pool": 20,
+        "dense_pool": 100,
+        "rrf_k": 20,
+        "top_k": 20
+      },
+      "primary_classification": "recall_only_gain"
+    },
+    {
+      "classifications": [
+        "ranking_regression",
+        "latency_regression"
+      ],
+      "deltas_vs_dense": {
+        "citation": 0.0,
+        "latency_p50_ms": 204.58000000000015,
+        "latency_p95_ms": -1127.7099999999998,
+        "mrr_at_5": -0.11596045197740107,
+        "ndcg_at_5": -0.06501484007287064,
+        "recall_at_10": -0.006291783853661526,
+        "recall_at_5": -0.01681620911438439,
+        "retrieval_miss": 0
+      },
+      "metrics": {
+        "citation_metric": "citation_chunk_guardrail",
+        "citation_value": null,
+        "latency_p50_ms": 1523.13,
+        "latency_p95_ms": 2034.45,
+        "mrr_at_5": 0.29420903954802263,
+        "ndcg_at_5": 0.20235024463600873,
+        "recall_at_10": 0.2473064037348368,
+        "recall_at_5": 0.17815684756637443,
+        "retrieval_miss_count": 0,
+        "retrieval_miss_denominator": 221,
+        "retrieval_miss_rate": 0.0
+      },
+      "missing_metrics": [],
+      "name": "hybrid_bm25_dense_v1_k20_dense100_bm2550",
+      "parameters": {
+        "bm25_pool": 50,
+        "dense_pool": 100,
+        "rrf_k": 20,
+        "top_k": 20
+      },
+      "primary_classification": "ranking_regression"
+    },
+    {
+      "classifications": [
+        "ranking_regression",
+        "latency_regression"
+      ],
+      "deltas_vs_dense": {
+        "citation": 0.0,
+        "latency_p50_ms": 219.16000000000008,
+        "latency_p95_ms": -1131.31,
+        "mrr_at_5": -0.11737288135593221,
+        "ndcg_at_5": -0.06468967157463645,
+        "recall_at_10": -0.006291783853661526,
+        "recall_at_5": -0.01596875148726576,
+        "retrieval_miss": 0
+      },
+      "metrics": {
+        "citation_metric": "citation_chunk_guardrail",
+        "citation_value": null,
+        "latency_p50_ms": 1537.71,
+        "latency_p95_ms": 2030.85,
+        "mrr_at_5": 0.2927966101694915,
+        "ndcg_at_5": 0.20267541313424292,
+        "recall_at_10": 0.2473064037348368,
+        "recall_at_5": 0.17900430519349306,
+        "retrieval_miss_count": 0,
+        "retrieval_miss_denominator": 221,
+        "retrieval_miss_rate": 0.0
+      },
+      "missing_metrics": [],
+      "name": "hybrid_bm25_dense_v1_k20_dense100_bm25100",
+      "parameters": {
+        "bm25_pool": 100,
+        "dense_pool": 100,
+        "rrf_k": 20,
+        "top_k": 20
+      },
+      "primary_classification": "ranking_regression"
+    },
+    {
+      "classifications": [
+        "ranking_regression",
+        "latency_regression"
+      ],
+      "deltas_vs_dense": {
+        "citation": 0.0,
+        "latency_p50_ms": 178.6500000000001,
+        "latency_p95_ms": -1174.8799999999999,
+        "mrr_at_5": -0.08672316384180784,
+        "ndcg_at_5": -0.04729030345854737,
+        "recall_at_10": 0.0026513691204420597,
+        "recall_at_5": -0.004632588447644553,
+        "retrieval_miss": 0
+      },
+      "metrics": {
+        "citation_metric": "citation_chunk_guardrail",
+        "citation_value": null,
+        "latency_p50_ms": 1497.2,
+        "latency_p95_ms": 1987.28,
+        "mrr_at_5": 0.32344632768361586,
+        "ndcg_at_5": 0.220074781250332,
+        "recall_at_10": 0.2562495567089404,
+        "recall_at_5": 0.19034046823311426,
+        "retrieval_miss_count": 0,
+        "retrieval_miss_denominator": 221,
+        "retrieval_miss_rate": 0.0
+      },
+      "missing_metrics": [],
+      "name": "hybrid_bm25_dense_v1_k60_dense20_bm2520",
+      "parameters": {
+        "bm25_pool": 20,
+        "dense_pool": 20,
+        "rrf_k": 60,
+        "top_k": 20
+      },
+      "primary_classification": "ranking_regression"
+    },
+    {
+      "classifications": [
+        "ranking_regression",
+        "latency_regression"
+      ],
+      "deltas_vs_dense": {
+        "citation": 0.0,
+        "latency_p50_ms": 196.44000000000005,
+        "latency_p95_ms": -1113.4299999999998,
+        "mrr_at_5": -0.10706214689265536,
+        "ndcg_at_5": -0.06422352477769383,
+        "recall_at_10": -0.0049734835941414035,
+        "recall_at_5": -0.020706079990253812,
+        "retrieval_miss": 0
+      },
+      "metrics": {
+        "citation_metric": "citation_chunk_guardrail",
+        "citation_value": null,
+        "latency_p50_ms": 1514.99,
+        "latency_p95_ms": 2048.73,
+        "mrr_at_5": 0.30310734463276834,
+        "ndcg_at_5": 0.20314155993118554,
+        "recall_at_10": 0.24862470399435693,
+        "recall_at_5": 0.174266976690505,
+        "retrieval_miss_count": 0,
+        "retrieval_miss_denominator": 221,
+        "retrieval_miss_rate": 0.0
+      },
+      "missing_metrics": [],
+      "name": "hybrid_bm25_dense_v1_k60_dense20_bm2550",
+      "parameters": {
+        "bm25_pool": 50,
+        "dense_pool": 20,
+        "rrf_k": 60,
+        "top_k": 20
+      },
+      "primary_classification": "ranking_regression"
+    },
+    {
+      "classifications": [
+        "ranking_regression",
+        "latency_regression"
+      ],
+      "deltas_vs_dense": {
+        "citation": 0.0,
+        "latency_p50_ms": 182.86000000000013,
+        "latency_p95_ms": -1166.57,
+        "mrr_at_5": -0.1327683615819209,
+        "ndcg_at_5": -0.0763526732304968,
+        "recall_at_10": -0.009576167071893266,
+        "recall_at_5": -0.024416964209612563,
+        "retrieval_miss": 0
+      },
+      "metrics": {
+        "citation_metric": "citation_chunk_guardrail",
+        "citation_value": null,
+        "latency_p50_ms": 1501.41,
+        "latency_p95_ms": 1995.59,
+        "mrr_at_5": 0.2774011299435028,
+        "ndcg_at_5": 0.19101241147838258,
+        "recall_at_10": 0.24402202051660507,
+        "recall_at_5": 0.17055609247114625,
+        "retrieval_miss_count": 0,
+        "retrieval_miss_denominator": 221,
+        "retrieval_miss_rate": 0.0
+      },
+      "missing_metrics": [],
+      "name": "hybrid_bm25_dense_v1_k60_dense20_bm25100",
+      "parameters": {
+        "bm25_pool": 100,
+        "dense_pool": 20,
+        "rrf_k": 60,
+        "top_k": 20
+      },
+      "primary_classification": "ranking_regression"
+    },
+    {
+      "classifications": [
+        "ranking_regression",
+        "latency_regression"
+      ],
+      "deltas_vs_dense": {
+        "citation": 0.0,
+        "latency_p50_ms": 236.80999999999995,
+        "latency_p95_ms": -1145.0099999999998,
+        "mrr_at_5": -0.1125706214689266,
+        "ndcg_at_5": -0.061644734876405094,
+        "recall_at_10": 0.0007602742577186294,
+        "recall_at_5": -0.016866899569667526,
+        "retrieval_miss": 0
+      },
+      "metrics": {
+        "citation_metric": "citation_chunk_guardrail",
+        "citation_value": null,
+        "latency_p50_ms": 1555.36,
+        "latency_p95_ms": 2017.15,
+        "mrr_at_5": 0.2975988700564971,
+        "ndcg_at_5": 0.20572034983247428,
+        "recall_at_10": 0.25435846184621697,
+        "recall_at_5": 0.1781061571110913,
+        "retrieval_miss_count": 0,
+        "retrieval_miss_denominator": 221,
+        "retrieval_miss_rate": 0.0
+      },
+      "missing_metrics": [],
+      "name": "hybrid_bm25_dense_v1_k60_dense50_bm2520",
+      "parameters": {
+        "bm25_pool": 20,
+        "dense_pool": 50,
+        "rrf_k": 60,
+        "top_k": 20
+      },
+      "primary_classification": "ranking_regression"
+    },
+    {
+      "classifications": [
+        "ranking_regression",
+        "citation_regression",
+        "latency_regression"
+      ],
+      "deltas_vs_dense": {
+        "citation": 0.008474576271186474,
+        "latency_p50_ms": 243.41000000000008,
+        "latency_p95_ms": -1091.52,
+        "mrr_at_5": -0.13446327683615816,
+        "ndcg_at_5": -0.08004245564939183,
+        "recall_at_10": -0.01686805433459304,
+        "recall_at_5": -0.03407218657669939,
+        "retrieval_miss": 0
+      },
+      "metrics": {
+        "citation_metric": "citation_chunk_guardrail",
+        "citation_value": null,
+        "latency_p50_ms": 1561.96,
+        "latency_p95_ms": 2070.64,
+        "mrr_at_5": 0.27570621468926554,
+        "ndcg_at_5": 0.18732262905948754,
+        "recall_at_10": 0.2367301332539053,
+        "recall_at_5": 0.16090087010405943,
+        "retrieval_miss_count": 0,
+        "retrieval_miss_denominator": 221,
+        "retrieval_miss_rate": 0.0
+      },
+      "missing_metrics": [],
+      "name": "hybrid_bm25_dense_v1_k60_dense50_bm2550",
+      "parameters": {
+        "bm25_pool": 50,
+        "dense_pool": 50,
+        "rrf_k": 60,
+        "top_k": 20
+      },
+      "primary_classification": "ranking_regression"
+    },
+    {
+      "classifications": [
+        "ranking_regression",
+        "citation_regression",
+        "latency_regression"
+      ],
+      "deltas_vs_dense": {
+        "citation": 0.050847457627118675,
+        "latency_p50_ms": 238.87000000000012,
+        "latency_p95_ms": -1104.5899999999997,
+        "mrr_at_5": -0.16186440677966102,
+        "ndcg_at_5": -0.09952032623016721,
+        "recall_at_10": -0.027091732719925432,
+        "recall_at_5": -0.05255437076944419,
+        "retrieval_miss": 0
+      },
+      "metrics": {
+        "citation_metric": "citation_chunk_guardrail",
+        "citation_value": null,
+        "latency_p50_ms": 1557.42,
+        "latency_p95_ms": 2057.57,
+        "mrr_at_5": 0.24830508474576268,
+        "ndcg_at_5": 0.16784475847871216,
+        "recall_at_10": 0.2265064548685729,
+        "recall_at_5": 0.14241868591131462,
+        "retrieval_miss_count": 0,
+        "retrieval_miss_denominator": 221,
+        "retrieval_miss_rate": 0.0
+      },
+      "missing_metrics": [],
+      "name": "hybrid_bm25_dense_v1_k60_dense50_bm25100",
+      "parameters": {
+        "bm25_pool": 100,
+        "dense_pool": 50,
+        "rrf_k": 60,
+        "top_k": 20
+      },
+      "primary_classification": "ranking_regression"
+    },
+    {
+      "classifications": [
+        "ranking_regression",
+        "latency_regression"
+      ],
+      "deltas_vs_dense": {
+        "citation": 0.0,
+        "latency_p50_ms": 209.01,
+        "latency_p95_ms": -1129.29,
+        "mrr_at_5": -0.12033898305084745,
+        "ndcg_at_5": -0.06385362868118852,
+        "recall_at_10": 0.0013353347904062618,
+        "recall_at_5": -0.01333124031366928,
+        "retrieval_miss": 0
+      },
+      "metrics": {
+        "citation_metric": "citation_chunk_guardrail",
+        "citation_value": null,
+        "latency_p50_ms": 1527.56,
+        "latency_p95_ms": 2032.87,
+        "mrr_at_5": 0.28983050847457625,
+        "ndcg_at_5": 0.20351145602769086,
+        "recall_at_10": 0.2549335223789046,
+        "recall_at_5": 0.18164181636708954,
+        "retrieval_miss_count": 0,
+        "retrieval_miss_denominator": 221,
+        "retrieval_miss_rate": 0.0
+      },
+      "missing_metrics": [],
+      "name": "hybrid_bm25_dense_v1_k60_dense100_bm2520",
+      "parameters": {
+        "bm25_pool": 20,
+        "dense_pool": 100,
+        "rrf_k": 60,
+        "top_k": 20
+      },
+      "primary_classification": "ranking_regression"
+    },
+    {
+      "classifications": [
+        "ranking_regression",
+        "latency_regression"
+      ],
+      "deltas_vs_dense": {
+        "citation": 0.0,
+        "latency_p50_ms": 251.5,
+        "latency_p95_ms": -1137.8999999999999,
+        "mrr_at_5": -0.1316384180790961,
+        "ndcg_at_5": -0.07498443278952793,
+        "recall_at_10": -0.003570827938619403,
+        "recall_at_5": -0.020055513694315907,
+        "retrieval_miss": 0
+      },
+      "metrics": {
+        "citation_metric": "citation_chunk_guardrail",
+        "citation_value": null,
+        "latency_p50_ms": 1570.05,
+        "latency_p95_ms": 2024.26,
+        "mrr_at_5": 0.2785310734463276,
+        "ndcg_at_5": 0.19238065191935144,
+        "recall_at_10": 0.25002735964987893,
+        "recall_at_5": 0.1749175429864429,
+        "retrieval_miss_count": 0,
+        "retrieval_miss_denominator": 221,
+        "retrieval_miss_rate": 0.0
+      },
+      "missing_metrics": [],
+      "name": "hybrid_bm25_dense_v1_k60_dense100_bm2550",
+      "parameters": {
+        "bm25_pool": 50,
+        "dense_pool": 100,
+        "rrf_k": 60,
+        "top_k": 20
+      },
+      "primary_classification": "ranking_regression"
+    },
+    {
+      "classifications": [
+        "ranking_regression",
+        "citation_regression",
+        "latency_regression"
+      ],
+      "deltas_vs_dense": {
+        "citation": 0.01694915254237289,
+        "latency_p50_ms": 236.23000000000002,
+        "latency_p95_ms": -1074.81,
+        "mrr_at_5": -0.15000000000000002,
+        "ndcg_at_5": -0.0906019009894326,
+        "recall_at_10": -0.015757154331158457,
+        "recall_at_5": -0.03695659754455238,
+        "retrieval_miss": 0
+      },
+      "metrics": {
+        "citation_metric": "citation_chunk_guardrail",
+        "citation_value": null,
+        "latency_p50_ms": 1554.78,
+        "latency_p95_ms": 2087.35,
+        "mrr_at_5": 0.2601694915254237,
+        "ndcg_at_5": 0.17676318371944677,
+        "recall_at_10": 0.23784103325733988,
+        "recall_at_5": 0.15801645913620643,
+        "retrieval_miss_count": 0,
+        "retrieval_miss_denominator": 221,
+        "retrieval_miss_rate": 0.0
+      },
+      "missing_metrics": [],
+      "name": "hybrid_bm25_dense_v1_k60_dense100_bm25100",
+      "parameters": {
+        "bm25_pool": 100,
+        "dense_pool": 100,
+        "rrf_k": 60,
+        "top_k": 20
+      },
+      "primary_classification": "ranking_regression"
+    },
+    {
+      "classifications": [
+        "ranking_regression",
+        "latency_regression"
+      ],
+      "deltas_vs_dense": {
+        "citation": 0.0,
+        "latency_p50_ms": 205.23000000000002,
+        "latency_p95_ms": -1111.3799999999997,
+        "mrr_at_5": -0.08813559322033898,
+        "ndcg_at_5": -0.04766662686615514,
+        "recall_at_10": 0.0026513691204420597,
+        "recall_at_5": -0.004632588447644553,
+        "retrieval_miss": 0
+      },
+      "metrics": {
+        "citation_metric": "citation_chunk_guardrail",
+        "citation_value": null,
+        "latency_p50_ms": 1523.78,
+        "latency_p95_ms": 2050.78,
+        "mrr_at_5": 0.3220338983050847,
+        "ndcg_at_5": 0.21969845784272424,
+        "recall_at_10": 0.2562495567089404,
+        "recall_at_5": 0.19034046823311426,
+        "retrieval_miss_count": 0,
+        "retrieval_miss_denominator": 221,
+        "retrieval_miss_rate": 0.0
+      },
+      "missing_metrics": [],
+      "name": "hybrid_bm25_dense_v1_k100_dense20_bm2520",
+      "parameters": {
+        "bm25_pool": 20,
+        "dense_pool": 20,
+        "rrf_k": 100,
+        "top_k": 20
+      },
+      "primary_classification": "ranking_regression"
+    },
+    {
+      "classifications": [
+        "ranking_regression",
+        "latency_regression"
+      ],
+      "deltas_vs_dense": {
+        "citation": 0.0,
+        "latency_p50_ms": 183.98000000000002,
+        "latency_p95_ms": -1161.3899999999999,
+        "mrr_at_5": -0.10847457627118645,
+        "ndcg_at_5": -0.06459984818530165,
+        "recall_at_10": -0.0049734835941414035,
+        "recall_at_5": -0.020706079990253812,
+        "retrieval_miss": 0
+      },
+      "metrics": {
+        "citation_metric": "citation_chunk_guardrail",
+        "citation_value": null,
+        "latency_p50_ms": 1502.53,
+        "latency_p95_ms": 2000.77,
+        "mrr_at_5": 0.30169491525423725,
+        "ndcg_at_5": 0.20276523652357772,
+        "recall_at_10": 0.24862470399435693,
+        "recall_at_5": 0.174266976690505,
+        "retrieval_miss_count": 0,
+        "retrieval_miss_denominator": 221,
+        "retrieval_miss_rate": 0.0
+      },
+      "missing_metrics": [],
+      "name": "hybrid_bm25_dense_v1_k100_dense20_bm2550",
+      "parameters": {
+        "bm25_pool": 50,
+        "dense_pool": 20,
+        "rrf_k": 100,
+        "top_k": 20
+      },
+      "primary_classification": "ranking_regression"
+    },
+    {
+      "classifications": [
+        "ranking_regression"
+      ],
+      "deltas_vs_dense": {
+        "citation": 0.0,
+        "latency_p50_ms": -88.6099999999999,
+        "latency_p95_ms": -1493.5199999999998,
+        "mrr_at_5": -0.13418079096045205,
+        "ndcg_at_5": -0.07652974449578168,
+        "recall_at_10": -0.009576167071893266,
+        "recall_at_5": -0.024416964209612563,
+        "retrieval_miss": 0
+      },
+      "metrics": {
+        "citation_metric": "citation_chunk_guardrail",
+        "citation_value": null,
+        "latency_p50_ms": 1229.94,
+        "latency_p95_ms": 1668.64,
+        "mrr_at_5": 0.27598870056497166,
+        "ndcg_at_5": 0.1908353402130977,
+        "recall_at_10": 0.24402202051660507,
+        "recall_at_5": 0.17055609247114625,
+        "retrieval_miss_count": 0,
+        "retrieval_miss_denominator": 221,
+        "retrieval_miss_rate": 0.0
+      },
+      "missing_metrics": [],
+      "name": "hybrid_bm25_dense_v1_k100_dense20_bm25100",
+      "parameters": {
+        "bm25_pool": 100,
+        "dense_pool": 20,
+        "rrf_k": 100,
+        "top_k": 20
+      },
+      "primary_classification": "ranking_regression"
+    },
+    {
+      "classifications": [
+        "ranking_regression"
+      ],
+      "deltas_vs_dense": {
+        "citation": 0.0,
+        "latency_p50_ms": -71.52999999999997,
+        "latency_p95_ms": -1506.1999999999998,
+        "mrr_at_5": -0.1146892655367232,
+        "ndcg_at_5": -0.06222031042633577,
+        "recall_at_10": 0.0007602742577186294,
+        "recall_at_5": -0.016866899569667526,
+        "retrieval_miss": 0
+      },
+      "metrics": {
+        "citation_metric": "citation_chunk_guardrail",
+        "citation_value": null,
+        "latency_p50_ms": 1247.02,
+        "latency_p95_ms": 1655.96,
+        "mrr_at_5": 0.2954802259887005,
+        "ndcg_at_5": 0.2051447742825436,
+        "recall_at_10": 0.25435846184621697,
+        "recall_at_5": 0.1781061571110913,
+        "retrieval_miss_count": 0,
+        "retrieval_miss_denominator": 221,
+        "retrieval_miss_rate": 0.0
+      },
+      "missing_metrics": [],
+      "name": "hybrid_bm25_dense_v1_k100_dense50_bm2520",
+      "parameters": {
+        "bm25_pool": 20,
+        "dense_pool": 50,
+        "rrf_k": 100,
+        "top_k": 20
+      },
+      "primary_classification": "ranking_regression"
+    },
+    {
+      "classifications": [
+        "ranking_regression",
+        "citation_regression"
+      ],
+      "deltas_vs_dense": {
+        "citation": 0.008474576271186474,
+        "latency_p50_ms": -50.180000000000064,
+        "latency_p95_ms": -1457.7499999999998,
+        "mrr_at_5": -0.13658192090395477,
+        "ndcg_at_5": -0.08024170779171469,
+        "recall_at_10": -0.01686805433459304,
+        "recall_at_5": -0.03407218657669939,
+        "retrieval_miss": 0
+      },
+      "metrics": {
+        "citation_metric": "citation_chunk_guardrail",
+        "citation_value": null,
+        "latency_p50_ms": 1268.37,
+        "latency_p95_ms": 1704.41,
+        "mrr_at_5": 0.27358757062146893,
+        "ndcg_at_5": 0.18712337691716469,
+        "recall_at_10": 0.2367301332539053,
+        "recall_at_5": 0.16090087010405943,
+        "retrieval_miss_count": 0,
+        "retrieval_miss_denominator": 221,
+        "retrieval_miss_rate": 0.0
+      },
+      "missing_metrics": [],
+      "name": "hybrid_bm25_dense_v1_k100_dense50_bm2550",
+      "parameters": {
+        "bm25_pool": 50,
+        "dense_pool": 50,
+        "rrf_k": 100,
+        "top_k": 20
+      },
+      "primary_classification": "ranking_regression"
+    },
+    {
+      "classifications": [
+        "ranking_regression",
+        "citation_regression"
+      ],
+      "deltas_vs_dense": {
+        "citation": 0.05932203389830509,
+        "latency_p50_ms": -28.50999999999999,
+        "latency_p95_ms": -1487.8,
+        "mrr_at_5": -0.164406779661017,
+        "ndcg_at_5": -0.0996462861651703,
+        "recall_at_10": -0.029563484132354823,
+        "recall_at_5": -0.05255437076944419,
+        "retrieval_miss": 0
+      },
+      "metrics": {
+        "citation_metric": "citation_chunk_guardrail",
+        "citation_value": null,
+        "latency_p50_ms": 1290.04,
+        "latency_p95_ms": 1674.36,
+        "mrr_at_5": 0.2457627118644067,
+        "ndcg_at_5": 0.16771879854370908,
+        "recall_at_10": 0.2240347034561435,
+        "recall_at_5": 0.14241868591131462,
+        "retrieval_miss_count": 0,
+        "retrieval_miss_denominator": 221,
+        "retrieval_miss_rate": 0.0
+      },
+      "missing_metrics": [],
+      "name": "hybrid_bm25_dense_v1_k100_dense50_bm25100",
+      "parameters": {
+        "bm25_pool": 100,
+        "dense_pool": 50,
+        "rrf_k": 100,
+        "top_k": 20
+      },
+      "primary_classification": "ranking_regression"
+    },
+    {
+      "classifications": [
+        "ranking_regression"
+      ],
+      "deltas_vs_dense": {
+        "citation": 0.0,
+        "latency_p50_ms": -60.86999999999989,
+        "latency_p95_ms": -1486.11,
+        "mrr_at_5": -0.12429378531073448,
+        "ndcg_at_5": -0.06696066010324062,
+        "recall_at_10": 0.0013353347904062618,
+        "recall_at_5": -0.017568528449262544,
+        "retrieval_miss": 0
+      },
+      "metrics": {
+        "citation_metric": "citation_chunk_guardrail",
+        "citation_value": null,
+        "latency_p50_ms": 1257.68,
+        "latency_p95_ms": 1676.05,
+        "mrr_at_5": 0.2858757062146892,
+        "ndcg_at_5": 0.20040442460563876,
+        "recall_at_10": 0.2549335223789046,
+        "recall_at_5": 0.17740452823149627,
+        "retrieval_miss_count": 0,
+        "retrieval_miss_denominator": 221,
+        "retrieval_miss_rate": 0.0
+      },
+      "missing_metrics": [],
+      "name": "hybrid_bm25_dense_v1_k100_dense100_bm2520",
+      "parameters": {
+        "bm25_pool": 20,
+        "dense_pool": 100,
+        "rrf_k": 100,
+        "top_k": 20
+      },
+      "primary_classification": "ranking_regression"
+    },
+    {
+      "classifications": [
+        "ranking_regression"
+      ],
+      "deltas_vs_dense": {
+        "citation": 0.0,
+        "latency_p50_ms": -44.57999999999993,
+        "latency_p95_ms": -1479.36,
+        "mrr_at_5": -0.13615819209039548,
+        "ndcg_at_5": -0.07865073357846714,
+        "recall_at_10": -0.005393484967532669,
+        "recall_at_5": -0.02641144589770575,
+        "retrieval_miss": 0
+      },
+      "metrics": {
+        "citation_metric": "citation_chunk_guardrail",
+        "citation_value": null,
+        "latency_p50_ms": 1273.97,
+        "latency_p95_ms": 1682.8,
+        "mrr_at_5": 0.2740112994350282,
+        "ndcg_at_5": 0.18871435113041224,
+        "recall_at_10": 0.24820470262096567,
+        "recall_at_5": 0.16856161078305307,
+        "retrieval_miss_count": 0,
+        "retrieval_miss_denominator": 221,
+        "retrieval_miss_rate": 0.0
+      },
+      "missing_metrics": [],
+      "name": "hybrid_bm25_dense_v1_k100_dense100_bm2550",
+      "parameters": {
+        "bm25_pool": 50,
+        "dense_pool": 100,
+        "rrf_k": 100,
+        "top_k": 20
+      },
+      "primary_classification": "ranking_regression"
+    },
+    {
+      "classifications": [
+        "ranking_regression",
+        "citation_regression"
+      ],
+      "deltas_vs_dense": {
+        "citation": 0.03389830508474578,
+        "latency_p50_ms": -77.88999999999987,
+        "latency_p95_ms": -1521.4899999999998,
+        "mrr_at_5": -0.16045197740112996,
+        "ndcg_at_5": -0.09654468437914557,
+        "recall_at_10": -0.01985093359941431,
+        "recall_at_5": -0.044356319200698324,
+        "retrieval_miss": 0
+      },
+      "metrics": {
+        "citation_metric": "citation_chunk_guardrail",
+        "citation_value": null,
+        "latency_p50_ms": 1240.66,
+        "latency_p95_ms": 1640.67,
+        "mrr_at_5": 0.24971751412429374,
+        "ndcg_at_5": 0.1708204003297338,
+        "recall_at_10": 0.23374725398908403,
+        "recall_at_5": 0.1506167374800605,
+        "retrieval_miss_count": 0,
+        "retrieval_miss_denominator": 221,
+        "retrieval_miss_rate": 0.0
+      },
+      "missing_metrics": [],
+      "name": "hybrid_bm25_dense_v1_k100_dense100_bm25100",
+      "parameters": {
+        "bm25_pool": 100,
+        "dense_pool": 100,
+        "rrf_k": 100,
+        "top_k": 20
+      },
+      "primary_classification": "ranking_regression"
+    }
+  ]
+}
