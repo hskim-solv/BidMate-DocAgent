@@ -87,6 +87,14 @@ ALLOWED_PATTERNS=(
   # in `.gitignore`. Aggregate-only — no per-case query/answer/chunk text,
   # no doc_id/chunk_id; per-model eval_summary.json + index stay ignored.
   '^reports/real100/embedding_ablation_retrieval\.aggregate\.json$'
+  # real100_v2 RFP benchmark rebuild. Aggregate-only inventory,
+  # question distribution, baseline, and tier split artifacts; raw eval
+  # summaries/questions/evidence/index text stay ignored.
+  '^reports/real100_v2/README\.md$'
+  '^reports/real100_v2/parse_inventory\.aggregate\.json$'
+  '^reports/real100_v2/question_distribution\.aggregate\.json$'
+  '^reports/real100_v2/baseline\.aggregate\.json$'
+  '^reports/real100_v2/benchmark_tiers\.aggregate\.json$'
 )
 
 # Guard: ADR file deletion/rename (CLAUDE.md Prohibited).
@@ -307,7 +315,7 @@ fi
 # one of the sanitizing generators is staged. tests/
 # test_eval_artifact_privacy_regression.py is the CI backstop.
 eval_priv_staged=$(git diff --cached --name-only --diff-filter=ACMR -- \
-  'reports/retrieval/*.json' 'reports/real100/*.json' \
+  'reports/retrieval/*.json' 'reports/real100/*.json' 'reports/real100_v2/*.json' \
   'scripts/_ablation_common.py' 'scripts/run_real_eval_delta.py' \
   'scripts/eda_real100.py' 'scripts/phase*_ablation.py' 2>/dev/null || true)
 if [[ -n "$eval_priv_staged" ]]; then

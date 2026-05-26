@@ -14,6 +14,7 @@ from ingestion import (
     HwpPdfPyMuPdf4LlmLoader,
     PdfPyMuPdf4LlmLoader,
     _HwpPdfPyMuPdf4LlmFallback,
+    _extract_hwp_pdf_pymupdf4llm,
     _reset_kordoc_loaders,
     _resolve_loader,
     load_documents_from_metadata_csv,
@@ -65,6 +66,11 @@ class HwpPdfPyMuPdf4LlmLoaderTest(unittest.TestCase):
                 "BIDMATE_PDF_LOADER",
                 "BIDMATE_INGEST_REDACT_PII",
                 "BIDMATE_HWP_PDF_ARTIFACT_DIR",
+                "BIDMATE_HWP_PDF_ARTIFACT_REUSE",
+                "BIDMATE_PYMUPDF4LLM_USE_OCR",
+                "BIDMATE_PYMUPDF4LLM_OCR_LANGUAGE",
+                "BIDMATE_PYMUPDF4LLM_USE_LAYOUT",
+                "BIDMATE_PYMUPDF4LLM_PARSE_TIMEOUT_S",
             )
         }
         for key in self._env_backup:
@@ -192,6 +198,12 @@ class HwpPdfPyMuPdf4LlmLoaderTest(unittest.TestCase):
             self.assertEqual(loader.last_metadata["converted_pdf_page_count"], 2)
             self.assertTrue(Path(loader.last_metadata["converted_pdf_path"]).exists())
             self.assertEqual(loader.last_parser_health["pymupdf4llm_numeric_only_chunks_skipped"], 1)
+            fake_module.to_markdown.assert_called_once_with(
+                str(pdf_path),
+                page_chunks=True,
+                use_ocr=True,
+                ocr_language="eng",
+            )
 
     def test_pdf_success_uses_source_pdf_citation_metadata(self) -> None:
         fake_module = types.ModuleType("pymupdf4llm")
@@ -212,6 +224,123 @@ class HwpPdfPyMuPdf4LlmLoaderTest(unittest.TestCase):
         self.assertEqual(loader.last_sections[0]["page_span"], [3, 3])
         self.assertEqual(loader.last_metadata["citation_basis"], "source_pdf")
         self.assertEqual(loader.last_metadata["citation_pdf_page_count"], 5)
+        self.assertEqual(loader.last_parser_health["pymupdf4llm_use_ocr"], 1)
+        fake_module.to_markdown.assert_called_once_with(
+            str(pdf_path),
+            page_chunks=True,
+            use_ocr=True,
+            ocr_language="eng",
+        )
+
+    def test_pdf_loader_can_opt_out_of_pymupdf4llm_ocr_for_fast_inventory(self) -> None:
+        fake_module = types.ModuleType("pymupdf4llm")
+        fake_module.to_markdown = mock.Mock(
+            return_value=[{"text": "pdf body", "metadata": {"page_number": 1}}]
+        )  # type: ignore[attr-defined]
+
+        with TemporaryDirectory() as tmp:
+            pdf_path = Path(tmp) / "doc.pdf"
+            pdf_path.write_bytes(b"%PDF source")
+            loader = PdfPyMuPdf4LlmLoader()
+            os.environ["BIDMATE_PYMUPDF4LLM_USE_OCR"] = "0"
+            os.environ["BIDMATE_PYMUPDF4LLM_OCR_LANGUAGE"] = "kor+eng"
+
+            with mock.patch("ingestion._validate_source_pdf", return_value=1):
+                with mock.patch.dict(sys.modules, {"pymupdf4llm": fake_module}):
+                    text = loader.load_text({"텍스트": "csv body"}, pdf_path)
+
+        self.assertEqual(text, "pdf body")
+        self.assertEqual(loader.last_parser_health["pymupdf4llm_use_ocr"], 0)
+        fake_module.to_markdown.assert_called_once_with(
+            str(pdf_path),
+            page_chunks=True,
+            use_ocr=False,
+            ocr_language="kor+eng",
+        )
+
+    def test_pdf_loader_can_opt_out_of_pymupdf4llm_layout_for_fast_inventory(self) -> None:
+        fake_module = types.ModuleType("pymupdf4llm")
+        fake_module.use_layout = mock.Mock()  # type: ignore[attr-defined]
+        fake_module.to_markdown = mock.Mock(
+            return_value=[{"text": "pdf body", "metadata": {"page_number": 1}}]
+        )  # type: ignore[attr-defined]
+
+        with TemporaryDirectory() as tmp:
+            pdf_path = Path(tmp) / "doc.pdf"
+            pdf_path.write_bytes(b"%PDF source")
+            loader = PdfPyMuPdf4LlmLoader()
+            os.environ["BIDMATE_PYMUPDF4LLM_USE_LAYOUT"] = "0"
+
+            with mock.patch("ingestion._validate_source_pdf", return_value=1):
+                with mock.patch.dict(sys.modules, {"pymupdf4llm": fake_module}):
+                    text = loader.load_text({"텍스트": "csv body"}, pdf_path)
+
+        self.assertEqual(text, "pdf body")
+        self.assertEqual(loader.last_parser_health["pymupdf4llm_use_layout"], 0)
+        fake_module.use_layout.assert_called_once_with(False)  # type: ignore[attr-defined]
+        fake_module.to_markdown.assert_called_once_with(
+            str(pdf_path),
+            page_chunks=True,
+            use_ocr=True,
+            ocr_language="eng",
+        )
+
+    def test_pdf_loader_can_run_pymupdf4llm_parse_in_timeout_subprocess(self) -> None:
+        fake_module = types.ModuleType("pymupdf4llm")
+        fake_module.to_markdown = mock.Mock(side_effect=AssertionError("parent path should not parse"))  # type: ignore[attr-defined]
+
+        with TemporaryDirectory() as tmp:
+            pdf_path = Path(tmp) / "doc.pdf"
+            pdf_path.write_bytes(b"%PDF source")
+            loader = PdfPyMuPdf4LlmLoader()
+            os.environ["BIDMATE_PYMUPDF4LLM_PARSE_TIMEOUT_S"] = "30"
+
+            with mock.patch("ingestion._validate_source_pdf", return_value=1):
+                with mock.patch.dict(sys.modules, {"pymupdf4llm": fake_module}):
+                    with mock.patch(
+                        "ingestion._pymupdf4llm_to_markdown_subprocess",
+                        return_value=[{"text": "pdf body", "metadata": {"page_number": 1}}],
+                    ) as parse:
+                        text = loader.load_text({"텍스트": "csv body"}, pdf_path)
+
+        self.assertEqual(text, "pdf body")
+        self.assertEqual(loader.last_parser_health["pymupdf4llm_parse_timeout_s"], 30)
+        parse.assert_called_once_with(
+            pdf_path,
+            use_ocr=True,
+            ocr_language="eng",
+            use_layout=None,
+            timeout_s=30.0,
+        )
+
+    def test_hwp_loader_can_reuse_preserved_converted_pdf_when_opted_in(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source_path = root / "doc.hwp"
+            source_path.write_bytes(b"hwp bytes")
+            artifact_dir = root / "artifacts"
+            artifact_dir.mkdir()
+            reusable_pdf = artifact_dir / "source-sha.pdf"
+            reusable_pdf.write_bytes(b"%PDF reusable")
+            os.environ["BIDMATE_HWP_PDF_ARTIFACT_DIR"] = str(artifact_dir)
+            os.environ["BIDMATE_HWP_PDF_ARTIFACT_REUSE"] = "1"
+
+            def fake_sha(path: Path) -> str:
+                return "source-sha" if path == source_path else "pdf-sha"
+
+            with mock.patch("ingestion.sha256_file", side_effect=fake_sha):
+                with mock.patch("ingestion._validate_converted_pdf", return_value=3):
+                    with mock.patch("ingestion._convert_hwp_to_pdf") as convert:
+                        with mock.patch(
+                            "ingestion._extract_pdf_pymupdf4llm",
+                            return_value=("body", [], {}, {"pymupdf4llm_page_chunks": 1}),
+                        ) as extract:
+                            text, _sections, _metadata, health = _extract_hwp_pdf_pymupdf4llm(source_path)
+
+        self.assertEqual(text, "body")
+        self.assertEqual(health["pymupdf4llm_page_chunks"], 1)
+        convert.assert_not_called()
+        self.assertEqual(extract.call_args.args[0], reusable_pdf)
 
     def test_converter_unavailable_raises_fail_closed(self) -> None:
         loader = HwpPdfPyMuPdf4LlmLoader()

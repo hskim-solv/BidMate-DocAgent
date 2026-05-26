@@ -1,0 +1,203 @@
+{
+  "generated_at_utc": "2026-05-26T13:32:23+00:00",
+  "interpretation_policy": "Tiering is for interpretation and comparison, not cherry-picking headline claims. Future PRs should compare overall plus every tier.",
+  "privacy": {
+    "aggregate_only": true,
+    "chunk_ids_omitted": true,
+    "doc_ids_omitted": true,
+    "filenames_omitted": true,
+    "paths_omitted": true,
+    "per_case_rows_omitted": true,
+    "raw_answers_omitted": true,
+    "raw_evidence_omitted": true,
+    "raw_questions_omitted": true,
+    "raw_text_omitted": true
+  },
+  "profile_type": "private_real100_v2_benchmark_tiers",
+  "schema_version": 1,
+  "source": {
+    "eval_summary": {
+      "artifact": "private_local_eval_summary"
+    },
+    "question_tiers": {
+      "artifact": "private_local_question_set"
+    }
+  },
+  "tier_criteria": {
+    "easy_sanity": [
+      "answerable",
+      "single-doc",
+      "single-chunk",
+      "clear expected terms",
+      "not table-heavy",
+      "not multi-hop",
+      "no similar-clause distractor proxy"
+    ],
+    "hard_stress": [
+      "multi-chunk",
+      "multi-doc",
+      "table-heavy",
+      "similar-clause distractors",
+      "unanswerable",
+      "citation/page dependent",
+      "parser-stress"
+    ],
+    "standard_real": [
+      "normal RFP QA",
+      "date amount score schedule requirement extraction allowed",
+      "moderate distractors allowed"
+    ]
+  },
+  "tiers": {
+    "easy_sanity": {
+      "abstention_outcomes": {
+        "false_abstention": 27,
+        "not_applicable": 33
+      },
+      "dominant_failure_category": "unknown",
+      "failure_distribution": {
+        "none": 19,
+        "unknown": 41
+      },
+      "metrics": {
+        "abstention": {
+          "mean": null,
+          "missing": 60,
+          "n": 0
+        },
+        "citation_accuracy": {
+          "mean": null,
+          "missing": 60,
+          "n": 0
+        },
+        "citation_precision": {
+          "mean": 0.17837301587301588,
+          "missing": 0,
+          "n": 60
+        },
+        "mrr_at_5": {
+          "mean": 0.5308333333333333,
+          "missing": 0,
+          "n": 60
+        },
+        "ndcg_at_5": {
+          "mean": 0.5853873124630861,
+          "missing": 0,
+          "n": 60
+        },
+        "recall_at_10": {
+          "mean": 0.7833333333333333,
+          "missing": 0,
+          "n": 60
+        },
+        "recall_at_5": {
+          "mean": 0.75,
+          "missing": 0,
+          "n": 60
+        }
+      },
+      "n": 60
+    },
+    "hard_stress": {
+      "abstention_outcomes": {
+        "correct_abstention": 11,
+        "false_abstention": 4,
+        "missed_abstention": 17,
+        "not_applicable": 58
+      },
+      "dominant_failure_category": "unknown",
+      "failure_distribution": {
+        "none": 21,
+        "unknown": 69
+      },
+      "metrics": {
+        "abstention": {
+          "mean": 0.39285714285714285,
+          "missing": 62,
+          "n": 28
+        },
+        "citation_accuracy": {
+          "mean": null,
+          "missing": 90,
+          "n": 0
+        },
+        "citation_precision": {
+          "mean": 0.041935483870967745,
+          "missing": 28,
+          "n": 62
+        },
+        "mrr_at_5": {
+          "mean": 0.0717741935483871,
+          "missing": 28,
+          "n": 62
+        },
+        "ndcg_at_5": {
+          "mean": 0.06675927133033813,
+          "missing": 28,
+          "n": 62
+        },
+        "recall_at_10": {
+          "mean": 0.14516129032258066,
+          "missing": 28,
+          "n": 62
+        },
+        "recall_at_5": {
+          "mean": 0.08870967741935484,
+          "missing": 28,
+          "n": 62
+        }
+      },
+      "n": 90
+    },
+    "standard_real": {
+      "abstention_outcomes": {
+        "false_abstention": 22,
+        "not_applicable": 128
+      },
+      "dominant_failure_category": "unknown",
+      "failure_distribution": {
+        "none": 45,
+        "unknown": 105
+      },
+      "metrics": {
+        "abstention": {
+          "mean": null,
+          "missing": 150,
+          "n": 0
+        },
+        "citation_accuracy": {
+          "mean": null,
+          "missing": 150,
+          "n": 0
+        },
+        "citation_precision": {
+          "mean": 0.17666666666666667,
+          "missing": 0,
+          "n": 150
+        },
+        "mrr_at_5": {
+          "mean": 0.2235555555555555,
+          "missing": 0,
+          "n": 150
+        },
+        "ndcg_at_5": {
+          "mean": 0.25065985489702824,
+          "missing": 0,
+          "n": 150
+        },
+        "recall_at_10": {
+          "mean": 0.41333333333333333,
+          "missing": 0,
+          "n": 150
+        },
+        "recall_at_5": {
+          "mean": 0.3333333333333333,
+          "missing": 0,
+          "n": 150
+        }
+      },
+      "n": 150
+    }
+  },
+  "unknown_tier_case_count": 0
+}

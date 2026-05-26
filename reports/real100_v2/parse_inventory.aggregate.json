@@ -1,0 +1,54 @@
+{
+  "artifact_condition_counts": {
+    "amount_heavy": 99,
+    "empty_text": 0,
+    "image_only_or_low_text": 0,
+    "page_metadata_missing": 100,
+    "schedule_or_gantt_like": 50,
+    "score_table_like": 99,
+    "table_heavy": 100
+  },
+  "chunk_length_chars": {
+    "max": 520,
+    "min": 3,
+    "p50": 477.0,
+    "p95": 518.0
+  },
+  "generated_at_utc": "2026-05-26T13:10:11+00:00",
+  "markdown_export": {
+    "document_markdown_count": 100,
+    "location": "gitignored_private_dir",
+    "raw_content_written": true
+  },
+  "page_metadata": {
+    "missing_count": 21800,
+    "ready_count": 0,
+    "ready_rate": 0.0
+  },
+  "population": {
+    "chunk_count": 21800,
+    "document_count": 100
+  },
+  "privacy": {
+    "aggregate_only": true,
+    "chunk_ids_omitted": true,
+    "doc_ids_omitted": true,
+    "filenames_omitted": true,
+    "paths_omitted": true,
+    "raw_answers_omitted": true,
+    "raw_evidence_omitted": true,
+    "raw_questions_omitted": true,
+    "raw_text_omitted": true
+  },
+  "profile_type": "private_real100_v2_parse_inventory",
+  "schema_version": 1,
+  "source": {
+    "index": {
+      "artifact": "private_local_index",
+      "sha256_12": "8af7d4eb4680"
+    }
+  },
+  "text_source_distribution": {
+    "pdf_pymupdf4llm": 21800
+  }
+}
