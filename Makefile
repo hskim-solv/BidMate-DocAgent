@@ -32,6 +32,12 @@
 # Tests
 .PHONY: test test-regression
 
+# Agent-loop orchestration helpers. Thin wrappers around scripts/agent_loop.py;
+# they render prompts, classify surfaces, check handoffs, suggest or run
+# allowlisted local validation, and write ignored local planning drafts. They
+# do not perform GitHub mutations.
+.PHONY: agent-loop-next agent-loop-status agent-loop-prompt agent-loop-handoff agent-loop-review agent-loop-surface agent-loop-validation agent-loop-validate agent-loop-preflight agent-loop-pr-scan agent-loop-next-from-prs agent-loop-pr-health agent-loop-draft-task agent-loop-draft-next agent-loop-batch-plan agent-loop-review-followup agent-loop-review-ingest agent-loop-decision-brief agent-loop-promote-draft agent-loop-gate-status agent-loop-claim-audit agent-loop-privacy-audit-output agent-loop-auto-pass agent-loop-dashboard agent-loop-mcp-config agent-loop-safe-fix agent-loop-approval-packet agent-loop-propose-queue-plan agent-loop-pr-body agent-loop-review-plan agent-loop-stale-reports agent-loop-context-pack agent-loop-architecture-brief agent-loop-ship-simulate agent-loop-auto-ship-prepare agent-loop-auto-ship-plan agent-loop-gate-brief agent-loop-manifest agent-loop-pr-body-check agent-loop-ci-ingest agent-loop-stacked-risk agent-loop-patch-proposal agent-loop-adr-reserve agent-loop-dashboard-html agent-loop-ship-command-pack agent-loop-apply-queue-plan agent-loop-review-threads agent-loop-ci-summary agent-loop-readiness-score agent-loop-artifact-freshness agent-loop-review-patch-plan agent-loop-queue-plan-sync agent-loop-dependency-graph agent-loop-branch-issue-hygiene agent-loop-integration-pack agent-loop-scheduled-status agent-loop-validation-history agent-loop-privacy-regression agent-loop-claim-policy agent-loop-architecture-decision agent-loop-workset-recommend agent-loop-automation-coverage agent-loop-human-gated-exec agent-loop-loop-state agent-loop-map agent-loop-mcp
+
 # Auto-ship pipeline (Stop hook driven). See scripts/claude-hooks/stop-ship.sh
 # and the plan at /Users/hskim/.claude/plans/prci-synchronous-newell.md.
 .PHONY: ship-start ship-arm ship-disarm ship-status ship-review-gate
@@ -240,6 +246,658 @@ test-fast:
 # Run before any change to rag_core retrieval/verification or the eval pipeline.
 test-regression:
 	$(PYTHON) -m pytest tests/test_retrieval_loop_regression.py -q
+
+# ---------------------------------------------------------------------------
+# Agent-loop orchestration helpers.
+#
+# These targets make the lightweight CLI easy to call from Codex Desktop or a
+# local terminal. They intentionally stop at ignored local artifacts and
+# allowlisted local validation: no Codex auto-run, no push, no PR
+# creation/merge/close, no branch deletion, no force-push.
+#
+# Examples:
+#   make agent-loop-next
+#   make agent-loop-map
+#   make agent-loop-mcp
+#   make agent-loop-pr-scan
+#   make agent-loop-next-from-prs
+#   make agent-loop-pr-health
+#   make agent-loop-draft-task
+#   make agent-loop-draft-next
+#   make agent-loop-batch-plan
+#   make agent-loop-review-followup REVIEW=reports/agent_loop/review_prompt.md
+#   make agent-loop-review-ingest REVIEW=reports/agent_loop/review_prompt.md
+#   make agent-loop-decision-brief TASK=T-2026-0003
+#   make agent-loop-promote-draft
+#   make agent-loop-gate-status TASK=T-2026-0003
+#   make agent-loop-claim-audit CLAIM_TEXT=reports/agent_loop/review_prompt.txt
+#   make agent-loop-privacy-audit-output
+#   make agent-loop-auto-pass
+#   make agent-loop-dashboard
+#   make agent-loop-mcp-config
+#   make agent-loop-safe-fix
+#   make agent-loop-approval-packet
+#   make agent-loop-propose-queue-plan
+#   make agent-loop-pr-body
+#   make agent-loop-review-plan REVIEW=reports/agent_loop/review_prompt.md
+#   make agent-loop-stale-reports
+#   make agent-loop-context-pack
+#   make agent-loop-architecture-brief
+#   make agent-loop-ship-simulate
+#   make agent-loop-auto-ship-prepare AUTO_SHIP_ISSUE=123 AUTO_SHIP_CREATE_BRANCH=1 CONFIRM_HUMAN_APPROVED=1
+#   make agent-loop-auto-ship-plan AUTO_SHIP_DRY_RUN=1
+#   make agent-loop-gate-brief GATE=pr-create
+#   make agent-loop-manifest
+#   make agent-loop-pr-body-check
+#   make agent-loop-ci-ingest CI_LOG=reports/agent_loop/ci.log
+#   make agent-loop-stacked-risk BRANCH=chore/issue-123-example
+#   make agent-loop-patch-proposal
+#   make agent-loop-adr-reserve ADR_TITLE="New eval surface"
+#   make agent-loop-dashboard-html
+#   make agent-loop-ship-command-pack
+#   make agent-loop-apply-queue-plan CONFIRM_HUMAN_APPROVED=1
+#   make agent-loop-loop-state TASK=T-2026-0003
+#   make agent-loop-status TASK=T-2026-0003
+#   make agent-loop-preflight TASK=T-2026-0003
+#   make agent-loop-prompt TASK=T-2026-0003 OUT=reports/agent_loop/rendered_prompt.txt
+#   make agent-loop-validation
+#   make agent-loop-validate
+#   make agent-loop-surface CHANGED_FILES=/path/to/changed-files.txt
+#   make agent-loop-handoff TASK=T-2026-0003
+#   make agent-loop-review TASK=T-2026-0003 CHANGED_FILES=/path/to/changed-files.txt
+# ---------------------------------------------------------------------------
+
+ROLE ?= Implementer
+TASK ?=
+PLAN ?=
+PR ?=
+BRANCH ?=
+CHANGED_FILES ?=
+OUT ?=
+PR_STATE ?= reports/agent_loop/pr_state.json
+LIMIT ?= 30
+STATE ?= open
+TASK_BRIEF ?=
+DRAFT_TASK_ID ?= T-2026-0000
+READINESS_SUMMARY ?=
+READINESS_REPORT ?=
+REAL100_DIR ?=
+PAGE_METADATA_INDEX_DIR ?=
+REVIEW ?=
+BATCH_OUT ?= reports/agent_loop/batch_plan.md
+BATCH_JSON_OUT ?= reports/agent_loop/batch_plan.json
+REVIEW_FOLLOWUP_OUT ?= reports/agent_loop/review_followups.md
+REVIEW_FOLLOWUP_DIR ?= reports/agent_loop/review_followups
+DECISION_OUT ?= reports/agent_loop/decision_brief.md
+DECISION_BATCH ?=
+DECISION_REVIEW_FOLLOWUPS ?=
+PROMOTE_OUT ?= reports/agent_loop/promote_draft.md
+GATE_STATUS_OUT ?= reports/agent_loop/gate_status.md
+CLAIM_TEXT ?=
+CLAIM_AUDIT_OUT ?= reports/agent_loop/claim_audit.md
+PRIVACY_AUDIT_PATH ?= reports/agent_loop
+PRIVACY_AUDIT_OUT ?= reports/agent_loop/privacy_audit.md
+AUTO_PASS_OUT ?= reports/agent_loop/auto_pass.md
+AUTO_PASS_STRICT ?=
+AUTO_PASS_PROFILE ?= standard
+RUN_VALIDATION ?=
+DASHBOARD_OUT ?= reports/agent_loop/dashboard.md
+MCP_CONFIG_OUT ?= reports/agent_loop/mcp_client_config.md
+REVIEW_INGEST_OUT ?= reports/agent_loop/review_ingest.md
+PR_HEALTH_OUT ?= reports/agent_loop/pr_health.md
+SAFE_FIX_OUT ?= reports/agent_loop/safe_fix.md
+SAFE_FIX_APPLY ?=
+APPROVAL_PACKET_OUT ?= reports/agent_loop/approval_packet.md
+QUEUE_PLAN_PATCH_OUT ?= reports/agent_loop/queue_plan_patch.diff
+PR_BODY_OUT ?= reports/agent_loop/pr_body.md
+ISSUE ?=
+REVIEW_PLAN_OUT ?= reports/agent_loop/review_plan.md
+STALE_REPORTS_OUT ?= reports/agent_loop/stale_reports.md
+STALE_MAX_AGE_DAYS ?= 7
+STALE_APPLY ?=
+CONTEXT_PACK_OUT ?= reports/agent_loop/context_pack.md
+ARCHITECTURE_BRIEF_OUT ?= reports/agent_loop/architecture_brief.md
+SHIP_SIMULATION_OUT ?= reports/agent_loop/ship_simulation.md
+AUTO_SHIP_PREPARE_OUT ?= reports/agent_loop/auto_ship_prepare.md
+AUTO_SHIP_ISSUE ?=
+AUTO_SHIP_TARGET_BRANCH ?=
+AUTO_SHIP_BRANCH_TYPE ?= chore
+AUTO_SHIP_SLUG ?= agent-loop-auto-ship
+AUTO_SHIP_CREATE_BRANCH ?=
+AUTO_SHIP_PLAN_OUT ?= reports/agent_loop/auto_ship_plan.md
+AUTO_SHIP_TTL ?= 2h
+AUTO_SHIP_REAL_EVAL ?=
+AUTO_SHIP_DRAFT ?=
+AUTO_SHIP_DRY_RUN ?=
+AUTO_SHIP_READY ?=
+AUTO_SHIP_NO_DRY_RUN ?=
+GATE_BRIEF_OUT ?= reports/agent_loop/gate_brief.md
+MANIFEST_OUT ?= reports/agent_loop/manifest.json
+MANIFEST_COMMAND ?= manual
+MANIFEST_OUTPUT ?=
+PR_BODY_CHECK_OUT ?= reports/agent_loop/pr_body_check.md
+CI_LOG ?=
+CI_INGEST_OUT ?= reports/agent_loop/ci_ingest.md
+CI_FOLLOWUP_DIR ?= reports/agent_loop/ci_followups
+STACKED_RISK_OUT ?= reports/agent_loop/stacked_risk.md
+PATCH_PROPOSAL_OUT ?= reports/agent_loop/patch_proposal.diff
+PATCH_REVIEW_PLAN ?=
+ADR_TITLE ?=
+ADR_RESERVATION_OUT ?= reports/agent_loop/adr_reservation.md
+ADR_DRAFT_OUT ?= reports/agent_loop/adr_draft.md
+DASHBOARD_HTML_OUT ?= reports/agent_loop/dashboard.html
+SHIP_COMMANDS_OUT ?= reports/agent_loop/ship_commands.md
+APPLY_QUEUE_PLAN_OUT ?= reports/agent_loop/apply_queue_plan.md
+CONFIRM_HUMAN_APPROVED ?=
+REVIEW_THREADS_JSON ?=
+REVIEW_THREADS_OUT ?= reports/agent_loop/review_threads.md
+CI_SUMMARY_OUT ?= reports/agent_loop/ci_summary.md
+READINESS_SCORE_OUT ?= reports/agent_loop/readiness_score.md
+BRANCH_ISSUE_HYGIENE_OUT ?= reports/agent_loop/branch_issue_hygiene.md
+INTEGRATION_PACK_OUT ?= reports/agent_loop/integration_pack.md
+SCHEDULE_CONFIG_OUT ?= reports/agent_loop/schedule_config.md
+VALIDATION_HISTORY ?= reports/agent_loop/validation_history.jsonl
+VALIDATION_HISTORY_OUT ?= reports/agent_loop/validation_history.md
+PRIVACY_REGRESSION_OUT ?= reports/agent_loop/privacy_regression.md
+CLAIM_POLICY_OUT ?= reports/agent_loop/claim_policy.md
+ARCHITECTURE_DECISION_OUT ?= reports/agent_loop/architecture_decision.md
+WORKSET_RECOMMENDATION_OUT ?= reports/agent_loop/workset_recommendation.md
+DEPENDENCY_GRAPH_OUT ?= reports/agent_loop/dependency_graph.md
+AUTOMATION_COVERAGE_OUT ?= reports/agent_loop/automation_coverage.md
+HUMAN_GATED_ACTION ?=
+HUMAN_GATED_EXEC_OUT ?= reports/agent_loop/human_gated_exec.md
+HUMAN_GATED_DRY_RUN ?=
+CONFIRM_REVIEW_GATE_PASSED ?=
+CONFIRM_DEPENDENTS_REVIEWED ?=
+CONFIRM_FORCE_WITH_LEASE ?=
+PR_BASE ?=
+PR_TITLE ?=
+PR_READY ?=
+LOOP_STATE_OUT ?= reports/agent_loop/loop_state.json
+GATE ?= auto
+
+agent-loop-next:
+	$(PYTHON) scripts/agent_loop.py next
+
+agent-loop-status:
+	$(PYTHON) scripts/agent_loop.py status \
+	  $(if $(TASK),--task "$(TASK)",) \
+	  $(if $(PR),--pr "$(PR)",) \
+	  $(if $(CHANGED_FILES),--changed-files "$(CHANGED_FILES)",--from-git)
+
+agent-loop-prompt:
+	@if [ -z "$(TASK)" ]; then \
+	  echo "Usage: make agent-loop-prompt TASK=T-2026-0003 [ROLE=Implementer] [PLAN=docs/plans/...] [OUT=reports/agent_loop/rendered_prompt.txt]"; \
+	  exit 1; \
+	fi
+	$(PYTHON) scripts/agent_loop.py render-prompt \
+	  --task "$(TASK)" \
+	  --role "$(ROLE)" \
+	  $(if $(PLAN),--plan "$(PLAN)",) \
+	  --out "$(or $(OUT),reports/agent_loop/rendered_prompt.txt)"
+
+agent-loop-handoff:
+	@if [ -z "$(TASK)" ]; then \
+	  echo "Usage: make agent-loop-handoff TASK=T-2026-0003 [PLAN=docs/plans/...]"; \
+	  exit 1; \
+	fi
+	$(PYTHON) scripts/agent_loop.py handoff-check \
+	  --task "$(TASK)" \
+	  $(if $(PLAN),--plan "$(PLAN)",)
+
+agent-loop-review:
+	@if [ -z "$(TASK)" ]; then \
+	  echo "Usage: make agent-loop-review TASK=T-2026-0003 [PR=123] [BRANCH=name] [CHANGED_FILES=changed.txt] [OUT=reports/agent_loop/review_prompt.txt]"; \
+	  exit 1; \
+	fi
+	$(PYTHON) scripts/agent_loop.py review-prompt \
+	  --task "$(TASK)" \
+	  $(if $(PR),--pr "$(PR)",) \
+	  $(if $(BRANCH),--branch "$(BRANCH)",) \
+	  $(if $(CHANGED_FILES),--changed-files "$(CHANGED_FILES)",--from-git) \
+	  --out "$(or $(OUT),reports/agent_loop/review_prompt.txt)"
+
+agent-loop-surface:
+	$(PYTHON) scripts/agent_loop.py classify-surface \
+	  $(if $(CHANGED_FILES),--changed-files "$(CHANGED_FILES)",--from-git)
+
+agent-loop-validation:
+	$(PYTHON) scripts/agent_loop.py suggest-validation \
+	  $(if $(CHANGED_FILES),--changed-files "$(CHANGED_FILES)",--from-git)
+
+agent-loop-validate:
+	$(PYTHON) scripts/agent_loop.py validate \
+	  $(if $(PR),--pr "$(PR)",) \
+	  $(if $(CHANGED_FILES),--changed-files "$(CHANGED_FILES)",--from-git) \
+	  $(if $(KEEP_GOING),--keep-going,) \
+	  $(if $(RECORD_HISTORY),--record-history --history "$(VALIDATION_HISTORY)",)
+
+agent-loop-preflight:
+	@if [ -z "$(TASK)" ]; then \
+	  echo "Usage: make agent-loop-preflight TASK=T-2026-0003 [PR=123] [CHANGED_FILES=changed.txt]"; \
+	  exit 1; \
+	fi
+	$(PYTHON) scripts/agent_loop.py preflight \
+	  --task "$(TASK)" \
+	  $(if $(PR),--pr "$(PR)",) \
+	  $(if $(CHANGED_FILES),--changed-files "$(CHANGED_FILES)",--from-git) \
+	  --write-prompts
+
+agent-loop-pr-scan:
+	$(PYTHON) scripts/agent_loop.py pr-scan \
+	  --state "$(STATE)" \
+	  --limit "$(LIMIT)" \
+	  --out "$(PR_STATE)" \
+	  $(if $(INCLUDE_BODY),--include-body,)
+
+agent-loop-next-from-prs:
+	$(PYTHON) scripts/agent_loop.py next-from-prs \
+	  --pr-json "$(PR_STATE)" \
+	  $(if $(READINESS_SUMMARY),--readiness-summary "$(READINESS_SUMMARY)",) \
+	  $(if $(READINESS_REPORT),--readiness-report "$(READINESS_REPORT)",) \
+	  $(if $(REAL100_DIR),--real100-dir "$(REAL100_DIR)",) \
+	  $(if $(PAGE_METADATA_INDEX_DIR),--page-metadata-index-dir "$(PAGE_METADATA_INDEX_DIR)",)
+
+agent-loop-pr-health:
+	$(PYTHON) scripts/agent_loop.py pr-health \
+	  --pr-json "$(PR_STATE)" \
+	  --out "$(PR_HEALTH_OUT)"
+
+agent-loop-draft-task:
+	$(PYTHON) scripts/agent_loop.py draft-task \
+	  --task-id "$(DRAFT_TASK_ID)" \
+	  $(if $(TASK_BRIEF),--task-brief "$(TASK_BRIEF)",)
+
+agent-loop-draft-next:
+	$(PYTHON) scripts/agent_loop.py draft-next \
+	  --task-id "$(DRAFT_TASK_ID)" \
+	  --state "$(STATE)" \
+	  --limit "$(LIMIT)" \
+	  $(if $(INCLUDE_BODY),--include-body,)
+
+agent-loop-batch-plan:
+	$(PYTHON) scripts/agent_loop.py batch-plan \
+	  --tasks-dir reports/agent_loop/codex_tasks \
+	  --out "$(BATCH_OUT)" \
+	  --json-out "$(BATCH_JSON_OUT)"
+
+agent-loop-review-followup:
+	@if [ -z "$(REVIEW)" ]; then \
+	  echo "Usage: make agent-loop-review-followup REVIEW=reports/agent_loop/reviewer_output.md"; \
+	  exit 1; \
+	fi
+	$(PYTHON) scripts/agent_loop.py review-followup \
+	  --review "$(REVIEW)" \
+	  --out "$(REVIEW_FOLLOWUP_OUT)" \
+	  --tasks-dir "$(REVIEW_FOLLOWUP_DIR)"
+
+agent-loop-review-ingest:
+	$(PYTHON) scripts/agent_loop.py review-ingest \
+	  $(if $(REVIEW),--review "$(REVIEW)",) \
+	  $(if $(PR),--pr "$(PR)",) \
+	  --out "$(REVIEW_INGEST_OUT)" \
+	  --followup-out "$(REVIEW_FOLLOWUP_OUT)" \
+	  --tasks-dir "$(REVIEW_FOLLOWUP_DIR)"
+
+agent-loop-decision-brief:
+	$(PYTHON) scripts/agent_loop.py decision-brief \
+	  $(if $(TASK),--task "$(TASK)",) \
+	  $(if $(DECISION_BATCH),--batch "$(DECISION_BATCH)",) \
+	  $(if $(DECISION_REVIEW_FOLLOWUPS),--review-followups "$(DECISION_REVIEW_FOLLOWUPS)",) \
+	  --gate "$(GATE)" \
+	  $(if $(PR),--pr "$(PR)",) \
+	  $(if $(CHANGED_FILES),--changed-files "$(CHANGED_FILES)",--from-git) \
+	  --out "$(DECISION_OUT)"
+
+agent-loop-promote-draft:
+	$(PYTHON) scripts/agent_loop.py promote-draft \
+	  --out "$(PROMOTE_OUT)"
+
+agent-loop-gate-status:
+	$(PYTHON) scripts/agent_loop.py gate-status \
+	  $(if $(TASK),--task "$(TASK)",) \
+	  $(if $(DECISION_BATCH),--batch "$(DECISION_BATCH)",) \
+	  $(if $(DECISION_REVIEW_FOLLOWUPS),--review-followups "$(DECISION_REVIEW_FOLLOWUPS)",) \
+	  $(if $(PR),--pr "$(PR)",) \
+	  $(if $(CHANGED_FILES),--changed-files "$(CHANGED_FILES)",--from-git) \
+	  --out "$(GATE_STATUS_OUT)"
+
+agent-loop-claim-audit:
+	$(PYTHON) scripts/agent_loop.py claim-audit \
+	  $(if $(CLAIM_TEXT),--text "$(CLAIM_TEXT)",) \
+	  $(if $(PR),--pr "$(PR)",) \
+	  $(if $(CHANGED_FILES),--changed-files "$(CHANGED_FILES)",--from-git) \
+	  --out "$(CLAIM_AUDIT_OUT)"
+
+agent-loop-privacy-audit-output:
+	$(PYTHON) scripts/agent_loop.py privacy-audit-output \
+	  --path "$(PRIVACY_AUDIT_PATH)" \
+	  --out "$(PRIVACY_AUDIT_OUT)"
+
+agent-loop-auto-pass:
+	$(PYTHON) scripts/agent_loop.py auto-pass-check \
+	  $(if $(TASK),--task "$(TASK)",) \
+	  $(if $(CHANGED_FILES),--changed-files "$(CHANGED_FILES)",--from-git) \
+	  $(if $(CLAIM_TEXT),--claim-text "$(CLAIM_TEXT)",) \
+	  $(if $(RUN_VALIDATION),--run-validation,) \
+	  $(if $(AUTO_PASS_STRICT),--strict,) \
+	  --profile "$(AUTO_PASS_PROFILE)" \
+	  --out "$(AUTO_PASS_OUT)"
+
+agent-loop-dashboard:
+	$(PYTHON) scripts/agent_loop.py dashboard \
+	  $(if $(TASK),--task "$(TASK)",) \
+	  $(if $(DECISION_BATCH),--batch "$(DECISION_BATCH)",) \
+	  $(if $(DECISION_REVIEW_FOLLOWUPS),--review-followups "$(DECISION_REVIEW_FOLLOWUPS)",) \
+	  $(if $(PR),--pr "$(PR)",) \
+	  $(if $(CHANGED_FILES),--changed-files "$(CHANGED_FILES)",--from-git) \
+	  --out "$(DASHBOARD_OUT)"
+
+agent-loop-mcp-config:
+	$(PYTHON) scripts/agent_loop.py mcp-config \
+	  --out "$(MCP_CONFIG_OUT)"
+
+agent-loop-safe-fix:
+	$(PYTHON) scripts/agent_loop.py safe-fix \
+	  $(if $(CHANGED_FILES),--changed-files "$(CHANGED_FILES)",--from-git) \
+	  $(if $(SAFE_FIX_APPLY),--apply,) \
+	  --out "$(SAFE_FIX_OUT)"
+
+agent-loop-approval-packet:
+	$(PYTHON) scripts/agent_loop.py approval-packet \
+	  $(if $(TASK),--task "$(TASK)",) \
+	  $(if $(PR),--pr "$(PR)",) \
+	  $(if $(CHANGED_FILES),--changed-files "$(CHANGED_FILES)",--from-git) \
+	  $(if $(CLAIM_TEXT),--claim-text "$(CLAIM_TEXT)",) \
+	  $(if $(RUN_VALIDATION),--run-validation,) \
+	  --out "$(APPROVAL_PACKET_OUT)"
+
+agent-loop-propose-queue-plan:
+	$(PYTHON) scripts/agent_loop.py propose-queue-plan \
+	  --task-id "$(DRAFT_TASK_ID)" \
+	  $(if $(TASK_BRIEF),--task-brief "$(TASK_BRIEF)",) \
+	  --out "$(QUEUE_PLAN_PATCH_OUT)"
+
+agent-loop-pr-body:
+	$(PYTHON) scripts/agent_loop.py pr-body \
+	  $(if $(TASK),--task "$(TASK)",) \
+	  $(if $(PR),--pr "$(PR)",) \
+	  $(if $(BRANCH),--branch "$(BRANCH)",) \
+	  $(if $(ISSUE),--issue "$(ISSUE)",) \
+	  $(if $(CHANGED_FILES),--changed-files "$(CHANGED_FILES)",--from-git) \
+	  --out "$(PR_BODY_OUT)"
+
+agent-loop-review-plan:
+	$(PYTHON) scripts/agent_loop.py review-plan \
+	  $(if $(REVIEW),--review "$(REVIEW)",) \
+	  $(if $(PR),--pr "$(PR)",) \
+	  --out "$(REVIEW_PLAN_OUT)"
+
+agent-loop-stale-reports:
+	$(PYTHON) scripts/agent_loop.py stale-reports \
+	  --max-age-days "$(STALE_MAX_AGE_DAYS)" \
+	  $(if $(STALE_APPLY),--apply,) \
+	  --out "$(STALE_REPORTS_OUT)"
+
+agent-loop-context-pack:
+	$(PYTHON) scripts/agent_loop.py context-pack \
+	  $(if $(TASK),--task "$(TASK)",) \
+	  $(if $(PR),--pr "$(PR)",) \
+	  $(if $(CHANGED_FILES),--changed-files "$(CHANGED_FILES)",--from-git) \
+	  --out "$(CONTEXT_PACK_OUT)"
+
+agent-loop-architecture-brief:
+	$(PYTHON) scripts/agent_loop.py architecture-brief \
+	  $(if $(PR),--pr "$(PR)",) \
+	  $(if $(CHANGED_FILES),--changed-files "$(CHANGED_FILES)",--from-git) \
+	  --out "$(ARCHITECTURE_BRIEF_OUT)"
+
+agent-loop-ship-simulate:
+	$(PYTHON) scripts/agent_loop.py ship-simulate \
+	  $(if $(TASK),--task "$(TASK)",) \
+	  $(if $(PR),--pr "$(PR)",) \
+	  $(if $(BRANCH),--branch "$(BRANCH)",) \
+	  $(if $(CHANGED_FILES),--changed-files "$(CHANGED_FILES)",--from-git) \
+	  --out "$(SHIP_SIMULATION_OUT)"
+
+agent-loop-auto-ship-prepare:
+	$(PYTHON) scripts/agent_loop.py auto-ship-prepare \
+	  $(if $(AUTO_SHIP_ISSUE),--issue "$(AUTO_SHIP_ISSUE)",) \
+	  $(if $(AUTO_SHIP_TARGET_BRANCH),--target-branch "$(AUTO_SHIP_TARGET_BRANCH)",) \
+	  --type "$(AUTO_SHIP_BRANCH_TYPE)" \
+	  --slug "$(AUTO_SHIP_SLUG)" \
+	  $(if $(AUTO_SHIP_CREATE_BRANCH),--create-branch,) \
+	  $(if $(CONFIRM_HUMAN_APPROVED),--confirm-human-approved,) \
+	  --ttl "$(AUTO_SHIP_TTL)" \
+	  $(if $(AUTO_SHIP_REAL_EVAL),--real-eval "$(AUTO_SHIP_REAL_EVAL)",) \
+	  $(if $(AUTO_SHIP_DRAFT),--draft,) \
+	  $(if $(AUTO_SHIP_READY),--ready,) \
+	  $(if $(AUTO_SHIP_DRY_RUN),--dry-run,) \
+	  $(if $(AUTO_SHIP_NO_DRY_RUN),--no-dry-run,) \
+	  --out "$(AUTO_SHIP_PREPARE_OUT)"
+
+agent-loop-auto-ship-plan:
+	$(PYTHON) scripts/agent_loop.py auto-ship-plan \
+	  $(if $(TASK),--task "$(TASK)",) \
+	  $(if $(PR),--pr "$(PR)",) \
+	  $(if $(BRANCH),--branch "$(BRANCH)",) \
+	  $(if $(CHANGED_FILES),--changed-files "$(CHANGED_FILES)",--from-git) \
+	  --ttl "$(AUTO_SHIP_TTL)" \
+	  $(if $(AUTO_SHIP_REAL_EVAL),--real-eval "$(AUTO_SHIP_REAL_EVAL)",) \
+	  $(if $(AUTO_SHIP_DRAFT),--draft,) \
+	  $(if $(AUTO_SHIP_DRY_RUN),--dry-run,) \
+	  --out "$(AUTO_SHIP_PLAN_OUT)"
+
+agent-loop-gate-brief:
+	$(PYTHON) scripts/agent_loop.py gate-brief \
+	  --gate "$(GATE)" \
+	  $(if $(TASK),--task "$(TASK)",) \
+	  $(if $(PR),--pr "$(PR)",) \
+	  $(if $(CHANGED_FILES),--changed-files "$(CHANGED_FILES)",--from-git) \
+	  --out "$(GATE_BRIEF_OUT)"
+
+agent-loop-manifest:
+	$(PYTHON) scripts/agent_loop.py manifest \
+	  $(if $(PR),--pr "$(PR)",) \
+	  $(if $(CHANGED_FILES),--changed-files "$(CHANGED_FILES)",--from-git) \
+	  --source-command "$(MANIFEST_COMMAND)" \
+	  $(if $(MANIFEST_OUTPUT),--output "$(MANIFEST_OUTPUT)",) \
+	  --out "$(MANIFEST_OUT)"
+
+agent-loop-pr-body-check:
+	$(PYTHON) scripts/agent_loop.py pr-body-check \
+	  --body "$(PR_BODY_OUT)" \
+	  $(if $(BRANCH),--branch "$(BRANCH)",) \
+	  $(if $(PR),--pr "$(PR)",) \
+	  $(if $(CHANGED_FILES),--changed-files "$(CHANGED_FILES)",--from-git) \
+	  --out "$(PR_BODY_CHECK_OUT)"
+
+agent-loop-ci-ingest:
+	$(PYTHON) scripts/agent_loop.py ci-ingest \
+	  $(if $(CI_LOG),--log "$(CI_LOG)",) \
+	  $(if $(PR),--pr "$(PR)",) \
+	  --out "$(CI_INGEST_OUT)" \
+	  --tasks-dir "$(CI_FOLLOWUP_DIR)"
+
+agent-loop-stacked-risk:
+	@if [ -z "$(BRANCH)" ]; then \
+	  echo "Usage: make agent-loop-stacked-risk BRANCH=chore/issue-123-example [PR_STATE=reports/agent_loop/pr_state.json]"; \
+	  exit 1; \
+	fi
+	$(PYTHON) scripts/agent_loop.py stacked-risk \
+	  --branch "$(BRANCH)" \
+	  $(if $(PR_STATE),--pr-json "$(PR_STATE)",) \
+	  --out "$(STACKED_RISK_OUT)"
+
+agent-loop-patch-proposal:
+	$(PYTHON) scripts/agent_loop.py patch-proposal \
+	  $(if $(PR),--pr "$(PR)",) \
+	  $(if $(CHANGED_FILES),--changed-files "$(CHANGED_FILES)",--from-git) \
+	  $(if $(PATCH_REVIEW_PLAN),--review-plan "$(PATCH_REVIEW_PLAN)",) \
+	  --out "$(PATCH_PROPOSAL_OUT)"
+
+agent-loop-adr-reserve:
+	@if [ -z "$(ADR_TITLE)" ]; then \
+	  echo "Usage: make agent-loop-adr-reserve ADR_TITLE='Decision title'"; \
+	  exit 1; \
+	fi
+	$(PYTHON) scripts/agent_loop.py adr-reserve \
+	  --title "$(ADR_TITLE)" \
+	  --out "$(ADR_RESERVATION_OUT)" \
+	  --draft-out "$(ADR_DRAFT_OUT)"
+
+agent-loop-dashboard-html:
+	$(PYTHON) scripts/agent_loop.py dashboard-html \
+	  $(if $(TASK),--task "$(TASK)",) \
+	  $(if $(PR),--pr "$(PR)",) \
+	  $(if $(CHANGED_FILES),--changed-files "$(CHANGED_FILES)",--from-git) \
+	  --out "$(DASHBOARD_HTML_OUT)"
+
+agent-loop-ship-command-pack:
+	$(PYTHON) scripts/agent_loop.py ship-command-pack \
+	  $(if $(PR),--pr "$(PR)",) \
+	  $(if $(BRANCH),--branch "$(BRANCH)",) \
+	  --out "$(SHIP_COMMANDS_OUT)"
+
+agent-loop-apply-queue-plan:
+	$(PYTHON) scripts/agent_loop.py apply-queue-plan \
+	  $(if $(CONFIRM_HUMAN_APPROVED),--confirm-human-approved,) \
+	  --out "$(APPLY_QUEUE_PLAN_OUT)"
+
+agent-loop-review-threads:
+	$(PYTHON) scripts/agent_loop.py review-threads \
+	  $(if $(REVIEW_THREADS_JSON),--threads-json "$(REVIEW_THREADS_JSON)",) \
+	  $(if $(PR),--pr "$(PR)",) \
+	  --out "$(REVIEW_THREADS_OUT)"
+
+agent-loop-ci-summary:
+	$(PYTHON) scripts/agent_loop.py ci-summary \
+	  $(if $(CI_LOG),--log "$(CI_LOG)",) \
+	  $(if $(PR),--pr "$(PR)",) \
+	  --out "$(CI_SUMMARY_OUT)"
+
+agent-loop-readiness-score:
+	$(PYTHON) scripts/agent_loop.py readiness-score \
+	  $(if $(TASK),--task "$(TASK)",) \
+	  $(if $(PR),--pr "$(PR)",) \
+	  $(if $(BRANCH),--branch "$(BRANCH)",) \
+	  $(if $(PR_BODY_OUT),--body "$(PR_BODY_OUT)",) \
+	  $(if $(CLAIM_TEXT),--claim-text "$(CLAIM_TEXT)",) \
+	  $(if $(CHANGED_FILES),--changed-files "$(CHANGED_FILES)",--from-git) \
+	  --out "$(READINESS_SCORE_OUT)"
+
+agent-loop-artifact-freshness:
+	$(PYTHON) scripts/agent_loop.py artifact-freshness \
+	  $(if $(PR),--pr "$(PR)",) \
+	  $(if $(CHANGED_FILES),--changed-files "$(CHANGED_FILES)",--from-git) \
+	  --max-age-days "$(STALE_MAX_AGE_DAYS)" \
+	  --out "$(STALE_REPORTS_OUT)"
+
+agent-loop-review-patch-plan:
+	$(PYTHON) scripts/agent_loop.py review-patch-plan \
+	  $(if $(REVIEW),--review "$(REVIEW)",) \
+	  $(if $(PR),--pr "$(PR)",) \
+	  $(if $(CHANGED_FILES),--changed-files "$(CHANGED_FILES)",--from-git) \
+	  --review-out "$(REVIEW_PLAN_OUT)" \
+	  --patch-out "$(PATCH_PROPOSAL_OUT)"
+
+agent-loop-queue-plan-sync:
+	$(PYTHON) scripts/agent_loop.py queue-plan-sync \
+	  $(if $(TASK_BRIEF),--task-brief "$(TASK_BRIEF)",) \
+	  --task-id "$(DRAFT_TASK_ID)" \
+	  --out "$(QUEUE_PLAN_PATCH_OUT)"
+
+agent-loop-dependency-graph:
+	@if [ -z "$(BRANCH)" ]; then \
+	  echo "Usage: make agent-loop-dependency-graph BRANCH=chore/issue-123-example [PR_STATE=reports/agent_loop/pr_state.json]"; \
+	  exit 1; \
+	fi
+	$(PYTHON) scripts/agent_loop.py dependency-graph \
+	  --branch "$(BRANCH)" \
+	  $(if $(PR_STATE),--pr-json "$(PR_STATE)",) \
+	  --out "$(DEPENDENCY_GRAPH_OUT)"
+
+agent-loop-branch-issue-hygiene:
+	$(PYTHON) scripts/agent_loop.py branch-issue-hygiene \
+	  $(if $(BRANCH),--branch "$(BRANCH)",) \
+	  $(if $(TASK),--task "$(TASK)",) \
+	  $(if $(PR_BODY_OUT),--body "$(PR_BODY_OUT)",) \
+	  --out "$(BRANCH_ISSUE_HYGIENE_OUT)"
+
+agent-loop-integration-pack:
+	$(PYTHON) scripts/agent_loop.py integration-pack \
+	  --out "$(INTEGRATION_PACK_OUT)"
+
+agent-loop-scheduled-status:
+	$(PYTHON) scripts/agent_loop.py scheduled-status \
+	  --out "$(SCHEDULE_CONFIG_OUT)"
+
+agent-loop-validation-history:
+	$(PYTHON) scripts/agent_loop.py validation-history \
+	  --history "$(VALIDATION_HISTORY)" \
+	  --out "$(VALIDATION_HISTORY_OUT)"
+
+agent-loop-privacy-regression:
+	$(PYTHON) scripts/agent_loop.py privacy-regression \
+	  --out "$(PRIVACY_REGRESSION_OUT)"
+
+agent-loop-claim-policy:
+	$(PYTHON) scripts/agent_loop.py claim-policy \
+	  $(if $(CLAIM_TEXT),--text "$(CLAIM_TEXT)",) \
+	  $(if $(PR),--pr "$(PR)",) \
+	  $(if $(CHANGED_FILES),--changed-files "$(CHANGED_FILES)",--from-git) \
+	  --out "$(CLAIM_POLICY_OUT)"
+
+agent-loop-architecture-decision:
+	$(PYTHON) scripts/agent_loop.py architecture-decision \
+	  $(if $(PR),--pr "$(PR)",) \
+	  $(if $(CHANGED_FILES),--changed-files "$(CHANGED_FILES)",--from-git) \
+	  --out "$(ARCHITECTURE_DECISION_OUT)"
+
+agent-loop-workset-recommend:
+	$(PYTHON) scripts/agent_loop.py workset-recommend \
+	  $(if $(DECISION_BATCH),--batch "$(DECISION_BATCH)",) \
+	  --tasks-dir reports/agent_loop/codex_tasks \
+	  --out "$(WORKSET_RECOMMENDATION_OUT)"
+
+agent-loop-automation-coverage:
+	$(PYTHON) scripts/agent_loop.py automation-coverage \
+	  --out "$(AUTOMATION_COVERAGE_OUT)"
+
+agent-loop-human-gated-exec:
+	@if [ -z "$(HUMAN_GATED_ACTION)" ]; then \
+	  echo "Usage: make agent-loop-human-gated-exec HUMAN_GATED_ACTION=push|pr-create|pr-merge|pr-close|branch-delete|force-push CONFIRM_HUMAN_APPROVED=1"; \
+	  exit 1; \
+	fi
+	$(PYTHON) scripts/agent_loop.py human-gated-exec \
+	  --action "$(HUMAN_GATED_ACTION)" \
+	  $(if $(CONFIRM_HUMAN_APPROVED),--confirm-human-approved,) \
+	  $(if $(HUMAN_GATED_DRY_RUN),--dry-run,) \
+	  $(if $(BRANCH),--branch "$(BRANCH)",) \
+	  $(if $(PR),--pr "$(PR)",) \
+	  $(if $(PR_BODY_OUT),--body "$(PR_BODY_OUT)",) \
+	  $(if $(PR_BASE),--base "$(PR_BASE)",) \
+	  $(if $(PR_TITLE),--title "$(PR_TITLE)",) \
+	  $(if $(PR_READY),--ready,) \
+	  $(if $(CONFIRM_REVIEW_GATE_PASSED),--confirm-review-gate-passed,) \
+	  $(if $(CONFIRM_DEPENDENTS_REVIEWED),--confirm-dependents-reviewed,) \
+	  $(if $(CONFIRM_FORCE_WITH_LEASE),--confirm-force-with-lease,) \
+	  --out "$(HUMAN_GATED_EXEC_OUT)"
+
+agent-loop-loop-state:
+	$(PYTHON) scripts/agent_loop.py loop-state \
+	  $(if $(TASK),--task "$(TASK)",) \
+	  $(if $(DECISION_BATCH),--batch "$(DECISION_BATCH)",) \
+	  $(if $(DECISION_REVIEW_FOLLOWUPS),--review-followups "$(DECISION_REVIEW_FOLLOWUPS)",) \
+	  $(if $(PR),--pr "$(PR)",) \
+	  $(if $(CHANGED_FILES),--changed-files "$(CHANGED_FILES)",--from-git) \
+	  --out "$(LOOP_STATE_OUT)"
+
+agent-loop-map:
+	$(PYTHON) scripts/agent_loop.py map
+
+agent-loop-mcp:
+	$(PYTHON) scripts/agent_loop_mcp.py
 
 # F2 (#853): local Qdrant container for the production HTTP server
 # integration test. Image pin is in docker-compose.qdrant.yml.
