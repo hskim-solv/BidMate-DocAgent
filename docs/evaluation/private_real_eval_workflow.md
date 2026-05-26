@@ -40,8 +40,8 @@ Canonical local layout:
 eval/real_config.local.yaml
 data/data_list.csv
 data/files/
-data/files_kordoc/
 data/index/real100/
+data/index/real100/hwp_pdf_artifacts/
 reports/real100/
 ```
 
@@ -58,7 +58,7 @@ cache to prepare the Naive RAG baseline runner, but not in the preferred
 | Candidate category | Observed local state | Canonical target | Action |
 |---|---:|---|---|
 | Source documents | 100 files | `data/files/` | Keep local-only; never commit. |
-| Kordoc cache | 101 files | `data/files_kordoc/` | Keep local-only as the parsed cache/source sibling. |
+| HWP citation PDFs | generated on rebuild | `data/index/real100/hwp_pdf_artifacts/` | Preserve local-only; citations refer to these LibreOffice converted PDFs. |
 | Manifest | 100 rows | `data/data_list.csv` | Keep local-only; never commit. |
 | Existing index | 100 documents / 26,376 chunks | `data/index/real100/` | Use only if it matches the manifest and corpus; otherwise rebuild. |
 | Gold labels/questions | `cases:` in local config | `eval/real_config.local.yaml` | Curate local-only cases; add explicit `gold_evidence` or `gold_chunk_ids` when needed. |
@@ -120,12 +120,10 @@ The workflow expects these private paths to remain ignored:
 - `configs/eval/*.local.yaml`
 - `data/private/`
 - `data/files/`
-- `data/files_kordoc/`
 - `data/data_list.csv`
 - `data/index/private*/`
 - `data/index/real*/`
 - `data/index/real100/`
-- `data/index/real100_kordoc/`
 - `data/index-private-hardcase/`
 - `experiments/private_runs/`
 - `reports/real*/`
@@ -167,10 +165,10 @@ private documents and manifest are present:
 ```bash
 python3 scripts/build_index.py \
   --metadata_csv data/data_list.csv \
-  --files_dir data/files_kordoc \
-  --output_dir data/index/real100_kordoc \
-  --hwp_loader kordoc \
-  --pdf_loader kordoc \
+  --files_dir data/files \
+  --output_dir data/index/real100 \
+  --hwp_loader pdf_pymupdf4llm \
+  --pdf_loader pdf_pymupdf4llm \
   --embedding_backend hashing
 ```
 

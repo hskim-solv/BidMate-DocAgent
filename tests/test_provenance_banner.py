@@ -5,7 +5,7 @@ Pins the observation surface shared by ``scripts/build_index.py`` and
 
 * hashing embedding → ``[WARN]`` row (the 의미-맹목 artifact class).
 * CSV-fallback ingestion text_source → ``[WARN]`` row (the #1129 artifact).
-* kordoc text_source → no WARN (post-#1133 healthy path).
+* PyMuPDF4LLM text_source → no WARN; HWP kordoc/csv text_source → WARN.
 * opt-out honored via ``--no-config-banner`` flag AND
   ``BIDMATE_NO_CONFIG_BANNER`` env.
 * banner writes to the chosen stream (default stderr) and never raises on
@@ -37,6 +37,7 @@ class _Args:
         self.files_dir = kw.get("files_dir", "data/files")
         self.hwp_loader = kw.get("hwp_loader", None)
         self.pdf_loader = kw.get("pdf_loader", None)
+        self.hwp_pdf_artifact_dir = kw.get("hwp_pdf_artifact_dir", "data/index/hwp_pdf_artifacts")
         self.ingestion_mode = kw.get("ingestion_mode", "csv-text")
         self.chunking_strategy = kw.get("chunking_strategy", "fixed")
         self.no_config_banner = kw.get("no_config_banner", False)
@@ -97,10 +98,16 @@ class IngestionLoaderTest(unittest.TestCase):
         hwp = [r for r in rows if r[0] == "hwp_loader"][0]
         self.assertEqual(hwp[2], p.WARN)
 
-    def test_kordoc_hwp_loader_ok(self):
-        rows = p.build_index_rows(_Args(hwp_loader="kordoc"))
+    def test_default_hwp_loader_ok(self):
+        rows = p.build_index_rows(_Args())
         hwp = [r for r in rows if r[0] == "hwp_loader"][0]
         self.assertEqual(hwp[2], p.OK)
+        self.assertEqual(hwp[1], "pdf_pymupdf4llm")
+
+    def test_kordoc_hwp_loader_warns(self):
+        rows = p.build_index_rows(_Args(hwp_loader="kordoc"))
+        hwp = [r for r in rows if r[0] == "hwp_loader"][0]
+        self.assertEqual(hwp[2], p.WARN)
 
     def test_no_metadata_csv_skips_loader_rows(self):
         rows = p.build_index_rows(_Args(metadata_csv=None))
@@ -116,14 +123,22 @@ class EvalTextSourceTest(unittest.TestCase):
             encoding="utf-8",
         )
 
-    def test_kordoc_text_source_no_warn(self):
+    def test_pymupdf_text_source_no_warn(self):
         with tempfile.TemporaryDirectory() as d:
             tmp = Path(d)
-            self._write_report(tmp, {"hwp": {"kordoc": 96}, "pdf": {"kordoc": 4}})
+            self._write_report(tmp, {"hwp": {"pdf_pymupdf4llm": 96}, "pdf": {"pdf_pymupdf4llm": 4}})
             rows = p.eval_rows({"embedding": {"backend": "hashing"}}, {}, tmp)
             ts = [r for r in rows if r[0] == "index.text_source"][0]
             self.assertEqual(ts[2], p.OK)
-            self.assertIn("kordoc", ts[1])
+            self.assertIn("pdf_pymupdf4llm", ts[1])
+
+    def test_hwp_kordoc_text_source_warns(self):
+        with tempfile.TemporaryDirectory() as d:
+            tmp = Path(d)
+            self._write_report(tmp, {"hwp": {"kordoc": 96}, "pdf": {"pdf_pymupdf4llm": 4}})
+            rows = p.eval_rows({"embedding": {"backend": "hashing"}}, {}, tmp)
+            ts = [r for r in rows if r[0] == "index.text_source"][0]
+            self.assertEqual(ts[2], p.WARN)
 
     def test_csv_fallback_text_source_warns(self):
         with tempfile.TemporaryDirectory() as d:

@@ -105,7 +105,7 @@ def _resolve_kordoc_cache(files_dir: str | None) -> str:
 def build_index_rows(args: Any) -> list[Row]:
     """``scripts/build_index.py`` 문맥의 effective-config rows.
 
-    ingestion (loader/mode/kordoc cache) + embedding + chunking 축.
+    ingestion (loader/mode/citation artifact) + embedding + chunking 축.
     """
     rows: list[Row] = [_embedding_row_from_backend(
         getattr(args, "embedding_backend", "?"), getattr(args, "model", "?"))]
@@ -113,17 +113,34 @@ def build_index_rows(args: Any) -> list[Row]:
     using_csv = bool(getattr(args, "metadata_csv", None))
     if using_csv:
         # loader 우선순위: build_index 가 args 를 env 로 승격하므로 env 가 진실.
-        hwp = _env("BIDMATE_HWP_LOADER") or getattr(args, "hwp_loader", None) or "(auto kordoc→csv_text)"
-        pdf = _env("BIDMATE_PDF_LOADER") or getattr(args, "pdf_loader", None) or "(auto kordoc→csv_text)"
+        hwp = _env("BIDMATE_HWP_LOADER") or getattr(args, "hwp_loader", None) or "pdf_pymupdf4llm"
+        pdf = _env("BIDMATE_PDF_LOADER") or getattr(args, "pdf_loader", None) or "pdf_pymupdf4llm"
         if hwp == "csv_text":
             rows.append(("hwp_loader", hwp, WARN, "CSV-text 폴백 — 본문 아닌 메타/표지만"))
+        elif hwp == "kordoc":
+            rows.append(("hwp_loader", hwp, WARN, "legacy parser — page citation 비정규"))
         else:
             rows.append(("hwp_loader", hwp, OK, None))
         if pdf == "csv_text":
             rows.append(("pdf_loader", pdf, WARN, "CSV-text 폴백 — 본문 아닌 표지/TOC만"))
+        elif pdf == "kordoc":
+            rows.append(("pdf_loader", pdf, WARN, "legacy parser — page citation 비정규"))
         else:
             rows.append(("pdf_loader", pdf, OK, None))
-        rows.append(("kordoc_cache", _resolve_kordoc_cache(getattr(args, "files_dir", None)), INFO, None))
+        rows.append((
+            "citation_basis",
+            "hwp=LibreOffice converted PDF, pdf=source PDF",
+            INFO,
+            None,
+        ))
+        rows.append((
+            "hwp_pdf_artifacts",
+            str(getattr(args, "hwp_pdf_artifact_dir", None) or _env("BIDMATE_HWP_PDF_ARTIFACT_DIR") or "(unset)"),
+            INFO,
+            None,
+        ))
+        if hwp == "kordoc" or pdf == "kordoc":
+            rows.append(("kordoc_cache", _resolve_kordoc_cache(getattr(args, "files_dir", None)), INFO, None))
         rows.append(("ingestion_mode", str(getattr(args, "ingestion_mode", "csv-text")), OK, None))
 
     rows.append(("chunking", str(getattr(args, "chunking_strategy", "fixed")), OK, None))
@@ -176,7 +193,11 @@ def eval_rows(index: Any, config: dict[str, Any], index_dir: str | Path | None) 
 
     text_src = _text_source_summary(index_dir)
     if text_src is not None:
-        if "csv" in text_src.lower():
+        lowered = text_src.lower()
+        if "hwp.data_list_csv_text" in lowered or "hwp.kordoc" in lowered:
+            rows.append(("index.text_source", text_src, WARN,
+                         "HWP citation-ready parser 아님"))
+        elif "csv" in lowered:
             rows.append(("index.text_source", text_src, WARN,
                          "CSV 폴백 본문 — chunk/term-level 수치 무효"))
         else:

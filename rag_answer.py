@@ -264,7 +264,26 @@ def claim_target(item: dict[str, Any]) -> str:
     return str(item.get("agency") or item.get("title") or item.get("doc_id") or "unknown")
 
 
+def citation_label(citation_basis: str, page_span: list[int] | None) -> str | None:
+    if not page_span:
+        return None
+    if citation_basis == "libreoffice_converted_pdf":
+        prefix = "LibreOffice 변환 PDF"
+    elif citation_basis == "source_pdf":
+        prefix = "원본 PDF"
+    else:
+        prefix = "PDF"
+    if page_span[0] == page_span[1]:
+        return f"{prefix} p.{page_span[0]}"
+    return f"{prefix} pp.{page_span[0]}-{page_span[1]}"
+
+
 def make_citation(item: dict[str, Any]) -> dict[str, Any]:
+    metadata = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
+    canonical_pdf_citation = (
+        metadata.get("text_source") == "pdf_pymupdf4llm"
+        or bool(metadata.get("citation_basis"))
+    )
     citation = {
         "doc_id": item.get("doc_id", ""),
         "chunk_id": item.get("chunk_id", ""),
@@ -272,12 +291,33 @@ def make_citation(item: dict[str, Any]) -> dict[str, Any]:
         "section": item.get("section", ""),
         "agency": item.get("agency", ""),
     }
+    section_path = item.get("section_path")
+    if canonical_pdf_citation and isinstance(section_path, list) and section_path:
+        citation["section_path"] = [str(part) for part in section_path]
     regions = normalize_regions(item.get("regions"))
     page_span = normalize_page_span(item.get("page_span"), regions)
     if regions:
         citation["regions"] = regions
     if page_span:
         citation["page_span"] = page_span
+    if canonical_pdf_citation:
+        for key in (
+            "text_source",
+            "citation_basis",
+            "converted_pdf_sha256",
+            "converted_pdf_page_count",
+            "citation_pdf_sha256",
+            "citation_pdf_page_count",
+        ):
+            value = metadata.get(key)
+            if value not in (None, ""):
+                citation[key] = value
+        span_hash = item.get("text_span_hash")
+        if span_hash:
+            citation["text_span_hash"] = str(span_hash)
+        label = citation_label(str(metadata.get("citation_basis") or ""), page_span)
+        if label:
+            citation["citation_label"] = label
     return citation
 
 
@@ -488,5 +528,3 @@ def select_supporting_evidence(
     pool = topic_matched or evidence
     pool_size = _AGGREGATE_POOL_MAX if _is_aggregate_query(analysis) else 2
     return pool[:pool_size]
-
-

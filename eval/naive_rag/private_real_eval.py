@@ -605,6 +605,7 @@ def build_index_command(
         ("model", "--model"),
         ("hwp_loader", "--hwp_loader"),
         ("pdf_loader", "--pdf_loader"),
+        ("hwp_pdf_artifact_dir", "--hwp_pdf_artifact_dir"),
     ):
         value = str(index_build.get(key) or "").strip()
         if value:

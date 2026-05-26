@@ -142,11 +142,10 @@ def _build_mixed_corpus(root: Path) -> tuple[Path, Path, list[dict[str, str]]]:
 
 class MixedFormatIngestionTest(unittest.TestCase):
     def setUp(self) -> None:
-        # ADR 0049: kordoc is now the default HWP + PDF backend, but this
-        # suite uses dummy 0-byte fixtures that kordoc can't parse. Force
-        # the CSV-text loader for both formats so the suite stays an
-        # offline-friendly fixture of the v1 path (the kordoc subprocess +
-        # fallback path is covered by tests/test_ingestion_kordoc_regression.py).
+        # Citation-ready PyMuPDF4LLM is now the default HWP + PDF backend, but
+        # this suite uses dummy 0-byte fixtures. Force CSV-text for both
+        # formats so the suite stays an offline-friendly fixture of the v1
+        # metadata path.
         import os
         self._env_backup = {
             "BIDMATE_HWP_LOADER": os.environ.get("BIDMATE_HWP_LOADER"),
@@ -263,10 +262,7 @@ class MixedFormatIngestionTest(unittest.TestCase):
             _, report = load_documents_from_metadata_csv(csv_path, files_dir)
 
             summary = report["summary"]
-            # Bumped 3 → 4 in issue #902 (additive nested_table_loss_* fields
-            # on summary.chunk_health). Existing summary fields below are
-            # unchanged.
-            self.assertEqual(4, summary["schema_version"])
+            self.assertEqual(INGESTION_REPORT_SCHEMA_VERSION, summary["schema_version"])
             self.assertEqual(
                 {
                     "pdf": {"data_list_csv_text": 2},
