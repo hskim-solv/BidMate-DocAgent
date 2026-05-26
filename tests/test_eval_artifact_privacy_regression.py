@@ -40,6 +40,7 @@ def test_globs_cover_both_eval_data_surfaces() -> None:
     # both sit outside the pre-commit ^reports/real[^/]*/ path block.
     assert "reports/retrieval" in EVAL_PRIVACY_ARTIFACT_GLOBS
     assert "reports/real100" in EVAL_PRIVACY_ARTIFACT_GLOBS
+    assert "reports/real100_v2" in EVAL_PRIVACY_ARTIFACT_GLOBS
     # Self-review agreement holds public Korean axis labels — intentionally
     # NOT in scope, or the gate would false-positive on legitimate prose.
     assert "reports/self_review_agreement" not in EVAL_PRIVACY_ARTIFACT_GLOBS

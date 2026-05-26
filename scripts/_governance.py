@@ -225,7 +225,7 @@ PHASE4_ARTIFACT_GLOB = "reports/retrieval/phase4*"
 # (b) zero dict KEYS containing a colon (retry-reason payloads are stripped to
 # their enum prefix). reports/self_review_agreement/ is intentionally NOT in
 # scope — its axis labels are public Korean prose, not private RFP data.
-EVAL_PRIVACY_ARTIFACT_GLOBS = ("reports/retrieval", "reports/real100")
+EVAL_PRIVACY_ARTIFACT_GLOBS = ("reports/retrieval", "reports/real100", "reports/real100_v2")
 _EVAL_PRIVACY_HANGUL_RE = re.compile(r"[가-힣ᄀ-ᇿ㄰-㆏ꥠ-꥿]")
 
 # Private real-eval readiness scaffold: local inputs, raw outputs, and private
@@ -240,11 +240,14 @@ PRIVATE_REAL_EVAL_REQUIRED_IGNORES: tuple[str, ...] = (
     "data/private/",
     "data/data_list.csv",
     "data/index/real100/",
+    "data/index/real100_v2/",
     "data/index/real100_kordoc/",
     "data/index-private-hardcase/",
     "experiments/private_runs/",
     "reports/real100/eval_summary.json",
     "reports/real100/raw/",
+    "reports/real100_v2/eval_summary.json",
+    "reports/real100_v2/raw/",
     "reports/private_real_eval_summary.raw.json",
 )
 PRIVATE_REAL_EVAL_REDACTED_SUMMARIES: tuple[str, ...] = (

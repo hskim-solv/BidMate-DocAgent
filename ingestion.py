@@ -9,7 +9,11 @@ in the ingestion report.
 from __future__ import annotations
 
 import csv
+import json
 import os
+import subprocess
+import sys
+import tempfile
 import warnings
 from collections import OrderedDict
 from dataclasses import asdict, dataclass, field
@@ -192,6 +196,11 @@ PDF_PYMUPDF4LLM_TEXT_SOURCE = "pdf_pymupdf4llm"
 LIBREOFFICE_CONVERTED_PDF_CITATION_BASIS = "libreoffice_converted_pdf"
 SOURCE_PDF_CITATION_BASIS = "source_pdf"
 HWP_PDF_ARTIFACT_DIR_ENV = "BIDMATE_HWP_PDF_ARTIFACT_DIR"
+HWP_PDF_ARTIFACT_REUSE_ENV = "BIDMATE_HWP_PDF_ARTIFACT_REUSE"
+PYMUPDF4LLM_USE_OCR_ENV = "BIDMATE_PYMUPDF4LLM_USE_OCR"
+PYMUPDF4LLM_OCR_LANGUAGE_ENV = "BIDMATE_PYMUPDF4LLM_OCR_LANGUAGE"
+PYMUPDF4LLM_USE_LAYOUT_ENV = "BIDMATE_PYMUPDF4LLM_USE_LAYOUT"
+PYMUPDF4LLM_PARSE_TIMEOUT_ENV = "BIDMATE_PYMUPDF4LLM_PARSE_TIMEOUT_S"
 _HWP_TO_PDF_BINS = (
     "soffice",
     "libreoffice",
@@ -578,6 +587,104 @@ def _validate_source_pdf(pdf_path: Path) -> int:
     return _validate_pdf(pdf_path, "pdf_invalid_pdf")
 
 
+def _pymupdf4llm_use_ocr() -> bool:
+    value = os.environ.get(PYMUPDF4LLM_USE_OCR_ENV)
+    if value is None:
+        return True
+    return value.strip().lower() not in {"0", "false", "no", "off"}
+
+
+def _pymupdf4llm_ocr_language() -> str:
+    return os.environ.get(PYMUPDF4LLM_OCR_LANGUAGE_ENV, "eng").strip() or "eng"
+
+
+def _pymupdf4llm_use_layout() -> bool | None:
+    value = os.environ.get(PYMUPDF4LLM_USE_LAYOUT_ENV)
+    if value is None:
+        return None
+    return value.strip().lower() not in {"0", "false", "no", "off"}
+
+
+def _pymupdf4llm_parse_timeout_s() -> float | None:
+    value = os.environ.get(PYMUPDF4LLM_PARSE_TIMEOUT_ENV)
+    if value is None or not value.strip():
+        return None
+    try:
+        timeout = float(value)
+    except ValueError:
+        return None
+    return timeout if timeout > 0 else None
+
+
+def _pymupdf4llm_to_markdown_subprocess(
+    pdf_path: Path,
+    *,
+    use_ocr: bool,
+    ocr_language: str,
+    use_layout: bool | None,
+    timeout_s: float,
+) -> Any:
+    with tempfile.NamedTemporaryFile(prefix="bidmate_pymupdf4llm_", suffix=".json", delete=False) as handle:
+        output_path = Path(handle.name)
+    layout_arg = "default" if use_layout is None else ("1" if use_layout else "0")
+    worker = r"""
+import json
+from pathlib import Path
+import sys
+
+import pymupdf4llm
+
+pdf_path = sys.argv[1]
+output_path = Path(sys.argv[2])
+use_ocr = sys.argv[3] == "1"
+ocr_language = sys.argv[4]
+layout_arg = sys.argv[5]
+
+if layout_arg != "default" and hasattr(pymupdf4llm, "use_layout"):
+    pymupdf4llm.use_layout(layout_arg == "1")
+
+output = pymupdf4llm.to_markdown(
+    pdf_path,
+    page_chunks=True,
+    use_ocr=use_ocr,
+    ocr_language=ocr_language,
+)
+output_path.write_text(json.dumps(output, ensure_ascii=False), encoding="utf-8")
+"""
+    try:
+        proc = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                worker,
+                str(pdf_path),
+                str(output_path),
+                "1" if use_ocr else "0",
+                ocr_language,
+                layout_arg,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=timeout_s,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        output_path.unlink(missing_ok=True)
+        raise _PdfPyMuPdf4LlmFallback("pymupdf4llm_parse_timeout", f"{timeout_s:g}s") from exc
+    if proc.returncode != 0:
+        output_path.unlink(missing_ok=True)
+        raise _PdfPyMuPdf4LlmFallback(
+            "pymupdf4llm_parse_failed",
+            f"subprocess_exit_{proc.returncode}",
+        )
+    try:
+        return json.loads(output_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        raise _PdfPyMuPdf4LlmFallback("pymupdf4llm_parse_failed", "subprocess_invalid_json") from exc
+    finally:
+        output_path.unlink(missing_ok=True)
+
+
 def _page_number_from_pymupdf4llm_chunk(
     chunk: dict[str, Any],
     fallback: int,
@@ -633,6 +740,29 @@ def _hwp_pdf_artifact_dir() -> Path | None:
     return Path(raw) if raw else None
 
 
+def _hwp_pdf_artifact_reuse_enabled() -> bool:
+    return os.environ.get(HWP_PDF_ARTIFACT_REUSE_ENV, "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+def _reusable_converted_pdf(source_sha256: str) -> Path | None:
+    artifact_dir = _hwp_pdf_artifact_dir()
+    if artifact_dir is None or not _hwp_pdf_artifact_reuse_enabled():
+        return None
+    candidate = artifact_dir / f"{source_sha256}.pdf"
+    if not candidate.is_file():
+        return None
+    try:
+        _validate_converted_pdf(candidate)
+    except _HwpPdfPyMuPdf4LlmFallback:
+        return None
+    return candidate
+
+
 def _preserve_converted_pdf(pdf_path: Path, source_sha256: str) -> Path | None:
     artifact_dir = _hwp_pdf_artifact_dir()
     if artifact_dir is None:
@@ -665,9 +795,31 @@ def _extract_pdf_pymupdf4llm(
     except ImportError as exc:
         raise _PdfPyMuPdf4LlmFallback("pymupdf4llm_unavailable") from exc
 
+    use_ocr = _pymupdf4llm_use_ocr()
+    ocr_language = _pymupdf4llm_ocr_language()
+    use_layout = _pymupdf4llm_use_layout()
+    timeout_s = _pymupdf4llm_parse_timeout_s()
     try:
-        output = pymupdf4llm.to_markdown(str(pdf_path), page_chunks=True)
+        if timeout_s is not None:
+            output = _pymupdf4llm_to_markdown_subprocess(
+                pdf_path,
+                use_ocr=use_ocr,
+                ocr_language=ocr_language,
+                use_layout=use_layout,
+                timeout_s=timeout_s,
+            )
+        else:
+            if use_layout is not None and hasattr(pymupdf4llm, "use_layout"):
+                pymupdf4llm.use_layout(use_layout)
+            output = pymupdf4llm.to_markdown(
+                str(pdf_path),
+                page_chunks=True,
+                use_ocr=use_ocr,
+                ocr_language=ocr_language,
+            )
     except Exception as exc:
+        if isinstance(exc, _PdfPyMuPdf4LlmFallback):
+            raise
         raise _PdfPyMuPdf4LlmFallback(
             "pymupdf4llm_parse_failed",
             type(exc).__name__,
@@ -701,7 +853,12 @@ def _extract_pdf_pymupdf4llm(
     parser_health = {
         "pymupdf4llm_page_chunks": len(sections),
         "pymupdf4llm_numeric_only_chunks_skipped": skipped_numeric_only,
+        "pymupdf4llm_use_ocr": int(use_ocr),
     }
+    if use_layout is not None:
+        parser_health["pymupdf4llm_use_layout"] = int(use_layout)
+    if timeout_s is not None:
+        parser_health["pymupdf4llm_parse_timeout_s"] = int(timeout_s)
     return text, sections, metadata, parser_health
 
 
@@ -709,6 +866,24 @@ def _extract_hwp_pdf_pymupdf4llm(
     source_path: Path,
 ) -> tuple[str, list[dict[str, Any]], dict[str, Any], dict[str, int]]:
     import tempfile  # noqa: PLC0415
+
+    if _hwp_pdf_artifact_reuse_enabled():
+        source_sha_for_reuse = sha256_file(source_path)
+        reusable_pdf = _reusable_converted_pdf(source_sha_for_reuse)
+        if reusable_pdf is not None:
+            converted_pdf_sha = sha256_file(reusable_pdf)
+            try:
+                return _extract_pdf_pymupdf4llm(
+                    reusable_pdf,
+                    citation_basis=LIBREOFFICE_CONVERTED_PDF_CITATION_BASIS,
+                    source_sha256=source_sha_for_reuse,
+                    converted_pdf_sha256=converted_pdf_sha,
+                    converted_pdf_page_count=_validate_converted_pdf(reusable_pdf),
+                    converted_pdf_path=reusable_pdf,
+                    converter_version="reused_converted_pdf",
+                )
+            except _PdfPyMuPdf4LlmFallback as exc:
+                raise _HwpPdfPyMuPdf4LlmFallback(exc.reason, exc.detail) from exc
 
     with tempfile.TemporaryDirectory(prefix="bidmate_hwp_pdf_") as tmpdir:
         pdf_path, _converter, converter_version = _convert_hwp_to_pdf(source_path, Path(tmpdir))

@@ -1,0 +1,70 @@
+{
+  "actual_distribution": {
+    "easy_sanity": 60,
+    "hard_stress": 90,
+    "standard_real": 150
+  },
+  "answerability": {
+    "answerable": 272,
+    "unanswerable": 28
+  },
+  "comparison_protocol": {
+    "explain_regressions_by_tier": true,
+    "interpretation_not_cherry_picking": true,
+    "report_overall_and_each_tier": true
+  },
+  "evidence_cardinality_distribution": {
+    "multi_chunk": 40,
+    "single_chunk": 232,
+    "unanswerable_no_gold": 28
+  },
+  "generated_at_utc": "2026-05-26T13:20:40+00:00",
+  "generated_case_count": 300,
+  "hardcase_category_distribution": {
+    "comparison": 13,
+    "multi_chunk": 27,
+    "multi_doc": 13,
+    "table_heavy": 22,
+    "unanswerable": 28
+  },
+  "privacy": {
+    "aggregate_only": true,
+    "chunk_ids_omitted": true,
+    "doc_ids_omitted": true,
+    "filenames_omitted": true,
+    "paths_omitted": true,
+    "raw_answers_omitted": true,
+    "raw_evidence_omitted": true,
+    "raw_questions_omitted": true,
+    "raw_text_omitted": true
+  },
+  "profile_type": "private_real100_v2_question_distribution",
+  "query_type_distribution": {
+    "abstention": 28,
+    "comparison": 13,
+    "single_doc": 259
+  },
+  "question_text_uniqueness": {
+    "duplicate_question_texts": 9,
+    "max_same_question_text_count": 4,
+    "unique_question_texts": 287
+  },
+  "question_type_distribution": {
+    "amount_extraction": 50,
+    "date_extraction": 12,
+    "multi_chunk_same_doc": 27,
+    "multi_doc_amount_extraction": 13,
+    "rfp_requirement": 59,
+    "score_extraction": 29,
+    "single_chunk_content_anchor": 60,
+    "table_heavy_score_or_amount": 22,
+    "unanswerable_absence": 28
+  },
+  "recommended_case_count": 300,
+  "schema_version": 1,
+  "target_distribution": {
+    "easy_sanity": 60,
+    "hard_stress": 90,
+    "standard_real": 150
+  }
+}
