@@ -23,18 +23,107 @@ PR이 생기면 각 task에 링크를 추가한다. 예제 task는 `tasks/exampl
 | 10 | `T-2026-0010` | `done` | Implementer -> Reviewer | merged in PR #1519. |
 | 11 | `T-2026-0011` | `done` | Implementer -> Reviewer | merged in PR #1521. |
 | 12 | `T-2026-0012` | `done` | Implementer -> Reviewer | merged in PR #1523. |
-| 13 | `T-2026-0013` | `review` | Maintainer -> Reviewer | policy docs implemented; PR pending. |
+| 13 | `T-2026-0013` | `done` | Maintainer -> Reviewer | merged in PR #1530. |
+| 14 | `T-2026-0014` | `review` | Maintainer -> Reviewer | agent gate surfaces and role dispatch aligned; PR #1532. |
 
 ## Examples
 
 - [`tasks/examples/benchmark-hardening.md`](examples/benchmark-hardening.md): benchmark hardening task 작성 예시.
 - [`tasks/examples/eval-regression-safety.md`](examples/eval-regression-safety.md): eval regression safety task 작성 예시.
 
+## T-2026-0014 — Agent gate surface alignment
+
+- ID: T-2026-0014
+- Title: Agent gate surface alignment
+- Status: review
+- Owner role: Maintainer -> Reviewer
+- Created: 2026-05-27
+- Last updated: 2026-05-27
+
+### Goal
+
+Make the visible agent-loop surfaces match ADR 0079 so the loop reads as a
+conservative agent-gated operating system rather than a workflow waiting for
+manual human gates.
+
+### Scope
+
+- Update `scripts/agent_loop.py` map, gate brief, automation coverage, CLI help,
+  and ship command pack wording.
+- Keep legacy `human-gated-exec` command and `--confirm-human-approved` flag names
+  for compatibility.
+- Add concrete v0/v1/v2 metric-loop milestones to the agent-gated eval policy.
+- Add a report-only `role-dispatch` command for Codex subagent role separation
+  with max 12 roles and depth 2.
+
+### Non-Goals
+
+- Do not change remote mutation behavior.
+- Do not rename CLI flags or commands.
+- Do not run private real-eval.
+
+### Acceptance Criteria
+
+- [x] Loop map says `Agent gate` and explains legacy command naming.
+- [x] Gate brief references ADR 0079 conservative defaults.
+- [x] Metric-loop next milestones are visible in the eval policy.
+- [x] Focused tests cover the wording shift.
+- [x] Role dispatch plan is visible in the loop map, automation coverage, docs,
+  and tests.
+
+### Validation Commands
+
+```bash
+python3 -m pytest tests/test_agent_loop.py -q
+python3 -m py_compile scripts/agent_loop.py
+python3 scripts/agent_loop.py role-dispatch --owner-role "Implementer -> Benchmark Auditor -> Reviewer" --from-git
+python3 scripts/check_doc_links.py --check-all --paths docs/evaluation/agent-gated-rfp-eval-loop.md tasks/queue.md docs/plans/T-2026-0014-agent-gate-surface-alignment.md
+git diff --check
+make check-branch
+```
+
+### Evidence Required
+
+- Focused pytest output.
+- Py compile output.
+- Targeted doc link check.
+
+### Failure Conditions
+
+- Stop if compatibility command names change.
+- Stop if text implies performance evidence without private real-eval aggregate.
+
+### Related Plan / Issue / PR Links
+
+- Plan: [`docs/plans/T-2026-0014-agent-gate-surface-alignment.md`](../docs/plans/T-2026-0014-agent-gate-surface-alignment.md)
+- Issue: [#1531](https://github.com/hskim-solv/BidMate-DocAgent/issues/1531)
+- PR: [#1532](https://github.com/hskim-solv/BidMate-DocAgent/pull/1532)
+
+### Handoff Notes
+
+```markdown
+## Session Handoff — 2026-05-27 KST
+
+- Role: Maintainer
+- Lifecycle stage: review
+- Branch / worktree: chore/issue-1531-agent-gate-surfaces / /Users/hskim/.codex/worktrees/1c21/BidMate-DocAgent
+- Issue / PR: #1531 / PR #1532
+- Task: T-2026-0014
+- Current status: implementation complete; focused validation passed once.
+- Files touched: scripts/agent_loop.py, tests/test_agent_loop.py, docs/evaluation/agent-gated-rfp-eval-loop.md, docs/plans/T-2026-0014-agent-gate-surface-alignment.md, tasks/queue.md
+- Decisions made: keep legacy command names but make visible policy say conservative agent gate; add report-only role dispatch for Codex subagents.
+- Eval surface: governance/tooling only; no metric claim.
+- Commands run: python3 -m pytest tests/test_agent_loop.py -q; python3 -m py_compile scripts/agent_loop.py; python3 scripts/agent_loop.py role-dispatch --owner-role "Implementer -> Benchmark Auditor -> Reviewer" --from-git; python3 scripts/check_doc_links.py --check-all --paths docs/evaluation/agent-gated-rfp-eval-loop.md tasks/queue.md docs/plans/T-2026-0014-agent-gate-surface-alignment.md; git diff --check; make check-branch.
+- Results: passed.
+- Next safe command: git diff --stat
+- Reviewer focus: compatibility, no hidden remote mutation change, no subagent execution side effect, no performance claim.
+```
+
 ## T-2026-0013 — Agent-gated offline/online RFP eval loop
 
 - ID: T-2026-0013
 - Title: Agent-gated offline/online RFP eval loop
-- Status: review
+- Status: done
 - Owner role: Maintainer -> Reviewer
 - Created: 2026-05-26
 - Last updated: 2026-05-26
@@ -94,7 +183,7 @@ make check-branch
 
 - Plan: [`docs/plans/T-2026-0013-agent-gated-rfp-eval-loop.md`](../docs/plans/T-2026-0013-agent-gated-rfp-eval-loop.md)
 - Issue: [#1529](https://github.com/hskim-solv/BidMate-DocAgent/issues/1529)
-- PR: TBD
+- PR: [#1530](https://github.com/hskim-solv/BidMate-DocAgent/pull/1530)
 
 ### Handoff Notes
 

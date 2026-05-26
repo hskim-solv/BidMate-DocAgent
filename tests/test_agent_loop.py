@@ -748,7 +748,8 @@ make real-eval-delta
     assert queue_path.read_text(encoding="utf-8") == "original queue\n"
     assert "Set A - Serial Blockers" in rendered
     assert "Set B - Parallel Safe Candidates" in rendered
-    assert "Set D - Manual Gates" in rendered
+    assert "Set D - Agent Gates" in rendered
+    assert "Agent Gate Stop Points" in rendered
     assert "PRIVATE RAW QUERY" not in rendered
     assert "private.pdf" not in rendered
     payload = json.loads(json_out.read_text(encoding="utf-8"))
@@ -910,7 +911,7 @@ def test_decision_brief_task_gate_uses_task_context(tmp_path: Path) -> None:
     assert "T-2026-9999" in rendered
     assert "Keep as draft and inspect scope" in rendered
     assert "Promote draft to queue/plan" in rendered
-    assert "Manual approval" in rendered
+    assert "Gate acknowledgment" in rendered
 
 
 def test_decision_brief_rejects_unsafe_output_path(tmp_path: Path) -> None:
@@ -1245,11 +1246,12 @@ def test_loop_state_writes_machine_readable_safe_state(tmp_path: Path) -> None:
     assert payload["validation_suggestions"][-1] == "git diff --check"
 
 
-def test_loop_map_marks_human_gates_and_safe_automation() -> None:
+def test_loop_map_marks_agent_gates_and_safe_automation() -> None:
     rendered = agent_loop.render_loop_map()
 
     assert "flowchart TD" in rendered
-    assert "Human gate" in rendered
+    assert "Agent gate" in rendered
+    assert "Conservative agent gate policy" in rendered
     assert "pr-scan" in rendered
     assert "batch-plan" in rendered
     assert "decision-brief" in rendered
@@ -1262,11 +1264,15 @@ def test_loop_map_marks_human_gates_and_safe_automation() -> None:
     assert "review-followup" in rendered
     assert "agent-loop-mcp" in rendered
     assert "read-only `gh pr list`" in rendered
-    assert "Human intervention points" in rendered
     assert "force-push" in rendered
-    assert "make ship-arm: approved single end-to-end ship pipeline" in rendered
-    assert "human-gated-exec: action-by-action remote mutation fallback" in rendered
-    assert "Prefer `make ship-arm` for approved end-to-end shipping" in rendered
+    assert "make ship-arm: conservative single end-to-end ship pipeline" in rendered
+    assert "human-gated-exec: legacy-named conservative remote mutation fallback" in rendered
+    assert "Prefer `make ship-arm` for policy-passing end-to-end shipping" in rendered
+    assert "informational reviews as advisory" in rendered
+    assert "role-dispatch" in rendered
+    assert "max 12" in rendered
+    assert "depth 2" in rendered
+    assert "does not execute subagents or remote mutations" in rendered
 
 
 def test_ship_command_pack_separates_primary_ship_path_from_manual_fallback(tmp_path: Path) -> None:
@@ -1280,8 +1286,9 @@ def test_ship_command_pack_separates_primary_ship_path_from_manual_fallback(tmp_
 
     assert "## Primary End-to-End Ship Path" in rendered
     assert "## Manual Fallback Commands" in rendered
-    assert "Choose one shipping path after explicit approval" in rendered
-    assert "action-by-action commands only when the end-to-end `make ship-arm` path is not appropriate" in rendered
+    assert "Choose one shipping path after the conservative agent gate passes" in rendered
+    assert "ADR 0079 treats it as conservative agent-gate acknowledgment" in rendered
+    assert "explicit confirmation flag is still required" in rendered
     assert "# make ship-arm REAL_EVAL=skip DRAFT=true DRY_RUN=1" in rendered
     assert "--action pr-create" in rendered
 
@@ -1476,7 +1483,9 @@ python3 -m pytest tests/test_agent_loop.py -q
     assert arch_out == repo / "reports" / "agent_loop" / "architecture_brief.md"
     assert "ADR likely" in arch
     assert gate_out == repo / "reports" / "agent_loop" / "gate_brief.md"
-    assert "Human gates are decision points" in gate
+    assert "Conservative agent gates are policy decisions" in gate
+    assert "ADR 0079 delegates routine gate decisions" in gate
+    assert "Manual approval:" not in gate
     assert stale_out == repo / "reports" / "agent_loop" / "stale_reports.md"
     assert "old.md" in stale
     assert "dry-run" in stale
@@ -1699,6 +1708,11 @@ N/A - no load-bearing path.
     integration_out, integration = agent_loop.write_integration_pack(repo_root=repo)
     schedule_out, schedule = agent_loop.write_schedule_config(repo_root=repo)
     coverage_out, coverage = agent_loop.write_automation_coverage(repo_root=repo)
+    role_out, role_dispatch = agent_loop.write_role_dispatch(
+        changed_files=["eval/naive_rag/benchmark.py"],
+        owner_role="Implementer -> Reviewer",
+        repo_root=repo,
+    )
 
     assert threads_out == repo / "reports" / "agent_loop" / "review_threads.md"
     assert "Unresolved count: `1`" in threads_report
@@ -1717,7 +1731,7 @@ N/A - no load-bearing path.
     assert "Result: `pass`" in privacy
     assert claim_out == repo / "reports" / "agent_loop" / "claim_policy.md"
     assert claim_rc == 0
-    assert "Disallowed Or Human-Gated Claims" in claim
+    assert "Disallowed Or Agent-Gated Claims" in claim
     assert arch_out == repo / "reports" / "agent_loop" / "architecture_decision.md"
     assert "human-architecture-review-required" in arch
     assert integration_out == repo / "reports" / "agent_loop" / "integration_pack.md"
@@ -1726,6 +1740,44 @@ N/A - no load-bearing path.
     assert "does not install cron jobs" in schedule
     assert coverage_out == repo / "reports" / "agent_loop" / "automation_coverage.md"
     assert "auto-pass strict profiles" in coverage
+    assert "Still Agent-Gated" in coverage
+    assert "conservative remote execution" in coverage
+    assert "ADR 0079 defaults" in coverage
+    assert "role-separated subagent dispatch" in coverage
+    assert "does not execute subagents or remote mutations" in coverage
+    assert role_out == repo / "reports" / "agent_loop" / "role_dispatch.md"
+    assert "Role Dispatch Plan" in role_dispatch
+    assert "Benchmark Auditor" in role_dispatch
+    assert "depth 2 maximum" in role_dispatch
+    assert "does not spawn subagents" in role_dispatch
+
+
+def test_role_dispatch_adds_surface_auditors_without_executing_subagents(tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+
+    default_rendered = agent_loop.render_role_dispatch(changed_files=["docs/readme.md"], repo_root=repo)
+    rendered = agent_loop.render_role_dispatch(
+        changed_files=["reports/real100/eval_summary.json", "docs/adr/0079-agent-gated-offline-online-rfp-eval-loop.md"],
+        owner_role="Planner -> Implementer -> Reviewer",
+        repo_root=repo,
+    )
+
+    assert "Owner role: `Planner -> Implementer -> Reviewer`" in default_rendered
+    assert "Planner" in default_rendered
+    assert "Implementer" in default_rendered
+    assert "Reviewer" in default_rendered
+    assert "Role Dispatch Plan" in rendered
+    assert "Planner" in rendered
+    assert "Implementer" in rendered
+    assert "Benchmark Auditor" in rendered
+    assert "Privacy Auditor" in rendered
+    assert "Reviewer" in rendered
+    assert "read-only/report-only" in rendered
+    assert "assigned files only" in rendered
+    assert "up to 12 role subagents" in rendered
+    assert "depth 2 maximum: root session -> role subagents only" in rendered
+    assert "does not spawn subagents" in rendered
+    assert "Do not delegate private real-eval interpretation" in rendered
 
 
 def test_dependency_graph_workset_and_strict_profiles_are_fail_closed(tmp_path: Path) -> None:

@@ -317,7 +317,7 @@ def test_mcp_new_reports_are_read_centered_and_redacted() -> None:
     assert "Planning artifact only" in maintenance
     assert "performance claim language detected" in approval
     assert "PRIVATE RAW QUERY" not in approval
-    assert "Disallowed Or Human-Gated Claims" in policy
+    assert "Disallowed Or Agent-Gated Claims" in policy
     assert "Result: `pass`" in privacy
     assert "existing auto-ship bridge" in coverage
 
