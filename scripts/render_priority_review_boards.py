@@ -37,6 +37,16 @@ DEFAULT_OUTPUTS = {
     "hwp_extraction": Path("reports/hwp_extraction_comparison.html"),
     "governance_automation": Path("reports/governance_automation.html"),
     "claim_validator": Path("reports/claim_validator.html"),
+    "review_checklist_selector": Path("reports/review_checklist_selector.html"),
+    "cost_frontier": Path("reports/cost_frontier.html"),
+    "embedding_model_decision": Path("reports/embedding_model_decision.html"),
+    "distinguishing_variance": Path("reports/real100/distinguishing_variance.html"),
+    "failure_slices_deep_dive": Path("reports/real100/failure_slices_deep_dive.html"),
+    "multi_chunk_evidence": Path("reports/real100/multi_chunk_evidence.html"),
+    "public_synthetic_benchmark": Path("reports/public_synthetic_benchmark.html"),
+    "architecture_module_map": Path("reports/architecture_module_map.html"),
+    "portfolio_external_reviewer": Path("reports/portfolio_external_reviewer.html"),
+    "governance_incidents": Path("reports/governance_incidents.html"),
 }
 
 FLAT_OUTPUT_NAMES = {
@@ -55,6 +65,16 @@ FLAT_OUTPUT_NAMES = {
     "hwp_extraction": "hwp_extraction_comparison.html",
     "governance_automation": "governance_automation.html",
     "claim_validator": "claim_validator.html",
+    "review_checklist_selector": "review_checklist_selector.html",
+    "cost_frontier": "cost_frontier.html",
+    "embedding_model_decision": "embedding_model_decision.html",
+    "distinguishing_variance": "distinguishing_variance.html",
+    "failure_slices_deep_dive": "failure_slices_deep_dive.html",
+    "multi_chunk_evidence": "multi_chunk_evidence.html",
+    "public_synthetic_benchmark": "public_synthetic_benchmark.html",
+    "architecture_module_map": "architecture_module_map.html",
+    "portfolio_external_reviewer": "portfolio_external_reviewer.html",
+    "governance_incidents": "governance_incidents.html",
 }
 
 
@@ -147,6 +167,30 @@ def _delta(value: Any) -> str:
 def _top_counter_rows(counter: Mapping[str, Any], *, limit: int = 10) -> list[list[Any]]:
     rows = sorted(counter.items(), key=lambda item: _number(item[1]) or 0, reverse=True)
     return [[key, value] for key, value in rows[:limit]]
+
+
+def _markdown_table(markdown: str, headers: Sequence[str]) -> list[list[str]]:
+    header_line = "| " + " | ".join(headers) + " |"
+    rows: list[list[str]] = []
+    in_table = False
+    for line in markdown.splitlines():
+        if line.strip() == header_line:
+            in_table = True
+            continue
+        if in_table and line.startswith("|---"):
+            continue
+        if in_table and not line.startswith("|"):
+            break
+        if in_table:
+            cells = [cell.strip() for cell in line.strip("|").split("|")]
+            if len(cells) >= len(headers):
+                rows.append(cells[: len(headers)])
+    return rows
+
+
+def _markdown_headings(markdown: str, *, level: str = "##") -> list[str]:
+    prefix = f"{level} "
+    return [line[len(prefix) :].strip() for line in markdown.splitlines() if line.startswith(prefix)]
 
 
 def _panel(title: str, content: str, note: str = "") -> str:
@@ -1049,6 +1093,374 @@ def render_claim_validator(root: Path) -> str:
     )
 
 
+def render_review_checklist_selector(root: Path) -> str:
+    checklist_path = root / "docs" / "reviews" / "ai-review-checklists.md"
+    reviews_readme = root / "docs" / "reviews" / "README.md"
+    pr_template = root / ".github" / "pull_request_template.md"
+    checklist_md = _read_text(checklist_path)
+    headings = _markdown_headings(checklist_md)
+    selector_rows = [
+        ["docs/governance only", "Documentation / Governance Review", "claim boundary, next-agent executability, broken links"],
+        ["eval/benchmark/report claim", "Benchmark Auditor", "surface, provenance, allowed/disallowed claim"],
+        ["load-bearing runtime path", "Deep Reviewer", "contract drift, missing tests, ADR threshold"],
+        ["normal feature/fix", "Normal Review", "behavior, regression tests, compatibility"],
+        ["suspicious automation output", "Adversarial Review", "test-pass theater, fake abstraction, over-claiming"],
+    ]
+    cards = [
+        render_status_card("Checklist sections", len(headings), tone="accent"),
+        render_status_card("Selector rows", len(selector_rows), tone="neutral"),
+        render_status_card("Reviewer source", "Markdown", detail=_rel(checklist_path, root), tone="ok"),
+        render_status_card("HTML role", "routing aid", tone="neutral"),
+    ]
+    body = "\n".join(
+        [
+            f'<section class="grid">{"".join(cards)}</section>',
+            _panel("Checklist Selector", render_table(["Change type", "Review mode", "Reviewer should attack"], selector_rows)),
+            _panel("Detected Checklist Sections", render_table(["Section"], [[heading] for heading in headings])),
+            _source_panel(root, [checklist_path, reviews_readme, pr_template]),
+        ]
+    )
+    return render_document(
+        title="Review Checklist Selector Board",
+        subtitle="Human routing view for choosing the right review mode before reading a PR.",
+        body=body,
+        footer="Generated from review docs; reviewer checklists remain the source of truth.",
+    )
+
+
+def render_cost_frontier(root: Path) -> str:
+    path = root / "reports" / "cost_frontier.md"
+    adr15 = root / "docs" / "adr" / "0015-cost-telemetry-additive.md"
+    adr38 = root / "docs" / "adr" / "0038-cost-model-and-frontier-interpretation.md"
+    md = _read_text(path)
+    rows = _markdown_table(md, ["On frontier", "Run", "Cost (USD)", "Accuracy", "95% CI", "Type"])
+    frontier_rows = [row for row in rows if row and row[0]]
+    cards = [
+        render_status_card("Frontier points", len(frontier_rows), detail="marked in report", tone="accent"),
+        render_status_card("All points", len(rows), tone="neutral"),
+        render_status_card("Cost floor", "$0", detail="self-hosted points", tone="ok"),
+        render_status_card("External sweet spot", "none", detail="per current report", tone="warn"),
+    ]
+    body = "\n".join(
+        [
+            f'<section class="grid">{"".join(cards)}</section>',
+            _panel("Frontier Points", render_table(["On frontier", "Run", "Cost", "Accuracy", "95% CI", "Type"], frontier_rows)),
+            _panel("All Cost / Accuracy Points", render_table(["On frontier", "Run", "Cost", "Accuracy", "95% CI", "Type"], rows)),
+            _source_panel(root, [path, adr15, adr38]),
+        ]
+    )
+    return render_document(
+        title="Cost Frontier Board",
+        subtitle="Human review view of current cost, accuracy, and frontier interpretation.",
+        body=body,
+        footer="Generated from reports/cost_frontier.md; no cost or eval run is executed.",
+    )
+
+
+def render_embedding_model_decision(root: Path) -> str:
+    aggregate_path = root / "reports" / "real100" / "embedding_ablation_retrieval.aggregate.json"
+    doc_path = root / "docs" / "eval" / "embedding-ablation.md"
+    adr19 = root / "docs" / "adr" / "0019-embedding-default-stays-minilm.md"
+    adr73 = root / "docs" / "adr" / "0073-real100-retrieval-surface-keeps-minilm.md"
+    aggregate = _load_json(aggregate_path)
+    model_rows = []
+    best_model = "-"
+    best_recall = -1.0
+    baseline = aggregate.get("baseline_model", "-")
+    for model_name, model_info in _as_mapping(aggregate.get("models")).items():
+        full = _as_mapping(_metric_from_nested(_as_mapping(model_info), "ablations", "full"))
+        recall = _number(_as_mapping(full.get("chunk_recall_at_10")).get("mean"))
+        if recall is not None and recall > best_recall:
+            best_recall = recall
+            best_model = model_name
+        model_rows.append(
+            [
+                model_name,
+                _as_mapping(model_info).get("hf_id"),
+                _metric_mean(full.get("chunk_recall_at_10")),
+                _metric_mean(full.get("chunk_recall_at_5")),
+                _metric_mean(full.get("chunk_mrr")),
+                _metric_mean(full.get("chunk_ndcg_at_10")),
+            ]
+        )
+    cards = [
+        render_status_card("Models", len(model_rows), tone="accent"),
+        render_status_card("Baseline", baseline, tone="neutral"),
+        render_status_card("Best recall@10", best_model, detail=_pct(best_recall if best_recall >= 0 else None), tone="warn"),
+        render_status_card("Default flip", "not implied", tone="ok"),
+    ]
+    body = "\n".join(
+        [
+            f'<section class="grid">{"".join(cards)}</section>',
+            _panel(
+                "Real100 Retrieval Embedding Rows",
+                render_table(["Model", "HF id", "Recall@10", "Recall@5", "MRR", "NDCG@10"], model_rows),
+                "Rows summarize retrieval aggregate only; default model changes still require ADR-level decision.",
+            ),
+            _source_panel(root, [aggregate_path, doc_path, adr19, adr73]),
+        ]
+    )
+    return render_document(
+        title="Embedding Model Decision Board",
+        subtitle="Human review board for MiniLM retention and embedding candidate evidence.",
+        body=body,
+        footer="Generated from embedding ablation docs and aggregate reports only.",
+    )
+
+
+def render_distinguishing_variance(root: Path) -> str:
+    power_path = root / "reports" / "real100" / "distinguishing_power.aggregate.json"
+    variance_path = root / "reports" / "real100" / "variance_measurement" / "aggregate.json"
+    power_doc = root / "reports" / "real100" / "distinguishing_power.md"
+    variance_doc = root / "reports" / "real100" / "variance_measurement" / "REPORT.md"
+    power = _load_json(power_path)
+    variance = _load_json(variance_path)
+    gauge_rows = []
+    for metric, stats in _as_mapping(power.get("gauge")).items():
+        stat_map = _as_mapping(stats)
+        gauge_rows.append([metric, stat_map.get("winner"), stat_map.get("runner_up"), stat_map.get("delta"), stat_map.get("decision")])
+    category_rows = []
+    for category, stats in _as_mapping(variance.get("category_stats")).items():
+        stat_map = _as_mapping(stats)
+        category_rows.append([category, stat_map.get("mean"), stat_map.get("min"), stat_map.get("max"), stat_map.get("range")])
+    stability = _as_mapping(variance.get("per_case_stability"))
+    cards = [
+        render_status_card("Predictions", power.get("num_predictions", "-"), tone="accent"),
+        render_status_card("Variance runs", variance.get("n_runs", "-"), tone="neutral"),
+        render_status_card("Contract OK", _cell(variance.get("contract_all_ok")), tone="ok" if variance.get("contract_all_ok") else "danger"),
+        render_status_card("Fluctuating cases", stability.get("fluctuating", "-"), tone="warn"),
+    ]
+    body = "\n".join(
+        [
+            f'<section class="grid">{"".join(cards)}</section>',
+            _panel("Distinguishing Power Gauge", render_table(["Metric", "Winner", "Runner-up", "Delta", "Decision"], gauge_rows)),
+            _panel("Variance Category Stats", render_table(["Category", "Mean", "Min", "Max", "Range"], category_rows)),
+            _source_panel(root, [power_path, power_doc, variance_path, variance_doc]),
+        ]
+    )
+    return render_document(
+        title="Distinguishing Power / Variance Board",
+        subtitle="Human review view for whether current eval signals can distinguish changes reliably.",
+        body=body,
+        footer="Generated from aggregate measurement artifacts; no eval is run.",
+    )
+
+
+def render_failure_slices_deep_dive(root: Path) -> str:
+    path = root / "reports" / "real100" / "failure_slices.aggregate.json"
+    taxonomy = root / "docs" / "real-data" / "real-data-failure-taxonomy.md"
+    failure_cases = root / "docs" / "real-data" / "failure-cases.md"
+    data = _load_json(path)
+    rows = []
+    for category, value in _as_mapping(data.get("categories")).items():
+        value_map = _as_mapping(value)
+        rows.append([category, value_map.get("count"), value_map.get("share"), ", ".join(str(k) for k in _as_mapping(value_map.get("top_slices")).keys())])
+        for slice_name, slice_value in _as_mapping(value_map.get("top_slices")).items():
+            rows.append([f"{category} / {slice_name}", _as_mapping(slice_value).get("count"), _as_mapping(slice_value).get("share"), "slice"])
+    category_counts = {key: _as_mapping(value).get("count", 0) for key, value in _as_mapping(data.get("categories")).items()}
+    cards = [
+        render_status_card("Predictions", data.get("num_predictions", "-"), tone="accent"),
+        render_status_card("Categories", len(_as_mapping(data.get("categories"))), tone="neutral"),
+        render_status_card("Top category", _top_counter_rows(category_counts, limit=1)[0][0] if category_counts else "-", tone="warn"),
+        render_status_card("Raw cases read", "0", tone="ok"),
+    ]
+    body = "\n".join(
+        [
+            f'<section class="grid">{"".join(cards)}</section>',
+            _panel("Failure Slice Rows", render_table(["Category / Slice", "Count", "Share", "Detail"], rows)),
+            _source_panel(root, [path, taxonomy, failure_cases]),
+        ]
+    )
+    return render_document(
+        title="Failure Slices Deep Dive Board",
+        subtitle="Human review board for aggregate failure slices beyond the top-level distribution.",
+        body=body,
+        footer="Generated from failure_slices.aggregate.json only; raw private cases are not read.",
+    )
+
+
+def render_multi_chunk_evidence(root: Path) -> str:
+    path = root / "reports" / "real100" / "multi_chunk_evidence_failures.aggregate.json"
+    strategy = root / "docs" / "evaluation" / "multi_chunk_retrieval_strategy.md"
+    adr76 = root / "docs" / "adr" / "0076-multi-chunk-evidence-failure-analysis-surface.md"
+    data = _load_json(path)
+    population = _as_mapping(data.get("population"))
+    rows = []
+    for section in ["retrieval_outcome_by_k", "candidate_pool_expansion", "citation_guardrails", "evidence_split", "expected_impact", "structured_overlap"]:
+        for key, value in _as_mapping(data.get(section)).items():
+            rows.append([section, key, value])
+    cards = [
+        render_status_card("Multi-chunk gold", population.get("multi_chunk_gold_cases", "-"), tone="accent"),
+        render_status_card("Top10 failures", population.get("multi_chunk_top10_evidence_failures", "-"), tone="warn"),
+        render_status_card("Predictions", population.get("num_predictions", "-"), tone="neutral"),
+        render_status_card("Raw cases read", "0", tone="ok"),
+    ]
+    body = "\n".join(
+        [
+            f'<section class="grid">{"".join(cards)}</section>',
+            _panel("Multi-Chunk Evidence Signals", render_table(["Section", "Metric", "Value"], rows)),
+            _source_panel(root, [path, strategy, adr76]),
+        ]
+    )
+    return render_document(
+        title="Multi-Chunk Evidence Board",
+        subtitle="Aggregate board for multi-chunk evidence failure and expansion signals.",
+        body=body,
+        footer="Generated from multi_chunk_evidence_failures.aggregate.json only.",
+    )
+
+
+def render_public_synthetic_benchmark(root: Path) -> str:
+    design = root / "docs" / "evaluation" / "synthetic_benchmark_v1_design.md"
+    spec = root / "docs" / "evaluation" / "naive_rag_benchmark_v1.md"
+    results = root / "docs" / "evaluation" / "naive_rag_benchmark_v1_results.md"
+    questions = root / "data" / "eval" / "benchmark" / "rag_questions_v1.jsonl"
+    gold = root / "data" / "eval" / "benchmark" / "gold_evidence_v1.jsonl"
+    chunks = root / "data" / "eval" / "benchmark" / "corpus_chunks_v1.jsonl"
+    corpus_dir = root / "data" / "eval" / "benchmark" / "corpus"
+    corpus_docs = sorted(corpus_dir.glob("*.json")) if corpus_dir.exists() else []
+    rows = [
+        ["Questions", _count_jsonl(questions), _rel(questions, root)],
+        ["Gold evidence", _count_jsonl(gold), _rel(gold, root)],
+        ["Corpus chunks", _count_jsonl(chunks), _rel(chunks, root)],
+        ["Synthetic corpus docs", len(corpus_docs), _rel(corpus_dir, root)],
+    ]
+    cards = [
+        render_status_card("Questions", _count_jsonl(questions), tone="accent"),
+        render_status_card("Gold rows", _count_jsonl(gold), tone="neutral"),
+        render_status_card("Corpus docs", len(corpus_docs), tone="neutral"),
+        render_status_card("Allowed claim", "synthetic-only", tone="warn"),
+    ]
+    body = "\n".join(
+        [
+            f'<section class="grid">{"".join(cards)}</section>',
+            _panel("Public Benchmark Inventory", render_table(["Artifact", "Count", "Path"], rows)),
+            _panel(
+                "Claim Boundary",
+                render_table(
+                    ["Allowed", "Disallowed"],
+                    [["synthetic benchmark method/regression checks", "private real-eval or production quality claim"]],
+                ),
+            ),
+            _source_panel(root, [design, spec, results, questions, gold, chunks] + corpus_docs),
+        ]
+    )
+    return render_document(
+        title="Public Synthetic Benchmark Board",
+        subtitle="Human review board for public synthetic benchmark inventory and claim boundary.",
+        body=body,
+        footer="Generated from public benchmark docs/data only.",
+    )
+
+
+def render_architecture_module_map(root: Path) -> str:
+    module_map = root / "docs" / "architecture" / "module-map.md"
+    ownership = root / "docs" / "multi-agent-ownership.md"
+    deep_dive = root / "docs" / "architecture-deep-dive.md"
+    md = _read_text(module_map)
+    stage_rows = _markdown_table(md, ["단계", "주요 모듈", "책임"])
+    owner_md = _read_text(ownership)
+    owner_rows = _markdown_table(owner_md, ["시나리오", "owner", "스태킹(Stacking)"])
+    cards = [
+        render_status_card("Pipeline stages", len(stage_rows), tone="accent"),
+        render_status_card("Owner scenarios", len(owner_rows), tone="neutral"),
+        render_status_card("rag_core role", "facade + orchestration", tone="warn"),
+        render_status_card("Back-edge target", "0", tone="ok"),
+    ]
+    body = "\n".join(
+        [
+            f'<section class="grid">{"".join(cards)}</section>',
+            _panel("Stage -> Module -> Responsibility", render_table(["Stage", "Modules", "Responsibility"], stage_rows)),
+            _panel("Scenario Owner Routing", render_table(["Scenario", "Owner", "Stacking"], owner_rows)),
+            _source_panel(root, [module_map, ownership, deep_dive]),
+        ]
+    )
+    return render_document(
+        title="Architecture / Module Map Board",
+        subtitle="Human scan view for pipeline stages, module responsibility, and owner routing.",
+        body=body,
+        footer="Generated from architecture Markdown docs; code ownership docs remain canonical.",
+    )
+
+
+def render_portfolio_external_reviewer(root: Path) -> str:
+    pitch = root / "docs" / "portfolio-pitch.md"
+    deep_dive = root / "docs" / "architecture-deep-dive.md"
+    solved = root / "docs" / "rag-challenges-solved.md"
+    performance = root / "docs" / "performance-evolution.md"
+    case_study = root / "docs" / "case-studies" / "failure-modes.md"
+    pitch_md = _read_text(pitch)
+    signal_rows = [
+        ["Baseline preservation", "ADR 0001 + ablation discipline", "improvements stay comparable"],
+        ["Failure-mode-driven design", "failure taxonomy + case studies", "domain failures are named and tested"],
+        ["Eval/CI regression prevention", "CI gates + private/public split", "claims have evidence boundaries"],
+        ["Safety trade-off", "abstention and citation precision", "not optimized for raw answer rate only"],
+    ]
+    cards = [
+        render_status_card("Pitch sections", len(_markdown_headings(pitch_md)), tone="accent"),
+        render_status_card("Core signals", len(signal_rows), tone="neutral"),
+        render_status_card("Audience", "external reviewer", tone="ok"),
+        render_status_card("New metrics", "none", tone="neutral"),
+    ]
+    body = "\n".join(
+        [
+            f'<section class="grid">{"".join(cards)}</section>',
+            _panel("External Reviewer Signals", render_table(["Signal", "Evidence", "Why it matters"], signal_rows)),
+            _panel("Reading Route", render_table(["Doc", "Purpose"], [[_rel(path, root), purpose] for path, purpose in [
+                (pitch, "30-second and 2-minute narrative"),
+                (deep_dive, "one-page architecture"),
+                (solved, "domain challenge evidence"),
+                (performance, "metric evolution"),
+                (case_study, "failure-mode case study"),
+            ]])),
+            _source_panel(root, [pitch, deep_dive, solved, performance, case_study]),
+        ]
+    )
+    return render_document(
+        title="Portfolio / External Reviewer Board",
+        subtitle="Human-facing map for explaining the project quickly without inventing new claims.",
+        body=body,
+        footer="Generated from portfolio and architecture docs; README/ADR metrics remain source of truth.",
+    )
+
+
+def render_governance_incidents(root: Path) -> str:
+    governance = root / "docs" / "engineering-governance.md"
+    claude = root / "CLAUDE.md"
+    md = _read_text(governance)
+    incident_rows = []
+    in_section = False
+    for line in md.splitlines():
+        if line.startswith("## Governance saves"):
+            in_section = True
+            continue
+        if in_section and line.startswith("## "):
+            break
+        if in_section and line.startswith("- **"):
+            title = line.split("**", 2)[1] if "**" in line else line[2:]
+            summary = line.split("**", 2)[2].strip(" .-") if line.count("**") >= 2 else ""
+            incident_rows.append([title, summary[:180]])
+    cards = [
+        render_status_card("Incidents captured", len(incident_rows), tone="accent"),
+        render_status_card("Purpose", "why rules exist", tone="neutral"),
+        render_status_card("Automation link", "rent paid", tone="ok"),
+        render_status_card("Raw logs", "not read", tone="neutral"),
+    ]
+    body = "\n".join(
+        [
+            f'<section class="grid">{"".join(cards)}</section>',
+            _panel("Governance Incidents", render_table(["Incident", "Prevention summary"], incident_rows)),
+            _source_panel(root, [governance, claude, root / ".github" / "workflows" / "pr-eval.yml", root / "scripts" / "check_doc_links.py"]),
+        ]
+    )
+    return render_document(
+        title="Governance Incidents Board",
+        subtitle="Human board showing the real incidents that justify current governance rules.",
+        body=body,
+        footer="Generated from engineering-governance.md; source incidents remain in Markdown.",
+    )
+
+
 def output_paths(root: Path, out_dir: Path | None) -> dict[str, Path]:
     if out_dir is not None:
         return {key: out_dir / name for key, name in FLAT_OUTPUT_NAMES.items()}
@@ -1073,6 +1485,16 @@ def render_all(root: Path, out_dir: Path | None = None) -> dict[Path, str]:
         paths["hwp_extraction"]: render_hwp_extraction(root),
         paths["governance_automation"]: render_governance_automation(root),
         paths["claim_validator"]: render_claim_validator(root),
+        paths["review_checklist_selector"]: render_review_checklist_selector(root),
+        paths["cost_frontier"]: render_cost_frontier(root),
+        paths["embedding_model_decision"]: render_embedding_model_decision(root),
+        paths["distinguishing_variance"]: render_distinguishing_variance(root),
+        paths["failure_slices_deep_dive"]: render_failure_slices_deep_dive(root),
+        paths["multi_chunk_evidence"]: render_multi_chunk_evidence(root),
+        paths["public_synthetic_benchmark"]: render_public_synthetic_benchmark(root),
+        paths["architecture_module_map"]: render_architecture_module_map(root),
+        paths["portfolio_external_reviewer"]: render_portfolio_external_reviewer(root),
+        paths["governance_incidents"]: render_governance_incidents(root),
     }
 
 
