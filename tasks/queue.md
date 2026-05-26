@@ -24,7 +24,7 @@ PR이 생기면 각 task에 링크를 추가한다. 예제 task는 `tasks/exampl
 | 11 | `T-2026-0011` | `done` | Implementer -> Reviewer | merged in PR #1521. |
 | 12 | `T-2026-0012` | `done` | Implementer -> Reviewer | merged in PR #1523. |
 | 13 | `T-2026-0013` | `done` | Maintainer -> Reviewer | merged in PR #1530. |
-| 14 | `T-2026-0014` | `review` | Maintainer -> Reviewer | agent gate surfaces and role dispatch aligned; PR #1532. |
+| 14 | `T-2026-0014` | `done` | Maintainer -> Reviewer | merged in PR #1532. |
 
 ## Examples
 
@@ -35,7 +35,7 @@ PR이 생기면 각 task에 링크를 추가한다. 예제 task는 `tasks/exampl
 
 - ID: T-2026-0014
 - Title: Agent gate surface alignment
-- Status: review
+- Status: done
 - Owner role: Maintainer -> Reviewer
 - Created: 2026-05-27
 - Last updated: 2026-05-27
@@ -105,17 +105,18 @@ make check-branch
 ## Session Handoff — 2026-05-27 KST
 
 - Role: Maintainer
-- Lifecycle stage: review
+- Lifecycle stage: done
 - Branch / worktree: chore/issue-1531-agent-gate-surfaces / /Users/hskim/.codex/worktrees/1c21/BidMate-DocAgent
 - Issue / PR: #1531 / PR #1532
 - Task: T-2026-0014
-- Current status: implementation complete; focused validation passed once.
+- Current status: merged in PR #1532.
 - Files touched: scripts/agent_loop.py, tests/test_agent_loop.py, docs/evaluation/agent-gated-rfp-eval-loop.md, docs/plans/T-2026-0014-agent-gate-surface-alignment.md, tasks/queue.md
 - Decisions made: keep legacy command names but make visible policy say conservative agent gate; add report-only role dispatch for Codex subagents.
 - Eval surface: governance/tooling only; no metric claim.
 - Commands run: python3 -m pytest tests/test_agent_loop.py -q; python3 -m py_compile scripts/agent_loop.py; python3 scripts/agent_loop.py role-dispatch --owner-role "Implementer -> Benchmark Auditor -> Reviewer" --from-git; python3 scripts/check_doc_links.py --check-all --paths docs/evaluation/agent-gated-rfp-eval-loop.md tasks/queue.md docs/plans/T-2026-0014-agent-gate-surface-alignment.md; git diff --check; make check-branch.
 - Results: passed.
-- Next safe command: git diff --stat
+- Next action: N/A; merged in PR #1532.
+- Next safe command: N/A
 - Reviewer focus: compatibility, no hidden remote mutation change, no subagent execution side effect, no performance claim.
 ```
 
