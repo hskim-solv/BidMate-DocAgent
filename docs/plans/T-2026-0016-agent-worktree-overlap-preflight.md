@@ -3,7 +3,7 @@
 - Status: review
 - Owner role: Maintainer -> Reviewer
 - Related task: `tasks/queue.md::T-2026-0016`
-- Related issue / PR: Issue #1541 / PR TBD
+- Related issue / PR: Issue #1541 / PR #1543
 - Related ADR: ADR 0007; ADR 0079
 - Created: 2026-05-27
 - Last updated: 2026-05-27
@@ -66,4 +66,3 @@ make check-branch
 Focus on false-clear risk: if the command cannot prove issue, PR, worktree, or
 freshness state, it should block or warn instead of returning clear. Also verify
 that the command writes only ignored report artifacts.
-

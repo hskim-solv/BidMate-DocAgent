@@ -26,7 +26,7 @@ PR이 생기면 각 task에 링크를 추가한다. 예제 task는 `tasks/exampl
 | 13 | `T-2026-0013` | `done` | Maintainer -> Reviewer | merged in PR #1530. |
 | 14 | `T-2026-0014` | `done` | Maintainer -> Reviewer | merged in PR #1532. |
 | 15 | `T-2026-0015` | `done` | Maintainer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | merged in PR #1536. |
-| 16 | `T-2026-0016` | `review` | Maintainer -> Reviewer | overlap preflight implemented; issue #1541. |
+| 16 | `T-2026-0016` | `review` | Maintainer -> Reviewer | overlap preflight implemented; PR #1543. |
 
 ## Examples
 
@@ -98,7 +98,7 @@ make check-branch
 
 - Plan: [`docs/plans/T-2026-0016-agent-worktree-overlap-preflight.md`](../docs/plans/T-2026-0016-agent-worktree-overlap-preflight.md)
 - Issue: [#1541](https://github.com/hskim-solv/BidMate-DocAgent/issues/1541)
-- PR: TBD
+- PR: [#1543](https://github.com/hskim-solv/BidMate-DocAgent/pull/1543)
 
 ### Handoff Notes
 
@@ -108,9 +108,9 @@ make check-branch
 - Role: Maintainer
 - Lifecycle stage: review
 - Branch / worktree: chore/issue-1541-overlap-preflight / /Users/hskim/.codex/worktrees/43e3/BidMate-DocAgent
-- Issue / PR: #1541 / PR TBD
+- Issue / PR: #1541 / PR #1543
 - Task: T-2026-0016
-- Current status: overlap preflight implemented; focused validation passed.
+- Current status: overlap preflight implemented; focused validation passed; PR #1543 open.
 - Files touched: scripts/agent_loop.py, tests/test_agent_loop.py, tasks/README.md, docs/operations/ai-codex-workflow.md, docs/plans/T-2026-0016-agent-worktree-overlap-preflight.md, tasks/queue.md
 - Decisions made: keep this as a local report-only pre-edit check, not a CI gate.
 - Eval surface: workflow/tooling only; no metric or performance claim.
