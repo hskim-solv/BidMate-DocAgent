@@ -52,8 +52,11 @@ def _run(
     if page_metadata_index_dir is not None:
         args.extend(["--page-metadata-index-dir", str(page_metadata_index_dir)])
     out_md = tmp_path / "reports" / "ai_next_actions.md"
+    out_html = tmp_path / "reports" / "ai_next_actions.html"
     tasks_dir = tmp_path / "reports" / "codex_tasks"
-    rc = planner.main([*args, "--out-md", str(out_md), "--tasks-dir", str(tasks_dir)])
+    rc = planner.main(
+        [*args, "--out-md", str(out_md), "--out-html", str(out_html), "--tasks-dir", str(tasks_dir)]
+    )
     assert rc == 0
     tasks = {path.name: path.read_text(encoding="utf-8") for path in sorted(tasks_dir.glob("*.md"))}
     return out_md.read_text(encoding="utf-8"), tasks
@@ -292,7 +295,8 @@ def test_forbidden_private_keys_do_not_leak_to_generated_reports(tmp_path: Path)
     )
 
     md, tasks = _run(tmp_path, summary=unsafe)
-    generated = md + "\n".join(tasks.values())
+    html = (tmp_path / "reports" / "ai_next_actions.html").read_text(encoding="utf-8")
+    generated = md + html + "\n".join(tasks.values())
 
     assert "sanitized input contained forbidden fields" in generated
     assert "PRIVATE RAW QUERY" not in generated
@@ -315,13 +319,24 @@ def test_output_is_deterministic_from_fixture_inputs(tmp_path: Path) -> None:
 
     first_md, first_tasks = _run(tmp_path / "first", summary=summary, prs=prs)
     second_md, second_tasks = _run(tmp_path / "second", summary=summary, prs=prs)
+    first_html = (tmp_path / "first" / "reports" / "ai_next_actions.html").read_text(
+        encoding="utf-8"
+    )
+    second_html = (tmp_path / "second" / "reports" / "ai_next_actions.html").read_text(
+        encoding="utf-8"
+    )
 
     assert first_md == second_md
     assert first_tasks == second_tasks
+    assert first_html == second_html
 
 
 def test_default_outputs_are_gitignored() -> None:
-    for rel in ("reports/ai_next_actions.md", "reports/codex_tasks/001-example.md"):
+    for rel in (
+        "reports/ai_next_actions.md",
+        "reports/ai_next_actions.html",
+        "reports/codex_tasks/001-example.md",
+    ):
         result = subprocess.run(
             ["git", "check-ignore", "-q", "--", rel],
             cwd=ROOT,
@@ -329,6 +344,17 @@ def test_default_outputs_are_gitignored() -> None:
             check=False,
         )
         assert result.returncode == 0, rel
+
+
+def test_html_output_can_be_disabled(tmp_path: Path) -> None:
+    out_md = tmp_path / "reports" / "ai_next_actions.md"
+    tasks_dir = tmp_path / "reports" / "codex_tasks"
+
+    rc = planner.main(["--out-md", str(out_md), "--out-html", "", "--tasks-dir", str(tasks_dir)])
+
+    assert rc == 0
+    assert out_md.exists()
+    assert not (tmp_path / "reports" / "ai_next_actions.html").exists()
 
 
 def test_missing_required_pr_json_fields_fail_closed(tmp_path: Path) -> None:
@@ -348,3 +374,21 @@ def test_unstable_merge_state_is_blocked(tmp_path: Path) -> None:
     assert "Top task: `blocked` - Unblock PR #12" in md
     assert "merge state is UNSTABLE" in md
     assert any("Resolve review, merge, or CI blockers" in body for body in tasks.values())
+
+
+def test_html_report_escapes_pr_text(tmp_path: Path) -> None:
+    _run(
+        tmp_path,
+        summary=_summary(),
+        prs=[
+            _pr(
+                title="<script>alert('x')</script>",
+                body="No blocker.",
+            )
+        ],
+    )
+    html = (tmp_path / "reports" / "ai_next_actions.html").read_text(encoding="utf-8")
+
+    assert "<script>alert" not in html
+    assert "&lt;script&gt;alert(&#x27;x&#x27;)&lt;/script&gt;" in html
+    assert "Human-readable view of the deterministic Codex planner" in html
