@@ -26,11 +26,99 @@ PR이 생기면 각 task에 링크를 추가한다. 예제 task는 `tasks/exampl
 | 13 | `T-2026-0013` | `done` | Maintainer -> Reviewer | merged in PR #1530. |
 | 14 | `T-2026-0014` | `done` | Maintainer -> Reviewer | merged in PR #1532. |
 | 15 | `T-2026-0015` | `done` | Maintainer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | merged in PR #1536. |
+| 16 | `T-2026-0016` | `review` | Maintainer -> Reviewer | overlap preflight implemented; issue #1541. |
 
 ## Examples
 
 - [`tasks/examples/benchmark-hardening.md`](examples/benchmark-hardening.md): benchmark hardening task 작성 예시.
 - [`tasks/examples/eval-regression-safety.md`](examples/eval-regression-safety.md): eval regression safety task 작성 예시.
+
+## T-2026-0016 — Agent worktree overlap preflight
+
+- ID: T-2026-0016
+- Title: Agent worktree overlap preflight
+- Status: review
+- Owner role: Maintainer -> Reviewer
+- Created: 2026-05-27
+- Last updated: 2026-05-27
+
+### Goal
+
+Prevent duplicate Codex sessions from starting on an issue, branch, PR, or
+worktree that is already in flight.
+
+### Scope
+
+- Add `overlap-preflight` to `scripts/agent_loop.py`.
+- Check issue state, target branch, open PRs, branch PR history, local worktrees,
+  remote branch leftovers, and current checkout freshness.
+- Write local report artifacts under `reports/agent_loop/`.
+- Document that agents should run overlap preflight before editing files.
+
+### Non-Goals
+
+- Do not add a CI gate.
+- Do not switch branches, push, create/merge/close PRs, close issues, or delete branches.
+- Do not change RAG runtime or eval behavior.
+
+### Acceptance Criteria
+
+- [x] Same issue branch in another worktree blocks.
+- [x] Same issue open PR blocks.
+- [x] Closed issue with merged branch history blocks as completed.
+- [x] Detached or stale current checkout blocks.
+- [x] Clean ADR 0007 branch/issue with no overlap reports clear.
+- [x] Start-of-task docs mention overlap preflight.
+
+### Validation Commands
+
+```bash
+python3 -m pytest tests/test_agent_loop.py -q
+python3 -m py_compile scripts/agent_loop.py
+python3 scripts/agent_loop.py overlap-preflight --issue 1541 --branch chore/issue-1541-overlap-preflight
+python3 scripts/check_doc_links.py --check-all --paths tasks/README.md docs/operations/ai-codex-workflow.md docs/plans/T-2026-0016-agent-worktree-overlap-preflight.md tasks/queue.md
+git diff --check
+make check-branch
+```
+
+### Evidence Required
+
+- Focused pytest output.
+- Py compile output.
+- Overlap preflight smoke output.
+- Targeted doc link check output.
+- Diff whitespace and branch checks.
+
+### Failure Conditions
+
+- Stop if the command mutates tracked docs, branches, PRs, issues, or remote state.
+- Stop if a blocked overlap returns clear.
+
+### Related Plan / Issue / PR Links
+
+- Plan: [`docs/plans/T-2026-0016-agent-worktree-overlap-preflight.md`](../docs/plans/T-2026-0016-agent-worktree-overlap-preflight.md)
+- Issue: [#1541](https://github.com/hskim-solv/BidMate-DocAgent/issues/1541)
+- PR: TBD
+
+### Handoff Notes
+
+```markdown
+## Session Handoff — 2026-05-27 KST
+
+- Role: Maintainer
+- Lifecycle stage: review
+- Branch / worktree: chore/issue-1541-overlap-preflight / /Users/hskim/.codex/worktrees/43e3/BidMate-DocAgent
+- Issue / PR: #1541 / PR TBD
+- Task: T-2026-0016
+- Current status: overlap preflight implemented; focused validation passed.
+- Files touched: scripts/agent_loop.py, tests/test_agent_loop.py, tasks/README.md, docs/operations/ai-codex-workflow.md, docs/plans/T-2026-0016-agent-worktree-overlap-preflight.md, tasks/queue.md
+- Decisions made: keep this as a local report-only pre-edit check, not a CI gate.
+- Eval surface: workflow/tooling only; no metric or performance claim.
+- Commands run: python3 -m pytest tests/test_agent_loop.py -q; python3 -m py_compile scripts/agent_loop.py; python3 scripts/agent_loop.py overlap-preflight --issue 1541 --branch chore/issue-1541-overlap-preflight; python3 scripts/check_doc_links.py --check-all --paths tasks/README.md docs/operations/ai-codex-workflow.md docs/plans/T-2026-0016-agent-worktree-overlap-preflight.md tasks/queue.md; git diff --check; make check-branch
+- Results: passed
+- Next safe command: git diff --stat
+- Reviewer focus: false-clear risk, report-only behavior, GitHub/Git failures fail closed.
+```
 
 ## T-2026-0014 — Agent gate surface alignment
 

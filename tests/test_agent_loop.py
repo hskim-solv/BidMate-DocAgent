@@ -528,6 +528,158 @@ def test_preflight_wires_handoff_surface_and_validation(tmp_path: Path) -> None:
     assert "git diff --check" in rendered
 
 
+def _stub_overlap_environment(
+    monkeypatch,
+    repo: Path,
+    *,
+    issue: str = "1541",
+    branch: str = "chore/issue-1541-overlap-preflight",
+    current_branch: str | None = None,
+    head: str = "abc1234",
+    origin_main: str = "abc1234",
+    contains_origin: bool = True,
+    worktrees: tuple[agent_loop.WorktreeSnapshot, ...] | None = None,
+    open_prs: list[dict[str, object]] | None = None,
+    branch_prs: list[dict[str, object]] | None = None,
+    issue_state: str = "OPEN",
+    remote_branches: set[str] | None = None,
+) -> None:
+    current = branch if current_branch is None else current_branch
+    monkeypatch.setattr(agent_loop, "_current_branch", lambda repo_root: current)
+    monkeypatch.setattr(agent_loop, "_git_ref", lambda ref, *, repo_root: head if ref == "HEAD" else origin_main)
+    monkeypatch.setattr(agent_loop, "_git_is_ancestor", lambda ancestor, descendant, *, repo_root: contains_origin)
+    monkeypatch.setattr(
+        agent_loop,
+        "_git_worktree_entries",
+        lambda repo_root: worktrees
+        if worktrees is not None
+        else (agent_loop.WorktreeSnapshot(path=str(repo), branch=current, head=head),),
+    )
+    monkeypatch.setattr(agent_loop, "_local_issue_branches", lambda repo_root: {issue: {branch}})
+    monkeypatch.setattr(agent_loop, "_remote_issue_branches", lambda selected_issue, *, repo_root: remote_branches or set())
+    monkeypatch.setattr(agent_loop, "_open_pr_items", lambda *, repo_root: open_prs or [])
+    monkeypatch.setattr(agent_loop, "_branch_pr_items", lambda selected_branch, *, repo_root: branch_prs or [])
+    monkeypatch.setattr(
+        agent_loop,
+        "_issue_info",
+        lambda selected_issue, *, repo_root: {
+            "number": int(selected_issue),
+            "title": "Overlap preflight fixture",
+            "state": issue_state,
+            "url": f"https://example.test/{selected_issue}",
+        },
+    )
+
+
+def test_overlap_preflight_clear_when_no_issue_branch_pr_or_worktree_overlap(monkeypatch, tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    branch = "chore/issue-1541-overlap-preflight"
+    _stub_overlap_environment(monkeypatch, repo, branch=branch)
+
+    report = agent_loop.build_overlap_preflight(issue="1541", branch=branch, repo_root=repo)
+    rendered = agent_loop.render_overlap_preflight(report, repo_root=repo)
+
+    assert report.result == "clear"
+    assert not report.blockers
+    assert "Result: `clear`" in rendered
+    assert "git status --short --branch" in rendered
+
+
+def test_overlap_preflight_blocks_same_issue_branch_in_another_worktree(monkeypatch, tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    branch = "chore/issue-1541-overlap-preflight"
+    worktrees = (
+        agent_loop.WorktreeSnapshot(path=str(repo), branch=branch, head="abc1234"),
+        agent_loop.WorktreeSnapshot(path=str(tmp_path / "other"), branch="docs/issue-1541-existing", head="def5678"),
+    )
+    _stub_overlap_environment(monkeypatch, repo, branch=branch, worktrees=worktrees)
+
+    report = agent_loop.build_overlap_preflight(issue="1541", branch=branch, repo_root=repo)
+
+    assert report.result == "blocked"
+    assert any("another worktree" in blocker for blocker in report.blockers)
+
+
+def test_overlap_preflight_blocks_same_issue_open_pr(monkeypatch, tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    branch = "chore/issue-1541-overlap-preflight"
+    _stub_overlap_environment(
+        monkeypatch,
+        repo,
+        branch=branch,
+        open_prs=[{"number": 9, "title": "Overlap PR", "headRefName": "docs/issue-1541-existing", "state": "OPEN"}],
+    )
+
+    report = agent_loop.build_overlap_preflight(issue="1541", branch=branch, repo_root=repo)
+
+    assert report.result == "blocked"
+    assert any("open PR" in blocker for blocker in report.blockers)
+    assert report.open_prs == ("#9 Overlap PR head=`docs/issue-1541-existing` state=`OPEN`",)
+
+
+def test_overlap_preflight_blocks_closed_issue_with_merged_branch_history(monkeypatch, tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    branch = "chore/issue-1541-overlap-preflight"
+    _stub_overlap_environment(
+        monkeypatch,
+        repo,
+        branch=branch,
+        issue_state="CLOSED",
+        branch_prs=[{"number": 10, "title": "Merged work", "headRefName": branch, "state": "MERGED", "mergedAt": "2026-05-27T00:00:00Z"}],
+    )
+
+    report = agent_loop.build_overlap_preflight(issue="1541", branch=branch, repo_root=repo)
+
+    assert report.result == "blocked"
+    assert any("closed" in blocker for blocker in report.blockers)
+    assert any("merged PR" in blocker for blocker in report.blockers)
+
+
+def test_overlap_preflight_blocks_detached_or_stale_checkout(monkeypatch, tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    branch = "chore/issue-1541-overlap-preflight"
+    _stub_overlap_environment(monkeypatch, repo, branch=branch, current_branch="HEAD")
+
+    detached = agent_loop.build_overlap_preflight(issue="1541", branch=branch, repo_root=repo)
+
+    _stub_overlap_environment(
+        monkeypatch,
+        repo,
+        branch=branch,
+        head="old1111",
+        origin_main="new2222",
+        contains_origin=False,
+    )
+    stale = agent_loop.build_overlap_preflight(issue="1541", branch=branch, repo_root=repo)
+
+    assert detached.result == "blocked"
+    assert any("detached HEAD" in blocker for blocker in detached.blockers)
+    assert stale.result == "blocked"
+    assert any("does not contain origin/main" in blocker for blocker in stale.blockers)
+
+
+def test_overlap_preflight_writes_markdown_and_optional_json(monkeypatch, tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    branch = "chore/issue-1541-overlap-preflight"
+    _stub_overlap_environment(monkeypatch, repo, branch=branch)
+
+    out, json_out, report, _ = agent_loop.write_overlap_preflight(
+        issue="1541",
+        branch=branch,
+        out=Path("reports/agent_loop/overlap_preflight.md"),
+        json_out=Path("reports/agent_loop/overlap_preflight.json"),
+        repo_root=repo,
+    )
+
+    assert report.result == "clear"
+    assert out == repo / "reports" / "agent_loop" / "overlap_preflight.md"
+    assert json_out == repo / "reports" / "agent_loop" / "overlap_preflight.json"
+    payload = json.loads(json_out.read_text(encoding="utf-8"))
+    assert payload["result"] == "clear"
+    assert payload["issue"] == "1541"
+    assert str(repo) not in json_out.read_text(encoding="utf-8")
+
+
 def test_pr_selector_rejects_gh_option_like_values() -> None:
     for value in ("--repo=other/repo", "-R", "12\n--repo=other/repo", "abc"):
         try:
