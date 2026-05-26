@@ -454,6 +454,7 @@ def retrieve_candidates(
                 "chunking_strategy": chunk.get("chunking_strategy", "legacy"),
                 "retrieval_mode": "flat",
                 "text": chunk["text"],
+                "text_span_hash": chunk.get("text_span_hash"),
                 "score": round(float(rand_score), 6),
                 "score_parts": score_parts,
             }
@@ -662,6 +663,7 @@ def retrieve_candidates(
             "chunking_strategy": chunk.get("chunking_strategy", "legacy"),
             "retrieval_mode": "flat",
             "text": chunk["text"],
+            "text_span_hash": chunk.get("text_span_hash"),
             "score": round(float(score), 4),
             "score_parts": score_parts,
         }

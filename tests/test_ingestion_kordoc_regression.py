@@ -8,8 +8,8 @@ Pins the load-bearing surfaces from ADR 0049's Verification section:
 * Telemetry-key stability (``last_text_source`` / ``last_fallback_reason``).
 * Batch priming reads cache; per-row ``load_text`` consumes it.
 * NFC normalization for Korean filenames (macOS HFS+ NFD round-trip).
-* ``_resolve_loader`` honors ``BIDMATE_HWP_LOADER`` / ``BIDMATE_PDF_LOADER``
-  ``=csv_text`` opt-out.
+* ``_resolve_loader`` keeps kordoc available only through explicit
+  ``BIDMATE_HWP_LOADER`` / ``BIDMATE_PDF_LOADER`` ``=kordoc`` opt-in.
 
 The subprocess is mocked end-to-end so the suite runs on CI without Node
 installed — the Node-missing case explicitly checks the graceful path.
@@ -30,8 +30,10 @@ from unittest import mock
 from ingestion import (
     HwpCsvTextLoader,
     HwpKordocLoader,
+    HwpPdfPyMuPdf4LlmLoader,
     PdfCsvTextLoader,
     PdfKordocLoader,
+    PdfPyMuPdf4LlmLoader,
     _KORDOC_MANIFEST_FILENAME,
     _kordoc_output_stem,
     _read_kordoc_version_spec,
@@ -73,11 +75,21 @@ class HwpKordocLoaderRegressionTest(unittest.TestCase):
                 os.environ[key] = value
         _reset_kordoc_loaders()
 
-    def test_default_loader_is_kordoc(self) -> None:
+    def test_default_loader_is_pdf_pymupdf4llm(self) -> None:
+        loader = _resolve_loader("hwp")
+        self.assertIsInstance(loader, HwpPdfPyMuPdf4LlmLoader)
+
+    def test_default_pdf_loader_is_pymupdf4llm(self) -> None:
+        loader = _resolve_loader("pdf")
+        self.assertIsInstance(loader, PdfPyMuPdf4LlmLoader)
+
+    def test_explicit_hwp_kordoc_loader(self) -> None:
+        os.environ["BIDMATE_HWP_LOADER"] = "kordoc"
         loader = _resolve_loader("hwp")
         self.assertIsInstance(loader, HwpKordocLoader)
 
-    def test_default_pdf_loader_is_kordoc(self) -> None:
+    def test_explicit_pdf_kordoc_loader(self) -> None:
+        os.environ["BIDMATE_PDF_LOADER"] = "kordoc"
         loader = _resolve_loader("pdf")
         self.assertIsInstance(loader, PdfKordocLoader)
 
@@ -96,7 +108,7 @@ class HwpKordocLoaderRegressionTest(unittest.TestCase):
     def test_pdf_loader_independent_of_hwp_opt_out(self) -> None:
         os.environ["BIDMATE_HWP_LOADER"] = "csv_text"
         self.assertIsInstance(_resolve_loader("hwp"), HwpCsvTextLoader)
-        self.assertIsInstance(_resolve_loader("pdf"), PdfKordocLoader)
+        self.assertIsInstance(_resolve_loader("pdf"), PdfPyMuPdf4LlmLoader)
 
     def test_legacy_native_aliased_to_csv_with_deprecation(self) -> None:
         for legacy in ("native", "native_tables"):
@@ -255,6 +267,8 @@ class PrimeKordocBatchesTest(unittest.TestCase):
     def test_single_subprocess_primes_both_loaders(self) -> None:
         from ingestion import _prime_kordoc_batches
 
+        os.environ["BIDMATE_HWP_LOADER"] = "kordoc"
+        os.environ["BIDMATE_PDF_LOADER"] = "kordoc"
         with TemporaryDirectory() as tmpdir:
             files_dir = Path(tmpdir)
             hwp_path = files_dir / "doc_h.hwp"
@@ -303,6 +317,7 @@ class PrimeKordocBatchesTest(unittest.TestCase):
     def test_pdf_opt_out_keeps_hwp_kordoc_path(self) -> None:
         from ingestion import _prime_kordoc_batches
 
+        os.environ["BIDMATE_HWP_LOADER"] = "kordoc"
         os.environ["BIDMATE_PDF_LOADER"] = "csv_text"
         with TemporaryDirectory() as tmpdir:
             files_dir = Path(tmpdir)

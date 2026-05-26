@@ -14,6 +14,7 @@ PR이 생기면 각 task에 링크를 추가한다. 예제 task는 `tasks/exampl
 | 1 | `T-2026-0001` | `done` | Implementer -> Benchmark Auditor -> Reviewer | merged in PR #1481. |
 | 2 | `T-2026-0002` | `done` | Implementer -> Reviewer | merged in PR #1481. |
 | 3 | `T-2026-0003` | `review` | Implementer -> Reviewer | auto-ship Stage 5 Desktop main fast-forward sync 구현됨. |
+| 4 | `T-2026-0004` | `review` | Implementer -> Reviewer | HWP -> PDF -> PyMuPDF4LLM opt-in loader 구현됨. |
 
 ## Examples
 
@@ -305,4 +306,90 @@ git diff --check
 - Next action: Run validation and ship.
 - Next safe command: python3 -m pytest tests/test_sync_desktop_main.py -q
 - Reviewer focus: no reset/destructive behavior, fail-soft Stage 5 behavior.
+```
+
+## T-2026-0004 — HWP PDF PyMuPDF4LLM opt-in loader
+
+- ID: T-2026-0004
+- Title: HWP PDF PyMuPDF4LLM opt-in loader
+- Status: review
+- Owner role: Implementer -> Reviewer
+- Created: 2026-05-26
+- Last updated: 2026-05-26
+
+### Goal
+
+Add an opt-in HWP parser path that converts HWP to PDF and parses the PDF with
+PyMuPDF4LLM page chunks, while preserving the ADR 0049 `kordoc` default and
+ADR 0001 `csv_text` fallback.
+
+### Context
+
+- Surface: load-bearing ingestion parser.
+- Relevant docs: [ADR 0049](../docs/adr/0049-kordoc-replaces-pyhwp-backend.md),
+  [HWP extraction comparison](../docs/hwp/hwp-extraction-comparison.md).
+- Primary risk: historical LibreOffice HWP conversion failure being reported
+  as successful parsing.
+
+### Scope
+
+- Add `BIDMATE_HWP_LOADER=pdf_pymupdf4llm` and matching `--hwp_loader` choice.
+- Validate converter output with PyMuPDF before PyMuPDF4LLM parsing.
+- Record stable fallback reason keys and redact private path/file details.
+- Extend the local comparison script with a PyMuPDF4LLM path.
+
+### Non-Goals
+
+- Do not change the default `kordoc` loader.
+- Do not auto-install H2Orestart or other LibreOffice extensions.
+- Do not claim real-eval quality without a separate private run.
+
+### Acceptance Criteria
+
+- [x] Default HWP loader remains `HwpKordocLoader`.
+- [x] Opt-in loader returns page sections with `page_span` on success.
+- [x] Converter/parser failures fall back to CSV text unless required mode is set.
+- [x] Required mode raises instead of falling back.
+- [x] Focused regression tests cover success and failure modes.
+
+### Validation Commands
+
+```bash
+python3 -m unittest tests.test_hwp_pdf_pymupdf4llm_loader -v
+python3 -m pytest tests/test_ingestion_kordoc_regression.py tests/test_mixed_format_ingestion_regression.py tests/test_hwp_pdf_pymupdf4llm_loader.py -q
+python3 -m py_compile ingestion.py scripts/build_index.py scripts/compare_hwp_extraction.py tests/test_hwp_pdf_pymupdf4llm_loader.py
+```
+
+### Evidence Required
+
+- Focused unittest output.
+- Pytest exit code 0 for existing ingestion regressions plus new loader tests.
+- Manual reviewer check that fallback diagnostics do not leak private paths.
+
+### Related Plan / Issue / PR Links
+
+- Plan: [`docs/plans/T-2026-0004-hwp-pdf-pymupdf4llm-loader.md`](../docs/plans/T-2026-0004-hwp-pdf-pymupdf4llm-loader.md)
+- Issue: N/A
+- PR: TBD
+- ADR: [ADR 0078](../docs/adr/0078-pymupdf4llm-canonical-page-citation.md)
+
+### Handoff Notes
+
+```markdown
+## Session Handoff — 2026-05-26 00:00 KST
+
+- Role: Implementer
+- Lifecycle stage: review
+- Branch / worktree: detached HEAD / /Users/hskim/.codex/worktrees/a32e/BidMate-DocAgent
+- Task: T-2026-0004
+- Plan: docs/plans/T-2026-0004-hwp-pdf-pymupdf4llm-loader.md
+- Current status: canonical PDF/HWP PyMuPDF4LLM page-citation loader implemented.
+- Files touched: ingestion.py, rag_answer.py, rag_indexing.py, rag_retrieval.py, rag_provenance.py, scripts/build_index.py, eval/run_eval.py, requirements-pymupdf4llm.txt, tests, docs/plans, ADR 0078, tasks/queue.md
+- Decisions made: default HWP/PDF loader is pdf_pymupdf4llm; HWP citations refer to preserved LibreOffice converted PDF artifacts; parser failures fail closed unless explicit csv_text is selected.
+- Commands run: python3 -m unittest tests.test_hwp_pdf_pymupdf4llm_loader -v; python3 -m pytest tests/test_ingestion_kordoc_regression.py tests/test_mixed_format_ingestion_regression.py tests/test_hwp_pdf_pymupdf4llm_loader.py tests/test_provenance_banner.py tests/test_run_eval_by_format_text_source.py tests/test_page_aware_parser_contract.py tests/test_eval_metrics.py tests/test_answer_contract_snapshot.py tests/test_retrieval_loop_regression.py -q; python3 -m ruff check ...; python3 -m py_compile ...; git diff --check; python3 scripts/_governance.py --lint-adr-consequences docs/adr/0078-pymupdf4llm-canonical-page-citation.md; python3 scripts/check_doc_links.py --check-all --paths ...
+- Results: pass.
+- Eval surface: none; no real-eval quality claim.
+- Open risks: actual HWP conversion quality still depends on local LibreOffice HWP filter setup.
+- Next safe command: python3 -m pytest tests/test_ingestion_kordoc_regression.py tests/test_mixed_format_ingestion_regression.py tests/test_hwp_pdf_pymupdf4llm_loader.py tests/test_provenance_banner.py tests/test_run_eval_by_format_text_source.py -q
+- Reviewer focus: fail-closed parser policy, private path exclusion from answer citations, and page-citation-ready telemetry.
 ```

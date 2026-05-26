@@ -1,6 +1,6 @@
 # 0049: kordoc이 HWP/PDF 파서 backend로 pyhwp/hwp5 대체
 
-- **Status**: accepted
+- **Status**: accepted, default superseded by [ADR 0078](./0078-pymupdf4llm-canonical-page-citation.md)
 - **Date**: 2026-05-15
 - **Accepted**: 2026-05-22 — PR [#895](https://github.com/hskim-solv/BidMate-DocAgent/pull/895) 가 kordoc 코드 + ADR 0036 supersede + real-eval 델타를 머지: silence band ±0.024 기준 accuracy/groundedness/format_compliance/retry_rate 4개 모두 narrow-CI 통과, `text_source_counts` 직접 증거(issue #890 acceptance #7). Verification 4개 마커 wired (`--lint-adr-consequences` exit 0). proposed ADR 이 accepted ADR 0036 을 supersede 하던 논리 모순 해소 (issue [#1093](https://github.com/hskim-solv/BidMate-DocAgent/issues/1093)).
 - **Deciders**: hskim

@@ -61,7 +61,10 @@ REQUIRED_COLUMNS = [
 # kordoc-loss fields (``nested_table_loss_count``,
 # ``nested_table_loss_files``, ``nested_table_loss_samples``). v3 readers that
 # already use ``dict.get`` on ``chunk_health`` ignore them transparently.
-INGESTION_REPORT_SCHEMA_VERSION = 4
+#
+# Bumped 4 → 5: ``summary.parser_health`` records additive PyMuPDF4LLM parser
+# diagnostics such as skipped numeric-only page chunks.
+INGESTION_REPORT_SCHEMA_VERSION = 5
 
 # Public, reviewer-facing failure taxonomy for ingestion. Keep keys stable;
 # downstream tooling (eval/run_eval.py, docs, dashboards) reads them.
@@ -90,6 +93,42 @@ FAILURE_TAXONOMY: dict[str, dict[str, str]] = {
         "stage": "text",
         "downstream_risk": "CSV has no body text for this row; nothing to chunk or embed.",
     },
+    "hwp_to_pdf_converter_unavailable": {
+        "stage": "hwp_to_pdf",
+        "downstream_risk": "Canonical HWP PDF conversion cannot run; citation-ready build fails.",
+    },
+    "hwp_to_pdf_timeout": {
+        "stage": "hwp_to_pdf",
+        "downstream_risk": "Canonical HWP PDF conversion exceeded the per-file timeout.",
+    },
+    "hwp_to_pdf_nonzero_exit": {
+        "stage": "hwp_to_pdf",
+        "downstream_risk": "LibreOffice/soffice rejected the HWP before PDF parsing.",
+    },
+    "hwp_to_pdf_not_produced": {
+        "stage": "hwp_to_pdf",
+        "downstream_risk": "Converter returned without producing a readable PDF.",
+    },
+    "hwp_to_pdf_invalid_pdf": {
+        "stage": "hwp_to_pdf",
+        "downstream_risk": "Converter output is absent, empty, corrupt, or has no pages.",
+    },
+    "pdf_invalid_pdf": {
+        "stage": "pdf_validation",
+        "downstream_risk": "PDF input is absent, empty, corrupt, or has no pages.",
+    },
+    "pymupdf4llm_unavailable": {
+        "stage": "pdf_markdown",
+        "downstream_risk": "Canonical PyMuPDF4LLM parser is not installed.",
+    },
+    "pymupdf4llm_empty_output": {
+        "stage": "pdf_markdown",
+        "downstream_risk": "PyMuPDF4LLM returned no indexable Markdown.",
+    },
+    "pymupdf4llm_parse_failed": {
+        "stage": "pdf_markdown",
+        "downstream_risk": "PyMuPDF4LLM failed to parse the converted PDF.",
+    },
 }
 
 
@@ -114,6 +153,7 @@ class IngestionRecord:
     # ``dict.get`` (additive bump 2 → 3 of ``INGESTION_REPORT_SCHEMA_VERSION``).
     text_source: str | None = None
     fallback_reason: str | None = None
+    parser_health: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -146,6 +186,99 @@ class PdfCsvTextLoader(CsvTextDocumentLoader):
 
 class HwpCsvTextLoader(CsvTextDocumentLoader):
     file_format = "hwp"
+
+
+PDF_PYMUPDF4LLM_TEXT_SOURCE = "pdf_pymupdf4llm"
+LIBREOFFICE_CONVERTED_PDF_CITATION_BASIS = "libreoffice_converted_pdf"
+SOURCE_PDF_CITATION_BASIS = "source_pdf"
+HWP_PDF_ARTIFACT_DIR_ENV = "BIDMATE_HWP_PDF_ARTIFACT_DIR"
+_HWP_TO_PDF_BINS = (
+    "soffice",
+    "libreoffice",
+    "/Applications/LibreOffice.app/Contents/MacOS/soffice",
+)
+_HWP_TO_PDF_DEFAULT_TIMEOUT_S = 120.0
+_HWP_TO_PDF_STDERR_TAIL_CHARS = 400
+
+
+class PdfPyMuPdf4LlmLoader(CsvTextDocumentLoader):
+    """Canonical PDF → PyMuPDF4LLM page-chunk loader."""
+
+    file_format = "pdf"
+
+    def __init__(self) -> None:
+        self.last_text_source = "data_list_csv_text"
+        self.last_fallback_reason: str | None = None
+        self.last_sections: list[dict[str, Any]] = []
+        self.last_metadata: dict[str, Any] = {}
+        self.last_parser_health: dict[str, int] = {}
+
+    def load_text(self, row: dict[str, str], source_path: Path) -> str:
+        self.last_text_source = "data_list_csv_text"
+        self.last_fallback_reason = None
+        self.last_sections = []
+        self.last_metadata = {}
+        self.last_parser_health = {}
+        try:
+            text, sections, metadata, parser_health = _extract_pdf_pymupdf4llm(
+                source_path,
+                citation_basis=SOURCE_PDF_CITATION_BASIS,
+            )
+        except _PdfPyMuPdf4LlmFallback as exc:
+            self.last_fallback_reason = str(exc)
+            raise ParserFailClosedError(
+                exc.reason,
+                self.last_fallback_reason,
+                loader_name=type(self).__name__,
+            ) from exc
+
+        self.last_text_source = PDF_PYMUPDF4LLM_TEXT_SOURCE
+        self.last_sections = sections
+        self.last_metadata = metadata
+        self.last_parser_health = parser_health
+        return text
+
+
+class HwpPdfPyMuPdf4LlmLoader(CsvTextDocumentLoader):
+    """Canonical HWP → LibreOffice PDF → PyMuPDF4LLM page-chunk loader.
+
+    The LibreOffice/HWP filter path has known failure modes (base installs can
+    return success-ish output while producing no PDF), so success is gated on a
+    real, non-empty PDF that PyMuPDF can open and that has at least one page.
+    Failures are fail-closed; CSV fallback is available only through the
+    explicit ``BIDMATE_HWP_LOADER=csv_text`` loader selection.
+    """
+
+    file_format = "hwp"
+
+    def __init__(self) -> None:
+        self.last_text_source = "data_list_csv_text"
+        self.last_fallback_reason: str | None = None
+        self.last_sections: list[dict[str, Any]] = []
+        self.last_metadata: dict[str, Any] = {}
+        self.last_parser_health: dict[str, int] = {}
+
+    def load_text(self, row: dict[str, str], source_path: Path) -> str:
+        self.last_text_source = "data_list_csv_text"
+        self.last_fallback_reason = None
+        self.last_sections = []
+        self.last_metadata = {}
+        self.last_parser_health = {}
+        try:
+            text, sections, metadata, parser_health = _extract_hwp_pdf_pymupdf4llm(source_path)
+        except _HwpPdfPyMuPdf4LlmFallback as exc:
+            self.last_fallback_reason = str(exc)
+            raise ParserFailClosedError(
+                exc.reason,
+                self.last_fallback_reason,
+                loader_name=type(self).__name__,
+            ) from exc
+
+        self.last_text_source = PDF_PYMUPDF4LLM_TEXT_SOURCE
+        self.last_sections = sections
+        self.last_metadata = metadata
+        self.last_parser_health = parser_health
+        return text
 
 
 def _kordoc_required() -> bool:
@@ -253,6 +386,349 @@ class HwpKordocLoader(_KordocLoader):
 
 class PdfKordocLoader(_KordocLoader):
     file_format = "pdf"
+
+
+class _PdfPyMuPdf4LlmFallback(RuntimeError):
+    """Internal marker for canonical PDF/PyMuPDF4LLM parse failures."""
+
+    def __init__(self, reason: str, detail: str | None = None) -> None:
+        self.reason = reason
+        self.detail = detail or ""
+        message = reason if not self.detail else f"{reason}: {self.detail}"
+        super().__init__(message)
+
+
+class _HwpPdfPyMuPdf4LlmFallback(_PdfPyMuPdf4LlmFallback):
+    """Internal marker for canonical HWP → PDF → PyMuPDF4LLM failures."""
+
+
+class ParserFailClosedError(RuntimeError):
+    """Loader failure that must not fall back to CSV text implicitly.
+
+    ``normalize_ingestion_row`` catches this explicit type so ingestion reports
+    retain row-level parser failure telemetry without treating fail-closed
+    canonical parser errors as generic, process-aborting ``RuntimeError``.
+    """
+
+    def __init__(
+        self,
+        reason: str,
+        detail: str | None = None,
+        *,
+        loader_name: str | None = None,
+    ) -> None:
+        self.reason = reason
+        self.detail = detail or reason
+        prefix = f"{loader_name} failed" if loader_name else "parser failed"
+        super().__init__(f"{prefix}: {self.detail}")
+
+
+def _hwp_to_pdf_timeout_s() -> float:
+    raw = os.environ.get("BIDMATE_HWP_TO_PDF_TIMEOUT", "").strip()
+    if not raw:
+        return _HWP_TO_PDF_DEFAULT_TIMEOUT_S
+    try:
+        value = float(raw)
+    except ValueError:
+        return _HWP_TO_PDF_DEFAULT_TIMEOUT_S
+    return value if value > 0 else _HWP_TO_PDF_DEFAULT_TIMEOUT_S
+
+
+def _resolve_hwp_to_pdf_converter() -> str | None:
+    override = os.environ.get("BIDMATE_HWP_TO_PDF_CMD", "").strip()
+    if override:
+        if os.path.sep in override:
+            return override if Path(override).exists() else None
+        import shutil  # noqa: PLC0415
+
+        return shutil.which(override)
+
+    import shutil  # noqa: PLC0415
+
+    for candidate in _HWP_TO_PDF_BINS:
+        if os.path.sep in candidate and Path(candidate).exists():
+            return candidate
+        found = shutil.which(candidate)
+        if found:
+            return found
+    return None
+
+
+def _safe_process_tail(stderr: str | bytes | None, source_path: Path) -> str:
+    if not stderr:
+        return ""
+    if isinstance(stderr, bytes):
+        stderr = stderr.decode("utf-8", errors="replace")
+    tail = stderr[-_HWP_TO_PDF_STDERR_TAIL_CHARS:].strip()
+    if not tail:
+        return ""
+    redacted = tail.replace(str(source_path), "<source_path>")
+    redacted = redacted.replace(source_path.name, "<source_file>")
+    redacted = re.sub(
+        r"(?<!\S)(/Users/|/private/|/tmp/|/var/|/home/|/Volumes/)[^\s\"']+",
+        "<path>",
+        redacted,
+    )
+    redacted = re.sub(r"(?<!\S)[A-Za-z]:\\[^\s\"']+", "<path>", redacted)
+    return redacted
+
+
+def _converter_version(converter: str) -> str:
+    import subprocess  # noqa: PLC0415
+
+    try:
+        proc = subprocess.run(
+            [converter, "--version"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except Exception:
+        return f"{Path(converter).name}:unknown"
+    version = (proc.stdout or proc.stderr or "").strip().splitlines()
+    return version[0][:120] if version else f"{Path(converter).name}:unknown"
+
+
+def _convert_hwp_to_pdf(source_path: Path, out_dir: Path) -> tuple[Path, str, str]:
+    import subprocess  # noqa: PLC0415
+
+    converter = _resolve_hwp_to_pdf_converter()
+    if not converter:
+        raise _HwpPdfPyMuPdf4LlmFallback("hwp_to_pdf_converter_unavailable")
+    converter_version = _converter_version(converter)
+
+    cmd = [converter, "--headless"]
+    infilter = os.environ.get("BIDMATE_HWP_TO_PDF_INFILTER", "").strip()
+    if infilter:
+        cmd.append(f"--infilter={infilter}")
+    cmd.extend(
+        [
+            "--convert-to",
+            "pdf:writer_pdf_Export",
+            "--outdir",
+            str(out_dir),
+            str(source_path),
+        ]
+    )
+
+    try:
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=_hwp_to_pdf_timeout_s(),
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise _HwpPdfPyMuPdf4LlmFallback(
+            "hwp_to_pdf_timeout",
+            f"timeout after {exc.timeout}s",
+        ) from exc
+
+    stderr_tail = _safe_process_tail(proc.stderr, source_path)
+    if proc.returncode != 0:
+        detail = f"exit {proc.returncode}"
+        if stderr_tail:
+            detail = f"{detail}: {stderr_tail}"
+        raise _HwpPdfPyMuPdf4LlmFallback("hwp_to_pdf_nonzero_exit", detail)
+
+    pdf_path = out_dir / f"{source_path.stem}.pdf"
+    if not pdf_path.exists():
+        raise _HwpPdfPyMuPdf4LlmFallback("hwp_to_pdf_not_produced", stderr_tail)
+    return pdf_path, converter, converter_version
+
+
+def _validate_pdf(pdf_path: Path, invalid_reason: str) -> int:
+    try:
+        if pdf_path.stat().st_size <= 0:
+            raise _PdfPyMuPdf4LlmFallback(invalid_reason, "empty pdf")
+    except OSError as exc:
+        raise _PdfPyMuPdf4LlmFallback(invalid_reason, "pdf stat failed") from exc
+
+    try:
+        import pymupdf  # type: ignore  # noqa: PLC0415
+
+        pdf_doc = pymupdf.open(str(pdf_path))
+        try:
+            raw_page_count = getattr(pdf_doc, "page_count", None)
+            page_count = int(raw_page_count if raw_page_count is not None else len(pdf_doc))
+        finally:
+            close = getattr(pdf_doc, "close", None)
+            if callable(close):
+                close()
+    except Exception as exc:
+        raise _PdfPyMuPdf4LlmFallback(
+            invalid_reason,
+            type(exc).__name__,
+        ) from exc
+    if page_count <= 0:
+        raise _PdfPyMuPdf4LlmFallback(invalid_reason, "zero pages")
+    return page_count
+
+
+def _validate_converted_pdf(pdf_path: Path) -> int:
+    try:
+        return _validate_pdf(pdf_path, "hwp_to_pdf_invalid_pdf")
+    except _PdfPyMuPdf4LlmFallback as exc:
+        raise _HwpPdfPyMuPdf4LlmFallback(exc.reason, exc.detail) from exc
+
+
+def _validate_source_pdf(pdf_path: Path) -> int:
+    return _validate_pdf(pdf_path, "pdf_invalid_pdf")
+
+
+def _page_number_from_pymupdf4llm_chunk(
+    chunk: dict[str, Any],
+    fallback: int,
+) -> int:
+    metadata = chunk.get("metadata") if isinstance(chunk.get("metadata"), dict) else {}
+    for key in ("page_number", "page"):
+        value = metadata.get(key)
+        if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+            return value
+    return fallback
+
+
+def _is_numeric_only_page_chunk(text: str) -> bool:
+    compact = re.sub(r"[\s\-–—_.·•]+", "", text or "")
+    return bool(compact) and compact.isdigit()
+
+
+def _sections_from_pymupdf4llm_output(output: Any) -> tuple[list[dict[str, Any]], int]:
+    if isinstance(output, str):
+        text = normalize_body_text(output)
+        if not text:
+            return [], 0
+        if _is_numeric_only_page_chunk(text):
+            return [], 1
+        return [{"heading": "page-1", "text": text, "page_span": [1, 1]}], 0
+    if not isinstance(output, list):
+        return [], 0
+
+    sections: list[dict[str, Any]] = []
+    skipped_numeric_only = 0
+    for fallback_page, chunk in enumerate(output, start=1):
+        if not isinstance(chunk, dict):
+            continue
+        text = normalize_body_text(chunk.get("text") or "")
+        if not text:
+            continue
+        if _is_numeric_only_page_chunk(text):
+            skipped_numeric_only += 1
+            continue
+        page_number = _page_number_from_pymupdf4llm_chunk(chunk, fallback_page)
+        sections.append(
+            {
+                "heading": f"page-{page_number}",
+                "text": text,
+                "page_span": [page_number, page_number],
+            }
+        )
+    return sections, skipped_numeric_only
+
+
+def _hwp_pdf_artifact_dir() -> Path | None:
+    raw = os.environ.get(HWP_PDF_ARTIFACT_DIR_ENV, "").strip()
+    return Path(raw) if raw else None
+
+
+def _preserve_converted_pdf(pdf_path: Path, source_sha256: str) -> Path | None:
+    artifact_dir = _hwp_pdf_artifact_dir()
+    if artifact_dir is None:
+        return None
+    import shutil  # noqa: PLC0415
+
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    artifact_path = artifact_dir / f"{source_sha256}.pdf"
+    shutil.copy2(pdf_path, artifact_path)
+    return artifact_path
+
+
+def _extract_pdf_pymupdf4llm(
+    pdf_path: Path,
+    *,
+    citation_basis: str,
+    source_sha256: str | None = None,
+    converted_pdf_sha256: str | None = None,
+    converted_pdf_page_count: int | None = None,
+    converted_pdf_path: Path | None = None,
+    converter_version: str | None = None,
+) -> tuple[str, list[dict[str, Any]], dict[str, Any], dict[str, int]]:
+    page_count = (
+        _validate_source_pdf(pdf_path)
+        if citation_basis == SOURCE_PDF_CITATION_BASIS
+        else _validate_converted_pdf(pdf_path)
+    )
+    try:
+        import pymupdf4llm  # type: ignore  # noqa: PLC0415
+    except ImportError as exc:
+        raise _PdfPyMuPdf4LlmFallback("pymupdf4llm_unavailable") from exc
+
+    try:
+        output = pymupdf4llm.to_markdown(str(pdf_path), page_chunks=True)
+    except Exception as exc:
+        raise _PdfPyMuPdf4LlmFallback(
+            "pymupdf4llm_parse_failed",
+            type(exc).__name__,
+        ) from exc
+
+    sections, skipped_numeric_only = _sections_from_pymupdf4llm_output(output)
+    if not sections:
+        raise _PdfPyMuPdf4LlmFallback("pymupdf4llm_empty_output")
+    text = normalize_body_text("\n\n".join(section["text"] for section in sections))
+    if not text:
+        raise _PdfPyMuPdf4LlmFallback("pymupdf4llm_empty_output")
+
+    resolved_source_sha = source_sha256 or sha256_file(pdf_path)
+    citation_pdf_sha = converted_pdf_sha256 or sha256_file(pdf_path)
+    citation_page_count = converted_pdf_page_count or page_count
+    metadata: dict[str, Any] = {
+        "source_sha256": resolved_source_sha,
+        "citation_basis": citation_basis,
+        "citation_pdf_sha256": citation_pdf_sha,
+        "citation_pdf_page_count": citation_page_count,
+    }
+    if citation_basis == SOURCE_PDF_CITATION_BASIS:
+        metadata["source_pdf_sha256"] = citation_pdf_sha
+    if citation_basis == LIBREOFFICE_CONVERTED_PDF_CITATION_BASIS:
+        metadata["converted_pdf_sha256"] = citation_pdf_sha
+        metadata["converted_pdf_page_count"] = citation_page_count
+        if converted_pdf_path is not None:
+            metadata["converted_pdf_path"] = str(converted_pdf_path)
+        if converter_version:
+            metadata["converter_version"] = converter_version
+    parser_health = {
+        "pymupdf4llm_page_chunks": len(sections),
+        "pymupdf4llm_numeric_only_chunks_skipped": skipped_numeric_only,
+    }
+    return text, sections, metadata, parser_health
+
+
+def _extract_hwp_pdf_pymupdf4llm(
+    source_path: Path,
+) -> tuple[str, list[dict[str, Any]], dict[str, Any], dict[str, int]]:
+    import tempfile  # noqa: PLC0415
+
+    with tempfile.TemporaryDirectory(prefix="bidmate_hwp_pdf_") as tmpdir:
+        pdf_path, _converter, converter_version = _convert_hwp_to_pdf(source_path, Path(tmpdir))
+        source_sha = sha256_file(source_path)
+        _validate_converted_pdf(pdf_path)
+        preserved_pdf_path = _preserve_converted_pdf(pdf_path, source_sha)
+        citation_pdf_path = preserved_pdf_path or pdf_path
+        converted_pdf_sha = sha256_file(citation_pdf_path)
+        try:
+            return _extract_pdf_pymupdf4llm(
+                pdf_path,
+                citation_basis=LIBREOFFICE_CONVERTED_PDF_CITATION_BASIS,
+                source_sha256=source_sha,
+                converted_pdf_sha256=converted_pdf_sha,
+                converted_pdf_page_count=_validate_converted_pdf(pdf_path),
+                converted_pdf_path=preserved_pdf_path,
+                converter_version=converter_version,
+            )
+        except _PdfPyMuPdf4LlmFallback as exc:
+            raise _HwpPdfPyMuPdf4LlmFallback(exc.reason, exc.detail) from exc
 
 
 class _KordocFallback(RuntimeError):
@@ -696,6 +1172,56 @@ def build_sections_with_native_tables(
     return [{"heading": "본문", "text": body_text}]
 
 
+def _sections_from_loader(loader: CsvTextDocumentLoader) -> list[dict[str, Any]] | None:
+    raw_sections = getattr(loader, "last_sections", None)
+    if not isinstance(raw_sections, list):
+        return None
+
+    sections: list[dict[str, Any]] = []
+    for idx, section in enumerate(raw_sections, start=1):
+        if not isinstance(section, dict):
+            continue
+        text = normalize_body_text(section.get("text") or "")
+        if not text:
+            continue
+        normalized: dict[str, Any] = {
+            "heading": str(section.get("heading") or f"section-{idx}"),
+            "text": text,
+        }
+        page_span = section.get("page_span")
+        if (
+            isinstance(page_span, list)
+            and len(page_span) == 2
+            and all(isinstance(page, int) and not isinstance(page, bool) for page in page_span)
+            and page_span[0] <= page_span[1]
+        ):
+            normalized["page_span"] = [page_span[0], page_span[1]]
+        regions = section.get("regions")
+        if isinstance(regions, list):
+            normalized["regions"] = regions
+        sections.append(normalized)
+    return sections or None
+
+
+def _redact_section_text(sections: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    redacted: list[dict[str, Any]] = []
+    for section in sections:
+        copy = dict(section)
+        copy["text"] = redact_pii(str(copy.get("text") or ""))
+        redacted.append(copy)
+    return redacted
+
+
+def _metadata_from_loader(loader: CsvTextDocumentLoader) -> dict[str, Any]:
+    raw = getattr(loader, "last_metadata", None)
+    return dict(raw) if isinstance(raw, dict) else {}
+
+
+def _parser_health_from_loader(loader: CsvTextDocumentLoader) -> dict[str, Any] | None:
+    raw = getattr(loader, "last_parser_health", None)
+    return dict(raw) if isinstance(raw, dict) and raw else None
+
+
 LOADERS: dict[str, CsvTextDocumentLoader] = {
     "pdf": PdfCsvTextLoader(),
     "hwp": HwpCsvTextLoader(),
@@ -704,19 +1230,23 @@ LOADERS: dict[str, CsvTextDocumentLoader] = {
 
 _HWP_KORDOC_LOADER: HwpKordocLoader | None = None
 _PDF_KORDOC_LOADER: PdfKordocLoader | None = None
+_HWP_PYMUPDF4LLM_LOADER: HwpPdfPyMuPdf4LlmLoader | None = None
+_PDF_PYMUPDF4LLM_LOADER: PdfPyMuPdf4LlmLoader | None = None
 
 
 def _reset_kordoc_loaders() -> None:
-    """Drop the module-level kordoc loader singletons (HWP + PDF).
+    """Drop the module-level opt-in loader singletons.
 
     Called at the start of ``load_documents_from_metadata_csv`` so each
     ingestion run gets a fresh batch cache and resets
     ``last_text_source`` / ``last_fallback_reason``. Tests use this to
     isolate runs.
     """
-    global _HWP_KORDOC_LOADER, _PDF_KORDOC_LOADER
+    global _HWP_KORDOC_LOADER, _PDF_KORDOC_LOADER, _HWP_PYMUPDF4LLM_LOADER, _PDF_PYMUPDF4LLM_LOADER
     _HWP_KORDOC_LOADER = None
     _PDF_KORDOC_LOADER = None
+    _HWP_PYMUPDF4LLM_LOADER = None
+    _PDF_PYMUPDF4LLM_LOADER = None
 
 
 _reset_hwp_kordoc_loader = _reset_kordoc_loaders
@@ -725,13 +1255,15 @@ _reset_hwp_kordoc_loader = _reset_kordoc_loaders
 def _resolve_loader(file_format: str) -> CsvTextDocumentLoader:
     """Pick the loader for ``file_format``.
 
-    For HWP and PDF, env-var precedence (ADR 0049, highest to lowest):
+    For HWP and PDF, env-var precedence (ADR 0049 + citation parser,
+    highest to lowest):
 
     * ``BIDMATE_HWP_LOADER=csv_text`` / ``BIDMATE_PDF_LOADER=csv_text`` —
       explicit opt-out; use the CSV-text loader for that format.
-    * *(unset)* or ``=kordoc`` — default to the kordoc-backed loader.
-      Auto-degrades to CSV at runtime when ``node`` / ``npx`` is missing or
-      the subprocess fails (telemetry-visible via ``last_fallback_reason``).
+    * ``BIDMATE_{HWP,PDF}_LOADER=kordoc`` — legacy non-canonical path.
+    * *(unset)* or ``=pdf_pymupdf4llm`` — canonical PyMuPDF4LLM page chunks.
+      HWP first converts through LibreOffice/soffice and fail-closes on any
+      conversion or parse failure.
 
     Legacy HWP values ``csv`` / ``native`` / ``native_tables`` from ADR 0036
     are aliased to ``csv_text`` (CSV fallback); the two deprecated names
@@ -742,7 +1274,7 @@ def _resolve_loader(file_format: str) -> CsvTextDocumentLoader:
     ``prime_batch`` (called once from ``load_documents_from_metadata_csv``)
     populates the cache the per-row ``_resolve_loader`` calls then read from.
     """
-    global _HWP_KORDOC_LOADER, _PDF_KORDOC_LOADER
+    global _HWP_KORDOC_LOADER, _PDF_KORDOC_LOADER, _HWP_PYMUPDF4LLM_LOADER, _PDF_PYMUPDF4LLM_LOADER
     if file_format == "hwp":
         opt_in = os.environ.get("BIDMATE_HWP_LOADER", "").strip().lower()
         if opt_in in {"native", "native_tables"}:
@@ -755,16 +1287,24 @@ def _resolve_loader(file_format: str) -> CsvTextDocumentLoader:
             return LOADERS[file_format]
         if opt_in in {"csv", "csv_text"}:
             return LOADERS[file_format]
-        if _HWP_KORDOC_LOADER is None:
-            _HWP_KORDOC_LOADER = HwpKordocLoader()
-        return _HWP_KORDOC_LOADER
+        if opt_in == "kordoc":
+            if _HWP_KORDOC_LOADER is None:
+                _HWP_KORDOC_LOADER = HwpKordocLoader()
+            return _HWP_KORDOC_LOADER
+        if _HWP_PYMUPDF4LLM_LOADER is None:
+            _HWP_PYMUPDF4LLM_LOADER = HwpPdfPyMuPdf4LlmLoader()
+        return _HWP_PYMUPDF4LLM_LOADER
     if file_format == "pdf":
         opt_in = os.environ.get("BIDMATE_PDF_LOADER", "").strip().lower()
         if opt_in in {"csv", "csv_text"}:
             return LOADERS[file_format]
-        if _PDF_KORDOC_LOADER is None:
-            _PDF_KORDOC_LOADER = PdfKordocLoader()
-        return _PDF_KORDOC_LOADER
+        if opt_in == "kordoc":
+            if _PDF_KORDOC_LOADER is None:
+                _PDF_KORDOC_LOADER = PdfKordocLoader()
+            return _PDF_KORDOC_LOADER
+        if _PDF_PYMUPDF4LLM_LOADER is None:
+            _PDF_PYMUPDF4LLM_LOADER = PdfPyMuPdf4LlmLoader()
+        return _PDF_PYMUPDF4LLM_LOADER
     return LOADERS[file_format]
 
 
@@ -1025,6 +1565,19 @@ def normalize_ingestion_row(
     loader = _resolve_loader(validation.file_format)
     try:
         text = loader.load_text(row, validation.source_path)
+    except ParserFailClosedError as exc:
+        return None, make_record(
+            row_number,
+            "failed",
+            validation.doc_id,
+            validation.file_name,
+            validation.file_format,
+            validation.source_path,
+            exc.reason,
+            duplicate_resolution=validation.duplicate_resolution,
+            text_source=getattr(loader, "last_text_source", None),
+            fallback_reason=getattr(loader, "last_fallback_reason", None) or exc.detail,
+        )
     except ValueError as exc:
         # Issue #715: surface loader provenance even on failure — the HWP
         # native loader may have raised mid-parse (e.g. InvalidHwp5FileError)
@@ -1046,20 +1599,28 @@ def normalize_ingestion_row(
     # Issue #455 / ADR 0028: opt-in PII redaction. Default off keeps
     # ADR 0001 naive_baseline byte-identical; the env-var gate is the
     # single switch operators flip in deployment.
+    loader_sections = _sections_from_loader(loader)
     if _pii_redaction_enabled():
         text = redact_pii(text)
+        if loader_sections is not None:
+            loader_sections = _redact_section_text(loader_sections)
 
     text_source = getattr(loader, "last_text_source", "data_list_csv_text")
     fallback_reason = getattr(loader, "last_fallback_reason", None)
     metadata = normalize_metadata(
         row, validation.file_format, validation.file_name, text_source=text_source
     )
+    metadata.update(_metadata_from_loader(loader))
     metadata["doc_id"] = validation.doc_id
     if validation.duplicate_resolution and on_duplicate_doc_id == "suffix":
         metadata["doc_id_resolution"] = validation.duplicate_resolution["policy"]
         metadata["doc_id_base"] = validation.duplicate_resolution["base_doc_id"]
 
-    sections = build_sections_with_native_tables(text, [])
+    sections = (
+        loader_sections
+        if loader_sections is not None
+        else build_sections_with_native_tables(text, [])
+    )
 
     document = {
         "doc_id": validation.doc_id,
@@ -1089,6 +1650,7 @@ def normalize_ingestion_row(
         duplicate_resolution=validation.duplicate_resolution,
         text_source=text_source,
         fallback_reason=fallback_reason,
+        parser_health=_parser_health_from_loader(loader),
     )
 
 
@@ -1105,6 +1667,7 @@ def make_record(
     messages: tuple[str, ...] = (),
     text_source: str | None = None,
     fallback_reason: str | None = None,
+    parser_health: dict[str, Any] | None = None,
 ) -> IngestionRecord:
     return IngestionRecord(
         row_number=row_number,
@@ -1118,6 +1681,7 @@ def make_record(
         messages=messages,
         text_source=text_source,
         fallback_reason=fallback_reason,
+        parser_health=parser_health,
     )
 
 
@@ -1282,6 +1846,7 @@ def build_ingestion_report(
         text_source_counts,
         fallback_reasons,
     ) = _collect_record_buckets(records)
+    parser_health = _collect_parser_health(records)
     doc_id_sources: dict[str, int] = OrderedDict()
     for record in records:
         if record.status == "indexed":
@@ -1304,6 +1869,7 @@ def build_ingestion_report(
         # ``dict.get``.
         "text_source_counts": {fmt: dict(sources) for fmt, sources in text_source_counts.items()},
         "fallback_reasons": dict(fallback_reasons),
+        "parser_health": dict(parser_health),
     }
     return {
         "metadata_csv": str(metadata_csv),
@@ -1383,6 +1949,20 @@ def _collect_record_buckets(
     )
 
 
+def _collect_parser_health(records: list[IngestionRecord]) -> dict[str, int]:
+    parser_health: dict[str, int] = OrderedDict()
+    for record in records:
+        raw = record.parser_health or {}
+        if not isinstance(raw, dict):
+            continue
+        for key, value in raw.items():
+            if isinstance(value, bool):
+                continue
+            if isinstance(value, int):
+                parser_health[str(key)] = parser_health.get(str(key), 0) + value
+    return parser_health
+
+
 def _accumulate_duplicate_group(
     duplicate_groups: dict[str, list[int]],
     record: IngestionRecord,
@@ -1412,6 +1992,8 @@ def _record_to_dict(record: IngestionRecord) -> dict[str, Any]:
     payload["messages"] = list(record.messages)
     if record.duplicate_resolution is None:
         payload.pop("duplicate_resolution", None)
+    if record.parser_health is None:
+        payload.pop("parser_health", None)
     return payload
 
 
@@ -1545,6 +2127,7 @@ def _build_validation_report(
         text_source_counts,
         fallback_reasons,
     ) = _collect_record_buckets(records)
+    parser_health = _collect_parser_health(records)
     blank_field_counts: dict[str, int] = OrderedDict()
     for record in records:
         for message in record.messages:
@@ -1571,6 +2154,7 @@ def _build_validation_report(
         # ``build_ingestion_report``).
         "text_source_counts": {fmt: dict(sources) for fmt, sources in text_source_counts.items()},
         "fallback_reasons": dict(fallback_reasons),
+        "parser_health": dict(parser_health),
     }
     return {
         "mode": "validation",

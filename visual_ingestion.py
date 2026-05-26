@@ -35,6 +35,7 @@ from ingestion import (
     normalize_metadata,
     validate_fieldnames,
 )
+from parser_page_metadata_contract import validate_page_metadata_sections
 
 VISUAL_SCHEMA_VERSION = 2
 PDF_MIN_TEXT_CHARS_FOR_OCR = 24
@@ -51,6 +52,18 @@ OcrProvider = Callable[[Any], str | list[dict[str, Any]]]
 
 class OcrUnavailable(RuntimeError):
     """Raised when an OCR provider cannot be loaded or executed."""
+
+
+def _visual_page_metadata_source_group(artifact: dict[str, Any]) -> str:
+    file_format = str(artifact.get("file_format") or "").strip() or "unknown"
+    return f"{file_format}/visual_ingestion_v2"
+
+
+def _validate_visual_page_metadata_contract(artifact: dict[str, Any]) -> None:
+    validate_page_metadata_sections(
+        artifact.get("sections", []),
+        source_group=_visual_page_metadata_source_group(artifact),
+    )
 
 
 @dataclass(frozen=True)
@@ -784,6 +797,7 @@ def finalize_visual_artifact(artifact: dict[str, Any]) -> None:
     # intended page-aware path; keep this boundary explicit when adding richer
     # layout/OCR adapters so section ``page_span`` remains parser-owned.
     artifact["sections"] = build_sections_from_blocks(blocks)
+    _validate_visual_page_metadata_contract(artifact)
 
     if not artifact["sections"]:
         mark_failed(artifact, "empty_visual_text")
@@ -844,6 +858,7 @@ def make_hwp_fallback_document(
             "regions": [region],
         }
     ]
+    _validate_visual_page_metadata_contract(artifact)
     artifact["diagnostics"]["status"] = "fallback"
     artifact["diagnostics"]["reasons"] = ["visual_fallback_hwp"]
     artifact["diagnostics"]["stages"].append(

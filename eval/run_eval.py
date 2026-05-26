@@ -808,13 +808,11 @@ def _inject_text_source_rates(
 ) -> None:
     """Merge per-format text_source data into the ``by_format`` aggregate in-place.
 
-    For every format present in ``by_format``, attach the raw ``text_source_counts``
-    sub-dict (for transparency).  For ``hwp`` specifically, derive
-    ``kordoc_rate`` and ``hwp_fallback_rate`` as a convenience for operators
-    scanning the eval summary at a glance. (Pre-ADR-0049 builds emitted
-    ``hwp_native`` from the pyhwp backend; the key was renamed in ADR 0049
-    when the backend changed to kordoc — ``hwp_native`` legacy counts are
-    folded into the kordoc rate so older snapshots stay readable.)
+    For every format present in ``by_format``, attach the raw
+    ``text_source_counts`` sub-dict (for transparency), then derive
+    ``pdf_pymupdf4llm_rate`` and ``page_citation_ready_rate`` so operators can
+    see whether parser outputs can support page citations. HWP also carries
+    ``hwp_fallback_rate`` for CSV-text drift detection.
     """
     for fmt, block in by_format.items():
         sources = text_source_counts.get(fmt)
@@ -824,10 +822,11 @@ def _inject_text_source_rates(
         if total <= 0:
             continue
         block["text_source_counts"] = dict(sources)
+        pdf_pymupdf4llm = int(sources.get("pdf_pymupdf4llm", 0))
+        block["pdf_pymupdf4llm_rate"] = pdf_pymupdf4llm / total
+        block["page_citation_ready_rate"] = pdf_pymupdf4llm / total
         if fmt == "hwp":
-            kordoc = int(sources.get("kordoc", 0)) + int(sources.get("hwp_native", 0))
-            block["kordoc_rate"] = kordoc / total
-            block["hwp_fallback_rate"] = (total - kordoc) / total
+            block["hwp_fallback_rate"] = int(sources.get("data_list_csv_text", 0)) / total
 
 
 def summarize_run(

@@ -51,6 +51,7 @@ unchanged.
 from __future__ import annotations
 
 import json
+import hashlib
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -79,6 +80,11 @@ VALID_CHUNKING_STRATEGIES = {"auto", "section", "fixed"}
 
 INDEX_FILENAME = "index.json"
 INDEX_SCHEMA_VERSION = 2
+
+
+def text_span_hash(text: str) -> str:
+    normalized = " ".join(str(text or "").split())
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
 
 def load_raw_documents(input_dir: Path) -> list[dict[str, Any]]:
@@ -301,6 +307,7 @@ def make_chunk(
         "total_chunks_in_section": total_chunks_in_section,
         "chunking_strategy": chunking_strategy,
         "text": text,
+        "text_span_hash": text_span_hash(text),
         "tokens": tokenize(
             " ".join([doc["title"], doc.get("agency", ""), " > ".join(section_path), text])
         ),

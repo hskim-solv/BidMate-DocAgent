@@ -31,6 +31,14 @@ def test_ship_start_allows_eval_type() -> None:
     assert "eval" in ship_start.ALLOWED_TYPES
 
 
+def test_ship_start_splits_labels() -> None:
+    assert ship_start.split_labels("enhancement, rag, enhancement,,evaluation") == [
+        "enhancement",
+        "rag",
+        "evaluation",
+    ]
+
+
 def test_ship_start_creates_issue_then_switches_branch(monkeypatch, capsys) -> None:
     calls: list[list[str]] = []
 
@@ -72,6 +80,60 @@ def test_ship_start_creates_issue_then_switches_branch(monkeypatch, capsys) -> N
         "origin/main",
     ] in calls
     assert "created https://github.com/hskim-solv/BidMate-DocAgent/issues/1410" in capsys.readouterr().out
+
+
+def test_ship_start_label_failure_warns_without_aborting(monkeypatch, capsys) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run(cmd, *, check=True):
+        calls.append(list(cmd))
+        if cmd[:3] == ["git", "status", "--porcelain"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="")
+        if cmd[:3] == ["gh", "issue", "create"]:
+            assert "--label" not in cmd
+            return subprocess.CompletedProcess(
+                cmd,
+                0,
+                stdout="https://github.com/hskim-solv/BidMate-DocAgent/issues/1495\n",
+            )
+        if cmd[:3] == ["gh", "issue", "edit"]:
+            return subprocess.CompletedProcess(
+                cmd,
+                1,
+                stdout="",
+                stderr="could not find label",
+            )
+        if cmd[:3] == ["git", "switch", "-c"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="")
+        raise AssertionError(f"unexpected command: {cmd}")
+
+    monkeypatch.setattr(ship_start, "run", fake_run)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "_ship_start.py",
+            "--title",
+            "Harden ship-start label handling",
+            "--type",
+            "fix",
+            "--labels",
+            "enhancement,rag",
+            "--no-fetch",
+        ],
+    )
+
+    assert ship_start.main() == 0
+    assert [
+        "git",
+        "switch",
+        "-c",
+        "fix/issue-1495-harden-ship-start-label-handling",
+        "origin/main",
+    ] in calls
+    stderr = capsys.readouterr().err
+    assert "could not add label 'enhancement'" in stderr
+    assert "could not add label 'rag'" in stderr
 
 
 def test_review_gate_passes_when_open_and_no_review_blockers(monkeypatch, capsys) -> None:

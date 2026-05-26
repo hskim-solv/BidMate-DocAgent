@@ -1,9 +1,13 @@
 import csv
 import importlib.util
+import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
+from parser_page_metadata_contract import PageMetadataContractError
+import visual_ingestion
 from rag_core import build_index_payload_from_documents, run_rag_query
 from visual_ingestion import (
     extract_field_candidates,
@@ -160,6 +164,85 @@ class VisualIngestionTest(unittest.TestCase):
             self.assertEqual(1, report["summary"]["fallback_documents"])
             self.assertEqual("data_list_csv_text", documents[0]["metadata"]["text_source"])
             self.assertEqual("visual_fallback_hwp", documents[0]["metadata"]["visual_fallback_reason"])
+
+    def test_visual_page_metadata_contract_fails_loudly_without_private_values(self) -> None:
+        artifact = {
+            "schema_version": 2,
+            "doc_id": "private-doc-id-should-not-leak",
+            "source_path": "/Users/example/private-rfp.pdf",
+            "file_format": "pdf",
+            "metadata": {
+                "file_format": "pdf",
+                "file_name": "private-rfp.pdf",
+            },
+            "pages": [
+                {
+                    "page_number": 1,
+                    "blocks": [{"text": "ignored by patched section builder"}],
+                }
+            ],
+            "tables": [],
+            "field_candidates": [],
+            "sections": [],
+            "diagnostics": {"status": "parsed", "reasons": [], "stages": []},
+        }
+        malformed_sections = [
+            {
+                "heading": "Scope",
+                "text": "private raw text should not leak",
+                "chunk_id": "private-chunk-id-should-not-leak",
+                "page_span": [3, 1],
+                "regions": [
+                    {
+                        "page_number": 3,
+                        "block_id": "private-block-id-should-not-leak",
+                    }
+                ],
+            },
+            {
+                "heading": "Region",
+                "text": "secondary private raw text should not leak",
+                "regions": [
+                    {
+                        "page_number": "3",
+                        "block_id": "private-region-block-id-should-not-leak",
+                    }
+                ],
+            },
+        ]
+
+        with patch.object(
+            visual_ingestion,
+            "build_sections_from_blocks",
+            return_value=malformed_sections,
+        ):
+            with self.assertRaises(PageMetadataContractError) as raised:
+                visual_ingestion.finalize_visual_artifact(artifact)
+
+        message = str(raised.exception)
+        encoded_report = json.dumps(
+            raised.exception.report,
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+        self.assertIn("invalid_page_span=1", message)
+        self.assertIn("invalid_region_page_number=1", message)
+        self.assertEqual(
+            "pdf/visual_ingestion_v2",
+            raised.exception.report["source_group"],
+        )
+        for forbidden in (
+            "private raw text",
+            "secondary private raw text",
+            "private-doc-id-should-not-leak",
+            "private-chunk-id-should-not-leak",
+            "private-block-id-should-not-leak",
+            "private-region-block-id-should-not-leak",
+            "private-rfp.pdf",
+            "/Users/example",
+        ):
+            self.assertNotIn(forbidden, message)
+            self.assertNotIn(forbidden, encoded_report)
 
     def test_region_metadata_reaches_chunks_evidence_and_citations(self) -> None:
         region = {

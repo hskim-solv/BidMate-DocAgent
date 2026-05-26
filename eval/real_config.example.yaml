@@ -2,13 +2,16 @@ real_eval:
   data_list: "${REAL_EVAL_DATA_LIST:-data/data_list.csv}"
   document_dirs:
     default: "${REAL_EVAL_DATA_DIR:-data/files}"
-    kordoc: "${REAL_EVAL_KORDOC_DATA_DIR:-data/files_kordoc}"
+    hwp_pdf_artifacts: "${REAL_EVAL_HWP_PDF_ARTIFACT_DIR:-data/index/real100/hwp_pdf_artifacts}"
   cache:
     root: "${REAL_EVAL_CACHE_DIR:-.cache/real_eval}"
     rebuild: false
   index:
     root: "${REAL_EVAL_INDEX_DIR:-data/index/real100}"
     min_private_chunks: 1001
+  index_build:
+    hwp_loader: pdf_pymupdf4llm
+    pdf_loader: pdf_pymupdf4llm
   reports:
     output_dir: "${REAL_EVAL_REPORT_DIR:-reports/real100}"
     baseline_summary: "${REAL_EVAL_BASELINE_SUMMARY:-reports/real100/baseline.aggregate.json}"
@@ -16,6 +19,10 @@ real_eval:
 mode: rag
 description: Local-only real RFP evaluation template. Copy to eval/real_config.local.yaml and fill with private expected values.
 index_dir: data/index/real100
+index_build:
+  hwp_loader: pdf_pymupdf4llm
+  pdf_loader: pdf_pymupdf4llm
+  hwp_pdf_artifact_dir: data/index/real100/hwp_pdf_artifacts
 answer_policy:
   answerable_status: supported
   unanswerable_status: insufficient

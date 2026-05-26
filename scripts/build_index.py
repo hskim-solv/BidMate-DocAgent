@@ -115,28 +115,44 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--hwp_loader",
         default=None,
-        choices=["csv_text", "kordoc", "csv", "native", "native_tables"],
+        choices=[
+            "csv_text",
+            "kordoc",
+            "pdf_pymupdf4llm",
+            "csv",
+            "native",
+            "native_tables",
+        ],
         help=(
-            "HWP loader selection (ADR 0049). Sets BIDMATE_HWP_LOADER before "
-            "ingestion so _resolve_loader picks the backend. 'kordoc' (default): "
-            "npm subprocess that preserves table structure and headings; "
+            "HWP loader selection. Sets BIDMATE_HWP_LOADER before ingestion. "
+            "'pdf_pymupdf4llm' (default): LibreOffice/soffice HWP-to-PDF "
+            "conversion followed by PyMuPDF4LLM Markdown page chunks; "
+            "'kordoc': legacy non-canonical parser without stable page citation; "
             "'csv_text': force the CSV-text fallback (offline / CI / Node-missing). "
             "Legacy values 'csv'/'native'/'native_tables' (ADR 0036) are aliased "
             "to 'csv_text' with a DeprecationWarning at ingestion time. "
-            "Omit to use the ADR 0049 runtime default (kordoc → csv_text "
-            "auto-fallback on Node-missing)."
+            "Omit to use the citation-ready runtime default."
         ),
     )
     parser.add_argument(
         "--pdf_loader",
         default=None,
-        choices=["csv_text", "kordoc"],
+        choices=["csv_text", "kordoc", "pdf_pymupdf4llm"],
         help=(
-            "PDF loader selection (ADR 0049). Sets BIDMATE_PDF_LOADER before "
-            "ingestion. 'kordoc' (default): npm subprocess that preserves "
-            "PDF table structure and headings; 'csv_text': force the cover/TOC "
-            "CSV-text fallback (offline / CI / Node-missing). Omit for the "
-            "ADR 0049 runtime default."
+            "PDF loader selection. Sets BIDMATE_PDF_LOADER before ingestion. "
+            "'pdf_pymupdf4llm' (default): PyMuPDF4LLM Markdown page chunks; "
+            "'kordoc': legacy non-canonical parser; 'csv_text': force the "
+            "cover/TOC CSV-text fallback. Omit for the citation-ready runtime "
+            "default."
+        ),
+    )
+    parser.add_argument(
+        "--hwp_pdf_artifact_dir",
+        default=None,
+        help=(
+            "Directory for preserved LibreOffice-converted HWP PDFs. Defaults "
+            "to <output_dir>/hwp_pdf_artifacts and is exposed to ingestion via "
+            "BIDMATE_HWP_PDF_ARTIFACT_DIR."
         ),
     )
     return parser.parse_args()
@@ -188,12 +204,15 @@ def main() -> int:
             os.environ["BIDMATE_HWP_LOADER"] = args.hwp_loader
         if args.pdf_loader is not None:
             os.environ["BIDMATE_PDF_LOADER"] = args.pdf_loader
+        output_dir = Path(args.output_dir)
+        if args.hwp_pdf_artifact_dir is None:
+            args.hwp_pdf_artifact_dir = str(output_dir / "hwp_pdf_artifacts")
+        os.environ["BIDMATE_HWP_PDF_ARTIFACT_DIR"] = args.hwp_pdf_artifact_dir
         # #1212: effective-config provenance banner BEFORE the long ingestion
         # so operators see "what backends am I actually running" up front.
         from rag_provenance import emit_build_banner
 
         emit_build_banner(args)
-        output_dir = Path(args.output_dir)
         visual_artifact_dir = (
             Path(args.visual_artifact_dir)
             if args.visual_artifact_dir
@@ -216,7 +235,7 @@ def main() -> int:
                     Path(args.files_dir),
                     on_duplicate_doc_id=args.on_duplicate_doc_id,
                 )
-                message = "PDF/HWP RFP index built from data_list.csv text and joined metadata."
+                message = "PDF/HWP RFP index built with citation-ready PyMuPDF4LLM page chunks."
             payload = build_index_payload_from_documents(
                 documents,
                 source_dir=str(Path(args.metadata_csv)),
