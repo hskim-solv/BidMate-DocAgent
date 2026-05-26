@@ -2,6 +2,7 @@ import csv
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import pytest
 
@@ -88,7 +89,8 @@ class MetadataCsvIngestionTest(unittest.TestCase):
                 writer.writeheader()
                 writer.writerows(rows)
 
-            documents, report = load_documents_from_metadata_csv(metadata_csv, files_dir)
+            with mock.patch.dict("os.environ", {"BIDMATE_PDF_LOADER": "csv_text"}):
+                documents, report = load_documents_from_metadata_csv(metadata_csv, files_dir)
 
             self.assertEqual(2, len(documents))
             self.assertEqual(3, report["summary"]["total_rows"])
@@ -205,8 +207,9 @@ class RowValidationParityRegression(unittest.TestCase):
             row2 = self._row(파일명="sample.pdf")
 
             tracker_n = _DuplicateTracker()
-            normalize_ingestion_row(row1, 2, files_dir, tracker_n)
-            _, record_n = normalize_ingestion_row(row2, 3, files_dir, tracker_n)
+            with mock.patch.dict("os.environ", {"BIDMATE_PDF_LOADER": "csv_text"}):
+                normalize_ingestion_row(row1, 2, files_dir, tracker_n)
+                _, record_n = normalize_ingestion_row(row2, 3, files_dir, tracker_n)
 
             tracker_a = _DuplicateTracker()
             audit_metadata_row(row1, 2, files_dir, tracker_a)

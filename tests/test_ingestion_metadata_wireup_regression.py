@@ -68,9 +68,10 @@ class IngestionMetadataWireupTest(unittest.TestCase):
         self, row: dict[str, str], files_dir: Path
     ) -> dict:
         tracker = _DuplicateTracker()
-        document, record = normalize_ingestion_row(
-            row, row_number=1, files_dir=files_dir, tracker=tracker
-        )
+        with mock.patch.dict(os.environ, {"BIDMATE_PDF_LOADER": "csv_text"}):
+            document, record = normalize_ingestion_row(
+                row, row_number=1, files_dir=files_dir, tracker=tracker
+            )
         self.assertEqual(
             record.status,
             "indexed",
