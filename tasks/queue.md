@@ -17,6 +17,7 @@ PR이 생기면 각 task에 링크를 추가한다. 예제 task는 `tasks/exampl
 | 4 | `T-2026-0004` | `review` | Implementer -> Reviewer | HWP -> PDF -> PyMuPDF4LLM opt-in loader 구현됨. |
 | 5 | `T-2026-0006` | `review` | Implementer -> Reviewer | `ai_next_actions` human-readable HTML review surface 구현됨. |
 | 6 | `T-2026-0007` | `review` | Implementer -> Reviewer | failure distribution local HTML board 구현됨. |
+| 7 | `T-2026-0008` | `review` | Implementer -> Reviewer | chunking diagnostics local HTML board 구현됨. |
 
 ## Examples
 
@@ -571,4 +572,94 @@ make check-branch
 - Open risks: reviewer should inspect whether a later PR should migrate ai_next_actions HTML to the shared shell.
 - Next safe command: python3 -m pytest -q tests/test_render_failure_distribution.py
 - Reviewer focus: privacy-safe rendering, aggregate-only data boundary, and no evidence over-claim.
+```
+
+## T-2026-0008 — Human-readable chunking diagnostics board
+
+- ID: T-2026-0008
+- Title: Human-readable chunking diagnostics board
+- Status: review
+- Owner role: Implementer -> Reviewer
+- Created: 2026-05-26
+- Last updated: 2026-05-26
+
+### Goal
+
+Give reviewers a compact local HTML view of Phase 2 chunking ablation, real100
+chunk health, and multi-chunk evidence failure diagnostics without changing
+retrieval or chunking behavior.
+
+### Context
+
+- Surface: private real-eval aggregate viewer plus existing Phase 2 retrieval
+  aggregate report.
+- Relevant docs: [`docs/retrieval/chunking-diagnostics.md`](../docs/retrieval/chunking-diagnostics.md),
+  [ADR 0005](../docs/adr/0005-eval-split-public-synthetic-private-local.md),
+  [ADR 0076](../docs/adr/0076-multi-chunk-evidence-failure-analysis-surface.md).
+- Primary risk: a diagnostic board being mistaken for a chunking winner claim,
+  or per-case identifiers/text leaking into local HTML.
+
+### Scope
+
+- Add `reports/retrieval/chunking_diagnostics.html` as a generated local artifact.
+- Read existing aggregate or aggregate-derived artifacts only.
+- Keep Phase 2 report files and real100 aggregate files unchanged.
+
+### Non-Goals
+
+- Do not change chunking defaults, retrieval, verifier, answer generation, eval
+  scoring, or private raw data.
+- Do not introduce JavaScript, external services, or runtime dependencies.
+- Do not publish local HTML artifacts.
+
+### Acceptance Criteria
+
+- [x] Renderer emits a self-contained local HTML board.
+- [x] HTML includes chunking variants, recall@10 deltas, chunk health, and
+  multi-chunk retrieval outcome counts.
+- [x] HTML does not render private case ids from per-case inputs.
+- [x] Existing retrieval/chunking/eval behavior remains unchanged.
+
+### Validation Commands
+
+```bash
+python3 -m py_compile scripts/render_chunking_diagnostics_board.py scripts/html_report.py
+python3 -m pytest -q tests/test_render_chunking_diagnostics_board.py
+python3 scripts/check_doc_links.py --check-all --paths docs/plans/T-2026-0008-chunking-diagnostics-board.md tasks/queue.md docs/retrieval/chunking-diagnostics.md
+git diff --check
+make check-branch
+```
+
+### Evidence Required
+
+- Focused pytest output.
+- Doc-link check output.
+- Note that no chunking winner or RAG quality claim is made.
+
+### Related Plan / Issue / PR Links
+
+- Plan: [`docs/plans/T-2026-0008-chunking-diagnostics-board.md`](../docs/plans/T-2026-0008-chunking-diagnostics-board.md)
+- Issue: [#1514](https://github.com/hskim-solv/BidMate-DocAgent/issues/1514)
+- PR: TBD
+- ADR: N/A
+
+### Handoff Notes
+
+```markdown
+## Session Handoff — 2026-05-26 00:00 KST
+
+- Role: Implementer
+- Lifecycle stage: review
+- Branch / worktree: chore/issue-1514-chunking-diagnostics-board / /Users/hskim/.codex/worktrees/8ed1/BidMate-DocAgent
+- Task: T-2026-0008
+- Plan: docs/plans/T-2026-0008-chunking-diagnostics-board.md
+- Current status: HTML chunking diagnostics board implemented.
+- Files touched: scripts/render_chunking_diagnostics_board.py, tests/test_render_chunking_diagnostics_board.py, docs/retrieval/chunking-diagnostics.md, tasks/queue.md, docs/plans/T-2026-0008-chunking-diagnostics-board.md
+- Decisions made: Generate a self-contained local HTML file from existing aggregate artifacts; do not claim a chunking winner.
+- Commands run: python3 -m py_compile scripts/render_chunking_diagnostics_board.py scripts/html_report.py; python3 -m pytest -q tests/test_render_chunking_diagnostics_board.py; git diff --check
+- Results: pass.
+- Eval surface: private real-eval aggregate viewer plus existing Phase 2 retrieval aggregate report.
+- Open risks: reviewer should inspect claim wording and whether additional slices belong in a separate follow-up.
+- Next safe command: python3 -m pytest -q tests/test_render_chunking_diagnostics_board.py
+- Reviewer focus: claim boundary, aggregate-only rendering, and no default behavior change.
 ```

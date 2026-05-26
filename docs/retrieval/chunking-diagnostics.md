@@ -49,6 +49,10 @@ python3 scripts/build_index.py \
 - 기본 flat retrieval은 naive baseline과 agentic full pipeline 모두의 기본 retrieval mode다.
 - hierarchical retrieval은 긴 section이 여러 child chunk로 나뉠 때 주변 문맥을 함께 확인하는 실험 옵션이다.
 - 품질 비교는 `reports/eval_summary.json`의 `hierarchical` ablation run과 fixed/auto 임시 인덱스 평가 결과를 함께 본다.
+- 사람용 local board가 필요하면 `python3 scripts/render_chunking_diagnostics_board.py`를 실행해
+  `reports/retrieval/chunking_diagnostics.html`을 본다. 이 HTML은 Phase 2
+  chunking ablation, real100 chunk health, multi-chunk evidence failure aggregate를
+  한 화면에 모으는 reviewer view이며, chunking winner나 성능 개선 claim이 아니다.
 
 ## Chunk-boundary probe set (issue #73)
 
