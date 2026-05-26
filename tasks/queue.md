@@ -13,16 +13,16 @@ PR이 생기면 각 task에 링크를 추가한다. 예제 task는 `tasks/exampl
 |---:|---|---|---|---|
 | 1 | `T-2026-0001` | `done` | Implementer -> Benchmark Auditor -> Reviewer | merged in PR #1481. |
 | 2 | `T-2026-0002` | `done` | Implementer -> Reviewer | merged in PR #1481. |
-| 3 | `T-2026-0003` | `review` | Implementer -> Reviewer | auto-ship Stage 5 Desktop main fast-forward sync 구현됨. |
-| 4 | `T-2026-0004` | `review` | Implementer -> Reviewer | HWP -> PDF -> PyMuPDF4LLM opt-in loader 구현됨. |
-| 5 | `T-2026-0005` | `review` | Implementer -> Benchmark Auditor -> Reviewer | implementation validated; issue #1493 / branch `feat/issue-1493-rag-eval-first-adapter-hardening`. |
-| 6 | `T-2026-0006` | `review` | Implementer -> Reviewer | `ai_next_actions` human-readable HTML review surface 구현됨. |
-| 7 | `T-2026-0007` | `review` | Implementer -> Reviewer | failure distribution local HTML board 구현됨. |
-| 8 | `T-2026-0008` | `review` | Implementer -> Reviewer | chunking diagnostics local HTML board 구현됨. |
-| 9 | `T-2026-0009` | `review` | Implementer -> Reviewer | ADR decision map local HTML board 구현됨. |
+| 3 | `T-2026-0003` | `done` | Implementer -> Reviewer | merged in PR #1483. |
+| 4 | `T-2026-0004` | `done` | Implementer -> Reviewer | merged in PR #1494. |
+| 5 | `T-2026-0005` | `done` | Implementer -> Benchmark Auditor -> Reviewer | merged in PR #1499. |
+| 6 | `T-2026-0006` | `done` | Implementer -> Reviewer | merged in PR #1509. |
+| 7 | `T-2026-0007` | `done` | Implementer -> Reviewer | merged in PR #1511. |
+| 8 | `T-2026-0008` | `done` | Implementer -> Reviewer | merged in PR #1515. |
+| 9 | `T-2026-0009` | `done` | Implementer -> Reviewer | merged in PR #1517. |
 | 10 | `T-2026-0010` | `done` | Implementer -> Reviewer | merged in PR #1519. |
 | 11 | `T-2026-0011` | `done` | Implementer -> Reviewer | merged in PR #1521. |
-| 12 | `T-2026-0012` | `review` | Implementer -> Reviewer | extended HTML review boards implemented; issue #1522 / branch `chore/issue-1522-extended-html-boards`. |
+| 12 | `T-2026-0012` | `done` | Implementer -> Reviewer | merged in PR #1523. |
 
 ## Examples
 
@@ -33,7 +33,7 @@ PR이 생기면 각 task에 링크를 추가한다. 예제 task는 `tasks/exampl
 
 - ID: T-2026-0012
 - Title: Extended HTML review boards
-- Status: review
+- Status: done
 - Owner role: Implementer -> Reviewer
 - Created: 2026-05-26
 - Last updated: 2026-05-26
@@ -96,7 +96,7 @@ make check-branch
 
 - Plan: [`docs/plans/T-2026-0012-extended-html-review-boards.md`](../docs/plans/T-2026-0012-extended-html-review-boards.md)
 - Issue: [#1522](https://github.com/hskim-solv/BidMate-DocAgent/issues/1522)
-- PR: TBD
+- PR: [#1523](https://github.com/hskim-solv/BidMate-DocAgent/pull/1523)
 
 ### Handoff Notes
 
@@ -108,7 +108,7 @@ make check-branch
 - Branch / worktree: chore/issue-1522-extended-html-boards / /Users/hskim/.codex/worktrees/8ed1/BidMate-DocAgent
 - Task: T-2026-0012
 - Plan: docs/plans/T-2026-0012-extended-html-review-boards.md
-- Current status: implemented and validated; PR pending.
+- Current status: merged in PR #1523.
 - Files touched: scripts/render_priority_review_boards.py, tests/test_render_priority_review_boards.py, tasks/queue.md, docs/plans/T-2026-0012-extended-html-review-boards.md
 - Decisions made: extend the existing renderer to twenty-five boards.
 - Commands run: gh issue create; git switch; python3 -m pytest tests/test_render_priority_review_boards.py -q; python3 -m py_compile scripts/render_priority_review_boards.py; python3 scripts/render_priority_review_boards.py; python3 scripts/check_doc_links.py --check-all; git diff --check; make check-branch; browser smoke via http://127.0.0.1:8765
@@ -116,8 +116,8 @@ make check-branch
 - Validation evidence: local HTTP browser smoke confirmed all twenty-five board titles/cards/tables and no raw `<script>` or `/Users/hskim` text.
 - Eval surface: aggregate-only private real-eval plus public/governance/portfolio docs.
 - Open risks: generated HTML files remain ignored local artifacts.
-- Next action: open PR.
-- Next safe command: gh pr create
+- Next action: N/A; merged in PR #1523.
+- Next safe command: N/A
 - Reviewer focus: privacy boundary, over-claiming, generated view wording.
 ```
 
@@ -201,7 +201,7 @@ make check-branch
 - Branch / worktree: chore/issue-1520-remaining-html-boards / /Users/hskim/.codex/worktrees/8ed1/BidMate-DocAgent
 - Task: T-2026-0011
 - Plan: docs/plans/T-2026-0011-remaining-html-review-boards.md
-- Current status: implemented and validated; PR pending.
+- Current status: merged in PR #1521.
 - Files touched: scripts/render_priority_review_boards.py, tests/test_render_priority_review_boards.py, tasks/queue.md, docs/plans/T-2026-0011-remaining-html-review-boards.md
 - Decisions made: extend the existing renderer to fifteen boards.
 - Commands run: gh issue create; git switch; python3 -m pytest tests/test_render_priority_review_boards.py -q; python3 -m py_compile scripts/render_priority_review_boards.py; python3 scripts/render_priority_review_boards.py; python3 scripts/check_doc_links.py --check-all; git diff --check; browser smoke via http://127.0.0.1:8765
@@ -209,8 +209,8 @@ make check-branch
 - Validation evidence: local HTTP browser smoke confirmed all fifteen board titles/cards/tables and no raw `<script>` or `/Users/hskim` text.
 - Eval surface: aggregate-only private real-eval plus public/governance docs.
 - Open risks: generated HTML files remain ignored local artifacts.
-- Next action: run branch check and open PR.
-- Next safe command: make check-branch
+- Next action: N/A; merged in PR #1521.
+- Next safe command: N/A
 - Reviewer focus: privacy boundary, over-claiming, generated view wording.
 ```
 
@@ -293,7 +293,7 @@ git diff --check
 - Branch / worktree: chore/issue-1518-priority-html-boards / /Users/hskim/.codex/worktrees/8ed1/BidMate-DocAgent
 - Task: T-2026-0010
 - Plan: docs/plans/T-2026-0010-priority-html-review-boards.md
-- Current status: implemented and validated; PR pending.
+- Current status: merged in PR #1519.
 - Files touched: CLAUDE.md, tasks/queue.md, docs/plans/T-2026-0010-priority-html-review-boards.md, scripts/render_priority_review_boards.py, tests/test_render_priority_review_boards.py
 - Decisions made: presentation-only renderer; aggregate/redacted inputs only.
 - Commands run: gh issue create; git switch; python3 -m pytest tests/test_render_priority_review_boards.py -q; python3 scripts/render_priority_review_boards.py; git diff --check; python3 scripts/check_doc_links.py --check-all; browser smoke via http://127.0.0.1:8765
@@ -301,8 +301,8 @@ git diff --check
 - Validation evidence: local HTTP browser smoke confirmed all six board titles/cards/tables.
 - Eval surface: aggregate-only private real-eval plus public docs.
 - Open risks: generated HTML files remain ignored local artifacts; script regenerates them.
-- Next action: open PR.
-- Next safe command: gh pr create
+- Next action: N/A; merged in PR #1519.
+- Next safe command: N/A
 - Reviewer focus: privacy boundary, over-claiming, escaping.
 ```
 
@@ -517,10 +517,10 @@ python3 -m pytest tests/test_eval_artifact_privacy_regression.py -q
 
 - ID: T-2026-0003
 - Title: Desktop main auto-sync after auto-ship merge
-- Status: review
+- Status: done
 - Owner role: Implementer -> Reviewer
 - Created: 2026-05-25
-- Last updated: 2026-05-25
+- Last updated: 2026-05-26
 
 ### Goal
 
@@ -568,7 +568,7 @@ git diff --check
 
 - Plan: [`docs/plans/T-2026-0003-desktop-main-auto-sync.md`](../docs/plans/T-2026-0003-desktop-main-auto-sync.md)
 - Issue: [#1482](https://github.com/hskim-solv/BidMate-DocAgent/issues/1482)
-- PR: TBD
+- PR: [#1483](https://github.com/hskim-solv/BidMate-DocAgent/pull/1483)
 - ADR: N/A
 
 ### Handoff Notes
@@ -581,15 +581,15 @@ git diff --check
 - Branch / worktree: chore/issue-1482-desktop-main-sync / /Users/hskim/.codex/worktrees/cd0b/BidMate-DocAgent
 - Task: T-2026-0003
 - Plan: docs/plans/T-2026-0003-desktop-main-auto-sync.md
-- Current status: fail-soft sync helper and Stage 5 hook added.
+- Current status: merged in PR #1483.
 - Files touched: scripts/sync_desktop_main.py, scripts/claude-hooks/stop-ship.sh, tests/test_sync_desktop_main.py, docs/operations/auto-ship.md, tasks/queue.md
 - Decisions made: dirty/divergent/missing Desktop repo skips; merge remains successful.
 - Commands run: python3 -m pytest tests/test_sync_desktop_main.py -q; python3 -m py_compile scripts/sync_desktop_main.py; bash -n scripts/claude-hooks/stop-ship.sh; python3 scripts/check_doc_links.py --check-all; git diff --check; python3 scripts/sync_desktop_main.py --repo /Users/hskim/Desktop/projects/BidMate-DocAgent
 - Results: pass; Desktop main already matches origin/main after manual fast-forward.
 - Eval surface: none.
 - Open risks: Reviewer should verify branch update cannot discard local work.
-- Next action: Run validation and ship.
-- Next safe command: python3 -m pytest tests/test_sync_desktop_main.py -q
+- Next action: N/A; merged in PR #1483.
+- Next safe command: N/A
 - Reviewer focus: no reset/destructive behavior, fail-soft Stage 5 behavior.
 ```
 
@@ -597,7 +597,7 @@ git diff --check
 
 - ID: T-2026-0004
 - Title: HWP PDF PyMuPDF4LLM opt-in loader
-- Status: review
+- Status: done
 - Owner role: Implementer -> Reviewer
 - Created: 2026-05-26
 - Last updated: 2026-05-26
@@ -654,8 +654,8 @@ python3 -m py_compile ingestion.py scripts/build_index.py scripts/compare_hwp_ex
 ### Related Plan / Issue / PR Links
 
 - Plan: [`docs/plans/T-2026-0004-hwp-pdf-pymupdf4llm-loader.md`](../docs/plans/T-2026-0004-hwp-pdf-pymupdf4llm-loader.md)
-- Issue: N/A
-- PR: TBD
+- Issue: [#1492](https://github.com/hskim-solv/BidMate-DocAgent/issues/1492)
+- PR: [#1494](https://github.com/hskim-solv/BidMate-DocAgent/pull/1494)
 - ADR: [ADR 0078](../docs/adr/0078-pymupdf4llm-canonical-page-citation.md)
 
 ### Handoff Notes
@@ -668,14 +668,15 @@ python3 -m py_compile ingestion.py scripts/build_index.py scripts/compare_hwp_ex
 - Branch / worktree: detached HEAD / /Users/hskim/.codex/worktrees/a32e/BidMate-DocAgent
 - Task: T-2026-0004
 - Plan: docs/plans/T-2026-0004-hwp-pdf-pymupdf4llm-loader.md
-- Current status: canonical PDF/HWP PyMuPDF4LLM page-citation loader implemented.
+- Current status: merged in PR #1494.
 - Files touched: ingestion.py, rag_answer.py, rag_indexing.py, rag_retrieval.py, rag_provenance.py, scripts/build_index.py, eval/run_eval.py, requirements-pymupdf4llm.txt, tests, docs/plans, ADR 0078, tasks/queue.md
 - Decisions made: default HWP/PDF loader is pdf_pymupdf4llm; HWP citations refer to preserved LibreOffice converted PDF artifacts; parser failures fail closed unless explicit csv_text is selected.
 - Commands run: python3 -m unittest tests.test_hwp_pdf_pymupdf4llm_loader -v; python3 -m pytest tests/test_ingestion_kordoc_regression.py tests/test_mixed_format_ingestion_regression.py tests/test_hwp_pdf_pymupdf4llm_loader.py tests/test_provenance_banner.py tests/test_run_eval_by_format_text_source.py tests/test_page_aware_parser_contract.py tests/test_eval_metrics.py tests/test_answer_contract_snapshot.py tests/test_retrieval_loop_regression.py -q; python3 -m ruff check ...; python3 -m py_compile ...; git diff --check; python3 scripts/_governance.py --lint-adr-consequences docs/adr/0078-pymupdf4llm-canonical-page-citation.md; python3 scripts/check_doc_links.py --check-all --paths ...
 - Results: pass.
 - Eval surface: none; no real-eval quality claim.
 - Open risks: actual HWP conversion quality still depends on local LibreOffice HWP filter setup.
-- Next safe command: python3 -m pytest tests/test_ingestion_kordoc_regression.py tests/test_mixed_format_ingestion_regression.py tests/test_hwp_pdf_pymupdf4llm_loader.py tests/test_provenance_banner.py tests/test_run_eval_by_format_text_source.py -q
+- Next action: N/A; merged in PR #1494.
+- Next safe command: N/A
 - Reviewer focus: fail-closed parser policy, private path exclusion from answer citations, and page-citation-ready telemetry.
 ```
 
@@ -683,7 +684,7 @@ python3 -m py_compile ingestion.py scripts/build_index.py scripts/compare_hwp_ex
 
 - ID: T-2026-0005
 - Title: Eval-first RAG adapter hardening
-- Status: review
+- Status: done
 - Owner role: Implementer -> Benchmark Auditor -> Reviewer
 - Created: 2026-05-26
 - Last updated: 2026-05-26
@@ -758,7 +759,7 @@ make check-branch
 
 - ID: T-2026-0006
 - Title: Human-readable AI next actions review surface
-- Status: review
+- Status: done
 - Owner role: Implementer -> Reviewer
 - Created: 2026-05-26
 - Last updated: 2026-05-26
@@ -817,7 +818,7 @@ make check-branch
 
 - Plan: [`docs/plans/T-2026-0006-human-review-surface.md`](../docs/plans/T-2026-0006-human-review-surface.md)
 - Issue: [#1506](https://github.com/hskim-solv/BidMate-DocAgent/issues/1506)
-- PR: TBD
+- PR: [#1509](https://github.com/hskim-solv/BidMate-DocAgent/pull/1509)
 - ADR: N/A
 
 ### Handoff Notes
@@ -830,14 +831,15 @@ make check-branch
 - Branch / worktree: chore/issue-1506-human-review-surface / /Users/hskim/.codex/worktrees/8ed1/BidMate-DocAgent
 - Task: T-2026-0006
 - Plan: docs/plans/T-2026-0006-human-review-surface.md
-- Current status: HTML review surface implemented on top of scripts/ai_next_actions.py.
+- Current status: merged in PR #1509.
 - Files touched: scripts/ai_next_actions.py, tests/test_ai_next_actions.py, docs/operations/ai-codex-workflow.md, docs/reviews/README.md, tasks/queue.md, docs/plans/T-2026-0006-human-review-surface.md
 - Decisions made: Generate a self-contained local HTML file next to the existing Markdown output; keep source-of-truth logic in WorkItem classification and keep HTML non-evidence.
 - Commands run: python3 -m py_compile scripts/ai_next_actions.py; python3 -m pytest -q tests/test_ai_next_actions.py; python3 scripts/check_doc_links.py --check-all; git diff --check; make check-branch
 - Results: pass, except browser file:// visual verification was blocked by app URL policy.
 - Eval surface: none.
 - Open risks: reviewer should inspect whether the inline HTML/CSS is acceptable for a local-only generated report.
-- Next safe command: python3 -m pytest -q tests/test_ai_next_actions.py
+- Next action: N/A; merged in PR #1509.
+- Next safe command: N/A
 - Reviewer focus: privacy-safe rendering, deterministic output, and no evidence over-claim.
 ```
 
@@ -845,7 +847,7 @@ make check-branch
 
 - ID: T-2026-0007
 - Title: Human-readable failure case board
-- Status: review
+- Status: done
 - Owner role: Implementer -> Reviewer
 - Created: 2026-05-26
 - Last updated: 2026-05-26
@@ -907,7 +909,7 @@ make check-branch
 
 - Plan: [`docs/plans/T-2026-0007-failure-case-board.md`](../docs/plans/T-2026-0007-failure-case-board.md)
 - Issue: [#1510](https://github.com/hskim-solv/BidMate-DocAgent/issues/1510)
-- PR: TBD
+- PR: [#1511](https://github.com/hskim-solv/BidMate-DocAgent/pull/1511)
 - ADR: N/A
 
 ### Handoff Notes
@@ -920,14 +922,15 @@ make check-branch
 - Branch / worktree: chore/issue-1510-failure-case-board / /Users/hskim/.codex/worktrees/8ed1/BidMate-DocAgent
 - Task: T-2026-0007
 - Plan: docs/plans/T-2026-0007-failure-case-board.md
-- Current status: HTML failure board implemented on top of scripts/render_failure_distribution.py.
+- Current status: merged in PR #1511.
 - Files touched: scripts/html_report.py, scripts/render_failure_distribution.py, tests/test_render_failure_distribution.py, docs/operations/failure-mode-harden-process.md, tasks/queue.md, docs/plans/T-2026-0007-failure-case-board.md
 - Decisions made: Generate a self-contained local HTML file next to the existing Markdown/aggregate JSON output; keep source-of-truth classification in build_aggregate and failure_classifier.
 - Commands run: python3 -m py_compile scripts/html_report.py scripts/render_failure_distribution.py; python3 -m pytest -q tests/test_render_failure_distribution.py; git diff --check
 - Results: pass.
 - Eval surface: private real-eval aggregate viewer only.
 - Open risks: reviewer should inspect whether a later PR should migrate ai_next_actions HTML to the shared shell.
-- Next safe command: python3 -m pytest -q tests/test_render_failure_distribution.py
+- Next action: N/A; merged in PR #1511.
+- Next safe command: N/A
 - Reviewer focus: privacy-safe rendering, aggregate-only data boundary, and no evidence over-claim.
 ```
 
@@ -935,7 +938,7 @@ make check-branch
 
 - ID: T-2026-0008
 - Title: Human-readable chunking diagnostics board
-- Status: review
+- Status: done
 - Owner role: Implementer -> Reviewer
 - Created: 2026-05-26
 - Last updated: 2026-05-26
@@ -997,7 +1000,7 @@ make check-branch
 
 - Plan: [`docs/plans/T-2026-0008-chunking-diagnostics-board.md`](../docs/plans/T-2026-0008-chunking-diagnostics-board.md)
 - Issue: [#1514](https://github.com/hskim-solv/BidMate-DocAgent/issues/1514)
-- PR: TBD
+- PR: [#1515](https://github.com/hskim-solv/BidMate-DocAgent/pull/1515)
 - ADR: N/A
 
 ### Handoff Notes
@@ -1010,14 +1013,15 @@ make check-branch
 - Branch / worktree: chore/issue-1514-chunking-diagnostics-board / /Users/hskim/.codex/worktrees/8ed1/BidMate-DocAgent
 - Task: T-2026-0008
 - Plan: docs/plans/T-2026-0008-chunking-diagnostics-board.md
-- Current status: HTML chunking diagnostics board implemented.
+- Current status: merged in PR #1515.
 - Files touched: scripts/render_chunking_diagnostics_board.py, tests/test_render_chunking_diagnostics_board.py, docs/retrieval/chunking-diagnostics.md, tasks/queue.md, docs/plans/T-2026-0008-chunking-diagnostics-board.md
 - Decisions made: Generate a self-contained local HTML file from existing aggregate artifacts; do not claim a chunking winner.
 - Commands run: python3 -m py_compile scripts/render_chunking_diagnostics_board.py scripts/html_report.py; python3 -m pytest -q tests/test_render_chunking_diagnostics_board.py; git diff --check
 - Results: pass.
 - Eval surface: private real-eval aggregate viewer plus existing Phase 2 retrieval aggregate report.
 - Open risks: reviewer should inspect claim wording and whether additional slices belong in a separate follow-up.
-- Next safe command: python3 -m pytest -q tests/test_render_chunking_diagnostics_board.py
+- Next action: N/A; merged in PR #1515.
+- Next safe command: N/A
 - Reviewer focus: claim boundary, aggregate-only rendering, and no default behavior change.
 ```
 
@@ -1025,7 +1029,7 @@ make check-branch
 
 - ID: T-2026-0009
 - Title: Human-readable ADR decision map
-- Status: review
+- Status: done
 - Owner role: Implementer -> Reviewer
 - Created: 2026-05-26
 - Last updated: 2026-05-26
@@ -1085,7 +1089,7 @@ make check-branch
 
 - Plan: [`docs/plans/T-2026-0009-adr-decision-map.md`](../docs/plans/T-2026-0009-adr-decision-map.md)
 - Issue: [#1516](https://github.com/hskim-solv/BidMate-DocAgent/issues/1516)
-- PR: TBD
+- PR: [#1517](https://github.com/hskim-solv/BidMate-DocAgent/pull/1517)
 - ADR: N/A
 
 ### Handoff Notes
@@ -1098,13 +1102,14 @@ make check-branch
 - Branch / worktree: chore/issue-1516-adr-decision-map / /Users/hskim/.codex/worktrees/8ed1/BidMate-DocAgent
 - Task: T-2026-0009
 - Plan: docs/plans/T-2026-0009-adr-decision-map.md
-- Current status: HTML ADR decision map implemented.
+- Current status: merged in PR #1517.
 - Files touched: scripts/render_adr_decision_map.py, tests/test_render_adr_decision_map.py, tasks/queue.md, docs/plans/T-2026-0009-adr-decision-map.md
 - Decisions made: Generate a self-contained local HTML file from docs/adr/README.md only; keep ADR source files unchanged.
 - Commands run: python3 scripts/render_adr_decision_map.py; python3 -m py_compile scripts/render_adr_decision_map.py scripts/html_report.py; python3 -m pytest -q tests/test_render_adr_decision_map.py; git diff --check
 - Results: pass.
 - Eval surface: none.
 - Open risks: reviewer should inspect that area grouping is navigation-only.
-- Next safe command: python3 -m pytest -q tests/test_render_adr_decision_map.py
+- Next action: N/A; merged in PR #1517.
+- Next safe command: N/A
 - Reviewer focus: source-of-truth wording, parser robustness, and escaping.
 ```
