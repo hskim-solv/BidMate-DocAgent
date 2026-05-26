@@ -134,7 +134,7 @@ def test_known_hooks_matches_inventory(gov):
     expected = {
         "bash-guard", "loadbearing", "memory-lines",
         "adr-template", "adr-collision", "plan-slug-race",
-        "delegation-gate", "stop-ship",
+        "delegation-gate", "stop-ship", "agent-loop",
     }
     assert gov.KNOWN_HOOKS == expected
 
@@ -228,6 +228,8 @@ HOOK_EMIT_EXPECTATIONS = [
      "--hook plan-slug-race", "--outcome blocked"),
     ("scripts/claude-hooks/pretooluse-bash-guard.sh",
      "--hook bash-guard", "--outcome blocked"),
+    ("scripts/claude-hooks/stop-agent-loop.sh",
+     "--hook agent-loop", "--outcome pipeline_end"),
 ]
 
 

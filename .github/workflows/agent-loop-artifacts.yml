@@ -1,0 +1,187 @@
+name: Agent Loop Artifacts
+
+# Informational PR artifact generator for the BidMate agent-loop helpers.
+# It never pushes, comments, creates/merges/closes PRs, deletes branches,
+# force-pushes, runs private real-eval, or calls external model APIs.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: agent-loop-artifacts-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  artifacts:
+    name: Generate local loop reports
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Collect changed files
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          mkdir -p reports/agent_loop
+          gh api "repos/$REPO/pulls/$PR/files" --paginate --jq '.[].filename' \
+            > reports/agent_loop/changed_files.txt
+          wc -l reports/agent_loop/changed_files.txt
+
+      - name: Generate agent-loop reports
+        env:
+          PR: ${{ github.event.pull_request.number }}
+          BRANCH: ${{ github.event.pull_request.head.ref }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set +e
+          mkdir -p .agent_loop_tmp
+          PR_BODY_FILE="$(mktemp .agent_loop_tmp/pr_body.XXXXXX)"
+          printf '%s' "$PR_BODY" > "$PR_BODY_FILE"
+          python3 scripts/agent_loop.py classify-surface \
+            --changed-files reports/agent_loop/changed_files.txt \
+            > reports/agent_loop/surface.md
+          python3 scripts/agent_loop.py suggest-validation \
+            --changed-files reports/agent_loop/changed_files.txt \
+            > reports/agent_loop/validation_suggestions.md
+          python3 scripts/agent_loop.py gate-status \
+            --changed-files reports/agent_loop/changed_files.txt \
+            --pr "$PR" \
+            --out reports/agent_loop/gate_status.md
+          python3 scripts/agent_loop.py claim-audit \
+            --text "$PR_BODY_FILE" \
+            --changed-files reports/agent_loop/changed_files.txt \
+            --out reports/agent_loop/claim_audit.md
+          python3 scripts/agent_loop.py auto-pass-check \
+            --changed-files reports/agent_loop/changed_files.txt \
+            --out reports/agent_loop/auto_pass.md
+          python3 scripts/agent_loop.py loop-state \
+            --changed-files reports/agent_loop/changed_files.txt \
+            --pr "$PR" \
+            --out reports/agent_loop/loop_state.json
+          python3 scripts/agent_loop.py dashboard \
+            --changed-files reports/agent_loop/changed_files.txt \
+            --pr "$PR" \
+            --out reports/agent_loop/dashboard.md
+          python3 scripts/agent_loop.py approval-packet \
+            --changed-files reports/agent_loop/changed_files.txt \
+            --pr "$PR" \
+            --out reports/agent_loop/approval_packet.md
+          python3 scripts/agent_loop.py pr-body \
+            --changed-files reports/agent_loop/changed_files.txt \
+            --branch "$BRANCH" \
+            --out reports/agent_loop/pr_body.md
+          python3 scripts/agent_loop.py pr-body-check \
+            --body "$PR_BODY_FILE" \
+            --changed-files reports/agent_loop/changed_files.txt \
+            --branch "$BRANCH" \
+            --out reports/agent_loop/pr_body_check.md
+          python3 scripts/agent_loop.py readiness-score \
+            --body "$PR_BODY_FILE" \
+            --changed-files reports/agent_loop/changed_files.txt \
+            --pr "$PR" \
+            --branch "$BRANCH" \
+            --out reports/agent_loop/readiness_score.md
+          python3 scripts/agent_loop.py branch-issue-hygiene \
+            --body "$PR_BODY_FILE" \
+            --branch "$BRANCH" \
+            --out reports/agent_loop/branch_issue_hygiene.md
+          python3 scripts/agent_loop.py context-pack \
+            --changed-files reports/agent_loop/changed_files.txt \
+            --pr "$PR" \
+            --out reports/agent_loop/context_pack.md
+          python3 scripts/agent_loop.py architecture-brief \
+            --changed-files reports/agent_loop/changed_files.txt \
+            --out reports/agent_loop/architecture_brief.md
+          python3 scripts/agent_loop.py ship-simulate \
+            --changed-files reports/agent_loop/changed_files.txt \
+            --pr "$PR" \
+            --branch "$BRANCH" \
+            --out reports/agent_loop/ship_simulation.md
+          python3 scripts/agent_loop.py auto-ship-prepare \
+            --target-branch "$BRANCH" \
+            --out reports/agent_loop/auto_ship_prepare.md
+          python3 scripts/agent_loop.py auto-ship-plan \
+            --changed-files reports/agent_loop/changed_files.txt \
+            --pr "$PR" \
+            --branch "$BRANCH" \
+            --dry-run \
+            --out reports/agent_loop/auto_ship_plan.md
+          python3 scripts/agent_loop.py gate-brief \
+            --gate pr-create \
+            --changed-files reports/agent_loop/changed_files.txt \
+            --pr "$PR" \
+            --out reports/agent_loop/gate_brief.md
+          python3 scripts/agent_loop.py stale-reports \
+            --changed-files reports/agent_loop/changed_files.txt \
+            --out reports/agent_loop/stale_reports.md
+          python3 scripts/agent_loop.py ci-summary \
+            --pr "$PR" \
+            --out reports/agent_loop/ci_summary.md
+          python3 scripts/agent_loop.py patch-proposal \
+            --changed-files reports/agent_loop/changed_files.txt \
+            --out reports/agent_loop/patch_proposal.diff
+          python3 scripts/agent_loop.py claim-policy \
+            --text "$PR_BODY_FILE" \
+            --changed-files reports/agent_loop/changed_files.txt \
+            --out reports/agent_loop/claim_policy.md
+          python3 scripts/agent_loop.py architecture-decision \
+            --changed-files reports/agent_loop/changed_files.txt \
+            --out reports/agent_loop/architecture_decision.md
+          python3 scripts/agent_loop.py dashboard-html \
+            --changed-files reports/agent_loop/changed_files.txt \
+            --pr "$PR" \
+            --out reports/agent_loop/dashboard.html
+          python3 scripts/agent_loop.py ship-command-pack \
+            --pr "$PR" \
+            --branch "$BRANCH" \
+            --out reports/agent_loop/ship_commands.md
+          python3 scripts/agent_loop.py integration-pack \
+            --out reports/agent_loop/integration_pack.md
+          python3 scripts/agent_loop.py scheduled-status \
+            --out reports/agent_loop/schedule_config.md
+          python3 scripts/agent_loop.py privacy-regression \
+            --out reports/agent_loop/privacy_regression.md
+          python3 scripts/agent_loop.py automation-coverage \
+            --out reports/agent_loop/automation_coverage.md
+          python3 scripts/agent_loop.py manifest \
+            --changed-files reports/agent_loop/changed_files.txt \
+            --source-command "agent-loop-artifacts" \
+            --output reports/agent_loop/dashboard.md \
+            --output reports/agent_loop/approval_packet.md \
+            --output reports/agent_loop/pr_body.md \
+            --output reports/agent_loop/auto_ship_prepare.md \
+            --output reports/agent_loop/auto_ship_plan.md \
+            --out reports/agent_loop/manifest.json
+          python3 scripts/agent_loop.py privacy-audit-output \
+            --path reports/agent_loop \
+            --out reports/agent_loop/privacy_audit.md
+          rm -rf .agent_loop_tmp
+          exit 0
+
+      - name: Step summary
+        if: always()
+        run: |
+          cat reports/agent_loop/dashboard.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: agent-loop-reports
+          path: reports/agent_loop/
+          if-no-files-found: error

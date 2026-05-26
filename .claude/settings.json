@@ -38,6 +38,10 @@
           {
             "type": "command",
             "command": "bash scripts/claude-hooks/stop-ship.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash scripts/claude-hooks/stop-agent-loop.sh"
           }
         ]
       }
