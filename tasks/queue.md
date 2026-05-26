@@ -15,10 +15,11 @@ PR이 생기면 각 task에 링크를 추가한다. 예제 task는 `tasks/exampl
 | 2 | `T-2026-0002` | `done` | Implementer -> Reviewer | merged in PR #1481. |
 | 3 | `T-2026-0003` | `review` | Implementer -> Reviewer | auto-ship Stage 5 Desktop main fast-forward sync 구현됨. |
 | 4 | `T-2026-0004` | `review` | Implementer -> Reviewer | HWP -> PDF -> PyMuPDF4LLM opt-in loader 구현됨. |
-| 5 | `T-2026-0006` | `review` | Implementer -> Reviewer | `ai_next_actions` human-readable HTML review surface 구현됨. |
-| 6 | `T-2026-0007` | `review` | Implementer -> Reviewer | failure distribution local HTML board 구현됨. |
-| 7 | `T-2026-0008` | `review` | Implementer -> Reviewer | chunking diagnostics local HTML board 구현됨. |
-| 8 | `T-2026-0009` | `review` | Implementer -> Reviewer | ADR decision map local HTML board 구현됨. |
+| 5 | `T-2026-0005` | `review` | Implementer -> Benchmark Auditor -> Reviewer | implementation validated; issue #1493 / branch `feat/issue-1493-rag-eval-first-adapter-hardening`. |
+| 6 | `T-2026-0006` | `review` | Implementer -> Reviewer | `ai_next_actions` human-readable HTML review surface 구현됨. |
+| 7 | `T-2026-0007` | `review` | Implementer -> Reviewer | failure distribution local HTML board 구현됨. |
+| 8 | `T-2026-0008` | `review` | Implementer -> Reviewer | chunking diagnostics local HTML board 구현됨. |
+| 9 | `T-2026-0009` | `review` | Implementer -> Reviewer | ADR decision map local HTML board 구현됨. |
 
 ## Examples
 
@@ -397,6 +398,81 @@ python3 -m py_compile ingestion.py scripts/build_index.py scripts/compare_hwp_ex
 - Next safe command: python3 -m pytest tests/test_ingestion_kordoc_regression.py tests/test_mixed_format_ingestion_regression.py tests/test_hwp_pdf_pymupdf4llm_loader.py tests/test_provenance_banner.py tests/test_run_eval_by_format_text_source.py -q
 - Reviewer focus: fail-closed parser policy, private path exclusion from answer citations, and page-citation-ready telemetry.
 ```
+
+## T-2026-0005 — Eval-first RAG adapter hardening
+
+- ID: T-2026-0005
+- Title: Eval-first RAG adapter hardening
+- Status: review
+- Owner role: Implementer -> Benchmark Auditor -> Reviewer
+- Created: 2026-05-26
+- Last updated: 2026-05-26
+
+### Goal
+
+Implement the eval-first RAG hardening plan without creating a new `src/rag/*`
+tree or changing the `naive_baseline` / answer schema / ADR 0005 boundary.
+
+### Context
+
+- Surface: public fixture smoke eval + eval governance.
+- Relevant docs: [ADR 0001](../docs/adr/0001-preserve-naive-baseline.md),
+  [ADR 0003](../docs/adr/0003-structured-answer-citation-contract.md),
+  [ADR 0005](../docs/adr/0005-eval-split-public-synthetic-private-local.md),
+  [ADR 0069](../docs/adr/0069-retrieval-aggregate-and-citation-coverage-surface.md),
+  [ADR 0074](../docs/adr/0074-rfp-rag-stage-separation.md).
+- Primary risk: mixing measurement additions with default behavior changes.
+
+### Scope
+
+- Add LLM-free context precision/recall retrieval metrics.
+- Extend run/index version manifest fields additively.
+- Add `EmbeddingProvider` Protocol/factory around existing `rag_embedding.py`.
+- Add opt-in deterministic contextual chunking while preserving fixed/section defaults.
+- Keep Qdrant/pgvector and multimodal expansion as follow-up-only surfaces.
+
+### Non-Goals
+
+- Do not change `naive_baseline`.
+- Do not bump answer `schema_version`.
+- Do not make HyDE, Self-RAG, Reflexion, CRAG, ColPali, or GPT-VL default.
+- Do not send private data to external providers.
+
+### Acceptance Criteria
+
+- [x] `reports/eval_summary.json` can expose context precision/recall aggregates.
+- [x] `run_manifest` carries index/chunking/embedding version fields.
+- [x] Embedding provider swapping is tested with fake/local providers.
+- [x] Contextual chunking is opt-in and regression-tested.
+- [x] Focused tests and branch convention checks pass.
+
+### Validation Commands
+
+```bash
+python3 -m pytest tests/test_chunk_metrics_regression.py tests/test_chunk_aggregate_regression.py tests/test_run_manifest_versioning_regression.py -q
+python3 -m pytest tests/test_embedding_provider_protocol.py tests/test_contextual_chunking_regression.py -q
+python3 -m pytest tests/test_vector_store_protocol.py tests/test_vector_store_qdrant.py -q
+make check-branch
+```
+
+### Evidence Required
+
+- Focused pytest output.
+- Smoke/eval summary diff explanation.
+- Review note confirming baseline and answer contract unchanged.
+
+### Failure Conditions
+
+- Stop if the implementation requires changing answer dict shape.
+- Stop if external provider code would run by default.
+- Stop if public fixture smoke is used as a real-world quality claim.
+
+### Related Plan / Issue / PR Links
+
+- Plan: [`docs/plans/T-2026-0005-rag-eval-first-adapter-hardening.md`](../docs/plans/T-2026-0005-rag-eval-first-adapter-hardening.md)
+- Issue: [#1493](https://github.com/hskim-solv/BidMate-DocAgent/issues/1493)
+- PR: [#1499](https://github.com/hskim-solv/BidMate-DocAgent/pull/1499)
+- ADR: ADR 0001, ADR 0003, ADR 0005, ADR 0069, ADR 0074
 
 ## T-2026-0006 — Human-readable AI next actions review surface
 

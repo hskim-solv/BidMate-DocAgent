@@ -87,8 +87,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--chunking_strategy",
         default="fixed",
-        choices=["auto", "section", "fixed"],
-        help="Chunking strategy. Default fixed is the naive baseline reference.",
+        choices=["auto", "section", "fixed", "contextual"],
+        help=(
+            "Chunking strategy. Default fixed is the naive baseline reference; "
+            "contextual is opt-in and prepends deterministic chunk context."
+        ),
     )
     parser.add_argument(
         "--chunk_max_chars",

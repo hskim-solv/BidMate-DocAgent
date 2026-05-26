@@ -12,6 +12,8 @@ from eval.scorers.chunk_metrics import (
     chunk_mrr_at_k,
     chunk_ndcg_at_k,
     chunk_recall_at_k,
+    context_precision_at_k,
+    context_recall_at_k,
     derive_gold_evidence,
     derive_gold_chunk_ids,
 )
@@ -23,6 +25,8 @@ __all__ = [
     "chunk_mrr_at_k",
     "chunk_ndcg_at_k",
     "chunk_recall_at_k",
+    "context_precision_at_k",
+    "context_recall_at_k",
     "compute_chunk_health",
     "derive_gold_evidence",
     "derive_gold_chunk_ids",

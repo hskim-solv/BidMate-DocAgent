@@ -1,4 +1,9 @@
-"""Chunk-level retrieval metrics: recall@k, MRR@k, nDCG@k."""
+"""Chunk-level retrieval metrics: recall@k, MRR@k, nDCG@k.
+
+The ``context_*`` helpers are deterministic, gold-chunk based retrieval
+metrics. They are intentionally separate from the opt-in RAGAS judge metrics
+that live under ``judge_ragas``.
+"""
 from __future__ import annotations
 
 import math
@@ -186,6 +191,23 @@ def chunk_recall_at_k(retrieved: list[str], gold: list[str], k: int) -> float | 
     head = retrieved[:k]
     hits = sum(1 for chunk_id in gold if chunk_id in head)
     return hits / len(gold)
+
+
+def context_precision_at_k(retrieved: list[str], gold: list[str], k: int) -> float | None:
+    if not gold:
+        return None
+    if not retrieved or k <= 0:
+        return 0.0
+    gold_set = set(gold)
+    head = _unique(retrieved[:k])
+    if not head:
+        return 0.0
+    hits = sum(1 for chunk_id in head if chunk_id in gold_set)
+    return hits / len(head)
+
+
+def context_recall_at_k(retrieved: list[str], gold: list[str], k: int) -> float | None:
+    return chunk_recall_at_k(retrieved, gold, k)
 
 
 def chunk_mrr_at_k(retrieved: list[str], gold: list[str], k: int) -> float | None:

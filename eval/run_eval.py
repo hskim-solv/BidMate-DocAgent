@@ -98,14 +98,27 @@ def compute_run_manifest(
     except (FileNotFoundError, OSError):
         config_sha = "unknown"
     embedding_meta = (index or {}).get("embedding") or {}
+    build_meta = (index or {}).get("build") or {}
+    chunking_meta = build_meta.get("chunking") if isinstance(build_meta, dict) else {}
+    chunking_meta = chunking_meta if isinstance(chunking_meta, dict) else {}
+    chunking_strategy = chunking_meta.get("requested_strategy")
+    chunker_version = chunking_meta.get("chunker_version")
+    if not chunker_version and chunking_strategy:
+        chunker_version = f"chunker.{chunking_strategy}.v1"
     return {
         "git_commit": commit,
         "git_dirty": dirty,
         "config_path": str(config_path),
         "config_sha256": config_sha,
         "generated_at": datetime.datetime.utcnow().isoformat() + "Z",
+        "index_schema_version": (index or {}).get("schema_version"),
         "embedding_backend": embedding_meta.get("backend"),
         "embedding_model_id": embedding_meta.get("model"),
+        "embedding_dim": embedding_meta.get("dimension"),
+        "chunking_strategy": chunking_strategy,
+        "chunker_version": chunker_version,
+        "chunk_max_chars": chunking_meta.get("max_chars"),
+        "chunk_overlap_sentences": chunking_meta.get("overlap_sentences"),
     }
 
 
@@ -173,6 +186,8 @@ def normalize_run_config(run: dict[str, Any]) -> dict[str, Any]:
         # Issue #988 / ADR 0057 — bm25_backend metadata for measurement
         # surface. Default `okapi` keeps existing summaries byte-equal.
         "bm25_backend": str(config.get("bm25_backend", "okapi")),
+        "query_expansion": str(config.get("query_expansion", "identity")),
+        "reranker_backend": os.environ.get("BIDMATE_RERANK_BACKEND", "stub"),
         # P0-a (#1282) — eval-only oracle-evidence ceiling probe. Read from
         # the raw run dict, NOT resolve_pipeline_config, so it never enters
         # PIPELINE_CONFIG_KEYS / product code (ADR 0001 byte-identity). Empty
@@ -563,6 +578,8 @@ def metric_block(case_results: list[dict[str, Any]]) -> dict[str, Any]:
     # None-skip convention of the answer-quality metrics above.
     retrieval_metric_keys = [
         *(f"chunk_recall_at_{k}" for k in CHUNK_METRIC_KS),
+        *(f"context_precision_at_{k}" for k in CHUNK_METRIC_KS),
+        *(f"context_recall_at_{k}" for k in CHUNK_METRIC_KS),
         "chunk_mrr_at_5",
         "chunk_mrr",
         "chunk_ndcg_at_5",
@@ -631,6 +648,23 @@ def metric_block(case_results: list[dict[str, Any]]) -> dict[str, Any]:
         for result in case_results
         for error in result.get("claim_citation_errors") or []
         if isinstance(error, dict) and error.get("code")
+    )
+    synthesis_tokens_in = [
+        int(r["tokens_in"]) for r in case_results if isinstance(r.get("tokens_in"), (int, float))
+    ]
+    synthesis_tokens_out = [
+        int(r["tokens_out"]) for r in case_results if isinstance(r.get("tokens_out"), (int, float))
+    ]
+    synthesis_costs = [
+        float(r["cost_estimate_usd"])
+        for r in case_results
+        if isinstance(r.get("cost_estimate_usd"), (int, float))
+    ]
+    cases_with_token_usage = sum(
+        1
+        for r in case_results
+        if isinstance(r.get("tokens_in"), (int, float))
+        or isinstance(r.get("tokens_out"), (int, float))
     )
 
     warm_results = [r for r in case_results if not bool(r.get("cold_start"))]
@@ -734,6 +768,18 @@ def metric_block(case_results: list[dict[str, Any]]) -> dict[str, Any]:
         "citation_grounding_error_counts": dict(sorted(citation_grounding_error_counts.items())),
         "citation_coverage_reason_counts": dict(sorted(citation_coverage_reason_counts.items())),
         "claim_citation_error_counts": dict(sorted(claim_citation_error_counts.items())),
+        "synthesis_tokens": {
+            "tokens_in_total": sum(synthesis_tokens_in) if synthesis_tokens_in else None,
+            "tokens_out_total": sum(synthesis_tokens_out) if synthesis_tokens_out else None,
+            "cases_with_token_usage": cases_with_token_usage,
+        },
+        "synthesis_cost": {
+            "estimated_cost_usd_total": (
+                round(sum(synthesis_costs), 6) if synthesis_costs else None
+            ),
+            "estimated_cost_usd_mean": rate(synthesis_costs),
+            "cases_with_cost": len(synthesis_costs),
+        },
     }
     if comparison_recall_scores:
         block["comparison_target_recall"] = rate(comparison_recall_scores)
@@ -862,6 +908,11 @@ def summarize_run(
         # `full_bm25s` row's bm25s usage is visible alongside the parity
         # measurements in eval_summary.json.
         "bm25_backend": str(run_config.get("bm25_backend", "okapi")),
+        "query_expansion": str(run_config.get("query_expansion", "identity")),
+        "reranker_backend": str(
+            run_config.get("reranker_backend")
+            or os.environ.get("BIDMATE_RERANK_BACKEND", "stub")
+        ),
         **metric_block(case_results),
         "by_query_type": {},
         "by_slice": {},
@@ -1511,6 +1562,12 @@ def main() -> int:
         "chunk_recall_at_5": primary_summary.get("chunk_recall_at_5"),
         "chunk_recall_at_10": primary_summary.get("chunk_recall_at_10"),
         "chunk_recall_at_20": primary_summary.get("chunk_recall_at_20"),
+        "context_precision_at_5": primary_summary.get("context_precision_at_5"),
+        "context_precision_at_10": primary_summary.get("context_precision_at_10"),
+        "context_precision_at_20": primary_summary.get("context_precision_at_20"),
+        "context_recall_at_5": primary_summary.get("context_recall_at_5"),
+        "context_recall_at_10": primary_summary.get("context_recall_at_10"),
+        "context_recall_at_20": primary_summary.get("context_recall_at_20"),
         "chunk_mrr_at_5": primary_summary.get("chunk_mrr_at_5"),
         "chunk_mrr": primary_summary.get("chunk_mrr"),
         "chunk_ndcg_at_5": primary_summary.get("chunk_ndcg_at_5"),
@@ -1527,6 +1584,8 @@ def main() -> int:
         "ci": primary_summary.get("ci", {}),
         "latency": primary_summary["latency"],
         "stage_latency": primary_summary.get("stage_latency", {}),
+        "synthesis_tokens": primary_summary.get("synthesis_tokens", {}),
+        "synthesis_cost": primary_summary.get("synthesis_cost", {}),
         "latency_by_retry_count": primary_summary.get("latency_by_retry_count", {}),
         "cold_start_samples": primary_summary.get("cold_start_samples", {}),
         "retry": primary_summary["retry"],

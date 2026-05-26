@@ -35,7 +35,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import hashlib
 import os
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
 
 import numpy as np
 
@@ -95,6 +95,80 @@ class EmbeddingResult:
     vectors: np.ndarray
     backend: str
     model: str
+
+
+@runtime_checkable
+class EmbeddingProvider(Protocol):
+    """Provider interface for embedding documents and queries.
+
+    The default implementation below delegates to ``embed_texts`` so existing
+    CLI/build behavior stays unchanged. Future providers should implement this
+    Protocol and keep network/API logic behind lazy imports plus ADR 0061 data
+    boundary checks.
+    """
+
+    def embed_documents(self, texts: list[str]) -> EmbeddingResult: ...
+
+    def embed_query(self, query: str) -> EmbeddingResult: ...
+
+
+class EmbedTextsProvider:
+    """EmbeddingProvider wrapper around the existing ``embed_texts`` function."""
+
+    def __init__(
+        self,
+        *,
+        model_name: str = DEFAULT_EMBEDDING_MODEL,
+        backend: str = "auto",
+        local_only: bool = False,
+        expected_dimension: int | None = None,
+    ) -> None:
+        self.model_name = model_name
+        self.backend = backend
+        self.local_only = local_only
+        self.expected_dimension = expected_dimension
+
+    def embed_documents(self, texts: list[str]) -> EmbeddingResult:
+        result = embed_texts(
+            texts,
+            model_name=self.model_name,
+            backend=self.backend,
+            local_only=self.local_only,
+        )
+        return ensure_embedding_dimension(result, self.expected_dimension)
+
+    def embed_query(self, query: str) -> EmbeddingResult:
+        return self.embed_documents([query])
+
+
+def ensure_embedding_dimension(
+    result: EmbeddingResult,
+    expected_dimension: int | None,
+) -> EmbeddingResult:
+    if expected_dimension is None:
+        return result
+    actual = int(result.vectors.shape[1]) if result.vectors.ndim == 2 else None
+    if actual != expected_dimension:
+        raise ValueError(
+            f"Embedding dimension mismatch for {result.backend}/{result.model}: "
+            f"expected {expected_dimension}, got {actual}."
+        )
+    return result
+
+
+def default_embedding_provider(
+    *,
+    model_name: str = DEFAULT_EMBEDDING_MODEL,
+    backend: str = "auto",
+    local_only: bool = False,
+    expected_dimension: int | None = None,
+) -> EmbeddingProvider:
+    return EmbedTextsProvider(
+        model_name=model_name,
+        backend=backend,
+        local_only=local_only,
+        expected_dimension=expected_dimension,
+    )
 
 
 def embed_texts(
