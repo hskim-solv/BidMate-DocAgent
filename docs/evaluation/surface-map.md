@@ -5,6 +5,21 @@
 public fixture smoke는 wiring과 regression을 확인하고, 실제 성능(performance)
 주장은 private/internal eval aggregate에서만 후보가 된다.
 
+## Environment Axis
+
+Evaluation surface and execution environment are separate axes. The claim surface
+still follows ADR 0005: real-world performance evidence requires private
+real-eval aggregate. The execution environment follows
+[ADR 0079](../adr/0079-agent-gated-offline-online-rfp-eval-loop.md):
+
+| Environment | Allowed | Claim rule |
+|---|---|---|
+| Offline / closed network | 외부 API 불가, 외부 모델 다운로드 가능, GPU 가능, local LLM judge 가능 | private real-eval aggregate required for performance evidence |
+| Online / non-closed network | 외부 judge/model/API 가능, private RFP raw text egress 가능 | private real-eval aggregate required, plus provider/model/payload provenance |
+
+The operating policy for metric-suite adoption, loop termination, and conservative
+agent gate behavior is [Agent-Gated RFP Evaluation Loop](./agent-gated-rfp-eval-loop.md).
+
 ## Surface Summary
 
 | Surface | 데이터 | 목적 | 대표 명령 | Commit boundary | 허용 claim |
@@ -100,4 +115,5 @@ Before accepting an eval/benchmark claim, verify:
 - [Eval Dataset Spec](../eval/eval-dataset-spec.md)
 - [Synthetic Naive RAG Benchmark v1 Design](./synthetic_benchmark_v1_design.md)
 - [Private Real-Eval Workflow](./private_real_eval_workflow.md)
+- [Agent-Gated RFP Evaluation Loop](./agent-gated-rfp-eval-loop.md)
 - [Pre-Improvement Readiness Checklist](./pre_improvement_readiness_checklist.md)
