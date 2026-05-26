@@ -111,6 +111,11 @@ Stop hook 은 모든 Claude 턴마다 발화한다. 지배적 케이스는 no-op
    `data/files/`, `data/data_list.{csv,xlsx}`, `eval/*.local.yaml`,
    `reports/real*/`. pre-commit hook (`.githooks/pre-commit`)이
    2차 게이트다; 이 필터는 그것들을 제안하는 것을 막을 뿐이다.
+   제외된 untracked private-path 파일은
+   [`_ship_private_preserve.py`](../../scripts/claude-hooks/_ship_private_preserve.py)
+   가 `SHIP_PRIVATE_PRESERVE_ROOT` 로 지정한 canonical local checkout 의
+   같은 상대 경로로 이동한다. 이 변수가 없으면 이동하지 않고 skip한다.
+   tracked 수정 파일은 삭제 위험 때문에 이동하지 않는다.
 2. [`_ship_lock_check.py`](../../scripts/claude-hooks/_ship_lock_check.py)
    를 통한 **multi-agent lock 검사**.
    cross-owner 편집은 `CROSS_OWNER=ack` 가 아니면 abort 한다.
