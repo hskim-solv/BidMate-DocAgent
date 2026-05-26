@@ -13,7 +13,10 @@ ROOT_DIR = Path(__file__).resolve().parents[2]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from eval.naive_rag.build_benchmark_index import load_corpus_chunks  # noqa: E402
+from eval.naive_rag.build_benchmark_index import (  # noqa: E402
+    PROHIBITED_CORPUS_FIELDS,
+    load_corpus_chunks,
+)
 from eval.naive_rag.metrics import (  # noqa: E402
     BENCHMARK_CITATION_PAGE_METRIC_KEYS,
     BENCHMARK_LATENCY_METRIC_KEYS,
@@ -51,6 +54,15 @@ REQUIRED_OUTPUTS = (
 GOLD_DERIVED_FIELDS = frozenset(
     {"expected_terms", "required_terms", "derived_from_expected_terms"}
 )
+EXPECTED_INDEX_LEAKAGE_GUARD = "query_and_gold_label_files_not_read"
+
+
+def _chunk_for_provenance_comparison(chunk: dict[str, Any]) -> dict[str, Any]:
+    """Normalize volatile index-only fields before corpus/index comparison."""
+    normalized = dict(chunk)
+    normalized.pop("embedding", None)
+    normalized.pop("embedding_idx", None)
+    return normalized
 
 
 def load_benchmark_config(path: Path) -> dict[str, Any]:
@@ -101,6 +113,65 @@ def assert_explicit_gold_evidence(
                 raise ValueError(f"{qid}: unanswerable question must not have gold evidence")
             if expected_ids:
                 raise ValueError(f"{qid}: unanswerable question must have empty expected_evidence_ids")
+
+
+def assert_benchmark_index_provenance(
+    *,
+    index: dict[str, Any],
+    index_dir: Path,
+    corpus_path: Path,
+    corpus_chunks: list[dict[str, Any]],
+) -> None:
+    build = index.get("build") if isinstance(index.get("build"), dict) else {}
+    errors: list[str] = []
+    expected_corpus_path = _relative(corpus_path)
+
+    if build.get("input_kind") != "corpus_chunks_jsonl":
+        errors.append("index.build.input_kind must be corpus_chunks_jsonl")
+    if build.get("source_corpus_path") != expected_corpus_path:
+        errors.append(
+            "index.build.source_corpus_path must match benchmark config corpus_path "
+            f"({expected_corpus_path})"
+        )
+    if build.get("leakage_guard") != EXPECTED_INDEX_LEAKAGE_GUARD:
+        errors.append(f"index.build.leakage_guard must be {EXPECTED_INDEX_LEAKAGE_GUARD}")
+
+    try:
+        num_chunks = int(build.get("num_chunks"))
+    except (TypeError, ValueError):
+        num_chunks = -1
+    if num_chunks != len(corpus_chunks):
+        errors.append(
+            "index.build.num_chunks must match corpus_path chunk count "
+            f"({len(corpus_chunks)})"
+        )
+
+    index_chunks = index.get("chunks") if isinstance(index.get("chunks"), list) else []
+    contaminated_rows = [
+        idx
+        for idx, chunk in enumerate(index_chunks, start=1)
+        if isinstance(chunk, dict) and PROHIBITED_CORPUS_FIELDS & set(chunk)
+    ]
+    if contaminated_rows:
+        errors.append("index chunks must not contain query/gold label fields")
+
+    comparable_index_chunks = [
+        _chunk_for_provenance_comparison(chunk)
+        for chunk in index_chunks
+        if isinstance(chunk, dict)
+    ]
+    comparable_corpus_chunks = [
+        _chunk_for_provenance_comparison(chunk)
+        for chunk in corpus_chunks
+    ]
+    if comparable_index_chunks != comparable_corpus_chunks:
+        errors.append("index chunks must match corpus_path chunk ids, order, metadata, and text")
+
+    if errors:
+        raise ValueError(
+            f"Benchmark index provenance mismatch in {_relative(index_dir)}:\n- "
+            + "\n- ".join(errors)
+        )
 
 
 def _pages_from_span(value: Any) -> set[int]:
@@ -421,6 +492,12 @@ def run_from_config(
     corpus_chunks = load_corpus_chunks(corpus_path)
     index_load_start = time.perf_counter()
     index = load_index(index_dir)
+    assert_benchmark_index_provenance(
+        index=index,
+        index_dir=index_dir,
+        corpus_path=corpus_path,
+        corpus_chunks=corpus_chunks,
+    )
     index_load_ms = (time.perf_counter() - index_load_start) * 1000
     pipeline = config["pipeline"]
 

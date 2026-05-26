@@ -37,6 +37,21 @@ MIN_UNANSWERABLE = 15
 MIN_DISTRACTOR_SENSITIVE = 8
 MIN_CHUNK_TOP_K_RATIO = 3.0
 SATURATION_WARNING_RATIO = 5.0
+EXPECTED_DATASET_ID = "synthetic_naive_rag_benchmark_v1"
+EXPECTED_PRIVACY = "public_synthetic"
+SMOKE_FIXTURE_PATHS = {
+    "index_dir": ("data/index",),
+    "index_build.output_dir": ("data/index",),
+    "questions_path": ("data/eval/rag_questions.jsonl",),
+    "gold_evidence_path": ("data/eval/gold_evidence.jsonl",),
+    "corpus_dir": ("eval/fixtures/smoke_rfp/raw",),
+    "corpus_path": ("eval/fixtures/smoke_rfp/raw",),
+    "index_build.input_path": (
+        "data/eval/rag_questions.jsonl",
+        "data/eval/gold_evidence.jsonl",
+        "eval/fixtures/smoke_rfp/raw",
+    ),
+}
 
 QUESTION_TYPE_MINIMUMS = {
     "exact_fact": 10,
@@ -59,11 +74,26 @@ def repo_path(value: str | Path) -> Path:
     return path if path.is_absolute() else ROOT_DIR / path
 
 
+def normalized_repo_path(value: str | Path) -> Path:
+    return repo_path(value).resolve(strict=False)
+
+
 def display_path(value: Path) -> str:
+    value = value.resolve(strict=False)
     try:
-        return str(value.relative_to(ROOT_DIR))
+        return str(value.relative_to(ROOT_DIR.resolve(strict=False)))
     except ValueError:
         return str(value)
+
+
+def is_relative_to(path: Path, parent: Path) -> bool:
+    path = path.resolve(strict=False)
+    parent = parent.resolve(strict=False)
+    try:
+        path.relative_to(parent)
+    except ValueError:
+        return False
+    return True
 
 
 def compact_text(value: str) -> str:
@@ -185,7 +215,7 @@ def has_korean_and_latin(text: str) -> bool:
     return bool(re.search(r"[가-힣]", text)) and bool(re.search(r"[A-Za-z]", text))
 
 
-def command_corpus_args(command: str) -> list[str]:
+def command_option_values(command: str, option: str) -> list[str]:
     try:
         tokens = shlex.split(command)
     except ValueError:
@@ -195,35 +225,203 @@ def command_corpus_args(command: str) -> list[str]:
     idx = 0
     while idx < len(tokens):
         token = tokens[idx]
-        if token == "--corpus":
+        if token == option:
             if idx + 1 < len(tokens):
                 values.append(tokens[idx + 1])
                 idx += 2
                 continue
             values.append("")
-        elif token.startswith("--corpus="):
+        elif token.startswith(f"{option}="):
             values.append(token.split("=", 1)[1])
         idx += 1
     return values
+
+
+def command_corpus_args(command: str) -> list[str]:
+    return command_option_values(command, "--corpus")
+
+
+def command_output_args(command: str) -> list[str]:
+    return command_option_values(command, "--output")
+
+
+def benchmark_metadata_report(config: dict[str, Any]) -> dict[str, Any]:
+    metadata = config.get("dataset_metadata") if isinstance(config.get("dataset_metadata"), dict) else {}
+    errors: list[str] = []
+    dataset_id = str(metadata.get("dataset_id") or "").strip()
+    privacy = str(metadata.get("privacy") or "").strip()
+    intended_use = str(metadata.get("intended_use") or "").strip()
+    not_for_claims = str(metadata.get("not_for_claims") or "").strip()
+
+    if dataset_id != EXPECTED_DATASET_ID:
+        errors.append(f"dataset_metadata.dataset_id must be {EXPECTED_DATASET_ID}")
+    if privacy != EXPECTED_PRIVACY:
+        errors.append(f"dataset_metadata.privacy must be {EXPECTED_PRIVACY}")
+    if not intended_use:
+        errors.append("dataset_metadata.intended_use must describe public synthetic benchmark use")
+    if not not_for_claims:
+        errors.append("dataset_metadata.not_for_claims must describe disallowed real-world claims")
+    elif "private real-eval" not in not_for_claims.lower():
+        errors.append("dataset_metadata.not_for_claims must name private real-eval as required evidence")
+
+    numeric_requirements = {
+        "minimum_questions": MIN_TOTAL_QUESTIONS,
+        "minimum_answerable": MIN_ANSWERABLE,
+        "minimum_unanswerable": MIN_UNANSWERABLE,
+        "minimum_chunk_to_top_k_ratio": MIN_CHUNK_TOP_K_RATIO,
+    }
+    numeric_values: dict[str, float | None] = {}
+    for key, minimum in numeric_requirements.items():
+        raw_value = metadata.get(key)
+        try:
+            value = float(raw_value)
+        except (TypeError, ValueError):
+            value = None
+        numeric_values[key] = value
+        if value is None or value < float(minimum):
+            errors.append(f"dataset_metadata.{key} must be >= {minimum}")
+
+    warning_raw = metadata.get("saturation_warning_chunk_to_top_k_ratio")
+    try:
+        warning_ratio = float(warning_raw)
+    except (TypeError, ValueError):
+        warning_ratio = None
+    numeric_values["saturation_warning_chunk_to_top_k_ratio"] = warning_ratio
+    minimum_ratio = numeric_values["minimum_chunk_to_top_k_ratio"]
+    if warning_ratio is None or (
+        minimum_ratio is not None and warning_ratio < minimum_ratio
+    ):
+        errors.append(
+            "dataset_metadata.saturation_warning_chunk_to_top_k_ratio "
+            "must be >= minimum_chunk_to_top_k_ratio"
+        )
+
+    return {
+        "status": "pass" if not errors else "fail",
+        "surface": "public_synthetic_benchmark" if privacy == EXPECTED_PRIVACY else "invalid",
+        "dataset_id": dataset_id,
+        "privacy": privacy,
+        "intended_use_present": bool(intended_use),
+        "not_for_claims_present": bool(not_for_claims),
+        "not_for_claims_mentions_private_real_eval": "private real-eval" in not_for_claims.lower(),
+        "minimums": numeric_values,
+        "errors": errors,
+    }
+
+
+def smoke_fixture_path_report(config: dict[str, Any]) -> dict[str, Any]:
+    build_config = config.get("index_build") if isinstance(config.get("index_build"), dict) else {}
+    raw_paths = {
+        "corpus_dir": str(config.get("corpus_dir") or "").strip(),
+        "corpus_path": str(config.get("corpus_path") or "").strip(),
+        "index_dir": str(config.get("index_dir") or "").strip(),
+        "questions_path": str(config.get("questions_path") or "").strip(),
+        "gold_evidence_path": str(config.get("gold_evidence_path") or "").strip(),
+        "index_build.input_path": str(build_config.get("input_path") or "").strip(),
+        "index_build.output_dir": str(build_config.get("output_dir") or "").strip(),
+    }
+    blocked_paths = {
+        field: tuple(normalized_repo_path(path) for path in blocked)
+        for field, blocked in SMOKE_FIXTURE_PATHS.items()
+    }
+    all_blocked_paths = sorted(
+        {
+            path
+            for blocked in SMOKE_FIXTURE_PATHS.values()
+            for path in blocked
+        }
+    )
+    all_blocked_normalized = tuple(normalized_repo_path(path) for path in all_blocked_paths)
+
+    matches: list[dict[str, str]] = []
+    seen_matches: set[tuple[str, str, str]] = set()
+
+    def add_match(field: str, configured_path: str, blocked_smoke_path: str) -> None:
+        key = (field, configured_path, blocked_smoke_path)
+        if key in seen_matches:
+            return
+        seen_matches.add(key)
+        matches.append(
+            {
+                "field": field,
+                "configured_path": configured_path,
+                "blocked_smoke_path": blocked_smoke_path,
+            }
+        )
+
+    for field, raw_path in raw_paths.items():
+        if not raw_path:
+            continue
+        candidate = normalized_repo_path(raw_path)
+        for blocked in blocked_paths.get(field, ()):
+            if candidate == blocked or is_relative_to(candidate, blocked):
+                add_match(
+                    field,
+                    display_path(candidate),
+                    display_path(blocked),
+                )
+
+    command = str(build_config.get("command") or "").strip()
+    if command:
+        try:
+            command_tokens = shlex.split(command)
+        except ValueError:
+            command_tokens = command.split()
+        for token in command_tokens:
+            values = [token]
+            if "=" in token:
+                values.append(token.split("=", 1)[1])
+            for value in values:
+                candidate = normalized_repo_path(value)
+                for raw_blocked, blocked in zip(all_blocked_paths, all_blocked_normalized, strict=True):
+                    if (
+                        value == raw_blocked
+                        or raw_blocked in token
+                        or candidate == blocked
+                        or is_relative_to(candidate, blocked)
+                    ):
+                        add_match(
+                            "index_build.command",
+                            value,
+                            display_path(blocked),
+                        )
+                        break
+
+    errors = []
+    if matches:
+        fields = ", ".join(sorted({match["field"] for match in matches}))
+        errors.append(f"benchmark paths must not point at public fixture smoke assets: {fields}")
+
+    return {
+        "status": "pass" if not errors else "fail",
+        "surface": "public_synthetic_benchmark",
+        "smoke_fixture_path_matches": matches,
+        "errors": errors,
+    }
 
 
 def index_build_boundary_report(
     config: dict[str, Any],
     *,
     corpus_path: Path,
+    index_dir: Path,
     questions_path: Path,
     gold_path: Path,
     corpus_chunks: list[dict[str, Any]],
 ) -> dict[str, Any]:
     build_config = config.get("index_build") if isinstance(config.get("index_build"), dict) else {}
     raw_input_path = str(build_config.get("input_path") or "").strip()
-    input_path = repo_path(raw_input_path) if raw_input_path else None
+    input_path = normalized_repo_path(raw_input_path) if raw_input_path else None
+    raw_output_dir = str(build_config.get("output_dir") or "").strip()
+    output_dir = normalized_repo_path(raw_output_dir) if raw_output_dir else None
     command = str(build_config.get("command") or "").strip()
     raw_corpus_path = str(config.get("corpus_path") or "").strip()
     raw_questions_path = str(config.get("questions_path") or "").strip()
     raw_gold_path = str(config.get("gold_evidence_path") or "").strip()
     corpus_args = command_corpus_args(command)
-    normalized_corpus_args = [repo_path(value) for value in corpus_args]
+    normalized_corpus_args = [normalized_repo_path(value) for value in corpus_args]
+    output_args = command_output_args(command)
+    normalized_output_args = [normalized_repo_path(value) for value in output_args]
 
     prohibited_rows = [
         {
@@ -245,18 +443,32 @@ def index_build_boundary_report(
         if token
     }
     command_refs = sorted(token for token in question_gold_tokens if token in command)
-    command_uses_corpus = len(normalized_corpus_args) == 1 and normalized_corpus_args[0] == corpus_path
-    input_matches_corpus = input_path == corpus_path if input_path is not None else False
+    normalized_corpus_path = corpus_path.resolve(strict=False)
+    normalized_index_dir = index_dir.resolve(strict=False)
+    command_uses_corpus = (
+        len(normalized_corpus_args) == 1 and normalized_corpus_args[0] == normalized_corpus_path
+    )
+    command_writes_index_dir = (
+        len(normalized_output_args) == 1 and normalized_output_args[0] == normalized_index_dir
+    )
+    input_matches_corpus = input_path == normalized_corpus_path if input_path is not None else False
+    output_matches_index_dir = output_dir == normalized_index_dir if output_dir is not None else False
 
     errors: list[str] = []
     if not raw_input_path:
         errors.append("index_build.input_path must be set to corpus_path")
     elif not input_matches_corpus:
         errors.append("index_build.input_path must match corpus_path")
+    if not raw_output_dir:
+        errors.append("index_build.output_dir must be set to index_dir")
+    elif not output_matches_index_dir:
+        errors.append("index_build.output_dir must match index_dir")
     if str(build_config.get("input_kind") or "") != "corpus_chunks_jsonl":
         errors.append("index_build.input_kind must be corpus_chunks_jsonl")
     if not command_uses_corpus:
         errors.append("index_build.command must pass exactly one --corpus argument matching corpus_path")
+    if not command_writes_index_dir:
+        errors.append("index_build.command must pass exactly one --output argument matching index_dir")
     if command_refs:
         errors.append("index_build.command must not reference questions_path or gold_evidence_path")
     if prohibited_rows:
@@ -268,9 +480,14 @@ def index_build_boundary_report(
         "input_kind": str(build_config.get("input_kind") or ""),
         "allowed_input_path": display_path(corpus_path),
         "configured_input_path": display_path(input_path) if input_path is not None else "",
+        "allowed_output_dir": display_path(index_dir),
+        "configured_output_dir": display_path(output_dir) if output_dir is not None else "",
         "input_matches_corpus_path": input_matches_corpus,
+        "output_matches_index_dir": output_matches_index_dir,
         "command_uses_corpus_path": command_uses_corpus,
+        "command_writes_index_dir": command_writes_index_dir,
         "command_corpus_args": [display_path(path) for path in normalized_corpus_args],
+        "command_output_args": [display_path(path) for path in normalized_output_args],
         "command_references_question_or_gold_paths": bool(command_refs),
         "command_reference_matches": command_refs,
         "corpus_rows_with_query_or_gold_fields": len(prohibited_rows),
@@ -292,8 +509,14 @@ def validate_dataset(config_path: Path) -> dict[str, Any]:
     if config.get("not_ci_smoke") is not True:
         errors.append("config.not_ci_smoke must be true")
 
+    metadata_boundary = benchmark_metadata_report(config)
+    errors.extend(metadata_boundary["errors"])
+    path_boundary = smoke_fixture_path_report(config)
+    errors.extend(path_boundary["errors"])
+
     corpus_dir = repo_path(config.get("corpus_dir") or "")
     corpus_path = repo_path(config.get("corpus_path") or "")
+    index_dir = repo_path(config.get("index_dir") or "")
     questions_path = repo_path(config.get("questions_path") or "")
     gold_path = repo_path(config.get("gold_evidence_path") or "")
 
@@ -341,6 +564,7 @@ def validate_dataset(config_path: Path) -> dict[str, Any]:
     index_boundary = index_build_boundary_report(
         config,
         corpus_path=corpus_path,
+        index_dir=index_dir,
         questions_path=questions_path,
         gold_path=gold_path,
         corpus_chunks=corpus_chunks,
@@ -505,6 +729,8 @@ def validate_dataset(config_path: Path) -> dict[str, Any]:
             "chunking_strategy": chunking_strategy,
             "chunking": chunking_diagnostics,
         },
+        "benchmark_metadata": metadata_boundary,
+        "smoke_fixture_path_boundary": path_boundary,
         "index_build_boundary": index_boundary,
         "question_type_distribution": dict(sorted(type_counts.items())),
         "difficulty_distribution": dict(sorted(Counter(row.get("difficulty") for row in questions).items())),
