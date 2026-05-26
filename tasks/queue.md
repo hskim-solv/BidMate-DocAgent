@@ -25,6 +25,7 @@ PR이 생기면 각 task에 링크를 추가한다. 예제 task는 `tasks/exampl
 | 12 | `T-2026-0012` | `done` | Implementer -> Reviewer | merged in PR #1523. |
 | 13 | `T-2026-0013` | `done` | Maintainer -> Reviewer | merged in PR #1530. |
 | 14 | `T-2026-0014` | `done` | Maintainer -> Reviewer | merged in PR #1532. |
+| 15 | `T-2026-0015` | `review` | Maintainer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | v0-a metric inventory implemented; issue #1535. |
 
 ## Examples
 
@@ -118,6 +119,86 @@ make check-branch
 - Next action: N/A; merged in PR #1532.
 - Next safe command: N/A
 - Reviewer focus: compatibility, no hidden remote mutation change, no subagent execution side effect, no performance claim.
+```
+
+## T-2026-0015 — v0 metric suite inventory
+
+- ID: T-2026-0015
+- Title: v0 metric suite inventory
+- Status: review
+- Owner role: Maintainer -> Benchmark Auditor -> Privacy Auditor -> Reviewer
+- Created: 2026-05-27
+- Last updated: 2026-05-27
+
+### Goal
+
+Close the v0-a milestone from the agent-gated RFP eval loop by classifying
+which metric families already exist in committed private real-eval aggregate
+surfaces and which remain partial or missing.
+
+### Scope
+
+- Add `docs/evaluation/v0-metric-suite-inventory.md`.
+- Link the v0-a milestone from `docs/evaluation/agent-gated-rfp-eval-loop.md`.
+- Keep the inventory aggregate-only and explicitly non-claim-bearing.
+- Do not change eval runner, scorer, RAG runtime, or private data.
+
+### Non-Goals
+
+- Do not run private real-eval.
+- Do not implement new metrics.
+- Do not make a performance claim.
+
+### Acceptance Criteria
+
+- [x] Inventory covers all eight metric families in the agent-gated eval-loop policy.
+- [x] Each family is classified as present, partial, or missing with aggregate source paths.
+- [x] Privacy and no-performance-claim boundaries are explicit.
+- [x] Plan and queue reference issue #1535.
+
+### Validation Commands
+
+```bash
+python3 scripts/check_doc_links.py --check-all --paths docs/evaluation/agent-gated-rfp-eval-loop.md docs/evaluation/v0-metric-suite-inventory.md docs/plans/T-2026-0015-v0-metric-suite-inventory.md tasks/queue.md
+git diff --check
+make check-branch
+```
+
+### Evidence Required
+
+- Targeted doc link check output.
+- Diff whitespace output.
+- Branch/issue convention check.
+
+### Failure Conditions
+
+- Stop if wording implies RFP QA performance movement.
+- Stop if any raw private identifier, filename, local path, question, answer, or evidence text is introduced.
+
+### Related Plan / Issue / PR Links
+
+- Plan: [`docs/plans/T-2026-0015-v0-metric-suite-inventory.md`](../docs/plans/T-2026-0015-v0-metric-suite-inventory.md)
+- Issue: [#1535](https://github.com/hskim-solv/BidMate-DocAgent/issues/1535)
+- PR: TBD
+
+### Handoff Notes
+
+```markdown
+## Session Handoff — 2026-05-27 KST
+
+- Role: Maintainer
+- Lifecycle stage: review
+- Branch / worktree: docs/issue-1535-v0-metric-inventory / /Users/hskim/.codex/worktrees/43e3/BidMate-DocAgent
+- Issue / PR: #1535 / PR TBD
+- Task: T-2026-0015
+- Current status: inventory implemented; focused validation passed.
+- Files touched: docs/evaluation/v0-metric-suite-inventory.md, docs/evaluation/agent-gated-rfp-eval-loop.md, docs/plans/T-2026-0015-v0-metric-suite-inventory.md, tasks/queue.md
+- Decisions made: treat grounding, comparison coverage, abstention calibration, numeric/date/condition accuracy, and human/judge agreement as partial where current artifacts expose only a narrower metric, null field, labels, or tooling.
+- Eval surface: aggregate-only private real-eval inventory; no metric claim.
+- Commands run: python3 scripts/check_doc_links.py --check-all --paths docs/evaluation/agent-gated-rfp-eval-loop.md docs/evaluation/v0-metric-suite-inventory.md docs/plans/T-2026-0015-v0-metric-suite-inventory.md tasks/queue.md; git diff --check; make check-branch
+- Results: passed
+- Next safe command: git diff --stat
+- Reviewer focus: no raw private content, no performance claim, present/partial boundary.
 ```
 
 ## T-2026-0013 — Agent-gated offline/online RFP eval loop
