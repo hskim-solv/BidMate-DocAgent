@@ -207,16 +207,37 @@ stage_1_commit() {
   # When adding new private paths, update HERE; load-bearing entries do
   # not belong in this exclusion.
   local files=()
+  local private_records=()
   while IFS= read -r line; do
     [[ -z "$line" ]] && continue
+    local status="${line:0:2}"
     local path="${line:3}"
     case "$path" in
-      data/files/*|data/data_list.csv|data/data_list.xlsx) continue ;;
-      eval/*.local.yaml) continue ;;
-      reports/real*/*) continue ;;
+      data/files/*|data/data_list.csv|data/data_list.xlsx)
+        private_records+=("${status}"$'\t'"${path}")
+        continue
+        ;;
+      eval/*.local.yaml)
+        private_records+=("${status}"$'\t'"${path}")
+        continue
+        ;;
+      reports/real*/*)
+        private_records+=("${status}"$'\t'"${path}")
+        continue
+        ;;
     esac
     files+=("$path")
   done <<< "$porcelain"
+
+  if [[ ${#private_records[@]} -gt 0 ]]; then
+    local preserve_args=("--repo-root" ".")
+    if [[ "$DRY_RUN" == "1" ]]; then
+      preserve_args+=("--dry-run")
+    fi
+    printf '%s\n' "${private_records[@]}" | \
+      python3 scripts/claude-hooks/_ship_private_preserve.py "${preserve_args[@]}" || \
+      log "s1" "private-path preserve helper failed; continuing without staging private paths"
+  fi
 
   if [[ ${#files[@]} -eq 0 ]]; then
     abort_disarm "s1" "no eligible files to stage (all matched private paths)"
