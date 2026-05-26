@@ -193,6 +193,70 @@ def _fixture_repo(root: Path) -> None:
     _write_text(root / "scripts/check_doc_links.py", "links")
     _write_text(root / ".github/workflows/pr-eval.yml", "name: pr")
     _write_text(root / ".github/workflows/branch-and-issue-check.yml", "name: branch")
+    _write_text(
+        root / "reports/cost_frontier.md",
+        "| On frontier | Run | Cost (USD) | Accuracy | 95% CI | Type |\n"
+        "|---|---|---:|---:|---|---|\n"
+        "| yes | full | $0 | 0.5 | [0.4-0.6] | self-hosted |\n",
+    )
+    _write_text(root / "docs/adr/0015-cost-telemetry-additive.md", "adr15")
+    _write_text(root / "docs/adr/0038-cost-model-and-frontier-interpretation.md", "adr38")
+    _write_text(root / "docs/adr/0019-embedding-default-stays-minilm.md", "adr19")
+    _write_text(root / "docs/adr/0073-real100-retrieval-surface-keeps-minilm.md", "adr73")
+    _write_text(root / "docs/eval/embedding-ablation.md", "embedding")
+    _write_json(
+        root / "reports/real100/distinguishing_power.aggregate.json",
+        {
+            "num_predictions": 2,
+            "gauge": {"accuracy": {"winner": "full", "runner_up": "naive", "delta": 0.1, "decision": "separable"}},
+        },
+    )
+    _write_text(root / "reports/real100/distinguishing_power.md", "power")
+    _write_json(
+        root / "reports/real100/variance_measurement/aggregate.json",
+        {
+            "n_runs": 2,
+            "contract_all_ok": True,
+            "category_stats": {"retrieval_miss": {"mean": 1, "min": 1, "max": 1, "range": 0}},
+            "per_case_stability": {"fluctuating": 0},
+        },
+    )
+    _write_text(root / "reports/real100/variance_measurement/REPORT.md", "variance")
+    _write_json(
+        root / "reports/real100/failure_slices.aggregate.json",
+        {"num_predictions": 2, "categories": {"retrieval_miss": {"count": 1, "share": 0.5, "top_slices": {"single_doc": {"count": 1}}}}},
+    )
+    _write_text(root / "docs/real-data/real-data-failure-taxonomy.md", "taxonomy")
+    _write_text(root / "docs/real-data/failure-cases.md", "cases")
+    _write_json(
+        root / "reports/real100/multi_chunk_evidence_failures.aggregate.json",
+        {
+            "population": {"multi_chunk_gold_cases": 2, "multi_chunk_top10_evidence_failures": 1, "num_predictions": 2},
+            "retrieval_outcome_by_k": {"10": {"miss": 1}},
+            "candidate_pool_expansion": {"missing_gold_seen_after_top10": 1},
+            "citation_guardrails": {"citation_page_coverage_lt_1": 1},
+            "evidence_split": {"multi_doc": 1},
+            "expected_impact": {"pool_or_rerank_candidate": 1},
+            "structured_overlap": {"multi_chunk_gold_cases": 2},
+        },
+    )
+    _write_text(root / "docs/evaluation/multi_chunk_retrieval_strategy.md", "multi")
+    _write_text(root / "docs/adr/0076-multi-chunk-evidence-failure-analysis-surface.md", "adr76")
+    _write_text(root / "data/eval/benchmark/gold_evidence_v1.jsonl", "{}\n")
+    _write_text(root / "data/eval/benchmark/corpus_chunks_v1.jsonl", "{}\n{}\n")
+    _write_text(
+        root / "docs/architecture/module-map.md",
+        "| 단계 | 주요 모듈 | 책임 |\n|---|---|---|\n| retrieval | rag_retrieval.py | retrieve |\n",
+    )
+    _write_text(
+        root / "docs/multi-agent-ownership.md",
+        "| 시나리오 | owner | 스태킹(Stacking) |\n| --- | --- | --- |\n| eval | Evaluation | standalone |\n",
+    )
+    _write_text(root / "docs/architecture-deep-dive.md", "deep")
+    _write_text(root / "docs/portfolio-pitch.md", "## 30초 피치\n## 3개 핵심 시그널\n")
+    _write_text(root / "docs/rag-challenges-solved.md", "solved")
+    _write_text(root / "docs/performance-evolution.md", "perf")
+    _write_text(root / "docs/case-studies/failure-modes.md", "case")
 
 
 def test_render_all_returns_all_escaped_documents(tmp_path: Path) -> None:
@@ -200,7 +264,7 @@ def test_render_all_returns_all_escaped_documents(tmp_path: Path) -> None:
 
     docs = render_all(tmp_path, tmp_path / "out")
 
-    assert len(docs) == 15
+    assert len(docs) == 25
     joined = "\n".join(docs.values())
     assert "Real100 Eval History Timeline" in joined
     assert "Retrieval Decision Board" in joined
@@ -217,6 +281,16 @@ def test_render_all_returns_all_escaped_documents(tmp_path: Path) -> None:
     assert "HWP Extraction Comparison Board" in joined
     assert "Governance Automation Board" in joined
     assert "Claim Validator Board" in joined
+    assert "Review Checklist Selector Board" in joined
+    assert "Cost Frontier Board" in joined
+    assert "Embedding Model Decision Board" in joined
+    assert "Distinguishing Power / Variance Board" in joined
+    assert "Failure Slices Deep Dive Board" in joined
+    assert "Multi-Chunk Evidence Board" in joined
+    assert "Public Synthetic Benchmark Board" in joined
+    assert "Architecture / Module Map Board" in joined
+    assert "Portfolio / External Reviewer Board" in joined
+    assert "Governance Incidents Board" in joined
     assert "<script>" not in joined
     assert "&lt;script&gt;alert(1)&lt;/script&gt;" in joined
 
@@ -238,6 +312,7 @@ def test_cli_writes_all_flat_html_files(tmp_path: Path) -> None:
 
     assert rc == 0
     outputs = sorted(out_dir.glob("*.html"))
-    assert len(outputs) == 15
+    assert len(outputs) == 25
     assert any("Benchmark Validity Board" in path.read_text(encoding="utf-8") for path in outputs)
     assert any("Claim Validator Board" in path.read_text(encoding="utf-8") for path in outputs)
+    assert any("Governance Incidents Board" in path.read_text(encoding="utf-8") for path in outputs)
