@@ -117,6 +117,11 @@ DEFAULT_AUTOMATION_COVERAGE = DEFAULT_REPORT_DIR / "automation_coverage.md"
 DEFAULT_HUMAN_GATED_EXEC = DEFAULT_REPORT_DIR / "human_gated_exec.md"
 DEFAULT_AUTO_SHIP_PLAN = DEFAULT_REPORT_DIR / "auto_ship_plan.md"
 DEFAULT_AUTO_SHIP_PREPARE = DEFAULT_REPORT_DIR / "auto_ship_prepare.md"
+DEFAULT_ISSUE_STATE = DEFAULT_REPORT_DIR / "issue_state.json"
+DEFAULT_ISSUE_TRIAGE = DEFAULT_REPORT_DIR / "issue_triage.md"
+DEFAULT_ISSUE_QUEUE_TASKS_DIR = DEFAULT_REPORT_DIR / "issue_queue_tasks"
+DEFAULT_MAINTENANCE_PLAN = DEFAULT_REPORT_DIR / "maintenance_plan.md"
+DEFAULT_MAINTENANCE_PLAN_JSON = DEFAULT_REPORT_DIR / "maintenance_plan.json"
 DEFAULT_DRAFT_TASK_ID = "T-2026-0000"
 QUEUE_PATH = Path("tasks/queue.md")
 PLAN_DIR = Path("docs/plans")
@@ -135,6 +140,13 @@ GH_PR_JSON_FIELDS = (
     "updatedAt",
 )
 GH_PR_BODY_FIELD = "body"
+GH_ISSUE_JSON_FIELDS = (
+    "number",
+    "title",
+    "url",
+    "labels",
+    "updatedAt",
+)
 
 REQUIRED_READS = (
     "CLAUDE.md",
@@ -380,6 +392,25 @@ class AutoShipPrepareReport:
     evidence: tuple[str, ...]
     created: bool = False
     returncode: int | None = None
+
+
+@dataclass(frozen=True)
+class IssueTriageItem:
+    number: str
+    title: str
+    url: str
+    labels: tuple[str, ...]
+    updated_at: str
+    classification: str
+    evidence: tuple[str, ...]
+    recommended_actions: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class MaintenancePlan:
+    issues: tuple[IssueTriageItem, ...]
+    worktree_actions: tuple[str, ...]
+    queue_task_briefs: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -4897,6 +4928,396 @@ def render_stacked_risk(*, branch: str, items: Sequence[dict[str, object]]) -> s
     return _sanitize_dynamic_text("\n".join(lines)).rstrip() + "\n"
 
 
+def write_issue_scan(
+    *,
+    issue_json: Path | None = None,
+    out_json: Path = DEFAULT_ISSUE_STATE,
+    out: Path = DEFAULT_ISSUE_TRIAGE,
+    limit: int = 200,
+    repo_root: Path = ROOT_DIR,
+) -> tuple[Path, Path, tuple[IssueTriageItem, ...], str]:
+    issues = _load_issue_state(issue_json=issue_json, limit=limit, repo_root=repo_root)
+    triage = build_issue_triage(issues=issues, repo_root=repo_root)
+    rendered = render_issue_triage(triage)
+    out_json = _default_output(out_json, DEFAULT_ISSUE_STATE, "issue_state.json", repo_root=repo_root)
+    out = _default_output(out, DEFAULT_ISSUE_TRIAGE, "issue_triage.md", repo_root=repo_root)
+    safe_json = _safe_output_path(out_json, repo_root=repo_root)
+    safe_out = _safe_output_path(out, repo_root=repo_root)
+    safe_json.parent.mkdir(parents=True, exist_ok=True)
+    safe_out.parent.mkdir(parents=True, exist_ok=True)
+    safe_json.write_text(json.dumps([_triage_item_json(item) for item in triage], indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    safe_out.write_text(rendered, encoding="utf-8")
+    return safe_json, safe_out, triage, rendered
+
+
+def _load_issue_state(*, issue_json: Path | None, limit: int, repo_root: Path) -> list[dict[str, object]]:
+    if issue_json is not None:
+        path = _resolve_input_path(issue_json, repo_root=repo_root)
+        payload = json.loads(_read_text(path))
+    else:
+        result = subprocess.run(
+            [
+                "gh",
+                "issue",
+                "list",
+                "--state",
+                "open",
+                "--limit",
+                str(limit),
+                "--json",
+                ",".join(GH_ISSUE_JSON_FIELDS),
+            ],
+            cwd=repo_root,
+            capture_output=True,
+            check=True,
+            text=True,
+        )
+        payload = json.loads(result.stdout)
+    if not isinstance(payload, list):
+        raise ValueError("issue state JSON must be an array")
+    return [item for item in payload if isinstance(item, dict)]
+
+
+def build_issue_triage(*, issues: Sequence[dict[str, object]], repo_root: Path = ROOT_DIR) -> tuple[IssueTriageItem, ...]:
+    queue_entries = _queue_entries_by_issue(repo_root)
+    local_branches = _local_issue_branches(repo_root)
+    worktree_branches = _worktree_issue_branches(repo_root)
+    items: list[IssueTriageItem] = []
+    for issue in issues:
+        number = _validate_issue_selector(str(issue.get("number") or ""))
+        title = _sanitize_inline_text(str(issue.get("title") or "Untitled issue"))
+        url = _sanitize_inline_text(str(issue.get("url") or ""))
+        labels = _issue_label_names(issue.get("labels"))
+        updated_at = _sanitize_inline_text(str(issue.get("updatedAt") or ""))
+        evidence: list[str] = []
+        actions: list[str] = []
+        queue_matches = queue_entries.get(number, [])
+        branch_matches = sorted(local_branches.get(number, set()) | worktree_branches.get(number, set()))
+        if queue_matches:
+            evidence.extend(queue_matches)
+        if branch_matches:
+            evidence.extend(f"local branch/worktree `{branch}` exists" for branch in branch_matches)
+
+        lowered = f"{title} {' '.join(labels)}".lower()
+        if branch_matches:
+            classification = "in_flight"
+            actions.append("Inspect the branch/worktree before closing; run branch-issue-hygiene and stacked-risk.")
+        elif any("queue done" in item for item in evidence) or _has_superseded_signal(lowered):
+            classification = "close_candidate"
+            if not evidence:
+                evidence.append("title/label contains an explicit superseded/archive signal")
+            actions.append(f"Prepare a close comment, then run human-gated-exec --action issue-close --issue {number}.")
+        elif queue_matches:
+            classification = "manual_review"
+            actions.append("Queue already references this issue but is not done; verify whether it should remain open.")
+        elif _manual_issue_signal(lowered):
+            classification = "manual_review"
+            evidence.append("manual/user-action/security/eval signal requires human review")
+            actions.append("Keep open until a human decides whether to archive, defer, or convert.")
+        else:
+            classification = "queue_candidate"
+            evidence.append("no local branch/worktree or done/superseded evidence found")
+            actions.append("Generate a queue/plan draft instead of closing.")
+        items.append(
+            IssueTriageItem(
+                number=number,
+                title=title,
+                url=url,
+                labels=tuple(labels),
+                updated_at=updated_at,
+                classification=classification,
+                evidence=tuple(_dedupe_preserve_order(evidence)),
+                recommended_actions=tuple(_dedupe_preserve_order(actions)),
+            )
+        )
+    return tuple(items)
+
+
+def _queue_entries_by_issue(repo_root: Path) -> dict[str, list[str]]:
+    queue_path = repo_root / QUEUE_PATH
+    if not queue_path.exists():
+        return {}
+    entries_by_issue: dict[str, list[str]] = {}
+    for entry in parse_task_entries(_read_text(queue_path)):
+        issues = set(re.findall(r"(?:issues/|#)(\d+)", entry.body))
+        for issue in issues:
+            status = (entry.status or "unknown").lower()
+            marker = "queue done" if status == "done" else f"queue {status}"
+            entries_by_issue.setdefault(issue, []).append(f"{marker}: `{entry.task_id}` {entry.title}")
+    return entries_by_issue
+
+
+def _local_issue_branches(repo_root: Path) -> dict[str, set[str]]:
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(repo_root), "branch", "--format=%(refname:short)"],
+            capture_output=True,
+            check=True,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return {}
+    found: dict[str, set[str]] = {}
+    for raw in result.stdout.splitlines():
+        branch = raw.strip()
+        issue = _issue_from_branch(branch)
+        if issue:
+            found.setdefault(issue, set()).add(branch)
+    return found
+
+
+def _worktree_issue_branches(repo_root: Path) -> dict[str, set[str]]:
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(repo_root), "worktree", "list", "--porcelain"],
+            capture_output=True,
+            check=True,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return {}
+    found: dict[str, set[str]] = {}
+    for line in result.stdout.splitlines():
+        if not line.startswith("branch refs/heads/"):
+            continue
+        branch = line.removeprefix("branch refs/heads/")
+        issue = _issue_from_branch(branch)
+        if issue:
+            found.setdefault(issue, set()).add(branch)
+    return found
+
+
+def _issue_label_names(labels: object) -> list[str]:
+    if not isinstance(labels, list):
+        return []
+    names: list[str] = []
+    for item in labels:
+        if isinstance(item, dict) and item.get("name"):
+            names.append(_sanitize_inline_text(str(item["name"])))
+    return names
+
+
+def _has_superseded_signal(text: str) -> bool:
+    return any(token in text for token in ("superseded", "obsolete", "archive", "closed by", "already done"))
+
+
+def _manual_issue_signal(text: str) -> bool:
+    return any(
+        token in text
+        for token in (
+            "confidential",
+            "security",
+            "privacy",
+            "purge",
+            "leak",
+            "real-eval",
+            "real eval",
+            "benchmark",
+            "user-action",
+            "operator-run",
+            "manual",
+        )
+    )
+
+
+def render_issue_triage(items: Sequence[IssueTriageItem]) -> str:
+    lines = [
+        "# Issue Triage",
+        "",
+        "- Conservative read-only issue cleanup scan.",
+        "- This report does not close issues, edit queue docs, delete branches, or remove worktrees.",
+        "- `close_candidate` means the issue has local done/superseded evidence; it still requires `human-gated-exec --action issue-close`.",
+        "",
+        "| Issue | Classification | Labels | Evidence | Recommended action |",
+        "|---:|---|---|---|---|",
+    ]
+    for item in items:
+        evidence = "<br>".join(_sanitize_dynamic_text(text) for text in item.evidence) or "N/A"
+        actions = "<br>".join(_sanitize_dynamic_text(text) for text in item.recommended_actions) or "N/A"
+        labels = ", ".join(item.labels) or "N/A"
+        issue = f"[#{item.number}]({item.url})" if item.url else f"#{item.number}"
+        lines.append(f"| {issue} | `{item.classification}` | {labels} | {evidence} | {actions} |")
+    lines.extend(["", "## Summary", ""])
+    counts: dict[str, int] = {}
+    for item in items:
+        counts[item.classification] = counts.get(item.classification, 0) + 1
+    for key in ("close_candidate", "queue_candidate", "in_flight", "manual_review"):
+        lines.append(f"- `{key}`: {counts.get(key, 0)}")
+    return _sanitize_dynamic_text("\n".join(lines)).rstrip() + "\n"
+
+
+def write_maintenance_plan(
+    *,
+    issue_json: Path | None = None,
+    out: Path = DEFAULT_MAINTENANCE_PLAN,
+    json_out: Path = DEFAULT_MAINTENANCE_PLAN_JSON,
+    tasks_dir: Path = DEFAULT_ISSUE_QUEUE_TASKS_DIR,
+    limit: int = 200,
+    repo_root: Path = ROOT_DIR,
+) -> tuple[Path, Path, MaintenancePlan, str]:
+    issues = _load_issue_state(issue_json=issue_json, limit=limit, repo_root=repo_root)
+    triage = build_issue_triage(issues=issues, repo_root=repo_root)
+    safe_tasks_dir = _safe_output_path(_default_output(tasks_dir, DEFAULT_ISSUE_QUEUE_TASKS_DIR, "issue_queue_tasks", repo_root=repo_root), repo_root=repo_root)
+    safe_tasks_dir.mkdir(parents=True, exist_ok=True)
+    task_briefs = _write_issue_queue_briefs(triage, tasks_dir=safe_tasks_dir)
+    plan = MaintenancePlan(
+        issues=triage,
+        worktree_actions=tuple(_maintenance_worktree_actions(repo_root)),
+        queue_task_briefs=tuple(_repo_path(path, repo_root) for path in task_briefs),
+    )
+    rendered = render_maintenance_plan(plan)
+    out = _default_output(out, DEFAULT_MAINTENANCE_PLAN, "maintenance_plan.md", repo_root=repo_root)
+    json_out = _default_output(json_out, DEFAULT_MAINTENANCE_PLAN_JSON, "maintenance_plan.json", repo_root=repo_root)
+    safe_out = _safe_output_path(out, repo_root=repo_root)
+    safe_json = _safe_output_path(json_out, repo_root=repo_root)
+    safe_out.parent.mkdir(parents=True, exist_ok=True)
+    safe_json.parent.mkdir(parents=True, exist_ok=True)
+    safe_out.write_text(rendered, encoding="utf-8")
+    safe_json.write_text(json.dumps(_maintenance_plan_json(plan), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return safe_out, safe_json, plan, rendered
+
+
+def _write_issue_queue_briefs(items: Sequence[IssueTriageItem], *, tasks_dir: Path) -> list[Path]:
+    paths: list[Path] = []
+    for index, item in enumerate([candidate for candidate in items if candidate.classification == "queue_candidate"], start=1):
+        slug = _slugify(f"issue-{item.number}-{item.title}")[:72]
+        path = tasks_dir / f"{index:03d}-{slug}.md"
+        labels = ", ".join(item.labels) or "N/A"
+        path.write_text(
+            _sanitize_dynamic_text(
+                f"""# Queue issue #{item.number}: {item.title}
+
+- Classification: `queue_candidate`
+- Source: `{item.url or '#' + item.number}`
+- Labels: {labels}
+- Reason: no branch/worktree or done/superseded evidence was found during conservative issue scan.
+
+## Goal
+
+Convert the issue into a scoped queue/backlog task, or document why it should remain open.
+
+## Expected Evidence
+
+Queue entry or explicit human no-go rationale. Do not close the issue from this draft alone.
+
+## Verification
+
+```bash
+git diff --check
+```
+"""
+            ).rstrip()
+            + "\n",
+            encoding="utf-8",
+        )
+        paths.append(path)
+    return paths
+
+
+def _maintenance_worktree_actions(repo_root: Path) -> list[str]:
+    actions = ["make worktree-cleanup-dry-run"]
+    try:
+        result = subprocess.run(
+            ["bash", ".githooks/_pre-push-worktree-hygiene.sh", "--clean", "--dry-run"],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return actions
+    output = _sanitize_dynamic_text((result.stdout or "") + (result.stderr or "")).strip()
+    if output:
+        actions.append(output)
+    return actions
+
+
+def render_maintenance_plan(plan: MaintenancePlan) -> str:
+    close_items = [item for item in plan.issues if item.classification == "close_candidate"]
+    queue_items = [item for item in plan.issues if item.classification == "queue_candidate"]
+    in_flight = [item for item in plan.issues if item.classification == "in_flight"]
+    manual = [item for item in plan.issues if item.classification == "manual_review"]
+    lines = [
+        "# Agent Loop Maintenance Plan",
+        "",
+        "- Planning artifact only. It does not close issues, edit tracked queue docs, delete branches, or remove worktrees.",
+        "- Conservative policy: only `close_candidate` issues may be closed, and only through `human-gated-exec --action issue-close` with this plan as evidence.",
+        "",
+        "## Issue Lanes",
+        "",
+        f"- Close candidates: `{len(close_items)}`",
+        f"- Queue candidates: `{len(queue_items)}`",
+        f"- In-flight: `{len(in_flight)}`",
+        f"- Manual review: `{len(manual)}`",
+        "",
+        "## Close Candidate Commands",
+        "",
+    ]
+    if close_items:
+        for item in close_items:
+            lines.append(f"- `python3 scripts/agent_loop.py human-gated-exec --action issue-close --issue {item.number} --triage-plan reports/agent_loop/maintenance_plan.json --comment-file reports/agent_loop/issue-close-{item.number}.md --confirm-human-approved`")
+    else:
+        lines.append("- None.")
+    lines.extend(["", "## Queue Candidate Drafts", ""])
+    if plan.queue_task_briefs:
+        lines.extend(f"- `{path}`" for path in plan.queue_task_briefs)
+        lines.append("- Promote one draft with `python3 scripts/agent_loop.py queue-plan-sync --task-brief <path>` and then review `apply-queue-plan` output.")
+    else:
+        lines.append("- None.")
+    lines.extend(["", "## Branch / Worktree Cleanup", ""])
+    lines.extend(f"- {_sanitize_dynamic_text(action)}" for action in plan.worktree_actions)
+    lines.extend(["", "## Remote Branch Cleanup Gate", ""])
+    lines.append("- Before deleting any remote branch, run `python3 scripts/agent_loop.py stacked-risk --branch <branch>` and then `human-gated-exec --action branch-delete` only after review.")
+    return _sanitize_dynamic_text("\n".join(lines)).rstrip() + "\n"
+
+
+def _triage_item_json(item: IssueTriageItem) -> dict[str, object]:
+    return {
+        "number": item.number,
+        "title": item.title,
+        "url": item.url,
+        "labels": list(item.labels),
+        "updatedAt": item.updated_at,
+        "classification": item.classification,
+        "evidence": list(item.evidence),
+        "recommended_actions": list(item.recommended_actions),
+    }
+
+
+def _maintenance_plan_json(plan: MaintenancePlan) -> dict[str, object]:
+    return {
+        "schema_version": 1,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "issues": [_triage_item_json(item) for item in plan.issues],
+        "worktree_actions": list(plan.worktree_actions),
+        "queue_task_briefs": list(plan.queue_task_briefs),
+    }
+
+
+def _validate_issue_selector(issue: str) -> str:
+    safe = _sanitize_inline_text(issue.strip().lstrip("#"))
+    if not re.fullmatch(r"\d{1,10}", safe):
+        raise ValueError("issue selector must be a numeric issue number")
+    return safe
+
+
+def _issue_close_allowed(*, issue: str, triage_plan: Path | None, repo_root: Path) -> tuple[bool, str]:
+    if triage_plan is None:
+        return False, "--triage-plan is required for issue-close"
+    path = _resolve_input_path(triage_plan, repo_root=repo_root)
+    payload = json.loads(_read_text(path))
+    issues = payload.get("issues") if isinstance(payload, dict) else None
+    if not isinstance(issues, list):
+        return False, "triage plan JSON must contain an issues array"
+    for item in issues:
+        if not isinstance(item, dict) or str(item.get("number")) != issue:
+            continue
+        if item.get("classification") == "close_candidate":
+            return True, "triage plan marks issue as close_candidate"
+        return False, f"triage plan marks issue as {item.get('classification') or 'unknown'}"
+    return False, "issue is not present in triage plan"
+
+
 def write_patch_proposal(
     *,
     changed_files: Sequence[str] = (),
@@ -5145,7 +5566,7 @@ def render_ship_command_pack(*, pr: str | None, branch: str | None, repo_root: P
     return _sanitize_dynamic_text("\n".join(lines)).rstrip() + "\n"
 
 
-HUMAN_GATED_ACTIONS = {"push", "pr-create", "pr-merge", "pr-close", "branch-delete", "force-push"}
+HUMAN_GATED_ACTIONS = {"push", "pr-create", "pr-merge", "pr-close", "branch-delete", "force-push", "issue-close"}
 
 
 def write_human_gated_exec(
@@ -5158,6 +5579,9 @@ def write_human_gated_exec(
     body: Path | None = None,
     base: str | None = None,
     title: str | None = None,
+    issue: str | None = None,
+    comment_file: Path | None = None,
+    triage_plan: Path | None = None,
     draft: bool = True,
     confirm_review_gate_passed: bool = False,
     confirm_dependents_reviewed: bool = False,
@@ -5174,6 +5598,9 @@ def write_human_gated_exec(
         body=body,
         base=base,
         title=title,
+        issue=issue,
+        comment_file=comment_file,
+        triage_plan=triage_plan,
         draft=draft,
         confirm_review_gate_passed=confirm_review_gate_passed,
         confirm_dependents_reviewed=confirm_dependents_reviewed,
@@ -5222,6 +5649,9 @@ def build_human_gated_exec_plan(
     confirm_dependents_reviewed: bool,
     confirm_force_with_lease: bool,
     repo_root: Path,
+    issue: str | None = None,
+    comment_file: Path | None = None,
+    triage_plan: Path | None = None,
 ) -> HumanGatedExecPlan:
     if action not in HUMAN_GATED_ACTIONS:
         raise ValueError("--action must be one of: " + ", ".join(sorted(HUMAN_GATED_ACTIONS)))
@@ -5273,6 +5703,23 @@ def build_human_gated_exec_plan(
         if not confirm_review_gate_passed:
             blockers.append("--confirm-review-gate-passed is required before close")
         command = ("gh", "pr", "close", safe_pr)
+    elif action == "issue-close":
+        safe_issue = _validate_issue_selector(issue or "")
+        allowed, reason = _issue_close_allowed(issue=safe_issue, triage_plan=triage_plan, repo_root=repo_root)
+        if not allowed:
+            blockers.append(reason)
+        if comment_file is None:
+            blockers.append("--comment-file is required for issue-close")
+            comment_text = "<comment-file>"
+        else:
+            comment_path = _resolve_input_path(comment_file, repo_root=repo_root)
+            if not comment_path.exists():
+                blockers.append("issue close comment file not found")
+                comment_text = "<comment-file>"
+            else:
+                comment_text = _sanitize_dynamic_text(_read_text(comment_path))
+        command = ("gh", "issue", "close", safe_issue, "--comment", comment_text)
+        warnings.append("issue-close is conservative: only close_candidate entries from a triage plan are allowed")
     else:
         if not safe_branch:
             blockers.append("--branch is required for branch-delete")
@@ -6348,6 +6795,7 @@ def render_automation_coverage() -> str:
         ("18", "auto-pass strict profiles", "auto-pass-check --profile ..."),
         ("19", "human-approved remote execution", "human-gated-exec --confirm-human-approved"),
         ("20", "existing auto-ship bridge", "auto-ship-prepare, auto-ship-plan, ship-simulate, ship-command-pack"),
+        ("21", "conservative issue cleanup", "issue-scan, maintenance-plan, human-gated-exec --action issue-close"),
     )
     lines = [
         "# Agent Loop Automation Coverage",
@@ -6365,7 +6813,7 @@ def render_automation_coverage() -> str:
             "",
             "- Queue/plan actual tracked-doc application unless `--confirm-human-approved` is explicit.",
             "- Running existing `make ship-arm` remains a shipping approval; `auto-ship-plan` only prepares a plan.",
-            "- Push, PR create/merge/close, branch delete, force-push require `human-gated-exec --confirm-human-approved` plus action-specific gates.",
+            "- Push, PR create/merge/close, issue close, branch delete, force-push require `human-gated-exec --confirm-human-approved` plus action-specific gates.",
             "- Private real-eval decisions, benchmark/performance claims, architecture tradeoffs.",
             "",
         ]
@@ -6955,6 +7403,7 @@ def render_loop_map() -> str:
 ```mermaid
 flowchart TD
   A["Repo state: queue, plans, PRs, reports"] --> B["pr-scan: read GitHub PR metadata"]
+  A --> ISS["issue-scan and maintenance-plan: conservative issue cleanup and queue migration"]
   A --> MCP["agent-loop-mcp: expose safe local loop tools to MCP clients"]
   MCP --> D
   B --> C["next-from-prs: generate next-action report and task briefs"]
@@ -6994,7 +7443,8 @@ flowchart TD
   C --> WORKSET["workset-recommend: serial/parallel/review/manual sets"]
   A --> INT["integration-pack and scheduled-status recipes"]
   INT --> MCP
-  Q --> R{"Human gate: review, claims, merge, close, push, delete?"}
+  ISS --> F
+  Q --> R{"Human gate: review, claims, merge, close issue/PR, push, delete?"}
   R -->|end-to-end approved| SHIP["make ship-arm: approved single end-to-end ship pipeline"]
   R -->|manual fallback approved| EXEC["human-gated-exec: action-by-action remote mutation fallback"]
   SHIP --> S["Existing ship workflow"]
@@ -7004,6 +7454,8 @@ flowchart TD
 
 Automation points:
 - pr-scan: read-only `gh pr list` JSON export.
+- issue-scan: read-only `gh issue list` JSON export plus conservative close/queue/in-flight/manual classification.
+- maintenance-plan: generate issue cleanup, queue migration, worktree cleanup, and branch deletion gate recommendations without executing them.
 - next-from-prs: deterministic wrapper around `scripts/ai_next_actions.py`.
 - pr-health: group exported PR state into CI, review, stale, draft, blocked, and ready lanes.
 - batch-plan: group local task briefs into serial, parallel-safe, review-only, and manual-gated lanes.
@@ -7032,7 +7484,7 @@ Automation points:
 - auto-ship-prepare: prepare or create a local ADR 0007 branch for the primary `make ship-arm` pipeline; branch creation requires `--confirm-human-approved`.
 - auto-ship-plan: render a readiness-backed bridge to the primary `make ship-arm` Stop-hook pipeline without arming it.
 - ship-command-pack: render human-gated ship commands without executing them.
-- human-gated-exec: execute push/PR create/merge/close/remote branch delete/force-with-lease only as an action-by-action fallback with `--confirm-human-approved` and action-specific gates.
+- human-gated-exec: execute push/PR create/merge/close, issue close, remote branch delete, or force-with-lease only as an action-by-action fallback with `--confirm-human-approved` and action-specific gates.
 - dependency-graph: render stacked PR graph without merge/delete mutation.
 - stacked-risk: detect dependent PR risk before merge/delete cleanup.
 - pr-body-check: verify `Closes`, §5b, claim, and privacy boundaries before PR creation.
@@ -7063,7 +7515,7 @@ Human intervention points:
 - Apply a draft to `tasks/queue.md` or `docs/plans/*.md`.
 - Create or switch the local shipping branch when detached HEAD or protected branch state is detected.
 - Decide architecture tradeoffs, benchmark/performance claims, or private real-eval meaning.
-- Push, create/merge/close PRs, delete branches, or force-push.
+- Push, create/merge/close PRs, close issues, delete branches, or force-push.
 - Prefer `make ship-arm` for approved end-to-end shipping; use `human-gated-exec` only as a manual fallback after explicit approval and action-specific preflight.
 - Approve reviewer findings and shipping path.
 """
@@ -7367,6 +7819,19 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Include PR body in local ignored state; use only when PR bodies are public-safe.",
     )
+
+    issue_scan = sub.add_parser("issue-scan", help="Conservatively classify open issues for cleanup or queue migration.")
+    issue_scan.add_argument("--issue-json", type=Path, help="Optional local issue state JSON for tests or offline scans.")
+    issue_scan.add_argument("--limit", type=int, default=200)
+    issue_scan.add_argument("--out-json", type=Path, default=DEFAULT_ISSUE_STATE)
+    issue_scan.add_argument("--out", type=Path, default=DEFAULT_ISSUE_TRIAGE)
+
+    maintenance = sub.add_parser("maintenance-plan", help="Plan conservative issue, queue, branch, and worktree cleanup.")
+    maintenance.add_argument("--issue-json", type=Path, help="Optional local issue state JSON for tests or offline scans.")
+    maintenance.add_argument("--limit", type=int, default=200)
+    maintenance.add_argument("--out", type=Path, default=DEFAULT_MAINTENANCE_PLAN)
+    maintenance.add_argument("--json-out", type=Path, default=DEFAULT_MAINTENANCE_PLAN_JSON)
+    maintenance.add_argument("--tasks-dir", type=Path, default=DEFAULT_ISSUE_QUEUE_TASKS_DIR)
 
     next_prs = sub.add_parser("next-from-prs", help="Generate next-action briefs from PR state JSON.")
     next_prs.add_argument("--pr-json", type=Path, default=DEFAULT_PR_STATE)
@@ -7731,6 +8196,9 @@ def build_parser() -> argparse.ArgumentParser:
     gated.add_argument("--body", type=Path)
     gated.add_argument("--base")
     gated.add_argument("--title")
+    gated.add_argument("--issue")
+    gated.add_argument("--comment-file", type=Path)
+    gated.add_argument("--triage-plan", type=Path)
     gated.add_argument("--ready", action="store_true", help="Create PR as ready instead of draft.")
     gated.add_argument("--confirm-review-gate-passed", action="store_true")
     gated.add_argument("--confirm-dependents-reviewed", action="store_true")
@@ -7849,6 +8317,31 @@ def main(argv: list[str] | None = None) -> int:
                 include_body=args.include_body,
             )
             sys.stdout.write(f"[OK] wrote {_repo_path(out, ROOT_DIR)}\n")
+            return 0
+        if args.command == "issue-scan":
+            state_out, triage_out, triage, _ = write_issue_scan(
+                issue_json=args.issue_json,
+                out_json=args.out_json,
+                out=args.out,
+                limit=args.limit,
+            )
+            sys.stdout.write(
+                f"[OK] wrote {_repo_path(state_out, ROOT_DIR)} and {_repo_path(triage_out, ROOT_DIR)} "
+                f"for {len(triage)} issue(s)\n"
+            )
+            return 0
+        if args.command == "maintenance-plan":
+            out, json_out, plan, _ = write_maintenance_plan(
+                issue_json=args.issue_json,
+                out=args.out,
+                json_out=args.json_out,
+                tasks_dir=args.tasks_dir,
+                limit=args.limit,
+            )
+            sys.stdout.write(
+                f"[OK] wrote {_repo_path(out, ROOT_DIR)}, {_repo_path(json_out, ROOT_DIR)}, "
+                f"and {len(plan.queue_task_briefs)} queue brief(s)\n"
+            )
             return 0
         if args.command == "next-from-prs":
             out_md, tasks_dir = run_next_from_prs(
@@ -8443,6 +8936,9 @@ def main(argv: list[str] | None = None) -> int:
                 body=args.body,
                 base=args.base,
                 title=args.title,
+                issue=args.issue,
+                comment_file=args.comment_file,
+                triage_plan=args.triage_plan,
                 draft=not args.ready,
                 confirm_review_gate_passed=args.confirm_review_gate_passed,
                 confirm_dependents_reviewed=args.confirm_dependents_reviewed,

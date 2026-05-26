@@ -51,6 +51,8 @@ def test_mcp_initialize_and_tool_list_are_read_report_centered() -> None:
     assert "agent_loop_dashboard" in names
     assert "agent_loop_mcp_config" in names
     assert "agent_loop_pr_health" in names
+    assert "agent_loop_issue_scan" in names
+    assert "agent_loop_maintenance_plan" in names
     assert "agent_loop_safe_fix_dry_run" in names
     assert "agent_loop_approval_packet" in names
     assert "agent_loop_pr_body" in names
@@ -84,6 +86,7 @@ def test_mcp_initialize_and_tool_list_are_read_report_centered() -> None:
     assert "agent_loop_validate" not in names
     assert "agent_loop_pr_scan" not in names
     assert "agent_loop_draft_next" not in names
+    assert "agent_loop_issue_close" not in names
     for name in names:
         lowered = name.lower()
         assert "push" not in lowered
@@ -213,6 +216,16 @@ def test_mcp_dashboard_config_and_safe_fix_are_read_centered(tmp_path: Path) -> 
     assert "Simulation only" in ship
     assert "gh pr create" in ship
 
+    issue_json = ROOT / ".agent_loop_tmp" / "mcp_issues.json"
+    issue_json.parent.mkdir(parents=True, exist_ok=True)
+    issue_json.write_text('[{"number": 991, "title": "MCP backlog", "labels": [], "url": "https://example.test/991"}]', encoding="utf-8")
+    issue_scan = _call("agent_loop_issue_scan", {"issue_json": ".agent_loop_tmp/mcp_issues.json"})
+    assert "Issue Triage" in issue_scan
+    assert "queue_candidate" in issue_scan
+    maintenance = _call("agent_loop_maintenance_plan", {"issue_json": ".agent_loop_tmp/mcp_issues.json"})
+    assert "Agent Loop Maintenance Plan" in maintenance
+    assert "Planning artifact only" in maintenance
+
     auto_ship = _call(
         "agent_loop_auto_ship_plan",
         {
@@ -266,8 +279,25 @@ def test_mcp_new_reports_are_read_centered_and_redacted() -> None:
     )
     claim = scratch / "mcp_claim.md"
     claim.write_text("This improves latency. question: PRIVATE RAW QUERY\n", encoding="utf-8")
+    issues = scratch / "mcp_issues.json"
+    issues.write_text(
+        json.dumps(
+            [
+                {
+                    "number": 999999,
+                    "title": "Backlog issue for MCP scan",
+                    "url": "https://github.com/example/repo/issues/999999",
+                    "labels": [{"name": "follow-up"}],
+                    "updatedAt": "2026-05-26T00:00:00Z",
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
 
     threads_report = _call("agent_loop_review_threads", {"threads_json": ".agent_loop_tmp/mcp_threads.json"})
+    issue_scan = _call("agent_loop_issue_scan", {"issue_json": ".agent_loop_tmp/mcp_issues.json"})
+    maintenance = _call("agent_loop_maintenance_plan", {"issue_json": ".agent_loop_tmp/mcp_issues.json"})
     approval = _call(
         "agent_loop_approval_packet",
         {"changed_files": ["reports/eval_summary.json"], "claim_text": ".agent_loop_tmp/mcp_claim.md"},
@@ -281,6 +311,10 @@ def test_mcp_new_reports_are_read_centered_and_redacted() -> None:
 
     assert "Privacy Auditor" in threads_report
     assert "SECRET" not in threads_report
+    assert "Issue Triage" in issue_scan
+    assert "queue_candidate" in issue_scan
+    assert "Agent Loop Maintenance Plan" in maintenance
+    assert "Planning artifact only" in maintenance
     assert "performance claim language detected" in approval
     assert "PRIVATE RAW QUERY" not in approval
     assert "Disallowed Or Human-Gated Claims" in policy

@@ -257,6 +257,28 @@ def tool_definitions() -> list[JSON]:
             ),
         },
         {
+            "name": "agent_loop_issue_scan",
+            "description": "Read open issue state and conservatively classify cleanup versus queue migration lanes.",
+            "inputSchema": _schema(
+                {
+                    "issue_json": {"type": "string", "description": "Optional local issue state JSON path."},
+                    "limit": {"type": "integer", "minimum": 1, "maximum": 500, "default": 200},
+                    "write": {"type": "boolean", "default": False},
+                }
+            ),
+        },
+        {
+            "name": "agent_loop_maintenance_plan",
+            "description": "Render conservative issue, queue, branch, and worktree maintenance plan without executing cleanup.",
+            "inputSchema": _schema(
+                {
+                    "issue_json": {"type": "string", "description": "Optional local issue state JSON path."},
+                    "limit": {"type": "integer", "minimum": 1, "maximum": 500, "default": 200},
+                    "write": {"type": "boolean", "default": False},
+                }
+            ),
+        },
+        {
             "name": "agent_loop_safe_fix_dry_run",
             "description": "Dry-run safe whitespace-only local fixes for changed files.",
             "inputSchema": _schema(maybe_changed_files),
@@ -682,6 +704,8 @@ def call_tool(name: str, arguments: JSON | None = None) -> JSON:
         "agent_loop_dashboard": _tool_dashboard,
         "agent_loop_mcp_config": _tool_mcp_config,
         "agent_loop_pr_health": _tool_pr_health,
+        "agent_loop_issue_scan": _tool_issue_scan,
+        "agent_loop_maintenance_plan": _tool_maintenance_plan,
         "agent_loop_safe_fix_dry_run": _tool_safe_fix_dry_run,
         "agent_loop_approval_packet": _tool_approval_packet,
         "agent_loop_propose_queue_plan": _tool_propose_queue_plan,
@@ -925,6 +949,42 @@ def _tool_pr_health(args: JSON) -> str:
     if not isinstance(payload, list):
         raise ValueError("PR state JSON must be an array")
     return agent_loop.render_pr_health([item for item in payload if isinstance(item, dict)])
+
+
+def _tool_issue_scan(args: JSON) -> str:
+    if _bool_arg(args, "write", False):
+        _, _, _, rendered = agent_loop.write_issue_scan(
+            issue_json=_optional_path(args, "issue_json"),
+            limit=_int_arg(args, "limit", 200),
+        )
+        return rendered
+    issues = agent_loop._load_issue_state(
+        issue_json=_optional_path(args, "issue_json"),
+        limit=_int_arg(args, "limit", 200),
+        repo_root=agent_loop.ROOT_DIR,
+    )
+    return agent_loop.render_issue_triage(agent_loop.build_issue_triage(issues=issues, repo_root=agent_loop.ROOT_DIR))
+
+
+def _tool_maintenance_plan(args: JSON) -> str:
+    if _bool_arg(args, "write", False):
+        _, _, _, rendered = agent_loop.write_maintenance_plan(
+            issue_json=_optional_path(args, "issue_json"),
+            limit=_int_arg(args, "limit", 200),
+        )
+        return rendered
+    issues = agent_loop._load_issue_state(
+        issue_json=_optional_path(args, "issue_json"),
+        limit=_int_arg(args, "limit", 200),
+        repo_root=agent_loop.ROOT_DIR,
+    )
+    triage = agent_loop.build_issue_triage(issues=issues, repo_root=agent_loop.ROOT_DIR)
+    plan = agent_loop.MaintenancePlan(
+        issues=triage,
+        worktree_actions=("make worktree-cleanup-dry-run",),
+        queue_task_briefs=(),
+    )
+    return agent_loop.render_maintenance_plan(plan)
 
 
 def _tool_safe_fix_dry_run(args: JSON) -> str:
