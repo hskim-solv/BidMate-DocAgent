@@ -353,10 +353,10 @@ def _multi_chunk_evidence_profile_for_case(
 
     if len(gold_hits) == len(gold_chunk_ids):
         retrieval_outcome = "all_gold_retrieved"
-    elif len(top_retrieved) < k:
-        retrieval_outcome = "not_observable"
     elif gold_hits:
-        retrieval_outcome = "partial_gold_retrieved"
+        retrieval_outcome = (
+            "not_observable" if len(top_retrieved) < k else "partial_gold_retrieved"
+        )
     else:
         retrieval_outcome = "no_gold_retrieved"
 

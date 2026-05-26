@@ -139,6 +139,27 @@ Attack claim wording, additive-only output shape, baseline preservation, and whe
 - Next safe command: python3 -m pytest -q tests/test_render_multi_chunk_evidence_failures.py tests/test_naive_rag_benchmark_v1.py
 - Reviewer focus: additive-only metrics payload, current fixture bucket assertions, no retrieval/scoring behavior drift, no private real-eval or performance claim.
 
+## Session Handoff - 2026-05-26 14:03 KST
+
+- Role: Maintainer + Integration Reviewer
+- Lifecycle stage: merge preparation
+- Branch / worktree: eval/issue-1484-multi-chunk-evidence-profile / /Users/hskim/.codex/worktrees/1484/BidMate-DocAgent
+- Base branch: main
+- Issue / PR: #1484 / #1491
+- Task: T-2026-0005
+- Current status: #1488 merged, #1491 retargeted to main, review-gate blocker addressed.
+- Files touched: docs/plans/T-2026-0005-multi-chunk-evidence-regression-guard.md, eval/naive_rag/benchmark.py, tests/test_naive_rag_benchmark_v1.py
+- Decisions made: empty retrieval is classified as `retrieval_outcome_at_10=no_gold_retrieved`; its `top10_failure_mode` remains `not_observable` because no retrieved document evidence can distinguish same-document vs cross-document distractor modes.
+- Commands run: git fetch origin main; git merge --no-edit origin/main; python3 -m pytest -q tests/test_render_multi_chunk_evidence_failures.py tests/test_naive_rag_benchmark_v1.py; python3 -m py_compile scripts/render_multi_chunk_evidence_failures.py rag_retrieval.py rag_core.py eval/naive_rag/benchmark.py; git diff --check; gh pr edit 1491 --base main; gh pr checks 1491 --watch --interval 10; make ship-review-gate PR=1491.
+- Results: retargeted CI passed; review gate then found one unresolved thread; code/test updated to address the empty retrieval bucket; focused pytest, py_compile, and diff check passed after the fix.
+- Validation evidence: focused pytest passed; py_compile passed; diff check passed.
+- Eval surface: public synthetic benchmark.
+- Evidence artifacts: none.
+- Blockers: pending push and final PR CI rerun after review fix.
+- Open risks: final CI must pass again before merge; no private real-eval or retrieval quality claim should be made.
+- Next action: push review fix, wait for #1491 CI, rerun review gate, then squash merge if clean.
+- Next safe command: gh pr checks 1491 --watch --interval 10
+
 ## Session Handoff - 2026-05-25 19:44 KST
 
 - Role: Planner -> Implementer

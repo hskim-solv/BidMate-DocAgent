@@ -426,26 +426,36 @@ def test_multi_chunk_evidence_profile_distinguishes_failure_modes() -> None:
         ],
         [{"chunk_id": "doc-short::chunk-001", "doc_id": "doc-short"}],
     )
+    empty_retrieval = _multi_chunk_evidence_profile_for_case(
+        [
+            {"chunk_id": "doc-empty::chunk-001", "doc_id": "doc-empty"},
+            {"chunk_id": "doc-empty::chunk-002", "doc_id": "doc-empty"},
+        ],
+        [],
+    )
     assert same_doc_partial is not None
     assert cross_doc_distractor is not None
     assert not_observable is not None
+    assert empty_retrieval is not None
 
     summary = _summarize_multi_chunk_evidence_profiles(
-        [same_doc_partial, cross_doc_distractor, not_observable]
+        [same_doc_partial, cross_doc_distractor, not_observable, empty_retrieval]
     )
 
     assert same_doc_partial["top10_failure_mode"] == "same_doc_single_gold_hit"
     assert cross_doc_distractor["top10_failure_mode"] == "cross_document_distractor_only"
     assert not_observable["top10_failure_mode"] == "not_observable"
-    assert summary["case_count"] == 3
+    assert empty_retrieval["retrieval_outcome_at_10"] == "no_gold_retrieved"
+    assert empty_retrieval["top10_failure_mode"] == "not_observable"
+    assert summary["case_count"] == 4
     assert summary["retrieval_outcome_at_10"]["partial_gold_retrieved"] == 1
-    assert summary["retrieval_outcome_at_10"]["no_gold_retrieved"] == 1
+    assert summary["retrieval_outcome_at_10"]["no_gold_retrieved"] == 2
     assert summary["retrieval_outcome_at_10"]["not_observable"] == 1
     assert summary["top10_failure_count"] == 2
-    assert summary["top10_not_observable_count"] == 1
+    assert summary["top10_not_observable_count"] == 2
     assert summary["top10_failure_modes"]["same_doc_single_gold_hit"] == 1
     assert summary["top10_failure_modes"]["cross_document_distractor_only"] == 1
-    assert summary["top10_failure_modes"]["not_observable"] == 1
+    assert summary["top10_failure_modes"]["not_observable"] == 2
     assert set(summary["top10_failure_modes"]) == set(MULTI_CHUNK_TOP10_FAILURE_MODE_BUCKETS)
 
 
