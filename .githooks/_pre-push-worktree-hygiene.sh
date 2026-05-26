@@ -4,13 +4,16 @@
 # Sourced by `.githooks/pre-push`, also runnable standalone:
 #
 #     bash .githooks/_pre-push-worktree-hygiene.sh
+#     bash .githooks/_pre-push-worktree-hygiene.sh --clean --dry-run
+#     bash .githooks/_pre-push-worktree-hygiene.sh --clean --prune
 #
 # Detects worktrees whose checked-out branch is already merged into main
 # but were never removed. Stale worktrees accumulate and are the root
 # cause of the recurring "동시 worktree → ADR 번호 충돌" failure mode
 # CLAUDE.md keeps citing. Prints the exact `git worktree remove` command
-# for each orphan — never auto-removes (a worktree may hold un-pushed
-# work the merge check can't see). Soft-warn only: `exit 0` always.
+# for each orphan. Default pre-push mode never auto-removes. Standalone
+# `--clean` mode removes only clean orphan worktrees; dirty/untracked
+# worktrees are skipped. Soft-warn only: `exit 0` always.
 #
 # "Merged" is decided per branch by three OFFLINE signals (no network — every
 # push stays fast, like the other pre-push sub-hooks) plus one OPT-IN online
@@ -42,12 +45,42 @@
 
 set -u
 
-# Base ref, resolved once: prefer a local `main`, fall back to `origin/main`
-# for checkouts without a local main ref. No base → fresh clone → skip.
-if git rev-parse --verify -q refs/heads/main >/dev/null 2>&1; then
-  base_ref="main"
-elif git rev-parse --verify -q refs/remotes/origin/main >/dev/null 2>&1; then
+clean_mode=0
+dry_run=0
+prune_after=0
+
+for arg in "$@"; do
+  case "$arg" in
+    --clean) clean_mode=1 ;;
+    --dry-run) clean_mode=1; dry_run=1 ;;
+    --prune) prune_after=1 ;;
+    -h|--help)
+      cat <<'EOF'
+Usage:
+  bash .githooks/_pre-push-worktree-hygiene.sh
+  bash .githooks/_pre-push-worktree-hygiene.sh --clean --dry-run
+  bash .githooks/_pre-push-worktree-hygiene.sh --clean --prune
+
+Default mode prints orphan worktree warnings only. --clean removes only clean
+orphan worktrees; dirty/untracked worktrees are skipped. No branches or remote
+refs are deleted.
+EOF
+      exit 0
+      ;;
+    *)
+      printf 'worktree hygiene: unknown option: %s\n' "$arg" >&2
+      exit 0
+      ;;
+  esac
+done
+
+# Base ref, resolved once: prefer `origin/main` so a stale local `main` does not
+# hide recently merged PRs. Fall back to local `main` for isolated test repos or
+# checkouts without a remote-tracking main. No base → fresh clone → skip.
+if git rev-parse --verify -q refs/remotes/origin/main >/dev/null 2>&1; then
   base_ref="origin/main"
+elif git rev-parse --verify -q refs/heads/main >/dev/null 2>&1; then
+  base_ref="main"
 else
   exit 0
 fi
@@ -124,8 +157,31 @@ _is_merged() {
 }
 
 orphans=""
+clean_orphans=""
+dirty_orphans=""
 cur_path=""
 cur_branch=""
+
+_is_clean_worktree() {
+  local path="$1"
+  [[ -d "$path" ]] || return 1
+  git -C "$path" diff --quiet --ignore-submodules -- 2>/dev/null || return 1
+  git -C "$path" diff --cached --quiet --ignore-submodules -- 2>/dev/null || return 1
+  local untracked
+  untracked=$(git -C "$path" ls-files --others --exclude-standard 2>/dev/null || true)
+  [[ -z "$untracked" ]]
+}
+
+_prune_if_requested() {
+  if [[ "$prune_after" == "1" ]]; then
+    if [[ "$dry_run" == "1" ]]; then
+      printf 'worktree cleanup: would run git worktree prune\n' >&2
+    else
+      git worktree prune >/dev/null 2>&1 || true
+      printf 'worktree cleanup: pruned stale worktree admin files.\n' >&2
+    fi
+  fi
+}
 
 _flush() {
   # detached (no branch line) → skip; main → skip (it's never an orphan);
@@ -133,6 +189,13 @@ _flush() {
   if [[ -n "$cur_branch" && "$cur_branch" != "main" && "$cur_path" != "$self_top" ]]; then
     if _is_merged "$cur_branch"; then
       orphans="${orphans}  git worktree remove \"${cur_path}\"   # branch '${cur_branch}' merged into main"$'\n'
+      if [[ "$clean_mode" == "1" ]]; then
+        if _is_clean_worktree "$cur_path"; then
+          clean_orphans="${clean_orphans}${cur_path}"$'\t'"${cur_branch}"$'\n'
+        else
+          dirty_orphans="${dirty_orphans}  skip dirty/untracked \"${cur_path}\"   # branch '${cur_branch}'"$'\n'
+        fi
+      fi
     fi
   fi
   cur_path=""
@@ -149,9 +212,22 @@ done < <(git worktree list --porcelain 2>/dev/null)
 # Flush the final block (porcelain may not end with a trailing blank line).
 _flush
 
-[[ -z "$orphans" ]] && exit 0
+if [[ -z "$orphans" ]]; then
+  if [[ "$clean_mode" == "1" ]]; then
+    _prune_if_requested
+  fi
+  exit 0
+fi
 
-cat >&2 <<EOF
+if [[ "$clean_mode" == "1" ]]; then
+  cat >&2 <<EOF
+
+⚠️  Orphan worktrees detected — branch already merged into main:
+
+$(printf '%s' "$orphans")
+EOF
+else
+  cat >&2 <<EOF
 
 ⚠️  Orphan worktrees detected — branch already merged into main, but the
     worktree was never removed (not auto-removing):
@@ -163,5 +239,42 @@ $(printf '%s' "$orphans")
     "동시 worktree → ADR 번호 충돌" (CLAUDE.md). Push proceeds.
 
 EOF
+fi
+
+if [[ "$clean_mode" != "1" ]]; then
+  exit 0
+fi
+
+if [[ -n "$dirty_orphans" ]]; then
+  cat >&2 <<EOF
+Skipped worktrees with local changes:
+
+$(printf '%s' "$dirty_orphans")
+EOF
+fi
+
+if [[ -z "$clean_orphans" ]]; then
+  printf 'worktree cleanup: no clean orphan worktrees to remove.\n' >&2
+  _prune_if_requested
+  exit 0
+fi
+
+while IFS=$'\t' read -r orphan_path orphan_branch; do
+  [[ -n "$orphan_path" ]] || continue
+  if [[ "$dry_run" == "1" ]]; then
+    printf 'worktree cleanup: would remove "%s"   # branch '\''%s'\''\n' \
+      "$orphan_path" "$orphan_branch" >&2
+  else
+    if git worktree remove "$orphan_path" >/dev/null 2>&1; then
+      printf 'worktree cleanup: removed "%s"   # branch '\''%s'\''\n' \
+        "$orphan_path" "$orphan_branch" >&2
+    else
+      printf 'worktree cleanup: failed to remove "%s"   # branch '\''%s'\''\n' \
+        "$orphan_path" "$orphan_branch" >&2
+    fi
+  fi
+done <<< "$clean_orphans"
+
+_prune_if_requested
 
 exit 0

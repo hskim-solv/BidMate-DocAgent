@@ -16,6 +16,9 @@ PR이 생기면 각 task에 링크를 추가한다. 예제 task는 `tasks/exampl
 | 3 | `T-2026-0003` | `review` | Implementer -> Reviewer | auto-ship Stage 5 Desktop main fast-forward sync 구현됨. |
 | 4 | `T-2026-0004` | `review` | Implementer -> Reviewer | HWP -> PDF -> PyMuPDF4LLM opt-in loader 구현됨. |
 | 5 | `T-2026-0005` | `review` | Implementer -> Benchmark Auditor -> Reviewer | implementation validated; issue #1493 / branch `feat/issue-1493-rag-eval-first-adapter-hardening`. |
+| 6 | `T-2026-0006` | `review` | Implementer -> Reviewer | `ai_next_actions` human-readable HTML review surface 구현됨. |
+| 7 | `T-2026-0007` | `review` | Implementer -> Reviewer | failure distribution local HTML board 구현됨. |
+| 8 | `T-2026-0008` | `review` | Implementer -> Reviewer | chunking diagnostics local HTML board 구현됨. |
 
 ## Examples
 
@@ -469,3 +472,270 @@ make check-branch
 - Issue: [#1493](https://github.com/hskim-solv/BidMate-DocAgent/issues/1493)
 - PR: [#1499](https://github.com/hskim-solv/BidMate-DocAgent/pull/1499)
 - ADR: ADR 0001, ADR 0003, ADR 0005, ADR 0069, ADR 0074
+
+## T-2026-0006 — Human-readable AI next actions review surface
+
+- ID: T-2026-0006
+- Title: Human-readable AI next actions review surface
+- Status: review
+- Owner role: Implementer -> Reviewer
+- Created: 2026-05-26
+- Last updated: 2026-05-26
+
+### Goal
+
+Give human reviewers a compact local HTML status board for the deterministic
+AI next-action planner, without replacing the existing Markdown task briefs.
+
+### Context
+
+- Surface: workflow/reviewer tooling.
+- Relevant docs: [`docs/operations/ai-codex-workflow.md`](../docs/operations/ai-codex-workflow.md),
+  [`docs/reviews/README.md`](../docs/reviews/README.md).
+- Primary risk: dense agent-oriented Markdown being treated as sufficient for
+  human triage, or local generated HTML being mistaken for PR evidence.
+
+### Scope
+
+- Add `reports/ai_next_actions.html` as a generated local artifact.
+- Keep `reports/ai_next_actions.md` and `reports/codex_tasks/*.md` behavior.
+- Document that the HTML is a status board, not approval evidence.
+
+### Non-Goals
+
+- Do not change retrieval, verifier, answer, eval, or private-data behavior.
+- Do not introduce JavaScript, external services, or new runtime dependencies.
+- Do not publish local `reports/*` artifacts.
+
+### Acceptance Criteria
+
+- [x] Planner emits Markdown, task briefs, and self-contained HTML from one
+  deterministic work-item model.
+- [x] HTML escapes PR/user-provided text and does not leak forbidden private
+  readiness fields.
+- [x] HTML output can be disabled with `--out-html ""`.
+- [x] Reviewer docs explain how to use the local status board.
+
+### Validation Commands
+
+```bash
+python3 -m py_compile scripts/ai_next_actions.py
+python3 -m pytest -q tests/test_ai_next_actions.py
+python3 scripts/check_doc_links.py --check-all
+git diff --check
+make check-branch
+```
+
+### Evidence Required
+
+- Focused pytest output.
+- Doc-link check output.
+- Manual note if browser visual verification is unavailable.
+
+### Related Plan / Issue / PR Links
+
+- Plan: [`docs/plans/T-2026-0006-human-review-surface.md`](../docs/plans/T-2026-0006-human-review-surface.md)
+- Issue: [#1506](https://github.com/hskim-solv/BidMate-DocAgent/issues/1506)
+- PR: TBD
+- ADR: N/A
+
+### Handoff Notes
+
+```markdown
+## Session Handoff — 2026-05-26 00:00 KST
+
+- Role: Implementer
+- Lifecycle stage: review
+- Branch / worktree: chore/issue-1506-human-review-surface / /Users/hskim/.codex/worktrees/8ed1/BidMate-DocAgent
+- Task: T-2026-0006
+- Plan: docs/plans/T-2026-0006-human-review-surface.md
+- Current status: HTML review surface implemented on top of scripts/ai_next_actions.py.
+- Files touched: scripts/ai_next_actions.py, tests/test_ai_next_actions.py, docs/operations/ai-codex-workflow.md, docs/reviews/README.md, tasks/queue.md, docs/plans/T-2026-0006-human-review-surface.md
+- Decisions made: Generate a self-contained local HTML file next to the existing Markdown output; keep source-of-truth logic in WorkItem classification and keep HTML non-evidence.
+- Commands run: python3 -m py_compile scripts/ai_next_actions.py; python3 -m pytest -q tests/test_ai_next_actions.py; python3 scripts/check_doc_links.py --check-all; git diff --check; make check-branch
+- Results: pass, except browser file:// visual verification was blocked by app URL policy.
+- Eval surface: none.
+- Open risks: reviewer should inspect whether the inline HTML/CSS is acceptable for a local-only generated report.
+- Next safe command: python3 -m pytest -q tests/test_ai_next_actions.py
+- Reviewer focus: privacy-safe rendering, deterministic output, and no evidence over-claim.
+```
+
+## T-2026-0007 — Human-readable failure case board
+
+- ID: T-2026-0007
+- Title: Human-readable failure case board
+- Status: review
+- Owner role: Implementer -> Reviewer
+- Created: 2026-05-26
+- Last updated: 2026-05-26
+
+### Goal
+
+Give reviewers a compact local HTML view of failure-mode distribution and
+per-category slices without replacing the committed Markdown/aggregate JSON
+evidence.
+
+### Context
+
+- Surface: private real-eval aggregate viewer.
+- Relevant docs: [`docs/operations/failure-mode-harden-process.md`](../docs/operations/failure-mode-harden-process.md),
+  [ADR 0005](../docs/adr/0005-eval-split-public-synthetic-private-local.md),
+  [ADR 0075](../docs/adr/0075-normalized-failure-taxonomy.md).
+- Primary risk: raw private query/doc strings leaking into a human-facing local
+  report, or HTML being mistaken for model-quality evidence.
+
+### Scope
+
+- Add `reports/real100/failure_distribution.html` as a generated local artifact.
+- Keep `reports/real100/failure_distribution.md` and
+  `reports/real100/failure_distribution.aggregate.json` behavior unchanged.
+- Add a small shared HTML report shell for future local report surfaces.
+
+### Non-Goals
+
+- Do not change failure classifier ordering, taxonomy, eval scoring, retrieval,
+  verifier, answer generation, or private raw data.
+- Do not introduce JavaScript, external services, or runtime dependencies.
+- Do not publish local HTML artifacts.
+
+### Acceptance Criteria
+
+- [x] Renderer emits Markdown, aggregate JSON, and self-contained HTML by default.
+- [x] HTML output can be disabled with `--out-html ""`.
+- [x] HTML escapes dynamic text and does not leak raw query/doc strings.
+- [x] Existing aggregate schema remains unchanged.
+- [x] Workflow docs mention the local HTML dashboard.
+
+### Validation Commands
+
+```bash
+python3 -m py_compile scripts/html_report.py scripts/render_failure_distribution.py
+python3 -m pytest -q tests/test_render_failure_distribution.py
+python3 scripts/check_doc_links.py --check-all --paths docs/plans/T-2026-0007-failure-case-board.md tasks/queue.md docs/operations/failure-mode-harden-process.md
+git diff --check
+make check-branch
+```
+
+### Evidence Required
+
+- Focused pytest output.
+- Doc-link check output.
+- Note that no real-eval performance claim is made.
+
+### Related Plan / Issue / PR Links
+
+- Plan: [`docs/plans/T-2026-0007-failure-case-board.md`](../docs/plans/T-2026-0007-failure-case-board.md)
+- Issue: [#1510](https://github.com/hskim-solv/BidMate-DocAgent/issues/1510)
+- PR: TBD
+- ADR: N/A
+
+### Handoff Notes
+
+```markdown
+## Session Handoff — 2026-05-26 00:00 KST
+
+- Role: Implementer
+- Lifecycle stage: review
+- Branch / worktree: chore/issue-1510-failure-case-board / /Users/hskim/.codex/worktrees/8ed1/BidMate-DocAgent
+- Task: T-2026-0007
+- Plan: docs/plans/T-2026-0007-failure-case-board.md
+- Current status: HTML failure board implemented on top of scripts/render_failure_distribution.py.
+- Files touched: scripts/html_report.py, scripts/render_failure_distribution.py, tests/test_render_failure_distribution.py, docs/operations/failure-mode-harden-process.md, tasks/queue.md, docs/plans/T-2026-0007-failure-case-board.md
+- Decisions made: Generate a self-contained local HTML file next to the existing Markdown/aggregate JSON output; keep source-of-truth classification in build_aggregate and failure_classifier.
+- Commands run: python3 -m py_compile scripts/html_report.py scripts/render_failure_distribution.py; python3 -m pytest -q tests/test_render_failure_distribution.py; git diff --check
+- Results: pass.
+- Eval surface: private real-eval aggregate viewer only.
+- Open risks: reviewer should inspect whether a later PR should migrate ai_next_actions HTML to the shared shell.
+- Next safe command: python3 -m pytest -q tests/test_render_failure_distribution.py
+- Reviewer focus: privacy-safe rendering, aggregate-only data boundary, and no evidence over-claim.
+```
+
+## T-2026-0008 — Human-readable chunking diagnostics board
+
+- ID: T-2026-0008
+- Title: Human-readable chunking diagnostics board
+- Status: review
+- Owner role: Implementer -> Reviewer
+- Created: 2026-05-26
+- Last updated: 2026-05-26
+
+### Goal
+
+Give reviewers a compact local HTML view of Phase 2 chunking ablation, real100
+chunk health, and multi-chunk evidence failure diagnostics without changing
+retrieval or chunking behavior.
+
+### Context
+
+- Surface: private real-eval aggregate viewer plus existing Phase 2 retrieval
+  aggregate report.
+- Relevant docs: [`docs/retrieval/chunking-diagnostics.md`](../docs/retrieval/chunking-diagnostics.md),
+  [ADR 0005](../docs/adr/0005-eval-split-public-synthetic-private-local.md),
+  [ADR 0076](../docs/adr/0076-multi-chunk-evidence-failure-analysis-surface.md).
+- Primary risk: a diagnostic board being mistaken for a chunking winner claim,
+  or per-case identifiers/text leaking into local HTML.
+
+### Scope
+
+- Add `reports/retrieval/chunking_diagnostics.html` as a generated local artifact.
+- Read existing aggregate or aggregate-derived artifacts only.
+- Keep Phase 2 report files and real100 aggregate files unchanged.
+
+### Non-Goals
+
+- Do not change chunking defaults, retrieval, verifier, answer generation, eval
+  scoring, or private raw data.
+- Do not introduce JavaScript, external services, or runtime dependencies.
+- Do not publish local HTML artifacts.
+
+### Acceptance Criteria
+
+- [x] Renderer emits a self-contained local HTML board.
+- [x] HTML includes chunking variants, recall@10 deltas, chunk health, and
+  multi-chunk retrieval outcome counts.
+- [x] HTML does not render private case ids from per-case inputs.
+- [x] Existing retrieval/chunking/eval behavior remains unchanged.
+
+### Validation Commands
+
+```bash
+python3 -m py_compile scripts/render_chunking_diagnostics_board.py scripts/html_report.py
+python3 -m pytest -q tests/test_render_chunking_diagnostics_board.py
+python3 scripts/check_doc_links.py --check-all --paths docs/plans/T-2026-0008-chunking-diagnostics-board.md tasks/queue.md docs/retrieval/chunking-diagnostics.md
+git diff --check
+make check-branch
+```
+
+### Evidence Required
+
+- Focused pytest output.
+- Doc-link check output.
+- Note that no chunking winner or RAG quality claim is made.
+
+### Related Plan / Issue / PR Links
+
+- Plan: [`docs/plans/T-2026-0008-chunking-diagnostics-board.md`](../docs/plans/T-2026-0008-chunking-diagnostics-board.md)
+- Issue: [#1514](https://github.com/hskim-solv/BidMate-DocAgent/issues/1514)
+- PR: TBD
+- ADR: N/A
+
+### Handoff Notes
+
+```markdown
+## Session Handoff — 2026-05-26 00:00 KST
+
+- Role: Implementer
+- Lifecycle stage: review
+- Branch / worktree: chore/issue-1514-chunking-diagnostics-board / /Users/hskim/.codex/worktrees/8ed1/BidMate-DocAgent
+- Task: T-2026-0008
+- Plan: docs/plans/T-2026-0008-chunking-diagnostics-board.md
+- Current status: HTML chunking diagnostics board implemented.
+- Files touched: scripts/render_chunking_diagnostics_board.py, tests/test_render_chunking_diagnostics_board.py, docs/retrieval/chunking-diagnostics.md, tasks/queue.md, docs/plans/T-2026-0008-chunking-diagnostics-board.md
+- Decisions made: Generate a self-contained local HTML file from existing aggregate artifacts; do not claim a chunking winner.
+- Commands run: python3 -m py_compile scripts/render_chunking_diagnostics_board.py scripts/html_report.py; python3 -m pytest -q tests/test_render_chunking_diagnostics_board.py; git diff --check
+- Results: pass.
+- Eval surface: private real-eval aggregate viewer plus existing Phase 2 retrieval aggregate report.
+- Open risks: reviewer should inspect claim wording and whether additional slices belong in a separate follow-up.
+- Next safe command: python3 -m pytest -q tests/test_render_chunking_diagnostics_board.py
+- Reviewer focus: claim boundary, aggregate-only rendering, and no default behavior change.
+```

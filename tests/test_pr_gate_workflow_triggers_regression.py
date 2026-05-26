@@ -88,5 +88,17 @@ class FiveBGateStillWiredTest(unittest.TestCase):
         )
 
 
+class PrEvalChangeScopeWiringTest(unittest.TestCase):
+    """The balanced CI policy must stay in tested code, not inline regex."""
+
+    def test_pr_eval_uses_tested_change_scope_helper(self) -> None:
+        text = (WORKFLOWS / "pr-eval.yml").read_text(encoding="utf-8")
+
+        self.assertIn("scripts/pr_eval_change_scope.py", text)
+        self.assertIn("pytest: ${{ steps.scope.outputs.pytest }}", text)
+        self.assertIn("if: needs.changes.outputs.pytest == 'true'", text)
+        self.assertIn("if: needs.changes.outputs.runtime == 'true'", text)
+
+
 if __name__ == "__main__":
     unittest.main()

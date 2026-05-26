@@ -6,7 +6,13 @@ from pathlib import Path
 import pytest
 import yaml
 
-from eval.naive_rag.benchmark import REQUIRED_OUTPUTS, run_from_config as run_benchmark_from_config
+from eval.naive_rag.benchmark import (
+    MULTI_CHUNK_TOP10_FAILURE_MODE_BUCKETS,
+    REQUIRED_OUTPUTS,
+    _multi_chunk_evidence_profile_for_case,
+    _summarize_multi_chunk_evidence_profiles,
+    run_from_config as run_benchmark_from_config,
+)
 from eval.naive_rag.build_benchmark_index import build_benchmark_index
 from eval.naive_rag.run_eval import load_contract_config
 from eval.naive_rag.validate_benchmark_dataset import validate_dataset
@@ -25,6 +31,10 @@ def _write_temp_benchmark_config(tmp_path: Path, *, index_dir: Path) -> Path:
     config = _yaml(BENCHMARK_CONFIG)
     config["index_dir"] = str(index_dir)
     config["output_root"] = str(tmp_path / "runs")
+    return _write_config(tmp_path, config)
+
+
+def _write_config(tmp_path: Path, config: dict) -> Path:
     config_path = tmp_path / "benchmark_naive_rag_v1.yaml"
     config_path.write_text(
         yaml.safe_dump(config, allow_unicode=True, sort_keys=False),
@@ -93,6 +103,19 @@ def test_benchmark_dataset_validator_reports_counts() -> None:
     assert summary["gold_evidence_summary"]["num_evidence_records"] == 47
 
 
+def test_benchmark_dataset_validator_reports_metadata_and_smoke_boundaries() -> None:
+    summary = validate_dataset(BENCHMARK_CONFIG)
+
+    assert summary["errors"] == []
+    assert summary["benchmark_metadata"]["status"] == "pass"
+    assert summary["benchmark_metadata"]["surface"] == "public_synthetic_benchmark"
+    assert summary["benchmark_metadata"]["dataset_id"] == "synthetic_naive_rag_benchmark_v1"
+    assert summary["benchmark_metadata"]["privacy"] == "public_synthetic"
+    assert summary["benchmark_metadata"]["not_for_claims_mentions_private_real_eval"] is True
+    assert summary["smoke_fixture_path_boundary"]["status"] == "pass"
+    assert summary["smoke_fixture_path_boundary"]["smoke_fixture_path_matches"] == []
+
+
 def test_benchmark_dataset_validator_reports_corpus_only_index_boundary() -> None:
     summary = validate_dataset(BENCHMARK_CONFIG)
     boundary = summary["index_build_boundary"]
@@ -103,21 +126,131 @@ def test_benchmark_dataset_validator_reports_corpus_only_index_boundary() -> Non
     assert boundary["input_kind"] == "corpus_chunks_jsonl"
     assert boundary["allowed_input_path"] == "data/eval/benchmark/corpus_chunks_v1.jsonl"
     assert boundary["configured_input_path"] == "data/eval/benchmark/corpus_chunks_v1.jsonl"
+    assert boundary["allowed_output_dir"] == "data/eval/benchmark/index_v1"
+    assert boundary["configured_output_dir"] == "data/eval/benchmark/index_v1"
     assert boundary["input_matches_corpus_path"] is True
+    assert boundary["output_matches_index_dir"] is True
     assert boundary["command_uses_corpus_path"] is True
+    assert boundary["command_writes_index_dir"] is True
     assert boundary["command_references_question_or_gold_paths"] is False
     assert boundary["corpus_rows_with_query_or_gold_fields"] == 0
     assert boundary["prohibited_corpus_fields_detected"] == []
 
 
+def test_benchmark_dataset_validator_rejects_missing_claim_boundary_metadata(tmp_path: Path) -> None:
+    config = _yaml(BENCHMARK_CONFIG)
+    del config["dataset_metadata"]["not_for_claims"]
+    config["dataset_metadata"]["privacy"] = "public_fixture"
+    config_path = _write_config(tmp_path, config)
+
+    summary = validate_dataset(config_path)
+
+    assert summary["benchmark_metadata"]["status"] == "fail"
+    assert summary["benchmark_metadata"]["surface"] == "invalid"
+    assert "dataset_metadata.privacy must be public_synthetic" in summary["errors"]
+    assert (
+        "dataset_metadata.not_for_claims must describe disallowed real-world claims"
+        in summary["errors"]
+    )
+
+
+def test_benchmark_dataset_validator_rejects_smoke_fixture_paths(tmp_path: Path) -> None:
+    config = _yaml(BENCHMARK_CONFIG)
+    config["index_dir"] = "data/index"
+    config["index_build"]["output_dir"] = "data/index"
+    config["index_build"]["command"] = (
+        "python3 -m eval.naive_rag.build_benchmark_index "
+        f"--corpus {config['corpus_path']} --output data/index"
+    )
+    config_path = _write_config(tmp_path, config)
+
+    summary = validate_dataset(config_path)
+
+    assert summary["smoke_fixture_path_boundary"]["status"] == "fail"
+    assert {
+        (match["field"], match["configured_path"], match["blocked_smoke_path"])
+        for match in summary["smoke_fixture_path_boundary"]["smoke_fixture_path_matches"]
+    } >= {
+        ("index_dir", "data/index", "data/index"),
+        ("index_build.output_dir", "data/index", "data/index"),
+        ("index_build.command", "data/index", "data/index"),
+    }
+    assert (
+        "benchmark paths must not point at public fixture smoke assets: "
+        "index_build.command, index_build.output_dir, index_dir"
+    ) in summary["errors"]
+
+
+def test_benchmark_dataset_validator_normalizes_smoke_fixture_paths(tmp_path: Path) -> None:
+    config = _yaml(BENCHMARK_CONFIG)
+    config["index_dir"] = "data/not_smoke/../index"
+    config["index_build"]["output_dir"] = "data/not_smoke/../index"
+    config["index_build"]["command"] = (
+        "python3 -m eval.naive_rag.build_benchmark_index "
+        f"--corpus {config['corpus_path']} --output data/not_smoke/../index"
+    )
+    config_path = _write_config(tmp_path, config)
+
+    summary = validate_dataset(config_path)
+
+    assert summary["smoke_fixture_path_boundary"]["status"] == "fail"
+    assert {
+        (match["field"], match["blocked_smoke_path"])
+        for match in summary["smoke_fixture_path_boundary"]["smoke_fixture_path_matches"]
+    } >= {
+        ("index_dir", "data/index"),
+        ("index_build.output_dir", "data/index"),
+        ("index_build.command", "data/index"),
+    }
+
+
+def test_benchmark_dataset_validator_rejects_smoke_path_in_index_command(tmp_path: Path) -> None:
+    config = _yaml(BENCHMARK_CONFIG)
+    config["index_build"]["command"] = (
+        "python3 -m eval.naive_rag.build_benchmark_index "
+        f"--corpus {config['corpus_path']} "
+        "--output data/eval/benchmark/index_v1 "
+        "--note data/eval/rag_questions.jsonl"
+    )
+    config_path = _write_config(tmp_path, config)
+
+    summary = validate_dataset(config_path)
+
+    assert summary["smoke_fixture_path_boundary"]["status"] == "fail"
+    assert {
+        (match["field"], match["configured_path"], match["blocked_smoke_path"])
+        for match in summary["smoke_fixture_path_boundary"]["smoke_fixture_path_matches"]
+    } == {
+        ("index_build.command", "data/eval/rag_questions.jsonl", "data/eval/rag_questions.jsonl")
+    }
+
+
+def test_benchmark_dataset_validator_rejects_index_output_drift(tmp_path: Path) -> None:
+    config = _yaml(BENCHMARK_CONFIG)
+    config["index_build"]["output_dir"] = "data/eval/benchmark/index_drift"
+    config["index_build"]["command"] = (
+        "python3 -m eval.naive_rag.build_benchmark_index "
+        f"--corpus {config['corpus_path']} --output data/eval/benchmark/index_drift"
+    )
+    config_path = _write_config(tmp_path, config)
+
+    summary = validate_dataset(config_path)
+    boundary = summary["index_build_boundary"]
+
+    assert boundary["status"] == "fail"
+    assert boundary["output_matches_index_dir"] is False
+    assert boundary["command_writes_index_dir"] is False
+    assert "index_build.output_dir must match index_dir" in summary["errors"]
+    assert (
+        "index_build.command must pass exactly one --output argument matching index_dir"
+        in summary["errors"]
+    )
+
+
 def test_benchmark_dataset_validator_rejects_index_build_from_questions(tmp_path: Path) -> None:
     config = _yaml(BENCHMARK_CONFIG)
     config["index_build"]["input_path"] = config["questions_path"]
-    config_path = tmp_path / "benchmark_naive_rag_v1.yaml"
-    config_path.write_text(
-        yaml.safe_dump(config, allow_unicode=True, sort_keys=False),
-        encoding="utf-8",
-    )
+    config_path = _write_config(tmp_path, config)
 
     summary = validate_dataset(config_path)
 
@@ -133,11 +266,7 @@ def test_benchmark_dataset_validator_parses_actual_corpus_arg(tmp_path: Path) ->
         f"--note {config['corpus_path']} "
         "--output data/eval/benchmark/index_v1"
     )
-    config_path = tmp_path / "benchmark_naive_rag_v1.yaml"
-    config_path.write_text(
-        yaml.safe_dump(config, allow_unicode=True, sort_keys=False),
-        encoding="utf-8",
-    )
+    config_path = _write_config(tmp_path, config)
 
     summary = validate_dataset(config_path)
 
@@ -168,11 +297,7 @@ def test_benchmark_dataset_validator_rejects_label_fields_in_corpus_chunks(tmp_p
         "python3 -m eval.naive_rag.build_benchmark_index "
         f"--corpus {contaminated} --output data/eval/benchmark/index_v1"
     )
-    config_path = tmp_path / "benchmark_naive_rag_v1.yaml"
-    config_path.write_text(
-        yaml.safe_dump(config, allow_unicode=True, sort_keys=False),
-        encoding="utf-8",
-    )
+    config_path = _write_config(tmp_path, config)
 
     summary = validate_dataset(config_path)
     boundary = summary["index_build_boundary"]
@@ -221,6 +346,119 @@ def test_benchmark_runner_fails_when_index_v1_is_missing(tmp_path: Path) -> None
         run_benchmark_from_config(config_path)
 
 
+def test_benchmark_runner_rejects_index_with_mismatched_source_corpus_path(tmp_path: Path) -> None:
+    index_dir = tmp_path / "index_v1"
+    build_benchmark_index(
+        ROOT / "data" / "eval" / "benchmark" / "corpus_chunks_v1.jsonl",
+        index_dir,
+    )
+    index_path = index_dir / "index.json"
+    index = json.loads(index_path.read_text(encoding="utf-8"))
+    index["build"]["source_corpus_path"] = "data/eval/benchmark/rag_questions_v1.jsonl"
+    index_path.write_text(json.dumps(index, ensure_ascii=False, indent=2), encoding="utf-8")
+    config_path = _write_temp_benchmark_config(tmp_path, index_dir=index_dir)
+
+    with pytest.raises(ValueError, match="source_corpus_path"):
+        run_benchmark_from_config(config_path)
+
+
+def test_benchmark_runner_rejects_index_with_stale_chunk_content(tmp_path: Path) -> None:
+    index_dir = tmp_path / "index_v1"
+    build_benchmark_index(
+        ROOT / "data" / "eval" / "benchmark" / "corpus_chunks_v1.jsonl",
+        index_dir,
+    )
+    index_path = index_dir / "index.json"
+    index = json.loads(index_path.read_text(encoding="utf-8"))
+    index["chunks"][0]["text"] = "stale corpus chunk text"
+    index_path.write_text(json.dumps(index, ensure_ascii=False, indent=2), encoding="utf-8")
+    config_path = _write_temp_benchmark_config(tmp_path, index_dir=index_dir)
+
+    with pytest.raises(ValueError, match="chunk ids, order, metadata, and text"):
+        run_benchmark_from_config(config_path)
+
+
+def test_benchmark_runner_rejects_index_with_stale_chunk_metadata(tmp_path: Path) -> None:
+    index_dir = tmp_path / "index_v1"
+    build_benchmark_index(
+        ROOT / "data" / "eval" / "benchmark" / "corpus_chunks_v1.jsonl",
+        index_dir,
+    )
+    index_path = index_dir / "index.json"
+    index = json.loads(index_path.read_text(encoding="utf-8"))
+    index["chunks"][0]["metadata"] = {"stale": True}
+    index_path.write_text(json.dumps(index, ensure_ascii=False, indent=2), encoding="utf-8")
+    config_path = _write_temp_benchmark_config(tmp_path, index_dir=index_dir)
+
+    with pytest.raises(ValueError, match="chunk ids, order, metadata, and text"):
+        run_benchmark_from_config(config_path)
+
+
+def test_multi_chunk_evidence_profile_distinguishes_failure_modes() -> None:
+    same_doc_partial = _multi_chunk_evidence_profile_for_case(
+        [
+            {"chunk_id": "doc-a::chunk-001", "doc_id": "doc-a"},
+            {"chunk_id": "doc-a::chunk-002", "doc_id": "doc-a"},
+        ],
+        [
+            {"chunk_id": "doc-a::chunk-001", "doc_id": "doc-a"},
+            {"chunk_id": "doc-b::chunk-001", "doc_id": "doc-b"},
+        ]
+        + [
+            {"chunk_id": f"doc-c::chunk-{idx:03d}", "doc_id": "doc-c"}
+            for idx in range(2, 11)
+        ],
+    )
+    cross_doc_distractor = _multi_chunk_evidence_profile_for_case(
+        [
+            {"chunk_id": "doc-gold::chunk-001", "doc_id": "doc-gold"},
+            {"chunk_id": "doc-gold::chunk-002", "doc_id": "doc-gold"},
+        ],
+        [
+            {"chunk_id": f"doc-other::chunk-{idx:03d}", "doc_id": "doc-other"}
+            for idx in range(1, 11)
+        ],
+    )
+    not_observable = _multi_chunk_evidence_profile_for_case(
+        [
+            {"chunk_id": "doc-short::chunk-001", "doc_id": "doc-short"},
+            {"chunk_id": "doc-short::chunk-002", "doc_id": "doc-short"},
+        ],
+        [{"chunk_id": "doc-short::chunk-001", "doc_id": "doc-short"}],
+    )
+    empty_retrieval = _multi_chunk_evidence_profile_for_case(
+        [
+            {"chunk_id": "doc-empty::chunk-001", "doc_id": "doc-empty"},
+            {"chunk_id": "doc-empty::chunk-002", "doc_id": "doc-empty"},
+        ],
+        [],
+    )
+    assert same_doc_partial is not None
+    assert cross_doc_distractor is not None
+    assert not_observable is not None
+    assert empty_retrieval is not None
+
+    summary = _summarize_multi_chunk_evidence_profiles(
+        [same_doc_partial, cross_doc_distractor, not_observable, empty_retrieval]
+    )
+
+    assert same_doc_partial["top10_failure_mode"] == "same_doc_single_gold_hit"
+    assert cross_doc_distractor["top10_failure_mode"] == "cross_document_distractor_only"
+    assert not_observable["top10_failure_mode"] == "not_observable"
+    assert empty_retrieval["retrieval_outcome_at_10"] == "no_gold_retrieved"
+    assert empty_retrieval["top10_failure_mode"] == "not_observable"
+    assert summary["case_count"] == 4
+    assert summary["retrieval_outcome_at_10"]["partial_gold_retrieved"] == 1
+    assert summary["retrieval_outcome_at_10"]["no_gold_retrieved"] == 2
+    assert summary["retrieval_outcome_at_10"]["not_observable"] == 1
+    assert summary["top10_failure_count"] == 2
+    assert summary["top10_not_observable_count"] == 2
+    assert summary["top10_failure_modes"]["same_doc_single_gold_hit"] == 1
+    assert summary["top10_failure_modes"]["cross_document_distractor_only"] == 1
+    assert summary["top10_failure_modes"]["not_observable"] == 2
+    assert set(summary["top10_failure_modes"]) == set(MULTI_CHUNK_TOP10_FAILURE_MODE_BUCKETS)
+
+
 def test_benchmark_runner_writes_required_artifacts(tmp_path: Path) -> None:
     index_dir = tmp_path / "index_v1"
     build_benchmark_index(
@@ -259,6 +497,28 @@ def test_benchmark_runner_writes_required_artifacts(tmp_path: Path) -> None:
     assert metrics["latency_metrics"]["generation_latency_ms"] is None
     assert "semantic Faithfulness" not in repr(metrics["metric_labels"])
     assert "semantic Answer Relevancy" not in repr(metrics["metric_labels"])
+
+    multi_chunk = metrics["multi_chunk_evidence_profile"]
+    assert multi_chunk["case_count"] == 7
+    assert multi_chunk["top_k"] == 10
+    assert multi_chunk["gold_doc_cardinality"] == {
+        "multi_doc": 0,
+        "same_doc": 7,
+        "unknown": 0,
+    }
+    assert multi_chunk["retrieval_outcome_at_10"] == {
+        "all_gold_retrieved": 6,
+        "partial_gold_retrieved": 1,
+        "no_gold_retrieved": 0,
+        "not_observable": 0,
+    }
+    assert multi_chunk["top10_failure_count"] == 1
+    assert multi_chunk["top10_not_observable_count"] == 0
+    assert multi_chunk["top10_failure_modes"]["same_doc_single_gold_hit"] == 1
+    assert multi_chunk["top10_failure_modes"]["not_observable"] == 0
+    assert set(multi_chunk["top10_failure_modes"]) == set(
+        MULTI_CHUNK_TOP10_FAILURE_MODE_BUCKETS
+    )
 
 
 def test_benchmark_result_report_contains_conservative_warnings() -> None:

@@ -42,6 +42,8 @@ jobs:
     # Per-shard coverage.xml uploads to Codecov with `shard-N` flags;
     # Codecov merges them server-side.
     name: Pytest (shard ${{ matrix.shard }})
+    needs: changes
+    if: needs.changes.outputs.pytest == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -139,37 +141,40 @@ jobs:
           fi
 
   changes:
-    # Decide whether this PR touches any path that can move the eval delta.
-    # docs/governance-only PRs (no runtime code) get eval-delta skipped to
-    # save runner-minutes. No checkout — the PR file list comes from the
-    # GitHub API (gh is preinstalled), so this job is seconds-cheap.
+    # Decide whether this PR touches paths that need full pytest and/or the
+    # fixture smoke eval. Docs/report-only PRs skip both to save runner-minutes.
+    # The classifier is tested in tests/test_pr_eval_change_scope.py so the
+    # path policy does not drift as an inline shell regex.
     # `main` carries no required status checks, so a skipped eval-delta does
-    # not leave the PR pending. pytest + baseline-provenance still always run.
-    name: Detect runtime-affecting changes
+    # not leave the PR pending. Baseline provenance still always runs.
+    name: Detect PR eval change scope
     runs-on: ubuntu-latest
     outputs:
-      runtime: ${{ steps.filter.outputs.runtime }}
+      runtime: ${{ steps.scope.outputs.runtime }}
+      pytest: ${{ steps.scope.outputs.pytest }}
     steps:
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            scripts/pr_eval_change_scope.py
+          sparse-checkout-cone-mode: false
+
       - name: Classify changed files
-        id: filter
+        id: scope
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
+          mkdir -p reports
           files=$(gh api --paginate \
             "repos/$REPO/pulls/$PR_NUMBER/files" --jq '.[].filename')
-          echo "Changed files:"; echo "$files"
-          # Any of: a .py module, the eval/ tree, smoke fixture corpus, requirements,
-          # the run-eval composite action, or this workflow → run eval-delta.
-          if echo "$files" | grep -qE \
-            '\.py$|^eval/|^eval/fixtures/smoke_rfp/raw/|^requirements.*\.txt$|^\.github/actions/run-eval/|^\.github/workflows/pr-eval\.yml$'; then
-            echo "runtime=true" >> "$GITHUB_OUTPUT"
-            echo "→ runtime-affecting; eval-delta will run."
-          else
-            echo "runtime=false" >> "$GITHUB_OUTPUT"
-            echo "→ docs/governance-only; eval-delta skipped."
-          fi
+          printf '%s\n' "$files" > reports/pr_eval_changed_files.txt
+          echo "Changed files:"
+          cat reports/pr_eval_changed_files.txt
+          python3 scripts/pr_eval_change_scope.py \
+            --changed-files reports/pr_eval_changed_files.txt \
+            --github-output "$GITHUB_OUTPUT"
 
   eval-delta:
     name: Fixture smoke eval vs base

@@ -13,7 +13,10 @@ ROOT_DIR = Path(__file__).resolve().parents[2]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from eval.naive_rag.build_benchmark_index import load_corpus_chunks  # noqa: E402
+from eval.naive_rag.build_benchmark_index import (  # noqa: E402
+    PROHIBITED_CORPUS_FIELDS,
+    load_corpus_chunks,
+)
 from eval.naive_rag.metrics import (  # noqa: E402
     BENCHMARK_CITATION_PAGE_METRIC_KEYS,
     BENCHMARK_LATENCY_METRIC_KEYS,
@@ -51,6 +54,30 @@ REQUIRED_OUTPUTS = (
 GOLD_DERIVED_FIELDS = frozenset(
     {"expected_terms", "required_terms", "derived_from_expected_terms"}
 )
+MULTI_CHUNK_DOC_CARDINALITY_BUCKETS = ("same_doc", "multi_doc", "unknown")
+MULTI_CHUNK_RETRIEVAL_OUTCOME_BUCKETS = (
+    "all_gold_retrieved",
+    "partial_gold_retrieved",
+    "no_gold_retrieved",
+    "not_observable",
+)
+MULTI_CHUNK_TOP10_FAILURE_MODE_BUCKETS = (
+    "same_doc_single_gold_hit",
+    "same_doc_multi_gold_partial_hit",
+    "multi_doc_partial_hit",
+    "same_document_distractor_without_gold",
+    "cross_document_distractor_only",
+    "not_observable",
+)
+EXPECTED_INDEX_LEAKAGE_GUARD = "query_and_gold_label_files_not_read"
+
+
+def _chunk_for_provenance_comparison(chunk: dict[str, Any]) -> dict[str, Any]:
+    """Normalize volatile index-only fields before corpus/index comparison."""
+    normalized = dict(chunk)
+    normalized.pop("embedding", None)
+    normalized.pop("embedding_idx", None)
+    return normalized
 
 
 def load_benchmark_config(path: Path) -> dict[str, Any]:
@@ -101,6 +128,65 @@ def assert_explicit_gold_evidence(
                 raise ValueError(f"{qid}: unanswerable question must not have gold evidence")
             if expected_ids:
                 raise ValueError(f"{qid}: unanswerable question must have empty expected_evidence_ids")
+
+
+def assert_benchmark_index_provenance(
+    *,
+    index: dict[str, Any],
+    index_dir: Path,
+    corpus_path: Path,
+    corpus_chunks: list[dict[str, Any]],
+) -> None:
+    build = index.get("build") if isinstance(index.get("build"), dict) else {}
+    errors: list[str] = []
+    expected_corpus_path = _relative(corpus_path)
+
+    if build.get("input_kind") != "corpus_chunks_jsonl":
+        errors.append("index.build.input_kind must be corpus_chunks_jsonl")
+    if build.get("source_corpus_path") != expected_corpus_path:
+        errors.append(
+            "index.build.source_corpus_path must match benchmark config corpus_path "
+            f"({expected_corpus_path})"
+        )
+    if build.get("leakage_guard") != EXPECTED_INDEX_LEAKAGE_GUARD:
+        errors.append(f"index.build.leakage_guard must be {EXPECTED_INDEX_LEAKAGE_GUARD}")
+
+    try:
+        num_chunks = int(build.get("num_chunks"))
+    except (TypeError, ValueError):
+        num_chunks = -1
+    if num_chunks != len(corpus_chunks):
+        errors.append(
+            "index.build.num_chunks must match corpus_path chunk count "
+            f"({len(corpus_chunks)})"
+        )
+
+    index_chunks = index.get("chunks") if isinstance(index.get("chunks"), list) else []
+    contaminated_rows = [
+        idx
+        for idx, chunk in enumerate(index_chunks, start=1)
+        if isinstance(chunk, dict) and PROHIBITED_CORPUS_FIELDS & set(chunk)
+    ]
+    if contaminated_rows:
+        errors.append("index chunks must not contain query/gold label fields")
+
+    comparable_index_chunks = [
+        _chunk_for_provenance_comparison(chunk)
+        for chunk in index_chunks
+        if isinstance(chunk, dict)
+    ]
+    comparable_corpus_chunks = [
+        _chunk_for_provenance_comparison(chunk)
+        for chunk in corpus_chunks
+    ]
+    if comparable_index_chunks != comparable_corpus_chunks:
+        errors.append("index chunks must match corpus_path chunk ids, order, metadata, and text")
+
+    if errors:
+        raise ValueError(
+            f"Benchmark index provenance mismatch in {_relative(index_dir)}:\n- "
+            + "\n- ".join(errors)
+        )
 
 
 def _pages_from_span(value: Any) -> set[int]:
@@ -229,6 +315,119 @@ def _compat_answer_metrics(
         "hallucination_flag": rule_metrics.get("unsafe_answer_rate"),
         "unanswerable_detection_flag": unanswerable_detection,
     }
+
+
+def _empty_bucket_counts(keys: tuple[str, ...]) -> dict[str, int]:
+    return {key: 0 for key in keys}
+
+
+def _multi_chunk_doc_cardinality(gold_evidence: list[dict[str, Any]]) -> str:
+    doc_ids = unique_ids([str(item.get("doc_id") or "") for item in gold_evidence])
+    if len(doc_ids) == 1:
+        return "same_doc"
+    if len(doc_ids) > 1:
+        return "multi_doc"
+    return "unknown"
+
+
+def _multi_chunk_evidence_profile_for_case(
+    gold_evidence: list[dict[str, Any]],
+    retrieved_chunks: list[dict[str, Any]],
+    *,
+    k: int = 10,
+) -> dict[str, Any] | None:
+    gold_chunk_ids = unique_ids([str(item.get("chunk_id") or "") for item in gold_evidence])
+    if len(gold_chunk_ids) < 2:
+        return None
+
+    top_retrieved = retrieved_chunks[:k]
+    retrieved_chunk_ids = unique_ids(
+        [str(item.get("chunk_id") or "") for item in top_retrieved]
+    )
+    gold_doc_ids = set(unique_ids([str(item.get("doc_id") or "") for item in gold_evidence]))
+    retrieved_doc_ids = set(
+        unique_ids([str(item.get("doc_id") or "") for item in top_retrieved])
+    )
+    gold_hits = set(gold_chunk_ids) & set(retrieved_chunk_ids)
+    doc_cardinality = _multi_chunk_doc_cardinality(gold_evidence)
+
+    if len(gold_hits) == len(gold_chunk_ids):
+        retrieval_outcome = "all_gold_retrieved"
+    elif gold_hits:
+        retrieval_outcome = (
+            "not_observable" if len(top_retrieved) < k else "partial_gold_retrieved"
+        )
+    else:
+        retrieval_outcome = "no_gold_retrieved"
+
+    failure_mode = None
+    if retrieval_outcome == "not_observable":
+        failure_mode = "not_observable"
+    elif retrieval_outcome == "partial_gold_retrieved":
+        if doc_cardinality == "same_doc":
+            failure_mode = (
+                "same_doc_single_gold_hit"
+                if len(gold_hits) == 1
+                else "same_doc_multi_gold_partial_hit"
+            )
+        elif doc_cardinality == "multi_doc":
+            failure_mode = "multi_doc_partial_hit"
+        else:
+            failure_mode = "not_observable"
+    elif retrieval_outcome == "no_gold_retrieved":
+        if not gold_doc_ids or not retrieved_doc_ids:
+            failure_mode = "not_observable"
+        elif retrieved_doc_ids.isdisjoint(gold_doc_ids):
+            failure_mode = "cross_document_distractor_only"
+        else:
+            failure_mode = "same_document_distractor_without_gold"
+
+    return {
+        "gold_chunk_count": len(gold_chunk_ids),
+        "gold_doc_cardinality": doc_cardinality,
+        "retrieval_outcome_at_10": retrieval_outcome,
+        "top10_failure_mode": failure_mode,
+    }
+
+
+def _summarize_multi_chunk_evidence_profiles(
+    case_profiles: list[dict[str, Any]],
+) -> dict[str, Any]:
+    summary = {
+        "case_count": len(case_profiles),
+        "top_k": 10,
+        "gold_doc_cardinality": _empty_bucket_counts(MULTI_CHUNK_DOC_CARDINALITY_BUCKETS),
+        "retrieval_outcome_at_10": _empty_bucket_counts(MULTI_CHUNK_RETRIEVAL_OUTCOME_BUCKETS),
+        "top10_failure_count": 0,
+        "top10_not_observable_count": 0,
+        "top10_failure_modes": _empty_bucket_counts(MULTI_CHUNK_TOP10_FAILURE_MODE_BUCKETS),
+        "definition": (
+            "answerable benchmark cases with two or more explicit gold chunk ids; "
+            "closed buckets only, no question text or document ids"
+        ),
+    }
+    for profile in case_profiles:
+        doc_bucket = str(profile.get("gold_doc_cardinality") or "unknown")
+        if doc_bucket not in summary["gold_doc_cardinality"]:
+            doc_bucket = "unknown"
+        summary["gold_doc_cardinality"][doc_bucket] += 1
+
+        outcome = str(profile.get("retrieval_outcome_at_10") or "not_observable")
+        if outcome not in summary["retrieval_outcome_at_10"]:
+            outcome = "not_observable"
+        summary["retrieval_outcome_at_10"][outcome] += 1
+
+        failure_mode = profile.get("top10_failure_mode")
+        if failure_mode:
+            mode = str(failure_mode)
+            if mode not in summary["top10_failure_modes"]:
+                mode = "not_observable"
+            summary["top10_failure_modes"][mode] += 1
+            if mode == "not_observable":
+                summary["top10_not_observable_count"] += 1
+            else:
+                summary["top10_failure_count"] += 1
+    return summary
 
 
 def _mean(metrics: dict[str, dict[str, Any]], key: str) -> float | None:
@@ -421,6 +620,12 @@ def run_from_config(
     corpus_chunks = load_corpus_chunks(corpus_path)
     index_load_start = time.perf_counter()
     index = load_index(index_dir)
+    assert_benchmark_index_provenance(
+        index=index,
+        index_dir=index_dir,
+        corpus_path=corpus_path,
+        corpus_chunks=corpus_chunks,
+    )
     index_load_ms = (time.perf_counter() - index_load_start) * 1000
     pipeline = config["pipeline"]
 
@@ -439,6 +644,7 @@ def run_from_config(
     answer_case_metrics: list[dict[str, Any]] = []
     latency_case_metrics: list[dict[str, float | None]] = []
     primary_failures: list[str | None] = []
+    multi_chunk_case_profiles: list[dict[str, Any]] = []
 
     for question in questions:
         qid = str(question["question_id"])
@@ -482,6 +688,13 @@ def run_from_config(
             citations=citations,
         )
         compat_metric = _compat_answer_metrics(rule_metric, citation_metric)
+        multi_chunk_profile = _multi_chunk_evidence_profile_for_case(
+            gold_evidence,
+            retrieved_chunks,
+            k=10,
+        )
+        if multi_chunk_profile is not None:
+            multi_chunk_case_profiles.append(multi_chunk_profile)
         primary_failure, all_failures = classify_failure(
             question=question,
             gold_chunk_ids=gold_chunk_ids,
@@ -638,6 +851,9 @@ def run_from_config(
         },
         "failure_counts": count_failures(primary_failures),
         "failure_taxonomy": list(ALL_FAILURE_TYPES),
+        "multi_chunk_evidence_profile": _summarize_multi_chunk_evidence_profiles(
+            multi_chunk_case_profiles
+        ),
         "artifact_paths": {name: _relative(path) for name, path in artifact_paths.items()},
     }
     metrics_payload["benchmark_validity_warnings"] = _warnings(metrics_payload)

@@ -14,6 +14,7 @@ venv/
 .env
 .env.*
 !.env.example
+.agent_loop_tmp/
 
 # OS/editor files
 .DS_Store
@@ -31,6 +32,8 @@ venv/
 !.claude/skills/**
 !.claude/agents/
 !.claude/agents/**
+!.claude/commands/
+!.claude/commands/**
 
 # Local/private source data
 configs/eval/private_real_eval.local.yaml
@@ -41,6 +44,7 @@ data/private/
 data/data_list.csv
 data/data_list.xlsx
 eval/real_config.local.yaml
+reports/agent_loop/
 eval/*.local.yaml
 configs/eval/*.local.yaml
 원본 데이터/
@@ -226,6 +230,8 @@ reports/figures/*
 # just qid + category + metric values, ADR 0005 boundary preserved.
 !reports/retrieval/
 reports/retrieval/*
+!reports/retrieval/hybrid_sweep_summary.md
+!reports/retrieval/hybrid_sweep_summary.aggregate.json
 !reports/retrieval/phase2_chunking_*/
 reports/retrieval/phase2_chunking_*/*
 !reports/retrieval/phase2_chunking_*/REPORT.md

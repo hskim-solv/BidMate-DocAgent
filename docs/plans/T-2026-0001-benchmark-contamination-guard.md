@@ -1,9 +1,9 @@
 # Plan: T-2026-0001 Benchmark Contamination Guard
 
-- Status: review
+- Status: done
 - Owner role: Implementer
 - Related task: `tasks/queue.md::T-2026-0001`
-- Related issue / PR: [#1480](https://github.com/hskim-solv/BidMate-DocAgent/issues/1480) / PR TBD
+- Related issue / PR: [#1480](https://github.com/hskim-solv/BidMate-DocAgent/issues/1480) / [#1481](https://github.com/hskim-solv/BidMate-DocAgent/pull/1481)
 - Related ADR: [ADR 0005](../adr/0005-eval-split-public-synthetic-private-local.md)
 - Created: 2026-05-25
 - Last updated: 2026-05-25
