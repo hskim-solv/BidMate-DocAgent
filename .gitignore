@@ -230,6 +230,8 @@ reports/figures/*
 # just qid + category + metric values, ADR 0005 boundary preserved.
 !reports/retrieval/
 reports/retrieval/*
+!reports/retrieval/hybrid_sweep_summary.md
+!reports/retrieval/hybrid_sweep_summary.aggregate.json
 !reports/retrieval/phase2_chunking_*/
 reports/retrieval/phase2_chunking_*/*
 !reports/retrieval/phase2_chunking_*/REPORT.md
