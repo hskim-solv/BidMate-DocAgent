@@ -18,6 +18,7 @@ PR이 생기면 각 task에 링크를 추가한다. 예제 task는 `tasks/exampl
 | 5 | `T-2026-0006` | `review` | Implementer -> Reviewer | `ai_next_actions` human-readable HTML review surface 구현됨. |
 | 6 | `T-2026-0007` | `review` | Implementer -> Reviewer | failure distribution local HTML board 구현됨. |
 | 7 | `T-2026-0008` | `review` | Implementer -> Reviewer | chunking diagnostics local HTML board 구현됨. |
+| 8 | `T-2026-0009` | `review` | Implementer -> Reviewer | ADR decision map local HTML board 구현됨. |
 
 ## Examples
 
@@ -662,4 +663,92 @@ make check-branch
 - Open risks: reviewer should inspect claim wording and whether additional slices belong in a separate follow-up.
 - Next safe command: python3 -m pytest -q tests/test_render_chunking_diagnostics_board.py
 - Reviewer focus: claim boundary, aggregate-only rendering, and no default behavior change.
+```
+
+## T-2026-0009 — Human-readable ADR decision map
+
+- ID: T-2026-0009
+- Title: Human-readable ADR decision map
+- Status: review
+- Owner role: Implementer -> Reviewer
+- Created: 2026-05-26
+- Last updated: 2026-05-26
+
+### Goal
+
+Give reviewers a compact local HTML map of ADR status mix, decision areas,
+recent ADRs, proposed ADRs, and superseded decisions without editing ADR source
+files.
+
+### Context
+
+- Surface: ADR navigation/reviewer tooling.
+- Relevant docs: [`docs/adr/README.md`](../docs/adr/README.md).
+- Primary risk: a generated HTML view being mistaken for the ADR source of
+  truth, or keyword-based area grouping being treated as governance logic.
+
+### Scope
+
+- Add `reports/adr_decision_map.html` as a generated local artifact.
+- Parse existing `docs/adr/README.md` rows.
+- Keep ADR files, statuses, numbering, and README content unchanged.
+
+### Non-Goals
+
+- Do not create or edit ADRs.
+- Do not reserve ADR numbers.
+- Do not promote/demote statuses or enforce lifecycle policy.
+- Do not introduce JavaScript, external services, or runtime dependencies.
+
+### Acceptance Criteria
+
+- [x] Renderer emits a self-contained local HTML board.
+- [x] HTML includes status mix, decision areas, recent ADRs, proposed ADRs, and
+  superseded decisions.
+- [x] Tests verify canonical row parsing, status counts, and escaping.
+- [x] ADR source files remain unmodified.
+
+### Validation Commands
+
+```bash
+python3 scripts/render_adr_decision_map.py
+python3 -m py_compile scripts/render_adr_decision_map.py scripts/html_report.py
+python3 -m pytest -q tests/test_render_adr_decision_map.py
+python3 scripts/check_doc_links.py --check-all --paths docs/plans/T-2026-0009-adr-decision-map.md tasks/queue.md
+git diff --check
+make check-branch
+```
+
+### Evidence Required
+
+- Focused pytest output.
+- Doc-link check output.
+- Note that `docs/adr/README.md` and ADR files are unchanged.
+
+### Related Plan / Issue / PR Links
+
+- Plan: [`docs/plans/T-2026-0009-adr-decision-map.md`](../docs/plans/T-2026-0009-adr-decision-map.md)
+- Issue: [#1516](https://github.com/hskim-solv/BidMate-DocAgent/issues/1516)
+- PR: TBD
+- ADR: N/A
+
+### Handoff Notes
+
+```markdown
+## Session Handoff — 2026-05-26 00:00 KST
+
+- Role: Implementer
+- Lifecycle stage: review
+- Branch / worktree: chore/issue-1516-adr-decision-map / /Users/hskim/.codex/worktrees/8ed1/BidMate-DocAgent
+- Task: T-2026-0009
+- Plan: docs/plans/T-2026-0009-adr-decision-map.md
+- Current status: HTML ADR decision map implemented.
+- Files touched: scripts/render_adr_decision_map.py, tests/test_render_adr_decision_map.py, tasks/queue.md, docs/plans/T-2026-0009-adr-decision-map.md
+- Decisions made: Generate a self-contained local HTML file from docs/adr/README.md only; keep ADR source files unchanged.
+- Commands run: python3 scripts/render_adr_decision_map.py; python3 -m py_compile scripts/render_adr_decision_map.py scripts/html_report.py; python3 -m pytest -q tests/test_render_adr_decision_map.py; git diff --check
+- Results: pass.
+- Eval surface: none.
+- Open risks: reviewer should inspect that area grouping is navigation-only.
+- Next safe command: python3 -m pytest -q tests/test_render_adr_decision_map.py
+- Reviewer focus: source-of-truth wording, parser robustness, and escaping.
 ```
