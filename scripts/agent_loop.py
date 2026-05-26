@@ -114,6 +114,7 @@ DEFAULT_ARCHITECTURE_DECISION = DEFAULT_REPORT_DIR / "architecture_decision.md"
 DEFAULT_WORKSET_RECOMMENDATION = DEFAULT_REPORT_DIR / "workset_recommendation.md"
 DEFAULT_DEPENDENCY_GRAPH = DEFAULT_REPORT_DIR / "dependency_graph.md"
 DEFAULT_AUTOMATION_COVERAGE = DEFAULT_REPORT_DIR / "automation_coverage.md"
+DEFAULT_ROLE_DISPATCH = DEFAULT_REPORT_DIR / "role_dispatch.md"
 DEFAULT_HUMAN_GATED_EXEC = DEFAULT_REPORT_DIR / "human_gated_exec.md"
 DEFAULT_AUTO_SHIP_PLAN = DEFAULT_REPORT_DIR / "auto_ship_plan.md"
 DEFAULT_AUTO_SHIP_PREPARE = DEFAULT_REPORT_DIR / "auto_ship_prepare.md"
@@ -636,8 +637,8 @@ BidMate operating mode:
 - Stay within the existing task queue, plan doc, review checklist, and eval surface map.
 - Do not create a new governance system or replace the operating model.
 - Do not auto-merge, auto-push, auto-close PRs, delete branches, or force-push.
-- Human approval is required for merge/close/push/delete/force-push, benchmark claims,
-  private real-eval decisions, and architecture tradeoff decisions.
+- Conservative agent gate evidence is required for merge/close/push/delete/force-push,
+  benchmark claims, private real-eval decisions, and architecture tradeoff decisions.
 
 Session-time-maxing loop:
 1. Inspect the existing repo workflow and relevant scripts.
@@ -646,7 +647,7 @@ Session-time-maxing loop:
 4. Add focused tests.
 5. Run focused validation and fix in-scope failures.
 6. Stop only when the scoped MVP is implemented and validated, or when blocked by
-   missing repo evidence or human approval.
+   missing repo evidence or an unresolved conservative agent gate.
 
 Required reads:
 {required_reads}
@@ -1714,7 +1715,7 @@ def _lane_for_brief(brief: dict[str, str]) -> tuple[str, str]:
         "architecture tradeoff",
     )
     if classification in {"needs_private_delta", "close_superseded"} or any(term in haystack for term in manual_terms):
-        return "manual-gated", "requires human approval or private/PR decision"
+        return "manual-gated", "requires conservative agent-gate evidence or private/PR decision"
     if classification in {"blocked", "failed_experiment"}:
         return "serial", "resolve before dependent implementation or claims"
     if classification == "ready_for_review" or "review " in haystack:
@@ -1728,14 +1729,14 @@ def render_batch_plan(briefs: Sequence[BriefSummary], *, tasks_dir: Path, repo_r
         "serial": "Set A - Serial Blockers",
         "parallel-safe": "Set B - Parallel Safe Candidates",
         "review-only": "Set C - Review-Only Passes",
-        "manual-gated": "Set D - Manual Gates",
+        "manual-gated": "Set D - Agent Gates",
     }
     lines = [
         "# Agent Loop Batch Plan",
         "",
         f"- Source briefs: `{_display_path(_repo_path(tasks_dir, repo_root), repo_root=repo_root)}`",
         "- This is a local planning artifact. It does not edit `tasks/queue.md`, plans, branches, PRs, or GitHub state.",
-        "- Execute at most one serial lane item at a time; parallel-safe items can be assigned independently after human scope review.",
+        "- Execute at most one serial lane item at a time; parallel-safe items can be assigned independently after conservative agent-gate scope review.",
         "",
         "## Lane Summary",
         "",
@@ -1773,10 +1774,10 @@ def render_batch_plan(briefs: Sequence[BriefSummary], *, tasks_dir: Path, repo_r
             )
     lines.extend(
         [
-            "## Human Stop Points",
+            "## Agent Gate Stop Points",
             "",
             "- Applying any draft to `tasks/queue.md` or `docs/plans/*.md`.",
-            "- Any push, PR create/merge/close, branch delete, or force-push.",
+            "- Any push, PR create/merge/close, branch delete, or force-push without explicit confirmation command/flag.",
             "- Benchmark/performance/private real-eval claims.",
             "- Architecture tradeoff decisions.",
             "",
@@ -1940,7 +1941,7 @@ def render_review_followup_task(
 
 ## Goal
 
-Address the reviewer finding with the smallest scoped change, or document why human approval is required.
+Address the reviewer finding with the smallest scoped change, or document why conservative agent-gate evidence is still missing.
 
 ## Finding
 
@@ -1949,7 +1950,7 @@ Address the reviewer finding with the smallest scoped change, or document why hu
 ## Constraints
 
 - Do not auto-merge, auto-push, create/close/merge PRs, delete branches, or force-push.
-- Do not make benchmark, performance, private real-eval, or architecture tradeoff claims without human approval.
+- Do not make benchmark, performance, private real-eval, or architecture tradeoff claims without ADR 0079 agent-gate evidence.
 - Do not expose raw private question, answer, evidence, doc_id, chunk_id, filenames, or exact local paths.
 
 ## Expected Evidence
@@ -2062,7 +2063,7 @@ def render_promote_draft(
 - Result: dry-run only; no tracked files were modified.
 - Queue target: `{target_queue}`
 - Plan target: `{target_plan}`
-- Manual approval required before applying these changes.
+- Conservative gate acknowledgment required before applying these changes.
 
 ## Queue Diff
 
@@ -3310,7 +3311,7 @@ def render_approval_packet(
     lines.extend(
         [
             "",
-            "## Human Approval Required Before",
+            "## Conservative Agent Gate Required Before",
             "",
             "- Applying queue/plan drafts to tracked docs.",
             "- Running push, PR create/merge/close, branch delete, or force-push.",
@@ -3383,7 +3384,7 @@ def render_queue_plan_patch(
     return _sanitize_dynamic_text(
         "\n".join(
             [
-                "# Agent-loop queue/plan patch proposal. Dry-run only; do not apply without human approval.",
+                "# Agent-loop queue/plan patch proposal. Dry-run only; do not apply without conservative gate acknowledgment.",
                 queue_diff,
                 plan_diff,
                 "",
@@ -3434,7 +3435,7 @@ def render_pr_body(
     file_block = "\n".join(f"- `{_display_path(path)}`" for path in files) if files else "- N/A"
     validation_block = "\n".join(f"- Suggested, not yet run: `{_sanitize_command_text(command)}`" for command in validation)
     five_b = (
-        "Load-bearing or eval surface touched. Human reviewer must verify aggregate-only §5b evidence or a truthful no-behavior-change attestation before PR is marked ready."
+        "Load-bearing or eval surface touched. Conservative reviewer evidence must verify aggregate-only §5b evidence or a truthful no-behavior-change attestation before PR is marked ready."
         if load_bearing
         else "N/A - no load-bearing path detected by changed-file surface; reviewer should still confirm."
     )
@@ -3454,7 +3455,7 @@ Closes #{issue_number or '<ISSUE_NUMBER>'}
 
 ## 3. 리스크
 
-- Human-gated decisions remain outside this CLI: push, PR create/merge/close, branch delete, force-push, private real-eval decisions, benchmark/performance claims, and architecture tradeoffs.
+- Conservative-agent-gated decisions remain outside this CLI: push, PR create/merge/close, branch delete, force-push, private real-eval decisions, benchmark/performance claims, and architecture tradeoffs.
 - Disallowed claims to avoid:
 {chr(10).join(f'  - {claim}' for claim in surface.disallowed_claims)}
 
@@ -3562,7 +3563,7 @@ def render_review_plan(findings: Sequence[ReviewFinding], *, sources: Sequence[s
         "# Review Plan",
         "",
         "- This is a triage artifact. It does not auto-fix, push, create/merge/close PRs, delete branches, or force-push.",
-        "- Privacy, benchmark, and architecture findings stay human-gated.",
+        "- Privacy, benchmark, and architecture findings stay conservative-agent-gated.",
         "",
         "## Sources",
         "",
@@ -4077,9 +4078,9 @@ def build_auto_ship_plan(
     else:
         decision = "arm-ready-auto-ship"
     human_gates = (
-        "Running `make ship-arm` is a shipping approval: the existing Stop hook may commit, push, create a PR, wait for CI/review, merge, and delete the remote branch when its gates pass.",
-        "Ready auto-merge remains a human shipping decision; use `DRAFT=true` when review or claim risk remains.",
-        "Private real-eval mode and benchmark/performance claim wording require human approval before using `REAL_EVAL=auto` or `REAL_EVAL=async` as evidence.",
+        "Running `make ship-arm` is a conservative shipping gate: the existing Stop hook may commit, push, create a PR, wait for CI/review, merge, and delete the remote branch when its gates pass.",
+        "Ready auto-merge remains an agent-gated shipping decision; use `DRAFT=true` when review or claim risk remains.",
+        "Private real-eval mode and benchmark/performance claim wording require ADR 0079 evidence before using `REAL_EVAL=auto` or `REAL_EVAL=async` as evidence.",
         "Architecture tradeoffs and ADR decisions are not decided by this plan.",
     )
     return AutoShipPlan(
@@ -4164,7 +4165,7 @@ def render_auto_ship_plan(
     if plan.surface.disallowed_claims:
         lines.extend(["", "## Disallowed Claims", ""])
         lines.extend(f"- {_sanitize_dynamic_text(item)}" for item in plan.surface.disallowed_claims)
-    lines.extend(["", "## Human Gates", ""])
+    lines.extend(["", "## Agent Gates", ""])
     lines.extend(f"- {_sanitize_dynamic_text(item)}" for item in plan.human_gates)
     lines.extend(["", "## Changed Files", ""])
     normalized_paths: set[str] = set()
@@ -4471,7 +4472,8 @@ def render_gate_brief(
     rendered = render_decision_brief(points, repo_root=repo_root)
     return (
         f"# Gate Brief: {gate}\n\n"
-        "- Human gates are decision points, not automation failures.\n"
+        "- Conservative agent gates are policy decisions, not automation failures.\n"
+        "- ADR 0079 delegates routine gate decisions to Codex with draft/no-claim/follow-up/fail-closed defaults.\n"
         "- This command explains options and does not execute the gated action.\n\n"
         + rendered.split("\n", 1)[1]
     )
@@ -4834,7 +4836,7 @@ def render_ci_followup_task(finding: CIFinding, *, index: int) -> str:
 
 ## Goal
 
-Resolve the CI signal with the smallest local change, or document why human approval is required.
+Resolve the CI signal with the smallest local change, or document why conservative agent-gate evidence is still missing.
 
 ## Expected Evidence
 
@@ -4918,9 +4920,9 @@ def render_stacked_risk(*, branch: str, items: Sequence[dict[str, object]]) -> s
     lines.extend(
         [
             "",
-            "## Human Gate",
+            "## Agent Gate",
             "",
-            "- Branch deletion, PR merge, PR close, and force-push still require explicit human approval.",
+            "- Branch deletion, PR merge, PR close, and force-push still require conservative agent-gate evidence.",
             "- If dependents exist, do not delete the branch until child PRs are rebased or intentionally retained.",
             "",
         ]
@@ -5410,9 +5412,9 @@ def render_adr_reservation(*, number: int, title: str, draft_path: Path) -> str:
 - Suggested ADR number: `{number:04d}`
 - Suggested final path: `{final_path}`
 - Draft artifact: `{_display_path(draft_path.as_posix())}`
-- This command does not create or modify `docs/adr/`; human approval is required before reserving or committing an ADR.
+- This command does not create or modify `docs/adr/`; ADR 0079 agent-gate evidence is required before reserving or committing an ADR.
 
-## Human Checks
+## Agent Gate Checks
 
 - Confirm no open PR already reserves ADR `{number:04d}`.
 - Confirm this is a load-bearing decision, new measurement surface, or durable architecture tradeoff.
@@ -5520,7 +5522,7 @@ def render_ship_command_pack(*, pr: str | None, branch: str | None, repo_root: P
     lines = [
         "# Ship Command Pack",
         "",
-        "- Command suggestions only. Choose one shipping path after explicit approval.",
+        "- Command suggestions only. Choose one shipping path after the conservative agent gate passes.",
         "- This command did not push, create/merge/close PRs, delete branches, or force-push.",
         "",
         "## Safe Local Checks",
@@ -5538,22 +5540,22 @@ def render_ship_command_pack(*, pr: str | None, branch: str | None, repo_root: P
         "",
         "```bash",
         "# plan only: python3 scripts/agent_loop.py auto-ship-plan --from-git --draft --dry-run",
-        "# after approval, arm the single end-to-end Stop-hook pipeline:",
+        "# after the conservative agent gate passes, arm the single end-to-end Stop-hook pipeline:",
         "# make ship-arm REAL_EVAL=skip DRAFT=true DRY_RUN=1",
         "```",
         "",
         "## Manual Fallback Commands",
         "",
-        "Use these action-by-action commands only when the end-to-end `make ship-arm` path is not appropriate.",
+        "Use these action-by-action commands only when the end-to-end `make ship-arm` path is not appropriate. The command name is legacy; ADR 0079 treats it as conservative agent-gate acknowledgment, but the explicit confirmation flag is still required.",
         "",
         "```bash",
-        f"# create PR after approval: python3 scripts/agent_loop.py human-gated-exec --action pr-create --branch {shell_branch} --body reports/agent_loop/pr_body.md --confirm-human-approved",
+        f"# create PR after agent gate: python3 scripts/agent_loop.py human-gated-exec --action pr-create --branch {shell_branch} --body reports/agent_loop/pr_body.md --confirm-human-approved",
         f"# review gate before merge/close/delete: make ship-review-gate PR={safe_pr}",
-        f"# push after approval: python3 scripts/agent_loop.py human-gated-exec --action push --branch {shell_branch} --confirm-human-approved",
-        f"# merge after approval: python3 scripts/agent_loop.py human-gated-exec --action pr-merge --pr {safe_pr} --confirm-review-gate-passed --confirm-human-approved",
-        f"# close after approval: python3 scripts/agent_loop.py human-gated-exec --action pr-close --pr {safe_pr} --confirm-review-gate-passed --confirm-human-approved",
-        f"# delete remote branch after dependent check and approval: python3 scripts/agent_loop.py human-gated-exec --action branch-delete --branch {shell_branch} --confirm-dependents-reviewed --confirm-human-approved",
-        f"# force-with-lease after explicit approval: python3 scripts/agent_loop.py human-gated-exec --action force-push --branch {shell_branch} --confirm-force-with-lease --confirm-human-approved",
+        f"# push after agent gate: python3 scripts/agent_loop.py human-gated-exec --action push --branch {shell_branch} --confirm-human-approved",
+        f"# merge after agent gate: python3 scripts/agent_loop.py human-gated-exec --action pr-merge --pr {safe_pr} --confirm-review-gate-passed --confirm-human-approved",
+        f"# close after agent gate: python3 scripts/agent_loop.py human-gated-exec --action pr-close --pr {safe_pr} --confirm-review-gate-passed --confirm-human-approved",
+        f"# delete remote branch after dependent check and agent gate: python3 scripts/agent_loop.py human-gated-exec --action branch-delete --branch {shell_branch} --confirm-dependents-reviewed --confirm-human-approved",
+        f"# force-with-lease after explicit agent gate: python3 scripts/agent_loop.py human-gated-exec --action force-push --branch {shell_branch} --confirm-force-with-lease --confirm-human-approved",
         "```",
         "",
         "## Required Before Destructive Actions",
@@ -5755,9 +5757,9 @@ def _validate_branch_name(branch: str | None, *, allow_protected: bool = False) 
 
 def render_human_gated_exec(plan: HumanGatedExecPlan) -> str:
     lines = [
-        "# Human-Gated Execution",
+        "# Conservative Remote Execution",
         "",
-        "- This command exists only for explicit human-approved execution of already gated operations.",
+        "- `human-gated-exec` is a legacy command name for explicit conservative agent-gate execution of already gated operations.",
         "- It never bypasses review, claim, private real-eval, architecture, or dependency decisions.",
         f"- Action: `{plan.action}`",
         f"- Mode: `{'dry-run' if plan.dry_run else 'execute'}`",
@@ -6402,7 +6404,7 @@ def render_schedule_config() -> str:
     return """# Agent Loop Scheduled Status Recipe
 
 - Recipe only. This command does not install cron jobs, create Codex app automations, push, create/merge/close PRs, delete branches, force-push, run private eval, or approve claims.
-- Keep scheduled jobs read-only/report-only unless a human explicitly changes the policy.
+- Keep scheduled jobs read-only/report-only unless the conservative agent gate explicitly changes the policy.
 
 ## Safe Refresh Commands
 
@@ -6413,7 +6415,7 @@ python3 scripts/agent_loop.py stale-reports --from-git --out reports/agent_loop/
 python3 scripts/agent_loop.py privacy-audit-output --path reports/agent_loop --out reports/agent_loop/privacy_audit.md
 ```
 
-## Human Gate
+## Agent Gate
 
 - Ask before installing a recurring runner.
 - Do not schedule `validate` with private real-eval inputs.
@@ -6585,11 +6587,14 @@ def render_claim_policy(*, surface: SurfaceReport, findings: Sequence[ClaimFindi
         f"- Required reviewer: `{surface.reviewer_type}`",
         f"- Source: `{_sanitize_dynamic_text(source)}`",
         "",
-        "## Allowed Without Extra Human Claim Approval",
+        "## Allowed Without Extra Agent-Gate Claim Approval",
         "",
         "- Local orchestration, docs, or CI-helper wording that does not claim product quality, benchmark lift, private real-eval success, latency improvement, or production behavior.",
         "",
         "## Disallowed Or Human-Gated Claims",
+        "",
+        "- Legacy heading retained for MCP/report consumers; ADR 0079 interprets these as agent-gated claims.",
+        "- Current label: Disallowed Or Agent-Gated Claims.",
         "",
     ]
     lines.extend(f"- {claim}" for claim in surface.disallowed_claims)
@@ -6697,7 +6702,7 @@ def render_workset_recommendation(*, batch: Path | None, tasks_dir: Path, max_it
     lines.extend(_render_workset_section("Set A - serial unblocker", serial, "Run one item first; it likely gates downstream work."))
     lines.extend(_render_workset_section("Set B - parallel candidates", parallel, "Can be delegated after checking file overlap and claim surface."))
     lines.extend(_render_workset_section("Set C - review-only passes", review, "Use adversarial review without implementation mutation."))
-    lines.extend(_render_workset_section("Set D - manual-gated", manual, "Prepare decision briefs; do not automate the gated action."))
+    lines.extend(_render_workset_section("Set D - agent-gated", manual, "Prepare decision briefs; do not automate the gated action."))
     lines.extend(["", "## Next Safe Command", "", "```bash", "python3 scripts/agent_loop.py decision-brief --gate task", "```", ""])
     return _sanitize_dynamic_text("\n".join(lines)).rstrip() + "\n"
 
@@ -6751,9 +6756,9 @@ def render_dependency_graph(*, branch: str, items: Sequence[dict[str, object]]) 
         [
             "```",
             "",
-            "## Human Gate",
+            "## Agent Gate",
             "",
-            "- If dependents exist, branch deletion and merge cleanup require explicit human approval.",
+            "- If dependents exist, branch deletion and merge cleanup require conservative agent-gate evidence.",
             "",
         ]
     )
@@ -6793,9 +6798,10 @@ def render_automation_coverage() -> str:
         ("16", "architecture decision detector", "architecture-decision, architecture-brief, adr-reserve"),
         ("17", "next work-set recommender", "workset-recommend, batch-plan"),
         ("18", "auto-pass strict profiles", "auto-pass-check --profile ..."),
-        ("19", "human-approved remote execution", "human-gated-exec --confirm-human-approved"),
+        ("19", "conservative remote execution", "human-gated-exec --confirm-human-approved"),
         ("20", "existing auto-ship bridge", "auto-ship-prepare, auto-ship-plan, ship-simulate, ship-command-pack"),
         ("21", "conservative issue cleanup", "issue-scan, maintenance-plan, human-gated-exec --action issue-close"),
+        ("22", "role-separated subagent dispatch", "role-dispatch"),
     )
     lines = [
         "# Agent Loop Automation Coverage",
@@ -6809,16 +6815,176 @@ def render_automation_coverage() -> str:
     lines.extend(
         [
             "",
-            "## Still Human-Gated",
+            "## Still Agent-Gated",
             "",
             "- Queue/plan actual tracked-doc application unless `--confirm-human-approved` is explicit.",
-            "- Running existing `make ship-arm` remains a shipping approval; `auto-ship-plan` only prepares a plan.",
+            "- Running existing `make ship-arm` remains a conservative shipping gate; `auto-ship-plan` only prepares a plan.",
             "- Push, PR create/merge/close, issue close, branch delete, force-push require `human-gated-exec --confirm-human-approved` plus action-specific gates.",
-            "- Private real-eval decisions, benchmark/performance claims, architecture tradeoffs.",
+            "- Private real-eval decisions, benchmark/performance claims, and architecture tradeoffs follow ADR 0079 defaults.",
+            "- Role dispatch is report-only; it does not execute subagents or remote mutations.",
             "",
         ]
     )
     return "\n".join(lines)
+
+
+def write_role_dispatch(
+    *,
+    changed_files: Sequence[str] = (),
+    owner_role: str | None = None,
+    out: Path = DEFAULT_ROLE_DISPATCH,
+    repo_root: Path = ROOT_DIR,
+) -> tuple[Path, str]:
+    rendered = render_role_dispatch(changed_files=changed_files, owner_role=owner_role, repo_root=repo_root)
+    out = _default_output(out, DEFAULT_ROLE_DISPATCH, "role_dispatch.md", repo_root=repo_root)
+    safe_out = _safe_output_path(out, repo_root=repo_root)
+    safe_out.parent.mkdir(parents=True, exist_ok=True)
+    safe_out.write_text(rendered, encoding="utf-8")
+    return safe_out, rendered
+
+
+def _role_dispatch_chain(owner_role: str | None, surface: SurfaceReport) -> list[str]:
+    raw_roles = re.split(r"\s*(?:->|\+|,)\s*", owner_role or "Planner -> Implementer -> Reviewer")
+    roles = [_sanitize_inline_text(role).strip() for role in raw_roles if role.strip()]
+    if not roles:
+        roles = ["Planner", "Implementer", "Reviewer"]
+
+    reviewer_roles: list[str] = []
+    if "Benchmark Auditor" in surface.reviewer_type:
+        reviewer_roles.append("Benchmark Auditor")
+    if "Privacy Auditor" in surface.reviewer_type:
+        reviewer_roles.append("Privacy Auditor")
+    if surface.reviewer_type == "Deep Reviewer":
+        reviewer_roles.append("Deep Reviewer")
+    if surface.surface == "ci-validation":
+        reviewer_roles.append("CI Reviewer")
+    if surface.surface == "docs-only":
+        reviewer_roles.append("Documentation Reviewer")
+
+    insertion_index = max(len(roles) - 1, 0)
+    for role in reviewer_roles:
+        if role not in roles:
+            roles.insert(insertion_index, role)
+            insertion_index += 1
+    if "Reviewer" not in roles and "Deep Reviewer" not in roles:
+        roles.append("Reviewer")
+
+    deduped: list[str] = []
+    for role in roles:
+        if role not in deduped:
+            deduped.append(role)
+    return deduped[:12]
+
+
+def _role_dispatch_card(role: str, *, changed_files: Sequence[str], surface: SurfaceReport) -> tuple[str, str, str, str]:
+    files = ", ".join(changed_files) if changed_files else "current changed-file set"
+    if role in {"Explorer", "Reviewer", "Benchmark Auditor", "Deep Reviewer", "Privacy Auditor", "CI Reviewer", "Documentation Reviewer"}:
+        write_scope = "read-only/report-only"
+        parallel_rule = "parallel allowed with other read-only roles"
+    else:
+        write_scope = "assigned files only; avoid same-file overlap"
+        parallel_rule = "parallel only when file ownership is disjoint"
+
+    if role == "Benchmark Auditor":
+        responsibility = f"Audit eval/benchmark validity for `{surface.surface}`."
+        guardrail = "No metric or performance claim without private real-eval aggregate and provenance."
+    elif role == "Privacy Auditor":
+        responsibility = "Check payload class, private raw-value leakage, and egress assumptions."
+        guardrail = "Report aggregate-only evidence; do not include private RFP text."
+    elif role == "Deep Reviewer":
+        responsibility = "Review load-bearing architecture, ADR consistency, and regression risk."
+        guardrail = "Block hidden contract changes or unratified architecture shifts."
+    elif role == "CI Reviewer":
+        responsibility = "Summarize CI failures and map them to focused local validation."
+        guardrail = "Do not re-run or mutate CI from the dispatch report."
+    elif role == "Documentation Reviewer":
+        responsibility = "Check doc links, terminology consistency, and governance wording."
+        guardrail = "Keep compatibility names explicit when legacy commands remain."
+    elif role == "Reviewer":
+        responsibility = "Review final diff, tests, and handoff evidence."
+        guardrail = "Findings should cite files and lines; advisory comments stay advisory unless evidence-backed."
+    elif role == "Planner":
+        responsibility = f"Split `{files}` into serial, parallel, review, and gate lanes."
+        guardrail = "No implementation until scope, rollback, and validation evidence are named."
+    elif role in {"Implementer", "Worker"}:
+        responsibility = f"Implement the assigned slice for `{files}`."
+        guardrail = "Keep edits surgical and add behavior tests for behavior changes."
+    elif role == "Maintainer":
+        responsibility = "Own integration, compatibility, validation, and shipping evidence."
+        guardrail = "Remote mutation still requires action-specific gate checks and explicit confirmation."
+    else:
+        responsibility = f"Handle the `{role}` slice for `{files}`."
+        guardrail = "Stay within assigned scope and emit evidence before requesting integration."
+    return responsibility, write_scope, guardrail, parallel_rule
+
+
+def render_role_dispatch(
+    *,
+    changed_files: Sequence[str] = (),
+    owner_role: str | None = None,
+    repo_root: Path = ROOT_DIR,
+) -> str:
+    normalized_files = tuple(_normalize_changed_file(path, repo_root=repo_root) for path in changed_files)
+    normalized_files = tuple(path for path in normalized_files if path)
+    surface = classify_changed_files(normalized_files)
+    roles = _role_dispatch_chain(owner_role, surface)
+    owner = _sanitize_inline_text(owner_role or "Planner -> Implementer -> Reviewer")
+
+    lines = [
+        "# Role Dispatch Plan",
+        "",
+        "- Report-only dispatch plan. It does not spawn subagents, edit files, push, merge, close issues/PRs, or call external services.",
+        "- Supports up to 12 role subagents with depth 2 maximum: root session -> role subagents only.",
+        "- Root session keeps integration, validation, commit, PR, merge, remote mutation, and conservative agent-gate decisions.",
+        "",
+        "## Inputs",
+        "",
+        f"- Owner role: `{owner}`",
+        f"- Surface: `{surface.surface}`",
+        f"- Surface confidence: `{surface.confidence}`",
+        f"- Reviewer type: `{surface.reviewer_type}`",
+    ]
+    if normalized_files:
+        lines.append("- Changed files:")
+        lines.extend(f"  - `{_sanitize_inline_text(path)}`" for path in normalized_files)
+    else:
+        lines.append("- Changed files: `none supplied`")
+
+    lines.extend(
+        [
+            "",
+            "## Dispatch Cards",
+            "",
+            "| Role | Responsibility | Write scope | Validation / guardrail | Parallel rule |",
+            "|---|---|---|---|---|",
+        ]
+    )
+    for role in roles:
+        responsibility, write_scope, guardrail, parallel_rule = _role_dispatch_card(
+            role, changed_files=normalized_files, surface=surface
+        )
+        lines.append(
+            "| "
+            + " | ".join(
+                _sanitize_dynamic_text(item).replace("\n", " ")
+                for item in (role, responsibility, write_scope, guardrail, parallel_rule)
+            )
+            + " |"
+        )
+
+    lines.extend(
+        [
+            "",
+            "## Dispatch Policy",
+            "",
+            "- Run read-only roles in parallel when useful; serialize any role that writes the same file.",
+            "- Prefer sidecar reports from reviewers/auditors; the root session applies or rejects findings.",
+            "- Do not delegate private real-eval interpretation, benchmark/performance claims, or remote mutation execution.",
+            "- Use the plan as the prompt source for Codex subagents; actual subagent execution remains outside this report.",
+            "",
+        ]
+    )
+    return _sanitize_dynamic_text("\n".join(lines)).rstrip() + "\n"
 
 
 def write_loop_state(
@@ -7064,7 +7230,7 @@ def _task_decision_point(task: TaskEntry, *, repo_root: Path) -> DecisionPoint:
                 ),
                 evidence_needed=("Multiple surfaces, missing validation, or unclear owner role.",),
                 next_safe_command="python3 scripts/agent_loop.py map",
-                manual_approval="Human scope judgment required.",
+                manual_approval="Conservative agent scope judgment required.",
             ),
         ),
     )
@@ -7112,20 +7278,20 @@ def _batch_decision_point(batch_path: Path, *, repo_root: Path) -> DecisionPoint
                     "Improves throughput when candidates touch independent surfaces.",
                     "Raises coordination cost and can create merge conflicts if independence is misclassified.",
                 ),
-                evidence_needed=("No shared files, shared PR source, or manual-gated claim surface.",),
+                evidence_needed=("No shared files, shared PR source, or agent-gated claim surface.",),
                 next_safe_command="python3 scripts/agent_loop.py batch-plan",
-                manual_approval="Human should confirm independence before parallel execution.",
+                manual_approval="Conservative agent gate should confirm independence before parallel execution.",
             ),
             DecisionOption(
-                label="Hold manual-gated items",
+                label="Hold agent-gated items",
                 recommended=manual_count > 0,
                 severity="high" if manual_count else "low",
                 reversibility="high",
                 tradeoffs=(
                     "Prevents accidental benchmark/private/PR state claims or destructive actions.",
-                    "May leave shipping or cleanup work waiting on a human decision.",
+                    "May leave shipping or cleanup work waiting on stronger evidence.",
                 ),
-                evidence_needed=("Reviewer-readable evidence and explicit human approval.",),
+                evidence_needed=("Reviewer-readable evidence and conservative agent-gate acknowledgment.",),
                 next_safe_command="python3 scripts/agent_loop.py decision-brief --gate claim --from-git",
                 manual_approval="Required for private eval, benchmark claims, push/PR/merge/close/delete.",
             ),
@@ -7152,7 +7318,7 @@ def _review_followup_decision_point(path: Path, *, repo_root: Path) -> DecisionP
         f"Review followups: `{_display_path(_repo_path(path, repo_root), repo_root=repo_root)}`",
         f"Parsed follow-up count: `{parsed}`",
         f"Blocking/P0/P1 findings: `{blocking}`",
-        f"Manual-gated findings: `{manual}`",
+        f"Agent-gated findings: `{manual}`",
     )
     return DecisionPoint(
         gate="review-findings",
@@ -7196,7 +7362,7 @@ def _review_followup_decision_point(path: Path, *, repo_root: Path) -> DecisionP
                 ),
                 evidence_needed=("File/line evidence, contract citation, or test output supporting the decision.",),
                 next_safe_command="python3 scripts/agent_loop.py render-prompt --task <TASK_ID>",
-                manual_approval="Human reviewer should approve rejected findings.",
+                manual_approval="Conservative reviewer evidence required before rejecting findings.",
             ),
         ),
     )
@@ -7259,7 +7425,7 @@ def _claim_decision_point(changed_files: Sequence[str], *, repo_root: Path) -> D
                 ),
                 evidence_needed=(
                     "Aggregate-only private delta, no raw question/answer/evidence/doc_id/chunk_id/filename/local path.",
-                    "Human approval of claim wording.",
+                    "ADR 0079 agent-gate evidence for claim wording.",
                 ),
                 next_safe_command="python3 scripts/_governance.py --check-eval-privacy",
                 manual_approval="Required for private real-eval decisions and claims.",
@@ -7316,7 +7482,7 @@ def _ship_decision_point(*, pr: str | None, changed_files: Sequence[str]) -> Dec
                     "Can finish or clean up work quickly.",
                     "Most irreversible path; stacked PRs, unresolved review, or branch deletion can lose coordination state.",
                 ),
-                evidence_needed=("CI state, unresolved review status, stacked dependent check, explicit human approval.",),
+                evidence_needed=("CI state, unresolved review status, stacked dependent check, conservative agent-gate acknowledgment.",),
                 next_safe_command="make ship-review-gate PR=<N>",
                 manual_approval="Required for merge, close, delete, and force-push decisions.",
             ),
@@ -7377,7 +7543,7 @@ def render_decision_brief(points: Sequence[DecisionPoint], *, repo_root: Path = 
                     "",
                     f"- Severity: `{option.severity}`",
                     f"- Reversibility: `{option.reversibility}`",
-                    f"- Manual approval: {option.manual_approval}",
+                    f"- Gate acknowledgment: {option.manual_approval}",
                     "- Trade-offs:",
                 ]
             )
@@ -7407,12 +7573,12 @@ flowchart TD
   A --> MCP["agent-loop-mcp: expose safe local loop tools to MCP clients"]
   MCP --> D
   B --> C["next-from-prs: generate next-action report and task briefs"]
-  C --> D["batch-plan: group serial, parallel, review, and manual-gated lanes"]
+  C --> D["batch-plan: group serial, parallel, review, and agent-gated lanes"]
   D --> E["decision-brief: explain options, trade-offs, severity, and safe commands"]
   E --> F["draft-task: generate queue and plan drafts"]
   F --> G["promote-draft: dry-run queue/plan diff only"]
-  G --> H{"Human gate: accept task scope and plan?"}
-  H -->|approved| I["render-prompt: copy-paste Codex session prompt"]
+  G --> H{"Agent gate: accept task scope and plan?"}
+  H -->|policy accepted| I["render-prompt: copy-paste Codex session prompt"]
   I --> J["Codex implementation session"]
   J --> K["suggest-validation or validate: focused safe local checks"]
   K --> VH["validation-history: local JSONL evidence ledger"]
@@ -7440,13 +7606,15 @@ flowchart TD
   ASP --> STACK["dependency-graph and stacked-risk before merge/delete cleanup"]
   RP --> PATCH["review-patch-plan and patch-proposal: dry-run safe patch"]
   ARCH --> ADR["adr-reserve: draft-only ADR reservation"]
-  C --> WORKSET["workset-recommend: serial/parallel/review/manual sets"]
+  C --> WORKSET["workset-recommend: serial/parallel/review/agent-gated sets"]
+  WORKSET --> ROLE["role-dispatch: role-separated subagent dispatch plan (max 12, depth 2)"]
   A --> INT["integration-pack and scheduled-status recipes"]
   INT --> MCP
   ISS --> F
-  Q --> R{"Human gate: review, claims, merge, close issue/PR, push, delete?"}
-  R -->|end-to-end approved| SHIP["make ship-arm: approved single end-to-end ship pipeline"]
-  R -->|manual fallback approved| EXEC["human-gated-exec: action-by-action remote mutation fallback"]
+  ROLE --> F
+  Q --> R{"Agent gate: review, claims, merge, close issue/PR, push, delete?"}
+  R -->|policy passes| SHIP["make ship-arm: conservative single end-to-end ship pipeline"]
+  R -->|fallback policy passes| EXEC["human-gated-exec: legacy-named conservative remote mutation fallback"]
   SHIP --> S["Existing ship workflow"]
   EXEC --> S["Manual fallback workflow"]
   R -->|more work| A
@@ -7458,13 +7626,13 @@ Automation points:
 - maintenance-plan: generate issue cleanup, queue migration, worktree cleanup, and branch deletion gate recommendations without executing them.
 - next-from-prs: deterministic wrapper around `scripts/ai_next_actions.py`.
 - pr-health: group exported PR state into CI, review, stale, draft, blocked, and ready lanes.
-- batch-plan: group local task briefs into serial, parallel-safe, review-only, and manual-gated lanes.
-- decision-brief: explain human-gate options, trade-offs, severity, reversibility, evidence, and next safe commands.
+- batch-plan: group local task briefs into serial, parallel-safe, review-only, and agent-gated lanes.
+- decision-brief: explain agent-gate options, trade-offs, severity, reversibility, evidence, and next safe commands.
 - draft-task: local queue/plan drafts under `reports/agent_loop/`.
 - promote-draft: local dry-run diff for queue/plan promotion; no tracked files are changed.
 - propose-queue-plan: dry-run queue/plan patch proposal; no tracked files are changed.
 - gate-status: summarize the current stop point and next safe command.
-- gate-brief: explain one human gate with options, trade-offs, severity, reversibility, and evidence.
+- gate-brief: explain one conservative agent gate with options, trade-offs, severity, reversibility, and evidence.
 - claim-audit: audit risky claim wording against eval/privacy surface classification.
 - claim-policy: render allowed/disallowed claim boundaries for the current surface.
 - privacy-audit-output: scan generated local artifacts for private raw values.
@@ -7483,8 +7651,8 @@ Automation points:
 - ship-simulate: predict auto-ship stop points without push/PR/merge/close/delete.
 - auto-ship-prepare: prepare or create a local ADR 0007 branch for the primary `make ship-arm` pipeline; branch creation requires `--confirm-human-approved`.
 - auto-ship-plan: render a readiness-backed bridge to the primary `make ship-arm` Stop-hook pipeline without arming it.
-- ship-command-pack: render human-gated ship commands without executing them.
-- human-gated-exec: execute push/PR create/merge/close, issue close, remote branch delete, or force-with-lease only as an action-by-action fallback with `--confirm-human-approved` and action-specific gates.
+- ship-command-pack: render conservative shipping commands without executing them.
+- human-gated-exec: legacy command name for conservative remote mutation fallback; executes push/PR create/merge/close, issue close, remote branch delete, or force-with-lease only with `--confirm-human-approved` and action-specific gates.
 - dependency-graph: render stacked PR graph without merge/delete mutation.
 - stacked-risk: detect dependent PR risk before merge/delete cleanup.
 - pr-body-check: verify `Closes`, §5b, claim, and privacy boundaries before PR creation.
@@ -7495,7 +7663,8 @@ Automation points:
 - manifest: write input-hash freshness metadata for generated artifacts.
 - artifact-freshness: alias around stale/manifest freshness checks.
 - validation-history: summarize local JSONL validation history.
-- workset-recommend: recommend serial, parallel-safe, review-only, and manual-gated task sets.
+- workset-recommend: recommend serial, parallel-safe, review-only, and agent-gated task sets.
+- role-dispatch: render role-separated subagent dispatch cards with max 12 and depth 2; report-only, does not spawn subagents.
 - automation-coverage: map implemented automation candidates to command surfaces.
 - auto-pass-check: fail-closed low-risk gate check; named strict profiles require high-confidence docs/CI/tooling surfaces and passed validation.
 - loop-state: write machine-readable current loop state JSON.
@@ -7511,13 +7680,14 @@ Automation points:
 - agent-loop-mcp: stdio MCP adapter for external coding agents and desktop clients; exposes local read/report tools, not shipping mutations.
 - agent-loop-artifacts.yml: PR-time informational GitHub Actions artifact generation.
 
-Human intervention points:
-- Apply a draft to `tasks/queue.md` or `docs/plans/*.md`.
+Conservative agent gate policy:
+- Apply queue/plan drafts only when scope, evidence, and rollback notes are present.
 - Create or switch the local shipping branch when detached HEAD or protected branch state is detected.
-- Decide architecture tradeoffs, benchmark/performance claims, or private real-eval meaning.
-- Push, create/merge/close PRs, close issues, delete branches, or force-push.
-- Prefer `make ship-arm` for approved end-to-end shipping; use `human-gated-exec` only as a manual fallback after explicit approval and action-specific preflight.
-- Approve reviewer findings and shipping path.
+- Decide architecture tradeoffs, benchmark/performance claims, and private real-eval meaning under ADR 0079; ambiguous cases default to draft, no claim, follow-up issue, or fail-closed.
+- Push, create/merge/close PRs, close issues, delete branches, or force-push only after the action-specific evidence checks pass and the existing explicit confirmation command/flag is used.
+- Prefer `make ship-arm` for policy-passing end-to-end shipping; use `human-gated-exec` only as a legacy-named manual fallback after action-specific preflight.
+- Treat informational reviews as advisory unless they produce unresolved review threads, requested changes, or concrete failing evidence.
+- Treat role dispatch as a planning surface only; it does not execute subagents or remote mutations.
 """
 
 
@@ -7658,7 +7828,7 @@ def _render_task_drafts(
 ## Out of Scope
 
 - Auto-merge, auto-push, PR creation/close/merge, branch deletion, or force-push.
-- Benchmark, performance, private real-eval, or architecture tradeoff decisions without human approval.
+- Benchmark, performance, private real-eval, or architecture tradeoff decisions without ADR 0079 agent-gate evidence.
 - Raw private question, answer, evidence, doc_id, chunk_id, filenames, or exact local paths.
 
 ## Surface / Claim Boundary
@@ -7870,7 +8040,7 @@ def build_parser() -> argparse.ArgumentParser:
     followup.add_argument("--out", type=Path, default=DEFAULT_REVIEW_FOLLOWUPS)
     followup.add_argument("--tasks-dir", type=Path, default=DEFAULT_REVIEW_FOLLOWUPS_DIR)
 
-    decision = sub.add_parser("decision-brief", help="Explain human-gate options, trade-offs, and risks.")
+    decision = sub.add_parser("decision-brief", help="Explain conservative agent-gate options, trade-offs, and risks.")
     decision.add_argument("--task")
     decision.add_argument("--batch", type=Path)
     decision.add_argument("--review-followups", type=Path)
@@ -7885,7 +8055,7 @@ def build_parser() -> argparse.ArgumentParser:
     promote.add_argument("--plan-draft", type=Path, default=DEFAULT_PLAN_DRAFT)
     promote.add_argument("--out", type=Path, default=DEFAULT_PROMOTE_DRAFT)
 
-    gate_status = sub.add_parser("gate-status", help="Summarize the current human gate and next safe command.")
+    gate_status = sub.add_parser("gate-status", help="Summarize the current conservative agent gate and next safe command.")
     gate_status.add_argument("--task")
     gate_status.add_argument("--batch", type=Path)
     gate_status.add_argument("--review-followups", type=Path)
@@ -8035,7 +8205,7 @@ def build_parser() -> argparse.ArgumentParser:
     auto_ship_prepare.add_argument("--no-dry-run", dest="dry_run", action="store_false", help="Recommend DRY_RUN=0 for the next ship-arm command.")
     auto_ship_prepare.add_argument("--out", type=Path, default=DEFAULT_AUTO_SHIP_PREPARE)
 
-    gate_brief = sub.add_parser("gate-brief", help="Explain a specific human gate with options and trade-offs.")
+    gate_brief = sub.add_parser("gate-brief", help="Explain a specific conservative agent gate with options and trade-offs.")
     gate_brief.add_argument("--gate", required=True, choices=sorted(GATE_BRIEF_CHOICES))
     gate_brief.add_argument("--task")
     gate_brief.add_argument("--changed-files", type=Path)
@@ -8089,12 +8259,12 @@ def build_parser() -> argparse.ArgumentParser:
     html_dash.add_argument("--pr")
     html_dash.add_argument("--out", type=Path, default=DEFAULT_DASHBOARD_HTML)
 
-    ship_cmds = sub.add_parser("ship-command-pack", help="Render human-gated shipping command suggestions.")
+    ship_cmds = sub.add_parser("ship-command-pack", help="Render conservative shipping command suggestions.")
     ship_cmds.add_argument("--pr")
     ship_cmds.add_argument("--branch")
     ship_cmds.add_argument("--out", type=Path, default=DEFAULT_SHIP_COMMANDS)
 
-    apply_qp = sub.add_parser("apply-queue-plan", help="Apply queue/plan drafts only with explicit human approval.")
+    apply_qp = sub.add_parser("apply-queue-plan", help="Apply queue/plan drafts only with explicit conservative gate acknowledgment.")
     apply_qp.add_argument("--queue-draft", type=Path, default=DEFAULT_QUEUE_DRAFT)
     apply_qp.add_argument("--plan-draft", type=Path, default=DEFAULT_PLAN_DRAFT)
     apply_qp.add_argument("--confirm-human-approved", action="store_true")
@@ -8178,7 +8348,7 @@ def build_parser() -> argparse.ArgumentParser:
     arch_decision.add_argument("--pr")
     arch_decision.add_argument("--out", type=Path, default=DEFAULT_ARCHITECTURE_DECISION)
 
-    workset = sub.add_parser("workset-recommend", help="Recommend serial/parallel/review/manual worksets.")
+    workset = sub.add_parser("workset-recommend", help="Recommend serial/parallel/review/agent-gated worksets.")
     workset.add_argument("--batch", type=Path)
     workset.add_argument("--tasks-dir", type=Path, default=DEFAULT_CODEX_TASKS_DIR)
     workset.add_argument("--max-items", type=int, default=12)
@@ -8187,7 +8357,14 @@ def build_parser() -> argparse.ArgumentParser:
     coverage = sub.add_parser("automation-coverage", help="Render coverage map for implemented automation candidates.")
     coverage.add_argument("--out", type=Path, default=DEFAULT_AUTOMATION_COVERAGE)
 
-    gated = sub.add_parser("human-gated-exec", help="Execute approved remote mutations only after explicit human approval.")
+    role_dispatch = sub.add_parser("role-dispatch", help="Render role-separated Codex subagent dispatch plan.")
+    role_dispatch.add_argument("--owner-role")
+    role_dispatch.add_argument("--changed-files", type=Path)
+    role_dispatch.add_argument("--from-git", action="store_true")
+    role_dispatch.add_argument("--pr")
+    role_dispatch.add_argument("--out", type=Path, default=DEFAULT_ROLE_DISPATCH)
+
+    gated = sub.add_parser("human-gated-exec", help="Legacy-named conservative remote mutation executor after explicit gate acknowledgment.")
     gated.add_argument("--action", required=True, choices=sorted(HUMAN_GATED_ACTIONS))
     gated.add_argument("--confirm-human-approved", action="store_true")
     gated.add_argument("--dry-run", action="store_true")
@@ -8214,7 +8391,7 @@ def build_parser() -> argparse.ArgumentParser:
     loop_state.add_argument("--pr")
     loop_state.add_argument("--out", type=Path, default=DEFAULT_LOOP_STATE)
 
-    sub.add_parser("map", help="Print the agent-loop automation map and human gates.")
+    sub.add_parser("map", help="Print the agent-loop automation map and conservative agent gates.")
 
     sub.add_parser("next", help="Recommend the next ready/backlog queue task.")
     return parser
@@ -8924,6 +9101,20 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.command == "automation-coverage":
             out, _ = write_automation_coverage(out=args.out)
+            sys.stdout.write(f"[OK] wrote {_repo_path(out, ROOT_DIR)}\n")
+            return 0
+        if args.command == "role-dispatch":
+            files = _read_changed_files(
+                args.changed_files,
+                from_git=args.from_git,
+                pr=args.pr,
+                repo_root=ROOT_DIR,
+            )
+            out, _ = write_role_dispatch(
+                changed_files=files,
+                owner_role=args.owner_role,
+                out=args.out,
+            )
             sys.stdout.write(f"[OK] wrote {_repo_path(out, ROOT_DIR)}\n")
             return 0
         if args.command == "human-gated-exec":

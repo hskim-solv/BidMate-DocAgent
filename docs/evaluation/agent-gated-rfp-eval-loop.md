@@ -72,9 +72,19 @@ metric suite다.
 | v2 | human/judge agreement가 기준선보다 높고, regression fixture에서 민감하게 반응한다. |
 | operating | 최근 변경 N회에서 false pass가 없고, 새 failure는 follow-up metric 또는 ratchet으로 흡수된다. |
 
+## Next Milestones
+
+| Milestone | Smallest next PR | Evidence required |
+|---|---|---|
+| v0-a metric inventory | 현재 private real-eval aggregate에 이미 있는 metric과 없는 metric을 표로 분류한다. | aggregate-only inventory, no performance claim |
+| v0-b offline/online run manifest | offline/online 실행 환경, provider/model, payload class, egress mode를 같은 schema로 기록한다. | manifest schema + privacy test |
+| v0-c metric suite report | retrieval, grounding, citation, comparison, abstention, numeric/date/condition, judge agreement를 한 report shell에 모은다. | private real-eval aggregate + provenance |
+| v1 failure sensitivity | 세 개 이상의 RFP failure mode에 대해 metric이 실제로 움직이는지 확인한다. | before/after or historical failure replay |
+| v2 agreement calibration | human 또는 approved judge signal과 suite metric의 agreement를 측정한다. | agreement aggregate, no raw private text |
+
 ## Agent Gate
 
-Human gate 대신 Codex는 보수적 agent gate를 집행한다.
+기존 human gate 자리에 Codex는 보수적 agent gate를 집행한다.
 
 - 애매하면 `draft`, `no performance claim`, `follow-up issue`, `fail closed`를 고른다.
 - Private real-eval은 claim-bearing loop의 필수 표면으로 둔다.
@@ -85,6 +95,25 @@ Human gate 대신 Codex는 보수적 agent gate를 집행한다.
   audit trail, dependent check, rollback note를 남긴다.
 - CLI에 남아 있는 `human-gated-*` 이름은 legacy compatibility 이름이다. 의미는
   "explicit conservative gate acknowledgment"로 해석한다.
+
+## Role Dispatch Policy
+
+역할(role) 분리는 `role-dispatch` report로 먼저 산출한다. 이 report는 Codex
+서브에이전트(subagent)를 실제 실행하지 않고, root session이 어떤 역할을 병렬
+또는 직렬로 보낼지 정하는 prompt source다.
+
+- 기본 체인: `Planner -> Implementer -> Reviewer`.
+- Eval/benchmark 표면: `Benchmark Auditor`를 자동 추가한다.
+- Private-data / real-eval 표면: `Privacy Auditor`와 `Benchmark Auditor`를 자동
+  추가한다.
+- Product runtime / ADR 표면: `Deep Reviewer`를 자동 추가한다.
+- 병렬 실행은 read-only 역할 또는 disjoint write scope일 때만 허용한다.
+- 같은 파일을 쓰는 역할은 직렬화한다.
+- 최대 12개 role subagent, depth 2(`root session -> role subagents`)를 넘기지
+  않는다.
+- Private real-eval 해석, benchmark/performance claim, remote mutation 실행은
+  서브에이전트에 위임하지 않는다. 서브에이전트는 evidence와 recommendation만
+  남기고, root session이 최종 agent gate를 집행한다.
 
 ## Related
 
