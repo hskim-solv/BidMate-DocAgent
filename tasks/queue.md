@@ -20,11 +20,104 @@ PR이 생기면 각 task에 링크를 추가한다. 예제 task는 `tasks/exampl
 | 7 | `T-2026-0007` | `review` | Implementer -> Reviewer | failure distribution local HTML board 구현됨. |
 | 8 | `T-2026-0008` | `review` | Implementer -> Reviewer | chunking diagnostics local HTML board 구현됨. |
 | 9 | `T-2026-0009` | `review` | Implementer -> Reviewer | ADR decision map local HTML board 구현됨. |
+| 10 | `T-2026-0010` | `review` | Implementer -> Reviewer | priority aggregate HTML review boards implemented; issue #1518 / branch `chore/issue-1518-priority-html-boards`. |
 
 ## Examples
 
 - [`tasks/examples/benchmark-hardening.md`](examples/benchmark-hardening.md): benchmark hardening task 작성 예시.
 - [`tasks/examples/eval-regression-safety.md`](examples/eval-regression-safety.md): eval regression safety task 작성 예시.
+
+## T-2026-0010 — Priority HTML review boards
+
+- ID: T-2026-0010
+- Title: Priority HTML review boards
+- Status: review
+- Owner role: Implementer -> Reviewer
+- Created: 2026-05-26
+- Last updated: 2026-05-26
+
+### Goal
+
+Render the next six aggregate reviewer surfaces as local HTML boards so a human
+can inspect current eval/retrieval/governance signals without opening several
+JSON and Markdown files.
+
+### Context
+
+- Surface: private real-eval aggregate / public synthetic benchmark docs /
+  reviewer workflow.
+- Relevant docs: [`docs/evaluation/surface-map.md`](../docs/evaluation/surface-map.md),
+  [`docs/plans/T-2026-0010-priority-html-review-boards.md`](../docs/plans/T-2026-0010-priority-html-review-boards.md).
+- Primary risk: HTML summaries accidentally implying a fresh eval run or
+  exposing private raw data.
+
+### Scope
+
+- Add a local renderer for six HTML boards.
+- Use existing aggregate/redacted JSON and docs only.
+- Add focused renderer tests.
+- Preserve the operating convention that AI handoff/source-of-truth stays in
+  Markdown while human review boards are rendered as HTML.
+
+### Non-Goals
+
+- Do not change RAG runtime, parser runtime, retrieval behavior, or eval scoring.
+- Do not read private raw documents or per-case payloads.
+- Do not claim performance improvement.
+
+### Acceptance Criteria
+
+- [x] One command writes all six local HTML boards.
+- [x] Tests prove escaping and repository-relative source paths.
+- [x] Generated HTML is manually smoke-checked through a local HTTP server.
+
+### Validation Commands
+
+```bash
+python3 -m pytest tests/test_render_priority_review_boards.py -q
+python3 scripts/render_priority_review_boards.py
+git diff --check
+```
+
+### Evidence Required
+
+- Focused pytest output.
+- Generated HTML paths.
+- Browser smoke result.
+
+### Failure Conditions
+
+- Stop if a board needs raw private data.
+- Stop if the board would introduce a new benchmark/eval claim.
+
+### Related Plan / Issue / PR Links
+
+- Plan: [`docs/plans/T-2026-0010-priority-html-review-boards.md`](../docs/plans/T-2026-0010-priority-html-review-boards.md)
+- Issue: [#1518](https://github.com/hskim-solv/BidMate-DocAgent/issues/1518)
+- PR: TBD
+
+### Handoff Notes
+
+```markdown
+## Session Handoff — 2026-05-26 00:00 KST
+
+- Role: Implementer
+- Lifecycle stage: review
+- Branch / worktree: chore/issue-1518-priority-html-boards / /Users/hskim/.codex/worktrees/8ed1/BidMate-DocAgent
+- Task: T-2026-0010
+- Plan: docs/plans/T-2026-0010-priority-html-review-boards.md
+- Current status: implemented and validated; PR pending.
+- Files touched: CLAUDE.md, tasks/queue.md, docs/plans/T-2026-0010-priority-html-review-boards.md, scripts/render_priority_review_boards.py, tests/test_render_priority_review_boards.py
+- Decisions made: presentation-only renderer; aggregate/redacted inputs only.
+- Commands run: gh issue create; git switch; python3 -m pytest tests/test_render_priority_review_boards.py -q; python3 scripts/render_priority_review_boards.py; git diff --check; python3 scripts/check_doc_links.py --check-all; browser smoke via http://127.0.0.1:8765
+- Results: six HTML boards generated locally; focused tests, doc links, diff check, and browser smoke pass.
+- Validation evidence: local HTTP browser smoke confirmed all six board titles/cards/tables.
+- Eval surface: aggregate-only private real-eval plus public docs.
+- Open risks: generated HTML files remain ignored local artifacts; script regenerates them.
+- Next action: open PR.
+- Next safe command: gh pr create
+- Reviewer focus: privacy boundary, over-claiming, escaping.
+```
 
 ## T-2026-0001 — Benchmark hardening against synthetic contamination
 
