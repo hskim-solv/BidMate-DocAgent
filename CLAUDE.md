@@ -47,6 +47,7 @@ RFP 문서 이해를 위한 DocAgent 시스템. **입찰/RFP 문서 인텔리전
 
 - **사용자가 한국어로 쓰면 한국어로 응답.** 영어 프롬프트 또는 "respond in English" 명시 시만 영어. 코드·식별자·커밋 메시지·파일/디렉터리명은 영문 유지
 - **2-3줄 TL;DR 후 상세.** 한 턴에 한 결정 — 여러 PR/issue/branch 를 한 메시지에 묶지 않음
+- **AI가 이어받을 문서는 Markdown, 사람이 검토할 문서는 HTML.** 세션 handoff, plan, queue, reviewer 근거의 source-of-truth 는 `md`로 남긴다. 사람이 훑는 dashboard/review board 는 `html`로 렌더링한다. 둘 다 필요하면 `md`를 canonical 기록, `html`을 generated human view 로 병행한다.
 
 ## 자율성 & 승인
 
