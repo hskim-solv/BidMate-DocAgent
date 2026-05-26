@@ -1783,6 +1783,142 @@ git diff --check
     assert any("agent-loop-tooling-strict" in blocker for blocker in strict_report.blockers)
 
 
+def test_issue_scan_classifies_conservatively_with_queue_and_branch_evidence(monkeypatch, tmp_path: Path) -> None:
+    repo = _write_repo(
+        tmp_path,
+        task_id="T-2026-0001",
+        status="done",
+        body_extra="- Issue: [#101](https://github.com/example/repo/issues/101)\n",
+    )
+    issues = [
+        {"number": 101, "title": "Completed cleanup", "labels": [], "url": "https://example.test/101"},
+        {"number": 102, "title": "Active branch work", "labels": [], "url": "https://example.test/102"},
+        {"number": 103, "title": "New backlog item", "labels": [], "url": "https://example.test/103"},
+        {"number": 104, "title": "fix(eval): benchmark needs judgment", "labels": [{"name": "eval"}], "url": "https://example.test/104"},
+    ]
+    monkeypatch.setattr(agent_loop, "_local_issue_branches", lambda repo_root: {"102": {"chore/issue-102-active"}})
+    monkeypatch.setattr(agent_loop, "_worktree_issue_branches", lambda repo_root: {})
+
+    triage = agent_loop.build_issue_triage(issues=issues, repo_root=repo)
+    by_number = {item.number: item for item in triage}
+
+    assert by_number["101"].classification == "close_candidate"
+    assert any("queue done" in evidence for evidence in by_number["101"].evidence)
+    assert by_number["102"].classification == "in_flight"
+    assert by_number["103"].classification == "queue_candidate"
+    assert by_number["104"].classification == "manual_review"
+
+
+def test_maintenance_plan_writes_queue_briefs_without_mutating_tracked_docs(monkeypatch, tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    issue_state = repo / "reports" / "agent_loop" / "issues.json"
+    issue_state.parent.mkdir(parents=True, exist_ok=True)
+    issue_state.write_text(
+        json.dumps(
+            [
+                {"number": 201, "title": "Backlog janitor item", "labels": [], "url": "https://example.test/201"},
+                {"number": 202, "title": "Already superseded cleanup", "labels": [{"name": "superseded"}], "url": "https://example.test/202"},
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(agent_loop, "_local_issue_branches", lambda repo_root: {})
+    monkeypatch.setattr(agent_loop, "_worktree_issue_branches", lambda repo_root: {})
+    monkeypatch.setattr(agent_loop, "_maintenance_worktree_actions", lambda repo_root: ["make worktree-cleanup-dry-run"])
+
+    out, json_out, plan, rendered = agent_loop.write_maintenance_plan(issue_json=issue_state, repo_root=repo)
+
+    assert out == repo / "reports" / "agent_loop" / "maintenance_plan.md"
+    assert json_out == repo / "reports" / "agent_loop" / "maintenance_plan.json"
+    assert len(plan.queue_task_briefs) == 1
+    assert (repo / plan.queue_task_briefs[0]).exists()
+    assert "human-gated-exec --action issue-close --issue 202" in rendered
+    assert not (repo / "tasks" / "queue.md").read_text(encoding="utf-8").startswith("Queue issue")
+
+
+def test_human_gated_issue_close_requires_triage_plan_comment_and_close_candidate(monkeypatch, tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    report_dir = repo / "reports" / "agent_loop"
+    report_dir.mkdir(parents=True, exist_ok=True)
+    triage_plan = report_dir / "maintenance_plan.json"
+    triage_plan.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "issues": [
+                    {"number": "301", "classification": "close_candidate"},
+                    {"number": "302", "classification": "queue_candidate"},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    comment = report_dir / "issue-close-301.md"
+    comment.write_text("Closing as superseded by merged work.", encoding="utf-8")
+    calls: list[list[str]] = []
+
+    def fake_run(cmd, **kwargs):  # type: ignore[no-untyped-def]
+        calls.append(list(cmd))
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(agent_loop.subprocess, "run", fake_run)
+
+    blocked = agent_loop.build_human_gated_exec_plan(
+        action="issue-close",
+        confirm_human_approved=True,
+        dry_run=True,
+        branch=None,
+        pr=None,
+        body=None,
+        base=None,
+        title=None,
+        issue="302",
+        comment_file=comment,
+        triage_plan=triage_plan,
+        draft=True,
+        confirm_review_gate_passed=False,
+        confirm_dependents_reviewed=False,
+        confirm_force_with_lease=False,
+        repo_root=repo,
+    )
+    executed_out, executed_plan, _ = agent_loop.write_human_gated_exec(
+        action="issue-close",
+        issue="301",
+        comment_file=comment,
+        triage_plan=triage_plan,
+        confirm_human_approved=True,
+        repo_root=repo,
+    )
+
+    assert any("queue_candidate" in blocker for blocker in blocked.blockers)
+    assert executed_out == repo / "reports" / "agent_loop" / "human_gated_exec.md"
+    assert executed_plan.command == ("gh", "issue", "close", "301", "--comment", "Closing as superseded by merged work.")
+    assert calls == [["gh", "issue", "close", "301", "--comment", "Closing as superseded by merged work."]]
+    try:
+        agent_loop.build_human_gated_exec_plan(
+            action="issue-close",
+            confirm_human_approved=True,
+            dry_run=True,
+            branch=None,
+            pr=None,
+            body=None,
+            base=None,
+            title=None,
+            issue="../301",
+            comment_file=comment,
+            triage_plan=triage_plan,
+            draft=True,
+            confirm_review_gate_passed=False,
+            confirm_dependents_reviewed=False,
+            confirm_force_with_lease=False,
+            repo_root=repo,
+        )
+    except ValueError as exc:
+        assert "issue selector" in str(exc)
+    else:
+        raise AssertionError("unsafe issue selector should be rejected")
+
+
 def test_human_gated_exec_requires_confirmation_and_uses_safe_commands(monkeypatch, tmp_path: Path) -> None:
     repo = _write_repo(tmp_path, body_extra=_valid_handoff())
     calls: list[list[str]] = []
@@ -1848,6 +1984,132 @@ def test_human_gated_exec_requires_confirmation_and_uses_safe_commands(monkeypat
     assert "--delete-branch" not in merge_plan.command
     assert "--admin" not in merge_plan.command
     assert any("force-with-lease" in blocker for blocker in force_plan.blockers)
+
+
+def test_issue_scan_and_maintenance_plan_are_conservative(monkeypatch, tmp_path: Path) -> None:
+    repo = _write_repo(
+        tmp_path,
+        task_id="T-2026-0012",
+        title="Merged cleanup",
+        status="done",
+        body_extra="- Issue: [#12](https://github.com/example/repo/issues/12)\n",
+    )
+    issue_json = repo / "reports" / "agent_loop" / "issues.json"
+    issue_json.parent.mkdir(parents=True, exist_ok=True)
+    issue_json.write_text(
+        json.dumps(
+            [
+                {
+                    "number": 12,
+                    "title": "Already merged cleanup",
+                    "url": "https://github.com/example/repo/issues/12",
+                    "labels": [],
+                    "updatedAt": "2026-05-26T00:00:00Z",
+                },
+                {
+                    "number": 34,
+                    "title": "Add backlog cleanup",
+                    "url": "https://github.com/example/repo/issues/34",
+                    "labels": [{"name": "follow-up"}],
+                    "updatedAt": "2026-05-26T00:00:00Z",
+                },
+                {
+                    "number": 56,
+                    "title": "user-action: manual portfolio review",
+                    "url": "https://github.com/example/repo/issues/56",
+                    "labels": [{"name": "follow-up"}],
+                    "updatedAt": "2026-05-26T00:00:00Z",
+                },
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(agent_loop, "_maintenance_worktree_actions", lambda repo_root: ["dry-run fixture"])
+
+    state_out, triage_out, triage, rendered = agent_loop.write_issue_scan(
+        issue_json=issue_json,
+        repo_root=repo,
+    )
+    plan_out, json_out, plan, plan_text = agent_loop.write_maintenance_plan(
+        issue_json=issue_json,
+        repo_root=repo,
+    )
+
+    classifications = {item.number: item.classification for item in triage}
+    assert classifications == {"12": "close_candidate", "34": "queue_candidate", "56": "manual_review"}
+    assert state_out == repo / "reports" / "agent_loop" / "issue_state.json"
+    assert triage_out == repo / "reports" / "agent_loop" / "issue_triage.md"
+    assert plan_out == repo / "reports" / "agent_loop" / "maintenance_plan.md"
+    assert json_out == repo / "reports" / "agent_loop" / "maintenance_plan.json"
+    assert len(plan.queue_task_briefs) == 1
+    assert "issue-34" in plan.queue_task_briefs[0]
+    assert "human-gated-exec --action issue-close --issue 12" in plan_text
+    assert "dry-run fixture" in plan_text
+    assert "close_candidate" in rendered
+
+
+def test_human_gated_issue_close_requires_triage_and_uses_gh_comment(monkeypatch, tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path, body_extra=_valid_handoff())
+    report_dir = repo / "reports" / "agent_loop"
+    report_dir.mkdir(parents=True, exist_ok=True)
+    triage_plan = report_dir / "maintenance_plan.json"
+    triage_plan.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "issues": [
+                    {"number": "12", "classification": "close_candidate"},
+                    {"number": "34", "classification": "manual_review"},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    comment = report_dir / "issue-close-12.md"
+    comment.write_text("Closing because merged evidence is in the queue.\n", encoding="utf-8")
+    calls: list[list[str]] = []
+
+    def fake_run(cmd, **kwargs):  # type: ignore[no-untyped-def]
+        calls.append(list(cmd))
+        return subprocess.CompletedProcess(cmd, 0, stdout="closed\n", stderr="")
+
+    monkeypatch.setattr(agent_loop.subprocess, "run", fake_run)
+
+    blocked = agent_loop.build_human_gated_exec_plan(
+        action="issue-close",
+        confirm_human_approved=True,
+        dry_run=True,
+        branch=None,
+        pr=None,
+        body=None,
+        base=None,
+        title=None,
+        draft=True,
+        confirm_review_gate_passed=False,
+        confirm_dependents_reviewed=False,
+        confirm_force_with_lease=False,
+        repo_root=repo,
+        issue="34",
+        comment_file=comment,
+        triage_plan=triage_plan,
+    )
+    out, executed, rendered = agent_loop.write_human_gated_exec(
+        action="issue-close",
+        confirm_human_approved=True,
+        issue="12",
+        comment_file=comment,
+        triage_plan=triage_plan,
+        repo_root=repo,
+    )
+
+    assert any("manual_review" in blocker for blocker in blocked.blockers)
+    assert out == repo / "reports" / "agent_loop" / "human_gated_exec.md"
+    assert executed.executed
+    assert calls == [["gh", "issue", "close", "12", "--comment", "Closing because merged evidence is in the queue.\n"]]
+    assert "--comment-file" not in executed.command
+    assert executed.command[:4] == ("gh", "issue", "close", "12")
+    assert "--comment" in executed.command
+    assert "closed" not in rendered
 
 
 def test_human_gated_exec_pr_create_checks_body_and_rejects_unsafe_branch(monkeypatch, tmp_path: Path) -> None:
@@ -1945,6 +2207,11 @@ def test_default_agent_loop_outputs_are_gitignored() -> None:
         "reports/agent_loop/rendered_prompt.txt",
         "reports/agent_loop/review_prompt.txt",
         "reports/agent_loop/pr_state.json",
+        "reports/agent_loop/issue_state.json",
+        "reports/agent_loop/issue_triage.md",
+        "reports/agent_loop/issue_queue_tasks/001-example.md",
+        "reports/agent_loop/maintenance_plan.md",
+        "reports/agent_loop/maintenance_plan.json",
         "reports/agent_loop/changed_files.txt",
         "reports/agent_loop/surface.md",
         "reports/agent_loop/validation_suggestions.md",
