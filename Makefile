@@ -40,7 +40,7 @@
 
 # Auto-ship pipeline (Stop hook driven). See scripts/claude-hooks/stop-ship.sh
 # and the plan at /Users/hskim/.claude/plans/prci-synchronous-newell.md.
-.PHONY: ship-start ship-arm ship-disarm ship-status ship-review-gate
+.PHONY: ship-start ship-arm ship-disarm ship-status ship-review-gate worktree-cleanup-dry-run worktree-cleanup
 
 # Self-review (quarterly meta-feedback loop). Combines 4-axis portfolio
 # rubric + 5-axis Claude collaboration rubric. See SKILL at
@@ -1125,6 +1125,12 @@ ship-status:
 
 ship-review-gate:
 	@$(PYTHON) scripts/claude-hooks/_ship_review_gate.py $(if $(PR),--pr "$(PR)",)
+
+worktree-cleanup-dry-run:
+	@bash .githooks/_pre-push-worktree-hygiene.sh --clean --dry-run
+
+worktree-cleanup:
+	@bash .githooks/_pre-push-worktree-hygiene.sh --clean --prune
 
 # ---------------------------------------------------------------------------
 # Self-review quarterly: meta-feedback loop over the past quarter.
