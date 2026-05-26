@@ -7,7 +7,10 @@ import pytest
 import yaml
 
 from eval.naive_rag.benchmark import (
+    MULTI_CHUNK_TOP10_FAILURE_MODE_BUCKETS,
     REQUIRED_OUTPUTS,
+    _multi_chunk_evidence_profile_for_case,
+    _summarize_multi_chunk_evidence_profiles,
     run_from_config as run_benchmark_from_config,
 )
 from eval.naive_rag.build_benchmark_index import build_benchmark_index
@@ -391,6 +394,71 @@ def test_benchmark_runner_rejects_index_with_stale_chunk_metadata(tmp_path: Path
         run_benchmark_from_config(config_path)
 
 
+def test_multi_chunk_evidence_profile_distinguishes_failure_modes() -> None:
+    same_doc_partial = _multi_chunk_evidence_profile_for_case(
+        [
+            {"chunk_id": "doc-a::chunk-001", "doc_id": "doc-a"},
+            {"chunk_id": "doc-a::chunk-002", "doc_id": "doc-a"},
+        ],
+        [
+            {"chunk_id": "doc-a::chunk-001", "doc_id": "doc-a"},
+            {"chunk_id": "doc-b::chunk-001", "doc_id": "doc-b"},
+        ]
+        + [
+            {"chunk_id": f"doc-c::chunk-{idx:03d}", "doc_id": "doc-c"}
+            for idx in range(2, 11)
+        ],
+    )
+    cross_doc_distractor = _multi_chunk_evidence_profile_for_case(
+        [
+            {"chunk_id": "doc-gold::chunk-001", "doc_id": "doc-gold"},
+            {"chunk_id": "doc-gold::chunk-002", "doc_id": "doc-gold"},
+        ],
+        [
+            {"chunk_id": f"doc-other::chunk-{idx:03d}", "doc_id": "doc-other"}
+            for idx in range(1, 11)
+        ],
+    )
+    not_observable = _multi_chunk_evidence_profile_for_case(
+        [
+            {"chunk_id": "doc-short::chunk-001", "doc_id": "doc-short"},
+            {"chunk_id": "doc-short::chunk-002", "doc_id": "doc-short"},
+        ],
+        [{"chunk_id": "doc-short::chunk-001", "doc_id": "doc-short"}],
+    )
+    empty_retrieval = _multi_chunk_evidence_profile_for_case(
+        [
+            {"chunk_id": "doc-empty::chunk-001", "doc_id": "doc-empty"},
+            {"chunk_id": "doc-empty::chunk-002", "doc_id": "doc-empty"},
+        ],
+        [],
+    )
+    assert same_doc_partial is not None
+    assert cross_doc_distractor is not None
+    assert not_observable is not None
+    assert empty_retrieval is not None
+
+    summary = _summarize_multi_chunk_evidence_profiles(
+        [same_doc_partial, cross_doc_distractor, not_observable, empty_retrieval]
+    )
+
+    assert same_doc_partial["top10_failure_mode"] == "same_doc_single_gold_hit"
+    assert cross_doc_distractor["top10_failure_mode"] == "cross_document_distractor_only"
+    assert not_observable["top10_failure_mode"] == "not_observable"
+    assert empty_retrieval["retrieval_outcome_at_10"] == "no_gold_retrieved"
+    assert empty_retrieval["top10_failure_mode"] == "not_observable"
+    assert summary["case_count"] == 4
+    assert summary["retrieval_outcome_at_10"]["partial_gold_retrieved"] == 1
+    assert summary["retrieval_outcome_at_10"]["no_gold_retrieved"] == 2
+    assert summary["retrieval_outcome_at_10"]["not_observable"] == 1
+    assert summary["top10_failure_count"] == 2
+    assert summary["top10_not_observable_count"] == 2
+    assert summary["top10_failure_modes"]["same_doc_single_gold_hit"] == 1
+    assert summary["top10_failure_modes"]["cross_document_distractor_only"] == 1
+    assert summary["top10_failure_modes"]["not_observable"] == 2
+    assert set(summary["top10_failure_modes"]) == set(MULTI_CHUNK_TOP10_FAILURE_MODE_BUCKETS)
+
+
 def test_benchmark_runner_writes_required_artifacts(tmp_path: Path) -> None:
     index_dir = tmp_path / "index_v1"
     build_benchmark_index(
@@ -429,6 +497,28 @@ def test_benchmark_runner_writes_required_artifacts(tmp_path: Path) -> None:
     assert metrics["latency_metrics"]["generation_latency_ms"] is None
     assert "semantic Faithfulness" not in repr(metrics["metric_labels"])
     assert "semantic Answer Relevancy" not in repr(metrics["metric_labels"])
+
+    multi_chunk = metrics["multi_chunk_evidence_profile"]
+    assert multi_chunk["case_count"] == 7
+    assert multi_chunk["top_k"] == 10
+    assert multi_chunk["gold_doc_cardinality"] == {
+        "multi_doc": 0,
+        "same_doc": 7,
+        "unknown": 0,
+    }
+    assert multi_chunk["retrieval_outcome_at_10"] == {
+        "all_gold_retrieved": 6,
+        "partial_gold_retrieved": 1,
+        "no_gold_retrieved": 0,
+        "not_observable": 0,
+    }
+    assert multi_chunk["top10_failure_count"] == 1
+    assert multi_chunk["top10_not_observable_count"] == 0
+    assert multi_chunk["top10_failure_modes"]["same_doc_single_gold_hit"] == 1
+    assert multi_chunk["top10_failure_modes"]["not_observable"] == 0
+    assert set(multi_chunk["top10_failure_modes"]) == set(
+        MULTI_CHUNK_TOP10_FAILURE_MODE_BUCKETS
+    )
 
 
 def test_benchmark_result_report_contains_conservative_warnings() -> None:
