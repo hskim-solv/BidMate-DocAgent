@@ -58,6 +58,12 @@ make ship-start TITLE="자동화 범위 설명" TYPE=chore SLUG=short-slug
 [`Makefile:289-339`](../Makefile) 와
 [`scripts/claude-hooks/_ship_arm.py`](../../scripts/claude-hooks/_ship_arm.py) 참조.
 
+`make ship-arm` 은 승인된 end-to-end shipping 경로다. Agent-loop 의
+`auto-ship-prepare` / `auto-ship-plan` 은 이 경로를 준비·설명하는 명시적
+planning command 이며, local Stop hook 의 lightweight status refresh 는 이
+auto-ship 준비 리포트를 자동 갱신하지 않는다. 개별 push / PR 생성 / 머지 /
+브랜치 삭제가 필요할 때만 `human-gated-exec` 를 수동 fallback 으로 사용한다.
+
 ## 파이프라인 개요
 
 ```

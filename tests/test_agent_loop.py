@@ -1264,6 +1264,26 @@ def test_loop_map_marks_human_gates_and_safe_automation() -> None:
     assert "read-only `gh pr list`" in rendered
     assert "Human intervention points" in rendered
     assert "force-push" in rendered
+    assert "make ship-arm: approved single end-to-end ship pipeline" in rendered
+    assert "human-gated-exec: action-by-action remote mutation fallback" in rendered
+    assert "Prefer `make ship-arm` for approved end-to-end shipping" in rendered
+
+
+def test_ship_command_pack_separates_primary_ship_path_from_manual_fallback(tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+
+    rendered = agent_loop.render_ship_command_pack(
+        pr="12",
+        branch="chore/issue-9999-agent-loop",
+        repo_root=repo,
+    )
+
+    assert "## Primary End-to-End Ship Path" in rendered
+    assert "## Manual Fallback Commands" in rendered
+    assert "Choose one shipping path after explicit approval" in rendered
+    assert "action-by-action commands only when the end-to-end `make ship-arm` path is not appropriate" in rendered
+    assert "# make ship-arm REAL_EVAL=skip DRAFT=true DRY_RUN=1" in rendered
+    assert "--action pr-create" in rendered
 
 
 def test_approval_packet_pr_body_context_and_ship_simulation_are_local_reports(tmp_path: Path) -> None:
@@ -1609,7 +1629,8 @@ def test_adr_html_context_ship_commands_and_apply_queue_plan(tmp_path: Path) -> 
     assert context_out == repo / "reports" / "agent_loop" / "context_pack.md"
     assert "Profile: `claude`" in context
     assert commands_out == repo / "reports" / "agent_loop" / "ship_commands.md"
-    assert "Human-Gated Commands" in commands
+    assert "Primary End-to-End Ship Path" in commands
+    assert "Manual Fallback Commands" in commands
     assert apply_out == repo / "reports" / "agent_loop" / "apply_queue_plan.md"
     assert "applied" in applied
     assert (repo / "docs" / "plans" / "T-2026-0000-draft.md").exists()

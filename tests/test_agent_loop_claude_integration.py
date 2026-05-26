@@ -53,7 +53,7 @@ def test_stop_agent_loop_no_watch_is_noop(tmp_path: Path) -> None:
     assert not (repo / "reports" / "agent_loop").exists()
 
 
-def test_stop_agent_loop_watch_refreshes_local_reports_and_telemetry(tmp_path: Path) -> None:
+def test_stop_agent_loop_watch_refreshes_status_reports_and_telemetry(tmp_path: Path) -> None:
     repo = _copy_agent_loop_hook_repo(tmp_path)
     _git("init", "-q", "-b", "main", cwd=repo)
     (repo / ".gitignore").write_text(".claude/\nreports/\n", encoding="utf-8")
@@ -76,8 +76,8 @@ def test_stop_agent_loop_watch_refreshes_local_reports_and_telemetry(tmp_path: P
     assert (report_dir / "gate_status.md").exists()
     assert (report_dir / "loop_state.json").exists()
     assert (report_dir / "auto_pass.md").exists()
-    assert (report_dir / "auto_ship_prepare.md").exists()
-    assert (report_dir / "auto_ship_plan.md").exists()
+    assert not (report_dir / "auto_ship_prepare.md").exists()
+    assert not (report_dir / "auto_ship_plan.md").exists()
     fires = (repo / ".claude" / ".hook-fires.log").read_text(encoding="utf-8")
     assert "|pipeline_end|agent-loop|stop-report|reports/agent_loop/loop_state.json" in fires
 
