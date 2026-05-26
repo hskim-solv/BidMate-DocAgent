@@ -99,7 +99,7 @@ def test_agent_loop_commands_are_tracked_and_safe() -> None:
     )
     for path in commands:
         result = subprocess.run(
-            ["git", "check-ignore", "-v", "--", path.as_posix()],
+            ["git", "check-ignore", "--no-index", "-v", "--", path.as_posix()],
             cwd=ROOT,
             capture_output=True,
             text=True,
