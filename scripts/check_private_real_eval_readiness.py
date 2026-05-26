@@ -477,9 +477,9 @@ def assess_readiness(config_path: Path, repo_root: Path = ROOT_DIR) -> Readiness
         "--output_dir",
         "<index_dir>",
         "--hwp_loader",
-        "kordoc",
+        "pdf_pymupdf4llm",
         "--pdf_loader",
-        "kordoc",
+        "pdf_pymupdf4llm",
         "--embedding_backend",
         "hashing",
     ]

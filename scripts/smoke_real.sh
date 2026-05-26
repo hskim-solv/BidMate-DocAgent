@@ -45,8 +45,8 @@ EMBEDDING_BACKEND="${EMBEDDING_BACKEND:-hashing}"
 # only when set so the default `make real-eval` invocation stays byte-identical.
 MODEL="${MODEL:-}"
 INGESTION_MODE="${INGESTION_MODE:-csv-text}"
-HWP_LOADER="${HWP_LOADER:-kordoc}"
-PDF_LOADER="${PDF_LOADER:-kordoc}"
+HWP_LOADER="${HWP_LOADER:-pdf_pymupdf4llm}"
+PDF_LOADER="${PDF_LOADER:-pdf_pymupdf4llm}"
 
 log() {
   printf '\n[%s] %s\n' "$(date '+%H:%M:%S')" "$1"

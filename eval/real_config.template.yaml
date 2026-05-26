@@ -4,11 +4,14 @@ baseline_system: naive_rag
 not_ci_smoke: true
 is_private_data: true
 
-documents_dir: data/files_kordoc
+documents_dir: data/files
 data_list_path: data/data_list.csv
 questions_path: data/private/questions.jsonl
 gold_evidence_path: data/private/gold_evidence.jsonl
-index_dir: data/index/real100_kordoc
+index_dir: data/index/real100
+hwp_loader: pdf_pymupdf4llm
+pdf_loader: pdf_pymupdf4llm
+hwp_pdf_artifact_dir: data/index/real100/hwp_pdf_artifacts
 output_dir: experiments/private_runs
 redacted_summary_path: reports/private_real_eval_summary.redacted.json
 
@@ -51,4 +54,3 @@ privacy_policy:
     - raw_text
     - file_path
     - absolute_path
-

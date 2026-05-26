@@ -5,6 +5,8 @@ Path A — ``hwp5txt`` (pyhwp CLI): text-only extraction.
 Path B — ``libreoffice --headless --convert-to pdf`` followed by the existing
 ``visual_ingestion.parse_pdf_artifact`` pipeline: text + tables + layout via
 the visual-v2 stack.
+Path C — the same HWP → PDF conversion followed by
+``pymupdf4llm.to_markdown(..., page_chunks=True)``.
 
 This is a measurement harness, not a pipeline component. The default HWP
 ingestion path (CSV ``텍스트`` column, ADR 0001) is unchanged. Outputs go to
@@ -147,6 +149,36 @@ def visual_metrics(artifact: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def pymupdf4llm_metrics(chunks: Any) -> dict[str, Any]:
+    if isinstance(chunks, str):
+        return {
+            "page_chunk_count": 0,
+            "char_count": len(chunks),
+            "table_count": chunks.count("\n|"),
+        }
+    if not isinstance(chunks, list):
+        return {"page_chunk_count": 0, "char_count": 0, "table_count": 0}
+    char_count = 0
+    table_count = 0
+    page_numbers: list[int] = []
+    for chunk in chunks:
+        if not isinstance(chunk, dict):
+            continue
+        text = str(chunk.get("text") or "")
+        char_count += len(text)
+        table_count += text.count("\n|")
+        metadata = chunk.get("metadata") if isinstance(chunk.get("metadata"), dict) else {}
+        page = metadata.get("page_number", metadata.get("page"))
+        if isinstance(page, int) and not isinstance(page, bool):
+            page_numbers.append(page)
+    return {
+        "page_chunk_count": len(chunks),
+        "char_count": char_count,
+        "table_count": table_count,
+        "page_numbers_sample": page_numbers[:5],
+    }
+
+
 def run_libreoffice_path(source: Path, tmpdir: Path) -> dict[str, Any]:
     """Path B: libreoffice → PDF → visual_ingestion.parse_pdf_artifact."""
     convert = run_libreoffice_to_pdf(source, tmpdir)
@@ -184,6 +216,52 @@ def run_libreoffice_path(source: Path, tmpdir: Path) -> dict[str, Any]:
     parse_latency_ms = (time.perf_counter() - started) * 1000
 
     metrics = visual_metrics(artifact)
+    return {
+        "status": "ok",
+        "convert_latency_ms": convert["latency_ms"],
+        "parse_latency_ms": round(parse_latency_ms, 2),
+        "latency_ms": round(convert["latency_ms"] + parse_latency_ms, 2),
+        **metrics,
+    }
+
+
+def run_pymupdf4llm_path(source: Path, tmpdir: Path) -> dict[str, Any]:
+    """Path C: libreoffice → PDF → pymupdf4llm Markdown page chunks."""
+    convert = run_libreoffice_to_pdf(source, tmpdir)
+    if convert["status"] != "ok":
+        return convert
+    try:
+        import pymupdf4llm  # type: ignore
+    except Exception as exc:
+        return {
+            "status": "skipped",
+            "reason": "pymupdf4llm_not_installed",
+            "error": str(exc),
+            "convert_latency_ms": convert["latency_ms"],
+        }
+
+    pdf_path = Path(convert["pdf_path"])
+    started = time.perf_counter()
+    try:
+        chunks = pymupdf4llm.to_markdown(str(pdf_path), page_chunks=True)
+    except Exception as exc:
+        return {
+            "status": "failed",
+            "reason": "pymupdf4llm_parse_exception",
+            "error": str(exc),
+            "convert_latency_ms": convert["latency_ms"],
+        }
+    parse_latency_ms = (time.perf_counter() - started) * 1000
+    metrics = pymupdf4llm_metrics(chunks)
+    if metrics["char_count"] <= 0:
+        return {
+            "status": "failed",
+            "reason": "pymupdf4llm_empty_output",
+            "convert_latency_ms": convert["latency_ms"],
+            "parse_latency_ms": round(parse_latency_ms, 2),
+            "latency_ms": round(convert["latency_ms"] + parse_latency_ms, 2),
+            **metrics,
+        }
     return {
         "status": "ok",
         "convert_latency_ms": convert["latency_ms"],
@@ -239,6 +317,11 @@ def summarize(per_file: list[dict[str, Any]]) -> dict[str, Any]:
             "char_count": stats([float(v) for v in char_counts("libreoffice_visual_v2")]),
             "latency_ms": stats(latencies("libreoffice_visual_v2")),
         },
+        "libreoffice_pymupdf4llm": {
+            "status_counts": status_breakdown("libreoffice_pymupdf4llm"),
+            "char_count": stats([float(v) for v in char_counts("libreoffice_pymupdf4llm")]),
+            "latency_ms": stats(latencies("libreoffice_pymupdf4llm")),
+        },
     }
 
 
@@ -263,6 +346,7 @@ def compare_directory(hwp_dir: Path) -> dict[str, Any]:
                 "size_bytes": source.stat().st_size,
                 "hwp5txt": run_hwp5txt(source),
                 "libreoffice_visual_v2": run_libreoffice_path(source, tmp),
+                "libreoffice_pymupdf4llm": run_pymupdf4llm_path(source, tmp),
             }
             per_file.append(entry)
     return {
@@ -273,8 +357,18 @@ def compare_directory(hwp_dir: Path) -> dict[str, Any]:
         "tool_availability": {
             "hwp5txt": bool(shutil.which(HWP5TXT_BIN)),
             "libreoffice": bool(_which_libreoffice()),
+            "pymupdf4llm": _pymupdf4llm_available(),
         },
     }
+
+
+def _pymupdf4llm_available() -> bool:
+    try:
+        import importlib.util
+
+        return importlib.util.find_spec("pymupdf4llm") is not None
+    except Exception:
+        return False
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
