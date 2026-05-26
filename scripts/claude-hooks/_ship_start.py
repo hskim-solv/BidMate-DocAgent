@@ -63,15 +63,45 @@ def ensure_clean_worktree() -> None:
         )
 
 
+def split_labels(labels: str | None) -> list[str]:
+    if not labels:
+        return []
+    seen: set[str] = set()
+    out: list[str] = []
+    for raw in labels.split(","):
+        label = raw.strip()
+        if not label or label in seen:
+            continue
+        seen.add(label)
+        out.append(label)
+    return out
+
+
+def apply_issue_labels(issue_number: int, labels: list[str]) -> None:
+    for label in labels:
+        result = run(
+            ["gh", "issue", "edit", str(issue_number), "--add-label", label],
+            check=False,
+        )
+        if result.returncode == 0:
+            continue
+        detail = (result.stderr or result.stdout or "").strip()
+        suffix = f": {detail}" if detail else ""
+        print(
+            f"ship-start: warning — could not add label {label!r}{suffix}",
+            file=sys.stderr,
+        )
+
+
 def create_issue(title: str, body: str, labels: str | None) -> tuple[int, str]:
     cmd = ["gh", "issue", "create", "--title", title, "--body", body]
-    if labels:
-        cmd.extend(["--label", labels])
     url = run(cmd).stdout.strip()
     m = ISSUE_URL_RE.search(url)
     if not m:
         raise SystemExit(f"ship-start: could not parse issue number from gh output: {url!r}")
-    return int(m.group(1)), url
+    issue_number = int(m.group(1))
+    apply_issue_labels(issue_number, split_labels(labels))
+    return issue_number, url
 
 
 def main() -> int:
