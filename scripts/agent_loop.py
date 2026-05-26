@@ -1518,9 +1518,11 @@ def run_next_from_prs(
     )
     ai_next_actions._write_outputs(  # noqa: SLF001 - reuse the existing local writer
         safe_out_md,
+        None,
         safe_tasks_dir,
         safe_items,
         _sanitize_dynamic_text(markdown),
+        None,
     )
     return safe_out_md, safe_tasks_dir
 
