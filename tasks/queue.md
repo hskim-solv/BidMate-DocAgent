@@ -23,11 +23,99 @@ PR이 생기면 각 task에 링크를 추가한다. 예제 task는 `tasks/exampl
 | 10 | `T-2026-0010` | `done` | Implementer -> Reviewer | merged in PR #1519. |
 | 11 | `T-2026-0011` | `done` | Implementer -> Reviewer | merged in PR #1521. |
 | 12 | `T-2026-0012` | `done` | Implementer -> Reviewer | merged in PR #1523. |
+| 13 | `T-2026-0013` | `review` | Maintainer -> Reviewer | policy docs implemented; PR pending. |
 
 ## Examples
 
 - [`tasks/examples/benchmark-hardening.md`](examples/benchmark-hardening.md): benchmark hardening task 작성 예시.
 - [`tasks/examples/eval-regression-safety.md`](examples/eval-regression-safety.md): eval regression safety task 작성 예시.
+
+## T-2026-0013 — Agent-gated offline/online RFP eval loop
+
+- ID: T-2026-0013
+- Title: Agent-gated offline/online RFP eval loop
+- Status: review
+- Owner role: Maintainer -> Reviewer
+- Created: 2026-05-26
+- Last updated: 2026-05-26
+
+### Goal
+
+Codify the conservative agent-gate policy for continuing RFP QA evaluation across
+offline and online environments without requiring a human gate on every routine
+claim, private eval, shipping, or cleanup decision.
+
+### Context
+
+- Surface: governance docs / eval policy.
+- Relevant docs: [`docs/plans/T-2026-0013-agent-gated-rfp-eval-loop.md`](../docs/plans/T-2026-0013-agent-gated-rfp-eval-loop.md), [ADR 0079](../docs/adr/0079-agent-gated-offline-online-rfp-eval-loop.md).
+- Primary risk: overbroad performance claims or private-data egress without provenance.
+
+### Scope
+
+- Add ADR 0079.
+- Add the agent-gated RFP eval-loop policy doc.
+- Update surface-map and Codex workflow docs.
+
+### Non-Goals
+
+- Do not change runtime RAG behavior.
+- Do not run private real-eval in this docs PR.
+- Do not rename legacy `human-gated-*` CLI commands.
+
+### Acceptance Criteria
+
+- [x] Offline/online environment assumptions are documented.
+- [x] Private real-eval is mandatory for claim-bearing evidence.
+- [x] RFP metric suite, adoption criteria, and loop termination are documented.
+- [x] Conservative agent gate defaults are documented.
+
+### Validation Commands
+
+```bash
+python3 scripts/_governance.py --lint-adr-consequences docs/adr/0079-agent-gated-offline-online-rfp-eval-loop.md
+python3 scripts/check_doc_links.py --check-all --paths docs/adr/0079-agent-gated-offline-online-rfp-eval-loop.md docs/evaluation/agent-gated-rfp-eval-loop.md docs/evaluation/surface-map.md docs/operations/ai-codex-workflow.md docs/plans/T-2026-0013-agent-gated-rfp-eval-loop.md tasks/queue.md
+git diff --check
+make check-branch
+```
+
+### Evidence Required
+
+- ADR consequence lint output.
+- Targeted doc link check.
+- Diff whitespace and branch checks.
+
+### Failure Conditions
+
+- Stop if policy text implies public synthetic benchmark can support real RFP performance claims.
+- Stop if policy text permits online private-data egress without provenance.
+
+### Related Plan / Issue / PR Links
+
+- Plan: [`docs/plans/T-2026-0013-agent-gated-rfp-eval-loop.md`](../docs/plans/T-2026-0013-agent-gated-rfp-eval-loop.md)
+- Issue: [#1529](https://github.com/hskim-solv/BidMate-DocAgent/issues/1529)
+- PR: TBD
+
+### Handoff Notes
+
+```markdown
+## Session Handoff — 2026-05-26 KST
+
+- Role: Maintainer
+- Lifecycle stage: review
+- Branch / worktree: docs/issue-1529-agent-gated-eval-loop / /Users/hskim/.codex/worktrees/1c21/BidMate-DocAgent
+- Issue / PR: #1529 / PR TBD
+- Task: T-2026-0013
+- Plan: docs/plans/T-2026-0013-agent-gated-rfp-eval-loop.md
+- Current status: policy docs implemented; focused validation passed.
+- Files touched: docs/adr/0079-agent-gated-offline-online-rfp-eval-loop.md, docs/evaluation/agent-gated-rfp-eval-loop.md, docs/evaluation/surface-map.md, docs/operations/ai-codex-workflow.md, docs/adr/README.md, tasks/queue.md, docs/plans/T-2026-0013-agent-gated-rfp-eval-loop.md
+- Decisions made: Codex acts as conservative agent gate; private real-eval is mandatory for claim-bearing evidence; metric suite beats single headline score.
+- Eval surface: governance docs only; no metric claim.
+- Commands run: python3 scripts/_governance.py --lint-adr-consequences docs/adr/0079-agent-gated-offline-online-rfp-eval-loop.md; python3 scripts/check_doc_links.py --check-all --paths docs/adr/0079-agent-gated-offline-online-rfp-eval-loop.md docs/evaluation/agent-gated-rfp-eval-loop.md docs/evaluation/surface-map.md docs/operations/ai-codex-workflow.md docs/plans/T-2026-0013-agent-gated-rfp-eval-loop.md tasks/queue.md; git diff --check; make check-branch
+- Results: pass.
+- Next safe command: git diff --check
+- Reviewer focus: claim boundary, online private-data egress provenance, no runtime behavior change.
+```
 
 ## T-2026-0012 — Extended HTML review boards
 
