@@ -14,6 +14,10 @@ Pins the soft-warn contract (always exit 0; warning only on stderr) for
   9. cherry walk capped by divergence (#1270)   → exit 0, walk skipped past cap
  10. aggregate cherry budget (#1251)             → exit 0, ≤budget walks run
  11. default budget never bites a small repo     → exit 0, all small branches flagged
+ 12. origin/main is preferred over stale local main
+ 13. --clean --dry-run does not remove candidates
+ 14. --clean removes clean orphan worktrees without deleting branches
+ 15. --clean skips dirty/untracked orphan worktrees
 
 Scenarios 5-8 are the #1163 fix: `git branch --merged` only lists ancestor
 tips, so squash-merges (this repo's default merge path) were a silent
@@ -79,10 +83,13 @@ class TestPrePushWorktreeHygiene(unittest.TestCase):
         return wt
 
     def _run_hook(
-        self, *, cwd: Path | None = None, env: dict[str, str] | None = None
+        self,
+        *args: str,
+        cwd: Path | None = None,
+        env: dict[str, str] | None = None,
     ) -> subprocess.CompletedProcess:
         return subprocess.run(
-            ["bash", str(HOOK)],
+            ["bash", str(HOOK), *args],
             cwd=str(cwd or self.repo),
             capture_output=True,
             text=True,
@@ -255,6 +262,54 @@ class TestPrePushWorktreeHygiene(unittest.TestCase):
         r = self._run_hook(env=env)
         self.assertEqual(0, r.returncode, r.stderr)
         self.assertEqual("", r.stderr.strip(), r.stderr)
+
+    def test_origin_main_is_preferred_over_stale_local_main(self) -> None:
+        # Local main can lag behind the synced desktop/origin state. If the
+        # squash landed on origin/main only, the hook should still flag the
+        # orphan instead of trusting stale local main.
+        self._add_worktree("wt_remote", "feat-remote", extra_commit=True)
+        self._squash_merge("feat-remote")
+        remote_main = self._git("rev-parse", "main").stdout.strip()
+        self._git("update-ref", "refs/remotes/origin/main", remote_main)
+        self._git("reset", "--hard", "HEAD~1")
+
+        r = self._run_hook()
+
+        self.assertEqual(0, r.returncode, r.stderr)
+        self.assertIn("feat-remote", r.stderr)
+        self.assertIn("wt_remote", r.stderr)
+
+    def test_clean_dry_run_does_not_remove_clean_orphan(self) -> None:
+        wt = self._add_worktree("wt_merged", "feat-merged", extra_commit=False)
+
+        r = self._run_hook("--clean", "--dry-run")
+
+        self.assertEqual(0, r.returncode, r.stderr)
+        self.assertTrue(wt.exists())
+        self.assertIn("would remove", r.stderr)
+        self.assertIn("feat-merged", r.stderr)
+
+    def test_clean_removes_clean_orphan_without_deleting_branch(self) -> None:
+        wt = self._add_worktree("wt_merged", "feat-merged", extra_commit=False)
+
+        r = self._run_hook("--clean")
+
+        self.assertEqual(0, r.returncode, r.stderr)
+        self.assertFalse(wt.exists())
+        self.assertIn("removed", r.stderr)
+        branch = self._git("show-ref", "--verify", "refs/heads/feat-merged")
+        self.assertEqual(0, branch.returncode, branch.stderr)
+
+    def test_clean_skips_dirty_orphan(self) -> None:
+        wt = self._add_worktree("wt_merged", "feat-merged", extra_commit=False)
+        (wt / "untracked.txt").write_text("local work\n", encoding="utf-8")
+
+        r = self._run_hook("--clean")
+
+        self.assertEqual(0, r.returncode, r.stderr)
+        self.assertTrue(wt.exists())
+        self.assertIn("skip dirty/untracked", r.stderr)
+        self.assertIn("no clean orphan worktrees", r.stderr)
 
 
 if __name__ == "__main__":  # pragma: no cover
