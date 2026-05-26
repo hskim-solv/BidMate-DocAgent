@@ -187,7 +187,7 @@ make check-branch
 ## Session Handoff — 2026-05-27 KST
 
 - Role: Maintainer
-- Lifecycle stage: review
+- Lifecycle stage: done
 - Branch / worktree: docs/issue-1535-v0-metric-inventory / /Users/hskim/.codex/worktrees/43e3/BidMate-DocAgent
 - Issue / PR: #1535 / PR #1536
 - Task: T-2026-0015
