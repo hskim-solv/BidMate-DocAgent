@@ -332,6 +332,66 @@ class HwpPdfPyMuPdf4LlmLoaderTest(unittest.TestCase):
 
         self.assertIn("pymupdf4llm_empty_output", str(ctx.exception))
 
+    def test_fail_closed_parser_error_is_reported_per_row(self) -> None:
+        os.environ["BIDMATE_HWP_LOADER"] = "pdf_pymupdf4llm"
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            files_dir = root / "files"
+            files_dir.mkdir()
+            (files_dir / "bad.hwp").write_bytes(b"HWP bad")
+            (files_dir / "good.hwp").write_bytes(b"HWP good")
+            csv_path = root / "data_list.csv"
+            rows = []
+            for notice_id, file_name, text in (
+                ("20260001", "bad.hwp", "bad csv fallback must not be used"),
+                ("20260002", "good.hwp", "good csv fallback must not be used"),
+            ):
+                row = {column: "" for column in FIELDNAMES}
+                row.update(
+                    {
+                        "공고 번호": notice_id,
+                        "공고 차수": "0",
+                        "사업명": "fail-closed telemetry 사업",
+                        "발주 기관": "기관",
+                        "파일형식": "hwp",
+                        "파일명": file_name,
+                        "텍스트": text,
+                    }
+                )
+                rows.append(row)
+            with csv_path.open("w", encoding="utf-8-sig", newline="") as handle:
+                writer = csv.DictWriter(handle, fieldnames=FIELDNAMES)
+                writer.writeheader()
+                writer.writerows(rows)
+
+            def fake_extract(source_path: Path):  # type: ignore[no-untyped-def]
+                if source_path.name == "bad.hwp":
+                    raise _HwpPdfPyMuPdf4LlmFallback(
+                        "hwp_to_pdf_not_produced",
+                        "source file could not be loaded",
+                    )
+                return (
+                    "good page body",
+                    [{"heading": "page-1", "text": "good page body", "page_span": [1, 1]}],
+                    {"citation_basis": "libreoffice_converted_pdf"},
+                    {},
+                )
+
+            with mock.patch("ingestion._extract_hwp_pdf_pymupdf4llm", side_effect=fake_extract):
+                documents, report = load_documents_from_metadata_csv(csv_path, files_dir)
+
+        self.assertEqual(1, len(documents))
+        self.assertEqual("20260002-0", documents[0]["doc_id"])
+        self.assertEqual("good page body", documents[0]["sections"][0]["text"])
+        self.assertEqual(1, report["summary"]["failed_rows"])
+        self.assertEqual(
+            {"hwp_to_pdf_not_produced": 1},
+            report["summary"]["failure_reasons"],
+        )
+        failed = [record for record in report["records"] if record["status"] == "failed"]
+        self.assertEqual("data_list_csv_text", failed[0]["text_source"])
+        self.assertIn("hwp_to_pdf_not_produced", failed[0]["fallback_reason"])
+
     def test_answer_citation_includes_canonical_pdf_metadata_without_path(self) -> None:
         citation = make_citation(
             {

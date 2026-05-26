@@ -226,8 +226,10 @@ class PdfPyMuPdf4LlmLoader(CsvTextDocumentLoader):
             )
         except _PdfPyMuPdf4LlmFallback as exc:
             self.last_fallback_reason = str(exc)
-            raise RuntimeError(
-                f"PdfPyMuPdf4LlmLoader failed: {self.last_fallback_reason}"
+            raise ParserFailClosedError(
+                exc.reason,
+                self.last_fallback_reason,
+                loader_name=type(self).__name__,
             ) from exc
 
         self.last_text_source = PDF_PYMUPDF4LLM_TEXT_SOURCE
@@ -266,8 +268,10 @@ class HwpPdfPyMuPdf4LlmLoader(CsvTextDocumentLoader):
             text, sections, metadata, parser_health = _extract_hwp_pdf_pymupdf4llm(source_path)
         except _HwpPdfPyMuPdf4LlmFallback as exc:
             self.last_fallback_reason = str(exc)
-            raise RuntimeError(
-                f"HwpPdfPyMuPdf4LlmLoader failed: {self.last_fallback_reason}"
+            raise ParserFailClosedError(
+                exc.reason,
+                self.last_fallback_reason,
+                loader_name=type(self).__name__,
             ) from exc
 
         self.last_text_source = PDF_PYMUPDF4LLM_TEXT_SOURCE
@@ -396,6 +400,27 @@ class _PdfPyMuPdf4LlmFallback(RuntimeError):
 
 class _HwpPdfPyMuPdf4LlmFallback(_PdfPyMuPdf4LlmFallback):
     """Internal marker for canonical HWP → PDF → PyMuPDF4LLM failures."""
+
+
+class ParserFailClosedError(RuntimeError):
+    """Loader failure that must not fall back to CSV text implicitly.
+
+    ``normalize_ingestion_row`` catches this explicit type so ingestion reports
+    retain row-level parser failure telemetry without treating fail-closed
+    canonical parser errors as generic, process-aborting ``RuntimeError``.
+    """
+
+    def __init__(
+        self,
+        reason: str,
+        detail: str | None = None,
+        *,
+        loader_name: str | None = None,
+    ) -> None:
+        self.reason = reason
+        self.detail = detail or reason
+        prefix = f"{loader_name} failed" if loader_name else "parser failed"
+        super().__init__(f"{prefix}: {self.detail}")
 
 
 def _hwp_to_pdf_timeout_s() -> float:
@@ -1540,6 +1565,19 @@ def normalize_ingestion_row(
     loader = _resolve_loader(validation.file_format)
     try:
         text = loader.load_text(row, validation.source_path)
+    except ParserFailClosedError as exc:
+        return None, make_record(
+            row_number,
+            "failed",
+            validation.doc_id,
+            validation.file_name,
+            validation.file_format,
+            validation.source_path,
+            exc.reason,
+            duplicate_resolution=validation.duplicate_resolution,
+            text_source=getattr(loader, "last_text_source", None),
+            fallback_reason=getattr(loader, "last_fallback_reason", None) or exc.detail,
+        )
     except ValueError as exc:
         # Issue #715: surface loader provenance even on failure — the HWP
         # native loader may have raised mid-parse (e.g. InvalidHwp5FileError)
