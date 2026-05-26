@@ -19,6 +19,8 @@ from eval.scorers import (  # noqa: E402
     chunk_mrr_at_k,
     chunk_ndcg_at_k,
     chunk_recall_at_k,
+    context_precision_at_k,
+    context_recall_at_k,
     derive_gold_evidence,
     derive_gold_chunk_ids,
 )
@@ -39,6 +41,19 @@ class ChunkMetricsTest(unittest.TestCase):
 
     def test_recall_at_k_returns_zero_for_empty_retrieved(self) -> None:
         self.assertEqual(chunk_recall_at_k([], ["c1"], 5), 0.0)
+
+    def test_context_precision_at_k_counts_gold_fraction_in_retrieved_head(self) -> None:
+        self.assertEqual(
+            context_precision_at_k(["c1", "c2", "c3"], ["c2", "c4"], 3),
+            1 / 3,
+        )
+        self.assertEqual(context_precision_at_k(["c1", "c2"], ["c2"], 1), 0.0)
+
+    def test_context_precision_at_k_returns_none_for_no_gold(self) -> None:
+        self.assertIsNone(context_precision_at_k(["c1", "c2"], [], 5))
+
+    def test_context_recall_at_k_matches_gold_coverage(self) -> None:
+        self.assertEqual(context_recall_at_k(["c1", "c2"], ["c2", "c3"], 5), 0.5)
 
     def test_mrr_rewards_earlier_hits(self) -> None:
         self.assertEqual(chunk_mrr(["c1", "c2"], ["c1"]), 1.0)
@@ -174,6 +189,8 @@ class ScoreCaseChunkMetrics20Test(unittest.TestCase):
         )
         result = score_case(self._CASE, pred, gold_chunk_ids=["doc-a::chunk-001"])
         self.assertIn("chunk_recall_at_20", result)
+        self.assertIn("context_precision_at_20", result)
+        self.assertIn("context_recall_at_20", result)
 
     def test_chunk_ndcg_at_20_present_in_output(self) -> None:
         pred = _minimal_prediction(
@@ -201,7 +218,9 @@ class ScoreCaseChunkMetrics20Test(unittest.TestCase):
         )
         result = score_case(self._CASE, pred, gold_chunk_ids=[gold_chunk_id])
         self.assertEqual(result["chunk_recall_at_20"], 1.0)
+        self.assertEqual(result["context_recall_at_20"], 1.0)
         self.assertEqual(result["chunk_recall_at_10"], 0.0)  # not in @10
+        self.assertEqual(result["context_recall_at_10"], 0.0)
 
     def test_chunk_recall_at_20_none_when_no_gold(self) -> None:
         pred = _minimal_prediction(retrieved_chunk_ids=["doc-a::chunk-001"])

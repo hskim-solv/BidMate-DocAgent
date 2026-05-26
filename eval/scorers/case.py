@@ -20,6 +20,8 @@ from eval.scorers.chunk_metrics import (
     chunk_mrr_at_k,
     chunk_ndcg_at_k,
     chunk_recall_at_k,
+    context_precision_at_k,
+    context_recall_at_k,
 )
 from eval.scorers.citation import score_citation_coverage, score_citation_grounding
 from eval.scorers.format import score_answer_format
@@ -175,6 +177,13 @@ def score_case(
         f"chunk_recall_at_{k}": chunk_recall_at_k(retrieved_chunk_ids, gold_for_chunks, k)
         for k in CHUNK_METRIC_KS
     }
+    for k in CHUNK_METRIC_KS:
+        chunk_metrics[f"context_precision_at_{k}"] = context_precision_at_k(
+            retrieved_chunk_ids, gold_for_chunks, k
+        )
+        chunk_metrics[f"context_recall_at_{k}"] = context_recall_at_k(
+            retrieved_chunk_ids, gold_for_chunks, k
+        )
     chunk_metrics["chunk_mrr_at_5"] = chunk_mrr_at_k(retrieved_chunk_ids, gold_for_chunks, 5)
     chunk_metrics["chunk_mrr"] = chunk_mrr(retrieved_chunk_ids, gold_for_chunks)
     chunk_metrics["chunk_ndcg_at_5"] = chunk_ndcg_at_k(retrieved_chunk_ids, gold_for_chunks, 5)

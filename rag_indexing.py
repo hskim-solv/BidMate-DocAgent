@@ -11,7 +11,8 @@ Public surface:
   ``normalize_text_document`` — read JSON/MD/TXT under the configured
   corpus directory and produce the normalized in-memory document shape.
 - ``validate_chunking_options`` / ``resolve_chunking_strategy`` —
-  guard rails around the ``auto`` / ``section`` / ``fixed`` choice.
+  guard rails around the ``auto`` / ``section`` / ``fixed`` /
+  opt-in ``contextual`` choice.
 - ``build_chunk_records`` / ``build_chunks`` / ``make_chunk`` —
   document → chunk records with section / parent_section_id /
   chunking diagnostics.
@@ -28,7 +29,7 @@ Constants:
 
 - ``DEFAULT_CHUNK_MAX_CHARS = 520`` — naive-baseline canonical value.
 - ``DEFAULT_CHUNK_OVERLAP_SENTENCES = 1`` — naive-baseline canonical.
-- ``VALID_CHUNKING_STRATEGIES = {"auto", "section", "fixed"}``.
+- ``VALID_CHUNKING_STRATEGIES = {"auto", "section", "fixed", "contextual"}``.
 - ``INDEX_FILENAME = "index.json"`` — the on-disk JSON shape.
 - ``INDEX_SCHEMA_VERSION = 2`` — current ``schema_version`` field.
 
@@ -76,7 +77,8 @@ from rag_vector_store import (
 
 DEFAULT_CHUNK_MAX_CHARS = 520
 DEFAULT_CHUNK_OVERLAP_SENTENCES = 1
-VALID_CHUNKING_STRATEGIES = {"auto", "section", "fixed"}
+CONTEXTUAL_CHUNKER_VERSION = "chunker.contextual_prefix.v1"
+VALID_CHUNKING_STRATEGIES = {"auto", "section", "fixed", "contextual"}
 
 INDEX_FILENAME = "index.json"
 INDEX_SCHEMA_VERSION = 2
@@ -184,10 +186,27 @@ def validate_chunking_options(
 
 
 def resolve_chunking_strategy(doc: dict[str, Any], requested_strategy: str) -> str:
+    if requested_strategy == "contextual":
+        requested_strategy = "auto"
     if requested_strategy == "auto":
         from rag_metadata_processing import document_has_section_structure
         return "section" if document_has_section_structure(doc) else "fixed"
     return requested_strategy
+
+
+def contextual_prefix(
+    doc: dict[str, Any],
+    parent_section: dict[str, Any],
+    chunk_seq_in_section: int,
+    total_chunks_in_section: int,
+) -> str:
+    section_path = parent_section.get("section_path") or [parent_section.get("section", "")]
+    section = " > ".join(str(part) for part in section_path if str(part).strip())
+    return (
+        f"Document title: {doc.get('title', '')}. "
+        f"Section path: {section or 'body'}. "
+        f"Chunk position: {chunk_seq_in_section} of {total_chunks_in_section}."
+    ).strip()
 
 
 def build_chunk_records(
@@ -197,6 +216,8 @@ def build_chunk_records(
     overlap_sentences: int = DEFAULT_CHUNK_OVERLAP_SENTENCES,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:
     validate_chunking_options(chunking_strategy, max_chars, overlap_sentences)
+    contextual = chunking_strategy == "contextual"
+    base_strategy = "auto" if contextual else chunking_strategy
     chunks: list[dict[str, Any]] = []
     parent_sections: list[dict[str, Any]] = []
     strategy_counts = {"section": 0, "fixed": 0}
@@ -204,7 +225,7 @@ def build_chunk_records(
 
     for doc in documents:
         normalized_sections = normalize_document_sections(doc)
-        actual_strategy = resolve_chunking_strategy(doc, chunking_strategy)
+        actual_strategy = resolve_chunking_strategy(doc, base_strategy)
         parent_candidates = (
             normalized_sections
             if actual_strategy == "section"
@@ -228,6 +249,7 @@ def build_chunk_records(
                         chunk_seq_in_section,
                         total_chunks_in_section,
                         actual_strategy,
+                        contextual=contextual,
                     )
                 )
                 chunk_seq += 1
@@ -239,6 +261,7 @@ def build_chunk_records(
                 "doc_id": doc["doc_id"],
                 "requested_strategy": chunking_strategy,
                 "actual_strategy": actual_strategy,
+                "contextual": contextual,
                 "num_input_sections": len(normalized_sections),
                 "num_parent_sections": len(parent_candidates),
                 "num_chunks": doc_chunk_count,
@@ -251,6 +274,11 @@ def build_chunk_records(
     )
     diagnostics = {
         "requested_strategy": chunking_strategy,
+        "base_strategy": base_strategy,
+        "contextual": contextual,
+        "chunker_version": (
+            CONTEXTUAL_CHUNKER_VERSION if contextual else f"chunker.{chunking_strategy}.v1"
+        ),
         "max_chars": max_chars,
         "overlap_sentences": overlap_sentences,
         "num_parent_sections": len(parent_sections),
@@ -286,6 +314,8 @@ def make_chunk(
     chunk_seq_in_section: int,
     total_chunks_in_section: int,
     chunking_strategy: str,
+    *,
+    contextual: bool = False,
 ) -> dict[str, Any]:
     text = " ".join(sentences).strip()
     section_path = parent_section.get("section_path") or [parent_section.get("section", "")]
@@ -306,6 +336,10 @@ def make_chunk(
         "chunk_seq_in_section": chunk_seq_in_section,
         "total_chunks_in_section": total_chunks_in_section,
         "chunking_strategy": chunking_strategy,
+        "chunker_version": (
+            CONTEXTUAL_CHUNKER_VERSION if contextual else f"chunker.{chunking_strategy}.v1"
+        ),
+        "contextual": contextual,
         "text": text,
         "text_span_hash": text_span_hash(text),
         "tokens": tokenize(
@@ -316,6 +350,13 @@ def make_chunk(
         chunk["regions"] = regions
     if page_span:
         chunk["page_span"] = page_span
+    if contextual:
+        chunk["contextual_prefix"] = contextual_prefix(
+            doc,
+            parent_section,
+            chunk_seq_in_section,
+            total_chunks_in_section,
+        )
     return chunk
 
 
@@ -356,17 +397,18 @@ def build_index_payload_from_documents(
         chunking_strategy=chunking_strategy,
         overlap_sentences=chunk_overlap_sentences,
     )
-    embedding_inputs = [
-        " ".join(
-            [
-                chunk["title"],
-                chunk.get("agency", ""),
-                " > ".join(chunk.get("section_path") or [chunk["section"]]),
-                chunk["text"],
-            ]
-        )
-        for chunk in chunks
-    ]
+    embedding_inputs = []
+    for chunk in chunks:
+        embedding_parts = [
+            chunk["title"],
+            chunk.get("agency", ""),
+            " > ".join(chunk.get("section_path") or [chunk["section"]]),
+        ]
+        prefix = chunk.get("contextual_prefix")
+        if prefix:
+            embedding_parts.append(prefix)
+        embedding_parts.append(chunk["text"])
+        embedding_inputs.append(" ".join(embedding_parts))
     embedding_result = embed_texts(embedding_inputs, model_name=model_name, backend=embedding_backend)
     # M2 (#207): vectors live in a sidecar .npy. Chunks reference rows by
     # embedding_idx — inline lists were ~85% of the JSON file size and

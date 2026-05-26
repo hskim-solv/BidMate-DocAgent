@@ -23,6 +23,8 @@ from eval.scorers.chunk_metrics import CHUNK_METRIC_KS  # noqa: E402
 
 CHUNK_AGG_KEYS = (
     *(f"chunk_recall_at_{k}" for k in CHUNK_METRIC_KS),
+    *(f"context_precision_at_{k}" for k in CHUNK_METRIC_KS),
+    *(f"context_recall_at_{k}" for k in CHUNK_METRIC_KS),
     "chunk_mrr_at_5",
     "chunk_mrr",
     "chunk_ndcg_at_5",
@@ -54,6 +56,12 @@ class ChunkAggregateTest(unittest.TestCase):
                 chunk_recall_at_5=1.0,
                 chunk_recall_at_10=1.0,
                 chunk_recall_at_20=1.0,
+                context_precision_at_5=1.0,
+                context_precision_at_10=1.0,
+                context_precision_at_20=1.0,
+                context_recall_at_5=1.0,
+                context_recall_at_10=1.0,
+                context_recall_at_20=1.0,
                 chunk_mrr_at_5=1.0,
                 chunk_mrr=1.0,
                 chunk_ndcg_at_5=1.0,
@@ -66,6 +74,12 @@ class ChunkAggregateTest(unittest.TestCase):
                 chunk_recall_at_5=0.0,
                 chunk_recall_at_10=0.0,
                 chunk_recall_at_20=0.0,
+                context_precision_at_5=0.0,
+                context_precision_at_10=0.0,
+                context_precision_at_20=0.0,
+                context_recall_at_5=0.0,
+                context_recall_at_10=0.0,
+                context_recall_at_20=0.0,
                 chunk_mrr_at_5=0.0,
                 chunk_mrr=0.0,
                 chunk_ndcg_at_5=0.0,
@@ -77,6 +91,8 @@ class ChunkAggregateTest(unittest.TestCase):
         ]
         block = metric_block(rows)
         self.assertAlmostEqual(block["chunk_recall_at_5"], 0.5)
+        self.assertAlmostEqual(block["context_precision_at_5"], 0.5)
+        self.assertAlmostEqual(block["context_recall_at_5"], 0.5)
         self.assertAlmostEqual(block["chunk_mrr_at_5"], 0.5)
         self.assertAlmostEqual(block["chunk_mrr"], 0.5)
         self.assertAlmostEqual(block["chunk_ndcg_at_5"], 0.5)
@@ -92,6 +108,8 @@ class ChunkAggregateTest(unittest.TestCase):
         rows = [
             _row(
                 chunk_recall_at_5=1.0,
+                context_precision_at_5=1.0,
+                context_recall_at_5=1.0,
                 chunk_mrr_at_5=1.0,
                 chunk_mrr=1.0,
                 chunk_ndcg_at_5=1.0,
@@ -102,6 +120,8 @@ class ChunkAggregateTest(unittest.TestCase):
             ),
             _row(
                 chunk_recall_at_5=None,
+                context_precision_at_5=None,
+                context_recall_at_5=None,
                 chunk_mrr_at_5=None,
                 chunk_mrr=None,
                 chunk_ndcg_at_5=None,
@@ -113,6 +133,8 @@ class ChunkAggregateTest(unittest.TestCase):
         ]
         block = metric_block(rows)
         self.assertEqual(block["chunk_recall_at_5"], 1.0)
+        self.assertEqual(block["context_precision_at_5"], 1.0)
+        self.assertEqual(block["context_recall_at_5"], 1.0)
         self.assertEqual(block["ci"]["chunk_recall_at_5"]["n"], 1)
         self.assertIsNone(block["rerank_delta_mrr"])
         self.assertIsNone(block["ci"]["rerank_delta_mrr"])
@@ -125,6 +147,18 @@ class ChunkAggregateTest(unittest.TestCase):
             self.assertIn(key, block)
             self.assertIsNone(block[key])
             self.assertIsNone(block["ci"][key])
+
+    def test_synthesis_token_and_cost_aggregates_are_additive(self) -> None:
+        block = metric_block([
+            _row(tokens_in=100, tokens_out=20, cost_estimate_usd=0.01),
+            _row(tokens_in=50, tokens_out=10, cost_estimate_usd=0.02),
+            _row(),
+        ])
+        self.assertEqual(block["synthesis_tokens"]["tokens_in_total"], 150)
+        self.assertEqual(block["synthesis_tokens"]["tokens_out_total"], 30)
+        self.assertEqual(block["synthesis_tokens"]["cases_with_token_usage"], 2)
+        self.assertEqual(block["synthesis_cost"]["estimated_cost_usd_total"], 0.03)
+        self.assertEqual(block["synthesis_cost"]["cases_with_cost"], 2)
 
 
 if __name__ == "__main__":
