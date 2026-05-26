@@ -20,18 +20,112 @@ PR이 생기면 각 task에 링크를 추가한다. 예제 task는 `tasks/exampl
 | 7 | `T-2026-0007` | `review` | Implementer -> Reviewer | failure distribution local HTML board 구현됨. |
 | 8 | `T-2026-0008` | `review` | Implementer -> Reviewer | chunking diagnostics local HTML board 구현됨. |
 | 9 | `T-2026-0009` | `review` | Implementer -> Reviewer | ADR decision map local HTML board 구현됨. |
-| 10 | `T-2026-0010` | `review` | Implementer -> Reviewer | priority aggregate HTML review boards implemented; issue #1518 / branch `chore/issue-1518-priority-html-boards`. |
+| 10 | `T-2026-0010` | `done` | Implementer -> Reviewer | merged in PR #1519. |
+| 11 | `T-2026-0011` | `review` | Implementer -> Reviewer | remaining HTML review boards implemented; issue #1520 / branch `chore/issue-1520-remaining-html-boards`. |
 
 ## Examples
 
 - [`tasks/examples/benchmark-hardening.md`](examples/benchmark-hardening.md): benchmark hardening task 작성 예시.
 - [`tasks/examples/eval-regression-safety.md`](examples/eval-regression-safety.md): eval regression safety task 작성 예시.
 
+## T-2026-0011 — Remaining HTML review boards
+
+- ID: T-2026-0011
+- Title: Remaining HTML review boards
+- Status: review
+- Owner role: Implementer -> Reviewer
+- Created: 2026-05-26
+- Last updated: 2026-05-26
+
+### Goal
+
+Extend the local human review renderer from six boards to all fifteen candidate
+boards while keeping Markdown as the AI/source-of-truth format.
+
+### Context
+
+- Surface: private real-eval aggregate / public synthetic benchmark docs /
+  governance docs / reviewer workflow.
+- Relevant docs: [`docs/plans/T-2026-0011-remaining-html-review-boards.md`](../docs/plans/T-2026-0011-remaining-html-review-boards.md),
+  [`docs/evaluation/surface-map.md`](../docs/evaluation/surface-map.md).
+- Primary risk: HTML summaries accidentally implying a fresh eval run or
+  replacing Markdown source-of-truth.
+
+### Scope
+
+- Add the remaining nine local HTML boards to the existing renderer.
+- Use committed aggregate/redacted JSON and docs only.
+- Keep generated HTML ignored and reproducible.
+
+### Non-Goals
+
+- Do not change RAG runtime, parser runtime, retrieval behavior, or eval scoring.
+- Do not read private raw documents or per-case payloads.
+- Do not make new performance claims.
+
+### Acceptance Criteria
+
+- [x] One command writes fifteen local HTML boards.
+- [x] Existing six output paths still render.
+- [x] Tests cover all fifteen board titles and escaping.
+- [x] Generated HTML is manually smoke-checked through a local HTTP server.
+
+### Validation Commands
+
+```bash
+python3 -m pytest tests/test_render_priority_review_boards.py -q
+python3 -m py_compile scripts/render_priority_review_boards.py
+python3 scripts/render_priority_review_boards.py
+python3 scripts/check_doc_links.py --check-all
+git diff --check
+make check-branch
+```
+
+### Evidence Required
+
+- Focused pytest output.
+- Generated HTML paths.
+- Browser smoke result.
+
+### Failure Conditions
+
+- Stop if a board needs raw private data.
+- Stop if a board would introduce a new benchmark/eval claim.
+
+### Related Plan / Issue / PR Links
+
+- Plan: [`docs/plans/T-2026-0011-remaining-html-review-boards.md`](../docs/plans/T-2026-0011-remaining-html-review-boards.md)
+- Issue: [#1520](https://github.com/hskim-solv/BidMate-DocAgent/issues/1520)
+- PR: TBD
+
+### Handoff Notes
+
+```markdown
+## Session Handoff — 2026-05-26 00:00 KST
+
+- Role: Implementer
+- Lifecycle stage: review
+- Branch / worktree: chore/issue-1520-remaining-html-boards / /Users/hskim/.codex/worktrees/8ed1/BidMate-DocAgent
+- Task: T-2026-0011
+- Plan: docs/plans/T-2026-0011-remaining-html-review-boards.md
+- Current status: implemented and validated; PR pending.
+- Files touched: scripts/render_priority_review_boards.py, tests/test_render_priority_review_boards.py, tasks/queue.md, docs/plans/T-2026-0011-remaining-html-review-boards.md
+- Decisions made: extend the existing renderer to fifteen boards.
+- Commands run: gh issue create; git switch; python3 -m pytest tests/test_render_priority_review_boards.py -q; python3 -m py_compile scripts/render_priority_review_boards.py; python3 scripts/render_priority_review_boards.py; python3 scripts/check_doc_links.py --check-all; git diff --check; browser smoke via http://127.0.0.1:8765
+- Results: fifteen local HTML boards generated; focused tests, py_compile, doc links, diff check, and browser smoke pass.
+- Validation evidence: local HTTP browser smoke confirmed all fifteen board titles/cards/tables and no raw `<script>` or `/Users/hskim` text.
+- Eval surface: aggregate-only private real-eval plus public/governance docs.
+- Open risks: generated HTML files remain ignored local artifacts.
+- Next action: run branch check and open PR.
+- Next safe command: make check-branch
+- Reviewer focus: privacy boundary, over-claiming, generated view wording.
+```
+
 ## T-2026-0010 — Priority HTML review boards
 
 - ID: T-2026-0010
 - Title: Priority HTML review boards
-- Status: review
+- Status: done
 - Owner role: Implementer -> Reviewer
 - Created: 2026-05-26
 - Last updated: 2026-05-26
@@ -94,7 +188,7 @@ git diff --check
 
 - Plan: [`docs/plans/T-2026-0010-priority-html-review-boards.md`](../docs/plans/T-2026-0010-priority-html-review-boards.md)
 - Issue: [#1518](https://github.com/hskim-solv/BidMate-DocAgent/issues/1518)
-- PR: TBD
+- PR: [#1519](https://github.com/hskim-solv/BidMate-DocAgent/pull/1519)
 
 ### Handoff Notes
 
