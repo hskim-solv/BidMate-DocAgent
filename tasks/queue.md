@@ -15,6 +15,7 @@ PR이 생기면 각 task에 링크를 추가한다. 예제 task는 `tasks/exampl
 | 2 | `T-2026-0002` | `done` | Implementer -> Reviewer | merged in PR #1481. |
 | 3 | `T-2026-0003` | `review` | Implementer -> Reviewer | auto-ship Stage 5 Desktop main fast-forward sync 구현됨. |
 | 4 | `T-2026-0004` | `review` | Implementer -> Reviewer | HWP -> PDF -> PyMuPDF4LLM opt-in loader 구현됨. |
+| 5 | `T-2026-0006` | `review` | Implementer -> Reviewer | `ai_next_actions` human-readable HTML review surface 구현됨. |
 
 ## Examples
 
@@ -392,4 +393,91 @@ python3 -m py_compile ingestion.py scripts/build_index.py scripts/compare_hwp_ex
 - Open risks: actual HWP conversion quality still depends on local LibreOffice HWP filter setup.
 - Next safe command: python3 -m pytest tests/test_ingestion_kordoc_regression.py tests/test_mixed_format_ingestion_regression.py tests/test_hwp_pdf_pymupdf4llm_loader.py tests/test_provenance_banner.py tests/test_run_eval_by_format_text_source.py -q
 - Reviewer focus: fail-closed parser policy, private path exclusion from answer citations, and page-citation-ready telemetry.
+```
+
+## T-2026-0006 — Human-readable AI next actions review surface
+
+- ID: T-2026-0006
+- Title: Human-readable AI next actions review surface
+- Status: review
+- Owner role: Implementer -> Reviewer
+- Created: 2026-05-26
+- Last updated: 2026-05-26
+
+### Goal
+
+Give human reviewers a compact local HTML status board for the deterministic
+AI next-action planner, without replacing the existing Markdown task briefs.
+
+### Context
+
+- Surface: workflow/reviewer tooling.
+- Relevant docs: [`docs/operations/ai-codex-workflow.md`](../docs/operations/ai-codex-workflow.md),
+  [`docs/reviews/README.md`](../docs/reviews/README.md).
+- Primary risk: dense agent-oriented Markdown being treated as sufficient for
+  human triage, or local generated HTML being mistaken for PR evidence.
+
+### Scope
+
+- Add `reports/ai_next_actions.html` as a generated local artifact.
+- Keep `reports/ai_next_actions.md` and `reports/codex_tasks/*.md` behavior.
+- Document that the HTML is a status board, not approval evidence.
+
+### Non-Goals
+
+- Do not change retrieval, verifier, answer, eval, or private-data behavior.
+- Do not introduce JavaScript, external services, or new runtime dependencies.
+- Do not publish local `reports/*` artifacts.
+
+### Acceptance Criteria
+
+- [x] Planner emits Markdown, task briefs, and self-contained HTML from one
+  deterministic work-item model.
+- [x] HTML escapes PR/user-provided text and does not leak forbidden private
+  readiness fields.
+- [x] HTML output can be disabled with `--out-html ""`.
+- [x] Reviewer docs explain how to use the local status board.
+
+### Validation Commands
+
+```bash
+python3 -m py_compile scripts/ai_next_actions.py
+python3 -m pytest -q tests/test_ai_next_actions.py
+python3 scripts/check_doc_links.py --check-all
+git diff --check
+make check-branch
+```
+
+### Evidence Required
+
+- Focused pytest output.
+- Doc-link check output.
+- Manual note if browser visual verification is unavailable.
+
+### Related Plan / Issue / PR Links
+
+- Plan: [`docs/plans/T-2026-0006-human-review-surface.md`](../docs/plans/T-2026-0006-human-review-surface.md)
+- Issue: [#1506](https://github.com/hskim-solv/BidMate-DocAgent/issues/1506)
+- PR: TBD
+- ADR: N/A
+
+### Handoff Notes
+
+```markdown
+## Session Handoff — 2026-05-26 00:00 KST
+
+- Role: Implementer
+- Lifecycle stage: review
+- Branch / worktree: chore/issue-1506-human-review-surface / /Users/hskim/.codex/worktrees/8ed1/BidMate-DocAgent
+- Task: T-2026-0006
+- Plan: docs/plans/T-2026-0006-human-review-surface.md
+- Current status: HTML review surface implemented on top of scripts/ai_next_actions.py.
+- Files touched: scripts/ai_next_actions.py, tests/test_ai_next_actions.py, docs/operations/ai-codex-workflow.md, docs/reviews/README.md, tasks/queue.md, docs/plans/T-2026-0006-human-review-surface.md
+- Decisions made: Generate a self-contained local HTML file next to the existing Markdown output; keep source-of-truth logic in WorkItem classification and keep HTML non-evidence.
+- Commands run: python3 -m py_compile scripts/ai_next_actions.py; python3 -m pytest -q tests/test_ai_next_actions.py; python3 scripts/check_doc_links.py --check-all; git diff --check; make check-branch
+- Results: pass, except browser file:// visual verification was blocked by app URL policy.
+- Eval surface: none.
+- Open risks: reviewer should inspect whether the inline HTML/CSS is acceptable for a local-only generated report.
+- Next safe command: python3 -m pytest -q tests/test_ai_next_actions.py
+- Reviewer focus: privacy-safe rendering, deterministic output, and no evidence over-claim.
 ```

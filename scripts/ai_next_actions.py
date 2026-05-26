@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
+import html
 import json
 from pathlib import Path
 import re
@@ -23,6 +24,7 @@ from scripts._governance import find_redacted_summary_forbidden_fields
 
 
 DEFAULT_OUT_MD = ROOT_DIR / "reports" / "ai_next_actions.md"
+DEFAULT_OUT_HTML = ROOT_DIR / "reports" / "ai_next_actions.html"
 DEFAULT_TASKS_DIR = ROOT_DIR / "reports" / "codex_tasks"
 
 CLASSIFICATION_ORDER = {
@@ -658,6 +660,279 @@ def render_summary_markdown(
     return "\n".join(lines)
 
 
+def _html_text(value: object) -> str:
+    return html.escape(str(value), quote=True)
+
+
+def _classification_label(value: str) -> str:
+    return value.replace("_", " ")
+
+
+def _render_status_card(label: str, value: object, tone: str = "neutral") -> str:
+    return (
+        f'<section class="status-card {tone}">'
+        f"<span>{_html_text(label)}</span>"
+        f"<strong>{_html_text(value)}</strong>"
+        "</section>"
+    )
+
+
+def render_review_html(
+    items: Sequence[WorkItem],
+    sources: Sequence[SourceState],
+    *,
+    page_gate: str,
+    private_delta_needed: bool,
+) -> str:
+    top = items[0]
+    counts = _classification_counts(items)
+    blocked = counts["blocked"] > 0
+    privacy = _privacy_note(sources)
+    top_tone = top.classification.replace("_", "-")
+    cards = [
+        _render_status_card("Top task", _classification_label(top.classification), top_tone),
+        _render_status_card("Page citation claim", page_gate, "danger" if page_gate == "NO-GO" else "ok"),
+        _render_status_card("Private delta needed", private_delta_needed, "warn" if private_delta_needed else "ok"),
+        _render_status_card("Blocked", blocked, "danger" if blocked else "ok"),
+        _render_status_card("Privacy guard", privacy, "warn" if any(source.unsafe for source in sources) else "ok"),
+    ]
+    classification_rows = "\n".join(
+        "<tr>"
+        f"<th>{_html_text(name)}</th>"
+        f"<td>{counts[name]}</td>"
+        "</tr>"
+        for name in CLASSIFICATION_ORDER
+    )
+    follow_up_rows = "\n".join(
+        "<tr>"
+        f'<td><span class="badge {item.classification.replace("_", "-")}">'
+        f"{_html_text(_classification_label(item.classification))}</span></td>"
+        f"<td>{_html_text(item.title)}</td>"
+        f"<td>{_html_text(item.source)}</td>"
+        "</tr>"
+        for item in items[1:]
+    )
+    if not follow_up_rows:
+        follow_up_rows = '<tr><td colspan="3" class="empty">None</td></tr>'
+    sources_list = "\n".join(
+        "<li>"
+        f"<span>{_html_text(source.kind)}</span>"
+        f"<code>{_html_text(source.label)}</code>"
+        f"{' <strong>sanitized</strong>' if source.unsafe else ''}"
+        "</li>"
+        for source in sources
+    )
+    if not sources_list:
+        sources_list = '<li><span>planner</span><code>default</code></li>'
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI Next Actions</title>
+  <style>
+    :root {{
+      color-scheme: light;
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --text: #1d2430;
+      --muted: #5b6575;
+      --line: #d9dee7;
+      --ok: #176f4d;
+      --warn: #986400;
+      --danger: #b42318;
+      --accent: #2459a7;
+    }}
+    * {{ box-sizing: border-box; }}
+    body {{
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }}
+    main {{
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 32px 20px 48px;
+    }}
+    header {{
+      display: flex;
+      justify-content: space-between;
+      gap: 24px;
+      align-items: end;
+      margin-bottom: 24px;
+    }}
+    h1, h2, h3, p {{ margin: 0; }}
+    h1 {{ font-size: 30px; line-height: 1.15; }}
+    h2 {{ font-size: 18px; margin-bottom: 12px; }}
+    h3 {{ font-size: 16px; margin-bottom: 8px; }}
+    .subtitle {{ color: var(--muted); margin-top: 6px; max-width: 760px; }}
+    .grid {{
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 20px;
+    }}
+    .status-card, .panel {{
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: 0 1px 2px rgba(18, 24, 31, 0.04);
+    }}
+    .status-card {{
+      min-height: 94px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      border-top: 4px solid var(--accent);
+    }}
+    .status-card span {{ color: var(--muted); font-size: 12px; text-transform: uppercase; }}
+    .status-card strong {{ font-size: 20px; overflow-wrap: anywhere; }}
+    .ok {{ border-top-color: var(--ok); }}
+    .warn, .needs-private-delta, .next-experiment-candidate {{ border-top-color: var(--warn); }}
+    .danger, .failed-experiment, .blocked {{ border-top-color: var(--danger); }}
+    .close-superseded {{ border-top-color: #6b5b95; }}
+    .ready-for-review {{ border-top-color: var(--ok); }}
+    .panel {{ padding: 18px; margin-bottom: 16px; }}
+    .task {{
+      display: grid;
+      grid-template-columns: 180px 1fr;
+      gap: 10px 18px;
+    }}
+    .task dt {{ color: var(--muted); }}
+    .task dd {{ margin: 0; overflow-wrap: anywhere; }}
+    code {{
+      background: #eef1f5;
+      border-radius: 5px;
+      padding: 2px 5px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.92em;
+    }}
+    table {{
+      width: 100%;
+      border-collapse: collapse;
+    }}
+    th, td {{
+      text-align: left;
+      border-top: 1px solid var(--line);
+      padding: 10px 8px;
+      vertical-align: top;
+    }}
+    thead th {{ color: var(--muted); font-size: 12px; text-transform: uppercase; }}
+    .badge {{
+      display: inline-block;
+      border: 1px solid var(--line);
+      border-left: 4px solid var(--accent);
+      border-radius: 6px;
+      padding: 3px 7px;
+      background: #fff;
+      white-space: nowrap;
+    }}
+    .badge.ok, .badge.ready-for-review {{ border-left-color: var(--ok); }}
+    .badge.warn, .badge.needs-private-delta, .badge.next-experiment-candidate {{ border-left-color: var(--warn); }}
+    .badge.danger, .badge.failed-experiment, .badge.blocked {{ border-left-color: var(--danger); }}
+    .badge.close-superseded {{ border-left-color: #6b5b95; }}
+    .empty {{ color: var(--muted); text-align: center; }}
+    .sources {{
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 8px;
+      padding: 0;
+      margin: 0;
+      list-style: none;
+    }}
+    .sources li {{
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      padding: 10px;
+      background: #fbfcfe;
+      min-width: 0;
+    }}
+    .sources span {{
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 4px;
+      text-transform: uppercase;
+    }}
+    footer {{ color: var(--muted); margin-top: 18px; font-size: 13px; }}
+    @media (max-width: 900px) {{
+      header {{ display: block; }}
+      .grid {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
+      .task {{ grid-template-columns: 1fr; gap: 4px; }}
+    }}
+    @media (max-width: 560px) {{
+      main {{ padding: 22px 12px 36px; }}
+      .grid {{ grid-template-columns: 1fr; }}
+      th, td {{ padding: 8px 4px; }}
+    }}
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <h1>AI Next Actions</h1>
+        <p class="subtitle">Human-readable view of the deterministic Codex planner. Inputs are aggregate or redacted local artifacts.</p>
+      </div>
+    </header>
+    <section class="grid">
+      {"".join(cards)}
+    </section>
+    <section class="panel">
+      <h2>Recommended Task</h2>
+      <dl class="task">
+        <dt>Classification</dt>
+        <dd><span class="badge {top_tone}">{_html_text(_classification_label(top.classification))}</span></dd>
+        <dt>Task</dt>
+        <dd>{_html_text(top.title)}</dd>
+        <dt>Reason</dt>
+        <dd>{_html_text(top.reason)}</dd>
+        <dt>Source</dt>
+        <dd><code>{_html_text(top.source)}</code></dd>
+        <dt>Goal</dt>
+        <dd>{_html_text(top.goal)}</dd>
+        <dt>Expected evidence</dt>
+        <dd>{_html_text(top.expected_evidence)}</dd>
+        <dt>Verification</dt>
+        <dd><code>{_html_text(top.verification)}</code></dd>
+      </dl>
+    </section>
+    <section class="panel">
+      <h2>Active Work</h2>
+      <table>
+        <tbody>
+          {classification_rows}
+        </tbody>
+      </table>
+    </section>
+    <section class="panel">
+      <h2>Follow-up Candidates</h2>
+      <table>
+        <thead>
+          <tr><th>Classification</th><th>Task</th><th>Source</th></tr>
+        </thead>
+        <tbody>
+          {follow_up_rows}
+        </tbody>
+      </table>
+    </section>
+    <section class="panel">
+      <h2>Sources</h2>
+      <ul class="sources">
+        {sources_list}
+      </ul>
+    </section>
+    <footer>
+      Local workflow artifact. Do not treat this page as committable eval evidence unless the source aggregate artifact is separately reviewed.
+    </footer>
+  </main>
+</body>
+</html>
+"""
+
+
 def render_task_markdown(item: WorkItem) -> str:
     return "\n".join(
         [
@@ -691,12 +966,23 @@ def render_task_markdown(item: WorkItem) -> str:
     )
 
 
-def _write_outputs(out_md: Path, tasks_dir: Path, items: Sequence[WorkItem], markdown: str) -> None:
+def _write_outputs(
+    out_md: Path,
+    out_html: Path | None,
+    tasks_dir: Path,
+    items: Sequence[WorkItem],
+    markdown: str,
+    html_report: str | None,
+) -> None:
     out_md.parent.mkdir(parents=True, exist_ok=True)
+    if out_html is not None:
+        out_html.parent.mkdir(parents=True, exist_ok=True)
     tasks_dir.mkdir(parents=True, exist_ok=True)
     for stale in tasks_dir.glob("*.md"):
         stale.unlink()
     out_md.write_text(markdown, encoding="utf-8")
+    if out_html is not None and html_report is not None:
+        out_html.write_text(html_report, encoding="utf-8")
     for idx, item in enumerate(items, start=1):
         task_path = tasks_dir / f"{idx:03d}-{item.slug}.md"
         task_path.write_text(render_task_markdown(item), encoding="utf-8")
@@ -797,6 +1083,11 @@ def main(argv: list[str] | None = None) -> int:
         help="Optional index directory to audit for page metadata recovery.",
     )
     parser.add_argument("--out-md", type=Path, default=DEFAULT_OUT_MD)
+    parser.add_argument(
+        "--out-html",
+        default=str(DEFAULT_OUT_HTML),
+        help="Optional human-readable HTML report path. Pass an empty string to skip.",
+    )
     parser.add_argument("--tasks-dir", type=Path, default=DEFAULT_TASKS_DIR)
     args = parser.parse_args(argv)
 
@@ -813,8 +1104,16 @@ def main(argv: list[str] | None = None) -> int:
         page_gate=page_gate,
         private_delta_needed=private_delta_needed,
     )
-    _write_outputs(args.out_md, args.tasks_dir, items, markdown)
-    print(f"[OK] wrote {args.out_md} and {len(items)} task file(s) under {args.tasks_dir}")
+    html_report = render_review_html(
+        items,
+        sources,
+        page_gate=page_gate,
+        private_delta_needed=private_delta_needed,
+    )
+    out_html = Path(args.out_html) if args.out_html else None
+    _write_outputs(args.out_md, out_html, args.tasks_dir, items, markdown, html_report)
+    html_message = f", {out_html}" if out_html is not None else ""
+    print(f"[OK] wrote {args.out_md}{html_message} and {len(items)} task file(s) under {args.tasks_dir}")
     return 0
 
 
