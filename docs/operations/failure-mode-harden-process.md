@@ -44,7 +44,7 @@ in-test `test_ceilings_are_monotone_sane` 은 역전(천장 < 현재 rate)만 �
 |---|---|---|
 | classifier | `eval/scorers/failure_classifier.py` | 7-category first-match-wins 라벨 (ADR 0059) |
 | classifier lock | `tests/test_failure_classifier.py` | ordering 을 고정해 Finding #1 이 `verifier_false_negative` 로 유지되게 함 |
-| dashboard | `scripts/render_failure_distribution.py` | distribution + ADR 0059 계약 ✓ 렌더 (supply 2) |
+| dashboard | `scripts/render_failure_distribution.py` | distribution + ADR 0059 계약 ✓ 렌더 (Markdown/aggregate JSON + local HTML board) |
 | **regression gate** | `tests/test_failure_rate_regression.py` | **커밋된 baseline 의 래칫 천장 (ADR 0062)** |
 | **ratchet gate** | `scripts/check_branch_and_issue.py --check-ceiling-ratchet` | **base 대비 ceiling 상향/제거를 `[ALLOW_REGRESSION]` 없이 차단 (CI, issue #1150)** |
 | baseline | `reports/real100/baseline.aggregate.json` | 게이트가 읽는 커밋된 aggregate (ADR 0005 경계) |
@@ -71,7 +71,8 @@ in-test `test_ceilings_are_monotone_sane` 은 역전(천장 < 현재 rate)만 �
 
 4. **대시보드가 렌더하는지 검증한다.**
    `scripts/render_failure_distribution.py` 를 재실행한다; 새 카테고리가
-   `reports/real100/failure_distribution.md` 에 나타난다.
+   `reports/real100/failure_distribution.md` 와 local-only
+   `reports/real100/failure_distribution.html` 에 나타난다.
 
 ## fix 이후 천장 조이기
 
