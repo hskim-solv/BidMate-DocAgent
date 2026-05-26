@@ -25,7 +25,7 @@ PR이 생기면 각 task에 링크를 추가한다. 예제 task는 `tasks/exampl
 | 12 | `T-2026-0012` | `done` | Implementer -> Reviewer | merged in PR #1523. |
 | 13 | `T-2026-0013` | `done` | Maintainer -> Reviewer | merged in PR #1530. |
 | 14 | `T-2026-0014` | `done` | Maintainer -> Reviewer | merged in PR #1532. |
-| 15 | `T-2026-0015` | `review` | Maintainer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | v0-a metric inventory implemented; issue #1535. |
+| 15 | `T-2026-0015` | `done` | Maintainer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | merged in PR #1536. |
 
 ## Examples
 
@@ -125,7 +125,7 @@ make check-branch
 
 - ID: T-2026-0015
 - Title: v0 metric suite inventory
-- Status: review
+- Status: done
 - Owner role: Maintainer -> Benchmark Auditor -> Privacy Auditor -> Reviewer
 - Created: 2026-05-27
 - Last updated: 2026-05-27
@@ -179,7 +179,7 @@ make check-branch
 
 - Plan: [`docs/plans/T-2026-0015-v0-metric-suite-inventory.md`](../docs/plans/T-2026-0015-v0-metric-suite-inventory.md)
 - Issue: [#1535](https://github.com/hskim-solv/BidMate-DocAgent/issues/1535)
-- PR: TBD
+- PR: [#1536](https://github.com/hskim-solv/BidMate-DocAgent/pull/1536)
 
 ### Handoff Notes
 
@@ -189,9 +189,9 @@ make check-branch
 - Role: Maintainer
 - Lifecycle stage: review
 - Branch / worktree: docs/issue-1535-v0-metric-inventory / /Users/hskim/.codex/worktrees/43e3/BidMate-DocAgent
-- Issue / PR: #1535 / PR TBD
+- Issue / PR: #1535 / PR #1536
 - Task: T-2026-0015
-- Current status: inventory implemented; focused validation passed.
+- Current status: merged in PR #1536.
 - Files touched: docs/evaluation/v0-metric-suite-inventory.md, docs/evaluation/agent-gated-rfp-eval-loop.md, docs/plans/T-2026-0015-v0-metric-suite-inventory.md, tasks/queue.md
 - Decisions made: treat grounding, comparison coverage, abstention calibration, numeric/date/condition accuracy, and human/judge agreement as partial where current artifacts expose only a narrower metric, null field, labels, or tooling.
 - Eval surface: aggregate-only private real-eval inventory; no metric claim.

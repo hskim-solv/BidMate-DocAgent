@@ -1,9 +1,9 @@
 # Plan: T-2026-0015 v0 metric suite inventory
 
-- Status: review
+- Status: done
 - Owner role: Maintainer -> Benchmark Auditor -> Privacy Auditor -> Reviewer
 - Related task: `tasks/queue.md::T-2026-0015`
-- Related issue / PR: Issue #1535 / PR TBD
+- Related issue / PR: Issue #1535 / PR #1536
 - Related ADR: ADR 0079; ADR 0005; ADR 0016
 - Created: 2026-05-27
 - Last updated: 2026-05-27
@@ -127,9 +127,9 @@ does not claim performance movement.
 
 - Role: Maintainer
 - Branch / worktree: docs/issue-1535-v0-metric-inventory / /Users/hskim/.codex/worktrees/43e3/BidMate-DocAgent
-- Issue / PR: #1535 / PR TBD
+- Issue / PR: #1535 / PR #1536
 - Task: T-2026-0015
-- Current status: inventory implemented; focused validation passed.
+- Current status: merged in PR #1536.
 - Files touched: docs/evaluation/v0-metric-suite-inventory.md, docs/evaluation/agent-gated-rfp-eval-loop.md, docs/plans/T-2026-0015-v0-metric-suite-inventory.md, tasks/queue.md
 - Decisions made: classify grounding, comparison coverage, abstention calibration, numeric/date/condition, and human/judge agreement as partial where current artifacts expose only a narrower metric, null field, labels, or tooling rather than full canonical coverage.
 - Commands run: python3 scripts/check_doc_links.py --check-all --paths docs/evaluation/agent-gated-rfp-eval-loop.md docs/evaluation/v0-metric-suite-inventory.md docs/plans/T-2026-0015-v0-metric-suite-inventory.md tasks/queue.md; git diff --check; make check-branch
