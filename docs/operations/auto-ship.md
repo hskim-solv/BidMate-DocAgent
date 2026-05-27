@@ -1,9 +1,10 @@
 # Auto-ship 파이프라인
 
-auto-ship 파이프라인은 Stop-hook 가 구동하는 시퀀스로, feature 브랜치를
-로컬 커밋에서 `main` 의 squash-merge 된 PR 까지 한 번의 ack 으로
-가져간다: `make ship-arm`. 이슈와 브랜치 생성까지 포함한 시작점은
-`make ship-start TITLE="..."` 이다. 모든 ship-arm 사이클은
+auto-ship 파이프라인은 feature 브랜치를 로컬 커밋에서 `main` 의
+squash-merge 된 PR 까지 한 번의 ack 으로 가져간다. Claude Code 세션에서는
+`make ship-arm` 이 Stop-hook 에 넘기고, Codex/non-Claude 세션에서는
+`make ship-run` 이 같은 dispatcher 를 즉시 실행한다. 이슈와 브랜치 생성까지
+포함한 시작점은 `make ship-start TITLE="..."` 이다. 모든 ship 사이클은
 단발성(single-shot) — 성공이든 실패든 트리거를 해제(disarm)한다.
 
 이 페이지는 운영 계약을 문서화한다: 어떻게 arm 하는지, 각 게이트 / 스테이지가
@@ -16,6 +17,8 @@ auto-ship 파이프라인은 Stop-hook 가 구동하는 시퀀스로, feature �
 (PR body 생성기),
 [`scripts/claude-hooks/_ship_start.py`](../../scripts/claude-hooks/_ship_start.py)
 (issue-linked branch 생성기), 그리고
+[`scripts/claude-hooks/_ship_run.py`](../../scripts/claude-hooks/_ship_run.py)
+(Codex direct runner),
 [`scripts/claude-hooks/_ship_review_gate.py`](../../scripts/claude-hooks/_ship_review_gate.py)
 (merge 전 review gate)에 있다. 등록 위치:
 [`.claude/settings.json`](../../.claude/settings.json) 의 `Stop` hook.
@@ -58,6 +61,28 @@ make ship-start TITLE="자동화 범위 설명" TYPE=chore SLUG=short-slug
 [`Makefile:289-339`](../Makefile) 와
 [`scripts/claude-hooks/_ship_arm.py`](../../scripts/claude-hooks/_ship_arm.py) 참조.
 
+## Direct run: `make ship-run`
+
+Codex Desktop 처럼 Claude Stop-hook 이 자연스럽게 발화하지 않는 세션에서는
+`make ship-run` 을 쓴다. 이 타깃은 먼저 `_ship_arm.py` 로 같은
+[`.claude/.ship-armed`](../Makefile) 상태 파일을 만든 다음,
+[`stop-ship.sh`](../../scripts/claude-hooks/stop-ship.sh)를 stdin EOF 와 함께
+즉시 1회 호출한다. 정책 우회가 아니라 같은 Gate 0 / Stage 1-5 dispatcher 를
+직접 호출하는 wrapper 다.
+
+```bash
+make ship-run DRY_RUN=1
+make ship-run REAL_EVAL=skip DRAFT=true
+USE_EXISTING_ARM=1 make ship-run
+make codex-ship DRY_RUN=1
+```
+
+`USE_EXISTING_ARM=1` 은 이미 존재하는 `.claude/.ship-armed` 를 덮어쓰지 않고
+그 arm 상태를 그대로 dispatch 한다. 기본값은 fail-closed: arm 파일이 이미
+있으면 새 arm 을 만들지 않고 거부한다. `make codex-ship` 은 `ship-run` 의
+alias 이다. `make ship-arm` 은 계속 arm-only 이므로 Claude Code Stop-hook
+워크플로와 호환된다.
+
 `make ship-arm` 은 승인된 end-to-end shipping 경로다. Agent-loop 의
 `auto-ship-prepare` / `auto-ship-plan` 은 이 경로를 준비·설명하는 명시적
 planning command 이며, local Stop hook 의 lightweight status refresh 는 이
@@ -74,6 +99,8 @@ edit + local verification
 make ship-arm  (writes .claude/.ship-armed)
     ↓
 Claude Stop event  →  scripts/claude-hooks/stop-ship.sh fires
+    ↓
+or: make ship-run / make codex-ship  (writes .ship-armed + invokes stop-ship.sh now)
     ↓
 Gate 0 — 8 pre-checks (silent exit on any failure)
     ↓
@@ -101,7 +128,7 @@ Stop hook 은 모든 Claude 턴마다 발화한다. 지배적 케이스는 no-op
 | 3 | 만료되지 않음 | TTL 초과 → 조용히 disarm | [`stop-ship.sh:71-81`](../../scripts/claude-hooks/stop-ship.sh) |
 | 4 | 브랜치가 arm 과 일치 | 브랜치 전환됨 → 조용히 disarm | [`stop-ship.sh:83-91`](../../scripts/claude-hooks/stop-ship.sh) |
 | 5 | 보호 브랜치가 아님 | main/master/develop/HEAD/release/* → **hard abort** (tier-3 firewall) | [`stop-ship.sh:93-98`](../../scripts/claude-hooks/stop-ship.sh) |
-| 6 | ship 할 작업이 있음 | clean tree + unpushed 커밋 없음 → 조용히 exit | [`stop-ship.sh:100-108`](../../scripts/claude-hooks/stop-ship.sh) |
+| 6 | ship 할 작업이 있음 | clean tree + unpushed 커밋 없음 + 기존 PR 없음 → 조용히 exit. 기존 PR 이 있으면 CI/review/merge 재개 | [`stop-ship.sh:100-108`](../../scripts/claude-hooks/stop-ship.sh) |
 | 7 | 진행 중인 git transition 없음 | merge / rebase / cherry-pick / revert 감지 → 조용히 exit | [`stop-ship.sh:110-119`](../../scripts/claude-hooks/stop-ship.sh) |
 | 8 | live pid 없음 | 이전 실행이 아직 살아있음 → 조용히 exit | [`stop-ship.sh:121-131`](../../scripts/claude-hooks/stop-ship.sh) |
 

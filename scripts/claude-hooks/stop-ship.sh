@@ -104,10 +104,15 @@ gate_0_branch_firewall() {
 }
 
 gate_0_has_work() {
-  local porcelain ahead
+  local porcelain ahead existing
   porcelain=$(git status --porcelain 2>/dev/null)
   ahead=$(git rev-list --count "@{upstream}..HEAD" 2>/dev/null || echo 0)
   if [[ -z "$porcelain" && "$ahead" == "0" ]]; then
+    existing=$(gh pr list --head "$ARM_BRANCH" --json number --jq '.[0].number' 2>/dev/null || echo "")
+    if [[ -n "$existing" && "$existing" != "null" ]]; then
+      log "gate" "clean tree with existing PR #$existing for $ARM_BRANCH — continuing"
+      return 0
+    fi
     log "gate" "nothing to ship (clean tree, no unpushed commits)"
     exit 0
   fi

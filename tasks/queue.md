@@ -27,6 +27,7 @@ PR이 생기면 각 task에 링크를 추가한다. 예제 task는 `tasks/exampl
 | 14 | `T-2026-0014` | `done` | Maintainer -> Reviewer | merged in PR #1532. |
 | 15 | `T-2026-0015` | `done` | Maintainer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | merged in PR #1536. |
 | 16 | `T-2026-0016` | `review` | Maintainer -> Reviewer | overlap preflight implemented; PR #1543. |
+| 17 | `T-2026-0018` | `review` | Maintainer -> Reviewer | issue #1547 implemented; draft PR #1548. |
 
 ## Examples
 
@@ -119,6 +120,58 @@ make check-branch
 - Next safe command: git diff --stat
 - Reviewer focus: false-clear risk, report-only behavior, GitHub/Git failures fail closed.
 ```
+
+## T-2026-0018 — Codex-runnable auto-ship
+
+- ID: T-2026-0018
+- Title: Codex-runnable auto-ship
+- Status: review
+- Owner role: Maintainer -> Reviewer
+- Created: 2026-05-27
+- Last updated: 2026-05-27
+
+### Goal
+
+Make the existing auto-ship pipeline usable from Codex/non-Claude sessions
+without relying on a Claude Stop-hook event.
+
+### Scope
+
+- Add a direct runner that reuses `_ship_arm.py` and `stop-ship.sh`.
+- Add `make ship-run` and `make codex-ship`.
+- Preserve `make ship-arm` as arm-only.
+- Let clean branches with an existing PR resume CI/review/merge instead of
+  exiting before Stage 1.
+
+### Non-Goals
+
+- Do not relax review, CI, merge, branch deletion, or §5b policy.
+- Do not introduce a scheduler or background daemon.
+- Do not run private real-eval.
+
+### Acceptance Criteria
+
+- [x] `make ship-run` arms and immediately dispatches the existing pipeline.
+- [x] `USE_EXISTING_ARM=1 make ship-run` dispatches an existing arm.
+- [x] Existing arm files fail closed by default.
+- [x] Focused tests cover runner behavior and clean existing-PR resume.
+- [x] Operations docs distinguish Stop-hook arming from direct Codex runs.
+
+### Validation Commands
+
+```bash
+python3 -m pytest tests/test_ship_run.py tests/test_ship_dispatcher_gates.py tests/test_ship_arm_mutex.py -q
+python3 -m py_compile scripts/claude-hooks/_ship_run.py scripts/claude-hooks/_ship_arm.py
+python3 scripts/check_doc_links.py --check-all --paths docs/operations/auto-ship.md docs/plans/T-2026-0018-codex-runnable-auto-ship.md tasks/queue.md scripts/claude-hooks/README.md
+git diff --check
+make check-branch
+```
+
+### Links
+
+- Issue: #1547
+- PR: #1548
+- Plan: [`docs/plans/T-2026-0018-codex-runnable-auto-ship.md`](../docs/plans/T-2026-0018-codex-runnable-auto-ship.md)
 
 ## T-2026-0014 — Agent gate surface alignment
 
