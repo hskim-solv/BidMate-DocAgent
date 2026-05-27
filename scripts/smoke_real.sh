@@ -37,9 +37,9 @@ QUERY="${QUERY:-한영대학교 특성화 맞춤형 교육환경 구축 사업�
 # the CI-safe SSoT baseline (ADR 0061). BUT it is *semantic-blind*: dense/hybrid
 # retrieval recall measured on a hashing index is meaningless (issue #1295).
 # For semantic retrieval measurement build with sentence-transformers + a real
-# model, e.g. `make real-eval-semantic` (EMBEDDING_BACKEND=sentence-transformers
-# MODEL=BAAI/bge-m3). The #1212 provenance banner WARNs at run start when an
-# index is hashing-backed.
+# model, e.g. `make real-eval-minilm` for the named MiniLM baseline or
+# `make real-eval-semantic` for the BGE-M3 comparison. The #1212 provenance
+# banner WARNs at run start when an index is hashing-backed.
 EMBEDDING_BACKEND="${EMBEDDING_BACKEND:-hashing}"
 # MODEL empty → build_index.py uses its DEFAULT_EMBEDDING_MODEL; pass-through
 # only when set so the default `make real-eval` invocation stays byte-identical.

@@ -156,8 +156,9 @@ names, or absolute local paths.
 
 The contract runner builds the index when `index_build.mode: build_if_missing`
 and `<index_dir>/index.json` is absent. It loads the existing index when
-`index.json` is present. The template uses the project MiniLM default so the
-private run measures dense semantic retrieval, not the hashing smoke fallback.
+`index.json` is present. Do not infer the embedding model from
+`DEFAULT_EMBEDDING_MODEL` alone: the build surface is determined by both
+`--embedding_backend` and `--model`.
 
 The readiness scaffold also prints the expected build command shape when local
 private documents and manifest are present:
@@ -171,6 +172,20 @@ python3 scripts/build_index.py \
   --pdf_loader pdf_pymupdf4llm \
   --embedding_backend hashing
 ```
+
+That command is the deterministic offline hashing surface. It records
+`embedding.backend=hashing` and `embedding.model=local-hashing-bow`; it is not a
+MiniLM semantic run even though the CLI default model constant is MiniLM.
+
+Use separate named targets for semantic private runs:
+
+```bash
+make real-eval-minilm    # MiniLM sentence-transformers baseline
+make real-eval-semantic  # BGE-M3 semantic comparison
+```
+
+These write to separate local index/output/report directories and do not update
+the canonical hashing `real100` path.
 
 ## Validate Private Naive RAG Inputs
 
@@ -201,6 +216,11 @@ Or use the Make target:
 ```bash
 make real-eval
 ```
+
+`make real-eval` is the hashing/offline workflow-validation run. Do not use it
+as a dense semantic retrieval baseline or performance claim. Use
+`make real-eval-minilm` for the named MiniLM baseline, and `make
+real-eval-semantic` for the BGE-M3 comparison surface.
 
 To write the committable aggregate candidate after review:
 

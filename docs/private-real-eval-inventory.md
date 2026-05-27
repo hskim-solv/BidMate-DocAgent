@@ -16,8 +16,9 @@ deprecated/dead reference 로 분리한다. 조사 기준은 repo-wide `rg` 로
 | `data/files/` | required input | `scripts/build_index.py --files_dir`, `scripts/validate_data_list.py --files_dir`, kordoc source hashing | yes | no | `REAL_EVAL_DATA_DIR`, `real_eval.document_dirs.default` |
 | `data/files_kordoc/` | regenerable cache | `ingestion._resolve_kordoc_cache_dir`, `scripts/build_kordoc_manifest.py`, `BIDMATE_KORDOC_CACHE_DIR` | no | yes | `REAL_EVAL_KORDOC_DATA_DIR`, `real_eval.document_dirs.kordoc` |
 | `.cache/real_eval/` | regenerable cache | resolver-owned root for OCR/parsed/layout/embedding cache placement | no | yes | `REAL_EVAL_CACHE_DIR`, `real_eval.cache.root` |
-| `data/index/real100/` | regenerable cache | `app.py --input_dir`, `eval/run_eval.py --index_dir`, `scripts/smoke_real.sh` | no | yes | `REAL_EVAL_INDEX_DIR`, `real_eval.index.root` |
-| `data/index/real100_m3/` | deprecated / removed artifact when 898 chunks | `scripts/phase35_m3_ablation.py --index_dir_m3`, old Phase 3.5 reports | no | yes | `REAL_EVAL_INDEX_DIR` for current rebuilds |
+| `data/index/real100/` | regenerable cache | `app.py --input_dir`, `eval/run_eval.py --index_dir`, `scripts/smoke_real.sh`, `make real-eval` | no | yes | `REAL_EVAL_INDEX_DIR`, `real_eval.index.root`; hashing/offline surface |
+| `data/index/real100_minilm/` | regenerable cache | `make real-eval-minilm` | no | yes | `REAL_EVAL_INDEX_DIR`; MiniLM sentence-transformers baseline |
+| `data/index/real100_m3/` | regenerable cache | `make real-eval-semantic`, `scripts/phase35_m3_ablation.py --index_dir_m3` | no | yes | `REAL_EVAL_INDEX_DIR`; BGE-M3 semantic comparison |
 | `data/index/real100_kordoc/` | regenerable cache | Phase 4 metadata retrieval reports and docs | no | yes | `REAL_EVAL_INDEX_DIR` for kordoc-only runs |
 | `outputs/real100/` | output artifact | `scripts/smoke_real.sh`, `app.py --output_dir` | no | yes | `OUTPUT_DIR` |
 | `reports/real100/` | output artifact | `eval/run_eval.py --output_dir`, `scripts/run_real_eval_delta.py` | no | yes | `REAL_EVAL_REPORT_DIR`, `real_eval.reports.output_dir` |

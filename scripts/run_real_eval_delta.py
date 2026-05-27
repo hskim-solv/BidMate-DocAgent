@@ -277,7 +277,15 @@ SAFE_RETRY_EFFECTIVENESS_CI_KEYS = ("recovery_rate", "residual_failure_rate")
 # (filesystem layout is not committable); ``config_sha256`` is the
 # canonical config identifier. Nested offline/online provenance fields are
 # scalar-only and contain no case payload or exact local path.
-SAFE_RUN_MANIFEST_KEYS = ("git_commit", "git_dirty", "config_sha256", "generated_at")
+SAFE_RUN_MANIFEST_KEYS = (
+    "git_commit",
+    "git_dirty",
+    "config_sha256",
+    "generated_at",
+    "embedding_backend",
+    "embedding_model_id",
+    "embedding_dim",
+)
 SAFE_RUN_MANIFEST_NESTED_KEYS = {
     "environment": (
         "mode",
@@ -292,6 +300,29 @@ SAFE_RUN_MANIFEST_NESTED_KEYS = {
 }
 ABSOLUTE_LOCAL_PATH_RE = re.compile(
     r"(?<![A-Za-z0-9_-])(?:/Users|/private|/var/folders|/Volumes)/[^\s)`'\"]+"
+)
+LOCAL_MODEL_PATH_PREFIXES = frozenset(
+    {
+        ".cache",
+        "artifacts",
+        "cache",
+        "checkpoints",
+        "data",
+        "eval",
+        "models",
+        "outputs",
+        "private",
+        "reports",
+        "tmp",
+    }
+)
+MODEL_ARTIFACT_SUFFIXES = (
+    ".bin",
+    ".gguf",
+    ".onnx",
+    ".pt",
+    ".pth",
+    ".safetensors",
 )
 PRIVATE_INLINE_VALUE_RE = re.compile(
     r"\b(?:(?:raw\s+)?(?:question|answer|evidence)|doc[_ -]?id|"
@@ -562,7 +593,7 @@ def extract_aggregate(summary: dict[str, Any]) -> dict[str, Any]:
             # Drop config_path (filesystem layout, not committable).
             # Keep reproducibility fields and scalar offline/online provenance.
             manifest_out = {
-                sub: _safe_run_manifest_value(value.get(sub))
+                sub: _safe_run_manifest_field(sub, value.get(sub))
                 for sub in SAFE_RUN_MANIFEST_KEYS
                 if value.get(sub) is not None
             }
@@ -571,7 +602,7 @@ def extract_aggregate(summary: dict[str, Any]) -> dict[str, Any]:
                 if not isinstance(raw_section, dict):
                     continue
                 section_out = {
-                    sub: _safe_run_manifest_value(raw_section.get(sub))
+                    sub: _safe_run_manifest_field(sub, raw_section.get(sub))
                     for sub in allowed
                     if raw_section.get(sub) is not None
                 }
@@ -771,6 +802,26 @@ def _safe_run_manifest_value(value: Any) -> Any:
     if PRIVATE_INLINE_VALUE_RE.search(text):
         return "[redacted-private-value]"
     return text
+
+
+def _safe_run_manifest_field(field: str, value: Any) -> Any:
+    safe_value = _safe_run_manifest_value(value)
+    if field == "embedding_model_id" and isinstance(safe_value, str):
+        if _looks_like_local_model_path(safe_value):
+            return "[redacted-local-path]"
+    return safe_value
+
+
+def _looks_like_local_model_path(value: str) -> bool:
+    text = value.strip().replace("\\", "/")
+    if not text:
+        return False
+    if text.startswith(("/", "./", "../", "~/")):
+        return True
+    first_segment = text.split("/", 1)[0].lower()
+    if first_segment in LOCAL_MODEL_PATH_PREFIXES:
+        return True
+    return text.lower().endswith(MODEL_ARTIFACT_SUFFIXES)
 
 
 def _assert_no_forbidden(obj: Any, path: str = "") -> None:

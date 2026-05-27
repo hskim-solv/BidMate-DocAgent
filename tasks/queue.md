@@ -35,6 +35,7 @@ PR이 생기면 각 task에 링크를 추가한다. 예제 task는 `tasks/exampl
 | 22 | `T-2026-0022` | `review` | Planner -> Implementer -> Reviewer | issue #1563; aggregate strategy decision implemented; retrieval change deferred until page-aware re-index evidence. |
 | 23 | `T-2026-0023` | `review` | Planner -> Implementer -> Benchmark Auditor -> Privacy Auditor -> Deep Reviewer -> Reviewer | issue #1569; PR #1570. |
 | 24 | `T-2026-0024` | `review` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1573; page metadata recovery patch implemented and local page-aware re-index audit passes. |
+| 25 | `T-2026-0025` | `review` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1575; named MiniLM target and baseline-surface wording implemented. |
 
 ## Examples
 
@@ -1952,7 +1953,7 @@ Focused validation passes and the follow-up evidence is recorded in
 
 - Plan: [`docs/plans/T-2026-0022-use-multi-chunk-evidence-analysis-for-the-next-retrieval-fol.md`](../docs/plans/T-2026-0022-use-multi-chunk-evidence-analysis-for-the-next-retrieval-fol.md)
 - Issue: [#1563](https://github.com/hskim-solv/BidMate-DocAgent/issues/1563)
-- PR: TBD
+- PR: [#1576](https://github.com/hskim-solv/BidMate-DocAgent/pull/1576)
 
 ### Session Handoff
 
@@ -2167,3 +2168,111 @@ Focused tests and syntax checks pass; local audits report citation page claim
   explicit distinction between coarse fixed spans and section page spans.
 - Eval surface: ingestion/index metadata propagation and private real-eval
   readiness; no retrieval ranking or answer behavior change intended.
+
+## T-2026-0025 — Separate hashing, MiniLM, and BGE-M3 real-eval surfaces
+
+- ID: T-2026-0025
+- Title: Separate hashing, MiniLM, and BGE-M3 real-eval surfaces
+- Status: review
+- Owner role: Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer
+- Created: 2026-05-27
+- Last updated: 2026-05-27
+
+### Goal
+
+Remove the ambiguity where operators saw the MiniLM default model name but the
+actual canonical private run used `EMBEDDING_BACKEND=hashing` and therefore
+produced `local-hashing-bow` vectors.
+
+### Context
+
+- Issue: #1575
+- `make real-eval` is deterministic/offline hashing and should be treated as a
+  workflow-validation surface, not semantic retrieval evidence.
+- `make real-eval-semantic` currently means BGE-M3 comparison.
+- There was no named MiniLM private real-eval target even though
+  `DEFAULT_EMBEDDING_MODEL` is MiniLM.
+
+### Scope
+
+- Add `make real-eval-minilm` as the named sentence-transformers MiniLM private
+  baseline target.
+- Keep `make real-eval` hashing/offline and `make real-eval-semantic` BGE-M3.
+- Update private workflow/inventory docs so backend/model surfaces are explicit.
+- Add focused tests for target wiring and comments.
+- Preserve `embedding_backend`, `embedding_model_id`, and `embedding_dim` in
+  aggregate `run_manifest` extraction so reviewers can see what actually ran.
+
+### Non-Goals
+
+- Do not run MiniLM or BGE-M3 private eval in this PR.
+- Do not update committed baselines or performance numbers.
+- Do not expose private paths or raw private artifacts in aggregate reports.
+- Do not change retrieval, reranking, verifier, prompt, answer, or eval scoring.
+
+### Acceptance Criteria
+
+- [x] `make real-eval-minilm` writes to separate local paths:
+  `data/index/real100_minilm`, `outputs/real100_minilm`,
+  `reports/real100_minilm`.
+- [x] Docs state that `make real-eval` is hashing/offline and not MiniLM.
+- [x] Docs distinguish MiniLM baseline from BGE-M3 comparison.
+- [x] Aggregate run-manifest extraction keeps embedding backend/model/dim while
+  still dropping local config paths and redacting local model paths.
+- [x] No performance claim is made from hashing runs.
+
+### Validation Commands
+
+```bash
+bash -n scripts/smoke_real.sh
+python3 -m pytest -q tests/test_smoke_real_script.py tests/test_provenance_banner.py
+python3 -m pytest -q tests/test_run_real_eval_delta.py -k run_manifest
+python3 scripts/check_doc_links.py --check-all --paths tasks/queue.md docs/plans/T-2026-0025-minilm-baseline-target.md docs/evaluation/private_real_eval_workflow.md docs/private-real-eval-inventory.md docs/evaluation/surface-map.md
+git diff --check
+make check-branch
+```
+
+### Evidence Required
+
+- Focused tests pass.
+- Docs and Makefile name actual backend/model surfaces.
+- Aggregate reports retain embedding provenance without private path leakage.
+- PR body says no private real-eval was run and no performance claim is made.
+
+### Completion Proof
+
+Focused tests and doc-link checks pass; `make real-eval-minilm` exists as the
+named MiniLM sentence-transformers target, and aggregate `run_manifest`
+extraction preserves embedding provenance without local model path leakage.
+
+### Related Plan / Issue / PR Links
+
+- Plan: [`docs/plans/T-2026-0025-minilm-baseline-target.md`](../docs/plans/T-2026-0025-minilm-baseline-target.md)
+- Issue: [#1575](https://github.com/hskim-solv/BidMate-DocAgent/issues/1575)
+- PR: [#1579](https://github.com/hskim-solv/BidMate-DocAgent/pull/1579)
+
+### Session Handoff
+
+- Role: Implementer
+- Lifecycle stage: review
+- Branch / worktree: `eval/issue-1575-minilm-baseline-target` / Codex worktree
+- Current status: implementation validated; PR still needed.
+- Files touched: `Makefile`, `scripts/smoke_real.sh`,
+  `scripts/run_real_eval_delta.py`,
+  `docs/evaluation/private_real_eval_workflow.md`,
+  `docs/evaluation/surface-map.md`, `docs/private-real-eval-inventory.md`,
+  `tests/test_smoke_real_script.py`, `tests/test_run_real_eval_delta.py`,
+  `docs/plans/T-2026-0025-minilm-baseline-target.md`, `tasks/queue.md`.
+- Commands run: `bash -n scripts/smoke_real.sh`; `python3 -m pytest -q tests/test_smoke_real_script.py tests/test_provenance_banner.py`; `python3 -m pytest -q tests/test_run_real_eval_delta.py -k run_manifest`; `python3 scripts/check_doc_links.py --check-all --paths tasks/queue.md docs/plans/T-2026-0025-minilm-baseline-target.md docs/evaluation/private_real_eval_workflow.md docs/private-real-eval-inventory.md docs/evaluation/surface-map.md`; `git diff --check`; `make check-branch`.
+- Results: named MiniLM target added; docs now state `make real-eval` is
+  hashing/offline and not MiniLM; aggregate run-manifest extraction preserves
+  embedding provenance without private path leakage, including local model paths.
+- Blockers: none known.
+- Open risks: target existence does not prove MiniLM model cache/download or
+  performance; actual MiniLM private eval remains a separate run.
+- Next action: push and mark PR #1579 ready.
+- Next safe command: `git status --short`
+- Reviewer focus: baseline wording, no performance claim, and actual
+  backend/model naming.
+- Eval surface: workflow/docs only; no retrieval or eval runtime behavior change
+  except new opt-in target.
