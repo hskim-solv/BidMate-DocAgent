@@ -129,6 +129,8 @@ DEFAULT_ACTIVE_ASSIGNMENTS_DIR = DEFAULT_ACTIVE_DIR / "assignments"
 DEFAULT_ACTIVE_LOOP = DEFAULT_ACTIVE_DIR / "active_loop.md"
 DEFAULT_ACTIVE_START = DEFAULT_ACTIVE_DIR / "start.md"
 DEFAULT_ACTIVE_AGENT_MIX = DEFAULT_ACTIVE_DIR / "agent_mix.json"
+DEFAULT_ACTIVE_AGENT_MIX_REPORT = DEFAULT_ACTIVE_DIR / "agent_mix_report.md"
+DEFAULT_ACTIVE_ARTIFACTS_DIR = DEFAULT_ACTIVE_DIR / "artifacts"
 DEFAULT_ACTIVE_WORKTREE_PREPARE = DEFAULT_ACTIVE_DIR / "active_worktree_prepare.md"
 DEFAULT_ISSUE_STATE = DEFAULT_REPORT_DIR / "issue_state.json"
 DEFAULT_ISSUE_TRIAGE = DEFAULT_REPORT_DIR / "issue_triage.md"
@@ -179,6 +181,20 @@ DEFAULT_AGENT_MIX = {
     "unit": "work_unit",
     "window": {"type": "rolling_tasks", "size": 20},
     "max_allowed_skew_wu": 2,
+}
+# Read-only review/analysis lane contract (issue #1590, ADR 0080 Phase 2).
+REVIEW_ARTIFACT_SCHEMA = Path("schemas/review_artifact.schema.json")
+# Per-role lane capability prior. Adversarial/regression review favors the Codex
+# companion (ADR 0066); claim/privacy/planning/scouting favor the Claude lane.
+# choose_agent adds rolling Work-Unit mix debt on top of these priors.
+_ROLE_CAPABILITY = {
+    "Reviewer": {"codex": 1.0},
+    "Deep Reviewer": {"codex": 1.0},
+    "CI / Regression Auditor": {"codex": 1.0},
+    "CI/Eval Auditor": {"codex": 1.0},
+    "Eval / Claim / Privacy Auditor": {"claude": 1.0},
+    "Planner / Issue Triage": {"claude": 1.0},
+    "Experiment Scout": {"claude": 1.0},
 }
 
 GH_PR_JSON_FIELDS = (
@@ -541,6 +557,18 @@ class ActiveStartResult:
     blockers: tuple[str, ...]
     warnings: tuple[str, ...]
     next_safe_command: str
+
+
+@dataclass(frozen=True)
+class AgentTurnResult:
+    decision: str
+    role: str
+    agent: str
+    verdict: str
+    artifact_path: Path | None
+    registry_path: Path | None
+    blockers: tuple[str, ...]
+    warnings: tuple[str, ...]
 
 
 def _repo_path(path: Path, repo_root: Path) -> str:
@@ -8875,6 +8903,10 @@ def _active_path(path: Path, *, repo_root: Path) -> Path:
         path = repo_root / "reports" / "agent_loop" / "active" / "start.md"
     elif path == DEFAULT_ACTIVE_AGENT_MIX:
         path = repo_root / "reports" / "agent_loop" / "active" / "agent_mix.json"
+    elif path == DEFAULT_ACTIVE_AGENT_MIX_REPORT:
+        path = repo_root / "reports" / "agent_loop" / "active" / "agent_mix_report.md"
+    elif path == DEFAULT_ACTIVE_ARTIFACTS_DIR:
+        path = repo_root / "reports" / "agent_loop" / "active" / "artifacts"
     elif path == DEFAULT_ACTIVE_WORKTREE_PREPARE:
         path = repo_root / "reports" / "agent_loop" / "active" / "active_worktree_prepare.md"
     return _safe_output_path(path, repo_root=repo_root)
@@ -9026,6 +9058,375 @@ def _write_active_agent_mix(
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(_sanitize_json_value(payload), indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return path
+
+
+def _agent_turn_roles() -> set[str]:
+    """Read-only review/analysis roles eligible for an agent-turn lane.
+
+    Orchestrator (control plane) and Implementer (write-lease owner) are excluded —
+    they are not read-only review lanes.
+    """
+    roles: set[str] = set()
+    for entries in ACTIVE_TOPOLOGY_ROLES.values():
+        for _session_id, role in entries:
+            if role not in {"Orchestrator", "Implementer"}:
+                roles.add(role)
+    return roles
+
+
+def choose_agent(role: str, *, agent_mix: dict[str, object], rolling: dict[str, object]) -> str:
+    """Pick a lane deterministically from role capability + rolling Work-Unit mix debt.
+
+    score(agent) = capability_prior + (target_share - actual_share). The lane that is
+    most under its target share (most Work Units "owed") gets a boost, so the rolling
+    Claude:Codex split converges to the configured mix. Ties break to Claude.
+    """
+    capability = _ROLE_CAPABILITY.get(role, {})
+    target_raw = agent_mix.get("target") if isinstance(agent_mix.get("target"), dict) else {}
+    targets = {agent: _coerce_wu(target_raw.get(agent)) for agent in ACTIVE_LANE_AGENTS}
+    target_total = sum(targets.values())
+    rolling_wu = {agent: _coerce_wu(rolling.get(agent)) for agent in ACTIVE_LANE_AGENTS}
+    rolling_total = sum(rolling_wu.values())
+    scores: dict[str, float] = {}
+    for agent in ACTIVE_LANE_AGENTS:
+        target_share = (targets[agent] / target_total) if target_total else 0.5
+        actual_share = (rolling_wu[agent] / rolling_total) if rolling_total else 0.0
+        scores[agent] = float(capability.get(agent, 0.0)) + (target_share - actual_share)
+    return max(ACTIVE_LANE_AGENTS, key=lambda a: (scores[a], a == "claude"))
+
+
+def _record_agent_wu(
+    path: Path,
+    *,
+    agent: str,
+    task_id: str | None,
+    wu: int,
+    policy: dict[str, object],
+    now: datetime,
+) -> dict[str, int]:
+    """Append a Work-Unit entry to the agent-mix ledger and recompute rolling totals.
+
+    The ledger is trimmed to the policy rolling-window size; rolling per-agent WU is
+    the sum over the trimmed window. Returns the recomputed rolling map.
+    """
+    existing = _load_active_agent_mix(path)
+    ledger_raw = existing.get("ledger") if isinstance(existing.get("ledger"), list) else []
+    ledger = [dict(item) for item in ledger_raw if isinstance(item, dict)]
+    ledger.append({"agent": agent, "task_id": task_id, "wu": _coerce_wu(wu), "at": _isoformat(now)})
+    window = policy.get("window") if isinstance(policy.get("window"), dict) else {}
+    size = window.get("size")
+    if isinstance(size, int) and not isinstance(size, bool) and size > 0:
+        ledger = ledger[-size:]
+    rolling = {a: 0 for a in ACTIVE_LANE_AGENTS}
+    for item in ledger:
+        name = str(item.get("agent") or "")
+        if name in rolling:
+            rolling[name] += _coerce_wu(item.get("wu"))
+    payload = {
+        "schema_version": ACTIVE_REGISTRY_SCHEMA_VERSION,
+        "generated_at": _isoformat(now),
+        "policy": policy,
+        "rolling": rolling,
+        "ledger": ledger,
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(_sanitize_json_value(payload), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return rolling
+
+
+def _agent_turn_artifact_path(
+    artifacts_dir: Path,
+    *,
+    task_id: str | None,
+    session_id: str,
+    agent: str,
+    repo_root: Path,
+) -> Path:
+    base = _active_path(artifacts_dir, repo_root=repo_root)
+    task_segment = task_id if task_id else "no-task"
+    return base / task_segment / session_id / f"{agent}.json"
+
+
+def _build_agent_turn_prompt(role: str, *, task_id: str | None, pr: str | None, base: str) -> str:
+    scope_bits = [f"role={role}"]
+    if task_id:
+        scope_bits.append(f"task={task_id}")
+    if pr:
+        scope_bits.append(f"PR=#{pr}")
+    scope = ", ".join(scope_bits)
+    return (
+        "You are a read-only reviewer in the BidMate-DocAgent active loop. "
+        f"Scope: {scope}. Diff base: {base}. "
+        "Review the current branch changes WITHOUT editing, writing, committing, pushing, or shipping. "
+        "Use only Read/Grep/Glob and read-only git (diff/log/status). "
+        "Return JSON conforming to the review_artifact schema: a verdict "
+        "(approved|clear|needs-attention|blocked), a one-line summary, a findings array "
+        "(each with severity blocker|warning|info, a title, and optional body/recommendation), "
+        "and an optional next_steps array. Do NOT include raw private question/answer text, "
+        "doc_id, chunk_id, filenames, or absolute private paths (ADR 0005)."
+    )
+
+
+def _run_agent_lane(
+    agent: str,
+    *,
+    role: str,
+    task_id: str | None,
+    pr: str | None,
+    base: str,
+    schema_path: Path,
+    repo_root: Path,
+    claude_runner=None,
+    codex_runner=None,
+) -> dict[str, object]:
+    """Dispatch one read-only lane and return the shared review-artifact core."""
+    try:
+        from scripts import agent_loop_claude_turn as claude_turn, agent_loop_codex_turn as codex_turn
+    except ImportError:  # pragma: no cover - direct-script invocation fallback
+        import agent_loop_claude_turn as claude_turn  # type: ignore[no-redef]
+        import agent_loop_codex_turn as codex_turn  # type: ignore[no-redef]
+    if agent == "codex":
+        focus = f"{role} read-only review"
+        return codex_turn.run_turn(base=base, scope="branch", focus=focus, runner=codex_runner)
+    prompt = _build_agent_turn_prompt(role, task_id=task_id, pr=pr, base=base)
+    resolved_schema = schema_path if schema_path.is_absolute() else (repo_root / schema_path)
+    return claude_turn.run_turn(prompt=prompt, schema_path=resolved_schema, runner=claude_runner)
+
+
+def write_agent_turn(
+    *,
+    session_id: str,
+    role: str,
+    agent: str | None = None,
+    task_id: str | None = None,
+    pr: str | None = None,
+    base: str = "origin/main",
+    execute: bool = False,
+    registry: Path = DEFAULT_ACTIVE_REGISTRY,
+    events: Path = DEFAULT_ACTIVE_EVENTS,
+    agent_mix_path: Path = DEFAULT_ACTIVE_AGENT_MIX,
+    artifacts_dir: Path = DEFAULT_ACTIVE_ARTIFACTS_DIR,
+    schema_path: Path = REVIEW_ARTIFACT_SCHEMA,
+    claude_runner=None,
+    codex_runner=None,
+    repo_root: Path = ROOT_DIR,
+) -> AgentTurnResult:
+    """Run one read-only Claude/Codex review lane; persist artifact + lane heartbeat.
+
+    Read-only contract: no writes, patches, or ship. The model fills the review-artifact
+    core (verdict/summary/findings/next_steps); this function authoritatively sets the
+    meta fields, runs a fail-closed privacy scrub (ADR 0005), records the Work Unit, and
+    drives ``write_session_heartbeat`` so the conservative gate sees the lane verdict.
+    """
+    safe_session = _validate_session_id(session_id)
+    safe_role = _sanitize_inline_text(role)
+    if safe_role not in _agent_turn_roles():
+        raise ValueError("agent-turn role must be a read-only review/analysis role (not Orchestrator/Implementer)")
+    if task_id and not TASK_ID_RE.fullmatch(task_id):
+        raise ValueError("--task must match T-YYYY-NNNN")
+    safe_pr: str | None = None
+    if pr:
+        if not re.fullmatch(r"\d{1,7}", str(pr)):
+            raise ValueError("--pr must be a numeric PR id")
+        safe_pr = str(pr)
+    now = datetime.now(timezone.utc)
+    registry_path = _active_path(registry, repo_root=repo_root)
+    registry_payload = _load_active_registry(registry_path)
+    policy = registry_payload.get("agent_mix") if isinstance(registry_payload.get("agent_mix"), dict) else _parse_agent_mix(None)
+    mix_path = _active_path(agent_mix_path, repo_root=repo_root)
+    mix_state = _load_active_agent_mix(mix_path)
+    rolling = mix_state.get("rolling") if isinstance(mix_state.get("rolling"), dict) else {}
+    if agent:
+        chosen = agent.strip().casefold()
+        if chosen not in ACTIVE_LANE_AGENTS:
+            raise ValueError(f"--agent must be one of: {', '.join(ACTIVE_LANE_AGENTS)}")
+    else:
+        chosen = choose_agent(safe_role, agent_mix=policy, rolling=rolling)
+    if not execute:
+        return AgentTurnResult(
+            decision="planned",
+            role=safe_role,
+            agent=chosen,
+            verdict="",
+            artifact_path=None,
+            registry_path=None,
+            blockers=(),
+            warnings=(),
+        )
+    core = _run_agent_lane(
+        chosen,
+        role=safe_role,
+        task_id=task_id,
+        pr=safe_pr,
+        base=base,
+        schema_path=schema_path,
+        repo_root=repo_root,
+        claude_runner=claude_runner,
+        codex_runner=codex_runner,
+    )
+    verdict = str(core.get("verdict") or "needs-attention")
+    artifact_path = _agent_turn_artifact_path(
+        artifacts_dir, task_id=task_id, session_id=safe_session, agent=chosen, repo_root=repo_root
+    )
+    raw_findings = core.get("findings")
+    raw_steps = core.get("next_steps")
+    artifact = {
+        "schema_version": 1,
+        "task_id": task_id,
+        "session_id": safe_session,
+        "role": safe_role,
+        "agent": chosen,
+        "generated_at": _isoformat(now),
+        "verdict": verdict,
+        "summary": str(core.get("summary") or ""),
+        "findings": raw_findings if isinstance(raw_findings, list) else [],
+        "next_steps": raw_steps if isinstance(raw_steps, list) else [],
+        "wu": 1,
+        "privacy_scrubbed": True,
+    }
+    artifact_path.parent.mkdir(parents=True, exist_ok=True)
+    artifact_path.write_text(json.dumps(_sanitize_json_value(artifact), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    events_path = _active_path(events, repo_root=repo_root)
+    # Fail-closed privacy gate (ADR 0005): if the lane output leaked raw private values
+    # into the artifact, rewrite it as a redacted error and record neither a pass-class
+    # heartbeat nor a Work Unit.
+    privacy_findings = audit_privacy_output(artifact_path, out_path=None, repo_root=repo_root)
+    if privacy_findings:
+        issues = sorted({finding.issue for finding in privacy_findings})
+        redacted = {
+            "schema_version": 1,
+            "task_id": task_id,
+            "session_id": safe_session,
+            "role": safe_role,
+            "agent": chosen,
+            "generated_at": _isoformat(now),
+            "verdict": "blocked",
+            "summary": f"privacy scrub rejected lane output ({len(issues)} issue type(s))",
+            "findings": [],
+            "next_steps": [],
+            "wu": 0,
+            "privacy_scrubbed": False,
+        }
+        artifact_path.write_text(json.dumps(redacted, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        _append_active_event(
+            events_path,
+            {
+                "event": "agent-turn",
+                "session_id": safe_session,
+                "role": safe_role,
+                "agent": chosen,
+                "verdict": "blocked",
+                "task_id": task_id,
+                "privacy_blocked": issues,
+            },
+        )
+        write_session_heartbeat(
+            session_id=safe_session,
+            role=safe_role,
+            task_id=task_id,
+            status="blocked",
+            agent=chosen,
+            registry=registry,
+            events=events,
+            repo_root=repo_root,
+        )
+        return AgentTurnResult(
+            decision="blocked",
+            role=safe_role,
+            agent=chosen,
+            verdict="blocked",
+            artifact_path=artifact_path,
+            registry_path=registry_path,
+            blockers=tuple(f"privacy: {issue}" for issue in issues),
+            warnings=(),
+        )
+    _record_agent_wu(mix_path, agent=chosen, task_id=task_id, wu=1, policy=policy, now=now)
+    write_session_heartbeat(
+        session_id=safe_session,
+        role=safe_role,
+        task_id=task_id,
+        status=verdict,
+        agent=chosen,
+        registry=registry,
+        events=events,
+        repo_root=repo_root,
+    )
+    _append_active_event(
+        events_path,
+        {
+            "event": "agent-turn",
+            "session_id": safe_session,
+            "role": safe_role,
+            "agent": chosen,
+            "verdict": verdict,
+            "task_id": task_id,
+            "wu": 1,
+        },
+    )
+    return AgentTurnResult(
+        decision="executed",
+        role=safe_role,
+        agent=chosen,
+        verdict=verdict,
+        artifact_path=artifact_path,
+        registry_path=registry_path,
+        blockers=(),
+        warnings=(),
+    )
+
+
+def write_agent_mix_report(
+    *,
+    agent_mix_path: Path = DEFAULT_ACTIVE_AGENT_MIX,
+    out: Path = DEFAULT_ACTIVE_AGENT_MIX_REPORT,
+    repo_root: Path = ROOT_DIR,
+) -> tuple[Path, dict[str, object]]:
+    """Render the rolling Claude/Codex Work-Unit mix and a rebalance recommendation."""
+    now = datetime.now(timezone.utc)
+    mix_path = _active_path(agent_mix_path, repo_root=repo_root)
+    state = _load_active_agent_mix(mix_path)
+    policy = state.get("policy") if isinstance(state.get("policy"), dict) else _parse_agent_mix(None)
+    rolling_raw = state.get("rolling") if isinstance(state.get("rolling"), dict) else {}
+    rolling = {agent: _coerce_wu(rolling_raw.get(agent)) for agent in ACTIVE_LANE_AGENTS}
+    total = sum(rolling.values())
+    target_raw = policy.get("target") if isinstance(policy.get("target"), dict) else {}
+    targets = {agent: _coerce_wu(target_raw.get(agent)) for agent in ACTIVE_LANE_AGENTS}
+    target_total = sum(targets.values())
+    skew = abs(rolling["claude"] - rolling["codex"])
+    max_skew_raw = policy.get("max_allowed_skew_wu")
+    max_skew = max_skew_raw if isinstance(max_skew_raw, int) and not isinstance(max_skew_raw, bool) else 2
+    within = skew <= max_skew
+
+    def debt(a: str) -> float:
+        target_share = (targets[a] / target_total) if target_total else 0.5
+        actual_share = (rolling[a] / total) if total else 0.0
+        return target_share - actual_share
+
+    recommended = max(ACTIVE_LANE_AGENTS, key=lambda a: (debt(a), a == "claude"))
+    summary: dict[str, object] = {
+        "rolling": rolling,
+        "target": targets,
+        "skew_wu": skew,
+        "max_allowed_skew_wu": max_skew,
+        "within_tolerance": within,
+        "recommended_next_agent": recommended,
+    }
+    lines = [
+        "# Active-loop agent-mix report",
+        "",
+        f"- Generated: {_isoformat(now)}",
+        f"- Rolling Work Units — claude: {rolling['claude']}, codex: {rolling['codex']} (total {total})",
+        f"- Target mix — claude: {targets['claude']}, codex: {targets['codex']}",
+        f"- Skew: {skew} WU (max allowed {max_skew}) — {'within tolerance' if within else 'REBALANCE'}",
+        f"- Recommended next lane: **{recommended}**",
+    ]
+    if not within:
+        lines.append("")
+        lines.append(f"Skew exceeds tolerance; route upcoming read-only turns to **{recommended}** until balanced.")
+    out_path = _active_path(out, repo_root=repo_root)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return out_path, summary
 
 
 def _load_active_leases(path: Path) -> list[dict[str, object]]:
@@ -10837,6 +11238,19 @@ def build_parser() -> argparse.ArgumentParser:
     heartbeat.add_argument("--agent", choices=ACTIVE_LANE_AGENTS)
     heartbeat.add_argument("--lease-ttl-minutes", type=int, default=30)
 
+    agent_turn = sub.add_parser("agent-turn", help="Run one read-only Claude/Codex review lane and record its artifact + heartbeat.")
+    agent_turn.add_argument("--session-id", required=True)
+    agent_turn.add_argument("--role", required=True)
+    agent_turn.add_argument("--agent", choices=ACTIVE_LANE_AGENTS)
+    agent_turn.add_argument("--task")
+    agent_turn.add_argument("--pr")
+    agent_turn.add_argument("--base", default="origin/main")
+    agent_turn.add_argument("--dry-run", dest="execute", action="store_false", default=False)
+    agent_turn.add_argument("--execute", dest="execute", action="store_true")
+
+    agent_mix_report = sub.add_parser("agent-mix-report", help="Render the rolling Claude/Codex Work-Unit mix and rebalance recommendation.")
+    agent_mix_report.add_argument("--out", type=Path, default=DEFAULT_ACTIVE_AGENT_MIX_REPORT)
+
     active_prepare = sub.add_parser("active-worktree-prepare", help="Prepare an issue-linked worktree for an active-loop role.")
     active_prepare.add_argument("--issue")
     active_prepare.add_argument("--title")
@@ -11708,6 +12122,31 @@ def main(argv: list[str] | None = None) -> int:
                 lease_ttl_minutes=args.lease_ttl_minutes,
             )
             sys.stdout.write(f"[OK] wrote {_repo_path(registry, ROOT_DIR)}\n")
+            return 0
+        if args.command == "agent-turn":
+            result = write_agent_turn(
+                session_id=args.session_id,
+                role=args.role,
+                agent=args.agent,
+                task_id=args.task,
+                pr=args.pr,
+                base=args.base,
+                execute=args.execute,
+            )
+            if result.artifact_path is not None:
+                sys.stdout.write(
+                    f"[OK] {result.decision} {result.agent} lane -> "
+                    f"{_repo_path(result.artifact_path, ROOT_DIR)} (verdict={result.verdict})\n"
+                )
+            else:
+                sys.stdout.write(f"[OK] {result.decision} {result.agent} lane (dry-run)\n")
+            return 0 if result.decision in {"planned", "executed"} else 1
+        if args.command == "agent-mix-report":
+            out_path, summary = write_agent_mix_report(out=args.out)
+            sys.stdout.write(
+                f"[OK] wrote {_repo_path(out_path, ROOT_DIR)} "
+                f"(recommended={summary['recommended_next_agent']}, skew={summary['skew_wu']})\n"
+            )
             return 0
         if args.command == "active-worktree-prepare":
             out, _, _ = write_active_worktree_prepare(

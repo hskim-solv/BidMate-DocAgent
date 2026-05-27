@@ -3066,6 +3066,380 @@ def test_session_heartbeat_cli_accepts_agent_and_rejects_unknown() -> None:
         )
 
 
+# --- Phase 2: read-only agent-turn lanes + Work-Unit accounting (issue #1590) ---
+
+
+def _claude_lane_runner(core: dict[str, object]):
+    payload = json.dumps({"result": core})
+
+    def run(cmd):
+        return subprocess.CompletedProcess(cmd, 0, stdout=payload, stderr="")
+
+    return run
+
+
+def _codex_lane_runner(core: dict[str, object]):
+    payload = json.dumps({"result": core})
+
+    def run(companion, base, scope, focus):
+        return subprocess.CompletedProcess([str(companion)], 0, stdout=payload, stderr="")
+
+    return run
+
+
+def _active_dir(repo: Path) -> Path:
+    return repo / "reports" / "agent_loop" / "active"
+
+
+def test_agent_turn_claude_lane_writes_artifact_heartbeat_and_wu(monkeypatch, tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    monkeypatch.setattr(agent_loop, "_current_branch", lambda repo_root: "feat/issue-1590-active-lane-adapters")
+    core = {
+        "verdict": "needs-attention",
+        "summary": "Review found a coverage gap",
+        "findings": [{"severity": "warning", "title": "Add regression test", "body": "missing coverage"}],
+        "next_steps": ["write a regression test"],
+    }
+
+    result = agent_loop.write_agent_turn(
+        session_id="eval-auditor",
+        role="Eval / Claim / Privacy Auditor",
+        agent="claude",
+        task_id="T-2026-9999",
+        execute=True,
+        claude_runner=_claude_lane_runner(core),
+        repo_root=repo,
+    )
+
+    assert result.decision == "executed"
+    assert result.agent == "claude"
+    assert result.verdict == "needs-attention"
+    assert result.artifact_path == _active_dir(repo) / "artifacts" / "T-2026-9999" / "eval-auditor" / "claude.json"
+    artifact = json.loads(result.artifact_path.read_text(encoding="utf-8"))
+    assert artifact["schema_version"] == 1
+    assert artifact["agent"] == "claude"
+    assert artifact["role"] == "Eval / Claim / Privacy Auditor"
+    assert artifact["privacy_scrubbed"] is True
+    assert artifact["wu"] == 1
+    assert artifact["findings"][0]["title"] == "Add regression test"
+    # Heartbeat: session + lane status reflect the verdict; non-pass blocks the gate.
+    registry = json.loads((_active_dir(repo) / "session_registry.json").read_text(encoding="utf-8"))
+    session = next(item for item in registry["sessions"] if item["session_id"] == "eval-auditor")
+    assert session["status"] == "needs-attention"
+    assert session["lanes"]["claude"]["status"] == "needs-attention"
+    assert agent_loop._active_role_status_ok(registry["sessions"], "Eval / Claim / Privacy Auditor") is False
+    # WU ledger records exactly one claude unit.
+    mix = json.loads((_active_dir(repo) / "agent_mix.json").read_text(encoding="utf-8"))
+    assert mix["rolling"] == {"claude": 1, "codex": 0}
+    assert len(mix["ledger"]) == 1
+    assert mix["ledger"][0]["agent"] == "claude"
+
+
+def test_agent_turn_approved_verdict_satisfies_conservative_gate(monkeypatch, tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    monkeypatch.setattr(agent_loop, "_current_branch", lambda repo_root: "feat/issue-1590")
+    core = {"verdict": "approved", "summary": "looks good", "findings": [], "next_steps": []}
+
+    result = agent_loop.write_agent_turn(
+        session_id="reviewer",
+        role="Reviewer",
+        agent="claude",
+        task_id="T-2026-9999",
+        execute=True,
+        claude_runner=_claude_lane_runner(core),
+        repo_root=repo,
+    )
+
+    registry = json.loads((_active_dir(repo) / "session_registry.json").read_text(encoding="utf-8"))
+    assert result.verdict == "approved"
+    assert agent_loop._active_role_status_ok(registry["sessions"], "Reviewer") is True
+
+
+def test_agent_turn_codex_lane_maps_verdict_via_companion(monkeypatch, tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    monkeypatch.setattr(agent_loop, "_current_branch", lambda repo_root: "feat/issue-1590")
+    companion = tmp_path / "codex-companion.mjs"
+    companion.write_text("// stub", encoding="utf-8")
+    monkeypatch.setenv("CODEX_COMPANION", str(companion))
+    core = {"verdict": "approve", "summary": "no blockers", "findings": [], "next_steps": []}
+
+    result = agent_loop.write_agent_turn(
+        session_id="reviewer",
+        role="Reviewer",
+        agent="codex",
+        task_id="T-2026-9999",
+        execute=True,
+        codex_runner=_codex_lane_runner(core),
+        repo_root=repo,
+    )
+
+    assert result.decision == "executed"
+    assert result.agent == "codex"
+    assert result.verdict == "approved"  # codex "approve" -> review_artifact "approved"
+    assert result.artifact_path.name == "codex.json"
+    artifact = json.loads(result.artifact_path.read_text(encoding="utf-8"))
+    assert artifact["agent"] == "codex"
+    mix = json.loads((_active_dir(repo) / "agent_mix.json").read_text(encoding="utf-8"))
+    assert mix["rolling"] == {"claude": 0, "codex": 1}
+
+
+def test_agent_turn_scrubs_private_field_values_from_artifact(monkeypatch, tmp_path: Path) -> None:
+    # Common-path privacy protection: the artifact writer redacts private field values
+    # in place (ADR 0005), so a leaked doc_id never persists — the turn still executes.
+    repo = _write_repo(tmp_path)
+    monkeypatch.setattr(agent_loop, "_current_branch", lambda repo_root: "feat/issue-1590")
+    leaky = {
+        "verdict": "approved",
+        "summary": "leaked doc_id: SECRET-XYZ from the corpus",
+        "findings": [],
+        "next_steps": [],
+    }
+
+    result = agent_loop.write_agent_turn(
+        session_id="reviewer",
+        role="Reviewer",
+        agent="claude",
+        task_id="T-2026-9999",
+        execute=True,
+        claude_runner=_claude_lane_runner(leaky),
+        repo_root=repo,
+    )
+
+    assert result.decision == "executed"
+    artifact_text = result.artifact_path.read_text(encoding="utf-8")
+    assert "SECRET-XYZ" not in artifact_text  # raw value never persisted
+    assert "[redacted-private-value]" in artifact_text
+    assert json.loads(artifact_text)["privacy_scrubbed"] is True
+
+
+def test_agent_turn_failclosed_blocks_when_audit_finds_leak(monkeypatch, tmp_path: Path) -> None:
+    # Fail-closed secondary net: if the privacy audit flags anything that slipped past the
+    # proactive scrub, the turn is blocked, no Work Unit is recorded, and the heartbeat is
+    # non-pass — never a pass-class gate on leaked output.
+    repo = _write_repo(tmp_path)
+    monkeypatch.setattr(agent_loop, "_current_branch", lambda repo_root: "feat/issue-1590")
+    monkeypatch.setattr(
+        agent_loop,
+        "audit_privacy_output",
+        lambda *a, **k: [agent_loop.PrivacyFinding(path="artifact", issue="absolute local path")],
+    )
+    core = {"verdict": "approved", "summary": "clean summary", "findings": [], "next_steps": []}
+
+    result = agent_loop.write_agent_turn(
+        session_id="reviewer",
+        role="Reviewer",
+        agent="claude",
+        task_id="T-2026-9999",
+        execute=True,
+        claude_runner=_claude_lane_runner(core),
+        repo_root=repo,
+    )
+
+    assert result.decision == "blocked"
+    assert result.verdict == "blocked"
+    assert result.blockers  # the privacy issue surfaced as a blocker
+    artifact = json.loads(result.artifact_path.read_text(encoding="utf-8"))
+    assert artifact["privacy_scrubbed"] is False
+    assert artifact["wu"] == 0
+    assert artifact["findings"] == []
+    # No Work Unit recorded; heartbeat marks the session blocked.
+    mix_path = _active_dir(repo) / "agent_mix.json"
+    if mix_path.exists():
+        assert json.loads(mix_path.read_text(encoding="utf-8"))["rolling"] == {"claude": 0, "codex": 0}
+    registry = json.loads((_active_dir(repo) / "session_registry.json").read_text(encoding="utf-8"))
+    session = next(item for item in registry["sessions"] if item["session_id"] == "reviewer")
+    assert session["status"] == "blocked"
+
+
+def test_choose_agent_capability_then_mix_debt() -> None:
+    policy = agent_loop._parse_agent_mix(None)
+    # Capability prior: review -> codex, planning -> claude when rolling is empty.
+    assert agent_loop.choose_agent("Reviewer", agent_mix=policy, rolling={}) == "codex"
+    assert agent_loop.choose_agent("Planner / Issue Triage", agent_mix=policy, rolling={}) == "claude"
+    # Mix debt overrides the capability prior once codex is over-used past target share.
+    assert agent_loop.choose_agent("Reviewer", agent_mix=policy, rolling={"claude": 0, "codex": 10}) == "claude"
+
+
+def test_agent_mix_report_flags_skew_and_recommends_underused(tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    active = _active_dir(repo)
+    active.mkdir(parents=True, exist_ok=True)
+    (active / "agent_mix.json").write_text(
+        json.dumps(
+            {
+                "policy": agent_loop._parse_agent_mix(None),
+                "rolling": {"claude": 5, "codex": 0},
+                "ledger": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    out_path, summary = agent_loop.write_agent_mix_report(repo_root=repo)
+
+    assert summary["skew_wu"] == 5
+    assert summary["within_tolerance"] is False
+    assert summary["recommended_next_agent"] == "codex"
+    assert "REBALANCE" in out_path.read_text(encoding="utf-8")
+
+
+def test_agent_turn_dry_run_plans_without_writing(tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+
+    result = agent_loop.write_agent_turn(
+        session_id="reviewer",
+        role="Reviewer",
+        task_id="T-2026-9999",
+        execute=False,
+        repo_root=repo,
+    )
+
+    assert result.decision == "planned"
+    assert result.agent == "codex"  # capability prior; no lane invoked in dry-run
+    assert result.artifact_path is None
+    assert not (_active_dir(repo) / "artifacts").exists()
+
+
+def test_agent_turn_rejects_non_review_roles(tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    for role in ("Orchestrator", "Implementer"):
+        with pytest.raises(ValueError):
+            agent_loop.write_agent_turn(session_id="x", role=role, repo_root=repo)
+
+
+def test_agent_turn_wu_accumulates_per_agent(monkeypatch, tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    monkeypatch.setattr(agent_loop, "_current_branch", lambda repo_root: "feat/issue-1590")
+    companion = tmp_path / "codex-companion.mjs"
+    companion.write_text("// stub", encoding="utf-8")
+    monkeypatch.setenv("CODEX_COMPANION", str(companion))
+    clean = {"verdict": "clear", "summary": "ok", "findings": [], "next_steps": []}
+
+    for _ in range(2):
+        agent_loop.write_agent_turn(
+            session_id="eval-auditor",
+            role="Eval / Claim / Privacy Auditor",
+            agent="claude",
+            task_id="T-2026-9999",
+            execute=True,
+            claude_runner=_claude_lane_runner(clean),
+            repo_root=repo,
+        )
+    agent_loop.write_agent_turn(
+        session_id="reviewer",
+        role="Reviewer",
+        agent="codex",
+        task_id="T-2026-9999",
+        execute=True,
+        codex_runner=_codex_lane_runner({"verdict": "approve", "summary": "ok", "findings": [], "next_steps": []}),
+        repo_root=repo,
+    )
+
+    mix = json.loads((_active_dir(repo) / "agent_mix.json").read_text(encoding="utf-8"))
+    assert mix["rolling"] == {"claude": 2, "codex": 1}
+    assert len(mix["ledger"]) == 3
+
+
+def test_agent_turn_cli_accepts_and_rejects_agent() -> None:
+    parser = agent_loop.build_parser()
+    args = parser.parse_args(["agent-turn", "--session-id", "reviewer", "--role", "Reviewer", "--agent", "codex"])
+    assert args.agent == "codex"
+    assert args.execute is False
+    exec_args = parser.parse_args(["agent-turn", "--session-id", "reviewer", "--role", "Reviewer", "--execute"])
+    assert exec_args.execute is True
+    with pytest.raises(SystemExit):
+        parser.parse_args(["agent-turn", "--session-id", "reviewer", "--role", "Reviewer", "--agent", "gpt"])
+    parser.parse_args(["agent-mix-report"])  # parser exists
+
+
+def test_codex_lane_adapter_maps_verdict_severity_and_errors(monkeypatch, tmp_path: Path) -> None:
+    from scripts import agent_loop_codex_turn as cx
+
+    monkeypatch.delenv("CODEX_COMPANION", raising=False)
+    companion = tmp_path / "codex-companion.mjs"
+    companion.write_text("// stub", encoding="utf-8")
+
+    def ok_runner(comp, base, scope, focus):
+        payload = {
+            "result": {
+                "verdict": "needs-attention",
+                "summary": "found issues",
+                "findings": [
+                    {"severity": "critical", "title": "C", "body": "b", "file": "rag_core.py", "line_start": 10, "line_end": 12},
+                    {"severity": "medium", "title": "M"},
+                    {"severity": "low", "title": "L"},
+                ],
+                "next_steps": ["fix C"],
+            }
+        }
+        return subprocess.CompletedProcess([str(comp)], 0, stdout=json.dumps(payload), stderr="")
+
+    core = cx.run_turn(companion_path=str(companion), runner=ok_runner)
+    assert core["verdict"] == "needs-attention"
+    assert [f["severity"] for f in core["findings"]] == ["blocker", "warning", "info"]
+    assert "[rag_core.py:10-12]" in core["findings"][0]["body"]  # file:line folded into body
+    assert core["next_steps"] == ["fix C"]
+
+    def approve_runner(comp, base, scope, focus):
+        return subprocess.CompletedProcess(
+            [str(comp)], 0, stdout=json.dumps({"result": {"verdict": "approve", "summary": "ok"}}), stderr=""
+        )
+
+    assert cx.run_turn(companion_path=str(companion), runner=approve_runner)["verdict"] == "approved"
+
+    # Error paths never raise: missing companion, non-zero rc, non-JSON.
+    assert cx.run_turn(companion_path=None, home=tmp_path)["verdict"] == "error"
+
+    def fail_runner(comp, base, scope, focus):
+        return subprocess.CompletedProcess([str(comp)], 2, stdout="", stderr="boom")
+
+    assert cx.run_turn(companion_path=str(companion), runner=fail_runner)["verdict"] == "error"
+
+    def junk_runner(comp, base, scope, focus):
+        return subprocess.CompletedProcess([str(comp)], 0, stdout="not json", stderr="")
+
+    assert cx.run_turn(companion_path=str(companion), runner=junk_runner)["verdict"] == "error"
+
+
+def test_claude_lane_adapter_command_and_core(tmp_path: Path) -> None:
+    from scripts import agent_loop_claude_turn as cl
+
+    schema = tmp_path / "schema.json"
+    schema.write_text("{}", encoding="utf-8")
+    cmd = cl.build_command(prompt="review", schema_path=schema)
+    assert cmd[:3] == ["claude", "-p", "review"]
+    assert cmd[cmd.index("--permission-mode") + 1] == "plan"
+    assert "--json-schema" in cmd
+    allowed = cmd[cmd.index("--allowedTools") + 1]
+    disallowed = cmd[cmd.index("--disallowedTools") + 1]
+    assert "Read" in allowed
+    assert "Edit" in disallowed and "Bash(git push:*)" in disallowed
+
+    def dict_runner(c):
+        payload = {"result": {"verdict": "clear", "summary": "ok", "findings": [], "next_steps": []}}
+        return subprocess.CompletedProcess(c, 0, stdout=json.dumps(payload), stderr="")
+
+    assert cl.run_turn(prompt="x", schema_path=schema, runner=dict_runner)["verdict"] == "clear"
+
+    def str_runner(c):
+        inner = json.dumps({"verdict": "needs-attention", "summary": "s", "findings": [{"severity": "warning", "title": "T"}]})
+        return subprocess.CompletedProcess(c, 0, stdout=json.dumps({"result": inner}), stderr="")
+
+    core = cl.run_turn(prompt="x", schema_path=schema, runner=str_runner)
+    assert core["verdict"] == "needs-attention"
+    assert core["findings"][0]["severity"] == "warning"
+
+    def fail_runner(c):
+        return subprocess.CompletedProcess(c, 1, stdout="", stderr="err")
+
+    assert cl.run_turn(prompt="x", schema_path=schema, runner=fail_runner)["verdict"] == "error"
+
+    def junk_runner(c):
+        return subprocess.CompletedProcess(c, 0, stdout="<<not json>>", stderr="")
+
+    assert cl.run_turn(prompt="x", schema_path=schema, runner=junk_runner)["verdict"] == "error"
+
+
 def test_stop_ship_skips_remote_branch_delete_when_stacked_dependents_exist() -> None:
     text = (ROOT / "scripts" / "claude-hooks" / "stop-ship.sh").read_text(encoding="utf-8")
 
