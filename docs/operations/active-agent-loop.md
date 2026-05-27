@@ -183,6 +183,56 @@ Execute mode는 8개 process를 spawn한 뒤 종료 코드와 last message artif
 agent process가 끝났다는 사실은 reviewer/auditor gate 통과 근거가 아니며, gate
 status는 별도 heartbeat나 검토 표면에서 유지한다.
 
+## Patch Write-Lane (codex, mutating)
+
+read-only runner와 별개로, `active-codex-runner`는 opt-in `--mode patch`로 **codex
+write-lane**을 돈다. read-only 8-session 모드는 불변이며, patch 모드는 write-lease
+owner인 **Implementer** 한 세션만 대상으로 한다 (claude `-p` headless는 모든 permission
+모드에서 Edit-tool이 깨지므로 write-lane은 codex 전용).
+
+```bash
+python3 scripts/agent_loop.py active-codex-runner --mode patch --task T-2026-00NN --execute
+```
+
+흐름 (어느 단계든 실패하면 fail-closed — mutation 없음):
+
+1. **write-lease borrow**: lease의 `active_agent`를 `codex`로 차용한다. `claude`와
+   `codex`는 상호배제(동시 보유 불가)이며 종료 시 `finally`에서 반환한다.
+2. **scratch worktree**: `.claude/worktrees/T-N-codex` (브랜치 `agent/T-N/codex-scratch`)를
+   base에서 만든다.
+3. **assignment 주입**: `assignments/<session>.md`를 읽어 프롬프트에 embed한다.
+   assignment가 없으면 차단한다 (모호한 프롬프트로 workspace-write codex가 임의 편집하는
+   것을 방지).
+4. **codex 실행**: `codex exec --cd <scratch> --sandbox workspace-write`로 scratch
+   안에서만 편집한다.
+5. **diff 캡처**: `git add -A` + `git diff --cached`로 신규 untracked 파일까지 포함해
+   patch를 캡처한다.
+6. **claimed_files scope**: 변경 파일이 lease의 `claimed_files` 밖이면 verdict를
+   `blocked`로 강등한다 (claim이 비어있으면 미강제 + warning).
+7. **patch artifact**: `reports/agent_loop/active/patch_runs/<session>/patch_artifact.json`에
+   기록하고, privacy는 redact-and-proceed (`_redact_private_json` → 재감사; 누수 적발 시
+   fail-closed block, ADR 0005).
+8. **teardown + release**: scratch worktree를 제거하고 lease를 반환한다.
+
+patch 모드는 `session-heartbeat`를 pass로 승격하지 않으며, **integration 브랜치에
+apply하지 않는다** (다음 단계).
+
+## Patch Apply (orchestrator)
+
+`active-apply`는 patch artifact를 integration 브랜치에 적용하는 Orchestrator 단계다.
+**main은 절대 건드리지 않고** push/ship도 하지 않는다.
+
+```bash
+python3 scripts/agent_loop.py active-apply --task T-2026-00NN --execute
+```
+
+- patch artifact (verdict `proposed` + non-empty diff)를 읽는다.
+- integration worktree (`feature/T-N-integration` @ `.claude/worktrees/T-N-integration`)를
+  보장한다.
+- `git apply --check`로 게이트한다. **실패 시 fail-closed** (blocker, 부분 apply 없음).
+- `--execute` + clean check일 때만 `git apply` + `git add -A` + `git commit`한다.
+- dry-run(기본)은 check만 수행한다.
+
 ## Full Ship Gate
 
 `--execute`는 gate가 통과할 때만 기존 ship runner를 호출한다.
