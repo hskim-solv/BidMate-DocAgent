@@ -10235,6 +10235,24 @@ def _write_active_codex_patch(
                                 if getattr(diff_proc, "returncode", 1) == 0:
                                     diff_text = getattr(diff_proc, "stdout", "") or ""
                                     verdict = "proposed" if diff_text.strip() else "empty"
+                                    # claimed_files scope guard (issue #1612): the write lane must
+                                    # stay within the lease's declared files. An out-of-scope patch
+                                    # is downgraded to "blocked" so apply (PR-B) refuses it. An empty
+                                    # claim leaves scope unenforced (exploratory tasks).
+                                    if verdict == "proposed":
+                                        lease_items = _load_active_leases(_active_path(DEFAULT_ACTIVE_LEASES, repo_root=repo_root))
+                                        write_lease = _find_active_write_lease(lease_items, lease_id=None)
+                                        claimed_raw = write_lease.get("claimed_files") if isinstance(write_lease, dict) else None
+                                        claimed = {str(f) for f in claimed_raw} if isinstance(claimed_raw, list) else set()
+                                        if claimed:
+                                            out_of_scope = sorted(f for f in _diff_files(diff_text) if f not in claimed)
+                                            if out_of_scope:
+                                                verdict = "blocked"
+                                                blockers.append(
+                                                    "patch touches files outside the lease claim: " + ", ".join(out_of_scope[:5])
+                                                )
+                                        else:
+                                            warnings.append("lease has no claimed_files; patch scope is unenforced")
                                 else:
                                     blockers.append("git diff capture failed in scratch worktree")
                         elif rc is not None:

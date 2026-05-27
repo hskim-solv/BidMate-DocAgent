@@ -3989,27 +3989,20 @@ def test_agent_turn_redacts_real100_path_and_proceeds(monkeypatch, tmp_path: Pat
 # --- Phase 3 PR-A: write-lease active_agent borrow (issue #1604) ---
 
 
-def _seed_write_lease(repo: Path, *, lease_id: str = "impl", active_agent=None) -> Path:
+def _seed_write_lease(repo: Path, *, lease_id: str = "impl", active_agent=None, claimed_files=None) -> Path:
     active = repo / "reports" / "agent_loop" / "active"
     active.mkdir(parents=True, exist_ok=True)
     path = active / "leases.json"
-    path.write_text(
-        json.dumps(
-            {
-                "schema_version": 1,
-                "leases": [
-                    {
-                        "lease_id": lease_id,
-                        "status": "active",
-                        "lease_type": "write",
-                        "active_agent": active_agent,
-                        "owner_session": "implementer",
-                    }
-                ],
-            }
-        ),
-        encoding="utf-8",
-    )
+    lease = {
+        "lease_id": lease_id,
+        "status": "active",
+        "lease_type": "write",
+        "active_agent": active_agent,
+        "owner_session": "implementer",
+    }
+    if claimed_files is not None:
+        lease["claimed_files"] = list(claimed_files)
+    path.write_text(json.dumps({"schema_version": 1, "leases": [lease]}), encoding="utf-8")
     return path
 
 
@@ -4265,6 +4258,59 @@ def test_codex_runner_patch_mode_embeds_assignment_in_prompt(tmp_path: Path) -> 
     ).read_text(encoding="utf-8")
     assert "## Assignment" in prompt
     assert "ASSIGNMENT-MARKER: refactor foo." in prompt
+
+
+# --- Phase 4: claimed_files scope enforcement on the codex patch lane (issue #1612) ---
+
+
+def test_codex_runner_patch_mode_blocks_out_of_scope_files(tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    _seed_patch_registry(repo)
+    _seed_write_lease(repo, claimed_files=["allowed.py"])
+    _seed_patch_assignment(repo)
+    diff = "diff --git a/foo.py b/foo.py\n+x\n"  # foo.py is NOT in the claim
+
+    result = agent_loop.write_active_codex_runner(
+        mode="patch",
+        execute=True,
+        task_id="T-2026-0042",
+        repo_root=repo,
+        popen_factory=lambda cmd, **kw: _FakeCodexProc(),
+        which_func=lambda exe: "/usr/bin/codex",
+        git_runner=_fake_git_runner(diff_stdout=diff),
+    )
+
+    assert result.decision == "blocked"
+    assert any("outside the lease claim" in b for b in result.blockers)
+    artifact = json.loads(
+        (repo / "reports" / "agent_loop" / "active" / "patch_runs" / "implementer" / "patch_artifact.json").read_text(encoding="utf-8")
+    )
+    assert artifact["verdict"] == "blocked"
+    assert artifact["wu"] == 0
+
+
+def test_codex_runner_patch_mode_allows_in_scope_files(tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    _seed_patch_registry(repo)
+    _seed_write_lease(repo, claimed_files=["foo.py"])
+    _seed_patch_assignment(repo)
+    diff = "diff --git a/foo.py b/foo.py\n+x\n"  # foo.py IS in the claim
+
+    result = agent_loop.write_active_codex_runner(
+        mode="patch",
+        execute=True,
+        task_id="T-2026-0042",
+        repo_root=repo,
+        popen_factory=lambda cmd, **kw: _FakeCodexProc(),
+        which_func=lambda exe: "/usr/bin/codex",
+        git_runner=_fake_git_runner(diff_stdout=diff),
+    )
+
+    assert result.decision == "completed"
+    artifact = json.loads(
+        (repo / "reports" / "agent_loop" / "active" / "patch_runs" / "implementer" / "patch_artifact.json").read_text(encoding="utf-8")
+    )
+    assert artifact["verdict"] == "proposed"
 
 
 # --- Phase 3 PR-B: active-apply (Orchestrator applies patch to integration branch, #1607) ---
