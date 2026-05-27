@@ -432,6 +432,7 @@ ACTIVE_CODEX_MAX_PARALLEL ?= 8
 ACTIVE_CODEX_TIMEOUT_SECONDS ?= 0
 ACTIVE_CODEX_EXECUTABLE ?= codex
 ACTIVE_CODEX_SANDBOX ?= read-only
+ACTIVE_CODEX_RECORD_GATE_HEARTBEATS ?= 1
 ACTIVE_CODEX_EXECUTE ?=
 HUMAN_GATED_ACTION ?=
 HUMAN_GATED_EXEC_OUT ?= reports/agent_loop/human_gated_exec.md
@@ -946,6 +947,7 @@ agent-loop-active-codex-runner:
 	  --max-parallel "$(ACTIVE_CODEX_MAX_PARALLEL)" \
 	  --timeout-seconds "$(ACTIVE_CODEX_TIMEOUT_SECONDS)" \
 	  $(if $(ACTIVE_CODEX_SESSIONS),--sessions "$(ACTIVE_CODEX_SESSIONS)",) \
+	  $(if $(filter 1 true yes,$(ACTIVE_CODEX_RECORD_GATE_HEARTBEATS)),--record-gate-heartbeats,) \
 	  --runs-dir "$(ACTIVE_CODEX_RUNS_DIR)" \
 	  --state "$(ACTIVE_CODEX_RUNNER_STATE)" \
 	  --out "$(ACTIVE_CODEX_RUNNER_OUT)"

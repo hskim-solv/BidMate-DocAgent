@@ -3015,7 +3015,7 @@ def test_active_start_refreshes_stale_default_pr_body_after_branch_repair(monkey
     assert not any("PR body check has findings" in blocker for blocker in result.active_loop.blockers)
 
 
-def test_active_start_bootstraps_continue_loop_when_no_branch_or_files(monkeypatch, tmp_path: Path) -> None:
+def test_active_start_auto_task_replaces_empty_continue_bootstrap(monkeypatch, tmp_path: Path) -> None:
     repo = _write_repo(tmp_path)
     monkeypatch.setattr(agent_loop, "_current_branch", lambda repo_root: "HEAD")
     monkeypatch.setattr(agent_loop, "audit_privacy_output", lambda *args, **kwargs: [])
@@ -3032,8 +3032,40 @@ def test_active_start_bootstraps_continue_loop_when_no_branch_or_files(monkeypat
 
     assert result.decision == "started"
     assert result.active_loop.decision == "blocked"
-    assert repo / "reports" / "agent_loop" / "active" / "continue_loop.md" in result.outputs
+    assert repo / "reports" / "agent_loop" / "active" / "continue_loop.md" not in result.outputs
+    assert any("auto-selected task" in warning for warning in result.warnings)
     assert result.next_safe_command == "python3 scripts/agent_loop.py continue-loop --no-apply-queue-plan"
+
+
+def test_active_start_auto_selects_task_and_context_files(monkeypatch, tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path, task_id="T-2026-1001", title="Refresh baseline packet")
+    _patch_active_loop_clear(monkeypatch)
+    pr_body = repo / "reports" / "agent_loop" / "pr_body.md"
+
+    result = agent_loop.write_active_start(pr_body=pr_body, repo_root=repo)
+
+    start = result.report_path.read_text(encoding="utf-8")
+    assert result.decision == "started"
+    assert "- Task: `T-2026-1001`" in start
+    assert "auto-selected task `T-2026-1001`" in start
+    assert "Changed files: `2`" in start
+    assert not any("changed files are missing" in warning for warning in result.warnings)
+    assert "T-2026-1001" in pr_body.read_text(encoding="utf-8")
+
+
+def test_active_start_redacts_stale_codex_run_logs_before_privacy_audit(monkeypatch, tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    _patch_active_loop_clear(monkeypatch)
+    stale = repo / "reports" / "agent_loop" / "active" / "codex_runs" / "reviewer" / "stdout.jsonl"
+    stale.parent.mkdir(parents=True, exist_ok=True)
+    stale.write_text("/Users/example/private/path\n", encoding="utf-8")
+
+    result = agent_loop.write_active_start(repo_root=repo)
+
+    assert result.decision == "started"
+    assert stale.exists()
+    assert stale.read_text(encoding="utf-8") == "[redacted-local-path]\n"
+    assert any("redacted 1 stale active Codex run artifact" in warning for warning in result.warnings)
 
 
 def test_active_start_repair_branch_with_issue_switches_current_checkout(monkeypatch, tmp_path: Path) -> None:
@@ -3556,7 +3588,23 @@ def test_active_codex_runner_dry_run_renders_eight_commands_without_spawning(tmp
     assert "role-dispatch" not in report  # runner is a separate spawn surface, not the report-only dispatcher.
 
 
-def test_active_codex_runner_execute_spawns_all_eight_processes_and_preserves_lease(tmp_path: Path) -> None:
+def test_eval_claim_privacy_prompt_excludes_own_live_logs(tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    assignment = repo / "reports" / "agent_loop" / "active" / "assignments" / "eval-claim-privacy-auditor.md"
+    assignment.parent.mkdir(parents=True, exist_ok=True)
+    assignment.write_text("# Assignment\n", encoding="utf-8")
+
+    prompt = agent_loop._render_active_codex_prompt(
+        session_id="eval-claim-privacy-auditor",
+        role="Eval / Claim / Privacy Auditor",
+        assignment_path=assignment,
+        repo_root=repo,
+    )
+
+    assert "exclude this session's own active stdout/stderr files" in prompt
+
+
+def test_active_codex_runner_execute_spawns_agentic_processes_and_preserves_lease(tmp_path: Path) -> None:
     repo = _write_repo(tmp_path)
     active = _write_expanded_active_runner_fixture(repo)
     calls: list[dict[str, object]] = []
@@ -3598,8 +3646,8 @@ def test_active_codex_runner_execute_spawns_all_eight_processes_and_preserves_le
     )
 
     assert result.decision == "completed"
-    assert len(calls) == 8
-    assert len(prompts) == 8
+    assert len(calls) == 7
+    assert len(prompts) == 7
     for call in calls:
         cmd = call["cmd"]
         assert cmd[:4] == ["/opt/codex/bin/codex", "exec", "--cd", "."]
@@ -3618,8 +3666,87 @@ def test_active_codex_runner_execute_spawns_all_eight_processes_and_preserves_le
     state = json.loads(result.state_path.read_text(encoding="utf-8"))
     assert {item["status"] for item in state["sessions"]} == {"completed"}
     assert {item["returncode"] for item in state["sessions"]} == {0}
-    assert all(item["pid"] for item in state["sessions"])
+    assert all(item["pid"] for item in state["sessions"] if item["session_id"] != "eval-claim-privacy-auditor")
+    eval_session = next(item for item in state["sessions"] if item["session_id"] == "eval-claim-privacy-auditor")
+    assert eval_session["pid"] is None
+    assert eval_session["deterministic_gate"] == "eval-claim-privacy-post-redaction"
     assert str(repo) not in result.state_path.read_text(encoding="utf-8")
+
+
+def test_active_codex_runner_records_passing_gate_heartbeats(tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    active = _write_expanded_active_runner_fixture(repo)
+
+    class DummyProc:
+        def __init__(self, pid: int, last_message: Path) -> None:
+            self.pid = pid
+            self.stdin = None
+            self.last_message = last_message
+
+        def wait(self, timeout=None):  # type: ignore[no-untyped-def]
+            self.last_message.parent.mkdir(parents=True, exist_ok=True)
+            if self.last_message.parent.name == "eval-claim-privacy-auditor":
+                self.last_message.write_text("No explicit verdict\nPath: /Users/example/private/path\n", encoding="utf-8")
+            else:
+                self.last_message.write_text("Gate verdict: pass\nPath: /Users/example/private/path\n", encoding="utf-8")
+            return 0
+
+    def fake_popen(cmd, **kwargs):  # type: ignore[no-untyped-def]
+        last = repo / cmd[cmd.index("--output-last-message") + 1]
+        return DummyProc(7100, last)
+
+    result = agent_loop.write_active_codex_runner(
+        execute=True,
+        record_gate_heartbeats=True,
+        repo_root=repo,
+        popen_factory=fake_popen,
+        which_func=lambda exe: "/opt/codex/bin/codex",
+    )
+
+    registry = json.loads((active / "session_registry.json").read_text(encoding="utf-8"))
+    by_id = {item["session_id"]: item for item in registry["sessions"]}
+
+    assert result.decision == "completed"
+    assert by_id["reviewer"]["status"] == "passed"
+    assert by_id["ci-regression-auditor"]["status"] == "passed"
+    assert by_id["eval-claim-privacy-auditor"]["status"] == "clear"
+    state = json.loads(result.state_path.read_text(encoding="utf-8"))
+    eval_session = next(item for item in state["sessions"] if item["session_id"] == "eval-claim-privacy-auditor")
+    assert eval_session["heartbeat_source"] == "last-message-verdict"
+    assert "[redacted-local-path]" in (active / "codex_runs" / "reviewer" / "last_message.md").read_text(encoding="utf-8")
+    assert not agent_loop.audit_privacy_output(active / "codex_runs", out_path=None, repo_root=repo)
+    assert any("redacted" in warning for warning in result.warnings)
+    assert "Gate Heartbeats" in result.report_path.read_text(encoding="utf-8")
+
+
+def test_active_codex_runner_does_not_override_explicit_blocked_gate(tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    active = _write_expanded_active_runner_fixture(repo)
+    last_message = active / "codex_runs" / "eval-claim-privacy-auditor" / "last_message.md"
+    last_message.parent.mkdir(parents=True, exist_ok=True)
+    last_message.write_text("Gate verdict: blocked\n", encoding="utf-8")
+    sessions = [
+        {
+            "session_id": "eval-claim-privacy-auditor",
+            "role": "Eval / Claim / Privacy Auditor",
+            "ship_gate": "blocking",
+            "status": "completed",
+            "last_message": "reports/agent_loop/active/codex_runs/eval-claim-privacy-auditor/last_message.md",
+        }
+    ]
+
+    events, warnings = agent_loop._record_codex_runner_gate_heartbeats(
+        sessions=sessions,
+        registry=active / "session_registry.json",
+        events=active / "events.jsonl",
+        repo_root=repo,
+    )
+
+    registry = json.loads((active / "session_registry.json").read_text(encoding="utf-8"))
+    eval_session = next(item for item in registry["sessions"] if item["session_id"] == "eval-claim-privacy-auditor")
+    assert events == []
+    assert eval_session["status"] == "idle"
+    assert any("reported non-passing gate verdict: blocked" in warning for warning in warnings)
 
 
 def test_active_codex_runner_execute_fails_closed_without_codex(tmp_path: Path) -> None:
@@ -3663,9 +3790,16 @@ def test_active_codex_runner_fails_closed_on_missing_registry_or_assignment(tmp_
 
 def test_active_codex_runner_cli_accepts_execute_and_session_filter() -> None:
     parser = agent_loop.build_parser()
-    args = parser.parse_args(["active-codex-runner", "--execute", "--sessions", "reviewer,ci-regression-auditor"])
+    args = parser.parse_args([
+        "active-codex-runner",
+        "--execute",
+        "--sessions",
+        "reviewer,ci-regression-auditor",
+        "--record-gate-heartbeats",
+    ])
     assert args.execute is True
     assert args.sessions == "reviewer,ci-regression-auditor"
+    assert args.record_gate_heartbeats is True
 
 
 def test_make_active_start_spawns_codex_runner_by_default() -> None:
@@ -3682,6 +3816,7 @@ def test_make_active_start_spawns_codex_runner_by_default() -> None:
     assert 'make agent-loop-active-codex-runner ACTIVE_CODEX_EXECUTE="1"' in result.stdout
     assert "scripts/agent_loop.py active-codex-runner" in result.stdout
     assert "--execute" in result.stdout
+    assert "--record-gate-heartbeats" in result.stdout
 
 
 def test_make_active_start_can_disable_runner_and_has_korean_alias() -> None:
