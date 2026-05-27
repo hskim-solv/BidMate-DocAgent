@@ -1,9 +1,9 @@
 # Plan: T-2026-0023 RAG performance agent operating goal
 
-- Status: running
+- Status: review
 - Owner role: Planner -> Implementer -> Benchmark Auditor -> Privacy Auditor -> Deep Reviewer -> Reviewer
 - Related task: `tasks/queue.md::T-2026-0023`
-- Related issue / PR: [#1569](https://github.com/hskim-solv/BidMate-DocAgent/issues/1569) / PR TBD
+- Related issue / PR: [#1569](https://github.com/hskim-solv/BidMate-DocAgent/issues/1569) / [#1570](https://github.com/hskim-solv/BidMate-DocAgent/pull/1570)
 - Related ADR: N/A - no decision-level runtime or eval contract change
 - Created: 2026-05-27
 - Last updated: 2026-05-27
@@ -179,14 +179,14 @@ operable, but it must not claim any current RAG performance improvement.
 
 - Role: Planner / Implementer
 - Branch / worktree: docs/issue-1569-rag-performance-agent-goal / /Users/hskim/.codex/worktrees/3165/BidMate-DocAgent
-- Issue / PR: #1569 / PR TBD
+- Issue / PR: #1569 / PR #1570
 - Task: T-2026-0023
-- Current status: queue and plan drafted; operating docs next.
-- Files touched: tasks/queue.md, docs/plans/T-2026-0023-rag-performance-agent-operating-goal.md
+- Current status: docs/governance implementation opened as PR #1570.
+- Files touched: tasks/queue.md, docs/plans/T-2026-0023-rag-performance-agent-operating-goal.md, docs/operations/ai-engineering-operating-system.md, docs/operations/long-session-workflow.md, docs/operations/ai-codex-workflow.md, docs/agent-utilization.md
 - Decisions made: keep this as docs/governance only; no runtime or eval changes.
-- Commands run: pending validation.
-- Results: pending.
-- Next safe command: python3 scripts/check_doc_links.py --check-all --paths tasks/queue.md docs/plans/T-2026-0023-rag-performance-agent-operating-goal.md docs/operations/ai-engineering-operating-system.md docs/operations/long-session-workflow.md docs/operations/ai-codex-workflow.md docs/agent-utilization.md
+- Commands run: python3 scripts/check_doc_links.py --check-all --paths tasks/queue.md docs/plans/T-2026-0023-rag-performance-agent-operating-goal.md docs/operations/ai-engineering-operating-system.md docs/operations/long-session-workflow.md docs/operations/ai-codex-workflow.md docs/agent-utilization.md; git diff --check; make check-branch
+- Results: passed.
+- Next safe command: make ship-review-gate PR=1570
 - Open questions: none.
 - Risks: claim wording could be overread as a performance result.
 ```

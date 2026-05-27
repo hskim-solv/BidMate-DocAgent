@@ -33,7 +33,7 @@ PR이 생기면 각 task에 링크를 추가한다. 예제 task는 `tasks/exampl
 | 20 | `T-2026-0020` | `review` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1544; v0 metric-suite report implementation ready for review. |
 | 21 | `T-2026-0021` | `review` | Maintainer -> CI Reviewer -> Reviewer | issue #1551 implemented; draft PR #1552. |
 | 22 | `T-2026-0022` | `backlog` | Planner -> Implementer -> Reviewer | issue #1563; choose one scoped multi-chunk retrieval measurement follow-up. |
-| 23 | `T-2026-0023` | `ready` | Planner -> Implementer -> Benchmark Auditor -> Privacy Auditor -> Deep Reviewer -> Reviewer | issue #1569; long-running RAG performance goal with 8 agent operating principles. |
+| 23 | `T-2026-0023` | `review` | Planner -> Implementer -> Benchmark Auditor -> Privacy Auditor -> Deep Reviewer -> Reviewer | issue #1569; PR #1570. |
 
 ## Examples
 
@@ -1945,7 +1945,7 @@ Focused validation passes and the follow-up evidence is recorded.
 
 - ID: T-2026-0023
 - Title: RAG performance agent operating goal
-- Status: ready
+- Status: review
 - Owner role: Planner -> Implementer -> Benchmark Auditor -> Privacy Auditor -> Deep Reviewer -> Reviewer
 - Created: 2026-05-27
 - Last updated: 2026-05-27
@@ -2015,4 +2015,4 @@ make check-branch
 
 - Plan: [`docs/plans/T-2026-0023-rag-performance-agent-operating-goal.md`](../docs/plans/T-2026-0023-rag-performance-agent-operating-goal.md)
 - Issue: [#1569](https://github.com/hskim-solv/BidMate-DocAgent/issues/1569)
-- PR: TBD
+- PR: [#1570](https://github.com/hskim-solv/BidMate-DocAgent/pull/1570)
