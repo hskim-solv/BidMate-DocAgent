@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/patch_artifact.schema.json",
+  "title": "Active-loop patch-proposal artifact",
+  "description": "A patch PROPOSAL produced by a write-lane (codex) in an isolated scratch worktree (issue #1604, ADR 0080 Phase 3). The lane edits inside the scratch worktree; the agent-patch-turn adapter captures the unified diff, privacy-scrubs it (ADR 0005), and authoritatively sets the meta fields. NO apply to the integration branch — that is a separate Orchestrator step (PR-B). No raw private question/answer text, doc_id, chunk_id, filenames, or absolute private paths.",
+  "type": "object",
+  "required": ["agent", "verdict", "diff"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "task_id": {
+      "type": ["string", "null"]
+    },
+    "session_id": {
+      "type": "string"
+    },
+    "role": {
+      "type": "string"
+    },
+    "agent": {
+      "type": "string",
+      "enum": ["codex", "claude"]
+    },
+    "generated_at": {
+      "type": "string"
+    },
+    "base": {
+      "type": "string"
+    },
+    "integration_branch": {
+      "type": "string"
+    },
+    "scratch_branch": {
+      "type": "string"
+    },
+    "verdict": {
+      "type": "string",
+      "enum": ["proposed", "empty", "blocked", "error"]
+    },
+    "summary": {
+      "type": "string"
+    },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "diffstat": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "files_changed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "insertions": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "deletions": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "diff": {
+      "type": "string"
+    },
+    "wu": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "privacy_scrubbed": {
+      "type": "boolean"
+    }
+  }
+}

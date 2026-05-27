@@ -3851,6 +3851,229 @@ def test_agent_turn_redacts_real100_path_and_proceeds(monkeypatch, tmp_path: Pat
     assert session["status"] == "approved"
 
 
+# --- Phase 3 PR-A: write-lease active_agent borrow (issue #1604) ---
+
+
+def _seed_write_lease(repo: Path, *, lease_id: str = "impl", active_agent=None) -> Path:
+    active = repo / "reports" / "agent_loop" / "active"
+    active.mkdir(parents=True, exist_ok=True)
+    path = active / "leases.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "leases": [
+                    {
+                        "lease_id": lease_id,
+                        "status": "active",
+                        "lease_type": "write",
+                        "active_agent": active_agent,
+                        "owner_session": "implementer",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    return path
+
+
+def test_active_agent_borrow_is_mutually_exclusive(tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    _seed_write_lease(repo)
+    ok, _, lid = agent_loop.acquire_active_agent(agent="codex", repo_root=repo)
+    assert ok is True and lid == "impl"
+    # claude is blocked while codex holds the lease (mutual exclusion).
+    ok2, msg2, _ = agent_loop.acquire_active_agent(agent="claude", repo_root=repo)
+    assert ok2 is False and "held by codex" in msg2
+    # re-acquire by the same agent is idempotent.
+    assert agent_loop.acquire_active_agent(agent="codex", repo_root=repo)[0] is True
+    leases = json.loads((repo / "reports" / "agent_loop" / "active" / "leases.json").read_text(encoding="utf-8"))
+    assert leases["leases"][0]["active_agent"] == "codex"
+    # release by codex frees it; then claude can acquire.
+    assert agent_loop.release_active_agent(agent="codex", repo_root=repo)[0] is True
+    assert agent_loop.acquire_active_agent(agent="claude", repo_root=repo)[0] is True
+    # codex cannot release a lease claude holds.
+    okr, msgr = agent_loop.release_active_agent(agent="codex", repo_root=repo)
+    assert okr is False and "held by claude" in msgr
+
+
+def test_acquire_active_agent_without_write_lease_fails(tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    ok, msg, lid = agent_loop.acquire_active_agent(agent="codex", repo_root=repo)
+    assert ok is False and lid is None and "no active write lease" in msg
+
+
+def test_acquire_active_agent_rejects_unknown_agent(tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    _seed_write_lease(repo)
+    with pytest.raises(ValueError):
+        agent_loop.acquire_active_agent(agent="gpt", repo_root=repo)
+
+
+# --- Phase 3 PR-A: scratch worktree helpers + active-codex-runner patch mode (issue #1604) ---
+
+
+class _FakeCodexProc:
+    def __init__(self) -> None:
+        self.pid = 4242
+        self.returncode = 0
+        self.stdin = self
+        self.written: list[str] = []
+
+    def write(self, s: str) -> None:
+        self.written.append(s)
+
+    def close(self) -> None:
+        pass
+
+    def wait(self, timeout=None) -> int:
+        return 0
+
+
+def _fake_git_runner(diff_stdout: str = ""):
+    calls: list[list[str]] = []
+
+    def run(cmd):
+        calls.append(cmd)
+        if "diff" in cmd:
+            return subprocess.CompletedProcess(cmd, 0, stdout=diff_stdout, stderr="")
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    run.calls = calls  # type: ignore[attr-defined]
+    return run
+
+
+def _seed_patch_registry(repo: Path, *, task: str = "T-2026-0042") -> None:
+    active = repo / "reports" / "agent_loop" / "active"
+    active.mkdir(parents=True, exist_ok=True)
+    (active / "session_registry.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "topology": "four-role",
+                "gate_policy": "conservative",
+                "agent_mix": agent_loop._parse_agent_mix(None),
+                "sessions": [
+                    {
+                        "session_id": "implementer",
+                        "role": "Implementer",
+                        "status": "running",
+                        "task_id": task,
+                        "lanes": agent_loop._build_active_lanes(None),
+                        "write_lease_owner": True,
+                        "ship_gate": "lease-owner",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def test_scratch_worktree_paths_naming(tmp_path: Path) -> None:
+    path, branch = agent_loop._scratch_worktree_paths("T-2026-0042", "codex", repo_root=tmp_path)
+    assert path == tmp_path / ".claude" / "worktrees" / "T-2026-0042-codex"
+    assert branch == "agent/T-2026-0042/codex-scratch"
+    with pytest.raises(ValueError):
+        agent_loop._scratch_worktree_paths("nope", "codex", repo_root=tmp_path)
+    with pytest.raises(ValueError):
+        agent_loop._scratch_worktree_paths("T-2026-0042", "gpt", repo_root=tmp_path)
+
+
+def test_create_and_teardown_scratch_worktree(tmp_path: Path) -> None:
+    runner = _fake_git_runner()
+    path, branch, blockers = agent_loop.create_scratch_worktree(
+        "T-2026-0042", "codex", base="origin/main", repo_root=tmp_path, runner=runner
+    )
+    assert blockers == []
+    assert branch == "agent/T-2026-0042/codex-scratch"
+    assert runner.calls[0] == ["git", "-C", str(tmp_path), "worktree", "add", "-b", branch, str(path), "origin/main"]
+    warnings = agent_loop.teardown_scratch_worktree("T-2026-0042", "codex", repo_root=tmp_path, runner=runner)
+    assert warnings == []
+    assert runner.calls[1] == ["git", "-C", str(tmp_path), "worktree", "remove", "--force", str(path)]
+    assert runner.calls[2] == ["git", "-C", str(tmp_path), "branch", "-D", branch]
+
+
+def test_create_scratch_worktree_surfaces_failure(tmp_path: Path) -> None:
+    def runner(cmd):
+        return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="fatal: already exists")
+
+    _, _, blockers = agent_loop.create_scratch_worktree("T-2026-0042", "codex", repo_root=tmp_path, runner=runner)
+    assert blockers and "already exists" in blockers[0]
+
+
+def test_codex_runner_patch_mode_dry_run_plans_without_borrow(tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    _seed_patch_registry(repo)
+    _seed_write_lease(repo)
+
+    result = agent_loop.write_active_codex_runner(mode="patch", task_id="T-2026-0042", repo_root=repo)
+
+    assert result.decision == "planned"
+    leases = json.loads((repo / "reports" / "agent_loop" / "active" / "leases.json").read_text(encoding="utf-8"))
+    assert leases["leases"][0]["active_agent"] is None  # dry-run borrows nothing
+    assert not (repo / "reports" / "agent_loop" / "active" / "patch_runs").exists()
+
+
+def test_codex_runner_patch_mode_execute_captures_patch_and_releases_lease(tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    _seed_patch_registry(repo)
+    _seed_write_lease(repo)
+    diff = "diff --git a/foo.py b/foo.py\n--- a/foo.py\n+++ b/foo.py\n@@ -1 +1,2 @@\n line\n+new line\n"
+    git_runner = _fake_git_runner(diff_stdout=diff)
+
+    result = agent_loop.write_active_codex_runner(
+        mode="patch",
+        execute=True,
+        task_id="T-2026-0042",
+        repo_root=repo,
+        popen_factory=lambda cmd, **kw: _FakeCodexProc(),
+        which_func=lambda exe: "/usr/bin/codex",
+        git_runner=git_runner,
+    )
+
+    assert result.decision == "completed"
+    artifact = json.loads(
+        (repo / "reports" / "agent_loop" / "active" / "patch_runs" / "implementer" / "patch_artifact.json").read_text(encoding="utf-8")
+    )
+    assert artifact["verdict"] == "proposed"
+    assert artifact["agent"] == "codex"
+    assert artifact["files"] == ["foo.py"]
+    assert artifact["wu"] == 1
+    assert artifact["diff"] == diff
+    cmds = [" ".join(c) for c in git_runner.calls]
+    assert any("worktree add -b agent/T-2026-0042/codex-scratch" in c for c in cmds)
+    assert any("worktree remove --force" in c for c in cmds)
+    # write lease released back to free after the run.
+    leases = json.loads((repo / "reports" / "agent_loop" / "active" / "leases.json").read_text(encoding="utf-8"))
+    assert leases["leases"][0]["active_agent"] is None
+
+
+def test_codex_runner_patch_mode_redacts_private_path_in_diff(tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    _seed_patch_registry(repo)
+    _seed_write_lease(repo)
+    diff = "diff --git a/x.py b/x.py\n+# see reports/real100/baseline.aggregate.json\n"
+
+    result = agent_loop.write_active_codex_runner(
+        mode="patch",
+        execute=True,
+        task_id="T-2026-0042",
+        repo_root=repo,
+        popen_factory=lambda cmd, **kw: _FakeCodexProc(),
+        which_func=lambda exe: "/usr/bin/codex",
+        git_runner=_fake_git_runner(diff_stdout=diff),
+    )
+
+    artifact_text = (
+        repo / "reports" / "agent_loop" / "active" / "patch_runs" / "implementer" / "patch_artifact.json"
+    ).read_text(encoding="utf-8")
+    assert "reports/real100/[redacted-private-artifact]" in artifact_text  # redact-and-proceed
+    assert "baseline.aggregate.json" not in artifact_text
+    assert result.decision == "completed"
+
+
 def test_stop_ship_skips_remote_branch_delete_when_stacked_dependents_exist() -> None:
     text = (ROOT / "scripts" / "claude-hooks" / "stop-ship.sh").read_text(encoding="utf-8")
 
