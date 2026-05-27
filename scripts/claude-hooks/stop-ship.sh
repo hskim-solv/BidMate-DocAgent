@@ -479,9 +479,7 @@ stage_5_merge() {
       log "s5" "desktop main sync skipped/non-fatal; run manually if needed"
   fi
 
-  # Worktree-safe remote-branch deletion (replaces gh's --delete-branch; #1283).
-  mut git push origin --delete "$ARM_BRANCH" 2>/dev/null || \
-    log "s5" "remote branch delete non-fatal: $ARM_BRANCH may already be gone"
+  stage_5_delete_remote_branch
 
   mut git checkout main || true
   mut git pull --ff-only origin main || log "s5" "git pull --ff-only had non-zero exit (continuing)"
@@ -503,6 +501,23 @@ stage_5_merge() {
     git worktree remove --force "$worktree_path" 2>/dev/null || \
       log "s5" "worktree remove non-fatal: $worktree_path may need manual cleanup"
   fi
+}
+
+stage_5_delete_remote_branch() {
+  local dependent_count
+  dependent_count=$(gh pr list --base "$ARM_BRANCH" --state open --json number --jq 'length' 2>/dev/null || echo "UNKNOWN")
+  if [[ "$dependent_count" == "UNKNOWN" || -z "$dependent_count" ]]; then
+    log "s5" "could not verify stacked dependents for $ARM_BRANCH — skipping remote branch delete"
+    return 0
+  fi
+  if [[ "$dependent_count" != "0" ]]; then
+    log "s5" "skipping remote branch delete for $ARM_BRANCH: $dependent_count open dependent PR(s)"
+    return 0
+  fi
+
+  # Worktree-safe remote-branch deletion (replaces gh's --delete-branch; #1283).
+  mut git push origin --delete "$ARM_BRANCH" 2>/dev/null || \
+    log "s5" "remote branch delete non-fatal: $ARM_BRANCH may already be gone"
 }
 
 # ---------------------------------------------------------------------------
