@@ -62,17 +62,18 @@ git diff --check
 
 ## Session Handoff
 
-- Role:
-- Lifecycle stage:
-- Branch / worktree:
+- Role: Planner
+- Lifecycle stage: preflight repair
+- Branch / worktree: docs/issue-1571-repair-t0022-handoff / Codex worktree
 - Task: T-2026-0022
-- Current status:
-- Files touched:
-- Commands run:
-- Results:
-- Validation evidence: [redacted-private-value]
-- Open risks:
-- Next action:
-- Next safe command:
-- Reviewer focus:
-- Eval surface:
+- Current status: preflight handoff fields repaired; implementation not started.
+- Files touched: docs/plans/T-2026-0022-use-multi-chunk-evidence-analysis-for-the-next-retrieval-fol.md
+- Commands run: python3 scripts/agent_loop.py preflight --task T-2026-0022 --from-git --write-prompts
+- Results: preflight previously failed because required handoff fields were blank.
+- Validation evidence: preflight reported missing handoff fields and generated local prompts.
+- Blockers: none after this handoff repair is validated.
+- Open risks: next implementation must still choose one scoped multi-chunk retrieval measurement follow-up and avoid performance claims without aggregate paired evidence.
+- Next action: rerun preflight and then start the scoped measurement follow-up.
+- Next safe command: python3 scripts/agent_loop.py preflight --task T-2026-0022 --from-git --write-prompts
+- Reviewer focus: handoff completeness, privacy-safe aggregate-only wording, and no RAG performance claim.
+- Eval surface: next_experiment_candidate planning; classify again before runtime, eval, benchmark, report, config, or claim changes.
