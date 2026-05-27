@@ -1,8 +1,8 @@
-# Plan: T-2026-0020 PR corpus workset planning
+# Plan: T-2026-0021 PR corpus workset planning
 
 - Status: review
 - Owner role: Maintainer -> CI Reviewer -> Reviewer
-- Related task: `tasks/queue.md::T-2026-0020`
+- Related task: `tasks/queue.md::T-2026-0021`
 - Related issue: #1551
 
 ## Problem
@@ -69,7 +69,7 @@ plan. The root session should keep integration, validation, and ship gates.
 ```bash
 python3 -m py_compile scripts/ai_next_actions.py scripts/agent_loop.py
 python3 -m pytest tests/test_ai_next_actions.py tests/test_agent_loop.py -q
-python3 scripts/check_doc_links.py --check-all --paths docs/operations/ai-codex-workflow.md docs/operations/ai-engineering-operating-system.md tasks/queue.md docs/plans/T-2026-0020-pr-corpus-workset-planning.md
+python3 scripts/check_doc_links.py --check-all --paths docs/operations/ai-codex-workflow.md docs/operations/ai-engineering-operating-system.md tasks/queue.md docs/plans/T-2026-0021-pr-corpus-workset-planning.md
 python3 scripts/agent_loop.py continue-loop --pr-json reports/agent_loop/pr_state.json --no-apply-queue-plan
 git diff --check
 make check-branch

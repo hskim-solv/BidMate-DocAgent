@@ -8,6 +8,11 @@ which gaps remain before a v0 metric-suite report can claim coverage.
 This is an aggregate-only inventory. It is not a performance claim, does not run
 private real-eval, and does not compare deltas.
 
+Issue #1544 adds the first v0 report renderer:
+`scripts/render_v0_metric_suite_report.py`. It consumes aggregate-only private
+real-eval artifacts plus an optional local judge/human agreement CSV, and emits
+a report surface without raw private payloads.
+
 ## Status Vocabulary
 
 | Status | Meaning |
@@ -21,21 +26,22 @@ private real-eval, and does not compare deltas.
 | Metric family | Status | Current aggregate evidence | Gap / smallest next step |
 |---|---|---|---|
 | Retrieval recall | Present | `reports/real100_v2/baseline.aggregate.json` exposes `chunk_recall_at_5`, `chunk_recall_at_10`, `chunk_recall_at_20`, `chunk_mrr`, and `chunk_ndcg_at_*` under aggregate slices. `reports/real100/embedding_ablation_retrieval.aggregate.json` is a retrieval-only aggregate surface. | v0-c should choose the canonical primary source and render retrieval metrics with dataset/config/index provenance. |
-| Grounding | Partial | `reports/real100_v2/baseline.aggregate.json` and `reports/real100/baseline.aggregate.json` expose answer-level `groundedness` with CI blocks. `eval/scorers/citation.py` also defines page/region `citation_grounding`, but the committed baseline aggregate keeps that field null. | v0-c should report answer-level groundedness as present, keep it separate from trajectory rationality, and leave page/region grounding marked partial until gold page/region metadata is populated. |
+| Grounding | Present | `reports/real100_v2/baseline.aggregate.json` and `reports/real100/baseline.aggregate.json` expose answer-level `groundedness` with CI blocks. The v0 report renderer treats answer-level grounding as the adopted family metric and keeps page/region grounding as a named note when not populated. | Populate page/region grounding later when gold page/region metadata is available; do not block the v0 answer-level grounding family on that optional subdimension. |
 | Citation precision | Present | `reports/real100_v2/baseline.aggregate.json` and `reports/real100/baseline.aggregate.json` expose `citation_precision`; `reports/private_real_eval_summary.redacted.json` also carries legacy citation aggregate fields. | v0-c should standardize on `citation_precision` naming and avoid mixing legacy `citation_accuracy` with the metric-suite label unless semantics are restated. |
 | Claim-citation alignment | Present | `reports/real100_v2/baseline.aggregate.json` and `reports/real100/baseline.aggregate.json` expose `claim_citation_alignment`; [Citation Grounding Evaluation](../eval/citation-grounding-eval.md) defines the report field. | v0-c should include claim-level error counts when available, but the core family is already measurable. |
-| Comparison coverage | Partial | Top-level CI blocks include `comparison_target_recall` and `comparison_pool_recall`, and `by_query_type` has a `comparison` slice. | The comparison slice does not yet expose per-target evidence/claim coverage in the report shell. Add a comparison-specific aggregate that reports target, evidence, and claim coverage with enough cases to interpret gaps. |
-| Abstention calibration | Partial | Aggregate files expose `abstention` and `abstention_outcomes`; some slices carry an `abstention_calibration` key. | `abstention_calibration` is not yet a populated canonical metric. Add an explicit calibration aggregate for answerable vs unanswerable cases, including correct refusal and incorrect-answer buckets. |
-| Numeric/date/condition accuracy | Partial | `reports/real100_v2/question_distribution.aggregate.json` classifies amount/date/score/question types, and `reports/real100/difficulty_profile.aggregate.json` exposes date-like and amount-like diagnostic slices. | There is no dedicated slot exactness metric for amount, date, eligibility, submission condition, or score fields. Add a field-level scorer before treating this family as present. |
-| Human/judge agreement | Partial | `eval/judges/judge_agreement.py` defines judge-human agreement aggregation, and ADR 0016 defines the private-label boundary. `reports/self_review_agreement/*.json` are committed agreement examples, but they are self-review governance artifacts rather than RFP QA metric-suite outputs. | Add a private real-eval agreement aggregate for an approved judge or human reviewer signal; keep per-case CSV labels local-only. |
+| Comparison coverage | Present | Top-level CI blocks include `comparison_target_recall` and `comparison_pool_recall`, and issue #1544 exposes comparison recall/full-coverage scalars through the aggregate extractor and v0 report renderer. | Later work can add per-target claim coverage, but target/pool comparison coverage is now a reportable v0 family. |
+| Abstention calibration | Present | Aggregate files expose `abstention` and `abstention_outcomes`; the v0 report renderer treats outcome buckets as the canonical answerable/unanswerable refusal metric and surfaces `abstention_calibration` when confidence scores are available. | Confidence ECE/Brier remains optional until answer dicts consistently emit confidence; outcome buckets remain the v0 family metric. |
+| Numeric/date/condition accuracy | Partial | Issue #1544 adds `eval/scorers/slot_metrics.py`, wires `numeric_date_condition_accuracy` into `eval/run_eval.py`, and allowlists the aggregate in `scripts/run_real_eval_delta.py`. Existing committed baselines predate the scorer. | Regenerate the private real-eval aggregate to populate `numeric_date_condition_accuracy`, slot counts, and type counters before marking this family present in committed artifacts. |
+| Human/judge agreement | Partial | `eval/judges/judge_agreement.py` defines judge-human agreement aggregation, ADR 0016 defines the private-label boundary, and the v0 report renderer accepts a local `--judge-agreement-csv` input that emits aggregate-only κ/ρ/confusion output. | Run the private label CSV for an approved judge or human reviewer signal; keep per-case CSV labels local-only. |
 
 ## v0 Readiness Verdict
 
 v0-a is complete because every metric family has been classified against current
-aggregate artifacts. The broader v0 exit condition is not complete yet:
-grounding page/region coverage, comparison coverage, abstention calibration,
-numeric/date/condition accuracy, and human/judge agreement still need follow-up
-metric work before the suite can be treated as fully adopted.
+aggregate artifacts. Issue #1544 implements the v0-c report shell and resolves
+the comparison and abstention report gaps. The broader v0 exit condition is not
+complete until a private real-eval regeneration populates
+`numeric_date_condition_accuracy` and a private judge/human agreement pass
+supplies aggregate κ/ρ evidence.
 
 ## Privacy And Claim Boundary
 
@@ -53,6 +59,6 @@ metric work before the suite can be treated as fully adopted.
 | Milestone | Follow-up |
 |---|---|
 | v0-b offline/online run manifest | Reuse the metric family list here and add run-environment provenance fields for each aggregate source. |
-| v0-c metric suite report | Render one report shell that includes all present families and explicitly marks partial or missing families. |
+| v0-c metric suite report | Use `scripts/render_v0_metric_suite_report.py` to render one report shell that includes all present families and explicitly marks data-dependent partial families. |
 | v1 failure sensitivity | Use this inventory to pick at least three failure modes with observable metric movement. |
 | v2 agreement calibration | Promote human/judge agreement from partial to present with private-label aggregate evidence. |
