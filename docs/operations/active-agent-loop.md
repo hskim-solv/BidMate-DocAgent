@@ -133,10 +133,33 @@ Make wrapper:
 make agent-loop-active-start
 ```
 
+Make wrapper는 여기서 멈추지 않고 기본적으로 `agent-loop-active-codex-runner`를
+`ACTIVE_CODEX_EXECUTE=1`로 이어서 호출한다. 즉 `make agent-loop-active-start` 한
+번이면 start pack 생성 후 8-session Codex runner spawn까지 진행한다.
+
+준비만 하고 process를 띄우지 않으려면 다음처럼 끈다.
+
+```bash
+make agent-loop-active-start ACTIVE_START_RUNNER=0
+```
+
+runner report까지만 보고 실제 spawn을 막으려면 다음처럼 dry-run으로 낮춘다.
+
+```bash
+make agent-loop-active-start ACTIVE_START_RUNNER_EXECUTE=0
+```
+
+Korean alias도 같은 동작을 한다.
+
+```bash
+make 시작
+```
+
 ## Codex Runner
 
-`active-start`는 ledger와 assignment를 만들지만 agent process를 spawn하지 않는다.
-8-session을 실제 별도 Codex process로 띄우는 표면은 별도 runner다.
+Python `active-start` CLI는 ledger와 assignment만 만들지만, Make wrapper는 runner를
+이어 실행한다. 8-session을 별도 Codex process로 띄우는 standalone 표면은 다음
+target이다.
 
 ```bash
 make agent-loop-active-codex-runner

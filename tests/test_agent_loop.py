@@ -3666,6 +3666,45 @@ def test_active_codex_runner_cli_accepts_execute_and_session_filter() -> None:
     assert args.sessions == "reviewer,ci-regression-auditor"
 
 
+def test_make_active_start_spawns_codex_runner_by_default() -> None:
+    result = subprocess.run(
+        ["make", "-n", "agent-loop-active-start"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0
+    assert "scripts/agent_loop.py active-start" in result.stdout
+    assert 'make agent-loop-active-codex-runner ACTIVE_CODEX_EXECUTE="1"' in result.stdout
+    assert "scripts/agent_loop.py active-codex-runner" in result.stdout
+    assert "--execute" in result.stdout
+
+
+def test_make_active_start_can_disable_runner_and_has_korean_alias() -> None:
+    no_runner = subprocess.run(
+        ["make", "-n", "agent-loop-active-start", "ACTIVE_START_RUNNER=0"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    alias = subprocess.run(
+        ["make", "-n", "시작"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert no_runner.returncode == 0
+    assert "scripts/agent_loop.py active-start" in no_runner.stdout
+    assert "agent-loop-active-codex-runner" not in no_runner.stdout
+    assert alias.returncode == 0
+    assert 'make agent-loop-active-codex-runner ACTIVE_CODEX_EXECUTE="1"' in alias.stdout
+
+
 def test_codex_lane_adapter_maps_verdict_severity_and_errors(monkeypatch, tmp_path: Path) -> None:
     from scripts import agent_loop_codex_turn as cx
 
