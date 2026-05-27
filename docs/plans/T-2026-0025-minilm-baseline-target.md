@@ -55,7 +55,8 @@ make check-branch
 - Private workflow docs state that `make real-eval` is hashing/offline and not a
   MiniLM semantic run.
 - Aggregate `run_manifest` extraction keeps `embedding_backend`,
-  `embedding_model_id`, and `embedding_dim` while still dropping `config_path`.
+  `embedding_model_id`, and `embedding_dim` while still dropping `config_path`
+  and redacting local embedding model paths.
 
 ## Reviewer Focus
 
@@ -78,7 +79,7 @@ make check-branch
 - Commands run: `bash -n scripts/smoke_real.sh`; `python3 -m pytest -q tests/test_smoke_real_script.py tests/test_provenance_banner.py`; `python3 -m pytest -q tests/test_run_real_eval_delta.py -k run_manifest`; `python3 scripts/check_doc_links.py --check-all --paths tasks/queue.md docs/plans/T-2026-0025-minilm-baseline-target.md docs/evaluation/private_real_eval_workflow.md docs/private-real-eval-inventory.md docs/evaluation/surface-map.md`; `git diff --check`; `make check-branch`.
 - Results: named MiniLM target added; docs now separate hashing, MiniLM, and
   BGE-M3 surfaces; aggregate run-manifest extraction preserves embedding
-  provenance without private path leakage.
+  provenance without private path leakage, including local model paths.
 - Blockers: none known.
 - Open risks: MiniLM target existence does not prove model availability or
   performance; actual private eval remains a separate local run.

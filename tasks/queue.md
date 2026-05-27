@@ -2218,7 +2218,7 @@ produced `local-hashing-bow` vectors.
 - [x] Docs state that `make real-eval` is hashing/offline and not MiniLM.
 - [x] Docs distinguish MiniLM baseline from BGE-M3 comparison.
 - [x] Aggregate run-manifest extraction keeps embedding backend/model/dim while
-  still dropping local config paths.
+  still dropping local config paths and redacting local model paths.
 - [x] No performance claim is made from hashing runs.
 
 ### Validation Commands
@@ -2243,7 +2243,7 @@ make check-branch
 
 Focused tests and doc-link checks pass; `make real-eval-minilm` exists as the
 named MiniLM sentence-transformers target, and aggregate `run_manifest`
-extraction preserves embedding provenance.
+extraction preserves embedding provenance without local model path leakage.
 
 ### Related Plan / Issue / PR Links
 
@@ -2266,7 +2266,7 @@ extraction preserves embedding provenance.
 - Commands run: `bash -n scripts/smoke_real.sh`; `python3 -m pytest -q tests/test_smoke_real_script.py tests/test_provenance_banner.py`; `python3 -m pytest -q tests/test_run_real_eval_delta.py -k run_manifest`; `python3 scripts/check_doc_links.py --check-all --paths tasks/queue.md docs/plans/T-2026-0025-minilm-baseline-target.md docs/evaluation/private_real_eval_workflow.md docs/private-real-eval-inventory.md docs/evaluation/surface-map.md`; `git diff --check`; `make check-branch`.
 - Results: named MiniLM target added; docs now state `make real-eval` is
   hashing/offline and not MiniLM; aggregate run-manifest extraction preserves
-  embedding provenance without private path leakage.
+  embedding provenance without private path leakage, including local model paths.
 - Blockers: none known.
 - Open risks: target existence does not prove MiniLM model cache/download or
   performance; actual MiniLM private eval remains a separate run.

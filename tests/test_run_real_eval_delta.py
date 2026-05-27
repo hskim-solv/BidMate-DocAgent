@@ -424,6 +424,22 @@ class ExtractAggregateTest(unittest.TestCase):
         # The dropped path should not appear anywhere in the serialized output.
         self.assertNotIn("hskim", json.dumps(agg))
 
+    def test_run_manifest_redacts_local_embedding_model_path(self) -> None:
+        summary = {
+            **FULL_SUMMARY,
+            "run_manifest": {
+                "embedding_backend": "sentence-transformers",
+                "embedding_model_id": "data/private/model.bin",
+                "embedding_dim": 384,
+            },
+        }
+        agg = extract_aggregate(summary)
+        manifest = agg["run_manifest"]
+        self.assertEqual("sentence-transformers", manifest["embedding_backend"])
+        self.assertEqual("[redacted-local-path]", manifest["embedding_model_id"])
+        self.assertEqual(384, manifest["embedding_dim"])
+        self.assertNotIn("data/private/model.bin", json.dumps(agg))
+
     def test_render_includes_retry_effectiveness_section(self) -> None:
         summary_with_re = {
             **FULL_SUMMARY,
