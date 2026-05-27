@@ -1906,12 +1906,24 @@ def write_continue_loop(
     state: str = "open",
     limit: int = 30,
     include_body: bool = False,
+    readiness_summaries: Sequence[Path] = (),
+    readiness_reports: Sequence[Path] = (),
+    real100_dir: Path | None = None,
+    page_metadata_index_dir: Path | None = None,
     task_id: str = DEFAULT_DRAFT_TASK_ID,
     max_items: int = 12,
     apply_queue_plan: bool = True,
     out: Path = DEFAULT_CONTINUE_LOOP,
     repo_root: Path = ROOT_DIR,
 ) -> tuple[Path, str]:
+    resolved_readiness_summaries = tuple(_resolve_input_path(path, repo_root=repo_root) for path in readiness_summaries)
+    resolved_readiness_reports = tuple(_resolve_input_path(path, repo_root=repo_root) for path in readiness_reports)
+    resolved_real100_dir = _resolve_input_path(real100_dir, repo_root=repo_root) if real100_dir is not None else None
+    resolved_page_metadata_index_dir = (
+        _resolve_input_path(page_metadata_index_dir, repo_root=repo_root)
+        if page_metadata_index_dir is not None
+        else None
+    )
     if pr_json is None:
         pr_state = scan_pr_state(
             out=repo_root / "reports" / "agent_loop" / "pr_state.json",
@@ -1925,7 +1937,14 @@ def write_continue_loop(
         if not pr_state.exists():
             raise ValueError("PR state JSON not found; run pr-scan first or pass an existing --pr-json")
 
-    ai_next, tasks_dir = run_next_from_prs(pr_json=pr_state, repo_root=repo_root)
+    ai_next, tasks_dir = run_next_from_prs(
+        pr_json=pr_state,
+        readiness_summaries=resolved_readiness_summaries,
+        readiness_reports=resolved_readiness_reports,
+        real100_dir=resolved_real100_dir,
+        page_metadata_index_dir=resolved_page_metadata_index_dir,
+        repo_root=repo_root,
+    )
     batch_md, batch_json, _ = write_batch_plan(tasks_dir=tasks_dir, max_items=max_items, repo_root=repo_root)
     if batch_json is None:
         raise ValueError("continue-loop requires batch JSON metadata")
@@ -1962,6 +1981,17 @@ def write_continue_loop(
         task_id=chosen_task_id,
         apply_result=apply_result,
         apply_queue_plan=apply_queue_plan,
+        next_command=_continue_loop_next_command(
+            state=state,
+            limit=limit,
+            include_body=include_body,
+            readiness_summaries=resolved_readiness_summaries,
+            readiness_reports=resolved_readiness_reports,
+            real100_dir=resolved_real100_dir,
+            page_metadata_index_dir=resolved_page_metadata_index_dir,
+            apply_queue_plan=apply_queue_plan,
+            repo_root=repo_root,
+        ),
         repo_root=repo_root,
     )
     out = _default_output(out, DEFAULT_CONTINUE_LOOP, "continue_loop.md", repo_root=repo_root)
@@ -1975,6 +2005,38 @@ def _next_task_id(repo_root: Path) -> str:
     queue = repo_root / QUEUE_PATH
     existing = [int(match.group(1)) for match in re.finditer(r"\bT-2026-(\d{4})\b", _read_text(queue) if queue.exists() else "")]
     return f"T-2026-{(max(existing) + 1 if existing else 1):04d}"
+
+
+def _continue_loop_next_command(
+    *,
+    state: str,
+    limit: int,
+    include_body: bool,
+    readiness_summaries: Sequence[Path],
+    readiness_reports: Sequence[Path],
+    real100_dir: Path | None,
+    page_metadata_index_dir: Path | None,
+    apply_queue_plan: bool,
+    repo_root: Path,
+) -> str:
+    parts = ["python3", "scripts/agent_loop.py", "continue-loop"]
+    if state != "open":
+        parts.extend(["--state", state])
+    if limit != 30:
+        parts.extend(["--limit", str(limit)])
+    if include_body:
+        parts.append("--include-body")
+    for path in readiness_summaries:
+        parts.extend(["--readiness-summary", _repo_path(path, repo_root)])
+    for path in readiness_reports:
+        parts.extend(["--readiness-report", _repo_path(path, repo_root)])
+    if real100_dir is not None:
+        parts.extend(["--real100-dir", _repo_path(real100_dir, repo_root)])
+    if page_metadata_index_dir is not None:
+        parts.extend(["--page-metadata-index-dir", _repo_path(page_metadata_index_dir, repo_root)])
+    if not apply_queue_plan:
+        parts.append("--no-apply-queue-plan")
+    return shlex.join(parts)
 
 
 def render_continue_loop(
@@ -1995,10 +2057,20 @@ def render_continue_loop(
     apply_result: str,
     apply_queue_plan: bool,
     repo_root: Path,
+    next_command: str | None = None,
 ) -> str:
-    next_command = "python3 scripts/agent_loop.py continue-loop"
-    if not apply_queue_plan:
-        next_command += " --no-apply-queue-plan"
+    if next_command is None:
+        next_command = _continue_loop_next_command(
+            state="open",
+            limit=30,
+            include_body=False,
+            readiness_summaries=(),
+            readiness_reports=(),
+            real100_dir=None,
+            page_metadata_index_dir=None,
+            apply_queue_plan=apply_queue_plan,
+            repo_root=repo_root,
+        )
     lines = [
         "# Continue Loop",
         "",
@@ -9006,6 +9078,10 @@ def build_parser() -> argparse.ArgumentParser:
     continue_loop.add_argument("--state", choices=("open", "closed", "all"), default="open")
     continue_loop.add_argument("--limit", type=int, default=30)
     continue_loop.add_argument("--include-body", action="store_true")
+    continue_loop.add_argument("--readiness-summary", action="append", type=Path, default=[])
+    continue_loop.add_argument("--readiness-report", action="append", type=Path, default=[])
+    continue_loop.add_argument("--real100-dir", type=Path)
+    continue_loop.add_argument("--page-metadata-index-dir", type=Path)
     continue_loop.add_argument("--task-id", default=DEFAULT_DRAFT_TASK_ID)
     continue_loop.add_argument("--max-items", type=int, default=12)
     continue_loop.add_argument("--no-apply-queue-plan", action="store_true")
@@ -9589,6 +9665,10 @@ def main(argv: list[str] | None = None) -> int:
                 state=args.state,
                 limit=args.limit,
                 include_body=args.include_body,
+                readiness_summaries=args.readiness_summary,
+                readiness_reports=args.readiness_report,
+                real100_dir=args.real100_dir,
+                page_metadata_index_dir=args.page_metadata_index_dir,
                 task_id=args.task_id,
                 max_items=args.max_items,
                 apply_queue_plan=not args.no_apply_queue_plan,

@@ -1048,6 +1048,39 @@ def test_continue_loop_preserves_dry_run_in_next_command(tmp_path: Path) -> None
     assert "python3 scripts/agent_loop.py continue-loop --no-apply-queue-plan" in rendered
 
 
+def test_continue_loop_carries_measurement_inputs_into_recursive_command(tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path, task_id="T-2026-0001")
+    pr_state = repo / "reports" / "agent_loop" / "pr_state.json"
+    pr_state.parent.mkdir(parents=True, exist_ok=True)
+    pr_state.write_text("[]", encoding="utf-8")
+    real100 = repo / "reports" / "real100"
+    real100.mkdir(parents=True)
+    (real100 / "multi_chunk_evidence_failures.aggregate.json").write_text(
+        json.dumps(
+            {
+                "population": {
+                    "multi_chunk_gold_cases": 9,
+                    "multi_chunk_top10_evidence_failures": 7,
+                },
+                "expected_impact": {"unknown_due_to_limited_depth": 6},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    _, rendered = agent_loop.write_continue_loop(
+        pr_json=pr_state,
+        task_id="T-2026-1000",
+        real100_dir=Path("reports/real100"),
+        apply_queue_plan=False,
+        repo_root=repo,
+    )
+
+    ai_next = (repo / "reports" / "agent_loop" / "ai_next_actions.md").read_text(encoding="utf-8")
+    assert "Use multi-chunk evidence analysis for the next retrieval follow-up" in ai_next
+    assert "--real100-dir reports/real100 --no-apply-queue-plan" in rendered
+
+
 def test_batch_plan_rejects_output_outside_agent_loop_reports(tmp_path: Path) -> None:
     tasks_dir = tmp_path / "reports" / "agent_loop" / "codex_tasks"
     tasks_dir.mkdir(parents=True)
