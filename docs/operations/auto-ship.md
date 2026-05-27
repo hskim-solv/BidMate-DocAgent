@@ -107,7 +107,7 @@ Gate 0 — 8 pre-checks (silent exit on any failure)
 Stage 1: commit   (private-path filter → multi-agent lock → tier-7 prefix gate → bash scripts/test.sh → git commit)
 Stage 2: push     (ADR 0007 branch check → git push)
 Stage 3: PR       (_ship_pr_body.py → §5b cascade → gh pr create)
-Stage 4: CI/review gate  (gh pr checks --watch → requested-changes/unresolved-thread gate)
+Stage 4: CI/review gate  (gh pr checks --watch → ready-mode draft promotion → requested-changes/unresolved-thread gate)
 Stage 5: merge    (gh pr merge --squash --admin → git push origin --delete <branch> → checkout main → disarm)
 ```
 
@@ -190,11 +190,19 @@ merge 직전에 다음을 fail-closed 로 검사한다:
 - `reviewDecision` 이 `CHANGES_REQUESTED` 가 아님.
 - unresolved 이고 outdated 가 아닌 review thread 가 없음.
 
+`DRAFT=false` 로 armed 된 ready-mode run 에서 기존 head PR 이 아직 draft 라면,
+Stage 4 는 review gate 직전에 `gh pr ready <N>` 를 실행한다. 즉, 이미 draft
+PR 이 열린 브랜치를 재사용하더라도 ready-mode arm 은 draft→ready→review
+gate→merge 흐름을 이어간다. 반대로 `DRAFT=true` 는 의도적으로 draft PR 을
+열어두는 모드이므로 review gate 의 `PR is draft` blocker 에서 멈춘다.
+
 review gate 가 막으면 PR 을 열린 채로 두고 disarm 한다. 그 상태에서 Codex 의
 GitHub review-fix 루프를 실행해 코멘트를 처리하고, fix 커밋을 push 한 뒤
-다시 `make ship-arm` 한다. Shell hook 은 reviewer 코멘트를 임의로 수정하지
-않는다; patch 선택은 코드 맥락과 reviewer 의도를 읽어야 하므로 agent 판단
-단계로 남긴다.
+다시 `make ship-arm` 한다. draft 상태만 blocker 라면
+`python3 scripts/agent_loop.py human-gated-exec --action pr-ready --pr <N> --confirm-human-approved`
+로 draft 를 ready 로 바꾼 뒤 `make ship-arm DRAFT=false` 로 ready-mode 를
+재무장한다. Shell hook 은 reviewer 코멘트를 임의로 수정하지 않는다; patch
+선택은 코드 맥락과 reviewer 의도를 읽어야 하므로 agent 판단 단계로 남긴다.
 
 ### Stage 5 — squash-merge ([`stop-ship.sh:374-424`](../../scripts/claude-hooks/stop-ship.sh))
 

@@ -2601,6 +2601,47 @@ N/A - no load-bearing path.
         raise AssertionError("expected unsafe branch to fail")
 
 
+def test_human_gated_exec_pr_ready_bridges_draft_to_ship_gate(monkeypatch, tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    calls: list[list[str]] = []
+
+    def fake_run(cmd, **kwargs):  # type: ignore[no-untyped-def]
+        calls.append(list(cmd))
+        return subprocess.CompletedProcess(cmd, 0, stdout="ready\n", stderr="")
+
+    monkeypatch.setattr(agent_loop.subprocess, "run", fake_run)
+
+    plan = agent_loop.build_human_gated_exec_plan(
+        action="pr-ready",
+        confirm_human_approved=True,
+        dry_run=True,
+        branch=None,
+        pr="1552",
+        body=None,
+        base=None,
+        title=None,
+        draft=True,
+        confirm_review_gate_passed=False,
+        confirm_dependents_reviewed=False,
+        confirm_force_with_lease=False,
+        repo_root=repo,
+    )
+    out, executed, rendered = agent_loop.write_human_gated_exec(
+        action="pr-ready",
+        pr="1552",
+        confirm_human_approved=True,
+        repo_root=repo,
+    )
+
+    assert not plan.blockers
+    assert plan.command == ("gh", "pr", "ready", "1552")
+    assert "review, claim, and dependency gates still run" in plan.warnings[0]
+    assert out == repo / "reports" / "agent_loop" / "human_gated_exec.md"
+    assert executed.executed
+    assert calls == [["gh", "pr", "ready", "1552"]]
+    assert "gh pr ready 1552" in rendered
+
+
 def test_path_traversal_changed_files_are_redacted_and_not_read(tmp_path: Path) -> None:
     repo = _write_repo(tmp_path, body_extra=_valid_handoff())
     outside = tmp_path.parent / "outside_agent_loop_secret.py"

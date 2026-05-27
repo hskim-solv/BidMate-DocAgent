@@ -16,6 +16,9 @@ The downstream commands also need to preserve that corpus-level decision.
 `batch-plan` should group task briefs into worksets and lanes, and
 `role-dispatch` should produce role-specific prompt inputs from that workset
 plan. The root session should keep integration, validation, and ship gates.
+The ship gate also needs a continuous ready-mode path when a branch already has
+a draft PR: otherwise the loop reaches review gate, fails on `PR is draft`, and
+never reaches merge even when the agent has armed ready shipping.
 
 ## Desired Behavior
 
@@ -32,6 +35,9 @@ plan. The root session should keep integration, validation, and ship gates.
   prompt source.
 - `continue-loop` advances `pr-scan -> next-from-prs -> batch-plan ->
   role-dispatch -> draft/apply queue-plan -> loop-state` locally.
+- Ready-mode auto-ship (`DRAFT=false`) promotes an existing draft PR to ready
+  before the review gate, then continues to merge only if CI and review gates
+  pass.
 
 ## Non-Goals
 
@@ -48,6 +54,8 @@ plan. The root session should keep integration, validation, and ship gates.
 - `python3 scripts/agent_loop.py role-dispatch --batch`
 - `python3 scripts/agent_loop.py continue-loop`
 - `scripts/ai_next_actions.py` generated Markdown, HTML, and task briefs
+- `scripts/claude-hooks/stop-ship.sh` Stage 4 ready-mode bridge
+- `scripts/claude-hooks/_ship_review_gate.py` draft blocker recovery guidance
 - `reports/agent_loop/batch_plan.json` local schema
 - `tasks/queue.md` and `docs/plans/` operating docs
 
@@ -63,13 +71,15 @@ plan. The root session should keep integration, validation, and ship gates.
 7. Update docs and persistent queue state.
 8. Add focused tests for corpus planning, workset JSON, role dispatch, and
    local continuation.
+9. Add a focused draft→ready bridge so ready-mode shipping does not stop at an
+   existing draft PR before merge.
 
 ## Validation Strategy
 
 ```bash
 python3 -m py_compile scripts/ai_next_actions.py scripts/agent_loop.py
-python3 -m pytest tests/test_ai_next_actions.py tests/test_agent_loop.py -q
-python3 scripts/check_doc_links.py --check-all --paths docs/operations/ai-codex-workflow.md docs/operations/ai-engineering-operating-system.md tasks/queue.md docs/plans/T-2026-0021-pr-corpus-workset-planning.md
+python3 -m pytest tests/test_ai_next_actions.py tests/test_agent_loop.py tests/test_ship_start_review_gate.py tests/test_ship_dispatcher_gates.py -q
+python3 scripts/check_doc_links.py --check-all --paths docs/operations/ai-codex-workflow.md docs/operations/ai-engineering-operating-system.md docs/operations/auto-ship.md tasks/queue.md docs/plans/T-2026-0021-pr-corpus-workset-planning.md
 python3 scripts/agent_loop.py continue-loop --pr-json reports/agent_loop/pr_state.json --no-apply-queue-plan
 git diff --check
 make check-branch
@@ -86,6 +96,8 @@ make check-branch
 - `role-dispatch` can render workset inputs from `batch_plan.json`.
 - `continue-loop` creates local reports, drafts/apply queue-plan, and writes
   loop state without remote mutation.
+- `make ship-arm DRAFT=false` can reuse an existing draft PR by marking it
+  ready before review gate; `DRAFT=true` still intentionally stops as draft.
 
 ## Rollback
 

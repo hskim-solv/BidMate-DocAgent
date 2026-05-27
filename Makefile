@@ -901,7 +901,7 @@ agent-loop-automation-coverage:
 
 agent-loop-human-gated-exec:
 	@if [ -z "$(HUMAN_GATED_ACTION)" ]; then \
-	  echo "Usage: make agent-loop-human-gated-exec HUMAN_GATED_ACTION=push|pr-create|pr-merge|pr-close|branch-delete|force-push CONFIRM_HUMAN_APPROVED=1"; \
+	  echo "Usage: make agent-loop-human-gated-exec HUMAN_GATED_ACTION=push|pr-create|pr-ready|pr-merge|pr-close|branch-delete|force-push CONFIRM_HUMAN_APPROVED=1"; \
 	  exit 1; \
 	fi
 	$(PYTHON) scripts/agent_loop.py human-gated-exec \

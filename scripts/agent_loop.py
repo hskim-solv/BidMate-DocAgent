@@ -2189,7 +2189,7 @@ def render_batch_plan(briefs: Sequence[BriefSummary], *, tasks_dir: Path, repo_r
             "## Agent Gate Stop Points",
             "",
             "- Applying any draft to `tasks/queue.md` or `docs/plans/*.md`.",
-            "- Any push, PR create/merge/close, branch delete, or force-push without explicit confirmation command/flag.",
+            "- Any push, PR create/ready/merge/close, branch delete, or force-push without explicit confirmation command/flag.",
             "- Benchmark/performance/private real-eval claims.",
             "- Architecture tradeoff decisions.",
             "",
@@ -3752,7 +3752,7 @@ def render_approval_packet(
             "## Conservative Agent Gate Required Before",
             "",
             "- Applying queue/plan drafts to tracked docs.",
-            "- Running push, PR create/merge/close, branch delete, or force-push.",
+            "- Running push, PR create/ready/merge/close, branch delete, or force-push.",
             "- Making benchmark/performance/private real-eval claims.",
             "- Choosing architecture tradeoffs.",
             "",
@@ -3893,7 +3893,7 @@ Closes #{issue_number or '<ISSUE_NUMBER>'}
 
 ## 3. 리스크
 
-- Conservative-agent-gated decisions remain outside this CLI: push, PR create/merge/close, branch delete, force-push, private real-eval decisions, benchmark/performance claims, and architecture tradeoffs.
+- Conservative-agent-gated decisions remain outside this CLI: push, PR create/ready/merge/close, branch delete, force-push, private real-eval decisions, benchmark/performance claims, and architecture tradeoffs.
 - Disallowed claims to avoid:
 {chr(10).join(f'  - {claim}' for claim in surface.disallowed_claims)}
 
@@ -4579,6 +4579,7 @@ def render_auto_ship_plan(
         "- The existing Stop hook then runs the repository auto-ship pipeline once and disarms.",
         "- `DRY_RUN=1` echoes mutating commands to `.claude/.ship-dryrun.log` instead of executing them.",
         "- `DRAFT=true` creates a draft PR so the review gate stops before ready merge.",
+        "- `DRAFT=false` ready-mode marks an existing draft PR ready before the review gate, then continues to merge only if the gate passes.",
         "",
         "## Recommended Command",
         "",
@@ -6139,6 +6140,7 @@ def render_ship_command_pack(*, pr: str | None, branch: str | None, repo_root: P
         "",
         "```bash",
         f"# create PR after agent gate: python3 scripts/agent_loop.py human-gated-exec --action pr-create --branch {shell_branch} --body reports/agent_loop/pr_body.md --confirm-human-approved",
+        f"# mark draft PR ready after agent gate: python3 scripts/agent_loop.py human-gated-exec --action pr-ready --pr {safe_pr} --confirm-human-approved",
         f"# review gate before merge/close/delete: make ship-review-gate PR={safe_pr}",
         f"# push after agent gate: python3 scripts/agent_loop.py human-gated-exec --action push --branch {shell_branch} --confirm-human-approved",
         f"# merge after agent gate: python3 scripts/agent_loop.py human-gated-exec --action pr-merge --pr {safe_pr} --confirm-review-gate-passed --confirm-human-approved",
@@ -6157,7 +6159,16 @@ def render_ship_command_pack(*, pr: str | None, branch: str | None, repo_root: P
     return _sanitize_dynamic_text("\n".join(lines)).rstrip() + "\n"
 
 
-HUMAN_GATED_ACTIONS = {"push", "pr-create", "pr-merge", "pr-close", "branch-delete", "force-push", "issue-close"}
+HUMAN_GATED_ACTIONS = {
+    "push",
+    "pr-create",
+    "pr-ready",
+    "pr-merge",
+    "pr-close",
+    "branch-delete",
+    "force-push",
+    "issue-close",
+}
 
 
 def write_human_gated_exec(
@@ -6283,6 +6294,10 @@ def build_human_gated_exec_plan(
         if title:
             command_parts.extend(["--title", _sanitize_inline_text(title)])
         command = tuple(command_parts)
+    elif action == "pr-ready":
+        safe_pr = _validate_pr_selector(pr or "")
+        command = ("gh", "pr", "ready", safe_pr)
+        warnings.append("pr-ready only clears GitHub draft state; CI, review, claim, and dependency gates still run before merge")
     elif action == "pr-merge":
         safe_pr = _validate_pr_selector(pr or "")
         if not confirm_review_gate_passed:
@@ -7408,7 +7423,7 @@ def render_automation_coverage() -> str:
             "",
             "- Queue/plan tracked-doc application requires either the explicit compatibility flag or the `continue-loop` internal agent gate.",
             "- Running existing `make ship-arm` remains a conservative shipping gate; `auto-ship-plan` only prepares a plan.",
-            "- Push, PR create/merge/close, issue close, branch delete, force-push require `human-gated-exec --confirm-human-approved` plus action-specific gates.",
+            "- Push, PR create/ready/merge/close, issue close, branch delete, force-push require `human-gated-exec --confirm-human-approved` plus action-specific gates.",
             "- Private real-eval decisions, benchmark/performance claims, and architecture tradeoffs follow ADR 0079 defaults.",
             "- Role dispatch is report-only; it does not execute subagents or remote mutations.",
             "",
@@ -8343,10 +8358,11 @@ flowchart TD
   INT --> MCP
   ISS --> F
   ROLE --> F
-  Q --> R{"Agent gate: review, claims, merge, close issue/PR, push, delete?"}
+  Q --> R{"Agent gate: review, claims, ready PR, merge, close issue/PR, push, delete?"}
   R -->|policy passes| SHIP["make ship-arm: conservative single end-to-end ship pipeline"]
   R -->|fallback policy passes| EXEC["human-gated-exec: legacy-named conservative remote mutation fallback"]
-  SHIP --> S["Existing ship workflow"]
+  SHIP --> READYPR["Ready-mode bridge: existing draft PR -> gh pr ready before review gate"]
+  READYPR --> S["Existing ship workflow"]
   EXEC --> S["Manual fallback workflow"]
   R -->|more work| A
 ```
@@ -8385,7 +8401,7 @@ Automation points:
 - auto-ship-prepare: prepare or create a local ADR 0007 branch for the primary `make ship-arm` pipeline; branch creation requires `--confirm-human-approved`.
 - auto-ship-plan: render a readiness-backed bridge to the primary `make ship-arm` Stop-hook pipeline without arming it.
 - ship-command-pack: render conservative shipping commands without executing them.
-- human-gated-exec: legacy command name for conservative remote mutation fallback; executes push/PR create/merge/close, issue close, remote branch delete, or force-with-lease only with `--confirm-human-approved` and action-specific gates.
+- human-gated-exec: legacy command name for conservative remote mutation fallback; executes push/PR create/ready/merge/close, issue close, remote branch delete, or force-with-lease only with `--confirm-human-approved` and action-specific gates.
 - dependency-graph: render stacked PR graph without merge/delete mutation.
 - stacked-risk: detect dependent PR risk before merge/delete cleanup.
 - pr-body-check: verify `Closes`, §5b, claim, and privacy boundaries before PR creation.

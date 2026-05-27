@@ -209,6 +209,7 @@ def test_clean_tree_with_existing_pr_continues_dry_run(fake_repo):
     assert r.returncode == 0
     assert "existing PR #123" in r.stderr
     assert "continuing" in r.stderr
+    assert "gh pr ready 123" in r.stderr
     assert "Ship complete" in r.stderr
     assert not (fake_repo / ".claude" / ".ship-armed").exists()
 

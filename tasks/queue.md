@@ -381,6 +381,8 @@ into queue/plan state without asking a person to pick a PR.
 - Add `continue-loop` to run PR scan, PR-corpus planning, batch plan,
   role dispatch, queue/plan draft/application, and loop-state in one local
   continuation command.
+- Bridge the draft PR -> ready PR gap for ready-mode ship gates so an existing
+  draft PR can continue through review gate and merge after CI passes.
 - Document the new operating contract.
 
 ### Non-Goals
@@ -404,13 +406,15 @@ into queue/plan state without asking a person to pick a PR.
 - [x] `role-dispatch` can consume a batch/workset and render role prompt inputs.
 - [x] `continue-loop` advances local planning through queue/plan and loop-state
   while leaving remote mutation to existing ship gates.
+- [x] Ready-mode auto-ship (`DRAFT=false`) marks an existing draft PR ready
+  before review gate; draft-mode (`DRAFT=true`) still stops intentionally.
 
 ### Validation Commands
 
 ```bash
 python3 -m py_compile scripts/ai_next_actions.py scripts/agent_loop.py
-python3 -m pytest tests/test_ai_next_actions.py tests/test_agent_loop.py -q
-python3 scripts/check_doc_links.py --check-all --paths docs/operations/ai-codex-workflow.md docs/operations/ai-engineering-operating-system.md tasks/queue.md docs/plans/T-2026-0021-pr-corpus-workset-planning.md
+python3 -m pytest tests/test_ai_next_actions.py tests/test_agent_loop.py tests/test_ship_start_review_gate.py tests/test_ship_dispatcher_gates.py -q
+python3 scripts/check_doc_links.py --check-all --paths docs/operations/ai-codex-workflow.md docs/operations/ai-engineering-operating-system.md docs/operations/auto-ship.md tasks/queue.md docs/plans/T-2026-0021-pr-corpus-workset-planning.md
 python3 scripts/agent_loop.py continue-loop --pr-json reports/agent_loop/pr_state.json --no-apply-queue-plan
 git diff --check
 make check-branch

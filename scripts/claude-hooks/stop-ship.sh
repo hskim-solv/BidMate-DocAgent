@@ -394,6 +394,9 @@ stage_4_ci() {
   log "s4" "Stage 4: CI wait + review gate (timeout 30min)"
   if [[ "$DRY_RUN" == "1" ]]; then
     log "s4" "[dry-run] gh pr checks $PR_NUMBER --watch --interval 30"
+    if [[ "$ARM_DRAFT" != "true" ]]; then
+      log "s4" "[dry-run] gh pr ready $PR_NUMBER (if PR is still draft)"
+    fi
     log "s4" "[dry-run] python3 scripts/claude-hooks/_ship_review_gate.py --pr $PR_NUMBER"
     return 0
   fi
@@ -408,10 +411,22 @@ stage_4_ci() {
     abort_disarm "s4" "required CI check failed"
   fi
   log "s4" "all required checks green"
+  if [[ "$ARM_DRAFT" != "true" ]]; then
+    local is_draft
+    is_draft=$(gh pr view "$PR_NUMBER" --json isDraft --jq .isDraft 2>/dev/null || echo "unknown")
+    if [[ "$is_draft" == "true" ]]; then
+      log "s4" "PR #$PR_NUMBER is draft but arm is ready-mode — marking ready before review gate"
+      mut gh pr ready "$PR_NUMBER" || abort_disarm "s4" "gh pr ready failed"
+    elif [[ "$is_draft" == "false" ]]; then
+      log "s4" "PR #$PR_NUMBER is already ready for review"
+    else
+      abort_disarm "s4" "could not determine PR draft state before review gate"
+    fi
+  fi
   python3 scripts/claude-hooks/_ship_review_gate.py --pr "$PR_NUMBER"
   local review_rc=$?
   if (( review_rc != 0 )); then
-    gh pr comment "$PR_NUMBER" --body "Auto-ship: review gate blocked merge (rc=$review_rc). Address requested changes or unresolved review threads, push fixes, then re-arm with \`make ship-arm\`." || true
+    gh pr comment "$PR_NUMBER" --body "Auto-ship: review gate blocked merge (rc=$review_rc). Address requested changes or unresolved review threads, push fixes, then re-arm with \`make ship-arm\`. If the only blocker is draft state, run \`python3 scripts/agent_loop.py human-gated-exec --action pr-ready --pr $PR_NUMBER --confirm-human-approved\`, then re-arm ready mode with \`make ship-arm DRAFT=false\`." || true
     abort_disarm "s4" "review gate blocked merge"
   fi
   log "s4" "review gate clear"
