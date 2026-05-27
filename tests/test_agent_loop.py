@@ -1014,6 +1014,8 @@ def test_continue_loop_advances_pr_corpus_to_queue_plan_and_loop_state(tmp_path:
     assert out == repo / "reports" / "agent_loop" / "continue_loop.md"
     assert "Queue/plan application: `applied`" in rendered
     assert "PR corpus planning command" in rendered
+    assert "python3 scripts/agent_loop.py continue-loop\n" in rendered
+    assert "loop-state --from-git" not in rendered
     assert (repo / "reports" / "agent_loop" / "batch_plan.json").exists()
     assert (repo / "reports" / "agent_loop" / "role_dispatch.md").exists()
     assert (repo / "reports" / "agent_loop" / "loop_state.json").exists()
@@ -1027,6 +1029,23 @@ def test_continue_loop_advances_pr_corpus_to_queue_plan_and_loop_state(tmp_path:
     batch = json.loads((repo / "reports" / "agent_loop" / "batch_plan.json").read_text(encoding="utf-8"))
     assert batch[0]["title"] == "Triage blocked PR lane"
     assert batch[0]["source_prs"] == ["#13"]
+
+
+def test_continue_loop_preserves_dry_run_in_next_command(tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path, task_id="T-2026-0001")
+    pr_state = repo / "reports" / "agent_loop" / "pr_state.json"
+    pr_state.parent.mkdir(parents=True, exist_ok=True)
+    pr_state.write_text("[]", encoding="utf-8")
+
+    _, rendered = agent_loop.write_continue_loop(
+        pr_json=pr_state,
+        task_id="T-2026-1000",
+        apply_queue_plan=False,
+        repo_root=repo,
+    )
+
+    assert "Queue/plan application: `skipped`" in rendered
+    assert "python3 scripts/agent_loop.py continue-loop --no-apply-queue-plan" in rendered
 
 
 def test_batch_plan_rejects_output_outside_agent_loop_reports(tmp_path: Path) -> None:

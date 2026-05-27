@@ -1961,6 +1961,7 @@ def write_continue_loop(
         loop_out=loop_out,
         task_id=chosen_task_id,
         apply_result=apply_result,
+        apply_queue_plan=apply_queue_plan,
         repo_root=repo_root,
     )
     out = _default_output(out, DEFAULT_CONTINUE_LOOP, "continue_loop.md", repo_root=repo_root)
@@ -1992,8 +1993,12 @@ def render_continue_loop(
     loop_out: Path,
     task_id: str,
     apply_result: str,
+    apply_queue_plan: bool,
     repo_root: Path,
 ) -> str:
+    next_command = "python3 scripts/agent_loop.py continue-loop"
+    if not apply_queue_plan:
+        next_command += " --no-apply-queue-plan"
     lines = [
         "# Continue Loop",
         "",
@@ -2020,7 +2025,7 @@ def render_continue_loop(
         "## Next Safe Command",
         "",
         "```bash",
-        "python3 scripts/agent_loop.py loop-state --from-git",
+        next_command,
         "```",
         "",
     ]
