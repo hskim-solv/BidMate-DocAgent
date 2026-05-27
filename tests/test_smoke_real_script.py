@@ -30,13 +30,27 @@ def test_makefile_has_isolated_page_aware_real_eval_target() -> None:
     assert "REAL_EVAL_INDEX_DIR=data/index/real100_pageaware" in makefile
 
 
-def test_makefile_has_named_minilm_real_eval_target() -> None:
+def test_legacy_real_eval_targets_are_disabled() -> None:
     makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
 
+    assert "real-eval:" in makefile
     assert "real-eval-minilm:" in makefile
-    assert "MODEL=sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2" in makefile
-    assert "REAL_EVAL_INDEX_DIR=data/index/real100_minilm" in makefile
-    assert "REAL_EVAL_REPORT_DIR=reports/real100_minilm" in makefile
+    assert "real-eval-semantic:" in makefile
+    assert "legacy real100/v1 make real-eval is disabled" in makefile
+    assert "legacy real100_minilm/v1 target is disabled" in makefile
+    assert "legacy real100_m3/v1 target is disabled" in makefile
+
+
+def test_makefile_has_real100_v2_check_targets_without_rebuild() -> None:
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+
+    assert "real-eval-v2-inventory:" in makefile
+    assert "real-eval-v2-check:" in makefile
+    assert "real-eval-v2-guard:" in makefile
+    assert "REAL100_V2_CONFIG ?= data/private/real100_v2/real_config_v2.local.yaml" in makefile
+    assert "REAL100_V2_INDEX_DIR ?= data/index/real100_v2" in makefile
+    assert "REAL100_V2_REPORT_DIR ?= reports/real100_v2" in makefile
+    assert "bash scripts/smoke_real.sh" not in makefile.split("real-eval-v2-check:", 1)[1].split("real-eval-v2-guard:", 1)[0]
 
 
 def test_smoke_real_comment_separates_minilm_and_bge_m3_targets() -> None:

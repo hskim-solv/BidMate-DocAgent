@@ -21,7 +21,7 @@
 .PHONY: eval smoke reproduce benchmark pareto cost-frontier korean-public-fetch korean-public-eval harness-smoke harness-ablation harness-compare
 
 # Real-data eval cycle (private; ADR 0005 commit boundary).
-.PHONY: real-eval real-eval-check real-eval-inventory real-eval-minilm real-eval-semantic real-eval-page-aware real-eval-delta real-eval-baseline-update real-eval-history-render real-eval-with-judge harness-real
+.PHONY: real-eval real-eval-check real-eval-inventory real-eval-v2-check real-eval-v2-inventory real-eval-v2-guard real-eval-minilm real-eval-semantic real-eval-page-aware real-eval-delta real-eval-baseline-update real-eval-history-render real-eval-with-judge harness-real
 
 # Real-data case proposer cycle (ADR 0029; gitignored I/O).
 .PHONY: case-propose case-propose-metadata case-review case-promote
@@ -1041,36 +1041,44 @@ real-eval-inventory:
 real-eval-check:
 	$(PYTHON) scripts/real_eval_paths.py check
 
-# Run the private real-data eval end-to-end (build index, sample query,
-# eval). Writes reports/real100/eval_summary.json locally (gitignored).
-# NOTE: builds a `hashing` (feature-hashing BoW) index — deterministic +
-# offline, but semantic-blind, so dense/hybrid retrieval recall is NOT
-# meaningful here (issue #1295). Use `real-eval-semantic` for that.
+REAL100_V2_CONFIG ?= data/private/real100_v2/real_config_v2.local.yaml
+REAL100_V2_INDEX_DIR ?= data/index/real100_v2
+REAL100_V2_REPORT_DIR ?= reports/real100_v2
+
+# T-2026-0028 and newer claim-bearing private eval work must use the v2
+# aggregate surface. These targets only inspect v2 paths; they do not rebuild or
+# overwrite the private v2 index.
+real-eval-v2-inventory:
+	REAL_EVAL_CONFIG="$(REAL100_V2_CONFIG)" \
+	  REAL_EVAL_INDEX_DIR="$(REAL100_V2_INDEX_DIR)" \
+	  REAL_EVAL_REPORT_DIR="$(REAL100_V2_REPORT_DIR)" \
+	  $(PYTHON) scripts/real_eval_paths.py inventory
+
+real-eval-v2-check:
+	REAL_EVAL_CONFIG="$(REAL100_V2_CONFIG)" \
+	  REAL_EVAL_INDEX_DIR="$(REAL100_V2_INDEX_DIR)" \
+	  REAL_EVAL_REPORT_DIR="$(REAL100_V2_REPORT_DIR)" \
+	  $(PYTHON) scripts/real_eval_paths.py check
+
+real-eval-v2-guard:
+	$(PYTHON) scripts/check_real100_v2_only.py
+
+# Legacy real100/v1 targets are disabled until explicitly re-enabled by the
+# maintainer. Future private eval tasks must use real100_v2 inventory/check and
+# aggregate artifacts; reports/real100 and 221-case aggregates are archive-only.
 real-eval:
-	bash scripts/smoke_real.sh
+	@echo "ERROR: legacy real100/v1 make real-eval is disabled. Use make real-eval-v2-check and reports/real100_v2 aggregate evidence." >&2
+	@exit 2
 
-# Semantic variant of real-eval (issue #1295): builds a sentence-transformers
-# MiniLM index into a SEPARATE dir (real100_minilm) so the canonical hashing
-# real100 index is untouched. Requires the model to be downloadable/cached.
+# Legacy semantic real100/v1 target disabled with the same policy.
 real-eval-minilm:
-	EMBEDDING_BACKEND=sentence-transformers \
-	  MODEL=sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 \
-	  REAL_EVAL_INDEX_DIR=data/index/real100_minilm \
-	  OUTPUT_DIR=outputs/real100_minilm \
-	  REAL_EVAL_REPORT_DIR=reports/real100_minilm \
-	  bash scripts/smoke_real.sh
+	@echo "ERROR: legacy real100_minilm/v1 target is disabled. Use real100_v2-only evidence until explicitly re-enabled." >&2
+	@exit 2
 
-# Semantic comparison variant of real-eval (issue #1295): builds a BGE-M3 index
-# into a SEPARATE dir (real100_m3) so the canonical hashing real100 index is
-# untouched. Requires the model to be downloadable/cached (not offline/CI-safe).
-# Use semantic targets — not `real-eval` — when measuring dense or hybrid
-# retrieval recall, since hashing embeddings carry no semantic signal.
+# Legacy BGE-M3 real100/v1 target disabled with the same policy.
 real-eval-semantic:
-	EMBEDDING_BACKEND=sentence-transformers MODEL=BAAI/bge-m3 \
-	  REAL_EVAL_INDEX_DIR=data/index/real100_m3 \
-	  OUTPUT_DIR=outputs/real100_m3 \
-	  REAL_EVAL_REPORT_DIR=reports/real100_m3 \
-	  bash scripts/smoke_real.sh
+	@echo "ERROR: legacy real100_m3/v1 target is disabled. Use real100_v2-only evidence until explicitly re-enabled." >&2
+	@exit 2
 
 # Page-aware citation readiness variant for issue #1573. Keeps the canonical
 # hashing real100 index untouched while rebuilding into a separate section-
