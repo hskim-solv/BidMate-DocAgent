@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/review_artifact.schema.json",
+  "title": "Active-loop read-only lane review artifact",
+  "description": "Shared contract for a read-only agent-turn artifact produced by a Claude or Codex lane. The model fills verdict/summary/findings/next_steps; the agent-turn adapter authoritatively sets the remaining meta fields (schema_version, task_id, session_id, role, agent, generated_at, wu, privacy_scrubbed) after parsing and privacy-scrubbing. No raw private question/answer text, doc_id, chunk_id, filenames, prompt bodies, or absolute private paths (ADR 0005).",
+  "type": "object",
+  "required": ["verdict", "summary", "findings"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "task_id": {
+      "type": ["string", "null"]
+    },
+    "session_id": {
+      "type": "string"
+    },
+    "role": {
+      "type": "string"
+    },
+    "agent": {
+      "type": "string",
+      "enum": ["claude", "codex"]
+    },
+    "generated_at": {
+      "type": "string"
+    },
+    "verdict": {
+      "type": "string",
+      "enum": ["approved", "clear", "needs-attention", "blocked", "error"]
+    },
+    "summary": {
+      "type": "string"
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/finding"
+      }
+    },
+    "next_steps": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "wu": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "privacy_scrubbed": {
+      "type": "boolean"
+    }
+  },
+  "$defs": {
+    "finding": {
+      "type": "object",
+      "required": ["severity", "title"],
+      "additionalProperties": false,
+      "properties": {
+        "severity": {
+          "type": "string",
+          "enum": ["blocker", "warning", "info"]
+        },
+        "title": {
+          "type": "string"
+        },
+        "body": {
+          "type": "string"
+        },
+        "recommendation": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

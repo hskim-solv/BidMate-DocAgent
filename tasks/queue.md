@@ -50,8 +50,8 @@ PR이 생기면 각 task에 링크를 추가한다. 예제 task는 `tasks/exampl
 | 37 | `T-2026-0037` | `backlog` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | P2; blocked on metadata coverage evidence from T-2026-0028. |
 | 38 | `T-2026-0038` | `backlog` | Planner -> Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | P2; blocked on small-to-big retrieval evidence from T-2026-0031. |
 | 39 | `T-2026-0039` | `backlog` | Planner -> Architect -> Benchmark Auditor -> Privacy Auditor -> Deep Reviewer -> Reviewer | P3; advanced architecture feasibility after P0/P1 evidence. |
-| 40 | `T-2026-0040` | `review` | Implementer -> Reviewer | issue #1588 PR1 (#1589); active-loop registry v2 + per-session Claude/Codex lanes scaffold; in review. |
-| 41 | `T-2026-0041` | `backlog` | Implementer -> Reviewer | issue #1588 PR2; read-only Claude/Codex lane adapters + WU accounting; blocked on T-2026-0040. |
+| 40 | `T-2026-0040` | `done` | Implementer -> Reviewer | issue #1588 PR1 (#1589 merged); active-loop registry v2 + per-session Claude/Codex lanes scaffold. |
+| 41 | `T-2026-0041` | `review` | Implementer -> Reviewer | issue #1590 PR2; read-only Claude/Codex lane adapters + WU accounting; in review. |
 | 42 | `T-2026-0042` | `backlog` | Implementer -> Reviewer | issue #1588 PR3; patch-proposal + lease active_agent borrow + scratch worktree; re-confirm scope after Phase 1-2. |
 | 43 | `T-2026-0043` | `backlog` | Implementer -> Reviewer | issue #1588 PR4; mutating-writer + claimed-files enforcement hook; blocked on T-2026-0042. |
 | 44 | `T-2026-0044` | `backlog` | Implementer -> Deep Reviewer -> Reviewer | issue #1588 PR5; Orchestrator-only ship-executor + gate evidence (promote agent_loop.py to LOAD_BEARING); blocked on T-2026-0043. |
@@ -3250,7 +3250,7 @@ make check-branch
 
 - ID: T-2026-0041
 - Title: Read-only Claude/Codex lane adapters + WU accounting
-- Status: backlog
+- Status: review
 - Priority: P1
 - Owner role: Implementer -> Reviewer
 - Created: 2026-05-27
@@ -3274,7 +3274,7 @@ Unit accounting (`agent-mix-report`, deterministic `choose_agent`).
 
 ### Acceptance Criteria
 
-- [ ] Read-only reviewer artifacts produced + privacy-clean; WU recorded per lane;
+- [x] Read-only reviewer artifacts produced + privacy-clean; WU recorded per lane;
   skew>threshold -> rebalance recommendation.
 
 ### Validation Commands
@@ -3290,9 +3290,9 @@ python3 scripts/agent_loop.py agent-mix-report
 
 ### Related Plan / Issue / PR Links
 
-- Plan: TBD - create when the task starts.
-- Issue: [#1588](https://github.com/hskim-solv/BidMate-DocAgent/issues/1588)
-- PR: TBD
+- Plan: [`docs/plans/T-2026-0040-active-dual-agent-lanes.md`](../docs/plans/T-2026-0040-active-dual-agent-lanes.md) (umbrella roadmap; PR2 = Phase 2).
+- Issue: [#1590](https://github.com/hskim-solv/BidMate-DocAgent/issues/1590) (umbrella [#1588](https://github.com/hskim-solv/BidMate-DocAgent/issues/1588)).
+- PR: [#1594](https://github.com/hskim-solv/BidMate-DocAgent/pull/1594)
 
 ## T-2026-0042 — Patch-proposal + lease active_agent borrow + scratch worktree
 
