@@ -1584,7 +1584,13 @@ def build_overlap_preflight(*, issue: str, branch: str, repo_root: Path = ROOT_D
     elif any(str(pr.get("state") or "").upper() == "CLOSED" for pr in branch_prs):
         warnings.append("target branch has closed PR history; inspect before reusing the branch")
 
-    worktrees = tuple(_git_worktree_entries(repo_root))
+    worktree_state_proven = True
+    try:
+        worktrees = tuple(_git_worktree_entries(repo_root))
+    except ValueError as exc:
+        blockers.append(str(exc))
+        worktrees = ()
+        worktree_state_proven = False
     current_path = repo_root.resolve()
     overlapping_worktrees = [
         item
@@ -1593,7 +1599,7 @@ def build_overlap_preflight(*, issue: str, branch: str, repo_root: Path = ROOT_D
     ]
     if overlapping_worktrees:
         blockers.append("another worktree already owns an issue branch for the target issue")
-    else:
+    elif worktree_state_proven:
         evidence.append("no other worktree owns the target issue")
 
     local_issue_branches = sorted(_local_issue_branches(repo_root).get(safe_issue, set()))
@@ -5314,8 +5320,11 @@ def _git_worktree_entries(repo_root: Path) -> tuple[WorktreeSnapshot, ...]:
             check=True,
             text=True,
         )
-    except (OSError, subprocess.CalledProcessError):
-        return ()
+    except (OSError, subprocess.CalledProcessError) as exc:
+        message = "git worktree list failed; worktree state could not be proven"
+        if isinstance(exc, subprocess.CalledProcessError) and exc.stderr:
+            message += f": {_sanitize_inline_text(exc.stderr)}"
+        raise ValueError(message) from exc
     entries: list[WorktreeSnapshot] = []
     path = ""
     head = ""
@@ -5349,7 +5358,11 @@ def _git_worktree_entries(repo_root: Path) -> tuple[WorktreeSnapshot, ...]:
 
 def _worktree_issue_branches(repo_root: Path) -> dict[str, set[str]]:
     found: dict[str, set[str]] = {}
-    for item in _git_worktree_entries(repo_root):
+    try:
+        worktrees = _git_worktree_entries(repo_root)
+    except ValueError:
+        return found
+    for item in worktrees:
         issue = _issue_from_branch(item.branch)
         if issue:
             found.setdefault(issue, set()).add(item.branch)

@@ -672,6 +672,23 @@ def test_overlap_preflight_blocks_detached_or_stale_checkout(monkeypatch, tmp_pa
     assert any("does not contain origin/main" in blocker for blocker in stale.blockers)
 
 
+def test_overlap_preflight_blocks_when_worktree_inspection_fails(monkeypatch, tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    branch = "chore/issue-1541-overlap-preflight"
+    _stub_overlap_environment(monkeypatch, repo, branch=branch)
+
+    def fail_worktrees(repo_root: Path) -> tuple[agent_loop.WorktreeSnapshot, ...]:
+        raise ValueError("git worktree list failed; worktree state could not be proven")
+
+    monkeypatch.setattr(agent_loop, "_git_worktree_entries", fail_worktrees)
+
+    report = agent_loop.build_overlap_preflight(issue="1541", branch=branch, repo_root=repo)
+
+    assert report.result == "blocked"
+    assert any("worktree state could not be proven" in blocker for blocker in report.blockers)
+    assert not any("no other worktree owns the target issue" in item for item in report.evidence)
+
+
 def test_overlap_preflight_writes_markdown_and_optional_json(monkeypatch, tmp_path: Path) -> None:
     repo = _write_repo(tmp_path)
     branch = "chore/issue-1541-overlap-preflight"
