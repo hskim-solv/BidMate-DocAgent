@@ -381,6 +381,9 @@ class ExtractAggregateTest(unittest.TestCase):
                 "config_path": "/Users/hskim/private/real_config.local.yaml",
                 "config_sha256": "0123456789abcdef",
                 "generated_at": "2026-05-11T10:30:00Z",
+                "embedding_backend": "sentence-transformers",
+                "embedding_model_id": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+                "embedding_dim": 384,
                 "environment": {
                     "mode": "online",
                     "network": "non-closed",
@@ -407,6 +410,12 @@ class ExtractAggregateTest(unittest.TestCase):
         manifest = agg["run_manifest"]
         self.assertEqual("abc123def456", manifest["git_commit"])
         self.assertEqual("0123456789abcdef", manifest["config_sha256"])
+        self.assertEqual("sentence-transformers", manifest["embedding_backend"])
+        self.assertEqual(
+            "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+            manifest["embedding_model_id"],
+        )
+        self.assertEqual(384, manifest["embedding_dim"])
         self.assertEqual("online", manifest["environment"]["mode"])
         self.assertEqual("[redacted-local-path]", manifest["environment"]["hardware"])
         self.assertEqual("private-raw", manifest["payload"]["private_data_egress"])

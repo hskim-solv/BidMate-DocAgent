@@ -277,7 +277,15 @@ SAFE_RETRY_EFFECTIVENESS_CI_KEYS = ("recovery_rate", "residual_failure_rate")
 # (filesystem layout is not committable); ``config_sha256`` is the
 # canonical config identifier. Nested offline/online provenance fields are
 # scalar-only and contain no case payload or exact local path.
-SAFE_RUN_MANIFEST_KEYS = ("git_commit", "git_dirty", "config_sha256", "generated_at")
+SAFE_RUN_MANIFEST_KEYS = (
+    "git_commit",
+    "git_dirty",
+    "config_sha256",
+    "generated_at",
+    "embedding_backend",
+    "embedding_model_id",
+    "embedding_dim",
+)
 SAFE_RUN_MANIFEST_NESTED_KEYS = {
     "environment": (
         "mode",

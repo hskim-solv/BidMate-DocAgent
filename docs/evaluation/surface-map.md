@@ -26,7 +26,7 @@ agent gate behavior is [Agent-Gated RFP Evaluation Loop](./agent-gated-rfp-eval-
 |---|---|---|---|---|---|
 | Public fixture smoke | `eval/fixtures/smoke_rfp/raw/`, `eval/config.yaml` | CI wiring, schema, deterministic regression, latency SLO | `make smoke`, `make harness-smoke`, `python3 eval/run_eval.py --index_dir data/index --output_dir reports --config eval/config.yaml` | raw run은 local/generated, small fixture는 commit 가능 | "eval harness가 동작한다", "regression guard 통과" |
 | Public synthetic benchmark | `data/eval/benchmark/`, `configs/eval/benchmark_naive_rag_v1.yaml` | controlled failure discovery, ablation setup | `python3 eval/naive_rag/validate_benchmark_dataset.py --config configs/eval/benchmark_naive_rag_v1.yaml --report reports/benchmark/naive_rag_v1_validation.json`, `python3 -m eval.naive_rag.benchmark --config configs/eval/benchmark_naive_rag_v1.yaml` | synthetic corpus/config/gold는 public; generated run artifacts는 local | "synthetic v1에서 failure mode X 관측" |
-| Private real-eval | `eval/real_config.local.yaml`, private corpus/index, `reports/real100/` local outputs | real RFP aggregate evidence, hardcase stress, paired delta | `make real-eval-check`, `make real-eval`, `make real-eval-semantic`, `make real-eval-delta` | raw/per-case local-only; allowlisted aggregate-only artifact만 commit | "private aggregate에서 delta X, provenance Y" |
+| Private real-eval | `eval/real_config.local.yaml`, private corpus/index, `reports/real100/` local outputs | real RFP aggregate evidence, hardcase stress, paired delta | `make real-eval-check`, `make real-eval`, `make real-eval-minilm`, `make real-eval-semantic`, `make real-eval-delta` | raw/per-case local-only; allowlisted aggregate-only artifact만 commit | "private aggregate에서 delta X, provenance Y" |
 | PR fixture eval | `.github/workflows/pr-eval.yml` | PR마다 public fixture delta와 tests 검증 | GitHub Actions `PR Eval Delta` | PR comment/check only | "CI smoke delta passed/failed" |
 | Slow tests | `pytest -m slow`, `.github/workflows/slow-tests.yml` | real-model/full-corpus risk 확인 | `PYTEST_ADDOPTS="-m slow" bash scripts/test.sh` | generated outputs local | "slow gate passed on date/SHA" |
 
@@ -93,7 +93,7 @@ agent gate behavior is [Agent-Gated RFP Evaluation Loop](./agent-gated-rfp-eval-
   dataset/config/index/provenance.
 - `make real-eval` uses the deterministic offline hashing path unless overridden. It is useful for
   repeatable private eval plumbing, but semantic dense/hybrid retrieval quality claims require
-  `make real-eval-semantic` or equivalent semantic index provenance.
+  `make real-eval-minilm`, `make real-eval-semantic`, or equivalent semantic index provenance.
 - CI green means non-slow tests plus fixture smoke gate passed. It does not mean private real-eval passed.
 
 ## Benchmark Auditor Checklist
