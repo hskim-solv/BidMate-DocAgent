@@ -34,20 +34,21 @@ verification(검증), or self-correction(자가수정).
 
 ## Supported Local Layouts
 
-Canonical local layout:
+Canonical local layout for current claim-bearing work:
 
 ```text
-eval/real_config.local.yaml
+data/private/real100_v2/real_config_v2.local.yaml
 data/data_list.csv
 data/files/
-data/index/real100/
-data/index/real100/hwp_pdf_artifacts/
-reports/real100/
+data/index/real100_v2/
+reports/real100_v2/
 ```
 
-Use `eval/real_config.local.yaml` for the readiness audit, validate-only step,
-and local private baseline run. Do not create a second local config just to run
-the pre-improvement readiness workflow.
+Use the `real100_v2` config and aggregate surface for all new private eval
+tasks. Legacy real100/v1 paths, 221-case aggregates, and kordoc/v1 index
+evidence are disabled until the maintainer explicitly re-enables them. Validate
+the current surface with `make real-eval-v2-check`, `make real-eval-v2-inventory`,
+and `make real-eval-v2-guard`.
 
 ## Local Inventory And Canonical Mapping
 
@@ -60,9 +61,9 @@ cache to prepare the Naive RAG baseline runner, but not in the preferred
 | Source documents | 100 files | `data/files/` | Keep local-only; never commit. |
 | HWP citation PDFs | generated on rebuild | `data/index/real100/hwp_pdf_artifacts/` | Preserve local-only; citations refer to these LibreOffice converted PDFs. |
 | Manifest | 100 rows | `data/data_list.csv` | Keep local-only; never commit. |
-| Existing index | 100 documents / 26,376 chunks | `data/index/real100/` | Use only if it matches the manifest and corpus; otherwise rebuild. |
+| Existing index | 100 documents / v2 chunks | `data/index/real100_v2/` | Use only if it matches the v2 manifest and corpus; otherwise rebuild outside tracked output. |
 | Gold labels/questions | `cases:` in local config | `eval/real_config.local.yaml` | Curate local-only cases; add explicit `gold_evidence` or `gold_chunk_ids` when needed. |
-| Redacted summary | Local reports | `reports/real100/` aggregate files | Generate only after a successful private run and redaction checks. |
+| Redacted summary | Local reports | `reports/real100_v2/` aggregate files | Generate only after a successful private run and redaction checks. |
 
 If an external private root is used, point `REAL_EVAL_ROOT` or the nested
 `real_eval:` paths in `eval/real_config.local.yaml` at that root. Do not write

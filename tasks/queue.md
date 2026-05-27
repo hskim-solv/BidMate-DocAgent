@@ -38,7 +38,7 @@ PR이 생기면 각 task에 링크를 추가한다. 예제 task는 `tasks/exampl
 | 25 | `T-2026-0025` | `done` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | merged in PR #1579; named MiniLM target landed. |
 | 26 | `T-2026-0026` | `todo` | Planner -> Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1580; Chroma vector-store baseline separated from embedding-model baselines. |
 | 27 | `T-2026-0027` | `review` | Planner -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1584; prioritized RAG performance experiment stack captured. |
-| 28 | `T-2026-0028` | `ready` | Evaluator -> Benchmark Auditor -> Privacy Auditor -> Reviewer | P0; refresh private coverage and semantic baselines before behavior changes. |
+| 28 | `T-2026-0028` | `review` | Evaluator -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1618; real100_v2-only guard and aggregate packet ready for benchmark/privacy review. |
 | 29 | `T-2026-0029` | `backlog` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | P0; blocked on T-2026-0028 baseline refresh. |
 | 30 | `T-2026-0030` | `backlog` | Implementer -> CI Reviewer -> Benchmark Auditor -> Reviewer | P0; blocked on T-2026-0028 latency provenance. |
 | 31 | `T-2026-0031` | `backlog` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | P1; blocked on retrieval diagnostics from T-2026-0029. |
@@ -2486,22 +2486,22 @@ make check-branch
 
 - ID: T-2026-0028
 - Title: Refresh private coverage and semantic baselines
-- Status: ready
+- Status: review
 - Priority: P0
 - Owner role: Evaluator -> Benchmark Auditor -> Privacy Auditor -> Reviewer
 - Created: 2026-05-27
-- Last updated: 2026-05-27
+- Last updated: 2026-05-28
 
 ### Goal
 
-Create the first current aggregate-only baseline packet after page metadata
-recovery and MiniLM target separation, so later experiments compare against the
-right corpus, index, backend, and metric surface.
+Create the first current aggregate-only `real100_v2` baseline packet after page
+metadata recovery and MiniLM target separation, so later experiments compare
+against the right corpus, index, backend, and metric surface.
 
 ### Scope
 
-- Run or document the local-only sequence: parse/data audit, validate-only,
-  hashing baseline, MiniLM baseline, and optional BGE-M3 comparison.
+- Run or document the local-only `real100_v2` sequence: v2 inventory/check,
+  v2-only guard, parse/data audit, and aggregate packet review.
 - Preserve aggregate-only outputs that summarize case counts, evidence coverage,
   page metadata coverage, retrieval metrics, answer metrics, abstention, stage
   latency, embedding backend/model/dim, and vector DB backend.
@@ -2513,6 +2513,9 @@ right corpus, index, backend, and metric surface.
   eval scoring behavior.
 - Do not commit raw private outputs.
 - Do not claim performance improvement from a single run without paired delta.
+- Do not use stale `real100`/221 aggregate evidence, `data/index/real100`,
+  `reports/real100`, `outputs/real100`, or default `make real-eval` for this
+  task.
 
 ### Acceptance Criteria
 
@@ -2521,19 +2524,20 @@ right corpus, index, backend, and metric surface.
   and embedding/backend provenance.
 - [ ] Hashing, MiniLM, and BGE-M3 surfaces are not compared unless dataset,
   config, index, command, and provenance match the claim wording.
+- [ ] `make real-eval-v2-guard` passes and blocks stale `real100`/221 evidence
+  from the task scope.
 - [ ] Any committed artifact passes privacy checks and omits raw questions,
   answers, evidence, filenames, local paths, `doc_id`, and `chunk_id`.
-- [ ] The handoff names the next task: `T-2026-0029`, `T-2026-0030`, or a no-go
+- [x] The handoff names the next task: `T-2026-0029`, `T-2026-0030`, or a no-go
   blocker.
 
 ### Validation Commands
 
 ```bash
-python3 scripts/audit_private_data_readiness.py --config eval/real_config.local.yaml --out-dir experiments/private_runs/readiness_audit
-python3 scripts/check_private_real_eval_readiness.py --config eval/real_config.local.yaml
-make real-eval
-make real-eval-minilm
-make real-eval-semantic
+REAL_EVAL_ROOT=/Users/hskim/Desktop/projects/BidMate-DocAgent make real-eval-v2-inventory
+REAL_EVAL_ROOT=/Users/hskim/Desktop/projects/BidMate-DocAgent make real-eval-v2-check
+make real-eval-v2-guard
+python3 scripts/audit_private_data_readiness.py --config /Users/hskim/Desktop/projects/BidMate-DocAgent/data/private/real100_v2/real_config_v2.local.yaml --out-dir experiments/private_runs/readiness_audit
 python3 scripts/run_real_eval_delta.py --base <aggregate-baseline> --head <aggregate-head>
 git diff --check
 make check-branch
@@ -2545,12 +2549,37 @@ make check-branch
 - Explicit statement whether real private eval ran and whether any paired delta
   is valid.
 - Privacy audit result for any committed aggregate.
+- V2-only guard result proving legacy `real100`/221 evidence is not used.
 
 ### Related Plan / Issue / PR Links
 
-- Plan: TBD - create when the task starts.
-- Issue: TBD
+- Plan: [`docs/plans/T-2026-0028-refresh-private-coverage-semantic-baselines.md`](../docs/plans/T-2026-0028-refresh-private-coverage-semantic-baselines.md)
+- Issue: [#1618](https://github.com/hskim-solv/BidMate-DocAgent/issues/1618)
 - PR: TBD
+
+### Handoff Notes
+
+```markdown
+## Session Handoff - 2026-05-28 KST
+
+- Role: Evaluator
+- Lifecycle stage: review
+- Branch / worktree: eval/issue-1618-refresh-private-coverage-and-semantic-baselines / /Users/hskim/.codex/worktrees/0ebc/BidMate-DocAgent
+- Issue / PR: #1618 / N/A
+- Task: T-2026-0028
+- Current status: real100_v2-only private eval policy enforced; aggregate packet ready for review.
+- Files touched: Makefile, CLAUDE.md, scripts/check_real100_v2_only.py, tests/test_real100_v2_guard.py, tests/test_smoke_real_script.py, docs/evaluation/private_real_eval_workflow.md, docs/evaluation/surface-map.md, docs/evaluation/real100_v2-baseline-refresh.md, docs/plans/T-2026-0028-refresh-private-coverage-semantic-baselines.md, tasks/queue.md
+- Decisions made: legacy real100/v1/221/kordoc evidence is banned for future tasks until explicit maintainer re-enable; T-2026-0029 can proceed only as diagnostic work unless v2 page metadata is repaired or explicitly scoped out.
+- Commands run: make ship-start TITLE="Refresh private coverage and semantic baselines" TYPE=eval; make check-branch; make agent-loop-active-start ISSUE=1618 ACTIVE_START_RUNNER=0; REAL_EVAL_ROOT=/Users/hskim/Desktop/projects/BidMate-DocAgent make real-eval-v2-check; make real-eval-v2-guard; make real-eval
+- Results: branch/issue setup passed; v2 path check passed; v2 guard passed; default legacy make real-eval intentionally fails closed.
+- Validation evidence: real-eval-v2-check found v2 config/data/docs/index/report/eval summary/baseline present; v2 guard passed; legacy real-eval/minilm/semantic targets fail closed; privacy and claim audits passed.
+- Blockers: claim-bearing page/citation work remains blocked by real100_v2 page metadata ready rate 0.0.
+- Next safe command: python3 -m pytest tests/test_real100_v2_guard.py tests/test_smoke_real_script.py -q
+- Next action: benchmark/privacy reviewer should verify v2-only policy and decide whether T-2026-0029 is diagnostic-only or a v2 page-metadata repair task is needed first.
+- Open risks: historical real100 artifacts still exist as archive-only files; future agents must not use them for new work.
+- Reviewer focus: v2-only policy, no stale real100/221 evidence, aggregate-only privacy boundary, no performance-improvement claim.
+- Eval surface: private real-eval aggregate-only, real100_v2 only.
+```
 
 ## T-2026-0029 — Build retrieval diagnostic workbench
 
