@@ -32,11 +32,24 @@ PR이 생기면 각 task에 링크를 추가한다. 예제 task는 `tasks/exampl
 | 19 | `T-2026-0019` | `review` | Maintainer -> CI Reviewer -> Reviewer | local implementation ready on issue #1549 branch. |
 | 20 | `T-2026-0020` | `review` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1544; v0 metric-suite report implementation ready for review. |
 | 21 | `T-2026-0021` | `review` | Maintainer -> CI Reviewer -> Reviewer | issue #1551 implemented; draft PR #1552. |
-| 22 | `T-2026-0022` | `review` | Planner -> Implementer -> Reviewer | issue #1563; aggregate strategy decision implemented; retrieval change deferred until page-aware re-index evidence. |
-| 23 | `T-2026-0023` | `review` | Planner -> Implementer -> Benchmark Auditor -> Privacy Auditor -> Deep Reviewer -> Reviewer | issue #1569; PR #1570. |
-| 24 | `T-2026-0024` | `review` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1573; page metadata recovery patch implemented and local page-aware re-index audit passes. |
-| 25 | `T-2026-0025` | `review` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1575; named MiniLM target and baseline-surface wording implemented. |
+| 22 | `T-2026-0022` | `done` | Planner -> Implementer -> Reviewer | merged in PR #1576; retrieval change deferred until page-aware re-index evidence. |
+| 23 | `T-2026-0023` | `done` | Planner -> Implementer -> Benchmark Auditor -> Privacy Auditor -> Deep Reviewer -> Reviewer | merged in PR #1570. |
+| 24 | `T-2026-0024` | `done` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | merged in PR #1577; page metadata recovery landed. |
+| 25 | `T-2026-0025` | `done` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | merged in PR #1579; named MiniLM target landed. |
 | 26 | `T-2026-0026` | `todo` | Planner -> Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1580; Chroma vector-store baseline separated from embedding-model baselines. |
+| 27 | `T-2026-0027` | `review` | Planner -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1584; prioritized RAG performance experiment stack captured. |
+| 28 | `T-2026-0028` | `ready` | Evaluator -> Benchmark Auditor -> Privacy Auditor -> Reviewer | P0; refresh private coverage and semantic baselines before behavior changes. |
+| 29 | `T-2026-0029` | `backlog` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | P0; blocked on T-2026-0028 baseline refresh. |
+| 30 | `T-2026-0030` | `backlog` | Implementer -> CI Reviewer -> Benchmark Auditor -> Reviewer | P0; blocked on T-2026-0028 latency provenance. |
+| 31 | `T-2026-0031` | `backlog` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | P1; blocked on retrieval diagnostics from T-2026-0029. |
+| 32 | `T-2026-0032` | `backlog` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | P1; blocked on candidate-pool diagnostics from T-2026-0029. |
+| 33 | `T-2026-0033` | `backlog` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | P1; blocked on retrieval/reranker evidence and token budget from T-2026-0030. |
+| 34 | `T-2026-0034` | `backlog` | Planner -> Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | P1; blocked on query-slice attribution from T-2026-0029. |
+| 35 | `T-2026-0035` | `backlog` | Security Reviewer -> Implementer -> Privacy Auditor -> Reviewer | P1 guardrail; should run before agentic/tool-using retrieval. |
+| 36 | `T-2026-0036` | `backlog` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | P2; blocked on stable retrieval/context evidence from P0/P1 tasks. |
+| 37 | `T-2026-0037` | `backlog` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | P2; blocked on metadata coverage evidence from T-2026-0028. |
+| 38 | `T-2026-0038` | `backlog` | Planner -> Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | P2; blocked on small-to-big retrieval evidence from T-2026-0031. |
+| 39 | `T-2026-0039` | `backlog` | Planner -> Architect -> Benchmark Auditor -> Privacy Auditor -> Deep Reviewer -> Reviewer | P3; advanced architecture feasibility after P0/P1 evidence. |
 
 ## Examples
 
@@ -1898,7 +1911,7 @@ make check-branch
 
 - ID: T-2026-0022
 - Title: Use multi-chunk evidence analysis for the next retrieval follow-up
-- Status: review
+- Status: done
 - Owner role: Planner -> Implementer -> Reviewer
 
 ### Goal
@@ -1961,8 +1974,8 @@ Focused validation passes and the follow-up evidence is recorded in
 - Role: Planner -> Implementer
 - Lifecycle stage: review
 - Branch / worktree: `eval/issue-1563-multi-chunk-followup-implementation` / Codex worktree
-- Current status: aggregate-only strategy decision implemented; concrete retrieval
-  change deferred until page-aware re-index evidence exists.
+- Current status: merged in PR #1576; concrete retrieval change deferred until
+  page-aware re-index evidence exists.
 - Files touched: `.githooks/pre-commit`,
   `scripts/render_multi_chunk_retrieval_strategy.py`,
   `tests/test_render_multi_chunk_retrieval_strategy.py`,
@@ -1975,8 +1988,9 @@ Focused validation passes and the follow-up evidence is recorded in
 - Validation evidence: focused tests, doc-link check, whitespace check, branch check, and page metadata recovery audit completed.
 - Blockers: concrete retrieval implementation is blocked on page-aware re-index evidence, not on missing Markdown conversion.
 - Open risks: MiniLM semantic baseline evidence is absent from this task; keep #1575 separate.
-- Next action: run final validation, then open the issue-linked PR for #1563.
-- Next safe command: `python3 -m pytest -q tests/test_render_multi_chunk_evidence_failures.py tests/test_render_multi_chunk_retrieval_strategy.py`
+- Next action: start a separate page-aware retrieval follow-up after refreshed
+  aggregate evidence exists.
+- Next safe command: `git status --short`
 - Reviewer focus: source freshness, privacy-safe aggregate-only wording, and no RAG performance claim.
 - Eval surface: report/measurement decision only; no retrieval, reranker, verifier, prompt, answer, or eval runtime behavior change.
 
@@ -1984,7 +1998,7 @@ Focused validation passes and the follow-up evidence is recorded in
 
 - ID: T-2026-0023
 - Title: RAG performance agent operating goal
-- Status: review
+- Status: done
 - Owner role: Planner -> Implementer -> Benchmark Auditor -> Privacy Auditor -> Deep Reviewer -> Reviewer
 - Created: 2026-05-27
 - Last updated: 2026-05-27
@@ -2028,11 +2042,11 @@ future sessions do not collapse into only small local fixes.
 
 ### Acceptance Criteria
 
-- [ ] The 8 principles are recorded as enforceable operating criteria, not a chat-only preference.
-- [ ] RAG performance improvement is represented as a multi-session goal with
+- [x] The 8 principles are recorded as enforceable operating criteria, not a chat-only preference.
+- [x] RAG performance improvement is represented as a multi-session goal with
   role separation and reviewer escalation.
-- [ ] The docs explicitly separate this governance change from any performance claim.
-- [ ] Follow-up implementation work can start from `T-2026-0022` or later
+- [x] The docs explicitly separate this governance change from any performance claim.
+- [x] Follow-up implementation work can start from `T-2026-0022` or later
   measurement tasks without rediscovering the operating model.
 
 ### Validation Commands
@@ -2060,7 +2074,7 @@ make check-branch
 
 - ID: T-2026-0024
 - Title: Recover PyMuPDF4LLM page metadata at index build
-- Status: review
+- Status: done
 - Owner role: Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer
 - Created: 2026-05-27
 - Last updated: 2026-05-27
@@ -2143,14 +2157,14 @@ Focused tests and syntax checks pass; local audits report citation page claim
 
 - Plan: [`docs/plans/T-2026-0024-page-metadata-reindex.md`](../docs/plans/T-2026-0024-page-metadata-reindex.md)
 - Issue: [#1573](https://github.com/hskim-solv/BidMate-DocAgent/issues/1573)
-- PR: TBD
+- PR: [#1577](https://github.com/hskim-solv/BidMate-DocAgent/pull/1577)
 
 ### Session Handoff
 
 - Role: Implementer
 - Lifecycle stage: review
 - Branch / worktree: `fix/issue-1573-page-metadata-reindex` / Codex worktree
-- Current status: implementation done; final validation and PR still needed.
+- Current status: merged in PR #1577.
 - Files touched: `Makefile`, `scripts/smoke_real.sh`,
   `rag_metadata_processing.py`, `tests/test_page_aware_parser_contract.py`,
   `tests/test_smoke_real_script.py`, `docs/plans/T-2026-0024-page-metadata-reindex.md`,
@@ -2162,9 +2176,9 @@ Focused tests and syntax checks pass; local audits report citation page claim
 - Open risks: fixed chunking produces coarse document-range page spans; precise
   page citation quality still needs section/page-aware evaluation before
   performance claims.
-- Next action: run final validation, then open PR
-  for #1573.
-- Next safe command: `python3 -m pytest -q tests/test_smoke_real_script.py tests/test_page_aware_parser_contract.py tests/test_page_metadata_recovery_audit.py tests/test_build_private_real100_v2_parallel.py tests/test_hwp_pdf_pymupdf4llm_loader.py tests/test_export_private_index_markdown.py`
+- Next action: use page-aware aggregate evidence for follow-up retrieval
+  diagnostics.
+- Next safe command: `git status --short`
 - Reviewer focus: no private path/raw text leakage, no performance claim, and
   explicit distinction between coarse fixed spans and section page spans.
 - Eval surface: ingestion/index metadata propagation and private real-eval
@@ -2174,7 +2188,7 @@ Focused tests and syntax checks pass; local audits report citation page claim
 
 - ID: T-2026-0025
 - Title: Separate hashing, MiniLM, and BGE-M3 real-eval surfaces
-- Status: review
+- Status: done
 - Owner role: Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer
 - Created: 2026-05-27
 - Last updated: 2026-05-27
@@ -2257,7 +2271,7 @@ extraction preserves embedding provenance without local model path leakage.
 - Role: Implementer
 - Lifecycle stage: review
 - Branch / worktree: `eval/issue-1575-minilm-baseline-target` / Codex worktree
-- Current status: implementation validated; PR still needed.
+- Current status: merged in PR #1579.
 - Files touched: `Makefile`, `scripts/smoke_real.sh`,
   `scripts/run_real_eval_delta.py`,
   `docs/evaluation/private_real_eval_workflow.md`,
@@ -2271,7 +2285,8 @@ extraction preserves embedding provenance without local model path leakage.
 - Blockers: none known.
 - Open risks: target existence does not prove MiniLM model cache/download or
   performance; actual MiniLM private eval remains a separate run.
-- Next action: push and mark PR #1579 ready.
+- Next action: run the named MiniLM/BGE-M3 surfaces only in a separate
+  aggregate-only eval task.
 - Next safe command: `git status --short`
 - Reviewer focus: baseline wording, no performance claim, and actual
   backend/model naming.
@@ -2371,3 +2386,801 @@ make check-branch
 - Next safe command: `git status --short`
 - Reviewer focus: backend axis separation, parity guard, no mixed embedding
   claim.
+
+## T-2026-0027 — RAG performance experiment stack
+
+- ID: T-2026-0027
+- Title: RAG performance experiment stack
+- Status: review
+- Priority: P0 planning
+- Owner role: Planner -> Benchmark Auditor -> Privacy Auditor -> Reviewer
+- Created: 2026-05-27
+- Last updated: 2026-05-27
+
+### Goal
+
+Convert the broad RAG performance checklist into a repo-native, prioritized
+experiment stack that future sessions can execute one task and one PR at a
+time.
+
+### Context
+
+- Issue: #1584
+- Current branch: `docs/issue-1584-rag-performance-experiment-stack`
+- Current main already has page metadata recovery and named MiniLM/BGE-M3
+  private real-eval surfaces.
+- Existing hybrid sweep evidence says recall-only gains are not enough when
+  MRR, nDCG, citation, or latency regress.
+
+### Scope
+
+- Add a durable evaluation note that selects and defers RAG techniques.
+- Add concrete queue tasks for P0/P1/P2/P3 experiment execution.
+- Link the stack from the evaluation surface map.
+- Keep existing runtime, eval, retrieval, reranking, and answer behavior
+  unchanged.
+
+### Non-Goals
+
+- Do not implement retrieval, reranking, context packing, generator, security,
+  or advanced architecture behavior in this PR.
+- Do not run private real-eval.
+- Do not claim RAG quality, latency, citation, or production performance
+  improved.
+- Do not create all future GitHub issues before each task starts.
+
+### Acceptance Criteria
+
+- [x] Experiment tasks are ordered by priority and dependency.
+- [x] Each task states surface, validation, evidence, and no-claim boundary.
+- [x] Advanced techniques are explicitly deferred behind feasibility gates.
+- [x] The stack starts with private coverage and baseline refresh rather than
+  speculative architecture work.
+
+### Validation Commands
+
+```bash
+python3 scripts/check_doc_links.py --check-all --paths tasks/queue.md docs/plans/T-2026-0027-rag-performance-experiment-stack.md docs/evaluation/rag-performance-experiment-stack.md docs/evaluation/surface-map.md
+git diff --check
+make check-branch
+```
+
+### Evidence Required
+
+- Doc-link check, whitespace check, and branch/issue check pass.
+- PR body says docs/planning only, no private real-eval run, and no performance
+  claim.
+
+### Related Plan / Issue / PR Links
+
+- Plan: [`docs/plans/T-2026-0027-rag-performance-experiment-stack.md`](../docs/plans/T-2026-0027-rag-performance-experiment-stack.md)
+- Evaluation note: [`docs/evaluation/rag-performance-experiment-stack.md`](../docs/evaluation/rag-performance-experiment-stack.md)
+- Issue: [#1584](https://github.com/hskim-solv/BidMate-DocAgent/issues/1584)
+- PR: TBD
+
+### Session Handoff
+
+- Role: Planner
+- Lifecycle stage: review
+- Branch / worktree: `docs/issue-1584-rag-performance-experiment-stack` / Codex worktree
+- Current status: task stack implemented and validation passed.
+- Files touched: `tasks/queue.md`,
+  `docs/plans/T-2026-0027-rag-performance-experiment-stack.md`,
+  `docs/evaluation/rag-performance-experiment-stack.md`,
+  `docs/evaluation/surface-map.md`.
+- Decisions made: prioritize measurement readiness, retrieval diagnostics,
+  latency/cost guardrails, and small-to-big retrieval before GraphRAG/Agentic
+  RAG.
+- Commands run: `python3 scripts/agent_loop.py overlap-preflight --issue 1584 --branch docs/issue-1584-rag-performance-experiment-stack`; `python3 scripts/check_doc_links.py --check-all --paths tasks/queue.md docs/plans/T-2026-0027-rag-performance-experiment-stack.md docs/evaluation/rag-performance-experiment-stack.md docs/evaluation/surface-map.md`; `git diff --check`; `make check-branch`.
+- Results: passed.
+- Next safe command: `git diff --stat`
+- Reviewer focus: priority order, no-claim wording, and private boundary.
+
+## T-2026-0028 — Refresh private coverage and semantic baselines
+
+- ID: T-2026-0028
+- Title: Refresh private coverage and semantic baselines
+- Status: ready
+- Priority: P0
+- Owner role: Evaluator -> Benchmark Auditor -> Privacy Auditor -> Reviewer
+- Created: 2026-05-27
+- Last updated: 2026-05-27
+
+### Goal
+
+Create the first current aggregate-only baseline packet after page metadata
+recovery and MiniLM target separation, so later experiments compare against the
+right corpus, index, backend, and metric surface.
+
+### Scope
+
+- Run or document the local-only sequence: parse/data audit, validate-only,
+  hashing baseline, MiniLM baseline, and optional BGE-M3 comparison.
+- Preserve aggregate-only outputs that summarize case counts, evidence coverage,
+  page metadata coverage, retrieval metrics, answer metrics, abstention, stage
+  latency, embedding backend/model/dim, and vector DB backend.
+- Produce a no-go/go note naming which P0/P1 task should run next.
+
+### Non-Goals
+
+- Do not change ingestion, retrieval, reranking, answer, prompt, verifier, or
+  eval scoring behavior.
+- Do not commit raw private outputs.
+- Do not claim performance improvement from a single run without paired delta.
+
+### Acceptance Criteria
+
+- [ ] Aggregate packet reports answerable/unanswerable counts, explicit gold
+  evidence coverage, multi-document/multi-chunk counts, page/page_span coverage,
+  and embedding/backend provenance.
+- [ ] Hashing, MiniLM, and BGE-M3 surfaces are not compared unless dataset,
+  config, index, command, and provenance match the claim wording.
+- [ ] Any committed artifact passes privacy checks and omits raw questions,
+  answers, evidence, filenames, local paths, `doc_id`, and `chunk_id`.
+- [ ] The handoff names the next task: `T-2026-0029`, `T-2026-0030`, or a no-go
+  blocker.
+
+### Validation Commands
+
+```bash
+python3 scripts/audit_private_data_readiness.py --config eval/real_config.local.yaml --out-dir experiments/private_runs/readiness_audit
+python3 scripts/check_private_real_eval_readiness.py --config eval/real_config.local.yaml
+make real-eval
+make real-eval-minilm
+make real-eval-semantic
+python3 scripts/run_real_eval_delta.py --base <aggregate-baseline> --head <aggregate-head>
+git diff --check
+make check-branch
+```
+
+### Evidence Required
+
+- Aggregate-only baseline packet and command transcript summary.
+- Explicit statement whether real private eval ran and whether any paired delta
+  is valid.
+- Privacy audit result for any committed aggregate.
+
+### Related Plan / Issue / PR Links
+
+- Plan: TBD - create when the task starts.
+- Issue: TBD
+- PR: TBD
+
+## T-2026-0029 — Build retrieval diagnostic workbench
+
+- ID: T-2026-0029
+- Title: Build retrieval diagnostic workbench
+- Status: backlog
+- Priority: P0
+- Owner role: Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer
+- Created: 2026-05-27
+- Last updated: 2026-05-27
+
+### Goal
+
+Make retrieval failures explainable before changing retrieval behavior.
+
+### Scope
+
+- Add or harden an aggregate-only diagnostic that reports Recall@K, Hit@K, MRR,
+  nDCG, candidate-pool coverage, same-document versus multi-document evidence
+  split, rank-too-low cases, not-in-pool cases, duplicate/near-duplicate
+  candidate counts, and query-type slices.
+- Separate retrieval misses from evaluation-label gaps and answer-generation
+  failures.
+- Use page-aware private indexes from the refreshed baseline when available.
+
+### Non-Goals
+
+- Do not change ranking behavior.
+- Do not add reranking, query rewrite, or context packing.
+- Do not expose private case text or raw identifiers.
+
+### Acceptance Criteria
+
+- [ ] Diagnostics distinguish not-in-candidate-pool, ranked-too-low,
+  boundary/window, duplicate, metadata-filter, and multi-evidence failures.
+- [ ] Output is aggregate-only and commit-safe.
+- [ ] The report can decide whether `T-2026-0031` or `T-2026-0032` is the next
+  best experiment.
+
+### Validation Commands
+
+```bash
+python3 -m pytest -q tests/test_render_multi_chunk_evidence_failures.py tests/test_render_multi_chunk_retrieval_strategy.py
+python3 <new-or-existing-retrieval-diagnostic-script> --summary <aggregate-input> --out <aggregate-output>
+python3 scripts/check_doc_links.py --check-all --paths tasks/queue.md <plan-path> <report-path>
+git diff --check
+make check-branch
+```
+
+### Evidence Required
+
+- Aggregate diagnostic report with no raw private text, IDs, filenames, or
+  paths.
+- Reviewer note explaining which failure bucket is dominant.
+
+### Related Plan / Issue / PR Links
+
+- Plan: TBD - create when the task starts.
+- Issue: TBD
+- PR: TBD
+
+## T-2026-0030 — Define latency and cost budget envelope
+
+- ID: T-2026-0030
+- Title: Define latency and cost budget envelope
+- Status: backlog
+- Priority: P0
+- Owner role: Implementer -> CI Reviewer -> Benchmark Auditor -> Reviewer
+- Created: 2026-05-27
+- Last updated: 2026-05-27
+
+### Goal
+
+Set the latency/cost guardrails that every multi-query, reranker, compression,
+or long-context experiment must satisfy.
+
+### Scope
+
+- Use existing `stage_latency`, p50/p95/p99, token counts, reranker candidate
+  counts, context token counts, and cache indicators where available.
+- Add a report or gate that classifies quality-only gains as no-go when latency
+  or cost exceeds the agreed envelope.
+- Keep the report aggregate-only and hardware-caveated.
+
+### Non-Goals
+
+- Do not optimize latency yet.
+- Do not introduce caching behavior.
+- Do not infer production SLOs from public fixture smoke.
+
+### Acceptance Criteria
+
+- [ ] Budget report names p50/p95/p99 and stage-level components.
+- [ ] Candidate-pool, reranker, query-rewrite, and context-packing tasks can cite
+  the same latency/cost envelope.
+- [ ] The report states warm/cold and local hardware caveats.
+
+### Validation Commands
+
+```bash
+python3 <new-or-existing-latency-budget-script> --summary <aggregate-input> --out <aggregate-output>
+python3 scripts/check_doc_links.py --check-all --paths tasks/queue.md <plan-path> <report-path>
+git diff --check
+make check-branch
+```
+
+### Evidence Required
+
+- Aggregate latency/cost budget report.
+- Explicit guardrail thresholds or no-go classification rules.
+
+### Related Plan / Issue / PR Links
+
+- Plan: TBD - create when the task starts.
+- Issue: TBD
+- PR: TBD
+
+## T-2026-0031 — Parent and section-window retrieval experiment
+
+- ID: T-2026-0031
+- Title: Parent and section-window retrieval experiment
+- Status: backlog
+- Priority: P1
+- Owner role: Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer
+- Created: 2026-05-27
+- Last updated: 2026-05-27
+
+### Goal
+
+Test whether small-to-big retrieval improves multi-chunk and same-document
+evidence failures now that page-aware metadata exists.
+
+### Scope
+
+- Add an opt-in experiment preset that retrieves small chunks but expands
+  selected hits to parent section, page window, or sentence window context.
+- Deduplicate parent expansions and cap token/context growth.
+- Compare against the refreshed private baseline with paired aggregate delta.
+
+### Non-Goals
+
+- Do not change default `naive_baseline`.
+- Do not combine with reranker or query rewrite changes.
+- Do not claim improvement unless private paired delta shows primary metric
+  movement without guardrail regressions.
+
+### Acceptance Criteria
+
+- [ ] Opt-in preset leaves ADR 0001 baseline byte-identical.
+- [ ] Aggregate delta reports Recall@K, MRR, nDCG, citation/page coverage,
+  answer quality, abstention, and latency.
+- [ ] Same-document multi-chunk cases are reported separately from
+  multi-document cases.
+
+### Validation Commands
+
+```bash
+python3 -m pytest -q tests/test_naive_baseline_ranking_invariance.py <focused-new-tests>
+python3 <experiment-runner> --variant parent_section_window --summary-out <aggregate-output>
+python3 scripts/run_real_eval_delta.py --base <baseline-aggregate> --head <variant-aggregate>
+git diff --check
+make check-branch
+```
+
+### Evidence Required
+
+- Paired private aggregate delta or explicit no-go.
+- Token/latency guardrail result.
+
+### Related Plan / Issue / PR Links
+
+- Plan: TBD - create when the task starts.
+- Issue: TBD
+- PR: TBD
+
+## T-2026-0032 — Reranker candidate-budget experiment
+
+- ID: T-2026-0032
+- Title: Reranker candidate-budget experiment
+- Status: backlog
+- Priority: P1
+- Owner role: Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer
+- Created: 2026-05-27
+- Last updated: 2026-05-27
+
+### Goal
+
+Measure whether reranking improves early precision without hiding candidate-pool
+recall or causing unacceptable latency.
+
+### Scope
+
+- Sweep retriever candidate counts and reranker top-N limits.
+- Keep reranker model/provider provenance explicit.
+- Report rank movement, answer containment, citation effect, and stage latency.
+
+### Non-Goals
+
+- Do not increase candidate pools blindly.
+- Do not use LLM reranking until cross-encoder budget is measured.
+- Do not mix reranking with query rewrite, parent expansion, or prompt changes.
+
+### Acceptance Criteria
+
+- [ ] Sweep output classifies winner, recall-only gain, ranking regression,
+  citation regression, latency regression, or failed experiment.
+- [ ] Candidate-pool recall and reranker precision are reported separately.
+- [ ] Reranker provenance is present in aggregate output.
+
+### Validation Commands
+
+```bash
+python3 -m pytest -q tests/test_reranker*.py <focused-new-tests>
+python3 <reranker-sweep-script> --config <local-or-public-config> --out <aggregate-output>
+python3 scripts/run_real_eval_delta.py --base <baseline-aggregate> --head <variant-aggregate>
+git diff --check
+make check-branch
+```
+
+### Evidence Required
+
+- Aggregate sweep summary with no raw private content.
+- Latency/cost guardrail from `T-2026-0030`.
+
+### Related Plan / Issue / PR Links
+
+- Plan: TBD - create when the task starts.
+- Issue: TBD
+- PR: TBD
+
+## T-2026-0033 — Context packing and citation ordering experiment
+
+- ID: T-2026-0033
+- Title: Context packing and citation ordering experiment
+- Status: backlog
+- Priority: P1
+- Owner role: Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer
+- Created: 2026-05-27
+- Last updated: 2026-05-27
+
+### Goal
+
+Improve how selected evidence is assembled for generation without changing the
+retriever.
+
+### Scope
+
+- Test evidence-first ordering, duplicate suppression, conflicting evidence
+  grouping, page/section citation formatting, and lost-in-the-middle mitigation.
+- Measure token count, citation grounding, completeness, abstention, and
+  latency.
+- Preserve ADR 0003 answer contract unless an ADR explicitly changes it.
+
+### Non-Goals
+
+- Do not change retrieval ranking or reranker behavior.
+- Do not summarize private context into committed artifacts.
+- Do not increase context length without a token/latency budget.
+
+### Acceptance Criteria
+
+- [ ] Context assembly variant is opt-in and separately named.
+- [ ] Citation and answer metrics move together; citation regression is no-go.
+- [ ] Conflict grouping is visible to the generator without raw conflict text in
+  committed reports.
+
+### Validation Commands
+
+```bash
+python3 -m pytest -q tests/test_answer_contract_snapshot.py <focused-context-tests>
+python3 <context-packing-experiment> --variant evidence_first --summary-out <aggregate-output>
+python3 scripts/run_real_eval_delta.py --base <baseline-aggregate> --head <variant-aggregate>
+git diff --check
+make check-branch
+```
+
+### Evidence Required
+
+- Paired aggregate delta for citation, answer, abstention, token, and latency
+  metrics.
+- Explicit no-change statement for retrieval behavior.
+
+### Related Plan / Issue / PR Links
+
+- Plan: TBD - create when the task starts.
+- Issue: TBD
+- PR: TBD
+
+## T-2026-0034 — Query rewrite and decomposition experiment
+
+- ID: T-2026-0034
+- Title: Query rewrite and decomposition experiment
+- Status: backlog
+- Priority: P1
+- Owner role: Planner -> Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer
+- Created: 2026-05-27
+- Last updated: 2026-05-27
+
+### Goal
+
+Test query rewrite, multi-query, and decomposition only on slices where query
+form is the measured bottleneck.
+
+### Scope
+
+- Target comparison, multi-hop, abbreviation, typo, mixed Korean/English, and
+  date/entity questions.
+- Keep rewrite outputs local-only for private cases.
+- Measure extra LLM/API calls, latency, rewrite drift, retrieval delta, and
+  answer delta.
+
+### Non-Goals
+
+- Do not turn on rewrite globally.
+- Do not send private queries to external providers without an approved online
+  payload boundary.
+- Do not combine with reranker or context-packing changes in the same PR.
+
+### Acceptance Criteria
+
+- [ ] Query-slice report justifies which slices receive rewrite/decomposition.
+- [ ] Identity expansion remains the default for `naive_baseline`.
+- [ ] Multi-query is no-go if recall gains are erased by reranking budget,
+  context truncation, latency, or answer regressions.
+
+### Validation Commands
+
+```bash
+python3 -m pytest -q tests/test_query_expansion*.py tests/test_naive_baseline_ranking_invariance.py <focused-new-tests>
+python3 <query-experiment-runner> --variant rewrite_or_decompose --summary-out <aggregate-output>
+python3 scripts/run_real_eval_delta.py --base <baseline-aggregate> --head <variant-aggregate>
+git diff --check
+make check-branch
+```
+
+### Evidence Required
+
+- Aggregate slice deltas and provider/payload provenance.
+- Explicit private egress statement.
+
+### Related Plan / Issue / PR Links
+
+- Plan: TBD - create when the task starts.
+- Issue: TBD
+- PR: TBD
+
+## T-2026-0035 — Prompt-injection and data boundary guardrail
+
+- ID: T-2026-0035
+- Title: Prompt-injection and data boundary guardrail
+- Status: backlog
+- Priority: P1 guardrail
+- Owner role: Security Reviewer -> Implementer -> Privacy Auditor -> Reviewer
+- Created: 2026-05-27
+- Last updated: 2026-05-27
+
+### Goal
+
+Ensure retrieved text is treated as data, not instructions, before adding more
+agentic retrieval, tool routing, or external provider workflows.
+
+### Scope
+
+- Add or extend red-team fixtures for indirect prompt injection, instruction
+  override strings, secret/PII leakage attempts, and citation-only answer
+  constraints.
+- Verify retrieval context isolation, verifier neutralization, and tool-call
+  policy boundaries.
+- Record false positive/false negative counts without private raw payloads.
+
+### Non-Goals
+
+- Do not add broad new security architecture.
+- Do not block legitimate RFP text with overbroad filters without measuring
+  false positives.
+- Do not expose private documents in red-team artifacts.
+
+### Acceptance Criteria
+
+- [ ] Security fixtures cover malicious retrieved-document instructions.
+- [ ] Tests verify system/developer instructions remain higher priority than
+  retrieved data.
+- [ ] Aggregate report separates detection, neutralization, and answer behavior.
+
+### Validation Commands
+
+```bash
+python3 -m pytest -q tests/test_verifier*.py tests/test_security*.py <focused-new-tests>
+python3 <security-redteam-runner> --out <aggregate-output>
+python3 scripts/check_doc_links.py --check-all --paths tasks/queue.md <plan-path> <report-path>
+git diff --check
+make check-branch
+```
+
+### Evidence Required
+
+- Focused security test output.
+- Aggregate red-team report with false positive and false negative counts.
+
+### Related Plan / Issue / PR Links
+
+- Plan: TBD - create when the task starts.
+- Issue: TBD
+- PR: TBD
+
+## T-2026-0036 — Abstention, conflict, and freshness calibration
+
+- ID: T-2026-0036
+- Title: Abstention, conflict, and freshness calibration
+- Status: backlog
+- Priority: P2
+- Owner role: Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer
+- Created: 2026-05-27
+- Last updated: 2026-05-27
+
+### Goal
+
+Improve no-answer, conflicting evidence, and effective-date behavior after the
+retrieval evidence surface is stable.
+
+### Scope
+
+- Add or harden evaluation slices for unanswerable questions, stale/deprecated
+  documents, conflicting policy versions, and freshness/authority precedence.
+- Measure false abstention, missed abstention, citation support, and freshness
+  precedence accuracy.
+- Keep policy precedence rules explicit and testable.
+
+### Non-Goals
+
+- Do not mask retrieval misses as answer abstention improvements.
+- Do not change answer contract without ADR review.
+- Do not claim production policy correctness from synthetic-only cases.
+
+### Acceptance Criteria
+
+- [ ] Abstention and conflict metrics are reported separately from retrieval
+  recall.
+- [ ] Freshness/authority rules use metadata fields with missing-field behavior
+  defined.
+- [ ] Private aggregate evidence is required before real-world claim wording.
+
+### Validation Commands
+
+```bash
+python3 -m pytest -q tests/test_answer_contract_snapshot.py tests/test_eval_metrics.py <focused-new-tests>
+python3 <abstention-conflict-runner> --summary-out <aggregate-output>
+python3 scripts/run_real_eval_delta.py --base <baseline-aggregate> --head <variant-aggregate>
+git diff --check
+make check-branch
+```
+
+### Evidence Required
+
+- Aggregate no-answer/conflict/freshness report.
+- Clear separation between answer behavior and retrieval availability.
+
+### Related Plan / Issue / PR Links
+
+- Plan: TBD - create when the task starts.
+- Issue: TBD
+- PR: TBD
+
+## T-2026-0037 — Metadata, authority, and freshness ranking experiment
+
+- ID: T-2026-0037
+- Title: Metadata, authority, and freshness ranking experiment
+- Status: backlog
+- Priority: P2
+- Owner role: Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer
+- Created: 2026-05-27
+- Last updated: 2026-05-27
+
+### Goal
+
+Measure whether document metadata can improve ranking for RFP-specific
+questions without excluding valid evidence through missing or stale fields.
+
+### Scope
+
+- Audit metadata coverage for document type, issue date, effective date,
+  expiry/deprecated state, section title, page number, authority/source class,
+  customer/region/product fields when available.
+- Add opt-in freshness/authority boosts or filters only after coverage supports
+  them.
+- Report missing-field effects separately from ranking effects.
+
+### Non-Goals
+
+- Do not require metadata fields that private corpus does not reliably contain.
+- Do not change ACL or permission behavior in this task.
+- Do not introduce a vector DB payload-index dependency unless scoped as a
+  separate backend task.
+
+### Acceptance Criteria
+
+- [ ] Metadata coverage report determines which fields are safe to rank/filter
+  on.
+- [ ] Ranking variant has fail-open/fail-closed behavior documented for missing
+  fields.
+- [ ] Paired aggregate delta includes freshness, citation, retrieval, and
+  latency metrics.
+
+### Validation Commands
+
+```bash
+python3 <metadata-coverage-script> --index-dir <private-index> --out <aggregate-output>
+python3 -m pytest -q <focused-metadata-tests>
+python3 <metadata-ranking-experiment> --summary-out <aggregate-output>
+python3 scripts/run_real_eval_delta.py --base <baseline-aggregate> --head <variant-aggregate>
+git diff --check
+make check-branch
+```
+
+### Evidence Required
+
+- Metadata coverage aggregate.
+- Ranking delta with missing-field analysis.
+
+### Related Plan / Issue / PR Links
+
+- Plan: TBD - create when the task starts.
+- Issue: TBD
+- PR: TBD
+
+## T-2026-0038 — Contextual retrieval and sentence-window proof of concept
+
+- ID: T-2026-0038
+- Title: Contextual retrieval and sentence-window proof of concept
+- Status: backlog
+- Priority: P2
+- Owner role: Planner -> Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer
+- Created: 2026-05-27
+- Last updated: 2026-05-27
+
+### Goal
+
+Test chunk-context enrichment and sentence-window retrieval after simpler
+parent/section-window retrieval has been measured.
+
+### Scope
+
+- Prototype an opt-in contextual chunk prefix or sentence-window replacement
+  surface.
+- Record how contextual text was generated, whether external providers were
+  used, payload class, and private egress mode.
+- Compare against parent/section-window results before choosing a larger
+  ingestion/index rebuild.
+
+### Non-Goals
+
+- Do not rewrite the default ingestion pipeline.
+- Do not generate contextual prefixes for private chunks with an external model
+  unless explicitly approved under the online payload boundary.
+- Do not combine with GraphRAG/RAPTOR.
+
+### Acceptance Criteria
+
+- [ ] POC is opt-in and has isolated index/report paths.
+- [ ] Contextual text provenance and private egress mode are recorded.
+- [ ] Aggregate delta beats or clearly fails against the simpler small-to-big
+  retrieval baseline.
+
+### Validation Commands
+
+```bash
+python3 -m pytest -q <focused-contextual-retrieval-tests> tests/test_naive_baseline_ranking_invariance.py
+python3 <contextual-retrieval-experiment> --summary-out <aggregate-output>
+python3 scripts/run_real_eval_delta.py --base <baseline-aggregate> --head <variant-aggregate>
+git diff --check
+make check-branch
+```
+
+### Evidence Required
+
+- Aggregate POC report and provenance.
+- Explicit go/no-go recommendation for broader contextual retrieval work.
+
+### Related Plan / Issue / PR Links
+
+- Plan: TBD - create when the task starts.
+- Issue: TBD
+- PR: TBD
+
+## T-2026-0039 — Advanced architecture feasibility gate
+
+- ID: T-2026-0039
+- Title: Advanced architecture feasibility gate
+- Status: backlog
+- Priority: P3
+- Owner role: Planner -> Architect -> Benchmark Auditor -> Privacy Auditor -> Deep Reviewer -> Reviewer
+- Created: 2026-05-27
+- Last updated: 2026-05-27
+
+### Goal
+
+Decide whether RAPTOR, GraphRAG, LightRAG, Agentic RAG, Self-RAG, CRAG, FLARE,
+late chunking, multi-vector retrieval, or long-context RAG is justified for
+BidMate-DocAgent.
+
+### Scope
+
+- Use P0/P1/P2 aggregate evidence to identify bottlenecks that simpler changes
+  could not solve.
+- Produce a feasibility matrix with build cost, index size, latency, privacy
+  risk, evaluation burden, rollback plan, and expected failure mode reduction.
+- Recommend at most one advanced architecture follow-up issue.
+
+### Non-Goals
+
+- Do not implement advanced architecture in this task.
+- Do not create a new graph/tree/index contract without ADR reservation.
+- Do not replace the existing RAG pipeline or baseline.
+
+### Acceptance Criteria
+
+- [ ] Feasibility report compares advanced options against measured bottlenecks,
+  not generic industry trend value.
+- [ ] Any recommended architecture names the exact eval surface and ADR need.
+- [ ] No-go is acceptable and preferred when evidence is weak.
+
+### Validation Commands
+
+```bash
+python3 scripts/check_doc_links.py --check-all --paths tasks/queue.md <plan-path> <feasibility-report-path>
+git diff --check
+make check-branch
+```
+
+### Evidence Required
+
+- Feasibility matrix and one recommended next issue or explicit no-go.
+- Reviewer notes for architecture, privacy, eval, and rollback risk.
+
+### Related Plan / Issue / PR Links
+
+- Plan: TBD - create when the task starts.
+- Issue: TBD
+- PR: TBD

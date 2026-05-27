@@ -117,3 +117,4 @@ Before accepting an eval/benchmark claim, verify:
 - [Private Real-Eval Workflow](./private_real_eval_workflow.md)
 - [Agent-Gated RFP Evaluation Loop](./agent-gated-rfp-eval-loop.md)
 - [Pre-Improvement Readiness Checklist](./pre_improvement_readiness_checklist.md)
+- [RAG Performance Experiment Stack](./rag-performance-experiment-stack.md)
