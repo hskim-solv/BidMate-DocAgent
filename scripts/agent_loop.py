@@ -1975,6 +1975,21 @@ def write_continue_loop(
 
     loop_task = chosen_task_id if apply_queue_plan or existing_task is not None else None
     loop_out, _ = write_loop_state(task_id=loop_task, batch=batch_json, repo_root=repo_root)
+    next_command = (
+        f"python3 scripts/agent_loop.py preflight --task {loop_task} --from-git --write-prompts"
+        if loop_task is not None
+        else _continue_loop_next_command(
+            state=state,
+            limit=limit,
+            include_body=include_body,
+            readiness_summaries=resolved_readiness_summaries,
+            readiness_reports=resolved_readiness_reports,
+            real100_dir=resolved_real100_dir,
+            page_metadata_index_dir=resolved_page_metadata_index_dir,
+            apply_queue_plan=apply_queue_plan,
+            repo_root=repo_root,
+        )
+    )
     rendered = render_continue_loop(
         pr_state=pr_state,
         ai_next=ai_next,
@@ -1991,17 +2006,7 @@ def write_continue_loop(
         task_id=chosen_task_id,
         apply_result=apply_result,
         apply_queue_plan=apply_queue_plan,
-        next_command=_continue_loop_next_command(
-            state=state,
-            limit=limit,
-            include_body=include_body,
-            readiness_summaries=resolved_readiness_summaries,
-            readiness_reports=resolved_readiness_reports,
-            real100_dir=resolved_real100_dir,
-            page_metadata_index_dir=resolved_page_metadata_index_dir,
-            apply_queue_plan=apply_queue_plan,
-            repo_root=repo_root,
-        ),
+        next_command=next_command,
         repo_root=repo_root,
     )
     out = _default_output(out, DEFAULT_CONTINUE_LOOP, "continue_loop.md", repo_root=repo_root)

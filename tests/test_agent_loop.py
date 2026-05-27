@@ -1014,7 +1014,10 @@ def test_continue_loop_advances_pr_corpus_to_queue_plan_and_loop_state(tmp_path:
     assert out == repo / "reports" / "agent_loop" / "continue_loop.md"
     assert "Queue/plan application: `applied`" in rendered
     assert "PR corpus planning command" in rendered
-    assert "python3 scripts/agent_loop.py continue-loop\n" in rendered
+    assert (
+        "python3 scripts/agent_loop.py preflight --task T-2026-1000 --from-git --write-prompts"
+        in rendered
+    )
     assert "loop-state --from-git" not in rendered
     assert (repo / "reports" / "agent_loop" / "batch_plan.json").exists()
     assert (repo / "reports" / "agent_loop" / "role_dispatch.md").exists()
@@ -1151,6 +1154,11 @@ def test_continue_loop_skips_applying_existing_queued_candidate(tmp_path: Path) 
     queue = queue_path.read_text(encoding="utf-8")
     assert "Queue/plan application: `skipped-existing-task`" in rendered
     assert "Task id: `T-2026-0002`" in rendered
+    assert (
+        "python3 scripts/agent_loop.py preflight --task T-2026-0002 --from-git --write-prompts"
+        in rendered
+    )
+    assert "python3 scripts/agent_loop.py continue-loop --real100-dir reports/real100" not in rendered
     assert queue.count("Use multi-chunk evidence analysis for the next retrieval follow-up") == 2
 
 
