@@ -10,7 +10,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
-from typing import Any
+from typing import Any, Mapping
 
 import yaml
 
@@ -56,6 +56,25 @@ DEFAULT_ABLATION_RUNS = [
         "pipeline": DEFAULT_CLI_PIPELINE_NAME,
     }
 ]
+RUN_ENVIRONMENT_MODES = {"offline", "online"}
+RUN_PAYLOAD_CLASSES = {
+    "none",
+    "aggregate-only",
+    "metadata-only",
+    "public-fixture",
+    "private-raw",
+}
+RUN_EGRESS_MODES = {"none", "metadata-only", "public-only", "private-raw"}
+LOCAL_PROVIDER_VALUES = {"local", "none", "stub", "offline", "unknown"}
+ABSOLUTE_LOCAL_PATH_RE = re.compile(
+    r"(?<![A-Za-z0-9_-])(?:/Users|/private|/var/folders|/Volumes)/[^\s)`'\"]+"
+)
+PRIVATE_INLINE_VALUE_RE = re.compile(
+    r"\b(?P<label>(?:raw\s+)?(?:question|answer|evidence)|doc[_ -]?id|"
+    r"chunk[_ -]?id|file\s*name|filename)\b"
+    r"\s*[:=]\s*(?P<value>[^\n;,]+)",
+    re.IGNORECASE,
+)
 
 
 def _git(*args: str) -> str:
@@ -75,6 +94,7 @@ def _git(*args: str) -> str:
 def compute_run_manifest(
     config_path: Path,
     index: dict[str, Any] | None = None,
+    run_environment: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build the run_manifest block pinned to git commit + config bytes + UTC time.
 
@@ -105,6 +125,7 @@ def compute_run_manifest(
     chunker_version = chunking_meta.get("chunker_version")
     if not chunker_version and chunking_strategy:
         chunker_version = f"chunker.{chunking_strategy}.v1"
+    environment_block = build_run_environment_manifest(run_environment)
     return {
         "git_commit": commit,
         "git_dirty": dirty,
@@ -119,7 +140,86 @@ def compute_run_manifest(
         "chunker_version": chunker_version,
         "chunk_max_chars": chunking_meta.get("max_chars"),
         "chunk_overlap_sentences": chunking_meta.get("overlap_sentences"),
+        **environment_block,
     }
+
+
+def build_run_environment_manifest(run_environment: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """Return the ADR 0079 offline/online execution provenance block.
+
+    The block is intentionally scalar and aggregate-only. It records execution
+    assumptions, not raw prompts, answers, evidence, case IDs, filenames, or
+    local paths.
+    """
+    source = dict(run_environment or {})
+    mode = _manifest_choice(
+        os.environ.get("BIDMATE_EVAL_ENVIRONMENT") or source.get("mode"),
+        default="offline",
+        choices=RUN_ENVIRONMENT_MODES,
+    )
+    provider = _manifest_scalar(
+        os.environ.get("BIDMATE_EVAL_PROVIDER") or source.get("provider"),
+        default="local" if mode == "offline" else "unknown",
+    )
+    model = _manifest_scalar(
+        os.environ.get("BIDMATE_EVAL_MODEL") or source.get("model"),
+        default="unknown",
+    )
+    judge_backend = _manifest_scalar(
+        os.environ.get("BIDMATE_EVAL_JUDGE_BACKEND") or source.get("judge_backend"),
+        default="unknown",
+    )
+    hardware = _manifest_scalar(
+        os.environ.get("BIDMATE_EVAL_HARDWARE") or source.get("hardware"),
+        default="unknown",
+    )
+    payload_class = _manifest_choice(
+        os.environ.get("BIDMATE_EVAL_PAYLOAD_CLASS") or source.get("payload_class"),
+        default="none",
+        choices=RUN_PAYLOAD_CLASSES,
+    )
+    egress_mode = _manifest_choice(
+        os.environ.get("BIDMATE_EVAL_PRIVATE_DATA_EGRESS")
+        or source.get("private_data_egress"),
+        default="none",
+        choices=RUN_EGRESS_MODES,
+    )
+    return {
+        "environment": {
+            "mode": mode,
+            "network": "closed" if mode == "offline" else "non-closed",
+            "external_api_allowed": mode == "online",
+            "external_api_used": provider.lower() not in LOCAL_PROVIDER_VALUES,
+            "hardware": hardware,
+        },
+        "model": {
+            "provider": provider,
+            "model": model,
+            "judge_backend": judge_backend,
+        },
+        "payload": {
+            "payload_class": payload_class,
+            "private_data_egress": "none" if mode == "offline" else egress_mode,
+        },
+        "privacy": {
+            "raw_private_content_committed": False,
+            "exact_local_paths_committed": False,
+        },
+    }
+
+
+def _manifest_choice(value: Any, *, default: str, choices: set[str]) -> str:
+    cleaned = _manifest_scalar(value, default=default).lower()
+    return cleaned if cleaned in choices else default
+
+
+def _manifest_scalar(value: Any, *, default: str) -> str:
+    text = str(value if value is not None else default).strip()
+    if not text:
+        text = default
+    text = ABSOLUTE_LOCAL_PATH_RE.sub("[redacted-local-path]", text)
+    text = PRIVATE_INLINE_VALUE_RE.sub(lambda match: f"{match.group('label')}: [redacted-private-value]", text)
+    return text or default
 
 
 def parse_args() -> argparse.Namespace:
@@ -1585,7 +1685,13 @@ def main() -> int:
     summary = {
         "mode": "rag",
         "provenance": build_provenance(),
-        "run_manifest": compute_run_manifest(config_path, index),
+        "run_manifest": compute_run_manifest(
+            config_path,
+            index,
+            config.get("run_environment")
+            if isinstance(config.get("run_environment"), dict)
+            else None,
+        ),
         "config": args.config,
         "index_dir": args.index_dir,
         "index_citation_metadata_coverage": index_citation_metadata_coverage(index),

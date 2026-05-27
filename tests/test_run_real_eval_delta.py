@@ -381,12 +381,36 @@ class ExtractAggregateTest(unittest.TestCase):
                 "config_path": "/Users/hskim/private/real_config.local.yaml",
                 "config_sha256": "0123456789abcdef",
                 "generated_at": "2026-05-11T10:30:00Z",
+                "environment": {
+                    "mode": "online",
+                    "network": "non-closed",
+                    "external_api_allowed": True,
+                    "external_api_used": True,
+                    "hardware": "/Users/hskim/private/gpu-host",
+                },
+                "model": {
+                    "provider": "openai",
+                    "model": "gpt-fixture",
+                    "judge_backend": "external-judge",
+                },
+                "payload": {
+                    "payload_class": "private-raw",
+                    "private_data_egress": "private-raw",
+                },
+                "privacy": {
+                    "raw_private_content_committed": False,
+                    "exact_local_paths_committed": False,
+                },
             },
         }
         agg = extract_aggregate(summary)
         manifest = agg["run_manifest"]
         self.assertEqual("abc123def456", manifest["git_commit"])
         self.assertEqual("0123456789abcdef", manifest["config_sha256"])
+        self.assertEqual("online", manifest["environment"]["mode"])
+        self.assertEqual("[redacted-local-path]", manifest["environment"]["hardware"])
+        self.assertEqual("private-raw", manifest["payload"]["private_data_egress"])
+        self.assertFalse(manifest["privacy"]["raw_private_content_committed"])
         self.assertNotIn("config_path", manifest)
         # The dropped path should not appear anywhere in the serialized output.
         self.assertNotIn("hskim", json.dumps(agg))

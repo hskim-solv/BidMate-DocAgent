@@ -27,10 +27,11 @@ PR이 생기면 각 task에 링크를 추가한다. 예제 task는 `tasks/exampl
 | 14 | `T-2026-0014` | `done` | Maintainer -> Reviewer | merged in PR #1532. |
 | 15 | `T-2026-0015` | `done` | Maintainer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | merged in PR #1536. |
 | 16 | `T-2026-0016` | `review` | Maintainer -> Reviewer | overlap preflight implemented; PR #1543. |
-| 17 | `T-2026-0018` | `review` | Maintainer -> Reviewer | issue #1547 implemented; draft PR #1548. |
-| 18 | `T-2026-0019` | `review` | Maintainer -> CI Reviewer -> Reviewer | local implementation ready on issue #1549 branch. |
-| 19 | `T-2026-0020` | `review` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1544; v0 metric-suite report implementation ready for review. |
-| 20 | `T-2026-0021` | `review` | Maintainer -> CI Reviewer -> Reviewer | issue #1551 implemented; draft PR #1552. |
+| 17 | `T-2026-0017` | `review` | Maintainer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | v0-b manifest automation ready for review; PR #1545. |
+| 18 | `T-2026-0018` | `review` | Maintainer -> Reviewer | issue #1547 implemented; draft PR #1548. |
+| 19 | `T-2026-0019` | `review` | Maintainer -> CI Reviewer -> Reviewer | local implementation ready on issue #1549 branch. |
+| 20 | `T-2026-0020` | `review` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1544; v0 metric-suite report implementation ready for review. |
+| 21 | `T-2026-0021` | `review` | Maintainer -> CI Reviewer -> Reviewer | issue #1551 implemented; draft PR #1552. |
 
 ## Examples
 
@@ -122,6 +123,91 @@ make check-branch
 - Results: passed
 - Next safe command: git diff --stat
 - Reviewer focus: false-clear risk, report-only behavior, GitHub/Git failures fail closed.
+```
+
+## T-2026-0017 — v0-b offline/online run manifest
+
+- ID: T-2026-0017
+- Title: v0-b offline/online run manifest
+- Status: review
+- Owner role: Maintainer -> Benchmark Auditor -> Privacy Auditor -> Reviewer
+- Created: 2026-05-27
+- Last updated: 2026-05-27
+
+### Goal
+
+Close the v0-b milestone from the agent-gated RFP eval loop by automating a
+privacy-safe offline/online run manifest for eval provenance.
+
+### Scope
+
+- Add offline/online environment sections to `eval/run_eval.py` `run_manifest`.
+- Add `scripts/agent_loop.py eval-run-manifest` for standalone handoff artifacts.
+- Preserve only safe scalar manifest sections in real-eval aggregate extraction.
+- Document the schema and link it from v0-b docs.
+
+### Non-Goals
+
+- Do not run private real-eval.
+- Do not change retrieval, scoring, ranking, or answer behavior.
+- Do not make a benchmark, metric, regression, or RFP quality claim.
+
+### Acceptance Criteria
+
+- [x] Offline and online manifest examples share one section schema.
+- [x] Offline manifests force `private_data_egress=none`.
+- [x] Online manifests record provider/model/payload class/egress mode.
+- [x] Privacy tests prevent raw private text and exact local path leakage.
+- [x] Existing run manifest reproducibility fields remain present.
+
+### Validation Commands
+
+```bash
+python3 -m pytest tests/test_agent_loop.py tests/test_run_manifest_versioning_regression.py tests/test_eval_metrics.py tests/test_run_real_eval_delta.py -q
+python3 -m py_compile scripts/agent_loop.py eval/run_eval.py scripts/run_real_eval_delta.py
+python3 scripts/agent_loop.py eval-run-manifest --mode offline --payload-class none --egress-mode none --provider local --model local-judge-v1 --judge-backend local-llm
+python3 scripts/check_doc_links.py --check-all --paths docs/evaluation/agent-gated-rfp-eval-loop.md docs/evaluation/offline-online-run-manifest.md docs/evaluation/v0-metric-suite-inventory.md docs/plans/T-2026-0017-v0-b-offline-online-run-manifest.md tasks/queue.md
+git diff --check
+make check-branch
+```
+
+### Evidence Required
+
+- Focused pytest and py_compile output.
+- CLI-generated manifest artifact.
+- Targeted doc link check.
+- Branch/issue convention check.
+
+### Failure Conditions
+
+- Stop if committed manifest output includes raw private question, answer,
+  evidence, `doc_id`, `chunk_id`, filename, or exact local path.
+- Stop if wording implies performance improvement or private real-eval success.
+
+### Related Plan / Issue / PR Links
+
+- Plan: [`docs/plans/T-2026-0017-v0-b-offline-online-run-manifest.md`](../docs/plans/T-2026-0017-v0-b-offline-online-run-manifest.md)
+- Issue: [#1542](https://github.com/hskim-solv/BidMate-DocAgent/issues/1542)
+- PR: [#1545](https://github.com/hskim-solv/BidMate-DocAgent/pull/1545)
+
+### Handoff Notes
+
+```markdown
+## Session Handoff — 2026-05-27 KST
+
+- Role: Maintainer
+- Lifecycle stage: review
+- Branch / worktree: chore/issue-1542-offline-online-manifest / /Users/hskim/.codex/worktrees/1542/BidMate-DocAgent
+- Issue / PR: #1542 / #1545
+- Task: T-2026-0017
+- Current status: implementation validated; draft PR #1545 open.
+- Files touched: eval/run_eval.py, scripts/agent_loop.py, scripts/run_real_eval_delta.py, docs/evaluation/offline-online-run-manifest.md, docs/evaluation/agent-gated-rfp-eval-loop.md, docs/evaluation/v0-metric-suite-inventory.md, docs/plans/T-2026-0017-v0-b-offline-online-run-manifest.md, tasks/queue.md, tests/test_agent_loop.py, tests/test_eval_metrics.py, tests/test_run_manifest_versioning_regression.py, tests/test_run_real_eval_delta.py
+- Decisions made: use additive `run_manifest` sections plus standalone `eval-run-manifest`; keep private real-eval unrun and no performance claim.
+- Eval surface: provenance plumbing only; no metric claim.
+- Commands run: python3 -m pytest tests/test_agent_loop.py tests/test_run_manifest_versioning_regression.py tests/test_eval_metrics.py tests/test_run_real_eval_delta.py -q; python3 -m py_compile scripts/agent_loop.py eval/run_eval.py scripts/run_real_eval_delta.py; python3 scripts/agent_loop.py eval-run-manifest --mode offline --payload-class none --egress-mode none --provider local --model local-judge-v1 --judge-backend local-llm; python3 scripts/check_doc_links.py --check-all --paths docs/evaluation/agent-gated-rfp-eval-loop.md docs/evaluation/offline-online-run-manifest.md docs/evaluation/v0-metric-suite-inventory.md docs/plans/T-2026-0017-v0-b-offline-online-run-manifest.md tasks/queue.md; git diff --check; make check-branch; python3 scripts/_governance.py --check-eval-privacy.
+- Results: passed.
+- Next safe command: git diff --stat
+- Reviewer focus: privacy-safe scalar whitelist, backward-compatible manifest fields, no performance claim.
 ```
 
 ## T-2026-0018 — Codex-runnable auto-ship

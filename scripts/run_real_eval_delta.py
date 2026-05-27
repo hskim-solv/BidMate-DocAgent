@@ -32,6 +32,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -274,8 +275,29 @@ SAFE_RETRY_EFFECTIVENESS_CI_KEYS = ("recovery_rate", "residual_failure_rate")
 
 # Sub-keys whitelisted from `run_manifest`. ``config_path`` is dropped
 # (filesystem layout is not committable); ``config_sha256`` is the
-# canonical config identifier.
+# canonical config identifier. Nested offline/online provenance fields are
+# scalar-only and contain no case payload or exact local path.
 SAFE_RUN_MANIFEST_KEYS = ("git_commit", "git_dirty", "config_sha256", "generated_at")
+SAFE_RUN_MANIFEST_NESTED_KEYS = {
+    "environment": (
+        "mode",
+        "network",
+        "external_api_allowed",
+        "external_api_used",
+        "hardware",
+    ),
+    "model": ("provider", "model", "judge_backend"),
+    "payload": ("payload_class", "private_data_egress"),
+    "privacy": ("raw_private_content_committed", "exact_local_paths_committed"),
+}
+ABSOLUTE_LOCAL_PATH_RE = re.compile(
+    r"(?<![A-Za-z0-9_-])(?:/Users|/private|/var/folders|/Volumes)/[^\s)`'\"]+"
+)
+PRIVATE_INLINE_VALUE_RE = re.compile(
+    r"\b(?:(?:raw\s+)?(?:question|answer|evidence)|doc[_ -]?id|"
+    r"chunk[_ -]?id|file\s*name|filename)\s*[:=]\s*[^\n;,]+",
+    re.IGNORECASE,
+)
 
 # Per-slice subkeys extracted from `by_query_type`.
 SAFE_SLICE_METRICS = (
@@ -538,12 +560,24 @@ def extract_aggregate(summary: dict[str, Any]) -> dict[str, Any]:
                 out[key] = ci_out
         elif key == "run_manifest" and isinstance(value, dict):
             # Drop config_path (filesystem layout, not committable).
-            # Keep git_commit / git_dirty / config_sha256 / generated_at.
-            out[key] = {
-                sub: value.get(sub)
+            # Keep reproducibility fields and scalar offline/online provenance.
+            manifest_out = {
+                sub: _safe_run_manifest_value(value.get(sub))
                 for sub in SAFE_RUN_MANIFEST_KEYS
                 if value.get(sub) is not None
             }
+            for section, allowed in SAFE_RUN_MANIFEST_NESTED_KEYS.items():
+                raw_section = value.get(section)
+                if not isinstance(raw_section, dict):
+                    continue
+                section_out = {
+                    sub: _safe_run_manifest_value(raw_section.get(sub))
+                    for sub in allowed
+                    if raw_section.get(sub) is not None
+                }
+                if section_out:
+                    manifest_out[section] = section_out
+            out[key] = manifest_out
         elif key == "judge_ragas" and isinstance(value, dict):
             ragas: dict[str, Any] = {}
             for metric in SAFE_JUDGE_RAGAS_METRIC_KEYS:
@@ -726,6 +760,17 @@ def extract_aggregate(summary: dict[str, Any]) -> dict[str, Any]:
 
     _assert_no_forbidden(out)
     return out
+
+
+def _safe_run_manifest_value(value: Any) -> Any:
+    if isinstance(value, (bool, int, float)) or value is None:
+        return value
+    text = str(value)
+    if ABSOLUTE_LOCAL_PATH_RE.search(text):
+        return "[redacted-local-path]"
+    if PRIVATE_INLINE_VALUE_RE.search(text):
+        return "[redacted-private-value]"
+    return text
 
 
 def _assert_no_forbidden(obj: Any, path: str = "") -> None:
