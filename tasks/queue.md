@@ -36,6 +36,7 @@ PR이 생기면 각 task에 링크를 추가한다. 예제 task는 `tasks/exampl
 | 23 | `T-2026-0023` | `review` | Planner -> Implementer -> Benchmark Auditor -> Privacy Auditor -> Deep Reviewer -> Reviewer | issue #1569; PR #1570. |
 | 24 | `T-2026-0024` | `review` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1573; page metadata recovery patch implemented and local page-aware re-index audit passes. |
 | 25 | `T-2026-0025` | `review` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1575; named MiniLM target and baseline-surface wording implemented. |
+| 26 | `T-2026-0026` | `todo` | Planner -> Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1580; Chroma vector-store baseline separated from embedding-model baselines. |
 
 ## Examples
 
@@ -2276,3 +2277,97 @@ extraction preserves embedding provenance without local model path leakage.
   backend/model naming.
 - Eval surface: workflow/docs only; no retrieval or eval runtime behavior change
   except new opt-in target.
+
+## T-2026-0026 — Add Chroma vector-store baseline with parity guard
+
+- ID: T-2026-0026
+- Title: Add Chroma vector-store baseline with parity guard
+- Status: todo
+- Owner role: Planner -> Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer
+- Created: 2026-05-27
+- Last updated: 2026-05-27
+
+### Goal
+
+Add Chroma as an explicit vector DB backend baseline without mixing vector DB
+effects with embedding-model effects.
+
+### Context
+
+- Issue: #1580
+- Current `BIDMATE_INDEX_BACKEND` support is `memory` and `qdrant`.
+- `memory` and `qdrant` are intended to be ranking bit-identical; vector DB
+  comparison should mainly be latency/scale/ops unless measured ranking drift
+  is explicitly documented.
+- Chroma is not implemented today.
+- This is separate from MiniLM/BGE-M3 work: embedding backend/model and vector
+  DB backend must remain independent provenance axes.
+
+### Scope
+
+- Add a `ChromaVectorStore` adapter behind `BIDMATE_INDEX_BACKEND=chroma`.
+- Document Chroma install, connection, and persistence settings.
+- Add memory-vs-Chroma ranking parity tests, including tie-break behavior.
+- Add a reproducible Chroma baseline command or make target.
+- Record vector DB backend provenance separately from embedding provenance in
+  eval/report artifacts.
+
+### Non-Goals
+
+- Do not switch the canonical private real-eval baseline by default.
+- Do not combine Chroma with MiniLM/BGE-M3 embedding changes in one PR.
+- Do not claim quality improvement unless paired same-embedding same-corpus
+  deltas prove it.
+
+### Acceptance Criteria
+
+- [ ] `BIDMATE_INDEX_BACKEND=chroma` builds/loads through the existing
+  `VectorStore` protocol.
+- [ ] Memory and Chroma rankings are bit-identical in tests, or ranking drift is
+  measured and documented as a backend effect.
+- [ ] Chroma eval path records vector DB backend provenance separately from
+  embedding backend/model provenance.
+- [ ] Docs explain when Chroma is a latency/ops baseline versus a quality
+  changing surface.
+
+### Validation Commands
+
+```bash
+python3 -m pytest -q tests/test_vector_store_chroma.py
+python3 -m pytest -q tests/test_vector_store_qdrant.py tests/test_qdrant_integration.py -m "not qdrant_integration"
+python3 scripts/check_doc_links.py --check-all --paths tasks/queue.md docs/plans/T-2026-0026-chroma-vector-baseline.md
+git diff --check
+make check-branch
+```
+
+### Evidence Required
+
+- Parity test output or explicit ranking-drift report.
+- Backend provenance sample that separates `embedding_backend/model` from
+  vector DB backend.
+- No private raw artifact or exact local path in committed reports.
+
+### Related Plan / Issue / PR Links
+
+- Plan: [`docs/plans/T-2026-0026-chroma-vector-baseline.md`](../docs/plans/T-2026-0026-chroma-vector-baseline.md)
+- Issue: [#1580](https://github.com/hskim-solv/BidMate-DocAgent/issues/1580)
+- PR: TBD
+
+### Session Handoff
+
+- Role: Planner
+- Lifecycle stage: todo
+- Branch / worktree: `docs/issue-1580-chroma-vector-baseline-plan` / Codex worktree
+- Current status: issue created and queue/plan entry captured; implementation
+  not started.
+- Files touched: `docs/plans/T-2026-0026-chroma-vector-baseline.md`,
+  `tasks/queue.md`.
+- Commands run: `python3 scripts/check_doc_links.py --check-all --paths tasks/queue.md docs/plans/T-2026-0026-chroma-vector-baseline.md`; `git diff --check`; `make check-branch`.
+- Results: Chroma baseline is separated as follow-up issue #1580.
+- Blockers: none known.
+- Open risks: Chroma may not be ranking bit-identical to the memory backend;
+  dependency/install cost may affect CI and local developer setup.
+- Next action: implement Chroma adapter in a separate issue-linked PR.
+- Next safe command: `git status --short`
+- Reviewer focus: backend axis separation, parity guard, no mixed embedding
+  claim.
