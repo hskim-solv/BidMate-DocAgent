@@ -40,7 +40,7 @@
 
 # Auto-ship pipeline (Stop hook driven). See scripts/claude-hooks/stop-ship.sh
 # and the plan at /Users/hskim/.claude/plans/prci-synchronous-newell.md.
-.PHONY: ship-start ship-arm ship-disarm ship-status ship-review-gate worktree-cleanup-dry-run worktree-cleanup
+.PHONY: ship-start ship-arm ship-run codex-ship ship-disarm ship-status ship-review-gate worktree-cleanup-dry-run worktree-cleanup
 
 # Self-review (quarterly meta-feedback loop). Combines 4-axis portfolio
 # rubric + 5-axis Claude collaboration rubric. See SKILL at
@@ -1108,6 +1108,7 @@ clean:
 #   make ship-arm                       # 2h TTL, auto §5b
 #   make ship-arm TTL=30m REAL_EVAL=skip
 #   make ship-arm DRY_RUN=1             # safe end-to-end test
+#   make ship-run DRY_RUN=1             # arm + immediately invoke dispatcher
 #   make ship-disarm                    # immediate kill (tier 1)
 #   make ship-status                    # human-readable arm state
 # ---------------------------------------------------------------------------
@@ -1118,6 +1119,7 @@ DRAFT ?= false
 DRY_RUN ?= 0
 CROSS_OWNER ?=
 STACKED ?=
+USE_EXISTING_ARM ?= 0
 TYPE ?= chore
 SLUG ?=
 LABELS ?=
@@ -1142,6 +1144,18 @@ ship-arm:
 	  --dry-run "$(DRY_RUN)" \
 	  --cross-owner "$(CROSS_OWNER)" \
 	  --stacked "$(STACKED)"
+
+ship-run:
+	@$(PYTHON) scripts/claude-hooks/_ship_run.py \
+	  --ttl "$(TTL)" \
+	  --real-eval "$(REAL_EVAL)" \
+	  --draft "$(DRAFT)" \
+	  --dry-run "$(DRY_RUN)" \
+	  --cross-owner "$(CROSS_OWNER)" \
+	  --stacked "$(STACKED)" \
+	  --use-existing-arm "$(USE_EXISTING_ARM)"
+
+codex-ship: ship-run
 
 ship-disarm:
 	@rm -f .claude/.ship-armed .claude/.ship-running.pid

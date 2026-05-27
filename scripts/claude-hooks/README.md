@@ -55,6 +55,7 @@ Claude Code 의 PreToolUse / Stop / UserPromptSubmit 훅 모음. `.claude/settin
 - `_ship_lock_check.py` — ship 표면 lock 검사 (PR6 후 본격 활용 예정)
 - `_ship_private_preserve.py` — auto-ship private-path 필터가 제외한 untracked 산출물을 canonical local checkout 으로 이동
 - `_ship_pr_body.py` — stop-ship 의 PR body 빌드 헬퍼
+- `_ship_run.py` — Codex/non-Claude 세션용 `make ship-run` direct runner
 
 ## Telemetry 포맷
 

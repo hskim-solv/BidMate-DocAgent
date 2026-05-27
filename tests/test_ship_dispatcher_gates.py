@@ -10,9 +10,9 @@ Each test creates a throwaway git repo in a tmpdir, drops a synthetic
 The "no arm" path is also timed to enforce the <100ms no-op SLA — the
 Stop hook fires on every Claude reply and must not impose latency.
 
-We do NOT test stages 1-5 here (they need a real remote, gh, and CI).
-Those are exercised via the dry-run + single-PR live test described in
-the plan's Verification section.
+Most tests stop at Gate 0. The existing-PR resume regression intentionally
+continues through dry-run stages 1-5 with fake `gh` and helper scripts so it
+can prove a clean branch with an open PR no longer no-ops before CI/review.
 """
 
 from __future__ import annotations
@@ -78,11 +78,16 @@ def _arm(repo: Path, *, branch: str, ttl_seconds: int = 7200, **overrides):
     (repo / ".claude" / ".ship-armed").write_text(json.dumps(state) + "\n")
 
 
-def _run_dispatcher(repo: Path, timeout: float = 10) -> subprocess.CompletedProcess:
+def _run_dispatcher(
+    repo: Path,
+    timeout: float = 10,
+    env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess:
     return subprocess.run(
         ["bash", str(DISPATCHER)],
         cwd=repo, input="", capture_output=True, text=True,
         timeout=timeout,
+        env={**os.environ, **(env or {})},
     )
 
 
@@ -167,6 +172,45 @@ def test_clean_tree_silent_exit(fake_repo):
     # not a failure).
     assert (fake_repo / ".claude" / ".ship-armed").exists()
     assert "nothing to ship" in r.stderr.lower()
+
+
+def test_clean_tree_with_existing_pr_continues_dry_run(fake_repo):
+    _git("checkout", "-b", "feat/issue-9999-foo", cwd=fake_repo)
+
+    scripts = fake_repo / "scripts"
+    scripts.mkdir()
+    (scripts / "check_branch_and_issue.py").write_text(
+        "import sys\nsys.exit(0)\n",
+        encoding="utf-8",
+    )
+    _git("add", "scripts/check_branch_and_issue.py", cwd=fake_repo)
+    _git("commit", "-qm", "test helper", cwd=fake_repo)
+    _arm(fake_repo, branch="feat/issue-9999-foo", dry_run=1)
+
+    bin_dir = fake_repo.parent / "fake-gh-bin"
+    bin_dir.mkdir()
+    gh = bin_dir / "gh"
+    gh.write_text(
+        "#!/usr/bin/env bash\n"
+        "if [[ \"$1\" == \"pr\" && \"$2\" == \"list\" ]]; then\n"
+        "  echo 123\n"
+        "  exit 0\n"
+        "fi\n"
+        "echo \"unexpected gh call: $*\" >&2\n"
+        "exit 2\n",
+        encoding="utf-8",
+    )
+    gh.chmod(0o755)
+
+    r = _run_dispatcher(
+        fake_repo,
+        env={"PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}"},
+    )
+    assert r.returncode == 0
+    assert "existing PR #123" in r.stderr
+    assert "continuing" in r.stderr
+    assert "Ship complete" in r.stderr
+    assert not (fake_repo / ".claude" / ".ship-armed").exists()
 
 
 # ---- gate 0: live PID guard ----
