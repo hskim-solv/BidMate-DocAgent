@@ -2851,6 +2851,174 @@ def test_active_loop_cli_accepts_expanded_eight_and_rejects_unknown_topology() -
         parser.parse_args(["active-loop", "--topology", "unknown-topology"])
 
 
+def _patch_active_loop_clear(monkeypatch) -> None:
+    monkeypatch.setattr(agent_loop.subprocess, "run", lambda cmd, **kwargs: subprocess.CompletedProcess(cmd, 0, stdout="", stderr=""))
+    monkeypatch.setattr(agent_loop, "_current_branch", lambda repo_root: "chore/issue-9999-active-loop")
+    monkeypatch.setattr(agent_loop, "build_overlap_preflight", lambda issue, branch, repo_root: _clear_overlap_report(issue, branch))
+    monkeypatch.setattr(agent_loop, "audit_privacy_output", lambda *args, **kwargs: [])
+
+
+def test_active_loop_registry_v2_carries_lanes_gate_policy_and_agent_mix(monkeypatch, tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    _patch_active_loop_clear(monkeypatch)
+
+    result = agent_loop.write_active_loop(
+        topology="expanded-eight",
+        changed_files=["docs/operations/active-agent-loop.md"],
+        repo_root=repo,
+    )
+
+    registry = json.loads(result.registry_path.read_text(encoding="utf-8"))
+    leases = json.loads(result.leases_path.read_text(encoding="utf-8"))
+    agent_mix = json.loads((repo / "reports" / "agent_loop" / "active" / "agent_mix.json").read_text(encoding="utf-8"))
+
+    assert registry["schema_version"] == agent_loop.ACTIVE_REGISTRY_SCHEMA_VERSION == 2
+    assert registry["gate_policy"] == "conservative"
+    assert registry["agent_mix"]["target"] == {"claude": 5, "codex": 5}
+    assert registry["agent_mix"]["unit"] == "work_unit"
+    # Every session in every topology carries both agent lanes (dual-agent = lane policy).
+    for session in registry["sessions"]:
+        assert set(session["lanes"]) == {"claude", "codex"}
+        for agent in ("claude", "codex"):
+            assert session["lanes"][agent]["agent"] == agent
+            assert session["lanes"][agent]["wu_spent_rolling"] == 0
+    gates = {item["role"]: item["ship_gate"] for item in registry["sessions"]}
+    assert gates == {
+        "Orchestrator": "control-plane",
+        "Planner / Issue Triage": "non-blocking",
+        "Experiment Scout": "non-blocking",
+        "Implementer": "lease-owner",
+        "Reviewer": "blocking",
+        "Deep Reviewer": "blocking",
+        "CI / Regression Auditor": "blocking",
+        "Eval / Claim / Privacy Auditor": "blocking",
+    }
+    # Only the Implementer owns the write lease.
+    owners = [item["session_id"] for item in registry["sessions"] if item["write_lease_owner"]]
+    assert owners == ["implementer"]
+    write_leases = [item for item in leases["leases"] if item.get("lease_type") == "write"]
+    assert len(write_leases) == 1
+    assert write_leases[0]["owner_session"] == "implementer"
+    assert write_leases[0]["active_agent"] is None
+    # The agent_mix ledger file is written with a zeroed rolling window.
+    assert agent_mix["policy"]["target"] == {"claude": 5, "codex": 5}
+    assert agent_mix["rolling"] == {"claude": 0, "codex": 0}
+    assert agent_mix["ledger"] == []
+
+
+def test_active_loop_agent_mix_flag_overrides_target(monkeypatch, tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    _patch_active_loop_clear(monkeypatch)
+
+    result = agent_loop.write_active_loop(
+        changed_files=["docs/operations/active-agent-loop.md"],
+        agent_mix=agent_loop._parse_agent_mix("claude=7,codex=3"),
+        repo_root=repo,
+    )
+
+    registry = json.loads(result.registry_path.read_text(encoding="utf-8"))
+    agent_mix = json.loads((repo / "reports" / "agent_loop" / "active" / "agent_mix.json").read_text(encoding="utf-8"))
+
+    assert registry["agent_mix"]["target"] == {"claude": 7, "codex": 3}
+    assert agent_mix["policy"]["target"] == {"claude": 7, "codex": 3}
+
+
+def test_active_loop_four_role_v2_shape_is_unchanged(monkeypatch, tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    _patch_active_loop_clear(monkeypatch)
+
+    result = agent_loop.write_active_loop(
+        changed_files=["docs/operations/active-agent-loop.md"],
+        repo_root=repo,
+    )
+
+    registry = json.loads(result.registry_path.read_text(encoding="utf-8"))
+
+    assert registry["topology"] == "four-role"
+    assert {item["role"] for item in registry["sessions"]} == {
+        "Orchestrator",
+        "Implementer",
+        "Reviewer",
+        "CI/Eval Auditor",
+    }
+    gates = {item["role"]: item["ship_gate"] for item in registry["sessions"]}
+    assert gates == {
+        "Orchestrator": "control-plane",
+        "Implementer": "lease-owner",
+        "Reviewer": "blocking",
+        "CI/Eval Auditor": "blocking",
+    }
+    assert all(set(item["lanes"]) == {"claude", "codex"} for item in registry["sessions"])
+    assert [item["session_id"] for item in registry["sessions"] if item["write_lease_owner"]] == ["implementer"]
+
+
+def test_session_heartbeat_agent_lane_updates_single_lane(tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+
+    _, _, payload = agent_loop.write_session_heartbeat(
+        session_id="reviewer",
+        role="Reviewer",
+        status="approved",
+        agent="codex",
+        task_id="T-2026-9999",
+        repo_root=repo,
+    )
+
+    assert payload["schema_version"] == 2
+    reviewer = next(item for item in payload["sessions"] if item["session_id"] == "reviewer")
+    assert reviewer["lanes"]["codex"]["status"] == "approved"
+    assert reviewer["lanes"]["codex"]["current_turn"] == "T-2026-9999"
+    assert reviewer["lanes"]["claude"]["status"] == "idle"
+    assert reviewer["ship_gate"] == "blocking"
+    assert reviewer["write_lease_owner"] is False
+
+
+def test_load_active_registry_lifts_v1_to_v2(tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    path = _write_active_registry(
+        repo,
+        topology="four-role",
+        sessions=[
+            {"session_id": "implementer", "role": "Implementer", "status": "running", "last_heartbeat": "2999-01-01T00:00:00Z"},
+            {"session_id": "reviewer", "role": "Reviewer", "status": "idle", "last_heartbeat": "2999-01-01T00:00:00Z"},
+        ],
+    )
+
+    lifted = agent_loop._load_active_registry(path)
+
+    assert lifted["schema_version"] == 2
+    assert lifted["gate_policy"] == "conservative"
+    assert isinstance(lifted["agent_mix"], dict)
+    by_id = {item["session_id"]: item for item in lifted["sessions"]}
+    assert set(by_id["implementer"]["lanes"]) == {"claude", "codex"}
+    assert by_id["implementer"]["write_lease_owner"] is True
+    assert by_id["implementer"]["ship_gate"] == "lease-owner"
+    assert by_id["reviewer"]["write_lease_owner"] is False
+    assert by_id["reviewer"]["ship_gate"] == "blocking"
+
+
+def test_parse_agent_mix_parses_and_rejects() -> None:
+    assert agent_loop._parse_agent_mix(None)["target"] == {"claude": 5, "codex": 5}
+    assert agent_loop._parse_agent_mix("claude=8,codex=2")["target"] == {"claude": 8, "codex": 2}
+    assert agent_loop._parse_agent_mix("codex=4")["target"] == {"claude": 5, "codex": 4}
+    for bad in ("claude=abc", "gpt=5", "claude=-1", "claude"):
+        with pytest.raises(ValueError):
+            agent_loop._parse_agent_mix(bad)
+
+
+def test_session_heartbeat_cli_accepts_agent_and_rejects_unknown() -> None:
+    parser = agent_loop.build_parser()
+
+    args = parser.parse_args(
+        ["session-heartbeat", "--session-id", "reviewer", "--role", "Reviewer", "--status", "approved", "--agent", "claude"]
+    )
+    assert args.agent == "claude"
+    with pytest.raises(SystemExit):
+        parser.parse_args(
+            ["session-heartbeat", "--session-id", "reviewer", "--role", "Reviewer", "--status", "approved", "--agent", "gpt"]
+        )
+
+
 def test_stop_ship_skips_remote_branch_delete_when_stacked_dependents_exist() -> None:
     text = (ROOT / "scripts" / "claude-hooks" / "stop-ship.sh").read_text(encoding="utf-8")
 

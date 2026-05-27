@@ -50,6 +50,12 @@ PR이 생기면 각 task에 링크를 추가한다. 예제 task는 `tasks/exampl
 | 37 | `T-2026-0037` | `backlog` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | P2; blocked on metadata coverage evidence from T-2026-0028. |
 | 38 | `T-2026-0038` | `backlog` | Planner -> Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | P2; blocked on small-to-big retrieval evidence from T-2026-0031. |
 | 39 | `T-2026-0039` | `backlog` | Planner -> Architect -> Benchmark Auditor -> Privacy Auditor -> Deep Reviewer -> Reviewer | P3; advanced architecture feasibility after P0/P1 evidence. |
+| 40 | `T-2026-0040` | `review` | Implementer -> Reviewer | issue #1588 PR1; active-loop registry v2 + per-session Claude/Codex lanes scaffold implemented; ready for review. |
+| 41 | `T-2026-0041` | `backlog` | Implementer -> Reviewer | issue #1588 PR2; read-only Claude/Codex lane adapters + WU accounting; blocked on T-2026-0040. |
+| 42 | `T-2026-0042` | `backlog` | Implementer -> Reviewer | issue #1588 PR3; patch-proposal + lease active_agent borrow + scratch worktree; re-confirm scope after Phase 1-2. |
+| 43 | `T-2026-0043` | `backlog` | Implementer -> Reviewer | issue #1588 PR4; mutating-writer + claimed-files enforcement hook; blocked on T-2026-0042. |
+| 44 | `T-2026-0044` | `backlog` | Implementer -> Deep Reviewer -> Reviewer | issue #1588 PR5; Orchestrator-only ship-executor + gate evidence (promote agent_loop.py to LOAD_BEARING); blocked on T-2026-0043. |
+| 45 | `T-2026-0045` | `backlog` | Implementer -> Reviewer | issue #1588 PR6; full active-agent-loop.md ops-doc rewrite; blocked on T-2026-0044. |
 
 ## Examples
 
@@ -3183,4 +3189,284 @@ make check-branch
 
 - Plan: TBD - create when the task starts.
 - Issue: TBD
+- PR: TBD
+
+## T-2026-0040 — Active-loop registry v2 + dual-agent lanes scaffold
+
+- ID: T-2026-0040
+- Title: Active-loop registry v2 + dual-agent lanes scaffold
+- Status: review
+- Priority: P1
+- Owner role: Implementer -> Reviewer
+- Created: 2026-05-27
+- Last updated: 2026-05-27
+
+### Goal
+
+Layer per-session Claude/Codex lanes onto the merged `four-role`/`expanded-eight`
+active-loop topologies via registry `schema_version: 2`, as a dual-agent **lane
+policy** (no new topology enum). Dry-run scaffold only.
+
+### Scope
+
+- `scripts/agent_loop.py`: per-session `lanes`/`write_lease_owner`/`ship_gate`,
+  top-level `gate_policy`/`agent_mix`, v1->v2 lift, `--agent-mix`, `--agent` lane
+  heartbeat, `agent_mix.json` ledger, topology-aware `active_loop.md`.
+- `tests/test_agent_loop.py`: pin v2 contract + four-role parity.
+- `docs/operations/active-agent-loop.md` + `docs/adr/0080-*.md`.
+
+### Non-Goals
+
+- No lane execution, no writes, no ship (Phase 2+).
+- No new topology enum; no `LOAD_BEARING_PATHS` change this phase.
+
+### Acceptance Criteria
+
+- [ ] expanded-eight dry-run: 8 sessions w/ claude+codex lanes; 1 Implementer
+  write lease (`lease_type:"write"`, `active_agent:null`).
+- [ ] registry `schema_version==2`, `gate_policy=="conservative"`, agent_mix
+  reflects `--agent-mix`; four-role behavior unchanged.
+- [ ] `tests/test_agent_loop.py` green; ADR 0080 verifies-key clean.
+
+### Validation Commands
+
+```bash
+python3 -m pytest tests/test_agent_loop.py -q
+python3 scripts/agent_loop.py active-loop --mode full-ship --topology expanded-eight --agent-mix claude=5,codex=5 --dry-run --from-git
+make check-branch
+```
+
+### Evidence Required
+
+- Test output (105 merged + new v2 tests pass) + v2 ledger shape.
+
+### Related Plan / Issue / PR Links
+
+- Plan: [`docs/plans/T-2026-0040-active-dual-agent-lanes.md`](../docs/plans/T-2026-0040-active-dual-agent-lanes.md)
+- Issue: [#1588](https://github.com/hskim-solv/BidMate-DocAgent/issues/1588)
+- PR: TBD
+
+## T-2026-0041 — Read-only Claude/Codex lane adapters + WU accounting
+
+- ID: T-2026-0041
+- Title: Read-only Claude/Codex lane adapters + WU accounting
+- Status: backlog
+- Priority: P1
+- Owner role: Implementer -> Reviewer
+- Created: 2026-05-27
+- Last updated: 2026-05-27
+
+### Goal
+
+Add `agent-turn` verb + flat-sibling `agent_loop_claude_turn.py` /
+`agent_loop_codex_turn.py` read-only adapters (review/analysis roles), plus Work
+Unit accounting (`agent-mix-report`, deterministic `choose_agent`).
+
+### Scope
+
+- Claude lane: `claude -p ... --permission-mode plan` + denylist; Codex lane:
+  reuse `adversarial-review` (ADR 0066) + `render_codex_review.py`.
+- Privacy scrub every artifact via `audit_privacy_output` (fail-closed).
+
+### Non-Goals
+
+- No writes/patches/ship (Phase 3+).
+
+### Acceptance Criteria
+
+- [ ] Read-only reviewer artifacts produced + privacy-clean; WU recorded per lane;
+  skew>threshold -> rebalance recommendation.
+
+### Validation Commands
+
+```bash
+python3 -m pytest tests/test_agent_loop.py -q
+python3 scripts/agent_loop.py agent-mix-report
+```
+
+### Evidence Required
+
+- Lane artifact + WU ledger; blocked-on T-2026-0040.
+
+### Related Plan / Issue / PR Links
+
+- Plan: TBD - create when the task starts.
+- Issue: [#1588](https://github.com/hskim-solv/BidMate-DocAgent/issues/1588)
+- PR: TBD
+
+## T-2026-0042 — Patch-proposal + lease active_agent borrow + scratch worktree
+
+- ID: T-2026-0042
+- Title: Patch-proposal + lease active_agent borrow + scratch worktree
+- Status: backlog
+- Priority: P2
+- Owner role: Implementer -> Reviewer
+- Created: 2026-05-27
+- Last updated: 2026-05-27
+
+### Goal
+
+Let a lane borrow the write lease `active_agent` (claude XOR codex) and produce a
+patch in a scratch worktree that the Orchestrator applies to integration.
+
+### Scope
+
+- Scratch worktree create/teardown; patch artifact; `git apply --check` -> apply.
+
+### Non-Goals
+
+- No direct mutation of integration branch by lanes; no ship.
+
+### Acceptance Criteria
+
+- [ ] `active_agent` is claude XOR codex (never both); patch applies cleanly.
+
+### Validation Commands
+
+```bash
+python3 -m pytest tests/test_agent_loop.py -q
+```
+
+### Evidence Required
+
+- Patch artifact + lease borrow trace. Re-confirm scope after Phase 1-2.
+
+### Related Plan / Issue / PR Links
+
+- Plan: TBD - create when the task starts.
+- Issue: [#1588](https://github.com/hskim-solv/BidMate-DocAgent/issues/1588)
+- PR: TBD
+
+## T-2026-0043 — Mutating-writer + claimed-files enforcement hook
+
+- ID: T-2026-0043
+- Title: Mutating-writer + claimed-files enforcement hook
+- Status: backlog
+- Priority: P2
+- Owner role: Implementer -> Reviewer
+- Created: 2026-05-27
+- Last updated: 2026-05-27
+
+### Goal
+
+Enable mutating turns inside claimed files only, enforced by extending
+`pretooluse-bash-guard.sh` + a claimed-files edit guard; Codex via wrapper +
+post-run `git diff` check.
+
+### Scope
+
+- Block push/merge/branch-del/ship when a lane env is active; block edits outside
+  `claimed_files`.
+
+### Non-Goals
+
+- No ship-executor (Phase 5).
+
+### Acceptance Criteria
+
+- [ ] Mutating turn outside claimed_files is rejected; hook regression tests pass.
+
+### Validation Commands
+
+```bash
+python3 -m pytest tests/test_agent_loop.py -q
+```
+
+### Evidence Required
+
+- Hook regression test + denied-edit trace. Blocked on T-2026-0042.
+
+### Related Plan / Issue / PR Links
+
+- Plan: TBD - create when the task starts.
+- Issue: [#1588](https://github.com/hskim-solv/BidMate-DocAgent/issues/1588)
+- PR: TBD
+
+## T-2026-0044 — Orchestrator-only ship-executor + gate evidence
+
+- ID: T-2026-0044
+- Title: Orchestrator-only ship-executor + gate evidence
+- Status: backlog
+- Priority: P2
+- Owner role: Implementer -> Deep Reviewer -> Reviewer
+- Created: 2026-05-27
+- Last updated: 2026-05-27
+
+### Goal
+
+Only the Orchestrator may call `make ship-run`, after the Conservative Gate passes
+and `gate_evidence/<task>/*.json` is recorded. Promote `scripts/agent_loop.py` to
+`LOAD_BEARING_PATHS` here (real ship blast radius).
+
+### Scope
+
+- Ship-executor isolation; gate evidence artifacts; stacked-dependent remote-delete
+  skip rule preserved.
+
+### Non-Goals
+
+- No new ship semantics beyond `make ship-run`.
+
+### Acceptance Criteria
+
+- [ ] Ship runs only via Orchestrator after gate pass; agent_loop.py LB + §5b wired.
+
+### Validation Commands
+
+```bash
+python3 -m pytest tests/test_agent_loop.py -q
+make check-branch
+```
+
+### Evidence Required
+
+- gate_evidence artifact + LOAD_BEARING_PATHS diff. Blocked on T-2026-0043.
+
+### Related Plan / Issue / PR Links
+
+- Plan: TBD - create when the task starts.
+- Issue: [#1588](https://github.com/hskim-solv/BidMate-DocAgent/issues/1588)
+- PR: TBD
+
+## T-2026-0045 — Full active-agent-loop.md ops-doc rewrite
+
+- ID: T-2026-0045
+- Title: Full active-agent-loop.md ops-doc rewrite
+- Status: backlog
+- Priority: P3
+- Owner role: Implementer -> Reviewer
+- Created: 2026-05-27
+- Last updated: 2026-05-27
+
+### Goal
+
+Rewrite `docs/operations/active-agent-loop.md` end-to-end covering topology,
+Conservative Gate, lanes, WU, lease, worktree model, and privacy.
+
+### Scope
+
+- Ops doc only (small surface).
+
+### Non-Goals
+
+- No code change.
+
+### Acceptance Criteria
+
+- [ ] Ops doc reflects shipped Phase 1-5 behavior; no stale "4-session" framing.
+
+### Validation Commands
+
+```bash
+make check-branch
+```
+
+### Evidence Required
+
+- Doc diff. Blocked on T-2026-0044.
+
+### Related Plan / Issue / PR Links
+
+- Plan: TBD - create when the task starts.
+- Issue: [#1588](https://github.com/hskim-solv/BidMate-DocAgent/issues/1588)
 - PR: TBD
