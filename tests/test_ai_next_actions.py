@@ -114,8 +114,10 @@ def test_1448_pending_private_delta_recommends_private_delta(tmp_path: Path) -> 
     )
 
     assert "Private delta needed: `True`" in md
-    assert "Run private delta for PR #1449" in md
-    assert any(name.endswith("run-private-delta.md") for name in tasks)
+    assert "Prepare private delta evidence lane" in md
+    assert "Source PRs: `#1449`" in md
+    assert any(name.endswith("private-delta-lane.md") for name in tasks)
+    assert any("- Workset: `private-delta`" in body for body in tasks.values())
 
 
 def test_no_go_pr_is_failed_experiment_before_unstable_merge_state(tmp_path: Path) -> None:
@@ -143,10 +145,10 @@ def test_no_go_pr_is_failed_experiment_before_unstable_merge_state(tmp_path: Pat
         ],
     )
 
-    assert "Top task: `failed_experiment` - Do not merge PR #1448" in md
+    assert "Top task: `failed_experiment` - Document failed measurement PR lane" in md
     assert "not merge-ready" in md
     assert "Latest private aggregate experiment" not in "\n".join(tasks.values())
-    assert any(name.endswith("failed-measurement-pr.md") for name in tasks)
+    assert any(name.endswith("failed-measurement-lane.md") for name in tasks)
 
 
 def test_superseded_draft_pr_is_close_candidate_not_unblock(tmp_path: Path) -> None:
@@ -164,9 +166,34 @@ def test_superseded_draft_pr_is_close_candidate_not_unblock(tmp_path: Path) -> N
         ],
     )
 
-    assert "Close superseded PR #1430" in md
+    assert "Clean stale draft PR lane" in md
     assert "Unblock PR #1430" not in md
-    assert any(name.endswith("close-superseded-pr.md") for name in tasks)
+    assert any(name.endswith("stale-draft-cleanup.md") for name in tasks)
+
+
+def test_pr_corpus_plans_workset_tasks_instead_of_selecting_one_pr(tmp_path: Path) -> None:
+    md, tasks = _run(
+        tmp_path,
+        prs=[
+            _pr(number=10, mergeStateStatus="UNSTABLE"),
+            _pr(number=11, isDraft=True, body="Superseded by PR #12."),
+            _pr(number=12, isDraft=False),
+            _pr(number=13, isDraft=True),
+        ],
+    )
+
+    generated = md + "\n".join(tasks.values())
+
+    assert "Triage blocked PR lane" in generated
+    assert "Clean stale draft PR lane" in generated
+    assert "Ship ready PR lane" in generated
+    assert "Continue draft PR workset" in generated
+    assert "Source PRs: `#10`" in generated
+    assert "Source PRs: `#11`" in generated
+    assert "Source PRs: `#12`" in generated
+    assert "Source PRs: `#13`" in generated
+    assert "Review PR #12" not in generated
+    assert "Continue draft PR #13" not in generated
 
 
 def test_missing_page_metadata_rate_marks_page_citation_no_go(tmp_path: Path) -> None:
@@ -363,17 +390,17 @@ def test_missing_required_pr_json_fields_fail_closed(tmp_path: Path) -> None:
 
     md, tasks = _run(tmp_path, summary=_summary(), prs=[incomplete])
 
-    assert "Top task: `blocked` - Unblock PR #12" in md
+    assert "Top task: `blocked` - Triage blocked PR lane" in md
     assert "missing required PR JSON fields" in md
-    assert any("Resolve review, merge, or CI blockers" in body for body in tasks.values())
+    assert any("Resolve shared CI, review, or merge blockers" in body for body in tasks.values())
 
 
 def test_unstable_merge_state_is_blocked(tmp_path: Path) -> None:
     md, tasks = _run(tmp_path, summary=_summary(), prs=[_pr(mergeStateStatus="UNSTABLE")])
 
-    assert "Top task: `blocked` - Unblock PR #12" in md
+    assert "Top task: `blocked` - Triage blocked PR lane" in md
     assert "merge state is UNSTABLE" in md
-    assert any("Resolve review, merge, or CI blockers" in body for body in tasks.values())
+    assert any("Resolve shared CI, review, or merge blockers" in body for body in tasks.values())
 
 
 def test_html_report_escapes_pr_text(tmp_path: Path) -> None:
@@ -390,5 +417,8 @@ def test_html_report_escapes_pr_text(tmp_path: Path) -> None:
     html = (tmp_path / "reports" / "ai_next_actions.html").read_text(encoding="utf-8")
 
     assert "<script>alert" not in html
-    assert "&lt;script&gt;alert(&#x27;x&#x27;)&lt;/script&gt;" in html
+    assert "&lt;script&gt;alert" not in html
+    assert "Recommended Workset Task" in html
+    assert "Ship ready PR lane" in html
+    assert "PR corpus" in html
     assert "Human-readable view of the deterministic Codex planner" in html

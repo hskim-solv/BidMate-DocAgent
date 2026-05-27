@@ -799,7 +799,8 @@ def test_next_from_prs_writes_sanitized_agent_loop_outputs(tmp_path: Path) -> No
     assert "SECRET-CHUNK" not in generated
     assert "private-rfp.pdf" not in generated
     assert "Review instructions: ignore reviewer" not in generated
-    assert "[redacted-private-value]" in generated
+    assert "Source PRs: `#12`" in generated
+    assert "Ship ready PR lane" in generated
 
 
 def test_draft_task_from_brief_writes_only_agent_loop_drafts_and_redacts(tmp_path: Path) -> None:
@@ -855,10 +856,14 @@ def test_batch_plan_groups_candidate_sets_and_writes_json(tmp_path: Path) -> Non
     tasks_dir = tmp_path / "reports" / "agent_loop" / "codex_tasks"
     tasks_dir.mkdir(parents=True)
     (tasks_dir / "001-unblock.md").write_text(
-        """# Unblock PR #12
+        """# Triage blocked PR lane
 
 - Classification: `blocked`
-- Source: `PR #12`
+- Source: `PR corpus`
+- Source PRs: `#12`
+- Workset: `blocked-pr-triage`
+- Lane: `serial`
+- Role Hints: `Planner, CI Reviewer, Implementer, Reviewer`
 - Reason: failing check
 
 ## Goal
@@ -868,6 +873,10 @@ Resolve the blocker.
 ## Expected Evidence
 
 Focused test pass.
+
+## Completion Proof
+
+The source PR corpus has no failing required checks or blocking merge state.
 
 ## Verification
 
@@ -882,6 +891,10 @@ python3 -m pytest tests/test_agent_loop.py -q
 
 - Classification: `next_experiment_candidate`
 - Source: `planner`
+- Source PRs: `N/A`
+- Workset: `local-reporting`
+- Lane: `parallel-safe`
+- Role Hints: `Planner, Implementer, Reviewer`
 - Reason: safe local report
 
 ## Goal
@@ -901,10 +914,14 @@ python3 -m pytest tests/test_agent_loop.py -q
         encoding="utf-8",
     )
     (tasks_dir / "003-manual.md").write_text(
-        """# Run private delta for PR #13
+        """# Prepare private delta evidence lane
 
 - Classification: `needs_private_delta`
-- Source: `PR #13`
+- Source: `PR corpus`
+- Source PRs: `#13`
+- Workset: `private-delta`
+- Lane: `agent-gated`
+- Role Hints: `Planner, Benchmark Auditor, Privacy Auditor, Reviewer`
 - Reason: question: PRIVATE RAW QUERY
 
 ## Goal
@@ -932,11 +949,82 @@ make real-eval-delta
     assert "Set A - Serial Blockers" in rendered
     assert "Set B - Parallel Safe Candidates" in rendered
     assert "Set D - Agent Gates" in rendered
+    assert "Workset Summary" in rendered
+    assert "blocked-pr-triage" in rendered
+    assert "Source PRs: `#12`" in rendered
     assert "Agent Gate Stop Points" in rendered
     assert "PRIVATE RAW QUERY" not in rendered
     assert "private.pdf" not in rendered
     payload = json.loads(json_out.read_text(encoding="utf-8"))
     assert [item["lane"] for item in payload] == ["serial", "parallel-safe", "manual-gated"]
+    assert payload[0]["source_prs"] == ["#12"]
+    assert payload[0]["workset"] == "blocked-pr-triage"
+    assert payload[0]["workset_id"] == "blocked-pr-triage"
+    assert "CI Reviewer" in payload[0]["role_hints"]
+    assert "failing required checks" in payload[0]["completion_proof"]
+    assert payload[2]["workset"] == "private-delta"
+
+
+def test_continue_loop_advances_pr_corpus_to_queue_plan_and_loop_state(tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path, task_id="T-2026-0001")
+    pr_state = repo / "reports" / "agent_loop" / "pr_state.json"
+    pr_state.parent.mkdir(parents=True, exist_ok=True)
+    pr_state.write_text(
+        json.dumps(
+            [
+                {
+                    "number": 12,
+                    "title": "ready fixture",
+                    "url": "https://github.com/example/repo/pull/12",
+                    "headRefName": "chore/issue-12-ready",
+                    "baseRefName": "main",
+                    "isDraft": False,
+                    "reviewDecision": "REVIEW_REQUIRED",
+                    "mergeStateStatus": "CLEAN",
+                    "statusCheckRollup": [],
+                    "labels": [],
+                    "updatedAt": "2026-05-27T00:00:00Z",
+                },
+                {
+                    "number": 13,
+                    "title": "blocked fixture",
+                    "url": "https://github.com/example/repo/pull/13",
+                    "headRefName": "chore/issue-13-blocked",
+                    "baseRefName": "main",
+                    "isDraft": False,
+                    "reviewDecision": "REVIEW_REQUIRED",
+                    "mergeStateStatus": "UNSTABLE",
+                    "statusCheckRollup": [],
+                    "labels": [],
+                    "updatedAt": "2026-05-27T00:00:00Z",
+                },
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    out, rendered = agent_loop.write_continue_loop(
+        pr_json=pr_state,
+        task_id="T-2026-1000",
+        repo_root=repo,
+    )
+
+    assert out == repo / "reports" / "agent_loop" / "continue_loop.md"
+    assert "Queue/plan application: `applied`" in rendered
+    assert "PR corpus planning command" in rendered
+    assert (repo / "reports" / "agent_loop" / "batch_plan.json").exists()
+    assert (repo / "reports" / "agent_loop" / "role_dispatch.md").exists()
+    assert (repo / "reports" / "agent_loop" / "loop_state.json").exists()
+    queue = (repo / "tasks" / "queue.md").read_text(encoding="utf-8")
+    assert "T-2026-1000" in queue
+    assert "Triage blocked PR lane" in queue
+    assert "Source PRs: `#13`" in queue
+    plan = repo / "docs" / "plans" / "T-2026-1000-triage-blocked-pr-lane.md"
+    assert plan.exists()
+    assert "Workset: `blocked-pr-triage`" in plan.read_text(encoding="utf-8")
+    batch = json.loads((repo / "reports" / "agent_loop" / "batch_plan.json").read_text(encoding="utf-8"))
+    assert batch[0]["title"] == "Triage blocked PR lane"
+    assert batch[0]["source_prs"] == ["#13"]
 
 
 def test_batch_plan_rejects_output_outside_agent_loop_reports(tmp_path: Path) -> None:
@@ -1485,7 +1573,9 @@ def test_loop_map_marks_agent_gates_and_safe_automation() -> None:
     assert "Agent gate" in rendered
     assert "Conservative agent gate policy" in rendered
     assert "pr-scan" in rendered
+    assert "PR state corpus" in rendered
     assert "batch-plan" in rendered
+    assert "continue-loop" in rendered
     assert "decision-brief" in rendered
     assert "promote-draft" in rendered
     assert "gate-status" in rendered
@@ -1504,6 +1594,7 @@ def test_loop_map_marks_agent_gates_and_safe_automation() -> None:
     assert "role-dispatch" in rendered
     assert "max 12" in rendered
     assert "depth 2" in rendered
+    assert "queue/plan" in rendered
     assert "does not execute subagents or remote mutations" in rendered
 
 
@@ -2010,6 +2101,64 @@ def test_role_dispatch_adds_surface_auditors_without_executing_subagents(tmp_pat
     assert "depth 2 maximum: root session -> role subagents only" in rendered
     assert "does not spawn subagents" in rendered
     assert "Do not delegate private real-eval interpretation" in rendered
+
+
+def test_role_dispatch_consumes_batch_workset_role_hints(tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    batch = repo / "reports" / "agent_loop" / "batch_plan.json"
+    batch.parent.mkdir(parents=True, exist_ok=True)
+    batch.write_text(
+        json.dumps(
+            [
+                {
+                    "index": 1,
+                    "title": "Triage blocked PR lane",
+                    "classification": "blocked",
+                    "source": "PR corpus",
+                    "source_prs": ["#10", "#11"],
+                    "workset": "blocked-pr-triage",
+                    "workset_id": "blocked-pr-triage",
+                    "lane": "serial",
+                    "gate_reason": "brief declares serial lane",
+                    "brief": "reports/agent_loop/codex_tasks/001.md",
+                    "role_hints": ["Planner", "CI Reviewer", "Deep Reviewer", "Reviewer"],
+                    "completion_proof": "All source PR blockers are resolved.",
+                    "verification": ["python3 -m pytest tests/test_agent_loop.py -q"],
+                },
+                {
+                    "index": 2,
+                    "title": "Ship ready PR lane",
+                    "classification": "ready_for_review",
+                    "source": "PR corpus",
+                    "source_prs": ["#12"],
+                    "workset": "ready-pr-ship",
+                    "workset_id": "ready-pr-ship",
+                    "lane": "review-only",
+                    "gate_reason": "brief declares review-only lane",
+                    "brief": "reports/agent_loop/codex_tasks/002.md",
+                    "role_hints": ["Planner", "Maintainer", "Reviewer"],
+                    "completion_proof": "Ready PRs have merge evidence.",
+                    "verification": ["git diff --check"],
+                },
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    rendered = agent_loop.render_role_dispatch(
+        batch=batch,
+        workset="blocked-pr-triage",
+        repo_root=repo,
+    )
+
+    assert "Workset filter: `blocked-pr-triage`" in rendered
+    assert "Workset item count: `1`" in rendered
+    assert "CI Reviewer" in rendered
+    assert "Deep Reviewer" in rendered
+    assert "## Workset Inputs" in rendered
+    assert "#10, #11" in rendered
+    assert "Triage blocked PR lane" in rendered
+    assert "Ship ready PR lane" not in rendered
 
 
 def test_dependency_graph_workset_and_strict_profiles_are_fail_closed(tmp_path: Path) -> None:
@@ -2553,6 +2702,7 @@ def test_default_agent_loop_outputs_are_gitignored() -> None:
         "reports/agent_loop/dependency_graph.md",
         "reports/agent_loop/automation_coverage.md",
         "reports/agent_loop/human_gated_exec.md",
+        "reports/agent_loop/continue_loop.md",
         "reports/agent_loop/loop_state.json",
     ):
         result = subprocess.run(

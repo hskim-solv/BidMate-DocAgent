@@ -95,6 +95,11 @@ class WorkItem:
     goal: str
     expected_evidence: str
     verification: str
+    source_prs: tuple[int, ...] = ()
+    workset: str = "general"
+    lane: str = "parallel-safe"
+    completion_proof: str = "Focused validation passes and the follow-up evidence is recorded."
+    role_hints: tuple[str, ...] = ("Planner", "Implementer", "Reviewer")
 
     @property
     def priority(self) -> tuple[int, str, str]:
@@ -334,12 +339,17 @@ def _summary_work_items(summary: Mapping[str, Any], source: SourceState) -> list
     return items
 
 
-def _pr_work_items(prs: Sequence[Mapping[str, Any]], readiness_blocked: bool) -> list[WorkItem]:
-    items: list[WorkItem] = []
+@dataclass(frozen=True)
+class PrCorpusSignal:
+    number: int
+    classification: str
+    reason: str
+
+
+def _pr_corpus_signals(prs: Sequence[Mapping[str, Any]], readiness_blocked: bool) -> list[PrCorpusSignal]:
+    signals: list[PrCorpusSignal] = []
     for pr in sorted(prs, key=lambda p: _as_int(p.get("number"), 999999)):
         number = _as_int(pr.get("number"), 0)
-        source = f"PR #{number}" if number else "PR"
-        title = str(pr.get("title") or "(untitled)")
         missing_fields = [field for field in REQUIRED_PR_FIELDS if field not in pr]
         review = str(pr.get("reviewDecision") or "").upper()
         merge_state = str(pr.get("mergeStateStatus") or "").upper()
@@ -360,91 +370,149 @@ def _pr_work_items(prs: Sequence[Mapping[str, Any]], readiness_blocked: bool) ->
             not_ready_reason = "PR reports NO-GO/not claim-ready failed measurement"
             if merge_state:
                 not_ready_reason += f"; not merge-ready (merge state is {merge_state})"
-            items.append(
-                WorkItem(
-                    classification="failed_experiment",
-                    title=f"Do not merge {source}: {title}",
-                    reason=not_ready_reason,
-                    source=source,
-                    slug="failed-measurement-pr",
-                    goal="Convert the failed measurement into a documented no-go or a narrower follow-up task.",
-                    expected_evidence="The PR remains draft or explicitly documents NO-GO aggregate evidence without claiming improvement.",
-                    verification=f"gh pr view {number} --json isDraft,reviewDecision,mergeStateStatus,statusCheckRollup,body",
-                )
-            )
+            signals.append(PrCorpusSignal(number, "failed_experiment", not_ready_reason))
             continue
 
         if draft and STALE_SUPERSEDED_RE.search(text):
-            items.append(
-                WorkItem(
-                    classification="close_superseded",
-                    title=f"Close superseded {source}: {title}",
-                    reason="draft PR appears stale or superseded; do not treat as an unblock candidate",
-                    source=source,
-                    slug="close-superseded-pr",
-                    goal="Close or clearly mark the stale draft so active next-action planning is not polluted.",
-                    expected_evidence="The PR is closed, or its body explicitly points to the replacement work.",
-                    verification=f"gh pr view {number} --json state,isDraft,title,body,updatedAt",
+            signals.append(
+                PrCorpusSignal(
+                    number,
+                    "close_superseded",
+                    "draft PR appears stale or superseded; do not treat as an unblock candidate",
                 )
             )
             continue
 
         if blocked_reasons:
-            items.append(
-                WorkItem(
-                    classification="blocked",
-                    title=f"Unblock {source}: {title}",
-                    reason="; ".join(blocked_reasons),
-                    source=source,
-                    slug="unblock-pr",
-                    goal="Resolve review, merge, or CI blockers before asking for review or merge.",
-                    expected_evidence="The PR has no requested changes, merge blocker, or failing required check.",
-                    verification=f"gh pr view {number} --json reviewDecision,mergeStateStatus,statusCheckRollup",
-                )
-            )
+            signals.append(PrCorpusSignal(number, "blocked", "; ".join(blocked_reasons)))
             continue
 
         if not readiness_blocked and (PRIVATE_DELTA_RE.search(text) or LOAD_BEARING_RE.search(text)):
-            items.append(
-                WorkItem(
-                    classification="needs_private_delta",
-                    title=f"Run private delta for {source}",
-                    reason="PR context indicates pending private delta evidence",
-                    source=source,
-                    slug="run-private-delta",
-                    goal="Produce public-safe private delta evidence before final review.",
-                    expected_evidence="PR body or reviewer note includes the redacted aggregate delta result.",
-                    verification="make real-eval-delta",
-                )
-            )
+            signals.append(PrCorpusSignal(number, "needs_private_delta", "PR context indicates pending private delta evidence"))
             continue
 
         if not draft:
-            items.append(
-                WorkItem(
-                    classification="ready_for_review",
-                    title=f"Review {source}: {title}",
-                    reason="PR has no detected blocker in exported GitHub state",
-                    source=source,
-                    slug="review-pr",
-                    goal="Perform a focused reviewer pass and identify any scoped Codex follow-up.",
-                    expected_evidence="Reviewer notes are either resolved or converted into a scoped follow-up task.",
-                    verification=f"gh pr view {number} --json reviewDecision,mergeStateStatus,statusCheckRollup",
-                )
-            )
+            signals.append(PrCorpusSignal(number, "ready_for_review", "PR has no detected blocker in exported GitHub state"))
         else:
-            items.append(
-                WorkItem(
-                    classification="next_experiment_candidate",
-                    title=f"Continue draft {source}: {title}",
-                    reason="draft PR has no exported hard blocker",
-                    source=source,
-                    slug="continue-draft-pr",
-                    goal="Narrow the draft PR to its next verifiable milestone.",
-                    expected_evidence="Focused tests and updated PR notes describe the remaining gap.",
-                    verification=f"gh pr view {number} --json isDraft,reviewDecision,mergeStateStatus",
-                )
+            signals.append(PrCorpusSignal(number, "next_experiment_candidate", "draft PR has no exported hard blocker"))
+    return signals
+
+
+def _source_prs_text(numbers: Sequence[int]) -> str:
+    return ", ".join(f"#{number}" for number in numbers if number) or "PR corpus"
+
+
+def _reason_summary(signals: Sequence[PrCorpusSignal]) -> str:
+    counts: dict[str, int] = {}
+    for signal in signals:
+        counts[signal.reason] = counts.get(signal.reason, 0) + 1
+    return "; ".join(f"{reason} ({count})" for reason, count in sorted(counts.items())) or "no reason captured"
+
+
+def _pr_corpus_work_items(prs: Sequence[Mapping[str, Any]], readiness_blocked: bool) -> list[WorkItem]:
+    signals = _pr_corpus_signals(prs, readiness_blocked)
+    grouped: dict[str, list[PrCorpusSignal]] = {}
+    for signal in signals:
+        grouped.setdefault(signal.classification, []).append(signal)
+
+    specs = (
+        (
+            "failed_experiment",
+            "Document failed measurement PR lane",
+            "failed-measurement-lane",
+            "failed-measurement",
+            "serial",
+            "Convert failed or NO-GO measurement PR evidence into documented no-go notes or narrower follow-up tasks.",
+            "Each source PR remains draft/closed or explicitly documents aggregate-only NO-GO evidence without claiming improvement.",
+            "gh pr list --state open --json number,isDraft,reviewDecision,mergeStateStatus,statusCheckRollup,body",
+            "Source PRs have no unqualified benchmark or performance claim after the no-go decision is recorded.",
+            ("Planner", "Benchmark Auditor", "Reviewer"),
+        ),
+        (
+            "close_superseded",
+            "Clean stale draft PR lane",
+            "stale-draft-cleanup",
+            "stale-draft-cleanup",
+            "agent-gated",
+            "Close or clearly mark stale/superseded draft PRs so active planning is not polluted by obsolete branches.",
+            "Each source PR is closed, retitled, or updated with a replacement pointer and no active merge expectation.",
+            "gh pr list --state open --json number,isDraft,title,body,updatedAt,mergeStateStatus",
+            "No source PR remains an ambiguous stale draft in the open PR corpus.",
+            ("Planner", "Maintainer", "Reviewer"),
+        ),
+        (
+            "blocked",
+            "Triage blocked PR lane",
+            "blocked-pr-triage",
+            "blocked-pr-triage",
+            "serial",
+            "Resolve shared CI, review, or merge blockers before selecting implementation or shipping work.",
+            "The source PR corpus has no requested changes, failing required checks, missing required JSON fields, or blocking merge state.",
+            "gh pr list --state open --json number,reviewDecision,mergeStateStatus,statusCheckRollup",
+            "All source PRs leave the blocked lane or have focused follow-up tasks with validation evidence.",
+            ("Planner", "CI Reviewer", "Implementer", "Reviewer"),
+        ),
+        (
+            "needs_private_delta",
+            "Prepare private delta evidence lane",
+            "private-delta-lane",
+            "private-delta",
+            "agent-gated",
+            "Prepare aggregate-only private delta evidence for load-bearing PRs before final review or claim wording.",
+            "Each source PR has a redacted aggregate private delta note or explicitly states that no performance claim is made.",
+            "make real-eval-delta",
+            "Private delta evidence is aggregate-only and PR claim wording stays within the approved boundary.",
+            ("Planner", "Benchmark Auditor", "Privacy Auditor", "Reviewer"),
+        ),
+        (
+            "ready_for_review",
+            "Ship ready PR lane",
+            "ready-pr-ship-lane",
+            "ready-pr-ship",
+            "review-only",
+            "Run final reviewer and ship-gate checks for blocker-free PRs as one lane instead of choosing a single PR by hand.",
+            "Each source PR has reviewer notes resolved or converted into scoped follow-up tasks before merge.",
+            "gh pr list --state open --json number,isDraft,reviewDecision,mergeStateStatus,statusCheckRollup",
+            "Source PRs are merged or have explicit follow-up blockers recorded by the agent loop.",
+            ("Planner", "Reviewer", "Maintainer"),
+        ),
+        (
+            "next_experiment_candidate",
+            "Continue draft PR workset",
+            "draft-pr-workset",
+            "draft-pr-continuation",
+            "parallel-safe",
+            "Turn draft PR state into the next verifiable milestone without shrinking the scope to one hand-picked PR.",
+            "Each source draft has a next milestone, focused validation command, and updated handoff notes.",
+            "gh pr list --state open --json number,isDraft,reviewDecision,mergeStateStatus,statusCheckRollup",
+            "Each source draft either advances to review-ready state or emits a narrower follow-up task.",
+            ("Planner", "Implementer", "Reviewer"),
+        ),
+    )
+
+    items: list[WorkItem] = []
+    for classification, title, slug, workset, lane, goal, evidence, verification, proof, roles in specs:
+        lane_signals = grouped.get(classification, [])
+        if not lane_signals:
+            continue
+        numbers = tuple(signal.number for signal in lane_signals if signal.number)
+        items.append(
+            WorkItem(
+                classification=classification,
+                title=title,
+                reason=f"{_source_prs_text(numbers)}: {_reason_summary(lane_signals)}",
+                source="PR corpus",
+                slug=slug,
+                goal=goal,
+                expected_evidence=evidence,
+                verification=verification,
+                source_prs=numbers,
+                workset=workset,
+                lane=lane,
+                completion_proof=proof,
+                role_hints=roles,
             )
+        )
     return items
 
 
@@ -641,12 +709,15 @@ def render_summary_markdown(
     lines.extend(
         [
             "",
-            "## Recommended Codex Task",
+            "## Recommended Workset Task",
             "",
             f"- Classification: `{top.classification}`",
             f"- Task: {top.title}",
             f"- Reason: {top.reason}",
             f"- Source: `{top.source}`",
+            f"- Source PRs: `{_source_prs_text(top.source_prs)}`",
+            f"- Workset: `{top.workset}`",
+            f"- Lane: `{top.lane}`",
             "",
             "## Follow-up Candidates",
             "",
@@ -708,12 +779,14 @@ def render_review_html(
         f'<td><span class="badge {item.classification.replace("_", "-")}">'
         f"{_html_text(_classification_label(item.classification))}</span></td>"
         f"<td>{_html_text(item.title)}</td>"
-        f"<td>{_html_text(item.source)}</td>"
+        f"<td>{_html_text(_source_prs_text(item.source_prs))}</td>"
+        f"<td>{_html_text(item.workset)}</td>"
+        f"<td>{_html_text(item.lane)}</td>"
         "</tr>"
         for item in items[1:]
     )
     if not follow_up_rows:
-        follow_up_rows = '<tr><td colspan="3" class="empty">None</td></tr>'
+        follow_up_rows = '<tr><td colspan="5" class="empty">None</td></tr>'
     sources_list = "\n".join(
         "<li>"
         f"<span>{_html_text(source.kind)}</span>"
@@ -881,7 +954,7 @@ def render_review_html(
       {"".join(cards)}
     </section>
     <section class="panel">
-      <h2>Recommended Task</h2>
+      <h2>Recommended Workset Task</h2>
       <dl class="task">
         <dt>Classification</dt>
         <dd><span class="badge {top_tone}">{_html_text(_classification_label(top.classification))}</span></dd>
@@ -891,10 +964,20 @@ def render_review_html(
         <dd>{_html_text(top.reason)}</dd>
         <dt>Source</dt>
         <dd><code>{_html_text(top.source)}</code></dd>
+        <dt>Source PRs</dt>
+        <dd><code>{_html_text(_source_prs_text(top.source_prs))}</code></dd>
+        <dt>Workset</dt>
+        <dd><code>{_html_text(top.workset)}</code></dd>
+        <dt>Lane</dt>
+        <dd><code>{_html_text(top.lane)}</code></dd>
+        <dt>Role hints</dt>
+        <dd>{_html_text(", ".join(top.role_hints))}</dd>
         <dt>Goal</dt>
         <dd>{_html_text(top.goal)}</dd>
         <dt>Expected evidence</dt>
         <dd>{_html_text(top.expected_evidence)}</dd>
+        <dt>Completion proof</dt>
+        <dd>{_html_text(top.completion_proof)}</dd>
         <dt>Verification</dt>
         <dd><code>{_html_text(top.verification)}</code></dd>
       </dl>
@@ -909,10 +992,10 @@ def render_review_html(
     </section>
     <section class="panel">
       <h2>Follow-up Candidates</h2>
-      <table>
-        <thead>
-          <tr><th>Classification</th><th>Task</th><th>Source</th></tr>
-        </thead>
+        <table>
+          <thead>
+          <tr><th>Classification</th><th>Task</th><th>Source PRs</th><th>Workset</th><th>Lane</th></tr>
+          </thead>
         <tbody>
           {follow_up_rows}
         </tbody>
@@ -940,6 +1023,10 @@ def render_task_markdown(item: WorkItem) -> str:
             "",
             f"- Classification: `{item.classification}`",
             f"- Source: `{item.source}`",
+            f"- Source PRs: `{_source_prs_text(item.source_prs)}`",
+            f"- Workset: `{item.workset}`",
+            f"- Lane: `{item.lane}`",
+            f"- Role Hints: `{', '.join(item.role_hints)}`",
             f"- Reason: {item.reason}",
             "",
             "## Goal",
@@ -955,6 +1042,10 @@ def render_task_markdown(item: WorkItem) -> str:
             "## Expected Evidence",
             "",
             item.expected_evidence,
+            "",
+            "## Completion Proof",
+            "",
+            item.completion_proof,
             "",
             "## Verification",
             "",
@@ -1041,7 +1132,7 @@ def build_plan(
         payload = _load_json(pr_json)
         prs = payload if isinstance(payload, list) else []
         sources.append(SourceState("pr_json", _repo_display(pr_json), False))
-        items.extend(_pr_work_items([pr for pr in prs if isinstance(pr, Mapping)], readiness_blocked))
+        items.extend(_pr_corpus_work_items([pr for pr in prs if isinstance(pr, Mapping)], readiness_blocked))
 
     items = _dedupe_items(items)
     private_delta_needed = any(item.classification == "needs_private_delta" for item in items)
