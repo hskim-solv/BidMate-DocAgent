@@ -1,13 +1,13 @@
 # Active Agent Loop
 
-이 문서는 `agent_loop.py active-loop`가 운영하는 4-session active
+이 문서는 `agent_loop.py active-loop`가 운영하는 active
 orchestrator 계약이다. 목적은 사람이 다음 세션을 계속 수동 배정하지 않아도,
 repo-local ledger가 작업권(lease), 하트비트(heartbeat), 할당(assignment), ship
 gate를 보존하게 하는 것이다.
 
 ## Topology
 
-기본 topology는 고정 4개 session이다.
+기본 topology는 backward-compatible 4개 session이다.
 
 | Session | Role | Write authority |
 |---|---|---|
@@ -15,6 +15,23 @@ gate를 보존하게 하는 것이다.
 | `implementer` | Implementer | assigned issue branch/worktree only |
 | `reviewer` | Reviewer | read-only review report |
 | `ci-eval-auditor` | CI/Eval Auditor | read-only CI/eval/claim report |
+
+장기 RAG/eval governance 작업은 optional 8-session topology를 사용할 수 있다.
+
+```bash
+python3 scripts/agent_loop.py active-loop --mode full-ship --topology expanded-eight --dry-run --from-git
+```
+
+| Session | Role | Write authority |
+|---|---|---|
+| `orchestrator` | Orchestrator | ledger, queue/plan proposal, gate decision |
+| `planner-triage` | Planner / Issue Triage | read-only queue/plan/workset proposal |
+| `experiment-scout` | Experiment Scout | read-only hypothesis, ablation, aggregate evidence |
+| `implementer` | Implementer | assigned issue branch/worktree only |
+| `reviewer` | Reviewer | read-only review report |
+| `deep-reviewer` | Deep Reviewer | read-only architecture/load-bearing review |
+| `ci-regression-auditor` | CI / Regression Auditor | read-only CI/regression report |
+| `eval-claim-privacy-auditor` | Eval / Claim / Privacy Auditor | read-only eval/claim/privacy report |
 
 Worker 간 direct communication은 필요 조건이 아니다. 모든 이어받기는
 `reports/agent_loop/active/` ledger와 기존 handoff block으로 복구 가능해야 한다.
@@ -67,7 +84,15 @@ Gate 조건:
 - overlap preflight가 blocked가 아니다.
 - generated `reports/agent_loop/` artifact privacy audit가 clear다.
 - load-bearing/eval surface는 claim text 또는 PR body evidence가 있다.
-- `Reviewer`와 `CI/Eval Auditor` session heartbeat status가 pass 계열이다.
+- `four-role`: `Reviewer`와 `CI/Eval Auditor` session heartbeat status가 pass 계열이다.
+- `expanded-eight`: `Reviewer`, `CI / Regression Auditor`,
+  `Eval / Claim / Privacy Auditor` status가 pass 계열이다.
+- `expanded-eight`에서 load-bearing file이 바뀌면 `Deep Reviewer` status도 pass
+  계열이어야 한다.
+
+`Planner / Issue Triage`와 `Experiment Scout`는 Conservative Gate에서 ship을
+막지 않는다. 둘은 다음 work 후보, 실험 가설, aggregate-only evidence를 만들고,
+Orchestrator가 tracked queue/plan으로 승격할 때만 구현 lane으로 넘어간다.
 
 통과하면 primary ship command는 다음이다.
 
@@ -88,6 +113,16 @@ python3 scripts/agent_loop.py session-heartbeat \
   --role Reviewer \
   --task T-2026-0000 \
   --status passed
+```
+
+Expanded topology 예시:
+
+```bash
+python3 scripts/agent_loop.py session-heartbeat \
+  --session-id eval-claim-privacy-auditor \
+  --role "Eval / Claim / Privacy Auditor" \
+  --task T-2026-0000 \
+  --status clear
 ```
 
 기본 TTL은 30분이다. TTL을 넘은 session은 다음 orchestrator tick에서 `stale`로
