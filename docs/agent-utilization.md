@@ -86,6 +86,26 @@
 - agent-delegation-gate false-positive 비율 (트리거 키워드 정확성)
 - Q3 self-review 5축 재진단 — 4△ → ✓ 회복 측정 (`/self-review-quarterly Q3-2026`)
 
+## RAG Performance Loop Application
+
+`T-2026-0023`은 5축 KPI를 RAG 성능 개선 loop에 적용하는 장기 목표다. 큰 scope는
+program-level queue/plan에 두고, 실제 PR은 한 concern만 담는다.
+
+| 8원칙 | 기존 축 / 도구 | RAG 성능 개선 loop에서의 적용 |
+|---|---|---|
+| 1. 스코프는 크게 잡아라 | #1 컨텍스트 효율 + plan doc | RAG performance goal은 queue/plan에 크게 보존하고 PR은 concern별로 분리 |
+| 2. 세션을 길게 유지하라 | #5 메모리 위생 + long-session workflow | session continuity는 transcript가 아니라 task, plan, handoff로 유지 |
+| 3. 할 일 목록을 파일로 남겨라 | tasks/queue.md | next action, blocker, completion proof는 tracked queue/plan에 기록 |
+| 4. Plan Doc 작성에 공을 들여라 | #2 Agent 위임 + docs/plans | multi-file, eval, load-bearing work는 구현 전 plan 필수 |
+| 5. 적대적 리뷰어를 붙여라 | Review Escalation | Benchmark/Privacy/Deep Reviewer가 claim, data boundary, architecture drift를 공격 |
+| 6. 역할별 세션을 분리하라 | Subagents + multi-agent ownership | Planner, Implementer, Tester/CI Reviewer, Issue Triage, Deep Reviewer를 분리 |
+| 7. 사람을 loop 밖으로 빼라 | `continue-loop`, ship gates | agent가 evidence를 만들고 사람은 double-check와 conservative gate만 수행 |
+| 8. 시간의 20%를 process 개선에 써라 | #3 자동화 ROI + #4 cycle time | 반복 miss는 instruction, harness, review prompt, queue/plan 개선 issue로 전환 |
+
+성능(performance) 주장은 이 표로 승인되지 않는다. private real-eval aggregate paired
+delta와 provenance가 없는 PR은 operating-goal alignment 또는 measurement setup만
+claim할 수 있다.
+
 ### Out-of-scope (별도 작업)
 
 - Agent/Skill 호출도 `.hook-fires.log` 에 기록 (PreToolUse matcher 를 `Agent|Skill|Task` 까지 확장) — 별도 PR

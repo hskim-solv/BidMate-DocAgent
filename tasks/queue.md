@@ -33,6 +33,7 @@ PR이 생기면 각 task에 링크를 추가한다. 예제 task는 `tasks/exampl
 | 20 | `T-2026-0020` | `review` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1544; v0 metric-suite report implementation ready for review. |
 | 21 | `T-2026-0021` | `review` | Maintainer -> CI Reviewer -> Reviewer | issue #1551 implemented; draft PR #1552. |
 | 22 | `T-2026-0022` | `backlog` | Planner -> Implementer -> Reviewer | issue #1563; choose one scoped multi-chunk retrieval measurement follow-up. |
+| 23 | `T-2026-0023` | `ready` | Planner -> Implementer -> Benchmark Auditor -> Privacy Auditor -> Deep Reviewer -> Reviewer | issue #1569; long-running RAG performance goal with 8 agent operating principles. |
 
 ## Examples
 
@@ -1938,4 +1939,80 @@ Focused validation passes and the follow-up evidence is recorded.
 
 - Plan: [`docs/plans/T-2026-0022-use-multi-chunk-evidence-analysis-for-the-next-retrieval-fol.md`](../docs/plans/T-2026-0022-use-multi-chunk-evidence-analysis-for-the-next-retrieval-fol.md)
 - Issue: [#1563](https://github.com/hskim-solv/BidMate-DocAgent/issues/1563)
+- PR: TBD
+
+## T-2026-0023 — RAG performance agent operating goal
+
+- ID: T-2026-0023
+- Title: RAG performance agent operating goal
+- Status: ready
+- Owner role: Planner -> Implementer -> Benchmark Auditor -> Privacy Auditor -> Deep Reviewer -> Reviewer
+- Created: 2026-05-27
+- Last updated: 2026-05-27
+
+### Goal
+
+Make RAG system performance improvement the long-running agent-loop goal, with
+the 8 operating principles written into the queue, plan, and operating docs so
+future sessions do not collapse into only small local fixes.
+
+### Context
+
+- Issue: #1569
+- Surface: docs/governance only.
+- Operating principles:
+  1. Hold a broad outcome scope.
+  2. Maintain long sessions through queue, plan, and handoff artifacts.
+  3. Keep todo state in tracked files.
+  4. Invest in plan docs before broad changes.
+  5. Attach adversarial, deep, benchmark, and privacy reviewers.
+  6. Split Planner, Implementer, Tester/CI Reviewer, Issue Triage, Deep Reviewer,
+     Benchmark Auditor, and Privacy Auditor into separate sessions when useful.
+  7. Keep the human out of the execution loop except evidence double-checks and
+     explicit conservative gates.
+  8. Spend at least 20% of loop time on process improvement when repeated misses
+     appear.
+
+### Scope
+
+- Add this queue entry and a self-contained plan doc.
+- Link the principles from the operating-system, long-session, utilization, and
+  Codex workflow docs.
+- Keep the change as an operating-goal alignment PR.
+
+### Non-Goals
+
+- Do not change retrieval, reranking, answer, ingestion, or eval runtime behavior.
+- Do not run private real-eval.
+- Do not claim RAG quality, recall, latency, or production performance improved.
+- Do not add new automation until a repeated omission proves it is needed.
+
+### Acceptance Criteria
+
+- [ ] The 8 principles are recorded as enforceable operating criteria, not a chat-only preference.
+- [ ] RAG performance improvement is represented as a multi-session goal with
+  role separation and reviewer escalation.
+- [ ] The docs explicitly separate this governance change from any performance claim.
+- [ ] Follow-up implementation work can start from `T-2026-0022` or later
+  measurement tasks without rediscovering the operating model.
+
+### Validation Commands
+
+```bash
+python3 scripts/check_doc_links.py --check-all --paths tasks/queue.md docs/plans/T-2026-0023-rag-performance-agent-operating-goal.md docs/operations/ai-engineering-operating-system.md docs/operations/long-session-workflow.md docs/operations/ai-codex-workflow.md docs/agent-utilization.md
+git diff --check
+make check-branch
+```
+
+### Evidence Required
+
+- Targeted doc-link check passes.
+- Branch/issue convention passes.
+- PR body states: docs/governance only; no RAG runtime/eval behavior changed;
+  no private real-eval run; no performance claim.
+
+### Related Plan / Issue / PR Links
+
+- Plan: [`docs/plans/T-2026-0023-rag-performance-agent-operating-goal.md`](../docs/plans/T-2026-0023-rag-performance-agent-operating-goal.md)
+- Issue: [#1569](https://github.com/hskim-solv/BidMate-DocAgent/issues/1569)
 - PR: TBD

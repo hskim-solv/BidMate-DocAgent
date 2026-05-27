@@ -139,6 +139,11 @@ create/merge/close, issue close, branch delete, force-push, private eval 실행,
 benchmark/performance claim 승인을 하지 않는다. remote mutation은 기존 ship
 gate와 `make ship-arm` 경로로 넘긴다.
 
+RAG 성능 개선 loop에서는 `continue-loop`를 사람이 다음 일을 고르는 UI가 아니라
+agent가 다음 queue/plan/preflight 증거를 만드는 표면으로 본다. 사람의 역할은
+실행자가 아니라 claim boundary, conservative gate, merge readiness를 double-check하는
+검증자다.
+
 Page citation claim은 readiness summary의 page metadata gate가 `NO-GO`이거나
 missing page metadata rate가 `1.0`이면 NO-GO로 취급한다. 이 경우 planner는
 page-aware parser/index rebuild 작업을 Codex 후보로 만든다.

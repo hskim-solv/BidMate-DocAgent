@@ -185,6 +185,31 @@ Agent에게 맡기는 work package는 충분히 커야 하지만, review surface
   `Completion Proof`를 남긴다. `Source PRs`는 선택된 PR이 아니라 그 task를
   만든 evidence set이다.
 
+### Long-Running RAG Performance Goal
+
+RAG system performance improvement는 단일 bug fix가 아니라 여러 session과 여러
+역할이 이어가는 program-level 목표다. Queue와 plan은 큰 목표를 보존하고, PR은
+한 concern만 ship한다.
+
+운영 원칙:
+
+1. Broad outcome scope: `tasks/queue.md`와 plan doc에는 RAG 성능 개선의 큰
+   outcome을 둔다.
+2. Long sessions: 하루 단위가 아니라 task/plan/handoff 단위로 이어간다.
+3. Todo/file queue: 다음 action, blocker, completion proof는 tracked file에 남긴다.
+4. Plan docs: broad, multi-file, eval, load-bearing work는 구현 전에 plan을 만든다.
+5. Adversarial review: Reviewer, Deep Reviewer, Benchmark Auditor, Privacy Auditor가
+   독립적으로 공격할 표면을 남긴다.
+6. Role-separated sessions: Planner, Implementer, Tester/CI Reviewer, Issue Triage,
+   Deep Reviewer, Benchmark Auditor, Privacy Auditor, Reviewer를 필요할 때 분리한다.
+7. Human outside the loop: agent가 PR 생성, validation, CI 확인, evidence 작성까지
+   스스로 증명하고, 사람은 증거 double-check와 conservative gate만 맡는다.
+8. Process improvement: 반복 실수가 보이면 loop time의 최소 20%를 instruction,
+   harness, review prompt, queue/plan 품질 개선에 쓴다.
+
+이 원칙은 performance claim이 아니다. 성능(performance) 주장은 private real-eval
+aggregate paired delta, provenance, claim boundary 검토가 있을 때만 허용한다.
+
 ### Planning Required
 
 Plan doc가 필요한 경우:
