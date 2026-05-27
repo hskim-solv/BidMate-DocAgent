@@ -29,7 +29,7 @@ PR이 생기면 각 task에 링크를 추가한다. 예제 task는 `tasks/exampl
 | 16 | `T-2026-0016` | `review` | Maintainer -> Reviewer | overlap preflight implemented; PR #1543. |
 | 17 | `T-2026-0018` | `review` | Maintainer -> Reviewer | issue #1547 implemented; draft PR #1548. |
 | 18 | `T-2026-0019` | `review` | Maintainer -> CI Reviewer -> Reviewer | local implementation ready on issue #1549 branch. |
-| 19 | `T-2026-0020` | `review` | Maintainer -> CI Reviewer -> Reviewer | issue #1551 local implementation ready. |
+| 19 | `T-2026-0020` | `review` | Maintainer -> CI Reviewer -> Reviewer | issue #1551 implemented; draft PR #1552. |
 
 ## Examples
 
@@ -338,6 +338,7 @@ make check-branch
 
 - Plan: [`docs/plans/T-2026-0020-pr-corpus-workset-planning.md`](../docs/plans/T-2026-0020-pr-corpus-workset-planning.md)
 - Issue: [#1551](https://github.com/hskim-solv/BidMate-DocAgent/issues/1551)
+- PR: [#1552](https://github.com/hskim-solv/BidMate-DocAgent/pull/1552)
 
 ### Handoff Notes
 
@@ -348,7 +349,7 @@ make check-branch
 - Lifecycle stage: review
 - Branch / worktree: chore/issue-1551-pr-corpus-worksets / /Users/hskim/.codex/worktrees/5e72/BidMate-DocAgent
 - Base branch: main
-- Issue / PR: #1551 / TBD
+- Issue / PR: #1551 / PR #1552
 - Task: T-2026-0020
 - Plan: docs/plans/T-2026-0020-pr-corpus-workset-planning.md
 - Current status: local implementation complete; focused validation passed.
