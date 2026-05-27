@@ -3763,8 +3763,11 @@ def test_claude_lane_adapter_command_and_core(tmp_path: Path) -> None:
     schema.write_text("{}", encoding="utf-8")
     cmd = cl.build_command(prompt="review", schema_path=schema)
     assert cmd[:3] == ["claude", "-p", "review"]
-    assert cmd[cmd.index("--permission-mode") + 1] == "plan"
-    assert "--json-schema" in cmd
+    # F4: no --permission-mode plan (headless plan-mode tool use crashes the API).
+    assert "--permission-mode" not in cmd
+    # F2: --json-schema must carry the inline schema CONTENT, not the file path.
+    assert cmd[cmd.index("--json-schema") + 1] == "{}"
+    assert str(schema) not in cmd
     allowed = cmd[cmd.index("--allowedTools") + 1]
     disallowed = cmd[cmd.index("--disallowedTools") + 1]
     assert "Read" in allowed
@@ -3784,6 +3787,13 @@ def test_claude_lane_adapter_command_and_core(tmp_path: Path) -> None:
     assert core["verdict"] == "needs-attention"
     assert core["findings"][0]["severity"] == "warning"
 
+    # F3: claude 2.1.3 wraps the result JSON in a ```json code fence; _extract_core strips it.
+    def fenced_runner(c):
+        inner = "```json\n" + json.dumps({"verdict": "approved", "summary": "ok", "findings": []}) + "\n```"
+        return subprocess.CompletedProcess(c, 0, stdout=json.dumps({"result": inner}), stderr="")
+
+    assert cl.run_turn(prompt="x", schema_path=schema, runner=fenced_runner)["verdict"] == "approved"
+
     def fail_runner(c):
         return subprocess.CompletedProcess(c, 1, stdout="", stderr="err")
 
@@ -3793,6 +3803,52 @@ def test_claude_lane_adapter_command_and_core(tmp_path: Path) -> None:
         return subprocess.CompletedProcess(c, 0, stdout="<<not json>>", stderr="")
 
     assert cl.run_turn(prompt="x", schema_path=schema, runner=junk_runner)["verdict"] == "error"
+
+
+def test_claude_lane_adapter_omits_schema_when_unreadable(tmp_path: Path) -> None:
+    from scripts import agent_loop_claude_turn as cl
+
+    missing = tmp_path / "nope.json"  # does not exist
+    cmd = cl.build_command(prompt="review", schema_path=missing)
+    # F2 safety: unreadable schema -> omit --json-schema so the lane still runs.
+    assert "--json-schema" not in cmd
+    assert cmd[:5] == ["claude", "-p", "review", "--output-format", "json"]
+
+
+def test_agent_turn_redacts_real100_path_and_proceeds(monkeypatch, tmp_path: Path) -> None:
+    # F1: a code review legitimately mentioning a public repo path (reports/real100/...)
+    # must be redacted-and-proceeded, NOT false-positive-blocked.
+    repo = _write_repo(tmp_path)
+    monkeypatch.setattr(agent_loop, "_current_branch", lambda repo_root: "fix/issue-1598")
+    core = {
+        "verdict": "approved",
+        "summary": "Baseline lives in reports/real100/baseline.aggregate.json; the change looks safe.",
+        "findings": [],
+        "next_steps": [],
+    }
+
+    result = agent_loop.write_agent_turn(
+        session_id="reviewer",
+        role="Reviewer",
+        agent="claude",
+        task_id="T-2026-9999",
+        execute=True,
+        claude_runner=_claude_lane_runner(core),
+        repo_root=repo,
+    )
+
+    assert result.decision == "executed"  # redact-and-proceed, not blocked
+    assert result.verdict == "approved"
+    text = result.artifact_path.read_text(encoding="utf-8")
+    assert "reports/real100/[redacted-private-artifact]" in text
+    assert "baseline.aggregate.json" not in text  # raw artifact name masked
+    assert json.loads(text)["privacy_scrubbed"] is True
+    # WU recorded + heartbeat reflects the pass-class verdict (not blocked).
+    mix = json.loads((_active_dir(repo) / "agent_mix.json").read_text(encoding="utf-8"))
+    assert mix["rolling"] == {"claude": 1, "codex": 0}
+    registry = json.loads((_active_dir(repo) / "session_registry.json").read_text(encoding="utf-8"))
+    session = next(item for item in registry["sessions"] if item["session_id"] == "reviewer")
+    assert session["status"] == "approved"
 
 
 def test_stop_ship_skips_remote_branch_delete_when_stacked_dependents_exist() -> None:

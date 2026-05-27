@@ -1,10 +1,12 @@
 """Read-only Claude lane adapter for the active-loop `agent-turn` (issue #1590).
 
-Invokes `claude -p` in plan permission mode with a read-only tool allowlist and a
-write/ship denylist, asking for output that conforms to
-`schemas/review_artifact.schema.json`. Parses the `--output-format json` wrapper
-into the shared review-artifact core (verdict / summary / findings / next_steps).
-No writes, no patches, no ship.
+Invokes `claude -p` with the unified diff embedded in the prompt (the caller runs
+`git diff`), an inline `--json-schema`, a read-only tool allowlist, and a write/ship
+denylist. The diff is embedded rather than fetched via claude's own tools because
+headless `-p` tool use crashes the API ("tool_use ids must be unique", issue #1598
+F4); plan mode is likewise dropped. Parses the `--output-format json` wrapper (the
+model's result may be fenced) into the shared review-artifact core
+(verdict / summary / findings / next_steps). No writes, no patches, no ship.
 
 The agent-turn caller (scripts/agent_loop.py) owns privacy scrubbing, artifact
 persistence, Work Unit accounting, and the session heartbeat. This module never
@@ -15,6 +17,7 @@ record a deterministic non-pass heartbeat. The subprocess call is injectable via
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 from pathlib import Path
 from typing import Callable, Sequence
@@ -52,21 +55,24 @@ def build_command(
     allowed_tools: Sequence[str] = DEFAULT_ALLOWED_TOOLS,
     disallowed_tools: Sequence[str] = DEFAULT_DISALLOWED_TOOLS,
 ) -> list[str]:
-    return [
-        "claude",
-        "-p",
-        prompt,
-        "--output-format",
-        "json",
-        "--json-schema",
-        str(schema_path),
-        "--permission-mode",
-        "plan",
-        "--allowedTools",
-        " ".join(allowed_tools),
-        "--disallowedTools",
-        " ".join(disallowed_tools),
-    ]
+    cmd = ["claude", "-p", prompt, "--output-format", "json"]
+    # `--json-schema` expects the schema JSON *inline*, not a file path — passing a path
+    # crashes the claude binary (issue #1598 F2). Inline the file content; omit the flag if
+    # the schema is unreadable so the lane still runs (the prompt carries the required shape).
+    try:
+        schema_text = schema_path.read_text(encoding="utf-8").strip()
+    except OSError:
+        schema_text = ""
+    if schema_text:
+        cmd += ["--json-schema", schema_text]
+    # No --permission-mode plan: in headless `-p`, plan mode + tool use crashes the API with
+    # "tool_use ids must be unique" (issue #1598 F4). The diff is embedded in the prompt so
+    # the lane needs no tools; the read-only allowlist + mutation denylist stay as defense.
+    if allowed_tools:
+        cmd += ["--allowedTools", " ".join(allowed_tools)]
+    if disallowed_tools:
+        cmd += ["--disallowedTools", " ".join(disallowed_tools)]
+    return cmd
 
 
 def _default_runner(cmd: list[str]) -> "subprocess.CompletedProcess[str]":
@@ -110,12 +116,21 @@ def _extract_core(stdout: str) -> dict[str, object] | None:
         candidate = outer["result"]
     if isinstance(candidate, str):
         try:
-            candidate = json.loads(candidate)
+            candidate = json.loads(_strip_code_fences(candidate))
         except (json.JSONDecodeError, TypeError):
             return None
     if not isinstance(candidate, dict):
         return None
     return _normalize_core(candidate)
+
+
+def _strip_code_fences(text: str) -> str:
+    """Strip a leading/trailing markdown code fence (claude 2.1.3 wraps result JSON; F3)."""
+    stripped = text.strip()
+    if stripped.startswith("```"):
+        stripped = re.sub(r"^```[A-Za-z0-9_-]*\s*\n?", "", stripped)
+        stripped = re.sub(r"\n?```\s*$", "", stripped)
+    return stripped.strip()
 
 
 def _normalize_core(obj: dict[str, object]) -> dict[str, object]:
