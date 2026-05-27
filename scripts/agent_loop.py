@@ -127,6 +127,7 @@ DEFAULT_ACTIVE_LEASES = DEFAULT_ACTIVE_DIR / "leases.json"
 DEFAULT_ACTIVE_EVENTS = DEFAULT_ACTIVE_DIR / "events.jsonl"
 DEFAULT_ACTIVE_ASSIGNMENTS_DIR = DEFAULT_ACTIVE_DIR / "assignments"
 DEFAULT_ACTIVE_LOOP = DEFAULT_ACTIVE_DIR / "active_loop.md"
+DEFAULT_ACTIVE_START = DEFAULT_ACTIVE_DIR / "start.md"
 DEFAULT_ACTIVE_AGENT_MIX = DEFAULT_ACTIVE_DIR / "agent_mix.json"
 DEFAULT_ACTIVE_WORKTREE_PREPARE = DEFAULT_ACTIVE_DIR / "active_worktree_prepare.md"
 DEFAULT_ISSUE_STATE = DEFAULT_REPORT_DIR / "issue_state.json"
@@ -529,6 +530,17 @@ class ActiveLoopResult:
     blockers: tuple[str, ...]
     warnings: tuple[str, ...]
     executed_commands: tuple[tuple[str, ...], ...] = ()
+
+
+@dataclass(frozen=True)
+class ActiveStartResult:
+    report_path: Path
+    active_loop: ActiveLoopResult
+    outputs: tuple[Path, ...]
+    decision: str
+    blockers: tuple[str, ...]
+    warnings: tuple[str, ...]
+    next_safe_command: str
 
 
 def _repo_path(path: Path, repo_root: Path) -> str:
@@ -8504,6 +8516,230 @@ def write_active_loop(
     )
 
 
+def write_active_start(
+    *,
+    mode: str = "full-ship",
+    topology: str = "expanded-eight",
+    task_id: str | None = None,
+    issue: str | None = None,
+    branch: str | None = None,
+    changed_files: Sequence[str] = (),
+    claim_text: Path | None = None,
+    pr_body: Path | None = None,
+    lease_ttl_minutes: int = 30,
+    batch: Path | None = None,
+    agent_mix: dict[str, object] | None = None,
+    out: Path = DEFAULT_ACTIVE_START,
+    repo_root: Path = ROOT_DIR,
+) -> ActiveStartResult:
+    files = tuple(sorted(_normalize_changed_file(path, repo_root=repo_root) for path in changed_files if path))
+    active_dir = repo_root / "reports" / "agent_loop" / "active"
+    outputs: list[Path] = []
+    warnings: list[str] = []
+    blockers: list[str] = []
+
+    active_loop = write_active_loop(
+        mode=mode,
+        topology=topology,
+        execute=False,
+        task_id=task_id,
+        issue=issue,
+        branch=branch,
+        changed_files=files,
+        claim_text=claim_text,
+        pr_body=pr_body,
+        lease_ttl_minutes=lease_ttl_minutes,
+        batch=batch,
+        agent_mix=agent_mix,
+        out=active_dir / "active_loop.md",
+        repo_root=repo_root,
+    )
+    outputs.append(active_loop.report_path)
+    blockers.extend(active_loop.blockers)
+    warnings.extend(active_loop.warnings)
+
+    branch_name = branch or _current_branch(repo_root) or "unknown"
+
+    def capture(label: str, writer) -> None:  # type: ignore[no-untyped-def]
+        try:
+            written = writer()
+            outputs.append(written[0] if isinstance(written, tuple) else written)
+        except ValueError as exc:
+            warnings.append(f"{label} skipped: {exc}")
+
+    capture(
+        "dashboard",
+        lambda: write_dashboard(
+            task_id=task_id,
+            batch=batch,
+            changed_files=files,
+            out=active_dir / "dashboard.md",
+            repo_root=repo_root,
+        ),
+    )
+    capture(
+        "branch-issue-hygiene",
+        lambda: write_branch_issue_hygiene(
+            branch=branch_name,
+            body=pr_body,
+            task_id=task_id,
+            out=active_dir / "branch_issue_hygiene.md",
+            repo_root=repo_root,
+        ),
+    )
+    capture(
+        "approval-packet",
+        lambda: write_approval_packet(
+            task_id=task_id,
+            changed_files=files,
+            claim_text=claim_text,
+            out=active_dir / "approval_packet.md",
+            repo_root=repo_root,
+        ),
+    )
+    capture(
+        "ship-simulate",
+        lambda: write_ship_simulation(
+            task_id=task_id,
+            changed_files=files,
+            branch=branch_name,
+            out=active_dir / "ship_simulation.md",
+            repo_root=repo_root,
+        ),
+    )
+    capture(
+        "auto-ship-plan",
+        lambda: write_auto_ship_plan(
+            task_id=task_id,
+            changed_files=files,
+            branch=branch_name,
+            real_eval="skip",
+            draft=True,
+            dry_run=True,
+            out=active_dir / "auto_ship_plan.md",
+            repo_root=repo_root,
+        ),
+    )
+    try:
+        privacy_out, privacy_rc, _ = write_privacy_audit_output(
+            path=repo_root / "reports" / "agent_loop",
+            out=active_dir / "privacy_audit.md",
+            repo_root=repo_root,
+        )
+        outputs.append(privacy_out)
+        if privacy_rc:
+            blockers.append("privacy audit found generated artifact issue(s)")
+    except ValueError as exc:
+        warnings.append(f"privacy-audit-output skipped: {exc}")
+
+    decision = "blocked" if blockers else "started"
+    if blockers:
+        next_safe = "python3 scripts/agent_loop.py decision-brief --from-git --gate task"
+        if issue:
+            next_safe = (
+                "python3 scripts/agent_loop.py active-worktree-prepare "
+                f"--issue {shlex.quote(_validate_issue_selector(issue))} --role Implementer "
+                "--slug active-agent-loop --dry-run"
+            )
+    else:
+        next_safe = (
+            "python3 scripts/agent_loop.py active-loop "
+            f"--mode {mode} --topology {topology} --execute --from-git"
+        )
+
+    out_path = _active_path(out, repo_root=repo_root)
+    rendered = render_active_start(
+        mode=mode,
+        topology=topology,
+        task_id=task_id,
+        issue=issue,
+        branch=branch_name,
+        changed_files=files,
+        decision=decision,
+        active_loop=active_loop,
+        outputs=tuple(outputs),
+        blockers=tuple(_dedupe_preserve_order(blockers)),
+        warnings=tuple(_dedupe_preserve_order(warnings)),
+        next_safe_command=next_safe,
+        repo_root=repo_root,
+    )
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(rendered, encoding="utf-8")
+    return ActiveStartResult(
+        report_path=out_path,
+        active_loop=active_loop,
+        outputs=tuple(outputs),
+        decision=decision,
+        blockers=tuple(_dedupe_preserve_order(blockers)),
+        warnings=tuple(_dedupe_preserve_order(warnings)),
+        next_safe_command=next_safe,
+    )
+
+
+def render_active_start(
+    *,
+    mode: str,
+    topology: str,
+    task_id: str | None,
+    issue: str | None,
+    branch: str,
+    changed_files: Sequence[str],
+    decision: str,
+    active_loop: ActiveLoopResult,
+    outputs: Sequence[Path],
+    blockers: Sequence[str],
+    warnings: Sequence[str],
+    next_safe_command: str,
+    repo_root: Path,
+) -> str:
+    lines = [
+        "# Active Agent Loop Start",
+        "",
+        "- One-command local start pack for the active agent loop.",
+        "- This command writes local reports only; it does not push, create/merge PRs, delete branches, force-push, or call external model APIs.",
+        "- It starts the ledger, role assignments, readiness evidence, privacy audit, and ship simulation in one tick.",
+        "",
+        "## Inputs",
+        "",
+        f"- Mode: `{_sanitize_inline_text(mode)}`",
+        f"- Topology: `{_sanitize_inline_text(topology)}`",
+        f"- Task: `{task_id or 'N/A'}`",
+        f"- Issue: `{_validate_issue_selector(issue) if issue else 'N/A'}`",
+        f"- Branch: `{_sanitize_inline_text(branch)}`",
+        f"- Changed files: `{len(changed_files)}`",
+        "",
+        "## Decision",
+        "",
+        f"- Start decision: `{decision}`",
+        f"- Active-loop decision: `{active_loop.decision}`",
+        "",
+        "## Artifacts",
+        "",
+    ]
+    lines.extend(f"- `{_repo_path(path, repo_root)}`" for path in outputs)
+    lines.extend(["", "## Blockers", ""])
+    lines.extend(f"- {_sanitize_dynamic_text(item)}" for item in blockers) if blockers else lines.append("- None")
+    lines.extend(["", "## Warnings", ""])
+    lines.extend(f"- {_sanitize_dynamic_text(item)}" for item in warnings) if warnings else lines.append("- None")
+    lines.extend(
+        [
+            "",
+            "## Next Safe Command",
+            "",
+            "```bash",
+            _sanitize_command_text(next_safe_command),
+            "```",
+            "",
+            "## Role Assignments",
+            "",
+            f"- Directory: `{_repo_path(active_loop.assignments_dir, repo_root)}`",
+            "- Run the blocking role commands from each assignment, then record pass/clear with `session-heartbeat`.",
+            "",
+        ]
+    )
+    return _sanitize_dynamic_text("\n".join(lines)).rstrip() + "\n"
+
+
 def render_active_loop(
     *,
     mode: str,
@@ -8635,6 +8871,8 @@ def _active_path(path: Path, *, repo_root: Path) -> Path:
         path = repo_root / "reports" / "agent_loop" / "active" / "assignments"
     elif path == DEFAULT_ACTIVE_LOOP:
         path = repo_root / "reports" / "agent_loop" / "active" / "active_loop.md"
+    elif path == DEFAULT_ACTIVE_START:
+        path = repo_root / "reports" / "agent_loop" / "active" / "start.md"
     elif path == DEFAULT_ACTIVE_AGENT_MIX:
         path = repo_root / "reports" / "agent_loop" / "active" / "agent_mix.json"
     elif path == DEFAULT_ACTIVE_WORKTREE_PREPARE:
@@ -10559,6 +10797,21 @@ def build_parser() -> argparse.ArgumentParser:
     role_dispatch.add_argument("--workset")
     role_dispatch.add_argument("--out", type=Path, default=DEFAULT_ROLE_DISPATCH)
 
+    active_start = sub.add_parser("active-start", help="Create a one-command local start pack for the active loop.")
+    active_start.add_argument("--mode", choices=("full-ship",), default="full-ship")
+    active_start.add_argument("--topology", choices=ACTIVE_TOPOLOGY_CHOICES, default="expanded-eight")
+    active_start.add_argument("--task")
+    active_start.add_argument("--issue")
+    active_start.add_argument("--branch")
+    active_start.add_argument("--changed-files", type=Path)
+    active_start.add_argument("--from-git", action="store_true")
+    active_start.add_argument("--claim-text", type=Path)
+    active_start.add_argument("--pr-body", type=Path)
+    active_start.add_argument("--lease-ttl-minutes", type=int, default=30)
+    active_start.add_argument("--batch", type=Path)
+    active_start.add_argument("--agent-mix", help="Work-unit mix target, e.g. claude=5,codex=5")
+    active_start.add_argument("--out", type=Path, default=DEFAULT_ACTIVE_START)
+
     active_loop = sub.add_parser("active-loop", help="Run the active orchestrator tick.")
     active_loop.add_argument("--mode", choices=("full-ship",), default="full-ship")
     active_loop.add_argument("--topology", choices=ACTIVE_TOPOLOGY_CHOICES, default="four-role")
@@ -11398,6 +11651,29 @@ def main(argv: list[str] | None = None) -> int:
             )
             sys.stdout.write(f"[OK] wrote {_repo_path(out, ROOT_DIR)}\n")
             return 0
+        if args.command == "active-start":
+            files = _read_changed_files(
+                args.changed_files,
+                from_git=args.from_git,
+                pr=None,
+                repo_root=ROOT_DIR,
+            )
+            result = write_active_start(
+                mode=args.mode,
+                topology=args.topology,
+                task_id=args.task,
+                issue=args.issue,
+                branch=args.branch,
+                changed_files=files,
+                claim_text=args.claim_text,
+                pr_body=args.pr_body,
+                lease_ttl_minutes=args.lease_ttl_minutes,
+                batch=args.batch,
+                agent_mix=_parse_agent_mix(args.agent_mix),
+                out=args.out,
+            )
+            sys.stdout.write(f"[OK] wrote {_repo_path(result.report_path, ROOT_DIR)}\n")
+            return 0 if result.decision == "started" else 1
         if args.command == "active-loop":
             files = _read_changed_files(
                 args.changed_files,

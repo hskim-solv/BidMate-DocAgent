@@ -36,7 +36,7 @@
 # they render prompts, classify surfaces, check handoffs, suggest or run
 # allowlisted local validation, and write ignored local planning drafts. They
 # do not perform GitHub mutations.
-.PHONY: agent-loop-next agent-loop-status agent-loop-prompt agent-loop-handoff agent-loop-review agent-loop-surface agent-loop-validation agent-loop-validate agent-loop-preflight agent-loop-pr-scan agent-loop-issue-scan agent-loop-maintenance-plan agent-loop-issue-close agent-loop-next-from-prs agent-loop-pr-health agent-loop-draft-task agent-loop-draft-next agent-loop-batch-plan agent-loop-review-followup agent-loop-review-ingest agent-loop-decision-brief agent-loop-promote-draft agent-loop-gate-status agent-loop-claim-audit agent-loop-privacy-audit-output agent-loop-auto-pass agent-loop-dashboard agent-loop-mcp-config agent-loop-safe-fix agent-loop-approval-packet agent-loop-propose-queue-plan agent-loop-pr-body agent-loop-review-plan agent-loop-stale-reports agent-loop-context-pack agent-loop-architecture-brief agent-loop-ship-simulate agent-loop-auto-ship-prepare agent-loop-auto-ship-plan agent-loop-gate-brief agent-loop-manifest agent-loop-pr-body-check agent-loop-ci-ingest agent-loop-stacked-risk agent-loop-patch-proposal agent-loop-adr-reserve agent-loop-dashboard-html agent-loop-ship-command-pack agent-loop-apply-queue-plan agent-loop-review-threads agent-loop-ci-summary agent-loop-readiness-score agent-loop-artifact-freshness agent-loop-review-patch-plan agent-loop-queue-plan-sync agent-loop-dependency-graph agent-loop-branch-issue-hygiene agent-loop-integration-pack agent-loop-scheduled-status agent-loop-validation-history agent-loop-privacy-regression agent-loop-claim-policy agent-loop-architecture-decision agent-loop-workset-recommend agent-loop-automation-coverage agent-loop-human-gated-exec agent-loop-loop-state agent-loop-map agent-loop-mcp
+.PHONY: agent-loop-next agent-loop-status agent-loop-prompt agent-loop-handoff agent-loop-review agent-loop-surface agent-loop-validation agent-loop-validate agent-loop-preflight agent-loop-pr-scan agent-loop-issue-scan agent-loop-maintenance-plan agent-loop-issue-close agent-loop-next-from-prs agent-loop-pr-health agent-loop-draft-task agent-loop-draft-next agent-loop-batch-plan agent-loop-review-followup agent-loop-review-ingest agent-loop-decision-brief agent-loop-promote-draft agent-loop-gate-status agent-loop-claim-audit agent-loop-privacy-audit-output agent-loop-auto-pass agent-loop-dashboard agent-loop-mcp-config agent-loop-safe-fix agent-loop-approval-packet agent-loop-propose-queue-plan agent-loop-pr-body agent-loop-review-plan agent-loop-stale-reports agent-loop-context-pack agent-loop-architecture-brief agent-loop-ship-simulate agent-loop-auto-ship-prepare agent-loop-auto-ship-plan agent-loop-gate-brief agent-loop-manifest agent-loop-pr-body-check agent-loop-ci-ingest agent-loop-stacked-risk agent-loop-patch-proposal agent-loop-adr-reserve agent-loop-dashboard-html agent-loop-ship-command-pack agent-loop-apply-queue-plan agent-loop-review-threads agent-loop-ci-summary agent-loop-readiness-score agent-loop-artifact-freshness agent-loop-review-patch-plan agent-loop-queue-plan-sync agent-loop-dependency-graph agent-loop-branch-issue-hygiene agent-loop-integration-pack agent-loop-scheduled-status agent-loop-validation-history agent-loop-privacy-regression agent-loop-claim-policy agent-loop-architecture-decision agent-loop-workset-recommend agent-loop-automation-coverage agent-loop-active-start agent-loop-human-gated-exec agent-loop-loop-state agent-loop-map agent-loop-mcp
 
 # Auto-ship pipeline (Stop hook driven). See scripts/claude-hooks/stop-ship.sh
 # and the plan at /Users/hskim/.claude/plans/prci-synchronous-newell.md.
@@ -299,6 +299,7 @@ test-regression:
 #   make agent-loop-dashboard-html
 #   make agent-loop-ship-command-pack
 #   make agent-loop-apply-queue-plan CONFIRM_HUMAN_APPROVED=1
+#   make agent-loop-active-start
 #   make agent-loop-loop-state TASK=T-2026-0003
 #   make agent-loop-status TASK=T-2026-0003
 #   make agent-loop-preflight TASK=T-2026-0003
@@ -413,6 +414,10 @@ ARCHITECTURE_DECISION_OUT ?= reports/agent_loop/architecture_decision.md
 WORKSET_RECOMMENDATION_OUT ?= reports/agent_loop/workset_recommendation.md
 DEPENDENCY_GRAPH_OUT ?= reports/agent_loop/dependency_graph.md
 AUTOMATION_COVERAGE_OUT ?= reports/agent_loop/automation_coverage.md
+ACTIVE_START_OUT ?= reports/agent_loop/active/start.md
+ACTIVE_TOPOLOGY ?= expanded-eight
+ACTIVE_AGENT_MIX ?= claude=5,codex=5
+ACTIVE_LEASE_TTL_MINUTES ?= 30
 HUMAN_GATED_ACTION ?=
 HUMAN_GATED_EXEC_OUT ?= reports/agent_loop/human_gated_exec.md
 HUMAN_GATED_DRY_RUN ?=
@@ -898,6 +903,20 @@ agent-loop-workset-recommend:
 agent-loop-automation-coverage:
 	$(PYTHON) scripts/agent_loop.py automation-coverage \
 	  --out "$(AUTOMATION_COVERAGE_OUT)"
+
+agent-loop-active-start:
+	$(PYTHON) scripts/agent_loop.py active-start \
+	  --topology "$(ACTIVE_TOPOLOGY)" \
+	  --agent-mix "$(ACTIVE_AGENT_MIX)" \
+	  --lease-ttl-minutes "$(ACTIVE_LEASE_TTL_MINUTES)" \
+	  $(if $(TASK),--task "$(TASK)",) \
+	  $(if $(ISSUE),--issue "$(ISSUE)",) \
+	  $(if $(BRANCH),--branch "$(BRANCH)",) \
+	  $(if $(CHANGED_FILES),--changed-files "$(CHANGED_FILES)",--from-git) \
+	  $(if $(CLAIM_TEXT),--claim-text "$(CLAIM_TEXT)",) \
+	  $(if $(PR_BODY_OUT),--pr-body "$(PR_BODY_OUT)",) \
+	  $(if $(DECISION_BATCH),--batch "$(DECISION_BATCH)",) \
+	  --out "$(ACTIVE_START_OUT)"
 
 agent-loop-human-gated-exec:
 	@if [ -z "$(HUMAN_GATED_ACTION)" ]; then \

@@ -2845,8 +2845,10 @@ def test_active_loop_cli_accepts_expanded_eight_and_rejects_unknown_topology() -
     parser = agent_loop.build_parser()
 
     args = parser.parse_args(["active-loop", "--topology", "expanded-eight"])
+    start_args = parser.parse_args(["active-start"])
 
     assert args.topology == "expanded-eight"
+    assert start_args.topology == "expanded-eight"
     with pytest.raises(SystemExit):
         parser.parse_args(["active-loop", "--topology", "unknown-topology"])
 
@@ -2921,6 +2923,51 @@ def test_active_loop_agent_mix_flag_overrides_target(monkeypatch, tmp_path: Path
 
     assert registry["agent_mix"]["target"] == {"claude": 7, "codex": 3}
     assert agent_mix["policy"]["target"] == {"claude": 7, "codex": 3}
+
+
+def test_active_start_creates_local_start_pack_without_remote_mutation(monkeypatch, tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    _patch_active_loop_clear(monkeypatch)
+    calls: list[list[str]] = []
+
+    def fake_run(cmd, **kwargs):  # type: ignore[no-untyped-def]
+        calls.append(list(cmd))
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(agent_loop.subprocess, "run", fake_run)
+
+    result = agent_loop.write_active_start(
+        changed_files=["docs/operations/active-agent-loop.md"],
+        repo_root=repo,
+    )
+
+    assert result.decision == "started"
+    assert result.report_path == repo / "reports" / "agent_loop" / "active" / "start.md"
+    assert result.active_loop.decision == "planned"
+    assert (repo / "reports" / "agent_loop" / "active" / "active_loop.md").exists()
+    assert (repo / "reports" / "agent_loop" / "active" / "dashboard.md").exists()
+    assert (repo / "reports" / "agent_loop" / "active" / "approval_packet.md").exists()
+    assert (repo / "reports" / "agent_loop" / "active" / "ship_simulation.md").exists()
+    assert (repo / "reports" / "agent_loop" / "active" / "auto_ship_plan.md").exists()
+    assert (repo / "reports" / "agent_loop" / "active" / "privacy_audit.md").exists()
+    assert not any(call[0] in {"gh", "make"} for call in calls)
+    assert "active-loop --mode full-ship --topology expanded-eight --execute --from-git" in result.next_safe_command
+
+
+def test_active_start_blocks_on_detached_head_and_suggests_prepare(monkeypatch, tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    monkeypatch.setattr(agent_loop, "_current_branch", lambda repo_root: "HEAD")
+    monkeypatch.setattr(agent_loop, "audit_privacy_output", lambda *args, **kwargs: [])
+
+    result = agent_loop.write_active_start(
+        issue="9999",
+        changed_files=["docs/operations/active-agent-loop.md"],
+        repo_root=repo,
+    )
+
+    assert result.decision == "blocked"
+    assert any("current branch is not an issue-linked feature branch" in blocker for blocker in result.blockers)
+    assert "active-worktree-prepare --issue 9999" in result.next_safe_command
 
 
 def test_active_loop_four_role_v2_shape_is_unchanged(monkeypatch, tmp_path: Path) -> None:
