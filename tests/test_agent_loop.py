@@ -1081,6 +1081,38 @@ def test_continue_loop_carries_measurement_inputs_into_recursive_command(tmp_pat
     assert "--real100-dir reports/real100 --no-apply-queue-plan" in rendered
 
 
+def test_continue_loop_redacts_real100_source_when_applying_queue_plan(tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path, task_id="T-2026-0001")
+    pr_state = repo / "reports" / "agent_loop" / "pr_state.json"
+    pr_state.parent.mkdir(parents=True, exist_ok=True)
+    pr_state.write_text("[]", encoding="utf-8")
+    real100 = repo / "reports" / "real100"
+    real100.mkdir(parents=True)
+    (real100 / "multi_chunk_evidence_failures.aggregate.json").write_text(
+        json.dumps(
+            {
+                "population": {
+                    "multi_chunk_gold_cases": 9,
+                    "multi_chunk_top10_evidence_failures": 7,
+                },
+                "expected_impact": {"unknown_due_to_limited_depth": 6},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    agent_loop.write_continue_loop(
+        pr_json=pr_state,
+        task_id="T-2026-1000",
+        real100_dir=Path("reports/real100"),
+        repo_root=repo,
+    )
+
+    queue = (repo / "tasks" / "queue.md").read_text(encoding="utf-8")
+    assert "reports/real100/multi_chunk_evidence_failures.aggregate.json" not in queue
+    assert "multi_chunk_evidence_failures.aggregate.json" in queue
+
+
 def test_batch_plan_rejects_output_outside_agent_loop_reports(tmp_path: Path) -> None:
     tasks_dir = tmp_path / "reports" / "agent_loop" / "codex_tasks"
     tasks_dir.mkdir(parents=True)
