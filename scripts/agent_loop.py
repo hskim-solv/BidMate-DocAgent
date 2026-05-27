@@ -9611,12 +9611,18 @@ def write_active_codex_runner(
     repo_root: Path = ROOT_DIR,
     popen_factory=None,
     which_func=None,
+    git_runner=None,
+    mode: str = "read-only",
+    task_id: str | None = None,
+    base: str = "origin/main",
 ) -> ActiveCodexRunnerResult:
-    """Plan or spawn one Codex process per active-loop session.
+    """Plan or spawn Codex processes for the active loop.
 
-    This is intentionally separate from ``active-start`` and ``active-loop --execute``:
-    it creates read-only Codex processes for role assignments, but it never marks a
-    role as passed and never calls the shipping path.
+    ``mode="read-only"`` (default) spawns one read-only Codex process per session — this is
+    intentionally separate from ``active-start`` / ``active-loop --execute`` and never marks
+    a role passed or calls ship. ``mode="patch"`` runs a single codex write-lane on the
+    Implementer (write-lease owner) inside a scratch worktree and captures a patch proposal
+    (issue #1604); it borrows the write lease (claude XOR codex) and never applies the patch.
     """
     if max_parallel < 1:
         raise ValueError("--max-parallel must be at least 1")
@@ -9624,11 +9630,31 @@ def write_active_codex_runner(
         raise ValueError("--timeout-seconds must be >= 0")
     if sandbox not in {"read-only", "workspace-write", "danger-full-access"}:
         raise ValueError("--sandbox must be read-only, workspace-write, or danger-full-access")
+    if mode not in {"read-only", "patch"}:
+        raise ValueError("--mode must be read-only or patch")
     registry_path = _active_path(registry, repo_root=repo_root)
     assignments_path = _active_path(assignments_dir, repo_root=repo_root)
     runs_path = _active_path(runs_dir, repo_root=repo_root)
     state_path = _active_path(state, repo_root=repo_root)
     out_path = _active_path(out, repo_root=repo_root)
+
+    if mode == "patch":
+        return _write_active_codex_patch(
+            registry_path=registry_path,
+            patch_runs_path=runs_path.parent / "patch_runs",
+            state_path=state_path,
+            out_path=out_path,
+            assignments_path=assignments_path,
+            task_id=task_id,
+            base=base,
+            execute=execute,
+            timeout_seconds=timeout_seconds,
+            codex_executable=codex_executable,
+            repo_root=repo_root,
+            popen_factory=popen_factory,
+            which_func=which_func,
+            git_runner=git_runner,
+        )
 
     blockers: list[str] = []
     warnings: list[str] = []
@@ -9811,6 +9837,281 @@ def write_active_codex_runner(
         runs_dir=runs_path,
         decision=decision,
         sessions=tuple(planned),
+        blockers=tuple(_dedupe_preserve_order(blockers)),
+        warnings=tuple(_dedupe_preserve_order(warnings)),
+    )
+
+
+def _write_active_codex_patch(
+    *,
+    registry_path: Path,
+    patch_runs_path: Path,
+    state_path: Path,
+    out_path: Path,
+    assignments_path: Path,
+    task_id: str | None,
+    base: str,
+    execute: bool,
+    timeout_seconds: int,
+    codex_executable: str,
+    repo_root: Path,
+    popen_factory=None,
+    which_func=None,
+    git_runner=None,
+    now: datetime | None = None,
+) -> ActiveCodexRunnerResult:
+    """Patch mode: a single codex write-lane on the Implementer (write-lease owner).
+
+    Borrows the write lease (claude XOR codex), edits inside an isolated scratch worktree
+    under ``--sandbox workspace-write``, captures ``git diff`` as a privacy-scrubbed patch
+    artifact, then tears the worktree down and releases the lease. NO integration apply
+    (that is PR-B). Codex-only (claude headless Edit-tool is unusable — issue #1598/#1604).
+    """
+    now = now or datetime.now(timezone.utc)
+    agent = "codex"
+    blockers: list[str] = []
+    warnings: list[str] = []
+    verdict = "error"
+    diff_text = ""
+    scratch_branch = ""
+    command_display = ""
+    session_id = "implementer"
+    resolved_task: str | None = None
+    acquired = False
+
+    if not registry_path.exists():
+        blockers.append("active session registry is missing; run make agent-loop-active-start first")
+    else:
+        raw = _load_active_registry(registry_path).get("sessions")
+        raw_sessions = raw if isinstance(raw, list) else []
+        implementer = next((s for s in raw_sessions if isinstance(s, dict) and s.get("role") == "Implementer"), None)
+        if implementer is None:
+            blockers.append("no Implementer session in registry; patch mode targets the write-lease owner")
+        else:
+            session_id = _validate_session_id(str(implementer.get("session_id") or "implementer"))
+            candidate = task_id or (str(implementer.get("task_id")) if implementer.get("task_id") else None)
+            if candidate and TASK_ID_RE.fullmatch(candidate):
+                resolved_task = candidate
+            else:
+                blockers.append("patch mode requires a task id (pass --task T-YYYY-NNNN or run active-start --task)")
+
+    which = which_func if which_func is not None else shutil.which
+    resolved_executable = which(codex_executable) if execute else codex_executable
+    if execute and not resolved_executable:
+        blockers.append(f"codex executable not found: {codex_executable}")
+    if not execute:
+        warnings.append("dry-run only; pass --execute (or ACTIVE_CODEX_EXECUTE=1) with --mode patch to run the write lane")
+
+    run_dir = patch_runs_path / session_id
+    artifact_path = run_dir / "patch_artifact.json"
+    last_message_path = run_dir / "last_message.md"
+    prompt_path = run_dir / "prompt.md"
+    stdout_path = run_dir / "stdout.jsonl"
+    stderr_path = run_dir / "stderr.log"
+
+    scratch_path: Path | None = None
+    if resolved_task is not None:
+        scratch_path, scratch_branch = _scratch_worktree_paths(resolved_task, agent, repo_root=repo_root)
+        command_display = _sanitize_command_text(
+            shlex.join(
+                _active_codex_display_command(
+                    _active_codex_exec_command(
+                        codex_executable=str(resolved_executable or codex_executable),
+                        sandbox="workspace-write",
+                        last_message_path=last_message_path,
+                        repo_root=repo_root,
+                        cd=str(scratch_path),
+                    )
+                )
+            )
+        )
+
+    can_run = execute and resolved_task is not None and scratch_path is not None and not blockers
+    if can_run:
+        ok, msg, _lease = acquire_active_agent(agent=agent, repo_root=repo_root, now=now)
+        if not ok:
+            blockers.append(f"write-lease borrow failed: {msg}")
+        else:
+            acquired = True
+            try:
+                created_path, scratch_branch, wt_blockers = create_scratch_worktree(
+                    resolved_task, agent, base=base, repo_root=repo_root, runner=git_runner
+                )
+                blockers.extend(wt_blockers)
+                if not wt_blockers:
+                    run_dir.mkdir(parents=True, exist_ok=True)
+                    prompt = _render_active_patch_prompt(
+                        session_id=session_id,
+                        task_id=resolved_task,
+                        scratch=_repo_path(created_path, repo_root),
+                        repo_root=repo_root,
+                    )
+                    prompt_path.write_text(prompt, encoding="utf-8")
+                    command = _active_codex_exec_command(
+                        codex_executable=str(resolved_executable),
+                        sandbox="workspace-write",
+                        last_message_path=last_message_path,
+                        repo_root=repo_root,
+                        cd=str(created_path),
+                    )
+                    factory = popen_factory if popen_factory is not None else subprocess.Popen
+                    proc = None
+                    try:
+                        with stdout_path.open("w", encoding="utf-8") as so, stderr_path.open("w", encoding="utf-8") as se:
+                            proc = factory(command, cwd=repo_root, stdin=subprocess.PIPE, stdout=so, stderr=se, text=True)
+                            stdin = getattr(proc, "stdin", None)
+                            if stdin is not None:
+                                stdin.write(prompt)
+                                stdin.close()
+                    except OSError as exc:
+                        blockers.append(f"failed to spawn codex patch session {session_id}: {exc}")
+                    if proc is not None and not blockers:
+                        wait = getattr(proc, "wait", None)
+                        try:
+                            rc = wait(timeout=timeout_seconds or None) if callable(wait) else getattr(proc, "returncode", 0)
+                        except subprocess.TimeoutExpired:
+                            rc = None
+                            blockers.append(f"codex patch session {session_id} timed out after {timeout_seconds} seconds")
+                        if rc == 0:
+                            run = git_runner or _git_worktree_runner
+                            # Stage everything first: codex often CREATES files, and plain
+                            # `git diff` omits untracked files. `add -A` + `diff --cached`
+                            # captures new files + modifications as one applyable patch.
+                            add_proc = run(["git", "-C", str(created_path), "add", "-A"])
+                            if getattr(add_proc, "returncode", 1) != 0:
+                                blockers.append("git add failed in scratch worktree")
+                            else:
+                                diff_proc = run(["git", "-C", str(created_path), "diff", "--cached"])
+                                if getattr(diff_proc, "returncode", 1) == 0:
+                                    diff_text = getattr(diff_proc, "stdout", "") or ""
+                                    verdict = "proposed" if diff_text.strip() else "empty"
+                                else:
+                                    blockers.append("git diff capture failed in scratch worktree")
+                        elif rc is not None:
+                            blockers.append(f"codex patch session {session_id} exited with code {rc}")
+            finally:
+                warnings.extend(teardown_scratch_worktree(resolved_task, agent, repo_root=repo_root, runner=git_runner))
+                release_ok, release_msg = release_active_agent(agent=agent, repo_root=repo_root, now=now)
+                if not release_ok:
+                    warnings.append(f"active_agent release warning: {release_msg}")
+
+    if acquired and resolved_task is not None:
+        artifact = {
+            "schema_version": 1,
+            "task_id": resolved_task,
+            "session_id": session_id,
+            "role": "Implementer",
+            "agent": agent,
+            "generated_at": _isoformat(now),
+            "base": base,
+            "scratch_branch": scratch_branch,
+            "verdict": verdict,
+            "summary": _patch_summary(verdict, diff_text),
+            "files": _diff_files(diff_text),
+            "diffstat": _diffstat(diff_text),
+            "diff": diff_text,
+            "wu": 1 if verdict == "proposed" else 0,
+            "privacy_scrubbed": True,
+        }
+        run_dir.mkdir(parents=True, exist_ok=True)
+        artifact_path.write_text(
+            json.dumps(_redact_private_json(_sanitize_json_value(artifact)), indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        privacy_findings = audit_privacy_output(artifact_path, out_path=None, repo_root=repo_root)
+        if privacy_findings:
+            issues = sorted({finding.issue for finding in privacy_findings})
+            verdict = "blocked"
+            redacted = {
+                "schema_version": 1,
+                "task_id": resolved_task,
+                "session_id": session_id,
+                "role": "Implementer",
+                "agent": agent,
+                "generated_at": _isoformat(now),
+                "base": base,
+                "scratch_branch": scratch_branch,
+                "verdict": "blocked",
+                "summary": f"privacy scrub rejected patch ({len(issues)} issue type(s))",
+                "files": [],
+                "diffstat": {"files_changed": 0, "insertions": 0, "deletions": 0},
+                "diff": "",
+                "wu": 0,
+                "privacy_scrubbed": False,
+            }
+            artifact_path.write_text(json.dumps(redacted, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+            blockers.extend(f"privacy: {issue}" for issue in issues)
+
+    if not execute:
+        decision = "blocked" if blockers else "planned"
+    elif blockers:
+        decision = "blocked"
+    else:
+        decision = "completed"
+
+    sessions_out = [
+        {
+            "session_id": session_id,
+            "role": "Implementer",
+            "status": verdict if execute else "planned",
+            "pid": None,
+            "assignment": _repo_path(artifact_path, repo_root),
+            "last_message": _repo_path(last_message_path, repo_root),
+            "command": command_display,
+        }
+    ]
+    state_payload = {
+        "schema_version": 1,
+        "generated_at": _isoformat(now),
+        "execute": execute,
+        "mode": "patch",
+        "decision": decision,
+        "sandbox": "workspace-write",
+        "task_id": resolved_task,
+        "verdict": verdict,
+        "patch_runs_dir": _repo_path(patch_runs_path, repo_root),
+        "sessions": sessions_out,
+        "blockers": _dedupe_preserve_order(blockers),
+        "warnings": _dedupe_preserve_order(warnings),
+    }
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text(json.dumps(_sanitize_json_value(state_payload), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    _append_active_event(
+        _active_path(DEFAULT_ACTIVE_EVENTS, repo_root=repo_root),
+        {
+            "event": "active-codex-runner",
+            "mode": "patch",
+            "execute": execute,
+            "decision": decision,
+            "sandbox": "workspace-write",
+            "task_id": resolved_task,
+            "verdict": verdict,
+            "sessions": [session_id],
+            "blockers": blockers,
+            "warnings": warnings,
+        },
+    )
+    rendered = render_active_codex_runner(
+        decision=decision,
+        execute=execute,
+        sandbox="workspace-write",
+        sessions=sessions_out,
+        blockers=tuple(_dedupe_preserve_order(blockers)),
+        warnings=tuple(_dedupe_preserve_order(warnings)),
+        registry_path=registry_path,
+        assignments_path=assignments_path,
+        runs_path=patch_runs_path,
+        state_path=state_path,
+        repo_root=repo_root,
+    )
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(rendered, encoding="utf-8")
+    return ActiveCodexRunnerResult(
+        report_path=out_path,
+        state_path=state_path,
+        runs_dir=patch_runs_path,
+        decision=decision,
+        sessions=tuple(sessions_out),
         blockers=tuple(_dedupe_preserve_order(blockers)),
         warnings=tuple(_dedupe_preserve_order(warnings)),
     )
@@ -10202,6 +10503,66 @@ def _inspect_active_worktree(worktree: str, *, repo_root: Path) -> dict[str, obj
     return {"state": "clean", "branch": _sanitize_inline_text(branch_name), "worktree": _display_path(str(path), repo_root=repo_root)}
 
 
+def _scratch_worktree_paths(task_id: str, agent: str, *, repo_root: Path) -> tuple[Path, str]:
+    """Return (worktree_path, scratch_branch) for a write-lane scratch worktree (issue #1604)."""
+    if not TASK_ID_RE.fullmatch(task_id):
+        raise ValueError("task id must match T-YYYY-NNNN")
+    if agent not in ACTIVE_LANE_AGENTS:
+        raise ValueError(f"agent must be one of: {', '.join(ACTIVE_LANE_AGENTS)}")
+    path = repo_root / ".claude" / "worktrees" / f"{task_id}-{agent}"
+    branch = f"agent/{task_id}/{agent}-scratch"
+    return path, branch
+
+
+def _git_worktree_runner(cmd: list[str]) -> "subprocess.CompletedProcess[str]":
+    return subprocess.run(cmd, capture_output=True, text=True, check=False)
+
+
+def create_scratch_worktree(
+    task_id: str,
+    agent: str,
+    *,
+    base: str = "origin/main",
+    repo_root: Path = ROOT_DIR,
+    runner=None,
+) -> tuple[Path, str, list[str]]:
+    """Create an isolated scratch worktree + branch for a write lane (issue #1604).
+
+    The lane edits inside this worktree; the patch is later captured as a diff. No
+    integration-branch apply here (that is PR-B). Returns (worktree_path, scratch_branch,
+    blockers). The git subprocess is injectable so tests never create real worktrees.
+    """
+    run = runner or _git_worktree_runner
+    path, branch = _scratch_worktree_paths(task_id, agent, repo_root=repo_root)
+    blockers: list[str] = []
+    path.parent.mkdir(parents=True, exist_ok=True)
+    proc = run(["git", "-C", str(repo_root), "worktree", "add", "-b", branch, str(path), base])
+    if proc.returncode != 0:
+        tail = next((line for line in reversed((proc.stderr or "").splitlines()) if line.strip()), "")
+        blockers.append(f"scratch worktree create failed for {branch}: {tail}".strip())
+    return path, branch, blockers
+
+
+def teardown_scratch_worktree(
+    task_id: str,
+    agent: str,
+    *,
+    repo_root: Path = ROOT_DIR,
+    runner=None,
+) -> list[str]:
+    """Best-effort removal of a scratch worktree + its branch. Returns warnings (never raises)."""
+    run = runner or _git_worktree_runner
+    path, branch = _scratch_worktree_paths(task_id, agent, repo_root=repo_root)
+    warnings: list[str] = []
+    rm = run(["git", "-C", str(repo_root), "worktree", "remove", "--force", str(path)])
+    if rm.returncode != 0:
+        warnings.append(f"scratch worktree remove warning for {branch}")
+    br = run(["git", "-C", str(repo_root), "branch", "-D", branch])
+    if br.returncode != 0:
+        warnings.append(f"scratch branch delete warning for {branch}")
+    return warnings
+
+
 def _active_role_status_ok(sessions: Sequence[dict[str, object]], role: str) -> bool:
     passing = {"pass", "passed", "approved", "ready-for-ship", "done", "clear"}
     for session in sessions:
@@ -10258,12 +10619,13 @@ def _active_codex_exec_command(
     sandbox: str,
     last_message_path: Path,
     repo_root: Path,
+    cd: str = ".",
 ) -> list[str]:
     return [
         codex_executable,
         "exec",
         "--cd",
-        ".",
+        cd,
         "--sandbox",
         sandbox,
         "--json",
@@ -10302,6 +10664,67 @@ def _render_active_codex_prompt(
             ]
         )
     )
+
+
+def _render_active_patch_prompt(
+    *,
+    session_id: str,
+    task_id: str,
+    scratch: str,
+    repo_root: Path,
+) -> str:
+    """Write-lane prompt: codex MAY edit files in the scratch worktree, but never commits,
+    pushes, ships, or touches anything outside it. The orchestrator captures the diff."""
+    return _sanitize_dynamic_text(
+        "\n".join(
+            [
+                f"You are the Codex write-lane for active-loop session `{session_id}`, task `{task_id}`.",
+                f"You are in an isolated scratch worktree at `{scratch}` — the current working directory.",
+                "Make the smallest correct code change for the task IN THIS WORKTREE ONLY (you may edit/create files).",
+                "Do NOT commit, push, create/ready/merge PRs, close issues, delete branches, force-push, or run ship/make commands.",
+                "Do NOT touch any path outside this scratch worktree.",
+                "Leave the change uncommitted in the working tree; the orchestrator will capture `git diff` as a patch proposal.",
+                "Return a concise final message: task id, files changed, a one-line rationale, and any blockers.",
+                "Do not include absolute local paths, raw private question/answer/evidence text, doc_id, chunk_id, filename, or prompt/response body.",
+                "",
+            ]
+        )
+    )
+
+
+def _diff_files(diff_text: str) -> list[str]:
+    """Extract changed file paths from a unified diff (the `b/<path>` side of each header)."""
+    files: list[str] = []
+    for line in diff_text.splitlines():
+        if line.startswith("diff --git "):
+            parts = line.split(" b/", 1)
+            if len(parts) == 2 and parts[1] not in files:
+                files.append(parts[1])
+    return files
+
+
+def _diffstat(diff_text: str) -> dict[str, int]:
+    """Count files_changed / insertions / deletions from a unified diff."""
+    files = _diff_files(diff_text)
+    insertions = 0
+    deletions = 0
+    for line in diff_text.splitlines():
+        if line.startswith("+") and not line.startswith("+++"):
+            insertions += 1
+        elif line.startswith("-") and not line.startswith("---"):
+            deletions += 1
+    return {"files_changed": len(files), "insertions": insertions, "deletions": deletions}
+
+
+def _patch_summary(verdict: str, diff_text: str) -> str:
+    if verdict == "proposed":
+        stat = _diffstat(diff_text)
+        return f"codex proposed a patch: {stat['files_changed']} file(s), +{stat['insertions']}/-{stat['deletions']}"
+    if verdict == "empty":
+        return "codex produced no changes in the scratch worktree"
+    if verdict == "blocked":
+        return "patch blocked by the privacy backstop"
+    return "codex patch lane did not complete"
 
 
 def _write_active_assignment(
@@ -11958,6 +12381,9 @@ def build_parser() -> argparse.ArgumentParser:
     codex_runner.add_argument("--timeout-seconds", type=int, default=0, help="Per-session wait timeout; 0 means no timeout.")
     codex_runner.add_argument("--codex-executable", default="codex")
     codex_runner.add_argument("--sandbox", choices=("read-only", "workspace-write", "danger-full-access"), default="read-only")
+    codex_runner.add_argument("--mode", choices=("read-only", "patch"), default="read-only", help="read-only spawns per-session review processes; patch runs one codex write-lane in a scratch worktree.")
+    codex_runner.add_argument("--task", help="Task id for patch mode (T-YYYY-NNNN); defaults to the Implementer session's task.")
+    codex_runner.add_argument("--base", default="origin/main", help="Base ref the patch-mode scratch worktree forks from.")
 
     active_prepare = sub.add_parser("active-worktree-prepare", help="Prepare an issue-linked worktree for an active-loop role.")
     active_prepare.add_argument("--issue")
@@ -12873,6 +13299,9 @@ def main(argv: list[str] | None = None) -> int:
                 timeout_seconds=args.timeout_seconds,
                 codex_executable=args.codex_executable,
                 sandbox=args.sandbox,
+                mode=args.mode,
+                task_id=args.task,
+                base=args.base,
             )
             sys.stdout.write(f"[OK] wrote {_repo_path(result.report_path, ROOT_DIR)}\n")
             return 0 if result.decision in {"planned", "running", "completed"} else 1
