@@ -8008,6 +8008,9 @@ def write_session_heartbeat(
         raise ValueError("--task must match T-YYYY-NNNN")
     registry_path = _active_path(registry, repo_root=repo_root)
     payload = _load_active_registry(registry_path)
+    topology = str(payload.get("topology") or "four-role")
+    if topology not in ACTIVE_TOPOLOGY_ROLES:
+        topology = "four-role"
     sessions = payload.get("sessions") if isinstance(payload.get("sessions"), list) else []
     by_id = {str(item.get("session_id")): dict(item) for item in sessions if isinstance(item, dict)}
     session = by_id.get(safe_session, {})
@@ -8022,14 +8025,14 @@ def write_session_heartbeat(
             "last_heartbeat": _isoformat(now),
             "heartbeat_state": "fresh",
             "lease_expires_at": _isoformat(now + timedelta(minutes=lease_ttl_minutes)),
-            "next_command": "python3 scripts/agent_loop.py active-loop --mode full-ship --dry-run",
+            "next_command": _active_next_command(safe_role, task_id=task_id, topology=topology),
         }
     )
     by_id[safe_session] = session
     rendered_payload = {
         "schema_version": 1,
         "generated_at": _isoformat(now),
-        "topology": payload.get("topology") or "four-role",
+        "topology": topology,
         "sessions": [_sanitize_json_value(by_id[key]) for key in sorted(by_id)],
     }
     registry_path.parent.mkdir(parents=True, exist_ok=True)

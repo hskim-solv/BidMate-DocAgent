@@ -2814,6 +2814,33 @@ def test_session_heartbeat_refreshes_registry_and_stale_sessions_are_marked(monk
     assert reviewer["status"] == "stale"
 
 
+def test_session_heartbeat_preserves_expanded_eight_next_command(tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    _write_active_registry(
+        repo,
+        topology="expanded-eight",
+        sessions=[
+            {
+                "session_id": "orchestrator",
+                "role": "Orchestrator",
+                "status": "running",
+                "last_heartbeat": "2999-01-01T00:00:00Z",
+            }
+        ],
+    )
+
+    _, _, payload = agent_loop.write_session_heartbeat(
+        session_id="orchestrator",
+        role="Orchestrator",
+        status="running",
+        repo_root=repo,
+    )
+
+    session = payload["sessions"][0]
+    assert payload["topology"] == "expanded-eight"
+    assert "--topology expanded-eight" in session["next_command"]
+
+
 def test_active_loop_cli_accepts_expanded_eight_and_rejects_unknown_topology() -> None:
     parser = agent_loop.build_parser()
 
