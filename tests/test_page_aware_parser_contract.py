@@ -161,6 +161,26 @@ def test_public_fixture_roundtrip_preserves_page_metadata() -> None:
     assert chunks[1]["regions"][0]["bbox"] == [10.0, 20.0, 110.0, 160.0]
 
 
+def test_fixed_chunking_preserves_explicit_section_page_span() -> None:
+    document = normalize_json_document(
+        {
+            "doc_id": "page-aware-fixed",
+            "title": "synthetic",
+            "sections": [
+                {"heading": "page-1", "text": "First page text.", "page_span": [1, 1]},
+                {"heading": "page-2", "text": "Second page text.", "page_span": [2, 2]},
+            ],
+        },
+        FIXTURE_DIR / "synthetic_fixed_sections.json",
+    )
+
+    chunks = build_chunks([document], chunking_strategy="fixed", max_chars=1000)
+
+    assert chunks[0]["chunking_strategy"] == "fixed"
+    assert chunks[0]["page_span"] == [1, 2]
+    assert "regions" not in chunks[0]
+
+
 @pytest.mark.parametrize(
     ("fixture_name", "malformed_key"),
     [

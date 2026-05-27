@@ -21,7 +21,7 @@
 .PHONY: eval smoke reproduce benchmark pareto cost-frontier korean-public-fetch korean-public-eval harness-smoke harness-ablation harness-compare
 
 # Real-data eval cycle (private; ADR 0005 commit boundary).
-.PHONY: real-eval real-eval-check real-eval-inventory real-eval-semantic real-eval-delta real-eval-baseline-update real-eval-history-render real-eval-with-judge harness-real
+.PHONY: real-eval real-eval-check real-eval-inventory real-eval-semantic real-eval-page-aware real-eval-delta real-eval-baseline-update real-eval-history-render real-eval-with-judge harness-real
 
 # Real-data case proposer cycle (ADR 0029; gitignored I/O).
 .PHONY: case-propose case-propose-metadata case-review case-promote
@@ -1004,6 +1004,18 @@ real-eval-semantic:
 	  REAL_EVAL_INDEX_DIR=data/index/real100_m3 \
 	  OUTPUT_DIR=outputs/real100_m3 \
 	  REAL_EVAL_REPORT_DIR=reports/real100_m3 \
+	  bash scripts/smoke_real.sh
+
+# Page-aware citation readiness variant for issue #1573. Keeps the canonical
+# hashing real100 index untouched while rebuilding into a separate section-
+# chunked index that can preserve PyMuPDF4LLM page sections on chunks.
+real-eval-page-aware:
+	CHUNKING_STRATEGY=section \
+	  HWP_PDF_ARTIFACT_DIR=data/private/real100_v2/converted_pdfs \
+	  BIDMATE_HWP_PDF_ARTIFACT_REUSE=1 \
+	  REAL_EVAL_INDEX_DIR=data/index/real100_pageaware \
+	  OUTPUT_DIR=outputs/real100_pageaware \
+	  REAL_EVAL_REPORT_DIR=reports/real100_pageaware \
 	  bash scripts/smoke_real.sh
 
 # Render an aggregate-only markdown delta between the current
