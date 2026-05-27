@@ -988,8 +988,9 @@ Needs changes
     assert "python3 scripts/_governance.py --check-eval-privacy" in generated
 
 
-def test_review_followup_cli_smoke(capsys) -> None:
-    review = ROOT / "reports" / "agent_loop" / "review_output.md"
+def test_review_followup_cli_smoke(capsys, monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(agent_loop, "ROOT_DIR", tmp_path)
+    review = tmp_path / "reports" / "agent_loop" / "review_output.md"
     review.parent.mkdir(parents=True, exist_ok=True)
     review.write_text(
         """## Findings

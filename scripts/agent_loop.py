@@ -9095,6 +9095,7 @@ def main(argv: list[str] | None = None) -> int:
                 review=args.review,
                 out=args.out,
                 tasks_dir=args.tasks_dir,
+                repo_root=ROOT_DIR,
             )
             sys.stdout.write(
                 f"[OK] wrote {_repo_path(out, ROOT_DIR)} and {count} follow-up brief(s) under "
