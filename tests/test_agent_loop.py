@@ -2954,7 +2954,7 @@ def test_active_start_creates_local_start_pack_without_remote_mutation(monkeypat
     assert "active-loop --mode full-ship --topology expanded-eight --execute --from-git" in result.next_safe_command
 
 
-def test_active_start_blocks_on_detached_head_and_suggests_prepare(monkeypatch, tmp_path: Path) -> None:
+def test_active_start_on_detached_head_starts_and_suggests_prepare(monkeypatch, tmp_path: Path) -> None:
     repo = _write_repo(tmp_path)
     monkeypatch.setattr(agent_loop, "_current_branch", lambda repo_root: "HEAD")
     monkeypatch.setattr(agent_loop, "audit_privacy_output", lambda *args, **kwargs: [])
@@ -2965,9 +2965,156 @@ def test_active_start_blocks_on_detached_head_and_suggests_prepare(monkeypatch, 
         repo_root=repo,
     )
 
-    assert result.decision == "blocked"
-    assert any("current branch is not an issue-linked feature branch" in blocker for blocker in result.blockers)
+    assert result.decision == "started"
+    assert not result.blockers
+    assert any("current branch is not an issue-linked feature branch" in blocker for blocker in result.active_loop.blockers)
     assert "active-worktree-prepare --issue 9999" in result.next_safe_command
+    assert "## Active-loop Blockers" in result.report_path.read_text(encoding="utf-8")
+
+
+def test_active_start_generates_missing_pr_body_before_readiness_check(monkeypatch, tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    _patch_active_loop_clear(monkeypatch)
+    pr_body = repo / "reports" / "agent_loop" / "pr_body.md"
+
+    result = agent_loop.write_active_start(
+        changed_files=["docs/operations/active-agent-loop.md"],
+        pr_body=pr_body,
+        repo_root=repo,
+    )
+
+    assert result.decision == "started"
+    assert pr_body.exists()
+    assert not any("PR body path does not exist" in blocker for blocker in result.active_loop.blockers)
+    assert pr_body in result.outputs
+    assert not agent_loop.check_pr_body_text(
+        pr_body.read_text(encoding="utf-8"),
+        changed_files=["docs/operations/active-agent-loop.md"],
+        branch="chore/issue-9999-active-loop",
+        repo_root=repo,
+    )
+
+
+def test_active_start_refreshes_stale_default_pr_body_after_branch_repair(monkeypatch, tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    _patch_active_loop_clear(monkeypatch)
+    pr_body = repo / "reports" / "agent_loop" / "pr_body.md"
+    pr_body.parent.mkdir(parents=True, exist_ok=True)
+    pr_body.write_text("Closes #<ISSUE_NUMBER>\n", encoding="utf-8")
+
+    result = agent_loop.write_active_start(
+        issue="9999",
+        changed_files=["docs/operations/active-agent-loop.md"],
+        pr_body=pr_body,
+        repo_root=repo,
+    )
+
+    assert result.decision == "started"
+    assert "Closes #9999" in pr_body.read_text(encoding="utf-8")
+    assert any("refreshed stale PR body draft" in warning for warning in result.warnings)
+    assert not any("PR body check has findings" in blocker for blocker in result.active_loop.blockers)
+
+
+def test_active_start_bootstraps_continue_loop_when_no_branch_or_files(monkeypatch, tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    monkeypatch.setattr(agent_loop, "_current_branch", lambda repo_root: "HEAD")
+    monkeypatch.setattr(agent_loop, "audit_privacy_output", lambda *args, **kwargs: [])
+
+    def fake_continue_loop(**kwargs):  # type: ignore[no-untyped-def]
+        out = kwargs["out"]
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text("# Continue Loop\n", encoding="utf-8")
+        return out, "# Continue Loop\n"
+
+    monkeypatch.setattr(agent_loop, "write_continue_loop", fake_continue_loop)
+
+    result = agent_loop.write_active_start(repo_root=repo)
+
+    assert result.decision == "started"
+    assert result.active_loop.decision == "blocked"
+    assert repo / "reports" / "agent_loop" / "active" / "continue_loop.md" in result.outputs
+    assert result.next_safe_command == "python3 scripts/agent_loop.py continue-loop --no-apply-queue-plan"
+
+
+def test_active_start_repair_branch_with_issue_switches_current_checkout(monkeypatch, tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    state = {"branch": "HEAD"}
+    calls: list[list[str]] = []
+
+    monkeypatch.setattr(agent_loop, "_current_branch", lambda repo_root: state["branch"])
+    monkeypatch.setattr(agent_loop, "_branch_exists", lambda branch, repo_root: False)
+    monkeypatch.setattr(agent_loop, "audit_privacy_output", lambda *args, **kwargs: [])
+    monkeypatch.setattr(
+        agent_loop,
+        "build_overlap_preflight",
+        lambda issue, branch, repo_root: _clear_overlap_report(issue=issue, branch=branch),
+    )
+
+    def fake_run(cmd, **kwargs):  # type: ignore[no-untyped-def]
+        calls.append(list(cmd))
+        if list(cmd)[:4] == ["git", "-C", str(repo), "switch"]:
+            state["branch"] = list(cmd)[-1]
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+        if list(cmd)[:4] == ["git", "-C", str(repo), "rev-parse"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="abc123\n", stderr="")
+        raise AssertionError(f"unexpected subprocess call: {cmd}")
+
+    monkeypatch.setattr(agent_loop.subprocess, "run", fake_run)
+
+    result = agent_loop.write_active_start(
+        issue="9999",
+        changed_files=["docs/operations/active-agent-loop.md"],
+        repair_branch=True,
+        repo_root=repo,
+    )
+
+    assert state["branch"] == "chore/issue-9999-active-start"
+    assert ["git", "-C", str(repo), "switch", "-c", "chore/issue-9999-active-start"] in calls
+    assert result.decision == "started"
+    assert result.active_loop.decision == "planned"
+    assert not result.active_loop.blockers
+    assert any("branch repair: created and switched" in warning for warning in result.warnings)
+
+
+def test_active_start_repair_branch_creates_issue_when_missing(monkeypatch, tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    state = {"branch": "HEAD"}
+    calls: list[list[str]] = []
+
+    monkeypatch.setattr(agent_loop, "_current_branch", lambda repo_root: state["branch"])
+    monkeypatch.setattr(agent_loop, "_branch_exists", lambda branch, repo_root: False)
+    monkeypatch.setattr(agent_loop, "audit_privacy_output", lambda *args, **kwargs: [])
+    monkeypatch.setattr(
+        agent_loop,
+        "build_overlap_preflight",
+        lambda issue, branch, repo_root: _clear_overlap_report(issue=issue, branch=branch),
+    )
+
+    def fake_run(cmd, **kwargs):  # type: ignore[no-untyped-def]
+        calls.append(list(cmd))
+        if list(cmd)[:3] == ["gh", "issue", "create"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="https://github.com/acme/repo/issues/4242\n", stderr="")
+        if list(cmd)[:4] == ["git", "-C", str(repo), "switch"]:
+            state["branch"] = list(cmd)[-1]
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+        if list(cmd)[:4] == ["git", "-C", str(repo), "rev-parse"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="abc123\n", stderr="")
+        raise AssertionError(f"unexpected subprocess call: {cmd}")
+
+    monkeypatch.setattr(agent_loop.subprocess, "run", fake_run)
+
+    result = agent_loop.write_active_start(
+        changed_files=["docs/operations/active-agent-loop.md"],
+        repair_branch=True,
+        repair_title="Active start repair",
+        repo_root=repo,
+    )
+
+    assert any(call[:3] == ["gh", "issue", "create"] for call in calls)
+    assert state["branch"] == "chore/issue-4242-active-start"
+    assert result.decision == "started"
+    assert result.active_loop.decision == "planned"
+    assert not result.active_loop.blockers
 
 
 def test_active_loop_four_role_v2_shape_is_unchanged(monkeypatch, tmp_path: Path) -> None:

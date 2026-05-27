@@ -418,6 +418,10 @@ ACTIVE_START_OUT ?= reports/agent_loop/active/start.md
 ACTIVE_TOPOLOGY ?= expanded-eight
 ACTIVE_AGENT_MIX ?= claude=5,codex=5
 ACTIVE_LEASE_TTL_MINUTES ?= 30
+ACTIVE_REPAIR_BRANCH ?= 1
+ACTIVE_REPAIR_BRANCH_TYPE ?= chore
+ACTIVE_REPAIR_SLUG ?= active-start
+ACTIVE_REPAIR_TITLE ?= Agent loop active start
 HUMAN_GATED_ACTION ?=
 HUMAN_GATED_EXEC_OUT ?= reports/agent_loop/human_gated_exec.md
 HUMAN_GATED_DRY_RUN ?=
@@ -916,6 +920,10 @@ agent-loop-active-start:
 	  $(if $(CLAIM_TEXT),--claim-text "$(CLAIM_TEXT)",) \
 	  $(if $(PR_BODY_OUT),--pr-body "$(PR_BODY_OUT)",) \
 	  $(if $(DECISION_BATCH),--batch "$(DECISION_BATCH)",) \
+	  $(if $(filter 1 true yes,$(ACTIVE_REPAIR_BRANCH)),--repair-branch,) \
+	  --repair-branch-type "$(ACTIVE_REPAIR_BRANCH_TYPE)" \
+	  --repair-slug "$(ACTIVE_REPAIR_SLUG)" \
+	  --repair-title "$(ACTIVE_REPAIR_TITLE)" \
 	  --out "$(ACTIVE_START_OUT)"
 
 agent-loop-human-gated-exec:
