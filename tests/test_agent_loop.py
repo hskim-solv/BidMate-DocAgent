@@ -3548,7 +3548,7 @@ def test_active_codex_runner_dry_run_renders_eight_commands_without_spawning(tmp
     assert result.decision == "planned"
     assert len(result.sessions) == 8
     assert not (active / "codex_runs").exists()
-    assert all("codex exec --cd . --sandbox read-only --ask-for-approval never --json" in item["command"] for item in result.sessions)
+    assert all("codex exec --cd . --sandbox read-only --json" in item["command"] for item in result.sessions)
     report = result.report_path.read_text(encoding="utf-8")
     state = result.state_path.read_text(encoding="utf-8")
     assert str(repo) not in report
@@ -3574,6 +3574,9 @@ def test_active_codex_runner_execute_spawns_all_eight_processes_and_preserves_le
             self.pid = pid
             self.stdin = DummyStdin()
 
+        def wait(self, timeout=None):  # type: ignore[no-untyped-def]
+            return 0
+
     def fake_popen(cmd, **kwargs):  # type: ignore[no-untyped-def]
         calls.append(
             {
@@ -3594,7 +3597,7 @@ def test_active_codex_runner_execute_spawns_all_eight_processes_and_preserves_le
         which_func=lambda exe: "/opt/codex/bin/codex",
     )
 
-    assert result.decision == "running"
+    assert result.decision == "completed"
     assert len(calls) == 8
     assert len(prompts) == 8
     for call in calls:
@@ -3602,8 +3605,6 @@ def test_active_codex_runner_execute_spawns_all_eight_processes_and_preserves_le
         assert cmd[:4] == ["/opt/codex/bin/codex", "exec", "--cd", "."]
         assert "--sandbox" in cmd
         assert cmd[cmd.index("--sandbox") + 1] == "read-only"
-        assert "--ask-for-approval" in cmd
-        assert cmd[cmd.index("--ask-for-approval") + 1] == "never"
         assert "--json" in cmd
         assert "--output-last-message" in cmd
         assert str(cmd[cmd.index("--output-last-message") + 1]).startswith("reports/agent_loop/active/codex_runs/")
@@ -3615,7 +3616,8 @@ def test_active_codex_runner_execute_spawns_all_eight_processes_and_preserves_le
     leases = json.loads((active / "leases.json").read_text(encoding="utf-8"))
     assert leases["leases"][0]["active_agent"] is None
     state = json.loads(result.state_path.read_text(encoding="utf-8"))
-    assert {item["status"] for item in state["sessions"]} == {"running"}
+    assert {item["status"] for item in state["sessions"]} == {"completed"}
+    assert {item["returncode"] for item in state["sessions"]} == {0}
     assert all(item["pid"] for item in state["sessions"])
     assert str(repo) not in result.state_path.read_text(encoding="utf-8")
 
