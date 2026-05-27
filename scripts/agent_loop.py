@@ -136,12 +136,36 @@ DEFAULT_MAINTENANCE_PLAN_JSON = DEFAULT_REPORT_DIR / "maintenance_plan.json"
 DEFAULT_DRAFT_TASK_ID = "T-2026-0000"
 QUEUE_PATH = Path("tasks/queue.md")
 PLAN_DIR = Path("docs/plans")
-ACTIVE_TOPOLOGY_ROLES = (
-    ("orchestrator", "Orchestrator"),
-    ("implementer", "Implementer"),
-    ("reviewer", "Reviewer"),
-    ("ci-eval-auditor", "CI/Eval Auditor"),
-)
+ACTIVE_TOPOLOGY_ROLES = {
+    "four-role": (
+        ("orchestrator", "Orchestrator"),
+        ("implementer", "Implementer"),
+        ("reviewer", "Reviewer"),
+        ("ci-eval-auditor", "CI/Eval Auditor"),
+    ),
+    "expanded-eight": (
+        ("orchestrator", "Orchestrator"),
+        ("planner-triage", "Planner / Issue Triage"),
+        ("experiment-scout", "Experiment Scout"),
+        ("implementer", "Implementer"),
+        ("reviewer", "Reviewer"),
+        ("deep-reviewer", "Deep Reviewer"),
+        ("ci-regression-auditor", "CI / Regression Auditor"),
+        ("eval-claim-privacy-auditor", "Eval / Claim / Privacy Auditor"),
+    ),
+}
+ACTIVE_TOPOLOGY_CHOICES = tuple(ACTIVE_TOPOLOGY_ROLES)
+ACTIVE_TOPOLOGY_DESCRIPTIONS = {
+    "four-role": "Default 4-session topology: Orchestrator, Implementer, Reviewer, CI/Eval Auditor",
+    "expanded-eight": "Expanded 8-session topology for long-running RAG/eval governance",
+}
+ACTIVE_REQUIRED_GATES = {
+    "four-role": ("Reviewer", "CI/Eval Auditor"),
+    "expanded-eight": ("Reviewer", "CI / Regression Auditor", "Eval / Claim / Privacy Auditor"),
+}
+ACTIVE_LOAD_BEARING_GATES = {
+    "expanded-eight": ("Deep Reviewer",),
+}
 
 GH_PR_JSON_FIELDS = (
     "number",
@@ -8181,8 +8205,8 @@ def write_active_loop(
 ) -> ActiveLoopResult:
     if mode != "full-ship":
         raise ValueError("--mode currently supports only full-ship")
-    if topology != "four-role":
-        raise ValueError("--topology currently supports only four-role")
+    if topology not in ACTIVE_TOPOLOGY_ROLES:
+        raise ValueError(f"--topology must be one of: {', '.join(ACTIVE_TOPOLOGY_CHOICES)}")
     if lease_ttl_minutes < 1:
         raise ValueError("--lease-ttl-minutes must be at least 1")
     if task_id and not TASK_ID_RE.fullmatch(task_id):
@@ -8252,7 +8276,8 @@ def write_active_loop(
     surfaces = {surface.surface, *surface.additional_surfaces}
     if files:
         evidence.append(f"surface={surface.surface}")
-    if any(is_load_bearing(path) for path in files) or surfaces & {
+    load_bearing_touched = any(is_load_bearing(path) for path in files)
+    if load_bearing_touched or surfaces & {
         "private-real-eval",
         "privacy-sensitive-artifact",
         "benchmark-reporting",
@@ -8283,17 +8308,14 @@ def write_active_loop(
         else:
             evidence.append("PR body check clear")
 
-    reviewer_ok = _active_role_status_ok(sessions, "Reviewer")
-    ci_ok = _active_role_status_ok(sessions, "CI/Eval Auditor")
+    required_gate_roles = _active_required_gate_roles(topology, load_bearing_touched=load_bearing_touched)
+    missing_gate_roles = [role for role in required_gate_roles if not _active_role_status_ok(sessions, role)]
     if execute:
-        if not reviewer_ok:
-            blockers.append("Reviewer session has not passed")
-        if not ci_ok:
-            blockers.append("CI/Eval Auditor session has not passed")
-    elif not reviewer_ok:
-        warnings.append("Reviewer session has not passed yet")
-    if not ci_ok:
-        warnings.append("CI/Eval Auditor session has not passed yet")
+        blockers.extend(f"{role} session has not passed" for role in missing_gate_roles)
+    else:
+        warnings.extend(f"{role} session has not passed yet" for role in missing_gate_roles)
+    if required_gate_roles:
+        evidence.append("ship gate roles=" + ", ".join(required_gate_roles))
 
     refresh_outputs: list[Path] = []
     try:
@@ -8469,7 +8491,7 @@ def render_active_loop(
         "# Active Agent Loop",
         "",
         "- Hybrid active orchestrator ledger. Repo-local reports are the source of truth; Codex heartbeat can call these commands later.",
-        "- Fixed topology: Orchestrator, Implementer, Reviewer, CI/Eval Auditor.",
+        f"- Topology contract: {ACTIVE_TOPOLOGY_DESCRIPTIONS.get(topology, topology)}.",
         "- Full ship uses the existing `make ship-run DRAFT=false REAL_EVAL=auto` path after conservative agent gates pass.",
         "- Force-push is excluded from this active loop.",
         f"- Mode: `{mode}`",
@@ -8597,6 +8619,20 @@ def _load_active_leases(path: Path) -> list[dict[str, object]]:
     raise ValueError("active leases must be a JSON object with a leases array")
 
 
+def _active_topology_roles(topology: str) -> tuple[tuple[str, str], ...]:
+    roles = ACTIVE_TOPOLOGY_ROLES.get(topology)
+    if roles is None:
+        raise ValueError(f"unknown active-loop topology: {topology}")
+    return roles
+
+
+def _active_required_gate_roles(topology: str, *, load_bearing_touched: bool) -> tuple[str, ...]:
+    roles = list(ACTIVE_REQUIRED_GATES.get(topology, ()))
+    if load_bearing_touched:
+        roles.extend(ACTIVE_LOAD_BEARING_GATES.get(topology, ()))
+    return tuple(_dedupe_preserve_order(roles))
+
+
 def _build_active_sessions(
     *,
     old_registry: dict[str, object],
@@ -8609,7 +8645,7 @@ def _build_active_sessions(
     old_sessions = old_registry.get("sessions") if isinstance(old_registry.get("sessions"), list) else []
     old_by_id = {str(item.get("session_id")): dict(item) for item in old_sessions if isinstance(item, dict)}
     sessions: list[dict[str, object]] = []
-    for session_id, role in ACTIVE_TOPOLOGY_ROLES:
+    for session_id, role in _active_topology_roles(topology):
         old = old_by_id.get(session_id, {})
         last_heartbeat = _parse_timestamp(old.get("last_heartbeat")) or now
         age_seconds = max(0.0, (now - last_heartbeat).total_seconds())
@@ -8628,19 +8664,30 @@ def _build_active_sessions(
                 "last_heartbeat": _isoformat(last_heartbeat),
                 "heartbeat_state": heartbeat_state,
                 "lease_expires_at": _isoformat(now + timedelta(minutes=lease_ttl_minutes)),
-                "next_command": _active_next_command(role, task_id=task_id),
+                "next_command": _active_next_command(role, task_id=task_id, topology=topology),
             }
         )
     return sessions
 
 
-def _active_next_command(role: str, *, task_id: str | None) -> str:
+def _active_next_command(role: str, *, task_id: str | None, topology: str = "four-role") -> str:
     if role == "Orchestrator":
-        return "python3 scripts/agent_loop.py active-loop --mode full-ship --dry-run"
+        topology_arg = "" if topology == "four-role" else f" --topology {topology}"
+        return f"python3 scripts/agent_loop.py active-loop --mode full-ship{topology_arg} --dry-run"
+    if role == "Planner / Issue Triage":
+        return "python3 scripts/agent_loop.py continue-loop --pr-json reports/agent_loop/pr_state.json --no-apply-queue-plan"
+    if role == "Experiment Scout":
+        return "python3 scripts/agent_loop.py workset-recommend"
     if role == "Implementer":
         return f"python3 scripts/agent_loop.py preflight --task {task_id or '<TASK_ID>'} --from-git --write-prompts"
     if role == "Reviewer":
         return "python3 scripts/agent_loop.py review-plan --pr <PR>"
+    if role == "Deep Reviewer":
+        return "python3 scripts/agent_loop.py architecture-decision --from-git"
+    if role == "CI / Regression Auditor":
+        return "python3 scripts/agent_loop.py ci-summary --pr <PR>"
+    if role == "Eval / Claim / Privacy Auditor":
+        return "python3 scripts/agent_loop.py claim-policy --from-git"
     return "python3 scripts/agent_loop.py ci-summary --pr <PR>"
 
 
@@ -10323,9 +10370,9 @@ def build_parser() -> argparse.ArgumentParser:
     role_dispatch.add_argument("--workset")
     role_dispatch.add_argument("--out", type=Path, default=DEFAULT_ROLE_DISPATCH)
 
-    active_loop = sub.add_parser("active-loop", help="Run the 4-session active orchestrator tick.")
+    active_loop = sub.add_parser("active-loop", help="Run the active orchestrator tick.")
     active_loop.add_argument("--mode", choices=("full-ship",), default="full-ship")
-    active_loop.add_argument("--topology", choices=("four-role",), default="four-role")
+    active_loop.add_argument("--topology", choices=ACTIVE_TOPOLOGY_CHOICES, default="four-role")
     active_loop.add_argument("--dry-run", dest="execute", action="store_false", default=False)
     active_loop.add_argument("--execute", dest="execute", action="store_true")
     active_loop.add_argument("--task")

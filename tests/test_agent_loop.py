@@ -2412,6 +2412,16 @@ def _clear_overlap_report(issue: str = "9999", branch: str = "chore/issue-9999-a
     )
 
 
+def _write_active_registry(repo: Path, *, topology: str, sessions: list[dict[str, str]]) -> Path:
+    registry = repo / "reports" / "agent_loop" / "active" / "session_registry.json"
+    registry.parent.mkdir(parents=True, exist_ok=True)
+    registry.write_text(
+        json.dumps({"schema_version": 1, "topology": topology, "sessions": sessions}),
+        encoding="utf-8",
+    )
+    return registry
+
+
 def test_active_loop_dry_run_creates_four_session_ledger_without_remote_mutation(monkeypatch, tmp_path: Path) -> None:
     repo = _write_repo(tmp_path)
     calls: list[list[str]] = []
@@ -2444,6 +2454,46 @@ def test_active_loop_dry_run_creates_four_session_ledger_without_remote_mutation
     assert leases["leases"][0]["status"] == "active"
     assert (result.assignments_dir / "orchestrator.md").exists()
     assert result.events_path.exists()
+    assert calls == []
+
+
+def test_active_loop_expanded_eight_dry_run_creates_sessions_and_assignments(monkeypatch, tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    calls: list[list[str]] = []
+
+    def fake_run(cmd, **kwargs):  # type: ignore[no-untyped-def]
+        calls.append(list(cmd))
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(agent_loop.subprocess, "run", fake_run)
+    monkeypatch.setattr(agent_loop, "_current_branch", lambda repo_root: "chore/issue-9999-active-loop")
+    monkeypatch.setattr(agent_loop, "build_overlap_preflight", lambda issue, branch, repo_root: _clear_overlap_report(issue, branch))
+    monkeypatch.setattr(agent_loop, "audit_privacy_output", lambda *args, **kwargs: [])
+
+    result = agent_loop.write_active_loop(
+        topology="expanded-eight",
+        changed_files=["docs/operations/active-agent-loop.md"],
+        repo_root=repo,
+    )
+
+    registry = json.loads(result.registry_path.read_text(encoding="utf-8"))
+    leases = json.loads(result.leases_path.read_text(encoding="utf-8"))
+
+    assert result.decision == "planned"
+    assert len(registry["sessions"]) == 8
+    assert {item["session_id"] for item in registry["sessions"]} == {
+        "orchestrator",
+        "planner-triage",
+        "experiment-scout",
+        "implementer",
+        "reviewer",
+        "deep-reviewer",
+        "ci-regression-auditor",
+        "eval-claim-privacy-auditor",
+    }
+    assert leases["leases"][0]["owner_session"] == "implementer"
+    assert len(list(result.assignments_dir.glob("*.md"))) == 8
+    assert "workset-recommend" in (result.assignments_dir / "experiment-scout.md").read_text(encoding="utf-8")
     assert calls == []
 
 
@@ -2485,6 +2535,124 @@ def test_active_loop_execute_runs_ship_only_after_reviewer_and_ci_pass(monkeypat
     assert result.decision == "executed"
     assert result.executed_commands == (("make", "ship-run", "DRAFT=false", "REAL_EVAL=auto"),)
     assert calls == [["make", "ship-run", "DRAFT=false", "REAL_EVAL=auto"]]
+
+
+def test_active_loop_expanded_eight_execute_uses_conservative_gate(monkeypatch, tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    now = "2999-01-01T00:00:00Z"
+    _write_active_registry(
+        repo,
+        topology="expanded-eight",
+        sessions=[
+            {"session_id": "reviewer", "role": "Reviewer", "status": "passed", "last_heartbeat": now},
+            {"session_id": "ci-regression-auditor", "role": "CI / Regression Auditor", "status": "passed", "last_heartbeat": now},
+            {"session_id": "eval-claim-privacy-auditor", "role": "Eval / Claim / Privacy Auditor", "status": "clear", "last_heartbeat": now},
+            {"session_id": "planner-triage", "role": "Planner / Issue Triage", "status": "idle", "last_heartbeat": "2020-01-01T00:00:00Z"},
+            {"session_id": "experiment-scout", "role": "Experiment Scout", "status": "idle", "last_heartbeat": "2020-01-01T00:00:00Z"},
+        ],
+    )
+    calls: list[list[str]] = []
+
+    def fake_run(cmd, **kwargs):  # type: ignore[no-untyped-def]
+        calls.append(list(cmd))
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(agent_loop.subprocess, "run", fake_run)
+    monkeypatch.setattr(agent_loop, "_current_branch", lambda repo_root: "chore/issue-9999-active-loop")
+    monkeypatch.setattr(agent_loop, "build_overlap_preflight", lambda issue, branch, repo_root: _clear_overlap_report(issue, branch))
+    monkeypatch.setattr(agent_loop, "audit_privacy_output", lambda *args, **kwargs: [])
+
+    result = agent_loop.write_active_loop(
+        topology="expanded-eight",
+        execute=True,
+        changed_files=["docs/operations/active-agent-loop.md"],
+        lease_ttl_minutes=1,
+        repo_root=repo,
+    )
+
+    registry = json.loads(result.registry_path.read_text(encoding="utf-8"))
+    planner = next(item for item in registry["sessions"] if item["session_id"] == "planner-triage")
+    experiment = next(item for item in registry["sessions"] if item["session_id"] == "experiment-scout")
+
+    assert result.decision == "executed"
+    assert planner["status"] == "stale"
+    assert experiment["status"] == "stale"
+    assert not any("Planner / Issue Triage" in blocker for blocker in result.blockers)
+    assert not any("Experiment Scout" in blocker for blocker in result.blockers)
+    assert calls == [["make", "ship-run", "DRAFT=false", "REAL_EVAL=auto"]]
+
+
+def test_active_loop_expanded_eight_blocks_when_required_auditor_missing(monkeypatch, tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    now = "2999-01-01T00:00:00Z"
+    _write_active_registry(
+        repo,
+        topology="expanded-eight",
+        sessions=[
+            {"session_id": "reviewer", "role": "Reviewer", "status": "passed", "last_heartbeat": now},
+            {"session_id": "ci-regression-auditor", "role": "CI / Regression Auditor", "status": "passed", "last_heartbeat": now},
+        ],
+    )
+    calls: list[list[str]] = []
+
+    def fake_run(cmd, **kwargs):  # type: ignore[no-untyped-def]
+        calls.append(list(cmd))
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(agent_loop.subprocess, "run", fake_run)
+    monkeypatch.setattr(agent_loop, "_current_branch", lambda repo_root: "chore/issue-9999-active-loop")
+    monkeypatch.setattr(agent_loop, "build_overlap_preflight", lambda issue, branch, repo_root: _clear_overlap_report(issue, branch))
+    monkeypatch.setattr(agent_loop, "audit_privacy_output", lambda *args, **kwargs: [])
+
+    result = agent_loop.write_active_loop(
+        topology="expanded-eight",
+        execute=True,
+        changed_files=["docs/operations/active-agent-loop.md"],
+        repo_root=repo,
+    )
+
+    assert result.decision == "blocked"
+    assert any("Eval / Claim / Privacy Auditor session has not passed" in blocker for blocker in result.blockers)
+    assert calls == []
+
+
+def test_active_loop_expanded_eight_requires_deep_reviewer_for_load_bearing(monkeypatch, tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    now = "2999-01-01T00:00:00Z"
+    _write_active_registry(
+        repo,
+        topology="expanded-eight",
+        sessions=[
+            {"session_id": "reviewer", "role": "Reviewer", "status": "passed", "last_heartbeat": now},
+            {"session_id": "ci-regression-auditor", "role": "CI / Regression Auditor", "status": "passed", "last_heartbeat": now},
+            {"session_id": "eval-claim-privacy-auditor", "role": "Eval / Claim / Privacy Auditor", "status": "clear", "last_heartbeat": now},
+        ],
+    )
+    body = repo / "pr_body.md"
+    body.write_text("N/A\n", encoding="utf-8")
+    calls: list[list[str]] = []
+
+    def fake_run(cmd, **kwargs):  # type: ignore[no-untyped-def]
+        calls.append(list(cmd))
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(agent_loop.subprocess, "run", fake_run)
+    monkeypatch.setattr(agent_loop, "_current_branch", lambda repo_root: "chore/issue-9999-active-loop")
+    monkeypatch.setattr(agent_loop, "build_overlap_preflight", lambda issue, branch, repo_root: _clear_overlap_report(issue, branch))
+    monkeypatch.setattr(agent_loop, "audit_privacy_output", lambda *args, **kwargs: [])
+    monkeypatch.setattr(agent_loop, "check_pr_body_text", lambda *args, **kwargs: [])
+
+    result = agent_loop.write_active_loop(
+        topology="expanded-eight",
+        execute=True,
+        changed_files=["rag_core.py"],
+        pr_body=body,
+        repo_root=repo,
+    )
+
+    assert result.decision == "blocked"
+    assert any("Deep Reviewer session has not passed" in blocker for blocker in result.blockers)
+    assert calls == []
 
 
 def test_active_loop_blocks_ship_when_reviewer_or_ci_has_not_passed(monkeypatch, tmp_path: Path) -> None:
@@ -2644,6 +2812,16 @@ def test_session_heartbeat_refreshes_registry_and_stale_sessions_are_marked(monk
     assert events.exists()
     assert reviewer["heartbeat_state"] == "stale"
     assert reviewer["status"] == "stale"
+
+
+def test_active_loop_cli_accepts_expanded_eight_and_rejects_unknown_topology() -> None:
+    parser = agent_loop.build_parser()
+
+    args = parser.parse_args(["active-loop", "--topology", "expanded-eight"])
+
+    assert args.topology == "expanded-eight"
+    with pytest.raises(SystemExit):
+        parser.parse_args(["active-loop", "--topology", "unknown-topology"])
 
 
 def test_stop_ship_skips_remote_branch_delete_when_stacked_dependents_exist() -> None:
