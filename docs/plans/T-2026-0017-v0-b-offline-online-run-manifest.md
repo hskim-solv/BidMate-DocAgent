@@ -3,7 +3,7 @@
 - Status: review
 - Owner role: Maintainer -> Benchmark Auditor -> Privacy Auditor -> Reviewer
 - Related task: `tasks/queue.md::T-2026-0017`
-- Related issue / PR: [#1542](https://github.com/hskim-solv/BidMate-DocAgent/issues/1542) / N/A
+- Related issue / PR: [#1542](https://github.com/hskim-solv/BidMate-DocAgent/issues/1542) / [#1545](https://github.com/hskim-solv/BidMate-DocAgent/pull/1545)
 - Related ADR: [ADR 0079](../adr/0079-agent-gated-offline-online-rfp-eval-loop.md)
 - Created: 2026-05-27
 - Last updated: 2026-05-27
@@ -146,7 +146,7 @@ must not be reviewed as a performance or metric improvement.
 - Role: Maintainer
 - Branch / worktree: chore/issue-1542-offline-online-manifest / /Users/hskim/.codex/worktrees/1542/BidMate-DocAgent
 - Task: T-2026-0017
-- Issue / PR: #1542 / N/A
+- Issue / PR: #1542 / #1545
 - Current status: implementation validated; ready for PR review
 - Files touched: eval/run_eval.py, scripts/agent_loop.py, scripts/run_real_eval_delta.py, docs/evaluation/offline-online-run-manifest.md, docs/evaluation/agent-gated-rfp-eval-loop.md, docs/evaluation/v0-metric-suite-inventory.md, docs/plans/T-2026-0017-v0-b-offline-online-run-manifest.md, tasks/queue.md, tests/test_agent_loop.py, tests/test_eval_metrics.py, tests/test_run_manifest_versioning_regression.py, tests/test_run_real_eval_delta.py
 - Commands run: python3 -m pytest tests/test_agent_loop.py tests/test_run_manifest_versioning_regression.py tests/test_eval_metrics.py tests/test_run_real_eval_delta.py -q; python3 -m py_compile scripts/agent_loop.py eval/run_eval.py scripts/run_real_eval_delta.py; python3 scripts/agent_loop.py eval-run-manifest --mode offline --payload-class none --egress-mode none --provider local --model local-judge-v1 --judge-backend local-llm; python3 scripts/check_doc_links.py --check-all --paths docs/evaluation/agent-gated-rfp-eval-loop.md docs/evaluation/offline-online-run-manifest.md docs/evaluation/v0-metric-suite-inventory.md docs/plans/T-2026-0017-v0-b-offline-online-run-manifest.md tasks/queue.md; git diff --check; make check-branch; python3 scripts/_governance.py --check-eval-privacy
