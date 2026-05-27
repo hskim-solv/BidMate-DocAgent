@@ -10088,6 +10088,86 @@ def _build_active_leases(
     )
 
 
+def _write_active_leases(path: Path, *, leases: list[dict[str, object]], now: datetime) -> Path:
+    payload = {
+        "schema_version": 1,
+        "generated_at": _isoformat(now),
+        "leases": [_sanitize_json_value(item) for item in leases],
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return path
+
+
+def _find_active_write_lease(leases: Sequence[dict[str, object]], *, lease_id: str | None) -> dict[str, object] | None:
+    for lease in leases:
+        if lease.get("lease_type") != "write" or lease.get("status") != "active":
+            continue
+        if lease_id is None or str(lease.get("lease_id")) == lease_id:
+            return lease
+    return None
+
+
+def acquire_active_agent(
+    *,
+    agent: str,
+    lease_id: str | None = None,
+    leases: Path = DEFAULT_ACTIVE_LEASES,
+    now: datetime | None = None,
+    repo_root: Path = ROOT_DIR,
+) -> tuple[bool, str, str | None]:
+    """Borrow the write lease for one agent lane. Claude and Codex are mutually exclusive.
+
+    Returns ``(ok, message, lease_id)``. Re-acquiring by the same agent is idempotent;
+    acquiring while the other agent holds it fails (no clobber).
+    """
+    if agent not in ACTIVE_LANE_AGENTS:
+        raise ValueError(f"agent must be one of: {', '.join(ACTIVE_LANE_AGENTS)}")
+    now = now or datetime.now(timezone.utc)
+    path = _active_path(leases, repo_root=repo_root)
+    items = _load_active_leases(path)
+    lease = _find_active_write_lease(items, lease_id=lease_id)
+    if lease is None:
+        return (False, "no active write lease to borrow", None)
+    holder = lease.get("active_agent")
+    resolved_id = str(lease.get("lease_id"))
+    if holder is not None and str(holder) != agent:
+        return (False, f"write lease held by {holder}", resolved_id)
+    lease["active_agent"] = agent
+    lease["active_agent_since"] = _isoformat(now)
+    _write_active_leases(path, leases=items, now=now)
+    return (True, "acquired", resolved_id)
+
+
+def release_active_agent(
+    *,
+    agent: str,
+    lease_id: str | None = None,
+    leases: Path = DEFAULT_ACTIVE_LEASES,
+    now: datetime | None = None,
+    repo_root: Path = ROOT_DIR,
+) -> tuple[bool, str]:
+    """Release the write lease held by ``agent``. No-op if already free; refuses to release
+    a lease another agent holds."""
+    if agent not in ACTIVE_LANE_AGENTS:
+        raise ValueError(f"agent must be one of: {', '.join(ACTIVE_LANE_AGENTS)}")
+    now = now or datetime.now(timezone.utc)
+    path = _active_path(leases, repo_root=repo_root)
+    items = _load_active_leases(path)
+    lease = _find_active_write_lease(items, lease_id=lease_id)
+    if lease is None:
+        return (False, "no active write lease")
+    holder = lease.get("active_agent")
+    if holder is None:
+        return (True, "already free")
+    if str(holder) != agent:
+        return (False, f"held by {holder}, not releasing")
+    lease["active_agent"] = None
+    lease.pop("active_agent_since", None)
+    _write_active_leases(path, leases=items, now=now)
+    return (True, "released")
+
+
 def _refresh_active_lease(lease: dict[str, object], *, now: datetime, repo_root: Path) -> dict[str, object]:
     rendered = dict(lease)
     expires = _parse_timestamp(rendered.get("expires_at"))

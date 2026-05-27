@@ -3851,6 +3851,66 @@ def test_agent_turn_redacts_real100_path_and_proceeds(monkeypatch, tmp_path: Pat
     assert session["status"] == "approved"
 
 
+# --- Phase 3 PR-A: write-lease active_agent borrow (issue #1604) ---
+
+
+def _seed_write_lease(repo: Path, *, lease_id: str = "impl", active_agent=None) -> Path:
+    active = repo / "reports" / "agent_loop" / "active"
+    active.mkdir(parents=True, exist_ok=True)
+    path = active / "leases.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "leases": [
+                    {
+                        "lease_id": lease_id,
+                        "status": "active",
+                        "lease_type": "write",
+                        "active_agent": active_agent,
+                        "owner_session": "implementer",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    return path
+
+
+def test_active_agent_borrow_is_mutually_exclusive(tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    _seed_write_lease(repo)
+    ok, _, lid = agent_loop.acquire_active_agent(agent="codex", repo_root=repo)
+    assert ok is True and lid == "impl"
+    # claude is blocked while codex holds the lease (mutual exclusion).
+    ok2, msg2, _ = agent_loop.acquire_active_agent(agent="claude", repo_root=repo)
+    assert ok2 is False and "held by codex" in msg2
+    # re-acquire by the same agent is idempotent.
+    assert agent_loop.acquire_active_agent(agent="codex", repo_root=repo)[0] is True
+    leases = json.loads((repo / "reports" / "agent_loop" / "active" / "leases.json").read_text(encoding="utf-8"))
+    assert leases["leases"][0]["active_agent"] == "codex"
+    # release by codex frees it; then claude can acquire.
+    assert agent_loop.release_active_agent(agent="codex", repo_root=repo)[0] is True
+    assert agent_loop.acquire_active_agent(agent="claude", repo_root=repo)[0] is True
+    # codex cannot release a lease claude holds.
+    okr, msgr = agent_loop.release_active_agent(agent="codex", repo_root=repo)
+    assert okr is False and "held by claude" in msgr
+
+
+def test_acquire_active_agent_without_write_lease_fails(tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    ok, msg, lid = agent_loop.acquire_active_agent(agent="codex", repo_root=repo)
+    assert ok is False and lid is None and "no active write lease" in msg
+
+
+def test_acquire_active_agent_rejects_unknown_agent(tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    _seed_write_lease(repo)
+    with pytest.raises(ValueError):
+        agent_loop.acquire_active_agent(agent="gpt", repo_root=repo)
+
+
 def test_stop_ship_skips_remote_branch_delete_when_stacked_dependents_exist() -> None:
     text = (ROOT / "scripts" / "claude-hooks" / "stop-ship.sh").read_text(encoding="utf-8")
 
