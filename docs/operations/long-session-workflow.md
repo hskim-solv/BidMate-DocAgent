@@ -36,6 +36,23 @@ eval validity를 유지하며, reviewer가 검증 가능한 근거(evidence)를 
   쓰지 않는다.
 - ADR 번호, PR base, stacked dependency, private artifact 위치는 handoff마다 갱신한다.
 
+## RAG Performance Loop Check
+
+RAG 성능 개선 관련 long session은 handoff마다 8개 운영 원칙을 짧게 점검한다.
+
+- Broad scope: program-level RAG outcome과 현재 PR concern이 분리되어 있는가?
+- Long session: 다음 session이 queue/plan/handoff만 읽고 이어갈 수 있는가?
+- File-backed todo: next action, blocker, completion proof가 tracked file에 있는가?
+- Plan doc: broad, multi-file, eval, 또는 load-bearing work라면 plan이 있는가?
+- Adversarial review: Reviewer, Deep Reviewer, Benchmark Auditor, Privacy Auditor 중
+  필요한 역할이 지정됐는가?
+- Role split: Planner, Implementer, Tester/CI Reviewer, Issue Triage 역할이 한
+  session에 과하게 몰려 있지 않은가?
+- Human outside loop: 사람이 직접 실행한 terminal/PR/CI 단계가 있으면 agent가
+  증거를 double-check했는가?
+- Process improvement: 반복 실수는 instruction, harness, review prompt, queue/plan
+  개선으로 이어졌는가?
+
 ## Handoff Template
 
 세션 종료, context compaction 전, blocked 전환, review 요청 전에 아래 block을 남긴다.
