@@ -3074,6 +3074,42 @@ def _privacy_audit_patterns() -> dict[str, re.Pattern[str]]:
     }
 
 
+# Redaction counterparts to _privacy_audit_patterns. Each masks the span the matching
+# detector would flag while preserving its structural prefix, so a read-only lane artifact
+# stays usable (verdict + findings survive) and no raw private value persists. The caller
+# re-runs audit_privacy_output after redaction as the fail-closed backstop (issue #1598 F1:
+# code-review prose legitimately mentions repo paths / field names that the RFP-data
+# patterns would otherwise hard-block). Keep these in sync with _privacy_audit_patterns.
+_REAL100_PATH_REDACT_RE = re.compile(r"reports/real100/(?!\[redacted-private-artifact\])\S+", re.IGNORECASE)
+_JSON_PRIVATE_FIELD_REDACT_RE = re.compile(
+    r'"(?P<key>question|answer|evidence|doc_id|chunk_id|filename)"\s*:\s*"(?!\[redacted-private-value\])[^"]*"',
+    re.IGNORECASE,
+)
+_RAW_DOC_CHUNK_TOKEN_REDACT_RE = re.compile(r"\b(?:doc|chunk)[_-]?id[-_:][A-Za-z0-9][A-Za-z0-9._-]*", re.IGNORECASE)
+
+
+def _redact_private_text(text: str) -> str:
+    """Mask every span audit_privacy_output would flag, preserving structural prefixes."""
+    text = ABSOLUTE_LOCAL_PATH_RE.sub("[redacted-local-path]", text)
+    text = _REAL100_PATH_REDACT_RE.sub("reports/real100/[redacted-private-artifact]", text)
+    text = PRIVATE_INLINE_VALUE_RE.sub(lambda m: f"{m.group('label')}: [redacted-private-value]", text)
+    text = PRIVATE_FLAG_VALUE_RE.sub(lambda m: f"{m.group('flag')}[redacted-private-value]", text)
+    text = _JSON_PRIVATE_FIELD_REDACT_RE.sub(lambda m: f'"{m.group("key")}": "[redacted-private-value]"', text)
+    text = _RAW_DOC_CHUNK_TOKEN_REDACT_RE.sub("[redacted-private-token]", text)
+    return text
+
+
+def _redact_private_json(value):  # type: ignore[no-untyped-def]
+    """Recursively apply _redact_private_text to every string in a JSON-like value."""
+    if isinstance(value, dict):
+        return {key: _redact_private_json(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_redact_private_json(item) for item in value]
+    if isinstance(value, str):
+        return _redact_private_text(value)
+    return value
+
+
 def _dedupe_privacy_findings(findings: Iterable[PrivacyFinding]) -> list[PrivacyFinding]:
     seen: set[tuple[str, str]] = set()
     out: list[PrivacyFinding] = []
@@ -9302,24 +9338,48 @@ def _agent_turn_artifact_path(
     return base / task_segment / session_id / f"{agent}.json"
 
 
-def _build_agent_turn_prompt(role: str, *, task_id: str | None, pr: str | None, base: str) -> str:
+def _agent_turn_diff(base: str, *, repo_root: Path, max_chars: int = 60000) -> str:
+    """Return ``git diff <base>`` text (capped) for embedding in a read-only lane prompt.
+
+    The Claude lane embeds the diff instead of letting claude run git itself: in headless
+    ``-p`` mode claude's tool use crashes the API (issue #1598 F4). Only tracked changes
+    are diffed, so no gitignored private data (ADR 0005) is included.
+    """
+    try:
+        proc = subprocess.run(
+            ["git", "diff", base], cwd=repo_root, capture_output=True, text=True, check=False
+        )
+    except OSError:
+        return ""
+    if proc.returncode != 0:
+        return ""
+    text = proc.stdout or ""
+    if len(text) > max_chars:
+        text = text[:max_chars] + "\n... [diff truncated]"
+    return text
+
+
+def _build_agent_turn_prompt(role: str, *, task_id: str | None, pr: str | None, base: str, diff: str = "") -> str:
     scope_bits = [f"role={role}"]
     if task_id:
         scope_bits.append(f"task={task_id}")
     if pr:
         scope_bits.append(f"PR=#{pr}")
     scope = ", ".join(scope_bits)
-    return (
+    instructions = (
         "You are a read-only reviewer in the BidMate-DocAgent active loop. "
         f"Scope: {scope}. Diff base: {base}. "
-        "Review the current branch changes WITHOUT editing, writing, committing, pushing, or shipping. "
-        "Use only Read/Grep/Glob and read-only git (diff/log/status). "
-        "Return JSON conforming to the review_artifact schema: a verdict "
-        "(approved|clear|needs-attention|blocked), a one-line summary, a findings array "
-        "(each with severity blocker|warning|info, a title, and optional body/recommendation), "
-        "and an optional next_steps array. Do NOT include raw private question/answer text, "
-        "doc_id, chunk_id, filenames, or absolute private paths (ADR 0005)."
+        "Review the unified diff below WITHOUT proposing edits, writing, committing, pushing, or shipping. "
+        "Output ONLY a raw JSON object (no markdown code fences, no prose before or after) "
+        "with exactly these keys: \"verdict\" (one of approved|clear|needs-attention|blocked), "
+        "\"summary\" (one line), \"findings\" (array; each object has \"severity\" one of "
+        "blocker|warning|info, \"title\", and optional \"body\"/\"recommendation\"), and "
+        "\"next_steps\" (array of strings, may be empty). Do NOT include raw private "
+        "question/answer text, doc_id, chunk_id, filenames, or absolute private paths (ADR 0005)."
     )
+    if diff:
+        return f"{instructions}\n\nUNIFIED DIFF (base {base}):\n{diff}"
+    return f"{instructions}\n\n(No diff content available; review based on scope metadata only.)"
 
 
 def _run_agent_lane(
@@ -9343,7 +9403,8 @@ def _run_agent_lane(
     if agent == "codex":
         focus = f"{role} read-only review"
         return codex_turn.run_turn(base=base, scope="branch", focus=focus, runner=codex_runner)
-    prompt = _build_agent_turn_prompt(role, task_id=task_id, pr=pr, base=base)
+    diff = _agent_turn_diff(base, repo_root=repo_root)
+    prompt = _build_agent_turn_prompt(role, task_id=task_id, pr=pr, base=base, diff=diff)
     resolved_schema = schema_path if schema_path.is_absolute() else (repo_root / schema_path)
     return claude_turn.run_turn(prompt=prompt, schema_path=resolved_schema, runner=claude_runner)
 
@@ -9440,11 +9501,15 @@ def write_agent_turn(
         "privacy_scrubbed": True,
     }
     artifact_path.parent.mkdir(parents=True, exist_ok=True)
-    artifact_path.write_text(json.dumps(_sanitize_json_value(artifact), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    # Privacy (ADR 0005): redact-and-proceed. _redact_private_json masks every span the
+    # audit would flag (repo paths, field values, raw tokens) in place, so a legitimate
+    # code review stays usable (verdict + findings survive) without persisting raw private
+    # values. audit_privacy_output then re-runs as a fail-closed backstop: if anything
+    # un-redactable slips through, the turn is blocked with no Work Unit and a non-pass
+    # heartbeat (issue #1598 F1).
+    safe_artifact = _redact_private_json(_sanitize_json_value(artifact))
+    artifact_path.write_text(json.dumps(safe_artifact, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     events_path = _active_path(events, repo_root=repo_root)
-    # Fail-closed privacy gate (ADR 0005): if the lane output leaked raw private values
-    # into the artifact, rewrite it as a redacted error and record neither a pass-class
-    # heartbeat nor a Work Unit.
     privacy_findings = audit_privacy_output(artifact_path, out_path=None, repo_root=repo_root)
     if privacy_findings:
         issues = sorted({finding.issue for finding in privacy_findings})
