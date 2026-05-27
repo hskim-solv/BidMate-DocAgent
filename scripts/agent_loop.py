@@ -115,6 +115,7 @@ DEFAULT_WORKSET_RECOMMENDATION = DEFAULT_REPORT_DIR / "workset_recommendation.md
 DEFAULT_DEPENDENCY_GRAPH = DEFAULT_REPORT_DIR / "dependency_graph.md"
 DEFAULT_AUTOMATION_COVERAGE = DEFAULT_REPORT_DIR / "automation_coverage.md"
 DEFAULT_ROLE_DISPATCH = DEFAULT_REPORT_DIR / "role_dispatch.md"
+DEFAULT_CONTINUE_LOOP = DEFAULT_REPORT_DIR / "continue_loop.md"
 DEFAULT_OVERLAP_PREFLIGHT = DEFAULT_REPORT_DIR / "overlap_preflight.md"
 DEFAULT_HUMAN_GATED_EXEC = DEFAULT_REPORT_DIR / "human_gated_exec.md"
 DEFAULT_AUTO_SHIP_PLAN = DEFAULT_REPORT_DIR / "auto_ship_plan.md"
@@ -261,11 +262,15 @@ class BriefSummary:
     title: str
     classification: str
     source: str
+    source_prs: tuple[str, ...]
+    workset: str
     reason: str
     goal: str
     verification: str
     lane: str
     gate_reason: str
+    completion_proof: str
+    role_hints: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -1813,6 +1818,11 @@ def _sanitize_work_item(ai_next_actions, item):  # type: ignore[no-untyped-def]
         goal=_sanitize_dynamic_text(item.goal),
         expected_evidence=_sanitize_dynamic_text(item.expected_evidence),
         verification=_sanitize_command_text(item.verification),
+        source_prs=tuple(int(number) for number in getattr(item, "source_prs", ()) if str(number).isdigit()),
+        workset=_slugify(str(getattr(item, "workset", "general"))) or "general",
+        lane=_sanitize_inline_text(str(getattr(item, "lane", "parallel-safe"))),
+        completion_proof=_sanitize_dynamic_text(str(getattr(item, "completion_proof", ""))),
+        role_hints=tuple(_sanitize_inline_text(str(role)) for role in getattr(item, "role_hints", ()) if str(role).strip()),
     )
 
 
@@ -1879,6 +1889,133 @@ def draft_next_from_prs(
     return pr_state, tasks_dir, draft
 
 
+def write_continue_loop(
+    *,
+    pr_json: Path | None = None,
+    state: str = "open",
+    limit: int = 30,
+    include_body: bool = False,
+    task_id: str = DEFAULT_DRAFT_TASK_ID,
+    max_items: int = 12,
+    apply_queue_plan: bool = True,
+    out: Path = DEFAULT_CONTINUE_LOOP,
+    repo_root: Path = ROOT_DIR,
+) -> tuple[Path, str]:
+    if pr_json is None:
+        pr_state = scan_pr_state(
+            out=repo_root / "reports" / "agent_loop" / "pr_state.json",
+            state=state,
+            limit=limit,
+            include_body=include_body,
+            repo_root=repo_root,
+        )
+    else:
+        pr_state = _resolve_input_path(pr_json, repo_root=repo_root)
+        if not pr_state.exists():
+            raise ValueError("PR state JSON not found; run pr-scan first or pass an existing --pr-json")
+
+    ai_next, tasks_dir = run_next_from_prs(pr_json=pr_state, repo_root=repo_root)
+    batch_md, batch_json, _ = write_batch_plan(tasks_dir=tasks_dir, max_items=max_items, repo_root=repo_root)
+    if batch_json is None:
+        raise ValueError("continue-loop requires batch JSON metadata")
+    workset_out, _ = write_workset_recommendation(batch=batch_json, repo_root=repo_root)
+    role_out, _ = write_role_dispatch(batch=batch_json, repo_root=repo_root)
+
+    briefs = sorted(tasks_dir.glob("*.md"))
+    if not briefs:
+        raise ValueError("planner did not produce a task brief")
+    chosen_task_id = _next_task_id(repo_root) if task_id == DEFAULT_DRAFT_TASK_ID else task_id
+    draft = draft_task_from_brief(task_brief=briefs[0], task_id=chosen_task_id, repo_root=repo_root)
+    promote_out, _ = write_promote_draft(repo_root=repo_root)
+    apply_out: Path | None = None
+    apply_result = "skipped"
+    if apply_queue_plan:
+        apply_out, _ = write_apply_queue_plan(confirm_human_approved=True, repo_root=repo_root)
+        apply_result = "applied"
+
+    loop_task = chosen_task_id if apply_queue_plan else None
+    loop_out, _ = write_loop_state(task_id=loop_task, batch=batch_json, repo_root=repo_root)
+    rendered = render_continue_loop(
+        pr_state=pr_state,
+        ai_next=ai_next,
+        tasks_dir=tasks_dir,
+        batch_md=batch_md,
+        batch_json=batch_json,
+        workset_out=workset_out,
+        role_out=role_out,
+        queue_draft=draft.queue_path,
+        plan_draft=draft.plan_path,
+        promote_out=promote_out,
+        apply_out=apply_out,
+        loop_out=loop_out,
+        task_id=chosen_task_id,
+        apply_result=apply_result,
+        repo_root=repo_root,
+    )
+    out = _default_output(out, DEFAULT_CONTINUE_LOOP, "continue_loop.md", repo_root=repo_root)
+    safe_out = _safe_output_path(out, repo_root=repo_root)
+    safe_out.parent.mkdir(parents=True, exist_ok=True)
+    safe_out.write_text(rendered, encoding="utf-8")
+    return safe_out, rendered
+
+
+def _next_task_id(repo_root: Path) -> str:
+    queue = repo_root / QUEUE_PATH
+    existing = [int(match.group(1)) for match in re.finditer(r"\bT-2026-(\d{4})\b", _read_text(queue) if queue.exists() else "")]
+    return f"T-2026-{(max(existing) + 1 if existing else 1):04d}"
+
+
+def render_continue_loop(
+    *,
+    pr_state: Path,
+    ai_next: Path,
+    tasks_dir: Path,
+    batch_md: Path,
+    batch_json: Path,
+    workset_out: Path,
+    role_out: Path,
+    queue_draft: Path,
+    plan_draft: Path,
+    promote_out: Path,
+    apply_out: Path | None,
+    loop_out: Path,
+    task_id: str,
+    apply_result: str,
+    repo_root: Path,
+) -> str:
+    lines = [
+        "# Continue Loop",
+        "",
+        "- PR corpus planning command. It treats PRs as evidence for workset planning, not as a single PR selection list.",
+        "- It does not push, create/merge/close PRs, delete branches, force-push, run private eval, or approve benchmark claims.",
+        f"- Queue/plan application: `{apply_result}`",
+        f"- Task id: `{task_id}`",
+        "",
+        "## Outputs",
+        "",
+        f"- PR state: `{_display_path(_repo_path(pr_state, repo_root), repo_root=repo_root)}`",
+        f"- Next actions: `{_display_path(_repo_path(ai_next, repo_root), repo_root=repo_root)}`",
+        f"- Task briefs: `{_display_path(_repo_path(tasks_dir, repo_root), repo_root=repo_root)}`",
+        f"- Batch plan: `{_display_path(_repo_path(batch_md, repo_root), repo_root=repo_root)}`",
+        f"- Batch JSON: `{_display_path(_repo_path(batch_json, repo_root), repo_root=repo_root)}`",
+        f"- Workset recommendation: `{_display_path(_repo_path(workset_out, repo_root), repo_root=repo_root)}`",
+        f"- Role dispatch: `{_display_path(_repo_path(role_out, repo_root), repo_root=repo_root)}`",
+        f"- Queue draft: `{_display_path(_repo_path(queue_draft, repo_root), repo_root=repo_root)}`",
+        f"- Plan draft: `{_display_path(_repo_path(plan_draft, repo_root), repo_root=repo_root)}`",
+        f"- Promote diff: `{_display_path(_repo_path(promote_out, repo_root), repo_root=repo_root)}`",
+        f"- Apply report: `{_display_path(_repo_path(apply_out, repo_root), repo_root=repo_root) if apply_out else 'N/A'}`",
+        f"- Loop state: `{_display_path(_repo_path(loop_out, repo_root), repo_root=repo_root)}`",
+        "",
+        "## Next Safe Command",
+        "",
+        "```bash",
+        "python3 scripts/agent_loop.py loop-state --from-git",
+        "```",
+        "",
+    ]
+    return _sanitize_dynamic_text("\n".join(lines))
+
+
 def write_batch_plan(
     *,
     tasks_dir: Path = DEFAULT_CODEX_TASKS_DIR,
@@ -1928,17 +2065,33 @@ def _load_brief_summaries(tasks_dir: Path, *, max_items: int, repo_root: Path) -
                 title=_sanitize_inline_text(brief["title"]),
                 classification=_sanitize_inline_text(brief["classification"]),
                 source=_sanitize_inline_text(brief["source"]),
+                source_prs=tuple(_split_csv_field(brief["source_prs"])),
+                workset=_sanitize_inline_text(brief["workset"] or "general"),
                 reason=_sanitize_inline_text(brief["reason"]),
                 goal=_sanitize_inline_text(brief["goal"]),
                 verification=_sanitize_command_text(brief["verification"]),
                 lane=lane,
                 gate_reason=reason,
+                completion_proof=_sanitize_inline_text(brief["completion_proof"]),
+                role_hints=tuple(_split_csv_field(brief["role_hints"])),
             )
         )
     return summaries
 
 
+def _split_csv_field(value: str) -> list[str]:
+    cleaned = value.strip().strip("`")
+    if not cleaned or cleaned.upper() == "N/A":
+        return []
+    return [_sanitize_inline_text(part.strip()) for part in cleaned.split(",") if part.strip()]
+
+
 def _lane_for_brief(brief: dict[str, str]) -> tuple[str, str]:
+    lane_hint = brief.get("lane", "").strip()
+    valid_lanes = {"serial", "parallel-safe", "review-only", "agent-gated", "manual-gated"}
+    if lane_hint in valid_lanes:
+        normalized = "manual-gated" if lane_hint == "agent-gated" else lane_hint
+        return normalized, f"brief declares `{lane_hint}` lane"
     classification = brief["classification"].lower()
     haystack = "\n".join(
         [brief["title"], brief["classification"], brief["source"], brief["reason"], brief["goal"], brief["verification"]]
@@ -1992,6 +2145,17 @@ def render_batch_plan(briefs: Sequence[BriefSummary], *, tasks_dir: Path, repo_r
         lines.append(f"| `{lane}` | {count} | {label[lane]} |")
     lines.append("")
 
+    worksets: dict[str, list[BriefSummary]] = {}
+    for item in briefs:
+        worksets.setdefault(item.workset or "general", []).append(item)
+    lines.extend(["## Workset Summary", "", "| Workset | Lane(s) | Source PRs | Role hints |", "|---|---|---|---|"])
+    for workset, items in sorted(worksets.items()):
+        workset_lanes = ", ".join(sorted({item.lane for item in items}))
+        prs = ", ".join(sorted({pr for item in items for pr in item.source_prs})) or "N/A"
+        roles = ", ".join(sorted({role for item in items for role in item.role_hints})) or "N/A"
+        lines.append(f"| `{_sanitize_inline_text(workset)}` | `{workset_lanes}` | `{prs}` | `{roles}` |")
+    lines.append("")
+
     for lane in lanes:
         lines.extend([f"## {label[lane]}", ""])
         items = [item for item in briefs if item.lane == lane]
@@ -2006,8 +2170,12 @@ def render_batch_plan(briefs: Sequence[BriefSummary], *, tasks_dir: Path, repo_r
                     f"- Brief: `{_display_path(_repo_path(item.path, repo_root), repo_root=repo_root)}`",
                     f"- Classification: `{item.classification}`",
                     f"- Source: `{item.source}`",
+                    f"- Source PRs: `{', '.join(item.source_prs) if item.source_prs else 'N/A'}`",
+                    f"- Workset: `{item.workset}`",
+                    f"- Role hints: `{', '.join(item.role_hints) if item.role_hints else 'N/A'}`",
                     f"- Gate reason: {item.gate_reason}",
                     f"- Reason: {item.reason}",
+                    f"- Completion proof: {item.completion_proof}",
                     "- Suggested next safe command:",
                     "",
                     "```bash",
@@ -2021,7 +2189,7 @@ def render_batch_plan(briefs: Sequence[BriefSummary], *, tasks_dir: Path, repo_r
             "## Agent Gate Stop Points",
             "",
             "- Applying any draft to `tasks/queue.md` or `docs/plans/*.md`.",
-            "- Any push, PR create/merge/close, branch delete, or force-push without explicit confirmation command/flag.",
+            "- Any push, PR create/ready/merge/close, branch delete, or force-push without explicit confirmation command/flag.",
             "- Benchmark/performance/private real-eval claims.",
             "- Architecture tradeoff decisions.",
             "",
@@ -2036,9 +2204,14 @@ def _brief_summary_payload(item: BriefSummary, *, repo_root: Path) -> dict[str, 
         "title": item.title,
         "classification": item.classification,
         "source": item.source,
+        "source_prs": list(item.source_prs),
+        "workset": item.workset,
+        "workset_id": _slugify(item.workset or item.title),
         "lane": item.lane,
         "gate_reason": item.gate_reason,
         "brief": _display_path(_repo_path(item.path, repo_root), repo_root=repo_root),
+        "role_hints": list(item.role_hints),
+        "completion_proof": item.completion_proof,
         "verification": _ensure_git_diff_check(item.verification).splitlines(),
     }
 
@@ -3579,7 +3752,7 @@ def render_approval_packet(
             "## Conservative Agent Gate Required Before",
             "",
             "- Applying queue/plan drafts to tracked docs.",
-            "- Running push, PR create/merge/close, branch delete, or force-push.",
+            "- Running push, PR create/ready/merge/close, branch delete, or force-push.",
             "- Making benchmark/performance/private real-eval claims.",
             "- Choosing architecture tradeoffs.",
             "",
@@ -3720,7 +3893,7 @@ Closes #{issue_number or '<ISSUE_NUMBER>'}
 
 ## 3. 리스크
 
-- Conservative-agent-gated decisions remain outside this CLI: push, PR create/merge/close, branch delete, force-push, private real-eval decisions, benchmark/performance claims, and architecture tradeoffs.
+- Conservative-agent-gated decisions remain outside this CLI: push, PR create/ready/merge/close, branch delete, force-push, private real-eval decisions, benchmark/performance claims, and architecture tradeoffs.
 - Disallowed claims to avoid:
 {chr(10).join(f'  - {claim}' for claim in surface.disallowed_claims)}
 
@@ -4406,6 +4579,7 @@ def render_auto_ship_plan(
         "- The existing Stop hook then runs the repository auto-ship pipeline once and disarms.",
         "- `DRY_RUN=1` echoes mutating commands to `.claude/.ship-dryrun.log` instead of executing them.",
         "- `DRAFT=true` creates a draft PR so the review gate stops before ready merge.",
+        "- `DRAFT=false` ready-mode marks an existing draft PR ready before the review gate, then continues to merge only if the gate passes.",
         "",
         "## Recommended Command",
         "",
@@ -5966,6 +6140,7 @@ def render_ship_command_pack(*, pr: str | None, branch: str | None, repo_root: P
         "",
         "```bash",
         f"# create PR after agent gate: python3 scripts/agent_loop.py human-gated-exec --action pr-create --branch {shell_branch} --body reports/agent_loop/pr_body.md --confirm-human-approved",
+        f"# mark draft PR ready after agent gate: python3 scripts/agent_loop.py human-gated-exec --action pr-ready --pr {safe_pr} --confirm-human-approved",
         f"# review gate before merge/close/delete: make ship-review-gate PR={safe_pr}",
         f"# push after agent gate: python3 scripts/agent_loop.py human-gated-exec --action push --branch {shell_branch} --confirm-human-approved",
         f"# merge after agent gate: python3 scripts/agent_loop.py human-gated-exec --action pr-merge --pr {safe_pr} --confirm-review-gate-passed --confirm-human-approved",
@@ -5984,7 +6159,16 @@ def render_ship_command_pack(*, pr: str | None, branch: str | None, repo_root: P
     return _sanitize_dynamic_text("\n".join(lines)).rstrip() + "\n"
 
 
-HUMAN_GATED_ACTIONS = {"push", "pr-create", "pr-merge", "pr-close", "branch-delete", "force-push", "issue-close"}
+HUMAN_GATED_ACTIONS = {
+    "push",
+    "pr-create",
+    "pr-ready",
+    "pr-merge",
+    "pr-close",
+    "branch-delete",
+    "force-push",
+    "issue-close",
+}
 
 
 def write_human_gated_exec(
@@ -6110,6 +6294,10 @@ def build_human_gated_exec_plan(
         if title:
             command_parts.extend(["--title", _sanitize_inline_text(title)])
         command = tuple(command_parts)
+    elif action == "pr-ready":
+        safe_pr = _validate_pr_selector(pr or "")
+        command = ("gh", "pr", "ready", safe_pr)
+        warnings.append("pr-ready only clears GitHub draft state; CI, review, claim, and dependency gates still run before merge")
     elif action == "pr-merge":
         safe_pr = _validate_pr_selector(pr or "")
         if not confirm_review_gate_passed:
@@ -6254,7 +6442,7 @@ def render_apply_queue_plan(*, confirm_human_approved: bool, target_queue: str, 
 - Result: `{'applied' if confirm_human_approved else 'blocked'}`
 - Queue target: `{target_queue}`
 - Plan target: `{target_plan}`
-- This command writes tracked queue/plan docs only when `--confirm-human-approved` is present.
+- This command writes tracked queue/plan docs only when `--confirm-human-approved` is present, or when `continue-loop` calls it after its internal agent gate.
 - It does not push, create/merge/close PRs, delete branches, force-push, run private eval, or approve claims.
 """
     )
@@ -7212,12 +7400,12 @@ def render_automation_coverage() -> str:
         ("14", "privacy regression corpus", "privacy-regression, privacy-audit-output"),
         ("15", "claim policy engine", "claim-policy, claim-audit"),
         ("16", "architecture decision detector", "architecture-decision, architecture-brief, adr-reserve"),
-        ("17", "next work-set recommender", "workset-recommend, batch-plan"),
+        ("17", "PR corpus workset planner", "pr-scan, next-from-prs, batch-plan, workset-recommend, continue-loop"),
         ("18", "auto-pass strict profiles", "auto-pass-check --profile ..."),
         ("19", "conservative remote execution", "human-gated-exec --confirm-human-approved"),
         ("20", "existing auto-ship bridge", "auto-ship-prepare, auto-ship-plan, ship-simulate, ship-command-pack"),
         ("21", "conservative issue cleanup", "issue-scan, maintenance-plan, human-gated-exec --action issue-close"),
-        ("22", "role-separated subagent dispatch", "role-dispatch"),
+        ("22", "role-separated subagent dispatch", "role-dispatch --batch"),
     )
     lines = [
         "# Agent Loop Automation Coverage",
@@ -7233,9 +7421,9 @@ def render_automation_coverage() -> str:
             "",
             "## Still Agent-Gated",
             "",
-            "- Queue/plan actual tracked-doc application unless `--confirm-human-approved` is explicit.",
+            "- Queue/plan tracked-doc application requires either the explicit compatibility flag or the `continue-loop` internal agent gate.",
             "- Running existing `make ship-arm` remains a conservative shipping gate; `auto-ship-plan` only prepares a plan.",
-            "- Push, PR create/merge/close, issue close, branch delete, force-push require `human-gated-exec --confirm-human-approved` plus action-specific gates.",
+            "- Push, PR create/ready/merge/close, issue close, branch delete, force-push require `human-gated-exec --confirm-human-approved` plus action-specific gates.",
             "- Private real-eval decisions, benchmark/performance claims, and architecture tradeoffs follow ADR 0079 defaults.",
             "- Role dispatch is report-only; it does not execute subagents or remote mutations.",
             "",
@@ -7248,10 +7436,18 @@ def write_role_dispatch(
     *,
     changed_files: Sequence[str] = (),
     owner_role: str | None = None,
+    batch: Path | None = None,
+    workset: str | None = None,
     out: Path = DEFAULT_ROLE_DISPATCH,
     repo_root: Path = ROOT_DIR,
 ) -> tuple[Path, str]:
-    rendered = render_role_dispatch(changed_files=changed_files, owner_role=owner_role, repo_root=repo_root)
+    rendered = render_role_dispatch(
+        changed_files=changed_files,
+        owner_role=owner_role,
+        batch=batch,
+        workset=workset,
+        repo_root=repo_root,
+    )
     out = _default_output(out, DEFAULT_ROLE_DISPATCH, "role_dispatch.md", repo_root=repo_root)
     safe_out = _safe_output_path(out, repo_root=repo_root)
     safe_out.parent.mkdir(parents=True, exist_ok=True)
@@ -7259,11 +7455,15 @@ def write_role_dispatch(
     return safe_out, rendered
 
 
-def _role_dispatch_chain(owner_role: str | None, surface: SurfaceReport) -> list[str]:
+def _role_dispatch_chain(owner_role: str | None, surface: SurfaceReport, extra_roles: Sequence[str] = ()) -> list[str]:
     raw_roles = re.split(r"\s*(?:->|\+|,)\s*", owner_role or "Planner -> Implementer -> Reviewer")
     roles = [_sanitize_inline_text(role).strip() for role in raw_roles if role.strip()]
     if not roles:
         roles = ["Planner", "Implementer", "Reviewer"]
+    for role in extra_roles:
+        safe_role = _sanitize_inline_text(role).strip()
+        if safe_role:
+            roles.append(safe_role)
 
     reviewer_roles: list[str] = []
     if "Benchmark Auditor" in surface.reviewer_type:
@@ -7338,12 +7538,20 @@ def render_role_dispatch(
     *,
     changed_files: Sequence[str] = (),
     owner_role: str | None = None,
+    batch: Path | None = None,
+    workset: str | None = None,
     repo_root: Path = ROOT_DIR,
 ) -> str:
     normalized_files = tuple(_normalize_changed_file(path, repo_root=repo_root) for path in changed_files)
     normalized_files = tuple(path for path in normalized_files if path)
     surface = classify_changed_files(normalized_files)
-    roles = _role_dispatch_chain(owner_role, surface)
+    batch_items = _role_dispatch_batch_items(batch=batch, workset=workset, repo_root=repo_root)
+    extra_roles = tuple(
+        str(role)
+        for item in batch_items
+        for role in (item.get("role_hints") if isinstance(item.get("role_hints"), list) else [])
+    )
+    roles = _role_dispatch_chain(owner_role, surface, extra_roles=extra_roles)
     owner = _sanitize_inline_text(owner_role or "Planner -> Implementer -> Reviewer")
 
     lines = [
@@ -7365,6 +7573,10 @@ def render_role_dispatch(
         lines.extend(f"  - `{_sanitize_inline_text(path)}`" for path in normalized_files)
     else:
         lines.append("- Changed files: `none supplied`")
+    if batch is not None:
+        lines.append(f"- Batch: `{_display_path(_repo_path(_resolve_input_path(batch, repo_root=repo_root), repo_root), repo_root=repo_root)}`")
+        lines.append(f"- Workset filter: `{_sanitize_inline_text(workset or 'all')}`")
+        lines.append(f"- Workset item count: `{len(batch_items)}`")
 
     lines.extend(
         [
@@ -7388,6 +7600,24 @@ def render_role_dispatch(
             + " |"
         )
 
+    if batch_items:
+        lines.extend(["", "## Workset Inputs", "", "| Workset | Lane | Source PRs | Task |", "|---|---|---|---|"])
+        for item in batch_items:
+            source_prs = item.get("source_prs") if isinstance(item.get("source_prs"), list) else []
+            lines.append(
+                "| "
+                + " | ".join(
+                    _sanitize_dynamic_text(str(value)).replace("\n", " ")
+                    for value in (
+                        item.get("workset_id") or item.get("workset") or "general",
+                        item.get("lane") or "unknown",
+                        ", ".join(str(pr) for pr in source_prs) or "N/A",
+                        item.get("title") or "Untitled",
+                    )
+                )
+                + " |"
+            )
+
     lines.extend(
         [
             "",
@@ -7401,6 +7631,21 @@ def render_role_dispatch(
         ]
     )
     return _sanitize_dynamic_text("\n".join(lines)).rstrip() + "\n"
+
+
+def _role_dispatch_batch_items(*, batch: Path | None, workset: str | None, repo_root: Path) -> list[dict[str, object]]:
+    if batch is None:
+        return []
+    path = _resolve_input_path(batch, repo_root=repo_root)
+    payload = _load_batch_payload(path)
+    if not workset:
+        return payload
+    wanted = _slugify(workset)
+    return [
+        item
+        for item in payload
+        if _slugify(str(item.get("workset_id") or item.get("workset") or "")) == wanted
+    ]
 
 
 def write_loop_state(
@@ -7612,6 +7857,7 @@ def _loop_artifact_state(repo_root: Path) -> dict[str, bool]:
         "reports/agent_loop/dependency_graph.md",
         "reports/agent_loop/automation_coverage.md",
         "reports/agent_loop/human_gated_exec.md",
+        "reports/agent_loop/continue_loop.md",
     )
     return {rel: (repo_root / rel).exists() for rel in rels}
 
@@ -8069,8 +8315,8 @@ flowchart TD
   A --> ISS["issue-scan and maintenance-plan: conservative issue cleanup and queue migration"]
   A --> MCP["agent-loop-mcp: expose safe local loop tools to MCP clients"]
   MCP --> D
-  B --> C["next-from-prs: generate next-action report and task briefs"]
-  C --> D["batch-plan: group serial, parallel, review, and agent-gated lanes"]
+  B --> C["next-from-prs: plan workset tasks from PR state corpus"]
+  C --> D["batch-plan: group worksets into serial, parallel, review, and agent-gated lanes"]
   D --> E["decision-brief: explain options, trade-offs, severity, and safe commands"]
   E --> F["draft-task: generate queue and plan drafts"]
   F --> G["promote-draft: dry-run queue/plan diff only"]
@@ -8105,14 +8351,18 @@ flowchart TD
   ARCH --> ADR["adr-reserve: draft-only ADR reservation"]
   C --> WORKSET["workset-recommend: serial/parallel/review/agent-gated sets"]
   WORKSET --> ROLE["role-dispatch: role-separated subagent dispatch plan (max 12, depth 2)"]
+  C --> CONT["continue-loop: pr-scan -> next-from-prs -> batch-plan -> role-dispatch -> queue/plan -> loop-state"]
+  CONT --> ROLE
+  CONT --> Q
   A --> INT["integration-pack and scheduled-status recipes"]
   INT --> MCP
   ISS --> F
   ROLE --> F
-  Q --> R{"Agent gate: review, claims, merge, close issue/PR, push, delete?"}
+  Q --> R{"Agent gate: review, claims, ready PR, merge, close issue/PR, push, delete?"}
   R -->|policy passes| SHIP["make ship-arm: conservative single end-to-end ship pipeline"]
   R -->|fallback policy passes| EXEC["human-gated-exec: legacy-named conservative remote mutation fallback"]
-  SHIP --> S["Existing ship workflow"]
+  SHIP --> READYPR["Ready-mode bridge: existing draft PR -> gh pr ready before review gate"]
+  READYPR --> S["Existing ship workflow"]
   EXEC --> S["Manual fallback workflow"]
   R -->|more work| A
 ```
@@ -8122,9 +8372,10 @@ Automation points:
 - issue-scan: read-only `gh issue list` JSON export plus conservative close/queue/in-flight/manual classification.
 - overlap-preflight: read-only start-of-task check for issue, branch, PR, worktree, remote branch, and freshness overlap.
 - maintenance-plan: generate issue cleanup, queue migration, worktree cleanup, and branch deletion gate recommendations without executing them.
-- next-from-prs: deterministic wrapper around `scripts/ai_next_actions.py`.
+- next-from-prs: deterministic wrapper around `scripts/ai_next_actions.py`; treats open PRs as a corpus, not a single PR selection list.
 - pr-health: group exported PR state into CI, review, stale, draft, blocked, and ready lanes.
-- batch-plan: group local task briefs into serial, parallel-safe, review-only, and agent-gated lanes.
+- batch-plan: group local task briefs into worksets with serial, parallel-safe, review-only, and agent-gated lanes.
+- continue-loop: run PR-corpus planning through batch plan, role dispatch, queue/plan draft/application, and loop-state without remote mutation.
 - decision-brief: explain agent-gate options, trade-offs, severity, reversibility, evidence, and next safe commands.
 - draft-task: local queue/plan drafts under `reports/agent_loop/`.
 - promote-draft: local dry-run diff for queue/plan promotion; no tracked files are changed.
@@ -8150,7 +8401,7 @@ Automation points:
 - auto-ship-prepare: prepare or create a local ADR 0007 branch for the primary `make ship-arm` pipeline; branch creation requires `--confirm-human-approved`.
 - auto-ship-plan: render a readiness-backed bridge to the primary `make ship-arm` Stop-hook pipeline without arming it.
 - ship-command-pack: render conservative shipping commands without executing them.
-- human-gated-exec: legacy command name for conservative remote mutation fallback; executes push/PR create/merge/close, issue close, remote branch delete, or force-with-lease only with `--confirm-human-approved` and action-specific gates.
+- human-gated-exec: legacy command name for conservative remote mutation fallback; executes push/PR create/ready/merge/close, issue close, remote branch delete, or force-with-lease only with `--confirm-human-approved` and action-specific gates.
 - dependency-graph: render stacked PR graph without merge/delete mutation.
 - stacked-risk: detect dependent PR risk before merge/delete cleanup.
 - pr-body-check: verify `Closes`, §5b, claim, and privacy boundaries before PR creation.
@@ -8169,7 +8420,7 @@ Automation points:
 - dashboard: render a human-readable loop report from loop-state signals.
 - dashboard-html: render static local HTML view of the dashboard.
 - stale-reports: separate current vs stale local report artifacts; dry-run by default.
-- apply-queue-plan: apply queue/plan drafts only with explicit `--confirm-human-approved`.
+- apply-queue-plan: compatibility command that applies queue/plan drafts only with explicit `--confirm-human-approved`; `continue-loop` may invoke the same writer after its internal agent gate passes.
 - mcp-config: render placeholder-based MCP client config samples.
 - review-followup: parse reviewer findings into local follow-up task briefs.
 - review-ingest: normalize local or PR review text into review-followup briefs.
@@ -8186,6 +8437,7 @@ Conservative agent gate policy:
 - Prefer `make ship-arm` for policy-passing end-to-end shipping; use `human-gated-exec` only as a legacy-named manual fallback after action-specific preflight.
 - Treat informational reviews as advisory unless they produce unresolved review threads, requested changes, or concrete failing evidence.
 - Treat role dispatch as a planning surface only; it does not execute subagents or remote mutations.
+- Treat `continue-loop` as a local continuation surface only; it may update tracked queue/plan docs, but never pushes, creates/merges/closes PRs, deletes branches, runs private eval, or approves claims.
 """
 
 
@@ -8227,14 +8479,20 @@ def _parse_task_brief(text: str) -> dict[str, str]:
         )
     if not verification:
         verification = "git diff --check"
+    completion_proof = _clean_section(_section_text(text, "Completion Proof"))
     return {
         "title": _sanitize_dynamic_text(title),
         "classification": _clean_scalar(fields.get(_normalize_field("Classification"), "unknown")),
         "source": _clean_scalar(fields.get(_normalize_field("Source"), "planner")),
+        "source_prs": _clean_scalar(fields.get(_normalize_field("Source PRs"), "N/A")),
+        "workset": _clean_scalar(fields.get(_normalize_field("Workset"), "general")),
+        "lane": _clean_scalar(fields.get(_normalize_field("Lane"), "")),
+        "role_hints": _clean_scalar(fields.get(_normalize_field("Role Hints"), "Planner, Implementer, Reviewer")),
         "reason": _clean_scalar(fields.get(_normalize_field("Reason"), "no reason captured")),
         "goal": _clean_section(_section_text(text, "Goal")) or "Define the smallest safe follow-up from the planner brief.",
         "expected_evidence": _clean_section(_section_text(text, "Expected Evidence"))
         or "Public-safe evidence or a documented no-go decision.",
+        "completion_proof": completion_proof or "Focused validation passes and the follow-up evidence is recorded.",
         "verification": _sanitize_command_text(verification),
     }
 
@@ -8277,6 +8535,10 @@ def _render_task_drafts(
 
 - Classification: `{brief["classification"]}`
 - Source: `{brief["source"]}`
+- Source PRs: `{brief["source_prs"]}`
+- Workset: `{brief["workset"]}`
+- Lane: `{brief["lane"] or 'auto'}`
+- Role hints: `{brief["role_hints"]}`
 - Reason: {brief["reason"]}
 - Source brief: `{source_brief}`
 - Suggested plan path: `{suggested_plan}`
@@ -8296,6 +8558,10 @@ def _render_task_drafts(
 ### Evidence Required
 
 {brief["expected_evidence"]}
+
+### Completion Proof
+
+{brief["completion_proof"]}
 
 ### Related Plan / Issue / PR Links
 
@@ -8332,6 +8598,9 @@ def _render_task_drafts(
 ## Surface / Claim Boundary
 
 - Initial classification: `{brief["classification"]}`
+- Workset: `{brief["workset"]}`
+- Source PRs: `{brief["source_prs"]}`
+- Lane: `{brief["lane"] or 'auto'}`
 - Eval surface: classify again after implementation if changed files touch eval, benchmark, metrics, reports, configs, or claims.
 - Disallowed claim: do not claim product quality, benchmark lift, or private real-eval success from this draft alone.
 
@@ -8353,6 +8622,7 @@ def _render_task_drafts(
 ## Reviewer Focus
 
 - Scope control against the source brief.
+- Completion proof: {brief["completion_proof"]}
 - Privacy boundary and claim wording.
 - Conservative eval surface classification.
 - Validation evidence matches commands actually run.
@@ -8507,7 +8777,7 @@ def build_parser() -> argparse.ArgumentParser:
     maintenance.add_argument("--json-out", type=Path, default=DEFAULT_MAINTENANCE_PLAN_JSON)
     maintenance.add_argument("--tasks-dir", type=Path, default=DEFAULT_ISSUE_QUEUE_TASKS_DIR)
 
-    next_prs = sub.add_parser("next-from-prs", help="Generate next-action briefs from PR state JSON.")
+    next_prs = sub.add_parser("next-from-prs", help="Plan workset task briefs from the PR state corpus.")
     next_prs.add_argument("--pr-json", type=Path, default=DEFAULT_PR_STATE)
     next_prs.add_argument("--out-md", type=Path, default=DEFAULT_AI_NEXT_ACTIONS)
     next_prs.add_argument("--tasks-dir", type=Path, default=DEFAULT_CODEX_TASKS_DIR)
@@ -8538,6 +8808,16 @@ def build_parser() -> argparse.ArgumentParser:
     batch.add_argument("--json-out", type=Path, default=DEFAULT_BATCH_PLAN_JSON)
     batch.add_argument("--no-json", action="store_true")
     batch.add_argument("--max-items", type=int, default=12)
+
+    continue_loop = sub.add_parser("continue-loop", help="Advance PR-corpus planning through batch, role dispatch, queue/plan, and loop-state.")
+    continue_loop.add_argument("--pr-json", type=Path)
+    continue_loop.add_argument("--state", choices=("open", "closed", "all"), default="open")
+    continue_loop.add_argument("--limit", type=int, default=30)
+    continue_loop.add_argument("--include-body", action="store_true")
+    continue_loop.add_argument("--task-id", default=DEFAULT_DRAFT_TASK_ID)
+    continue_loop.add_argument("--max-items", type=int, default=12)
+    continue_loop.add_argument("--no-apply-queue-plan", action="store_true")
+    continue_loop.add_argument("--out", type=Path, default=DEFAULT_CONTINUE_LOOP)
 
     followup = sub.add_parser("review-followup", help="Convert reviewer findings into local follow-up briefs.")
     followup.add_argument("--review", required=True, type=Path)
@@ -8866,6 +9146,8 @@ def build_parser() -> argparse.ArgumentParser:
     role_dispatch.add_argument("--changed-files", type=Path)
     role_dispatch.add_argument("--from-git", action="store_true")
     role_dispatch.add_argument("--pr")
+    role_dispatch.add_argument("--batch", type=Path)
+    role_dispatch.add_argument("--workset")
     role_dispatch.add_argument("--out", type=Path, default=DEFAULT_ROLE_DISPATCH)
 
     gated = sub.add_parser("human-gated-exec", help="Legacy-named conservative remote mutation executor after explicit gate acknowledgment.")
@@ -9089,6 +9371,19 @@ def main(argv: list[str] | None = None) -> int:
                 sys.stdout.write(f"[OK] wrote {_repo_path(out, ROOT_DIR)}\n")
             else:
                 sys.stdout.write(f"[OK] wrote {_repo_path(out, ROOT_DIR)} and {_repo_path(json_out, ROOT_DIR)}\n")
+            return 0
+        if args.command == "continue-loop":
+            out, _ = write_continue_loop(
+                pr_json=args.pr_json,
+                state=args.state,
+                limit=args.limit,
+                include_body=args.include_body,
+                task_id=args.task_id,
+                max_items=args.max_items,
+                apply_queue_plan=not args.no_apply_queue_plan,
+                out=args.out,
+            )
+            sys.stdout.write(f"[OK] wrote {_repo_path(out, ROOT_DIR)}\n")
             return 0
         if args.command == "review-followup":
             out, tasks_dir, count, _ = write_review_followups(
@@ -9630,6 +9925,8 @@ def main(argv: list[str] | None = None) -> int:
             out, _ = write_role_dispatch(
                 changed_files=files,
                 owner_role=args.owner_role,
+                batch=args.batch,
+                workset=args.workset,
                 out=args.out,
             )
             sys.stdout.write(f"[OK] wrote {_repo_path(out, ROOT_DIR)}\n")

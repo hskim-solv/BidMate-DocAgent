@@ -94,7 +94,7 @@
 
 | 질문 | 답하는 문서 |
 |---|---|
-| What should I work on next? | [`tasks/queue.md`](../../tasks/queue.md)의 `Ready Order` |
+| What should I work on next? | [`tasks/queue.md`](../../tasks/queue.md)의 `Ready Order` 또는 `python3 scripts/agent_loop.py continue-loop` |
 | What role am I acting as? | 이 문서의 [Agent Role Model](#agent-role-model) |
 | What plan should I follow? | task의 plan link 또는 [`docs/plans/TEMPLATE.md`](../plans/TEMPLATE.md) |
 | What evidence must I produce? | task의 `Evidence Required`와 plan의 `Validation Strategy` |
@@ -135,6 +135,8 @@ Minimum viable operating system은 다음 조건을 만족하면 충분하다.
 
 ```text
 idea / issue
+  -> PR corpus scan when the next work is unclear
+  -> workset task brief
   -> task queue entry
   -> plan doc when required
   -> ready task
@@ -145,6 +147,19 @@ idea / issue
   -> merge-ready evidence
   -> done
 ```
+
+`next-from-prs`는 open PR 중 하나를 선택하지 않는다. PR 전체를 상태 corpus로
+읽고 blocked lane, ready ship lane, stale draft cleanup lane, private delta lane
+같은 상위 운영 task를 만든다. `batch-plan`은 이 task들을 workset으로 묶고
+`serial`, `parallel-safe`, `review-only`, `agent-gated` lane을 정한다.
+`role-dispatch`는 workset별 Planner, Implementer, Reviewer, CI Reviewer,
+Benchmark Auditor, Privacy Auditor, Deep Reviewer prompt source를 만든다.
+
+`continue-loop`는 `pr-scan -> next-from-prs -> batch-plan -> role-dispatch ->
+draft/apply queue-plan -> loop-state`를 한 번에 실행하는 local continuation
+surface다. 이 command는 queue/plan docs까지 자동 반영할 수 있지만 remote mutation
+(push, PR create/merge/close, issue close, branch delete, force-push), private
+real-eval 실행, benchmark/performance claim 승인은 하지 않는다.
 
 ### Granularity Guardrails
 
@@ -166,6 +181,9 @@ Agent에게 맡기는 work package는 충분히 커야 하지만, review surface
   command가 통과해도 PR-ready가 아니다.
 - `loop-state`의 `continuation` block은 detached HEAD, stale manifest, task
   linkage 누락을 감지해 다음 복구 command를 machine-readable하게 제공한다.
+- PR corpus 기반 task는 `Source PRs`, `Workset`, `Lane`, `Role Hints`,
+  `Completion Proof`를 남긴다. `Source PRs`는 선택된 PR이 아니라 그 task를
+  만든 evidence set이다.
 
 ### Planning Required
 
@@ -305,7 +323,8 @@ handoff block을 남긴다.
 2. 새 작업부터 `tasks/queue.md`와 plan doc를 사용한다.
 3. 기존 open PR/issue를 모두 이 시스템으로 retro-fit하지 않는다.
 4. eval/benchmark claim이 있는 새 PR부터 Benchmark Auditor checklist를 적용한다.
-5. 불편한 항목만 automation으로 승격한다. 처음부터 새 CI gate를 만들지 않는다.
+5. 불편한 항목만 local automation으로 승격한다. 처음부터 새 CI gate나 remote
+   mutation automation을 만들지 않는다.
 
 ## Incremental Rollout
 
@@ -318,8 +337,9 @@ handoff block을 남긴다.
 
 ## Risks And Tradeoffs
 
-- 문서가 늘어나는 비용이 있다. 그래서 task queue, plan, review, eval map만 최소로
-  추가하고, 새 code automation은 만들지 않는다.
+- 문서와 local automation이 늘어나는 비용이 있다. 그래서 task queue, plan, review,
+  eval map, agent-loop helper만 최소 surface로 유지하고 새 remote mutation
+  automation은 만들지 않는다.
 - Queue가 GitHub issue와 중복될 수 있다. Queue는 issue tracker가 아니라 AI-agent
   handoff index로 한정한다.
 - Checklist가 형식적으로 채워질 위험이 있다. Reviewer는 checklist의 "N/A" 사유가

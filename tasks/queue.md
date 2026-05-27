@@ -30,6 +30,7 @@ PR이 생기면 각 task에 링크를 추가한다. 예제 task는 `tasks/exampl
 | 17 | `T-2026-0018` | `review` | Maintainer -> Reviewer | issue #1547 implemented; draft PR #1548. |
 | 18 | `T-2026-0019` | `review` | Maintainer -> CI Reviewer -> Reviewer | local implementation ready on issue #1549 branch. |
 | 19 | `T-2026-0020` | `review` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1544; v0 metric-suite report implementation ready for review. |
+| 20 | `T-2026-0021` | `review` | Maintainer -> CI Reviewer -> Reviewer | issue #1551 implemented; draft PR #1552. |
 
 ## Examples
 
@@ -352,6 +353,112 @@ make check-branch
 - Results: all validation commands passed; generated metric suite report shows 7 present, 1 partial, 0 missing after private real100_v2 aggregate regeneration.
 - Next safe command: git diff --stat
 - Reviewer focus: no raw private content, no performance claim, present/partial boundary for data-dependent families.
+```
+
+## T-2026-0021 — PR corpus workset planning
+
+- ID: T-2026-0021
+- Title: PR corpus workset planning
+- Status: review
+- Owner role: Maintainer -> CI Reviewer -> Reviewer
+- Created: 2026-05-27
+- Last updated: 2026-05-27
+
+### Goal
+
+Make `next-from-prs` plan the next task/workset from the full open PR corpus,
+then let `batch-plan`, `role-dispatch`, and `continue-loop` carry that work
+into queue/plan state without asking a person to pick a PR.
+
+### Scope
+
+- Reframe `scripts/ai_next_actions.py` PR handling from PR selection to PR
+  corpus planning.
+- Add `Source PRs`, `Workset`, `Lane`, `Role Hints`, and `Completion Proof`
+  to generated task briefs and HTML/Markdown summaries.
+- Extend `batch-plan` JSON for workset-level role dispatch.
+- Let `role-dispatch` consume batch/workset metadata as subagent prompt source.
+- Add `continue-loop` to run PR scan, PR-corpus planning, batch plan,
+  role dispatch, queue/plan draft/application, and loop-state in one local
+  continuation command.
+- Bridge the draft PR -> ready PR gap for ready-mode ship gates so an existing
+  draft PR can continue through review gate and merge after CI passes.
+- Document the new operating contract.
+
+### Non-Goals
+
+- Do not push, create/merge/close PRs, close issues, delete branches, force-push,
+  run private real-eval, or approve benchmark/performance claims from
+  `continue-loop`.
+- Do not change RAG runtime, eval scorer, ingestion, retrieval, or answer
+  behavior.
+- Do not make PR title/body raw text a committable evidence surface.
+
+### Acceptance Criteria
+
+- [x] Multiple PRs produce higher-level workset tasks instead of selecting one PR.
+- [x] Blocked, ready, stale draft, private-delta, and draft continuation lanes
+  include `Source PRs`.
+- [x] Task briefs include goal, expected evidence, validation, and completion
+  proof.
+- [x] `batch-plan` JSON includes `workset_id`, `lane`, `source_prs`, and
+  `role_hints`.
+- [x] `role-dispatch` can consume a batch/workset and render role prompt inputs.
+- [x] `continue-loop` advances local planning through queue/plan and loop-state
+  while leaving remote mutation to existing ship gates.
+- [x] Ready-mode auto-ship (`DRAFT=false`) marks an existing draft PR ready
+  before review gate; draft-mode (`DRAFT=true`) still stops intentionally.
+
+### Validation Commands
+
+```bash
+python3 -m py_compile scripts/ai_next_actions.py scripts/agent_loop.py
+python3 -m pytest tests/test_ai_next_actions.py tests/test_agent_loop.py tests/test_ship_start_review_gate.py tests/test_ship_dispatcher_gates.py -q
+python3 scripts/check_doc_links.py --check-all --paths docs/operations/ai-codex-workflow.md docs/operations/ai-engineering-operating-system.md docs/operations/auto-ship.md tasks/queue.md docs/plans/T-2026-0021-pr-corpus-workset-planning.md
+python3 scripts/agent_loop.py continue-loop --pr-json reports/agent_loop/pr_state.json --no-apply-queue-plan
+git diff --check
+make check-branch
+```
+
+### Evidence Required
+
+- Focused pytest output.
+- Py compile output.
+- Targeted doc link check output.
+- `continue-loop` dry local smoke output with `--no-apply-queue-plan`.
+- Diff whitespace and branch checks.
+
+### Related Plan / Issue / PR Links
+
+- Plan: [`docs/plans/T-2026-0021-pr-corpus-workset-planning.md`](../docs/plans/T-2026-0021-pr-corpus-workset-planning.md)
+- Issue: [#1551](https://github.com/hskim-solv/BidMate-DocAgent/issues/1551)
+- PR: [#1552](https://github.com/hskim-solv/BidMate-DocAgent/pull/1552)
+
+### Handoff Notes
+
+```markdown
+## Session Handoff — 2026-05-27 KST
+
+- Role: Maintainer
+- Lifecycle stage: review
+- Branch / worktree: chore/issue-1551-pr-corpus-worksets / /Users/hskim/.codex/worktrees/5e72/BidMate-DocAgent
+- Base branch: main
+- Issue / PR: #1551 / PR #1552
+- Task: T-2026-0021
+- Plan: docs/plans/T-2026-0021-pr-corpus-workset-planning.md
+- Current status: local implementation complete; focused validation passed.
+- Files touched: scripts/ai_next_actions.py, scripts/agent_loop.py, tests/test_ai_next_actions.py, tests/test_agent_loop.py, docs/operations/ai-codex-workflow.md, docs/operations/ai-engineering-operating-system.md, tasks/queue.md, docs/plans/T-2026-0021-pr-corpus-workset-planning.md
+- Decisions made: keep command names, change `next-from-prs` semantics to PR corpus workset planning, make `continue-loop` local-only with remote mutation delegated to existing ship gates, and renumber this task to T-2026-0021 after #1546 occupied T-2026-0020 on `main`.
+- Commands run: python3 -m py_compile scripts/ai_next_actions.py scripts/agent_loop.py; python3 -m pytest tests/test_ai_next_actions.py tests/test_agent_loop.py -q; python3 scripts/check_doc_links.py --check-all --paths docs/operations/ai-codex-workflow.md docs/operations/ai-engineering-operating-system.md tasks/queue.md docs/plans/T-2026-0021-pr-corpus-workset-planning.md; python3 scripts/agent_loop.py pr-scan --limit 30 --out reports/agent_loop/pr_state.json; python3 scripts/agent_loop.py continue-loop --pr-json reports/agent_loop/pr_state.json --no-apply-queue-plan; git diff --check; make check-branch.
+- Results: passed.
+- Validation evidence: PR corpus planner, batch JSON, role-dispatch, and continue-loop are covered by focused tests; dry smoke wrote reports/agent_loop/continue_loop.md without applying queue/plan or mutating remote state.
+- Eval surface: tooling/governance only; no benchmark, product quality, or private real-eval claim.
+- Evidence artifacts: reports/agent_loop/pr_state.json, reports/agent_loop/ai_next_actions.md, reports/agent_loop/batch_plan.json, reports/agent_loop/role_dispatch.md, reports/agent_loop/continue_loop.md, reports/agent_loop/loop_state.json.
+- Blockers: none.
+- Open risks: `continue-loop` applies tracked queue/plan docs by default, so reviewers should confirm the internal agent-gate wording and no remote mutation behavior.
+- Next action: reviewer check.
+- Next safe command: git diff --stat
+- Reviewer focus: PR corpus vs PR selection semantics, fail-closed missing PR fields, workset lane grouping, role-dispatch prompt source, `continue-loop` no remote mutation, privacy/claim boundary.
 ```
 
 ## T-2026-0014 — Agent gate surface alignment

@@ -8,7 +8,7 @@ Codex 작업을 손으로 고르는 비용을 줄이는 것이다.
 
 | Role | Responsibility |
 |---|---|
-| ChatGPT | Planner/reviewer. repo 상태, readiness aggregate, PR 상태를 읽고 다음 작업을 고른다. |
+| ChatGPT | Planner/reviewer. repo 상태, readiness aggregate, PR corpus를 읽고 다음 workset/task lane을 계획한다. |
 | Codex | Scoped executor. 한 번에 하나의 좁은 task를 구현하고 focused verification을 남긴다. |
 | GitHub | State store. issue, PR, review, CI, merge state를 보관한다. |
 | Conservative agent gate | [ADR 0079](../adr/0079-agent-gated-offline-online-rfp-eval-loop.md)의 정책을 집행한다. routine merge, claim, private eval, cleanup 판단은 사람에게 매번 묻지 않고 보수적으로 처리한다. |
@@ -27,9 +27,9 @@ python3 scripts/ai_next_actions.py \
   --pr-json tmp/open-prs.json
 ```
 
-- `reports/ai_next_actions.md`: 현재 상태와 최우선 Codex task
+- `reports/ai_next_actions.md`: 현재 상태와 최우선 Codex workset task
 - `reports/ai_next_actions.html`: 사람이 빠르게 보는 현재 상태판
-- `reports/codex_tasks/*.md`: Codex에게 넘길 scoped task briefs
+- `reports/codex_tasks/*.md`: Codex에게 넘길 scoped workset task briefs
 
 `reports/*`는 기본 gitignore 대상이므로 이 산출물은 로컬 workflow artifact다.
 committable evidence가 필요하면 별도 redacted aggregate 산출물로 승격해야 한다.
@@ -44,11 +44,12 @@ ADR 0079 이후 이 화면은 매번 사용자 승인을 받기 위한 human gat
 Codex가 보수적 agent gate를 집행하기 위한 evidence board다. 애매한 경우 기본값은
 `draft`, `no performance claim`, `follow-up issue`, `fail closed`다.
 
-HTML 화면에서 먼저 볼 항목은 다음 네 가지다.
+HTML 화면에서 먼저 볼 항목은 다음 네 가지다. 여기서 `Top task`는 open PR 중
+하나를 고르는 값이 아니라, PR corpus 전체에서 합성된 운영 workset이다.
 
 | Area | What to decide |
 |---|---|
-| Top task | 지금 검토하거나 실행할 단일 작업 |
+| Top task | 지금 검토하거나 실행할 workset task |
 | Page citation claim | page-level claim을 해도 되는지 여부 |
 | Private delta needed | load-bearing 변경의 private delta evidence 필요 여부 |
 | Privacy guard | 입력 artifact가 aggregate/redacted boundary를 지켰는지 여부 |
@@ -79,16 +80,64 @@ python3 scripts/agent_loop.py overlap-preflight \
 
 ## Classification Contract
 
-Planner는 다음 순서로 active work를 분류한다.
+Planner는 open PR을 선택 후보 목록으로 다루지 않는다. PR의 CI, draft 여부,
+review 상태, merge blocker, stale/superseded 신호를 corpus/evidence로 읽고
+다음 순서로 active workset을 분류한다. PR별 1:1 task 생성을 기본값으로 삼지
+않고, 같은 운영 문제를 공유하는 PR들을 하나의 lane task로 묶는다.
 
 | Classification | Meaning |
 |---|---|
-| `failed_experiment` | NO-GO 또는 negative experiment 신호가 있다. |
-| `close_superseded` | stale/superseded draft PR을 active review 후보에서 제거해야 한다. |
-| `blocked` | readiness blocker, requested changes, merge blocker, failing check가 있다. |
-| `needs_private_delta` | private delta evidence가 필요한 PR 또는 load-bearing change가 있다. |
-| `ready_for_review` | blocker-free 상태라 reviewer handoff가 가능하다. |
-| `next_experiment_candidate` | 위 신호가 없으므로 다음 측정 후보를 고른다. |
+| `failed_experiment` | NO-GO 또는 negative experiment 신호가 있는 PR lane을 문서화한다. |
+| `close_superseded` | stale/superseded draft PR lane을 cleanup task로 묶는다. |
+| `blocked` | requested changes, merge blocker, failing check, missing PR JSON field가 있는 blocked lane을 triage한다. |
+| `needs_private_delta` | private delta evidence가 필요한 PR 또는 load-bearing claim lane을 준비한다. |
+| `ready_for_review` | blocker-free PR들을 ship/review lane으로 묶는다. |
+| `next_experiment_candidate` | draft/measurement 후보들을 다음 workset으로 이어간다. |
+
+각 task brief는 `Source PRs`, `Workset`, `Lane`, `Role Hints`,
+`Completion Proof`를 포함한다. `Source PRs`는 근거가 된 PR 번호 목록이며,
+그 PR 중 하나를 선택했다는 뜻이 아니다.
+
+## Batch And Role Dispatch
+
+`scripts/agent_loop.py batch-plan`은 `reports/agent_loop/codex_tasks/*.md`를
+읽어 workset 단위 JSON을 만든다.
+
+```bash
+python3 scripts/agent_loop.py batch-plan
+```
+
+`batch_plan.json`의 각 item은 `workset_id`, `lane`, `source_prs`,
+`role_hints`, `completion_proof`를 포함한다. lane은 다음 네 종류다.
+
+| Lane | Meaning |
+|---|---|
+| `serial` | 같은 file/surface/dependency 또는 blocker를 공유해 순차 처리한다. |
+| `parallel-safe` | 독립 surface라 병렬 구현 또는 탐색이 가능하다. |
+| `review-only` | 구현보다 review/ship evidence 확인이 우선이다. |
+| `manual-gated` | 내부적으로는 agent-gated lane이며 private eval, claim, remote mutation 같은 보수 gate를 요구한다. |
+
+`role-dispatch --batch reports/agent_loop/batch_plan.json`은 workset별
+Planner, Implementer, Reviewer, CI Reviewer, Benchmark Auditor, Privacy
+Auditor, Deep Reviewer prompt source를 만든다. root session은 integration,
+validation, ship gate만 맡고, 이 보고서는 subagent를 실행하거나 remote mutation을
+하지 않는다.
+
+## Continue Loop
+
+`continue-loop`는 정상 루프에서 사람이 다음 일을 고르지 않도록 상위 command를
+제공한다.
+
+```bash
+python3 scripts/agent_loop.py continue-loop
+```
+
+흐름은 `pr-scan -> next-from-prs -> batch-plan -> role-dispatch ->
+draft/apply queue-plan -> loop-state`다. 기본 동작은 내부 agent gate가 통과한
+queue/plan draft를 tracked queue/plan docs에 반영한다. 이 command는 push, PR
+create/merge/close, issue close, branch delete, force-push, private eval 실행,
+benchmark/performance claim 승인을 하지 않는다. remote mutation은 기존 ship
+gate와 `make ship-arm` 경로로 넘긴다.
 
 Page citation claim은 readiness summary의 page metadata gate가 `NO-GO`이거나
 missing page metadata rate가 `1.0`이면 NO-GO로 취급한다. 이 경우 planner는

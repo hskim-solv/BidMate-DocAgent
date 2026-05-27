@@ -184,6 +184,33 @@ def test_review_gate_blocks_requested_changes(monkeypatch, capsys) -> None:
     assert "CHANGES_REQUESTED" in capsys.readouterr().err
 
 
+def test_review_gate_blocks_draft_with_next_safe_command(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(review_gate, "resolve_pr_number", lambda pr: 1410)
+    monkeypatch.setattr(
+        review_gate,
+        "resolve_repo",
+        lambda repo: ("hskim-solv/BidMate-DocAgent", "hskim-solv", "BidMate-DocAgent"),
+    )
+    monkeypatch.setattr(
+        review_gate,
+        "pr_view",
+        lambda pr, repo: {
+            "state": "OPEN",
+            "isDraft": True,
+            "reviewDecision": "",
+            "url": "https://github.com/hskim-solv/BidMate-DocAgent/pull/1410",
+        },
+    )
+    monkeypatch.setattr(review_gate, "fetch_unresolved_threads", lambda owner, repo, pr: [])
+    monkeypatch.setattr(sys, "argv", ["_ship_review_gate.py", "--pr", "1410"])
+
+    assert review_gate.main() == 1
+    err = capsys.readouterr().err
+    assert "PR is draft" in err
+    assert "human-gated-exec --action pr-ready --pr 1410" in err
+    assert "make ship-arm DRAFT=false" in err
+
+
 def test_review_gate_blocks_unresolved_threads(monkeypatch, capsys) -> None:
     monkeypatch.setattr(review_gate, "resolve_pr_number", lambda pr: 1410)
     monkeypatch.setattr(

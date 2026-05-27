@@ -179,6 +179,13 @@ def main() -> int:
             sys.stderr.write(f"- unresolved: {location} by {thread.author}: {thread.body}{suffix}\n")
         if len(unresolved) > 10:
             sys.stderr.write(f"- ... {len(unresolved) - 10} more unresolved thread(s)\n")
+        if info.get("isDraft"):
+            sys.stderr.write(
+                "- next safe command: "
+                f"python3 scripts/agent_loop.py human-gated-exec --action pr-ready --pr {pr_number} "
+                "--confirm-human-approved\n"
+            )
+            sys.stderr.write("- then re-arm ready mode: make ship-arm DRAFT=false\n")
         return 1
 
     sys.stdout.write(f"ship-review-gate: PR #{pr_number} has no review blockers.\n")
