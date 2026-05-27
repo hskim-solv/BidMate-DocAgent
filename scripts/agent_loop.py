@@ -10127,6 +10127,23 @@ def _write_active_codex_patch(
             else:
                 blockers.append("patch mode requires a task id (pass --task T-YYYY-NNNN or run active-start --task)")
 
+    # The write-lane needs a concrete assignment — never let codex edit with workspace-write
+    # against a vague prompt. Embed the assignment in the prompt (the sandboxed codex must not
+    # read outside the scratch worktree); a missing/empty assignment is fail-closed (issue #1610).
+    assignment_text = ""
+    if resolved_task is not None:
+        assignment_file = assignments_path / f"{session_id}.md"
+        if assignment_file.exists():
+            try:
+                assignment_text = _read_text(assignment_file).strip()
+            except OSError:
+                assignment_text = ""
+        if not assignment_text:
+            blockers.append(
+                f"patch mode requires an assignment for session {session_id} "
+                f"({_repo_path(assignment_file, repo_root)}); run active-loop/active-start to generate it"
+            )
+
     which = which_func if which_func is not None else shutil.which
     resolved_executable = which(codex_executable) if execute else codex_executable
     if execute and not resolved_executable:
@@ -10176,6 +10193,7 @@ def _write_active_codex_patch(
                         session_id=session_id,
                         task_id=resolved_task,
                         scratch=_repo_path(created_path, repo_root),
+                        assignment_text=assignment_text,
                         repo_root=repo_root,
                     )
                     prompt_path.write_text(prompt, encoding="utf-8")
@@ -11166,21 +11184,28 @@ def _render_active_patch_prompt(
     session_id: str,
     task_id: str,
     scratch: str,
+    assignment_text: str,
     repo_root: Path,
 ) -> str:
-    """Write-lane prompt: codex MAY edit files in the scratch worktree, but never commits,
-    pushes, ships, or touches anything outside it. The orchestrator captures the diff."""
+    """Write-lane prompt: codex implements the embedded assignment IN the scratch worktree
+    but never commits, pushes, ships, or touches anything outside it. The orchestrator
+    captures the diff. The assignment is embedded (not a file reference) so the sandboxed
+    codex never has to read outside the scratch worktree (issue #1610)."""
     return _sanitize_dynamic_text(
         "\n".join(
             [
                 f"You are the Codex write-lane for active-loop session `{session_id}`, task `{task_id}`.",
                 f"You are in an isolated scratch worktree at `{scratch}` — the current working directory.",
-                "Make the smallest correct code change for the task IN THIS WORKTREE ONLY (you may edit/create files).",
+                "Implement the assignment below as the smallest correct code change IN THIS WORKTREE ONLY (you may edit/create files).",
                 "Do NOT commit, push, create/ready/merge PRs, close issues, delete branches, force-push, or run ship/make commands.",
                 "Do NOT touch any path outside this scratch worktree.",
                 "Leave the change uncommitted in the working tree; the orchestrator will capture `git diff` as a patch proposal.",
                 "Return a concise final message: task id, files changed, a one-line rationale, and any blockers.",
                 "Do not include absolute local paths, raw private question/answer/evidence text, doc_id, chunk_id, filename, or prompt/response body.",
+                "",
+                "## Assignment",
+                "",
+                assignment_text.strip(),
                 "",
             ]
         )
