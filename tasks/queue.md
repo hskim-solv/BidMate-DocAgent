@@ -32,7 +32,7 @@ PR이 생기면 각 task에 링크를 추가한다. 예제 task는 `tasks/exampl
 | 19 | `T-2026-0019` | `review` | Maintainer -> CI Reviewer -> Reviewer | local implementation ready on issue #1549 branch. |
 | 20 | `T-2026-0020` | `review` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1544; v0 metric-suite report implementation ready for review. |
 | 21 | `T-2026-0021` | `review` | Maintainer -> CI Reviewer -> Reviewer | issue #1551 implemented; draft PR #1552. |
-| 22 | `T-2026-0022` | `backlog` | Planner -> Implementer -> Reviewer | issue #1563; choose one scoped multi-chunk retrieval measurement follow-up. |
+| 22 | `T-2026-0022` | `review` | Planner -> Implementer -> Reviewer | issue #1563; aggregate strategy decision implemented; retrieval change deferred until page-aware re-index evidence. |
 | 23 | `T-2026-0023` | `review` | Planner -> Implementer -> Benchmark Auditor -> Privacy Auditor -> Deep Reviewer -> Reviewer | issue #1569; PR #1570. |
 
 ## Examples
@@ -1895,12 +1895,14 @@ make check-branch
 
 - ID: T-2026-0022
 - Title: Use multi-chunk evidence analysis for the next retrieval follow-up
-- Status: backlog
+- Status: review
 - Owner role: Planner -> Implementer -> Reviewer
 
 ### Goal
 
-Turn the aggregate multi-chunk evidence split into one scoped measurement follow-up.
+Turn the aggregate multi-chunk evidence split into one scoped measurement
+follow-up without mistaking a stale `real100/` aggregate for current
+`real100_v2` retrieval evidence.
 
 ### Context
 
@@ -1910,36 +1912,70 @@ Turn the aggregate multi-chunk evidence split into one scoped measurement follow
 - Workset: `general`
 - Lane: `parallel-safe`
 - Role hints: `Planner, Implementer, Reviewer`
-- Reason: multi-chunk aggregate is available: 97/99 top-10 failures; 97 limited-depth cases
+- Reason: multi-chunk aggregate is available: 97/99 top-10 failures; 97 limited-depth cases; source SHA-256 prefix `714c08f9996d` is the older `real100/` aggregate, not a fresh `real100_v2` multi-chunk measurement.
+- Freshness check: `real100_v2` has 100 parsed Markdown exports and 94 converted PDFs in ignored private storage, but the current `real100_v2` index has 21,800 `pdf_pymupdf4llm` chunks with 0.0 chunk page metadata / `page_span` / `regions.page_number` coverage.
 - Source brief: `reports/agent_loop/codex_tasks/001-multi-chunk-follow-up.md`
 - Suggested plan path: `docs/plans/T-2026-0022-use-multi-chunk-evidence-analysis-for-the-next-retrieval-fol.md`
 
 ### Acceptance Criteria
 
-- [ ] Scope stays limited to the cited workflow surface.
-- [ ] Public-safe evidence or no-go rationale is captured without raw private data.
-- [ ] Reviewer prompt covers any eval, benchmark, privacy, or architecture surface touched.
+- [x] Scope stays limited to the cited workflow surface.
+- [x] Public-safe evidence or no-go rationale is captured without raw private data.
+- [x] Reviewer prompt covers any eval, benchmark, privacy, or architecture surface touched.
+- [x] Strategy report exposes source provenance so stale aggregate use is visible.
 
 ### Validation Commands
 
 ```bash
-python3 -m pytest -q tests/test_render_multi_chunk_evidence_failures.py
+python3 -m pytest -q tests/test_render_multi_chunk_evidence_failures.py tests/test_render_multi_chunk_retrieval_strategy.py
+python3 scripts/render_multi_chunk_retrieval_strategy.py
+export REAL_EVAL_ROOT=/path/to/private/BidMate-DocAgent
+python3 scripts/page_metadata_recovery_audit.py --index-dir "$REAL_EVAL_ROOT/data/index/real100_v2" --format markdown
 git diff --check
 ```
 
 ### Evidence Required
 
-The follow-up chooses pool/rerank, decomposition, or section-expansion measurement using aggregate counts only.
+The follow-up chooses `defer_until_page_metadata_recovery` using aggregate counts
+only. Pool/rerank, decomposition, and section expansion remain unsupported until
+a page-aware `real100_v2` aggregate can distinguish same-document versus
+multi-document evidence splits.
 
 ### Completion Proof
 
-Focused validation passes and the follow-up evidence is recorded.
+Focused validation passes and the follow-up evidence is recorded in
+`docs/evaluation/multi_chunk_retrieval_strategy.md` plus
+`reports/real100/multi_chunk_retrieval_strategy.aggregate.json`.
 
 ### Related Plan / Issue / PR Links
 
 - Plan: [`docs/plans/T-2026-0022-use-multi-chunk-evidence-analysis-for-the-next-retrieval-fol.md`](../docs/plans/T-2026-0022-use-multi-chunk-evidence-analysis-for-the-next-retrieval-fol.md)
 - Issue: [#1563](https://github.com/hskim-solv/BidMate-DocAgent/issues/1563)
 - PR: TBD
+
+### Session Handoff
+
+- Role: Planner -> Implementer
+- Lifecycle stage: review
+- Branch / worktree: `eval/issue-1563-multi-chunk-followup-implementation` / Codex worktree
+- Current status: aggregate-only strategy decision implemented; concrete retrieval
+  change deferred until page-aware re-index evidence exists.
+- Files touched: `.githooks/pre-commit`,
+  `scripts/render_multi_chunk_retrieval_strategy.py`,
+  `tests/test_render_multi_chunk_retrieval_strategy.py`,
+  `docs/evaluation/multi_chunk_retrieval_strategy.md`,
+  `reports/real100/multi_chunk_retrieval_strategy.aggregate.json`,
+  `docs/plans/T-2026-0022-use-multi-chunk-evidence-analysis-for-the-next-retrieval-fol.md`,
+  `tasks/queue.md`.
+- Commands run: `python3 -m pytest -q tests/test_render_multi_chunk_evidence_failures.py tests/test_render_multi_chunk_retrieval_strategy.py`; `python3 scripts/render_multi_chunk_retrieval_strategy.py`; `export REAL_EVAL_ROOT=/path/to/private/BidMate-DocAgent`; `python3 scripts/page_metadata_recovery_audit.py --index-dir "$REAL_EVAL_ROOT/data/index/real100_v2" --format markdown`; `python3 scripts/check_doc_links.py --check-all --paths docs/plans/T-2026-0022-use-multi-chunk-evidence-analysis-for-the-next-retrieval-fol.md docs/evaluation/multi_chunk_retrieval_strategy.md tasks/queue.md`; `bash -n .githooks/pre-commit`; `git diff --check`; `make check-branch`.
+- Results: strategy recommendation is `defer_until_page_metadata_recovery`; `real100_v2` has 100 parsed Markdown exports, but current index page metadata coverage is 0.0.
+- Validation evidence: focused tests, doc-link check, whitespace check, branch check, and page metadata recovery audit completed.
+- Blockers: concrete retrieval implementation is blocked on page-aware re-index evidence, not on missing Markdown conversion.
+- Open risks: MiniLM semantic baseline evidence is absent from this task; keep #1575 separate.
+- Next action: run final validation, then open the issue-linked PR for #1563.
+- Next safe command: `python3 -m pytest -q tests/test_render_multi_chunk_evidence_failures.py tests/test_render_multi_chunk_retrieval_strategy.py`
+- Reviewer focus: source freshness, privacy-safe aggregate-only wording, and no RAG performance claim.
+- Eval surface: report/measurement decision only; no retrieval, reranker, verifier, prompt, answer, or eval runtime behavior change.
 
 ## T-2026-0023 — RAG performance agent operating goal
 

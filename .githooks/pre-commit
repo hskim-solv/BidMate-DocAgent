@@ -68,6 +68,10 @@ ALLOWED_PATTERNS=(
   # scripts/render_multi_chunk_evidence_failures.py). Aggregate-only
   # counts/buckets for gold/retrieved chunk coverage and expected impact.
   '^reports/real100/multi_chunk_evidence_failures\.aggregate\.json$'
+  # Multi-chunk retrieval strategy decision (script:
+  # scripts/render_multi_chunk_retrieval_strategy.py). Mirrors the `!`-rule in
+  # `.gitignore`; aggregate-only recommendation/provenance, no raw case rows.
+  '^reports/real100/multi_chunk_retrieval_strategy\.aggregate\.json$'
   # Issue #1469 — difficulty profiler (script:
   # scripts/render_difficulty_profile.py, ADR 0077). Aggregate-only
   # difficulty buckets and outcome means; raw case rows and index text stay

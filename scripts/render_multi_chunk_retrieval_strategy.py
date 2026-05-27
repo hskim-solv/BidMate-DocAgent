@@ -334,6 +334,7 @@ def build_strategy_report(
 
 
 def render_markdown(report: Mapping[str, Any]) -> str:
+    source = _mapping(report.get("source"))
     population = _mapping(report.get("population"))
     retrieval = _mapping(report.get("retrieval_outcome_by_k"))
     evidence = _mapping(report.get("evidence_split"))
@@ -355,6 +356,18 @@ def render_markdown(report: Mapping[str, Any]) -> str:
         "`reports/real100/multi_chunk_evidence_failures.aggregate.json` and does "
         "not include raw questions, answers, document IDs, chunk IDs, paths, "
         "sections, or source text.",
+        "",
+        "## Source Provenance",
+        "",
+        "| Field | Value |",
+        "|---|---|",
+        f"| Input artifact | `{source.get('input_artifact') or ''}` |",
+        f"| Source basename | `{source.get('source_basename') or ''}` |",
+        f"| Source SHA-256 prefix | `{source.get('source_sha256_12') or ''}` |",
+        "",
+        "Freshness boundary: this decision applies only to the aggregate above. "
+        "If a newer private index or eval surface exists, render the matching "
+        "multi-chunk aggregate before choosing a retrieval change.",
         "",
         "## Recommendation",
         "",
