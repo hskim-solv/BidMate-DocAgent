@@ -3,7 +3,7 @@
 - Status: review
 - Owner role: Planner -> Benchmark Auditor -> Privacy Auditor -> Reviewer
 - Related task: `tasks/queue.md::T-2026-0027`
-- Related issue / PR: [#1584](https://github.com/hskim-solv/BidMate-DocAgent/issues/1584) / PR TBD
+- Related issue / PR: [#1584](https://github.com/hskim-solv/BidMate-DocAgent/issues/1584) / [#1587](https://github.com/hskim-solv/BidMate-DocAgent/pull/1587)
 - Related ADR: N/A - no runtime or eval contract change
 - Created: 2026-05-27
 - Last updated: 2026-05-27
@@ -190,7 +190,7 @@ or latency improvement.
 
 - Role: Planner
 - Branch / worktree: docs/issue-1584-rag-performance-experiment-stack / /Users/hskim/.codex/worktrees/3005/BidMate-DocAgent
-- Issue / PR: #1584 / PR TBD
+- Issue / PR: #1584 / #1587
 - Task: T-2026-0027
 - Current status: task stack docs implemented and validation passed.
 - Files touched: tasks/queue.md, docs/plans/T-2026-0027-rag-performance-experiment-stack.md, docs/evaluation/rag-performance-experiment-stack.md, docs/evaluation/surface-map.md

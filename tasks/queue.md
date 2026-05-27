@@ -2456,7 +2456,7 @@ make check-branch
 - Plan: [`docs/plans/T-2026-0027-rag-performance-experiment-stack.md`](../docs/plans/T-2026-0027-rag-performance-experiment-stack.md)
 - Evaluation note: [`docs/evaluation/rag-performance-experiment-stack.md`](../docs/evaluation/rag-performance-experiment-stack.md)
 - Issue: [#1584](https://github.com/hskim-solv/BidMate-DocAgent/issues/1584)
-- PR: TBD
+- PR: [#1587](https://github.com/hskim-solv/BidMate-DocAgent/pull/1587)
 
 ### Session Handoff
 
