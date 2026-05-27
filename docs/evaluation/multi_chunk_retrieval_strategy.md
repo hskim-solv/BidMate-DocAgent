@@ -2,6 +2,16 @@
 
 This report is aggregate-only. It uses counts from `reports/real100/multi_chunk_evidence_failures.aggregate.json` and does not include raw questions, answers, document IDs, chunk IDs, paths, sections, or source text.
 
+## Source Provenance
+
+| Field | Value |
+|---|---|
+| Input artifact | `reports/real100/multi_chunk_evidence_failures.aggregate.json` |
+| Source basename | `eval_summary.json` |
+| Source SHA-256 prefix | `714c08f9996d` |
+
+Freshness boundary: this decision applies only to the aggregate above. If a newer private index or eval surface exists, render the matching multi-chunk aggregate before choosing a retrieval change.
+
 ## Recommendation
 
 - Recommended next strategy: `defer_until_page_metadata_recovery`

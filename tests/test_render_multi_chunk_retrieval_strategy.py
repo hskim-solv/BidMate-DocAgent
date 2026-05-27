@@ -122,6 +122,9 @@ def test_renderer_emits_json_and_markdown(tmp_path: Path) -> None:
     md = out_md.read_text(encoding="utf-8")
     assert "`defer_until_page_metadata_recovery`" in md
     assert "after page metadata recovery" in md
+    assert "Source Provenance" in md
+    assert "`external_private/multi_chunk.aggregate.json`" in md
+    assert "`abc123def456`" in md
 
 
 def test_defer_priority_beats_pool_section_query_and_reranker_signals() -> None:
@@ -203,3 +206,10 @@ def test_private_like_input_fields_are_not_rendered() -> None:
         "비공개",
     ):
         assert forbidden not in rendered
+
+
+def test_markdown_warns_that_strategy_is_bound_to_source_aggregate() -> None:
+    md = render_markdown(build_strategy_report(_aggregate()))
+
+    assert "Freshness boundary" in md
+    assert "render the matching multi-chunk aggregate" in md

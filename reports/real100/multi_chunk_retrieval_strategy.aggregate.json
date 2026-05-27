@@ -1,0 +1,137 @@
+{
+  "candidate_pool_expansion": {
+    "all_missing_gold_seen_after_top10": 0,
+    "missing_gold_seen_after_top10": 0,
+    "not_observable_due_to_depth": 97
+  },
+  "decision_reasons": [
+    "evidence_split_unknown_dominant"
+  ],
+  "evidence_split": {
+    "counts": {
+      "multi_doc": 0,
+      "same_doc": 0,
+      "unknown": 99
+    },
+    "ratios": {
+      "multi_doc": 0.0,
+      "same_doc": 0.0,
+      "unknown": 1.0
+    }
+  },
+  "expected_impact": {
+    "pool_or_rerank_candidate": 0,
+    "query_decomposition_candidate": 0,
+    "section_expansion_candidate": 0,
+    "unknown_due_to_limited_depth": 97
+  },
+  "population": {
+    "multi_chunk_gold_cases": 99,
+    "multi_chunk_top10_evidence_failure_rate": 0.979798,
+    "multi_chunk_top10_evidence_failures": 97,
+    "num_predictions": 221
+  },
+  "privacy": {
+    "aggregate_only": true,
+    "raw_case_fields_copied": false,
+    "raw_text_or_identifiers_copied": false
+  },
+  "recommendation": "defer_until_page_metadata_recovery",
+  "recommendation_set": [
+    "defer_until_page_metadata_recovery"
+  ],
+  "retrieval_outcome_by_k": {
+    "10": {
+      "all_gold_retrieved": 2,
+      "no_gold_retrieved": 14,
+      "not_observable": 83,
+      "partial_gold_retrieved": 0
+    },
+    "20": {
+      "all_gold_retrieved": 2,
+      "no_gold_retrieved": 14,
+      "not_observable": 83,
+      "partial_gold_retrieved": 0
+    },
+    "5": {
+      "all_gold_retrieved": 2,
+      "no_gold_retrieved": 57,
+      "not_observable": 5,
+      "partial_gold_retrieved": 35
+    }
+  },
+  "run_order": "after_page_metadata_recovery",
+  "schema_version": 1,
+  "source": {
+    "input_artifact": "reports/real100/multi_chunk_evidence_failures.aggregate.json",
+    "input_schema_version": 1,
+    "source_basename": "eval_summary.json",
+    "source_location_redacted": true,
+    "source_sha256_12": "714c08f9996d"
+  },
+  "strategy_assessment": {
+    "candidate_pool_expansion": {
+      "all_missing_gold_seen_after_top10": 0,
+      "likely_help": false,
+      "missing_gold_seen_after_top10": 0,
+      "not_observable_due_to_depth": 97,
+      "verdict": "not_supported"
+    },
+    "query_decomposition": {
+      "multi_doc_cases": 0,
+      "query_decomposition_candidate": 0,
+      "required": false,
+      "verdict": "not_assessable_without_doc_split"
+    },
+    "reranker": {
+      "pool_or_rerank_candidate": 0,
+      "required": false,
+      "verdict": "insufficient_basis_without_gold_in_candidate_pool"
+    },
+    "same_doc_neighbor_expansion": {
+      "likely_help": false,
+      "same_doc_cases": 0,
+      "unknown_doc_split_cases": 99,
+      "verdict": "not_assessable_without_doc_split"
+    },
+    "section_expansion": {
+      "likely_help": false,
+      "section_expansion_candidate": 0,
+      "verdict": "not_assessable_without_same_doc_split"
+    }
+  },
+  "structured_overlap": {
+    "multi_chunk_gold_cases": {
+      "case_source_format": {
+        "csv": 0,
+        "docx": 0,
+        "hwp": 0,
+        "json": 0,
+        "other": 99,
+        "pdf": 0,
+        "pptx": 0,
+        "txt": 0,
+        "unknown": 0,
+        "xlsx": 0
+      },
+      "hardcase_table_heavy": 0,
+      "metadata_field_structured": 0
+    },
+    "top10_evidence_failures": {
+      "case_source_format": {
+        "csv": 0,
+        "docx": 0,
+        "hwp": 0,
+        "json": 0,
+        "other": 97,
+        "pdf": 0,
+        "pptx": 0,
+        "txt": 0,
+        "unknown": 0,
+        "xlsx": 0
+      },
+      "hardcase_table_heavy": 0,
+      "metadata_field_structured": 0
+    }
+  }
+}
