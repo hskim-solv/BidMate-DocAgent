@@ -2394,6 +2394,230 @@ def test_role_dispatch_consumes_batch_workset_role_hints(tmp_path: Path) -> None
     assert "Ship ready PR lane" not in rendered
 
 
+def _clear_overlap_report(issue: str = "9999", branch: str = "chore/issue-9999-active-loop") -> agent_loop.OverlapPreflightReport:
+    return agent_loop.OverlapPreflightReport(
+        issue=issue,
+        branch=branch,
+        result="clear",
+        current_branch=branch,
+        current_head="abc123",
+        origin_main="abc123",
+        blockers=(),
+        warnings=(),
+        evidence=("clear fixture",),
+        open_prs=(),
+        branch_prs=(),
+        worktrees=(),
+        remote_branches=(),
+    )
+
+
+def test_active_loop_dry_run_creates_four_session_ledger_without_remote_mutation(monkeypatch, tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    calls: list[list[str]] = []
+
+    def fake_run(cmd, **kwargs):  # type: ignore[no-untyped-def]
+        calls.append(list(cmd))
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(agent_loop.subprocess, "run", fake_run)
+    monkeypatch.setattr(agent_loop, "_current_branch", lambda repo_root: "chore/issue-9999-active-loop")
+    monkeypatch.setattr(agent_loop, "build_overlap_preflight", lambda issue, branch, repo_root: _clear_overlap_report(issue, branch))
+    monkeypatch.setattr(agent_loop, "audit_privacy_output", lambda *args, **kwargs: [])
+
+    result = agent_loop.write_active_loop(
+        changed_files=["docs/operations/active-agent-loop.md"],
+        repo_root=repo,
+    )
+
+    registry = json.loads(result.registry_path.read_text(encoding="utf-8"))
+    leases = json.loads(result.leases_path.read_text(encoding="utf-8"))
+
+    assert result.decision == "planned"
+    assert len(registry["sessions"]) == 4
+    assert {item["role"] for item in registry["sessions"]} == {
+        "Orchestrator",
+        "Implementer",
+        "Reviewer",
+        "CI/Eval Auditor",
+    }
+    assert leases["leases"][0]["status"] == "active"
+    assert (result.assignments_dir / "orchestrator.md").exists()
+    assert result.events_path.exists()
+    assert calls == []
+
+
+def test_active_loop_execute_runs_ship_only_after_reviewer_and_ci_pass(monkeypatch, tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    registry = repo / "reports" / "agent_loop" / "active" / "session_registry.json"
+    registry.parent.mkdir(parents=True, exist_ok=True)
+    now = "2999-01-01T00:00:00Z"
+    registry.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "topology": "four-role",
+                "sessions": [
+                    {"session_id": "reviewer", "role": "Reviewer", "status": "passed", "last_heartbeat": now},
+                    {"session_id": "ci-eval-auditor", "role": "CI/Eval Auditor", "status": "passed", "last_heartbeat": now},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    calls: list[list[str]] = []
+
+    def fake_run(cmd, **kwargs):  # type: ignore[no-untyped-def]
+        calls.append(list(cmd))
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(agent_loop.subprocess, "run", fake_run)
+    monkeypatch.setattr(agent_loop, "_current_branch", lambda repo_root: "chore/issue-9999-active-loop")
+    monkeypatch.setattr(agent_loop, "build_overlap_preflight", lambda issue, branch, repo_root: _clear_overlap_report(issue, branch))
+    monkeypatch.setattr(agent_loop, "audit_privacy_output", lambda *args, **kwargs: [])
+
+    result = agent_loop.write_active_loop(
+        execute=True,
+        changed_files=["docs/operations/active-agent-loop.md"],
+        repo_root=repo,
+    )
+
+    assert result.decision == "executed"
+    assert result.executed_commands == (("make", "ship-run", "DRAFT=false", "REAL_EVAL=auto"),)
+    assert calls == [["make", "ship-run", "DRAFT=false", "REAL_EVAL=auto"]]
+
+
+def test_active_loop_blocks_ship_when_reviewer_or_ci_has_not_passed(monkeypatch, tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    calls: list[list[str]] = []
+
+    def fake_run(cmd, **kwargs):  # type: ignore[no-untyped-def]
+        calls.append(list(cmd))
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(agent_loop.subprocess, "run", fake_run)
+    monkeypatch.setattr(agent_loop, "_current_branch", lambda repo_root: "chore/issue-9999-active-loop")
+    monkeypatch.setattr(agent_loop, "build_overlap_preflight", lambda issue, branch, repo_root: _clear_overlap_report(issue, branch))
+    monkeypatch.setattr(agent_loop, "audit_privacy_output", lambda *args, **kwargs: [])
+
+    result = agent_loop.write_active_loop(
+        execute=True,
+        changed_files=["docs/operations/active-agent-loop.md"],
+        repo_root=repo,
+    )
+
+    assert result.decision == "blocked"
+    assert any("Reviewer session has not passed" in blocker for blocker in result.blockers)
+    assert any("CI/Eval Auditor session has not passed" in blocker for blocker in result.blockers)
+    assert calls == []
+
+
+def test_active_loop_blocks_overlap_and_recovery_needed_leases(monkeypatch, tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    lease_path = repo / "reports" / "agent_loop" / "active" / "leases.json"
+    lease_path.parent.mkdir(parents=True, exist_ok=True)
+    lease_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "leases": [
+                    {
+                        "lease_id": "old-lease",
+                        "status": "active",
+                        "branch": "chore/issue-9999-active-loop",
+                        "worktree": ".",
+                        "expires_at": "2020-01-01T00:00:00Z",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    blocked_overlap = agent_loop.OverlapPreflightReport(
+        issue="9999",
+        branch="chore/issue-9999-active-loop",
+        result="blocked",
+        current_branch="chore/issue-9999-active-loop",
+        current_head="abc123",
+        origin_main="abc123",
+        blockers=("open PR already exists for the target issue or branch",),
+        warnings=(),
+        evidence=(),
+        open_prs=("#1 existing",),
+        branch_prs=(),
+        worktrees=(),
+        remote_branches=(),
+    )
+
+    monkeypatch.setattr(agent_loop, "_current_branch", lambda repo_root: "chore/issue-9999-active-loop")
+    monkeypatch.setattr(agent_loop, "build_overlap_preflight", lambda issue, branch, repo_root: blocked_overlap)
+    monkeypatch.setattr(agent_loop, "_inspect_active_worktree", lambda worktree, repo_root: {"state": "dirty-worktree"})
+    monkeypatch.setattr(agent_loop, "audit_privacy_output", lambda *args, **kwargs: [])
+
+    result = agent_loop.write_active_loop(
+        changed_files=["docs/operations/active-agent-loop.md"],
+        repo_root=repo,
+    )
+    leases = json.loads(result.leases_path.read_text(encoding="utf-8"))
+
+    assert result.decision == "blocked"
+    assert any("requires recovery" in blocker for blocker in result.blockers)
+    assert any("overlap-preflight blocked assignment" in blocker for blocker in result.blockers)
+    assert leases["leases"][0]["status"] == "recovery-needed"
+
+
+def test_active_loop_requires_claim_evidence_for_eval_surface(monkeypatch, tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    monkeypatch.setattr(agent_loop, "_current_branch", lambda repo_root: "chore/issue-9999-active-loop")
+    monkeypatch.setattr(agent_loop, "build_overlap_preflight", lambda issue, branch, repo_root: _clear_overlap_report(issue, branch))
+    monkeypatch.setattr(agent_loop, "audit_privacy_output", lambda *args, **kwargs: [])
+
+    result = agent_loop.write_active_loop(
+        changed_files=["eval/run_eval.py"],
+        repo_root=repo,
+    )
+
+    assert result.decision == "blocked"
+    assert any("load-bearing/eval surface requires claim or PR-body evidence" in blocker for blocker in result.blockers)
+
+
+def test_session_heartbeat_refreshes_registry_and_stale_sessions_are_marked(monkeypatch, tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    registry, events, payload = agent_loop.write_session_heartbeat(
+        session_id="reviewer",
+        role="Reviewer",
+        task_id="T-2026-9999",
+        status="passed",
+        repo_root=repo,
+    )
+    payload["sessions"][0]["last_heartbeat"] = "2020-01-01T00:00:00Z"
+    registry.write_text(json.dumps(payload), encoding="utf-8")
+
+    monkeypatch.setattr(agent_loop, "_current_branch", lambda repo_root: "chore/issue-9999-active-loop")
+    monkeypatch.setattr(agent_loop, "build_overlap_preflight", lambda issue, branch, repo_root: _clear_overlap_report(issue, branch))
+    monkeypatch.setattr(agent_loop, "audit_privacy_output", lambda *args, **kwargs: [])
+
+    result = agent_loop.write_active_loop(
+        changed_files=["docs/operations/active-agent-loop.md"],
+        lease_ttl_minutes=1,
+        repo_root=repo,
+    )
+    refreshed = json.loads(result.registry_path.read_text(encoding="utf-8"))
+    reviewer = next(item for item in refreshed["sessions"] if item["session_id"] == "reviewer")
+
+    assert events.exists()
+    assert reviewer["heartbeat_state"] == "stale"
+    assert reviewer["status"] == "stale"
+
+
+def test_stop_ship_skips_remote_branch_delete_when_stacked_dependents_exist() -> None:
+    text = (ROOT / "scripts" / "claude-hooks" / "stop-ship.sh").read_text(encoding="utf-8")
+
+    assert "gh pr list --base \"$ARM_BRANCH\" --state open --json number --jq 'length'" in text
+    assert "skipping remote branch delete" in text
+    assert "git push origin --delete \"$ARM_BRANCH\"" in text
+
+
 def test_dependency_graph_workset_and_strict_profiles_are_fail_closed(tmp_path: Path) -> None:
     repo = _write_repo(tmp_path, body_extra=_valid_handoff())
     report_dir = repo / "reports" / "agent_loop"

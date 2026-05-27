@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import difflib
 import hashlib
 import html
@@ -121,6 +121,13 @@ DEFAULT_OVERLAP_PREFLIGHT = DEFAULT_REPORT_DIR / "overlap_preflight.md"
 DEFAULT_HUMAN_GATED_EXEC = DEFAULT_REPORT_DIR / "human_gated_exec.md"
 DEFAULT_AUTO_SHIP_PLAN = DEFAULT_REPORT_DIR / "auto_ship_plan.md"
 DEFAULT_AUTO_SHIP_PREPARE = DEFAULT_REPORT_DIR / "auto_ship_prepare.md"
+DEFAULT_ACTIVE_DIR = DEFAULT_REPORT_DIR / "active"
+DEFAULT_ACTIVE_REGISTRY = DEFAULT_ACTIVE_DIR / "session_registry.json"
+DEFAULT_ACTIVE_LEASES = DEFAULT_ACTIVE_DIR / "leases.json"
+DEFAULT_ACTIVE_EVENTS = DEFAULT_ACTIVE_DIR / "events.jsonl"
+DEFAULT_ACTIVE_ASSIGNMENTS_DIR = DEFAULT_ACTIVE_DIR / "assignments"
+DEFAULT_ACTIVE_LOOP = DEFAULT_ACTIVE_DIR / "active_loop.md"
+DEFAULT_ACTIVE_WORKTREE_PREPARE = DEFAULT_ACTIVE_DIR / "active_worktree_prepare.md"
 DEFAULT_ISSUE_STATE = DEFAULT_REPORT_DIR / "issue_state.json"
 DEFAULT_ISSUE_TRIAGE = DEFAULT_REPORT_DIR / "issue_triage.md"
 DEFAULT_ISSUE_QUEUE_TASKS_DIR = DEFAULT_REPORT_DIR / "issue_queue_tasks"
@@ -129,6 +136,12 @@ DEFAULT_MAINTENANCE_PLAN_JSON = DEFAULT_REPORT_DIR / "maintenance_plan.json"
 DEFAULT_DRAFT_TASK_ID = "T-2026-0000"
 QUEUE_PATH = Path("tasks/queue.md")
 PLAN_DIR = Path("docs/plans")
+ACTIVE_TOPOLOGY_ROLES = (
+    ("orchestrator", "Orchestrator"),
+    ("implementer", "Implementer"),
+    ("reviewer", "Reviewer"),
+    ("ci-eval-auditor", "CI/Eval Auditor"),
+)
 
 GH_PR_JSON_FIELDS = (
     "number",
@@ -466,6 +479,19 @@ class HumanGatedExecPlan:
     returncode: int | None = None
     stdout: str = ""
     stderr: str = ""
+
+
+@dataclass(frozen=True)
+class ActiveLoopResult:
+    registry_path: Path
+    leases_path: Path
+    events_path: Path
+    assignments_dir: Path
+    report_path: Path
+    decision: str
+    blockers: tuple[str, ...]
+    warnings: tuple[str, ...]
+    executed_commands: tuple[tuple[str, ...], ...] = ()
 
 
 def _repo_path(path: Path, repo_root: Path) -> str:
@@ -7937,6 +7963,835 @@ def _role_dispatch_batch_items(*, batch: Path | None, workset: str | None, repo_
     ]
 
 
+def write_session_heartbeat(
+    *,
+    session_id: str,
+    role: str,
+    task_id: str | None = None,
+    status: str = "active",
+    lease_ttl_minutes: int = 30,
+    registry: Path = DEFAULT_ACTIVE_REGISTRY,
+    events: Path = DEFAULT_ACTIVE_EVENTS,
+    repo_root: Path = ROOT_DIR,
+) -> tuple[Path, Path, dict[str, object]]:
+    if lease_ttl_minutes < 1:
+        raise ValueError("--lease-ttl-minutes must be at least 1")
+    now = datetime.now(timezone.utc)
+    safe_session = _validate_session_id(session_id)
+    safe_role = _sanitize_inline_text(role)
+    safe_status = _sanitize_inline_text(status or "active")
+    if task_id and not TASK_ID_RE.fullmatch(task_id):
+        raise ValueError("--task must match T-YYYY-NNNN")
+    registry_path = _active_path(registry, repo_root=repo_root)
+    payload = _load_active_registry(registry_path)
+    sessions = payload.get("sessions") if isinstance(payload.get("sessions"), list) else []
+    by_id = {str(item.get("session_id")): dict(item) for item in sessions if isinstance(item, dict)}
+    session = by_id.get(safe_session, {})
+    session.update(
+        {
+            "session_id": safe_session,
+            "role": safe_role,
+            "status": safe_status,
+            "task_id": task_id,
+            "branch": _sanitize_inline_text(_current_branch(repo_root) or "unknown"),
+            "cwd": ".",
+            "last_heartbeat": _isoformat(now),
+            "heartbeat_state": "fresh",
+            "lease_expires_at": _isoformat(now + timedelta(minutes=lease_ttl_minutes)),
+            "next_command": "python3 scripts/agent_loop.py active-loop --mode full-ship --dry-run",
+        }
+    )
+    by_id[safe_session] = session
+    rendered_payload = {
+        "schema_version": 1,
+        "generated_at": _isoformat(now),
+        "topology": payload.get("topology") or "four-role",
+        "sessions": [_sanitize_json_value(by_id[key]) for key in sorted(by_id)],
+    }
+    registry_path.parent.mkdir(parents=True, exist_ok=True)
+    registry_path.write_text(json.dumps(rendered_payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    events_path = _active_path(events, repo_root=repo_root)
+    _append_active_event(
+        events_path,
+        {
+            "event": "session-heartbeat",
+            "session_id": safe_session,
+            "role": safe_role,
+            "status": safe_status,
+            "task_id": task_id,
+        },
+    )
+    return registry_path, events_path, rendered_payload
+
+
+def write_active_worktree_prepare(
+    *,
+    issue: str | None = None,
+    title: str | None = None,
+    role: str,
+    slug: str,
+    branch_type: str = "chore",
+    execute: bool = False,
+    out: Path = DEFAULT_ACTIVE_WORKTREE_PREPARE,
+    repo_root: Path = ROOT_DIR,
+) -> tuple[Path, str, tuple[tuple[str, ...], ...]]:
+    if not issue and not title:
+        raise ValueError("active-worktree-prepare requires --issue or --title")
+    safe_role = _sanitize_inline_text(role)
+    safe_slug = _slugify(slug)
+    safe_type = _validate_branch_name(branch_type, allow_protected=False)
+    if "/" in safe_type:
+        raise ValueError("--type must be a branch type, not a full branch")
+    safe_issue = _validate_issue_selector(issue) if issue else None
+    safe_title = _sanitize_inline_text(title or f"Agent loop {safe_slug}")
+    issue_command: tuple[str, ...] | None = None
+    if safe_issue is None:
+        issue_command = (
+            "gh",
+            "issue",
+            "create",
+            "--title",
+            safe_title,
+            "--body",
+            "Created by active-worktree-prepare for the active agent loop.",
+        )
+    target_issue = safe_issue or "<ISSUE>"
+    target_branch = f"{safe_type}/issue-{target_issue}-{safe_slug}"
+    worktree_root = repo_root.parent / f"{target_issue}-{safe_slug}" / repo_root.name
+    worktree_display = _display_path(str(worktree_root), repo_root=repo_root)
+    worktree_command = (
+        "git",
+        "worktree",
+        "add",
+        "-b",
+        target_branch,
+        str(worktree_root),
+        "origin/main",
+    )
+    commands: list[tuple[str, ...]] = []
+    if issue_command:
+        commands.append(issue_command)
+    commands.append(("git", "fetch", "origin", "main"))
+    commands.append(worktree_command)
+
+    executed: list[tuple[str, ...]] = []
+    created_issue = safe_issue
+    if execute:
+        if issue_command is not None:
+            result = subprocess.run(issue_command, cwd=repo_root, capture_output=True, text=True, check=False)
+            executed.append(issue_command)
+            if result.returncode != 0:
+                raise ValueError("gh issue create failed for active-worktree-prepare")
+            match = re.search(r"/issues/(\d+)(?:\b|$)", result.stdout.strip())
+            if not match:
+                raise ValueError("could not parse created issue number")
+            created_issue = match.group(1)
+            target_branch = f"{safe_type}/issue-{created_issue}-{safe_slug}"
+            worktree_root = repo_root.parent / f"{created_issue}-{safe_slug}" / repo_root.name
+            worktree_display = _display_path(str(worktree_root), repo_root=repo_root)
+            commands[-1] = ("git", "worktree", "add", "-b", target_branch, str(worktree_root), "origin/main")
+        for command in commands[1 if issue_command is not None else 0:]:
+            result = subprocess.run(command, cwd=repo_root, capture_output=True, text=True, check=False)
+            executed.append(command)
+            if result.returncode != 0:
+                raise ValueError(f"{command[0]} command failed for active-worktree-prepare")
+
+    rendered = render_active_worktree_prepare(
+        issue=created_issue,
+        title=safe_title,
+        role=safe_role,
+        branch=target_branch,
+        worktree=worktree_display,
+        execute=execute,
+        commands=tuple(commands),
+        executed=tuple(executed),
+    )
+    out_path = _active_path(out, repo_root=repo_root)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(rendered, encoding="utf-8")
+    _append_active_event(
+        _active_path(DEFAULT_ACTIVE_EVENTS, repo_root=repo_root),
+        {
+            "event": "active-worktree-prepare",
+            "role": safe_role,
+            "issue": created_issue,
+            "branch": target_branch,
+            "execute": execute,
+        },
+    )
+    return out_path, rendered, tuple(executed)
+
+
+def render_active_worktree_prepare(
+    *,
+    issue: str | None,
+    title: str,
+    role: str,
+    branch: str,
+    worktree: str,
+    execute: bool,
+    commands: Sequence[tuple[str, ...]],
+    executed: Sequence[tuple[str, ...]],
+) -> str:
+    lines = [
+        "# Active Worktree Prepare",
+        "",
+        "- Prepares one issue-linked branch/worktree for the active agent loop.",
+        "- Dry-run is safe by default; `--execute` performs issue/worktree mutation.",
+        f"- Mode: `{'execute' if execute else 'dry-run'}`",
+        f"- Role: `{_sanitize_inline_text(role)}`",
+        f"- Issue: `{_sanitize_inline_text(issue or 'created-on-execute')}`",
+        f"- Title: `{_sanitize_inline_text(title)}`",
+        f"- Branch: `{_sanitize_inline_text(branch)}`",
+        f"- Worktree: `{_sanitize_inline_text(worktree)}`",
+        "",
+        "## Commands",
+        "",
+        "```bash",
+    ]
+    lines.extend(_sanitize_command_text(shlex.join(command)) for command in commands)
+    lines.extend(["```", "", "## Executed", ""])
+    if executed:
+        lines.extend(f"- `{_sanitize_command_text(shlex.join(command))}`" for command in executed)
+    else:
+        lines.append("- None")
+    lines.append("")
+    return _sanitize_dynamic_text("\n".join(lines)).rstrip() + "\n"
+
+
+def write_active_loop(
+    *,
+    mode: str = "full-ship",
+    topology: str = "four-role",
+    execute: bool = False,
+    task_id: str | None = None,
+    issue: str | None = None,
+    branch: str | None = None,
+    changed_files: Sequence[str] = (),
+    claim_text: Path | None = None,
+    pr_body: Path | None = None,
+    lease_ttl_minutes: int = 30,
+    batch: Path | None = None,
+    registry: Path = DEFAULT_ACTIVE_REGISTRY,
+    leases: Path = DEFAULT_ACTIVE_LEASES,
+    events: Path = DEFAULT_ACTIVE_EVENTS,
+    assignments_dir: Path = DEFAULT_ACTIVE_ASSIGNMENTS_DIR,
+    out: Path = DEFAULT_ACTIVE_LOOP,
+    repo_root: Path = ROOT_DIR,
+) -> ActiveLoopResult:
+    if mode != "full-ship":
+        raise ValueError("--mode currently supports only full-ship")
+    if topology != "four-role":
+        raise ValueError("--topology currently supports only four-role")
+    if lease_ttl_minutes < 1:
+        raise ValueError("--lease-ttl-minutes must be at least 1")
+    if task_id and not TASK_ID_RE.fullmatch(task_id):
+        raise ValueError("--task must match T-YYYY-NNNN")
+
+    now = datetime.now(timezone.utc)
+    files = tuple(sorted(_normalize_changed_file(path, repo_root=repo_root) for path in changed_files if path))
+    current_branch = _sanitize_inline_text(branch or _current_branch(repo_root) or "unknown")
+    branch_issue = _issue_from_branch(current_branch)
+    safe_issue = _validate_issue_selector(issue) if issue else branch_issue
+    registry_path = _active_path(registry, repo_root=repo_root)
+    leases_path = _active_path(leases, repo_root=repo_root)
+    events_path = _active_path(events, repo_root=repo_root)
+    assignments_path = _active_path(assignments_dir, repo_root=repo_root)
+    out_path = _active_path(out, repo_root=repo_root)
+
+    old_registry = _load_active_registry(registry_path)
+    sessions = _build_active_sessions(
+        old_registry=old_registry,
+        topology=topology,
+        task_id=task_id,
+        current_branch=current_branch,
+        lease_ttl_minutes=lease_ttl_minutes,
+        now=now,
+    )
+    existing_leases = _load_active_leases(leases_path)
+    lease_payload, lease_blockers, lease_warnings = _build_active_leases(
+        existing_leases=existing_leases,
+        task_id=task_id,
+        issue=safe_issue,
+        branch=current_branch,
+        changed_files=files,
+        lease_ttl_minutes=lease_ttl_minutes,
+        now=now,
+        repo_root=repo_root,
+    )
+
+    blockers: list[str] = []
+    warnings: list[str] = []
+    evidence: list[str] = []
+    warnings.extend(lease_warnings)
+    blockers.extend(lease_blockers)
+
+    if current_branch in {"HEAD", "main", "master", "unknown"} or current_branch.startswith("release/"):
+        blockers.append("current branch is not an issue-linked feature branch")
+    if not safe_issue:
+        blockers.append("could not derive issue from current branch; pass --issue or switch to ADR 0007 branch")
+    else:
+        evidence.append(f"issue #{safe_issue} linked to branch")
+    if not files:
+        warnings.append("no changed files supplied; active loop wrote ledger only")
+
+    overlap_report: OverlapPreflightReport | None = None
+    if safe_issue and current_branch not in {"HEAD", "unknown"}:
+        try:
+            overlap_report = build_overlap_preflight(issue=safe_issue, branch=current_branch, repo_root=repo_root)
+            if overlap_report.result == "blocked":
+                blockers.append("overlap-preflight blocked assignment")
+                blockers.extend(overlap_report.blockers)
+            elif overlap_report.warnings:
+                warnings.extend(overlap_report.warnings)
+            evidence.append(f"overlap-preflight={overlap_report.result}")
+        except ValueError as exc:
+            blockers.append(f"overlap-preflight failed: {exc}")
+
+    surface = classify_changed_files(files)
+    surfaces = {surface.surface, *surface.additional_surfaces}
+    if files:
+        evidence.append(f"surface={surface.surface}")
+    if any(is_load_bearing(path) for path in files) or surfaces & {
+        "private-real-eval",
+        "privacy-sensitive-artifact",
+        "benchmark-reporting",
+        "public-synthetic-benchmark",
+    }:
+        if claim_text is None and pr_body is None:
+            blockers.append("load-bearing/eval surface requires claim or PR-body evidence")
+
+    privacy_findings = audit_privacy_output(repo_root / "reports" / "agent_loop", out_path=None, repo_root=repo_root)
+    if privacy_findings:
+        blockers.append(f"privacy audit found {len(privacy_findings)} generated artifact issue(s)")
+    else:
+        evidence.append("privacy audit clear for generated agent-loop artifacts")
+    if claim_text is not None:
+        claim_path = _resolve_input_path(claim_text, repo_root=repo_root)
+        if not claim_path.exists():
+            blockers.append("claim text path does not exist")
+        elif audit_claim_text(_read_text(claim_path), surface):
+            blockers.append("claim audit found risky wording")
+        else:
+            evidence.append("claim audit clear")
+    if pr_body is not None:
+        body_path = _resolve_input_path(pr_body, repo_root=repo_root)
+        if not body_path.exists():
+            blockers.append("PR body path does not exist")
+        elif check_pr_body_text(_read_text(body_path), changed_files=files, branch=current_branch, repo_root=repo_root):
+            blockers.append("PR body check has findings")
+        else:
+            evidence.append("PR body check clear")
+
+    reviewer_ok = _active_role_status_ok(sessions, "Reviewer")
+    ci_ok = _active_role_status_ok(sessions, "CI/Eval Auditor")
+    if execute:
+        if not reviewer_ok:
+            blockers.append("Reviewer session has not passed")
+        if not ci_ok:
+            blockers.append("CI/Eval Auditor session has not passed")
+    elif not reviewer_ok:
+        warnings.append("Reviewer session has not passed yet")
+    if not ci_ok:
+        warnings.append("CI/Eval Auditor session has not passed yet")
+
+    refresh_outputs: list[Path] = []
+    try:
+        loop_state_out, _ = write_loop_state(
+            task_id=task_id,
+            batch=batch,
+            changed_files=files,
+            out=repo_root / "reports" / "agent_loop" / "active" / "loop_state.json",
+            repo_root=repo_root,
+        )
+        refresh_outputs.append(loop_state_out)
+    except ValueError as exc:
+        warnings.append(f"loop-state refresh skipped: {exc}")
+    try:
+        role_dispatch_out, _ = write_role_dispatch(
+            changed_files=files,
+            batch=batch,
+            out=repo_root / "reports" / "agent_loop" / "active" / "role_dispatch.md",
+            repo_root=repo_root,
+        )
+        refresh_outputs.append(role_dispatch_out)
+    except ValueError as exc:
+        warnings.append(f"role-dispatch refresh skipped: {exc}")
+    try:
+        workset_out, _ = write_workset_recommendation(
+            batch=batch,
+            out=repo_root / "reports" / "agent_loop" / "active" / "workset_recommendation.md",
+            repo_root=repo_root,
+        )
+        refresh_outputs.append(workset_out)
+    except ValueError as exc:
+        warnings.append(f"workset refresh skipped: {exc}")
+    existing_pr_state = repo_root / "reports" / "agent_loop" / "pr_state.json"
+    if existing_pr_state.exists():
+        try:
+            continue_out, _ = write_continue_loop(
+                pr_json=existing_pr_state,
+                apply_queue_plan=False,
+                out=repo_root / "reports" / "agent_loop" / "active" / "continue_loop.md",
+                repo_root=repo_root,
+            )
+            refresh_outputs.append(continue_out)
+        except ValueError as exc:
+            warnings.append(f"continue-loop refresh skipped: {exc}")
+
+    readiness_out, readiness, _ = write_readiness_score(
+        task_id=task_id,
+        changed_files=files,
+        body=pr_body,
+        branch=current_branch,
+        claim_text=claim_text,
+        out=repo_root / "reports" / "agent_loop" / "active" / "readiness_score.md",
+        repo_root=repo_root,
+    )
+    if readiness.blockers:
+        warnings.append(f"readiness-score is {readiness.decision}: {', '.join(readiness.blockers)}")
+    else:
+        evidence.append(f"readiness-score={readiness.score}")
+
+    decision = "blocked" if blockers else ("executed" if execute else "planned")
+    executed_commands: list[tuple[str, ...]] = []
+    ship_command = ("make", "ship-run", "DRAFT=false", "REAL_EVAL=auto")
+    if execute and not blockers:
+        result = subprocess.run(ship_command, cwd=repo_root, capture_output=True, text=True, check=False)
+        executed_commands.append(ship_command)
+        if result.returncode != 0:
+            decision = "ship-failed"
+            blockers.append("make ship-run failed")
+
+    registry_payload = {
+        "schema_version": 1,
+        "generated_at": _isoformat(now),
+        "topology": topology,
+        "mode": mode,
+        "sessions": [_sanitize_json_value(item) for item in sessions],
+    }
+    registry_path.parent.mkdir(parents=True, exist_ok=True)
+    registry_path.write_text(json.dumps(registry_payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    leases_path.parent.mkdir(parents=True, exist_ok=True)
+    leases_path.write_text(json.dumps(_sanitize_json_value(lease_payload), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    assignments_path.mkdir(parents=True, exist_ok=True)
+    for session in sessions:
+        _write_active_assignment(
+            assignments_path / f"{session['session_id']}.md",
+            session=session,
+            task_id=task_id,
+            issue=safe_issue,
+            branch=current_branch,
+            changed_files=files,
+            decision=decision,
+            blockers=blockers,
+            warnings=warnings,
+            repo_root=repo_root,
+        )
+    _append_active_event(
+        events_path,
+        {
+            "event": "active-loop",
+            "mode": mode,
+            "topology": topology,
+            "execute": execute,
+            "decision": decision,
+            "task_id": task_id,
+            "issue": safe_issue,
+            "branch": current_branch,
+            "blockers": blockers,
+            "warnings": warnings,
+        },
+    )
+    rendered = render_active_loop(
+        mode=mode,
+        topology=topology,
+        execute=execute,
+        decision=decision,
+        sessions=sessions,
+        leases=lease_payload.get("leases", []),
+        blockers=tuple(_dedupe_preserve_order(blockers)),
+        warnings=tuple(_dedupe_preserve_order(warnings)),
+        evidence=tuple(_dedupe_preserve_order(evidence)),
+        readiness_path=readiness_out,
+        refresh_outputs=tuple(refresh_outputs),
+        overlap=overlap_report,
+        ship_command=ship_command,
+        executed_commands=tuple(executed_commands),
+        registry_path=registry_path,
+        leases_path=leases_path,
+        events_path=events_path,
+        assignments_path=assignments_path,
+        repo_root=repo_root,
+    )
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(rendered, encoding="utf-8")
+    return ActiveLoopResult(
+        registry_path=registry_path,
+        leases_path=leases_path,
+        events_path=events_path,
+        assignments_dir=assignments_path,
+        report_path=out_path,
+        decision=decision,
+        blockers=tuple(_dedupe_preserve_order(blockers)),
+        warnings=tuple(_dedupe_preserve_order(warnings)),
+        executed_commands=tuple(executed_commands),
+    )
+
+
+def render_active_loop(
+    *,
+    mode: str,
+    topology: str,
+    execute: bool,
+    decision: str,
+    sessions: Sequence[dict[str, object]],
+    leases: Sequence[object],
+    blockers: Sequence[str],
+    warnings: Sequence[str],
+    evidence: Sequence[str],
+    readiness_path: Path,
+    refresh_outputs: Sequence[Path],
+    overlap: OverlapPreflightReport | None,
+    ship_command: tuple[str, ...],
+    executed_commands: Sequence[tuple[str, ...]],
+    registry_path: Path,
+    leases_path: Path,
+    events_path: Path,
+    assignments_path: Path,
+    repo_root: Path,
+) -> str:
+    lines = [
+        "# Active Agent Loop",
+        "",
+        "- Hybrid active orchestrator ledger. Repo-local reports are the source of truth; Codex heartbeat can call these commands later.",
+        "- Fixed topology: Orchestrator, Implementer, Reviewer, CI/Eval Auditor.",
+        "- Full ship uses the existing `make ship-run DRAFT=false REAL_EVAL=auto` path after conservative agent gates pass.",
+        "- Force-push is excluded from this active loop.",
+        f"- Mode: `{mode}`",
+        f"- Topology: `{topology}`",
+        f"- Requested execution: `{execute}`",
+        f"- Decision: `{decision}`",
+        "",
+        "## Ledger",
+        "",
+        f"- Registry: `{_repo_path(registry_path, repo_root)}`",
+        f"- Leases: `{_repo_path(leases_path, repo_root)}`",
+        f"- Events: `{_repo_path(events_path, repo_root)}`",
+        f"- Assignments: `{_repo_path(assignments_path, repo_root)}`",
+        f"- Readiness: `{_repo_path(readiness_path, repo_root)}`",
+    ]
+    if refresh_outputs:
+        lines.append("- Refresh outputs:")
+        lines.extend(f"  - `{_repo_path(path, repo_root)}`" for path in refresh_outputs)
+    lines.extend(
+        [
+            "",
+            "## Sessions",
+            "",
+            "| Session | Role | Status | Heartbeat | Next command |",
+            "|---|---|---|---|---|",
+        ]
+    )
+    for session in sessions:
+        lines.append(
+            "| "
+            + " | ".join(
+                _sanitize_inline_text(str(value))
+                for value in (
+                    session.get("session_id", ""),
+                    session.get("role", ""),
+                    session.get("status", ""),
+                    session.get("heartbeat_state", ""),
+                    session.get("next_command", ""),
+                )
+            )
+            + " |"
+        )
+    lines.extend(["", "## Leases", ""])
+    if leases:
+        lines.extend(
+            f"- `{_sanitize_inline_text(str(item.get('lease_id') if isinstance(item, dict) else item))}`: "
+            f"{_sanitize_inline_text(str(item.get('status') if isinstance(item, dict) else 'unknown'))}"
+            for item in leases
+        )
+    else:
+        lines.append("- None")
+    lines.extend(["", "## Gate", "", "### Blockers", ""])
+    lines.extend(f"- {_sanitize_dynamic_text(item)}" for item in blockers) if blockers else lines.append("- None")
+    lines.extend(["", "### Warnings", ""])
+    lines.extend(f"- {_sanitize_dynamic_text(item)}" for item in warnings) if warnings else lines.append("- None")
+    lines.extend(["", "### Evidence", ""])
+    lines.extend(f"- {_sanitize_dynamic_text(item)}" for item in evidence) if evidence else lines.append("- None")
+    if overlap is not None:
+        lines.extend(["", "## Overlap Preflight", "", f"- Result: `{overlap.result}`"])
+    lines.extend(["", "## Ship Command", "", "```bash", _sanitize_command_text(shlex.join(ship_command)), "```", ""])
+    lines.extend(["## Executed Commands", ""])
+    if executed_commands:
+        lines.extend(f"- `{_sanitize_command_text(shlex.join(command))}`" for command in executed_commands)
+    else:
+        lines.append("- None")
+    lines.append("")
+    return _sanitize_dynamic_text("\n".join(lines)).rstrip() + "\n"
+
+
+def _active_path(path: Path, *, repo_root: Path) -> Path:
+    if path == DEFAULT_ACTIVE_REGISTRY:
+        path = repo_root / "reports" / "agent_loop" / "active" / "session_registry.json"
+    elif path == DEFAULT_ACTIVE_LEASES:
+        path = repo_root / "reports" / "agent_loop" / "active" / "leases.json"
+    elif path == DEFAULT_ACTIVE_EVENTS:
+        path = repo_root / "reports" / "agent_loop" / "active" / "events.jsonl"
+    elif path == DEFAULT_ACTIVE_ASSIGNMENTS_DIR:
+        path = repo_root / "reports" / "agent_loop" / "active" / "assignments"
+    elif path == DEFAULT_ACTIVE_LOOP:
+        path = repo_root / "reports" / "agent_loop" / "active" / "active_loop.md"
+    elif path == DEFAULT_ACTIVE_WORKTREE_PREPARE:
+        path = repo_root / "reports" / "agent_loop" / "active" / "active_worktree_prepare.md"
+    return _safe_output_path(path, repo_root=repo_root)
+
+
+def _isoformat(value: datetime) -> str:
+    return value.astimezone(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def _parse_timestamp(value: object) -> datetime | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(timezone.utc)
+    except ValueError:
+        return None
+
+
+def _validate_session_id(session_id: str) -> str:
+    safe = _sanitize_inline_text(session_id)
+    if not re.fullmatch(r"[A-Za-z0-9._-]{1,64}", safe):
+        raise ValueError("session id contains unsafe characters")
+    return safe
+
+
+def _load_active_registry(path: Path) -> dict[str, object]:
+    if not path.exists():
+        return {"schema_version": 1, "topology": "four-role", "sessions": []}
+    payload = json.loads(_read_text(path))
+    if not isinstance(payload, dict):
+        raise ValueError("active session registry must be a JSON object")
+    return payload
+
+
+def _load_active_leases(path: Path) -> list[dict[str, object]]:
+    if not path.exists():
+        return []
+    payload = json.loads(_read_text(path))
+    if isinstance(payload, dict):
+        leases = payload.get("leases")
+        if isinstance(leases, list):
+            return [dict(item) for item in leases if isinstance(item, dict)]
+    if isinstance(payload, list):
+        return [dict(item) for item in payload if isinstance(item, dict)]
+    raise ValueError("active leases must be a JSON object with a leases array")
+
+
+def _build_active_sessions(
+    *,
+    old_registry: dict[str, object],
+    topology: str,
+    task_id: str | None,
+    current_branch: str,
+    lease_ttl_minutes: int,
+    now: datetime,
+) -> list[dict[str, object]]:
+    old_sessions = old_registry.get("sessions") if isinstance(old_registry.get("sessions"), list) else []
+    old_by_id = {str(item.get("session_id")): dict(item) for item in old_sessions if isinstance(item, dict)}
+    sessions: list[dict[str, object]] = []
+    for session_id, role in ACTIVE_TOPOLOGY_ROLES:
+        old = old_by_id.get(session_id, {})
+        last_heartbeat = _parse_timestamp(old.get("last_heartbeat")) or now
+        age_seconds = max(0.0, (now - last_heartbeat).total_seconds())
+        heartbeat_state = "stale" if age_seconds > lease_ttl_minutes * 60 else "fresh"
+        status = _sanitize_inline_text(str(old.get("status") or ("running" if role == "Orchestrator" else "idle")))
+        if heartbeat_state == "stale":
+            status = "stale"
+        sessions.append(
+            {
+                "session_id": session_id,
+                "role": role,
+                "status": status,
+                "task_id": task_id or old.get("task_id"),
+                "branch": current_branch,
+                "cwd": ".",
+                "last_heartbeat": _isoformat(last_heartbeat),
+                "heartbeat_state": heartbeat_state,
+                "lease_expires_at": _isoformat(now + timedelta(minutes=lease_ttl_minutes)),
+                "next_command": _active_next_command(role, task_id=task_id),
+            }
+        )
+    return sessions
+
+
+def _active_next_command(role: str, *, task_id: str | None) -> str:
+    if role == "Orchestrator":
+        return "python3 scripts/agent_loop.py active-loop --mode full-ship --dry-run"
+    if role == "Implementer":
+        return f"python3 scripts/agent_loop.py preflight --task {task_id or '<TASK_ID>'} --from-git --write-prompts"
+    if role == "Reviewer":
+        return "python3 scripts/agent_loop.py review-plan --pr <PR>"
+    return "python3 scripts/agent_loop.py ci-summary --pr <PR>"
+
+
+def _build_active_leases(
+    *,
+    existing_leases: Sequence[dict[str, object]],
+    task_id: str | None,
+    issue: str | None,
+    branch: str,
+    changed_files: Sequence[str],
+    lease_ttl_minutes: int,
+    now: datetime,
+    repo_root: Path,
+) -> tuple[dict[str, object], list[str], list[str]]:
+    blockers: list[str] = []
+    warnings: list[str] = []
+    rendered: list[dict[str, object]] = []
+    for lease in existing_leases:
+        rendered_lease = _refresh_active_lease(lease, now=now, repo_root=repo_root)
+        rendered.append(rendered_lease)
+        if rendered_lease.get("status") == "recovery-needed":
+            blockers.append(f"lease {rendered_lease.get('lease_id')} requires recovery")
+        elif rendered_lease.get("status") == "active":
+            existing_branch = str(rendered_lease.get("branch") or "")
+            existing_task = str(rendered_lease.get("task_id") or "")
+            existing_issue = str(rendered_lease.get("issue") or "")
+            if existing_branch == branch or (task_id and existing_task == task_id) or (issue and existing_issue == issue):
+                warnings.append(f"active lease already exists for {existing_branch or existing_task or existing_issue}")
+    if not any(item.get("status") == "recovery-needed" for item in rendered):
+        lease_id = _slugify("-".join(part for part in (task_id, issue, branch, "implementer") if part))
+        if not any(str(item.get("lease_id")) == lease_id and item.get("status") == "active" for item in rendered):
+            rendered.append(
+                {
+                    "lease_id": lease_id,
+                    "status": "active",
+                    "task_id": task_id,
+                    "issue": issue,
+                    "branch": branch,
+                    "worktree": ".",
+                    "claimed_files": [_display_path(path, repo_root=repo_root) for path in changed_files],
+                    "owner_session": "implementer",
+                    "owner_role": "Implementer",
+                    "expires_at": _isoformat(now + timedelta(minutes=lease_ttl_minutes)),
+                    "recovery_command": "python3 scripts/agent_loop.py active-loop --mode full-ship --dry-run",
+                }
+            )
+    return (
+        {
+            "schema_version": 1,
+            "generated_at": _isoformat(now),
+            "leases": [_sanitize_json_value(item) for item in rendered],
+        },
+        blockers,
+        warnings,
+    )
+
+
+def _refresh_active_lease(lease: dict[str, object], *, now: datetime, repo_root: Path) -> dict[str, object]:
+    rendered = dict(lease)
+    expires = _parse_timestamp(rendered.get("expires_at"))
+    if expires is None or expires >= now:
+        rendered["status"] = _sanitize_inline_text(str(rendered.get("status") or "active"))
+        return rendered
+    state = _inspect_active_worktree(str(rendered.get("worktree") or "."), repo_root=repo_root)
+    rendered["inspection"] = state
+    if state["state"] != "clean":
+        rendered["status"] = "recovery-needed"
+        rendered["recovery_reason"] = state["state"]
+        rendered["recovery_command"] = "python3 scripts/agent_loop.py active-loop --mode full-ship --dry-run"
+    else:
+        rendered["status"] = "expired"
+    return rendered
+
+
+def _inspect_active_worktree(worktree: str, *, repo_root: Path) -> dict[str, object]:
+    safe = _sanitize_inline_text(worktree or ".")
+    path = repo_root if safe in {".", ""} else (repo_root / safe if not Path(safe).is_absolute() else Path(safe))
+    if not path.exists():
+        return {"state": "missing-worktree", "worktree": _display_path(str(path), repo_root=repo_root)}
+    status = subprocess.run(["git", "-C", str(path), "status", "--porcelain=v1"], capture_output=True, text=True, check=False)
+    branch = subprocess.run(["git", "-C", str(path), "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True, check=False)
+    if status.returncode != 0 or branch.returncode != 0:
+        return {"state": "inspection-failed", "worktree": _display_path(str(path), repo_root=repo_root)}
+    branch_name = branch.stdout.strip() or "unknown"
+    if branch_name == "HEAD":
+        return {"state": "detached-worktree", "branch": "HEAD", "worktree": _display_path(str(path), repo_root=repo_root)}
+    if status.stdout.strip():
+        return {"state": "dirty-worktree", "branch": _sanitize_inline_text(branch_name), "worktree": _display_path(str(path), repo_root=repo_root)}
+    return {"state": "clean", "branch": _sanitize_inline_text(branch_name), "worktree": _display_path(str(path), repo_root=repo_root)}
+
+
+def _active_role_status_ok(sessions: Sequence[dict[str, object]], role: str) -> bool:
+    passing = {"pass", "passed", "approved", "ready-for-ship", "done", "clear"}
+    for session in sessions:
+        if session.get("role") == role:
+            return str(session.get("status") or "").casefold() in passing
+    return False
+
+
+def _write_active_assignment(
+    path: Path,
+    *,
+    session: dict[str, object],
+    task_id: str | None,
+    issue: str | None,
+    branch: str,
+    changed_files: Sequence[str],
+    decision: str,
+    blockers: Sequence[str],
+    warnings: Sequence[str],
+    repo_root: Path,
+) -> None:
+    lines = [
+        f"# Active Assignment: {_sanitize_inline_text(str(session.get('role') or 'unknown'))}",
+        "",
+        f"- Session: `{_sanitize_inline_text(str(session.get('session_id') or 'unknown'))}`",
+        f"- Status: `{_sanitize_inline_text(str(session.get('status') or 'unknown'))}`",
+        f"- Decision: `{_sanitize_inline_text(decision)}`",
+        f"- Task: `{_sanitize_inline_text(task_id or 'N/A')}`",
+        f"- Issue: `{_sanitize_inline_text(issue or 'N/A')}`",
+        f"- Branch: `{_sanitize_inline_text(branch)}`",
+        f"- Next command: `{_sanitize_command_text(str(session.get('next_command') or ''))}`",
+        "",
+        "## Claimed Files",
+        "",
+    ]
+    if changed_files:
+        lines.extend(f"- `{_display_path(path_item, repo_root=repo_root)}`" for path_item in changed_files)
+    else:
+        lines.append("- None")
+    lines.extend(["", "## Blockers", ""])
+    lines.extend(f"- {_sanitize_dynamic_text(item)}" for item in blockers) if blockers else lines.append("- None")
+    lines.extend(["", "## Warnings", ""])
+    lines.extend(f"- {_sanitize_dynamic_text(item)}" for item in warnings) if warnings else lines.append("- None")
+    path.write_text(_sanitize_dynamic_text("\n".join(lines)).rstrip() + "\n", encoding="utf-8")
+
+
+def _append_active_event(path: Path, event: dict[str, object]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {"ts": _isoformat(datetime.now(timezone.utc)), **event}
+    path.open("a", encoding="utf-8").write(json.dumps(_sanitize_json_value(payload), sort_keys=True) + "\n")
+
+
+def _sanitize_json_value(value):  # type: ignore[no-untyped-def]
+    if isinstance(value, dict):
+        return {str(_sanitize_inline_text(str(key))): _sanitize_json_value(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_sanitize_json_value(item) for item in value]
+    if isinstance(value, tuple):
+        return [_sanitize_json_value(item) for item in value]
+    if isinstance(value, str):
+        return _sanitize_dynamic_text(value)
+    return value
+
+
 def write_loop_state(
     *,
     task_id: str | None = None,
@@ -9464,6 +10319,39 @@ def build_parser() -> argparse.ArgumentParser:
     role_dispatch.add_argument("--workset")
     role_dispatch.add_argument("--out", type=Path, default=DEFAULT_ROLE_DISPATCH)
 
+    active_loop = sub.add_parser("active-loop", help="Run the 4-session active orchestrator tick.")
+    active_loop.add_argument("--mode", choices=("full-ship",), default="full-ship")
+    active_loop.add_argument("--topology", choices=("four-role",), default="four-role")
+    active_loop.add_argument("--dry-run", dest="execute", action="store_false", default=False)
+    active_loop.add_argument("--execute", dest="execute", action="store_true")
+    active_loop.add_argument("--task")
+    active_loop.add_argument("--issue")
+    active_loop.add_argument("--branch")
+    active_loop.add_argument("--changed-files", type=Path)
+    active_loop.add_argument("--from-git", action="store_true")
+    active_loop.add_argument("--claim-text", type=Path)
+    active_loop.add_argument("--pr-body", type=Path)
+    active_loop.add_argument("--lease-ttl-minutes", type=int, default=30)
+    active_loop.add_argument("--batch", type=Path)
+    active_loop.add_argument("--out", type=Path, default=DEFAULT_ACTIVE_LOOP)
+
+    heartbeat = sub.add_parser("session-heartbeat", help="Refresh one active-loop session heartbeat.")
+    heartbeat.add_argument("--session-id", required=True)
+    heartbeat.add_argument("--role", required=True)
+    heartbeat.add_argument("--task")
+    heartbeat.add_argument("--status", required=True)
+    heartbeat.add_argument("--lease-ttl-minutes", type=int, default=30)
+
+    active_prepare = sub.add_parser("active-worktree-prepare", help="Prepare an issue-linked worktree for an active-loop role.")
+    active_prepare.add_argument("--issue")
+    active_prepare.add_argument("--title")
+    active_prepare.add_argument("--role", required=True)
+    active_prepare.add_argument("--slug", required=True)
+    active_prepare.add_argument("--type", dest="branch_type", default="chore")
+    active_prepare.add_argument("--dry-run", dest="execute", action="store_false", default=False)
+    active_prepare.add_argument("--execute", dest="execute", action="store_true")
+    active_prepare.add_argument("--out", type=Path, default=DEFAULT_ACTIVE_WORKTREE_PREPARE)
+
     gated = sub.add_parser("human-gated-exec", help="Legacy-named conservative remote mutation executor after explicit gate acknowledgment.")
     gated.add_argument("--action", required=True, choices=sorted(HUMAN_GATED_ACTIONS))
     gated.add_argument("--confirm-human-approved", action="store_true")
@@ -10264,6 +11152,51 @@ def main(argv: list[str] | None = None) -> int:
                 owner_role=args.owner_role,
                 batch=args.batch,
                 workset=args.workset,
+                out=args.out,
+            )
+            sys.stdout.write(f"[OK] wrote {_repo_path(out, ROOT_DIR)}\n")
+            return 0
+        if args.command == "active-loop":
+            files = _read_changed_files(
+                args.changed_files,
+                from_git=args.from_git,
+                pr=None,
+                repo_root=ROOT_DIR,
+            )
+            result = write_active_loop(
+                mode=args.mode,
+                topology=args.topology,
+                execute=args.execute,
+                task_id=args.task,
+                issue=args.issue,
+                branch=args.branch,
+                changed_files=files,
+                claim_text=args.claim_text,
+                pr_body=args.pr_body,
+                lease_ttl_minutes=args.lease_ttl_minutes,
+                batch=args.batch,
+                out=args.out,
+            )
+            sys.stdout.write(f"[OK] wrote {_repo_path(result.report_path, ROOT_DIR)}\n")
+            return 0 if result.decision in {"planned", "executed"} else 1
+        if args.command == "session-heartbeat":
+            registry, _, _ = write_session_heartbeat(
+                session_id=args.session_id,
+                role=args.role,
+                task_id=args.task,
+                status=args.status,
+                lease_ttl_minutes=args.lease_ttl_minutes,
+            )
+            sys.stdout.write(f"[OK] wrote {_repo_path(registry, ROOT_DIR)}\n")
+            return 0
+        if args.command == "active-worktree-prepare":
+            out, _, _ = write_active_worktree_prepare(
+                issue=args.issue,
+                title=args.title,
+                role=args.role,
+                slug=args.slug,
+                branch_type=args.branch_type,
+                execute=args.execute,
                 out=args.out,
             )
             sys.stdout.write(f"[OK] wrote {_repo_path(out, ROOT_DIR)}\n")
