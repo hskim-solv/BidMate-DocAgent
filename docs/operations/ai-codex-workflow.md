@@ -60,6 +60,23 @@ HTML은 로컬 상태판이며 PR 증거(evidence)가 아니다. PR에 인용할
 HTML 자체가 아니라 source aggregate artifact, 실행 command, diff, ADR/source-of-truth
 일치 여부다.
 
+## Overlap Preflight
+
+Codex가 파일을 편집하기 전에 같은 issue/branch/PR/worktree가 이미 진행 중인지
+확인한다. 이 check는 report-only이며 branch switch, push, PR 생성/머지/닫기,
+issue close, branch delete를 실행하지 않는다.
+
+```bash
+python3 scripts/agent_loop.py overlap-preflight \
+  --issue <N> \
+  --branch <type>/issue-<N>-<slug>
+```
+
+`blocked`이면 현재 작업을 시작하지 않는다. 예: 같은 issue의 open PR이 있거나,
+다른 worktree가 같은 issue branch를 소유하거나, 현재 checkout이 detached/stale인
+경우다. `warn`이면 branch/PR history를 사람이 볼 수 있는 report로 확인한 뒤
+진행한다.
+
 ## Classification Contract
 
 Planner는 다음 순서로 active work를 분류한다.

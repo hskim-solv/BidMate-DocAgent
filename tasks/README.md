@@ -30,8 +30,9 @@ repo-local task queue다. GitHub issue를 대체하지 않는다. 목적은 "다
 1. `tasks/queue.md`를 연다.
 2. `Ready Order`에서 status가 `ready`인 첫 task를 고른다.
 3. task의 `Scope`, `Non-Goals`, `Evidence Required`, `Failure Conditions`를 먼저 읽는다.
-4. 시작 시 status를 `running`으로 바꾸고 `Handoff Notes`에 branch/worktree와 첫 명령을 남긴다.
-5. 끝나면 status를 `review` 또는 `done`으로 바꾸고 validation output, artifact, PR/commit link를 남긴다.
+4. 파일을 편집하기 전에 `python3 scripts/agent_loop.py overlap-preflight --issue <N> --branch <type>/issue-<N>-<slug>`로 같은 issue/branch/PR/worktree가 이미 진행 중인지 확인한다.
+5. 시작 시 status를 `running`으로 바꾸고 `Handoff Notes`에 branch/worktree와 첫 명령을 남긴다.
+6. 끝나면 status를 `review` 또는 `done`으로 바꾸고 validation output, artifact, PR/commit link를 남긴다.
 
 `backlog` task는 missing decision이나 validation이 남아 있다는 뜻이다. agent는
 `backlog`를 임의로 실행하지 말고 ready 조건을 먼저 채운다.

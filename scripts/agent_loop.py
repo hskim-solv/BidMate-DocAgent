@@ -115,6 +115,7 @@ DEFAULT_WORKSET_RECOMMENDATION = DEFAULT_REPORT_DIR / "workset_recommendation.md
 DEFAULT_DEPENDENCY_GRAPH = DEFAULT_REPORT_DIR / "dependency_graph.md"
 DEFAULT_AUTOMATION_COVERAGE = DEFAULT_REPORT_DIR / "automation_coverage.md"
 DEFAULT_ROLE_DISPATCH = DEFAULT_REPORT_DIR / "role_dispatch.md"
+DEFAULT_OVERLAP_PREFLIGHT = DEFAULT_REPORT_DIR / "overlap_preflight.md"
 DEFAULT_HUMAN_GATED_EXEC = DEFAULT_REPORT_DIR / "human_gated_exec.md"
 DEFAULT_AUTO_SHIP_PLAN = DEFAULT_REPORT_DIR / "auto_ship_plan.md"
 DEFAULT_AUTO_SHIP_PREPARE = DEFAULT_REPORT_DIR / "auto_ship_prepare.md"
@@ -412,6 +413,30 @@ class MaintenancePlan:
     issues: tuple[IssueTriageItem, ...]
     worktree_actions: tuple[str, ...]
     queue_task_briefs: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class WorktreeSnapshot:
+    path: str
+    branch: str
+    head: str
+
+
+@dataclass(frozen=True)
+class OverlapPreflightReport:
+    issue: str
+    branch: str
+    result: str
+    current_branch: str
+    current_head: str
+    origin_main: str
+    blockers: tuple[str, ...]
+    warnings: tuple[str, ...]
+    evidence: tuple[str, ...]
+    open_prs: tuple[str, ...]
+    branch_prs: tuple[str, ...]
+    worktrees: tuple[WorktreeSnapshot, ...]
+    remote_branches: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -1459,6 +1484,225 @@ def render_preflight(
             ]
         )
     return (0 if handoff.ok else 1), "\n".join(lines) + "\n"
+
+
+def write_overlap_preflight(
+    *,
+    issue: str,
+    branch: str,
+    out: Path = DEFAULT_OVERLAP_PREFLIGHT,
+    json_out: Path | None = None,
+    repo_root: Path = ROOT_DIR,
+) -> tuple[Path, Path | None, OverlapPreflightReport, str]:
+    report = build_overlap_preflight(issue=issue, branch=branch, repo_root=repo_root)
+    rendered = render_overlap_preflight(report, repo_root=repo_root)
+    out = _default_output(out, DEFAULT_OVERLAP_PREFLIGHT, "overlap_preflight.md", repo_root=repo_root)
+    safe_out = _safe_output_path(out, repo_root=repo_root)
+    safe_out.parent.mkdir(parents=True, exist_ok=True)
+    safe_out.write_text(rendered, encoding="utf-8")
+    safe_json: Path | None = None
+    if json_out is not None:
+        safe_json = _safe_output_path(json_out, repo_root=repo_root)
+        safe_json.parent.mkdir(parents=True, exist_ok=True)
+        safe_json.write_text(
+            json.dumps(_overlap_preflight_json(report, repo_root=repo_root), indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+    return safe_out, safe_json, report, rendered
+
+
+def build_overlap_preflight(*, issue: str, branch: str, repo_root: Path = ROOT_DIR) -> OverlapPreflightReport:
+    safe_issue = _validate_issue_selector(issue)
+    safe_branch = _validate_branch_name(branch)
+    blockers: list[str] = []
+    warnings: list[str] = []
+    evidence: list[str] = []
+
+    branch_issue = _issue_from_branch(safe_branch)
+    if branch_issue != safe_issue:
+        blockers.append("target branch issue number does not match --issue")
+    elif not re.match(r"^[a-z][a-z0-9_-]*/issue-\d+", safe_branch):
+        blockers.append("target branch does not match ADR 0007 `<type>/issue-<N>` convention")
+    else:
+        evidence.append("target branch follows ADR 0007 and matches the requested issue")
+
+    current_branch = _current_branch(repo_root) or "unknown"
+    current_head = _git_ref("HEAD", repo_root=repo_root) or "unknown"
+    origin_main = _git_ref("origin/main", repo_root=repo_root) or "unknown"
+    evidence.append(f"current branch={current_branch}")
+    evidence.append(f"current head={current_head}")
+    if origin_main != "unknown":
+        evidence.append(f"origin/main={origin_main}")
+    else:
+        warnings.append("origin/main could not be resolved; freshness could not be proven")
+
+    current_issue = _issue_from_branch(current_branch)
+    if current_branch == "HEAD":
+        blockers.append("current checkout is detached HEAD; switch to latest main or the target issue branch before editing")
+    elif current_issue and current_issue != safe_issue:
+        blockers.append(f"current branch belongs to issue #{current_issue}, not issue #{safe_issue}")
+    elif current_issue == safe_issue and current_branch != safe_branch:
+        warnings.append(f"current branch is a different branch for issue #{safe_issue}: `{current_branch}`")
+
+    if origin_main != "unknown" and current_branch != "HEAD":
+        if current_head == origin_main:
+            evidence.append("current checkout is exactly at origin/main")
+        elif _git_is_ancestor("origin/main", "HEAD", repo_root=repo_root):
+            evidence.append("current checkout contains origin/main")
+        else:
+            blockers.append("current checkout does not contain origin/main; refresh from latest main before editing")
+
+    try:
+        issue_info = _issue_info(safe_issue, repo_root=repo_root)
+    except ValueError as exc:
+        blockers.append(str(exc))
+        issue_info = {}
+    if str(issue_info.get("state") or "").upper() == "CLOSED":
+        blockers.append(f"issue #{safe_issue} is closed; treat this as completed unless a follow-up issue is opened")
+    elif issue_info:
+        evidence.append(f"issue #{safe_issue} is {str(issue_info.get('state') or 'unknown').lower()}")
+
+    try:
+        open_prs = _open_pr_items(repo_root=repo_root)
+    except ValueError as exc:
+        blockers.append(str(exc))
+        open_prs = []
+    matching_open_prs = tuple(_pr_label(pr) for pr in open_prs if _pr_matches_issue_or_branch(pr, issue=safe_issue, branch=safe_branch))
+    if matching_open_prs:
+        blockers.append("open PR already exists for the target issue or branch")
+    else:
+        evidence.append("no open PR matched the target issue or branch")
+
+    try:
+        branch_prs = _branch_pr_items(safe_branch, repo_root=repo_root)
+    except ValueError as exc:
+        blockers.append(str(exc))
+        branch_prs = []
+    matching_branch_prs = tuple(_pr_label(pr) for pr in branch_prs)
+    if any(_pr_is_merged(pr) for pr in branch_prs):
+        blockers.append("target branch already has a merged PR; treat this issue branch as completed")
+    elif any(str(pr.get("state") or "").upper() == "CLOSED" for pr in branch_prs):
+        warnings.append("target branch has closed PR history; inspect before reusing the branch")
+
+    worktree_state_proven = True
+    try:
+        worktrees = tuple(_git_worktree_entries(repo_root))
+    except ValueError as exc:
+        blockers.append(str(exc))
+        worktrees = ()
+        worktree_state_proven = False
+    current_path = repo_root.resolve()
+    overlapping_worktrees = [
+        item
+        for item in worktrees
+        if Path(item.path).resolve() != current_path and _issue_from_branch(item.branch) == safe_issue
+    ]
+    if overlapping_worktrees:
+        blockers.append("another worktree already owns an issue branch for the target issue")
+    elif worktree_state_proven:
+        evidence.append("no other worktree owns the target issue")
+
+    local_issue_branches = sorted(_local_issue_branches(repo_root).get(safe_issue, set()))
+    unexpected_local = [item for item in local_issue_branches if item not in {safe_branch, current_branch}]
+    if unexpected_local:
+        warnings.append("other local branches exist for the target issue: " + ", ".join(f"`{item}`" for item in unexpected_local))
+
+    try:
+        remote_issue_branches = tuple(sorted(_remote_issue_branches(safe_issue, repo_root=repo_root)))
+    except ValueError as exc:
+        warnings.append(str(exc))
+        remote_issue_branches = ()
+    if safe_branch in remote_issue_branches:
+        warnings.append("remote branch already exists for the target branch; inspect before pushing")
+    remote_other = [item for item in remote_issue_branches if item != safe_branch]
+    if remote_other:
+        warnings.append("other remote branches exist for the target issue: " + ", ".join(f"`{item}`" for item in remote_other))
+    if not remote_issue_branches:
+        evidence.append("no remote branch matched the target issue")
+
+    result = "blocked" if blockers else ("warn" if warnings else "clear")
+    return OverlapPreflightReport(
+        issue=safe_issue,
+        branch=safe_branch,
+        result=result,
+        current_branch=current_branch,
+        current_head=current_head,
+        origin_main=origin_main,
+        blockers=tuple(_dedupe_preserve_order(blockers)),
+        warnings=tuple(_dedupe_preserve_order(warnings)),
+        evidence=tuple(_dedupe_preserve_order(evidence)),
+        open_prs=matching_open_prs,
+        branch_prs=matching_branch_prs,
+        worktrees=worktrees,
+        remote_branches=remote_issue_branches,
+    )
+
+
+def render_overlap_preflight(report: OverlapPreflightReport, *, repo_root: Path = ROOT_DIR) -> str:
+    lines = [
+        "# Agent Worktree Overlap Preflight",
+        "",
+        "- Read-only start-of-task check. It does not edit tracked files, switch branches, push, create/merge/close PRs, close issues, delete branches, or force-push.",
+        f"- Result: `{report.result}`",
+        f"- Issue: `#{report.issue}`",
+        f"- Target branch: `{report.branch}`",
+        f"- Current branch: `{report.current_branch}`",
+        f"- Current head: `{report.current_head}`",
+        f"- origin/main: `{report.origin_main}`",
+        "",
+        "## Blockers",
+        "",
+    ]
+    lines.extend(f"- {_sanitize_dynamic_text(item)}" for item in report.blockers) if report.blockers else lines.append("- None")
+    lines.extend(["", "## Warnings", ""])
+    lines.extend(f"- {_sanitize_dynamic_text(item)}" for item in report.warnings) if report.warnings else lines.append("- None")
+    lines.extend(["", "## Evidence", ""])
+    lines.extend(f"- {_sanitize_dynamic_text(item)}" for item in report.evidence) if report.evidence else lines.append("- None")
+    lines.extend(["", "## Matching PRs", ""])
+    if report.open_prs or report.branch_prs:
+        for label in _dedupe_preserve_order([*report.open_prs, *report.branch_prs]):
+            lines.append(f"- {_sanitize_dynamic_text(label)}")
+    else:
+        lines.append("- None")
+    lines.extend(["", "## Worktrees", ""])
+    for item in report.worktrees:
+        lines.append(
+            f"- `{_display_path(_repo_path(Path(item.path), repo_root), repo_root=repo_root)}` "
+            f"branch=`{_sanitize_inline_text(item.branch)}` head=`{_sanitize_inline_text(item.head)}`"
+        )
+    if not report.worktrees:
+        lines.append("- None")
+    lines.extend(["", "## Remote Branches", ""])
+    lines.extend(f"- `{_sanitize_inline_text(item)}`" for item in report.remote_branches) if report.remote_branches else lines.append("- None")
+    next_command = "python3 scripts/agent_loop.py overlap-preflight --issue <N> --branch <type>/issue-<N>-<slug>"
+    if report.result == "clear":
+        next_command = "git status --short --branch" if report.current_branch == report.branch else f"git switch -c {shlex.quote(report.branch)}"
+    elif report.result == "warn":
+        next_command = f"python3 scripts/agent_loop.py branch-issue-hygiene --branch {shlex.quote(report.branch)}"
+    lines.extend(["", "## Next Safe Command", "", "```bash", next_command, "```", ""])
+    return _sanitize_dynamic_text("\n".join(lines)).rstrip() + "\n"
+
+
+def _overlap_preflight_json(report: OverlapPreflightReport, *, repo_root: Path = ROOT_DIR) -> dict[str, object]:
+    return {
+        "schema_version": 1,
+        "issue": report.issue,
+        "branch": report.branch,
+        "result": report.result,
+        "current_branch": report.current_branch,
+        "current_head": report.current_head,
+        "origin_main": report.origin_main,
+        "blockers": list(report.blockers),
+        "warnings": list(report.warnings),
+        "evidence": list(report.evidence),
+        "open_prs": list(report.open_prs),
+        "branch_prs": list(report.branch_prs),
+        "worktrees": [
+            {"path": _display_path(item.path, repo_root=repo_root), "branch": item.branch, "head": item.head}
+            for item in report.worktrees
+        ],
+        "remote_branches": list(report.remote_branches),
+    }
 
 
 def scan_pr_state(
@@ -5068,7 +5312,7 @@ def _local_issue_branches(repo_root: Path) -> dict[str, set[str]]:
     return found
 
 
-def _worktree_issue_branches(repo_root: Path) -> dict[str, set[str]]:
+def _git_worktree_entries(repo_root: Path) -> tuple[WorktreeSnapshot, ...]:
     try:
         result = subprocess.run(
             ["git", "-C", str(repo_root), "worktree", "list", "--porcelain"],
@@ -5076,17 +5320,168 @@ def _worktree_issue_branches(repo_root: Path) -> dict[str, set[str]]:
             check=True,
             text=True,
         )
-    except (OSError, subprocess.CalledProcessError):
-        return {}
-    found: dict[str, set[str]] = {}
-    for line in result.stdout.splitlines():
-        if not line.startswith("branch refs/heads/"):
+    except (OSError, subprocess.CalledProcessError) as exc:
+        message = "git worktree list failed; worktree state could not be proven"
+        if isinstance(exc, subprocess.CalledProcessError) and exc.stderr:
+            message += f": {_sanitize_inline_text(exc.stderr)}"
+        raise ValueError(message) from exc
+    entries: list[WorktreeSnapshot] = []
+    path = ""
+    head = ""
+    branch = "HEAD"
+
+    def flush() -> None:
+        nonlocal path, head, branch
+        if path:
+            entries.append(WorktreeSnapshot(path=path, branch=branch, head=head or "unknown"))
+        path = ""
+        head = ""
+        branch = "HEAD"
+
+    for raw in [*result.stdout.splitlines(), ""]:
+        line = raw.strip()
+        if not line:
+            flush()
             continue
-        branch = line.removeprefix("branch refs/heads/")
-        issue = _issue_from_branch(branch)
+        if line.startswith("worktree "):
+            if path:
+                flush()
+            path = line.removeprefix("worktree ")
+        elif line.startswith("HEAD "):
+            head = line.removeprefix("HEAD ")
+        elif line.startswith("branch refs/heads/"):
+            branch = line.removeprefix("branch refs/heads/")
+        elif line == "detached":
+            branch = "HEAD"
+    return tuple(entries)
+
+
+def _worktree_issue_branches(repo_root: Path) -> dict[str, set[str]]:
+    found: dict[str, set[str]] = {}
+    try:
+        worktrees = _git_worktree_entries(repo_root)
+    except ValueError:
+        return found
+    for item in worktrees:
+        issue = _issue_from_branch(item.branch)
         if issue:
-            found.setdefault(issue, set()).add(branch)
+            found.setdefault(issue, set()).add(item.branch)
     return found
+
+
+def _remote_issue_branches(issue: str, *, repo_root: Path) -> set[str]:
+    safe_issue = _validate_issue_selector(issue)
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(repo_root), "ls-remote", "--heads", "origin"],
+            capture_output=True,
+            check=True,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise ValueError("could not read remote branch state") from exc
+    found: set[str] = set()
+    for line in result.stdout.splitlines():
+        parts = line.split()
+        if len(parts) != 2 or not parts[1].startswith("refs/heads/"):
+            continue
+        branch = parts[1].removeprefix("refs/heads/")
+        if _issue_from_branch(branch) == safe_issue:
+            found.add(branch)
+    return found
+
+
+def _git_ref(ref: str, *, repo_root: Path) -> str | None:
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(repo_root), "rev-parse", "--short", ref],
+            capture_output=True,
+            check=True,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    return result.stdout.strip() or None
+
+
+def _git_is_ancestor(ancestor: str, descendant: str, *, repo_root: Path) -> bool:
+    result = subprocess.run(
+        ["git", "-C", str(repo_root), "merge-base", "--is-ancestor", ancestor, descendant],
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+    return result.returncode == 0
+
+
+def _issue_info(issue: str, *, repo_root: Path) -> dict[str, object]:
+    safe_issue = _validate_issue_selector(issue)
+    try:
+        result = subprocess.run(
+            ["gh", "issue", "view", safe_issue, "--json", "number,title,state,url,closedAt"],
+            cwd=repo_root,
+            capture_output=True,
+            check=True,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise ValueError(f"could not read issue #{safe_issue} state") from exc
+    payload = json.loads(result.stdout)
+    if not isinstance(payload, dict):
+        raise ValueError("gh issue view JSON must be an object")
+    return payload
+
+
+def _open_pr_items(*, repo_root: Path) -> list[dict[str, object]]:
+    try:
+        result = subprocess.run(
+            ["gh", "pr", "list", "--state", "open", "--json", "number,title,url,headRefName,state,mergedAt"],
+            cwd=repo_root,
+            capture_output=True,
+            check=True,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise ValueError("could not read open PR state") from exc
+    payload = json.loads(result.stdout)
+    if not isinstance(payload, list):
+        raise ValueError("gh pr list JSON must be an array")
+    return [item for item in payload if isinstance(item, dict)]
+
+
+def _branch_pr_items(branch: str, *, repo_root: Path) -> list[dict[str, object]]:
+    safe_branch = _validate_branch_name(branch)
+    try:
+        result = subprocess.run(
+            ["gh", "pr", "list", "--state", "all", "--head", safe_branch, "--json", "number,title,url,headRefName,state,mergedAt"],
+            cwd=repo_root,
+            capture_output=True,
+            check=True,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise ValueError(f"could not read PR history for branch {safe_branch}") from exc
+    payload = json.loads(result.stdout)
+    if not isinstance(payload, list):
+        raise ValueError("gh pr list JSON must be an array")
+    return [item for item in payload if isinstance(item, dict)]
+
+
+def _pr_matches_issue_or_branch(pr: dict[str, object], *, issue: str, branch: str) -> bool:
+    head = str(pr.get("headRefName") or "")
+    return head == branch or _issue_from_branch(head) == issue
+
+
+def _pr_is_merged(pr: dict[str, object]) -> bool:
+    return str(pr.get("state") or "").upper() == "MERGED" or bool(pr.get("mergedAt"))
+
+
+def _pr_label(pr: dict[str, object]) -> str:
+    number = _sanitize_inline_text(str(pr.get("number") or "N/A"))
+    title = _sanitize_inline_text(str(pr.get("title") or "Untitled PR"))
+    head = _sanitize_inline_text(str(pr.get("headRefName") or "unknown"))
+    state = _sanitize_inline_text(str(pr.get("state") or "unknown"))
+    return f"#{number} {title} head=`{head}` state=`{state}`"
 
 
 def _issue_label_names(labels: object) -> list[str]:
@@ -7623,6 +8018,7 @@ flowchart TD
 Automation points:
 - pr-scan: read-only `gh pr list` JSON export.
 - issue-scan: read-only `gh issue list` JSON export plus conservative close/queue/in-flight/manual classification.
+- overlap-preflight: read-only start-of-task check for issue, branch, PR, worktree, remote branch, and freshness overlap.
 - maintenance-plan: generate issue cleanup, queue migration, worktree cleanup, and branch deletion gate recommendations without executing them.
 - next-from-prs: deterministic wrapper around `scripts/ai_next_actions.py`.
 - pr-health: group exported PR state into CI, review, stale, draft, blocked, and ready lanes.
@@ -7676,7 +8072,7 @@ Automation points:
 - review-followup: parse reviewer findings into local follow-up task briefs.
 - review-ingest: normalize local or PR review text into review-followup briefs.
 - safe-fix: dry-run/apply whitespace-only local fixes for supported public-safe text files.
-- render-prompt, status, preflight, classify-surface, suggest-validation, validate, handoff-check, review-prompt.
+- render-prompt, status, preflight, overlap-preflight, classify-surface, suggest-validation, validate, handoff-check, review-prompt.
 - agent-loop-mcp: stdio MCP adapter for external coding agents and desktop clients; exposes local read/report tools, not shipping mutations.
 - agent-loop-artifacts.yml: PR-time informational GitHub Actions artifact generation.
 
@@ -7979,6 +8375,12 @@ def build_parser() -> argparse.ArgumentParser:
     preflight.add_argument("--from-git", action="store_true")
     preflight.add_argument("--pr")
     preflight.add_argument("--write-prompts", action="store_true")
+
+    overlap = sub.add_parser("overlap-preflight", help="Check issue/branch/worktree overlap before editing.")
+    overlap.add_argument("--issue", required=True)
+    overlap.add_argument("--branch", required=True)
+    overlap.add_argument("--out", type=Path, default=DEFAULT_OVERLAP_PREFLIGHT)
+    overlap.add_argument("--json-out", type=Path)
 
     pr_scan = sub.add_parser("pr-scan", help="Export read-only PR state for planning.")
     pr_scan.add_argument("--out", type=Path, default=DEFAULT_PR_STATE)
@@ -8486,6 +8888,18 @@ def main(argv: list[str] | None = None) -> int:
             stream = sys.stdout if rc == 0 else sys.stderr
             stream.write(rendered)
             return rc
+        if args.command == "overlap-preflight":
+            out, json_out, report, _ = write_overlap_preflight(
+                issue=args.issue,
+                branch=args.branch,
+                out=args.out,
+                json_out=args.json_out,
+            )
+            if json_out is None:
+                sys.stdout.write(f"[OK] wrote {_repo_path(out, ROOT_DIR)}\n")
+            else:
+                sys.stdout.write(f"[OK] wrote {_repo_path(out, ROOT_DIR)} and {_repo_path(json_out, ROOT_DIR)}\n")
+            return 1 if report.result == "blocked" else 0
         if args.command == "pr-scan":
             out = scan_pr_state(
                 out=args.out,
