@@ -133,6 +133,32 @@ Make wrapper:
 make agent-loop-active-start
 ```
 
+## Codex Runner
+
+`active-start`는 ledger와 assignment를 만들지만 agent process를 spawn하지 않는다.
+8-session을 실제 별도 Codex process로 띄우는 표면은 별도 runner다.
+
+```bash
+make agent-loop-active-codex-runner
+```
+
+기본값은 dry-run이며, `reports/agent_loop/active/session_registry.json`과
+`assignments/<session_id>.md`를 읽어 8개 `codex exec` command와 출력 경로를
+`reports/agent_loop/active/codex_runner.md`에 렌더링한다. 실제 spawn은 다음처럼
+명시한다.
+
+```bash
+make agent-loop-active-codex-runner ACTIVE_CODEX_EXECUTE=1
+```
+
+runner는 session마다 `reports/agent_loop/active/codex_runs/<session_id>/` 아래에
+`prompt.md`, `stdout.jsonl`, `stderr.log`, `last_message.md`를 둔다. 기본 sandbox는
+`read-only`이고, 각 prompt는 assignment의 read-only 부분만 실행하게 제한한다.
+이 runner는 `session-heartbeat`를 pass로 승격하지 않고, `active-loop --execute`의
+ship gate나 `make ship-run`도 호출하지 않는다. 따라서 agent process가 끝났다는
+사실은 reviewer/auditor gate 통과 근거가 아니며, gate status는 별도 heartbeat나
+검토 표면에서 유지한다.
+
 ## Full Ship Gate
 
 `--execute`는 gate가 통과할 때만 기존 ship runner를 호출한다.

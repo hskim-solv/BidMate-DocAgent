@@ -422,6 +422,14 @@ ACTIVE_REPAIR_BRANCH ?= 1
 ACTIVE_REPAIR_BRANCH_TYPE ?= chore
 ACTIVE_REPAIR_SLUG ?= active-start
 ACTIVE_REPAIR_TITLE ?= Agent loop active start
+ACTIVE_CODEX_RUNNER_OUT ?= reports/agent_loop/active/codex_runner.md
+ACTIVE_CODEX_RUNNER_STATE ?= reports/agent_loop/active/codex_runner_state.json
+ACTIVE_CODEX_RUNS_DIR ?= reports/agent_loop/active/codex_runs
+ACTIVE_CODEX_SESSIONS ?=
+ACTIVE_CODEX_MAX_PARALLEL ?= 8
+ACTIVE_CODEX_EXECUTABLE ?= codex
+ACTIVE_CODEX_SANDBOX ?= read-only
+ACTIVE_CODEX_EXECUTE ?=
 HUMAN_GATED_ACTION ?=
 HUMAN_GATED_EXEC_OUT ?= reports/agent_loop/human_gated_exec.md
 HUMAN_GATED_DRY_RUN ?=
@@ -925,6 +933,17 @@ agent-loop-active-start:
 	  --repair-slug "$(ACTIVE_REPAIR_SLUG)" \
 	  --repair-title "$(ACTIVE_REPAIR_TITLE)" \
 	  --out "$(ACTIVE_START_OUT)"
+
+agent-loop-active-codex-runner:
+	$(PYTHON) scripts/agent_loop.py active-codex-runner \
+	  $(if $(filter 1 true yes,$(ACTIVE_CODEX_EXECUTE)),--execute,--dry-run) \
+	  --codex-executable "$(ACTIVE_CODEX_EXECUTABLE)" \
+	  --sandbox "$(ACTIVE_CODEX_SANDBOX)" \
+	  --max-parallel "$(ACTIVE_CODEX_MAX_PARALLEL)" \
+	  $(if $(ACTIVE_CODEX_SESSIONS),--sessions "$(ACTIVE_CODEX_SESSIONS)",) \
+	  --runs-dir "$(ACTIVE_CODEX_RUNS_DIR)" \
+	  --state "$(ACTIVE_CODEX_RUNNER_STATE)" \
+	  --out "$(ACTIVE_CODEX_RUNNER_OUT)"
 
 agent-loop-human-gated-exec:
 	@if [ -z "$(HUMAN_GATED_ACTION)" ]; then \

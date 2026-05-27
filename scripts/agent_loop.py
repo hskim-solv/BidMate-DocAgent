@@ -18,6 +18,7 @@ import json
 from pathlib import Path
 import re
 import shlex
+import shutil
 import subprocess
 import sys
 from typing import Iterable, Sequence
@@ -132,6 +133,9 @@ DEFAULT_ACTIVE_AGENT_MIX = DEFAULT_ACTIVE_DIR / "agent_mix.json"
 DEFAULT_ACTIVE_AGENT_MIX_REPORT = DEFAULT_ACTIVE_DIR / "agent_mix_report.md"
 DEFAULT_ACTIVE_ARTIFACTS_DIR = DEFAULT_ACTIVE_DIR / "artifacts"
 DEFAULT_ACTIVE_WORKTREE_PREPARE = DEFAULT_ACTIVE_DIR / "active_worktree_prepare.md"
+DEFAULT_ACTIVE_CODEX_RUNNER = DEFAULT_ACTIVE_DIR / "codex_runner.md"
+DEFAULT_ACTIVE_CODEX_RUNNER_STATE = DEFAULT_ACTIVE_DIR / "codex_runner_state.json"
+DEFAULT_ACTIVE_CODEX_RUNS_DIR = DEFAULT_ACTIVE_DIR / "codex_runs"
 DEFAULT_ISSUE_STATE = DEFAULT_REPORT_DIR / "issue_state.json"
 DEFAULT_ISSUE_TRIAGE = DEFAULT_REPORT_DIR / "issue_triage.md"
 DEFAULT_ISSUE_QUEUE_TASKS_DIR = DEFAULT_REPORT_DIR / "issue_queue_tasks"
@@ -567,6 +571,17 @@ class AgentTurnResult:
     verdict: str
     artifact_path: Path | None
     registry_path: Path | None
+    blockers: tuple[str, ...]
+    warnings: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class ActiveCodexRunnerResult:
+    report_path: Path
+    state_path: Path
+    runs_dir: Path
+    decision: str
+    sessions: tuple[dict[str, object], ...]
     blockers: tuple[str, ...]
     warnings: tuple[str, ...]
 
@@ -9043,6 +9058,12 @@ def _active_path(path: Path, *, repo_root: Path) -> Path:
         path = repo_root / "reports" / "agent_loop" / "active" / "artifacts"
     elif path == DEFAULT_ACTIVE_WORKTREE_PREPARE:
         path = repo_root / "reports" / "agent_loop" / "active" / "active_worktree_prepare.md"
+    elif path == DEFAULT_ACTIVE_CODEX_RUNNER:
+        path = repo_root / "reports" / "agent_loop" / "active" / "codex_runner.md"
+    elif path == DEFAULT_ACTIVE_CODEX_RUNNER_STATE:
+        path = repo_root / "reports" / "agent_loop" / "active" / "codex_runner_state.json"
+    elif path == DEFAULT_ACTIVE_CODEX_RUNS_DIR:
+        path = repo_root / "reports" / "agent_loop" / "active" / "codex_runs"
     return _safe_output_path(path, repo_root=repo_root)
 
 
@@ -9509,6 +9530,271 @@ def write_agent_turn(
     )
 
 
+def write_active_codex_runner(
+    *,
+    execute: bool = False,
+    registry: Path = DEFAULT_ACTIVE_REGISTRY,
+    assignments_dir: Path = DEFAULT_ACTIVE_ASSIGNMENTS_DIR,
+    runs_dir: Path = DEFAULT_ACTIVE_CODEX_RUNS_DIR,
+    state: Path = DEFAULT_ACTIVE_CODEX_RUNNER_STATE,
+    out: Path = DEFAULT_ACTIVE_CODEX_RUNNER,
+    sessions: str | None = None,
+    max_parallel: int = 8,
+    codex_executable: str = "codex",
+    sandbox: str = "read-only",
+    repo_root: Path = ROOT_DIR,
+    popen_factory=None,
+    which_func=None,
+) -> ActiveCodexRunnerResult:
+    """Plan or spawn one Codex process per active-loop session.
+
+    This is intentionally separate from ``active-start`` and ``active-loop --execute``:
+    it creates read-only Codex processes for role assignments, but it never marks a
+    role as passed and never calls the shipping path.
+    """
+    if max_parallel < 1:
+        raise ValueError("--max-parallel must be at least 1")
+    if sandbox not in {"read-only", "workspace-write", "danger-full-access"}:
+        raise ValueError("--sandbox must be read-only, workspace-write, or danger-full-access")
+    registry_path = _active_path(registry, repo_root=repo_root)
+    assignments_path = _active_path(assignments_dir, repo_root=repo_root)
+    runs_path = _active_path(runs_dir, repo_root=repo_root)
+    state_path = _active_path(state, repo_root=repo_root)
+    out_path = _active_path(out, repo_root=repo_root)
+
+    blockers: list[str] = []
+    warnings: list[str] = []
+    planned: list[dict[str, object]] = []
+    requested_sessions = _parse_active_session_filter(sessions)
+    registry_payload: dict[str, object] = {}
+
+    if not registry_path.exists():
+        blockers.append("active session registry is missing; run make agent-loop-active-start first")
+    else:
+        registry_payload = _load_active_registry(registry_path)
+        selected, selection_blockers = _select_active_codex_sessions(registry_payload, requested_sessions)
+        blockers.extend(selection_blockers)
+        if len(selected) > max_parallel:
+            blockers.append(f"selected session count {len(selected)} exceeds --max-parallel {max_parallel}")
+        for session in selected:
+            session_id = _validate_session_id(str(session.get("session_id") or ""))
+            role = _sanitize_inline_text(str(session.get("role") or "unknown"))
+            assignment_path = assignments_path / f"{session_id}.md"
+            run_dir = runs_path / session_id
+            prompt_path = run_dir / "prompt.md"
+            stdout_path = run_dir / "stdout.jsonl"
+            stderr_path = run_dir / "stderr.log"
+            last_message_path = run_dir / "last_message.md"
+            if not assignment_path.exists():
+                blockers.append(f"assignment missing for session {session_id}")
+            command = _active_codex_exec_command(
+                codex_executable=codex_executable,
+                sandbox=sandbox,
+                last_message_path=last_message_path,
+                repo_root=repo_root,
+            )
+            planned.append(
+                {
+                    "session_id": session_id,
+                    "role": role,
+                    "status": "planned",
+                    "pid": None,
+                    "assignment": _repo_path(assignment_path, repo_root),
+                    "run_dir": _repo_path(run_dir, repo_root),
+                    "prompt": _repo_path(prompt_path, repo_root),
+                    "stdout": _repo_path(stdout_path, repo_root),
+                    "stderr": _repo_path(stderr_path, repo_root),
+                    "last_message": _repo_path(last_message_path, repo_root),
+                    "command": _sanitize_command_text(shlex.join(_active_codex_display_command(command))),
+                }
+            )
+
+    resolved_executable = None
+    if execute:
+        which = which_func if which_func is not None else shutil.which
+        resolved_executable = which(codex_executable)
+        if not resolved_executable:
+            blockers.append(f"codex executable not found: {codex_executable}")
+    else:
+        warnings.append("dry-run only; pass --execute or ACTIVE_CODEX_EXECUTE=1 to spawn Codex processes")
+
+    decision = "blocked" if blockers else ("running" if execute else "planned")
+    if execute and not blockers:
+        factory = popen_factory if popen_factory is not None else subprocess.Popen
+        for item in planned:
+            session_id = str(item["session_id"])
+            role = str(item["role"])
+            run_dir = runs_path / session_id
+            assignment_path = assignments_path / f"{session_id}.md"
+            prompt_path = run_dir / "prompt.md"
+            stdout_path = run_dir / "stdout.jsonl"
+            stderr_path = run_dir / "stderr.log"
+            last_message_path = run_dir / "last_message.md"
+            run_dir.mkdir(parents=True, exist_ok=True)
+            prompt = _render_active_codex_prompt(
+                session_id=session_id,
+                role=role,
+                assignment_path=assignment_path,
+                repo_root=repo_root,
+            )
+            prompt_path.write_text(prompt, encoding="utf-8")
+            command = _active_codex_exec_command(
+                codex_executable=str(resolved_executable or codex_executable),
+                sandbox=sandbox,
+                last_message_path=last_message_path,
+                repo_root=repo_root,
+            )
+            try:
+                with stdout_path.open("w", encoding="utf-8") as stdout_file, stderr_path.open(
+                    "w", encoding="utf-8"
+                ) as stderr_file:
+                    proc = factory(
+                        command,
+                        cwd=repo_root,
+                        stdin=subprocess.PIPE,
+                        stdout=stdout_file,
+                        stderr=stderr_file,
+                        text=True,
+                    )
+                    stdin = getattr(proc, "stdin", None)
+                    if stdin is not None:
+                        stdin.write(prompt)
+                        stdin.close()
+            except OSError as exc:
+                item["status"] = "spawn-failed"
+                blockers.append(f"failed to spawn session {session_id}: {exc}")
+                decision = "blocked"
+                break
+            item["status"] = "running"
+            item["pid"] = getattr(proc, "pid", None)
+
+    state_payload = {
+        "schema_version": 1,
+        "generated_at": _isoformat(datetime.now(timezone.utc)),
+        "execute": execute,
+        "decision": decision,
+        "sandbox": sandbox,
+        "registry": _repo_path(registry_path, repo_root),
+        "assignments_dir": _repo_path(assignments_path, repo_root),
+        "runs_dir": _repo_path(runs_path, repo_root),
+        "sessions": planned,
+        "blockers": _dedupe_preserve_order(blockers),
+        "warnings": _dedupe_preserve_order(warnings),
+    }
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text(json.dumps(_sanitize_json_value(state_payload), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    _append_active_event(
+        _active_path(DEFAULT_ACTIVE_EVENTS, repo_root=repo_root),
+        {
+            "event": "active-codex-runner",
+            "execute": execute,
+            "decision": decision,
+            "sandbox": sandbox,
+            "sessions": [item["session_id"] for item in planned],
+            "blockers": blockers,
+            "warnings": warnings,
+        },
+    )
+    rendered = render_active_codex_runner(
+        decision=decision,
+        execute=execute,
+        sandbox=sandbox,
+        sessions=planned,
+        blockers=tuple(_dedupe_preserve_order(blockers)),
+        warnings=tuple(_dedupe_preserve_order(warnings)),
+        registry_path=registry_path,
+        assignments_path=assignments_path,
+        runs_path=runs_path,
+        state_path=state_path,
+        repo_root=repo_root,
+    )
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(rendered, encoding="utf-8")
+    return ActiveCodexRunnerResult(
+        report_path=out_path,
+        state_path=state_path,
+        runs_dir=runs_path,
+        decision=decision,
+        sessions=tuple(planned),
+        blockers=tuple(_dedupe_preserve_order(blockers)),
+        warnings=tuple(_dedupe_preserve_order(warnings)),
+    )
+
+
+def render_active_codex_runner(
+    *,
+    decision: str,
+    execute: bool,
+    sandbox: str,
+    sessions: Sequence[dict[str, object]],
+    blockers: Sequence[str],
+    warnings: Sequence[str],
+    registry_path: Path,
+    assignments_path: Path,
+    runs_path: Path,
+    state_path: Path,
+    repo_root: Path,
+) -> str:
+    lines = [
+        "# Active Codex Runner",
+        "",
+        "- Spawns one separate `codex exec` process per active-loop assignment.",
+        "- Separate from `active-start` and `active-loop --execute`; it never marks role gates passed and never calls ship.",
+        "- Default sandbox is read-only. Use stronger sandboxes only after lease and scope review.",
+        f"- Requested execution: `{execute}`",
+        f"- Decision: `{decision}`",
+        f"- Sandbox: `{_sanitize_inline_text(sandbox)}`",
+        "",
+        "## Inputs",
+        "",
+        f"- Registry: `{_repo_path(registry_path, repo_root)}`",
+        f"- Assignments: `{_repo_path(assignments_path, repo_root)}`",
+        f"- Runs: `{_repo_path(runs_path, repo_root)}`",
+        f"- State: `{_repo_path(state_path, repo_root)}`",
+        "",
+        "## Sessions",
+        "",
+        "| Session | Role | Status | PID | Assignment | Last message | Command |",
+        "|---|---|---|---:|---|---|---|",
+    ]
+    if sessions:
+        for item in sessions:
+            lines.append(
+                "| "
+                + " | ".join(
+                    _sanitize_inline_text(str(value))
+                    for value in (
+                        item.get("session_id", ""),
+                        item.get("role", ""),
+                        item.get("status", ""),
+                        item.get("pid") if item.get("pid") is not None else "",
+                        item.get("assignment", ""),
+                        item.get("last_message", ""),
+                        item.get("command", ""),
+                    )
+                )
+                + " |"
+            )
+    else:
+        lines.append("| N/A | N/A | no sessions |  | N/A | N/A | N/A |")
+    lines.extend(["", "## Blockers", ""])
+    lines.extend(f"- {_sanitize_dynamic_text(item)}" for item in blockers) if blockers else lines.append("- None")
+    lines.extend(["", "## Warnings", ""])
+    lines.extend(f"- {_sanitize_dynamic_text(item)}" for item in warnings) if warnings else lines.append("- None")
+    lines.extend(
+        [
+            "",
+            "## Execute",
+            "",
+            "```bash",
+            "make agent-loop-active-codex-runner ACTIVE_CODEX_EXECUTE=1",
+            "```",
+            "",
+        ]
+    )
+    return _sanitize_dynamic_text("\n".join(lines)).rstrip() + "\n"
+
+
 def write_agent_mix_report(
     *,
     agent_mix_path: Path = DEFAULT_ACTIVE_AGENT_MIX,
@@ -9747,6 +10033,102 @@ def _active_role_status_ok(sessions: Sequence[dict[str, object]], role: str) -> 
         if session.get("role") == role:
             return str(session.get("status") or "").casefold() in passing
     return False
+
+
+def _parse_active_session_filter(spec: str | None) -> tuple[str, ...] | None:
+    if not spec:
+        return None
+    sessions = tuple(_validate_session_id(part.strip()) for part in spec.split(",") if part.strip())
+    if not sessions:
+        raise ValueError("--sessions must contain at least one session id")
+    return sessions
+
+
+def _select_active_codex_sessions(
+    registry_payload: dict[str, object],
+    requested_sessions: Sequence[str] | None,
+) -> tuple[list[dict[str, object]], list[str]]:
+    raw_sessions = registry_payload.get("sessions")
+    if not isinstance(raw_sessions, list) or not raw_sessions:
+        return [], ["active session registry has no sessions; run active-start or active-loop first"]
+    valid_sessions: list[dict[str, object]] = []
+    blockers: list[str] = []
+    for item in raw_sessions:
+        if not isinstance(item, dict):
+            blockers.append("active session registry contains a non-object session")
+            continue
+        session_id = str(item.get("session_id") or "")
+        try:
+            _validate_session_id(session_id)
+        except ValueError:
+            blockers.append("active session registry contains an unsafe session id")
+            continue
+        valid_sessions.append(dict(item))
+    if requested_sessions is None:
+        return valid_sessions, blockers
+    by_id = {str(item.get("session_id")): item for item in valid_sessions}
+    selected: list[dict[str, object]] = []
+    for session_id in requested_sessions:
+        item = by_id.get(session_id)
+        if item is None:
+            blockers.append(f"requested session is not in active registry: {session_id}")
+            continue
+        selected.append(item)
+    return selected, blockers
+
+
+def _active_codex_exec_command(
+    *,
+    codex_executable: str,
+    sandbox: str,
+    last_message_path: Path,
+    repo_root: Path,
+) -> list[str]:
+    return [
+        codex_executable,
+        "exec",
+        "--cd",
+        ".",
+        "--sandbox",
+        sandbox,
+        "--ask-for-approval",
+        "never",
+        "--json",
+        "--output-last-message",
+        _repo_path(last_message_path, repo_root),
+        "-",
+    ]
+
+
+def _active_codex_display_command(command: Sequence[str]) -> list[str]:
+    display = list(command)
+    if display:
+        display[0] = Path(display[0]).name or "codex"
+    return display
+
+
+def _render_active_codex_prompt(
+    *,
+    session_id: str,
+    role: str,
+    assignment_path: Path,
+    repo_root: Path,
+) -> str:
+    assignment = _repo_path(assignment_path, repo_root)
+    return _sanitize_dynamic_text(
+        "\n".join(
+            [
+                f"You are the Codex active-loop session `{session_id}` for role `{role}`.",
+                "Repository root is the current working directory.",
+                f"Read the assignment at `{assignment}` and execute the read-only parts of that role.",
+                "Do not edit files, commit, push, create/ready/merge PRs, close issues, delete branches, force-push, or run ship commands.",
+                "If the assignment's next command would write, mutate remote state, or require a missing placeholder, report the blocker and the next safe command instead.",
+                "Return a concise final message with: session id, role, commands inspected, blockers, warnings, evidence, and next safe command.",
+                "Do not include absolute local paths, raw private question/answer/evidence text, doc_id, chunk_id, filename, or prompt/response body.",
+                "",
+            ]
+        )
+    )
 
 
 def _write_active_assignment(
@@ -10572,6 +10954,7 @@ Automation points:
 - validation-history: summarize local JSONL validation history.
 - workset-recommend: recommend serial, parallel-safe, review-only, and agent-gated task sets.
 - role-dispatch: render role-separated subagent dispatch cards with max 12 and depth 2; report-only, does not spawn subagents.
+- active-codex-runner: spawn one separate read-only Codex process per active-loop assignment; does not mark gates passed or ship.
 - automation-coverage: map implemented automation candidates to command surfaces.
 - auto-pass-check: fail-closed low-risk gate check; named strict profiles require high-confidence docs/CI/tooling surfaces and passed validation.
 - loop-state: write machine-readable current loop state JSON.
@@ -11388,6 +11771,19 @@ def build_parser() -> argparse.ArgumentParser:
 
     agent_mix_report = sub.add_parser("agent-mix-report", help="Render the rolling Claude/Codex Work-Unit mix and rebalance recommendation.")
     agent_mix_report.add_argument("--out", type=Path, default=DEFAULT_ACTIVE_AGENT_MIX_REPORT)
+
+    codex_runner = sub.add_parser("active-codex-runner", help="Plan or spawn one read-only Codex process per active-loop session.")
+    codex_runner.add_argument("--dry-run", dest="execute", action="store_false", default=False)
+    codex_runner.add_argument("--execute", dest="execute", action="store_true")
+    codex_runner.add_argument("--registry", type=Path, default=DEFAULT_ACTIVE_REGISTRY)
+    codex_runner.add_argument("--assignments-dir", type=Path, default=DEFAULT_ACTIVE_ASSIGNMENTS_DIR)
+    codex_runner.add_argument("--runs-dir", type=Path, default=DEFAULT_ACTIVE_CODEX_RUNS_DIR)
+    codex_runner.add_argument("--state", type=Path, default=DEFAULT_ACTIVE_CODEX_RUNNER_STATE)
+    codex_runner.add_argument("--out", type=Path, default=DEFAULT_ACTIVE_CODEX_RUNNER)
+    codex_runner.add_argument("--sessions", help="Comma-separated session ids; default is every session in registry order.")
+    codex_runner.add_argument("--max-parallel", type=int, default=8)
+    codex_runner.add_argument("--codex-executable", default="codex")
+    codex_runner.add_argument("--sandbox", choices=("read-only", "workspace-write", "danger-full-access"), default="read-only")
 
     active_prepare = sub.add_parser("active-worktree-prepare", help="Prepare an issue-linked worktree for an active-loop role.")
     active_prepare.add_argument("--issue")
@@ -12290,6 +12686,21 @@ def main(argv: list[str] | None = None) -> int:
                 f"(recommended={summary['recommended_next_agent']}, skew={summary['skew_wu']})\n"
             )
             return 0
+        if args.command == "active-codex-runner":
+            result = write_active_codex_runner(
+                execute=args.execute,
+                registry=args.registry,
+                assignments_dir=args.assignments_dir,
+                runs_dir=args.runs_dir,
+                state=args.state,
+                out=args.out,
+                sessions=args.sessions,
+                max_parallel=args.max_parallel,
+                codex_executable=args.codex_executable,
+                sandbox=args.sandbox,
+            )
+            sys.stdout.write(f"[OK] wrote {_repo_path(result.report_path, ROOT_DIR)}\n")
+            return 0 if result.decision in {"planned", "running"} else 1
         if args.command == "active-worktree-prepare":
             out, _, _ = write_active_worktree_prepare(
                 issue=args.issue,

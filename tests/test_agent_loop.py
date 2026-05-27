@@ -3499,6 +3499,173 @@ def test_agent_turn_cli_accepts_and_rejects_agent() -> None:
     parser.parse_args(["agent-mix-report"])  # parser exists
 
 
+def _write_expanded_active_runner_fixture(repo: Path) -> Path:
+    active = _active_dir(repo)
+    assignments = active / "assignments"
+    assignments.mkdir(parents=True, exist_ok=True)
+    sessions = []
+    for session_id, role in agent_loop.ACTIVE_TOPOLOGY_ROLES["expanded-eight"]:
+        sessions.append(
+            {
+                "session_id": session_id,
+                "role": role,
+                "status": "idle",
+                "last_heartbeat": "2999-01-01T00:00:00Z",
+                "lanes": {"claude": {"status": "idle"}, "codex": {"status": "idle"}},
+                "write_lease_owner": role == "Implementer",
+                "ship_gate": agent_loop._active_ship_gate(role, topology="expanded-eight"),
+            }
+        )
+        (assignments / f"{session_id}.md").write_text(
+            f"# Active Assignment: {role}\n\n- Session: `{session_id}`\n- Next command: `status`\n",
+            encoding="utf-8",
+        )
+    (active / "session_registry.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "topology": "expanded-eight",
+                "gate_policy": "conservative",
+                "agent_mix": agent_loop._parse_agent_mix(None),
+                "sessions": sessions,
+            }
+        ),
+        encoding="utf-8",
+    )
+    (active / "leases.json").write_text(
+        json.dumps({"schema_version": 1, "leases": [{"lease_id": "lease", "active_agent": None}]}),
+        encoding="utf-8",
+    )
+    return active
+
+
+def test_active_codex_runner_dry_run_renders_eight_commands_without_spawning(tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    active = _write_expanded_active_runner_fixture(repo)
+
+    result = agent_loop.write_active_codex_runner(repo_root=repo)
+
+    assert result.decision == "planned"
+    assert len(result.sessions) == 8
+    assert not (active / "codex_runs").exists()
+    assert all("codex exec --cd . --sandbox read-only --ask-for-approval never --json" in item["command"] for item in result.sessions)
+    report = result.report_path.read_text(encoding="utf-8")
+    state = result.state_path.read_text(encoding="utf-8")
+    assert str(repo) not in report
+    assert str(repo) not in state
+    assert "role-dispatch" not in report  # runner is a separate spawn surface, not the report-only dispatcher.
+
+
+def test_active_codex_runner_execute_spawns_all_eight_processes_and_preserves_lease(tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    active = _write_expanded_active_runner_fixture(repo)
+    calls: list[dict[str, object]] = []
+    prompts: list[str] = []
+
+    class DummyStdin:
+        def write(self, text: str) -> None:
+            prompts.append(text)
+
+        def close(self) -> None:
+            pass
+
+    class DummyProc:
+        def __init__(self, pid: int) -> None:
+            self.pid = pid
+            self.stdin = DummyStdin()
+
+    def fake_popen(cmd, **kwargs):  # type: ignore[no-untyped-def]
+        calls.append(
+            {
+                "cmd": list(cmd),
+                "cwd": kwargs["cwd"],
+                "stdin": kwargs["stdin"],
+                "stdout": kwargs["stdout"].name,
+                "stderr": kwargs["stderr"].name,
+                "text": kwargs["text"],
+            }
+        )
+        return DummyProc(7000 + len(calls))
+
+    result = agent_loop.write_active_codex_runner(
+        execute=True,
+        repo_root=repo,
+        popen_factory=fake_popen,
+        which_func=lambda exe: "/opt/codex/bin/codex",
+    )
+
+    assert result.decision == "running"
+    assert len(calls) == 8
+    assert len(prompts) == 8
+    for call in calls:
+        cmd = call["cmd"]
+        assert cmd[:4] == ["/opt/codex/bin/codex", "exec", "--cd", "."]
+        assert "--sandbox" in cmd
+        assert cmd[cmd.index("--sandbox") + 1] == "read-only"
+        assert "--ask-for-approval" in cmd
+        assert cmd[cmd.index("--ask-for-approval") + 1] == "never"
+        assert "--json" in cmd
+        assert "--output-last-message" in cmd
+        assert str(cmd[cmd.index("--output-last-message") + 1]).startswith("reports/agent_loop/active/codex_runs/")
+        assert cmd[-1] == "-"
+        assert call["cwd"] == repo
+        assert call["stdin"] == subprocess.PIPE
+        assert call["text"] is True
+    assert (active / "codex_runs" / "reviewer" / "prompt.md").exists()
+    leases = json.loads((active / "leases.json").read_text(encoding="utf-8"))
+    assert leases["leases"][0]["active_agent"] is None
+    state = json.loads(result.state_path.read_text(encoding="utf-8"))
+    assert {item["status"] for item in state["sessions"]} == {"running"}
+    assert all(item["pid"] for item in state["sessions"])
+    assert str(repo) not in result.state_path.read_text(encoding="utf-8")
+
+
+def test_active_codex_runner_execute_fails_closed_without_codex(tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    _write_expanded_active_runner_fixture(repo)
+    calls: list[list[str]] = []
+
+    result = agent_loop.write_active_codex_runner(
+        execute=True,
+        repo_root=repo,
+        popen_factory=lambda cmd, **kwargs: calls.append(list(cmd)),  # type: ignore[arg-type]
+        which_func=lambda exe: None,
+    )
+
+    assert result.decision == "blocked"
+    assert any("codex executable not found" in blocker for blocker in result.blockers)
+    assert calls == []
+
+
+def test_active_codex_runner_fails_closed_on_missing_registry_or_assignment(tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+
+    missing_registry = agent_loop.write_active_codex_runner(execute=True, repo_root=repo, which_func=lambda exe: "/bin/codex")
+
+    assert missing_registry.decision == "blocked"
+    assert any("registry is missing" in blocker for blocker in missing_registry.blockers)
+
+    active = _write_expanded_active_runner_fixture(repo)
+    (active / "assignments" / "reviewer.md").unlink()
+
+    missing_assignment = agent_loop.write_active_codex_runner(
+        execute=True,
+        sessions="reviewer",
+        repo_root=repo,
+        which_func=lambda exe: "/bin/codex",
+    )
+
+    assert missing_assignment.decision == "blocked"
+    assert any("assignment missing for session reviewer" in blocker for blocker in missing_assignment.blockers)
+
+
+def test_active_codex_runner_cli_accepts_execute_and_session_filter() -> None:
+    parser = agent_loop.build_parser()
+    args = parser.parse_args(["active-codex-runner", "--execute", "--sessions", "reviewer,ci-regression-auditor"])
+    assert args.execute is True
+    assert args.sessions == "reviewer,ci-regression-auditor"
+
+
 def test_codex_lane_adapter_maps_verdict_severity_and_errors(monkeypatch, tmp_path: Path) -> None:
     from scripts import agent_loop_codex_turn as cx
 
