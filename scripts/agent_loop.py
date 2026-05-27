@@ -4129,6 +4129,54 @@ def _current_branch(repo_root: Path) -> str | None:
     return result.stdout.strip() or None
 
 
+def _branch_is_issue_linked(branch: str | None) -> bool:
+    if not branch or branch in {"HEAD", "main", "master", "unknown"} or branch.startswith("release/"):
+        return False
+    return _issue_from_branch(branch) is not None
+
+
+def _create_active_start_issue(*, title: str, repo_root: Path) -> str:
+    safe_title = _sanitize_inline_text(title)
+    body = (
+        "Created by agent-loop active-start to recover a detached checkout into an ADR 0007 "
+        "issue-linked branch. This issue body is public-safe and contains no private RFP data."
+    )
+    command = ("gh", "issue", "create", "--title", safe_title, "--body", body)
+    result = subprocess.run(command, cwd=repo_root, capture_output=True, text=True, check=False)
+    if result.returncode != 0:
+        raise ValueError("gh issue create failed for active-start branch repair")
+    match = re.search(r"/issues/(\d+)(?:\b|$)", result.stdout.strip())
+    if not match:
+        raise ValueError("could not parse created issue number for active-start branch repair")
+    return match.group(1)
+
+
+def _repair_active_start_branch(
+    *,
+    issue: str | None,
+    title: str,
+    branch_type: str,
+    slug: str,
+    repo_root: Path,
+) -> tuple[str, str, str]:
+    safe_type = _validate_branch_name(branch_type, allow_protected=False)
+    if "/" in safe_type:
+        raise ValueError("--repair-branch-type must be a branch type, not a full branch")
+    safe_slug = _slugify(slug)
+    safe_issue = _validate_issue_selector(issue) if issue else _create_active_start_issue(title=title, repo_root=repo_root)
+    target_branch = _validate_branch_name(f"{safe_type}/issue-{safe_issue}-{safe_slug}")
+    if _branch_exists(target_branch, repo_root=repo_root):
+        command = ("git", "-C", str(repo_root), "switch", target_branch)
+        action = "switched to existing issue-linked branch"
+    else:
+        command = ("git", "-C", str(repo_root), "switch", "-c", target_branch)
+        action = "created and switched to issue-linked branch"
+    result = subprocess.run(command, cwd=repo_root, capture_output=True, text=True, check=False)
+    if result.returncode != 0:
+        raise ValueError("git switch failed for active-start branch repair")
+    return safe_issue, target_branch, action
+
+
 def _current_git_head(repo_root: Path) -> str | None:
     try:
         result = subprocess.run(
@@ -5433,7 +5481,17 @@ def _claim_scan_text_from_pr_body(text: str) -> str:
             skip_section = False
         if skip_section:
             continue
-        if any(token in lowered for token in ("do not claim", "claim boundary", "no benchmark", "not a benchmark", "without sufficient eval provenance")):
+        if any(
+            token in lowered
+            for token in (
+                "conservative-agent-gated decisions",
+                "do not claim",
+                "claim boundary",
+                "no benchmark",
+                "not a benchmark",
+                "without sufficient eval provenance",
+            )
+        ):
             continue
         kept.append(line)
     return "\n".join(kept)
@@ -8529,6 +8587,10 @@ def write_active_start(
     lease_ttl_minutes: int = 30,
     batch: Path | None = None,
     agent_mix: dict[str, object] | None = None,
+    repair_branch: bool = False,
+    repair_branch_type: str = "chore",
+    repair_slug: str = "active-start",
+    repair_title: str = "Agent loop active start",
     out: Path = DEFAULT_ACTIVE_START,
     repo_root: Path = ROOT_DIR,
 ) -> ActiveStartResult:
@@ -8537,6 +8599,66 @@ def write_active_start(
     outputs: list[Path] = []
     warnings: list[str] = []
     blockers: list[str] = []
+    branch_name = branch or _current_branch(repo_root) or "unknown"
+    branch_issue = _issue_from_branch(branch_name)
+    safe_issue = _validate_issue_selector(issue) if issue else branch_issue
+    active_loop_pr_body = pr_body
+
+    if repair_branch and branch is None and not _branch_is_issue_linked(branch_name):
+        try:
+            repaired_issue, repaired_branch, repair_action = _repair_active_start_branch(
+                issue=safe_issue,
+                title=repair_title,
+                branch_type=repair_branch_type,
+                slug=repair_slug,
+                repo_root=repo_root,
+            )
+            safe_issue = repaired_issue
+            branch_name = repaired_branch
+            branch_issue = repaired_issue
+            warnings.append(f"branch repair: {repair_action} `{repaired_branch}`")
+        except ValueError as exc:
+            blockers.append(str(exc))
+
+    if pr_body is not None:
+        body_path = _resolve_input_path(pr_body, repo_root=repo_root)
+        body_missing = not body_path.exists()
+        should_write_body = body_missing
+        default_body_path = (repo_root / "reports" / "agent_loop" / "pr_body.md").resolve()
+        if body_path.exists() and safe_issue and body_path == default_body_path:
+            findings = check_pr_body_text(_read_text(body_path), changed_files=files, branch=branch_name, repo_root=repo_root)
+            if findings:
+                should_write_body = True
+                warnings.append(f"refreshed stale PR body draft at `{_repo_path(body_path, repo_root)}`")
+        if should_write_body:
+            body_out, _ = write_pr_body(
+                task_id=task_id,
+                changed_files=files,
+                branch=branch_name,
+                issue=safe_issue,
+                out=pr_body,
+                repo_root=repo_root,
+            )
+            outputs.append(body_out)
+            if body_missing:
+                warnings.append(f"generated missing PR body draft at `{_repo_path(body_out, repo_root)}`")
+        if not safe_issue:
+            active_loop_pr_body = None
+            warnings.append("PR body draft was not used as readiness evidence because no issue-linked branch or --issue was available")
+
+    if not files and not safe_issue:
+        try:
+            pr_state = repo_root / "reports" / "agent_loop" / "pr_state.json"
+            continue_out, _ = write_continue_loop(
+                pr_json=pr_state if pr_state.exists() else None,
+                apply_queue_plan=False,
+                out=active_dir / "continue_loop.md",
+                repo_root=repo_root,
+            )
+            outputs.append(continue_out)
+            warnings.append("bootstrapped PR-corpus continuation because no changed files or issue-linked branch were available")
+        except ValueError as exc:
+            warnings.append(f"continue-loop bootstrap skipped: {exc}")
 
     active_loop = write_active_loop(
         mode=mode,
@@ -8544,10 +8666,10 @@ def write_active_start(
         execute=False,
         task_id=task_id,
         issue=issue,
-        branch=branch,
+        branch=branch or branch_name,
         changed_files=files,
         claim_text=claim_text,
-        pr_body=pr_body,
+        pr_body=active_loop_pr_body,
         lease_ttl_minutes=lease_ttl_minutes,
         batch=batch,
         agent_mix=agent_mix,
@@ -8555,10 +8677,7 @@ def write_active_start(
         repo_root=repo_root,
     )
     outputs.append(active_loop.report_path)
-    blockers.extend(active_loop.blockers)
     warnings.extend(active_loop.warnings)
-
-    branch_name = branch or _current_branch(repo_root) or "unknown"
 
     def capture(label: str, writer) -> None:  # type: ignore[no-untyped-def]
         try:
@@ -8635,12 +8754,21 @@ def write_active_start(
     decision = "blocked" if blockers else "started"
     if blockers:
         next_safe = "python3 scripts/agent_loop.py decision-brief --from-git --gate task"
-        if issue:
+        if safe_issue:
             next_safe = (
                 "python3 scripts/agent_loop.py active-worktree-prepare "
-                f"--issue {shlex.quote(_validate_issue_selector(issue))} --role Implementer "
+                f"--issue {shlex.quote(safe_issue)} --role Implementer "
                 "--slug active-agent-loop --dry-run"
             )
+    elif active_loop.blockers:
+        if safe_issue:
+            next_safe = (
+                "python3 scripts/agent_loop.py active-worktree-prepare "
+                f"--issue {shlex.quote(safe_issue)} --role Implementer "
+                "--slug active-agent-loop --dry-run"
+            )
+        else:
+            next_safe = "python3 scripts/agent_loop.py continue-loop --no-apply-queue-plan"
     else:
         next_safe = (
             "python3 scripts/agent_loop.py active-loop "
@@ -8696,7 +8824,8 @@ def render_active_start(
         "# Active Agent Loop Start",
         "",
         "- One-command local start pack for the active agent loop.",
-        "- This command writes local reports only; it does not push, create/merge PRs, delete branches, force-push, or call external model APIs.",
+        "- With branch repair enabled, this command may create a public-safe GitHub issue and local branch before writing reports.",
+        "- It does not push, create/merge PRs, delete branches, force-push, run private eval, or call external model APIs.",
         "- It starts the ledger, role assignments, readiness evidence, privacy audit, and ship simulation in one tick.",
         "",
         "## Inputs",
@@ -8719,6 +8848,11 @@ def render_active_start(
     lines.extend(f"- `{_repo_path(path, repo_root)}`" for path in outputs)
     lines.extend(["", "## Blockers", ""])
     lines.extend(f"- {_sanitize_dynamic_text(item)}" for item in blockers) if blockers else lines.append("- None")
+    lines.extend(["", "## Active-loop Blockers", ""])
+    if active_loop.blockers:
+        lines.extend(f"- {_sanitize_dynamic_text(item)}" for item in active_loop.blockers)
+    else:
+        lines.append("- None")
     lines.extend(["", "## Warnings", ""])
     lines.extend(f"- {_sanitize_dynamic_text(item)}" for item in warnings) if warnings else lines.append("- None")
     lines.extend(
@@ -10810,6 +10944,10 @@ def build_parser() -> argparse.ArgumentParser:
     active_start.add_argument("--lease-ttl-minutes", type=int, default=30)
     active_start.add_argument("--batch", type=Path)
     active_start.add_argument("--agent-mix", help="Work-unit mix target, e.g. claude=5,codex=5")
+    active_start.add_argument("--repair-branch", action="store_true", help="Create or switch to an issue-linked local branch before starting.")
+    active_start.add_argument("--repair-branch-type", default="chore")
+    active_start.add_argument("--repair-slug", default="active-start")
+    active_start.add_argument("--repair-title", default="Agent loop active start")
     active_start.add_argument("--out", type=Path, default=DEFAULT_ACTIVE_START)
 
     active_loop = sub.add_parser("active-loop", help="Run the active orchestrator tick.")
@@ -11670,6 +11808,10 @@ def main(argv: list[str] | None = None) -> int:
                 lease_ttl_minutes=args.lease_ttl_minutes,
                 batch=args.batch,
                 agent_mix=_parse_agent_mix(args.agent_mix),
+                repair_branch=args.repair_branch,
+                repair_branch_type=args.repair_branch_type,
+                repair_slug=args.repair_slug,
+                repair_title=args.repair_title,
                 out=args.out,
             )
             sys.stdout.write(f"[OK] wrote {_repo_path(result.report_path, ROOT_DIR)}\n")

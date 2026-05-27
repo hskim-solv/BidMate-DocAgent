@@ -116,11 +116,16 @@ python3 scripts/agent_loop.py active-loop --mode full-ship --dry-run --from-git
 python3 scripts/agent_loop.py active-start --from-git
 ```
 
-이 명령은 remote mutation을 하지 않는다. 대신 `reports/agent_loop/active/` 아래에
-expanded-eight ledger, role assignment, dashboard, approval packet, readiness score,
-privacy audit, ship simulation, auto-ship dry-run plan을 한 번에 쓴다. 현재 branch가
-detached HEAD이거나 ADR 0007 issue branch가 아니면 blocked start report와 다음 안전
-명령을 남긴다.
+`--repair-branch` 없는 기본 CLI 호출은 remote mutation을 하지 않는다. 대신
+`reports/agent_loop/active/` 아래에 expanded-eight ledger, role assignment, dashboard,
+approval packet, readiness score, privacy audit, ship simulation, auto-ship dry-run plan을
+한 번에 쓴다.
+
+현재 branch가 detached HEAD이거나 ADR 0007 issue branch가 아니어도 Make wrapper는
+`--repair-branch`를 켜서 issue-linked local branch를 먼저 만들거나 전환한 뒤 start pack을
+쓴다. `ISSUE=<N>`이 없으면 public-safe GitHub issue를 생성해 branch 번호로 사용한다.
+변경 파일과 issue branch가 모두 없으면 PR corpus 기반 `continue-loop` dry run을 자동으로
+bootstrap한다. 기본 `PR_BODY_OUT` 경로가 아직 없으면 PR body draft도 먼저 쓴다.
 
 Make wrapper:
 
