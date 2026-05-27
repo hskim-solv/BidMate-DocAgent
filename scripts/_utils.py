@@ -213,6 +213,7 @@ _METRIC_SNAPSHOT_KEYS_PRE = (
     "citation_region_precision",
     "citation_grounding",
     "answer_format_compliance",
+    "numeric_date_condition_accuracy",
     "abstention",
     "retry",
     "latency",

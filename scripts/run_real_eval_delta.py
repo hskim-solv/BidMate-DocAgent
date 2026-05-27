@@ -70,8 +70,16 @@ SAFE_TOPLEVEL_KEYS = frozenset(
         "citation_precision",
         "citation_grounding",
         "claim_citation_alignment",
+        "numeric_date_condition_accuracy",
+        "numeric_date_condition_slot_count",
+        "numeric_date_condition_type_counts",
+        "numeric_date_condition_type_correct_counts",
         "answer_format_compliance",
         "abstention",
+        "comparison_target_recall",
+        "comparison_target_full_coverage_rate",
+        "comparison_pool_recall",
+        "comparison_pool_full_coverage_rate",
         "retry",
         "latency",  # only sub-keys "p50", "p95", "mean" extracted below
         "stage_latency",  # aggregated p50/p95/mean per stage
@@ -173,6 +181,9 @@ SAFE_METADATA_FIELD_BUCKET_KEYS = frozenset(
 # Numeric scalars only; no per-case payload, no confidence histograms.
 SAFE_CALIBRATION_KEYS = ("ece", "brier", "n", "num_bins")
 
+# Whitelisted slot-exactness type counters (issue #1544).
+SAFE_SLOT_TYPE_KEYS = ("amount", "date", "numeric_or_score", "condition")
+
 # Whitelisted bin names for ``abstention_outcomes``. Integer counts only.
 SAFE_ABSTENTION_OUTCOME_KEYS = ("correct_refusal", "incorrect_answer", "boundary_partial")
 
@@ -203,6 +214,7 @@ SAFE_ABLATION_FULL_SCALAR_KEYS = (
     "citation_precision",
     "citation_grounding",
     "claim_citation_alignment",
+    "numeric_date_condition_accuracy",
     "answer_format_compliance",
     "abstention",
     "retry",
@@ -220,6 +232,7 @@ SAFE_CI_METRIC_KEYS = (
     "citation_region_precision",
     "citation_grounding",
     "claim_citation_alignment",
+    "numeric_date_condition_accuracy",
     "answer_format_compliance",
     "abstention",
     "retry",
@@ -269,6 +282,7 @@ SAFE_SLICE_METRICS = (
     "num_predictions",
     "accuracy",
     "groundedness",
+    "numeric_date_condition_accuracy",
     "abstention",
     "abstention_outcomes",
     "answer_format_compliance",
@@ -310,6 +324,7 @@ METRICS: list[tuple[str, str, bool]] = [
     ("citation_precision", "citation_precision", True),
     ("citation_grounding", "citation_grounding", True),
     ("claim_citation_alignment", "claim_citation_alignment", True),
+    ("numeric_date_condition_accuracy", "numeric/date/condition accuracy", True),
     ("answer_format_compliance", "answer_format_compliance", True),
     ("abstention", "abstention (intended)", True),
     ("retry", "retry_rate", False),
@@ -495,6 +510,17 @@ def extract_aggregate(summary: dict[str, Any]) -> dict[str, Any]:
                         cal_out[sub] = raw
                 if cal_out:
                     out[key] = cal_out
+        elif key in {
+            "numeric_date_condition_type_counts",
+            "numeric_date_condition_type_correct_counts",
+        } and isinstance(value, dict):
+            slot_out = {
+                sub: int(value[sub])
+                for sub in SAFE_SLOT_TYPE_KEYS
+                if isinstance(value.get(sub), (int, float))
+            }
+            if slot_out:
+                out[key] = slot_out
         elif key == "ci" and isinstance(value, dict):
             ci_out: dict[str, Any] = {}
             for metric in SAFE_CI_METRIC_KEYS:

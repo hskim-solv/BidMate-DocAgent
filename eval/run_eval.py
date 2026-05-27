@@ -567,6 +567,11 @@ def metric_block(case_results: list[dict[str, Any]]) -> dict[str, Any]:
         for r in case_results
         if r.get("claim_citation_alignment") is not None
     ]
+    slot_exactness_scores = [
+        r["numeric_date_condition_accuracy"]
+        for r in case_results
+        if r.get("numeric_date_condition_accuracy") is not None
+    ]
     abstention_scores = [r["abstention"] for r in case_results if r["abstention"] is not None]
     # Retrieval chunk-metric + citation-coverage aggregates. score_case already
     # emits these per-case (chunk_recall@k / mrr / ndcg / rerank_delta via
@@ -649,6 +654,21 @@ def metric_block(case_results: list[dict[str, Any]]) -> dict[str, Any]:
         for error in result.get("claim_citation_errors") or []
         if isinstance(error, dict) and error.get("code")
     )
+    slot_type_counts: Counter[str] = Counter()
+    slot_type_correct_counts: Counter[str] = Counter()
+    slot_count = 0
+    for result in case_results:
+        raw_slot_count = result.get("numeric_date_condition_slot_count")
+        if isinstance(raw_slot_count, (int, float)):
+            slot_count += int(raw_slot_count)
+        for key, value in (result.get("numeric_date_condition_type_counts") or {}).items():
+            if isinstance(value, (int, float)):
+                slot_type_counts[str(key)] += int(value)
+        for key, value in (
+            result.get("numeric_date_condition_type_correct_counts") or {}
+        ).items():
+            if isinstance(value, (int, float)):
+                slot_type_correct_counts[str(key)] += int(value)
     synthesis_tokens_in = [
         int(r["tokens_in"]) for r in case_results if isinstance(r.get("tokens_in"), (int, float))
     ]
@@ -715,6 +735,7 @@ def metric_block(case_results: list[dict[str, Any]]) -> dict[str, Any]:
         "citation_region_precision": bootstrap_ci(citation_region_scores),
         "citation_grounding": bootstrap_ci(citation_grounding_scores),
         "claim_citation_alignment": bootstrap_ci(claim_alignment_scores),
+        "numeric_date_condition_accuracy": bootstrap_ci(slot_exactness_scores),
         "abstention": bootstrap_ci(abstention_scores),
         "answer_format_compliance": bootstrap_ci(format_scores),
         "retry": bootstrap_ci(retries),
@@ -728,6 +749,12 @@ def metric_block(case_results: list[dict[str, Any]]) -> dict[str, Any]:
         "citation_region_precision": rate(citation_region_scores),
         "citation_grounding": rate(citation_grounding_scores),
         "claim_citation_alignment": rate(claim_alignment_scores),
+        "numeric_date_condition_accuracy": rate(slot_exactness_scores),
+        "numeric_date_condition_slot_count": slot_count,
+        "numeric_date_condition_type_counts": dict(sorted(slot_type_counts.items())),
+        "numeric_date_condition_type_correct_counts": dict(
+            sorted(slot_type_correct_counts.items())
+        ),
         "abstention": rate(abstention_scores),
         "abstention_outcomes": abstention_outcomes,
         # ADR 0075 — normalized failure taxonomy aggregate. Always emits all
@@ -809,6 +836,21 @@ def metric_block(case_results: list[dict[str, Any]]) -> dict[str, Any]:
         for key, scores in retrieval_metric_scores.items()
     }
     return block
+
+
+NUMERIC_DATE_CONDITION_SUMMARY_KEYS = (
+    "numeric_date_condition_accuracy",
+    "numeric_date_condition_slot_count",
+    "numeric_date_condition_type_counts",
+    "numeric_date_condition_type_correct_counts",
+)
+
+
+def numeric_date_condition_summary_fields(primary_summary: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: primary_summary.get(key)
+        for key in NUMERIC_DATE_CONDITION_SUMMARY_KEYS
+    }
 
 
 def _load_text_source_counts(index_dir: Path | None) -> dict[str, dict[str, int]]:
@@ -1559,6 +1601,7 @@ def main() -> int:
         "citation_region_precision": primary_summary["citation_region_precision"],
         "citation_grounding": primary_summary["citation_grounding"],
         "claim_citation_alignment": primary_summary["claim_citation_alignment"],
+        **numeric_date_condition_summary_fields(primary_summary),
         "chunk_recall_at_5": primary_summary.get("chunk_recall_at_5"),
         "chunk_recall_at_10": primary_summary.get("chunk_recall_at_10"),
         "chunk_recall_at_20": primary_summary.get("chunk_recall_at_20"),

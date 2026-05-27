@@ -19,6 +19,7 @@ from eval.scorers.chunk_metrics import (
 )
 from eval.scorers.citation import score_citation_grounding
 from eval.scorers.format import score_answer_format
+from eval.scorers.slot_metrics import score_numeric_date_condition_slots
 
 __all__ = [
     "chunk_mrr",
@@ -34,4 +35,5 @@ __all__ = [
     "score_citation_grounding",
     "score_claim_citation_alignment",
     "score_answer_format",
+    "score_numeric_date_condition_slots",
 ]
