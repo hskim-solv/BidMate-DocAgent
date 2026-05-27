@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from eval.run_eval import metric_block
+from eval.run_eval import metric_block, numeric_date_condition_summary_fields
 from eval.scorers import score_case, score_numeric_date_condition_slots
 
 
@@ -92,3 +92,21 @@ def test_metric_block_aggregates_slot_exactness() -> None:
     assert block["numeric_date_condition_type_counts"] == {"amount": 2, "date": 1}
     assert block["numeric_date_condition_type_correct_counts"] == {"amount": 1, "date": 1}
     assert "numeric_date_condition_accuracy" in block["ci"]
+
+
+def test_summary_fields_pass_through_slot_exactness() -> None:
+    fields = numeric_date_condition_summary_fields(
+        {
+            "numeric_date_condition_accuracy": 0.5,
+            "numeric_date_condition_slot_count": 3,
+            "numeric_date_condition_type_counts": {"amount": 2, "date": 1},
+            "numeric_date_condition_type_correct_counts": {"amount": 1, "date": 1},
+        }
+    )
+
+    assert fields == {
+        "numeric_date_condition_accuracy": 0.5,
+        "numeric_date_condition_slot_count": 3,
+        "numeric_date_condition_type_counts": {"amount": 2, "date": 1},
+        "numeric_date_condition_type_correct_counts": {"amount": 1, "date": 1},
+    }

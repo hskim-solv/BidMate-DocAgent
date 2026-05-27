@@ -47,6 +47,14 @@
       "mean": 0.7757352941176471,
       "n": 272,
       "num_resamples": 1000
+    },
+    "numeric_date_condition_accuracy": {
+      "alpha": 0.05,
+      "ci_hi": 0.9851851851851852,
+      "ci_lo": 0.9185185185185185,
+      "mean": 0.9555555555555556,
+      "n": 135,
+      "num_resamples": 1000
     }
   },
   "claim_boundary": {
@@ -115,9 +123,14 @@
     },
     "numeric_date_condition_accuracy": {
       "metrics": {
-        "numeric_date_condition_accuracy": null,
-        "numeric_date_condition_slot_count": null,
-        "numeric_date_condition_type_counts": null,
+        "numeric_date_condition_accuracy": 0.9555555555555556,
+        "numeric_date_condition_slot_count": 140,
+        "numeric_date_condition_type_counts": {
+          "amount": 8,
+          "condition": 2,
+          "date": 8,
+          "numeric_or_score": 122
+        },
         "question_type_counts": {
           "amount_extraction": 50,
           "date_extraction": 12,
@@ -126,10 +139,8 @@
           "table_heavy_score_or_amount": 22
         }
       },
-      "notes": [
-        "requires_eval_regeneration_with_issue_1544_scorer"
-      ],
-      "status": "missing"
+      "notes": [],
+      "status": "present"
     },
     "retrieval_recall": {
       "metrics": {
@@ -157,9 +168,9 @@
   "profile_type": "v0_metric_suite_report",
   "readiness": {
     "all_present": false,
-    "missing": 1,
+    "missing": 0,
     "partial": 1,
-    "present": 6
+    "present": 7
   },
   "schema_version": 1,
   "source": {

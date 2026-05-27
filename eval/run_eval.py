@@ -838,6 +838,21 @@ def metric_block(case_results: list[dict[str, Any]]) -> dict[str, Any]:
     return block
 
 
+NUMERIC_DATE_CONDITION_SUMMARY_KEYS = (
+    "numeric_date_condition_accuracy",
+    "numeric_date_condition_slot_count",
+    "numeric_date_condition_type_counts",
+    "numeric_date_condition_type_correct_counts",
+)
+
+
+def numeric_date_condition_summary_fields(primary_summary: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: primary_summary.get(key)
+        for key in NUMERIC_DATE_CONDITION_SUMMARY_KEYS
+    }
+
+
 def _load_text_source_counts(index_dir: Path | None) -> dict[str, dict[str, int]]:
     """Pass-through read of ``ingestion_report.json`` text_source_counts (issue #769).
 
@@ -1586,6 +1601,7 @@ def main() -> int:
         "citation_region_precision": primary_summary["citation_region_precision"],
         "citation_grounding": primary_summary["citation_grounding"],
         "claim_citation_alignment": primary_summary["claim_citation_alignment"],
+        **numeric_date_condition_summary_fields(primary_summary),
         "chunk_recall_at_5": primary_summary.get("chunk_recall_at_5"),
         "chunk_recall_at_10": primary_summary.get("chunk_recall_at_10"),
         "chunk_recall_at_20": primary_summary.get("chunk_recall_at_20"),
