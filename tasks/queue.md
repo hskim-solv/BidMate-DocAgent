@@ -3292,7 +3292,7 @@ python3 scripts/agent_loop.py agent-mix-report
 
 - Plan: [`docs/plans/T-2026-0040-active-dual-agent-lanes.md`](../docs/plans/T-2026-0040-active-dual-agent-lanes.md) (umbrella roadmap; PR2 = Phase 2).
 - Issue: [#1590](https://github.com/hskim-solv/BidMate-DocAgent/issues/1590) (umbrella [#1588](https://github.com/hskim-solv/BidMate-DocAgent/issues/1588)).
-- PR: TBD
+- PR: [#1594](https://github.com/hskim-solv/BidMate-DocAgent/pull/1594)
 
 ## T-2026-0042 — Patch-proposal + lease active_agent borrow + scratch worktree
 
