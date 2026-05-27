@@ -58,7 +58,7 @@ supplies aggregate κ/ρ evidence.
 
 | Milestone | Follow-up |
 |---|---|
-| v0-b offline/online run manifest | Reuse the metric family list here and add run-environment provenance fields for each aggregate source. |
+| v0-b offline/online run manifest | Reuse the metric family list here and add [run-environment provenance](./offline-online-run-manifest.md) fields for each aggregate source. |
 | v0-c metric suite report | Use `scripts/render_v0_metric_suite_report.py` to render one report shell that includes all present families and explicitly marks data-dependent partial families. |
 | v1 failure sensitivity | Use this inventory to pick at least three failure modes with observable metric movement. |
 | v2 agreement calibration | Promote human/judge agreement from partial to present with private-label aggregate evidence. |

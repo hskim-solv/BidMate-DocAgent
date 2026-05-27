@@ -564,6 +564,10 @@ class RunManifestTest(unittest.TestCase):
         self.assertIn("config_path", manifest)
         self.assertIn("config_sha256", manifest)
         self.assertIn("generated_at", manifest)
+        self.assertIn("environment", manifest)
+        self.assertIn("model", manifest)
+        self.assertIn("payload", manifest)
+        self.assertIn("privacy", manifest)
         # Generated timestamp ends with Z (UTC) per spec.
         self.assertTrue(manifest["generated_at"].endswith("Z"))
         # SHA is truncated 16-char hex.

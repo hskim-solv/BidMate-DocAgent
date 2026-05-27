@@ -51,6 +51,8 @@ class RunManifestVersioningTest(unittest.TestCase):
         # existing reproducibility fields are untouched
         self.assertIn("git_commit", manifest)
         self.assertIn("config_sha256", manifest)
+        self.assertEqual(manifest["environment"]["mode"], "offline")
+        self.assertEqual(manifest["payload"]["private_data_egress"], "none")
 
     def test_missing_index_is_none(self) -> None:
         manifest = compute_run_manifest(CONFIG_PATH)
@@ -70,6 +72,31 @@ class RunManifestVersioningTest(unittest.TestCase):
             {"build": {"chunking": {"requested_strategy": "section"}}},
         )
         self.assertEqual(manifest["chunker_version"], "chunker.section.v1")
+
+    def test_offline_online_environment_block_is_privacy_safe(self) -> None:
+        manifest = compute_run_manifest(
+            CONFIG_PATH,
+            run_environment={
+                "mode": "online",
+                "provider": "openai",
+                "model": "gpt-fixture",
+                "judge_backend": "external-judge",
+                "hardware": "/Users/example/private/gpu-host",
+                "payload_class": "private-raw",
+                "private_data_egress": "private-raw",
+            },
+        )
+        self.assertEqual(manifest["environment"]["mode"], "online")
+        self.assertEqual(manifest["environment"]["network"], "non-closed")
+        self.assertTrue(manifest["environment"]["external_api_allowed"])
+        self.assertTrue(manifest["environment"]["external_api_used"])
+        self.assertEqual(manifest["environment"]["hardware"], "[redacted-local-path]")
+        self.assertEqual(manifest["model"]["provider"], "openai")
+        self.assertEqual(manifest["model"]["model"], "gpt-fixture")
+        self.assertEqual(manifest["payload"]["payload_class"], "private-raw")
+        self.assertEqual(manifest["payload"]["private_data_egress"], "private-raw")
+        self.assertFalse(manifest["privacy"]["raw_private_content_committed"])
+        self.assertFalse(manifest["privacy"]["exact_local_paths_committed"])
 
 
 if __name__ == "__main__":

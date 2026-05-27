@@ -90,6 +90,7 @@ DEFAULT_ARCHITECTURE_BRIEF = DEFAULT_REPORT_DIR / "architecture_brief.md"
 DEFAULT_SHIP_SIMULATION = DEFAULT_REPORT_DIR / "ship_simulation.md"
 DEFAULT_GATE_BRIEF = DEFAULT_REPORT_DIR / "gate_brief.md"
 DEFAULT_MANIFEST = DEFAULT_REPORT_DIR / "manifest.json"
+DEFAULT_EVAL_RUN_MANIFEST = DEFAULT_REPORT_DIR / "offline_online_run_manifest.json"
 DEFAULT_PR_BODY_CHECK = DEFAULT_REPORT_DIR / "pr_body_check.md"
 DEFAULT_CI_INGEST = DEFAULT_REPORT_DIR / "ci_ingest.md"
 DEFAULT_CI_FOLLOWUPS_DIR = DEFAULT_REPORT_DIR / "ci_followups"
@@ -192,6 +193,16 @@ EVAL_SURFACE_SIGNALS = (
     "synthetic benchmark",
     "performance claim",
 )
+EVAL_RUN_MODES = ("offline", "online")
+EVAL_RUN_PAYLOAD_CLASSES = (
+    "none",
+    "aggregate-only",
+    "metadata-only",
+    "public-fixture",
+    "private-raw",
+)
+EVAL_RUN_EGRESS_MODES = ("none", "metadata-only", "public-only", "private-raw")
+LOCAL_PROVIDER_VALUES = {"local", "none", "stub", "offline", "unknown"}
 
 FORBIDDEN_DYNAMIC_LABELS = {
     "raw question",
@@ -4982,6 +4993,180 @@ def _changed_files_hash(changed_files: Sequence[str], *, repo_root: Path) -> str
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
+def write_eval_run_manifest(
+    *,
+    mode: str,
+    provider: str | None = None,
+    model: str | None = None,
+    payload_class: str,
+    egress_mode: str,
+    surface: str = "private-real-eval",
+    case_family: str = "private-real-eval",
+    judge_backend: str | None = None,
+    hardware: str | None = None,
+    source_command: str = "manual",
+    config: Path | None = None,
+    cost_usd: float | None = None,
+    latency_ms: float | None = None,
+    out: Path = DEFAULT_EVAL_RUN_MANIFEST,
+    repo_root: Path = ROOT_DIR,
+) -> tuple[Path, dict[str, object]]:
+    manifest = build_eval_run_manifest(
+        mode=mode,
+        provider=provider,
+        model=model,
+        payload_class=payload_class,
+        egress_mode=egress_mode,
+        surface=surface,
+        case_family=case_family,
+        judge_backend=judge_backend,
+        hardware=hardware,
+        source_command=source_command,
+        config=config,
+        cost_usd=cost_usd,
+        latency_ms=latency_ms,
+        repo_root=repo_root,
+    )
+    _validate_eval_run_manifest(manifest)
+    out = _default_output(
+        out,
+        DEFAULT_EVAL_RUN_MANIFEST,
+        "offline_online_run_manifest.json",
+        repo_root=repo_root,
+    )
+    safe_out = _safe_output_path(out, repo_root=repo_root)
+    safe_out.parent.mkdir(parents=True, exist_ok=True)
+    safe_out.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return safe_out, manifest
+
+
+def build_eval_run_manifest(
+    *,
+    mode: str,
+    provider: str | None,
+    model: str | None,
+    payload_class: str,
+    egress_mode: str,
+    surface: str,
+    case_family: str,
+    judge_backend: str | None,
+    hardware: str | None,
+    source_command: str,
+    config: Path | None,
+    cost_usd: float | None,
+    latency_ms: float | None,
+    repo_root: Path,
+) -> dict[str, object]:
+    safe_mode = _require_choice("mode", mode, EVAL_RUN_MODES)
+    safe_payload = _require_choice("payload_class", payload_class, EVAL_RUN_PAYLOAD_CLASSES)
+    safe_egress = _require_choice("egress_mode", egress_mode, EVAL_RUN_EGRESS_MODES)
+    safe_provider = _manifest_scalar(provider, default="local" if safe_mode == "offline" else "unknown")
+    safe_model = _manifest_scalar(model, default="unknown")
+    safe_judge_backend = _manifest_scalar(judge_backend, default="unknown")
+    safe_hardware = _manifest_scalar(hardware, default="unknown")
+    config_sha = _config_sha256_16(config)
+
+    manifest: dict[str, object] = {
+        "schema_version": 1,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "git_head": _current_git_head(repo_root) or "unknown",
+        "branch": _current_branch(repo_root) or "unknown",
+        "environment": {
+            "mode": safe_mode,
+            "network": "closed" if safe_mode == "offline" else "non-closed",
+            "external_api_allowed": safe_mode == "online",
+            "external_api_used": safe_provider.lower() not in LOCAL_PROVIDER_VALUES,
+            "hardware": safe_hardware,
+        },
+        "model": {
+            "provider": safe_provider,
+            "model": safe_model,
+            "judge_backend": safe_judge_backend,
+        },
+        "payload": {
+            "payload_class": safe_payload,
+            "private_data_egress": safe_egress,
+        },
+        "provenance": {
+            "surface": _manifest_scalar(surface, default="private-real-eval"),
+            "case_family": _manifest_scalar(case_family, default="private-real-eval"),
+            "config_sha256": config_sha,
+            "config_present": bool(config and config.exists()),
+            "source_command": _sanitize_command_text(source_command),
+        },
+        "cost_latency": {
+            "cost_usd": cost_usd,
+            "latency_ms": latency_ms,
+        },
+        "privacy": {
+            "raw_private_content_committed": False,
+            "exact_local_paths_committed": False,
+            "committable": True,
+        },
+    }
+    _validate_eval_run_manifest(manifest)
+    return manifest
+
+
+def _require_choice(label: str, value: str, choices: Sequence[str]) -> str:
+    cleaned = _sanitize_inline_text(str(value or "").strip().lower())
+    if cleaned not in choices:
+        raise ValueError(f"{label} must be one of: {', '.join(choices)}")
+    return cleaned
+
+
+def _manifest_scalar(value: str | None, *, default: str) -> str:
+    cleaned = _sanitize_inline_text(str(value or default).strip())
+    return cleaned or default
+
+
+def _config_sha256_16(config: Path | None) -> str:
+    if config is None:
+        return "unknown"
+    try:
+        if not config.exists() or not config.is_file():
+            return "missing"
+        return hashlib.sha256(config.read_bytes()).hexdigest()[:16]
+    except OSError:
+        return "unreadable"
+
+
+def _validate_eval_run_manifest(manifest: dict[str, object]) -> None:
+    environment = manifest.get("environment")
+    model = manifest.get("model")
+    payload = manifest.get("payload")
+    provenance = manifest.get("provenance")
+    privacy = manifest.get("privacy")
+    if not all(isinstance(section, dict) for section in (environment, model, payload, provenance, privacy)):
+        raise ValueError("eval run manifest requires environment, model, payload, provenance, and privacy sections")
+
+    mode = str(environment.get("mode") or "")
+    provider = str(model.get("provider") or "").strip()
+    model_id = str(model.get("model") or "").strip()
+    egress = str(payload.get("private_data_egress") or "")
+    if mode == "offline":
+        if environment.get("external_api_allowed") is not False:
+            raise ValueError("offline eval run manifest must set external_api_allowed=false")
+        if egress != "none":
+            raise ValueError("offline eval run manifest must set private_data_egress=none")
+    elif mode == "online":
+        if not provider or provider == "unknown":
+            raise ValueError("online eval run manifest requires provider")
+        if not model_id or model_id == "unknown":
+            raise ValueError("online eval run manifest requires model")
+    else:
+        raise ValueError("eval run manifest mode must be offline or online")
+
+    if privacy.get("raw_private_content_committed") is not False:
+        raise ValueError("eval run manifest must not commit raw private content")
+    if privacy.get("exact_local_paths_committed") is not False:
+        raise ValueError("eval run manifest must not commit exact local paths")
+
+    rendered = json.dumps(manifest, ensure_ascii=False, sort_keys=True)
+    if ABSOLUTE_LOCAL_PATH_RE.search(rendered) or _privacy_audit_text(rendered):
+        raise ValueError("eval run manifest contains private raw values or exact local paths")
+
+
 def _manifest_freshness(
     *,
     changed_files: Sequence[str],
@@ -7399,13 +7584,14 @@ def render_automation_coverage() -> str:
         ("13", "validation history ledger", "validate --record-history, validation-history"),
         ("14", "privacy regression corpus", "privacy-regression, privacy-audit-output"),
         ("15", "claim policy engine", "claim-policy, claim-audit"),
-        ("16", "architecture decision detector", "architecture-decision, architecture-brief, adr-reserve"),
-        ("17", "PR corpus workset planner", "pr-scan, next-from-prs, batch-plan, workset-recommend, continue-loop"),
-        ("18", "auto-pass strict profiles", "auto-pass-check --profile ..."),
-        ("19", "conservative remote execution", "human-gated-exec --confirm-human-approved"),
-        ("20", "existing auto-ship bridge", "auto-ship-prepare, auto-ship-plan, ship-simulate, ship-command-pack"),
-        ("21", "conservative issue cleanup", "issue-scan, maintenance-plan, human-gated-exec --action issue-close"),
-        ("22", "role-separated subagent dispatch", "role-dispatch --batch"),
+        ("16", "offline/online eval run manifest", "eval-run-manifest"),
+        ("17", "architecture decision detector", "architecture-decision, architecture-brief, adr-reserve"),
+        ("18", "PR corpus workset planner", "pr-scan, next-from-prs, batch-plan, workset-recommend, continue-loop"),
+        ("19", "auto-pass strict profiles", "auto-pass-check --profile ..."),
+        ("20", "conservative remote execution", "human-gated-exec --confirm-human-approved"),
+        ("21", "existing auto-ship bridge", "auto-ship-prepare, auto-ship-plan, ship-simulate, ship-command-pack"),
+        ("22", "conservative issue cleanup", "issue-scan, maintenance-plan, human-gated-exec --action issue-close"),
+        ("23", "role-separated subagent dispatch", "role-dispatch --batch"),
     )
     lines = [
         "# Agent Loop Automation Coverage",
@@ -8410,6 +8596,7 @@ Automation points:
 - review-patch-plan: generate review triage plus safe patch proposal together.
 - patch-proposal: render dry-run whitespace-only patch proposal for public-safe files.
 - manifest: write input-hash freshness metadata for generated artifacts.
+- eval-run-manifest: write privacy-safe offline/online eval execution provenance.
 - artifact-freshness: alias around stale/manifest freshness checks.
 - validation-history: summarize local JSONL validation history.
 - workset-recommend: recommend serial, parallel-safe, review-only, and agent-gated task sets.
@@ -9004,6 +9191,25 @@ def build_parser() -> argparse.ArgumentParser:
     manifest.add_argument("--source-command", dest="manifest_command", default="manual")
     manifest.add_argument("--output", action="append", type=Path, default=[])
     manifest.add_argument("--out", type=Path, default=DEFAULT_MANIFEST)
+
+    eval_manifest = sub.add_parser(
+        "eval-run-manifest",
+        help="Write a privacy-safe offline/online eval run manifest.",
+    )
+    eval_manifest.add_argument("--mode", required=True, choices=EVAL_RUN_MODES)
+    eval_manifest.add_argument("--surface", default="private-real-eval")
+    eval_manifest.add_argument("--case-family", default="private-real-eval")
+    eval_manifest.add_argument("--provider")
+    eval_manifest.add_argument("--model")
+    eval_manifest.add_argument("--judge-backend")
+    eval_manifest.add_argument("--payload-class", required=True, choices=EVAL_RUN_PAYLOAD_CLASSES)
+    eval_manifest.add_argument("--egress-mode", required=True, choices=EVAL_RUN_EGRESS_MODES)
+    eval_manifest.add_argument("--hardware")
+    eval_manifest.add_argument("--source-command", default="manual")
+    eval_manifest.add_argument("--config", type=Path)
+    eval_manifest.add_argument("--cost-usd", type=float)
+    eval_manifest.add_argument("--latency-ms", type=float)
+    eval_manifest.add_argument("--out", type=Path, default=DEFAULT_EVAL_RUN_MANIFEST)
 
     pr_check = sub.add_parser("pr-body-check", help="Validate a PR body draft before PR creation.")
     pr_check.add_argument("--body", type=Path, default=DEFAULT_PR_BODY)
@@ -9695,6 +9901,25 @@ def main(argv: list[str] | None = None) -> int:
                 changed_files=files,
                 command=args.manifest_command,
                 outputs=args.output,
+                out=args.out,
+            )
+            sys.stdout.write(f"[OK] wrote {_repo_path(out, ROOT_DIR)}\n")
+            return 0
+        if args.command == "eval-run-manifest":
+            out, _ = write_eval_run_manifest(
+                mode=args.mode,
+                surface=args.surface,
+                case_family=args.case_family,
+                provider=args.provider,
+                model=args.model,
+                judge_backend=args.judge_backend,
+                payload_class=args.payload_class,
+                egress_mode=args.egress_mode,
+                hardware=args.hardware,
+                source_command=args.source_command,
+                config=args.config,
+                cost_usd=args.cost_usd,
+                latency_ms=args.latency_ms,
                 out=args.out,
             )
             sys.stdout.write(f"[OK] wrote {_repo_path(out, ROOT_DIR)}\n")

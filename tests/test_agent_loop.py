@@ -5,6 +5,8 @@ import os
 from pathlib import Path
 import subprocess
 
+import pytest
+
 from scripts import agent_loop
 
 
@@ -1899,6 +1901,104 @@ question: PRIVATE RAW QUERY
     assert patch_out == repo / "reports" / "agent_loop" / "patch_proposal.diff"
     assert "-print('x')  " in patch
     assert "+print('x')" in patch
+
+
+def test_eval_run_manifest_records_offline_online_schema_without_private_leaks(tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    config = repo / "eval" / "real_config.local.yaml"
+    config.parent.mkdir(parents=True)
+    config.write_text("question: PRIVATE RAW QUERY\nanswer: PRIVATE RAW ANSWER\n", encoding="utf-8")
+
+    offline_out, offline = agent_loop.write_eval_run_manifest(
+        mode="offline",
+        provider="local",
+        model="local-judge-v1",
+        judge_backend="local-llm",
+        payload_class="none",
+        egress_mode="none",
+        hardware="/Users/example/private/gpu-host",
+        source_command=(
+            "python3 scripts/run_private_real_eval.py "
+            "--config /Users/example/private/real_config.local.yaml "
+            "--question 'PRIVATE RAW QUERY'"
+        ),
+        config=config,
+        repo_root=repo,
+    )
+    online_out, online = agent_loop.write_eval_run_manifest(
+        mode="online",
+        provider="openai",
+        model="gpt-fixture",
+        judge_backend="external-judge",
+        payload_class="private-raw",
+        egress_mode="private-raw",
+        surface="private-real-eval",
+        case_family="real100-v2",
+        cost_usd=1.25,
+        latency_ms=1250.0,
+        repo_root=repo,
+    )
+
+    assert offline_out == repo / "reports" / "agent_loop" / "offline_online_run_manifest.json"
+    assert online_out == offline_out
+    assert set(offline) == set(online)
+    assert set(offline["environment"]) == set(online["environment"])  # type: ignore[arg-type]
+    assert set(offline["model"]) == set(online["model"])  # type: ignore[arg-type]
+    assert set(offline["payload"]) == set(online["payload"])  # type: ignore[arg-type]
+    assert offline["environment"]["mode"] == "offline"  # type: ignore[index]
+    assert offline["environment"]["external_api_allowed"] is False  # type: ignore[index]
+    assert offline["payload"]["private_data_egress"] == "none"  # type: ignore[index]
+    assert online["environment"]["mode"] == "online"  # type: ignore[index]
+    assert online["environment"]["external_api_allowed"] is True  # type: ignore[index]
+    assert online["model"]["provider"] == "openai"  # type: ignore[index]
+    assert online["payload"]["private_data_egress"] == "private-raw"  # type: ignore[index]
+    assert online["provenance"]["config_sha256"] == "unknown"  # type: ignore[index]
+    assert offline["provenance"]["config_sha256"] != "unknown"  # type: ignore[index]
+
+    rendered = json.dumps([offline, online], ensure_ascii=False, sort_keys=True)
+    assert "PRIVATE RAW QUERY" not in rendered
+    assert "PRIVATE RAW ANSWER" not in rendered
+    assert "/Users/example" not in rendered
+    assert "real_config.local.yaml" not in rendered
+
+
+def test_eval_run_manifest_fails_closed_for_invalid_egress_and_online_provider(tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    with pytest.raises(ValueError, match="private_data_egress=none"):
+        agent_loop.build_eval_run_manifest(
+            mode="offline",
+            provider="local",
+            model="local-judge-v1",
+            payload_class="private-raw",
+            egress_mode="private-raw",
+            surface="private-real-eval",
+            case_family="real100-v2",
+            judge_backend="local-llm",
+            hardware=None,
+            source_command="manual",
+            config=None,
+            cost_usd=None,
+            latency_ms=None,
+            repo_root=repo,
+        )
+
+    with pytest.raises(ValueError, match="online eval run manifest requires provider"):
+        agent_loop.build_eval_run_manifest(
+            mode="online",
+            provider=None,
+            model="gpt-fixture",
+            payload_class="metadata-only",
+            egress_mode="metadata-only",
+            surface="private-real-eval",
+            case_family="real100-v2",
+            judge_backend="external-judge",
+            hardware=None,
+            source_command="manual",
+            config=None,
+            cost_usd=None,
+            latency_ms=None,
+            repo_root=repo,
+        )
 
 
 def test_adr_html_context_ship_commands_and_apply_queue_plan(tmp_path: Path) -> None:

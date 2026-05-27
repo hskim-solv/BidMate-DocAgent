@@ -77,7 +77,7 @@ metric suite다.
 | Milestone | Smallest next PR | Evidence required |
 |---|---|---|
 | v0-a metric inventory | 현재 private real-eval aggregate에 이미 있는 metric과 없는 metric을 [표로 분류한다](./v0-metric-suite-inventory.md). | aggregate-only inventory, no performance claim |
-| v0-b offline/online run manifest | offline/online 실행 환경, provider/model, payload class, egress mode를 같은 schema로 기록한다. | manifest schema + privacy test |
+| v0-b offline/online run manifest | offline/online 실행 환경, provider/model, payload class, egress mode를 [같은 schema](./offline-online-run-manifest.md)로 기록한다. | manifest schema + privacy test |
 | v0-c metric suite report | `scripts/render_v0_metric_suite_report.py`로 retrieval, grounding, citation, comparison, abstention, numeric/date/condition, judge agreement를 한 report shell에 모은다. | private real-eval aggregate + provenance |
 | v1 failure sensitivity | 세 개 이상의 RFP failure mode에 대해 metric이 실제로 움직이는지 확인한다. | before/after or historical failure replay |
 | v2 agreement calibration | human 또는 approved judge signal과 suite metric의 agreement를 측정한다. | agreement aggregate, no raw private text |
