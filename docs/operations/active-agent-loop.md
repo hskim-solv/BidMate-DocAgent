@@ -177,10 +177,11 @@ make agent-loop-active-codex-runner ACTIVE_CODEX_EXECUTE=1
 runner는 session마다 `reports/agent_loop/active/codex_runs/<session_id>/` 아래에
 `prompt.md`, `stdout.jsonl`, `stderr.log`, `last_message.md`를 둔다. 기본 sandbox는
 `read-only`이고, 각 prompt는 assignment의 read-only 부분만 실행하게 제한한다.
-이 runner는 `session-heartbeat`를 pass로 승격하지 않고, `active-loop --execute`의
-ship gate나 `make ship-run`도 호출하지 않는다. 따라서 agent process가 끝났다는
-사실은 reviewer/auditor gate 통과 근거가 아니며, gate status는 별도 heartbeat나
-검토 표면에서 유지한다.
+Execute mode는 8개 process를 spawn한 뒤 종료 코드와 last message artifact가 남도록
+각 process를 wait한다. 이 runner는 `session-heartbeat`를 pass로 승격하지 않고,
+`active-loop --execute`의 ship gate나 `make ship-run`도 호출하지 않는다. 따라서
+agent process가 끝났다는 사실은 reviewer/auditor gate 통과 근거가 아니며, gate
+status는 별도 heartbeat나 검토 표면에서 유지한다.
 
 ## Full Ship Gate
 

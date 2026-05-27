@@ -9540,6 +9540,7 @@ def write_active_codex_runner(
     out: Path = DEFAULT_ACTIVE_CODEX_RUNNER,
     sessions: str | None = None,
     max_parallel: int = 8,
+    timeout_seconds: int = 0,
     codex_executable: str = "codex",
     sandbox: str = "read-only",
     repo_root: Path = ROOT_DIR,
@@ -9554,6 +9555,8 @@ def write_active_codex_runner(
     """
     if max_parallel < 1:
         raise ValueError("--max-parallel must be at least 1")
+    if timeout_seconds < 0:
+        raise ValueError("--timeout-seconds must be >= 0")
     if sandbox not in {"read-only", "workspace-write", "danger-full-access"}:
         raise ValueError("--sandbox must be read-only, workspace-write, or danger-full-access")
     registry_path = _active_path(registry, repo_root=repo_root)
@@ -9619,6 +9622,7 @@ def write_active_codex_runner(
         warnings.append("dry-run only; pass --execute or ACTIVE_CODEX_EXECUTE=1 to spawn Codex processes")
 
     decision = "blocked" if blockers else ("running" if execute else "planned")
+    spawned: list[tuple[dict[str, object], object]] = []
     if execute and not blockers:
         factory = popen_factory if popen_factory is not None else subprocess.Popen
         for item in planned:
@@ -9667,6 +9671,31 @@ def write_active_codex_runner(
                 break
             item["status"] = "running"
             item["pid"] = getattr(proc, "pid", None)
+            spawned.append((item, proc))
+        for item, proc in spawned:
+            if blockers:
+                break
+            wait = getattr(proc, "wait", None)
+            try:
+                if callable(wait):
+                    rc = wait(timeout=timeout_seconds or None)
+                else:
+                    rc = getattr(proc, "returncode", 0)
+            except subprocess.TimeoutExpired:
+                item["status"] = "timeout"
+                item["returncode"] = None
+                blockers.append(f"session {item['session_id']} timed out after {timeout_seconds} seconds")
+                decision = "blocked"
+                continue
+            item["returncode"] = rc
+            if rc == 0:
+                item["status"] = "completed"
+            else:
+                item["status"] = "failed"
+                blockers.append(f"session {item['session_id']} exited with code {rc}")
+                decision = "blocked"
+        if spawned and not blockers:
+            decision = "completed"
 
     state_payload = {
         "schema_version": 1,
@@ -9674,6 +9703,7 @@ def write_active_codex_runner(
         "execute": execute,
         "decision": decision,
         "sandbox": sandbox,
+        "timeout_seconds": timeout_seconds,
         "registry": _repo_path(registry_path, repo_root),
         "assignments_dir": _repo_path(assignments_path, repo_root),
         "runs_dir": _repo_path(runs_path, repo_root),
@@ -10091,8 +10121,6 @@ def _active_codex_exec_command(
         ".",
         "--sandbox",
         sandbox,
-        "--ask-for-approval",
-        "never",
         "--json",
         "--output-last-message",
         _repo_path(last_message_path, repo_root),
@@ -11782,6 +11810,7 @@ def build_parser() -> argparse.ArgumentParser:
     codex_runner.add_argument("--out", type=Path, default=DEFAULT_ACTIVE_CODEX_RUNNER)
     codex_runner.add_argument("--sessions", help="Comma-separated session ids; default is every session in registry order.")
     codex_runner.add_argument("--max-parallel", type=int, default=8)
+    codex_runner.add_argument("--timeout-seconds", type=int, default=0, help="Per-session wait timeout; 0 means no timeout.")
     codex_runner.add_argument("--codex-executable", default="codex")
     codex_runner.add_argument("--sandbox", choices=("read-only", "workspace-write", "danger-full-access"), default="read-only")
 
@@ -12696,11 +12725,12 @@ def main(argv: list[str] | None = None) -> int:
                 out=args.out,
                 sessions=args.sessions,
                 max_parallel=args.max_parallel,
+                timeout_seconds=args.timeout_seconds,
                 codex_executable=args.codex_executable,
                 sandbox=args.sandbox,
             )
             sys.stdout.write(f"[OK] wrote {_repo_path(result.report_path, ROOT_DIR)}\n")
-            return 0 if result.decision in {"planned", "running"} else 1
+            return 0 if result.decision in {"planned", "running", "completed"} else 1
         if args.command == "active-worktree-prepare":
             out, _, _ = write_active_worktree_prepare(
                 issue=args.issue,

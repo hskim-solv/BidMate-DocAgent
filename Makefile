@@ -429,6 +429,7 @@ ACTIVE_CODEX_RUNNER_STATE ?= reports/agent_loop/active/codex_runner_state.json
 ACTIVE_CODEX_RUNS_DIR ?= reports/agent_loop/active/codex_runs
 ACTIVE_CODEX_SESSIONS ?=
 ACTIVE_CODEX_MAX_PARALLEL ?= 8
+ACTIVE_CODEX_TIMEOUT_SECONDS ?= 0
 ACTIVE_CODEX_EXECUTABLE ?= codex
 ACTIVE_CODEX_SANDBOX ?= read-only
 ACTIVE_CODEX_EXECUTE ?=
@@ -943,6 +944,7 @@ agent-loop-active-codex-runner:
 	  --codex-executable "$(ACTIVE_CODEX_EXECUTABLE)" \
 	  --sandbox "$(ACTIVE_CODEX_SANDBOX)" \
 	  --max-parallel "$(ACTIVE_CODEX_MAX_PARALLEL)" \
+	  --timeout-seconds "$(ACTIVE_CODEX_TIMEOUT_SECONDS)" \
 	  $(if $(ACTIVE_CODEX_SESSIONS),--sessions "$(ACTIVE_CODEX_SESSIONS)",) \
 	  --runs-dir "$(ACTIVE_CODEX_RUNS_DIR)" \
 	  --state "$(ACTIVE_CODEX_RUNNER_STATE)" \
