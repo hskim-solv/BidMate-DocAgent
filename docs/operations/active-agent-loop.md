@@ -233,6 +233,22 @@ python3 scripts/agent_loop.py active-apply --task T-2026-00NN --execute
 - `--execute` + clean check일 때만 `git apply` + `git add -A` + `git commit`한다.
 - dry-run(기본)은 check만 수행한다.
 
+## Gate Evidence
+
+`gate-evidence`는 한 task의 Conservative-Gate 통과 근거를 **감사 기록**으로 묶는다.
+**ship/push/merge를 트리거하지 않는다** — 실제 ship은 기존 human-gated 경로(`ship-pr` /
+`make ship-arm`)가 담당한다.
+
+```bash
+python3 scripts/agent_loop.py gate-evidence --task T-2026-00NN
+```
+
+`reports/agent_loop/active/gate_evidence/<task>/`에 `evidence.json` + 요약 `evidence.md`를
+쓴다. 묶는 내용: topology + gate_policy, 필수 gate role의 pass 여부와 overall ready bool,
+patch artifact(verdict/files/diffstat), apply state(decision/applied/integration_branch),
+agent_mix Work Unit, privacy audit(clean/issue 수). raw private 값은 포함하지 않는다
+(요약 메타만, ADR 0005). 누락 아티팩트는 `null`로 graceful 처리한다.
+
 ## Full Ship Gate
 
 `--execute`는 gate가 통과할 때만 기존 ship runner를 호출한다.

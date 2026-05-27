@@ -11082,6 +11082,128 @@ def write_active_apply(
     )
 
 
+def write_active_gate_evidence(
+    *,
+    task_id: str,
+    registry: Path = DEFAULT_ACTIVE_REGISTRY,
+    out_dir: Path | None = None,
+    repo_root: Path = ROOT_DIR,
+) -> tuple[Path, dict[str, object]]:
+    """Bundle the active loop's Conservative-Gate evidence for one task.
+
+    Read-only audit record written to reports/agent_loop/active/gate_evidence/<task>/ —
+    it NEVER ships, pushes, or merges (issue #1616). The actual ship stays with the
+    existing human-gated path (ship-pr / make ship-arm). Returns (evidence_json, summary).
+    """
+    if not TASK_ID_RE.fullmatch(task_id):
+        raise ValueError("--task must match T-YYYY-NNNN")
+    now = datetime.now(timezone.utc)
+    active_dir = repo_root / "reports" / "agent_loop" / "active"
+    registry_path = _active_path(registry, repo_root=repo_root)
+
+    topology = "four-role"
+    sessions: list[dict[str, object]] = []
+    if registry_path.exists():
+        payload = _load_active_registry(registry_path)
+        topology = str(payload.get("topology") or "four-role")
+        if topology not in ACTIVE_TOPOLOGY_ROLES:
+            topology = "four-role"
+        raw = payload.get("sessions")
+        sessions = [s for s in raw if isinstance(s, dict)] if isinstance(raw, list) else []
+
+    required_roles = _active_required_gate_roles(topology, load_bearing_touched=False)
+    gate_roles: list[dict[str, object]] = []
+    for role in required_roles:
+        status = next((str(s.get("status")) for s in sessions if s.get("role") == role), "missing")
+        gate_roles.append({"role": role, "status": status, "ok": _active_role_status_ok(sessions, role)})
+    ready = bool(required_roles) and all(bool(item["ok"]) for item in gate_roles)
+
+    implementer = next((s for s in sessions if s.get("role") == "Implementer"), None)
+    impl_session = str(implementer.get("session_id")) if implementer else "implementer"
+    patch_path = active_dir / "patch_runs" / impl_session / "patch_artifact.json"
+    patch_summary: dict[str, object] | None = None
+    if patch_path.exists():
+        try:
+            pa = json.loads(_read_text(patch_path))
+            if isinstance(pa, dict):
+                patch_summary = {"verdict": pa.get("verdict"), "files": pa.get("files"), "diffstat": pa.get("diffstat")}
+        except (json.JSONDecodeError, OSError):
+            patch_summary = {"verdict": "unreadable"}
+
+    apply_path = active_dir / "active_apply_state.json"
+    apply_summary: dict[str, object] | None = None
+    if apply_path.exists():
+        try:
+            ap = json.loads(_read_text(apply_path))
+            if isinstance(ap, dict):
+                apply_summary = {
+                    "decision": ap.get("decision"),
+                    "applied": ap.get("applied"),
+                    "integration_branch": ap.get("integration_branch"),
+                }
+        except (json.JSONDecodeError, OSError):
+            apply_summary = {"decision": "unreadable"}
+
+    mix = _load_active_agent_mix(_active_path(DEFAULT_ACTIVE_AGENT_MIX, repo_root=repo_root))
+    rolling_raw = mix.get("rolling") if isinstance(mix.get("rolling"), dict) else {}
+    rolling = {agent: _coerce_wu(rolling_raw.get(agent)) for agent in ACTIVE_LANE_AGENTS}
+
+    privacy_findings = audit_privacy_output(active_dir, out_path=None, repo_root=repo_root) if active_dir.exists() else []
+    privacy = {"clean": not privacy_findings, "issue_count": len(privacy_findings)}
+
+    evidence = {
+        "schema_version": 1,
+        "task_id": task_id,
+        "generated_at": _isoformat(now),
+        "topology": topology,
+        "gate_policy": "conservative",
+        "conservative_gate": {"ready": ready, "required_roles": gate_roles},
+        "patch": patch_summary,
+        "apply": apply_summary,
+        "work_units": rolling,
+        "privacy": privacy,
+        "ship": "not-triggered (use the existing human-gated ship path: ship-pr / make ship-arm)",
+    }
+    gate_dir = out_dir if out_dir is not None else active_dir / "gate_evidence" / task_id
+    gate_dir.mkdir(parents=True, exist_ok=True)
+    evidence_path = gate_dir / "evidence.json"
+    evidence_path.write_text(json.dumps(_sanitize_json_value(evidence), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    lines = [
+        f"# Gate evidence — {task_id}",
+        "",
+        f"- Generated: {_isoformat(now)}",
+        f"- Topology: `{topology}` (gate_policy: conservative)",
+        f"- Conservative gate: **{'READY' if ready else 'NOT READY'}**",
+        "",
+        "## Required gate roles",
+        "",
+        "| Role | Status | OK |",
+        "|---|---|---|",
+    ]
+    for item in gate_roles:
+        lines.append(f"| {item['role']} | {_sanitize_inline_text(str(item['status']))} | {'yes' if item['ok'] else 'no'} |")
+    if not gate_roles:
+        lines.append("| (none) | | |")
+    lines.extend(
+        [
+            "",
+            f"- Patch: `{patch_summary or 'none'}`",
+            f"- Apply: `{apply_summary or 'none'}`",
+            f"- Work units: claude {rolling['claude']}, codex {rolling['codex']}",
+            f"- Privacy: {'clean' if privacy['clean'] else str(privacy['issue_count']) + ' issue(s)'}",
+            "",
+            "Ship is NOT triggered here — use the existing human-gated path (`ship-pr` / `make ship-arm`).",
+        ]
+    )
+    (gate_dir / "evidence.md").write_text(_sanitize_dynamic_text("\n".join(lines)).rstrip() + "\n", encoding="utf-8")
+    _append_active_event(
+        _active_path(DEFAULT_ACTIVE_EVENTS, repo_root=repo_root),
+        {"event": "gate-evidence", "task_id": task_id, "ready": ready, "privacy_clean": privacy["clean"]},
+    )
+    return evidence_path, {"ready": ready, "required_roles": [str(i["role"]) for i in gate_roles], "privacy_clean": privacy["clean"]}
+
+
 def _active_role_status_ok(sessions: Sequence[dict[str, object]], role: str) -> bool:
     passing = {"pass", "passed", "approved", "ready-for-ship", "done", "clear"}
     for session in sessions:
@@ -12932,6 +13054,10 @@ def build_parser() -> argparse.ArgumentParser:
     active_apply.add_argument("--out", type=Path)
     active_apply.add_argument("--state", type=Path)
 
+    gate_evidence = sub.add_parser("gate-evidence", help="Bundle the active loop's Conservative-Gate evidence for a task (audit record; never ships).")
+    gate_evidence.add_argument("--task", required=True)
+    gate_evidence.add_argument("--out-dir", dest="out_dir", type=Path)
+
     active_prepare = sub.add_parser("active-worktree-prepare", help="Prepare an issue-linked worktree for an active-loop role.")
     active_prepare.add_argument("--issue")
     active_prepare.add_argument("--title")
@@ -13866,6 +13992,13 @@ def main(argv: list[str] | None = None) -> int:
                 f"-> {_repo_path(apply_result.report_path, ROOT_DIR)}\n"
             )
             return 0 if apply_result.decision in {"checked", "applied"} else 1
+        if args.command == "gate-evidence":
+            evidence_path, gate_summary = write_active_gate_evidence(task_id=args.task, out_dir=args.out_dir)
+            sys.stdout.write(
+                f"[OK] wrote {_repo_path(evidence_path, ROOT_DIR)} "
+                f"(ready={gate_summary['ready']}, privacy_clean={gate_summary['privacy_clean']})\n"
+            )
+            return 0
         if args.command == "active-worktree-prepare":
             out, _, _ = write_active_worktree_prepare(
                 issue=args.issue,
