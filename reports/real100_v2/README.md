@@ -8,6 +8,8 @@ Allowed files:
 - `question_distribution.aggregate.json`
 - `benchmark_tiers.aggregate.json`
 - `baseline.aggregate.json`
+- `metric_suite.aggregate.json`
+- `metric_suite.md`
 - `README.md`
 
 Raw eval summaries, traces, questions, answers, evidence, document IDs, chunk IDs, filenames, paths, parsed Markdown, converted PDFs, and per-case rows must remain ignored.

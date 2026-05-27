@@ -29,6 +29,7 @@ PR이 생기면 각 task에 링크를 추가한다. 예제 task는 `tasks/exampl
 | 16 | `T-2026-0016` | `review` | Maintainer -> Reviewer | overlap preflight implemented; PR #1543. |
 | 17 | `T-2026-0018` | `review` | Maintainer -> Reviewer | issue #1547 implemented; draft PR #1548. |
 | 18 | `T-2026-0019` | `review` | Maintainer -> CI Reviewer -> Reviewer | local implementation ready on issue #1549 branch. |
+| 19 | `T-2026-0020` | `review` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1544; v0 metric-suite report implementation ready for review. |
 
 ## Examples
 
@@ -262,6 +263,95 @@ make check-branch
 - Next action: reviewer check.
 - Next safe command: python3 scripts/agent_loop.py loop-state --task T-2026-0019 --from-git --out reports/agent_loop/loop_state.json
 - Reviewer focus: continuation command safety, no hidden remote mutation, dashboard clarity, branch/manifest/task state semantics.
+```
+
+## T-2026-0020 — v0 metric suite report
+
+- ID: T-2026-0020
+- Title: v0 metric suite report
+- Status: review
+- Owner role: Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer
+- Created: 2026-05-27
+- Last updated: 2026-05-27
+
+### Goal
+
+Turn the v0 metric-suite inventory into an executable aggregate-only report
+surface and add the missing numeric/date/condition slot exactness metric.
+
+### Scope
+
+- Add `eval/scorers/slot_metrics.py` and wire its aggregate into
+  `eval/run_eval.py`.
+- Extend commit-safe extraction for numeric/date/condition and comparison
+  coverage scalars.
+- Add `scripts/render_v0_metric_suite_report.py` with optional local
+  judge/human agreement CSV aggregation.
+- Update v0 metric-suite docs and focused tests.
+
+### Non-Goals
+
+- Do not claim RFP QA quality improved.
+- Do not synthesize `human_status` labels for judge agreement.
+- Do not commit raw private questions, answers, evidence, document IDs, chunk
+  IDs, filenames, paths, or per-case rows.
+
+### Acceptance Criteria
+
+- [x] Numeric/date/condition slot exactness appears in per-case and run-level
+  metrics.
+- [x] v0 report renders all eight metric families and marks data-dependent
+  gaps.
+- [x] Privacy-safe aggregate/report generation is tested.
+- [x] Branch and issue convention pass.
+
+### Validation Commands
+
+```bash
+python3 -m pytest tests/test_slot_metrics.py tests/test_v0_metric_suite_report.py tests/test_extract_aggregate_metadata_field_calibration.py -q
+python3 -m py_compile eval/scorers/slot_metrics.py scripts/render_v0_metric_suite_report.py eval/scorers/case.py eval/run_eval.py scripts/run_real_eval_delta.py
+python3 scripts/render_v0_metric_suite_report.py --aggregate reports/real100_v2/baseline.aggregate.json --question-distribution reports/real100_v2/question_distribution.aggregate.json --out-json reports/real100_v2/metric_suite.aggregate.json --out-md reports/real100_v2/metric_suite.md
+python3 scripts/check_doc_links.py --check-all --paths docs/evaluation/agent-gated-rfp-eval-loop.md docs/evaluation/v0-metric-suite-inventory.md docs/plans/T-2026-0020-v0-metric-suite-report.md tasks/queue.md reports/real100_v2/README.md reports/real100_v2/metric_suite.md
+git diff --check
+make check-branch
+```
+
+### Evidence Required
+
+- Focused pytest output.
+- Py compile output.
+- Generated `reports/real100_v2/metric_suite.*` output.
+- Targeted doc link check.
+
+### Failure Conditions
+
+- Stop if wording implies a performance claim.
+- Stop if generated artifacts contain raw private payload or exact local paths.
+
+### Related Plan / Issue / PR Links
+
+- Plan: [`docs/plans/T-2026-0020-v0-metric-suite-report.md`](../docs/plans/T-2026-0020-v0-metric-suite-report.md)
+- Issue: [#1544](https://github.com/hskim-solv/BidMate-DocAgent/issues/1544)
+- PR: [#1546](https://github.com/hskim-solv/BidMate-DocAgent/pull/1546)
+
+### Handoff Notes
+
+```markdown
+## Session Handoff — 2026-05-27 KST
+
+- Role: Implementer
+- Lifecycle stage: review
+- Branch / worktree: feat/issue-1544-v0-metric-suite-report / /Users/hskim/.codex/worktrees/e622/BidMate-DocAgent
+- Issue / PR: #1544 / PR #1546
+- Task: T-2026-0020
+- Current status: implementation complete; ready for review.
+- Files touched: .gitignore, eval/scorers/slot_metrics.py, eval/scorers/__init__.py, eval/scorers/case.py, eval/run_eval.py, scripts/_utils.py, scripts/run_real_eval_delta.py, scripts/render_v0_metric_suite_report.py, docs/evaluation/v0-metric-suite-inventory.md, docs/evaluation/agent-gated-rfp-eval-loop.md, reports/real100_v2/README.md, reports/real100_v2/baseline.aggregate.json, reports/real100_v2/metric_suite.aggregate.json, reports/real100_v2/metric_suite.md, tests.
+- Decisions made: implement metric coverage, not performance movement; keep human/judge labels local-only.
+- Eval surface: private real-eval aggregate-only; no performance claim.
+- Commands run: gh issue create; git switch -c feat/issue-1544-v0-metric-suite-report; python3 -m pytest tests/test_slot_metrics.py tests/test_v0_metric_suite_report.py tests/test_extract_aggregate_metadata_field_calibration.py -q; python3 -m py_compile eval/scorers/slot_metrics.py scripts/render_v0_metric_suite_report.py eval/scorers/case.py eval/run_eval.py scripts/run_real_eval_delta.py; python3 scripts/render_v0_metric_suite_report.py --aggregate reports/real100_v2/baseline.aggregate.json --question-distribution reports/real100_v2/question_distribution.aggregate.json --out-json reports/real100_v2/metric_suite.aggregate.json --out-md reports/real100_v2/metric_suite.md; python3 scripts/check_doc_links.py --check-all --paths docs/evaluation/agent-gated-rfp-eval-loop.md docs/evaluation/v0-metric-suite-inventory.md docs/plans/T-2026-0020-v0-metric-suite-report.md tasks/queue.md reports/real100_v2/README.md reports/real100_v2/metric_suite.md; git diff --check; make check-branch.
+- Results: all validation commands passed; generated metric suite report shows 7 present, 1 partial, 0 missing after private real100_v2 aggregate regeneration.
+- Next safe command: git diff --stat
+- Reviewer focus: no raw private content, no performance claim, present/partial boundary for data-dependent families.
 ```
 
 ## T-2026-0014 — Agent gate surface alignment

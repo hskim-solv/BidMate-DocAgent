@@ -24,6 +24,7 @@ from scripts.run_real_eval_delta import (
     FORBIDDEN_KEYS,
     SAFE_CALIBRATION_KEYS,
     SAFE_METADATA_FIELD_BUCKET_KEYS,
+    SAFE_SLOT_TYPE_KEYS,
     extract_aggregate,
 )
 
@@ -181,6 +182,60 @@ class TestCalibrationSubKeyWhitelistMatchesAdr(unittest.TestCase):
         self.assertEqual(
             tuple(SAFE_CALIBRATION_KEYS),
             ("ece", "brier", "n", "num_bins"),
+        )
+
+
+class TestNumericDateConditionExtractor(unittest.TestCase):
+    def test_slot_metrics_pass_through_with_safe_type_counts(self) -> None:
+        summary = _minimal_summary(
+            numeric_date_condition_accuracy=0.75,
+            numeric_date_condition_slot_count=8,
+            numeric_date_condition_type_counts={
+                "amount": 4,
+                "date": 2,
+                "numeric_or_score": 2,
+                "secret_type": 99,
+            },
+            numeric_date_condition_type_correct_counts={
+                "amount": 3,
+                "date": 2,
+                "numeric_or_score": 1,
+                "secret_type": 99,
+            },
+        )
+
+        out = extract_aggregate(summary)
+
+        self.assertEqual(out["numeric_date_condition_accuracy"], 0.75)
+        self.assertEqual(out["numeric_date_condition_slot_count"], 8)
+        self.assertEqual(
+            out["numeric_date_condition_type_counts"],
+            {"amount": 4, "date": 2, "numeric_or_score": 2},
+        )
+        self.assertEqual(
+            out["numeric_date_condition_type_correct_counts"],
+            {"amount": 3, "date": 2, "numeric_or_score": 1},
+        )
+
+    def test_comparison_coverage_metrics_pass_through(self) -> None:
+        summary = _minimal_summary(
+            comparison_target_recall=1.0,
+            comparison_target_full_coverage_rate=1.0,
+            comparison_pool_recall=0.5,
+            comparison_pool_full_coverage_rate=0.0,
+        )
+
+        out = extract_aggregate(summary)
+
+        self.assertEqual(out["comparison_target_recall"], 1.0)
+        self.assertEqual(out["comparison_target_full_coverage_rate"], 1.0)
+        self.assertEqual(out["comparison_pool_recall"], 0.5)
+        self.assertEqual(out["comparison_pool_full_coverage_rate"], 0.0)
+
+    def test_safe_slot_type_keys_match_metric_contract(self) -> None:
+        self.assertEqual(
+            tuple(SAFE_SLOT_TYPE_KEYS),
+            ("amount", "date", "numeric_or_score", "condition"),
         )
 
 

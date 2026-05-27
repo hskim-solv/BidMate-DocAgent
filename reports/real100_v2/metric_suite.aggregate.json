@@ -1,0 +1,170 @@
+{
+  "ci": {
+    "abstention": {
+      "alpha": 0.05,
+      "ci_hi": 0.5714285714285714,
+      "ci_lo": 0.21428571428571427,
+      "mean": 0.39285714285714285,
+      "n": 28,
+      "num_resamples": 1000
+    },
+    "citation_precision": {
+      "alpha": 0.05,
+      "ci_hi": 0.18421207545518206,
+      "ci_lo": 0.1102357974439776,
+      "mean": 0.14633228291316525,
+      "n": 272,
+      "num_resamples": 1000
+    },
+    "claim_citation_alignment": {
+      "alpha": 0.05,
+      "ci_hi": 0.919113070539419,
+      "ci_lo": 0.8630705394190872,
+      "mean": 0.8910788381742739,
+      "n": 241,
+      "num_resamples": 1000
+    },
+    "comparison_pool_recall": {
+      "alpha": 0.05,
+      "ci_hi": 1.0,
+      "ci_lo": 1.0,
+      "mean": 1.0,
+      "n": 13,
+      "num_resamples": 1000
+    },
+    "comparison_target_recall": {
+      "alpha": 0.05,
+      "ci_hi": 1.0,
+      "ci_lo": 1.0,
+      "mean": 1.0,
+      "n": 13,
+      "num_resamples": 1000
+    },
+    "groundedness": {
+      "alpha": 0.05,
+      "ci_hi": 0.8235294117647058,
+      "ci_lo": 0.7279411764705882,
+      "mean": 0.7757352941176471,
+      "n": 272,
+      "num_resamples": 1000
+    }
+  },
+  "claim_boundary": {
+    "performance_claim": false,
+    "purpose": "metric_suite_adoption_and_gap_tracking",
+    "requires_private_real_eval_delta_for_performance_claim": true
+  },
+  "families": {
+    "abstention_calibration": {
+      "metrics": {
+        "abstention": 0.39285714285714285,
+        "abstention_calibration": null,
+        "abstention_outcomes": {
+          "boundary_partial": 2,
+          "correct_refusal": 9,
+          "incorrect_answer": 17
+        }
+      },
+      "notes": [
+        "confidence_calibration_not_populated"
+      ],
+      "status": "present"
+    },
+    "citation_precision": {
+      "metrics": {
+        "citation_precision": 0.14633228291316525
+      },
+      "notes": [],
+      "status": "present"
+    },
+    "claim_citation_alignment": {
+      "metrics": {
+        "claim_citation_alignment": 0.8910788381742739
+      },
+      "notes": [],
+      "status": "present"
+    },
+    "comparison_coverage": {
+      "metrics": {
+        "comparison_pool_full_coverage_rate": null,
+        "comparison_pool_recall": 1.0,
+        "comparison_target_full_coverage_rate": null,
+        "comparison_target_recall": 1.0
+      },
+      "notes": [],
+      "status": "present"
+    },
+    "grounding": {
+      "metrics": {
+        "citation_grounding": null,
+        "citation_page_precision": null,
+        "citation_region_precision": null,
+        "groundedness": 0.7757352941176471
+      },
+      "notes": [
+        "page_region_grounding_not_populated"
+      ],
+      "status": "present"
+    },
+    "human_judge_agreement": {
+      "metrics": {},
+      "notes": [
+        "requires_private_label_csv_or_approved_judge_aggregate"
+      ],
+      "status": "partial"
+    },
+    "numeric_date_condition_accuracy": {
+      "metrics": {
+        "numeric_date_condition_accuracy": null,
+        "numeric_date_condition_slot_count": null,
+        "numeric_date_condition_type_counts": null,
+        "question_type_counts": {
+          "amount_extraction": 50,
+          "date_extraction": 12,
+          "multi_doc_amount_extraction": 13,
+          "score_extraction": 29,
+          "table_heavy_score_or_amount": 22
+        }
+      },
+      "notes": [
+        "requires_eval_regeneration_with_issue_1544_scorer"
+      ],
+      "status": "missing"
+    },
+    "retrieval_recall": {
+      "metrics": {
+        "chunk_mrr": 0.25674019607843146,
+        "chunk_ndcg": 0.28257827869419244,
+        "chunk_recall_at_10": 0.4338235294117647,
+        "chunk_recall_at_5": 0.3694852941176471
+      },
+      "notes": [],
+      "status": "present"
+    }
+  },
+  "privacy": {
+    "aggregate_only": true,
+    "chunk_ids_omitted": true,
+    "doc_ids_omitted": true,
+    "filenames_omitted": true,
+    "paths_omitted": true,
+    "per_case_rows_omitted": true,
+    "raw_answers_omitted": true,
+    "raw_evidence_omitted": true,
+    "raw_questions_omitted": true,
+    "raw_text_omitted": true
+  },
+  "profile_type": "v0_metric_suite_report",
+  "readiness": {
+    "all_present": false,
+    "missing": 1,
+    "partial": 1,
+    "present": 6
+  },
+  "schema_version": 1,
+  "source": {
+    "judge_agreement": null,
+    "primary_aggregate": "private_real_eval_aggregate",
+    "question_distribution": "private_real_eval_question_distribution"
+  }
+}

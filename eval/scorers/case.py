@@ -25,6 +25,7 @@ from eval.scorers.chunk_metrics import (
 )
 from eval.scorers.citation import score_citation_coverage, score_citation_grounding
 from eval.scorers.format import score_answer_format
+from eval.scorers.slot_metrics import score_numeric_date_condition_slots
 
 
 def _compact_retrieved_chunks(diagnostics: dict[str, Any]) -> list[dict[str, Any]]:
@@ -91,6 +92,7 @@ def score_case(
     answer = answer_to_text(prediction)
     evidence_text = " ".join(str(item.get("text") or "") for item in evidence)
     combined_text = " ".join([answer, evidence_text])
+    slot_exactness = score_numeric_date_condition_slots(expected_terms, combined_text)
     diagnostics = prediction.get("diagnostics") or {}
     plan = prediction.get("plan") or {}
     analysis = prediction.get("analysis") or {}
@@ -241,6 +243,7 @@ def score_case(
         "retrieved_chunks": retrieved_chunks,
         "retrieved_chunk_ids": retrieved_chunk_ids,
         **chunk_metrics,
+        **slot_exactness,
         "doc_match": doc_match,
         "term_match": term_match,
         "citation_term_match": citation_term_match,
