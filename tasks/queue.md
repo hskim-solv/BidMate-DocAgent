@@ -38,8 +38,8 @@ PR이 생기면 각 task에 링크를 추가한다. 예제 task는 `tasks/exampl
 | 25 | `T-2026-0025` | `done` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | merged in PR #1579; named MiniLM target landed. |
 | 26 | `T-2026-0026` | `todo` | Planner -> Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1580; Chroma vector-store baseline separated from embedding-model baselines. |
 | 27 | `T-2026-0027` | `review` | Planner -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1584; prioritized RAG performance experiment stack captured. |
-| 28 | `T-2026-0028` | `review` | Evaluator -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1618; real100_v2-only guard and aggregate packet ready for benchmark/privacy review. |
-| 29 | `T-2026-0029` | `backlog` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | P0; blocked on T-2026-0028 baseline refresh. |
+| 28 | `T-2026-0028` | `done` | Evaluator -> Benchmark Auditor -> Privacy Auditor -> Reviewer | merged in PR #1619; real100_v2-only guard and aggregate packet landed. |
+| 29 | `T-2026-0029` | `ready` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | P0 diagnostic-only; use real100_v2 aggregate/index evidence and preserve page-metadata blocker. |
 | 30 | `T-2026-0030` | `backlog` | Implementer -> CI Reviewer -> Benchmark Auditor -> Reviewer | P0; blocked on T-2026-0028 latency provenance. |
 | 31 | `T-2026-0031` | `backlog` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | P1; blocked on retrieval diagnostics from T-2026-0029. |
 | 32 | `T-2026-0032` | `backlog` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | P1; blocked on candidate-pool diagnostics from T-2026-0029. |
@@ -2519,14 +2519,14 @@ against the right corpus, index, backend, and metric surface.
 
 ### Acceptance Criteria
 
-- [ ] Aggregate packet reports answerable/unanswerable counts, explicit gold
+- [x] Aggregate packet reports answerable/unanswerable counts, explicit gold
   evidence coverage, multi-document/multi-chunk counts, page/page_span coverage,
   and embedding/backend provenance.
-- [ ] Hashing, MiniLM, and BGE-M3 surfaces are not compared unless dataset,
+- [x] Hashing, MiniLM, and BGE-M3 surfaces are not compared unless dataset,
   config, index, command, and provenance match the claim wording.
-- [ ] `make real-eval-v2-guard` passes and blocks stale `real100`/221 evidence
+- [x] `make real-eval-v2-guard` passes and blocks stale `real100`/221 evidence
   from the task scope.
-- [ ] Any committed artifact passes privacy checks and omits raw questions,
+- [x] Any committed artifact passes privacy checks and omits raw questions,
   answers, evidence, filenames, local paths, `doc_id`, and `chunk_id`.
 - [x] The handoff names the next task: `T-2026-0029`, `T-2026-0030`, or a no-go
   blocker.
@@ -2555,7 +2555,7 @@ make check-branch
 
 - Plan: [`docs/plans/T-2026-0028-refresh-private-coverage-semantic-baselines.md`](../docs/plans/T-2026-0028-refresh-private-coverage-semantic-baselines.md)
 - Issue: [#1618](https://github.com/hskim-solv/BidMate-DocAgent/issues/1618)
-- PR: TBD
+- PR: [#1619](https://github.com/hskim-solv/BidMate-DocAgent/pull/1619)
 
 ### Handoff Notes
 
@@ -2572,6 +2572,7 @@ make check-branch
 - Decisions made: legacy real100/v1/221/kordoc evidence is banned for future tasks until explicit maintainer re-enable; T-2026-0029 can proceed only as diagnostic work unless v2 page metadata is repaired or explicitly scoped out.
 - Commands run: make ship-start TITLE="Refresh private coverage and semantic baselines" TYPE=eval; make check-branch; make agent-loop-active-start ISSUE=1618 ACTIVE_START_RUNNER=0; REAL_EVAL_ROOT=/Users/hskim/Desktop/projects/BidMate-DocAgent make real-eval-v2-check; make real-eval-v2-guard; make real-eval
 - Results: branch/issue setup passed; v2 path check passed; v2 guard passed; default legacy make real-eval intentionally fails closed.
+- Merge result: PR #1619 merged; issue #1618 closed.
 - Validation evidence: real-eval-v2-check found v2 config/data/docs/index/report/eval summary/baseline present; v2 guard passed; legacy real-eval/minilm/semantic targets fail closed; privacy and claim audits passed.
 - Blockers: claim-bearing page/citation work remains blocked by real100_v2 page metadata ready rate 0.0.
 - Next safe command: python3 -m pytest tests/test_real100_v2_guard.py tests/test_smoke_real_script.py -q
@@ -2585,15 +2586,17 @@ make check-branch
 
 - ID: T-2026-0029
 - Title: Build retrieval diagnostic workbench
-- Status: backlog
+- Status: ready
 - Priority: P0
 - Owner role: Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer
 - Created: 2026-05-27
-- Last updated: 2026-05-27
+- Last updated: 2026-05-28
 
 ### Goal
 
-Make retrieval failures explainable before changing retrieval behavior.
+Make `real100_v2` retrieval failures explainable before changing retrieval
+behavior. This is diagnostic-only until the v2 page metadata blocker is repaired
+or explicitly scoped out.
 
 ### Scope
 
@@ -2603,13 +2606,18 @@ Make retrieval failures explainable before changing retrieval behavior.
   candidate counts, and query-type slices.
 - Separate retrieval misses from evaluation-label gaps and answer-generation
   failures.
-- Use page-aware private indexes from the refreshed baseline when available.
+- Use only `real100_v2` aggregate/index evidence. Legacy `real100`/v1/221/kordoc
+  evidence remains banned.
+- Preserve the known `real100_v2` page metadata ready-rate 0.0 blocker instead
+  of filling it with old evidence.
 
 ### Non-Goals
 
 - Do not change ranking behavior.
 - Do not add reranking, query rewrite, or context packing.
 - Do not expose private case text or raw identifiers.
+- Do not use legacy `real100`/v1/221/kordoc aggregate evidence.
+- Do not claim page/citation readiness while v2 page metadata coverage is 0.0.
 
 ### Acceptance Criteria
 
@@ -2618,12 +2626,15 @@ Make retrieval failures explainable before changing retrieval behavior.
 - [ ] Output is aggregate-only and commit-safe.
 - [ ] The report can decide whether `T-2026-0031` or `T-2026-0032` is the next
   best experiment.
+- [ ] The report explicitly carries forward the v2 page metadata blocker and
+  does not use old `real100` evidence as a substitute.
 
 ### Validation Commands
 
 ```bash
 python3 -m pytest -q tests/test_render_multi_chunk_evidence_failures.py tests/test_render_multi_chunk_retrieval_strategy.py
-python3 <new-or-existing-retrieval-diagnostic-script> --summary <aggregate-input> --out <aggregate-output>
+make real-eval-v2-guard
+python3 <new-or-existing-retrieval-diagnostic-script> --summary reports/real100_v2/baseline.aggregate.json --out <aggregate-output>
 python3 scripts/check_doc_links.py --check-all --paths tasks/queue.md <plan-path> <report-path>
 git diff --check
 make check-branch
@@ -2634,6 +2645,8 @@ make check-branch
 - Aggregate diagnostic report with no raw private text, IDs, filenames, or
   paths.
 - Reviewer note explaining which failure bucket is dominant.
+- Explicit statement that `real100_v2` page metadata coverage is a blocker for
+  claim-bearing page/citation work.
 
 ### Related Plan / Issue / PR Links
 
