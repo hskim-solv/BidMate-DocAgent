@@ -1113,6 +1113,47 @@ def test_continue_loop_redacts_real100_source_when_applying_queue_plan(tmp_path:
     assert "multi_chunk_evidence_failures.aggregate.json" in queue
 
 
+def test_continue_loop_skips_applying_existing_queued_candidate(tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path, task_id="T-2026-0001")
+    queue_path = repo / "tasks" / "queue.md"
+    queue_path.write_text(
+        queue_path.read_text(encoding="utf-8")
+        + "\n## T-2026-0002 — Use multi-chunk evidence analysis for the next retrieval follow-up\n\n"
+        + "- ID: T-2026-0002\n"
+        + "- Title: Use multi-chunk evidence analysis for the next retrieval follow-up\n"
+        + "- Status: backlog\n",
+        encoding="utf-8",
+    )
+    pr_state = repo / "reports" / "agent_loop" / "pr_state.json"
+    pr_state.parent.mkdir(parents=True, exist_ok=True)
+    pr_state.write_text("[]", encoding="utf-8")
+    real100 = repo / "reports" / "real100"
+    real100.mkdir(parents=True)
+    (real100 / "multi_chunk_evidence_failures.aggregate.json").write_text(
+        json.dumps(
+            {
+                "population": {
+                    "multi_chunk_gold_cases": 9,
+                    "multi_chunk_top10_evidence_failures": 7,
+                },
+                "expected_impact": {"unknown_due_to_limited_depth": 6},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    _, rendered = agent_loop.write_continue_loop(
+        pr_json=pr_state,
+        real100_dir=Path("reports/real100"),
+        repo_root=repo,
+    )
+
+    queue = queue_path.read_text(encoding="utf-8")
+    assert "Queue/plan application: `skipped-existing-task`" in rendered
+    assert "Task id: `T-2026-0002`" in rendered
+    assert queue.count("Use multi-chunk evidence analysis for the next retrieval follow-up") == 2
+
+
 def test_batch_plan_rejects_output_outside_agent_loop_reports(tmp_path: Path) -> None:
     tasks_dir = tmp_path / "reports" / "agent_loop" / "codex_tasks"
     tasks_dir.mkdir(parents=True)

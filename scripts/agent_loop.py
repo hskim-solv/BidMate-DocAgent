@@ -1954,16 +1954,26 @@ def write_continue_loop(
     briefs = sorted(tasks_dir.glob("*.md"))
     if not briefs:
         raise ValueError("planner did not produce a task brief")
-    chosen_task_id = _next_task_id(repo_root) if task_id == DEFAULT_DRAFT_TASK_ID else task_id
+    first_brief = _parse_task_brief(_sanitize_dynamic_text(_read_text(briefs[0])))
+    existing_task = _find_existing_task_by_title(first_brief["title"], repo_root=repo_root)
+    chosen_task_id = (
+        existing_task.task_id
+        if existing_task is not None
+        else _next_task_id(repo_root)
+        if task_id == DEFAULT_DRAFT_TASK_ID
+        else task_id
+    )
     draft = draft_task_from_brief(task_brief=briefs[0], task_id=chosen_task_id, repo_root=repo_root)
     promote_out, _ = write_promote_draft(repo_root=repo_root)
     apply_out: Path | None = None
     apply_result = "skipped"
-    if apply_queue_plan:
+    if existing_task is not None:
+        apply_result = "skipped-existing-task"
+    elif apply_queue_plan:
         apply_out, _ = write_apply_queue_plan(confirm_human_approved=True, repo_root=repo_root)
         apply_result = "applied"
 
-    loop_task = chosen_task_id if apply_queue_plan else None
+    loop_task = chosen_task_id if apply_queue_plan or existing_task is not None else None
     loop_out, _ = write_loop_state(task_id=loop_task, batch=batch_json, repo_root=repo_root)
     rendered = render_continue_loop(
         pr_state=pr_state,
@@ -2005,6 +2015,17 @@ def _next_task_id(repo_root: Path) -> str:
     queue = repo_root / QUEUE_PATH
     existing = [int(match.group(1)) for match in re.finditer(r"\bT-2026-(\d{4})\b", _read_text(queue) if queue.exists() else "")]
     return f"T-2026-{(max(existing) + 1 if existing else 1):04d}"
+
+
+def _find_existing_task_by_title(title: str, *, repo_root: Path) -> TaskEntry | None:
+    queue = repo_root / QUEUE_PATH
+    if not queue.exists():
+        return None
+    normalized_title = _sanitize_inline_text(title).casefold()
+    for task in parse_task_entries(_read_text(queue)):
+        if _sanitize_inline_text(task.title).casefold() == normalized_title:
+            return task
+    return None
 
 
 def _continue_loop_next_command(
