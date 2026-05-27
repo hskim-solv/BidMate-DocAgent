@@ -189,7 +189,7 @@ or latency improvement.
 ## Session Handoff - 2026-05-27 20:00 KST
 
 - Role: Planner
-- Branch / worktree: docs/issue-1584-rag-performance-experiment-stack / /Users/hskim/.codex/worktrees/3005/BidMate-DocAgent
+- Branch / worktree: docs/issue-1584-rag-performance-experiment-stack / Codex worktree
 - Issue / PR: #1584 / #1587
 - Task: T-2026-0027
 - Current status: task stack docs implemented and validation passed.
