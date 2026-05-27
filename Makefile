@@ -21,7 +21,7 @@
 .PHONY: eval smoke reproduce benchmark pareto cost-frontier korean-public-fetch korean-public-eval harness-smoke harness-ablation harness-compare
 
 # Real-data eval cycle (private; ADR 0005 commit boundary).
-.PHONY: real-eval real-eval-check real-eval-inventory real-eval-semantic real-eval-page-aware real-eval-delta real-eval-baseline-update real-eval-history-render real-eval-with-judge harness-real
+.PHONY: real-eval real-eval-check real-eval-inventory real-eval-minilm real-eval-semantic real-eval-page-aware real-eval-delta real-eval-baseline-update real-eval-history-render real-eval-with-judge harness-real
 
 # Real-data case proposer cycle (ADR 0029; gitignored I/O).
 .PHONY: case-propose case-propose-metadata case-review case-promote
@@ -995,10 +995,21 @@ real-eval:
 	bash scripts/smoke_real.sh
 
 # Semantic variant of real-eval (issue #1295): builds a sentence-transformers
-# BGE-M3 index into a SEPARATE dir (real100_m3) so the canonical hashing
-# real100 index is untouched. Requires the model to be downloadable/cached
-# (not offline/CI-safe). Use this — not `real-eval` — when measuring dense or
-# hybrid retrieval recall, since hashing embeddings carry no semantic signal.
+# MiniLM index into a SEPARATE dir (real100_minilm) so the canonical hashing
+# real100 index is untouched. Requires the model to be downloadable/cached.
+real-eval-minilm:
+	EMBEDDING_BACKEND=sentence-transformers \
+	  MODEL=sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 \
+	  REAL_EVAL_INDEX_DIR=data/index/real100_minilm \
+	  OUTPUT_DIR=outputs/real100_minilm \
+	  REAL_EVAL_REPORT_DIR=reports/real100_minilm \
+	  bash scripts/smoke_real.sh
+
+# Semantic comparison variant of real-eval (issue #1295): builds a BGE-M3 index
+# into a SEPARATE dir (real100_m3) so the canonical hashing real100 index is
+# untouched. Requires the model to be downloadable/cached (not offline/CI-safe).
+# Use semantic targets — not `real-eval` — when measuring dense or hybrid
+# retrieval recall, since hashing embeddings carry no semantic signal.
 real-eval-semantic:
 	EMBEDDING_BACKEND=sentence-transformers MODEL=BAAI/bge-m3 \
 	  REAL_EVAL_INDEX_DIR=data/index/real100_m3 \
