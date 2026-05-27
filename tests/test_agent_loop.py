@@ -2512,6 +2512,42 @@ def test_active_loop_blocks_ship_when_reviewer_or_ci_has_not_passed(monkeypatch,
     assert calls == []
 
 
+def test_active_loop_execute_blocks_on_readiness_score_blockers(monkeypatch, tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    registry = repo / "reports" / "agent_loop" / "active" / "session_registry.json"
+    registry.parent.mkdir(parents=True, exist_ok=True)
+    registry.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "topology": "four-role",
+                "sessions": [
+                    {"session_id": "reviewer", "role": "Reviewer", "status": "passed", "last_heartbeat": "2999-01-01T00:00:00Z"},
+                    {"session_id": "ci-eval-auditor", "role": "CI/Eval Auditor", "status": "passed", "last_heartbeat": "2999-01-01T00:00:00Z"},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    calls: list[list[str]] = []
+
+    def fake_run(cmd, **kwargs):  # type: ignore[no-untyped-def]
+        calls.append(list(cmd))
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(agent_loop.subprocess, "run", fake_run)
+    monkeypatch.setattr(agent_loop, "_current_branch", lambda repo_root: "chore/issue-9999-active-loop")
+    monkeypatch.setattr(agent_loop, "build_overlap_preflight", lambda issue, branch, repo_root: _clear_overlap_report(issue, branch))
+    monkeypatch.setattr(agent_loop, "audit_privacy_output", lambda *args, **kwargs: [])
+
+    result = agent_loop.write_active_loop(execute=True, repo_root=repo)
+
+    assert result.decision == "blocked"
+    assert any("readiness-score is blocked" in blocker for blocker in result.blockers)
+    assert any("changed files are missing" in blocker for blocker in result.blockers)
+    assert calls == []
+
+
 def test_active_loop_blocks_overlap_and_recovery_needed_leases(monkeypatch, tmp_path: Path) -> None:
     repo = _write_repo(tmp_path)
     lease_path = repo / "reports" / "agent_loop" / "active" / "leases.json"

@@ -8349,7 +8349,11 @@ def write_active_loop(
         repo_root=repo_root,
     )
     if readiness.blockers:
-        warnings.append(f"readiness-score is {readiness.decision}: {', '.join(readiness.blockers)}")
+        message = f"readiness-score is {readiness.decision}: {', '.join(readiness.blockers)}"
+        if execute:
+            blockers.append(message)
+        else:
+            warnings.append(message)
     else:
         evidence.append(f"readiness-score={readiness.score}")
 
