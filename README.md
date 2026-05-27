@@ -25,7 +25,7 @@
 
 <details><summary><b>측정 상세 (over-claim 가드 — 펼치기)</b></summary>
 
-> **측정**: 공개 가능한 작은 fixture는 `make smoke`와 PR CI에서 평가 harness, metrics schema, latency SLO가 깨지지 않는지 확인하는 용도다. 실제 성능 수치는 private/internal eval set aggregate로 관리하며, 비공개 real-eval (100-doc RFP, n=221 hardcase, [ADR 0052](docs/adr/0052-real-eval-hardcase-expansion-to-200.md))은 hardcase 스트레스와 distinguishing-power 분석에 사용한다. Goodhart 폐루프 ([ADR 0053](docs/adr/0053-distinguishing-power-floor-ablations.md) 첫 측정 발견 → [ADR 0054](docs/adr/0054-conditional-on-answer-scorer-semantics.md) scorer 정정 → CI-aware 판정, [reports/real100/distinguishing_power.md](reports/real100/distinguishing_power.md)). 공개 fixture smoke + private/internal eval 분리 평가 ([ADR 0005](docs/adr/0005-eval-split-public-synthetic-private-local.md)), 79개 설계 결정 (ADR).
+> **측정**: 공개 가능한 작은 fixture는 `make smoke`와 PR CI에서 평가 harness, metrics schema, latency SLO가 깨지지 않는지 확인하는 용도다. 실제 성능 수치는 private/internal eval set aggregate로 관리하며, 비공개 real-eval (100-doc RFP, n=221 hardcase, [ADR 0052](docs/adr/0052-real-eval-hardcase-expansion-to-200.md))은 hardcase 스트레스와 distinguishing-power 분석에 사용한다. Goodhart 폐루프 ([ADR 0053](docs/adr/0053-distinguishing-power-floor-ablations.md) 첫 측정 발견 → [ADR 0054](docs/adr/0054-conditional-on-answer-scorer-semantics.md) scorer 정정 → CI-aware 판정, [reports/real100/distinguishing_power.md](reports/real100/distinguishing_power.md)). 공개 fixture smoke + private/internal eval 분리 평가 ([ADR 0005](docs/adr/0005-eval-split-public-synthetic-private-local.md)), 80개 설계 결정 (ADR).
 
 </details>
 
@@ -185,7 +185,7 @@ python3 scripts/check_latency_slo.py --config eval/config.yaml --summary reports
 | AI-agent 장기 작업 운영 모델 | [`docs/operations/ai-engineering-operating-system.md`](docs/operations/ai-engineering-operating-system.md) |
 | Persistent task queue | [`tasks/queue.md`](tasks/queue.md) |
 | Eval surface / claim boundary | [`docs/evaluation/surface-map.md`](docs/evaluation/surface-map.md) |
-| ADR 인덱스 (79개 결정) | [`docs/adr/README.md`](docs/adr/README.md) |
+| ADR 인덱스 (80개 결정) | [`docs/adr/README.md`](docs/adr/README.md) |
 | 분석 변형 결과 + benchmarking + latency 비교 | [`docs/benchmarking.md`](docs/benchmarking.md) / [`docs/eval/ablation-results.md`](docs/eval/ablation-results.md) |
 | 설계 배경 (한국 RFP 적응 5가지) | [`docs/design-background.md`](docs/design-background.md) |
 | 답변 출력 정책 + Evidence boundary + Baseline policy | [`docs/agentic/answer-policy.md`](docs/agentic/answer-policy.md) |
