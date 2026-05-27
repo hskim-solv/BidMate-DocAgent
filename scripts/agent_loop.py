@@ -586,6 +586,17 @@ class ActiveCodexRunnerResult:
     warnings: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class ActiveApplyResult:
+    report_path: Path
+    state_path: Path
+    decision: str
+    integration_branch: str
+    applied: bool
+    blockers: tuple[str, ...]
+    warnings: tuple[str, ...]
+
+
 def _repo_path(path: Path, repo_root: Path) -> str:
     try:
         return path.resolve().relative_to(repo_root.resolve()).as_posix()
@@ -10563,6 +10574,165 @@ def teardown_scratch_worktree(
     return warnings
 
 
+def _integration_worktree_paths(task_id: str, *, repo_root: Path) -> tuple[Path, str]:
+    """Return (worktree_path, branch) for a task's integration target (issue #1607)."""
+    if not TASK_ID_RE.fullmatch(task_id):
+        raise ValueError("task id must match T-YYYY-NNNN")
+    path = repo_root / ".claude" / "worktrees" / f"{task_id}-integration"
+    branch = f"feature/{task_id}-integration"
+    return path, branch
+
+
+def write_active_apply(
+    *,
+    patch: Path | None = None,
+    base: str = "origin/main",
+    execute: bool = False,
+    out: Path | None = None,
+    state: Path | None = None,
+    repo_root: Path = ROOT_DIR,
+    git_runner=None,
+) -> ActiveApplyResult:
+    """Orchestrator-only: apply a codex patch artifact to its integration branch.
+
+    Reads the (already privacy-scrubbed) patch artifact produced by PR-A, ensures the
+    integration worktree exists, and gates on ``git apply --check``. Only on ``--execute``
+    AND a clean check does it apply + commit to ``feature/T-N-integration``. It NEVER
+    touches main and never pushes/ships. Fail-closed: a check failure blocks with no
+    mutation (issue #1607). The git subprocess is injectable for tests.
+    """
+    run = git_runner or _git_worktree_runner
+    now = datetime.now(timezone.utc)
+    active_dir = repo_root / "reports" / "agent_loop" / "active"
+    patch_path = patch if patch is not None else active_dir / "patch_runs" / "implementer" / "patch_artifact.json"
+    out_path = out if out is not None else active_dir / "active_apply.md"
+    state_path = state if state is not None else active_dir / "active_apply_state.json"
+
+    blockers: list[str] = []
+    warnings: list[str] = []
+    task_id: str | None = None
+    integration_branch = ""
+    diff_text = ""
+    applied = False
+    decision = "blocked"
+
+    if not patch_path.exists():
+        blockers.append(f"patch artifact not found: {_repo_path(patch_path, repo_root)}")
+    else:
+        artifact: object = None
+        try:
+            artifact = json.loads(_read_text(patch_path))
+        except (json.JSONDecodeError, OSError):
+            blockers.append("patch artifact is not valid JSON")
+        if isinstance(artifact, dict):
+            verdict = str(artifact.get("verdict") or "")
+            diff_text = str(artifact.get("diff") or "")
+            raw_task = str(artifact.get("task_id") or "")
+            if verdict != "proposed":
+                blockers.append(f"patch artifact verdict is '{verdict}', expected 'proposed'")
+            if not diff_text.strip():
+                blockers.append("patch artifact has an empty diff")
+            if TASK_ID_RE.fullmatch(raw_task):
+                task_id = raw_task
+            else:
+                blockers.append("patch artifact has no valid task id")
+        elif artifact is not None:
+            blockers.append("patch artifact is not a JSON object")
+
+    if not execute:
+        warnings.append("dry-run only; pass --execute to apply the patch after a clean --check")
+
+    if task_id is not None and diff_text.strip() and not blockers:
+        integration_path, integration_branch = _integration_worktree_paths(task_id, repo_root=repo_root)
+        if not integration_path.exists():
+            integration_path.parent.mkdir(parents=True, exist_ok=True)
+            created = run(["git", "-C", str(repo_root), "worktree", "add", "-b", integration_branch, str(integration_path), base])
+            if getattr(created, "returncode", 1) != 0:
+                attached = run(["git", "-C", str(repo_root), "worktree", "add", str(integration_path), integration_branch])
+                if getattr(attached, "returncode", 1) != 0:
+                    blockers.append(f"could not create integration worktree for {integration_branch}")
+        if not blockers:
+            diff_file = active_dir / "active_apply.patch"
+            diff_file.parent.mkdir(parents=True, exist_ok=True)
+            diff_file.write_text(diff_text if diff_text.endswith("\n") else diff_text + "\n", encoding="utf-8")
+            check = run(["git", "-C", str(integration_path), "apply", "--check", str(diff_file)])
+            if getattr(check, "returncode", 1) != 0:
+                tail = next((line for line in reversed((getattr(check, "stderr", "") or "").splitlines()) if line.strip()), "")
+                blockers.append(f"patch does not apply cleanly to {integration_branch}: {tail}".strip())
+            elif execute:
+                applied_proc = run(["git", "-C", str(integration_path), "apply", str(diff_file)])
+                if getattr(applied_proc, "returncode", 1) != 0:
+                    blockers.append("git apply failed after a clean --check (unexpected)")
+                else:
+                    run(["git", "-C", str(integration_path), "add", "-A"])
+                    commit = run(
+                        ["git", "-C", str(integration_path), "commit", "-m", f"feat({task_id}): apply codex patch proposal"]
+                    )
+                    if getattr(commit, "returncode", 1) != 0:
+                        blockers.append("git commit failed in integration worktree")
+                    else:
+                        applied = True
+                        decision = "applied"
+            else:
+                decision = "checked"
+
+    state_payload = {
+        "schema_version": 1,
+        "generated_at": _isoformat(now),
+        "execute": execute,
+        "decision": decision,
+        "task_id": task_id,
+        "integration_branch": integration_branch,
+        "patch": _repo_path(patch_path, repo_root),
+        "applied": applied,
+        "blockers": _dedupe_preserve_order(blockers),
+        "warnings": _dedupe_preserve_order(warnings),
+    }
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text(json.dumps(_sanitize_json_value(state_payload), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    _append_active_event(
+        _active_path(DEFAULT_ACTIVE_EVENTS, repo_root=repo_root),
+        {
+            "event": "active-apply",
+            "execute": execute,
+            "decision": decision,
+            "task_id": task_id,
+            "integration_branch": integration_branch,
+            "applied": applied,
+            "blockers": blockers,
+        },
+    )
+    lines = [
+        "# Active Apply",
+        "",
+        "- Applies a codex patch proposal to its integration branch after `git apply --check`.",
+        "- Never touches main; no ship/push. Fail-closed on a check failure (no partial apply).",
+        f"- Requested execution: `{execute}`",
+        f"- Decision: `{decision}`",
+        f"- Task: `{task_id or 'N/A'}`",
+        f"- Integration branch: `{_sanitize_inline_text(integration_branch or 'N/A')}`",
+        f"- Patch: `{_repo_path(patch_path, repo_root)}`",
+        f"- Applied: `{applied}`",
+        "",
+        "## Blockers",
+        "",
+    ]
+    lines.extend(f"- {_sanitize_dynamic_text(item)}" for item in blockers) if blockers else lines.append("- None")
+    lines.extend(["", "## Warnings", ""])
+    lines.extend(f"- {_sanitize_dynamic_text(item)}" for item in warnings) if warnings else lines.append("- None")
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(_sanitize_dynamic_text("\n".join(lines)).rstrip() + "\n", encoding="utf-8")
+    return ActiveApplyResult(
+        report_path=out_path,
+        state_path=state_path,
+        decision=decision,
+        integration_branch=integration_branch,
+        applied=applied,
+        blockers=tuple(_dedupe_preserve_order(blockers)),
+        warnings=tuple(_dedupe_preserve_order(warnings)),
+    )
+
+
 def _active_role_status_ok(sessions: Sequence[dict[str, object]], role: str) -> bool:
     passing = {"pass", "passed", "approved", "ready-for-ship", "done", "clear"}
     for session in sessions:
@@ -12385,6 +12555,14 @@ def build_parser() -> argparse.ArgumentParser:
     codex_runner.add_argument("--task", help="Task id for patch mode (T-YYYY-NNNN); defaults to the Implementer session's task.")
     codex_runner.add_argument("--base", default="origin/main", help="Base ref the patch-mode scratch worktree forks from.")
 
+    active_apply = sub.add_parser("active-apply", help="Apply a codex patch artifact to its integration branch after git apply --check (never touches main).")
+    active_apply.add_argument("--patch", type=Path, help="Patch artifact JSON; defaults to the Implementer session's patch_artifact.json.")
+    active_apply.add_argument("--base", default="origin/main", help="Base ref the integration branch forks from when created.")
+    active_apply.add_argument("--dry-run", dest="execute", action="store_false", default=False)
+    active_apply.add_argument("--execute", dest="execute", action="store_true")
+    active_apply.add_argument("--out", type=Path)
+    active_apply.add_argument("--state", type=Path)
+
     active_prepare = sub.add_parser("active-worktree-prepare", help="Prepare an issue-linked worktree for an active-loop role.")
     active_prepare.add_argument("--issue")
     active_prepare.add_argument("--title")
@@ -13305,6 +13483,19 @@ def main(argv: list[str] | None = None) -> int:
             )
             sys.stdout.write(f"[OK] wrote {_repo_path(result.report_path, ROOT_DIR)}\n")
             return 0 if result.decision in {"planned", "running", "completed"} else 1
+        if args.command == "active-apply":
+            apply_result = write_active_apply(
+                patch=args.patch,
+                base=args.base,
+                execute=args.execute,
+                out=args.out,
+                state=args.state,
+            )
+            sys.stdout.write(
+                f"[OK] {apply_result.decision} {apply_result.integration_branch or '(no branch)'} "
+                f"-> {_repo_path(apply_result.report_path, ROOT_DIR)}\n"
+            )
+            return 0 if apply_result.decision in {"checked", "applied"} else 1
         if args.command == "active-worktree-prepare":
             out, _, _ = write_active_worktree_prepare(
                 issue=args.issue,

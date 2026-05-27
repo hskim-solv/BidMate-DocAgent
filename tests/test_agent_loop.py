@@ -4074,6 +4074,109 @@ def test_codex_runner_patch_mode_redacts_private_path_in_diff(tmp_path: Path) ->
     assert result.decision == "completed"
 
 
+# --- Phase 3 PR-B: active-apply (Orchestrator applies patch to integration branch, #1607) ---
+
+
+def _fake_apply_git_runner(check_rc: int = 0):
+    calls: list[list[str]] = []
+
+    def run(cmd):
+        calls.append(cmd)
+        if "--check" in cmd:
+            return subprocess.CompletedProcess(cmd, check_rc, stdout="", stderr=("" if check_rc == 0 else "error: patch failed to apply"))
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    run.calls = calls  # type: ignore[attr-defined]
+    return run
+
+
+def _seed_patch_artifact(
+    repo: Path,
+    *,
+    verdict: str = "proposed",
+    task: str = "T-2026-0042",
+    session: str = "implementer",
+    diff: str = "diff --git a/foo.py b/foo.py\n+x\n",
+) -> Path:
+    run_dir = repo / "reports" / "agent_loop" / "active" / "patch_runs" / session
+    run_dir.mkdir(parents=True, exist_ok=True)
+    path = run_dir / "patch_artifact.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "task_id": task,
+                "session_id": session,
+                "role": "Implementer",
+                "agent": "codex",
+                "verdict": verdict,
+                "diff": diff,
+                "files": ["foo.py"],
+                "privacy_scrubbed": True,
+            }
+        ),
+        encoding="utf-8",
+    )
+    return path
+
+
+def test_active_apply_dry_run_checks_only(tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    _seed_patch_artifact(repo)
+    runner = _fake_apply_git_runner(check_rc=0)
+
+    result = agent_loop.write_active_apply(repo_root=repo, git_runner=runner)
+
+    assert result.decision == "checked"
+    assert result.applied is False
+    assert result.integration_branch == "feature/T-2026-0042-integration"
+    # Inspect the command LISTS (exact tokens) — the repo tmp path itself contains "apply".
+    assert any("--check" in c for c in runner.calls)
+    assert not any("commit" in c for c in runner.calls)  # dry-run never commits
+    assert not any(("apply" in c and "--check" not in c) for c in runner.calls)  # no real apply
+
+
+def test_active_apply_execute_applies_and_commits(tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    _seed_patch_artifact(repo)
+    runner = _fake_apply_git_runner(check_rc=0)
+
+    result = agent_loop.write_active_apply(repo_root=repo, execute=True, git_runner=runner)
+
+    assert result.decision == "applied"
+    assert result.applied is True
+    assert any("--check" in c for c in runner.calls)
+    assert any(("apply" in c and "--check" not in c) for c in runner.calls)  # the real apply
+    assert any("commit" in c for c in runner.calls)
+    # every git op runs under the repo tree (repo_root or the integration worktree) — never a separate main checkout.
+    assert all(c[2].startswith(str(repo)) for c in runner.calls if len(c) > 2 and c[1] == "-C")
+
+
+def test_active_apply_blocks_when_check_fails(tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    _seed_patch_artifact(repo)
+    runner = _fake_apply_git_runner(check_rc=1)
+
+    result = agent_loop.write_active_apply(repo_root=repo, execute=True, git_runner=runner)
+
+    assert result.decision == "blocked"
+    assert result.applied is False
+    assert any("--check" in c for c in runner.calls)
+    assert not any("commit" in c for c in runner.calls)  # fail-closed: no apply/commit after a failed check
+    assert not any(("apply" in c and "--check" not in c) for c in runner.calls)
+
+
+def test_active_apply_blocks_on_missing_or_unproposed_artifact(tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    # missing artifact
+    r1 = agent_loop.write_active_apply(repo_root=repo, execute=True, git_runner=_fake_apply_git_runner())
+    assert r1.decision == "blocked" and any("not found" in b for b in r1.blockers)
+    # present but verdict != proposed (and empty diff)
+    _seed_patch_artifact(repo, verdict="empty", diff="")
+    r2 = agent_loop.write_active_apply(repo_root=repo, execute=True, git_runner=_fake_apply_git_runner())
+    assert r2.decision == "blocked" and r2.applied is False
+
+
 def test_stop_ship_skips_remote_branch_delete_when_stacked_dependents_exist() -> None:
     text = (ROOT / "scripts" / "claude-hooks" / "stop-ship.sh").read_text(encoding="utf-8")
 
