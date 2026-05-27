@@ -107,6 +107,27 @@ python3 scripts/agent_loop.py active-loop --mode full-ship --dry-run --from-git
 5. `Implementer` write lease와 각 role assignment를 갱신한다.
 6. Full ship gate 결과를 report한다.
 
+## One-command Start
+
+사람이 "시작"만 눌러도 local orchestration surface가 한 번에 만들어져야 할 때는
+`active-start`를 사용한다.
+
+```bash
+python3 scripts/agent_loop.py active-start --from-git
+```
+
+이 명령은 remote mutation을 하지 않는다. 대신 `reports/agent_loop/active/` 아래에
+expanded-eight ledger, role assignment, dashboard, approval packet, readiness score,
+privacy audit, ship simulation, auto-ship dry-run plan을 한 번에 쓴다. 현재 branch가
+detached HEAD이거나 ADR 0007 issue branch가 아니면 blocked start report와 다음 안전
+명령을 남긴다.
+
+Make wrapper:
+
+```bash
+make agent-loop-active-start
+```
+
 ## Full Ship Gate
 
 `--execute`는 gate가 통과할 때만 기존 ship runner를 호출한다.
