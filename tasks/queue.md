@@ -34,6 +34,7 @@ PR이 생기면 각 task에 링크를 추가한다. 예제 task는 `tasks/exampl
 | 21 | `T-2026-0021` | `review` | Maintainer -> CI Reviewer -> Reviewer | issue #1551 implemented; draft PR #1552. |
 | 22 | `T-2026-0022` | `review` | Planner -> Implementer -> Reviewer | issue #1563; aggregate strategy decision implemented; retrieval change deferred until page-aware re-index evidence. |
 | 23 | `T-2026-0023` | `review` | Planner -> Implementer -> Benchmark Auditor -> Privacy Auditor -> Deep Reviewer -> Reviewer | issue #1569; PR #1570. |
+| 24 | `T-2026-0024` | `review` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1573; page metadata recovery patch implemented and local page-aware re-index audit passes. |
 
 ## Examples
 
@@ -2052,3 +2053,117 @@ make check-branch
 - Plan: [`docs/plans/T-2026-0023-rag-performance-agent-operating-goal.md`](../docs/plans/T-2026-0023-rag-performance-agent-operating-goal.md)
 - Issue: [#1569](https://github.com/hskim-solv/BidMate-DocAgent/issues/1569)
 - PR: [#1570](https://github.com/hskim-solv/BidMate-DocAgent/pull/1570)
+
+## T-2026-0024 — Recover PyMuPDF4LLM page metadata at index build
+
+- ID: T-2026-0024
+- Title: Recover PyMuPDF4LLM page metadata at index build
+- Status: review
+- Owner role: Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer
+- Created: 2026-05-27
+- Last updated: 2026-05-27
+
+### Goal
+
+Fix the page metadata recovery blocker before multi-chunk retrieval changes:
+PyMuPDF4LLM parser checkpoints already contain section-level `page_span`, but
+the current fixed-chunk build drops page-span-only metadata before chunks reach
+the index.
+
+### Context
+
+- Issue: #1573
+- Related blocker: T-2026-0022 deferred retrieval changes until page-aware
+  evidence exists.
+- Discovery: `real100_v2` has 100 parsed Markdown exports, 94 converted PDFs,
+  and 100 parse checkpoints. The checkpoints already contain page-aware
+  `document.sections[].page_span`; `parsed_md` is text-only and not the recovery
+  source.
+- Current stale index symptom: `text_source=pdf_pymupdf4llm`, but chunk
+  `page_span` / `regions.page_number` coverage is 0.0.
+
+### Scope
+
+- Preserve explicit section-level `page_span` when fixed chunking builds a
+  document-wide parent section.
+- Add an isolated `real-eval-page-aware` local target that reuses private
+  converted PDFs and writes to separate local output paths.
+- Keep canonical `make real-eval` default hashing/fixed behavior unchanged
+  except for additive page metadata fields on chunks.
+- Record aggregate-only validation evidence; do not commit raw private
+  checkpoints, converted PDFs, indexes, reports, doc IDs, filenames, or paths.
+
+### Non-Goals
+
+- Do not change retrieval, reranking, prompt, verifier, answer, or eval scoring
+  behavior.
+- Do not claim RAG quality, recall, latency, or production performance improved.
+- Do not switch the canonical baseline to MiniLM or BGE-M3; issue #1575 tracks
+  embedding baseline separation.
+
+### Acceptance Criteria
+
+- [x] Fixed chunking preserves explicit parser-owned page spans from sections.
+- [x] `scripts/smoke_real.sh` exposes `CHUNKING_STRATEGY` and optional
+  `HWP_PDF_ARTIFACT_DIR` without changing defaults.
+- [x] `make real-eval-page-aware` writes to isolated local paths and enables
+  converted-PDF reuse.
+- [x] Synthetic tests cover fixed page-span propagation and script wiring.
+- [x] Local aggregate-only page metadata audit reports 1.0 page-span coverage on
+  isolated section and fixed rebuilds.
+
+### Validation Commands
+
+```bash
+bash -n scripts/smoke_real.sh
+python3 -m pytest -q tests/test_smoke_real_script.py tests/test_page_aware_parser_contract.py tests/test_page_metadata_recovery_audit.py tests/test_build_private_real100_v2_parallel.py tests/test_hwp_pdf_pymupdf4llm_loader.py tests/test_export_private_index_markdown.py
+python3 -m py_compile ingestion.py rag_metadata_processing.py rag_indexing.py scripts/build_private_real100_v2_parallel.py scripts/build_index.py
+python3 scripts/page_metadata_recovery_audit.py --index-dir "$REAL_EVAL_ROOT/data/index/real100_pageaware" --format markdown
+python3 scripts/page_metadata_recovery_audit.py --index-dir "$REAL_EVAL_ROOT/data/index/real100_fixed_pageaware" --format markdown
+git diff --check
+make check-branch
+```
+
+### Evidence Required
+
+- Local page-aware rebuild uses cached private parse checkpoints, not raw
+  reparse, unless checkpoint fingerprints miss.
+- Audit output stays aggregate-only: document/chunk counts, source groups, and
+  coverage rates only.
+
+### Completion Proof
+
+Focused tests and syntax checks pass; local audits report citation page claim
+`GO` and chunk page-span coverage 1.0 for both isolated section
+`real100_pageaware` and fixed `real100_fixed_pageaware` rebuilds.
+
+### Related Plan / Issue / PR Links
+
+- Plan: [`docs/plans/T-2026-0024-page-metadata-reindex.md`](../docs/plans/T-2026-0024-page-metadata-reindex.md)
+- Issue: [#1573](https://github.com/hskim-solv/BidMate-DocAgent/issues/1573)
+- PR: TBD
+
+### Session Handoff
+
+- Role: Implementer
+- Lifecycle stage: review
+- Branch / worktree: `fix/issue-1573-page-metadata-reindex` / Codex worktree
+- Current status: implementation done; final validation and PR still needed.
+- Files touched: `Makefile`, `scripts/smoke_real.sh`,
+  `rag_metadata_processing.py`, `tests/test_page_aware_parser_contract.py`,
+  `tests/test_smoke_real_script.py`, `docs/plans/T-2026-0024-page-metadata-reindex.md`,
+  `tasks/queue.md`.
+- Results: section page-aware local rebuild from checkpoints reports 100
+  documents / 24,613 chunks / 1.0 chunk page-span coverage. Fixed rebuild
+  reports 100 documents / 21,800 chunks / 1.0 chunk page-span coverage.
+- Blockers: none known.
+- Open risks: fixed chunking produces coarse document-range page spans; precise
+  page citation quality still needs section/page-aware evaluation before
+  performance claims.
+- Next action: run final validation, then open PR
+  for #1573.
+- Next safe command: `python3 -m pytest -q tests/test_smoke_real_script.py tests/test_page_aware_parser_contract.py tests/test_page_metadata_recovery_audit.py tests/test_build_private_real100_v2_parallel.py tests/test_hwp_pdf_pymupdf4llm_loader.py tests/test_export_private_index_markdown.py`
+- Reviewer focus: no private path/raw text leakage, no performance claim, and
+  explicit distinction between coarse fixed spans and section page spans.
+- Eval surface: ingestion/index metadata propagation and private real-eval
+  readiness; no retrieval ranking or answer behavior change intended.

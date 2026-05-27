@@ -170,10 +170,15 @@ def document_has_section_structure(doc: dict[str, Any]) -> bool:
 def fixed_parent_section(doc: dict[str, Any], sections: list[dict[str, Any]]) -> dict[str, Any]:
     parts = []
     regions = []
+    page_numbers = []
     for section in sections:
         heading = str(section.get("section") or "").strip()
         text = str(section.get("text") or "").strip()
-        regions.extend(normalize_regions(section.get("regions")))
+        section_regions = normalize_regions(section.get("regions"))
+        regions.extend(section_regions)
+        section_page_span = normalize_page_span(section.get("page_span"), section_regions)
+        if section_page_span:
+            page_numbers.extend(section_page_span)
         if heading and heading not in WEAK_SECTION_HEADINGS:
             parts.append(f"{heading}\n{text}")
         else:
@@ -190,7 +195,7 @@ def fixed_parent_section(doc: dict[str, Any], sections: list[dict[str, Any]]) ->
         "section_path": ["문서 전체"],
         "text": "\n\n".join(part for part in parts if part).strip(),
     }
-    page_span = normalize_page_span(None, regions)
+    page_span = [min(page_numbers), max(page_numbers)] if page_numbers else normalize_page_span(None, regions)
     if regions:
         parent["regions"] = regions
     if page_span:

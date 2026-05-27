@@ -47,6 +47,8 @@ MODEL="${MODEL:-}"
 INGESTION_MODE="${INGESTION_MODE:-csv-text}"
 HWP_LOADER="${HWP_LOADER:-pdf_pymupdf4llm}"
 PDF_LOADER="${PDF_LOADER:-pdf_pymupdf4llm}"
+CHUNKING_STRATEGY="${CHUNKING_STRATEGY:-fixed}"
+HWP_PDF_ARTIFACT_DIR="${HWP_PDF_ARTIFACT_DIR:-}"
 
 log() {
   printf '\n[%s] %s\n' "$(date '+%H:%M:%S')" "$1"
@@ -104,6 +106,10 @@ MODEL_ARGS=()
 if [[ -n "$MODEL" ]]; then
   MODEL_ARGS=(--model "$MODEL")
 fi
+HWP_PDF_ARTIFACT_ARGS=()
+if [[ -n "$HWP_PDF_ARTIFACT_DIR" ]]; then
+  HWP_PDF_ARTIFACT_ARGS=(--hwp_pdf_artifact_dir "$HWP_PDF_ARTIFACT_DIR")
+fi
 python3 scripts/build_index.py \
   --metadata_csv "$METADATA_CSV" \
   --files_dir "$FILES_DIR" \
@@ -112,6 +118,8 @@ python3 scripts/build_index.py \
   --pdf_loader "$PDF_LOADER" \
   --output_dir "$INDEX_DIR" \
   --embedding_backend "$EMBEDDING_BACKEND" \
+  --chunking_strategy "$CHUNKING_STRATEGY" \
+  "${HWP_PDF_ARTIFACT_ARGS[@]+"${HWP_PDF_ARTIFACT_ARGS[@]}"}" \
   "${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"}"
 
 log "Running real-data sample query"
