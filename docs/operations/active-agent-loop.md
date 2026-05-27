@@ -36,15 +36,53 @@ python3 scripts/agent_loop.py active-loop --mode full-ship --topology expanded-e
 Worker 간 direct communication은 필요 조건이 아니다. 모든 이어받기는
 `reports/agent_loop/active/` ledger와 기존 handoff block으로 복구 가능해야 한다.
 
+## Dual-Agent Lanes (registry v2)
+
+각 session은 단일 worker가 아니라 Claude lane과 Codex lane을 함께 가진다.
+Dual-agent는 별도 topology가 아니라 기존 `four-role`/`expanded-eight` 위에
+얹는 **lane policy**다 (새 topology enum을 추가하지 않는다). 이를 위해
+`session_registry.json`은 `schema_version: 2`로 올라간다. v1 registry는 읽을 때
+자동으로 v2로 lift되며, `four-role` 동작은 불변이다.
+
+session item마다 다음이 추가된다.
+
+- `lanes`: `{claude: {...}, codex: {...}}`. 각 lane은 `agent`, `status`,
+  `current_turn`, `wu_spent_rolling`를 가진다.
+- `write_lease_owner`: `Implementer` session만 `true`. 기본 write lease는
+  Implementer 하나만 소유한다.
+- `ship_gate`: session이 Conservative Gate에서 갖는 분류 —
+  `lease-owner`(Implementer), `blocking`(required reviewer/auditor),
+  `non-blocking`(Planner / Experiment Scout), `control-plane`(Orchestrator).
+
+top-level에는 `gate_policy: "conservative"`와 `agent_mix`가 추가된다. `agent_mix`는
+Claude:Codex 작업량을 session 수가 아니라 **Work Unit(WU)** 기준 rolling window로
+맞춘다.
+
+```bash
+python3 scripts/agent_loop.py active-loop --mode full-ship \
+  --topology expanded-eight --agent-mix claude=5,codex=5 --dry-run --from-git
+```
+
+`--agent-mix claude=5,codex=5`는 WU target을 registry의 `agent_mix`와
+`reports/agent_loop/active/agent_mix.json`(rolling ledger)에 기록한다.
+`session-heartbeat --agent claude|codex`는 한 lane의 상태만 갱신한다 (생략하면
+기존 session-level heartbeat).
+
+Phase 1은 lane scaffold + dry-run ledger까지다. 실제 Claude/Codex turn 실행과 WU
+집계는 read-only 실행 어댑터(Phase 2)에서 붙는다. 이 registry v2 계약은
+[ADR 0080](../adr/0080-active-loop-registry-v2-dual-agent-lanes.md)이 고정한다.
+
 ## Ledger
 
 `reports/agent_loop/active/`는 ignored operational state다. Review evidence로
 그 자체를 커밋하지 않는다.
 
 - `session_registry.json`: session id, role, task, branch, status, last heartbeat,
-  next command.
+  next command, per-session `lanes`, `write_lease_owner`, `ship_gate`, top-level
+  `gate_policy`/`agent_mix` (registry v2).
 - `leases.json`: task/issue/branch/worktree 단위 write lease, claimed files,
-  owner session, expiry, recovery command.
+  owner session, expiry, recovery command, `lease_type`, `active_agent`.
+- `agent_mix.json`: Claude:Codex Work Unit target policy + rolling window ledger.
 - `events.jsonl`: sanitized append-only operational events.
 - `assignments/<session_id>.md`: role별 prompt/context pack.
 

@@ -127,6 +127,7 @@ DEFAULT_ACTIVE_LEASES = DEFAULT_ACTIVE_DIR / "leases.json"
 DEFAULT_ACTIVE_EVENTS = DEFAULT_ACTIVE_DIR / "events.jsonl"
 DEFAULT_ACTIVE_ASSIGNMENTS_DIR = DEFAULT_ACTIVE_DIR / "assignments"
 DEFAULT_ACTIVE_LOOP = DEFAULT_ACTIVE_DIR / "active_loop.md"
+DEFAULT_ACTIVE_AGENT_MIX = DEFAULT_ACTIVE_DIR / "agent_mix.json"
 DEFAULT_ACTIVE_WORKTREE_PREPARE = DEFAULT_ACTIVE_DIR / "active_worktree_prepare.md"
 DEFAULT_ISSUE_STATE = DEFAULT_REPORT_DIR / "issue_state.json"
 DEFAULT_ISSUE_TRIAGE = DEFAULT_REPORT_DIR / "issue_triage.md"
@@ -165,6 +166,18 @@ ACTIVE_REQUIRED_GATES = {
 }
 ACTIVE_LOAD_BEARING_GATES = {
     "expanded-eight": ("Deep Reviewer",),
+}
+# Registry contract version. v1 = single-agent sessions list; v2 adds per-session
+# Claude/Codex lanes, write_lease_owner, ship_gate, plus top-level gate_policy and
+# agent_mix. Dual-agent is a lane policy layered on the existing topologies, not a
+# new topology enum.
+ACTIVE_REGISTRY_SCHEMA_VERSION = 2
+ACTIVE_LANE_AGENTS = ("claude", "codex")
+DEFAULT_AGENT_MIX = {
+    "target": {"claude": 5, "codex": 5},
+    "unit": "work_unit",
+    "window": {"type": "rolling_tasks", "size": 20},
+    "max_allowed_skew_wu": 2,
 }
 
 GH_PR_JSON_FIELDS = (
@@ -7993,6 +8006,7 @@ def write_session_heartbeat(
     role: str,
     task_id: str | None = None,
     status: str = "active",
+    agent: str | None = None,
     lease_ttl_minutes: int = 30,
     registry: Path = DEFAULT_ACTIVE_REGISTRY,
     events: Path = DEFAULT_ACTIVE_EVENTS,
@@ -8004,6 +8018,9 @@ def write_session_heartbeat(
     safe_session = _validate_session_id(session_id)
     safe_role = _sanitize_inline_text(role)
     safe_status = _sanitize_inline_text(status or "active")
+    safe_agent = agent.strip().casefold() if agent else None
+    if safe_agent and safe_agent not in ACTIVE_LANE_AGENTS:
+        raise ValueError(f"--agent must be one of: {', '.join(ACTIVE_LANE_AGENTS)}")
     if task_id and not TASK_ID_RE.fullmatch(task_id):
         raise ValueError("--task must match T-YYYY-NNNN")
     registry_path = _active_path(registry, repo_root=repo_root)
@@ -8014,6 +8031,10 @@ def write_session_heartbeat(
     sessions = payload.get("sessions") if isinstance(payload.get("sessions"), list) else []
     by_id = {str(item.get("session_id")): dict(item) for item in sessions if isinstance(item, dict)}
     session = by_id.get(safe_session, {})
+    lanes = _build_active_lanes(session.get("lanes"))
+    if safe_agent:
+        lanes[safe_agent]["status"] = safe_status
+        lanes[safe_agent]["current_turn"] = task_id
     session.update(
         {
             "session_id": safe_session,
@@ -8026,13 +8047,19 @@ def write_session_heartbeat(
             "heartbeat_state": "fresh",
             "lease_expires_at": _isoformat(now + timedelta(minutes=lease_ttl_minutes)),
             "next_command": _active_next_command(safe_role, task_id=task_id, topology=topology),
+            "lanes": lanes,
+            "write_lease_owner": safe_role == "Implementer",
+            "ship_gate": _active_ship_gate(safe_role, topology=topology),
         }
     )
     by_id[safe_session] = session
+    agent_mix_policy = payload.get("agent_mix") if isinstance(payload.get("agent_mix"), dict) else _parse_agent_mix(None)
     rendered_payload = {
-        "schema_version": 1,
+        "schema_version": ACTIVE_REGISTRY_SCHEMA_VERSION,
         "generated_at": _isoformat(now),
         "topology": topology,
+        "gate_policy": str(payload.get("gate_policy") or "conservative"),
+        "agent_mix": agent_mix_policy,
         "sessions": [_sanitize_json_value(by_id[key]) for key in sorted(by_id)],
     }
     registry_path.parent.mkdir(parents=True, exist_ok=True)
@@ -8045,6 +8072,7 @@ def write_session_heartbeat(
             "session_id": safe_session,
             "role": safe_role,
             "status": safe_status,
+            "agent": safe_agent,
             "task_id": task_id,
         },
     )
@@ -8204,6 +8232,8 @@ def write_active_loop(
     events: Path = DEFAULT_ACTIVE_EVENTS,
     assignments_dir: Path = DEFAULT_ACTIVE_ASSIGNMENTS_DIR,
     out: Path = DEFAULT_ACTIVE_LOOP,
+    agent_mix: dict[str, object] | None = None,
+    agent_mix_out: Path = DEFAULT_ACTIVE_AGENT_MIX,
     repo_root: Path = ROOT_DIR,
 ) -> ActiveLoopResult:
     if mode != "full-ship":
@@ -8215,6 +8245,7 @@ def write_active_loop(
     if task_id and not TASK_ID_RE.fullmatch(task_id):
         raise ValueError("--task must match T-YYYY-NNNN")
 
+    agent_mix_policy = agent_mix if isinstance(agent_mix, dict) else _parse_agent_mix(None)
     now = datetime.now(timezone.utc)
     files = tuple(sorted(_normalize_changed_file(path, repo_root=repo_root) for path in changed_files if path))
     current_branch = _sanitize_inline_text(branch or _current_branch(repo_root) or "unknown")
@@ -8393,14 +8424,17 @@ def write_active_loop(
             blockers.append("make ship-run failed")
 
     registry_payload = {
-        "schema_version": 1,
+        "schema_version": ACTIVE_REGISTRY_SCHEMA_VERSION,
         "generated_at": _isoformat(now),
         "topology": topology,
         "mode": mode,
+        "gate_policy": "conservative",
+        "agent_mix": agent_mix_policy,
         "sessions": [_sanitize_json_value(item) for item in sessions],
     }
     registry_path.parent.mkdir(parents=True, exist_ok=True)
     registry_path.write_text(json.dumps(registry_payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    _write_active_agent_mix(_active_path(agent_mix_out, repo_root=repo_root), policy=agent_mix_policy, now=now)
     leases_path.parent.mkdir(parents=True, exist_ok=True)
     leases_path.write_text(json.dumps(_sanitize_json_value(lease_payload), indent=2, sort_keys=True) + "\n", encoding="utf-8")
     assignments_path.mkdir(parents=True, exist_ok=True)
@@ -8435,6 +8469,8 @@ def write_active_loop(
     rendered = render_active_loop(
         mode=mode,
         topology=topology,
+        gate_policy="conservative",
+        agent_mix=agent_mix_policy,
         execute=execute,
         decision=decision,
         sessions=sessions,
@@ -8472,6 +8508,8 @@ def render_active_loop(
     *,
     mode: str,
     topology: str,
+    gate_policy: str = "conservative",
+    agent_mix: dict[str, object] | None = None,
     execute: bool,
     decision: str,
     sessions: Sequence[dict[str, object]],
@@ -8490,15 +8528,21 @@ def render_active_loop(
     assignments_path: Path,
     repo_root: Path,
 ) -> str:
+    mix = agent_mix if isinstance(agent_mix, dict) else _parse_agent_mix(None)
+    mix_target = mix.get("target") if isinstance(mix.get("target"), dict) else {}
+    mix_summary = ", ".join(f"{agent}={_coerce_wu(mix_target.get(agent))}" for agent in ACTIVE_LANE_AGENTS)
     lines = [
         "# Active Agent Loop",
         "",
         "- Hybrid active orchestrator ledger. Repo-local reports are the source of truth; Codex heartbeat can call these commands later.",
         f"- Topology contract: {ACTIVE_TOPOLOGY_DESCRIPTIONS.get(topology, topology)}.",
+        "- Each session carries Claude and Codex lanes; dual-agent is a lane policy, not a separate topology.",
         "- Full ship uses the existing `make ship-run DRAFT=false REAL_EVAL=auto` path after conservative agent gates pass.",
         "- Force-push is excluded from this active loop.",
         f"- Mode: `{mode}`",
         f"- Topology: `{topology}`",
+        f"- Gate policy: `{gate_policy}` (conservative dual-lane gate)",
+        f"- Agent mix target (work units): `{mix_summary}`",
         f"- Requested execution: `{execute}`",
         f"- Decision: `{decision}`",
         "",
@@ -8537,6 +8581,22 @@ def render_active_loop(
             )
             + " |"
         )
+    lines.extend(
+        [
+            "",
+            "## Agent Lanes",
+            "",
+            "| Session | Ship gate | Claude lane | Codex lane |",
+            "|---|---|---|---|",
+        ]
+    )
+    for session in sessions:
+        lanes = session.get("lanes") if isinstance(session.get("lanes"), dict) else {}
+        cells = [session.get("session_id", ""), session.get("ship_gate", "")]
+        for agent in ACTIVE_LANE_AGENTS:
+            lane = lanes.get(agent) if isinstance(lanes.get(agent), dict) else {}
+            cells.append(f"{lane.get('status') or 'idle'} (wu={_coerce_wu(lane.get('wu_spent_rolling'))})")
+        lines.append("| " + " | ".join(_sanitize_inline_text(str(value)) for value in cells) + " |")
     lines.extend(["", "## Leases", ""])
     if leases:
         lines.extend(
@@ -8575,6 +8635,8 @@ def _active_path(path: Path, *, repo_root: Path) -> Path:
         path = repo_root / "reports" / "agent_loop" / "active" / "assignments"
     elif path == DEFAULT_ACTIVE_LOOP:
         path = repo_root / "reports" / "agent_loop" / "active" / "active_loop.md"
+    elif path == DEFAULT_ACTIVE_AGENT_MIX:
+        path = repo_root / "reports" / "agent_loop" / "active" / "agent_mix.json"
     elif path == DEFAULT_ACTIVE_WORKTREE_PREPARE:
         path = repo_root / "reports" / "agent_loop" / "active" / "active_worktree_prepare.md"
     return _safe_output_path(path, repo_root=repo_root)
@@ -8600,13 +8662,132 @@ def _validate_session_id(session_id: str) -> str:
     return safe
 
 
+def _parse_agent_mix(spec: str | None) -> dict[str, object]:
+    target = dict(DEFAULT_AGENT_MIX["target"])
+    if spec:
+        for raw_part in spec.split(","):
+            part = raw_part.strip()
+            if not part:
+                continue
+            if "=" not in part:
+                raise ValueError("--agent-mix entries must be <agent>=<weight>")
+            name, _, raw_weight = part.partition("=")
+            agent = name.strip().casefold()
+            if agent not in ACTIVE_LANE_AGENTS:
+                raise ValueError(f"--agent-mix agent must be one of: {', '.join(ACTIVE_LANE_AGENTS)}")
+            try:
+                weight = int(raw_weight.strip())
+            except ValueError:
+                raise ValueError("--agent-mix weights must be integers") from None
+            if weight < 0:
+                raise ValueError("--agent-mix weights must be >= 0")
+            target[agent] = weight
+    return {
+        "target": target,
+        "unit": DEFAULT_AGENT_MIX["unit"],
+        "window": dict(DEFAULT_AGENT_MIX["window"]),
+        "max_allowed_skew_wu": DEFAULT_AGENT_MIX["max_allowed_skew_wu"],
+    }
+
+
+def _coerce_wu(value: object) -> int:
+    return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else 0
+
+
+def _build_active_lanes(old_lanes: object) -> dict[str, dict[str, object]]:
+    old = old_lanes if isinstance(old_lanes, dict) else {}
+    lanes: dict[str, dict[str, object]] = {}
+    for agent in ACTIVE_LANE_AGENTS:
+        prev = old.get(agent) if isinstance(old.get(agent), dict) else {}
+        lanes[agent] = {
+            "agent": agent,
+            "status": _sanitize_inline_text(str(prev.get("status") or "idle")),
+            "current_turn": prev.get("current_turn"),
+            "wu_spent_rolling": _coerce_wu(prev.get("wu_spent_rolling")),
+        }
+    return lanes
+
+
+def _active_ship_gate(role: str, *, topology: str) -> str:
+    if role == "Orchestrator":
+        return "control-plane"
+    if role == "Implementer":
+        return "lease-owner"
+    blocking = set(ACTIVE_REQUIRED_GATES.get(topology, ())) | set(ACTIVE_LOAD_BEARING_GATES.get(topology, ()))
+    if role in blocking:
+        return "blocking"
+    return "non-blocking"
+
+
 def _load_active_registry(path: Path) -> dict[str, object]:
     if not path.exists():
-        return {"schema_version": 1, "topology": "four-role", "sessions": []}
+        return {
+            "schema_version": ACTIVE_REGISTRY_SCHEMA_VERSION,
+            "topology": "four-role",
+            "sessions": [],
+            "gate_policy": "conservative",
+            "agent_mix": _parse_agent_mix(None),
+        }
     payload = json.loads(_read_text(path))
     if not isinstance(payload, dict):
         raise ValueError("active session registry must be a JSON object")
-    return payload
+    return _lift_active_registry(payload)
+
+
+def _lift_active_registry(payload: dict[str, object]) -> dict[str, object]:
+    version = payload.get("schema_version")
+    if isinstance(version, int) and version >= ACTIVE_REGISTRY_SCHEMA_VERSION:
+        return payload
+    lifted = dict(payload)
+    lifted["schema_version"] = ACTIVE_REGISTRY_SCHEMA_VERSION
+    lifted.setdefault("gate_policy", "conservative")
+    if not isinstance(lifted.get("agent_mix"), dict):
+        lifted["agent_mix"] = _parse_agent_mix(None)
+    topology = str(lifted.get("topology") or "four-role")
+    sessions = lifted.get("sessions")
+    if isinstance(sessions, list):
+        lifted_sessions: list[dict[str, object]] = []
+        for item in sessions:
+            if not isinstance(item, dict):
+                continue
+            session = dict(item)
+            role = str(session.get("role") or "")
+            if not isinstance(session.get("lanes"), dict):
+                session["lanes"] = _build_active_lanes(None)
+            session.setdefault("write_lease_owner", role == "Implementer")
+            session.setdefault("ship_gate", _active_ship_gate(role, topology=topology))
+            lifted_sessions.append(session)
+        lifted["sessions"] = lifted_sessions
+    return lifted
+
+
+def _load_active_agent_mix(path: Path) -> dict[str, object]:
+    if not path.exists():
+        return {}
+    payload = json.loads(_read_text(path))
+    return payload if isinstance(payload, dict) else {}
+
+
+def _write_active_agent_mix(
+    path: Path,
+    *,
+    policy: dict[str, object],
+    now: datetime,
+) -> Path:
+    existing = _load_active_agent_mix(path)
+    rolling_raw = existing.get("rolling") if isinstance(existing.get("rolling"), dict) else {}
+    rolling = {agent: _coerce_wu(rolling_raw.get(agent)) for agent in ACTIVE_LANE_AGENTS}
+    ledger = existing.get("ledger") if isinstance(existing.get("ledger"), list) else []
+    payload = {
+        "schema_version": ACTIVE_REGISTRY_SCHEMA_VERSION,
+        "generated_at": _isoformat(now),
+        "policy": policy,
+        "rolling": rolling,
+        "ledger": ledger,
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(_sanitize_json_value(payload), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return path
 
 
 def _load_active_leases(path: Path) -> list[dict[str, object]]:
@@ -8668,6 +8849,9 @@ def _build_active_sessions(
                 "heartbeat_state": heartbeat_state,
                 "lease_expires_at": _isoformat(now + timedelta(minutes=lease_ttl_minutes)),
                 "next_command": _active_next_command(role, task_id=task_id, topology=topology),
+                "lanes": _build_active_lanes(old.get("lanes")),
+                "write_lease_owner": role == "Implementer",
+                "ship_gate": _active_ship_gate(role, topology=topology),
             }
         )
     return sessions
@@ -8726,6 +8910,8 @@ def _build_active_leases(
                 {
                     "lease_id": lease_id,
                     "status": "active",
+                    "lease_type": "write",
+                    "active_agent": None,
                     "task_id": task_id,
                     "issue": issue,
                     "branch": branch,
@@ -10387,6 +10573,7 @@ def build_parser() -> argparse.ArgumentParser:
     active_loop.add_argument("--pr-body", type=Path)
     active_loop.add_argument("--lease-ttl-minutes", type=int, default=30)
     active_loop.add_argument("--batch", type=Path)
+    active_loop.add_argument("--agent-mix", help="Work-unit mix target, e.g. claude=5,codex=5")
     active_loop.add_argument("--out", type=Path, default=DEFAULT_ACTIVE_LOOP)
 
     heartbeat = sub.add_parser("session-heartbeat", help="Refresh one active-loop session heartbeat.")
@@ -10394,6 +10581,7 @@ def build_parser() -> argparse.ArgumentParser:
     heartbeat.add_argument("--role", required=True)
     heartbeat.add_argument("--task")
     heartbeat.add_argument("--status", required=True)
+    heartbeat.add_argument("--agent", choices=ACTIVE_LANE_AGENTS)
     heartbeat.add_argument("--lease-ttl-minutes", type=int, default=30)
 
     active_prepare = sub.add_parser("active-worktree-prepare", help="Prepare an issue-linked worktree for an active-loop role.")
@@ -11229,6 +11417,7 @@ def main(argv: list[str] | None = None) -> int:
                 pr_body=args.pr_body,
                 lease_ttl_minutes=args.lease_ttl_minutes,
                 batch=args.batch,
+                agent_mix=_parse_agent_mix(args.agent_mix),
                 out=args.out,
             )
             sys.stdout.write(f"[OK] wrote {_repo_path(result.report_path, ROOT_DIR)}\n")
@@ -11239,6 +11428,7 @@ def main(argv: list[str] | None = None) -> int:
                 role=args.role,
                 task_id=args.task,
                 status=args.status,
+                agent=args.agent,
                 lease_ttl_minutes=args.lease_ttl_minutes,
             )
             sys.stdout.write(f"[OK] wrote {_repo_path(registry, ROOT_DIR)}\n")
