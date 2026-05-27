@@ -3,7 +3,7 @@
 - Status: review
 - Owner role: Implementer -> Reviewer
 - Related task: `tasks/queue.md::T-2026-0040`
-- Related issue / PR: [#1588](https://github.com/hskim-solv/BidMate-DocAgent/issues/1588)
+- Related issue / PR: [#1588](https://github.com/hskim-solv/BidMate-DocAgent/issues/1588) / [#1589](https://github.com/hskim-solv/BidMate-DocAgent/pull/1589)
 - Related ADR: [ADR 0080](../adr/0080-active-loop-registry-v2-dual-agent-lanes.md)
 - Created: 2026-05-27
 - Last updated: 2026-05-27
@@ -166,7 +166,7 @@ This task is PR1 of a 6-PR initiative on issue #1588. Subsequent phases
 ## Session Handoff - 2026-05-27
 
 - Role: Implementer
-- State: PR1 implementation + tests + ADR 0080 + ops-doc section complete;
-  validating before opening PR on issue #1588.
-- Next: run validation suite, open PR (Closes #1588), then Phase 2 (T-2026-0041).
+- State: PR1 shipped as #1589 (impl + 7 tests + ADR 0080 + ops-doc section);
+  validation green (143 tests), pushed, PR open on #1588.
+- Next: await CI/review on #1589; then Phase 2 (T-2026-0041) read-only adapters.
 ```
