@@ -36,7 +36,7 @@
 # they render prompts, classify surfaces, check handoffs, suggest or run
 # allowlisted local validation, and write ignored local planning drafts. They
 # do not perform GitHub mutations.
-.PHONY: agent-loop-next agent-loop-status agent-loop-prompt agent-loop-handoff agent-loop-review agent-loop-surface agent-loop-validation agent-loop-validate agent-loop-preflight agent-loop-pr-scan agent-loop-issue-scan agent-loop-maintenance-plan agent-loop-issue-close agent-loop-next-from-prs agent-loop-pr-health agent-loop-draft-task agent-loop-draft-next agent-loop-batch-plan agent-loop-review-followup agent-loop-review-ingest agent-loop-decision-brief agent-loop-promote-draft agent-loop-gate-status agent-loop-claim-audit agent-loop-privacy-audit-output agent-loop-auto-pass agent-loop-dashboard agent-loop-mcp-config agent-loop-safe-fix agent-loop-approval-packet agent-loop-propose-queue-plan agent-loop-pr-body agent-loop-review-plan agent-loop-stale-reports agent-loop-context-pack agent-loop-architecture-brief agent-loop-ship-simulate agent-loop-auto-ship-prepare agent-loop-auto-ship-plan agent-loop-gate-brief agent-loop-manifest agent-loop-pr-body-check agent-loop-ci-ingest agent-loop-stacked-risk agent-loop-patch-proposal agent-loop-adr-reserve agent-loop-dashboard-html agent-loop-ship-command-pack agent-loop-apply-queue-plan agent-loop-review-threads agent-loop-ci-summary agent-loop-readiness-score agent-loop-artifact-freshness agent-loop-review-patch-plan agent-loop-queue-plan-sync agent-loop-dependency-graph agent-loop-branch-issue-hygiene agent-loop-integration-pack agent-loop-scheduled-status agent-loop-validation-history agent-loop-privacy-regression agent-loop-claim-policy agent-loop-architecture-decision agent-loop-workset-recommend agent-loop-automation-coverage agent-loop-active-start agent-loop-human-gated-exec agent-loop-loop-state agent-loop-map agent-loop-mcp
+.PHONY: agent-loop-next agent-loop-status agent-loop-prompt agent-loop-handoff agent-loop-review agent-loop-surface agent-loop-validation agent-loop-validate agent-loop-preflight agent-loop-pr-scan agent-loop-issue-scan agent-loop-maintenance-plan agent-loop-issue-close agent-loop-next-from-prs agent-loop-pr-health agent-loop-draft-task agent-loop-draft-next agent-loop-batch-plan agent-loop-review-followup agent-loop-review-ingest agent-loop-decision-brief agent-loop-promote-draft agent-loop-gate-status agent-loop-claim-audit agent-loop-privacy-audit-output agent-loop-auto-pass agent-loop-dashboard agent-loop-mcp-config agent-loop-safe-fix agent-loop-approval-packet agent-loop-propose-queue-plan agent-loop-pr-body agent-loop-review-plan agent-loop-stale-reports agent-loop-context-pack agent-loop-architecture-brief agent-loop-ship-simulate agent-loop-auto-ship-prepare agent-loop-auto-ship-plan agent-loop-gate-brief agent-loop-manifest agent-loop-pr-body-check agent-loop-ci-ingest agent-loop-stacked-risk agent-loop-patch-proposal agent-loop-adr-reserve agent-loop-dashboard-html agent-loop-ship-command-pack agent-loop-apply-queue-plan agent-loop-review-threads agent-loop-ci-summary agent-loop-readiness-score agent-loop-artifact-freshness agent-loop-review-patch-plan agent-loop-queue-plan-sync agent-loop-dependency-graph agent-loop-branch-issue-hygiene agent-loop-integration-pack agent-loop-scheduled-status agent-loop-validation-history agent-loop-privacy-regression agent-loop-claim-policy agent-loop-architecture-decision agent-loop-workset-recommend agent-loop-automation-coverage agent-loop-active-start agent-loop-active-codex-runner 시작 agent-loop-human-gated-exec agent-loop-loop-state agent-loop-map agent-loop-mcp
 
 # Auto-ship pipeline (Stop hook driven). See scripts/claude-hooks/stop-ship.sh
 # and the plan at /Users/hskim/.claude/plans/prci-synchronous-newell.md.
@@ -422,6 +422,8 @@ ACTIVE_REPAIR_BRANCH ?= 1
 ACTIVE_REPAIR_BRANCH_TYPE ?= chore
 ACTIVE_REPAIR_SLUG ?= active-start
 ACTIVE_REPAIR_TITLE ?= Agent loop active start
+ACTIVE_START_RUNNER ?= 1
+ACTIVE_START_RUNNER_EXECUTE ?= 1
 ACTIVE_CODEX_RUNNER_OUT ?= reports/agent_loop/active/codex_runner.md
 ACTIVE_CODEX_RUNNER_STATE ?= reports/agent_loop/active/codex_runner_state.json
 ACTIVE_CODEX_RUNS_DIR ?= reports/agent_loop/active/codex_runs
@@ -933,6 +935,7 @@ agent-loop-active-start:
 	  --repair-slug "$(ACTIVE_REPAIR_SLUG)" \
 	  --repair-title "$(ACTIVE_REPAIR_TITLE)" \
 	  --out "$(ACTIVE_START_OUT)"
+	$(if $(filter 1 true yes,$(ACTIVE_START_RUNNER)),$(MAKE) agent-loop-active-codex-runner ACTIVE_CODEX_EXECUTE="$(ACTIVE_START_RUNNER_EXECUTE)",)
 
 agent-loop-active-codex-runner:
 	$(PYTHON) scripts/agent_loop.py active-codex-runner \
@@ -944,6 +947,8 @@ agent-loop-active-codex-runner:
 	  --runs-dir "$(ACTIVE_CODEX_RUNS_DIR)" \
 	  --state "$(ACTIVE_CODEX_RUNNER_STATE)" \
 	  --out "$(ACTIVE_CODEX_RUNNER_OUT)"
+
+시작: agent-loop-active-start
 
 agent-loop-human-gated-exec:
 	@if [ -z "$(HUMAN_GATED_ACTION)" ]; then \
