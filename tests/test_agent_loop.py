@@ -988,8 +988,9 @@ Needs changes
     assert "python3 scripts/_governance.py --check-eval-privacy" in generated
 
 
-def test_review_followup_cli_smoke(capsys) -> None:
-    review = ROOT / "reports" / "agent_loop" / "review_output.md"
+def test_review_followup_cli_smoke(capsys, monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(agent_loop, "ROOT_DIR", tmp_path)
+    review = tmp_path / "reports" / "agent_loop" / "review_output.md"
     review.parent.mkdir(parents=True, exist_ok=True)
     review.write_text(
         """## Findings
@@ -1427,6 +1428,54 @@ def test_loop_state_writes_machine_readable_safe_state(tmp_path: Path) -> None:
     assert state["surface"]["surface"] == "ci-validation"  # type: ignore[index]
     payload = json.loads(out.read_text(encoding="utf-8"))
     assert payload["validation_suggestions"][-1] == "git diff --check"
+    assert "continuation" in payload
+
+
+def test_loop_state_reports_detached_head_continuation_repair(monkeypatch, tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    monkeypatch.setattr(agent_loop, "_current_branch", lambda repo_root: "HEAD")
+
+    _out, state = agent_loop.write_loop_state(
+        changed_files=["docs/operations/ai-engineering-operating-system.md"],
+        repo_root=repo,
+    )
+
+    continuation = state["continuation"]  # type: ignore[index]
+    assert continuation["status"] == "blocked"  # type: ignore[index]
+    assert continuation["can_auto_continue"] is False  # type: ignore[index]
+    assert "branch-not-ready" in continuation["blockers"]  # type: ignore[index]
+    assert "task-not-linked" in continuation["warnings"]  # type: ignore[index]
+    assert "manifest-stale" in continuation["warnings"]  # type: ignore[index]
+    commands = "\n".join(continuation["commands"])  # type: ignore[index]
+    assert "gh issue create" in commands
+    assert "auto-ship-prepare --issue" in commands
+    assert "manifest --from-git" in commands
+
+
+def test_loop_state_can_auto_continue_on_issue_branch_with_fresh_manifest(monkeypatch, tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path, body_extra=_valid_handoff())
+    changed_files = ["scripts/agent_loop.py", "tests/test_agent_loop.py"]
+    monkeypatch.setattr(agent_loop, "_current_branch", lambda repo_root: "chore/issue-9999-agent-loop")
+    agent_loop.write_manifest(
+        changed_files=changed_files,
+        command="test",
+        outputs=[Path("reports/agent_loop/loop_state.json")],
+        repo_root=repo,
+    )
+
+    _out, state = agent_loop.write_loop_state(
+        task_id="T-2026-9999",
+        changed_files=changed_files,
+        repo_root=repo,
+    )
+
+    continuation = state["continuation"]  # type: ignore[index]
+    assert continuation["status"] == "ready-for-preflight"  # type: ignore[index]
+    assert continuation["can_auto_continue"] is True  # type: ignore[index]
+    assert continuation["branch_issue"] == "9999"  # type: ignore[index]
+    assert continuation["next_safe_command"] == (
+        "python3 scripts/agent_loop.py preflight --task T-2026-9999 --from-git --write-prompts"
+    )  # type: ignore[index]
 
 
 def test_loop_map_marks_agent_gates_and_safe_automation() -> None:

@@ -2979,6 +2979,7 @@ def render_dashboard(state: dict[str, object], *, repo_root: Path = ROOT_DIR) ->
     artifacts = state.get("artifacts") if isinstance(state.get("artifacts"), dict) else {}
     freshness = state.get("freshness") if isinstance(state.get("freshness"), list) else []
     manifest = state.get("manifest") if isinstance(state.get("manifest"), dict) else {}
+    continuation = state.get("continuation") if isinstance(state.get("continuation"), dict) else {}
     validation = state.get("validation_suggestions") if isinstance(state.get("validation_suggestions"), list) else []
     lines = [
         "# Agent Loop Dashboard",
@@ -3024,6 +3025,26 @@ def render_dashboard(state: dict[str, object], *, repo_root: Path = ROOT_DIR) ->
     else:
         lines.append("- No stale local artifact detected by the 7-day report threshold.")
     lines.append(f"- Manifest current: `{bool(manifest.get('current', False))}` ({_sanitize_inline_text(str(manifest.get('reason', 'not checked')))})")
+
+    if continuation:
+        lines.extend(
+            [
+                "",
+                "## Continuation",
+                "",
+                f"- Status: `{continuation.get('status', 'unknown')}`",
+                f"- Can auto-continue: `{bool(continuation.get('can_auto_continue', False))}`",
+                f"- Current branch: `{_sanitize_inline_text(str(continuation.get('current_branch', 'unknown')))}`",
+            ]
+        )
+        blockers = continuation.get("blockers") if isinstance(continuation.get("blockers"), list) else []
+        warnings = continuation.get("warnings") if isinstance(continuation.get("warnings"), list) else []
+        if blockers:
+            lines.append("- Blockers: " + ", ".join(f"`{_sanitize_inline_text(str(item))}`" for item in blockers))
+        if warnings:
+            lines.append("- Warnings: " + ", ".join(f"`{_sanitize_inline_text(str(item))}`" for item in warnings))
+        command = str(continuation.get("next_safe_command", "python3 scripts/agent_loop.py map"))
+        lines.extend(["", "```bash", _sanitize_command_text(command), "```"])
 
     lines.extend(["", "## Suggested Validation", ""])
     if validation:
@@ -7418,6 +7439,7 @@ def build_loop_state(
     repo_root: Path,
 ) -> dict[str, object]:
     surface = classify_changed_files(changed_files)
+    manifest = _manifest_freshness(changed_files=changed_files, repo_root=repo_root)
     gate = build_gate_status(
         task_id=task_id,
         batch=batch,
@@ -7442,7 +7464,7 @@ def build_loop_state(
         "validation_suggestions": suggest_validation_commands(changed_files),
         "artifacts": _loop_artifact_state(repo_root),
         "freshness": _report_freshness(repo_root=repo_root, max_age_days=7),
-        "manifest": _manifest_freshness(changed_files=changed_files, repo_root=repo_root),
+        "manifest": manifest,
     }
     if task_id:
         task = load_task(task_id, repo_root)
@@ -7456,7 +7478,87 @@ def build_loop_state(
             "handoff_missing": list(handoff.missing_fields),
             "handoff_invalid": list(handoff.invalid_fields),
         }
+    payload["continuation"] = _loop_continuation_plan(
+        task_id=task_id,
+        changed_files=changed_files,
+        pr=pr,
+        surface=surface,
+        manifest=manifest,
+        repo_root=repo_root,
+    )
     return payload
+
+
+def _loop_continuation_plan(
+    *,
+    task_id: str | None,
+    changed_files: Sequence[str],
+    pr: str | None,
+    surface: SurfaceReport,
+    manifest: dict[str, object],
+    repo_root: Path,
+) -> dict[str, object]:
+    current_branch = _current_branch(repo_root) or "unknown"
+    branch_issue = _issue_from_branch(current_branch)
+    branch_ready = bool(
+        branch_issue
+        and current_branch not in {"HEAD", "main", "master"}
+        and not current_branch.startswith("release/")
+    )
+    blockers: list[str] = []
+    warnings: list[str] = []
+    commands: list[str] = []
+
+    if not branch_ready:
+        blockers.append("branch-not-ready")
+        commands.append(
+            "ISSUE=$(gh issue create --title \"Agent loop continuation\" "
+            "--body \"Public-safe continuation issue for the current local agent-loop diff.\" "
+            "| awk -F/ '{print $NF}') && "
+            "python3 scripts/agent_loop.py auto-ship-prepare --issue \"$ISSUE\" "
+            "--slug agent-loop-continuation --create-branch --confirm-human-approved"
+        )
+    else:
+        commands.append(
+            f"python3 scripts/agent_loop.py branch-issue-hygiene --branch {shlex.quote(current_branch)}"
+        )
+
+    if not task_id:
+        warnings.append("task-not-linked")
+        commands.append("python3 scripts/agent_loop.py decision-brief --from-git --gate task")
+
+    if not manifest.get("current"):
+        warnings.append("manifest-stale")
+        commands.append(
+            "python3 scripts/agent_loop.py manifest --from-git --source-command loop-state "
+            "--output reports/agent_loop/loop_state.json"
+        )
+
+    if task_id:
+        commands.append(f"python3 scripts/agent_loop.py preflight --task {task_id} --from-git --write-prompts")
+    else:
+        commands.append("python3 scripts/agent_loop.py preflight --task <TASK_ID> --from-git --write-prompts")
+
+    status = "blocked" if blockers else "ready-for-preflight"
+    if not blockers and warnings:
+        status = "repair-needed"
+    if not blockers and task_id:
+        next_safe = f"python3 scripts/agent_loop.py preflight --task {task_id} --from-git --write-prompts"
+    else:
+        next_safe = commands[0] if commands else "python3 scripts/agent_loop.py map"
+    return {
+        "status": status,
+        "can_auto_continue": not blockers,
+        "current_branch": _sanitize_inline_text(current_branch),
+        "branch_issue": branch_issue or None,
+        "task_id": task_id or None,
+        "pr": _validate_pr_selector(pr) if pr else None,
+        "surface": surface.surface,
+        "blockers": blockers,
+        "warnings": warnings,
+        "next_safe_command": next_safe,
+        "commands": commands,
+    }
 
 
 def _loop_artifact_state(repo_root: Path) -> dict[str, bool]:
@@ -8993,6 +9095,7 @@ def main(argv: list[str] | None = None) -> int:
                 review=args.review,
                 out=args.out,
                 tasks_dir=args.tasks_dir,
+                repo_root=ROOT_DIR,
             )
             sys.stdout.write(
                 f"[OK] wrote {_repo_path(out, ROOT_DIR)} and {count} follow-up brief(s) under "

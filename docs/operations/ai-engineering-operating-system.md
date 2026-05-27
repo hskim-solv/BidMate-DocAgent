@@ -146,6 +146,27 @@ idea / issue
   -> done
 ```
 
+### Granularity Guardrails
+
+Agent에게 맡기는 work package는 충분히 커야 하지만, review surface는 작고
+검증 가능해야 한다. 이 저장소에서 "scope를 키운다"는 말은 senior engineer가
+며칠에서 몇 주 걸릴 목표를 task와 plan으로 self-contained하게 만든다는 뜻이지,
+여러 concern을 한 PR에 섞는다는 뜻이 아니다.
+
+- Task/plan은 큰 outcome을 잡는다: 목표, non-goals, affected interfaces,
+  validation strategy, handoff를 한곳에 둔다.
+- PR은 한 concern만 담는다: eval scorer 변경, retrieval algorithm 변경, ADR
+  상태 변경, docs narrative rewrite를 같은 PR에 섞지 않는다.
+- 긴 session은 transcript가 아니라 queue, plan, handoff로 유지한다. context
+  compaction이 일어나도 새 agent가 같은 결정을 다시 추측하지 않아야 한다.
+- Reviewer/Benchmark Auditor/Deep Reviewer는 Implementer가 직접 수행하지 않은
+  독립 검증 역할이다. 자동화가 PR 생성, 테스트 실행, CI 확인을 대신해도
+  claim boundary와 merge readiness 판단은 evidence로 남긴다.
+- Detached HEAD, issue 없는 branch, plan 없는 load-bearing diff는 validation
+  command가 통과해도 PR-ready가 아니다.
+- `loop-state`의 `continuation` block은 detached HEAD, stale manifest, task
+  linkage 누락을 감지해 다음 복구 command를 machine-readable하게 제공한다.
+
 ### Planning Required
 
 Plan doc가 필요한 경우:

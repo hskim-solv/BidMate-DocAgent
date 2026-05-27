@@ -28,6 +28,7 @@ PR이 생기면 각 task에 링크를 추가한다. 예제 task는 `tasks/exampl
 | 15 | `T-2026-0015` | `done` | Maintainer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | merged in PR #1536. |
 | 16 | `T-2026-0016` | `review` | Maintainer -> Reviewer | overlap preflight implemented; PR #1543. |
 | 17 | `T-2026-0018` | `review` | Maintainer -> Reviewer | issue #1547 implemented; draft PR #1548. |
+| 18 | `T-2026-0019` | `review` | Maintainer -> CI Reviewer -> Reviewer | local implementation ready on issue #1549 branch. |
 
 ## Examples
 
@@ -172,6 +173,96 @@ make check-branch
 - Issue: #1547
 - PR: #1548
 - Plan: [`docs/plans/T-2026-0018-codex-runnable-auto-ship.md`](../docs/plans/T-2026-0018-codex-runnable-auto-ship.md)
+
+## T-2026-0019 — Agent loop continuation repair
+
+- ID: T-2026-0019
+- Title: Agent loop continuation repair
+- Status: review
+- Owner role: Maintainer -> CI Reviewer -> Reviewer
+- Created: 2026-05-27
+- Last updated: 2026-05-27
+
+### Goal
+
+Make `loop-state` expose the next automatic continuation step when branch,
+manifest, or task linkage is incomplete, so the loop can recover without
+removing conservative gates.
+
+### Scope
+
+- Add a machine-readable `continuation` block to `scripts/agent_loop.py`
+  `loop-state` output.
+- Surface continuation status in the generated dashboard.
+- Document the continuation block in the agent operating-system doc.
+- Cover detached HEAD repair and ready issue-branch continuation with focused
+  tests.
+
+### Non-Goals
+
+- Do not auto-push, create PRs, merge, delete branches, force-push, or run
+  private real-eval.
+- Do not remove `make ship-arm` single-shot behavior.
+- Do not make missing task/plan linkage invisible.
+
+### Acceptance Criteria
+
+- [x] Detached HEAD loop state contains a concrete issue+branch recovery command.
+- [x] Issue-linked branch with fresh manifest can report `can_auto_continue`.
+- [x] Dashboard renders continuation status and next command.
+- [x] Branch is issue-linked to #1549 and passes branch check.
+
+### Validation Commands
+
+```bash
+python3 -m py_compile scripts/agent_loop.py
+python3 -m pytest tests/test_agent_loop.py -q
+python3 -m pytest tests/test_agent_loop_claude_integration.py -q
+python3 scripts/check_doc_links.py --check-all --paths docs/operations/ai-engineering-operating-system.md tasks/queue.md docs/plans/T-2026-0019-agent-loop-continuation-repair.md
+git diff --check
+make check-branch
+```
+
+### Evidence Required
+
+- Focused pytest output.
+- Py compile output.
+- Doc link check output.
+- Branch check output.
+- `loop-state` continuation sample.
+
+### Related Plan / Issue / PR Links
+
+- Plan: [`docs/plans/T-2026-0019-agent-loop-continuation-repair.md`](../docs/plans/T-2026-0019-agent-loop-continuation-repair.md)
+- Issue: [#1549](https://github.com/hskim-solv/BidMate-DocAgent/issues/1549)
+- PR: [#1550](https://github.com/hskim-solv/BidMate-DocAgent/pull/1550)
+
+### Handoff Notes
+
+```markdown
+## Session Handoff — 2026-05-27 KST
+
+- Role: Maintainer
+- Lifecycle stage: review
+- Branch / worktree: chore/issue-1549-agent-loop-continuation / /Users/hskim/.codex/worktrees/380f/BidMate-DocAgent
+- Base branch: main
+- Issue / PR: #1549 / PR #1550
+- Task: T-2026-0019
+- Plan: docs/plans/T-2026-0019-agent-loop-continuation-repair.md
+- Current status: local implementation complete; focused validation passed; draft PR #1550 open.
+- Files touched: scripts/agent_loop.py, tests/test_agent_loop.py, docs/operations/ai-engineering-operating-system.md, tasks/queue.md, docs/plans/T-2026-0019-agent-loop-continuation-repair.md
+- Decisions made: keep Stop hook report-only; expose continuation commands in loop-state/dashboard instead of mutating automatically from the hook.
+- Commands run: python3 -m py_compile scripts/agent_loop.py; python3 -m pytest tests/test_agent_loop.py -q; python3 -m pytest tests/test_agent_loop_claude_integration.py -q; python3 scripts/check_doc_links.py --check-all --paths docs/operations/ai-engineering-operating-system.md tasks/queue.md docs/plans/T-2026-0019-agent-loop-continuation-repair.md; git diff --check; make check-branch.
+- Results: passed.
+- Validation evidence: focused tests and branch check passed; loop-state reports branch issue #1549 with can_auto_continue true after manifest refresh.
+- Eval surface: tooling/governance only; no benchmark or performance claim.
+- Evidence artifacts: reports/agent_loop/loop_state.json, reports/agent_loop/manifest.json, reports/agent_loop/branch_issue_hygiene.md.
+- Blockers: none.
+- Open risks: task/plan linkage remains explicit so automation still needs a task id for preflight prompts.
+- Next action: reviewer check.
+- Next safe command: python3 scripts/agent_loop.py loop-state --task T-2026-0019 --from-git --out reports/agent_loop/loop_state.json
+- Reviewer focus: continuation command safety, no hidden remote mutation, dashboard clarity, branch/manifest/task state semantics.
+```
 
 ## T-2026-0014 — Agent gate surface alignment
 
