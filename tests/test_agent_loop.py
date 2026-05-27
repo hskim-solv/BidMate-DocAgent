@@ -617,6 +617,20 @@ def test_overlap_preflight_blocks_same_issue_open_pr(monkeypatch, tmp_path: Path
     assert report.open_prs == ("#9 Overlap PR head=`docs/issue-1541-existing` state=`OPEN`",)
 
 
+def test_overlap_preflight_dedupes_exact_open_branch_pr(monkeypatch, tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    branch = "chore/issue-1541-overlap-preflight"
+    pr = {"number": 9, "title": "Overlap PR", "headRefName": branch, "state": "OPEN"}
+    _stub_overlap_environment(monkeypatch, repo, branch=branch, open_prs=[pr], branch_prs=[pr])
+
+    report = agent_loop.build_overlap_preflight(issue="1541", branch=branch, repo_root=repo)
+    rendered = agent_loop.render_overlap_preflight(report, repo_root=repo)
+
+    assert report.result == "blocked"
+    assert not any("closed PR history" in warning for warning in report.warnings)
+    assert rendered.count("#9 Overlap PR") == 1
+
+
 def test_overlap_preflight_blocks_closed_issue_with_merged_branch_history(monkeypatch, tmp_path: Path) -> None:
     repo = _write_repo(tmp_path)
     branch = "chore/issue-1541-overlap-preflight"

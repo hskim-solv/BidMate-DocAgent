@@ -1504,7 +1504,10 @@ def write_overlap_preflight(
     if json_out is not None:
         safe_json = _safe_output_path(json_out, repo_root=repo_root)
         safe_json.parent.mkdir(parents=True, exist_ok=True)
-        safe_json.write_text(json.dumps(_overlap_preflight_json(report), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        safe_json.write_text(
+            json.dumps(_overlap_preflight_json(report, repo_root=repo_root), indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
     return safe_out, safe_json, report, rendered
 
 
@@ -1578,7 +1581,7 @@ def build_overlap_preflight(*, issue: str, branch: str, repo_root: Path = ROOT_D
     matching_branch_prs = tuple(_pr_label(pr) for pr in branch_prs)
     if any(_pr_is_merged(pr) for pr in branch_prs):
         blockers.append("target branch already has a merged PR; treat this issue branch as completed")
-    elif branch_prs:
+    elif any(str(pr.get("state") or "").upper() == "CLOSED" for pr in branch_prs):
         warnings.append("target branch has closed PR history; inspect before reusing the branch")
 
     worktrees = tuple(_git_worktree_entries(repo_root))
@@ -1651,7 +1654,7 @@ def render_overlap_preflight(report: OverlapPreflightReport, *, repo_root: Path 
     lines.extend(f"- {_sanitize_dynamic_text(item)}" for item in report.evidence) if report.evidence else lines.append("- None")
     lines.extend(["", "## Matching PRs", ""])
     if report.open_prs or report.branch_prs:
-        for label in (*report.open_prs, *report.branch_prs):
+        for label in _dedupe_preserve_order([*report.open_prs, *report.branch_prs]):
             lines.append(f"- {_sanitize_dynamic_text(label)}")
     else:
         lines.append("- None")
@@ -1674,7 +1677,7 @@ def render_overlap_preflight(report: OverlapPreflightReport, *, repo_root: Path 
     return _sanitize_dynamic_text("\n".join(lines)).rstrip() + "\n"
 
 
-def _overlap_preflight_json(report: OverlapPreflightReport) -> dict[str, object]:
+def _overlap_preflight_json(report: OverlapPreflightReport, *, repo_root: Path = ROOT_DIR) -> dict[str, object]:
     return {
         "schema_version": 1,
         "issue": report.issue,
@@ -1689,7 +1692,7 @@ def _overlap_preflight_json(report: OverlapPreflightReport) -> dict[str, object]
         "open_prs": list(report.open_prs),
         "branch_prs": list(report.branch_prs),
         "worktrees": [
-            {"path": _sanitize_dynamic_text(item.path), "branch": item.branch, "head": item.head}
+            {"path": _display_path(item.path, repo_root=repo_root), "branch": item.branch, "head": item.head}
             for item in report.worktrees
         ],
         "remote_branches": list(report.remote_branches),
