@@ -4106,6 +4106,14 @@ def _seed_patch_registry(repo: Path, *, task: str = "T-2026-0042") -> None:
     )
 
 
+def _seed_patch_assignment(repo: Path, *, session: str = "implementer", text: str = "Add a one-line docstring to foo.py.") -> Path:
+    adir = repo / "reports" / "agent_loop" / "active" / "assignments"
+    adir.mkdir(parents=True, exist_ok=True)
+    path = adir / f"{session}.md"
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
 def test_scratch_worktree_paths_naming(tmp_path: Path) -> None:
     path, branch = agent_loop._scratch_worktree_paths("T-2026-0042", "codex", repo_root=tmp_path)
     assert path == tmp_path / ".claude" / "worktrees" / "T-2026-0042-codex"
@@ -4142,6 +4150,7 @@ def test_codex_runner_patch_mode_dry_run_plans_without_borrow(tmp_path: Path) ->
     repo = _write_repo(tmp_path)
     _seed_patch_registry(repo)
     _seed_write_lease(repo)
+    _seed_patch_assignment(repo)
 
     result = agent_loop.write_active_codex_runner(mode="patch", task_id="T-2026-0042", repo_root=repo)
 
@@ -4155,6 +4164,7 @@ def test_codex_runner_patch_mode_execute_captures_patch_and_releases_lease(tmp_p
     repo = _write_repo(tmp_path)
     _seed_patch_registry(repo)
     _seed_write_lease(repo)
+    _seed_patch_assignment(repo)
     diff = "diff --git a/foo.py b/foo.py\n--- a/foo.py\n+++ b/foo.py\n@@ -1 +1,2 @@\n line\n+new line\n"
     git_runner = _fake_git_runner(diff_stdout=diff)
 
@@ -4189,6 +4199,7 @@ def test_codex_runner_patch_mode_redacts_private_path_in_diff(tmp_path: Path) ->
     repo = _write_repo(tmp_path)
     _seed_patch_registry(repo)
     _seed_write_lease(repo)
+    _seed_patch_assignment(repo)
     diff = "diff --git a/x.py b/x.py\n+# see reports/real100/baseline.aggregate.json\n"
 
     result = agent_loop.write_active_codex_runner(
@@ -4207,6 +4218,53 @@ def test_codex_runner_patch_mode_redacts_private_path_in_diff(tmp_path: Path) ->
     assert "reports/real100/[redacted-private-artifact]" in artifact_text  # redact-and-proceed
     assert "baseline.aggregate.json" not in artifact_text
     assert result.decision == "completed"
+
+
+def test_codex_runner_patch_mode_blocks_without_assignment(tmp_path: Path) -> None:
+    # Fail-closed (#1610): never run a workspace-write codex lane without a concrete assignment.
+    repo = _write_repo(tmp_path)
+    _seed_patch_registry(repo)
+    _seed_write_lease(repo)
+    # no assignment seeded
+
+    result = agent_loop.write_active_codex_runner(
+        mode="patch",
+        execute=True,
+        task_id="T-2026-0042",
+        repo_root=repo,
+        popen_factory=lambda cmd, **kw: _FakeCodexProc(),
+        which_func=lambda exe: "/usr/bin/codex",
+        git_runner=_fake_git_runner(diff_stdout="diff --git a/foo.py b/foo.py\n+x\n"),
+    )
+
+    assert result.decision == "blocked"
+    assert any("assignment" in b for b in result.blockers)
+    leases = json.loads((repo / "reports" / "agent_loop" / "active" / "leases.json").read_text(encoding="utf-8"))
+    assert leases["leases"][0]["active_agent"] is None  # lease never borrowed
+    assert not (repo / "reports" / "agent_loop" / "active" / "patch_runs" / "implementer" / "patch_artifact.json").exists()
+
+
+def test_codex_runner_patch_mode_embeds_assignment_in_prompt(tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    _seed_patch_registry(repo)
+    _seed_write_lease(repo)
+    _seed_patch_assignment(repo, text="ASSIGNMENT-MARKER: refactor foo.")
+
+    agent_loop.write_active_codex_runner(
+        mode="patch",
+        execute=True,
+        task_id="T-2026-0042",
+        repo_root=repo,
+        popen_factory=lambda cmd, **kw: _FakeCodexProc(),
+        which_func=lambda exe: "/usr/bin/codex",
+        git_runner=_fake_git_runner(diff_stdout="diff --git a/foo.py b/foo.py\n+x\n"),
+    )
+
+    prompt = (
+        repo / "reports" / "agent_loop" / "active" / "patch_runs" / "implementer" / "prompt.md"
+    ).read_text(encoding="utf-8")
+    assert "## Assignment" in prompt
+    assert "ASSIGNMENT-MARKER: refactor foo." in prompt
 
 
 # --- Phase 3 PR-B: active-apply (Orchestrator applies patch to integration branch, #1607) ---
