@@ -4416,6 +4416,77 @@ def test_active_apply_blocks_on_missing_or_unproposed_artifact(tmp_path: Path) -
     assert r2.decision == "blocked" and r2.applied is False
 
 
+# --- Phase 5: task-scoped gate_evidence bundle (issue #1616) ---
+
+
+def _seed_gate_registry(repo: Path, *, reviewer_status: str = "approved", ci_status: str = "approved") -> None:
+    active = repo / "reports" / "agent_loop" / "active"
+    active.mkdir(parents=True, exist_ok=True)
+    (active / "session_registry.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "topology": "four-role",
+                "gate_policy": "conservative",
+                "agent_mix": agent_loop._parse_agent_mix(None),
+                "sessions": [
+                    {"session_id": "orchestrator", "role": "Orchestrator", "status": "running"},
+                    {"session_id": "implementer", "role": "Implementer", "status": "running"},
+                    {"session_id": "reviewer", "role": "Reviewer", "status": reviewer_status},
+                    {"session_id": "ci-eval-auditor", "role": "CI/Eval Auditor", "status": ci_status},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def test_gate_evidence_ready_when_required_gates_pass(tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    _seed_gate_registry(repo)
+
+    path, summary = agent_loop.write_active_gate_evidence(task_id="T-2026-0042", repo_root=repo)
+
+    assert summary["ready"] is True
+    assert path == repo / "reports" / "agent_loop" / "active" / "gate_evidence" / "T-2026-0042" / "evidence.json"
+    ev = json.loads(path.read_text(encoding="utf-8"))
+    assert ev["conservative_gate"]["ready"] is True
+    roles = {r["role"]: r["ok"] for r in ev["conservative_gate"]["required_roles"]}
+    assert roles == {"Reviewer": True, "CI/Eval Auditor": True}
+    assert ev["patch"] is None and ev["apply"] is None  # no patch/apply artifacts present
+    assert ev["ship"].startswith("not-triggered")
+
+
+def test_gate_evidence_not_ready_when_a_gate_is_unmet(tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    _seed_gate_registry(repo, reviewer_status="idle")
+
+    _, summary = agent_loop.write_active_gate_evidence(task_id="T-2026-0042", repo_root=repo)
+
+    assert summary["ready"] is False
+
+
+def test_gate_evidence_bundles_patch_and_apply(tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    _seed_gate_registry(repo)
+    _seed_patch_artifact(repo)  # patch_runs/implementer/patch_artifact.json (verdict proposed)
+    (repo / "reports" / "agent_loop" / "active" / "active_apply_state.json").write_text(
+        json.dumps({"decision": "applied", "applied": True, "integration_branch": "feature/T-2026-0042-integration"}),
+        encoding="utf-8",
+    )
+
+    path, _ = agent_loop.write_active_gate_evidence(task_id="T-2026-0042", repo_root=repo)
+
+    ev = json.loads(path.read_text(encoding="utf-8"))
+    assert ev["patch"]["verdict"] == "proposed"
+    assert ev["apply"]["decision"] == "applied" and ev["apply"]["applied"] is True
+
+
+def test_gate_evidence_rejects_bad_task(tmp_path: Path) -> None:
+    with pytest.raises(ValueError):
+        agent_loop.write_active_gate_evidence(task_id="nope", repo_root=tmp_path)
+
+
 def test_stop_ship_skips_remote_branch_delete_when_stacked_dependents_exist() -> None:
     text = (ROOT / "scripts" / "claude-hooks" / "stop-ship.sh").read_text(encoding="utf-8")
 
