@@ -1,0 +1,195 @@
+{
+  "decision": {
+    "overall_classification": "latency_regression",
+    "selected_variant": null,
+    "variants": [
+      {
+        "classifications": [
+          "latency_regression"
+        ],
+        "deltas_vs_control": {
+          "latency_p95_ms": 132526.61500000002,
+          "mrr_at_5": 0.0,
+          "ndcg_at_5": 0.0,
+          "recall_at_10": 0.0,
+          "recall_at_5": 0.0
+        },
+        "missing_metrics": [],
+        "name": "reranker_budget_pool30_topn10_top20",
+        "primary_classification": "latency_regression"
+      }
+    ]
+  },
+  "generated_at_utc": "2026-05-28T03:24:55.699186+00:00",
+  "known_limits": [
+    "This is aggregate-only private-local measurement, not a global reranker improvement claim.",
+    "Legacy real100, v1, 221, and kordoc evidence is not used.",
+    "BGE or other local reranker model availability is environment-dependent."
+  ],
+  "latency_budget": {
+    "cost_status": "not_observable_from_committed_aggregate",
+    "hard_no_go_ceiling_ms": 4799.0,
+    "present": true
+  },
+  "privacy_boundary": "aggregate_only_no_raw_questions_answers_evidence_ids_paths_or_filenames",
+  "profile_type": "private_real100_v2_reranker_candidate_budget",
+  "provenance": {
+    "eval_config_sha256": "168147eb51a599161733524bd11d515f15a4d2fe2085c81a4c68a4da133687ef",
+    "git_commit": "6aa92343b012",
+    "git_dirty": true,
+    "index_fingerprint_sha256": "7ddb84e3cf430e4de3dcb994fa3c5f3b10622d5d77780d32d23a5ee7e761a277",
+    "input_labels": {
+      "config": "external_private_real100_v2_config",
+      "index": "external_private_real100_v2_index",
+      "latency_budget": "reports_real100_v2_latency_cost_budget_aggregate"
+    }
+  },
+  "run_scope": {
+    "cases_evaluated": 3,
+    "cases_requested": 300,
+    "paired_delta_valid": false,
+    "subset_run": true,
+    "surface": "real100_v2"
+  },
+  "schema_version": 1,
+  "sweep": {
+    "candidate_count": 1,
+    "candidate_pool_values": [
+      30
+    ],
+    "classification_policy": [
+      "citation_regression",
+      "failed_experiment",
+      "latency_regression",
+      "ranking_regression",
+      "recall_only_gain",
+      "winner"
+    ],
+    "control": "control_no_cross_encoder_top20",
+    "reranker_top_n_values": [
+      10
+    ]
+  },
+  "variants": [
+    {
+      "metrics": {
+        "candidate_pool": {
+          "post_rerank_mrr_at_topn": null,
+          "post_rerank_ndcg_at_topn": null,
+          "post_rerank_recall_at_topn": null,
+          "pre_rerank_mrr_at_topn": null,
+          "pre_rerank_ndcg_at_topn": null,
+          "pre_rerank_recall_at_topn": null
+        },
+        "citation_guardrail": {
+          "citation_or_page_metadata_issue": {
+            "count": 0,
+            "denominator": 3,
+            "rate": 0.0
+          }
+        },
+        "final_retrieval": {
+          "mrr_at_5": 0.0,
+          "ndcg_at_5": 0.0,
+          "recall_at_10": 0.0,
+          "recall_at_5": 0.0
+        },
+        "latency_ms": {
+          "count": 3,
+          "p50": 13700.66,
+          "p95": 16842.956
+        },
+        "reranker_precision": {
+          "rerank_delta_mrr": null,
+          "rerank_delta_ndcg_at_10": null
+        }
+      },
+      "name": "control_no_cross_encoder_top20",
+      "num_cases": 3,
+      "parameters": {
+        "bm25_pool": null,
+        "dense_pool": null,
+        "rerank_cross_encoder": false,
+        "reranker_top_n": null,
+        "retrieval_backend": "hybrid",
+        "rrf_k": 60,
+        "top_k": 20
+      },
+      "reranker_provenance": {
+        "backend": "disabled",
+        "candidates_scored_mean": null,
+        "fallback": {
+          "count": 0,
+          "denominator": 3,
+          "rate": 0.0
+        },
+        "latency_ms": {
+          "count": 0,
+          "p50": null,
+          "p95": null
+        },
+        "model": "disabled"
+      }
+    },
+    {
+      "metrics": {
+        "candidate_pool": {
+          "post_rerank_mrr_at_topn": 0.0,
+          "post_rerank_ndcg_at_topn": 0.0,
+          "post_rerank_recall_at_topn": 0.0,
+          "pre_rerank_mrr_at_topn": 0.0,
+          "pre_rerank_ndcg_at_topn": 0.0,
+          "pre_rerank_recall_at_topn": 0.0
+        },
+        "citation_guardrail": {
+          "citation_or_page_metadata_issue": {
+            "count": 0,
+            "denominator": 3,
+            "rate": 0.0
+          }
+        },
+        "final_retrieval": {
+          "mrr_at_5": 0.0,
+          "ndcg_at_5": 0.0,
+          "recall_at_10": 0.0,
+          "recall_at_5": 0.0
+        },
+        "latency_ms": {
+          "count": 3,
+          "p50": 71655.66,
+          "p95": 149369.57100000003
+        },
+        "reranker_precision": {
+          "rerank_delta_mrr": 0.0,
+          "rerank_delta_ndcg_at_10": 0.0
+        }
+      },
+      "name": "reranker_budget_pool30_topn10_top20",
+      "num_cases": 3,
+      "parameters": {
+        "bm25_pool": 30,
+        "dense_pool": 30,
+        "rerank_cross_encoder": true,
+        "reranker_top_n": 10,
+        "retrieval_backend": "hybrid",
+        "rrf_k": 60,
+        "top_k": 20
+      },
+      "reranker_provenance": {
+        "backend": "bge_ko",
+        "candidates_scored_mean": 10.0,
+        "fallback": {
+          "count": 0,
+          "denominator": 3,
+          "rate": 0.0
+        },
+        "latency_ms": {
+          "count": 3,
+          "p50": 24875.84,
+          "p95": 132087.09799999997
+        },
+        "model": "dragonkue__bge-reranker-v2-m3-ko"
+      }
+    }
+  ]
+}
