@@ -136,6 +136,8 @@ DEFAULT_ACTIVE_WORKTREE_PREPARE = DEFAULT_ACTIVE_DIR / "active_worktree_prepare.
 DEFAULT_ACTIVE_CODEX_RUNNER = DEFAULT_ACTIVE_DIR / "codex_runner.md"
 DEFAULT_ACTIVE_CODEX_RUNNER_STATE = DEFAULT_ACTIVE_DIR / "codex_runner_state.json"
 DEFAULT_ACTIVE_CODEX_RUNS_DIR = DEFAULT_ACTIVE_DIR / "codex_runs"
+DEFAULT_ACTIVE_AUTO_LOOP = DEFAULT_ACTIVE_DIR / "auto_loop.md"
+DEFAULT_ACTIVE_AUTO_LOOP_STATE = DEFAULT_ACTIVE_DIR / "auto_loop_state.json"
 DEFAULT_ISSUE_STATE = DEFAULT_REPORT_DIR / "issue_state.json"
 DEFAULT_ISSUE_TRIAGE = DEFAULT_REPORT_DIR / "issue_triage.md"
 DEFAULT_ISSUE_QUEUE_TASKS_DIR = DEFAULT_REPORT_DIR / "issue_queue_tasks"
@@ -593,6 +595,18 @@ class ActiveApplyResult:
     decision: str
     integration_branch: str
     applied: bool
+    blockers: tuple[str, ...]
+    warnings: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class ActiveAutoLoopResult:
+    report_path: Path
+    state_path: Path
+    decision: str
+    cycles: tuple[dict[str, object], ...]
+    completed_task_ids: tuple[str, ...]
+    next_task_id: str | None
     blockers: tuple[str, ...]
     warnings: tuple[str, ...]
 
@@ -1537,14 +1551,16 @@ def recommend_next_task(repo_root: Path = ROOT_DIR) -> str:
     return "\n".join(lines) + "\n"
 
 
-def select_next_task(repo_root: Path = ROOT_DIR) -> TaskEntry:
+def select_next_task(repo_root: Path = ROOT_DIR, exclude_task_ids: Sequence[str] = ()) -> TaskEntry:
     queue_text = _read_text(repo_root / QUEUE_PATH)
     entries = parse_task_entries(queue_text)
     if not entries:
         raise ValueError("no task entries found in tasks/queue.md")
-    ready = [entry for entry in entries if (entry.status or "").lower() == "ready"]
-    todo = [entry for entry in entries if (entry.status or "").lower() == "todo"]
-    backlog = [entry for entry in entries if (entry.status or "").lower() == "backlog"]
+    excluded = set(exclude_task_ids)
+    selectable = [entry for entry in entries if entry.task_id not in excluded]
+    ready = [entry for entry in selectable if (entry.status or "").lower() == "ready"]
+    todo = [entry for entry in selectable if (entry.status or "").lower() == "todo"]
+    backlog = [entry for entry in selectable if (entry.status or "").lower() == "backlog"]
     candidates = ready or todo or backlog
     if not candidates:
         raise ValueError("no ready, todo, or backlog task found; choose manually from tasks/queue.md")
@@ -9070,6 +9086,301 @@ def render_active_start(
     return _sanitize_dynamic_text("\n".join(lines)).rstrip() + "\n"
 
 
+def _load_active_auto_completed(state_path: Path) -> tuple[list[str], list[str]]:
+    warnings: list[str] = []
+    if not state_path.exists():
+        return [], warnings
+    try:
+        payload = json.loads(_read_text(state_path))
+    except (json.JSONDecodeError, OSError):
+        return [], ["ignored unreadable active auto-loop state"]
+    if not isinstance(payload, dict):
+        return [], ["ignored non-object active auto-loop state"]
+    raw = payload.get("completed_task_ids")
+    if not isinstance(raw, list):
+        return [], warnings
+    completed = [item for item in (str(value) for value in raw) if TASK_ID_RE.fullmatch(item)]
+    return list(_dedupe_preserve_order(completed)), warnings
+
+
+def write_active_auto_loop(
+    *,
+    mode: str = "full-ship",
+    topology: str = "expanded-eight",
+    max_iterations: int = 1,
+    execute_runner: bool = False,
+    execute_ship: bool = False,
+    record_gate_heartbeats: bool = True,
+    task_id: str | None = None,
+    changed_files: Sequence[str] = (),
+    claim_text: Path | None = None,
+    pr_body: Path | None = None,
+    lease_ttl_minutes: int = 30,
+    batch: Path | None = None,
+    agent_mix: dict[str, object] | None = None,
+    repair_branch: bool = False,
+    repair_branch_type: str = "chore",
+    repair_slug: str = "active-start",
+    repair_title: str = "Agent loop active start",
+    codex_executable: str = "codex",
+    sandbox: str = "read-only",
+    max_parallel: int = 8,
+    timeout_seconds: int = 0,
+    state: Path = DEFAULT_ACTIVE_AUTO_LOOP_STATE,
+    out: Path = DEFAULT_ACTIVE_AUTO_LOOP,
+    repo_root: Path = ROOT_DIR,
+) -> ActiveAutoLoopResult:
+    """Bounded active-loop driver: start, run sessions, gate, ship, then pick next task.
+
+    A task is recorded as completed only after ``active-loop --execute`` returns
+    ``executed``. Dry-run or read-only cycles never advance the completed-task ledger, so the
+    controller cannot mistake a report-only pass for solved work.
+    """
+    if max_iterations < 1:
+        raise ValueError("--max-iterations must be at least 1")
+    if mode != "full-ship":
+        raise ValueError("--mode currently supports only full-ship")
+    if task_id and not TASK_ID_RE.fullmatch(task_id):
+        raise ValueError("--task must match T-YYYY-NNNN")
+    if sandbox not in {"read-only", "workspace-write", "danger-full-access"}:
+        raise ValueError("--sandbox must be read-only, workspace-write, or danger-full-access")
+
+    out_path = _active_path(out, repo_root=repo_root)
+    state_path = _active_path(state, repo_root=repo_root)
+    prior_completed, warnings = _load_active_auto_completed(state_path)
+    completed: list[str] = list(prior_completed)
+    blockers: list[str] = []
+    cycles: list[dict[str, object]] = []
+    requested_files = tuple(sorted(_normalize_changed_file(path, repo_root=repo_root) for path in changed_files if path))
+
+    for iteration in range(1, max_iterations + 1):
+        try:
+            task = load_task(task_id, repo_root) if task_id and iteration == 1 else select_next_task(
+                repo_root, exclude_task_ids=completed
+            )
+        except ValueError as exc:
+            if iteration == 1:
+                blockers.append(str(exc))
+            else:
+                warnings.append(f"no next task selected after iteration {iteration - 1}: {exc}")
+            break
+
+        context_files = tuple(_dedupe_preserve_order((*requested_files, *_active_task_context_files(task, repo_root=repo_root))))
+        cycle: dict[str, object] = {
+            "iteration": iteration,
+            "task_id": task.task_id,
+            "title": task.title,
+            "changed_files": list(context_files),
+            "completed": False,
+        }
+        cycles.append(cycle)
+
+        start = write_active_start(
+            mode=mode,
+            topology=topology,
+            task_id=task.task_id,
+            changed_files=context_files,
+            claim_text=claim_text,
+            pr_body=pr_body,
+            lease_ttl_minutes=lease_ttl_minutes,
+            batch=batch,
+            agent_mix=agent_mix,
+            repair_branch=repair_branch,
+            repair_branch_type=repair_branch_type,
+            repair_slug=repair_slug,
+            repair_title=repair_title,
+            repo_root=repo_root,
+        )
+        cycle["start_decision"] = start.decision
+        cycle["start_report"] = _repo_path(start.report_path, repo_root)
+        if start.blockers:
+            blockers.extend(f"{task.task_id}: {item}" for item in start.blockers)
+            break
+
+        runner = write_active_codex_runner(
+            execute=execute_runner,
+            codex_executable=codex_executable,
+            sandbox=sandbox,
+            max_parallel=max_parallel,
+            timeout_seconds=timeout_seconds,
+            record_gate_heartbeats=record_gate_heartbeats,
+            repo_root=repo_root,
+        )
+        cycle["runner_decision"] = runner.decision
+        cycle["runner_report"] = _repo_path(runner.report_path, repo_root)
+        if execute_runner and runner.decision != "completed":
+            blockers.extend(f"{task.task_id}: runner {item}" for item in runner.blockers)
+            if not runner.blockers:
+                blockers.append(f"{task.task_id}: runner decision was {runner.decision}, expected completed")
+            break
+
+        evidence_path, gate_summary = write_active_gate_evidence(task_id=task.task_id, repo_root=repo_root)
+        cycle["gate_evidence"] = _repo_path(evidence_path, repo_root)
+        cycle["gate_ready"] = bool(gate_summary.get("ready"))
+        cycle["privacy_clean"] = bool(gate_summary.get("privacy_clean"))
+
+        if not execute_ship:
+            warnings.append(f"{task.task_id}: ship execution disabled; not marking task completed")
+            break
+        if not cycle["gate_ready"]:
+            blockers.append(f"{task.task_id}: conservative gate is not ready")
+            break
+
+        ship = write_active_loop(
+            mode=mode,
+            topology=topology,
+            execute=True,
+            task_id=task.task_id,
+            changed_files=context_files,
+            claim_text=claim_text,
+            pr_body=pr_body,
+            lease_ttl_minutes=lease_ttl_minutes,
+            batch=batch,
+            agent_mix=agent_mix,
+            repo_root=repo_root,
+        )
+        cycle["ship_decision"] = ship.decision
+        cycle["ship_report"] = _repo_path(ship.report_path, repo_root)
+        if ship.decision != "executed":
+            blockers.extend(f"{task.task_id}: ship {item}" for item in ship.blockers)
+            if not ship.blockers:
+                blockers.append(f"{task.task_id}: ship decision was {ship.decision}, expected executed")
+            break
+
+        cycle["completed"] = True
+        if task.task_id not in completed:
+            completed.append(task.task_id)
+
+    next_task: TaskEntry | None = None
+    try:
+        next_task = select_next_task(repo_root, exclude_task_ids=completed)
+    except ValueError as exc:
+        warnings.append(f"next task selection stopped: {exc}")
+
+    if blockers:
+        decision = "blocked"
+    elif cycles and all(bool(cycle.get("completed")) for cycle in cycles) and len(cycles) >= max_iterations:
+        decision = "limit-reached"
+    elif cycles and any(bool(cycle.get("completed")) for cycle in cycles):
+        decision = "completed"
+    else:
+        decision = "planned"
+
+    state_payload = {
+        "schema_version": 1,
+        "generated_at": _isoformat(datetime.now(timezone.utc)),
+        "decision": decision,
+        "execute_runner": execute_runner,
+        "execute_ship": execute_ship,
+        "completed_task_ids": completed,
+        "next_task_id": next_task.task_id if next_task else None,
+        "cycles": cycles,
+        "blockers": _dedupe_preserve_order(blockers),
+        "warnings": _dedupe_preserve_order(warnings),
+    }
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text(json.dumps(_sanitize_json_value(state_payload), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    rendered = render_active_auto_loop(
+        decision=decision,
+        execute_runner=execute_runner,
+        execute_ship=execute_ship,
+        cycles=cycles,
+        completed_task_ids=completed,
+        next_task=next_task,
+        blockers=tuple(_dedupe_preserve_order(blockers)),
+        warnings=tuple(_dedupe_preserve_order(warnings)),
+        state_path=state_path,
+        repo_root=repo_root,
+    )
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(rendered, encoding="utf-8")
+    _append_active_event(
+        _active_path(DEFAULT_ACTIVE_EVENTS, repo_root=repo_root),
+        {
+            "event": "active-auto-loop",
+            "decision": decision,
+            "execute_runner": execute_runner,
+            "execute_ship": execute_ship,
+            "completed_task_ids": completed,
+            "next_task_id": next_task.task_id if next_task else None,
+            "blockers": blockers,
+        },
+    )
+    return ActiveAutoLoopResult(
+        report_path=out_path,
+        state_path=state_path,
+        decision=decision,
+        cycles=tuple(cycles),
+        completed_task_ids=tuple(completed),
+        next_task_id=next_task.task_id if next_task else None,
+        blockers=tuple(_dedupe_preserve_order(blockers)),
+        warnings=tuple(_dedupe_preserve_order(warnings)),
+    )
+
+
+def render_active_auto_loop(
+    *,
+    decision: str,
+    execute_runner: bool,
+    execute_ship: bool,
+    cycles: Sequence[dict[str, object]],
+    completed_task_ids: Sequence[str],
+    next_task: TaskEntry | None,
+    blockers: Sequence[str],
+    warnings: Sequence[str],
+    state_path: Path,
+    repo_root: Path,
+) -> str:
+    lines = [
+        "# Active Auto Loop",
+        "",
+        "- Bounded driver for task selection -> active-start -> 8-session runner -> gate evidence -> optional ship -> next task.",
+        "- A task is completed only after `active-loop --execute` returns `executed`; read-only runner completion alone is not enough.",
+        f"- Decision: `{_sanitize_inline_text(decision)}`",
+        f"- Execute runner: `{execute_runner}`",
+        f"- Execute ship: `{execute_ship}`",
+        f"- State: `{_repo_path(state_path, repo_root)}`",
+        "",
+        "## Cycles",
+        "",
+        "| Iteration | Task | Start | Runner | Gate ready | Ship | Completed |",
+        "|---:|---|---|---|---|---|---|",
+    ]
+    if cycles:
+        for cycle in cycles:
+            lines.append(
+                "| "
+                + " | ".join(
+                    _sanitize_inline_text(str(value))
+                    for value in (
+                        cycle.get("iteration", ""),
+                        cycle.get("task_id", ""),
+                        cycle.get("start_decision", ""),
+                        cycle.get("runner_decision", ""),
+                        cycle.get("gate_ready", ""),
+                        cycle.get("ship_decision", "not-run"),
+                        cycle.get("completed", False),
+                    )
+                )
+                + " |"
+            )
+    else:
+        lines.append("|  | N/A |  |  |  |  | false |")
+    lines.extend(["", "## Completed Tasks", ""])
+    lines.extend(f"- `{task}`" for task in completed_task_ids) if completed_task_ids else lines.append("- None")
+    lines.extend(["", "## Next Task", ""])
+    if next_task is not None:
+        lines.append(f"- `{next_task.task_id}` — {_sanitize_dynamic_text(next_task.title)}")
+    else:
+        lines.append("- None")
+    lines.extend(["", "## Blockers", ""])
+    lines.extend(f"- {_sanitize_dynamic_text(item)}" for item in blockers) if blockers else lines.append("- None")
+    lines.extend(["", "## Warnings", ""])
+    lines.extend(f"- {_sanitize_dynamic_text(item)}" for item in warnings) if warnings else lines.append("- None")
+    lines.append("")
+    return _sanitize_dynamic_text("\n".join(lines)).rstrip() + "\n"
+
+
 def render_active_loop(
     *,
     mode: str,
@@ -9217,6 +9528,10 @@ def _active_path(path: Path, *, repo_root: Path) -> Path:
         path = repo_root / "reports" / "agent_loop" / "active" / "codex_runner_state.json"
     elif path == DEFAULT_ACTIVE_CODEX_RUNS_DIR:
         path = repo_root / "reports" / "agent_loop" / "active" / "codex_runs"
+    elif path == DEFAULT_ACTIVE_AUTO_LOOP:
+        path = repo_root / "reports" / "agent_loop" / "active" / "auto_loop.md"
+    elif path == DEFAULT_ACTIVE_AUTO_LOOP_STATE:
+        path = repo_root / "reports" / "agent_loop" / "active" / "auto_loop_state.json"
     return _safe_output_path(path, repo_root=repo_root)
 
 
@@ -13046,6 +13361,32 @@ def build_parser() -> argparse.ArgumentParser:
     codex_runner.add_argument("--base", default="origin/main", help="Base ref the patch-mode scratch worktree forks from.")
     codex_runner.add_argument("--record-gate-heartbeats", action="store_true")
 
+    auto_loop = sub.add_parser("active-auto-loop", help="Run bounded active-start/runner/gate/ship cycles across queue tasks.")
+    auto_loop.add_argument("--mode", choices=("full-ship",), default="full-ship")
+    auto_loop.add_argument("--topology", choices=ACTIVE_TOPOLOGY_CHOICES, default="expanded-eight")
+    auto_loop.add_argument("--max-iterations", type=int, default=1)
+    auto_loop.add_argument("--execute-runner", action="store_true")
+    auto_loop.add_argument("--execute-ship", action="store_true")
+    auto_loop.add_argument("--record-gate-heartbeats", action=argparse.BooleanOptionalAction, default=True)
+    auto_loop.add_argument("--task")
+    auto_loop.add_argument("--changed-files", type=Path)
+    auto_loop.add_argument("--from-git", action="store_true")
+    auto_loop.add_argument("--claim-text", type=Path)
+    auto_loop.add_argument("--pr-body", type=Path)
+    auto_loop.add_argument("--lease-ttl-minutes", type=int, default=30)
+    auto_loop.add_argument("--batch", type=Path)
+    auto_loop.add_argument("--agent-mix", help="Work-unit mix target, e.g. claude=5,codex=5")
+    auto_loop.add_argument("--repair-branch", action="store_true")
+    auto_loop.add_argument("--repair-branch-type", default="chore")
+    auto_loop.add_argument("--repair-slug", default="active-start")
+    auto_loop.add_argument("--repair-title", default="Agent loop active start")
+    auto_loop.add_argument("--codex-executable", default="codex")
+    auto_loop.add_argument("--sandbox", choices=("read-only", "workspace-write", "danger-full-access"), default="read-only")
+    auto_loop.add_argument("--max-parallel", type=int, default=8)
+    auto_loop.add_argument("--timeout-seconds", type=int, default=0)
+    auto_loop.add_argument("--state", type=Path, default=DEFAULT_ACTIVE_AUTO_LOOP_STATE)
+    auto_loop.add_argument("--out", type=Path, default=DEFAULT_ACTIVE_AUTO_LOOP)
+
     active_apply = sub.add_parser("active-apply", help="Apply a codex patch artifact to its integration branch after git apply --check (never touches main).")
     active_apply.add_argument("--patch", type=Path, help="Patch artifact JSON; defaults to the Implementer session's patch_artifact.json.")
     active_apply.add_argument("--base", default="origin/main", help="Base ref the integration branch forks from when created.")
@@ -13979,6 +14320,40 @@ def main(argv: list[str] | None = None) -> int:
             )
             sys.stdout.write(f"[OK] wrote {_repo_path(result.report_path, ROOT_DIR)}\n")
             return 0 if result.decision in {"planned", "running", "completed"} else 1
+        if args.command == "active-auto-loop":
+            files = _read_changed_files(
+                args.changed_files,
+                from_git=args.from_git,
+                pr=None,
+                repo_root=ROOT_DIR,
+            )
+            result = write_active_auto_loop(
+                mode=args.mode,
+                topology=args.topology,
+                max_iterations=args.max_iterations,
+                execute_runner=args.execute_runner,
+                execute_ship=args.execute_ship,
+                record_gate_heartbeats=args.record_gate_heartbeats,
+                task_id=args.task,
+                changed_files=files,
+                claim_text=args.claim_text,
+                pr_body=args.pr_body,
+                lease_ttl_minutes=args.lease_ttl_minutes,
+                batch=args.batch,
+                agent_mix=_parse_agent_mix(args.agent_mix),
+                repair_branch=args.repair_branch,
+                repair_branch_type=args.repair_branch_type,
+                repair_slug=args.repair_slug,
+                repair_title=args.repair_title,
+                codex_executable=args.codex_executable,
+                sandbox=args.sandbox,
+                max_parallel=args.max_parallel,
+                timeout_seconds=args.timeout_seconds,
+                state=args.state,
+                out=args.out,
+            )
+            sys.stdout.write(f"[OK] wrote {_repo_path(result.report_path, ROOT_DIR)}\n")
+            return 0 if result.decision in {"planned", "completed", "limit-reached"} else 1
         if args.command == "active-apply":
             apply_result = write_active_apply(
                 patch=args.patch,
