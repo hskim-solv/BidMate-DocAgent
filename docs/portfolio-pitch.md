@@ -4,9 +4,9 @@
 
 ## 30초 피치
 
-> 이 프로젝트에서 저는 RAG 파이프라인을 단순 구현한 것이 아니라, RFP 문서에서 실제로 발생하는 **검색 실패 · 근거 부족 · 비교 질의 편향을 failure mode 로 정의**하고, 이를 **baseline / ablation / eval / CI 로 검증 가능한 시스템**으로 만들었습니다.
+> 이 프로젝트에서 저는 RAG 파이프라인을 단순 구현한 것이 아니라, RFP 문서에서 실제로 발생하는 **검색 실패 · 근거 부족 · 비교 질의 편향을 failure mode 로 정의**하고, 이를 **baseline / ablation / eval / CI 로 검증 가능한 시스템**으로 만들었습니다. 다음 포지셔닝은 narrow RAG engineer 가 아니라 문서·표·이미지 evidence 를 다루는 **Multimodal Agentic AI Product Engineer** 입니다.
 
-핵심 한 문장: "RAG 데모를 만든 게 아니라, RFP 도메인의 실패 모드를 정의하고 그것을 막는 평가·CI·provenance 게이트를 소유했습니다."
+핵심 한 문장: "RAG 데모를 만든 게 아니라, RFP 도메인의 실패 모드를 정의하고 그것을 막는 평가·CI·provenance 게이트를 소유했고, 이를 VLM/Agent/Product surface 로 확장할 task stack 을 준비했습니다."
 
 ## 3개 핵심 시그널
 
@@ -28,15 +28,21 @@
 - 근거: [pr-eval.yml](../.github/workflows/pr-eval.yml) · [ADR 0062](adr/0062-failure-rate-regression-contract.md) (회귀 ceiling 계약) · [ADR 0005](adr/0005-eval-split-public-synthetic-private-local.md) (eval 분리).
 - 면접 답변: "측정은 일회성이 아니라 *상시 게이트*입니다. 회귀가 들어오면 CI 가 막고, 실패율 상한은 내려가기만 합니다."
 
+### 4. Multimodal/Agent/Product 확장 경로
+
+- 현재 repo 의 claim-bearing 근거는 `real100_v2` aggregate-only 정책에 묶고, VLM captioning, visual evidence, tool-state trace, Agent trajectory evaluation, FastAPI product workflow, self-hosted OpenAI-compatible serving 은 모두 opt-in follow-up task 로 분리한다.
+- 근거: [`tasks/queue.md`](../tasks/queue.md)의 `T-2026-0057` 이후 positioning stack 과 [`docs/plans/T-2026-0056-multimodal-agent-positioning-stack.md`](plans/T-2026-0056-multimodal-agent-positioning-stack.md).
+- 면접 답변: "RAG 는 기본기이고, 제 차별점은 CV/생성형 이미지 경험을 문서·표·이미지 evidence 를 다루는 Agentic product workflow 로 확장한다는 점입니다. 단, 포트폴리오 claim 은 구현보다 먼저 평가·privacy·provenance gate 로 묶습니다."
+
 ## 안전성/품질 trade-off 를 정직하게 설명하기
 
 면접관이 "그런데 `agentic_full` 이 raw accuracy 는 더 낮네요?"라고 물으면:
 
 > "맞습니다. 그건 *실패한 최적화가 아니라 의도된 trade-off* 입니다. `agentic_full` 은 답변율을 극대화하도록 튜닝한 게 아니라, citation precision **+18.0pp** 와 abstention accuracy **+57.1pp** 를 얻는 safety-oriented 파이프라인입니다. RFP 의사결정 맥락에서는 근거 없는 답변보다 근거 있는 보류가 더 안전하니까요. 그래서 메트릭은 하나의 평탄한 aggregate report 가 아니라 slice 별로 읽어야 합니다."
 
-real-eval hardcase(n=221, accuracy 16.10%)를 물으면:
+private real-eval 수치를 물으면:
 
-> "그건 제품 성공 지표가 아니라 hardcase 스트레스 테스트입니다. 일부러 어려운 케이스로 실패 모드를 노출하고 ablation 변별력을 시험하는 용도라, 낮은 수치를 숨기지 않고 엔지니어링 증거로 드러냅니다." ([ADR 0052](adr/0052-real-eval-hardcase-expansion-to-200.md))
+> "현재 새 task 와 PR 의 claim-bearing 근거는 `real100_v2` aggregate-only 표면만 사용합니다. 이전 세대 private-eval artifact 와 wording 은 archive-only 라서 새 성능 주장에는 쓰지 않습니다. 숫자를 말할 때는 paired aggregate delta, provenance, privacy audit, claim audit 를 같이 제시합니다."
 
 ## STAR 정리 (핵심 기여 1건)
 
