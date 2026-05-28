@@ -14,13 +14,13 @@ local install), the regression runs.
 
 from __future__ import annotations
 
-import copy
 import json
-import os
 import unittest
 from pathlib import Path
 
 import pytest
+
+from tests._chroma_safe_clone import deepcopy_index_safe
 
 # Skip the whole module if langgraph isn't installed. The graph module
 # imports langgraph lazily, but the dispatch test pretends to use it,
@@ -107,7 +107,7 @@ def test_langgraph_orchestrator_json_identical_to_direct(
 
     monkeypatch.setenv("BIDMATE_ORCHESTRATOR", "direct")
     direct_result = rag_core.run_rag_query(
-        copy.deepcopy(index),
+        deepcopy_index_safe(index),
         query,
         pipeline=pipeline,
     )
@@ -117,7 +117,7 @@ def test_langgraph_orchestrator_json_identical_to_direct(
 
     monkeypatch.setenv("BIDMATE_ORCHESTRATOR", "langgraph")
     graph_result = rag_core.run_rag_query(
-        copy.deepcopy(index),
+        deepcopy_index_safe(index),
         query,
         pipeline=pipeline,
     )
@@ -149,7 +149,7 @@ def test_naive_baseline_skips_langgraph_dispatch(monkeypatch: pytest.MonkeyPatch
 
     monkeypatch.setenv("BIDMATE_ORCHESTRATOR", "langgraph")
     result = rag_core.run_rag_query(
-        copy.deepcopy(index),
+        deepcopy_index_safe(index),
         "기관 A의 AI 요구사항을 알려줘",
         pipeline="naive_baseline",
     )
@@ -230,7 +230,7 @@ def test_phase_analyze_short_circuits_for_context_clarification(monkeypatch: pyt
     # triggers ``needs_clarification`` — the analyze phase emits the
     # context-clarification result without entering retrieval.
     ctx = rag_core._build_run_context(
-        copy.deepcopy(index),
+        deepcopy_index_safe(index),
         "그건 어떻게 돼?",
         top_k=None,
         context_entities=None,
