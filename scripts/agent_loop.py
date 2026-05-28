@@ -11951,7 +11951,7 @@ def _active_codex_auth_check(
     summary = _sanitize_inline_text(combined.splitlines()[0] if combined.splitlines() else f"rc={rc}")
     if rc != 0:
         return summary, [f"codex login status failed for ChatGPT auth guard (rc={rc}): {summary}"], []
-    if "Logged in using ChatGPT" not in stdout:
+    if "Logged in using ChatGPT" not in combined:
         return summary, [f"Codex auth mode requires ChatGPT login; got: {summary}"], []
     return "Logged in using ChatGPT", [], []
 
