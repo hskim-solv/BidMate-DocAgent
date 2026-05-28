@@ -38,8 +38,12 @@ _VERDICT_MAP = {
     "needs-attention": "needs-attention",
 }
 
-# runner(companion, base, scope, focus) -> CompletedProcess; injectable for tests.
-CodexRunner = Callable[[Path, str, str, str], "subprocess.CompletedProcess[str]"]
+# runner(companion, base, scope, focus, model) -> CompletedProcess; injectable for tests.
+# ADR 0082: model is explicit per-role; `adversarial-review` supports `--model` (companion 1.0.4
+# line 684 valueOptions: ["base", "scope", "model", "cwd"]). `--effort` is NOT supported by the
+# adversarial-review subcommand — env BIDMATE_CODEX_LANE_EFFORT is defined upstream but not
+# injected here; companion-side support is a separate follow-up.
+CodexRunner = Callable[[Path, str, str, str, str], "subprocess.CompletedProcess[str]"]
 
 
 def resolve_companion(explicit: str | None = None, *, home: Path = HOME) -> Path | None:
@@ -54,8 +58,12 @@ def resolve_companion(explicit: str | None = None, *, home: Path = HOME) -> Path
     return Path(matches[-1]) if matches else None
 
 
-def _default_runner(companion: Path, base: str, scope: str, focus: str) -> "subprocess.CompletedProcess[str]":
+def _default_runner(
+    companion: Path, base: str, scope: str, focus: str, model: str
+) -> "subprocess.CompletedProcess[str]":
     cmd = ["node", str(companion), "adversarial-review", "--json", "--base", base, "--scope", scope]
+    if model:
+        cmd += ["--model", model]
     if focus:
         cmd.append(focus)
     return subprocess.run(cmd, capture_output=True, text=True, check=False)
@@ -66,6 +74,7 @@ def run_turn(
     base: str = "origin/main",
     scope: str = "branch",
     focus: str = "",
+    model: str = "",
     companion_path: str | None = None,
     runner: CodexRunner | None = None,
     home: Path = HOME,
@@ -76,7 +85,7 @@ def run_turn(
         return _error("codex companion not found (plugin cache glob miss)")
     run = runner or _default_runner
     try:
-        proc = run(companion, base, scope, focus)
+        proc = run(companion, base, scope, focus, model)
     except OSError as exc:
         return _error(f"codex companion invocation failed: {exc}")
     if proc.returncode != 0:

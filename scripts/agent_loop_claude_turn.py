@@ -1,18 +1,25 @@
-"""Read-only Claude lane adapter for the active-loop `agent-turn` (issue #1590).
+"""Read-only Claude lane adapter for the active-loop `agent-turn` (issue #1590, ADR 0082).
 
-Invokes `claude -p` with the unified diff embedded in the prompt (the caller runs
-`git diff`), an inline `--json-schema`, a read-only tool allowlist, and a write/ship
-denylist. The diff is embedded rather than fetched via claude's own tools because
-headless `-p` tool use crashes the API ("tool_use ids must be unique", issue #1598
-F4); plan mode is likewise dropped. Parses the `--output-format json` wrapper (the
-model's result may be fenced) into the shared review-artifact core
-(verdict / summary / findings / next_steps). No writes, no patches, no ship.
+Invokes ``claude -p`` (Claude Code CLI subprocess) with the unified diff embedded in the
+prompt, an inline ``--json-schema``, a read-only tool allowlist, and a write/ship denylist.
+The diff is embedded rather than fetched via claude's own tools because headless ``-p``
+tool use crashes the API ("tool_use ids must be unique", issue #1598 F4); plan mode is
+likewise dropped.
 
-The agent-turn caller (scripts/agent_loop.py) owns privacy scrubbing, artifact
-persistence, Work Unit accounting, and the session heartbeat. This module never
-raises on tool failure — it returns a ``verdict="error"`` core so the caller can
-record a deterministic non-pass heartbeat. The subprocess call is injectable via
-``runner`` so tests never shell out to the real `claude` binary.
+ADR 0082: claude lane stays on the **subscription-OAuth path** (Pro/Max quota), never on
+Anthropic Messages API direct calls — this preserves the user's "subscription only" policy
+(memory: project_claude_sdk_credit_policy) and inherits the same trust contract as the
+codex lane (ADR 0066: user CLI install + auth = explicit egress consent). The CLI also
+exposes ``--model`` and ``--effort`` (claude-code 2.1+ — verified 2.1.153) so the per-role
+model × effort matrix in ``scripts/agent_loop.py`` can drive the lane without resorting
+to the Messages API. ``--effort`` accepts ``low | medium | high | xhigh | max``;
+``xhigh`` is Opus-4-7-only and the caller normalizes that via ``_validate_effort_for_model``.
+
+The agent-turn caller (scripts/agent_loop.py) owns privacy scrubbing, artifact persistence,
+Work Unit accounting, and the session heartbeat. This module never raises on tool failure —
+it returns a ``verdict="error"`` core so the caller can record a deterministic non-pass
+heartbeat. The subprocess call is injectable via ``runner`` so tests never shell out to the
+real ``claude`` binary.
 """
 from __future__ import annotations
 
@@ -52,10 +59,19 @@ def build_command(
     *,
     prompt: str,
     schema_path: Path,
+    model: str = "",
+    effort: str = "",
     allowed_tools: Sequence[str] = DEFAULT_ALLOWED_TOOLS,
     disallowed_tools: Sequence[str] = DEFAULT_DISALLOWED_TOOLS,
 ) -> list[str]:
     cmd = ["claude", "-p", prompt, "--output-format", "json"]
+    # ADR 0082: per-role model + effort (Sonnet medium / Opus xhigh / etc.). Empty strings
+    # mean "use the user's claude settings default" — the agent-turn caller resolves the
+    # role profile before calling here so empty fall-throughs only happen in unit tests.
+    if model:
+        cmd += ["--model", model]
+    if effort:
+        cmd += ["--effort", effort]
     # `--json-schema` expects the schema JSON *inline*, not a file path — passing a path
     # crashes the claude binary (issue #1598 F2). Inline the file content; omit the flag if
     # the schema is unreadable so the lane still runs (the prompt carries the required shape).
@@ -83,6 +99,8 @@ def run_turn(
     *,
     prompt: str,
     schema_path: Path,
+    model: str = "",
+    effort: str = "",
     allowed_tools: Sequence[str] = DEFAULT_ALLOWED_TOOLS,
     disallowed_tools: Sequence[str] = DEFAULT_DISALLOWED_TOOLS,
     runner: ClaudeRunner | None = None,
@@ -92,6 +110,8 @@ def run_turn(
     cmd = build_command(
         prompt=prompt,
         schema_path=schema_path,
+        model=model,
+        effort=effort,
         allowed_tools=allowed_tools,
         disallowed_tools=disallowed_tools,
     )

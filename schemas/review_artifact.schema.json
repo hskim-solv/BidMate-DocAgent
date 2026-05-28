@@ -52,6 +52,29 @@
     },
     "privacy_scrubbed": {
       "type": "boolean"
+    },
+    "lane_model": {
+      "type": ["string", "null"],
+      "description": "ADR 0082: model ID actually used by the lane (e.g. claude-opus-4-7, gpt-5.5)."
+    },
+    "lane_effort": {
+      "type": ["string", "null"],
+      "description": "ADR 0082: resolved effort level for this lane (low/medium/high/xhigh/max). See lane_effort_applied for whether the runtime actually consumed it."
+    },
+    "lane_effort_applied": {
+      "type": ["boolean", "null"],
+      "description": "ADR 0082: true if the lane's effort was actually passed to the underlying CLI (claude -p --effort), false when only persisted as evidence (codex companion 1.0.4 adversarial-review does not consume --effort). null when not applicable."
+    },
+    "prior_artifact_ref": {
+      "type": ["string", "null"],
+      "description": "ADR 0082: agent name of the 1st lane this turn challenges (set on 2nd lane in adversarial mode)."
+    },
+    "lane_usage": {
+      "type": "object",
+      "description": "ADR 0082: anthropic Messages API usage block (input_tokens/output_tokens/cache_*). Empty object when transport is codex companion or usage unavailable.",
+      "additionalProperties": {
+        "type": ["integer", "null"]
+      }
     }
   },
   "$defs": {

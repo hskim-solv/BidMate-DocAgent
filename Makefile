@@ -417,6 +417,24 @@ AUTOMATION_COVERAGE_OUT ?= reports/agent_loop/automation_coverage.md
 ACTIVE_START_OUT ?= reports/agent_loop/active/start.md
 ACTIVE_TOPOLOGY ?= expanded-eight
 ACTIVE_AGENT_MIX ?= claude=5,codex=5
+
+# ADR 0082: dual-lane model × effort × adversarial knobs (claude lane uses Messages API).
+# claude lane — role 별 model + effort. Planner 만 Opus 4.7 (xhigh adaptive thinking),
+# 나머지 Sonnet 4.6 (medium). manual budget_tokens 폐기 (Opus 4.7 거부, Sonnet 4.6 deprecated).
+BIDMATE_CLAUDE_LANE_PLANNER_MODEL ?= claude-opus-4-7
+BIDMATE_CLAUDE_LANE_PLANNER_EFFORT ?= xhigh
+BIDMATE_CLAUDE_LANE_MODEL ?= claude-sonnet-4-6
+BIDMATE_CLAUDE_LANE_EFFORT ?= medium
+# codex lane — 2026 라인업. Reviewer/Deep = gpt-5.5 frontier (high), CI Auditor = gpt-5.4-mini (medium).
+# codex companion 1.0.4 의 adversarial-review subcommand 는 --effort 미지원 → env 정의만, 호출 미주입.
+BIDMATE_CODEX_LANE_REVIEWER_MODEL ?= gpt-5.5
+BIDMATE_CODEX_LANE_REVIEWER_EFFORT ?= high
+BIDMATE_CODEX_LANE_CI_MODEL ?= gpt-5.4-mini
+BIDMATE_CODEX_LANE_CI_EFFORT ?= medium
+BIDMATE_CODEX_LANE_MODEL ?= gpt-5.5
+BIDMATE_CODEX_LANE_EFFORT ?= high
+# dual-lane 동작 — 0=병렬 독립 (backward-compat), 1=adversarial (1차 lane→2차 lane challenge).
+BIDMATE_DUAL_LANE_ADVERSARIAL ?= 1
 ACTIVE_LEASE_TTL_MINUTES ?= 30
 ACTIVE_REPAIR_BRANCH ?= 1
 ACTIVE_REPAIR_BRANCH_TYPE ?= chore
