@@ -188,8 +188,9 @@ status는 별도 heartbeat나 검토 표면에서 유지한다.
 read-only runner와 별개로, `active-codex-runner`는 opt-in `--mode patch`로 **codex
 write-lane**을 돈다. read-only 8-session 모드는 불변이며, patch 모드는 write-lease
 owner인 **Implementer** 한 세션만 대상으로 한다 (claude `-p` print mode는 비-streaming
-직렬화 경로의 #1598 F4 버그로 Edit-tool 호출이 깨지므로 PR-B의 SDK 어댑터 도입
-전까지 write-lane은 codex 전용 — 실측 근거는 아래 표).
+직렬화 경로의 #1598 F4 버그로 Edit-tool 호출이 깨진다. stream-json transport로
+회피 가능하나 2026-06-15 Anthropic 에이전트 크레딧 분리 정책으로 채택은 보류 —
+실측 근거 + 정책 함의는 아래 표).
 
 claude `-p` Edit-tool 실측 매트릭스 (`scripts/reproduce_claude_edit_tool.py`,
 claude 2.1.3, 2026-05-28, 구독 OAuth 경로, raw artifact:
@@ -216,9 +217,10 @@ tool_use ids must be unique` API 400을 받았다. plan-mode와 `--tools` 빌트
 plan-mode는 `EnterPlanMode`/`ExitPlanMode` tool-call이 일반 tool-call과 섞여 더
 취약하고, `--tools` 빌트인 셋은 tool contract 변경으로 같은 취약 경로를 자극한다.
 
-그러나 같은 `claude` 바이너리를 **streaming transport**로 호출하는 Python SDK
-(`claude-agent-sdk` 0.2.87, internal `_is_streaming = True`)에서는 같은 trivial
-edit 태스크가 모든 측정 mode에서 정상 동작한다 (`scripts/reproduce_claude_sdk_edit.py`):
+그러나 같은 `claude` 바이너리를 **streaming transport** (`--input-format
+stream-json --output-format stream-json --verbose`)로 호출하면 같은 trivial
+edit 태스크가 정상 동작한다. Python SDK (`claude-agent-sdk` 0.2.87, internal
+`_is_streaming = True`) 매트릭스 (`scripts/reproduce_claude_sdk_edit.py`):
 
 | Cell | SDK permission_mode | tool_use | edited | symptom |
 |---|---|---|---|---|
@@ -229,14 +231,34 @@ edit 태스크가 모든 측정 mode에서 정상 동작한다 (`scripts/reprodu
 | 13 | `dontAsk` | 2 | yes | S4_normal |
 | 14 | `auto` | 2 | yes | S4_normal |
 
-따라서 #1598 F4는 **permission approval 정책 계층(승인/거절/질문) 문제가 아니라
-`claude -p` print mode의 비-streaming 직렬화 경로 한정 버그**로 단정한다. SDK의
-`--input-format stream-json --output-format stream-json` transport는 같은
-바이너리의 다른 코드 경로를 타서 영향이 없다. 즉 wrapper-side 회피는 **SDK 어댑터로
-전환하면 가능**하다 — write-lane의 claude 분기를 codex와 나란히 둘 수 있는 길이
-열린다. 본 PR은 측정·문서화까지만 다루고, SDK 기반 `agent_loop_claude_patch_turn.py`
-+ `agent_loop.py:10103`의 `agent="codex"` 하드코딩 분기화는 별 PR(PR-B)에서
-처리한다.
+SDK 없이 wrapper가 직접 subprocess로 stream-json transport를 호출해도 동등한
+결과 (`scripts/reproduce_claude_streamjson_subprocess.py`):
+
+| Cell | permission_mode | tool_use | edited | symptom |
+|---|---|---|---|---|
+| 15 | `default` | 2 | yes | S4_normal |
+| 16 | `acceptEdits` | 3 | yes | S4_normal |
+| 17 | `plan` | 1 | no | S4 (mode spec) |
+| 18 | `bypassPermissions` | 3 | yes | S4_normal |
+| 19 | `dontAsk` | 0 | no | S0 invalid mode (CLI rejects; raw_lines=0) |
+| 20 | `auto` | 0 | no | S0 invalid mode (CLI rejects; raw_lines=0) |
+
+CLI 2.1.3의 실제 `--permission-mode` validation은 `acceptEdits / bypassPermissions
+/ default / plan` 4개만 허용한다 (`--help` 출력의 `dontAsk / delegate`는 거짓 enum).
+SDK가 `dontAsk / auto`를 통과시킨 이유는 stream-json mode에서의 validation 우회
+또는 stdin control message 경로로 추정 — 부수적이며 본 결론과 무관.
+
+따라서 #1598 F4는 **permission approval 정책 계층 문제가 아니라 `claude -p` print
+mode의 비-streaming 직렬화 경로 한정 버그**로 단정한다. SDK든 wrapper 직접 subprocess든
+`--input-format stream-json --output-format stream-json --verbose` transport로
+호출하면 유효한 4개 mode 전부에서 정상 동작한다. **즉 wrapper-side 회피는 SDK 의존성
+없이도 가능하다** — `scripts/agent_loop_claude_turn.py` 같은 어댑터의 build_command를
+stream-json transport로 갈아끼우면 claude write-lane이 열린다.
+
+채택은 별 결정이다. Anthropic의 2026-06-15 에이전트 크레딧 분리 정책은 SDK + MCP +
+GitHub Actions 통합을 명시 타깃하지만 stream-json subprocess가 같은 통에 들어가는지는
+공지로 명확하지 않다. 본 저장소의 write-lane은 codex가 이미 안정 동작하므로 dual-agent
+도입의 본질적 필요가 없고, 측정 결과는 옵션으로만 보관한다 (선택지 보존, 채택 보류).
 
 ```bash
 python3 scripts/agent_loop.py active-codex-runner --mode patch --task T-2026-00NN --execute
