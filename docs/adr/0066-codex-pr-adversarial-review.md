@@ -1,4 +1,4 @@
-# ADR 0066 — PR-time Codex adversarial review 자동화 표면
+# ADR 0066 — Local Codex adversarial pre-commit review loop
 
 - **Status**: Proposed
 - **Date**: 2026-05-21
@@ -6,50 +6,43 @@
 
 ## Context
 
-PR 리뷰 시 `/codex:adversarial-review` 슬래시 명령을 수동 호출해 외부 LLM(Codex) 의 challenge framing 으로 설계 가정·구현 선택을 흔드는 패턴이 자리잡았다. 그러나:
+PR 리뷰 시 `/codex:adversarial-review` 슬래시 명령을 수동 호출해 외부 LLM(Codex)의 challenge framing으로 설계 가정·구현 선택을 흔드는 패턴이 자리잡았다. ADR 0066의 초기 형태는 이를 PR-time GitHub Actions workflow로 자동화했다.
 
-- 호출 누락이 reviewer attention budget 한정 때문에 일관성 없음. Load-bearing 변경 PR 도 잊고 머지된 사례 다수.
-- 단일 reviewer 가 같은 코드에 대해 challenge framing + 기능 검토 + 규약 점검을 동시에 하기 어렵다.
-- Codex 의 adversarial verdict + finding 은 reviewer 가 결정에 의존할 정도로 신호값이 있다 — 즉 **새 reviewer-facing measurement surface** 로 격상해야 한다.
+그러나 PR open/synchronize마다 self-hosted Codex review가 반복되면 load-bearing 변경 PR에서 새 finding이 push마다 계속 생성된다. 특히 canonical contract 변경처럼 구현과 검증을 함께 조정하는 PR에서는 review가 CI 상태판의 일부가 되어, 실제 blocker와 모델의 후속 선호가 섞인다.
 
-기존 자동화 표면 (`pr-eval.yml` fixture smoke eval, `aggregate report.yml` portfolio signal) 은 PR-time 또는 reviewer-facing evidence 경로로 진화했다. Codex adversarial review 도 같은 자리로 옮긴다.
+이 표면은 여전히 유용하지만, 실행 위치는 CI가 아니라 commit 전 로컬 반복 점검이 더 적합하다. 작성자는 staged diff를 고친 뒤 다시 commit을 시도할 수 있고, PR CI는 deterministic gate와 public fixture smoke에 집중한다.
 
 ## Decision
 
-1. **PR open/synchronize/reopen 시 load-bearing path 변경 PR 에 한해 Codex adversarial review 를 자동 트리거한다.** 트리거 SSoT 는 `scripts/_governance.py LOAD_BEARING_PATHS` (regex 새로 안 만듦). 추가 가드: `additions+deletions > 5000 LOC` skip.
-2. **결과는 PR comment (marker upsert) + Check run (informational) 로만 표현한다.** Check run conclusion 은 `success` (verdict=approve) 또는 `neutral` (verdict=needs-attention 또는 codex 호출 실패) — **절대 `failure` 안 함**. 머지 게이트 아님.
-3. **Runner 는 self-hosted macOS arm64, `~/.codex` 공유로 ChatGPT 로그인 (`times21c@gmail.com`) 재사용** — OpenAI API key 비용을 회피. ephemeral 모드, labels `self-hosted,macOS,ARM64,codex`.
-4. **Public repo 보안 다중 가드**: workflow `if: head.repo.full_name == repository && user.login == 'hskim-solv'` + Repo Settings → Actions 의 "Require approval for outside collaborators" + GitHub 의 fork PR token read-only 강등.
-5. **외부/유료 API 의존 (ADR 0061 3조건) 명시적 부합**:
-   - **opt-in**: workflow 가 load-bearing 변경 + 본인 PR + non-fork 모두 충족 시만 fire. 다른 경로 (eval pipeline, baseline) 에 영향 X.
-   - **baseline byte-identical**: ADR 0001 baseline 은 codex 호출과 무관. `reports/` 산출물에 codex output 들어가지 않음.
-   - **데이터 경계**: codex 가 받는 prompt = PR diff (public repo 의 git history) + PR title + LOAD_BEARING_PATHS hit. 공개 fixture 는 smoke 재현성 확인용이며, private/internal eval data 는 커밋하지 않는다.
-6. **소유는 단일 PR + 단일 ADR**. follow-up 자동화 (다른 codex review surface, API-key 경로, fork PR 지원) 는 별도 issue/ADR 로 분리.
+1. **`.github/workflows/codex-adversarial-review.yml` PR-time workflow를 제거한다.** Codex adversarial review는 더 이상 PR comment나 GitHub Check run을 만들지 않는다.
+2. **`.githooks/pre-commit`이 load-bearing staged 변경에 한해 local Codex adversarial review를 실행한다.** 트리거 SSoT는 `scripts/_governance.py LOAD_BEARING_PATHS`이며, private eval path guard(ADR 0005)가 먼저 실행된다.
+3. **review 대상은 staged diff다.** `scripts/run_codex_adversarial_precommit.py`는 Codex prompt에 `git diff --cached` / `git diff --cached --name-only`를 사용하라고 명시하고, staged file list와 load-bearing hit를 focus로 전달한다.
+4. **기본 반복 횟수는 2회이며, 모든 attempt가 `approve`여야 commit을 통과한다.** `BIDMATE_CODEX_ADVERSARIAL_ATTEMPTS=<n>`으로 조정할 수 있다. 각 attempt는 기본 180초 timeout(`BIDMATE_CODEX_ADVERSARIAL_TIMEOUT_SEC=<n>`)을 갖고, `needs-attention`, parse error, companion 실행 실패, timeout은 commit을 block한다.
+5. **artifact는 local-only다.** 각 attempt의 JSON/stderr/rendered markdown은 `git rev-parse --git-dir` 기준 `codex-adversarial-precommit/` 아래에 남기며 commit되지 않는다. emergency bypass는 기존 Git hook 경로와 같이 `git commit --no-verify` 또는 `BIDMATE_SKIP_CODEX_ADVERSARIAL_PRECOMMIT=1`로 가능하다.
+6. **기존 수동 `/codex:adversarial-review`와 active-loop Codex lane은 유지한다.** 본 ADR은 PR-time CI surface만 local pre-commit loop로 이동한다.
 
 ## Consequences
 
-- **Reviewer 가 codex verdict 를 PR signal 로 의존 가능** — Goodhart risk: reviewer 가 verdict=approve 로 자기 review 를 스킵할 수 있다. ADR 표면화 + comment 에 "informational" 명시 + Check run name 에 동일 표현으로 완화.
-- **Self-hosted runner 단일점**: 본인 머신 오프라인 시 PR review 신호 끊김. timeout 25min + 코멘트가 "Waiting for runner..." 표시하지 않으므로 reviewer 가 runner 상태를 직접 확인해야 함. follow-up 으로 runner heartbeat 모니터링 추가 검토.
-- **ChatGPT 로그인 의존**: 토큰 만료·갱신·rotation 시 PR review 가 silent fail. render 가 rc!=0 케이스를 PR comment 로 표면화하므로 reviewer 는 알 수 있으나, 갱신 책임은 본인.
-- **Codex usage limit hit**: 일일·월 한도 초과 시 PR review 가 "Codex usage limit reached" 로 보고. PR 자체는 fail 안 함 (informational).
-- **Self-hosted runner 보안 노출**: Public repo + self-hosted 의 fork PR 공격 surface 는 다중 가드로 차단. Runner Groups 설정에서 "Allow public repositories" 활성 필요 여부는 smoke 단계에서 측정.
-- **Workflow file (`codex-companion.mjs` 경로) 가 plugin 버전 `1.0.4` 하드코딩**: codex plugin 업데이트 시 workflow 도 같이 갱신 필요. follow-up 으로 symlink 또는 glob resolve 검토.
-- **`/codex:adversarial-review` 슬래시 (수동 호출) 는 살아있음** — load-bearing 외 path 또는 인증 만료 시 fallback 경로. 본 ADR 은 추가, 대체 아님.
+- **CI noise 감소**: PR synchronize마다 새 adversarial review가 달리지 않으므로 deterministic CI와 LLM critique가 섞이지 않는다.
+- **shift-left 유지**: load-bearing 변경자는 commit 전에 Codex challenge를 받는다. 문제를 고친 뒤 commit을 다시 시도하는 local loop가 된다.
+- **commit latency 증가**: load-bearing staged 변경 commit은 기본 2회 Codex 호출 비용을 치른다. 각 attempt는 180초에서 timeout되며, 필요 시 attempt 수/timeout을 낮추거나 emergency bypass를 명시적으로 사용한다.
+- **로컬 Codex 환경 의존**: Claude Codex plugin cache 또는 `CODEX_COMPANION`이 필요하다. 미설치 환경에서는 load-bearing commit이 block된다.
+- **PR comment evidence 제거**: reviewer-facing artifact는 PR comment/check가 아니라 local hook stderr와 git-dir 내부 `codex-adversarial-precommit/` artifact다. PR 본문에는 필요한 finding만 사람이 요약한다.
+- **비공개 데이터 경계 유지**: pre-commit은 ADR 0005 path block 이후에 Codex를 호출한다. private staged file이 있으면 Codex 호출 전에 hook이 중단된다.
 
 ## Alternatives considered
 
-- **OpenAI API key 경로**: 비용 별도 청구 (월 N PR × ~$1) + key rotation 관리. ChatGPT 로그인 보존 + self-hosted runner 가 cost-zero 라 1차 안으로 기각.
-- **모든 PR 자동 트리거**: docs-only / dependabot PR 까지 codex 깨움 → 의미 없는 노이즈 + usage limit 빠르게 소진. Load-bearing 한정으로 ~95% 노이즈 차단.
-- **Merge gate 화 (verdict=needs-attention → CI fail)**: 오탐 시 머지 막힘. 본 ADR 단계는 informational 우선, 신뢰도 측정 후 향후 옵션으로 검토.
-- **수동 label trigger 패턴**: 수동 label 의존 → 호출 누락 동일 문제 재현. 자동 트리거로 직행.
-- **Self-hosted runner 대신 GitHub-hosted + OpenAI API key**: cost + key rotation + secrets noise. 본인 머신 idle 자원 활용이 ROI 우위.
+- **PR-time workflow 유지**: 호출 누락은 줄지만, push마다 모델 finding이 새로 생기며 CI 상태판이 불안정해진다. 이번 전환의 직접 반례라 기각.
+- **Merge gate화**: `needs-attention`을 CI failure로 만들면 오탐이 머지를 막는다. LLM critique는 deterministic CI gate가 아니라 local authoring guard가 맞다.
+- **수동 slash command만 유지**: 호출 누락 문제가 재발한다. load-bearing staged 변경에 대해서는 hook이 자동 호출한다.
+- **한 번만 실행**: 비용은 낮지만 stochastic reviewer 한 번에 의존한다. 기본 2회 approve를 요구해 과도한 PR-time 반복 없이 최소 반복성을 확보한다.
 
 ## Verification
 
-<!-- verifies-key: .github/workflows/codex-adversarial-review.yml:codex-companion.mjs -->
-<!-- verifies-key: scripts/render_codex_review.py:def render_markdown -->
-<!-- verifies-key: scripts/_governance.py:--any-match -->
+<!-- verifies-key: .githooks/pre-commit:run_codex_adversarial_precommit.py -->
+<!-- verifies-key: scripts/run_codex_adversarial_precommit.py:def main -->
+<!-- verifies-key: tests/test_codex_adversarial_precommit.py:test_run_precommit_review_requires_every_attempt_to_approve -->
 
-- Workflow trigger + 가드 검증: `.github/workflows/codex-adversarial-review.yml` 의 `if:` 조건 + `triage` job 의 `should_run` 분기. Smoke phase 2 의 fork PR / 큰 diff / docs-only PR 시나리오.
-- Render 정확성: `scripts/render_codex_review.py` 의 4 분기 (approve / needs-attention / parseError / rc!=0) → `tests/test_render_codex_review.py` fixture 기반 단위 테스트.
-- SSoT 재사용: `scripts/_governance.py --any-match` CLI (이미 `--check-5b` CI gate / pre-push hook 가 쓰는 동일 표면). LOAD_BEARING_PATHS 추가 시 본 workflow 도 자동 반영.
+- Hook wiring: `.githooks/pre-commit`이 staged load-bearing hit를 `scripts/_governance.py --any-match`로 찾은 뒤 `scripts/run_codex_adversarial_precommit.py`를 호출한다.
+- Local runner: `scripts/run_codex_adversarial_precommit.py`는 staged file list를 focus에 포함하고, attempt별 artifact를 git-dir 내부 `codex-adversarial-precommit/`에 쓴다.
+- Regression tests: `tests/test_codex_adversarial_precommit.py`가 load-bearing reuse, staged diff focus, all-attempts approve requirement, needs-attention block, companion failure block을 검증한다.

@@ -4,7 +4,7 @@ RFP 문서 이해를 위한 DocAgent 시스템. **입찰/RFP 문서 인텔리전
 
 파이프라인: ingestion → 메타데이터 정규화 → 청킹 → 검색 → 재순위/계획 → 근거 집계 → 근거 기반 답변 → 검증 → 평가 → reviewer 문서.
 
-자동화 표면: `.gitignore`, CI ([`pr-eval.yml`](.github/workflows/pr-eval.yml), [`branch-and-issue-check.yml`](.github/workflows/branch-and-issue-check.yml), [`codex-adversarial-review.yml`](.github/workflows/codex-adversarial-review.yml) (PR-time Codex adversarial review, informational, ADR 0066), [`deploy-fly.yml`](.github/workflows/deploy-fly.yml) + [`docker-publish.yml`](.github/workflows/docker-publish.yml) (api/main.py 데모 배포 — 제품화 아님)), `.githooks/`, [`scripts/check_branch_and_issue.py`](scripts/check_branch_and_issue.py) (브랜치+이슈 컨벤션 regex 단일 출처, ADR 0007), [`.github/pull_request_template.md`](.github/pull_request_template.md), [`.github/ISSUE_TEMPLATE/`](.github/ISSUE_TEMPLATE/), [`.claude/settings.json`](.claude/settings.json) (load-bearing 편집 awareness 훅 + stacked dependent 있을 때 `gh pr merge --delete-branch` 차단 Bash matcher). 이 파일은 자동 강제되지 않는 원칙·포인터를 담는다.
+자동화 표면: `.gitignore`, CI ([`pr-eval.yml`](.github/workflows/pr-eval.yml), [`branch-and-issue-check.yml`](.github/workflows/branch-and-issue-check.yml), [`deploy-fly.yml`](.github/workflows/deploy-fly.yml) + [`docker-publish.yml`](.github/workflows/docker-publish.yml) (api/main.py 데모 배포 — 제품화 아님)), `.githooks/` (`.githooks/pre-commit` 이 load-bearing staged 변경에 대해 local Codex adversarial review 반복 실행, ADR 0066), [`scripts/check_branch_and_issue.py`](scripts/check_branch_and_issue.py) (브랜치+이슈 컨벤션 regex 단일 출처, ADR 0007), [`.github/pull_request_template.md`](.github/pull_request_template.md), [`.github/ISSUE_TEMPLATE/`](.github/ISSUE_TEMPLATE/), [`.claude/settings.json`](.claude/settings.json) (load-bearing 편집 awareness 훅 + stacked dependent 있을 때 `gh pr merge --delete-branch` 차단 Bash matcher). 이 파일은 자동 강제되지 않는 원칙·포인터를 담는다.
 
 ## 여기서 시작
 
@@ -84,7 +84,7 @@ RFP 문서 이해를 위한 DocAgent 시스템. **입찰/RFP 문서 인텔리전
 
 ## 자주 쓰는 명령
 
-- `make install-hooks` — clone 당 1회, `.githooks/` 활성화 (pre-commit ADR 0005 경계, pre-push 브랜치/eval 체크)
+- `make install-hooks` — clone 당 1회, `.githooks/` 활성화 (pre-commit ADR 0005 경계 + load-bearing staged 변경 local Codex adversarial review, pre-push 브랜치/eval 체크)
 - `make smoke` — 빠른 sanity check (수분, `EMBEDDING_BACKEND=hashing`)
 - `bash scripts/test.sh` — `pytest -q`, CI gate 와 동일
 - `make check-branch` — 현재 브랜치 ADR 0007 검증

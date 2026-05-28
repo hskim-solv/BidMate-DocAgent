@@ -396,4 +396,18 @@ EOF
   exit 1
 fi
 
+# Guard: local Codex adversarial review for load-bearing staged changes
+# (ADR 0066). This intentionally runs after the ADR 0005 path boundary above
+# so private eval files cannot be passed into the Codex review prompt.
+if [[ -z "${BIDMATE_SKIP_CODEX_ADVERSARIAL_PRECOMMIT:-}" ]]; then
+  if hit=$(printf '%s\n' "$staged" | python3 scripts/_governance.py --any-match 2>/dev/null); then
+    echo "Running Codex adversarial pre-commit review for load-bearing change: $hit" >&2
+    if ! python3 scripts/run_codex_adversarial_precommit.py; then
+      exit 1
+    fi
+  fi
+else
+  echo "BIDMATE_SKIP_CODEX_ADVERSARIAL_PRECOMMIT set; skipping Codex adversarial pre-commit review." >&2
+fi
+
 exit 0

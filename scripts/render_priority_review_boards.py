@@ -1019,7 +1019,7 @@ def render_governance_automation(root: Path) -> str:
     automation_rows = [
         ["Branch & issue convention", "hard CI gate", ".github/workflows/branch-and-issue-check.yml"],
         ["PR eval delta", "pytest shards + eval scope/provenance", ".github/workflows/pr-eval.yml"],
-        ["Codex adversarial review", "informational review", ".github/workflows/codex-adversarial-review.yml"],
+        ["Codex adversarial review", "local pre-commit loop", ".githooks/pre-commit"],
         ["Load-bearing awareness", "pre-tool reminder", "scripts/claude-hooks/pretooluse-loadbearing.sh"],
         ["Ship review gate", "requested changes / unresolved blocker check", "make ship-review-gate"],
         ["Desktop main sync", "post-merge canonical checkout sync", "scripts/sync_desktop_main.py"],
