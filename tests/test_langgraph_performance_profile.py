@@ -15,7 +15,6 @@ Run with ``-s`` to see median timings printed:
 """
 from __future__ import annotations
 
-import copy
 import os
 import statistics
 import time
@@ -23,6 +22,8 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+
+from tests._chroma_safe_clone import deepcopy_index_safe
 
 pytest.importorskip("langgraph")
 
@@ -54,7 +55,7 @@ def _has_local_index() -> bool:
 def _run(index: Any, orchestrator: str, *, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     monkeypatch.setenv("BIDMATE_ORCHESTRATOR", orchestrator)
     monkeypatch.setattr(rag_core, "_PROCESS_WARM", False, raising=False)
-    return rag_core.run_rag_query(copy.deepcopy(index), _QUERY, pipeline=_PIPELINE)
+    return rag_core.run_rag_query(deepcopy_index_safe(index), _QUERY, pipeline=_PIPELINE)
 
 
 @pytest.fixture(scope="module")
