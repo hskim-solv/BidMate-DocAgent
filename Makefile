@@ -114,6 +114,7 @@ ask:
 
 eval:
 	$(PYTHON) eval/run_eval.py --index_dir data/index --output_dir reports --config eval/config.yaml
+	@$(MAKE) -s experiment-report-html
 
 # Cost-quality Pareto frontier table (and PNG if matplotlib installed)
 # from the latest reports/eval_summary.json. Read-only consumer — see
@@ -128,6 +129,14 @@ pareto:
 # when enough source data is available.
 cost-frontier:
 	$(PYTHON) scripts/plot_cost_frontier.py
+
+# Auto-render paired HTML next to every reports/**/*.aggregate.json,
+# reports/**/eval_summary.json, and reports/retrieval/**/REPORT.md.
+# Idempotent — only stale or missing pairs are rendered. Aggregate-only
+# (ADR 0005); raw_results.json / data_list*.csv / data/private/** denied.
+# Issue #1661. See docs/operations/experiment-report-html.md.
+experiment-report-html:
+	@$(PYTHON) scripts/render_experiment_report_html.py --auto-scan --quiet
 
 # Publish the demo image to GHCR so reviewers can `docker run <image>`
 # without cloning the repo (issue #123). Requires `docker login ghcr.io`
@@ -187,6 +196,7 @@ korean-public-eval: korean-public-fetch
 # guaranteeing `.hook-fires.log` is writable from the first dev action.
 smoke: install-hooks
 	bash scripts/smoke.sh
+	@$(MAKE) -s experiment-report-html
 
 # Cross-machine reproducibility hash. Runs the smoke eval and prints a
 # SHA-256 over the environment-invariant subset of reports/eval_summary.json
@@ -1092,6 +1102,7 @@ real-eval-v2-check:
 	  REAL_EVAL_INDEX_DIR="$(REAL100_V2_INDEX_DIR)" \
 	  REAL_EVAL_REPORT_DIR="$(REAL100_V2_REPORT_DIR)" \
 	  $(PYTHON) scripts/real_eval_paths.py check
+	@$(MAKE) -s experiment-report-html
 
 real-eval-v2-guard:
 	$(PYTHON) scripts/check_real100_v2_only.py
@@ -1156,12 +1167,14 @@ real-eval-delta:
 # dirty-worktree gate for a deliberate dirty baseline (#1148).
 real-eval-baseline-update:
 	$(PYTHON) scripts/write_real_eval_baseline.py $(if $(STRICT),--strict,) $(if $(ALLOW_DIRTY),--allow-dirty,)
+	@$(MAKE) -s experiment-report-html
 
 # Render the chronological real-data history table into
 # docs/real-data/private-100-doc-experiments.md (between the
 # real-eval-history-{start,end} markers). Aggregate-only.
 real-eval-history-render:
 	$(PYTHON) scripts/render_real_eval_history.py
+	@$(MAKE) -s experiment-report-html
 
 # Verify the rendered history table is up to date with committed
 # aggregate snapshots. Suitable for pre-PR gating.
