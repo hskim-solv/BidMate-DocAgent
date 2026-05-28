@@ -188,7 +188,28 @@ status는 별도 heartbeat나 검토 표면에서 유지한다.
 read-only runner와 별개로, `active-codex-runner`는 opt-in `--mode patch`로 **codex
 write-lane**을 돈다. read-only 8-session 모드는 불변이며, patch 모드는 write-lease
 owner인 **Implementer** 한 세션만 대상으로 한다 (claude `-p` headless는 모든 permission
-모드에서 Edit-tool이 깨지므로 write-lane은 codex 전용).
+모드에서 Edit-tool이 깨지므로 write-lane은 codex 전용 — 실측 근거는 아래 표).
+
+claude `-p` Edit-tool 실측 매트릭스 (`scripts/reproduce_claude_edit_tool.py`,
+claude 2.1.3, 2026-05-28, 구독 OAuth 경로, raw artifact:
+`reports/agent_loop/claude_edit_repro/`):
+
+| Cell | permission-mode | output-format | tool flag | Symptom |
+|---|---|---|---|---|
+| 01 | acceptEdits | json | `--allowedTools Edit` | S2 `tool_use ids must be unique` |
+| 02 | acceptEdits | json | `--allowedTools Edit` (explicit prompt) | S2 |
+| 03 | bypassPermissions | json | `--allowedTools Edit` | S2 |
+| 04 | (none) `--dangerously-skip-permissions` | json | (none) | S2 |
+| 05 | acceptEdits | text | `--allowedTools Edit` | S2 |
+| 06 | (omitted, default) | json | `--allowedTools Edit` | S2 |
+| 07 | acceptEdits | json | `--tools Edit,Read` | S3 (90 s timeout) |
+| 08 | plan | json | `--allowedTools Edit` | S3 (90 s timeout) |
+
+해석: 6/8 셀에서 `messages.N.content.M: tool_use ids must be unique` API 400을
+받았다 (#1598 F4의 일반화 — plan-mode 한정이 아님). 나머지 2/8은 응답 자체가
+끝나지 않는다 (`--tools` 빌트인 셋 형식, plan-mode). 어느 플래그 조합도 단일
+trivial edit을 완료하지 못했다. 따라서 write-lane은 codex 전용을 유지하고,
+upstream 수정 전까지 wrapper-side 회피는 가능 영역 밖이다.
 
 ```bash
 python3 scripts/agent_loop.py active-codex-runner --mode patch --task T-2026-00NN --execute
