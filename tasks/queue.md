@@ -43,7 +43,7 @@ PR이 생기면 각 task에 링크를 추가한다. 예제 task는 `tasks/exampl
 | 30 | `T-2026-0030` | `done` | Implementer -> CI Reviewer -> Benchmark Auditor -> Reviewer | merged in PR #1628; real100_v2 latency/cost envelope landed. |
 | 31 | `T-2026-0031` | `blocked` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | real100_v2 page metadata coverage is 0.0; no claim-bearing page/window experiment yet. |
 | 32 | `T-2026-0032` | `review` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1629; BGE-KO screening run classifies latency_regression, no winner claim. |
-| 33 | `T-2026-0033` | `ready` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | P1; unblocked by T-2026-0030 budget and T-2026-0032 reranker latency no-go screening. |
+| 33 | `T-2026-0033` | `ready` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1638; context-packing plan drafted after T-2026-0032 reranker latency no-go screening. |
 | 34 | `T-2026-0034` | `backlog` | Planner -> Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | P1; blocked on query-slice attribution from T-2026-0029. |
 | 35 | `T-2026-0035` | `backlog` | Security Reviewer -> Implementer -> Privacy Auditor -> Reviewer | P1 guardrail; should run before agentic/tool-using retrieval. |
 | 36 | `T-2026-0036` | `backlog` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | P2; blocked on stable retrieval/context evidence from P0/P1 tasks. |
@@ -2964,7 +2964,9 @@ reranker behavior fixed.
 ### Acceptance Criteria
 
 - [ ] Context assembly variant is opt-in and separately named.
+- [ ] Retrieval and reranker behavior are explicitly unchanged in the aggregate.
 - [ ] Citation and answer metrics move together; citation regression is no-go.
+- [ ] Token/cost status is reported as present, absent, or not applicable.
 - [ ] Conflict grouping is visible to the generator without raw conflict text in
   committed reports.
 
@@ -2972,8 +2974,9 @@ reranker behavior fixed.
 
 ```bash
 python3 -m pytest -q tests/test_answer_contract_snapshot.py <focused-context-tests>
-python3 <context-packing-experiment> --variant evidence_first --summary-out <aggregate-output>
-python3 scripts/run_real_eval_delta.py --base <baseline-aggregate> --head <variant-aggregate>
+python3 <context-packing-experiment> --config <local-v2-config> --index-dir <local-v2-index> --variant evidence_first --out <aggregate-output>
+python3 scripts/run_real_eval_delta.py --base <real100_v2-base-aggregate> --head <real100_v2-variant-aggregate>
+make real-eval-v2-guard
 git diff --check
 make check-branch
 ```
@@ -2983,12 +2986,32 @@ make check-branch
 - Paired aggregate delta for citation, answer, abstention, token, and latency
   metrics.
 - Explicit no-change statement for retrieval behavior.
+- Aggregate-only privacy boundary, no raw private content.
 
 ### Related Plan / Issue / PR Links
 
-- Plan: TBD - create when the task starts.
-- Issue: TBD
+- Plan: [`docs/plans/T-2026-0033-context-packing-citation-ordering-experiment.md`](../docs/plans/T-2026-0033-context-packing-citation-ordering-experiment.md)
+- Issue: [#1638](https://github.com/hskim-solv/BidMate-DocAgent/issues/1638)
 - PR: TBD
+
+### Handoff Notes
+
+```markdown
+## Session Handoff - 2026-05-28 12:55 KST
+
+- Role: Planner
+- Branch / worktree: eval/issue-1638-plan-context-packing-citation-ordering-experimen / /Users/hskim/.codex/worktrees/0ebc/BidMate-DocAgent
+- Issue / PR: issue #1638 / PR TBD
+- Task: T-2026-0033
+- Current status: plan drafted; implementation should add an opt-in context-packing runner/report.
+- Files touched: docs/plans/T-2026-0033-context-packing-citation-ordering-experiment.md, tasks/queue.md, scripts/check_real100_v2_only.py
+- Decisions made: next experiment holds retrieval/reranking fixed because T-2026-0032 found local BGE-KO reranker latency no-go; no claim without paired real100_v2 aggregate and citation guardrails.
+- Commands run: make ship-start TITLE="Plan context packing citation ordering experiment" TYPE=eval; make check-branch.
+- Results: issue #1638 and branch created; branch gate passed; plan drafted.
+- Next safe command: python3 scripts/check_doc_links.py --check-all --paths tasks/queue.md docs/plans/T-2026-0033-context-packing-citation-ordering-experiment.md
+- Open questions: none.
+- Risks: implementation can drift into retrieval/reranker/query rewrite unless the variant boundary is kept explicit.
+```
 
 ## T-2026-0034 — Query rewrite and decomposition experiment
 

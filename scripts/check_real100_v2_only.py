@@ -15,6 +15,7 @@ DEFAULT_PATHS = (
     Path("docs/plans/T-2026-0029-real100-v2-retrieval-diagnostic-workbench.md"),
     Path("docs/plans/T-2026-0030-real100-v2-latency-cost-budget-envelope.md"),
     Path("docs/plans/T-2026-0032-reranker-candidate-budget-experiment.md"),
+    Path("docs/plans/T-2026-0033-context-packing-citation-ordering-experiment.md"),
     Path("docs/evaluation/surface-map.md"),
     Path("docs/evaluation/private_real_eval_workflow.md"),
     Path("docs/evaluation/real100_v2-retrieval-diagnostics.md"),
@@ -87,6 +88,7 @@ def check_path(path: Path) -> list[str]:
         Path("docs/plans/T-2026-0029-real100-v2-retrieval-diagnostic-workbench.md"),
         Path("docs/plans/T-2026-0030-real100-v2-latency-cost-budget-envelope.md"),
         Path("docs/plans/T-2026-0032-reranker-candidate-budget-experiment.md"),
+        Path("docs/plans/T-2026-0033-context-packing-citation-ordering-experiment.md"),
         Path("docs/evaluation/surface-map.md"),
         Path("docs/evaluation/private_real_eval_workflow.md"),
     }
@@ -116,6 +118,7 @@ def check_path(path: Path) -> list[str]:
         Path("docs/plans/T-2026-0029-real100-v2-retrieval-diagnostic-workbench.md"),
         Path("docs/plans/T-2026-0030-real100-v2-latency-cost-budget-envelope.md"),
         Path("docs/plans/T-2026-0032-reranker-candidate-budget-experiment.md"),
+        Path("docs/plans/T-2026-0033-context-packing-citation-ordering-experiment.md"),
         Path("docs/evaluation/real100_v2-retrieval-diagnostics.md"),
         Path("docs/evaluation/real100_v2-latency-cost-budget.md"),
         Path("docs/evaluation/real100_v2-reranker-candidate-budget.md"),
