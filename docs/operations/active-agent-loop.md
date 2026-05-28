@@ -187,29 +187,40 @@ status는 별도 heartbeat나 검토 표면에서 유지한다.
 
 read-only runner와 별개로, `active-codex-runner`는 opt-in `--mode patch`로 **codex
 write-lane**을 돈다. read-only 8-session 모드는 불변이며, patch 모드는 write-lease
-owner인 **Implementer** 한 세션만 대상으로 한다 (claude `-p` headless는 모든 permission
-모드에서 Edit-tool이 깨지므로 write-lane은 codex 전용 — 실측 근거는 아래 표).
+owner인 **Implementer** 한 세션만 대상으로 한다 (claude `-p` headless는 주요
+permission 모드 + bypass alias에서 모두 Edit-tool 호출이 깨지므로 write-lane은
+codex 전용 — 실측 근거는 아래 표).
 
 claude `-p` Edit-tool 실측 매트릭스 (`scripts/reproduce_claude_edit_tool.py`,
 claude 2.1.3, 2026-05-28, 구독 OAuth 경로, raw artifact:
-`reports/agent_loop/claude_edit_repro/`):
+`reports/agent_loop/claude_edit_repro/`). CLI 2.1.3의 `--permission-mode`
+choices는 `default`, `acceptEdits`, `bypassPermissions`, `plan`, `dontAsk`,
+`delegate`이고, `--dangerously-skip-permissions`는 `bypassPermissions`의 별칭이다
+(독립 모드 아님):
 
 | Cell | permission-mode | output-format | tool flag | Symptom |
 |---|---|---|---|---|
 | 01 | acceptEdits | json | `--allowedTools Edit` | S2 `tool_use ids must be unique` |
 | 02 | acceptEdits | json | `--allowedTools Edit` (explicit prompt) | S2 |
 | 03 | bypassPermissions | json | `--allowedTools Edit` | S2 |
-| 04 | (none) `--dangerously-skip-permissions` | json | (none) | S2 |
+| 04 | bypassPermissions (alias `--dangerously-skip-permissions`) | json | (none) | S2 |
 | 05 | acceptEdits | text | `--allowedTools Edit` | S2 |
-| 06 | (omitted, default) | json | `--allowedTools Edit` | S2 |
+| 06 | default (`--permission-mode` 생략) | json | `--allowedTools Edit` | S2 |
 | 07 | acceptEdits | json | `--tools Edit,Read` | S3 (90 s timeout) |
 | 08 | plan | json | `--allowedTools Edit` | S3 (90 s timeout) |
 
-해석: 6/8 셀에서 `messages.N.content.M: tool_use ids must be unique` API 400을
-받았다 (#1598 F4의 일반화 — plan-mode 한정이 아님). 나머지 2/8은 응답 자체가
-끝나지 않는다 (`--tools` 빌트인 셋 형식, plan-mode). 어느 플래그 조합도 단일
-trivial edit을 완료하지 못했다. 따라서 write-lane은 codex 전용을 유지하고,
-upstream 수정 전까지 wrapper-side 회피는 가능 영역 밖이다.
+해석: 측정한 독립 permission 모드 3개(`default`, `acceptEdits`, `bypassPermissions`)와
+그 alias(`--dangerously-skip-permissions`)에서 모두 동일한 `messages.N.content.M:
+tool_use ids must be unique` API 400을 받았다. 따라서 #1598 F4는 permission
+approval 정책 계층(승인/거절/질문) 문제가 아니라, headless `claude -p`의
+tool_use 메시지 구성·`tool_use.id` 직렬화 경로 버그로 판단한다. plan-mode와
+`--tools` 빌트인 셋 형식 셀은 90s timeout(S3)으로 떨어졌는데, 같은 직렬화
+경로의 다른 분기로 추정 — plan-mode는 `EnterPlanMode`/`ExitPlanMode` tool-call이
+일반 tool-call과 섞여 더 취약하고, `--tools` 빌트인 셋은 tool contract 변경으로
+같은 취약 경로를 자극한다. `dontAsk`, `delegate` 모드는 본 라운드에서 측정하지
+않았다. 어느 측정 셀도 단일 trivial edit을 완료하지 못했고, wrapper-side 회피는
+가능 영역 밖이다. write-lane은 codex 전용을 유지하고 upstream `claude-code`의
+headless tool_use 직렬화 수정 대기.
 
 ```bash
 python3 scripts/agent_loop.py active-codex-runner --mode patch --task T-2026-00NN --execute
