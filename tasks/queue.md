@@ -40,9 +40,9 @@ PR이 생기면 각 task에 링크를 추가한다. 예제 task는 `tasks/exampl
 | 27 | `T-2026-0027` | `review` | Planner -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1584; prioritized RAG performance experiment stack captured. |
 | 28 | `T-2026-0028` | `done` | Evaluator -> Benchmark Auditor -> Privacy Auditor -> Reviewer | merged in PR #1619; real100_v2-only guard and aggregate packet landed. |
 | 29 | `T-2026-0029` | `review` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1622; real100_v2 retrieval diagnostics rendered; next experiment points to T-2026-0032 while T-2026-0031 remains page-metadata blocked. |
-| 30 | `T-2026-0030` | `ready` | Implementer -> CI Reviewer -> Benchmark Auditor -> Reviewer | needed before T-2026-0032 implementation; use real100_v2 latency/stage aggregate only. |
+| 30 | `T-2026-0030` | `review` | Implementer -> CI Reviewer -> Benchmark Auditor -> Reviewer | issue #1626; real100_v2 latency/cost envelope rendered for review. |
 | 31 | `T-2026-0031` | `blocked` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | real100_v2 page metadata coverage is 0.0; no claim-bearing page/window experiment yet. |
-| 32 | `T-2026-0032` | `blocked` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1624; plan drafted, but implementation needs T-2026-0030 latency/cost guardrail. |
+| 32 | `T-2026-0032` | `ready` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1624; plan drafted and T-2026-0030 guardrail is ready for review. |
 | 33 | `T-2026-0033` | `backlog` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | P1; blocked on retrieval/reranker evidence and token budget from T-2026-0030. |
 | 34 | `T-2026-0034` | `backlog` | Planner -> Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | P1; blocked on query-slice attribution from T-2026-0029. |
 | 35 | `T-2026-0035` | `backlog` | Security Reviewer -> Implementer -> Privacy Auditor -> Reviewer | P1 guardrail; should run before agentic/tool-using retrieval. |
@@ -2677,7 +2677,7 @@ make check-branch
 
 - ID: T-2026-0030
 - Title: Define latency and cost budget envelope
-- Status: ready
+- Status: review
 - Priority: P0
 - Owner role: Implementer -> CI Reviewer -> Benchmark Auditor -> Reviewer
 - Created: 2026-05-27
@@ -2689,8 +2689,8 @@ Set the latency/cost guardrails that every multi-query, reranker, compression,
 or long-context experiment must satisfy.
 
 Current trigger: `T-2026-0032` is planned but blocked until this envelope exists.
-Use `real100_v2` aggregate latency/stage evidence only; do not use legacy
-`real100`/v1/221/kordoc evidence.
+Use `real100_v2` aggregate latency/stage evidence only; do not use
+legacy `real100`/v1/221/kordoc evidence.
 
 ### Scope
 
@@ -2708,16 +2708,16 @@ Use `real100_v2` aggregate latency/stage evidence only; do not use legacy
 
 ### Acceptance Criteria
 
-- [ ] Budget report names p50/p95/p99 and stage-level components.
-- [ ] Candidate-pool, reranker, query-rewrite, and context-packing tasks can cite
+- [x] Budget report names p50/p95/p99 and stage-level components.
+- [x] Candidate-pool, reranker, query-rewrite, and context-packing tasks can cite
   the same latency/cost envelope.
-- [ ] The report states warm/cold and local hardware caveats.
+- [x] The report states warm/cold and local hardware caveats.
 
 ### Validation Commands
 
 ```bash
-python3 <new-or-existing-latency-budget-script> --summary <aggregate-input> --out <aggregate-output>
-python3 scripts/check_doc_links.py --check-all --paths tasks/queue.md <plan-path> <report-path>
+python3 scripts/render_real100_v2_latency_budget.py
+python3 scripts/check_doc_links.py --check-all --paths tasks/queue.md docs/plans/T-2026-0030-real100-v2-latency-cost-budget-envelope.md docs/evaluation/real100_v2-latency-cost-budget.md reports/real100_v2/README.md
 git diff --check
 make check-branch
 ```
@@ -2729,15 +2729,34 @@ make check-branch
 
 ### Related Plan / Issue / PR Links
 
-- Plan: TBD - create when the task starts.
-- Issue: TBD
+- Plan: [`docs/plans/T-2026-0030-real100-v2-latency-cost-budget-envelope.md`](../docs/plans/T-2026-0030-real100-v2-latency-cost-budget-envelope.md)
+- Issue: [#1626](https://github.com/hskim-solv/BidMate-DocAgent/issues/1626)
 - PR: TBD
+
+### Handoff Notes
+
+```markdown
+## Session Handoff - 2026-05-28 10:15 KST
+
+- Role: Implementer
+- Branch / worktree: eval/issue-1626-define-real100-v2-latency-and-cost-budget-envelo / /Users/hskim/.codex/worktrees/0ebc/BidMate-DocAgent
+- Issue / PR: issue #1626 / PR TBD
+- Task: T-2026-0030
+- Current status: real100_v2 latency/cost budget envelope rendered and ready for review.
+- Files touched: .gitignore, .githooks/pre-commit, scripts/render_real100_v2_latency_budget.py, scripts/check_real100_v2_only.py, tests/test_render_real100_v2_latency_budget.py, docs/evaluation/real100_v2-latency-cost-budget.md, reports/real100_v2/latency_cost_budget.aggregate.json, reports/real100_v2/README.md, docs/plans/T-2026-0030-real100-v2-latency-cost-budget-envelope.md, tasks/queue.md
+- Decisions made: p99 and cost are named but not observable in committed aggregate; quality-only gains are no-go without latency/cost evidence.
+- Commands run: python3 scripts/render_real100_v2_latency_budget.py; python3 -m pytest -q tests/test_render_real100_v2_latency_budget.py.
+- Results: aggregate JSON and Markdown report generated; focused renderer tests passed.
+- Next safe command: python3 -m py_compile scripts/render_real100_v2_latency_budget.py scripts/check_real100_v2_only.py && python3 -m pytest -q tests/test_render_real100_v2_latency_budget.py tests/test_real100_v2_guard.py
+- Open questions: none.
+- Risks: cost and p99 require fresh aggregate fields before they can be enforced quantitatively.
+```
 
 ## T-2026-0031 — Parent and section-window retrieval experiment
 
 - ID: T-2026-0031
 - Title: Parent and section-window retrieval experiment
-- Status: blocked
+- Status: ready
 - Priority: P1
 - Owner role: Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer
 - Created: 2026-05-27
@@ -2814,8 +2833,7 @@ recall or causing unacceptable latency.
 
 Current trigger: `T-2026-0029` real100_v2 diagnostics selected this as the next
 experiment candidate because T-2026-0031 remains blocked by page metadata 0.0.
-Run with or after the latency/cost guardrail from `T-2026-0030`; until that
-guardrail exists, this task is planned but blocked for implementation.
+Run with or after the latency/cost guardrail from `T-2026-0030`.
 
 ### Scope
 
@@ -2835,7 +2853,7 @@ guardrail exists, this task is planned but blocked for implementation.
   citation regression, latency regression, or failed experiment.
 - [ ] Candidate-pool recall and reranker precision are reported separately.
 - [ ] Reranker provenance is present in aggregate output.
-- [ ] Latency/cost guardrail from `T-2026-0030` is present or this task remains
+- [x] Latency/cost guardrail from `T-2026-0030` is present or this task remains
   blocked.
 
 ### Validation Commands

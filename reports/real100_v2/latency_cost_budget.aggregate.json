@@ -1,0 +1,120 @@
+{
+  "baseline_latency": {
+    "hard_ceiling_ms": 4799.0,
+    "mean_ms": 2206.346667,
+    "p50_ms": 2216.985,
+    "p95_ms": 3199.0625,
+    "p99_ms": null,
+    "p99_status": "not_observed_in_source_aggregate",
+    "soft_ceiling_ms": 3999.0
+  },
+  "budget_rules": {
+    "hard_no_go": "variant p95 above hard_ceiling_ms cannot be called a winner",
+    "p99_rule": "p99 must be added when the source aggregate exposes it; currently not observed",
+    "quality_only_no_go": "quality gain without latency and cost evidence is not sufficient",
+    "soft_regression": "variant p95 above soft_ceiling_ms requires explicit reviewer justification"
+  },
+  "cost_envelope": {
+    "local_cpu_rule": "local reranker latency must be counted even when direct API cost is zero",
+    "paid_api_rule": "paid or external reranker/synthesis cost must be reported separately before claim",
+    "status": "not_observable_from_committed_aggregate",
+    "synthesis_cost_present": false,
+    "synthesis_tokens_present": false
+  },
+  "downstream_use": {
+    "applies_to": [
+      "T-2026-0032 reranker candidate-budget experiment",
+      "candidate-pool sweeps",
+      "query rewrite experiments",
+      "context packing experiments"
+    ],
+    "winner_requires": [
+      "paired real100_v2 quality delta",
+      "no hard latency breach",
+      "cost evidence present or explicitly not applicable",
+      "privacy audit pass"
+    ]
+  },
+  "hardware_caveats": {
+    "production_slo_claim": false,
+    "scope": "local private real100_v2 baseline aggregate",
+    "warm_cold_status": "not_split_in_committed_aggregate"
+  },
+  "non_claims": {
+    "legacy_real100_evidence_used": false,
+    "paired_delta": false,
+    "performance_improvement_claim": false,
+    "runtime_behavior_changed": false
+  },
+  "population": {
+    "num_predictions": 300,
+    "pipeline": "agentic_full",
+    "primary_run": "full",
+    "prompt_profile": "structured_grounded_claims"
+  },
+  "privacy": {
+    "aggregate_only": true,
+    "chunk_ids_omitted": true,
+    "doc_ids_omitted": true,
+    "filenames_omitted": true,
+    "paths_omitted": true,
+    "per_case_rows_omitted": true,
+    "raw_answers_omitted": true,
+    "raw_evidence_omitted": true,
+    "raw_questions_omitted": true
+  },
+  "profile_type": "private_real100_v2_latency_cost_budget",
+  "schema_version": 1,
+  "source": {
+    "input_artifact": "reports/real100_v2/baseline.aggregate.json",
+    "input_location_redacted": false,
+    "input_sha256_12": "a73a99987064"
+  },
+  "stage_latency": {
+    "answer_generation_ms": {
+      "hard_ceiling_ms": 6.0,
+      "mean_ms": 1.366187,
+      "p50_ms": 1.14,
+      "p95_ms": 3.536,
+      "p99_ms": null,
+      "p99_status": "not_observed_in_source_aggregate",
+      "soft_ceiling_ms": 5.0
+    },
+    "context_resolution_ms": {
+      "hard_ceiling_ms": 1.0,
+      "mean_ms": 0.018227,
+      "p50_ms": 0.02,
+      "p95_ms": 0.03,
+      "p99_ms": null,
+      "p99_status": "not_observed_in_source_aggregate",
+      "soft_ceiling_ms": 1.0
+    },
+    "query_analysis_ms": {
+      "hard_ceiling_ms": 584.0,
+      "mean_ms": 160.83699,
+      "p50_ms": 116.77,
+      "p95_ms": 388.67,
+      "p99_ms": null,
+      "p99_status": "not_observed_in_source_aggregate",
+      "soft_ceiling_ms": 486.0
+    },
+    "retrieve_ms": {
+      "hard_ceiling_ms": 2330.0,
+      "mean_ms": 995.162387,
+      "p50_ms": 1036.72,
+      "p95_ms": 1553.274,
+      "p99_ms": null,
+      "p99_status": "not_observed_in_source_aggregate",
+      "soft_ceiling_ms": 1942.0
+    },
+    "verify_ms": {
+      "hard_ceiling_ms": 52.0,
+      "mean_ms": 19.963689,
+      "p50_ms": 19.14,
+      "p95_ms": 34.561,
+      "p99_ms": null,
+      "p99_status": "not_observed_in_source_aggregate",
+      "soft_ceiling_ms": 44.0
+    }
+  }
+}
