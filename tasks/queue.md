@@ -67,6 +67,20 @@ PR이 생기면 각 task에 링크를 추가한다. 예제 task는 `tasks/exampl
 | 54 | `T-2026-0054` | `backlog` | Implementer -> Architect -> Benchmark Auditor -> Privacy Auditor -> Deep Reviewer -> Reviewer | P2; end-to-end bakeoff of the best isolated experiment winners under one aggregate guardrail. |
 | 55 | `T-2026-0055` | `backlog` | Benchmark Auditor -> Privacy Auditor -> Deep Reviewer -> Reviewer | P2; final optimization decision packet and default-change or no-go proposal. |
 | 56 | `T-2026-0056` | `backlog` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | P1; Ollama local OpenAI-compatible provider spike for synthesis/judge cost, privacy, and latency evidence. |
+| 57 | `T-2026-0057` | `review` | Planner -> Privacy Auditor -> Reviewer | issue #1651; real100_v2 portfolio wording cleanup and legacy current-claim wording removal. |
+| 58 | `T-2026-0058` | `review` | Planner -> Reviewer | issue #1651; Multimodal Agent/Product positioning map added as a docs-only stack. |
+| 59 | `T-2026-0059` | `backlog` | Planner -> Reviewer | External source and citation audit before framework/vendor claims enter portfolio wording. |
+| 60 | `T-2026-0060` | `backlog` | Evaluator -> Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | Visual evidence contract hardening for OCR/layout/table/image citation readiness. |
+| 61 | `T-2026-0061` | `backlog` | Implementer -> Privacy Auditor -> Reviewer | Opt-in VLM captioning spike on public fixtures only; no private egress by default. |
+| 62 | `T-2026-0062` | `backlog` | Implementer -> Reviewer | Agent tool-state-trace contract for tool calls, state, retry/fallback, and permissions. |
+| 63 | `T-2026-0063` | `backlog` | Security Reviewer -> Implementer -> Privacy Auditor -> Reviewer | Agent security and human-in-the-loop guardrail before tool-using multimodal workflows. |
+| 64 | `T-2026-0064` | `backlog` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | Multimodal troubleshooting vertical slice after visual evidence and agent contracts. |
+| 65 | `T-2026-0065` | `backlog` | Evaluator -> Benchmark Auditor -> Privacy Auditor -> Reviewer | Agent trajectory evaluation across tool calls, retries, fallbacks, latency, and cost. |
+| 66 | `T-2026-0066` | `backlog` | Implementer -> Reviewer | Product API/demo integration for the chosen multimodal agent workflow. |
+| 67 | `T-2026-0067` | `backlog` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | Self-hosted OpenAI-compatible serving demo as auxiliary product/ops evidence. |
+| 68 | `T-2026-0068` | `backlog` | Planner -> Architect -> Benchmark Auditor -> Privacy Auditor -> Deep Reviewer -> Reviewer | Knowledge/Graph RAG feasibility for relation-structured RFP evidence. |
+| 69 | `T-2026-0069` | `backlog` | Planner -> Reviewer | Interview and resume evidence pack mapping repo artifacts to target roles. |
+| 70 | `T-2026-0070` | `backlog` | Implementer -> Privacy Auditor -> Reviewer | Portfolio review board refresh after the new positioning artifacts settle. |
 
 ## Examples
 
@@ -4376,4 +4390,816 @@ make check-branch
 
 - Plan: TBD - create when the task starts.
 - Issue: #1649
+- PR: TBD
+
+## T-2026-0057 — real100_v2 portfolio wording cleanup
+
+- ID: T-2026-0057
+- Title: real100_v2 portfolio wording cleanup
+- Status: review
+- Priority: P0 positioning
+- Owner role: Planner -> Privacy Auditor -> Reviewer
+- Created: 2026-05-28
+- Last updated: 2026-05-28
+
+### Goal
+
+Remove legacy private-eval wording from current portfolio claims so README and
+interview-facing docs use only the `real100_v2` aggregate-only evidence lane for
+new claims.
+
+### Scope
+
+- Update README and portfolio pitch language that currently presents
+  earlier-generation private-eval wording as current evidence.
+- Preserve archive references only when they are explicitly historical and not
+  used as current claim support.
+- State that raw private questions, answers, evidence text, filenames, local
+  paths, `doc_id`, and `chunk_id` remain uncommitted.
+
+### Non-Goals
+
+- Do not run private eval.
+- Do not change scoring, retrieval, answer, API, or runtime behavior.
+- Do not claim quality improved because wording changed.
+
+### Acceptance Criteria
+
+- [ ] README and portfolio pitch name `real100_v2` as the current private
+  evidence lane.
+- [ ] Earlier-generation private-eval wording is not used for a new claim.
+- [ ] Claim audit and `real100_v2` guard pass.
+
+### Validation Commands
+
+```bash
+python3 scripts/check_doc_links.py --check-all --paths README.md docs/portfolio-pitch.md tasks/queue.md docs/plans/T-2026-0056-multimodal-agent-positioning-stack.md
+make real-eval-v2-guard
+python3 scripts/agent_loop.py claim-audit --from-git
+git diff --check
+make check-branch
+```
+
+### Evidence Required
+
+- Doc-link check output.
+- `real100_v2` guard output.
+- Claim audit output.
+
+### Related Plan / Issue / PR Links
+
+- Plan: [`docs/plans/T-2026-0056-multimodal-agent-positioning-stack.md`](../docs/plans/T-2026-0056-multimodal-agent-positioning-stack.md)
+- Issue: [#1651](https://github.com/hskim-solv/BidMate-DocAgent/issues/1651)
+- PR: TBD
+
+## T-2026-0058 — Multimodal Agent positioning map
+
+- ID: T-2026-0058
+- Title: Multimodal Agent positioning map
+- Status: review
+- Priority: P0 positioning
+- Owner role: Planner -> Reviewer
+- Created: 2026-05-28
+- Last updated: 2026-05-28
+
+### Goal
+
+Convert the career positioning strategy into an executable repo task map:
+RAG as foundation, Agent as primary direction, VLM/multimodal as
+differentiator, evaluation/LLMOps and productization as proof, and vLLM-style
+serving as auxiliary evidence.
+
+### Scope
+
+- Add a queue stack for visual evidence, VLM captioning, agent state/security,
+  trajectory evaluation, product API/demo integration, self-hosted serving,
+  Graph RAG feasibility, interview evidence, and review board refresh.
+- Keep the existing RAG performance experiment stack intact.
+- Record that `T-2026-0056` is already occupied by the Ollama provider spike, so
+  this positioning stack starts at `T-2026-0057`.
+
+### Non-Goals
+
+- Do not implement multimodal or agent runtime features in this task.
+- Do not add new external dependencies.
+- Do not create a new benchmark or metric surface.
+
+### Acceptance Criteria
+
+- [ ] Queue rows and detailed task sections exist for `T-2026-0057` through
+  `T-2026-0070`.
+- [ ] Each follow-up task has an evidence boundary, privacy boundary, and
+  validation route.
+- [ ] Existing optimization tasks `T-2026-0028` through `T-2026-0056` are not
+  reordered or redefined.
+
+### Validation Commands
+
+```bash
+python3 scripts/check_doc_links.py --check-all --paths tasks/queue.md docs/plans/T-2026-0056-multimodal-agent-positioning-stack.md docs/portfolio-pitch.md README.md
+python3 scripts/agent_loop.py claim-audit --from-git
+git diff --check
+make check-branch
+```
+
+### Evidence Required
+
+- Queue diff.
+- Plan doc.
+- Claim audit output.
+
+### Related Plan / Issue / PR Links
+
+- Plan: [`docs/plans/T-2026-0056-multimodal-agent-positioning-stack.md`](../docs/plans/T-2026-0056-multimodal-agent-positioning-stack.md)
+- Issue: [#1651](https://github.com/hskim-solv/BidMate-DocAgent/issues/1651)
+- PR: TBD
+
+## T-2026-0059 — External source and citation audit
+
+- ID: T-2026-0059
+- Title: External source and citation audit
+- Status: backlog
+- Priority: P0 positioning
+- Owner role: Planner -> Reviewer
+- Created: 2026-05-28
+- Last updated: 2026-05-28
+
+### Goal
+
+Ensure external framework and vendor claims used in portfolio wording are
+current, cited, and grounded in either official documentation or existing repo
+ADR/implementation evidence.
+
+### Scope
+
+- Audit references to LlamaIndex, LangGraph, OpenAI Agents SDK, RAGAS,
+  LangSmith, MCP/A2A, vLLM, TEI, CrewAI, AutoGen, and related frameworks before
+  using them as portfolio claims.
+- Prefer repo-internal evidence when implementation already exists, such as
+  LangGraph ADRs, OpenAI-compatible provider support, MCP helper tooling,
+  FastAPI docs, and observability docs.
+- Produce a small source map that distinguishes implemented, planned, and
+  external-background-only claims.
+
+### Non-Goals
+
+- Do not add new framework dependencies.
+- Do not rewrite README around trend keywords.
+- Do not cite third-party docs as proof that this repo implements a capability.
+
+### Acceptance Criteria
+
+- [ ] Every external framework mention in positioning docs is marked as
+  implemented, planned, or background-only.
+- [ ] Official docs are used for external claims when needed.
+- [ ] Unverified or low-value framework references are removed.
+
+### Validation Commands
+
+```bash
+python3 scripts/check_doc_links.py --check-all --paths docs/portfolio-pitch.md README.md <source-map-path>
+python3 scripts/agent_loop.py claim-audit --from-git
+git diff --check
+make check-branch
+```
+
+### Evidence Required
+
+- Source map or audit note.
+- Claim audit output.
+
+### Related Plan / Issue / PR Links
+
+- Plan: [`docs/plans/T-2026-0056-multimodal-agent-positioning-stack.md`](../docs/plans/T-2026-0056-multimodal-agent-positioning-stack.md)
+- Issue: TBD
+- PR: TBD
+
+## T-2026-0060 — Visual evidence contract hardening
+
+- ID: T-2026-0060
+- Title: Visual evidence contract hardening
+- Status: backlog
+- Priority: P1 multimodal
+- Owner role: Evaluator -> Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer
+- Created: 2026-05-28
+- Last updated: 2026-05-28
+
+### Goal
+
+Define how OCR/layout/table/image evidence becomes retrieval-ready and
+citation-ready before adding VLM captioning or multimodal agent behavior.
+
+### Scope
+
+- Extend or document the visual artifact contract for text blocks, page spans,
+  table cells, region metadata, image captions, and citation anchors.
+- Connect the contract to existing parser/layout/table coverage work rather than
+  bypassing `T-2026-0050`.
+- Add focused public-fixture or aggregate-only checks for visual evidence
+  readiness.
+
+### Non-Goals
+
+- Do not add VLM provider calls.
+- Do not change default ingestion behavior.
+- Do not commit private page images, raw OCR text, filenames, or local paths.
+
+### Acceptance Criteria
+
+- [ ] Visual evidence fields needed by retrieval and citation are documented.
+- [ ] Parser/layout/table readiness is separated from VLM captioning.
+- [ ] Private evidence remains aggregate-only.
+
+### Validation Commands
+
+```bash
+python3 -m pytest -q tests/test_visual_ingestion.py tests/test_page_aware_parser_contract.py <focused-new-tests>
+python3 scripts/check_doc_links.py --check-all --paths docs/vision/visual-ingestion-v2.md tasks/queue.md <contract-doc-path>
+python3 scripts/agent_loop.py privacy-audit-output
+git diff --check
+make check-branch
+```
+
+### Evidence Required
+
+- Contract doc or focused test output.
+- Privacy audit output when aggregate artifacts are added.
+
+### Related Plan / Issue / PR Links
+
+- Plan: [`docs/plans/T-2026-0056-multimodal-agent-positioning-stack.md`](../docs/plans/T-2026-0056-multimodal-agent-positioning-stack.md)
+- Issue: TBD
+- PR: TBD
+
+## T-2026-0061 — Opt-in VLM captioning spike
+
+- ID: T-2026-0061
+- Title: Opt-in VLM captioning spike
+- Status: backlog
+- Priority: P1 multimodal
+- Owner role: Implementer -> Privacy Auditor -> Reviewer
+- Created: 2026-05-28
+- Last updated: 2026-05-28
+
+### Goal
+
+Test whether VLM captioning can add useful public visual evidence without
+changing default ingestion or sending private RFP data to external providers.
+
+### Scope
+
+- Add a public-fixture-only spike path for image/page captioning.
+- Record provider, model, payload class, egress mode, latency, cost, and caption
+  failure rate.
+- Keep caption output isolated from canonical private indexes unless a later ADR
+  and privacy boundary approve it.
+
+### Non-Goals
+
+- Do not use private documents or private page images.
+- Do not change retrieval defaults.
+- Do not claim multimodal retrieval quality from a public-only spike.
+
+### Acceptance Criteria
+
+- [ ] Spike can run on public fixtures with explicit provider/payload
+  provenance.
+- [ ] Captions are tagged as experimental and isolated.
+- [ ] Missing provider credentials produce a clear skip/no-go report.
+
+### Validation Commands
+
+```bash
+python3 -m pytest -q tests/test_external_payload_boundary_regression.py <focused-vlm-tests>
+python3 <vlm-caption-spike-runner> --input <public-fixture-path> --out <public-output>
+python3 scripts/agent_loop.py privacy-audit-output
+git diff --check
+make check-branch
+```
+
+### Evidence Required
+
+- Public-fixture spike report.
+- Provider/payload provenance.
+- Privacy audit output.
+
+### Related Plan / Issue / PR Links
+
+- Plan: [`docs/plans/T-2026-0056-multimodal-agent-positioning-stack.md`](../docs/plans/T-2026-0056-multimodal-agent-positioning-stack.md)
+- Issue: TBD
+- PR: TBD
+
+## T-2026-0062 — Agent tool-state-trace contract
+
+- ID: T-2026-0062
+- Title: Agent tool-state-trace contract
+- Status: backlog
+- Priority: P1 agent
+- Owner role: Implementer -> Reviewer
+- Created: 2026-05-28
+- Last updated: 2026-05-28
+
+### Goal
+
+Make tool calling, state transitions, retry/fallback behavior, and permission
+boundaries inspectable before expanding agent workflows.
+
+### Scope
+
+- Define a minimal tool-state-trace shape for agent steps.
+- Reuse existing LangGraph/agentic docs and trace conventions when possible.
+- Include timeout, retry, fallback, user-escalation, and tool-denial states.
+
+### Non-Goals
+
+- Do not replace existing answer dict contract.
+- Do not add CrewAI/AutoGen or another orchestration framework.
+- Do not expose mutating tools without a permission policy.
+
+### Acceptance Criteria
+
+- [ ] Tool call, observation, retry, fallback, and stop states are documented or
+  serialized.
+- [ ] Permission boundary is explicit.
+- [ ] Existing direct and LangGraph paths remain backward compatible.
+
+### Validation Commands
+
+```bash
+python3 -m pytest -q tests/test_langgraph_orchestrator_regression.py tests/test_agent_react_regression.py <focused-agent-trace-tests>
+python3 scripts/check_doc_links.py --check-all --paths docs/agentic/agent-system-design-case-study.md docs/agentic/agent-failure-modes-analysis.md tasks/queue.md <contract-doc-path>
+git diff --check
+make check-branch
+```
+
+### Evidence Required
+
+- Contract doc or trace fixture.
+- Focused regression tests.
+
+### Related Plan / Issue / PR Links
+
+- Plan: [`docs/plans/T-2026-0056-multimodal-agent-positioning-stack.md`](../docs/plans/T-2026-0056-multimodal-agent-positioning-stack.md)
+- Issue: TBD
+- PR: TBD
+
+## T-2026-0063 — Agent security and human-in-the-loop guardrail
+
+- ID: T-2026-0063
+- Title: Agent security and human-in-the-loop guardrail
+- Status: backlog
+- Priority: P1 security
+- Owner role: Security Reviewer -> Implementer -> Privacy Auditor -> Reviewer
+- Created: 2026-05-28
+- Last updated: 2026-05-28
+
+### Goal
+
+Prevent multimodal/tool-using agent work from expanding before prompt
+injection, tool permission, escalation, and manual review boundaries are
+explicit.
+
+### Scope
+
+- Extend the existing prompt-injection and evidence-boundary guardrails to
+  multimodal and tool-call settings.
+- Define when the agent must ask a user, stop, or route to human review.
+- Add red-team fixtures for tool misuse, indirect instruction injection, and
+  unsafe visual/document content.
+
+### Non-Goals
+
+- Do not add broad new security architecture.
+- Do not enable mutating tools by default.
+- Do not weaken existing verifier/evidence-boundary behavior.
+
+### Acceptance Criteria
+
+- [ ] Tool-call permission failures are fail-closed.
+- [ ] Human review checkpoints are explicit for risky operations.
+- [ ] Security tests cover prompt/document/tool boundary attacks.
+
+### Validation Commands
+
+```bash
+python3 -m pytest -q tests/test_security*.py tests/test_prompt_injection_regression.py tests/test_evidence_boundary_attack_vectors.py <focused-agent-security-tests>
+python3 <security-redteam-runner> --out <aggregate-output>
+python3 scripts/agent_loop.py privacy-audit-output
+git diff --check
+make check-branch
+```
+
+### Evidence Required
+
+- Focused security test output.
+- Red-team aggregate report if added.
+- Privacy audit output.
+
+### Related Plan / Issue / PR Links
+
+- Plan: [`docs/plans/T-2026-0056-multimodal-agent-positioning-stack.md`](../docs/plans/T-2026-0056-multimodal-agent-positioning-stack.md)
+- Issue: TBD
+- PR: TBD
+
+## T-2026-0064 — Multimodal troubleshooting vertical slice
+
+- ID: T-2026-0064
+- Title: Multimodal troubleshooting vertical slice
+- Status: backlog
+- Priority: P2 product
+- Owner role: Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer
+- Created: 2026-05-28
+- Last updated: 2026-05-28
+
+### Goal
+
+Build an opt-in vertical slice that demonstrates image/document analysis,
+manual retrieval, cause ranking, action recommendation, uncertainty handling,
+and trace capture as one product workflow.
+
+### Scope
+
+- Use public fixtures or approved redacted examples only.
+- Connect visual evidence, RAG retrieval, agent state, and answer/citation
+  output through an isolated workflow.
+- Produce a trace and evaluation packet that separates visual, retrieval,
+  tool-call, and answer failures.
+
+### Non-Goals
+
+- Do not change default BidMate RFP query behavior.
+- Do not use private images or private RFP pages without a new approved
+  boundary.
+- Do not claim production readiness.
+
+### Acceptance Criteria
+
+- [ ] The vertical slice runs end-to-end on approved public/redacted inputs.
+- [ ] Failure modes are separated by visual, retrieval, agent, and answer stage.
+- [ ] Output includes confidence/uncertainty and citation/evidence references.
+
+### Validation Commands
+
+```bash
+python3 -m pytest -q <focused-vertical-slice-tests>
+python3 <multimodal-troubleshooting-runner> --input <public-or-redacted-input> --out <aggregate-output>
+python3 scripts/agent_loop.py privacy-audit-output
+python3 scripts/agent_loop.py claim-audit --from-git
+git diff --check
+make check-branch
+```
+
+### Evidence Required
+
+- Public/redacted vertical-slice output.
+- Stage-separated trace or aggregate.
+- Privacy and claim audit output.
+
+### Related Plan / Issue / PR Links
+
+- Plan: [`docs/plans/T-2026-0056-multimodal-agent-positioning-stack.md`](../docs/plans/T-2026-0056-multimodal-agent-positioning-stack.md)
+- Issue: TBD
+- PR: TBD
+
+## T-2026-0065 — Agent trajectory evaluation
+
+- ID: T-2026-0065
+- Title: Agent trajectory evaluation
+- Status: backlog
+- Priority: P2 eval
+- Owner role: Evaluator -> Benchmark Auditor -> Privacy Auditor -> Reviewer
+- Created: 2026-05-28
+- Last updated: 2026-05-28
+
+### Goal
+
+Evaluate agent behavior beyond final-answer correctness by measuring trajectory
+quality, tool-call success, retry/fallback behavior, latency, cost, and
+human-review triggers.
+
+### Scope
+
+- Define trajectory metrics that complement existing answer/retrieval metrics.
+- Reuse existing rationality judge and trace conventions where they fit.
+- Report aggregate-only results with no raw private trace leakage.
+
+### Non-Goals
+
+- Do not replace existing answer-quality metrics.
+- Do not create a new metric surface without ADR review if the metric becomes
+  claim-bearing.
+- Do not average incompatible public and private surfaces.
+
+### Acceptance Criteria
+
+- [ ] Metrics separate final answer outcome from process quality.
+- [ ] Tool-call and retry failures are visible.
+- [ ] Aggregate output is privacy-safe.
+
+### Validation Commands
+
+```bash
+python3 -m pytest -q tests/test_rationality_judge.py tests/test_trace_schema_v2.py <focused-trajectory-tests>
+python3 <trajectory-eval-runner> --out <aggregate-output>
+python3 scripts/agent_loop.py privacy-audit-output
+python3 scripts/agent_loop.py claim-audit --from-git
+git diff --check
+make check-branch
+```
+
+### Evidence Required
+
+- Trajectory metric spec or aggregate.
+- Focused tests.
+- Privacy and claim audit output.
+
+### Related Plan / Issue / PR Links
+
+- Plan: [`docs/plans/T-2026-0056-multimodal-agent-positioning-stack.md`](../docs/plans/T-2026-0056-multimodal-agent-positioning-stack.md)
+- Issue: TBD
+- PR: TBD
+
+## T-2026-0066 — Product API/demo integration
+
+- ID: T-2026-0066
+- Title: Product API/demo integration
+- Status: backlog
+- Priority: P2 product
+- Owner role: Implementer -> Reviewer
+- Created: 2026-05-28
+- Last updated: 2026-05-28
+
+### Goal
+
+Expose the selected multimodal agent workflow through a restrained FastAPI/demo
+surface that proves product integration without changing core RAG defaults.
+
+### Scope
+
+- Add opt-in API/demo entrypoints for the approved workflow.
+- Preserve existing FastAPI query schemas and default behavior.
+- Record latency, trace id, failure status, and user-facing uncertainty.
+
+### Non-Goals
+
+- Do not turn the demo into a broad product rebuild.
+- Do not require frontend work unless the API surface is stable.
+- Do not add auth/rate-limit/security claims unless implemented and tested.
+
+### Acceptance Criteria
+
+- [ ] Existing API tests pass unchanged.
+- [ ] New workflow is opt-in and documented.
+- [ ] Demo/API output exposes traceability and safe failure states.
+
+### Validation Commands
+
+```bash
+python3 -m pytest -q tests/test_api.py tests/test_api_default_pipeline_regression.py <focused-api-tests>
+python3 scripts/check_doc_links.py --check-all --paths docs/operations/api-demo.md README.md tasks/queue.md <api-doc-path>
+git diff --check
+make check-branch
+```
+
+### Evidence Required
+
+- Focused API tests.
+- API docs.
+- Manual smoke result if a UI/demo path is changed.
+
+### Related Plan / Issue / PR Links
+
+- Plan: [`docs/plans/T-2026-0056-multimodal-agent-positioning-stack.md`](../docs/plans/T-2026-0056-multimodal-agent-positioning-stack.md)
+- Issue: TBD
+- PR: TBD
+
+## T-2026-0067 — Self-hosted OpenAI-compatible serving demo
+
+- ID: T-2026-0067
+- Title: Self-hosted OpenAI-compatible serving demo
+- Status: backlog
+- Priority: P3 serving
+- Owner role: Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer
+- Created: 2026-05-28
+- Last updated: 2026-05-28
+
+### Goal
+
+Show service/ops awareness by connecting an opt-in OpenAI-compatible local
+serving endpoint, such as vLLM or llama.cpp, without making serving the primary
+positioning.
+
+### Scope
+
+- Document one self-hosted OpenAI-compatible server path and connect it to
+  existing synthesis or judge provider configuration.
+- Measure latency, throughput/concurrency, JSON compliance, memory/runtime
+  constraints when locally available.
+- Position this as auxiliary product/ops evidence, complementary to the Ollama
+  spike in `T-2026-0056`.
+
+### Non-Goals
+
+- Do not require GPU infrastructure in CI.
+- Do not replace default offline/stub behavior.
+- Do not claim platform/serving specialization as the repo's main positioning.
+
+### Acceptance Criteria
+
+- [ ] The demo has exact setup and skip/no-go instructions.
+- [ ] Provider/runtime effects are separated from retrieval and answer effects.
+- [ ] No private payload leaves approved local boundaries.
+
+### Validation Commands
+
+```bash
+python3 -m pytest -q tests/test_llm_synthesis.py tests/test_external_payload_boundary_regression.py <focused-serving-tests>
+python3 <openai-compatible-serving-smoke> --base-url <local-url> --model <model> --out <aggregate-output>
+python3 scripts/agent_loop.py privacy-audit-output
+python3 scripts/agent_loop.py claim-audit --from-git
+git diff --check
+make check-branch
+```
+
+### Evidence Required
+
+- Local serving setup note.
+- Aggregate smoke output or explicit unavailable/no-go report.
+- Privacy and claim audit output.
+
+### Related Plan / Issue / PR Links
+
+- Plan: [`docs/plans/T-2026-0056-multimodal-agent-positioning-stack.md`](../docs/plans/T-2026-0056-multimodal-agent-positioning-stack.md)
+- Issue: TBD
+- PR: TBD
+
+## T-2026-0068 — Knowledge/Graph RAG feasibility
+
+- ID: T-2026-0068
+- Title: Knowledge/Graph RAG feasibility
+- Status: backlog
+- Priority: P3 architecture
+- Owner role: Planner -> Architect -> Benchmark Auditor -> Privacy Auditor -> Deep Reviewer -> Reviewer
+- Created: 2026-05-28
+- Last updated: 2026-05-28
+
+### Goal
+
+Decide whether relation-structured evidence such as agency, requirement,
+deadline, symptom, cause, procedure, table, and visual region justifies a
+Knowledge/Graph RAG follow-up.
+
+### Scope
+
+- Use measured residual bottlenecks from retrieval, parser/layout, metadata, and
+  advanced architecture gates.
+- Compare simple metadata/entity retrieval, graph retrieval, ontology work, and
+  no-go.
+- Recommend at most one follow-up implementation issue.
+
+### Non-Goals
+
+- Do not build a graph database in this task.
+- Do not introduce Graph RAG because it is trendy.
+- Do not bypass `T-2026-0039` advanced architecture feasibility evidence.
+
+### Acceptance Criteria
+
+- [ ] Feasibility matrix names expected failure-mode reduction.
+- [ ] Build cost, privacy risk, eval burden, latency, and rollback are covered.
+- [ ] Recommendation is implement-one, defer, or no-go.
+
+### Validation Commands
+
+```bash
+python3 scripts/check_doc_links.py --check-all --paths tasks/queue.md docs/evaluation/rag-performance-experiment-stack.md <feasibility-report-path>
+python3 scripts/agent_loop.py claim-audit --from-git
+git diff --check
+make check-branch
+```
+
+### Evidence Required
+
+- Feasibility report.
+- Explicit next issue or no-go rationale.
+
+### Related Plan / Issue / PR Links
+
+- Plan: [`docs/plans/T-2026-0056-multimodal-agent-positioning-stack.md`](../docs/plans/T-2026-0056-multimodal-agent-positioning-stack.md)
+- Issue: TBD
+- PR: TBD
+
+## T-2026-0069 — Interview and resume evidence pack
+
+- ID: T-2026-0069
+- Title: Interview and resume evidence pack
+- Status: backlog
+- Priority: P2 positioning
+- Owner role: Planner -> Reviewer
+- Created: 2026-05-28
+- Last updated: 2026-05-28
+
+### Goal
+
+Convert the repo evidence into interview-ready and resume-ready artifacts for
+Multimodal Agentic AI Product Engineer, LLM/Agent Engineer, AI Product Engineer,
+LLMOps/Evaluation Engineer, and serving-adjacent roles.
+
+### Scope
+
+- Produce STAR answers, role-specific pitch variants, and a repo evidence link
+  map.
+- Separate implemented evidence from planned tasks.
+- Keep exact private metrics out unless they are `real100_v2` aggregate-safe and
+  current.
+
+### Non-Goals
+
+- Do not create a separate private portfolio repo artifact in this task unless a
+  follow-up issue is opened.
+- Do not include unsupported claims about VLM/Agent/serving implementation.
+- Do not expose private eval payloads.
+
+### Acceptance Criteria
+
+- [ ] Evidence pack maps each role claim to repo files, ADRs, tests, reports, or
+  explicit planned tasks.
+- [ ] Resume/interview wording distinguishes "implemented" from "planned".
+- [ ] Legacy private-eval wording is absent from current claims.
+
+### Validation Commands
+
+```bash
+python3 scripts/check_doc_links.py --check-all --paths docs/portfolio-pitch.md tasks/queue.md <evidence-pack-path>
+python3 scripts/agent_loop.py claim-audit --from-git
+git diff --check
+make check-branch
+```
+
+### Evidence Required
+
+- Interview/resume evidence pack.
+- Claim audit output.
+
+### Related Plan / Issue / PR Links
+
+- Plan: [`docs/plans/T-2026-0056-multimodal-agent-positioning-stack.md`](../docs/plans/T-2026-0056-multimodal-agent-positioning-stack.md)
+- Issue: TBD
+- PR: TBD
+
+## T-2026-0070 — Portfolio review board refresh
+
+- ID: T-2026-0070
+- Title: Portfolio review board refresh
+- Status: backlog
+- Priority: P2 positioning
+- Owner role: Implementer -> Privacy Auditor -> Reviewer
+- Created: 2026-05-28
+- Last updated: 2026-05-28
+
+### Goal
+
+Refresh reviewer-facing generated HTML boards after the Markdown positioning
+docs settle, while keeping Markdown as the source of truth.
+
+### Scope
+
+- Update the portfolio review board inputs to reflect real100_v2-only wording
+  and the Multimodal Agent/Product positioning stack.
+- Keep generated HTML ignored/local and reproducible.
+- Verify no raw private data, local paths, or unsupported claims appear in the
+  generated boards.
+
+### Non-Goals
+
+- Do not make generated HTML canonical.
+- Do not add a new measurement surface.
+- Do not change runtime or eval behavior.
+
+### Acceptance Criteria
+
+- [ ] Portfolio board renders current positioning and evidence links.
+- [ ] Generated HTML contains no raw private payloads or exact local paths.
+- [ ] Tests cover board title/content changes if renderer behavior changes.
+
+### Validation Commands
+
+```bash
+python3 -m pytest -q tests/test_render_priority_review_boards.py
+python3 scripts/render_priority_review_boards.py
+python3 scripts/agent_loop.py privacy-audit-output
+python3 scripts/check_doc_links.py --check-all --paths docs/portfolio-pitch.md tasks/queue.md
+git diff --check
+make check-branch
+```
+
+### Evidence Required
+
+- Focused renderer test output.
+- Local generated board path and privacy audit result.
+
+### Related Plan / Issue / PR Links
+
+- Plan: [`docs/plans/T-2026-0056-multimodal-agent-positioning-stack.md`](../docs/plans/T-2026-0056-multimodal-agent-positioning-stack.md)
+- Issue: TBD
 - PR: TBD

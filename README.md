@@ -19,13 +19,13 @@
 | **어떻게 평가 (evaluated)** | baseline 보존 ablation ([ADR 0001](docs/adr/0001-preserve-naive-baseline.md)) + 공개 fixture smoke / private internal eval 분리 ([ADR 0005](docs/adr/0005-eval-split-public-synthetic-private-local.md)) + PR 마다 회귀 게이트 ([pr-eval.yml](.github/workflows/pr-eval.yml)) + 79 ADR |
 | **어떻게 실행 (run it)** | `make index && make demo`, 또는 [5분 quickstart](#실행-5분-quickstart) · [Colab](https://colab.research.google.com/github/hskim-solv/BidMate-DocAgent/blob/main/demo/bidmate_quickstart.ipynb) · [Live demo](https://bidmate-docagent-demo.fly.dev/) |
 
-> **Portfolio signal**: 외부 LLM API 를 호출하는 RAG 데모가 아니라, RFP 도메인의 실패 모드를 직접 정의하고 그것을 막는 평가·CI·provenance 게이트를 **소유(system ownership)** 한 사례. 리뷰어용 진입점 → [모듈 맵](docs/architecture/module-map.md) · [실패 모드 케이스 스터디](docs/case-studies/failure-modes.md) · [면접 피치](docs/portfolio-pitch.md).
+> **Portfolio signal**: 외부 LLM API 를 호출하는 RAG 데모가 아니라, RFP 도메인의 실패 모드를 직접 정의하고 그것을 막는 평가·CI·provenance 게이트를 **소유(system ownership)** 한 사례. 현재 포지셔닝은 narrow RAG 가 아니라 문서·표·이미지 evidence 를 다루는 **Multimodal Agentic AI Product Engineer** 트랙으로 확장 중이며, 런타임 변경은 모두 opt-in follow-up task 로 분리한다. 리뷰어용 진입점 → [모듈 맵](docs/architecture/module-map.md) · [실패 모드 케이스 스터디](docs/case-studies/failure-modes.md) · [면접 피치](docs/portfolio-pitch.md).
 
-> **real-eval 읽는 법 (오해 방지)**: 비공개 real-eval (n=221) accuracy 16.10% 는 *제품 성공 지표가 아니라 hardcase 스트레스 테스트* 다 — 실패 모드를 노출하고, ablation 의 distinguishing power(변별력) 를 시험하며, 다음 개선을 안내하는 용도. 공개 fixture smoke eval은 CI 재현성과 평가 harness 동작 확인만 담당하고, 실제 성능 판단은 private/internal eval set aggregate를 기준으로 한다 ([ADR 0005](docs/adr/0005-eval-split-public-synthetic-private-local.md)). 낮은 hardcase 수치는 숨기지 않고 **엔지니어링 증거로 의도적으로 노출**한다 ([ADR 0052](docs/adr/0052-real-eval-hardcase-expansion-to-200.md)).
+> **real-eval 읽는 법 (오해 방지)**: 현재 claim-bearing private evidence 는 `real100_v2` aggregate-only 표면만 사용한다. 공개 fixture smoke eval은 CI 재현성과 평가 harness 동작 확인만 담당하고, 실제 성능 판단은 private/internal eval set aggregate를 기준으로 한다 ([ADR 0005](docs/adr/0005-eval-split-public-synthetic-private-local.md)). 이전 세대 private-eval artifact 와 wording 은 archive-only 이며, maintainer 가 명시적으로 다시 허용하기 전까지 새 task·PR·claim·handoff 근거로 사용하지 않는다.
 
 <details><summary><b>측정 상세 (over-claim 가드 — 펼치기)</b></summary>
 
-> **측정**: 공개 가능한 작은 fixture는 `make smoke`와 PR CI에서 평가 harness, metrics schema, latency SLO가 깨지지 않는지 확인하는 용도다. 실제 성능 수치는 private/internal eval set aggregate로 관리하며, 비공개 real-eval (100-doc RFP, n=221 hardcase, [ADR 0052](docs/adr/0052-real-eval-hardcase-expansion-to-200.md))은 hardcase 스트레스와 distinguishing-power 분석에 사용한다. Goodhart 폐루프 ([ADR 0053](docs/adr/0053-distinguishing-power-floor-ablations.md) 첫 측정 발견 → [ADR 0054](docs/adr/0054-conditional-on-answer-scorer-semantics.md) scorer 정정 → CI-aware 판정, [reports/real100/distinguishing_power.md](reports/real100/distinguishing_power.md)). 공개 fixture smoke + private/internal eval 분리 평가 ([ADR 0005](docs/adr/0005-eval-split-public-synthetic-private-local.md)), 80개 설계 결정 (ADR).
+> **측정**: 공개 가능한 작은 fixture는 `make smoke`와 PR CI에서 평가 harness, metrics schema, latency SLO가 깨지지 않는지 확인하는 용도다. 실제 성능 수치는 `real100_v2` private/internal aggregate 로 관리하며, raw question/answer/evidence/text/path/id 는 커밋하지 않는다. 새 성능 claim 은 paired `real100_v2` aggregate delta, provenance, privacy audit, claim audit 를 함께 요구한다. 공개 fixture smoke + private/internal eval 분리 평가 ([ADR 0005](docs/adr/0005-eval-split-public-synthetic-private-local.md)), 80개 설계 결정 (ADR).
 
 </details>
 
@@ -83,7 +83,7 @@ INFO bidmate.rag_core: query_complete  status='supported'  query_type='compariso
 
 LLM synthesis opt-in (`agentic_full_llm`, [ADR 0011](docs/adr/0011-llm-synthesis-as-additive-ablation.md)) 과 LLM Ops observability ([ADR 0013](docs/adr/0013-observability-as-additive-pluggable-surface.md)) 는 추출형 파이프라인을 *교체하지 않고* additive 분석 변형으로 추가 — [`docs/agentic/answer-policy.md`](docs/agentic/answer-policy.md) / [`docs/operations/observability.md`](docs/operations/observability.md).
 
-> **평가 경계**: 이 레포지토리는 공개 가능한 작은 fixture를 smoke test 용도로만 사용합니다. 실제 성능 평가는 레포지토리에 커밋하지 않는 private/internal eval set을 기준으로 수행하는 것을 전제로 합니다. 비공개 real-eval n=21 → n=221 확장 ([ADR 0052](docs/adr/0052-real-eval-hardcase-expansion-to-200.md), [issue #942](https://github.com/hskim-solv/BidMate-DocAgent/issues/942))은 LLM-assisted hardcase generator + distinguishing-power floor ([ADR 0053](docs/adr/0053-distinguishing-power-floor-ablations.md))로 aggregate evidence를 남기는 구조다. Detection-blind 분석 변형 real-eval 측정은 별도 follow-up.
+> **평가 경계**: 이 레포지토리는 공개 가능한 작은 fixture를 smoke test 용도로만 사용합니다. 실제 성능 평가는 레포지토리에 커밋하지 않는 private/internal eval set aggregate를 기준으로 수행하는 것을 전제로 합니다. 현재 새 task와 PR의 private evidence lane 은 `real100_v2` 전용이며, 이전 세대 private-eval artifact 와 wording 은 archive-only 로 남긴다. Detection-blind 분석 변형 real-eval 측정은 별도 follow-up.
 
 ## 핵심 기술 기여 — comparison-aware balanced top-k
 
