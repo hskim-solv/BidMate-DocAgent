@@ -1,0 +1,125 @@
+{
+  "decision": {
+    "overall_classification": "latency_regression",
+    "selected_variant": null,
+    "variants": [
+      {
+        "classifications": [
+          "latency_regression"
+        ],
+        "deltas_vs_control": {
+          "citation_worst": 0.0,
+          "latency_p95_ms": -33643.473999999995,
+          "response_quality_best": 0.0
+        },
+        "name": "context_evidence_first",
+        "primary_classification": "latency_regression"
+      }
+    ]
+  },
+  "generated_at_utc": "2026-05-28T04:47:51.187239+00:00",
+  "known_limits": [
+    "This is aggregate-only private-local measurement, not a global response quality improvement claim.",
+    "Legacy real100, v1, 221, and kordoc evidence is not used."
+  ],
+  "latency_budget": {
+    "cost_status": "not_observable_from_committed_aggregate",
+    "hard_no_go_ceiling_ms": 4799.0,
+    "present": true
+  },
+  "privacy_boundary": "aggregate_only_no_private_payloads_ids_paths_or_filenames",
+  "profile_type": "private_real100_v2_context_packing",
+  "provenance": {
+    "eval_config_sha256": "168147eb51a599161733524bd11d515f15a4d2fe2085c81a4c68a4da133687ef",
+    "git_commit": "8f7a124abf81",
+    "git_dirty": true,
+    "index_fingerprint_sha256": "7ddb84e3cf430e4de3dcb994fa3c5f3b10622d5d77780d32d23a5ee7e761a277",
+    "input_labels": {
+      "config": "external_private_real100_v2_config",
+      "index": "external_private_real100_v2_index",
+      "latency_budget": "reports_real100_v2_latency_cost_budget_aggregate"
+    }
+  },
+  "run_scope": {
+    "cases_evaluated": 3,
+    "cases_requested": 300,
+    "paired_delta_valid": false,
+    "subset_run": true,
+    "surface": "real100_v2"
+  },
+  "schema_version": 1,
+  "variants": [
+    {
+      "invariants": {
+        "answer_schema": "unchanged",
+        "reranker_behavior": "unchanged",
+        "retrieval_behavior": "unchanged"
+      },
+      "metrics": {
+        "abstention": {
+          "abstention": null,
+          "insufficient_status_count": 0
+        },
+        "citation": {
+          "citation_precision": 0.0,
+          "claim_citation_alignment": 0.8333333333333334
+        },
+        "latency_ms": {
+          "count": 3,
+          "p50": 10425.43,
+          "p95": 46589.662
+        },
+        "response_quality": {
+          "accuracy": 0.0,
+          "answer_format_compliance": 0.6666666666666666,
+          "groundedness": 0.6666666666666666
+        },
+        "token_cost": {
+          "cost_estimate_usd_mean": null,
+          "input_tokens_mean": null,
+          "output_tokens_mean": null,
+          "status": "not_observable_from_prediction_diagnostics"
+        }
+      },
+      "name": "control_context_default",
+      "num_cases": 3,
+      "variant": "control"
+    },
+    {
+      "invariants": {
+        "answer_schema": "unchanged",
+        "reranker_behavior": "unchanged",
+        "retrieval_behavior": "unchanged"
+      },
+      "metrics": {
+        "abstention": {
+          "abstention": null,
+          "insufficient_status_count": 0
+        },
+        "citation": {
+          "citation_precision": 0.0,
+          "claim_citation_alignment": 0.8333333333333334
+        },
+        "latency_ms": {
+          "count": 3,
+          "p50": 12583.02,
+          "p95": 12946.188000000002
+        },
+        "response_quality": {
+          "accuracy": 0.0,
+          "answer_format_compliance": 0.6666666666666666,
+          "groundedness": 0.6666666666666666
+        },
+        "token_cost": {
+          "cost_estimate_usd_mean": null,
+          "input_tokens_mean": null,
+          "output_tokens_mean": null,
+          "status": "not_observable_from_prediction_diagnostics"
+        }
+      },
+      "name": "context_evidence_first",
+      "num_cases": 3,
+      "variant": "evidence_first"
+    }
+  ]
+}

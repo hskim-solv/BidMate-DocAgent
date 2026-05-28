@@ -101,6 +101,7 @@ ALLOWED_PATTERNS=(
   '^reports/real100_v2/benchmark_tiers\.aggregate\.json$'
   '^reports/real100_v2/latency_cost_budget\.aggregate\.json$'
   '^reports/real100_v2/reranker_candidate_budget\.aggregate\.json$'
+  '^reports/real100_v2/context_packing\.aggregate\.json$'
   '^reports/real100_v2/metric_suite\.aggregate\.json$'
   '^reports/real100_v2/metric_suite\.md$'
   '^reports/real100_v2/retrieval_diagnostics\.aggregate\.json$'

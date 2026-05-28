@@ -10,6 +10,7 @@ Allowed files:
 - `baseline.aggregate.json`
 - `latency_cost_budget.aggregate.json`
 - `reranker_candidate_budget.aggregate.json`
+- `context_packing.aggregate.json`
 - `metric_suite.aggregate.json`
 - `metric_suite.md`
 - `retrieval_diagnostics.aggregate.json`
