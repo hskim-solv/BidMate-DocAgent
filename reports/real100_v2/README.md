@@ -9,6 +9,7 @@ Allowed files:
 - `benchmark_tiers.aggregate.json`
 - `baseline.aggregate.json`
 - `latency_cost_budget.aggregate.json`
+- `reranker_candidate_budget.aggregate.json`
 - `metric_suite.aggregate.json`
 - `metric_suite.md`
 - `retrieval_diagnostics.aggregate.json`

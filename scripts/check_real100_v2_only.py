@@ -19,6 +19,7 @@ DEFAULT_PATHS = (
     Path("docs/evaluation/private_real_eval_workflow.md"),
     Path("docs/evaluation/real100_v2-retrieval-diagnostics.md"),
     Path("docs/evaluation/real100_v2-latency-cost-budget.md"),
+    Path("docs/evaluation/real100_v2-reranker-candidate-budget.md"),
     Path("reports/real100_v2/README.md"),
 )
 
@@ -117,6 +118,7 @@ def check_path(path: Path) -> list[str]:
         Path("docs/plans/T-2026-0032-reranker-candidate-budget-experiment.md"),
         Path("docs/evaluation/real100_v2-retrieval-diagnostics.md"),
         Path("docs/evaluation/real100_v2-latency-cost-budget.md"),
+        Path("docs/evaluation/real100_v2-reranker-candidate-budget.md"),
     }:
         for lineno, line in enumerate(scoped.splitlines(), start=1):
             if _is_ban_context(line):

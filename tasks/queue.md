@@ -40,10 +40,10 @@ PR이 생기면 각 task에 링크를 추가한다. 예제 task는 `tasks/exampl
 | 27 | `T-2026-0027` | `review` | Planner -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1584; prioritized RAG performance experiment stack captured. |
 | 28 | `T-2026-0028` | `done` | Evaluator -> Benchmark Auditor -> Privacy Auditor -> Reviewer | merged in PR #1619; real100_v2-only guard and aggregate packet landed. |
 | 29 | `T-2026-0029` | `review` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1622; real100_v2 retrieval diagnostics rendered; next experiment points to T-2026-0032 while T-2026-0031 remains page-metadata blocked. |
-| 30 | `T-2026-0030` | `review` | Implementer -> CI Reviewer -> Benchmark Auditor -> Reviewer | issue #1626; real100_v2 latency/cost envelope rendered for review. |
+| 30 | `T-2026-0030` | `done` | Implementer -> CI Reviewer -> Benchmark Auditor -> Reviewer | merged in PR #1628; real100_v2 latency/cost envelope landed. |
 | 31 | `T-2026-0031` | `blocked` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | real100_v2 page metadata coverage is 0.0; no claim-bearing page/window experiment yet. |
-| 32 | `T-2026-0032` | `ready` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1624; plan drafted and T-2026-0030 guardrail is ready for review. |
-| 33 | `T-2026-0033` | `backlog` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | P1; blocked on retrieval/reranker evidence and token budget from T-2026-0030. |
+| 32 | `T-2026-0032` | `review` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1629; BGE-KO screening run classifies latency_regression, no winner claim. |
+| 33 | `T-2026-0033` | `ready` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | P1; unblocked by T-2026-0030 budget and T-2026-0032 reranker latency no-go screening. |
 | 34 | `T-2026-0034` | `backlog` | Planner -> Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | P1; blocked on query-slice attribution from T-2026-0029. |
 | 35 | `T-2026-0035` | `backlog` | Security Reviewer -> Implementer -> Privacy Auditor -> Reviewer | P1 guardrail; should run before agentic/tool-using retrieval. |
 | 36 | `T-2026-0036` | `backlog` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | P2; blocked on stable retrieval/context evidence from P0/P1 tasks. |
@@ -2830,7 +2830,7 @@ make check-branch
 
 - ID: T-2026-0032
 - Title: Reranker candidate-budget experiment
-- Status: blocked
+- Status: review
 - Priority: P1
 - Owner role: Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer
 - Created: 2026-05-27
@@ -2859,10 +2859,10 @@ Run with or after the latency/cost guardrail from `T-2026-0030`.
 
 ### Acceptance Criteria
 
-- [ ] Sweep output classifies winner, recall-only gain, ranking regression,
+- [x] Sweep output classifies winner, recall-only gain, ranking regression,
   citation regression, latency regression, or failed experiment.
-- [ ] Candidate-pool recall and reranker precision are reported separately.
-- [ ] Reranker provenance is present in aggregate output.
+- [x] Candidate-pool recall and reranker precision are reported separately.
+- [x] Reranker provenance is present in aggregate output.
 - [x] Latency/cost guardrail from `T-2026-0030` is present or this task remains
   blocked.
 
@@ -2870,8 +2870,8 @@ Run with or after the latency/cost guardrail from `T-2026-0030`.
 
 ```bash
 python3 -m pytest -q tests/test_reranker*.py <focused-new-tests>
-python3 <reranker-sweep-script> --config <local-or-public-config> --out <aggregate-output>
-python3 scripts/run_real_eval_delta.py --base <baseline-aggregate> --head <variant-aggregate>
+python3 scripts/run_real100_v2_reranker_budget_sweep.py --config <local-v2-config> --index-dir <local-v2-index> --cases-subset-n 3 --candidate-pools 30 --reranker-top-ns 10 --reranker-backend bge_ko
+python3 scripts/run_real_eval_delta.py --base <baseline-aggregate> --head <variant-aggregate>  # optional only when paired full aggregate exists
 git diff --check
 make check-branch
 ```
@@ -2880,14 +2880,35 @@ make check-branch
 
 - Aggregate sweep summary with no raw private content.
 - Latency/cost guardrail from `T-2026-0030`.
+- Current committed result: `reports/real100_v2/reranker_candidate_budget.aggregate.json`
+  classifies the BGE-KO screening variant as `latency_regression` with
+  `paired_delta_valid=false`; this is a no-winner screening result, not a
+  private eval improvement claim.
 
 ### Related Plan / Issue / PR Links
 
 - Plan: [`docs/plans/T-2026-0032-reranker-candidate-budget-experiment.md`](../docs/plans/T-2026-0032-reranker-candidate-budget-experiment.md)
-- Issue: [#1624](https://github.com/hskim-solv/BidMate-DocAgent/issues/1624)
+- Issue: [#1624](https://github.com/hskim-solv/BidMate-DocAgent/issues/1624) (plan), [#1629](https://github.com/hskim-solv/BidMate-DocAgent/issues/1629) (implementation)
 - PR: TBD
 
 ### Handoff Notes
+
+```markdown
+## Session Handoff - 2026-05-28 12:30 KST
+
+- Role: Implementer
+- Branch / worktree: eval/issue-1629-run-real100-v2-reranker-candidate-budget-experim / /Users/hskim/.codex/worktrees/0ebc/BidMate-DocAgent
+- Issue / PR: issue #1629 / PR TBD
+- Task: T-2026-0032
+- Current status: runner/report implemented; 3-case `real100_v2` BGE-KO screening classifies `latency_regression`.
+- Files touched: scripts/run_real100_v2_reranker_budget_sweep.py, tests/test_real100_v2_reranker_budget_sweep.py, reports/real100_v2/reranker_candidate_budget.aggregate.json, docs/evaluation/real100_v2-reranker-candidate-budget.md, reports/real100_v2/README.md, .gitignore, .githooks/pre-commit, scripts/check_real100_v2_only.py, docs/plans/T-2026-0032-reranker-candidate-budget-experiment.md, tasks/queue.md
+- Decisions made: no winner and no headline improvement claim; paired_delta_valid=false because this was a 3-case screening run; local BGE-KO reranker latency exceeds the 4799 ms hard no-go ceiling by a large margin.
+- Commands run: make ship-start TITLE="Run real100 v2 reranker candidate budget experiment" TYPE=eval; make check-branch; python3 -m py_compile scripts/run_real100_v2_reranker_budget_sweep.py; python3 -m pytest -q tests/test_real100_v2_reranker_budget_sweep.py; python3 scripts/run_real100_v2_reranker_budget_sweep.py --config <external_private_real100_v2_config> --index-dir <external_private_real100_v2_index> --cases-subset-n 3 --candidate-pools 30 --reranker-top-ns 10 --reranker-backend bge_ko.
+- Results: aggregate/report written; candidate-pool recall and reranker precision separated; reranker provenance captured as backend bge_ko and model safe label dragonkue__bge-reranker-v2-m3-ko.
+- Next safe command: make real-eval-v2-guard && python3 scripts/check_doc_links.py --check-all --paths tasks/queue.md docs/plans/T-2026-0032-reranker-candidate-budget-experiment.md docs/evaluation/real100_v2-reranker-candidate-budget.md reports/real100_v2/README.md
+- Open questions: whether to run any further reranker backend requires a GPU or explicit latency budget exception; current CPU local backend is no-go.
+- Risks: subset run is screening evidence only, not paired full private eval delta.
+```
 
 ```markdown
 ## Session Handoff - 2026-05-28 09:55 KST
@@ -2910,16 +2931,21 @@ make check-branch
 
 - ID: T-2026-0033
 - Title: Context packing and citation ordering experiment
-- Status: backlog
+- Status: ready
 - Priority: P1
 - Owner role: Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer
 - Created: 2026-05-27
-- Last updated: 2026-05-27
+- Last updated: 2026-05-28
 
 ### Goal
 
 Improve how selected evidence is assembled for generation without changing the
 retriever.
+
+Current trigger: `T-2026-0032` produced a no-winner reranker screening result
+because local BGE-KO reranking breached the `T-2026-0030` latency hard ceiling.
+The next experiment should improve evidence assembly while holding retrieval and
+reranker behavior fixed.
 
 ### Scope
 

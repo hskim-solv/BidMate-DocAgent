@@ -1,9 +1,9 @@
 # Plan: T-2026-0032 reranker candidate-budget experiment
 
-- Status: proposed
+- Status: review
 - Owner role: Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer
 - Related task: `tasks/queue.md::T-2026-0032`
-- Related issue / PR: [#1624](https://github.com/hskim-solv/BidMate-DocAgent/issues/1624)
+- Related issue / PR: plan [#1624](https://github.com/hskim-solv/BidMate-DocAgent/issues/1624); implementation [#1629](https://github.com/hskim-solv/BidMate-DocAgent/issues/1629) / PR TBD
 - Related ADR: [ADR 0001](../adr/0001-preserve-naive-baseline.md), [ADR 0005](../adr/0005-eval-split-public-synthetic-private-local.md), [ADR 0026](../adr/0026-cross-encoder-reranker-deferral.md)
 - Created: 2026-05-28
 - Last updated: 2026-05-28
@@ -34,6 +34,9 @@ The repo already has a cross-encoder reranker surface:
   v2 diagnostic trigger: dominant exclusive retrieval status is
   `not_observable_limited_depth`, page metadata coverage is 0.0, and
   `T-2026-0032` is preferred while `T-2026-0031` is blocked.
+- `reports/real100_v2/latency_cost_budget.aggregate.json` sets the current
+  baseline hard no-go latency ceiling at 4799 ms and marks cost telemetry as
+  not observable from the committed aggregate.
 
 ## Desired Behavior
 
@@ -105,13 +108,13 @@ or failed experiment.
 
 ## Acceptance Criteria
 
-- [ ] Sweep output classifies winner, recall-only gain, ranking regression,
+- [x] Sweep output classifies winner, recall-only gain, ranking regression,
   citation regression, latency regression, or failed experiment.
-- [ ] Candidate-pool recall and reranker precision are reported separately.
-- [ ] Reranker provenance is present in aggregate output.
-- [ ] Latency/cost guardrail from `T-2026-0030` is present or this task remains
+- [x] Candidate-pool recall and reranker precision are reported separately.
+- [x] Reranker provenance is present in aggregate output.
+- [x] Latency/cost guardrail from `T-2026-0030` is present or this task remains
   blocked.
-- [ ] No legacy `real100`/v1/221/kordoc evidence is used.
+- [x] No legacy `real100`/v1/221/kordoc evidence is used.
 
 ## Validation Strategy
 
@@ -119,7 +122,7 @@ Commands that must be run by the implementation PR:
 
 ```bash
 python3 -m pytest -q tests/test_reranker*.py <focused-new-tests>
-python3 <reranker-sweep-script> --config <local-v2-config> --out <aggregate-output>
+python3 scripts/run_real100_v2_reranker_budget_sweep.py --config <local-v2-config> --index-dir <local-v2-index> --cases-subset-n 3 --candidate-pools 30 --reranker-top-ns 10 --reranker-backend bge_ko
 python3 scripts/run_real_eval_delta.py --base <real100_v2-base-aggregate> --head <real100_v2-variant-aggregate>
 make real-eval-v2-guard
 python3 scripts/agent_loop.py privacy-audit-output
@@ -163,7 +166,8 @@ private `real100_v2` raw run artifacts or indexes during rollback.
 ## Observability
 
 - `reports/real100_v2/retrieval_diagnostics.aggregate.json`
-- Future sweep aggregate and Markdown report
+- `reports/real100_v2/reranker_candidate_budget.aggregate.json`
+- `docs/evaluation/real100_v2-reranker-candidate-budget.md`
 - `rerank_delta_mrr`, `rerank_delta_ndcg_at_10`, `retrieval_metrics`, and
   `stage_latency`
 - `make real-eval-v2-guard`
@@ -177,6 +181,23 @@ wins only by hiding candidate-pool recall, regresses citation behavior, or
 exceeds the latency/cost envelope.
 
 ## Handoff Notes
+
+```markdown
+## Session Handoff - 2026-05-28 12:30 KST
+
+- Role: Implementer
+- Branch / worktree: eval/issue-1629-run-real100-v2-reranker-candidate-budget-experim / /Users/hskim/.codex/worktrees/0ebc/BidMate-DocAgent
+- Issue / PR: issue #1629 / PR TBD
+- Task: T-2026-0032
+- Current status: runner/report implemented; 3-case `real100_v2` BGE-KO screening classifies `latency_regression`.
+- Files touched: scripts/run_real100_v2_reranker_budget_sweep.py, tests/test_real100_v2_reranker_budget_sweep.py, reports/real100_v2/reranker_candidate_budget.aggregate.json, docs/evaluation/real100_v2-reranker-candidate-budget.md, reports/real100_v2/README.md, .gitignore, .githooks/pre-commit, scripts/check_real100_v2_only.py, docs/plans/T-2026-0032-reranker-candidate-budget-experiment.md, tasks/queue.md
+- Decisions made: no winner and no headline improvement claim; paired_delta_valid=false because this was a 3-case screening run; local BGE-KO reranker latency exceeds the 4799 ms hard no-go ceiling by a large margin.
+- Commands run: make ship-start TITLE="Run real100 v2 reranker candidate budget experiment" TYPE=eval; make check-branch; python3 -m py_compile scripts/run_real100_v2_reranker_budget_sweep.py; python3 -m pytest -q tests/test_real100_v2_reranker_budget_sweep.py; python3 scripts/run_real100_v2_reranker_budget_sweep.py --config <external_private_real100_v2_config> --index-dir <external_private_real100_v2_index> --cases-subset-n 3 --candidate-pools 30 --reranker-top-ns 10 --reranker-backend bge_ko.
+- Results: aggregate/report written; candidate-pool recall and reranker precision separated; reranker provenance captured as backend bge_ko and model safe label dragonkue__bge-reranker-v2-m3-ko.
+- Next safe command: make real-eval-v2-guard && python3 scripts/check_doc_links.py --check-all --paths tasks/queue.md docs/plans/T-2026-0032-reranker-candidate-budget-experiment.md docs/evaluation/real100_v2-reranker-candidate-budget.md reports/real100_v2/README.md
+- Open questions: whether to run any further reranker backend requires a GPU or explicit latency budget exception; current CPU local backend is no-go.
+- Risks: subset run is screening evidence only, not paired full private eval delta.
+```
 
 ```markdown
 ## Session Handoff - 2026-05-28 09:55 KST
