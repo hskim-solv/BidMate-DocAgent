@@ -3,7 +3,7 @@
 - Status: review
 - Owner role: Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer
 - Related task: `tasks/queue.md::T-2026-0033`
-- Related issue / PR: [#1638](https://github.com/hskim-solv/BidMate-DocAgent/issues/1638) / PR TBD
+- Related issue / PR: plan [#1638](https://github.com/hskim-solv/BidMate-DocAgent/issues/1638), implementation [#1641](https://github.com/hskim-solv/BidMate-DocAgent/issues/1641) / PR TBD
 - Related ADR: [ADR 0003](../adr/0003-structured-answer-citation-contract.md), [ADR 0005](../adr/0005-eval-split-public-synthetic-private-local.md), [ADR 0054](../adr/0054-conditional-on-answer-scorer-semantics.md)
 - Created: 2026-05-28
 - Last updated: 2026-05-28
@@ -104,24 +104,23 @@ variant no-go.
 
 ## Acceptance Criteria
 
-- [ ] Context assembly variant is opt-in and separately named.
-- [ ] Retrieval and reranker behavior are explicitly unchanged in the aggregate.
-- [ ] Citation and answer metrics move together; citation regression is no-go.
-- [ ] Token/cost status is reported as present, absent, or not applicable.
-- [ ] No legacy `real100`/v1/221/kordoc evidence is used.
+- [x] Context assembly variant is opt-in and separately named.
+- [x] Retrieval and reranker behavior are explicitly unchanged in the aggregate.
+- [x] Citation and answer metrics are evaluated together; citation regression is no-go.
+- [x] Token/cost status is reported as present, absent, or not applicable.
+- [x] No legacy `real100`/v1/221/kordoc evidence is used.
 
 ## Validation Strategy
 
 Commands that must be run by the implementation PR:
 
 ```bash
-python3 -m pytest -q tests/test_answer_contract_snapshot.py <focused-context-tests>
-python3 <context-packing-experiment> --config <local-v2-config> --index-dir <local-v2-index> --variant evidence_first --out <aggregate-output>
-python3 scripts/run_real_eval_delta.py --base <real100_v2-base-aggregate> --head <real100_v2-variant-aggregate>
+python3 -m pytest -q tests/test_real100_v2_context_packing_experiment.py
+python3 scripts/run_real100_v2_context_packing_experiment.py --config <local-v2-config> --index-dir <local-v2-index> --cases-subset-n 3 --variant evidence_first
 make real-eval-v2-guard
 python3 scripts/agent_loop.py privacy-audit-output
 python3 scripts/agent_loop.py claim-audit --from-git
-python3 scripts/check_doc_links.py --check-all --paths tasks/queue.md docs/plans/T-2026-0033-context-packing-citation-ordering-experiment.md <report-path>
+python3 scripts/check_doc_links.py --check-all --paths tasks/queue.md docs/plans/T-2026-0033-context-packing-citation-ordering-experiment.md docs/evaluation/real100_v2-context-packing.md reports/real100_v2/README.md
 git diff --check
 make check-branch
 ```
@@ -132,8 +131,8 @@ Expected evidence:
 - Generated or updated artifact: aggregate-only context-packing report.
 - Reviewer checklist or manual inspection: answer contract, citation guardrail,
   latency/cost, and privacy checks pass.
-- Explicitly not validated, with reason: no default runtime improvement unless
-  paired private delta and latency/cost guardrail support it.
+- Explicitly not validated, with reason: no paired full-run delta because the
+  implementation run is a 3-case screening artifact.
 
 ## Rollback Strategy
 
@@ -160,7 +159,8 @@ private `real100_v2` raw run artifacts or indexes during rollback.
 
 - `reports/real100_v2/latency_cost_budget.aggregate.json`
 - `reports/real100_v2/reranker_candidate_budget.aggregate.json`
-- Future context-packing aggregate and Markdown report
+- `reports/real100_v2/context_packing.aggregate.json`
+- `docs/evaluation/real100_v2-context-packing.md`
 - `make real-eval-v2-guard`
 - `python3 scripts/agent_loop.py privacy-audit-output`
 - `python3 scripts/agent_loop.py claim-audit --from-git`
@@ -174,18 +174,18 @@ together within the latency/cost budget.
 ## Handoff Notes
 
 ```markdown
-## Session Handoff - 2026-05-28 12:55 KST
+## Session Handoff - 2026-05-28 13:45 KST
 
-- Role: Planner
-- Branch / worktree: eval/issue-1638-plan-context-packing-citation-ordering-experimen / /Users/hskim/.codex/worktrees/0ebc/BidMate-DocAgent
-- Issue / PR: issue #1638 / PR TBD
+- Role: Implementer
+- Branch / worktree: eval/issue-1641-run-real100-v2-context-packing-citation-ordering / /Users/hskim/.codex/worktrees/0ebc/BidMate-DocAgent
+- Issue / PR: plan issue #1638, implementation issue #1641 / PR TBD
 - Task: T-2026-0033
-- Current status: plan drafted; implementation should add an opt-in context-packing runner/report.
-- Files touched: docs/plans/T-2026-0033-context-packing-citation-ordering-experiment.md, tasks/queue.md, scripts/check_real100_v2_only.py
-- Decisions made: next experiment holds retrieval/reranking fixed because T-2026-0032 found local BGE-KO reranker latency no-go; no claim without paired real100_v2 aggregate and citation guardrails.
-- Commands run: make ship-start TITLE="Plan context packing citation ordering experiment" TYPE=eval; make check-branch.
-- Results: issue #1638 and branch created; branch gate passed; plan drafted.
-- Next safe command: python3 scripts/check_doc_links.py --check-all --paths tasks/queue.md docs/plans/T-2026-0033-context-packing-citation-ordering-experiment.md
+- Current status: opt-in context-packing runner/report implemented; 3-case real100_v2 screening classifies evidence-first packing as latency_regression.
+- Files touched: scripts/run_real100_v2_context_packing_experiment.py, tests/test_real100_v2_context_packing_experiment.py, reports/real100_v2/context_packing.aggregate.json, docs/evaluation/real100_v2-context-packing.md, reports/real100_v2/README.md, .gitignore, .githooks/pre-commit, scripts/check_real100_v2_only.py, docs/plans/T-2026-0033-context-packing-citation-ordering-experiment.md, tasks/queue.md
+- Decisions made: no promotion of evidence-first context packing; paired_delta_valid=false and both observed p95 values breach the T-2026-0030 hard ceiling.
+- Commands run: make ship-start TITLE="Run real100 v2 context packing citation ordering experiment" TYPE=eval; make check-branch; python3 -m py_compile scripts/run_real100_v2_context_packing_experiment.py; python3 -m pytest -q tests/test_real100_v2_context_packing_experiment.py; python3 scripts/run_real100_v2_context_packing_experiment.py --config <external_private_real100_v2_config> --index-dir <external_private_real100_v2_index> --cases-subset-n 3 --variant evidence_first.
+- Results: control p95 46589.662 ms; evidence_first p95 12946.188 ms; response/citation metrics did not improve; overall classification latency_regression because the variant still breaches the hard ceiling.
+- Next safe command: make real-eval-v2-guard && python3 scripts/agent_loop.py privacy-audit-output && python3 scripts/agent_loop.py claim-audit --from-git
 - Open questions: none.
-- Risks: implementation can drift into retrieval/reranker/query rewrite unless the variant boundary is kept explicit.
+- Risks: no full paired delta; this artifact is screening evidence only and not a headline improvement claim.
 ```
