@@ -436,6 +436,7 @@ ACTIVE_CODEX_SESSIONS ?=
 ACTIVE_CODEX_MAX_PARALLEL ?= 8
 ACTIVE_CODEX_TIMEOUT_SECONDS ?= 0
 ACTIVE_CODEX_EXECUTABLE ?= codex
+ACTIVE_CODEX_AUTH_MODE ?= chatgpt
 ACTIVE_CODEX_SANDBOX ?= read-only
 ACTIVE_CODEX_RECORD_GATE_HEARTBEATS ?= 1
 ACTIVE_CODEX_EXECUTE ?=
@@ -948,6 +949,7 @@ agent-loop-active-codex-runner:
 	$(PYTHON) scripts/agent_loop.py active-codex-runner \
 	  $(if $(filter 1 true yes,$(ACTIVE_CODEX_EXECUTE)),--execute,--dry-run) \
 	  --codex-executable "$(ACTIVE_CODEX_EXECUTABLE)" \
+	  --auth-mode "$(ACTIVE_CODEX_AUTH_MODE)" \
 	  --sandbox "$(ACTIVE_CODEX_SANDBOX)" \
 	  --max-parallel "$(ACTIVE_CODEX_MAX_PARALLEL)" \
 	  --timeout-seconds "$(ACTIVE_CODEX_TIMEOUT_SECONDS)" \
@@ -975,6 +977,7 @@ agent-loop-active-auto-loop:
 	  --repair-slug "$(ACTIVE_REPAIR_SLUG)" \
 	  --repair-title "$(ACTIVE_REPAIR_TITLE)" \
 	  --codex-executable "$(ACTIVE_CODEX_EXECUTABLE)" \
+	  --auth-mode "$(ACTIVE_CODEX_AUTH_MODE)" \
 	  --sandbox "$(ACTIVE_CODEX_SANDBOX)" \
 	  --max-parallel "$(ACTIVE_CODEX_MAX_PARALLEL)" \
 	  --timeout-seconds "$(ACTIVE_CODEX_TIMEOUT_SECONDS)" \

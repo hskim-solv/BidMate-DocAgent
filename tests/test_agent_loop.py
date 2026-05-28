@@ -3571,6 +3571,10 @@ def _write_expanded_active_runner_fixture(repo: Path) -> Path:
     return active
 
 
+def _chatgpt_auth_runner(cmd, **kwargs):  # type: ignore[no-untyped-def]
+    return subprocess.CompletedProcess(cmd, 0, stdout="Logged in using ChatGPT\n", stderr="")
+
+
 def test_active_codex_runner_dry_run_renders_eight_commands_without_spawning(tmp_path: Path) -> None:
     repo = _write_repo(tmp_path)
     active = _write_expanded_active_runner_fixture(repo)
@@ -3643,6 +3647,7 @@ def test_active_codex_runner_execute_spawns_agentic_processes_and_preserves_leas
         repo_root=repo,
         popen_factory=fake_popen,
         which_func=lambda exe: "/opt/codex/bin/codex",
+        auth_runner=_chatgpt_auth_runner,
     )
 
     assert result.decision == "completed"
@@ -3701,6 +3706,7 @@ def test_active_codex_runner_records_passing_gate_heartbeats(tmp_path: Path) -> 
         repo_root=repo,
         popen_factory=fake_popen,
         which_func=lambda exe: "/opt/codex/bin/codex",
+        auth_runner=_chatgpt_auth_runner,
     )
 
     registry = json.loads((active / "session_registry.json").read_text(encoding="utf-8"))
@@ -3766,6 +3772,77 @@ def test_active_codex_runner_execute_fails_closed_without_codex(tmp_path: Path) 
     assert calls == []
 
 
+def test_active_codex_runner_requires_chatgpt_login_by_default(tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    _write_expanded_active_runner_fixture(repo)
+    calls: list[list[str]] = []
+
+    def api_key_auth(cmd, **kwargs):  # type: ignore[no-untyped-def]
+        return subprocess.CompletedProcess(cmd, 0, stdout="Logged in using API key\n", stderr="")
+
+    result = agent_loop.write_active_codex_runner(
+        execute=True,
+        repo_root=repo,
+        popen_factory=lambda cmd, **kwargs: calls.append(list(cmd)),  # type: ignore[arg-type]
+        which_func=lambda exe: "/bin/codex",
+        auth_runner=api_key_auth,
+    )
+
+    assert result.decision == "blocked"
+    assert any("requires ChatGPT login" in blocker for blocker in result.blockers)
+    assert calls == []
+    state = json.loads(result.state_path.read_text(encoding="utf-8"))
+    assert state["auth_mode"] == "chatgpt"
+    assert state["auth_status"] == "Logged in using API key"
+
+
+def test_active_codex_runner_blocks_when_login_status_fails(tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    _write_expanded_active_runner_fixture(repo)
+
+    def failed_auth(cmd, **kwargs):  # type: ignore[no-untyped-def]
+        return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="not logged in")
+
+    result = agent_loop.write_active_codex_runner(
+        execute=True,
+        repo_root=repo,
+        which_func=lambda exe: "/bin/codex",
+        auth_runner=failed_auth,
+    )
+
+    assert result.decision == "blocked"
+    assert any("codex login status failed" in blocker for blocker in result.blockers)
+
+
+def test_active_codex_runner_auth_mode_any_skips_auth_source_guard(tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    _write_expanded_active_runner_fixture(repo)
+    calls: list[list[str]] = []
+    auth_calls: list[list[str]] = []
+
+    class DummyProc:
+        stdin = None
+        pid = 7200
+
+        def wait(self, timeout=None):  # type: ignore[no-untyped-def]
+            return 0
+
+    result = agent_loop.write_active_codex_runner(
+        execute=True,
+        auth_mode="any",
+        repo_root=repo,
+        popen_factory=lambda cmd, **kwargs: calls.append(list(cmd)) or DummyProc(),  # type: ignore[arg-type]
+        which_func=lambda exe: "/bin/codex",
+        auth_runner=lambda cmd, **kwargs: auth_calls.append(list(cmd)),  # type: ignore[arg-type]
+    )
+
+    assert result.decision == "completed"
+    assert calls
+    assert auth_calls == []
+    state = json.loads(result.state_path.read_text(encoding="utf-8"))
+    assert state["auth_status"] == "skipped (auth-mode any)"
+
+
 def test_active_codex_runner_fails_closed_on_missing_registry_or_assignment(tmp_path: Path) -> None:
     repo = _write_repo(tmp_path)
 
@@ -3799,6 +3876,7 @@ def test_active_codex_runner_cli_accepts_execute_and_session_filter() -> None:
     ])
     assert args.execute is True
     assert args.sessions == "reviewer,ci-regression-auditor"
+    assert args.auth_mode == "chatgpt"
     assert args.record_gate_heartbeats is True
 
 
@@ -3816,6 +3894,7 @@ def test_make_active_start_spawns_codex_runner_by_default() -> None:
     assert 'make agent-loop-active-codex-runner ACTIVE_CODEX_EXECUTE="1"' in result.stdout
     assert "scripts/agent_loop.py active-codex-runner" in result.stdout
     assert "--execute" in result.stdout
+    assert '--auth-mode "chatgpt"' in result.stdout
     assert "--record-gate-heartbeats" in result.stdout
 
 
@@ -3840,6 +3919,7 @@ def test_make_active_start_can_disable_runner_and_has_korean_alias() -> None:
     assert "agent-loop-active-codex-runner" not in no_runner.stdout
     assert alias.returncode == 0
     assert 'make agent-loop-active-codex-runner ACTIVE_CODEX_EXECUTE="1"' in alias.stdout
+    assert '--auth-mode "chatgpt"' in alias.stdout
 
 
 def test_active_auto_loop_completes_task_and_picks_next_from_state(monkeypatch, tmp_path: Path) -> None:
@@ -4288,6 +4368,7 @@ def test_codex_runner_patch_mode_execute_captures_patch_and_releases_lease(tmp_p
         repo_root=repo,
         popen_factory=lambda cmd, **kw: _FakeCodexProc(),
         which_func=lambda exe: "/usr/bin/codex",
+        auth_runner=_chatgpt_auth_runner,
         git_runner=git_runner,
     )
 
@@ -4308,6 +4389,33 @@ def test_codex_runner_patch_mode_execute_captures_patch_and_releases_lease(tmp_p
     assert leases["leases"][0]["active_agent"] is None
 
 
+def test_codex_runner_patch_mode_requires_chatgpt_login(tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    _seed_patch_registry(repo)
+    _seed_write_lease(repo)
+    _seed_patch_assignment(repo)
+    calls: list[list[str]] = []
+
+    def api_key_auth(cmd, **kwargs):  # type: ignore[no-untyped-def]
+        return subprocess.CompletedProcess(cmd, 0, stdout="Logged in using API key\n", stderr="")
+
+    result = agent_loop.write_active_codex_runner(
+        mode="patch",
+        execute=True,
+        task_id="T-2026-0042",
+        repo_root=repo,
+        popen_factory=lambda cmd, **kw: calls.append(list(cmd)),  # type: ignore[arg-type]
+        which_func=lambda exe: "/usr/bin/codex",
+        auth_runner=api_key_auth,
+        git_runner=_fake_git_runner(diff_stdout="diff --git a/foo.py b/foo.py\n+x\n"),
+    )
+
+    assert result.decision == "blocked"
+    assert any("requires ChatGPT login" in blocker for blocker in result.blockers)
+    assert calls == []
+    assert not (repo / "reports" / "agent_loop" / "active" / "patch_runs" / "implementer" / "patch_artifact.json").exists()
+
+
 def test_codex_runner_patch_mode_redacts_private_path_in_diff(tmp_path: Path) -> None:
     repo = _write_repo(tmp_path)
     _seed_patch_registry(repo)
@@ -4322,6 +4430,7 @@ def test_codex_runner_patch_mode_redacts_private_path_in_diff(tmp_path: Path) ->
         repo_root=repo,
         popen_factory=lambda cmd, **kw: _FakeCodexProc(),
         which_func=lambda exe: "/usr/bin/codex",
+        auth_runner=_chatgpt_auth_runner,
         git_runner=_fake_git_runner(diff_stdout=diff),
     )
 
@@ -4347,6 +4456,7 @@ def test_codex_runner_patch_mode_blocks_without_assignment(tmp_path: Path) -> No
         repo_root=repo,
         popen_factory=lambda cmd, **kw: _FakeCodexProc(),
         which_func=lambda exe: "/usr/bin/codex",
+        auth_runner=_chatgpt_auth_runner,
         git_runner=_fake_git_runner(diff_stdout="diff --git a/foo.py b/foo.py\n+x\n"),
     )
 
@@ -4370,6 +4480,7 @@ def test_codex_runner_patch_mode_embeds_assignment_in_prompt(tmp_path: Path) -> 
         repo_root=repo,
         popen_factory=lambda cmd, **kw: _FakeCodexProc(),
         which_func=lambda exe: "/usr/bin/codex",
+        auth_runner=_chatgpt_auth_runner,
         git_runner=_fake_git_runner(diff_stdout="diff --git a/foo.py b/foo.py\n+x\n"),
     )
 
@@ -4397,6 +4508,7 @@ def test_codex_runner_patch_mode_blocks_out_of_scope_files(tmp_path: Path) -> No
         repo_root=repo,
         popen_factory=lambda cmd, **kw: _FakeCodexProc(),
         which_func=lambda exe: "/usr/bin/codex",
+        auth_runner=_chatgpt_auth_runner,
         git_runner=_fake_git_runner(diff_stdout=diff),
     )
 
@@ -4423,6 +4535,7 @@ def test_codex_runner_patch_mode_allows_in_scope_files(tmp_path: Path) -> None:
         repo_root=repo,
         popen_factory=lambda cmd, **kw: _FakeCodexProc(),
         which_func=lambda exe: "/usr/bin/codex",
+        auth_runner=_chatgpt_auth_runner,
         git_runner=_fake_git_runner(diff_stdout=diff),
     )
 
