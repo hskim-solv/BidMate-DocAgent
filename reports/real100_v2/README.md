@@ -10,6 +10,7 @@ Allowed files:
 - `baseline.aggregate.json`
 - `metric_suite.aggregate.json`
 - `metric_suite.md`
+- `retrieval_diagnostics.aggregate.json`
 - `README.md`
 
 Raw eval summaries, traces, questions, answers, evidence, document IDs, chunk IDs, filenames, paths, parsed Markdown, converted PDFs, and per-case rows must remain ignored.
