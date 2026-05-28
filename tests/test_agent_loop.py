@@ -3775,6 +3775,36 @@ def test_active_codex_runner_execute_fails_closed_without_codex(tmp_path: Path) 
     assert calls == []
 
 
+def test_active_codex_runner_accepts_chatgpt_login_on_stderr(tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    _write_expanded_active_runner_fixture(repo)
+    calls: list[list[str]] = []
+
+    class DummyProc:
+        stdin = None
+        pid = 7100
+
+        def wait(self, timeout=None):  # type: ignore[no-untyped-def]
+            return 0
+
+    def stderr_chatgpt_auth(cmd, **kwargs):  # type: ignore[no-untyped-def]
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="Logged in using ChatGPT\n")
+
+    result = agent_loop.write_active_codex_runner(
+        execute=True,
+        repo_root=repo,
+        popen_factory=lambda cmd, **kwargs: calls.append(list(cmd)) or DummyProc(),  # type: ignore[arg-type]
+        which_func=lambda exe: "/bin/codex",
+        auth_runner=stderr_chatgpt_auth,
+    )
+
+    assert result.decision == "completed"
+    assert calls
+    state = json.loads(result.state_path.read_text(encoding="utf-8"))
+    assert state["auth_status"] == "Logged in using ChatGPT"
+    assert not any("requires ChatGPT login" in blocker for blocker in result.blockers)
+
+
 def test_active_codex_runner_requires_chatgpt_login_by_default(tmp_path: Path) -> None:
     repo = _write_repo(tmp_path)
     _write_expanded_active_runner_fixture(repo)
