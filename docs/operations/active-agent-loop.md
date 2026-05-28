@@ -221,8 +221,78 @@ make agent-loop-active-auto-loop ACTIVE_AUTO_LOOP_EXECUTE_SHIP=1 ACTIVE_AUTO_LOO
 
 read-only runner와 별개로, `active-codex-runner`는 opt-in `--mode patch`로 **codex
 write-lane**을 돈다. read-only 8-session 모드는 불변이며, patch 모드는 write-lease
-owner인 **Implementer** 한 세션만 대상으로 한다 (claude `-p` headless는 모든 permission
-모드에서 Edit-tool이 깨지므로 write-lane은 codex 전용).
+owner인 **Implementer** 한 세션만 대상으로 한다 (claude `-p` print mode는 비-streaming
+직렬화 경로의 #1598 F4 버그로 Edit-tool 호출이 깨진다. stream-json transport로
+회피 가능하나 2026-06-15 Anthropic 에이전트 크레딧 분리 정책으로 채택은 보류 —
+실측 근거 + 정책 함의는 아래 표).
+
+claude `-p` Edit-tool 실측 매트릭스 (`scripts/reproduce_claude_edit_tool.py`,
+claude 2.1.3, 2026-05-28, 구독 OAuth 경로, raw artifact:
+`reports/agent_loop/claude_edit_repro/`). CLI 2.1.3의 `--permission-mode`
+choices는 `default`, `acceptEdits`, `bypassPermissions`, `plan`, `dontAsk`,
+`delegate`이고, `--dangerously-skip-permissions`는 `bypassPermissions`의 별칭이다
+(독립 모드 아님):
+
+| Cell | permission-mode | output-format | tool flag | Symptom |
+|---|---|---|---|---|
+| 01 | acceptEdits | json | `--allowedTools Edit` | S2 `tool_use ids must be unique` |
+| 02 | acceptEdits | json | `--allowedTools Edit` (explicit prompt) | S2 |
+| 03 | bypassPermissions | json | `--allowedTools Edit` | S2 |
+| 04 | bypassPermissions (alias `--dangerously-skip-permissions`) | json | (none) | S2 |
+| 05 | acceptEdits | text | `--allowedTools Edit` | S2 |
+| 06 | default (`--permission-mode` 생략) | json | `--allowedTools Edit` | S2 |
+| 07 | acceptEdits | json | `--tools Edit,Read` | S3 (90 s timeout) |
+| 08 | plan | json | `--allowedTools Edit` | S3 (90 s timeout) |
+
+해석: 측정한 독립 permission 모드 3개(`default`, `acceptEdits`, `bypassPermissions`)와
+그 alias(`--dangerously-skip-permissions`)에서 모두 동일한 `messages.N.content.M:
+tool_use ids must be unique` API 400을 받았다. plan-mode와 `--tools` 빌트인 셋
+형식 셀은 90s timeout(S3)으로 떨어졌는데, 같은 직렬화 경로의 다른 분기로 추정 —
+plan-mode는 `EnterPlanMode`/`ExitPlanMode` tool-call이 일반 tool-call과 섞여 더
+취약하고, `--tools` 빌트인 셋은 tool contract 변경으로 같은 취약 경로를 자극한다.
+
+그러나 같은 `claude` 바이너리를 **streaming transport** (`--input-format
+stream-json --output-format stream-json --verbose`)로 호출하면 같은 trivial
+edit 태스크가 정상 동작한다. Python SDK (`claude-agent-sdk` 0.2.87, internal
+`_is_streaming = True`) 매트릭스 (`scripts/reproduce_claude_sdk_edit.py`):
+
+| Cell | SDK permission_mode | tool_use | edited | symptom |
+|---|---|---|---|---|
+| 09 | `default` | 2 | yes | S4_normal |
+| 10 | `acceptEdits` | 2 | yes | S4_normal |
+| 11 | `plan` | 4 | no | S4 (mode spec — mutation 없음, tool_use 발생) |
+| 12 | `bypassPermissions` | 2 | yes | S4_normal |
+| 13 | `dontAsk` | 2 | yes | S4_normal |
+| 14 | `auto` | 2 | yes | S4_normal |
+
+SDK 없이 wrapper가 직접 subprocess로 stream-json transport를 호출해도 동등한
+결과 (`scripts/reproduce_claude_streamjson_subprocess.py`):
+
+| Cell | permission_mode | tool_use | edited | symptom |
+|---|---|---|---|---|
+| 15 | `default` | 2 | yes | S4_normal |
+| 16 | `acceptEdits` | 3 | yes | S4_normal |
+| 17 | `plan` | 1 | no | S4 (mode spec) |
+| 18 | `bypassPermissions` | 3 | yes | S4_normal |
+| 19 | `dontAsk` | 0 | no | S0 invalid mode (CLI rejects; raw_lines=0) |
+| 20 | `auto` | 0 | no | S0 invalid mode (CLI rejects; raw_lines=0) |
+
+CLI 2.1.3의 실제 `--permission-mode` validation은 `acceptEdits / bypassPermissions
+/ default / plan` 4개만 허용한다 (`--help` 출력의 `dontAsk / delegate`는 거짓 enum).
+SDK가 `dontAsk / auto`를 통과시킨 이유는 stream-json mode에서의 validation 우회
+또는 stdin control message 경로로 추정 — 부수적이며 본 결론과 무관.
+
+따라서 #1598 F4는 **permission approval 정책 계층 문제가 아니라 `claude -p` print
+mode의 비-streaming 직렬화 경로 한정 버그**로 단정한다. SDK든 wrapper 직접 subprocess든
+`--input-format stream-json --output-format stream-json --verbose` transport로
+호출하면 유효한 4개 mode 전부에서 정상 동작한다. **즉 wrapper-side 회피는 SDK 의존성
+없이도 가능하다** — `scripts/agent_loop_claude_turn.py` 같은 어댑터의 build_command를
+stream-json transport로 갈아끼우면 claude write-lane이 열린다.
+
+채택은 별 결정이다. Anthropic의 2026-06-15 에이전트 크레딧 분리 정책은 SDK + MCP +
+GitHub Actions 통합을 명시 타깃하지만 stream-json subprocess가 같은 통에 들어가는지는
+공지로 명확하지 않다. 본 저장소의 write-lane은 codex가 이미 안정 동작하므로 dual-agent
+도입의 본질적 필요가 없고, 측정 결과는 옵션으로만 보관한다 (선택지 보존, 채택 보류).
 
 ```bash
 python3 scripts/agent_loop.py active-codex-runner --mode patch --task T-2026-00NN --execute
