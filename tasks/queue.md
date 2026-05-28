@@ -66,6 +66,7 @@ PR이 생기면 각 task에 링크를 추가한다. 예제 task는 `tasks/exampl
 | 53 | `T-2026-0053` | `backlog` | Planner -> Benchmark Auditor -> Privacy Auditor -> Reviewer | P1 replanning gate after context, query, metadata, parser, embedding, and generator experiments. |
 | 54 | `T-2026-0054` | `backlog` | Implementer -> Architect -> Benchmark Auditor -> Privacy Auditor -> Deep Reviewer -> Reviewer | P2; end-to-end bakeoff of the best isolated experiment winners under one aggregate guardrail. |
 | 55 | `T-2026-0055` | `backlog` | Benchmark Auditor -> Privacy Auditor -> Deep Reviewer -> Reviewer | P2; final optimization decision packet and default-change or no-go proposal. |
+| 56 | `T-2026-0056` | `backlog` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | P1; Ollama local OpenAI-compatible provider spike for synthesis/judge cost, privacy, and latency evidence. |
 
 ## Examples
 
@@ -4303,4 +4304,76 @@ make check-branch
 
 - Plan: TBD - create when the task starts.
 - Issue: TBD
+- PR: TBD
+
+## T-2026-0056 — Ollama local OpenAI-compatible provider spike
+
+- ID: T-2026-0056
+- Title: Ollama local OpenAI-compatible provider spike
+- Status: backlog
+- Priority: P1
+- Owner role: Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer
+- Created: 2026-05-28
+- Last updated: 2026-05-28
+
+### Goal
+
+Measure whether Ollama is useful as a local `openai_compatible` provider for
+LLM synthesis and judge surfaces, focusing on privacy, cost, latency, JSON
+compliance, and grounded citation behavior rather than retrieval quality.
+
+### Scope
+
+- Add a small, documented Ollama run path for existing `openai_compatible`
+  surfaces such as `BIDMATE_SYNTHESIS_*` and `BIDMATE_JUDGE_*`.
+- Run a local smoke or small `real100_v2` screening slice when an Ollama server
+  and model are available.
+- Record provider provenance, model name, context-size setting, latency,
+  fallback behavior, malformed-JSON rate, and aggregate-only quality signals.
+
+### Non-Goals
+
+- Do not change default CI, API, or eval behavior away from `stub`.
+- Do not change retrieval, reranking, embedding, parser, or answer schema
+  behavior.
+- Do not commit raw private prompts, raw completions, or per-case private
+  verdicts.
+- Do not claim answer-quality improvement without paired `real100_v2`
+  aggregate evidence.
+
+### Acceptance Criteria
+
+- [ ] The task documents exact Ollama environment variables and a local health
+  check without requiring code-path duplication.
+- [ ] If Ollama is unavailable, the report says exactly what is missing and how
+  to verify it.
+- [ ] Any live run records aggregate-only latency/cost/privacy evidence and
+  separates provider/runtime effects from retrieval effects.
+- [ ] JSON/citation guard failures fall back safely and are counted rather than
+  hidden.
+
+### Validation Commands
+
+```bash
+python3 -m pytest -q tests/test_llm_synthesis.py tests/test_external_payload_boundary_regression.py tests/test_self_review_judge.py
+BIDMATE_SYNTHESIS_BACKEND=openai_compatible BIDMATE_SYNTHESIS_BASE_URL=http://localhost:11434/v1 BIDMATE_SYNTHESIS_API_KEY=ollama BIDMATE_SYNTHESIS_MODEL=<local-model> python3 <ollama-synthesis-smoke-runner>
+BIDMATE_JUDGE_BACKEND=openai_compatible BIDMATE_JUDGE_BASE_URL=http://localhost:11434/v1 BIDMATE_JUDGE_API_KEY=ollama BIDMATE_JUDGE_MODEL=<local-model> python3 <ollama-judge-smoke-runner>
+make real-eval-v2-guard
+python3 scripts/agent_loop.py privacy-audit-output
+python3 scripts/agent_loop.py claim-audit --from-git
+git diff --check
+make check-branch
+```
+
+### Evidence Required
+
+- Ollama setup and health-check note.
+- Aggregate-only screening report with provider/model/context provenance.
+- Explicit go/no-go recommendation for using Ollama in later generator or judge
+  experiments.
+
+### Related Plan / Issue / PR Links
+
+- Plan: TBD - create when the task starts.
+- Issue: #1649
 - PR: TBD
