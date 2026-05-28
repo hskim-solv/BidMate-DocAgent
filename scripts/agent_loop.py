@@ -9644,6 +9644,27 @@ def _parse_agent_mix(spec: str | None) -> dict[str, object]:
     }
 
 
+def _resolve_agent_mix_for_cli(spec: str | None) -> dict[str, object]:
+    """Parse --agent-mix and apply quota-aware target rebalancing (issue #1656).
+
+    The rebalance is opt-in via signal availability: when agentcat is unavailable
+    AND no local quota_config.json exists, the parsed default flows through
+    unchanged. ``BIDMATE_AGENT_LOOP_QUOTA_OFF=1`` forces the static target even
+    when signals are present.
+    """
+    policy = _parse_agent_mix(spec)
+    try:
+        from scripts.agent_loop_quota import apply_quota_aware_target
+    except ImportError:
+        return policy
+    policy, _explanation = apply_quota_aware_target(
+        policy,
+        now=datetime.now(timezone.utc),
+        repo_root=ROOT_DIR,
+    )
+    return policy
+
+
 def _coerce_wu(value: object) -> int:
     return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else 0
 
@@ -11197,6 +11218,12 @@ def write_agent_mix_report(
         "within_tolerance": within,
         "recommended_next_agent": recommended,
     }
+    quota_explanation_raw = policy.get("quota_explanation")
+    quota_explanation = (
+        str(quota_explanation_raw)
+        if isinstance(quota_explanation_raw, str) and quota_explanation_raw
+        else ""
+    )
     lines = [
         "# Active-loop agent-mix report",
         "",
@@ -11206,6 +11233,9 @@ def write_agent_mix_report(
         f"- Skew: {skew} WU (max allowed {max_skew}) — {'within tolerance' if within else 'REBALANCE'}",
         f"- Recommended next lane: **{recommended}**",
     ]
+    if quota_explanation:
+        lines.append(f"- {quota_explanation}")
+    summary["quota_explanation"] = quota_explanation
     if not within:
         lines.append("")
         lines.append(f"Skew exceeds tolerance; route upcoming read-only turns to **{recommended}** until balanced.")
@@ -14568,7 +14598,7 @@ def main(argv: list[str] | None = None) -> int:
                 pr_body=args.pr_body,
                 lease_ttl_minutes=args.lease_ttl_minutes,
                 batch=args.batch,
-                agent_mix=_parse_agent_mix(args.agent_mix),
+                agent_mix=_resolve_agent_mix_for_cli(args.agent_mix),
                 repair_branch=args.repair_branch,
                 repair_branch_type=args.repair_branch_type,
                 repair_slug=args.repair_slug,
@@ -14596,7 +14626,7 @@ def main(argv: list[str] | None = None) -> int:
                 pr_body=args.pr_body,
                 lease_ttl_minutes=args.lease_ttl_minutes,
                 batch=args.batch,
-                agent_mix=_parse_agent_mix(args.agent_mix),
+                agent_mix=_resolve_agent_mix_for_cli(args.agent_mix),
                 out=args.out,
             )
             sys.stdout.write(f"[OK] wrote {_repo_path(result.report_path, ROOT_DIR)}\n")
@@ -14678,7 +14708,7 @@ def main(argv: list[str] | None = None) -> int:
                 pr_body=args.pr_body,
                 lease_ttl_minutes=args.lease_ttl_minutes,
                 batch=args.batch,
-                agent_mix=_parse_agent_mix(args.agent_mix),
+                agent_mix=_resolve_agent_mix_for_cli(args.agent_mix),
                 repair_branch=args.repair_branch,
                 repair_branch_type=args.repair_branch_type,
                 repair_slug=args.repair_slug,
