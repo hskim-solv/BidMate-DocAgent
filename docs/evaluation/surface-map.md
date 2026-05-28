@@ -80,7 +80,7 @@ agent gate behavior is [Agent-Gated RFP Evaluation Loop](./agent-gated-rfp-eval-
 |---|---|
 | Regression fixed | failing-before/passing-after test or replay command, affected failure mode |
 | Benchmark improved | dataset id, config path, index provenance, command, metric with CI when available, artifact path |
-| Retrieval improved | `chunk_recall@k`, MRR/nDCG, same corpus/index build rules, semantic backend provenance if dense/hybrid |
+| Retrieval improved | `chunk_recall@k`, MRR/nDCG, same corpus/index build rules, semantic backend provenance if dense/hybrid, vector-store backend provenance |
 | Answer quality improved | answer metric semantics, abstention/citation guardrails, private aggregate if real-world claim |
 | Latency improved | timed region, warm/cold split, stage latency, same hardware/process caveat |
 | Privacy-safe report | aggregate-only proof, forbidden fields absent, commit allowlist path |
@@ -95,6 +95,10 @@ agent gate behavior is [Agent-Gated RFP Evaluation Loop](./agent-gated-rfp-eval-
 - `make real-eval` uses the deterministic offline hashing path unless overridden. It is useful for
   repeatable private eval plumbing, but semantic dense/hybrid retrieval quality claims require
   `make real-eval-minilm`, `make real-eval-semantic`, or equivalent semantic index provenance.
+- `naive_baseline` is Chroma-backed by default (ADR 0081). `memory` and `qdrant`
+  backend runs are control/ops comparisons unless paired same-config evidence
+  shows ranking drift. Use `make real-eval-v2-chroma` for the isolated Chroma
+  private-v2 command; it writes to `reports/real100_v2_chroma/` by default.
 - CI green means non-slow tests plus fixture smoke gate passed. It does not mean private real-eval passed.
 
 ## Benchmark Auditor Checklist

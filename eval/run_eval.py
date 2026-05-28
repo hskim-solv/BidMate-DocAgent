@@ -118,6 +118,10 @@ def compute_run_manifest(
     except (FileNotFoundError, OSError):
         config_sha = "unknown"
     embedding_meta = (index or {}).get("embedding") or {}
+    vector_store_backend = (index or {}).get("_vector_store_backend") or os.environ.get(
+        "BIDMATE_INDEX_BACKEND",
+        "chroma",
+    )
     build_meta = (index or {}).get("build") or {}
     chunking_meta = build_meta.get("chunking") if isinstance(build_meta, dict) else {}
     chunking_meta = chunking_meta if isinstance(chunking_meta, dict) else {}
@@ -136,6 +140,7 @@ def compute_run_manifest(
         "embedding_backend": embedding_meta.get("backend"),
         "embedding_model_id": embedding_meta.get("model"),
         "embedding_dim": embedding_meta.get("dimension"),
+        "vector_store_backend": vector_store_backend,
         "chunking_strategy": chunking_strategy,
         "chunker_version": chunker_version,
         "chunk_max_chars": chunking_meta.get("max_chars"),
@@ -287,6 +292,7 @@ def normalize_run_config(run: dict[str, Any]) -> dict[str, Any]:
         # surface. Default `okapi` keeps existing summaries byte-equal.
         "bm25_backend": str(config.get("bm25_backend", "okapi")),
         "query_expansion": str(config.get("query_expansion", "identity")),
+        "vector_store_backend": str(config.get("vector_store_backend", "chroma")),
         "reranker_backend": os.environ.get("BIDMATE_RERANK_BACKEND", "stub"),
         # P0-a (#1282) — eval-only oracle-evidence ceiling probe. Read from
         # the raw run dict, NOT resolve_pipeline_config, so it never enters
@@ -423,6 +429,19 @@ def load_config(path: Path) -> dict[str, Any]:
             raise ValueError(f"Duplicate ablation run name: {normalized_run['name']}")
         seen_names.add(normalized_run["name"])
     return data
+
+
+def vector_store_backend_for_runs(runs: list[dict[str, Any]]) -> str:
+    backends = {
+        str(run.get("vector_store_backend") or "chroma").strip().lower()
+        for run in runs
+    }
+    if len(backends) != 1:
+        raise ValueError(
+            "Eval config cannot mix vector_store_backend values in one run. "
+            f"Use separate eval commands for backend comparisons: {sorted(backends)}"
+        )
+    return next(iter(backends))
 
 
 _TOP_LEVEL_STAGE_KEYS = ("query_analysis_ms", "context_resolution_ms", "answer_generation_ms")
@@ -1618,7 +1637,12 @@ def main() -> int:
         if not config_path.exists():
             raise ValueError(f"--config does not exist: {config_path}")
         config = load_config(config_path)
-        index = load_index(Path(args.index_dir))
+        normalized_runs = ablation_runs(config)
+        vector_store_backend = vector_store_backend_for_runs(normalized_runs)
+        index = load_index(
+            Path(args.index_dir),
+            vector_store_backend=vector_store_backend,
+        )
     except Exception as exc:
         print(f"[ERROR] Eval setup failed: {exc}", file=sys.stderr)
         return 2
@@ -1637,7 +1661,7 @@ def main() -> int:
     all_case_results: dict[str, list[dict[str, Any]]] = {}
     failure_artifacts: dict[str, str] = {}
     try:
-        for run_config in ablation_runs(config):
+        for run_config in normalized_runs:
             case_results = evaluate_run(
                 index,
                 config["cases"],
@@ -1698,6 +1722,7 @@ def main() -> int:
         "primary_run": primary_summary["name"],
         "pipeline": primary_summary.get("pipeline"),
         "prompt_profile": primary_summary.get("prompt_profile"),
+        "vector_store_backend": index.get("_vector_store_backend"),
         "top_k": primary_summary.get("top_k"),
         "num_predictions": primary_summary["num_predictions"],
         "accuracy": primary_summary["accuracy"],

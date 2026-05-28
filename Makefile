@@ -21,7 +21,7 @@
 .PHONY: eval smoke reproduce benchmark pareto cost-frontier korean-public-fetch korean-public-eval harness-smoke harness-ablation harness-compare
 
 # Real-data eval cycle (private; ADR 0005 commit boundary).
-.PHONY: real-eval real-eval-check real-eval-inventory real-eval-v2-check real-eval-v2-inventory real-eval-v2-guard real-eval-minilm real-eval-semantic real-eval-page-aware real-eval-delta real-eval-baseline-update real-eval-history-render real-eval-with-judge harness-real
+.PHONY: real-eval real-eval-check real-eval-inventory real-eval-v2-check real-eval-v2-inventory real-eval-v2-guard real-eval-v2-chroma real-eval-minilm real-eval-semantic real-eval-page-aware real-eval-delta real-eval-baseline-update real-eval-history-render real-eval-with-judge harness-real
 
 # Real-data case proposer cycle (ADR 0029; gitignored I/O).
 .PHONY: case-propose case-propose-metadata case-review case-promote
@@ -1076,6 +1076,7 @@ real-eval-check:
 REAL100_V2_CONFIG ?= data/private/real100_v2/real_config_v2.local.yaml
 REAL100_V2_INDEX_DIR ?= data/index/real100_v2
 REAL100_V2_REPORT_DIR ?= reports/real100_v2
+REAL100_V2_CHROMA_REPORT_DIR ?= reports/real100_v2_chroma
 
 # T-2026-0028 and newer claim-bearing private eval work must use the v2
 # aggregate surface. These targets only inspect v2 paths; they do not rebuild or
@@ -1094,6 +1095,17 @@ real-eval-v2-check:
 
 real-eval-v2-guard:
 	$(PYTHON) scripts/check_real100_v2_only.py
+
+real-eval-v2-chroma:
+	@eval "$$(REAL_EVAL_CONFIG="$(REAL100_V2_CONFIG)" \
+	  REAL_EVAL_INDEX_DIR="$(REAL100_V2_INDEX_DIR)" \
+	  REAL_EVAL_REPORT_DIR="$(REAL100_V2_CHROMA_REPORT_DIR)" \
+	  $(PYTHON) scripts/real_eval_paths.py inventory --format shell)" && \
+	mkdir -p "$$REAL_EVAL_RESOLVED_REPORT_DIR" && \
+	BIDMATE_INDEX_BACKEND=chroma $(PYTHON) eval/run_eval.py \
+	  --index_dir "$$REAL_EVAL_RESOLVED_INDEX_DIR" \
+	  --output_dir "$$REAL_EVAL_RESOLVED_REPORT_DIR" \
+	  --config "$$REAL_EVAL_RESOLVED_CONFIG"
 
 # Legacy real100/v1 targets are disabled until explicitly re-enabled by the
 # maintainer. Future private eval tasks must use real100_v2 inventory/check and

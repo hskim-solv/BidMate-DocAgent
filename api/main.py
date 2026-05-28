@@ -32,7 +32,9 @@ from rag_core import (
     arun_rag_query,
     load_index,
     pipeline_cli_choices,
+    resolve_pipeline_config,
 )
+from rag_vector_store import ChromaRankingDriftError
 
 from .schemas import QueryRequest
 
@@ -64,6 +66,11 @@ def _resolve_default_pipeline() -> str:
     return DEFAULT_CLI_PIPELINE_NAME
 
 
+def _resolve_vector_store_backend(pipeline_backend: object) -> str:
+    """Honor operator vector-store override before the pipeline default."""
+    return (os.environ.get("BIDMATE_INDEX_BACKEND") or str(pipeline_backend)).strip().lower()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Load the index once at startup and stash it on ``app.state``.
@@ -79,12 +86,18 @@ async def lifespan(app: FastAPI):
     app.state.index = None
     app.state.index_load_error = None
     try:
-        app.state.index = load_index(index_dir)
+        pipeline_config = resolve_pipeline_config(app.state.default_pipeline)
+        vector_store_backend = _resolve_vector_store_backend(pipeline_config["vector_store_backend"])
+        app.state.index = load_index(
+            index_dir,
+            vector_store_backend=vector_store_backend,
+        )
         logger.info(
-            "Loaded RAG index from %s (chunks=%d, default_pipeline=%s)",
+            "Loaded RAG index from %s (chunks=%d, default_pipeline=%s, vector_store=%s)",
             index_dir,
             len(app.state.index.get("chunks") or []),
             app.state.default_pipeline,
+            app.state.index.get("_vector_store_backend"),
         )
     except Exception as exc:  # pragma: no cover - logged for operators
         app.state.index_load_error = str(exc)
@@ -184,6 +197,12 @@ async def query(
             context_entities=body.context_entities or [],
             retrieval_mode=body.retrieval_mode,
             conversation_state=body.conversation_state,
+        )
+    except ChromaRankingDriftError as exc:
+        logger.exception("Chroma ranking drift for query=%r pipeline=%r", body.query, pipeline)
+        raise HTTPException(
+            status_code=503,
+            detail={"error": "chroma_ranking_drift", "message": str(exc)},
         )
     except Exception as exc:
         logger.exception("RAG query failed for query=%r pipeline=%r", body.query, pipeline)

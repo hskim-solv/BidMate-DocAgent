@@ -51,9 +51,9 @@ Start with the weakest measurable links:
   regressions; do not reopen hybrid as a broad "just add BM25" change.
 - The multi-chunk strategy report deferred retrieval changes until page-aware
   evidence can distinguish same-document from multi-document evidence splits.
-- `T-2026-0026` tracks Chroma as a vector DB backend baseline. Treat it as
-  backend parity, provenance, latency, and operations work unless paired
-  same-embedding deltas prove ranking drift.
+- `T-2026-0026` makes Chroma the canonical `naive_baseline` vector DB backend.
+  Treat it as backend parity, provenance, latency, and operations work unless
+  paired same-embedding deltas prove ranking drift.
 
 ## Priority Stack
 

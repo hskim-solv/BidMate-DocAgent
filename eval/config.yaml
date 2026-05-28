@@ -59,6 +59,7 @@ ablation_runs:
     retrieval_mode: flat
     retrieval_backend: dense
     query_expansion: identity
+    vector_store_backend: chroma
   - name: full
     pipeline: agentic_full
     metadata_first: true

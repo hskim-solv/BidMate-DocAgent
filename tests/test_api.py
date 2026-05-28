@@ -8,11 +8,13 @@ matching the pattern used by other retrieval regression tests.
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
 
 from api import main as api_main
+from rag_vector_store import ChromaRankingDriftError
 
 
 class ApiSmokeTest(unittest.TestCase):
@@ -87,6 +89,20 @@ class ApiSmokeTest(unittest.TestCase):
         resp = client.post("/query", json={"query": "anything"})
         self.assertEqual(resp.status_code, 503)
         self.assertEqual(resp.json()["detail"]["error"], "index_not_loaded")
+
+    def test_query_503s_on_chroma_ranking_drift(self) -> None:
+        async def fake_arun_rag_query(*_args, **_kwargs):
+            raise ChromaRankingDriftError("Chroma top-k ranking drift: test")
+
+        client = self._client()
+        with patch.object(api_main, "arun_rag_query", fake_arun_rag_query):
+            resp = client.post(
+                "/query",
+                json={"query": "기관 A의 보안 통제 요구사항은?"},
+            )
+
+        self.assertEqual(resp.status_code, 503)
+        self.assertEqual(resp.json()["detail"]["error"], "chroma_ranking_drift")
 
 
 if __name__ == "__main__":

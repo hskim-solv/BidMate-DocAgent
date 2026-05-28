@@ -33,7 +33,7 @@ RFP 문서 이해를 위한 DocAgent 시스템. **입찰/RFP 문서 인텔리전
 **Supporting** (rag_core 에서 분리된 leaf 모듈, ADR 0045 검증 — `rag_core` 로의 back-edge 0):
 
 - `app.py` — CLI 쿼리 진입점
-- `rag_vector_store.py` — `VectorStore` Protocol (#232). `BIDMATE_INDEX_BACKEND` = `memory`(기본) / `qdrant`; `pgvector` 는 Stage 3 (#176) 예약. in-memory ↔ Qdrant ranking bit-identical
+- `rag_vector_store.py` — `VectorStore` Protocol (#232). `BIDMATE_INDEX_BACKEND` = `chroma`(기본, ADR 0081) / `memory`(legacy control) / `qdrant`; `pgvector` 는 Stage 3 (#176) 예약. Chroma/memory/Qdrant ranking parity 는 테스트로 guard
 - `rag_reranker.py` — `Reranker` Protocol + 기본 `CrossEncoderReranker` (#345)
 - `rag_retrieval.py` — 검색 파이프라인 (#459 + #461). `retrieve_candidates`, 4 유사도 primitive, BM25, fusion·재순위·comparison balance·parent-section 재조립. 기본 `retrieval_backend` = `hybrid` (현재 인덱스의 dense 채널 + BM25 를 RRF k=60 융합 — 특정 임베딩 모델 강제 아님; ADR 0058) — `agentic_full`/`metadata_first` 한정, `naive_baseline` 은 `dense` 유지 (ADR 0001 불변). ADR 0058 의 BGE-M3 근거는 BGE-M3 로 빌드한 인덱스 한정 — 기본 빌드/CI/데모 경로는 명시 override 없으면 MiniLM (`DEFAULT_EMBEDDING_MODEL`, [rag_embedding.py](rag_embedding.py)) 또는 hashing ([pr-eval.yml](.github/workflows/pr-eval.yml)·[Dockerfile](Dockerfile))
 - `rag_verifier.py` — 검증기 (#465, PR-J1). `verify_evidence`, topic 추출, `EVIDENCE_BOUNDARY` 상수 + 명령 패턴 regex, `neutralize_instruction_patterns` (ADR 0008)
@@ -124,4 +124,4 @@ RFP 문서 이해를 위한 DocAgent 시스템. **입찰/RFP 문서 인텔리전
 - **Evidence (근거)** — 주장을 지지하는 retrieved chunk
 - **Grounding (근거 연결)** — claim ↔ evidence ↔ 원문 연결 요구사항
 - **Abstention (보류)** — ADR 0003 `status: insufficient`, 근거 불충분 시 일급 답변 상태. fallback/error 아님
-- **Naive baseline (기준선)** — `agentic_full` 과 side-by-side 비교용 최소 파이프라인 분석 변형 preset (ADR 0001)
+- **Naive baseline (기준선)** — `agentic_full` 과 side-by-side 비교용 Chroma-backed 최소 파이프라인 분석 변형 preset (ADR 0001, ADR 0081)

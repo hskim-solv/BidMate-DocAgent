@@ -1,10 +1,18 @@
 #!/usr/bin/env python3
 import argparse
 import json
+import os
 from pathlib import Path
 import sys
 
-from rag_core import DEFAULT_CLI_PIPELINE_NAME, load_index, pipeline_cli_choices, run_rag_query
+from rag_core import (
+    DEFAULT_CLI_PIPELINE_NAME,
+    VALID_VECTOR_STORE_BACKENDS,
+    load_index,
+    pipeline_cli_choices,
+    resolve_pipeline_config,
+    run_rag_query,
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -31,6 +39,12 @@ def parse_args() -> argparse.Namespace:
         default=None,
         choices=["dense", "hybrid"],
         help="Override the retrieval backend. 'hybrid' fuses BM25 + dense with RRF (ADR 0010).",
+    )
+    parser.add_argument(
+        "--vector_store_backend",
+        default=None,
+        choices=sorted(VALID_VECTOR_STORE_BACKENDS),
+        help="Override the pipeline vector-store backend used while loading the index.",
     )
     parser.add_argument(
         "--context_entities",
@@ -76,7 +90,21 @@ def main() -> int:
     try:
         args = parse_args()
         validate_args(args)
-        index = load_index(Path(args.input_dir))
+        pipeline_config = resolve_pipeline_config(
+            {
+                "pipeline": args.pipeline,
+                "vector_store_backend": args.vector_store_backend,
+            }
+        )
+        vector_store_backend = (
+            args.vector_store_backend
+            or os.environ.get("BIDMATE_INDEX_BACKEND")
+            or str(pipeline_config["vector_store_backend"])
+        ).strip().lower()
+        index = load_index(
+            Path(args.input_dir),
+            vector_store_backend=vector_store_backend,
+        )
         session_state = None
         if args.session_state:
             session_state = load_session_state(Path(args.session_state), reset=args.reset_session)

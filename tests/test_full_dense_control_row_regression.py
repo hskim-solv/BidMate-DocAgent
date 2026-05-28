@@ -33,7 +33,7 @@ from pathlib import Path
 
 import yaml
 
-from eval.run_eval import normalize_run_config
+from eval.run_eval import normalize_run_config, vector_store_backend_for_runs
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -98,6 +98,25 @@ class TestFullDenseControlRow(unittest.TestCase):
             "naive_baseline must resolve to 'dense' (ADR 0001 byte-identity). "
             "If this fails, a preset-default change leaked into the baseline.",
         )
+
+    def test_naive_baseline_uses_chroma_vector_store(self) -> None:
+        """ADR 0081: naive_baseline's canonical vector-store backend is Chroma."""
+        resolved = normalize_run_config(self.ablation_by_name["naive_baseline"])
+        self.assertEqual(resolved["vector_store_backend"], "chroma")
+
+    def test_eval_rejects_mixed_vector_store_backends(self) -> None:
+        runs = [
+            normalize_run_config({"name": "base", "pipeline": "naive_baseline"}),
+            normalize_run_config(
+                {
+                    "name": "control",
+                    "pipeline": "naive_baseline",
+                    "vector_store_backend": "memory",
+                }
+            ),
+        ]
+        with self.assertRaisesRegex(ValueError, "cannot mix vector_store_backend"):
+            vector_store_backend_for_runs(runs)
 
     def test_full_dense_differs_from_full_by_exactly_backend(self) -> None:
         """The control row must vary exactly one knob vs ``full``: the
