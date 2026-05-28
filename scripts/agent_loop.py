@@ -15,12 +15,15 @@ import difflib
 import hashlib
 import html
 import json
+import os
 from pathlib import Path
 import re
 import shlex
 import shutil
 import subprocess
 import sys
+import threading
+import time
 from typing import Iterable, Sequence
 
 
@@ -8782,25 +8785,39 @@ def write_active_start(
     outputs: list[Path] = []
     warnings: list[str] = []
     blockers: list[str] = []
+    _emit_progress(
+        f"[active-start] topology={topology} mode={mode} lease-ttl={lease_ttl_minutes}m"
+    )
+    if isinstance(agent_mix, dict):
+        target = agent_mix.get("target") if isinstance(agent_mix.get("target"), dict) else {}
+        if target:
+            mix_str = ",".join(f"{k}={v}" for k, v in sorted(target.items()))
+            _emit_progress(f"[active-start] agent-mix target={mix_str}")
     redacted_runs = _redact_active_codex_runs(active_dir, repo_root=repo_root)
     if redacted_runs:
         warnings.append(f"redacted {redacted_runs} stale active Codex run artifact(s) before privacy audit")
+        _emit_progress(f"[active-start] redacted {redacted_runs} stale codex run artifact(s)")
     selected_task: TaskEntry | None = None
     if task_id is None:
         if files:
             warnings.append("task auto-selection skipped because local changed files already define the active scope")
+            _emit_progress("[active-start] task auto-select skipped (changed files already define scope)")
         else:
             try:
                 selected_task = select_next_task(repo_root)
                 task_id = selected_task.task_id
                 warnings.append(f"auto-selected task `{task_id}` from `{QUEUE_PATH}`")
+                _emit_progress(f"[active-start] auto-selected task={task_id}")
             except ValueError as exc:
                 warnings.append(f"task auto-selection skipped: {exc}")
+                _emit_progress(f"[active-start] task auto-select skipped: {exc}")
     else:
         try:
             selected_task = load_task(task_id, repo_root)
+            _emit_progress(f"[active-start] task loaded: {task_id}")
         except ValueError as exc:
             blockers.append(str(exc))
+            _emit_progress(f"[active-start] task load failed: {exc}")
     if not files and selected_task is not None:
         files = _active_task_context_files(selected_task, repo_root=repo_root)
         if files:
@@ -8829,8 +8846,10 @@ def write_active_start(
             branch_name = repaired_branch
             branch_issue = repaired_issue
             warnings.append(f"branch repair: {repair_action} `{repaired_branch}`")
+            _emit_progress(f"[active-start] branch ready: {repaired_branch} ({repair_action})")
         except ValueError as exc:
             blockers.append(str(exc))
+            _emit_progress(f"[active-start] branch repair failed: {exc}")
 
     if pr_body is not None:
         body_path = _resolve_input_path(pr_body, repo_root=repo_root)
@@ -8854,6 +8873,7 @@ def write_active_start(
             outputs.append(body_out)
             if body_missing:
                 warnings.append(f"generated missing PR body draft at `{_repo_path(body_out, repo_root)}`")
+            _emit_progress(f"[active-start] pr-body draft: {_repo_path(body_out, repo_root)}")
         if not safe_issue:
             active_loop_pr_body = None
             warnings.append("PR body draft was not used as readiness evidence because no issue-linked branch or --issue was available")
@@ -8890,6 +8910,10 @@ def write_active_start(
     )
     outputs.append(active_loop.report_path)
     warnings.extend(active_loop.warnings)
+    _emit_progress(
+        f"[active-start] lease table written: {_repo_path(active_loop.report_path, repo_root)} "
+        f"({active_loop.decision})"
+    )
 
     def capture(label: str, writer) -> None:  # type: ignore[no-untyped-def]
         try:
@@ -8951,6 +8975,7 @@ def write_active_start(
             repo_root=repo_root,
         ),
     )
+    _emit_progress(f"[active-start] auxiliary reports written: {len(outputs)} file(s)")
     try:
         privacy_out, privacy_rc, _ = write_privacy_audit_output(
             path=repo_root / "reports" / "agent_loop",
@@ -8960,8 +8985,12 @@ def write_active_start(
         outputs.append(privacy_out)
         if privacy_rc:
             blockers.append("privacy audit found generated artifact issue(s)")
+            _emit_progress(f"[active-start] privacy audit: {privacy_rc} blocker(s) found")
+        else:
+            _emit_progress("[active-start] privacy audit: clean")
     except ValueError as exc:
         warnings.append(f"privacy-audit-output skipped: {exc}")
+        _emit_progress(f"[active-start] privacy audit skipped: {exc}")
 
     decision = "blocked" if blockers else "started"
     if blockers:
@@ -10059,6 +10088,190 @@ def write_agent_turn(
     )
 
 
+_CODEX_JSONL_EMOJI: dict[str, str] = {
+    "task_started": "▶",
+    "session.created": "▶",
+    "agent_message": "💬",
+    "agent_message_delta": "💬",
+    "assistant_message": "💬",
+    "agent_reasoning": "🧠",
+    "agent_reasoning_delta": "🧠",
+    "reasoning": "🧠",
+    "tool_use": "🔧",
+    "function_call": "🔧",
+    "tool_call": "🔧",
+    "exec_command_begin": "⚙",
+    "exec_command_end": "⚙",
+    "tool_result": "📤",
+    "function_call_output": "📤",
+    "tool_response": "📤",
+    "task_complete": "✓",
+    "session.completed": "✓",
+    "error": "❌",
+    "shutdown": "⛔",
+}
+
+
+def _agent_loop_stream_enabled() -> bool:
+    """True when interactive progress should be emitted to stdout.
+
+    Set ``BIDMATE_AGENT_LOOP_QUIET=1`` to disable (CI / non-TTY callers).
+    """
+    flag = os.environ.get("BIDMATE_AGENT_LOOP_QUIET", "").strip().lower()
+    return flag not in {"1", "true", "yes", "on"}
+
+
+def _agent_loop_stream_raw() -> bool:
+    """True when raw JSONL lines should be emitted instead of emoji summaries.
+
+    Set ``BIDMATE_AGENT_LOOP_RAW=1`` when the codex JSONL schema drifts and the
+    summary formatter loses fidelity — emits the unparsed line with the session
+    prefix so debugging stays possible.
+    """
+    flag = os.environ.get("BIDMATE_AGENT_LOOP_RAW", "").strip().lower()
+    return flag in {"1", "true", "yes", "on"}
+
+
+def _emit_progress(message: str) -> None:
+    """Write a single progress line to stdout when streaming is enabled."""
+    if not _agent_loop_stream_enabled():
+        return
+    if not message:
+        return
+    sys.stdout.write(message.rstrip() + "\n")
+    sys.stdout.flush()
+
+
+def _format_codex_jsonl_summary(session_id: str, line: str) -> str:
+    """Convert a codex ``--json`` event to ``[session-id] <emoji> <detail>``.
+
+    Unknown ``type`` → ``❔`` (schema drift visible, not silently dropped).
+    JSON parse failure → ``⚠ raw: <line>`` (raw payload preserved).
+    ``BIDMATE_AGENT_LOOP_RAW=1`` → returns the raw line with session prefix.
+    Empty / whitespace-only lines → empty string (caller skips emit).
+    """
+    line = line.rstrip("\n")
+    if not line.strip():
+        return ""
+    if _agent_loop_stream_raw():
+        return f"[{session_id}] {line}"
+    try:
+        payload = json.loads(line)
+    except (json.JSONDecodeError, ValueError):
+        return f"[{session_id}] ⚠ raw: {line[:240]}"
+    if not isinstance(payload, dict):
+        return f"[{session_id}] ⚠ raw: {line[:240]}"
+    inner = payload.get("msg") if isinstance(payload.get("msg"), dict) else payload
+    event_type = str(inner.get("type") or payload.get("type") or "")
+    emoji = _CODEX_JSONL_EMOJI.get(event_type)
+    if emoji is None:
+        snippet = str(inner)[:80].replace("\n", " ")
+        return f"[{session_id}] ❔ {event_type or '<no-type>'}: {snippet}"
+    detail = ""
+    if event_type in {"agent_message", "agent_message_delta", "assistant_message"}:
+        content = inner.get("content") or inner.get("message") or inner.get("text") or ""
+        if isinstance(content, list):
+            parts: list[str] = []
+            for seg in content:
+                if isinstance(seg, dict):
+                    parts.append(str(seg.get("text") or seg.get("content") or ""))
+                else:
+                    parts.append(str(seg))
+            content = " ".join(p for p in parts if p)
+        detail = str(content)[:200].replace("\n", " ")
+    elif event_type in {"agent_reasoning", "agent_reasoning_delta", "reasoning"}:
+        detail = str(inner.get("text") or inner.get("content") or "")[:160].replace("\n", " ")
+    elif event_type in {"tool_use", "function_call", "tool_call"}:
+        name = inner.get("name") or inner.get("tool") or "?"
+        args = inner.get("input") or inner.get("arguments") or {}
+        if isinstance(args, dict):
+            arg_keys = list(args.keys())[:3]
+            detail = f"{name}({', '.join(arg_keys)})"
+        else:
+            detail = f"{name}({str(args)[:60]})"
+    elif event_type in {"exec_command_begin", "exec_command_end"}:
+        cmd = inner.get("command") or inner.get("argv") or ""
+        if isinstance(cmd, list):
+            cmd = " ".join(str(p) for p in cmd[:6])
+        detail = str(cmd)[:160].replace("\n", " ")
+    elif event_type in {"tool_result", "function_call_output", "tool_response"}:
+        out = inner.get("output") or inner.get("content") or ""
+        detail = str(out)[:120].replace("\n", " ")
+    elif event_type in {"task_complete", "session.completed"}:
+        rc = inner.get("exit_code") or inner.get("returncode") or 0
+        elapsed = inner.get("duration_s") or inner.get("duration_ms")
+        detail = f"rc={rc}"
+        if elapsed:
+            detail += f" elapsed={elapsed}"
+    elif event_type == "error":
+        detail = str(inner.get("message") or inner.get("error") or "")[:200].replace("\n", " ")
+    elif event_type == "shutdown":
+        detail = str(inner.get("reason") or "")[:120]
+    else:
+        detail = str(inner)[:80].replace("\n", " ")
+    return f"[{session_id}] {emoji} {detail}".rstrip()
+
+
+def _spawn_codex_reader_thread(
+    proc: object,
+    session_id: str,
+    stdout_path: Path,
+) -> "threading.Thread | None":
+    """Tee a codex subprocess stdout PIPE into ``stdout_path`` while emitting summaries.
+
+    Returns the started daemon thread, or ``None`` when ``proc`` has no readable stdout
+    (mocked test procs, dry-run mode). Creates an empty ``stdout_path`` in that case so
+    downstream code that expects the file to exist still finds it.
+    """
+    stream = getattr(proc, "stdout", None)
+    if stream is None:
+        try:
+            stdout_path.parent.mkdir(parents=True, exist_ok=True)
+            stdout_path.touch()
+        except OSError:
+            pass
+        return None
+    readline = getattr(stream, "readline", None)
+    if not callable(readline):
+        try:
+            stdout_path.parent.mkdir(parents=True, exist_ok=True)
+            stdout_path.touch()
+        except OSError:
+            pass
+        return None
+
+    def reader() -> None:
+        try:
+            stdout_path.parent.mkdir(parents=True, exist_ok=True)
+            with stdout_path.open("w", encoding="utf-8") as out_file:
+                while True:
+                    try:
+                        line = readline()
+                    except (OSError, ValueError):
+                        break
+                    if not line:
+                        break
+                    if isinstance(line, bytes):
+                        try:
+                            line = line.decode("utf-8", errors="replace")
+                        except Exception:
+                            line = repr(line)
+                    out_file.write(line)
+                    out_file.flush()
+                    formatted = _format_codex_jsonl_summary(session_id, line)
+                    if formatted:
+                        _emit_progress(formatted)
+        finally:
+            try:
+                stream.close()
+            except Exception:  # pragma: no cover - close failures are non-fatal
+                pass
+
+    t = threading.Thread(target=reader, name=f"codex-tail-{session_id}", daemon=True)
+    t.start()
+    return t
+
+
 def write_active_codex_runner(
     *,
     execute: bool = False,
@@ -10212,7 +10425,9 @@ def write_active_codex_runner(
         factory = popen_factory if popen_factory is not None else subprocess.Popen
 
         def spawn_and_wait(batch: Sequence[dict[str, object]]) -> None:
-            batch_spawned: list[tuple[dict[str, object], object]] = []
+            batch_spawned: list[
+                tuple[dict[str, object], object, "threading.Thread | None", object, float]
+            ] = []
             for item in batch:
                 session_id = str(item["session_id"])
                 role = str(item["role"])
@@ -10236,31 +10451,40 @@ def write_active_codex_runner(
                     last_message_path=last_message_path,
                     repo_root=repo_root,
                 )
+                stderr_file = None
                 try:
-                    with stdout_path.open("w", encoding="utf-8") as stdout_file, stderr_path.open(
-                        "w", encoding="utf-8"
-                    ) as stderr_file:
-                        proc = factory(
-                            command,
-                            cwd=repo_root,
-                            stdin=subprocess.PIPE,
-                            stdout=stdout_file,
-                            stderr=stderr_file,
-                            text=True,
-                        )
-                        stdin = getattr(proc, "stdin", None)
-                        if stdin is not None:
-                            stdin.write(prompt)
-                            stdin.close()
+                    stderr_file = stderr_path.open("w", encoding="utf-8")
+                    proc = factory(
+                        command,
+                        cwd=repo_root,
+                        stdin=subprocess.PIPE,
+                        stdout=subprocess.PIPE,
+                        stderr=stderr_file,
+                        text=True,
+                    )
+                    stdin = getattr(proc, "stdin", None)
+                    if stdin is not None:
+                        stdin.write(prompt)
+                        stdin.close()
                 except OSError as exc:
+                    if stderr_file is not None:
+                        try:
+                            stderr_file.close()
+                        except Exception:  # pragma: no cover - close failures non-fatal
+                            pass
                     item["status"] = "spawn-failed"
                     blockers.append(f"failed to spawn session {session_id}: {exc}")
                     return
                 item["status"] = "running"
                 item["pid"] = getattr(proc, "pid", None)
-                batch_spawned.append((item, proc))
+                reader_thread = _spawn_codex_reader_thread(proc, session_id, stdout_path)
+                spawn_start_at = time.monotonic()
+                _emit_progress(
+                    f"[spawn] session={session_id} role={role} pid={item['pid']}"
+                )
+                batch_spawned.append((item, proc, reader_thread, stderr_file, spawn_start_at))
                 spawned.append((item, proc))
-            for item, proc in batch_spawned:
+            for item, proc, reader_thread, stderr_file, spawn_start_at in batch_spawned:
                 if blockers:
                     break
                 wait = getattr(proc, "wait", None)
@@ -10273,12 +10497,27 @@ def write_active_codex_runner(
                     item["status"] = "timeout"
                     item["returncode"] = None
                     blockers.append(f"session {item['session_id']} timed out after {timeout_seconds} seconds")
+                    _emit_progress(f"[done] session={item['session_id']} timeout")
                     continue
+                if reader_thread is not None:
+                    reader_thread.join(timeout=10.0)
+                if stderr_file is not None:
+                    try:
+                        stderr_file.close()
+                    except Exception:  # pragma: no cover - close failures non-fatal
+                        pass
                 item["returncode"] = rc
+                elapsed = time.monotonic() - spawn_start_at
                 if rc == 0:
                     item["status"] = "completed"
+                    _emit_progress(
+                        f"[done] session={item['session_id']} rc=0 elapsed={elapsed:.1f}s"
+                    )
                 else:
                     item["status"] = "failed"
+                    _emit_progress(
+                        f"[done] session={item['session_id']} rc={rc} elapsed={elapsed:.1f}s"
+                    )
                     blockers.append(f"session {item['session_id']} exited with code {rc}")
 
         final_gate_sessions = [item for item in planned if item.get("session_id") == "eval-claim-privacy-auditor"]

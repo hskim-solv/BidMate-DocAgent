@@ -3635,8 +3635,8 @@ def test_active_codex_runner_execute_spawns_agentic_processes_and_preserves_leas
                 "cmd": list(cmd),
                 "cwd": kwargs["cwd"],
                 "stdin": kwargs["stdin"],
-                "stdout": kwargs["stdout"].name,
-                "stderr": kwargs["stderr"].name,
+                "stdout": kwargs["stdout"],
+                "stderr_name": getattr(kwargs["stderr"], "name", None),
                 "text": kwargs["text"],
             }
         )
@@ -3664,6 +3664,9 @@ def test_active_codex_runner_execute_spawns_agentic_processes_and_preserves_leas
         assert cmd[-1] == "-"
         assert call["cwd"] == repo
         assert call["stdin"] == subprocess.PIPE
+        assert call["stdout"] == subprocess.PIPE
+        assert call["stderr_name"] is not None
+        assert call["stderr_name"].endswith("/stderr.log")
         assert call["text"] is True
     assert (active / "codex_runs" / "reviewer" / "prompt.md").exists()
     leases = json.loads((active / "leases.json").read_text(encoding="utf-8"))
