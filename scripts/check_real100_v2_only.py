@@ -12,8 +12,11 @@ DEFAULT_PATHS = (
     Path("CLAUDE.md"),
     Path("tasks/queue.md"),
     Path("docs/plans/T-2026-0028-refresh-private-coverage-semantic-baselines.md"),
+    Path("docs/plans/T-2026-0029-real100-v2-retrieval-diagnostic-workbench.md"),
     Path("docs/evaluation/surface-map.md"),
     Path("docs/evaluation/private_real_eval_workflow.md"),
+    Path("docs/evaluation/real100_v2-retrieval-diagnostics.md"),
+    Path("reports/real100_v2/README.md"),
 )
 
 STALE_PATH_RE = re.compile(r"\b(?:data/index|reports|outputs)/real100(?!_v2)\b")
@@ -26,12 +29,14 @@ BAN_CONTEXT_RE = re.compile(
 )
 
 
-def _t2026_0028_block(text: str) -> str:
-    marker = "## T-2026-0028"
+def _task_block(text: str, task_id: str, next_task_id: str | None) -> str:
+    marker = f"## {task_id}"
     start = text.find(marker)
     if start == -1:
-        return text
-    next_task = text.find("\n## T-2026-0029", start + len(marker))
+        return ""
+    next_task = -1
+    if next_task_id:
+        next_task = text.find(f"\n## {next_task_id}", start + len(marker))
     return text[start:] if next_task == -1 else text[start:next_task]
 
 
@@ -54,12 +59,29 @@ def _is_ban_context(line: str) -> bool:
 def check_path(path: Path) -> list[str]:
     full_path = ROOT / path
     text = full_path.read_text(encoding="utf-8")
-    scoped = _t2026_0028_block(text) if path == Path("tasks/queue.md") else text
+    if path == Path("tasks/queue.md"):
+        scoped = "\n".join(
+            block
+            for block in (
+                _task_block(text, "T-2026-0028", "T-2026-0029"),
+                _task_block(text, "T-2026-0029", "T-2026-0030"),
+            )
+            if block
+        )
+    else:
+        scoped = text
     findings: list[str] = []
 
     if "real100_v2" not in scoped:
         findings.append(f"{path}: missing required real100_v2 reference")
-    if "real-eval-v2" not in scoped and path != Path("CLAUDE.md"):
+    guard_required_paths = {
+        Path("tasks/queue.md"),
+        Path("docs/plans/T-2026-0028-refresh-private-coverage-semantic-baselines.md"),
+        Path("docs/plans/T-2026-0029-real100-v2-retrieval-diagnostic-workbench.md"),
+        Path("docs/evaluation/surface-map.md"),
+        Path("docs/evaluation/private_real_eval_workflow.md"),
+    }
+    if "real-eval-v2" not in scoped and path in guard_required_paths:
         findings.append(f"{path}: missing required real-eval-v2 guard/check reference")
 
     if path == Path("CLAUDE.md"):
@@ -82,6 +104,8 @@ def check_path(path: Path) -> list[str]:
     if path in {
         Path("tasks/queue.md"),
         Path("docs/plans/T-2026-0028-refresh-private-coverage-semantic-baselines.md"),
+        Path("docs/plans/T-2026-0029-real100-v2-retrieval-diagnostic-workbench.md"),
+        Path("docs/evaluation/real100_v2-retrieval-diagnostics.md"),
     }:
         for lineno, line in enumerate(scoped.splitlines(), start=1):
             if _is_ban_context(line):

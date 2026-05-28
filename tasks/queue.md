@@ -39,10 +39,10 @@ PR이 생기면 각 task에 링크를 추가한다. 예제 task는 `tasks/exampl
 | 26 | `T-2026-0026` | `todo` | Planner -> Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1580; Chroma vector-store baseline separated from embedding-model baselines. |
 | 27 | `T-2026-0027` | `review` | Planner -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1584; prioritized RAG performance experiment stack captured. |
 | 28 | `T-2026-0028` | `done` | Evaluator -> Benchmark Auditor -> Privacy Auditor -> Reviewer | merged in PR #1619; real100_v2-only guard and aggregate packet landed. |
-| 29 | `T-2026-0029` | `ready` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | P0 diagnostic-only; use real100_v2 aggregate/index evidence and preserve page-metadata blocker. |
+| 29 | `T-2026-0029` | `review` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1622; real100_v2 retrieval diagnostics rendered; next experiment points to T-2026-0032 while T-2026-0031 remains page-metadata blocked. |
 | 30 | `T-2026-0030` | `backlog` | Implementer -> CI Reviewer -> Benchmark Auditor -> Reviewer | P0; blocked on T-2026-0028 latency provenance. |
-| 31 | `T-2026-0031` | `backlog` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | P1; blocked on retrieval diagnostics from T-2026-0029. |
-| 32 | `T-2026-0032` | `backlog` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | P1; blocked on candidate-pool diagnostics from T-2026-0029. |
+| 31 | `T-2026-0031` | `blocked` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | real100_v2 page metadata coverage is 0.0; no claim-bearing page/window experiment yet. |
+| 32 | `T-2026-0032` | `ready` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | T-2026-0029 diagnostics point here next; run after or with T-2026-0030 latency/cost guardrail. |
 | 33 | `T-2026-0033` | `backlog` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | P1; blocked on retrieval/reranker evidence and token budget from T-2026-0030. |
 | 34 | `T-2026-0034` | `backlog` | Planner -> Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | P1; blocked on query-slice attribution from T-2026-0029. |
 | 35 | `T-2026-0035` | `backlog` | Security Reviewer -> Implementer -> Privacy Auditor -> Reviewer | P1 guardrail; should run before agentic/tool-using retrieval. |
@@ -2586,7 +2586,7 @@ make check-branch
 
 - ID: T-2026-0029
 - Title: Build retrieval diagnostic workbench
-- Status: ready
+- Status: review
 - Priority: P0
 - Owner role: Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer
 - Created: 2026-05-27
@@ -2621,12 +2621,12 @@ or explicitly scoped out.
 
 ### Acceptance Criteria
 
-- [ ] Diagnostics distinguish not-in-candidate-pool, ranked-too-low,
+- [x] Diagnostics distinguish not-in-candidate-pool, ranked-too-low,
   boundary/window, duplicate, metadata-filter, and multi-evidence failures.
-- [ ] Output is aggregate-only and commit-safe.
-- [ ] The report can decide whether `T-2026-0031` or `T-2026-0032` is the next
+- [x] Output is aggregate-only and commit-safe.
+- [x] The report can decide whether `T-2026-0031` or `T-2026-0032` is the next
   best experiment.
-- [ ] The report explicitly carries forward the v2 page metadata blocker and
+- [x] The report explicitly carries forward the v2 page metadata blocker and
   does not use old `real100` evidence as a substitute.
 
 ### Validation Commands
@@ -2634,8 +2634,8 @@ or explicitly scoped out.
 ```bash
 python3 -m pytest -q tests/test_render_multi_chunk_evidence_failures.py tests/test_render_multi_chunk_retrieval_strategy.py
 make real-eval-v2-guard
-python3 <new-or-existing-retrieval-diagnostic-script> --summary reports/real100_v2/baseline.aggregate.json --out <aggregate-output>
-python3 scripts/check_doc_links.py --check-all --paths tasks/queue.md <plan-path> <report-path>
+REAL_EVAL_ROOT=/Users/hskim/Desktop/projects/BidMate-DocAgent python3 scripts/render_real100_v2_retrieval_diagnostics.py
+python3 scripts/check_doc_links.py --check-all --paths tasks/queue.md docs/plans/T-2026-0029-real100-v2-retrieval-diagnostic-workbench.md docs/evaluation/real100_v2-retrieval-diagnostics.md reports/real100_v2/README.md
 git diff --check
 make check-branch
 ```
@@ -2650,9 +2650,28 @@ make check-branch
 
 ### Related Plan / Issue / PR Links
 
-- Plan: TBD - create when the task starts.
-- Issue: TBD
+- Plan: [`docs/plans/T-2026-0029-real100-v2-retrieval-diagnostic-workbench.md`](../docs/plans/T-2026-0029-real100-v2-retrieval-diagnostic-workbench.md)
+- Issue: [#1622](https://github.com/hskim-solv/BidMate-DocAgent/issues/1622)
 - PR: TBD
+
+### Handoff Notes
+
+```markdown
+## Session Handoff - 2026-05-28 09:35 KST
+
+- Role: Implementer
+- Branch / worktree: eval/issue-1622-build-real100-v2-retrieval-diagnostic-workbench / /Users/hskim/.codex/worktrees/0ebc/BidMate-DocAgent
+- Issue / PR: issue #1622 / PR TBD
+- Task: T-2026-0029
+- Current status: real100_v2 retrieval diagnostics rendered and ready for benchmark/privacy review.
+- Files touched: .gitignore, .githooks/pre-commit, scripts/render_real100_v2_retrieval_diagnostics.py, scripts/check_real100_v2_only.py, tests/test_render_real100_v2_retrieval_diagnostics.py, docs/evaluation/real100_v2-retrieval-diagnostics.md, reports/real100_v2/retrieval_diagnostics.aggregate.json, reports/real100_v2/README.md, docs/plans/T-2026-0029-real100-v2-retrieval-diagnostic-workbench.md, tasks/queue.md
+- Decisions made: dominant exclusive retrieval status is not_observable_limited_depth; T-2026-0031 remains blocked by real100_v2 page metadata coverage 0.0; next experiment candidate is T-2026-0032.
+- Commands run: REAL_EVAL_ROOT=/Users/hskim/Desktop/projects/BidMate-DocAgent python3 scripts/render_real100_v2_retrieval_diagnostics.py; python3 -m pytest -q tests/test_render_real100_v2_retrieval_diagnostics.py.
+- Results: aggregate JSON and Markdown report generated; focused renderer tests passed.
+- Next safe command: python3 -m py_compile scripts/render_real100_v2_retrieval_diagnostics.py scripts/check_real100_v2_only.py && python3 -m pytest -q tests/test_render_real100_v2_retrieval_diagnostics.py tests/test_real100_v2_guard.py tests/test_render_multi_chunk_evidence_failures.py tests/test_render_multi_chunk_retrieval_strategy.py && bash -n .githooks/pre-commit
+- Open questions: none.
+- Risks: duplicate/near-duplicate signal counts repeated top documents as aggregate near-duplicates, not semantic duplicates.
+```
 
 ## T-2026-0030 — Define latency and cost budget envelope
 
@@ -2714,16 +2733,20 @@ make check-branch
 
 - ID: T-2026-0031
 - Title: Parent and section-window retrieval experiment
-- Status: backlog
+- Status: blocked
 - Priority: P1
 - Owner role: Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer
 - Created: 2026-05-27
-- Last updated: 2026-05-27
+- Last updated: 2026-05-28
 
 ### Goal
 
 Test whether small-to-big retrieval improves multi-chunk and same-document
 evidence failures now that page-aware metadata exists.
+
+Current blocker: `real100_v2` page metadata coverage is 0.0, so
+claim-bearing page/window work must wait until page metadata is repaired or the
+experiment is explicitly rescoped away from page/window claims.
 
 ### Scope
 
@@ -2741,6 +2764,8 @@ evidence failures now that page-aware metadata exists.
 
 ### Acceptance Criteria
 
+- [ ] real100_v2 page metadata blocker is cleared or this task is explicitly
+  rescoped before implementation.
 - [ ] Opt-in preset leaves ADR 0001 baseline byte-identical.
 - [ ] Aggregate delta reports Recall@K, MRR, nDCG, citation/page coverage,
   answer quality, abstention, and latency.
@@ -2772,16 +2797,20 @@ make check-branch
 
 - ID: T-2026-0032
 - Title: Reranker candidate-budget experiment
-- Status: backlog
+- Status: ready
 - Priority: P1
 - Owner role: Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer
 - Created: 2026-05-27
-- Last updated: 2026-05-27
+- Last updated: 2026-05-28
 
 ### Goal
 
 Measure whether reranking improves early precision without hiding candidate-pool
 recall or causing unacceptable latency.
+
+Current trigger: `T-2026-0029` real100_v2 diagnostics selected this as the next
+experiment candidate because T-2026-0031 remains blocked by page metadata 0.0.
+Run with or after the latency/cost guardrail from `T-2026-0030`.
 
 ### Scope
 
