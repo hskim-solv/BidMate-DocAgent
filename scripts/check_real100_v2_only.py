@@ -13,9 +13,12 @@ DEFAULT_PATHS = (
     Path("tasks/queue.md"),
     Path("docs/plans/T-2026-0028-refresh-private-coverage-semantic-baselines.md"),
     Path("docs/plans/T-2026-0029-real100-v2-retrieval-diagnostic-workbench.md"),
+    Path("docs/plans/T-2026-0030-real100-v2-latency-cost-budget-envelope.md"),
+    Path("docs/plans/T-2026-0032-reranker-candidate-budget-experiment.md"),
     Path("docs/evaluation/surface-map.md"),
     Path("docs/evaluation/private_real_eval_workflow.md"),
     Path("docs/evaluation/real100_v2-retrieval-diagnostics.md"),
+    Path("docs/evaluation/real100_v2-latency-cost-budget.md"),
     Path("reports/real100_v2/README.md"),
 )
 
@@ -65,6 +68,9 @@ def check_path(path: Path) -> list[str]:
             for block in (
                 _task_block(text, "T-2026-0028", "T-2026-0029"),
                 _task_block(text, "T-2026-0029", "T-2026-0030"),
+                _task_block(text, "T-2026-0030", "T-2026-0031"),
+                _task_block(text, "T-2026-0031", "T-2026-0032"),
+                _task_block(text, "T-2026-0032", "T-2026-0033"),
             )
             if block
         )
@@ -78,6 +84,8 @@ def check_path(path: Path) -> list[str]:
         Path("tasks/queue.md"),
         Path("docs/plans/T-2026-0028-refresh-private-coverage-semantic-baselines.md"),
         Path("docs/plans/T-2026-0029-real100-v2-retrieval-diagnostic-workbench.md"),
+        Path("docs/plans/T-2026-0030-real100-v2-latency-cost-budget-envelope.md"),
+        Path("docs/plans/T-2026-0032-reranker-candidate-budget-experiment.md"),
         Path("docs/evaluation/surface-map.md"),
         Path("docs/evaluation/private_real_eval_workflow.md"),
     }
@@ -105,7 +113,10 @@ def check_path(path: Path) -> list[str]:
         Path("tasks/queue.md"),
         Path("docs/plans/T-2026-0028-refresh-private-coverage-semantic-baselines.md"),
         Path("docs/plans/T-2026-0029-real100-v2-retrieval-diagnostic-workbench.md"),
+        Path("docs/plans/T-2026-0030-real100-v2-latency-cost-budget-envelope.md"),
+        Path("docs/plans/T-2026-0032-reranker-candidate-budget-experiment.md"),
         Path("docs/evaluation/real100_v2-retrieval-diagnostics.md"),
+        Path("docs/evaluation/real100_v2-latency-cost-budget.md"),
     }:
         for lineno, line in enumerate(scoped.splitlines(), start=1):
             if _is_ban_context(line):
