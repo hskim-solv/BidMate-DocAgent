@@ -30,6 +30,12 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DISPATCHER = REPO_ROOT / "scripts" / "claude-hooks" / "stop-ship.sh"
 
+# Under parallel `-n` runs these subprocess-heavy gate tests share CPU with
+# model-loading suites on other workers, so wall-clock SLA assertions are
+# meaningless (contention, not the dispatcher, dominates). Skip the timing
+# assertion under xdist; the serial `make test` gate still enforces it.
+_UNDER_XDIST = bool(os.environ.get("PYTEST_XDIST_WORKER"))
+
 
 def _git(*args, cwd):
     return subprocess.run(
@@ -80,7 +86,11 @@ def _arm(repo: Path, *, branch: str, ttl_seconds: int = 7200, **overrides):
 
 def _run_dispatcher(
     repo: Path,
-    timeout: float = 10,
+    # 60s, not 10s: the dispatcher shells out to several git subprocesses, which
+    # starve for CPU under parallel `-n` test runs and intermittently blew the
+    # old 10s/30s budget (flaky TimeoutExpired). The gate logic itself is
+    # sub-second; this is only a hang backstop, so a generous budget is correct.
+    timeout: float = 60,
     env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess:
     return subprocess.run(
@@ -108,7 +118,8 @@ def test_no_arm_under_100ms(fake_repo):
     assert r.returncode == 0
     # Generous SLA: <500ms even on slow hardware. The intent is "fast enough
     # that Claude's reply termination doesn't visibly stall."
-    assert elapsed_ms < 500, f"no-op path took {elapsed_ms:.0f}ms"
+    if not _UNDER_XDIST:
+        assert elapsed_ms < 500, f"no-op path took {elapsed_ms:.0f}ms"
 
 
 # ---- gate 0: malformed JSON ----

@@ -2,50 +2,23 @@
 from __future__ import annotations
 
 import os
-import subprocess
-import sys
 from pathlib import Path
 from typing import Iterator
 
+# macOS-safe OpenMP defaults. libomp/libgomp read KMP_*/OMP_* at native-library
+# load time. torch / sentence_transformers are imported lazily (inside functions
+# in rag_embedding.py / visual_ingestion.py), never at module top-level, so this
+# conftest import runs before the first native-lib load. Do NOT add a top-level
+# `import torch` above this block, and do not re-introduce a pytest re-exec — it
+# ran after pytest's fd capture was active, os._exit skipped the capture flush,
+# silently discarding all output and hanging xdist runs.
 _OPENMP_DEFAULTS = {
     "OMP_NUM_THREADS": "1",
     "KMP_USE_SHM": "FALSE",
     "KMP_INIT_AT_FORK": "FALSE",
 }
-
-
-def _ensure_openmp_startup_env() -> None:
-    """Restart direct pytest runs once with macOS-safe OpenMP defaults.
-
-    Some native runtimes read KMP_* only at process startup. Setting them later
-    is too late to prevent libomp SHM/fork aborts in subprocess-heavy tests.
-    """
-    missing = {
-        key: value for key, value in _OPENMP_DEFAULTS.items() if key not in os.environ
-    }
-    if (
-        sys.platform == "darwin"
-        and missing
-        and os.environ.get("BIDMATE_PYTEST_OPENMP_REEXEC") != "1"
-    ):
-        env = os.environ.copy()
-        env.update(missing)
-        env["BIDMATE_PYTEST_OPENMP_REEXEC"] = "1"
-        code = subprocess.call(
-            [sys.executable, "-m", "pytest", *sys.argv[1:]],
-            env=env,
-            stdout=sys.__stdout__,
-            stderr=sys.__stderr__,
-        )
-        sys.__stdout__.flush()
-        sys.__stderr__.flush()
-        os._exit(code)
-
-    for key, value in _OPENMP_DEFAULTS.items():
-        os.environ.setdefault(key, value)
-
-
-_ensure_openmp_startup_env()
+for _k, _v in _OPENMP_DEFAULTS.items():
+    os.environ.setdefault(_k, _v)
 
 import pytest
 
