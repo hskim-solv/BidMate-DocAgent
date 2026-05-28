@@ -40,9 +40,9 @@ PR이 생기면 각 task에 링크를 추가한다. 예제 task는 `tasks/exampl
 | 27 | `T-2026-0027` | `review` | Planner -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1584; prioritized RAG performance experiment stack captured. |
 | 28 | `T-2026-0028` | `done` | Evaluator -> Benchmark Auditor -> Privacy Auditor -> Reviewer | merged in PR #1619; real100_v2-only guard and aggregate packet landed. |
 | 29 | `T-2026-0029` | `review` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1622; real100_v2 retrieval diagnostics rendered; next experiment points to T-2026-0032 while T-2026-0031 remains page-metadata blocked. |
-| 30 | `T-2026-0030` | `backlog` | Implementer -> CI Reviewer -> Benchmark Auditor -> Reviewer | P0; blocked on T-2026-0028 latency provenance. |
+| 30 | `T-2026-0030` | `ready` | Implementer -> CI Reviewer -> Benchmark Auditor -> Reviewer | needed before T-2026-0032 implementation; use real100_v2 latency/stage aggregate only. |
 | 31 | `T-2026-0031` | `blocked` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | real100_v2 page metadata coverage is 0.0; no claim-bearing page/window experiment yet. |
-| 32 | `T-2026-0032` | `ready` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | T-2026-0029 diagnostics point here next; run after or with T-2026-0030 latency/cost guardrail. |
+| 32 | `T-2026-0032` | `blocked` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1624; plan drafted, but implementation needs T-2026-0030 latency/cost guardrail. |
 | 33 | `T-2026-0033` | `backlog` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | P1; blocked on retrieval/reranker evidence and token budget from T-2026-0030. |
 | 34 | `T-2026-0034` | `backlog` | Planner -> Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | P1; blocked on query-slice attribution from T-2026-0029. |
 | 35 | `T-2026-0035` | `backlog` | Security Reviewer -> Implementer -> Privacy Auditor -> Reviewer | P1 guardrail; should run before agentic/tool-using retrieval. |
@@ -2677,16 +2677,20 @@ make check-branch
 
 - ID: T-2026-0030
 - Title: Define latency and cost budget envelope
-- Status: backlog
+- Status: ready
 - Priority: P0
 - Owner role: Implementer -> CI Reviewer -> Benchmark Auditor -> Reviewer
 - Created: 2026-05-27
-- Last updated: 2026-05-27
+- Last updated: 2026-05-28
 
 ### Goal
 
 Set the latency/cost guardrails that every multi-query, reranker, compression,
 or long-context experiment must satisfy.
+
+Current trigger: `T-2026-0032` is planned but blocked until this envelope exists.
+Use `real100_v2` aggregate latency/stage evidence only; do not use legacy
+`real100`/v1/221/kordoc evidence.
 
 ### Scope
 
@@ -2797,7 +2801,7 @@ make check-branch
 
 - ID: T-2026-0032
 - Title: Reranker candidate-budget experiment
-- Status: ready
+- Status: blocked
 - Priority: P1
 - Owner role: Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer
 - Created: 2026-05-27
@@ -2810,7 +2814,8 @@ recall or causing unacceptable latency.
 
 Current trigger: `T-2026-0029` real100_v2 diagnostics selected this as the next
 experiment candidate because T-2026-0031 remains blocked by page metadata 0.0.
-Run with or after the latency/cost guardrail from `T-2026-0030`.
+Run with or after the latency/cost guardrail from `T-2026-0030`; until that
+guardrail exists, this task is planned but blocked for implementation.
 
 ### Scope
 
@@ -2830,6 +2835,8 @@ Run with or after the latency/cost guardrail from `T-2026-0030`.
   citation regression, latency regression, or failed experiment.
 - [ ] Candidate-pool recall and reranker precision are reported separately.
 - [ ] Reranker provenance is present in aggregate output.
+- [ ] Latency/cost guardrail from `T-2026-0030` is present or this task remains
+  blocked.
 
 ### Validation Commands
 
@@ -2848,9 +2855,28 @@ make check-branch
 
 ### Related Plan / Issue / PR Links
 
-- Plan: TBD - create when the task starts.
-- Issue: TBD
+- Plan: [`docs/plans/T-2026-0032-reranker-candidate-budget-experiment.md`](../docs/plans/T-2026-0032-reranker-candidate-budget-experiment.md)
+- Issue: [#1624](https://github.com/hskim-solv/BidMate-DocAgent/issues/1624)
 - PR: TBD
+
+### Handoff Notes
+
+```markdown
+## Session Handoff - 2026-05-28 09:55 KST
+
+- Role: Planner
+- Branch / worktree: eval/issue-1624-plan-reranker-candidate-budget-experiment / /Users/hskim/.codex/worktrees/0ebc/BidMate-DocAgent
+- Issue / PR: issue #1624 / PR TBD
+- Task: T-2026-0032
+- Current status: plan drafted; implementation blocked on T-2026-0030 latency/cost guardrail.
+- Files touched: docs/plans/T-2026-0032-reranker-candidate-budget-experiment.md, tasks/queue.md
+- Decisions made: no reranker candidate-budget claim without paired real100_v2 delta and latency/cost envelope.
+- Commands run: make ship-start TITLE="Plan reranker candidate budget experiment" TYPE=eval; make check-branch; python3 scripts/agent_loop.py next.
+- Results: issue #1624 and branch created; branch gate passed; T-2026-0032 plan drafted.
+- Next safe command: python3 scripts/check_doc_links.py --check-all --paths tasks/queue.md docs/plans/T-2026-0032-reranker-candidate-budget-experiment.md
+- Open questions: none.
+- Risks: implementing the sweep before a latency/cost envelope would produce unusable review evidence.
+```
 
 ## T-2026-0033 — Context packing and citation ordering experiment
 
