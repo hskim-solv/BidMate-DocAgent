@@ -1,0 +1,28 @@
+{
+  "_comment": [
+    "Local fallback for agent-mix quota-aware rebalancing (issue #1656).",
+    "Used when agentcat snapshot --json is unavailable OR does not surface the",
+    "weekly remaining percent for that provider. Copy to quota_config.json",
+    "(no .example) and fill in your subscription numbers.",
+    "",
+    "weekly_limit_units: total work-units allowed per 7-day window.",
+    "used_this_week_units: running counter; you maintain this manually (or wire",
+    "  a separate collector). When agentcat works, this file is ignored.",
+    "reset_dow: day-of-week string when your weekly window rolls over (mon/tue/.../sun).",
+    "reset_hour_utc: hour (0-23) UTC when reset occurs.",
+    "",
+    "If both providers' signals come from agentcat, this file has no effect."
+  ],
+  "claude": {
+    "weekly_limit_units": 7500,
+    "used_this_week_units": 0,
+    "reset_dow": "mon",
+    "reset_hour_utc": 0
+  },
+  "codex": {
+    "weekly_limit_units": 3000,
+    "used_this_week_units": 0,
+    "reset_dow": "mon",
+    "reset_hour_utc": 0
+  }
+}
