@@ -36,7 +36,7 @@ PR이 생기면 각 task에 링크를 추가한다. 예제 task는 `tasks/exampl
 | 23 | `T-2026-0023` | `done` | Planner -> Implementer -> Benchmark Auditor -> Privacy Auditor -> Deep Reviewer -> Reviewer | merged in PR #1570. |
 | 24 | `T-2026-0024` | `done` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | merged in PR #1577; page metadata recovery landed. |
 | 25 | `T-2026-0025` | `done` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | merged in PR #1579; named MiniLM target landed. |
-| 26 | `T-2026-0026` | `todo` | Planner -> Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1580; Chroma vector-store baseline separated from embedding-model baselines. |
+| 26 | `T-2026-0026` | `in_progress` | Planner -> Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1580; Chroma-backed `naive_baseline` canonical switch, separated from embedding-model baselines. |
 | 27 | `T-2026-0027` | `review` | Planner -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1584; prioritized RAG performance experiment stack captured. |
 | 28 | `T-2026-0028` | `done` | Evaluator -> Benchmark Auditor -> Privacy Auditor -> Reviewer | merged in PR #1619; real100_v2-only guard and aggregate packet landed. |
 | 29 | `T-2026-0029` | `review` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1622; real100_v2 retrieval diagnostics rendered; next experiment points to T-2026-0032 while T-2026-0031 remains page-metadata blocked. |
@@ -2328,30 +2328,34 @@ extraction preserves embedding provenance without local model path leakage.
 
 - ID: T-2026-0026
 - Title: Add Chroma vector-store baseline with parity guard
-- Status: todo
+- Status: in_progress
 - Owner role: Planner -> Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer
 - Created: 2026-05-27
-- Last updated: 2026-05-27
+- Last updated: 2026-05-28
 
 ### Goal
 
-Add Chroma as an explicit vector DB backend baseline without mixing vector DB
-effects with embedding-model effects.
+Add Chroma as the canonical `naive_baseline` vector DB backend without mixing
+vector DB effects with embedding-model effects.
 
 ### Context
 
 - Issue: #1580
-- Current `BIDMATE_INDEX_BACKEND` support is `memory` and `qdrant`.
-- `memory` and `qdrant` are intended to be ranking bit-identical; vector DB
+- Current `BIDMATE_INDEX_BACKEND` support becomes `chroma`, `memory`, and
+  `qdrant`.
+- Chroma is the zero-env baseline backend. `memory` and `qdrant` are explicit
+  control/ops backends.
+- Chroma/memory/Qdrant are intended to be ranking bit-identical; vector DB
   comparison should mainly be latency/scale/ops unless measured ranking drift
   is explicitly documented.
-- Chroma is not implemented today.
 - This is separate from MiniLM/BGE-M3 work: embedding backend/model and vector
   DB backend must remain independent provenance axes.
 
 ### Scope
 
 - Add a `ChromaVectorStore` adapter behind `BIDMATE_INDEX_BACKEND=chroma`.
+- Make `BIDMATE_INDEX_BACKEND=chroma` the default and add
+  `vector_store_backend: chroma` to `naive_baseline`.
 - Document Chroma install, connection, and persistence settings.
 - Add memory-vs-Chroma ranking parity tests, including tie-break behavior.
 - Add a reproducible Chroma baseline command or make target.
@@ -2360,30 +2364,35 @@ effects with embedding-model effects.
 
 ### Non-Goals
 
-- Do not switch the canonical private real-eval baseline by default.
+- Do not refresh committed private real-eval aggregate baselines in this PR.
 - Do not combine Chroma with MiniLM/BGE-M3 embedding changes in one PR.
 - Do not claim quality improvement unless paired same-embedding same-corpus
   deltas prove it.
 
 ### Acceptance Criteria
 
-- [ ] `BIDMATE_INDEX_BACKEND=chroma` builds/loads through the existing
+- [x] `BIDMATE_INDEX_BACKEND=chroma` builds/loads through the existing
   `VectorStore` protocol.
-- [ ] Memory and Chroma rankings are bit-identical in tests, or ranking drift is
+- [x] `naive_baseline` resolves to `vector_store_backend: chroma`.
+- [x] Memory and Chroma rankings are bit-identical in tests, or ranking drift is
   measured and documented as a backend effect.
-- [ ] Chroma eval path records vector DB backend provenance separately from
+- [x] Chroma eval path records vector DB backend provenance separately from
   embedding backend/model provenance.
-- [ ] Docs explain when Chroma is a latency/ops baseline versus a quality
+- [x] Docs explain when Chroma is a latency/ops baseline versus a quality
   changing surface.
+- [x] `make real-eval-v2-chroma` provides a reproducible Chroma private-v2
+  command without refreshing committed baseline aggregates.
 
 ### Validation Commands
 
 ```bash
-python3 -m pytest -q tests/test_vector_store_chroma.py
+python3 -m pytest -q tests/test_vector_store_chroma.py tests/test_vector_store_protocol.py
+python3 -m pytest -q tests/test_naive_baseline_ranking_invariance.py tests/test_api_default_pipeline_regression.py
 python3 -m pytest -q tests/test_vector_store_qdrant.py tests/test_qdrant_integration.py -m "not qdrant_integration"
 python3 scripts/check_doc_links.py --check-all --paths tasks/queue.md docs/plans/T-2026-0026-chroma-vector-baseline.md
 git diff --check
 make check-branch
+REAL_EVAL_ROOT=/Users/hskim/Desktop/projects/BidMate-DocAgent make real-eval-v2-chroma
 ```
 
 ### Evidence Required
@@ -2391,6 +2400,8 @@ make check-branch
 - Parity test output or explicit ranking-drift report.
 - Backend provenance sample that separates `embedding_backend/model` from
   vector DB backend.
+- Chroma private-v2 run command writes to `reports/real100_v2_chroma/` unless
+  `REAL100_V2_CHROMA_REPORT_DIR` is overridden.
 - No private raw artifact or exact local path in committed reports.
 
 ### Related Plan / Issue / PR Links
@@ -2401,19 +2412,17 @@ make check-branch
 
 ### Session Handoff
 
-- Role: Planner
-- Lifecycle stage: todo
-- Branch / worktree: `docs/issue-1580-chroma-vector-baseline-plan` / Codex worktree
-- Current status: issue created and queue/plan entry captured; implementation
-  not started.
-- Files touched: `docs/plans/T-2026-0026-chroma-vector-baseline.md`,
-  `tasks/queue.md`.
-- Commands run: `python3 scripts/check_doc_links.py --check-all --paths tasks/queue.md docs/plans/T-2026-0026-chroma-vector-baseline.md`; `git diff --check`; `make check-branch`.
-- Results: Chroma baseline is separated as follow-up issue #1580.
+- Role: Implementer
+- Lifecycle stage: in_progress
+- Branch / worktree: `feat/issue-1580-chroma-canonical-baseline` / Codex worktree
+- Current status: implementation in progress for Chroma-backed `naive_baseline`.
+- Files touched: implementation, tests, ADR/docs, queue.
+- Commands run: `make -n real-eval-v2-chroma`; `python3 -m py_compile rag_vector_store.py rag_indexing.py rag_pipeline_presets.py rag_core.py eval/run_eval.py scripts/run_real_eval_delta.py scripts/compare_eval.py app.py api/main.py`; `python3 -m pytest -q tests/test_vector_store_chroma.py tests/test_vector_store_protocol.py tests/test_full_dense_control_row_regression.py tests/test_eval_metrics.py`; `python3 -m pytest -q tests/test_naive_baseline_ranking_invariance.py tests/test_api_default_pipeline_regression.py`; `python3 -m pytest -q tests/test_vector_store_qdrant.py tests/test_qdrant_integration.py -m "not qdrant_integration"`; `python3 -m pytest -q tests/test_run_real_eval_delta.py tests/test_compare_eval_regression_gate.py tests/test_run_manifest_versioning_regression.py tests/test_provenance_banner.py`; `python3 scripts/check_doc_links.py --check-all --paths docs/plans/T-2026-0026-chroma-vector-baseline.md tasks/queue.md docs/evaluation/surface-map.md docs/evaluation/private_real_eval_workflow.md docs/adr/README.md docs/adr/0081-chroma-backed-naive-baseline.md CLAUDE.md AGENTS.md`; `REAL_EVAL_ROOT=/Users/hskim/Desktop/projects/BidMate-DocAgent make real-eval-v2-check`; `make real-eval-v2-guard`; `git diff --check`; `make check-branch`.
+- Results: focused tests and docs/branch gates passed; private v2 path check and guard passed. Full `make real-eval-v2-chroma` was not completed in this task because private aggregate refresh remains a follow-up.
 - Blockers: none known.
-- Open risks: Chroma may not be ranking bit-identical to the memory backend;
-  dependency/install cost may affect CI and local developer setup.
-- Next action: implement Chroma adapter in a separate issue-linked PR.
+- Open risks: dependency/install cost may affect CI or local developer setup.
+- Next action: open implementation PR without refreshing private baseline
+  aggregates.
 - Next safe command: `git status --short`
 - Reviewer focus: backend axis separation, parity guard, no mixed embedding
   claim.

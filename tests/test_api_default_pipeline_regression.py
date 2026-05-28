@@ -102,5 +102,26 @@ class ApiDefaultPipelineTest(unittest.TestCase):
         self.assertNotEqual(api_main.DEFAULT_API_PIPELINE, config["primary_run"])
 
 
+def test_api_startup_honors_index_backend_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_load_index(index_dir: Path, *, vector_store_backend: str | None = None):
+        captured["index_dir"] = index_dir
+        captured["vector_store_backend"] = vector_store_backend
+        return {
+            "chunks": [],
+            "documents": [],
+            "_vector_store_backend": vector_store_backend,
+        }
+
+    monkeypatch.setenv("BIDMATE_INDEX_BACKEND", "memory")
+    monkeypatch.setattr(api_main, "load_index", fake_load_index)
+
+    with TestClient(api_main.app):
+        pass
+
+    assert captured["vector_store_backend"] == "memory"
+
+
 if __name__ == "__main__":
     unittest.main()

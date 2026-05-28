@@ -107,7 +107,7 @@ def test_qdrant_backend_switchable_from_memory_sidecar(
     """A user who built the index with ``memory`` (default) can switch
     to ``qdrant`` on a subsequent load without rebuilding."""
     # Build + persist under the default ``memory`` backend.
-    monkeypatch.delenv(ENV_INDEX_BACKEND, raising=False)
+    monkeypatch.setenv(ENV_INDEX_BACKEND, "memory")
     memory_store = vector_store_from_matrix(matrix)
     memory_store.persist(tmp_path)
     # Now load under ``qdrant`` and expect the same vectors.
@@ -159,7 +159,7 @@ def test_qdrant_query_matches_in_memory_top_k_ranking(
     exactly match ``InMemoryVectorStore.query`` — both indices and
     scores. Guards against off-by-one and tie-break drift between
     the two backends."""
-    monkeypatch.delenv(ENV_INDEX_BACKEND, raising=False)
+    monkeypatch.setenv(ENV_INDEX_BACKEND, "memory")
     memory_store = vector_store_from_matrix(matrix)
     monkeypatch.setenv(ENV_INDEX_BACKEND, "qdrant")
     qdrant_store = vector_store_from_matrix(matrix)
@@ -242,7 +242,7 @@ def test_qdrant_query_matches_in_memory_at_moderate_scale(
     against silent HNSW activation, distance-metric drift, or upsert /
     point-id misalignment that the 6 x 4 Stage 2b parity test cannot
     surface."""
-    monkeypatch.delenv(ENV_INDEX_BACKEND, raising=False)
+    monkeypatch.setenv(ENV_INDEX_BACKEND, "memory")
     memory_store = vector_store_from_matrix(clustered_matrix)
     monkeypatch.setenv(ENV_INDEX_BACKEND, "qdrant")
     qdrant_store = vector_store_from_matrix(clustered_matrix)
@@ -341,11 +341,10 @@ def test_make_qdrant_client_treats_other_strings_as_filesystem_path(
 def test_qdrant_url_ignored_when_index_backend_is_memory(
     matrix: np.ndarray, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """ADR 0001 baseline preservation. Even with BIDMATE_QDRANT_URL
-    pointing at a remote, BIDMATE_INDEX_BACKEND=memory (default) must
-    keep the in-memory path — the URL only activates once qdrant is
-    opted into."""
-    monkeypatch.delenv(ENV_INDEX_BACKEND, raising=False)
+    """Even with BIDMATE_QDRANT_URL pointing at a remote,
+    BIDMATE_INDEX_BACKEND=memory must keep the in-memory path — the URL
+    only activates once qdrant is opted into."""
+    monkeypatch.setenv(ENV_INDEX_BACKEND, "memory")
     monkeypatch.setenv(ENV_QDRANT_URL, "http://should-not-be-reached:6333")
     store = vector_store_from_matrix(matrix)
     assert not isinstance(store, QdrantVectorStore)

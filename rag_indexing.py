@@ -432,6 +432,7 @@ def build_index_payload_from_documents(
         }
         for doc in documents
     ]
+    store = vector_store_from_matrix(vectors_matrix)
     return {
         "schema_version": INDEX_SCHEMA_VERSION,
         "mode": "rag",
@@ -453,11 +454,12 @@ def build_index_payload_from_documents(
         "documents": public_docs,
         "parent_sections": parent_sections,
         "chunks": chunks,
-        "_vector_store": vector_store_from_matrix(vectors_matrix),
+        "_vector_store": store,
+        "_vector_store_backend": getattr(store, "backend_name", "unknown"),
     }
 
 
-def load_index(index_dir: Path) -> dict[str, Any]:
+def load_index(index_dir: Path, vector_store_backend: str | None = None) -> dict[str, Any]:
     path = index_dir / INDEX_FILENAME
     if not path.exists():
         raise ValueError(f"RAG index not found: {path}. Run scripts/build_index.py first.")
@@ -475,14 +477,28 @@ def load_index(index_dir: Path) -> dict[str, Any]:
     # load_vector_store has read the inline lists.
     if schema < INDEX_SCHEMA_VERSION:
         payload["_vector_store"] = load_vector_store(
-            index_dir, schema, chunks=payload["chunks"]
+            index_dir,
+            schema,
+            chunks=payload["chunks"],
+            backend=vector_store_backend,
         )
         if payload["_vector_store"] is not None:
             for idx, chunk in enumerate(payload["chunks"]):
                 chunk["embedding_idx"] = idx
                 chunk.pop("embedding", None)
     else:
-        payload["_vector_store"] = load_vector_store(index_dir, schema)
+        payload["_vector_store"] = load_vector_store(
+            index_dir,
+            schema,
+            backend=vector_store_backend,
+        )
+    store = payload.get("_vector_store")
+    if store is not None:
+        payload["_vector_store_backend"] = getattr(
+            store,
+            "backend_name",
+            vector_store_backend or "unknown",
+        )
     return payload
 
 
@@ -499,6 +515,7 @@ def write_index(payload: dict[str, Any], output_dir: Path) -> Path:
     store = payload.pop("_vector_store", None)
     if store is not None:
         store.persist(output_dir)
+    payload.pop("_vector_store_backend", None)
     out_path = output_dir / INDEX_FILENAME
     out_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     return out_path

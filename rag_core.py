@@ -74,6 +74,7 @@ from rag_pipeline_presets import (
     VALID_RETRIEVAL_BACKENDS,
     VALID_RETRIEVAL_MODES,
     VALID_RRF_K_RANGE,
+    VALID_VECTOR_STORE_BACKENDS,
     canonical_pipeline_name,
     is_pipeline_name,
     pipeline_cli_choices,
@@ -537,6 +538,7 @@ class _RunContext:
     verifier_retry: bool
     retrieval_mode: str
     retrieval_backend: str
+    vector_store_backend: str
     pipeline_name: str
     prompt_profile: str
     rrf_k: int
@@ -670,6 +672,7 @@ def _build_run_context(
     verifier_retry_val = bool(pipeline_config["verifier_retry"])
     retrieval_mode_val = str(pipeline_config["retrieval_mode"])
     retrieval_backend_val = str(pipeline_config["retrieval_backend"])
+    vector_store_backend_val = str(index.get("_vector_store_backend") or pipeline_config["vector_store_backend"])
     pipeline_name = str(pipeline_config["pipeline"])
     prompt_profile_val = str(pipeline_config["prompt_profile"])
     rrf_k_val = int(pipeline_config["rrf_k"])
@@ -692,6 +695,7 @@ def _build_run_context(
         pipeline=pipeline_name,
         prompt_profile=prompt_profile_val,
         retrieval_backend=retrieval_backend_val,
+        vector_store_backend=vector_store_backend_val,
         retrieval_mode=retrieval_mode_val,
         top_k=requested_top_k,
         cold_start=cold_start,
@@ -714,6 +718,7 @@ def _build_run_context(
                     "prompt_profile": prompt_profile_val,
                     "embedding_backend": index.get("embedding", {}).get("backend"),
                     "retrieval_backend": retrieval_backend_val,
+                    "vector_store_backend": vector_store_backend_val,
                     "retrieval_mode": retrieval_mode_val,
                     "metadata_first": metadata_first_val,
                     "rerank": rerank_val,
@@ -749,6 +754,7 @@ def _build_run_context(
         verifier_retry=verifier_retry_val,
         retrieval_mode=retrieval_mode_val,
         retrieval_backend=retrieval_backend_val,
+        vector_store_backend=vector_store_backend_val,
         pipeline_name=pipeline_name,
         prompt_profile=prompt_profile_val,
         rrf_k=rrf_k_val,
@@ -1188,6 +1194,7 @@ def _phase_build_answer(ctx: _RunContext) -> dict[str, Any]:
         "verifier_retry": ctx.verifier_retry,
         "retrieval_mode": ctx.retrieval_mode,
         "retrieval_backend": ctx.retrieval_backend,
+        "vector_store_backend": ctx.vector_store_backend,
         "rrf_k": int(ctx.rrf_k),
         "bm25_stopword_profile": ctx.bm25_stopword_profile,
         "bm25_backend": ctx.bm25_backend,

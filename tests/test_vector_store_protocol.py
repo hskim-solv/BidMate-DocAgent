@@ -31,6 +31,11 @@ def matrix() -> np.ndarray:
     return m
 
 
+@pytest.fixture(autouse=True)
+def _memory_backend(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(ENV_INDEX_BACKEND, "memory")
+
+
 def test_in_memory_store_basic_shape(matrix: np.ndarray) -> None:
     store = vector_store_from_matrix(matrix)
     assert isinstance(store, VectorStore)
@@ -103,7 +108,7 @@ def test_in_memory_query_clamps_top_k_to_n(matrix: np.ndarray) -> None:
 def test_in_memory_query_empty_store_returns_empty(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.delenv(ENV_INDEX_BACKEND, raising=False)
+    monkeypatch.setenv(ENV_INDEX_BACKEND, "memory")
     empty = np.zeros((0, 4), dtype=np.float32)
     store = vector_store_from_matrix(empty)
     assert store.query(np.zeros(4, dtype=np.float32), top_k=5) == []

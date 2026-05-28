@@ -223,6 +223,21 @@ as a dense semantic retrieval baseline or performance claim. Use
 `make real-eval-minilm` for the named MiniLM baseline, and `make
 real-eval-semantic` for the BGE-M3 comparison surface.
 
+The canonical `naive_baseline` vector-store backend is Chroma (ADR 0081).
+`run_manifest.vector_store_backend` must be read alongside embedding
+backend/model provenance before comparing aggregate runs. `memory` and `qdrant`
+runs are backend controls, not replacement private baselines, unless produced
+as separate paired same-config runs.
+
+For a reproducible Chroma-backed private v2 eval run that does not overwrite the
+committed baseline aggregate path:
+
+```bash
+REAL_EVAL_ROOT=/Users/hskim/Desktop/projects/BidMate-DocAgent make real-eval-v2-chroma
+```
+
+By default this writes local output under `reports/real100_v2_chroma/`.
+
 To write the committable aggregate candidate after review:
 
 ```bash

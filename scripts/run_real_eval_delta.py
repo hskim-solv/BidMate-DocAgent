@@ -96,6 +96,7 @@ SAFE_TOPLEVEL_KEYS = frozenset(
         "pipeline",
         "primary_run",
         "prompt_profile",
+        "vector_store_backend",
         "top_k",
         # Run-state metadata (no per-case content). Surfaces eval-vs-baseline
         # commit skew in the rendered delta — see issue #160. Sub-keys are
@@ -285,6 +286,7 @@ SAFE_RUN_MANIFEST_KEYS = (
     "embedding_backend",
     "embedding_model_id",
     "embedding_dim",
+    "vector_store_backend",
 )
 SAFE_RUN_MANIFEST_NESTED_KEYS = {
     "environment": (

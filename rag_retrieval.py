@@ -574,8 +574,10 @@ def retrieve_candidates(
     # ``query_by_indices``. The previous unconditional
     # ``query(top_k=len(vector_store))`` defeated server-side top-K
     # backends (Qdrant) and wasted O(N) work on every filtered query.
-    # We retain the full-fetch path for the no-filter / fallback case
-    # because the loop still needs scores for every candidate.
+    # For the dense/no-rerank floor (``naive_baseline``), the loop only
+    # needs the final dense top-K, so the canonical Chroma path asks the
+    # vector store for that top-K directly instead of doing a full-corpus
+    # query and then slicing later.
     raw_cosine_by_idx: dict[int, float] = {}
     if vector_store is not None and len(vector_store) > 0:
         candidate_indices = [
@@ -592,6 +594,24 @@ def retrieve_candidates(
                 query_embedding, candidate_indices
             ):
                 raw_cosine_by_idx[int(idx)] = float(raw)
+        elif (
+            retrieval_backend == "dense"
+            and not plan.get("rerank", True)
+            and str(plan.get("retrieval_mode") or "flat") == "flat"
+        ):
+            dense_top_k = int(plan.get("top_k") or len(vector_store))
+            dense_hits = vector_store.query(query_embedding, top_k=dense_top_k)
+            raw_cosine_by_idx = {int(idx): float(raw) for idx, raw in dense_hits}
+            chunk_by_embedding_idx = {
+                int(c["embedding_idx"]): c
+                for c in candidates
+                if c.get("embedding_idx") is not None
+            }
+            candidates = [
+                chunk_by_embedding_idx[idx]
+                for idx, _raw in dense_hits
+                if idx in chunk_by_embedding_idx
+            ]
         else:
             for idx, raw in vector_store.query(
                 query_embedding, top_k=len(vector_store)

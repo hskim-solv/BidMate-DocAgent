@@ -292,6 +292,14 @@ class EvalProvenanceTest(unittest.TestCase):
             ["run", "config", "index", "dataset"],
         )
 
+    def test_vector_store_only_does_not_satisfy_index_provenance(self) -> None:
+        summary = dict(
+            _base_summary(),
+            run_manifest={"vector_store_backend": "chroma"},
+        )
+
+        self.assertIn("index", missing_required_provenance(summary))
+
     def test_dataset_counts_without_identity_do_not_satisfy_required_provenance(self) -> None:
         summary = _provenanced_summary(
             dataset_summary={
@@ -535,7 +543,10 @@ class CompareEvalCliGateTest(unittest.TestCase):
             f"config=`path={_path_label('/Users/hskim/private/real_config.local.yaml')}`",
             result.stdout,
         )
-        self.assertIn("index=`embedding=local/model.bin`", result.stdout)
+        self.assertIn(
+            "index=`embedding=local/model.bin · vector_store=unknown`",
+            result.stdout,
+        )
         self.assertIn(
             f"dataset=`path={_path_label('file:///Users/hskim/private/questions.jsonl')}`",
             result.stdout,

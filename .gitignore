@@ -50,6 +50,7 @@ configs/eval/*.local.yaml
 원본 데이터/
 .cache/
 .cache/real_eval/
+.chroma/
 *.sqlite
 *.sqlite3
 *.db

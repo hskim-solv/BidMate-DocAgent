@@ -203,7 +203,12 @@ def eval_rows(index: Any, config: dict[str, Any], index_dir: str | Path | None) 
         else:
             rows.append(("index.text_source", text_src, OK, None))
 
-    rows.append(("vector_store", _env("BIDMATE_INDEX_BACKEND", "memory"), OK, None))
+    rows.append((
+        "vector_store",
+        str(index.get("_vector_store_backend") or _env("BIDMATE_INDEX_BACKEND", "chroma")),
+        OK,
+        None,
+    ))
 
     backends = sorted({
         str(r.get("retrieval_backend", "dense"))

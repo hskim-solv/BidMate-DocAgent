@@ -85,6 +85,10 @@ PIPELINE_CONFIG_KEYS = (
     # Mirrors the ``BIDMATE_QUERY_EXPANSION_BACKEND`` / ``BIDMATE_SYNTHESIS_BACKEND``
     # env-var opt-in pattern (ADR 0011, ADR 0023).
     "planner_backend",
+    # ADR 0081 — vector-store backend is now an explicit pipeline contract
+    # key. The canonical zero-env baseline runs on Chroma; memory/qdrant
+    # remain explicit control/ops backends.
+    "vector_store_backend",
 )
 
 DEFAULT_COMPARISON_BALANCE: dict[str, Any] = {
@@ -119,9 +123,10 @@ PIPELINE_PRESETS: dict[str, dict[str, Any]] = {
         # ADR 0001 invariant — naive_baseline MUST stay at identity. Any
         # change here breaks the bit-identical top-K golden test.
         "query_expansion": "identity",
+        "vector_store_backend": "chroma",
         "description": (
-            "Fixed-size chunks with dense top-k retrieval only; no metadata-first "
-            "filtering, reranking, or verifier retry."
+            "Fixed-size chunks with Chroma-backed dense top-k retrieval only; "
+            "no metadata-first filtering, reranking, or verifier retry."
         ),
     },
     "agentic_full": {
@@ -348,6 +353,7 @@ VALID_QUERY_EXPANSIONS = {"identity", "hyde"}
 # "static" (default) → StaticPlanner (make_plan, deterministic, no LLM).
 # "anthropic" → LLMPlanner (Anthropic SDK multi-turn, BIDMATE_PLANNER_BACKEND=anthropic).
 VALID_PLANNER_BACKENDS = {"static", "anthropic"}
+VALID_VECTOR_STORE_BACKENDS = {"chroma", "memory", "qdrant"}
 
 
 def resolve_pipeline_config(
@@ -411,6 +417,10 @@ def resolve_pipeline_config(
     if query_expansion not in VALID_QUERY_EXPANSIONS:
         choices = ", ".join(sorted(VALID_QUERY_EXPANSIONS))
         raise ValueError(f"query_expansion must be one of: {choices}")
+    vector_store_backend = str(config.get("vector_store_backend") or "chroma").lower()
+    if vector_store_backend not in VALID_VECTOR_STORE_BACKENDS:
+        choices = ", ".join(sorted(VALID_VECTOR_STORE_BACKENDS))
+        raise ValueError(f"vector_store_backend must be one of: {choices}")
 
     config["top_k"] = top_k
     config["metadata_first"] = bool(config.get("metadata_first"))
@@ -425,4 +435,5 @@ def resolve_pipeline_config(
     config["bm25_tokenizer"] = bm25_tokenizer
     config["bm25_backend"] = bm25_backend
     config["query_expansion"] = query_expansion
+    config["vector_store_backend"] = vector_store_backend
     return config

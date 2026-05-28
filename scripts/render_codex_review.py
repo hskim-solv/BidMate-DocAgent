@@ -1,4 +1,4 @@
-"""Render Codex adversarial review JSON output into PR comment + check run artifacts.
+"""Render Codex adversarial review JSON output into markdown/check artifacts.
 
 The Codex companion (`codex-companion.mjs adversarial-review --json`) emits a payload
 with shape:
@@ -21,8 +21,8 @@ with shape:
     }
 
 This script turns that payload into:
-  --output            : full PR comment markdown
-  --check-summary     : 50-line summary for GitHub check run
+  --output            : full rendered markdown
+  --check-summary     : 50-line summary for automation/check consumers
   --check-conclusion  : single word "success" | "neutral"
 
 Branching rules:

@@ -303,11 +303,17 @@ def eval_provenance_summary(summary: dict) -> dict[str, str]:
         "model_config.model",
         "embedding.model",
     )
+    vector_store_backend = _first_present(
+        summary,
+        "run_manifest.vector_store_backend",
+        "vector_store_backend",
+    )
     index_dir = _first_present(summary, "index_dir")
-    if _present(embedding_backend) or _present(embedding_model):
+    if _present(embedding_backend) and _present(embedding_model):
         index = (
             f"embedding={_privacy_safe_scalar(embedding_backend)}/"
-            f"{_privacy_safe_scalar(embedding_model)}"
+            f"{_privacy_safe_scalar(embedding_model)} · "
+            f"vector_store={_privacy_safe_scalar(vector_store_backend)}"
         )
     elif _present(index_dir):
         index = f"path={_path_provenance_label(index_dir)}"
