@@ -9123,6 +9123,7 @@ def write_active_auto_loop(
     repair_slug: str = "active-start",
     repair_title: str = "Agent loop active start",
     codex_executable: str = "codex",
+    auth_mode: str = "chatgpt",
     sandbox: str = "read-only",
     max_parallel: int = 8,
     timeout_seconds: int = 0,
@@ -9200,6 +9201,7 @@ def write_active_auto_loop(
         runner = write_active_codex_runner(
             execute=execute_runner,
             codex_executable=codex_executable,
+            auth_mode=auth_mode,
             sandbox=sandbox,
             max_parallel=max_parallel,
             timeout_seconds=timeout_seconds,
@@ -10078,6 +10080,8 @@ def write_active_codex_runner(
     mode: str = "read-only",
     task_id: str | None = None,
     base: str = "origin/main",
+    auth_mode: str = "chatgpt",
+    auth_runner=None,
 ) -> ActiveCodexRunnerResult:
     """Plan or spawn Codex processes for the active loop.
 
@@ -10099,6 +10103,8 @@ def write_active_codex_runner(
         raise ValueError("--sandbox must be read-only, workspace-write, or danger-full-access")
     if mode not in {"read-only", "patch"}:
         raise ValueError("--mode must be read-only or patch")
+    if auth_mode not in {"chatgpt", "any"}:
+        raise ValueError("--auth-mode must be chatgpt or any")
     registry_path = _active_path(registry, repo_root=repo_root)
     assignments_path = _active_path(assignments_dir, repo_root=repo_root)
     runs_path = _active_path(runs_dir, repo_root=repo_root)
@@ -10117,6 +10123,8 @@ def write_active_codex_runner(
             execute=execute,
             timeout_seconds=timeout_seconds,
             codex_executable=codex_executable,
+            auth_mode=auth_mode,
+            auth_runner=auth_runner,
             repo_root=repo_root,
             popen_factory=popen_factory,
             which_func=which_func,
@@ -10126,6 +10134,7 @@ def write_active_codex_runner(
     blockers: list[str] = []
     warnings: list[str] = []
     planned: list[dict[str, object]] = []
+    auth_status = "not checked"
     requested_sessions = _parse_active_session_filter(sessions)
     registry_payload: dict[str, object] = {}
 
@@ -10178,7 +10187,23 @@ def write_active_codex_runner(
         resolved_executable = which(codex_executable)
         if not resolved_executable:
             blockers.append(f"codex executable not found: {codex_executable}")
+        elif not blockers:
+            auth_status, auth_blockers, auth_warnings = _active_codex_auth_check(
+                auth_mode=auth_mode,
+                codex_executable=resolved_executable,
+                execute=execute,
+                runner=auth_runner,
+            )
+            blockers.extend(auth_blockers)
+            warnings.extend(auth_warnings)
     else:
+        auth_status, _, auth_warnings = _active_codex_auth_check(
+            auth_mode=auth_mode,
+            codex_executable=codex_executable,
+            execute=execute,
+            runner=auth_runner,
+        )
+        warnings.extend(auth_warnings)
         warnings.append("dry-run only; pass --execute or ACTIVE_CODEX_EXECUTE=1 to spawn Codex processes")
 
     decision = "blocked" if blockers else ("running" if execute else "planned")
@@ -10294,6 +10319,8 @@ def write_active_codex_runner(
         "generated_at": _isoformat(datetime.now(timezone.utc)),
         "execute": execute,
         "decision": decision,
+        "auth_mode": auth_mode,
+        "auth_status": auth_status,
         "sandbox": sandbox,
         "timeout_seconds": timeout_seconds,
         "registry": _repo_path(registry_path, repo_root),
@@ -10312,6 +10339,8 @@ def write_active_codex_runner(
             "event": "active-codex-runner",
             "execute": execute,
             "decision": decision,
+            "auth_mode": auth_mode,
+            "auth_status": auth_status,
             "sandbox": sandbox,
             "sessions": [item["session_id"] for item in planned],
             "blockers": blockers,
@@ -10321,6 +10350,8 @@ def write_active_codex_runner(
     rendered = render_active_codex_runner(
         decision=decision,
         execute=execute,
+        auth_mode=auth_mode,
+        auth_status=auth_status,
         sandbox=sandbox,
         sessions=planned,
         heartbeats=heartbeat_events,
@@ -10401,6 +10432,8 @@ def _write_active_codex_patch(
     execute: bool,
     timeout_seconds: int,
     codex_executable: str,
+    auth_mode: str,
+    auth_runner,
     repo_root: Path,
     popen_factory=None,
     which_func=None,
@@ -10418,6 +10451,7 @@ def _write_active_codex_patch(
     agent = "codex"
     blockers: list[str] = []
     warnings: list[str] = []
+    auth_status = "not checked"
     verdict = "error"
     diff_text = ""
     scratch_branch = ""
@@ -10463,7 +10497,23 @@ def _write_active_codex_patch(
     resolved_executable = which(codex_executable) if execute else codex_executable
     if execute and not resolved_executable:
         blockers.append(f"codex executable not found: {codex_executable}")
+    elif execute and not blockers:
+        auth_status, auth_blockers, auth_warnings = _active_codex_auth_check(
+            auth_mode=auth_mode,
+            codex_executable=str(resolved_executable),
+            execute=execute,
+            runner=auth_runner,
+        )
+        blockers.extend(auth_blockers)
+        warnings.extend(auth_warnings)
     if not execute:
+        auth_status, _, auth_warnings = _active_codex_auth_check(
+            auth_mode=auth_mode,
+            codex_executable=codex_executable,
+            execute=execute,
+            runner=auth_runner,
+        )
+        warnings.extend(auth_warnings)
         warnings.append("dry-run only; pass --execute (or ACTIVE_CODEX_EXECUTE=1) with --mode patch to run the write lane")
 
     run_dir = patch_runs_path / session_id
@@ -10649,6 +10699,8 @@ def _write_active_codex_patch(
         "execute": execute,
         "mode": "patch",
         "decision": decision,
+        "auth_mode": auth_mode,
+        "auth_status": auth_status,
         "sandbox": "workspace-write",
         "task_id": resolved_task,
         "verdict": verdict,
@@ -10666,6 +10718,8 @@ def _write_active_codex_patch(
             "mode": "patch",
             "execute": execute,
             "decision": decision,
+            "auth_mode": auth_mode,
+            "auth_status": auth_status,
             "sandbox": "workspace-write",
             "task_id": resolved_task,
             "verdict": verdict,
@@ -10677,6 +10731,8 @@ def _write_active_codex_patch(
     rendered = render_active_codex_runner(
         decision=decision,
         execute=execute,
+        auth_mode=auth_mode,
+        auth_status=auth_status,
         sandbox="workspace-write",
         sessions=sessions_out,
         heartbeats=(),
@@ -10781,6 +10837,8 @@ def render_active_codex_runner(
     *,
     decision: str,
     execute: bool,
+    auth_mode: str,
+    auth_status: str,
     sandbox: str,
     sessions: Sequence[dict[str, object]],
     heartbeats: Sequence[dict[str, str]],
@@ -10798,9 +10856,12 @@ def render_active_codex_runner(
         "- Spawns read-only `codex exec` processes for agentic sessions; the Eval / Claim / Privacy Auditor gate runs deterministically after run-artifact redaction.",
         "- Separate from `active-start` and `active-loop --execute`; it never calls ship.",
         "- With gate heartbeat recording enabled, completed blocking-role sessions can mark their own pass/clear status from an explicit gate verdict.",
+        "- Default auth policy requires Codex CLI to be logged in with ChatGPT; API-key orchestration is outside this runner.",
         "- Default sandbox is read-only. Use stronger sandboxes only after lease and scope review.",
         f"- Requested execution: `{execute}`",
         f"- Decision: `{decision}`",
+        f"- Auth mode: `{_sanitize_inline_text(auth_mode)}`",
+        f"- Auth status: `{_sanitize_inline_text(auth_status)}`",
         f"- Sandbox: `{_sanitize_inline_text(sandbox)}`",
         "",
         "## Inputs",
@@ -11589,6 +11650,41 @@ def _active_codex_exec_command(
         _repo_path(last_message_path, repo_root),
         "-",
     ]
+
+
+def _active_codex_auth_check(
+    *,
+    auth_mode: str,
+    codex_executable: str,
+    execute: bool,
+    runner=None,
+) -> tuple[str, list[str], list[str]]:
+    if auth_mode == "any":
+        return "skipped (auth-mode any)", [], ["Codex auth source check skipped because --auth-mode any was requested"]
+    if auth_mode != "chatgpt":
+        return f"invalid auth mode: {auth_mode}", [f"unsupported Codex auth mode: {auth_mode}"], []
+    if not execute:
+        return "not checked (dry-run; ChatGPT login required on execute)", [], [
+            "Codex ChatGPT login will be checked when --execute is requested"
+        ]
+
+    run = runner if runner is not None else subprocess.run
+    command = [codex_executable, "login", "status"]
+    try:
+        proc = run(command, capture_output=True, text=True, check=False)
+    except OSError as exc:
+        return f"login status failed: {exc}", [f"codex login status failed for ChatGPT auth guard: {exc}"], []
+
+    stdout = str(getattr(proc, "stdout", "") or "")
+    stderr = str(getattr(proc, "stderr", "") or "")
+    rc = int(getattr(proc, "returncode", 1) or 0)
+    combined = "\n".join(part.strip() for part in (stdout, stderr) if part.strip())
+    summary = _sanitize_inline_text(combined.splitlines()[0] if combined.splitlines() else f"rc={rc}")
+    if rc != 0:
+        return summary, [f"codex login status failed for ChatGPT auth guard (rc={rc}): {summary}"], []
+    if "Logged in using ChatGPT" not in stdout:
+        return summary, [f"Codex auth mode requires ChatGPT login; got: {summary}"], []
+    return "Logged in using ChatGPT", [], []
 
 
 def _active_codex_display_command(command: Sequence[str]) -> list[str]:
@@ -13355,6 +13451,7 @@ def build_parser() -> argparse.ArgumentParser:
     codex_runner.add_argument("--max-parallel", type=int, default=8)
     codex_runner.add_argument("--timeout-seconds", type=int, default=0, help="Per-session wait timeout; 0 means no timeout.")
     codex_runner.add_argument("--codex-executable", default="codex")
+    codex_runner.add_argument("--auth-mode", choices=("chatgpt", "any"), default="chatgpt", help="Require Codex ChatGPT login before execute, or use any to skip the auth-source guard.")
     codex_runner.add_argument("--sandbox", choices=("read-only", "workspace-write", "danger-full-access"), default="read-only")
     codex_runner.add_argument("--mode", choices=("read-only", "patch"), default="read-only", help="read-only spawns per-session review processes; patch runs one codex write-lane in a scratch worktree.")
     codex_runner.add_argument("--task", help="Task id for patch mode (T-YYYY-NNNN); defaults to the Implementer session's task.")
@@ -13381,6 +13478,7 @@ def build_parser() -> argparse.ArgumentParser:
     auto_loop.add_argument("--repair-slug", default="active-start")
     auto_loop.add_argument("--repair-title", default="Agent loop active start")
     auto_loop.add_argument("--codex-executable", default="codex")
+    auto_loop.add_argument("--auth-mode", choices=("chatgpt", "any"), default="chatgpt")
     auto_loop.add_argument("--sandbox", choices=("read-only", "workspace-write", "danger-full-access"), default="read-only")
     auto_loop.add_argument("--max-parallel", type=int, default=8)
     auto_loop.add_argument("--timeout-seconds", type=int, default=0)
@@ -14312,6 +14410,7 @@ def main(argv: list[str] | None = None) -> int:
                 max_parallel=args.max_parallel,
                 timeout_seconds=args.timeout_seconds,
                 codex_executable=args.codex_executable,
+                auth_mode=args.auth_mode,
                 sandbox=args.sandbox,
                 mode=args.mode,
                 task_id=args.task,
@@ -14346,6 +14445,7 @@ def main(argv: list[str] | None = None) -> int:
                 repair_slug=args.repair_slug,
                 repair_title=args.repair_title,
                 codex_executable=args.codex_executable,
+                auth_mode=args.auth_mode,
                 sandbox=args.sandbox,
                 max_parallel=args.max_parallel,
                 timeout_seconds=args.timeout_seconds,

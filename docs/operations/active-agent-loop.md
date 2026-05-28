@@ -174,6 +174,16 @@ make agent-loop-active-codex-runner
 make agent-loop-active-codex-runner ACTIVE_CODEX_EXECUTE=1
 ```
 
+기본 인증 정책은 Codex CLI의 **ChatGPT login** 기반 구독제 경로다. Execute mode는
+spawn 전에 `codex login status`가 `Logged in using ChatGPT`를 보고하는지 확인하고,
+API-key login, 미로그인, 인증 오류는 fail-closed 한다. Dry-run은 인증 출처를 확인하지
+않지만 report/state에 `auth_mode`와 `auth_status`를 남긴다. 임시 우회가 필요하면
+`ACTIVE_CODEX_AUTH_MODE=any`를 명시한다.
+
+OpenAI Agents SDK orchestrator는 `OPENAI_API_KEY` 기반 API 호출 경로이므로 이 runner의
+기본 운영 모델에서 제외한다. API-key 기반 orchestration을 도입하려면 구독제 runner와
+분리된 issue/ADR에서 비용, 인증, privacy 경계를 다시 고정한다.
+
 runner는 session마다 `reports/agent_loop/active/codex_runs/<session_id>/` 아래에
 `prompt.md`, `stdout.jsonl`, `stderr.log`, `last_message.md`를 둔다. 기본 sandbox는
 `read-only`이고, 각 prompt는 assignment의 read-only 부분만 실행하게 제한한다.
