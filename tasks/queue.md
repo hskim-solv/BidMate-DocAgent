@@ -56,6 +56,16 @@ PR이 생기면 각 task에 링크를 추가한다. 예제 task는 `tasks/exampl
 | 43 | `T-2026-0043` | `backlog` | Implementer -> Reviewer | issue #1588 PR4; mutating-writer + claimed-files enforcement hook; blocked on T-2026-0042. |
 | 44 | `T-2026-0044` | `backlog` | Implementer -> Deep Reviewer -> Reviewer | issue #1588 PR5; Orchestrator-only ship-executor + gate evidence (promote agent_loop.py to LOAD_BEARING); blocked on T-2026-0043. |
 | 45 | `T-2026-0045` | `backlog` | Implementer -> Reviewer | issue #1588 PR6; full active-agent-loop.md ops-doc rewrite; blocked on T-2026-0044. |
+| 46 | `T-2026-0046` | `review` | Planner -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1627; expands the RAG experiment task stack and inserts measurement-driven replanning gates. |
+| 47 | `T-2026-0047` | `backlog` | Evaluator -> Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | P0; repair or explicitly rescope the real100_v2 page metadata blocker before claim-bearing page/window experiments. |
+| 48 | `T-2026-0048` | `backlog` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | P0; candidate-depth and fusion-budget sweep for the `not_observable_limited_depth` retrieval failure bucket. |
+| 49 | `T-2026-0049` | `backlog` | Planner -> Benchmark Auditor -> Privacy Auditor -> Reviewer | P0 replanning gate after T-2026-0030, T-2026-0032, T-2026-0047, and T-2026-0048 evidence. |
+| 50 | `T-2026-0050` | `backlog` | Evaluator -> Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | P1; parser/layout/table coverage experiment for RFP evidence that is not text-searchable enough. |
+| 51 | `T-2026-0051` | `backlog` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | P1; controlled embedding and representation sweep without mixing vector DB backend effects. |
+| 52 | `T-2026-0052` | `backlog` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | P1; generator grounding, citation, prompt, and model-choice calibration after retrieval/context evidence stabilizes. |
+| 53 | `T-2026-0053` | `backlog` | Planner -> Benchmark Auditor -> Privacy Auditor -> Reviewer | P1 replanning gate after context, query, metadata, parser, embedding, and generator experiments. |
+| 54 | `T-2026-0054` | `backlog` | Implementer -> Architect -> Benchmark Auditor -> Privacy Auditor -> Deep Reviewer -> Reviewer | P2; end-to-end bakeoff of the best isolated experiment winners under one aggregate guardrail. |
+| 55 | `T-2026-0055` | `backlog` | Benchmark Auditor -> Privacy Auditor -> Deep Reviewer -> Reviewer | P2; final optimization decision packet and default-change or no-go proposal. |
 
 ## Examples
 
@@ -3566,4 +3576,625 @@ make check-branch
 
 - Plan: TBD - create when the task starts.
 - Issue: [#1588](https://github.com/hskim-solv/BidMate-DocAgent/issues/1588)
+- PR: TBD
+
+## T-2026-0046 — Expand RAG experiment task stack and replanning gates
+
+- ID: T-2026-0046
+- Title: Expand RAG experiment task stack and replanning gates
+- Status: review
+- Priority: P0 planning
+- Owner role: Planner -> Benchmark Auditor -> Privacy Auditor -> Reviewer
+- Created: 2026-05-28
+- Last updated: 2026-05-28
+
+### Goal
+
+Turn the broad RAG optimization backlog into executable experiment tasks that
+can reach a final performance decision through measured iteration rather than a
+single fixed implementation plan.
+
+### Scope
+
+- Add experiment tasks for page metadata unblock, retrieval depth/fusion,
+  parser/layout coverage, embedding/representation, generator grounding,
+  end-to-end bakeoff, and final decision.
+- Insert explicit replanning gates after early retrieval/latency evidence and
+  after the first full P1 experiment round.
+- Keep this PR docs/planning only: no runtime, eval, retrieval, prompt, parser,
+  or index behavior changes.
+
+### Non-Goals
+
+- Do not run private real-eval.
+- Do not claim performance, latency, citation, or production quality improved.
+- Do not create all future GitHub issues before each implementation task starts.
+
+### Acceptance Criteria
+
+- [x] `tasks/queue.md` names concrete experiment tasks and replanning gates.
+- [x] `docs/evaluation/rag-performance-experiment-stack.md` explains the
+  experiment cadence and go/no-go rules.
+- [x] Every new task keeps private outputs aggregate-only and explicitly
+  separates isolated experiment wins from final default-change evidence.
+
+### Validation Commands
+
+```bash
+python3 scripts/check_doc_links.py --check-all --paths tasks/queue.md docs/evaluation/rag-performance-experiment-stack.md docs/plans/T-2026-0046-rag-experiment-task-expansion.md
+git diff --check
+make check-branch
+```
+
+### Evidence Required
+
+- Doc-link validation.
+- Whitespace validation.
+- Branch/issue validation.
+- PR body says planning only, no private real-eval run, and no performance
+  claim.
+
+### Related Plan / Issue / PR Links
+
+- Plan: [`docs/plans/T-2026-0046-rag-experiment-task-expansion.md`](../docs/plans/T-2026-0046-rag-experiment-task-expansion.md)
+- Issue: [#1627](https://github.com/hskim-solv/BidMate-DocAgent/issues/1627)
+- PR: TBD
+
+### Handoff Notes
+
+```markdown
+## Session Handoff - 2026-05-28 KST
+
+- Role: Planner
+- Branch / worktree: docs/issue-1627-rag-experiment-task-stack / /Users/hskim/.codex/worktrees/de70/BidMate-DocAgent
+- Issue / PR: issue #1627 / PR TBD
+- Task: T-2026-0046
+- Current status: experiment task expansion drafted for review.
+- Files touched: tasks/queue.md, docs/evaluation/rag-performance-experiment-stack.md, docs/plans/T-2026-0046-rag-experiment-task-expansion.md
+- Decisions made: keep existing implementation backlog, add explicit experiment execution tasks and replanning gates before final default-change decisions.
+- Commands run: python3 scripts/check_doc_links.py --check-all --paths tasks/queue.md docs/evaluation/rag-performance-experiment-stack.md docs/plans/T-2026-0046-rag-experiment-task-expansion.md; git diff --check; make check-branch.
+- Results: passed.
+- Next safe command: python3 scripts/check_doc_links.py --check-all --paths tasks/queue.md docs/evaluation/rag-performance-experiment-stack.md docs/plans/T-2026-0046-rag-experiment-task-expansion.md
+- Open questions: none.
+- Risks: future agents may skip replanning gates and combine isolated experiment winners prematurely.
+```
+
+## T-2026-0047 — Repair or rescope real100_v2 page metadata blocker
+
+- ID: T-2026-0047
+- Title: Repair or rescope real100_v2 page metadata blocker
+- Status: backlog
+- Priority: P0
+- Owner role: Evaluator -> Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer
+- Created: 2026-05-28
+- Last updated: 2026-05-28
+
+### Goal
+
+Unblock claim-bearing page/window experiments by either repairing `real100_v2`
+page metadata coverage or explicitly proving that the next retrieval experiment
+does not depend on page/window claims.
+
+### Scope
+
+- Audit why `reports/real100_v2/retrieval_diagnostics.aggregate.json` reports
+  page-span coverage `0.0`.
+- Rebuild or repair the private v2 index only if the parser/index provenance can
+  be recorded aggregate-only.
+- Emit a page metadata readiness packet with counts for page span, section, and
+  citation-ready evidence coverage.
+
+### Non-Goals
+
+- Do not change retrieval ranking.
+- Do not use legacy `real100`/v1/221/kordoc evidence as a substitute.
+- Do not claim answer quality improved from metadata repair alone.
+
+### Acceptance Criteria
+
+- [ ] The task either clears the page/window blocker or records an explicit
+  no-go/rescope decision for `T-2026-0031`.
+- [ ] Page metadata coverage is reported as aggregate counts only.
+- [ ] Any index rebuild records parser, embedding, and vector backend
+  provenance.
+
+### Validation Commands
+
+```bash
+REAL_EVAL_ROOT=/Users/hskim/Desktop/projects/BidMate-DocAgent make real-eval-v2-check
+python3 <page-metadata-readiness-script> --index-dir <private-v2-index> --out <aggregate-output>
+make real-eval-v2-guard
+git diff --check
+make check-branch
+```
+
+### Evidence Required
+
+- Aggregate page metadata readiness report.
+- Explicit `T-2026-0031` unblock, keep-blocked, or rescope recommendation.
+
+### Related Plan / Issue / PR Links
+
+- Plan: TBD - create when the task starts.
+- Issue: TBD
+- PR: TBD
+
+## T-2026-0048 — Candidate-depth and fusion-budget retrieval experiment
+
+- ID: T-2026-0048
+- Title: Candidate-depth and fusion-budget retrieval experiment
+- Status: backlog
+- Priority: P0
+- Owner role: Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer
+- Created: 2026-05-28
+- Last updated: 2026-05-28
+
+### Goal
+
+Measure whether the dominant `not_observable_limited_depth` failure bucket is
+fixed by candidate-pool depth, dense/BM25 fusion parameters, or retrieval
+budget, before adding more expensive reranking or query expansion.
+
+### Scope
+
+- Sweep `dense_top_k`, `bm25_top_k`, RRF/fusion parameters, final candidate
+  pool size, and duplicate caps on `real100_v2`.
+- Report Recall@K, Hit@K, all-gold coverage, MRR, nDCG, duplicate rate,
+  metadata-filter candidates, and stage latency.
+- Compare against `T-2026-0032` reranker evidence without combining both changes
+  in one experiment.
+
+### Non-Goals
+
+- Do not reopen hybrid retrieval as a broad "add BM25" claim.
+- Do not change default retrieval behavior.
+- Do not hide citation or answer regressions behind recall-only gains.
+
+### Acceptance Criteria
+
+- [ ] Output classifies each sweep cell as winner, recall-only gain, rank
+  regression, duplicate regression, metadata-filter regression, latency
+  regression, or no-go.
+- [ ] The recommended candidate budget is usable by reranker, query rewrite, and
+  context-packing experiments.
+- [ ] Paired aggregate delta uses only comparable `real100_v2` inputs.
+
+### Validation Commands
+
+```bash
+python3 -m pytest -q tests/test_retrieval*.py tests/test_naive_baseline_ranking_invariance.py <focused-new-tests>
+python3 <candidate-depth-sweep-script> --config <local-v2-config> --out <aggregate-output>
+python3 scripts/run_real_eval_delta.py --base <real100_v2-base-aggregate> --head <variant-aggregate>
+make real-eval-v2-guard
+git diff --check
+make check-branch
+```
+
+### Evidence Required
+
+- Aggregate sweep matrix and go/no-go classification.
+- Explicit latency/cost result from `T-2026-0030`.
+
+### Related Plan / Issue / PR Links
+
+- Plan: TBD - create when the task starts.
+- Issue: TBD
+- PR: TBD
+
+## T-2026-0049 — Round 1 experiment synthesis and plan adjustment
+
+- ID: T-2026-0049
+- Title: Round 1 experiment synthesis and plan adjustment
+- Status: backlog
+- Priority: P0 replanning
+- Owner role: Planner -> Benchmark Auditor -> Privacy Auditor -> Reviewer
+- Created: 2026-05-28
+- Last updated: 2026-05-28
+
+### Goal
+
+Reorder the experiment stack after the first measurement round instead of
+blindly executing every backlog item in its original order.
+
+### Scope
+
+- Synthesize evidence from `T-2026-0030`, `T-2026-0032`, `T-2026-0047`, and
+  `T-2026-0048`.
+- Decide whether to run `T-2026-0031`, `T-2026-0033`, `T-2026-0034`,
+  `T-2026-0035`, `T-2026-0037`, or `T-2026-0050` next.
+- Update queue statuses, blockers, and next-safe commands without changing
+  runtime behavior.
+
+### Non-Goals
+
+- Do not average incompatible experiment outputs.
+- Do not promote a default behavior.
+- Do not treat no-go results as failures; they are valid pruning evidence.
+
+### Acceptance Criteria
+
+- [ ] The synthesis identifies the dominant remaining bottleneck and the next
+  two executable experiments.
+- [ ] Any blocked task names its exact missing evidence.
+- [ ] Queue and experiment-stack docs are updated with no performance claim.
+
+### Validation Commands
+
+```bash
+python3 scripts/check_doc_links.py --check-all --paths tasks/queue.md docs/evaluation/rag-performance-experiment-stack.md <synthesis-report-path>
+git diff --check
+make check-branch
+```
+
+### Evidence Required
+
+- Aggregate-only synthesis report.
+- Queue diff that promotes, blocks, or retires follow-up experiments.
+
+### Related Plan / Issue / PR Links
+
+- Plan: TBD - create when the task starts.
+- Issue: TBD
+- PR: TBD
+
+## T-2026-0050 — Parser, layout, and table coverage experiment
+
+- ID: T-2026-0050
+- Title: Parser, layout, and table coverage experiment
+- Status: backlog
+- Priority: P1
+- Owner role: Evaluator -> Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer
+- Created: 2026-05-28
+- Last updated: 2026-05-28
+
+### Goal
+
+Test whether answer misses are caused by parser/layout/table extraction limits
+rather than retriever or generator behavior.
+
+### Scope
+
+- Audit private aggregate slices for table-heavy, clause-numbered, multi-column,
+  scanned/OCR, and attachment-like RFP evidence.
+- Compare current parser/index output against one opt-in parser or layout
+  extraction variant.
+- Record coverage, citation-readiness, retrieval metrics, answer metrics,
+  parser latency, and failure-mode movement.
+
+### Non-Goals
+
+- Do not replace the default ingestion pipeline.
+- Do not commit raw private document text, filenames, page images, or local
+  paths.
+- Do not combine parser changes with reranking, query rewrite, or prompt
+  changes.
+
+### Acceptance Criteria
+
+- [ ] Aggregate report separates parser coverage failures from retrieval ranking
+  failures.
+- [ ] Any parser variant is opt-in and has isolated index/report paths.
+- [ ] If parser evidence is weak, the task records no-go and returns focus to
+  retrieval/context experiments.
+
+### Validation Commands
+
+```bash
+python3 <parser-coverage-audit> --config <local-v2-config> --out <aggregate-output>
+python3 -m pytest -q <focused-parser-tests>
+python3 <parser-variant-runner> --variant <name> --summary-out <aggregate-output>
+python3 scripts/run_real_eval_delta.py --base <real100_v2-base-aggregate> --head <variant-aggregate>
+git diff --check
+make check-branch
+```
+
+### Evidence Required
+
+- Parser/layout aggregate report.
+- Privacy audit result for any committed aggregate.
+
+### Related Plan / Issue / PR Links
+
+- Plan: TBD - create when the task starts.
+- Issue: TBD
+- PR: TBD
+
+## T-2026-0051 — Embedding and representation controlled sweep
+
+- ID: T-2026-0051
+- Title: Embedding and representation controlled sweep
+- Status: backlog
+- Priority: P1
+- Owner role: Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer
+- Created: 2026-05-28
+- Last updated: 2026-05-28
+
+### Goal
+
+Measure embedding and retrieval representation effects without mixing them with
+vector DB backend, parser, reranker, or prompt changes.
+
+### Scope
+
+- Compare approved embedding surfaces such as hashing, MiniLM, BGE-M3, and one
+  explicitly approved additional model or sparse representation when available.
+- Rebuild isolated indexes with matched corpus/config and record model,
+  dimension, instruction prefix, similarity metric, normalization, and backend.
+- Report Recall@K, MRR, nDCG, citation, answer, abstention, build time, index
+  size, and query latency.
+
+### Non-Goals
+
+- Do not change the canonical baseline.
+- Do not compare different vector DB backends in this task.
+- Do not use external/private egress without an approved payload boundary.
+
+### Acceptance Criteria
+
+- [ ] Every compared index has matched dataset/config and explicit provenance.
+- [ ] Ranking deltas are separated from backend latency/ops deltas.
+- [ ] The result recommends keep-current, adopt-new-model, or no-go with
+  guardrail rationale.
+
+### Validation Commands
+
+```bash
+python3 -m pytest -q tests/test_embedding*.py tests/test_naive_baseline_ranking_invariance.py <focused-new-tests>
+python3 <embedding-sweep-runner> --config <local-v2-config> --out <aggregate-output>
+python3 scripts/run_real_eval_delta.py --base <real100_v2-base-aggregate> --head <variant-aggregate>
+make real-eval-v2-guard
+git diff --check
+make check-branch
+```
+
+### Evidence Required
+
+- Aggregate embedding sweep report.
+- Provenance table for model/backend/index dimensions and cost/latency.
+
+### Related Plan / Issue / PR Links
+
+- Plan: TBD - create when the task starts.
+- Issue: TBD
+- PR: TBD
+
+## T-2026-0052 — Generator grounding and citation calibration experiment
+
+- ID: T-2026-0052
+- Title: Generator grounding and citation calibration experiment
+- Status: backlog
+- Priority: P1
+- Owner role: Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer
+- Created: 2026-05-28
+- Last updated: 2026-05-28
+
+### Goal
+
+Measure whether answer quality is limited by generator evidence-use behavior
+after retrieval, reranking, and context packing evidence is stable enough to
+avoid masking retrieval misses.
+
+### Scope
+
+- Test opt-in prompt, decoding, citation formatting, answer-structure, and
+  approved model/provider variants.
+- Measure answer correctness, groundedness, citation accuracy, no-answer,
+  conflict handling, token count, latency, and cost.
+- Keep ADR 0003 answer schema stable unless a separate ADR is reserved.
+
+### Non-Goals
+
+- Do not repair retrieval misses through prompt wording.
+- Do not send private context to external providers without approved online
+  payload provenance.
+- Do not change default answer behavior from a synthetic-only result.
+
+### Acceptance Criteria
+
+- [ ] Generator improvements are reported separately from retrieval/context
+  availability.
+- [ ] Citation regression, missed abstention, or privacy risk is a no-go even if
+  answer correctness improves.
+- [ ] The result recommends a default-change candidate, a follow-up slice, or
+  no-go.
+
+### Validation Commands
+
+```bash
+python3 -m pytest -q tests/test_answer_contract_snapshot.py tests/test_eval_metrics.py <focused-new-tests>
+python3 <generator-calibration-runner> --variant <name> --summary-out <aggregate-output>
+python3 scripts/run_real_eval_delta.py --base <real100_v2-base-aggregate> --head <variant-aggregate>
+python3 scripts/agent_loop.py privacy-audit-output
+python3 scripts/agent_loop.py claim-audit --from-git
+git diff --check
+make check-branch
+```
+
+### Evidence Required
+
+- Aggregate generator calibration report.
+- Explicit provider/payload and decoding provenance.
+
+### Related Plan / Issue / PR Links
+
+- Plan: TBD - create when the task starts.
+- Issue: TBD
+- PR: TBD
+
+## T-2026-0053 — Round 2 experiment synthesis and plan adjustment
+
+- ID: T-2026-0053
+- Title: Round 2 experiment synthesis and plan adjustment
+- Status: backlog
+- Priority: P1 replanning
+- Owner role: Planner -> Benchmark Auditor -> Privacy Auditor -> Reviewer
+- Created: 2026-05-28
+- Last updated: 2026-05-28
+
+### Goal
+
+Recompute the optimization roadmap after the second experiment round, when
+retrieval, context, query, metadata, parser, embedding, and generator evidence
+can be compared as separate bottleneck surfaces.
+
+### Scope
+
+- Synthesize `T-2026-0031` through `T-2026-0038` plus `T-2026-0050` through
+  `T-2026-0052` when available.
+- Retire experiments whose guardrails failed, promote the strongest isolated
+  winners to end-to-end bakeoff, and decide whether `T-2026-0039` advanced
+  architecture feasibility is justified.
+- Update queue status and next-safe commands.
+
+### Non-Goals
+
+- Do not merge isolated winners into a runtime default.
+- Do not create a new metric surface without ADR review.
+- Do not keep running low-signal experiments just because they were listed.
+
+### Acceptance Criteria
+
+- [ ] Synthesis report names no more than three variants for end-to-end bakeoff.
+- [ ] Any advanced architecture recommendation cites measured residual
+  bottlenecks and expected failure-mode reduction.
+- [ ] Queue updates make the next task unambiguous.
+
+### Validation Commands
+
+```bash
+python3 scripts/check_doc_links.py --check-all --paths tasks/queue.md docs/evaluation/rag-performance-experiment-stack.md <synthesis-report-path>
+python3 scripts/agent_loop.py claim-audit --from-git
+git diff --check
+make check-branch
+```
+
+### Evidence Required
+
+- Aggregate-only round-2 synthesis.
+- Explicit go/no-go list for bakeoff and advanced architecture.
+
+### Related Plan / Issue / PR Links
+
+- Plan: TBD - create when the task starts.
+- Issue: TBD
+- PR: TBD
+
+## T-2026-0054 — End-to-end winning-variant bakeoff
+
+- ID: T-2026-0054
+- Title: End-to-end winning-variant bakeoff
+- Status: backlog
+- Priority: P2
+- Owner role: Implementer -> Architect -> Benchmark Auditor -> Privacy Auditor -> Deep Reviewer -> Reviewer
+- Created: 2026-05-28
+- Last updated: 2026-05-28
+
+### Goal
+
+Test whether the best isolated experiment winners still improve the full RAG
+pipeline when combined under one latency, cost, privacy, and answer-contract
+guardrail.
+
+### Scope
+
+- Build at most three integrated opt-in variants from `T-2026-0053` outputs.
+- Run paired `real100_v2` aggregate deltas against the canonical baseline.
+- Report interaction effects: retrieval gain lost by reranking, context gain
+  lost by token budget, prompt gain lost by citation regression, or latency
+  overrun.
+
+### Non-Goals
+
+- Do not flip defaults.
+- Do not combine more than three moving parts in one variant.
+- Do not include advanced architecture unless `T-2026-0039` and `T-2026-0053`
+  recommend it.
+
+### Acceptance Criteria
+
+- [ ] Bakeoff compares baseline, isolated winners, and integrated variants with
+  matched provenance.
+- [ ] Winner requires answer/citation/abstention improvement and latency/cost
+  guardrail pass.
+- [ ] Negative interaction effects are recorded as follow-up blockers or no-go.
+
+### Validation Commands
+
+```bash
+python3 -m pytest -q <focused-integration-tests>
+python3 <end-to-end-bakeoff-runner> --config <local-v2-config> --out <aggregate-output>
+python3 scripts/run_real_eval_delta.py --base <real100_v2-base-aggregate> --head <variant-aggregate>
+make real-eval-v2-guard
+python3 scripts/agent_loop.py privacy-audit-output
+python3 scripts/agent_loop.py claim-audit --from-git
+git diff --check
+make check-branch
+```
+
+### Evidence Required
+
+- Aggregate bakeoff report.
+- Integrated variant provenance and rollback plan.
+
+### Related Plan / Issue / PR Links
+
+- Plan: TBD - create when the task starts.
+- Issue: TBD
+- PR: TBD
+
+## T-2026-0055 — Final optimization decision packet
+
+- ID: T-2026-0055
+- Title: Final optimization decision packet
+- Status: backlog
+- Priority: P2 decision
+- Owner role: Benchmark Auditor -> Privacy Auditor -> Deep Reviewer -> Reviewer
+- Created: 2026-05-28
+- Last updated: 2026-05-28
+
+### Goal
+
+Convert the experiment program into a final optimization decision: default
+change proposal, additional targeted experiment, or explicit no-go.
+
+### Scope
+
+- Summarize the full evidence chain from baseline, diagnostics, latency/cost,
+  isolated experiments, replanning gates, and end-to-end bakeoff.
+- If a default change is recommended, name required ADR updates, load-bearing
+  paths, rollout flags, rollback command, and PR body §5b evidence.
+- If no-go, identify the residual blocker and next evidence needed.
+
+### Non-Goals
+
+- Do not implement the default flip in this task.
+- Do not weaken ADR 0001 baseline protections.
+- Do not hide failed experiments; failed/no-go evidence is part of the decision.
+
+### Acceptance Criteria
+
+- [ ] Decision packet makes one of three calls: default-change-ready,
+  more-experiment-needed, or no-go.
+- [ ] Any default-change-ready call cites paired private aggregate delta,
+  latency/cost guardrail, privacy audit, claim audit, and rollback plan.
+- [ ] Reviewer can trace every claim to aggregate-safe evidence.
+
+### Validation Commands
+
+```bash
+python3 scripts/check_doc_links.py --check-all --paths tasks/queue.md docs/evaluation/rag-performance-experiment-stack.md <decision-packet-path>
+python3 scripts/agent_loop.py claim-audit --from-git
+git diff --check
+make check-branch
+```
+
+### Evidence Required
+
+- Final decision packet.
+- Explicit follow-up issue recommendation for implementation or no-go.
+
+### Related Plan / Issue / PR Links
+
+- Plan: TBD - create when the task starts.
+- Issue: TBD
 - PR: TBD

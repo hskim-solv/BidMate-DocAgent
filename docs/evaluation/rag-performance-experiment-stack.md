@@ -15,11 +15,15 @@ Start with the weakest measurable links:
    metadata and MiniLM target work.
 2. Make retrieval diagnostics explain candidate-pool recall, rank quality, and
    evidence split before changing retrieval behavior.
-3. Run small-to-big retrieval, reranking, context packing, and query
-   decomposition as separate opt-in experiments with paired aggregate deltas.
-4. Add security, abstention, conflict, metadata, freshness, latency, and cost
+3. Run small-to-big retrieval, reranking, retrieval-depth/fusion, context
+   packing, query decomposition, parser/layout, embedding, and generator
+   grounding as separate opt-in experiments with paired aggregate deltas.
+4. Insert replanning gates after each measurement round so weak hypotheses are
+   retired and strong ones are promoted to end-to-end bakeoff.
+5. Add security, abstention, conflict, metadata, freshness, latency, and cost
    guardrails before any production-facing claim.
-5. Gate advanced architectures behind no-go/go feasibility evidence.
+6. Gate advanced architectures behind no-go/go feasibility evidence and a final
+   optimization decision packet.
 
 ## Selection Rules
 
@@ -35,6 +39,8 @@ Start with the weakest measurable links:
   context length must carry a stage latency and cost guardrail.
 - If Recall@K improves but MRR, nDCG, citation, abstention, or latency regresses,
   the result is not a winner by default.
+- Isolated experiment winners do not become default behavior. They must pass an
+  end-to-end bakeoff and final decision gate before default-change work starts.
 
 ## Existing Evidence To Respect
 
@@ -53,11 +59,11 @@ Start with the weakest measurable links:
 
 | Priority | Task | Status | Why this order |
 |---|---|---|---|
-| P0 | `T-2026-0028` Private coverage and semantic baseline refresh | ready after this PR | Establish the current baseline and coverage before experiments. |
-| P0 | `T-2026-0029` Retrieval diagnostic workbench | backlog | Explain recall/rank/candidate-pool failures before behavior changes. |
-| P0 | `T-2026-0030` Latency and cost budget envelope | backlog | Prevent multi-query/rerank/compression experiments from winning on quality while breaking operations. |
-| P1 | `T-2026-0031` Parent/section-window retrieval experiment | backlog | Highest-value retrieval change after page-aware evidence. |
-| P1 | `T-2026-0032` Reranker candidate-budget experiment | backlog | Improve precision only after candidate-pool recall is observable. |
+| P0 | `T-2026-0028` Private coverage and semantic baseline refresh | done | Establish the current baseline and coverage before experiments. |
+| P0 | `T-2026-0029` Retrieval diagnostic workbench | review | Explain recall/rank/candidate-pool failures before behavior changes. |
+| P0 | `T-2026-0030` Latency and cost budget envelope | ready | Prevent multi-query/rerank/compression experiments from winning on quality while breaking operations. |
+| P1 | `T-2026-0031` Parent/section-window retrieval experiment | blocked | Highest-value retrieval change after page-aware evidence. |
+| P1 | `T-2026-0032` Reranker candidate-budget experiment | blocked | Improve precision only after candidate-pool recall is observable. |
 | P1 | `T-2026-0033` Context packing and citation ordering experiment | backlog | Use found evidence better without changing corpus or embeddings. |
 | P1 | `T-2026-0034` Query rewrite and decomposition experiment | backlog | Target comparison, multi-hop, abbreviation, and mixed Korean/English queries. |
 | P1 | `T-2026-0035` Prompt-injection and data/command boundary guardrail | backlog | Security must be a guardrail before more agentic or tool-using retrieval. |
@@ -65,6 +71,46 @@ Start with the weakest measurable links:
 | P2 | `T-2026-0037` Metadata, authority, and freshness ranking experiment | backlog | Use RFP metadata only after coverage and missing-field behavior are measured. |
 | P2 | `T-2026-0038` Contextual retrieval and sentence-window proof of concept | backlog | Test chunk-context enrichment after simpler small-to-big retrieval. |
 | P3 | `T-2026-0039` Advanced architecture feasibility gate | backlog | Evaluate RAPTOR, GraphRAG, LightRAG, Agentic RAG, late chunking, multi-vector, and long-context only after P0/P1 evidence. |
+| P0 planning | `T-2026-0046` RAG experiment task expansion | review | Adds the executable experiment tasks and replanning gates. |
+| P0 | `T-2026-0047` Page metadata blocker repair/rescope | backlog | Unblock or rescope claim-bearing page/window experiments. |
+| P0 | `T-2026-0048` Candidate-depth and fusion-budget sweep | backlog | Attack `not_observable_limited_depth` before adding expensive reranking/query calls. |
+| P0 replanning | `T-2026-0049` Round 1 synthesis and plan adjustment | backlog | Reorder the next experiments after latency, page metadata, retrieval-depth, and reranker evidence. |
+| P1 | `T-2026-0050` Parser/layout/table coverage experiment | backlog | Decide whether misses are parser/layout failures rather than retrieval failures. |
+| P1 | `T-2026-0051` Embedding and representation controlled sweep | backlog | Measure embedding effects without mixing vector DB backend or prompt changes. |
+| P1 | `T-2026-0052` Generator grounding and citation calibration | backlog | Measure prompt/model/decoding effects after retrieval/context evidence stabilizes. |
+| P1 replanning | `T-2026-0053` Round 2 synthesis and plan adjustment | backlog | Promote at most three isolated winners to bakeoff and retire weak hypotheses. |
+| P2 | `T-2026-0054` End-to-end winning-variant bakeoff | backlog | Test combined winners under one aggregate latency/cost/privacy guardrail. |
+| P2 decision | `T-2026-0055` Final optimization decision packet | backlog | Decide default-change-ready, more-experiment-needed, or no-go. |
+
+## Experiment Cadence
+
+The stack is intentionally iterative. Do not execute every experiment just
+because it appears in the queue.
+
+1. Measurement foundation: complete `T-2026-0030` and keep `T-2026-0028` /
+   `T-2026-0029` evidence current.
+2. Early retrieval round: run `T-2026-0032`, `T-2026-0047`, and
+   `T-2026-0048` as separate PRs. `T-2026-0031` remains blocked until page or
+   window evidence is repaired or explicitly rescoped.
+3. Round 1 replanning: run `T-2026-0049` to update queue status and select the
+   next two to four experiments. No runtime change is allowed in the replanning
+   task.
+4. Full P1 experiment round: run selected tasks from `T-2026-0031`,
+   `T-2026-0033` through `T-2026-0038`, and `T-2026-0050` through
+   `T-2026-0052`.
+5. Round 2 replanning: run `T-2026-0053` to retire low-signal branches and
+   select at most three variants for `T-2026-0054`.
+6. End-to-end bakeoff: run `T-2026-0054` with matched `real100_v2` provenance.
+7. Decision: run `T-2026-0055`. Only this task can say whether a later
+   default-change implementation should be opened.
+
+## Replanning Gates
+
+| Gate | Inputs | Required decision |
+|---|---|---|
+| `T-2026-0049` Round 1 | `T-2026-0030`, `T-2026-0032`, `T-2026-0047`, `T-2026-0048` | Choose the next experiments, keep/rescope `T-2026-0031`, and set budget caps. |
+| `T-2026-0053` Round 2 | Selected P1 experiments, parser/layout, embedding, generator evidence | Promote at most three variants to bakeoff; retire no-go hypotheses; decide whether `T-2026-0039` is justified. |
+| `T-2026-0055` Final decision | Baseline, diagnostics, all synthesis gates, `T-2026-0054` bakeoff | Call default-change-ready, more-experiment-needed, or no-go. |
 
 ## Deferred Techniques
 
@@ -89,6 +135,11 @@ Start with the weakest measurable links:
 | Query rewrite/decomposition | slice delta by query type | extra LLM calls, rewrite drift, no private egress without approval |
 | Abstention/conflict | no-answer accuracy, conflict precedence accuracy | false abstention, citation, freshness provenance |
 | Security | injection detection, instruction/data isolation checks | false positives, privacy redaction, tool-call policy |
+| Parser/layout | searchable evidence coverage, page/section/table coverage | parser latency, privacy, no raw layout/text artifacts |
+| Embedding/representation | Recall@K, MRR, nDCG, citation/answer delta | matched corpus/config/index, build time, index size, backend separation |
+| Generator grounding | answer correctness, groundedness, citation accuracy | no-answer, conflict handling, provider/payload provenance, latency/cost |
+| Replanning | bottleneck ranking, task promotion/retirement | no runtime change, no incompatible aggregate averaging |
+| End-to-end bakeoff | answer/citation/abstention paired delta | latency/cost, privacy, rollback, interaction effects |
 | Advanced architecture | feasibility score and no-go/go rationale | build cost, latency, privacy, rollback path |
 
 ## Execution Rules
@@ -101,9 +152,14 @@ Start with the weakest measurable links:
 - Record whether real private eval ran and whether any performance claim is
   made in every PR body.
 - Prefer no-go reports over premature implementation when evidence is missing.
+- After each replanning gate, update blocked/backlog/ready status before
+  starting another experiment PR.
+- Keep integrated variants out of default runtime until `T-2026-0055` produces
+  a decision packet and any required ADR work is reserved.
 
 ## First Next Task
 
-Start with `T-2026-0028`. It should refresh the aggregate baseline after page
-metadata recovery and MiniLM target separation, then decide which diagnostic
-task is truly ready.
+Current main has completed the baseline refresh and retrieval diagnostics. The
+next execution task is `T-2026-0030`; after that, run the early retrieval round
+and `T-2026-0049` before widening into parser, embedding, query, context, or
+generator experiments.
