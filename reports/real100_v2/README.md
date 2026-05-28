@@ -11,6 +11,7 @@ Allowed files:
 - `latency_cost_budget.aggregate.json`
 - `reranker_candidate_budget.aggregate.json`
 - `context_packing.aggregate.json`
+- `page_metadata_readiness.aggregate.json`
 - `metric_suite.aggregate.json`
 - `metric_suite.md`
 - `retrieval_diagnostics.aggregate.json`

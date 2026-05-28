@@ -1,5 +1,10 @@
 # real100_v2 Latency And Cost Budget
 
+> Invalidated for optimization claims by `T-2026-0047`: the source baseline was
+> produced from a hashing-backed `real100_v2` index with 0.0 chunk page metadata
+> coverage. Rebuild and rerender from a MiniLM page-aware v2 index before using
+> this as a latency/cost budget.
+
 Issue: [#1626](https://github.com/hskim-solv/BidMate-DocAgent/issues/1626)
 
 Task: `T-2026-0030`

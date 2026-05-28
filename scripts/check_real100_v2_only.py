@@ -22,6 +22,7 @@ DEFAULT_PATHS = (
     Path("docs/evaluation/real100_v2-latency-cost-budget.md"),
     Path("docs/evaluation/real100_v2-reranker-candidate-budget.md"),
     Path("docs/evaluation/real100_v2-context-packing.md"),
+    Path("docs/evaluation/real100_v2-page-metadata-readiness.md"),
     Path("reports/real100_v2/README.md"),
 )
 
@@ -75,6 +76,7 @@ def check_path(path: Path) -> list[str]:
                 _task_block(text, "T-2026-0031", "T-2026-0032"),
                 _task_block(text, "T-2026-0032", "T-2026-0033"),
                 _task_block(text, "T-2026-0033", "T-2026-0034"),
+                _task_block(text, "T-2026-0047", "T-2026-0048"),
             )
             if block
         )
@@ -125,6 +127,7 @@ def check_path(path: Path) -> list[str]:
         Path("docs/evaluation/real100_v2-latency-cost-budget.md"),
         Path("docs/evaluation/real100_v2-reranker-candidate-budget.md"),
         Path("docs/evaluation/real100_v2-context-packing.md"),
+        Path("docs/evaluation/real100_v2-page-metadata-readiness.md"),
     }:
         for lineno, line in enumerate(scoped.splitlines(), start=1):
             if _is_ban_context(line):

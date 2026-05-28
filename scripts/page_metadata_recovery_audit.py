@@ -34,6 +34,9 @@ FILENAME_VALUE_RE = re.compile(
     r"(^|[\s\"'`])[^/\s\"'`]+\.(pdf|hwp|hwpx|docx|xlsx|csv|jsonl|md|txt)\b",
     re.IGNORECASE,
 )
+DEFAULT_OUT_JSON = _REPO_ROOT / "reports" / "real100_v2" / "page_metadata_readiness.aggregate.json"
+DEFAULT_OUT_MD = _REPO_ROOT / "docs" / "evaluation" / "real100_v2-page-metadata-readiness.md"
+PREFERRED_MINILM_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 
 
 def _rate(numerator: int, denominator: int) -> float:
@@ -47,6 +50,38 @@ def _safe_label(value: Any) -> str:
     if not label:
         return "<missing>"
     return label if SAFE_LABEL_RE.fullmatch(label) else "<redacted_label>"
+
+
+def _embedding_block(index_payload: Mapping[str, Any]) -> dict[str, Any]:
+    embedding = index_payload.get("embedding") if isinstance(index_payload.get("embedding"), Mapping) else {}
+    backend = _safe_label(embedding.get("backend"))
+    model = str(embedding.get("model") or "").strip()
+    if model:
+        model = model.replace("/", "__")
+    if not SAFE_LABEL_RE.fullmatch(model):
+        model = "<redacted_label>" if model else "<missing>"
+    try:
+        dimension = int(embedding.get("dimension"))
+    except (TypeError, ValueError):
+        dimension = None
+    return {"backend": backend, "model": model, "dimension": dimension}
+
+
+def _private_eval_index_guard(
+    embedding: Mapping[str, Any],
+    chunk_coverage: Mapping[str, Any],
+) -> dict[str, Any]:
+    reasons: list[str] = []
+    if embedding.get("backend") == "hashing":
+        reasons.append("hashing_embeddings_forbidden")
+    if embedding.get("backend") != "sentence-transformers" or embedding.get("model") != PREFERRED_MINILM_MODEL:
+        reasons.append("minilm_semantic_baseline_required")
+    if float(chunk_coverage.get("any_page_metadata_coverage") or 0.0) <= 0.0:
+        reasons.append("chunk_page_metadata_coverage_zero")
+    return {
+        "status": "GO" if not reasons else "NO-GO",
+        "reasons": reasons,
+    }
 
 
 def _load_json(path: Path) -> tuple[dict[str, Any], str | None]:
@@ -255,14 +290,18 @@ def _matrix_row_for_group(group: Mapping[str, Any]) -> dict[str, Any]:
             "source_type": source_type,
             "current_coverage": coverage,
             "parent_current_coverage": parent_coverage,
-            "source_group": (
-                f"{group['file_format']}/{group['text_source']}/"
-                f"{group['document_type']}/{group['chunking_strategy']}"
-            ),
+            "source_group": _format_source_group(group),
             "decision": group["decision"],
         }
     )
     return row
+
+
+def _format_source_group(group: Mapping[str, Any]) -> str:
+    return (
+        f"file_format={group['file_format']}, text_source={group['text_source']}, "
+        f"document_type={group['document_type']}, chunking_strategy={group['chunking_strategy']}"
+    )
 
 
 def implementation_matrix(source_groups: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
@@ -622,6 +661,9 @@ def build_audit_report(
     chunk_coverage = coverage_block(chunks)
     document_coverage = coverage_block(documents)
     parent_coverage = coverage_block(parent_sections)
+    embedding_payload = index_payload.get("embedding") if isinstance(index_payload.get("embedding"), Mapping) else {}
+    embedding = _embedding_block(index_payload)
+    private_eval_guard = _private_eval_index_guard(embedding_payload, chunk_coverage)
     source_groups = source_group_coverage(chunks, parent_sections, documents)
 
     ingestion_report_path = ingestion_report_path or (
@@ -649,6 +691,7 @@ def build_audit_report(
     matrix = implementation_matrix(source_groups)
     report = {
         "schema_version": 1,
+        "profile_type": "private_real100_v2_page_metadata_readiness",
         "status": "ok",
         "privacy": privacy,
         "index": {
@@ -656,6 +699,7 @@ def build_audit_report(
             "document_count": len(documents),
             "chunk_count": len(chunks),
             "parent_section_count": len(parent_sections),
+            "embedding": embedding,
             "chunk": chunk_coverage,
             "document": document_coverage,
             "parent_section": parent_coverage,
@@ -669,6 +713,8 @@ def build_audit_report(
         "implementation_matrix": matrix,
         "decision": {
             "citation_page_claim_go_no_go": "GO" if max_source_page_coverage > 0 else "NO-GO",
+            "private_real_eval_index_go_no_go": private_eval_guard["status"],
+            "private_real_eval_index_no_go_reasons": private_eval_guard["reasons"],
             "page_claim_scope": (
                 "covered_source_groups_only" if max_source_page_coverage > 0 else "not_supported"
             ),
@@ -683,8 +729,8 @@ def build_audit_report(
         },
         "follow_up_issue_plan": [
             "Keep page-level citation claims disabled while source-group page coverage is zero.",
-            "Run a PDF visual-ingestion rebuild spike for PDF/kordoc source groups and verify non-zero regions.page_number coverage.",
-            "Evaluate a page-aware HWP parser or adapter; kordoc Markdown/cache without page markers is insufficient.",
+            "Run a page-aware rebuild spike for page-blind PDF and HWP source groups and verify non-zero regions.page_number coverage.",
+            "Evaluate page-aware HWP extraction or an adapter that emits sections[].regions or sections[].page_span.",
             "Rebuild the private index only after page-aware parser output populates sections[].regions or sections[].page_span.",
             "Commit only aggregate reports; keep private raw content, filenames, doc_ids, and source paths out of artifacts.",
         ],
@@ -695,19 +741,22 @@ def build_audit_report(
 
 def render_markdown(report: Mapping[str, Any]) -> str:
     if report.get("status") != "ok":
-        return f"# Page Metadata Recovery Audit\n\n- Status: `{report.get('status')}`\n"
+        return f"# real100_v2 Page Metadata Recovery Audit\n\n- Status: `{report.get('status')}`\n"
 
     decision = report["decision"]
     index = report["index"]
     lines = [
-        "# Page Metadata Recovery Audit",
+        "# real100_v2 Page Metadata Recovery Audit",
         "",
         "## Decision",
         f"- Citation page claim: `{decision['citation_page_claim_go_no_go']}`",
+        f"- Private real-eval index: `{decision['private_real_eval_index_go_no_go']}`",
+        f"- Private real-eval index no-go reasons: `{', '.join(decision['private_real_eval_index_no_go_reasons']) or '-'}`",
         f"- Recoverability: `{decision['recoverability']}`",
         f"- Requires re-index: `{decision['requires_reindex']}`",
         f"- Requires parser change: `{decision['requires_parser_change']}`",
         f"- Retrieval/verifier/prompt/answer behavior change: `{decision['retrieval_verifier_prompt_answer_change']}`",
+        f"- Embedding backend/model/dim: `{index['embedding']['backend']}` / `{index['embedding']['model']}` / `{index['embedding']['dimension']}`",
         "",
         "## Coverage",
         f"- Documents / chunks / parent sections: `{index['document_count']}` / `{index['chunk_count']}` / `{index['parent_section_count']}`",
@@ -721,7 +770,7 @@ def render_markdown(report: Mapping[str, Any]) -> str:
     for group in index["source_groups"]:
         lines.append(
             "- "
-            f"`{group['file_format']}/{group['text_source']}/{group['document_type']}/{group['chunking_strategy']}`: "
+            f"`{_format_source_group(group)}`: "
             f"docs=`{group['doc_count']}`, chunks=`{group['chunk_count']}`, "
             f"parents=`{group['parent_section_count']}`, "
             f"page=`{group['any_page_metadata_coverage']}`, "
@@ -790,8 +839,14 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         default=None,
         help="Optional directory for page_metadata_recovery_audit.json/.md.",
     )
+    parser.add_argument("--out-json", type=Path, default=None, help="Optional aggregate JSON output path.")
+    parser.add_argument("--out-md", type=Path, default=None, help="Optional Markdown report output path.")
     parser.add_argument("--format", choices=["json", "markdown"], default="json")
     return parser.parse_args(argv)
+
+
+def _repo_relative(path: Path) -> Path:
+    return path if path.is_absolute() else _REPO_ROOT / path
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -817,6 +872,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             render_markdown(report),
             encoding="utf-8",
         )
+    if args.out_json:
+        out_json = _repo_relative(args.out_json)
+        out_json.parent.mkdir(parents=True, exist_ok=True)
+        out_json.write_text(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    if args.out_md:
+        out_md = _repo_relative(args.out_md)
+        out_md.parent.mkdir(parents=True, exist_ok=True)
+        out_md.write_text(render_markdown(report), encoding="utf-8")
     sys.stdout.write(text)
     return 0 if report.get("status") == "ok" else 2
 

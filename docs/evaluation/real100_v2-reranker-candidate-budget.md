@@ -1,5 +1,10 @@
 # real100_v2 Reranker Candidate-Budget Sweep
 
+> Invalidated for optimization claims by `T-2026-0047`: this screening used a
+> hashing-backed `real100_v2` index with 0.0 chunk page metadata coverage. Do
+> not use its `latency_regression` result as reranker evidence until rerun on a
+> MiniLM page-aware v2 index.
+
 This report is aggregate-only. It contains no raw questions, answers, evidence text, filenames, local paths, document identifiers, chunk identifiers, or per-case rows. Legacy `real100`, v1, 221, and kordoc evidence is not used.
 
 ## Decision

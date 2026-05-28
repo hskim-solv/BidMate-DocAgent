@@ -1,5 +1,10 @@
 # real100_v2 Retrieval Diagnostics
 
+> Invalidated for optimization claims by `T-2026-0047`: the source `real100_v2`
+> index is hashing-backed and has 0.0 chunk page metadata coverage. Use this
+> artifact only as historical context until a MiniLM page-aware v2 index is
+> rebuilt and remeasured.
+
 Issue: [#1622](https://github.com/hskim-solv/BidMate-DocAgent/issues/1622)
 
 Task: `T-2026-0029`

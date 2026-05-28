@@ -1,0 +1,174 @@
+{
+  "artifacts": {
+    "ingestion_report": {
+      "has_page_like_keys": true,
+      "has_text_source_counts": true,
+      "page_like_key_counts": {
+        "pymupdf4llm_page_chunks": 101
+      },
+      "present": true,
+      "status": "ok"
+    },
+    "kordoc_cache": {
+      "present": false,
+      "status": "not_provided"
+    },
+    "visual_artifacts": {
+      "present": false,
+      "status": "not_provided"
+    }
+  },
+  "decision": {
+    "citation_page_claim_go_no_go": "NO-GO",
+    "current_index_behavior_change": false,
+    "page_claim_scope": "not_supported",
+    "private_real_eval_index_go_no_go": "NO-GO",
+    "private_real_eval_index_no_go_reasons": [
+      "hashing_embeddings_forbidden",
+      "minilm_semantic_baseline_required",
+      "chunk_page_metadata_coverage_zero"
+    ],
+    "recommendation": "full re-index",
+    "recoverability": "not_recoverable_from_existing_artifacts",
+    "recoverable_from_existing_local_artifacts": false,
+    "requires_parser_change": false,
+    "requires_reindex": true,
+    "retrieval_verifier_prompt_answer_change": false
+  },
+  "follow_up_issue_plan": [
+    "Keep page-level citation claims disabled while source-group page coverage is zero.",
+    "Run a page-aware rebuild spike for page-blind PDF and HWP source groups and verify non-zero regions.page_number coverage.",
+    "Evaluate page-aware HWP extraction or an adapter that emits sections[].regions or sections[].page_span.",
+    "Rebuild the private index only after page-aware parser output populates sections[].regions or sections[].page_span.",
+    "Commit only aggregate reports; keep private raw content, filenames, doc_ids, and source paths out of artifacts."
+  ],
+  "implementation_matrix": [
+    {
+      "current_coverage": 0.0,
+      "decision": "requires_page_aware_reindex",
+      "estimated_engineering_cost": "S",
+      "expected_eval_impact": "Enables coverage measurement only after rebuild.",
+      "parent_current_coverage": 0.0,
+      "recoverable": false,
+      "requires_ocr_visual_ingestion": false,
+      "requires_parser_change": false,
+      "requires_reindex": true,
+      "source_group": "file_format=hwp, text_source=pdf_pymupdf4llm, document_type=private_pdf_hwp_csv_text, chunking_strategy=fixed",
+      "source_type": "existing_index_with_no_page_fields"
+    },
+    {
+      "current_coverage": 0.0,
+      "decision": "requires_page_aware_reindex",
+      "estimated_engineering_cost": "S",
+      "expected_eval_impact": "Enables coverage measurement only after rebuild.",
+      "parent_current_coverage": 0.0,
+      "recoverable": false,
+      "requires_ocr_visual_ingestion": false,
+      "requires_parser_change": false,
+      "requires_reindex": true,
+      "source_group": "file_format=pdf, text_source=pdf_pymupdf4llm, document_type=private_pdf_hwp_csv_text, chunking_strategy=fixed",
+      "source_type": "existing_index_with_no_page_fields"
+    }
+  ],
+  "index": {
+    "chunk": {
+      "any_page_metadata_coverage": 0.0,
+      "count": 21800,
+      "page_span_coverage": 0.0,
+      "regions_bbox_coverage": 0.0,
+      "regions_page_number_coverage": 0.0,
+      "with_any_page_metadata_count": 0,
+      "with_page_span_count": 0,
+      "with_regions_bbox_count": 0,
+      "with_regions_page_number_count": 0
+    },
+    "chunk_count": 21800,
+    "document": {
+      "any_page_metadata_coverage": 0.0,
+      "count": 100,
+      "page_span_coverage": 0.0,
+      "regions_bbox_coverage": 0.0,
+      "regions_page_number_coverage": 0.0,
+      "with_any_page_metadata_count": 0,
+      "with_page_span_count": 0,
+      "with_regions_bbox_count": 0,
+      "with_regions_page_number_count": 0
+    },
+    "document_count": 100,
+    "embedding": {
+      "backend": "hashing",
+      "dimension": 384,
+      "model": "local-hashing-bow"
+    },
+    "parent_section": {
+      "any_page_metadata_coverage": 0.0,
+      "count": 100,
+      "page_span_coverage": 0.0,
+      "regions_bbox_coverage": 0.0,
+      "regions_page_number_coverage": 0.0,
+      "with_any_page_metadata_count": 0,
+      "with_page_span_count": 0,
+      "with_regions_bbox_count": 0,
+      "with_regions_page_number_count": 0
+    },
+    "parent_section_count": 100,
+    "schema_version": 2,
+    "source_groups": [
+      {
+        "any_page_metadata_coverage": 0.0,
+        "chunk_count": 20391,
+        "chunking_strategy": "fixed",
+        "decision": "requires_page_aware_reindex",
+        "doc_count": 96,
+        "document_type": "private_pdf_hwp_csv_text",
+        "file_format": "hwp",
+        "page_metadata_capability": "page_blind",
+        "page_span_coverage": 0.0,
+        "parent_any_page_metadata_coverage": 0.0,
+        "parent_section_count": 96,
+        "regions_bbox_coverage": 0.0,
+        "regions_page_number_coverage": 0.0,
+        "text_source": "pdf_pymupdf4llm"
+      },
+      {
+        "any_page_metadata_coverage": 0.0,
+        "chunk_count": 1409,
+        "chunking_strategy": "fixed",
+        "decision": "requires_page_aware_reindex",
+        "doc_count": 4,
+        "document_type": "private_pdf_hwp_csv_text",
+        "file_format": "pdf",
+        "page_metadata_capability": "page_blind",
+        "page_span_coverage": 0.0,
+        "parent_any_page_metadata_coverage": 0.0,
+        "parent_section_count": 4,
+        "regions_bbox_coverage": 0.0,
+        "regions_page_number_coverage": 0.0,
+        "text_source": "pdf_pymupdf4llm"
+      }
+    ]
+  },
+  "privacy": {
+    "aggregate_only": true,
+    "omits_chunk_ids": true,
+    "omits_doc_ids": true,
+    "omits_file_names": true,
+    "omits_raw_text": true,
+    "omits_source_paths": true
+  },
+  "profile_type": "private_real100_v2_page_metadata_readiness",
+  "readiness_checks": {
+    "aggregate_only_outputs": true,
+    "chunk_page_span_integrity": {
+      "checked_count": 0,
+      "invalid_page_span_count": 0,
+      "ok": true,
+      "region_outside_page_span_count": 0
+    },
+    "citation_renderer_compatible": true,
+    "no_private_path_leakage": true,
+    "page_metadata_coverage_gt_0": false
+  },
+  "schema_version": 1,
+  "status": "ok"
+}

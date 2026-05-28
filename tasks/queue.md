@@ -42,8 +42,8 @@ PR이 생기면 각 task에 링크를 추가한다. 예제 task는 `tasks/exampl
 | 29 | `T-2026-0029` | `review` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1622; real100_v2 retrieval diagnostics rendered; next experiment points to T-2026-0032 while T-2026-0031 remains page-metadata blocked. |
 | 30 | `T-2026-0030` | `done` | Implementer -> CI Reviewer -> Benchmark Auditor -> Reviewer | merged in PR #1628; real100_v2 latency/cost envelope landed. |
 | 31 | `T-2026-0031` | `blocked` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | real100_v2 page metadata coverage is 0.0; no claim-bearing page/window experiment yet. |
-| 32 | `T-2026-0032` | `review` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1629; BGE-KO screening run classifies latency_regression, no winner claim. |
-| 33 | `T-2026-0033` | `review` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issues #1638/#1641; context-packing screening classifies evidence_first as latency_regression, no winner claim. |
+| 32 | `T-2026-0032` | `done` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | merged in PR #1636; BGE-KO screening run classifies latency_regression, no winner claim. |
+| 33 | `T-2026-0033` | `done` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | merged in PR #1644; context-packing screening classifies evidence_first as latency_regression, no winner claim. |
 | 34 | `T-2026-0034` | `backlog` | Planner -> Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | P1; blocked on query-slice attribution from T-2026-0029. |
 | 35 | `T-2026-0035` | `backlog` | Security Reviewer -> Implementer -> Privacy Auditor -> Reviewer | P1 guardrail; should run before agentic/tool-using retrieval. |
 | 36 | `T-2026-0036` | `backlog` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | P2; blocked on stable retrieval/context evidence from P0/P1 tasks. |
@@ -57,7 +57,7 @@ PR이 생기면 각 task에 링크를 추가한다. 예제 task는 `tasks/exampl
 | 44 | `T-2026-0044` | `backlog` | Implementer -> Deep Reviewer -> Reviewer | issue #1588 PR5; Orchestrator-only ship-executor + gate evidence (promote agent_loop.py to LOAD_BEARING); blocked on T-2026-0043. |
 | 45 | `T-2026-0045` | `backlog` | Implementer -> Reviewer | issue #1588 PR6; full active-agent-loop.md ops-doc rewrite; blocked on T-2026-0044. |
 | 46 | `T-2026-0046` | `review` | Planner -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1627; expands the RAG experiment task stack and inserts measurement-driven replanning gates. |
-| 47 | `T-2026-0047` | `backlog` | Evaluator -> Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | P0; repair or explicitly rescope the real100_v2 page metadata blocker before claim-bearing page/window experiments. |
+| 47 | `T-2026-0047` | `review` | Evaluator -> Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1645; hashing/page-0 real100_v2 index now fails v2 readiness, and affected optimization reports are invalidated until a MiniLM page-aware v2 rebuild. |
 | 48 | `T-2026-0048` | `backlog` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | P0; candidate-depth and fusion-budget sweep for the `not_observable_limited_depth` retrieval failure bucket. |
 | 49 | `T-2026-0049` | `backlog` | Planner -> Benchmark Auditor -> Privacy Auditor -> Reviewer | P0 replanning gate after T-2026-0030, T-2026-0032, T-2026-0047, and T-2026-0048 evidence. |
 | 50 | `T-2026-0050` | `backlog` | Evaluator -> Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | P1; parser/layout/table coverage experiment for RFP evidence that is not text-searchable enough. |
@@ -3732,7 +3732,7 @@ make check-branch
 
 - ID: T-2026-0047
 - Title: Repair or rescope real100_v2 page metadata blocker
-- Status: backlog
+- Status: review
 - Priority: P0
 - Owner role: Evaluator -> Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer
 - Created: 2026-05-28
@@ -3740,18 +3740,22 @@ make check-branch
 
 ### Goal
 
-Unblock claim-bearing page/window experiments by either repairing `real100_v2`
-page metadata coverage or explicitly proving that the next retrieval experiment
-does not depend on page/window claims.
+Unblock or explicitly stop claim-bearing private experiments by proving whether
+the current `real100_v2` index is valid for baseline evidence. Any hashing-backed
+or page-metadata-0.0 index must be blocked before naive/private eval execution.
 
 ### Scope
 
 - Audit why `reports/real100_v2/retrieval_diagnostics.aggregate.json` reports
   page-span coverage `0.0`.
-- Rebuild or repair the private v2 index only if the parser/index provenance can
-  be recorded aggregate-only.
+- Reject hashing-backed private eval indexes and indexes with zero chunk page
+  metadata coverage in the v2 readiness gate.
+- Record whether a private v2 index rebuild is required; do not perform the
+  rebuild in this PR.
 - Emit a page metadata readiness packet with counts for page span, section, and
   citation-ready evidence coverage.
+- Mark historical optimization reports as invalid for claims until rerun on a
+  MiniLM page-aware v2 index.
 
 ### Non-Goals
 
@@ -3761,32 +3765,65 @@ does not depend on page/window claims.
 
 ### Acceptance Criteria
 
-- [ ] The task either clears the page/window blocker or records an explicit
+- [x] The task either clears the page/window blocker or records an explicit
   no-go/rescope decision for `T-2026-0031`.
-- [ ] Page metadata coverage is reported as aggregate counts only.
-- [ ] Any index rebuild records parser, embedding, and vector backend
-  provenance.
+- [x] Page metadata coverage is reported as aggregate counts only.
+- [x] Required index rebuild is recorded as a future repair path, not a
+  completed behavior change.
+- [x] Hashing-backed private real-eval indexes fail closed before experiment
+  execution.
+- [x] 0.0-coverage page metadata indexes fail closed before experiment
+  execution.
 
 ### Validation Commands
 
 ```bash
-REAL_EVAL_ROOT=/Users/hskim/Desktop/projects/BidMate-DocAgent make real-eval-v2-check
-python3 <page-metadata-readiness-script> --index-dir <private-v2-index> --out <aggregate-output>
+REAL_EVAL_ROOT=/Users/hskim/Desktop/projects/BidMate-DocAgent make real-eval-v2-check  # expected failure for the current invalid hashing/page-0 index
+python3 scripts/page_metadata_recovery_audit.py --index-dir <private-v2-index> --out-json reports/real100_v2/page_metadata_readiness.aggregate.json --out-md docs/evaluation/real100_v2-page-metadata-readiness.md --format markdown
+python3 -m pytest -q tests/test_real_eval_paths.py tests/test_page_metadata_recovery_audit.py tests/test_real100_v2_guard.py
 make real-eval-v2-guard
+python3 scripts/agent_loop.py privacy-audit-output
+python3 scripts/agent_loop.py claim-audit --from-git
+python3 scripts/check_doc_links.py --check-all --paths tasks/queue.md docs/plans/T-2026-0047-repair-or-rescope-real100-v2-page-metadata-blocker.md docs/evaluation/real100_v2-page-metadata-readiness.md docs/evaluation/real100_v2-retrieval-diagnostics.md docs/evaluation/real100_v2-latency-cost-budget.md docs/evaluation/real100_v2-reranker-candidate-budget.md docs/evaluation/real100_v2-context-packing.md reports/real100_v2/README.md
 git diff --check
 make check-branch
 ```
 
 ### Evidence Required
 
-- Aggregate page metadata readiness report.
-- Explicit `T-2026-0031` unblock, keep-blocked, or rescope recommendation.
+- Aggregate page metadata readiness report:
+  `reports/real100_v2/page_metadata_readiness.aggregate.json`.
+- Explicit `T-2026-0031` keep-blocked recommendation: page/window claims remain
+  NO-GO until a page-aware rebuild produces non-zero chunk page metadata
+  coverage.
+- Explicit baseline guard evidence: the current index is not valid for private
+  optimization evidence because it is hashing-backed and has zero chunk page
+  metadata coverage.
 
 ### Related Plan / Issue / PR Links
 
-- Plan: TBD - create when the task starts.
-- Issue: TBD
+- Plan: [`docs/plans/T-2026-0047-repair-or-rescope-real100-v2-page-metadata-blocker.md`](../docs/plans/T-2026-0047-repair-or-rescope-real100-v2-page-metadata-blocker.md)
+- Issue: [#1645](https://github.com/hskim-solv/BidMate-DocAgent/issues/1645)
 - PR: TBD
+
+### Handoff Notes
+
+```markdown
+## Session Handoff - 2026-05-28 14:25 KST
+
+- Role: Evaluator / Implementer
+- Branch / worktree: eval/issue-1645-repair-real100-v2-page-metadata-blocker / /Users/hskim/.codex/worktrees/0ebc/BidMate-DocAgent
+- Issue / PR: issue #1645 / PR TBD
+- Task: T-2026-0047
+- Current status: fail-closed guard implemented; aggregate readiness packet generated; current real100_v2 page/window and optimization claims remain NO-GO.
+- Files touched: scripts/real_eval_paths.py, tests/test_real_eval_paths.py, scripts/page_metadata_recovery_audit.py, tests/test_page_metadata_recovery_audit.py, reports/real100_v2/page_metadata_readiness.aggregate.json, docs/evaluation/real100_v2-page-metadata-readiness.md, docs/evaluation/real100_v2-retrieval-diagnostics.md, docs/evaluation/real100_v2-latency-cost-budget.md, docs/evaluation/real100_v2-reranker-candidate-budget.md, docs/evaluation/real100_v2-context-packing.md, reports/real100_v2/README.md, .gitignore, .githooks/pre-commit, scripts/check_real100_v2_only.py, docs/plans/T-2026-0047-repair-or-rescope-real100-v2-page-metadata-blocker.md, tasks/queue.md
+- Decisions made: no parser/index rebuild in this PR; T-2026-0031 remains blocked; T-2026-0029/T-2026-0030/T-2026-0032/T-2026-0033 optimization conclusions must be rerun on a MiniLM page-aware v2 index.
+- Commands run: make ship-start TITLE="Repair real100 v2 page metadata blocker" TYPE=eval; make check-branch; python3 scripts/page_metadata_recovery_audit.py --index-dir <external_private_real100_v2_index> --out-json reports/real100_v2/page_metadata_readiness.aggregate.json --out-md docs/evaluation/real100_v2-page-metadata-readiness.md --format markdown; REAL_EVAL_ROOT=/Users/hskim/Desktop/projects/BidMate-DocAgent REAL100_V2_CONFIG=data/private/real100_v2/real_config_v2.local.yaml REAL100_V2_INDEX_DIR=data/index/real100_v2 REAL100_V2_REPORT_DIR=reports/real100_v2 make real-eval-v2-check.
+- Results: current real100_v2 index has 100 docs, 21800 chunks, 100 parent sections, hashing embeddings, chunk page metadata coverage 0.0, page_span coverage 0.0, regions.page_number coverage 0.0; readiness is NO-GO and `make real-eval-v2-check` fails as intended.
+- Next safe command: python3 -m pytest -q tests/test_real_eval_paths.py tests/test_page_metadata_recovery_audit.py tests/test_real100_v2_guard.py
+- Open questions: none.
+- Risks: current readiness packet must not be read as a behavior or quality improvement.
+```
 
 ## T-2026-0048 — Candidate-depth and fusion-budget retrieval experiment
 
