@@ -3842,6 +3842,126 @@ def test_make_active_start_can_disable_runner_and_has_korean_alias() -> None:
     assert 'make agent-loop-active-codex-runner ACTIVE_CODEX_EXECUTE="1"' in alias.stdout
 
 
+def test_active_auto_loop_completes_task_and_picks_next_from_state(monkeypatch, tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path, task_id="T-2026-1001", title="First task")
+    queue = repo / "tasks" / "queue.md"
+    queue.write_text(
+        queue.read_text(encoding="utf-8")
+        + """
+
+## T-2026-1002 — Second task
+
+- ID: T-2026-1002
+- Title: Second task
+- Status: ready
+- Owner role: Implementer -> Reviewer
+
+### Goal
+
+Run after the first task completes.
+
+### Acceptance Criteria
+
+- [ ] Selected after T-2026-1001.
+
+### Validation Commands
+
+```bash
+git diff --check
+```
+""",
+        encoding="utf-8",
+    )
+    _patch_active_loop_clear(monkeypatch)
+    active_dir = repo / "reports" / "agent_loop" / "active"
+
+    def fake_runner(**kwargs):  # type: ignore[no-untyped-def]
+        report = active_dir / "codex_runner.md"
+        state = active_dir / "codex_runner_state.json"
+        runs = active_dir / "codex_runs"
+        report.parent.mkdir(parents=True, exist_ok=True)
+        report.write_text("# runner\n", encoding="utf-8")
+        state.write_text("{}\n", encoding="utf-8")
+        return agent_loop.ActiveCodexRunnerResult(report, state, runs, "completed", (), (), ())
+
+    def fake_gate(*, task_id, **kwargs):  # type: ignore[no-untyped-def]
+        path = active_dir / "gate_evidence" / task_id / "evidence.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("{}\n", encoding="utf-8")
+        return path, {"ready": True, "privacy_clean": True}
+
+    def fake_ship(**kwargs):  # type: ignore[no-untyped-def]
+        report = active_dir / "active_loop.md"
+        registry = active_dir / "session_registry.json"
+        leases = active_dir / "leases.json"
+        events = active_dir / "events.jsonl"
+        assignments = active_dir / "assignments"
+        report.parent.mkdir(parents=True, exist_ok=True)
+        report.write_text("# shipped\n", encoding="utf-8")
+        return agent_loop.ActiveLoopResult(registry, leases, events, assignments, report, "executed", (), ())
+
+    monkeypatch.setattr(agent_loop, "write_active_codex_runner", fake_runner)
+    monkeypatch.setattr(agent_loop, "write_active_gate_evidence", fake_gate)
+    monkeypatch.setattr(agent_loop, "write_active_loop", fake_ship)
+
+    first = agent_loop.write_active_auto_loop(
+        max_iterations=1,
+        execute_runner=True,
+        execute_ship=True,
+        repo_root=repo,
+    )
+    second = agent_loop.write_active_auto_loop(
+        max_iterations=1,
+        execute_runner=False,
+        execute_ship=False,
+        repo_root=repo,
+    )
+
+    assert first.completed_task_ids == ("T-2026-1001",)
+    assert first.next_task_id == "T-2026-1002"
+    assert first.decision == "limit-reached"
+    assert second.cycles[0]["task_id"] == "T-2026-1002"
+    state = json.loads((active_dir / "auto_loop_state.json").read_text(encoding="utf-8"))
+    assert state["completed_task_ids"] == ["T-2026-1001"]
+
+
+def test_active_auto_loop_does_not_mark_read_only_cycle_completed(monkeypatch, tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path, task_id="T-2026-1001", title="Read-only task")
+    _patch_active_loop_clear(monkeypatch)
+    active_dir = repo / "reports" / "agent_loop" / "active"
+
+    def fake_runner(**kwargs):  # type: ignore[no-untyped-def]
+        report = active_dir / "codex_runner.md"
+        state = active_dir / "codex_runner_state.json"
+        runs = active_dir / "codex_runs"
+        report.parent.mkdir(parents=True, exist_ok=True)
+        report.write_text("# runner\n", encoding="utf-8")
+        state.write_text("{}\n", encoding="utf-8")
+        return agent_loop.ActiveCodexRunnerResult(report, state, runs, "planned", (), (), ("dry-run",))
+
+    def fake_gate(*, task_id, **kwargs):  # type: ignore[no-untyped-def]
+        path = active_dir / "gate_evidence" / task_id / "evidence.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("{}\n", encoding="utf-8")
+        return path, {"ready": True, "privacy_clean": True}
+
+    monkeypatch.setattr(agent_loop, "write_active_codex_runner", fake_runner)
+    monkeypatch.setattr(agent_loop, "write_active_gate_evidence", fake_gate)
+
+    result = agent_loop.write_active_auto_loop(
+        max_iterations=1,
+        execute_runner=False,
+        execute_ship=False,
+        repo_root=repo,
+    )
+
+    assert result.decision == "planned"
+    assert result.completed_task_ids == ()
+    assert result.next_task_id == "T-2026-1001"
+    assert any("ship execution disabled" in warning for warning in result.warnings)
+    assert result.cycles[0]["completed"] is False
+
+
 def test_codex_lane_adapter_maps_verdict_severity_and_errors(monkeypatch, tmp_path: Path) -> None:
     from scripts import agent_loop_codex_turn as cx
 
