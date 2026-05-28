@@ -24,7 +24,7 @@ from scripts._governance import is_load_bearing
 from scripts.agent_loop_codex_turn import resolve_companion
 
 DEFAULT_ATTEMPTS = 2
-DEFAULT_TIMEOUT_SEC = 180
+DEFAULT_TIMEOUT_SEC = 900
 DEFAULT_OUT_SUBDIR = "codex-adversarial-precommit"
 
 Runner = Callable[[Sequence[str], int], subprocess.CompletedProcess[str]]

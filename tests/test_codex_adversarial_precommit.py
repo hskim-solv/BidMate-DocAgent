@@ -87,7 +87,7 @@ def test_run_precommit_review_requires_every_attempt_to_approve(tmp_path: Path):
 
     def runner(cmd, timeout_sec):
         calls.append(list(cmd))
-        assert timeout_sec == 180
+        assert timeout_sec == 900
         return _proc(_approve())
 
     rc = precommit.run_precommit_review(
@@ -98,7 +98,7 @@ def test_run_precommit_review_requires_every_attempt_to_approve(tmp_path: Path):
         changed_files=["rag_core.py"],
         hits=["rag_core.py"],
         out_dir=tmp_path,
-        timeout_sec=180,
+        timeout_sec=900,
         runner=runner,
     )
 
@@ -125,7 +125,7 @@ def test_run_precommit_review_blocks_on_needs_attention(tmp_path: Path):
         changed_files=["rag_core.py"],
         hits=["rag_core.py"],
         out_dir=tmp_path,
-        timeout_sec=180,
+        timeout_sec=900,
         runner=runner,
     )
 
@@ -153,7 +153,7 @@ def test_run_precommit_review_blocks_on_companion_failure(tmp_path: Path):
         changed_files=["rag_core.py"],
         hits=["rag_core.py"],
         out_dir=tmp_path,
-        timeout_sec=180,
+        timeout_sec=900,
         runner=runner,
     )
 
@@ -171,7 +171,7 @@ def test_run_precommit_review_rejects_zero_attempts(tmp_path: Path):
             changed_files=["rag_core.py"],
             hits=["rag_core.py"],
             out_dir=tmp_path,
-            timeout_sec=180,
+            timeout_sec=900,
             runner=lambda cmd, timeout_sec: _proc(_approve()),
         )
 
