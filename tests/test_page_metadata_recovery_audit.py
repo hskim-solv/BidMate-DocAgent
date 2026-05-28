@@ -109,6 +109,10 @@ def test_no_page_metadata_reports_no_go_and_parser_change(tmp_path: Path) -> Non
 
     report = build_audit_report(index_dir)
 
+    assert report["profile_type"] == "private_real100_v2_page_metadata_readiness"
+    assert report["decision"]["private_real_eval_index_go_no_go"] == "NO-GO"
+    assert "minilm_semantic_baseline_required" in report["decision"]["private_real_eval_index_no_go_reasons"]
+    assert "chunk_page_metadata_coverage_zero" in report["decision"]["private_real_eval_index_no_go_reasons"]
     assert report["decision"]["citation_page_claim_go_no_go"] == "NO-GO"
     assert report["decision"]["recoverability"] == "not_recoverable_from_existing_artifacts"
     assert report["decision"]["requires_reindex"] is True
@@ -203,6 +207,8 @@ def test_nonzero_source_group_page_coverage_enables_page_claim_scope(tmp_path: P
     report = build_audit_report(index_dir)
 
     assert report["decision"]["citation_page_claim_go_no_go"] == "GO"
+    assert report["decision"]["private_real_eval_index_go_no_go"] == "NO-GO"
+    assert "minilm_semantic_baseline_required" in report["decision"]["private_real_eval_index_no_go_reasons"]
     assert report["decision"]["page_claim_scope"] == "covered_source_groups_only"
     assert report["decision"]["recoverability"] == "recoverable_from_current_index"
     assert report["decision"]["recommendation"] == "lightweight metadata recovery"
@@ -353,6 +359,8 @@ def test_markdown_and_cli_emit_aggregate_decision(tmp_path: Path) -> None:
     assert "requires_raw_source_reparse" in markdown
     assert "## Implementation Matrix" in markdown
     assert "## Readiness Checks" in markdown
+    assert "PDF/kordoc" not in markdown
+    assert "Private real-eval index: `NO-GO`" in markdown
     assert markdown.rstrip().endswith("`full re-index`")
     assert report["decision"]["requires_parser_change"] is False
     assert report["implementation_matrix"][0]["source_type"] == "csv_text_fallback"
@@ -366,6 +374,10 @@ def test_markdown_and_cli_emit_aggregate_decision(tmp_path: Path) -> None:
             str(index_dir),
             "--output-dir",
             str(out_dir),
+            "--out-json",
+            str(out_dir / "explicit.aggregate.json"),
+            "--out-md",
+            str(out_dir / "explicit.md"),
             "--format",
             "markdown",
         ],
@@ -380,3 +392,5 @@ def test_markdown_and_cli_emit_aggregate_decision(tmp_path: Path) -> None:
     assert completed.stdout.rstrip().endswith("`full re-index`")
     assert (out_dir / "page_metadata_recovery_audit.json").is_file()
     assert (out_dir / "page_metadata_recovery_audit.md").is_file()
+    assert (out_dir / "explicit.aggregate.json").is_file()
+    assert (out_dir / "explicit.md").is_file()

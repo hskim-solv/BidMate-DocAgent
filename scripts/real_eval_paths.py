@@ -29,6 +29,7 @@ except ImportError:  # pragma: no cover - direct script execution
 ROOT_DIR = Path(__file__).resolve().parents[1]
 PRIVATE_REAL_MIN_DOCS = 50
 LOW_CHUNK_REAL_MAX = 1000
+PREFERRED_MINILM_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 
 
 @dataclass(frozen=True)
@@ -135,23 +136,38 @@ def _choose_path(
     return _resolve_path(default, base), "default"
 
 
-def _index_counts(index_dir: Path) -> tuple[int | None, int | None, str | None]:
+def _is_page_span(value: Any) -> bool:
+    return isinstance(value, list) and len(value) == 2 and all(isinstance(page, int) for page in value)
+
+
+def _has_region_page(item: Mapping[str, Any]) -> bool:
+    regions = item.get("regions")
+    if not isinstance(regions, list):
+        return False
+    return any(isinstance(region, Mapping) and isinstance(region.get("page_number"), int) for region in regions)
+
+
+def _index_metadata(index_dir: Path) -> tuple[dict[str, Any], str | None]:
     index_json = index_dir / "index.json"
     if not index_json.exists():
-        return None, None, None
+        return {}, None
     try:
         payload = json.loads(index_json.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
-        return None, None, f"index metadata unreadable: {exc}"
+        return {}, f"index metadata unreadable: {exc}"
     build = payload.get("build") if isinstance(payload, dict) else {}
     if not isinstance(build, dict):
         build = {}
+    embedding = payload.get("embedding") if isinstance(payload, dict) else {}
+    if not isinstance(embedding, dict):
+        embedding = {}
+    chunks_list = payload.get("chunks") if isinstance(payload, dict) and isinstance(payload.get("chunks"), list) else []
     docs = build.get("num_documents")
     chunks = build.get("num_chunks")
     if docs is None and isinstance(payload, dict):
         docs = len(payload.get("documents") or [])
     if chunks is None and isinstance(payload, dict):
-        chunks = len(payload.get("chunks") or [])
+        chunks = len(chunks_list)
     try:
         docs_int = int(docs) if docs is not None else None
     except (TypeError, ValueError):
@@ -160,7 +176,19 @@ def _index_counts(index_dir: Path) -> tuple[int | None, int | None, str | None]:
         chunks_int = int(chunks) if chunks is not None else None
     except (TypeError, ValueError):
         chunks_int = None
-    return docs_int, chunks_int, None
+    page_metadata_chunks = sum(
+        1
+        for chunk in chunks_list
+        if isinstance(chunk, Mapping)
+        and (_is_page_span(chunk.get("page_span")) or _has_region_page(chunk))
+    )
+    return {
+        "num_documents": docs_int,
+        "num_chunks": chunks_int,
+        "embedding_backend": str(embedding.get("backend") or "").strip(),
+        "embedding_model": str(embedding.get("model") or "").strip(),
+        "chunk_page_metadata_count": page_metadata_chunks,
+    }, None
 
 
 def _entry_status(
@@ -176,22 +204,33 @@ def _entry_status(
     num_docs: int | None = None
     num_chunks: int | None = None
     if name == "index_dir" and path.exists():
-        num_docs, num_chunks, count_error = _index_counts(path)
+        metadata, count_error = _index_metadata(path)
+        num_docs = metadata.get("num_documents")
+        num_chunks = metadata.get("num_chunks")
         if count_error:
             return exists, "warn", count_error, num_docs, num_chunks
+        invalid_reasons: list[str] = []
         if (
             num_docs is not None
             and num_chunks is not None
             and num_docs >= PRIVATE_REAL_MIN_DOCS
             and 0 < num_chunks <= LOW_CHUNK_REAL_MAX
         ):
-            return (
-                exists,
-                "invalid",
-                "stale/invalid CSV-fallback index; rebuild from kordoc cache/source",
-                num_docs,
-                num_chunks,
-            )
+            invalid_reasons.append("stale/invalid low-chunk index; rebuild from current private source")
+        if num_docs is not None and num_docs >= PRIVATE_REAL_MIN_DOCS:
+            backend = str(metadata.get("embedding_backend") or "")
+            model = str(metadata.get("embedding_model") or "")
+            page_metadata_count = int(metadata.get("chunk_page_metadata_count") or 0)
+            if backend == "hashing":
+                invalid_reasons.append("hashing embeddings are forbidden for private real-eval and naive baseline evidence")
+            elif backend != "sentence-transformers" or model != PREFERRED_MINILM_MODEL:
+                invalid_reasons.append(
+                    "private real-eval baseline index must use MiniLM sentence-transformers embeddings"
+                )
+            if page_metadata_count <= 0:
+                invalid_reasons.append("chunk page metadata coverage is 0.0; use a page-aware index")
+        if invalid_reasons:
+            return exists, "invalid", "; ".join(invalid_reasons), num_docs, num_chunks
     if exists:
         if name == "index_dir" and num_docs is not None and num_chunks is not None:
             return exists, "ok", f"index metadata: {num_docs} docs, {num_chunks} chunks", num_docs, num_chunks
@@ -582,12 +621,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 1
     invalid = [e for e in entries if e.status == "invalid"]
     if invalid:
-        print("\nWarnings:", file=sys.stderr)
+        print("\nInvalid private real-eval inputs:", file=sys.stderr)
         for entry in invalid:
             suffix = ""
             if entry.num_documents is not None and entry.num_chunks is not None:
                 suffix = f" ({entry.num_documents} docs, {entry.num_chunks} chunks)"
             print(f"- {entry.name}: {entry.message}{suffix}", file=sys.stderr)
+        return 1
     return 0
 
 

@@ -4,7 +4,7 @@ import argparse
 import json
 from pathlib import Path
 
-from scripts.real_eval_paths import missing_required, resolve_entries
+from scripts.real_eval_paths import PREFERRED_MINILM_MODEL, missing_required, resolve_entries
 
 
 def _args(**overrides: str | None) -> argparse.Namespace:
@@ -136,5 +136,81 @@ def test_existing_low_chunk_private_index_is_flagged_but_not_required(tmp_path: 
     entries = resolve_entries(_args(index_dir=str(index_dir)), environ={}, repo_root=tmp_path)
     index = _entry(entries, "index_dir")
     assert index.status == "invalid"
-    assert "CSV-fallback" in index.message
+    assert "low-chunk index" in index.message
     assert index.required_before_run is False
+
+
+def _private_index_payload(*, backend: str, model: str, with_page_metadata: bool) -> dict:
+    chunk = {
+        "chunk_id": "redacted::chunk-001",
+        "doc_id": "redacted",
+        "text": "redacted",
+    }
+    if with_page_metadata:
+        chunk["page_span"] = [1, 1]
+    return {
+        "schema_version": 2,
+        "embedding": {"backend": backend, "model": model, "dimension": 384},
+        "build": {"num_documents": 100, "num_chunks": 21800},
+        "documents": [{"doc_id": "redacted"} for _ in range(100)],
+        "chunks": [chunk],
+    }
+
+
+def test_private_real_eval_index_rejects_hashing_even_with_page_metadata(tmp_path: Path) -> None:
+    index_dir = tmp_path / "data" / "index" / "real100_v2"
+    index_dir.mkdir(parents=True)
+    (index_dir / "index.json").write_text(
+        json.dumps(
+            _private_index_payload(
+                backend="hashing",
+                model="local-hashing-bow",
+                with_page_metadata=True,
+            )
+        ),
+        encoding="utf-8",
+    )
+
+    entries = resolve_entries(_args(index_dir=str(index_dir)), environ={}, repo_root=tmp_path)
+    index = _entry(entries, "index_dir")
+    assert index.status == "invalid"
+    assert "hashing embeddings are forbidden" in index.message
+
+
+def test_private_real_eval_index_rejects_zero_page_metadata_coverage(tmp_path: Path) -> None:
+    index_dir = tmp_path / "data" / "index" / "real100_v2"
+    index_dir.mkdir(parents=True)
+    (index_dir / "index.json").write_text(
+        json.dumps(
+            _private_index_payload(
+                backend="sentence-transformers",
+                model=PREFERRED_MINILM_MODEL,
+                with_page_metadata=False,
+            )
+        ),
+        encoding="utf-8",
+    )
+
+    entries = resolve_entries(_args(index_dir=str(index_dir)), environ={}, repo_root=tmp_path)
+    index = _entry(entries, "index_dir")
+    assert index.status == "invalid"
+    assert "chunk page metadata coverage is 0.0" in index.message
+
+
+def test_private_real_eval_index_accepts_minilm_page_aware_index(tmp_path: Path) -> None:
+    index_dir = tmp_path / "data" / "index" / "real100_v2"
+    index_dir.mkdir(parents=True)
+    (index_dir / "index.json").write_text(
+        json.dumps(
+            _private_index_payload(
+                backend="sentence-transformers",
+                model=PREFERRED_MINILM_MODEL,
+                with_page_metadata=True,
+            )
+        ),
+        encoding="utf-8",
+    )
+
+    entries = resolve_entries(_args(index_dir=str(index_dir)), environ={}, repo_root=tmp_path)
+    index = _entry(entries, "index_dir")
+    assert index.status == "ok"
