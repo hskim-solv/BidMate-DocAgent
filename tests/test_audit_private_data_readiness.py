@@ -154,7 +154,11 @@ def _make_fixture(tmp_path: Path) -> Path:
 def _make_legacy_real_config_fixture(tmp_path: Path) -> Path:
     files_dir = tmp_path / "data" / "files"
     index_dir = tmp_path / "data" / "index" / "real100"
-    report_dir = tmp_path / "reports" / "real100"
+    # Audit resolves the eval-summary scan dir from real_eval_paths.resolve_entries,
+    # whose default report_dir is reports/real100_v2 (#1668). The legacy config below
+    # pins index_dir explicitly but leaves the report dir to that default, so the
+    # synthetic eval_summary must live under real100_v2 to be discovered.
+    report_dir = tmp_path / "reports" / "real100_v2"
     eval_dir = tmp_path / "eval"
     files_dir.mkdir(parents=True)
     index_dir.mkdir(parents=True)
@@ -467,7 +471,7 @@ def test_readiness_audit_reports_page_metadata_no_go_by_source(tmp_path: Path) -
         }
     ]
     index_path.write_text(json.dumps(index, ensure_ascii=False), encoding="utf-8")
-    eval_summary_path = tmp_path / "reports" / "real100" / "eval_summary.json"
+    eval_summary_path = tmp_path / "reports" / "real100_v2" / "eval_summary.json"
     eval_summary_path.write_text(
         json.dumps(
             {
