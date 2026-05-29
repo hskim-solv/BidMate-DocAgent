@@ -99,12 +99,10 @@ def load_raw_documents(input_dir: Path) -> list[dict[str, Any]]:
     for path in files:
         if path.name.startswith("."):
             continue
-        # Some local-only corpora write ``manifest.json`` and ``README.md``
-        # siblings recording corpus metadata. Neither is a document — skip
-        # both so ``build_index`` treats the directory as exactly the contract
-        # files. The public fixture path ships neither file, so the standard
-        # path stays byte-identical (ADR 0001 invariant preserved).
-        if path.name in {"manifest.json", "README.md"}:
+        # Some local-only corpora write manifest/README siblings recording
+        # corpus metadata. They are not documents, so skip them before
+        # normalizing directory contents into the raw-document contract.
+        if path.name in {"manifest.json", "README.md", "export_manifest.local.json"}:
             continue
         if path.suffix.lower() == ".json":
             data = json.loads(path.read_text(encoding="utf-8"))

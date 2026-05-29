@@ -26,6 +26,12 @@ deprecated/dead reference 로 분리한다. 조사 기준은 repo-wide `rg` 로
 | `reports/real100/baseline.aggregate.json` | optional input | `scripts/run_real_eval_delta.py --base`, baseline provenance checks | no | no | `REAL_EVAL_BASELINE_SUMMARY`, `real_eval.reports.baseline_summary` |
 | `reports/real100/judge.local.json` | output artifact | `scripts/llm_judge.py`, `scripts/run_real_eval_delta.py` optional fold-in | no | yes | `REAL_EVAL_REPORT_DIR` |
 | `reports/real100/traces/` | output artifact | trace/rationality judge workflows | no | yes | `REAL_EVAL_REPORT_DIR` |
+| `reports/real100_v2/judge.aggregate.json` | aggregate output artifact | `make real-eval-v2-judge`, `scripts/llm_judge.py --out-aggregate` | no | yes | `REAL100_V2_REPORT_DIR` |
+| `reports/real100_v2/judge_ragas.aggregate.json` | aggregate output artifact | `make real-eval-v2-ragas-judge`, `eval/judges/llm_judge.py --out-aggregate` | no | yes | `REAL100_V2_REPORT_DIR` |
+| `reports/real100_v2/rationality.aggregate.json` | aggregate output artifact | `make real-eval-v2-rationality-judge`, `scripts/run_rationality_judge.py` | no | yes | `REAL100_V2_REPORT_DIR` |
+| `reports/real100_v2/rationality.md` | local review output artifact | `make real-eval-v2-rationality-judge`, `scripts/run_rationality_judge.py` | no | yes | `REAL100_V2_REPORT_DIR`; gitignored |
+| `reports/real100_v2_chroma_llm/*.local.json` | output artifact | v2 judge/rationality make targets | no | yes | `REAL100_V2_JUDGE_INPUT_REPORT_DIR`, `REAL100_V2_RATIONALITY_INPUT_REPORT_DIR` |
+| `reports/real100_v2_chroma_llm/traces/` | output artifact | `eval/run_eval.py`, `scripts/run_rationality_judge.py` | no | yes | `REAL100_V2_RATIONALITY_INPUT_REPORT_DIR` |
 | `reports/judge_cache/` | regenerable cache | RAGAS/LLM judge cache comments in `scripts/run_real_eval_delta.py` and ADR 0014 | no | yes | judge CLI cache args |
 | `reports/rationality_cache/` | regenerable cache | rationality judge cache option | no | yes | rationality judge CLI cache args |
 | `reports/proposed/*.local.yaml` | output artifact | case proposer/review/promote cycle | no | yes | case proposer CLI args |

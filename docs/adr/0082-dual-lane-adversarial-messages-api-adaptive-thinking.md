@@ -24,20 +24,20 @@ claude lane 의 transport 는 **`claude -p` CLI subprocess 그대로 유지** �
 
   | Role | 1차 lane | 1차 model / effort | 2차 lane | 2차 model / effort |
   |---|---|---|---|---|
-  | Planner / Issue Triage | claude | `claude-opus-4-7` / `xhigh` | codex | `gpt-5.5` / `high` |
+  | Planner / Issue Triage | claude | `claude-opus-4-8` / `xhigh` | codex | `gpt-5.5` / `high` |
   | Eval / Claim / Privacy Auditor | claude | `claude-sonnet-4-6` / `medium` | codex | `gpt-5.4-mini` / `medium` |
   | Experiment Scout | claude | `claude-sonnet-4-6` / `medium` | codex | `gpt-5.4-mini` / `medium` |
-  | Reviewer | codex | `gpt-5.5` / `high` | claude | `claude-opus-4-7` / `xhigh` |
-  | Deep Reviewer | codex | `gpt-5.5` / `high` | claude | `claude-opus-4-7` / `xhigh` |
+  | Reviewer | codex | `gpt-5.5` / `high` | claude | `claude-opus-4-8` / `xhigh` |
+  | Deep Reviewer | codex | `gpt-5.5` / `high` | claude | `claude-opus-4-8` / `xhigh` |
   | CI / Regression Auditor | codex | `gpt-5.4-mini` / `medium` | claude | `claude-sonnet-4-6` / `medium` |
   | CI/Eval Auditor | codex | `gpt-5.4-mini` / `medium` | claude | `claude-sonnet-4-6` / `medium` |
 
-  비대칭 fallback 회피 — Reviewer 1차 = codex frontier 인데 2차 = sonnet medium 으로 떨어지면 challenge 가 의미 없음. 대칭 매트릭스는 두 lane 의 reasoning 강도를 매칭하여 adversarial 가치 보존. `xhigh` 는 Opus-4-7 전용 — 다른 모델에 보내면 `_validate_effort_for_model` 가 자동 `high` 로 보정.
+  비대칭 fallback 회피 — Reviewer 1차 = codex frontier 인데 2차 = sonnet medium 으로 떨어지면 challenge 가 의미 없음. 대칭 매트릭스는 두 lane 의 reasoning 강도를 매칭하여 adversarial 가치 보존. `xhigh` 는 Opus-4-7+ 전용 — 다른 모델에 보내면 `_validate_effort_for_model` 가 자동 `high` 로 보정.
 
   codex `--effort` 는 [codex-companion 1.0.4 의 adversarial-review subcommand 가 미지원](../../../../.claude/plugins/cache/openai-codex/codex/1.0.4/scripts/codex-companion.mjs) (line 684 `valueOptions: ["base", "scope", "model", "cwd"]`) — env 정의만 두고 호출 경로 미주입. companion 표면 확장은 후속 별 PR.
 - **adversarial prompt**: `_build_agent_turn_prompt(..., prior_artifact)` 가 1차 lane 의 `{verdict, summary, findings}` 를 2차 lane 의 prompt 끝에 "Prior lane verdict (challenge this) ... Where you disagree, surface counter-examples. Where you agree, state explicitly. Do NOT echo." 블록으로 포함. role-aware header 도 분기 (Reviewer/Deep/CI Auditor 는 adversarial 강조, Planner/Eval/Privacy 는 plan-first synthesis 강조). Codex lane 도 동일하게 sanitized prior finding titles 를 `focus` 문자열로 전달 받음.
 - **dual-lane consensus**: 1차 + 2차 lane verdict 를 `_stricter_verdict` 로 합산 (blocked > needs-attention > approved/clear, error 는 가장 strict). final aggregate heartbeat 는 `agent=None` 으로 호출되어 **세션 top-level status 만 변경, 두 lane 의 개별 lane-level verdict 는 보존** — adversarial 이 disagree 했다는 evidence 가 registry 에 살아남는다.
-- **env knob (Knobs)**: `BIDMATE_CLAUDE_LANE_PLANNER_MODEL`(`claude-opus-4-7`), `BIDMATE_CLAUDE_LANE_PLANNER_EFFORT`(`xhigh`), `BIDMATE_CLAUDE_LANE_MODEL`(`claude-sonnet-4-6`), `BIDMATE_CLAUDE_LANE_EFFORT`(`medium`), `BIDMATE_CODEX_LANE_REVIEWER_MODEL`(`gpt-5.5`), `BIDMATE_CODEX_LANE_CI_MODEL`(`gpt-5.4-mini` — role 라벨 `CI / Regression Auditor` 의 env token 은 `_role_env_token` 이 `/` 앞 텍스트만 사용해 `CI` 가 됨), `BIDMATE_CODEX_LANE_MODEL`(`gpt-5.5`), `BIDMATE_DUAL_LANE_ADVERSARIAL`(`1`). `--agent codex|claude` 가 명시되면 자동 single-lane 으로 전환 (운영자 lane pinning 시 의도 보존).
+- **env knob (Knobs)**: `BIDMATE_CLAUDE_LANE_PLANNER_MODEL`(`claude-opus-4-8`), `BIDMATE_CLAUDE_LANE_PLANNER_EFFORT`(`xhigh`), `BIDMATE_CLAUDE_LANE_MODEL`(`claude-sonnet-4-6`), `BIDMATE_CLAUDE_LANE_EFFORT`(`medium`), `BIDMATE_CODEX_LANE_REVIEWER_MODEL`(`gpt-5.5`), `BIDMATE_CODEX_LANE_CI_MODEL`(`gpt-5.4-mini` — role 라벨 `CI / Regression Auditor` 의 env token 은 `_role_env_token` 이 `/` 앞 텍스트만 사용해 `CI` 가 됨), `BIDMATE_CODEX_LANE_MODEL`(`gpt-5.5`), `BIDMATE_DUAL_LANE_ADVERSARIAL`(`1`). `--agent codex|claude` 가 명시되면 자동 single-lane 으로 전환 (운영자 lane pinning 시 의도 보존).
 
 **Scope** (의도된 제한):
 - 본 ADR 의 dual-lane 분기는 **`agent-turn` CLI 명령 한정** 이다. `active-codex-runner` (assignment 기반 codex spawn) 는 기존 codex-only entry point 로 유지 — assignment 단위 dual-lane 화는 1000+LOC 별 PR 범위라 "one PR, one concern" 영역 밖.
@@ -48,7 +48,7 @@ claude lane 의 transport 는 **`claude -p` CLI subprocess 그대로 유지** �
 **이점**:
 - ADR 0080 lane policy 가 본래 의도한 "두 시점 review" 가치 실현 — 두 lane 출력이 더 이상 독립이 아니라 상호 검증.
 - silent 행동 변화 제거 — `cat reports/agent_loop/active/start.md` 만으로 모델/effort/adversarial 모드 즉시 확인.
-- Opus 4.7 의 `xhigh` effort 를 Planner 역할에 활용 (claude-code 2.1.150+ CLI 기능).
+- Opus 4.8 의 `xhigh` effort 를 Planner/Reviewer/Deep Reviewer 역할에 활용 (claude-code 2.1.150+ CLI 기능).
 - **API key 발급 불필요** — Pro/Max 구독 path 그대로. 사용자 메모리 의 "구독제만 쓰기로 정책" 정합.
 - 비용 회수 경로: `BIDMATE_*_EFFORT=low` 또는 `BIDMATE_DUAL_LANE_ADVERSARIAL=0` (호출 횟수 절반화) — env 단일 toggle.
 

@@ -177,15 +177,22 @@ together within the latency/cost budget.
 ## Session Handoff - 2026-05-28 13:45 KST
 
 - Role: Implementer
+- Lifecycle stage: review
 - Branch / worktree: eval/issue-1641-run-real100-v2-context-packing-citation-ordering / /Users/hskim/.codex/worktrees/0ebc/BidMate-DocAgent
 - Issue / PR: plan issue #1638, implementation issue #1641 / PR TBD
 - Task: T-2026-0033
 - Current status: opt-in context-packing runner/report implemented; 3-case real100_v2 screening classifies evidence-first packing as latency_regression.
 - Files touched: scripts/run_real100_v2_context_packing_experiment.py, tests/test_real100_v2_context_packing_experiment.py, reports/real100_v2/context_packing.aggregate.json, docs/evaluation/real100_v2-context-packing.md, reports/real100_v2/README.md, .gitignore, .githooks/pre-commit, scripts/check_real100_v2_only.py, docs/plans/T-2026-0033-context-packing-citation-ordering-experiment.md, tasks/queue.md
 - Decisions made: no promotion of evidence-first context packing; paired_delta_valid=false and both observed p95 values breach the T-2026-0030 hard ceiling.
+- Eval surface: private real-eval screening on `real100_v2`; aggregate-only, not a headline performance claim.
 - Commands run: make ship-start TITLE="Run real100 v2 context packing citation ordering experiment" TYPE=eval; make check-branch; python3 -m py_compile scripts/run_real100_v2_context_packing_experiment.py; python3 -m pytest -q tests/test_real100_v2_context_packing_experiment.py; python3 scripts/run_real100_v2_context_packing_experiment.py --config <external_private_real100_v2_config> --index-dir <external_private_real100_v2_index> --cases-subset-n 3 --variant evidence_first.
 - Results: control p95 46589.662 ms; evidence_first p95 12946.188 ms; response/citation metrics did not improve; overall classification latency_regression because the variant still breaches the hard ceiling.
+- Validation evidence: focused context-packing tests passed; 3-case local private screening completed; final claim remains no-go because latency exceeds the `T-2026-0030` hard ceiling.
+- Blockers: none for review; promotion is blocked by latency regression and lack of full paired delta.
+- Next action: run `make real-eval-v2-guard && python3 scripts/agent_loop.py privacy-audit-output && python3 scripts/agent_loop.py claim-audit --from-git`.
 - Next safe command: make real-eval-v2-guard && python3 scripts/agent_loop.py privacy-audit-output && python3 scripts/agent_loop.py claim-audit --from-git
 - Open questions: none.
+- Open risks: no full paired delta; this artifact is screening evidence only and not a headline improvement claim.
+- Reviewer focus: verify no retrieval/reranker behavior changed, citation metrics did not regress silently, and committed artifacts remain aggregate-only.
 - Risks: no full paired delta; this artifact is screening evidence only and not a headline improvement claim.
 ```

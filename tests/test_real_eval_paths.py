@@ -4,7 +4,12 @@ import argparse
 import json
 from pathlib import Path
 
-from scripts.real_eval_paths import PREFERRED_MINILM_MODEL, missing_required, resolve_entries
+from scripts.real_eval_paths import (
+    DEFAULT_REAL100_V2_INDEX_DIR,
+    PREFERRED_MINILM_MODEL,
+    missing_required,
+    resolve_entries,
+)
 
 
 def _args(**overrides: str | None) -> argparse.Namespace:
@@ -96,6 +101,18 @@ def test_cache_index_and_report_are_not_required_inputs(tmp_path: Path) -> None:
     assert _entry(entries, "index_dir").status == "regenerable-missing"
     assert _entry(entries, "report_dir").status == "creatable"
     assert _entry(entries, "eval_summary").status == "creatable"
+
+
+def test_default_index_dir_is_checkpoint_minilm_pageaware(tmp_path: Path) -> None:
+    entries = resolve_entries(_args(), environ={}, repo_root=tmp_path)
+    index = _entry(entries, "index_dir")
+    report = _entry(entries, "report_dir")
+    baseline = _entry(entries, "baseline_summary")
+
+    assert index.path == str(tmp_path / DEFAULT_REAL100_V2_INDEX_DIR)
+    assert index.source == "default"
+    assert report.path == str(tmp_path / "reports" / "real100_v2")
+    assert baseline.path == str(tmp_path / "reports" / "real100_v2" / "baseline.aggregate.json")
 
 
 def test_output_eval_summary_is_not_required_before_run(tmp_path: Path) -> None:

@@ -47,6 +47,7 @@ import datetime
 import hashlib
 import json
 import os
+import re
 import sys
 from pathlib import Path
 from typing import Any, Callable
@@ -419,10 +420,17 @@ def judge_rationality(
 def render_markdown(aggregate: dict[str, Any], local_payload: dict[str, Any]) -> str:
     """Render aggregate + bottom-3 cases per weak axis as Markdown.
 
-    The Markdown file lives at ``reports/real100/rationality.md`` and is
-    intentionally compact (single-screen) so it fits the existing
-    ``rag_pipeline.md`` / ``distinguishing_power.md`` neighbourhood.
+    The Markdown file is a local human-review view. The aggregate JSON is the
+    commit-safe evidence surface; private-v2 Markdown output remains gitignored
+    because bottom-row rationales are case-adjacent review material.
     """
+    def safe_reason(value: Any) -> str:
+        text = neutralize_instruction_patterns(str(value or ""))[:100]
+        text = re.sub(r"/" r"Users/[^\s)`]+", "[redacted-local-path]", text)
+        text = re.sub(r"\bdoc_id\b\s*[:=]\s*[\w.-]+", "doc_id=[redacted-private-value]", text, flags=re.IGNORECASE)
+        text = re.sub(r"\bchunk_id\b\s*[:=]\s*[\w.-]+", "chunk_id=[redacted-private-value]", text, flags=re.IGNORECASE)
+        return text
+
     lines: list[str] = []
     lines.append("# Trajectory rationality (ADR 0056)")
     lines.append("")
@@ -485,7 +493,7 @@ def render_markdown(aggregate: dict[str, Any], local_payload: dict[str, Any]) ->
         for rank, c in enumerate(bottom, start=1):
             lines.append(
                 f"- #{rank} (slice={c.get('slice')}) "
-                f"= {c[axis]:.3f} — {str(c.get('reason_short', ''))[:100]}"
+                f"= {c[axis]:.3f} — {safe_reason(c.get('reason_short'))}"
             )
     lines.append("")
     return "\n".join(lines)

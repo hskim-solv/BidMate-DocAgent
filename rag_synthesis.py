@@ -24,6 +24,8 @@ Backends (``BIDMATE_SYNTHESIS_BACKEND``):
   (vLLM / llama.cpp / Solar / KURE-finetuned). Reads
   ``BIDMATE_SYNTHESIS_API_KEY``, ``BIDMATE_SYNTHESIS_MODEL``,
   ``BIDMATE_SYNTHESIS_BASE_URL``.
+* ``local_openai_compatible`` — same protocol, but restricted to a loopback
+  ``BIDMATE_SYNTHESIS_BASE_URL`` for private/local RFP synthesis runs.
 
 The synthesizer never raises out to the pipeline — on any unexpected
 error it returns ``(None, meta_with_fallback_reason)`` and the caller
@@ -35,8 +37,10 @@ import json
 import os
 import time
 from typing import TYPE_CHECKING, Any, cast
+from urllib.parse import urlparse
+import ipaddress
 
-from bidmate_data_boundary import assert_external_payload_allowed
+from bidmate_data_boundary import ExternalPayloadBlocked, assert_external_payload_allowed
 
 if TYPE_CHECKING:
     # Type-only: the anthropic SDK is a lazy, optional runtime import inside
@@ -57,6 +61,7 @@ ENV_MAX_TOKENS = "BIDMATE_SYNTHESIS_MAX_TOKENS"
 # Default off so ADR 0001 run-to-run determinism + ADR 0005 commit boundary
 # are unchanged; only env=on traces add the new fields.
 ENV_TRACE_FULL = "BIDMATE_TRACE_FULL"
+LOCAL_OPENAI_BACKEND = "local_openai_compatible"
 
 
 def _trace_full_enabled() -> bool:
@@ -479,21 +484,43 @@ def _anthropic_backend(  # pragma: no cover - network
     return result
 
 
-def _openai_compatible_backend(  # pragma: no cover - network
+def _is_loopback_base_url(value: str) -> bool:
+    parsed = urlparse(value)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        return False
+    host = parsed.hostname.strip("[]").lower()
+    if host == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
+def _assert_loopback_openai_base_url() -> None:
+    base_url = os.environ.get(ENV_BASE_URL) or ""
+    if _is_loopback_base_url(base_url):
+        return
+    declared = base_url or "<unset>"
+    raise ExternalPayloadBlocked(
+        f"{LOCAL_OPENAI_BACKEND} requires a loopback {ENV_BASE_URL}; "
+        f"got {declared!r}. Use http://localhost, http://127.0.0.1, "
+        "or http://[::1] for private/local RFP synthesis runs."
+    )
+
+
+def _openai_compatible_completion(  # pragma: no cover - network
     *,
     query: str,
     analysis: dict[str, Any],
     answer: dict[str, Any],
     evidence: list[dict[str, Any]],
+    local_only: bool,
 ) -> dict[str, Any]:
-    assert_external_payload_allowed(channel="synthesis:openai_compatible")
-    try:
-        from openai import OpenAI  # type: ignore[import-not-found]
-    except Exception as exc:
-        raise RuntimeError(
-            "openai_compatible backend requires the openai SDK. "
-            "Install with `pip install openai` or use BIDMATE_SYNTHESIS_BACKEND=stub."
-        ) from exc
+    if local_only:
+        _assert_loopback_openai_base_url()
+    else:
+        assert_external_payload_allowed(channel="synthesis:openai_compatible")
 
     api_key = os.environ.get(ENV_API_KEY)
     if not api_key:
@@ -502,6 +529,14 @@ def _openai_compatible_backend(  # pragma: no cover - network
     if not model:
         raise RuntimeError(f"{ENV_MODEL} is not set.")
     base_url = os.environ.get(ENV_BASE_URL) or None
+
+    try:
+        from openai import OpenAI  # type: ignore[import-not-found]
+    except Exception as exc:
+        raise RuntimeError(
+            "openai_compatible backend requires the openai SDK. "
+            "Install with `pip install openai` or use BIDMATE_SYNTHESIS_BACKEND=stub."
+        ) from exc
     max_tokens = int(os.environ.get(ENV_MAX_TOKENS) or DEFAULT_MAX_TOKENS)
 
     client = OpenAI(api_key=api_key, base_url=base_url)
@@ -537,6 +572,38 @@ def _openai_compatible_backend(  # pragma: no cover - network
     return result
 
 
+def _openai_compatible_backend(  # pragma: no cover - network
+    *,
+    query: str,
+    analysis: dict[str, Any],
+    answer: dict[str, Any],
+    evidence: list[dict[str, Any]],
+) -> dict[str, Any]:
+    return _openai_compatible_completion(
+        query=query,
+        analysis=analysis,
+        answer=answer,
+        evidence=evidence,
+        local_only=False,
+    )
+
+
+def _local_openai_compatible_backend(  # pragma: no cover - network
+    *,
+    query: str,
+    analysis: dict[str, Any],
+    answer: dict[str, Any],
+    evidence: list[dict[str, Any]],
+) -> dict[str, Any]:
+    return _openai_compatible_completion(
+        query=query,
+        analysis=analysis,
+        answer=answer,
+        evidence=evidence,
+        local_only=True,
+    )
+
+
 def _extract_tool_payload(response: Any) -> dict[str, Any]:
     for block in getattr(response, "content", None) or []:
         if getattr(block, "type", None) == "tool_use" and getattr(block, "name", None) == TOOL_DEFINITION["name"]:
@@ -550,6 +617,7 @@ _BACKENDS = {
     "stub": _stub_backend,
     "anthropic": _anthropic_backend,
     "openai_compatible": _openai_compatible_backend,
+    LOCAL_OPENAI_BACKEND: _local_openai_compatible_backend,
 }
 
 
@@ -558,6 +626,7 @@ __all__ = [
     "DEFAULT_BACKEND",
     "ENV_BACKEND",
     "ENV_MODEL",
+    "LOCAL_OPENAI_BACKEND",
     "PRICING_PER_MTOK_USD",
     "compute_cost_usd",
     "synthesize_answer",

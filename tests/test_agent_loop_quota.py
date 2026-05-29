@@ -407,6 +407,52 @@ def test_compute_dynamic_target_zero_hours_left_falls_back() -> None:
     assert new_target == {"claude": 5, "codex": 5}
 
 
+def test_read_config_signals_accepts_exact_reset_at(tmp_path: Path) -> None:
+    now = _now_utc()
+    config = tmp_path / "quota_config.json"
+    config.write_text(
+        json.dumps(
+            {
+                "claude": {
+                    "weekly_limit_units": 100,
+                    "used_this_week_units": 0,
+                    "reset_at": "2026-06-04T23:52:59Z",
+                    "reset_dow": "mon",
+                    "reset_hour_utc": 0,
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    signals = quota._read_config_signals(config, now=now)
+
+    assert isinstance(signals["claude"], quota.QuotaState)
+    assert signals["claude"].remaining_pct == 100.0
+    assert signals["claude"].reset_at == datetime(2026, 6, 4, 23, 52, 59, tzinfo=timezone.utc)
+
+
+def test_read_config_signals_rolls_past_exact_reset_at_forward(tmp_path: Path) -> None:
+    now = datetime(2026, 6, 5, 1, 0, tzinfo=timezone.utc)
+    config = tmp_path / "quota_config.json"
+    config.write_text(
+        json.dumps(
+            {
+                "claude": {
+                    "weekly_limit_units": 100,
+                    "used_this_week_units": 0,
+                    "reset_at": "2026-06-04T23:52:59Z",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    signals = quota._read_config_signals(config, now=now)
+
+    assert signals["claude"].reset_at == datetime(2026, 6, 11, 23, 52, 59, tzinfo=timezone.utc)
+
+
 # ---------- apply_quota_aware_target ---------------------------------------
 
 

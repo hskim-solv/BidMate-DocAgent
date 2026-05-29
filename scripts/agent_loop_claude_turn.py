@@ -24,6 +24,7 @@ real ``claude`` binary.
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -92,7 +93,9 @@ def build_command(
 
 
 def _default_runner(cmd: list[str]) -> "subprocess.CompletedProcess[str]":
-    return subprocess.run(cmd, capture_output=True, text=True, check=False)
+    env = dict(os.environ)
+    env.pop("ANTHROPIC_API_KEY", None)
+    return subprocess.run(cmd, capture_output=True, text=True, check=False, env=env)
 
 
 def run_turn(

@@ -41,6 +41,7 @@ import json
 import os
 from typing import TYPE_CHECKING, Any
 
+from bidmate_data_boundary import assert_external_payload_allowed
 from rag_core import EVIDENCE_BOUNDARY, neutralize_instruction_patterns
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -151,6 +152,7 @@ def build_openai_client() -> Any:  # returns openai.OpenAI at runtime
     Raises:
         RuntimeError: SDK not installed, or a required env var is absent.
     """
+    assert_external_payload_allowed(channel="judge:openai_compatible")
     try:
         from openai import OpenAI  # type: ignore[import-not-found]
     except Exception as exc:  # pragma: no cover - environment-dependent

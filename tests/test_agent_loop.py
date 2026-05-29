@@ -1423,6 +1423,38 @@ def test_privacy_audit_output_finds_private_values_without_leaking_them(tmp_path
     assert "PRIVATE-DOC" not in rendered
 
 
+def test_privacy_audit_does_not_treat_validation_evidence_as_raw_field(tmp_path: Path) -> None:
+    report_dir = tmp_path / "reports" / "agent_loop"
+    report_dir.mkdir(parents=True)
+    (report_dir / "safe.md").write_text(
+        "- Validation evidence: focused pytest passed\n"
+        "- Expected evidence: aggregate-only report\n"
+        "- evidence mode: aggregate-only\n",
+        encoding="utf-8",
+    )
+
+    findings = agent_loop.audit_privacy_output(report_dir, out_path=None, repo_root=tmp_path)
+
+    assert findings == []
+
+
+def test_privacy_audit_still_finds_raw_evidence_and_inline_ids(tmp_path: Path) -> None:
+    report_dir = tmp_path / "reports" / "agent_loop"
+    report_dir.mkdir(parents=True)
+    (report_dir / "unsafe.md").write_text(
+        "- Raw evidence: PRIVATE RAW EVIDENCE\n"
+        "review summary with doc_id: PRIVATE-DOC\n",
+        encoding="utf-8",
+    )
+
+    out, rc, rendered = agent_loop.write_privacy_audit_output(repo_root=tmp_path)
+
+    assert rc == 1
+    assert "private raw field value" in rendered
+    assert "PRIVATE RAW EVIDENCE" not in rendered
+    assert "PRIVATE-DOC" not in rendered
+
+
 def test_auto_pass_check_requires_validation_for_low_risk_surface(tmp_path: Path) -> None:
     report = agent_loop.build_auto_pass_report(
         task_id=None,
@@ -2954,6 +2986,169 @@ def test_active_start_creates_local_start_pack_without_remote_mutation(monkeypat
     assert "active-loop --mode full-ship --topology expanded-eight --execute --from-git" in result.next_safe_command
 
 
+def test_active_start_clears_stale_self_recovery_lease(monkeypatch, tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    _patch_active_loop_clear(monkeypatch)
+    active = repo / "reports" / "agent_loop" / "active"
+    active.mkdir(parents=True, exist_ok=True)
+    (active / "leases.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "leases": [
+                    {
+                        "lease_id": "stale-self",
+                        "status": "recovery-needed",
+                        "lease_type": "write",
+                        "active_agent": None,
+                        "task_id": "T-2026-0001",
+                        "issue": "9999",
+                        "branch": "chore/issue-9999-active-loop",
+                        "worktree": ".",
+                        "expires_at": "2020-01-01T00:00:00Z",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = agent_loop.write_active_start(
+        changed_files=["docs/operations/active-agent-loop.md"],
+        repo_root=repo,
+    )
+    leases = json.loads((active / "leases.json").read_text(encoding="utf-8"))
+
+    assert result.decision == "started"
+    assert not any("requires recovery" in blocker for blocker in result.active_loop.blockers)
+    assert all(lease["lease_id"] != "stale-self" for lease in leases["leases"])
+    assert any("stale self recovery lease cleared" in warning for warning in result.active_loop.warnings)
+
+
+def test_active_start_clears_expired_same_issue_recovery_lease(monkeypatch, tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path, task_id="T-2026-0031")
+    _patch_active_loop_clear(monkeypatch)
+    active = repo / "reports" / "agent_loop" / "active"
+    active.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(agent_loop, "_current_branch", lambda repo_root: "chore/issue-1667-t-2026-0031")
+    (active / "leases.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "leases": [
+                    {
+                        "lease_id": "stale-same-issue",
+                        "status": "recovery-needed",
+                        "lease_type": "write",
+                        "active_agent": None,
+                        "task_id": "T-2026-0029",
+                        "issue": "1667",
+                        "branch": "chore/issue-1667-t-2026-0029",
+                        "worktree": ".",
+                        "expires_at": "2020-01-01T00:00:00Z",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = agent_loop.write_active_start(
+        task_id="T-2026-0031",
+        changed_files=["scripts/agent_loop.py"],
+        repo_root=repo,
+    )
+    leases = json.loads((active / "leases.json").read_text(encoding="utf-8"))
+
+    assert result.decision == "started"
+    assert not any("requires recovery" in blocker for blocker in result.active_loop.blockers)
+    assert all(lease["lease_id"] != "stale-same-issue" for lease in leases["leases"])
+    assert any("stale self recovery lease cleared" in warning for warning in result.active_loop.warnings)
+
+
+def test_active_start_clears_expired_other_task_recovery_lease_even_with_stale_agent(monkeypatch, tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path, task_id="T-2026-0034")
+    _patch_active_loop_clear(monkeypatch)
+    active = repo / "reports" / "agent_loop" / "active"
+    active.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(agent_loop, "_current_branch", lambda repo_root: "chore/issue-1667-t-2026-0031")
+    (active / "leases.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "leases": [
+                    {
+                        "lease_id": "stale-other-task-agent",
+                        "status": "recovery-needed",
+                        "lease_type": "write",
+                        "active_agent": "codex",
+                        "task_id": "T-2026-0030",
+                        "issue": "1667",
+                        "branch": "chore/issue-1667-t-2026-0031",
+                        "worktree": ".",
+                        "expires_at": "2020-01-01T00:00:00Z",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = agent_loop.write_active_start(
+        task_id="T-2026-0034",
+        changed_files=["tasks/queue.md"],
+        repo_root=repo,
+    )
+    leases = json.loads((active / "leases.json").read_text(encoding="utf-8"))
+
+    assert result.decision == "started"
+    assert not any("requires recovery" in blocker for blocker in result.active_loop.blockers)
+    assert all(lease["lease_id"] != "stale-other-task-agent" for lease in leases["leases"])
+    assert any("stale self recovery lease cleared" in warning for warning in result.active_loop.warnings)
+
+
+def test_active_start_clears_expired_free_active_lease_for_prior_task(monkeypatch, tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path, task_id="T-2026-0032")
+    _patch_active_loop_clear(monkeypatch)
+    active = repo / "reports" / "agent_loop" / "active"
+    active.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(agent_loop, "_current_branch", lambda repo_root: "chore/issue-1667-t-2026-0031")
+    monkeypatch.setattr(agent_loop, "_inspect_active_worktree", lambda worktree, repo_root: {"state": "dirty-worktree"})
+    (active / "leases.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "leases": [
+                    {
+                        "lease_id": "expired-prior-active",
+                        "status": "active",
+                        "lease_type": "write",
+                        "active_agent": None,
+                        "task_id": "T-2026-0030",
+                        "issue": "1667",
+                        "branch": "chore/issue-1667-t-2026-0031",
+                        "worktree": ".",
+                        "expires_at": "2020-01-01T00:00:00Z",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = agent_loop.write_active_start(
+        task_id="T-2026-0032",
+        changed_files=["tasks/queue.md"],
+        repo_root=repo,
+    )
+    leases = json.loads((active / "leases.json").read_text(encoding="utf-8"))
+
+    assert result.decision == "started"
+    assert not any("requires recovery" in blocker for blocker in result.active_loop.blockers)
+    assert all(lease["lease_id"] != "expired-prior-active" for lease in leases["leases"])
+    assert any("stale free write lease cleared" in warning for warning in result.active_loop.warnings)
+
+
 def test_active_start_on_detached_head_starts_and_suggests_prepare(monkeypatch, tmp_path: Path) -> None:
     repo = _write_repo(tmp_path)
     monkeypatch.setattr(agent_loop, "_current_branch", lambda repo_root: "HEAD")
@@ -3586,11 +3781,155 @@ def test_active_codex_runner_dry_run_renders_eight_commands_without_spawning(tmp
     assert len(result.sessions) == 8
     assert not (active / "codex_runs").exists()
     assert all("codex exec --cd . --sandbox read-only --json" in item["command"] for item in result.sessions)
+    assert any(item["role"] == "CI / Regression Auditor" and item["model"] == "gpt-5.4-mini" for item in result.sessions)
+    assert all("--model" in item["command"] for item in result.sessions)
     report = result.report_path.read_text(encoding="utf-8")
     state = result.state_path.read_text(encoding="utf-8")
     assert str(repo) not in report
     assert str(repo) not in state
     assert "role-dispatch" not in report  # runner is a separate spawn surface, not the report-only dispatcher.
+
+
+def test_active_codex_runner_can_execute_claude_read_lane(tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    _write_expanded_active_runner_fixture(repo)
+    calls: list[list[str]] = []
+
+    def fake_claude(cmd):  # type: ignore[no-untyped-def]
+        calls.append(list(cmd))
+        return subprocess.CompletedProcess(
+            cmd,
+            0,
+            stdout=json.dumps(
+                {"result": {"verdict": "approved", "summary": "ok", "findings": [], "next_steps": []}}
+            ),
+            stderr="",
+        )
+
+    result = agent_loop.write_active_codex_runner(
+        execute=True,
+        read_agent="claude",
+        sessions="reviewer",
+        repo_root=repo,
+        which_func=lambda exe: f"/usr/bin/{exe}",
+        claude_runner=fake_claude,
+        record_gate_heartbeats=True,
+    )
+
+    assert result.decision == "completed"
+    assert result.sessions[0]["agent"] == "claude"
+    assert calls and calls[0][0] == "claude"
+    artifact = repo / "reports" / "agent_loop" / "active" / "artifacts" / "T-2026-9999"
+    assert not artifact.exists()  # no task id was attached to this fixture session
+    registry = json.loads((repo / "reports" / "agent_loop" / "active" / "session_registry.json").read_text(encoding="utf-8"))
+    reviewer = next(item for item in registry["sessions"] if item["session_id"] == "reviewer")
+    assert reviewer["lanes"]["claude"]["status"] == "passed"
+    mix = json.loads((repo / "reports" / "agent_loop" / "active" / "agent_mix.json").read_text(encoding="utf-8"))
+    assert mix["rolling"]["claude"] == 1
+
+
+def test_codex_reader_thread_terminates_on_command_cap(tmp_path: Path) -> None:
+    lines = iter(
+        [
+            json.dumps({"type": "item.started", "item": {"type": "command_execution"}}) + "\n",
+            json.dumps({"type": "item.started", "item": {"type": "command_execution"}}) + "\n",
+        ]
+    )
+
+    class Stream:
+        def readline(self):  # type: ignore[no-untyped-def]
+            return next(lines, "")
+
+        def close(self) -> None:
+            pass
+
+    class Proc:
+        stdout = Stream()
+
+        def __init__(self) -> None:
+            self.terminated = False
+
+        def terminate(self) -> None:
+            self.terminated = True
+
+    proc = Proc()
+    item: dict[str, object] = {}
+    thread = agent_loop._spawn_codex_reader_thread(
+        proc,
+        "reviewer",
+        tmp_path / "stdout.jsonl",
+        max_command_executions=1,
+        item=item,
+    )
+    assert thread is not None
+    thread.join(timeout=2)
+
+    assert proc.terminated
+    assert item["budget_exceeded"] is True
+    assert item["command_execution_count"] == 2
+
+
+def test_popen_codex_process_starts_new_session_when_supported() -> None:
+    calls: list[dict[str, object]] = []
+
+    class Proc:
+        pass
+
+    def factory(cmd, **kwargs):  # type: ignore[no-untyped-def]
+        calls.append({"cmd": list(cmd), **kwargs})
+        return Proc()
+
+    proc = agent_loop._popen_codex_process(factory, ["codex", "exec"], cwd="/tmp")
+
+    assert isinstance(proc, Proc)
+    assert calls[0]["start_new_session"] is True
+    assert calls[0]["cwd"] == "/tmp"
+
+
+def test_popen_codex_process_falls_back_for_test_doubles() -> None:
+    calls: list[dict[str, object]] = []
+
+    class Proc:
+        pass
+
+    def factory(cmd, **kwargs):  # type: ignore[no-untyped-def]
+        if "start_new_session" in kwargs:
+            raise TypeError("unexpected keyword argument 'start_new_session'")
+        calls.append({"cmd": list(cmd), **kwargs})
+        return Proc()
+
+    proc = agent_loop._popen_codex_process(factory, ["codex", "exec"], cwd="/tmp")
+
+    assert isinstance(proc, Proc)
+    assert calls == [{"cmd": ["codex", "exec"], "cwd": "/tmp"}]
+
+
+def test_stop_codex_process_terminates_process_group(monkeypatch: pytest.MonkeyPatch) -> None:
+    sent: list[tuple[int, int]] = []
+
+    class Proc:
+        pid = 4242
+        returncode = None
+
+        def __init__(self) -> None:
+            self.waits = 0
+
+        def poll(self):  # type: ignore[no-untyped-def]
+            return self.returncode
+
+        def wait(self, timeout=None):  # type: ignore[no-untyped-def]
+            self.waits += 1
+            self.returncode = -15
+            return self.returncode
+
+    monkeypatch.setattr(agent_loop.os, "getpgid", lambda pid: pid)
+    monkeypatch.setattr(agent_loop.os, "killpg", lambda pid, sig: sent.append((pid, sig)))
+
+    proc = Proc()
+    agent_loop._stop_codex_process(proc)
+
+    assert sent == [(4242, agent_loop.signal.SIGTERM)]
+    assert proc.waits == 1
 
 
 def test_eval_claim_privacy_prompt_excludes_own_live_logs(tmp_path: Path) -> None:
@@ -3607,6 +3946,42 @@ def test_eval_claim_privacy_prompt_excludes_own_live_logs(tmp_path: Path) -> Non
     )
 
     assert "exclude this session's own active stdout/stderr files" in prompt
+
+
+def test_reviewer_prompt_uses_p0_only_local_gate_blocking(tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    assignment = repo / "reports" / "agent_loop" / "active" / "assignments" / "reviewer.md"
+    assignment.parent.mkdir(parents=True, exist_ok=True)
+    assignment.write_text("# Assignment\n", encoding="utf-8")
+
+    prompt = agent_loop._render_active_codex_prompt(
+        session_id="reviewer",
+        role="Reviewer",
+        assignment_path=assignment,
+        repo_root=repo,
+    )
+
+    assert "Use P0-only blocking for this local active gate" in prompt
+    assert "Treat `decision-brief` as decision support" in prompt
+    assert "Do not block on stale active-loop artifacts" in prompt
+    assert "Do not self-audit this reviewer session's live Codex transcript artifacts" in prompt
+
+
+def test_deep_reviewer_prompt_treats_architecture_detector_as_evidence(tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    assignment = repo / "reports" / "agent_loop" / "active" / "assignments" / "deep-reviewer.md"
+    assignment.parent.mkdir(parents=True, exist_ok=True)
+    assignment.write_text("# Assignment\n", encoding="utf-8")
+
+    prompt = agent_loop._render_active_codex_prompt(
+        session_id="deep-reviewer",
+        role="Deep Reviewer",
+        assignment_path=assignment,
+        repo_root=repo,
+    )
+
+    assert "Treat `architecture-decision` as a detector" in prompt
+    assert "do not block solely because the detector" in prompt
 
 
 def test_active_codex_runner_execute_spawns_agentic_processes_and_preserves_lease(tmp_path: Path) -> None:
@@ -3729,7 +4104,7 @@ def test_active_codex_runner_records_passing_gate_heartbeats(tmp_path: Path) -> 
     assert "Gate Heartbeats" in result.report_path.read_text(encoding="utf-8")
 
 
-def test_active_codex_runner_does_not_override_explicit_blocked_gate(tmp_path: Path) -> None:
+def test_active_codex_runner_records_explicit_blocked_gate(tmp_path: Path) -> None:
     repo = _write_repo(tmp_path)
     active = _write_expanded_active_runner_fixture(repo)
     last_message = active / "codex_runs" / "eval-claim-privacy-auditor" / "last_message.md"
@@ -3754,8 +4129,11 @@ def test_active_codex_runner_does_not_override_explicit_blocked_gate(tmp_path: P
 
     registry = json.loads((active / "session_registry.json").read_text(encoding="utf-8"))
     eval_session = next(item for item in registry["sessions"] if item["session_id"] == "eval-claim-privacy-auditor")
-    assert events == []
-    assert eval_session["status"] == "idle"
+    assert events == [
+        {"session_id": "eval-claim-privacy-auditor", "role": "Eval / Claim / Privacy Auditor", "status": "blocked"}
+    ]
+    assert eval_session["status"] == "blocked"
+    assert sessions[0]["heartbeat_status"] == "blocked"
     assert any("reported non-passing gate verdict: blocked" in warning for warning in warnings)
 
 
@@ -3952,7 +4330,12 @@ def test_make_active_start_can_disable_runner_and_has_korean_alias() -> None:
     assert "scripts/agent_loop.py active-start" in no_runner.stdout
     assert "agent-loop-active-codex-runner" not in no_runner.stdout
     assert alias.returncode == 0
-    assert 'make agent-loop-active-codex-runner ACTIVE_CODEX_EXECUTE="1"' in alias.stdout
+    assert "scripts/agent_loop.py active-auto-loop" in alias.stdout
+    assert '--max-iterations "5"' in alias.stdout
+    assert '--auto-max-iterations-cap "15"' in alias.stdout
+    assert '--target-completed-count "5"' in alias.stdout
+    assert "--execute-runner" in alias.stdout
+    assert "--execute-ship" not in alias.stdout
     assert '--auth-mode "chatgpt"' in alias.stdout
 
 
@@ -4037,6 +4420,837 @@ git diff --check
     assert second.cycles[0]["task_id"] == "T-2026-1002"
     state = json.loads((active_dir / "auto_loop_state.json").read_text(encoding="utf-8"))
     assert state["completed_task_ids"] == ["T-2026-1001"]
+
+
+def test_active_auto_loop_local_gate_completion_without_ship(monkeypatch, tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path, task_id="T-2026-1001", title="Local gate task")
+    _patch_active_loop_clear(monkeypatch)
+    active_dir = repo / "reports" / "agent_loop" / "active"
+
+    def fake_runner(**kwargs):  # type: ignore[no-untyped-def]
+        report = active_dir / "codex_runner.md"
+        state = active_dir / "codex_runner_state.json"
+        runs = active_dir / "codex_runs"
+        report.parent.mkdir(parents=True, exist_ok=True)
+        report.write_text("# runner\n", encoding="utf-8")
+        state.write_text("{}\n", encoding="utf-8")
+        return agent_loop.ActiveCodexRunnerResult(report, state, runs, "completed", (), (), ())
+
+    def fake_gate(*, task_id, **kwargs):  # type: ignore[no-untyped-def]
+        path = active_dir / "gate_evidence" / task_id / "evidence.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("{}\n", encoding="utf-8")
+        return path, {"ready": True, "privacy_clean": True}
+
+    monkeypatch.setattr(agent_loop, "write_active_codex_runner", fake_runner)
+    monkeypatch.setattr(agent_loop, "write_active_gate_evidence", fake_gate)
+
+    result = agent_loop.write_active_auto_loop(
+        max_iterations=1,
+        execute_runner=True,
+        execute_ship=False,
+        repo_root=repo,
+    )
+
+    assert result.decision == "limit-reached"
+    assert result.completed_task_ids == ("T-2026-1001",)
+    assert result.cycles[0]["completion_decision"] == "local-gate-complete"
+    assert any("recorded local gate completion" in warning for warning in result.warnings)
+
+
+def test_active_auto_loop_absolute_target_stops_when_already_reached(tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path, task_id="T-2026-1001", title="Already done")
+    active_dir = repo / "reports" / "agent_loop" / "active"
+    active_dir.mkdir(parents=True, exist_ok=True)
+    state_path = active_dir / "auto_loop_state.json"
+    state_path.write_text(
+        json.dumps({"completed_task_ids": ["T-2026-1001", "T-2026-1002"]}),
+        encoding="utf-8",
+    )
+
+    result = agent_loop.write_active_auto_loop(
+        max_iterations=5,
+        target_completed_count=2,
+        execute_runner=True,
+        execute_ship=False,
+        state=state_path,
+        repo_root=repo,
+    )
+
+    assert result.decision == "limit-reached"
+    assert result.cycles == ()
+    assert result.completed_task_ids == ("T-2026-1001", "T-2026-1002")
+    assert not any("next task selection stopped" in warning for warning in result.warnings)
+
+
+def test_active_auto_loop_requires_privacy_clean_for_local_completion(monkeypatch, tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path, task_id="T-2026-1001", title="Privacy gate task")
+    _patch_active_loop_clear(monkeypatch)
+    active_dir = repo / "reports" / "agent_loop" / "active"
+
+    def fake_runner(**kwargs):  # type: ignore[no-untyped-def]
+        report = active_dir / "codex_runner.md"
+        state = active_dir / "codex_runner_state.json"
+        runs = active_dir / "codex_runs"
+        report.parent.mkdir(parents=True, exist_ok=True)
+        report.write_text("# runner\n", encoding="utf-8")
+        state.write_text("{}\n", encoding="utf-8")
+        return agent_loop.ActiveCodexRunnerResult(report, state, runs, "completed", (), (), ())
+
+    def fake_gate(*, task_id, **kwargs):  # type: ignore[no-untyped-def]
+        path = active_dir / "gate_evidence" / task_id / "evidence.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("{}\n", encoding="utf-8")
+        return path, {"ready": True, "privacy_clean": False}
+
+    monkeypatch.setattr(agent_loop, "write_active_codex_runner", fake_runner)
+    monkeypatch.setattr(agent_loop, "write_active_gate_evidence", fake_gate)
+
+    result = agent_loop.write_active_auto_loop(
+        max_iterations=1,
+        execute_runner=True,
+        execute_ship=False,
+        repo_root=repo,
+    )
+
+    assert result.decision == "planned"
+    assert result.completed_task_ids == ()
+    assert result.cycles[0]["gate_ready"] is True
+    assert result.cycles[0]["privacy_clean"] is False
+
+
+def test_active_auto_loop_routes_gate_miss_to_repair_lane_and_continues(monkeypatch, tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path, task_id="T-2026-1001", title="Repair first task")
+    queue = repo / "tasks" / "queue.md"
+    queue.write_text(
+        queue.read_text(encoding="utf-8")
+        + """
+
+## T-2026-1002 — Complete second task
+
+- ID: T-2026-1002
+- Title: Complete second task
+- Status: ready
+- Owner role: Implementer -> Reviewer
+
+### Goal
+
+Run after the first task is deferred to repair.
+""",
+        encoding="utf-8",
+    )
+    _patch_active_loop_clear(monkeypatch)
+    active_dir = repo / "reports" / "agent_loop" / "active"
+    runner_modes: list[str] = []
+
+    def fake_runner(**kwargs):  # type: ignore[no-untyped-def]
+        mode = kwargs.get("mode", "read-only")
+        runner_modes.append(str(mode))
+        report = active_dir / ("auto_repair.md" if mode == "patch" else "codex_runner.md")
+        state = active_dir / ("auto_repair_state.json" if mode == "patch" else "codex_runner_state.json")
+        runs = active_dir / ("patch_runs" if mode == "patch" else "codex_runs")
+        report.parent.mkdir(parents=True, exist_ok=True)
+        report.write_text(f"# {mode}\n", encoding="utf-8")
+        state.write_text("{}\n", encoding="utf-8")
+        return agent_loop.ActiveCodexRunnerResult(report, state, runs, "completed", (), (), ())
+
+    def fake_gate(*, task_id, **kwargs):  # type: ignore[no-untyped-def]
+        path = active_dir / "gate_evidence" / task_id / "evidence.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("{}\n", encoding="utf-8")
+        return path, {"ready": task_id == "T-2026-1002", "privacy_clean": True}
+
+    monkeypatch.setattr(agent_loop, "write_active_codex_runner", fake_runner)
+    monkeypatch.setattr(agent_loop, "write_active_gate_evidence", fake_gate)
+
+    result = agent_loop.write_active_auto_loop(
+        max_iterations=2,
+        auto_max_iterations_cap=2,
+        execute_runner=True,
+        execute_ship=False,
+        auto_repair=True,
+        repo_root=repo,
+    )
+
+    assert result.completed_task_ids == ("T-2026-1002",)
+    assert result.cycles[0]["task_id"] == "T-2026-1001"
+    assert result.cycles[0]["completion_decision"] == "repair-needed"
+    assert result.cycles[0]["repair_decision"] == "completed"
+    assert result.cycles[1]["task_id"] == "T-2026-1002"
+    assert runner_modes == ["read-only", "patch", "read-only"]
+    state = json.loads((active_dir / "auto_loop_state.json").read_text(encoding="utf-8"))
+    assert state["deferred_task_ids"] == ["T-2026-1001"]
+    assert state["completed_task_ids"] == ["T-2026-1002"]
+
+
+def test_active_auto_loop_caps_attempts_and_checkpoints_deferred_tasks(monkeypatch, tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path, task_id="T-2026-1001", title="First repair task")
+    queue = repo / "tasks" / "queue.md"
+    queue.write_text(
+        queue.read_text(encoding="utf-8")
+        + """
+
+## T-2026-1002 — Second repair task
+
+- ID: T-2026-1002
+- Title: Second repair task
+- Status: ready
+- Owner role: Implementer -> Reviewer
+
+### Goal
+
+Run only within the requested attempt budget.
+
+## T-2026-1003 — Third repair task
+
+- ID: T-2026-1003
+- Title: Third repair task
+- Status: ready
+- Owner role: Implementer -> Reviewer
+
+### Goal
+
+Must not be consumed when max_iterations is two.
+""",
+        encoding="utf-8",
+    )
+    _patch_active_loop_clear(monkeypatch)
+    active_dir = repo / "reports" / "agent_loop" / "active"
+
+    def fake_runner(**kwargs):  # type: ignore[no-untyped-def]
+        mode = kwargs.get("mode", "read-only")
+        report = active_dir / ("auto_repair.md" if mode == "patch" else "codex_runner.md")
+        state = active_dir / ("auto_repair_state.json" if mode == "patch" else "codex_runner_state.json")
+        runs = active_dir / ("patch_runs" if mode == "patch" else "codex_runs")
+        report.parent.mkdir(parents=True, exist_ok=True)
+        report.write_text(f"# {mode}\n", encoding="utf-8")
+        state.write_text("{}\n", encoding="utf-8")
+        return agent_loop.ActiveCodexRunnerResult(report, state, runs, "completed", (), (), ())
+
+    def fake_gate(*, task_id, **kwargs):  # type: ignore[no-untyped-def]
+        path = active_dir / "gate_evidence" / task_id / "evidence.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("{}\n", encoding="utf-8")
+        return path, {"ready": False, "privacy_clean": True}
+
+    monkeypatch.setattr(agent_loop, "write_active_codex_runner", fake_runner)
+    monkeypatch.setattr(agent_loop, "write_active_gate_evidence", fake_gate)
+
+    result = agent_loop.write_active_auto_loop(
+        max_iterations=2,
+        auto_max_iterations_cap=2,
+        execute_runner=True,
+        execute_ship=False,
+        auto_repair=True,
+        repo_root=repo,
+    )
+
+    assert [cycle["task_id"] for cycle in result.cycles] == ["T-2026-1001", "T-2026-1002"]
+    assert result.completed_task_ids == ()
+    state = json.loads((active_dir / "auto_loop_state.json").read_text(encoding="utf-8"))
+    assert state["decision"] == "planned"
+    assert state["max_attempts"] == 2
+    assert state["deferred_task_ids"] == ["T-2026-1001", "T-2026-1002"]
+
+
+def test_active_auto_loop_counts_successful_repair_apply(monkeypatch, tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path, task_id="T-2026-1001", title="Repair apply task")
+    _patch_active_loop_clear(monkeypatch)
+    active_dir = repo / "reports" / "agent_loop" / "active"
+
+    def fake_runner(**kwargs):  # type: ignore[no-untyped-def]
+        mode = kwargs.get("mode", "read-only")
+        report = active_dir / ("auto_repair.md" if mode == "patch" else "codex_runner.md")
+        state = active_dir / ("auto_repair_state.json" if mode == "patch" else "codex_runner_state.json")
+        runs = active_dir / ("patch_runs" if mode == "patch" else "codex_runs")
+        report.parent.mkdir(parents=True, exist_ok=True)
+        report.write_text(f"# {mode}\n", encoding="utf-8")
+        state.write_text("{}\n", encoding="utf-8")
+        return agent_loop.ActiveCodexRunnerResult(report, state, runs, "completed", (), (), ())
+
+    def fake_gate(*, task_id, **kwargs):  # type: ignore[no-untyped-def]
+        path = active_dir / "gate_evidence" / task_id / "evidence.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("{}\n", encoding="utf-8")
+        return path, {"ready": False, "privacy_clean": True}
+
+    def fake_apply(**kwargs):  # type: ignore[no-untyped-def]
+        report = active_dir / "active_apply.md"
+        state = active_dir / "active_apply_state.json"
+        report.write_text("# apply\n", encoding="utf-8")
+        state.write_text("{}\n", encoding="utf-8")
+        return agent_loop.ActiveApplyResult(report, state, "applied", "feature/T-2026-1001-integration", True, (), ())
+
+    monkeypatch.setattr(agent_loop, "write_active_codex_runner", fake_runner)
+    monkeypatch.setattr(agent_loop, "write_active_gate_evidence", fake_gate)
+    monkeypatch.setattr(agent_loop, "write_active_apply", fake_apply)
+
+    result = agent_loop.write_active_auto_loop(
+        max_iterations=1,
+        execute_runner=True,
+        execute_ship=False,
+        auto_repair=True,
+        repo_root=repo,
+    )
+
+    assert result.completed_task_ids == ("T-2026-1001",)
+    assert result.cycles[0]["completion_decision"] == "repair-applied"
+    assert result.cycles[0]["apply_applied"] is True
+    state = json.loads((active_dir / "auto_loop_state.json").read_text(encoding="utf-8"))
+    assert state["completed_task_ids"] == ["T-2026-1001"]
+    assert state["deferred_task_ids"] == []
+
+
+def test_active_auto_loop_does_not_complete_blocked_handoff_patch(monkeypatch, tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path, task_id="T-2026-1001", title="Blocked handoff task")
+    _patch_active_loop_clear(monkeypatch)
+    active_dir = repo / "reports" / "agent_loop" / "active"
+
+    def fake_runner(**kwargs):  # type: ignore[no-untyped-def]
+        mode = kwargs.get("mode", "read-only")
+        report = active_dir / ("auto_repair.md" if mode == "patch" else "codex_runner.md")
+        state = active_dir / ("auto_repair_state.json" if mode == "patch" else "codex_runner_state.json")
+        runs = active_dir / ("patch_runs" if mode == "patch" else "codex_runs")
+        report.parent.mkdir(parents=True, exist_ok=True)
+        report.write_text(f"# {mode}\n", encoding="utf-8")
+        state.write_text("{}\n", encoding="utf-8")
+        if mode == "patch":
+            artifact_dir = active_dir / "patch_runs" / "implementer"
+            artifact_dir.mkdir(parents=True, exist_ok=True)
+            (artifact_dir / "patch_artifact.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "task_id": "T-2026-1001",
+                        "session_id": "implementer",
+                        "role": "Implementer",
+                        "agent": "codex",
+                        "verdict": "proposed",
+                        "files": ["tasks/queue.md"],
+                        "diff": "diff --git a/tasks/queue.md b/tasks/queue.md\n+- Status: blocked\n",
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+        return agent_loop.ActiveCodexRunnerResult(report, state, runs, "completed", (), (), ())
+
+    def fake_gate(*, task_id, **kwargs):  # type: ignore[no-untyped-def]
+        path = active_dir / "gate_evidence" / task_id / "evidence.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("{}\n", encoding="utf-8")
+        return path, {"ready": False, "privacy_clean": True}
+
+    def fake_apply(**kwargs):  # type: ignore[no-untyped-def]
+        report = active_dir / "active_apply.md"
+        state = active_dir / "active_apply_state.json"
+        report.write_text("# apply\n", encoding="utf-8")
+        state.write_text("{}\n", encoding="utf-8")
+        return agent_loop.ActiveApplyResult(report, state, "applied", "feature/T-2026-1001-integration", True, (), ())
+
+    monkeypatch.setattr(agent_loop, "write_active_codex_runner", fake_runner)
+    monkeypatch.setattr(agent_loop, "write_active_gate_evidence", fake_gate)
+    monkeypatch.setattr(agent_loop, "write_active_apply", fake_apply)
+
+    result = agent_loop.write_active_auto_loop(
+        max_iterations=1,
+        execute_runner=True,
+        execute_ship=False,
+        auto_repair=True,
+        repo_root=repo,
+    )
+
+    assert result.completed_task_ids == ()
+    assert result.cycles[0]["completion_decision"] == "repair-applied-blocked-handoff"
+    state = json.loads((active_dir / "auto_loop_state.json").read_text(encoding="utf-8"))
+    assert state["completed_task_ids"] == []
+    assert state["deferred_task_ids"] == ["T-2026-1001"]
+
+
+def test_active_auto_loop_does_not_spawn_runner_after_blocked_start(monkeypatch, tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path, task_id="T-2026-1001", title="Blocked start task")
+    active_dir = repo / "reports" / "agent_loop" / "active"
+    active_dir.mkdir(parents=True, exist_ok=True)
+    calls: list[str] = []
+
+    def fake_start(**kwargs):  # type: ignore[no-untyped-def]
+        report = active_dir / "start.md"
+        report.write_text("# start\n", encoding="utf-8")
+        loop = agent_loop.ActiveLoopResult(
+            active_dir / "session_registry.json",
+            active_dir / "leases.json",
+            active_dir / "events.jsonl",
+            active_dir / "assignments",
+            active_dir / "active_loop.md",
+            "blocked",
+            (),
+            (),
+            (),
+        )
+        return agent_loop.ActiveStartResult(report, loop, (report,), "started", (), (), "N/A")
+
+    def fake_runner(**kwargs):  # type: ignore[no-untyped-def]
+        calls.append(str(kwargs.get("mode", "read-only")))
+        report = active_dir / "codex_runner.md"
+        state = active_dir / "codex_runner_state.json"
+        runs = active_dir / "codex_runs"
+        report.write_text("# runner\n", encoding="utf-8")
+        state.write_text("{}\n", encoding="utf-8")
+        return agent_loop.ActiveCodexRunnerResult(report, state, runs, "completed", (), (), ())
+
+    monkeypatch.setattr(agent_loop, "write_active_start", fake_start)
+    monkeypatch.setattr(agent_loop, "write_active_codex_runner", fake_runner)
+
+    result = agent_loop.write_active_auto_loop(
+        max_iterations=1,
+        execute_runner=True,
+        execute_ship=False,
+        auto_repair=False,
+        repo_root=repo,
+    )
+
+    assert result.decision == "blocked"
+    assert calls == []
+    assert result.cycles[0]["completion_decision"] == "start-blocked"
+
+
+def test_active_auto_loop_blocks_when_target_unmet_after_partial_completion(monkeypatch, tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path, task_id="T-2026-1001", title="Only ready task")
+    _patch_active_loop_clear(monkeypatch)
+    active_dir = repo / "reports" / "agent_loop" / "active"
+
+    def fake_runner(**kwargs):  # type: ignore[no-untyped-def]
+        mode = kwargs.get("mode", "read-only")
+        report = active_dir / ("auto_repair.md" if mode == "patch" else "codex_runner.md")
+        state = active_dir / ("auto_repair_state.json" if mode == "patch" else "codex_runner_state.json")
+        runs = active_dir / ("patch_runs" if mode == "patch" else "codex_runs")
+        report.parent.mkdir(parents=True, exist_ok=True)
+        report.write_text(f"# {mode}\n", encoding="utf-8")
+        state.write_text("{}\n", encoding="utf-8")
+        return agent_loop.ActiveCodexRunnerResult(report, state, runs, "completed", (), (), ())
+
+    def fake_gate(*, task_id, **kwargs):  # type: ignore[no-untyped-def]
+        path = active_dir / "gate_evidence" / task_id / "evidence.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("{}\n", encoding="utf-8")
+        return path, {"ready": True, "privacy_clean": True}
+
+    monkeypatch.setattr(agent_loop, "write_active_codex_runner", fake_runner)
+    monkeypatch.setattr(agent_loop, "write_active_gate_evidence", fake_gate)
+
+    result = agent_loop.write_active_auto_loop(
+        max_iterations=2,
+        auto_max_iterations_cap=2,
+        execute_runner=True,
+        execute_ship=False,
+        repo_root=repo,
+    )
+
+    assert result.completed_task_ids == ("T-2026-1001",)
+    assert result.decision == "blocked"
+    assert result.next_task_id is None
+    assert "target completion count not reached (1/2)" in result.blockers[0]
+    state = json.loads((active_dir / "auto_loop_state.json").read_text(encoding="utf-8"))
+    assert state["decision"] == "blocked"
+    assert state["completed_task_ids"] == ["T-2026-1001"]
+
+
+def test_active_auto_loop_queues_unhydrated_backlog_before_execution(monkeypatch, tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path, task_id="T-2026-1001", title="Backlog task", status="backlog")
+    _patch_active_loop_clear(monkeypatch)
+
+    result = agent_loop.write_active_auto_loop(
+        max_iterations=1,
+        execute_runner=False,
+        execute_ship=False,
+        repo_root=repo,
+    )
+
+    assert result.cycles == ()
+    assert result.decision == "blocked"
+    assert "no ready, todo, or backlog task found" in result.blockers[0]
+    prep = repo / "reports" / "agent_loop" / "active" / "backlog_handoff_queue.json"
+    payload = json.loads(prep.read_text(encoding="utf-8"))
+    assert payload["tasks"][0]["task_id"] == "T-2026-1001"
+    assert "Lifecycle stage" in payload["tasks"][0]["missing_fields"]
+
+
+def test_active_auto_loop_runner_sessions_use_only_required_gates_for_docs() -> None:
+    assert agent_loop._active_auto_loop_runner_sessions(
+        topology="expanded-eight",
+        changed_files=["docs/plans/T-2026-1001-plan.md"],
+    ) == "reviewer,ci-regression-auditor,eval-claim-privacy-auditor"
+
+
+def test_active_auto_loop_runner_sessions_include_deep_reviewer_for_load_bearing() -> None:
+    assert agent_loop._active_auto_loop_runner_sessions(
+        topology="expanded-eight",
+        changed_files=["rag_core.py"],
+    ) == "reviewer,ci-regression-auditor,eval-claim-privacy-auditor,deep-reviewer"
+
+
+def test_active_auto_loop_skips_nonselectable_branch_task(monkeypatch, tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path, task_id="T-2026-1001", title="Done branch task", status="done")
+    queue = repo / "tasks" / "queue.md"
+    queue.write_text(
+        queue.read_text(encoding="utf-8")
+        + """
+
+## T-2026-1002 — Ready task
+
+- ID: T-2026-1002
+- Title: Ready task
+- Status: ready
+- Owner role: Implementer -> Reviewer
+
+### Goal
+
+This is the next auto-loop candidate.
+""",
+        encoding="utf-8",
+    )
+    _patch_active_loop_clear(monkeypatch)
+    monkeypatch.setattr(agent_loop, "_current_branch", lambda repo_root: "chore/issue-1001-done-branch-task")
+    monkeypatch.setattr(agent_loop, "_task_from_branch", lambda branch: "T-2026-1001")
+
+    result = agent_loop.write_active_auto_loop(
+        max_iterations=1,
+        execute_runner=False,
+        execute_ship=False,
+        repo_root=repo,
+    )
+
+    assert [cycle["task_id"] for cycle in result.cycles] == ["T-2026-1002"]
+    assert any("skipped branch task `T-2026-1001`" in warning for warning in result.warnings)
+
+
+def test_active_auto_loop_resume_skips_deferred_repair_tasks(monkeypatch, tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path, task_id="T-2026-1001", title="Completed first task")
+    queue = repo / "tasks" / "queue.md"
+    queue.write_text(
+        queue.read_text(encoding="utf-8")
+        + """
+
+## T-2026-1002 — Deferred repair task
+
+- ID: T-2026-1002
+- Title: Deferred repair task
+- Status: ready
+- Owner role: Implementer -> Reviewer
+
+### Goal
+
+Skip while repair proposal is pending.
+
+## T-2026-1003 — Fresh next task
+
+- ID: T-2026-1003
+- Title: Fresh next task
+- Status: ready
+- Owner role: Implementer -> Reviewer
+
+### Goal
+
+Run after deferred repair task is excluded.
+""",
+        encoding="utf-8",
+    )
+    _patch_active_loop_clear(monkeypatch)
+    active_dir = repo / "reports" / "agent_loop" / "active"
+    active_dir.mkdir(parents=True, exist_ok=True)
+    state_path = active_dir / "auto_loop_state.json"
+    state_path.write_text(
+        json.dumps({"completed_task_ids": ["T-2026-1001"], "deferred_task_ids": ["T-2026-1002"]}),
+        encoding="utf-8",
+    )
+
+    def fake_runner(**kwargs):  # type: ignore[no-untyped-def]
+        report = active_dir / "codex_runner.md"
+        state = active_dir / "codex_runner_state.json"
+        runs = active_dir / "codex_runs"
+        report.write_text("# runner\n", encoding="utf-8")
+        state.write_text("{}\n", encoding="utf-8")
+        return agent_loop.ActiveCodexRunnerResult(report, state, runs, "planned", (), (), ())
+
+    monkeypatch.setattr(agent_loop, "write_active_codex_runner", fake_runner)
+
+    result = agent_loop.write_active_auto_loop(
+        max_iterations=1,
+        execute_runner=False,
+        execute_ship=False,
+        repo_root=repo,
+    )
+
+    assert result.cycles[0]["task_id"] == "T-2026-1003"
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    assert state["deferred_task_ids"] == ["T-2026-1002"]
+
+
+def test_active_auto_loop_retries_deferred_task_when_no_fresh_task_exists(monkeypatch, tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path, task_id="T-2026-1001", title="Deferred only task")
+    _patch_active_loop_clear(monkeypatch)
+    active_dir = repo / "reports" / "agent_loop" / "active"
+    active_dir.mkdir(parents=True, exist_ok=True)
+    state_path = active_dir / "auto_loop_state.json"
+    state_path.write_text(
+        json.dumps({"deferred_task_ids": ["T-2026-1001"], "target_completed_count": 1}),
+        encoding="utf-8",
+    )
+
+    def fake_runner(**kwargs):  # type: ignore[no-untyped-def]
+        report = active_dir / "codex_runner.md"
+        state = active_dir / "codex_runner_state.json"
+        runs = active_dir / "codex_runs"
+        report.write_text("# runner\n", encoding="utf-8")
+        state.write_text("{}\n", encoding="utf-8")
+        return agent_loop.ActiveCodexRunnerResult(report, state, runs, "completed", (), (), ())
+
+    def fake_gate(*, task_id, **kwargs):  # type: ignore[no-untyped-def]
+        path = active_dir / "gate_evidence" / task_id / "evidence.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("{}\n", encoding="utf-8")
+        return path, {"ready": True, "privacy_clean": True}
+
+    monkeypatch.setattr(agent_loop, "write_active_codex_runner", fake_runner)
+    monkeypatch.setattr(agent_loop, "write_active_gate_evidence", fake_gate)
+
+    result = agent_loop.write_active_auto_loop(
+        max_iterations=1,
+        execute_runner=True,
+        execute_ship=False,
+        auto_repair=True,
+        repo_root=repo,
+    )
+
+    assert result.completed_task_ids == ("T-2026-1001",)
+    assert result.cycles[0]["task_id"] == "T-2026-1001"
+    assert result.cycles[0]["retry_deferred"] is True
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    assert state["completed_task_ids"] == ["T-2026-1001"]
+    assert state["deferred_task_ids"] == []
+
+
+def test_active_auto_loop_first_cycle_prefers_task_id_from_branch(monkeypatch, tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path, task_id="T-2026-1001", title="Queue first")
+    queue = repo / "tasks" / "queue.md"
+    queue.write_text(
+        queue.read_text(encoding="utf-8")
+        + """
+
+## T-2026-1002 — Branch task
+
+- ID: T-2026-1002
+- Title: Branch task
+- Status: ready
+- Owner role: Implementer -> Reviewer
+
+### Goal
+
+Run when the branch slug names this task.
+""",
+        encoding="utf-8",
+    )
+    _patch_active_loop_clear(monkeypatch)
+    monkeypatch.setattr(agent_loop, "_current_branch", lambda repo_root: "chore/issue-1234-t-2026-1002-branch-task")
+    active_dir = repo / "reports" / "agent_loop" / "active"
+
+    def fake_runner(**kwargs):  # type: ignore[no-untyped-def]
+        report = active_dir / "codex_runner.md"
+        state = active_dir / "codex_runner_state.json"
+        runs = active_dir / "codex_runs"
+        report.parent.mkdir(parents=True, exist_ok=True)
+        report.write_text("# runner\n", encoding="utf-8")
+        state.write_text("{}\n", encoding="utf-8")
+        return agent_loop.ActiveCodexRunnerResult(report, state, runs, "planned", (), (), ())
+
+    monkeypatch.setattr(agent_loop, "write_active_codex_runner", fake_runner)
+
+    result = agent_loop.write_active_auto_loop(
+        max_iterations=1,
+        execute_runner=False,
+        execute_ship=False,
+        repo_root=repo,
+    )
+
+    assert result.cycles[0]["task_id"] == "T-2026-1002"
+    assert any("selected branch task" in warning for warning in result.warnings)
+
+
+def test_active_auto_loop_does_not_thread_dirty_git_diff_into_task_scope(monkeypatch, tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path, task_id="T-2026-1001", title="Dirty scope task")
+    monkeypatch.setattr(agent_loop, "_changed_files_from_git", lambda repo_root: ["scripts/agent_loop.py", "tests/test_agent_loop.py"])
+    _patch_active_loop_clear(monkeypatch)
+    active_dir = repo / "reports" / "agent_loop" / "active"
+
+    def fake_runner(**kwargs):  # type: ignore[no-untyped-def]
+        report = active_dir / "codex_runner.md"
+        state = active_dir / "codex_runner_state.json"
+        runs = active_dir / "codex_runs"
+        report.parent.mkdir(parents=True, exist_ok=True)
+        report.write_text("# runner\n", encoding="utf-8")
+        state.write_text("{}\n", encoding="utf-8")
+        return agent_loop.ActiveCodexRunnerResult(report, state, runs, "planned", (), (), ())
+
+    monkeypatch.setattr(agent_loop, "write_active_codex_runner", fake_runner)
+
+    result = agent_loop.write_active_auto_loop(
+        max_iterations=1,
+        execute_runner=False,
+        execute_ship=False,
+        repo_root=repo,
+    )
+
+    assert "scripts/agent_loop.py" not in result.cycles[0]["changed_files"]
+    assert "tests/test_agent_loop.py" not in result.cycles[0]["changed_files"]
+    assert not any("auto-derived active scope" in warning for warning in result.warnings)
+
+
+def test_active_auto_loop_auto_limit_adapts_to_heavy_tasks(tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path, task_id="T-2026-1001", title="First eval task")
+    queue = repo / "tasks" / "queue.md"
+    queue.write_text(
+        queue.read_text(encoding="utf-8")
+        + "\n".join(
+            f"""
+## T-2026-100{index} — Eval task {index}
+
+- ID: T-2026-100{index}
+- Title: Eval task {index}
+- Status: ready
+- Owner role: Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer
+
+### Goal
+
+Rerun real100_v2 private real-eval evidence.
+
+### Acceptance Criteria
+
+- [ ] Aggregate-only evidence is refreshed.
+"""
+            for index in range(2, 6)
+        ),
+        encoding="utf-8",
+    )
+
+    limit, reason = agent_loop._resolve_active_auto_loop_limit(
+        "auto",
+        auto_cap=5,
+        completed_task_ids=(),
+        agent_mix={"target": {"claude": 5, "codex": 5}},
+        repo_root=repo,
+    )
+
+    assert limit == 3
+    assert "workload_cap=3" in reason
+
+
+def test_active_auto_loop_auto_limit_respects_low_quota_mix(tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path, task_id="T-2026-1001", title="First task")
+    queue = repo / "tasks" / "queue.md"
+    queue.write_text(
+        queue.read_text(encoding="utf-8")
+        + "\n".join(
+            f"""
+## T-2026-100{index} — Parallel task {index}
+
+- ID: T-2026-100{index}
+- Title: Parallel task {index}
+- Status: ready
+- Owner role: Implementer -> Reviewer
+
+### Goal
+
+Refresh docs-only automation evidence.
+
+### Acceptance Criteria
+
+- [ ] Report is updated.
+"""
+            for index in range(2, 6)
+        ),
+        encoding="utf-8",
+    )
+
+    limit, reason = agent_loop._resolve_active_auto_loop_limit(
+        "auto",
+        auto_cap=5,
+        completed_task_ids=(),
+        agent_mix={"target": {"claude": 2, "codex": 2}},
+        repo_root=repo,
+    )
+
+    assert limit == 2
+    assert "quota_cap=2" in reason
+
+
+def test_queue_parallel_plan_sorts_priority_and_groups_lanes(tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path, task_id="T-2026-1001", title="Docs cleanup")
+    queue = repo / "tasks" / "queue.md"
+    queue.write_text(
+        queue.read_text(encoding="utf-8")
+        + """
+## T-2026-1002 — Private eval rerun
+
+- ID: T-2026-1002
+- Title: Private eval rerun
+- Status: ready
+- Priority: P0
+- Owner role: Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer
+
+### Goal
+
+Rerun real100_v2 private real-eval aggregate.
+
+## T-2026-1003 — Review docs PR
+
+- ID: T-2026-1003
+- Title: Review docs PR
+- Status: review
+- Priority: P1
+- Owner role: Reviewer
+
+### Goal
+
+Review documentation-only work.
+""",
+        encoding="utf-8",
+    )
+
+    out, json_out, rendered = agent_loop.write_queue_parallel_plan(repo_root=repo, max_items=3)
+    payload = json.loads(json_out.read_text(encoding="utf-8")) if json_out else []
+
+    assert out == repo / "reports" / "agent_loop" / "queue_parallel_plan.md"
+    assert payload[0]["task_id"] == "T-2026-1002"
+    assert payload[0]["lane"] == "serial-gated"
+    assert any(item["task_id"] == "T-2026-1003" and item["lane"] == "review-only" for item in payload)
+    assert "## parallel-safe" in rendered
+
+
+def test_queue_recommendations_can_append_generated_tasks(tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path, task_id="T-2026-1001", title="Existing task")
+    (repo / "reports" / "agent_loop").mkdir(parents=True)
+    (repo / "reports" / "agent_loop" / "queue_parallel_plan.json").write_text(
+        json.dumps(
+            [
+                {"task_id": "T-2026-1001", "lane": "serial-gated"},
+                {"task_id": "T-2026-1002", "lane": "serial-gated"},
+                {"task_id": "T-2026-1003", "lane": "serial-gated"},
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    out, json_out, rendered, applied = agent_loop.write_queue_recommendations(
+        repo_root=repo,
+        apply=True,
+    )
+    queue_text = (repo / "tasks" / "queue.md").read_text(encoding="utf-8")
+
+    assert out == repo / "reports" / "agent_loop" / "queue_recommendations.md"
+    assert json_out == repo / "reports" / "agent_loop" / "queue_recommendations.json"
+    assert applied
+    assert "Implement task-parallel worktree wave runner" in queue_text
+    assert "Complete checkpoint MiniLM local-LLM baseline remeasurement" in rendered
 
 
 def test_active_auto_loop_does_not_mark_read_only_cycle_completed(monkeypatch, tmp_path: Path) -> None:
@@ -4203,16 +5417,17 @@ def test_claude_lane_adapter_omits_schema_when_unreadable(tmp_path: Path) -> Non
     assert cmd[:5] == ["claude", "-p", "review", "--output-format", "json"]
 
 
-def test_claude_lane_adapter_xhigh_only_on_opus_47() -> None:
-    """ADR 0082: `xhigh` is Opus-4-7-only — _validate_effort_for_model coerces other models."""
+def test_claude_lane_adapter_xhigh_only_on_opus_47_plus() -> None:
+    """ADR 0082: `xhigh` is Opus-4-7+ only — _validate_effort_for_model coerces other models."""
     from scripts.agent_loop import _validate_effort_for_model
 
     assert _validate_effort_for_model("claude-opus-4-7", "xhigh") == "xhigh"
+    assert _validate_effort_for_model("claude-opus-4-8", "xhigh") == "xhigh"
     assert _validate_effort_for_model("claude-sonnet-4-6", "xhigh") == "high"
     assert _validate_effort_for_model("claude-opus-4-6", "xhigh") == "high"
     # Other valid efforts unchanged.
     assert _validate_effort_for_model("claude-sonnet-4-6", "medium") == "medium"
-    assert _validate_effort_for_model("claude-opus-4-7", "max") == "max"
+    assert _validate_effort_for_model("claude-opus-4-8", "max") == "max"
 
 
 def test_role_profile_resolution_env_priority(monkeypatch) -> None:
@@ -4225,7 +5440,7 @@ def test_role_profile_resolution_env_priority(monkeypatch) -> None:
             monkeypatch.delenv(key, raising=False)
 
     # Defaults from role-table — 1차 lane (capability_prior agent)
-    assert _resolve_lane_model("claude", "Planner / Issue Triage") == "claude-opus-4-7"
+    assert _resolve_lane_model("claude", "Planner / Issue Triage") == "claude-opus-4-8"
     assert _resolve_lane_effort("claude", "Planner / Issue Triage") == "xhigh"
     assert _resolve_lane_model("claude", "Eval / Claim / Privacy Auditor") == "claude-sonnet-4-6"
     assert _resolve_lane_effort("claude", "Experiment Scout") == "medium"
@@ -4233,9 +5448,9 @@ def test_role_profile_resolution_env_priority(monkeypatch) -> None:
     assert _resolve_lane_model("codex", "CI / Regression Auditor") == "gpt-5.4-mini"
     # ADR 0082 대칭 매트릭스 — 2차 lane (반대 agent) 도 명시
     # Reviewer/Deep Reviewer 1차 codex frontier → 2차 claude opus xhigh (강도 매칭)
-    assert _resolve_lane_model("claude", "Reviewer") == "claude-opus-4-7"
+    assert _resolve_lane_model("claude", "Reviewer") == "claude-opus-4-8"
     assert _resolve_lane_effort("claude", "Reviewer") == "xhigh"
-    assert _resolve_lane_model("claude", "Deep Reviewer") == "claude-opus-4-7"
+    assert _resolve_lane_model("claude", "Deep Reviewer") == "claude-opus-4-8"
     # CI Auditor 1차 codex mini → 2차 claude sonnet medium (medium tier 정합)
     assert _resolve_lane_model("claude", "CI / Regression Auditor") == "claude-sonnet-4-6"
     assert _resolve_lane_effort("claude", "CI / Regression Auditor") == "medium"
@@ -4374,13 +5589,20 @@ def test_agent_turn_redacts_real100_path_and_proceeds(monkeypatch, tmp_path: Pat
 # --- Phase 3 PR-A: write-lease active_agent borrow (issue #1604) ---
 
 
-def _seed_write_lease(repo: Path, *, lease_id: str = "impl", active_agent=None, claimed_files=None) -> Path:
+def _seed_write_lease(
+    repo: Path,
+    *,
+    lease_id: str = "impl",
+    active_agent=None,
+    claimed_files=None,
+    status: str = "active",
+) -> Path:
     active = repo / "reports" / "agent_loop" / "active"
     active.mkdir(parents=True, exist_ok=True)
     path = active / "leases.json"
     lease = {
         "lease_id": lease_id,
-        "status": "active",
+        "status": status,
         "lease_type": "write",
         "active_agent": active_agent,
         "owner_session": "implementer",
@@ -4415,6 +5637,31 @@ def test_acquire_active_agent_without_write_lease_fails(tmp_path: Path) -> None:
     repo = _write_repo(tmp_path)
     ok, msg, lid = agent_loop.acquire_active_agent(agent="codex", repo_root=repo)
     assert ok is False and lid is None and "no active write lease" in msg
+
+
+def test_patch_mode_can_borrow_recovery_needed_lease_for_scratch_repair(tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    _seed_patch_registry(repo)
+    _seed_write_lease(repo, status="recovery-needed", active_agent=None)
+    _seed_patch_assignment(repo)
+    diff = "diff --git a/foo.py b/foo.py\n--- a/foo.py\n+++ b/foo.py\n@@ -1 +1,2 @@\n line\n+new line\n"
+    git_runner = _fake_git_runner(diff_stdout=diff)
+
+    result = agent_loop.write_active_codex_runner(
+        mode="patch",
+        execute=True,
+        task_id="T-2026-0042",
+        repo_root=repo,
+        popen_factory=lambda cmd, **kw: _FakeCodexProc(),
+        which_func=lambda exe: "/usr/bin/codex",
+        auth_runner=_chatgpt_auth_runner,
+        git_runner=git_runner,
+    )
+
+    assert result.decision == "completed"
+    leases = json.loads((repo / "reports" / "agent_loop" / "active" / "leases.json").read_text(encoding="utf-8"))
+    assert leases["leases"][0]["status"] == "recovery-needed"
+    assert leases["leases"][0]["active_agent"] is None
 
 
 def test_acquire_active_agent_rejects_unknown_agent(tmp_path: Path) -> None:
@@ -4524,6 +5771,143 @@ def test_create_scratch_worktree_surfaces_failure(tmp_path: Path) -> None:
     assert blockers and "already exists" in blockers[0]
 
 
+def test_seed_scratch_worktree_from_parent_commits_current_dirty_state(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    scratch = tmp_path / "scratch"
+    repo.mkdir()
+    subprocess.run(["git", "-C", str(repo), "init"], check=True, capture_output=True, text=True)
+    (repo / ".gitignore").write_text("reports/\n", encoding="utf-8")
+    (repo / "foo.py").write_text("old\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(repo), "add", "."], check=True, capture_output=True, text=True)
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(repo),
+            "-c",
+            "user.name=Test",
+            "-c",
+            "user.email=test@example.invalid",
+            "commit",
+            "-m",
+            "base",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(repo), "worktree", "add", "-b", "scratch", str(scratch), "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    (repo / "foo.py").write_text("new\n", encoding="utf-8")
+    (repo / "bar.py").write_text("created\n", encoding="utf-8")
+    ignored = repo / "reports" / "agent_loop" / "active"
+    ignored.mkdir(parents=True)
+    (ignored / "state.json").write_text("{}\n", encoding="utf-8")
+
+    copied, warnings = agent_loop.seed_scratch_worktree_from_parent(scratch, repo_root=repo)
+
+    assert copied == 2
+    assert warnings == []
+    assert (scratch / "foo.py").read_text(encoding="utf-8") == "new\n"
+    assert (scratch / "bar.py").read_text(encoding="utf-8") == "created\n"
+    assert not (scratch / "reports" / "agent_loop" / "active" / "state.json").exists()
+    status = subprocess.run(
+        ["git", "-C", str(scratch), "status", "--porcelain=v1"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    subject = subprocess.run(
+        ["git", "-C", str(scratch), "log", "-1", "--pretty=%s"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    assert status == ""
+    assert subject == "Seed parent dirty worktree"
+
+
+def test_seed_scratch_worktree_from_parent_can_limit_to_claimed_files(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    scratch = tmp_path / "scratch"
+    repo.mkdir()
+    subprocess.run(["git", "-C", str(repo), "init"], check=True, capture_output=True, text=True)
+    (repo / "foo.py").write_text("old foo\n", encoding="utf-8")
+    (repo / "bar.py").write_text("old bar\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(repo), "add", "."], check=True, capture_output=True, text=True)
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(repo),
+            "-c",
+            "user.name=Test",
+            "-c",
+            "user.email=test@example.invalid",
+            "commit",
+            "-m",
+            "base",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(repo), "worktree", "add", "-b", "scratch", str(scratch), "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    (repo / "foo.py").write_text("new foo\n", encoding="utf-8")
+    (repo / "bar.py").write_text("new bar\n", encoding="utf-8")
+
+    copied, warnings = agent_loop.seed_scratch_worktree_from_parent(
+        scratch,
+        repo_root=repo,
+        include_paths=["foo.py"],
+    )
+
+    assert copied == 1
+    assert warnings == []
+    assert (scratch / "foo.py").read_text(encoding="utf-8") == "new foo\n"
+    assert (scratch / "bar.py").read_text(encoding="utf-8") == "old bar\n"
+
+
+def test_redact_scratch_context_files_commits_privacy_debt_before_patch(tmp_path: Path) -> None:
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    plan = scratch / "docs" / "plans" / "T-2026-0042.md"
+    plan.parent.mkdir(parents=True)
+    plan.write_text(
+        "- Branch / worktree: feature/example / /Users/example/private/BidMate-DocAgent\n"
+        "- Validation evidence: focused check passed\n",
+        encoding="utf-8",
+    )
+    git_runner = _fake_git_runner()
+
+    changed, warnings = agent_loop.redact_scratch_context_files(
+        scratch,
+        include_paths=["docs/plans/T-2026-0042.md"],
+        runner=git_runner,
+    )
+
+    assert changed == 1
+    assert warnings == []
+    text = plan.read_text(encoding="utf-8")
+    assert "/Users/example" not in text
+    assert "[redacted-local-path]" in text
+    assert "Validation evidence: focused check passed" in text
+    cmds = [" ".join(c) for c in git_runner.calls]
+    assert any("git -C" in c and "add -A" in c for c in cmds)
+    assert any("Redact scratch context privacy debt" in c for c in cmds)
+
+
 def test_codex_runner_patch_mode_dry_run_plans_without_borrow(tmp_path: Path) -> None:
     repo = _write_repo(tmp_path)
     _seed_patch_registry(repo)
@@ -4574,6 +5958,99 @@ def test_codex_runner_patch_mode_execute_captures_patch_and_releases_lease(tmp_p
     assert leases["leases"][0]["active_agent"] is None
 
 
+def test_codex_runner_patch_mode_can_use_claude_write_lane(tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    _seed_patch_registry(repo)
+    _seed_write_lease(repo)
+    _seed_patch_assignment(repo)
+    diff = "diff --git a/foo.py b/foo.py\n--- a/foo.py\n+++ b/foo.py\n@@ -1 +1,2 @@\n line\n+claude line\n"
+    git_runner = _fake_git_runner(diff_stdout=diff)
+    calls: list[list[str]] = []
+    inputs: list[str] = []
+
+    def fake_claude(cmd, **kwargs):  # type: ignore[no-untyped-def]
+        calls.append(list(cmd))
+        inputs.append(str(kwargs.get("input") or ""))
+        stream = json.dumps({"type": "result", "subtype": "success", "is_error": False, "result": "done"}) + "\n"
+        return subprocess.CompletedProcess(cmd, 0, stdout=stream, stderr="")
+
+    result = agent_loop.write_active_codex_runner(
+        mode="patch",
+        execute=True,
+        write_agent="claude",
+        task_id="T-2026-0042",
+        repo_root=repo,
+        which_func=lambda exe: f"/usr/bin/{exe}",
+        claude_runner=fake_claude,
+        git_runner=git_runner,
+    )
+
+    assert result.decision == "completed"
+    artifact = json.loads(
+        (repo / "reports" / "agent_loop" / "active" / "patch_runs" / "implementer" / "patch_artifact.json").read_text(encoding="utf-8")
+    )
+    assert artifact["agent"] == "claude"
+    assert artifact["verdict"] == "proposed"
+    assert artifact["diff"] == diff
+    assert calls and calls[0][0] == "/usr/bin/claude"
+    assert "-p" not in calls[0]
+    assert calls[0][calls[0].index("--input-format") + 1] == "stream-json"
+    assert calls[0][calls[0].index("--output-format") + 1] == "stream-json"
+    assert "--permission-mode" in calls[0]
+    allowed_tools = calls[0][calls[0].index("--allowedTools") + 1]
+    disallowed_tools = calls[0][calls[0].index("--disallowedTools") + 1]
+    assert "Read" in allowed_tools and "Edit" in allowed_tools
+    assert "Grep" not in allowed_tools and "Glob" not in allowed_tools
+    assert "Grep" in disallowed_tools and "Glob" in disallowed_tools
+    assert inputs and '"type": "user"' in inputs[0]
+    assert "read only files listed under `## Claimed Files`" in inputs[0]
+    assert "Use at most 6 tool calls" in inputs[0]
+    cmds = [" ".join(c) for c in git_runner.calls]
+    assert any("worktree add -b agent/T-2026-0042/claude-scratch" in c for c in cmds)
+    leases = json.loads((repo / "reports" / "agent_loop" / "active" / "leases.json").read_text(encoding="utf-8"))
+    assert leases["leases"][0]["active_agent"] is None
+    mix = json.loads((repo / "reports" / "agent_loop" / "active" / "agent_mix.json").read_text(encoding="utf-8"))
+    assert mix["rolling"]["claude"] == 1
+
+
+def test_codex_runner_patch_mode_redacts_stdout_before_next_privacy_audit(tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    _seed_patch_registry(repo)
+    _seed_write_lease(repo)
+    _seed_patch_assignment(repo)
+
+    def leaky_proc(cmd, **kwargs):  # type: ignore[no-untyped-def]
+        stdout = kwargs.get("stdout")
+        if stdout is not None:
+            stdout.write("raw path /Users/example/private/raw.pdf doc_id: SECRET-DOC\n")
+            stdout.flush()
+        return _FakeCodexProc()
+
+    result = agent_loop.write_active_codex_runner(
+        mode="patch",
+        execute=True,
+        task_id="T-2026-0042",
+        repo_root=repo,
+        popen_factory=leaky_proc,
+        which_func=lambda exe: "/usr/bin/codex",
+        auth_runner=_chatgpt_auth_runner,
+        git_runner=_fake_git_runner(diff_stdout="diff --git a/foo.py b/foo.py\n+x\n"),
+    )
+
+    stdout_text = (
+        repo / "reports" / "agent_loop" / "active" / "patch_runs" / "implementer" / "stdout.jsonl"
+    ).read_text(encoding="utf-8")
+    assert result.decision == "completed"
+    assert "/Users/example/private/raw.pdf" not in stdout_text
+    assert "SECRET-DOC" not in stdout_text
+    assert "[redacted-local-path]" in stdout_text
+    assert not agent_loop.audit_privacy_output(
+        repo / "reports" / "agent_loop" / "active" / "patch_runs",
+        out_path=None,
+        repo_root=repo,
+    )
+
+
 def test_codex_runner_patch_mode_requires_chatgpt_login(tmp_path: Path) -> None:
     repo = _write_repo(tmp_path)
     _seed_patch_registry(repo)
@@ -4601,7 +6078,42 @@ def test_codex_runner_patch_mode_requires_chatgpt_login(tmp_path: Path) -> None:
     assert not (repo / "reports" / "agent_loop" / "active" / "patch_runs" / "implementer" / "patch_artifact.json").exists()
 
 
-def test_codex_runner_patch_mode_redacts_private_path_in_diff(tmp_path: Path) -> None:
+def test_codex_runner_patch_mode_preserves_applyable_safe_diff(tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    _seed_patch_registry(repo)
+    _seed_write_lease(repo)
+    _seed_patch_assignment(repo)
+    diff = (
+        "diff --git a/docs/plans/T-2026-0042-plan.md b/docs/plans/T-2026-0042-plan.md\n"
+        "--- a/docs/plans/T-2026-0042-plan.md\n"
+        "+++ b/docs/plans/T-2026-0042-plan.md\n"
+        "@@ -1 +1,2 @@\n"
+        " # Plan\n"
+        "+- Validation evidence: focused doc-link check passed\n"
+    )
+
+    result = agent_loop.write_active_codex_runner(
+        mode="patch",
+        execute=True,
+        task_id="T-2026-0042",
+        repo_root=repo,
+        popen_factory=lambda cmd, **kw: _FakeCodexProc(),
+        which_func=lambda exe: "/usr/bin/codex",
+        auth_runner=_chatgpt_auth_runner,
+        git_runner=_fake_git_runner(diff_stdout=diff),
+    )
+
+    artifact = json.loads(
+        (
+            repo / "reports" / "agent_loop" / "active" / "patch_runs" / "implementer" / "patch_artifact.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert result.decision == "completed"
+    assert artifact["verdict"] == "proposed"
+    assert artifact["diff"] == diff
+
+
+def test_codex_runner_patch_mode_blocks_private_path_in_diff(tmp_path: Path) -> None:
     repo = _write_repo(tmp_path)
     _seed_patch_registry(repo)
     _seed_write_lease(repo)
@@ -4622,9 +6134,11 @@ def test_codex_runner_patch_mode_redacts_private_path_in_diff(tmp_path: Path) ->
     artifact_text = (
         repo / "reports" / "agent_loop" / "active" / "patch_runs" / "implementer" / "patch_artifact.json"
     ).read_text(encoding="utf-8")
-    assert "reports/real100/[redacted-private-artifact]" in artifact_text  # redact-and-proceed
+    assert "reports/real100" not in artifact_text
     assert "baseline.aggregate.json" not in artifact_text
-    assert result.decision == "completed"
+    assert json.loads(artifact_text)["verdict"] == "blocked"
+    assert result.decision == "blocked"
+    assert any("privacy:" in blocker for blocker in result.blockers)
 
 
 def test_codex_runner_patch_mode_blocks_without_assignment(tmp_path: Path) -> None:
@@ -4731,6 +6245,32 @@ def test_codex_runner_patch_mode_allows_in_scope_files(tmp_path: Path) -> None:
     assert artifact["verdict"] == "proposed"
 
 
+def test_codex_runner_patch_mode_allows_context_only_claim_to_reach_apply_gate(tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    _seed_patch_registry(repo)
+    _seed_write_lease(repo, claimed_files=["tasks/queue.md", "docs/plans/T-2026-0042-plan.md"])
+    _seed_patch_assignment(repo)
+    diff = "diff --git a/rag_core.py b/rag_core.py\n+x\n"
+
+    result = agent_loop.write_active_codex_runner(
+        mode="patch",
+        execute=True,
+        task_id="T-2026-0042",
+        repo_root=repo,
+        popen_factory=lambda cmd, **kw: _FakeCodexProc(),
+        which_func=lambda exe: "/usr/bin/codex",
+        auth_runner=_chatgpt_auth_runner,
+        git_runner=_fake_git_runner(diff_stdout=diff),
+    )
+
+    assert result.decision == "completed"
+    assert any("context files" in warning for warning in result.warnings)
+    artifact = json.loads(
+        (repo / "reports" / "agent_loop" / "active" / "patch_runs" / "implementer" / "patch_artifact.json").read_text(encoding="utf-8")
+    )
+    assert artifact["verdict"] == "proposed"
+
+
 # --- Phase 3 PR-B: active-apply (Orchestrator applies patch to integration branch, #1607) ---
 
 
@@ -4823,6 +6363,26 @@ def test_active_apply_blocks_when_check_fails(tmp_path: Path) -> None:
     assert not any(("apply" in c and "--check" not in c) for c in runner.calls)
 
 
+def test_active_apply_uses_three_way_when_plain_check_fails(tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    _seed_patch_artifact(repo)
+    calls: list[list[str]] = []
+
+    def runner(cmd):  # type: ignore[no-untyped-def]
+        calls.append(cmd)
+        if "apply" in cmd and "--check" in cmd and "--3way" not in cmd:
+            return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="error: patch failed to apply")
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    result = agent_loop.write_active_apply(repo_root=repo, execute=True, git_runner=runner)
+
+    assert result.decision == "applied"
+    assert result.applied is True
+    assert any("apply" in c and "--3way" in c and "--check" in c for c in calls)
+    assert any("apply" in c and "--3way" in c and "--check" not in c for c in calls)
+    assert any("using --3way" in warning for warning in result.warnings)
+
+
 def test_active_apply_blocks_on_missing_or_unproposed_artifact(tmp_path: Path) -> None:
     repo = _write_repo(tmp_path)
     # missing artifact
@@ -4882,6 +6442,47 @@ def test_gate_evidence_not_ready_when_a_gate_is_unmet(tmp_path: Path) -> None:
     _, summary = agent_loop.write_active_gate_evidence(task_id="T-2026-0042", repo_root=repo)
 
     assert summary["ready"] is False
+
+
+def test_gate_evidence_requires_deep_reviewer_for_load_bearing_scope(tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path)
+    active = repo / "reports" / "agent_loop" / "active"
+    active.mkdir(parents=True, exist_ok=True)
+    (active / "session_registry.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "topology": "expanded-eight",
+                "gate_policy": "conservative",
+                "agent_mix": agent_loop._parse_agent_mix(None),
+                "sessions": [
+                    {"session_id": "reviewer", "role": "Reviewer", "status": "approved"},
+                    {"session_id": "deep-reviewer", "role": "Deep Reviewer", "status": "idle"},
+                    {"session_id": "ci-regression-auditor", "role": "CI / Regression Auditor", "status": "passed"},
+                    {"session_id": "eval-claim-privacy-auditor", "role": "Eval / Claim / Privacy Auditor", "status": "clear"},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    path, summary = agent_loop.write_active_gate_evidence(
+        task_id="T-2026-0042",
+        changed_files=["scripts/agent_loop.py", "docs/adr/0083-local-gate-completion-and-real100-v2-judge-egress.md"],
+        repo_root=repo,
+    )
+
+    assert summary["ready"] is False
+    assert summary["load_bearing_touched"] is True
+    ev = json.loads(path.read_text(encoding="utf-8"))
+    roles = {r["role"]: r["ok"] for r in ev["conservative_gate"]["required_roles"]}
+    assert roles == {
+        "Reviewer": True,
+        "CI / Regression Auditor": True,
+        "Eval / Claim / Privacy Auditor": True,
+        "Deep Reviewer": False,
+    }
+    assert ev["load_bearing_touched"] is True
 
 
 def test_gate_evidence_bundles_patch_and_apply(tmp_path: Path) -> None:

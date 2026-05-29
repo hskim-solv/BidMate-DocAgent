@@ -799,6 +799,34 @@ def metric_block(case_results: list[dict[str, Any]]) -> dict[str, Any]:
         for r in case_results
         if isinstance(r.get("cost_estimate_usd"), (int, float))
     ]
+    synthesis_attempts = [
+        r for r in case_results if str(r.get("synthesis_backend") or "")
+    ]
+    synthesis_successes = [
+        r
+        for r in synthesis_attempts
+        if r.get("synthesis_fell_back") is False and not r.get("synthesis_fallback_reason")
+    ]
+    synthesis_fallbacks = [
+        r for r in synthesis_attempts if r.get("synthesis_fell_back") is True
+    ]
+    synthesis_fallback_reason_counts = Counter(
+        str(r.get("synthesis_fallback_reason") or "unknown")
+        for r in synthesis_fallbacks
+    )
+    synthesis_backend_counts = Counter(
+        str(r.get("synthesis_backend") or "unknown") for r in synthesis_attempts
+    )
+    synthesis_model_counts = Counter(
+        str(r.get("llm_model") or "unknown")
+        for r in synthesis_attempts
+        if r.get("llm_model") is not None
+    )
+    synthesis_latencies = [
+        float(r["synthesis_latency_ms"])
+        for r in synthesis_attempts
+        if isinstance(r.get("synthesis_latency_ms"), (int, float))
+    ]
     cases_with_token_usage = sum(
         1
         for r in case_results
@@ -925,6 +953,27 @@ def metric_block(case_results: list[dict[str, Any]]) -> dict[str, Any]:
             ),
             "estimated_cost_usd_mean": rate(synthesis_costs),
             "cases_with_cost": len(synthesis_costs),
+        },
+        "synthesis_quality": {
+            "cases_with_synthesis_attempt": len(synthesis_attempts),
+            "cases_with_synthesis_success": len(synthesis_successes),
+            "cases_with_synthesis_fallback": len(synthesis_fallbacks),
+            "synthesis_success_rate": (
+                len(synthesis_successes) / len(synthesis_attempts)
+                if synthesis_attempts
+                else None
+            ),
+            "synthesis_fallback_rate": (
+                len(synthesis_fallbacks) / len(synthesis_attempts)
+                if synthesis_attempts
+                else None
+            ),
+            "fallback_reason_counts": dict(sorted(synthesis_fallback_reason_counts.items())),
+            "backend_counts": dict(sorted(synthesis_backend_counts.items())),
+            "model_counts": dict(sorted(synthesis_model_counts.items())),
+            "latency_ms": _latency_summary(synthesis_latencies)
+            if synthesis_latencies
+            else None,
         },
     }
     if comparison_recall_scores:
@@ -1564,6 +1613,10 @@ def evaluate_run(
         result["tokens_out"] = synth.get("tokens_out")
         result["cost_estimate_usd"] = synth.get("cost_estimate_usd")
         result["llm_model"] = synth.get("model")
+        result["synthesis_backend"] = synth.get("backend")
+        result["synthesis_fell_back"] = synth.get("fell_back")
+        result["synthesis_fallback_reason"] = synth.get("fallback_reason")
+        result["synthesis_latency_ms"] = synth.get("latency_ms")
         result["case_source_format"] = _case_source_format(
             result.get("expected_doc_ids") or [], doc_format_map
         )

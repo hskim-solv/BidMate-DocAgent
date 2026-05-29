@@ -342,6 +342,69 @@ class HwpPdfPyMuPdf4LlmLoaderTest(unittest.TestCase):
         convert.assert_not_called()
         self.assertEqual(extract.call_args.args[0], reusable_pdf)
 
+    def test_hwp_loader_reuses_preserved_converted_pdf_by_default_when_artifact_dir_is_set(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source_path = root / "doc.hwp"
+            source_path.write_bytes(b"hwp bytes")
+            artifact_dir = root / "artifacts"
+            artifact_dir.mkdir()
+            reusable_pdf = artifact_dir / "source-sha.pdf"
+            reusable_pdf.write_bytes(b"%PDF reusable")
+            os.environ["BIDMATE_HWP_PDF_ARTIFACT_DIR"] = str(artifact_dir)
+
+            def fake_sha(path: Path) -> str:
+                return "source-sha" if path == source_path else "pdf-sha"
+
+            with mock.patch("ingestion.sha256_file", side_effect=fake_sha):
+                with mock.patch("ingestion._validate_converted_pdf", return_value=3):
+                    with mock.patch("ingestion._convert_hwp_to_pdf") as convert:
+                        with mock.patch(
+                            "ingestion._extract_pdf_pymupdf4llm",
+                            return_value=("body", [], {}, {"pymupdf4llm_page_chunks": 1}),
+                        ) as extract:
+                            text, _sections, _metadata, health = _extract_hwp_pdf_pymupdf4llm(source_path)
+
+        self.assertEqual(text, "body")
+        self.assertEqual(health["pymupdf4llm_page_chunks"], 1)
+        convert.assert_not_called()
+        self.assertEqual(extract.call_args.args[0], reusable_pdf)
+
+    def test_hwp_loader_can_disable_converted_pdf_reuse(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source_path = root / "doc.hwp"
+            source_path.write_bytes(b"hwp bytes")
+            artifact_dir = root / "artifacts"
+            artifact_dir.mkdir()
+            reusable_pdf = artifact_dir / "source-sha.pdf"
+            reusable_pdf.write_bytes(b"%PDF reusable")
+            converted_pdf = root / "converted.pdf"
+            converted_pdf.write_bytes(b"%PDF converted")
+            os.environ["BIDMATE_HWP_PDF_ARTIFACT_DIR"] = str(artifact_dir)
+            os.environ["BIDMATE_HWP_PDF_ARTIFACT_REUSE"] = "0"
+
+            def fake_sha(path: Path) -> str:
+                if path == source_path:
+                    return "source-sha"
+                if path == converted_pdf:
+                    return "converted-sha"
+                return "pdf-sha"
+
+            with mock.patch("ingestion.sha256_file", side_effect=fake_sha):
+                with mock.patch("ingestion._validate_converted_pdf", return_value=3):
+                    with mock.patch("ingestion._convert_hwp_to_pdf", return_value=(converted_pdf, "soffice", "test")) as convert:
+                        with mock.patch(
+                            "ingestion._extract_pdf_pymupdf4llm",
+                            return_value=("body", [], {}, {"pymupdf4llm_page_chunks": 1}),
+                        ) as extract:
+                            text, _sections, _metadata, health = _extract_hwp_pdf_pymupdf4llm(source_path)
+
+        self.assertEqual(text, "body")
+        self.assertEqual(health["pymupdf4llm_page_chunks"], 1)
+        convert.assert_called_once()
+        self.assertEqual(extract.call_args.args[0], converted_pdf)
+
     def test_converter_unavailable_raises_fail_closed(self) -> None:
         loader = HwpPdfPyMuPdf4LlmLoader()
 

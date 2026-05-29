@@ -1,21 +1,19 @@
 """External-payload data-boundary guard (ADR 0061 ③ / ADR 0005).
 
-ADR 0061 permits opt-in external/paid API backends, but its condition ③
-restricts the *outbound* payload to explicitly public fixture data — private
-real-eval data and private RFP bodies stay off the wire (ADR 0005,
-which can only be relaxed by a superseding ADR). Until now that was a
-*policy* with no code enforcement: the ``anthropic`` / ``openai`` backends
-in ``rag_metadata_extraction`` and ``rag_synthesis`` joined the full
-document / evidence text and sent it to the vendor with no surface check.
+ADR 0061 permits opt-in external/paid API backends. The outbound payload
+boundary is controlled by two explicit attestations:
+
+* ``BIDMATE_DATA_SURFACE`` — public fixture data is always allowed.
+* ``BIDMATE_EGRESS_PROFILE`` — private/local data may use external API
+  channels only when the operator explicitly attests an approved egress
+  scenario.
 
 This module is the central choke point. Every external backend calls
 :func:`assert_external_payload_allowed` before any SDK import or network
-I/O. The data surface is declared by the ``BIDMATE_DATA_SURFACE`` env var
-and the guard is **fail-closed** — egress is permitted only when the
-surface is explicitly attested public fixture. Unset, ``private`` /
-``local``, or any unrecognized value blocks the call; the backend then
-falls back to its offline path (regex baseline / deterministic synthesis),
-so the guard never breaks the pipeline.
+I/O. The guard is **fail-closed** — unset, ``air_gapped``,
+``connected_no_egress``, or any unrecognized value blocks the call; the
+backend then falls back to its offline path (regex baseline / deterministic
+synthesis), so the guard never breaks the pipeline.
 
 Deliberate non-goals (why this is an attestation, not content inspection):
 
@@ -43,6 +41,7 @@ from __future__ import annotations
 import os
 
 DATA_SURFACE_ENV = "BIDMATE_DATA_SURFACE"
+EGRESS_PROFILE_ENV = "BIDMATE_EGRESS_PROFILE"
 
 # Strict allowlist: only these attested surfaces permit external egress.
 # Everything else — unset, "private", "local", "private_local", or any
@@ -50,6 +49,21 @@ DATA_SURFACE_ENV = "BIDMATE_DATA_SURFACE"
 # compound form are both accepted so callers need not memorize one.
 PUBLIC_SURFACES: frozenset[str] = frozenset(
     {"public", "public_fixture", "public-fixture"}
+)
+
+# Private/local RFP payloads may be sent through any external API channel only
+# with explicit operational attestation. This is intentionally channel-wide:
+# synthesis, metadata extraction, embeddings, reranking, query rewrite, and
+# planning can all carry raw document/query/evidence text. ``redacted_external_api``
+# is intentionally not included here because current backends send payload text,
+# not a proven-redacted payload.
+EXTERNAL_EGRESS_ALLOWED_PROFILES: frozenset[str] = frozenset(
+    {
+        "approved_external_api",
+        "approved-external-api",
+        "customer_managed_cloud",
+        "customer-managed-cloud",
+    }
 )
 
 
@@ -74,8 +88,18 @@ def is_public_surface() -> bool:
     return resolve_data_surface() in PUBLIC_SURFACES
 
 
+def resolve_egress_profile() -> str:
+    """Return the normalized declared deployment/egress profile."""
+    return os.environ.get(EGRESS_PROFILE_ENV, "").strip().lower()
+
+
+def external_egress_allowed() -> bool:
+    """True when public data or an approved channel-wide egress profile is set."""
+    return is_public_surface() or resolve_egress_profile() in EXTERNAL_EGRESS_ALLOWED_PROFILES
+
+
 def assert_external_payload_allowed(*, channel: str) -> None:
-    """Fail closed unless the data surface is attested public fixture.
+    """Fail closed unless the data surface/profile permits external egress.
 
     Call this at the very top of every external backend — before any SDK
     import or network call — so a blocked surface never reaches the vendor.
@@ -83,26 +107,32 @@ def assert_external_payload_allowed(*, channel: str) -> None:
     ``"metadata_extraction:anthropic_tool_use"``) for the error message.
 
     Raises:
-        ExternalPayloadBlocked: when ``BIDMATE_DATA_SURFACE`` is not one of
-            :data:`PUBLIC_SURFACES`.
+        ExternalPayloadBlocked: when neither the public data surface nor an
+            approved egress profile is attested.
     """
-    if is_public_surface():
+    if external_egress_allowed():
         return
     declared = resolve_data_surface() or "<unset>"
+    profile = resolve_egress_profile() or "<unset>"
     raise ExternalPayloadBlocked(
         f"external egress blocked for channel={channel!r}: "
-        f"{DATA_SURFACE_ENV}={declared} is not an attested public fixture "
-        f"surface (ADR 0061 ③ / ADR 0005). Set {DATA_SURFACE_ENV}="
-        "public_fixture only when the corpus is the committed public fixture; "
-        "private/local RFP data must not be sent to external APIs."
+        f"{DATA_SURFACE_ENV}={declared}, {EGRESS_PROFILE_ENV}={profile}. "
+            f"Set {DATA_SURFACE_ENV}=public_fixture for public fixtures, or set "
+            f"{EGRESS_PROFILE_ENV}=approved_external_api / customer_managed_cloud "
+        "only when private/local RFP external API egress is explicitly approved "
+        "for every enabled channel in this run."
     )
 
 
 __all__ = [
     "DATA_SURFACE_ENV",
+    "EGRESS_PROFILE_ENV",
+    "EXTERNAL_EGRESS_ALLOWED_PROFILES",
     "PUBLIC_SURFACES",
     "ExternalPayloadBlocked",
     "assert_external_payload_allowed",
+    "external_egress_allowed",
     "is_public_surface",
     "resolve_data_surface",
+    "resolve_egress_profile",
 ]

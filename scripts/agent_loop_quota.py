@@ -64,6 +64,15 @@ class QuotaState:
         return hours if hours > 0 else 0.0
 
 
+def _agentcat_timeout_seconds() -> float:
+    raw = os.environ.get("BIDMATE_AGENTCAT_TIMEOUT_SEC", "15").strip()
+    try:
+        value = float(raw)
+    except ValueError:
+        return 15.0
+    return value if value > 0 else 15.0
+
+
 def _snapshot_runner_default(executable: str) -> str:
     """Default subprocess runner — invokes ``agentcat snapshot --json``."""
     try:
@@ -71,7 +80,7 @@ def _snapshot_runner_default(executable: str) -> str:
             [executable, "snapshot", "--json"],
             capture_output=True,
             text=True,
-            timeout=5,
+            timeout=_agentcat_timeout_seconds(),
             check=False,
         )
     except (subprocess.TimeoutExpired, OSError):
@@ -190,20 +199,25 @@ def _read_config_signals(
         if weekly_limit <= 0:
             continue
         remaining_pct = max(0.0, min(100.0, (1.0 - float(used) / float(weekly_limit)) * 100.0))
-        dow_raw = str(entry.get("reset_dow") or "mon").strip().lower()
-        reset_dow = _DOW_INDEX.get(dow_raw)
-        hour_raw = entry.get("reset_hour_utc", 0)
-        try:
-            reset_hour_utc = int(hour_raw)
-        except (TypeError, ValueError):
-            reset_hour_utc = 0
-        if reset_dow is None:
-            continue
-        reset_at = _next_weekly_reset(
-            reset_dow=reset_dow,
-            reset_hour_utc=reset_hour_utc,
-            now=now,
-        )
+        reset_at = _coerce_reset_at(entry.get("reset_at"))
+        if reset_at is not None:
+            while reset_at <= now:
+                reset_at = reset_at + timedelta(days=7)
+        else:
+            dow_raw = str(entry.get("reset_dow") or "mon").strip().lower()
+            reset_dow = _DOW_INDEX.get(dow_raw)
+            hour_raw = entry.get("reset_hour_utc", 0)
+            try:
+                reset_hour_utc = int(hour_raw)
+            except (TypeError, ValueError):
+                reset_hour_utc = 0
+            if reset_dow is None:
+                continue
+            reset_at = _next_weekly_reset(
+                reset_dow=reset_dow,
+                reset_hour_utc=reset_hour_utc,
+                now=now,
+            )
         result[agent] = QuotaState(
             remaining_pct=remaining_pct,
             reset_at=reset_at,
@@ -354,9 +368,10 @@ def _format_explanation(
     for agent in ACTIVE_LANE_AGENTS:
         state = signals.get(agent)
         if isinstance(state, QuotaState):
-            reset_iso = state.reset_at.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%MZ")
+            reset_utc = state.reset_at.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%MZ")
+            reset_kst = state.reset_at.astimezone(timezone(timedelta(hours=9))).strftime("%Y-%m-%d %H:%M KST")
             parts.append(
-                f"{agent}={state.remaining_pct:.0f}% (source={state.source}, resets {reset_iso})"
+                f"{agent}={state.remaining_pct:.0f}% (source={state.source}, resets {reset_utc} / {reset_kst})"
             )
         else:
             parts.append(f"{agent}=unknown")

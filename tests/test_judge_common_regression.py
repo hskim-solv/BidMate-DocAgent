@@ -13,12 +13,18 @@ import unittest
 
 from eval.judges.judge_common import (
     JUDGE_STATUSES,
+    build_openai_client,
     build_evidence_block,
     clamp_score,
     extract_summary,
     get_judge_response_format,
     get_judge_temperature,
     normalize_status_verdict,
+)
+from bidmate_data_boundary import (
+    DATA_SURFACE_ENV,
+    EGRESS_PROFILE_ENV,
+    ExternalPayloadBlocked,
 )
 
 
@@ -304,6 +310,28 @@ class GetJudgeResponseFormatTest(unittest.TestCase):
         os.environ["BIDMATE_JUDGE_RESPONSE_FORMAT"] = "json_schema"
         with self.assertRaises(ValueError):
             get_judge_response_format()
+
+
+class BuildOpenAIClientBoundaryTest(unittest.TestCase):
+    """OpenAI-compatible judge calls must pass the central egress guard."""
+
+    def test_private_surface_without_profile_blocks_before_sdk_or_key_check(self) -> None:
+        saved_surface = os.environ.get(DATA_SURFACE_ENV)
+        saved_profile = os.environ.get(EGRESS_PROFILE_ENV)
+        try:
+            os.environ[DATA_SURFACE_ENV] = "private_local"
+            os.environ.pop(EGRESS_PROFILE_ENV, None)
+            with self.assertRaises(ExternalPayloadBlocked):
+                build_openai_client()
+        finally:
+            if saved_surface is None:
+                os.environ.pop(DATA_SURFACE_ENV, None)
+            else:
+                os.environ[DATA_SURFACE_ENV] = saved_surface
+            if saved_profile is None:
+                os.environ.pop(EGRESS_PROFILE_ENV, None)
+            else:
+                os.environ[EGRESS_PROFILE_ENV] = saved_profile
 
 
 if __name__ == "__main__":

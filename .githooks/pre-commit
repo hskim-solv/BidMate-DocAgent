@@ -106,6 +106,9 @@ ALLOWED_PATTERNS=(
   '^reports/real100_v2/metric_suite\.aggregate\.json$'
   '^reports/real100_v2/metric_suite\.md$'
   '^reports/real100_v2/retrieval_diagnostics\.aggregate\.json$'
+  '^reports/real100_v2/judge\.aggregate\.json$'
+  '^reports/real100_v2/judge_ragas\.aggregate\.json$'
+  '^reports/real100_v2/rationality\.aggregate\.json$'
 )
 
 # Guard: ADR file deletion/rename (CLAUDE.md Prohibited).

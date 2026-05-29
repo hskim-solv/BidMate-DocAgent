@@ -415,8 +415,72 @@ class EvalMetricsTest(unittest.TestCase):
         }
         results = evaluate_run(index, [case], run_config)
         result = results[0]
-        for key in ("tokens_in", "tokens_out", "cost_estimate_usd", "llm_model"):
+        for key in (
+            "tokens_in",
+            "tokens_out",
+            "cost_estimate_usd",
+            "llm_model",
+            "synthesis_backend",
+            "synthesis_fell_back",
+            "synthesis_fallback_reason",
+            "synthesis_latency_ms",
+        ):
             self.assertIn(key, result, f"case_results entry missing key: {key}")
+
+    def test_summarize_run_aggregates_synthesis_quality(self) -> None:
+        run_config = {"name": "llm", "pipeline": "naive_baseline"}
+        summary = summarize_run(
+            "llm",
+            run_config,
+            [
+                {
+                    "accuracy": 1.0,
+                    "query_type": "single_doc",
+                    "groundedness": 1.0,
+                    "citation_precision": 1.0,
+                    "claim_citation_alignment": 1.0,
+                    "answer_format_compliance": 1.0,
+                    "abstention": 0.0,
+                    "retry": 0.0,
+                    "latency_ms": 10.0,
+                    "cold_start": False,
+                    "retry_count": 0,
+                    "synthesis_backend": "local_openai_compatible",
+                    "synthesis_fell_back": False,
+                    "synthesis_fallback_reason": None,
+                    "synthesis_latency_ms": 3.0,
+                    "tokens_in": 10,
+                    "tokens_out": 5,
+                    "cost_estimate_usd": 0.0,
+                    "llm_model": "local-small",
+                },
+                {
+                    "accuracy": 0.0,
+                    "query_type": "single_doc",
+                    "groundedness": 0.0,
+                    "citation_precision": 0.0,
+                    "claim_citation_alignment": 0.0,
+                    "answer_format_compliance": 0.0,
+                    "abstention": 0.0,
+                    "retry": 0.0,
+                    "latency_ms": 20.0,
+                    "cold_start": False,
+                    "retry_count": 0,
+                    "synthesis_backend": "local_openai_compatible",
+                    "synthesis_fell_back": True,
+                    "synthesis_fallback_reason": "empty_summary",
+                    "synthesis_latency_ms": 4.0,
+                },
+            ],
+        )
+
+        quality = summary["synthesis_quality"]
+        self.assertEqual(2, quality["cases_with_synthesis_attempt"])
+        self.assertEqual(1, quality["cases_with_synthesis_success"])
+        self.assertEqual(1, quality["cases_with_synthesis_fallback"])
+        self.assertEqual({"empty_summary": 1}, quality["fallback_reason_counts"])
+        self.assertEqual({"local_openai_compatible": 2}, quality["backend_counts"])
+        self.assertEqual({"local-small": 1}, quality["model_counts"])
 
     def test_private_hardcase_example_config_loads(self) -> None:
         config = load_config(ROOT_DIR / "eval" / "private_hardcase.example.yaml")

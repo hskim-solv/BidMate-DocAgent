@@ -18,6 +18,7 @@ import json
 import os
 from pathlib import Path
 import re
+import signal
 import shlex
 import shutil
 import subprocess
@@ -49,10 +50,11 @@ ABSOLUTE_LOCAL_PATH_RE = re.compile(
     r"(?<![A-Za-z0-9_-])(?:/Users|/private|/var/folders|/Volumes)/[^\s)`'\"]+"
 )
 PRIVATE_INLINE_VALUE_RE = re.compile(
-    r"\b(?P<label>(?:raw\s+)?(?:question|answer|evidence)|doc[_ -]?id|"
-    r"chunk[_ -]?id|file\s*name|filename)\b"
-    r"\s*[:=]\s*(?P<value>[^\n;,]+)",
-    re.IGNORECASE,
+    r"^(?P<field_prefix>[ \t]*(?:[-*]\s*)?)(?P<field_label>(?:raw\s+)?(?:question|answer|evidence))"
+    r"\s*[:=]\s*(?P<field_value>[^\n;,]+)"
+    r"|(?P<inline_label>(?:raw\s+)?(?:question|answer)|raw\s+evidence|doc[_ -]?id|chunk[_ -]?id|file\s*name|filename)"
+    r"\s*[:=]\s*(?P<inline_value>[^\n;,]+)",
+    re.IGNORECASE | re.MULTILINE,
 )
 PRIVATE_FLAG_VALUE_RE = re.compile(
     r"(?P<flag>--(?:raw-)?(?:question|answer|evidence|doc[_-]?id|chunk[_-]?id|file(?:[_-]?name)?)\s+)"
@@ -70,6 +72,12 @@ DEFAULT_AI_NEXT_ACTIONS = DEFAULT_REPORT_DIR / "ai_next_actions.md"
 DEFAULT_CODEX_TASKS_DIR = DEFAULT_REPORT_DIR / "codex_tasks"
 DEFAULT_BATCH_PLAN = DEFAULT_REPORT_DIR / "batch_plan.md"
 DEFAULT_BATCH_PLAN_JSON = DEFAULT_REPORT_DIR / "batch_plan.json"
+DEFAULT_QUEUE_PARALLEL_PLAN = DEFAULT_REPORT_DIR / "queue_parallel_plan.md"
+DEFAULT_QUEUE_PARALLEL_PLAN_JSON = DEFAULT_REPORT_DIR / "queue_parallel_plan.json"
+DEFAULT_QUEUE_RECOMMENDATIONS = DEFAULT_REPORT_DIR / "queue_recommendations.md"
+DEFAULT_QUEUE_RECOMMENDATIONS_JSON = DEFAULT_REPORT_DIR / "queue_recommendations.json"
+DEFAULT_BACKLOG_HANDOFF_QUEUE = DEFAULT_REPORT_DIR / "active" / "backlog_handoff_queue.md"
+DEFAULT_BACKLOG_HANDOFF_QUEUE_JSON = DEFAULT_REPORT_DIR / "active" / "backlog_handoff_queue.json"
 DEFAULT_REVIEW_FOLLOWUPS = DEFAULT_REPORT_DIR / "review_followups.md"
 DEFAULT_REVIEW_FOLLOWUPS_DIR = DEFAULT_REPORT_DIR / "review_followups"
 DEFAULT_DECISION_BRIEF = DEFAULT_REPORT_DIR / "decision_brief.md"
@@ -141,6 +149,8 @@ DEFAULT_ACTIVE_CODEX_RUNNER_STATE = DEFAULT_ACTIVE_DIR / "codex_runner_state.jso
 DEFAULT_ACTIVE_CODEX_RUNS_DIR = DEFAULT_ACTIVE_DIR / "codex_runs"
 DEFAULT_ACTIVE_AUTO_LOOP = DEFAULT_ACTIVE_DIR / "auto_loop.md"
 DEFAULT_ACTIVE_AUTO_LOOP_STATE = DEFAULT_ACTIVE_DIR / "auto_loop_state.json"
+DEFAULT_ACTIVE_AUTO_REPAIR = DEFAULT_ACTIVE_DIR / "auto_repair.md"
+DEFAULT_ACTIVE_AUTO_REPAIR_STATE = DEFAULT_ACTIVE_DIR / "auto_repair_state.json"
 DEFAULT_ISSUE_STATE = DEFAULT_REPORT_DIR / "issue_state.json"
 DEFAULT_ISSUE_TRIAGE = DEFAULT_REPORT_DIR / "issue_triage.md"
 DEFAULT_ISSUE_QUEUE_TASKS_DIR = DEFAULT_REPORT_DIR / "issue_queue_tasks"
@@ -214,12 +224,12 @@ _ROLE_CAPABILITY = {
 # 두 lane 의 추론 강도가 정합해야 함.
 _CLAUDE_ROLE_PROFILE = {
     # claude-prior roles (1차 lane)
-    "Planner / Issue Triage": ("claude-opus-4-7", "xhigh"),
+    "Planner / Issue Triage": ("claude-opus-4-8", "xhigh"),
     "Eval / Claim / Privacy Auditor": ("claude-sonnet-4-6", "medium"),
     "Experiment Scout": ("claude-sonnet-4-6", "medium"),
     # codex-prior roles 의 2차 claude lane (대칭 매트릭스)
-    "Reviewer": ("claude-opus-4-7", "xhigh"),
-    "Deep Reviewer": ("claude-opus-4-7", "xhigh"),
+    "Reviewer": ("claude-opus-4-8", "xhigh"),
+    "Deep Reviewer": ("claude-opus-4-8", "xhigh"),
     "CI / Regression Auditor": ("claude-sonnet-4-6", "medium"),
     "CI/Eval Auditor": ("claude-sonnet-4-6", "medium"),
 }
@@ -265,9 +275,19 @@ def _resolve_lane_effort(agent: str, role: str) -> str:
     return os.getenv(role_env) or os.getenv(lane_env) or role_default[1]
 
 
+def _resolve_lane_model_override(agent: str, role: str, requested_model: str | None) -> str:
+    """Apply CLI model overrides only to the matching provider family."""
+    if requested_model:
+        if agent == "codex" and not requested_model.startswith("claude-"):
+            return requested_model
+        if agent == "claude" and requested_model.startswith("claude-"):
+            return requested_model
+    return _resolve_lane_model(agent, role)
+
+
 def _validate_effort_for_model(model: str, effort: str) -> str:
-    """ADR 0082: `xhigh` is Opus-4-7 only. Other models 400 on xhigh → coerce to `high`."""
-    if effort == "xhigh" and not model.startswith("claude-opus-4-7"):
+    """ADR 0082: `xhigh` is Opus-4-7+ only. Other models 400 on xhigh → coerce to `high`."""
+    if effort == "xhigh" and not re.match(r"^claude-opus-4-(?:7|8)(?:\b|[-_])", model):
         return "high"
     return effort
 
@@ -403,6 +423,29 @@ class TaskEntry:
     body: str
     status: str | None
     owner_role: str | None
+
+
+@dataclass(frozen=True)
+class QueueParallelItem:
+    task: TaskEntry
+    priority: str
+    lane: str
+    reason: str
+    context_files: tuple[str, ...]
+    order: int
+
+
+@dataclass(frozen=True)
+class QueueRecommendation:
+    title: str
+    status: str
+    priority: str
+    owner_role: str
+    lane: str
+    goal: str
+    trigger: str
+    acceptance: tuple[str, ...]
+    validation: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -751,10 +794,7 @@ def _task_public_fields(body: str) -> dict[str, str]:
 
 def _sanitize_dynamic_text(text: str) -> str:
     redacted = ABSOLUTE_LOCAL_PATH_RE.sub("[redacted-local-path]", text)
-    return PRIVATE_INLINE_VALUE_RE.sub(
-        lambda match: f"{match.group('label')}: [redacted-private-value]",
-        redacted,
-    )
+    return PRIVATE_INLINE_VALUE_RE.sub(_redact_private_inline_match, redacted)
 
 
 def _sanitize_inline_text(text: str) -> str:
@@ -1654,7 +1694,13 @@ def recommend_next_task(repo_root: Path = ROOT_DIR) -> str:
     return "\n".join(lines) + "\n"
 
 
-def select_next_task(repo_root: Path = ROOT_DIR, exclude_task_ids: Sequence[str] = ()) -> TaskEntry:
+def select_next_task(
+    repo_root: Path = ROOT_DIR,
+    exclude_task_ids: Sequence[str] = (),
+    *,
+    include_backlog: bool = True,
+    require_backlog_handoff: bool = False,
+) -> TaskEntry:
     queue_text = _read_text(repo_root / QUEUE_PATH)
     entries = parse_task_entries(queue_text)
     if not entries:
@@ -1663,10 +1709,17 @@ def select_next_task(repo_root: Path = ROOT_DIR, exclude_task_ids: Sequence[str]
     selectable = [entry for entry in entries if entry.task_id not in excluded]
     ready = [entry for entry in selectable if (entry.status or "").lower() == "ready"]
     todo = [entry for entry in selectable if (entry.status or "").lower() == "todo"]
-    backlog = [entry for entry in selectable if (entry.status or "").lower() == "backlog"]
+    backlog = [entry for entry in selectable if (entry.status or "").lower() == "backlog"] if include_backlog else []
+    if require_backlog_handoff and backlog:
+        backlog = _active_auto_loop_handoff_ready_backlog(
+            backlog,
+            repo_root=repo_root,
+            exclude_task_ids=exclude_task_ids,
+        )
     candidates = ready or todo or backlog
     if not candidates:
-        raise ValueError("no ready, todo, or backlog task found; choose manually from tasks/queue.md")
+        allowed = "ready, todo, or backlog" if include_backlog else "ready or todo"
+        raise ValueError(f"no {allowed} task found; choose manually from tasks/queue.md")
     candidates = sorted(
         candidates,
         key=lambda item: (
@@ -1679,6 +1732,195 @@ def select_next_task(repo_root: Path = ROOT_DIR, exclude_task_ids: Sequence[str]
     return candidates[0]
 
 
+def _active_auto_loop_handoff_ready_backlog(
+    tasks: Sequence[TaskEntry],
+    *,
+    repo_root: Path,
+    exclude_task_ids: Sequence[str] = (),
+    limit: int = 12,
+) -> list[TaskEntry]:
+    ready: list[TaskEntry] = []
+    prep_items: list[dict[str, object]] = []
+    excluded = set(exclude_task_ids)
+    for task in tasks[: max(1, limit)]:
+        if task.task_id in excluded:
+            continue
+        plan_path = find_plan_path(task, repo_root)
+        hydrated_plan = None
+        if plan_path is None:
+            hydrated_plan = _ensure_backlog_plan_stub(task, repo_root=repo_root)
+            plan_path = hydrated_plan
+        changed = _active_task_context_files(task, repo_root=repo_root)
+        handoff = check_handoff(task.task_id, changed_files=changed, repo_root=repo_root)
+        if handoff.ok:
+            ready.append(task)
+            continue
+        prep_items.append(
+            {
+                "task_id": task.task_id,
+                "title": task.title,
+                "status": task.status or "unknown",
+                "plan": _repo_path(plan_path, repo_root) if plan_path else None,
+                "hydrated_plan": _repo_path(hydrated_plan, repo_root) if hydrated_plan else None,
+                "handoff_source": handoff.source,
+                "handoff_heading": handoff.heading,
+                "missing_fields": list(handoff.missing_fields),
+                "invalid_fields": list(handoff.invalid_fields),
+                "next_action": "fill validation evidence in the generated plan/handoff, then promote to todo/ready",
+            }
+        )
+    if prep_items:
+        _write_backlog_handoff_queue(prep_items, repo_root=repo_root)
+    return ready
+
+
+def _ensure_backlog_plan_stub(task: TaskEntry, *, repo_root: Path) -> Path:
+    plan_dir = repo_root / "docs" / "plans"
+    plan_dir.mkdir(parents=True, exist_ok=True)
+    path = plan_dir / f"{task.task_id}-{_slugify(task.title)}.md"
+    if path.exists():
+        return path
+    today = datetime.now(timezone.utc).astimezone().strftime("%Y-%m-%d")
+    owner = task.owner_role or "Planner -> Implementer -> Reviewer"
+    text = f"""# Plan: {task.task_id} {task.title}
+
+- Status: draft
+- Owner role: {owner}
+- Related task: `tasks/queue.md::{task.task_id}`
+- Related issue / PR: N/A
+- Related ADR: N/A - no decision-level change identified during backlog hydration
+- Created: {today}
+- Last updated: {today}
+
+## Problem Statement
+
+This backlog task was selected by `active-auto-loop` before a plan/handoff existed.
+The task needs enough scoped context for an agent to decide whether it can be promoted
+to `todo` or `ready` without rediscovering the queue entry.
+
+## Current Behavior
+
+- Queue status: `{task.status or "unknown"}`
+- Owner role: `{owner}`
+- Queue title: {task.title}
+
+## Desired Behavior
+
+Convert this draft into a concrete, execution-ready plan. Do not run implementation
+work from this stub alone.
+
+## Constraints
+
+- Preserve `real100_v2` as the only current private eval surface unless explicitly changed.
+- Do not expose raw private data, exact private filenames, raw questions, answers, doc IDs, or chunk IDs.
+- Keep scope to one task concern.
+
+## Task Breakdown
+
+1. Read the queue entry and any linked reports or plans.
+2. Fill in the concrete problem, affected files, validation commands, and reviewer focus.
+3. Run the minimum safe preflight or explain why it cannot be run.
+4. Update the Session Handoff below with real evidence.
+5. Promote the task to `todo` or `ready` only after `handoff-check` passes.
+
+## Acceptance Criteria
+
+- [ ] This plan states the smallest executable scope.
+- [ ] The Session Handoff has real validation evidence, not placeholder text.
+- [ ] `handoff-check` passes before the task is selected for execution.
+
+## Validation Strategy
+
+```bash
+python3 scripts/agent_loop.py handoff-check --task {task.task_id}
+git diff --check
+```
+
+## Reviewer Notes
+
+Attack scope drift first. This file was generated as backlog hydration, not as
+evidence that the task is ready.
+
+## Session Handoff - {today} KST
+
+- Role: Planner
+- Lifecycle stage: backlog-prep
+- Branch / worktree: { _sanitize_dynamic_text(str(repo_root)) }
+- Task: {task.task_id}
+- Current status: draft plan generated from backlog; not execution-ready.
+- Files touched: { _repo_path(path, repo_root) }
+- Commands run: not run
+- Results: not run
+- Validation evidence: not run
+- Blockers: plan is a generated skeleton and still needs real task-specific evidence.
+- Open risks: scope, validation commands, and reviewer focus may be incomplete.
+- Next action: fill this plan with task-specific evidence and then promote the queue status to todo/ready.
+- Next safe command: python3 scripts/agent_loop.py handoff-check --task {task.task_id}
+- Reviewer focus: reject execution if this generated handoff still contains placeholder validation evidence.
+"""
+    path.write_text(_sanitize_dynamic_text(text).rstrip() + "\n", encoding="utf-8")
+    return path
+
+
+def _write_backlog_handoff_queue(items: Sequence[dict[str, object]], *, repo_root: Path) -> None:
+    md_path = _active_path(DEFAULT_BACKLOG_HANDOFF_QUEUE, repo_root=repo_root)
+    json_path = _active_path(DEFAULT_BACKLOG_HANDOFF_QUEUE_JSON, repo_root=repo_root)
+    md_path.parent.mkdir(parents=True, exist_ok=True)
+    lines = [
+        "# Backlog Handoff Queue",
+        "",
+        "- Generated by `active-auto-loop` before selecting backlog work.",
+        "- Backlog tasks listed here are not execution-ready until plan/handoff evidence is present.",
+        "- Promote to `todo` or `ready` only after the missing fields are filled and `handoff-check` passes.",
+        "",
+        "| Task | Status | Missing fields | Invalid fields | Next action |",
+        "|---|---|---|---|---|",
+    ]
+    for item in items:
+        missing = ", ".join(str(value) for value in item.get("missing_fields", [])) or "None"
+        invalid = ", ".join(str(value) for value in item.get("invalid_fields", [])) or "None"
+        lines.append(
+            "| "
+            + " | ".join(
+                (
+                    f"`{_sanitize_inline_text(str(item.get('task_id') or 'unknown'))}`",
+                    _sanitize_inline_text(str(item.get("status") or "unknown")),
+                    _sanitize_inline_text(missing),
+                    _sanitize_inline_text(invalid),
+                    _sanitize_dynamic_text(str(item.get("next_action") or "")),
+                )
+            )
+            + " |"
+        )
+    md_path.write_text(_sanitize_dynamic_text("\n".join(lines)).rstrip() + "\n", encoding="utf-8")
+    json_path.write_text(
+        json.dumps(_sanitize_json_value({"schema_version": 1, "tasks": list(items)}), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+
+def _active_auto_loop_selectable_status(status: str | None) -> bool:
+    return (status or "").casefold() in {"ready", "todo"}
+
+
+def _select_deferred_retry_task(
+    repo_root: Path,
+    *,
+    deferred_task_ids: Sequence[str],
+    exclude_task_ids: Sequence[str] = (),
+) -> TaskEntry:
+    excluded = set(exclude_task_ids)
+    queue_text = _read_text(repo_root / QUEUE_PATH)
+    entries = {entry.task_id: entry for entry in parse_task_entries(queue_text)}
+    for task_id in deferred_task_ids:
+        if task_id in excluded:
+            continue
+        task = entries.get(task_id)
+        if task and _active_auto_loop_selectable_status(task.status):
+            return task
+    raise ValueError("no deferred ready or todo task found; choose manually from tasks/queue.md")
+
+
 def _active_task_context_files(task: TaskEntry, *, repo_root: Path) -> tuple[str, ...]:
     plan = find_plan_path(task, repo_root)
     queue_rel = QUEUE_PATH.as_posix()
@@ -1686,12 +1928,505 @@ def _active_task_context_files(task: TaskEntry, *, repo_root: Path) -> tuple[str
     if plan is not None:
         files.append(_repo_path(plan, repo_root))
     for raw in re.findall(r"`([^`]+)`", task.body):
+        if "\n" in raw or len(raw) > 240:
+            continue
         normalized = _normalize_changed_file(raw, repo_root=repo_root)
         if normalized and normalized not in {"[redacted-local-path]", queue_rel}:
+            if "\n" in normalized or len(normalized) > 240:
+                continue
             candidate = repo_root / normalized
-            if candidate.exists():
+            try:
+                exists = candidate.exists()
+            except OSError:
+                exists = False
+            if exists:
                 files.append(normalized)
     return tuple(_dedupe_preserve_order(files))
+
+
+def _task_priority(task: TaskEntry) -> str:
+    match = re.search(r"(?im)^\s*-\s*Priority:\s*`?([Pp][0-9])`?\s*$", task.body)
+    return match.group(1).upper() if match else "P9"
+
+
+def _queue_parallel_lane(task: TaskEntry, *, repo_root: Path) -> tuple[str, str]:
+    status = (task.status or "").casefold()
+    text = " ".join(
+        part
+        for part in (task.title, task.body, task.owner_role or "")
+        if part
+    ).lower()
+    if status == "review":
+        return "review-only", "status is review"
+    serial_terms = (
+        "private real-eval",
+        "real100_v2",
+        "benchmark",
+        "latency",
+        "cost",
+        "load-bearing",
+        "privacy",
+        "ship",
+        "merge",
+        "git push",
+        "gh pr",
+    )
+    if any(term in text for term in serial_terms):
+        return "serial-gated", "eval/load-bearing or remote-mutation guardrail"
+    context_files = _active_task_context_files(task, repo_root=repo_root)
+    if context_files:
+        surface = classify_changed_files(context_files)
+        surfaces = {surface.surface, *surface.additional_surfaces}
+        if surfaces & {"private-real-eval", "benchmark-reporting", "privacy-sensitive-artifact"}:
+            return "serial-gated", f"surface={surface.surface}"
+    return "parallel-safe", "no shared eval/private/remote guardrail detected"
+
+
+def _queue_parallel_payload_item(item: QueueParallelItem, *, repo_root: Path) -> dict[str, object]:
+    task = item.task
+    return {
+        "task_id": task.task_id,
+        "title": task.title,
+        "status": task.status or "unknown",
+        "priority": item.priority,
+        "lane": item.lane,
+        "reason": item.reason,
+        "owner_role": task.owner_role or "unknown",
+        "context_files": list(item.context_files),
+        "queue_order": item.order,
+    }
+
+
+def write_queue_parallel_plan(
+    *,
+    out: Path = DEFAULT_QUEUE_PARALLEL_PLAN,
+    json_out: Path | None = DEFAULT_QUEUE_PARALLEL_PLAN_JSON,
+    max_items: int = 12,
+    repo_root: Path = ROOT_DIR,
+) -> tuple[Path, Path | None, str]:
+    if max_items < 1:
+        raise ValueError("--max-items must be at least 1")
+    entries = parse_task_entries(_read_text(repo_root / QUEUE_PATH))
+    candidate_statuses = {"ready", "todo", "review", "backlog"}
+    items: list[QueueParallelItem] = []
+    for order, task in enumerate(entries, start=1):
+        if (task.status or "").casefold() not in candidate_statuses:
+            continue
+        priority = _task_priority(task)
+        lane, reason = _queue_parallel_lane(task, repo_root=repo_root)
+        items.append(
+            QueueParallelItem(
+                task=task,
+                priority=priority,
+                lane=lane,
+                reason=reason,
+                context_files=_active_task_context_files(task, repo_root=repo_root),
+                order=order,
+            )
+        )
+    status_rank = {"ready": 0, "todo": 1, "review": 2, "backlog": 3}
+    lane_rank = {"parallel-safe": 0, "review-only": 1, "serial-gated": 2}
+    items = sorted(
+        items,
+        key=lambda item: (
+            int(item.priority[1:]) if re.fullmatch(r"P[0-9]", item.priority) else 9,
+            status_rank.get((item.task.status or "").casefold(), 9),
+            lane_rank.get(item.lane, 9),
+            item.order,
+        ),
+    )[:max_items]
+
+    if out == DEFAULT_QUEUE_PARALLEL_PLAN:
+        out = repo_root / "reports" / "agent_loop" / "queue_parallel_plan.md"
+    safe_out = _safe_output_path(out, repo_root=repo_root)
+    rendered = render_queue_parallel_plan(items, repo_root=repo_root)
+    safe_out.parent.mkdir(parents=True, exist_ok=True)
+    safe_out.write_text(rendered, encoding="utf-8")
+
+    safe_json: Path | None = None
+    if json_out is not None:
+        if json_out == DEFAULT_QUEUE_PARALLEL_PLAN_JSON:
+            json_out = repo_root / "reports" / "agent_loop" / "queue_parallel_plan.json"
+        safe_json = _safe_output_path(json_out, repo_root=repo_root)
+        safe_json.parent.mkdir(parents=True, exist_ok=True)
+        payload = [_queue_parallel_payload_item(item, repo_root=repo_root) for item in items]
+        safe_json.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return safe_out, safe_json, rendered
+
+
+def render_queue_parallel_plan(items: Sequence[QueueParallelItem], *, repo_root: Path = ROOT_DIR) -> str:
+    lanes = ("parallel-safe", "review-only", "serial-gated")
+    lines = [
+        "# Queue Parallel Plan",
+        "",
+        "- Source: `tasks/queue.md`",
+        "- Purpose: pre-sort upcoming work by priority and group tasks that can run in parallel without sharing write/eval/ship gates.",
+        "- Execution policy: run `parallel-safe` tasks in separate worktrees when available; keep `serial-gated` tasks behind benchmark/privacy/ship gates.",
+        "",
+    ]
+    for lane in lanes:
+        lane_items = [item for item in items if item.lane == lane]
+        lines.extend([f"## {lane}", "", "| Priority | Status | Task | Owner | Reason |", "|---|---|---|---|---|"])
+        if lane_items:
+            for item in lane_items:
+                task = item.task
+                lines.append(
+                    "| "
+                    + " | ".join(
+                        _sanitize_dynamic_text(str(value)).replace("\n", " ")
+                        for value in (
+                            item.priority,
+                            task.status or "unknown",
+                            f"{task.task_id} — {task.title}",
+                            task.owner_role or "unknown",
+                            item.reason,
+                        )
+                    )
+                    + " |"
+                )
+        else:
+            lines.append("|  |  | None |  |  |")
+        lines.append("")
+    return _sanitize_dynamic_text("\n".join(lines)).rstrip() + "\n"
+
+
+def _queue_recommendation_payload(item: QueueRecommendation, *, task_id: str | None = None) -> dict[str, object]:
+    payload = {
+        "title": item.title,
+        "status": item.status,
+        "priority": item.priority,
+        "owner_role": item.owner_role,
+        "lane": item.lane,
+        "goal": item.goal,
+        "trigger": item.trigger,
+        "acceptance": list(item.acceptance),
+        "validation": list(item.validation),
+    }
+    if task_id:
+        payload["task_id"] = task_id
+    return payload
+
+
+def _recommended_tasks_from_state(*, repo_root: Path) -> list[QueueRecommendation]:
+    queue_text = _read_text(repo_root / QUEUE_PATH)
+    existing_titles = {entry.title.casefold() for entry in parse_task_entries(queue_text)}
+    recommendations: list[QueueRecommendation] = []
+    real_eval_root_raw = os.environ.get("REAL_EVAL_ROOT") or str(repo_root)
+    real_eval_root = Path(real_eval_root_raw)
+    if not real_eval_root.is_absolute():
+        real_eval_root = repo_root / real_eval_root
+
+    def add(item: QueueRecommendation) -> None:
+        if item.title.casefold() not in existing_titles:
+            recommendations.append(item)
+            existing_titles.add(item.title.casefold())
+
+    queue_plan_path = repo_root / "reports" / "agent_loop" / "queue_parallel_plan.json"
+    if queue_plan_path.exists():
+        try:
+            plan_items = json.loads(queue_plan_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            plan_items = []
+        if isinstance(plan_items, list):
+            lanes = [str(item.get("lane") or "") for item in plan_items if isinstance(item, dict)]
+            if lanes and "parallel-safe" not in lanes and lanes.count("serial-gated") >= 3:
+                add(
+                    QueueRecommendation(
+                        title="Implement task-parallel worktree wave runner",
+                        status="backlog",
+                        priority="P0",
+                        owner_role="Planner -> Implementer -> Reviewer",
+                        lane="serial-gated",
+                        goal="Run independent queue tasks in separate worktrees while keeping ship and benchmark/privacy gates serialized.",
+                        trigger="queue_parallel_plan shows the upcoming workset is dominated by serial-gated eval tasks, so same-worktree parallel Implementer sessions would conflict.",
+                        acceptance=(
+                            "Select a bounded task wave from tasks/queue.md before execution.",
+                            "Prepare isolated worktrees or scratch branches per task before any write-capable runner starts.",
+                            "Keep merge/ship execution serialized behind existing conservative gates.",
+                        ),
+                        validation=(
+                            "python3 -m pytest -q tests/test_agent_loop.py -k active_auto_loop",
+                            "make -n 시작",
+                        ),
+                    )
+                )
+
+    chroma_summary = real_eval_root / "reports" / "real100_v2_chroma" / "eval_summary.json"
+    if chroma_summary.exists():
+        add(
+            QueueRecommendation(
+                title="Render checkpoint MiniLM Chroma baseline decision packet",
+                status="backlog",
+                priority="P0",
+                owner_role="Evaluator -> Benchmark Auditor -> Privacy Auditor -> Reviewer",
+                lane="serial-gated",
+                goal="Turn the refreshed checkpoint-based real100_v2 Chroma aggregate into a reviewer-safe baseline packet and downstream rerun decision.",
+                trigger="reports/real100_v2_chroma/eval_summary.json exists after checkpoint MiniLM page-aware remeasurement.",
+                acceptance=(
+                    "Summarize aggregate-only score, latency, index provenance, and page_span coverage.",
+                    "Name which reopened tasks remain invalid until rerun against this aggregate.",
+                    "Avoid raw private question, answer, evidence, filename, doc_id, or chunk_id leakage.",
+                ),
+                validation=(
+                    "make real-eval-v2-guard",
+                    "python3 scripts/check_doc_links.py --check-all --paths tasks/queue.md reports/real100_v2/README.md",
+                ),
+            )
+        )
+    else:
+        add(
+            QueueRecommendation(
+                title="Complete checkpoint MiniLM Chroma baseline remeasurement",
+                status="ready",
+                priority="P0",
+                owner_role="Evaluator -> Benchmark Auditor -> Privacy Auditor -> Reviewer",
+                lane="serial-gated",
+                goal="Finish the checkpoint-based real100_v2 Chroma baseline run and verify the aggregate is written.",
+                trigger="No reports/real100_v2_chroma/eval_summary.json was present when queue recommendations were generated.",
+                acceptance=(
+                    "real-eval-v2-chroma reuses the checkpoint MiniLM page-aware index instead of rebuilding from raw documents.",
+                    "real-eval-v2-check passes against the checkpoint index.",
+                    "Generated aggregate remains private-safe and commit boundary compliant.",
+                ),
+                validation=(
+                    "REAL_EVAL_ROOT=<private-real-eval-root> make real-eval-v2-check",
+                    "REAL_EVAL_ROOT=<private-real-eval-root> make real-eval-v2-chroma",
+                ),
+            )
+        )
+
+    changed_files: list[str]
+    try:
+        changed_files = _changed_files_from_git(repo_root)
+    except ValueError:
+        changed_files = []
+    if any(path in {"Makefile", "scripts/agent_loop.py"} for path in changed_files):
+        add(
+            QueueRecommendation(
+                title="Harden adaptive start-loop operator evidence",
+                status="backlog",
+                priority="P1",
+                owner_role="Implementer -> CI Reviewer -> Reviewer",
+                lane="parallel-safe",
+                goal="Add operator-facing evidence and regression checks for START_TASK_LIMIT=auto, queue-parallel-plan, and workspace-write runner defaults.",
+                trigger="Current diff changes the make 시작 orchestration surface.",
+                acceptance=(
+                    "Document fixed-count override and auto-limit decision criteria.",
+                    "Test make 시작 dry-run includes queue planning, auto max-iterations, execute flags, and workspace-write sandbox.",
+                    "Keep remote mutation behavior behind existing ship gates.",
+                ),
+                validation=(
+                    "python3 -m pytest -q tests/test_agent_loop.py -k 'active_auto_loop or queue_parallel_plan'",
+                    "make -n 시작",
+                    "git diff --check",
+                ),
+            )
+        )
+
+    llm_summary = real_eval_root / "reports" / "real100_v2_chroma_llm" / "eval_summary.json"
+    if llm_summary.exists():
+        title = "Render checkpoint MiniLM local-LLM baseline decision packet"
+        status = "backlog"
+        trigger = "reports/real100_v2_chroma_llm/eval_summary.json exists after local-small synthesis remeasurement."
+        goal = "Turn the local-small synthesis baseline aggregate into the headline baseline decision packet while keeping stub as a diagnostic control."
+    else:
+        title = "Complete checkpoint MiniLM local-LLM baseline remeasurement"
+        status = "ready"
+        trigger = "The stub-only checkpoint Chroma run is a retrieval/control baseline, not a sufficient answer synthesis baseline."
+        goal = "Run the naive Chroma+MiniLM baseline with loopback local-small LLM synthesis and keep stub only as a control row."
+    add(
+        QueueRecommendation(
+            title=title,
+            status=status,
+            priority="P0",
+            owner_role="Evaluator -> Benchmark Auditor -> Privacy Auditor -> Reviewer",
+            lane="serial-gated",
+            goal=goal,
+            trigger=trigger,
+            acceptance=(
+                "Use naive Chroma+dense retrieval on the checkpoint MiniLM page-aware index.",
+                "Include a deterministic stub control row and a prompt_profile=llm_synthesis primary row.",
+                "Use BIDMATE_SYNTHESIS_BACKEND=local_openai_compatible for loopback, or openai_compatible only with an approved BIDMATE_EGRESS_PROFILE.",
+                "Record provider/model/base_url provenance without committing raw private prompts or completions.",
+                "Report answer-quality, latency, token, fallback, and citation metrics that stub synthesis cannot expose.",
+            ),
+            validation=(
+                "BIDMATE_SYNTHESIS_BASE_URL=http://127.0.0.1:11434/v1 BIDMATE_SYNTHESIS_API_KEY=ollama BIDMATE_SYNTHESIS_MODEL=<local-model> REAL_EVAL_ROOT=<private-real-eval-root> make real-eval-v2-chroma-llm",
+                "make real-eval-v2-guard",
+                "python3 scripts/check_doc_links.py --check-all --paths tasks/queue.md docs/evaluation/surface-map.md",
+            ),
+        )
+    )
+
+    add(
+        QueueRecommendation(
+            title="Refresh GitHub-facing evidence after checkpoint baseline settles",
+            status="backlog",
+            priority="P1",
+            owner_role="Planner -> Reviewer",
+            lane="parallel-safe",
+            goal="Update repo-facing reports or README/portfolio wording only after the new checkpoint baseline packet is reviewed.",
+            trigger="The baseline and queue automation surfaces changed; public-facing wording should trail reviewed aggregate evidence.",
+            acceptance=(
+                "Use only reviewed real100_v2 checkpoint aggregate evidence.",
+                "Do not reintroduce legacy real100/v1/221/kordoc claims.",
+                "Separate GitHub presentation polish from runtime/eval behavior changes.",
+            ),
+            validation=(
+                "python3 scripts/check_doc_links.py --check-all --paths README.md docs/ reports/real100_v2/README.md",
+                "make real-eval-v2-guard",
+            ),
+        )
+    )
+    return recommendations
+
+
+def _next_generated_task_id(queue_text: str) -> str:
+    numbers = [int(match.group(1)) for match in re.finditer(r"T-2026-(\d{4})", queue_text)]
+    next_number = (max(numbers) + 1) if numbers else 1
+    return f"T-2026-{next_number:04d}"
+
+
+def _render_queue_recommendation_detail(task_id: str, item: QueueRecommendation) -> str:
+    acceptance = "\n".join(f"- [ ] {entry}" for entry in item.acceptance)
+    validation = "\n".join(item.validation)
+    return f"""
+## {task_id} — {item.title}
+
+- ID: {task_id}
+- Title: {item.title}
+- Status: {item.status}
+- Priority: {item.priority}
+- Owner role: {item.owner_role}
+- Created: 2026-05-29
+- Last updated: 2026-05-29
+
+### Goal
+
+{item.goal}
+
+### Context
+
+- Generated by: `queue-recommendations`
+- Trigger: {item.trigger}
+- Lane: `{item.lane}`
+
+### Acceptance Criteria
+
+{acceptance}
+
+### Validation Commands
+
+```bash
+{validation}
+```
+
+### Evidence Required
+
+- Public-safe report or aggregate-only evidence matching the task scope.
+- Clear no-go note if the trigger becomes stale before implementation.
+"""
+
+
+def _append_queue_recommendations(
+    *,
+    recommendations: Sequence[QueueRecommendation],
+    repo_root: Path,
+) -> list[dict[str, object]]:
+    queue_path = repo_root / QUEUE_PATH
+    queue_text = _read_text(queue_path)
+    existing_titles = {entry.title.casefold() for entry in parse_task_entries(queue_text)}
+    applied: list[dict[str, object]] = []
+    rows: list[str] = []
+    details: list[str] = []
+    order_numbers = [int(match.group(1)) for match in re.finditer(r"^\|\s*(\d+)\s*\|", queue_text, re.MULTILINE)]
+    next_order = (max(order_numbers) + 1) if order_numbers else 1
+    next_id = _next_generated_task_id(queue_text)
+    next_num = int(next_id.rsplit("-", 1)[1])
+    for item in recommendations:
+        if item.title.casefold() in existing_titles:
+            continue
+        task_id = f"T-2026-{next_num:04d}"
+        next_num += 1
+        existing_titles.add(item.title.casefold())
+        rows.append(
+            f"| {next_order} | `{task_id}` | `{item.status}` | {item.owner_role} | generated by queue-recommendations; {item.trigger} |"
+        )
+        next_order += 1
+        details.append(_render_queue_recommendation_detail(task_id, item))
+        applied.append(_queue_recommendation_payload(item, task_id=task_id))
+
+    if not applied:
+        return applied
+    marker = "\n## Examples\n"
+    if marker not in queue_text:
+        queue_text = queue_text.rstrip() + "\n\n" + "\n".join(details) + "\n"
+    else:
+        queue_text = queue_text.replace(marker, "\n".join(rows) + marker, 1)
+        queue_text = queue_text.replace(marker, "\n".join(details) + "\n" + marker, 1)
+    queue_path.write_text(queue_text, encoding="utf-8")
+    return applied
+
+
+def write_queue_recommendations(
+    *,
+    out: Path = DEFAULT_QUEUE_RECOMMENDATIONS,
+    json_out: Path | None = DEFAULT_QUEUE_RECOMMENDATIONS_JSON,
+    apply: bool = False,
+    repo_root: Path = ROOT_DIR,
+) -> tuple[Path, Path | None, str, list[dict[str, object]]]:
+    recommendations = _recommended_tasks_from_state(repo_root=repo_root)
+    applied = _append_queue_recommendations(recommendations=recommendations, repo_root=repo_root) if apply else []
+    if out == DEFAULT_QUEUE_RECOMMENDATIONS:
+        out = repo_root / "reports" / "agent_loop" / "queue_recommendations.md"
+    safe_out = _safe_output_path(out, repo_root=repo_root)
+    rendered = render_queue_recommendations(recommendations, applied=applied)
+    safe_out.parent.mkdir(parents=True, exist_ok=True)
+    safe_out.write_text(rendered, encoding="utf-8")
+    safe_json: Path | None = None
+    if json_out is not None:
+        if json_out == DEFAULT_QUEUE_RECOMMENDATIONS_JSON:
+            json_out = repo_root / "reports" / "agent_loop" / "queue_recommendations.json"
+        safe_json = _safe_output_path(json_out, repo_root=repo_root)
+        safe_json.parent.mkdir(parents=True, exist_ok=True)
+        payload = [_queue_recommendation_payload(item) for item in recommendations]
+        safe_json.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return safe_out, safe_json, rendered, applied
+
+
+def render_queue_recommendations(
+    recommendations: Sequence[QueueRecommendation],
+    *,
+    applied: Sequence[dict[str, object]] = (),
+) -> str:
+    lines = [
+        "# Queue Recommendations",
+        "",
+        "- Source signals: queue parallel plan, current diff, real100_v2 checkpoint/chroma artifacts, and existing task titles.",
+        "- Default mode is report-only. Use `--apply` to append non-duplicate tasks to `tasks/queue.md`.",
+        f"- Applied: `{len(applied)}`",
+        "",
+        "| Priority | Status | Lane | Title | Trigger |",
+        "|---|---|---|---|---|",
+    ]
+    if recommendations:
+        for item in recommendations:
+            lines.append(
+                "| "
+                + " | ".join(
+                    _sanitize_dynamic_text(str(value)).replace("\n", " ")
+                    for value in (item.priority, item.status, item.lane, item.title, item.trigger)
+                )
+                + " |"
+            )
+    else:
+        lines.append("|  |  |  | None |  |")
+    if applied:
+        lines.extend(["", "## Applied Tasks", ""])
+        for item in applied:
+            lines.append(f"- `{item.get('task_id')}` — {_sanitize_dynamic_text(str(item.get('title') or ''))}")
+    lines.append("")
+    return _sanitize_dynamic_text("\n".join(lines)).rstrip() + "\n"
 
 
 def render_status(
@@ -3207,9 +3942,11 @@ def _privacy_audit_patterns() -> dict[str, re.Pattern[str]]:
     return {
         "absolute local path": ABSOLUTE_LOCAL_PATH_RE,
         "private raw field value": re.compile(
-            r"\b(?:(?:raw\s+)?(?:question|answer|evidence)|doc[_ -]?id|chunk[_ -]?id|file\s*name|filename)\b"
+            r"^\s*(?:[-*]\s*)?(?:(?:raw\s+)?(?:question|answer|evidence))"
+            r"\s*[:=](?!\s*\[redacted-private-value\])\s*([^\n;,]+)"
+            r"|\b(?:doc[_ -]?id|chunk[_ -]?id|file\s*name|filename)\b"
             r"\s*[:=](?!\s*\[redacted-private-value\])\s*([^\n;,]+)",
-            re.IGNORECASE,
+            re.IGNORECASE | re.MULTILINE,
         ),
         "json private raw field value": re.compile(
             r'"(?:question|answer|evidence|doc_id|chunk_id|filename)"\s*:\s*"(?!\[redacted-private-value\])[^"]+"',
@@ -3239,11 +3976,18 @@ _JSON_PRIVATE_FIELD_REDACT_RE = re.compile(
 _RAW_DOC_CHUNK_TOKEN_REDACT_RE = re.compile(r"\b(?:doc|chunk)[_-]?id[-_:][A-Za-z0-9][A-Za-z0-9._-]*", re.IGNORECASE)
 
 
+def _redact_private_inline_match(match: re.Match[str]) -> str:
+    field_label = match.group("field_label")
+    if field_label is not None:
+        return f"{match.group('field_prefix')}{field_label}: [redacted-private-value]"
+    return f"{match.group('inline_label')}: [redacted-private-value]"
+
+
 def _redact_private_text(text: str) -> str:
     """Mask every span audit_privacy_output would flag, preserving structural prefixes."""
     text = ABSOLUTE_LOCAL_PATH_RE.sub("[redacted-local-path]", text)
     text = _REAL100_PATH_REDACT_RE.sub("reports/real100/[redacted-private-artifact]", text)
-    text = PRIVATE_INLINE_VALUE_RE.sub(lambda m: f"{m.group('label')}: [redacted-private-value]", text)
+    text = PRIVATE_INLINE_VALUE_RE.sub(_redact_private_inline_match, text)
     text = PRIVATE_FLAG_VALUE_RE.sub(lambda m: f"{m.group('flag')}[redacted-private-value]", text)
     text = _JSON_PRIVATE_FIELD_REDACT_RE.sub(lambda m: f'"{m.group("key")}": "[redacted-private-value]"', text)
     text = _RAW_DOC_CHUNK_TOKEN_REDACT_RE.sub("[redacted-private-token]", text)
@@ -3259,6 +4003,30 @@ def _redact_private_json(value):  # type: ignore[no-untyped-def]
     if isinstance(value, str):
         return _redact_private_text(value)
     return value
+
+
+def _privacy_findings_for_text(text: str, *, path: str) -> list[PrivacyFinding]:
+    findings: list[PrivacyFinding] = []
+    for issue, pattern in _privacy_audit_patterns().items():
+        if pattern.search(text):
+            findings.append(PrivacyFinding(path=path, issue=issue))
+    return _dedupe_privacy_findings(findings)
+
+
+def _patch_artifact_json_payload(artifact: dict[str, object]) -> dict[str, object]:
+    """Sanitize patch metadata while preserving the unified diff byte-for-byte.
+
+    A unified diff is executable data for ``git apply``. Redacting or normalizing that
+    string can change hunk contents without updating hunk headers, producing corrupt
+    patches. Privacy-sensitive diff text must be blocked before this helper is used.
+    """
+    diff_text = str(artifact.get("diff") or "")
+    metadata = {key: value for key, value in artifact.items() if key != "diff"}
+    safe = _redact_private_json(_sanitize_json_value(metadata))
+    if not isinstance(safe, dict):
+        safe = {}
+    safe["diff"] = diff_text
+    return safe
 
 
 def _dedupe_privacy_findings(findings: Iterable[PrivacyFinding]) -> list[PrivacyFinding]:
@@ -4344,6 +5112,13 @@ N/A - this draft must be reviewed against the actual implementation diff before 
 def _issue_from_branch(branch: str) -> str | None:
     match = re.search(r"(?:^|/)issue-(\d+)(?:-|$)", branch)
     return match.group(1) if match else None
+
+
+def _task_from_branch(branch: str | None) -> str | None:
+    if not branch:
+        return None
+    match = re.search(r"(?:^|[-_/])(t-\d{4}-\d{4})(?:[-_/]|$)", branch, flags=re.IGNORECASE)
+    return match.group(1).upper() if match else None
 
 
 def _current_branch(repo_root: Path) -> str | None:
@@ -8897,6 +9672,10 @@ def write_active_start(
     if redacted_runs:
         warnings.append(f"redacted {redacted_runs} stale active Codex run artifact(s) before privacy audit")
         _emit_progress(f"[active-start] redacted {redacted_runs} stale codex run artifact(s)")
+    redacted_patch_runs = _redact_active_patch_runs(active_dir, repo_root=repo_root)
+    if redacted_patch_runs:
+        warnings.append(f"redacted {redacted_patch_runs} stale active patch run artifact(s) before privacy audit")
+        _emit_progress(f"[active-start] redacted {redacted_patch_runs} stale patch run artifact(s)")
     selected_task: TaskEntry | None = None
     if task_id is None:
         if files:
@@ -9229,30 +10008,161 @@ def render_active_start(
     return _sanitize_dynamic_text("\n".join(lines)).rstrip() + "\n"
 
 
-def _load_active_auto_completed(state_path: Path) -> tuple[list[str], list[str]]:
+def _load_active_auto_ledger(state_path: Path) -> tuple[list[str], list[str], list[str]]:
     warnings: list[str] = []
     if not state_path.exists():
-        return [], warnings
+        return [], [], warnings
     try:
         payload = json.loads(_read_text(state_path))
     except (json.JSONDecodeError, OSError):
-        return [], ["ignored unreadable active auto-loop state"]
+        return [], [], ["ignored unreadable active auto-loop state"]
     if not isinstance(payload, dict):
-        return [], ["ignored non-object active auto-loop state"]
+        return [], [], ["ignored non-object active auto-loop state"]
     raw = payload.get("completed_task_ids")
-    if not isinstance(raw, list):
-        return [], warnings
-    completed = [item for item in (str(value) for value in raw) if TASK_ID_RE.fullmatch(item)]
-    return list(_dedupe_preserve_order(completed)), warnings
+    completed = [item for item in (str(value) for value in raw) if TASK_ID_RE.fullmatch(item)] if isinstance(raw, list) else []
+    raw_deferred = payload.get("deferred_task_ids")
+    deferred = (
+        [item for item in (str(value) for value in raw_deferred) if TASK_ID_RE.fullmatch(item)]
+        if isinstance(raw_deferred, list)
+        else []
+    )
+    return list(_dedupe_preserve_order(completed)), list(_dedupe_preserve_order(deferred)), warnings
+
+
+def _load_active_auto_target(state_path: Path) -> int | None:
+    if not state_path.exists():
+        return None
+    try:
+        payload = json.loads(_read_text(state_path))
+    except (json.JSONDecodeError, OSError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    raw = payload.get("target_completed_count")
+    if isinstance(raw, int) and raw > 0:
+        return raw
+    return None
+
+
+def _active_auto_loop_candidate_tasks(
+    *,
+    repo_root: Path,
+    exclude_task_ids: Sequence[str],
+    limit: int,
+) -> list[TaskEntry]:
+    tasks: list[TaskEntry] = []
+    excluded = set(exclude_task_ids)
+    for _ in range(max(0, limit)):
+        try:
+            task = select_next_task(repo_root, exclude_task_ids=tuple(excluded))
+        except ValueError:
+            break
+        tasks.append(task)
+        excluded.add(task.task_id)
+    return tasks
+
+
+def _active_auto_loop_task_is_heavy(task: TaskEntry) -> bool:
+    text = " ".join(
+        part
+        for part in (task.title, task.body, task.owner_role or "")
+        if part
+    ).lower()
+    heavy_terms = (
+        "private real-eval",
+        "real100_v2",
+        "benchmark",
+        "latency",
+        "cost",
+        "eval",
+        "load-bearing",
+        "privacy",
+    )
+    return any(term in text for term in heavy_terms)
+
+
+def _active_auto_loop_runner_sessions(
+    *,
+    topology: str,
+    changed_files: Sequence[str],
+) -> str:
+    load_bearing_touched = any(is_load_bearing(path) for path in changed_files)
+    roles = _active_required_gate_roles(topology, load_bearing_touched=load_bearing_touched)
+    by_role = {role: session_id for session_id, role in _active_topology_roles(topology)}
+    session_ids = [by_role[role] for role in roles if role in by_role]
+    return ",".join(_dedupe_preserve_order(session_ids))
+
+
+def _resolve_active_auto_loop_limit(
+    raw_max_iterations: int | str,
+    *,
+    auto_cap: int,
+    completed_task_ids: Sequence[str],
+    agent_mix: dict[str, object] | None,
+    repo_root: Path,
+) -> tuple[int, str]:
+    if isinstance(raw_max_iterations, int):
+        if raw_max_iterations < 1:
+            raise ValueError("--max-iterations must be at least 1")
+        return raw_max_iterations, "explicit integer"
+
+    raw = str(raw_max_iterations).strip().lower()
+    if raw != "auto":
+        try:
+            parsed = int(raw)
+        except ValueError as exc:
+            raise ValueError("--max-iterations must be an integer or auto") from exc
+        if parsed < 1:
+            raise ValueError("--max-iterations must be at least 1")
+        return parsed, "explicit integer"
+
+    cap = max(1, int(auto_cap))
+    candidates = _active_auto_loop_candidate_tasks(
+        repo_root=repo_root,
+        exclude_task_ids=completed_task_ids,
+        limit=cap,
+    )
+    if not candidates:
+        return 1, "auto fallback: no selectable task found before loop start"
+
+    quota_cap = cap
+    target = agent_mix.get("target") if isinstance(agent_mix, dict) and isinstance(agent_mix.get("target"), dict) else {}
+    if target:
+        total_wu = sum(int(value) for value in target.values() if isinstance(value, (int, float)))
+        if total_wu <= 3:
+            quota_cap = 1
+        elif total_wu <= 7:
+            quota_cap = min(quota_cap, 2)
+
+    heavy_count = sum(1 for task in candidates if _active_auto_loop_task_is_heavy(task))
+    workload_cap = min(cap, 3) if heavy_count else cap
+
+    try:
+        dirty_files = _changed_files_from_git(repo_root)
+    except ValueError:
+        dirty_files = []
+    resolved = max(1, min(cap, len(candidates), quota_cap, workload_cap))
+    reasons = [
+        f"cap={cap}",
+        f"ready_candidates={len(candidates)}",
+        f"quota_cap={quota_cap}",
+        f"workload_cap={workload_cap}",
+    ]
+    if dirty_files:
+        reasons.append(f"dirty_worktree_observed={len(dirty_files)} changed file(s)")
+    return resolved, "auto: " + ", ".join(reasons)
 
 
 def write_active_auto_loop(
     *,
     mode: str = "full-ship",
     topology: str = "expanded-eight",
-    max_iterations: int = 1,
+    max_iterations: int | str = 1,
+    auto_max_iterations_cap: int = 5,
+    target_completed_count: int | None = None,
     execute_runner: bool = False,
     execute_ship: bool = False,
+    auto_repair: bool = False,
     record_gate_heartbeats: bool = True,
     task_id: str | None = None,
     changed_files: Sequence[str] = (),
@@ -9266,10 +10176,14 @@ def write_active_auto_loop(
     repair_slug: str = "active-start",
     repair_title: str = "Agent loop active start",
     codex_executable: str = "codex",
+    codex_model: str | None = None,
     auth_mode: str = "chatgpt",
     sandbox: str = "read-only",
+    read_agent: str = "auto",
+    write_agent: str = "auto",
     max_parallel: int = 8,
     timeout_seconds: int = 0,
+    max_commands_per_session: int = 0,
     state: Path = DEFAULT_ACTIVE_AUTO_LOOP_STATE,
     out: Path = DEFAULT_ACTIVE_AUTO_LOOP,
     repo_root: Path = ROOT_DIR,
@@ -9277,37 +10191,212 @@ def write_active_auto_loop(
     """Bounded active-loop driver: start, run sessions, gate, ship, then pick next task.
 
     A task is recorded as completed only after ``active-loop --execute`` returns
-    ``executed``. Dry-run or read-only cycles never advance the completed-task ledger, so the
-    controller cannot mistake a report-only pass for solved work.
+    ``executed`` or, when ship execution is disabled, after an executed runner
+    and conservative gate pass. Dry-run cycles never advance the completed-task
+    ledger, so the controller cannot mistake a report-only pass for solved work.
     """
-    if max_iterations < 1:
-        raise ValueError("--max-iterations must be at least 1")
     if mode != "full-ship":
         raise ValueError("--mode currently supports only full-ship")
     if task_id and not TASK_ID_RE.fullmatch(task_id):
         raise ValueError("--task must match T-YYYY-NNNN")
     if sandbox not in {"read-only", "workspace-write", "danger-full-access"}:
         raise ValueError("--sandbox must be read-only, workspace-write, or danger-full-access")
+    if read_agent not in {"auto", "codex", "claude"}:
+        raise ValueError("--read-agent must be auto, codex, or claude")
+    if write_agent not in {"auto", "codex", "claude"}:
+        raise ValueError("--write-agent must be auto, codex, or claude")
+    if max_commands_per_session < 0:
+        raise ValueError("--max-commands-per-session must be >= 0")
+    if target_completed_count is not None and target_completed_count < 1:
+        raise ValueError("--target-completed-count must be at least 1")
 
     out_path = _active_path(out, repo_root=repo_root)
     state_path = _active_path(state, repo_root=repo_root)
-    prior_completed, warnings = _load_active_auto_completed(state_path)
+    prior_completed, prior_deferred, warnings = _load_active_auto_ledger(state_path)
     completed: list[str] = list(prior_completed)
+    max_iterations, limit_reason = _resolve_active_auto_loop_limit(
+        max_iterations,
+        auto_cap=auto_max_iterations_cap,
+        completed_task_ids=completed,
+        agent_mix=agent_mix,
+        repo_root=repo_root,
+    )
+    warnings.append(f"max-iterations resolved to {max_iterations} ({limit_reason})")
     blockers: list[str] = []
     cycles: list[dict[str, object]] = []
+    deferred_task_ids: list[str] = list(prior_deferred)
     requested_files = tuple(sorted(_normalize_changed_file(path, repo_root=repo_root) for path in changed_files if path))
+    branch_task_id = _task_from_branch(_current_branch(repo_root))
 
-    for iteration in range(1, max_iterations + 1):
-        try:
-            task = load_task(task_id, repo_root) if task_id and iteration == 1 else select_next_task(
-                repo_root, exclude_task_ids=completed
+    persisted_target = _load_active_auto_target(state_path)
+    if persisted_target is not None and len(completed) >= persisted_target:
+        persisted_target = None
+    explicit_target_completed_count = target_completed_count is not None
+    if target_completed_count is not None:
+        target_completed_count = max(target_completed_count, len(completed))
+    else:
+        target_completed_count = persisted_target or (len(completed) + max_iterations)
+    max_attempts = max(1, max_iterations, int(auto_max_iterations_cap))
+
+    def write_cycle_checkpoint(decision: str) -> None:
+        checkpoint_payload = {
+            "schema_version": 1,
+            "generated_at": _isoformat(datetime.now(timezone.utc)),
+            "decision": decision,
+            "execute_runner": execute_runner,
+            "execute_ship": execute_ship,
+            "auto_repair": auto_repair,
+            "codex_model": codex_model or "role-default",
+            "max_commands_per_session": max_commands_per_session,
+            "max_iterations": max_iterations,
+            "target_completed_count": target_completed_count,
+            "max_attempts": max_attempts,
+            "max_iterations_reason": limit_reason,
+            "completed_task_ids": completed,
+            "deferred_task_ids": deferred_task_ids,
+            "next_task_id": None,
+            "cycles": cycles,
+            "blockers": _dedupe_preserve_order(blockers),
+            "warnings": _dedupe_preserve_order(warnings),
+        }
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+        state_path.write_text(
+            json.dumps(_sanitize_json_value(checkpoint_payload), indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+
+    def mark_task_completed(task_id: str) -> None:
+        if task_id not in completed:
+            completed.append(task_id)
+        deferred_task_ids[:] = [item for item in deferred_task_ids if item != task_id]
+
+    def run_repair_apply(cycle: dict[str, object], task: TaskEntry, *, completion_decision: str) -> bool:
+        def run_patch(agent_choice: str) -> ActiveCodexRunnerResult:
+            return write_active_codex_runner(
+                execute=execute_runner,
+                codex_executable=codex_executable,
+                model=codex_model,
+                auth_mode=auth_mode,
+                sandbox="workspace-write",
+                write_agent=agent_choice,
+                timeout_seconds=timeout_seconds,
+                record_gate_heartbeats=False,
+                repo_root=repo_root,
+                mode="patch",
+                task_id=task.task_id,
+                state=DEFAULT_ACTIVE_AUTO_REPAIR_STATE,
+                out=DEFAULT_ACTIVE_AUTO_REPAIR,
             )
-        except ValueError as exc:
-            if iteration == 1:
-                blockers.append(str(exc))
+
+        repair = run_patch(write_agent)
+        first_repair_agent = str(repair.sessions[0].get("agent") or "") if repair.sessions else ""
+        if write_agent == "auto" and repair.decision != "completed" and first_repair_agent in ACTIVE_LANE_AGENTS:
+            fallback_agent = "codex" if first_repair_agent == "claude" else "claude"
+            warnings.append(
+                f"{task.task_id}: {first_repair_agent} repair lane did not complete "
+                f"({repair.decision}); retrying once with {fallback_agent}"
+            )
+            cycle["repair_first_agent"] = first_repair_agent
+            cycle["repair_first_decision"] = repair.decision
+            repair = run_patch(fallback_agent)
+            cycle["repair_fallback_agent"] = fallback_agent
+        cycle["repair_decision"] = repair.decision
+        cycle["repair_report"] = _repo_path(repair.report_path, repo_root)
+        cycle["repair_status"] = repair.decision
+        cycle["completion_decision"] = completion_decision
+        if repair.decision == "completed":
+            apply_result = write_active_apply(execute=True, repo_root=repo_root)
+            cycle["apply_decision"] = apply_result.decision
+            cycle["apply_report"] = _repo_path(apply_result.report_path, repo_root)
+            cycle["apply_integration_branch"] = apply_result.integration_branch
+            cycle["apply_applied"] = apply_result.applied
+            if apply_result.applied:
+                patch_path = repo_root / "reports" / "agent_loop" / "active" / "patch_runs" / "implementer" / "patch_artifact.json"
+                if _patch_declares_blocked_handoff(patch_path):
+                    cycle["completion_decision"] = "repair-applied-blocked-handoff"
+                    cycle["completed"] = False
+                    if task.task_id not in deferred_task_ids:
+                        deferred_task_ids.append(task.task_id)
+                    warnings.append(
+                        f"{task.task_id}: repair patch only recorded a blocked handoff; deferred for another repair cycle"
+                    )
+                    write_cycle_checkpoint("running")
+                    return False
+                cycle["completion_decision"] = "repair-applied"
+                cycle["completed"] = True
+                mark_task_completed(task.task_id)
+                warnings.append(f"{task.task_id}: repair patch applied; recorded repair-applied completion")
+                write_cycle_checkpoint("running")
+                return True
+            if apply_result.blockers:
+                warnings.append(
+                    f"{task.task_id}: repair patch did not apply cleanly: "
+                    + "; ".join(apply_result.blockers[:3])
+                )
+        if task.task_id not in deferred_task_ids:
+            deferred_task_ids.append(task.task_id)
+        return False
+
+    iteration = 0
+    attempted_this_run: list[str] = []
+    while len(completed) < target_completed_count and iteration < max_attempts:
+        iteration += 1
+        retrying_deferred = False
+        try:
+            if task_id and iteration == 1:
+                task = load_task(task_id, repo_root)
+            elif (
+                branch_task_id
+                and iteration == 1
+                and branch_task_id not in completed
+                and branch_task_id not in deferred_task_ids
+            ):
+                branch_task = load_task(branch_task_id, repo_root)
+                if _active_auto_loop_selectable_status(branch_task.status):
+                    task = branch_task
+                    warnings.append(f"selected branch task `{branch_task_id}` for first cycle")
+                else:
+                    warnings.append(
+                        f"skipped branch task `{branch_task_id}` because status is "
+                        f"`{branch_task.status or 'unknown'}`"
+                    )
+                    task = select_next_task(
+                        repo_root,
+                        exclude_task_ids=(*completed, *deferred_task_ids, *attempted_this_run, branch_task_id),
+                        include_backlog=True,
+                        require_backlog_handoff=True,
+                    )
             else:
-                warnings.append(f"no next task selected after iteration {iteration - 1}: {exc}")
-            break
+                task = select_next_task(
+                    repo_root,
+                    exclude_task_ids=(*completed, *deferred_task_ids, *attempted_this_run),
+                    include_backlog=True,
+                    require_backlog_handoff=True,
+                )
+        except ValueError as exc:
+            if auto_repair and deferred_task_ids:
+                try:
+                    task = _select_deferred_retry_task(
+                        repo_root,
+                        deferred_task_ids=deferred_task_ids,
+                        exclude_task_ids=(*completed, *attempted_this_run),
+                    )
+                    retrying_deferred = True
+                    warnings.append(f"retrying deferred task `{task.task_id}` after fresh task selection stopped: {exc}")
+                except ValueError as retry_exc:
+                    if iteration == 1:
+                        blockers.append(str(exc))
+                    else:
+                        warnings.append(f"no next task selected after iteration {iteration - 1}: {exc}")
+                    warnings.append(f"deferred retry selection stopped: {retry_exc}")
+                    break
+            else:
+                if iteration == 1:
+                    blockers.append(str(exc))
+                else:
+                    warnings.append(f"no next task selected after iteration {iteration - 1}: {exc}")
+                break
+        attempted_this_run.append(task.task_id)
 
         context_files = tuple(_dedupe_preserve_order((*requested_files, *_active_task_context_files(task, repo_root=repo_root))))
         cycle: dict[str, object] = {
@@ -9316,6 +10405,7 @@ def write_active_auto_loop(
             "title": task.title,
             "changed_files": list(context_files),
             "completed": False,
+            "retry_deferred": retrying_deferred,
         }
         cycles.append(cycle)
 
@@ -9340,34 +10430,108 @@ def write_active_auto_loop(
         if start.blockers:
             blockers.extend(f"{task.task_id}: {item}" for item in start.blockers)
             break
+        if start.decision == "blocked" or start.active_loop.decision == "blocked":
+            cycle["gate_tier"] = "start-blocked"
+            cycle["completion_decision"] = "start-blocked"
+            if auto_repair:
+                applied = run_repair_apply(cycle, task, completion_decision="start-repair-needed")
+                warnings.append(
+                    f"{task.task_id}: active-start/active-loop blocked without explicit blockers; routed to patch repair lane"
+                    + (" and completed by repair apply" if applied else " and deferred")
+                )
+                write_cycle_checkpoint("running")
+                if applied:
+                    continue
+                continue
+            blockers.append(f"{task.task_id}: active-start/active-loop decision was blocked")
+            break
 
         runner = write_active_codex_runner(
             execute=execute_runner,
             codex_executable=codex_executable,
+            model=codex_model,
             auth_mode=auth_mode,
             sandbox=sandbox,
+            read_agent=read_agent,
+            sessions=_active_auto_loop_runner_sessions(topology=topology, changed_files=context_files),
             max_parallel=max_parallel,
             timeout_seconds=timeout_seconds,
+            max_commands_per_session=max_commands_per_session,
             record_gate_heartbeats=record_gate_heartbeats,
             repo_root=repo_root,
         )
         cycle["runner_decision"] = runner.decision
         cycle["runner_report"] = _repo_path(runner.report_path, repo_root)
         if execute_runner and runner.decision != "completed":
+            cycle["gate_tier"] = "runner-blocked"
+            if auto_repair:
+                applied = run_repair_apply(cycle, task, completion_decision="runner-repair-needed")
+                warnings.append(
+                    f"{task.task_id}: runner did not complete ({runner.decision}); routed to patch repair lane"
+                    + (" and completed by repair apply" if applied else " and deferred")
+                )
+                write_cycle_checkpoint("running")
+                if applied:
+                    continue
+                continue
             blockers.extend(f"{task.task_id}: runner {item}" for item in runner.blockers)
             if not runner.blockers:
                 blockers.append(f"{task.task_id}: runner decision was {runner.decision}, expected completed")
             break
 
-        evidence_path, gate_summary = write_active_gate_evidence(task_id=task.task_id, repo_root=repo_root)
+        evidence_path, gate_summary = write_active_gate_evidence(
+            task_id=task.task_id,
+            changed_files=context_files,
+            repo_root=repo_root,
+        )
         cycle["gate_evidence"] = _repo_path(evidence_path, repo_root)
         cycle["gate_ready"] = bool(gate_summary.get("ready"))
         cycle["privacy_clean"] = bool(gate_summary.get("privacy_clean"))
+        cycle["gate_tier"] = "ready" if cycle["gate_ready"] and cycle["privacy_clean"] else "repairable"
+        if not cycle["privacy_clean"]:
+            cycle["gate_tier"] = "p0-blocker"
 
         if not execute_ship:
+            if (
+                execute_runner
+                and runner.decision == "completed"
+                and cycle["gate_ready"]
+                and cycle["privacy_clean"]
+            ):
+                cycle["completion_decision"] = "local-gate-complete"
+                cycle["completed"] = True
+                mark_task_completed(task.task_id)
+                warnings.append(f"{task.task_id}: ship execution disabled; recorded local gate completion")
+                write_cycle_checkpoint("running")
+                continue
+            if (
+                auto_repair
+                and execute_runner
+                and runner.decision == "completed"
+                and cycle["privacy_clean"]
+            ):
+                applied = run_repair_apply(cycle, task, completion_decision="repair-needed")
+                warnings.append(
+                    f"{task.task_id}: conservative gate not ready; routed to patch repair lane"
+                    + (" and completed by repair apply" if applied else " and deferred")
+                )
+                write_cycle_checkpoint("running")
+                if applied:
+                    continue
+                continue
             warnings.append(f"{task.task_id}: ship execution disabled; not marking task completed")
             break
         if not cycle["gate_ready"]:
+            if auto_repair and cycle["privacy_clean"]:
+                applied = run_repair_apply(cycle, task, completion_decision="repair-needed")
+                warnings.append(
+                    f"{task.task_id}: conservative gate not ready; routed to patch repair lane"
+                    + (" and completed by repair apply" if applied else " and deferred")
+                )
+                write_cycle_checkpoint("running")
+                if applied:
+                    continue
+                continue
             blockers.append(f"{task.task_id}: conservative gate is not ready")
             break
 
@@ -9393,21 +10557,38 @@ def write_active_auto_loop(
             break
 
         cycle["completed"] = True
-        if task.task_id not in completed:
-            completed.append(task.task_id)
+        mark_task_completed(task.task_id)
+        write_cycle_checkpoint("running")
+
+    if len(completed) < target_completed_count and iteration >= max_attempts:
+        warnings.append(
+            f"attempt cap reached before target completion count "
+            f"({len(completed)}/{target_completed_count})"
+        )
 
     next_task: TaskEntry | None = None
-    try:
-        next_task = select_next_task(repo_root, exclude_task_ids=completed)
-    except ValueError as exc:
-        warnings.append(f"next task selection stopped: {exc}")
+    if len(completed) < target_completed_count or not explicit_target_completed_count:
+        try:
+            next_task = select_next_task(
+                repo_root,
+                exclude_task_ids=(*completed, *deferred_task_ids),
+                include_backlog=True,
+                require_backlog_handoff=True,
+            )
+        except ValueError as exc:
+            if len(completed) < target_completed_count:
+                warnings.append(f"next task selection stopped: {exc}")
+                blockers.append(
+                    f"target completion count not reached "
+                    f"({len(completed)}/{target_completed_count}); {exc}"
+                )
 
     if blockers:
         decision = "blocked"
-    elif cycles and all(bool(cycle.get("completed")) for cycle in cycles) and len(cycles) >= max_iterations:
+    elif len(completed) >= target_completed_count:
         decision = "limit-reached"
     elif cycles and any(bool(cycle.get("completed")) for cycle in cycles):
-        decision = "completed"
+        decision = "partial"
     else:
         decision = "planned"
 
@@ -9417,7 +10598,15 @@ def write_active_auto_loop(
         "decision": decision,
         "execute_runner": execute_runner,
         "execute_ship": execute_ship,
+        "auto_repair": auto_repair,
+        "codex_model": codex_model or "role-default",
+        "max_commands_per_session": max_commands_per_session,
+        "max_iterations": max_iterations,
+        "target_completed_count": target_completed_count,
+        "max_attempts": max_attempts,
+        "max_iterations_reason": limit_reason,
         "completed_task_ids": completed,
+        "deferred_task_ids": deferred_task_ids,
         "next_task_id": next_task.task_id if next_task else None,
         "cycles": cycles,
         "blockers": _dedupe_preserve_order(blockers),
@@ -9429,6 +10618,12 @@ def write_active_auto_loop(
         decision=decision,
         execute_runner=execute_runner,
         execute_ship=execute_ship,
+        auto_repair=auto_repair,
+        codex_model=codex_model or "role-default",
+        max_commands_per_session=max_commands_per_session,
+        max_iterations=max_iterations,
+        max_attempts=max_attempts,
+        max_iterations_reason=limit_reason,
         cycles=cycles,
         completed_task_ids=completed,
         next_task=next_task,
@@ -9446,7 +10641,11 @@ def write_active_auto_loop(
             "decision": decision,
             "execute_runner": execute_runner,
             "execute_ship": execute_ship,
+            "auto_repair": auto_repair,
+            "codex_model": codex_model or "role-default",
+            "max_commands_per_session": max_commands_per_session,
             "completed_task_ids": completed,
+            "deferred_task_ids": deferred_task_ids,
             "next_task_id": next_task.task_id if next_task else None,
             "blockers": blockers,
         },
@@ -9468,6 +10667,12 @@ def render_active_auto_loop(
     decision: str,
     execute_runner: bool,
     execute_ship: bool,
+    auto_repair: bool,
+    codex_model: str,
+    max_commands_per_session: int,
+    max_iterations: int,
+    max_attempts: int,
+    max_iterations_reason: str,
     cycles: Sequence[dict[str, object]],
     completed_task_ids: Sequence[str],
     next_task: TaskEntry | None,
@@ -9480,16 +10685,21 @@ def render_active_auto_loop(
         "# Active Auto Loop",
         "",
         "- Bounded driver for task selection -> active-start -> 8-session runner -> gate evidence -> optional ship -> next task.",
-        "- A task is completed only after `active-loop --execute` returns `executed`; read-only runner completion alone is not enough.",
+        "- A task is completed after ship execution, or after runner+gate pass when ship execution is disabled. Runner completion alone is not enough.",
         f"- Decision: `{_sanitize_inline_text(decision)}`",
         f"- Execute runner: `{execute_runner}`",
         f"- Execute ship: `{execute_ship}`",
+        f"- Auto repair: `{auto_repair}`",
+        f"- Codex model: `{_sanitize_inline_text(codex_model)}`",
+        f"- Max commands per session: `{max_commands_per_session}`",
+        f"- Target completed tasks: `{max_iterations}` ({_sanitize_dynamic_text(max_iterations_reason)})",
+        f"- Max attempts: `{max_attempts}`",
         f"- State: `{_repo_path(state_path, repo_root)}`",
         "",
         "## Cycles",
         "",
-        "| Iteration | Task | Start | Runner | Gate ready | Ship | Completed |",
-        "|---:|---|---|---|---|---|---|",
+        "| Iteration | Task | Start | Runner | Gate tier | Repair | Ship | Completed |",
+        "|---:|---|---|---|---|---|---|---|",
     ]
     if cycles:
         for cycle in cycles:
@@ -9502,7 +10712,8 @@ def render_active_auto_loop(
                         cycle.get("task_id", ""),
                         cycle.get("start_decision", ""),
                         cycle.get("runner_decision", ""),
-                        cycle.get("gate_ready", ""),
+                        cycle.get("gate_tier", ""),
+                        cycle.get("repair_decision", "not-run"),
                         cycle.get("ship_decision", "not-run"),
                         cycle.get("completed", False),
                     )
@@ -9510,7 +10721,7 @@ def render_active_auto_loop(
                 + " |"
             )
     else:
-        lines.append("|  | N/A |  |  |  |  | false |")
+        lines.append("|  | N/A |  |  |  |  |  | false |")
     lines.extend(["", "## Completed Tasks", ""])
     lines.extend(f"- `{task}`" for task in completed_task_ids) if completed_task_ids else lines.append("- None")
     lines.extend(["", "## Next Task", ""])
@@ -9677,6 +10888,14 @@ def _active_path(path: Path, *, repo_root: Path) -> Path:
         path = repo_root / "reports" / "agent_loop" / "active" / "auto_loop.md"
     elif path == DEFAULT_ACTIVE_AUTO_LOOP_STATE:
         path = repo_root / "reports" / "agent_loop" / "active" / "auto_loop_state.json"
+    elif path == DEFAULT_ACTIVE_AUTO_REPAIR:
+        path = repo_root / "reports" / "agent_loop" / "active" / "auto_repair.md"
+    elif path == DEFAULT_ACTIVE_AUTO_REPAIR_STATE:
+        path = repo_root / "reports" / "agent_loop" / "active" / "auto_repair_state.json"
+    elif path == DEFAULT_BACKLOG_HANDOFF_QUEUE:
+        path = repo_root / "reports" / "agent_loop" / "active" / "backlog_handoff_queue.md"
+    elif path == DEFAULT_BACKLOG_HANDOFF_QUEUE_JSON:
+        path = repo_root / "reports" / "agent_loop" / "active" / "backlog_handoff_queue.json"
     return _safe_output_path(path, repo_root=repo_root)
 
 
@@ -9698,6 +10917,21 @@ def _redact_text_file_in_place(path: Path) -> bool:
 def _redact_active_codex_runs(active_dir: Path, *, repo_root: Path) -> int:
     runs = _safe_output_path(active_dir / "codex_runs", repo_root=repo_root)
     expected = _safe_output_path(repo_root / "reports" / "agent_loop" / "active" / "codex_runs", repo_root=repo_root)
+    if runs != expected or not runs.exists():
+        return 0
+    paths = sorted(runs.rglob("*")) if runs.is_dir() else [runs]
+    changed = 0
+    for file_path in paths:
+        if not file_path.is_file() or file_path.suffix.lower() not in _ACTIVE_CODEX_RUN_REDACT_SUFFIXES:
+            continue
+        if _redact_text_file_in_place(file_path):
+            changed += 1
+    return changed
+
+
+def _redact_active_patch_runs(active_dir: Path, *, repo_root: Path) -> int:
+    runs = _safe_output_path(active_dir / "patch_runs", repo_root=repo_root)
+    expected = _safe_output_path(repo_root / "reports" / "agent_loop" / "active" / "patch_runs", repo_root=repo_root)
     if runs != expected or not runs.exists():
         return 0
     paths = sorted(runs.rglob("*")) if runs.is_dir() else [runs]
@@ -10589,6 +11823,68 @@ def _emit_progress(message: str) -> None:
     sys.stdout.flush()
 
 
+def _popen_codex_process(factory, command: Sequence[str], **kwargs):
+    """Spawn a Codex child in its own session when the Popen-compatible factory supports it."""
+    try:
+        return factory(command, start_new_session=True, **kwargs)
+    except TypeError as exc:
+        # Test doubles and older wrappers may not accept Popen's start_new_session kwarg.
+        if "start_new_session" not in str(exc):
+            raise
+        return factory(command, **kwargs)
+
+
+def _codex_process_exited(proc: object) -> bool:
+    poll = getattr(proc, "poll", None)
+    if callable(poll):
+        try:
+            return poll() is not None
+        except Exception:  # pragma: no cover - defensive around process mocks
+            return False
+    return getattr(proc, "returncode", None) is not None
+
+
+def _send_codex_process_signal(proc: object, sig: int) -> bool:
+    pid = getattr(proc, "pid", None)
+    if isinstance(pid, int) and pid > 0:
+        try:
+            if os.getpgid(pid) == pid:
+                os.killpg(pid, sig)
+                return True
+        except ProcessLookupError:
+            return True
+        except OSError:
+            pass
+    method_name = "terminate" if sig == signal.SIGTERM else "kill"
+    method = getattr(proc, method_name, None)
+    if callable(method):
+        try:
+            method()
+            return True
+        except Exception:  # pragma: no cover - best-effort cleanup
+            return False
+    return False
+
+
+def _stop_codex_process(proc: object, *, grace_seconds: float = 2.0) -> None:
+    """Best-effort child cleanup for Codex CLI trees and MCP children."""
+    if _codex_process_exited(proc):
+        return
+    _send_codex_process_signal(proc, signal.SIGTERM)
+    wait = getattr(proc, "wait", None)
+    if callable(wait):
+        try:
+            wait(timeout=grace_seconds)
+            return
+        except subprocess.TimeoutExpired:
+            pass
+        except Exception:  # pragma: no cover - defensive around process mocks
+            return
+    if _codex_process_exited(proc):
+        return
+    _send_codex_process_signal(proc, signal.SIGKILL)
+
+
 def _format_codex_jsonl_summary(session_id: str, line: str) -> str:
     """Convert a codex ``--json`` event to ``[session-id] <emoji> <detail>``.
 
@@ -10663,6 +11959,9 @@ def _spawn_codex_reader_thread(
     proc: object,
     session_id: str,
     stdout_path: Path,
+    *,
+    max_command_executions: int = 0,
+    item: dict[str, object] | None = None,
 ) -> "threading.Thread | None":
     """Tee a codex subprocess stdout PIPE into ``stdout_path`` while emitting summaries.
 
@@ -10688,6 +11987,7 @@ def _spawn_codex_reader_thread(
         return None
 
     def reader() -> None:
+        command_executions = 0
         try:
             stdout_path.parent.mkdir(parents=True, exist_ok=True)
             with stdout_path.open("w", encoding="utf-8") as out_file:
@@ -10705,6 +12005,30 @@ def _spawn_codex_reader_thread(
                             line = repr(line)
                     out_file.write(line)
                     out_file.flush()
+                    if max_command_executions > 0:
+                        try:
+                            payload = json.loads(line)
+                        except json.JSONDecodeError:
+                            payload = None
+                        inner = payload if isinstance(payload, dict) else {}
+                        event_item = inner.get("item") if isinstance(inner.get("item"), dict) else {}
+                        if (
+                            inner.get("type") == "item.started"
+                            and isinstance(event_item, dict)
+                            and event_item.get("type") == "command_execution"
+                        ):
+                            command_executions += 1
+                            if item is not None:
+                                item["command_execution_count"] = command_executions
+                            if command_executions > max_command_executions:
+                                if item is not None:
+                                    item["budget_exceeded"] = True
+                                _emit_progress(
+                                    f"[budget] session={session_id} command executions "
+                                    f"{command_executions}>{max_command_executions}; terminating"
+                                )
+                                _stop_codex_process(proc, grace_seconds=0.5)
+                                break
                     formatted = _format_codex_jsonl_summary(session_id, line)
                     if formatted:
                         _emit_progress(formatted)
@@ -10730,7 +12054,9 @@ def write_active_codex_runner(
     sessions: str | None = None,
     max_parallel: int = 8,
     timeout_seconds: int = 0,
+    max_commands_per_session: int = 0,
     codex_executable: str = "codex",
+    model: str | None = None,
     sandbox: str = "read-only",
     record_gate_heartbeats: bool = False,
     repo_root: Path = ROOT_DIR,
@@ -10742,6 +12068,9 @@ def write_active_codex_runner(
     base: str = "origin/main",
     auth_mode: str = "chatgpt",
     auth_runner=None,
+    read_agent: str = "codex",
+    write_agent: str = "codex",
+    claude_runner=None,
 ) -> ActiveCodexRunnerResult:
     """Plan or spawn Codex processes for the active loop.
 
@@ -10751,7 +12080,7 @@ def write_active_codex_runner(
     redaction, so it does not inspect its own live stdout while generating that stdout. When
     ``record_gate_heartbeats`` is enabled, completed blocking roles can refresh their gate
     heartbeat from an explicit verdict in their last-message artifact.
-    ``mode="patch"`` runs a single codex write-lane on the
+    ``mode="patch"`` runs a single Codex or Claude write-lane on the
     Implementer (write-lease owner) inside a scratch worktree and captures a patch proposal
     (issue #1604); it borrows the write lease (claude XOR codex) and never applies the patch.
     """
@@ -10759,12 +12088,18 @@ def write_active_codex_runner(
         raise ValueError("--max-parallel must be at least 1")
     if timeout_seconds < 0:
         raise ValueError("--timeout-seconds must be >= 0")
+    if max_commands_per_session < 0:
+        raise ValueError("--max-commands-per-session must be >= 0")
     if sandbox not in {"read-only", "workspace-write", "danger-full-access"}:
         raise ValueError("--sandbox must be read-only, workspace-write, or danger-full-access")
     if mode not in {"read-only", "patch"}:
         raise ValueError("--mode must be read-only or patch")
     if auth_mode not in {"chatgpt", "any"}:
         raise ValueError("--auth-mode must be chatgpt or any")
+    if read_agent not in {"auto", "codex", "claude"}:
+        raise ValueError("--read-agent must be auto, codex, or claude")
+    if write_agent not in {"auto", "codex", "claude"}:
+        raise ValueError("--write-agent must be auto, codex, or claude")
     registry_path = _active_path(registry, repo_root=repo_root)
     assignments_path = _active_path(assignments_dir, repo_root=repo_root)
     runs_path = _active_path(runs_dir, repo_root=repo_root)
@@ -10783,12 +12118,15 @@ def write_active_codex_runner(
             execute=execute,
             timeout_seconds=timeout_seconds,
             codex_executable=codex_executable,
+            model=model,
             auth_mode=auth_mode,
             auth_runner=auth_runner,
             repo_root=repo_root,
             popen_factory=popen_factory,
             which_func=which_func,
             git_runner=git_runner,
+            write_agent=write_agent,
+            claude_runner=claude_runner,
         )
 
     blockers: list[str] = []
@@ -10797,11 +12135,15 @@ def write_active_codex_runner(
     auth_status = "not checked"
     requested_sessions = _parse_active_session_filter(sessions)
     registry_payload: dict[str, object] = {}
+    policy: dict[str, object] = _parse_agent_mix(None)
+    mix_state = _load_active_agent_mix(_active_path(DEFAULT_ACTIVE_AGENT_MIX, repo_root=repo_root))
+    rolling = mix_state.get("rolling") if isinstance(mix_state.get("rolling"), dict) else {}
 
     if not registry_path.exists():
         blockers.append("active session registry is missing; run make agent-loop-active-start first")
     else:
         registry_payload = _load_active_registry(registry_path)
+        policy = registry_payload.get("agent_mix") if isinstance(registry_payload.get("agent_mix"), dict) else _parse_agent_mix(None)
         selected, selection_blockers = _select_active_codex_sessions(registry_payload, requested_sessions)
         blockers.extend(selection_blockers)
         if len(selected) > max_parallel:
@@ -10809,6 +12151,8 @@ def write_active_codex_runner(
         for session in selected:
             session_id = _validate_session_id(str(session.get("session_id") or ""))
             role = _sanitize_inline_text(str(session.get("role") or "unknown"))
+            session_agent = choose_agent(role, agent_mix=policy, rolling=rolling) if read_agent == "auto" else read_agent
+            session_model = _resolve_lane_model_override(session_agent, role, model)
             assignment_path = assignments_path / f"{session_id}.md"
             run_dir = runs_path / session_id
             prompt_path = run_dir / "prompt.md"
@@ -10817,19 +12161,35 @@ def write_active_codex_runner(
             last_message_path = run_dir / "last_message.md"
             if not assignment_path.exists():
                 blockers.append(f"assignment missing for session {session_id}")
-            command = _active_codex_exec_command(
-                codex_executable=codex_executable,
-                sandbox=sandbox,
-                last_message_path=last_message_path,
-                repo_root=repo_root,
-            )
+            if session_agent == "codex":
+                command_display = _sanitize_command_text(
+                    shlex.join(
+                        _active_codex_display_command(
+                            _active_codex_exec_command(
+                                codex_executable=codex_executable,
+                                model=session_model,
+                                sandbox=sandbox,
+                                last_message_path=last_message_path,
+                                repo_root=repo_root,
+                            )
+                        )
+                    )
+                )
+            else:
+                command_display = (
+                    "python3 scripts/agent_loop.py agent-turn --execute "
+                    f"--session-id {session_id} --role "
+                    f"{shlex.quote(role)} --agent claude"
+                )
             planned.append(
                 {
                     "session_id": session_id,
                     "role": role,
+                    "agent": session_agent,
                     "task_id": str(session.get("task_id") or ""),
                     "ship_gate": str(session.get("ship_gate") or ""),
                     "status": "planned",
+                    "model": session_model,
                     "pid": None,
                     "assignment": _repo_path(assignment_path, repo_root),
                     "run_dir": _repo_path(run_dir, repo_root),
@@ -10837,17 +12197,23 @@ def write_active_codex_runner(
                     "stdout": _repo_path(stdout_path, repo_root),
                     "stderr": _repo_path(stderr_path, repo_root),
                     "last_message": _repo_path(last_message_path, repo_root),
-                    "command": _sanitize_command_text(shlex.join(_active_codex_display_command(command))),
+                    "command": command_display,
                 }
             )
 
     resolved_executable = None
+    resolved_claude_executable = None
     if execute:
         which = which_func if which_func is not None else shutil.which
-        resolved_executable = which(codex_executable)
-        if not resolved_executable:
+        needs_codex = any(item.get("agent") == "codex" for item in planned)
+        needs_claude = any(item.get("agent") == "claude" for item in planned)
+        resolved_executable = which(codex_executable) if needs_codex else codex_executable
+        resolved_claude_executable = which("claude") if needs_claude else "claude"
+        if needs_codex and not resolved_executable:
             blockers.append(f"codex executable not found: {codex_executable}")
-        elif not blockers:
+        if needs_claude and not resolved_claude_executable:
+            blockers.append("claude executable not found: claude")
+        if needs_codex and not blockers:
             auth_status, auth_blockers, auth_warnings = _active_codex_auth_check(
                 auth_mode=auth_mode,
                 codex_executable=resolved_executable,
@@ -10856,15 +12222,20 @@ def write_active_codex_runner(
             )
             blockers.extend(auth_blockers)
             warnings.extend(auth_warnings)
+        elif needs_claude and not needs_codex:
+            auth_status = "Claude CLI subscription/OAuth path"
     else:
-        auth_status, _, auth_warnings = _active_codex_auth_check(
-            auth_mode=auth_mode,
-            codex_executable=codex_executable,
-            execute=execute,
-            runner=auth_runner,
-        )
-        warnings.extend(auth_warnings)
-        warnings.append("dry-run only; pass --execute or ACTIVE_CODEX_EXECUTE=1 to spawn Codex processes")
+        if any(item.get("agent") == "codex" for item in planned):
+            auth_status, _, auth_warnings = _active_codex_auth_check(
+                auth_mode=auth_mode,
+                codex_executable=codex_executable,
+                execute=execute,
+                runner=auth_runner,
+            )
+            warnings.extend(auth_warnings)
+        else:
+            auth_status = "not checked (dry-run; Claude CLI login required on execute)"
+        warnings.append("dry-run only; pass --execute or ACTIVE_CODEX_EXECUTE=1 to spawn active agents")
 
     decision = "blocked" if blockers else ("running" if execute else "planned")
     spawned: list[tuple[dict[str, object], object]] = []
@@ -10878,6 +12249,7 @@ def write_active_codex_runner(
             for item in batch:
                 session_id = str(item["session_id"])
                 role = str(item["role"])
+                session_agent = str(item.get("agent") or "codex")
                 run_dir = runs_path / session_id
                 assignment_path = assignments_path / f"{session_id}.md"
                 prompt_path = run_dir / "prompt.md"
@@ -10885,6 +12257,63 @@ def write_active_codex_runner(
                 stderr_path = run_dir / "stderr.log"
                 last_message_path = run_dir / "last_message.md"
                 run_dir.mkdir(parents=True, exist_ok=True)
+                if session_agent == "claude":
+                    item["status"] = "running"
+                    spawn_start_at = time.monotonic()
+                    _emit_progress(f"[spawn] session={session_id} role={role} agent=claude")
+                    try:
+                        result = write_agent_turn(
+                            session_id=session_id,
+                            role=role,
+                            agent="claude",
+                            task_id=str(item.get("task_id") or "") or None,
+                            base=base,
+                            execute=True,
+                            registry=registry,
+                            events=DEFAULT_ACTIVE_EVENTS,
+                            agent_mix_path=DEFAULT_ACTIVE_AGENT_MIX,
+                            claude_runner=claude_runner,
+                            repo_root=repo_root,
+                        )
+                    except Exception as exc:  # fail closed; the loop can route repair/retry.
+                        item["status"] = "failed"
+                        item["returncode"] = 1
+                        stderr_path.write_text(_sanitize_dynamic_text(str(exc)) + "\n", encoding="utf-8")
+                        blockers.append(f"claude session {session_id} failed: {exc}")
+                        _emit_progress(f"[done] session={session_id} agent=claude failed")
+                        continue
+                    item["returncode"] = 0 if result.decision == "executed" else 1
+                    item["artifact"] = _repo_path(result.artifact_path, repo_root) if result.artifact_path else ""
+                    item["verdict"] = result.verdict
+                    if result.artifact_path and result.artifact_path.exists():
+                        stdout_path.write_text(result.artifact_path.read_text(encoding="utf-8"), encoding="utf-8")
+                    status_for_gate = "approved" if result.verdict in {"approved", "clear"} else result.verdict or "blocked"
+                    last_message_path.write_text(
+                        _sanitize_dynamic_text(
+                            "\n".join(
+                                [
+                                    f"Session id: `{session_id}`",
+                                    f"Role: `{role}`",
+                                    "Agent: `claude`",
+                                    f"Artifact: `{item.get('artifact') or ''}`",
+                                    f"Gate verdict: {status_for_gate}",
+                                    "",
+                                ]
+                            )
+                        ),
+                        encoding="utf-8",
+                    )
+                    elapsed = time.monotonic() - spawn_start_at
+                    if result.decision == "executed":
+                        item["status"] = "completed"
+                        _emit_progress(f"[done] session={session_id} agent=claude verdict={result.verdict} elapsed={elapsed:.1f}s")
+                    else:
+                        item["status"] = "failed"
+                        blockers.extend(f"claude session {session_id}: {blocker}" for blocker in result.blockers)
+                        if not result.blockers:
+                            blockers.append(f"claude session {session_id} decision was {result.decision}")
+                        _emit_progress(f"[done] session={session_id} agent=claude decision={result.decision} elapsed={elapsed:.1f}s")
+                    continue
                 prompt = _render_active_codex_prompt(
                     session_id=session_id,
                     role=role,
@@ -10894,6 +12323,7 @@ def write_active_codex_runner(
                 prompt_path.write_text(prompt, encoding="utf-8")
                 command = _active_codex_exec_command(
                     codex_executable=str(resolved_executable or codex_executable),
+                    model=str(item.get("model") or model or _CODEX_DEFAULT_PROFILE[0]),
                     sandbox=sandbox,
                     last_message_path=last_message_path,
                     repo_root=repo_root,
@@ -10901,7 +12331,8 @@ def write_active_codex_runner(
                 stderr_file = None
                 try:
                     stderr_file = stderr_path.open("w", encoding="utf-8")
-                    proc = factory(
+                    proc = _popen_codex_process(
+                        factory,
                         command,
                         cwd=repo_root,
                         stdin=subprocess.PIPE,
@@ -10924,7 +12355,13 @@ def write_active_codex_runner(
                     return
                 item["status"] = "running"
                 item["pid"] = getattr(proc, "pid", None)
-                reader_thread = _spawn_codex_reader_thread(proc, session_id, stdout_path)
+                reader_thread = _spawn_codex_reader_thread(
+                    proc,
+                    session_id,
+                    stdout_path,
+                    max_command_executions=max_commands_per_session,
+                    item=item,
+                )
                 spawn_start_at = time.monotonic()
                 _emit_progress(
                     f"[spawn] session={session_id} role={role} pid={item['pid']}"
@@ -10933,6 +12370,7 @@ def write_active_codex_runner(
                 spawned.append((item, proc))
             for item, proc, reader_thread, stderr_file, spawn_start_at in batch_spawned:
                 if blockers:
+                    _stop_codex_process(proc)
                     break
                 wait = getattr(proc, "wait", None)
                 try:
@@ -10944,6 +12382,14 @@ def write_active_codex_runner(
                     item["status"] = "timeout"
                     item["returncode"] = None
                     blockers.append(f"session {item['session_id']} timed out after {timeout_seconds} seconds")
+                    _stop_codex_process(proc)
+                    if reader_thread is not None:
+                        reader_thread.join(timeout=10.0)
+                    if stderr_file is not None:
+                        try:
+                            stderr_file.close()
+                        except Exception:  # pragma: no cover - close failures non-fatal
+                            pass
                     _emit_progress(f"[done] session={item['session_id']} timeout")
                     continue
                 if reader_thread is not None:
@@ -10955,7 +12401,17 @@ def write_active_codex_runner(
                         pass
                 item["returncode"] = rc
                 elapsed = time.monotonic() - spawn_start_at
-                if rc == 0:
+                if item.get("budget_exceeded"):
+                    item["status"] = "budget-exceeded"
+                    _emit_progress(
+                        f"[done] session={item['session_id']} budget-exceeded "
+                        f"commands={item.get('command_execution_count')} elapsed={elapsed:.1f}s"
+                    )
+                    blockers.append(
+                        f"session {item['session_id']} exceeded command cap "
+                        f"{max_commands_per_session}"
+                    )
+                elif rc == 0:
                     item["status"] = "completed"
                     _emit_progress(
                         f"[done] session={item['session_id']} rc=0 elapsed={elapsed:.1f}s"
@@ -10966,6 +12422,19 @@ def write_active_codex_runner(
                         f"[done] session={item['session_id']} rc={rc} elapsed={elapsed:.1f}s"
                     )
                     blockers.append(f"session {item['session_id']} exited with code {rc}")
+            if blockers:
+                for item, proc, reader_thread, stderr_file, _spawn_start_at in batch_spawned:
+                    if item.get("status") == "running":
+                        _stop_codex_process(proc)
+                        item["status"] = "terminated"
+                        item["returncode"] = getattr(proc, "returncode", None)
+                    if reader_thread is not None:
+                        reader_thread.join(timeout=10.0)
+                    if stderr_file is not None:
+                        try:
+                            stderr_file.close()
+                        except Exception:  # pragma: no cover - close failures non-fatal
+                            pass
 
         final_gate_sessions = [item for item in planned if item.get("session_id") == "eval-claim-privacy-auditor"]
         first_gate_sessions = [item for item in planned if item.get("session_id") != "eval-claim-privacy-auditor"]
@@ -11009,6 +12478,8 @@ def write_active_codex_runner(
         "auth_status": auth_status,
         "sandbox": sandbox,
         "timeout_seconds": timeout_seconds,
+        "max_commands_per_session": max_commands_per_session,
+        "model": model or "role-default",
         "registry": _repo_path(registry_path, repo_root),
         "assignments_dir": _repo_path(assignments_path, repo_root),
         "runs_dir": _repo_path(runs_path, repo_root),
@@ -11028,6 +12499,8 @@ def write_active_codex_runner(
             "auth_mode": auth_mode,
             "auth_status": auth_status,
             "sandbox": sandbox,
+            "model": model or "role-default",
+            "max_commands_per_session": max_commands_per_session,
             "sessions": [item["session_id"] for item in planned],
             "blockers": blockers,
             "warnings": warnings,
@@ -11039,6 +12512,8 @@ def write_active_codex_runner(
         auth_mode=auth_mode,
         auth_status=auth_status,
         sandbox=sandbox,
+        model=model or "role-default",
+        max_commands_per_session=max_commands_per_session,
         sessions=planned,
         heartbeats=heartbeat_events,
         blockers=tuple(_dedupe_preserve_order(blockers)),
@@ -11118,23 +12593,28 @@ def _write_active_codex_patch(
     execute: bool,
     timeout_seconds: int,
     codex_executable: str,
+    model: str | None,
     auth_mode: str,
     auth_runner,
     repo_root: Path,
     popen_factory=None,
     which_func=None,
     git_runner=None,
+    write_agent: str = "codex",
+    claude_runner=None,
     now: datetime | None = None,
 ) -> ActiveCodexRunnerResult:
-    """Patch mode: a single codex write-lane on the Implementer (write-lease owner).
+    """Patch mode: a single write-lane on the Implementer (write-lease owner).
 
     Borrows the write lease (claude XOR codex), edits inside an isolated scratch worktree
     under ``--sandbox workspace-write``, captures ``git diff`` as a privacy-scrubbed patch
     artifact, then tears the worktree down and releases the lease. NO integration apply
-    (that is PR-B). Codex-only (claude headless Edit-tool is unusable — issue #1598/#1604).
+    (that is PR-B). Claude uses the Claude Code CLI in the same scratch/patch-artifact
+    flow so it is gated by the same privacy, scope, and apply checks as Codex.
     """
     now = now or datetime.now(timezone.utc)
     agent = "codex"
+    registry_payload: dict[str, object] = {}
     blockers: list[str] = []
     warnings: list[str] = []
     auth_status = "not checked"
@@ -11143,13 +12623,15 @@ def _write_active_codex_patch(
     scratch_branch = ""
     command_display = ""
     session_id = "implementer"
+    resolved_model = _resolve_lane_model("codex", "Implementer")
     resolved_task: str | None = None
     acquired = False
 
     if not registry_path.exists():
         blockers.append("active session registry is missing; run make agent-loop-active-start first")
     else:
-        raw = _load_active_registry(registry_path).get("sessions")
+        registry_payload = _load_active_registry(registry_path)
+        raw = registry_payload.get("sessions")
         raw_sessions = raw if isinstance(raw, list) else []
         implementer = next((s for s in raw_sessions if isinstance(s, dict) and s.get("role") == "Implementer"), None)
         if implementer is None:
@@ -11162,8 +12644,17 @@ def _write_active_codex_patch(
             else:
                 blockers.append("patch mode requires a task id (pass --task T-YYYY-NNNN or run active-start --task)")
 
-    # The write-lane needs a concrete assignment — never let codex edit with workspace-write
-    # against a vague prompt. Embed the assignment in the prompt (the sandboxed codex must not
+    if write_agent == "auto":
+        policy = registry_payload.get("agent_mix") if isinstance(registry_payload.get("agent_mix"), dict) else _parse_agent_mix(None)
+        mix_state = _load_active_agent_mix(_active_path(DEFAULT_ACTIVE_AGENT_MIX, repo_root=repo_root))
+        rolling = mix_state.get("rolling") if isinstance(mix_state.get("rolling"), dict) else {}
+        agent = choose_agent("Implementer", agent_mix=policy, rolling=rolling)
+    else:
+        agent = write_agent
+    resolved_model = _resolve_lane_model_override(agent, "Implementer", model)
+
+    # The write-lane needs a concrete assignment — never let an agent edit with workspace-write
+    # against a vague prompt. Embed the assignment in the prompt (the sandboxed agent must not
     # read outside the scratch worktree); a missing/empty assignment is fail-closed (issue #1610).
     assignment_text = ""
     if resolved_task is not None:
@@ -11180,10 +12671,11 @@ def _write_active_codex_patch(
             )
 
     which = which_func if which_func is not None else shutil.which
-    resolved_executable = which(codex_executable) if execute else codex_executable
+    executable_name = codex_executable if agent == "codex" else "claude"
+    resolved_executable = which(executable_name) if execute else executable_name
     if execute and not resolved_executable:
-        blockers.append(f"codex executable not found: {codex_executable}")
-    elif execute and not blockers:
+        blockers.append(f"{agent} executable not found: {executable_name}")
+    elif execute and not blockers and agent == "codex":
         auth_status, auth_blockers, auth_warnings = _active_codex_auth_check(
             auth_mode=auth_mode,
             codex_executable=str(resolved_executable),
@@ -11192,14 +12684,19 @@ def _write_active_codex_patch(
         )
         blockers.extend(auth_blockers)
         warnings.extend(auth_warnings)
+    elif execute and agent == "claude":
+        auth_status = "Claude CLI subscription/OAuth path"
     if not execute:
-        auth_status, _, auth_warnings = _active_codex_auth_check(
-            auth_mode=auth_mode,
-            codex_executable=codex_executable,
-            execute=execute,
-            runner=auth_runner,
-        )
-        warnings.extend(auth_warnings)
+        if agent == "codex":
+            auth_status, _, auth_warnings = _active_codex_auth_check(
+                auth_mode=auth_mode,
+                codex_executable=codex_executable,
+                execute=execute,
+                runner=auth_runner,
+            )
+            warnings.extend(auth_warnings)
+        else:
+            auth_status = "not checked (dry-run; Claude CLI login required on execute)"
         warnings.append("dry-run only; pass --execute (or ACTIVE_CODEX_EXECUTE=1) with --mode patch to run the write lane")
 
     run_dir = patch_runs_path / session_id
@@ -11212,23 +12709,34 @@ def _write_active_codex_patch(
     scratch_path: Path | None = None
     if resolved_task is not None:
         scratch_path, scratch_branch = _scratch_worktree_paths(resolved_task, agent, repo_root=repo_root)
-        command_display = _sanitize_command_text(
-            shlex.join(
-                _active_codex_display_command(
-                    _active_codex_exec_command(
-                        codex_executable=str(resolved_executable or codex_executable),
-                        sandbox="workspace-write",
-                        last_message_path=last_message_path,
-                        repo_root=repo_root,
-                        cd=str(scratch_path),
+        if agent == "codex":
+            command_display = _sanitize_command_text(
+                shlex.join(
+                    _active_codex_display_command(
+                        _active_codex_exec_command(
+                            codex_executable=str(resolved_executable or codex_executable),
+                            model=resolved_model,
+                            sandbox="workspace-write",
+                            last_message_path=last_message_path,
+                            repo_root=repo_root,
+                            cd=str(scratch_path),
+                        )
                     )
                 )
             )
-        )
+        else:
+            command_display = "claude --input-format stream-json --output-format stream-json --model " + _sanitize_inline_text(
+                resolved_model
+            )
 
     can_run = execute and resolved_task is not None and scratch_path is not None and not blockers
     if can_run:
-        ok, msg, _lease = acquire_active_agent(agent=agent, repo_root=repo_root, now=now)
+        ok, msg, _lease = acquire_active_agent(
+            agent=agent,
+            repo_root=repo_root,
+            now=now,
+            allow_recovery_needed=True,
+        )
         if not ok:
             blockers.append(f"write-lease borrow failed: {msg}")
         else:
@@ -11239,6 +12747,38 @@ def _write_active_codex_patch(
                 )
                 blockers.extend(wt_blockers)
                 if not wt_blockers:
+                    seed_include_paths: Sequence[str] | None = None
+                    lease_items = _load_active_leases(_active_path(DEFAULT_ACTIVE_LEASES, repo_root=repo_root))
+                    write_lease = _find_active_write_lease(
+                        lease_items,
+                        lease_id=None,
+                        allow_recovery_needed=True,
+                    )
+                    claimed_raw = write_lease.get("claimed_files") if isinstance(write_lease, dict) else None
+                    if isinstance(claimed_raw, list):
+                        seed_include_paths = [str(item) for item in claimed_raw]
+                    seeded_count, seed_warnings = seed_scratch_worktree_from_parent(
+                        created_path,
+                        repo_root=repo_root,
+                        runner=git_runner,
+                        include_paths=seed_include_paths,
+                    )
+                    warnings.extend(seed_warnings)
+                    if seeded_count:
+                        seed_scope = "claimed " if seed_include_paths is not None else ""
+                        warnings.append(
+                            f"seeded scratch worktree with {seeded_count} {seed_scope}parent dirty file(s)"
+                        )
+                    redacted_context_count, redacted_context_warnings = redact_scratch_context_files(
+                        created_path,
+                        include_paths=seed_include_paths,
+                        runner=git_runner,
+                    )
+                    warnings.extend(redacted_context_warnings)
+                    if redacted_context_count:
+                        warnings.append(
+                            f"redacted {redacted_context_count} scratch context file(s) before {agent} patch lane"
+                        )
                     run_dir.mkdir(parents=True, exist_ok=True)
                     prompt = _render_active_patch_prompt(
                         session_id=session_id,
@@ -11246,73 +12786,191 @@ def _write_active_codex_patch(
                         scratch=_repo_path(created_path, repo_root),
                         assignment_text=assignment_text,
                         repo_root=repo_root,
+                        agent=agent,
                     )
                     prompt_path.write_text(prompt, encoding="utf-8")
-                    command = _active_codex_exec_command(
-                        codex_executable=str(resolved_executable),
-                        sandbox="workspace-write",
-                        last_message_path=last_message_path,
-                        repo_root=repo_root,
-                        cd=str(created_path),
+                    state_path.parent.mkdir(parents=True, exist_ok=True)
+                    state_path.write_text(
+                        json.dumps(
+                            _sanitize_json_value(
+                                {
+                                    "schema_version": 1,
+                                    "generated_at": _isoformat(datetime.now(timezone.utc)),
+                                    "execute": execute,
+                                    "mode": "patch",
+                                    "decision": "running",
+                                    "auth_mode": auth_mode,
+                                    "auth_status": auth_status,
+                                    "sandbox": "workspace-write",
+                                    "write_agent": agent,
+                                    "model": resolved_model,
+                                    "task_id": resolved_task,
+                                    "verdict": "running",
+                                    "patch_runs_dir": _repo_path(patch_runs_path, repo_root),
+                                    "sessions": [
+                                        {
+                                            "session_id": session_id,
+                                            "role": "Implementer",
+                                            "agent": agent,
+                                            "status": "running",
+                                            "model": resolved_model,
+                                            "pid": None,
+                                            "assignment": _repo_path(artifact_path, repo_root),
+                                            "last_message": _repo_path(last_message_path, repo_root),
+                                            "command": command_display,
+                                        }
+                                    ],
+                                    "blockers": [],
+                                    "warnings": _dedupe_preserve_order(warnings),
+                                }
+                            ),
+                            indent=2,
+                            sort_keys=True,
+                        )
+                        + "\n",
+                        encoding="utf-8",
                     )
-                    factory = popen_factory if popen_factory is not None else subprocess.Popen
-                    proc = None
-                    try:
-                        with stdout_path.open("w", encoding="utf-8") as so, stderr_path.open("w", encoding="utf-8") as se:
-                            proc = factory(command, cwd=repo_root, stdin=subprocess.PIPE, stdout=so, stderr=se, text=True)
-                            stdin = getattr(proc, "stdin", None)
-                            if stdin is not None:
-                                stdin.write(prompt)
-                                stdin.close()
-                    except OSError as exc:
-                        blockers.append(f"failed to spawn codex patch session {session_id}: {exc}")
-                    if proc is not None and not blockers:
-                        wait = getattr(proc, "wait", None)
+                    rc: int | None = None
+                    if agent == "claude":
+                        effort = _validate_effort_for_model(resolved_model, _resolve_lane_effort("claude", "Implementer"))
+                        if claude_runner is None and not _claude_cli_supports_effort():
+                            effort = ""
+                        raw_claude_timeout = os.getenv("ACTIVE_CLAUDE_WRITE_TIMEOUT_SECONDS")
                         try:
-                            rc = wait(timeout=timeout_seconds or None) if callable(wait) else getattr(proc, "returncode", 0)
+                            claude_timeout = int(raw_claude_timeout) if raw_claude_timeout else (timeout_seconds or 900)
+                        except ValueError:
+                            claude_timeout = timeout_seconds or 900
+                        command = _active_claude_patch_command(
+                            claude_executable=str(resolved_executable),
+                            prompt=prompt,
+                            model=resolved_model,
+                            effort=effort,
+                            cwd=created_path,
+                        )
+                        command_display = _sanitize_command_text(shlex.join(_active_claude_display_command(command)))
+                        run_claude = claude_runner or subprocess.run
+                        try:
+                            stream_input = _active_claude_stream_json_input(prompt)
+                            kwargs = {
+                                "cwd": created_path,
+                                "input": stream_input,
+                                "capture_output": True,
+                                "text": True,
+                                "check": False,
+                                "timeout": claude_timeout,
+                            }
+                            if claude_runner is None:
+                                env = dict(os.environ)
+                                env.pop("ANTHROPIC_API_KEY", None)
+                                kwargs["env"] = env
+                            proc = run_claude(command, **kwargs)
+                            stdout_path.write_text(str(getattr(proc, "stdout", "") or ""), encoding="utf-8")
+                            stderr_path.write_text(str(getattr(proc, "stderr", "") or ""), encoding="utf-8")
+                            rc = int(getattr(proc, "returncode", 1) or 0)
+                            last_message_path.write_text(
+                                _sanitize_dynamic_text(_claude_stream_result_text(str(getattr(proc, "stdout", "") or ""))).rstrip()
+                                + "\n",
+                                encoding="utf-8",
+                            )
                         except subprocess.TimeoutExpired:
-                            rc = None
-                            blockers.append(f"codex patch session {session_id} timed out after {timeout_seconds} seconds")
-                        if rc == 0:
-                            run = git_runner or _git_worktree_runner
-                            # Stage everything first: codex often CREATES files, and plain
-                            # `git diff` omits untracked files. `add -A` + `diff --cached`
-                            # captures new files + modifications as one applyable patch.
-                            add_proc = run(["git", "-C", str(created_path), "add", "-A"])
-                            if getattr(add_proc, "returncode", 1) != 0:
-                                blockers.append("git add failed in scratch worktree")
-                            else:
-                                diff_proc = run(["git", "-C", str(created_path), "diff", "--cached"])
-                                if getattr(diff_proc, "returncode", 1) == 0:
-                                    diff_text = getattr(diff_proc, "stdout", "") or ""
-                                    verdict = "proposed" if diff_text.strip() else "empty"
-                                    # claimed_files scope guard (issue #1612): the write lane must
-                                    # stay within the lease's declared files. An out-of-scope patch
-                                    # is downgraded to "blocked" so apply (PR-B) refuses it. An empty
-                                    # claim leaves scope unenforced (exploratory tasks).
-                                    if verdict == "proposed":
-                                        lease_items = _load_active_leases(_active_path(DEFAULT_ACTIVE_LEASES, repo_root=repo_root))
-                                        write_lease = _find_active_write_lease(lease_items, lease_id=None)
-                                        claimed_raw = write_lease.get("claimed_files") if isinstance(write_lease, dict) else None
-                                        claimed = {str(f) for f in claimed_raw} if isinstance(claimed_raw, list) else set()
-                                        if claimed:
-                                            out_of_scope = sorted(f for f in _diff_files(diff_text) if f not in claimed)
-                                            if out_of_scope:
+                            blockers.append(f"claude patch session {session_id} timed out after {claude_timeout} seconds")
+                        except OSError as exc:
+                            blockers.append(f"failed to run claude patch session {session_id}: {exc}")
+                    else:
+                        command = _active_codex_exec_command(
+                            codex_executable=str(resolved_executable),
+                            model=resolved_model,
+                            sandbox="workspace-write",
+                            last_message_path=last_message_path,
+                            repo_root=repo_root,
+                            cd=str(created_path),
+                        )
+                        factory = popen_factory if popen_factory is not None else subprocess.Popen
+                        proc = None
+                        try:
+                            with stdout_path.open("w", encoding="utf-8") as so, stderr_path.open("w", encoding="utf-8") as se:
+                                proc = _popen_codex_process(
+                                    factory,
+                                    command,
+                                    cwd=repo_root,
+                                    stdin=subprocess.PIPE,
+                                    stdout=so,
+                                    stderr=se,
+                                    text=True,
+                                )
+                                stdin = getattr(proc, "stdin", None)
+                                if stdin is not None:
+                                    stdin.write(prompt)
+                                    stdin.close()
+                        except OSError as exc:
+                            blockers.append(f"failed to spawn codex patch session {session_id}: {exc}")
+                        if proc is not None and not blockers:
+                            wait = getattr(proc, "wait", None)
+                            try:
+                                rc = wait(timeout=timeout_seconds or None) if callable(wait) else getattr(proc, "returncode", 0)
+                            except subprocess.TimeoutExpired:
+                                rc = None
+                                blockers.append(f"codex patch session {session_id} timed out after {timeout_seconds} seconds")
+                                _stop_codex_process(proc)
+                    if rc == 0 and not blockers:
+                        run = git_runner or _git_worktree_runner
+                        # Stage everything first: agents often CREATE files, and plain
+                        # `git diff` omits untracked files. `add -A` + `diff --cached`
+                        # captures new files + modifications as one applyable patch.
+                        add_proc = run(["git", "-C", str(created_path), "add", "-A"])
+                        if getattr(add_proc, "returncode", 1) != 0:
+                            blockers.append("git add failed in scratch worktree")
+                        else:
+                            diff_proc = run(["git", "-C", str(created_path), "diff", "--cached"])
+                            if getattr(diff_proc, "returncode", 1) == 0:
+                                diff_text = getattr(diff_proc, "stdout", "") or ""
+                                verdict = "proposed" if diff_text.strip() else "empty"
+                                # claimed_files scope guard (issue #1612): the write lane must
+                                # stay within the lease's declared files. An out-of-scope patch
+                                # is downgraded to "blocked" so apply (PR-B) refuses it. An empty
+                                # claim leaves scope unenforced (exploratory tasks).
+                                if verdict == "proposed":
+                                    lease_items = _load_active_leases(_active_path(DEFAULT_ACTIVE_LEASES, repo_root=repo_root))
+                                    write_lease = _find_active_write_lease(
+                                        lease_items,
+                                        lease_id=None,
+                                        allow_recovery_needed=True,
+                                    )
+                                    claimed_raw = write_lease.get("claimed_files") if isinstance(write_lease, dict) else None
+                                    claimed = {str(f) for f in claimed_raw} if isinstance(claimed_raw, list) else set()
+                                    if claimed:
+                                        out_of_scope = sorted(f for f in _diff_files(diff_text) if f not in claimed)
+                                        if out_of_scope:
+                                            if _context_only_claimed_files(claimed):
+                                                warnings.append(
+                                                    "lease claimed only task context files; allowing patch proposal "
+                                                    "to proceed to apply/review gate"
+                                                )
+                                            else:
                                                 verdict = "blocked"
                                                 blockers.append(
                                                     "patch touches files outside the lease claim: " + ", ".join(out_of_scope[:5])
                                                 )
-                                        else:
-                                            warnings.append("lease has no claimed_files; patch scope is unenforced")
-                                else:
-                                    blockers.append("git diff capture failed in scratch worktree")
-                        elif rc is not None:
-                            blockers.append(f"codex patch session {session_id} exited with code {rc}")
+                                    else:
+                                        warnings.append("lease has no claimed_files; patch scope is unenforced")
+                            else:
+                                blockers.append("git diff capture failed in scratch worktree")
+                    elif rc is not None and not blockers:
+                        blockers.append(f"{agent} patch session {session_id} exited with code {rc}")
             finally:
                 warnings.extend(teardown_scratch_worktree(resolved_task, agent, repo_root=repo_root, runner=git_runner))
-                release_ok, release_msg = release_active_agent(agent=agent, repo_root=repo_root, now=now)
+                release_ok, release_msg = release_active_agent(
+                    agent=agent,
+                    repo_root=repo_root,
+                    now=now,
+                    allow_recovery_needed=True,
+                )
                 if not release_ok:
                     warnings.append(f"active_agent release warning: {release_msg}")
+
+    redacted_patch_runs = _redact_active_patch_runs(patch_runs_path.parent, repo_root=repo_root) if run_dir.exists() else 0
+    if redacted_patch_runs:
+        warnings.append(f"redacted {redacted_patch_runs} active patch run artifact(s) before privacy gate")
 
     if acquired and resolved_task is not None:
         artifact = {
@@ -11325,7 +12983,7 @@ def _write_active_codex_patch(
             "base": base,
             "scratch_branch": scratch_branch,
             "verdict": verdict,
-            "summary": _patch_summary(verdict, diff_text),
+            "summary": _patch_summary(verdict, diff_text, agent=agent),
             "files": _diff_files(diff_text),
             "diffstat": _diffstat(diff_text),
             "diff": diff_text,
@@ -11333,10 +12991,37 @@ def _write_active_codex_patch(
             "privacy_scrubbed": True,
         }
         run_dir.mkdir(parents=True, exist_ok=True)
-        artifact_path.write_text(
-            json.dumps(_redact_private_json(_sanitize_json_value(artifact)), indent=2, sort_keys=True) + "\n",
-            encoding="utf-8",
+        privacy_findings = _privacy_findings_for_text(
+            diff_text,
+            path=_display_path(_repo_path(artifact_path, repo_root), repo_root=repo_root),
         )
+        if privacy_findings:
+            issues = sorted({finding.issue for finding in privacy_findings})
+            verdict = "blocked"
+            redacted = {
+                "schema_version": 1,
+                "task_id": resolved_task,
+                "session_id": session_id,
+                "role": "Implementer",
+                "agent": agent,
+                "generated_at": _isoformat(now),
+                "base": base,
+                "scratch_branch": scratch_branch,
+                "verdict": "blocked",
+                "summary": f"privacy scrub rejected patch diff ({len(issues)} issue type(s))",
+                "files": [],
+                "diffstat": {"files_changed": 0, "insertions": 0, "deletions": 0},
+                "diff": "",
+                "wu": 0,
+                "privacy_scrubbed": False,
+            }
+            artifact_path.write_text(json.dumps(_sanitize_json_value(redacted), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+            blockers.extend(f"privacy: {issue}" for issue in issues)
+        else:
+            artifact_path.write_text(
+                json.dumps(_patch_artifact_json_payload(artifact), indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
         privacy_findings = audit_privacy_output(artifact_path, out_path=None, repo_root=repo_root)
         if privacy_findings:
             issues = sorted({finding.issue for finding in privacy_findings})
@@ -11360,6 +13045,16 @@ def _write_active_codex_patch(
             }
             artifact_path.write_text(json.dumps(redacted, indent=2, sort_keys=True) + "\n", encoding="utf-8")
             blockers.extend(f"privacy: {issue}" for issue in issues)
+        if verdict == "proposed" and not blockers:
+            policy = registry_payload.get("agent_mix") if isinstance(registry_payload.get("agent_mix"), dict) else _parse_agent_mix(None)
+            _record_agent_wu(
+                _active_path(DEFAULT_ACTIVE_AGENT_MIX, repo_root=repo_root),
+                agent=agent,
+                task_id=resolved_task,
+                wu=1,
+                policy=policy,
+                now=now,
+            )
 
     if not execute:
         decision = "blocked" if blockers else "planned"
@@ -11372,7 +13067,9 @@ def _write_active_codex_patch(
         {
             "session_id": session_id,
             "role": "Implementer",
+            "agent": agent,
             "status": verdict if execute else "planned",
+            "model": resolved_model,
             "pid": None,
             "assignment": _repo_path(artifact_path, repo_root),
             "last_message": _repo_path(last_message_path, repo_root),
@@ -11388,6 +13085,8 @@ def _write_active_codex_patch(
         "auth_mode": auth_mode,
         "auth_status": auth_status,
         "sandbox": "workspace-write",
+        "write_agent": agent,
+        "model": resolved_model,
         "task_id": resolved_task,
         "verdict": verdict,
         "patch_runs_dir": _repo_path(patch_runs_path, repo_root),
@@ -11407,6 +13106,8 @@ def _write_active_codex_patch(
             "auth_mode": auth_mode,
             "auth_status": auth_status,
             "sandbox": "workspace-write",
+            "write_agent": agent,
+            "model": resolved_model,
             "task_id": resolved_task,
             "verdict": verdict,
             "sessions": [session_id],
@@ -11420,6 +13121,8 @@ def _write_active_codex_patch(
         auth_mode=auth_mode,
         auth_status=auth_status,
         sandbox="workspace-write",
+        model=resolved_model,
+        max_commands_per_session=0,
         sessions=sessions_out,
         heartbeats=(),
         blockers=tuple(_dedupe_preserve_order(blockers)),
@@ -11465,13 +13168,16 @@ def _record_codex_runner_gate_heartbeats(
         if verdict not in {"pass", "passed", "clear", "cleared", "approve", "approved"}:
             if verdict is not None:
                 warnings.append(f"session {session_id} reported non-passing gate verdict: {verdict}")
-                continue
-            fallback_status = _deterministic_gate_heartbeat_status(role=role, repo_root=repo_root)
-            if fallback_status is None:
-                warnings.append(f"session {session_id} did not report a passing gate verdict")
-                continue
-            status = fallback_status
-            item["heartbeat_source"] = "deterministic-post-run-audit"
+                status = "blocked"
+                item["heartbeat_source"] = "last-message-verdict"
+                item["heartbeat_non_passing_verdict"] = verdict
+            else:
+                fallback_status = _deterministic_gate_heartbeat_status(role=role, repo_root=repo_root)
+                if fallback_status is None:
+                    warnings.append(f"session {session_id} did not report a passing gate verdict")
+                    continue
+                status = fallback_status
+                item["heartbeat_source"] = "deterministic-post-run-audit"
         else:
             status = "clear" if role == "Eval / Claim / Privacy Auditor" or verdict in {"clear", "cleared"} else "passed"
             item["heartbeat_source"] = "last-message-verdict"
@@ -11480,7 +13186,7 @@ def _record_codex_runner_gate_heartbeats(
             role=role,
             task_id=str(item.get("task_id") or "") or None,
             status=status,
-            agent="codex",
+            agent=str(item.get("agent") or "codex") if str(item.get("agent") or "codex") in ACTIVE_LANE_AGENTS else "codex",
             registry=registry,
             events=events,
             repo_root=repo_root,
@@ -11526,6 +13232,8 @@ def render_active_codex_runner(
     auth_mode: str,
     auth_status: str,
     sandbox: str,
+    model: str,
+    max_commands_per_session: int,
     sessions: Sequence[dict[str, object]],
     heartbeats: Sequence[dict[str, str]],
     blockers: Sequence[str],
@@ -11549,6 +13257,8 @@ def render_active_codex_runner(
         f"- Auth mode: `{_sanitize_inline_text(auth_mode)}`",
         f"- Auth status: `{_sanitize_inline_text(auth_status)}`",
         f"- Sandbox: `{_sanitize_inline_text(sandbox)}`",
+        f"- Model: `{_sanitize_inline_text(model)}`",
+        f"- Max commands per session: `{max_commands_per_session}`",
         "",
         "## Inputs",
         "",
@@ -11559,8 +13269,8 @@ def render_active_codex_runner(
         "",
         "## Sessions",
         "",
-        "| Session | Role | Status | PID | Assignment | Last message | Command |",
-        "|---|---|---|---:|---|---|---|",
+        "| Session | Role | Agent | Model | Status | PID | Assignment | Last message | Command |",
+        "|---|---|---|---|---|---:|---|---|---|",
     ]
     if sessions:
         for item in sessions:
@@ -11571,6 +13281,8 @@ def render_active_codex_runner(
                     for value in (
                         item.get("session_id", ""),
                         item.get("role", ""),
+                        item.get("agent", "codex"),
+                        item.get("model", ""),
                         item.get("status", ""),
                         item.get("pid") if item.get("pid") is not None else "",
                         item.get("assignment", ""),
@@ -11581,7 +13293,7 @@ def render_active_codex_runner(
                 + " |"
             )
     else:
-        lines.append("| N/A | N/A | no sessions |  | N/A | N/A | N/A |")
+        lines.append("| N/A | N/A | N/A | no sessions |  | N/A | N/A | N/A | N/A |")
     lines.extend(["", "## Gate Heartbeats", ""])
     if heartbeats:
         lines.extend(
@@ -11779,6 +13491,56 @@ def _build_active_leases(
     warnings: list[str] = []
     rendered: list[dict[str, object]] = []
     for lease in existing_leases:
+        existing_status = str(lease.get("status") or "")
+        existing_expires = _parse_timestamp(lease.get("expires_at"))
+        existing_branch = str(lease.get("branch") or "")
+        existing_issue = str(lease.get("issue") or "")
+        existing_task = str(lease.get("task_id") or "")
+        existing_worktree = str(lease.get("worktree") or ".")
+        existing_agent = lease.get("active_agent")
+        existing_lease_type = str(lease.get("lease_type") or "")
+        expired_free_same_scope = (
+            existing_status in {"active", "recovery-needed"}
+            and existing_lease_type == "write"
+            and existing_expires is not None
+            and existing_expires < now
+            and existing_worktree in {".", ""}
+            and existing_agent in {None, ""}
+            and (
+                existing_branch == branch
+                or (issue and existing_issue == issue)
+                or (task_id and existing_task == task_id)
+            )
+        )
+        if expired_free_same_scope:
+            warning_prefix = (
+                "stale self recovery lease cleared"
+                if existing_status == "recovery-needed"
+                else "stale free write lease cleared"
+            )
+            warnings.append(
+                f"{warning_prefix}: {lease.get('lease_id')}"
+            )
+            continue
+        if (
+            existing_status == "recovery-needed"
+            and existing_expires is not None
+            and existing_expires < now
+            and (
+                existing_branch == branch
+                or (issue and existing_issue == issue)
+                or (task_id and existing_task == task_id)
+            )
+            and existing_worktree in {".", ""}
+            and (
+                existing_agent in {None, ""}
+                or (task_id is not None and existing_task and existing_task != task_id)
+            )
+        ):
+            warnings.append(
+                f"stale self recovery lease cleared: {lease.get('lease_id')}"
+            )
+            continue
         rendered_lease = _refresh_active_lease(lease, now=now, repo_root=repo_root)
         rendered.append(rendered_lease)
         if rendered_lease.get("status") == "recovery-needed":
@@ -11831,9 +13593,15 @@ def _write_active_leases(path: Path, *, leases: list[dict[str, object]], now: da
     return path
 
 
-def _find_active_write_lease(leases: Sequence[dict[str, object]], *, lease_id: str | None) -> dict[str, object] | None:
+def _find_active_write_lease(
+    leases: Sequence[dict[str, object]],
+    *,
+    lease_id: str | None,
+    allow_recovery_needed: bool = False,
+) -> dict[str, object] | None:
+    allowed_statuses = {"active", "recovery-needed"} if allow_recovery_needed else {"active"}
     for lease in leases:
-        if lease.get("lease_type") != "write" or lease.get("status") != "active":
+        if lease.get("lease_type") != "write" or lease.get("status") not in allowed_statuses:
             continue
         if lease_id is None or str(lease.get("lease_id")) == lease_id:
             return lease
@@ -11845,6 +13613,7 @@ def acquire_active_agent(
     agent: str,
     lease_id: str | None = None,
     leases: Path = DEFAULT_ACTIVE_LEASES,
+    allow_recovery_needed: bool = False,
     now: datetime | None = None,
     repo_root: Path = ROOT_DIR,
 ) -> tuple[bool, str, str | None]:
@@ -11858,7 +13627,7 @@ def acquire_active_agent(
     now = now or datetime.now(timezone.utc)
     path = _active_path(leases, repo_root=repo_root)
     items = _load_active_leases(path)
-    lease = _find_active_write_lease(items, lease_id=lease_id)
+    lease = _find_active_write_lease(items, lease_id=lease_id, allow_recovery_needed=allow_recovery_needed)
     if lease is None:
         return (False, "no active write lease to borrow", None)
     holder = lease.get("active_agent")
@@ -11876,6 +13645,7 @@ def release_active_agent(
     agent: str,
     lease_id: str | None = None,
     leases: Path = DEFAULT_ACTIVE_LEASES,
+    allow_recovery_needed: bool = False,
     now: datetime | None = None,
     repo_root: Path = ROOT_DIR,
 ) -> tuple[bool, str]:
@@ -11886,7 +13656,7 @@ def release_active_agent(
     now = now or datetime.now(timezone.utc)
     path = _active_path(leases, repo_root=repo_root)
     items = _load_active_leases(path)
-    lease = _find_active_write_lease(items, lease_id=lease_id)
+    lease = _find_active_write_lease(items, lease_id=lease_id, allow_recovery_needed=allow_recovery_needed)
     if lease is None:
         return (False, "no active write lease")
     holder = lease.get("active_agent")
@@ -11972,6 +13742,141 @@ def create_scratch_worktree(
         tail = next((line for line in reversed((proc.stderr or "").splitlines()) if line.strip()), "")
         blockers.append(f"scratch worktree create failed for {branch}: {tail}".strip())
     return path, branch, blockers
+
+
+def seed_scratch_worktree_from_parent(
+    scratch_path: Path,
+    *,
+    repo_root: Path = ROOT_DIR,
+    runner=None,
+    include_paths: Sequence[str] | None = None,
+) -> tuple[int, list[str]]:
+    """Copy parent dirty state into scratch, then commit it as local baseline.
+
+    Patch mode runs in a disposable worktree. If the orchestrator is itself being
+    repaired locally, a plain HEAD-based scratch worktree can see stale queue or
+    config state. This seed commit makes the scratch view current while keeping
+    the final captured patch limited to Codex's changes after the seed.
+    """
+    warnings: list[str] = []
+    if not scratch_path.exists():
+        return 0, warnings
+    try:
+        rel_paths = _changed_files_from_git(repo_root)
+    except ValueError as exc:
+        return 0, [f"scratch seed skipped: {exc}"]
+    include_set = None
+    if include_paths is not None:
+        include_set = {
+            normalized
+            for path in include_paths
+            if (normalized := _normalize_changed_file(str(path), repo_root=repo_root))
+        }
+
+    copied = 0
+    for rel in rel_paths:
+        normalized = _normalize_changed_file(rel, repo_root=repo_root)
+        if not normalized or normalized.startswith((".claude/worktrees/", "reports/agent_loop/")):
+            continue
+        if include_set is not None and normalized not in include_set:
+            continue
+        source = repo_root / normalized
+        target = scratch_path / normalized
+        try:
+            if source.is_file():
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source, target)
+                copied += 1
+            elif not source.exists() and target.exists() and target.is_file():
+                target.unlink()
+                copied += 1
+        except OSError as exc:
+            warnings.append(f"scratch seed skipped {normalized}: {exc}")
+
+    if not copied:
+        return 0, warnings
+
+    run = runner or _git_worktree_runner
+    add = run(["git", "-C", str(scratch_path), "add", "-A"])
+    if add.returncode != 0:
+        warnings.append("scratch seed git add failed")
+        return copied, warnings
+    commit = run(
+        [
+            "git",
+            "-C",
+            str(scratch_path),
+            "-c",
+            "user.name=BidMate Agent Loop",
+            "-c",
+            "user.email=agent-loop@example.invalid",
+            "commit",
+            "--no-verify",
+            "-m",
+            "Seed parent dirty worktree",
+        ]
+    )
+    if commit.returncode != 0:
+        output = (commit.stderr or commit.stdout or "").strip()
+        warnings.append(f"scratch seed commit failed: {output or 'unknown git error'}")
+    return copied, warnings
+
+
+def redact_scratch_context_files(
+    scratch_path: Path,
+    *,
+    include_paths: Sequence[str] | None,
+    runner=None,
+) -> tuple[int, list[str]]:
+    """Redact privacy debt inside scratch and commit it before agent edits.
+
+    This keeps the later captured patch diff applyable and privacy-clean: if an agent
+    replaces an old absolute local path, the `-` line would otherwise leak that path.
+    """
+    warnings: list[str] = []
+    if not include_paths or not scratch_path.exists():
+        return 0, warnings
+    changed = 0
+    for raw in include_paths:
+        rel = str(raw).strip()
+        if not rel or rel.startswith(("/", "..")):
+            continue
+        target = scratch_path / rel
+        if not target.is_file():
+            continue
+        if target.suffix.lower() not in {".md", ".txt", ".json", ".jsonl", ".yaml", ".yml"}:
+            continue
+        try:
+            if _redact_text_file_in_place(target):
+                changed += 1
+        except OSError as exc:
+            warnings.append(f"scratch context redaction skipped {rel}: {exc}")
+    if not changed:
+        return 0, warnings
+    run = runner or _git_worktree_runner
+    add = run(["git", "-C", str(scratch_path), "add", "-A"])
+    if add.returncode != 0:
+        warnings.append("scratch context redaction git add failed")
+        return changed, warnings
+    commit = run(
+        [
+            "git",
+            "-C",
+            str(scratch_path),
+            "-c",
+            "user.name=BidMate Agent Loop",
+            "-c",
+            "user.email=agent-loop@example.invalid",
+            "commit",
+            "--no-verify",
+            "-m",
+            "Redact scratch context privacy debt",
+        ]
+    )
+    if commit.returncode != 0:
+        output = (commit.stderr or commit.stdout or "").strip()
+        warnings.append(f"scratch context redaction commit failed: {output or 'unknown git error'}")
+    return changed, warnings
 
 
 def teardown_scratch_worktree(
@@ -12076,25 +13981,39 @@ def write_active_apply(
             diff_file.parent.mkdir(parents=True, exist_ok=True)
             diff_file.write_text(diff_text if diff_text.endswith("\n") else diff_text + "\n", encoding="utf-8")
             check = run(["git", "-C", str(integration_path), "apply", "--check", str(diff_file)])
+            apply_args = ["git", "-C", str(integration_path), "apply", str(diff_file)]
             if getattr(check, "returncode", 1) != 0:
-                tail = next((line for line in reversed((getattr(check, "stderr", "") or "").splitlines()) if line.strip()), "")
-                blockers.append(f"patch does not apply cleanly to {integration_branch}: {tail}".strip())
-            elif execute:
-                applied_proc = run(["git", "-C", str(integration_path), "apply", str(diff_file)])
-                if getattr(applied_proc, "returncode", 1) != 0:
-                    blockers.append("git apply failed after a clean --check (unexpected)")
+                three_way_check = run(["git", "-C", str(integration_path), "apply", "--3way", "--check", str(diff_file)])
+                if getattr(three_way_check, "returncode", 1) == 0:
+                    apply_args = ["git", "-C", str(integration_path), "apply", "--3way", str(diff_file)]
+                    warnings.append(f"plain git apply --check failed; using --3way for {integration_branch}")
                 else:
-                    run(["git", "-C", str(integration_path), "add", "-A"])
-                    commit = run(
-                        ["git", "-C", str(integration_path), "commit", "-m", f"feat({task_id}): apply codex patch proposal"]
+                    tail = next(
+                        (
+                            line
+                            for line in reversed((getattr(three_way_check, "stderr", "") or getattr(check, "stderr", "") or "").splitlines())
+                            if line.strip()
+                        ),
+                        "",
                     )
-                    if getattr(commit, "returncode", 1) != 0:
-                        blockers.append("git commit failed in integration worktree")
+                    blockers.append(f"patch does not apply cleanly to {integration_branch}: {tail}".strip())
+            if not blockers:
+                if execute:
+                    applied_proc = run(apply_args)
+                    if getattr(applied_proc, "returncode", 1) != 0:
+                        blockers.append("git apply failed after a clean --check (unexpected)")
                     else:
-                        applied = True
-                        decision = "applied"
-            else:
-                decision = "checked"
+                        run(["git", "-C", str(integration_path), "add", "-A"])
+                        commit = run(
+                            ["git", "-C", str(integration_path), "commit", "-m", f"feat({task_id}): apply codex patch proposal"]
+                        )
+                        if getattr(commit, "returncode", 1) != 0:
+                            blockers.append("git commit failed in integration worktree")
+                        else:
+                            applied = True
+                            decision = "applied"
+                else:
+                    decision = "checked"
 
     state_payload = {
         "schema_version": 1,
@@ -12158,6 +14077,7 @@ def write_active_gate_evidence(
     task_id: str,
     registry: Path = DEFAULT_ACTIVE_REGISTRY,
     out_dir: Path | None = None,
+    changed_files: Sequence[str] | None = None,
     repo_root: Path = ROOT_DIR,
 ) -> tuple[Path, dict[str, object]]:
     """Bundle the active loop's Conservative-Gate evidence for one task.
@@ -12171,6 +14091,14 @@ def write_active_gate_evidence(
     now = datetime.now(timezone.utc)
     active_dir = repo_root / "reports" / "agent_loop" / "active"
     registry_path = _active_path(registry, repo_root=repo_root)
+    if changed_files is None:
+        try:
+            files = _changed_files_from_git(repo_root)
+        except ValueError:
+            files = []
+    else:
+        files = [_normalize_changed_file(path, repo_root=repo_root) for path in changed_files if path]
+    load_bearing_touched = any(is_load_bearing(path) for path in files)
 
     topology = "four-role"
     sessions: list[dict[str, object]] = []
@@ -12182,7 +14110,7 @@ def write_active_gate_evidence(
         raw = payload.get("sessions")
         sessions = [s for s in raw if isinstance(s, dict)] if isinstance(raw, list) else []
 
-    required_roles = _active_required_gate_roles(topology, load_bearing_touched=False)
+    required_roles = _active_required_gate_roles(topology, load_bearing_touched=load_bearing_touched)
     gate_roles: list[dict[str, object]] = []
     for role in required_roles:
         status = next((str(s.get("status")) for s in sessions if s.get("role") == role), "missing")
@@ -12228,6 +14156,8 @@ def write_active_gate_evidence(
         "generated_at": _isoformat(now),
         "topology": topology,
         "gate_policy": "conservative",
+        "changed_files": files,
+        "load_bearing_touched": load_bearing_touched,
         "conservative_gate": {"ready": ready, "required_roles": gate_roles},
         "patch": patch_summary,
         "apply": apply_summary,
@@ -12245,6 +14175,7 @@ def write_active_gate_evidence(
         "",
         f"- Generated: {_isoformat(now)}",
         f"- Topology: `{topology}` (gate_policy: conservative)",
+        f"- Load-bearing touched: `{load_bearing_touched}`",
         f"- Conservative gate: **{'READY' if ready else 'NOT READY'}**",
         "",
         "## Required gate roles",
@@ -12272,7 +14203,12 @@ def write_active_gate_evidence(
         _active_path(DEFAULT_ACTIVE_EVENTS, repo_root=repo_root),
         {"event": "gate-evidence", "task_id": task_id, "ready": ready, "privacy_clean": privacy["clean"]},
     )
-    return evidence_path, {"ready": ready, "required_roles": [str(i["role"]) for i in gate_roles], "privacy_clean": privacy["clean"]}
+    return evidence_path, {
+        "ready": ready,
+        "required_roles": [str(i["role"]) for i in gate_roles],
+        "privacy_clean": privacy["clean"],
+        "load_bearing_touched": load_bearing_touched,
+    }
 
 
 def _active_role_status_ok(sessions: Sequence[dict[str, object]], role: str) -> bool:
@@ -12328,12 +14264,13 @@ def _select_active_codex_sessions(
 def _active_codex_exec_command(
     *,
     codex_executable: str,
+    model: str | None,
     sandbox: str,
     last_message_path: Path,
     repo_root: Path,
     cd: str = ".",
 ) -> list[str]:
-    return [
+    command = [
         codex_executable,
         "exec",
         "--cd",
@@ -12341,10 +14278,15 @@ def _active_codex_exec_command(
         "--sandbox",
         sandbox,
         "--json",
+    ]
+    if model:
+        command.extend(["--model", model])
+    command.extend([
         "--output-last-message",
         _repo_path(last_message_path, repo_root),
         "-",
-    ]
+    ])
+    return command
 
 
 def _active_codex_auth_check(
@@ -12389,6 +14331,80 @@ def _active_codex_display_command(command: Sequence[str]) -> list[str]:
     return display
 
 
+def _active_claude_patch_command(
+    *,
+    claude_executable: str,
+    prompt: str,
+    model: str | None,
+    effort: str,
+    cwd: Path,
+) -> list[str]:
+    command = [
+        claude_executable,
+        "--output-format",
+        "stream-json",
+        "--verbose",
+        "--input-format",
+        "stream-json",
+        "--add-dir",
+        str(cwd),
+    ]
+    if model:
+        command.extend(["--model", model])
+    if effort:
+        command.extend(["--effort", effort])
+    command.extend(
+        [
+            "--permission-mode",
+            "bypassPermissions",
+            "--allow-dangerously-skip-permissions",
+            "--allowedTools",
+            "Read,Edit,Write,Bash(git diff:*),Bash(git status:*)",
+            "--disallowedTools",
+            "Grep,Glob,Bash(git push:*),Bash(git commit:*),Bash(git merge:*),Bash(gh:*),Bash(make:*)",
+        ]
+    )
+    return command
+
+
+def _active_claude_stream_json_input(prompt: str) -> str:
+    return json.dumps({"type": "user", "message": {"role": "user", "content": prompt}}, ensure_ascii=False) + "\n"
+
+
+def _claude_stream_result_text(stdout: str) -> str:
+    result_text = ""
+    assistant_text: list[str] = []
+    for line in stdout.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        try:
+            obj = json.loads(stripped)
+        except json.JSONDecodeError:
+            continue
+        if obj.get("type") == "result":
+            raw = obj.get("result")
+            if isinstance(raw, str):
+                result_text = raw
+            elif raw is not None:
+                result_text = str(raw)
+        elif obj.get("type") == "assistant":
+            content = obj.get("message", {}).get("content") if isinstance(obj.get("message"), dict) else None
+            for block in content if isinstance(content, list) else []:
+                if isinstance(block, dict) and block.get("type") == "text":
+                    text = block.get("text")
+                    if isinstance(text, str):
+                        assistant_text.append(text)
+    return result_text or "\n".join(assistant_text) or stdout
+
+
+def _active_claude_display_command(command: Sequence[str]) -> list[str]:
+    display = list(command)
+    if display:
+        display[0] = Path(display[0]).name or "claude"
+    return display
+
+
 def _render_active_codex_prompt(
     *,
     session_id: str,
@@ -12406,6 +14422,25 @@ def _render_active_codex_prompt(
                 "Do not treat a skipped write-only privacy report as a blocker if direct read-only privacy and claim checks are clear.",
             ]
         )
+    if session_id == "reviewer":
+        role_notes.extend(
+            [
+                "Use P0-only blocking for this local active gate: block only for a currently reproducible privacy leak, failing required validation, broken contract, missing required handoff field, or unsupported benchmark/private-data claim.",
+                "Treat `decision-brief` as decision support, not an automatic blocker, when `claim-audit`, `privacy-audit-output`, and required handoff checks pass.",
+                "Do not block on stale active-loop artifacts or on parsing prior reviewer-output text if the current deterministic checks now pass.",
+                "Do not self-audit this reviewer session's live Codex transcript artifacts for privacy; the runner redacts them after exit and the Eval / Claim / Privacy Auditor owns the post-redaction active-run privacy gate.",
+                "Privacy category labels or redaction markers inside a reviewer transcript are not themselves raw private data; require an actual unredacted local path, private raw-field value, document identifier, or raw question/answer/evidence snippet before blocking.",
+                "Classify follow-up documentation, extra experiment coverage, and non-default optimization concerns as warnings unless they invalidate the current task's required evidence.",
+            ]
+        )
+    if session_id == "deep-reviewer":
+        role_notes.extend(
+            [
+                "Treat `architecture-decision` as a detector, not an automatic blocker.",
+                "If the changed set includes an ADR that explicitly covers the load-bearing decision and ADR lint/readme parity pass, do not block solely because the detector says `human-architecture-review-required`.",
+                "Block when the ADR is absent, does not cover the changed policy, or verification is missing/failing.",
+            ]
+        )
     return _sanitize_dynamic_text(
         "\n".join(
             [
@@ -12415,6 +14450,7 @@ def _render_active_codex_prompt(
                 "Do not edit files, commit, push, create/ready/merge PRs, close issues, delete branches, force-push, or run ship commands.",
                 "If the assignment's next command would write or mutate remote state, skip that command and use equivalent read-only checks when available.",
                 "Treat skipped write-only report generation as a warning, not a blocker, when the underlying evidence can still be inspected.",
+                "Use at most 8 shell commands. Prefer targeted `git diff --name-only`, focused file reads, and existing gate artifacts over broad repository scans.",
                 "Return a concise final message with: session id, role, commands inspected, blockers, warnings, evidence, next safe command, and `Gate verdict: pass` or `Gate verdict: blocked`.",
                 "Use `Gate verdict: pass` only when this role found no actionable blocker for its own gate.",
                 "Do not include absolute local paths, raw private question/answer/evidence text, doc_id, chunk_id, filename, or prompt/response body.",
@@ -12432,15 +14468,30 @@ def _render_active_patch_prompt(
     scratch: str,
     assignment_text: str,
     repo_root: Path,
+    agent: str = "codex",
 ) -> str:
-    """Write-lane prompt: codex implements the embedded assignment IN the scratch worktree
+    """Write-lane prompt: the agent implements the embedded assignment IN the scratch worktree
     but never commits, pushes, ships, or touches anything outside it. The orchestrator
     captures the diff. The assignment is embedded (not a file reference) so the sandboxed
-    codex never has to read outside the scratch worktree (issue #1610)."""
+    agent never has to read outside the scratch worktree (issue #1610)."""
+    agent_label = "Claude" if agent == "claude" else "Codex"
+    claude_notes: list[str] = []
+    if agent == "claude":
+        claude_notes.extend(
+            [
+                "Claude-specific execution budget:",
+                "- Start with `git status --short`, then read only files listed under `## Claimed Files`.",
+                "- Do not use broad repository search or file discovery. If a claimed file is missing, report it as a blocker.",
+                "- Use at most 6 tool calls before producing the patch or blocker handoff.",
+                "- If the assignment is stale, blocked, or lease-recovery oriented, edit only the claimed queue/plan handoff files; do not investigate unrelated loop state.",
+                "- Stop after `git diff --stat` confirms the intended claimed-file diff.",
+                "",
+            ]
+        )
     return _sanitize_dynamic_text(
         "\n".join(
             [
-                f"You are the Codex write-lane for active-loop session `{session_id}`, task `{task_id}`.",
+                f"You are the {agent_label} write-lane for active-loop session `{session_id}`, task `{task_id}`.",
                 f"You are in an isolated scratch worktree at `{scratch}` — the current working directory.",
                 "Implement the assignment below as the smallest correct code change IN THIS WORKTREE ONLY (you may edit/create files).",
                 "Do NOT commit, push, create/ready/merge PRs, close issues, delete branches, force-push, or run ship/make commands.",
@@ -12449,6 +14500,7 @@ def _render_active_patch_prompt(
                 "Return a concise final message: task id, files changed, a one-line rationale, and any blockers.",
                 "Do not include absolute local paths, raw private question/answer/evidence text, doc_id, chunk_id, filename, or prompt/response body.",
                 "",
+                *claude_notes,
                 "## Assignment",
                 "",
                 assignment_text.strip(),
@@ -12469,6 +14521,17 @@ def _diff_files(diff_text: str) -> list[str]:
     return files
 
 
+def _context_only_claimed_files(files: set[str]) -> bool:
+    if not files:
+        return False
+    return all(
+        path == QUEUE_PATH.as_posix()
+        or path.startswith("docs/plans/")
+        or path.startswith("reports/agent_loop/")
+        for path in files
+    )
+
+
 def _diffstat(diff_text: str) -> dict[str, int]:
     """Count files_changed / insertions / deletions from a unified diff."""
     files = _diff_files(diff_text)
@@ -12482,15 +14545,35 @@ def _diffstat(diff_text: str) -> dict[str, int]:
     return {"files_changed": len(files), "insertions": insertions, "deletions": deletions}
 
 
-def _patch_summary(verdict: str, diff_text: str) -> str:
+def _patch_summary(verdict: str, diff_text: str, *, agent: str = "codex") -> str:
     if verdict == "proposed":
         stat = _diffstat(diff_text)
-        return f"codex proposed a patch: {stat['files_changed']} file(s), +{stat['insertions']}/-{stat['deletions']}"
+        return f"{agent} proposed a patch: {stat['files_changed']} file(s), +{stat['insertions']}/-{stat['deletions']}"
     if verdict == "empty":
-        return "codex produced no changes in the scratch worktree"
+        return f"{agent} produced no changes in the scratch worktree"
     if verdict == "blocked":
         return "patch blocked by the privacy backstop"
     return "codex patch lane did not complete"
+
+
+_BLOCKED_HANDOFF_DIFF_RE = re.compile(r"(?im)^\+.*\bstatus\b\s*:\s*`?blocked`?")
+
+
+def _patch_declares_blocked_handoff(patch_path: Path) -> bool:
+    try:
+        artifact = json.loads(_read_text(patch_path))
+    except (json.JSONDecodeError, OSError):
+        return False
+    if not isinstance(artifact, dict):
+        return False
+    raw_files = artifact.get("files")
+    files = [str(item) for item in raw_files if isinstance(item, str)] if isinstance(raw_files, list) else []
+    diff_text = str(artifact.get("diff") or "")
+    if not files:
+        files = _diff_files(diff_text)
+    if files and not _context_only_claimed_files(set(files)):
+        return False
+    return bool(_BLOCKED_HANDOFF_DIFF_RE.search(diff_text))
 
 
 def _write_active_assignment(
@@ -13713,6 +15796,18 @@ def build_parser() -> argparse.ArgumentParser:
     batch.add_argument("--no-json", action="store_true")
     batch.add_argument("--max-items", type=int, default=12)
 
+    queue_parallel = sub.add_parser("queue-parallel-plan", help="Sort tasks/queue.md by priority and group parallel-safe work.")
+    queue_parallel.add_argument("--out", type=Path, default=DEFAULT_QUEUE_PARALLEL_PLAN)
+    queue_parallel.add_argument("--json-out", type=Path, default=DEFAULT_QUEUE_PARALLEL_PLAN_JSON)
+    queue_parallel.add_argument("--no-json", action="store_true")
+    queue_parallel.add_argument("--max-items", type=int, default=12)
+
+    queue_recommendations = sub.add_parser("queue-recommendations", help="Recommend or append next tasks from local evidence signals.")
+    queue_recommendations.add_argument("--out", type=Path, default=DEFAULT_QUEUE_RECOMMENDATIONS)
+    queue_recommendations.add_argument("--json-out", type=Path, default=DEFAULT_QUEUE_RECOMMENDATIONS_JSON)
+    queue_recommendations.add_argument("--no-json", action="store_true")
+    queue_recommendations.add_argument("--apply", action="store_true")
+
     continue_loop = sub.add_parser("continue-loop", help="Advance PR-corpus planning through batch, role dispatch, queue/plan, and loop-state.")
     continue_loop.add_argument("--pr-json", type=Path)
     continue_loop.add_argument("--state", choices=("open", "closed", "all"), default="open")
@@ -14145,10 +16240,14 @@ def build_parser() -> argparse.ArgumentParser:
     codex_runner.add_argument("--sessions", help="Comma-separated session ids; default is every session in registry order.")
     codex_runner.add_argument("--max-parallel", type=int, default=8)
     codex_runner.add_argument("--timeout-seconds", type=int, default=0, help="Per-session wait timeout; 0 means no timeout.")
+    codex_runner.add_argument("--max-commands-per-session", type=int, default=0, help="Per-session command_execution cap; 0 means no cap.")
     codex_runner.add_argument("--codex-executable", default="codex")
+    codex_runner.add_argument("--model", help="Codex model to pass to `codex exec --model`; default resolves from role/env.")
     codex_runner.add_argument("--auth-mode", choices=("chatgpt", "any"), default="chatgpt", help="Require Codex ChatGPT login before execute, or use any to skip the auth-source guard.")
     codex_runner.add_argument("--sandbox", choices=("read-only", "workspace-write", "danger-full-access"), default="read-only")
     codex_runner.add_argument("--mode", choices=("read-only", "patch"), default="read-only", help="read-only spawns per-session review processes; patch runs one codex write-lane in a scratch worktree.")
+    codex_runner.add_argument("--read-agent", choices=("auto", "codex", "claude"), default="codex", help="read-only runner agent; auto uses the active Claude/Codex WU mix.")
+    codex_runner.add_argument("--write-agent", choices=("auto", "codex", "claude"), default="codex", help="patch mode write-lane agent; auto uses the active Claude/Codex WU mix.")
     codex_runner.add_argument("--task", help="Task id for patch mode (T-YYYY-NNNN); defaults to the Implementer session's task.")
     codex_runner.add_argument("--base", default="origin/main", help="Base ref the patch-mode scratch worktree forks from.")
     codex_runner.add_argument("--record-gate-heartbeats", action="store_true")
@@ -14156,9 +16255,12 @@ def build_parser() -> argparse.ArgumentParser:
     auto_loop = sub.add_parser("active-auto-loop", help="Run bounded active-start/runner/gate/ship cycles across queue tasks.")
     auto_loop.add_argument("--mode", choices=("full-ship",), default="full-ship")
     auto_loop.add_argument("--topology", choices=ACTIVE_TOPOLOGY_CHOICES, default="expanded-eight")
-    auto_loop.add_argument("--max-iterations", type=int, default=1)
+    auto_loop.add_argument("--max-iterations", default="1", help="Positive integer or auto.")
+    auto_loop.add_argument("--auto-max-iterations-cap", type=int, default=5)
+    auto_loop.add_argument("--target-completed-count", type=int)
     auto_loop.add_argument("--execute-runner", action="store_true")
     auto_loop.add_argument("--execute-ship", action="store_true")
+    auto_loop.add_argument("--auto-repair", action=argparse.BooleanOptionalAction, default=False)
     auto_loop.add_argument("--record-gate-heartbeats", action=argparse.BooleanOptionalAction, default=True)
     auto_loop.add_argument("--task")
     auto_loop.add_argument("--changed-files", type=Path)
@@ -14175,8 +16277,12 @@ def build_parser() -> argparse.ArgumentParser:
     auto_loop.add_argument("--codex-executable", default="codex")
     auto_loop.add_argument("--auth-mode", choices=("chatgpt", "any"), default="chatgpt")
     auto_loop.add_argument("--sandbox", choices=("read-only", "workspace-write", "danger-full-access"), default="read-only")
+    auto_loop.add_argument("--read-agent", choices=("auto", "codex", "claude"), default="auto")
+    auto_loop.add_argument("--write-agent", choices=("auto", "codex", "claude"), default="auto")
     auto_loop.add_argument("--max-parallel", type=int, default=8)
     auto_loop.add_argument("--timeout-seconds", type=int, default=0)
+    auto_loop.add_argument("--max-commands-per-session", type=int, default=0)
+    auto_loop.add_argument("--model", help="Codex model to pass to active-codex-runner; default resolves from role/env.")
     auto_loop.add_argument("--state", type=Path, default=DEFAULT_ACTIVE_AUTO_LOOP_STATE)
     auto_loop.add_argument("--out", type=Path, default=DEFAULT_ACTIVE_AUTO_LOOP)
 
@@ -14423,6 +16529,29 @@ def main(argv: list[str] | None = None) -> int:
                 sys.stdout.write(f"[OK] wrote {_repo_path(out, ROOT_DIR)}\n")
             else:
                 sys.stdout.write(f"[OK] wrote {_repo_path(out, ROOT_DIR)} and {_repo_path(json_out, ROOT_DIR)}\n")
+            return 0
+        if args.command == "queue-parallel-plan":
+            out, json_out, _ = write_queue_parallel_plan(
+                out=args.out,
+                json_out=None if args.no_json else args.json_out,
+                max_items=args.max_items,
+            )
+            if json_out is None:
+                sys.stdout.write(f"[OK] wrote {_repo_path(out, ROOT_DIR)}\n")
+            else:
+                sys.stdout.write(f"[OK] wrote {_repo_path(out, ROOT_DIR)} and {_repo_path(json_out, ROOT_DIR)}\n")
+            return 0
+        if args.command == "queue-recommendations":
+            out, json_out, _, applied = write_queue_recommendations(
+                out=args.out,
+                json_out=None if args.no_json else args.json_out,
+                apply=args.apply,
+            )
+            suffix = f"; applied {len(applied)} task(s)" if args.apply else ""
+            if json_out is None:
+                sys.stdout.write(f"[OK] wrote {_repo_path(out, ROOT_DIR)}{suffix}\n")
+            else:
+                sys.stdout.write(f"[OK] wrote {_repo_path(out, ROOT_DIR)} and {_repo_path(json_out, ROOT_DIR)}{suffix}\n")
             return 0
         if args.command == "continue-loop":
             out, _ = write_continue_loop(
@@ -15155,10 +17284,14 @@ def main(argv: list[str] | None = None) -> int:
                 sessions=args.sessions,
                 max_parallel=args.max_parallel,
                 timeout_seconds=args.timeout_seconds,
+                max_commands_per_session=args.max_commands_per_session,
                 codex_executable=args.codex_executable,
+                model=args.model,
                 auth_mode=args.auth_mode,
                 sandbox=args.sandbox,
                 mode=args.mode,
+                read_agent=args.read_agent,
+                write_agent=args.write_agent,
                 task_id=args.task,
                 base=args.base,
                 record_gate_heartbeats=args.record_gate_heartbeats,
@@ -15176,8 +17309,11 @@ def main(argv: list[str] | None = None) -> int:
                 mode=args.mode,
                 topology=args.topology,
                 max_iterations=args.max_iterations,
+                auto_max_iterations_cap=args.auto_max_iterations_cap,
+                target_completed_count=args.target_completed_count,
                 execute_runner=args.execute_runner,
                 execute_ship=args.execute_ship,
+                auto_repair=args.auto_repair,
                 record_gate_heartbeats=args.record_gate_heartbeats,
                 task_id=args.task,
                 changed_files=files,
@@ -15191,10 +17327,14 @@ def main(argv: list[str] | None = None) -> int:
                 repair_slug=args.repair_slug,
                 repair_title=args.repair_title,
                 codex_executable=args.codex_executable,
+                codex_model=args.model,
                 auth_mode=args.auth_mode,
                 sandbox=args.sandbox,
+                read_agent=args.read_agent,
+                write_agent=args.write_agent,
                 max_parallel=args.max_parallel,
                 timeout_seconds=args.timeout_seconds,
+                max_commands_per_session=args.max_commands_per_session,
                 state=args.state,
                 out=args.out,
             )

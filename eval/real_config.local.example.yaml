@@ -7,18 +7,18 @@ real_eval:
     root: "${REAL_EVAL_CACHE_DIR:-.cache/real_eval}"
     rebuild: false
   index:
-    root: "${REAL_EVAL_INDEX_DIR:-data/index/real100}"
+    root: "${REAL_EVAL_INDEX_DIR:-data/index/real100_v2_checkpoint_minilm_pageaware}"
     min_private_chunks: 1001
   index_build:
     hwp_loader: pdf_pymupdf4llm
     pdf_loader: pdf_pymupdf4llm
   reports:
-    output_dir: "${REAL_EVAL_REPORT_DIR:-reports/real100}"
-    baseline_summary: "${REAL_EVAL_BASELINE_SUMMARY:-reports/real100/baseline.aggregate.json}"
+    output_dir: "${REAL_EVAL_REPORT_DIR:-reports/real100_v2}"
+    baseline_summary: "${REAL_EVAL_BASELINE_SUMMARY:-reports/real100_v2/baseline.aggregate.json}"
 
 mode: rag
 description: Local-only real RFP evaluation template. Copy to eval/real_config.local.yaml and fill with private expected values.
-index_dir: data/index/real100
+index_dir: data/index/real100_v2_checkpoint_minilm_pageaware
 index_build:
   hwp_loader: pdf_pymupdf4llm
   pdf_loader: pdf_pymupdf4llm

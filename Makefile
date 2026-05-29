@@ -21,7 +21,7 @@
 .PHONY: eval smoke reproduce benchmark pareto cost-frontier korean-public-fetch korean-public-eval harness-smoke harness-ablation harness-compare
 
 # Real-data eval cycle (private; ADR 0005 commit boundary).
-.PHONY: real-eval real-eval-check real-eval-inventory real-eval-v2-check real-eval-v2-inventory real-eval-v2-guard real-eval-v2-chroma real-eval-minilm real-eval-semantic real-eval-page-aware real-eval-delta real-eval-baseline-update real-eval-history-render real-eval-with-judge harness-real
+.PHONY: real-eval real-eval-check real-eval-inventory real-eval-v2-check real-eval-v2-inventory real-eval-v2-guard real-eval-v2-checkpoint-index real-eval-v2-chroma real-eval-v2-chroma-llm real-eval-v2-judge real-eval-v2-ragas-judge real-eval-v2-rationality-judge real-eval-minilm real-eval-semantic real-eval-page-aware real-eval-delta real-eval-baseline-update real-eval-history-render real-eval-with-judge harness-real
 
 # Real-data case proposer cycle (ADR 0029; gitignored I/O).
 .PHONY: case-propose case-propose-metadata case-review case-promote
@@ -36,7 +36,7 @@
 # they render prompts, classify surfaces, check handoffs, suggest or run
 # allowlisted local validation, and write ignored local planning drafts. They
 # do not perform GitHub mutations.
-.PHONY: agent-loop-next agent-loop-status agent-loop-prompt agent-loop-handoff agent-loop-review agent-loop-surface agent-loop-validation agent-loop-validate agent-loop-preflight agent-loop-pr-scan agent-loop-issue-scan agent-loop-maintenance-plan agent-loop-issue-close agent-loop-next-from-prs agent-loop-pr-health agent-loop-draft-task agent-loop-draft-next agent-loop-batch-plan agent-loop-review-followup agent-loop-review-ingest agent-loop-decision-brief agent-loop-promote-draft agent-loop-gate-status agent-loop-claim-audit agent-loop-privacy-audit-output agent-loop-auto-pass agent-loop-dashboard agent-loop-mcp-config agent-loop-safe-fix agent-loop-approval-packet agent-loop-propose-queue-plan agent-loop-pr-body agent-loop-review-plan agent-loop-stale-reports agent-loop-context-pack agent-loop-architecture-brief agent-loop-ship-simulate agent-loop-auto-ship-prepare agent-loop-auto-ship-plan agent-loop-gate-brief agent-loop-manifest agent-loop-pr-body-check agent-loop-ci-ingest agent-loop-stacked-risk agent-loop-patch-proposal agent-loop-adr-reserve agent-loop-dashboard-html agent-loop-ship-command-pack agent-loop-apply-queue-plan agent-loop-review-threads agent-loop-ci-summary agent-loop-readiness-score agent-loop-artifact-freshness agent-loop-review-patch-plan agent-loop-queue-plan-sync agent-loop-dependency-graph agent-loop-branch-issue-hygiene agent-loop-integration-pack agent-loop-scheduled-status agent-loop-validation-history agent-loop-privacy-regression agent-loop-claim-policy agent-loop-architecture-decision agent-loop-workset-recommend agent-loop-automation-coverage agent-loop-active-start agent-loop-active-codex-runner agent-loop-active-auto-loop 시작 agent-loop-human-gated-exec agent-loop-loop-state agent-loop-map agent-loop-mcp
+.PHONY: agent-loop-next agent-loop-status agent-loop-prompt agent-loop-handoff agent-loop-review agent-loop-surface agent-loop-validation agent-loop-validate agent-loop-preflight agent-loop-pr-scan agent-loop-issue-scan agent-loop-maintenance-plan agent-loop-issue-close agent-loop-next-from-prs agent-loop-pr-health agent-loop-draft-task agent-loop-draft-next agent-loop-batch-plan agent-loop-queue-parallel-plan agent-loop-queue-recommendations agent-loop-review-followup agent-loop-review-ingest agent-loop-decision-brief agent-loop-promote-draft agent-loop-gate-status agent-loop-claim-audit agent-loop-privacy-audit-output agent-loop-auto-pass agent-loop-dashboard agent-loop-mcp-config agent-loop-safe-fix agent-loop-approval-packet agent-loop-propose-queue-plan agent-loop-pr-body agent-loop-review-plan agent-loop-stale-reports agent-loop-context-pack agent-loop-architecture-brief agent-loop-ship-simulate agent-loop-auto-ship-prepare agent-loop-auto-ship-plan agent-loop-gate-brief agent-loop-manifest agent-loop-pr-body-check agent-loop-ci-ingest agent-loop-stacked-risk agent-loop-patch-proposal agent-loop-adr-reserve agent-loop-dashboard-html agent-loop-ship-command-pack agent-loop-apply-queue-plan agent-loop-review-threads agent-loop-ci-summary agent-loop-readiness-score agent-loop-artifact-freshness agent-loop-review-patch-plan agent-loop-queue-plan-sync agent-loop-dependency-graph agent-loop-branch-issue-hygiene agent-loop-integration-pack agent-loop-scheduled-status agent-loop-validation-history agent-loop-privacy-regression agent-loop-claim-policy agent-loop-architecture-decision agent-loop-workset-recommend agent-loop-automation-coverage agent-loop-active-start agent-loop-active-codex-runner agent-loop-active-auto-loop 시작 agent-loop-human-gated-exec agent-loop-loop-state agent-loop-map agent-loop-mcp
 
 # Auto-ship pipeline (Stop hook driven). See scripts/claude-hooks/stop-ship.sh
 # and the plan at /Users/hskim/.claude/plans/prci-synchronous-newell.md.
@@ -346,6 +346,12 @@ PAGE_METADATA_INDEX_DIR ?=
 REVIEW ?=
 BATCH_OUT ?= reports/agent_loop/batch_plan.md
 BATCH_JSON_OUT ?= reports/agent_loop/batch_plan.json
+QUEUE_PARALLEL_PLAN_OUT ?= reports/agent_loop/queue_parallel_plan.md
+QUEUE_PARALLEL_PLAN_JSON_OUT ?= reports/agent_loop/queue_parallel_plan.json
+QUEUE_PARALLEL_PLAN_LIMIT ?= 12
+QUEUE_RECOMMENDATIONS_OUT ?= reports/agent_loop/queue_recommendations.md
+QUEUE_RECOMMENDATIONS_JSON_OUT ?= reports/agent_loop/queue_recommendations.json
+QUEUE_RECOMMENDATIONS_APPLY ?= 0
 REVIEW_FOLLOWUP_OUT ?= reports/agent_loop/review_followups.md
 REVIEW_FOLLOWUP_DIR ?= reports/agent_loop/review_followups
 DECISION_OUT ?= reports/agent_loop/decision_brief.md
@@ -429,9 +435,9 @@ ACTIVE_TOPOLOGY ?= expanded-eight
 ACTIVE_AGENT_MIX ?= claude=5,codex=5
 
 # ADR 0082: dual-lane model × effort × adversarial knobs (claude lane uses Messages API).
-# claude lane — role 별 model + effort. Planner 만 Opus 4.7 (xhigh adaptive thinking),
-# 나머지 Sonnet 4.6 (medium). manual budget_tokens 폐기 (Opus 4.7 거부, Sonnet 4.6 deprecated).
-BIDMATE_CLAUDE_LANE_PLANNER_MODEL ?= claude-opus-4-7
+# claude lane — role 별 model + effort. Planner/Reviewer/Deep Reviewer 는 Opus 4.8
+# xhigh, 나머지 Sonnet 4.6 medium. manual budget_tokens 폐기 (Opus 4.7+ adaptive effort).
+BIDMATE_CLAUDE_LANE_PLANNER_MODEL ?= claude-opus-4-8
 BIDMATE_CLAUDE_LANE_PLANNER_EFFORT ?= xhigh
 BIDMATE_CLAUDE_LANE_MODEL ?= claude-sonnet-4-6
 BIDMATE_CLAUDE_LANE_EFFORT ?= medium
@@ -457,15 +463,26 @@ ACTIVE_CODEX_RUNNER_STATE ?= reports/agent_loop/active/codex_runner_state.json
 ACTIVE_CODEX_RUNS_DIR ?= reports/agent_loop/active/codex_runs
 ACTIVE_AUTO_LOOP_OUT ?= reports/agent_loop/active/auto_loop.md
 ACTIVE_AUTO_LOOP_STATE ?= reports/agent_loop/active/auto_loop_state.json
-ACTIVE_AUTO_LOOP_MAX_ITERATIONS ?= 1
+ACTIVE_AUTO_LOOP_MAX_ITERATIONS ?= 5
+ACTIVE_AUTO_LOOP_AUTO_MAX_ITERATIONS ?= 5
+ACTIVE_AUTO_LOOP_TARGET_COMPLETED_COUNT ?=
 ACTIVE_AUTO_LOOP_EXECUTE_RUNNER ?= 1
 ACTIVE_AUTO_LOOP_EXECUTE_SHIP ?= 0
+ACTIVE_AUTO_LOOP_AUTO_REPAIR ?= 1
+START_TASK_LIMIT ?= 5
+START_TASK_ATTEMPT_LIMIT ?= 15
 ACTIVE_CODEX_SESSIONS ?=
 ACTIVE_CODEX_MAX_PARALLEL ?= 8
 ACTIVE_CODEX_TIMEOUT_SECONDS ?= 0
+ACTIVE_CLAUDE_WRITE_TIMEOUT_SECONDS ?= $(if $(filter 0,$(ACTIVE_CODEX_TIMEOUT_SECONDS)),900,$(ACTIVE_CODEX_TIMEOUT_SECONDS))
+export ACTIVE_CLAUDE_WRITE_TIMEOUT_SECONDS
+ACTIVE_CODEX_MAX_COMMANDS_PER_SESSION ?= 40
 ACTIVE_CODEX_EXECUTABLE ?= codex
+ACTIVE_CODEX_MODEL ?= $(BIDMATE_CODEX_LANE_MODEL)
 ACTIVE_CODEX_AUTH_MODE ?= chatgpt
 ACTIVE_CODEX_SANDBOX ?= read-only
+ACTIVE_READ_AGENT ?= auto
+ACTIVE_WRITE_AGENT ?= auto
 ACTIVE_CODEX_RECORD_GATE_HEARTBEATS ?= 1
 ACTIVE_CODEX_EXECUTE ?=
 HUMAN_GATED_ACTION ?=
@@ -584,6 +601,18 @@ agent-loop-batch-plan:
 	  --tasks-dir reports/agent_loop/codex_tasks \
 	  --out "$(BATCH_OUT)" \
 	  --json-out "$(BATCH_JSON_OUT)"
+
+agent-loop-queue-parallel-plan:
+	$(PYTHON) scripts/agent_loop.py queue-parallel-plan \
+	  --max-items "$(QUEUE_PARALLEL_PLAN_LIMIT)" \
+	  --out "$(QUEUE_PARALLEL_PLAN_OUT)" \
+	  --json-out "$(QUEUE_PARALLEL_PLAN_JSON_OUT)"
+
+agent-loop-queue-recommendations:
+	$(PYTHON) scripts/agent_loop.py queue-recommendations \
+	  --out "$(QUEUE_RECOMMENDATIONS_OUT)" \
+	  --json-out "$(QUEUE_RECOMMENDATIONS_JSON_OUT)" \
+	  $(if $(filter 1 true yes,$(QUEUE_RECOMMENDATIONS_APPLY)),--apply,)
 
 agent-loop-review-followup:
 	@if [ -z "$(REVIEW)" ]; then \
@@ -979,8 +1008,12 @@ agent-loop-active-codex-runner:
 	  --codex-executable "$(ACTIVE_CODEX_EXECUTABLE)" \
 	  --auth-mode "$(ACTIVE_CODEX_AUTH_MODE)" \
 	  --sandbox "$(ACTIVE_CODEX_SANDBOX)" \
+	  --read-agent "$(ACTIVE_READ_AGENT)" \
+	  --write-agent "$(ACTIVE_WRITE_AGENT)" \
 	  --max-parallel "$(ACTIVE_CODEX_MAX_PARALLEL)" \
 	  --timeout-seconds "$(ACTIVE_CODEX_TIMEOUT_SECONDS)" \
+	  --max-commands-per-session "$(ACTIVE_CODEX_MAX_COMMANDS_PER_SESSION)" \
+	  --model "$(ACTIVE_CODEX_MODEL)" \
 	  $(if $(ACTIVE_CODEX_SESSIONS),--sessions "$(ACTIVE_CODEX_SESSIONS)",) \
 	  $(if $(filter 1 true yes,$(ACTIVE_CODEX_RECORD_GATE_HEARTBEATS)),--record-gate-heartbeats,) \
 	  --runs-dir "$(ACTIVE_CODEX_RUNS_DIR)" \
@@ -993,8 +1026,11 @@ agent-loop-active-auto-loop:
 	  --agent-mix "$(ACTIVE_AGENT_MIX)" \
 	  --lease-ttl-minutes "$(ACTIVE_LEASE_TTL_MINUTES)" \
 	  --max-iterations "$(ACTIVE_AUTO_LOOP_MAX_ITERATIONS)" \
+	  --auto-max-iterations-cap "$(ACTIVE_AUTO_LOOP_AUTO_MAX_ITERATIONS)" \
+	  $(if $(ACTIVE_AUTO_LOOP_TARGET_COMPLETED_COUNT),--target-completed-count "$(ACTIVE_AUTO_LOOP_TARGET_COMPLETED_COUNT)",) \
 	  $(if $(filter 1 true yes,$(ACTIVE_AUTO_LOOP_EXECUTE_RUNNER)),--execute-runner,) \
 	  $(if $(filter 1 true yes,$(ACTIVE_AUTO_LOOP_EXECUTE_SHIP)),--execute-ship,) \
+	  $(if $(filter 1 true yes,$(ACTIVE_AUTO_LOOP_AUTO_REPAIR)),--auto-repair,--no-auto-repair) \
 	  $(if $(TASK),--task "$(TASK)",) \
 	  $(if $(CHANGED_FILES),--changed-files "$(CHANGED_FILES)",) \
 	  $(if $(CLAIM_TEXT),--claim-text "$(CLAIM_TEXT)",) \
@@ -1007,12 +1043,26 @@ agent-loop-active-auto-loop:
 	  --codex-executable "$(ACTIVE_CODEX_EXECUTABLE)" \
 	  --auth-mode "$(ACTIVE_CODEX_AUTH_MODE)" \
 	  --sandbox "$(ACTIVE_CODEX_SANDBOX)" \
+	  --read-agent "$(ACTIVE_READ_AGENT)" \
+	  --write-agent "$(ACTIVE_WRITE_AGENT)" \
 	  --max-parallel "$(ACTIVE_CODEX_MAX_PARALLEL)" \
 	  --timeout-seconds "$(ACTIVE_CODEX_TIMEOUT_SECONDS)" \
+	  --max-commands-per-session "$(ACTIVE_CODEX_MAX_COMMANDS_PER_SESSION)" \
+	  --model "$(ACTIVE_CODEX_MODEL)" \
 	  --state "$(ACTIVE_AUTO_LOOP_STATE)" \
 	  --out "$(ACTIVE_AUTO_LOOP_OUT)"
 
-시작: agent-loop-active-start
+시작:
+	$(MAKE) agent-loop-queue-parallel-plan \
+	  QUEUE_PARALLEL_PLAN_LIMIT="$(ACTIVE_AUTO_LOOP_AUTO_MAX_ITERATIONS)"
+	$(MAKE) agent-loop-queue-recommendations
+	$(MAKE) agent-loop-active-auto-loop \
+	  ACTIVE_AUTO_LOOP_MAX_ITERATIONS="$(START_TASK_LIMIT)" \
+	  ACTIVE_AUTO_LOOP_AUTO_MAX_ITERATIONS="$(START_TASK_ATTEMPT_LIMIT)" \
+	  ACTIVE_AUTO_LOOP_TARGET_COMPLETED_COUNT="$(START_TASK_LIMIT)" \
+	  ACTIVE_AUTO_LOOP_EXECUTE_RUNNER=1 \
+	  ACTIVE_AUTO_LOOP_EXECUTE_SHIP=0 \
+	  ACTIVE_AUTO_LOOP_AUTO_REPAIR=1
 
 agent-loop-human-gated-exec:
 	@if [ -z "$(HUMAN_GATED_ACTION)" ]; then \
@@ -1101,10 +1151,28 @@ real-eval-inventory:
 real-eval-check:
 	$(PYTHON) scripts/real_eval_paths.py check
 
+REAL_EVAL_ROOT ?= .
 REAL100_V2_CONFIG ?= data/private/real100_v2/real_config_v2.local.yaml
-REAL100_V2_INDEX_DIR ?= data/index/real100_v2
+REAL100_V2_CHECKPOINT_DIR ?= data/index/real100_v2/_parse_checkpoints
+REAL100_V2_INDEX_DIR ?= data/index/real100_v2_checkpoint_minilm_pageaware
+REAL100_V2_CHECKPOINT_BUILD_DIR ?= $(if $(filter /%,$(REAL100_V2_CHECKPOINT_DIR)),$(REAL100_V2_CHECKPOINT_DIR),$(REAL_EVAL_ROOT)/$(REAL100_V2_CHECKPOINT_DIR))
+REAL100_V2_INDEX_BUILD_DIR ?= $(if $(filter /%,$(REAL100_V2_INDEX_DIR)),$(REAL100_V2_INDEX_DIR),$(REAL_EVAL_ROOT)/$(REAL100_V2_INDEX_DIR))
 REAL100_V2_REPORT_DIR ?= reports/real100_v2
 REAL100_V2_CHROMA_REPORT_DIR ?= reports/real100_v2_chroma
+REAL100_V2_CHROMA_LLM_REPORT_DIR ?= reports/real100_v2_chroma_llm
+REAL100_V2_JUDGE_INPUT_REPORT_DIR ?= $(REAL100_V2_CHROMA_LLM_REPORT_DIR)
+REAL100_V2_RATIONALITY_INPUT_REPORT_DIR ?= $(REAL100_V2_CHROMA_LLM_REPORT_DIR)
+REAL100_V2_JUDGE_BACKEND ?= stub
+REAL100_V2_RAGAS_JUDGE_BACKEND ?= stub
+REAL100_V2_RATIONALITY_BACKEND ?= stub
+REAL100_V2_JUDGE_CACHE_DIR ?= reports/judge_cache/real100_v2
+REAL100_V2_RATIONALITY_CACHE_DIR ?= reports/rationality_cache/real100_v2
+REAL100_V2_RATIONALITY_EXPECT_FULL_TRACE ?= 1
+REAL100_V2_EMBEDDING_BACKEND ?= sentence-transformers
+REAL100_V2_EMBEDDING_MODEL ?= sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
+REAL100_V2_CHUNKING_STRATEGY ?= section
+REAL100_V2_SYNTHESIS_BACKEND ?= local_openai_compatible
+REAL100_V2_TRACE_FULL ?= 1
 
 # T-2026-0028 and newer claim-bearing private eval work must use the v2
 # aggregate surface. These targets only inspect v2 paths; they do not rebuild or
@@ -1125,7 +1193,15 @@ real-eval-v2-check:
 real-eval-v2-guard:
 	$(PYTHON) scripts/check_real100_v2_only.py
 
-real-eval-v2-chroma:
+real-eval-v2-checkpoint-index:
+	$(PYTHON) scripts/build_index_from_parse_checkpoints.py \
+	  --checkpoint_dir "$(REAL100_V2_CHECKPOINT_BUILD_DIR)" \
+	  --output_dir "$(REAL100_V2_INDEX_BUILD_DIR)" \
+	  --embedding_backend "$(REAL100_V2_EMBEDDING_BACKEND)" \
+	  --model "$(REAL100_V2_EMBEDDING_MODEL)" \
+	  --chunking_strategy "$(REAL100_V2_CHUNKING_STRATEGY)"
+
+real-eval-v2-chroma: real-eval-v2-checkpoint-index
 	@eval "$$(REAL_EVAL_CONFIG="$(REAL100_V2_CONFIG)" \
 	  REAL_EVAL_INDEX_DIR="$(REAL100_V2_INDEX_DIR)" \
 	  REAL_EVAL_REPORT_DIR="$(REAL100_V2_CHROMA_REPORT_DIR)" \
@@ -1135,6 +1211,70 @@ real-eval-v2-chroma:
 	  --index_dir "$$REAL_EVAL_RESOLVED_INDEX_DIR" \
 	  --output_dir "$$REAL_EVAL_RESOLVED_REPORT_DIR" \
 	  --config "$$REAL_EVAL_RESOLVED_CONFIG"
+
+real-eval-v2-chroma-llm:
+	@test -n "$${BIDMATE_SYNTHESIS_BASE_URL:-}" || { echo "ERROR: BIDMATE_SYNTHESIS_BASE_URL must point to an OpenAI-compatible server; local runs use http://127.0.0.1:11434/v1, external runs also need BIDMATE_EGRESS_PROFILE approval." >&2; exit 2; }
+	@test -n "$${BIDMATE_SYNTHESIS_MODEL:-}" || { echo "ERROR: BIDMATE_SYNTHESIS_MODEL must name the local-small synthesis model." >&2; exit 2; }
+	@test -n "$${BIDMATE_SYNTHESIS_API_KEY:-}" || { echo "ERROR: BIDMATE_SYNTHESIS_API_KEY must be set; Ollama accepts a placeholder such as 'ollama'." >&2; exit 2; }
+	@$(PYTHON) -c "import openai" || { echo "ERROR: openai SDK missing; run pip install -r requirements-dev.txt." >&2; exit 2; }
+	@$(MAKE) -s real-eval-v2-checkpoint-index
+	@eval "$$(REAL_EVAL_CONFIG="$(REAL100_V2_CONFIG)" \
+	  REAL_EVAL_INDEX_DIR="$(REAL100_V2_INDEX_DIR)" \
+	  REAL_EVAL_REPORT_DIR="$(REAL100_V2_CHROMA_LLM_REPORT_DIR)" \
+	  $(PYTHON) scripts/real_eval_paths.py inventory --format shell)" && \
+	mkdir -p "$$REAL_EVAL_RESOLVED_REPORT_DIR" && \
+	$(PYTHON) scripts/make_real100_v2_llm_baseline_config.py \
+	  --config "$$REAL_EVAL_RESOLVED_CONFIG" \
+	  --output "$$REAL_EVAL_RESOLVED_REPORT_DIR/real_config_v2_llm.local.yaml" && \
+	echo "[INFO] Running LLM synthesis baseline with BIDMATE_SYNTHESIS_BACKEND=$(REAL100_V2_SYNTHESIS_BACKEND)" && \
+	BIDMATE_INDEX_BACKEND=chroma BIDMATE_SYNTHESIS_BACKEND="$(REAL100_V2_SYNTHESIS_BACKEND)" BIDMATE_TRACE_FULL="$(REAL100_V2_TRACE_FULL)" $(PYTHON) eval/run_eval.py \
+	  --index_dir "$$REAL_EVAL_RESOLVED_INDEX_DIR" \
+	  --output_dir "$$REAL_EVAL_RESOLVED_REPORT_DIR" \
+	  --config "$$REAL_EVAL_RESOLVED_REPORT_DIR/real_config_v2_llm.local.yaml"
+
+real-eval-v2-judge:
+	@eval "$$(REAL_EVAL_CONFIG="$(REAL100_V2_CONFIG)" \
+	  REAL_EVAL_INDEX_DIR="$(REAL100_V2_INDEX_DIR)" \
+	  REAL_EVAL_REPORT_DIR="$(REAL100_V2_JUDGE_INPUT_REPORT_DIR)" \
+	  $(PYTHON) scripts/real_eval_paths.py inventory --format shell)" && \
+	test -f "$$REAL_EVAL_RESOLVED_REPORT_DIR/eval_summary.json" || { echo "ERROR: missing $$REAL_EVAL_RESOLVED_REPORT_DIR/eval_summary.json. Run make real-eval-v2-chroma-llm first, or set REAL100_V2_JUDGE_INPUT_REPORT_DIR." >&2; exit 2; } && \
+	mkdir -p "$(REAL100_V2_REPORT_DIR)" && \
+	$(PYTHON) scripts/llm_judge.py \
+	  --eval-summary "$$REAL_EVAL_RESOLVED_REPORT_DIR/eval_summary.json" \
+	  --output "$$REAL_EVAL_RESOLVED_REPORT_DIR/judge.local.json" \
+	  --out-aggregate "$(REAL100_V2_REPORT_DIR)/judge.aggregate.json" \
+	  --backend "$(REAL100_V2_JUDGE_BACKEND)"
+
+real-eval-v2-ragas-judge:
+	@eval "$$(REAL_EVAL_CONFIG="$(REAL100_V2_CONFIG)" \
+	  REAL_EVAL_INDEX_DIR="$(REAL100_V2_INDEX_DIR)" \
+	  REAL_EVAL_REPORT_DIR="$(REAL100_V2_JUDGE_INPUT_REPORT_DIR)" \
+	  $(PYTHON) scripts/real_eval_paths.py inventory --format shell)" && \
+	test -f "$$REAL_EVAL_RESOLVED_REPORT_DIR/eval_summary.json" || { echo "ERROR: missing $$REAL_EVAL_RESOLVED_REPORT_DIR/eval_summary.json. Run make real-eval-v2-chroma-llm first, or set REAL100_V2_JUDGE_INPUT_REPORT_DIR." >&2; exit 2; } && \
+	mkdir -p "$(REAL100_V2_REPORT_DIR)" && \
+	$(PYTHON) eval/judges/llm_judge.py \
+	  --eval-summary "$$REAL_EVAL_RESOLVED_REPORT_DIR/eval_summary.json" \
+	  --output "$$REAL_EVAL_RESOLVED_REPORT_DIR/judge_ragas.local.json" \
+	  --out-aggregate "$(REAL100_V2_REPORT_DIR)/judge_ragas.aggregate.json" \
+	  --cache-dir "$(REAL100_V2_JUDGE_CACHE_DIR)" \
+	  --backend "$(REAL100_V2_RAGAS_JUDGE_BACKEND)"
+
+real-eval-v2-rationality-judge:
+	@eval "$$(REAL_EVAL_CONFIG="$(REAL100_V2_CONFIG)" \
+	  REAL_EVAL_INDEX_DIR="$(REAL100_V2_INDEX_DIR)" \
+	  REAL_EVAL_REPORT_DIR="$(REAL100_V2_RATIONALITY_INPUT_REPORT_DIR)" \
+	  $(PYTHON) scripts/real_eval_paths.py inventory --format shell)" && \
+	test -f "$$REAL_EVAL_RESOLVED_REPORT_DIR/eval_summary.json" || { echo "ERROR: missing $$REAL_EVAL_RESOLVED_REPORT_DIR/eval_summary.json. Run make real-eval-v2-chroma-llm with BIDMATE_TRACE_FULL=1 first, or set REAL100_V2_RATIONALITY_INPUT_REPORT_DIR." >&2; exit 2; } && \
+	mkdir -p "$(REAL100_V2_REPORT_DIR)" && \
+	$(PYTHON) scripts/run_rationality_judge.py \
+	  --eval-summary "$$REAL_EVAL_RESOLVED_REPORT_DIR/eval_summary.json" \
+	  --output "$$REAL_EVAL_RESOLVED_REPORT_DIR/rationality.local.json" \
+	  --out-aggregate "$(REAL100_V2_REPORT_DIR)/rationality.aggregate.json" \
+	  --out-md "$(REAL100_V2_REPORT_DIR)/rationality.md" \
+	  --traces-dir "$$REAL_EVAL_RESOLVED_REPORT_DIR/traces" \
+	  --cache-dir "$(REAL100_V2_RATIONALITY_CACHE_DIR)" \
+	  --backend "$(REAL100_V2_RATIONALITY_BACKEND)" \
+	  $(if $(filter 1 true yes,$(REAL100_V2_RATIONALITY_EXPECT_FULL_TRACE)),--expect-full-trace,)
 
 # Legacy real100/v1 targets are disabled until explicitly re-enabled by the
 # maintainer. Future private eval tasks must use real100_v2 inventory/check and
