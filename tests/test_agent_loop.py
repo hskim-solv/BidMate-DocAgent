@@ -5183,6 +5183,369 @@ Refresh docs-only automation evidence.
     assert "quota_cap=2" in reason
 
 
+# --- ADR 0085: infinite mode + safety guards + two-layer default unification ---
+
+
+def _append_ready_task(repo: Path, task_id: str, title: str) -> None:
+    """Append one more ready Implementer->Reviewer task to the fixture queue."""
+    queue = repo / "tasks" / "queue.md"
+    queue.write_text(
+        queue.read_text(encoding="utf-8")
+        + f"""
+
+## {task_id} — {title}
+
+- ID: {task_id}
+- Title: {title}
+- Status: ready
+- Owner role: Implementer -> Reviewer
+
+### Goal
+
+Infinite-mode fixture task.
+
+### Acceptance Criteria
+
+- [ ] Done.
+""",
+        encoding="utf-8",
+    )
+
+
+def _infinite_fake_runner(active_dir: Path):
+    def fake_runner(**kwargs):  # type: ignore[no-untyped-def]
+        report = active_dir / "codex_runner.md"
+        state = active_dir / "codex_runner_state.json"
+        runs = active_dir / "codex_runs"
+        report.parent.mkdir(parents=True, exist_ok=True)
+        report.write_text("# runner\n", encoding="utf-8")
+        state.write_text("{}\n", encoding="utf-8")
+        return agent_loop.ActiveCodexRunnerResult(report, state, runs, "completed", (), (), ())
+
+    return fake_runner
+
+
+def _infinite_fake_gate(active_dir: Path, ready_for=None):
+    def fake_gate(*, task_id, **kwargs):  # type: ignore[no-untyped-def]
+        path = active_dir / "gate_evidence" / task_id / "evidence.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("{}\n", encoding="utf-8")
+        ready = True if ready_for is None else task_id in ready_for
+        return path, {"ready": ready, "privacy_clean": True}
+
+    return fake_gate
+
+
+def test_resolve_auto_loop_limit_accepts_infinite_sentinels(tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path, task_id="T-2026-1001", title="Infinite task")
+    for raw in (0, "0", "infinite", "unlimited", "INFINITE", " Unlimited "):
+        limit, reason = agent_loop._resolve_active_auto_loop_limit(
+            raw,
+            auto_cap=5,
+            completed_task_ids=(),
+            agent_mix={"target": {"claude": 5, "codex": 5}},
+            repo_root=repo,
+        )
+        assert limit == agent_loop.INFINITE_MAX_ITERATIONS == 0
+        assert reason == "infinite: run until ready queue drained"
+        # Infinite bypasses the auto-mode quota/workload cap analysis entirely (early return).
+        assert "quota_cap" not in reason and "workload_cap" not in reason
+    # Negative is still a hard input error in both int and string forms.
+    for bad in (-1, "-1"):
+        with pytest.raises(ValueError):
+            agent_loop._resolve_active_auto_loop_limit(
+                bad, auto_cap=5, completed_task_ids=(), agent_mix=None, repo_root=repo,
+            )
+
+
+def test_resolve_infinite_guard_int_handles_env_and_bad_values(monkeypatch) -> None:
+    warnings: list[str] = []
+    monkeypatch.delenv("BIDMATE_TEST_GUARD", raising=False)
+    assert agent_loop._resolve_infinite_guard_int("BIDMATE_TEST_GUARD", 3, warnings) == 3
+    monkeypatch.setenv("BIDMATE_TEST_GUARD", "7")
+    assert agent_loop._resolve_infinite_guard_int("BIDMATE_TEST_GUARD", 3, warnings) == 7
+    monkeypatch.setenv("BIDMATE_TEST_GUARD", "abc")
+    assert agent_loop._resolve_infinite_guard_int("BIDMATE_TEST_GUARD", 3, warnings) == 3
+    monkeypatch.setenv("BIDMATE_TEST_GUARD", "-5")
+    assert agent_loop._resolve_infinite_guard_int("BIDMATE_TEST_GUARD", 3, warnings) == 3
+    assert any("not an integer" in w for w in warnings)
+    assert any("is negative" in w for w in warnings)
+
+
+def test_resolve_claude_write_timeout_treats_zero_as_unlimited() -> None:
+    # 0 / empty / unset / non-positive / non-integer all collapse to None (unlimited).
+    assert agent_loop._resolve_claude_write_timeout("0", 0) is None
+    assert agent_loop._resolve_claude_write_timeout("", 0) is None
+    assert agent_loop._resolve_claude_write_timeout(None, 0) is None
+    assert agent_loop._resolve_claude_write_timeout("abc", 0) is None
+    assert agent_loop._resolve_claude_write_timeout("-5", 0) is None
+    # Positive env wins; empty/invalid env falls back to the --timeout-seconds value.
+    assert agent_loop._resolve_claude_write_timeout("600", 0) == 600
+    assert agent_loop._resolve_claude_write_timeout("", 300) == 300
+    assert agent_loop._resolve_claude_write_timeout("abc", 300) == 300
+
+
+def test_active_auto_loop_parser_defaults_align_with_makefile() -> None:
+    parser = agent_loop.build_parser()
+    args = parser.parse_args(["active-auto-loop"])
+    # argparse defaults must match the Makefile front-door SSoT (ADR 0085).
+    assert args.timeout_seconds == 0
+    assert args.max_commands_per_session == 0  # 0 == unlimited; per-session cap dropped
+    assert args.read_agent == "auto"
+    assert args.write_agent == "auto"
+    assert args.max_iterations == "1"
+
+
+def test_active_auto_loop_infinite_runs_until_ready_queue_drains(monkeypatch, tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path, task_id="T-2026-1001", title="First infinite task")
+    _append_ready_task(repo, "T-2026-1002", "Second infinite task")
+    _patch_active_loop_clear(monkeypatch)
+    active_dir = repo / "reports" / "agent_loop" / "active"
+    monkeypatch.setattr(agent_loop, "write_active_codex_runner", _infinite_fake_runner(active_dir))
+    monkeypatch.setattr(agent_loop, "write_active_gate_evidence", _infinite_fake_gate(active_dir))
+
+    result = agent_loop.write_active_auto_loop(
+        max_iterations=0,
+        execute_runner=True,
+        execute_ship=False,
+        repo_root=repo,
+    )
+
+    assert result.decision == "limit-reached"
+    assert result.completed_task_ids == ("T-2026-1001", "T-2026-1002")
+    assert result.next_task_id is None
+    state = json.loads((active_dir / "auto_loop_state.json").read_text(encoding="utf-8"))
+    assert state["infinite_mode"] is True
+    assert any("infinite mode active" in w for w in result.warnings)
+
+
+def test_active_auto_loop_infinite_stops_after_consecutive_blockers(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("BIDMATE_AGENT_LOOP_MAX_CONSECUTIVE_BLOCKERS", "2")
+    repo = _write_repo(tmp_path, task_id="T-2026-1001", title="Block 1")
+    _append_ready_task(repo, "T-2026-1002", "Block 2")
+    _append_ready_task(repo, "T-2026-1003", "Block 3 (never reached)")
+    _patch_active_loop_clear(monkeypatch)
+    active_dir = repo / "reports" / "agent_loop" / "active"
+    monkeypatch.setattr(agent_loop, "write_active_codex_runner", _infinite_fake_runner(active_dir))
+    monkeypatch.setattr(
+        agent_loop, "write_active_gate_evidence", _infinite_fake_gate(active_dir, ready_for=set())
+    )
+
+    result = agent_loop.write_active_auto_loop(
+        max_iterations=0,
+        execute_runner=True,
+        execute_ship=False,
+        auto_repair=False,
+        repo_root=repo,
+    )
+
+    # Guard trip is a blocked outcome, not a clean limit-reached; T-2026-1003 is never reached.
+    assert result.decision == "blocked"
+    assert result.completed_task_ids == ()
+    assert [cycle["task_id"] for cycle in result.cycles] == ["T-2026-1001", "T-2026-1002"]
+    assert any("2 consecutive blocked task(s)" in w for w in result.warnings)
+    state = json.loads((active_dir / "auto_loop_state.json").read_text(encoding="utf-8"))
+    assert state["deferred_task_ids"] == ["T-2026-1001", "T-2026-1002"]
+
+
+def test_active_auto_loop_infinite_resets_blocker_streak_on_completion(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("BIDMATE_AGENT_LOOP_MAX_CONSECUTIVE_BLOCKERS", "2")
+    repo = _write_repo(tmp_path, task_id="T-2026-1001", title="Block A")
+    _append_ready_task(repo, "T-2026-1002", "Complete B")
+    _append_ready_task(repo, "T-2026-1003", "Block C")
+    _append_ready_task(repo, "T-2026-1004", "Complete D")
+    _patch_active_loop_clear(monkeypatch)
+    active_dir = repo / "reports" / "agent_loop" / "active"
+    monkeypatch.setattr(agent_loop, "write_active_codex_runner", _infinite_fake_runner(active_dir))
+    monkeypatch.setattr(
+        agent_loop,
+        "write_active_gate_evidence",
+        _infinite_fake_gate(active_dir, ready_for={"T-2026-1002", "T-2026-1004"}),
+    )
+
+    result = agent_loop.write_active_auto_loop(
+        max_iterations=0,
+        execute_runner=True,
+        execute_ship=False,
+        auto_repair=False,
+        repo_root=repo,
+    )
+
+    # Interleaved completions reset the streak, so the 2-blocker guard never trips.
+    assert result.completed_task_ids == ("T-2026-1002", "T-2026-1004")
+    assert [cycle["task_id"] for cycle in result.cycles] == [
+        "T-2026-1001",
+        "T-2026-1002",
+        "T-2026-1003",
+        "T-2026-1004",
+    ]
+    assert not any("consecutive blocked task(s)" in w for w in result.warnings)
+    # T-2026-1001 / T-2026-1003 stay deferred (gate never readied) so the drain is not a
+    # clean limit-reached; some tasks completed, so the run is partial (ADR 0085 finding fix).
+    assert result.decision == "partial"
+    state = json.loads((active_dir / "auto_loop_state.json").read_text(encoding="utf-8"))
+    assert state["deferred_task_ids"] == ["T-2026-1001", "T-2026-1003"]
+
+
+def test_active_auto_loop_infinite_wall_clock_guard_aborts(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("BIDMATE_AGENT_LOOP_MAX_WALL_CLOCK_SECONDS", "50")
+    repo = _write_repo(tmp_path, task_id="T-2026-1001", title="WC task")
+    _append_ready_task(repo, "T-2026-1002", "WC task 2")
+    _patch_active_loop_clear(monkeypatch)
+    active_dir = repo / "reports" / "agent_loop" / "active"
+    # Fake monotonic clock: loop_start=0, first guard check=100 (>= 50) trips before any cycle.
+    ticks = iter([0.0, 100.0, 200.0, 300.0])
+    monkeypatch.setattr(agent_loop.time, "monotonic", lambda: next(ticks))
+    monkeypatch.setattr(agent_loop, "write_active_codex_runner", _infinite_fake_runner(active_dir))
+    monkeypatch.setattr(agent_loop, "write_active_gate_evidence", _infinite_fake_gate(active_dir))
+
+    result = agent_loop.write_active_auto_loop(
+        max_iterations=0,
+        execute_runner=True,
+        execute_ship=False,
+        repo_root=repo,
+    )
+
+    assert result.cycles == ()
+    assert result.completed_task_ids == ()
+    assert result.decision == "blocked"
+    assert any("wall-clock guard reached" in w for w in result.warnings)
+    state = json.loads((active_dir / "auto_loop_state.json").read_text(encoding="utf-8"))
+    assert state["wall_clock_exceeded"] is True
+
+
+def test_active_auto_loop_infinite_empty_ready_queue_is_clean_drain(monkeypatch, tmp_path: Path) -> None:
+    # ADR 0085 finding fix: an already-drained ready queue at startup is a clean no-op,
+    # not a blocked run.
+    repo = _write_repo(tmp_path, task_id="T-2026-1001", title="Already done", status="done")
+    _patch_active_loop_clear(monkeypatch)
+    active_dir = repo / "reports" / "agent_loop" / "active"
+    monkeypatch.setattr(agent_loop, "write_active_codex_runner", _infinite_fake_runner(active_dir))
+    monkeypatch.setattr(agent_loop, "write_active_gate_evidence", _infinite_fake_gate(active_dir))
+
+    result = agent_loop.write_active_auto_loop(
+        max_iterations=0,
+        execute_runner=True,
+        execute_ship=False,
+        repo_root=repo,
+    )
+
+    assert result.cycles == ()
+    assert result.completed_task_ids == ()
+    assert result.decision == "limit-reached"
+    assert any("already drained at start" in w for w in result.warnings)
+
+
+def test_active_auto_loop_infinite_failed_repair_is_not_clean_limit_reached(monkeypatch, tmp_path: Path) -> None:
+    # ADR 0085 finding fix: failed auto-repair leaves tasks deferred; the run must not report
+    # a clean limit-reached that hides unresolved blocked work.
+    repo = _write_repo(tmp_path, task_id="T-2026-1001", title="Repair fail 1")
+    _append_ready_task(repo, "T-2026-1002", "Repair fail 2")
+    _patch_active_loop_clear(monkeypatch)
+    active_dir = repo / "reports" / "agent_loop" / "active"
+    monkeypatch.setattr(agent_loop, "write_active_codex_runner", _infinite_fake_runner(active_dir))
+    monkeypatch.setattr(
+        agent_loop, "write_active_gate_evidence", _infinite_fake_gate(active_dir, ready_for=set())
+    )
+
+    result = agent_loop.write_active_auto_loop(
+        max_iterations=0,
+        execute_runner=True,
+        execute_ship=False,
+        auto_repair=True,
+        repo_root=repo,
+    )
+
+    # Unresolved deferrals with nothing completed must surface a non-zero blocked outcome,
+    # never a clean limit-reached or a planned (exit 0) no-op (ADR 0085 finding fix).
+    assert result.decision == "blocked"
+    assert result.completed_task_ids == ()
+    state = json.loads((active_dir / "auto_loop_state.json").read_text(encoding="utf-8"))
+    assert sorted(state["deferred_task_ids"]) == ["T-2026-1001", "T-2026-1002"]
+
+
+def test_active_auto_loop_infinite_auto_repair_failures_trip_consecutive_guard(monkeypatch, tmp_path: Path) -> None:
+    # ADR 0085 finding fix: failed auto-repair deferrals now count toward the
+    # consecutive-blocker guard, so a run of repair failures stops the loop.
+    monkeypatch.setenv("BIDMATE_AGENT_LOOP_MAX_CONSECUTIVE_BLOCKERS", "2")
+    repo = _write_repo(tmp_path, task_id="T-2026-1001", title="Repair fail 1")
+    _append_ready_task(repo, "T-2026-1002", "Repair fail 2")
+    _append_ready_task(repo, "T-2026-1003", "Never reached")
+    _patch_active_loop_clear(monkeypatch)
+    active_dir = repo / "reports" / "agent_loop" / "active"
+    monkeypatch.setattr(agent_loop, "write_active_codex_runner", _infinite_fake_runner(active_dir))
+    monkeypatch.setattr(
+        agent_loop, "write_active_gate_evidence", _infinite_fake_gate(active_dir, ready_for=set())
+    )
+
+    result = agent_loop.write_active_auto_loop(
+        max_iterations=0,
+        execute_runner=True,
+        execute_ship=False,
+        auto_repair=True,
+        repo_root=repo,
+    )
+
+    assert result.decision == "blocked"
+    assert [cycle["task_id"] for cycle in result.cycles] == ["T-2026-1001", "T-2026-1002"]
+    assert any("2 consecutive blocked task(s)" in w for w in result.warnings)
+
+
+def test_active_auto_loop_infinite_wall_clock_budget_bounds_runner_timeout(monkeypatch, tmp_path: Path) -> None:
+    # ADR 0085 finding fix: with a wall-clock budget the runner subprocess receives the
+    # *remaining* budget as its timeout, so a hung session cannot stall the loop forever.
+    monkeypatch.setenv("BIDMATE_AGENT_LOOP_MAX_WALL_CLOCK_SECONDS", "600")
+    repo = _write_repo(tmp_path, task_id="T-2026-1001", title="Budget task")
+    _patch_active_loop_clear(monkeypatch)
+    active_dir = repo / "reports" / "agent_loop" / "active"
+    # loop_start_monotonic == 0.0; every later reading == 10.0 -> remaining budget 590.
+    clock = {"n": 0}
+
+    def fake_monotonic():  # type: ignore[no-untyped-def]
+        clock["n"] += 1
+        return 0.0 if clock["n"] == 1 else 10.0
+
+    monkeypatch.setattr(agent_loop.time, "monotonic", fake_monotonic)
+    captured: dict[str, object] = {}
+
+    def capturing_runner(**kwargs):  # type: ignore[no-untyped-def]
+        captured["timeout_seconds"] = kwargs.get("timeout_seconds")
+        report = active_dir / "codex_runner.md"
+        state = active_dir / "codex_runner_state.json"
+        runs = active_dir / "codex_runs"
+        report.parent.mkdir(parents=True, exist_ok=True)
+        report.write_text("# runner\n", encoding="utf-8")
+        state.write_text("{}\n", encoding="utf-8")
+        return agent_loop.ActiveCodexRunnerResult(report, state, runs, "completed", (), (), ())
+
+    monkeypatch.setattr(agent_loop, "write_active_codex_runner", capturing_runner)
+    monkeypatch.setattr(agent_loop, "write_active_gate_evidence", _infinite_fake_gate(active_dir))
+
+    agent_loop.write_active_auto_loop(
+        max_iterations=0,
+        execute_runner=True,
+        execute_ship=False,
+        repo_root=repo,
+    )
+
+    assert captured["timeout_seconds"] == 590
+
+
+def test_active_codex_auth_check_times_out() -> None:
+    def fake_runner(cmd, **kwargs):  # type: ignore[no-untyped-def]
+        raise subprocess.TimeoutExpired(cmd, 30)
+
+    status, blockers, notes = agent_loop._active_codex_auth_check(
+        auth_mode="chatgpt",
+        codex_executable="codex",
+        execute=True,
+        runner=fake_runner,
+    )
+
+    assert status == "login status timed out"
+    assert any("timed out after 30 seconds" in item for item in blockers)
+
+
 def test_queue_parallel_plan_sorts_priority_and_groups_lanes(tmp_path: Path) -> None:
     repo = _write_repo(tmp_path, task_id="T-2026-1001", title="Docs cleanup")
     queue = repo / "tasks" / "queue.md"
@@ -5428,6 +5791,151 @@ def test_claude_lane_adapter_xhigh_only_on_opus_47_plus() -> None:
     # Other valid efforts unchanged.
     assert _validate_effort_for_model("claude-sonnet-4-6", "medium") == "medium"
     assert _validate_effort_for_model("claude-opus-4-8", "max") == "max"
+
+
+def test_claude_turn_positive_timeout_reaches_runner(tmp_path: Path) -> None:
+    """ADR 0085 Finding 2: a positive ``timeout_seconds`` is passed to the subprocess runner."""
+    from scripts import agent_loop_claude_turn as cl
+
+    schema = tmp_path / "schema.json"
+    schema.write_text("{}", encoding="utf-8")
+    captured: dict[str, object] = {}
+
+    def capturing_runner(cmd, *, timeout=None):  # type: ignore[no-untyped-def]
+        captured["timeout"] = timeout
+        payload = {"result": {"verdict": "clear", "summary": "ok", "findings": [], "next_steps": []}}
+        return subprocess.CompletedProcess(cmd, 0, stdout=json.dumps(payload), stderr="")
+
+    core = cl.run_turn(
+        prompt="x",
+        schema_path=schema,
+        model="claude-sonnet-4-6",
+        effort="medium",
+        runner=capturing_runner,
+        timeout_seconds=590,
+    )
+    assert core["verdict"] == "clear"
+    # Finite positive budget threads straight through to the subprocess runner.
+    assert captured["timeout"] == 590
+
+
+def test_claude_turn_zero_or_none_timeout_is_unlimited(tmp_path: Path) -> None:
+    """ADR 0085 Finding 2: 0 / None / non-positive collapse to ``timeout=None`` (unlimited)."""
+    from scripts import agent_loop_claude_turn as cl
+
+    schema = tmp_path / "schema.json"
+    schema.write_text("{}", encoding="utf-8")
+
+    def make_runner(captured):  # type: ignore[no-untyped-def]
+        def runner(cmd, *, timeout=None):  # type: ignore[no-untyped-def]
+            captured["timeout"] = timeout
+            payload = {"result": {"verdict": "clear", "summary": "ok", "findings": [], "next_steps": []}}
+            return subprocess.CompletedProcess(cmd, 0, stdout=json.dumps(payload), stderr="")
+
+        return runner
+
+    for value in (0, None, -5):
+        captured: dict[str, object] = {"timeout": "unset"}
+        cl.run_turn(
+            prompt="x",
+            schema_path=schema,
+            model="claude-sonnet-4-6",
+            effort="medium",
+            runner=make_runner(captured),
+            timeout_seconds=value,
+        )
+        assert captured["timeout"] is None, f"timeout_seconds={value!r} should be unlimited"
+
+
+def test_claude_turn_timeout_expired_maps_to_error(tmp_path: Path) -> None:
+    """ADR 0085 Finding 2: TimeoutExpired collapses to verdict=error (deterministic, no raise)."""
+    from scripts import agent_loop_claude_turn as cl
+
+    schema = tmp_path / "schema.json"
+    schema.write_text("{}", encoding="utf-8")
+
+    def timing_out_runner(cmd, *, timeout=None):  # type: ignore[no-untyped-def]
+        raise subprocess.TimeoutExpired(cmd, timeout or 1)
+
+    core = cl.run_turn(
+        prompt="x",
+        schema_path=schema,
+        model="claude-sonnet-4-6",
+        effort="medium",
+        runner=timing_out_runner,
+        timeout_seconds=590,
+    )
+    assert core["verdict"] == "error"
+    assert "timed out" in str(core["summary"]).lower()
+    # Adapter contract: never raises on lane failure — returns the deterministic error core.
+    assert core["findings"] == [] and core["next_steps"] == []
+
+
+def test_claude_turn_legacy_one_arg_runner_still_works(tmp_path: Path) -> None:
+    """ADR 0085 Finding 2: a 1-arg runner (no timeout kwarg) keeps working (backward compat)."""
+    from scripts import agent_loop_claude_turn as cl
+
+    schema = tmp_path / "schema.json"
+    schema.write_text("{}", encoding="utf-8")
+
+    def legacy_runner(cmd):  # no timeout kwarg — historical injection contract
+        payload = {"result": {"verdict": "clear", "summary": "ok", "findings": [], "next_steps": []}}
+        return subprocess.CompletedProcess(cmd, 0, stdout=json.dumps(payload), stderr="")
+
+    core = cl.run_turn(
+        prompt="x",
+        schema_path=schema,
+        model="claude-sonnet-4-6",
+        effort="medium",
+        runner=legacy_runner,
+        timeout_seconds=590,
+    )
+    assert core["verdict"] == "clear"
+
+
+def test_run_agent_lane_threads_timeout_into_claude_run_turn(monkeypatch, tmp_path: Path) -> None:
+    """ADR 0085 Finding 2: write_active_codex_runner's per-call budget reaches run_turn."""
+    from scripts import agent_loop_claude_turn as cl
+
+    schema = tmp_path / "schema.json"
+    schema.write_text("{}", encoding="utf-8")
+    # Stale-CLI guard is irrelevant to timeout threading; pin it deterministic.
+    monkeypatch.setattr(agent_loop, "_claude_cli_supports_effort", lambda: True)
+    captured: dict[str, object] = {}
+
+    def fake_run_turn(**kwargs):  # type: ignore[no-untyped-def]
+        captured["timeout_seconds"] = kwargs.get("timeout_seconds")
+        return {"verdict": "clear", "summary": "ok", "findings": [], "next_steps": []}
+
+    monkeypatch.setattr(cl, "run_turn", fake_run_turn)
+
+    core = agent_loop._run_agent_lane(
+        "claude",
+        role="Eval / Claim / Privacy Auditor",
+        task_id=None,
+        pr=None,
+        base="origin/main",
+        schema_path=schema,
+        repo_root=tmp_path,
+        timeout_seconds=590,
+    )
+    assert core["verdict"] == "clear"
+    # 590 == the wall-clock-derived budget threaded from write_active_codex_runner.
+    assert captured["timeout_seconds"] == 590
+
+    # No budget (0) → unlimited (None) reaches run_turn.
+    captured.clear()
+    agent_loop._run_agent_lane(
+        "claude",
+        role="Eval / Claim / Privacy Auditor",
+        task_id=None,
+        pr=None,
+        base="origin/main",
+        schema_path=schema,
+        repo_root=tmp_path,
+        timeout_seconds=0,
+    )
+    assert captured["timeout_seconds"] is None
 
 
 def test_role_profile_resolution_env_priority(monkeypatch) -> None:
