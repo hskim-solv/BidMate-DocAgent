@@ -189,6 +189,7 @@ class OpenAICompatibleBackendFaultTest(unittest.TestCase):
         self._env_patcher = mock.patch.dict(
             "os.environ",
             {
+                "BIDMATE_DATA_SURFACE": "public_fixture",
                 "BIDMATE_JUDGE_API_KEY": "fake-key",
                 "BIDMATE_JUDGE_MODEL": "fake-model",
             },

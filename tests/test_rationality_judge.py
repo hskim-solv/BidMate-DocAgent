@@ -207,6 +207,46 @@ class TestMarkdownSanitizesCaseIds(unittest.TestCase):
         self.assertIn("- #1 (slice=", md)
         self.assertIn("case ids omitted", md)
 
+    def test_bottom_rows_sanitize_reason_short(self):
+        local_path = "/" + "Users/example/private/raw.pdf"
+        local = {
+            "backend": "stub",
+            "model": "stub",
+            "cases": [
+                {
+                    "id": "case_1",
+                    "slice": "single_doc",
+                    "planner_decomposition": 0.1,
+                    "retrieval_recalls": 0.2,
+                    "answer_reasoning": 0.3,
+                    "reason_short": f"see {local_path} doc_id=DOC-1 chunk_id=CH-2",
+                }
+            ],
+        }
+        aggregate = {
+            "n": 1,
+            "skipped_no_trace": 0,
+            "cases_with_synthesis_llm_call": 1,
+            "axis_means": {
+                "planner_decomposition": 0.1,
+                "retrieval_recalls": 0.2,
+                "answer_reasoning": 0.3,
+            },
+            "axis_cis": {},
+            "effective_n": {
+                "planner_decomposition": 1,
+                "retrieval_recalls": 1,
+                "answer_reasoning": 1,
+            },
+        }
+        md = render_markdown(aggregate, local)
+        self.assertNotIn(local_path, md)
+        self.assertNotIn("DOC-1", md)
+        self.assertNotIn("CH-2", md)
+        self.assertIn("[redacted-local-path]", md)
+        self.assertIn("doc_id=[redacted-private-value]", md)
+        self.assertIn("chunk_id=[redacted-private-value]", md)
+
     def test_answer_reasoning_zero_effective_n_renders_pending(self):
         summary = _summary_with_inline_traces(n=3, with_synthesis=False)
         local, aggregate = judge_rationality(summary, backend="stub")

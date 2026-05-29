@@ -48,9 +48,18 @@ def test_makefile_has_real100_v2_check_targets_without_rebuild() -> None:
     assert "real-eval-v2-check:" in makefile
     assert "real-eval-v2-guard:" in makefile
     assert "REAL100_V2_CONFIG ?= data/private/real100_v2/real_config_v2.local.yaml" in makefile
-    assert "REAL100_V2_INDEX_DIR ?= data/index/real100_v2" in makefile
+    assert "REAL100_V2_INDEX_DIR ?= data/index/real100_v2_checkpoint_minilm_pageaware" in makefile
     assert "REAL100_V2_REPORT_DIR ?= reports/real100_v2" in makefile
     assert "bash scripts/smoke_real.sh" not in makefile.split("real-eval-v2-check:", 1)[1].split("real-eval-v2-guard:", 1)[0]
+
+
+def test_precommit_allowlists_real100_v2_judge_aggregates_only() -> None:
+    hook = (ROOT / ".githooks" / "pre-commit").read_text(encoding="utf-8")
+
+    assert r"^reports/real100_v2/judge\.aggregate\.json$" in hook
+    assert r"^reports/real100_v2/judge_ragas\.aggregate\.json$" in hook
+    assert r"^reports/real100_v2/rationality\.aggregate\.json$" in hook
+    assert r"^reports/real100_v2/rationality\.md$" not in hook
 
 
 def test_smoke_real_comment_separates_minilm_and_bge_m3_targets() -> None:

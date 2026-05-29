@@ -149,10 +149,25 @@ runner report까지만 보고 실제 spawn을 막으려면 다음처럼 dry-run�
 make agent-loop-active-start ACTIVE_START_RUNNER_EXECUTE=0
 ```
 
-Korean alias도 같은 동작을 한다.
+Korean alias는 완주형 bounded loop를 실행한다. 기본값은 `START_TASK_LIMIT=5`이며,
+각 iteration에서 start pack, Codex runner, conservative gate를 순서대로 확인한다.
+기본 alias는 ship을 실행하지 않는다. ship이 꺼진 상태에서는 Codex runner가 완료되고
+conservative gate가 ready이며 privacy gate가 clean일 때만 local completed ledger에
+기록한다. spawned Codex sessions는 기본 `read-only` sandbox로 실행된다.
+실행 직전에는 `queue-parallel-plan`을 먼저 생성해 upcoming queue를 우선순위별로
+정렬하고 `parallel-safe`, `review-only`, `serial-gated` lane으로 묶는다.
+이어서 `queue-recommendations`를 report-only로 생성해 최근 diff, queue 상태,
+`real100_v2` checkpoint/Chroma artifact 여부, local-LLM baseline gap 같은 신호를
+다음 task 후보로 정리한다.
 
 ```bash
 make 시작
+```
+
+task 수를 고정하려면 다음처럼 덮어쓴다.
+
+```bash
+make 시작 START_TASK_LIMIT=2
 ```
 
 ## Codex Runner
@@ -207,10 +222,12 @@ expanded-eight ledger와 assignments를 쓴 뒤, `active-codex-runner`를 실행
 `gate-evidence`를 기록한다. `ACTIVE_AUTO_LOOP_EXECUTE_SHIP=1`일 때만 gate 통과 후
 `active-loop --execute`를 호출한다.
 
-중요한 완료 기준: runner 완료는 task 해결이 아니다. auto loop는 `active-loop
---execute`가 `executed`를 반환한 task만 `reports/agent_loop/active/auto_loop_state.json`
-의 `completed_task_ids`에 기록하고, 다음 iteration/다음 invocation에서 그 task를
-제외해 즉시 다음 task를 고른다. 기본값은 runner 실행까지이며 ship은 꺼져 있다.
+중요한 완료 기준: runner 완료는 task 해결이 아니다. auto loop는
+`ACTIVE_AUTO_LOOP_EXECUTE_SHIP=1`이면 `active-loop --execute`가 `executed`를 반환한
+task만, 기본 ship-off 경로에서는 runner 완료 + conservative gate ready + privacy clean
+조건을 모두 만족한 task만 `reports/agent_loop/active/auto_loop_state.json`의
+`completed_task_ids`에 기록한다. 다음 iteration/다음 invocation은 그 task를 제외하고
+다음 task를 고른다. 기본값은 runner 실행까지이며 ship은 꺼져 있다.
 
 ```bash
 make agent-loop-active-auto-loop ACTIVE_AUTO_LOOP_MAX_ITERATIONS=3

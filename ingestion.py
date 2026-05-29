@@ -741,12 +741,17 @@ def _hwp_pdf_artifact_dir() -> Path | None:
 
 
 def _hwp_pdf_artifact_reuse_enabled() -> bool:
-    return os.environ.get(HWP_PDF_ARTIFACT_REUSE_ENV, "").strip().lower() in {
+    raw = os.environ.get(HWP_PDF_ARTIFACT_REUSE_ENV, "").strip().lower()
+    if raw in {"0", "false", "no", "off"}:
+        return False
+    if raw in {
         "1",
         "true",
         "yes",
         "on",
-    }
+    }:
+        return True
+    return _hwp_pdf_artifact_dir() is not None
 
 
 def _reusable_converted_pdf(source_sha256: str) -> Path | None:
@@ -885,6 +890,10 @@ def _extract_hwp_pdf_pymupdf4llm(
             except _PdfPyMuPdf4LlmFallback as exc:
                 raise _HwpPdfPyMuPdf4LlmFallback(exc.reason, exc.detail) from exc
 
+    print(
+        "[INFO] LibreOffice HWP-to-PDF conversion starting; no reusable converted PDF artifact was found.",
+        file=sys.stderr,
+    )
     with tempfile.TemporaryDirectory(prefix="bidmate_hwp_pdf_") as tmpdir:
         pdf_path, _converter, converter_version = _convert_hwp_to_pdf(source_path, Path(tmpdir))
         source_sha = sha256_file(source_path)

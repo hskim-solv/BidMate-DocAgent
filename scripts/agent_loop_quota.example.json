@@ -10,12 +10,14 @@
     "  a separate collector). When agentcat works, this file is ignored.",
     "reset_dow: day-of-week string when your weekly window rolls over (mon/tue/.../sun).",
     "reset_hour_utc: hour (0-23) UTC when reset occurs.",
+    "reset_at: optional exact ISO timestamp; takes precedence over reset_dow/reset_hour_utc.",
     "",
     "If both providers' signals come from agentcat, this file has no effect."
   ],
   "claude": {
     "weekly_limit_units": 7500,
     "used_this_week_units": 0,
+    "reset_at": "2026-06-04T23:52:59Z",
     "reset_dow": "mon",
     "reset_hour_utc": 0
   },

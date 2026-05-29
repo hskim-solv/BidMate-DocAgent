@@ -26,7 +26,7 @@ agent gate behavior is [Agent-Gated RFP Evaluation Loop](./agent-gated-rfp-eval-
 |---|---|---|---|---|---|
 | Public fixture smoke | `eval/fixtures/smoke_rfp/raw/`, `eval/config.yaml` | CI wiring, schema, deterministic regression, latency SLO | `make smoke`, `make harness-smoke`, `python3 eval/run_eval.py --index_dir data/index --output_dir reports --config eval/config.yaml` | raw run은 local/generated, small fixture는 commit 가능 | "eval harness가 동작한다", "regression guard 통과" |
 | Public synthetic benchmark | `data/eval/benchmark/`, `configs/eval/benchmark_naive_rag_v1.yaml` | controlled failure discovery, ablation setup | `python3 eval/naive_rag/validate_benchmark_dataset.py --config configs/eval/benchmark_naive_rag_v1.yaml --report reports/benchmark/naive_rag_v1_validation.json`, `python3 -m eval.naive_rag.benchmark --config configs/eval/benchmark_naive_rag_v1.yaml` | synthetic corpus/config/gold는 public; generated run artifacts는 local | "synthetic v1에서 failure mode X 관측" |
-| Private real-eval | `data/private/real100_v2/real_config_v2.local.yaml`, private v2 corpus/index, `reports/real100_v2/` aggregate outputs | real RFP aggregate evidence, tiered v2 baseline, paired delta | `make real-eval-v2-check`, `make real-eval-v2-inventory`, `make real-eval-v2-guard`, `make real-eval-delta` only when base/head are v2-comparable | raw/per-case local-only; allowlisted aggregate-only artifact만 commit | "private real100_v2 aggregate에서 delta X, provenance Y" |
+| Private real-eval | `data/private/real100_v2/real_config_v2.local.yaml`, private v2 corpus/index, `reports/real100_v2/` aggregate outputs | real RFP aggregate evidence, tiered v2 baseline, paired delta, opt-in judge aggregate | `make real-eval-v2-check`, `make real-eval-v2-inventory`, `make real-eval-v2-guard`, `make real-eval-v2-chroma`, `make real-eval-v2-chroma-llm`, `make real-eval-v2-judge`, `make real-eval-v2-ragas-judge`, `make real-eval-v2-rationality-judge` | raw/per-case local-only; allowlisted aggregate-only artifact만 commit | "private real100_v2 aggregate에서 delta X, provenance Y" |
 | PR fixture eval | `.github/workflows/pr-eval.yml` | PR마다 public fixture delta와 tests 검증 | GitHub Actions `PR Eval Delta` | PR comment/check only | "CI smoke delta passed/failed" |
 | Slow tests | `pytest -m slow`, `.github/workflows/slow-tests.yml` | real-model/full-corpus risk 확인 | `PYTEST_ADDOPTS="-m slow" bash scripts/test.sh` | generated outputs local | "slow gate passed on date/SHA" |
 
@@ -89,12 +89,10 @@ agent gate behavior is [Agent-Gated RFP Evaluation Loop](./agent-gated-rfp-eval-
 
 - `reports/eval_summary.json` is usually public fixture smoke output. It is not private real-eval evidence.
 - `reports/real100_v2/` is the current claim-bearing aggregate surface.
+- `judge.aggregate.json`, `judge_ragas.aggregate.json`, and `rationality.aggregate.json` are aggregate-only reviewer evidence. Their local per-case siblings (`*.local.json`, traces, prompts, completions) and human review views such as `rationality.md` must stay outside the commit boundary.
 - Legacy `reports/real100/`, 221-case aggregates, and kordoc/v1 indexes are archive-only and must not be used for new tasks until the maintainer explicitly re-enables them.
 - `artifacts/runs/*/metrics/eval_summary.json` belongs to a harness run. Compare only after checking
   dataset/config/index/provenance.
-- `make real-eval` uses the deterministic offline hashing path unless overridden. It is useful for
-  repeatable private eval plumbing, but semantic dense/hybrid retrieval quality claims require
-  `make real-eval-minilm`, `make real-eval-semantic`, or equivalent semantic index provenance.
 - `naive_baseline` is Chroma-backed by default (ADR 0081). `memory` and `qdrant`
   backend runs are control/ops comparisons unless paired same-config evidence
   shows ranking drift. Use `make real-eval-v2-chroma` for the isolated Chroma

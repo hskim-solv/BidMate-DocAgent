@@ -101,6 +101,7 @@ class JudgeCLIInvocationTest(unittest.TestCase):
         with TemporaryDirectory() as tmp:
             eval_path = Path(tmp) / "eval_summary.json"
             out_path = Path(tmp) / "judge.local.json"
+            out_agg = Path(tmp) / "judge.aggregate.json"
             eval_path.write_text(
                 json.dumps(_fake_summary(), ensure_ascii=False), encoding="utf-8"
             )
@@ -110,6 +111,7 @@ class JudgeCLIInvocationTest(unittest.TestCase):
                     "scripts/llm_judge.py",
                     "--eval-summary", str(eval_path),
                     "--output", str(out_path),
+                    "--out-aggregate", str(out_agg),
                     "--backend", "stub",
                 ],
                 capture_output=True,
@@ -117,6 +119,8 @@ class JudgeCLIInvocationTest(unittest.TestCase):
                 cwd=Path(__file__).resolve().parents[1],
             )
             self.assertEqual(result.returncode, 0, result.stderr)
+            aggregate = json.loads(out_agg.read_text(encoding="utf-8"))
+            self.assertEqual(aggregate["agreement_with_verifier"], 1.0)
             # Aggregate JSON appears on stdout; per-case data does NOT.
             self.assertIn("status_distribution", result.stdout)
             self.assertIn("agreement_with_verifier", result.stdout)
@@ -268,6 +272,7 @@ class JudgeRagasCLITest(unittest.TestCase):
         with TemporaryDirectory() as tmp:
             eval_path = Path(tmp) / "eval_summary.json"
             out_path = Path(tmp) / "judge.local.json"
+            out_agg = Path(tmp) / "judge_ragas.aggregate.json"
             cache_dir = Path(tmp) / "cache"
             eval_path.write_text(
                 json.dumps(_fake_summary(), ensure_ascii=False),
@@ -279,6 +284,7 @@ class JudgeRagasCLITest(unittest.TestCase):
                     "eval/judges/llm_judge.py",
                     "--eval-summary", str(eval_path),
                     "--output", str(out_path),
+                    "--out-aggregate", str(out_agg),
                     "--cache-dir", str(cache_dir),
                     "--backend", "stub",
                 ],
@@ -287,6 +293,8 @@ class JudgeRagasCLITest(unittest.TestCase):
                 cwd=Path(__file__).resolve().parents[1],
             )
             self.assertEqual(result.returncode, 0, result.stderr)
+            aggregate = json.loads(out_agg.read_text(encoding="utf-8"))
+            self.assertAlmostEqual(1.0, aggregate["faithfulness"])
             # Aggregate JSON appears on stdout; per-case text does not.
             self.assertIn("faithfulness", result.stdout)
             self.assertIn("context_recall", result.stdout)

@@ -8,7 +8,7 @@ documents_dir: data/files
 data_list_path: data/data_list.csv
 questions_path: data/private/questions.jsonl
 gold_evidence_path: data/private/gold_evidence.jsonl
-index_dir: data/index/real100
+index_dir: data/index/real100_v2_checkpoint_minilm_pageaware
 hwp_loader: pdf_pymupdf4llm
 pdf_loader: pdf_pymupdf4llm
 hwp_pdf_artifact_dir: data/index/real100/hwp_pdf_artifacts

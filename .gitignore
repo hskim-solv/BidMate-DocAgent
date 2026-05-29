@@ -203,6 +203,9 @@ reports/real100_v2/*
 !reports/real100_v2/metric_suite.aggregate.json
 !reports/real100_v2/metric_suite.md
 !reports/real100_v2/retrieval_diagnostics.aggregate.json
+!reports/real100_v2/judge.aggregate.json
+!reports/real100_v2/judge_ragas.aggregate.json
+!reports/real100_v2/rationality.aggregate.json
 !reports/real100_v2/README.md
 # Issue #1021 — variance source inspection (Issue J, ADR 0059 audit
 # follow-up, script: scripts/measure_variance.py). N=5 same-HEAD runs →

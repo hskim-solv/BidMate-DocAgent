@@ -316,6 +316,14 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     ap.add_argument(
+        "--out-aggregate",
+        default=None,
+        help=(
+            "Optional path for the aggregate-only RAGAS judge summary. The "
+            "per-case payload still goes to --output and must remain local-only."
+        ),
+    )
+    ap.add_argument(
         "--backend",
         default=os.environ.get("BIDMATE_JUDGE_BACKEND", "stub"),
         choices=sorted(_BACKENDS),
@@ -376,6 +384,14 @@ def main() -> int:
         encoding="utf-8",
     )
     print(f"[OK] Per-case verdicts written: {output_path}")
+    if args.out_aggregate:
+        aggregate_path = Path(args.out_aggregate)
+        aggregate_path.parent.mkdir(parents=True, exist_ok=True)
+        aggregate_path.write_text(
+            json.dumps(aggregate, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        print(f"[OK] Aggregate written: {aggregate_path}")
     print(json.dumps(aggregate, ensure_ascii=False, indent=2))
 
     if args.fold_aggregate:

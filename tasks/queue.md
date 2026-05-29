@@ -39,11 +39,11 @@ PR이 생기면 각 task에 링크를 추가한다. 예제 task는 `tasks/exampl
 | 26 | `T-2026-0026` | `in_progress` | Planner -> Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1580; Chroma-backed `naive_baseline` canonical switch, separated from embedding-model baselines. |
 | 27 | `T-2026-0027` | `review` | Planner -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1584; prioritized RAG performance experiment stack captured. |
 | 28 | `T-2026-0028` | `done` | Evaluator -> Benchmark Auditor -> Privacy Auditor -> Reviewer | merged in PR #1619; real100_v2-only guard and aggregate packet landed. |
-| 29 | `T-2026-0029` | `review` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1622; real100_v2 retrieval diagnostics rendered; next experiment points to T-2026-0032 while T-2026-0031 remains page-metadata blocked. |
-| 30 | `T-2026-0030` | `done` | Implementer -> CI Reviewer -> Benchmark Auditor -> Reviewer | merged in PR #1628; real100_v2 latency/cost envelope landed. |
-| 31 | `T-2026-0031` | `blocked` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | real100_v2 page metadata coverage is 0.0; no claim-bearing page/window experiment yet. |
-| 32 | `T-2026-0032` | `done` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | merged in PR #1636; BGE-KO screening run classifies latency_regression, no winner claim. |
-| 33 | `T-2026-0033` | `done` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | merged in PR #1644; context-packing screening classifies evidence_first as latency_regression, no winner claim. |
+| 29 | `T-2026-0029` | `ready` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | reopened after naive baseline remeasurement: rerun retrieval diagnostics on the MiniLM page-aware v2 index before using prior conclusions. |
+| 30 | `T-2026-0030` | `ready` | Implementer -> CI Reviewer -> Benchmark Auditor -> Reviewer | reopened after naive baseline remeasurement: rerender latency/cost envelope against the MiniLM page-aware v2 aggregate. |
+| 31 | `T-2026-0031` | `ready` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | MiniLM page-aware checkpoint index now has non-zero page_span coverage; rerun only after refreshed baseline aggregate is available. |
+| 32 | `T-2026-0032` | `ready` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | reopened after naive baseline remeasurement: rerun BGE-KO screening on the MiniLM page-aware v2 index before keeping no-winner status. |
+| 33 | `T-2026-0033` | `ready` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | reopened after naive baseline remeasurement: rerun context-packing screening on the MiniLM page-aware v2 index before keeping latency_regression status. |
 | 34 | `T-2026-0034` | `backlog` | Planner -> Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | P1; blocked on query-slice attribution from T-2026-0029. |
 | 35 | `T-2026-0035` | `backlog` | Security Reviewer -> Implementer -> Privacy Auditor -> Reviewer | P1 guardrail; should run before agentic/tool-using retrieval. |
 | 36 | `T-2026-0036` | `backlog` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | P2; blocked on stable retrieval/context evidence from P0/P1 tasks. |
@@ -2331,12 +2331,13 @@ extraction preserves embedding provenance without local model path leakage.
 - Status: in_progress
 - Owner role: Planner -> Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer
 - Created: 2026-05-27
-- Last updated: 2026-05-28
+- Last updated: 2026-05-29
 
 ### Goal
 
-Add Chroma as the canonical `naive_baseline` vector DB backend without mixing
-vector DB effects with embedding-model effects.
+Add Chroma as the canonical `naive_baseline` vector DB backend and include a
+local-small LLM synthesis baseline in the same measurement task, without
+mixing vector DB effects with embedding-model effects.
 
 ### Context
 
@@ -2359,6 +2360,9 @@ vector DB effects with embedding-model effects.
 - Document Chroma install, connection, and persistence settings.
 - Add memory-vs-Chroma ranking parity tests, including tie-break behavior.
 - Add a reproducible Chroma baseline command or make target.
+- Add a reproducible local loopback LLM synthesis baseline command or make
+  target; the deterministic `stub` row remains a diagnostic control, not the
+  headline answer-quality baseline.
 - Record vector DB backend provenance separately from embedding provenance in
   eval/report artifacts.
 
@@ -2382,6 +2386,9 @@ vector DB effects with embedding-model effects.
   changing surface.
 - [x] `make real-eval-v2-chroma` provides a reproducible Chroma private-v2
   command without refreshing committed baseline aggregates.
+- [ ] `make real-eval-v2-chroma-llm` provides a reproducible LLM synthesis
+  baseline using the same checkpoint MiniLM page-aware index, with loopback by
+  default and explicit egress profile support for approved external API runs.
 
 ### Validation Commands
 
@@ -2392,7 +2399,8 @@ python3 -m pytest -q tests/test_vector_store_qdrant.py tests/test_qdrant_integra
 python3 scripts/check_doc_links.py --check-all --paths tasks/queue.md docs/plans/T-2026-0026-chroma-vector-baseline.md
 git diff --check
 make check-branch
-REAL_EVAL_ROOT=/Users/hskim/Desktop/projects/BidMate-DocAgent make real-eval-v2-chroma
+REAL_EVAL_ROOT=<private-real-eval-root> make real-eval-v2-chroma
+BIDMATE_SYNTHESIS_BASE_URL=http://127.0.0.1:11434/v1 BIDMATE_SYNTHESIS_API_KEY=ollama BIDMATE_SYNTHESIS_MODEL=<local-model> REAL_EVAL_ROOT=<private-real-eval-root> make real-eval-v2-chroma-llm
 ```
 
 ### Evidence Required
@@ -2402,6 +2410,10 @@ REAL_EVAL_ROOT=/Users/hskim/Desktop/projects/BidMate-DocAgent make real-eval-v2-
   vector DB backend.
 - Chroma private-v2 run command writes to `reports/real100_v2_chroma/` unless
   `REAL100_V2_CHROMA_REPORT_DIR` is overridden.
+- LLM synthesis run writes to `reports/real100_v2_chroma_llm/` unless
+  `REAL100_V2_CHROMA_LLM_REPORT_DIR` is overridden.
+- `naive_stub_control` is reported as a retrieval/control floor; the LLM row is
+  the answer-synthesis baseline candidate.
 - No private raw artifact or exact local path in committed reports.
 
 ### Related Plan / Issue / PR Links
@@ -2418,11 +2430,11 @@ REAL_EVAL_ROOT=/Users/hskim/Desktop/projects/BidMate-DocAgent make real-eval-v2-
 - Current status: implementation in progress for Chroma-backed `naive_baseline`.
 - Files touched: implementation, tests, ADR/docs, queue.
 - Commands run: `make -n real-eval-v2-chroma`; `python3 -m py_compile rag_vector_store.py rag_indexing.py rag_pipeline_presets.py rag_core.py eval/run_eval.py scripts/run_real_eval_delta.py scripts/compare_eval.py app.py api/main.py`; `python3 -m pytest -q tests/test_vector_store_chroma.py tests/test_vector_store_protocol.py tests/test_full_dense_control_row_regression.py tests/test_eval_metrics.py`; `python3 -m pytest -q tests/test_naive_baseline_ranking_invariance.py tests/test_api_default_pipeline_regression.py`; `python3 -m pytest -q tests/test_vector_store_qdrant.py tests/test_qdrant_integration.py -m "not qdrant_integration"`; `python3 -m pytest -q tests/test_run_real_eval_delta.py tests/test_compare_eval_regression_gate.py tests/test_run_manifest_versioning_regression.py tests/test_provenance_banner.py`; `python3 scripts/check_doc_links.py --check-all --paths docs/plans/T-2026-0026-chroma-vector-baseline.md tasks/queue.md docs/evaluation/surface-map.md docs/evaluation/private_real_eval_workflow.md docs/adr/README.md docs/adr/0081-chroma-backed-naive-baseline.md CLAUDE.md AGENTS.md`; `REAL_EVAL_ROOT=/Users/hskim/Desktop/projects/BidMate-DocAgent make real-eval-v2-check`; `make real-eval-v2-guard`; `git diff --check`; `make check-branch`.
-- Results: focused tests and docs/branch gates passed; private v2 path check and guard passed. Full `make real-eval-v2-chroma` was not completed in this task because private aggregate refresh remains a follow-up.
-- Blockers: none known.
+- Results: focused tests and docs/branch gates passed; private v2 path check and guard passed. Full `make real-eval-v2-chroma` was later completed against the checkpoint MiniLM page-aware index; the LLM synthesis baseline remains to run with a local loopback model.
+- Blockers: local OpenAI-compatible model/server must be available for `make real-eval-v2-chroma-llm`.
 - Open risks: dependency/install cost may affect CI or local developer setup.
-- Next action: open implementation PR without refreshing private baseline
-  aggregates.
+- Next action: run `make real-eval-v2-chroma-llm` with a local loopback model,
+  then render the baseline decision packet from aggregate-only evidence.
 - Next safe command: `git status --short`
 - Reviewer focus: backend axis separation, parity guard, no mixed embedding
   claim.
@@ -2620,11 +2632,11 @@ make check-branch
 
 - ID: T-2026-0029
 - Title: Build retrieval diagnostic workbench
-- Status: review
+- Status: ready
 - Priority: P0
 - Owner role: Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer
 - Created: 2026-05-27
-- Last updated: 2026-05-28
+- Last updated: 2026-05-29
 
 ### Goal
 
@@ -2681,6 +2693,8 @@ make check-branch
 - Reviewer note explaining which failure bucket is dominant.
 - Explicit statement that `real100_v2` page metadata coverage is a blocker for
   claim-bearing page/citation work.
+- Reopened follow-up: the 2026-05-28 diagnostic conclusions are invalid for new
+  optimization decisions until rerun against the MiniLM page-aware v2 index.
 
 ### Related Plan / Issue / PR Links
 
@@ -2711,11 +2725,11 @@ make check-branch
 
 - ID: T-2026-0030
 - Title: Define latency and cost budget envelope
-- Status: review
+- Status: ready
 - Priority: P0
 - Owner role: Implementer -> CI Reviewer -> Benchmark Auditor -> Reviewer
 - Created: 2026-05-27
-- Last updated: 2026-05-28
+- Last updated: 2026-05-29
 
 ### Goal
 
@@ -2760,6 +2774,9 @@ make check-branch
 
 - Aggregate latency/cost budget report.
 - Explicit guardrail thresholds or no-go classification rules.
+- Reopened follow-up: the 2026-05-28 envelope must be rerendered from the
+  MiniLM page-aware v2 aggregate before downstream experiment no-go decisions
+  cite it.
 
 ### Related Plan / Issue / PR Links
 
@@ -2794,16 +2811,16 @@ make check-branch
 - Priority: P1
 - Owner role: Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer
 - Created: 2026-05-27
-- Last updated: 2026-05-28
+- Last updated: 2026-05-29
 
 ### Goal
 
 Test whether small-to-big retrieval improves multi-chunk and same-document
 evidence failures now that page-aware metadata exists.
 
-Current blocker: `real100_v2` page metadata coverage is 0.0, so
-claim-bearing page/window work must wait until page metadata is repaired or the
-experiment is explicitly rescoped away from page/window claims.
+Current gate: the MiniLM page-aware checkpoint index has non-zero chunk
+`page_span` coverage, so page/window work may proceed after the refreshed
+`real100_v2` baseline aggregate is generated from that index.
 
 ### Scope
 
@@ -2821,7 +2838,7 @@ experiment is explicitly rescoped away from page/window claims.
 
 ### Acceptance Criteria
 
-- [ ] real100_v2 page metadata blocker is cleared or this task is explicitly
+- [x] real100_v2 page metadata blocker is cleared or this task is explicitly
   rescoped before implementation.
 - [ ] Opt-in preset leaves ADR 0001 baseline byte-identical.
 - [ ] Aggregate delta reports Recall@K, MRR, nDCG, citation/page coverage,
@@ -2843,22 +2860,24 @@ make check-branch
 
 - Paired private aggregate delta or explicit no-go.
 - Token/latency guardrail result.
+- Fresh MiniLM page-aware `real100_v2` baseline aggregate before any
+  parent/window winner or no-go claim.
 
 ### Related Plan / Issue / PR Links
 
-- Plan: TBD - create when the task starts.
-- Issue: TBD
+- Plan: [`docs/plans/T-2026-0031-parent-section-window-retrieval-experiment.md`](../docs/plans/T-2026-0031-parent-section-window-retrieval-experiment.md)
+- Issue: [#1667](https://github.com/hskim-solv/BidMate-DocAgent/issues/1667)
 - PR: TBD
 
 ## T-2026-0032 — Reranker candidate-budget experiment
 
 - ID: T-2026-0032
 - Title: Reranker candidate-budget experiment
-- Status: review
+- Status: ready
 - Priority: P1
 - Owner role: Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer
 - Created: 2026-05-27
-- Last updated: 2026-05-28
+- Last updated: 2026-05-29
 
 ### Goal
 
@@ -2908,6 +2927,9 @@ make check-branch
   classifies the BGE-KO screening variant as `latency_regression` with
   `paired_delta_valid=false`; this is a no-winner screening result, not a
   private eval improvement claim.
+- Reopened follow-up: rerun the screening on the MiniLM page-aware v2 index;
+  the prior hashing/page-0 baseline cannot support the retained no-winner
+  conclusion.
 
 ### Related Plan / Issue / PR Links
 
@@ -2959,7 +2981,7 @@ make check-branch
 - Priority: P1
 - Owner role: Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer
 - Created: 2026-05-27
-- Last updated: 2026-05-28
+- Last updated: 2026-05-29
 
 ### Goal
 
@@ -3013,6 +3035,9 @@ make check-branch
   metrics; paired_delta_valid is false until a full comparable run exists.
 - Explicit no-change statement for retrieval behavior.
 - Aggregate-only privacy boundary, no raw private content.
+- Reopened follow-up: rerun the screening on the MiniLM page-aware v2 index;
+  the prior hashing/page-0 baseline cannot support the retained
+  `latency_regression` conclusion.
 
 ### Related Plan / Issue / PR Links
 

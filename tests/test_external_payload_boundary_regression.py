@@ -34,10 +34,13 @@ import rag_rerank
 import rag_synthesis
 from bidmate_data_boundary import (
     DATA_SURFACE_ENV,
+    EGRESS_PROFILE_ENV,
     ExternalPayloadBlocked,
     assert_external_payload_allowed,
+    external_egress_allowed,
     is_public_surface,
     resolve_data_surface,
+    resolve_egress_profile,
 )
 from rag_metadata_extraction import (
     _anthropic_tool_use_backend,
@@ -88,6 +91,36 @@ def _cleared(*names: str):
                 os.environ.pop(name, None)
             else:
                 os.environ[name] = value
+
+
+@contextlib.contextmanager
+def _set_env(**values: str):
+    saved = {name: os.environ.get(name) for name in values}
+    os.environ.update(values)
+    try:
+        yield
+    finally:
+        for name, value in saved.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
+
+
+@contextlib.contextmanager
+def _egress_profile(value: str | None):
+    saved = os.environ.get(EGRESS_PROFILE_ENV)
+    if value is None:
+        os.environ.pop(EGRESS_PROFILE_ENV, None)
+    else:
+        os.environ[EGRESS_PROFILE_ENV] = value
+    try:
+        yield
+    finally:
+        if saved is None:
+            os.environ.pop(EGRESS_PROFILE_ENV, None)
+        else:
+            os.environ[EGRESS_PROFILE_ENV] = saved
 
 
 SAMPLE_DOCUMENT: dict[str, Any] = {
@@ -151,6 +184,27 @@ class GuardSurfaceTest(unittest.TestCase):
                 assert_external_payload_allowed(channel="test:public")
                 self.assertTrue(is_public_surface())
 
+    def test_allows_approved_private_external_egress_profiles(self) -> None:
+        for value in ("approved_external_api", "customer_managed_cloud"):
+            with self.subTest(value=value), _surface("private_local"), _egress_profile(value):
+                assert_external_payload_allowed(channel="test:approved")
+                self.assertEqual(value, resolve_egress_profile())
+                self.assertTrue(external_egress_allowed())
+
+    def test_approved_private_egress_profile_is_channel_wide(self) -> None:
+        channels = (
+            "metadata_extraction:anthropic_tool_use",
+            "synthesis:openai_compatible",
+            "embedding:openai",
+            "rerank:cohere",
+            "query_expansion:anthropic_hyde",
+            "planner:anthropic",
+        )
+        with _surface("private_local"), _egress_profile("approved_external_api"):
+            for channel in channels:
+                with self.subTest(channel=channel):
+                    assert_external_payload_allowed(channel=channel)
+
     def test_resolve_normalizes_case_and_whitespace(self) -> None:
         with _surface("  Public_Fixture  "):
             self.assertEqual(resolve_data_surface(), "public_fixture")
@@ -203,6 +257,33 @@ class BackendEntryFailClosedTest(unittest.TestCase):
                     answer=_make_answer(),
                     evidence=_make_evidence(),
                 )
+
+    def test_synthesis_local_openai_rejects_non_loopback_base_url(self) -> None:
+        with _surface("private_local"), _set_env(
+            BIDMATE_SYNTHESIS_BASE_URL="https://api.example.com/v1",
+            BIDMATE_SYNTHESIS_API_KEY="test",
+            BIDMATE_SYNTHESIS_MODEL="local-small",
+        ):
+            with self.assertRaises(ExternalPayloadBlocked):
+                rag_synthesis._local_openai_compatible_backend(
+                    query="q",
+                    analysis={},
+                    answer=_make_answer(),
+                    evidence=_make_evidence(),
+                )
+
+    def test_synthesis_local_openai_loopback_reaches_key_check(self) -> None:
+        with _surface("private_local"), _set_env(
+            BIDMATE_SYNTHESIS_BASE_URL="http://127.0.0.1:11434/v1"
+        ), _cleared("BIDMATE_SYNTHESIS_API_KEY", "BIDMATE_SYNTHESIS_MODEL"):
+            with self.assertRaises(RuntimeError) as ctx:
+                rag_synthesis._local_openai_compatible_backend(
+                    query="q",
+                    analysis={},
+                    answer=_make_answer(),
+                    evidence=_make_evidence(),
+                )
+        self.assertIn("BIDMATE_SYNTHESIS_API_KEY", str(ctx.exception))
 
 
 class DispatchFallbackTest(unittest.TestCase):

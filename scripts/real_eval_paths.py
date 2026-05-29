@@ -30,6 +30,7 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 PRIVATE_REAL_MIN_DOCS = 50
 LOW_CHUNK_REAL_MAX = 1000
 PREFERRED_MINILM_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+DEFAULT_REAL100_V2_INDEX_DIR = "data/index/real100_v2_checkpoint_minilm_pageaware"
 
 
 @dataclass(frozen=True)
@@ -351,7 +352,7 @@ def resolve_entries(
         env_name="REAL_EVAL_INDEX_DIR",
         config=real_eval_config,
         config_keys=("index", "root"),
-        default="data/index/real100",
+        default=DEFAULT_REAL100_V2_INDEX_DIR,
         base=real_root,
     )
     report_dir, report_source = _choose_path(
@@ -361,7 +362,7 @@ def resolve_entries(
         env_name="REAL_EVAL_REPORT_DIR",
         config=real_eval_config,
         config_keys=("reports", "output_dir"),
-        default="reports/real100",
+        default="reports/real100_v2",
         base=real_root,
     )
     baseline_value = _arg_value(args, "baseline_summary")
