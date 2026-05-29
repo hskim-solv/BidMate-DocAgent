@@ -101,6 +101,7 @@ KNOWN_HOOKS: set[str] = {
     "delegation-gate",
     "stop-ship",
     "agent-loop",
+    "experiment-report",
 }
 
 
