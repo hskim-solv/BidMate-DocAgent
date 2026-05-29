@@ -12,13 +12,15 @@
 #    propagates and blocks the push.
 #
 # 2. `_pre-push-real-eval-reminder.sh` — SOFT-WARNS (always exits 0) for:
-#    - real-data eval delta reminder when retrieval / verifier / eval / api
-#      paths changed (load-bearing SSoT: `scripts/_governance.py`),
 #    - README metrics freshness reminder when `reports/eval_summary.json`
-#      diverges from the committed README block.
+#      diverges from the committed README block,
+#    - naive_baseline golden freshness reminder when the smoke fixture corpus
+#      drifts the committed ranking snapshot.
+#    (The §5b real-data-delta reminder was deprecated in ADR 0084.)
 #
 # 3. `_pre-push-test-coverage.sh` — SOFT-WARNS when the push touches a
-#    load-bearing behavior path but changes zero files under tests/
+#    load-bearing behavior path (load-bearing SSoT: `scripts/_governance.py`)
+#    but changes zero files under tests/
 #    (CLAUDE.md "동작 변경 ↔ 테스트 변경", PR #69 lesson).
 #
 # 4. `_pre-push-worktree-hygiene.sh` — SOFT-WARNS when a worktree's branch
@@ -42,7 +44,7 @@ HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
 # Phase 1: hard-fail branch convention check.
 bash "$HOOK_DIR/_pre-push-branch-check.sh" || exit $?
 
-# Phase 2: soft-warn reminders (real-eval §5b + README freshness).
+# Phase 2: soft-warn reminders (README freshness + naive_baseline golden).
 bash "$HOOK_DIR/_pre-push-real-eval-reminder.sh" || true
 
 # Phase 3: soft-warn test-coverage gate (behavior change without a test).

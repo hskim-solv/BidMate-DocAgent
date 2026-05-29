@@ -3,8 +3,8 @@ name: PR Eval Delta
 on:
   # No `branches:` filter — the eval-delta + pytest + provenance gates must
   # fire on EVERY PR base, incl. stacked PRs (base≠main). A `branches: [main]`
-  # filter exempted stacked PRs from these gates, part of the §5b bypass in
-  # issue #1159. Guarded by tests/test_pr_gate_workflow_triggers_regression.py.
+  # filter would exempt stacked PRs from these gates (issue #1159 root cause).
+  # Guarded by tests/test_pr_gate_workflow_triggers_regression.py.
   pull_request:
 
 permissions:
@@ -264,7 +264,7 @@ jobs:
             --base base/reports/eval_summary.json \
             --head pr/reports/eval_summary.json \
             --title "Public fixture smoke only - not real-data / not naive_baseline / not performance evidence" \
-            --scope-note 'Scope: public fixture smoke only (5 cases, hashing embedding, `full` run). This is a regression guard, not real-data evidence; use PR section 5b for private real-data decisions.' > delta.md
+            --scope-note 'Scope: public fixture smoke only (5 cases, hashing embedding, `full` run). This is a regression guard, not real-data evidence; for private real-data decisions run `make real-eval-delta` (ADR 0005 aggregate-only).' > delta.md
           cat delta.md
 
       - name: Validate improvement claims (ADR 0055)

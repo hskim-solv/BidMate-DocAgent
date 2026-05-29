@@ -21,7 +21,7 @@ RFP 문서 이해를 위한 DocAgent 시스템. **입찰/RFP 문서 인텔리전
 
 ## 저장소 맵
 
-**Load-bearing** — 변경 시 PR 템플릿 **5b (real-data 델타)** 필수. 기계 판독 가능 단일 출처는 [`scripts/_governance.py`](scripts/_governance.py) 의 `LOAD_BEARING_PATHS` ([.githooks/pre-push](.githooks/pre-push), [scripts/claude-hooks/pretooluse-loadbearing.sh](scripts/claude-hooks/pretooluse-loadbearing.sh), `--check-5b` CI gate 가 함께 읽음). 추가/제거 시 그 파일 먼저 수정.
+**Load-bearing** — 변경 시 reviewer 가 real-data 영향을 살펴야 하는 경로. **§5b real-data 델타 게이트는 ADR 0084 로 폐지** (PR body 강제 아님 — `make real-eval-delta` 측정 도구는 유지, 권장 근거). 기계 판독 가능 단일 출처는 [`scripts/_governance.py`](scripts/_governance.py) 의 `LOAD_BEARING_PATHS` ([.githooks/pre-push](.githooks/pre-push) reminders, [scripts/claude-hooks/pretooluse-loadbearing.sh](scripts/claude-hooks/pretooluse-loadbearing.sh) awareness 가 함께 읽음). 추가/제거 시 그 파일 먼저 수정.
 
 - `rag_core.py` — RAG 파이프라인 코어 (검색·검증·답변 오케스트레이션)
 - `ingestion.py`, `visual_ingestion.py` — 문서 로딩/파싱. HWP/PDF backend = `HwpKordocLoader`/`PdfKordocLoader` (ADR 0049, `npx` 서브프로세스); `csv_text` 가 Node 부재/실패 시 무조건 fallback
@@ -80,7 +80,7 @@ RFP 문서 이해를 위한 DocAgent 시스템. **입찰/RFP 문서 인텔리전
 
 ## PR 설명
 
-[`.github/pull_request_template.md`](.github/pull_request_template.md) 채워야 함. 모든 섹션 필수 — 삭제 대신 "N/A" + 사유. load-bearing 파일 변경 시 **5b (real-data 델타)** 가 가장 중요 — fixture smoke 델타만으로 #69 의도된 보류 회귀를 놓친 사례
+[`.github/pull_request_template.md`](.github/pull_request_template.md) 채워야 함. 모든 섹션 필수 — 삭제 대신 "N/A" + 사유. load-bearing 파일 변경 시 §5 Eval 영향에 real-data 델타(`make real-eval-delta`) 또는 동작 무변경 사유를 적는 것을 **권장** — fixture smoke 델타만으로 #69 의도된 보류 회귀를 놓친 사례. (이 §5b 강제 게이트는 ADR 0084 로 폐지 — 유지보수자가 첨부 중단 결정)
 
 ## 자주 쓰는 명령
 

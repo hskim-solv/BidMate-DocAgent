@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 """Single source of truth for the load-bearing path list (CLAUDE.md).
 
-A "load-bearing" path is one whose change requires PR template item 5b
-(real-data eval delta) per CLAUDE.md and the PR #69 lesson — synthetic
-CI delta alone missed an intended-abstention regression there.
+A "load-bearing" path is one whose change warrants extra reviewer
+attention (ADR impact, real-data evidence) per CLAUDE.md and the PR #69
+lesson — synthetic CI delta alone missed an intended-abstention
+regression there. (The §5b PR-body gate that once hard-enforced this was
+deprecated in ADR 0084; the path list still drives the awareness layers
+below.)
 
-Three call sites that previously hardcoded their own copy now read this
-module:
+Call sites that previously hardcoded their own copy now read this module:
 
-- `.githooks/pre-push` (soft-warn reminder)
+- `.githooks/pre-push` (soft-warn reminders)
 - `scripts/claude-hooks/pretooluse-loadbearing.sh` (Claude awareness)
-- `.github/workflows/branch-and-issue-check.yml` via
-  `scripts/check_branch_and_issue.py --check-5b` (hard-fail CI gate)
 
 Exit codes:
     0  match (CLI succeeded — for --is-load-bearing / --any-match

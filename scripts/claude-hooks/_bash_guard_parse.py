@@ -213,10 +213,12 @@ def get_create_flag_value(cmd: str, flag: str) -> str:
     """Return the value of `flag` in the first `gh pr create` segment ('' if absent).
 
     Handles both `--flag VALUE` and `--flag=VALUE`. Same shlex-based
-    false-negative surface as the sibling parsers — a body built with
+    false-negative surface as the sibling parsers — a value built with
     command substitution / heredoc (`--body "$(cat <<EOF…)"`) is NOT
-    statically extractable and returns '' (the caller treats that as
-    "skip", fail-open). Used by the §5b soft-warn (issue #1097).
+    statically extractable and returns '' (callers treat that as "skip",
+    fail-open). Originally added for the §5b soft-warn (issue #1097); that
+    bash-guard call site was removed when the §5b gate was deprecated (ADR
+    0084), but the parser and its CLI remain as a general flag extractor.
     """
     for tokens in _segments(cmd):
         if (

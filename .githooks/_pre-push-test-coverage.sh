@@ -12,9 +12,9 @@
 # the behavior.
 #
 # Warns (never blocks) when the pushed diff touches a load-bearing
-# behavior path (scripts/_governance.py SSoT — the same list the §5b CI
-# gate and the Claude awareness hook read) but changes zero files under
-# tests/. Soft-warn only: `exit 0` always.
+# behavior path (scripts/_governance.py SSoT — the same list the Claude
+# awareness hook reads) but changes zero files under tests/. Soft-warn
+# only: `exit 0` always.
 #
 # By design no `set -e`: a missing python3 should skip the check, never
 # block the push.

@@ -1398,7 +1398,8 @@ clean:
 #
 # Arming variables (env):
 #   TTL          duration string (default 2h). Examples: 30m, 2h, 90m.
-#   REAL_EVAL    auto (default), skip, async. Affects PR body §5b cascade.
+#   REAL_EVAL    auto (default), skip, async. Deprecated no-op since the §5b
+#                PR-body cascade was removed (ADR 0084); accepted for compat.
 #   DRAFT        true|false (default false). Open PR as draft.
 #   DRY_RUN      0|1. With 1, all mutating commands are echoed to
 #                .claude/.ship-dryrun.log instead of executed.
@@ -1406,8 +1407,8 @@ clean:
 #   STACKED      ack to bypass heterogeneous-prefix refusal (logged).
 #
 # Examples:
-#   make ship-arm                       # 2h TTL, auto §5b
-#   make ship-arm TTL=30m REAL_EVAL=skip
+#   make ship-arm                       # 2h TTL
+#   make ship-arm TTL=30m REAL_EVAL=skip  # REAL_EVAL is a deprecated no-op
 #   make ship-arm DRY_RUN=1             # safe end-to-end test
 #   make ship-run DRY_RUN=1             # arm + immediately invoke dispatcher
 #   make ship-disarm                    # immediate kill (tier 1)

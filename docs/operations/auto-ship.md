@@ -49,7 +49,7 @@ make ship-start TITLE="자동화 범위 설명" TYPE=chore SLUG=short-slug
 | Var | Default | Effect |
 |---|---|---|
 | `TTL` | `2h` | Arm 수명. `30m`, `90m`, `1d` 허용. 만료 → 조용히 disarm. |
-| `REAL_EVAL` | `auto` | §5b cascade 모드. `skip` 은 escape 강제; `async` 는 지연; `auto` 는 delta-or-full 실행. |
+| `REAL_EVAL` | `auto` | **Deprecated no-op** (ADR 0084 가 §5b cascade 폐지). `_ship_pr_body.py --real-eval-mode` 로 여전히 전달되지만 무시됨 — 하위 호환용. |
 | `DRAFT` | `false` | PR 을 draft 로 연다. |
 | `DRY_RUN` | `0` | `1` 일 때, 모든 mutating 명령이 실행 대신 `.claude/.ship-dryrun.log` 로 echo 된다. |
 | `CROSS_OWNER` | _(empty)_ | `ack` 은 multi-agent lock 검사([`docs/multi-agent-ownership.md`](../multi-agent-ownership.md))를 우회한다. |
@@ -106,7 +106,7 @@ Gate 0 — 8 pre-checks (silent exit on any failure)
     ↓
 Stage 1: commit   (private-path filter → multi-agent lock → tier-7 prefix gate → bash scripts/test.sh → git commit)
 Stage 2: push     (ADR 0007 branch check → git push)
-Stage 3: PR       (_ship_pr_body.py → §5b cascade → gh pr create)
+Stage 3: PR       (_ship_pr_body.py → gh pr create)
 Stage 4: CI/review gate  (gh pr checks --watch → ready-mode draft promotion → requested-changes/unresolved-thread gate)
 Stage 5: merge    (gh pr merge --squash --admin → git push origin --delete <branch> → checkout main → disarm)
 ```
@@ -170,7 +170,7 @@ Stop hook 은 모든 Claude 턴마다 발화한다. 지배적 케이스는 no-op
 멱등(idempotent): 이미 head 브랜치를 타깃하는 PR 이 있으면 재사용한다.
 그렇지 않으면
 [`_ship_pr_body.py`](../../scripts/claude-hooks/_ship_pr_body.py) 를 호출해
-body 를 생성하고(template §1–§7, 아래 §5b cascade 포함),
+body 를 생성하고(template §1–§7; §5b cascade 는 ADR 0084 로 폐지),
 `gh pr create --base main --head <branch> --title ... --body-file ...`
 (추가로 `DRAFT=true` 이면 `--draft`)을 호출한다. PR title 은 squash-merge
 커밋 subject 이므로, `main` 에 머지된 커밋은 title 을 첫 줄로 하여
@@ -281,31 +281,22 @@ make ship-arm STACKED=ack
 `make ship-status` 가 출력하므로, 감사 추적(audit trail)이 사이클을
 넘어 보존된다.
 
-## §5b real-data delta cascade
+## §5b real-data delta cascade (폐지 — ADR 0084)
 
-[`_ship_pr_body.py:126-162`](../../scripts/claude-hooks/_ship_pr_body.py)
-의 `render_5b()` 는 PR body 의 "### 5b. Real-data delta" 아래에 무엇을
-쓸지 결정한다. 결정 트리:
-
-| Condition | Output |
-|---|---|
-| load-bearing 경로가 변경되지 않음 | `No behavior change in retrieval / verifier path. (no load-bearing path changed)` |
-| `REAL_EVAL=skip` | 동일 escape, suffix `(REAL_EVAL=skip)` |
-| Real-eval 실행 불가 (private `data/files/` 또는 `eval/real_config.local.yaml` 부재) | 사유와 함께 escape |
-| `REAL_EVAL=async` | escape + `<!-- real-eval-pending -->` |
-| 캐시 유효 (`provenance.git_commit` 이후 load-bearing diff 없음) | `make real-eval-delta` (120 s timeout) |
-| 캐시 stale | `make real-eval` (1800 s) → `make real-eval-delta` |
-
-PR body 는 CI 게이트
-(`scripts/check_branch_and_issue.py --check-5b` regex:
-`FIVE_B_TABLE_RE`, `FIVE_B_ESCAPE_RE`)에 대해 round-trip 검증된다;
-생성기는 CI 가 거부할 body 를 emit 하기를 거부한다([`_ship_pr_body.py:266-278`](../../scripts/claude-hooks/_ship_pr_body.py)).
+이전에는 [`_ship_pr_body.py`](../../scripts/claude-hooks/_ship_pr_body.py)
+의 `render_5b()` 가 PR body 의 "### 5b. Real-data delta" 섹션을 채우고
+(`make real-eval-delta` delta-or-full cascade), `gh pr create` 직전에
+`scripts/check_branch_and_issue.py --check-5b` 의 regex 게이트에 대해
+round-trip 검증했다. **[ADR 0084](../adr/0084-deprecate-5b-real-data-delta-gate.md)
+가 이 §5b 게이트를 폐지**했다 — auto-ship body 는 더 이상 §5b 섹션이나
+real-eval cascade 를 만들지 않는다 (`REAL_EVAL` env 는 하위 호환용 no-op).
+`make real-eval-delta` 측정 도구 자체는 유지된다.
 
 load-bearing 경로는
 [`scripts/_governance.py`](../../scripts/_governance.py) 의 `LOAD_BEARING_PATHS`
 에서 한 번 정의된다 — `CLAUDE.md`,
-`.githooks/pre-push`, pre-commit hook, `_ship_pr_body.py` 가 참조하는
-단일 진실 출처(single source of truth).
+`.githooks/pre-push` reminders, pre-commit hook, `_ship_pr_body.py` 가
+참조하는 단일 진실 출처(single source of truth).
 
 ## Squash-merge & multi-concern 추적
 
@@ -338,7 +329,6 @@ ADR 을 도입하는 커밋의 경우, 두 개의 분리된 PR 보다 같은 PR 
 | Multi-agent lock 위반 | Stage 1 | `CROSS_OWNER=ack` 가 아니면 abort |
 | Tier-7 heterogeneous prefix | Stage 1 | `STACKED=ack` 가 아니면 abort |
 | 브랜치 컨벤션 위반 또는 이슈 누락 | Stage 2 | push 전 abort |
-| §5b 검증 실패 (load-bearing 변경, body 에 delta 없음) | Stage 3 | `_ship_pr_body.py` exit 1, Stage 3 abort |
 | CI red 또는 timeout | Stage 4 | PR 코멘트 게시, abort, PR 열린 채 유지 |
 | requested changes / unresolved review thread | Stage 4 | PR 코멘트 게시, abort, PR 열린 채 유지 |
 | `gh pr merge` 거부 (admin merge 불가, branch protection) | Stage 5 | abort, PR 열린 채 유지 |

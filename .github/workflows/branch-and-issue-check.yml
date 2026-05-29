@@ -1,12 +1,12 @@
 name: Branch & Issue Convention
 
-# Enforces two governance gates per PR:
-#   (1) ADR 0007: branch named `<type>/issue-<N>[-<slug>]` with a
-#       matching `Closes #N` in the body, and the referenced issue
-#       must exist in this repo.
-#   (2) CLAUDE.md PR #69 lesson: when any load-bearing path changes
-#       (see scripts/_governance.py), the PR body §5b "Real-data
-#       delta" must contain a markdown table OR the escape sentence.
+# Enforces the ADR 0007 governance gate per PR:
+#   - branch named `<type>/issue-<N>[-<slug>]` with a matching
+#     `Closes #N` in the body, and the referenced issue must exist
+#     in this repo.
+#
+# (The §5b real-data-delta hard-gate was deprecated in ADR 0084 — the
+# real-eval-delta tool is retained, but PR-body §5b is no longer required.)
 #
 # Fast (~15s, no checkout). Should be set as a required status
 # check on `main` after one green run.
@@ -14,10 +14,9 @@ name: Branch & Issue Convention
 on:
   pull_request:
     types: [opened, edited, synchronize, reopened]
-    # No `branches:` filter — these gates (esp. §5b `--check-5b`) must fire on
-    # EVERY PR base, not just main. A `branches: [main]` filter let a
-    # load-bearing change ride in via a stacked PR (base≠main) with §5b never
-    # checked, neutralizing the PR #69 hard-gate (issue #1159).
+    # No `branches:` filter — these PR-correctness gates must fire on EVERY PR
+    # base, not just main. A `branches: [main]` filter would exempt stacked PRs
+    # (base≠main) from the branch/issue and ceiling-ratchet gates (issue #1159).
     # Guarded by tests/test_pr_gate_workflow_triggers_regression.py.
 
 permissions:
@@ -49,13 +48,6 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           python scripts/check_branch_and_issue.py --pr ${{ github.event.pull_request.number }}
-
-      - name: Validate PR §5b (load-bearing real-eval delta)
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-        run: |
-          python scripts/check_branch_and_issue.py --check-5b ${{ github.event.pull_request.number }}
 
       - name: Enforce failure-rate ceiling ratchet (ADR 0062)
         env:

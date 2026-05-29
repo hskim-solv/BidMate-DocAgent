@@ -19,7 +19,7 @@
 
 - [`pyproject.toml`](../../pyproject.toml) `tool.pytest.ini_options.pythonpath = ["."]`
 - [CLAUDE.md](../../CLAUDE.md) "저장소 맵" 섹션 (load-bearing 6 + supporting 9 + 디렉토리 5)
-- [`scripts/_governance.py`](../../scripts/_governance.py) `LOAD_BEARING_PATHS` — pre-push hook + PreToolUse load-bearing awareness + `--check-5b` CI gate 가 함께 읽는 단일 출처
+- [`scripts/_governance.py`](../../scripts/_governance.py) `LOAD_BEARING_PATHS` — pre-push hook + PreToolUse load-bearing awareness 가 함께 읽는 단일 출처 (이전엔 `--check-5b` CI gate 도 읽었으나 ADR 0084 가 게이트 폐지)
 
 그러나 **"왜 평탄한가" 가 ADR 로 기록되어 있지 않다.** 외부 리뷰어 / 신규 컨트리뷰터 / 미래의 본인이 이를 "정리해야 할 기술 부채" 로 오해할 위험이 있고, 그 오해가 large-scale refactor 압력으로 누적될 가능성이 있다. CLAUDE.md "ADR 임계값" 조항 — *load-bearing 결정의 유지/교체 시 ADR 필요* — 에 부합하므로 결정을 명문화한다.
 

@@ -8,7 +8,7 @@
 # Registered in `.claude/settings.json` with matcher `Edit|MultiEdit|Write`.
 # Fires before Claude modifies a file; prints a stderr awareness warning
 # when the target is a load-bearing path (per CLAUDE.md), reminding Claude
-# to consider ADR impact and the PR template's real-data delta requirement.
+# to consider ADR impact and to attach real-data evidence where it helps.
 #
 # Behavior: NEVER blocks. Always exits 0. Pure awareness layer.
 #
@@ -35,7 +35,7 @@ if [[ -z "$file_path" ]]; then
 fi
 
 # Load-bearing list lives in scripts/_governance.py (single source of
-# truth, also consumed by .githooks/pre-push and the §5b CI gate).
+# truth, also consumed by .githooks/pre-push reminders).
 if python3 "$REPO_ROOT/scripts/_governance.py" --is-load-bearing "$file_path" 2>/dev/null; then
   # Fire log for /self-review-quarterly governance ROI axis (issue #495).
   # v2-5field format per ADR 0060 (issue #1039). Gitignored via `.claude/*`.
@@ -51,8 +51,8 @@ if python3 "$REPO_ROOT/scripts/_governance.py" --is-load-bearing "$file_path" 2>
       - ADR 0003 (answer contract — bump schema_version if breaking)
       - ADR 0005 (eval split — public fixture smoke / private internal)
 
-    PR template item 5b (real-eval-delta aggregate table) will be required
-    when this change ships.
+    Consider attaching real-data evidence (`make real-eval-delta`) when this
+    change ships — recommended, no longer gated (ADR 0084 deprecated §5b).
 EOF
 fi
 
