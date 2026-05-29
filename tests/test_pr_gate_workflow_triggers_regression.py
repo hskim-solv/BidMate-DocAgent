@@ -1,15 +1,15 @@
 """Regression: PR-gate workflows must fire on EVERY PR base, not just main.
 
-Issue #1159 — the §5b real-data-delta hard-gate (``--check-5b``) lives only in
-``branch-and-issue-check.yml``, which was triggered by
-``pull_request: branches: [main]``. A load-bearing change opened as a stacked
-PR (base≠main — a CLAUDE.md-blessed 1-day-decomposition pattern) therefore
-never ran ``--check-5b``: the PR #69 hard-gate was silently bypassable on the
-stacked path. ``pr-eval.yml`` carried the same ``branches: [main]`` filter, so
-its eval-delta / pytest gates were also exempt on stacked PRs.
+Issue #1159 — ``branch-and-issue-check.yml`` was triggered by
+``pull_request: branches: [main]``. A change opened as a stacked PR
+(base≠main — a CLAUDE.md-blessed 1-day-decomposition pattern) therefore never
+ran the branch/issue + ceiling-ratchet gates on that workflow. ``pr-eval.yml``
+carried the same ``branches: [main]`` filter, so its eval-delta / pytest gates
+were also exempt on stacked PRs. (The original incident also covered the §5b
+hard-gate, which was later deprecated in ADR 0084.)
 
 These tests pin "PR-correctness gates fire on all bases" so that re-adding a
-``branches:`` filter — which reintroduces the §5b bypass — fails CI before it
+``branches:`` filter — which would re-exempt stacked PRs — fails CI before it
 can merge.
 """
 
@@ -68,24 +68,9 @@ class PrGateBaseAgnosticTest(unittest.TestCase):
                     branches,
                     f"{name}: `pull_request.branches` is {branches!r}, but PR "
                     f"gates must fire on EVERY base. A `branches: [main]` "
-                    f"filter exempts stacked PRs (base≠main) from the gate and "
-                    f"reintroduces the §5b bypass (issue #1159).",
+                    f"filter exempts stacked PRs (base≠main) from the gate "
+                    f"(issue #1159).",
                 )
-
-
-class FiveBGateStillWiredTest(unittest.TestCase):
-    """The trigger fix is moot if the §5b step itself is dropped."""
-
-    def test_check_5b_step_present(self) -> None:
-        text = (WORKFLOWS / "branch-and-issue-check.yml").read_text(
-            encoding="utf-8"
-        )
-        self.assertIn(
-            "--check-5b",
-            text,
-            "branch-and-issue-check.yml must still invoke "
-            "`check_branch_and_issue.py --check-5b` (PR #69 hard-gate).",
-        )
 
 
 class PrEvalChangeScopeWiringTest(unittest.TestCase):

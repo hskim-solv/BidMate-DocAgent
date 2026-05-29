@@ -1,13 +1,10 @@
-"""Drift guard for the load-bearing path SSoT (`scripts/_governance.py`)
-plus regex-level checks for the §5b enforcement in
-`scripts/check_branch_and_issue.py`.
+"""Drift guard for the load-bearing path SSoT (`scripts/_governance.py`).
 
 The same conceptual list previously lived in three places with subtle
-differences. These tests ensure all three consumers reach back to the
-SSoT instead of carrying their own copy. The §5b tests confirm the
-gating logic accepts the documented escape sentence and rejects an
-empty/comment-only template body (which would otherwise let PR #69-class
-regressions through).
+differences. These tests ensure the consumers reach back to the SSoT
+instead of carrying their own copy. (The §5b enforcement regexes that
+used to live in `scripts/check_branch_and_issue.py` were removed when the
+§5b gate was deprecated — ADR 0084.)
 
 Additional invariants (issue #315, parent #284):
 - `naive_baseline` preset retained in `eval/config.yaml` (ADR 0001).
@@ -33,7 +30,6 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT_DIR / "scripts"))
 
 import _governance as gov  # noqa: E402
-import check_branch_and_issue as cbi  # noqa: E402
 
 
 @pytest.mark.parametrize("entry", [
@@ -108,193 +104,10 @@ def test_pr_template_mentions_all_canonical_entries():
     for entry in gov.LOAD_BEARING_PATHS:
         assert entry in template, (
             f"PR template must mention load-bearing entry {entry!r} "
-            f"so reviewers see the §5b trigger surface. "
+            f"so reviewers see the load-bearing surface. "
             f"Update .github/pull_request_template.md to keep it in sync "
             f"with scripts/_governance.LOAD_BEARING_PATHS."
         )
-
-
-def test_five_b_section_absent_when_no_header():
-    assert cbi._five_b_section("nothing here") is None
-
-
-def test_five_b_section_found_with_default_template_only():
-    body = (
-        "### 5b. Real-data delta\n\n"
-        "<!--\n"
-        "Required if load-bearing path changed.\n"
-        "Attach `make real-eval-delta` table or state:\n"
-        "'No behavior change in retrieval / verifier path.'\n"
-        "-->\n"
-    )
-    section = cbi._five_b_section(body)
-    assert section is not None, "header is present, even if section is empty"
-    assert not cbi.FIVE_B_TABLE_RE.search(section), (
-        "comment-only template body must NOT count as a markdown table"
-    )
-    assert not cbi.FIVE_B_ESCAPE_RE.search(section), (
-        "escape sentence inside an HTML comment must be stripped, "
-        "otherwise the default empty template would silently satisfy §5b"
-    )
-
-
-def test_five_b_table_regex_matches_real_eval_delta_aggregate():
-    section = (
-        "\n\n"
-        "| metric | base | head | delta |\n"
-        "|---|---|---|---|\n"
-        "| accuracy | 0.82 | 0.84 | +0.02 |\n"
-    )
-    assert cbi.FIVE_B_TABLE_RE.search(section)
-
-
-@pytest.mark.parametrize("sentence", [
-    # English sentinel (original contract).
-    "No behavior change in retrieval path.",
-    "No behavior change in verifier path.",
-    "No behavior change in retrieval / verifier path.",
-    "no behavior change in eval path",
-    "No behavior change in API path.",
-    "No behavior change in ingestion path.",
-    # Korean attestation — must be accepted too, because the PR template's
-    # §5b example is Korean (issue #1048). The first item is verbatim the
-    # template example.
-    "검색/검증 path 동작 변화 없음.",
-    "검증 path 동작 변경 없음",
-    "검색 경로 동작 변화 없습니다",
-    "수집 path 변동 없음",
-    "eval path 동작 변화 없음",
-])
-def test_five_b_escape_regex_accepts_documented_escape(sentence):
-    assert cbi.FIVE_B_ESCAPE_RE.search(sentence), (
-        f"Escape sentence not recognized: {sentence!r}"
-    )
-
-
-@pytest.mark.parametrize("sentence", [
-    # English off-pattern (original contract).
-    "No behavior change anywhere.",
-    "We changed retrieval behavior.",
-    "TODO: add real-eval delta.",
-    # Korean false-escapes — these assert behavior DID/MIGHT change, so they
-    # must NOT satisfy the escape. The anchor 변(화|경|동)\s*없(음|다|습니다)
-    # keeps the PR #69 guard intact for Korean bodies.
-    "검증 동작이 대폭 변화했다.",
-    "검증 path 동작 변화 분석 예정",
-    "retrieval 동작 변경 있음",
-    "검색 결과가 변했지만 회귀는 없음",
-    "검증 로직 일부 변경, 그러나 외부 schema 변동 없음",
-    # Trailing negation contradicts the "no change" claim → behavior DID
-    # change, so the bare regex must not match (issue #1236).
-    "평가 결과 변화 없음은 거짓입니다",
-    "평가 결과 변화 없음이 아닙니다",
-])
-def test_five_b_escape_regex_rejects_off_pattern(sentence):
-    assert not cbi.FIVE_B_ESCAPE_RE.search(sentence), (
-        f"Should not match escape: {sentence!r}"
-    )
-
-
-# §5b escape acceptance is decided by `five_b_escape_satisfied`, not the bare
-# regex: a compound body can match the regex on a "no change" clause while a
-# separate clause admits a change. The helper voids the escape in that case
-# (issue #1236 — over-match bypassed the PR #69 guard).
-@pytest.mark.parametrize("section", [
-    # Compound: one clause admits a change, so the no-change clause cannot escape.
-    "평가 결과 변화 없음. 검색 동작은 변경됨.",
-    "검색 동작은 변경됨. 평가 결과 변화 없음.",
-    "검증 path 동작 변화 없음. 단, 평가 메트릭은 변경되었음.",
-    # Negation suffix (also rejected at the bare-regex level).
-    "평가 결과 변화 없음은 거짓입니다",
-    "평가 결과 변화 없음이 아닙니다",
-    # No attestation at all.
-    "TODO: add real-eval delta.",
-])
-def test_five_b_escape_satisfied_rejects_false_escape(section):
-    assert not cbi.five_b_escape_satisfied(section), (
-        f"Escape must be void for: {section!r}"
-    )
-
-
-@pytest.mark.parametrize("section", [
-    "검색/검증 path 동작 변화 없음.",
-    "검증 path 동작 변경 없음",
-    "수집 path 변동 없음",
-    "No behavior change in retrieval / verifier path.",
-])
-def test_five_b_escape_satisfied_accepts_valid_escape(section):
-    assert cbi.five_b_escape_satisfied(section), (
-        f"Valid escape must be honored: {section!r}"
-    )
-
-
-# `명시:` 다음 줄의 따옴표 예시를 뽑는다. PR #1030 이 §5b 코멘트에 텍스트를
-# 덧붙여도 이 추출 위치는 안정적이다.
-_TEMPLATE_5B_EXAMPLE_RE = re.compile(r"명시[:：]\s*\n\s*\"([^\"]+)\"")
-
-
-def test_pr_template_5b_escape_example_matches_regex():
-    """The §5b escape example shown to authors must be one the gate accepts.
-
-    Root cause of issue #1048: the PR template's §5b example was Korean
-    ('검색/검증 path 동작 변화 없음.') but `FIVE_B_ESCAPE_RE` matched English
-    only — so authors who followed the template verbatim failed CI, and no
-    test caught the template↔gate drift. This guard ties the two together:
-    if either side changes such that the documented example no longer
-    satisfies the gate, this fails at PR time instead of in a contributor's
-    CI run.
-    """
-    template = (
-        ROOT_DIR / ".github" / "pull_request_template.md"
-    ).read_text(encoding="utf-8")
-    m = _TEMPLATE_5B_EXAMPLE_RE.search(template)
-    assert m, (
-        "Could not find the §5b escape example (a quoted string after '명시:') "
-        "in .github/pull_request_template.md. If the template wording moved, "
-        "update _TEMPLATE_5B_EXAMPLE_RE here too."
-    )
-    example = m.group(1)
-    assert cbi.FIVE_B_ESCAPE_RE.search(example), (
-        f"PR template §5b escape example {example!r} is NOT accepted by "
-        f"FIVE_B_ESCAPE_RE — template↔gate drift (issue #1048). Fix by aligning "
-        f"the regex in scripts/check_branch_and_issue.py with the example in "
-        f".github/pull_request_template.md (or vice-versa)."
-    )
-
-
-def test_pr_template_5b_reviewer_caveat_is_visible():
-    """The reviewer-responsibility caveat must be VISIBLE, not comment-buried.
-
-    Issue #1027 added the caveat ('CI 통과 ≠ §5b 내용 검증 완료 — reviewer
-    책임') inside an HTML comment, so it was invisible in BOTH surfaces: the
-    rendered PR (comments don't render) and the gate's extraction
-    (`_five_b_section` strips comments). A guard whose entire point is to tell
-    reviewers they own §5b content verification was hidden from those very
-    reviewers. This locks the caveat outside the comment.
-
-    It also guards the inverse hazard: visible text lives inside the extracted
-    §5b section, so it must NOT by itself satisfy the gate — otherwise every
-    load-bearing PR would pass §5b with an empty author fill, defeating the
-    PR #69 abstention-regression guard.
-    """
-    template = (
-        ROOT_DIR / ".github" / "pull_request_template.md"
-    ).read_text(encoding="utf-8")
-    section = cbi._five_b_section(template)
-    assert section is not None, "template must contain the §5b header"
-    assert "책임" in section, (
-        "the reviewer-responsibility caveat must be VISIBLE (outside HTML "
-        "comments) so it survives both PR rendering and the gate's comment "
-        "strip — see issue #1027."
-    )
-    assert not cbi.FIVE_B_TABLE_RE.search(section), (
-        "the visible §5b caveat must not look like a markdown table, else an "
-        "empty author fill would auto-satisfy the gate."
-    )
-    assert not cbi.FIVE_B_ESCAPE_RE.search(section), (
-        "the visible §5b caveat must not match the escape sentence, else an "
-        "empty author fill would auto-satisfy the gate (defeating PR #69)."
-    )
 
 
 # ---------------------------------------------------------------------------

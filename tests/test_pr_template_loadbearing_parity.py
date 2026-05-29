@@ -3,13 +3,15 @@
 거버넌스 비판 보고서 (2026-05-19) #2 부분 정정 후속 (issue #1041).
 
 원안: "Load-bearing 리스트 3중 hardcode". 재조사로 다음 확정:
-- ``scripts/_governance.py:LOAD_BEARING_PATHS`` = canonical (5b 강제 대상)
-- ``.github/pull_request_template.md`` 라인 21, 48 = **진짜 textual mirror**
-- ``scripts/claude-hooks/stop-ship.sh:201-203`` = **private path exclusion** —
-  load-bearing 과 의미 다름. 별도 surface (data/files/, eval/*.local.yaml,
-  reports/real*/ 같은 commit 자체를 막을 path)
+- ``scripts/_governance.py:LOAD_BEARING_PATHS`` = canonical
+- ``.github/pull_request_template.md`` §2 영향 파일 안내 = **진짜 textual mirror**
+- ``scripts/claude-hooks/stop-ship.sh`` private-path exclusion = **의미 다름**
+  (data/files/, eval/*.local.yaml, reports/real*/ 같은 commit 자체를 막을 path)
 
 이 회귀 테스트는 PR template 의 mirror 만 검증 — 진짜 drift 가능 surface.
+
+(이전엔 §2 + §5b 두 mirror 를 검증했으나, §5b 섹션은 ADR 0084 로 PR
+template 에서 제거됨 — 이제 §2 영향 파일 안내 한 곳만 검증한다.)
 
 drift 발생 시 fail message 가 어디를 update 할지 명시.
 """
@@ -23,10 +25,9 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PR_TEMPLATE = REPO_ROOT / ".github" / "pull_request_template.md"
 
-# The two textual mirror sites the parity check must enforce. Substrings matched
+# The textual mirror site the parity check must enforce. Substring matched
 # against each section's header line (markdown ``##``/``###``).
 SECTION_2 = "2. 영향 파일"
-SECTION_5B = "5b"
 
 
 def _load_governance():
@@ -72,32 +73,24 @@ def _find_block(blocks: dict[str, str], header_substr: str) -> str:
 
 
 def _missing_per_section(template_text: str, paths) -> list[tuple[str, str]]:
-    """Return (path, section_label) for each path absent from §2 or §5b.
+    """Return (path, section_label) for each path absent from §2.
 
-    Per-block — a path present in §2 but not §5b (or vice versa) is reported,
-    which a substring-anywhere check over the whole template would miss.
+    §2 is the only textual mirror of LOAD_BEARING_PATHS in the template since
+    the §5b section was removed (ADR 0084).
     """
     blocks = _split_into_blocks(template_text)
     sec2 = _find_block(blocks, SECTION_2)
-    sec5b = _find_block(blocks, SECTION_5B)
     problems: list[tuple[str, str]] = []
     for path in paths:
         # Strip trailing "/" so "eval/" matches "eval/" or "eval" in prose.
         needle = path.rstrip("/")
         if needle not in sec2:
             problems.append((path, "§2 영향 파일"))
-        if needle not in sec5b:
-            problems.append((path, "§5b Real-data delta"))
     return problems
 
 
 def test_pr_template_mentions_all_loadbearing_paths():
-    """Each LOAD_BEARING_PATHS entry must appear in BOTH mirror sites.
-
-    Two textual mirror sites exist (§2 영향 파일 안내 + §5b 강제 안내). The
-    check is per-section: a path present in only one site is drift, since the
-    other site silently under-promises 5b enforcement.
-    """
+    """Each LOAD_BEARING_PATHS entry must appear in the §2 mirror site."""
     gov = _load_governance()
     template_text = PR_TEMPLATE.read_text(encoding="utf-8")
 
@@ -105,34 +98,30 @@ def test_pr_template_mentions_all_loadbearing_paths():
 
     assert not problems, (
         "PR template (.github/pull_request_template.md) is missing "
-        "LOAD_BEARING_PATHS entries from a mirror section:\n"
+        "LOAD_BEARING_PATHS entries from the §2 mirror section:\n"
         + "\n".join(f"  - {p}  (missing from {sec})" for p, sec in problems)
-        + "\n\nDrift detected — each load-bearing path must appear in BOTH "
-        "§2 영향 파일 안내 AND §5b 강제 안내. "
+        + "\n\nDrift detected — each load-bearing path must appear in "
+        "§2 영향 파일 안내. "
         "Single source of truth: scripts/_governance.py:LOAD_BEARING_PATHS."
     )
 
 
-def test_per_section_check_catches_misplaced_path():
-    """Regression for the substring-anywhere bug: a path present only in §2
-    (or only in §5b) must be reported as drift.
+def test_per_section_check_catches_missing_path():
+    """A path absent from §2 must be reported as drift.
 
-    The old check used ``needle not in template_text`` and would pass when a
-    path lived in either mirror site. This doctored template has ``api`` in §2
-    only and ``rag_core.py`` in §5b only — both must be flagged.
+    The doctored template lists ``rag_core.py`` in §2 but omits ``api/`` —
+    only the missing one is flagged.
     """
     doctored = (
         "## 2. 영향 파일\n"
-        "<!-- api/ -->\n"
+        "<!-- rag_core.py -->\n"
         "## 3. 리스크\n"
         "<!-- x -->\n"
-        "### 5b. Real-data delta\n"
-        "<!-- rag_core.py -->\n"
         "## 6. 하위 호환\n"
     )
     problems = _missing_per_section(doctored, ["api/", "rag_core.py"])
-    assert ("api/", "§5b Real-data delta") in problems
-    assert ("rag_core.py", "§2 영향 파일") in problems
+    assert ("api/", "§2 영향 파일") in problems
+    assert ("rag_core.py", "§2 영향 파일") not in problems
 
 
 def test_pr_template_does_not_silently_remove_paths():
@@ -167,7 +156,7 @@ def test_pr_template_does_not_silently_remove_paths():
         "LOAD_BEARING_PATHS:\n"
         + "\n".join(f"  - {p}" for p in stale)
         + "\n\nIf they were intentionally removed, update PR template prose too. "
-        "Stale mentions create misleading 5b expectations."
+        "Stale mentions create misleading load-bearing expectations."
     )
 
 

@@ -2006,7 +2006,7 @@ def test_manifest_pr_body_check_ci_stacked_and_patch_proposal(tmp_path: Path) ->
 
 Closes #999
 
-### 5b. Real-data delta
+## 5. Eval 영향
 
 N/A
 question: PRIVATE RAW QUERY
@@ -2031,7 +2031,7 @@ question: PRIVATE RAW QUERY
     )
 
     ci_log = repo / "reports" / "agent_loop" / "ci.log"
-    ci_log.write_text("FAILED tests/test_agent_loop.py::test_x AssertionError\n5b missing\n", encoding="utf-8")
+    ci_log.write_text("FAILED tests/test_agent_loop.py::test_x AssertionError\ntrailing whitespace error\n", encoding="utf-8")
     ci_out, ci_dir, count, ci = agent_loop.write_ci_ingest(logs=[ci_log], repo_root=repo)
 
     pr_state = repo / "reports" / "agent_loop" / "pr_state.json"
@@ -2263,7 +2263,7 @@ def test_review_threads_readiness_history_policy_and_coverage_reports(tmp_path: 
     body.write_text(
         """Closes #9999
 
-### 5b. Real-data delta
+## 5. Eval 영향
 
 N/A - no load-bearing path.
 """,
@@ -6905,7 +6905,7 @@ def test_human_gated_exec_pr_create_checks_body_and_rejects_unsafe_branch(monkey
     body.write_text(
         """Closes #9999
 
-### 5b. Real-data delta
+## 5. Eval 영향
 
 N/A - no load-bearing path.
 """,

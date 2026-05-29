@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
-"""Validate branch naming convention, PR-issue linkage, and §5b real-data delta.
+"""Validate branch naming convention and PR-issue linkage.
 
-Single source of truth for the regexes. Called from three places:
+Single source of truth for the regexes. Called from two places:
 
 - `.githooks/pre-push` (local) → `--branch <name> --check-issue`
 - `.github/workflows/branch-and-issue-check.yml` (CI) → `--pr <number>`
-- Same CI workflow → `--check-5b <number>` (enforces PR template §5b for
-  load-bearing changes, per CLAUDE.md PR #69 lesson)
 
 Exit codes:
     0  ok (or exempt)
@@ -26,7 +24,6 @@ from typing import Optional
 
 from _governance import (
     ceiling_ratchet_violations,
-    is_load_bearing,
     parse_allow_regression_categories,
     parse_failure_rate_ceilings,
 )
@@ -42,52 +39,6 @@ EXEMPT_REGEX = re.compile(r"^(?:revert-|dependabot/|renovate/|pre-commit-ci/)")
 CLOSES_REGEX = re.compile(r"(?i)\b(?:closes|fixes|resolves)\s+#(\d+)\b")
 
 ALLOWED_PREFIXES = "feat, fix, docs, chore, refactor, test, eval, ci, perf, build, style"
-
-HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
-FIVE_B_HEADER_RE = re.compile(r"###\s+5b\.\s*Real-data delta", re.IGNORECASE)
-FIVE_B_TABLE_RE = re.compile(r"^\s*\|.+\|.+\|", re.MULTILINE)
-# Accepts the §5b "no behavior change" attestation in EITHER language so the
-# gate matches the (Korean-first) PR template example, not just the English
-# sentinel (issue #1048 — template↔gate drift made template-following PRs fail
-# CI). The Korean branch anchors "변(화|경|동)" immediately before "없(음|다|습니다)"
-# (only whitespace allowed between) so a sentence asserting that behavior DID
-# change cannot accidentally satisfy the escape — that false-escape is exactly
-# the PR #69 regression class §5b guards against.
-FIVE_B_ESCAPE_RE = re.compile(
-    r"No behavior change in\s+(?:retrieval|verifier|eval|api|ingestion)\b"
-    r"|"
-    r"(?:검색|검증|수집|평가|retrieval|verifier|eval|api|ingestion)"
-    r"[^\n]{0,16}?"
-    r"(?:변화|변경|변동)\s*없(?:음|다|습니다)"
-    # A trailing negation contradicts the "no change" claim ("없음은 거짓",
-    # "없음이 아닙니다") — that means behavior DID change, so reject the escape
-    # (issue #1236 — over-match bypassed the PR #69 guard).
-    r"(?!\s*(?:은|는|이|가|것은|것이)?\s*(?:거짓|아(?:니|닙|님)|틀))",
-    re.IGNORECASE,
-)
-
-# A positive assertion that behavior DID change. If this appears anywhere in
-# the §5b section, the "no change" escape is void even if a separate clause
-# claims no change ("평가 결과 변화 없음. 검색 동작은 변경됨.") — the author
-# must attach the real-eval table instead (issue #1236, PR #69 class). Requires
-# an explicit change marker (있/됨/되/했) so it cannot fire on "변경 없음".
-FIVE_B_CHANGE_RE = re.compile(
-    r"(?:변화|변경|변동)\s*(?:이|가|은|는)?\s*있(?:음|다|었|습니다)"
-    r"|"
-    r"(?:변화|변경|변동)(?:되|돼|됐|됨|했|하였|하게)",
-)
-
-
-def five_b_escape_satisfied(section: str) -> bool:
-    """True iff §5b text contains a valid 'no behavior change' attestation.
-
-    Voided when any positive change assertion appears in the section, so a
-    compound body that admits a change in one clause cannot escape via a
-    'no change' clause elsewhere (issue #1236).
-    """
-    if FIVE_B_CHANGE_RE.search(section):
-        return False
-    return bool(FIVE_B_ESCAPE_RE.search(section))
 
 
 def _err(msg: str) -> None:
@@ -249,107 +200,6 @@ def check_pr_mode(pr_number: int) -> int:
     return 0
 
 
-def _five_b_section(body: str) -> Optional[str]:
-    """Return the §5b section text (HTML comments stripped) or None if absent.
-
-    The PR template ships with HTML comments under each header explaining
-    what to write; those comments are invisible in rendered markdown and
-    must not satisfy the §5b requirement. We strip them first.
-    """
-    stripped = HTML_COMMENT_RE.sub("", body)
-    m = FIVE_B_HEADER_RE.search(stripped)
-    if not m:
-        return None
-    rest = stripped[m.end():]
-    next_section = re.search(r"\n##\s", rest)
-    if next_section:
-        return rest[: next_section.start()]
-    return rest
-
-
-def check_5b_mode(pr_number: int) -> int:
-    """Verify PR body §5b for load-bearing changes.
-
-    Logic:
-      1. `gh pr view --json files,body` → list of changed paths + body text.
-      2. Filter changed paths through `_governance.is_load_bearing()`.
-      3. If none match → exit 0 (skip; non-load-bearing PR).
-      4. If any match → require body to contain the '### 5b. Real-data delta'
-         header AND, beneath it (HTML comments stripped), either a markdown
-         table row OR the escape sentence in English ('No behavior change in
-         retrieval/verifier/eval/api/ingestion path') or Korean ('검색/검증
-         path 동작 변화 없음.') — see FIVE_B_ESCAPE_RE.
-      5. On failure: print actionable error pointing to PR #69 lesson.
-    """
-    if not gh_available():
-        _err("❌ `gh` CLI is required in --check-5b mode but is not available.\n")
-        return 2
-    repo = get_repo_slug()
-    if not repo:
-        _err("❌ Could not determine repo slug (set GITHUB_REPOSITORY).\n")
-        return 2
-    try:
-        result = subprocess.run(
-            ["gh", "pr", "view", str(pr_number), "--repo", repo,
-             "--json", "files,body"],
-            capture_output=True, text=True, check=True,
-        )
-    except subprocess.CalledProcessError as e:
-        _err(f"❌ Could not fetch PR #{pr_number}: {e.stderr}\n")
-        return 2
-
-    pr = json.loads(result.stdout)
-    files = pr.get("files") or []
-    body = pr.get("body") or ""
-
-    load_bearing_hits = [
-        f.get("path", "") for f in files if is_load_bearing(f.get("path", ""))
-    ]
-    if not load_bearing_hits:
-        sys.stdout.write(
-            f"OK: PR #{pr_number} changes no load-bearing path; §5b not required.\n"
-        )
-        return 0
-
-    section = _five_b_section(body)
-    example = load_bearing_hits[0]
-    remediation = (
-        "   PR #69 lesson: the fixture smoke delta alone missed an intended-abstention regression.\n"
-        "   Either:\n"
-        "     (a) attach the `make real-eval-delta` aggregate table under\n"
-        "         '### 5b. Real-data delta', or\n"
-        "     (b) state explicitly, e.g. '검색/검증 path 동작 변화 없음.'\n"
-        "         (English also accepted: 'No behavior change in retrieval / verifier path.')\n"
-        "   See: .github/pull_request_template.md and CLAUDE.md.\n"
-    )
-    if section is None:
-        _err(
-            f"\n❌ Load-bearing change detected (e.g. {example}) but PR body has\n"
-            f"   no '### 5b. Real-data delta' section.\n" + remediation
-        )
-        return 1
-
-    has_table = bool(FIVE_B_TABLE_RE.search(section))
-    has_escape = five_b_escape_satisfied(section)
-    if not (has_table or has_escape):
-        _err(
-            f"\n❌ Load-bearing change detected (e.g. {example}) but §5b is\n"
-            f"   missing both a markdown table and the escape sentence.\n"
-            + remediation
-        )
-        return 1
-
-    sys.stdout.write(
-        f"OK: PR #{pr_number} touches load-bearing path "
-        f"({example}); §5b contains "
-        f"{'table' if has_table else 'escape sentence'}.\n"
-        "   NOTE: this gate enforces §5b *presence* only. The accuracy of the\n"
-        "   numbers / truth of the attestation is the reviewer's responsibility\n"
-        "   — CI green != §5b content verified (issue #1027).\n"
-    )
-    return 0
-
-
 CEILING_TEST_PATH = "tests/test_failure_rate_regression.py"
 
 
@@ -480,15 +330,11 @@ def check_ceiling_ratchet_mode(pr_number: int) -> int:
 
 def main() -> int:
     p = argparse.ArgumentParser(
-        description="Validate branch + issue convention + §5b (ADR 0007, CLAUDE.md).",
+        description="Validate branch + issue convention (ADR 0007, CLAUDE.md).",
     )
     g = p.add_mutually_exclusive_group(required=True)
     g.add_argument("--branch", help="Branch name to validate (local mode).")
     g.add_argument("--pr", type=int, help="PR number to validate (CI mode).")
-    g.add_argument(
-        "--check-5b", type=int, dest="check_5b", metavar="PR_NUMBER",
-        help="Verify PR body §5b for load-bearing changes (CI mode).",
-    )
     g.add_argument(
         "--check-ceiling-ratchet", type=int, dest="check_ceiling_ratchet",
         metavar="PR_NUMBER",
@@ -506,9 +352,7 @@ def main() -> int:
         return check_branch_mode(args.branch, args.check_issue)
     if args.pr is not None:
         return check_pr_mode(args.pr)
-    if args.check_ceiling_ratchet is not None:
-        return check_ceiling_ratchet_mode(args.check_ceiling_ratchet)
-    return check_5b_mode(args.check_5b)
+    return check_ceiling_ratchet_mode(args.check_ceiling_ratchet)
 
 
 if __name__ == "__main__":

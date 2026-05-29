@@ -7,16 +7,17 @@
 #
 # Two reminders, both soft-warn only:
 #
-# 1. Real-data eval delta reminder — if the push touches retrieval / verifier /
-#    eval / api paths (per `scripts/_governance.py` SSoT, also consumed by the
-#    Claude PreToolUse hook and the §5b CI gate), echo a reminder to attach
-#    `make real-eval-delta` output to the PR body per CLAUDE.md item 5b.
-#
-# 2. README metrics freshness reminder — if `reports/eval_summary.json` exists
+# 1. README metrics freshness reminder — if `reports/eval_summary.json` exists
 #    locally and the committed README's metrics block diverges from what
 #    `update_readme_metrics.py` would render, remind the developer to refresh
 #    it. `eval_summary.json` is gitignored, so this is the only feasible
 #    enforcement point — CI cannot compare against it.
+#
+# 2. naive_baseline golden freshness reminder — see block 2 below.
+#
+# (The §5b real-data-delta pre-push reminder was deprecated in ADR 0084. The
+# `make real-eval-delta` measurement tool is retained, but it is no longer
+# nagged on push.)
 #
 # By design no `set -e`: a missing optional dep (gh, python3 module) should
 # emit a warning at worst, never block the push.
@@ -24,7 +25,8 @@
 set -u
 
 # ---------------------------------------------------------------------------
-# 1. Real-data eval delta reminder.
+# Resolve the diff base. `$changed` is consumed by the naive_baseline golden
+# reminder below.
 # ---------------------------------------------------------------------------
 
 # Resolve upstream / base ref. Prefer @{upstream}; fall back to origin/main.
@@ -44,37 +46,8 @@ if ! changed=$(git diff --name-only "$base"...HEAD 2>/dev/null); then
   fi
 fi
 
-if [[ -n "$changed" ]]; then
-  # Match against the load-bearing SSoT (scripts/_governance.py).
-  hit=""
-  if command -v python3 >/dev/null 2>&1; then
-    hit=$(printf '%s\n' "$changed" | python3 scripts/_governance.py --any-match 2>/dev/null | head -n1)
-  fi
-
-  if [[ -n "$hit" ]]; then
-    cat >&2 <<EOF
-
-⚠️  Retrieval / verifier / eval path changed in this push.
-    (first match: $hit)
-
-    Per CLAUDE.md pre-PR checklist item 5b, attach the aggregate
-    real-data eval delta to the PR body before requesting review:
-
-        make real-eval
-        make real-eval-delta
-
-    The delta script is aggregate-only (ADR 0005 commit boundary) so
-    its output is safe to paste into the PR.
-
-    Push proceeds. Skip this reminder with --no-verify only if you
-    have a documented reason.
-
-EOF
-  fi
-fi
-
 # ---------------------------------------------------------------------------
-# 2. README metrics freshness reminder.
+# 1. README metrics freshness reminder.
 # ---------------------------------------------------------------------------
 
 if [[ -f "reports/eval_summary.json" ]] && command -v python3 >/dev/null 2>&1; then
@@ -100,7 +73,7 @@ EOF
 fi
 
 # ---------------------------------------------------------------------------
-# 3. naive_baseline golden freshness reminder.
+# 2. naive_baseline golden freshness reminder.
 # ---------------------------------------------------------------------------
 #
 # tests/data/naive_baseline_top_k.json drifts when the eval/fixtures/smoke_rfp/raw/ corpus changes
@@ -108,7 +81,7 @@ fi
 # by tests/test_naive_baseline_ranking_invariance.py, but that signal only
 # fires at test time; this surfaces it earlier — and ONLY when the corpus
 # changed without a co-committed golden update AND a rebuild confirms real
-# drift (so a no-op corpus edit never nags). Uses `$changed` from reminder 1.
+# drift (so a no-op corpus edit never nags). Uses `$changed` resolved above.
 
 if [[ -n "$changed" ]] && command -v python3 >/dev/null 2>&1; then
   raw_changed=$(printf '%s\n' "$changed" | grep -E '^eval/fixtures/smoke_rfp/raw/.+\.json$' || true)

@@ -37,25 +37,18 @@ ingestion.py, visual_ingestion.py, eval/, api/, docs/adr/, scripts/build_index.p
 
 ## 5. Eval 영향
 
+> **Load-bearing reviewer checkpoint (ADR 0084):** load-bearing path
+> (`rag_core` / `rag_retrieval` / `rag_verifier` / `rag_answer` / `rag_query.py`,
+> `ingestion.py`, `visual_ingestion.py`, `eval/`, `api/`, `docs/adr/`,
+> `scripts/build_index.py`) 를 손댔다면 real-data 영향을 **명시**한다 —
+> 동작 변화 여부 + (변화 시) 근거 aggregate, 또는 "동작 변화 없음" 사유,
+> 또는 "real-eval 미실행 (사유)". §5b CI hard-gate 는 폐지됐으나(ADR 0084)
+> reviewer 가 real-data 영향을 직접 확인한다 (PR #69 intended-abstention 회귀 방어).
+
 <!--
 CI eval delta 예상은? RAG 외 변경이면 "All `·`" 답변 가능 — 명시할 것.
--->
-
-### 5b. Real-data delta
-
-> **Reviewer 책임 (issue #1027):** §5b CI gate (`scripts/check_branch_and_issue.py --check-5b`) 는 **섹션·표·escape 문장의 *존재* 만** 강제한다. 표 안 숫자의 정확성, escape 문장 claim 의 진위는 자동 검증 불가 — reviewer 가 확인해야 한다. **CI 통과 ≠ §5b 내용 검증 완료.**
-
-<!--
-Load-bearing path 변경 시 필수
-(rag_core.py, rag_retrieval.py, rag_verifier.py, rag_answer.py, rag_query.py,
-ingestion.py, visual_ingestion.py, eval/, api/, docs/adr/, scripts/build_index.py).
-`make real-eval-delta` 집계 표 첨부 또는 명시:
-"검색/검증 path 동작 변화 없음."
-ADR 0005 참조. 합성 CI delta 만으로는 #69 intended-abstention regression 을
-놓쳤다. §5b CI gate (scripts/check_branch_and_issue.py --check-5b) 가 강제.
-
 README metric sync 는 pr-eval.yml (issue #739) 가 별도 gate — eval surface
-변경 후 `python scripts/update_readme_metrics.py` 실행.
+변경 후 `python scripts/update_readme_metrics.py` 실행. ADR 0005 참조.
 -->
 
 ## 6. 하위 호환

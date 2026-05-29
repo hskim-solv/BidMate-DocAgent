@@ -5059,8 +5059,8 @@ def render_pr_body(
     title = _sanitize_inline_text(task.title) if task else "Agent-loop scoped change"
     file_block = "\n".join(f"- `{_display_path(path)}`" for path in files) if files else "- N/A"
     validation_block = "\n".join(f"- Suggested, not yet run: `{_sanitize_command_text(command)}`" for command in validation)
-    five_b = (
-        "Load-bearing or eval surface touched. Conservative reviewer evidence must verify aggregate-only §5b evidence or a truthful no-behavior-change attestation before PR is marked ready."
+    eval_evidence = (
+        "Load-bearing or eval surface touched. Recommended (not gated, ADR 0084): conservative reviewer should look for aggregate-only real-data evidence or a truthful no-behavior-change attestation before PR is marked ready."
         if load_bearing
         else "N/A - no load-bearing path detected by changed-file surface; reviewer should still confirm."
     )
@@ -5092,10 +5092,7 @@ Closes #{issue_number or '<ISSUE_NUMBER>'}
 
 - Surface classification: `{surface.surface}`
 - Claim boundary: suggestions only; no benchmark/performance/private real-eval claim is made by this draft.
-
-### 5b. Real-data delta
-
-{five_b}
+- {eval_evidence}
 
 ## 6. 하위 호환
 
@@ -6496,14 +6493,8 @@ def check_pr_body_text(
         findings.append(PRBodyFinding("high", "missing Closes/Fixes/Resolves issue reference", "Add `Closes #<issue>` matching the branch issue."))
     elif branch_issue and branch_issue not in closers:
         findings.append(PRBodyFinding("high", "PR body issue reference does not match branch issue", f"Use `Closes #{branch_issue}` or rename the branch."))
-    if "### 5b. Real-data delta" not in sanitized:
-        findings.append(PRBodyFinding("high", "missing §5b Real-data delta section", "Keep the PR template §5b section."))
-    else:
-        section = _section_after_heading(sanitized, "### 5b. Real-data delta")
-        load_bearing = [path for path in changed_files if _normalize_changed_file(path) != "[redacted-local-path]" and (is_load_bearing(_normalize_changed_file(path)) or _normalize_changed_file(path).startswith("eval/"))]
-        weak = not section.strip() or section.strip().lower() in {"n/a", "n/a.", "none", "todo", "tbd"}
-        if load_bearing and weak:
-            findings.append(PRBodyFinding("critical", "load-bearing change has weak §5b content", "Attach aggregate-only real-data delta or truthful no-behavior-change attestation."))
+    # The §5b real-data-delta section is no longer required (ADR 0084 deprecated
+    # the gate); only the Closes link, claim, and privacy boundaries are checked.
     surface = classify_changed_files(changed_files)
     for claim in audit_claim_text(_claim_scan_text_from_pr_body(sanitized), surface):
         findings.append(PRBodyFinding(claim.severity, claim.issue, f"Get review from {claim.reviewer} or remove the claim."))
@@ -6539,15 +6530,6 @@ def _claim_scan_text_from_pr_body(text: str) -> str:
             continue
         kept.append(line)
     return "\n".join(kept)
-
-
-def _section_after_heading(text: str, heading: str) -> str:
-    index = text.find(heading)
-    if index < 0:
-        return ""
-    rest = text[index + len(heading):]
-    match = re.search(r"^#{1,3}\s+", rest, re.MULTILINE)
-    return rest[: match.start()] if match else rest
 
 
 def _dedupe_pr_body_findings(findings: Iterable[PRBodyFinding]) -> list[PRBodyFinding]:
@@ -6676,9 +6658,8 @@ def _extract_ci_findings(text: str, *, pr: str | None) -> list[CIFinding]:
         findings.append(CIFinding("safe-local-fix-candidate", "Whitespace or diff-check failure", "ci log", "git diff --check"))
     if any(token in lowered for token in ("branch", "closes #", "adr 0007", "issue reference")):
         findings.append(CIFinding("branch-issue", "Branch/issue convention failure", "ci log", "make check-branch"))
-    if "5b" in lowered or "real-data delta" in lowered:
-        validation = f"python3 scripts/check_branch_and_issue.py --check-5b {pr}" if pr else "python3 scripts/check_branch_and_issue.py --check-5b <PR_NUMBER>"
-        findings.append(CIFinding("manual-gated", "§5b real-data delta gate needs human-readable evidence", "ci log", validation))
+    # (The §5b real-data-delta CI gate was deprecated in ADR 0084, so a CI log
+    # mentioning "5b" no longer maps to a manual-gated finding.)
     if any(token in lowered for token in ("privacy", "doc_id", "chunk_id", "raw evidence", "private")):
         findings.append(CIFinding("manual-gated", "Privacy/governance failure requires redaction review", "ci log", "python3 scripts/_governance.py --check-eval-privacy"))
     if not findings:
@@ -15388,7 +15369,7 @@ Automation points:
 - human-gated-exec: legacy command name for conservative remote mutation fallback; executes push/PR create/ready/merge/close, issue close, remote branch delete, or force-with-lease only with `--confirm-human-approved` and action-specific gates.
 - dependency-graph: render stacked PR graph without merge/delete mutation.
 - stacked-risk: detect dependent PR risk before merge/delete cleanup.
-- pr-body-check: verify `Closes`, §5b, claim, and privacy boundaries before PR creation.
+- pr-body-check: verify `Closes`, claim, and privacy boundaries before PR creation.
 - ci-summary: summarize CI signals without re-running or mutating CI.
 - ci-ingest: normalize CI failures into local follow-up briefs.
 - review-patch-plan: generate review triage plus safe patch proposal together.

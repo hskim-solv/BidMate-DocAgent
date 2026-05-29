@@ -257,7 +257,9 @@ def test_cli_has_base_exit_codes(bgp):
 
 
 # ---------------------------------------------------------------------------
-# get_create_flag_value — §5b body extraction (issue #1097)
+# get_create_flag_value — general `gh pr create` flag extractor (originally
+# added for §5b body extraction, issue #1097; the bash-guard call site was
+# removed with the §5b gate per ADR 0084, but the parser is still tested).
 # ---------------------------------------------------------------------------
 
 

@@ -2,45 +2,33 @@
 """Auto-ship PR body generator.
 
 Fills in the PR template (.github/pull_request_template.md) using git +
-gh + load-bearing detection. Round-trip-validates its own output against
-the §5b CI gate regexes (scripts/check_branch_and_issue.py) before
-emitting; refuses to print a body that the CI gate would reject.
+gh + load-bearing detection.
 
 Called from scripts/claude-hooks/stop-ship.sh Stage 3.
 
 Output: PR body markdown to stdout. Diagnostics to stderr.
 
+(The §5b real-data-delta cascade and its round-trip CI validation were
+deprecated in ADR 0084. The `make real-eval-delta` measurement tool is
+retained, but the PR body no longer carries a required §5b section.)
+
 Exit codes:
     0  body written successfully
-    1  body would fail CI §5b validation
     2  internal / usage error
 """
 
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import subprocess
 import sys
-import time
 from typing import Optional
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 from _governance import is_load_bearing  # noqa: E402
-from check_branch_and_issue import (  # noqa: E402
-    FIVE_B_ESCAPE_RE,
-    FIVE_B_HEADER_RE,
-    FIVE_B_TABLE_RE,
-    HTML_COMMENT_RE,
-    parse_branch,
-)
-from real_eval_paths import missing_required, resolve_entries  # noqa: E402
-
-
-REAL_EVAL_SUMMARY = "reports/real100/eval_summary.json"
-ESCAPE_SENTENCE = "No behavior change in retrieval / verifier path."
+from check_branch_and_issue import parse_branch  # noqa: E402
 
 
 def _log(msg: str) -> None:
@@ -89,93 +77,6 @@ def issue_title(issue_n: int) -> Optional[str]:
     return out.strip() or None
 
 
-def can_run_real_eval() -> bool:
-    try:
-        entries = resolve_entries()
-    except Exception:
-        return False
-    if missing_required(entries):
-        return False
-    data_dir = next((e for e in entries if e.name == "data_dir"), None)
-    if data_dir is None or not os.path.isdir(data_dir.path):
-        return False
-    try:
-        if not os.listdir(data_dir.path):
-            return False
-    except OSError:
-        return False
-    return True
-
-
-def real_eval_summary_path() -> str:
-    try:
-        entries = resolve_entries()
-    except Exception:
-        return REAL_EVAL_SUMMARY
-    summary = next((e for e in entries if e.name == "eval_summary"), None)
-    return summary.path if summary is not None else REAL_EVAL_SUMMARY
-
-
-def real_eval_cache_valid() -> bool:
-    summary_path = real_eval_summary_path()
-    if not os.path.exists(summary_path):
-        return False
-    try:
-        with open(summary_path) as f:
-            data = json.load(f)
-    except (OSError, json.JSONDecodeError):
-        return False
-    cached_sha = (data.get("provenance") or {}).get("git_commit", "")
-    if not cached_sha:
-        return False
-    rc, out, _ = _run(["git", "diff", "--name-only", f"{cached_sha}...HEAD"])
-    if rc != 0:
-        return False
-    for f in out.splitlines():
-        if is_load_bearing(f.strip()):
-            return False
-    return True
-
-
-def render_5b(load_bearing: list[str], real_eval_mode: str) -> str:
-    if not load_bearing:
-        return f"{ESCAPE_SENTENCE} (no load-bearing path changed)"
-
-    if real_eval_mode == "skip":
-        return f"{ESCAPE_SENTENCE} (REAL_EVAL=skip)"
-
-    if not can_run_real_eval():
-        return (
-            f"{ESCAPE_SENTENCE} "
-            "(real-eval not runnable in this worktree; run "
-            "`make real-eval-check` for missing private inputs.)"
-        )
-
-    if real_eval_mode == "async":
-        return f"{ESCAPE_SENTENCE} <!-- real-eval-pending -->"
-
-    if real_eval_cache_valid():
-        _log("real-eval cache valid, running delta only")
-        rc, out, err = _run(["make", "real-eval-delta"], timeout=120)
-        if rc != 0:
-            _log(f"make real-eval-delta failed: {err.strip()}")
-            return f"{ESCAPE_SENTENCE} <!-- real-eval-delta-failed -->"
-        return out.strip() or ESCAPE_SENTENCE
-
-    _log("real-eval cache stale, running full make real-eval (10+ min)")
-    t0 = time.time()
-    rc, out, err = _run(["make", "real-eval"], timeout=1800)
-    elapsed = int(time.time() - t0)
-    if rc != 0:
-        _log(f"make real-eval failed after {elapsed}s: {err.strip()[-500:]}")
-        return f"{ESCAPE_SENTENCE} <!-- real-eval-failed: rc={rc} -->"
-    _log(f"make real-eval succeeded in {elapsed}s, running delta")
-    rc, out, err = _run(["make", "real-eval-delta"], timeout=120)
-    if rc != 0:
-        return f"{ESCAPE_SENTENCE} <!-- real-eval-delta-failed -->"
-    return out.strip() or ESCAPE_SENTENCE
-
-
 def has_schema_version_change(base_ref: str) -> bool:
     rc, out, _ = _run(["git", "diff", f"{base_ref}...HEAD", "--", "rag_core.py"])
     if rc != 0 or not out:
@@ -205,7 +106,6 @@ def test_summary(summary_path: str | None) -> str:
 def build_body(
     branch: str,
     base_ref: str,
-    real_eval_mode: str,
     extra_body: str = "",
     test_summary_path: str | None = None,
 ) -> str:
@@ -229,13 +129,15 @@ def build_body(
 
     test_block = test_summary(test_summary_path)
 
+    # ADR 0084 deprecated the §5b gate. For load-bearing changes we still note
+    # the recommended (no longer gated) real-data evidence path; for everything
+    # else the eval impact is the usual "no behavior change" line.
     eval_line = (
-        "See §5b (load-bearing change touched)."
+        "Load-bearing path touched. Recommended (not gated, ADR 0084): note "
+        "real-data impact (behavior change + evidence aggregate) or state no behavior change."
         if load_bearing
         else "All `·` (no behavior change in retrieval / verifier path)."
     )
-
-    five_b = render_5b(load_bearing, real_eval_mode)
 
     bc_line = (
         "schema_version bumped (detected in diff)."
@@ -266,10 +168,6 @@ def build_body(
         "",
         eval_line,
         "",
-        "### 5b. Real-data delta",
-        "",
-        five_b,
-        "",
         "## 6. Backward compatibility",
         "",
         bc_line,
@@ -283,48 +181,16 @@ def build_body(
     return "\n".join(sections) + "\n"
 
 
-def validate_5b(body: str, load_bearing: list[str]) -> bool:
-    """Mirror scripts/check_branch_and_issue.py --check-5b on a local string."""
-    if not load_bearing:
-        return True
-    stripped = HTML_COMMENT_RE.sub("", body)
-    m = FIVE_B_HEADER_RE.search(stripped)
-    if not m:
-        return False
-    rest = stripped[m.end():]
-    import re
-    next_section = re.search(r"\n##\s", rest)
-    section = rest[: next_section.start()] if next_section else rest
-    return bool(FIVE_B_TABLE_RE.search(section) or FIVE_B_ESCAPE_RE.search(section))
-
-
-def check_body_5b(body: str, base_ref: str) -> int:
-    """Validate an externally-provided PR body's §5b section (issue #1097).
-
-    Used by `pretooluse-bash-guard.sh` to soft-warn *before* `gh pr create`.
-    The CI `--check-5b` gate only runs post-create (via `gh pr view`), so a
-    body missing §5b is not caught until after the PR exists. This shares
-    the exact same `validate_5b` / `is_load_bearing` logic the auto-ship
-    path and the CI gate use — no duplicated regex.
-
-    Exit codes:
-        0  body OK, OR no load-bearing path changed (§5b not required)
-        3  a load-bearing path changed but the body has no valid §5b section
-    """
-    files = changed_files(base_ref)
-    load_bearing = [f for f in files if is_load_bearing(f)]
-    if not load_bearing:
-        return 0
-    return 0 if validate_5b(body, load_bearing) else 3
-
-
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--branch")
     p.add_argument("--base-ref", default="origin/main")
     p.add_argument(
+        # Accepted for backward compatibility with stop-ship.sh's invocation,
+        # but ignored: the §5b real-data-delta cascade was deprecated (ADR 0084).
         "--real-eval-mode", default="auto",
         choices=["auto", "skip", "async"],
+        help="Deprecated no-op (ADR 0084); accepted for stop-ship.sh compat.",
     )
     p.add_argument("--extra-body", default="")
     p.add_argument(
@@ -332,56 +198,19 @@ def main() -> int:
         help="Path the dispatcher wrote local test output to (worktree-unique "
              "mktemp, #1274). Omit for a 'not captured' note.",
     )
-    # Standalone §5b validation of an externally-provided body (issue #1097).
-    # Mutually exclusive with the --branch body-generation mode below.
-    p.add_argument(
-        "--check-body-file", metavar="PATH",
-        help="Validate the §5b section of the PR body read from PATH instead "
-             "of generating one; exit 3 if a load-bearing change lacks §5b.",
-    )
-    p.add_argument(
-        "--check-body-stdin", action="store_true",
-        help="Like --check-body-file but read the body from stdin.",
-    )
     args = p.parse_args()
 
-    # --- Standalone validation mode (no body generation, no --branch) ---
-    if args.check_body_file or args.check_body_stdin:
-        if args.check_body_file:
-            try:
-                with open(args.check_body_file, encoding="utf-8") as f:
-                    body = f.read()
-            except OSError as exc:
-                _log(f"cannot read --check-body-file {args.check_body_file}: {exc}")
-                return 0  # fail-open: a hook must not block on a read error
-        else:
-            body = sys.stdin.read()
-        return check_body_5b(body, args.base_ref)
-
-    # --- Body generation mode (auto-ship Stage 3; behavior unchanged) ---
     if not args.branch:
-        p.error("--branch is required unless --check-body-file/--check-body-stdin is given")
+        p.error("--branch is required")
 
     try:
         body = build_body(
-            args.branch, args.base_ref, args.real_eval_mode, args.extra_body,
+            args.branch, args.base_ref, args.extra_body,
             args.test_summary_path,
         )
     except ValueError:
         _log(f"branch '{args.branch}' violates ADR 0007 — cannot generate body.")
         return 2
-
-    files = changed_files(args.base_ref)
-    load_bearing = [f for f in files if is_load_bearing(f)]
-    if not validate_5b(body, load_bearing):
-        _log(
-            "GENERATED BODY WOULD FAIL --check-5b. Aborting before gh pr create. "
-            "Inspect the §5b section logic in this script."
-        )
-        sys.stderr.write("\n--- generated body (rejected) ---\n")
-        sys.stderr.write(body)
-        sys.stderr.write("--- end ---\n")
-        return 1
 
     sys.stdout.write(body)
     return 0
