@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import json
 import os
 from pathlib import Path
@@ -5793,6 +5794,114 @@ def test_claude_lane_adapter_xhigh_only_on_opus_47_plus() -> None:
     assert _validate_effort_for_model("claude-opus-4-8", "max") == "max"
 
 
+def test_claude_turn_read_lane_is_read_only() -> None:
+    """ADR 0086 (narrowed/Option X): the Claude read/review lane is read-only. The allowlist is
+    exactly Read/Grep/Glob + git-read; the denylist blocks all mutation/ship (Edit/Write/
+    NotebookEdit/git push/commit/merge/gh) AND keeps the blanket ``Bash(make:*)`` deny.
+    Read-lane verification (running tests) is deferred to a follow-up PR (output isolation)."""
+    from scripts import agent_loop_claude_turn as cl
+
+    assert cl.DEFAULT_ALLOWED_TOOLS == (
+        "Read",
+        "Grep",
+        "Glob",
+        "Bash(git diff:*)",
+        "Bash(git log:*)",
+        "Bash(git status:*)",
+    )
+    assert cl.DEFAULT_DISALLOWED_TOOLS == (
+        "Edit",
+        "Write",
+        "NotebookEdit",
+        "Bash(git push:*)",
+        "Bash(git commit:*)",
+        "Bash(git merge:*)",
+        "Bash(gh:*)",
+        "Bash(make:*)",
+    )
+
+
+def test_patch_lane_sandbox_defaults_to_workspace_write_read_lane_stays_read_only() -> None:
+    """ADR 0086 (Option C): the PATCH/write lane DEFAULTS to ``workspace-write`` (full-access
+    is an explicit ACTIVE_PATCH_SANDBOX opt-in); the READ lane stays ``read-only``."""
+    # Default keeps scope/privacy-gate observability + the ADR 0005 boundary (no net egress).
+    assert agent_loop.DEFAULT_PATCH_SANDBOX == "workspace-write"
+    # The read-lane runner default is unchanged (read-only).
+    sig = inspect.signature(agent_loop.write_active_codex_runner)
+    assert sig.parameters["sandbox"].default == "read-only"
+
+
+def test_codex_runner_patch_mode_uses_default_workspace_write_sandbox(tmp_path: Path) -> None:
+    """ADR 0086 (Option C): the executed codex PATCH lane spawns with the default
+    ``--sandbox workspace-write`` (full-access is an explicit ACTIVE_PATCH_SANDBOX opt-in)."""
+    repo = _write_repo(tmp_path)
+    _seed_patch_registry(repo)
+    _seed_write_lease(repo)
+    _seed_patch_assignment(repo)
+    diff = "diff --git a/foo.py b/foo.py\n--- a/foo.py\n+++ b/foo.py\n@@ -1 +1,2 @@\n line\n+new line\n"
+    git_runner = _fake_git_runner(diff_stdout=diff)
+    spawned: list[list[str]] = []
+
+    def recording_factory(cmd, **kw):  # type: ignore[no-untyped-def]
+        spawned.append(list(cmd))
+        return _FakeCodexProc()
+
+    result = agent_loop.write_active_codex_runner(
+        mode="patch",
+        execute=True,
+        task_id="T-2026-0042",
+        repo_root=repo,
+        popen_factory=recording_factory,
+        which_func=lambda exe: "/usr/bin/codex",
+        auth_runner=_chatgpt_auth_runner,
+        git_runner=git_runner,
+    )
+
+    assert result.decision == "completed"
+    # The codex exec command carried the default write-lane sandbox (workspace-write).
+    assert spawned, "expected a codex patch subprocess to be spawned"
+    spawned_cmd = " ".join(spawned[0])
+    assert "--sandbox workspace-write" in spawned_cmd
+    assert "--sandbox danger-full-access" not in spawned_cmd
+    # The persisted patch state records the same default sandbox.
+    state = json.loads(
+        (repo / "reports" / "agent_loop" / "active" / "codex_runner_state.json").read_text(encoding="utf-8")
+    )
+    assert state["sandbox"] == "workspace-write"
+
+
+def test_codex_runner_patch_mode_full_access_is_opt_in(tmp_path: Path, monkeypatch) -> None:
+    """ADR 0086 (Option C): setting DEFAULT_PATCH_SANDBOX (via ACTIVE_PATCH_SANDBOX) to
+    ``danger-full-access`` opts the PATCH lane into full access for the rare task that needs it."""
+    monkeypatch.setattr(agent_loop, "DEFAULT_PATCH_SANDBOX", "danger-full-access")
+    repo = _write_repo(tmp_path)
+    _seed_patch_registry(repo)
+    _seed_write_lease(repo)
+    _seed_patch_assignment(repo)
+    diff = "diff --git a/foo.py b/foo.py\n--- a/foo.py\n+++ b/foo.py\n@@ -1 +1,2 @@\n line\n+new line\n"
+    git_runner = _fake_git_runner(diff_stdout=diff)
+    spawned: list[list[str]] = []
+
+    def recording_factory(cmd, **kw):  # type: ignore[no-untyped-def]
+        spawned.append(list(cmd))
+        return _FakeCodexProc()
+
+    result = agent_loop.write_active_codex_runner(
+        mode="patch",
+        execute=True,
+        task_id="T-2026-0042",
+        repo_root=repo,
+        popen_factory=recording_factory,
+        which_func=lambda exe: "/usr/bin/codex",
+        auth_runner=_chatgpt_auth_runner,
+        git_runner=git_runner,
+    )
+
+    assert result.decision == "completed"
+    assert spawned, "expected a codex patch subprocess to be spawned"
+    assert "--sandbox danger-full-access" in " ".join(spawned[0])
+
+
 def test_claude_turn_positive_timeout_reaches_runner(tmp_path: Path) -> None:
     """ADR 0085 Finding 2: a positive ``timeout_seconds`` is passed to the subprocess runner."""
     from scripts import agent_loop_claude_turn as cl
@@ -6466,7 +6575,10 @@ def test_codex_runner_patch_mode_execute_captures_patch_and_releases_lease(tmp_p
     assert leases["leases"][0]["active_agent"] is None
 
 
-def test_codex_runner_patch_mode_can_use_claude_write_lane(tmp_path: Path) -> None:
+def test_codex_runner_patch_mode_can_use_claude_write_lane(tmp_path: Path, monkeypatch) -> None:
+    # ADR 0086 (narrowed/Option X): the Claude write lane can only run under the explicit
+    # full-access opt-in (it cannot enforce the codex OS sandbox). Opt in for this test.
+    monkeypatch.setattr(agent_loop, "DEFAULT_PATCH_SANDBOX", "danger-full-access")
     repo = _write_repo(tmp_path)
     _seed_patch_registry(repo)
     _seed_write_lease(repo)
@@ -6519,6 +6631,75 @@ def test_codex_runner_patch_mode_can_use_claude_write_lane(tmp_path: Path) -> No
     assert leases["leases"][0]["active_agent"] is None
     mix = json.loads((repo / "reports" / "agent_loop" / "active" / "agent_mix.json").read_text(encoding="utf-8"))
     assert mix["rolling"]["claude"] == 1
+
+
+def test_codex_runner_patch_mode_claude_write_lane_blocked_under_default_sandbox(tmp_path: Path) -> None:
+    """ADR 0086 (Codex finding): the Claude write lane cannot enforce the codex OS sandbox, so
+    under the default ``workspace-write`` the patch run is fail-closed blocked (the Claude lane
+    never spawns) with the guard message."""
+    assert agent_loop.DEFAULT_PATCH_SANDBOX == "workspace-write"
+    repo = _write_repo(tmp_path)
+    _seed_patch_registry(repo)
+    _seed_write_lease(repo)
+    _seed_patch_assignment(repo)
+    diff = "diff --git a/foo.py b/foo.py\n--- a/foo.py\n+++ b/foo.py\n@@ -1 +1,2 @@\n line\n+claude line\n"
+    calls: list[list[str]] = []
+
+    def fake_claude(cmd, **kwargs):  # type: ignore[no-untyped-def]
+        calls.append(list(cmd))
+        stream = json.dumps({"type": "result", "subtype": "success", "is_error": False, "result": "done"}) + "\n"
+        return subprocess.CompletedProcess(cmd, 0, stdout=stream, stderr="")
+
+    result = agent_loop.write_active_codex_runner(
+        mode="patch",
+        execute=True,
+        write_agent="claude",
+        task_id="T-2026-0042",
+        repo_root=repo,
+        which_func=lambda exe: f"/usr/bin/{exe}",
+        claude_runner=fake_claude,
+        git_runner=_fake_git_runner(diff_stdout=diff),
+    )
+
+    assert result.decision == "blocked"
+    # The Claude write lane never spawned (fail-closed before the subprocess).
+    assert calls == []
+    state = json.loads(
+        (repo / "reports" / "agent_loop" / "active" / "codex_runner_state.json").read_text(encoding="utf-8")
+    )
+    assert any("danger-full-access" in str(b) for b in state["blockers"])
+    assert agent_loop.CLAUDE_WRITE_LANE_REQUIRES_FULL_ACCESS_MESSAGE in state["blockers"]
+
+
+def test_codex_runner_patch_mode_claude_write_lane_allowed_under_full_access(tmp_path: Path, monkeypatch) -> None:
+    """ADR 0086: when the operator opts into ``danger-full-access`` (where no OS sandbox is
+    expected anyway), the Claude write lane is allowed to run."""
+    monkeypatch.setattr(agent_loop, "DEFAULT_PATCH_SANDBOX", "danger-full-access")
+    repo = _write_repo(tmp_path)
+    _seed_patch_registry(repo)
+    _seed_write_lease(repo)
+    _seed_patch_assignment(repo)
+    diff = "diff --git a/foo.py b/foo.py\n--- a/foo.py\n+++ b/foo.py\n@@ -1 +1,2 @@\n line\n+claude line\n"
+    calls: list[list[str]] = []
+
+    def fake_claude(cmd, **kwargs):  # type: ignore[no-untyped-def]
+        calls.append(list(cmd))
+        stream = json.dumps({"type": "result", "subtype": "success", "is_error": False, "result": "done"}) + "\n"
+        return subprocess.CompletedProcess(cmd, 0, stdout=stream, stderr="")
+
+    result = agent_loop.write_active_codex_runner(
+        mode="patch",
+        execute=True,
+        write_agent="claude",
+        task_id="T-2026-0042",
+        repo_root=repo,
+        which_func=lambda exe: f"/usr/bin/{exe}",
+        claude_runner=fake_claude,
+        git_runner=_fake_git_runner(diff_stdout=diff),
+    )
+
+    assert result.decision == "completed"
+    assert calls and calls[0][0] == "/usr/bin/claude"
 
 
 def test_codex_runner_patch_mode_redacts_stdout_before_next_privacy_audit(tmp_path: Path) -> None:
