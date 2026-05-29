@@ -357,10 +357,11 @@ python3 scripts/agent_loop.py active-codex-runner --mode patch --task T-2026-00N
 2. **scratch worktree**: `.claude/worktrees/T-N-codex` (브랜치 `agent/T-N/codex-scratch`)를
    base에서 만든다.
 3. **assignment 주입**: `assignments/<session>.md`를 읽어 프롬프트에 embed한다.
-   assignment가 없으면 차단한다 (모호한 프롬프트로 workspace-write codex가 임의 편집하는
+   assignment가 없으면 차단한다 (모호한 프롬프트로 full-access codex가 임의 편집하는
    것을 방지).
-4. **codex 실행**: `codex exec --cd <scratch> --sandbox workspace-write`로 scratch
-   안에서만 편집한다.
+4. **codex 실행**: `codex exec --cd <scratch> --sandbox <DEFAULT_PATCH_SANDBOX>`로 scratch
+   안에서만 편집한다 (기본 `workspace-write`; `danger-full-access` 는 `ACTIVE_PATCH_SANDBOX`
+   opt-in, ADR 0086 — 아래 Tool/Sandbox Policy 참조).
 5. **diff 캡처**: `git add -A` + `git diff --cached`로 신규 untracked 파일까지 포함해
    patch를 캡처한다.
 6. **claimed_files scope**: 변경 파일이 lease의 `claimed_files` 밖이면 verdict를
@@ -372,6 +373,41 @@ python3 scripts/agent_loop.py active-codex-runner --mode patch --task T-2026-00N
 
 patch 모드는 `session-heartbeat`를 pass로 승격하지 않으며, **integration 브랜치에
 apply하지 않는다** (다음 단계).
+
+### Tool/Sandbox Policy
+
+ADR 0086 (narrowed / safe core) 는 lane 별 도구/샌드박스를 다음으로 고정한다 — lease/gate
+read-write 분리를 보존한다.
+
+- **Write lane (codex patch / Implementer)**: `DEFAULT_PATCH_SANDBOX` (env
+  `ACTIVE_PATCH_SANDBOX`) 단일 출처. **기본 `workspace-write`** — scratch worktree 편집 +
+  명령 실행(실제 작업), 네트워크 egress 없음 → scope/privacy gate 관측 + load-bearing ADR
+  0005 경계 유지. **`danger-full-access`(codex no-sandbox: 네트워크·의존성 설치·임의 명령·
+  scratch 밖 쓰기)는 `ACTIVE_PATCH_SANDBOX` 명시 opt-in** (gate 관측성 + ADR 0005 경계
+  완화 → 기본 아님). write-lease owner 인 Implementer 한 세션만 scratch worktree 안에서 돈다.
+- **Claude write lane = full-access opt-in 한정**: write 경로는 `write_agent` ∈ {codex,
+  claude, auto} 를 지원하나, Claude Code CLI write lane 은 bypass-style 권한으로 돌아 codex
+  OS 샌드박스(`DEFAULT_PATCH_SANDBOX`)를 **강제할 수 없다**. 기본 `workspace-write` 에서
+  Claude write lane 을 돌리면 광고된 no-egress 정책보다 넓게 (조용히) 돌 수 있으므로,
+  **resolved write agent = claude 이고 `DEFAULT_PATCH_SANDBOX != danger-full-access` 면
+  fail-closed 로 차단**(Claude write lane 미spawn). 운영자가 명시적으로 `danger-full-access`
+  로 opt-in 했을 때만(어차피 OS 샌드박스를 기대하지 않는 상태) Claude write lane 이 허용된다.
+  codex write lane 동작은 변경 없음.
+- **Read/review lane (claude & codex): read-only 불변**. allowlist 는 `Read`/`Grep`/`Glob`
+  + git-read(`Bash(git diff:*)`/`Bash(git log:*)`/`Bash(git status:*)`)뿐이고, denylist 는
+  모든 mutation/ship(`Edit`/`Write`/`NotebookEdit`/`Bash(git push:*)`/`Bash(git commit:*)`/
+  `Bash(git merge:*)`/`Bash(gh:*)`) + blanket `Bash(make:*)` 를 차단한다. reviewer 는 코드를
+  읽고 diff/log 를 보되, 테스트·빌드 실행이나 어떤 mutation 도 하지 않는다.
+
+**lease/gate write 분리 보존**: 오직 Implementer write-lane 만 편집하고, 오직 orchestrator
+apply 단계만 commit 한다. review lane 에는 git commit/push/gh 도구가 없으므로 conservative
+gate 가 유지된다.
+
+> **Deferred (follow-up PR)**: in-lane review verification(러뷰 lane 이 직접 `make smoke`/
+> `pytest`/`bash scripts/test.sh` 를 돌려 verify-by-execution)은 보류한다. 이 검증 명령은
+> tracked 공유 상태(`data/index`, `outputs/answer.json`)를 mutate 해 공유 worktree 를 더럽히고
+> implementer 와 race 하므로, 안전한 in-lane 검증은 output isolation(mktemp + git-diff dirty
+> check)이 선행돼야 한다 — 별도 follow-up PR 로 추적한다.
 
 ## Patch Apply (orchestrator)
 

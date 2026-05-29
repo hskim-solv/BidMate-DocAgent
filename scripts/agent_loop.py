@@ -205,6 +205,40 @@ ACTIVE_LOAD_BEARING_GATES = {
 # new topology enum.
 ACTIVE_REGISTRY_SCHEMA_VERSION = 2
 ACTIVE_LANE_AGENTS = ("claude", "codex")
+# Sandbox for the codex PATCH / write lane (Implementer write-lease owner). Option C
+# (ADR 0086) keeps the DEFAULT at ``workspace-write`` — the lane can edit the scratch
+# worktree and run commands (real coding work), so the scope/privacy gates keep observing
+# mutations via the scratch diff and the load-bearing ADR 0005 data boundary holds (no
+# network egress by default). ``danger-full-access`` (codex no-sandbox: network, dependency
+# install, arbitrary commands, out-of-scratch writes) is an explicit per-run opt-in via
+# ``ACTIVE_PATCH_SANDBOX`` for the rare task that needs it — it relaxes the gate's mutation
+# observability and the ADR 0005 boundary, so it is opt-in, not the default (ADR 0061
+# data-boundary condition). The READ lane stays ``read-only``; only the orchestrator apply
+# step commits, preserving the lease/gate read-write separation.
+DEFAULT_PATCH_SANDBOX = os.environ.get("ACTIVE_PATCH_SANDBOX", "workspace-write")
+# Fail-closed message for the Claude write/patch lane (ADR 0086, Codex finding). The Claude
+# Code CLI write lane runs with bypass-style permissions and CANNOT enforce the codex OS
+# sandbox (``DEFAULT_PATCH_SANDBOX``), so under the default ``workspace-write`` it would
+# silently run broader than the advertised no-egress / no-out-of-scratch-write policy while
+# state reports ``workspace-write``. We therefore only allow the Claude write lane when the
+# operator has explicitly opted into ``danger-full-access`` (where no OS sandbox is expected
+# anyway); otherwise the run is blocked.
+CLAUDE_WRITE_LANE_REQUIRES_FULL_ACCESS_MESSAGE = (
+    "claude write lane requires ACTIVE_PATCH_SANDBOX=danger-full-access (it cannot enforce "
+    "the workspace-write OS sandbox); set it to opt into full-access, or use the codex write lane"
+)
+
+
+def _claude_write_lane_sandbox_blocker(agent: str, sandbox: str) -> str | None:
+    """Return the fail-closed blocker when the resolved write agent is ``claude`` and the
+    patch sandbox is not ``danger-full-access`` (ADR 0086). The Claude CLI write lane cannot
+    enforce the codex OS sandbox, so it is only permitted under the explicit full-access
+    opt-in; otherwise ``None`` (the lane may proceed)."""
+    if agent == "claude" and sandbox != "danger-full-access":
+        return CLAUDE_WRITE_LANE_REQUIRES_FULL_ACCESS_MESSAGE
+    return None
+
+
 DEFAULT_AGENT_MIX = {
     "target": {"claude": 5, "codex": 5},
     "unit": "work_unit",
@@ -10399,7 +10433,7 @@ def write_active_auto_loop(
                 codex_executable=codex_executable,
                 model=codex_model,
                 auth_mode=auth_mode,
-                sandbox="workspace-write",
+                sandbox=DEFAULT_PATCH_SANDBOX,
                 write_agent=agent_choice,
                 timeout_seconds=effective_subprocess_timeout(),
                 record_gate_heartbeats=False,
@@ -12831,7 +12865,10 @@ def _write_active_codex_patch(
     """Patch mode: a single write-lane on the Implementer (write-lease owner).
 
     Borrows the write lease (claude XOR codex), edits inside an isolated scratch worktree
-    under ``--sandbox workspace-write``, captures ``git diff`` as a privacy-scrubbed patch
+    under the write-lane sandbox (``DEFAULT_PATCH_SANDBOX``; default ``workspace-write`` per
+    ADR 0086 — edit + run tests, no network egress so the scope/privacy gates stay
+    observable and the ADR 0005 boundary holds; ``danger-full-access`` is an explicit
+    ``ACTIVE_PATCH_SANDBOX`` opt-in), captures ``git diff`` as a privacy-scrubbed patch
     artifact, then tears the worktree down and releases the lease. NO integration apply
     (that is PR-B). Claude uses the Claude Code CLI in the same scratch/patch-artifact
     flow so it is gated by the same privacy, scope, and apply checks as Codex.
@@ -12877,8 +12914,17 @@ def _write_active_codex_patch(
         agent = write_agent
     resolved_model = _resolve_lane_model_override(agent, "Implementer", model)
 
-    # The write-lane needs a concrete assignment — never let an agent edit with workspace-write
-    # against a vague prompt. Embed the assignment in the prompt (the sandboxed agent must not
+    # ADR 0086 (Codex finding) fail-closed: the Claude write lane runs with bypass-style
+    # permissions and cannot enforce the codex OS sandbox (``DEFAULT_PATCH_SANDBOX``). Under
+    # the default ``workspace-write`` it would silently run broader than the advertised
+    # no-egress policy, so allow the Claude write lane only under the explicit
+    # ``danger-full-access`` opt-in (where no OS sandbox is expected anyway).
+    claude_sandbox_blocker = _claude_write_lane_sandbox_blocker(agent, DEFAULT_PATCH_SANDBOX)
+    if claude_sandbox_blocker is not None:
+        blockers.append(claude_sandbox_blocker)
+
+    # The write-lane needs a concrete assignment — never let an agent edit with full write
+    # access against a vague prompt. Embed the assignment in the prompt (the sandboxed agent must not
     # read outside the scratch worktree); a missing/empty assignment is fail-closed (issue #1610).
     assignment_text = ""
     if resolved_task is not None:
@@ -12940,7 +12986,7 @@ def _write_active_codex_patch(
                         _active_codex_exec_command(
                             codex_executable=str(resolved_executable or codex_executable),
                             model=resolved_model,
-                            sandbox="workspace-write",
+                            sandbox=DEFAULT_PATCH_SANDBOX,
                             last_message_path=last_message_path,
                             repo_root=repo_root,
                             cd=str(scratch_path),
@@ -13025,7 +13071,7 @@ def _write_active_codex_patch(
                                     "decision": "running",
                                     "auth_mode": auth_mode,
                                     "auth_status": auth_status,
-                                    "sandbox": "workspace-write",
+                                    "sandbox": DEFAULT_PATCH_SANDBOX,
                                     "write_agent": agent,
                                     "model": resolved_model,
                                     "task_id": resolved_task,
@@ -13107,7 +13153,7 @@ def _write_active_codex_patch(
                         command = _active_codex_exec_command(
                             codex_executable=str(resolved_executable),
                             model=resolved_model,
-                            sandbox="workspace-write",
+                            sandbox=DEFAULT_PATCH_SANDBOX,
                             last_message_path=last_message_path,
                             repo_root=repo_root,
                             cd=str(created_path),
@@ -13311,7 +13357,7 @@ def _write_active_codex_patch(
         "decision": decision,
         "auth_mode": auth_mode,
         "auth_status": auth_status,
-        "sandbox": "workspace-write",
+        "sandbox": DEFAULT_PATCH_SANDBOX,
         "write_agent": agent,
         "model": resolved_model,
         "task_id": resolved_task,
@@ -13332,7 +13378,7 @@ def _write_active_codex_patch(
             "decision": decision,
             "auth_mode": auth_mode,
             "auth_status": auth_status,
-            "sandbox": "workspace-write",
+            "sandbox": DEFAULT_PATCH_SANDBOX,
             "write_agent": agent,
             "model": resolved_model,
             "task_id": resolved_task,
@@ -13347,7 +13393,7 @@ def _write_active_codex_patch(
         execute=execute,
         auth_mode=auth_mode,
         auth_status=auth_status,
-        sandbox="workspace-write",
+        sandbox=DEFAULT_PATCH_SANDBOX,
         model=resolved_model,
         max_commands_per_session=0,
         sessions=sessions_out,
