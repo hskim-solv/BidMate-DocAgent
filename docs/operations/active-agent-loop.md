@@ -234,6 +234,41 @@ make agent-loop-active-auto-loop ACTIVE_AUTO_LOOP_MAX_ITERATIONS=3
 make agent-loop-active-auto-loop ACTIVE_AUTO_LOOP_EXECUTE_SHIP=1 ACTIVE_AUTO_LOOP_MAX_ITERATIONS=3
 ```
 
+### Infinite Mode
+
+기본 `make 시작` 은 bounded wave 다 (`START_TASK_LIMIT=5`). ready task 큐가 빌
+때까지 돌리려면 `START_INFINITE=1` 을 켠다 (ADR 0085).
+
+```bash
+make 시작 START_INFINITE=1
+```
+
+무한 모드는 iteration count / completed-target 상한을 버리고 **ready-queue 소진**
++ 안전 가드만으로 종료한다. 다음 ready task 가 없으면(큐 drained) 정상 종료이며
+blocker 가 아니다. 직접 CLI 로는 `--max-iterations 0`(또는 `infinite`/`unlimited`)
+가 동일하다.
+
+안전 가드 (env override, 무한 모드 한정):
+
+- `BIDMATE_AGENT_LOOP_MAX_CONSECUTIVE_BLOCKERS` (기본 3): 연속 blocked task 가 이
+  수에 도달하면 중단. 완료가 한 번 끼면 streak 은 0 으로 리셋된다.
+- `BIDMATE_AGENT_LOOP_MAX_WALL_CLOCK_SECONDS` (기본 0 = 비활성): wall-clock 상한
+  opt-in. per-session 캡 (`--timeout-seconds`, `--max-commands-per-session`) 은
+  기본 0 = **무제한** 이므로, 이 wall-clock 예산이 무한 모드의 **단일 opt-in hang
+  backstop** 이다. 설정 시 남은 예산이 **codex runner subprocess timeout 과 Claude
+  read/review lane subprocess timeout 양쪽** 으로 전달되어 (wall-clock 검사는 cycle
+  사이에서만 돌아 blocking subprocess wait 를 직접 못 끊으므로) 어느 lane 에서 hang
+  이 나도 끊는다. 초과 시 `wall_clock_exceeded` 플래그를 남긴다. 미설정(0)이면
+  codex/Claude lane 양쪽 모두 timeout 이 걸리지 않는 truly unlimited 기본이다.
+- blocked task 는 `deferred_task_ids` 로 기록되어 이번 run 에서 재선택되지 않는다.
+
+안전 가드(연속 blocker / wall-clock)로 중단하면 run decision 은 `blocked` 다 —
+가드 abort 는 `limit-reached`(성공) 가 아니다. 비정상 env 값(정수 아님/음수)은
+무시하고 default 로 폴백한다.
+
+`make 시작` 기본 `ACTIVE_AUTO_LOOP_EXECUTE_SHIP=0` 은 무한 모드에서도 유지된다 —
+실제 ship 은 여전히 기존 human-gated 경로가 담당한다.
+
 ## Patch Write-Lane (codex, mutating)
 
 read-only runner와 별개로, `active-codex-runner`는 opt-in `--mode patch`로 **codex

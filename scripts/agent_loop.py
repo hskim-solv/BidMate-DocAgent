@@ -149,6 +149,16 @@ DEFAULT_ACTIVE_CODEX_RUNNER_STATE = DEFAULT_ACTIVE_DIR / "codex_runner_state.jso
 DEFAULT_ACTIVE_CODEX_RUNS_DIR = DEFAULT_ACTIVE_DIR / "codex_runs"
 DEFAULT_ACTIVE_AUTO_LOOP = DEFAULT_ACTIVE_DIR / "auto_loop.md"
 DEFAULT_ACTIVE_AUTO_LOOP_STATE = DEFAULT_ACTIVE_DIR / "auto_loop_state.json"
+# Sentinel for `--max-iterations`: 0 (or the strings "infinite"/"unlimited") means
+# "run until the ready task queue is drained" — bounded only by the safety guards
+# below, not by an iteration count or completed-task target (ADR 0085).
+INFINITE_MAX_ITERATIONS = 0
+INFINITE_MAX_ITERATIONS_ALIASES = frozenset({"infinite", "unlimited"})
+# Default safety bounds for infinite mode. Both are overridable by env so an operator
+# can tighten them without a code change; the consecutive-blocker guard is on by
+# default, the wall-clock guard is opt-in (0 == disabled).
+DEFAULT_INFINITE_MAX_CONSECUTIVE_BLOCKERS = 3
+DEFAULT_INFINITE_MAX_WALL_CLOCK_SECONDS = 0
 DEFAULT_ACTIVE_AUTO_REPAIR = DEFAULT_ACTIVE_DIR / "auto_repair.md"
 DEFAULT_ACTIVE_AUTO_REPAIR_STATE = DEFAULT_ACTIVE_DIR / "auto_repair_state.json"
 DEFAULT_ISSUE_STATE = DEFAULT_REPORT_DIR / "issue_state.json"
@@ -10074,6 +10084,42 @@ def _active_auto_loop_runner_sessions(
     return ",".join(_dedupe_preserve_order(session_ids))
 
 
+def _resolve_infinite_guard_int(env_name: str, default: int, warnings: list[str]) -> int:
+    """Resolve a non-negative infinite-mode guard from env, falling back to ``default``.
+
+    A non-integer or negative value is ignored (with a warning) rather than aborting the
+    loop, so a typo in an operator's env does not strand the queue.
+    """
+    raw = os.getenv(env_name)
+    if raw is None or not str(raw).strip():
+        return default
+    try:
+        value = int(str(raw).strip())
+    except ValueError:
+        warnings.append(f"{env_name}={raw!r} is not an integer; using default {default}")
+        return default
+    if value < 0:
+        warnings.append(f"{env_name}={raw!r} is negative; using default {default}")
+        return default
+    return value
+
+
+def _resolve_claude_write_timeout(raw_env: str | None, timeout_seconds: int) -> int | None:
+    """Resolve the Claude write-lane subprocess timeout (ADR 0085).
+
+    ``0`` (from ``ACTIVE_CLAUDE_WRITE_TIMEOUT_SECONDS`` or ``--timeout-seconds``) means
+    *unlimited* — returned as ``None`` so ``subprocess.run`` does not fire immediately. A
+    non-integer env falls back to ``timeout_seconds`` (also ``0 -> None``), and any
+    non-positive resolution collapses to ``None``. This replaces the historical 900s
+    substitution that silently killed long Claude write turns in infinite mode.
+    """
+    try:
+        resolved = int(raw_env) if raw_env not in (None, "") else timeout_seconds
+    except (TypeError, ValueError):
+        resolved = timeout_seconds
+    return resolved if isinstance(resolved, int) and resolved > 0 else None
+
+
 def _resolve_active_auto_loop_limit(
     raw_max_iterations: int | str,
     *,
@@ -10083,18 +10129,24 @@ def _resolve_active_auto_loop_limit(
     repo_root: Path,
 ) -> tuple[int, str]:
     if isinstance(raw_max_iterations, int):
+        if raw_max_iterations == INFINITE_MAX_ITERATIONS:
+            return INFINITE_MAX_ITERATIONS, "infinite: run until ready queue drained"
         if raw_max_iterations < 1:
-            raise ValueError("--max-iterations must be at least 1")
+            raise ValueError("--max-iterations must be at least 1, 0 (infinite), or auto")
         return raw_max_iterations, "explicit integer"
 
     raw = str(raw_max_iterations).strip().lower()
+    if raw in INFINITE_MAX_ITERATIONS_ALIASES:
+        return INFINITE_MAX_ITERATIONS, "infinite: run until ready queue drained"
     if raw != "auto":
         try:
             parsed = int(raw)
         except ValueError as exc:
-            raise ValueError("--max-iterations must be an integer or auto") from exc
+            raise ValueError("--max-iterations must be an integer, 0 (infinite), infinite, or auto") from exc
+        if parsed == INFINITE_MAX_ITERATIONS:
+            return INFINITE_MAX_ITERATIONS, "infinite: run until ready queue drained"
         if parsed < 1:
-            raise ValueError("--max-iterations must be at least 1")
+            raise ValueError("--max-iterations must be at least 1, 0 (infinite), or auto")
         return parsed, "explicit integer"
 
     cap = max(1, int(auto_cap))
@@ -10203,20 +10255,48 @@ def write_active_auto_loop(
         repo_root=repo_root,
     )
     warnings.append(f"max-iterations resolved to {max_iterations} ({limit_reason})")
+    infinite_mode = max_iterations == INFINITE_MAX_ITERATIONS
     blockers: list[str] = []
     cycles: list[dict[str, object]] = []
     deferred_task_ids: list[str] = list(prior_deferred)
     requested_files = tuple(sorted(_normalize_changed_file(path, repo_root=repo_root) for path in changed_files if path))
     branch_task_id = _task_from_branch(_current_branch(repo_root))
 
-    persisted_target = _load_active_auto_target(state_path)
-    if persisted_target is not None and len(completed) >= persisted_target:
-        persisted_target = None
-    explicit_target_completed_count = target_completed_count is not None
-    if target_completed_count is not None:
-        target_completed_count = max(target_completed_count, len(completed))
+    if infinite_mode:
+        # Infinite mode is bounded only by safety guards + ready-queue exhaustion, not by
+        # an iteration count or completed-task target (ADR 0085). A passed-in
+        # target_completed_count is honoured when explicit; otherwise no target bound.
+        max_consecutive_blockers = _resolve_infinite_guard_int(
+            "BIDMATE_AGENT_LOOP_MAX_CONSECUTIVE_BLOCKERS",
+            DEFAULT_INFINITE_MAX_CONSECUTIVE_BLOCKERS,
+            warnings,
+        )
+        max_wall_clock_seconds = _resolve_infinite_guard_int(
+            "BIDMATE_AGENT_LOOP_MAX_WALL_CLOCK_SECONDS",
+            DEFAULT_INFINITE_MAX_WALL_CLOCK_SECONDS,
+            warnings,
+        )
+        loop_start_monotonic = time.monotonic()
+        explicit_target_completed_count = target_completed_count is not None
+        if target_completed_count is not None:
+            target_completed_count = max(target_completed_count, len(completed))
+        warnings.append(
+            "infinite mode active: ready queue drives termination; "
+            f"max_consecutive_blockers={max_consecutive_blockers}, "
+            f"max_wall_clock_seconds={max_wall_clock_seconds or 'unbounded'}"
+        )
     else:
-        target_completed_count = persisted_target or (len(completed) + max_iterations)
+        max_consecutive_blockers = 0
+        max_wall_clock_seconds = 0
+        loop_start_monotonic = time.monotonic()
+        persisted_target = _load_active_auto_target(state_path)
+        if persisted_target is not None and len(completed) >= persisted_target:
+            persisted_target = None
+        explicit_target_completed_count = target_completed_count is not None
+        if target_completed_count is not None:
+            target_completed_count = max(target_completed_count, len(completed))
+        else:
+            target_completed_count = persisted_target or (len(completed) + max_iterations)
     max_attempts = max(1, max_iterations, int(auto_max_iterations_cap))
 
     def write_cycle_checkpoint(decision: str) -> None:
@@ -10230,6 +10310,7 @@ def write_active_auto_loop(
             "codex_model": codex_model or "role-default",
             "max_commands_per_session": max_commands_per_session,
             "max_iterations": max_iterations,
+            "infinite_mode": infinite_mode,
             "target_completed_count": target_completed_count,
             "max_attempts": max_attempts,
             "max_iterations_reason": limit_reason,
@@ -10246,10 +10327,70 @@ def write_active_auto_loop(
             encoding="utf-8",
         )
 
+    # Infinite-mode safety state. ``consecutive_blockers`` is reset to zero on every
+    # completion so a long-running drain is only aborted by an *unbroken* streak of
+    # blocked tasks, not by isolated failures interleaved with progress.
+    consecutive_blockers = [0]
+
     def mark_task_completed(task_id: str) -> None:
         if task_id not in completed:
             completed.append(task_id)
         deferred_task_ids[:] = [item for item in deferred_task_ids if item != task_id]
+        consecutive_blockers[0] = 0
+
+    def register_task_blocker(task: TaskEntry, messages: Sequence[str]) -> bool:
+        """Record a per-task blocker and decide whether to stop the whole loop.
+
+        Bounded mode keeps the historical contract: any task blocker stops the loop, so
+        callers ``break`` immediately. Infinite mode instead defers the task (the ledger
+        prevents re-selecting it this run) and continues to the next ready task, stopping
+        only when consecutive blockers reach ``max_consecutive_blockers``. Returns ``True``
+        when the caller should ``break``.
+        """
+        blockers.extend(messages)
+        if not infinite_mode:
+            return True
+        consecutive_blockers[0] += 1
+        if task.task_id not in deferred_task_ids:
+            deferred_task_ids.append(task.task_id)
+        if consecutive_blockers[0] >= max_consecutive_blockers:
+            stop_message = (
+                f"infinite mode: {consecutive_blockers[0]} consecutive blocked task(s) "
+                f"reached the BIDMATE_AGENT_LOOP_MAX_CONSECUTIVE_BLOCKERS guard "
+                f"({max_consecutive_blockers}); stopping"
+            )
+            warnings.append(stop_message)
+            # A safety-guard abort is a blocked outcome, never a clean "limit-reached":
+            # record it as a blocker so the run decision reflects the abort even when the
+            # tripping task carried no per-task message (e.g. the ship-disabled lane).
+            blockers.append(stop_message)
+            return True
+        warnings.append(
+            f"{task.task_id}: blocked in infinite mode; deferred and continuing "
+            f"(consecutive blockers {consecutive_blockers[0]}/{max_consecutive_blockers})"
+        )
+        write_cycle_checkpoint("running")
+        return False
+
+    def effective_subprocess_timeout() -> int:
+        """Subprocess timeout (seconds) for runner/repair calls.
+
+        In infinite mode with a wall-clock budget, pass the *remaining* budget so a hung
+        codex/claude session is killed when the budget expires — the wall-clock guard only
+        runs between cycles and cannot otherwise interrupt a blocking subprocess wait. With
+        no wall-clock budget (the default) the configured ``timeout_seconds`` applies
+        (0 == unlimited), matching the operator's no-caps default (ADR 0085).
+        """
+        if infinite_mode and max_wall_clock_seconds:
+            # Floor at 1s so an almost-exhausted budget still lets the call start; the next
+            # loop-top wall-clock check then trips and stops the run.
+            remaining = max(1, int(max_wall_clock_seconds - (time.monotonic() - loop_start_monotonic)))
+            # Never weaken an explicit positive per-session timeout: the budget only ever
+            # tightens it. Use the budget directly only when no per-session timeout is set.
+            if timeout_seconds and timeout_seconds > 0:
+                return min(timeout_seconds, remaining)
+            return remaining
+        return timeout_seconds
 
     def run_repair_apply(cycle: dict[str, object], task: TaskEntry, *, completion_decision: str) -> bool:
         def run_patch(agent_choice: str) -> ActiveCodexRunnerResult:
@@ -10260,7 +10401,7 @@ def write_active_auto_loop(
                 auth_mode=auth_mode,
                 sandbox="workspace-write",
                 write_agent=agent_choice,
-                timeout_seconds=timeout_seconds,
+                timeout_seconds=effective_subprocess_timeout(),
                 record_gate_heartbeats=False,
                 repo_root=repo_root,
                 mode="patch",
@@ -10320,7 +10461,32 @@ def write_active_auto_loop(
 
     iteration = 0
     attempted_this_run: list[str] = []
-    while len(completed) < target_completed_count and iteration < max_attempts:
+
+    def loop_should_continue() -> bool:
+        if infinite_mode:
+            # Only an explicit target (when supplied) bounds infinite mode; otherwise the
+            # ready queue + safety guards are the sole termination signals.
+            if explicit_target_completed_count and len(completed) >= target_completed_count:
+                return False
+            return True
+        return len(completed) < target_completed_count and iteration < max_attempts
+
+    wall_clock_exceeded = False
+    while loop_should_continue():
+        if infinite_mode and max_wall_clock_seconds:
+            elapsed = time.monotonic() - loop_start_monotonic
+            if elapsed >= max_wall_clock_seconds:
+                wall_clock_exceeded = True
+                stop_message = (
+                    f"infinite mode: wall-clock guard reached "
+                    f"({int(elapsed)}s >= BIDMATE_AGENT_LOOP_MAX_WALL_CLOCK_SECONDS "
+                    f"{max_wall_clock_seconds}s); stopping"
+                )
+                warnings.append(stop_message)
+                # Safety-guard abort -> blocked outcome (mirrors the consecutive-blocker
+                # guard); ``wall_clock_exceeded`` stays the machine-readable signal.
+                blockers.append(stop_message)
+                break
         iteration += 1
         retrying_deferred = False
         try:
@@ -10365,15 +10531,19 @@ def write_active_auto_loop(
                     retrying_deferred = True
                     warnings.append(f"retrying deferred task `{task.task_id}` after fresh task selection stopped: {exc}")
                 except ValueError as retry_exc:
-                    if iteration == 1:
+                    if iteration == 1 and not (infinite_mode and not explicit_target_completed_count):
                         blockers.append(str(exc))
-                    else:
+                    elif iteration != 1:
                         warnings.append(f"no next task selected after iteration {iteration - 1}: {exc}")
                     warnings.append(f"deferred retry selection stopped: {retry_exc}")
                     break
             else:
-                if iteration == 1:
+                if iteration == 1 and not (infinite_mode and not explicit_target_completed_count):
                     blockers.append(str(exc))
+                elif iteration == 1:
+                    # Open-ended infinite mode with an already-drained ready queue is a clean
+                    # no-op, not a blocked run (ADR 0085).
+                    warnings.append(f"infinite mode: ready queue already drained at start; nothing to do: {exc}")
                 else:
                     warnings.append(f"no next task selected after iteration {iteration - 1}: {exc}")
                 break
@@ -10409,8 +10579,9 @@ def write_active_auto_loop(
         cycle["start_decision"] = start.decision
         cycle["start_report"] = _repo_path(start.report_path, repo_root)
         if start.blockers:
-            blockers.extend(f"{task.task_id}: {item}" for item in start.blockers)
-            break
+            if register_task_blocker(task, [f"{task.task_id}: {item}" for item in start.blockers]):
+                break
+            continue
         if start.decision == "blocked" or start.active_loop.decision == "blocked":
             cycle["gate_tier"] = "start-blocked"
             cycle["completion_decision"] = "start-blocked"
@@ -10423,9 +10594,16 @@ def write_active_auto_loop(
                 write_cycle_checkpoint("running")
                 if applied:
                     continue
+                # Failed auto-repair leaves the task deferred. In infinite mode route that
+                # deferral through the consecutive-blocker guard so repeated repair failures
+                # can stop the run (the guard would otherwise never see auto-repair
+                # deferrals). Bounded mode keeps its historical continue-and-defer behavior.
+                if infinite_mode and register_task_blocker(task, []):
+                    break
                 continue
-            blockers.append(f"{task.task_id}: active-start/active-loop decision was blocked")
-            break
+            if register_task_blocker(task, [f"{task.task_id}: active-start/active-loop decision was blocked"]):
+                break
+            continue
 
         runner = write_active_codex_runner(
             execute=execute_runner,
@@ -10436,7 +10614,7 @@ def write_active_auto_loop(
             read_agent=read_agent,
             sessions=_active_auto_loop_runner_sessions(topology=topology, changed_files=context_files),
             max_parallel=max_parallel,
-            timeout_seconds=timeout_seconds,
+            timeout_seconds=effective_subprocess_timeout(),
             max_commands_per_session=max_commands_per_session,
             record_gate_heartbeats=record_gate_heartbeats,
             repo_root=repo_root,
@@ -10454,11 +10632,19 @@ def write_active_auto_loop(
                 write_cycle_checkpoint("running")
                 if applied:
                     continue
+                # Failed auto-repair leaves the task deferred. In infinite mode route that
+                # deferral through the consecutive-blocker guard so repeated repair failures
+                # can stop the run (the guard would otherwise never see auto-repair
+                # deferrals). Bounded mode keeps its historical continue-and-defer behavior.
+                if infinite_mode and register_task_blocker(task, []):
+                    break
                 continue
-            blockers.extend(f"{task.task_id}: runner {item}" for item in runner.blockers)
+            runner_messages = [f"{task.task_id}: runner {item}" for item in runner.blockers]
             if not runner.blockers:
-                blockers.append(f"{task.task_id}: runner decision was {runner.decision}, expected completed")
-            break
+                runner_messages.append(f"{task.task_id}: runner decision was {runner.decision}, expected completed")
+            if register_task_blocker(task, runner_messages):
+                break
+            continue
 
         evidence_path, gate_summary = write_active_gate_evidence(
             task_id=task.task_id,
@@ -10499,9 +10685,21 @@ def write_active_auto_loop(
                 write_cycle_checkpoint("running")
                 if applied:
                     continue
+                # Failed auto-repair leaves the task deferred. In infinite mode route that
+                # deferral through the consecutive-blocker guard so repeated repair failures
+                # can stop the run (the guard would otherwise never see auto-repair
+                # deferrals). Bounded mode keeps its historical continue-and-defer behavior.
+                if infinite_mode and register_task_blocker(task, []):
+                    break
                 continue
             warnings.append(f"{task.task_id}: ship execution disabled; not marking task completed")
-            break
+            if not infinite_mode:
+                break
+            # Infinite mode: a non-completable dry-run task must not spin the queue; defer
+            # it (counts toward the consecutive-blocker guard) and move on.
+            if register_task_blocker(task, []):
+                break
+            continue
         if not cycle["gate_ready"]:
             if auto_repair and cycle["privacy_clean"]:
                 applied = run_repair_apply(cycle, task, completion_decision="repair-needed")
@@ -10512,9 +10710,16 @@ def write_active_auto_loop(
                 write_cycle_checkpoint("running")
                 if applied:
                     continue
+                # Failed auto-repair leaves the task deferred. In infinite mode route that
+                # deferral through the consecutive-blocker guard so repeated repair failures
+                # can stop the run (the guard would otherwise never see auto-repair
+                # deferrals). Bounded mode keeps its historical continue-and-defer behavior.
+                if infinite_mode and register_task_blocker(task, []):
+                    break
                 continue
-            blockers.append(f"{task.task_id}: conservative gate is not ready")
-            break
+            if register_task_blocker(task, [f"{task.task_id}: conservative gate is not ready"]):
+                break
+            continue
 
         ship = write_active_loop(
             mode=mode,
@@ -10532,23 +10737,35 @@ def write_active_auto_loop(
         cycle["ship_decision"] = ship.decision
         cycle["ship_report"] = _repo_path(ship.report_path, repo_root)
         if ship.decision != "executed":
-            blockers.extend(f"{task.task_id}: ship {item}" for item in ship.blockers)
+            ship_messages = [f"{task.task_id}: ship {item}" for item in ship.blockers]
             if not ship.blockers:
-                blockers.append(f"{task.task_id}: ship decision was {ship.decision}, expected executed")
-            break
+                ship_messages.append(f"{task.task_id}: ship decision was {ship.decision}, expected executed")
+            if register_task_blocker(task, ship_messages):
+                break
+            continue
 
         cycle["completed"] = True
         mark_task_completed(task.task_id)
         write_cycle_checkpoint("running")
 
-    if len(completed) < target_completed_count and iteration >= max_attempts:
+    # ``target_reached`` marks a *clean* finish. With an explicit/bounded target it means the
+    # completed count met it. In open-ended infinite mode (no target) a clean finish also
+    # requires the ready queue to have drained with NO tasks left deferred/unresolved —
+    # otherwise the run left blocked work behind (e.g. a failed auto-repair) and must not
+    # report a clean limit-reached. Unresolved deferrals fall through to partial/planned (ADR 0085).
+    if infinite_mode and not explicit_target_completed_count:
+        target_reached = not deferred_task_ids
+    else:
+        target_reached = target_completed_count is None or len(completed) >= target_completed_count
+
+    if not infinite_mode and not target_reached and iteration >= max_attempts:
         warnings.append(
             f"attempt cap reached before target completion count "
             f"({len(completed)}/{target_completed_count})"
         )
 
     next_task: TaskEntry | None = None
-    if len(completed) < target_completed_count or not explicit_target_completed_count:
+    if not target_reached or not explicit_target_completed_count:
         try:
             next_task = select_next_task(
                 repo_root,
@@ -10557,7 +10774,10 @@ def write_active_auto_loop(
                 require_backlog_handoff=True,
             )
         except ValueError as exc:
-            if len(completed) < target_completed_count:
+            # In infinite mode a drained ready queue (no next task) is the normal exit,
+            # not a blocker — only a guard trip (recorded earlier) or an explicit unmet
+            # target counts against the run.
+            if not infinite_mode and not target_reached:
                 warnings.append(f"next task selection stopped: {exc}")
                 blockers.append(
                     f"target completion count not reached "
@@ -10566,10 +10786,15 @@ def write_active_auto_loop(
 
     if blockers:
         decision = "blocked"
-    elif len(completed) >= target_completed_count:
+    elif target_reached:
         decision = "limit-reached"
     elif cycles and any(bool(cycle.get("completed")) for cycle in cycles):
         decision = "partial"
+    elif infinite_mode and not explicit_target_completed_count and deferred_task_ids:
+        # Open-ended infinite mode that drained with unresolved deferrals and no completions
+        # is a failed run, not a clean "planned" no-op. main() treats planned as exit 0, which
+        # would mask failed auto-repair work — surface a non-zero blocked outcome instead.
+        decision = "blocked"
     else:
         decision = "planned"
 
@@ -10583,6 +10808,8 @@ def write_active_auto_loop(
         "codex_model": codex_model or "role-default",
         "max_commands_per_session": max_commands_per_session,
         "max_iterations": max_iterations,
+        "infinite_mode": infinite_mode,
+        "wall_clock_exceeded": wall_clock_exceeded,
         "target_completed_count": target_completed_count,
         "max_attempts": max_attempts,
         "max_iterations_reason": limit_reason,
@@ -11319,6 +11546,7 @@ def _run_agent_lane(
     claude_runner=None,
     codex_runner=None,
     prior_artifact: dict | None = None,
+    timeout_seconds: int | None = None,
 ) -> dict[str, object]:
     """Dispatch one read-only lane and return the shared review-artifact core.
 
@@ -11403,12 +11631,18 @@ def _run_agent_lane(
     # NOT Anthropic Messages API direct calls. claude-code 2.1+ exposes `--effort` so the
     # per-role profile drives the lane without needing ANTHROPIC_API_KEY. xhigh→high
     # normalization handled above via _validate_effort_for_model.
+    # ADR 0085 Finding 2: thread the runner's per-call budget into the Claude read lane so a
+    # hung review session is bounded when (and only when) the operator sets a wall-clock
+    # budget. Semantics mirror the codex lane's ``timeout_seconds or None`` contract:
+    # 0/None == unlimited (the no-caps default), a positive value (the *remaining* wall-clock
+    # budget in infinite mode) bounds the subprocess to that many seconds.
     core = claude_turn.run_turn(
         prompt=prompt,
         schema_path=resolved_schema,
         model=model,
         effort=effort,
         runner=claude_runner,
+        timeout_seconds=timeout_seconds or None,
     )
     core["_lane_meta"] = lane_meta
     return core
@@ -11432,6 +11666,7 @@ def write_agent_turn(
     codex_runner=None,
     repo_root: Path = ROOT_DIR,
     prior_artifact: dict | None = None,
+    timeout_seconds: int | None = None,
 ) -> AgentTurnResult:
     """Run one read-only Claude/Codex review lane; persist artifact + lane heartbeat.
 
@@ -11486,6 +11721,7 @@ def write_agent_turn(
         claude_runner=claude_runner,
         codex_runner=codex_runner,
         prior_artifact=prior_artifact,
+        timeout_seconds=timeout_seconds,
     )
     verdict = str(core.get("verdict") or "needs-attention")
     artifact_path = _agent_turn_artifact_path(
@@ -11642,6 +11878,7 @@ def write_dual_agent_turn(
     claude_runner=None,
     codex_runner=None,
     repo_root: Path = ROOT_DIR,
+    timeout_seconds: int | None = None,
 ) -> tuple[AgentTurnResult, AgentTurnResult]:
     """ADR 0082: adversarial dual-lane turn — 1차 lane reviews, 2차 lane challenges.
 
@@ -11671,6 +11908,7 @@ def write_dual_agent_turn(
         claude_runner=claude_runner,
         codex_runner=codex_runner,
         repo_root=repo_root,
+        timeout_seconds=timeout_seconds,
     )
     if not execute:
         return first, first
@@ -11706,6 +11944,7 @@ def write_dual_agent_turn(
         codex_runner=codex_runner,
         repo_root=repo_root,
         prior_artifact=prior_core,
+        timeout_seconds=timeout_seconds,
     )
     # Final aggregate heartbeat — second turn's heartbeat would otherwise mask the first's
     # stricter verdict (Codex review attempt-1, finding 2 of ADR 0082). Apply the stricter
@@ -12255,6 +12494,10 @@ def write_active_codex_runner(
                             agent_mix_path=DEFAULT_ACTIVE_AGENT_MIX,
                             claude_runner=claude_runner,
                             repo_root=repo_root,
+                            # ADR 0085 Finding 2: thread the runner's per-call budget into the
+                            # Claude read lane so a hung review session is bounded by the
+                            # wall-clock budget when one is set (0 == unlimited otherwise).
+                            timeout_seconds=timeout_seconds,
                         )
                     except Exception as exc:  # fail closed; the loop can route repair/retry.
                         item["status"] = "failed"
@@ -12816,11 +13059,14 @@ def _write_active_codex_patch(
                         effort = _validate_effort_for_model(resolved_model, _resolve_lane_effort("claude", "Implementer"))
                         if claude_runner is None and not _claude_cli_supports_effort():
                             effort = ""
-                        raw_claude_timeout = os.getenv("ACTIVE_CLAUDE_WRITE_TIMEOUT_SECONDS")
-                        try:
-                            claude_timeout = int(raw_claude_timeout) if raw_claude_timeout else (timeout_seconds or 900)
-                        except ValueError:
-                            claude_timeout = timeout_seconds or 900
+                        # ADR 0085: 0 (env or --timeout-seconds) now means *unlimited* for
+                        # the Claude write lane, matching the codex lane's ``timeout_seconds
+                        # or None`` contract. A timeout of 0 passed to subprocess.run would
+                        # otherwise fire immediately. See _resolve_claude_write_timeout.
+                        claude_timeout = _resolve_claude_write_timeout(
+                            os.getenv("ACTIVE_CLAUDE_WRITE_TIMEOUT_SECONDS"),
+                            timeout_seconds,
+                        )
                         command = _active_claude_patch_command(
                             claude_executable=str(resolved_executable),
                             prompt=prompt,
@@ -14289,7 +14535,15 @@ def _active_codex_auth_check(
     run = runner if runner is not None else subprocess.run
     command = [codex_executable, "login", "status"]
     try:
-        proc = run(command, capture_output=True, text=True, check=False)
+        # ADR 0085: bound the auth probe so a hung `codex login status` cannot stall the
+        # whole loop (it ran without any timeout before).
+        proc = run(command, capture_output=True, text=True, check=False, timeout=30)
+    except subprocess.TimeoutExpired:
+        return (
+            "login status timed out",
+            ["codex login status timed out after 30 seconds for ChatGPT auth guard"],
+            [],
+        )
     except OSError as exc:
         return f"login status failed: {exc}", [f"codex login status failed for ChatGPT auth guard: {exc}"], []
 
@@ -16236,7 +16490,11 @@ def build_parser() -> argparse.ArgumentParser:
     auto_loop = sub.add_parser("active-auto-loop", help="Run bounded active-start/runner/gate/ship cycles across queue tasks.")
     auto_loop.add_argument("--mode", choices=("full-ship",), default="full-ship")
     auto_loop.add_argument("--topology", choices=ACTIVE_TOPOLOGY_CHOICES, default="expanded-eight")
-    auto_loop.add_argument("--max-iterations", default="1", help="Positive integer or auto.")
+    auto_loop.add_argument(
+        "--max-iterations",
+        default="1",
+        help="Positive integer, auto, or 0/infinite (run until the ready queue drains; ADR 0085).",
+    )
     auto_loop.add_argument("--auto-max-iterations-cap", type=int, default=5)
     auto_loop.add_argument("--target-completed-count", type=int)
     auto_loop.add_argument("--execute-runner", action="store_true")
@@ -16261,6 +16519,15 @@ def build_parser() -> argparse.ArgumentParser:
     auto_loop.add_argument("--read-agent", choices=("auto", "codex", "claude"), default="auto")
     auto_loop.add_argument("--write-agent", choices=("auto", "codex", "claude"), default="auto")
     auto_loop.add_argument("--max-parallel", type=int, default=8)
+    # ADR 0085: the Makefile `시작`/`agent-loop-active-auto-loop` front door is the SSoT
+    # for operator defaults. These argparse defaults are aligned with it so a direct
+    # `python3 scripts/agent_loop.py active-auto-loop` invocation behaves identically:
+    #   --timeout-seconds 0 == unlimited (matches ACTIVE_CODEX_TIMEOUT_SECONDS ?= 0)
+    #   --read-agent/--write-agent auto (matches ACTIVE_READ_AGENT/ACTIVE_WRITE_AGENT ?= auto)
+    #   --max-commands-per-session 0 == unlimited (matches ACTIVE_CODEX_MAX_COMMANDS_PER_SESSION ?= 0)
+    # ADR 0085 drops the per-session command cap on the operator front door: the autonomous
+    # loop is bounded by the timeout, attempt/queue, and consecutive-blocker/wall-clock guards
+    # rather than an arbitrary command count. Set a positive value to re-impose a cap.
     auto_loop.add_argument("--timeout-seconds", type=int, default=0)
     auto_loop.add_argument("--max-commands-per-session", type=int, default=0)
     auto_loop.add_argument("--model", help="Codex model to pass to active-codex-runner; default resolves from role/env.")

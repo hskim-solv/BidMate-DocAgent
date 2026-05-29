@@ -471,12 +471,24 @@ ACTIVE_AUTO_LOOP_EXECUTE_SHIP ?= 0
 ACTIVE_AUTO_LOOP_AUTO_REPAIR ?= 1
 START_TASK_LIMIT ?= 5
 START_TASK_ATTEMPT_LIMIT ?= 15
+# ADR 0085: set START_INFINITE=1 to run `make 시작` until the ready task queue drains.
+# Infinite mode drops the completed-target + attempt-cap bounds (max-iterations=0) and is
+# bounded only by ready-queue exhaustion + the safety guards
+# (BIDMATE_AGENT_LOOP_MAX_CONSECUTIVE_BLOCKERS / BIDMATE_AGENT_LOOP_MAX_WALL_CLOCK_SECONDS).
+START_INFINITE ?=
 ACTIVE_CODEX_SESSIONS ?=
 ACTIVE_CODEX_MAX_PARALLEL ?= 8
 ACTIVE_CODEX_TIMEOUT_SECONDS ?= 0
-ACTIVE_CLAUDE_WRITE_TIMEOUT_SECONDS ?= $(if $(filter 0,$(ACTIVE_CODEX_TIMEOUT_SECONDS)),900,$(ACTIVE_CODEX_TIMEOUT_SECONDS))
+# ADR 0085: the Claude write lane no longer substitutes a 900s cap when the codex timeout
+# is 0. 0 now means *unlimited* on both lanes (a long write must not be killed mid-flight,
+# especially in infinite mode). Override ACTIVE_CLAUDE_WRITE_TIMEOUT_SECONDS to re-impose a
+# bound when desired.
+ACTIVE_CLAUDE_WRITE_TIMEOUT_SECONDS ?= $(ACTIVE_CODEX_TIMEOUT_SECONDS)
 export ACTIVE_CLAUDE_WRITE_TIMEOUT_SECONDS
-ACTIVE_CODEX_MAX_COMMANDS_PER_SESSION ?= 40
+# ADR 0085: 0 == unlimited. The per-session command cap is dropped on the operator front
+# door so the autonomous loop is bounded by timeout + attempt/queue + safety guards, not an
+# arbitrary command count. Set a positive value to re-impose a cap.
+ACTIVE_CODEX_MAX_COMMANDS_PER_SESSION ?= 0
 ACTIVE_CODEX_EXECUTABLE ?= codex
 ACTIVE_CODEX_MODEL ?= $(BIDMATE_CODEX_LANE_MODEL)
 ACTIVE_CODEX_AUTH_MODE ?= chatgpt
@@ -1057,9 +1069,9 @@ agent-loop-active-auto-loop:
 	  QUEUE_PARALLEL_PLAN_LIMIT="$(ACTIVE_AUTO_LOOP_AUTO_MAX_ITERATIONS)"
 	$(MAKE) agent-loop-queue-recommendations
 	$(MAKE) agent-loop-active-auto-loop \
-	  ACTIVE_AUTO_LOOP_MAX_ITERATIONS="$(START_TASK_LIMIT)" \
+	  ACTIVE_AUTO_LOOP_MAX_ITERATIONS="$(if $(filter 1 true yes,$(START_INFINITE)),0,$(START_TASK_LIMIT))" \
 	  ACTIVE_AUTO_LOOP_AUTO_MAX_ITERATIONS="$(START_TASK_ATTEMPT_LIMIT)" \
-	  ACTIVE_AUTO_LOOP_TARGET_COMPLETED_COUNT="$(START_TASK_LIMIT)" \
+	  ACTIVE_AUTO_LOOP_TARGET_COMPLETED_COUNT="$(if $(filter 1 true yes,$(START_INFINITE)),,$(START_TASK_LIMIT))" \
 	  ACTIVE_AUTO_LOOP_EXECUTE_RUNNER=1 \
 	  ACTIVE_AUTO_LOOP_EXECUTE_SHIP=0 \
 	  ACTIVE_AUTO_LOOP_AUTO_REPAIR=1

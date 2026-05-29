@@ -92,10 +92,29 @@ def build_command(
     return cmd
 
 
-def _default_runner(cmd: list[str]) -> "subprocess.CompletedProcess[str]":
+def _default_runner(
+    cmd: list[str], *, timeout: float | None = None
+) -> "subprocess.CompletedProcess[str]":
     env = dict(os.environ)
     env.pop("ANTHROPIC_API_KEY", None)
-    return subprocess.run(cmd, capture_output=True, text=True, check=False, env=env)
+    return subprocess.run(
+        cmd, capture_output=True, text=True, check=False, env=env, timeout=timeout
+    )
+
+
+def _invoke_runner(
+    run: "ClaudeRunner", cmd: list[str], timeout: float | None
+) -> "subprocess.CompletedProcess[str]":
+    """Call ``run(cmd, timeout=...)``, falling back to ``run(cmd)`` for legacy 1-arg runners.
+
+    The injected ``runner`` contract historically took only ``cmd``; the timeout kwarg is
+    additive (ADR 0085). Test runners that accept just ``cmd`` keep working — the timeout is
+    then enforced only on the real ``_default_runner`` path.
+    """
+    try:
+        return run(cmd, timeout=timeout)  # type: ignore[call-arg]
+    except TypeError:
+        return run(cmd)
 
 
 def run_turn(
@@ -107,9 +126,22 @@ def run_turn(
     allowed_tools: Sequence[str] = DEFAULT_ALLOWED_TOOLS,
     disallowed_tools: Sequence[str] = DEFAULT_DISALLOWED_TOOLS,
     runner: ClaudeRunner | None = None,
+    timeout_seconds: int | None = None,
 ) -> dict[str, object]:
-    """Return the core review-artifact fields from a read-only Claude turn."""
+    """Return the core review-artifact fields from a read-only Claude turn.
+
+    ``timeout_seconds`` (ADR 0085) bounds the subprocess so a hung Claude session cannot
+    stall the caller. Semantics mirror the unlimited-by-default policy: ``0`` / ``None`` /
+    any non-positive value means *no* timeout (unlimited), and a positive value (the
+    wall-clock-derived budget the caller threads when one is set) bounds the call to that
+    many seconds. On ``subprocess.TimeoutExpired`` the lane collapses to ``verdict="error"``
+    — the same deterministic non-pass contract the adapter already honors for tool/parse
+    failures — and the timed-out subprocess is killed so it does not leak.
+    """
     run = runner or _default_runner
+    effective_timeout = (
+        timeout_seconds if isinstance(timeout_seconds, int) and timeout_seconds > 0 else None
+    )
     cmd = build_command(
         prompt=prompt,
         schema_path=schema_path,
@@ -119,7 +151,11 @@ def run_turn(
         disallowed_tools=disallowed_tools,
     )
     try:
-        proc = run(cmd)
+        # ``subprocess.run(..., timeout=...)`` kills the child and reaps it before re-raising
+        # TimeoutExpired, so the timed-out subprocess does not leak on the real runner path.
+        proc = _invoke_runner(run, cmd, effective_timeout)
+    except subprocess.TimeoutExpired as exc:
+        return _error(f"claude timed out after {exc.timeout}s")
     except OSError as exc:
         return _error(f"claude invocation failed: {exc}")
     if proc.returncode != 0:
