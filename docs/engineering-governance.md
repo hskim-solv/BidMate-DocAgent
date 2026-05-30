@@ -142,6 +142,16 @@ Meta/parent issue (예: #118 포트폴리오, #187 phase 향상 백로그) 는 �
     # 또는:
     git config core.hooksPath .githooks
 
+`make install-hooks` 는 hooksPath 외에 **공유 object-store corruption 가드** (issue #1680)도
+설정한다: 20~30 worktree 가 `.git/objects` 하나를 공유하므로 자동 `git gc`/repack/prune 이
+in-flight `git add`/commit 과 race 해 아직 커밋 안 된 worktree index 만 참조하는 blob 을
+삭제(`fatal: unable to read <blob>` / invalid cache-tree)할 수 있다. 이를 막으려고
+`gc.auto 0` / `gc.autoDetach false` / `maintenance.auto false` / `fetch.writeCommitGraph false`
+로 **자동 pruner 를 전면 비활성**하고, `core.fsync loose-object` + `core.fsyncMethod batch`
+로 loose object durability 를 보장한다. 트레이드오프: loose object 가 쌓이므로 **활성 세션이
+0 일 때만 수동으로** `git gc --no-detach` 를 돌려 pack 한다 (worktree 가 dirty/in-flight commit
+중일 때 gc 금지).
+
 `.githooks/` 의 2개 훅 활성:
 
 - **`pre-commit`** — eval 분리 (ADR 0005) 비공개측 파일 포함 commit 을 **hard-block**. `.gitignore` 정렬, `git add -f` + force-path 잡음. `git commit --no-verify` 우회는 훅 allowlist 가 놓친 aggregate 산출물 의도 commit 시만 + 같은 변경에서 allowlist 수정
