@@ -157,6 +157,7 @@ def run_precommit_review(
     if timeout_sec < 1:
         raise ValueError("--timeout-sec must be >= 1")
     changed_set = set(changed_files)
+    real_review_ran = False
     for attempt in range(1, attempts + 1):
         focus = build_focus(hits=hits, changed_files=changed_files, attempt=attempt, attempts=attempts)
         cmd = [
@@ -190,14 +191,27 @@ def run_precommit_review(
             rc=proc.returncode,
             changed_files=changed_set,
         )
-        if proc.returncode != 0:
+        verdict = _payload_verdict(payload)
+        # ADR 0089 (amends ADR 0066): distinguish an INFRA failure (codex could
+        # not produce a verdict — auth/refresh-token race, network, timeout,
+        # missing companion, unparseable output) from a real adversarial VERDICT.
+        # Infra failures must NOT hard-block the commit (that fail-closed coupling
+        # forced --no-verify on every load-bearing commit whenever codex auth
+        # lapsed under concurrent multi-worktree use). They WARN and defer the
+        # real adversarial review to CI / pre-push. Only a genuine non-approve
+        # verdict blocks. ``_payload_verdict`` already maps parseError / missing
+        # result to "error", so rc!=0 (companion/codex failed) OR verdict=="error"
+        # (no usable verdict) covers every infra case.
+        infra_failure = proc.returncode != 0 or verdict == "error"
+        if infra_failure:
             print(
-                f"Codex adversarial pre-commit review failed to run on attempt {attempt} "
-                f"(rc={proc.returncode}). See {comment}.",
+                f"WARN: Codex adversarial pre-commit review could not run on attempt "
+                f"{attempt}/{attempts} (rc={proc.returncode}); non-blocking — commit "
+                f"allowed, adversarial review deferred to CI/pre-push. See {comment}.",
                 file=sys.stderr,
             )
-            return 1
-        verdict = _payload_verdict(payload)
+            continue
+        real_review_ran = True
         if verdict != "approve":
             print(
                 f"Codex adversarial pre-commit review returned `{verdict}` on attempt "
@@ -209,6 +223,14 @@ def run_precommit_review(
             f"Codex adversarial pre-commit review attempt {attempt}/{attempts}: approve",
             file=sys.stderr,
         )
+    if not real_review_ran:
+        print(
+            f"WARN: Codex adversarial pre-commit review did not complete (all {attempts} "
+            f"attempt(s) infra-failed); commit allowed, adversarial review deferred to "
+            f"CI/pre-push (ADR 0089).",
+            file=sys.stderr,
+        )
+        return 0
     print("Codex adversarial pre-commit review passed.", file=sys.stderr)
     return 0
 
@@ -243,13 +265,18 @@ def main(argv: list[str] | None = None) -> int:
 
     companion = resolve_companion(args.companion)
     if companion is None:
+        # ADR 0089: a missing companion is an INFRA condition, not a review
+        # finding — warn and allow the commit (adversarial review deferred to
+        # CI/pre-push) instead of hard-blocking every load-bearing commit on
+        # machines without the Codex plugin installed.
         print(
-            "codex-adversarial-precommit: codex companion not found. "
-            "Install/refresh the Claude Codex plugin, set CODEX_COMPANION, "
-            "or use git commit --no-verify for an intentional emergency bypass.",
+            "WARN: codex-adversarial-precommit: codex companion not found; "
+            "non-blocking — commit allowed, adversarial review deferred to "
+            "CI/pre-push. Install/refresh the Claude Codex plugin or set "
+            "CODEX_COMPANION to re-enable the local review.",
             file=sys.stderr,
         )
-        return 1
+        return 0
 
     return run_precommit_review(
         attempts=attempts,

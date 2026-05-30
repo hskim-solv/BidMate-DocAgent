@@ -136,7 +136,10 @@ def test_run_precommit_review_blocks_on_needs_attention(tmp_path: Path):
     assert "staged issue" in rendered
 
 
-def test_run_precommit_review_blocks_on_companion_failure(tmp_path: Path):
+def test_run_precommit_review_nonblocking_on_companion_failure(tmp_path: Path):
+    """ADR 0089: a companion/codex run failure (rc!=0) is INFRA, not a verdict —
+    it must WARN and allow the commit (deferring review to CI), not hard-block."""
+
     def runner(cmd, timeout_sec):
         return subprocess.CompletedProcess(
             args=cmd,
@@ -157,8 +160,43 @@ def test_run_precommit_review_blocks_on_companion_failure(tmp_path: Path):
         runner=runner,
     )
 
-    assert rc == 1
+    assert rc == 0  # infra failure → non-blocking (was rc==1 before ADR 0089)
     assert "companion missing" in (tmp_path / "attempt-1.md").read_text(encoding="utf-8")
+
+
+def test_run_precommit_review_nonblocking_on_auth_parse_error(tmp_path: Path):
+    """ADR 0089 regression: the real incident — codex refresh-token race yields a
+    parseError (no verdict). This is INFRA and must not block the commit."""
+
+    def _auth_error() -> dict[str, object]:
+        return {
+            "result": None,
+            "parseError": (
+                "Your access token could not be refreshed because your refresh "
+                "token was already used. Please log out and sign in again."
+            ),
+        }
+
+    calls: list[list[str]] = []
+
+    def runner(cmd, timeout_sec):
+        calls.append(list(cmd))
+        return _proc(_auth_error(), rc=1)
+
+    rc = precommit.run_precommit_review(
+        attempts=2,
+        base="HEAD",
+        scope="branch",
+        companion=Path("/tmp/codex-companion.mjs"),
+        changed_files=["rag_core.py"],
+        hits=["rag_core.py"],
+        out_dir=tmp_path,
+        timeout_sec=900,
+        runner=runner,
+    )
+
+    assert rc == 0  # auth parseError is infra → non-blocking, deferred to CI
+    assert len(calls) == 2  # both attempts tried before giving up (non-blocking)
 
 
 def test_run_precommit_review_rejects_zero_attempts(tmp_path: Path):
@@ -176,7 +214,10 @@ def test_run_precommit_review_rejects_zero_attempts(tmp_path: Path):
         )
 
 
-def test_run_precommit_review_blocks_on_timeout(tmp_path: Path):
+def test_run_precommit_review_nonblocking_on_timeout(tmp_path: Path):
+    """ADR 0089: a timeout is INFRA (codex could not finish) — WARN and allow the
+    commit (review deferred to CI), not hard-block."""
+
     def runner(cmd, timeout_sec):
         raise subprocess.TimeoutExpired(cmd=cmd, timeout=timeout_sec)
 
@@ -192,6 +233,6 @@ def test_run_precommit_review_blocks_on_timeout(tmp_path: Path):
         runner=runner,
     )
 
-    assert rc == 1
+    assert rc == 0  # timeout is infra → non-blocking (was rc==1 before ADR 0089)
     rendered = (tmp_path / "attempt-1.md").read_text(encoding="utf-8")
     assert "timed out after 7s" in rendered
