@@ -64,7 +64,19 @@ setup:
 # ADR 0007 issue-ref check from issue #826).
 install-hooks:
 	git config core.hooksPath .githooks
-	@echo "Activated .githooks/ for this clone. See docs/engineering-governance.md §Hook setup."
+	@# Shared-objectstore (multi-worktree) corruption prevention (issue #1680).
+	@# 20-30 worktrees share one .git/objects; automatic gc/repack/prune races with
+	@# in-flight `git add`/commit and deletes blobs only an uncommitted worktree index
+	@# references -> `fatal: unable to read <blob>` / invalid cache-tree. Disable all
+	@# automatic pruning (run `git gc --no-detach` manually only when no session is active)
+	@# and fsync loose objects so the index never references a not-yet-durable blob.
+	git config gc.auto 0
+	git config gc.autoDetach false
+	git config maintenance.auto false
+	git config fetch.writeCommitGraph false
+	git config core.fsync loose-object
+	git config core.fsyncMethod batch
+	@echo "Activated .githooks/ + shared-objectstore corruption guards for this clone. See docs/engineering-governance.md §Hook setup."
 
 # Ad-hoc validation of the current branch against ADR 0007.
 # Useful before opening a PR; mirrors the CI check.
