@@ -3728,7 +3728,11 @@ def test_agent_turn_cli_accepts_and_rejects_agent() -> None:
     parser.parse_args(["agent-mix-report"])  # parser exists
 
 
-def _write_expanded_active_runner_fixture(repo: Path) -> Path:
+def _write_expanded_active_runner_fixture(
+    repo: Path,
+    task_id: str = "T-2026-0087",
+    claimed_files: list[str] | None = None,
+) -> Path:
     active = _active_dir(repo)
     assignments = active / "assignments"
     assignments.mkdir(parents=True, exist_ok=True)
@@ -3739,6 +3743,7 @@ def _write_expanded_active_runner_fixture(repo: Path) -> Path:
                 "session_id": session_id,
                 "role": role,
                 "status": "idle",
+                "task_id": task_id,  # required for omc runner task_id derivation (fix round-4 #2)
                 "last_heartbeat": "2999-01-01T00:00:00Z",
                 "lanes": {"claude": {"status": "idle"}, "codex": {"status": "idle"}},
                 "write_lease_owner": role == "Implementer",
@@ -3761,8 +3766,23 @@ def _write_expanded_active_runner_fixture(repo: Path) -> Path:
         ),
         encoding="utf-8",
     )
+    # Write a proper write lease so the omc scope check can find claimed_files.
+    # The lease_type="write" + status="active" + claimed_files is required for the omc
+    # scope check (fail-closed on missing claimed_files when verdict is "proposed").
+    _claimed = claimed_files if claimed_files is not None else ["foo.py"]
     (active / "leases.json").write_text(
-        json.dumps({"schema_version": 1, "leases": [{"lease_id": "lease", "active_agent": None}]}),
+        json.dumps({
+            "schema_version": 1,
+            "leases": [{
+                "lease_id": "lease",
+                "lease_type": "write",
+                "status": "active",
+                "task_id": task_id,  # round-7 fix #1: explicit task_id required for omc scope check
+                "active_agent": None,
+                "owner_session": "implementer",
+                "claimed_files": _claimed,
+            }],
+        }),
         encoding="utf-8",
     )
     return active
@@ -6308,11 +6328,26 @@ class _FakeCodexProc:
         return 0
 
 
-def _fake_git_runner(diff_stdout: str = ""):
+def _fake_git_runner(diff_stdout: str = "", merge_base_sha: str = "deadbeef00000000"):
+    """Injectable git runner stub for worker-worktree diff capture.
+
+    ``diff_stdout``: returned for any ``git diff`` invocation.
+    ``merge_base_sha``: returned for ``git merge-base HEAD origin/main``.
+    Default is a non-empty sentinel SHA so tests exercise the merge-base-success path
+    (``git diff <sha>``) — the normal production path (round-8 fix #3: merge-base failure
+    is now fail-closed, so the default must be non-empty to keep existing tests green).
+    Pass ``merge_base_sha=""`` to simulate a merge-base failure, which now causes a
+    BLOCKED result (fail-closed) rather than the old ``git diff HEAD`` fallback.
+    """
     calls: list[list[str]] = []
 
     def run(cmd):
         calls.append(cmd)
+        if "merge-base" in cmd:
+            if merge_base_sha:
+                return subprocess.CompletedProcess(cmd, 0, stdout=merge_base_sha + "\n", stderr="")
+            # Simulate merge-base failure (e.g. remote ref absent) → now BLOCKED (round-8 fix #3).
+            return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="fatal: no merge base found")
         if "diff" in cmd:
             return subprocess.CompletedProcess(cmd, 0, stdout=diff_stdout, stderr="")
         return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
@@ -6958,6 +6993,2082 @@ def test_codex_runner_patch_mode_allows_context_only_claim_to_reach_apply_gate(t
         (repo / "reports" / "agent_loop" / "active" / "patch_runs" / "implementer" / "patch_artifact.json").read_text(encoding="utf-8")
     )
     assert artifact["verdict"] == "proposed"
+
+
+# --- PR-L: opt-in OMC parallel-execution runner backend (ADR 0087, issue #1679) ---
+
+
+def _fake_omc_runner(
+    *,
+    launch_stdout: str = "team: active\n",
+    summary_task_counts: dict[str, int] | None = None,
+    # List of task-count dicts returned by successive get-summary calls.
+    # Each entry overrides summary_task_counts for that call. Exhausted calls fall back to
+    # summary_task_counts (terminal-success by default). Use to simulate multi-poll scenarios:
+    # e.g. [{"total":1,"in_progress":1,...}, {"total":1,"completed":1,...}] for running→done.
+    summary_task_counts_seq: list[dict[str, int]] | None = None,
+    summary_worktree_path: str = "/tmp/fake-worktree",
+    summary_worker_name: str = "worker-1",
+    # Simulate shutdown failures (round-7 fix #2 tests).
+    # shutdown_rc: nonzero means the first shutdown attempt returns this rc.
+    # shutdown_force_rc: rc returned by the --force fallback (default 0 = success).
+    shutdown_rc: int = 0,
+    shutdown_force_rc: int = 0,
+):
+    """Injectable omc CLI stub: records every invocation, never spawns real omc.
+
+    STRICT contract enforcement: the stub validates that ``omc team api`` subcommands use
+    ``--input <json>`` (NOT a positional team name), and rejects unknown operations like the
+    non-existent ``get-diff``. This ensures tests validate the real omc CLI contract.
+
+    ``summary_task_counts``: task counts returned in the get-summary response. Defaults to
+    ``{"total": 1, "completed": 1, "failed": 0, "in_progress": 0, "pending": 0}`` so the
+    poll loop terminates with a terminal-success state immediately.
+    ``summary_task_counts_seq``: list of task-count dicts for successive get-summary calls;
+    overrides ``summary_task_counts`` per call, falls back to it when exhausted.
+    ``summary_worktree_path`` / ``summary_worker_name``: the worker entry in the summary
+    response (used for diff-capture path resolution from ``workers[0].worktree_path``).
+    """
+    terminal_counts: dict[str, int] = summary_task_counts or {
+        "total": 1, "completed": 1, "failed": 0, "in_progress": 0, "pending": 0
+    }
+    seq_iter = iter(summary_task_counts_seq or [])
+    calls: list[dict[str, object]] = []
+
+    def run(command, *, cwd, env, timeout=None):  # type: ignore[no-untyped-def]
+        cmd = list(command)
+        calls.append({"cmd": cmd, "cwd": str(cwd), "env": dict(env), "timeout": timeout})
+
+        # Launch: omc team <mix_spec> --no-decompose "<task>"
+        if "--no-decompose" in cmd:
+            return subprocess.CompletedProcess(cmd, 0, stdout=launch_stdout, stderr="")
+
+        # Shutdown: omc team shutdown <team-name> [--force]
+        if cmd[:3] == ["omc", "team", "shutdown"]:
+            is_force = "--force" in cmd
+            rc = shutdown_force_rc if is_force else shutdown_rc
+            stderr = "" if rc == 0 else f"shutdown failed (rc={rc})"
+            return subprocess.CompletedProcess(cmd, rc, stdout="", stderr=stderr)
+
+        # API subcommands MUST use --input <json> --json, NOT a positional team name.
+        if cmd[:3] == ["omc", "team", "api"]:
+            operation = cmd[3] if len(cmd) > 3 else ""
+            # Strict: get-diff does NOT exist in the real omc API.
+            if operation == "get-diff":
+                raise AssertionError(
+                    "omc team api get-diff does not exist in the real omc CLI — "
+                    "diff capture must use git -C <worktree_path> diff HEAD"
+                )
+            # Strict: api operations require --input <json>, not a positional team name.
+            if operation in {"get-summary", "list-tasks", "read-manifest", "read-worker-status"}:
+                if "--input" not in cmd:
+                    raise AssertionError(
+                        f"omc team api {operation} requires --input <json>, "
+                        f"NOT a positional team name; got: {cmd}"
+                    )
+            if operation == "get-summary":
+                counts = next(seq_iter, terminal_counts)
+                response = {
+                    "ok": True,
+                    "operation": "get-summary",
+                    "data": {
+                        "summary": {
+                            "teamName": "active",
+                            "workerCount": 1,
+                            "tasks": counts,
+                            "workers": [
+                                {
+                                    "name": summary_worker_name,
+                                    "worktree_path": summary_worktree_path,
+                                    "worktree_branch": "omc-team/active/worker-1",
+                                }
+                            ],
+                        }
+                    },
+                }
+                return subprocess.CompletedProcess(cmd, 0, stdout=json.dumps(response), stderr="")
+            # Unknown api operation — return generic ok
+            return subprocess.CompletedProcess(cmd, 0, stdout=json.dumps({"ok": True, "operation": operation}), stderr="")
+
+        # Reject any other omc team subcommands not explicitly handled above.
+        raise AssertionError(f"Unexpected omc command in test: {cmd}")
+
+    run.calls = calls  # type: ignore[attr-defined]
+    return run
+
+
+def test_active_codex_runner_omc_without_ack_blocks_and_never_spawns(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.delenv(agent_loop.OMC_RUNNER_ACK_ENV, raising=False)
+    repo = _write_repo(tmp_path)
+    _write_expanded_active_runner_fixture(repo)
+    omc = _fake_omc_runner()
+
+    result = agent_loop.write_active_codex_runner(
+        execute=True,
+        runner="omc",
+        repo_root=repo,
+        omc_runner=omc,
+    )
+
+    assert result.decision == "blocked"
+    assert agent_loop.OMC_RUNNER_REQUIRES_ACK_MESSAGE in result.blockers
+    # Fail-closed: the injectable omc runner is NEVER called without the ack.
+    assert omc.calls == []
+
+
+def test_active_codex_runner_omc_with_ack_builds_expected_command(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv(agent_loop.OMC_RUNNER_ACK_ENV, "1")
+    repo = _write_repo(tmp_path)
+    _write_expanded_active_runner_fixture(repo)
+    diff = "diff --git a/foo.py b/foo.py\n--- a/foo.py\n+++ b/foo.py\n@@ -1 +1,2 @@\n line\n+new line\n"
+    omc = _fake_omc_runner()
+
+    result = agent_loop.write_active_codex_runner(
+        execute=True,
+        runner="omc",
+        repo_root=repo,
+        omc_runner=omc,
+        git_runner=_fake_git_runner(diff_stdout=diff),
+    )
+
+    assert result.decision == "completed"
+    # The launch invocation: `omc team N:claude,M:codex --no-decompose "<task>"`.
+    launch = next(c for c in omc.calls if "--no-decompose" in c["cmd"])
+    assert launch["cmd"][0:2] == ["omc", "team"]
+    mix_spec = launch["cmd"][2]
+    assert ":claude" in mix_spec or ":codex" in mix_spec
+    assert launch["cmd"][3] == "--no-decompose"
+    # Per-worker git-worktree isolation env; NEVER --auto-merge.
+    assert launch["env"]["OMC_TEAM_WORKTREE_MODE"] == "branch"
+    assert all("--auto-merge" not in c["cmd"] for c in omc.calls)
+    # Teardown is always attempted.
+    assert any(c["cmd"][:3] == ["omc", "team", "shutdown"] for c in omc.calls)
+
+
+def test_active_codex_runner_omc_maps_to_patch_artifact_for_gate(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv(agent_loop.OMC_RUNNER_ACK_ENV, "1")
+    repo = _write_repo(tmp_path)
+    _write_expanded_active_runner_fixture(repo)
+    diff = "diff --git a/foo.py b/foo.py\n--- a/foo.py\n+++ b/foo.py\n@@ -1 +1,2 @@\n line\n+new line\n"
+    omc = _fake_omc_runner()
+
+    result = agent_loop.write_active_codex_runner(
+        execute=True,
+        runner="omc",
+        repo_root=repo,
+        omc_runner=omc,
+        git_runner=_fake_git_runner(diff_stdout=diff),
+    )
+
+    assert result.decision == "completed"
+    # The captured diff is mapped into the same patch_artifact.json shape the codex patch path
+    # writes, mirrored to the standard active-apply consumption path (no auto-merge to main).
+    standard = repo / "reports" / "agent_loop" / "active" / "patch_runs" / "implementer" / "patch_artifact.json"
+    assert standard.exists()
+    artifact = json.loads(standard.read_text(encoding="utf-8"))
+    assert artifact["verdict"] == "proposed"
+    assert artifact["agent"] == "omc"
+    assert artifact["files"] == ["foo.py"]
+    assert artifact["diff"] == diff
+
+
+def test_active_codex_runner_omc_privacy_reaudit_blocks_leak(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv(agent_loop.OMC_RUNNER_ACK_ENV, "1")
+    repo = _write_repo(tmp_path)
+    _write_expanded_active_runner_fixture(repo)
+    # The captured worker diff leaks a private real100 artifact path -> fail-closed.
+    diff = "diff --git a/x.py b/x.py\n+# see reports/real100/baseline.aggregate.json\n"
+    omc = _fake_omc_runner()
+
+    result = agent_loop.write_active_codex_runner(
+        execute=True,
+        runner="omc",
+        repo_root=repo,
+        omc_runner=omc,
+        git_runner=_fake_git_runner(diff_stdout=diff),
+    )
+
+    assert result.decision == "blocked"
+    assert any("privacy:" in blocker for blocker in result.blockers)
+    artifact_text = (
+        repo / "reports" / "agent_loop" / "active" / "omc_runs" / "omc-team" / "patch_artifact.json"
+    ).read_text(encoding="utf-8")
+    assert "reports/real100" not in artifact_text
+    assert "baseline.aggregate.json" not in artifact_text
+    # Blocked results ARE mirrored to the standard active-apply path so a stale prior proposed
+    # patch can never survive a subsequent blocked run (fix round-3 #3).
+    standard = repo / "reports" / "agent_loop" / "active" / "patch_runs" / "implementer" / "patch_artifact.json"
+    assert standard.exists()
+    standard_artifact = json.loads(standard.read_text(encoding="utf-8"))
+    assert standard_artifact["verdict"] == "blocked"
+    # Private content is NOT in the standard path either.
+    assert "reports/real100" not in standard.read_text(encoding="utf-8")
+    assert "baseline.aggregate.json" not in standard.read_text(encoding="utf-8")
+
+
+def test_active_codex_runner_omc_scope_blocks_out_of_scope_diff(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv(agent_loop.OMC_RUNNER_ACK_ENV, "1")
+    repo = _write_repo(tmp_path)
+    # Write fixture with task_id="T-2026-0087"; the fixture lease also carries task_id.
+    # Then OVERRIDE the lease with one that has the matching task_id but a DIFFERENT
+    # claimed_files set so the diff touches a file outside the claim (round-7 fix #1
+    # requires the lease to carry an explicit task_id that matches the current task).
+    _write_expanded_active_runner_fixture(repo, task_id="T-2026-0087", claimed_files=["allowed.py"])
+    # foo.py is NOT in the claim (allowed.py) -> out-of-scope -> blocked.
+    diff = "diff --git a/foo.py b/foo.py\n+x\n"
+    omc = _fake_omc_runner()
+
+    result = agent_loop.write_active_codex_runner(
+        execute=True,
+        runner="omc",
+        repo_root=repo,
+        omc_runner=omc,
+        git_runner=_fake_git_runner(diff_stdout=diff),
+    )
+
+    assert result.decision == "blocked"
+    assert any("outside the lease claim" in b for b in result.blockers)
+    # Blocked results ARE written to the standard path so stale prior proposed patches are
+    # overwritten (fix round-3 #3).
+    standard = repo / "reports" / "agent_loop" / "active" / "patch_runs" / "implementer" / "patch_artifact.json"
+    assert standard.exists()
+    assert json.loads(standard.read_text(encoding="utf-8"))["verdict"] == "blocked"
+
+
+def test_active_codex_runner_omc_never_raises_on_launch_failure(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv(agent_loop.OMC_RUNNER_ACK_ENV, "1")
+    repo = _write_repo(tmp_path)
+    _write_expanded_active_runner_fixture(repo)
+
+    def failing_omc(command, *, cwd, env, timeout=None):  # type: ignore[no-untyped-def]
+        cmd = list(command)
+        if cmd[:3] == ["omc", "team", "shutdown"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+        if "--no-decompose" in cmd:
+            return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="boom")
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    result = agent_loop.write_active_codex_runner(
+        execute=True,
+        runner="omc",
+        repo_root=repo,
+        omc_runner=failing_omc,
+    )
+
+    assert result.decision == "blocked"
+    assert any("omc team launch failed" in b for b in result.blockers)
+
+
+def test_active_runner_parser_default_is_codex_both_subparsers() -> None:
+    parser = agent_loop.build_parser()
+    assert parser.parse_args(["active-codex-runner"]).runner == "codex"
+    assert parser.parse_args(["active-auto-loop"]).runner == "codex"
+    assert parser.parse_args(["active-codex-runner", "--runner", "omc"]).runner == "omc"
+    assert parser.parse_args(["active-auto-loop", "--runner", "omc"]).runner == "omc"
+
+
+# --- PR-L fix #1: OMC poll-loop timeout regression ---
+
+
+def test_active_codex_runner_omc_poll_loop_proceeds_after_non_terminal_then_terminal(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """Regression: poll loop must call status multiple times and only proceed to get-diff
+    once a TERMINAL SUCCESS state is returned; a single non-terminal response must not
+    trigger an early false-complete."""
+    monkeypatch.setenv(agent_loop.OMC_RUNNER_ACK_ENV, "1")
+    # Patch sleep so the poll loop doesn't actually wait.
+    monkeypatch.setattr("time.sleep", lambda _: None)
+    repo = _write_repo(tmp_path)
+    _write_expanded_active_runner_fixture(repo)
+    diff = "diff --git a/foo.py b/foo.py\n--- a/foo.py\n+++ b/foo.py\n@@ -1 +1,2 @@\n line\n+new line\n"
+    # summary_task_counts_seq: first get-summary call returns non-terminal (in_progress=1),
+    # second returns terminal-success (completed=1, in_progress=0).
+    non_terminal = {"total": 1, "in_progress": 1, "pending": 0, "completed": 0, "failed": 0}
+    terminal = {"total": 1, "in_progress": 0, "pending": 0, "completed": 1, "failed": 0}
+    omc = _fake_omc_runner(
+        summary_task_counts_seq=[non_terminal],
+        summary_task_counts=terminal,
+    )
+
+    result = agent_loop.write_active_codex_runner(
+        execute=True,
+        runner="omc",
+        repo_root=repo,
+        omc_runner=omc,
+        git_runner=_fake_git_runner(diff_stdout=diff),
+    )
+
+    assert result.decision == "completed"
+    # The poll loop must have issued at least 2 get-summary calls (non-terminal + terminal).
+    summary_calls = [
+        c for c in omc.calls
+        if c["cmd"][:4] == ["omc", "team", "api", "get-summary"]
+    ]
+    assert len(summary_calls) >= 2, f"expected >=2 get-summary calls, got {summary_calls}"
+    # Diff is captured via git_runner (not via omc API), so no get-diff command should appear.
+    assert not any(
+        c["cmd"][:4] == ["omc", "team", "api", "get-diff"] for c in omc.calls
+    ), "get-diff does not exist in the real omc API — diff must be captured via git_runner"
+
+
+def test_active_codex_runner_omc_timeout_blocks_and_calls_teardown(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """Regression: a team that never reaches a terminal state within the timeout must return
+    a blocked result, and shutdown must still be called (finally-block teardown)."""
+    monkeypatch.setenv(agent_loop.OMC_RUNNER_ACK_ENV, "1")
+    # Patch sleep and monotonic so a 1-second timeout expires immediately.
+    import time as _time_mod
+
+    mono_calls: list[int] = [0]
+
+    def fake_monotonic() -> float:
+        # Increment past the deadline on the second call so the loop exits.
+        mono_calls[0] += 1
+        return float(mono_calls[0] * 10)  # 0, 10, 20, ... — always past a 1s deadline
+
+    monkeypatch.setattr(_time_mod, "monotonic", fake_monotonic)
+    monkeypatch.setattr(_time_mod, "sleep", lambda _: None)
+    repo = _write_repo(tmp_path)
+    _write_expanded_active_runner_fixture(repo)
+    # get-summary always returns non-terminal (in_progress=1) — the timeout should fire.
+    non_terminal = {"total": 1, "in_progress": 1, "pending": 0, "completed": 0, "failed": 0}
+    omc = _fake_omc_runner(
+        summary_task_counts=non_terminal,
+    )
+
+    result = agent_loop.write_active_codex_runner(
+        execute=True,
+        runner="omc",
+        repo_root=repo,
+        omc_runner=omc,
+        timeout_seconds=1,
+    )
+
+    assert result.decision == "blocked"
+    assert any("timeout" in b.lower() for b in result.blockers), result.blockers
+    # Teardown (shutdown) must still be called despite the timeout.
+    assert any(c["cmd"][:3] == ["omc", "team", "shutdown"] for c in omc.calls)
+
+
+# --- PR-L fix #2: OMC task-text stronger privacy scrub regression ---
+
+
+def test_active_codex_runner_omc_task_text_private_pattern_is_scrubbed_not_forwarded(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """Regression: a private real100 path or private raw field value in an assignment body
+    must be REDACTED (via _redact_private_text) before the task text is built — it must not
+    be forwarded verbatim to omc workers (who have network access).
+
+    The pre-spawn audit confirms that after the stronger redaction the task text is clean.
+    The omc runner IS called (the text is safe after redaction), but the raw private value
+    must not appear in any omc command-line argument."""
+    monkeypatch.setenv(agent_loop.OMC_RUNNER_ACK_ENV, "1")
+    monkeypatch.setattr("time.sleep", lambda _: None)
+    repo = _write_repo(tmp_path)
+    active = _write_expanded_active_runner_fixture(repo)
+    # Inject a private real100 path into one of the assignment files.
+    assignments = active / "assignments"
+    first_assignment = next(iter(assignments.glob("*.md")))
+    private_path = "reports/real100/baseline.aggregate.json"
+    first_assignment.write_text(
+        first_assignment.read_text(encoding="utf-8")
+        + f"\n\nSee {private_path} for details.\n",
+        encoding="utf-8",
+    )
+    diff = "diff --git a/foo.py b/foo.py\n--- a/foo.py\n+++ b/foo.py\n@@ -1 +1 @@\n+x\n"
+    omc = _fake_omc_runner()
+
+    result = agent_loop.write_active_codex_runner(
+        execute=True,
+        runner="omc",
+        repo_root=repo,
+        omc_runner=omc,
+        git_runner=_fake_git_runner(diff_stdout=diff),
+    )
+
+    # The run must complete — the private text was redacted before reaching the audit check.
+    assert result.decision == "completed", f"unexpected decision; blockers={result.blockers}"
+    # The raw private path must NOT appear verbatim in any omc command-line argument.
+    for call in omc.calls:
+        for arg in call["cmd"]:
+            assert private_path not in arg, (
+                f"raw private path leaked into omc arg: {arg!r}"
+            )
+
+
+def test_active_codex_runner_omc_task_text_residual_private_pattern_blocks_before_spawn(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """Regression: if _privacy_findings_for_text finds residual private patterns in the
+    final task_text (e.g., a gap in _redact_private_text), the pre-spawn check must block
+    BEFORE calling the omc runner. Verified by patching _privacy_findings_for_text to return
+    a synthetic finding on the task text."""
+    monkeypatch.setenv(agent_loop.OMC_RUNNER_ACK_ENV, "1")
+    repo = _write_repo(tmp_path)
+    _write_expanded_active_runner_fixture(repo)
+    omc = _fake_omc_runner()
+
+    # Patch _privacy_findings_for_text to simulate a residual finding on the task text only.
+    original_findings = agent_loop._privacy_findings_for_text
+
+    def patched_findings(text: str, *, path: str):  # type: ignore[return]
+        if path == "<omc-task-text>":
+            return [agent_loop.PrivacyFinding(path=path, issue="simulated residual private pattern")]
+        return original_findings(text, path=path)
+
+    monkeypatch.setattr(agent_loop, "_privacy_findings_for_text", patched_findings)
+
+    result = agent_loop.write_active_codex_runner(
+        execute=True,
+        runner="omc",
+        repo_root=repo,
+        omc_runner=omc,
+    )
+
+    assert result.decision == "blocked"
+    assert any("task text privacy:" in b for b in result.blockers), result.blockers
+    # The omc runner must NEVER be called when the pre-spawn check finds residual private patterns.
+    assert omc.calls == [], f"omc runner should not have been called, got: {omc.calls}"
+
+
+# --- PR-L fix #3: OMC gate-heartbeat invalidation regression ---
+
+
+def test_active_codex_runner_omc_completion_does_not_satisfy_gate_on_stale_prior_pass(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """Regression: a completed OMC run must NOT allow the Conservative Gate to pass on
+    stale prior-run blocking-role heartbeats. After the OMC runner completes, blocking-role
+    session statuses in the registry must be reset to a non-passing value."""
+    monkeypatch.setenv(agent_loop.OMC_RUNNER_ACK_ENV, "1")
+    monkeypatch.setattr("time.sleep", lambda _: None)
+    repo = _write_repo(tmp_path)
+    active = _write_expanded_active_runner_fixture(repo)
+
+    # Seed the registry with stale "passed" heartbeats for all blocking roles.
+    registry_path = active / "session_registry.json"
+    registry = json.loads(registry_path.read_text(encoding="utf-8"))
+    topology = registry.get("topology", "expanded-eight")
+    blocking_roles = set(agent_loop.ACTIVE_REQUIRED_GATES.get(topology, ())) | set(
+        agent_loop.ACTIVE_LOAD_BEARING_GATES.get(topology, ())
+    )
+    for session in registry["sessions"]:
+        if session.get("role") in blocking_roles:
+            session["status"] = "passed"
+            session["heartbeat_state"] = "fresh"
+    registry_path.write_text(json.dumps(registry), encoding="utf-8")
+
+    diff = "diff --git a/foo.py b/foo.py\n--- a/foo.py\n+++ b/foo.py\n@@ -1 +1 @@\n+x\n"
+    omc = _fake_omc_runner()
+
+    result = agent_loop.write_active_codex_runner(
+        execute=True,
+        runner="omc",
+        repo_root=repo,
+        omc_runner=omc,
+        git_runner=_fake_git_runner(diff_stdout=diff),
+    )
+
+    assert result.decision == "completed"
+    # After a completed OMC run, blocking-role statuses must NOT be in the passing set.
+    updated = json.loads(registry_path.read_text(encoding="utf-8"))
+    passing = {"pass", "passed", "approved", "ready-for-ship", "done", "clear"}
+    for session in updated["sessions"]:
+        if session.get("role") in blocking_roles:
+            assert session["status"] not in passing, (
+                f"blocking role {session['role']} still has passing status "
+                f"{session['status']} after OMC run"
+            )
+    # The Conservative Gate must therefore be NOT READY for the given sessions.
+    gate_ok = agent_loop._active_role_status_ok(updated["sessions"], next(iter(blocking_roles)))
+    assert not gate_ok, "Conservative Gate should not be ready on stale OMC-only completion"
+
+
+# --- PR-L round-2 fix #1: minimal env / credential boundary regression ---
+
+
+def test_active_codex_runner_omc_env_does_not_forward_secrets(monkeypatch, tmp_path: Path) -> None:
+    """Regression: omc team launch must NOT receive ambient secrets from the parent shell env.
+    The runner builds a minimal allowlisted env (_OMC_ENV_ALLOWLIST), so injected secrets
+    (OPENAI_API_KEY, GH_TOKEN, etc.) must be absent from the env handed to the omc runner.
+    PATH must still be present (runtime requires it)."""
+    monkeypatch.setenv(agent_loop.OMC_RUNNER_ACK_ENV, "1")
+    monkeypatch.setattr("time.sleep", lambda _: None)
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test-secret-openai")
+    monkeypatch.setenv("GH_TOKEN", "ghp_test_secret_gh")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "aws-secret-test")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-secret")
+    monkeypatch.setenv("PATH", "/usr/bin:/bin")  # ensure PATH is present
+
+    repo = _write_repo(tmp_path)
+    _write_expanded_active_runner_fixture(repo)
+    diff = "diff --git a/foo.py b/foo.py\n--- a/foo.py\n+++ b/foo.py\n@@ -1 +1 @@\n+x\n"
+
+    captured_envs: list[dict[str, str]] = []
+
+    def recording_runner(command, *, cwd, env, timeout=None):  # type: ignore[no-untyped-def]
+        cmd = list(command)
+        captured_envs.append(dict(env))
+        if cmd[:3] == ["omc", "team", "shutdown"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+        if "--no-decompose" in cmd:
+            return subprocess.CompletedProcess(cmd, 0, stdout="team: active\n", stderr="")
+        if cmd[:4] == ["omc", "team", "api", "get-summary"]:
+            response = {
+                "ok": True, "operation": "get-summary",
+                "data": {"summary": {
+                    "tasks": {"total": 1, "completed": 1, "failed": 0, "in_progress": 0, "pending": 0},
+                    "workers": [{"name": "w", "worktree_path": "/tmp/wt", "worktree_branch": "b"}],
+                }},
+            }
+            return subprocess.CompletedProcess(cmd, 0, stdout=json.dumps(response), stderr="")
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    agent_loop.write_active_codex_runner(
+        execute=True,
+        runner="omc",
+        repo_root=repo,
+        omc_runner=recording_runner,
+        git_runner=_fake_git_runner(diff_stdout=diff),
+    )
+
+    assert captured_envs, "omc runner was never called"
+    # Check the launch invocation (first call that includes --no-decompose).
+    launch_env = next(
+        (e for e, _ in zip(captured_envs, range(len(captured_envs))) if True),
+        captured_envs[0],
+    )
+    # Secrets must NOT be forwarded.
+    assert "OPENAI_API_KEY" not in launch_env, "OPENAI_API_KEY leaked to omc workers"
+    assert "GH_TOKEN" not in launch_env, "GH_TOKEN leaked to omc workers"
+    assert "AWS_SECRET_ACCESS_KEY" not in launch_env, "AWS_SECRET_ACCESS_KEY leaked to omc workers"
+    assert "ANTHROPIC_API_KEY" not in launch_env, "ANTHROPIC_API_KEY leaked to omc workers"
+    # PATH must be present so the runtime can find binaries.
+    assert "PATH" in launch_env, "PATH missing from omc env"
+    # OMC_TEAM_WORKTREE_MODE must be injected.
+    assert launch_env.get("OMC_TEAM_WORKTREE_MODE") == agent_loop.OMC_TEAM_WORKTREE_MODE
+
+
+# --- PR-L round-2 fix #2: single-worker-only regression ---
+
+
+def test_active_codex_runner_omc_always_launches_exactly_one_worker(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """Regression: even with a high-multiplicity agent_mix (claude=5, codex=5) and large
+    max_parallel, the omc team command must request exactly 1 worker total.
+    Multi-worker diff capture is deferred; launching >1 workers would silently discard all
+    but the leader diff while multiplying ADR 0005 exposure."""
+    monkeypatch.setenv(agent_loop.OMC_RUNNER_ACK_ENV, "1")
+    monkeypatch.setattr("time.sleep", lambda _: None)
+    repo = _write_repo(tmp_path)
+    active = _write_expanded_active_runner_fixture(repo)
+
+    # Override the registry's agent_mix to a high-multiplicity mix.
+    registry_path = active / "session_registry.json"
+    registry = json.loads(registry_path.read_text(encoding="utf-8"))
+    registry["agent_mix"] = {"target": {"claude": 5, "codex": 5}, "rolling": {}}
+    registry_path.write_text(json.dumps(registry), encoding="utf-8")
+
+    diff = "diff --git a/foo.py b/foo.py\n--- a/foo.py\n+++ b/foo.py\n@@ -1 +1 @@\n+x\n"
+    omc = _fake_omc_runner()
+
+    agent_loop.write_active_codex_runner(
+        execute=True,
+        runner="omc",
+        repo_root=repo,
+        omc_runner=omc,
+        git_runner=_fake_git_runner(diff_stdout=diff),
+        max_parallel=8,
+    )
+
+    # Find the launch invocation (contains --no-decompose).
+    launch = next((c for c in omc.calls if "--no-decompose" in c["cmd"]), None)
+    assert launch is not None, "omc team launch never called"
+    mix_spec = launch["cmd"][2]  # e.g. "1:claude" or "1:codex"
+    # Parse total workers from the mix spec (e.g. "1:claude" → 1, "1:claude,0:codex" → 1).
+    total = sum(
+        int(part.split(":")[0])
+        for part in mix_spec.split(",")
+        if ":" in part and part.split(":")[0].isdigit()
+    )
+    assert total == 1, f"expected exactly 1 worker, got mix_spec={mix_spec!r} (total={total})"
+
+
+# --- PR-L round-2 fix #3: task_id propagation to patch artifact regression ---
+
+
+def test_active_codex_runner_omc_artifact_has_valid_task_id(monkeypatch, tmp_path: Path) -> None:
+    """Regression: the patch_artifact.json written by the OMC runner must have a valid
+    T-YYYY-NNNN task_id so that write_active_apply can consume it without rejecting on a
+    null/invalid task_id."""
+    monkeypatch.setenv(agent_loop.OMC_RUNNER_ACK_ENV, "1")
+    monkeypatch.setattr("time.sleep", lambda _: None)
+    repo = _write_repo(tmp_path)
+    # round-7 fix #1: lease must carry an explicit task_id that matches the --task argument.
+    _write_expanded_active_runner_fixture(repo, task_id="T-2026-1679")
+    diff = "diff --git a/foo.py b/foo.py\n--- a/foo.py\n+++ b/foo.py\n@@ -1 +1 @@\n+x\n"
+    omc = _fake_omc_runner()
+
+    result = agent_loop.write_active_codex_runner(
+        execute=True,
+        runner="omc",
+        repo_root=repo,
+        omc_runner=omc,
+        git_runner=_fake_git_runner(diff_stdout=diff),
+        task_id="T-2026-1679",
+    )
+
+    assert result.decision == "completed"
+    standard = (
+        repo
+        / "reports"
+        / "agent_loop"
+        / "active"
+        / "patch_runs"
+        / "implementer"
+        / "patch_artifact.json"
+    )
+    assert standard.exists(), "standard patch artifact not written"
+    artifact = json.loads(standard.read_text(encoding="utf-8"))
+    assert artifact["task_id"] == "T-2026-1679", (
+        f"artifact task_id should be 'T-2026-1679', got {artifact['task_id']!r}"
+    )
+    # write_active_apply (dry-run) must accept the artifact without rejecting on task_id.
+    apply_result = agent_loop.write_active_apply(
+        repo_root=repo,
+        execute=False,
+        git_runner=_fake_apply_git_runner(check_rc=0),
+    )
+    assert "no valid task id" not in " ".join(apply_result.blockers), (
+        f"write_active_apply rejected on task_id; blockers={apply_result.blockers}"
+    )
+
+
+# --- PR-L round-2 fix #4: heartbeat invalidation only on executed runs regression ---
+
+
+def test_active_codex_runner_omc_no_ack_does_not_mutate_registry(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """Regression (fix #4a): the no-ack fail-closed path must NOT mutate the session registry
+    — gate heartbeats must be unchanged when omc is not even attempted."""
+    monkeypatch.delenv(agent_loop.OMC_RUNNER_ACK_ENV, raising=False)
+    repo = _write_repo(tmp_path)
+    active = _write_expanded_active_runner_fixture(repo)
+
+    # Seed a passing heartbeat for a blocking role.
+    registry_path = active / "session_registry.json"
+    registry = json.loads(registry_path.read_text(encoding="utf-8"))
+    topology = registry.get("topology", "expanded-eight")
+    blocking_roles = set(agent_loop.ACTIVE_REQUIRED_GATES.get(topology, ())) | set(
+        agent_loop.ACTIVE_LOAD_BEARING_GATES.get(topology, ())
+    )
+    for session in registry["sessions"]:
+        if session.get("role") in blocking_roles:
+            session["status"] = "passed"
+    registry_path.write_text(json.dumps(registry), encoding="utf-8")
+    mtime_before = registry_path.stat().st_mtime
+
+    agent_loop.write_active_codex_runner(
+        execute=True,
+        runner="omc",
+        repo_root=repo,
+        omc_runner=_fake_omc_runner(),
+    )
+
+    # Registry must not be modified (no-ack path never touched heartbeats).
+    updated = json.loads(registry_path.read_text(encoding="utf-8"))
+    for session in updated["sessions"]:
+        if session.get("role") in blocking_roles:
+            assert session["status"] == "passed", (
+                f"no-ack path mutated blocking role {session['role']} status to {session['status']!r}"
+            )
+
+
+def test_active_codex_runner_omc_dry_run_does_not_mutate_registry(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """Regression (fix #4b): a dry-run (execute=False) must NOT mutate the session registry."""
+    monkeypatch.setenv(agent_loop.OMC_RUNNER_ACK_ENV, "1")
+    repo = _write_repo(tmp_path)
+    active = _write_expanded_active_runner_fixture(repo)
+
+    registry_path = active / "session_registry.json"
+    registry = json.loads(registry_path.read_text(encoding="utf-8"))
+    topology = registry.get("topology", "expanded-eight")
+    blocking_roles = set(agent_loop.ACTIVE_REQUIRED_GATES.get(topology, ())) | set(
+        agent_loop.ACTIVE_LOAD_BEARING_GATES.get(topology, ())
+    )
+    for session in registry["sessions"]:
+        if session.get("role") in blocking_roles:
+            session["status"] = "passed"
+    registry_path.write_text(json.dumps(registry), encoding="utf-8")
+
+    agent_loop.write_active_codex_runner(
+        execute=False,  # dry-run
+        runner="omc",
+        repo_root=repo,
+        omc_runner=_fake_omc_runner(),
+    )
+
+    updated = json.loads(registry_path.read_text(encoding="utf-8"))
+    for session in updated["sessions"]:
+        if session.get("role") in blocking_roles:
+            assert session["status"] == "passed", (
+                f"dry-run path mutated blocking role {session['role']} status to {session['status']!r}"
+            )
+
+
+def test_active_codex_runner_omc_pre_spawn_privacy_block_does_not_mutate_registry(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """Regression (fix #4c): a pre-spawn privacy block must NOT mutate the session registry
+    because no omc team was ever launched."""
+    monkeypatch.setenv(agent_loop.OMC_RUNNER_ACK_ENV, "1")
+    repo = _write_repo(tmp_path)
+    active = _write_expanded_active_runner_fixture(repo)
+
+    registry_path = active / "session_registry.json"
+    registry = json.loads(registry_path.read_text(encoding="utf-8"))
+    topology = registry.get("topology", "expanded-eight")
+    blocking_roles = set(agent_loop.ACTIVE_REQUIRED_GATES.get(topology, ())) | set(
+        agent_loop.ACTIVE_LOAD_BEARING_GATES.get(topology, ())
+    )
+    for session in registry["sessions"]:
+        if session.get("role") in blocking_roles:
+            session["status"] = "passed"
+    registry_path.write_text(json.dumps(registry), encoding="utf-8")
+
+    # Patch _privacy_findings_for_text to simulate a residual finding on task text.
+    original_findings = agent_loop._privacy_findings_for_text
+
+    def patched_findings(text: str, *, path: str):  # type: ignore[return]
+        if path == "<omc-task-text>":
+            return [agent_loop.PrivacyFinding(path=path, issue="simulated residual private pattern")]
+        return original_findings(text, path=path)
+
+    monkeypatch.setattr(agent_loop, "_privacy_findings_for_text", patched_findings)
+
+    result = agent_loop.write_active_codex_runner(
+        execute=True,
+        runner="omc",
+        repo_root=repo,
+        omc_runner=_fake_omc_runner(),
+    )
+
+    assert result.decision == "blocked"
+    updated = json.loads(registry_path.read_text(encoding="utf-8"))
+    for session in updated["sessions"]:
+        if session.get("role") in blocking_roles:
+            assert session["status"] == "passed", (
+                f"pre-spawn-block path mutated blocking role {session['role']} status "
+                f"to {session['status']!r}"
+            )
+
+
+def test_active_codex_runner_omc_executed_run_does_invalidate_heartbeats(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """Regression (fix #4d): a real executed OMC run (execute=True, ack present) must still
+    invalidate stale blocking-role heartbeats after the team completes."""
+    monkeypatch.setenv(agent_loop.OMC_RUNNER_ACK_ENV, "1")
+    monkeypatch.setattr("time.sleep", lambda _: None)
+    repo = _write_repo(tmp_path)
+    active = _write_expanded_active_runner_fixture(repo)
+
+    registry_path = active / "session_registry.json"
+    registry = json.loads(registry_path.read_text(encoding="utf-8"))
+    topology = registry.get("topology", "expanded-eight")
+    blocking_roles = set(agent_loop.ACTIVE_REQUIRED_GATES.get(topology, ())) | set(
+        agent_loop.ACTIVE_LOAD_BEARING_GATES.get(topology, ())
+    )
+    for session in registry["sessions"]:
+        if session.get("role") in blocking_roles:
+            session["status"] = "passed"
+            session["heartbeat_state"] = "fresh"
+    registry_path.write_text(json.dumps(registry), encoding="utf-8")
+
+    diff = "diff --git a/foo.py b/foo.py\n--- a/foo.py\n+++ b/foo.py\n@@ -1 +1 @@\n+x\n"
+    omc = _fake_omc_runner()
+
+    result = agent_loop.write_active_codex_runner(
+        execute=True,
+        runner="omc",
+        repo_root=repo,
+        omc_runner=omc,
+        git_runner=_fake_git_runner(diff_stdout=diff),
+    )
+
+    assert result.decision == "completed"
+    updated = json.loads(registry_path.read_text(encoding="utf-8"))
+    passing = {"pass", "passed", "approved", "ready-for-ship", "done", "clear"}
+    for session in updated["sessions"]:
+        if session.get("role") in blocking_roles:
+            assert session["status"] not in passing, (
+                f"executed OMC run did NOT invalidate blocking role {session['role']} "
+                f"(status={session['status']!r})"
+            )
+
+
+# --- PR-L round-3 fix #1: per-command subprocess timeout regression ---
+
+
+def test_active_codex_runner_omc_per_command_timeout_passed_to_runner(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """Regression (fix round-3 #1): every omc subprocess call must receive a per-command
+    timeout budget derived from the remaining deadline when timeout_seconds > 0.
+    With timeout_seconds=0 (unlimited, ADR 0085), timeout must be None."""
+    monkeypatch.setenv(agent_loop.OMC_RUNNER_ACK_ENV, "1")
+    monkeypatch.setattr("time.sleep", lambda _: None)
+    repo = _write_repo(tmp_path)
+    _write_expanded_active_runner_fixture(repo)
+    diff = "diff --git a/foo.py b/foo.py\n--- a/foo.py\n+++ b/foo.py\n@@ -1 +1 @@\n+x\n"
+    omc = _fake_omc_runner()
+
+    # With a bounded timeout, every call receives a float timeout.
+    result = agent_loop.write_active_codex_runner(
+        execute=True,
+        runner="omc",
+        timeout_seconds=120,
+        repo_root=repo,
+        omc_runner=omc,
+        git_runner=_fake_git_runner(diff_stdout=diff),
+    )
+
+    assert result.decision == "completed"
+    # Every recorded call must have a non-None numeric timeout.
+    for call in omc.calls:
+        assert call.get("timeout") is not None and call["timeout"] > 0, (
+            f"omc call {call['cmd'][:4]} did not receive a per-command timeout: {call.get('timeout')!r}"
+        )
+
+
+def test_active_codex_runner_omc_unlimited_timeout_passes_none(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """Regression (fix round-3 #1): when timeout_seconds=0 (unlimited, ADR 0085), per-command
+    timeout forwarded to the runner must be None — subprocess.run(timeout=None) is unlimited."""
+    monkeypatch.setenv(agent_loop.OMC_RUNNER_ACK_ENV, "1")
+    monkeypatch.setattr("time.sleep", lambda _: None)
+    repo = _write_repo(tmp_path)
+    _write_expanded_active_runner_fixture(repo)
+    diff = "diff --git a/foo.py b/foo.py\n--- a/foo.py\n+++ b/foo.py\n@@ -1 +1 @@\n+x\n"
+    omc = _fake_omc_runner()
+
+    result = agent_loop.write_active_codex_runner(
+        execute=True,
+        runner="omc",
+        timeout_seconds=0,  # unlimited
+        repo_root=repo,
+        omc_runner=omc,
+        git_runner=_fake_git_runner(diff_stdout=diff),
+    )
+
+    assert result.decision == "completed"
+    # The shutdown call always uses a fixed bounded timeout (30s) for safety regardless of the
+    # overall timeout_seconds budget. Only the worker commands (launch / status / get-* calls)
+    # must respect the unlimited budget by receiving None.
+    worker_calls = [c for c in omc.calls if c["cmd"][:3] != ["omc", "team", "shutdown"]]
+    assert worker_calls, "no worker omc calls recorded"
+    for call in worker_calls:
+        assert call.get("timeout") is None, (
+            f"unlimited timeout_seconds=0 forwarded non-None timeout to omc call {call['cmd'][:4]}"
+        )
+
+
+# --- PR-L round-3 fix #2: --read-agent respected by _resolve_omc_worker_mix ---
+
+
+def test_active_codex_runner_omc_read_agent_claude_forces_claude_worker(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """Regression (fix round-3 #2): --read-agent claude must unconditionally select (1,0)
+    regardless of the agent_mix policy in the registry."""
+    monkeypatch.setenv(agent_loop.OMC_RUNNER_ACK_ENV, "1")
+    monkeypatch.setattr("time.sleep", lambda _: None)
+    repo = _write_repo(tmp_path)
+    active = _write_expanded_active_runner_fixture(repo)
+
+    # Bias registry to codex-majority so the auto path would pick codex.
+    registry_path = active / "session_registry.json"
+    registry = json.loads(registry_path.read_text(encoding="utf-8"))
+    registry["agent_mix"] = {"target": {"codex": 10, "claude": 1}}
+    registry_path.write_text(json.dumps(registry), encoding="utf-8")
+
+    diff = "diff --git a/foo.py b/foo.py\n--- a/foo.py\n+++ b/foo.py\n@@ -1 +1 @@\n+x\n"
+    omc = _fake_omc_runner()
+
+    result = agent_loop.write_active_codex_runner(
+        execute=True,
+        runner="omc",
+        read_agent="claude",
+        repo_root=repo,
+        omc_runner=omc,
+        git_runner=_fake_git_runner(diff_stdout=diff),
+    )
+
+    assert result.decision == "completed"
+    launch = next(c for c in omc.calls if "--no-decompose" in c["cmd"])
+    mix_spec = launch["cmd"][2]
+    assert "1:claude" in mix_spec, f"expected 1:claude mix but got {mix_spec!r}"
+    assert "codex" not in mix_spec, f"codex must not appear when read_agent=claude: {mix_spec!r}"
+
+
+def test_active_codex_runner_omc_read_agent_codex_forces_codex_worker(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """Regression (fix round-3 #2): --read-agent codex must unconditionally select (0,1)
+    regardless of the agent_mix policy in the registry."""
+    monkeypatch.setenv(agent_loop.OMC_RUNNER_ACK_ENV, "1")
+    monkeypatch.setattr("time.sleep", lambda _: None)
+    repo = _write_repo(tmp_path)
+    active = _write_expanded_active_runner_fixture(repo)
+
+    # Bias registry to claude-majority so the auto path would pick claude.
+    registry_path = active / "session_registry.json"
+    registry = json.loads(registry_path.read_text(encoding="utf-8"))
+    registry["agent_mix"] = {"target": {"claude": 10, "codex": 1}}
+    registry_path.write_text(json.dumps(registry), encoding="utf-8")
+
+    diff = "diff --git a/foo.py b/foo.py\n--- a/foo.py\n+++ b/foo.py\n@@ -1 +1 @@\n+x\n"
+    omc = _fake_omc_runner()
+
+    result = agent_loop.write_active_codex_runner(
+        execute=True,
+        runner="omc",
+        read_agent="codex",
+        repo_root=repo,
+        omc_runner=omc,
+        git_runner=_fake_git_runner(diff_stdout=diff),
+    )
+
+    assert result.decision == "completed"
+    launch = next(c for c in omc.calls if "--no-decompose" in c["cmd"])
+    mix_spec = launch["cmd"][2]
+    assert "1:codex" in mix_spec, f"expected 1:codex mix but got {mix_spec!r}"
+    assert "claude" not in mix_spec, f"claude must not appear when read_agent=codex: {mix_spec!r}"
+
+
+# --- PR-L round-3 fix #3: stale standard patch artifact overwrite ---
+
+
+def test_active_codex_runner_omc_blocked_run_overwrites_stale_standard_artifact(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """Regression (fix round-3 #3): a blocked/empty OMC run must overwrite the standard
+    patch_artifact.json so a stale proposed diff from a PRIOR successful run cannot be
+    consumed by write_active_apply on the subsequent blocked run."""
+    monkeypatch.setenv(agent_loop.OMC_RUNNER_ACK_ENV, "1")
+    monkeypatch.setattr("time.sleep", lambda _: None)
+    repo = _write_repo(tmp_path)
+    _write_expanded_active_runner_fixture(repo)
+
+    # Seed a stale proposed artifact at the standard path (simulates a prior successful run).
+    standard_path = (
+        repo / "reports" / "agent_loop" / "active" / "patch_runs" / "implementer" / "patch_artifact.json"
+    )
+    standard_path.parent.mkdir(parents=True, exist_ok=True)
+    stale_artifact = {
+        "schema_version": 1,
+        "task_id": "T-2026-9999",
+        "verdict": "proposed",
+        "diff": "diff --git a/stale.py b/stale.py\n+stale\n",
+    }
+    standard_path.write_text(json.dumps(stale_artifact), encoding="utf-8")
+
+    # No-ack run (write_artifact=False path) should overwrite the stale artifact.
+    monkeypatch.delenv(agent_loop.OMC_RUNNER_ACK_ENV, raising=False)
+    omc = _fake_omc_runner()
+
+    result = agent_loop.write_active_codex_runner(
+        execute=True,
+        runner="omc",
+        repo_root=repo,
+        omc_runner=omc,
+    )
+
+    assert result.decision == "blocked"
+    # The standard path must still exist but must NOT contain the stale proposed diff.
+    assert standard_path.exists()
+    artifact = json.loads(standard_path.read_text(encoding="utf-8"))
+    assert artifact["verdict"] == "blocked", (
+        f"stale proposed artifact was not overwritten on blocked run: verdict={artifact['verdict']!r}"
+    )
+    assert "stale" not in standard_path.read_text(encoding="utf-8"), (
+        "stale proposed diff content survived a blocked run"
+    )
+
+
+# --- PR-L round-3 fix #4: auto-loop task_id pass-through ---
+
+
+def test_active_codex_runner_omc_artifact_carries_task_id_from_auto_loop(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """Regression (fix round-3 #4): write_active_codex_runner called from write_active_auto_loop
+    must receive task_id so the patch artifact has a valid T-YYYY-NNNN id.  We test the direct
+    call path here (auto-loop integration is covered by the existing artifact test)."""
+    monkeypatch.setenv(agent_loop.OMC_RUNNER_ACK_ENV, "1")
+    monkeypatch.setattr("time.sleep", lambda _: None)
+    repo = _write_repo(tmp_path)
+    _write_expanded_active_runner_fixture(repo)
+    diff = "diff --git a/foo.py b/foo.py\n--- a/foo.py\n+++ b/foo.py\n@@ -1 +1 @@\n+x\n"
+    omc = _fake_omc_runner()
+
+    task_id = "T-2026-0087"
+    result = agent_loop.write_active_codex_runner(
+        execute=True,
+        runner="omc",
+        task_id=task_id,
+        repo_root=repo,
+        omc_runner=omc,
+        git_runner=_fake_git_runner(diff_stdout=diff),
+    )
+
+    assert result.decision == "completed"
+    standard = (
+        repo / "reports" / "agent_loop" / "active" / "patch_runs" / "implementer" / "patch_artifact.json"
+    )
+    assert standard.exists()
+    artifact = json.loads(standard.read_text(encoding="utf-8"))
+    assert artifact.get("task_id") == task_id, (
+        f"expected task_id={task_id!r} in artifact but got {artifact.get('task_id')!r}"
+    )
+
+
+# --- PR-L round-4 fix #1: env allowlist accuracy (defense-in-depth, not full boundary) ---
+
+
+def test_active_codex_runner_omc_env_allowlist_defense_in_depth_framing(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """Regression (fix round-4 #1): the env allowlist strips obvious ENV-var secrets as
+    defense-in-depth but does NOT close the home-scoped credential path.  ENV secrets must be
+    absent; PATH + HOME must be present (workers need HOME to authenticate via CLIs).
+    XDG_CACHE_HOME and XDG_RUNTIME_DIR must be absent (trimmed from allowlist)."""
+    monkeypatch.setenv(agent_loop.OMC_RUNNER_ACK_ENV, "1")
+    monkeypatch.setattr("time.sleep", lambda _: None)
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test-secret-openai")
+    monkeypatch.setenv("GH_TOKEN", "ghp_test_secret_gh")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "aws-secret-test")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-secret")
+    monkeypatch.setenv("XDG_CACHE_HOME", "/tmp/cache")
+    monkeypatch.setenv("XDG_RUNTIME_DIR", "/tmp/runtime")
+    monkeypatch.setenv("PATH", "/usr/bin:/bin")
+    monkeypatch.setenv("HOME", "/home/testuser")
+
+    repo = _write_repo(tmp_path)
+    _write_expanded_active_runner_fixture(repo)
+    diff = "diff --git a/foo.py b/foo.py\n--- a/foo.py\n+++ b/foo.py\n@@ -1 +1 @@\n+x\n"
+    captured_envs: list[dict[str, str]] = []
+
+    def recording_runner(command, *, cwd, env, timeout=None):  # type: ignore[no-untyped-def]
+        cmd = list(command)
+        captured_envs.append(dict(env))
+        if cmd[:3] == ["omc", "team", "shutdown"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+        if "--no-decompose" in cmd:
+            return subprocess.CompletedProcess(cmd, 0, stdout="team: active\n", stderr="")
+        if cmd[:4] == ["omc", "team", "api", "get-summary"]:
+            response = {
+                "ok": True, "operation": "get-summary",
+                "data": {"summary": {
+                    "tasks": {"total": 1, "completed": 1, "failed": 0, "in_progress": 0, "pending": 0},
+                    "workers": [{"name": "w", "worktree_path": "/tmp/wt", "worktree_branch": "b"}],
+                }},
+            }
+            return subprocess.CompletedProcess(cmd, 0, stdout=json.dumps(response), stderr="")
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    agent_loop.write_active_codex_runner(
+        execute=True,
+        runner="omc",
+        repo_root=repo,
+        omc_runner=recording_runner,
+        git_runner=_fake_git_runner(diff_stdout=diff),
+    )
+
+    assert captured_envs, "omc runner was never called"
+    first_env = captured_envs[0]
+    # ENV-var secrets must be absent (defense-in-depth).
+    assert "OPENAI_API_KEY" not in first_env
+    assert "GH_TOKEN" not in first_env
+    assert "AWS_SECRET_ACCESS_KEY" not in first_env
+    assert "ANTHROPIC_API_KEY" not in first_env
+    # PATH + HOME required (workers need these to function + authenticate).
+    assert "PATH" in first_env
+    assert "HOME" in first_env
+    # XDG_CACHE_HOME and XDG_RUNTIME_DIR are NOT in the allowlist (trimmed round-4 fix #1).
+    assert "XDG_CACHE_HOME" not in first_env, "XDG_CACHE_HOME should not be in trimmed allowlist"
+    assert "XDG_RUNTIME_DIR" not in first_env, "XDG_RUNTIME_DIR should not be in trimmed allowlist"
+    # Worktree mode injected.
+    assert first_env.get("OMC_TEAM_WORKTREE_MODE") == agent_loop.OMC_TEAM_WORKTREE_MODE
+
+
+# --- PR-L round-4 fix #2: standalone task_id derivation from registry ---
+
+
+def test_active_codex_runner_omc_derives_task_id_from_registry_when_not_provided(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """Regression (fix round-4 #2): standalone omc run without explicit --task must derive
+    task_id from the active registry sessions; the resulting patch artifact must carry that
+    task_id so write_active_apply(execute=False) accepts it."""
+    monkeypatch.setenv(agent_loop.OMC_RUNNER_ACK_ENV, "1")
+    monkeypatch.setattr("time.sleep", lambda _: None)
+    repo = _write_repo(tmp_path)
+    # Fixture already seeds T-2026-0087 in every session (updated in _write_expanded_active_runner_fixture).
+    _write_expanded_active_runner_fixture(repo, task_id="T-2026-0042")
+
+    diff = "diff --git a/foo.py b/foo.py\n--- a/foo.py\n+++ b/foo.py\n@@ -1 +1 @@\n+x\n"
+    omc = _fake_omc_runner()
+
+    # No explicit task_id passed — must derive from registry.
+    result = agent_loop.write_active_codex_runner(
+        execute=True,
+        runner="omc",
+        repo_root=repo,
+        omc_runner=omc,
+        git_runner=_fake_git_runner(diff_stdout=diff),
+    )
+
+    assert result.decision == "completed", f"expected completed but got {result.decision!r}; blockers={result.blockers}"
+    standard = (
+        repo / "reports" / "agent_loop" / "active" / "patch_runs" / "implementer" / "patch_artifact.json"
+    )
+    assert standard.exists()
+    artifact = json.loads(standard.read_text(encoding="utf-8"))
+    assert artifact.get("task_id") == "T-2026-0042", (
+        f"expected derived task_id T-2026-0042 in artifact but got {artifact.get('task_id')!r}"
+    )
+
+
+def test_active_codex_runner_omc_blocks_before_spawn_when_no_task_id_derivable(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """Regression (fix round-4 #2): when no task_id is derivable (no --task, registry has no
+    task_id in sessions), omc must block fail-closed BEFORE spawning, so the high-risk run is
+    not wasted on an artifact write_active_apply would reject."""
+    monkeypatch.setenv(agent_loop.OMC_RUNNER_ACK_ENV, "1")
+    monkeypatch.setattr("time.sleep", lambda _: None)
+    repo = _write_repo(tmp_path)
+
+    # Write a registry with sessions that have NO task_id.
+    active = _active_dir(repo)
+    active.mkdir(parents=True, exist_ok=True)
+    assignments = active / "assignments"
+    assignments.mkdir(parents=True, exist_ok=True)
+    sessions = []
+    for session_id, role in agent_loop.ACTIVE_TOPOLOGY_ROLES["expanded-eight"]:
+        sessions.append({
+            "session_id": session_id,
+            "role": role,
+            "status": "idle",
+            # No task_id field — derivation must fail.
+        })
+        (assignments / f"{session_id}.md").write_text(f"# {role}\n", encoding="utf-8")
+    (active / "session_registry.json").write_text(
+        json.dumps({"schema_version": 2, "topology": "expanded-eight", "gate_policy": "conservative",
+                    "agent_mix": agent_loop._parse_agent_mix(None), "sessions": sessions}),
+        encoding="utf-8",
+    )
+    (active / "leases.json").write_text(
+        json.dumps({"schema_version": 1, "leases": [{"lease_id": "lease", "active_agent": None}]}),
+        encoding="utf-8",
+    )
+
+    omc = _fake_omc_runner()
+
+    result = agent_loop.write_active_codex_runner(
+        execute=True,
+        runner="omc",
+        repo_root=repo,
+        omc_runner=omc,
+    )
+
+    assert result.decision == "blocked"
+    assert any("task_id" in b for b in result.blockers), (
+        f"expected a task_id blocker but got: {result.blockers}"
+    )
+    # omc must never be called (fail-closed before spawn).
+    assert omc.calls == [], f"omc was called despite no derivable task_id: {omc.calls}"
+
+
+# --- PR-L round-5 fix #1: real omc API contract (no get-diff, poll via get-summary --input JSON) ---
+
+
+def test_active_codex_runner_omc_strict_stub_rejects_get_diff_call(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """Regression (fix round-5 #1): omc team api get-diff does NOT exist in the real omc CLI.
+    The strict _fake_omc_runner raises AssertionError if any caller attempts get-diff.
+    This test verifies that the production poll+diff path NEVER calls get-diff — it must
+    capture the diff via git_runner (git -C <worktree> diff HEAD) instead."""
+    monkeypatch.setenv(agent_loop.OMC_RUNNER_ACK_ENV, "1")
+    monkeypatch.setattr("time.sleep", lambda _: None)
+    repo = _write_repo(tmp_path)
+    _write_expanded_active_runner_fixture(repo)
+    diff = "diff --git a/foo.py b/foo.py\n--- a/foo.py\n+++ b/foo.py\n@@ -1 +1 @@\n+x\n"
+
+    # Strict stub: AssertionError if get-diff is attempted.
+    omc = _fake_omc_runner()
+    git = _fake_git_runner(diff_stdout=diff)
+
+    result = agent_loop.write_active_codex_runner(
+        execute=True,
+        runner="omc",
+        repo_root=repo,
+        omc_runner=omc,
+        git_runner=git,
+    )
+
+    # If get-diff had been called, _fake_omc_runner would have raised AssertionError.
+    assert result.decision == "completed"
+    # git_runner must have been called with git -C <worktree> diff HEAD.
+    assert any("diff" in c for c in git.calls), (
+        f"git_runner was never called to capture the worker diff; calls={git.calls}"
+    )
+    # No get-diff in any omc call.
+    assert not any(
+        c["cmd"][:4] == ["omc", "team", "api", "get-diff"] for c in omc.calls
+    ), "get-diff must NOT be called — it does not exist in the real omc API"
+
+
+# --- PR-L round-5 fix #2: scope enforcement fail-closed when claimed_files absent ---
+
+
+def test_active_codex_runner_omc_scope_fail_closed_when_no_claimed_files(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """Regression (fix round-5 #2): if the write lease has NO claimed_files and the omc diff
+    is non-empty (verdict would be 'proposed'), the run must be BLOCKED fail-closed.
+    An unclaimed scope from uncontrolled omc workers must NOT produce a 'proposed' artifact."""
+    monkeypatch.setenv(agent_loop.OMC_RUNNER_ACK_ENV, "1")
+    monkeypatch.setattr("time.sleep", lambda _: None)
+    repo = _write_repo(tmp_path)
+    # Write a fixture with NO claimed_files in the lease.
+    _write_expanded_active_runner_fixture(repo, claimed_files=[])
+    diff = "diff --git a/foo.py b/foo.py\n+x\n"
+    omc = _fake_omc_runner()
+
+    result = agent_loop.write_active_codex_runner(
+        execute=True,
+        runner="omc",
+        repo_root=repo,
+        omc_runner=omc,
+        git_runner=_fake_git_runner(diff_stdout=diff),
+    )
+
+    assert result.decision == "blocked"
+    assert any("scope is unenforced" in b for b in result.blockers), (
+        f"expected scope-unenforced blocker but got: {result.blockers}"
+    )
+
+
+# --- PR-L round-6 fix #1: committed worker diff capture via merge-base ---
+
+
+def test_active_codex_runner_omc_captures_committed_diff_via_merge_base(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """Regression (fix round-6 #1): OMC workers COMMIT their patch on a per-worker branch.
+    ``git diff HEAD`` only captures UNCOMMITTED changes and would return empty for committed
+    work. The fix resolves a merge-base (``git merge-base HEAD origin/main``) and then runs
+    ``git diff <base>`` to capture ALL changes the worker made (committed + staged + unstaged)
+    since the branch point.
+
+    This test simulates a worker that committed its change: the diff is ONLY visible via
+    ``git diff <base>`` and would be empty via ``git diff HEAD``."""
+    monkeypatch.setenv(agent_loop.OMC_RUNNER_ACK_ENV, "1")
+    monkeypatch.setattr("time.sleep", lambda _: None)
+    repo = _write_repo(tmp_path)
+    _write_expanded_active_runner_fixture(repo)
+
+    # The committed diff is only present in the merge-base diff, NOT in ``git diff HEAD``.
+    # We simulate this by providing a non-empty diff_stdout (returned for ALL diff calls) but
+    # a successful merge_base_sha — the assertion verifies the diff cmd uses <sha>, not HEAD.
+    committed_diff = "diff --git a/foo.py b/foo.py\n--- a/foo.py\n+++ b/foo.py\n@@ -1 +1,2 @@\n line\n+committed line\n"
+    base_sha = "deadbeef1234567890abcdef1234567890abcdef"
+    omc = _fake_omc_runner()
+    git = _fake_git_runner(diff_stdout=committed_diff, merge_base_sha=base_sha)
+
+    result = agent_loop.write_active_codex_runner(
+        execute=True,
+        runner="omc",
+        repo_root=repo,
+        omc_runner=omc,
+        git_runner=git,
+    )
+
+    assert result.decision == "completed", f"expected completed but got {result.decision!r}; blockers={result.blockers}"
+    # Verify merge-base was called to resolve the base SHA.
+    assert any("merge-base" in c for c in git.calls), (
+        f"git merge-base was never called; calls={git.calls}"
+    )
+    # Verify the diff command used the base SHA (not HEAD).
+    diff_calls = [c for c in git.calls if "diff" in c and "merge-base" not in c]
+    assert diff_calls, "no git diff call recorded"
+    assert any(base_sha in c for c in diff_calls), (
+        f"diff command did not use merge-base SHA {base_sha!r}; diff_calls={diff_calls}"
+    )
+    # The committed diff must flow through to the patch artifact.
+    standard = repo / "reports" / "agent_loop" / "active" / "patch_runs" / "implementer" / "patch_artifact.json"
+    assert standard.exists()
+    artifact = json.loads(standard.read_text(encoding="utf-8"))
+    assert artifact["verdict"] == "proposed"
+    assert "committed line" in artifact.get("diff", ""), (
+        "committed diff content must be present in the patch artifact"
+    )
+
+
+def test_active_codex_runner_omc_blocked_when_merge_base_fails(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """Regression (round-8 fix #3 supersedes round-6 #1 fallback): if ``git merge-base``
+    fails (e.g. remote ref absent in a shallow clone / worktree), the runner must BLOCK
+    fail-closed — NOT fall back to ``git diff HEAD``.  A HEAD-only diff misses committed
+    worker changes, producing a false-empty completion that bypasses privacy/scope checks.
+    Operator must ensure origin/main is reachable before running the omc runner."""
+    monkeypatch.setenv(agent_loop.OMC_RUNNER_ACK_ENV, "1")
+    monkeypatch.setattr("time.sleep", lambda _: None)
+    repo = _write_repo(tmp_path)
+    _write_expanded_active_runner_fixture(repo)
+    diff = "diff --git a/foo.py b/foo.py\n+x\n"
+    omc = _fake_omc_runner()
+    # merge_base_sha="" → merge-base call returns rc=1 (failure) → BLOCKED (round-8 fix #3).
+    git = _fake_git_runner(diff_stdout=diff, merge_base_sha="")
+
+    result = agent_loop.write_active_codex_runner(
+        execute=True,
+        runner="omc",
+        repo_root=repo,
+        omc_runner=omc,
+        git_runner=git,
+    )
+
+    assert result.decision == "blocked", (
+        f"expected blocked when merge-base fails; got {result.decision!r}; blockers={result.blockers}"
+    )
+    assert any("merge-base" in b.lower() for b in result.blockers), (
+        f"expected a merge-base blocker; blockers={result.blockers}"
+    )
+    # The fallback ``git diff HEAD`` must NOT be called.
+    head_diff_calls = [c for c in git.calls if "diff" in c and "HEAD" in c]
+    assert not head_diff_calls, (
+        f"git diff HEAD must NOT be called when merge-base fails (fail-closed); calls={head_diff_calls}"
+    )
+
+
+# --- PR-L round-6 fix #2: scope check resolves lease by current task_id ---
+
+
+def test_active_codex_runner_omc_scope_resolves_lease_by_current_task_id(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """Regression (fix round-6 #2): when multiple active write leases exist, the scope check
+    must use the lease for the CURRENT task_id — not the first lease in the list.
+    The first lease belongs to a DIFFERENT task (wrong claimed_files); the second lease
+    belongs to the current task (correct claimed_files = ["foo.py"])."""
+    monkeypatch.setenv(agent_loop.OMC_RUNNER_ACK_ENV, "1")
+    monkeypatch.setattr("time.sleep", lambda _: None)
+    repo = _write_repo(tmp_path)
+    active = _write_expanded_active_runner_fixture(repo, task_id="T-2026-0087")
+
+    # Inject two active write leases: first belongs to OTHER-TASK with wrong claimed_files;
+    # second belongs to the CURRENT task (T-2026-0087) with claimed_files=["foo.py"].
+    other_lease = {
+        "lease_id": "other-task-lease",
+        "lease_type": "write",
+        "status": "active",
+        "active_agent": None,
+        "owner_session": "implementer",
+        "task_id": "T-2026-9999",      # DIFFERENT task
+        "claimed_files": ["other.py"],   # wrong scope — must NOT be used for current task
+    }
+    current_lease = {
+        "lease_id": "current-task-lease",
+        "lease_type": "write",
+        "status": "active",
+        "active_agent": None,
+        "owner_session": "implementer",
+        "task_id": "T-2026-0087",       # CURRENT task
+        "claimed_files": ["foo.py"],     # correct scope
+    }
+    (active / "leases.json").write_text(
+        json.dumps({"schema_version": 1, "leases": [other_lease, current_lease]}),
+        encoding="utf-8",
+    )
+
+    diff = "diff --git a/foo.py b/foo.py\n+x\n"
+    omc = _fake_omc_runner()
+
+    result = agent_loop.write_active_codex_runner(
+        execute=True,
+        runner="omc",
+        repo_root=repo,
+        omc_runner=omc,
+        git_runner=_fake_git_runner(diff_stdout=diff),
+        task_id="T-2026-0087",
+    )
+
+    # Must succeed (foo.py is in current task's claimed_files) — NOT blocked on other.py scope.
+    assert result.decision == "completed", (
+        f"scope check used wrong task's lease; decision={result.decision!r}, "
+        f"blockers={result.blockers}"
+    )
+    standard = repo / "reports" / "agent_loop" / "active" / "patch_runs" / "implementer" / "patch_artifact.json"
+    assert standard.exists()
+    assert json.loads(standard.read_text(encoding="utf-8"))["verdict"] == "proposed"
+
+
+def test_active_codex_runner_omc_scope_blocks_when_only_other_task_lease_exists(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """Regression (fix round-6 #2): if the ONLY active write lease belongs to a DIFFERENT
+    task_id, the omc run for the CURRENT task must be BLOCKED fail-closed — the diff must
+    NOT be validated against another task's claimed_files."""
+    monkeypatch.setenv(agent_loop.OMC_RUNNER_ACK_ENV, "1")
+    monkeypatch.setattr("time.sleep", lambda _: None)
+    repo = _write_repo(tmp_path)
+    active = _write_expanded_active_runner_fixture(repo, task_id="T-2026-0087")
+
+    # Only a lease for OTHER task exists — none for the current task.
+    other_lease = {
+        "lease_id": "other-task-lease",
+        "lease_type": "write",
+        "status": "active",
+        "active_agent": None,
+        "owner_session": "implementer",
+        "task_id": "T-2026-9999",       # DIFFERENT task
+        "claimed_files": ["foo.py"],    # same file, but wrong task
+    }
+    (active / "leases.json").write_text(
+        json.dumps({"schema_version": 1, "leases": [other_lease]}),
+        encoding="utf-8",
+    )
+
+    diff = "diff --git a/foo.py b/foo.py\n+x\n"
+    omc = _fake_omc_runner()
+
+    result = agent_loop.write_active_codex_runner(
+        execute=True,
+        runner="omc",
+        repo_root=repo,
+        omc_runner=omc,
+        git_runner=_fake_git_runner(diff_stdout=diff),
+        task_id="T-2026-0087",
+    )
+
+    # No lease matches the current task_id → scope is unenforced → blocked.
+    assert result.decision == "blocked", (
+        f"expected blocked when only other-task lease exists; got {result.decision!r}"
+    )
+    assert any("scope" in b.lower() for b in result.blockers), (
+        f"expected a scope blocker; blockers={result.blockers}"
+    )
+
+
+def test_active_codex_runner_omc_scope_blocks_legacy_no_task_id_lease(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """Regression (fix round-7 #1): a write lease WITHOUT a task_id field must NOT be
+    accepted for a task-scoped omc run.  The round-6 fallback that accepted unscoped
+    ('legacy') leases is removed — require EXACTLY ONE lease whose task_id EXPLICITLY
+    matches the current task_id."""
+    monkeypatch.setenv(agent_loop.OMC_RUNNER_ACK_ENV, "1")
+    monkeypatch.setattr("time.sleep", lambda _: None)
+    repo = _write_repo(tmp_path)
+    active = _write_expanded_active_runner_fixture(repo, task_id="T-2026-0087")
+
+    # Override leases.json with a lease that has NO task_id field (legacy/unscoped).
+    legacy_lease = {
+        "lease_id": "legacy-lease",
+        "lease_type": "write",
+        "status": "active",
+        "active_agent": None,
+        "owner_session": "implementer",
+        # NO task_id field — simulates a pre-task_id legacy lease
+        "claimed_files": ["foo.py"],
+    }
+    (active / "leases.json").write_text(
+        json.dumps({"schema_version": 1, "leases": [legacy_lease]}),
+        encoding="utf-8",
+    )
+
+    diff = "diff --git a/foo.py b/foo.py\n+x\n"
+    omc = _fake_omc_runner()
+
+    result = agent_loop.write_active_codex_runner(
+        execute=True,
+        runner="omc",
+        repo_root=repo,
+        omc_runner=omc,
+        git_runner=_fake_git_runner(diff_stdout=diff),
+        task_id="T-2026-0087",
+    )
+
+    # No lease has an explicit task_id match → blocked fail-closed.
+    assert result.decision == "blocked", (
+        f"expected blocked for legacy no-task-id lease; got {result.decision!r}"
+    )
+    assert any("scope" in b.lower() for b in result.blockers), (
+        f"expected scope blocker; blockers={result.blockers}"
+    )
+
+
+def test_active_codex_runner_omc_shutdown_failure_records_warning_and_attempts_force(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """Regression (fix round-7 #2): when the first shutdown returns nonzero rc, a warning
+    must be recorded AND ``omc team shutdown <team> --force`` must be attempted as fallback."""
+    monkeypatch.setenv(agent_loop.OMC_RUNNER_ACK_ENV, "1")
+    monkeypatch.setattr("time.sleep", lambda _: None)
+    repo = _write_repo(tmp_path)
+    _write_expanded_active_runner_fixture(repo)
+
+    diff = "diff --git a/foo.py b/foo.py\n+x\n"
+    # shutdown_rc=1 → first shutdown fails; shutdown_force_rc=0 → --force succeeds
+    omc = _fake_omc_runner(
+        shutdown_rc=1,
+        shutdown_force_rc=0,
+        summary_worktree_path=str(tmp_path / "fake-worktree"),
+    )
+
+    result = agent_loop.write_active_codex_runner(
+        execute=True,
+        runner="omc",
+        repo_root=repo,
+        omc_runner=omc,
+        git_runner=_fake_git_runner(diff_stdout=diff),
+    )
+
+    # The run itself can complete (scope is fine); shutdown failure is a warning, not a blocker.
+    shutdown_cmds = [c["cmd"] for c in omc.calls if c["cmd"][:3] == ["omc", "team", "shutdown"]]
+    force_cmds = [c for c in shutdown_cmds if "--force" in c]
+    normal_cmds = [c for c in shutdown_cmds if "--force" not in c]
+    assert normal_cmds, "expected at least one normal shutdown call"
+    assert force_cmds, (
+        f"expected --force fallback shutdown when rc!=0; shutdown_cmds={shutdown_cmds}"
+    )
+    assert any("shutdown" in w.lower() for w in result.warnings), (
+        f"expected a shutdown warning; warnings={result.warnings}"
+    )
+
+
+def test_active_codex_runner_omc_blocks_when_assignment_file_missing(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """Regression (fix round-7 #3): if any selected session's assignment file is missing,
+    _build_omc_task_text returns a blocker and the omc run must be BLOCKED before launch."""
+    monkeypatch.setenv(agent_loop.OMC_RUNNER_ACK_ENV, "1")
+    monkeypatch.setattr("time.sleep", lambda _: None)
+    repo = _write_repo(tmp_path)
+    active = _write_expanded_active_runner_fixture(repo)
+
+    # Remove the implementer's assignment file to simulate a missing assignment.
+    (active / "assignments" / "implementer.md").unlink()
+
+    omc = _fake_omc_runner()
+
+    result = agent_loop.write_active_codex_runner(
+        execute=True,
+        runner="omc",
+        repo_root=repo,
+        omc_runner=omc,
+        git_runner=_fake_git_runner(),
+    )
+
+    assert result.decision == "blocked", (
+        f"expected blocked when assignment file is missing; got {result.decision!r}"
+    )
+    assert any("assignment" in b.lower() for b in result.blockers), (
+        f"expected assignment blocker; blockers={result.blockers}"
+    )
+    # omc must never have been launched (no --no-decompose call)
+    launch_calls = [c for c in omc.calls if "--no-decompose" in c["cmd"]]
+    assert not launch_calls, f"omc was launched despite missing assignment: {launch_calls}"
+
+
+def test_active_codex_runner_omc_blocks_when_assignment_file_empty(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """Regression (fix round-7 #3): if any selected session's assignment file is empty,
+    the omc run must be BLOCKED — spawning with empty assignments means undefined scope."""
+    monkeypatch.setenv(agent_loop.OMC_RUNNER_ACK_ENV, "1")
+    monkeypatch.setattr("time.sleep", lambda _: None)
+    repo = _write_repo(tmp_path)
+    active = _write_expanded_active_runner_fixture(repo)
+
+    # Overwrite the implementer's assignment with empty content.
+    (active / "assignments" / "implementer.md").write_text("", encoding="utf-8")
+
+    omc = _fake_omc_runner()
+
+    result = agent_loop.write_active_codex_runner(
+        execute=True,
+        runner="omc",
+        repo_root=repo,
+        omc_runner=omc,
+        git_runner=_fake_git_runner(),
+    )
+
+    assert result.decision == "blocked", (
+        f"expected blocked when assignment file is empty; got {result.decision!r}"
+    )
+    assert any("assignment" in b.lower() for b in result.blockers), (
+        f"expected assignment blocker; blockers={result.blockers}"
+    )
+    launch_calls = [c for c in omc.calls if "--no-decompose" in c["cmd"]]
+    assert not launch_calls, f"omc was launched despite empty assignment: {launch_calls}"
+
+
+# --- PR-L round-8 regressions ---
+
+
+def test_active_codex_runner_omc_shutdown_force_failure_records_warning(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """Regression (fix round-8 #1): when BOTH shutdown and --force shutdown return nonzero rc,
+    a warning must be recorded for the failed --force attempt — not silently swallowed."""
+    monkeypatch.setenv(agent_loop.OMC_RUNNER_ACK_ENV, "1")
+    monkeypatch.setattr("time.sleep", lambda _: None)
+    repo = _write_repo(tmp_path)
+    _write_expanded_active_runner_fixture(repo)
+
+    diff = "diff --git a/foo.py b/foo.py\n+x\n"
+    # Both normal shutdown and --force return nonzero → two warnings expected.
+    omc = _fake_omc_runner(
+        shutdown_rc=1,
+        shutdown_force_rc=1,
+        summary_worktree_path=str(tmp_path / "fake-worktree"),
+    )
+
+    result = agent_loop.write_active_codex_runner(
+        execute=True,
+        runner="omc",
+        repo_root=repo,
+        omc_runner=omc,
+        git_runner=_fake_git_runner(diff_stdout=diff),
+    )
+
+    # Both shutdown attempts must have been made.
+    shutdown_cmds = [c["cmd"] for c in omc.calls if c["cmd"][:3] == ["omc", "team", "shutdown"]]
+    force_cmds = [c for c in shutdown_cmds if "--force" in c]
+    assert force_cmds, f"expected --force shutdown attempt; shutdown_cmds={shutdown_cmds}"
+    # Warning for failed --force must be present.
+    assert any("--force" in w.lower() or "force" in w.lower() for w in result.warnings), (
+        f"expected a warning for failed --force shutdown; warnings={result.warnings}"
+    )
+    assert any("manual cleanup" in w.lower() or "may still be running" in w.lower() for w in result.warnings), (
+        f"expected 'manual cleanup' or 'may still be running' in warnings; warnings={result.warnings}"
+    )
+
+
+def test_active_codex_runner_omc_noack_overwrites_run_specific_artifact(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """Regression (fix round-8 #2): after a no-ack (blocked) run, the run-specific
+    artifact_path must be overwritten with a blocked artifact so a PRIOR proposed artifact
+    at that path cannot be read as the current run's output."""
+    monkeypatch.delenv(agent_loop.OMC_RUNNER_ACK_ENV, raising=False)
+    repo = _write_repo(tmp_path)
+    active = _write_expanded_active_runner_fixture(repo)
+
+    # Plant a stale proposed artifact at the run-specific path.
+    run_specific = (
+        active / "omc_runs" / "omc-team" / "patch_artifact.json"
+    )
+    run_specific.parent.mkdir(parents=True, exist_ok=True)
+    run_specific.write_text(
+        json.dumps({"verdict": "proposed", "diff": "stale diff content"}),
+        encoding="utf-8",
+    )
+
+    omc = _fake_omc_runner()
+    result = agent_loop.write_active_codex_runner(
+        execute=True,
+        runner="omc",
+        repo_root=repo,
+        omc_runner=omc,
+    )
+
+    assert result.decision == "blocked"
+    # Run-specific artifact must now reflect the current blocked outcome.
+    assert run_specific.exists(), "run-specific artifact must be written even for no-ack run"
+    artifact = json.loads(run_specific.read_text(encoding="utf-8"))
+    assert artifact.get("verdict") == "blocked", (
+        f"run-specific artifact must be 'blocked', got {artifact.get('verdict')!r}"
+    )
+    assert "stale diff content" not in run_specific.read_text(encoding="utf-8"), (
+        "stale proposed diff must not survive a blocked run"
+    )
+
+
+def test_active_codex_runner_omc_empty_diff_overwrites_run_specific_artifact(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """Regression (fix round-8 #2): after a run that produces an empty diff (worker made no
+    changes), the run-specific artifact_path must be overwritten so a prior proposed artifact
+    cannot be read as the current run's output."""
+    monkeypatch.setenv(agent_loop.OMC_RUNNER_ACK_ENV, "1")
+    monkeypatch.setattr("time.sleep", lambda _: None)
+    repo = _write_repo(tmp_path)
+    active = _write_expanded_active_runner_fixture(repo)
+
+    # Plant a stale proposed artifact at the run-specific path.
+    run_specific = (
+        active / "omc_runs" / "omc-team" / "patch_artifact.json"
+    )
+    run_specific.parent.mkdir(parents=True, exist_ok=True)
+    run_specific.write_text(
+        json.dumps({"verdict": "proposed", "diff": "stale diff content"}),
+        encoding="utf-8",
+    )
+
+    # Empty diff → verdict="empty" → write_artifact=True but diff_text="" → blocked path.
+    omc = _fake_omc_runner(summary_worktree_path=str(tmp_path / "fake-worktree"))
+
+    result = agent_loop.write_active_codex_runner(
+        execute=True,
+        runner="omc",
+        repo_root=repo,
+        omc_runner=omc,
+        git_runner=_fake_git_runner(diff_stdout=""),  # empty diff
+    )
+
+    # Empty diff run finishes "completed" (not blocked by scope) but the run-specific artifact
+    # must be current — not the stale proposed one.
+    assert run_specific.exists(), "run-specific artifact must be written for empty-diff run"
+    assert "stale diff content" not in run_specific.read_text(encoding="utf-8"), (
+        "stale proposed diff must not survive an empty-diff run"
+    )
+
+
+def test_active_codex_runner_omc_merge_base_failure_blocks_run(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """Regression (fix round-8 #3): when ``git merge-base`` fails, the runner MUST block
+    fail-closed instead of falling back to ``git diff HEAD``.  A HEAD-only diff misses
+    committed worker changes, producing a false-empty completion that bypasses safety checks.
+    (Supersedes the round-6 #1 graceful-fallback behavior.)"""
+    monkeypatch.setenv(agent_loop.OMC_RUNNER_ACK_ENV, "1")
+    monkeypatch.setattr("time.sleep", lambda _: None)
+    repo = _write_repo(tmp_path)
+    _write_expanded_active_runner_fixture(repo)
+
+    diff = "diff --git a/foo.py b/foo.py\n+x\n"
+    omc = _fake_omc_runner()
+    git = _fake_git_runner(diff_stdout=diff, merge_base_sha="")  # force merge-base failure
+
+    result = agent_loop.write_active_codex_runner(
+        execute=True,
+        runner="omc",
+        repo_root=repo,
+        omc_runner=omc,
+        git_runner=git,
+    )
+
+    assert result.decision == "blocked", (
+        f"expected blocked when merge-base fails; got {result.decision!r}; blockers={result.blockers}"
+    )
+    assert any("merge-base" in b.lower() for b in result.blockers), (
+        f"expected merge-base blocker; blockers={result.blockers}"
+    )
+    # ``git diff HEAD`` must NOT be called — fail-closed, no fallback.
+    head_diff_calls = [c for c in git.calls if "diff" in c and "HEAD" in c]
+    assert not head_diff_calls, (
+        f"git diff HEAD must not be called when merge-base fails; calls={head_diff_calls}"
+    )
+
+
+# --- PR-L round-9 regressions ---
+
+
+def test_active_codex_runner_omc_blocked_when_heartbeat_invalidation_fails(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """Regression (fix round-9 #1): when _invalidate_omc_blocking_gate_heartbeats returns a
+    non-None error (registry write failed), the OMC runner result must be BLOCKED — not
+    completed.  A failed reset means stale 'passed' reviewer/auditor statuses survive and
+    the Conservative Gate could be READY despite no real review running."""
+    monkeypatch.setenv(agent_loop.OMC_RUNNER_ACK_ENV, "1")
+    monkeypatch.setattr("time.sleep", lambda _: None)
+    repo = _write_repo(tmp_path)
+    _write_expanded_active_runner_fixture(repo)
+
+    diff = "diff --git a/foo.py b/foo.py\n+x\n"
+    omc = _fake_omc_runner(summary_worktree_path=str(tmp_path / "fake-worktree"))
+
+    # Simulate a registry write failure inside _invalidate_omc_blocking_gate_heartbeats.
+    monkeypatch.setattr(
+        agent_loop,
+        "_invalidate_omc_blocking_gate_heartbeats",
+        lambda **kwargs: ([], "registry write failed: [Errno 13] Permission denied"),
+    )
+
+    result = agent_loop.write_active_codex_runner(
+        execute=True,
+        runner="omc",
+        repo_root=repo,
+        omc_runner=omc,
+        git_runner=_fake_git_runner(diff_stdout=diff),
+    )
+
+    assert result.decision == "blocked", (
+        f"expected blocked when heartbeat invalidation fails; got {result.decision!r}"
+    )
+    assert any("invalidat" in b.lower() for b in result.blockers), (
+        f"expected an invalidation blocker; blockers={result.blockers}"
+    )
+    assert any("gate" in b.lower() or "heartbeat" in b.lower() for b in result.blockers), (
+        f"expected blocker mentioning gate/heartbeat; blockers={result.blockers}"
+    )
+
+
+def test_active_codex_runner_omc_dry_run_does_not_overwrite_artifacts(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """Regression (fix round-9 #2): a dry-run (execute=False) must NEVER touch any artifact
+    on disk — neither the run-specific path nor the standard active-apply path.  Round-8 fix #2
+    incorrectly wrote blocked artifacts in the else branch regardless of execute, turning a
+    read-only planning call into artifact corruption."""
+    monkeypatch.setenv(agent_loop.OMC_RUNNER_ACK_ENV, "1")
+    repo = _write_repo(tmp_path)
+    active = _write_expanded_active_runner_fixture(repo)
+
+    # Seed a proposed artifact at the run-specific path.
+    run_specific = active / "omc_runs" / "omc-team" / "patch_artifact.json"
+    run_specific.parent.mkdir(parents=True, exist_ok=True)
+    run_specific.write_text(
+        json.dumps({"verdict": "proposed", "diff": "live proposed diff"}),
+        encoding="utf-8",
+    )
+    # Seed a proposed artifact at the standard active-apply path.
+    standard = active / "patch_runs" / "implementer" / "patch_artifact.json"
+    standard.parent.mkdir(parents=True, exist_ok=True)
+    standard.write_text(
+        json.dumps({"verdict": "proposed", "diff": "live proposed diff"}),
+        encoding="utf-8",
+    )
+
+    omc = _fake_omc_runner()
+
+    # execute=False (dry-run / plan-only)
+    result = agent_loop.write_active_codex_runner(
+        execute=False,
+        runner="omc",
+        repo_root=repo,
+        omc_runner=omc,
+    )
+
+    assert result.decision in {"planned", "blocked"}, (
+        f"dry-run should return planned or blocked; got {result.decision!r}"
+    )
+    # BOTH artifacts must be unchanged — dry-run is read-only.
+    assert run_specific.read_text(encoding="utf-8") == json.dumps(
+        {"verdict": "proposed", "diff": "live proposed diff"}
+    ), "run-specific artifact must not be overwritten by dry-run"
+    assert standard.read_text(encoding="utf-8") == json.dumps(
+        {"verdict": "proposed", "diff": "live proposed diff"}
+    ), "standard artifact must not be overwritten by dry-run"
+
+
+def test_active_codex_runner_omc_executed_noack_overwrites_artifacts_unchanged_by_dry_run(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """Round-8 fix #2 regression guard: after a dry-run leaves artifacts untouched, a
+    subsequent EXECUTED no-ack run must still overwrite both artifacts with a blocked outcome
+    (so the round-8 executed-overwrite behavior is not broken by round-9 fix #2)."""
+    monkeypatch.delenv(agent_loop.OMC_RUNNER_ACK_ENV, raising=False)
+    repo = _write_repo(tmp_path)
+    active = _write_expanded_active_runner_fixture(repo)
+
+    run_specific = active / "omc_runs" / "omc-team" / "patch_artifact.json"
+    run_specific.parent.mkdir(parents=True, exist_ok=True)
+    run_specific.write_text(
+        json.dumps({"verdict": "proposed", "diff": "stale diff"}),
+        encoding="utf-8",
+    )
+
+    omc = _fake_omc_runner()
+    result = agent_loop.write_active_codex_runner(
+        execute=True,
+        runner="omc",
+        repo_root=repo,
+        omc_runner=omc,
+    )
+
+    assert result.decision == "blocked"
+    assert run_specific.exists(), "run-specific artifact must be written by executed no-ack run"
+    artifact = json.loads(run_specific.read_text(encoding="utf-8"))
+    assert artifact.get("verdict") == "blocked", (
+        f"run-specific artifact must be 'blocked' after executed no-ack; got {artifact.get('verdict')!r}"
+    )
+    assert "stale diff" not in run_specific.read_text(encoding="utf-8"), (
+        "stale proposed diff must not survive an executed no-ack run"
+    )
+
+
+# --- PR-L round-10 regressions ---
+
+
+def test_active_codex_runner_omc_diff_uses_git_add_then_cached_diff(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """Regression (fix round-10 #1): diff capture must stage everything with ``git add -A``
+    before diffing, so untracked new files created by the OMC worker are included in the
+    privacy/scope check — not silently missed by plain ``git diff <base_sha>``."""
+    monkeypatch.setenv(agent_loop.OMC_RUNNER_ACK_ENV, "1")
+    monkeypatch.setattr("time.sleep", lambda _: None)
+    repo = _write_repo(tmp_path)
+    _write_expanded_active_runner_fixture(repo)
+
+    # Simulate a diff that contains an untracked new file.
+    untracked_diff = (
+        "diff --git a/foo.py b/foo.py\nnew file mode 100644\n"
+        "index 0000000..abc1234\n--- /dev/null\n+++ b/foo.py\n@@ -0,0 +1 @@\n+new line\n"
+    )
+    omc = _fake_omc_runner(summary_worktree_path=str(tmp_path / "fake-worktree"))
+    git = _fake_git_runner(diff_stdout=untracked_diff)
+
+    result = agent_loop.write_active_codex_runner(
+        execute=True,
+        runner="omc",
+        repo_root=repo,
+        omc_runner=omc,
+        git_runner=git,
+    )
+
+    # git add -A must have been called before the diff.
+    add_calls = [c for c in git.calls if "add" in c and "-A" in c]
+    assert add_calls, (
+        f"expected ``git add -A`` call to stage untracked files; git.calls={git.calls}"
+    )
+    # The diff command must use --cached (not plain git diff).
+    diff_calls = [c for c in git.calls if "diff" in c and "merge-base" not in c]
+    cached_diff_calls = [c for c in diff_calls if "--cached" in c]
+    assert cached_diff_calls, (
+        f"expected ``git diff --cached <base>`` for full capture; diff_calls={diff_calls}"
+    )
+    plain_diff_calls = [c for c in diff_calls if "--cached" not in c]
+    assert not plain_diff_calls, (
+        f"plain ``git diff`` (without --cached) must NOT be used; diff_calls={diff_calls}"
+    )
+    # The run must complete with the diff captured.
+    assert result.decision == "completed", (
+        f"expected completed; got {result.decision!r}; blockers={result.blockers}"
+    )
+
+
+def test_active_codex_runner_omc_blocks_mixed_task_id_sessions(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """Regression (fix round-10 #2): when selected sessions span two distinct task IDs,
+    the runner must block fail-closed BEFORE spawning omc — sending assignment text from
+    a different task to an uncontrolled worker is a data-boundary violation."""
+    monkeypatch.setenv(agent_loop.OMC_RUNNER_ACK_ENV, "1")
+    monkeypatch.setattr("time.sleep", lambda _: None)
+    repo = _write_repo(tmp_path)
+    active = _active_dir(repo)
+    assignments = active / "assignments"
+    assignments.mkdir(parents=True, exist_ok=True)
+
+    # Build a registry where sessions carry two different task IDs.
+    sessions = []
+    for i, (session_id, role) in enumerate(agent_loop.ACTIVE_TOPOLOGY_ROLES["expanded-eight"]):
+        # Alternate task IDs: first half T-2026-0001, second half T-2026-0002.
+        tid = "T-2026-0001" if i < 4 else "T-2026-0002"
+        sessions.append({
+            "session_id": session_id,
+            "role": role,
+            "status": "idle",
+            "task_id": tid,
+            "last_heartbeat": "2999-01-01T00:00:00Z",
+            "lanes": {"claude": {"status": "idle"}, "codex": {"status": "idle"}},
+            "write_lease_owner": role == "Implementer",
+            "ship_gate": agent_loop._active_ship_gate(role, topology="expanded-eight"),
+        })
+        (assignments / f"{session_id}.md").write_text(
+            f"# Assignment: {role}\n\n- Task: {tid}\n",
+            encoding="utf-8",
+        )
+    (active / "session_registry.json").write_text(
+        json.dumps({
+            "schema_version": 2,
+            "topology": "expanded-eight",
+            "gate_policy": "conservative",
+            "agent_mix": agent_loop._parse_agent_mix(None),
+            "sessions": sessions,
+        }),
+        encoding="utf-8",
+    )
+    (active / "leases.json").write_text(
+        json.dumps({
+            "schema_version": 1,
+            "leases": [{"lease_id": "l", "lease_type": "write", "status": "active",
+                        "task_id": "T-2026-0001", "active_agent": None,
+                        "owner_session": "implementer", "claimed_files": ["foo.py"]}],
+        }),
+        encoding="utf-8",
+    )
+
+    omc = _fake_omc_runner()
+
+    result = agent_loop.write_active_codex_runner(
+        execute=True,
+        runner="omc",
+        repo_root=repo,
+        omc_runner=omc,
+        git_runner=_fake_git_runner(),
+    )
+
+    assert result.decision == "blocked", (
+        f"expected blocked for mixed-task-id sessions; got {result.decision!r}"
+    )
+    assert any("ambiguous" in b.lower() or "distinct task" in b.lower() for b in result.blockers), (
+        f"expected ambiguous/distinct-task blocker; blockers={result.blockers}"
+    )
+    launch_calls = [c for c in omc.calls if "--no-decompose" in c["cmd"]]
+    assert not launch_calls, f"omc must not be launched with mixed task IDs: {launch_calls}"
+
+
+def test_active_codex_runner_omc_blocks_explicit_task_mismatch(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """Regression (fix round-10 #2): when --task T-A is provided but all selected sessions
+    carry T-B, the runner must block fail-closed — the explicit task ID must match the
+    registry sessions' task ID."""
+    monkeypatch.setenv(agent_loop.OMC_RUNNER_ACK_ENV, "1")
+    monkeypatch.setattr("time.sleep", lambda _: None)
+    repo = _write_repo(tmp_path)
+    # Fixture uses task_id="T-2026-0087" in all sessions.
+    _write_expanded_active_runner_fixture(repo, task_id="T-2026-0087")
+
+    omc = _fake_omc_runner()
+
+    # Pass --task with a DIFFERENT task ID than the registry sessions.
+    result = agent_loop.write_active_codex_runner(
+        execute=True,
+        runner="omc",
+        repo_root=repo,
+        omc_runner=omc,
+        git_runner=_fake_git_runner(),
+        task_id="T-2026-9999",  # mismatch: sessions have T-2026-0087
+    )
+
+    assert result.decision == "blocked", (
+        f"expected blocked for --task/session task_id mismatch; got {result.decision!r}"
+    )
+    assert any("mismatch" in b.lower() or "does not match" in b.lower() for b in result.blockers), (
+        f"expected mismatch blocker; blockers={result.blockers}"
+    )
+    launch_calls = [c for c in omc.calls if "--no-decompose" in c["cmd"]]
+    assert not launch_calls, f"omc must not launch on task_id mismatch: {launch_calls}"
 
 
 # --- Phase 3 PR-B: active-apply (Orchestrator applies patch to integration branch, #1607) ---

@@ -239,6 +239,37 @@ def _claude_write_lane_sandbox_blocker(agent: str, sandbox: str) -> str | None:
     return None
 
 
+# OPT-IN OMC parallel-execution runner backend (ADR 0087, issue #1679). The in-repo
+# ``codex`` runner batches Popen with explicit ``--sandbox read-only`` / tool allowlists.
+# ``omc team`` provides REAL concurrent tmux workers with per-worker git-worktree isolation
+# but exposes NO per-worker sandbox / permission / network flags — its claude/codex CLI
+# workers run with their own DEFAULT permissions (network egress + private-data read), which
+# is LESS controlled than the in-repo runner. That relaxes the load-bearing ADR 0005 data
+# boundary, so the omc runner is fail-closed behind an explicit acknowledgment env: it is
+# only entered when ``runner == "omc"`` AND ``ACTIVE_OMC_RUNNER_ACK=1`` is set. Without the
+# ack the runner returns a blocked result and NEVER spawns omc (ADR 0061 data-boundary
+# condition). The adapter re-imposes the in-repo governance (privacy re-audit, claimed_files
+# scope, no auto-merge) so the diff is routed through the existing active-apply / Conservative
+# Gate path exactly like the codex patch lane.
+OMC_RUNNER_ACK_ENV = "ACTIVE_OMC_RUNNER_ACK"
+OMC_RUNNER_REQUIRES_ACK_MESSAGE = (
+    "OMC runner requires ACTIVE_OMC_RUNNER_ACK=1 — omc team workers run the user's own "
+    "authenticated CLIs (claude/codex) with no per-worker sandbox, retaining full access to "
+    "home-scoped credentials (~/.codex, ~/.claude, ~/.config/gh, ~/.aws) AND network egress; "
+    "the env allowlist strips only obvious ENV-var secrets as defense-in-depth, not all "
+    "credential paths. Set ACTIVE_OMC_RUNNER_ACK=1 to explicitly acknowledge this, or use "
+    "the default codex runner."
+)
+# Per-worker git-worktree isolation for omc team (each worker on its own branch/worktree so a
+# worker commit never lands on the leader/main branch). NO ``--auto-merge`` is ever passed.
+OMC_TEAM_WORKTREE_MODE = "branch"
+
+
+def _omc_runner_ack_enabled() -> bool:
+    """True only when the operator explicitly acknowledged the omc data-boundary relaxation."""
+    return os.environ.get(OMC_RUNNER_ACK_ENV, "").strip() in {"1", "true", "yes"}
+
+
 DEFAULT_AGENT_MIX = {
     "target": {"claude": 5, "codex": 5},
     "unit": "work_unit",
@@ -10248,6 +10279,7 @@ def write_active_auto_loop(
     sandbox: str = "read-only",
     read_agent: str = "auto",
     write_agent: str = "auto",
+    runner: str = "codex",
     max_parallel: int = 8,
     timeout_seconds: int = 0,
     max_commands_per_session: int = 0,
@@ -10272,11 +10304,16 @@ def write_active_auto_loop(
         raise ValueError("--read-agent must be auto, codex, or claude")
     if write_agent not in {"auto", "codex", "claude"}:
         raise ValueError("--write-agent must be auto, codex, or claude")
+    if runner not in {"codex", "omc"}:
+        raise ValueError("--runner must be codex or omc")
     if max_commands_per_session < 0:
         raise ValueError("--max-commands-per-session must be >= 0")
     if target_completed_count is not None and target_completed_count < 1:
         raise ValueError("--target-completed-count must be at least 1")
 
+    # Capture the runner backend before the loop body reuses the local name ``runner`` for
+    # the per-cycle ActiveCodexRunnerResult (the read-only/omc runner result).
+    runner_backend = runner
     out_path = _active_path(out, repo_root=repo_root)
     state_path = _active_path(state, repo_root=repo_root)
     prior_completed, prior_deferred, warnings = _load_active_auto_ledger(state_path)
@@ -10646,11 +10683,13 @@ def write_active_auto_loop(
             auth_mode=auth_mode,
             sandbox=sandbox,
             read_agent=read_agent,
+            runner=runner_backend,
             sessions=_active_auto_loop_runner_sessions(topology=topology, changed_files=context_files),
             max_parallel=max_parallel,
             timeout_seconds=effective_subprocess_timeout(),
             max_commands_per_session=max_commands_per_session,
             record_gate_heartbeats=record_gate_heartbeats,
+            task_id=task.task_id,
             repo_root=repo_root,
         )
         cycle["runner_decision"] = runner.decision
@@ -12297,6 +12336,1207 @@ def _spawn_codex_reader_thread(
     return t
 
 
+def _default_omc_runner(
+    command: Sequence[str],
+    *,
+    cwd: Path,
+    env: dict[str, str],
+    timeout: float | None = None,
+):
+    """Real subprocess wrapper for the omc CLI (injected as ``omc_runner`` in tests).
+
+    ``timeout``: per-command wall-clock budget in seconds forwarded to ``subprocess.run``.
+    ``None`` / 0 means unlimited (ADR 0085). Never used by tests — they pass an injectable
+    stub so no real ``omc`` is ever spawned.
+    """
+    return subprocess.run(  # pragma: no cover - exercised only outside the test suite
+        list(command),
+        cwd=str(cwd),
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=timeout or None,
+    )
+
+
+# Terminal states returned by ``omc team status`` that indicate the team is done.
+# The OMC runner polls until one of these states appears (or timeout/error).
+_OMC_TERMINAL_SUCCESS_STATES = frozenset(
+    {"done", "completed", "finished", "succeeded", "success", "stopped", "ready"}
+)
+_OMC_TERMINAL_FAIL_STATES = frozenset(
+    {"failed", "error", "aborted", "cancelled", "canceled", "crashed"}
+)
+_OMC_TERMINAL_STATES = _OMC_TERMINAL_SUCCESS_STATES | _OMC_TERMINAL_FAIL_STATES
+# Default poll interval (seconds) between omc team status checks.
+_OMC_POLL_INTERVAL_SECONDS = 5.0
+
+# ENV-variable allowlist forwarded to omc team worker subprocesses.
+#
+# IMPORTANT — DEFENSE-IN-DEPTH ONLY, NOT A FULL CREDENTIAL BOUNDARY:
+# omc team workers run the user's own authenticated CLIs (claude/codex) which load credentials
+# from HOME-relative paths (~/.codex, ~/.claude, ~/.config/gh, ~/.aws, etc.).
+# HOME is intentionally KEPT because the worker CLIs require it to authenticate (OAuth /
+# subscription). Stripping HOME would break authentication entirely.
+#
+# What this allowlist DOES: strips obvious ENV-var secrets (ANTHROPIC_API_KEY, OPENAI_API_KEY,
+# GH_TOKEN, AWS_SECRET_ACCESS_KEY, DATABASE_URL, etc.) as defense-in-depth.
+# What it does NOT do: prevent the workers from reaching home-scoped stored credentials.
+# The ACK gate (ACTIVE_OMC_RUNNER_ACK=1) is what explicitly acknowledges this residual
+# home-scoped-credential + network-egress access — the allowlist alone is not sufficient.
+#
+# ``OMC_TEAM_WORKTREE_MODE`` is injected directly by the runner after this filter.
+_OMC_ENV_ALLOWLIST: frozenset[str] = frozenset(
+    {
+        # Shell basics — required for CLI tooling to locate binaries and home directory.
+        "PATH",
+        "HOME",
+        "USER",
+        "SHELL",
+        "TERM",
+        "COLORTERM",
+        # Locale / encoding
+        "LANG",
+        "LC_ALL",
+        "LC_MESSAGES",
+        "LC_CTYPE",
+        "LC_COLLATE",
+        "LC_NUMERIC",
+        "LC_TIME",
+        # omc / tmux runtime — required for omc team launch and worker pane attachment.
+        "TMUX",
+        "TMUX_PANE",
+        "OMC_HOME",
+        # XDG_CONFIG_HOME: omc/claude/codex CLIs may use this to locate config; keep only this
+        # one XDG var. XDG_CACHE_HOME and XDG_RUNTIME_DIR are not required and omitted.
+        "XDG_CONFIG_HOME",
+        # CI / worktree context (non-secret)
+        "CI",
+        "GIT_AUTHOR_NAME",
+        "GIT_AUTHOR_EMAIL",
+        "GIT_COMMITTER_NAME",
+        "GIT_COMMITTER_EMAIL",
+        # Node / npm (CLI tooling, not credentials)
+        "NODE_PATH",
+        "NPM_CONFIG_PREFIX",
+    }
+)
+
+
+def _build_omc_env(base_env: dict[str, str]) -> dict[str, str]:
+    """Build an allowlisted environment for the omc team launch subprocess.
+
+    Strips obvious ENV-var secrets (API keys, OAuth tokens, cloud credentials) from
+    ``base_env`` as **defense-in-depth**. This is NOT a full credential boundary: omc team
+    workers run the user's own authenticated CLIs (claude/codex) which independently load
+    home-scoped credentials from filesystem paths (~/.codex, ~/.claude, ~/.config/gh, ~/.aws).
+    HOME is kept because the worker CLIs require it to authenticate. The ACK gate
+    (``ACTIVE_OMC_RUNNER_ACK=1``) acknowledges this residual home-scoped-credential +
+    network-egress access (ADR 0087). ``OMC_TEAM_WORKTREE_MODE`` is injected by the caller.
+    """
+    return {k: v for k, v in base_env.items() if k in _OMC_ENV_ALLOWLIST}
+
+
+def _resolve_omc_worker_mix(
+    *,
+    registry_payload: dict[str, object],
+    selected_count: int,
+    max_parallel: int,
+    repo_root: Path,
+    read_agent: str = "auto",
+) -> tuple[int, int]:
+    """Resolve (claude_workers, codex_workers) for the omc team from the agent_mix policy.
+
+    SINGLE-WORKER ONLY (ADR 0087 fix #2): per-worker diff capture and merge across multiple
+    worker worktrees (conflict resolution across worker branches) is deferred to a follow-up.
+    Until that path is implemented, only ONE worker is ever launched — launching more would
+    silently discard all but the leader-worker diff, multiplying the ADR 0005 exposure for
+    no captured benefit.
+
+    ``read_agent``: explicit agent override. ``"claude"`` → ``(1, 0)``, ``"codex"`` → ``(0, 1)``,
+    ``"auto"`` falls back to the agent_mix policy majority (higher weight wins; ties → claude).
+    """
+    # Explicit --read-agent override takes priority over agent_mix policy.
+    if read_agent == "claude":
+        return 1, 0  # 1:claude (explicit)
+    if read_agent == "codex":
+        return 0, 1  # 1:codex (explicit)
+    policy = registry_payload.get("agent_mix") if isinstance(registry_payload.get("agent_mix"), dict) else _parse_agent_mix(None)
+    target = policy.get("target") if isinstance(policy.get("target"), dict) else {}
+    claude_weight = _coerce_wu(target.get("claude"))
+    codex_weight = _coerce_wu(target.get("codex"))
+    # Force total_workers = 1: pick the higher-weight lane (ties → claude).
+    if claude_weight >= codex_weight:
+        return 1, 0  # 1:claude
+    return 0, 1  # 1:codex
+
+
+def _run_omc_team_runner(
+    *,
+    execute: bool,
+    registry_path: Path,
+    assignments_path: Path,
+    runs_path: Path,
+    state_path: Path,
+    out_path: Path,
+    sessions: str | None,
+    max_parallel: int,
+    timeout_seconds: int,
+    task_id: str | None,
+    model: str | None,
+    repo_root: Path,
+    read_agent: str = "auto",
+    omc_runner=None,
+    git_runner=None,
+    now: datetime | None = None,
+) -> ActiveCodexRunnerResult:
+    """OPT-IN OMC parallel-execution runner backend (ADR 0087, issue #1679).
+
+    Delegates the REAL concurrent parallel execution to ``omc team`` (tmux workers with
+    per-worker git-worktree isolation) while keeping ALL in-repo governance. ``omc team``
+    exposes NO per-worker sandbox / permission / network flags, so its workers run with their
+    own DEFAULT permissions (network egress + private-data read) — LESS controlled than the
+    in-repo runner's explicit read-only sandbox / tool allowlist. This relaxes the
+    load-bearing ADR 0005 data boundary, so the runner is **fail-closed** without an explicit
+    ``ACTIVE_OMC_RUNNER_ACK=1`` acknowledgment (ADR 0061 data-boundary condition).
+
+    On the ack-gated path the adapter:
+      * resolves the worker mix (claude=N, codex=M) from the agent_mix policy, capped at
+        ``max_parallel``;
+      * builds ``omc team N:claude,M:codex --no-decompose "<task>"`` with env
+        ``OMC_TEAM_WORKTREE_MODE=branch`` and NEVER ``--auto-merge`` (worker commits must not
+        merge to any leader/main branch);
+      * runs that command (and the status/summary polls) through the injectable ``omc_runner``
+        so tests never spawn real ``omc``;
+      * captures the worker diff, re-imposes the privacy re-audit + claimed_files scope check
+        (fail-closed -> blocked), and maps the result into an ``ActiveCodexRunnerResult`` plus
+        the same ``patch_artifact.json`` shape the codex patch path writes, so the rest of
+        the loop (gate-evidence, active-apply integration branch, Conservative Gate,
+        human-gated ship) works UNCHANGED — the diff is routed through the existing
+        active-apply path, never merged to main;
+      * always tears the team down (``omc team shutdown <team>``) in a finally block; and
+      * never raises on omc failure (returns a blocked result with the failure recorded).
+
+    Scope: the single-worker capture path is implemented fully. Capturing + merging diffs
+    from >1 worker worktree (conflict resolution across worker branches) is a deliberate
+    follow-up — logged as a warning when the resolved team has multiple workers.
+    """
+    now = now or datetime.now(timezone.utc)
+    blockers: list[str] = []
+    warnings: list[str] = []
+    session_id = "omc-team"
+    team_name = ""
+    diff_text = ""
+    verdict = "error"
+    omc_command_display = ""
+    omc_runs_path = runs_path.parent / "omc_runs"
+    run_dir = omc_runs_path / session_id
+    artifact_path = run_dir / "patch_artifact.json"
+
+    # (2) Fail-closed data-boundary gate. NEVER spawn omc without the explicit ack.
+    if not _omc_runner_ack_enabled():
+        return _finalize_omc_runner_result(
+            decision="blocked",
+            execute=execute,
+            session_id=session_id,
+            verdict="blocked",
+            blockers=[OMC_RUNNER_REQUIRES_ACK_MESSAGE],
+            warnings=warnings,
+            team_name=team_name,
+            command_display=omc_command_display,
+            state_path=state_path,
+            out_path=out_path,
+            registry_path=registry_path,
+            assignments_path=assignments_path,
+            runs_path=omc_runs_path,
+            artifact_path=artifact_path,
+            diff_text="",
+            task_id=task_id,
+            model=model,
+            repo_root=repo_root,
+            now=now,
+            write_artifact=False,
+            invalidate_heartbeats=False,  # no-ack: no omc team ran
+        )
+
+    registry_payload: dict[str, object] = {}
+    if not registry_path.exists():
+        blockers.append("active session registry is missing; run make agent-loop-active-start first")
+    else:
+        registry_payload = _load_active_registry(registry_path)
+    requested_sessions = _parse_active_session_filter(sessions)
+    selected, selection_blockers = (
+        _select_active_codex_sessions(registry_payload, requested_sessions) if registry_payload else ([], [])
+    )
+    blockers.extend(selection_blockers)
+
+    # Derive task_id from the active registry when not explicitly provided (standalone
+    # active-codex-runner --runner omc calls without --task). The patch artifact requires a
+    # valid T-YYYY-NNNN task_id for write_active_apply to accept it — wasting a high-risk omc
+    # run on an artifact that will be rejected is worse than blocking early. If no valid
+    # task_id is derivable, fail-closed BEFORE spawning omc.
+    #
+    # CRITICAL (round-10 fix #2): BEFORE accepting any task_id, verify SINGLE-TASK CONSISTENCY
+    # across the SELECTED sessions.  With stale/mixed active registry state, selected sessions
+    # may span multiple task IDs — assignment text from another task would then be sent to the
+    # uncontrolled omc worker while the diff is validated only against one task's lease.  Fix:
+    #   1. Collect the non-empty valid task IDs from SELECTED sessions only.
+    #   2. If there are 2+ distinct task IDs → block fail-closed (ambiguous task scope).
+    #   3. If exactly 1 → that is the derived task_id; validate against explicit --task if set.
+    #   4. If 0 → fall through to the existing registry-wide fallback scan (unchanged).
+    #   5. If explicit --task was provided, require it to MATCH the selected sessions' task ID.
+    selected_task_ids: set[str] = {
+        str(s.get("task_id") or "")
+        for s in selected
+        if isinstance(s, dict) and TASK_ID_RE.fullmatch(str(s.get("task_id") or ""))
+    }
+    if len(selected_task_ids) > 1:
+        return _finalize_omc_runner_result(
+            decision="blocked",
+            execute=execute,
+            session_id=session_id,
+            verdict="blocked",
+            blockers=blockers + [
+                f"omc task scope is ambiguous: selected sessions span {len(selected_task_ids)} "
+                f"distinct task IDs ({', '.join(sorted(selected_task_ids))}); "
+                "all selected sessions must belong to the SAME task before running the omc runner"
+            ],
+            warnings=warnings,
+            team_name=team_name,
+            command_display="",
+            state_path=state_path,
+            out_path=out_path,
+            registry_path=registry_path,
+            assignments_path=assignments_path,
+            runs_path=omc_runs_path,
+            artifact_path=artifact_path,
+            diff_text="",
+            task_id=task_id,
+            model=model,
+            repo_root=repo_root,
+            now=now,
+            write_artifact=False,
+            invalidate_heartbeats=False,  # pre-spawn consistency block: no omc team ran
+        )
+    if not task_id:
+        if len(selected_task_ids) == 1:
+            # Exactly one valid task ID across selected sessions — use it.
+            task_id = next(iter(selected_task_ids))
+        else:
+            # No valid task ID in selected sessions — fall back to full registry scan.
+            for session in registry_payload.get("sessions") if isinstance(registry_payload.get("sessions"), list) else []:
+                if not isinstance(session, dict):
+                    continue
+                candidate = str(session.get("task_id") or "")
+                if TASK_ID_RE.fullmatch(candidate):
+                    task_id = candidate
+                    break
+    elif selected_task_ids and task_id not in selected_task_ids:
+        # Explicit --task was provided but it does NOT match the selected sessions' task IDs.
+        return _finalize_omc_runner_result(
+            decision="blocked",
+            execute=execute,
+            session_id=session_id,
+            verdict="blocked",
+            blockers=blockers + [
+                f"omc task scope mismatch: --task {task_id!r} does not match the selected "
+                f"sessions' task IDs ({', '.join(sorted(selected_task_ids))}); "
+                "pass the correct --task or ensure the active registry is for this task"
+            ],
+            warnings=warnings,
+            team_name=team_name,
+            command_display="",
+            state_path=state_path,
+            out_path=out_path,
+            registry_path=registry_path,
+            assignments_path=assignments_path,
+            runs_path=omc_runs_path,
+            artifact_path=artifact_path,
+            diff_text="",
+            task_id=task_id,
+            model=model,
+            repo_root=repo_root,
+            now=now,
+            write_artifact=False,
+            invalidate_heartbeats=False,  # pre-spawn mismatch block: no omc team ran
+        )
+    if not task_id:
+        return _finalize_omc_runner_result(
+            decision="blocked",
+            execute=execute,
+            session_id=session_id,
+            verdict="blocked",
+            blockers=blockers + [
+                "no valid task_id (T-YYYY-NNNN) found in registry or --task argument; "
+                "the omc patch artifact requires a task_id for write_active_apply — "
+                "pass --task T-YYYY-NNNN or run active-loop --task first"
+            ],
+            warnings=warnings,
+            team_name=team_name,
+            command_display="",
+            state_path=state_path,
+            out_path=out_path,
+            registry_path=registry_path,
+            assignments_path=assignments_path,
+            runs_path=omc_runs_path,
+            artifact_path=artifact_path,
+            diff_text="",
+            task_id=None,
+            model=model,
+            repo_root=repo_root,
+            now=now,
+            write_artifact=False,
+            invalidate_heartbeats=False,  # no valid task_id: no omc team ran
+        )
+
+    claude_workers, codex_workers = _resolve_omc_worker_mix(
+        registry_payload=registry_payload,
+        selected_count=len(selected),
+        max_parallel=max_parallel,
+        repo_root=repo_root,
+        read_agent=read_agent,
+    )
+    # _resolve_omc_worker_mix enforces total_workers=1 (multi-worker diff capture deferred).
+    assert claude_workers + codex_workers == 1, "invariant: omc runner only launches 1 worker"
+
+    # (3) Build the privacy-scrubbed task text from the selected session assignments. The
+    # task text crosses the ADR 0005 boundary into uncontrolled omc workers (network-capable),
+    # so apply the STRONGER _redact_private_text level (real100 paths, JSON private fields,
+    # doc/chunk tokens, abs-paths). After building, run the full privacy audit on the final
+    # text and FAIL-CLOSED if any finding remains — the omc runner must NEVER be called with
+    # task text that contains private patterns.
+    # CRITICAL (round-7 fix #3): _build_omc_task_text now returns (text, blockers). Block
+    # before launch if any selected session is missing or has an empty assignment file.
+    task_text, task_text_blockers = _build_omc_task_text(
+        selected=selected,
+        assignments_path=assignments_path,
+        repo_root=repo_root,
+    )
+    if task_text_blockers:
+        return _finalize_omc_runner_result(
+            decision="blocked",
+            execute=execute,
+            session_id=session_id,
+            verdict="blocked",
+            blockers=blockers + task_text_blockers,
+            warnings=warnings,
+            team_name=team_name,
+            command_display="",
+            state_path=state_path,
+            out_path=out_path,
+            registry_path=registry_path,
+            assignments_path=assignments_path,
+            runs_path=omc_runs_path,
+            artifact_path=artifact_path,
+            diff_text="",
+            task_id=task_id,
+            model=model,
+            repo_root=repo_root,
+            now=now,
+            write_artifact=False,
+            invalidate_heartbeats=False,  # pre-spawn assignment block: no omc team ran
+        )
+    task_text_findings = _privacy_findings_for_text(task_text, path="<omc-task-text>")
+    if task_text_findings:
+        task_issues = sorted({f.issue for f in task_text_findings})
+        return _finalize_omc_runner_result(
+            decision="blocked",
+            execute=execute,
+            session_id=session_id,
+            verdict="blocked",
+            blockers=blockers + [f"task text privacy: {issue}" for issue in task_issues],
+            warnings=warnings,
+            team_name=team_name,
+            command_display="",
+            state_path=state_path,
+            out_path=out_path,
+            registry_path=registry_path,
+            assignments_path=assignments_path,
+            runs_path=omc_runs_path,
+            artifact_path=artifact_path,
+            diff_text="",
+            task_id=task_id,
+            model=model,
+            repo_root=repo_root,
+            now=now,
+            write_artifact=False,
+            invalidate_heartbeats=False,  # pre-spawn privacy block: no omc team ran
+        )
+
+    mix_parts = []
+    if claude_workers:
+        mix_parts.append(f"{claude_workers}:claude")
+    if codex_workers:
+        mix_parts.append(f"{codex_workers}:codex")
+    mix_spec = ",".join(mix_parts) or "1:codex"
+    omc_command = ["omc", "team", mix_spec, "--no-decompose", task_text]
+    omc_command_display = _sanitize_command_text(shlex.join(omc_command))
+    # Build an allowlisted env (defense-in-depth: strips obvious ENV-var secrets).
+    # NOTE: this does NOT close the home-scoped credential path — workers load credentials
+    # from ~/ filesystem paths independently of ENV vars. The ACK gate is what explicitly
+    # acknowledges workers' home-scoped-credential + network-egress access (ADR 0087).
+    omc_env = _build_omc_env(dict(os.environ))
+    omc_env["OMC_TEAM_WORKTREE_MODE"] = OMC_TEAM_WORKTREE_MODE
+
+    if not execute:
+        warnings.append("dry-run only; pass --execute or ACTIVE_CODEX_EXECUTE=1 to launch the omc team")
+        return _finalize_omc_runner_result(
+            decision="blocked" if blockers else "planned",
+            execute=execute,
+            session_id=session_id,
+            verdict="blocked" if blockers else "planned",
+            blockers=blockers,
+            warnings=warnings,
+            team_name=team_name,
+            command_display=omc_command_display,
+            state_path=state_path,
+            out_path=out_path,
+            registry_path=registry_path,
+            assignments_path=assignments_path,
+            runs_path=omc_runs_path,
+            artifact_path=artifact_path,
+            diff_text="",
+            task_id=task_id,
+            model=model,
+            repo_root=repo_root,
+            now=now,
+            write_artifact=False,
+            invalidate_heartbeats=False,  # dry-run: no omc team ran
+        )
+
+    if blockers:
+        return _finalize_omc_runner_result(
+            decision="blocked",
+            execute=execute,
+            session_id=session_id,
+            verdict="blocked",
+            blockers=blockers,
+            warnings=warnings,
+            team_name=team_name,
+            command_display=omc_command_display,
+            state_path=state_path,
+            out_path=out_path,
+            registry_path=registry_path,
+            assignments_path=assignments_path,
+            runs_path=omc_runs_path,
+            artifact_path=artifact_path,
+            diff_text="",
+            task_id=task_id,
+            model=model,
+            repo_root=repo_root,
+            now=now,
+            write_artifact=False,
+            invalidate_heartbeats=False,  # pre-launch blocked: no omc team ran
+        )
+
+    run = omc_runner if omc_runner is not None else _default_omc_runner
+    run_dir.mkdir(parents=True, exist_ok=True)
+    import time as _time  # local import to avoid top-level side-effect in tests
+    deadline = (_time.monotonic() + timeout_seconds) if timeout_seconds > 0 else None
+
+    def _remaining_budget() -> float | None:
+        """Return the remaining per-command timeout budget, or None for unlimited."""
+        if deadline is None:
+            return None
+        return max(1.0, deadline - _time.monotonic())
+
+    try:
+        # Launch the team. NO ``--auto-merge`` is ever in ``omc_command``.
+        launch = run(omc_command, cwd=repo_root, env=omc_env, timeout=_remaining_budget())
+        if getattr(launch, "returncode", 1) != 0:
+            blockers.append(f"omc team launch failed (rc={getattr(launch, 'returncode', 'unknown')})")
+        team_name = _parse_omc_team_name(str(getattr(launch, "stdout", "") or ""))
+        if not team_name and not blockers:
+            warnings.append("omc team launch did not report a team name; using default poll target")
+            team_name = "active"
+
+        # (poll) Wait for workers to reach a terminal state via the real omc API contract.
+        # Poll uses ``omc team api get-summary --input '{"team_name":"<team>"}' --json``
+        # (positional team name is NOT a valid form for api subcommands — requires --input JSON).
+        # Terminal success: all tasks completed, none failed, none in_progress, total > 0.
+        # Terminal fail: any task failed and none in_progress.
+        # ``timeout_seconds=0`` means unlimited (ADR 0085).
+        summary_data: dict[str, object] = {}
+        if not blockers:
+            team_success = False
+            while True:
+                get_sum = run(
+                    ["omc", "team", "api", "get-summary",
+                     "--input", json.dumps({"team_name": team_name}),
+                     "--json"],
+                    cwd=repo_root, env=omc_env, timeout=_remaining_budget(),
+                )
+                if getattr(get_sum, "returncode", 1) != 0:
+                    blockers.append(
+                        f"omc team api get-summary failed (rc={getattr(get_sum, 'returncode', 'unknown')})"
+                    )
+                    break
+                try:
+                    summary_payload = json.loads(str(getattr(get_sum, "stdout", "") or ""))
+                    # API response: {"ok": true, "operation": "get-summary", "data": {"summary": {...}}}
+                    summary_data = (
+                        summary_payload.get("data", {}).get("summary", {})
+                        if isinstance(summary_payload.get("data"), dict)
+                        else {}
+                    )
+                except (ValueError, KeyError):
+                    summary_data = {}
+                tasks = summary_data.get("tasks") if isinstance(summary_data.get("tasks"), dict) else {}
+                total = int(tasks.get("total", 0))
+                in_progress = int(tasks.get("in_progress", 0))
+                completed = int(tasks.get("completed", 0))
+                failed = int(tasks.get("failed", 0))
+                if in_progress == 0 and failed == 0 and total > 0 and completed == total:
+                    team_success = True
+                    break
+                if in_progress == 0 and failed > 0:
+                    blockers.append(
+                        f"omc team reached a terminal failure state: {failed} task(s) failed"
+                        + (f" of {total}" if total > 0 else "")
+                    )
+                    break
+                if deadline is not None and _time.monotonic() >= deadline:
+                    blockers.append(
+                        f"omc team did not reach a terminal success state within {timeout_seconds}s timeout"
+                    )
+                    break
+                _time.sleep(_OMC_POLL_INTERVAL_SECONDS)
+
+        # Capture the worker diff from the single worker's git worktree.
+        # There is no ``get-diff`` API operation. The worker's committed changes live in its
+        # git worktree at ``{repo_root}/.omc/team/{team}/worktrees/{worker}`` (set by
+        # ``OMC_TEAM_WORKTREE_MODE=branch``).
+        #
+        # CRITICAL (round-6 fix #1): ``git diff HEAD`` captures ONLY uncommitted working-tree
+        # changes. OMC workers COMMIT their patch on their isolated worktree branch; the
+        # committed diff is therefore INVISIBLE to ``git diff HEAD``.  We must diff from the
+        # base the worker branched from — i.e. the merge-base of the worker HEAD and the
+        # canonical upstream (``origin/main``).  ``git diff <base>`` covers the working tree
+        # AND all commits since <base> (equivalent to: all committed + staged + untracked vs
+        # the branch point).  Resolution:
+        #   1. Resolve base via ``git -C <wt> merge-base HEAD origin/main`` (fallback: empty).
+        #   2. ``git -C <wt> diff <base>`` → captures committed worker changes + any residual
+        #      staged/unstaged work.
+        # If merge-base resolution fails (e.g. remote ref absent in a shallow clone / test
+        # worktree) we log a warning and fall back to ``git diff HEAD`` for the unstaged-only
+        # capture so the safety path degrades gracefully rather than erroring out.
+        if not blockers and team_success:
+            workers_list = summary_data.get("workers") if isinstance(summary_data.get("workers"), list) else []
+            worktree_path_raw = (
+                workers_list[0].get("worktree_path") if workers_list and isinstance(workers_list[0], dict) else None
+            )
+            if not worktree_path_raw:
+                # Fallback: derive canonical path from team name and first worker name.
+                worker_name = (
+                    str(workers_list[0].get("name", "worker-1")) if workers_list and isinstance(workers_list[0], dict) else "worker-1"
+                )
+                worktree_path_raw = str(repo_root / ".omc" / "team" / team_name / "worktrees" / worker_name)
+                warnings.append(
+                    f"omc summary did not report worktree_path; using derived path: {worktree_path_raw}"
+                )
+            worktree_path = str(worktree_path_raw)
+            git_run = git_runner if git_runner is not None else _git_worktree_runner
+            # Step 1: resolve the merge-base so committed worker commits are included.
+            # CRITICAL (round-8 fix #3): FAIL CLOSED when merge-base cannot be resolved.
+            # A fallback to ``git diff HEAD`` only captures uncommitted changes — workers commit
+            # their patch on a per-worker branch, so ``git diff HEAD`` returns an EMPTY diff for
+            # any committed work.  The run would finish ``empty``/``completed`` with ZERO privacy
+            # audit / scope check coverage of the actual worker output.  In a shallow clone or
+            # worktree without ``origin/main`` this is a safety hole, not a graceful degradation.
+            # Block fail-closed with a clear message; the operator must fix the remote ref first.
+            base_proc = git_run(["git", "-C", worktree_path, "merge-base", "HEAD", "origin/main"])
+            base_sha = str(getattr(base_proc, "stdout", "") or "").strip()
+            if getattr(base_proc, "returncode", 1) != 0 or not base_sha:
+                blockers.append(
+                    f"omc worker merge-base resolution failed (rc={getattr(base_proc, 'returncode', 'unknown')}); "
+                    "cannot safely capture committed worker output without a verified diff base — "
+                    "ensure origin/main is reachable in the worker worktree and retry; "
+                    f"worktree: {worktree_path}"
+                )
+            else:
+                # Step 2: stage everything (committed + tracked + UNTRACKED) then diff cached.
+                # CRITICAL (round-10 fix #1): plain ``git diff <base_sha>`` captures committed
+                # changes and unstaged changes to tracked files, but silently MISSES new
+                # untracked files — an OMC worker that creates a new file makes this look
+                # ``empty`` and the file bypasses privacy + scope checks entirely.
+                # The in-repo codex path uses ``git add -A`` for exactly this reason.
+                # Fix: stage everything with ``git -C <wt> add -A``, then capture the full
+                # index diff with ``git -C <wt> diff --cached <base_sha>``; this covers
+                # committed + staged + newly-created untracked files in one snapshot.
+                add_proc = git_run(["git", "-C", worktree_path, "add", "-A"])
+                if getattr(add_proc, "returncode", 0) != 0:
+                    blockers.append(
+                        f"git add -A in worker worktree failed (rc={getattr(add_proc, 'returncode', 'unknown')}); "
+                        f"cannot safely capture untracked worker files; worktree: {worktree_path}"
+                    )
+                else:
+                    diff_cmd: list[str] = ["git", "-C", worktree_path, "diff", "--cached", base_sha]
+                    diff_proc = git_run(diff_cmd)
+                    if getattr(diff_proc, "returncode", 0) == 0:
+                        diff_text = str(getattr(diff_proc, "stdout", "") or "")
+                        verdict = "proposed" if diff_text.strip() else "empty"
+                    else:
+                        blockers.append(
+                            f"git diff --cached in worker worktree failed (rc={getattr(diff_proc, 'returncode', 'unknown')}); "
+                            f"worktree: {worktree_path}"
+                        )
+    except subprocess.TimeoutExpired as exc:
+        # Per-command timeout expired — record a deterministic blocker; attempt graceful shutdown.
+        blockers.append(f"omc runner command timed out after {timeout_seconds}s: {exc}")
+        if team_name:
+            try:
+                run(["omc", "team", "shutdown", team_name], cwd=repo_root, env=omc_env, timeout=30.0)
+            except Exception:  # pragma: no cover - teardown best-effort
+                pass
+    except OSError as exc:
+        # Never raise on omc failure — record a deterministic non-pass blocker.
+        blockers.append(f"omc runner subprocess error: {exc}")
+    except Exception as exc:  # pragma: no cover - defensive; fail closed, never raise
+        blockers.append(f"omc runner failed: {exc}")
+    finally:
+        # (teardown) Always shut the team down.  CRITICAL (round-7 fix #2): capture the
+        # shutdown result; on nonzero rc or TimeoutExpired, record a warning AND attempt
+        # a ``--force`` fallback so orphaned workers are not silently left running.
+        if team_name:
+            try:
+                sd_proc = run(
+                    ["omc", "team", "shutdown", team_name],
+                    cwd=repo_root,
+                    env=omc_env,
+                    timeout=30.0,
+                )
+                if getattr(sd_proc, "returncode", 0) != 0:
+                    sd_rc = getattr(sd_proc, "returncode", "unknown")
+                    sd_stderr = str(getattr(sd_proc, "stderr", "") or "").strip()
+                    warnings.append(
+                        f"omc team shutdown returned rc={sd_rc} for team {team_name!r}"
+                        + (f": {sd_stderr}" if sd_stderr else "")
+                        + "; attempting --force fallback"
+                    )
+                    try:
+                        force_proc = run(
+                            ["omc", "team", "shutdown", team_name, "--force"],
+                            cwd=repo_root,
+                            env=omc_env,
+                            timeout=10.0,
+                        )
+                        # CRITICAL (round-8 fix #1): inspect the --force result.  If it also
+                        # fails, network/credentialed omc workers may still be alive — record
+                        # a warning so the operator knows cleanup is degraded.
+                        force_rc = getattr(force_proc, "returncode", 0)
+                        force_stderr = str(getattr(force_proc, "stderr", "") or "").strip()
+                        if force_rc != 0:
+                            warnings.append(
+                                f"omc team shutdown --force also returned rc={force_rc} "
+                                f"for team {team_name!r}"
+                                + (f": {force_stderr}" if force_stderr else "")
+                                + "; omc workers may still be running — manual cleanup required"
+                            )
+                        elif force_stderr:
+                            warnings.append(
+                                f"omc team shutdown --force stderr for team {team_name!r}: {force_stderr}"
+                            )
+                    except Exception as force_exc:
+                        warnings.append(f"omc team shutdown --force also failed for team {team_name!r}: {force_exc}")
+            except subprocess.TimeoutExpired as exc:
+                warnings.append(f"omc team shutdown timed out for team {team_name!r}: {exc}; attempting --force fallback")
+                try:
+                    force_proc_t = run(
+                        ["omc", "team", "shutdown", team_name, "--force"],
+                        cwd=repo_root,
+                        env=omc_env,
+                        timeout=10.0,
+                    )
+                    force_rc_t = getattr(force_proc_t, "returncode", 0)
+                    force_stderr_t = str(getattr(force_proc_t, "stderr", "") or "").strip()
+                    if force_rc_t != 0:
+                        warnings.append(
+                            f"omc team shutdown --force also returned rc={force_rc_t} "
+                            f"for team {team_name!r}"
+                            + (f": {force_stderr_t}" if force_stderr_t else "")
+                            + "; omc workers may still be running — manual cleanup required"
+                        )
+                    elif force_stderr_t:
+                        warnings.append(
+                            f"omc team shutdown --force stderr for team {team_name!r}: {force_stderr_t}"
+                        )
+                except Exception as force_exc:
+                    warnings.append(f"omc team shutdown --force also failed for team {team_name!r}: {force_exc}")
+            except Exception as exc:  # pragma: no cover - teardown best-effort
+                warnings.append(f"omc team shutdown warning: {exc}")
+
+    decision = "blocked" if blockers else ("completed" if verdict in {"proposed", "empty"} else "blocked")
+    return _finalize_omc_runner_result(
+        decision=decision,
+        execute=execute,
+        session_id=session_id,
+        verdict=verdict if not blockers else "blocked",
+        blockers=blockers,
+        warnings=warnings,
+        team_name=team_name,
+        command_display=omc_command_display,
+        state_path=state_path,
+        out_path=out_path,
+        registry_path=registry_path,
+        assignments_path=assignments_path,
+        runs_path=omc_runs_path,
+        artifact_path=artifact_path,
+        diff_text=diff_text,
+        task_id=task_id,
+        model=model,
+        repo_root=repo_root,
+        now=now,
+        write_artifact=not blockers,
+        invalidate_heartbeats=True,  # omc team was actually launched; invalidate stale heartbeats
+    )
+
+
+def _parse_omc_team_name(stdout: str) -> str:
+    """Extract the team name from omc team launch stdout (``team: <name>`` / ``team <name>``)."""
+    for line in stdout.splitlines():
+        match = re.search(r"\bteam[:\s]+([A-Za-z0-9._-]+)", line, re.IGNORECASE)
+        if match:
+            return match.group(1)
+    return ""
+
+
+def _build_omc_task_text(
+    *,
+    selected: Sequence[dict[str, object]],
+    assignments_path: Path,
+    repo_root: Path,
+) -> tuple[str, list[str]]:
+    """Build a strongly privacy-scrubbed task description for the omc team from assignments.
+
+    Returns ``(task_text, blockers)`` where ``blockers`` is a non-empty list when any
+    selected session has a missing or empty assignment file.  The caller MUST abort before
+    spawning omc if ``blockers`` is non-empty — spawning with missing assignments means the
+    worker has no defined scope, which is a safety violation (round-7 fix #3).
+
+    The text crosses the ADR 0005 data boundary into uncontrolled omc workers (network-capable,
+    no per-worker sandbox). Every component is redacted at the STRONGER level used by the
+    privacy audit (``_redact_private_text``) — not just the inline-text level — to ensure no
+    private patterns (real100 paths, JSON private fields, doc/chunk tokens, local abs-paths)
+    leak to network-capable workers. ``_sanitize_inline_text`` is applied additionally for
+    control-character / injection hygiene.
+    """
+    parts: list[str] = []
+    task_blockers: list[str] = []
+    for session in selected:
+        role = _sanitize_inline_text(_redact_private_text(str(session.get("role") or "unknown")))
+        session_id = str(session.get("session_id") or "")
+        try:
+            safe_session = _validate_session_id(session_id)
+        except ValueError:
+            continue
+        assignment_file = assignments_path / f"{safe_session}.md"
+        if not assignment_file.exists():
+            task_blockers.append(
+                f"omc assignment file missing for session {session_id!r} "
+                f"(expected: {assignment_file.name}); cannot spawn omc without defined scope"
+            )
+            continue
+        try:
+            raw = _read_text(assignment_file).strip()
+        except OSError as exc:
+            task_blockers.append(
+                f"omc assignment file unreadable for session {session_id!r}: {exc}"
+            )
+            continue
+        if not raw:
+            task_blockers.append(
+                f"omc assignment file is empty for session {session_id!r} "
+                f"({assignment_file.name}); cannot spawn omc without defined scope"
+            )
+            continue
+        body = _sanitize_inline_text(_redact_private_text(raw))
+        parts.append(f"[{role}] {body}".strip())
+    text = " ; ".join(p for p in parts if p).strip()
+    if not text and not task_blockers:
+        text = "Run the active-loop session assignments."
+    return _sanitize_inline_text(_redact_private_text(text)), task_blockers
+
+
+def _finalize_omc_runner_result(
+    *,
+    decision: str,
+    execute: bool,
+    session_id: str,
+    verdict: str,
+    blockers: Sequence[str],
+    warnings: Sequence[str],
+    team_name: str,
+    command_display: str,
+    state_path: Path,
+    out_path: Path,
+    registry_path: Path,
+    assignments_path: Path,
+    runs_path: Path,
+    artifact_path: Path,
+    diff_text: str,
+    task_id: str | None,
+    model: str | None,
+    repo_root: Path,
+    now: datetime,
+    write_artifact: bool,
+    invalidate_heartbeats: bool,
+) -> ActiveCodexRunnerResult:
+    """Re-impose governance on the captured omc diff, write the patch_artifact.json, and map
+    the result into an ActiveCodexRunnerResult (codex-patch-compatible shape).
+
+    ``task_id``: propagated from the active registry / runner context so the patch artifact
+    has a valid ``T-YYYY-NNNN`` id that ``write_active_apply`` requires.
+    ``invalidate_heartbeats``: only True when the omc team was actually launched (execute=True
+    and the team launch was attempted) — prevents dry-run / no-ack / pre-spawn-blocked paths
+    from mutating gate state.
+    """
+    blockers = list(blockers)
+    warnings = list(warnings)
+
+    if write_artifact and diff_text:
+        artifact = {
+            "schema_version": 1,
+            "task_id": task_id if (task_id and TASK_ID_RE.fullmatch(task_id)) else None,
+            "session_id": session_id,
+            "role": "Implementer",
+            "agent": "omc",
+            "generated_at": _isoformat(now),
+            "base": "origin/main",
+            "scratch_branch": team_name,
+            "verdict": verdict,
+            "summary": _patch_summary(verdict, diff_text, agent="omc"),
+            "files": _diff_files(diff_text),
+            "diffstat": _diffstat(diff_text),
+            "diff": diff_text,
+            "wu": 1 if verdict == "proposed" else 0,
+            "privacy_scrubbed": True,
+        }
+        artifact_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Re-impose the privacy re-audit on the captured diff (fail-closed -> blocked).
+        privacy_findings = _privacy_findings_for_text(
+            diff_text,
+            path=_display_path(_repo_path(artifact_path, repo_root), repo_root=repo_root),
+        )
+        if privacy_findings:
+            issues = sorted({finding.issue for finding in privacy_findings})
+            verdict = "blocked"
+            decision = "blocked"
+            blockers.extend(f"privacy: {issue}" for issue in issues)
+            _write_blocked_omc_artifact(artifact_path, session_id=session_id, team_name=team_name, now=now)
+        else:
+            # claimed_files scope check on the captured diff (fail-closed for omc).
+            # For omc runner, a missing write lease or empty claimed_files is a BLOCKING
+            # condition when there is a proposed diff — uncontrolled workers require explicit
+            # scope enforcement; "unenforced" is not acceptable (fix round-5 #2).
+            #
+            # CRITICAL (round-6 fix #2): ``_find_active_write_lease(lease_id=None)`` returns
+            # the FIRST active write lease regardless of which task it belongs to.  When
+            # ``active-start`` appends a new lease without removing the previous one, a stale
+            # lease from ANOTHER task_id may be returned — validating an OMC diff against the
+            # WRONG task's claimed_files.  Fix: filter by the current task_id FIRST; if no
+            # exactly-one matching lease is found, block fail-closed.  This ensures the scope
+            # check is always against the correct task's boundary.
+            lease_items = _load_active_leases(_active_path(DEFAULT_ACTIVE_LEASES, repo_root=repo_root))
+            # CRITICAL (round-7 fix #1): for the omc runner, REQUIRE an EXACT task_id match.
+            # Legacy leases without a task_id field are NOT accepted — an unscoped lease could
+            # belong to any task (stale/leaked), and accepting it silently validates the wrong
+            # scope. Fail-closed: if task_id is set, only leases whose task_id field
+            # EXPLICITLY equals the current task_id are eligible. When task_id is None/empty
+            # (standalone call without --task), fall back to any active/recovery write lease.
+            if task_id:
+                task_write_leases = [
+                    lease for lease in lease_items
+                    if isinstance(lease, dict)
+                    and lease.get("lease_type") == "write"
+                    and lease.get("status") in {"active", "recovery-needed"}
+                    and str(lease.get("task_id") or "") == task_id
+                ]
+            else:
+                task_write_leases = [
+                    lease for lease in lease_items
+                    if isinstance(lease, dict)
+                    and lease.get("lease_type") == "write"
+                    and lease.get("status") in {"active", "recovery-needed"}
+                ]
+            if len(task_write_leases) > 1:
+                # Multiple active write leases for the same task — ambiguous scope.
+                lease_ids = [str(lse.get("lease_id") or "") for lse in task_write_leases]
+                verdict = "blocked"
+                decision = "blocked"
+                blockers.append(
+                    f"omc diff scope is ambiguous: {len(task_write_leases)} active write leases "
+                    f"found for task_id={task_id!r} (lease_ids: {', '.join(lease_ids[:5])}); "
+                    "resolve to exactly one active write lease before running the omc runner"
+                )
+            write_lease = task_write_leases[0] if len(task_write_leases) == 1 else None
+            claimed_raw = write_lease.get("claimed_files") if isinstance(write_lease, dict) else None
+            claimed = {str(f) for f in claimed_raw} if isinstance(claimed_raw, list) else set()
+            if not claimed and verdict == "proposed":
+                verdict = "blocked"
+                decision = "blocked"
+                blockers.append(
+                    "omc diff scope is unenforced: no active write lease or claimed_files found; "
+                    "set claimed_files in the write lease before running the omc runner"
+                )
+            elif claimed and verdict == "proposed":
+                out_of_scope = sorted(f for f in _diff_files(diff_text) if f not in claimed)
+                if out_of_scope and not _context_only_claimed_files(claimed):
+                    verdict = "blocked"
+                    decision = "blocked"
+                    blockers.append("omc diff touches files outside the lease claim: " + ", ".join(out_of_scope[:5]))
+            if verdict == "blocked":
+                _write_blocked_omc_artifact(artifact_path, session_id=session_id, team_name=team_name, now=now)
+            else:
+                artifact_path.write_text(
+                    json.dumps(_patch_artifact_json_payload(artifact), indent=2, sort_keys=True) + "\n",
+                    encoding="utf-8",
+                )
+                # Re-audit the written artifact file as the fail-closed backstop.
+                file_findings = audit_privacy_output(artifact_path, out_path=None, repo_root=repo_root)
+                if file_findings:
+                    issues = sorted({finding.issue for finding in file_findings})
+                    verdict = "blocked"
+                    decision = "blocked"
+                    blockers.extend(f"privacy: {issue}" for issue in issues)
+                    _write_blocked_omc_artifact(artifact_path, session_id=session_id, team_name=team_name, now=now)
+
+        # Mirror the artifact into the standard active-apply consumption path so the existing
+        # integration-branch / Conservative-Gate path consumes it UNCHANGED (no auto-merge).
+        standard_path = _active_path(DEFAULT_ACTIVE_LEASES, repo_root=repo_root).parent / "patch_runs" / "implementer" / "patch_artifact.json"
+        standard_path.parent.mkdir(parents=True, exist_ok=True)
+        if decision != "blocked":
+            standard_path.write_text(artifact_path.read_text(encoding="utf-8"), encoding="utf-8")
+        else:
+            # Overwrite the standard path with a blocked artifact (fix round-3 #3): a stale
+            # proposed patch_artifact.json from a PRIOR successful run must NEVER survive a
+            # subsequent blocked/empty run. Without this overwrite, write_active_apply would
+            # apply the old diff even though the current run did not produce a valid proposed
+            # patch (no-ack, pre-spawn-blocked, dry-run, privacy/scope blocked, empty diff).
+            _write_blocked_omc_artifact(standard_path, session_id=session_id, team_name=team_name, now=now)
+
+    # Stale artifact overwrite when write_artifact=False OR diff_text="" and execute=True.
+    # CRITICAL (round-8 fix #2): for EXECUTED runs (execute=True), ALWAYS write a current
+    # blocked artifact to BOTH the run-specific artifact_path AND the standard active-apply
+    # path so neither path can serve a stale proposed artifact from a prior run.
+    # Previously only the standard path was overwritten (and only if it existed), leaving the
+    # run-specific path stale — the returned state points sessions[0].assignment at artifact_path,
+    # so any consumer reading that path would see the prior run's proposed diff.
+    # CRITICAL (round-9 fix #2): gate ALL artifact writes on execute=True.  Dry-run (execute=False)
+    # is a read-only planning action — it must NEVER touch any artifact on disk.  The round-8
+    # change wrote to both paths even for dry-run, which could erase a live proposed artifact
+    # produced by a prior real executed run, breaking a later apply step.  For dry-run, leave
+    # BOTH artifact_path and standard_path completely unchanged.
+    elif execute:
+        artifact_path.parent.mkdir(parents=True, exist_ok=True)
+        _write_blocked_omc_artifact(artifact_path, session_id=session_id, team_name=team_name, now=now)
+        standard_path = _active_path(DEFAULT_ACTIVE_LEASES, repo_root=repo_root).parent / "patch_runs" / "implementer" / "patch_artifact.json"
+        standard_path.parent.mkdir(parents=True, exist_ok=True)
+        _write_blocked_omc_artifact(standard_path, session_id=session_id, team_name=team_name, now=now)
+
+    # (fix #3 + fix #4) Gate-heartbeat invariant: the OMC runner emits only a synthetic
+    # Implementer session and never runs the blocking review/auditor roles. If those roles have
+    # stale prior-run "passed" heartbeats in the registry, the Conservative Gate would wrongly
+    # treat them as satisfied. Invalidate their statuses so the Gate stays blocked until real
+    # blocking-role sessions run.
+    # (fix #4) Only invalidate when the omc team was ACTUALLY launched (execute=True and the
+    # team launch was attempted). Never mutate gate state on no-ack, dry-run, or pre-spawn
+    # privacy/scope-blocked paths where no omc team ran at all.
+    invalidated_roles: list[str] = []
+    if invalidate_heartbeats:
+        # CRITICAL (round-9 fix #1): _invalidate_omc_blocking_gate_heartbeats now returns
+        # (roles, error).  When invalidation was required (execute=True) but the registry
+        # write FAILED, downgrade the result to blocked — stale "passed" statuses on
+        # blocking-role sessions would make the Conservative Gate READY despite no real
+        # review running, which is fail-open on the highest-risk uncontrolled omc path.
+        invalidated_roles, invalidation_error = _invalidate_omc_blocking_gate_heartbeats(
+            registry_path=registry_path,
+            repo_root=repo_root,
+        )
+        if invalidation_error:
+            decision = "blocked"
+            blockers.append(
+                f"omc gate-heartbeat invalidation failed — cannot verify blocking-role "
+                f"statuses were reset; Conservative Gate may be stale-open: "
+                f"{invalidation_error}"
+            )
+    if invalidated_roles:
+        warnings.append(
+            "OMC runner invalidated prior blocking-role gate heartbeats for "
+            + ", ".join(invalidated_roles)
+            + "; run the real blocking-role sessions before the Conservative Gate will pass"
+        )
+
+    sessions_out = [
+        {
+            "session_id": session_id,
+            "role": "Implementer",
+            "agent": "omc",
+            "status": verdict if execute else "planned",
+            "model": model or "omc-team-default",
+            "pid": None,
+            "assignment": _repo_path(artifact_path, repo_root),
+            "last_message": "",
+            "command": command_display,
+        }
+    ]
+    state_payload = {
+        "schema_version": 1,
+        "generated_at": _isoformat(now),
+        "execute": execute,
+        "runner": "omc",
+        "decision": decision,
+        "verdict": verdict,
+        "team": _sanitize_inline_text(team_name),
+        "worktree_mode": OMC_TEAM_WORKTREE_MODE,
+        "auto_merge": False,
+        "ack_env": OMC_RUNNER_ACK_ENV,
+        "runs_dir": _repo_path(runs_path, repo_root),
+        "sessions": sessions_out,
+        "blockers": _dedupe_preserve_order(blockers),
+        "warnings": _dedupe_preserve_order(warnings),
+    }
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text(json.dumps(_sanitize_json_value(state_payload), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    _append_active_event(
+        _active_path(DEFAULT_ACTIVE_EVENTS, repo_root=repo_root),
+        {
+            "event": "active-codex-runner",
+            "runner": "omc",
+            "execute": execute,
+            "decision": decision,
+            "verdict": verdict,
+            "team": team_name,
+            "auto_merge": False,
+            "sessions": [session_id],
+            "blockers": list(blockers),
+            "warnings": list(warnings),
+        },
+    )
+    rendered = render_active_codex_runner(
+        decision=decision,
+        execute=execute,
+        auth_mode="omc-team",
+        auth_status=f"omc runner (ack via {OMC_RUNNER_ACK_ENV}); no per-worker sandbox",
+        sandbox="omc-uncontrolled",
+        model=model or "omc-team-default",
+        max_commands_per_session=0,
+        sessions=sessions_out,
+        heartbeats=(),
+        blockers=tuple(_dedupe_preserve_order(blockers)),
+        warnings=tuple(_dedupe_preserve_order(warnings)),
+        registry_path=registry_path,
+        assignments_path=assignments_path,
+        runs_path=runs_path,
+        state_path=state_path,
+        repo_root=repo_root,
+    )
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(rendered, encoding="utf-8")
+    return ActiveCodexRunnerResult(
+        report_path=out_path,
+        state_path=state_path,
+        runs_dir=runs_path,
+        decision=decision,
+        sessions=tuple(sessions_out),
+        blockers=tuple(_dedupe_preserve_order(blockers)),
+        warnings=tuple(_dedupe_preserve_order(warnings)),
+    )
+
+
+def _invalidate_omc_blocking_gate_heartbeats(
+    *,
+    registry_path: Path,
+    repo_root: Path,
+) -> tuple[list[str], str | None]:
+    """Reset blocking-role session statuses to ``pending-omc-review`` in the active registry.
+
+    The OMC runner emits only a synthetic Implementer session — it does NOT run the real
+    blocking-role (Reviewer / CI Auditor / Eval Auditor) sessions. If those roles have a
+    prior-run "passed" heartbeat, the Conservative Gate would see them as satisfied, letting
+    a stale gate status pass as if real review occurred.
+
+    Fix (minimal, safe): overwrite every blocking-role session status with
+    ``pending-omc-review`` so the Conservative Gate stays blocked until real review sessions
+    run. This is purely a registry mutation — no heartbeat event is emitted (no false-pass).
+
+    Returns ``(invalidated_roles, error_message)``.  ``invalidated_roles`` is the list of
+    roles whose statuses were successfully reset.  ``error_message`` is ``None`` on success
+    or when there were no blocking roles to reset; it is a non-empty string when the registry
+    write **failed** (parse error, I/O error, etc.).  CRITICAL (round-9 fix #1): the caller
+    MUST treat a non-None error_message as a BLOCKING condition when ``invalidate_heartbeats``
+    is True — a failed reset means stale "passed" statuses may survive on the highest-risk
+    uncontrolled path (omc workers), which is fail-open on the Conservative Gate.
+    """
+    invalidated: list[str] = []
+    try:
+        resolved = _active_path(registry_path, repo_root=repo_root)
+        if not resolved.exists():
+            return invalidated, None
+        payload = _load_active_registry(resolved)
+        topology = str(payload.get("topology") or "four-role")
+        blocking_roles: frozenset[str] = frozenset(
+            list(ACTIVE_REQUIRED_GATES.get(topology, ()))
+            + list(ACTIVE_LOAD_BEARING_GATES.get(topology, ()))
+        )
+        sessions = payload.get("sessions")
+        if not isinstance(sessions, list):
+            return invalidated, None
+        modified = False
+        for item in sessions:
+            if not isinstance(item, dict):
+                continue
+            role = str(item.get("role") or "")
+            if role not in blocking_roles:
+                continue
+            item["status"] = "pending-omc-review"
+            item["heartbeat_state"] = "stale"
+            modified = True
+            invalidated.append(role)
+        if modified:
+            payload["sessions"] = sessions
+            resolved.write_text(
+                json.dumps(_sanitize_json_value(payload), indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+    except (OSError, json.JSONDecodeError, ValueError) as exc:
+        # CRITICAL (round-9 fix #1): return the error so the caller can downgrade to blocked.
+        # Previously this was a silent pass, which allowed stale "passed" gate statuses to
+        # survive on the highest-risk uncontrolled omc path — fail-open on Conservative Gate.
+        return invalidated, f"registry write failed: {exc}"
+    return invalidated, None
+
+
+def _write_blocked_omc_artifact(
+    artifact_path: Path,
+    *,
+    session_id: str,
+    team_name: str,
+    now: datetime,
+) -> None:
+    """Write a privacy-clean blocked patch artifact (no raw diff) for a rejected omc result."""
+    redacted = {
+        "schema_version": 1,
+        "task_id": None,
+        "session_id": session_id,
+        "role": "Implementer",
+        "agent": "omc",
+        "generated_at": _isoformat(now),
+        "base": "origin/main",
+        "scratch_branch": _sanitize_inline_text(team_name),
+        "verdict": "blocked",
+        "summary": "omc runner result blocked by privacy/scope re-audit",
+        "files": [],
+        "diffstat": {"files_changed": 0, "insertions": 0, "deletions": 0},
+        "diff": "",
+        "wu": 0,
+        "privacy_scrubbed": False,
+    }
+    artifact_path.parent.mkdir(parents=True, exist_ok=True)
+    artifact_path.write_text(json.dumps(_sanitize_json_value(redacted), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
 def write_active_codex_runner(
     *,
     execute: bool = False,
@@ -12325,6 +13565,8 @@ def write_active_codex_runner(
     read_agent: str = "codex",
     write_agent: str = "codex",
     claude_runner=None,
+    runner: str = "codex",
+    omc_runner=None,
 ) -> ActiveCodexRunnerResult:
     """Plan or spawn Codex processes for the active loop.
 
@@ -12354,11 +13596,38 @@ def write_active_codex_runner(
         raise ValueError("--read-agent must be auto, codex, or claude")
     if write_agent not in {"auto", "codex", "claude"}:
         raise ValueError("--write-agent must be auto, codex, or claude")
+    if runner not in {"codex", "omc"}:
+        raise ValueError("--runner must be codex or omc")
     registry_path = _active_path(registry, repo_root=repo_root)
     assignments_path = _active_path(assignments_dir, repo_root=repo_root)
     runs_path = _active_path(runs_dir, repo_root=repo_root)
     state_path = _active_path(state, repo_root=repo_root)
     out_path = _active_path(out, repo_root=repo_root)
+
+    # OPT-IN OMC parallel-execution runner backend (ADR 0087). Only the read-only session
+    # runner delegates to omc team; patch mode keeps the in-repo codex/claude write lane.
+    # Fail-closed without the explicit ACTIVE_OMC_RUNNER_ACK acknowledgment: omc team workers
+    # run uncontrolled CLIs (no per-worker sandbox; network + private-data access), relaxing
+    # the ADR 0005 boundary. Default ``runner == "codex"`` is byte-identical to today
+    # (ADR 0001 preserve) — the omc branch is never entered for the default path.
+    if runner == "omc" and mode != "patch":
+        return _run_omc_team_runner(
+            execute=execute,
+            registry_path=registry_path,
+            assignments_path=assignments_path,
+            runs_path=runs_path,
+            state_path=state_path,
+            out_path=out_path,
+            sessions=sessions,
+            max_parallel=max_parallel,
+            timeout_seconds=timeout_seconds,
+            task_id=task_id,
+            model=model,
+            repo_root=repo_root,
+            read_agent=read_agent,
+            omc_runner=omc_runner,
+            git_runner=git_runner,
+        )
 
     if mode == "patch":
         return _write_active_codex_patch(
@@ -16527,6 +17796,7 @@ def build_parser() -> argparse.ArgumentParser:
     codex_runner.add_argument("--auth-mode", choices=("chatgpt", "any"), default="chatgpt", help="Require Codex ChatGPT login before execute, or use any to skip the auth-source guard.")
     codex_runner.add_argument("--sandbox", choices=("read-only", "workspace-write", "danger-full-access"), default="read-only")
     codex_runner.add_argument("--mode", choices=("read-only", "patch"), default="read-only", help="read-only spawns per-session review processes; patch runs one codex write-lane in a scratch worktree.")
+    codex_runner.add_argument("--runner", choices=("codex", "omc"), default="codex", help="Parallel-execution backend (ADR 0087); default codex is byte-identical. omc delegates to `omc team` (opt-in, requires ACTIVE_OMC_RUNNER_ACK=1 — uncontrolled workers relax the ADR 0005 boundary).")
     codex_runner.add_argument("--read-agent", choices=("auto", "codex", "claude"), default="codex", help="read-only runner agent; auto uses the active Claude/Codex WU mix.")
     codex_runner.add_argument("--write-agent", choices=("auto", "codex", "claude"), default="codex", help="patch mode write-lane agent; auto uses the active Claude/Codex WU mix.")
     codex_runner.add_argument("--task", help="Task id for patch mode (T-YYYY-NNNN); defaults to the Implementer session's task.")
@@ -16564,6 +17834,7 @@ def build_parser() -> argparse.ArgumentParser:
     auto_loop.add_argument("--sandbox", choices=("read-only", "workspace-write", "danger-full-access"), default="read-only")
     auto_loop.add_argument("--read-agent", choices=("auto", "codex", "claude"), default="auto")
     auto_loop.add_argument("--write-agent", choices=("auto", "codex", "claude"), default="auto")
+    auto_loop.add_argument("--runner", choices=("codex", "omc"), default="codex", help="Parallel-execution backend (ADR 0087); default codex is byte-identical. omc delegates to `omc team` (opt-in, requires ACTIVE_OMC_RUNNER_ACK=1 — uncontrolled workers relax the ADR 0005 boundary).")
     auto_loop.add_argument("--max-parallel", type=int, default=8)
     # ADR 0085: the Makefile `시작`/`agent-loop-active-auto-loop` front door is the SSoT
     # for operator defaults. These argparse defaults are aligned with it so a direct
@@ -17586,6 +18857,7 @@ def main(argv: list[str] | None = None) -> int:
                 mode=args.mode,
                 read_agent=args.read_agent,
                 write_agent=args.write_agent,
+                runner=args.runner,
                 task_id=args.task,
                 base=args.base,
                 record_gate_heartbeats=args.record_gate_heartbeats,
@@ -17626,6 +18898,7 @@ def main(argv: list[str] | None = None) -> int:
                 sandbox=args.sandbox,
                 read_agent=args.read_agent,
                 write_agent=args.write_agent,
+                runner=args.runner,
                 max_parallel=args.max_parallel,
                 timeout_seconds=args.timeout_seconds,
                 max_commands_per_session=args.max_commands_per_session,

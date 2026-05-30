@@ -364,3 +364,9 @@ experiments/private_runs/
 # *.example.yaml templates are committed.
 harness/*.local.yaml
 harness/real.yaml
+
+# OMC (oh-my-claudecode) operational state — local/transient orchestration
+# artifacts (team worker state, session/HUD caches). The opt-in OMC runner
+# (--runner omc, ADR 0087) writes .omc/state/team/...; this is per-clone runtime
+# state, never committed, and may carry local session metadata.
+.omc/
