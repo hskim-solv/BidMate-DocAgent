@@ -208,6 +208,95 @@ Execute mode는 8개 process를 spawn한 뒤 종료 코드와 last message artif
 agent process가 끝났다는 사실은 reviewer/auditor gate 통과 근거가 아니며, gate
 status는 별도 heartbeat나 검토 표면에서 유지한다.
 
+## OMC Runner (opt-in)
+
+기본 runner(`codex`)는 위에서 설명한 in-repo Popen 배치 표면이다. **opt-in** 대안으로
+`--runner omc`(make: `ACTIVE_RUNNER=omc`)를 켜면, 실제 동시 실행을 OMC `omc team`(tmux
+worker + per-worker git-worktree 격리)에 위임한다 (ADR 0087).
+
+```bash
+ACTIVE_OMC_RUNNER_ACK=1 make agent-loop-active-codex-runner ACTIVE_RUNNER=omc ACTIVE_CODEX_EXECUTE=1
+```
+
+**기본은 codex이며, `--runner omc`를 명시하기 전까지 동작은 byte-identical**(ADR 0001 보존)
+하다. omc 경로는 `runner == "omc"`일 때만 진입한다.
+
+**왜 ack가 필요한가 (데이터 경계).** `omc team`은 per-worker sandbox / permission /
+network 플래그를 노출하지 않는다 — 그 claude/codex CLI worker는 user **본인의 인증된 CLI**를
+자체 DEFAULT 권한으로 실행하여 worktree의 비공개 데이터를 읽고 네트워크로 egress할 수 있다.
+이는 in-repo runner의 명시적 `--sandbox read-only`(codex) / tool allowlist(claude)보다
+**덜 통제된** 상태다. 또한 env 허용리스트가 ANTHROPIC_API_KEY 등 ENV-var 시크릿을 차단하더라도,
+worker CLI는 HOME 아래 파일시스템 경로(~/.codex, ~/.claude, ~/.config/gh, ~/.aws)에서
+독립적으로 자격증명을 로드한다 — **env 필터는 완전한 자격증명 경계가 아니다**.
+따라서 omc runner는 **fail-closed**다: `ACTIVE_OMC_RUNNER_ACK=1`(상수 `OMC_RUNNER_ACK_ENV`)이
+없으면 blocked `ActiveCodexRunnerResult`를 반환하고 **omc를 절대 spawn하지 않는다**(ADR 0061).
+명시 ack는 운영자가 home-scoped 자격증명 접근 + 네트워크 egress를 의식적으로 수용했다는 의미다.
+
+**거버넌스 재부과 + no-auto-merge.** adapter(`_run_omc_team_runner`)는 `omc team
+N:claude,M:codex --no-decompose "<task>"`를 `OMC_TEAM_WORKTREE_MODE=branch` 환경으로
+띄우되 **`--auto-merge`는 절대 넘기지 않는다**(worker commit이 leader/main 브랜치로 머지되면
+안 됨). `<task>` 텍스트는 in-repo scrub helper로 먼저 privacy-scrub한다.
+
+**poll + diff 캡처 (round-5 fix #1, round-6 fix #1 정정).** 완료 감지는
+`omc team api get-summary --input '{"team_name":"<name>"}' --json` 응답의
+`data.summary.tasks`를 폴링한다(`in_progress == 0, failed == 0, completed == total`이
+terminal-success). `get-diff` API는 실 omc CLI에 존재하지 않는다.
+
+**round-6 fix #1 [CRITICAL], round-8 fix #3 강화, round-10 fix #1 강화:** OMC worker는
+per-worker branch에 **commit**하므로 `git diff HEAD`(uncommitted 전용)로는 캡처되지 않는다.
+수정된 diff 캡처 절차:
+1. `git -C <worktree> merge-base HEAD origin/main` → 분기 지점 base SHA 계산
+2. **`git -C <worktree> add -A`** → worker가 생성한 신규(untracked) 파일을 staging에 포함
+3. `git -C <worktree> diff --cached <base_sha>` → committed + staged + untracked 전체 캡처
+
+**round-8 fix #3 [HIGH]:** merge-base 실패(원격 ref 없음, shallow clone) 시 `git diff HEAD`
+fallback은 **삭제**됐다. `git diff HEAD`는 uncommitted 변경만 잡으므로 worker committed 변경이
+전혀 캡처되지 않아 privacy/scope 검사를 우회한 false-empty completion이 된다. 이제 merge-base
+실패 → **fail-closed**: blocker 기록 + blocked 반환. 운영자는 worker worktree에서 `origin/main`이
+접근 가능한지 확인해야 한다.
+
+**round-10 fix #1 [HIGH]:** `git diff <base_sha>`(인덱스 미포함)는 untracked 신규 파일을
+표시하지 않는다. omc worker가 새 파일을 생성했을 때 privacy/scope 검사가 완전히 우회됐다.
+수정: diff 직전에 `git add -A`를 실행해 untracked를 staged로 올리고,
+`git diff --cached <base_sha>`로 diff. `git add -A` 실패 시 blocker + blocked.
+
+worker 완료 후 캡처된 diff에 (1) privacy 재감사(`_privacy_findings_for_text` +
+`audit_privacy_output`, 누출 시 blocked), (2) `claimed_files` scope 검사를 fail-closed로
+재부과한다. **round-5 fix #2:** write lease에 `claimed_files`가 없는 상태로 proposed diff가
+있으면 무조건 blocked. **round-6 fix #2:** scope 검사는 현재 `task_id`에 해당하는 lease만 사용
+(`task_id` 필터링) — 다른 task의 stale lease로 검증하는 것을 차단; 매칭 lease가 정확히 1개가
+아니면 blocked fail-closed. **round-7 fix #1:** lease의 `task_id` 필드가 현재 `task_id`와
+**명시적으로** 일치해야 eligible — `task_id` 필드가 없는(legacy/unscoped) lease는 완전 거부.
+**round-7 fix #3:** omc spawn **전** `_build_omc_task_text`가 선택된 모든 session의 assignment
+파일이 존재하고 비어있지 않은지 확인한다. 파일 미존재 또는 빈 내용이면 pre-spawn fail-closed
+반환(`invalidate_heartbeats=False`).
+**round-10 fix #2 [HIGH]:** `_build_omc_task_text` 호출 직전에 선택된 sessions의 task_id
+집합(`selected_task_ids`)을 검증한다. (1) 두 개 이상의 서로 다른 task_id → blocked fail-closed
+("ambiguous: spans N distinct task IDs") — 여러 task의 assignment text가 단일 uncontrolled worker에
+전달되는 것을 차단. (2) `--task X`가 제공되었으나 selected sessions의 task_id가 일치하지 않으면 →
+blocked fail-closed ("mismatch: --task X does not match selected sessions"). 두 경우 모두 omc는
+spawn되지 않는다(`invalidate_heartbeats=False`). scope 통과 후에는 codex patch 경로와 동일한 `patch_artifact.json`
+모양으로 매핑한다. 그래서 diff는 **main으로 머지되지 않고** 기존 active-apply(integration branch) /
+Conservative Gate / human-gated ship 경로로 그대로 흐른다. team은 finally 블록에서 항상
+`omc team shutdown`으로 정리하며(**round-7 fix #2:** shutdown rc 확인 → nonzero 시 warning 기록 +
+`omc team shutdown <team> --force` fallback(timeout=10s); `TimeoutExpired`도 동일 /
+**round-8 fix #1:** `--force` 결과도 검사 — nonzero rc/stderr → "may still be running" warning,
+`TimeoutExpired` 경로도 동일; raise 없음), omc 실패는 raise하지 않고 blocked 결과로 기록한다.
+**round-8 fix #2 / round-9 fix #2 수정:** `_finalize_omc_runner_result`의 `elif execute:` 브랜치
+(executed no-ack / executed pre-spawn block / executed empty diff)에서 run-specific `artifact_path`에도
+blocked artifact를 쓴다 — `state.sessions[0].assignment` 경로를 통해 prior proposed artifact가 소비
+되는 것을 방지한다. **`execute=False` (dry-run)은 artifact를 일체 건드리지 않는다** — dry-run은
+read-only planning 액션으로, prior executed run이 생산한 proposed artifact를 지워서는 안 된다.
+
+**round-9 fix #1 [CRITICAL]:** `_invalidate_omc_blocking_gate_heartbeats` 반환형이
+`tuple[list[str], str | None]`(`(invalidated_roles, error_message)`)으로 변경됐다. 이전에는
+`OSError`/파싱 실패를 `pass`로 삼켜 호출자가 "무효화 성공/없음"과 구별하지 못했다. 이제 `execute=True`
+경로에서 `error_message != None`이면 `decision = "blocked"` + blocker가 추가된다 — registry 쓰기 실패로
+stale reviewer/auditor heartbeat가 생존해 Conservative Gate가 오판(READY)하는 fail-open이 닫혔다.
+
+`scripts/agent_loop.py`는 본 단계에서도 `LOAD_BEARING_PATHS`에 올리지 않는다
+(ADR 0080/0085/0086 유지).
+
 ## Active Auto Loop
 
 `active-start` + runner를 한 번만 실행하는 wrapper와 별개로, bounded 반복 드라이버는

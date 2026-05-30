@@ -495,6 +495,10 @@ ACTIVE_CODEX_AUTH_MODE ?= chatgpt
 ACTIVE_CODEX_SANDBOX ?= read-only
 ACTIVE_READ_AGENT ?= auto
 ACTIVE_WRITE_AGENT ?= auto
+# Parallel-execution runner backend (ADR 0087, opt-in). Default `codex` is byte-identical to
+# today (ADR 0001). `omc` delegates to `omc team` and additionally requires
+# ACTIVE_OMC_RUNNER_ACK=1 (uncontrolled workers relax the ADR 0005 boundary).
+ACTIVE_RUNNER ?= codex
 ACTIVE_CODEX_RECORD_GATE_HEARTBEATS ?= 1
 ACTIVE_CODEX_EXECUTE ?=
 HUMAN_GATED_ACTION ?=
@@ -1022,6 +1026,7 @@ agent-loop-active-codex-runner:
 	  --sandbox "$(ACTIVE_CODEX_SANDBOX)" \
 	  --read-agent "$(ACTIVE_READ_AGENT)" \
 	  --write-agent "$(ACTIVE_WRITE_AGENT)" \
+	  --runner "$(ACTIVE_RUNNER)" \
 	  --max-parallel "$(ACTIVE_CODEX_MAX_PARALLEL)" \
 	  --timeout-seconds "$(ACTIVE_CODEX_TIMEOUT_SECONDS)" \
 	  --max-commands-per-session "$(ACTIVE_CODEX_MAX_COMMANDS_PER_SESSION)" \
@@ -1057,6 +1062,7 @@ agent-loop-active-auto-loop:
 	  --sandbox "$(ACTIVE_CODEX_SANDBOX)" \
 	  --read-agent "$(ACTIVE_READ_AGENT)" \
 	  --write-agent "$(ACTIVE_WRITE_AGENT)" \
+	  --runner "$(ACTIVE_RUNNER)" \
 	  --max-parallel "$(ACTIVE_CODEX_MAX_PARALLEL)" \
 	  --timeout-seconds "$(ACTIVE_CODEX_TIMEOUT_SECONDS)" \
 	  --max-commands-per-session "$(ACTIVE_CODEX_MAX_COMMANDS_PER_SESSION)" \
@@ -1072,6 +1078,7 @@ agent-loop-active-auto-loop:
 	  ACTIVE_AUTO_LOOP_MAX_ITERATIONS="$(if $(filter 1 true yes,$(START_INFINITE)),0,$(START_TASK_LIMIT))" \
 	  ACTIVE_AUTO_LOOP_AUTO_MAX_ITERATIONS="$(START_TASK_ATTEMPT_LIMIT)" \
 	  ACTIVE_AUTO_LOOP_TARGET_COMPLETED_COUNT="$(if $(filter 1 true yes,$(START_INFINITE)),,$(START_TASK_LIMIT))" \
+	  ACTIVE_RUNNER="$(ACTIVE_RUNNER)" \
 	  ACTIVE_AUTO_LOOP_EXECUTE_RUNNER=1 \
 	  ACTIVE_AUTO_LOOP_EXECUTE_SHIP=0 \
 	  ACTIVE_AUTO_LOOP_AUTO_REPAIR=1
