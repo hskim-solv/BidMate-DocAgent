@@ -1,24 +1,40 @@
 #!/usr/bin/env bash
-# Claude Code PreToolUse hook for BidMate-DocAgent (issue #720).
+# Claude Code PreToolUse hook for BidMate-DocAgent (issue #720, #1683).
 #
-# Enforcement: graduated (awareness ≥AWARE_THRESHOLD, block ≥BLOCK_THRESHOLD).
+# Enforcement: graduated (awareness >=AWARE_THRESHOLD, block >=BLOCK_THRESHOLD).
 # Classification rationale: dual-mode — stderr warning then exit 2 refuse.
 # See scripts/claude-hooks/README.md for the full enforcement taxonomy.
 #
 # Registered in `.claude/settings.json` with matcher `Edit|MultiEdit|Write`.
-# Fires only when the edit target is a `MEMORY.md` index file. Counts the
-# *resulting* line count (existing file lines OR Write payload lines) and:
+# Fires only when the edit target is a `MEMORY.md` index file. It counts the
+# *resulting* line count — i.e. what the file WOULD have after the tool runs —
+# for all three tools:
 #
-#   <  AWARE_THRESHOLD   exit 0 silently
-#   >= AWARE_THRESHOLD   exit 0 + stderr awareness ("consider consolidate-memory")
-#   >= BLOCK_THRESHOLD   exit 2 + stderr block ("run consolidate-memory before adding more")
+#   Write     -> line count of the new `content` (whole-file payload)
+#   Edit      -> existing file with `old_string`->`new_string` applied
+#   MultiEdit -> existing file with every edit applied in sequence
+#
+# and then:
+#
+#   <  AWARE_THRESHOLD                          exit 0 silently
+#   >= AWARE_THRESHOLD                          exit 0 + stderr awareness
+#   >= BLOCK_THRESHOLD AND not a shrink         exit 2 + stderr block
+#
+# The "not a shrink" guard (issue #1683) is what unblocks consolidation: an
+# edit whose result is under the cap, OR a pure shrink (result < current) even
+# while still over the cap, is always allowed. Previously the hook only read
+# the Write `content` field; for Edit/MultiEdit (which carry old_string/
+# new_string, not content) it fell back to counting the EXISTING file, so it
+# blocked shrinking edits too — making the consolidate-memory remedy it asks
+# for impossible to apply via Edit.
 #
 # A line is appended to `.claude/.hook-fires.log` for every fire so the
 # `_self_review.py` axis #5 collector can quantify memory hygiene
 # automation ROI without scraping transcripts.
 #
 # Hook input (stdin, JSON):
-#   { "tool_name": "...", "tool_input": { "file_path": "...", "content": "...", ... } }
+#   { "tool_name": "...", "tool_input": { "file_path": "...", "content": "...",
+#     "old_string": "...", "new_string": "...", "edits": [...] } }
 
 set -u
 
@@ -34,19 +50,77 @@ readonly AWARE_THRESHOLD BLOCK_THRESHOLD
 
 input=$(cat)
 
-# Extract file_path + content from tool_input.
-read -r file_path content_lines < <(printf '%s' "$input" | python3 -c '
-import json, sys
+# Compute the resulting + current line count for MEMORY.md targets. Output is
+# `<resulting> <current> <file_path>` so `read -r a b rest` captures a path
+# containing spaces in the final variable. Non-MEMORY.md targets short-circuit
+# to `0 0 <path>` (bash exits 0 below). Any parse/read failure is fail-soft.
+read -r resulting current file_path < <(printf '%s' "$input" | python3 -c '
+import json, os, sys
+
+
+def count_lines(s):
+    if not s:
+        return 0
+    return s.count("\n") + (0 if s.endswith("\n") else 1)
+
+
 try:
     d = json.loads(sys.stdin.read())
 except Exception:
-    print("", 0)
+    print("0 0 ")
     sys.exit(0)
+
 ti = d.get("tool_input") or {}
 fp = ti.get("file_path") or ""
+
+# Only compute for MEMORY.md index files (project + global paths).
+if os.path.basename(fp) != "MEMORY.md":
+    print("0 0 " + fp)
+    sys.exit(0)
+
+# Current on-disk line count (0 if the file is new or unreadable).
+existing = ""
+try:
+    with open(fp, "r", encoding="utf-8") as fh:
+        existing = fh.read()
+except Exception:
+    existing = ""
+current = count_lines(existing)
+
+# Resulting line count after the tool applies. Default to current so any
+# unexpected shape fails safe (treated as no shrink).
+resulting = current
 content = ti.get("content")
-n = content.count("\n") + (1 if content and not content.endswith("\n") else 0) if isinstance(content, str) else 0
-print(fp, n)
+try:
+    if isinstance(content, str):
+        # Write: content is the whole new file.
+        resulting = count_lines(content)
+    elif isinstance(ti.get("edits"), list):
+        # MultiEdit: apply each edit in sequence.
+        text = existing
+        for e in ti["edits"]:
+            old = e.get("old_string", "")
+            new = e.get("new_string", "")
+            if old == "":
+                continue
+            if e.get("replace_all"):
+                text = text.replace(old, new)
+            else:
+                text = text.replace(old, new, 1)
+        resulting = count_lines(text)
+    elif "old_string" in ti:
+        # Edit: single replacement (only if the anchor is actually present).
+        old = ti.get("old_string", "")
+        new = ti.get("new_string", "")
+        if old != "" and old in existing:
+            if ti.get("replace_all"):
+                resulting = count_lines(existing.replace(old, new))
+            else:
+                resulting = count_lines(existing.replace(old, new, 1))
+except Exception:
+    resulting = current
+
+print("{} {} {}".format(resulting, current, fp))
 ' 2>/dev/null)
 
 # Match only MEMORY.md (basename) — handles project + global paths.
@@ -55,30 +129,23 @@ case "$file_path" in
   *) exit 0 ;;
 esac
 
-# Prefer Write payload line count (new-file case where the file does not
-# exist yet); fall back to existing file lines. Use `awk` to avoid the
-# `wc -l` trailing-newline off-by-one.
-if [[ -n "${content_lines:-}" && "$content_lines" =~ ^[0-9]+$ && "$content_lines" -gt 0 ]]; then
-  lines="$content_lines"
-elif [[ -f "$file_path" ]]; then
-  lines=$(awk 'END{print NR}' "$file_path" 2>/dev/null || echo 0)
-else
-  exit 0
-fi
+# Numeric guards — fail-soft to a permissive default on any non-integer.
+[[ "${resulting:-}" =~ ^[0-9]+$ ]] || exit 0
+[[ "${current:-}" =~ ^[0-9]+$ ]] || current=0
 
 action="ok"
-if [[ "$lines" -ge "$BLOCK_THRESHOLD" ]]; then
+# Block only when the RESULT is still over the cap AND the edit is not a
+# shrink (issue #1683). A result under the cap, or any shrink toward it, is
+# allowed so that consolidate-memory edits can actually land.
+if [[ "$resulting" -ge "$BLOCK_THRESHOLD" && "$resulting" -ge "$current" ]]; then
   action="blocked"
-elif [[ "$lines" -ge "$AWARE_THRESHOLD" ]]; then
+elif [[ "$resulting" -ge "$AWARE_THRESHOLD" ]]; then
   action="aware"
 fi
 
-# Log fire in the 4-field format the existing `_self_review.py`
-# `collect_governance_hooks` parser already understands:
-#   <ts>|<action>|<reason>|<path>
-# The exact line count is in stderr for the human; the ROI collector
-# only needs the action/reason counters.
-# v2-5field telemetry (ADR 0060). action ∈ {ok, aware, blocked}.
+# Log fire in the 5-field telemetry format (ADR 0060). action in {ok, aware,
+# blocked}. The exact line counts are in stderr for the human; the ROI
+# collector only needs the action/category counters.
 python3 "$REPO_ROOT/scripts/_governance.py" --emit-fire \
   --outcome "$action" --hook memory-lines --category line-count \
   --path "$file_path" \
@@ -86,16 +153,17 @@ python3 "$REPO_ROOT/scripts/_governance.py" --emit-fire \
 
 if [[ "$action" = "blocked" ]]; then
   cat >&2 <<EOF
-✋ MEMORY.md index has $lines lines (≥ $BLOCK_THRESHOLD).
+✋ MEMORY.md index would have $resulting lines (>= $BLOCK_THRESHOLD) and is not shrinking.
 
     Run \`anthropic-skills:consolidate-memory\` to merge duplicates and
-    prune stale entries before adding more. See axis #5 memory hygiene
-    in docs/agent-utilization.md.
+    prune stale entries. An edit that brings the index back under
+    $BLOCK_THRESHOLD lines (or otherwise shrinks it) is allowed. See axis #5
+    memory hygiene in docs/agent-utilization.md.
 EOF
   exit 2
 elif [[ "$action" = "aware" ]]; then
   cat >&2 <<EOF
-⚠️  MEMORY.md index has $lines lines (≥ $AWARE_THRESHOLD).
+⚠️  MEMORY.md index would have $resulting lines (>= $AWARE_THRESHOLD).
 
     Consider running \`anthropic-skills:consolidate-memory\` soon.
 EOF
