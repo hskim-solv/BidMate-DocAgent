@@ -1,0 +1,83 @@
+# ADR 0088 (P1): the authoritative external enforcement for the staging self-ship
+# lane. This workflow is the REQUIRED STATUS CHECK that GitHub branch protection on
+# `autopilot/integration` enforces — it lives outside the loop's permission domain,
+# so a workspace-write runner cannot disable it (that is the whole point: the
+# in-process guards in scripts/_staging_ship.py are best-effort; THIS is authority).
+#
+# It fails the PR (blocking the merge) when:
+#   1. the PR body carries raw private RFP content (ADR 0005 data boundary), or
+#   2. the PR changes a constitutional-invariant guard file without an explicit
+#      human acknowledgement marker — this is what makes the gate-3 adversarial
+#      test "guard-file-change PR -> required check fail" real.
+name: staging-self-ship-guard
+
+on:
+  pull_request:
+    branches:
+      - "autopilot/**"
+
+permissions:
+  contents: read
+
+jobs:
+  constitutional-invariant-guard:
+    # The status-check CONTEXT that branch protection matches is this job's `name`.
+    # Pin it equal to the workflow name so docs/ADR/runbook + `gh api` all reference
+    # one identifier: `staging-self-ship-guard`.
+    name: staging-self-ship-guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Data-boundary scan of PR body (ADR 0005)
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          python - <<'PY'
+          import os, sys
+          sys.path.insert(0, "scripts")
+          from _ship_payload_guard import assert_no_raw_payload, RawPayloadViolation
+          body = os.environ.get("PR_BODY", "") or ""
+          try:
+              assert_no_raw_payload(body)
+          except RawPayloadViolation as exc:
+              print(f"::error::PR body violates data boundary (ADR 0005): {exc}")
+              sys.exit(1)
+          print("PR body data-boundary scan: clean")
+          PY
+      - name: Constitutional-invariant file-change guard (ADR 0088)
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          python - <<'PY'
+          import os, subprocess, sys
+          PROTECTED = {
+              "scripts/_ship_payload_guard.py",
+              "scripts/_staging_ship.py",
+              ".github/workflows/staging-self-ship-guard.yml",
+          }
+          base = os.environ["BASE_SHA"]; head = os.environ["HEAD_SHA"]
+          changed = subprocess.run(
+              ["git", "diff", "--name-only", f"{base}...{head}"],
+              capture_output=True, text=True, check=True,
+          ).stdout.split()
+          touched = sorted(PROTECTED.intersection(changed))
+          if not touched:
+              print("No constitutional-invariant files changed.")
+              sys.exit(0)
+          body = os.environ.get("PR_BODY", "") or ""
+          if "[constitutional-change-ack]" in body:
+              print(f"Constitutional files changed WITH ack marker: {touched}")
+              sys.exit(0)
+          print("::error::This PR changes constitutional-invariant guard files "
+                f"{touched} without a human ack. Add '[constitutional-change-ack]' "
+                "to the PR body only after explicit review (ADR 0088). "
+                "Merge is blocked by required check.")
+          sys.exit(1)
+          PY

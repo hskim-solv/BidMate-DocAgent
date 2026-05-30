@@ -36,7 +36,7 @@
 # they render prompts, classify surfaces, check handoffs, suggest or run
 # allowlisted local validation, and write ignored local planning drafts. They
 # do not perform GitHub mutations.
-.PHONY: agent-loop-next agent-loop-status agent-loop-prompt agent-loop-handoff agent-loop-review agent-loop-surface agent-loop-validation agent-loop-validate agent-loop-preflight agent-loop-pr-scan agent-loop-issue-scan agent-loop-maintenance-plan agent-loop-issue-close agent-loop-next-from-prs agent-loop-pr-health agent-loop-draft-task agent-loop-draft-next agent-loop-batch-plan agent-loop-queue-parallel-plan agent-loop-queue-recommendations agent-loop-review-followup agent-loop-review-ingest agent-loop-decision-brief agent-loop-promote-draft agent-loop-gate-status agent-loop-claim-audit agent-loop-privacy-audit-output agent-loop-auto-pass agent-loop-dashboard agent-loop-mcp-config agent-loop-safe-fix agent-loop-approval-packet agent-loop-propose-queue-plan agent-loop-pr-body agent-loop-review-plan agent-loop-stale-reports agent-loop-context-pack agent-loop-architecture-brief agent-loop-ship-simulate agent-loop-auto-ship-prepare agent-loop-auto-ship-plan agent-loop-gate-brief agent-loop-manifest agent-loop-pr-body-check agent-loop-ci-ingest agent-loop-stacked-risk agent-loop-patch-proposal agent-loop-adr-reserve agent-loop-dashboard-html agent-loop-ship-command-pack agent-loop-apply-queue-plan agent-loop-review-threads agent-loop-ci-summary agent-loop-readiness-score agent-loop-artifact-freshness agent-loop-review-patch-plan agent-loop-queue-plan-sync agent-loop-dependency-graph agent-loop-branch-issue-hygiene agent-loop-integration-pack agent-loop-scheduled-status agent-loop-validation-history agent-loop-privacy-regression agent-loop-claim-policy agent-loop-architecture-decision agent-loop-workset-recommend agent-loop-automation-coverage agent-loop-active-start agent-loop-active-codex-runner agent-loop-active-auto-loop 시작 agent-loop-human-gated-exec agent-loop-loop-state agent-loop-map agent-loop-mcp
+.PHONY: agent-loop-next agent-loop-status agent-loop-prompt agent-loop-handoff agent-loop-review agent-loop-surface agent-loop-validation agent-loop-validate agent-loop-preflight agent-loop-pr-scan agent-loop-issue-scan agent-loop-maintenance-plan agent-loop-issue-close agent-loop-next-from-prs agent-loop-pr-health agent-loop-draft-task agent-loop-draft-next agent-loop-batch-plan agent-loop-queue-parallel-plan agent-loop-queue-recommendations agent-loop-review-followup agent-loop-review-ingest agent-loop-decision-brief agent-loop-promote-draft agent-loop-gate-status agent-loop-claim-audit agent-loop-privacy-audit-output agent-loop-auto-pass agent-loop-dashboard agent-loop-mcp-config agent-loop-safe-fix agent-loop-approval-packet agent-loop-propose-queue-plan agent-loop-pr-body agent-loop-review-plan agent-loop-stale-reports agent-loop-context-pack agent-loop-architecture-brief agent-loop-ship-simulate agent-loop-auto-ship-prepare agent-loop-auto-ship-plan agent-loop-gate-brief agent-loop-manifest agent-loop-pr-body-check agent-loop-ci-ingest agent-loop-stacked-risk agent-loop-patch-proposal agent-loop-adr-reserve agent-loop-dashboard-html agent-loop-ship-command-pack agent-loop-apply-queue-plan agent-loop-review-threads agent-loop-ci-summary agent-loop-readiness-score agent-loop-artifact-freshness agent-loop-review-patch-plan agent-loop-queue-plan-sync agent-loop-dependency-graph agent-loop-branch-issue-hygiene agent-loop-integration-pack agent-loop-scheduled-status agent-loop-validation-history agent-loop-privacy-regression agent-loop-claim-policy agent-loop-architecture-decision agent-loop-workset-recommend agent-loop-automation-coverage agent-loop-active-start agent-loop-active-codex-runner agent-loop-active-auto-loop 시작 시작-ship agent-loop-human-gated-exec agent-loop-loop-state agent-loop-map agent-loop-mcp
 
 # Auto-ship pipeline (Stop hook driven). See scripts/claude-hooks/stop-ship.sh
 # and the plan at /Users/hskim/.claude/plans/prci-synchronous-newell.md.
@@ -1094,6 +1094,24 @@ agent-loop-active-auto-loop:
 	  ACTIVE_AUTO_LOOP_EXECUTE_RUNNER=1 \
 	  ACTIVE_AUTO_LOOP_EXECUTE_SHIP=0 \
 	  ACTIVE_AUTO_LOOP_AUTO_REPAIR=1
+
+# ADR 0088 (P1): opt-in staging self-ship lane. Composes the byte-identical
+# `시작` loop (EXECUTE_SHIP=0, unchanged) with the ISOLATED staging-ship module
+# as a post step. agent_loop.py is untouched. The in-process guards in
+# scripts/_staging_ship.py are a 1차 fast-fail only; authority is GitHub branch
+# protection + a permission-separated token (see docs/operations/staging-self-ship.md).
+# Mutually exclusive with `make ship-arm` (fail-closed on .claude/.ship-armed).
+시작-ship:
+	@if [ -f .claude/.ship-armed ]; then \
+	  echo "ERROR: make ship-arm is armed; 시작-ship and ship-arm are mutually exclusive (ADR 0088)"; \
+	  exit 1; \
+	fi
+	$(MAKE) 시작
+	$(PYTHON) scripts/_staging_ship.py \
+	  --repo-root "." \
+	  --state-dir "$(ACTIVE_AUTO_LOOP_STATE)" \
+	  $(if $(SHIP_SOURCE),--source "$(SHIP_SOURCE)",) \
+	  $(if $(SHIP_DAY),--day "$(SHIP_DAY)",)
 
 agent-loop-human-gated-exec:
 	@if [ -z "$(HUMAN_GATED_ACTION)" ]; then \
