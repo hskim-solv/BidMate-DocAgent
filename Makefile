@@ -40,7 +40,7 @@
 
 # Auto-ship pipeline (Stop hook driven). See scripts/claude-hooks/stop-ship.sh
 # and the plan at /Users/hskim/.claude/plans/prci-synchronous-newell.md.
-.PHONY: ship-start ship-arm ship-run codex-ship ship-disarm ship-status ship-review-gate worktree-cleanup-dry-run worktree-cleanup
+.PHONY: ship-start ship-arm ship-run codex-ship codex-reap ship-disarm ship-status ship-review-gate worktree-cleanup-dry-run worktree-cleanup
 
 # Self-review (quarterly meta-feedback loop). Combines 4-axis portfolio
 # rubric + 5-axis Claude collaboration rubric. See SKILL at
@@ -1507,6 +1507,13 @@ ship-run:
 	  --use-existing-arm "$(USE_EXISTING_ARM)"
 
 codex-ship: ship-run
+
+# Selectively reap orphaned/stale codex adversarial-review brokers (issue #1699).
+# Only touches the `cxc-*` broker run-dirs under the OS temp dir whose pid is dead
+# or orphaned (ppid==1); live, parented sessions and the desktop Codex.app are
+# left untouched. Operator/manual cleanup of the current backlog.
+codex-reap:
+	@$(PYTHON) scripts/run_codex_adversarial_precommit.py --reap-only
 
 ship-disarm:
 	@rm -f .claude/.ship-armed .claude/.ship-running.pid
