@@ -81,6 +81,7 @@ PR이 생기면 각 task에 링크를 추가한다. 예제 task는 `tasks/exampl
 | 68 | `T-2026-0068` | `backlog` | Planner -> Architect -> Benchmark Auditor -> Privacy Auditor -> Deep Reviewer -> Reviewer | Knowledge/Graph RAG feasibility for relation-structured RFP evidence. |
 | 69 | `T-2026-0069` | `backlog` | Planner -> Reviewer | Interview and resume evidence pack mapping repo artifacts to target roles. |
 | 70 | `T-2026-0070` | `backlog` | Implementer -> Privacy Auditor -> Reviewer | Portfolio review board refresh after the new positioning artifacts settle. |
+| 71 | `T-2026-0071` | `ready` | Implementer -> Reviewer | issue #1703; staging self-ship P2.0 D-minus landed (#1698/#1700/#1702, ADR 0088/0090/0091). Remaining: operator branch-protection (blocked-on-user), P2.2 autonomous merge orchestration, + 3 follow-ups (AR1 `_ship_env` dedup, codex 8->2-3 cascade ADR 0066, codex pre-commit re-enable). Deep context: issue #1703 + `docs/operations/staging-self-ship.md`. |
 
 ## Examples
 
