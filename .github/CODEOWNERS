@@ -1,0 +1,18 @@
+# Constitutional ship-lane files — changes require code-owner review (ADR 0088/0090/0091).
+#
+# GitHub blocks a PR author from approving their own PR, so requiring a
+# code-owner review on these paths means the autonomous staging-self-ship loop
+# (the PR author) physically cannot self-produce the approval signal. This is
+# the trusted-signal replacement for the author-writable `[constitutional-change-ack]`
+# PR-body marker (superseded — ADR 0091).
+#
+# This list MUST stay in sync with PROTECTED_PATHS in
+# scripts/check_constitutional_review.py (tests/test_constitutional_review.py
+# asserts parity so the two cannot drift).
+/scripts/_staging_ship.py        @hskim-solv
+/scripts/_ship_env.py            @hskim-solv
+/scripts/_ship_payload_guard.py  @hskim-solv
+/scripts/_governance.py          @hskim-solv
+/.github/workflows/staging-self-ship-guard.yml @hskim-solv
+/.github/CODEOWNERS              @hskim-solv
+/.githooks/pre-commit           @hskim-solv
