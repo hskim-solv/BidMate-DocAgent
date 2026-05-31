@@ -30,6 +30,11 @@ import subprocess
 from pathlib import Path
 from typing import Callable, Sequence
 
+try:
+    from scripts._ship_env import strip_ship_secret_env
+except ImportError:  # bare sibling import (run from scripts/ dir)
+    from _ship_env import strip_ship_secret_env
+
 # Read-only lane: plan mode already blocks mutation; the denylist is belt-and-suspenders.
 DEFAULT_ALLOWED_TOOLS = (
     "Read",
@@ -95,7 +100,10 @@ def build_command(
 def _default_runner(
     cmd: list[str], *, timeout: float | None = None
 ) -> "subprocess.CompletedProcess[str]":
-    env = dict(os.environ)
+    # ADR 0090 env-isolation: strip ship-lane secrets (BIDMATE_SHIP_*) from the read-only
+    # review child via the shared single-source helper (PATH/HOME/auth preserved); then drop
+    # ANTHROPIC_API_KEY so the lane stays on the subscription-OAuth path (ADR 0082).
+    env = strip_ship_secret_env(dict(os.environ))
     env.pop("ANTHROPIC_API_KEY", None)
     return subprocess.run(
         cmd, capture_output=True, text=True, check=False, env=env, timeout=timeout

@@ -22,6 +22,11 @@ import subprocess
 from pathlib import Path
 from typing import Callable
 
+try:
+    from scripts._ship_env import strip_ship_secret_env
+except ImportError:  # bare sibling import (run from scripts/ dir)
+    from _ship_env import strip_ship_secret_env
+
 HOME = Path(os.path.expanduser("~"))
 COMPANION_GLOB = ".claude/plugins/cache/openai-codex/codex/*/scripts/codex-companion.mjs"
 
@@ -66,7 +71,15 @@ def _default_runner(
         cmd += ["--model", model]
     if focus:
         cmd.append(focus)
-    return subprocess.run(cmd, capture_output=True, text=True, check=False)
+    # ADR 0090 env-isolation: the read-only review child must never inherit ship-lane
+    # secrets (BIDMATE_SHIP_*). Shared single-source strip; PATH/HOME/auth preserved.
+    return subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        check=False,
+        env=strip_ship_secret_env(dict(os.environ)),
+    )
 
 
 def run_turn(
