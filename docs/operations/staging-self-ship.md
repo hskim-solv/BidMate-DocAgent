@@ -58,6 +58,35 @@ All `BIDMATE_SHIP_*` env vars are **stripped from all runner subprocess lanes**
 via deny-by-prefix, single-source in `scripts/_ship_env.py`. Runner children cannot
 read or spoof ship secrets (ADR 0090).
 
+## Constitutional-change enforcement = CODEOWNERS review (ADR 0091)
+
+Changes to the constitutional ship-lane files are gated by a **CODEOWNERS code-owner
+review**, NOT by a PR-body marker. The old author-writable `[constitutional-change-ack]`
+marker was self-satisfiable by the autonomous loop (the PR author can write its own
+PR body), so it was never a real external gate — the same ouroboros class as the
+env-trust flags ADR 0090 removed. ADR 0091 supersedes that marker mechanism.
+
+The trusted signal is now: a CODEOWNERS code owner who is **not** the PR author must
+submit an **APPROVED** review. GitHub blocks a PR author from approving their own PR,
+so the autonomous loop (= the PR author) physically cannot produce this signal.
+
+- `.github/CODEOWNERS` maps the protected paths to the owner.
+- `scripts/check_constitutional_review.py` is the required-check logic: it fetches the
+  PR's changed files / author / approved reviewers via `gh api` and fails (exit 1)
+  unless a non-author code owner has approved. Its `PROTECTED_PATHS` set is kept in
+  sync with `.github/CODEOWNERS` by a parity test (`tests/test_constitutional_review.py`).
+- Protected set (expanded in ADR 0091): `scripts/_staging_ship.py`,
+  `scripts/_ship_env.py`, `scripts/_ship_payload_guard.py`, `scripts/_governance.py`,
+  `.github/workflows/staging-self-ship-guard.yml`, `.github/CODEOWNERS` itself, and
+  `.githooks/pre-commit`. (`scripts/agent_loop.py` is deliberately excluded — too
+  frequently edited.)
+
+**Operator blocked-on-user step:** enable branch protection **"Require review from
+Code Owners"** on the relevant branch(es) (`main` and `autopilot/integration`, plus
+any P2.2 integration branch). Without it, GitHub will not enforce the code-owner
+review and the gate's first line of authority is missing. This is a GitHub admin
+action the agent cannot perform.
+
 ## Prerequisites — operator GitHub-admin actions (blocked-on-user)
 
 > These steps require GitHub admin rights. They are NOT performed by the agent
@@ -129,9 +158,10 @@ external authority is real. They cannot be mocked — they exercise actual GitHu
 server state.
 
 1. **Guard-file change is blocked.** Open a PR into `autopilot/integration` that
-   edits `scripts/_staging_ship.py` *without* the `[constitutional-change-ack]`
-   marker in the body. Expected: the `staging-self-ship-guard` required check
-   **fails** and the merge is blocked.
+   edits `scripts/_staging_ship.py` *without* an APPROVED review from a CODEOWNERS
+   code owner who is not the PR author. Expected: the `staging-self-ship-guard`
+   required check **fails** and the merge is blocked (see "Constitutional-change
+   enforcement" below — ADR 0091).
 2. **Merge token cannot disable protection.** (P2.2, after token provisioning)
    ```bash
    GH_TOKEN=$BIDMATE_SHIP_MERGE_TOKEN gh api -X PATCH \
