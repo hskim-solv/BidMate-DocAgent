@@ -35,6 +35,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from scripts import render_codex_review
 from scripts._governance import is_load_bearing
+from scripts._ship_env import strip_ship_secret_env
 from scripts.agent_loop_codex_turn import resolve_companion
 
 DEFAULT_ATTEMPTS = 8
@@ -137,21 +138,23 @@ _DROP_ENV_EXACT = frozenset({"CODEX_COMPANION_APP_SERVER_ENDPOINT"})
 # while a commit is created. They must NOT reach the Codex review subprocess: the
 # adversarial reviewer is a third-party model server and the diff/focus prompt is
 # user-controlled, so an inherited BIDMATE_SHIP_MERGE_TOKEN would be exfiltratable.
-# The canonical helper scripts/_ship_env.strip_ship_secret_env lands on main via
-# the D-minus PR (#1698); dedupe to a single import once both are on main (follow-up).
-_SHIP_SECRET_ENV_PREFIX = "BIDMATE_SHIP_"
+# The BIDMATE_SHIP_* deny-list is owned by scripts/_ship_env.strip_ship_secret_env
+# (single source of truth, ADR 0090 env-isolation); sanitized_env delegates to it
+# below so the prefix can never drift between this call site and the ship runner.
 
 
 def sanitized_env(base: dict[str, str] | None = None) -> dict[str, str]:
     """Return os.environ minus git-hook vars, the broker endpoint, and ship secrets."""
     source = os.environ if base is None else base
-    return {
+    # GIT_* (index-corruption guard, issue #1691) and the broker endpoint are the
+    # Codex-specific drops handled here; BIDMATE_SHIP_* removal is delegated to the
+    # shared helper so the ship-secret deny-list stays a single source of truth.
+    git_filtered = {
         k: v
         for k, v in source.items()
-        if not k.startswith(_GIT_ENV_PREFIX)
-        and not k.startswith(_SHIP_SECRET_ENV_PREFIX)
-        and k not in _DROP_ENV_EXACT
+        if not k.startswith(_GIT_ENV_PREFIX) and k not in _DROP_ENV_EXACT
     }
+    return strip_ship_secret_env(git_filtered)
 
 
 def _killpg(pid: int, sig: int) -> None:
