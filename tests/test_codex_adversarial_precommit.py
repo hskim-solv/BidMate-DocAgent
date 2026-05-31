@@ -65,6 +65,34 @@ def test_load_bearing_hits_reuses_governance_paths():
     ]
 
 
+def test_staged_files_includes_deletions(monkeypatch):
+    # A commit that DELETES a load-bearing contract (e.g. an ADR or rag_core.py)
+    # must still reach the load-bearing gate, so the discovery filter is ACMRD
+    # (includes D), not ACMR. Mocked git runner keeps it deterministic — no real
+    # load-bearing file required (AR2).
+    captured: dict[str, object] = {}
+
+    def fake_run_git(args):
+        captured["args"] = list(args)
+        return subprocess.CompletedProcess(
+            args=args,
+            returncode=0,
+            stdout="docs/adr/0001-preserve-naive-baseline.md\nrag_core.py\n",
+            stderr="",
+        )
+
+    monkeypatch.setattr(precommit, "_run_git", fake_run_git)
+
+    files = precommit.staged_files()
+
+    # The filter must request deletions.
+    assert "--diff-filter=ACMRD" in captured["args"]
+    # The (mock) deleted load-bearing path is surfaced and the load-bearing
+    # filter recognises it → the gate would be invoked.
+    assert "docs/adr/0001-preserve-naive-baseline.md" in files
+    assert "docs/adr/0001-preserve-naive-baseline.md" in precommit.load_bearing_hits(files)
+
+
 def test_default_out_dir_uses_actual_git_dir(monkeypatch):
     def fake_run_git(args):
         assert args == ["rev-parse", "--git-dir"]
@@ -523,20 +551,56 @@ def test_sanitized_env_strips_git_and_broker():
     assert "CODEX_COMPANION_APP_SERVER_ENDPOINT" not in out
 
 
+def test_sanitized_env_strips_ship_secrets_from_os_environ(monkeypatch):
+    # The auto-ship Stop-hook can export BIDMATE_SHIP_* (merge tokens etc.) while
+    # a commit is created. sanitized_env() — which feeds the third-party Codex
+    # review subprocess — must drop every BIDMATE_SHIP_* key while preserving the
+    # benign env (PATH/HOME) and keeping the existing GIT_*/endpoint drops (AR1).
+    monkeypatch.setenv("BIDMATE_SHIP_MERGE_TOKEN", "tok-secret")
+    monkeypatch.setenv("BIDMATE_SHIP_AUTO_PR", "1")
+    monkeypatch.setenv("GIT_DIR", "/x/.git")
+    monkeypatch.setenv("CODEX_COMPANION_APP_SERVER_ENDPOINT", "unix:/tmp/sock")
+    monkeypatch.setenv("PATH", "/usr/bin")
+    monkeypatch.setenv("HOME", "/home/u")
+
+    out = precommit.sanitized_env()  # reads os.environ
+
+    assert not any(k.startswith("BIDMATE_SHIP_") for k in out)
+    assert "BIDMATE_SHIP_MERGE_TOKEN" not in out
+    # Benign env survives and the existing GIT_*/endpoint drops still hold.
+    assert out["PATH"] == "/usr/bin"
+    assert out["HOME"] == "/home/u"
+    assert not any(k.startswith("GIT_") for k in out)
+    assert "CODEX_COMPANION_APP_SERVER_ENDPOINT" not in out
+
+
 def test_default_runner_passes_sanitized_env(monkeypatch):
+    # _default_runner now uses Popen(start_new_session=True) so it can reap the
+    # companion's detached broker/app-server process group (issue #1699). The
+    # sanitized-env contract is unchanged: no inherited GIT_* vars reach Codex.
     captured: dict[str, object] = {}
 
-    def fake_run(cmd, **kwargs):
+    class _FakeProc:
+        pid = 4321
+        returncode = 0
+
+        def communicate(self, timeout=None):
+            return ("{}", "")
+
+    def fake_popen(cmd, **kwargs):
         captured["env"] = kwargs.get("env")
-        return subprocess.CompletedProcess(cmd, 0, stdout="{}", stderr="")
+        captured["start_new_session"] = kwargs.get("start_new_session")
+        return _FakeProc()
 
     monkeypatch.setenv("GIT_DIR", "/x/.git")
     monkeypatch.setenv("GIT_INDEX_FILE", "/x/.git/index")
-    monkeypatch.setattr(precommit.subprocess, "run", fake_run)
+    monkeypatch.setattr(precommit.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(precommit, "_killpg", lambda *a, **k: None)
     precommit._default_runner(["node", "companion"], 10)
     env = captured["env"]
     assert isinstance(env, dict)
     assert not any(k.startswith("GIT_") for k in env)
+    assert captured["start_new_session"] is True
 
 
 def test_run_precommit_review_rejects_min_frequency_above_attempts(tmp_path: Path):

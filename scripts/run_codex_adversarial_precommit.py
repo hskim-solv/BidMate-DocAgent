@@ -16,10 +16,14 @@ block — this structurally prevents the recommit storm.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
+import signal
 import subprocess
 import sys
+import tempfile
+import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -52,7 +56,12 @@ def _run_git(args: Sequence[str]) -> subprocess.CompletedProcess[str]:
 
 
 def staged_files() -> list[str]:
-    proc = _run_git(["diff", "--cached", "--name-only", "--diff-filter=ACMR"])
+    # Include deletions (D) alongside add/copy/modify/rename: deleting a
+    # load-bearing contract (rag_core.py, an ADR, the answer schema) is at least
+    # as risky as modifying it, so the deleted path must still reach the
+    # load-bearing check or the adversarial gate is silently skipped on the
+    # commit that drops it (codex adversarial review of #1698 — AR2).
+    proc = _run_git(["diff", "--cached", "--name-only", "--diff-filter=ACMRD"])
     if proc.returncode != 0:
         raise RuntimeError((proc.stderr or proc.stdout or "git diff --cached failed").strip())
     return [line.strip() for line in proc.stdout.splitlines() if line.strip()]
@@ -124,26 +133,290 @@ def build_focus(*, hits: Sequence[str], changed_files: Sequence[str], attempt: i
 _GIT_ENV_PREFIX = "GIT_"
 _DROP_ENV_EXACT = frozenset({"CODEX_COMPANION_APP_SERVER_ENDPOINT"})
 
+# Ship-pipeline secrets (merge tokens etc.) that the auto-ship Stop-hook exports
+# while a commit is created. They must NOT reach the Codex review subprocess: the
+# adversarial reviewer is a third-party model server and the diff/focus prompt is
+# user-controlled, so an inherited BIDMATE_SHIP_MERGE_TOKEN would be exfiltratable.
+# The canonical helper scripts/_ship_env.strip_ship_secret_env lands on main via
+# the D-minus PR (#1698); dedupe to a single import once both are on main (follow-up).
+_SHIP_SECRET_ENV_PREFIX = "BIDMATE_SHIP_"
+
 
 def sanitized_env(base: dict[str, str] | None = None) -> dict[str, str]:
-    """Return os.environ minus inherited git-hook vars and the broker endpoint."""
+    """Return os.environ minus git-hook vars, the broker endpoint, and ship secrets."""
     source = os.environ if base is None else base
     return {
         k: v
         for k, v in source.items()
-        if not k.startswith(_GIT_ENV_PREFIX) and k not in _DROP_ENV_EXACT
+        if not k.startswith(_GIT_ENV_PREFIX)
+        and not k.startswith(_SHIP_SECRET_ENV_PREFIX)
+        and k not in _DROP_ENV_EXACT
     }
 
 
+def _killpg(pid: int, sig: int) -> None:
+    """Best-effort kill of the whole process group led by ``pid``.
+
+    The companion spawns its broker / app-server children with `detached:true` +
+    `unref()` (no file lock), so reaping only the `node codex-companion.mjs`
+    process leaves the broker + `codex app-server` descendants alive. Spawning
+    the companion in its OWN session (`start_new_session=True`) lets us signal
+    the entire group here so no descendant survives. Robust against the group
+    already being gone. (issue #1699 / ADR 0066.)
+    """
+    try:
+        os.killpg(os.getpgid(pid), sig)
+    except (ProcessLookupError, PermissionError, OSError):
+        # Group already reaped, never created, or not signallable — nothing to do.
+        pass
+
+
 def _default_runner(cmd: Sequence[str], timeout_sec: int) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        cmd,
-        capture_output=True,
+    """Run the companion in its own session and reap the whole process group.
+
+    Equivalent to ``subprocess.run(..., timeout=timeout_sec, env=sanitized_env())``
+    for the happy path, but built on ``Popen(start_new_session=True)`` so that on
+    timeout — or normal completion — we can ``killpg`` the companion's detached
+    broker/app-server descendants instead of orphaning them (issue #1699).
+    Returns a ``subprocess.CompletedProcess`` with ``.returncode/.stdout/.stderr``;
+    raises ``subprocess.TimeoutExpired`` on timeout, preserving the existing
+    contract that ``_run_pass`` already handles.
+    """
+    proc = subprocess.Popen(  # noqa: S603 - cmd is built internally, not user input
+        list(cmd),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         text=True,
-        check=False,
-        timeout=timeout_sec,
         env=sanitized_env(),
+        start_new_session=True,
     )
+    try:
+        stdout, stderr = proc.communicate(timeout=timeout_sec)
+    except subprocess.TimeoutExpired:
+        # Kill the whole group, drain the pipes, then re-raise with partial output
+        # so _run_pass can record the timeout (rc=124) as today.
+        _killpg(proc.pid, signal.SIGTERM)
+        try:
+            stdout, stderr = proc.communicate(timeout=2)
+        except subprocess.TimeoutExpired:
+            _killpg(proc.pid, signal.SIGKILL)
+            stdout, stderr = proc.communicate()
+        raise subprocess.TimeoutExpired(
+            cmd=list(cmd), timeout=timeout_sec, output=stdout, stderr=stderr
+        )
+    finally:
+        # Normal completion still ensures no detached child of the companion
+        # survives: SIGTERM the (now likely empty) group, best-effort.
+        _killpg(proc.pid, signal.SIGTERM)
+    return subprocess.CompletedProcess(
+        args=list(cmd), returncode=proc.returncode, stdout=stdout, stderr=stderr
+    )
+
+
+# --- selective orphan-broker reaper (issue #1699) ---------------------------
+# The codex companion's broker writes its run-dir under the OS temp dir using
+# the `cxc-` prefix (see openai-codex broker-lifecycle.mjs createBrokerSessionDir
+# / broker-endpoint.mjs): `<tmpdir>/cxc-*/broker.{pid,sock,log}`. Brokers do NOT
+# all live under one tmp root: a hook run with `TMPDIR=/tmp/claude-501` drops its
+# brokers there, while the desktop Codex.app / a no-TMPDIR shell uses the macOS
+# per-user default (`/var/folders/.../T`). Scoping to a single
+# `tempfile.gettempdir()` therefore MISSES brokers in the other root (live
+# observation: orphans accumulated under /var/folders while the reaper only
+# scanned /tmp/claude-501). So we scan a deduped SET of candidate roots. The
+# safety boundary is NOT the tmp root — it is the per-broker liveness check:
+# we only ever touch a LIVE broker when it is orphaned (ppid == 1, its companion
+# parent is gone), never a parented one (codex review of #1698 — AR3).
+_BROKER_DIR_PREFIX = "cxc-"
+_BROKER_PID_FILE = "broker.pid"
+# macOS confstr name for the per-user temp dir (`/var/folders/.../T`). Python's
+# tempfile uses this when TMPDIR is unset; we resolve it explicitly so we still
+# cover that root even when a hook run has overridden TMPDIR. Numeric fallback
+# (_CS_DARWIN_USER_TEMP_DIR == 65537) for builds whose os.confstr_names omits it.
+_DARWIN_USER_TEMP_CONFSTR_NAME = "CS_DARWIN_USER_TEMP_DIR"
+_DARWIN_USER_TEMP_CONFSTR_INT = 65537
+
+
+def _macos_default_temp_dir() -> str | None:
+    """Return the macOS per-user temp dir (`/var/folders/.../T`), or None.
+
+    Best-effort: not macOS, no confstr, or any lookup failure → None.
+    """
+    confstr = getattr(os, "confstr", None)
+    if confstr is None:
+        return None
+    for key in (_DARWIN_USER_TEMP_CONFSTR_NAME, _DARWIN_USER_TEMP_CONFSTR_INT):
+        try:
+            value = confstr(key)  # type: ignore[arg-type]
+        except (ValueError, OSError):
+            continue
+        if value:
+            return value
+    return None
+
+
+def _broker_base_dirs(
+    base_dir: str | os.PathLike[str] | None = None,
+    base_dirs: Sequence[str | os.PathLike[str]] | None = None,
+) -> list[Path]:
+    """Resolve the deduped set of dirs that may contain `cxc-*` broker run-dirs.
+
+    Resolution order (first non-None wins):
+
+    - ``base_dirs`` (explicit injection for tests / multi-root callers).
+    - ``base_dir`` (single dir — preserves the prior single-root call shape).
+    - default production set: ``tempfile.gettempdir()`` + ``$TMPDIR`` + the macOS
+      per-user default (`/var/folders/.../T`), deduped (order-preserving).
+    """
+    if base_dirs is not None:
+        raw: list[str | os.PathLike[str] | None] = list(base_dirs)
+    elif base_dir is not None:
+        raw = [base_dir]
+    else:
+        raw = [
+            tempfile.gettempdir(),
+            (os.environ.get("TMPDIR") or "").rstrip("/") or None,
+            _macos_default_temp_dir(),
+        ]
+    seen: set[str] = set()
+    resolved: list[Path] = []
+    for entry in raw:
+        if not entry:
+            continue
+        path = Path(entry)
+        key = str(path)
+        if key in seen:
+            continue
+        seen.add(key)
+        resolved.append(path)
+    return resolved
+
+
+def _pid_alive(pid: int) -> bool:
+    """Return True if ``pid`` names a live process (seam for deterministic tests)."""
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        # Exists but owned by another user — treat as alive (never our orphan).
+        return True
+    except OSError:
+        return False
+    return True
+
+
+def _pid_ppid(pid: int) -> int | None:
+    """Return the parent pid of ``pid`` (seam for deterministic tests).
+
+    Uses `ps -o ppid= -p <pid>`; returns None when it cannot be determined so
+    the caller can fail safe (leave the broker alone).
+    """
+    try:
+        proc = subprocess.run(
+            ["ps", "-o", "ppid=", "-p", str(pid)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return None
+    out = (proc.stdout or "").strip()
+    if not out:
+        return None
+    try:
+        return int(out.split()[0])
+    except (ValueError, IndexError):
+        return None
+
+
+def _read_broker_pid(pid_file: Path) -> int | None:
+    try:
+        raw = pid_file.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    if not raw:
+        return None
+    try:
+        return int(raw.split()[0])
+    except (ValueError, IndexError):
+        return None
+
+
+def _remove_broker_dir(broker_dir: Path) -> None:
+    """Best-effort recursive removal of a single broker run-dir."""
+    try:
+        for child in broker_dir.iterdir():
+            try:
+                child.unlink()
+            except OSError:
+                pass
+        broker_dir.rmdir()
+    except OSError:
+        pass
+
+
+def _reap_in_base(base: Path, counts: dict[str, int]) -> None:
+    """Scan one base dir for `cxc-*` brokers, mutating ``counts`` in place.
+
+    The liveness/safety logic is identical regardless of which tmp root the
+    broker lives under (see :func:`reap_orphaned_brokers`). Best-effort: an
+    unscannable base is skipped, never raised.
+    """
+    try:
+        candidates = sorted(base.glob(f"{_BROKER_DIR_PREFIX}*"))
+    except OSError:
+        return
+    for broker_dir in candidates:
+        if not broker_dir.is_dir():
+            continue
+        pid_file = broker_dir / _BROKER_PID_FILE
+        if not pid_file.exists():
+            # No pid file at all (e.g. half-torn-down dir) → stale, remove.
+            _remove_broker_dir(broker_dir)
+            counts["stale"] += 1
+            continue
+        pid = _read_broker_pid(pid_file)
+        if pid is None or not _pid_alive(pid):
+            _remove_broker_dir(broker_dir)
+            counts["stale"] += 1
+            continue
+        # Live pid: only reap when it is an orphan (parent gone → ppid==1).
+        ppid = _pid_ppid(pid)
+        if ppid == 1:
+            _killpg(pid, signal.SIGTERM)
+            _remove_broker_dir(broker_dir)
+            counts["orphaned"] += 1
+        else:
+            # Parented (live companion) or ppid unknown → safe: leave it alone.
+            counts["kept"] += 1
+
+
+def reap_orphaned_brokers(
+    base_dir: str | os.PathLike[str] | None = None,
+    base_dirs: Sequence[str | os.PathLike[str]] | None = None,
+) -> dict[str, int]:
+    """Selectively reap stale/orphaned codex broker run-dirs across tmp roots.
+
+    Scans ``<base>/cxc-*/broker.pid`` for every ``base`` in the resolved candidate
+    set (see :func:`_broker_base_dirs`: explicit ``base_dirs``, single ``base_dir``,
+    or the default ``tempfile.gettempdir()`` + ``$TMPDIR`` + macOS ``/var/folders``
+    set). For each broker run-dir:
+
+    - pid is dead (or pid file malformed/empty) → remove the stale dir.
+    - pid is alive AND its ppid == 1 (orphaned, the companion parent is gone) →
+      SIGTERM the broker, then remove the dir.
+    - pid is alive AND still parented → LEAVE it untouched (a live session, e.g.
+      the active shared-session broker under /var/folders).
+
+    Returns counts ``{"stale": ..., "orphaned": ..., "kept": ...}`` summed across
+    all scanned roots. NEVER does a broad `pkill 'codex app-server'` — that would
+    kill the desktop Codex.app and other worktrees' live sessions. Best-effort:
+    never raises.
+    """
+    counts = {"stale": 0, "orphaned": 0, "kept": 0}
+    for base in _broker_base_dirs(base_dir, base_dirs):
+        _reap_in_base(base, counts)
+    return counts
 
 
 def _parse_payload(stdout: str) -> dict[str, object] | None:
@@ -420,6 +693,78 @@ def _run_pass(
     )
 
 
+# --- diff-fingerprint cache (issue #1699) -----------------------------------
+# A re-commit of the IDENTICAL staged diff (same sha256 of `git diff --cached
+# --binary`) should reuse the prior verdict and spawn ZERO codex passes — the
+# single biggest source of broker accumulation is re-running 8 passes on an
+# unchanged diff. Any change to the staged diff yields a fresh digest = fresh
+# review. A corrupt/unreadable cache entry is treated as a miss (fail-open to a
+# real review, never crash).
+_CACHE_SUBDIR = "cache"
+_CACHE_SCHEMA_VERSION = 1
+
+
+def _staged_diff_digest() -> str | None:
+    """sha256 hex of the staged diff (`git diff --cached --binary`), or None."""
+    try:
+        proc = subprocess.run(
+            ["git", "diff", "--cached", "--binary"],
+            capture_output=True,
+            check=False,
+        )
+    except OSError:
+        return None
+    if proc.returncode != 0:
+        return None
+    return hashlib.sha256(proc.stdout or b"").hexdigest()
+
+
+def _cache_path(out_dir: Path, digest: str) -> Path:
+    return out_dir / _CACHE_SUBDIR / f"{digest}.json"
+
+
+def _load_cached_result(out_dir: Path, digest: str | None) -> int | None:
+    """Return the cached rc for ``digest`` if present and valid, else None (miss)."""
+    if not digest:
+        return None
+    path = _cache_path(out_dir, digest)
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    rc = payload.get("rc")
+    if not isinstance(rc, int) or isinstance(rc, bool):
+        return None
+    return rc
+
+
+def _write_cached_result(out_dir: Path, digest: str | None, *, rc: int, union: dict) -> None:
+    """Persist the review verdict under the staged-diff digest (best-effort)."""
+    if not digest:
+        return
+    path = _cache_path(out_dir, digest)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(
+                {
+                    "schema_version": _CACHE_SCHEMA_VERSION,
+                    "digest": digest,
+                    "timestamp": time.time(),
+                    "rc": rc,
+                    "result": union,
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+    except OSError:
+        pass
+
+
 def run_precommit_review(
     *,
     attempts: int,
@@ -437,6 +782,11 @@ def run_precommit_review(
 
     Returns 0 (commit allowed) unless a critical/high finding reproduced across
     at least `min_frequency` distinct passes. All-error passes return 1.
+
+    Two resource-hygiene layers wrap the gate (contract unchanged, issue #1699):
+    a staged-diff fingerprint cache that short-circuits an identical re-commit to
+    0 codex passes, and an auto-reap of orphaned brokers in a `finally` so each
+    review cleans up its own leftovers.
     """
     if attempts < 1:
         raise ValueError("--attempts must be >= 1")
@@ -449,6 +799,55 @@ def run_precommit_review(
         )
     if timeout_sec < 1:
         raise ValueError("--timeout-sec must be >= 1")
+
+    digest = _staged_diff_digest()
+    try:
+        cached_rc = _load_cached_result(out_dir, digest)
+        if cached_rc is not None:
+            short = (digest or "")[:8]
+            print(
+                f"[codex-adversarial] diff-cache hit ({short}) — reusing prior "
+                f"verdict, 0 codex passes",
+                file=sys.stderr,
+            )
+            return cached_rc
+        return _run_precommit_passes(
+            attempts=attempts,
+            base=base,
+            scope=scope,
+            companion=companion,
+            changed_files=changed_files,
+            hits=hits,
+            out_dir=out_dir,
+            timeout_sec=timeout_sec,
+            min_frequency=min_frequency,
+            runner=runner,
+            digest=digest,
+        )
+    finally:
+        # Each review cleans up its own leftover orphan brokers. Best-effort —
+        # never let cleanup escape the gate (issue #1699).
+        try:
+            reap_orphaned_brokers()
+        except Exception:  # pragma: no cover - defensive: reaper is best-effort
+            pass
+
+
+def _run_precommit_passes(
+    *,
+    attempts: int,
+    base: str,
+    scope: str,
+    companion: Path,
+    changed_files: Sequence[str],
+    hits: Sequence[str],
+    out_dir: Path,
+    timeout_sec: int,
+    min_frequency: int,
+    runner: Runner,
+    digest: str | None,
+) -> int:
+    """Cache-miss path: run the N passes, gate, persist the verdict to the cache."""
     changed_set = set(changed_files)
 
     with ThreadPoolExecutor(max_workers=attempts) as executor:
@@ -486,6 +885,8 @@ def run_precommit_review(
             f"problem, not a code finding). See {out_dir}.",
             file=sys.stderr,
         )
+        # Do NOT cache a fail-closed (companion-outage) verdict: it is an
+        # environment problem, not a property of the diff. Retry on next commit.
         return 1
 
     collected: list[tuple[int, dict[str, object]]] = []
@@ -496,6 +897,12 @@ def run_precommit_review(
     clusters = cluster_findings(collected)
     blocking = [c for c in clusters if is_blocking(c, min_frequency=min_frequency)]
 
+    union = {
+        "attempts": attempts,
+        "error_passes": error_passes,
+        "min_frequency": min_frequency,
+        "clusters": [_cluster_to_dict(c, attempts=attempts) for c in clusters],
+    }
     union_md = render_union_markdown(
         clusters=clusters,
         attempts=attempts,
@@ -505,16 +912,7 @@ def run_precommit_review(
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "union.md").write_text(union_md, encoding="utf-8")
     (out_dir / "union.json").write_text(
-        json.dumps(
-            {
-                "attempts": attempts,
-                "error_passes": error_passes,
-                "min_frequency": min_frequency,
-                "clusters": [_cluster_to_dict(c, attempts=attempts) for c in clusters],
-            },
-            ensure_ascii=False,
-            indent=2,
-        ),
+        json.dumps(union, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
 
@@ -526,6 +924,7 @@ def run_precommit_review(
             f"See {out_dir / 'union.md'}.",
             file=sys.stderr,
         )
+        _write_cached_result(out_dir, digest, rc=1, union=union)
         return 1
     print(
         f"Codex adversarial pre-commit review passed "
@@ -533,6 +932,7 @@ def run_precommit_review(
         f"See {out_dir / 'union.md'}.",
         file=sys.stderr,
     )
+    _write_cached_result(out_dir, digest, rc=0, union=union)
     return 0
 
 
@@ -550,7 +950,21 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--scope", default="branch")
     parser.add_argument("--companion", default=None)
     parser.add_argument("--out-dir", type=Path, default=None)
+    parser.add_argument(
+        "--reap-only",
+        action="store_true",
+        help="Only reap orphaned/stale codex brokers and print the counts, then exit.",
+    )
     args = parser.parse_args(argv)
+
+    if args.reap_only:
+        counts = reap_orphaned_brokers()
+        print(
+            f"[codex-adversarial] reaped brokers: stale={counts['stale']} "
+            f"orphaned={counts['orphaned']} kept={counts['kept']}",
+            file=sys.stderr,
+        )
+        return 0
 
     try:
         files = staged_files()

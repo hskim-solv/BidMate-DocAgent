@@ -402,8 +402,15 @@ fi
 # Guard: local Codex adversarial review for load-bearing staged changes
 # (ADR 0066). This intentionally runs after the ADR 0005 path boundary above
 # so private eval files cannot be passed into the Codex review prompt.
+#
+# Uses its OWN ACMRD discovery (not the ACMR $staged above): deleting a
+# load-bearing contract is as risky as modifying it, so the deletion must reach
+# --any-match or the gate is silently skipped on that commit. The ADR 0005 path
+# scan above deliberately stays ACMR — removing a private file from the index is
+# a legitimate deletion, not a boundary violation (codex review of #1698 — AR2).
+staged_for_codex=$(git diff --cached --name-only --diff-filter=ACMRD 2>/dev/null || true)
 if [[ -z "${BIDMATE_SKIP_CODEX_ADVERSARIAL_PRECOMMIT:-}" ]]; then
-  if hit=$(printf '%s\n' "$staged" | python3 scripts/_governance.py --any-match 2>/dev/null); then
+  if hit=$(printf '%s\n' "$staged_for_codex" | python3 scripts/_governance.py --any-match 2>/dev/null); then
     echo "Running Codex adversarial pre-commit review for load-bearing change: $hit" >&2
     if ! python3 scripts/run_codex_adversarial_precommit.py; then
       exit 1
