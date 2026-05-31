@@ -475,6 +475,10 @@ ACTIVE_CODEX_RUNNER_STATE ?= reports/agent_loop/active/codex_runner_state.json
 ACTIVE_CODEX_RUNS_DIR ?= reports/agent_loop/active/codex_runs
 ACTIVE_AUTO_LOOP_OUT ?= reports/agent_loop/active/auto_loop.md
 ACTIVE_AUTO_LOOP_STATE ?= reports/agent_loop/active/auto_loop_state.json
+# Parent DIRECTORY of ACTIVE_AUTO_LOOP_STATE — used by 시작-ship for the ship
+# manifest dir / state-dir / kill-switch path (those expect a directory, not the
+# loop's state FILE above).
+ACTIVE_SHIP_STATE_DIR ?= reports/agent_loop/active
 ACTIVE_AUTO_LOOP_MAX_ITERATIONS ?= 5
 ACTIVE_AUTO_LOOP_AUTO_MAX_ITERATIONS ?= 5
 ACTIVE_AUTO_LOOP_TARGET_COMPLETED_COUNT ?=
@@ -1095,21 +1099,40 @@ agent-loop-active-auto-loop:
 	  ACTIVE_AUTO_LOOP_EXECUTE_SHIP=0 \
 	  ACTIVE_AUTO_LOOP_AUTO_REPAIR=1
 
-# ADR 0088 (P1): opt-in staging self-ship lane. Composes the byte-identical
-# `시작` loop (EXECUTE_SHIP=0, unchanged) with the ISOLATED staging-ship module
-# as a post step. agent_loop.py is untouched. The in-process guards in
-# scripts/_staging_ship.py are a 1차 fast-fail only; authority is GitHub branch
-# protection + a permission-separated token (see docs/operations/staging-self-ship.md).
+# ADR 0088 (P1) / ADR 0090 (P2.0→D-minus): opt-in staging self-ship lane. Composes
+# the byte-identical `시작` loop (EXECUTE_SHIP=0, unchanged) with the ISOLATED
+# staging-ship module as a post step. D-minus scope: verify the env-isolation
+# enforcement model + live protection-verify + DEFINE the manifest CONTRACT only —
+# _staging_ship.py reads ship_manifest.json IF one exists (single-consumption), else
+# falls back to --source, else blocks on user. The manifest EMISSION (the loop
+# auto-dropping a manifest at local-gate-complete) is DEFERRED to P2.2, where it
+# belongs with the real ship: the D-minus loop runs EXECUTE_SHIP=0 so the gated
+# change is never committed, making an emitted source_sha=HEAD meaningless. The loop
+# sub-make therefore receives NO ship signal at all — a PREFIX-based strip unsets
+# EVERY inherited BIDMATE_SHIP_* var (not a fixed allowlist, so a future/unknown
+# BIDMATE_SHIP_* secret can never leak into the workspace-write loop process) as
+# defence-in-depth, EXCEPT the control signal BIDMATE_SHIP_KILL_SWITCH which is
+# pre-checked above and must stay honorable. The autonomous live MERGE orchestration
+# (merge token / cap store plumbing) is DEFERRED to P2.2.
 # Mutually exclusive with `make ship-arm` (fail-closed on .claude/.ship-armed).
 시작-ship:
 	@if [ -f .claude/.ship-armed ]; then \
 	  echo "ERROR: make ship-arm is armed; 시작-ship and ship-arm are mutually exclusive (ADR 0088)"; \
 	  exit 1; \
 	fi
+	@if { [ -n "$$BIDMATE_SHIP_KILL_SWITCH" ] && [ "$$BIDMATE_SHIP_KILL_SWITCH" != "0" ]; } || [ -f "$(ACTIVE_SHIP_STATE_DIR)/KILL" ]; then \
+	  echo "ERROR: staging self-ship kill-switch engaged (BIDMATE_SHIP_KILL_SWITCH or $(ACTIVE_SHIP_STATE_DIR)/KILL); aborting before the loop phase"; \
+	  exit 1; \
+	fi
+	@for v in $$(env | sed -n 's/^\(BIDMATE_SHIP_[A-Za-z0-9_]*\)=.*/\1/p'); do \
+	  [ "$$v" = "BIDMATE_SHIP_KILL_SWITCH" ] && continue; \
+	  unset "$$v"; \
+	done; \
 	$(MAKE) 시작
 	$(PYTHON) scripts/_staging_ship.py \
 	  --repo-root "." \
-	  --state-dir "$(ACTIVE_AUTO_LOOP_STATE)" \
+	  --state-dir "$(ACTIVE_SHIP_STATE_DIR)" \
+	  --manifest-dir "$(ACTIVE_SHIP_STATE_DIR)" \
 	  $(if $(SHIP_SOURCE),--source "$(SHIP_SOURCE)",) \
 	  $(if $(SHIP_DAY),--day "$(SHIP_DAY)",)
 

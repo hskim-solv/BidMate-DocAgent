@@ -18,6 +18,9 @@ def _copy_agent_loop_hook_repo(tmp_path: Path) -> Path:
     shutil.copy2(HOOK, repo / "scripts" / "claude-hooks" / HOOK.name)
     shutil.copy2(ROOT / "scripts" / "agent_loop.py", repo / "scripts" / "agent_loop.py")
     shutil.copy2(ROOT / "scripts" / "_governance.py", repo / "scripts" / "_governance.py")
+    # agent_loop.py imports strip_ship_secret_env at module top (ADR 0090 env-isolation);
+    # the fixture must carry the leaf module or the hook's agent_loop invocation ImportErrors.
+    shutil.copy2(ROOT / "scripts" / "_ship_env.py", repo / "scripts" / "_ship_env.py")
     return repo
 
 

@@ -33,6 +33,7 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 from scripts._governance import is_load_bearing  # noqa: E402
+from scripts._ship_env import strip_ship_secret_env  # noqa: E402
 
 
 TASK_ID_RE = re.compile(r"\bT-\d{4}-\d{4}\b")
@@ -386,7 +387,12 @@ def _claude_cli_supports_effort(_cache: list = []) -> bool:  # noqa: B006 — mu
         return bool(_cache[0])
     try:
         proc = subprocess.run(
-            ["claude", "--version"], capture_output=True, text=True, check=False, timeout=5
+            ["claude", "--version"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=5,
+            env=strip_ship_secret_env(dict(os.environ)),
         )
     except (OSError, subprocess.TimeoutExpired):
         _cache.append(False)
@@ -12372,6 +12378,16 @@ _OMC_TERMINAL_STATES = _OMC_TERMINAL_SUCCESS_STATES | _OMC_TERMINAL_FAIL_STATES
 # Default poll interval (seconds) between omc team status checks.
 _OMC_POLL_INTERVAL_SECONDS = 5.0
 
+
+# Ship-lane credentials (merge token + verify flags + kill-switch) must NEVER be inherited
+# by runner subprocesses. The staging self-ship lane (_staging_ship.py) is a SEPARATE process;
+# runner children (claude/codex/omc) must not be able to read or spoof these (ADR 0090
+# env-isolation; closes the env-inheritance ouroboros). Deny-by-prefix. The strip helper +
+# prefix literal live in the shared leaf module ``scripts/_ship_env.py`` (single source of
+# truth; imported as ``strip_ship_secret_env`` above so every runner lane — write+read+omc —
+# shares one boundary and future lanes inherit it for free).
+
+
 # ENV-variable allowlist forwarded to omc team worker subprocesses.
 #
 # IMPORTANT — DEFENSE-IN-DEPTH ONLY, NOT A FULL CREDENTIAL BOUNDARY:
@@ -12387,6 +12403,7 @@ _OMC_POLL_INTERVAL_SECONDS = 5.0
 # home-scoped-credential + network-egress access — the allowlist alone is not sufficient.
 #
 # ``OMC_TEAM_WORKTREE_MODE`` is injected directly by the runner after this filter.
+# BIDMATE_SHIP_* are not allowlisted → already stripped (ADR 0090 env-isolation, covered by test).
 _OMC_ENV_ALLOWLIST: frozenset[str] = frozenset(
     {
         # Shell basics — required for CLI tooling to locate binaries and home directory.
@@ -13866,6 +13883,7 @@ def write_active_codex_runner(
                         stdout=subprocess.PIPE,
                         stderr=stderr_file,
                         text=True,
+                        env=strip_ship_secret_env(dict(os.environ)),
                     )
                     stdin = getattr(proc, "stdin", None)
                     if stdin is not None:
@@ -14402,7 +14420,7 @@ def _write_active_codex_patch(
                                 "timeout": claude_timeout,
                             }
                             if claude_runner is None:
-                                env = dict(os.environ)
+                                env = strip_ship_secret_env(dict(os.environ))
                                 env.pop("ANTHROPIC_API_KEY", None)
                                 kwargs["env"] = env
                             proc = run_claude(command, **kwargs)
@@ -14439,6 +14457,7 @@ def _write_active_codex_patch(
                                     stdout=so,
                                     stderr=se,
                                     text=True,
+                                    env=strip_ship_secret_env(dict(os.environ)),
                                 )
                                 stdin = getattr(proc, "stdin", None)
                                 if stdin is not None:
@@ -15852,7 +15871,16 @@ def _active_codex_auth_check(
     try:
         # ADR 0085: bound the auth probe so a hung `codex login status` cannot stall the
         # whole loop (it ran without any timeout before).
-        proc = run(command, capture_output=True, text=True, check=False, timeout=30)
+        # ADR 0090 env-isolation: this pre-runner probe is runner-adjacent — strip
+        # BIDMATE_SHIP_* so no ship-lane secret leaks into the codex subprocess.
+        proc = run(
+            command,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=30,
+            env=strip_ship_secret_env(dict(os.environ)),
+        )
     except subprocess.TimeoutExpired:
         return (
             "login status timed out",
