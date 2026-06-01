@@ -289,3 +289,19 @@ P2.2를 3개 worktree agent 동시 실행으로 착수했다가 거버넌스(cod
 ### agent 오케스트레이션 교훈 (issue #1719)
 P2.2 security-critical 작업은 **단일 writer lane**으로 진행해야 한다. 병렬 worktree agent는 confinement 실패(부모 repo 오염) + exit hygiene 부재(TaskStop 후 pid 생존)를 일으켰다(codex 검증). 가드 백로그 = issue #1719.
 ```
+
+## P2.2 재개 준비 상태 (2026-06-01, follow-up 3건 마감)
+
+첫 시도(위 §"P2.2 첫 시도 결과")에서 파생된 follow-up 3건이 전부 main 안착 — 이 섹션이 현재 재개 상태의 SSoT:
+
+- **escalation** #1728 → PR #1734 (`4b22c77f`): codex pre-commit adaptive escalation (START=2 → CAP=8). ADR 0066 Status **Proposed 유지**(Gate-3 e2e 미배선). dogfood self-catch(freq 2/2 "clean 2-pass START 가 CAP 안전망 skip")은 ADR 0066 Consequences 에 **수용된 한계 + escape hatch** `BIDMATE_CODEX_ADVERSARIAL_START_ATTEMPTS=CAP` 로 문서화(은폐 X).
+- **ADR clarify** #1727 → PR #1735 (`06dfffa0`): ADR 0090 strict-check 계약(4 fail-closed protection_verified 조건) 명료화 + ADR 0091 CODEOWNERS 런북 동기화(`require_code_owner_reviews=true` full object).
+- **agent isolation guards** #1719 → PR #1736 (`82efdab2`): `agent_loop.py` write-patch lane 에 confinement assert + parent-repo write ban + claimed-files disjoint + exit hygiene(commit-before-teardown) **4종 가드 + 15 테스트**. → 위 §"agent 오케스트레이션 교훈"의 백로그 **해소**, P2.2 single-writer lane 격리 전제조건 충족.
+
+### 재개 시 남은 것 (전부 maintainer 결정 / 운영 시점 대기)
+1. **Open Questions 4건** (위 §Open Questions) — ADR shape / PR-3 boundary / SLA counters / AR4 field set. **maintainer 결정 선행 필수**.
+2. **cap store 재설계** (위 §"cap store 재설계 방향" 5항, 1-lane 세션) — ADR 0093+ 예약.
+3. **manifest seam** — PR-4(live merge)와 병합.
+4. **live merge e2e** — integration 레인 운영 시점 (Gate-3 한계: 워크플로 `autopilot/**` 전용).
+
+다음 안전 명령: ADR 0093+ 번호 예약(`ls docs/adr/` + `gh pr list --search ADR --state open`) 후 PR-1/PR-2(offline-testable, branch-protection 무의존)부터. **병렬 worktree agent 금지 — 단일 writer lane** (#1719 교훈, 위 §).
