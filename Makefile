@@ -515,6 +515,14 @@ ACTIVE_WRITE_AGENT ?= auto
 # today (ADR 0001). `omc` delegates to `omc team` and additionally requires
 # ACTIVE_OMC_RUNNER_ACK=1 (uncontrolled workers relax the ADR 0005 boundary).
 ACTIVE_RUNNER ?= codex
+# ADR 0092 (PR1, opt-in): per-(role,agent) lane adaptive autotune. PR1 is sense + detect +
+# recommendation-only (NO effort actuation — that is PR2). Default empty == OFF == byte-identical
+# (no per-lane elapsed_s recorded, no recommendations emitted, controller never invoked).
+ACTIVE_LANE_AUTOTUNE ?=
+ACTIVE_LANE_AUTOTUNE_K ?= 2.0
+ACTIVE_LANE_AUTOTUNE_FAIL_WINDOW ?= 3
+ACTIVE_LANE_AUTOTUNE_FAIL_MIN_SAMPLE ?= 2
+ACTIVE_LANE_AUTOTUNE_FAIL_THRESHOLD ?= 0.5
 ACTIVE_CODEX_RECORD_GATE_HEARTBEATS ?= 1
 ACTIVE_CODEX_EXECUTE ?=
 HUMAN_GATED_ACTION ?=
@@ -1083,6 +1091,7 @@ agent-loop-active-auto-loop:
 	  --timeout-seconds "$(ACTIVE_CODEX_TIMEOUT_SECONDS)" \
 	  --max-commands-per-session "$(ACTIVE_CODEX_MAX_COMMANDS_PER_SESSION)" \
 	  --model "$(ACTIVE_CODEX_MODEL)" \
+	  $(if $(filter 1 true yes on,$(ACTIVE_LANE_AUTOTUNE)),--lane-autotune --lane-autotune-k "$(ACTIVE_LANE_AUTOTUNE_K)" --lane-autotune-fail-window "$(ACTIVE_LANE_AUTOTUNE_FAIL_WINDOW)" --lane-autotune-fail-min-sample "$(ACTIVE_LANE_AUTOTUNE_FAIL_MIN_SAMPLE)" --lane-autotune-fail-threshold "$(ACTIVE_LANE_AUTOTUNE_FAIL_THRESHOLD)",) \
 	  --state "$(ACTIVE_AUTO_LOOP_STATE)" \
 	  --out "$(ACTIVE_AUTO_LOOP_OUT)"
 
