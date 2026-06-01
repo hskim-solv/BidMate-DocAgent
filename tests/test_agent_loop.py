@@ -5942,16 +5942,21 @@ def test_claude_lane_adapter_omits_schema_when_unreadable(tmp_path: Path) -> Non
 
 
 def test_claude_lane_adapter_xhigh_only_on_opus_47_plus() -> None:
-    """ADR 0082: `xhigh` is Opus-4-7+ only — _validate_effort_for_model coerces other models."""
+    """ADR 0082 + #1730: `xhigh`/`max` are Opus-4-7+ only — _validate_effort_for_model coerces other models."""
     from scripts.agent_loop import _validate_effort_for_model
 
+    # xhigh: Opus-4.7/4.8 pass, others coerce to high (existing behaviour — regression guard).
     assert _validate_effort_for_model("claude-opus-4-7", "xhigh") == "xhigh"
     assert _validate_effort_for_model("claude-opus-4-8", "xhigh") == "xhigh"
     assert _validate_effort_for_model("claude-sonnet-4-6", "xhigh") == "high"
     assert _validate_effort_for_model("claude-opus-4-6", "xhigh") == "high"
+    # max: same Opus-4.7+ gate (#1730 conservative guard).
+    assert _validate_effort_for_model("claude-opus-4-7", "max") == "max"
+    assert _validate_effort_for_model("claude-opus-4-8", "max") == "max"
+    assert _validate_effort_for_model("claude-sonnet-4-6", "max") == "high"
+    assert _validate_effort_for_model("claude-opus-4-6", "max") == "high"
     # Other valid efforts unchanged.
     assert _validate_effort_for_model("claude-sonnet-4-6", "medium") == "medium"
-    assert _validate_effort_for_model("claude-opus-4-8", "max") == "max"
 
 
 def test_claude_turn_read_lane_is_read_only() -> None:
@@ -10301,13 +10306,15 @@ def test_resolve_lane_effort_override_requested_wins() -> None:
 
 
 def test_step_lane_effort_per_agent_ladder_and_clamp() -> None:
-    """AC11: claude ladder tops at xhigh (no max), codex tops at xhigh too (#1723); both clamp at bounds."""
-    # claude ladder: low < medium < high < xhigh
+    """AC11: claude ladder tops at max (#1730), codex tops at xhigh (#1723); both clamp at bounds."""
+    # claude ladder: low < medium < high < xhigh < max (#1730)
     assert agent_loop._step_lane_effort("claude", "medium", 1) == "high"
     assert agent_loop._step_lane_effort("claude", "high", 1) == "xhigh"
-    assert agent_loop._step_lane_effort("claude", "xhigh", 1) == "xhigh"  # clamp at ceiling (no max rung)
-    assert agent_loop._step_lane_effort("claude", "low", -1) == "low"  # clamp at floor
-    assert "max" not in agent_loop._CLAUDE_EFFORT_LADDER
+    assert agent_loop._step_lane_effort("claude", "xhigh", 1) == "max"   # xhigh+1 -> max
+    assert agent_loop._step_lane_effort("claude", "max", 1) == "max"     # clamp at ceiling
+    assert agent_loop._step_lane_effort("claude", "max", -1) == "xhigh"  # max-1 -> xhigh
+    assert agent_loop._step_lane_effort("claude", "low", -1) == "low"    # clamp at floor
+    assert "max" in agent_loop._CLAUDE_EFFORT_LADDER
     # codex ladder: minimal < low < medium < high < xhigh (#1723)
     assert agent_loop._step_lane_effort("codex", "medium", 1) == "high"
     assert agent_loop._step_lane_effort("codex", "high", 1) == "xhigh"  # codex now reaches xhigh ceiling
@@ -10365,6 +10372,28 @@ def test_compute_lane_autotune_codex_strengthens_high_to_xhigh() -> None:
     assert c["actuated"] is True
     assert c["effort_to"] == "xhigh"
     assert overrides[("C", "codex")] == "xhigh"
+
+
+def test_compute_lane_autotune_claude_strengthens_xhigh_to_max() -> None:
+    """#1730: a failing claude lane at 'xhigh' now strengthens to 'max' (new top rung, PR B)."""
+    fail_iter = [
+        {"role": "A", "agent": "claude", "elapsed_s": 10.0, "status": "completed"},
+        {"role": "C", "agent": "claude", "elapsed_s": 100.0, "status": "failed"},
+    ]
+    newest = [
+        {"role": "A", "agent": "claude", "elapsed_s": 10.0, "status": "completed"},
+        {"role": "B", "agent": "claude", "elapsed_s": 10.0, "status": "completed"},
+        {"role": "C", "agent": "claude", "elapsed_s": 100.0, "status": "failed"},
+    ]
+    xhigh_baseline = lambda _agent, _role: "xhigh"  # noqa: E731
+    overrides, recs, _cooldown, _events = agent_loop.compute_lane_autotune(
+        [fail_iter, fail_iter, newest], None, _autotune_cfg(), effort_resolver=xhigh_baseline
+    )
+    c = next(r for r in recs if r["role"] == "C")
+    assert c["direction"] == "strengthen"
+    assert c["actuated"] is True
+    assert c["effort_to"] == "max"
+    assert overrides[("C", "claude")] == "max"
 
 
 def test_compute_lane_autotune_cooldown_suppresses_then_decrements() -> None:

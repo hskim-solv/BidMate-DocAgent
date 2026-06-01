@@ -412,7 +412,7 @@ prior lane 데이터만 입력으로 받아 결정을 반환한다.
 
 **effort 사다리**
 
-- claude: `low` → `medium` → `high` → `xhigh`
+- claude: `low` → `medium` → `high` → `xhigh` → `max`
 - codex: `minimal` → `low` → `medium` → `high` → `xhigh`
 
 양 끝에서 clamp — 이미 최대/최소 rung 이면 권고는 기록하되 actuation 하지 않는다.
