@@ -447,12 +447,15 @@ def _validate_effort_for_model(model: str, effort: str) -> str:
 # ADR 0092 (PR2): per-agent effort ladder for autotune actuation. Ordered low→high.
 # claude tops out at ``xhigh`` (the code profile ceiling; ``max`` is absent from
 # _CLAUDE_ROLE_PROFILE so it is intentionally excluded — a ``max`` rung is a smoke-gated
-# follow-up). codex tops out at ``high`` (``~/.codex/config.toml`` may use ``xhigh``, but
-# the controller ladder caps at ``high``; an ``xhigh`` rung is a follow-up). These ladders
+# follow-up). codex tops out at ``xhigh`` too (#1723; per-rung provenance below). These ladders
 # are the SINGLE clamp guard for codex effort — _validate_effort_for_model is claude-only
 # (it would no-op on codex effort, so calling it there would be misuse, AC11).
 _CLAUDE_EFFORT_LADDER: tuple[str, ...] = ("low", "medium", "high", "xhigh")
-_CODEX_EFFORT_LADDER: tuple[str, ...] = ("minimal", "low", "medium", "high")
+# codex accepts xhigh via `-c model_reasoning_effort=xhigh` (codex-cli 0.135.0, verified
+# `codex exec --strict-config -c model_reasoning_effort=xhigh` rc=0; ~/.codex/config.toml
+# uses xhigh) — so the codex ladder tops at xhigh too, letting autotune strengthen a codex
+# bottleneck to its true ceiling instead of stopping at high (ADR 0092 follow-up, #1723).
+_CODEX_EFFORT_LADDER: tuple[str, ...] = ("minimal", "low", "medium", "high", "xhigh")
 
 
 def _lane_effort_ladder(agent: str) -> tuple[str, ...]:

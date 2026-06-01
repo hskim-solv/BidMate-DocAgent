@@ -10301,26 +10301,28 @@ def test_resolve_lane_effort_override_requested_wins() -> None:
 
 
 def test_step_lane_effort_per_agent_ladder_and_clamp() -> None:
-    """AC11: claude ladder tops at xhigh (no max), codex tops at high; both clamp at bounds."""
+    """AC11: claude ladder tops at xhigh (no max), codex tops at xhigh too (#1723); both clamp at bounds."""
     # claude ladder: low < medium < high < xhigh
     assert agent_loop._step_lane_effort("claude", "medium", 1) == "high"
     assert agent_loop._step_lane_effort("claude", "high", 1) == "xhigh"
     assert agent_loop._step_lane_effort("claude", "xhigh", 1) == "xhigh"  # clamp at ceiling (no max rung)
     assert agent_loop._step_lane_effort("claude", "low", -1) == "low"  # clamp at floor
     assert "max" not in agent_loop._CLAUDE_EFFORT_LADDER
-    # codex ladder: minimal < low < medium < high
+    # codex ladder: minimal < low < medium < high < xhigh (#1723)
     assert agent_loop._step_lane_effort("codex", "medium", 1) == "high"
-    assert agent_loop._step_lane_effort("codex", "high", 1) == "high"  # clamp at ceiling (no xhigh rung)
+    assert agent_loop._step_lane_effort("codex", "high", 1) == "xhigh"  # codex now reaches xhigh ceiling
+    assert agent_loop._step_lane_effort("codex", "xhigh", 1) == "xhigh"  # clamp at ceiling
+    assert agent_loop._step_lane_effort("codex", "xhigh", -1) == "high"  # xhigh now on the codex ladder
     assert agent_loop._step_lane_effort("codex", "minimal", -1) == "minimal"  # clamp at floor
     assert agent_loop._step_lane_effort("codex", "low", -1) == "minimal"
     # off-ladder value -> None (left for the lane to resolve)
-    assert agent_loop._step_lane_effort("codex", "xhigh", -1) is None
+    assert agent_loop._step_lane_effort("codex", "max", -1) is None
     assert agent_loop._step_lane_effort("claude", "minimal", 1) is None
 
 
 def test_compute_lane_autotune_codex_ceiling_clamp_records_no_override() -> None:
-    """AC11/AC12: a codex strengthen at the ladder ceiling (high) clamps -> no override emitted,
-    but the recommendation is still recorded (with actuated False)."""
+    """AC11/AC12: a codex strengthen at the ladder ceiling (xhigh, #1723) clamps -> no override
+    emitted, but the recommendation is still recorded (with actuated False)."""
     fail_iter = [
         {"role": "A", "agent": "codex", "elapsed_s": 10.0, "status": "completed"},
         {"role": "C", "agent": "codex", "elapsed_s": 100.0, "status": "failed"},
@@ -10330,10 +10332,10 @@ def test_compute_lane_autotune_codex_ceiling_clamp_records_no_override() -> None
         {"role": "B", "agent": "codex", "elapsed_s": 10.0, "status": "completed"},
         {"role": "C", "agent": "codex", "elapsed_s": 100.0, "status": "failed"},
     ]
-    # C fails 3/3 -> strengthen; but baseline already 'high' -> step clamps -> no actuation.
-    high_baseline = lambda _agent, _role: "high"  # noqa: E731
+    # C fails 3/3 -> strengthen; but baseline already 'xhigh' (codex ceiling) -> step clamps -> no actuation.
+    xhigh_baseline = lambda _agent, _role: "xhigh"  # noqa: E731
     overrides, recs, cooldown, _events = agent_loop.compute_lane_autotune(
-        [fail_iter, fail_iter, newest], None, _autotune_cfg(), effort_resolver=high_baseline
+        [fail_iter, fail_iter, newest], None, _autotune_cfg(), effort_resolver=xhigh_baseline
     )
     c = next(r for r in recs if r["role"] == "C")
     assert c["direction"] == "strengthen"
@@ -10341,6 +10343,28 @@ def test_compute_lane_autotune_codex_ceiling_clamp_records_no_override() -> None
     assert c["effort_to"] is None
     assert ("C", "codex") not in overrides
     assert cooldown == {}  # nothing actuated -> nothing to cool down
+
+
+def test_compute_lane_autotune_codex_strengthens_high_to_xhigh() -> None:
+    """#1723: a failing codex lane at 'high' now strengthens to 'xhigh' (previously clamped at high)."""
+    fail_iter = [
+        {"role": "A", "agent": "codex", "elapsed_s": 10.0, "status": "completed"},
+        {"role": "C", "agent": "codex", "elapsed_s": 100.0, "status": "failed"},
+    ]
+    newest = [
+        {"role": "A", "agent": "codex", "elapsed_s": 10.0, "status": "completed"},
+        {"role": "B", "agent": "codex", "elapsed_s": 10.0, "status": "completed"},
+        {"role": "C", "agent": "codex", "elapsed_s": 100.0, "status": "failed"},
+    ]
+    high_baseline = lambda _agent, _role: "high"  # noqa: E731
+    overrides, recs, _cooldown, _events = agent_loop.compute_lane_autotune(
+        [fail_iter, fail_iter, newest], None, _autotune_cfg(), effort_resolver=high_baseline
+    )
+    c = next(r for r in recs if r["role"] == "C")
+    assert c["direction"] == "strengthen"
+    assert c["actuated"] is True
+    assert c["effort_to"] == "xhigh"
+    assert overrides[("C", "codex")] == "xhigh"
 
 
 def test_compute_lane_autotune_cooldown_suppresses_then_decrements() -> None:
