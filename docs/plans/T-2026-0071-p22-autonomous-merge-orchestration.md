@@ -88,7 +88,11 @@ The 9 issue #1703 units map to **6 stacked PRs**. Stack via `gh pr create --base
 
 Recommended safe-start order is **PR-1 and PR-2 first** (both fully offline-testable, no branch-protection dependency), then PR-3, with PR-4/5/6 gated on operator prerequisites.
 
+> **⚠️ 2026-06-01 실측 정정 (issue #1720):** 이 "PR-1 and PR-2 first" 권고는 첫 시도에서 **둘 다 codex 적대 리뷰가 정당하게 block**했다. PR-1(manifest seam)은 no-ship 경로에서 `source_sha`를 emit하면 stale HEAD bind가 되어(codex critical, freq 5/8; runbook도 동일하게 P2.2 유보 명시) **PR-4(live merge, 실제 커밋 존재)와 함께** 구현하도록 이동한다. PR-2(cap store)는 self-immutable 우회·per-worktree 카운터·day-key rotation 우회 결함으로 **재설계**가 필요하다. 상세는 본 문서 끝 "P2.2 첫 시도 결과" 섹션 참조.
+
 ### PR-1 — `agent_loop.py` manifest emission seam + Makefile wiring (issue unit 1; ADR 0090 amendment)
+
+> **⚠️ 2026-06-01: PR-4로 이동 (independent PR 아님).** D-minus(`EXECUTE_SHIP=0`)에서는 게이트 통과 시점에 커밋이 없어 `source_sha=HEAD`가 stale/무의미하다 — codex critical(freq 5/8) + runbook 유보 명시와 일치. seam은 실제 커밋이 생기는 live-merge 경로(PR-4)에서만 의미가 있으므로 거기서 함께 구현한다. 아래 Goal/Scope는 PR-4 구현 시 참조용으로 보존한다.
 
 - Goal: Loop emits `<state-dir>/ship_manifest.json` bound to the real committed `source_sha` (HEAD of the gated commit) on `local-gate-complete`, only when `BIDMATE_SHIP_MANIFEST_DIR` is set (i.e. invoked from `make 시작-ship`).
 - Scope: add `_maybe_write_ship_manifest(...)` in `agent_loop.py`, called from the `local-gate-complete` block (line ~10747); it calls the existing `write_ship_manifest` contract. `Makefile` `시작-ship` injects `BIDMATE_SHIP_MANIFEST_DIR=$(ACTIVE_SHIP_STATE_DIR)` into the **loop** sub-make. ADR 0090 addendum section.
@@ -101,6 +105,8 @@ Recommended safe-start order is **PR-1 and PR-2 first** (both fully offline-test
 - Risk: **`agent_loop.py` is deliberately EXCLUDED from the CODEOWNERS constitutional set** (ADR 0091, "too frequently edited") — so this PR does NOT trip the owner-review gate, which is correct. But it is the seam where a stale SHA = wrong-commit merge later; SHA derivation must be the committed SHA. Medium risk; high blast radius if SHA wrong.
 
 ### PR-2 — File-backed self-immutable cap store + cross-worktree lock (issue unit 4; **new ADR 00XX**) — blocked-on: none
+
+> **⚠️ 2026-06-01: 재설계 필요 (codex 5x block).** 첫 시도 구현이 다음 결함으로 block됐다: self-immutable 가드 빈 리스트 우회(freq 6/8), 상대경로 cap-store = per-worktree 카운터(4/8), day-key rotation 우회(4/8), public initializer reset(1/8). 재설계 방향은 끝 "P2.2 첫 시도 결과" 섹션 참조. **ADR 0092는 #1717(lane bottleneck)이 선점** — cap store ADR은 0093+로 예약.
 
 - Goal: Implement `_FileMergeCapStore` satisfying `ImmutableCounterStore` with `loop_writable=False`, backed by `BIDMATE_SHIP_CAP_STORE`, with cross-worktree shared file lock + transactional daily-cap increment; malformed file → fail-closed.
 - Scope: new class in `_staging_ship.py`; new ADR 00XX (reserve) for the self-immutable cap-store + cross-worktree concurrency contract; `SELF_IMMUTABLE_PATHS` construct in `_governance.py` (unit 9, the immutability mechanism the ADR defines) seeded with cap-store path + `_ship_env.py` + manifest seam path; lane refuses to ship a PR whose diff touches `SELF_IMMUTABLE_PATHS`.
@@ -253,4 +259,33 @@ Attack first, in priority order:
 - Next safe command: reserve ADR number (ls docs/adr/ + gh pr list --search ADR --state open), then start PR-1 or PR-2 (both offline-testable, no branch-protection dependency)
 - Open questions: see Open Questions section (4 items)
 - Risks: PR-2 cross-worktree lock + PR-3 token leakage are the security crux; all _staging_ship.py-touching PRs need non-author CODEOWNERS approval
+
+---
+
+## P2.2 첫 시도 결과 (2026-06-01, issue #1720)
+
+P2.2를 3개 worktree agent 동시 실행으로 착수했다가 거버넌스(codex 적대 리뷰)가 PR-1·PR-2를 모두 정당하게 block했고, agent 병렬 오케스트레이션 자체가 메인 repo 오염 + exit hygiene 실패를 일으켰다. 실측 요약:
+
+### 안착 (이번 세션 merged)
+- **AR1 `_ship_env` dedup** (#1706): `sanitized_env`가 `strip_ship_secret_env` 공유 헬퍼에 위임.
+- **verdict cache 정책 키** (#1710/#1713): codex verdict 캐시 키가 review policy(attempts/min_frequency/timeout)를 무시하던 버그 수정. codex가 잡은 `_policy_digest` 시그니처 + `os` 미정의 버그를 거쳐 머지.
+- **operator branch-protection + AR3** (CODEOWNERS code-owner review): `autopilot/integration` + `main` 양쪽에 required check(`staging-self-ship-guard`) + force-push deny + enforce_admins + require_code_owner_reviews 설정. `protection_verified` live 검증 VERIFIED.
+
+### 보류 (codex self-catch — 모두 정당)
+- **PR-1 manifest seam**: codex critical(freq 5/8) "no-ship 경로 stale `source_sha`" → PR-4(live merge)와 병합. 위 PR-1 섹션 노트 참조.
+- **PR-2 cap store**: codex 5회 block(self-immutable 빈 리스트 우회 6/8, per-worktree 상대경로 카운터 4/8, day-key rotation 우회 4/8, public initializer reset 1/8) → 재설계.
+- **cascade DEFAULT_ATTEMPTS 8→3** (ADR 0066, #1709 철회): codex가 "load-bearing-only 트리거라 attempts를 낮추면 핵심 망라성 희생"으로 self-catch. env override가 안전한 경로.
+
+### Gate-3 한계
+- `staging-self-ship-guard` 워크플로는 `on: pull_request: branches: ["autopilot/**"]` 전용이라 `main` base PR로는 트리거 불가. e2e 검증은 integration 레인 운영 시점으로 이관.
+
+### cap store 재설계 방향 (codex findings 기준, 다음 1-lane 세션)
+1. **changed-files 산출**: 자기 작성 가능한 입력 대신 lane-internal trusted git/GitHub 메타데이터에서 도출 + fail-closed.
+2. **cap-store 경로**: 상대경로 금지 → 절대경로(worktree 무관 단일 카운터). `flock`-style OS lock, 고정 `/tmp` 이름 금지(#1274).
+3. **day key**: 자기 회전 가능 키 금지 → trusted UTC date 버킷.
+4. **immutability authority**: in-process self-guard만으로 불충분 → 외부 append-only/monotonic authority. `SELF_IMMUTABLE_PATHS` 빈 리스트면 fail-closed.
+5. **ADR**: 0092 선점 → 0093+ 예약. permission-separated merge token + self-immutable cross-worktree cap store를 security contract로.
+
+### agent 오케스트레이션 교훈 (issue #1719)
+P2.2 security-critical 작업은 **단일 writer lane**으로 진행해야 한다. 병렬 worktree agent는 confinement 실패(부모 repo 오염) + exit hygiene 부재(TaskStop 후 pid 생존)를 일으켰다(codex 검증). 가드 백로그 = issue #1719.
 ```
