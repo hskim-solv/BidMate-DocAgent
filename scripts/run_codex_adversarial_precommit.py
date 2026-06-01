@@ -38,6 +38,11 @@ from scripts._governance import is_load_bearing
 from scripts._ship_env import strip_ship_secret_env
 from scripts.agent_loop_codex_turn import resolve_companion
 
+# Adaptive escalation (issue #1728): the gate starts with DEFAULT_START_ATTEMPTS
+# parallel passes and only escalates toward DEFAULT_ATTEMPTS (the cap) when a
+# strong (critical/high) finding appears; a clean start batch stops early. So
+# DEFAULT_ATTEMPTS is the escalation CAP, not a fixed pass count.
+DEFAULT_START_ATTEMPTS = 2
 DEFAULT_ATTEMPTS = 8
 DEFAULT_MIN_FREQUENCY = 2
 DEFAULT_TIMEOUT_SEC = 900
@@ -81,6 +86,7 @@ def load_bearing_hits(paths: Sequence[str]) -> list[str]:
 
 
 def _env_attempts() -> int:
+    """Escalation CAP (max parallel union passes). Lowering it lowers the ceiling."""
     raw = os.environ.get("BIDMATE_CODEX_ADVERSARIAL_ATTEMPTS")
     if not raw:
         return DEFAULT_ATTEMPTS
@@ -88,6 +94,36 @@ def _env_attempts() -> int:
         return int(raw)
     except ValueError:
         raise ValueError("BIDMATE_CODEX_ADVERSARIAL_ATTEMPTS must be an integer") from None
+
+
+def _env_start_attempts() -> int:
+    """Initial pass count before escalation (issue #1728)."""
+    raw = os.environ.get("BIDMATE_CODEX_ADVERSARIAL_START_ATTEMPTS")
+    if not raw:
+        return DEFAULT_START_ATTEMPTS
+    try:
+        return int(raw)
+    except ValueError:
+        raise ValueError(
+            "BIDMATE_CODEX_ADVERSARIAL_START_ATTEMPTS must be an integer"
+        ) from None
+
+
+def _resolve_start_attempts(cli_start: int | None, cap_attempts: int) -> int:
+    """Resolve the effective start-attempts for the hook entrypoint.
+
+    An explicit ``--start-attempts`` is honored verbatim: ``run_precommit_review``
+    still rejects an explicit start above the cap, because a contradictory
+    per-invocation request should surface rather than be silently clamped. An
+    *implicit* start — the ``DEFAULT_START_ATTEMPTS`` default or an ambient env
+    value — instead follows a lowered cap down. The cap is the hard ceiling, so
+    lowering only the cap (e.g. ``BIDMATE_CODEX_ADVERSARIAL_ATTEMPTS=1`` under the
+    default START=2) must not hard-fail the hook (issue #1728 dogfood,
+    informational finding).
+    """
+    if cli_start is not None:
+        return cli_start
+    return min(_env_start_attempts(), cap_attempts)
 
 
 def _env_min_frequency() -> int:
@@ -705,9 +741,11 @@ def _run_pass(
 # fresh review. A corrupt/unreadable cache entry is treated as a miss
 # (fail-open to a real review, never crash).
 _CACHE_SUBDIR = "cache"
-# Bumped to 2: policy parameters (attempts/min_frequency/timeout_sec) are now
-# part of the cache key and stored in the payload for validation (issue #1710).
-_CACHE_SCHEMA_VERSION = 2
+# Bumped to 3: the policy now has separate start/cap pass counts (adaptive
+# escalation, issue #1728); start_attempts + cap_attempts + min_frequency +
+# timeout_sec are all part of the cache key and stored in the payload for
+# validation. (v2 added the flat attempts/min_frequency/timeout key, issue #1710.)
+_CACHE_SCHEMA_VERSION = 3
 
 
 def _staged_diff_digest() -> str | None:
@@ -725,14 +763,22 @@ def _staged_diff_digest() -> str | None:
     return hashlib.sha256(proc.stdout or b"").hexdigest()
 
 
-def _policy_digest(*, attempts: int, min_frequency: int, timeout_sec: int) -> str:
+def _policy_digest(
+    *, start_attempts: int, cap_attempts: int, min_frequency: int, timeout_sec: int
+) -> str:
     """sha256 hex of the review policy parameters.
 
-    Any change to attempts / min_frequency / timeout_sec produces a different
-    digest, ensuring that a policy change causes a cache miss (issue #1710).
+    Any change to start_attempts / cap_attempts / min_frequency / timeout_sec
+    produces a different digest, ensuring that a policy change causes a cache
+    miss (issues #1710, #1728).
     """
     policy_bytes = json.dumps(
-        {"attempts": attempts, "min_frequency": min_frequency, "timeout_sec": timeout_sec},
+        {
+            "start_attempts": start_attempts,
+            "cap_attempts": cap_attempts,
+            "min_frequency": min_frequency,
+            "timeout_sec": timeout_sec,
+        },
         sort_keys=True,
     ).encode()
     return hashlib.sha256(policy_bytes).hexdigest()
@@ -783,7 +829,8 @@ def _write_cached_result(
     *,
     rc: int,
     union: dict,
-    attempts: int,
+    start_attempts: int,
+    cap_attempts: int,
     min_frequency: int,
     timeout_sec: int,
 ) -> None:
@@ -800,7 +847,8 @@ def _write_cached_result(
                     "digest": diff_digest,
                     "policy_digest": policy_dgst,
                     "policy": {
-                        "attempts": attempts,
+                        "start_attempts": start_attempts,
+                        "cap_attempts": cap_attempts,
                         "min_frequency": min_frequency,
                         "timeout_sec": timeout_sec,
                     },
@@ -828,12 +876,22 @@ def run_precommit_review(
     out_dir: Path,
     timeout_sec: int,
     min_frequency: int = DEFAULT_MIN_FREQUENCY,
+    start_attempts: int | None = None,
     runner: Runner = _default_runner,
 ) -> int:
-    """Run N adversarial passes in parallel, union their findings, and gate on frequency.
+    """Run an adaptive-escalation adversarial review and gate on frequency.
+
+    Starts with `start_attempts` parallel passes and escalates toward `attempts`
+    (the CAP) only when a strong (critical/high) finding appears; a clean,
+    well-powered start batch stops early (issue #1728). When `start_attempts` is
+    None it defaults to `attempts`, which reproduces the old single-batch flat
+    gate exactly — a backward-compatible default for callers that do not opt into
+    escalation (production `main()` always passes an explicit start from the env,
+    default 2).
 
     Returns 0 (commit allowed) unless a critical/high finding reproduced across
-    at least `min_frequency` distinct passes. All-error passes return 1.
+    at least `min_frequency` distinct passes. Too few successful passes to
+    confirm reproduction return 1 (fail-closed).
 
     Two resource-hygiene layers wrap the gate (contract unchanged, issue #1699):
     a staged-diff fingerprint cache that short-circuits an identical re-commit to
@@ -842,6 +900,15 @@ def run_precommit_review(
     """
     if attempts < 1:
         raise ValueError("--attempts must be >= 1")
+    if start_attempts is None:
+        start_attempts = attempts
+    if start_attempts < 1:
+        raise ValueError("--start-attempts must be >= 1")
+    if start_attempts > attempts:
+        raise ValueError(
+            f"--start-attempts ({start_attempts}) must be <= --attempts/cap ({attempts}); "
+            "the start batch cannot exceed the escalation cap"
+        )
     if min_frequency < 1:
         raise ValueError("--min-frequency must be >= 1")
     if min_frequency > attempts:
@@ -854,7 +921,10 @@ def run_precommit_review(
 
     digest = _staged_diff_digest()
     pol_dgst = _policy_digest(
-        attempts=attempts, min_frequency=min_frequency, timeout_sec=timeout_sec
+        start_attempts=start_attempts,
+        cap_attempts=attempts,
+        min_frequency=min_frequency,
+        timeout_sec=timeout_sec,
     )
     try:
         cached_rc = _load_cached_result(out_dir, digest, pol_dgst)
@@ -867,7 +937,8 @@ def run_precommit_review(
             )
             return cached_rc
         return _run_precommit_passes(
-            attempts=attempts,
+            start_attempts=start_attempts,
+            cap_attempts=attempts,
             base=base,
             scope=scope,
             companion=companion,
@@ -889,30 +960,35 @@ def run_precommit_review(
             pass
 
 
-def _run_precommit_passes(
+def _run_batch(
     *,
-    attempts: int,
+    indices: Sequence[int],
+    cap_attempts: int,
     base: str,
     scope: str,
     companion: Path,
     changed_files: Sequence[str],
     hits: Sequence[str],
-    out_dir: Path,
     timeout_sec: int,
-    min_frequency: int,
     runner: Runner,
-    diff_digest: str | None,
-    pol_dgst: str,
-) -> int:
-    """Cache-miss path: run the N passes, gate, persist the verdict to the cache."""
-    changed_set = set(changed_files)
+    out_dir: Path,
+    changed_set: set[str],
+) -> list[PassResult]:
+    """Run one batch of passes (the given `indices`) in parallel, write artifacts.
 
-    with ThreadPoolExecutor(max_workers=attempts) as executor:
+    `cap_attempts` is only the "Pass i/N" label denominator (the escalation cap),
+    so the start and escalation batches render a consistent ceiling. An empty
+    `indices` returns [] without constructing a zero-worker pool (start == cap).
+    """
+    index_list = list(indices)
+    if not index_list:
+        return []
+    with ThreadPoolExecutor(max_workers=len(index_list)) as executor:
         futures = [
             executor.submit(
                 _run_pass,
                 index=index,
-                attempts=attempts,
+                attempts=cap_attempts,
                 base=base,
                 scope=scope,
                 companion=companion,
@@ -921,23 +997,64 @@ def _run_precommit_passes(
                 timeout_sec=timeout_sec,
                 runner=runner,
             )
-            for index in range(1, attempts + 1)
+            for index in index_list
         ]
         results = sorted((f.result() for f in futures), key=lambda r: r.index)
-
     for result in results:
         _write_pass_artifacts(out_dir=out_dir, result=result, changed_files=changed_set)
+    return results
 
+
+def _evaluate_passes(results: Sequence[PassResult], *, min_frequency: int) -> str:
+    """Classify a batch's union as one of "block" / "escalate" / "pass".
+
+    - "block": a critical/high cluster already reproduced across >= min_frequency
+      passes. The verdict is final — cluster frequency is monotonic under more
+      passes (clustering is append-only), so escalation could only raise it,
+      never overturn the block. This is what makes early-block sound.
+    - "escalate": a critical/high cluster exists but below the frequency
+      threshold (need more passes to confirm or dismiss it).
+    - "pass": no critical/high cluster at all (medium/low are never escalated).
+    """
+    collected = [(r.index, finding) for r in results for finding in r.findings]
+    clusters = cluster_findings(collected)
+    if any(is_blocking(c, min_frequency=min_frequency) for c in clusters):
+        return "block"
+    if any(c.max_severity in BLOCKING_SEVERITIES for c in clusters):
+        return "escalate"
+    return "pass"
+
+
+def _finalize_and_gate(
+    *,
+    results: Sequence[PassResult],
+    out_dir: Path,
+    min_frequency: int,
+    diff_digest: str | None,
+    pol_dgst: str,
+    start_attempts: int,
+    cap_attempts: int,
+    timeout_sec: int,
+) -> int:
+    """Apply the terminal fail-closed check, gate, write union artifacts, cache.
+
+    `results` is the FULL set of passes actually run (start-only on early
+    stop/block, start+escalation otherwise), so the reported pass count is
+    `len(results)` — honest about how many passes really ran (2 on early stop,
+    the cap on full escalation).
+    """
+    total_passes = len(results)
     error_passes = sum(1 for r in results if r.is_error)
-    successful_passes = attempts - error_passes
+    successful_passes = total_passes - error_passes
     # Fail-closed: confirming a reproduced finding needs >= min_frequency
     # successful passes. If too many passes errored (companion outage / timeout),
     # the gate cannot establish reproduction and must block rather than silently
-    # pass — otherwise a partial outage disables the gate.
+    # pass — otherwise a partial outage disables the gate. Evaluated on the final
+    # total so it fires once, at the terminal state (issue #1728).
     if successful_passes < min_frequency:
         print(
             f"Codex adversarial pre-commit review: only {successful_passes} of "
-            f"{attempts} pass(es) succeeded (< min_frequency {min_frequency}); cannot "
+            f"{total_passes} pass(es) succeeded (< min_frequency {min_frequency}); cannot "
             f"confirm a reproduced finding. Blocking fail-closed (companion environment "
             f"problem, not a code finding). See {out_dir}.",
             file=sys.stderr,
@@ -955,14 +1072,14 @@ def _run_precommit_passes(
     blocking = [c for c in clusters if is_blocking(c, min_frequency=min_frequency)]
 
     union = {
-        "attempts": attempts,
+        "attempts": total_passes,
         "error_passes": error_passes,
         "min_frequency": min_frequency,
-        "clusters": [_cluster_to_dict(c, attempts=attempts) for c in clusters],
+        "clusters": [_cluster_to_dict(c, attempts=total_passes) for c in clusters],
     }
     union_md = render_union_markdown(
         clusters=clusters,
-        attempts=attempts,
+        attempts=total_passes,
         error_passes=error_passes,
         min_frequency=min_frequency,
     )
@@ -984,26 +1101,135 @@ def _run_precommit_passes(
         _write_cached_result(
             out_dir, diff_digest, pol_dgst,
             rc=1, union=union,
-            attempts=attempts, min_frequency=min_frequency, timeout_sec=timeout_sec,
+            start_attempts=start_attempts, cap_attempts=cap_attempts,
+            min_frequency=min_frequency, timeout_sec=timeout_sec,
         )
         return 1
     print(
         f"Codex adversarial pre-commit review passed "
-        f"({error_passes}/{attempts} passes errored, no blocking cluster). "
+        f"({error_passes}/{total_passes} passes errored, no blocking cluster). "
         f"See {out_dir / 'union.md'}.",
         file=sys.stderr,
     )
     _write_cached_result(
         out_dir, diff_digest, pol_dgst,
         rc=0, union=union,
-        attempts=attempts, min_frequency=min_frequency, timeout_sec=timeout_sec,
+        start_attempts=start_attempts, cap_attempts=cap_attempts,
+        min_frequency=min_frequency, timeout_sec=timeout_sec,
     )
     return 0
 
 
+def _run_precommit_passes(
+    *,
+    start_attempts: int,
+    cap_attempts: int,
+    base: str,
+    scope: str,
+    companion: Path,
+    changed_files: Sequence[str],
+    hits: Sequence[str],
+    out_dir: Path,
+    timeout_sec: int,
+    min_frequency: int,
+    runner: Runner,
+    diff_digest: str | None,
+    pol_dgst: str,
+) -> int:
+    """Cache-miss path: adaptive escalation, then gate + persist the verdict.
+
+    Run `start_attempts` passes; if a strong (critical/high) finding already
+    reproduced (>= min_frequency) block immediately (early-block); if a strong
+    finding exists below the threshold — or the start batch produced too few
+    successful passes to trust a clean verdict — escalate to `cap_attempts` total
+    passes; if the start batch is clean and well-powered, stop early and pass.
+    The terminal gate + fail-closed + cache live in `_finalize_and_gate`
+    (issue #1728).
+    """
+    changed_set = set(changed_files)
+
+    start_results = _run_batch(
+        indices=range(1, start_attempts + 1),
+        cap_attempts=cap_attempts,
+        base=base,
+        scope=scope,
+        companion=companion,
+        changed_files=changed_files,
+        hits=hits,
+        timeout_sec=timeout_sec,
+        runner=runner,
+        out_dir=out_dir,
+        changed_set=changed_set,
+    )
+    start_successful = sum(1 for r in start_results if not r.is_error)
+    verdict = _evaluate_passes(start_results, min_frequency=min_frequency)
+
+    # Escalate when a sub-threshold strong finding needs confirmation, OR when the
+    # start batch is clean but had too few successful passes to trust that verdict
+    # (a clean result from < min_frequency passes is not a confident pass — gather
+    # more signal rather than fail-closed prematurely). Never escalate past the cap.
+    should_escalate = start_attempts < cap_attempts and (
+        verdict == "escalate"
+        or (verdict == "pass" and start_successful < min_frequency)
+    )
+    if should_escalate:
+        escalation_results = _run_batch(
+            indices=range(start_attempts + 1, cap_attempts + 1),
+            cap_attempts=cap_attempts,
+            base=base,
+            scope=scope,
+            companion=companion,
+            changed_files=changed_files,
+            hits=hits,
+            timeout_sec=timeout_sec,
+            runner=runner,
+            out_dir=out_dir,
+            changed_set=changed_set,
+        )
+        all_results = list(start_results) + list(escalation_results)
+        return _finalize_and_gate(
+            results=all_results,
+            out_dir=out_dir,
+            min_frequency=min_frequency,
+            diff_digest=diff_digest,
+            pol_dgst=pol_dgst,
+            start_attempts=start_attempts,
+            cap_attempts=cap_attempts,
+            timeout_sec=timeout_sec,
+        )
+
+    # No escalation: early-block (verdict == "block"), early clean pass
+    # (well-powered), or no room to escalate (start == cap). The terminal
+    # fail-closed + gate run over exactly the passes we ran.
+    return _finalize_and_gate(
+        results=start_results,
+        out_dir=out_dir,
+        min_frequency=min_frequency,
+        diff_digest=diff_digest,
+        pol_dgst=pol_dgst,
+        start_attempts=start_attempts,
+        cap_attempts=cap_attempts,
+        timeout_sec=timeout_sec,
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--attempts", type=int, default=None, help="Number of parallel union passes.")
+    parser.add_argument(
+        "--attempts",
+        type=int,
+        default=None,
+        help="Escalation cap: max parallel union passes (default 8).",
+    )
+    parser.add_argument(
+        "--start-attempts",
+        type=int,
+        default=None,
+        help=(
+            "Initial passes before escalation (default 2); escalates toward "
+            "--attempts only when a strong finding appears."
+        ),
+    )
     parser.add_argument(
         "--min-frequency",
         type=int,
@@ -1044,6 +1270,7 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         attempts = args.attempts if args.attempts is not None else _env_attempts()
+        start_attempts = _resolve_start_attempts(args.start_attempts, attempts)
         min_frequency = (
             args.min_frequency if args.min_frequency is not None else _env_min_frequency()
         )
@@ -1064,6 +1291,7 @@ def main(argv: list[str] | None = None) -> int:
 
     return run_precommit_review(
         attempts=attempts,
+        start_attempts=start_attempts,
         base=args.base,
         scope=args.scope,
         companion=companion,
