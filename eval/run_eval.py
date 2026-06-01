@@ -740,6 +740,11 @@ def metric_block(case_results: list[dict[str, Any]]) -> dict[str, Any]:
         for r in case_results
         if r.get("comparison_pool_recall") is not None
     ]
+    comparison_groundedness_scores = [
+        r["comparison_groundedness"]
+        for r in case_results
+        if r.get("comparison_groundedness") is not None
+    ]
     format_scores = [
         r["answer_format_compliance"]
         for r in case_results
@@ -988,6 +993,9 @@ def metric_block(case_results: list[dict[str, Any]]) -> dict[str, Any]:
             [1.0 if score >= 1.0 - 1e-9 else 0.0 for score in comparison_pool_recall_scores]
         )
         ci_block["comparison_pool_recall"] = bootstrap_ci(comparison_pool_recall_scores)
+    if comparison_groundedness_scores:
+        block["comparison_groundedness"] = rate(comparison_groundedness_scores)
+        ci_block["comparison_groundedness"] = bootstrap_ci(comparison_groundedness_scores)
     # Attach retrieval chunk + citation-coverage aggregates. Every key is
     # always emitted (mean = None when no case in the slice carried it, e.g. an
     # abstention-only slice for chunk metrics) so every by-slice block keeps a
