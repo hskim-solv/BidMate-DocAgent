@@ -25,7 +25,7 @@ import subprocess
 import sys
 import threading
 import time
-from typing import Iterable, Sequence
+from typing import Callable, Iterable, Sequence
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -281,22 +281,26 @@ LANE_AUTOTUNE_K_ENV = "ACTIVE_LANE_AUTOTUNE_K"
 LANE_AUTOTUNE_FAIL_WINDOW_ENV = "ACTIVE_LANE_AUTOTUNE_FAIL_WINDOW"
 LANE_AUTOTUNE_FAIL_MIN_SAMPLE_ENV = "ACTIVE_LANE_AUTOTUNE_FAIL_MIN_SAMPLE"
 LANE_AUTOTUNE_FAIL_THRESHOLD_ENV = "ACTIVE_LANE_AUTOTUNE_FAIL_THRESHOLD"
+LANE_AUTOTUNE_COOLDOWN_ENV = "ACTIVE_LANE_AUTOTUNE_COOLDOWN"
 
 
 @dataclass(frozen=True)
 class LaneAutotuneConfig:
-    """Resolved knobs for the lane-autotune controller (ADR 0092, PR1).
+    """Resolved knobs for the lane-autotune controller (ADR 0092, PR1 + PR2).
 
     ``k`` is the within-agent slowness multiplier (flag a lane whose ``elapsed_s``
     exceeds ``k * median`` of the same agent's active lanes). ``fail_window`` /
     ``fail_min_sample`` / ``fail_threshold`` drive the fail_rate signal over the last
-    W iterations. Held as a frozen value so the controller stays a pure function.
+    W iterations. ``cooldown`` (PR2) is how many iterations a just-actuated lane is held
+    before it can be re-adjusted (AC13). Held as a frozen value so the controller stays a
+    pure function.
     """
 
     k: float = 2.0
     fail_window: int = 3
     fail_min_sample: int = 2
     fail_threshold: float = 0.5
+    cooldown: int = 2
 
 
 def _lane_autotune_enabled() -> bool:
@@ -339,6 +343,7 @@ def _resolve_lane_autotune_config() -> LaneAutotuneConfig | None:
         fail_window=_int(LANE_AUTOTUNE_FAIL_WINDOW_ENV, 3),
         fail_min_sample=_int(LANE_AUTOTUNE_FAIL_MIN_SAMPLE_ENV, 2),
         fail_threshold=_float(LANE_AUTOTUNE_FAIL_THRESHOLD_ENV, 0.5),
+        cooldown=_int(LANE_AUTOTUNE_COOLDOWN_ENV, 2),
     )
 
 
@@ -437,6 +442,52 @@ def _validate_effort_for_model(model: str, effort: str) -> str:
     if effort == "xhigh" and not re.match(r"^claude-opus-4-(?:7|8)(?:\b|[-_])", model):
         return "high"
     return effort
+
+
+# ADR 0092 (PR2): per-agent effort ladder for autotune actuation. Ordered low→high.
+# claude tops out at ``xhigh`` (the code profile ceiling; ``max`` is absent from
+# _CLAUDE_ROLE_PROFILE so it is intentionally excluded — a ``max`` rung is a smoke-gated
+# follow-up). codex tops out at ``high`` (``~/.codex/config.toml`` may use ``xhigh``, but
+# the controller ladder caps at ``high``; an ``xhigh`` rung is a follow-up). These ladders
+# are the SINGLE clamp guard for codex effort — _validate_effort_for_model is claude-only
+# (it would no-op on codex effort, so calling it there would be misuse, AC11).
+_CLAUDE_EFFORT_LADDER: tuple[str, ...] = ("low", "medium", "high", "xhigh")
+_CODEX_EFFORT_LADDER: tuple[str, ...] = ("minimal", "low", "medium", "high")
+
+
+def _lane_effort_ladder(agent: str) -> tuple[str, ...]:
+    return _CLAUDE_EFFORT_LADDER if agent == "claude" else _CODEX_EFFORT_LADDER
+
+
+def _step_lane_effort(agent: str, effort: str, delta: int) -> str | None:
+    """Step ``effort`` ±1 along the agent's ladder, clamped to its bounds (AC11/AC12).
+
+    Returns the clamped neighbour, or ``None`` when ``effort`` is not on the agent's ladder
+    (an off-ladder value — e.g. a custom env override — is left for the lane to resolve
+    rather than guessed at). Clamping at a bound returns the same rung (idempotent), so the
+    controller still records a recommendation even when no further step is possible.
+    """
+    ladder = _lane_effort_ladder(agent)
+    try:
+        idx = ladder.index(effort)
+    except ValueError:
+        return None
+    new_idx = max(0, min(len(ladder) - 1, idx + delta))
+    return ladder[new_idx]
+
+
+def _resolve_lane_effort_override(agent: str, role: str, requested_effort: str | None) -> str:
+    """Apply an autotune effort override, falling back to the role-table effort (ADR 0092).
+
+    Symmetric with ``_resolve_lane_model_override``: when ``requested_effort`` is provided
+    (the controller's per-lane decision) it wins; when ``None`` this returns exactly
+    ``_resolve_lane_effort(agent, role)`` so the off path / non-flagged lanes stay
+    byte-identical to today (AC14). No clamping here — the controller is the single ladder
+    guard (AC11); this resolver only chooses between the override and the baseline.
+    """
+    if requested_effort:
+        return requested_effort
+    return _resolve_lane_effort(agent, role)
 
 
 def _dual_lane_adversarial_enabled() -> bool:
@@ -10182,11 +10233,12 @@ def _load_active_lane_stats(state_path: Path) -> tuple[list[list[dict[str, objec
     Returns ``(history, meta)`` where ``history`` is a list of per-iteration lane
     observation batches in cycle order (oldest first); each batch is a list of
     ``{"role", "agent", "elapsed_s", "status"}`` dicts. ``meta`` carries
-    ``{"warnings": [...]}`` and the prior recommendations under
-    ``{"recommendations": [...]}`` (for audit continuity). Missing / unreadable /
-    autotune-off state yields an empty history so the caller no-ops cleanly.
+    ``{"warnings": [...]}``, the prior recommendations under ``{"recommendations": [...]}``
+    (for audit continuity), and the prior cooldown_state under ``{"cooldown_state": {...}}``
+    (ADR 0092 PR2, so a just-actuated lane stays suppressed across runs). Missing /
+    unreadable / autotune-off state yields an empty history so the caller no-ops cleanly.
     """
-    meta: dict[str, object] = {"warnings": [], "recommendations": []}
+    meta: dict[str, object] = {"warnings": [], "recommendations": [], "cooldown_state": {}}
     if not state_path.exists():
         return [], meta
     try:
@@ -10226,6 +10278,13 @@ def _load_active_lane_stats(state_path: Path) -> tuple[list[list[dict[str, objec
     raw_recs = payload.get("lane_autotune_recommendations")
     if isinstance(raw_recs, list):
         meta["recommendations"] = [rec for rec in raw_recs if isinstance(rec, dict)]
+    raw_cooldown = payload.get("lane_autotune_cooldown")
+    if isinstance(raw_cooldown, dict):
+        meta["cooldown_state"] = {
+            str(key): val
+            for key, val in raw_cooldown.items()
+            if isinstance(val, int) and not isinstance(val, bool) and val > 0
+        }
     return history, meta
 
 
@@ -10472,9 +10531,20 @@ def write_active_auto_loop(
     # spans prior runs, not just this run's iterations. Only read when autotune is ON.
     prior_lane_stats: list[list[dict[str, object]]] = []
     lane_autotune_recommendations: list[dict[str, object]] = []
+    # ADR 0092 (PR2): cooldown_state persists across iterations AND runs; pending_effort_overrides
+    # carries the controller's decision from iteration N to the runner call at iteration N+1.
+    lane_autotune_cooldown: dict[str, int] = {}
+    pending_effort_overrides: dict[tuple[str, str], str] = {}
     if lane_autotune_config is not None:
         prior_lane_stats, lane_stats_meta = _load_active_lane_stats(state_path)
         warnings.extend(str(w) for w in lane_stats_meta.get("warnings", []) if w)
+        prior_cooldown = lane_stats_meta.get("cooldown_state")
+        if isinstance(prior_cooldown, dict):
+            lane_autotune_cooldown = {
+                str(key): val
+                for key, val in prior_cooldown.items()
+                if isinstance(val, int) and not isinstance(val, bool) and val > 0
+            }
     max_iterations, limit_reason = _resolve_active_auto_loop_limit(
         max_iterations,
         auto_cap=auto_max_iterations_cap,
@@ -10549,10 +10619,11 @@ def write_active_auto_loop(
             "blockers": _dedupe_preserve_order(blockers),
             "warnings": _dedupe_preserve_order(warnings),
         }
-        # ADR 0092 (AC8): only emit the recommendations key when autotune is ON, so the
-        # checkpoint payload is byte-identical to today when the feature is OFF.
+        # ADR 0092 (AC8/AC13): only emit the recommendations + cooldown_state keys when
+        # autotune is ON, so the checkpoint payload is byte-identical to today when OFF.
         if lane_autotune_config is not None:
             checkpoint_payload["lane_autotune_recommendations"] = lane_autotune_recommendations
+            checkpoint_payload["lane_autotune_cooldown"] = lane_autotune_cooldown
         state_path.parent.mkdir(parents=True, exist_ok=True)
         state_path.write_text(
             json.dumps(_sanitize_json_value(checkpoint_payload), indent=2, sort_keys=True) + "\n",
@@ -10640,6 +10711,9 @@ def write_active_auto_loop(
                 task_id=task.task_id,
                 state=DEFAULT_ACTIVE_AUTO_REPAIR_STATE,
                 out=DEFAULT_ACTIVE_AUTO_REPAIR,
+                # ADR 0092 (PR2): apply the controller's Implementer effort override (if any)
+                # to the repair patch lane too. Reads the loop-level mutable at call time.
+                effort_overrides=pending_effort_overrides or None,
             )
 
         repair = run_patch(write_agent)
@@ -10852,6 +10926,9 @@ def write_active_auto_loop(
             record_gate_heartbeats=record_gate_heartbeats,
             task_id=task.task_id,
             repo_root=repo_root,
+            # ADR 0092 (PR2, AC9/AC10): apply the controller's effort overrides from the PRIOR
+            # iteration to this iteration's lanes. Empty when OFF or before any actuation.
+            effort_overrides=pending_effort_overrides or None,
         )
         cycle["runner_decision"] = runner.decision
         cycle["runner_report"] = _repo_path(runner.report_path, repo_root)
@@ -10869,9 +10946,10 @@ def write_active_auto_loop(
                 for session in runner.sessions
                 if isinstance(session, dict)
             ]
-            # AC4/AC5/AC8: feed the full history (prior runs + this run's earlier cycles +
-            # this cycle) to the PURE controller and record its recommendations. PR1 is
-            # recommendation-only — no effort override is applied to any lane (that is PR2).
+            # AC4/AC5/AC9-AC13: feed the full history (prior runs + this run's earlier cycles +
+            # this cycle) and the carried cooldown_state to the PURE controller. PR2 returns the
+            # effort overrides to apply on the NEXT iteration's runner call + the decremented
+            # cooldown_state, both threaded forward via the loop-level mutables below.
             history = [
                 *prior_lane_stats,
                 *(
@@ -10880,10 +10958,23 @@ def write_active_auto_loop(
                     if isinstance(prior_cycle.get("lane_stats"), list)
                 ),
             ]
-            recommendations, autotune_events = compute_lane_autotune(history, lane_autotune_config)
+            (
+                next_effort_overrides,
+                recommendations,
+                lane_autotune_cooldown,
+                autotune_events,
+            ) = compute_lane_autotune(history, lane_autotune_cooldown, lane_autotune_config)
+            # Apply on the next iteration (AC9/AC10). Serialize tuple keys to "role||agent" for
+            # the audit payload; the in-process override dict keeps the tuple keys.
+            pending_effort_overrides = dict(next_effort_overrides)
             cycle["lane_autotune"] = {
                 "recommendations": recommendations,
                 "events": autotune_events,
+                "effort_overrides": {
+                    _lane_cooldown_key(role, agent): effort
+                    for (role, agent), effort in next_effort_overrides.items()
+                },
+                "cooldown_state": dict(lane_autotune_cooldown),
             }
             for rec in recommendations:
                 lane_autotune_recommendations.append(
@@ -11088,10 +11179,13 @@ def write_active_auto_loop(
         "blockers": _dedupe_preserve_order(blockers),
         "warnings": _dedupe_preserve_order(warnings),
     }
-    # ADR 0092 (AC8): emit recommendations on the terminal state write too (this block, not
-    # write_cycle_checkpoint, is the final state file). Gated so off-mode stays byte-identical.
+    # ADR 0092 (AC8/AC13): emit recommendations + cooldown_state on the terminal state write
+    # too (this block, not write_cycle_checkpoint, is the final state file). The persisted
+    # cooldown_state is what _load_active_lane_stats reads on the NEXT run so a just-actuated
+    # lane stays suppressed across runs. Gated so off-mode stays byte-identical.
     if lane_autotune_config is not None:
         state_payload["lane_autotune_recommendations"] = lane_autotune_recommendations
+        state_payload["lane_autotune_cooldown"] = lane_autotune_cooldown
     state_path.parent.mkdir(parents=True, exist_ok=True)
     state_path.write_text(json.dumps(_sanitize_json_value(state_payload), indent=2, sort_keys=True) + "\n", encoding="utf-8")
     rendered = render_active_auto_loop(
@@ -11494,11 +11588,13 @@ def _resolve_lane_autotune_config_for_cli(args: argparse.Namespace) -> "LaneAuto
     fail_window = getattr(args, "lane_autotune_fail_window", None)
     fail_min_sample = getattr(args, "lane_autotune_fail_min_sample", None)
     fail_threshold = getattr(args, "lane_autotune_fail_threshold", None)
+    cooldown = getattr(args, "lane_autotune_cooldown", None)
     return LaneAutotuneConfig(
         k=base.k if k is None else float(k),
         fail_window=base.fail_window if fail_window is None or int(fail_window) <= 0 else int(fail_window),
         fail_min_sample=base.fail_min_sample if fail_min_sample is None or int(fail_min_sample) <= 0 else int(fail_min_sample),
         fail_threshold=base.fail_threshold if fail_threshold is None else float(fail_threshold),
+        cooldown=base.cooldown if cooldown is None or int(cooldown) < 0 else int(cooldown),
     )
 
 
@@ -11647,17 +11743,41 @@ def _lane_autotune_median(values: Sequence[float]) -> float:
     return (ordered[mid - 1] + ordered[mid]) / 2.0
 
 
+def _lane_cooldown_key(role: str, agent: str) -> str:
+    """JSON-safe cooldown_state key for a ``(role, agent)`` lane (ADR 0092, PR2)."""
+    return f"{role}||{agent}"
+
+
 def compute_lane_autotune(
     prior_lane_stats: Sequence[Sequence[dict[str, object]]],
+    cooldown_state: "dict[str, object] | None",
     config: "LaneAutotuneConfig",
-) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
-    """Pure decision function for opt-in lane autotune (ADR 0092, PR1).
+    *,
+    effort_resolver: "Callable[[str, str], str]" = _resolve_lane_effort,
+) -> tuple[
+    dict[tuple[str, str], str],
+    list[dict[str, object]],
+    dict[str, int],
+    list[dict[str, object]],
+]:
+    """Pure decision function for opt-in lane autotune (ADR 0092, PR1 sense + PR2 actuate).
 
-    Recommendation-only — this NEVER applies an effort override (that is PR2). Given
-    ``prior_lane_stats`` (per-iteration observation batches, oldest first; each batch a
-    list of ``{"role", "agent", "elapsed_s", "status"}`` dicts), it senses *within-agent*
-    bottlenecks on the most recent batch and emits per-lane recommendations + diagnostic
-    events. No I/O, no env reads, no clock — fully deterministic for testing.
+    Given ``prior_lane_stats`` (per-iteration observation batches, oldest first; each batch a
+    list of ``{"role", "agent", "elapsed_s", "status"}`` dicts) and the prior
+    ``cooldown_state`` (``{"role||agent": remaining_iterations}``), it senses *within-agent*
+    bottlenecks on the most recent batch, resolves a stepped effort override per flagged lane,
+    and returns the cooldown-suppressed actuation. No I/O, no env reads, no clock — the only
+    seam is ``effort_resolver`` (defaults to the env-aware ``_resolve_lane_effort``; tests
+    inject a pure fake) so the function stays deterministic given its inputs.
+
+    Returns ``(effort_overrides, recommendations, new_cooldown_state, events)``:
+      * ``effort_overrides`` — ``{(role, agent): effort}`` to apply on the NEXT iteration. A
+        lane in cooldown, or whose stepped effort would not move (off-ladder, or already
+        clamped at a bound), is omitted (no actuation that iteration).
+      * ``recommendations`` — per-flagged-lane audit rows (the PR1 shape, now carrying the
+        actuation outcome: ``actuated`` / ``effort_from`` / ``effort_to`` / cooldown state).
+      * ``new_cooldown_state`` — carryover entries decremented by 1 (dropped at 0); freshly
+        actuated lanes (re)set to ``config.cooldown``.
 
     Signals:
       * elapsed (AC4): on the newest batch ("active lanes"), group by ``agent``; for an
@@ -11672,16 +11792,31 @@ def compute_lane_autotune(
         role's agent flips (``read_agent=auto``), the new lane is a fresh key, so the prior
         agent's observations for that role do not leak into the new lane's window.
 
-    Direction (AC8, previewing AC12): a flagged lane whose fail_rate exceeds
-    ``config.fail_threshold`` (with min-sample met) is recommended to *strengthen* (PR2
-    would step effort +1); otherwise *accelerate* (PR2 would step -1). PR1 records the
-    direction only — no concrete effort level is resolved here.
+    Direction (AC12): a flagged lane whose fail_rate exceeds ``config.fail_threshold`` (with
+    min-sample met) *strengthens* (effort +1); otherwise *accelerates* (effort -1). The step
+    is clamped to the agent's ladder (AC11) — the controller is the SINGLE codex guard.
+    Cooldown (AC13): a just-actuated lane is held ``config.cooldown`` iterations before it can
+    be re-adjusted.
     """
     batches: list[list[dict[str, object]]] = [list(batch) for batch in prior_lane_stats]
     events: list[dict[str, object]] = []
     recommendations: list[dict[str, object]] = []
+    effort_overrides: dict[tuple[str, str], str] = {}
+
+    # --- cooldown bookkeeping (AC13) ---
+    # ``incoming`` maps a lane key to its remaining cooldown from the prior iteration; a lane
+    # with remaining > 0 cannot be re-adjusted this iteration. ``new_cooldown_state`` starts as
+    # the decremented carryover (entries dropped at 0); a freshly actuated lane overwrites its
+    # entry with the full cooldown so it is NOT decremented the same iteration it actuates.
+    incoming: dict[str, int] = {}
+    if isinstance(cooldown_state, dict):
+        for raw_key, raw_val in cooldown_state.items():
+            if isinstance(raw_val, int) and not isinstance(raw_val, bool) and raw_val > 0:
+                incoming[str(raw_key)] = raw_val
+    new_cooldown_state: dict[str, int] = {key: val - 1 for key, val in incoming.items() if val - 1 > 0}
+
     if not batches:
-        return recommendations, events
+        return effort_overrides, recommendations, new_cooldown_state, events
 
     # --- fail_rate per (role, agent) lane over the last W batches (AC5/AC6) ---
     window = batches[-config.fail_window :] if config.fail_window > 0 else batches
@@ -11755,8 +11890,35 @@ def compute_lane_autotune(
             fail_rate, fail_sample = _lane_fail_signal(role, agent)
             if fail_rate is not None and fail_rate > config.fail_threshold:
                 direction = "strengthen"
+                delta = 1
             else:
                 direction = "accelerate"
+                delta = -1
+            # --- actuate (AC11/AC12/AC13): step the baseline effort along the agent ladder,
+            # clamped, unless the lane is still cooling down. ``effort_resolver`` is the seam
+            # that keeps this function pure (tests inject a fake; the loop passes the env-aware
+            # default). A step that would not move (off-ladder, or already at the bound) records
+            # the recommendation but actuates nothing. ---
+            cooldown_key = _lane_cooldown_key(role, agent)
+            cooling = incoming.get(cooldown_key, 0)
+            effort_from = effort_resolver(agent, role)
+            effort_to: str | None = None
+            actuated = False
+            actuate_reason = ""
+            if cooling > 0:
+                actuate_reason = f"in cooldown ({cooling} iteration(s) remaining)"
+            else:
+                stepped = _step_lane_effort(agent, effort_from, delta)
+                if stepped is None:
+                    actuate_reason = f"effort '{effort_from}' is off the {agent} ladder; not stepped"
+                elif stepped == effort_from:
+                    actuate_reason = f"already clamped at ladder bound '{effort_from}'"
+                else:
+                    effort_to = stepped
+                    actuated = True
+                    actuate_reason = f"effort {effort_from} -> {effort_to}"
+                    effort_overrides[(role, agent)] = effort_to
+                    new_cooldown_state[cooldown_key] = config.cooldown
             recommendations.append(
                 {
                     "role": role,
@@ -11771,14 +11933,15 @@ def compute_lane_autotune(
                     "fail_threshold": config.fail_threshold,
                     "fail_signal": "no-signal" if fail_rate is None else "observed",
                     "direction": direction,
-                    "actuated": False,
-                    "note": (
-                        "recommendation-only (PR1); PR2 would "
-                        + ("raise effort +1 (strengthen)" if direction == "strengthen" else "lower effort -1 (accelerate)")
-                    ),
+                    "effort_from": effort_from,
+                    "effort_to": effort_to,
+                    "actuated": actuated,
+                    "cooldown_remaining": cooling,
+                    "cooldown_set": config.cooldown if actuated else None,
+                    "note": actuate_reason,
                 }
             )
-    return recommendations, events
+    return effort_overrides, recommendations, new_cooldown_state, events
 
 
 def choose_agent(role: str, *, agent_mix: dict[str, object], rolling: dict[str, object]) -> str:
@@ -11993,6 +12156,7 @@ def _run_agent_lane(
     codex_runner=None,
     prior_artifact: dict | None = None,
     timeout_seconds: int | None = None,
+    effort_override: str | None = None,
 ) -> dict[str, object]:
     """Dispatch one read-only lane and return the shared review-artifact core.
 
@@ -12001,6 +12165,12 @@ def _run_agent_lane(
     is active (BIDMATE_DUAL_LANE_ADVERSARIAL=1), so this lane can challenge it. The
     returned core also exposes ``_lane_meta`` with the model/effort actually used so the
     caller can persist it into the artifact + events.jsonl heartbeat.
+
+    ADR 0092 (PR2, AC9): ``effort_override`` is the opt-in lane-autotune effort for this
+    ``(role, agent)`` lane on this iteration. ``None`` (the default / off path) resolves the
+    role-table effort unchanged (byte-identical). It only affects the claude lane's
+    ``--effort`` — the codex adversarial-review subcommand still does not consume effort, so
+    its ``effort_applied`` stays False regardless.
     """
     try:
         from scripts import agent_loop_claude_turn as claude_turn, agent_loop_codex_turn as codex_turn
@@ -12008,7 +12178,7 @@ def _run_agent_lane(
         import agent_loop_claude_turn as claude_turn  # type: ignore[no-redef]
         import agent_loop_codex_turn as codex_turn  # type: ignore[no-redef]
     model = _resolve_lane_model(agent, role)
-    effort = _resolve_lane_effort(agent, role)
+    effort = _resolve_lane_effort_override(agent, role, effort_override)
     if agent == "claude":
         effort = _validate_effort_for_model(model, effort)
         # ADR 0082: stale CLI (< 2.1.150) rejects `--effort` as unknown option → verdict=error.
@@ -12113,6 +12283,7 @@ def write_agent_turn(
     repo_root: Path = ROOT_DIR,
     prior_artifact: dict | None = None,
     timeout_seconds: int | None = None,
+    effort_override: str | None = None,
 ) -> AgentTurnResult:
     """Run one read-only Claude/Codex review lane; persist artifact + lane heartbeat.
 
@@ -12120,6 +12291,9 @@ def write_agent_turn(
     core (verdict/summary/findings/next_steps); this function authoritatively sets the
     meta fields, runs a fail-closed privacy scrub (ADR 0005), records the Work Unit, and
     drives ``write_session_heartbeat`` so the conservative gate sees the lane verdict.
+
+    ADR 0092 (PR2, AC9): ``effort_override`` threads the opt-in lane-autotune effort into
+    the claude review lane's ``--effort``; ``None`` keeps today's role-table effort.
     """
     safe_session = _validate_session_id(session_id)
     safe_role = _sanitize_inline_text(role)
@@ -12168,6 +12342,7 @@ def write_agent_turn(
         codex_runner=codex_runner,
         prior_artifact=prior_artifact,
         timeout_seconds=timeout_seconds,
+        effort_override=effort_override,
     )
     verdict = str(core.get("verdict") or "needs-attention")
     artifact_path = _agent_turn_artifact_path(
@@ -13951,6 +14126,7 @@ def write_active_codex_runner(
     claude_runner=None,
     runner: str = "codex",
     omc_runner=None,
+    effort_overrides: "dict[tuple[str, str], str] | None" = None,
 ) -> ActiveCodexRunnerResult:
     """Plan or spawn Codex processes for the active loop.
 
@@ -13985,6 +14161,14 @@ def write_active_codex_runner(
     # ADR 0092: resolve once per runner call. When OFF, no per-lane elapsed_s is recorded
     # into the session dicts so the runner state file / report stay byte-identical.
     lane_autotune_on = _lane_autotune_enabled()
+    # ADR 0092 (PR2, AC9/AC10): per-(role, agent) effort overrides from the controller, applied
+    # to this iteration's lanes. Empty/None == no actuation (byte-identical). A helper keeps the
+    # per-call-site lookup terse; off-mode never populates it so off paths stay unchanged.
+    _effort_overrides: dict[tuple[str, str], str] = dict(effort_overrides) if effort_overrides else {}
+
+    def _lane_effort_for(role: str, lane_agent: str) -> str | None:
+        return _effort_overrides.get((role, lane_agent)) if _effort_overrides else None
+
     registry_path = _active_path(registry, repo_root=repo_root)
     assignments_path = _active_path(assignments_dir, repo_root=repo_root)
     runs_path = _active_path(runs_dir, repo_root=repo_root)
@@ -14037,6 +14221,8 @@ def write_active_codex_runner(
             git_runner=git_runner,
             write_agent=write_agent,
             claude_runner=claude_runner,
+            # ADR 0092 (PR2): thread the controller's effort overrides into the patch lane.
+            effort_overrides=_effort_overrides or None,
         )
 
     blockers: list[str] = []
@@ -14081,6 +14267,7 @@ def write_active_codex_runner(
                                 sandbox=sandbox,
                                 last_message_path=last_message_path,
                                 repo_root=repo_root,
+                                effort=_lane_effort_for(role, session_agent),
                             )
                         )
                     )
@@ -14188,6 +14375,9 @@ def write_active_codex_runner(
                             # Claude read lane so a hung review session is bounded by the
                             # wall-clock budget when one is set (0 == unlimited otherwise).
                             timeout_seconds=timeout_seconds,
+                            # ADR 0092 (PR2, AC9): apply the opt-in lane-autotune effort for this
+                            # (role, claude) lane; None == today's role-table effort.
+                            effort_override=_lane_effort_for(role, "claude"),
                         )
                     except Exception as exc:  # fail closed; the loop can route repair/retry.
                         item["status"] = "failed"
@@ -14249,6 +14439,9 @@ def write_active_codex_runner(
                     sandbox=sandbox,
                     last_message_path=last_message_path,
                     repo_root=repo_root,
+                    # ADR 0092 (PR2, AC10): inject the opt-in lane-autotune effort for this
+                    # (role, codex) lane as `-c model_reasoning_effort`; None == byte-identical.
+                    effort=_lane_effort_for(role, session_agent),
                 )
                 stderr_file = None
                 try:
@@ -14532,6 +14725,7 @@ def _write_active_codex_patch(
     write_agent: str = "codex",
     claude_runner=None,
     now: datetime | None = None,
+    effort_overrides: "dict[tuple[str, str], str] | None" = None,
 ) -> ActiveCodexRunnerResult:
     """Patch mode: a single write-lane on the Implementer (write-lease owner).
 
@@ -14584,6 +14778,11 @@ def _write_active_codex_patch(
     else:
         agent = write_agent
     resolved_model = _resolve_lane_model_override(agent, "Implementer", model)
+    # ADR 0092 (PR2, AC9/AC10): the patch lane is always the ("Implementer", agent) lane —
+    # resolve its opt-in effort override once. None == today's role-table effort (byte-identical).
+    patch_effort_override = (
+        effort_overrides.get(("Implementer", agent)) if effort_overrides else None
+    )
 
     # ADR 0086 (Codex finding) fail-closed: the Claude write lane runs with bypass-style
     # permissions and cannot enforce the codex OS sandbox (``DEFAULT_PATCH_SANDBOX``). Under
@@ -14661,6 +14860,7 @@ def _write_active_codex_patch(
                             last_message_path=last_message_path,
                             repo_root=repo_root,
                             cd=str(scratch_path),
+                            effort=patch_effort_override,
                         )
                     )
                 )
@@ -14773,7 +14973,13 @@ def _write_active_codex_patch(
                     )
                     rc: int | None = None
                     if agent == "claude":
-                        effort = _validate_effort_for_model(resolved_model, _resolve_lane_effort("claude", "Implementer"))
+                        # ADR 0092 (PR2, AC9): apply the opt-in lane-autotune effort override
+                        # (None == today's role-table effort), then keep the claude-only
+                        # _validate_effort_for_model guard (xhigh→high for non-Opus models).
+                        effort = _validate_effort_for_model(
+                            resolved_model,
+                            _resolve_lane_effort_override("claude", "Implementer", patch_effort_override),
+                        )
                         if claude_runner is None and not _claude_cli_supports_effort():
                             effort = ""
                         # ADR 0085: 0 (env or --timeout-seconds) now means *unlimited* for
@@ -14828,6 +15034,9 @@ def _write_active_codex_patch(
                             last_message_path=last_message_path,
                             repo_root=repo_root,
                             cd=str(created_path),
+                            # ADR 0092 (PR2, AC10): inject the patch-lane effort override as
+                            # `-c model_reasoning_effort`; None == byte-identical.
+                            effort=patch_effort_override,
                         )
                         factory = popen_factory if popen_factory is not None else subprocess.Popen
                         proc = None
@@ -16214,6 +16423,7 @@ def _active_codex_exec_command(
     last_message_path: Path,
     repo_root: Path,
     cd: str = ".",
+    effort: str | None = None,
 ) -> list[str]:
     command = [
         codex_executable,
@@ -16226,6 +16436,14 @@ def _active_codex_exec_command(
     ]
     if model:
         command.extend(["--model", model])
+    # ADR 0092 (PR2, AC10): opt-in lane-autotune effort override. ``-c model_reasoning_effort``
+    # MUST land in the --model-adjacent flag block, BEFORE the positional ``-`` stdin marker
+    # below — codex argparse breaks if a ``-c`` flag follows the positional ``-`` (a bare
+    # ``["-", "-c", ...]`` ordering is rejected). ``effort is None`` (the default for every
+    # non-autotune call site) appends nothing, so the rendered command stays byte-identical to
+    # today (AC14).
+    if effort:
+        command.extend(["-c", f"model_reasoning_effort={effort}"])
     command.extend([
         "--output-last-message",
         _repo_path(last_message_path, repo_root),
@@ -18276,6 +18494,7 @@ def build_parser() -> argparse.ArgumentParser:
     auto_loop.add_argument("--lane-autotune-fail-window", type=int, default=None, help="fail_rate window W in iterations (default 3).")
     auto_loop.add_argument("--lane-autotune-fail-min-sample", type=int, default=None, help="Minimum observations before a fail_rate signal (default 2).")
     auto_loop.add_argument("--lane-autotune-fail-threshold", type=float, default=None, help="fail_rate threshold for strengthen vs accelerate (default 0.5).")
+    auto_loop.add_argument("--lane-autotune-cooldown", type=int, default=None, help="Iterations a just-actuated lane is held before re-adjustment (ADR 0092 PR2; default 2).")
 
     active_apply = sub.add_parser("active-apply", help="Apply a codex patch artifact to its integration branch after git apply --check (never touches main).")
     active_apply.add_argument("--patch", type=Path, help="Patch artifact JSON; defaults to the Implementer session's patch_artifact.json.")
