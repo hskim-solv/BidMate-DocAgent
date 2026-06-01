@@ -73,6 +73,9 @@ ADR 0088 P1은 `.github/workflows/staging-self-ship-guard.yml`에 헌법불변 �
 - `grep -n "check_constitutional_review.py" .github/workflows/staging-self-ship-guard.yml` 결과가 존재 (테스트 가능 check-script 호출).
 - 운영자 준비 완료 후: 브랜치 보호 "Require review from Code Owners" 활성화 시, owner 리뷰 없는 헌법파일 PR이 머지 차단됨을 live e2e로 확인.
 
+**Runbook 동기화 경고 (ADR 0091 ↔ `docs/operations/staging-self-ship.md`)**:
+브랜치 보호를 `gh api -X PUT ... /protection`으로 재설정할 때 `required_pull_request_reviews=null`을 전달하면 `require_code_owner_reviews` 설정이 **조용히 삭제**된다 — CODEOWNERS gate의 1차 강제가 사라진다. runbook(`docs/operations/staging-self-ship.md` §1)은 반드시 `required_pull_request_reviews[require_code_owner_reviews]=true`를 명시적으로 포함하는 형태여야 하며, 이 ADR의 계약을 보존한다. 현재 runbook은 이 형태로 유지된다 (이슈 #1727 동기화 완료).
+
 ### 구현 완료 현황 + full accept 잔여 조건 (2026-06-01)
 
 **구현 완료 (코드·설정)**: CODEOWNERS 이전 메커니즘(`.github/CODEOWNERS` + `check_constitutional_review.py` + 워크플로 호출)이 #1702로 안착했고, branch protection `require_code_owner_reviews` **설정이 실존**함을 `autopilot/integration` + `main` 양쪽에서 확인했다(설정 **존재** VERIFIED, 2026-06-01).

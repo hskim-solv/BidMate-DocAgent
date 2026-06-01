@@ -33,7 +33,12 @@ P2.0 D-minus 목표: 외부 강제를 코드에 실제로 경유하게 하고, e
 
 1. **`ship_manifest.json` 계약 함수 정의 (신규 측정/계약 표면).** `_staging_ship.py`에 `write_ship_manifest()` / `read_ship_manifest()` / `archive_ship_manifest()` 세 함수를 구현하고 유닛 테스트로 계약을 고정한다. `_staging_ship.py`의 `main()`은 manifest 파일이 있으면 `read_ship_manifest()`로 **idempotent하게 읽는다** — 소비/아카이브하지 않는다(`.consumed` 아카이브는 P2.2 머지 성공 후). 운영자가 `--source` 인자를 전달해 live protection-verify 하네스를 수동으로 실행할 수 있다. **`agent_loop.py`에 manifest 자동 기록 seam(= `_maybe_write_ship_manifest`)은 이 PR에 없다**: 루프는 `EXECUTE_SHIP=0`으로 실행되므로 게이트된 변경이 커밋되지 않아 `source_sha=HEAD`가 stale/무의미해진다. manifest emission은 실제 커밋이 일어나는 P2.2에서 구현한다. `agent_loop.py`는 ship()을 직접 호출하지 않는다.
 
-2. **라이브 protection_verified (`_RealGitOps`).** P1의 `BIDMATE_SHIP_PROTECTION_VERIFIED` env-trust는 **제거**한다. `_staging_ship.py`는 `gh api repos/:owner/:repo/branches/autopilot/integration/protection`을 실제 호출해 **특정 required-check `staging-self-ship-guard`의 존재**(`required_status_checks.contexts` 또는 `.checks[].context`에 포함) + force-push deny 여부를 검증한다. 슬래시 포함 브랜치명은 URL-encode된다. **아무 required-check나가 아니라 그 가드 워크플로가 반드시 required여야** True. 검증 실패 시 `exit 2`(blocked-on-user). `BIDMATE_SHIP_TOKEN_SEPARATED` env-trust도 동시에 제거한다.
+2. **라이브 protection_verified (`_RealGitOps`).** P1의 `BIDMATE_SHIP_PROTECTION_VERIFIED` env-trust는 **제거**한다. `_staging_ship.py`는 `gh api repos/:owner/:repo/branches/autopilot/integration/protection`을 실제 호출해 **4개 조건을 모두** 검증한다:
+   - **`required_status_checks.strict == true`** — branches must be up-to-date before merge; absent/false/non-bool은 fail-closed (stale source가 required check를 통과한 뒤 merge될 수 있는 경로 차단, issue #1697 Fix 1);
+   - **`required_status_checks.contexts` 또는 `.checks[].context`에 `staging-self-ship-guard` 포함** — 아무 required-check나가 아니라 그 가드 워크플로가 반드시 listed여야 True;
+   - **`allow_force_pushes.enabled == false`** — absent/true/non-dict는 fail-closed;
+   - **`enforce_admins.enabled == true`** — admins의 required-check 우회 차단; absent/false는 fail-closed.
+   슬래시 포함 브랜치명은 URL-encode된다. 검증 실패 시 `exit 2`(blocked-on-user). `BIDMATE_SHIP_TOKEN_SEPARATED` env-trust도 동시에 제거한다.
 
 3. **`BIDMATE_SHIP_*` env 격리 — 단일 출처 `scripts/_ship_env.py`.** `strip_ship_secret_env()` 단일 함수(프리픽스 deny)가 **모든 runner subprocess 레인을 경유**한다: claude write + codex patch ×2 write 레인, read/review 레인 2곳(`agent_loop_codex_turn.py` / `agent_loop_claude_turn.py`), omc 레인(`_OMC_ENV_ALLOWLIST` positive allowlist로 이미 제외). 프리픽스 literal `"BIDMATE_SHIP_"`은 `_ship_env.py` 한 곳에만 존재(whack-a-mole 방지). PATH/HOME/auth는 보존(over-tight 아님).
 
@@ -97,6 +102,13 @@ P2.0 D-minus 목표: 외부 강제를 코드에 실제로 경유하게 하고, e
 <!-- verifies-key: scripts/_staging_ship.py:read_ship_manifest -->
 
 `write_ship_manifest` / `read_ship_manifest` / `archive_ship_manifest` 세 함수가 `scripts/_staging_ship.py`에 존재하며, manifest 계약을 유닛 테스트로 고정한다. `read_ship_manifest`는 **idempotent하게 읽는다** — D-minus에서는 파일을 소비/아카이브하지 않는다(단일-소비는 P2.2 머지 성공 후 `archive_ship_manifest` 호출 시). manifest path: `$(ACTIVE_SHIP_STATE_DIR)/ship_manifest.json`.
+
+`protection_verified`의 **VERIFIED contract (4개 조건 전부 fail-closed)**:
+- `required_status_checks.strict is True` — `_staging_ship.py` 행 502 (`if required.get("strict") is not True: return False`); `tests/test_staging_ship_regression.py::test_real_protection_verified_false_when_strict_absent` + `test_real_protection_verified_false_when_strict_false` 회귀 테스트로 고정.
+- `staging-self-ship-guard` required check 존재 — `_staging_ship.py` 행 515 (`if _REQUIRED_STAGING_CHECK not in names: return False`).
+- `allow_force_pushes.enabled is False` — `_staging_ship.py` 행 522.
+- `enforce_admins.enabled is True` — `_staging_ship.py` 행 527.
+이 4개 조건 중 하나라도 absent/false/비dict이면 즉시 `return False` (fail-closed). 코드가 `strict` 조건을 이미 검증하고 있으므로 별도 코드 변경 없음 — 이 항목은 contract 텍스트와 코드를 명시적으로 정렬한다.
 
 manifest emission seam의 **의도된 부재**(P2.2 유보)는 다음으로 확인한다:
 - `grep -n "_maybe_write_ship_manifest" scripts/agent_loop.py` 결과가 비어 있어 루프에 자동 기록 seam이 없음을 보인다.

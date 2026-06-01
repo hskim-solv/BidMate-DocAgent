@@ -101,11 +101,19 @@ git switch -c autopilot/integration origin/main
 git push -u origin autopilot/integration
 
 # branch protection: staging-self-ship-guard required check + force-push deny
+#
+# WARNING (ADR 0091): required_pull_request_reviews MUST include
+# require_code_owner_reviews=true. Setting required_pull_request_reviews=null
+# would SILENTLY DISABLE the CODEOWNERS gate (the constitutional-change guard
+# that blocks the autonomous loop from self-approving guard-file PRs).
+# Always pass the full required_pull_request_reviews object as shown below.
 gh api -X PUT repos/:owner/:repo/branches/autopilot%2Fintegration/protection \
   -f 'required_status_checks[strict]=true' \
   -f 'required_status_checks[checks][][context]=staging-self-ship-guard' \
   -F 'enforce_admins=true' \
-  -F 'required_pull_request_reviews=null' \
+  -F 'required_pull_request_reviews[require_code_owner_reviews]=true' \
+  -F 'required_pull_request_reviews[dismiss_stale_reviews]=false' \
+  -F 'required_pull_request_reviews[required_approving_review_count]=1' \
   -F 'restrictions=null' \
   -F 'allow_force_pushes=false' \
   -F 'allow_deletions=false'
