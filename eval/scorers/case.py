@@ -72,6 +72,57 @@ def _compact_retrieved_chunks(diagnostics: dict[str, Any]) -> list[dict[str, Any
     ]
 
 
+def score_comparison_groundedness(
+    case: dict[str, Any],
+    query_type: str,
+    evidence: list[dict[str, Any]],
+    *,
+    answerable: bool,
+    abstained: bool,
+) -> float | None:
+    """Target-aware groundedness for multi-target comparison cases (issue #1399).
+
+    The pooled ``groundedness`` (case.py) checks ``contains_all_terms`` over the
+    answer + *all* evidence merged into one blob, so for a 2-target comparison it
+    cannot tell "both sides independently grounded" from "one side grounded, the
+    other side's terms merely leaking into the shared pool". This metric instead
+    grounds each target against *its own* evidence: a target counts as grounded
+    iff some evidence chunk whose ``doc_id`` is in that target's
+    ``expected_doc_ids`` carries all of that target's ``expected_terms``. Returns
+    the grounded-target fraction.
+
+    Returns ``None`` (excluded from the mean) when the case is not a multi-target
+    comparison with per-target gold, or is unanswerable — mirroring the
+    conditional-on-substantive semantics of ``groundedness`` (ADR 0054). Reuses
+    the existing ``expected_claim_citations`` gold consumed by the alignment
+    scorer; no new gold fields.
+    """
+    if not answerable or query_type != "comparison":
+        return None
+    specs = [
+        spec
+        for spec in case.get("expected_claim_citations") or []
+        if isinstance(spec, dict) and str(spec.get("target") or "").strip()
+    ]
+    if len(specs) < 2:
+        return None
+    if abstained:
+        return 0.0
+    grounded = 0
+    for spec in specs:
+        expected_doc_ids = {str(doc_id) for doc_id in spec.get("expected_doc_ids") or []}
+        expected_terms = [str(term) for term in spec.get("expected_terms") or []]
+        target_evidence = [
+            item for item in evidence if str(item.get("doc_id") or "") in expected_doc_ids
+        ]
+        if not target_evidence:
+            continue
+        target_text = " ".join(str(item.get("text") or "") for item in target_evidence)
+        if contains_all_terms(target_text, expected_terms):
+            grounded += 1
+    return grounded / len(specs)
+
+
 def score_case(
     case: dict[str, Any],
     prediction: dict[str, Any],
@@ -127,6 +178,10 @@ def score_case(
             comparison_pool_recall = (
                 len(expected_doc_ids & pool_doc_ids) / len(expected_doc_ids)
             )
+
+    comparison_groundedness = score_comparison_groundedness(
+        case, query_type, evidence, answerable=answerable, abstained=abstained
+    )
 
     if answerable:
         doc_match = expected_doc_ids.issubset(evidence_doc_ids)
@@ -257,6 +312,7 @@ def score_case(
         "abstention": abstention,
         "comparison_target_recall": comparison_target_recall,
         "comparison_pool_recall": comparison_pool_recall,
+        "comparison_groundedness": comparison_groundedness,
         "latency_ms": diagnostics.get("latency_ms"),
         "retry_count": diagnostics.get("retry_count", 0),
         "retry_trigger_reasons": retry_trigger_reasons(prediction),
