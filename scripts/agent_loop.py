@@ -2680,6 +2680,46 @@ def render_status(
     return "\n".join(lines) + "\n"
 
 
+def _task_is_ambiguous(task_id: str, *, repo_root: Path = ROOT_DIR) -> bool:
+    """Whether the queued task lacks BOTH an Acceptance Criteria section and any
+    Validation Commands.
+
+    These are the two crystallization signals ``select_next_task`` already sorts
+    on (see its sort key). A task missing both has no verifiable acceptance
+    contract yet and benefits from a ``/ralplan`` consensus plan gate before it
+    enters the implementation lane. A missing/unreadable queue or an unknown task
+    id returns ``False`` — the advisory is opt-in and must never block.
+    """
+    try:
+        entries = parse_task_entries(_read_text(repo_root / QUEUE_PATH))
+    except (OSError, ValueError):
+        return False
+    task = next((entry for entry in entries if entry.task_id == task_id), None)
+    if task is None:
+        return False
+    has_validation = bool(_extract_validation_commands(task))
+    has_acceptance = "Acceptance Criteria" in task.body
+    return not (has_validation or has_acceptance)
+
+
+def _render_ralplan_advisory(task_id: str) -> list[str]:
+    """Advisory-only plan-gate recommendation lines for an ambiguous task.
+
+    Surfaced in the preflight body between queue selection and the implementation
+    lane (agent-loop integration plan T-X3). It NEVER changes preflight's exit
+    code or blocks the loop — call-only ("호출만"): it points the operator/agent
+    at the ``/ralplan`` consensus plan gate, it does not invoke it.
+    """
+    return [
+        "",
+        "Plan gate (ralplan):",
+        f"- `{task_id}` has neither an Acceptance Criteria section nor Validation Commands;",
+        "  it is ambiguous and has no verifiable acceptance contract yet.",
+        "- Crystallize it with the `/ralplan` consensus plan gate before entering the",
+        "  implementation lane, then re-run preflight. Advisory only — does NOT block preflight.",
+    ]
+
+
 def render_preflight(
     *,
     task_id: str,
@@ -2701,6 +2741,8 @@ def render_preflight(
         "",
         render_validation_suggestions(validation).rstrip(),
     ]
+    if _task_is_ambiguous(task_id, repo_root=repo_root):
+        lines.extend(_render_ralplan_advisory(task_id))
     if write_prompts:
         prompt = render_prompt(task_id, repo_root=repo_root)
         review = render_review_prompt(task_id, changed_files=changed_files, repo_root=repo_root)
