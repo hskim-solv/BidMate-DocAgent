@@ -3845,6 +3845,112 @@ def test_active_codex_runner_lane_autotune_on_dry_run_still_omits_effort_flag(mo
     assert all("-c model_reasoning_effort" not in item["command"] for item in result.sessions)
 
 
+def test_active_codex_runner_applies_effort_override_to_codex_command(tmp_path: Path) -> None:
+    """ADR 0092 PR2 AC10: when the controller supplies an effort override for a (role, codex)
+    lane, the runner injects ``-c model_reasoning_effort`` into THAT lane's rendered command
+    (and only that lane). Dry-run -> no spawn, command-only assertion (3795-series anchor)."""
+    repo = _write_repo(tmp_path)
+    _write_expanded_active_runner_fixture(repo)
+
+    result = agent_loop.write_active_codex_runner(
+        repo_root=repo,
+        effort_overrides={("CI / Regression Auditor", "codex"): "high"},
+    )
+
+    assert result.decision == "planned"
+    target = next(item for item in result.sessions if item["role"] == "CI / Regression Auditor")
+    assert "-c model_reasoning_effort=high" in target["command"]
+    # Only the targeted lane is actuated; every other lane stays byte-identical (no -c).
+    others = [item for item in result.sessions if item["role"] != "CI / Regression Auditor"]
+    assert others  # sanity: there are other lanes
+    assert all("model_reasoning_effort" not in item["command"] for item in others)
+
+
+def test_active_codex_runner_empty_effort_overrides_is_byte_identical(tmp_path: Path) -> None:
+    """ADR 0092 PR2 AC14: an empty/None effort_overrides leaves every rendered command
+    byte-identical (no -c model_reasoning_effort), same as not passing the kwarg at all."""
+    repo = _write_repo(tmp_path)
+    _write_expanded_active_runner_fixture(repo)
+
+    result = agent_loop.write_active_codex_runner(repo_root=repo, effort_overrides=None)
+
+    assert result.decision == "planned"
+    assert all("model_reasoning_effort" not in item["command"] for item in result.sessions)
+
+
+def test_active_codex_runner_applies_effort_override_to_claude_read_lane(monkeypatch, tmp_path: Path) -> None:
+    """ADR 0092 PR2 AC9: an effort override for a (role, claude) lane threads into the claude
+    review subprocess command as ``--effort <level>``. The CLI-version gate is forced ON so the
+    test does not depend on the local claude version (AC9 skips effort when effort_applied=False)."""
+    monkeypatch.setattr(agent_loop, "_claude_cli_supports_effort", lambda: True)
+    repo = _write_repo(tmp_path)
+    _write_expanded_active_runner_fixture(repo)
+    calls: list[list[str]] = []
+
+    def fake_claude(cmd):  # type: ignore[no-untyped-def]
+        calls.append(list(cmd))
+        return subprocess.CompletedProcess(
+            cmd,
+            0,
+            stdout=json.dumps(
+                {"result": {"verdict": "approved", "summary": "ok", "findings": [], "next_steps": []}}
+            ),
+            stderr="",
+        )
+
+    result = agent_loop.write_active_codex_runner(
+        execute=True,
+        read_agent="claude",
+        sessions="reviewer",
+        repo_root=repo,
+        which_func=lambda exe: f"/usr/bin/{exe}",
+        claude_runner=fake_claude,
+        record_gate_heartbeats=True,
+        effort_overrides={("Reviewer", "claude"): "high"},
+    )
+
+    assert result.decision == "completed"
+    assert calls, "claude lane should have been invoked"
+    cmd = calls[0]
+    assert "--effort" in cmd
+    assert cmd[cmd.index("--effort") + 1] == "high"
+
+
+def test_active_codex_runner_claude_lane_skips_effort_when_cli_unsupported(monkeypatch, tmp_path: Path) -> None:
+    """ADR 0092 PR2 AC9: when the claude CLI cannot consume --effort (< 2.1.150), the override
+    is dropped (effort_applied=False) rather than passed as an unknown flag — the lane still runs."""
+    monkeypatch.setattr(agent_loop, "_claude_cli_supports_effort", lambda: False)
+    repo = _write_repo(tmp_path)
+    _write_expanded_active_runner_fixture(repo)
+    calls: list[list[str]] = []
+
+    def fake_claude(cmd):  # type: ignore[no-untyped-def]
+        calls.append(list(cmd))
+        return subprocess.CompletedProcess(
+            cmd,
+            0,
+            stdout=json.dumps(
+                {"result": {"verdict": "approved", "summary": "ok", "findings": [], "next_steps": []}}
+            ),
+            stderr="",
+        )
+
+    result = agent_loop.write_active_codex_runner(
+        execute=True,
+        read_agent="claude",
+        sessions="reviewer",
+        repo_root=repo,
+        which_func=lambda exe: f"/usr/bin/{exe}",
+        claude_runner=fake_claude,
+        record_gate_heartbeats=True,
+        effort_overrides={("Reviewer", "claude"): "high"},
+    )
+
+    assert result.decision == "completed"
+    assert calls, "claude lane should have been invoked"
+    assert "--effort" not in calls[0]
+
+
 def test_active_codex_runner_can_execute_claude_read_lane(tmp_path: Path) -> None:
     repo = _write_repo(tmp_path)
     _write_expanded_active_runner_fixture(repo)
@@ -6948,6 +7054,69 @@ def test_codex_runner_patch_mode_embeds_assignment_in_prompt(tmp_path: Path) -> 
     assert "ASSIGNMENT-MARKER: refactor foo." in prompt
 
 
+def test_codex_runner_patch_mode_applies_effort_override(tmp_path: Path) -> None:
+    """ADR 0092 PR2 AC10: an Implementer/codex effort override injects -c model_reasoning_effort
+    into the spawned codex patch command, before the positional '-' stdin marker."""
+    repo = _write_repo(tmp_path)
+    _seed_patch_registry(repo)
+    _seed_write_lease(repo, claimed_files=["foo.py"])
+    _seed_patch_assignment(repo)
+    spawned: list[list[str]] = []
+
+    def capture_factory(cmd, **kw):  # type: ignore[no-untyped-def]
+        spawned.append(list(cmd))
+        return _FakeCodexProc()
+
+    agent_loop.write_active_codex_runner(
+        mode="patch",
+        execute=True,
+        task_id="T-2026-0042",
+        write_agent="codex",
+        repo_root=repo,
+        popen_factory=capture_factory,
+        which_func=lambda exe: "/usr/bin/codex",
+        auth_runner=_chatgpt_auth_runner,
+        git_runner=_fake_git_runner(diff_stdout="diff --git a/foo.py b/foo.py\n+x\n"),
+        effort_overrides={("Implementer", "codex"): "high"},
+    )
+
+    assert spawned, "codex patch lane should have spawned"
+    cmd = spawned[0]
+    assert "-c" in cmd
+    assert "model_reasoning_effort=high" in cmd
+    assert cmd[-1] == "-"  # positional stdin marker is last
+    assert cmd.index("-c") < len(cmd) - 1  # -c precedes the positional '-'
+
+
+def test_codex_runner_patch_mode_no_override_is_byte_identical(tmp_path: Path) -> None:
+    """ADR 0092 PR2 AC14: without an effort override the spawned codex patch command carries
+    no -c model_reasoning_effort (byte-identical to today)."""
+    repo = _write_repo(tmp_path)
+    _seed_patch_registry(repo)
+    _seed_write_lease(repo, claimed_files=["foo.py"])
+    _seed_patch_assignment(repo)
+    spawned: list[list[str]] = []
+
+    def capture_factory(cmd, **kw):  # type: ignore[no-untyped-def]
+        spawned.append(list(cmd))
+        return _FakeCodexProc()
+
+    agent_loop.write_active_codex_runner(
+        mode="patch",
+        execute=True,
+        task_id="T-2026-0042",
+        write_agent="codex",
+        repo_root=repo,
+        popen_factory=capture_factory,
+        which_func=lambda exe: "/usr/bin/codex",
+        auth_runner=_chatgpt_auth_runner,
+        git_runner=_fake_git_runner(diff_stdout="diff --git a/foo.py b/foo.py\n+x\n"),
+    )
+
+    assert spawned, "codex patch lane should have spawned"
+    assert all("model_reasoning_effort" not in tok for tok in spawned[0])
+
+
 # --- Phase 4: claimed_files scope enforcement on the codex patch lane (issue #1612) ---
 
 
@@ -9953,9 +10122,21 @@ def _autotune_cfg(**overrides):  # type: ignore[no-untyped-def]
     return agent_loop.LaneAutotuneConfig(**base)
 
 
+# ADR 0092 PR2: compute_lane_autotune signature is now
+# (prior_lane_stats, cooldown_state, config, *, effort_resolver) ->
+# (effort_overrides, recommendations, new_cooldown_state, events). These sense/detect tests
+# pass a fixed effort_resolver so the assertions stay deterministic (independent of the
+# env-aware default) and unpack the 4-tuple; cooldown/actuation specifics have dedicated tests.
+_FIXED_EFFORT = lambda _agent, _role: "medium"  # noqa: E731 — terse test seam
+
+
 def test_compute_lane_autotune_empty_history_is_noop() -> None:
-    recs, events = agent_loop.compute_lane_autotune([], _autotune_cfg())
+    overrides, recs, cooldown, events = agent_loop.compute_lane_autotune(
+        [], None, _autotune_cfg(), effort_resolver=_FIXED_EFFORT
+    )
+    assert overrides == {}
     assert recs == []
+    assert cooldown == {}
     assert events == []
 
 
@@ -9966,7 +10147,9 @@ def test_compute_lane_autotune_within_agent_median_flags_slow_lane() -> None:
         {"role": "B", "agent": "codex", "elapsed_s": 10.0, "status": "completed"},
         {"role": "C", "agent": "codex", "elapsed_s": 100.0, "status": "completed"},
     ]
-    recs, _events = agent_loop.compute_lane_autotune([batch], _autotune_cfg())
+    _ov, recs, _cd, _events = agent_loop.compute_lane_autotune(
+        [batch], None, _autotune_cfg(), effort_resolver=_FIXED_EFFORT
+    )
     assert [r["role"] for r in recs] == ["C"]
     assert recs[0]["agent"] == "codex"
     assert recs[0]["median_elapsed_s"] == 10.0
@@ -9974,7 +10157,10 @@ def test_compute_lane_autotune_within_agent_median_flags_slow_lane() -> None:
     # Single observation of C -> below min-sample -> no fail signal -> accelerate.
     assert recs[0]["fail_signal"] == "no-signal"
     assert recs[0]["direction"] == "accelerate"
-    assert recs[0]["actuated"] is False
+    # PR2: not in cooldown + on-ladder -> actuates (medium -> low for accelerate).
+    assert recs[0]["actuated"] is True
+    assert recs[0]["effort_from"] == "medium"
+    assert recs[0]["effort_to"] == "low"
 
 
 def test_compute_lane_autotune_groups_per_agent_separately() -> None:
@@ -9987,7 +10173,9 @@ def test_compute_lane_autotune_groups_per_agent_separately() -> None:
         {"role": "Y", "agent": "codex", "elapsed_s": 10.0, "status": "completed"},
         {"role": "Z", "agent": "codex", "elapsed_s": 100.0, "status": "completed"},
     ]
-    recs, _events = agent_loop.compute_lane_autotune([batch], _autotune_cfg())
+    _ov, recs, _cd, _events = agent_loop.compute_lane_autotune(
+        [batch], None, _autotune_cfg(), effort_resolver=_FIXED_EFFORT
+    )
     flagged = {(r["role"], r["agent"]) for r in recs}
     assert flagged == {("Z", "codex")}  # within-agent only: claude's 500s lanes are not cross-compared
 
@@ -9998,7 +10186,10 @@ def test_compute_lane_autotune_degenerate_single_lane_is_noop() -> None:
         {"role": "A", "agent": "codex", "elapsed_s": 100.0, "status": "completed"},
         {"role": "B", "agent": "claude", "elapsed_s": 5.0, "status": "completed"},
     ]
-    recs, events = agent_loop.compute_lane_autotune([batch], _autotune_cfg())
+    overrides, recs, _cd, events = agent_loop.compute_lane_autotune(
+        [batch], None, _autotune_cfg(), effort_resolver=_FIXED_EFFORT
+    )
+    assert overrides == {}
     assert recs == []
     assert all(e["decision"] == "no-op" for e in events)
     assert {e["agent"] for e in events} == {"codex", "claude"}
@@ -10016,12 +10207,17 @@ def test_compute_lane_autotune_fail_rate_window_strengthens_failing_lane() -> No
         {"role": "B", "agent": "codex", "elapsed_s": 10.0, "status": "completed"},
         {"role": "C", "agent": "codex", "elapsed_s": 100.0, "status": "completed"},
     ]
-    recs, _events = agent_loop.compute_lane_autotune([fail_iter, fail_iter, newest], _autotune_cfg())
+    _ov, recs, _cd, _events = agent_loop.compute_lane_autotune(
+        [fail_iter, fail_iter, newest], None, _autotune_cfg(), effort_resolver=_FIXED_EFFORT
+    )
     c = next(r for r in recs if r["role"] == "C")
     assert c["fail_signal"] == "observed"
     assert c["fail_sample"] == 3
     assert c["fail_rate"] == round(2 / 3, 3)
     assert c["direction"] == "strengthen"
+    # PR2: strengthen steps medium -> high.
+    assert c["effort_from"] == "medium"
+    assert c["effort_to"] == "high"
 
 
 def test_compute_lane_autotune_min_sample_gate_yields_no_fail_signal() -> None:
@@ -10031,7 +10227,9 @@ def test_compute_lane_autotune_min_sample_gate_yields_no_fail_signal() -> None:
         {"role": "B", "agent": "codex", "elapsed_s": 10.0, "status": "completed"},
         {"role": "C", "agent": "codex", "elapsed_s": 100.0, "status": "failed"},
     ]
-    recs, _events = agent_loop.compute_lane_autotune([newest], _autotune_cfg())
+    _ov, recs, _cd, _events = agent_loop.compute_lane_autotune(
+        [newest], None, _autotune_cfg(), effort_resolver=_FIXED_EFFORT
+    )
     c = next(r for r in recs if r["role"] == "C")
     assert c["fail_signal"] == "no-signal"
     assert c["fail_sample"] == 1
@@ -10052,7 +10250,9 @@ def test_compute_lane_autotune_window_resets_on_agent_flip() -> None:
             {"role": "T", "agent": "claude", "elapsed_s": 10.0, "status": "completed"},
         ],
     ]
-    recs, _events = agent_loop.compute_lane_autotune(history, cfg)
+    _ov, recs, _cd, _events = agent_loop.compute_lane_autotune(
+        history, None, cfg, effort_resolver=_FIXED_EFFORT
+    )
     r = next(x for x in recs if x["role"] == "R")
     assert r["agent"] == "claude"
     assert r["fail_signal"] == "no-signal"  # reset: codex failures excluded
@@ -10068,9 +10268,193 @@ def test_compute_lane_autotune_ignores_lanes_without_elapsed() -> None:
         {"role": "C", "agent": "codex", "elapsed_s": 100.0, "status": "completed"},
         {"role": "D", "agent": "codex", "elapsed_s": None, "status": "timeout"},
     ]
-    recs, _events = agent_loop.compute_lane_autotune([newest], _autotune_cfg())
+    _ov, recs, _cd, _events = agent_loop.compute_lane_autotune(
+        [newest], None, _autotune_cfg(), effort_resolver=_FIXED_EFFORT
+    )
     # median over the 3 timed lanes (10,10,100) = 10; only C exceeds 20. D is never elapsed-flagged.
     assert [r["role"] for r in recs] == ["C"]
+
+
+# ---------------------------------------------------------------------------
+# ADR 0092 PR2 — actuate: effort override resolution, per-agent ladder clamp,
+# 2-signal direction + cooldown, codex/claude command injection, byte-identical-off
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_lane_effort_override_none_is_byte_identical(monkeypatch) -> None:
+    """AC14: None override resolves exactly the role-table effort (byte-identical off path)."""
+    for key in list(os.environ.keys()):
+        if key.startswith("BIDMATE_CLAUDE_LANE_") or key.startswith("BIDMATE_CODEX_LANE_"):
+            monkeypatch.delenv(key, raising=False)
+    # claude Planner baseline xhigh; codex CI Auditor baseline medium.
+    assert agent_loop._resolve_lane_effort_override("claude", "Planner / Issue Triage", None) == "xhigh"
+    assert agent_loop._resolve_lane_effort_override("codex", "CI / Regression Auditor", None) == "medium"
+    assert agent_loop._resolve_lane_effort_override("claude", "Planner / Issue Triage", None) == agent_loop._resolve_lane_effort(
+        "claude", "Planner / Issue Triage"
+    )
+
+
+def test_resolve_lane_effort_override_requested_wins() -> None:
+    """A provided override wins over the role-table baseline (mirrors _resolve_lane_model_override)."""
+    assert agent_loop._resolve_lane_effort_override("codex", "CI / Regression Auditor", "high") == "high"
+    assert agent_loop._resolve_lane_effort_override("claude", "Planner / Issue Triage", "low") == "low"
+
+
+def test_step_lane_effort_per_agent_ladder_and_clamp() -> None:
+    """AC11: claude ladder tops at xhigh (no max), codex tops at high; both clamp at bounds."""
+    # claude ladder: low < medium < high < xhigh
+    assert agent_loop._step_lane_effort("claude", "medium", 1) == "high"
+    assert agent_loop._step_lane_effort("claude", "high", 1) == "xhigh"
+    assert agent_loop._step_lane_effort("claude", "xhigh", 1) == "xhigh"  # clamp at ceiling (no max rung)
+    assert agent_loop._step_lane_effort("claude", "low", -1) == "low"  # clamp at floor
+    assert "max" not in agent_loop._CLAUDE_EFFORT_LADDER
+    # codex ladder: minimal < low < medium < high
+    assert agent_loop._step_lane_effort("codex", "medium", 1) == "high"
+    assert agent_loop._step_lane_effort("codex", "high", 1) == "high"  # clamp at ceiling (no xhigh rung)
+    assert agent_loop._step_lane_effort("codex", "minimal", -1) == "minimal"  # clamp at floor
+    assert agent_loop._step_lane_effort("codex", "low", -1) == "minimal"
+    # off-ladder value -> None (left for the lane to resolve)
+    assert agent_loop._step_lane_effort("codex", "xhigh", -1) is None
+    assert agent_loop._step_lane_effort("claude", "minimal", 1) is None
+
+
+def test_compute_lane_autotune_codex_ceiling_clamp_records_no_override() -> None:
+    """AC11/AC12: a codex strengthen at the ladder ceiling (high) clamps -> no override emitted,
+    but the recommendation is still recorded (with actuated False)."""
+    fail_iter = [
+        {"role": "A", "agent": "codex", "elapsed_s": 10.0, "status": "completed"},
+        {"role": "C", "agent": "codex", "elapsed_s": 100.0, "status": "failed"},
+    ]
+    newest = [
+        {"role": "A", "agent": "codex", "elapsed_s": 10.0, "status": "completed"},
+        {"role": "B", "agent": "codex", "elapsed_s": 10.0, "status": "completed"},
+        {"role": "C", "agent": "codex", "elapsed_s": 100.0, "status": "failed"},
+    ]
+    # C fails 3/3 -> strengthen; but baseline already 'high' -> step clamps -> no actuation.
+    high_baseline = lambda _agent, _role: "high"  # noqa: E731
+    overrides, recs, cooldown, _events = agent_loop.compute_lane_autotune(
+        [fail_iter, fail_iter, newest], None, _autotune_cfg(), effort_resolver=high_baseline
+    )
+    c = next(r for r in recs if r["role"] == "C")
+    assert c["direction"] == "strengthen"
+    assert c["actuated"] is False
+    assert c["effort_to"] is None
+    assert ("C", "codex") not in overrides
+    assert cooldown == {}  # nothing actuated -> nothing to cool down
+
+
+def test_compute_lane_autotune_cooldown_suppresses_then_decrements() -> None:
+    """AC13: a lane already in cooldown is not re-adjusted; its remaining ticks down each call."""
+    batch = [
+        {"role": "A", "agent": "codex", "elapsed_s": 10.0, "status": "completed"},
+        {"role": "B", "agent": "codex", "elapsed_s": 10.0, "status": "completed"},
+        {"role": "C", "agent": "codex", "elapsed_s": 100.0, "status": "completed"},
+    ]
+    res = lambda _agent, _role: "medium"  # noqa: E731
+    cfg = _autotune_cfg(cooldown=2)
+    # Iter 1: actuate C -> cooldown 2.
+    ov1, recs1, cd1, _e1 = agent_loop.compute_lane_autotune([batch], None, cfg, effort_resolver=res)
+    assert ov1 == {("C", "codex"): "low"}
+    assert cd1 == {"C||codex": 2}
+    assert recs1[0]["actuated"] is True
+    # Iter 2: C in cooldown -> suppressed, no override; cooldown decremented to 1.
+    ov2, recs2, cd2, _e2 = agent_loop.compute_lane_autotune([batch], cd1, cfg, effort_resolver=res)
+    assert ov2 == {}
+    assert cd2 == {"C||codex": 1}
+    assert recs2[0]["actuated"] is False
+    assert recs2[0]["cooldown_remaining"] == 2
+    # Iter 3: still in cooldown (1) -> suppressed; decrement to 0 -> dropped.
+    ov3, _recs3, cd3, _e3 = agent_loop.compute_lane_autotune([batch], cd2, cfg, effort_resolver=res)
+    assert ov3 == {}
+    assert cd3 == {}
+    # Iter 4: cooldown cleared -> re-actuates.
+    ov4, _recs4, cd4, _e4 = agent_loop.compute_lane_autotune([batch], cd3, cfg, effort_resolver=res)
+    assert ov4 == {("C", "codex"): "low"}
+    assert cd4 == {"C||codex": 2}
+
+
+def test_compute_lane_autotune_claude_strengthen_uses_validate_safe_rung() -> None:
+    """AC12: claude flagged lane with high fail_rate strengthens up its ladder (medium -> high)."""
+    fail_iter = [
+        {"role": "RC1", "agent": "claude", "elapsed_s": 10.0, "status": "completed"},
+        {"role": "RC2", "agent": "claude", "elapsed_s": 100.0, "status": "failed"},
+    ]
+    newest = [
+        {"role": "RC1", "agent": "claude", "elapsed_s": 10.0, "status": "completed"},
+        {"role": "RC3", "agent": "claude", "elapsed_s": 10.0, "status": "completed"},
+        {"role": "RC2", "agent": "claude", "elapsed_s": 100.0, "status": "failed"},
+    ]
+    res = lambda _agent, _role: "medium"  # noqa: E731
+    overrides, recs, _cd, _e = agent_loop.compute_lane_autotune(
+        [fail_iter, fail_iter, newest], None, _autotune_cfg(), effort_resolver=res
+    )
+    rc2 = next(r for r in recs if r["role"] == "RC2")
+    assert rc2["direction"] == "strengthen"
+    assert overrides[("RC2", "claude")] == "high"
+
+
+def test_active_codex_exec_command_injects_effort_before_positional_dash() -> None:
+    """AC10 (code blocker): -c model_reasoning_effort lands in the --model-adjacent block,
+    strictly BEFORE the positional '-' stdin marker (codex argparse breaks otherwise)."""
+    cmd = agent_loop._active_codex_exec_command(
+        codex_executable="codex",
+        model="gpt-5.5",
+        sandbox="read-only",
+        last_message_path=Path("/tmp/lm.md"),
+        repo_root=Path("/tmp"),
+        effort="high",
+    )
+    assert "-c" in cmd
+    assert "model_reasoning_effort=high" in cmd
+    c_idx = cmd.index("-c")
+    val_idx = cmd.index("model_reasoning_effort=high")
+    assert cmd[c_idx + 1] == "model_reasoning_effort=high"  # adjacent key=value
+    # positional stdin marker is the LAST token; -c must precede it.
+    assert cmd[-1] == "-"
+    last_dash_idx = len(cmd) - 1
+    assert c_idx < last_dash_idx and val_idx < last_dash_idx
+    # and it must sit after --model (the adjacent flag block), before --output-last-message.
+    assert cmd.index("--model") < c_idx < cmd.index("--output-last-message")
+
+
+def test_active_codex_exec_command_effort_none_is_byte_identical() -> None:
+    """AC14: effort None (the default for every non-autotune call site) appends nothing."""
+    cmd = agent_loop._active_codex_exec_command(
+        codex_executable="codex",
+        model="gpt-5.5",
+        sandbox="read-only",
+        last_message_path=Path("/tmp/lm.md"),
+        repo_root=Path("/tmp"),
+    )
+    assert "-c" not in cmd
+    assert all("model_reasoning_effort" not in tok for tok in cmd)
+    # exactly today's shape.
+    assert cmd == [
+        "codex", "exec", "--cd", ".", "--sandbox", "read-only", "--json",
+        "--model", "gpt-5.5", "--output-last-message", "lm.md", "-",
+    ]
+
+
+def test_active_claude_patch_command_threads_effort_flag() -> None:
+    """AC9: the claude patch command carries --effort <level> when an effort is supplied."""
+    cmd = agent_loop._active_claude_patch_command(
+        claude_executable="claude",
+        prompt="do the thing",
+        model="claude-opus-4-8",
+        effort="xhigh",
+        cwd=Path("/tmp/scratch"),
+    )
+    assert "--effort" in cmd
+    assert cmd[cmd.index("--effort") + 1] == "xhigh"
+    # empty effort -> no flag (CLI < 2.1.150 strip path / off).
+    cmd_off = agent_loop._active_claude_patch_command(
+        claude_executable="claude",
+        prompt="do the thing",
+        model="claude-opus-4-8",
+        effort="",
+        cwd=Path("/tmp/scratch"),
+    )
+    assert "--effort" not in cmd_off
 
 
 def test_resolve_lane_autotune_config_off_by_default(monkeypatch) -> None:
@@ -10148,15 +10532,22 @@ def test_active_auto_loop_records_lane_recommendations_from_runner_sessions(monk
         "Reviewer",
         "CI / Regression Auditor",
     }
-    # The within-agent slow lane (100s vs median 10s) is recommended (AC4/AC8), recommendation-only.
+    # The within-agent slow lane (100s vs median 10s) is recommended AND actuated (PR2):
+    # CI / Regression Auditor codex baseline effort is medium; single obs -> no fail signal
+    # -> accelerate -> medium steps down to low, and the lane enters cooldown (AC9-AC13).
     state = json.loads((active_dir / "auto_loop_state.json").read_text(encoding="utf-8"))
     recs = state["lane_autotune_recommendations"]
     assert len(recs) == 1
     assert recs[0]["role"] == "CI / Regression Auditor"
     assert recs[0]["agent"] == "codex"
-    assert recs[0]["actuated"] is False
+    assert recs[0]["actuated"] is True
+    assert recs[0]["effort_from"] == "medium"
+    assert recs[0]["effort_to"] == "low"
+    assert recs[0]["direction"] == "accelerate"
     assert recs[0]["iteration"] == 1
     assert recs[0]["task_id"] == "T-2026-1001"
+    # cooldown_state persisted for the just-actuated lane (default cooldown 2).
+    assert state["lane_autotune_cooldown"] == {"CI / Regression Auditor||codex": 2}
 
 
 def test_active_auto_loop_off_records_no_lane_autotune_keys(monkeypatch, tmp_path: Path) -> None:
@@ -10202,3 +10593,135 @@ def test_active_auto_loop_off_records_no_lane_autotune_keys(monkeypatch, tmp_pat
     assert "lane_stats" not in result.cycles[0]
     state = json.loads((active_dir / "auto_loop_state.json").read_text(encoding="utf-8"))
     assert "lane_autotune_recommendations" not in state
+    assert "lane_autotune_cooldown" not in state
+
+
+def test_active_auto_loop_applies_effort_override_to_next_runner_call(monkeypatch, tmp_path: Path) -> None:
+    """ADR 0092 PR2 AC9/AC10: the controller's effort override for a within-agent slow lane is
+    threaded into the runner call (here the first/only iteration's runner receives no override
+    because there is no PRIOR observation yet; the override is computed AFTER the runner and
+    flows to the next iteration — which we assert via the persisted cooldown + recommendation)."""
+    repo = _write_repo(tmp_path, task_id="T-2026-1001", title="Autotune actuate task")
+    _patch_active_loop_clear(monkeypatch)
+    active_dir = repo / "reports" / "agent_loop" / "active"
+    captured_overrides: list[object] = []
+
+    def fake_runner(**kwargs):  # type: ignore[no-untyped-def]
+        captured_overrides.append(kwargs.get("effort_overrides"))
+        report = active_dir / "codex_runner.md"
+        state = active_dir / "codex_runner_state.json"
+        runs = active_dir / "codex_runs"
+        report.parent.mkdir(parents=True, exist_ok=True)
+        report.write_text("# runner\n", encoding="utf-8")
+        state.write_text("{}\n", encoding="utf-8")
+        sessions = (
+            {"role": "Implementer", "agent": "codex", "elapsed_s": 10.0, "status": "completed"},
+            {"role": "Reviewer", "agent": "codex", "elapsed_s": 10.0, "status": "completed"},
+            {"role": "CI / Regression Auditor", "agent": "codex", "elapsed_s": 100.0, "status": "completed"},
+        )
+        return agent_loop.ActiveCodexRunnerResult(report, state, runs, "completed", sessions, (), ())
+
+    def fake_gate(*, task_id, **kwargs):  # type: ignore[no-untyped-def]
+        path = active_dir / "gate_evidence" / task_id / "evidence.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("{}\n", encoding="utf-8")
+        return path, {"ready": True, "privacy_clean": True}
+
+    monkeypatch.setattr(agent_loop, "write_active_codex_runner", fake_runner)
+    monkeypatch.setattr(agent_loop, "write_active_gate_evidence", fake_gate)
+
+    result = agent_loop.write_active_auto_loop(
+        max_iterations=1,
+        auto_max_iterations_cap=1,
+        execute_runner=True,
+        execute_ship=False,
+        auto_repair=False,
+        lane_autotune_config=agent_loop.LaneAutotuneConfig(),
+        repo_root=repo,
+    )
+
+    assert result.completed_task_ids == ("T-2026-1001",)
+    # First runner call: no prior observations -> no override yet (None passed through).
+    assert captured_overrides[0] is None
+    # The controller actuated the slow CI / Regression Auditor codex lane (medium -> low) and
+    # persisted the override into the cycle audit + the cooldown into the state file.
+    cycle = result.cycles[0]
+    assert cycle["lane_autotune"]["effort_overrides"] == {"CI / Regression Auditor||codex": "low"}
+    state = json.loads((active_dir / "auto_loop_state.json").read_text(encoding="utf-8"))
+    assert state["lane_autotune_cooldown"] == {"CI / Regression Auditor||codex": 2}
+
+
+def test_active_auto_loop_resumes_cooldown_from_prior_run_and_decrements(monkeypatch, tmp_path: Path) -> None:
+    """ADR 0092 PR2 AC13 cross-run: a lane left in cooldown by a prior run is read back from
+    auto_loop_state.json, suppressed this run (no effort override threaded to the runner), and
+    its cooldown is decremented + re-persisted."""
+    repo = _write_repo(tmp_path, task_id="T-2026-1002", title="Autotune cooldown resume task")
+    _patch_active_loop_clear(monkeypatch)
+    active_dir = repo / "reports" / "agent_loop" / "active"
+    active_dir.mkdir(parents=True, exist_ok=True)
+    # Pre-seed a prior run's state: the slow lane was actuated last run and is mid-cooldown,
+    # AND a prior cycle's lane_stats so the controller has a history window to flag it again.
+    (active_dir / "auto_loop_state.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "cycles": [
+                    {
+                        "lane_stats": [
+                            {"role": "Implementer", "agent": "codex", "elapsed_s": 10.0, "status": "completed"},
+                            {"role": "Reviewer", "agent": "codex", "elapsed_s": 10.0, "status": "completed"},
+                            {"role": "CI / Regression Auditor", "agent": "codex", "elapsed_s": 100.0, "status": "completed"},
+                        ]
+                    }
+                ],
+                "lane_autotune_cooldown": {"CI / Regression Auditor||codex": 2},
+                "lane_autotune_recommendations": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    captured_overrides: list[object] = []
+
+    def fake_runner(**kwargs):  # type: ignore[no-untyped-def]
+        captured_overrides.append(kwargs.get("effort_overrides"))
+        report = active_dir / "codex_runner.md"
+        state = active_dir / "codex_runner_state.json"
+        runs = active_dir / "codex_runs"
+        report.write_text("# runner\n", encoding="utf-8")
+        state.write_text("{}\n", encoding="utf-8")
+        sessions = (
+            {"role": "Implementer", "agent": "codex", "elapsed_s": 10.0, "status": "completed"},
+            {"role": "Reviewer", "agent": "codex", "elapsed_s": 10.0, "status": "completed"},
+            {"role": "CI / Regression Auditor", "agent": "codex", "elapsed_s": 100.0, "status": "completed"},
+        )
+        return agent_loop.ActiveCodexRunnerResult(report, state, runs, "completed", sessions, (), ())
+
+    def fake_gate(*, task_id, **kwargs):  # type: ignore[no-untyped-def]
+        path = active_dir / "gate_evidence" / task_id / "evidence.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("{}\n", encoding="utf-8")
+        return path, {"ready": True, "privacy_clean": True}
+
+    monkeypatch.setattr(agent_loop, "write_active_codex_runner", fake_runner)
+    monkeypatch.setattr(agent_loop, "write_active_gate_evidence", fake_gate)
+
+    result = agent_loop.write_active_auto_loop(
+        max_iterations=1,
+        auto_max_iterations_cap=1,
+        execute_runner=True,
+        execute_ship=False,
+        auto_repair=False,
+        lane_autotune_config=agent_loop.LaneAutotuneConfig(),
+        repo_root=repo,
+    )
+
+    assert result.completed_task_ids == ("T-2026-1002",)
+    # The lane is in cooldown from the prior run -> NOT re-actuated this run.
+    cycle = result.cycles[0]
+    assert cycle["lane_autotune"]["effort_overrides"] == {}
+    rec = next(r for r in cycle["lane_autotune"]["recommendations"] if r["role"] == "CI / Regression Auditor")
+    assert rec["actuated"] is False
+    assert rec["cooldown_remaining"] == 2
+    # Cooldown decremented from 2 -> 1 and re-persisted for the next run.
+    state = json.loads((active_dir / "auto_loop_state.json").read_text(encoding="utf-8"))
+    assert state["lane_autotune_cooldown"] == {"CI / Regression Auditor||codex": 1}

@@ -84,11 +84,16 @@ codex 명령(`-c model_reasoning_effort` 미주입)과 `auto_loop_state.json` �
 
 ## Deferred / follow-up
 
-- **effort actuation (PR2).** claude `--effort` / codex `-c model_reasoning_effort` threading +
-  per-agent ladder clamp + cooldown. 별도 issue, 이 PR1 위 stacked.
+- **effort actuation (PR2 — landed).** claude `--effort` / codex `-c model_reasoning_effort`
+  threading (positional `-` 이전 삽입) + per-agent ladder clamp + cooldown. controller가
+  `compute_lane_autotune(prior_lane_stats, cooldown_state, config) ->
+  (effort_overrides, recommendations, new_cooldown_state, events)`로 확장됨. codex effort 가드는
+  controller ladder-clamp 단독(`_validate_effort_for_model`은 claude lane 전용 — 오인용 금지).
+- **codex `xhigh` rung.** controller 사다리는 `high` 상한; `~/.codex/config.toml`이 `xhigh`를
+  쓰더라도 PR2 사다리는 `high`까지만 → 필요 시 후속 검토.
 - **model-swap actuation.** blast radius·비용 가드 필요 → deferred.
 - **cross-agent 정규화 비교.** claude 오버헤드 보정 후 교차 비교 → 별도 측정 작업.
-- **claude `max` rung.** 코드 profile 상한이 `xhigh`라 `max`는 제외; 필요 시 PR2 smoke
+- **claude `max` rung.** 코드 profile 상한이 `xhigh`라 `max`는 제외(코드 부재); 필요 시 smoke
   (`claude --effort max`) 후 추가.
 
 ## Verification
@@ -107,4 +112,6 @@ git diff --check
 <!-- verifies-key: scripts/agent_loop.py:_resolve_lane_autotune_config -->
 <!-- verifies-key: scripts/agent_loop.py:_resolve_lane_autotune_config_for_cli -->
 <!-- verifies-key: scripts/agent_loop.py:_LANE_AUTOTUNE_FAILURE_STATUSES -->
+<!-- verifies-key: scripts/agent_loop.py:_resolve_lane_effort_override -->
+<!-- verifies-key: scripts/agent_loop.py:_step_lane_effort -->
 <!-- verifies-key: Makefile:ACTIVE_LANE_AUTOTUNE -->
