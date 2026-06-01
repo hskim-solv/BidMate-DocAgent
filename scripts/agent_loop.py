@@ -2680,6 +2680,46 @@ def render_status(
     return "\n".join(lines) + "\n"
 
 
+def _task_is_ambiguous(task_id: str, *, repo_root: Path = ROOT_DIR) -> bool:
+    """Whether the queued task lacks BOTH an Acceptance Criteria section and any
+    Validation Commands.
+
+    These are the two crystallization signals ``select_next_task`` already sorts
+    on (see its sort key). A task missing both has no verifiable acceptance
+    contract yet and benefits from a ``/ralplan`` consensus plan gate before it
+    enters the implementation lane. A missing/unreadable queue or an unknown task
+    id returns ``False`` — the advisory is opt-in and must never block.
+    """
+    try:
+        entries = parse_task_entries(_read_text(repo_root / QUEUE_PATH))
+    except (OSError, ValueError):
+        return False
+    task = next((entry for entry in entries if entry.task_id == task_id), None)
+    if task is None:
+        return False
+    has_validation = bool(_extract_validation_commands(task))
+    has_acceptance = "Acceptance Criteria" in task.body
+    return not (has_validation or has_acceptance)
+
+
+def _render_ralplan_advisory(task_id: str) -> list[str]:
+    """Advisory-only plan-gate recommendation lines for an ambiguous task.
+
+    Surfaced in the preflight body between queue selection and the implementation
+    lane (agent-loop integration plan T-X3). It NEVER changes preflight's exit
+    code or blocks the loop — call-only ("호출만"): it points the operator/agent
+    at the ``/ralplan`` consensus plan gate, it does not invoke it.
+    """
+    return [
+        "",
+        "Plan gate (ralplan):",
+        f"- `{task_id}` has neither an Acceptance Criteria section nor Validation Commands;",
+        "  it is ambiguous and has no verifiable acceptance contract yet.",
+        "- Crystallize it with the `/ralplan` consensus plan gate before entering the",
+        "  implementation lane, then re-run preflight. Advisory only — does NOT block preflight.",
+    ]
+
+
 def render_preflight(
     *,
     task_id: str,
@@ -2701,6 +2741,8 @@ def render_preflight(
         "",
         render_validation_suggestions(validation).rstrip(),
     ]
+    if _task_is_ambiguous(task_id, repo_root=repo_root):
+        lines.extend(_render_ralplan_advisory(task_id))
     if write_prompts:
         prompt = render_prompt(task_id, repo_root=repo_root)
         review = render_review_prompt(task_id, changed_files=changed_files, repo_root=repo_root)
@@ -10491,6 +10533,34 @@ def _repair_escalation_advisory(
     }
 
 
+def _learning_capture_advisory(
+    *,
+    decision: str,
+    completed: Sequence[str],
+    deferred: Sequence[str],
+) -> dict[str, object]:
+    """Advisory-only learning-capture pointer emitted on loop completion (agent-loop
+    integration plan T-X1).
+
+    Call-only ("호출만"): it is recorded on the terminal loop state + completion
+    event but does NOT write to the wiki/memory or invoke any agent. It points the
+    operator / next session at the ``/wiki`` skill + the memory-curator agent to
+    accumulate this cycle's learning (what landed, what blocked, what deferred) so
+    knowledge compounds across sessions.
+    """
+    return {
+        "tools": ["/wiki", "memory-curator"],
+        "decision": decision,
+        "completed_task_ids": list(completed),
+        "deferred_task_ids": list(deferred),
+        "guidance": (
+            "Capture this cycle's learning before it is lost: run the `/wiki` skill to "
+            "record durable findings and the memory-curator agent to gate any new memory "
+            "entry. Advisory only — nothing was written to the wiki/memory automatically."
+        ),
+    }
+
+
 def write_active_auto_loop(
     *,
     mode: str = "full-ship",
@@ -11212,6 +11282,15 @@ def write_active_auto_loop(
     else:
         decision = "planned"
 
+    # T-X1 (agent-loop integration plan): advisory-only learning-capture pointer,
+    # recorded only when the loop actually ran a cycle. Never writes to the
+    # wiki/memory or invokes any agent (call-only); decision/control flow unchanged.
+    learning_advisory = (
+        _learning_capture_advisory(decision=decision, completed=completed, deferred=deferred_task_ids)
+        if cycles
+        else None
+    )
+
     state_payload = {
         "schema_version": 1,
         "generated_at": _isoformat(datetime.now(timezone.utc)),
@@ -11231,6 +11310,7 @@ def write_active_auto_loop(
         "deferred_task_ids": deferred_task_ids,
         "next_task_id": next_task.task_id if next_task else None,
         "cycles": cycles,
+        "learning_capture_advisory": learning_advisory,
         "blockers": _dedupe_preserve_order(blockers),
         "warnings": _dedupe_preserve_order(warnings),
     }
@@ -11277,6 +11357,7 @@ def write_active_auto_loop(
             "deferred_task_ids": deferred_task_ids,
             "next_task_id": next_task.task_id if next_task else None,
             "blockers": blockers,
+            "learning_capture_advisory": bool(learning_advisory),
         },
     )
     return ActiveAutoLoopResult(
@@ -16455,6 +16536,50 @@ def write_active_apply(
     )
 
 
+EVAL_ANOMALY_SURFACE_TAGS = frozenset(
+    {
+        "benchmark-reporting",
+        "eval-harness",
+        "private-real-eval",
+        "public-synthetic-benchmark",
+        "public-fixture-smoke",
+    }
+)
+
+
+def _eval_surface_touched(files: Sequence[str]) -> list[str]:
+    """Changed files that map to an eval/benchmark surface via ``_surface_for_path``.
+
+    These are the surfaces whose runs feed ``eval_summary.json``'s
+    ``failure_category_counts`` — the input the eval-anomaly-investigator slices.
+    """
+    return [path for path in files if set(_surface_for_path(path)) & EVAL_ANOMALY_SURFACE_TAGS]
+
+
+def _eval_anomaly_advisory(eval_files: Sequence[str]) -> dict[str, object]:
+    """Advisory-only pointer at the eval-anomaly-investigator agent (agent-loop
+    integration plan T-X2).
+
+    Call-only ("호출만"): it is recorded in the gate-evidence audit record but does
+    NOT run the eval, compute a regression delta, or invoke the agent. It tells the
+    operator to slice a dominant/regressed failure category under the ADR 0005
+    boundary if one shows up after the eval run.
+    """
+    return {
+        "agent": "eval-anomaly-investigator",
+        "trigger": "eval/benchmark surface touched",
+        "eval_files": list(eval_files),
+        "guidance": (
+            "After the eval run (e.g. `make real-eval`), if eval_summary.json shows a "
+            "dominant, regressed, or surprising failure_category_count, run the "
+            "eval-anomaly-investigator agent to slice that category under the ADR 0005 "
+            "boundary (LOC-count only, no per-case text) and draft "
+            "docs/audits/<slug>-inspection.md. Advisory only — does NOT run the eval "
+            "or invoke the agent."
+        ),
+    }
+
+
 def write_active_gate_evidence(
     *,
     task_id: str,
@@ -16482,6 +16607,8 @@ def write_active_gate_evidence(
     else:
         files = [_normalize_changed_file(path, repo_root=repo_root) for path in changed_files if path]
     load_bearing_touched = any(is_load_bearing(path) for path in files)
+    eval_files = _eval_surface_touched(files)
+    eval_anomaly = _eval_anomaly_advisory(eval_files) if eval_files else None
 
     topology = "four-role"
     sessions: list[dict[str, object]] = []
@@ -16546,6 +16673,7 @@ def write_active_gate_evidence(
         "apply": apply_summary,
         "work_units": rolling,
         "privacy": privacy,
+        "eval_anomaly_advisory": eval_anomaly,
         "ship": "not-triggered (use the existing human-gated ship path: ship-pr / make ship-arm)",
     }
     gate_dir = out_dir if out_dir is not None else active_dir / "gate_evidence" / task_id
@@ -16577,6 +16705,23 @@ def write_active_gate_evidence(
             f"- Apply: `{apply_summary or 'none'}`",
             f"- Work units: claude {rolling['claude']}, codex {rolling['codex']}",
             f"- Privacy: {'clean' if privacy['clean'] else str(privacy['issue_count']) + ' issue(s)'}",
+        ]
+    )
+    if eval_anomaly:
+        lines.extend(
+            [
+                "",
+                "## Eval-anomaly advisory",
+                "",
+                f"- Eval/benchmark surface touched: {', '.join('`' + p + '`' for p in eval_files)}",
+                "- After the eval run, if `eval_summary.json` shows a dominant / regressed / surprising",
+                "  `failure_category_count`, run the `eval-anomaly-investigator` agent to slice that",
+                "  category under the ADR 0005 boundary (LOC-count only, no per-case text) and draft",
+                "  `docs/audits/<slug>-inspection.md`. Advisory only — does NOT run the eval or invoke the agent.",
+            ]
+        )
+    lines.extend(
+        [
             "",
             "Ship is NOT triggered here — use the existing human-gated path (`ship-pr` / `make ship-arm`).",
         ]
@@ -16584,13 +16729,20 @@ def write_active_gate_evidence(
     (gate_dir / "evidence.md").write_text(_sanitize_dynamic_text("\n".join(lines)).rstrip() + "\n", encoding="utf-8")
     _append_active_event(
         _active_path(DEFAULT_ACTIVE_EVENTS, repo_root=repo_root),
-        {"event": "gate-evidence", "task_id": task_id, "ready": ready, "privacy_clean": privacy["clean"]},
+        {
+            "event": "gate-evidence",
+            "task_id": task_id,
+            "ready": ready,
+            "privacy_clean": privacy["clean"],
+            "eval_anomaly": bool(eval_anomaly),
+        },
     )
     return evidence_path, {
         "ready": ready,
         "required_roles": [str(i["role"]) for i in gate_roles],
         "privacy_clean": privacy["clean"],
         "load_bearing_touched": load_bearing_touched,
+        "eval_anomaly_advisory": eval_anomaly,
     }
 
 
