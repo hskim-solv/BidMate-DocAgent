@@ -438,19 +438,24 @@ def _resolve_lane_model_override(agent: str, role: str, requested_model: str | N
 
 
 def _validate_effort_for_model(model: str, effort: str) -> str:
-    """ADR 0082: `xhigh` is Opus-4-7+ only. Other models 400 on xhigh → coerce to `high`."""
-    if effort == "xhigh" and not re.match(r"^claude-opus-4-(?:7|8)(?:\b|[-_])", model):
+    """ADR 0082: `xhigh`/`max` are Opus-4-7+ only. Other models 400 on xhigh/max → coerce to `high`.
+
+    `max` acceptance verified: `claude -p --effort bogus` emits enum error listing max as valid
+    (rc=0 for valid values, error for bogus — confirms CLI accepts max). Per-model availability
+    follows same-or-narrower gate as xhigh → same Opus-4-7+ guard applied conservatively (#1730).
+    """
+    if effort in ("xhigh", "max") and not re.match(r"^claude-opus-4-(?:7|8)(?:\b|[-_])", model):
         return "high"
     return effort
 
 
 # ADR 0092 (PR2): per-agent effort ladder for autotune actuation. Ordered low→high.
-# claude tops out at ``xhigh`` (the code profile ceiling; ``max`` is absent from
-# _CLAUDE_ROLE_PROFILE so it is intentionally excluded — a ``max`` rung is a smoke-gated
-# follow-up). codex tops out at ``xhigh`` too (#1723; per-rung provenance below). These ladders
-# are the SINGLE clamp guard for codex effort — _validate_effort_for_model is claude-only
-# (it would no-op on codex effort, so calling it there would be misuse, AC11).
-_CLAUDE_EFFORT_LADDER: tuple[str, ...] = ("low", "medium", "high", "xhigh")
+# claude tops out at ``max`` (PR B, #1730; verified `claude -p --effort bogus` → enum error
+# lists max as valid, rc=0 for accepted values). codex tops out at ``xhigh`` too (#1723;
+# per-rung provenance below). These ladders are the SINGLE clamp guard for codex effort —
+# _validate_effort_for_model is claude-only (it would no-op on codex effort, so calling it
+# there would be misuse, AC11).
+_CLAUDE_EFFORT_LADDER: tuple[str, ...] = ("low", "medium", "high", "xhigh", "max")
 # codex accepts xhigh via `-c model_reasoning_effort=xhigh` (codex-cli 0.135.0, verified
 # `codex exec --strict-config -c model_reasoning_effort=xhigh` rc=0; ~/.codex/config.toml
 # uses xhigh) — so the codex ladder tops at xhigh too, letting autotune strengthen a codex

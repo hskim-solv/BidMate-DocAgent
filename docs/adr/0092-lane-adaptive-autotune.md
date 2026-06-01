@@ -92,11 +92,13 @@ codex 명령(`-c model_reasoning_effort` 미주입)과 `auto_loop_state.json` �
 - **codex `xhigh` rung (PR3 — landed, #1723).** `_CODEX_EFFORT_LADDER`를 `high` → `xhigh`
   상한으로 확장. `codex exec --strict-config -c model_reasoning_effort=xhigh` rc=0 (유효 값
   확정) + `~/.codex/config.toml`이 xhigh 사용 → autotune이 codex 병목을 진짜 ceiling까지
-  강화 가능. (claude는 ADR 0082상 xhigh가 이미 상한.)
+  강화 가능. (claude는 PR3 당시 xhigh 상한 — 이후 #1730에서 max로 확장, 아래 항목.)
 - **model-swap actuation.** blast radius·비용 가드 필요 → deferred.
 - **cross-agent 정규화 비교.** claude 오버헤드 보정 후 교차 비교 → 별도 측정 작업.
-- **claude `max` rung.** 코드 profile 상한이 `xhigh`라 `max`는 제외(코드 부재); 필요 시 smoke
-  (`claude --effort max`) 후 추가.
+- **claude `max` rung (PR B — landed, #1730).** `_CLAUDE_EFFORT_LADDER`를 `xhigh` → `max`
+  상한으로 확장. CLI 수용 확정(`claude -p --effort bogus` → enum 에러가 `max`를 유효값 목록에
+  열거, rc=0 통과). `_validate_effort_for_model` 확장: 비-Opus-4.7/4.8 모델에서 `max`도 `high`로
+  보수 강등(xhigh와 동일 per-model gate, #1730 conservative guard).
 
 ## Verification
 
