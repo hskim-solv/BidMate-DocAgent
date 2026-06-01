@@ -10462,6 +10462,35 @@ def _resolve_active_auto_loop_limit(
     return resolved, "auto: " + ", ".join(reasons)
 
 
+def _repair_escalation_advisory(
+    task_id: str,
+    *,
+    repair_decision: str,
+    attempts: Sequence[str],
+) -> dict[str, object]:
+    """Advisory-only escalation pointer for an auto-repair lane that did not land
+    after its attempts (agent-loop integration plan T-X4).
+
+    Call-only ("호출만"): it is recorded on the cycle record but does NOT spawn a
+    subprocess, change the loop's defer/stop control flow, or auto-invoke anything.
+    It points a human at the codex:rescue subagent (deeper fix / diagnosis pass) or
+    the tracer agent (evidence-driven root-cause) once the built-in claude->codex
+    repair fallback is exhausted without landing a patch.
+    """
+    return {
+        "tools": ["codex:rescue", "tracer"],
+        "trigger": f"repair lane did not land (decision={repair_decision})",
+        "attempts": list(attempts),
+        "guidance": (
+            f"The auto-repair lane for {task_id} did not land after "
+            f"{len(attempts)} attempt(s) ({', '.join(attempts) or 'n/a'}). Escalate to the "
+            "codex:rescue subagent for a deeper fix/diagnosis pass, or the tracer agent for "
+            "evidence-driven root-cause analysis, before retrying. Advisory only — the loop "
+            "has deferred the task; nothing was auto-invoked."
+        ),
+    }
+
+
 def write_active_auto_loop(
     *,
     mode: str = "full-ship",
@@ -10771,6 +10800,24 @@ def write_active_auto_loop(
                 )
         if task.task_id not in deferred_task_ids:
             deferred_task_ids.append(task.task_id)
+        # T-X4 (agent-loop integration plan): advisory-only escalation pointer once the
+        # auto-repair lane (claude->codex fallback) is exhausted without landing a patch.
+        # Recorded on the cycle; never spawns a subprocess or changes the defer/stop flow.
+        repair_attempts: list[str] = []
+        if first_repair_agent:
+            repair_attempts.append(first_repair_agent)
+        elif write_agent:
+            repair_attempts.append(str(write_agent))
+        fallback_used = cycle.get("repair_fallback_agent")
+        if isinstance(fallback_used, str) and fallback_used:
+            repair_attempts.append(fallback_used)
+        cycle["escalation_advisory"] = _repair_escalation_advisory(
+            task.task_id, repair_decision=repair.decision, attempts=repair_attempts
+        )
+        warnings.append(
+            f"{task.task_id}: auto-repair lane did not land ({repair.decision}); "
+            "escalate to codex:rescue / tracer (advisory only)"
+        )
         return False
 
     iteration = 0
