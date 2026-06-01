@@ -5652,6 +5652,79 @@ def test_active_auto_loop_infinite_auto_repair_failures_trip_consecutive_guard(m
     assert any("2 consecutive blocked task(s)" in w for w in result.warnings)
 
 
+def test_active_auto_loop_failed_repair_records_escalation_advisory(monkeypatch, tmp_path: Path) -> None:
+    # T-X4 (agent-loop integration plan): when the auto-repair lane does not land a patch,
+    # the deferred cycle carries an advisory-only codex:rescue / tracer escalation pointer.
+    # Advisory only — no subprocess is spawned and the existing defer/stop flow is unchanged.
+    repo = _write_repo(tmp_path, task_id="T-2026-1001", title="Repair fail")
+    _patch_active_loop_clear(monkeypatch)
+    active_dir = repo / "reports" / "agent_loop" / "active"
+    monkeypatch.setattr(agent_loop, "write_active_codex_runner", _infinite_fake_runner(active_dir))
+    monkeypatch.setattr(
+        agent_loop, "write_active_gate_evidence", _infinite_fake_gate(active_dir, ready_for=set())
+    )
+
+    result = agent_loop.write_active_auto_loop(
+        max_iterations=1,
+        execute_runner=True,
+        execute_ship=False,
+        auto_repair=True,
+        repo_root=repo,
+    )
+
+    assert result.cycles, "expected at least one recorded cycle"
+    adv = result.cycles[0].get("escalation_advisory")
+    assert adv is not None
+    assert adv["tools"] == ["codex:rescue", "tracer"]
+    assert "T-2026-1001" in adv["guidance"]
+    assert any("escalate to codex:rescue / tracer" in str(w) for w in result.warnings)
+
+
+def test_active_auto_loop_successful_repair_has_no_escalation_advisory(monkeypatch, tmp_path: Path) -> None:
+    # A repair that lands a patch must NOT carry the escalation advisory (T-X4).
+    repo = _write_repo(tmp_path, task_id="T-2026-1001", title="Repair apply task")
+    _patch_active_loop_clear(monkeypatch)
+    active_dir = repo / "reports" / "agent_loop" / "active"
+
+    def fake_runner(**kwargs):  # type: ignore[no-untyped-def]
+        mode = kwargs.get("mode", "read-only")
+        report = active_dir / ("auto_repair.md" if mode == "patch" else "codex_runner.md")
+        state = active_dir / ("auto_repair_state.json" if mode == "patch" else "codex_runner_state.json")
+        runs = active_dir / ("patch_runs" if mode == "patch" else "codex_runs")
+        report.parent.mkdir(parents=True, exist_ok=True)
+        report.write_text(f"# {mode}\n", encoding="utf-8")
+        state.write_text("{}\n", encoding="utf-8")
+        return agent_loop.ActiveCodexRunnerResult(report, state, runs, "completed", (), (), ())
+
+    def fake_gate(*, task_id, **kwargs):  # type: ignore[no-untyped-def]
+        path = active_dir / "gate_evidence" / task_id / "evidence.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("{}\n", encoding="utf-8")
+        return path, {"ready": False, "privacy_clean": True}
+
+    def fake_apply(**kwargs):  # type: ignore[no-untyped-def]
+        report = active_dir / "active_apply.md"
+        state = active_dir / "active_apply_state.json"
+        report.write_text("# apply\n", encoding="utf-8")
+        state.write_text("{}\n", encoding="utf-8")
+        return agent_loop.ActiveApplyResult(report, state, "applied", "feature/T-2026-1001-integration", True, (), ())
+
+    monkeypatch.setattr(agent_loop, "write_active_codex_runner", fake_runner)
+    monkeypatch.setattr(agent_loop, "write_active_gate_evidence", fake_gate)
+    monkeypatch.setattr(agent_loop, "write_active_apply", fake_apply)
+
+    result = agent_loop.write_active_auto_loop(
+        max_iterations=1,
+        execute_runner=True,
+        execute_ship=False,
+        auto_repair=True,
+        repo_root=repo,
+    )
+
+    assert result.completed_task_ids == ("T-2026-1001",)
+    assert result.cycles[0].get("escalation_advisory") is None
+
+
 def test_active_auto_loop_infinite_wall_clock_budget_bounds_runner_timeout(monkeypatch, tmp_path: Path) -> None:
     # ADR 0085 finding fix: with a wall-clock budget the runner subprocess receives the
     # *remaining* budget as its timeout, so a hung session cannot stall the loop forever.
