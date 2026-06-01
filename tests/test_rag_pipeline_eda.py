@@ -100,13 +100,23 @@ def _build_case(
         "retry_trigger_reasons": retry_reasons or [],
         "selected_top_k": 5,
         "metadata_candidate_count": 3,
+        # Production shape (eval/scorers/case.py): the per-case stage_latency
+        # dict carries ONLY query_analysis/context_resolution/answer_generation.
+        # retrieve_ms/verify_ms live per-attempt in attempt_latency — one entry
+        # per stage attempt (retry_count + 1 attempts).
         "stage_latency": {
             "query_analysis_ms": 1.0,
             "context_resolution_ms": 0.5,
-            "retrieve_ms": 10.0,
-            "verify_ms": 5.0,
             "answer_generation_ms": 2.0,
         },
+        "attempt_latency": [
+            {
+                "stage": "expand" if attempt > 0 else "base",
+                "retrieve_ms": 10.0,
+                "verify_ms": 5.0,
+            }
+            for attempt in range(retry_count + 1)
+        ],
         "latency_ms": 18.5,
         "confidence": confidence,
         "abstained": abstained,
@@ -198,10 +208,18 @@ def _make_fixture(tmp_path: Path) -> Path:
     return path
 
 
-def _run(tmp_path: Path, eval_path: Path, *, baseline: Path | None = None) -> dict[str, Path]:
+def _run(
+    tmp_path: Path,
+    eval_path: Path,
+    *,
+    baseline: Path | None = None,
+    figures_dir: Path | None = None,
+    figures_prefix: str | None = None,
+) -> dict[str, Path]:
     out_md = tmp_path / "rag_pipeline.md"
     out_json = tmp_path / "rag_pipeline.aggregate.json"
-    figures_dir = tmp_path / "figures"
+    if figures_dir is None:
+        figures_dir = tmp_path / "figures"
     cmd = [
         sys.executable, str(SCRIPT),
         "--eval-summary", str(eval_path),
@@ -210,6 +228,8 @@ def _run(tmp_path: Path, eval_path: Path, *, baseline: Path | None = None) -> di
         "--figures-dir", str(figures_dir),
         "--seed", "0",
     ]
+    if figures_prefix is not None:
+        cmd.extend(["--figures-prefix", figures_prefix])
     if baseline is not None:
         cmd.extend(["--baseline", str(baseline)])
     else:
@@ -327,3 +347,55 @@ def test_figures_optional(tmp_path: Path, monkeypatch) -> None:
     assert not figures_dir.exists() or not any(figures_dir.iterdir()), (
         "figures should be skipped when matplotlib unavailable"
     )
+
+
+def test_retrieve_verify_latency_aggregated_from_attempt_latency(tmp_path: Path) -> None:
+    """Regression for defect 1 (#1401): retrieve_ms/verify_ms must be summed from
+    each case's per-attempt ``attempt_latency`` array, not read from the per-case
+    ``stage_latency`` dict (which never carries them). Pre-fix, both were n=0.
+    """
+    eval_path = _make_fixture(tmp_path)
+    out = _run(tmp_path, eval_path)
+    aggregate = json.loads(out["json"].read_text(encoding="utf-8"))
+
+    per_stage = aggregate["axis4_stage_latency"]["per_stage"]
+    for stage in ("retrieve_ms", "verify_ms"):
+        d = per_stage[stage]
+        assert d["n"] > 0, f"axis4 {stage} should aggregate >0 cases, got n={d['n']}"
+        assert d["mean"] and d["mean"] > 0, f"axis4 {stage} mean should be >0, got {d['mean']}"
+
+    a7 = aggregate["axis7_cold_start"]
+    assert a7["cold"]["retrieve_ms"]["n"] > 0, "axis7 cold retrieve_ms should aggregate >0 cases"
+    assert a7["warm"]["retrieve_ms"]["n"] > 0, "axis7 warm retrieve_ms should aggregate >0 cases"
+    assert a7["delta_retrieve_ms_p50_cold_minus_warm"] is not None, (
+        "axis7 cold-warm retrieve delta should be computed, not None"
+    )
+
+
+def test_figures_prefix_separates_datasets(tmp_path: Path) -> None:
+    """Regression for defect 2 (#1401): figure stems must be keyed by
+    --figures-prefix so two reports sharing one --figures-dir do not stomp each
+    other's files. Pre-fix the stem was hardcoded ``real100_rag_*``.
+    """
+    eval_path = _make_fixture(tmp_path)
+    shared_figs = tmp_path / "shared_figures"
+    run_a = tmp_path / "a"
+    run_b = tmp_path / "b"
+    run_a.mkdir()
+    run_b.mkdir()
+    _run(run_a, eval_path, figures_dir=shared_figs, figures_prefix="alpha_rag")
+    _run(run_b, eval_path, figures_dir=shared_figs, figures_prefix="beta_rag")
+
+    if not shared_figs.exists() or not any(shared_figs.glob("*.png")):
+        pytest.skip("matplotlib unavailable — figures not produced")
+
+    names = {p.name for p in shared_figs.iterdir()}
+    assert any(n.startswith("alpha_rag_") for n in names), "alpha_rag figures missing"
+    assert any(n.startswith("beta_rag_") for n in names), "beta_rag figures missing"
+    assert not any(n.startswith("real100_rag_") for n in names), (
+        "hardcoded real100_rag_ stem leaked despite custom --figures-prefix"
+    )
+
+    md_a = (run_a / "rag_pipeline.md").read_text(encoding="utf-8")
+    assert "alpha_rag_" in md_a, "report A should reference its own alpha_rag figures"
+    assert "beta_rag_" not in md_a, "report A must not reference report B's figures"
