@@ -271,6 +271,77 @@ def _omc_runner_ack_enabled() -> bool:
     return os.environ.get(OMC_RUNNER_ACK_ENV, "").strip() in {"1", "true", "yes"}
 
 
+# ADR 0092: opt-in per-(role,agent) lane adaptive autotune. PR1 is sense + detect +
+# recommendation-only (no effort actuation — that is PR2). Default OFF: when
+# ACTIVE_LANE_AUTOTUNE is unset the controller is never invoked AND no autotune-only
+# state is persisted, so both the runner output (codex command) and the auto-loop state
+# file stay byte-identical to today (R4 / AC1).
+LANE_AUTOTUNE_ENV = "ACTIVE_LANE_AUTOTUNE"
+LANE_AUTOTUNE_K_ENV = "ACTIVE_LANE_AUTOTUNE_K"
+LANE_AUTOTUNE_FAIL_WINDOW_ENV = "ACTIVE_LANE_AUTOTUNE_FAIL_WINDOW"
+LANE_AUTOTUNE_FAIL_MIN_SAMPLE_ENV = "ACTIVE_LANE_AUTOTUNE_FAIL_MIN_SAMPLE"
+LANE_AUTOTUNE_FAIL_THRESHOLD_ENV = "ACTIVE_LANE_AUTOTUNE_FAIL_THRESHOLD"
+
+
+@dataclass(frozen=True)
+class LaneAutotuneConfig:
+    """Resolved knobs for the lane-autotune controller (ADR 0092, PR1).
+
+    ``k`` is the within-agent slowness multiplier (flag a lane whose ``elapsed_s``
+    exceeds ``k * median`` of the same agent's active lanes). ``fail_window`` /
+    ``fail_min_sample`` / ``fail_threshold`` drive the fail_rate signal over the last
+    W iterations. Held as a frozen value so the controller stays a pure function.
+    """
+
+    k: float = 2.0
+    fail_window: int = 3
+    fail_min_sample: int = 2
+    fail_threshold: float = 0.5
+
+
+def _lane_autotune_enabled() -> bool:
+    """True only when the operator opted into lane autotune (default OFF)."""
+    return os.environ.get(LANE_AUTOTUNE_ENV, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _resolve_lane_autotune_config() -> LaneAutotuneConfig | None:
+    """Resolve the lane-autotune config from env, or ``None`` when disabled.
+
+    Returning ``None`` (not a default config) when ``ACTIVE_LANE_AUTOTUNE`` is unset is
+    the byte-identical-off seam: callers gate every autotune side effect on a non-None
+    config, so off-mode neither senses, persists, nor recommends. A malformed numeric
+    knob falls back to its default rather than aborting the loop.
+    """
+    if not _lane_autotune_enabled():
+        return None
+
+    def _float(env_name: str, default: float) -> float:
+        raw = os.environ.get(env_name, "").strip()
+        if not raw:
+            return default
+        try:
+            return float(raw)
+        except ValueError:
+            return default
+
+    def _int(env_name: str, default: int) -> int:
+        raw = os.environ.get(env_name, "").strip()
+        if not raw:
+            return default
+        try:
+            value = int(raw)
+        except ValueError:
+            return default
+        return value if value > 0 else default
+
+    return LaneAutotuneConfig(
+        k=_float(LANE_AUTOTUNE_K_ENV, 2.0),
+        fail_window=_int(LANE_AUTOTUNE_FAIL_WINDOW_ENV, 3),
+        fail_min_sample=_int(LANE_AUTOTUNE_FAIL_MIN_SAMPLE_ENV, 2),
+        fail_threshold=_float(LANE_AUTOTUNE_FAIL_THRESHOLD_ENV, 0.5),
+    )
+
+
 DEFAULT_AGENT_MIX = {
     "target": {"claude": 5, "codex": 5},
     "unit": "work_unit",
@@ -10091,6 +10162,73 @@ def _load_active_auto_ledger(state_path: Path) -> tuple[list[str], list[str], li
     return list(_dedupe_preserve_order(completed)), list(_dedupe_preserve_order(deferred)), warnings
 
 
+# Statuses that count as a lane failure for the lane-autotune fail_rate signal
+# (ADR 0092, AC5). A timed-out / budget-exceeded / spawn-failed / terminated lane
+# is a failure even though it may carry no ``elapsed_s`` (those paths ``continue``
+# before the elapsed assignment). ``completed`` / ``running`` / ``planned`` are not.
+_LANE_AUTOTUNE_FAILURE_STATUSES: frozenset[str] = frozenset(
+    {"failed", "timeout", "budget-exceeded", "spawn-failed", "terminated"}
+)
+
+
+def _load_active_lane_stats(state_path: Path) -> tuple[list[list[dict[str, object]]], dict[str, object]]:
+    """Load the per-iteration lane-stats history from the auto-loop state file.
+
+    NEW sibling loader (ADR 0092, AC3). The existing ``_load_active_auto_ledger``
+    returns a 3-tuple unpacked at a single call site, so it is deliberately left
+    untouched; this loader reads the same ``auto_loop_state.json`` (single source
+    of truth — no sidecar file) but extracts ``cycles[].lane_stats``.
+
+    Returns ``(history, meta)`` where ``history`` is a list of per-iteration lane
+    observation batches in cycle order (oldest first); each batch is a list of
+    ``{"role", "agent", "elapsed_s", "status"}`` dicts. ``meta`` carries
+    ``{"warnings": [...]}`` and the prior recommendations under
+    ``{"recommendations": [...]}`` (for audit continuity). Missing / unreadable /
+    autotune-off state yields an empty history so the caller no-ops cleanly.
+    """
+    meta: dict[str, object] = {"warnings": [], "recommendations": []}
+    if not state_path.exists():
+        return [], meta
+    try:
+        payload = json.loads(_read_text(state_path))
+    except (json.JSONDecodeError, OSError):
+        meta["warnings"] = ["ignored unreadable active auto-loop lane stats"]
+        return [], meta
+    if not isinstance(payload, dict):
+        meta["warnings"] = ["ignored non-object active auto-loop lane stats"]
+        return [], meta
+    raw_cycles = payload.get("cycles")
+    history: list[list[dict[str, object]]] = []
+    if isinstance(raw_cycles, list):
+        for cycle in raw_cycles:
+            if not isinstance(cycle, dict):
+                continue
+            raw_stats = cycle.get("lane_stats")
+            if not isinstance(raw_stats, list):
+                continue
+            batch: list[dict[str, object]] = []
+            for obs in raw_stats:
+                if not isinstance(obs, dict):
+                    continue
+                role = str(obs.get("role") or "")
+                agent = str(obs.get("agent") or "")
+                status = str(obs.get("status") or "")
+                if not agent:
+                    continue
+                elapsed_raw = obs.get("elapsed_s")
+                elapsed: float | None
+                if isinstance(elapsed_raw, (int, float)) and not isinstance(elapsed_raw, bool):
+                    elapsed = float(elapsed_raw)
+                else:
+                    elapsed = None
+                batch.append({"role": role, "agent": agent, "elapsed_s": elapsed, "status": status})
+            history.append(batch)
+    raw_recs = payload.get("lane_autotune_recommendations")
+    if isinstance(raw_recs, list):
+        meta["recommendations"] = [rec for rec in raw_recs if isinstance(rec, dict)]
+    return history, meta
+
+
 def _load_active_auto_target(state_path: Path) -> int | None:
     if not state_path.exists():
         return None
@@ -10289,6 +10427,7 @@ def write_active_auto_loop(
     max_parallel: int = 8,
     timeout_seconds: int = 0,
     max_commands_per_session: int = 0,
+    lane_autotune_config: "LaneAutotuneConfig | None" = None,
     state: Path = DEFAULT_ACTIVE_AUTO_LOOP_STATE,
     out: Path = DEFAULT_ACTIVE_AUTO_LOOP,
     repo_root: Path = ROOT_DIR,
@@ -10324,6 +10463,18 @@ def write_active_auto_loop(
     state_path = _active_path(state, repo_root=repo_root)
     prior_completed, prior_deferred, warnings = _load_active_auto_ledger(state_path)
     completed: list[str] = list(prior_completed)
+    # ADR 0092 (PR1): resolve the lane-autotune config. A caller (the CLI) may inject one;
+    # otherwise fall back to env (so `make 시작` env still drives it). None == OFF, which
+    # gates every autotune side effect below so off-mode stays byte-identical (AC1/R4).
+    if lane_autotune_config is None:
+        lane_autotune_config = _resolve_lane_autotune_config()
+    # Cross-run lane-stats history (oldest first) seeds the controller window so fail_rate
+    # spans prior runs, not just this run's iterations. Only read when autotune is ON.
+    prior_lane_stats: list[list[dict[str, object]]] = []
+    lane_autotune_recommendations: list[dict[str, object]] = []
+    if lane_autotune_config is not None:
+        prior_lane_stats, lane_stats_meta = _load_active_lane_stats(state_path)
+        warnings.extend(str(w) for w in lane_stats_meta.get("warnings", []) if w)
     max_iterations, limit_reason = _resolve_active_auto_loop_limit(
         max_iterations,
         auto_cap=auto_max_iterations_cap,
@@ -10398,6 +10549,10 @@ def write_active_auto_loop(
             "blockers": _dedupe_preserve_order(blockers),
             "warnings": _dedupe_preserve_order(warnings),
         }
+        # ADR 0092 (AC8): only emit the recommendations key when autotune is ON, so the
+        # checkpoint payload is byte-identical to today when the feature is OFF.
+        if lane_autotune_config is not None:
+            checkpoint_payload["lane_autotune_recommendations"] = lane_autotune_recommendations
         state_path.parent.mkdir(parents=True, exist_ok=True)
         state_path.write_text(
             json.dumps(_sanitize_json_value(checkpoint_payload), indent=2, sort_keys=True) + "\n",
@@ -10700,6 +10855,40 @@ def write_active_auto_loop(
         )
         cycle["runner_decision"] = runner.decision
         cycle["runner_report"] = _repo_path(runner.report_path, repo_root)
+        # ADR 0092 (B2 wiring, AC3): capture per-lane timing/status from the runner so the
+        # opt-in controller can sense within-agent bottlenecks on the NEXT iteration. Gated on
+        # the autotune config so the auto_loop_state.json stays byte-identical when OFF.
+        if lane_autotune_config is not None:
+            cycle["lane_stats"] = [
+                {
+                    "role": str(session.get("role") or ""),
+                    "agent": str(session.get("agent") or ""),
+                    "elapsed_s": session.get("elapsed_s"),
+                    "status": str(session.get("status") or ""),
+                }
+                for session in runner.sessions
+                if isinstance(session, dict)
+            ]
+            # AC4/AC5/AC8: feed the full history (prior runs + this run's earlier cycles +
+            # this cycle) to the PURE controller and record its recommendations. PR1 is
+            # recommendation-only — no effort override is applied to any lane (that is PR2).
+            history = [
+                *prior_lane_stats,
+                *(
+                    list(prior_cycle["lane_stats"])
+                    for prior_cycle in cycles
+                    if isinstance(prior_cycle.get("lane_stats"), list)
+                ),
+            ]
+            recommendations, autotune_events = compute_lane_autotune(history, lane_autotune_config)
+            cycle["lane_autotune"] = {
+                "recommendations": recommendations,
+                "events": autotune_events,
+            }
+            for rec in recommendations:
+                lane_autotune_recommendations.append(
+                    {**rec, "iteration": iteration, "task_id": task.task_id}
+                )
         if execute_runner and runner.decision != "completed":
             cycle["gate_tier"] = "runner-blocked"
             if auto_repair:
@@ -10899,6 +11088,10 @@ def write_active_auto_loop(
         "blockers": _dedupe_preserve_order(blockers),
         "warnings": _dedupe_preserve_order(warnings),
     }
+    # ADR 0092 (AC8): emit recommendations on the terminal state write too (this block, not
+    # write_cycle_checkpoint, is the final state file). Gated so off-mode stays byte-identical.
+    if lane_autotune_config is not None:
+        state_payload["lane_autotune_recommendations"] = lane_autotune_recommendations
     state_path.parent.mkdir(parents=True, exist_ok=True)
     state_path.write_text(json.dumps(_sanitize_json_value(state_payload), indent=2, sort_keys=True) + "\n", encoding="utf-8")
     rendered = render_active_auto_loop(
@@ -11279,6 +11472,36 @@ def _parse_agent_mix(spec: str | None) -> dict[str, object]:
     }
 
 
+def _resolve_lane_autotune_config_for_cli(args: argparse.Namespace) -> "LaneAutotuneConfig | None":
+    """Resolve the lane-autotune config from CLI args, with env fallback (ADR 0092).
+
+    ``--lane-autotune`` (BooleanOptionalAction) tri-states: ``True`` forces ON,
+    ``False`` (``--no-lane-autotune``) forces OFF (returns ``None``), and ``None``
+    (flag absent) defers to ``ACTIVE_LANE_AUTOTUNE`` so the Makefile env front door
+    stays the single source of truth. When ON, any explicitly-passed numeric knob
+    overrides its env/default; otherwise the env-resolved value flows through.
+    """
+    flag = getattr(args, "lane_autotune", None)
+    if flag is False:
+        return None
+    base = _resolve_lane_autotune_config()
+    if flag is True and base is None:
+        # Flag forces ON even if the env is unset: start from defaults.
+        base = LaneAutotuneConfig()
+    if base is None:
+        return None
+    k = getattr(args, "lane_autotune_k", None)
+    fail_window = getattr(args, "lane_autotune_fail_window", None)
+    fail_min_sample = getattr(args, "lane_autotune_fail_min_sample", None)
+    fail_threshold = getattr(args, "lane_autotune_fail_threshold", None)
+    return LaneAutotuneConfig(
+        k=base.k if k is None else float(k),
+        fail_window=base.fail_window if fail_window is None or int(fail_window) <= 0 else int(fail_window),
+        fail_min_sample=base.fail_min_sample if fail_min_sample is None or int(fail_min_sample) <= 0 else int(fail_min_sample),
+        fail_threshold=base.fail_threshold if fail_threshold is None else float(fail_threshold),
+    )
+
+
 def _resolve_agent_mix_for_cli(spec: str | None) -> dict[str, object]:
     """Parse --agent-mix and apply quota-aware target rebalancing (issue #1656).
 
@@ -11412,6 +11635,150 @@ def _agent_turn_roles() -> set[str]:
             if role not in {"Orchestrator", "Implementer"}:
                 roles.add(role)
     return roles
+
+
+def _lane_autotune_median(values: Sequence[float]) -> float:
+    """Median of a non-empty numeric sequence (no external deps; pure)."""
+    ordered = sorted(values)
+    n = len(ordered)
+    mid = n // 2
+    if n % 2 == 1:
+        return ordered[mid]
+    return (ordered[mid - 1] + ordered[mid]) / 2.0
+
+
+def compute_lane_autotune(
+    prior_lane_stats: Sequence[Sequence[dict[str, object]]],
+    config: "LaneAutotuneConfig",
+) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+    """Pure decision function for opt-in lane autotune (ADR 0092, PR1).
+
+    Recommendation-only — this NEVER applies an effort override (that is PR2). Given
+    ``prior_lane_stats`` (per-iteration observation batches, oldest first; each batch a
+    list of ``{"role", "agent", "elapsed_s", "status"}`` dicts), it senses *within-agent*
+    bottlenecks on the most recent batch and emits per-lane recommendations + diagnostic
+    events. No I/O, no env reads, no clock — fully deterministic for testing.
+
+    Signals:
+      * elapsed (AC4): on the newest batch ("active lanes"), group by ``agent``; for an
+        agent with >= 2 lanes carrying a numeric ``elapsed_s``, flag any lane whose
+        ``elapsed_s`` exceeds ``config.k * median`` of that agent. An agent with < 2 such
+        lanes is a no-op (AC7) — median is undefined / meaningless.
+      * fail_rate (AC5): per-lane ``(role, agent)`` over the last ``config.fail_window``
+        batches; ``fail_rate = failures / observations`` for that lane key, where a failure
+        is ``status in _LANE_AUTOTUNE_FAILURE_STATUSES``. Below ``config.fail_min_sample``
+        observations -> no fail signal (no-signal) for that lane.
+      * lane-window reset (AC6): the fail window is keyed by ``(role, agent)``. When a
+        role's agent flips (``read_agent=auto``), the new lane is a fresh key, so the prior
+        agent's observations for that role do not leak into the new lane's window.
+
+    Direction (AC8, previewing AC12): a flagged lane whose fail_rate exceeds
+    ``config.fail_threshold`` (with min-sample met) is recommended to *strengthen* (PR2
+    would step effort +1); otherwise *accelerate* (PR2 would step -1). PR1 records the
+    direction only — no concrete effort level is resolved here.
+    """
+    batches: list[list[dict[str, object]]] = [list(batch) for batch in prior_lane_stats]
+    events: list[dict[str, object]] = []
+    recommendations: list[dict[str, object]] = []
+    if not batches:
+        return recommendations, events
+
+    # --- fail_rate per (role, agent) lane over the last W batches (AC5/AC6) ---
+    window = batches[-config.fail_window :] if config.fail_window > 0 else batches
+    fail_obs: dict[tuple[str, str], int] = {}
+    fail_hits: dict[tuple[str, str], int] = {}
+    for batch in window:
+        for obs in batch:
+            role = str(obs.get("role") or "")
+            agent = str(obs.get("agent") or "")
+            if not agent:
+                continue
+            key = (role, agent)
+            fail_obs[key] = fail_obs.get(key, 0) + 1
+            if str(obs.get("status") or "") in _LANE_AUTOTUNE_FAILURE_STATUSES:
+                fail_hits[key] = fail_hits.get(key, 0) + 1
+
+    def _lane_fail_signal(role: str, agent: str) -> tuple[float | None, int]:
+        key = (role, agent)
+        sample = fail_obs.get(key, 0)
+        if sample < config.fail_min_sample:
+            return None, sample
+        return fail_hits.get(key, 0) / sample, sample
+
+    # --- within-agent elapsed median on the most recent batch (AC4/AC7) ---
+    active = batches[-1]
+    by_agent: dict[str, list[dict[str, object]]] = {}
+    for obs in active:
+        agent = str(obs.get("agent") or "")
+        if not agent:
+            continue
+        by_agent.setdefault(agent, []).append(obs)
+
+    for agent, lanes in sorted(by_agent.items()):
+        timed = [
+            obs
+            for obs in lanes
+            if isinstance(obs.get("elapsed_s"), (int, float)) and not isinstance(obs.get("elapsed_s"), bool)
+        ]
+        if len(timed) < 2:
+            # Degenerate: < 2 timed lanes for this agent -> median meaningless -> no-op (AC7).
+            events.append(
+                {
+                    "agent": agent,
+                    "signal": "elapsed",
+                    "decision": "no-op",
+                    "reason": "fewer than 2 timed active lanes for this agent",
+                    "active_lane_count": len(lanes),
+                    "timed_lane_count": len(timed),
+                }
+            )
+            continue
+        elapsed_values = [float(obs["elapsed_s"]) for obs in timed]  # type: ignore[index]
+        median = _lane_autotune_median(elapsed_values)
+        threshold = config.k * median
+        events.append(
+            {
+                "agent": agent,
+                "signal": "elapsed",
+                "decision": "evaluated",
+                "median_elapsed_s": round(median, 3),
+                "k": config.k,
+                "flag_threshold_s": round(threshold, 3),
+                "timed_lane_count": len(timed),
+            }
+        )
+        for obs in timed:
+            elapsed_s = float(obs["elapsed_s"])  # type: ignore[index]
+            if elapsed_s <= threshold:
+                continue
+            role = str(obs.get("role") or "")
+            fail_rate, fail_sample = _lane_fail_signal(role, agent)
+            if fail_rate is not None and fail_rate > config.fail_threshold:
+                direction = "strengthen"
+            else:
+                direction = "accelerate"
+            recommendations.append(
+                {
+                    "role": role,
+                    "agent": agent,
+                    "elapsed_s": round(elapsed_s, 3),
+                    "median_elapsed_s": round(median, 3),
+                    "k": config.k,
+                    "flag_threshold_s": round(threshold, 3),
+                    "fail_rate": None if fail_rate is None else round(fail_rate, 3),
+                    "fail_sample": fail_sample,
+                    "fail_min_sample": config.fail_min_sample,
+                    "fail_threshold": config.fail_threshold,
+                    "fail_signal": "no-signal" if fail_rate is None else "observed",
+                    "direction": direction,
+                    "actuated": False,
+                    "note": (
+                        "recommendation-only (PR1); PR2 would "
+                        + ("raise effort +1 (strengthen)" if direction == "strengthen" else "lower effort -1 (accelerate)")
+                    ),
+                }
+            )
+    return recommendations, events
 
 
 def choose_agent(role: str, *, agent_mix: dict[str, object], rolling: dict[str, object]) -> str:
@@ -13615,6 +13982,9 @@ def write_active_codex_runner(
         raise ValueError("--write-agent must be auto, codex, or claude")
     if runner not in {"codex", "omc"}:
         raise ValueError("--runner must be codex or omc")
+    # ADR 0092: resolve once per runner call. When OFF, no per-lane elapsed_s is recorded
+    # into the session dicts so the runner state file / report stay byte-identical.
+    lane_autotune_on = _lane_autotune_enabled()
     registry_path = _active_path(registry, repo_root=repo_root)
     assignments_path = _active_path(assignments_dir, repo_root=repo_root)
     runs_path = _active_path(runs_dir, repo_root=repo_root)
@@ -13848,6 +14218,14 @@ def write_active_codex_runner(
                         encoding="utf-8",
                     )
                     elapsed = time.monotonic() - spawn_start_at
+                    # Persist per-lane wall-clock so the opt-in lane-autotune controller
+                    # (ADR 0092) can sense relative slowness within an agent. Display-only
+                    # before; now flows item -> planned -> ActiveCodexRunnerResult.sessions
+                    # alongside role/agent/status. claude elapsed includes artifact/heartbeat
+                    # overhead, so comparisons stay within-agent (never claude vs codex).
+                    # Gated so the runner state file stays byte-identical when autotune is OFF.
+                    if lane_autotune_on:
+                        item["elapsed_s"] = round(elapsed, 3)
                     if result.decision == "executed":
                         item["status"] = "completed"
                         _emit_progress(f"[done] session={session_id} agent=claude verdict={result.verdict} elapsed={elapsed:.1f}s")
@@ -13946,6 +14324,12 @@ def write_active_codex_runner(
                         pass
                 item["returncode"] = rc
                 elapsed = time.monotonic() - spawn_start_at
+                # Persist per-lane wall-clock for the opt-in lane-autotune controller
+                # (ADR 0092). codex elapsed is the pure subprocess wait (no artifact
+                # overhead) so it is only ever compared against other codex lanes.
+                # Gated so the runner state file stays byte-identical when autotune is OFF.
+                if lane_autotune_on:
+                    item["elapsed_s"] = round(elapsed, 3)
                 if item.get("budget_exceeded"):
                     item["status"] = "budget-exceeded"
                     _emit_progress(
@@ -17878,6 +18262,20 @@ def build_parser() -> argparse.ArgumentParser:
     auto_loop.add_argument("--model", help="Codex model to pass to active-codex-runner; default resolves from role/env.")
     auto_loop.add_argument("--state", type=Path, default=DEFAULT_ACTIVE_AUTO_LOOP_STATE)
     auto_loop.add_argument("--out", type=Path, default=DEFAULT_ACTIVE_AUTO_LOOP)
+    # ADR 0092 (PR1): opt-in per-(role,agent) lane adaptive autotune (sense + detect +
+    # recommendation-only; NO effort actuation — that is PR2). Default OFF == byte-identical.
+    # When the flag is absent the env (ACTIVE_LANE_AUTOTUNE) still drives it so the Makefile
+    # front door keeps a single source of truth.
+    auto_loop.add_argument(
+        "--lane-autotune",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Opt-in lane adaptive autotune (ADR 0092, recommendation-only in PR1). Default off; falls back to ACTIVE_LANE_AUTOTUNE env when unset.",
+    )
+    auto_loop.add_argument("--lane-autotune-k", type=float, default=None, help="Within-agent slowness multiplier K (default 2.0).")
+    auto_loop.add_argument("--lane-autotune-fail-window", type=int, default=None, help="fail_rate window W in iterations (default 3).")
+    auto_loop.add_argument("--lane-autotune-fail-min-sample", type=int, default=None, help="Minimum observations before a fail_rate signal (default 2).")
+    auto_loop.add_argument("--lane-autotune-fail-threshold", type=float, default=None, help="fail_rate threshold for strengthen vs accelerate (default 0.5).")
 
     active_apply = sub.add_parser("active-apply", help="Apply a codex patch artifact to its integration branch after git apply --check (never touches main).")
     active_apply.add_argument("--patch", type=Path, help="Patch artifact JSON; defaults to the Implementer session's patch_artifact.json.")
@@ -18930,6 +19328,7 @@ def main(argv: list[str] | None = None) -> int:
                 max_parallel=args.max_parallel,
                 timeout_seconds=args.timeout_seconds,
                 max_commands_per_session=args.max_commands_per_session,
+                lane_autotune_config=_resolve_lane_autotune_config_for_cli(args),
                 state=args.state,
                 out=args.out,
             )

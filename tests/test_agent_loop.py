@@ -3811,6 +3811,40 @@ def test_active_codex_runner_dry_run_renders_eight_commands_without_spawning(tmp
     assert "role-dispatch" not in report  # runner is a separate spawn surface, not the report-only dispatcher.
 
 
+def test_active_codex_runner_lane_autotune_off_is_byte_identical(monkeypatch, tmp_path: Path) -> None:
+    """ADR 0092 AC1/R4: with ACTIVE_LANE_AUTOTUNE unset the rendered codex command carries
+    no ``-c model_reasoning_effort`` substring and no per-lane ``elapsed_s`` leaks into the
+    session dicts. Anchored on the literal ``item["command"]`` (the 3795-series), NOT the
+    4421 stub harness (which monkeypatches the runner whole and renders no command)."""
+    monkeypatch.delenv("ACTIVE_LANE_AUTOTUNE", raising=False)
+    repo = _write_repo(tmp_path)
+    _write_expanded_active_runner_fixture(repo)
+
+    result = agent_loop.write_active_codex_runner(repo_root=repo)
+
+    assert result.decision == "planned"
+    assert len(result.sessions) == 8
+    # AC1: PR1 never injects effort, and autotune is OFF by default -> no codex effort flag.
+    assert all("-c model_reasoning_effort" not in item["command"] for item in result.sessions)
+    assert all("model_reasoning_effort" not in item["command"] for item in result.sessions)
+    # Off-mode must not even record the new sense field, so the state file stays byte-identical.
+    assert all("elapsed_s" not in item for item in result.sessions)
+
+
+def test_active_codex_runner_lane_autotune_on_dry_run_still_omits_effort_flag(monkeypatch, tmp_path: Path) -> None:
+    """ADR 0092 AC1: even with ACTIVE_LANE_AUTOTUNE=1, PR1 is recommendation-only — the codex
+    command still carries no ``-c model_reasoning_effort`` (effort actuation is PR2). The
+    on-mode behavior change is limited to recording, never the generated command."""
+    monkeypatch.setenv("ACTIVE_LANE_AUTOTUNE", "1")
+    repo = _write_repo(tmp_path)
+    _write_expanded_active_runner_fixture(repo)
+
+    result = agent_loop.write_active_codex_runner(repo_root=repo)
+
+    assert result.decision == "planned"
+    assert all("-c model_reasoning_effort" not in item["command"] for item in result.sessions)
+
+
 def test_active_codex_runner_can_execute_claude_read_lane(tmp_path: Path) -> None:
     repo = _write_repo(tmp_path)
     _write_expanded_active_runner_fixture(repo)
@@ -9906,3 +9940,265 @@ def test_default_agent_loop_outputs_are_gitignored() -> None:
             check=False,
         )
         assert result.returncode == 0, rel
+
+
+# ---------------------------------------------------------------------------
+# ADR 0092 — lane adaptive autotune (PR1: sense + detect + recommendation-only)
+# ---------------------------------------------------------------------------
+
+
+def _autotune_cfg(**overrides):  # type: ignore[no-untyped-def]
+    base = dict(k=2.0, fail_window=3, fail_min_sample=2, fail_threshold=0.5)
+    base.update(overrides)
+    return agent_loop.LaneAutotuneConfig(**base)
+
+
+def test_compute_lane_autotune_empty_history_is_noop() -> None:
+    recs, events = agent_loop.compute_lane_autotune([], _autotune_cfg())
+    assert recs == []
+    assert events == []
+
+
+def test_compute_lane_autotune_within_agent_median_flags_slow_lane() -> None:
+    # codex: 10, 10, 100 -> median 10, K=2 -> threshold 20 -> flag the 100s lane only.
+    batch = [
+        {"role": "A", "agent": "codex", "elapsed_s": 10.0, "status": "completed"},
+        {"role": "B", "agent": "codex", "elapsed_s": 10.0, "status": "completed"},
+        {"role": "C", "agent": "codex", "elapsed_s": 100.0, "status": "completed"},
+    ]
+    recs, _events = agent_loop.compute_lane_autotune([batch], _autotune_cfg())
+    assert [r["role"] for r in recs] == ["C"]
+    assert recs[0]["agent"] == "codex"
+    assert recs[0]["median_elapsed_s"] == 10.0
+    assert recs[0]["flag_threshold_s"] == 20.0
+    # Single observation of C -> below min-sample -> no fail signal -> accelerate.
+    assert recs[0]["fail_signal"] == "no-signal"
+    assert recs[0]["direction"] == "accelerate"
+    assert recs[0]["actuated"] is False
+
+
+def test_compute_lane_autotune_groups_per_agent_separately() -> None:
+    # claude lanes are slow in absolute terms but compared only within claude; codex within
+    # codex. The slow codex lane (100 vs median 10) flags; claude lanes are all equal -> none.
+    batch = [
+        {"role": "RC1", "agent": "claude", "elapsed_s": 500.0, "status": "completed"},
+        {"role": "RC2", "agent": "claude", "elapsed_s": 500.0, "status": "completed"},
+        {"role": "X", "agent": "codex", "elapsed_s": 10.0, "status": "completed"},
+        {"role": "Y", "agent": "codex", "elapsed_s": 10.0, "status": "completed"},
+        {"role": "Z", "agent": "codex", "elapsed_s": 100.0, "status": "completed"},
+    ]
+    recs, _events = agent_loop.compute_lane_autotune([batch], _autotune_cfg())
+    flagged = {(r["role"], r["agent"]) for r in recs}
+    assert flagged == {("Z", "codex")}  # within-agent only: claude's 500s lanes are not cross-compared
+
+
+def test_compute_lane_autotune_degenerate_single_lane_is_noop() -> None:
+    # Each agent has exactly one active lane -> median meaningless -> no-op (AC7).
+    batch = [
+        {"role": "A", "agent": "codex", "elapsed_s": 100.0, "status": "completed"},
+        {"role": "B", "agent": "claude", "elapsed_s": 5.0, "status": "completed"},
+    ]
+    recs, events = agent_loop.compute_lane_autotune([batch], _autotune_cfg())
+    assert recs == []
+    assert all(e["decision"] == "no-op" for e in events)
+    assert {e["agent"] for e in events} == {"codex", "claude"}
+
+
+def test_compute_lane_autotune_fail_rate_window_strengthens_failing_lane() -> None:
+    # Lane (C, codex) fails 2 of 3 observations across the window (> 0.5) AND is flagged slow
+    # in the newest batch -> strengthen.
+    fail_iter = [
+        {"role": "A", "agent": "codex", "elapsed_s": 10.0, "status": "completed"},
+        {"role": "C", "agent": "codex", "elapsed_s": 100.0, "status": "failed"},
+    ]
+    newest = [
+        {"role": "A", "agent": "codex", "elapsed_s": 10.0, "status": "completed"},
+        {"role": "B", "agent": "codex", "elapsed_s": 10.0, "status": "completed"},
+        {"role": "C", "agent": "codex", "elapsed_s": 100.0, "status": "completed"},
+    ]
+    recs, _events = agent_loop.compute_lane_autotune([fail_iter, fail_iter, newest], _autotune_cfg())
+    c = next(r for r in recs if r["role"] == "C")
+    assert c["fail_signal"] == "observed"
+    assert c["fail_sample"] == 3
+    assert c["fail_rate"] == round(2 / 3, 3)
+    assert c["direction"] == "strengthen"
+
+
+def test_compute_lane_autotune_min_sample_gate_yields_no_fail_signal() -> None:
+    # Only one observation of lane (C, codex) -> below min-sample 2 -> no-signal -> accelerate.
+    newest = [
+        {"role": "A", "agent": "codex", "elapsed_s": 10.0, "status": "completed"},
+        {"role": "B", "agent": "codex", "elapsed_s": 10.0, "status": "completed"},
+        {"role": "C", "agent": "codex", "elapsed_s": 100.0, "status": "failed"},
+    ]
+    recs, _events = agent_loop.compute_lane_autotune([newest], _autotune_cfg())
+    c = next(r for r in recs if r["role"] == "C")
+    assert c["fail_signal"] == "no-signal"
+    assert c["fail_sample"] == 1
+    assert c["fail_rate"] is None
+    assert c["direction"] == "accelerate"
+
+
+def test_compute_lane_autotune_window_resets_on_agent_flip() -> None:
+    # Role R failed twice as codex, then flips to claude. The new (R, claude) lane has a fresh
+    # window (1 obs -> no-signal); the prior codex failures must NOT leak into it (AC6).
+    cfg = _autotune_cfg(fail_window=5)
+    history = [
+        [{"role": "R", "agent": "codex", "elapsed_s": 50.0, "status": "failed"}],
+        [{"role": "R", "agent": "codex", "elapsed_s": 50.0, "status": "failed"}],
+        [
+            {"role": "R", "agent": "claude", "elapsed_s": 100.0, "status": "completed"},
+            {"role": "S", "agent": "claude", "elapsed_s": 10.0, "status": "completed"},
+            {"role": "T", "agent": "claude", "elapsed_s": 10.0, "status": "completed"},
+        ],
+    ]
+    recs, _events = agent_loop.compute_lane_autotune(history, cfg)
+    r = next(x for x in recs if x["role"] == "R")
+    assert r["agent"] == "claude"
+    assert r["fail_signal"] == "no-signal"  # reset: codex failures excluded
+    assert r["direction"] == "accelerate"
+
+
+def test_compute_lane_autotune_ignores_lanes_without_elapsed() -> None:
+    # A timed-out lane carries no elapsed_s; it must not break the median nor be flagged on
+    # elapsed, but it still participates in the per-lane fail window.
+    newest = [
+        {"role": "A", "agent": "codex", "elapsed_s": 10.0, "status": "completed"},
+        {"role": "B", "agent": "codex", "elapsed_s": 10.0, "status": "completed"},
+        {"role": "C", "agent": "codex", "elapsed_s": 100.0, "status": "completed"},
+        {"role": "D", "agent": "codex", "elapsed_s": None, "status": "timeout"},
+    ]
+    recs, _events = agent_loop.compute_lane_autotune([newest], _autotune_cfg())
+    # median over the 3 timed lanes (10,10,100) = 10; only C exceeds 20. D is never elapsed-flagged.
+    assert [r["role"] for r in recs] == ["C"]
+
+
+def test_resolve_lane_autotune_config_off_by_default(monkeypatch) -> None:
+    monkeypatch.delenv("ACTIVE_LANE_AUTOTUNE", raising=False)
+    assert agent_loop._resolve_lane_autotune_config() is None
+    assert agent_loop._lane_autotune_enabled() is False
+
+
+def test_resolve_lane_autotune_config_reads_env_knobs(monkeypatch) -> None:
+    monkeypatch.setenv("ACTIVE_LANE_AUTOTUNE", "1")
+    monkeypatch.setenv("ACTIVE_LANE_AUTOTUNE_K", "3.5")
+    monkeypatch.setenv("ACTIVE_LANE_AUTOTUNE_FAIL_WINDOW", "7")
+    monkeypatch.setenv("ACTIVE_LANE_AUTOTUNE_FAIL_MIN_SAMPLE", "4")
+    monkeypatch.setenv("ACTIVE_LANE_AUTOTUNE_FAIL_THRESHOLD", "0.8")
+    cfg = agent_loop._resolve_lane_autotune_config()
+    assert cfg == agent_loop.LaneAutotuneConfig(k=3.5, fail_window=7, fail_min_sample=4, fail_threshold=0.8)
+
+
+def test_resolve_lane_autotune_config_malformed_knob_falls_back(monkeypatch) -> None:
+    monkeypatch.setenv("ACTIVE_LANE_AUTOTUNE", "yes")
+    monkeypatch.setenv("ACTIVE_LANE_AUTOTUNE_K", "not-a-number")
+    monkeypatch.setenv("ACTIVE_LANE_AUTOTUNE_FAIL_WINDOW", "0")  # non-positive -> default
+    cfg = agent_loop._resolve_lane_autotune_config()
+    assert cfg is not None
+    assert cfg.k == 2.0
+    assert cfg.fail_window == 3
+
+
+def test_active_auto_loop_records_lane_recommendations_from_runner_sessions(monkeypatch, tmp_path: Path) -> None:
+    """ADR 0092 AC3/AC8 integration: inject a runner whose sessions carry per-lane elapsed_s,
+    then assert the loop wires them into cycles[].lane_stats and records a recommendation for
+    the within-agent slow lane in auto_loop_state.json — with NO effort actuation."""
+    repo = _write_repo(tmp_path, task_id="T-2026-1001", title="Autotune sense task")
+    _patch_active_loop_clear(monkeypatch)
+    active_dir = repo / "reports" / "agent_loop" / "active"
+
+    def fake_runner(**kwargs):  # type: ignore[no-untyped-def]
+        report = active_dir / "codex_runner.md"
+        state = active_dir / "codex_runner_state.json"
+        runs = active_dir / "codex_runs"
+        report.parent.mkdir(parents=True, exist_ok=True)
+        report.write_text("# runner\n", encoding="utf-8")
+        state.write_text("{}\n", encoding="utf-8")
+        sessions = (
+            {"role": "Implementer", "agent": "codex", "elapsed_s": 10.0, "status": "completed"},
+            {"role": "Reviewer", "agent": "codex", "elapsed_s": 10.0, "status": "completed"},
+            {"role": "CI / Regression Auditor", "agent": "codex", "elapsed_s": 100.0, "status": "completed"},
+        )
+        return agent_loop.ActiveCodexRunnerResult(report, state, runs, "completed", sessions, (), ())
+
+    def fake_gate(*, task_id, **kwargs):  # type: ignore[no-untyped-def]
+        path = active_dir / "gate_evidence" / task_id / "evidence.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("{}\n", encoding="utf-8")
+        return path, {"ready": True, "privacy_clean": True}
+
+    monkeypatch.setattr(agent_loop, "write_active_codex_runner", fake_runner)
+    monkeypatch.setattr(agent_loop, "write_active_gate_evidence", fake_gate)
+
+    result = agent_loop.write_active_auto_loop(
+        max_iterations=1,
+        auto_max_iterations_cap=1,
+        execute_runner=True,
+        execute_ship=False,
+        auto_repair=False,
+        lane_autotune_config=agent_loop.LaneAutotuneConfig(),
+        repo_root=repo,
+    )
+
+    assert result.completed_task_ids == ("T-2026-1001",)
+    # The cycle carries the wired lane_stats projection (AC3).
+    cycle = result.cycles[0]
+    assert {obs["role"] for obs in cycle["lane_stats"]} == {
+        "Implementer",
+        "Reviewer",
+        "CI / Regression Auditor",
+    }
+    # The within-agent slow lane (100s vs median 10s) is recommended (AC4/AC8), recommendation-only.
+    state = json.loads((active_dir / "auto_loop_state.json").read_text(encoding="utf-8"))
+    recs = state["lane_autotune_recommendations"]
+    assert len(recs) == 1
+    assert recs[0]["role"] == "CI / Regression Auditor"
+    assert recs[0]["agent"] == "codex"
+    assert recs[0]["actuated"] is False
+    assert recs[0]["iteration"] == 1
+    assert recs[0]["task_id"] == "T-2026-1001"
+
+
+def test_active_auto_loop_off_records_no_lane_autotune_keys(monkeypatch, tmp_path: Path) -> None:
+    """ADR 0092 AC1: with autotune OFF (no config, no env) the auto_loop_state.json carries
+    neither lane_stats on cycles nor a lane_autotune_recommendations key (byte-identical)."""
+    monkeypatch.delenv("ACTIVE_LANE_AUTOTUNE", raising=False)
+    repo = _write_repo(tmp_path, task_id="T-2026-1001", title="Autotune off task")
+    _patch_active_loop_clear(monkeypatch)
+    active_dir = repo / "reports" / "agent_loop" / "active"
+
+    def fake_runner(**kwargs):  # type: ignore[no-untyped-def]
+        report = active_dir / "codex_runner.md"
+        state = active_dir / "codex_runner_state.json"
+        runs = active_dir / "codex_runs"
+        report.parent.mkdir(parents=True, exist_ok=True)
+        report.write_text("# runner\n", encoding="utf-8")
+        state.write_text("{}\n", encoding="utf-8")
+        sessions = (
+            {"role": "Implementer", "agent": "codex", "elapsed_s": 10.0, "status": "completed"},
+            {"role": "CI / Regression Auditor", "agent": "codex", "elapsed_s": 100.0, "status": "completed"},
+        )
+        return agent_loop.ActiveCodexRunnerResult(report, state, runs, "completed", sessions, (), ())
+
+    def fake_gate(*, task_id, **kwargs):  # type: ignore[no-untyped-def]
+        path = active_dir / "gate_evidence" / task_id / "evidence.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("{}\n", encoding="utf-8")
+        return path, {"ready": True, "privacy_clean": True}
+
+    monkeypatch.setattr(agent_loop, "write_active_codex_runner", fake_runner)
+    monkeypatch.setattr(agent_loop, "write_active_gate_evidence", fake_gate)
+
+    result = agent_loop.write_active_auto_loop(
+        max_iterations=1,
+        auto_max_iterations_cap=1,
+        execute_runner=True,
+        execute_ship=False,
+        auto_repair=False,
+        repo_root=repo,
+    )
+
+    assert result.completed_task_ids == ("T-2026-1001",)
+    assert "lane_stats" not in result.cycles[0]
+    state = json.loads((active_dir / "auto_loop_state.json").read_text(encoding="utf-8"))
+    assert "lane_autotune_recommendations" not in state
