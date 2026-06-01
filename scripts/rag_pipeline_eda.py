@@ -13,7 +13,11 @@ Reads:
 Writes:
   - reports/rag_pipeline.md            (markdown report)
   - reports/rag_pipeline.aggregate.json (machine-readable dump)
-  - reports/figures/real100_rag_*.png|.svg     (7 figures, matplotlib optional)
+  - reports/figures/<figures-prefix>_*.png|.svg (7 figures, matplotlib optional)
+
+Pass a distinct ``--figures-prefix`` per dataset (e.g. ``synthetic_rag`` vs
+``real100_rag``) when synthetic and real100 runs share one ``--figures-dir`` —
+otherwise the later run overwrites the earlier run's figures.
 
 ADR 0005 boundary: case-level data (case.id, query, answer, evidence text,
 retrieved_chunk_ids, gold_chunk_ids, metadata_selected_doc_ids,
@@ -30,6 +34,7 @@ Usage:
         --out-md reports/rag_pipeline.md \\
         --out-json reports/rag_pipeline.aggregate.json \\
         --figures-dir reports/figures \\
+        --figures-prefix synthetic_rag \\
         --seed 0
 """
 
@@ -38,6 +43,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 import random
 import sys
 from collections import Counter
@@ -296,16 +302,36 @@ _STAGES = (
     "answer_generation_ms",
 )
 
+# retrieve_ms/verify_ms are not in the per-case ``stage_latency`` dict — that
+# dict only carries query_analysis_ms/context_resolution_ms/answer_generation_ms
+# (rag_core ``_phase_build_answer``). retrieve/verify timings live per-attempt in
+# ``attempt_latency`` (eval/scorers/case.py), summed per case here so each stage
+# contributes one value comparable to per-case e2e latency_ms (cf. run_eval.py).
+_ATTEMPT_STAGES = frozenset({"retrieve_ms", "verify_ms"})
+
+
+def _stage_value(case: dict, stage: str) -> float | None:
+    if stage in _ATTEMPT_STAGES:
+        vals = [
+            float(a.get(stage))
+            for a in (case.get("attempt_latency") or [])
+            if isinstance(a.get(stage), (int, float)) and not isinstance(a.get(stage), bool)
+        ]
+        return sum(vals) if vals else None
+    v = (case.get("stage_latency") or {}).get(stage)
+    if isinstance(v, (int, float)) and not isinstance(v, bool):
+        return float(v)
+    return None
+
 
 def axis4_stage_latency(cases: list[dict], baseline: dict | None) -> dict[str, Any]:
     per_stage_raw: dict[str, list[float]] = {s: [] for s in _STAGES}
     e2e_raw: list[float] = []
     for c in cases:
-        sl = c.get("stage_latency") or {}
         for s in _STAGES:
-            v = sl.get(s)
-            if isinstance(v, (int, float)) and not isinstance(v, bool):
-                per_stage_raw[s].append(float(v))
+            v = _stage_value(c, s)
+            if v is not None:
+                per_stage_raw[s].append(v)
         e2e_v = c.get("latency_ms")
         if isinstance(e2e_v, (int, float)) and not isinstance(e2e_v, bool):
             e2e_raw.append(float(e2e_v))
@@ -326,12 +352,11 @@ def axis4_stage_latency(cases: list[dict], baseline: dict | None) -> dict[str, A
     warm_e2e: list[float] = []
     for c in cases:
         is_cold = bool(c.get("cold_start"))
-        sl = c.get("stage_latency") or {}
         bucket = cold_raw if is_cold else warm_raw
         for s in _STAGES:
-            v = sl.get(s)
-            if isinstance(v, (int, float)) and not isinstance(v, bool):
-                bucket[s].append(float(v))
+            v = _stage_value(c, s)
+            if v is not None:
+                bucket[s].append(v)
         e2e_v = c.get("latency_ms")
         if isinstance(e2e_v, (int, float)) and not isinstance(e2e_v, bool):
             (cold_e2e if is_cold else warm_e2e).append(float(e2e_v))
@@ -465,7 +490,7 @@ def axis7_cold_start(cases: list[dict]) -> dict[str, Any]:
 
     def _cohort(cs: list[dict]) -> dict[str, Any]:
         e2e = _floats([c.get("latency_ms") for c in cs])
-        retrieve = _floats([(c.get("stage_latency") or {}).get("retrieve_ms") for c in cs])
+        retrieve = _floats([_stage_value(c, "retrieve_ms") for c in cs])
         return {
             "n": len(cs),
             "e2e_latency_ms": _distribution(e2e),
@@ -492,7 +517,7 @@ def axis7_cold_start(cases: list[dict]) -> dict[str, Any]:
 # Markdown rendering
 # ---------------------------------------------------------------------------
 
-def render_markdown(stats: dict[str, Any]) -> str:
+def render_markdown(stats: dict[str, Any], md_dir: Path | None = None) -> str:
     lines: list[str] = []
     lines.append("# RAG Pipeline EDA")
     lines.append("")
@@ -727,14 +752,23 @@ def render_markdown(stats: dict[str, Any]) -> str:
     )
     lines.append("")
 
-    # Figures pointer
+    # Figures pointer — render md-relative links so the report points at the
+    # figures produced by *this* run (not whatever last wrote a shared dir).
     figs = stats.get("_figures_written") or []
     if figs:
-        stems = sorted({Path(fp).name for fp in figs})
         lines.append("## Figures")
         lines.append("")
-        for name in stems:
-            lines.append(f"- `{name}`")
+        for fp in sorted(set(figs), key=lambda p: Path(p).name):
+            abs_path = Path(fp)
+            name = abs_path.name
+            if md_dir is not None:
+                try:
+                    rel = os.path.relpath(abs_path, md_dir)
+                except ValueError:
+                    rel = abs_path.as_posix()
+            else:
+                rel = abs_path.as_posix()
+            lines.append(f"- [`{name}`]({Path(rel).as_posix()})")
         lines.append("")
     return "\n".join(lines) + "\n"
 
@@ -743,7 +777,7 @@ def render_markdown(stats: dict[str, Any]) -> str:
 # Figures
 # ---------------------------------------------------------------------------
 
-def render_figures(stats: dict[str, Any], out_dir: Path, seed: int) -> list[str]:
+def render_figures(stats: dict[str, Any], out_dir: Path, seed: int, prefix: str) -> list[str]:
     try:
         import matplotlib
         matplotlib.use("Agg")
@@ -754,14 +788,13 @@ def render_figures(stats: dict[str, Any], out_dir: Path, seed: int) -> list[str]
     out_dir.mkdir(parents=True, exist_ok=True)
     written: list[str] = []
 
-    def _save(fig, stem: str) -> None:
+    def _save(fig, name: str) -> None:
+        # ``prefix`` keys figures to the dataset/report so a synthetic run and a
+        # real100 run sharing one --figures-dir do not stomp each other's files.
         for ext in ("png", "svg"):
-            p = out_dir / f"{stem}.{ext}"
+            p = out_dir / f"{prefix}_{name}.{ext}"
             fig.savefig(p, dpi=144)
-            try:
-                written.append(str(p.relative_to(REPO_ROOT)))
-            except ValueError:
-                written.append(str(p))
+            written.append(str(p.resolve()))
         plt.close(fig)
 
     a1 = stats["axis1_retrieval_efficiency"]
@@ -789,7 +822,7 @@ def render_figures(stats: dict[str, Any], out_dir: Path, seed: int) -> list[str]
     ax.legend(loc="upper right", fontsize=9)
     ax.grid(True, axis="y", linestyle=":", alpha=0.4)
     fig.tight_layout()
-    _save(fig, "real100_rag_retrieval_recall")
+    _save(fig, "retrieval_recall")
 
     # Figure 2 — rerank delta MRR histogram
     deltas = a2.get("_raw_delta_mrr") or []
@@ -805,7 +838,7 @@ def render_figures(stats: dict[str, Any], out_dir: Path, seed: int) -> list[str]
     )
     ax.grid(True, axis="y", linestyle=":", alpha=0.4)
     fig.tight_layout()
-    _save(fig, "real100_rag_rerank_delta")
+    _save(fig, "rerank_delta")
 
     # Figure 3 — retry reason horizontal bar
     reasons = a3.get("retry_reason_counts_case_level") or {}
@@ -827,7 +860,7 @@ def render_figures(stats: dict[str, Any], out_dir: Path, seed: int) -> list[str]
     ax.set_title("Retry trigger reasons")
     ax.grid(True, axis="x", linestyle=":", alpha=0.4)
     fig.tight_layout()
-    _save(fig, "real100_rag_retry_reasons")
+    _save(fig, "retry_reasons")
 
     # Figure 4 — stage latency stacked bar (cold vs warm) — share-of-e2e
     fig, ax = plt.subplots(figsize=(8, 4.5))
@@ -851,7 +884,7 @@ def render_figures(stats: dict[str, Any], out_dir: Path, seed: int) -> list[str]
     ax.legend(loc="upper right", fontsize=8)
     ax.grid(True, axis="y", linestyle=":", alpha=0.4)
     fig.tight_layout()
-    _save(fig, "real100_rag_stage_latency")
+    _save(fig, "stage_latency")
 
     # Figure 5 — confidence histogram + abstention by query_type (2 panels)
     fig, (ax_a, ax_b) = plt.subplots(1, 2, figsize=(11, 4))
@@ -878,7 +911,7 @@ def render_figures(stats: dict[str, Any], out_dir: Path, seed: int) -> list[str]
     ax_b.set_ylabel("Rate")
     ax_b.grid(True, axis="y", linestyle=":", alpha=0.4)
     fig.tight_layout()
-    _save(fig, "real100_rag_confidence")
+    _save(fig, "confidence")
 
     # Figure 6 — evidence joint scatter (recall@10 vs citation_precision)
     pairs = a6.get("_raw_paired_recall_cite") or []
@@ -900,7 +933,7 @@ def render_figures(stats: dict[str, Any], out_dir: Path, seed: int) -> list[str]
     )
     ax.grid(True, linestyle=":", alpha=0.4)
     fig.tight_layout()
-    _save(fig, "real100_rag_evidence_joint")
+    _save(fig, "evidence_joint")
 
     # Figure 7 — cold vs warm e2e boxplot
     fig, ax = plt.subplots(figsize=(6, 4))
@@ -930,7 +963,7 @@ def render_figures(stats: dict[str, Any], out_dir: Path, seed: int) -> list[str]
     ax.legend(loc="upper right", fontsize=9)
     ax.grid(True, axis="y", linestyle=":", alpha=0.4)
     fig.tight_layout()
-    _save(fig, "real100_rag_cold_warm")
+    _save(fig, "cold_warm")
 
     return sorted(written)
 
@@ -966,6 +999,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out-md", default="reports/rag_pipeline.md")
     parser.add_argument("--out-json", default="reports/rag_pipeline.aggregate.json")
     parser.add_argument("--figures-dir", default="reports/figures")
+    parser.add_argument(
+        "--figures-prefix",
+        default="rag_pipeline",
+        help="Filename stem prefix for figures, e.g. 'synthetic_rag' or 'real100_rag'. "
+        "Keep distinct per dataset when reports share one --figures-dir.",
+    )
     parser.add_argument("--seed", type=int, default=0)
     args = parser.parse_args(argv)
 
@@ -1000,12 +1039,12 @@ def main(argv: list[str] | None = None) -> int:
         },
     }
 
-    figures_written = render_figures(stats, Path(args.figures_dir), args.seed)
+    figures_written = render_figures(stats, Path(args.figures_dir), args.seed, args.figures_prefix)
     stats["_figures_written"] = figures_written
 
-    md_text = render_markdown(stats)
     out_md = Path(args.out_md)
     out_md.parent.mkdir(parents=True, exist_ok=True)
+    md_text = render_markdown(stats, md_dir=out_md.resolve().parent)
     out_md.write_text(md_text, encoding="utf-8")
 
     out_json = Path(args.out_json)
