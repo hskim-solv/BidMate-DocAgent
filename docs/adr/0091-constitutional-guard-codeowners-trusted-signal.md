@@ -1,6 +1,6 @@
 # 0091: 헌법불변 가드의 trusted signal을 author-writable PR-body marker에서 CODEOWNERS 리뷰로 이전
 
-- **Status**: proposed
+- **Status**: proposed (CODEOWNERS 메커니즘은 #1702로 완료, protection 설정 VERIFIED; **full accept는 owner-review e2e 후** — Verification 참조)
 - **Date**: 2026-05-31
 - **Issue**: [#1701](https://github.com/hskim-solv/BidMate-DocAgent/issues/1701)
 - **Related**: [0088](0088-opt-in-staging-self-ship-external-enforcement.md) (P1 opt-in stub lane — `[constitutional-change-ack]` marker 도입), [0090](0090-activate-staging-self-ship-lane-live-enforcement.md) (env-trust 제거 + live protection verify)
@@ -45,8 +45,9 @@ ADR 0088 P1은 `.github/workflows/staging-self-ship-guard.yml`에 헌법불변 �
 - `gh api` 호출은 네트워크 의존 — rate-limit / API 장애 시 fail-closed(exit 2, blocked-on-user).
 
 **blocked-on-user (이 ADR의 PR에서 명시적으로 하지 않는 것)**
-- `main` + `autopilot/integration`(및 P2.2 통합 브랜치)에 브랜치 보호 "Require review from Code Owners" 활성화 (운영자 GitHub admin 작업).
-- 이 ADR 자체의 Status `proposed → accepted` 전환.
+- **owner-review live e2e: owner 리뷰(≠author) 없는 헌법파일 PR이 실제로 머지 차단됨을 실증 — full accept 조건.**
+
+(완료: `main` + `autopilot/integration` 브랜치 보호 "Require review from Code Owners" 활성화 = 2026-06-01 설정 VERIFIED; 이 ADR Status `proposed → accepted` 전환 = owner-review e2e 후. Verification 참조.)
 
 **Supersession / 관계**
 - ADR 0088의 `[constitutional-change-ack]` PR-body 마커 메커니즘을 **부분 supersede**한다 — 마커는 author-writable이라 외부 게이트가 아니므로 CODEOWNERS 리뷰로 교체. ADR 0088의 나머지 불변(staging-only / force-push 금지 / ship-arm 상호배제 / 데이터 경계 / required-check가 외부 강제 권위라는 모델)은 **보존**.
@@ -71,3 +72,9 @@ ADR 0088 P1은 `.github/workflows/staging-self-ship-guard.yml`에 헌법불변 �
 - `grep -n "constitutional-change-ack" .github/workflows/staging-self-ship-guard.yml` 결과가 비어 있음 (마커 로직 제거).
 - `grep -n "check_constitutional_review.py" .github/workflows/staging-self-ship-guard.yml` 결과가 존재 (테스트 가능 check-script 호출).
 - 운영자 준비 완료 후: 브랜치 보호 "Require review from Code Owners" 활성화 시, owner 리뷰 없는 헌법파일 PR이 머지 차단됨을 live e2e로 확인.
+
+### 구현 완료 현황 + full accept 잔여 조건 (2026-06-01)
+
+**구현 완료 (코드·설정)**: CODEOWNERS 이전 메커니즘(`.github/CODEOWNERS` + `check_constitutional_review.py` + 워크플로 호출)이 #1702로 안착했고, branch protection `require_code_owner_reviews` **설정이 실존**함을 `autopilot/integration` + `main` 양쪽에서 확인했다(설정 **존재** VERIFIED, 2026-06-01).
+
+**full accept 잔여 조건 (Status가 proposed인 이유)**: owner 리뷰(≠author) 없는 헌법파일 PR이 **실제로 머지 차단되는지** live e2e는 아직 실증되지 않았다. **설정 존재 ≠ 강제 작동**이므로 Status는 proposed로 유지하며, 보호 파일 변경 PR이 owner 승인 없이 차단됨을 캡처(명령/결과 artifact 기록)한 뒤 accepted로 승격한다. codex adversarial pre-commit(freq 5/8, 1/3)이 "accepted가 미검증 강제 경로를 숨긴다"고 지적해 proposed로 유지하고 완료 현황만 본문에 기록한다.

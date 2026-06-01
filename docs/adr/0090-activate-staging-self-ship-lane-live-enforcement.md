@@ -1,6 +1,6 @@
 # 0090: P2.0 (D-minus) — staging self-ship 강제모델 실측 + manifest 계약 정의 (emission·머지는 P2.2)
 
-- **Status**: proposed
+- **Status**: proposed (D-minus code · manifest 계약 · `protection_verified` 구현은 #1698로 완료, branch protection 설정 VERIFIED; **full accept는 Gate-3 e2e 후** — Verification 참조)
 - **Date**: 2026-05-31
 - **Issue**: [#1697](https://github.com/hskim-solv/BidMate-DocAgent/issues/1697)
 - **Related**: [0088](0088-opt-in-staging-self-ship-external-enforcement.md) (P1 opt-in stub lane), [0085](0085-infinite-mode-active-auto-loop.md) (`EXECUTE_SHIP=0` 기본), [0086](0086-lane-tool-sandbox-policy-option-c.md) (lane sandbox), [0087](0087-opt-in-omc-team-parallel-runner.md) (opt-in omc runner)
@@ -73,12 +73,12 @@ P2.0 D-minus 목표: 외부 강제를 코드에 실제로 경유하게 하고, e
 - `gh api` 호출은 네트워크 의존 — rate-limit / API 장애 시 fail-closed(verify 안 됨).
 
 **blocked-on-user (이 ADR의 PR에서 명시적으로 하지 않는 것)**
-- `autopilot/integration` 브랜치 보호 실설정 (운영자 GitHub admin 작업).
-- 권한분리 머지 토큰 provisioning (`BIDMATE_SHIP_MERGE_TOKEN`, runner write domain 밖).
-- T4 self-immutable cap 스토어 하드닝 (P2.2, `BIDMATE_SHIP_CAP_STORE`).
+- 권한분리 머지 토큰 provisioning (`BIDMATE_SHIP_MERGE_TOKEN`, runner write domain 밖). (P2.2)
+- T4 self-immutable cap 스토어 하드닝 (`BIDMATE_SHIP_CAP_STORE`). (P2.2)
 - 자율 PR 생성·병합 — P2.2 구현 전까지 `open_pr`/`merge` stub은 호출 시 raise.
-- Gate-3 라이브 e2e (① 헌법불변 파일 변경 PR → required check fail; ② 토큰 PUT protection → 403).
-- 이 ADR 자체의 Status `proposed → accepted` 전환.
+- **Gate-3 라이브 e2e (① 헌법불변 파일 변경 PR → required check fail; ② 토큰 PUT protection → 403) — full accept 조건.**
+
+(완료: `autopilot/integration` 브랜치 보호 실설정 = 2026-06-01 설정 VERIFIED; 이 ADR Status `proposed → accepted` 전환 = Gate-3 e2e 후. Verification 참조.)
 
 **Supersession / 관계**
 - ADR 0088 P1 env-trust 조항을 **부분 supersede** — `BIDMATE_SHIP_PROTECTION_VERIFIED` / `BIDMATE_SHIP_TOKEN_SEPARATED` 제거. P1의 나머지 불변(staging-only / force-push 금지 / ship-arm 상호배제 / 데이터 경계)은 보존.
@@ -110,3 +110,9 @@ manifest emission seam의 **의도된 부재**(P2.2 유보)는 다음으로 확�
 - `gh api` 보호 쿼리가 required-check 부재 시 `exit 2` 반환 확인.
 - `_staging_ship.py main()` 이 manifest/source 없이 또는 protection 미검증 상태에서 항상 rc 2(blocked-on-user)를 반환하고 PR 생성·머지를 하지 않는 것을 확인.
 - `bash scripts/test.sh` 통과.
+
+### 구현 완료 현황 + full accept 잔여 조건 (2026-06-01)
+
+**구현 완료 (코드·설정)**: P2.0 D-minus 강제모델 + manifest 계약 함수 + `protection_verified` 구현 코드가 #1698로 안착했고, operator branch protection **설정이 실존**함을 `gh api`로 확인했다(설정 **존재** VERIFIED, 2026-06-01): `staging-self-ship-guard` required check + `enforce_admins=true`는 **`autopilot/integration` 한정**(워크플로가 `on: pull_request: branches: ["autopilot/**"]` 전용 → main은 이 check를 리포트할 수 없으므로 미적용, 의도된 설계); `require_code_owner_reviews` + `allow_force_pushes=false`는 **integration + main 양쪽**(main은 `required_checks=null`).
+
+**full accept 잔여 조건 (Status가 proposed인 이유)**: 이 ADR의 핵심인 **live enforcement 작동** — Gate-3 e2e(① 헌법불변 파일 변경 PR → required check fail로 실제 머지 차단; ② 머지 토큰 PUT protection → 403)는 아직 실증되지 않았다. **설정 존재 ≠ 강제 작동**이므로 Status는 proposed로 유지하며, Gate-3 e2e를 integration 레인 운영 중 캡처(명령/결과 artifact 기록)한 뒤 accepted로 승격한다. P2.2 유보분(loop emission seam, 자율 머지, 권한분리 토큰, cap 스토어)도 후속 ADR 0093+가 이어받는다. codex adversarial pre-commit(freq 3/8, 2/3)이 "accepted가 미검증 강제를 숨긴다"고 지적해 proposed로 유지하고 완료 현황만 본문에 기록한다.
