@@ -247,7 +247,8 @@ def test_diff_cache_hit_runs_zero_passes(tmp_path, monkeypatch):
     )
     assert rc1 == 0
     assert calls["n"] == 2  # 2 passes on a miss
-    assert precommit._cache_path(tmp_path, "deadbeef" * 8).exists()
+    pol_dgst = precommit._policy_digest(attempts=2, min_frequency=2, timeout_sec=900)
+    assert precommit._cache_path(tmp_path, "deadbeef" * 8, pol_dgst).exists()
 
     # Second run, identical digest = HIT → 0 additional runner invocations.
     calls["n"] = 0
@@ -296,8 +297,9 @@ def test_diff_cache_different_digest_is_fresh_run(tmp_path, monkeypatch):
 def test_diff_cache_corrupt_entry_falls_back_to_real_run(tmp_path, monkeypatch):
     digest = "c" * 64
     monkeypatch.setattr(precommit, "_staged_diff_digest", lambda: digest)
-    # Pre-seed a corrupt cache entry.
-    cache_path = precommit._cache_path(tmp_path, digest)
+    # Pre-seed a corrupt cache entry using the same policy as run_precommit_review below.
+    pol_dgst = precommit._policy_digest(attempts=2, min_frequency=2, timeout_sec=900)
+    cache_path = precommit._cache_path(tmp_path, digest, pol_dgst)
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     cache_path.write_text("{ this is not json", encoding="utf-8")
 
