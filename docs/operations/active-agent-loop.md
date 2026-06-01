@@ -358,6 +358,165 @@ blocker 가 아니다. 직접 CLI 로는 `--max-iterations 0`(또는 `infinite`/
 `make 시작` 기본 `ACTIVE_AUTO_LOOP_EXECUTE_SHIP=0` 은 무한 모드에서도 유지된다 —
 실제 ship 은 여전히 기존 human-gated 경로가 담당한다.
 
+## Lane Autotune (opt-in)
+
+> ADR 0092 ([`docs/adr/0092-lane-adaptive-autotune.md`](../adr/0092-lane-adaptive-autotune.md))
+
+`make 시작` 루프는 `(role, agent)` 단위의 **lane 별 실행시간·실패율**을 감지해,
+다음 iteration 의 effort 노브를 자동으로 한 칸 조정할 수 있다. 기본값은 **OFF**
+— 환경변수를 명시해야만 활성화된다. OFF 상태에서 runner 산출물은 byte-identical
+로 유지된다 (ADR 0087 (d)).
+
+### 켜기
+
+```bash
+ACTIVE_LANE_AUTOTUNE=1 make 시작
+```
+
+### 노브 (env / Makefile 변수)
+
+| 변수 | 기본값 | 의미 |
+|---|---|---|
+| `ACTIVE_LANE_AUTOTUNE` | `` (빈값 = OFF) | `1` / `true` / `yes` / `on` 으로 활성화 |
+| `ACTIVE_LANE_AUTOTUNE_K` | `2.0` | within-agent median 배수 — 이 배수 초과 lane 을 병목으로 표시 |
+| `ACTIVE_LANE_AUTOTUNE_FAIL_WINDOW` | `3` | fail_rate 계산에 사용하는 최근 iteration 수 |
+| `ACTIVE_LANE_AUTOTUNE_FAIL_MIN_SAMPLE` | `2` | fail_rate 판정에 필요한 최소 관측 횟수 |
+| `ACTIVE_LANE_AUTOTUNE_FAIL_THRESHOLD` | `0.5` | 이 비율 초과 시 "느리고 실패" → effort 강화 |
+| `ACTIVE_LANE_AUTOTUNE_COOLDOWN` | `2` | 조정 직후 동결 iteration 수 (진동 방지) |
+
+### 동작
+
+컨트롤러 (`compute_lane_autotune`) 는 순수 함수 — I/O·env 읽기 없이
+prior lane 데이터만 입력으로 받아 결정을 반환한다.
+
+**감지 (sense + detect)**
+
+- **elapsed 신호**: 최신 batch 에서 같은 agent 의 lane 들을 묶어 `elapsed_s`
+  의 중앙값(median)을 구한다. `elapsed_s > k × median` 인 lane 을 병목으로
+  표시한다. 같은 agent 의 timed lane 이 2개 미만이면 median 이 무의미하므로
+  no-op (단일 lane 비교 안 함).
+- **fail_rate 신호**: 최근 `fail_window` iteration 의 `(role, agent)` 별
+  실패율(`status in {"failed", "error", …}`). `fail_min_sample` 미만이면
+  신호 없음(`no-signal`).
+- **agent 분리**: claude 와 codex 는 처리 시간 단위가 달라 **교차 비교하지
+  않는다** (codex 내부끼리, claude 내부끼리만 비교).
+- **window reset**: role 의 agent 가 바뀌면(`read_agent=auto`) 새 키로 시작
+  — 이전 agent 의 관측이 새 lane 에 누출되지 않는다.
+
+**방향 결정**
+
+| 조건 | 방향 | effort 변화 |
+|---|---|---|
+| 병목 + fail_rate > threshold | `strengthen` | +1 단계 (더 많이 생각) |
+| 병목 + fail_rate ≤ threshold (또는 no-signal) | `accelerate` | −1 단계 (더 빠르게) |
+
+**effort 사다리**
+
+- claude: `low` → `medium` → `high` → `xhigh`
+- codex: `minimal` → `low` → `medium` → `high` → `xhigh`
+
+양 끝에서 clamp — 이미 최대/최소 rung 이면 권고는 기록하되 actuation 하지 않는다.
+
+**주입**
+
+- claude lane: `--effort <level>`
+- codex lane: `-c model_reasoning_effort=<level>`
+
+**cooldown**
+
+방금 조정된 lane 은 `cooldown` iteration 동안 재조정이 억제된다. cooldown
+기간 중에도 권고 행은 기록되지만 `actuated=False` 로 표시된다.
+
+### 산출물 읽는 법
+
+`reports/agent_loop/active/auto_loop_state.json` → `cycles[-1]`:
+
+```
+cycles[-1].lane_stats                    — role / agent / elapsed_s / status
+cycles[-1].lane_autotune_recommendations — 감지된 lane 별 권고 행
+  .role / .agent          — 감지된 lane
+  .direction              — "strengthen" | "accelerate"
+  .effort_from / .effort_to  — 조정 전후 effort 단계
+  .actuated               — true 면 다음 iteration 실제 주입됨
+  .cooldown_remaining     — 재조정 억제 남은 횟수
+```
+
+### Worked Example
+
+아래는 `python3 scripts/demo_lane_autotune.py` 의 실제 출력이다.
+Implementer / Reviewer (codex, ~10 s 정상) + Auditor (codex, ~100 s + failed 반복)
+3 iteration → Auditor 를 병목으로 감지, fail_rate=1.0 → strengthen → `high→xhigh`,
+cooldown 2 iteration 설정.
+
+```
+============================================================
+  AUTOTUNE OFF  (ACTIVE_LANE_AUTOTUNE 미설정)
+============================================================
+ACTIVE_LANE_AUTOTUNE 환경변수가 빈값이면 _resolve_lane_autotune_config()
+가 None 을 반환한다. 루프는 config=None 인 경우 compute_lane_autotune 을
+호출하지 않으며, effort 오버라이드·권고·cooldown 를 생성하지 않는다.
+runner 산출물은 byte-identical 로 유지된다 (ADR 0087 (d)).
+
+  effort_overrides : {}
+  recommendations  : []
+  cooldown_state   : {}
+  (컨트롤러 미호출 — lane 데이터 감지 없음)
+
+============================================================
+  AUTOTUNE ON  (ACTIVE_LANE_AUTOTUNE=1)
+============================================================
+
+--- 입력 lane 데이터 (3 iteration, 최신이 마지막) ---
+  Iteration 1:
+    Implementer     agent=codex  elapsed=10.2s  status=completed
+    Reviewer        agent=codex  elapsed=9.8s  status=completed
+    Auditor         agent=codex  elapsed=97.3s  status=failed
+  Iteration 2:
+    Implementer     agent=codex  elapsed=10.5s  status=completed
+    Reviewer        agent=codex  elapsed=10.1s  status=completed
+    Auditor         agent=codex  elapsed=102.7s  status=failed
+  Iteration 3:
+    Implementer     agent=codex  elapsed=10.3s  status=completed
+    Reviewer        agent=codex  elapsed=9.9s  status=completed
+    Auditor         agent=codex  elapsed=98.6s  status=failed
+
+--- Config (env 기본값) ---
+  k                  = 2.0   (within-agent median 배수)
+  fail_window        = 3   (fail_rate 계산 window)
+  fail_min_sample    = 2   (최소 관측 횟수)
+  fail_threshold     = 0.5  (fail_rate 임계값)
+  cooldown           = 2   (조정 후 동결 iteration 수)
+
+--- elapsed 감지 이벤트 (newest batch, codex 그룹) ---
+  agent=codex  median=10.3s  k=2.0  flag_threshold=20.6s  timed_lanes=3
+
+--- 권고 (flagged lane) ---
+  lane      : role=Auditor  agent=codex
+  elapsed   : 98.6s  (median 10.3s,  threshold 20.6s)
+  fail_rate : 1.0 over 3 obs  (min_sample=2  threshold=0.5)
+  signal    : observed
+  direction : strengthen  (fail_rate > threshold → strengthen)
+  effort    : high → xhigh  (actuated=True)
+  note      : effort high -> xhigh
+
+--- 결과 요약 ---
+  effort_overrides[('Auditor', 'codex')] = 'xhigh'
+
+  다음 iteration: Auditor codex lane 에 '-c model_reasoning_effort=xhigh' 주입
+
+  cooldown_state['Auditor||codex'] = 2  → 2 iteration 동안 Auditor/codex 재조정 억제
+
+--- auto_loop_state.json 읽는 법 ---
+reports/agent_loop/active/auto_loop_state.json
+  cycles[-1].lane_stats          — 각 lane 의 role/agent/elapsed_s/status
+  cycles[-1].lane_autotune_recommendations
+    .role / .agent              — 감지된 lane
+    .direction                  — "strengthen" | "accelerate"
+    .effort_from / .effort_to   — 조정 전후 effort 단계
+    .actuated                   — True 면 다음 iteration 에 실제 주입
+    .cooldown_remaining         — 조정 억제 남은 횟수
+```
+
 ## Patch Write-Lane (codex, mutating)
 
 read-only runner와 별개로, `active-codex-runner`는 opt-in `--mode patch`로 **codex
