@@ -10504,6 +10504,34 @@ def _resolve_active_auto_loop_limit(
     return resolved, "auto: " + ", ".join(reasons)
 
 
+def _learning_capture_advisory(
+    *,
+    decision: str,
+    completed: Sequence[str],
+    deferred: Sequence[str],
+) -> dict[str, object]:
+    """Advisory-only learning-capture pointer emitted on loop completion (agent-loop
+    integration plan T-X1).
+
+    Call-only ("호출만"): it is recorded on the terminal loop state + completion
+    event but does NOT write to the wiki/memory or invoke any agent. It points the
+    operator / next session at the ``/wiki`` skill + the memory-curator agent to
+    accumulate this cycle's learning (what landed, what blocked, what deferred) so
+    knowledge compounds across sessions.
+    """
+    return {
+        "tools": ["/wiki", "memory-curator"],
+        "decision": decision,
+        "completed_task_ids": list(completed),
+        "deferred_task_ids": list(deferred),
+        "guidance": (
+            "Capture this cycle's learning before it is lost: run the `/wiki` skill to "
+            "record durable findings and the memory-curator agent to gate any new memory "
+            "entry. Advisory only — nothing was written to the wiki/memory automatically."
+        ),
+    }
+
+
 def write_active_auto_loop(
     *,
     mode: str = "full-ship",
@@ -11207,6 +11235,15 @@ def write_active_auto_loop(
     else:
         decision = "planned"
 
+    # T-X1 (agent-loop integration plan): advisory-only learning-capture pointer,
+    # recorded only when the loop actually ran a cycle. Never writes to the
+    # wiki/memory or invokes any agent (call-only); decision/control flow unchanged.
+    learning_advisory = (
+        _learning_capture_advisory(decision=decision, completed=completed, deferred=deferred_task_ids)
+        if cycles
+        else None
+    )
+
     state_payload = {
         "schema_version": 1,
         "generated_at": _isoformat(datetime.now(timezone.utc)),
@@ -11226,6 +11263,7 @@ def write_active_auto_loop(
         "deferred_task_ids": deferred_task_ids,
         "next_task_id": next_task.task_id if next_task else None,
         "cycles": cycles,
+        "learning_capture_advisory": learning_advisory,
         "blockers": _dedupe_preserve_order(blockers),
         "warnings": _dedupe_preserve_order(warnings),
     }
@@ -11272,6 +11310,7 @@ def write_active_auto_loop(
             "deferred_task_ids": deferred_task_ids,
             "next_task_id": next_task.task_id if next_task else None,
             "blockers": blockers,
+            "learning_capture_advisory": bool(learning_advisory),
         },
     )
     return ActiveAutoLoopResult(
