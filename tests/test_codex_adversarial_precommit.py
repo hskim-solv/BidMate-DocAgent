@@ -574,6 +574,34 @@ def test_sanitized_env_strips_ship_secrets_from_os_environ(monkeypatch):
     assert "CODEX_COMPANION_APP_SERVER_ENDPOINT" not in out
 
 
+def test_sanitized_env_delegates_ship_strip_to_shared_helper(monkeypatch):
+    # AR1 dedup (#1703 follow-up): the BIDMATE_SHIP_* deny-list has one source of
+    # truth in scripts/_ship_env.strip_ship_secret_env. Assert sanitized_env routes
+    # ship-secret removal through that shared helper so the prefix can never drift
+    # between this call site and the staging-ship runner.
+    seen: dict[str, dict[str, str]] = {}
+    real_strip = precommit.strip_ship_secret_env
+
+    def spy(env: dict[str, str]) -> dict[str, str]:
+        seen["received"] = dict(env)
+        return real_strip(env)
+
+    monkeypatch.setattr(precommit, "strip_ship_secret_env", spy)
+    base = {
+        "PATH": "/usr/bin",
+        "GIT_DIR": "/x/.git",
+        "BIDMATE_SHIP_MERGE_TOKEN": "tok-secret",
+    }
+    out = precommit.sanitized_env(base)
+
+    # The shared helper was invoked, and GIT_* was already dropped before delegation.
+    assert "received" in seen
+    assert "GIT_DIR" not in seen["received"]
+    # Ship secret removed by the helper; benign env preserved.
+    assert "BIDMATE_SHIP_MERGE_TOKEN" not in out
+    assert out["PATH"] == "/usr/bin"
+
+
 def test_default_runner_passes_sanitized_env(monkeypatch):
     # _default_runner now uses Popen(start_new_session=True) so it can reap the
     # companion's detached broker/app-server process group (issue #1699). The
