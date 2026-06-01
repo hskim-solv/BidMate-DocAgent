@@ -696,15 +696,18 @@ def _run_pass(
     )
 
 
-# --- diff-fingerprint cache (issue #1699) -----------------------------------
+# --- diff-fingerprint cache (issue #1699, policy-aware: issue #1710) ---------
 # A re-commit of the IDENTICAL staged diff (same sha256 of `git diff --cached
-# --binary`) should reuse the prior verdict and spawn ZERO codex passes — the
-# single biggest source of broker accumulation is re-running 8 passes on an
-# unchanged diff. Any change to the staged diff yields a fresh digest = fresh
-# review. A corrupt/unreadable cache entry is treated as a miss (fail-open to a
-# real review, never crash).
+# --binary`) under the SAME review policy should reuse the prior verdict and
+# spawn ZERO codex passes — the single biggest source of broker accumulation is
+# re-running 8 passes on an unchanged diff. Any change to the staged diff OR to
+# the review policy (attempts / min_frequency / timeout) yields a cache miss =
+# fresh review. A corrupt/unreadable cache entry is treated as a miss
+# (fail-open to a real review, never crash).
 _CACHE_SUBDIR = "cache"
-_CACHE_SCHEMA_VERSION = 1
+# Bumped to 2: policy parameters (attempts/min_frequency/timeout_sec) are now
+# part of the cache key and stored in the payload for validation (issue #1710).
+_CACHE_SCHEMA_VERSION = 2
 
 
 def _staged_diff_digest() -> str | None:
@@ -722,20 +725,50 @@ def _staged_diff_digest() -> str | None:
     return hashlib.sha256(proc.stdout or b"").hexdigest()
 
 
-def _cache_path(out_dir: Path, digest: str) -> Path:
-    return out_dir / _CACHE_SUBDIR / f"{digest}.json"
+def _policy_digest(*, attempts: int, min_frequency: int, timeout_sec: int) -> str:
+    """sha256 hex of the review policy parameters.
+
+    Any change to attempts / min_frequency / timeout_sec produces a different
+    digest, ensuring that a policy change causes a cache miss (issue #1710).
+    """
+    policy_bytes = json.dumps(
+        {"attempts": attempts, "min_frequency": min_frequency, "timeout_sec": timeout_sec},
+        sort_keys=True,
+    ).encode()
+    return hashlib.sha256(policy_bytes).hexdigest()
 
 
-def _load_cached_result(out_dir: Path, digest: str | None) -> int | None:
-    """Return the cached rc for ``digest`` if present and valid, else None (miss)."""
-    if not digest:
+def _cache_path(out_dir: Path, diff_digest: str, policy_digest: str) -> Path:
+    # Composite key: first 32 chars of diff digest + first 16 chars of policy
+    # digest. Keeps filenames short while keeping diff × policy pairs distinct.
+    composite = f"{diff_digest[:32]}-{policy_digest[:16]}"
+    return out_dir / _CACHE_SUBDIR / f"{composite}.json"
+
+
+def _load_cached_result(
+    out_dir: Path,
+    diff_digest: str | None,
+    policy_dgst: str,
+) -> int | None:
+    """Return the cached rc if present and valid for this diff + policy, else None (miss).
+
+    A cache entry written under a different policy digest is treated as a miss —
+    the review must rerun under the new policy (issue #1710).
+    """
+    if not diff_digest:
         return None
-    path = _cache_path(out_dir, digest)
+    path = _cache_path(out_dir, diff_digest, policy_dgst)
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return None
     if not isinstance(payload, dict):
+        return None
+    # Reject entries written by an older schema that lacks policy fields.
+    if payload.get("schema_version") != _CACHE_SCHEMA_VERSION:
+        return None
+    # Double-check stored policy digest matches current policy (defence-in-depth).
+    if payload.get("policy_digest") != policy_dgst:
         return None
     rc = payload.get("rc")
     if not isinstance(rc, int) or isinstance(rc, bool):
@@ -743,18 +776,34 @@ def _load_cached_result(out_dir: Path, digest: str | None) -> int | None:
     return rc
 
 
-def _write_cached_result(out_dir: Path, digest: str | None, *, rc: int, union: dict) -> None:
-    """Persist the review verdict under the staged-diff digest (best-effort)."""
-    if not digest:
+def _write_cached_result(
+    out_dir: Path,
+    diff_digest: str | None,
+    policy_dgst: str,
+    *,
+    rc: int,
+    union: dict,
+    attempts: int,
+    min_frequency: int,
+    timeout_sec: int,
+) -> None:
+    """Persist the review verdict under the composite diff+policy key (best-effort)."""
+    if not diff_digest:
         return
-    path = _cache_path(out_dir, digest)
+    path = _cache_path(out_dir, diff_digest, policy_dgst)
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(
             json.dumps(
                 {
                     "schema_version": _CACHE_SCHEMA_VERSION,
-                    "digest": digest,
+                    "digest": diff_digest,
+                    "policy_digest": policy_dgst,
+                    "policy": {
+                        "attempts": attempts,
+                        "min_frequency": min_frequency,
+                        "timeout_sec": timeout_sec,
+                    },
                     "timestamp": time.time(),
                     "rc": rc,
                     "result": union,
@@ -804,8 +853,11 @@ def run_precommit_review(
         raise ValueError("--timeout-sec must be >= 1")
 
     digest = _staged_diff_digest()
+    pol_dgst = _policy_digest(
+        attempts=attempts, min_frequency=min_frequency, timeout_sec=timeout_sec
+    )
     try:
-        cached_rc = _load_cached_result(out_dir, digest)
+        cached_rc = _load_cached_result(out_dir, digest, pol_dgst)
         if cached_rc is not None:
             short = (digest or "")[:8]
             print(
@@ -825,7 +877,8 @@ def run_precommit_review(
             timeout_sec=timeout_sec,
             min_frequency=min_frequency,
             runner=runner,
-            digest=digest,
+            diff_digest=digest,
+            pol_dgst=pol_dgst,
         )
     finally:
         # Each review cleans up its own leftover orphan brokers. Best-effort —
@@ -848,7 +901,8 @@ def _run_precommit_passes(
     timeout_sec: int,
     min_frequency: int,
     runner: Runner,
-    digest: str | None,
+    diff_digest: str | None,
+    pol_dgst: str,
 ) -> int:
     """Cache-miss path: run the N passes, gate, persist the verdict to the cache."""
     changed_set = set(changed_files)
@@ -927,7 +981,11 @@ def _run_precommit_passes(
             f"See {out_dir / 'union.md'}.",
             file=sys.stderr,
         )
-        _write_cached_result(out_dir, digest, rc=1, union=union)
+        _write_cached_result(
+            out_dir, diff_digest, pol_dgst,
+            rc=1, union=union,
+            attempts=attempts, min_frequency=min_frequency, timeout_sec=timeout_sec,
+        )
         return 1
     print(
         f"Codex adversarial pre-commit review passed "
@@ -935,7 +993,11 @@ def _run_precommit_passes(
         f"See {out_dir / 'union.md'}.",
         file=sys.stderr,
     )
-    _write_cached_result(out_dir, digest, rc=0, union=union)
+    _write_cached_result(
+        out_dir, diff_digest, pol_dgst,
+        rc=0, union=union,
+        attempts=attempts, min_frequency=min_frequency, timeout_sec=timeout_sec,
+    )
     return 0
 
 

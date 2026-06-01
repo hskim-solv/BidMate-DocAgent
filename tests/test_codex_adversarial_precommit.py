@@ -602,6 +602,238 @@ def test_sanitized_env_delegates_ship_strip_to_shared_helper(monkeypatch):
     assert out["PATH"] == "/usr/bin"
 
 
+# ----- policy-aware cache (issue #1710) ------------------------------------
+
+
+def _make_policy_runner(calls: dict[str, int]) -> precommit.Runner:
+    """Runner that records how many times it was invoked and returns an empty payload."""
+
+    def runner(cmd, timeout_sec):
+        calls["n"] = calls.get("n", 0) + 1
+        return _proc(_payload([]))
+
+    return runner
+
+
+def test_policy_digest_differs_on_attempts_change():
+    """Different attempts values must produce different policy digests."""
+    d1 = precommit._policy_digest(attempts=2, min_frequency=1, timeout_sec=900)
+    d2 = precommit._policy_digest(attempts=4, min_frequency=1, timeout_sec=900)
+    assert d1 != d2
+
+
+def test_policy_digest_differs_on_min_frequency_change():
+    """Different min_frequency values must produce different policy digests."""
+    d1 = precommit._policy_digest(attempts=4, min_frequency=1, timeout_sec=900)
+    d2 = precommit._policy_digest(attempts=4, min_frequency=2, timeout_sec=900)
+    assert d1 != d2
+
+
+def test_policy_digest_differs_on_timeout_change():
+    """Different timeout_sec values must produce different policy digests."""
+    d1 = precommit._policy_digest(attempts=4, min_frequency=2, timeout_sec=300)
+    d2 = precommit._policy_digest(attempts=4, min_frequency=2, timeout_sec=900)
+    assert d1 != d2
+
+
+def test_policy_digest_stable_for_same_policy():
+    """Same policy must always produce the same digest."""
+    d1 = precommit._policy_digest(attempts=4, min_frequency=2, timeout_sec=900)
+    d2 = precommit._policy_digest(attempts=4, min_frequency=2, timeout_sec=900)
+    assert d1 == d2
+
+
+def test_cache_miss_on_policy_change_triggers_rerun(tmp_path: Path, monkeypatch):
+    """Seeding a cache under policy A then running under policy B (attempts changed)
+    must cause a cache miss and a real review run — not a stale verdict replay
+    (regression for issue #1710).
+    """
+    # Patch _staged_diff_digest to return a fixed digest so the diff is "unchanged".
+    fixed_digest = "a" * 64
+    monkeypatch.setattr(precommit, "_staged_diff_digest", lambda: fixed_digest)
+
+    call_count: dict[str, int] = {}
+
+    # --- First run: policy A (attempts=2, min_frequency=1) ---
+    runner_a = _make_policy_runner(call_count)
+    precommit.run_precommit_review(
+        attempts=2,
+        base="HEAD",
+        scope="branch",
+        companion=Path("/tmp/codex-companion.mjs"),
+        changed_files=["rag_core.py"],
+        hits=["rag_core.py"],
+        out_dir=tmp_path,
+        timeout_sec=900,
+        min_frequency=1,
+        runner=runner_a,
+    )
+    assert call_count.get("n", 0) == 2, "policy A: should have run 2 passes"
+
+    # --- Second run: same diff, same policy A → cache hit, 0 new passes ---
+    call_count.clear()
+    runner_a2 = _make_policy_runner(call_count)
+    precommit.run_precommit_review(
+        attempts=2,
+        base="HEAD",
+        scope="branch",
+        companion=Path("/tmp/codex-companion.mjs"),
+        changed_files=["rag_core.py"],
+        hits=["rag_core.py"],
+        out_dir=tmp_path,
+        timeout_sec=900,
+        min_frequency=1,
+        runner=runner_a2,
+    )
+    assert call_count.get("n", 0) == 0, "policy A repeat: must be a cache hit (0 passes)"
+
+    # --- Third run: same diff, CHANGED policy (attempts=4, min_frequency=2) ---
+    # Despite identical diff, the policy changed → must be a cache miss → rerun.
+    call_count.clear()
+    runner_b = _make_policy_runner(call_count)
+    precommit.run_precommit_review(
+        attempts=4,
+        base="HEAD",
+        scope="branch",
+        companion=Path("/tmp/codex-companion.mjs"),
+        changed_files=["rag_core.py"],
+        hits=["rag_core.py"],
+        out_dir=tmp_path,
+        timeout_sec=900,
+        min_frequency=2,
+        runner=runner_b,
+    )
+    assert call_count.get("n", 0) == 4, (
+        "policy B (attempts changed): must be a cache MISS and run 4 fresh passes"
+    )
+
+
+def test_cache_miss_on_min_frequency_change(tmp_path: Path, monkeypatch):
+    """Changing only min_frequency must bust the cache (issue #1710)."""
+    fixed_digest = "b" * 64
+    monkeypatch.setattr(precommit, "_staged_diff_digest", lambda: fixed_digest)
+
+    call_count: dict[str, int] = {}
+
+    # Seed cache with min_frequency=1.
+    precommit.run_precommit_review(
+        attempts=2,
+        base="HEAD",
+        scope="branch",
+        companion=Path("/tmp/codex-companion.mjs"),
+        changed_files=["rag_core.py"],
+        hits=["rag_core.py"],
+        out_dir=tmp_path,
+        timeout_sec=900,
+        min_frequency=1,
+        runner=_make_policy_runner(call_count),
+    )
+    assert call_count.get("n", 0) == 2
+
+    # Re-run with min_frequency=2 (same diff, same attempts, different threshold).
+    call_count.clear()
+    precommit.run_precommit_review(
+        attempts=2,
+        base="HEAD",
+        scope="branch",
+        companion=Path("/tmp/codex-companion.mjs"),
+        changed_files=["rag_core.py"],
+        hits=["rag_core.py"],
+        out_dir=tmp_path,
+        timeout_sec=900,
+        min_frequency=2,
+        runner=_make_policy_runner(call_count),
+    )
+    assert call_count.get("n", 0) == 2, "min_frequency change must bust the cache"
+
+
+def test_cache_miss_on_timeout_change(tmp_path: Path, monkeypatch):
+    """Changing only timeout_sec must bust the cache (issue #1710)."""
+    fixed_digest = "c" * 64
+    monkeypatch.setattr(precommit, "_staged_diff_digest", lambda: fixed_digest)
+
+    call_count: dict[str, int] = {}
+
+    # Seed cache with timeout_sec=300.
+    precommit.run_precommit_review(
+        attempts=2,
+        base="HEAD",
+        scope="branch",
+        companion=Path("/tmp/codex-companion.mjs"),
+        changed_files=["rag_core.py"],
+        hits=["rag_core.py"],
+        out_dir=tmp_path,
+        timeout_sec=300,
+        min_frequency=1,
+        runner=_make_policy_runner(call_count),
+    )
+    assert call_count.get("n", 0) == 2
+
+    # Re-run with timeout_sec=900.
+    call_count.clear()
+    precommit.run_precommit_review(
+        attempts=2,
+        base="HEAD",
+        scope="branch",
+        companion=Path("/tmp/codex-companion.mjs"),
+        changed_files=["rag_core.py"],
+        hits=["rag_core.py"],
+        out_dir=tmp_path,
+        timeout_sec=900,
+        min_frequency=1,
+        runner=_make_policy_runner(call_count),
+    )
+    assert call_count.get("n", 0) == 2, "timeout_sec change must bust the cache"
+
+
+def test_load_cached_result_rejects_schema_v1_entry(tmp_path: Path):
+    """A cache entry written with schema_version=1 (pre-policy) must be a miss
+    after the schema bump to version 2 (issue #1710).
+    """
+    diff_digest = "d" * 64
+    pol_dgst = precommit._policy_digest(attempts=2, min_frequency=1, timeout_sec=900)
+    # Write a v1-style entry directly (no policy fields).
+    cache_dir = tmp_path / precommit._CACHE_SUBDIR
+    cache_dir.mkdir()
+    # Compute expected composite path to place the stale file there.
+    stale_path = precommit._cache_path(tmp_path, diff_digest, pol_dgst)
+    import json as _json
+    stale_path.write_text(
+        _json.dumps({
+            "schema_version": 1,
+            "digest": diff_digest,
+            "rc": 0,
+        }),
+        encoding="utf-8",
+    )
+    result = precommit._load_cached_result(tmp_path, diff_digest, pol_dgst)
+    assert result is None, "schema_version=1 entry must be treated as a cache miss"
+
+
+def test_load_cached_result_rejects_wrong_policy_digest(tmp_path: Path):
+    """An entry whose stored policy_digest doesn't match the current policy is a miss."""
+    import json as _json
+
+    diff_digest = "e" * 64
+    pol_dgst_a = precommit._policy_digest(attempts=2, min_frequency=1, timeout_sec=900)
+    pol_dgst_b = precommit._policy_digest(attempts=4, min_frequency=2, timeout_sec=900)
+
+    # Write a valid v2 entry under pol_dgst_b's path but with pol_dgst_a as stored value.
+    path = precommit._cache_path(tmp_path, diff_digest, pol_dgst_b)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        _json.dumps({
+            "schema_version": precommit._CACHE_SCHEMA_VERSION,
+            "digest": diff_digest,
+            "policy_digest": pol_dgst_a,  # deliberately mismatched
+            "rc": 0,
+        }),
+        encoding="utf-8",
+    )
+    result = precommit._load_cached_result(tmp_path, diff_digest, pol_dgst_b)
+    assert result is None, "policy_digest mismatch must be treated as a cache miss"
+
+
 def test_default_runner_passes_sanitized_env(monkeypatch):
     # _default_runner now uses Popen(start_new_session=True) so it can reap the
     # companion's detached broker/app-server process group (issue #1699). The
