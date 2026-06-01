@@ -14895,9 +14895,25 @@ def _write_active_codex_patch(
                     resolved_task, agent, base=base, repo_root=repo_root, runner=git_runner
                 )
                 blockers.extend(wt_blockers)
+                lease_items = _load_active_leases(_active_path(DEFAULT_ACTIVE_LEASES, repo_root=repo_root))
+                if not wt_blockers:
+                    # Guards 1+2 (issue #1719): before any edit, prove the write lane is
+                    # confined to its assigned scratch worktree and is not the parent repo.
+                    # Only meaningful against a real git topology, so run it on the production
+                    # path (no injected runner); tests cover the helper directly.
+                    if git_runner is None:
+                        confinement_blockers = assert_worktree_confinement(
+                            created_path, repo_root=repo_root
+                        )
+                        blockers.extend(confinement_blockers)
+                        wt_blockers = list(wt_blockers) + confinement_blockers
+                    # Guard 3 (issue #1719): concurrent write leases must claim disjoint files.
+                    disjoint_blockers = assert_claimed_files_disjoint(lease_items)
+                    if disjoint_blockers:
+                        blockers.extend(disjoint_blockers)
+                        wt_blockers = list(wt_blockers) + disjoint_blockers
                 if not wt_blockers:
                     seed_include_paths: Sequence[str] | None = None
-                    lease_items = _load_active_leases(_active_path(DEFAULT_ACTIVE_LEASES, repo_root=repo_root))
                     write_lease = _find_active_write_lease(
                         lease_items,
                         lease_id=None,
@@ -15770,6 +15786,45 @@ def _find_active_write_lease(
     return None
 
 
+def assert_claimed_files_disjoint(
+    leases: Sequence[dict[str, object]],
+) -> list[str]:
+    """Verify concurrently-active write leases claim disjoint file sets (issue #1719).
+
+    When several worktree agents run at once, two lanes claiming the same file means their
+    edits race onto the same path — exactly the kind of overlap that lets one lane's work
+    clobber another's. This enforces a pairwise empty intersection across every active write
+    lease's ``claimed_files``. Context-only claims (queue / plans / agent_loop reports) are
+    excluded because those coordination files are intentionally shared across lanes (same rule
+    as ``_context_only_claimed_files``).
+
+    Returns a list of blocker strings (empty == disjoint). A single active write lease is
+    trivially disjoint. Never raises.
+    """
+    scoped: list[tuple[str, set[str]]] = []
+    for lease in leases:
+        if not isinstance(lease, dict):
+            continue
+        if lease.get("lease_type") != "write" or lease.get("status") not in {"active", "recovery-needed"}:
+            continue
+        claimed_raw = lease.get("claimed_files")
+        claimed = {str(f) for f in claimed_raw} if isinstance(claimed_raw, list) else set()
+        # Context-only coordination files are shared by design — never an overlap conflict.
+        files = {f for f in claimed if f} if not _context_only_claimed_files(claimed) else set()
+        if files:
+            scoped.append((str(lease.get("lease_id") or "<unknown>"), files))
+    blockers: list[str] = []
+    for left in range(len(scoped)):
+        for right in range(left + 1, len(scoped)):
+            overlap = sorted(scoped[left][1] & scoped[right][1])
+            if overlap:
+                blockers.append(
+                    "claimed-files overlap between concurrent write leases "
+                    f"{scoped[left][0]!r} and {scoped[right][0]!r}: " + ", ".join(overlap[:5])
+                )
+    return blockers
+
+
 def acquire_active_agent(
     *,
     agent: str,
@@ -15879,6 +15934,65 @@ def _scratch_worktree_paths(task_id: str, agent: str, *, repo_root: Path) -> tup
 
 def _git_worktree_runner(cmd: list[str]) -> "subprocess.CompletedProcess[str]":
     return subprocess.run(cmd, capture_output=True, text=True, check=False)
+
+
+def assert_worktree_confinement(
+    scratch_path: Path,
+    *,
+    repo_root: Path = ROOT_DIR,
+    runner=None,
+) -> list[str]:
+    """Verify a write lane is confined to its assigned scratch worktree (issue #1719).
+
+    Two failures sank the P2.2 parallel run: an agent edited the **parent repo** instead of
+    its isolated worktree (staged changes leaked onto main). This re-checks two invariants
+    before any agent edits:
+
+    1. ``git -C <scratch> rev-parse --show-toplevel`` must resolve to ``scratch_path`` — i.e.
+       the path the lane was assigned really is a git worktree top-level, not a subdir of the
+       parent checkout that ``rev-parse`` would resolve back to ``repo_root``.
+    2. that top-level must NOT equal the parent ``repo_root`` (parent-repo write ban) — a lane
+       that resolves to the parent checkout would write straight to main.
+
+    Returns a list of blocker strings (empty == confined). Never raises; a git failure is
+    itself a fail-closed blocker so the caller refuses to spawn the write agent. The git
+    subprocess is injectable so tests never touch a real worktree.
+    """
+    run = runner or _git_worktree_runner
+    blockers: list[str] = []
+    proc = run(["git", "-C", str(scratch_path), "rev-parse", "--show-toplevel"])
+    if getattr(proc, "returncode", 1) != 0:
+        tail = next((line for line in reversed((getattr(proc, "stderr", "") or "").splitlines()) if line.strip()), "")
+        blockers.append(
+            "worktree confinement check failed: could not resolve scratch worktree top-level"
+            + (f": {tail}" if tail else "")
+        )
+        return blockers
+    toplevel_raw = (getattr(proc, "stdout", "") or "").strip()
+    try:
+        toplevel = Path(toplevel_raw).resolve()
+    except (OSError, ValueError):
+        toplevel = Path(toplevel_raw)
+    try:
+        scratch_resolved = scratch_path.resolve()
+    except (OSError, ValueError):
+        scratch_resolved = scratch_path
+    try:
+        repo_resolved = repo_root.resolve()
+    except (OSError, ValueError):
+        repo_resolved = repo_root
+    if toplevel != scratch_resolved:
+        blockers.append(
+            "worktree confinement violated: write lane is not inside its assigned scratch worktree "
+            f"(top-level {_display_path(str(toplevel), repo_root=repo_root)} != "
+            f"assigned {_display_path(str(scratch_resolved), repo_root=repo_root)})"
+        )
+    if toplevel == repo_resolved:
+        blockers.append(
+            "parent-repo write ban: write lane resolved to the parent repository checkout; "
+            "it must run inside an isolated scratch worktree, never the parent repo"
+        )
+    return blockers
 
 
 def create_scratch_worktree(
@@ -16041,6 +16155,58 @@ def redact_scratch_context_files(
     return changed, warnings
 
 
+def commit_scratch_worktree_before_exit(
+    scratch_path: Path,
+    *,
+    runner=None,
+) -> tuple[bool, list[str]]:
+    """Exit hygiene: commit any uncommitted scratch state before teardown (issue #1719).
+
+    ``teardown_scratch_worktree`` removes the worktree with ``--force``, which silently
+    discards uncommitted working-tree changes. On the happy path the lane has already
+    captured the diff (``add -A`` + ``diff --cached``); but an aborted / errored / interrupted
+    write lane can leave edits uncaptured, and ``--force`` would then destroy them with no
+    trace. This pins those changes to a local commit on the scratch branch first so the work
+    survives and is recoverable, mirroring the seed/redact commit contract (no-verify, fixed
+    agent identity). Returns ``(committed, warnings)``; ``committed`` is False when the tree
+    was already clean (nothing to preserve) or the commit could not be made. Never raises.
+    """
+    warnings: list[str] = []
+    if not scratch_path.exists():
+        return False, warnings
+    run = runner or _git_worktree_runner
+    status = run(["git", "-C", str(scratch_path), "status", "--porcelain=v1"])
+    if getattr(status, "returncode", 1) != 0:
+        warnings.append("exit hygiene: could not read scratch worktree status before teardown")
+        return False, warnings
+    if not (getattr(status, "stdout", "") or "").strip():
+        return False, warnings
+    add = run(["git", "-C", str(scratch_path), "add", "-A"])
+    if getattr(add, "returncode", 1) != 0:
+        warnings.append("exit hygiene: git add failed; uncommitted scratch changes may be lost on teardown")
+        return False, warnings
+    commit = run(
+        [
+            "git",
+            "-C",
+            str(scratch_path),
+            "-c",
+            "user.name=BidMate Agent Loop",
+            "-c",
+            "user.email=agent-loop@example.invalid",
+            "commit",
+            "--no-verify",
+            "-m",
+            "Exit hygiene: preserve uncommitted scratch worktree changes",
+        ]
+    )
+    if getattr(commit, "returncode", 1) != 0:
+        output = (getattr(commit, "stderr", "") or getattr(commit, "stdout", "") or "").strip()
+        warnings.append(f"exit hygiene: commit failed before teardown: {output or 'unknown git error'}")
+        return False, warnings
+    return True, warnings
+
+
 def teardown_scratch_worktree(
     task_id: str,
     agent: str,
@@ -16048,10 +16214,18 @@ def teardown_scratch_worktree(
     repo_root: Path = ROOT_DIR,
     runner=None,
 ) -> list[str]:
-    """Best-effort removal of a scratch worktree + its branch. Returns warnings (never raises)."""
+    """Best-effort removal of a scratch worktree + its branch. Returns warnings (never raises).
+
+    Exit hygiene (issue #1719): before the destructive ``--force`` removal, commit any
+    uncommitted scratch state so an aborted/errored write lane cannot silently lose work.
+    """
     run = runner or _git_worktree_runner
     path, branch = _scratch_worktree_paths(task_id, agent, repo_root=repo_root)
     warnings: list[str] = []
+    committed, hygiene_warnings = commit_scratch_worktree_before_exit(path, runner=run)
+    warnings.extend(hygiene_warnings)
+    if committed:
+        warnings.append(f"exit hygiene: committed uncommitted scratch changes on {branch} before teardown")
     rm = run(["git", "-C", str(repo_root), "worktree", "remove", "--force", str(path)])
     if rm.returncode != 0:
         warnings.append(f"scratch worktree remove warning for {branch}")
