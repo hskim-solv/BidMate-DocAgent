@@ -525,9 +525,57 @@ def test_env_min_frequency_rejects_non_integer(monkeypatch):
 
 
 def test_env_attempts_default_is_eight(monkeypatch):
+    # DEFAULT_ATTEMPTS is now the escalation CAP (max parallel passes), not a fixed
+    # pass count — the gate starts at DEFAULT_START_ATTEMPTS and escalates to it.
     monkeypatch.delenv("BIDMATE_CODEX_ADVERSARIAL_ATTEMPTS", raising=False)
     assert precommit._env_attempts() == 8
     assert precommit.DEFAULT_ATTEMPTS == 8
+
+
+def test_env_start_attempts_default_is_two(monkeypatch):
+    monkeypatch.delenv("BIDMATE_CODEX_ADVERSARIAL_START_ATTEMPTS", raising=False)
+    assert precommit._env_start_attempts() == 2
+    assert precommit.DEFAULT_START_ATTEMPTS == 2
+
+
+def test_env_start_attempts_override(monkeypatch):
+    monkeypatch.setenv("BIDMATE_CODEX_ADVERSARIAL_START_ATTEMPTS", "3")
+    assert precommit._env_start_attempts() == 3
+
+
+def test_env_start_attempts_rejects_non_integer(monkeypatch):
+    monkeypatch.setenv("BIDMATE_CODEX_ADVERSARIAL_START_ATTEMPTS", "two")
+    with pytest.raises(ValueError, match="BIDMATE_CODEX_ADVERSARIAL_START_ATTEMPTS"):
+        precommit._env_start_attempts()
+
+
+def test_resolve_start_attempts_defaults_to_env_when_cli_absent(monkeypatch):
+    monkeypatch.delenv("BIDMATE_CODEX_ADVERSARIAL_START_ATTEMPTS", raising=False)
+    # No CLI override under a generous cap -> the DEFAULT start flows through.
+    assert precommit._resolve_start_attempts(None, 8) == precommit.DEFAULT_START_ATTEMPTS
+
+
+def test_resolve_start_attempts_clamps_implicit_start_to_lowered_cap(monkeypatch):
+    monkeypatch.delenv("BIDMATE_CODEX_ADVERSARIAL_START_ATTEMPTS", raising=False)
+    # Lowering only the cap (e.g. BIDMATE_CODEX_ADVERSARIAL_ATTEMPTS=1) must not
+    # hard-fail the hook: an implicit start follows the cap down (issue #1728
+    # dogfood, informational finding).
+    assert precommit._resolve_start_attempts(None, 1) == 1
+
+
+def test_resolve_start_attempts_clamps_env_start_to_cap(monkeypatch):
+    monkeypatch.setenv("BIDMATE_CODEX_ADVERSARIAL_START_ATTEMPTS", "5")
+    # An env-provided start is ambient config, not a per-invocation override, so
+    # it also follows a lowered cap down rather than crashing the hook.
+    assert precommit._resolve_start_attempts(None, 2) == 2
+
+
+def test_resolve_start_attempts_honors_explicit_cli_above_cap(monkeypatch):
+    monkeypatch.delenv("BIDMATE_CODEX_ADVERSARIAL_START_ATTEMPTS", raising=False)
+    # An explicit --start-attempts is returned verbatim; run_precommit_review is
+    # responsible for rejecting an explicit start above the cap, so a
+    # contradictory per-invocation request surfaces rather than being clamped.
+    assert precommit._resolve_start_attempts(5, 2) == 5
 
 
 def test_sanitized_env_strips_git_and_broker():
@@ -615,31 +663,38 @@ def _make_policy_runner(calls: dict[str, int]) -> precommit.Runner:
     return runner
 
 
-def test_policy_digest_differs_on_attempts_change():
-    """Different attempts values must produce different policy digests."""
-    d1 = precommit._policy_digest(attempts=2, min_frequency=1, timeout_sec=900)
-    d2 = precommit._policy_digest(attempts=4, min_frequency=1, timeout_sec=900)
+def test_policy_digest_differs_on_cap_change():
+    """Different cap (--attempts) values must produce different policy digests."""
+    d1 = precommit._policy_digest(start_attempts=2, cap_attempts=2, min_frequency=1, timeout_sec=900)
+    d2 = precommit._policy_digest(start_attempts=2, cap_attempts=4, min_frequency=1, timeout_sec=900)
+    assert d1 != d2
+
+
+def test_policy_digest_differs_on_start_attempts_change():
+    """Different start_attempts values must produce different policy digests (#1728)."""
+    d1 = precommit._policy_digest(start_attempts=2, cap_attempts=8, min_frequency=2, timeout_sec=900)
+    d2 = precommit._policy_digest(start_attempts=4, cap_attempts=8, min_frequency=2, timeout_sec=900)
     assert d1 != d2
 
 
 def test_policy_digest_differs_on_min_frequency_change():
     """Different min_frequency values must produce different policy digests."""
-    d1 = precommit._policy_digest(attempts=4, min_frequency=1, timeout_sec=900)
-    d2 = precommit._policy_digest(attempts=4, min_frequency=2, timeout_sec=900)
+    d1 = precommit._policy_digest(start_attempts=2, cap_attempts=4, min_frequency=1, timeout_sec=900)
+    d2 = precommit._policy_digest(start_attempts=2, cap_attempts=4, min_frequency=2, timeout_sec=900)
     assert d1 != d2
 
 
 def test_policy_digest_differs_on_timeout_change():
     """Different timeout_sec values must produce different policy digests."""
-    d1 = precommit._policy_digest(attempts=4, min_frequency=2, timeout_sec=300)
-    d2 = precommit._policy_digest(attempts=4, min_frequency=2, timeout_sec=900)
+    d1 = precommit._policy_digest(start_attempts=2, cap_attempts=4, min_frequency=2, timeout_sec=300)
+    d2 = precommit._policy_digest(start_attempts=2, cap_attempts=4, min_frequency=2, timeout_sec=900)
     assert d1 != d2
 
 
 def test_policy_digest_stable_for_same_policy():
     """Same policy must always produce the same digest."""
-    d1 = precommit._policy_digest(attempts=4, min_frequency=2, timeout_sec=900)
-    d2 = precommit._policy_digest(attempts=4, min_frequency=2, timeout_sec=900)
+    d1 = precommit._policy_digest(start_attempts=2, cap_attempts=4, min_frequency=2, timeout_sec=900)
+    d2 = precommit._policy_digest(start_attempts=2, cap_attempts=4, min_frequency=2, timeout_sec=900)
     assert d1 == d2
 
 
@@ -786,13 +841,15 @@ def test_cache_miss_on_timeout_change(tmp_path: Path, monkeypatch):
     assert call_count.get("n", 0) == 2, "timeout_sec change must bust the cache"
 
 
-def test_load_cached_result_rejects_schema_v1_entry(tmp_path: Path):
-    """A cache entry written with schema_version=1 (pre-policy) must be a miss
-    after the schema bump to version 2 (issue #1710).
+def test_load_cached_result_rejects_schema_v2_entry(tmp_path: Path):
+    """A cache entry written with schema_version=2 (flat-attempts policy) must be a
+    miss after the bump to version 3 (adaptive escalation, issue #1728).
     """
     diff_digest = "d" * 64
-    pol_dgst = precommit._policy_digest(attempts=2, min_frequency=1, timeout_sec=900)
-    # Write a v1-style entry directly (no policy fields).
+    pol_dgst = precommit._policy_digest(
+        start_attempts=2, cap_attempts=8, min_frequency=1, timeout_sec=900
+    )
+    # Write a v2-style entry directly (flat single-attempts policy block).
     cache_dir = tmp_path / precommit._CACHE_SUBDIR
     cache_dir.mkdir()
     # Compute expected composite path to place the stale file there.
@@ -800,14 +857,16 @@ def test_load_cached_result_rejects_schema_v1_entry(tmp_path: Path):
     import json as _json
     stale_path.write_text(
         _json.dumps({
-            "schema_version": 1,
+            "schema_version": 2,
             "digest": diff_digest,
+            "policy_digest": pol_dgst,
+            "policy": {"attempts": 8, "min_frequency": 1, "timeout_sec": 900},
             "rc": 0,
         }),
         encoding="utf-8",
     )
     result = precommit._load_cached_result(tmp_path, diff_digest, pol_dgst)
-    assert result is None, "schema_version=1 entry must be treated as a cache miss"
+    assert result is None, "schema_version=2 entry must be treated as a cache miss"
 
 
 def test_load_cached_result_rejects_wrong_policy_digest(tmp_path: Path):
@@ -815,10 +874,14 @@ def test_load_cached_result_rejects_wrong_policy_digest(tmp_path: Path):
     import json as _json
 
     diff_digest = "e" * 64
-    pol_dgst_a = precommit._policy_digest(attempts=2, min_frequency=1, timeout_sec=900)
-    pol_dgst_b = precommit._policy_digest(attempts=4, min_frequency=2, timeout_sec=900)
+    pol_dgst_a = precommit._policy_digest(
+        start_attempts=2, cap_attempts=2, min_frequency=1, timeout_sec=900
+    )
+    pol_dgst_b = precommit._policy_digest(
+        start_attempts=2, cap_attempts=4, min_frequency=2, timeout_sec=900
+    )
 
-    # Write a valid v2 entry under pol_dgst_b's path but with pol_dgst_a as stored value.
+    # Write a valid entry under pol_dgst_b's path but with pol_dgst_a as stored value.
     path = precommit._cache_path(tmp_path, diff_digest, pol_dgst_b)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
@@ -914,3 +977,296 @@ def test_gate_fails_closed_when_too_few_passes_succeed(tmp_path: Path):
         runner=runner,
     )
     assert rc == 1
+
+
+# ----- adaptive escalation (issue #1728) -----------------------------------
+# The runners below use a threading.Lock + call counter because passes within a
+# batch run concurrently. The orchestrator awaits the start batch BEFORE the
+# escalation batch, so the first `start_attempts` runner calls are guaranteed to
+# be the start passes (counter 0..start-1) and the rest are escalation passes —
+# the per-call branching is therefore deterministic regardless of intra-batch
+# scheduling order.
+
+
+def test_gate_early_stops_when_start_clean(tmp_path: Path):
+    # A clean, well-powered start batch (no strong finding) stops at start_attempts
+    # passes — it does NOT escalate to the cap. This is the adaptive-escalation cost
+    # win: noise-free load-bearing diffs pay 2 passes, not 8 (issue #1728).
+    lock = threading.Lock()
+    calls = {"n": 0}
+
+    def runner(cmd, timeout_sec):
+        with lock:
+            calls["n"] += 1
+        return _proc(_payload([], verdict="approve"))
+
+    rc = precommit.run_precommit_review(
+        attempts=8,
+        start_attempts=2,
+        base="HEAD",
+        scope="branch",
+        companion=Path("/tmp/codex-companion.mjs"),
+        changed_files=["rag_core.py"],
+        hits=["rag_core.py"],
+        out_dir=tmp_path,
+        timeout_sec=900,
+        min_frequency=2,
+        runner=runner,
+    )
+    assert rc == 0
+    assert calls["n"] == 2, "clean start must stop early at 2 passes, not escalate to 8"
+    union = json.loads((tmp_path / "union.json").read_text())
+    assert union["attempts"] == 2
+
+
+def test_gate_early_stops_with_only_weak_findings(tmp_path: Path):
+    # medium/low findings never trigger escalation (only critical/high do). A start
+    # batch with only weak findings stops early and passes.
+    lock = threading.Lock()
+    calls = {"n": 0}
+
+    def runner(cmd, timeout_sec):
+        with lock:
+            calls["n"] += 1
+        return _proc(_payload([_finding(severity="medium", line_start=5, line_end=6)]))
+
+    rc = precommit.run_precommit_review(
+        attempts=8,
+        start_attempts=2,
+        base="HEAD",
+        scope="branch",
+        companion=Path("/tmp/codex-companion.mjs"),
+        changed_files=["rag_core.py"],
+        hits=["rag_core.py"],
+        out_dir=tmp_path,
+        timeout_sec=900,
+        min_frequency=2,
+        runner=runner,
+    )
+    assert rc == 0
+    assert calls["n"] == 2, "weak-only start must not escalate"
+
+
+def test_gate_escalates_when_strong_finding_subthreshold_in_start(tmp_path: Path):
+    # A strong finding in only 1 of the 2 start passes (freq 1 < min_freq 2) must
+    # ESCALATE to the cap to confirm reproduction. Here it reproduces across the
+    # escalation passes → freq >= 2 → block. ADR 0066 measurement: a strong finding
+    # may surface in only a fraction of passes, so freq-1-in-start must escalate.
+    lock = threading.Lock()
+    calls = {"n": 0}
+
+    def runner(cmd, timeout_sec):
+        with lock:
+            n = calls["n"]
+            calls["n"] += 1
+        # The 2nd runner call (one of the two start passes) is clean; every other
+        # pass (the other start pass + all escalation passes) reports the SAME
+        # strong finding. Start → freq 1 (escalate); after escalation → freq >= 2.
+        if n == 1:
+            return _proc(_payload([], verdict="approve"))
+        return _proc(_payload([_finding(severity="high", line_start=10, line_end=12)]))
+
+    rc = precommit.run_precommit_review(
+        attempts=8,
+        start_attempts=2,
+        base="HEAD",
+        scope="branch",
+        companion=Path("/tmp/codex-companion.mjs"),
+        changed_files=["rag_core.py"],
+        hits=["rag_core.py"],
+        out_dir=tmp_path,
+        timeout_sec=900,
+        min_frequency=2,
+        runner=runner,
+    )
+    assert rc == 1, "reproduced strong finding after escalation must block"
+    assert calls["n"] == 8, "sub-threshold strong finding in start must escalate to the cap"
+
+
+def test_gate_escalates_then_passes_when_strong_finding_not_reproduced(tmp_path: Path):
+    # A strong finding that appears in the start batch but never REPRODUCES (each
+    # pass reports a different, non-overlapping strong finding) escalates to the
+    # cap, then PASSES — every cluster stays freq 1 (informational), none reaches
+    # min_freq. Guards that escalation does not block on one-off findings.
+    lock = threading.Lock()
+    calls = {"n": 0}
+
+    def runner(cmd, timeout_sec):
+        with lock:
+            n = calls["n"]
+            calls["n"] += 1
+        ls = (n + 1) * 100  # unique, non-overlapping line range per pass
+        return _proc(_payload([_finding(severity="high", line_start=ls, line_end=ls + 1)]))
+
+    rc = precommit.run_precommit_review(
+        attempts=8,
+        start_attempts=2,
+        base="HEAD",
+        scope="branch",
+        companion=Path("/tmp/codex-companion.mjs"),
+        changed_files=["rag_core.py"],
+        hits=["rag_core.py"],
+        out_dir=tmp_path,
+        timeout_sec=900,
+        min_frequency=2,
+        runner=runner,
+    )
+    assert rc == 0, "one-off strong findings must not block even after escalation"
+    assert calls["n"] == 8, "sub-threshold strong finding in start escalates to the cap"
+    union = json.loads((tmp_path / "union.json").read_text())
+    assert union["attempts"] == 8
+
+
+def test_gate_early_blocks_when_strong_reproduced_in_start(tmp_path: Path):
+    # When a strong finding already reproduces across the start batch (freq >=
+    # min_freq in the first 2 passes), the gate BLOCKS immediately without
+    # escalating — more passes can only raise the frequency, never overturn the
+    # block (monotonicity). Saves the escalation cost in the already-decided case.
+    lock = threading.Lock()
+    calls = {"n": 0}
+
+    def runner(cmd, timeout_sec):
+        with lock:
+            calls["n"] += 1
+        return _proc(_payload([_finding(severity="high", line_start=10, line_end=12)]))
+
+    rc = precommit.run_precommit_review(
+        attempts=8,
+        start_attempts=2,
+        base="HEAD",
+        scope="branch",
+        companion=Path("/tmp/codex-companion.mjs"),
+        changed_files=["rag_core.py"],
+        hits=["rag_core.py"],
+        out_dir=tmp_path,
+        timeout_sec=900,
+        min_frequency=2,
+        runner=runner,
+    )
+    assert rc == 1
+    assert calls["n"] == 2, "reproduced-in-start must early-block without escalating to 8"
+    union = json.loads((tmp_path / "union.json").read_text())
+    assert union["attempts"] == 2
+
+
+def test_gate_escalates_when_start_underpowered_then_fail_closed(tmp_path: Path):
+    # If the start batch is "clean" only because too few passes succeeded
+    # (start_successful < min_freq), the gate must NOT pass on that weak signal —
+    # it escalates to gather more. If escalation also fails, the terminal
+    # fail-closed blocks (D4 hole guard, issue #1728).
+    lock = threading.Lock()
+    calls = {"n": 0}
+
+    def runner(cmd, timeout_sec):
+        with lock:
+            calls["n"] += 1
+        return subprocess.CompletedProcess(
+            args=cmd, returncode=127, stdout="{}", stderr="companion missing"
+        )
+
+    rc = precommit.run_precommit_review(
+        attempts=4,
+        start_attempts=2,
+        base="HEAD",
+        scope="branch",
+        companion=Path("/tmp/codex-companion.mjs"),
+        changed_files=["rag_core.py"],
+        hits=["rag_core.py"],
+        out_dir=tmp_path,
+        timeout_sec=900,
+        min_frequency=2,
+        runner=runner,
+    )
+    assert rc == 1, "all-error escalation must fail-closed"
+    assert calls["n"] == 4, "clean-but-underpowered start must escalate to gather signal"
+
+
+def test_gate_escalation_pass_indices_do_not_collide(tmp_path: Path):
+    # Start passes use indices 1..START, escalation uses START+1..CAP, so per-pass
+    # artifacts never overwrite each other (D5).
+    lock = threading.Lock()
+    calls = {"n": 0}
+
+    def runner(cmd, timeout_sec):
+        with lock:
+            n = calls["n"]
+            calls["n"] += 1
+        ls = (n + 1) * 100
+        return _proc(_payload([_finding(severity="high", line_start=ls, line_end=ls + 1)]))
+
+    precommit.run_precommit_review(
+        attempts=8,
+        start_attempts=2,
+        base="HEAD",
+        scope="branch",
+        companion=Path("/tmp/codex-companion.mjs"),
+        changed_files=["rag_core.py"],
+        hits=["rag_core.py"],
+        out_dir=tmp_path,
+        timeout_sec=900,
+        min_frequency=2,
+        runner=runner,
+    )
+    for i in range(1, 9):
+        assert (tmp_path / f"pass-{i}.json").exists(), f"missing artifact pass-{i}.json"
+
+
+def test_cache_miss_on_start_attempts_change(tmp_path: Path, monkeypatch):
+    # start_attempts is part of the cache key: changing only it (same diff / cap /
+    # min_freq / timeout) must bust the cache and rerun (issue #1728, extends #1710).
+    fixed_digest = "f" * 64
+    monkeypatch.setattr(precommit, "_staged_diff_digest", lambda: fixed_digest)
+
+    call_count: dict[str, int] = {}
+    precommit.run_precommit_review(
+        attempts=8,
+        start_attempts=2,
+        base="HEAD",
+        scope="branch",
+        companion=Path("/tmp/codex-companion.mjs"),
+        changed_files=["rag_core.py"],
+        hits=["rag_core.py"],
+        out_dir=tmp_path,
+        timeout_sec=900,
+        min_frequency=1,
+        runner=_make_policy_runner(call_count),
+    )
+    assert call_count.get("n", 0) == 2, "start=2 clean → 2 passes seeded"
+
+    call_count.clear()
+    precommit.run_precommit_review(
+        attempts=8,
+        start_attempts=4,
+        base="HEAD",
+        scope="branch",
+        companion=Path("/tmp/codex-companion.mjs"),
+        changed_files=["rag_core.py"],
+        hits=["rag_core.py"],
+        out_dir=tmp_path,
+        timeout_sec=900,
+        min_frequency=1,
+        runner=_make_policy_runner(call_count),
+    )
+    assert call_count.get("n", 0) == 4, "start_attempts change must bust the cache (4 fresh passes)"
+
+
+def test_run_precommit_review_rejects_start_above_cap(tmp_path: Path):
+    # start_attempts must be <= the cap (--attempts); otherwise the start batch
+    # would exceed the escalation ceiling.
+    def runner(cmd, timeout_sec):
+        return _proc(_payload([]))
+
+    with pytest.raises(ValueError, match="start-attempts"):
+        precommit.run_precommit_review(
+            attempts=2,
+            start_attempts=4,
+            base="HEAD",
+            scope="branch",
+            companion=Path("/tmp/codex-companion.mjs"),
+            changed_files=["rag_core.py"],
+            hits=["rag_core.py"],
+            out_dir=tmp_path,
+            timeout_sec=900,
+            min_frequency=1,
+            runner=runner,
+        )
