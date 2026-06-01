@@ -667,3 +667,8 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":  # pragma: no cover
     raise SystemExit(main())
+
+# Gate-3 e2e probe (issue #1714, NOT for merge): exercises main-branch AR3
+# (require_code_owner_reviews on this constitutional file) — verifies the
+# autonomous loop / PR author cannot self-approve a constitutional change.
+# This PR is closed after the code-owner block is observed.
