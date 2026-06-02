@@ -113,7 +113,7 @@ production code path 변경 없음 (`rag_*.py`, `api/`, `eval/config.yaml`
 
 <!-- verifies-key: tests/test_failure_rate_regression.py:CEILING_RATE_BY_CATEGORY -->
 <!-- verifies-key: tests/test_failure_rate_regression.py:def test_gated_category_rates_under_ceiling -->
-<!-- verifies-key: tests/test_failure_rate_regression.py:def test_adr_0059_first_match_contract -->
+<!-- verifies-key: tests/test_failure_rate_regression.py:def test_adr_0075_first_match_contract -->
 <!-- verifies-key: docs/operations/failure-mode-harden-process.md:monotone-harden -->
 <!-- verifies-key: scripts/_governance.py:def ceiling_ratchet_violations -->
 <!-- verifies-key: scripts/check_branch_and_issue.py:def check_ceiling_ratchet_mode -->

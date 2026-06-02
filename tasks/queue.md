@@ -5341,7 +5341,8 @@ make check-branch
   `reports/real100_v2/retrieval_diagnostics.aggregate.json` points at this task.
 
 ## Follow-up (from docs-real100v2-policy-alignment, 2026-06-02)
-- [ ] (E) proposed-ADR SLA backlog (~16 proposed, earliest 0050=2026-06-16) — adr-lifecycle-manager 영역, governance-cycle work. 본 docs-정렬 PR에서 해소 안 함.
-- [ ] ADR 0052 status 재분류 (Proposed vs historical) — adr-lifecycle-manager 영역. 0029도 여전히 proposed.
+- [x] (E) proposed-ADR SLA backlog — 2026-06-02 처리 (promote PR #1810 + lifecycle issue #1811). OVER_SLA=0 측정 후 구현완료+검증된 11 ADR promote: 0060/0063/0064/0066/0067/0069/0082/0093/0094/0096/0097 (proposed→accepted). keep-open 잔여: staging-trilogy 0088/0090/0091(e2e 전 accepted 불가) + deferred 0061/0092/0095 + 0050 + 0062(아래 lint-fix). grandfathered 5건(pre-2026-05-15) SLA 면제.
+- [x] ADR 0052 status 재분류 — 2026-06-02 resolve-in-place (issue #1811). real100_v2 정책으로 n=221 측정표면 archive-only → `## Resolution` H2 추가. Status Proposed 유지(historical 보존), collector resolved_in_place 인식, 단일 대체 ADR 부재로 `Superseded by` dangling 회피. 0029는 0044 supersession chain의 historical proposed로 keep-open.
+- [x] ADR 0062 verifies-key 마커 drift 정정 — 2026-06-02 (issue #1811). line 116 마커 `test_adr_0059_first_match_contract`→`test_adr_0075_first_match_contract`(first-match 계약 0059→0075 재명명, 실제 함수명). lint-fail 해소; 본문 historical 산문 보존.
 - [ ] Makefile `real-eval-with-judge: real-eval` (L1442) 가 비활성 stub(exit 2)에 의존 — 코드 불일치. 별 issue/PR(원하면). docs-only scope 밖.
 - [x] PR3 ADR-index integrity (verification-only): count recompute==README, 0074 own-row==1, dead-link==0 — 2026-06-02 실측. 0편집이면 빈 PR 미개설(증거 only); 깨짐 발견 시에만 fix PR3.
