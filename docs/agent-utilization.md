@@ -16,7 +16,7 @@
 |---|---|---|---|
 | **규칙(Rules)** | 자동 강제 invariant | 훅·CI 차단 | PreToolUse load-bearing edit, 브랜치 명명, ADR 0005 경계 |
 | **스킬(Skills)** | workflow 묶음 + 승인 게이트 | 사람·Claude 수동 호출 | `ship-pr`, `self-review-quarterly`, `adr-portfolio-signals` |
-| **커맨드(Commands)** | 수동 트리거 (평가·shipping·검증) | Make 타깃 / 스크립트 | `make smoke`, `make real-eval`, `make ship-arm`, `make governance-check` |
+| **커맨드(Commands)** | 수동 트리거 (평가·shipping·검증) | Make 타깃 / 스크립트 | `make smoke`, `make real-eval-v2-check`, `make ship-arm`, `make governance-check` |
 | **서브에이전트(Subagents)** | 컨텍스트 격리 (읽기 전용 탐색·설계 외주) | 메인 대화에서 위임 | Explore, Plan, general-purpose |
 
 원칙: **규칙은 자동, 나머지 셋은 트리거 만족 시만 호출.** 트리거가 모호하면 도구는 사장.
@@ -59,8 +59,8 @@
 
 | 컴포넌트 | 종류 | 5축 cover | 트리거 | 위치 |
 |---|---|---|---|---|
-| `eval-anomaly-investigator` | agent | #3 (closed error loop) + #4 (anomaly→audit) | `make real-eval` 후 dominant/이상 failure category · variance 의심 · 사용자 명시 | [`.claude/agents/eval-anomaly-investigator.md`](../.claude/agents/eval-anomaly-investigator.md) |
-| `eval-to-adr-bridge` | agent | #3 (부분) + #4 (trigger→proposed lag) | `/retrieval-eval` Phase STOP / `/eval-framework-progressive-audit` phase / `make real-eval` 후 | [`.claude/agents/eval-to-adr-bridge.md`](../.claude/agents/eval-to-adr-bridge.md) |
+| `eval-anomaly-investigator` | agent | #3 (closed error loop) + #4 (anomaly→audit) | private real-eval(maintainer 전용, ADR 0005) 후 dominant/이상 failure category · variance 의심 · 사용자 명시 | [`.claude/agents/eval-anomaly-investigator.md`](../.claude/agents/eval-anomaly-investigator.md) |
+| `eval-to-adr-bridge` | agent | #3 (부분) + #4 (trigger→proposed lag) | `/retrieval-eval` Phase STOP / `/eval-framework-progressive-audit` phase / private real-eval(maintainer 전용) 후 | [`.claude/agents/eval-to-adr-bridge.md`](../.claude/agents/eval-to-adr-bridge.md) |
 | `memory-curator` | agent | #5 (incremental gate) | 메모리 저장 직전 / `MEMORY.md` ≥180줄 / 사용자 명시 | [`.claude/agents/memory-curator.md`](../.claude/agents/memory-curator.md) |
 | `agent-delegation-gate` | hook | #2 (prompt-time delegation nudge) | UserPromptSubmit (모든 prompt, 키워드 매치 시 메시지 emit + fires.log append) | [`scripts/claude-hooks/userpromptsubmit-delegation-gate.sh`](../scripts/claude-hooks/userpromptsubmit-delegation-gate.sh) |
 
@@ -75,7 +75,7 @@
 
 ### 사용 가이드
 
-- `eval-anomaly-investigator`: `make real-eval` 후 failure category 이상치를 ADR 0005-safe slice + 가설 ranking → `docs/audits/*-inspection.md`. 산출 audit 는 `eval-to-adr-bridge` 의 입력. 실 fix / 측정 실행은 영역 외
+- `eval-anomaly-investigator`: private real-eval(maintainer 전용, ADR 0005) 후 failure category 이상치를 ADR 0005-safe slice + 가설 ranking → `docs/audits/*-inspection.md`. 산출 audit 는 `eval-to-adr-bridge` 의 입력. 실 fix / 측정 실행은 영역 외
 - `eval-to-adr-bridge`: 측정 후 ADR 작성 결정 단계에서 호출. commit / PR / Status 변경은 영역 외 (`ship-pr` skill 영역)
 - `memory-curator`: 메모리 저장 결정 게이트. batch 정리는 `consolidate-memory` skill 영역 (호출 권유만)
 - `agent-delegation-gate`: 자동 (사용자 prompt 시점). 항상 exit 0, fail-safe. 트리거 키워드 false-positive 시 description 어휘 조정

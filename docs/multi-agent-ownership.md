@@ -87,7 +87,7 @@ RAG 파이프라인은 단계별 (ingestion → 검색 → 계획 → 검증 →
 
 ## 검증
 
-매 PR 전: `make smoke` + `bash scripts/test.sh`. load-bearing 파일 (`rag_core.py`, `ingestion.py`, `visual_ingestion.py`, `eval/`, `api/main.py`) 변경 시 `make real-eval` + `make real-eval-delta` + PR 템플릿 5b 채움.
+매 PR 전: `make smoke` + `bash scripts/test.sh`. load-bearing 파일 (`rag_core.py`, `ingestion.py`, `visual_ingestion.py`, `eval/`, `api/main.py`) 변경 시 real-data 영향을 검토한다 — private real-eval 은 maintainer 전용(ADR 0005 / CLAUDE.md ban-list 참조)이며, 동작 변경 PR 은 `make real-eval-delta` 로 델타를 측정해 PR §5 에 근거를 남기는 것을 **권장**한다(§5b 강제 게이트는 [ADR 0084](adr/0084-deprecate-5b-real-data-delta-gate.md) 로 폐지).
 
 CI gate: [`pr-eval.yml`](../.github/workflows/pr-eval.yml), [`branch-and-issue-check.yml`](../.github/workflows/branch-and-issue-check.yml). 답변 계약 PR 은 추가로 `schema_version` 증가 + ADR 0003 갱신 확인.
 

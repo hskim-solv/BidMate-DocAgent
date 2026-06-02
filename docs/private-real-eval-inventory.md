@@ -3,7 +3,7 @@
 이 문서는 private real-eval 이 실제 코드에서 참조하는 local/private 경로를
 required input, optional input, regenerable cache, output artifact,
 deprecated/dead reference 로 분리한다. 조사 기준은 repo-wide `rg` 로
-`real_config|REAL_EVAL|data_list|files_kordoc|data/files|eval_summary|reports/real100|cache|cached|artifacts|runs|index|indices|embedding|embeddings|faiss|chroma|vector|bm25|retrieval|ocr|parsed|layout|page_images|thumbnails|jsonl|parquet|sqlite|\.db`
+`real_config|REAL_EVAL|data_list|files_kordoc|data/files|eval_summary|reports/real100_v2|cache|cached|artifacts|runs|index|indices|embedding|embeddings|faiss|chroma|vector|bm25|retrieval|ocr|parsed|layout|page_images|thumbnails|jsonl|parquet|sqlite|\.db`
 패턴을 검색하고, `find data eval reports scripts tests -maxdepth 4` 로
 실제 tree 를 대조한 결과다.
 
@@ -16,16 +16,16 @@ deprecated/dead reference 로 분리한다. 조사 기준은 repo-wide `rg` 로
 | `data/files/` | required input | `scripts/build_index.py --files_dir`, `scripts/validate_data_list.py --files_dir`, kordoc source hashing | yes | no | `REAL_EVAL_DATA_DIR`, `real_eval.document_dirs.default` |
 | `data/files_kordoc/` | regenerable cache | `ingestion._resolve_kordoc_cache_dir`, `scripts/build_kordoc_manifest.py`, `BIDMATE_KORDOC_CACHE_DIR` | no | yes | `REAL_EVAL_KORDOC_DATA_DIR`, `real_eval.document_dirs.kordoc` |
 | `.cache/real_eval/` | regenerable cache | resolver-owned root for OCR/parsed/layout/embedding cache placement | no | yes | `REAL_EVAL_CACHE_DIR`, `real_eval.cache.root` |
-| `data/index/real100/` | regenerable cache | `app.py --input_dir`, `eval/run_eval.py --index_dir`, `scripts/smoke_real.sh`, `make real-eval` | no | yes | `REAL_EVAL_INDEX_DIR`, `real_eval.index.root`; hashing/offline surface |
-| `data/index/real100_minilm/` | regenerable cache | `make real-eval-minilm` | no | yes | `REAL_EVAL_INDEX_DIR`; MiniLM sentence-transformers baseline |
-| `data/index/real100_m3/` | regenerable cache | `make real-eval-semantic`, `scripts/phase35_m3_ablation.py --index_dir_m3` | no | yes | `REAL_EVAL_INDEX_DIR`; BGE-M3 semantic comparison |
-| `data/index/real100_kordoc/` | regenerable cache | Phase 4 metadata retrieval reports and docs | no | yes | `REAL_EVAL_INDEX_DIR` for kordoc-only runs |
-| `outputs/real100/` | output artifact | `scripts/smoke_real.sh`, `app.py --output_dir` | no | yes | `OUTPUT_DIR` |
-| `reports/real100/` | output artifact | `eval/run_eval.py --output_dir`, `scripts/run_real_eval_delta.py` | no | yes | `REAL_EVAL_REPORT_DIR`, `real_eval.reports.output_dir` |
-| `reports/real100/eval_summary.json` | output artifact | `make real-eval`, `scripts/run_real_eval_delta.py --head`, ship PR body cache check | no | yes | derived from `REAL_EVAL_REPORT_DIR` |
-| `reports/real100/baseline.aggregate.json` | optional input | `scripts/run_real_eval_delta.py --base`, baseline provenance checks | no | no | `REAL_EVAL_BASELINE_SUMMARY`, `real_eval.reports.baseline_summary` |
-| `reports/real100/judge.local.json` | output artifact | `scripts/llm_judge.py`, `scripts/run_real_eval_delta.py` optional fold-in | no | yes | `REAL_EVAL_REPORT_DIR` |
-| `reports/real100/traces/` | output artifact | trace/rationality judge workflows | no | yes | `REAL_EVAL_REPORT_DIR` |
+| `data/index/real100_v2/` | regenerable cache | `app.py --input_dir`, `eval/run_eval.py --index_dir`, `scripts/smoke_real.sh`, `make real-eval-v2-chroma` | no | yes | `REAL_EVAL_INDEX_DIR`, `real_eval.index.root`; hashing/offline surface |
+| `data/index/real100_minilm/` | deprecated / removed artifact | 폐지된 real-eval-minilm stub(archive-only) | no | yes | `REAL_EVAL_INDEX_DIR`; MiniLM sentence-transformers baseline |
+| `data/index/real100_m3/` | deprecated / removed artifact | 폐지된 real-eval-semantic stub(archive-only) | no | yes | `REAL_EVAL_INDEX_DIR`; BGE-M3 semantic comparison |
+| `data/index/real100_kordoc/` | deprecated / removed artifact | Phase 4 metadata retrieval reports(archive-only) | no | yes | `REAL_EVAL_INDEX_DIR` for kordoc-only runs |
+| `outputs/real100_v2/` | output artifact | `scripts/smoke_real.sh`, `app.py --output_dir` | no | yes | `OUTPUT_DIR` |
+| `reports/real100_v2/` | output artifact | `eval/run_eval.py --output_dir`, `scripts/run_real_eval_delta.py` | no | yes | `REAL_EVAL_REPORT_DIR`, `real_eval.reports.output_dir` |
+| `reports/real100_v2/eval_summary.json` | output artifact | `make real-eval-v2-chroma`(`-chroma-llm`), `scripts/run_real_eval_delta.py --head`, ship PR body cache check | no | yes | derived from `REAL_EVAL_REPORT_DIR` |
+| `reports/real100_v2/baseline.aggregate.json` | optional input | `scripts/run_real_eval_delta.py --base`, baseline provenance checks | no | no | `REAL_EVAL_BASELINE_SUMMARY`, `real_eval.reports.baseline_summary` |
+| `reports/real100_v2/judge.local.json` | output artifact | `scripts/llm_judge.py`, `scripts/run_real_eval_delta.py` optional fold-in | no | yes | `REAL_EVAL_REPORT_DIR` |
+| `reports/real100_v2/traces/` | output artifact | trace/rationality judge workflows | no | yes | `REAL_EVAL_REPORT_DIR` |
 | `reports/real100_v2/judge.aggregate.json` | aggregate output artifact | `make real-eval-v2-judge`, `scripts/llm_judge.py --out-aggregate` | no | yes | `REAL100_V2_REPORT_DIR` |
 | `reports/real100_v2/judge_ragas.aggregate.json` | aggregate output artifact | `make real-eval-v2-ragas-judge`, `eval/judges/llm_judge.py --out-aggregate` | no | yes | `REAL100_V2_REPORT_DIR` |
 | `reports/real100_v2/rationality.aggregate.json` | aggregate output artifact | `make real-eval-v2-rationality-judge`, `scripts/run_rationality_judge.py` | no | yes | `REAL100_V2_REPORT_DIR` |
@@ -61,7 +61,7 @@ friendly error 로 중단해야 한다.
 - Existing private real100 index 의 metadata 가 `num_documents >= 50` 이고
   `0 < num_chunks <= 1000` 이면 stale/invalid CSV fallback index 로 표시한다.
   현재 허용 기준은 kordoc 26k급 index 다.
-- `reports/real100/eval_summary.json` 은 output artifact 다. 실행 전 required
+- `reports/real100_v2/eval_summary.json` 은 output artifact 다. 실행 전 required
   input 으로 요구하면 안 된다.
 - Baseline comparison 은 `REAL_EVAL_BASELINE_SUMMARY` 또는
   `real_eval.reports.baseline_summary` 로 명시 분리한다.
