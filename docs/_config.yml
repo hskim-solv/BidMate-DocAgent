@@ -3,6 +3,12 @@ description: >-
   RFP DocAgent의 baseline 유지, 평가 surface 분리, 실패 분류 등 엔지니어링 결정의 배경을 정리한 노트.
   소스: https://github.com/hskim-solv/BidMate-DocAgent
 
+# GitHub Pages project-page URL. baseurl 이 없으면 minima 의 relative_url /
+# absolute_url 필터(네비게이션, RSS, permalink:pretty 블로그 URL)가
+# `/blog/...` 같은 root-absolute 경로를 만들어 project page 에서 404 가 된다.
+url: "https://hskim-solv.github.io"
+baseurl: "/BidMate-DocAgent"
+
 theme: minima
 
 # minima 2.5+의 hook — `_includes/custom-head.html`이 <head>에 주입된다.

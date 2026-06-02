@@ -1,0 +1,55 @@
+name: Deploy engineering notes (GitHub Pages — Jekyll)
+
+# Publishes the docs/ Jekyll site ("engineering notes") to GitHub Pages.
+# Scoped to ./docs ONLY: no Python, no eval, no reports/, no leaderboard.
+#
+# Anti-revival guard (ADR 0030 / #1414): the former leaderboard.yml was a
+# CONTENT generator (it git-pushed reports/ + docs/eval/leaderboard.md) and
+# was removed on purpose. It was NEVER the Pages publisher. Do NOT add any
+# leaderboard / eval / reports step here — this workflow only builds the
+# static docs/ site. See issue #1786.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow one concurrent deployment; never cancel an in-progress publish.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+      - name: Build Jekyll site (docs/ only)
+        uses: actions/jekyll-build-pages@v1
+        with:
+          source: ./docs
+          destination: ./_site
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
