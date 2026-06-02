@@ -1009,6 +1009,87 @@ def _atomic_write_text(path: Path, content: str) -> None:
         raise
 
 
+class LedgerState:
+    """Single serialized writer for the bounded-loop ledger (ADR 0094 PR-A2).
+
+    Owns the append-only ledger facts (completed / deferred / cycles / blockers /
+    consecutive_blockers) behind ONE in-process threading.Lock so every mutation
+    is serialized — eliminating the unlocked snapshot+rewrite last-writer-wins /
+    lost-update race before the X task-pool (PR-E) is enabled. At X=1 there is
+    exactly one writer, so snapshot()/persist() emit bytes identical to today's
+    inline closure mutables (ADR 0001 byte-identical gate). This lock serializes
+    the LEDGER only; it must NOT be held across a subprocess spawn or a future
+    semaphore acquire (PR-C), and is independent of the lease flock (PR-B)."""
+
+    def __init__(self, *, completed: Sequence[str] = (), deferred: Sequence[str] = ()) -> None:
+        self._lock = threading.Lock()
+        self._completed: list[str] = list(completed)
+        self._deferred: list[str] = list(deferred)
+        self._cycles: list[dict[str, object]] = []
+        self._blockers: list[str] = []
+        self._consecutive_blockers: int = 0
+
+    @property
+    def completed(self) -> list[str]: return self._completed       # live list (read sites)
+    @property
+    def deferred(self) -> list[str]: return self._deferred         # live list
+    @property
+    def cycles(self) -> list[dict[str, object]]: return self._cycles  # live list (in-place mutated)
+    @property
+    def blockers(self) -> list[str]: return self._blockers         # live list
+    @property
+    def consecutive_blockers(self) -> int: return self._consecutive_blockers
+
+    def record_completed(self, task_id: str) -> None:
+        with self._lock:
+            if task_id not in self._completed:
+                self._completed.append(task_id)
+            self._deferred[:] = [x for x in self._deferred if x != task_id]
+            self._consecutive_blockers = 0
+
+    def record_deferred(self, task_id: str) -> None:
+        with self._lock:
+            if task_id not in self._deferred:
+                self._deferred.append(task_id)
+
+    def append_cycle(self, cycle: dict[str, object]) -> None:
+        with self._lock:
+            self._cycles.append(cycle)   # BY REFERENCE — caller keeps mutating it
+
+    def extend_blockers(self, messages: Sequence[str]) -> None:
+        with self._lock:
+            self._blockers.extend(messages)
+
+    def append_blocker(self, message: str) -> None:
+        with self._lock:
+            self._blockers.append(message)
+
+    def bump_consecutive_blocker(self) -> int:
+        with self._lock:
+            self._consecutive_blockers += 1
+            return self._consecutive_blockers
+
+    def snapshot(self) -> dict[str, object]:
+        with self._lock:
+            return {
+                "completed_task_ids": list(self._completed),
+                "deferred_task_ids": list(self._deferred),
+                "cycles": list(self._cycles),
+                "blockers": _dedupe_preserve_order(self._blockers),
+            }
+
+    def persist(self, path: Path, payload: dict[str, object]) -> None:
+        # Callers run snapshot() and persist() under SEPARATE lock scopes, not one
+        # critical section: holding the lock across fsync/os.replace would serialize
+        # every ledger op during disk I/O. The snapshot↔persist pair being non-atomic
+        # is a deliberate non-goal until the X task-pool lands (PR-E).
+        with self._lock:
+            _atomic_write_text(
+                path,
+                json.dumps(_sanitize_json_value(payload), indent=2, sort_keys=True) + "\n",
+            )
+
+
 def _normalize_field(label: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", label.lower())
 
@@ -10695,7 +10776,11 @@ def write_active_auto_loop(
     out_path = _active_path(out, repo_root=repo_root)
     state_path = _active_path(state, repo_root=repo_root)
     prior_completed, prior_deferred, warnings = _load_active_auto_ledger(state_path)
-    completed: list[str] = list(prior_completed)
+    ledger = LedgerState(completed=prior_completed, deferred=prior_deferred)
+    completed = ledger.completed
+    deferred_task_ids = ledger.deferred
+    cycles = ledger.cycles
+    blockers = ledger.blockers
     # ADR 0092 (PR1): resolve the lane-autotune config. A caller (the CLI) may inject one;
     # otherwise fall back to env (so `make 시작` env still drives it). None == OFF, which
     # gates every autotune side effect below so off-mode stays byte-identical (AC1/R4).
@@ -10728,9 +10813,6 @@ def write_active_auto_loop(
     )
     warnings.append(f"max-iterations resolved to {max_iterations} ({limit_reason})")
     infinite_mode = max_iterations == INFINITE_MAX_ITERATIONS
-    blockers: list[str] = []
-    cycles: list[dict[str, object]] = []
-    deferred_task_ids: list[str] = list(prior_deferred)
     requested_files = tuple(sorted(_normalize_changed_file(path, repo_root=repo_root) for path in changed_files if path))
     branch_task_id = _task_from_branch(_current_branch(repo_root))
 
@@ -10772,6 +10854,7 @@ def write_active_auto_loop(
     max_attempts = max(1, max_iterations, int(auto_max_iterations_cap))
 
     def write_cycle_checkpoint(decision: str) -> None:
+        snap = ledger.snapshot()
         checkpoint_payload = {
             "schema_version": 1,
             "generated_at": _isoformat(datetime.now(timezone.utc)),
@@ -10786,11 +10869,11 @@ def write_active_auto_loop(
             "target_completed_count": target_completed_count,
             "max_attempts": max_attempts,
             "max_iterations_reason": limit_reason,
-            "completed_task_ids": completed,
-            "deferred_task_ids": deferred_task_ids,
+            "completed_task_ids": snap["completed_task_ids"],
+            "deferred_task_ids": snap["deferred_task_ids"],
             "next_task_id": None,
-            "cycles": cycles,
-            "blockers": _dedupe_preserve_order(blockers),
+            "cycles": snap["cycles"],
+            "blockers": snap["blockers"],
             "warnings": _dedupe_preserve_order(warnings),
         }
         # ADR 0092 (AC8/AC13): only emit the recommendations + cooldown_state keys when
@@ -10798,21 +10881,16 @@ def write_active_auto_loop(
         if lane_autotune_config is not None:
             checkpoint_payload["lane_autotune_recommendations"] = lane_autotune_recommendations
             checkpoint_payload["lane_autotune_cooldown"] = lane_autotune_cooldown
-        _atomic_write_text(
-            state_path,
-            json.dumps(_sanitize_json_value(checkpoint_payload), indent=2, sort_keys=True) + "\n",
-        )
+        ledger.persist(state_path, checkpoint_payload)
 
     # Infinite-mode safety state. ``consecutive_blockers`` is reset to zero on every
     # completion so a long-running drain is only aborted by an *unbroken* streak of
-    # blocked tasks, not by isolated failures interleaved with progress.
-    consecutive_blockers = [0]
+    # blocked tasks, not by isolated failures interleaved with progress. The counter
+    # now lives inside ``ledger`` (LedgerState) so the reset and the completed/deferred
+    # mutations happen under one lock (ADR 0094 PR-A2).
 
     def mark_task_completed(task_id: str) -> None:
-        if task_id not in completed:
-            completed.append(task_id)
-        deferred_task_ids[:] = [item for item in deferred_task_ids if item != task_id]
-        consecutive_blockers[0] = 0
+        ledger.record_completed(task_id)
 
     def register_task_blocker(task: TaskEntry, messages: Sequence[str]) -> bool:
         """Record a per-task blocker and decide whether to stop the whole loop.
@@ -10823,15 +10901,14 @@ def write_active_auto_loop(
         only when consecutive blockers reach ``max_consecutive_blockers``. Returns ``True``
         when the caller should ``break``.
         """
-        blockers.extend(messages)
+        ledger.extend_blockers(messages)
         if not infinite_mode:
             return True
-        consecutive_blockers[0] += 1
-        if task.task_id not in deferred_task_ids:
-            deferred_task_ids.append(task.task_id)
-        if consecutive_blockers[0] >= max_consecutive_blockers:
+        new_streak = ledger.bump_consecutive_blocker()
+        ledger.record_deferred(task.task_id)
+        if new_streak >= max_consecutive_blockers:
             stop_message = (
-                f"infinite mode: {consecutive_blockers[0]} consecutive blocked task(s) "
+                f"infinite mode: {new_streak} consecutive blocked task(s) "
                 f"reached the BIDMATE_AGENT_LOOP_MAX_CONSECUTIVE_BLOCKERS guard "
                 f"({max_consecutive_blockers}); stopping"
             )
@@ -10839,11 +10916,11 @@ def write_active_auto_loop(
             # A safety-guard abort is a blocked outcome, never a clean "limit-reached":
             # record it as a blocker so the run decision reflects the abort even when the
             # tripping task carried no per-task message (e.g. the ship-disabled lane).
-            blockers.append(stop_message)
+            ledger.append_blocker(stop_message)
             return True
         warnings.append(
             f"{task.task_id}: blocked in infinite mode; deferred and continuing "
-            f"(consecutive blockers {consecutive_blockers[0]}/{max_consecutive_blockers})"
+            f"(consecutive blockers {new_streak}/{max_consecutive_blockers})"
         )
         write_cycle_checkpoint("running")
         return False
@@ -10916,8 +10993,7 @@ def write_active_auto_loop(
                 if _patch_declares_blocked_handoff(patch_path):
                     cycle["completion_decision"] = "repair-applied-blocked-handoff"
                     cycle["completed"] = False
-                    if task.task_id not in deferred_task_ids:
-                        deferred_task_ids.append(task.task_id)
+                    ledger.record_deferred(task.task_id)
                     warnings.append(
                         f"{task.task_id}: repair patch only recorded a blocked handoff; deferred for another repair cycle"
                     )
@@ -10934,8 +11010,7 @@ def write_active_auto_loop(
                     f"{task.task_id}: repair patch did not apply cleanly: "
                     + "; ".join(apply_result.blockers[:3])
                 )
-        if task.task_id not in deferred_task_ids:
-            deferred_task_ids.append(task.task_id)
+        ledger.record_deferred(task.task_id)
         # T-X4 (agent-loop integration plan): advisory-only escalation pointer once the
         # auto-repair lane (claude->codex fallback) is exhausted without landing a patch.
         # Recorded on the cycle; never spawns a subprocess or changes the defer/stop flow.
@@ -10982,7 +11057,7 @@ def write_active_auto_loop(
                 warnings.append(stop_message)
                 # Safety-guard abort -> blocked outcome (mirrors the consecutive-blocker
                 # guard); ``wall_clock_exceeded`` stays the machine-readable signal.
-                blockers.append(stop_message)
+                ledger.append_blocker(stop_message)
                 break
         iteration += 1
         retrying_deferred = False
@@ -11029,14 +11104,14 @@ def write_active_auto_loop(
                     warnings.append(f"retrying deferred task `{task.task_id}` after fresh task selection stopped: {exc}")
                 except ValueError as retry_exc:
                     if iteration == 1 and not (infinite_mode and not explicit_target_completed_count):
-                        blockers.append(str(exc))
+                        ledger.append_blocker(str(exc))
                     elif iteration != 1:
                         warnings.append(f"no next task selected after iteration {iteration - 1}: {exc}")
                     warnings.append(f"deferred retry selection stopped: {retry_exc}")
                     break
             else:
                 if iteration == 1 and not (infinite_mode and not explicit_target_completed_count):
-                    blockers.append(str(exc))
+                    ledger.append_blocker(str(exc))
                 elif iteration == 1:
                     # Open-ended infinite mode with an already-drained ready queue is a clean
                     # no-op, not a blocked run (ADR 0085).
@@ -11055,7 +11130,7 @@ def write_active_auto_loop(
             "completed": False,
             "retry_deferred": retrying_deferred,
         }
-        cycles.append(cycle)
+        ledger.append_cycle(cycle)
 
         start = write_active_start(
             mode=mode,
@@ -11329,7 +11404,7 @@ def write_active_auto_loop(
             # target counts against the run.
             if not infinite_mode and not target_reached:
                 warnings.append(f"next task selection stopped: {exc}")
-                blockers.append(
+                ledger.append_blocker(
                     f"target completion count not reached "
                     f"({len(completed)}/{target_completed_count}); {exc}"
                 )
@@ -11362,6 +11437,7 @@ def write_active_auto_loop(
     # decision/control flow unchanged. Collector failure degrades to None.
     adr_lifecycle_advisory = _adr_lifecycle_advisory(repo_root=repo_root) if cycles else None
 
+    snap = ledger.snapshot()
     state_payload = {
         "schema_version": 1,
         "generated_at": _isoformat(datetime.now(timezone.utc)),
@@ -11377,13 +11453,13 @@ def write_active_auto_loop(
         "target_completed_count": target_completed_count,
         "max_attempts": max_attempts,
         "max_iterations_reason": limit_reason,
-        "completed_task_ids": completed,
-        "deferred_task_ids": deferred_task_ids,
+        "completed_task_ids": snap["completed_task_ids"],
+        "deferred_task_ids": snap["deferred_task_ids"],
         "next_task_id": next_task.task_id if next_task else None,
-        "cycles": cycles,
+        "cycles": snap["cycles"],
         "learning_capture_advisory": learning_advisory,
         "adr_lifecycle_advisory": adr_lifecycle_advisory,
-        "blockers": _dedupe_preserve_order(blockers),
+        "blockers": snap["blockers"],
         "warnings": _dedupe_preserve_order(warnings),
     }
     # ADR 0092 (AC8/AC13): emit recommendations + cooldown_state on the terminal state write
@@ -11393,7 +11469,7 @@ def write_active_auto_loop(
     if lane_autotune_config is not None:
         state_payload["lane_autotune_recommendations"] = lane_autotune_recommendations
         state_payload["lane_autotune_cooldown"] = lane_autotune_cooldown
-    _atomic_write_text(state_path, json.dumps(_sanitize_json_value(state_payload), indent=2, sort_keys=True) + "\n")
+    ledger.persist(state_path, state_payload)
     rendered = render_active_auto_loop(
         decision=decision,
         execute_runner=execute_runner,
