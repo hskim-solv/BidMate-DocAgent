@@ -1,0 +1,29 @@
+{
+  "name": "bidmate-docagent",
+  "version": "1.0.0",
+  "description": "RFP 문서 이해를 위한 Agentic RAG 시스템 — Node tooling for the Playwright UI smoke (scripts/ui_smoke.mjs).",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  },
+  "scripts": {
+    "ui-smoke": "node scripts/ui_smoke.mjs",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hskim-solv/BidMate-DocAgent.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/hskim-solv/BidMate-DocAgent/issues"
+  },
+  "homepage": "https://github.com/hskim-solv/BidMate-DocAgent#readme",
+  "devDependencies": {
+    "playwright": "^1.60.0"
+  }
+}

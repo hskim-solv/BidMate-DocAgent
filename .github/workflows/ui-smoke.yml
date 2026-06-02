@@ -1,0 +1,87 @@
+name: Demo UI smoke (Playwright)
+
+# Non-blocking headless render smoke for the Streamlit demo (issues #1790, #1798).
+# Boots `make ui-smoke` (streamlit on :8501, real chroma backend) and asserts the
+# reviewer-facing surface via headless chromium. NOT a required check — kept off
+# branch protection during the flaky-observation window, and separate from
+# pr-eval.yml so the chromadb/chromium weight stays out of the lightweight
+# hashing eval path. Promote to a required check via a follow-up once it proves
+# stable. The smoke itself lives in scripts/ui_smoke.mjs (`make ui-smoke`).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'demo/**'
+      - 'scripts/ui_smoke.mjs'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/ui-smoke.yml'
+  pull_request:
+    paths:
+      - 'demo/**'
+      - 'scripts/ui_smoke.mjs'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/ui-smoke.yml'
+  schedule:
+    # Nightly flaky-observation run (issue #1800) — exercises the smoke even when
+    # no demo PR lands, so the required-check promotion decision (#1790/#1799
+    # follow-up) has a real success/failure sample. Off-:00 to dodge the stampede.
+    - cron: '17 5 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A new push supersedes an in-flight run on the same PR/ref.
+concurrency:
+  group: ui-smoke-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ui-smoke:
+    name: Streamlit demo render smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install Python deps (streamlit + chromadb + demo runtime)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install Playwright + chromium
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Build demo index (hashing — keeps CI light, no model download)
+        run: >-
+          python scripts/build_index.py
+          --input_dir eval/fixtures/smoke_rfp/raw
+          --output_dir data/index
+          --embedding_backend hashing
+
+      - name: Run UI smoke (real chroma backend)
+        run: make ui-smoke
+
+      - name: Upload screenshot (always — diagnoses failures too)
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: demo-ui-screenshot
+          path: reports/ui_smoke/demo.png
+          if-no-files-found: warn

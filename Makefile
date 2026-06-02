@@ -27,7 +27,7 @@
 .PHONY: case-propose case-propose-metadata case-review case-promote
 
 # API / demo (FastAPI + Streamlit; local + docker variants)
-.PHONY: api api-docker demo demo-docker docker-publish
+.PHONY: api api-docker demo demo-docker docker-publish ui-smoke
 
 # Tests
 .PHONY: test test-regression
@@ -1213,6 +1213,16 @@ api-docker:
 # Requires data/index to exist (run `make index` first).
 demo:
 	$(PYTHON) -m streamlit run demo/streamlit_app.py
+
+# Headless Playwright UI smoke for the Streamlit demo (issue #1790). Boots
+# `streamlit run` on :8501 on the demo's real default index backend (chroma,
+# ADR 0081), asserts the H1 + the three headline pipeline presets + the
+# "Run query" button, and writes a full-page screenshot to
+# reports/ui_smoke/demo.png (gitignored). Requires `npm install` (playwright,
+# + `npx playwright install chromium`), chromadb (requirements.txt), and a
+# prebuilt index (`make index`). Pass PYTHON=.venv/bin/python for a venv.
+ui-smoke:
+	PYTHON=$(PYTHON) node scripts/ui_smoke.mjs
 
 # Run the demo container with the Streamlit UI on :8501 (and FastAPI on
 # :8000 alongside). See docs/operations/deployment.md for Fly.io / HF Spaces.
