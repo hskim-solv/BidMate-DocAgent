@@ -1,6 +1,6 @@
 # 0082: Dual-lane adversarial review with `claude -p` + `--effort`
 
-- **Status**: proposed
+- **Status**: accepted
 - **Date**: 2026-05-28
 - **Deciders**: User, Claude Code as implementer
 - **Related**: [ADR 0066](./0066-codex-pr-adversarial-review.md), [ADR 0080](./0080-active-loop-registry-v2-dual-agent-lanes.md), [claude-code CLI reference](https://code.claude.com/docs/en/cli-reference), [Codex models](https://developers.openai.com/codex/models)

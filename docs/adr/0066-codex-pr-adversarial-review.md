@@ -1,6 +1,6 @@
 # ADR 0066 — Local Codex adversarial pre-commit review loop
 
-- **Status**: Proposed
+- **Status**: Accepted
 - **Date**: 2026-05-21 (개정 2026-05-31: Decision #4 를 single-pass approve loop → N-pass union + 빈도 게이트로 교체; 개정 2026-06-01: Decision #4 를 flat-N union → adaptive escalation(START=2 → CAP=8)으로 교체, issue #1728)
 - **Related**: [0007](./0007-issue-linked-branch-naming.md) (issue-first 컨벤션), [0047](./0047-solo-author-adr-governance.md) (30일 SLA), [0061](./0061-external-and-paid-api-dependencies-allowed.md) (외부 API 3조건); issue #1126
 

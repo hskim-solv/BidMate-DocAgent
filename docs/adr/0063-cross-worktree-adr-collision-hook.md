@@ -1,6 +1,6 @@
 # 0063: Cross-worktree ADR 번호 충돌 PreToolUse 훅
 
-- **Status**: proposed
+- **Status**: accepted
 - **Date**: 2026-05-20
 - **Deciders**: hskim
 - **Related**: [ADR 0007](./0007-issue-linked-branch-naming.md) (governance gates as CI checks), [ADR 0047](./0047-solo-author-adr-governance.md) (solo-author ADR lifecycle), issue [#1069](https://github.com/hskim-solv/BidMate-DocAgent/issues/1069)

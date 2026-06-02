@@ -1,6 +1,6 @@
 # ADR 0060 — Outcome telemetry as governance measurement surface
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-05-19
 - Authors: Hyunsoo Kim
 - Related: ADR 0007 (issue-first + branch convention), retired aggregate policy (aggregate report surface), CLAUDE.md "거버넌스 ROI" + Q2-2026 self-review 5축 #3

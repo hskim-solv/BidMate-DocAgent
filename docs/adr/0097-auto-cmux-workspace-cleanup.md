@@ -1,6 +1,6 @@
 # 0097: cmux orphan workspace 자동 정리 (worktree 부재 위임 + 수동 트리거)
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-06-02
 - Deciders: User, Claude Code
 - Related: [ADR 0096](./0096-auto-worktree-branch-cleanup.md) (worktree + 로컬 브랜치 정리 자매 결정 — cmux 정리가 그 위에 한 축 더 얹음), [ADR 0007](./0007-issue-linked-branch-naming.md) (orphan 누적이 위협하는 "동시 worktree → 혼란" 실패 모드)

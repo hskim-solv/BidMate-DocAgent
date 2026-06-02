@@ -1,6 +1,6 @@
 # 0096: SessionStart 머지 worktree 자동 정리 (다음-세션-청소)
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-06-02
 - Deciders: User, Claude Code
 - Related: [ADR 0007](./0007-issue-linked-branch-naming.md) (브랜치/이슈 컨벤션 — orphan worktree 누적이 위협하는 "동시 worktree → ADR 번호 충돌" 실패 모드의 대상), [ADR 0066](./0066-codex-pr-adversarial-review.md) (load-bearing local 자동화 표면 선례)
