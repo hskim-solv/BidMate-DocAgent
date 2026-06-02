@@ -80,6 +80,11 @@ ADR-aware, approval-gated single-PR shipping. The skill replaces an ad-hoc seque
     ```
     For the no-dependents case, run both in sequence. For the stacked case (option (a)), run only the merge and tell the user the base branch lingers. **If the step-6 real-model fallback (`make test-fast`) was used, local coverage was partial — this merge is hard-gated on CI green: confirm `gh pr checks <N>` reports all-green before displaying the merge command.** Wait for explicit go-ahead. Then execute.
 
+12b. **Local worktree cleanup (post-merge, advisory).** After the merge lands:
+    - Run `make worktree-cleanup-dry-run` to show which merged orphan worktrees + local branches would be removed.
+    - **The current worktree cannot be auto-removed in this session** — its cwd is occupied, so removing it mid-session would break subsequent commands. The next session's `SessionStart` hook (`scripts/claude-hooks/sessionstart-worktree-hygiene.sh`, ADR 0096) cleans the merged self-worktree on the next start (next-session cleanup). This is expected; do not force-remove the cwd here.
+    - To clean *other* merged orphans now, the user may run `make worktree-cleanup` explicitly (it honours the 3 guards: self-skip / clean-only / 4-signal merge-confirm, and deletes the local branch via `--delete-branches`). Remote-branch deletion already happened in step 12 and is out of this hook's scope.
+
    **Release the mutex marker** (`python3 scripts/claude-hooks/_ship_arm.py --exit-ship-pr`) so `make ship-arm` is unblocked.
 
 ## Approval-gate language
@@ -115,3 +120,4 @@ When uncertain → ask, don't act.
 - Does NOT bulk-merge multiple PRs. One invocation = one PR.
 - Does NOT recover from CI failure automatically — surfaces the failure and asks.
 - Does NOT call `gh pr merge` without the stacked-dependent audit in step 11 — even if the user asks to skip it.
+- Does NOT remove the current worktree itself — its cwd is occupied mid-session, so a merged self-worktree is cleaned by the next session's `SessionStart` hook (`sessionstart-worktree-hygiene.sh`, ADR 0096), not here.

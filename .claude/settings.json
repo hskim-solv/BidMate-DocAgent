@@ -59,6 +59,16 @@
           }
         ]
       }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash scripts/claude-hooks/sessionstart-worktree-hygiene.sh"
+          }
+        ]
+      }
     ]
   }
 }
