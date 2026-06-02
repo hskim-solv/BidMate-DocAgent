@@ -16580,6 +16580,34 @@ def _eval_anomaly_advisory(eval_files: Sequence[str]) -> dict[str, object]:
     }
 
 
+def _eval_to_adr_advisory(eval_files: Sequence[str]) -> dict[str, object]:
+    """Advisory-only pointer at the eval-to-adr-bridge agent (sibling of the
+    eval-anomaly advisory; agent-loop integration follow-up #1755).
+
+    Call-only ("호출만"): it is recorded in the gate-evidence audit record but does
+    NOT run the eval, read eval_summary.json, judge the ADR threshold, reserve an
+    ADR number, or invoke the agent. After the eval run, if a result MEETS the
+    CLAUDE.md ADR threshold, it points a human at the eval-to-adr-bridge agent to
+    draft an ADR candidate (Status: Proposed). It never flips an ADR to Accepted
+    and never creates a PR.
+    """
+    return {
+        "agent": "eval-to-adr-bridge",
+        "trigger": "eval/benchmark surface touched",
+        "eval_files": list(eval_files),
+        "guidance": (
+            "After the eval run (e.g. `make real-eval`, or a /retrieval-eval or "
+            "/eval-framework-progressive-audit phase report), if a measurement MEETS "
+            "the CLAUDE.md ADR threshold (removes or replaces a load-bearing decision — "
+            "baseline / pipeline / answer-contract / eval surface — or introduces a new "
+            "measurement surface), run the eval-to-adr-bridge agent to draft an ADR "
+            "candidate (Status: Proposed) with collision-safe number reservation. "
+            "Advisory only — does NOT run the eval, judge the threshold, reserve a "
+            "number, or invoke the agent."
+        ),
+    }
+
+
 def write_active_gate_evidence(
     *,
     task_id: str,
@@ -16609,6 +16637,7 @@ def write_active_gate_evidence(
     load_bearing_touched = any(is_load_bearing(path) for path in files)
     eval_files = _eval_surface_touched(files)
     eval_anomaly = _eval_anomaly_advisory(eval_files) if eval_files else None
+    eval_to_adr = _eval_to_adr_advisory(eval_files) if eval_files else None
 
     topology = "four-role"
     sessions: list[dict[str, object]] = []
@@ -16674,6 +16703,7 @@ def write_active_gate_evidence(
         "work_units": rolling,
         "privacy": privacy,
         "eval_anomaly_advisory": eval_anomaly,
+        "eval_to_adr_advisory": eval_to_adr,
         "ship": "not-triggered (use the existing human-gated ship path: ship-pr / make ship-arm)",
     }
     gate_dir = out_dir if out_dir is not None else active_dir / "gate_evidence" / task_id
@@ -16720,6 +16750,20 @@ def write_active_gate_evidence(
                 "  `docs/audits/<slug>-inspection.md`. Advisory only — does NOT run the eval or invoke the agent.",
             ]
         )
+    if eval_to_adr:
+        lines.extend(
+            [
+                "",
+                "## Eval-to-ADR advisory",
+                "",
+                f"- Eval/benchmark surface touched: {', '.join('`' + p + '`' for p in eval_files)}",
+                "- After the eval run, if a measurement MEETS the CLAUDE.md ADR threshold (removes or",
+                "  replaces a load-bearing decision, or introduces a new measurement surface), run the",
+                "  `eval-to-adr-bridge` agent to draft an ADR candidate (Status: Proposed) with",
+                "  collision-safe number reservation. Advisory only — does NOT run the eval, judge the",
+                "  threshold, reserve a number, or invoke the agent.",
+            ]
+        )
     lines.extend(
         [
             "",
@@ -16735,6 +16779,7 @@ def write_active_gate_evidence(
             "ready": ready,
             "privacy_clean": privacy["clean"],
             "eval_anomaly": bool(eval_anomaly),
+            "eval_to_adr": bool(eval_to_adr),
         },
     )
     return evidence_path, {
@@ -16743,6 +16788,7 @@ def write_active_gate_evidence(
         "privacy_clean": privacy["clean"],
         "load_bearing_touched": load_bearing_touched,
         "eval_anomaly_advisory": eval_anomaly,
+        "eval_to_adr_advisory": eval_to_adr,
     }
 
 
