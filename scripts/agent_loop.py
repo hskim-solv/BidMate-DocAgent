@@ -23,9 +23,15 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from typing import Callable, Iterable, Sequence
+
+try:
+    import fcntl  # POSIX-only; non-POSIX degrades to atomic-rename-only
+except ImportError:  # pragma: no cover - exercised only on non-POSIX CI
+    fcntl = None  # type: ignore[assignment]
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -977,6 +983,30 @@ def _repo_path(path: Path, repo_root: Path) -> str:
 
 def _read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8")
+
+
+def _atomic_write_text(path: Path, content: str) -> None:
+    """Crash-atomic text write: temp file in the same dir + os.replace (atomic
+    rename), holding an exclusive flock during the write on POSIX. Non-POSIX
+    degrades to atomic-rename-only (os.replace is still atomic). The on-disk
+    bytes are identical to ``path.write_text(content, encoding="utf-8")`` — only
+    the write *path* changes (ADR 0094 PR-A1; ADR 0001 byte-identical gate)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(prefix=f".{path.name}.", dir=str(path.parent))
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            if fcntl is not None:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp, path)
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 def _normalize_field(label: str) -> str:
@@ -10768,10 +10798,9 @@ def write_active_auto_loop(
         if lane_autotune_config is not None:
             checkpoint_payload["lane_autotune_recommendations"] = lane_autotune_recommendations
             checkpoint_payload["lane_autotune_cooldown"] = lane_autotune_cooldown
-        state_path.parent.mkdir(parents=True, exist_ok=True)
-        state_path.write_text(
+        _atomic_write_text(
+            state_path,
             json.dumps(_sanitize_json_value(checkpoint_payload), indent=2, sort_keys=True) + "\n",
-            encoding="utf-8",
         )
 
     # Infinite-mode safety state. ``consecutive_blockers`` is reset to zero on every
@@ -11364,8 +11393,7 @@ def write_active_auto_loop(
     if lane_autotune_config is not None:
         state_payload["lane_autotune_recommendations"] = lane_autotune_recommendations
         state_payload["lane_autotune_cooldown"] = lane_autotune_cooldown
-    state_path.parent.mkdir(parents=True, exist_ok=True)
-    state_path.write_text(json.dumps(_sanitize_json_value(state_payload), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    _atomic_write_text(state_path, json.dumps(_sanitize_json_value(state_payload), indent=2, sort_keys=True) + "\n")
     rendered = render_active_auto_loop(
         decision=decision,
         execute_runner=execute_runner,
@@ -15938,8 +15966,7 @@ def _write_active_leases(path: Path, *, leases: list[dict[str, object]], now: da
         "generated_at": _isoformat(now),
         "leases": [_sanitize_json_value(item) for item in leases],
     }
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    _atomic_write_text(path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
     return path
 
 
