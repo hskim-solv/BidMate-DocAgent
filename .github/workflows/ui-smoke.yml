@@ -24,6 +24,11 @@ on:
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/ui-smoke.yml'
+  schedule:
+    # Nightly flaky-observation run (issue #1800) — exercises the smoke even when
+    # no demo PR lands, so the required-check promotion decision (#1790/#1799
+    # follow-up) has a real success/failure sample. Off-:00 to dodge the stampede.
+    - cron: '17 5 * * *'
   workflow_dispatch:
 
 permissions:
