@@ -1091,6 +1091,79 @@ class LedgerState:
             )
 
 
+DEFAULT_GLOBAL_CONCURRENCY = 8
+GLOBAL_CONCURRENCY_ENV = "BIDMATE_AGENT_LOOP_GLOBAL_CONCURRENCY"
+
+
+def _resolve_global_concurrency(raw: str | None = None) -> int:
+    """Resolve the global CLI-spawn ceiling M (ADR 0094 PR-C). env
+    BIDMATE_AGENT_LOOP_GLOBAL_CONCURRENCY overrides DEFAULT (8). Unset / blank /
+    non-int -> DEFAULT (8). fail-closed: a parsed value <=0 clamps to 1 (the
+    ceiling must never be 0/unbounded by misconfig)."""
+    source = os.getenv(GLOBAL_CONCURRENCY_ENV) if raw is None else raw
+    if source is None or not str(source).strip():
+        return DEFAULT_GLOBAL_CONCURRENCY
+    try:
+        value = int(str(source).strip())
+    except ValueError:
+        return DEFAULT_GLOBAL_CONCURRENCY
+    return value if value >= 1 else 1  # fail-closed: M<=0 -> 1
+
+
+class GlobalConcurrencyLimiter:
+    """Single global ceiling on concurrent agent-loop CLI subprocess spawns
+    (ADR 0094 PR-C). Every CLI agent spawn (claude write / codex patch /
+    read-review) acquires this ONE process-wide BoundedSemaphore(M) before
+    spawning and releases after, so X*Y*Z fan-out cannot multiply into hundreds
+    of children. M = BIDMATE_AGENT_LOOP_GLOBAL_CONCURRENCY (Makefile
+    ACTIVE_GLOBAL_CONCURRENCY), default 8, fail-closed M<=0 -> 1.
+
+    Lock-ordering (mirrors LedgerState ~1012 / LeaseManager): this semaphore is
+    acquired AFTER any LeaseManager flock is released and while the LedgerState
+    lock is NOT held — never hold either across acquire()/the spawn. Order:
+    flock -> claim -> RELEASE -> acquire semaphore -> spawn -> release semaphore
+    -> ledger lock. BoundedSemaphore (not Semaphore) so an over-release raises
+    ValueError instead of silently raising the ceiling. At X=1/M=8 the loop
+    spawns one child at a time so the semaphore is uncontended -> acquire is
+    instant and every on-disk artifact + task selection is byte-identical
+    (ADR 0001 gate). Ships DARK until PR-D/E enable X>1. In-process (threading)
+    only — cross-worktree/process coordination is the flock's job, not this."""
+
+    def __init__(self, limit: int) -> None:
+        self._limit = limit
+        self._sem = threading.BoundedSemaphore(limit)
+
+    @property
+    def limit(self) -> int:
+        return self._limit
+
+    @contextlib.contextmanager
+    def slot(self) -> "Iterator[None]":
+        self._sem.acquire()
+        try:
+            yield
+        finally:
+            self._sem.release()
+
+
+_GLOBAL_CONCURRENCY_LIMITER: "GlobalConcurrencyLimiter | None" = None
+_GLOBAL_CONCURRENCY_LOCK = threading.Lock()
+
+
+def global_concurrency_limiter() -> GlobalConcurrencyLimiter:
+    """Lazily build + memoize the process-wide limiter (double-checked under a
+    lock so concurrent first-touch threads share ONE semaphore)."""
+    global _GLOBAL_CONCURRENCY_LIMITER
+    limiter = _GLOBAL_CONCURRENCY_LIMITER
+    if limiter is None:
+        with _GLOBAL_CONCURRENCY_LOCK:
+            limiter = _GLOBAL_CONCURRENCY_LIMITER
+            if limiter is None:
+                limiter = GlobalConcurrencyLimiter(_resolve_global_concurrency())
+                _GLOBAL_CONCURRENCY_LIMITER = limiter
+    return limiter
+
+
 def _normalize_field(label: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", label.lower())
 
@@ -14626,165 +14699,235 @@ def write_active_codex_runner(
         factory = popen_factory if popen_factory is not None else subprocess.Popen
 
         def spawn_and_wait(batch: Sequence[dict[str, object]]) -> None:
+            # ADR 0094 PR-C: each codex-read child holds the ONE process-wide CLI-spawn
+            # slot for its full lifetime (Phase-1 spawn through Phase-2 wait). The slot
+            # is acquired manually at spawn (acquire and release live in different loops,
+            # so the contextmanager does not fit) and stashed as a one-shot release in the
+            # batch_spawned tuple so EVERY Phase-2 exit path (normal / timeout /
+            # blocker-break / blocker-cleanup) releases EXACTLY once.
+            _limiter = global_concurrency_limiter()
+
+            def _one_shot_release() -> "Callable[[], None]":
+                released = False
+
+                def _release() -> None:
+                    nonlocal released
+                    if not released:
+                        released = True
+                        _limiter._sem.release()
+
+                return _release
+
             batch_spawned: list[
-                tuple[dict[str, object], object, "threading.Thread | None", object, float]
+                tuple[dict[str, object], object, "threading.Thread | None", object, float, "Callable[[], None]"]
             ] = []
-            for item in batch:
-                session_id = str(item["session_id"])
-                role = str(item["role"])
-                session_agent = str(item.get("agent") or "codex")
-                run_dir = runs_path / session_id
-                assignment_path = assignments_path / f"{session_id}.md"
-                prompt_path = run_dir / "prompt.md"
-                stdout_path = run_dir / "stdout.jsonl"
-                stderr_path = run_dir / "stderr.log"
-                last_message_path = run_dir / "last_message.md"
-                run_dir.mkdir(parents=True, exist_ok=True)
-                if session_agent == "claude":
-                    item["status"] = "running"
-                    spawn_start_at = time.monotonic()
-                    _emit_progress(f"[spawn] session={session_id} role={role} agent=claude")
-                    try:
-                        result = write_agent_turn(
-                            session_id=session_id,
-                            role=role,
-                            agent="claude",
-                            task_id=str(item.get("task_id") or "") or None,
-                            base=base,
-                            execute=True,
-                            registry=registry,
-                            events=DEFAULT_ACTIVE_EVENTS,
-                            agent_mix_path=DEFAULT_ACTIVE_AGENT_MIX,
-                            claude_runner=claude_runner,
-                            repo_root=repo_root,
-                            # ADR 0085 Finding 2: thread the runner's per-call budget into the
-                            # Claude read lane so a hung review session is bounded by the
-                            # wall-clock budget when one is set (0 == unlimited otherwise).
-                            timeout_seconds=timeout_seconds,
-                            # ADR 0092 (PR2, AC9): apply the opt-in lane-autotune effort for this
-                            # (role, claude) lane; None == today's role-table effort.
-                            effort_override=_lane_effort_for(role, "claude"),
+            # ADR 0094 PR-C: a child acquired in Phase 1 but not yet stashed in
+            # batch_spawned (e.g. Thread.start() raises after Popen succeeds, or
+            # stdin I/O raises OSError before the append) is invisible to the
+            # batch_spawned drain; track its permit AND its proc/stderr handle here
+            # so the finally both reclaims the straggler permit and stops+closes the
+            # orphan child (else the just-spawned proc keeps running untracked).
+            # One-shot / None-guarded, so all three are inert once the child reaches
+            # batch_spawned.
+            pending_release: "Callable[[], None] | None" = None
+            pending_proc: object = None
+            pending_stderr: object = None
+            try:
+                for item in batch:
+                    session_id = str(item["session_id"])
+                    role = str(item["role"])
+                    session_agent = str(item.get("agent") or "codex")
+                    run_dir = runs_path / session_id
+                    assignment_path = assignments_path / f"{session_id}.md"
+                    prompt_path = run_dir / "prompt.md"
+                    stdout_path = run_dir / "stdout.jsonl"
+                    stderr_path = run_dir / "stderr.log"
+                    last_message_path = run_dir / "last_message.md"
+                    run_dir.mkdir(parents=True, exist_ok=True)
+                    if session_agent == "claude":
+                        item["status"] = "running"
+                        _emit_progress(f"[spawn] session={session_id} role={role} agent=claude")
+                        # ADR 0094 PR-C: hold the ONE process-wide CLI-spawn slot across the
+                        # claude read spawn->wait. spawn_start_at is set AFTER acquire so any
+                        # semaphore wait never leaks into elapsed_s. Uncontended at X=1/M=8.
+                        with global_concurrency_limiter().slot():
+                            spawn_start_at = time.monotonic()
+                            try:
+                                result = write_agent_turn(
+                                    session_id=session_id,
+                                    role=role,
+                                    agent="claude",
+                                    task_id=str(item.get("task_id") or "") or None,
+                                    base=base,
+                                    execute=True,
+                                    registry=registry,
+                                    events=DEFAULT_ACTIVE_EVENTS,
+                                    agent_mix_path=DEFAULT_ACTIVE_AGENT_MIX,
+                                    claude_runner=claude_runner,
+                                    repo_root=repo_root,
+                                    # ADR 0085 Finding 2: thread the runner's per-call budget into the
+                                    # Claude read lane so a hung review session is bounded by the
+                                    # wall-clock budget when one is set (0 == unlimited otherwise).
+                                    timeout_seconds=timeout_seconds,
+                                    # ADR 0092 (PR2, AC9): apply the opt-in lane-autotune effort for this
+                                    # (role, claude) lane; None == today's role-table effort.
+                                    effort_override=_lane_effort_for(role, "claude"),
+                                )
+                            except Exception as exc:  # fail closed; the loop can route repair/retry.
+                                item["status"] = "failed"
+                                item["returncode"] = 1
+                                stderr_path.write_text(_sanitize_dynamic_text(str(exc)) + "\n", encoding="utf-8")
+                                blockers.append(f"claude session {session_id} failed: {exc}")
+                                _emit_progress(f"[done] session={session_id} agent=claude failed")
+                                continue
+                        item["returncode"] = 0 if result.decision == "executed" else 1
+                        item["artifact"] = _repo_path(result.artifact_path, repo_root) if result.artifact_path else ""
+                        item["verdict"] = result.verdict
+                        if result.artifact_path and result.artifact_path.exists():
+                            stdout_path.write_text(result.artifact_path.read_text(encoding="utf-8"), encoding="utf-8")
+                        status_for_gate = "approved" if result.verdict in {"approved", "clear"} else result.verdict or "blocked"
+                        last_message_path.write_text(
+                            _sanitize_dynamic_text(
+                                "\n".join(
+                                    [
+                                        f"Session id: `{session_id}`",
+                                        f"Role: `{role}`",
+                                        "Agent: `claude`",
+                                        f"Artifact: `{item.get('artifact') or ''}`",
+                                        f"Gate verdict: {status_for_gate}",
+                                        "",
+                                    ]
+                                )
+                            ),
+                            encoding="utf-8",
                         )
-                    except Exception as exc:  # fail closed; the loop can route repair/retry.
-                        item["status"] = "failed"
-                        item["returncode"] = 1
-                        stderr_path.write_text(_sanitize_dynamic_text(str(exc)) + "\n", encoding="utf-8")
-                        blockers.append(f"claude session {session_id} failed: {exc}")
-                        _emit_progress(f"[done] session={session_id} agent=claude failed")
+                        elapsed = time.monotonic() - spawn_start_at
+                        # Persist per-lane wall-clock so the opt-in lane-autotune controller
+                        # (ADR 0092) can sense relative slowness within an agent. Display-only
+                        # before; now flows item -> planned -> ActiveCodexRunnerResult.sessions
+                        # alongside role/agent/status. claude elapsed includes artifact/heartbeat
+                        # overhead, so comparisons stay within-agent (never claude vs codex).
+                        # Gated so the runner state file stays byte-identical when autotune is OFF.
+                        if lane_autotune_on:
+                            item["elapsed_s"] = round(elapsed, 3)
+                        if result.decision == "executed":
+                            item["status"] = "completed"
+                            _emit_progress(f"[done] session={session_id} agent=claude verdict={result.verdict} elapsed={elapsed:.1f}s")
+                        else:
+                            item["status"] = "failed"
+                            blockers.extend(f"claude session {session_id}: {blocker}" for blocker in result.blockers)
+                            if not result.blockers:
+                                blockers.append(f"claude session {session_id} decision was {result.decision}")
+                            _emit_progress(f"[done] session={session_id} agent=claude decision={result.decision} elapsed={elapsed:.1f}s")
                         continue
-                    item["returncode"] = 0 if result.decision == "executed" else 1
-                    item["artifact"] = _repo_path(result.artifact_path, repo_root) if result.artifact_path else ""
-                    item["verdict"] = result.verdict
-                    if result.artifact_path and result.artifact_path.exists():
-                        stdout_path.write_text(result.artifact_path.read_text(encoding="utf-8"), encoding="utf-8")
-                    status_for_gate = "approved" if result.verdict in {"approved", "clear"} else result.verdict or "blocked"
-                    last_message_path.write_text(
-                        _sanitize_dynamic_text(
-                            "\n".join(
-                                [
-                                    f"Session id: `{session_id}`",
-                                    f"Role: `{role}`",
-                                    "Agent: `claude`",
-                                    f"Artifact: `{item.get('artifact') or ''}`",
-                                    f"Gate verdict: {status_for_gate}",
-                                    "",
-                                ]
-                            )
-                        ),
-                        encoding="utf-8",
+                    prompt = _render_active_codex_prompt(
+                        session_id=session_id,
+                        role=role,
+                        assignment_path=assignment_path,
+                        repo_root=repo_root,
                     )
-                    elapsed = time.monotonic() - spawn_start_at
-                    # Persist per-lane wall-clock so the opt-in lane-autotune controller
-                    # (ADR 0092) can sense relative slowness within an agent. Display-only
-                    # before; now flows item -> planned -> ActiveCodexRunnerResult.sessions
-                    # alongside role/agent/status. claude elapsed includes artifact/heartbeat
-                    # overhead, so comparisons stay within-agent (never claude vs codex).
-                    # Gated so the runner state file stays byte-identical when autotune is OFF.
-                    if lane_autotune_on:
-                        item["elapsed_s"] = round(elapsed, 3)
-                    if result.decision == "executed":
-                        item["status"] = "completed"
-                        _emit_progress(f"[done] session={session_id} agent=claude verdict={result.verdict} elapsed={elapsed:.1f}s")
-                    else:
-                        item["status"] = "failed"
-                        blockers.extend(f"claude session {session_id}: {blocker}" for blocker in result.blockers)
-                        if not result.blockers:
-                            blockers.append(f"claude session {session_id} decision was {result.decision}")
-                        _emit_progress(f"[done] session={session_id} agent=claude decision={result.decision} elapsed={elapsed:.1f}s")
-                    continue
-                prompt = _render_active_codex_prompt(
-                    session_id=session_id,
-                    role=role,
-                    assignment_path=assignment_path,
-                    repo_root=repo_root,
-                )
-                prompt_path.write_text(prompt, encoding="utf-8")
-                command = _active_codex_exec_command(
-                    codex_executable=str(resolved_executable or codex_executable),
-                    model=str(item.get("model") or model or _CODEX_DEFAULT_PROFILE[0]),
-                    sandbox=sandbox,
-                    last_message_path=last_message_path,
-                    repo_root=repo_root,
-                    # ADR 0092 (PR2, AC10): inject the opt-in lane-autotune effort for this
-                    # (role, codex) lane as `-c model_reasoning_effort`; None == byte-identical.
-                    effort=_lane_effort_for(role, session_agent),
-                )
-                stderr_file = None
-                try:
-                    stderr_file = stderr_path.open("w", encoding="utf-8")
-                    proc = _popen_codex_process(
-                        factory,
-                        command,
-                        cwd=repo_root,
-                        stdin=subprocess.PIPE,
-                        stdout=subprocess.PIPE,
-                        stderr=stderr_file,
-                        text=True,
-                        env=strip_ship_secret_env(dict(os.environ)),
+                    prompt_path.write_text(prompt, encoding="utf-8")
+                    command = _active_codex_exec_command(
+                        codex_executable=str(resolved_executable or codex_executable),
+                        model=str(item.get("model") or model or _CODEX_DEFAULT_PROFILE[0]),
+                        sandbox=sandbox,
+                        last_message_path=last_message_path,
+                        repo_root=repo_root,
+                        # ADR 0092 (PR2, AC10): inject the opt-in lane-autotune effort for this
+                        # (role, codex) lane as `-c model_reasoning_effort`; None == byte-identical.
+                        effort=_lane_effort_for(role, session_agent),
                     )
-                    stdin = getattr(proc, "stdin", None)
-                    if stdin is not None:
-                        stdin.write(prompt)
-                        stdin.close()
-                except OSError as exc:
-                    if stderr_file is not None:
-                        try:
-                            stderr_file.close()
-                        except Exception:  # pragma: no cover - close failures non-fatal
-                            pass
-                    item["status"] = "spawn-failed"
-                    blockers.append(f"failed to spawn session {session_id}: {exc}")
-                    return
-                item["status"] = "running"
-                item["pid"] = getattr(proc, "pid", None)
-                reader_thread = _spawn_codex_reader_thread(
-                    proc,
-                    session_id,
-                    stdout_path,
-                    max_command_executions=max_commands_per_session,
-                    item=item,
-                )
-                spawn_start_at = time.monotonic()
-                _emit_progress(
-                    f"[spawn] session={session_id} role={role} pid={item['pid']}"
-                )
-                batch_spawned.append((item, proc, reader_thread, stderr_file, spawn_start_at))
-                spawned.append((item, proc))
-            for item, proc, reader_thread, stderr_file, spawn_start_at in batch_spawned:
-                if blockers:
-                    _stop_codex_process(proc)
-                    break
-                wait = getattr(proc, "wait", None)
-                try:
-                    if callable(wait):
-                        rc = wait(timeout=timeout_seconds or None)
-                    else:
-                        rc = getattr(proc, "returncode", 0)
-                except subprocess.TimeoutExpired:
-                    item["status"] = "timeout"
-                    item["returncode"] = None
-                    blockers.append(f"session {item['session_id']} timed out after {timeout_seconds} seconds")
-                    _stop_codex_process(proc)
+                    stderr_file = None
+                    # ADR 0094 PR-C: acquire the process-wide CLI-spawn slot for THIS child
+                    # before the spawn; it is held until a Phase-2 path releases it. The slot
+                    # is parked in pending_release the instant it is acquired so the finally
+                    # reclaims it even if an exception fires before batch_spawned.append (e.g.
+                    # _spawn_codex_reader_thread's Thread.start() raises) — the only window
+                    # the batch_spawned drain cannot see.
+                    release = _one_shot_release()
+                    _limiter._sem.acquire()
+                    pending_release = release
+                    pending_proc = None
+                    pending_stderr = None
+                    try:
+                        stderr_file = stderr_path.open("w", encoding="utf-8")
+                        pending_stderr = stderr_file
+                        proc = _popen_codex_process(
+                            factory,
+                            command,
+                            cwd=repo_root,
+                            stdin=subprocess.PIPE,
+                            stdout=subprocess.PIPE,
+                            stderr=stderr_file,
+                            text=True,
+                            env=strip_ship_secret_env(dict(os.environ)),
+                        )
+                        pending_proc = proc
+                        stdin = getattr(proc, "stdin", None)
+                        if stdin is not None:
+                            stdin.write(prompt)
+                            stdin.close()
+                    except OSError as exc:
+                        if stderr_file is not None:
+                            try:
+                                stderr_file.close()
+                            except Exception:  # pragma: no cover - close failures non-fatal
+                                pass
+                        pending_stderr = None  # closed above; finally stops pending_proc
+                        item["status"] = "spawn-failed"
+                        blockers.append(f"failed to spawn session {session_id}: {exc}")
+                        # Hard-abort: the finally below reaps every earlier child
+                        # (stop/join/close on still-running ones) and releases all
+                        # their slots, plus this child's not-yet-registered slot via
+                        # pending_release — so a spawn OSError can neither leave prior
+                        # children running nor permanently lower the process ceiling.
+                        return
+                    item["status"] = "running"
+                    item["pid"] = getattr(proc, "pid", None)
+                    reader_thread = _spawn_codex_reader_thread(
+                        proc,
+                        session_id,
+                        stdout_path,
+                        max_command_executions=max_commands_per_session,
+                        item=item,
+                    )
+                    spawn_start_at = time.monotonic()
+                    _emit_progress(
+                        f"[spawn] session={session_id} role={role} pid={item['pid']}"
+                    )
+                    batch_spawned.append((item, proc, reader_thread, stderr_file, spawn_start_at, release))
+                    # The child is now owned by the batch_spawned tuple; clear the
+                    # not-yet-registered markers so the finally does not double-handle it.
+                    pending_release = None
+                    pending_proc = None
+                    pending_stderr = None
+                    spawned.append((item, proc))
+                for item, proc, reader_thread, stderr_file, spawn_start_at, release in batch_spawned:
+                    if blockers:
+                        _stop_codex_process(proc)
+                        release()  # ADR 0094 PR-C: blocker-break exit path
+                        break
+                    wait = getattr(proc, "wait", None)
+                    try:
+                        if callable(wait):
+                            rc = wait(timeout=timeout_seconds or None)
+                        else:
+                            rc = getattr(proc, "returncode", 0)
+                    except subprocess.TimeoutExpired:
+                        item["status"] = "timeout"
+                        item["returncode"] = None
+                        blockers.append(f"session {item['session_id']} timed out after {timeout_seconds} seconds")
+                        _stop_codex_process(proc)
+                        if reader_thread is not None:
+                            reader_thread.join(timeout=10.0)
+                        if stderr_file is not None:
+                            try:
+                                stderr_file.close()
+                            except Exception:  # pragma: no cover - close failures non-fatal
+                                pass
+                        release()  # ADR 0094 PR-C: timeout exit path
+                        _emit_progress(f"[done] session={item['session_id']} timeout")
+                        continue
                     if reader_thread is not None:
                         reader_thread.join(timeout=10.0)
                     if stderr_file is not None:
@@ -14792,46 +14935,47 @@ def write_active_codex_runner(
                             stderr_file.close()
                         except Exception:  # pragma: no cover - close failures non-fatal
                             pass
-                    _emit_progress(f"[done] session={item['session_id']} timeout")
-                    continue
-                if reader_thread is not None:
-                    reader_thread.join(timeout=10.0)
-                if stderr_file is not None:
-                    try:
-                        stderr_file.close()
-                    except Exception:  # pragma: no cover - close failures non-fatal
-                        pass
-                item["returncode"] = rc
-                elapsed = time.monotonic() - spawn_start_at
-                # Persist per-lane wall-clock for the opt-in lane-autotune controller
-                # (ADR 0092). codex elapsed is the pure subprocess wait (no artifact
-                # overhead) so it is only ever compared against other codex lanes.
-                # Gated so the runner state file stays byte-identical when autotune is OFF.
-                if lane_autotune_on:
-                    item["elapsed_s"] = round(elapsed, 3)
-                if item.get("budget_exceeded"):
-                    item["status"] = "budget-exceeded"
-                    _emit_progress(
-                        f"[done] session={item['session_id']} budget-exceeded "
-                        f"commands={item.get('command_execution_count')} elapsed={elapsed:.1f}s"
-                    )
-                    blockers.append(
-                        f"session {item['session_id']} exceeded command cap "
-                        f"{max_commands_per_session}"
-                    )
-                elif rc == 0:
-                    item["status"] = "completed"
-                    _emit_progress(
-                        f"[done] session={item['session_id']} rc=0 elapsed={elapsed:.1f}s"
-                    )
-                else:
-                    item["status"] = "failed"
-                    _emit_progress(
-                        f"[done] session={item['session_id']} rc={rc} elapsed={elapsed:.1f}s"
-                    )
-                    blockers.append(f"session {item['session_id']} exited with code {rc}")
-            if blockers:
-                for item, proc, reader_thread, stderr_file, _spawn_start_at in batch_spawned:
+                    item["returncode"] = rc
+                    elapsed = time.monotonic() - spawn_start_at
+                    # Persist per-lane wall-clock for the opt-in lane-autotune controller
+                    # (ADR 0092). codex elapsed is the pure subprocess wait (no artifact
+                    # overhead) so it is only ever compared against other codex lanes.
+                    # Gated so the runner state file stays byte-identical when autotune is OFF.
+                    if lane_autotune_on:
+                        item["elapsed_s"] = round(elapsed, 3)
+                    if item.get("budget_exceeded"):
+                        item["status"] = "budget-exceeded"
+                        _emit_progress(
+                            f"[done] session={item['session_id']} budget-exceeded "
+                            f"commands={item.get('command_execution_count')} elapsed={elapsed:.1f}s"
+                        )
+                        blockers.append(
+                            f"session {item['session_id']} exceeded command cap "
+                            f"{max_commands_per_session}"
+                        )
+                    elif rc == 0:
+                        item["status"] = "completed"
+                        _emit_progress(
+                            f"[done] session={item['session_id']} rc=0 elapsed={elapsed:.1f}s"
+                        )
+                    else:
+                        item["status"] = "failed"
+                        _emit_progress(
+                            f"[done] session={item['session_id']} rc={rc} elapsed={elapsed:.1f}s"
+                        )
+                        blockers.append(f"session {item['session_id']} exited with code {rc}")
+                    release()  # ADR 0094 PR-C: normal exit path (proc waited + reaped)
+            finally:
+                # ADR 0094 PR-C BLOCKER fix: this MUST run on every exit — normal
+                # completion, the spawn-OSError `return`, AND any unhandled exception
+                # propagating out of Phase 1/2 (e.g. Thread.start() RuntimeError, a
+                # non-TimeoutExpired wait() failure). It is the load-bearing invariant
+                # that no acquired slot is ever leaked; without it M such leaks deadlock
+                # the limiter. A propagating exception runs this then re-raises (not
+                # swallowed). All release()/_stop/_join/_close calls are one-shot or
+                # idempotent (and stop is guarded on status == "running"), so on the
+                # normal X=1 path they are inert and the runner state stays byte-identical.
+                for item, proc, reader_thread, stderr_file, _spawn_start_at, release in batch_spawned:
                     if item.get("status") == "running":
                         _stop_codex_process(proc)
                         item["status"] = "terminated"
@@ -14843,6 +14987,25 @@ def write_active_codex_runner(
                             stderr_file.close()
                         except Exception:  # pragma: no cover - close failures non-fatal
                             pass
+                    # Releases any child the wait loop skipped (blocker-break stragglers
+                    # / propagating-exception remainder); one-shot so children already
+                    # released on a normal/timeout path are not double-released
+                    # (BoundedSemaphore would raise on an over-release).
+                    release()
+                # Reclaim AND clean up a child acquired in Phase 1 but never stashed in
+                # batch_spawned (the Thread.start()/stdin-I/O escape): stop the orphan
+                # proc and close its stderr so it cannot keep running untracked, then
+                # release its permit. None-guarded / one-shot, so all three are inert
+                # when the child already reached batch_spawned (markers were cleared).
+                if pending_proc is not None:
+                    _stop_codex_process(pending_proc)
+                if pending_stderr is not None:
+                    try:
+                        pending_stderr.close()
+                    except Exception:  # pragma: no cover - close failures non-fatal
+                        pass
+                if pending_release is not None:
+                    pending_release()
 
         final_gate_sessions = [item for item in planned if item.get("session_id") == "eval-claim-privacy-auditor"]
         first_gate_sessions = [item for item in planned if item.get("session_id") != "eval-claim-privacy-auditor"]
@@ -15301,33 +15464,37 @@ def _write_active_codex_patch(
                         )
                         command_display = _sanitize_command_text(shlex.join(_active_claude_display_command(command)))
                         run_claude = claude_runner or subprocess.run
-                        try:
-                            stream_input = _active_claude_stream_json_input(prompt)
-                            kwargs = {
-                                "cwd": created_path,
-                                "input": stream_input,
-                                "capture_output": True,
-                                "text": True,
-                                "check": False,
-                                "timeout": claude_timeout,
-                            }
-                            if claude_runner is None:
-                                env = strip_ship_secret_env(dict(os.environ))
-                                env.pop("ANTHROPIC_API_KEY", None)
-                                kwargs["env"] = env
-                            proc = run_claude(command, **kwargs)
-                            stdout_path.write_text(str(getattr(proc, "stdout", "") or ""), encoding="utf-8")
-                            stderr_path.write_text(str(getattr(proc, "stderr", "") or ""), encoding="utf-8")
-                            rc = int(getattr(proc, "returncode", 1) or 0)
-                            last_message_path.write_text(
-                                _sanitize_dynamic_text(_claude_stream_result_text(str(getattr(proc, "stdout", "") or ""))).rstrip()
-                                + "\n",
-                                encoding="utf-8",
-                            )
-                        except subprocess.TimeoutExpired:
-                            blockers.append(f"claude patch session {session_id} timed out after {claude_timeout} seconds")
-                        except OSError as exc:
-                            blockers.append(f"failed to run claude patch session {session_id}: {exc}")
+                        # ADR 0094 PR-C: hold the ONE process-wide CLI-spawn slot across
+                        # the claude write spawn->wait so X*Y*Z fan-out cannot multiply
+                        # into hundreds of children. Uncontended at X=1/M=8 (byte-identical).
+                        with global_concurrency_limiter().slot():
+                            try:
+                                stream_input = _active_claude_stream_json_input(prompt)
+                                kwargs = {
+                                    "cwd": created_path,
+                                    "input": stream_input,
+                                    "capture_output": True,
+                                    "text": True,
+                                    "check": False,
+                                    "timeout": claude_timeout,
+                                }
+                                if claude_runner is None:
+                                    env = strip_ship_secret_env(dict(os.environ))
+                                    env.pop("ANTHROPIC_API_KEY", None)
+                                    kwargs["env"] = env
+                                proc = run_claude(command, **kwargs)
+                                stdout_path.write_text(str(getattr(proc, "stdout", "") or ""), encoding="utf-8")
+                                stderr_path.write_text(str(getattr(proc, "stderr", "") or ""), encoding="utf-8")
+                                rc = int(getattr(proc, "returncode", 1) or 0)
+                                last_message_path.write_text(
+                                    _sanitize_dynamic_text(_claude_stream_result_text(str(getattr(proc, "stdout", "") or ""))).rstrip()
+                                    + "\n",
+                                    encoding="utf-8",
+                                )
+                            except subprocess.TimeoutExpired:
+                                blockers.append(f"claude patch session {session_id} timed out after {claude_timeout} seconds")
+                            except OSError as exc:
+                                blockers.append(f"failed to run claude patch session {session_id}: {exc}")
                     else:
                         command = _active_codex_exec_command(
                             codex_executable=str(resolved_executable),
@@ -15342,32 +15509,36 @@ def _write_active_codex_patch(
                         )
                         factory = popen_factory if popen_factory is not None else subprocess.Popen
                         proc = None
-                        try:
-                            with stdout_path.open("w", encoding="utf-8") as so, stderr_path.open("w", encoding="utf-8") as se:
-                                proc = _popen_codex_process(
-                                    factory,
-                                    command,
-                                    cwd=repo_root,
-                                    stdin=subprocess.PIPE,
-                                    stdout=so,
-                                    stderr=se,
-                                    text=True,
-                                    env=strip_ship_secret_env(dict(os.environ)),
-                                )
-                                stdin = getattr(proc, "stdin", None)
-                                if stdin is not None:
-                                    stdin.write(prompt)
-                                    stdin.close()
-                        except OSError as exc:
-                            blockers.append(f"failed to spawn codex patch session {session_id}: {exc}")
-                        if proc is not None and not blockers:
-                            wait = getattr(proc, "wait", None)
+                        # ADR 0094 PR-C: hold the ONE process-wide CLI-spawn slot across
+                        # the codex patch spawn->wait (child lifetime). Uncontended at
+                        # X=1/M=8 so on-disk artifacts stay byte-identical (ADR 0001).
+                        with global_concurrency_limiter().slot():
                             try:
-                                rc = wait(timeout=timeout_seconds or None) if callable(wait) else getattr(proc, "returncode", 0)
-                            except subprocess.TimeoutExpired:
-                                rc = None
-                                blockers.append(f"codex patch session {session_id} timed out after {timeout_seconds} seconds")
-                                _stop_codex_process(proc)
+                                with stdout_path.open("w", encoding="utf-8") as so, stderr_path.open("w", encoding="utf-8") as se:
+                                    proc = _popen_codex_process(
+                                        factory,
+                                        command,
+                                        cwd=repo_root,
+                                        stdin=subprocess.PIPE,
+                                        stdout=so,
+                                        stderr=se,
+                                        text=True,
+                                        env=strip_ship_secret_env(dict(os.environ)),
+                                    )
+                                    stdin = getattr(proc, "stdin", None)
+                                    if stdin is not None:
+                                        stdin.write(prompt)
+                                        stdin.close()
+                            except OSError as exc:
+                                blockers.append(f"failed to spawn codex patch session {session_id}: {exc}")
+                            if proc is not None and not blockers:
+                                wait = getattr(proc, "wait", None)
+                                try:
+                                    rc = wait(timeout=timeout_seconds or None) if callable(wait) else getattr(proc, "returncode", 0)
+                                except subprocess.TimeoutExpired:
+                                    rc = None
+                                    blockers.append(f"codex patch session {session_id} timed out after {timeout_seconds} seconds")
+                                    _stop_codex_process(proc)
                     if rc == 0 and not blockers:
                         run = git_runner or _git_worktree_runner
                         # Stage everything first: agents often CREATE files, and plain

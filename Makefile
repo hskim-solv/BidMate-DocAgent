@@ -501,6 +501,17 @@ ACTIVE_CODEX_TIMEOUT_SECONDS ?= 0
 # bound when desired.
 ACTIVE_CLAUDE_WRITE_TIMEOUT_SECONDS ?= $(ACTIVE_CODEX_TIMEOUT_SECONDS)
 export ACTIVE_CLAUDE_WRITE_TIMEOUT_SECONDS
+# ADR 0094 PR-C: M = global ceiling on concurrent agent-loop CLI subprocess spawns.
+# Default 8; fail-closed M<=0 -> 1. Ships DARK + byte-identical at X=1/M=8 (the
+# semaphore is uncontended when the loop spawns one child at a time). The runtime
+# read path is os.getenv("BIDMATE_AGENT_LOOP_GLOBAL_CONCURRENCY"); ACTIVE_GLOBAL_CONCURRENCY
+# is the operator front-door knob, bridged to that env var below so
+# `make ... ACTIVE_GLOBAL_CONCURRENCY=N` actually reaches the runtime. A direct
+# BIDMATE_AGENT_LOOP_GLOBAL_CONCURRENCY already in the env still wins (via ?=).
+ACTIVE_GLOBAL_CONCURRENCY ?= 8
+export ACTIVE_GLOBAL_CONCURRENCY
+BIDMATE_AGENT_LOOP_GLOBAL_CONCURRENCY ?= $(ACTIVE_GLOBAL_CONCURRENCY)
+export BIDMATE_AGENT_LOOP_GLOBAL_CONCURRENCY
 # ADR 0085: 0 == unlimited. The per-session command cap is dropped on the operator front
 # door so the autonomous loop is bounded by timeout + attempt/queue + safety guards, not an
 # arbitrary command count. Set a positive value to re-impose a cap.
