@@ -113,8 +113,10 @@ class TestCmuxCleanupStatic(unittest.TestCase):
 
 class TestCmuxCleanupBehavior(unittest.TestCase):
     def setUp(self) -> None:
-        # Real temp git repo (mkdtemp on macOS lives under /var/folders → a
-        # /var ↔ /private/var symlink, which case #12 relies on).
+        # Real temp git repo (like the worktree-hygiene tests). Case #12 builds
+        # its OWN symlink for the path-divergence check, so it does not depend
+        # on the temp root being symlinked (it is on macOS /var/folders, but
+        # not on Linux/CI).
         self._tmp = tempfile.mkdtemp(prefix="cmux-cleanup-")
         self.repo = Path(self._tmp) / "repo"
         self.repo.mkdir(parents=True)
@@ -491,22 +493,32 @@ class TestCmuxCleanupBehavior(unittest.TestCase):
 
     # --- #12 (path normalization regression) ------------------------------
     def test_path_normalization_no_false_orphan(self) -> None:
-        # macOS symlinks /tmp → /private/tmp and /var → /private/var, so
-        # `git worktree list` and `lsof -d cwd` can report the SAME directory
-        # under two different prefixes. Without normalizing both sides the live
-        # worktree is mis-flagged as orphan and irreversibly closed.
+        # A live worktree can surface under two textually-different paths that
+        # resolve to the same dir: `git worktree list` realpath-resolves
+        # symlinks (it stores the canonical path) while `lsof -d cwd` reports
+        # whatever the process holds. macOS produces this implicitly (mkdtemp
+        # under /var/folders, a /var → /private/var symlink); CI is Linux where
+        # the temp root is NOT symlinked, so we construct the divergence
+        # EXPLICITLY with our own symlink — otherwise the assertNotEqual below
+        # is vacuous on Linux. Without normalizing BOTH sides the live worktree
+        # is mis-flagged as orphan and irreversibly closed.
         live = self._add_worktree("wt12", "feat-12")
-        lsof_cwd = str(live)  # raw symlinked form (e.g. /tmp/.../wt12)
-        git_reported = self._worktree_path_for(lsof_cwd)
+        git_reported = self._worktree_path_for(str(live))
         if git_reported is None:
             self.fail("git did not report the live worktree path")
+        canonical = os.path.realpath(git_reported)
+        # An alias prefix symlink → the same worktree under a different textual
+        # path, guaranteed on any OS (not relying on a symlinked temp root).
+        alias_root = Path(self._tmp) / "alias"
+        if not alias_root.is_symlink():
+            alias_root.symlink_to(os.path.dirname(canonical))
+        lsof_cwd = str(alias_root / os.path.basename(canonical))
         self.assertNotEqual(
-            git_reported,
+            canonical,
             lsof_cwd,
-            "expected a symlink-divergent temp root (e.g. /tmp ↔ /private/tmp); "
-            "this test is vacuous otherwise",
+            "alias path must differ textually from the realpath'd worktree",
         )
-        self.assertEqual(os.path.realpath(git_reported), os.path.realpath(lsof_cwd))
+        self.assertEqual(canonical, os.path.realpath(lsof_cwd))
         self._write_fake_cmux(
             tree="├── workspace workspace:12 \"T12\"\n├── workspace workspace:9 \"T9\"\n",
             ws_list=self._ws_list(["12", "9"]),
