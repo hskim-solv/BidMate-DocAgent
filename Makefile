@@ -512,6 +512,15 @@ ACTIVE_GLOBAL_CONCURRENCY ?= 8
 export ACTIVE_GLOBAL_CONCURRENCY
 BIDMATE_AGENT_LOOP_GLOBAL_CONCURRENCY ?= $(ACTIVE_GLOBAL_CONCURRENCY)
 export BIDMATE_AGENT_LOOP_GLOBAL_CONCURRENCY
+# ADR 0095 PR-D: best-effort cap on the worker count the omc runner requests of `omc team`
+# (Y default-on, omc path only). Default 3; fail-closed cap<=0 -> 1. The runtime read path is
+# os.getenv("OMC_MAX_WORKERS") directly (no bridge var needed — the code reads this exact name),
+# but a direct OMC_MAX_WORKERS already in the env still wins (via ?=). The effective worker
+# total is min(OMC_MAX_WORKERS, --max-parallel); omc is out-of-process so this is best-effort
+# (the global semaphore charges the single omc launch one permit, not each omc worker). Affects
+# the omc runner path ONLY — the default codex runner is byte-identical (ADR 0001).
+OMC_MAX_WORKERS ?= 3
+export OMC_MAX_WORKERS
 # ADR 0085: 0 == unlimited. The per-session command cap is dropped on the operator front
 # door so the autonomous loop is bounded by timeout + attempt/queue + safety guards, not an
 # arbitrary command count. Set a positive value to re-impose a cap.

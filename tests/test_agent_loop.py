@@ -4,6 +4,7 @@ import inspect
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 
 import pytest
@@ -7290,6 +7291,12 @@ def _fake_omc_runner(
     summary_task_counts_seq: list[dict[str, int]] | None = None,
     summary_worktree_path: str = "/tmp/fake-worktree",
     summary_worker_name: str = "worker-1",
+    # ADR 0095 PR-D multi-worker support: an explicit list of worker entries to return in the
+    # get-summary ``workers`` array. Each entry is a dict with at least ``worktree_path`` (and
+    # optionally ``name``). When None (default) a SINGLE worker entry is synthesized from
+    # ``summary_worktree_path`` / ``summary_worker_name`` so the existing 47 single-worker tests
+    # are unaffected. Use to drive the per-worker diff-capture loop with N>1 workers.
+    summary_workers: list[dict[str, object]] | None = None,
     # Simulate shutdown failures (round-7 fix #2 tests).
     # shutdown_rc: nonzero means the first shutdown attempt returns this rc.
     # shutdown_force_rc: rc returned by the --force fallback (default 0 = success).
@@ -7307,12 +7314,21 @@ def _fake_omc_runner(
     poll loop terminates with a terminal-success state immediately.
     ``summary_task_counts_seq``: list of task-count dicts for successive get-summary calls;
     overrides ``summary_task_counts`` per call, falls back to it when exhausted.
-    ``summary_worktree_path`` / ``summary_worker_name``: the worker entry in the summary
+    ``summary_worktree_path`` / ``summary_worker_name``: the single worker entry in the summary
     response (used for diff-capture path resolution from ``workers[0].worktree_path``).
+    ``summary_workers``: explicit multi-worker list (ADR 0095 PR-D); overrides the single-worker
+    synthesis when provided.
     """
     terminal_counts: dict[str, int] = summary_task_counts or {
         "total": 1, "completed": 1, "failed": 0, "in_progress": 0, "pending": 0
     }
+    workers_payload: list[dict[str, object]] = summary_workers if summary_workers is not None else [
+        {
+            "name": summary_worker_name,
+            "worktree_path": summary_worktree_path,
+            "worktree_branch": "omc-team/active/worker-1",
+        }
+    ]
     seq_iter = iter(summary_task_counts_seq or [])
     calls: list[dict[str, object]] = []
 
@@ -7355,15 +7371,9 @@ def _fake_omc_runner(
                     "data": {
                         "summary": {
                             "teamName": "active",
-                            "workerCount": 1,
+                            "workerCount": len(workers_payload),
                             "tasks": counts,
-                            "workers": [
-                                {
-                                    "name": summary_worker_name,
-                                    "worktree_path": summary_worktree_path,
-                                    "worktree_branch": "omc-team/active/worker-1",
-                                }
-                            ],
+                            "workers": workers_payload,
                         }
                     },
                 }
@@ -7833,22 +7843,31 @@ def test_active_codex_runner_omc_env_does_not_forward_secrets(monkeypatch, tmp_p
     assert launch_env.get("OMC_TEAM_WORKTREE_MODE") == agent_loop.OMC_TEAM_WORKTREE_MODE
 
 
-# --- PR-L round-2 fix #2: single-worker-only regression ---
+# --- PR-D (ADR 0095, #1804): Y default-on omc multi-worker ---
 
 
-def test_active_codex_runner_omc_always_launches_exactly_one_worker(
+def _mix_spec_total(mix_spec: str) -> int:
+    """Total worker count parsed from an ``omc team`` mix_spec ("2:claude,1:codex" → 3)."""
+    return sum(
+        int(part.split(":")[0])
+        for part in mix_spec.split(",")
+        if ":" in part and part.split(":")[0].isdigit()
+    )
+
+
+def test_active_codex_runner_omc_auto_launches_multi_worker_within_cap(
     monkeypatch, tmp_path: Path
 ) -> None:
-    """Regression: even with a high-multiplicity agent_mix (claude=5, codex=5) and large
-    max_parallel, the omc team command must request exactly 1 worker total.
-    Multi-worker diff capture is deferred; launching >1 workers would silently discard all
-    but the leader diff while multiplying ADR 0005 exposure."""
+    """ADR 0095 PR-D (supersedes the ADR 0087 single-worker pin): with read_agent=auto and a
+    high-multiplicity agent_mix (claude=5, codex=5), the omc team launch fans out to MULTIPLE
+    workers, bounded by min(OMC_MAX_WORKERS=3 default, max_parallel)."""
     monkeypatch.setenv(agent_loop.OMC_RUNNER_ACK_ENV, "1")
+    monkeypatch.delenv(agent_loop.OMC_MAX_WORKERS_ENV, raising=False)
+    monkeypatch.delenv(agent_loop.PARALLELISM_KILL_ENV, raising=False)
     monkeypatch.setattr("time.sleep", lambda _: None)
     repo = _write_repo(tmp_path)
     active = _write_expanded_active_runner_fixture(repo)
 
-    # Override the registry's agent_mix to a high-multiplicity mix.
     registry_path = active / "session_registry.json"
     registry = json.loads(registry_path.read_text(encoding="utf-8"))
     registry["agent_mix"] = {"target": {"claude": 5, "codex": 5}, "rolling": {}}
@@ -7863,20 +7882,750 @@ def test_active_codex_runner_omc_always_launches_exactly_one_worker(
         repo_root=repo,
         omc_runner=omc,
         git_runner=_fake_git_runner(diff_stdout=diff),
+        read_agent="auto",
         max_parallel=8,
     )
 
-    # Find the launch invocation (contains --no-decompose).
     launch = next((c for c in omc.calls if "--no-decompose" in c["cmd"]), None)
     assert launch is not None, "omc team launch never called"
-    mix_spec = launch["cmd"][2]  # e.g. "1:claude" or "1:codex"
-    # Parse total workers from the mix spec (e.g. "1:claude" → 1, "1:claude,0:codex" → 1).
-    total = sum(
-        int(part.split(":")[0])
-        for part in mix_spec.split(",")
-        if ":" in part and part.split(":")[0].isdigit()
+    mix_spec = launch["cmd"][2]
+    total = _mix_spec_total(mix_spec)
+    assert total > 1, f"expected multi-worker fan-out, got mix_spec={mix_spec!r} (total={total})"
+    assert total <= 3, f"must be capped at OMC_MAX_WORKERS=3, got total={total} (mix_spec={mix_spec!r})"
+
+
+def test_resolve_omc_max_workers_defaults_and_fail_closed() -> None:
+    """Explicit ``raw`` arg covers default / parse / fail-closed branches (mirrors the brick-C
+    _resolve_global_concurrency contract): default 3 on None/blank/non-int; pass-through on
+    valid ints; fail-closed clamp to 1 for <= 0."""
+    assert agent_loop._resolve_omc_max_workers(None) == 3
+    assert agent_loop._resolve_omc_max_workers("2") == 2
+    assert agent_loop._resolve_omc_max_workers("9") == 9
+    assert agent_loop._resolve_omc_max_workers("0") == 1  # fail-closed
+    assert agent_loop._resolve_omc_max_workers("-4") == 1  # fail-closed
+    assert agent_loop._resolve_omc_max_workers("") == 3  # blank -> default
+    assert agent_loop._resolve_omc_max_workers("abc") == 3  # non-int -> default
+
+
+def test_resolve_omc_max_workers_reads_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``_resolve_omc_max_workers()`` (raw=None) reads OMC_MAX_WORKERS; the <=0 fail-closed clamp
+    applies to the env path too."""
+    monkeypatch.setenv(agent_loop.OMC_MAX_WORKERS_ENV, "2")
+    assert agent_loop._resolve_omc_max_workers() == 2
+    monkeypatch.setenv(agent_loop.OMC_MAX_WORKERS_ENV, "0")
+    assert agent_loop._resolve_omc_max_workers() == 1  # fail-closed via env
+
+
+def _agent_mix_registry(claude: int, codex: int) -> dict[str, object]:
+    return {"agent_mix": {"target": {"claude": claude, "codex": codex}, "rolling": {}}}
+
+
+def test_omc_worker_mix_clamps_to_omc_max_workers(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """auto fan-out total never exceeds OMC_MAX_WORKERS (here 2) even with a large mix + max_parallel."""
+    monkeypatch.setenv(agent_loop.OMC_MAX_WORKERS_ENV, "2")
+    monkeypatch.delenv(agent_loop.PARALLELISM_KILL_ENV, raising=False)
+    claude_w, codex_w = agent_loop._resolve_omc_worker_mix(
+        registry_payload=_agent_mix_registry(5, 5),
+        selected_count=8,
+        max_parallel=8,
+        repo_root=tmp_path,
+        read_agent="auto",
     )
-    assert total == 1, f"expected exactly 1 worker, got mix_spec={mix_spec!r} (total={total})"
+    assert claude_w + codex_w == 2, f"expected total clamped to 2, got ({claude_w}, {codex_w})"
+    assert claude_w >= 1 and codex_w >= 1, "balanced 5:5 should split 1:1 at cap=2"
+
+
+def test_omc_worker_mix_clamps_to_max_parallel(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """When max_parallel < OMC_MAX_WORKERS the total is clamped to max_parallel."""
+    monkeypatch.setenv(agent_loop.OMC_MAX_WORKERS_ENV, "8")
+    monkeypatch.delenv(agent_loop.PARALLELISM_KILL_ENV, raising=False)
+    claude_w, codex_w = agent_loop._resolve_omc_worker_mix(
+        registry_payload=_agent_mix_registry(5, 5),
+        selected_count=8,
+        max_parallel=2,
+        repo_root=tmp_path,
+        read_agent="auto",
+    )
+    assert claude_w + codex_w == 2, f"expected total clamped to max_parallel=2, got ({claude_w}, {codex_w})"
+
+
+def test_omc_worker_mix_fail_closed_min_one(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """OMC_MAX_WORKERS=0 fails closed to a cap of 1 → exactly one worker total."""
+    monkeypatch.setenv(agent_loop.OMC_MAX_WORKERS_ENV, "0")
+    monkeypatch.delenv(agent_loop.PARALLELISM_KILL_ENV, raising=False)
+    claude_w, codex_w = agent_loop._resolve_omc_worker_mix(
+        registry_payload=_agent_mix_registry(5, 5),
+        selected_count=8,
+        max_parallel=8,
+        repo_root=tmp_path,
+        read_agent="auto",
+    )
+    assert claude_w + codex_w == 1, f"fail-closed cap=1 must yield 1 worker, got ({claude_w}, {codex_w})"
+
+
+def test_omc_read_agent_override_stays_single_lane(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Explicit --read-agent override is always a SINGLE lane (never fans out), regardless of
+    OMC_MAX_WORKERS or a high-multiplicity mix."""
+    monkeypatch.setenv(agent_loop.OMC_MAX_WORKERS_ENV, "8")
+    monkeypatch.delenv(agent_loop.PARALLELISM_KILL_ENV, raising=False)
+    assert agent_loop._resolve_omc_worker_mix(
+        registry_payload=_agent_mix_registry(5, 5),
+        selected_count=8, max_parallel=8, repo_root=tmp_path, read_agent="claude",
+    ) == (1, 0)
+    assert agent_loop._resolve_omc_worker_mix(
+        registry_payload=_agent_mix_registry(5, 5),
+        selected_count=8, max_parallel=8, repo_root=tmp_path, read_agent="codex",
+    ) == (0, 1)
+
+
+def test_omc_worker_mix_zero_weight_lane_gets_zero_workers(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """A 0-weight lane gets 0 workers; the positive lane takes the whole cap (codex-only here)."""
+    monkeypatch.setenv(agent_loop.OMC_MAX_WORKERS_ENV, "3")
+    monkeypatch.delenv(agent_loop.PARALLELISM_KILL_ENV, raising=False)
+    claude_w, codex_w = agent_loop._resolve_omc_worker_mix(
+        registry_payload=_agent_mix_registry(0, 5),
+        selected_count=8, max_parallel=8, repo_root=tmp_path, read_agent="auto",
+    )
+    assert (claude_w, codex_w) == (0, 3), f"codex-only mix should be (0, 3), got ({claude_w}, {codex_w})"
+
+
+def test_omc_parallelism_kill_forces_single_worker(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """ADR 0095 D5: the global parallelism kill-switch forces auto to a single majority-lane worker."""
+    monkeypatch.setenv(agent_loop.OMC_MAX_WORKERS_ENV, "8")
+    monkeypatch.setenv(agent_loop.PARALLELISM_KILL_ENV, "1")
+    claude_w, codex_w = agent_loop._resolve_omc_worker_mix(
+        registry_payload=_agent_mix_registry(5, 3),
+        selected_count=8, max_parallel=8, repo_root=tmp_path, read_agent="auto",
+    )
+    assert (claude_w, codex_w) == (1, 0), (
+        f"kill-switch must force single majority lane (claude>codex), got ({claude_w}, {codex_w})"
+    )
+
+
+def test_makefile_declares_omc_max_workers() -> None:
+    """ADR 0095 PR-D: the operator front-door knob OMC_MAX_WORKERS is declared + exported.
+
+    The code reads os.getenv("OMC_MAX_WORKERS") directly (no bridge var), so the Makefile
+    needs only the knob + export for `make ... OMC_MAX_WORKERS=N` to reach the runtime."""
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+    assert "OMC_MAX_WORKERS ?= 3" in makefile
+    assert "export OMC_MAX_WORKERS" in makefile
+
+
+# --- PR-D: per-worker diff capture (fake omc + git) ---
+
+
+def _multi_worker_git_runner(
+    diff_by_worktree: dict[str, str],
+    *,
+    merge_base_sha: str = "deadbeef00000000",
+    add_fail_worktrees: frozenset[str] = frozenset(),
+    merge_base_fail_worktrees: frozenset[str] = frozenset(),
+):
+    """Injectable git runner keyed by worktree path so each omc worker returns its OWN diff.
+
+    ``diff_by_worktree``: {worktree_path: diff_stdout}. ``add_fail_worktrees`` /
+    ``merge_base_fail_worktrees``: worktree paths whose ``git add -A`` / ``merge-base`` should
+    return a nonzero rc (to drive the fail-closed aggregation)."""
+    calls: list[list[str]] = []
+
+    def _wt(cmd: list[str]) -> str:
+        # cmd is ["git", "-C", <worktree>, <subcommand>, ...]
+        return cmd[2] if len(cmd) >= 3 and cmd[1] == "-C" else ""
+
+    def run(cmd):
+        calls.append(cmd)
+        wt = _wt(cmd)
+        if "merge-base" in cmd:
+            if wt in merge_base_fail_worktrees:
+                return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="fatal: no merge base")
+            return subprocess.CompletedProcess(cmd, 0, stdout=merge_base_sha + "\n", stderr="")
+        if "add" in cmd:
+            rc = 1 if wt in add_fail_worktrees else 0
+            return subprocess.CompletedProcess(cmd, rc, stdout="", stderr="" if rc == 0 else "add failed")
+        if "diff" in cmd:
+            return subprocess.CompletedProcess(cmd, 0, stdout=diff_by_worktree.get(wt, ""), stderr="")
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    run.calls = calls  # type: ignore[attr-defined]
+    return run
+
+
+def _two_worker_summary(wt0: str = "/tmp/wt-0", wt1: str = "/tmp/wt-1") -> list[dict[str, object]]:
+    return [
+        {"name": "worker-1", "worktree_path": wt0, "worktree_branch": "omc-team/active/worker-1"},
+        {"name": "worker-2", "worktree_path": wt1, "worktree_branch": "omc-team/active/worker-2"},
+    ]
+
+
+def test_omc_multi_worker_captures_per_worker_diffs(monkeypatch, tmp_path: Path) -> None:
+    """Two workers, both passing → each worker's proposed diff is captured into its own
+    worker-{idx}/patch_artifact.json namespace (ADR 0095 PR-D)."""
+    monkeypatch.setenv(agent_loop.OMC_RUNNER_ACK_ENV, "1")
+    monkeypatch.setattr("time.sleep", lambda _: None)
+    repo = _write_repo(tmp_path)
+    _write_expanded_active_runner_fixture(repo, task_id="T-2026-1804", claimed_files=["foo.py", "bar.py"])
+    diff0 = "diff --git a/foo.py b/foo.py\n+a\n"
+    diff1 = "diff --git a/bar.py b/bar.py\n+b\n"
+    omc = _fake_omc_runner(summary_workers=_two_worker_summary())
+    git = _multi_worker_git_runner({"/tmp/wt-0": diff0, "/tmp/wt-1": diff1})
+
+    agent_loop.write_active_codex_runner(
+        execute=True, runner="omc", repo_root=repo, omc_runner=omc, git_runner=git,
+        read_agent="auto", task_id="T-2026-1804", max_parallel=2,
+    )
+
+    base = repo / "reports" / "agent_loop" / "active" / "omc_runs" / "omc-team"
+    w0 = json.loads((base / "worker-0" / "patch_artifact.json").read_text(encoding="utf-8"))
+    w1 = json.loads((base / "worker-1" / "patch_artifact.json").read_text(encoding="utf-8"))
+    assert w0["verdict"] == "proposed" and w0["diff"] == diff0
+    assert w1["verdict"] == "proposed" and w1["diff"] == diff1
+    assert w0["files"] == ["foo.py"] and w1["files"] == ["bar.py"]
+
+
+def test_omc_multi_worker_n_gt_1_standard_path_needs_human_selection(monkeypatch, tmp_path: Path) -> None:
+    """N>1 all-pass → the STANDARD active-apply path is a needs-human-selection BLOCKED artifact
+    (no auto-consume), while each per-worker proposed is preserved (ADR 0095 PR-D non-goal:
+    automatic promotion)."""
+    monkeypatch.setenv(agent_loop.OMC_RUNNER_ACK_ENV, "1")
+    monkeypatch.setattr("time.sleep", lambda _: None)
+    repo = _write_repo(tmp_path)
+    _write_expanded_active_runner_fixture(repo, task_id="T-2026-1804", claimed_files=["foo.py", "bar.py"])
+    omc = _fake_omc_runner(summary_workers=_two_worker_summary())
+    git = _multi_worker_git_runner({
+        "/tmp/wt-0": "diff --git a/foo.py b/foo.py\n+a\n",
+        "/tmp/wt-1": "diff --git a/bar.py b/bar.py\n+b\n",
+    })
+
+    result = agent_loop.write_active_codex_runner(
+        execute=True, runner="omc", repo_root=repo, omc_runner=omc, git_runner=git,
+        read_agent="auto", task_id="T-2026-1804", max_parallel=2,
+    )
+
+    assert result.decision == "blocked"
+    assert any("needs human selection" in b.lower() for b in result.blockers), result.blockers
+    standard = repo / "reports" / "agent_loop" / "active" / "patch_runs" / "implementer" / "patch_artifact.json"
+    std = json.loads(standard.read_text(encoding="utf-8"))
+    assert std["verdict"] == "blocked"
+    assert std.get("needs_human_selection") is True
+    assert std["diff"] == ""  # no candidate auto-fed to the standard path
+    # Per-worker proposals are still on disk for a human to promote.
+    base = repo / "reports" / "agent_loop" / "active" / "omc_runs" / "omc-team"
+    assert json.loads((base / "worker-0" / "patch_artifact.json").read_text())["verdict"] == "proposed"
+    assert json.loads((base / "worker-1" / "patch_artifact.json").read_text())["verdict"] == "proposed"
+
+
+def test_omc_multi_worker_blocks_when_one_worker_merge_base_fails(monkeypatch, tmp_path: Path) -> None:
+    """If ANY worker's merge-base fails, the WHOLE run is blocked fail-closed (no partial success)."""
+    monkeypatch.setenv(agent_loop.OMC_RUNNER_ACK_ENV, "1")
+    monkeypatch.setattr("time.sleep", lambda _: None)
+    repo = _write_repo(tmp_path)
+    _write_expanded_active_runner_fixture(repo, task_id="T-2026-1804", claimed_files=["foo.py", "bar.py"])
+    omc = _fake_omc_runner(summary_workers=_two_worker_summary())
+    # worker-1 (/tmp/wt-1) merge-base fails.
+    git = _multi_worker_git_runner(
+        {"/tmp/wt-0": "diff --git a/foo.py b/foo.py\n+a\n", "/tmp/wt-1": "diff --git a/bar.py b/bar.py\n+b\n"},
+        merge_base_fail_worktrees=frozenset({"/tmp/wt-1"}),
+    )
+
+    result = agent_loop.write_active_codex_runner(
+        execute=True, runner="omc", repo_root=repo, omc_runner=omc, git_runner=git,
+        read_agent="auto", task_id="T-2026-1804", max_parallel=2,
+    )
+
+    assert result.decision == "blocked"
+    assert any("merge-base" in b.lower() for b in result.blockers), result.blockers
+    # The standard path is NOT a proposed artifact (fail-closed, no partial success).
+    standard = repo / "reports" / "agent_loop" / "active" / "patch_runs" / "implementer" / "patch_artifact.json"
+    assert json.loads(standard.read_text(encoding="utf-8"))["verdict"] == "blocked"
+
+
+def test_omc_multi_worker_reaudits_privacy_per_worker(monkeypatch, tmp_path: Path) -> None:
+    """A private real100 path in ONE worker's diff fails the per-worker privacy re-audit and
+    blocks the whole run (uncontrolled-worker fail-closed)."""
+    monkeypatch.setenv(agent_loop.OMC_RUNNER_ACK_ENV, "1")
+    monkeypatch.setattr("time.sleep", lambda _: None)
+    repo = _write_repo(tmp_path)
+    _write_expanded_active_runner_fixture(repo, task_id="T-2026-1804", claimed_files=["foo.py", "bar.py"])
+    omc = _fake_omc_runner(summary_workers=_two_worker_summary())
+    # worker-1 leaks a private real100 artifact path.
+    git = _multi_worker_git_runner({
+        "/tmp/wt-0": "diff --git a/foo.py b/foo.py\n+a\n",
+        "/tmp/wt-1": "diff --git a/bar.py b/bar.py\n+# see reports/real100/baseline.aggregate.json\n",
+    })
+
+    result = agent_loop.write_active_codex_runner(
+        execute=True, runner="omc", repo_root=repo, omc_runner=omc, git_runner=git,
+        read_agent="auto", task_id="T-2026-1804", max_parallel=2,
+    )
+
+    assert result.decision == "blocked"
+    assert any("privacy:" in b for b in result.blockers), result.blockers
+    standard = repo / "reports" / "agent_loop" / "active" / "patch_runs" / "implementer" / "patch_artifact.json"
+    standard_text = standard.read_text(encoding="utf-8")
+    assert "reports/real100" not in standard_text
+    assert "baseline.aggregate.json" not in standard_text
+
+
+def test_omc_multi_worker_never_passes_auto_merge(monkeypatch, tmp_path: Path) -> None:
+    """No omc invocation in a multi-worker run ever carries --auto-merge."""
+    monkeypatch.setenv(agent_loop.OMC_RUNNER_ACK_ENV, "1")
+    monkeypatch.setattr("time.sleep", lambda _: None)
+    repo = _write_repo(tmp_path)
+    _write_expanded_active_runner_fixture(repo, task_id="T-2026-1804", claimed_files=["foo.py", "bar.py"])
+    omc = _fake_omc_runner(summary_workers=_two_worker_summary())
+    git = _multi_worker_git_runner({
+        "/tmp/wt-0": "diff --git a/foo.py b/foo.py\n+a\n",
+        "/tmp/wt-1": "diff --git a/bar.py b/bar.py\n+b\n",
+    })
+
+    agent_loop.write_active_codex_runner(
+        execute=True, runner="omc", repo_root=repo, omc_runner=omc, git_runner=git,
+        read_agent="auto", task_id="T-2026-1804", max_parallel=2,
+    )
+
+    assert all("--auto-merge" not in c["cmd"] for c in omc.calls), (
+        "omc multi-worker must NEVER pass --auto-merge"
+    )
+
+
+# --- PR-D: byte-identical preservation (codex default + omc N==1) ---
+
+
+def test_codex_runner_default_never_enters_omc_path(monkeypatch, tmp_path: Path) -> None:
+    """runner="codex" (default) must NEVER touch the omc path, even if an omc_runner is injected.
+
+    The injected stub records every call; zero calls proves the codex fork is byte-identical."""
+    monkeypatch.setenv(agent_loop.OMC_RUNNER_ACK_ENV, "1")  # ack on to rule out the ack-gate masking it
+    repo = _write_repo(tmp_path)
+    _write_expanded_active_runner_fixture(repo)
+    omc = _fake_omc_runner()
+
+    agent_loop.write_active_codex_runner(
+        execute=False,  # dry-run: no real codex spawn either
+        runner="codex",
+        repo_root=repo,
+        omc_runner=omc,
+    )
+
+    assert omc.calls == [], "codex runner must never invoke the omc runner"
+
+
+def test_omc_single_worker_standard_path_byte_compat(monkeypatch, tmp_path: Path) -> None:
+    """ADR 0095 PR-D byte-compat: omc N==1 (read_agent default → single codex lane) writes the
+    SAME proposed standard-path artifact as the pre-PR-D single-worker path, and does NOT create
+    any worker-N/ namespace."""
+    monkeypatch.setenv(agent_loop.OMC_RUNNER_ACK_ENV, "1")
+    monkeypatch.setattr("time.sleep", lambda _: None)
+    repo = _write_repo(tmp_path)
+    _write_expanded_active_runner_fixture(repo, task_id="T-2026-1804")
+    diff = "diff --git a/foo.py b/foo.py\n--- a/foo.py\n+++ b/foo.py\n@@ -1 +1,2 @@\n line\n+new line\n"
+    omc = _fake_omc_runner()  # default single-worker summary
+
+    result = agent_loop.write_active_codex_runner(
+        execute=True, runner="omc", repo_root=repo, omc_runner=omc,
+        git_runner=_fake_git_runner(diff_stdout=diff), task_id="T-2026-1804",
+    )
+
+    assert result.decision == "completed"
+    standard = repo / "reports" / "agent_loop" / "active" / "patch_runs" / "implementer" / "patch_artifact.json"
+    artifact = json.loads(standard.read_text(encoding="utf-8"))
+    assert artifact["verdict"] == "proposed"
+    assert artifact["agent"] == "omc"
+    assert artifact["files"] == ["foo.py"]
+    assert artifact["diff"] == diff
+    # N==1 must NOT create a worker-0/ namespace (byte-identical with the canonical path).
+    base = repo / "reports" / "agent_loop" / "active" / "omc_runs" / "omc-team"
+    assert not (base / "worker-0").exists(), "N==1 must not write a per-worker namespace"
+    # The run-specific artifact_path carries the proposed exactly as before.
+    run_artifact = json.loads((base / "patch_artifact.json").read_text(encoding="utf-8"))
+    assert run_artifact["verdict"] == "proposed" and run_artifact["diff"] == diff
+
+
+# --- PR-D adversarial fixes (HIGH-1/2/3 + LOW-1) ---
+
+
+def test_omc_heartbeat_invalidation_failure_overwrites_standard_proposed(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """HIGH-1: when heartbeat invalidation fails AFTER a proposed artifact was already written
+    to the standard path, the standard path AND run-specific artifact path must be overwritten
+    to blocked.  active-apply must not be able to consume the proposed diff from a run whose
+    heartbeat invalidation then failed."""
+    monkeypatch.setenv(agent_loop.OMC_RUNNER_ACK_ENV, "1")
+    monkeypatch.setattr("time.sleep", lambda _: None)
+    repo = _write_repo(tmp_path)
+    _write_expanded_active_runner_fixture(repo, task_id="T-2026-1804")
+    diff = "diff --git a/foo.py b/foo.py\n+x\n"
+    omc = _fake_omc_runner(summary_worktree_path=str(tmp_path / "fake-wt"))
+    # Simulate heartbeat invalidation failure AFTER capture succeeds.
+    monkeypatch.setattr(
+        agent_loop,
+        "_invalidate_omc_blocking_gate_heartbeats",
+        lambda **kwargs: ([], "registry write failed: [Errno 13] Permission denied"),
+    )
+
+    result = agent_loop.write_active_codex_runner(
+        execute=True, runner="omc", repo_root=repo, omc_runner=omc,
+        git_runner=_fake_git_runner(diff_stdout=diff), task_id="T-2026-1804",
+    )
+
+    assert result.decision == "blocked", f"expected blocked; got {result.decision!r}"
+    active = repo / "reports" / "agent_loop" / "active"
+    standard = active / "patch_runs" / "implementer" / "patch_artifact.json"
+    run_artifact = active / "omc_runs" / "omc-team" / "patch_artifact.json"
+    # Both paths must be BLOCKED — not proposed (HIGH-1 fix).
+    std = json.loads(standard.read_text(encoding="utf-8"))
+    assert std["verdict"] == "blocked", (
+        f"standard path must be blocked after invalidation failure; got {std['verdict']!r}"
+    )
+    assert "proposed" not in standard.read_text(encoding="utf-8"), (
+        "standard path must not contain a proposed artifact after invalidation failure"
+    )
+    run_art = json.loads(run_artifact.read_text(encoding="utf-8"))
+    assert run_art["verdict"] == "blocked", (
+        f"run-specific artifact must be blocked after invalidation failure; got {run_art['verdict']!r}"
+    )
+
+
+def test_omc_heartbeat_invalidation_failure_overwrites_per_worker_proposed(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """HIGH-1 (N>1 variant): when a N>1 all-pass run writes per-worker proposed artifacts and
+    THEN heartbeat invalidation fails, ALL per-worker artifacts must be overwritten to blocked."""
+    monkeypatch.setenv(agent_loop.OMC_RUNNER_ACK_ENV, "1")
+    monkeypatch.setattr("time.sleep", lambda _: None)
+    repo = _write_repo(tmp_path)
+    _write_expanded_active_runner_fixture(repo, task_id="T-2026-1804", claimed_files=["foo.py", "bar.py"])
+    omc = _fake_omc_runner(summary_workers=_two_worker_summary())
+    git = _multi_worker_git_runner({
+        "/tmp/wt-0": "diff --git a/foo.py b/foo.py\n+a\n",
+        "/tmp/wt-1": "diff --git a/bar.py b/bar.py\n+b\n",
+    })
+    monkeypatch.setattr(
+        agent_loop,
+        "_invalidate_omc_blocking_gate_heartbeats",
+        lambda **kwargs: ([], "registry write failed"),
+    )
+
+    result = agent_loop.write_active_codex_runner(
+        execute=True, runner="omc", repo_root=repo, omc_runner=omc, git_runner=git,
+        read_agent="auto", task_id="T-2026-1804", max_parallel=2,
+    )
+
+    assert result.decision == "blocked"
+    base = repo / "reports" / "agent_loop" / "active" / "omc_runs" / "omc-team"
+    # Per-worker artifacts must be BLOCKED (not proposed) after late invalidation failure.
+    for widx in (0, 1):
+        wart_path = base / f"worker-{widx}" / "patch_artifact.json"
+        assert wart_path.exists(), f"worker-{widx} artifact should exist"
+        wart = json.loads(wart_path.read_text(encoding="utf-8"))
+        assert wart["verdict"] == "blocked", (
+            f"worker-{widx} artifact must be blocked after invalidation failure; "
+            f"got {wart['verdict']!r}"
+        )
+
+
+def test_omc_requested_multi_worker_but_summary_missing_blocks_fail_closed(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """HIGH-2: when N>1 workers are requested but the omc summary reports no workers list,
+    the run must be blocked fail-closed — NOT a single-worker proposed falldown."""
+    monkeypatch.setenv(agent_loop.OMC_RUNNER_ACK_ENV, "1")
+    monkeypatch.setattr("time.sleep", lambda _: None)
+    repo = _write_repo(tmp_path)
+    _write_expanded_active_runner_fixture(repo, task_id="T-2026-1804", claimed_files=["foo.py", "bar.py"])
+    # Summary with NO workers list but terminal-success task counts.
+    omc = _fake_omc_runner(summary_workers=[])  # empty list → no workers reported
+    git = _multi_worker_git_runner({})
+
+    result = agent_loop.write_active_codex_runner(
+        execute=True, runner="omc", repo_root=repo, omc_runner=omc, git_runner=git,
+        read_agent="auto", task_id="T-2026-1804", max_parallel=2,
+    )
+
+    assert result.decision == "blocked", (
+        f"expected blocked when N>1 requested but no workers reported; got {result.decision!r}"
+    )
+    assert any("no workers" in b.lower() or "requested" in b.lower() for b in result.blockers), (
+        f"expected a blocker about missing workers; blockers={result.blockers}"
+    )
+    standard = repo / "reports" / "agent_loop" / "active" / "patch_runs" / "implementer" / "patch_artifact.json"
+    assert json.loads(standard.read_text(encoding="utf-8"))["verdict"] == "blocked", (
+        "standard path must be blocked (not a single-worker proposed falldown)"
+    )
+
+
+def test_omc_partial_worker_capture_blocks(monkeypatch, tmp_path: Path) -> None:
+    """HIGH-2 (partial-capture guard): N=2 requested, summary reports 1 worker — partial
+    capture must be blocked fail-closed rather than promoting a partial result."""
+    monkeypatch.setenv(agent_loop.OMC_RUNNER_ACK_ENV, "1")
+    monkeypatch.setattr("time.sleep", lambda _: None)
+    repo = _write_repo(tmp_path)
+    _write_expanded_active_runner_fixture(repo, task_id="T-2026-1804", claimed_files=["foo.py", "bar.py"])
+    # Summary reports only 1 worker (partial), but the mix resolves to 2.
+    one_worker = [{"name": "worker-1", "worktree_path": "/tmp/wt-0", "worktree_branch": "b"}]
+    omc = _fake_omc_runner(summary_workers=one_worker)
+    git = _multi_worker_git_runner({"/tmp/wt-0": "diff --git a/foo.py b/foo.py\n+a\n"})
+
+    result = agent_loop.write_active_codex_runner(
+        execute=True, runner="omc", repo_root=repo, omc_runner=omc, git_runner=git,
+        read_agent="auto", task_id="T-2026-1804", max_parallel=2,
+    )
+
+    assert result.decision == "blocked", (
+        f"partial capture must be blocked; got {result.decision!r}"
+    )
+    assert any("partial" in b.lower() or "captured" in b.lower() for b in result.blockers), (
+        f"expected a blocker about partial capture; blockers={result.blockers}"
+    )
+
+
+def test_omc_stale_worker_artifacts_cleared_on_new_run_start(monkeypatch, tmp_path: Path) -> None:
+    """HIGH-3: stale worker-* artifacts from a PRIOR run in the same run_dir must be evicted
+    before each new run so a false human-promotion of an old proposed is impossible."""
+    monkeypatch.setenv(agent_loop.OMC_RUNNER_ACK_ENV, "1")
+    monkeypatch.setattr("time.sleep", lambda _: None)
+    repo = _write_repo(tmp_path)
+    _write_expanded_active_runner_fixture(repo, task_id="T-2026-1804")
+
+    # Pre-seed a stale proposed artifact at worker-0 (simulates a prior N>1 all-pass run).
+    active = repo / "reports" / "agent_loop" / "active"
+    stale_wdir = active / "omc_runs" / "omc-team" / "worker-0"
+    stale_wdir.mkdir(parents=True, exist_ok=True)
+    stale_artifact = stale_wdir / "patch_artifact.json"
+    stale_artifact.write_text(
+        json.dumps({"verdict": "proposed", "diff": "stale proposed from prior run", "agent": "omc"}),
+        encoding="utf-8",
+    )
+
+    # New N==1 run (default single-worker, no new worker-0 written).
+    diff = "diff --git a/foo.py b/foo.py\n+x\n"
+    omc = _fake_omc_runner()  # single-worker summary
+
+    result = agent_loop.write_active_codex_runner(
+        execute=True, runner="omc", repo_root=repo, omc_runner=omc,
+        git_runner=_fake_git_runner(diff_stdout=diff), task_id="T-2026-1804",
+    )
+
+    assert result.decision == "completed"
+    # Stale worker-0 directory must be gone (evicted before the new run launched).
+    assert not stale_wdir.exists(), (
+        "stale worker-0 directory from a prior run must be evicted before the new run"
+    )
+
+
+def test_omc_stale_worker_artifacts_cleared_on_pre_launch_blocked_execute_run(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """HIGH-3 codex round-2 fix: cleanup must run BEFORE any early-return, not only at the
+    team-launch site.  Prior N>1 all-pass run's proposed worker-* are evicted even when the
+    NEXT run is blocked by an early-return (e.g. no-ack).  execute=True is required for eviction
+    (dry-run is read-only per round-9 fix #2)."""
+    # Seed a stale proposed artifact at worker-0 (simulates a prior N>1 all-pass run).
+    active = tmp_path / "reports" / "agent_loop" / "active"
+    stale_wdir = active / "omc_runs" / "omc-team" / "worker-0"
+    stale_wdir.mkdir(parents=True, exist_ok=True)
+    stale_artifact = stale_wdir / "patch_artifact.json"
+    stale_artifact.write_text(
+        json.dumps({"verdict": "proposed", "diff": "stale proposed from prior run", "agent": "omc"}),
+        encoding="utf-8",
+    )
+
+    repo = _write_repo(tmp_path)
+    _write_expanded_active_runner_fixture(repo, task_id="T-2026-1804")
+    omc = _fake_omc_runner()
+
+    # execute=True + no-ack → early-return BEFORE the team-launch site.
+    # With the old cleanup position (at team-launch) this path bypassed eviction entirely.
+    monkeypatch.delenv(agent_loop.OMC_RUNNER_ACK_ENV, raising=False)
+
+    result = agent_loop.write_active_codex_runner(
+        execute=True, runner="omc", repo_root=repo, omc_runner=omc,
+    )
+
+    assert result.decision == "blocked"
+    assert agent_loop.OMC_RUNNER_REQUIRES_ACK_MESSAGE in result.blockers
+    # Stale worker-0 MUST be gone — evicted at function entry even though the run was
+    # blocked before reaching the team-launch site (codex round-2 HIGH-3 fix).
+    assert not stale_wdir.exists(), (
+        "stale worker-0 from a prior run must be evicted even when the new run is "
+        "pre-launch blocked (execute=True); old cleanup position missed this path"
+    )
+
+
+def test_omc_dry_run_preserves_stale_worker_artifacts_read_only(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """HIGH-3 dry-run invariant: execute=False (dry-run) is read-only (round-9 fix #2) and
+    must NOT evict stale worker-* artifacts.  The worker-* set during a dry-run reflects the
+    latest executed run; dry-run is not a promotion action, and the next executed run evicts."""
+    # Seed a stale proposed artifact at worker-0.
+    active = tmp_path / "reports" / "agent_loop" / "active"
+    stale_wdir = active / "omc_runs" / "omc-team" / "worker-0"
+    stale_wdir.mkdir(parents=True, exist_ok=True)
+    stale_artifact = stale_wdir / "patch_artifact.json"
+    stale_content = json.dumps({"verdict": "proposed", "diff": "stale from prior run"})
+    stale_artifact.write_text(stale_content, encoding="utf-8")
+
+    repo = _write_repo(tmp_path)
+    _write_expanded_active_runner_fixture(repo, task_id="T-2026-1804")
+    monkeypatch.setenv(agent_loop.OMC_RUNNER_ACK_ENV, "1")
+    omc = _fake_omc_runner()
+
+    # execute=False (dry-run) — must be read-only, no artifact eviction.
+    result = agent_loop.write_active_codex_runner(
+        execute=False, runner="omc", repo_root=repo, omc_runner=omc,
+    )
+
+    assert result.decision in {"planned", "blocked"}, (
+        f"dry-run should be planned or blocked; got {result.decision!r}"
+    )
+    # Stale worker-0 must STILL EXIST — dry-run is read-only.
+    assert stale_wdir.exists(), "dry-run must not evict stale worker-* (read-only invariant)"
+    assert stale_artifact.read_text(encoding="utf-8") == stale_content, (
+        "dry-run must not modify stale worker artifact content"
+    )
+
+
+def test_omc_worker_eviction_rmtree_failure_neutralizes_stale_to_blocked(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """HIGH-3 codex round-3: when shutil.rmtree fails during stale eviction, the artifact is
+    neutralized in-place by overwriting it with a blocked artifact so it can never be promoted.
+    The run must still proceed to launch (neutralize success → no blocker added).
+    A warning containing 'neutralized' must be emitted."""
+    monkeypatch.setenv(agent_loop.OMC_RUNNER_ACK_ENV, "1")
+    monkeypatch.setattr("time.sleep", lambda _: None)
+    repo = _write_repo(tmp_path)
+    _write_expanded_active_runner_fixture(repo, task_id="T-2026-1804")
+
+    # Seed a stale PROPOSED artifact at worker-0.
+    active = repo / "reports" / "agent_loop" / "active"
+    stale_wdir = active / "omc_runs" / "omc-team" / "worker-0"
+    stale_wdir.mkdir(parents=True, exist_ok=True)
+    stale_artifact = stale_wdir / "patch_artifact.json"
+    stale_artifact.write_text(
+        json.dumps({"verdict": "proposed", "diff": "stale diff from prior run", "agent": "omc"}),
+        encoding="utf-8",
+    )
+
+    # Patch shutil.rmtree to raise — simulates permission / file-lock failure.
+    original_rmtree = shutil.rmtree
+
+    def _fail_rmtree(path, *args, **kwargs):  # type: ignore[no-untyped-def]
+        if "worker-" in str(path):
+            raise OSError(f"[Errno 13] Permission denied: '{path}'")
+        return original_rmtree(path, *args, **kwargs)
+
+    monkeypatch.setattr(shutil, "rmtree", _fail_rmtree)
+
+    diff = "diff --git a/foo.py b/foo.py\n+x\n"
+    omc = _fake_omc_runner()
+
+    result = agent_loop.write_active_codex_runner(
+        execute=True, runner="omc", repo_root=repo, omc_runner=omc,
+        git_runner=_fake_git_runner(diff_stdout=diff), task_id="T-2026-1804",
+    )
+
+    # Run must proceed (neutralize succeeded → no blocker from eviction).
+    assert result.decision == "completed", (
+        f"run must complete when rmtree fails but neutralize succeeds; got {result.decision!r}"
+    )
+    # (a) stale artifact must be overwritten to blocked (not proposed).
+    assert stale_artifact.exists(), "stale artifact path should still exist (rmtree failed)"
+    neutralized = json.loads(stale_artifact.read_text(encoding="utf-8"))
+    assert neutralized["verdict"] == "blocked", (
+        f"stale artifact must be neutralized to blocked; got verdict={neutralized['verdict']!r}"
+    )
+    assert neutralized.get("diff", "") == "", "neutralized artifact must have empty diff"
+    # (b) a warning mentioning 'neutralized' must be emitted.
+    assert any("neutralized" in w.lower() for w in result.warnings), (
+        f"expected a 'neutralized' warning; warnings={result.warnings}"
+    )
+    # (c) no eviction-related blocker (neutralize succeeded).
+    assert not any("fail-closed" in b.lower() for b in result.blockers), (
+        f"no fail-closed blocker expected when neutralize succeeds; blockers={result.blockers}"
+    )
+
+
+def test_omc_worker_eviction_total_failure_blocks(monkeypatch, tmp_path: Path) -> None:
+    """HIGH-3 codex round-3 (double-failure): when BOTH rmtree AND neutralize fail, the run
+    must be blocked fail-closed with a blocker mentioning 'fail-closed'."""
+    monkeypatch.setenv(agent_loop.OMC_RUNNER_ACK_ENV, "1")
+    repo = _write_repo(tmp_path)
+    _write_expanded_active_runner_fixture(repo, task_id="T-2026-1804")
+
+    # Seed a stale proposed artifact at worker-0.
+    active = repo / "reports" / "agent_loop" / "active"
+    stale_wdir = active / "omc_runs" / "omc-team" / "worker-0"
+    stale_wdir.mkdir(parents=True, exist_ok=True)
+    stale_artifact = stale_wdir / "patch_artifact.json"
+    stale_artifact.write_text(
+        json.dumps({"verdict": "proposed", "diff": "stale diff"}),
+        encoding="utf-8",
+    )
+
+    # Patch rmtree to fail.
+    original_rmtree = shutil.rmtree
+
+    def _fail_rmtree(path, *args, **kwargs):  # type: ignore[no-untyped-def]
+        if "worker-" in str(path):
+            raise OSError(f"[Errno 13] Permission denied: '{path}'")
+        return original_rmtree(path, *args, **kwargs)
+
+    monkeypatch.setattr(shutil, "rmtree", _fail_rmtree)
+
+    # Patch _write_blocked_omc_artifact to fail ONLY for the stale worker artifact path,
+    # so _finalize_omc_runner_result (called later on the normal artifact_path) still works.
+    real_write_blocked = agent_loop._write_blocked_omc_artifact
+
+    def _fail_neutralize(artifact_path, **kwargs):  # type: ignore[no-untyped-def]
+        if "worker-" in str(artifact_path):
+            raise OSError("write denied — simulated neutralize failure")
+        return real_write_blocked(artifact_path, **kwargs)
+
+    monkeypatch.setattr(agent_loop, "_write_blocked_omc_artifact", _fail_neutralize)
+
+    omc = _fake_omc_runner()
+
+    result = agent_loop.write_active_codex_runner(
+        execute=True, runner="omc", repo_root=repo, omc_runner=omc,
+    )
+
+    assert result.decision == "blocked", (
+        f"double-failure must block the run fail-closed; got {result.decision!r}"
+    )
+    assert any("fail-closed" in b.lower() for b in result.blockers), (
+        f"expected a 'fail-closed' blocker; blockers={result.blockers}"
+    )
+
+
+def test_omc_single_worker_capture_blocker_has_no_worker_prefix(monkeypatch, tmp_path: Path) -> None:
+    """LOW-1 byte parity: N==1 run with a capture blocker (merge-base fail) must NOT prefix
+    the blocker message with 'worker 0:' — the pre-PR-D single-worker blocker format is
+    preserved for byte-identical compatibility."""
+    monkeypatch.setenv(agent_loop.OMC_RUNNER_ACK_ENV, "1")
+    monkeypatch.setattr("time.sleep", lambda _: None)
+    repo = _write_repo(tmp_path)
+    _write_expanded_active_runner_fixture(repo, task_id="T-2026-1804")
+    omc = _fake_omc_runner()  # single worker
+    git = _fake_git_runner(merge_base_sha="")  # empty sha → merge-base fail
+
+    result = agent_loop.write_active_codex_runner(
+        execute=True, runner="omc", repo_root=repo, omc_runner=omc,
+        git_runner=git, task_id="T-2026-1804",
+    )
+
+    assert result.decision == "blocked"
+    # LOW-1: single-worker blockers must NOT have the "worker 0:" prefix.
+    assert all(not b.startswith("worker 0:") for b in result.blockers), (
+        f"N==1 blockers must not have 'worker 0:' prefix; blockers={result.blockers}"
+    )
+    # Sanity: there IS a merge-base related blocker.
+    assert any("merge" in b.lower() or "base" in b.lower() or "diff" in b.lower() for b in result.blockers), (
+        f"expected a capture blocker; blockers={result.blockers}"
+    )
 
 
 # --- PR-L round-2 fix #3: task_id propagation to patch artifact regression ---

@@ -27,13 +27,32 @@ XYZ 병렬화를 도입하되 **X 는 default-dark(기본 X=1)**, **Y 는 defaul
 온다. `EXECUTE_SHIP=0`(ADR 0083) human-gated ship 은 불변이다.
 
 - **Y (omc multi-worker) default-on**: `_resolve_omc_worker_mix` 의 `total_workers=1` 핀 +
-  `assert ... == 1` 을 제거한다. worker 수는 agent_mix 정책에서 도출하되 `OMC_MAX_WORKERS`(기본
-  ≤3) ∧ M 으로 clamp 한다. [ADR 0087](./0087-opt-in-omc-team-parallel-runner.md) 이 미룬
+  `assert ... == 1` 을 제거한다(PR-D, #1804). worker 수는 agent_mix 정책에서 도출하되
+  `OMC_MAX_WORKERS`(기본 ≤3) ∧ M 으로 clamp 한다. **explicit `--read-agent claude`/`codex` override 는
+  single lane 유지**(`auto` 만 fan-out). [ADR 0087](./0087-opt-in-omc-team-parallel-runner.md) 이 미룬
   **multi-worker per-worker diff 캡처** 를 빌드하되 **NO auto-merge** 를 유지한다(캡처된 diff 는
   privacy 재감사 + scope 재부과 + 기존 active-apply / Conservative Gate / human-gated ship 으로만
-  라우팅 — main 미머지). 이미 ack-gated 된 `runner=omc` 경로에 **한정** 되므로 기본 `make 시작`
-  (codex runner)은 영향받지 않는다. omc 의 단일 기존 ack(`ACTIVE_OMC_RUNNER_ACK=1`)은 maintainer
-  결정에 따라 **N-fold egress 에 대한 consent** 로 수용한다.
+  라우팅 — main 미머지).
+  - **per-worker 캡처 + fail-closed 집계**: 각 worker 의 worktree 에서 merge-base→`git add -A`→
+    `git diff --cached`(ADR 0087 round-6/8/10 fix 시퀀스)로 diff 를 캡처해
+    `omc_runs/omc-team/worker-{idx}/patch_artifact.json` namespace 에 privacy+scope 재감사 후 기록한다.
+    어느 worker 라도 (a) merge-base 실패, (b) `add -A` 실패, (c) diff 실패, (d) privacy 위반,
+    (e) scope 위반 시 **전체 run blocked**(부분 성공 허용 금지; blocker 에 worker idx 기록).
+  - **정본(canonical) 정책**: **N==1 + 전 검사 통과** 는 표준 active-apply 경로
+    (`patch_runs/implementer/patch_artifact.json`)에 proposed 기록 — [ADR 0087](./0087-opt-in-omc-team-parallel-runner.md)
+    single-worker 동작과 **byte-identical**(worker-N namespace 미생성). **N>1 + 전 검사 통과** 는 표준
+    경로를 **"needs human selection" blocked artifact** 로 라우팅(active-apply 자동 소비 차단)하고
+    per-worker namespace 에 각 proposed 를 보존한다 — human 이 수동으로 하나를 표준 경로로 승격한다.
+    **자동 승격(auto-promotion)은 PR-D non-goal**(캡처 + 안전 라우팅까지만).
+  - **OMC_MAX_WORKERS ∧ M 은 best-effort cap**: `omc team` 은 단일 out-of-process subprocess 라
+    전역 semaphore(M)는 그 launch 에 **1 permit 만** 부과한다 — out-of-process omc worker 수를 in-process
+    semaphore 가 hard-enforce 하지 못한다. `OMC_MAX_WORKERS` 는 runner 가 요청하는 mix_spec worker
+    총수의 best-effort cap 이며, 잔여 N-fold egress 는 ack(`ACTIVE_OMC_RUNNER_ACK=1`)가 수용한다.
+  이미 ack-gated 된 `runner=omc` 경로에 **한정** 되므로 기본 `make 시작`(codex runner)은 영향받지 않는다.
+  omc 의 단일 기존 ack(`ACTIVE_OMC_RUNNER_ACK=1`)은 maintainer 결정에 따라 **N-fold egress 에 대한
+  consent** 로 수용한다. 전역 kill-switch `BIDMATE_AGENT_LOOP_PARALLELISM_KILL=1` 는 PR-D 에서
+  omc-scope 로 도입되어(`_resolve_omc_worker_mix`를 single worker 로 강등) 켜질 때 multi-worker 를
+  즉시 직렬 강등한다; X-task-pool 강등은 PR-E.
 - **X (task pool) DEFAULT X=1 (dark)**: 루프 body 를 `run_one_task` 로 refactor 하고
   `ThreadPoolExecutor` + locked `claim_next_task`(다음 task 선택을 atomic 하게)로 묶는다. race-free
   completed-count, convergent stop(#1719 teardown 재사용), per-task artifact namespacing(동시 task
@@ -81,6 +100,25 @@ completion(마지막 완료 이후 누적된 blocker)" 으로 재정의한다.
 - omc multi-worker 의 외부 egress 증폭은 best-effort 로 `OMC_MAX_WORKERS`(기본 ≤3) ∧ M 에 의해
   bounded 된다 — out-of-process worker 라 hard enforce 는 불가하며, 그 한계는 기존 ADR 0087 ack
   gate 와 ADR 0005/0061 데이터-경계가 보완한다(N-fold egress 는 ack consent 로 수용).
+- **per-worker 캡처 + fail-closed(PR-D, #1804)**: 각 worker diff 가 자체 worktree 에서 캡처되어
+  worker 별 privacy+scope 재감사를 통과해야만 per-worker artifact 로 이어진다. 어느 worker 라도
+  실패 시 전체 run 이 blocked 되어(부분 성공 없음) 한 worker 의 누출/범위이탈이 다른 worker 의
+  proposed 와 함께 active-apply 로 새지 않는다.
+- **정본 라우팅(PR-D)**: N==1 + 전 검사 통과는 ADR 0087 single-worker 경로와 byte-identical 하게
+  표준 active-apply 경로에 proposed 를 기록한다(worker-N namespace 미생성). N>1 + 전 검사 통과는
+  표준 경로가 "needs human selection" blocked artifact 가 되어 active-apply 자동 소비가 차단되고,
+  per-worker proposed 는 보존된다. **자동 승격은 의도적 non-goal** — human 이 정확히 하나를 표준
+  경로로 승격한다(NO auto-merge 불변).
+- **kill-switch omc-scope(PR-D)**: `BIDMATE_AGENT_LOOP_PARALLELISM_KILL=1` 가 `_resolve_omc_worker_mix`
+  를 single worker(`auto`→majority lane 1; explicit override 존중)로 강등한다 — 코드 revert 없이
+  multi-worker 를 즉시 끈다. X-task-pool 강등은 PR-E 에서 같은 env 로 확장된다.
+- **stale worker-* 증거 격리(PR-D, codex round-2/3 fix)**: stale `worker-{idx}/patch_artifact.json`
+  eviction 은 `_run_omc_team_runner` **함수 초입**(`execute=True` 가드)에서 모든 pre-launch
+  early-return 앞에 실행된다(이전에는 team-launch 직전에 위치해 no-ack / task-scope /
+  assignment / privacy pre-launch blocked early-return 이 eviction 을 우회했다). `execute=False`
+  (dry-run)는 round-9 fix #2 read-only 불변에 따라 제외. **eviction 실패는 warning-only 가 아니라
+  fail-closed**: `rmtree` 실패 시 stale artifact 를 in-place blocked 로 overwrite(blocked 는
+  apply-ineligible); overwrite 도 실패하면 run 을 blocked early-return(blocker 에 "fail-closed" 기록).
 - 가드-semantics 변경이 문서화된다 — consecutive-blocker 가 "since last completion" 으로 재정의
   되고, wall-clock 은 per-task budget 으로 재표현된다. exit-code 가드 SEMANTICS 는 보존.
 - redaction-scan per-task scoping 이 요구된다 — `_redact_active_*` glob 이 동시 task 를 교차
@@ -89,6 +127,15 @@ completion(마지막 완료 이후 누적된 blocker)" 으로 재정의한다.
   대신 invariant-based 테스트로 검증한다.
 - `EXECUTE_SHIP=0`(ADR 0083) 불변, X=1/M=8 byte-identical(ADR 0001), `agent_loop.py`
   `LOAD_BEARING_PATHS` 비승격 유지.
+- **pre-existing: `agent_loop` privacy redaction 이 `reports/real100/` 만 매치하고
+  `real100_v2*` 를 포함하지 않는다.** PR-D diff 밖(pre-existing) — 별도 follow-up issue 로 추적 권장.
+- **PR-D 한정 알려진 미결: artifact race + teardown-중 permit 조기 release(X=1 dark라 무해).**
+  `_finalize_omc_runner_result`(artifact write + heartbeat invalidation)와 teardown(shutdown)이
+  `global_concurrency_limiter().slot()` **밖**에서 실행된다. 모든 omc run 이 공유하는 단일 표준
+  경로(`patch_runs/implementer/patch_artifact.json`)가 있기 때문에 X>1 동시 omc run에서 artifact
+  last-writer-wins race 가 발생하고, teardown 진입 시점에 이미 permit 이 반환된 상태다. PR-D 는
+  X=1 dark 이므로 동시 omc run 이 없어 무해하다. PR-E 의 per-task artifact namespacing +
+  publication fence 가 slot-scope 를 확장하고 standard-path race 를 닫는다(X-enable 은 PR-F 전제).
 
 ## Verification
 

@@ -312,9 +312,18 @@ OMC의 `omc team`은 **진짜 동시** tmux worker를 per-worker git-worktree �
 
 ## Deferred / follow-up
 
-- **multi-worker diff 캡처/머지 보류.** worker 브랜치가 여럿일 때의 diff 합성 + 충돌 해소는
-  본 ADR 범위 밖이다. `_resolve_omc_worker_mix`가 총 worker=1을 강제하므로 현재 절대 다수
-  worker가 launch되지 않는다. 구현 완료 시 `_resolve_omc_worker_mix` 수정 + 이 ADR 업데이트.
+- **multi-worker diff 캡처/머지 — PR-D(#1804)에서 구현됨([ADR 0095](./0095-task-parallel-bounded-loop.md)).**
+  본 ADR 의 single-worker pin(`_resolve_omc_worker_mix`의 `total_workers=1` + `assert ... == 1`)은
+  ADR 0095 PR-D 가 **부분 supersede** 한다 — worker-count 결정만 번복되고, 본 ADR 의 거버넌스/ack
+  기계(ack fail-closed, no-auto-merge, privacy 재감사, scope 재부과, gate 라우팅)는 그대로 유지된다.
+  구현: `_resolve_omc_worker_mix`가 `read_agent="auto"`에서 agent_mix weight 를 worker 수로 매핑하고
+  `min(OMC_MAX_WORKERS, max_parallel)`로 clamp(explicit `claude`/`codex` override 는 single lane 유지).
+  per-worker diff 는 worker 별 merge-base→`add -A`→`diff --cached`로 캡처해 각
+  `omc_runs/omc-team/worker-{idx}/patch_artifact.json` namespace 에 privacy+scope 재감사 후 기록.
+  **fail-closed 집계**: 어느 worker 라도 캡처/재감사 실패 시 전체 run blocked(부분 성공 없음).
+  **정본 정책**: N==1 + 전 검사 통과는 본 ADR 의 표준 경로 proposed 기록과 byte-identical;
+  N>1 + 전 검사 통과는 표준 active-apply 경로를 "needs human selection" blocked artifact 로 라우팅
+  (per-worker proposed 는 보존, 자동 승격은 PR-D non-goal). **NO auto-merge** 불변.
 - **`_OMC_ENV_ALLOWLIST` 확장.** omc/tmux 런타임이 추가 환경 변수를 요구하면 허용리스트에
   추가 (단, 자격증명·토큰 류는 추가 금지).
 
