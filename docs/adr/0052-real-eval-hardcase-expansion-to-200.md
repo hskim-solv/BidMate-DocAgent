@@ -107,3 +107,9 @@ ADR 0044 의 incremental trajectory 대체. real-eval 케이스 cardinality 를 
 - PR #936 — `scripts/generate_real_cases.py` LLM-assisted generator (PR-A)
 - PR #939 — `random` backend + `single_chunk` preset (PR-5a)
 - Issue #942 — 본 ADR 구현 추적
+
+## Resolution
+
+**2026-06-02 — resolved in place.** 본 ADR 의 n=21→221 hardcase 확장 결정은 `scripts/generate_real_cases.py` (PR #936) 로 구현됐고 200 hardcase 가 생성·승인됐다 (실측 200/200 auto-pass). 다만 본 ADR 이 baseline 으로 삼은 **real100 n=221 aggregate 측정표면** (`reports/real100/baseline.aggregate.json`, `data/index/real100`, `make real-eval*`) 은 이후 CLAUDE.md 의 real100→real100_v2 정책으로 **archive-only** 가 되었다 (ADR 0005 / ban-list). 후속 변별력 측정은 `real100_v2` 표면 (`reports/real100_v2`, `data/index/real100_v2`, `make real-eval-v2-*`) 에서 수행한다.
+
+단일 대체 ADR 이 없어 (`real100_v2` 는 단일 ADR 이 아닌 CLAUDE.md 정책 텍스트로 도입) `Superseded by NNNN` 대신 resolve-in-place 로 처리한다. 본문의 real100 경로·n=221 분포·generator 절차는 결정 시점 기록으로 보존하며, distinguishing-power 측정 의도 자체는 real100_v2 가 계승한다. Status 는 historical 기록 보존을 위해 `Proposed` 로 둔다 — governance collector 가 본 `## Resolution` H2 로 SLA 해소(resolved_in_place)를 인식한다.
