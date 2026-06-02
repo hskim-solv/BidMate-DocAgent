@@ -1586,10 +1586,10 @@ ship-review-gate:
 	@$(PYTHON) scripts/claude-hooks/_ship_review_gate.py $(if $(PR),--pr "$(PR)",)
 
 worktree-cleanup-dry-run:
-	@bash .githooks/_pre-push-worktree-hygiene.sh --clean --dry-run
+	@bash .githooks/_pre-push-worktree-hygiene.sh --clean --dry-run --delete-branches
 
 worktree-cleanup:
-	@bash .githooks/_pre-push-worktree-hygiene.sh --clean --prune
+	@bash .githooks/_pre-push-worktree-hygiene.sh --clean --prune --delete-branches
 
 # ---------------------------------------------------------------------------
 # Self-review quarterly: meta-feedback loop over the past quarter.
