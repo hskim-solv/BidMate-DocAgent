@@ -16,7 +16,7 @@
 
 - `eval/*.local.yaml`은 [`.gitignore`](../.gitignore)에 등록되어 있다. 절대 git에 커밋하지 않는다.
 - 파일 내용에는 발주기관명, 사업명, 공고 번호, 문서 원문 일부 등 민감정보가 포함될 수 있다. PR 본문, 이슈 코멘트, 스크린샷, 외부 채널에 그대로 붙여 넣지 않는다.
-- 평가 결과(`reports/real100/eval_summary.json`)도 같은 이유로 git 추적 대상이 아니다. 공유가 필요하면 sanitized 요약(`docs/real-data/real-data-failure-taxonomy.md`처럼 카테고리별 빈도 + sanitized 증상)으로 옮긴다.
+- 평가 결과(`reports/real100_v2/eval_summary.json`)도 같은 이유로 git 추적 대상이 아니다. 공유가 필요하면 sanitized 요약(`docs/real-data/real-data-failure-taxonomy.md`처럼 카테고리별 빈도 + sanitized 증상)으로 옮긴다.
 - 공개 README의 성능 표는 실데이터 평가 결과로 갱신하지 않는다([이슈 #47 out-of-scope](real-data/real-data-failure-taxonomy.md)).
 
 ## 어디서 시작하나
@@ -35,7 +35,7 @@ cp eval/real_config.example.yaml eval/real_config.local.yaml
 |---|---|---|
 | `mode` | 평가 모드. 항상 `rag`. | 다른 값은 지원하지 않는다. |
 | `description` | 사람이 읽는 한 줄 설명. | 자유롭게. |
-| `index_dir` | 사용할 인덱스 경로. | 보통 `data/index/real100`. |
+| `index_dir` | 사용할 인덱스 경로. | 보통 private real100_v2 인덱스 경로(`data/index/real100_v2`). private real-eval 은 maintainer 전용 — ADR 0005 / CLAUDE.md ban-list 참조. |
 | `answer_policy` | 답변 가능/불가 케이스에 어떤 status를 기대하는지. | example과 동일하게 둔다. |
 | `ablation_runs` | 실행할 파이프라인 목록. 최소 1개. | 보통 `full` 하나로 충분. |
 | `cases` | 실제 케이스 목록. **이 부분이 핵심.** |  |
@@ -68,7 +68,7 @@ cp eval/real_config.example.yaml eval/real_config.local.yaml
 
 ## doc_id를 어떻게 알아내나
 
-[`scripts/build_index.py`](../scripts/build_index.py) 실행 후 `data/index/real100/ingestion_report.json`에 모든 row의 `doc_id`가 기록된다. 보통 `<공고 번호>-<공고 차수>` 형태이며, 공고 번호가 비어 있을 때만 파일명 stem이 사용된다(자세한 규칙은 [PDF/HWP ingestion](./real-data/real-data-ingestion.md#canonical-doc_id-rule)).
+[`scripts/build_index.py`](../scripts/build_index.py) 실행 후 `data/index/real100_v2/ingestion_report.json`에 모든 row의 `doc_id`가 기록된다. 보통 `<공고 번호>-<공고 차수>` 형태이며, 공고 번호가 비어 있을 때만 파일명 stem이 사용된다(자세한 규칙은 [PDF/HWP ingestion](./real-data/real-data-ingestion.md#canonical-doc_id-rule)).
 
 이 파일은 비공개이므로 평가 케이스 작성 외 용도로 외부에 공유하지 않는다.
 
@@ -146,7 +146,7 @@ PDF/HWP 인덱스의 한 사업에 대해 사업기간과 사업예산을 묻는
    python3 scripts/build_index.py \
      --metadata_csv data/data_list.csv \
      --files_dir data/files \
-     --output_dir data/index/real100 \
+     --output_dir data/index/real100_v2 \
      --embedding_backend hashing
    ```
 2. CSV 자체에 column / null / duplicate 문제가 없는지 먼저 본다.
@@ -154,17 +154,20 @@ PDF/HWP 인덱스의 한 사업에 대해 사업기간과 사업예산을 묻는
    python3 scripts/validate_data_list.py \
      --metadata_csv data/data_list.csv \
      --files_dir data/files \
-     --output_path reports/real100/data_list_validation.json
+     --output_path reports/real100_v2/data_list_validation.json
    ```
    exit code가 0이 아니면 인덱스 빌드 전에 fix한다(이슈 [#51](https://github.com/hskim-solv/BidMate-DocAgent/issues/51)).
 3. gold를 적용해 평가한다.
-   ```bash
+
+   > private real-eval 의 full-run 은 maintainer 전용이다(ADR 0005 / CLAUDE.md ban-list). 일반 기여자는 `make real-eval-v2-check` / `make real-eval-v2-inventory` 로 경로·산출물만 검증한다. maintainer 의 canonical full-run 은 `make real-eval-v2-chroma`(`-chroma-llm`); 아래는 그 내부 호출의 *설명용 비실행 스니펫*이다.
+
+   ```text
    python3 eval/run_eval.py \
      --config eval/real_config.local.yaml \
-     --index_dir data/index/real100 \
-     --output_dir reports/real100
+     --index_dir data/index/real100_v2 \
+     --output_dir reports/real100_v2
    ```
-4. `reports/real100/eval_summary.json`의 `by_query_type`과 `case_results`를 확인한다. 슬라이스별 빈도와 실패 패턴은 [`docs/real-data/real-data-failure-taxonomy.md`](./real-data/real-data-failure-taxonomy.md)와 동일한 분류 체계로 정리하면 트래킹이 쉽다.
+4. `reports/real100_v2/eval_summary.json`의 `by_query_type`과 `case_results`를 확인한다. 슬라이스별 빈도와 실패 패턴은 [`docs/real-data/real-data-failure-taxonomy.md`](./real-data/real-data-failure-taxonomy.md)와 동일한 분류 체계로 정리하면 트래킹이 쉽다.
 
 ## 자주 막히는 지점
 

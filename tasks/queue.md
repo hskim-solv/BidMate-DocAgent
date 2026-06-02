@@ -5339,3 +5339,9 @@ make check-branch
 - Spun off from T-2026-0029 page-aware re-measurement (issue #1764). The renderer's
   new `retrieval_integrity_suspect` signal in
   `reports/real100_v2/retrieval_diagnostics.aggregate.json` points at this task.
+
+## Follow-up (from docs-real100v2-policy-alignment, 2026-06-02)
+- [ ] (E) proposed-ADR SLA backlog (~16 proposed, earliest 0050=2026-06-16) — adr-lifecycle-manager 영역, governance-cycle work. 본 docs-정렬 PR에서 해소 안 함.
+- [ ] ADR 0052 status 재분류 (Proposed vs historical) — adr-lifecycle-manager 영역. 0029도 여전히 proposed.
+- [ ] Makefile `real-eval-with-judge: real-eval` (L1442) 가 비활성 stub(exit 2)에 의존 — 코드 불일치. 별 issue/PR(원하면). docs-only scope 밖.
+- [x] PR3 ADR-index integrity (verification-only): count recompute==README, 0074 own-row==1, dead-link==0 — 2026-06-02 실측. 0편집이면 빈 PR 미개설(증거 only); 깨짐 발견 시에만 fix PR3.

@@ -59,14 +59,7 @@ C3 가 두 knob 을 동시에 켜는 유일한 cell 이다. k=30 을 single pick
 
 private 100-doc / 21-case real-data 에서만 실행. raw 결과는 `artifacts/benchmarks/private100_*/` 에 로컬로만 둔다.
 
-```bash
-# Each cell — pipeline 이름만 바꿔서 4번 실행
-make real-eval PIPELINE=full                       # C1 baseline
-make real-eval PIPELINE=hybrid_bm25                # C2
-make real-eval PIPELINE=hybrid_bm25_k30_extra      # C3 (NEW row)
-make real-eval PIPELINE=hybrid_bm25_k30            # C4 (best-of 후보)
-make real-eval-delta BASE=full HEAD=hybrid_bm25_k30_extra
-```
+> **이 측정은 private real-eval(maintainer 전용)** 이다 — 절차·산출물 경계는 [ADR 0005](../adr/0005-eval-split-public-synthetic-private-local.md) / CLAUDE.md ban-list 관할. 레거시 `real-eval` make 타깃은 비활성(exit-2 stub)이며, maintainer 는 `real100_v2` 인벤토리/체크(`make real-eval-v2-inventory` / `make real-eval-v2-check`) 와 `make real-eval-delta` 로 cell 별 aggregate Δ 를 측정한다. 4-cell(C1–C4) 파이프라인 sweep 은 C1=full, C2=hybrid_bm25, C3=hybrid_bm25_k30_extra, C4=hybrid_bm25_k30 네 cell 로 구성되며, §3.3 결과는 측정 후 채운다.
 
 본 노트 §3.3 표에는 **aggregate Δ 만** 옮겨 적는다. per-case predictions / chunk IDs / 원문은 절대 commit 하지 않는다 ([docs/real-data/private-100-doc-experiments.md](../real-data/private-100-doc-experiments.md) 의 commit boundary).
 

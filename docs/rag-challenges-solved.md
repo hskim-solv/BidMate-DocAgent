@@ -1,6 +1,6 @@
 # RAG 시스템 개선 회고 — 3가지 핵심 문제와 해결
 
-> 이 문서는 BidMate-DocAgent 의 주요 RAG 개선 결정을 **STAR 형식** (Situation → Task → Action → Result) 으로 재서술한 포트폴리오 자산입니다. 모든 수치는 공개 fixture smoke 평가셋 (n=100) 기준이며, raw query·문서 원문은 [ADR 0005](adr/0005-eval-split-public-synthetic-private-local.md) 경계를 준수해 포함하지 않습니다.
+> 이 문서는 BidMate-DocAgent 의 주요 RAG 개선 결정을 **STAR 형식** (Situation → Task → Action → Result) 으로 재서술한 포트폴리오 자산입니다. 모든 수치는 private internal eval 집계(historical, 100-doc 계열; raw 는 ADR 0005 경계로 미포함) 기준이며, harness 동작 확인 전용 smoke(5-case)와는 별개입니다. raw query·문서 원문은 [ADR 0005](adr/0005-eval-split-public-synthetic-private-local.md) 경계를 준수해 포함하지 않습니다.
 
 ---
 
@@ -43,7 +43,7 @@ ablation 보호: `naive_baseline` preset 에는 `comparison_balance` 키가 없�
 ### Result
 
 ```
-ablation 비교 (n=100, agentic_full baseline):
+ablation 비교 (historical private internal eval, n=100, agentic_full baseline):
   no_metadata_first (balance off 대리 지표): Citation 0.679 ± 0.11
   full             (balance on):              Citation 0.905 ± 0.08
   → CI 비겹침(0.571–0.786 vs 0.821–0.976): 통계적으로 유의한 +22.6pp
@@ -126,7 +126,7 @@ answerable 중 partial:        0 → 4  (신규)
 
 Trade-off 관리: intended-abstention 4건 중 2건이 `partial` 로 오분류 → ADR 0004 에 회귀 테스트 케이스로 기록, 향후 fraction tuning 시 가이드라인으로 사용.
 
-Public fixture smoke eval (n=100): Abstention Accuracy **1.000** (naive_baseline 0.222 → agentic_full 1.000, +77.8pp). Public 에서의 완벽한 기권 정밀도가 real-data 조율의 결과.
+Private internal eval (historical n=100): Abstention Accuracy **1.000** (naive_baseline 0.222 → agentic_full 1.000, +77.8pp). 공개 smoke harness 는 5-case 확인 전용이며 이 수치와 별개. 완벽한 기권 정밀도가 real-data 조율의 결과.
 
 **포트폴리오 신호**: 실데이터 vs 합성 평가 gap 관리, config knob 설계, trade-off 를 문서화한 의사결정 이력.
 
