@@ -167,6 +167,20 @@ autonomy core).
    를 "since-last-completion(마지막 완료 이후 blocker)" 로 재정의, per-task wall-clock budget,
    convergent stop(#1719 teardown 재사용), per-task artifact namespacing(redaction-scan scoping
    포함). 기본 X=1 으로 dark 착륙.
+   - **2-PR 분할 — E1(#1817 path/privacy substrate) / E2(#1816 X task pool)**: privacy(누출
+     방지)와 throughput(동시 task) concern 을 분리하고 **gating-first**(누출 가드를 X 도입
+     *전에* 착륙)로 진행한다. **E1**(이 단계) = redaction-scan per-task scoping + expected-가드
+     확장 + `_finalize_omc_runner_result` `standard_path` 인자화 + per-task run-root helper +
+     slug sanitize 계약(alnum+`-`+`_`, task-scoped fail-closed) — 모두 X=1 byte-identical
+     인프라(ADR 0001), X>1 은 미도입. **E1 은 HIGH-4 를 slot/fence 로 닫지 않는다**:
+     `global_concurrency_limiter()` 는 BoundedSemaphore(M) capacity throttle 일 뿐 publication
+     mutex 가 아니므로(두 sibling run 이 둘 다 permit 을 쥔 채 같은 `standard_path` 를
+     last-writer-wins) fence 로 쓰면 안 된다 — E1 은 오직 `standard_path` 파라미터화 substrate 만
+     깐다(X=1 은 dark 라 동시 publication 자체가 없음). **E2** = `run_one_task` +
+     `ThreadPoolExecutor` + locked `claim_next_task` 가 E1 substrate 의 task_slug 를 per-task
+     **disjoint `standard_path`** 로 wiring + **M>1 동시 publication 회귀 테스트**(서로 다른 path
+     로 publish 하므로 충돌 없음을 증명) → 이것이 HIGH-4 의 실제 fix. E1 이 redaction cross-scan
+     위험(아래 Stop condition)을 닫으므로 E2 는 그 가드 위에서 안전하게 task pool 을 올린다.
 7. **PR-F — flip-on(X=2) + ADR Accepted + runbook**: X 기본을 2 로 올리고 ADR 0094/0095 를
    proposed → accepted 로 전환, [`docs/operations/active-agent-loop.md`](../operations/active-agent-loop.md)
    에 운영 runbook 추가.
@@ -248,13 +262,21 @@ PR-E 에서 기본 1 → PR-F 에서 2 로 flip 하므로, 회귀 시 X=1 으로
   patch_artifact.json` 이 disk 에 잔존 — human 이 오래된 proposed 를 promote 할 수 있다. 해소:
   eviction 을 **함수 초입(`execute=True` 가드)**으로 이동해 모든 early-return 앞에 실행. dry-run
   (`execute=False`)은 round-9 fix #2 read-only 불변으로 제외.
-- **Failure mode (PR-D 한정, X=1 dark 동안 무해): artifact race + teardown-중 permit 조기 release**.
+- **HIGH-4 (X>1-only artifact publication race; X=1 dark 동안 무해) — PR-D / E1 / E2 분할**.
   `_finalize_omc_runner_result`(artifact write + heartbeat invalidation)와 teardown(shutdown)이
   `global_concurrency_limiter().slot()` 밖에서 실행된다. 모든 omc run 이 공유하는 단일 표준
   경로(`patch_runs/implementer/patch_artifact.json`)에서 X>1 동시 omc run 시 last-writer-wins
-  race 가 발생하고, teardown 진입 전에 permit 이 이미 반환된다. PR-D 는 X=1 dark 이므로 동시
-  omc run 이 없어 **무해**하다. PR-E 의 per-task artifact namespacing + publication fence 가
-  slot-scope 를 확장하고 standard-path race 를 닫는다(X-enable 은 PR-F 전제).
+  race 가 발생한다.
+  - **PR-D**: 이 race 를 만들지만 X=1 dark(동시 omc run 0개)라 **무해**.
+  - **PR-E1**(이 단계): `standard_path` **파라미터화 substrate** 만 깐다 — slot/fence 가
+    **아니다**. semaphore 는 capacity throttle 이지 publication mutex 가 아니므로(M=1 이어도
+    teardown gap 이 launch/capture 순서와 publication 순서를 분리, M>1 이면 두 run 이 동시에
+    permit 을 쥔 채 같은 path 를 clobber) fence 로 쓰면 last-writer-wins data loss 를 못 막고
+    partial-write tearing 만 막는다. legacy 공유 경로에 flock 을 거는 것도 같은 이유로 오답이며,
+    E2 가 path 를 disjoint 로 만들면 redundant 가 된다. X=1 byte-identical(ADR 0001).
+  - **PR-E2**: E1 substrate 의 task_slug 를 per-task **disjoint `standard_path`** 로 wiring →
+    동시 task 가 서로 겹치지 않는 path 로 publish 하므로 race 자체가 사라진다 + **M>1 동시
+    publication 회귀 테스트**로 증명. 이것이 HIGH-4 의 실제 fix(X-enable 은 PR-F 전제).
 
 ## Observability
 

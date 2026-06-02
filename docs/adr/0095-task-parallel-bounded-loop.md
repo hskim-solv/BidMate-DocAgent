@@ -122,7 +122,18 @@ completion(마지막 완료 이후 누적된 blocker)" 으로 재정의한다.
 - 가드-semantics 변경이 문서화된다 — consecutive-blocker 가 "since last completion" 으로 재정의
   되고, wall-clock 은 per-task budget 으로 재표현된다. exit-code 가드 SEMANTICS 는 보존.
 - redaction-scan per-task scoping 이 요구된다 — `_redact_active_*` glob 이 동시 task 를 교차
-  스캔하지 않도록 PR-E 전에 trace + scoping 필요(미해결 시 PR-E 보류).
+  스캔하지 않도록 PR-E 전에 trace + scoping 필요(미해결 시 PR-E 보류). **PR-E1(#1817)에서
+  착륙**: `_redact_active_codex_runs`/`_redact_active_patch_runs` 에 `task_slug` 인자를 추가해
+  scan 을 `<active>/codex_runs|patch_runs/<slug>` subtree 로 좁히고, `expected` 가드를 "표준 경로
+  OR 그 직계 task-scoped 자식" 으로 확장한다(pre-E1 의 bare `runs != expected` 동치 검사는
+  task-scoped 경로를 *조용히 스킵* → private 데이터 누출의 가장 미묘한 함정이었다). `task_slug`
+  은 영숫자+`-_` 만 허용한다(`_sanitize_task_slug`) — `.`·`/` 를 포함한 그 외 문자는 모두
+  **제거**되므로 `.`/`..`/traversal 토큰이 애초에 살아남을 수 없고(charset 자체가 방어),
+  남는 글자가 없으면 `None` 을 반환한다. 미지정(`task_slug=None`) 시 표준 경로로 fallback
+  하되, **task-scoped intent(`task_slug is not None`)인데 sanitize 결과가 `None`(unsafe)이면
+  표준 경로를 스캔하지 않고 `0` 을 반환(fail-closed)** — task-scoped 모드에서 표준 스캔으로
+  fallback 하면 실제 per-task subtree 를 건너뛰어 누출이 되기 때문(E1 기본 = byte-identical,
+  E2 가 slug 주입해 활성).
 - guard trip 하에서 completed-set 이 비결정적(nondeterministic)일 수 있다 → count 기반 정확 일치
   대신 invariant-based 테스트로 검증한다.
 - `EXECUTE_SHIP=0`(ADR 0083) 불변, X=1/M=8 byte-identical(ADR 0001), `agent_loop.py`
@@ -134,8 +145,27 @@ completion(마지막 완료 이후 누적된 blocker)" 으로 재정의한다.
   `global_concurrency_limiter().slot()` **밖**에서 실행된다. 모든 omc run 이 공유하는 단일 표준
   경로(`patch_runs/implementer/patch_artifact.json`)가 있기 때문에 X>1 동시 omc run에서 artifact
   last-writer-wins race 가 발생하고, teardown 진입 시점에 이미 permit 이 반환된 상태다. PR-D 는
-  X=1 dark 이므로 동시 omc run 이 없어 무해하다. PR-E 의 per-task artifact namespacing +
-  publication fence 가 slot-scope 를 확장하고 standard-path race 를 닫는다(X-enable 은 PR-F 전제).
+  X=1 dark 이므로 동시 omc run 이 없어 무해하다. **이 race 는 slot/fence 가 아니라 PR-E2 의
+  per-task disjoint `standard_path` 로 닫힌다** — semaphore 는 capacity throttle 이지 publication
+  mutex 가 아니다(아래 PR-E1 항목). PR-E1 은 그 `standard_path` 파라미터화 substrate 만 깐다.
+- **PR-E1(#1817)에서 `standard_path` substrate 착륙 — HIGH-4 는 slot/fence 로 닫지 않는다**:
+  PR-E 가 2-PR 로 분할된다(E1=path/privacy substrate, E2=#1816 X task pool). E1 은 **오직**
+  표준 active-apply 경로를 `_finalize_omc_runner_result` 의 `standard_path` 인자로
+  parametrize 하고(4개의 하드코딩 재계산 제거 — late-blocker overwrite 포함), per-task
+  run-root helper(`_omc_task_run_root`)와 task-scoped redaction scoping(`task_slug`)을 도입한다.
+  **HIGH-4 의 X>1 publication race 를 slot/semaphore fence 로 닫지 않는다**:
+  `global_concurrency_limiter()` 는 `BoundedSemaphore(M)` **capacity throttle** 일 뿐
+  **publication mutex 가 아니다** — M=1 이어도 teardown gap 이 launch/capture 순서와 publication
+  순서를 분리하고, M>1 이면 두 sibling run 이 둘 다 permit 을 쥔 채 같은 `standard_path` 를
+  last-writer-wins clobber 한다(slot 은 exclusion 을 제공하지 못한다). legacy 공유 경로에 flock 을
+  거는 것도 같은 이유로 last-writer-wins data loss 를 못 막고 partial-write tearing 만 막으며,
+  E2 가 path 를 disjoint 로 만들면 redundant 가 된다. 따라서 E1 의 finalize 는 **어떤 slot 으로도
+  감싸지 않는다**(launch slot 은 ADR 0094 의 정당한 spawn throttle 로 유지). **E1 기본값
+  (standard_path 미지정, task_slug=None)은 기존 경로 계산식과 textually identical → X=1
+  byte-identical(ADR 0001); X=1 은 dark 라 동시 publication 자체가 없다**. HIGH-4 의 실제 fix 는
+  **PR-E2** 가 E1 substrate 의 task_slug 를 per-task **disjoint `standard_path`** 로 wiring +
+  **M>1 동시 publication 회귀 테스트**(서로 다른 path 로 publish → 충돌 없음 증명)로 닫는다
+  (X-enable 은 PR-F 전제).
 
 ## Verification
 

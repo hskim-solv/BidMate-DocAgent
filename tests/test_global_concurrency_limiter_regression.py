@@ -536,13 +536,23 @@ def test_blocker_break_straggler_inline_and_finally_release_no_over_release(tmp_
 
 
 # ---------------------------------------------------------------------------
-# (f) omc runner launch acquires EXACTLY one global slot (ADR 0095 PR-D)
+# (f) omc runner launch slot (ADR 0095 PR-D)
 #
 # ``omc team`` is a SINGLE out-of-process subprocess (it fans out its own tmux
 # workers out-of-process), so the in-process semaphore charges the launch ONE
-# permit — not one per omc worker. These tests pin that the omc path (a) acquires
-# exactly one slot for the launch+poll+capture span and (b) returns it on EVERY
-# exit (success or blocked), with no BoundedSemaphore over-release.
+# permit — not one per omc worker. The launch slot wraps launch + poll + per-worker
+# diff capture; teardown (omc shutdown) and the canonical-diff routing + finalize
+# run OUTSIDE the slot.
+#
+# (ADR 0095 PR-E1) There is NO second "publication" slot. An earlier E1 round wrapped
+# the finalize in a second slot as a "publication fence", but ``global_concurrency_limiter()``
+# is a BoundedSemaphore(M) capacity throttle, NOT a publication mutex — two sibling runs
+# can both hold a permit and still last-writer-wins the same ``standard_path``, so the slot
+# never provided exclusion. HIGH-4's X>1 publication race is closed honestly by PR-E2
+# injecting a per-task DISJOINT ``standard_path`` (the substrate this PR lays down), not by a
+# slot. So an omc run takes EXACTLY ONE launch slot: ``acquired == 1``, ``max_held == 1``.
+# These tests pin that 1-slot contract and that the permit is returned on EVERY exit
+# (success or blocked), with no BoundedSemaphore over-release.
 # ---------------------------------------------------------------------------
 
 
@@ -569,7 +579,9 @@ def _count_slot_acquisitions(monkeypatch: pytest.MonkeyPatch) -> dict[str, int]:
 
 
 def test_omc_launch_acquires_exactly_one_global_slot(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """A successful omc run takes exactly ONE global slot for its launch+poll+capture span."""
+    """A successful omc run takes EXACTLY ONE global slot (ADR 0095 PR-D launch slot): the
+    launch+poll+capture span. There is no publication slot (PR-E1 removed it — a semaphore is a
+    capacity throttle, not a publication mutex), so acquired == 1 and max_held == 1."""
     monkeypatch.setenv(agent_loop.OMC_RUNNER_ACK_ENV, "1")
     monkeypatch.setattr("time.sleep", lambda _: None)
     counter = _count_slot_acquisitions(monkeypatch)
@@ -584,22 +596,27 @@ def test_omc_launch_acquires_exactly_one_global_slot(monkeypatch: pytest.MonkeyP
     )
 
     assert result.decision == "completed"
-    assert counter["acquired"] == 1, f"omc launch must acquire exactly one slot, got {counter['acquired']}"
-    assert counter["max_held"] == 1, f"never more than one slot held, got {counter['max_held']}"
-    # The single permit was returned: the default-8 limiter is fully restored.
+    assert counter["acquired"] == 1, (
+        f"omc run takes exactly one launch slot (PR-E1 removed the publication slot), "
+        f"got {counter['acquired']}"
+    )
+    assert counter["max_held"] == 1, f"never more than one slot held simultaneously, got {counter['max_held']}"
+    # The launch permit was returned: the default-8 limiter is fully restored.
     _assert_all_permits_restored(agent_loop.global_concurrency_limiter())
 
 
 def test_omc_launch_releases_slot_on_blocked(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """A blocked omc run (merge-base failure) still releases its one slot exactly once — no
-    leak, no BoundedSemaphore over-release ValueError."""
+    """A blocked omc run (merge-base failure) still releases the launch slot exactly once — no
+    leak, no BoundedSemaphore over-release ValueError. The merge-base failure blocks inside the
+    launch slot; the finalize that writes the blocked artifact runs OUTSIDE any slot (PR-E1
+    removed the publication slot), so the run takes exactly one slot."""
     monkeypatch.setenv(agent_loop.OMC_RUNNER_ACK_ENV, "1")
     monkeypatch.setattr("time.sleep", lambda _: None)
     counter = _count_slot_acquisitions(monkeypatch)
     repo = _write_repo(tmp_path)
     _write_expanded_active_runner_fixture(repo, task_id="T-2026-1804")
     omc = _fake_omc_runner()
-    # merge_base_sha="" → merge-base fails → BLOCKED inside the slot span.
+    # merge_base_sha="" → merge-base fails → BLOCKED inside the launch slot span.
     git = _fake_git_runner(diff_stdout="diff --git a/foo.py b/foo.py\n+x\n", merge_base_sha="")
 
     result = agent_loop.write_active_codex_runner(
@@ -608,9 +625,13 @@ def test_omc_launch_releases_slot_on_blocked(monkeypatch: pytest.MonkeyPatch, tm
     )
 
     assert result.decision == "blocked"
-    assert counter["acquired"] == 1, f"blocked omc run still acquires its one slot, got {counter['acquired']}"
-    assert counter["held"] == 0, "the slot must be released on the blocked path (no leak)"
-    # No ValueError (pytest would fail); the single permit is fully restored.
+    assert counter["acquired"] == 1, (
+        f"blocked omc run takes exactly one launch slot (PR-E1 removed the publication slot), "
+        f"got {counter['acquired']}"
+    )
+    assert counter["max_held"] == 1, f"never more than one slot held simultaneously, got {counter['max_held']}"
+    assert counter["held"] == 0, "the launch slot must be released on the blocked path (no leak)"
+    # No ValueError (pytest would fail); the launch permit is fully restored.
     _assert_all_permits_restored(agent_loop.global_concurrency_limiter())
 
 
@@ -618,9 +639,10 @@ def test_omc_multi_worker_launch_acquires_exactly_one_global_slot(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """LOW-2 (ADR 0095 PR-D N>1 semaphore variant): a multi-worker (read_agent='auto') omc run
-    also charges the in-process semaphore EXACTLY ONE permit for the entire launch+poll+capture
-    span (omc fans out its own workers out-of-process, so in-process M = 1 permit).
-    max_held must remain 1 — never 2+ regardless of the number of omc workers captured."""
+    charges the in-process semaphore ONE permit for the launch span (omc fans out its own workers
+    out-of-process, so in-process M = 1 permit regardless of worker count). PR-E1 removed the
+    publication slot, so the per-worker artifact writes + needs-human-selection routing run OUTSIDE
+    any slot — acquired == 1 and max_held == 1 regardless of the number of omc workers captured."""
     monkeypatch.setenv(agent_loop.OMC_RUNNER_ACK_ENV, "1")
     monkeypatch.setattr("time.sleep", lambda _: None)
     counter = _count_slot_acquisitions(monkeypatch)
@@ -640,12 +662,13 @@ def test_omc_multi_worker_launch_acquires_exactly_one_global_slot(
     # N>1 all-pass → needs-human-selection blocked (the result decision).
     assert result.decision == "blocked"
     assert any("needs human selection" in b.lower() for b in result.blockers), result.blockers
-    # Semaphore: exactly one slot acquired for the entire multi-worker span.
+    # Semaphore: exactly one launch slot (PR-E1 removed the publication slot) — never held twice.
     assert counter["acquired"] == 1, (
-        f"omc multi-worker launch must acquire exactly one global slot, got {counter['acquired']}"
+        f"omc multi-worker run takes exactly one launch slot (PR-E1 removed the publication slot), "
+        f"got {counter['acquired']}"
     )
     assert counter["max_held"] == 1, (
         f"never more than one slot held simultaneously, got {counter['max_held']}"
     )
-    assert counter["held"] == 0, "the single slot must be released after the multi-worker run"
+    assert counter["held"] == 0, "the launch slot must be released after the multi-worker run"
     _assert_all_permits_restored(agent_loop.global_concurrency_limiter())
