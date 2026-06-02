@@ -71,16 +71,29 @@ def _case(
     }
 
 
-def _summary(cases: list[dict[str, object]]) -> dict[str, object]:
+def _summary(
+    cases: list[dict[str, object]],
+    page_meta: dict[str, object] | None = None,
+) -> dict[str, object]:
     return {
         "num_predictions": len(cases),
         "case_results": cases,
-        "index_citation_metadata_coverage": {
+        "index_citation_metadata_coverage": page_meta
+        or {
             "chunks_total": 100,
             "chunks_with_page_span": 0,
             "page_span_coverage": 0.0,
             "coverage_reason": "index_lacks_page_region_metadata",
         },
+    }
+
+
+def _page_aware_meta() -> dict[str, object]:
+    return {
+        "chunks_total": 100,
+        "chunks_with_page_span": 100,
+        "page_span_coverage": 1.0,
+        "coverage_reason": "page_aware_chunks",
     }
 
 
@@ -156,6 +169,103 @@ def test_build_diagnostics_classifies_retrieval_buckets() -> None:
     assert report["failure_buckets"]["answer_generation_or_abstention"] == 1
     assert report["page_metadata_blocker"]["status"] == "blocked_for_page_and_window_claims"
     assert report["next_task_decision"]["preferred_next_task"] == "T-2026-0032"
+    assert report["next_task_decision"]["signal"] == "candidate_budget_or_window"
+
+
+def test_page_blocker_available_branch_renders_resolved_prose() -> None:
+    case = _case(
+        gold_ids=["g1"],
+        gold_docs=["doc-a"],
+        retrieved_ids=["g1", "x1", "x2"],
+        retrieved_docs=["doc-a", "doc-x", "doc-y"],
+        recall5=1.0,
+        recall10=1.0,
+        mrr5=1.0,
+        ndcg5=1.0,
+    )
+    report = build_diagnostics(_summary([case], page_meta=_page_aware_meta()))
+
+    assert report["page_metadata_blocker"]["status"] == "available"
+    assert report["page_metadata_blocker"]["page_span_coverage"] == 1.0
+
+    rendered = render_markdown(report)
+    assert "the prior v2 page-metadata blocker is resolved" in rendered
+    assert "is unblocked for" in rendered
+    assert "ready rate is 0.0" not in rendered
+
+
+def test_recommend_retrieval_integrity_suspect_on_pool_collapse() -> None:
+    cases = [
+        _case(
+            gold_ids=[f"gold-{i}"],
+            gold_docs=[f"doc-g{i}"],
+            retrieved_ids=[f"x{i}-{j}" for j in range(10)],
+            retrieved_docs=[f"doc-x{i}-{j}" for j in range(10)],
+            recall5=0.0,
+            recall10=0.0,
+            mrr5=0.0,
+            ndcg5=0.0,
+        )
+        for i in range(24)
+    ]
+    report = build_diagnostics(_summary(cases, page_meta=_page_aware_meta()))
+
+    assert report["candidate_pool_coverage"]["all_gold_observed_rate"] == 0.0
+    assert report["next_task_decision"]["preferred_next_task"] == "T-2026-0075"
+    assert report["next_task_decision"]["signal"] == "retrieval_integrity_suspect"
+
+
+def test_recommend_preserves_reranker_signal_when_pool_healthy() -> None:
+    cases = [
+        _case(
+            gold_ids=[f"gold-{i}"],
+            gold_docs=[f"doc-g{i}"],
+            retrieved_ids=[f"x{i}-1", f"x{i}-2", f"x{i}-3", f"x{i}-4", f"x{i}-5", f"gold-{i}"],
+            retrieved_docs=[
+                f"doc-x{i}-1",
+                f"doc-x{i}-2",
+                f"doc-x{i}-3",
+                f"doc-x{i}-4",
+                f"doc-x{i}-5",
+                f"doc-g{i}",
+            ],
+            recall5=0.0,
+            recall10=1.0,
+            mrr5=0.0,
+            ndcg5=0.5,
+        )
+        for i in range(24)
+    ]
+    report = build_diagnostics(_summary(cases, page_meta=_page_aware_meta()))
+
+    assert report["candidate_pool_coverage"]["all_gold_observed_rate"] == 1.0
+    assert report["failure_buckets"]["ranked_too_low_after_top5"] == 24
+    assert report["next_task_decision"]["preferred_next_task"] == "T-2026-0032"
+    assert report["next_task_decision"]["signal"] == "candidate_budget_or_window"
+
+
+def test_small_collapsed_pool_stays_on_legacy_path() -> None:
+    # coverage_cases < MIN_CASES guard: a *small* collapsed-pool run (all_gold
+    # rate 0.0) must NOT trip the production-scale T-2026-0075 integrity signal,
+    # so tiny synthetic fixtures stay on the legacy reranker/window path.
+    cases = [
+        _case(
+            gold_ids=[f"gold-{i}"],
+            gold_docs=[f"doc-g{i}"],
+            retrieved_ids=[f"x{i}-{j}" for j in range(10)],
+            retrieved_docs=[f"doc-x{i}-{j}" for j in range(10)],
+            recall5=0.0,
+            recall10=0.0,
+            mrr5=0.0,
+            ndcg5=0.0,
+        )
+        for i in range(5)
+    ]
+    report = build_diagnostics(_summary(cases, page_meta=_page_aware_meta()))
+
+    assert report["candidate_pool_coverage"]["all_gold_observed_rate"] == 0.0
+    assert report["next_task_decision"]["preferred_next_task"] != "T-2026-0075"
+    assert report["next_task_decision"]["signal"] != "retrieval_integrity_suspect"
 
 
 def test_markdown_and_json_do_not_copy_private_strings() -> None:

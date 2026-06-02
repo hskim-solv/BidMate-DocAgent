@@ -3,10 +3,10 @@
 - Status: review
 - Owner role: Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer
 - Related task: `tasks/queue.md::T-2026-0029`
-- Related issue / PR: [#1622](https://github.com/hskim-solv/BidMate-DocAgent/issues/1622)
+- Related issue / PR: [#1622](https://github.com/hskim-solv/BidMate-DocAgent/issues/1622), reopened follow-up [#1764](https://github.com/hskim-solv/BidMate-DocAgent/issues/1764)
 - Related ADR: [ADR 0005](../adr/0005-eval-split-public-synthetic-private-local.md), [ADR 0076](../adr/0076-multi-chunk-evidence-failure-analysis-surface.md)
 - Created: 2026-05-28
-- Last updated: 2026-05-28
+- Last updated: 2026-06-02
 
 ## Problem Statement
 
@@ -77,6 +77,34 @@ chunk IDs, filenames, or local paths.
   conclusion based on legacy `real100`/v1/221/kordoc evidence.
 - Baseline or control affected: no; read-only renderer.
 - Benchmark/eval auditor required: yes.
+
+### 2026-06-02 page-aware re-measurement (issue #1764)
+
+The diagnostic was rerun (diagnostic-only) against the MiniLM page-aware
+`real100_v2` index (`real100_v2_checkpoint_minilm_pageaware`) after the naive
+baseline remeasurement reopened this task. Findings:
+
+- Page-span blocker resolved: `page_metadata_blocker.status` flipped
+  `blocked_for_page_and_window_claims` -> `available`, coverage 0.0 -> 1.0
+  (24613/24613 chunks). This unblocks T-2026-0031 for follow-up.
+- Doc-level retrieval regressed sharply versus the prior hashing-backed
+  `real100_v2` run: gold documents in per-case retrieved 61.4% -> 12.1%, gold
+  chunk-ids 44.1% -> 1.1%, while the retrieved document universe still contained
+  88.3% of gold documents (answerable-with-gold population, matching the 12.1%
+  denominator; 91.7% across all cases). This is a per-query retrieval/ranking collapse, not a
+  missing-index problem (this is an ALLOWED paired comparison — both sides are
+  `real100_v2`, no legacy `real100`/v1/221/kordoc evidence).
+- Renderer hardening (additive, no runtime behavior change): BUG #1 made the
+  page-blocker prose dynamic (was hardcoded "ready rate is 0.0"); BUG #2 added a
+  candidate-pool-collapse gate to `_recommend_next_task` that emits a
+  `retrieval_integrity_suspect` signal pointing at T-2026-0075 when gold is
+  observed in <5% of answerable cases, instead of recommending the reranker
+  (T-2026-0032) which only helps when gold IS in the pool but ranked low.
+- Root-cause investigation (query/index embedding parity + a missing
+  embedding/retrieval-backend provenance field in `eval_summary`) is spun off as
+  the new queue task T-2026-0075; NOT implemented in this PR.
+- Carry-forward caveat: `real100_v2` `eval_summary` has no embedding/retrieval-backend
+  provenance field, so query<->index embedding parity is unverified.
 
 ## Task Breakdown
 
