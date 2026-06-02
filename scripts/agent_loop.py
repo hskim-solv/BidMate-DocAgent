@@ -11876,6 +11876,40 @@ def _active_path(path: Path, *, repo_root: Path) -> Path:
 _ACTIVE_CODEX_RUN_REDACT_SUFFIXES = {".md", ".txt", ".json", ".jsonl", ".yaml", ".yml", ".log"}
 
 
+def _sanitize_task_slug(task_id: str | None) -> str | None:
+    """Sanitize a task id into a path-safe run-root slug (ADR 0095 PR-E1 substrate).
+
+    Returns ``None`` for a missing/blank/unsafe id so the caller keeps the legacy
+    (un-scoped) run-root — the X==1 byte-identical path. Only alnum + ``-`` + ``_`` survive
+    (``[A-Za-z0-9_-]``); every other character — crucially ``.`` and ``/`` — is dropped, so
+    the result can never be ``.`` / ``..`` nor contain a parent-dir component, and a
+    hostile/garbage task id can never escape the ``active/codex_runs/`` subtree via path
+    traversal. (Defense-in-depth: ``.`` is excluded from the charset precisely so no
+    traversal token can survive in the first place.) Mirrors ``_validate_session_id`` but
+    returns ``None`` instead of raising so the legacy path is the safe default.
+    """
+    if not isinstance(task_id, str):
+        return None
+    safe = re.sub(r"[^A-Za-z0-9_-]", "", _sanitize_inline_text(task_id))
+    if not safe:
+        return None
+    return safe
+
+
+def _omc_task_run_root(active_dir: Path, *, task_slug: str | None) -> Path:
+    """Resolve the omc/codex run-root for a task (ADR 0095 PR-E1 substrate).
+
+    ``task_slug is None`` -> legacy ``<active>/codex_runs`` (byte-identical with the pre-PR-E
+    single-task path; the X==1 default). A non-None slug -> ``<active>/codex_runs/<slug>`` so
+    concurrent X>1 tasks write into disjoint run-roots instead of colliding on one directory.
+    E1 callers pass ``task_slug=None`` (legacy); E2 wires the slug to activate per-task scoping.
+    """
+    base = active_dir / "codex_runs"
+    if task_slug is None:
+        return base
+    return base / task_slug
+
+
 def _redact_text_file_in_place(path: Path) -> bool:
     try:
         text = _read_text(path)
@@ -11888,10 +11922,57 @@ def _redact_text_file_in_place(path: Path) -> bool:
     return True
 
 
-def _redact_active_codex_runs(active_dir: Path, *, repo_root: Path) -> int:
+def _is_standard_or_task_scoped_run_root(runs: Path, expected: Path, *, repo_root: Path) -> bool:
+    """Privacy-critical guard (ADR 0095 PR-E1): accept ``runs`` iff it is the standard run-root
+    OR a *direct* task-scoped child subtree of it (``expected/<task_slug>``).
+
+    Pre-PR-E the guard was a bare ``runs != expected`` equality check, which would *silently
+    skip* every per-task path (``active/codex_runs/<slug>``) E2 introduces — leaving private
+    data un-redacted before it crosses the privacy gate. This widens the guard to the standard
+    path AND its direct children while keeping traversal defense: both paths are first run
+    through ``_safe_output_path`` (enforces the ``reports/agent_loop/`` containment + resolves
+    ``..``), and we additionally require the resolved ``runs`` to sit under ``repo_root`` and to
+    have ``expected`` as its resolved parent (direct child only — no deeper / sibling escape).
+    """
+    runs_resolved = runs.resolve()
+    expected_resolved = expected.resolve()
+    repo_resolved = repo_root.resolve()
+    # Containment: the redaction target must stay under the repo root (defense-in-depth on top
+    # of the _safe_output_path reports/agent_loop/ fence already applied by the caller).
+    try:
+        runs_resolved.relative_to(repo_resolved)
+    except ValueError:
+        return False
+    if runs_resolved == expected_resolved:
+        return True
+    # Direct task-scoped child only: active/codex_runs/<task_slug> (one level under expected).
+    return runs_resolved.parent == expected_resolved
+
+
+def _redact_active_codex_runs(active_dir: Path, *, repo_root: Path, task_slug: str | None = None) -> int:
+    """Redact the active codex-run artifacts before the privacy gate.
+
+    ``task_slug`` (ADR 0095 PR-E1 substrate): when ``None`` (the E1 default) this scans the
+    standard ``<active>/codex_runs`` directory — byte-identical with the pre-PR-E behaviour. When
+    a non-None slug is supplied (E2 wiring) it scopes the scan to that task's run-root
+    (``<active>/codex_runs/<slug>``) so a per-task redaction never cross-scans a concurrent task's
+    subtree. The slug is re-sanitized here (defense-in-depth). FAIL-CLOSED: in task-scoped mode
+    (``task_slug is not None``) an unsafe slug that sanitizes to ``None`` returns 0 WITHOUT
+    scanning — it must NOT silently fall back to the standard scan, which in task-scoped mode
+    would skip the real per-task data subtree (``<slug>``) and leave it un-redacted before the
+    privacy gate (leak). The legacy ``task_slug is None`` standard scan is unchanged (byte-identical).
+    """
+    if task_slug is not None:
+        safe_slug = _sanitize_task_slug(task_slug)
+        if safe_slug is None:
+            return 0  # fail-closed: task-scoped intent + unsafe slug -> never scan the standard path
+    else:
+        safe_slug = None
     runs = _safe_output_path(active_dir / "codex_runs", repo_root=repo_root)
+    if safe_slug is not None:
+        runs = _safe_output_path(runs / safe_slug, repo_root=repo_root)
     expected = _safe_output_path(repo_root / "reports" / "agent_loop" / "active" / "codex_runs", repo_root=repo_root)
-    if runs != expected or not runs.exists():
+    if not _is_standard_or_task_scoped_run_root(runs, expected, repo_root=repo_root) or not runs.exists():
         return 0
     paths = sorted(runs.rglob("*")) if runs.is_dir() else [runs]
     changed = 0
@@ -11903,10 +11984,27 @@ def _redact_active_codex_runs(active_dir: Path, *, repo_root: Path) -> int:
     return changed
 
 
-def _redact_active_patch_runs(active_dir: Path, *, repo_root: Path) -> int:
+def _redact_active_patch_runs(active_dir: Path, *, repo_root: Path, task_slug: str | None = None) -> int:
+    """Redact the active patch-run artifacts before the privacy gate.
+
+    ``task_slug`` (ADR 0095 PR-E1 substrate): mirrors ``_redact_active_codex_runs`` — ``None``
+    scans the standard ``<active>/patch_runs`` (byte-identical default), a non-None slug scopes
+    the scan to ``<active>/patch_runs/<slug>`` so concurrent X>1 tasks do not cross-scan.
+    FAIL-CLOSED: in task-scoped mode (``task_slug is not None``) an unsafe slug that sanitizes to
+    ``None`` returns 0 WITHOUT scanning — falling back to the standard scan would skip the real
+    per-task subtree and leak it past the privacy gate. ``task_slug is None`` is unchanged.
+    """
+    if task_slug is not None:
+        safe_slug = _sanitize_task_slug(task_slug)
+        if safe_slug is None:
+            return 0  # fail-closed: task-scoped intent + unsafe slug -> never scan the standard path
+    else:
+        safe_slug = None
     runs = _safe_output_path(active_dir / "patch_runs", repo_root=repo_root)
+    if safe_slug is not None:
+        runs = _safe_output_path(runs / safe_slug, repo_root=repo_root)
     expected = _safe_output_path(repo_root / "reports" / "agent_loop" / "active" / "patch_runs", repo_root=repo_root)
-    if runs != expected or not runs.exists():
+    if not _is_standard_or_task_scoped_run_root(runs, expected, repo_root=repo_root) or not runs.exists():
         return 0
     paths = sorted(runs.rglob("*")) if runs.is_dir() else [runs]
     changed = 0
@@ -13537,6 +13635,14 @@ def _run_omc_team_runner(
     omc_runs_path = runs_path.parent / "omc_runs"
     run_dir = omc_runs_path / session_id
     artifact_path = run_dir / "patch_artifact.json"
+    # (ADR 0095 PR-E1) standard active-apply consumption path, computed once and threaded into
+    # every ``_finalize_omc_runner_result`` call. E1 injects the LEGACY path (textually identical
+    # to finalize's default) so X==1 is byte-identical; E2 swaps this for a per-task path so
+    # concurrent X>1 runs publish into disjoint standard paths instead of racing one file.
+    standard_path = (
+        _active_path(DEFAULT_ACTIVE_LEASES, repo_root=repo_root).parent
+        / "patch_runs" / "implementer" / "patch_artifact.json"
+    )
     # HIGH-3 (codex round-2 fix): evict stale worker-* artifacts at function entry, BEFORE any
     # early-return, so EVERY execute=True path (no-ack, task-scope ambiguity, assignment missing,
     # privacy/scope pre-launch blocked, AND the normal launch path) starts from a clean slate.
@@ -13592,6 +13698,7 @@ def _run_omc_team_runner(
             registry_path=registry_path,
             assignments_path=assignments_path,
             runs_path=omc_runs_path,
+            standard_path=standard_path,
             artifact_path=artifact_path,
             diff_text="",
             task_id=task_id,
@@ -13620,6 +13727,7 @@ def _run_omc_team_runner(
             registry_path=registry_path,
             assignments_path=assignments_path,
             runs_path=omc_runs_path,
+            standard_path=standard_path,
             artifact_path=artifact_path,
             diff_text="",
             task_id=task_id,
@@ -13680,6 +13788,7 @@ def _run_omc_team_runner(
             registry_path=registry_path,
             assignments_path=assignments_path,
             runs_path=omc_runs_path,
+            standard_path=standard_path,
             artifact_path=artifact_path,
             diff_text="",
             task_id=task_id,
@@ -13722,6 +13831,7 @@ def _run_omc_team_runner(
             registry_path=registry_path,
             assignments_path=assignments_path,
             runs_path=omc_runs_path,
+            standard_path=standard_path,
             artifact_path=artifact_path,
             diff_text="",
             task_id=task_id,
@@ -13750,6 +13860,7 @@ def _run_omc_team_runner(
             registry_path=registry_path,
             assignments_path=assignments_path,
             runs_path=omc_runs_path,
+            standard_path=standard_path,
             artifact_path=artifact_path,
             diff_text="",
             task_id=None,
@@ -13801,6 +13912,7 @@ def _run_omc_team_runner(
             registry_path=registry_path,
             assignments_path=assignments_path,
             runs_path=omc_runs_path,
+            standard_path=standard_path,
             artifact_path=artifact_path,
             diff_text="",
             task_id=task_id,
@@ -13827,6 +13939,7 @@ def _run_omc_team_runner(
             registry_path=registry_path,
             assignments_path=assignments_path,
             runs_path=omc_runs_path,
+            standard_path=standard_path,
             artifact_path=artifact_path,
             diff_text="",
             task_id=task_id,
@@ -13868,6 +13981,7 @@ def _run_omc_team_runner(
             registry_path=registry_path,
             assignments_path=assignments_path,
             runs_path=omc_runs_path,
+            standard_path=standard_path,
             artifact_path=artifact_path,
             diff_text="",
             task_id=task_id,
@@ -13893,6 +14007,7 @@ def _run_omc_team_runner(
             registry_path=registry_path,
             assignments_path=assignments_path,
             runs_path=omc_runs_path,
+            standard_path=standard_path,
             artifact_path=artifact_path,
             diff_text="",
             task_id=task_id,
@@ -14150,6 +14265,18 @@ def _run_omc_team_runner(
             except Exception as exc:  # pragma: no cover - teardown best-effort
                 warnings.append(f"omc team shutdown warning: {exc}")
 
+    # (ADR 0095 PR-E1) HIGH-4 scope split — NO publication fence here. PR-E1 ships ONLY the
+    # ``standard_path`` parametrization substrate; it stays X==1 byte-identical, and X==1 is dark
+    # (no second task runs concurrently) so there is no concurrent publication to fence at all.
+    # HIGH-4's X>1 publication race (two omc runs last-writer-wins the same ``standard_path``) is
+    # NOT closed by a slot/semaphore: ``global_concurrency_limiter()`` is a BoundedSemaphore(M)
+    # capacity throttle (see ~1113), NOT a publication mutex — two sibling runs can both hold a
+    # permit and still clobber the same path, and even at M==1 the teardown gap separates
+    # launch/capture order from publication order. The honest fix is PR-E2 injecting a per-task
+    # DISJOINT ``standard_path`` (the substrate this PR lays down) so concurrent tasks publish to
+    # non-overlapping paths; a flock here would be wrong (on the legacy shared path it cannot
+    # prevent last-writer-wins, only partial-write tearing, and once E2 makes paths disjoint it is
+    # redundant). So E1 does NOT wrap the finalize in a slot.
     # (ADR 0095 PR-D) Canonical-diff routing from the per-worker captures.
     #   * N==1 + all-pass: feed the single worker's diff into the canonical finalize so the
     #     standard active-apply path gets the proposed artifact — byte-identical to the
@@ -14219,6 +14346,7 @@ def _run_omc_team_runner(
         registry_path=registry_path,
         assignments_path=assignments_path,
         runs_path=omc_runs_path,
+        standard_path=standard_path,
         artifact_path=artifact_path,
         diff_text=diff_text,
         task_id=task_id,
@@ -14549,6 +14677,7 @@ def _finalize_omc_runner_result(
     invalidate_heartbeats: bool,
     needs_human_selection: bool = False,
     worker_count: int = 1,
+    standard_path: Path | None = None,
 ) -> ActiveCodexRunnerResult:
     """Re-impose governance on the captured omc diff, write the patch_artifact.json, and map
     the result into an ActiveCodexRunnerResult (codex-patch-compatible shape).
@@ -14568,6 +14697,15 @@ def _finalize_omc_runner_result(
     blockers = list(blockers)
     warnings = list(warnings)
 
+    # (ADR 0095 PR-E1) standard active-apply consumption path. Parametrized so X>1 callers can
+    # supply a per-task path; the DEFAULT computes the legacy path EXACTLY as the four prior
+    # hardcoded recomputations did -> byte-identical when ``standard_path`` is unset (X==1).
+    if standard_path is None:
+        standard_path = (
+            _active_path(DEFAULT_ACTIVE_LEASES, repo_root=repo_root).parent
+            / "patch_runs" / "implementer" / "patch_artifact.json"
+        )
+
     # (ADR 0095 PR-D) N>1 multi-worker all-pass: route the standard + run-specific paths to a
     # needs-human-selection blocked artifact (per-worker proposals are preserved by the caller).
     # decision is forced blocked so active-apply will not auto-consume; this takes priority over
@@ -14585,7 +14723,6 @@ def _finalize_omc_runner_result(
             artifact_path, session_id=session_id, team_name=team_name,
             worker_count=worker_count, now=now,
         )
-        standard_path = _active_path(DEFAULT_ACTIVE_LEASES, repo_root=repo_root).parent / "patch_runs" / "implementer" / "patch_artifact.json"
         standard_path.parent.mkdir(parents=True, exist_ok=True)
         _write_needs_human_selection_artifact(
             standard_path, session_id=session_id, team_name=team_name,
@@ -14633,7 +14770,6 @@ def _finalize_omc_runner_result(
 
         # Mirror the artifact into the standard active-apply consumption path so the existing
         # integration-branch / Conservative-Gate path consumes it UNCHANGED (no auto-merge).
-        standard_path = _active_path(DEFAULT_ACTIVE_LEASES, repo_root=repo_root).parent / "patch_runs" / "implementer" / "patch_artifact.json"
         standard_path.parent.mkdir(parents=True, exist_ok=True)
         if decision != "blocked":
             standard_path.write_text(artifact_path.read_text(encoding="utf-8"), encoding="utf-8")
@@ -14660,7 +14796,6 @@ def _finalize_omc_runner_result(
     elif execute:
         artifact_path.parent.mkdir(parents=True, exist_ok=True)
         _write_blocked_omc_artifact(artifact_path, session_id=session_id, team_name=team_name, now=now)
-        standard_path = _active_path(DEFAULT_ACTIVE_LEASES, repo_root=repo_root).parent / "patch_runs" / "implementer" / "patch_artifact.json"
         standard_path.parent.mkdir(parents=True, exist_ok=True)
         _write_blocked_omc_artifact(standard_path, session_id=session_id, team_name=team_name, now=now)
 
@@ -14697,13 +14832,11 @@ def _finalize_omc_runner_result(
             # active-apply cannot consume a proposed diff that was produced in the same run
             # whose heartbeat invalidation then failed.  Also overwrite any per-worker
             # worker-{idx} artifacts written by a prior N>1 all-pass run in the same run_dir.
-            _late_blocker_standard_path = (
-                _active_path(DEFAULT_ACTIVE_LEASES, repo_root=repo_root).parent
-                / "patch_runs" / "implementer" / "patch_artifact.json"
-            )
-            _late_blocker_standard_path.parent.mkdir(parents=True, exist_ok=True)
+            # (PR-E1) reuse the parametrized ``standard_path`` so a per-task run overwrites ITS
+            # own standard path (not the legacy one) — byte-identical at X==1 (default path).
+            standard_path.parent.mkdir(parents=True, exist_ok=True)
             _write_blocked_omc_artifact(
-                _late_blocker_standard_path, session_id=session_id, team_name=team_name, now=now
+                standard_path, session_id=session_id, team_name=team_name, now=now
             )
             artifact_path.parent.mkdir(parents=True, exist_ok=True)
             _write_blocked_omc_artifact(

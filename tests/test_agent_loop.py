@@ -8242,6 +8242,209 @@ def test_omc_single_worker_standard_path_byte_compat(monkeypatch, tmp_path: Path
     assert run_artifact["verdict"] == "proposed" and run_artifact["diff"] == diff
 
 
+# --- ADR 0095 PR-E1: path/privacy substrate (redaction scoping + standard_path arg + run-root) ---
+
+
+def _active_dir(repo: Path) -> Path:
+    return repo / "reports" / "agent_loop" / "active"
+
+
+def _write_run_file(run_root: Path, name: str, text: str) -> Path:
+    run_root.mkdir(parents=True, exist_ok=True)
+    target = run_root / name
+    target.write_text(text, encoding="utf-8")
+    return target
+
+
+def test_redaction_scope_per_task_no_cross_scan(tmp_path: Path) -> None:
+    """ADR 0095 PR-E1: a task-scoped redaction (task_slug='task-a') must redact ONLY task-a's
+    run-root and leave a concurrent task-b run-root byte-for-byte untouched (no cross-scan)."""
+    repo = _write_repo(tmp_path)
+    active = _active_dir(repo)
+    private = "doc_id-123 leaked to active codex run\n"
+    a_file = _write_run_file(active / "codex_runs" / "task-a", "out.md", private)
+    b_file = _write_run_file(active / "codex_runs" / "task-b", "out.md", private)
+
+    changed = agent_loop._redact_active_codex_runs(active, repo_root=repo, task_slug="task-a")
+
+    assert changed == 1, "exactly task-a's one file should be redacted"
+    assert "[redacted-private-token]" in a_file.read_text(encoding="utf-8")
+    # task-b must be untouched — byte-identical to what was written (no cross-scan).
+    assert b_file.read_text(encoding="utf-8") == private
+
+
+def test_redaction_expected_guard_accepts_task_scoped_path(tmp_path: Path) -> None:
+    """Privacy-leak regression: a task-scoped run-root must NOT be silently skipped by the
+    expected-path guard — the private token must actually be redacted (the pre-PR-E bare equality
+    guard would have skipped it, leaking private data past the privacy gate)."""
+    repo = _write_repo(tmp_path)
+    active = _active_dir(repo)
+    leak = _write_run_file(
+        active / "codex_runs" / "T-2026-1817", "evidence.json", '{"question": "PRIVATE RAW QUERY"}\n'
+    )
+    # Patch-runs subtree too (mirror function).
+    patch_leak = _write_run_file(
+        active / "patch_runs" / "T-2026-1817", "patch.md", "reports/real100/case-7.json\n"
+    )
+
+    codex_changed = agent_loop._redact_active_codex_runs(active, repo_root=repo, task_slug="T-2026-1817")
+    patch_changed = agent_loop._redact_active_patch_runs(active, repo_root=repo, task_slug="T-2026-1817")
+
+    assert codex_changed == 1 and patch_changed == 1, "task-scoped paths must not be skipped"
+    assert "PRIVATE RAW QUERY" not in leak.read_text(encoding="utf-8")
+    assert "[redacted-private-value]" in leak.read_text(encoding="utf-8")
+    assert "reports/real100/[redacted-private-artifact]" in patch_leak.read_text(encoding="utf-8")
+
+
+def test_sanitize_task_slug_strips_dot_and_separators(tmp_path: Path) -> None:
+    """The slug charset is alnum + ``-`` + ``_`` only — ``.`` and ``/`` are STRIPPED so no
+    parent-dir / separator token can survive (the contract the docstring states). A slug whose
+    only chars are unsafe sanitizes to ``None`` (the fail-closed signal); a slug with some safe
+    chars survives as a within-subtree token that can never traverse."""
+    # ``.`` is dropped (code matches the "alnum + - _ only" docstring): no traversal token remains.
+    assert agent_loop._sanitize_task_slug("T.test") == "Ttest"
+    assert "." not in (agent_loop._sanitize_task_slug("T.test") or "")
+    assert agent_loop._sanitize_task_slug("foo.bar/baz") == "foobarbaz"
+    # Traversal / separator forms collapse to a safe within-subtree token (NOT None) — they cannot
+    # escape because the escaping chars themselves are gone.
+    assert agent_loop._sanitize_task_slug("../../secret_outside") == "secret_outside"
+    assert agent_loop._sanitize_task_slug("a/../b") == "ab"
+    # All-unsafe inputs sanitize to None (the fail-closed signal the redactors key off).
+    assert agent_loop._sanitize_task_slug("..") is None
+    assert agent_loop._sanitize_task_slug(".") is None
+    assert agent_loop._sanitize_task_slug("...") is None
+    assert agent_loop._sanitize_task_slug("") is None
+    assert agent_loop._sanitize_task_slug("!!!") is None
+    # A safe slug survives sanitization unchanged.
+    assert agent_loop._sanitize_task_slug("T-2026-1817") == "T-2026-1817"
+
+
+def test_redaction_traversal_slug_stays_within_subtree(tmp_path: Path) -> None:
+    """A traversal task_slug ('../../secret_outside') must NOT escape the codex_runs subtree: it
+    sanitizes to the within-subtree token 'secret_outside', so the scan targets
+    codex_runs/secret_outside (not present here) and a file planted OUTSIDE the subtree is left
+    byte-identical (no traversal escape)."""
+    repo = _write_repo(tmp_path)
+    active = _active_dir(repo)
+    # An out-of-subtree file a traversal slug would target if it escaped.
+    outside = repo / "reports" / "agent_loop" / "secret_outside.md"
+    outside.parent.mkdir(parents=True, exist_ok=True)
+    outside.write_text("doc_id-999 must never be redacted via traversal\n", encoding="utf-8")
+    # The traversal slug is stripped to 'secret_outside' (a child of codex_runs), which does not
+    # exist here, so nothing is redacted; the out-of-subtree file is left byte-identical.
+    changed = agent_loop._redact_active_codex_runs(active, repo_root=repo, task_slug="../../secret_outside")
+    assert changed == 0
+    assert outside.read_text(encoding="utf-8") == "doc_id-999 must never be redacted via traversal\n"
+
+
+def test_redaction_task_scoped_unsafe_slug_fails_closed_no_standard_scan(tmp_path: Path) -> None:
+    """Privacy fail-closed (ADR 0095 PR-E1): a task-scoped redaction whose slug is UNSAFE (e.g.
+    '..' -> sanitizes to None) must return 0 WITHOUT scanning the STANDARD run-root. Falling back
+    to the standard scan in task-scoped mode would skip the real per-task subtree AND wrongly
+    redact the shared standard path; both branches (codex + patch) must leave a planted standard
+    file byte-identical."""
+    repo = _write_repo(tmp_path)
+    active = _active_dir(repo)
+    private = "doc_id-555 leaked into the standard run-root\n"
+    # Plant a private file DIRECTLY in the standard (un-scoped) run-roots.
+    std_codex = _write_run_file(active / "codex_runs", "out.md", private)
+    std_patch = _write_run_file(active / "patch_runs", "out.md", private)
+
+    # task_slug is not None (task-scoped intent) but sanitizes to None (unsafe) -> fail-closed.
+    codex_changed = agent_loop._redact_active_codex_runs(active, repo_root=repo, task_slug="..")
+    patch_changed = agent_loop._redact_active_patch_runs(active, repo_root=repo, task_slug="..")
+
+    assert codex_changed == 0, "task-scoped unsafe slug must NOT scan the standard codex_runs path"
+    assert patch_changed == 0, "task-scoped unsafe slug must NOT scan the standard patch_runs path"
+    # The standard-path files were never scanned -> byte-identical (no redaction, no leak-skip).
+    assert std_codex.read_text(encoding="utf-8") == private
+    assert std_patch.read_text(encoding="utf-8") == private
+
+
+def test_finalize_standard_path_arg_per_task(tmp_path: Path) -> None:
+    """ADR 0095 PR-E1: when ``standard_path`` is supplied, ``_finalize_omc_runner_result`` writes
+    the mirrored artifact to THAT path (so two different tasks publish to disjoint paths), not the
+    legacy hardcoded one."""
+    import datetime as _dt
+
+    repo = _write_repo(tmp_path)
+    active = _active_dir(repo)
+    active.mkdir(parents=True, exist_ok=True)
+    run_dir = active / "omc_runs" / "omc-team"
+    artifact_path = run_dir / "patch_artifact.json"
+    per_task_standard = active / "patch_runs" / "task-zzz" / "implementer" / "patch_artifact.json"
+    legacy_standard = active / "patch_runs" / "implementer" / "patch_artifact.json"
+    diff = "diff --git a/foo.py b/foo.py\n--- a/foo.py\n+++ b/foo.py\n@@ -1 +1,2 @@\n line\n+new\n"
+    # An active write lease whose claimed_files cover the diff so the scope re-audit passes.
+    (active / "leases.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "leases": [
+                    {
+                        "lease_id": "task-zzz-write",
+                        "status": "active",
+                        "lease_type": "write",
+                        "active_agent": "codex",
+                        "task_id": "T-2026-1817",
+                        "issue": "1817",
+                        "branch": "feat/issue-1817-path-substrate",
+                        "worktree": ".",
+                        "claimed_files": ["foo.py"],
+                        "expires_at": "2099-01-01T00:00:00Z",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = agent_loop._finalize_omc_runner_result(
+        decision="completed",
+        execute=True,
+        session_id="omc-team",
+        verdict="proposed",
+        blockers=[],
+        warnings=[],
+        team_name="omc-team",
+        command_display="omc team ...",
+        state_path=active / "codex_runner_state.json",
+        out_path=active / "codex_runner.md",
+        registry_path=active / "session_registry.json",
+        assignments_path=active / "assignments",
+        runs_path=active / "omc_runs",
+        artifact_path=artifact_path,
+        diff_text=diff,
+        task_id="T-2026-1817",
+        model=None,
+        repo_root=repo,
+        now=_dt.datetime(2026, 6, 2, tzinfo=_dt.timezone.utc),
+        write_artifact=True,
+        invalidate_heartbeats=False,
+        standard_path=per_task_standard,
+    )
+
+    assert result.decision == "completed"
+    # The proposed artifact landed at the per-task standard path, NOT the legacy one.
+    assert per_task_standard.exists(), "per-task standard_path must receive the mirrored artifact"
+    written = json.loads(per_task_standard.read_text(encoding="utf-8"))
+    assert written["verdict"] == "proposed" and written["diff"] == diff
+    assert not legacy_standard.exists(), "the legacy standard path must NOT be written when standard_path is supplied"
+
+
+def test_x1_run_root_uses_legacy_path(tmp_path: Path) -> None:
+    """ADR 0095 PR-E1 byte-identical gate: the run-root helper returns the LEGACY codex_runs path
+    when task_slug is None (X==1 default) and a task-scoped path only when a slug is supplied."""
+    active = _active_dir(_write_repo(tmp_path))
+    # None -> legacy path (byte-identical with the pre-PR-E single-task run-root).
+    assert agent_loop._omc_task_run_root(active, task_slug=None) == active / "codex_runs"
+    # Supplied slug -> per-task subtree (one level under codex_runs).
+    assert (
+        agent_loop._omc_task_run_root(active, task_slug="T-2026-1817")
+        == active / "codex_runs" / "T-2026-1817"
+    )
+
+
 # --- PR-D adversarial fixes (HIGH-1/2/3 + LOW-1) ---
 
 
