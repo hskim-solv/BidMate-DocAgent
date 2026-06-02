@@ -9,6 +9,7 @@ PRs, deletes branches, force-pushes, or calls external model APIs.
 from __future__ import annotations
 
 import argparse
+import contextlib
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 import difflib
@@ -26,7 +27,7 @@ import sys
 import tempfile
 import threading
 import time
-from typing import Callable, Iterable, Sequence
+from typing import Callable, Iterable, Iterator, Sequence
 
 try:
     import fcntl  # POSIX-only; non-POSIX degrades to atomic-rename-only
@@ -9739,16 +9740,18 @@ def write_active_loop(
         lease_ttl_minutes=lease_ttl_minutes,
         now=now,
     )
-    existing_leases = _load_active_leases(leases_path)
-    lease_payload, lease_blockers, lease_warnings = _build_active_leases(
-        existing_leases=existing_leases,
+    # PR-B (ADR 0094): read -> disjoint-check -> write as ONE flock critical
+    # section (closes the assert_claimed_files_disjoint snapshot TOCTOU). Same
+    # `now`/var names so generated_at + downstream render stay byte-identical.
+    lease_payload, lease_blockers, lease_warnings = LeaseManager(
+        leases_path, repo_root=repo_root
+    ).claim_disjoint(
         task_id=task_id,
         issue=safe_issue,
         branch=current_branch,
         changed_files=files,
         lease_ttl_minutes=lease_ttl_minutes,
         now=now,
-        repo_root=repo_root,
     )
 
     blockers: list[str] = []
@@ -9911,8 +9914,7 @@ def write_active_loop(
     registry_path.parent.mkdir(parents=True, exist_ok=True)
     registry_path.write_text(json.dumps(registry_payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     _write_active_agent_mix(_active_path(agent_mix_out, repo_root=repo_root), policy=agent_mix_policy, now=now)
-    leases_path.parent.mkdir(parents=True, exist_ok=True)
-    leases_path.write_text(json.dumps(_sanitize_json_value(lease_payload), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    # leases.json already written atomically by claim_disjoint above (PR-B).
     assignments_path.mkdir(parents=True, exist_ok=True)
     for session in sessions:
         _write_active_assignment(
@@ -16118,18 +16120,21 @@ def acquire_active_agent(
         raise ValueError(f"agent must be one of: {', '.join(ACTIVE_LANE_AGENTS)}")
     now = now or datetime.now(timezone.utc)
     path = _active_path(leases, repo_root=repo_root)
-    items = _load_active_leases(path)
-    lease = _find_active_write_lease(items, lease_id=lease_id, allow_recovery_needed=allow_recovery_needed)
-    if lease is None:
-        return (False, "no active write lease to borrow", None)
-    holder = lease.get("active_agent")
-    resolved_id = str(lease.get("lease_id"))
-    if holder is not None and str(holder) != agent:
-        return (False, f"write lease held by {holder}", resolved_id)
-    lease["active_agent"] = agent
-    lease["active_agent_since"] = _isoformat(now)
-    _write_active_leases(path, leases=items, now=now)
-    return (True, "acquired", resolved_id)
+    # PR-B (ADR 0094): read-check-write under the same sidecar flock so the
+    # borrow decision and write are one critical section (no clobber race).
+    with LeaseManager(path, repo_root=repo_root)._exclusive():
+        items = _load_active_leases(path)
+        lease = _find_active_write_lease(items, lease_id=lease_id, allow_recovery_needed=allow_recovery_needed)
+        if lease is None:
+            return (False, "no active write lease to borrow", None)
+        holder = lease.get("active_agent")
+        resolved_id = str(lease.get("lease_id"))
+        if holder is not None and str(holder) != agent:
+            return (False, f"write lease held by {holder}", resolved_id)
+        lease["active_agent"] = agent
+        lease["active_agent_since"] = _isoformat(now)
+        _write_active_leases(path, leases=items, now=now)
+        return (True, "acquired", resolved_id)
 
 
 def release_active_agent(
@@ -16147,19 +16152,21 @@ def release_active_agent(
         raise ValueError(f"agent must be one of: {', '.join(ACTIVE_LANE_AGENTS)}")
     now = now or datetime.now(timezone.utc)
     path = _active_path(leases, repo_root=repo_root)
-    items = _load_active_leases(path)
-    lease = _find_active_write_lease(items, lease_id=lease_id, allow_recovery_needed=allow_recovery_needed)
-    if lease is None:
-        return (False, "no active write lease")
-    holder = lease.get("active_agent")
-    if holder is None:
-        return (True, "already free")
-    if str(holder) != agent:
-        return (False, f"held by {holder}, not releasing")
-    lease["active_agent"] = None
-    lease.pop("active_agent_since", None)
-    _write_active_leases(path, leases=items, now=now)
-    return (True, "released")
+    # PR-B (ADR 0094): read-check-write under the same sidecar flock as acquire.
+    with LeaseManager(path, repo_root=repo_root)._exclusive():
+        items = _load_active_leases(path)
+        lease = _find_active_write_lease(items, lease_id=lease_id, allow_recovery_needed=allow_recovery_needed)
+        if lease is None:
+            return (False, "no active write lease")
+        holder = lease.get("active_agent")
+        if holder is None:
+            return (True, "already free")
+        if str(holder) != agent:
+            return (False, f"held by {holder}, not releasing")
+        lease["active_agent"] = None
+        lease.pop("active_agent_since", None)
+        _write_active_leases(path, leases=items, now=now)
+        return (True, "released")
 
 
 def _refresh_active_lease(lease: dict[str, object], *, now: datetime, repo_root: Path) -> dict[str, object]:
@@ -16177,6 +16184,105 @@ def _refresh_active_lease(lease: dict[str, object], *, now: datetime, repo_root:
     else:
         rendered["status"] = "expired"
     return rendered
+
+
+class LeaseManager:
+    """Transactional lease-file claimer for the bounded loop (ADR 0094 PR-B).
+
+    Runs the lease read -> disjoint-check -> write as ONE fcntl.flock(LOCK_EX)
+    critical section, closing the assert_claimed_files_disjoint snapshot TOCTOU
+    (ADR 0094 Context). The lock is taken on a STABLE sidecar lock file
+    (<leases>.lock) that is never renamed, NOT on leases.json itself: the data
+    file is rewritten via _atomic_write_text (os.replace swaps its inode, and
+    flock follows the inode, not the path — a Codex review proved that flocking
+    leases.json lets a post-replace opener lock a different inode and double-claim
+    under >=3 concurrent claimers). Reads use a fresh path-based _load each call.
+
+    Non-POSIX (fcntl is None): the lock degrades to a NO-OP. This preserves
+    single-claimer (X=1) byte-identity (the lock is uncontended at X=1), but
+    provides NO cross-process mutual exclusion — atomic rename alone is not a
+    correctness substitute. PR-D/E MUST gate X>1 enablement on fcntl availability
+    (fail closed on non-POSIX) before relying on claim_disjoint for real
+    concurrency.
+
+    Lock-ordering (mirrors LedgerState ~1012): this flock must NOT be held across
+    a subprocess spawn, the future BoundedSemaphore acquire (PR-C), or the
+    LedgerState lock (A2). Take flock -> claim -> RELEASE -> then spawn/acquire.
+    The lock fd is opened close-on-exec so a spawned subprocess can never inherit
+    and pin the lock. At X=1 leases.json bytes + task selection are identical to
+    the legacy path (ADR 0001 gate). Ships DARK until PR-D/E.
+
+    Overlap semantics (substrate stage): claim_disjoint runs
+    assert_claimed_files_disjoint UNDER the lock so the overlap blocker is
+    accurate (not a stale snapshot — the TOCTOU this closes) and folds it into
+    the return, but STILL writes the lease (byte-identical to the legacy
+    unconditional write_text; ADR 0001 gate). It REPORTS overlap; it does NOT
+    gate/reject the write. The losing claimer is gated downstream via the
+    propagated blocker. First-writer-wins WRITE rejection (keeping the durable
+    file disjoint) is deferred to PR-D/E X>1 enablement — gating here would risk
+    X=1 byte-identity in the cross-scope active-overlap edge and needs e2e X>1
+    coverage."""
+
+    def __init__(self, leases_path: Path, *, repo_root: Path = ROOT_DIR) -> None:
+        self._path = leases_path
+        self._repo_root = repo_root
+        # Co-located with leases.json: a sweep of active/ would also remove
+        # leases.json itself, so co-location is consistent. (Codex: any cleaner
+        # of active/ must exclude *.lock if it runs while claimers are live.)
+        self._lock_path = leases_path.with_name(leases_path.name + ".lock")
+
+    @classmethod
+    def for_repo(cls, repo_root: Path = ROOT_DIR, leases: Path = DEFAULT_ACTIVE_LEASES) -> "LeaseManager":
+        return cls(_active_path(leases, repo_root=repo_root), repo_root=repo_root)
+
+    @contextlib.contextmanager
+    def _exclusive(self) -> "Iterator[None]":
+        self._lock_path.parent.mkdir(parents=True, exist_ok=True)
+        # O_CLOEXEC: never let a spawned subprocess inherit/pin the lock fd.
+        fd = os.open(self._lock_path, os.O_RDWR | os.O_CREAT | os.O_CLOEXEC, 0o644)
+        try:
+            if fcntl is not None:
+                fcntl.flock(fd, fcntl.LOCK_EX)
+            yield
+        finally:
+            if fcntl is not None:
+                try:
+                    fcntl.flock(fd, fcntl.LOCK_UN)
+                except OSError:
+                    pass
+            os.close(fd)
+
+    def claim_disjoint(
+        self,
+        *,
+        task_id: str | None,
+        issue: str | None,
+        branch: str,
+        changed_files: Sequence[str],
+        lease_ttl_minutes: int = 30,
+        now: datetime | None = None,
+    ) -> tuple[dict[str, object], list[str], list[str]]:
+        # Resolve `now` ONCE so the returned payload's generated_at and the
+        # on-disk write share the same timestamp (ADR 0094 byte-identity gate).
+        now = now or datetime.now(timezone.utc)
+        with self._exclusive():
+            existing = _load_active_leases(self._path)
+            payload, blockers, warnings = _build_active_leases(
+                existing_leases=existing,
+                task_id=task_id,
+                issue=issue,
+                branch=branch,
+                changed_files=changed_files,
+                lease_ttl_minutes=lease_ttl_minutes,
+                now=now,
+                repo_root=self._repo_root,
+            )
+            leases = payload["leases"]
+            if not isinstance(leases, list):  # _build_active_leases always returns a list here; guard survives python -O
+                raise TypeError(f"_build_active_leases returned non-list leases: {type(leases).__name__}")
+            disjoint_blockers = assert_claimed_files_disjoint(leases)
+            _write_active_leases(self._path, leases=leases, now=now)
+            return payload, [*blockers, *disjoint_blockers], warnings
 
 
 def _inspect_active_worktree(worktree: str, *, repo_root: Path) -> dict[str, object]:
