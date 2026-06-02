@@ -40,7 +40,7 @@
 
 # Auto-ship pipeline (Stop hook driven). See scripts/claude-hooks/stop-ship.sh
 # and the plan at /Users/hskim/.claude/plans/prci-synchronous-newell.md.
-.PHONY: ship-start ship-arm ship-run codex-ship codex-reap ship-disarm ship-status ship-review-gate worktree-cleanup-dry-run worktree-cleanup
+.PHONY: ship-start ship-arm ship-run codex-ship codex-reap ship-disarm ship-status ship-review-gate worktree-cleanup-dry-run worktree-cleanup cmux-cleanup-dry-run cmux-cleanup
 
 # Self-review (quarterly meta-feedback loop). Combines 4-axis portfolio
 # rubric + 5-axis Claude collaboration rubric. See SKILL at
@@ -1590,6 +1590,16 @@ worktree-cleanup-dry-run:
 
 worktree-cleanup:
 	@bash .githooks/_pre-push-worktree-hygiene.sh --clean --prune --delete-branches
+
+# cmux orphan workspace (tab) cleanup — symmetric to worktree-cleanup (ADR
+# 0096). Closes cmux tabs whose worktree is gone. close is irreversible (tab +
+# scrollback destroyed), so run cmux-cleanup-dry-run FIRST to confirm the
+# candidates. See docs/plans/cmux-workspace-cleanup.md.
+cmux-cleanup-dry-run:
+	@bash scripts/cmux-cleanup.sh --dry-run
+
+cmux-cleanup:
+	@bash scripts/cmux-cleanup.sh
 
 # ---------------------------------------------------------------------------
 # Self-review quarterly: meta-feedback loop over the past quarter.
