@@ -5,6 +5,13 @@
 (`demo/streamlit_app.py`)를 서빙하며, 결정론적 hashing 파이프라인(오프라인, 무료)
 또는 라이브 Claude synthesis(ADR 0011, 유료)로 뒷받침된다.
 
+> **정식 라이브 데모는 Hugging Face Spaces** 다
+> (`https://huggingface.co/spaces/hskim-solv/bidmate-docagent`). Fly.io
+> 자동 재배포는 현재 **보류(parked)** — depot.dev 리모트 빌더 i/o timeout
+> 으로 2026-05-26 이후 연속 실패했다. Fly 앱·config 는 보존하되 destroy
+> 하지 않으며, `deploy-fly.yml` 의 `if: false` 한 줄을 제거하면 부활한다
+> (issue #1784).
+
 CLI / eval 흐름(배포 아님)에 대해서는
 [`docs/operations/api-demo.md`](./api-demo.md) 와 루트 `README.md` 를 참조하라.
 
@@ -68,7 +75,13 @@ API 는 `https://<app>.fly.dev:8000/docs` 에 있다.
 `auto_stop_machines = true` 설정은 idle 시 머신이 sleep 하게 해
 무료 티어 예산 내에 머물게 한다.
 
-### 지속적 배포(continuous deploy)
+### 지속적 배포(continuous deploy) — ⏸️ 현재 보류(parked)
+
+> **이 워크플로는 `deploy-fly.yml` 의 `deploy` job 에 `if: false` 가 걸려
+> 비활성이다.** depot.dev 리모트 빌더 i/o timeout (`deadline_exceeded ...
+> api.depot.dev`, exit 126)으로 2026-05-26 이후 모든 run 이 실패했다. 정식
+> 라이브 데모는 HF Spaces 다. 부활하려면 빌더 문제를 해결한 뒤 job 의
+> `if: false` 를 제거한다. 아래는 부활 시의 동작 설명이다.
 
 런타임 경로를 건드리는 `main` 으로의 모든 push 는
 [`.github/workflows/deploy-fly.yml`](../../.github/workflows/deploy-fly.yml)
@@ -158,10 +171,10 @@ repo 루트 README 에서 참조하는 placeholder URL
   비활동 후 sleep 하며 sleep 후 첫 요청은 깨어나는 데
   ~30–60 s 걸린다. 인덱스(`data/index/`)는 커밋되어 있어
   cold-start 에 빌드 단계가 없다.
-- **Space 다운 시 fallback** — README "🚀 Live demo"
-  표가 Spaces 행 바로 아래에 한 줄 `docker run` 과 Colab quickstart 를
-  나열하므로, sleeping 이거나 unhealthy 한 Space 를 만난 리뷰어가
-  한 번의 클릭으로 전환할 수 있다.
+- **정식 라이브 데모 + fallback** — HF Spaces 가 **정식** 라이브
+  데모다(Fly.io 는 보류). Space 가 sleeping 이거나 unhealthy 하면 README
+  "라이브 데모" 표의 한 줄 `docker run` 또는 Colab quickstart 로 한 번의
+  클릭에 전환할 수 있다.
 
 ## Railway
 
