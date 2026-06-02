@@ -62,7 +62,7 @@
   "next_task_decision": {
     "blocked_task": null,
     "blocker": "page_metadata_available",
-    "preferred_next_task": "T-2026-0075",
+    "preferred_next_task": "T-2026-0076",
     "reason": "candidate_pool_collapse_gold_rarely_observed_retrieval_integrity_suspect",
     "signal": "retrieval_integrity_suspect"
   },

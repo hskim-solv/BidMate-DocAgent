@@ -51,6 +51,10 @@ INDEX_FILENAME = "index.json"
 EMBEDDINGS_FILENAME = "embeddings.npy"
 
 ENV_INDEX_BACKEND = "BIDMATE_INDEX_BACKEND"
+# ADR 0001/0081 — chroma is the only default/baseline backend. ``memory``
+# stays a test-control (chroma/memory/qdrant ranking parity) and must never
+# become the default; pinned by
+# tests/test_memory_backend_default_guard_regression.py (issue #1765).
 DEFAULT_INDEX_BACKEND = "chroma"
 # ``pgvector`` is reserved for Stage 3 — selecting it today raises
 # NotImplementedError.

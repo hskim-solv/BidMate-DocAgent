@@ -3,7 +3,7 @@
 > Paired re-measurement (`T-2026-0029`, issue #1764): the source `real100_v2` index was rebuilt as MiniLM
 > page-aware (`real100_v2_checkpoint_minilm_pageaware`). Page-span coverage is now 1.0 (page blocker resolved),
 > but doc-level retrieval regressed sharply versus the prior hashing-backed `real100_v2` run. Root-cause
-> verification (embedding/index integrity) is tracked as `T-2026-0075`; do not treat this artifact as an
+> verification (embedding/index integrity) is tracked as `T-2026-0076`; do not treat this artifact as an
 > optimization result.
 
 Issue: [#1622](https://github.com/hskim-solv/BidMate-DocAgent/issues/1622)
@@ -133,7 +133,7 @@ Page-span coverage is now 1.0; the prior v2 page-metadata blocker is resolved. C
 
 ## Next Task Decision
 
-- Preferred next task: `T-2026-0075`
+- Preferred next task: `T-2026-0076`
 - Reason: `candidate_pool_collapse_gold_rarely_observed_retrieval_integrity_suspect`
 - Blocked task: `None`
 - Blocker: `page_metadata_available`

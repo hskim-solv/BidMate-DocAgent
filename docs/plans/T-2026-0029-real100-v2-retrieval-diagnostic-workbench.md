@@ -97,12 +97,12 @@ baseline remeasurement reopened this task. Findings:
 - Renderer hardening (additive, no runtime behavior change): BUG #1 made the
   page-blocker prose dynamic (was hardcoded "ready rate is 0.0"); BUG #2 added a
   candidate-pool-collapse gate to `_recommend_next_task` that emits a
-  `retrieval_integrity_suspect` signal pointing at T-2026-0075 when gold is
+  `retrieval_integrity_suspect` signal pointing at T-2026-0076 when gold is
   observed in <5% of answerable cases, instead of recommending the reranker
   (T-2026-0032) which only helps when gold IS in the pool but ranked low.
 - Root-cause investigation (query/index embedding parity + a missing
   embedding/retrieval-backend provenance field in `eval_summary`) is spun off as
-  the new queue task T-2026-0075; NOT implemented in this PR.
+  the new queue task T-2026-0076; NOT implemented in this PR.
 - Carry-forward caveat: `real100_v2` `eval_summary` has no embedding/retrieval-backend
   provenance field, so query<->index embedding parity is unverified.
 

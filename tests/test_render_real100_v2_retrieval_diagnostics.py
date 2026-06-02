@@ -211,7 +211,7 @@ def test_recommend_retrieval_integrity_suspect_on_pool_collapse() -> None:
     report = build_diagnostics(_summary(cases, page_meta=_page_aware_meta()))
 
     assert report["candidate_pool_coverage"]["all_gold_observed_rate"] == 0.0
-    assert report["next_task_decision"]["preferred_next_task"] == "T-2026-0075"
+    assert report["next_task_decision"]["preferred_next_task"] == "T-2026-0076"
     assert report["next_task_decision"]["signal"] == "retrieval_integrity_suspect"
 
 
@@ -246,7 +246,7 @@ def test_recommend_preserves_reranker_signal_when_pool_healthy() -> None:
 
 def test_small_collapsed_pool_stays_on_legacy_path() -> None:
     # coverage_cases < MIN_CASES guard: a *small* collapsed-pool run (all_gold
-    # rate 0.0) must NOT trip the production-scale T-2026-0075 integrity signal,
+    # rate 0.0) must NOT trip the production-scale T-2026-0076 integrity signal,
     # so tiny synthetic fixtures stay on the legacy reranker/window path.
     cases = [
         _case(
@@ -264,7 +264,7 @@ def test_small_collapsed_pool_stays_on_legacy_path() -> None:
     report = build_diagnostics(_summary(cases, page_meta=_page_aware_meta()))
 
     assert report["candidate_pool_coverage"]["all_gold_observed_rate"] == 0.0
-    assert report["next_task_decision"]["preferred_next_task"] != "T-2026-0075"
+    assert report["next_task_decision"]["preferred_next_task"] != "T-2026-0076"
     assert report["next_task_decision"]["signal"] != "retrieval_integrity_suspect"
 
 

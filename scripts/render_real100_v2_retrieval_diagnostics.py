@@ -340,7 +340,7 @@ def _recommend_next_task(
     # helps when gold IS in the candidate pool but ranked too low; when gold is
     # observed in fewer than ~5% of answerable cases the pool itself collapsed, so
     # reranking is meaningless and the actionable next step is embedding/index
-    # integrity verification (T-2026-0075). The coverage_cases >= 20 guard keeps
+    # integrity verification (T-2026-0076). The coverage_cases >= 20 guard keeps
     # tiny synthetic fixtures (e.g. the existing 5-case test) on the legacy path so
     # they never trip the production-scale collapse signal. Note: we deliberately do
     # NOT gate on not_in_candidate_pool >= ranked_too_low_after_top5 — on the real
@@ -354,7 +354,7 @@ def _recommend_next_task(
         and any_gold_observed_rate <= CANDIDATE_POOL_COLLAPSE_ANY_GOLD_RATE
     ):
         return {
-            "preferred_next_task": "T-2026-0075",
+            "preferred_next_task": "T-2026-0076",
             "reason": "candidate_pool_collapse_gold_rarely_observed_retrieval_integrity_suspect",
             "blocked_task": None,
             "blocker": page_blocker,
