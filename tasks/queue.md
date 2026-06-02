@@ -39,7 +39,7 @@ PR이 생기면 각 task에 링크를 추가한다. 예제 task는 `tasks/exampl
 | 26 | `T-2026-0026` | `in_progress` | Planner -> Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1580; Chroma-backed `naive_baseline` canonical switch, separated from embedding-model baselines. |
 | 27 | `T-2026-0027` | `review` | Planner -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1584; prioritized RAG performance experiment stack captured. |
 | 28 | `T-2026-0028` | `done` | Evaluator -> Benchmark Auditor -> Privacy Auditor -> Reviewer | merged in PR #1619; real100_v2-only guard and aggregate packet landed. |
-| 29 | `T-2026-0029` | `ready` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | reopened after naive baseline remeasurement: rerun retrieval diagnostics on the MiniLM page-aware v2 index before using prior conclusions. |
+| 29 | `T-2026-0029` | `review` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1764; page-aware re-measurement DONE (diagnostic-only). Page blocker resolved (coverage 0.0 -> 1.0) but doc-level retrieval collapsed (~12%); renderer BUG #1/#2 hardened; root cause spun off as T-2026-0076. |
 | 30 | `T-2026-0030` | `ready` | Implementer -> CI Reviewer -> Benchmark Auditor -> Reviewer | reopened after naive baseline remeasurement: rerender latency/cost envelope against the MiniLM page-aware v2 aggregate. |
 | 31 | `T-2026-0031` | `ready` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | MiniLM page-aware checkpoint index now has non-zero page_span coverage; rerun only after refreshed baseline aggregate is available. |
 | 32 | `T-2026-0032` | `ready` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | reopened after naive baseline remeasurement: rerun BGE-KO screening on the MiniLM page-aware v2 index before keeping no-winner status. |
@@ -86,6 +86,7 @@ PR이 생기면 각 task에 링크를 추가한다. 예제 task는 `tasks/exampl
 | 73 | `T-2026-0073` | `done` | Implementer -> Reviewer | 2026-06-02: agent-loop 남은 보조도구 2종 advisory-only(호출만) 통합 완료 (T-2026-0072 후속). eval-to-adr-bridge (PR #1756 / issue #1755) — eval surface 게이트(`write_active_gate_evidence`)에서 ADR 임계 판단 advisory, T-2026-0072 의 eval-anomaly 형제와 동일 `_eval_surface_touched` 게이트에 부착; adr-lifecycle-manager (PR #1758 / issue #1757) — proposed-ADR SLA(ADR 0047) 초과 시 `write_active_auto_loop` state advisory, learning-capture 형제 패턴(렌더러 미변경). 둘 다 제어 흐름 불변(gate ready 결정 · preflight exit code · loop decision/defer/stop 그대로), 각 통합=별도 worktree + ADR 0007 브랜치 + 회귀 테스트(eval-to-adr 4종 / adr-lifecycle 6종). code-reviewer APPROVE 후 squash 머지, CI green. |
 | 74 | `T-2026-0074` | `ready` | Implementer -> Reviewer | XYZ 병렬화 epic (X task-pool + Y omc multi-worker default-on + Z roles), 3자(Plan·codex·Claude) YELLOW 합의(substrate-first), PR-0 scaffolding(plan + ADR 0094/0095 Proposed) — issue #1762; 7-PR 시퀀스 A1->A2->B->C->D->E->F. 설계 문서: [`docs/plans/xyz-parallelism-stack.md`](../docs/plans/xyz-parallelism-stack.md). |
 | 75 | `T-2026-0075` | `done` | Implementer -> Reviewer | issue #1765; `memory` VectorStore backend 가 default/baseline 로 새지 않도록 positive-shape 회귀 가드 (옵션 A — 런타임 코드 무변경, parity 테스트 무영향). `DEFAULT_INDEX_BACKEND`/default-resolve/eval `ablation_runs` 전체가 chroma 로 resolve 됨을 잠금 + 명시적 memory opt-in(test-control) 보존 (ADR 0001/0081). 기존 자산(presets default·`vector_store_backend_for_runs` mixed 거부·naive_baseline=chroma) 재사용, gap A(rag_vector_store chokepoint)+C(eval 전 row) 보강. merged in PR #1769 (issue #1765 CLOSED, 2026-06-02). |
+| 76 | `T-2026-0076` | `ready` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | P0; spun off from T-2026-0029 page-aware re-measurement. MiniLM page-aware `real100_v2` rebuild resolved the page blocker but collapsed doc-level retrieval (gold-doc-in-retrieved 61.4% -> 12.1%) despite 88.3% universe coverage (answerable-with-gold; 91.7% all-cases); the diagnostic renderer's new `retrieval_integrity_suspect` signal points here. Gates every downstream `real100_v2` optimization task (T-2026-0030/0032/0033). Issue: TBD (created when task starts). |
 
 ## Examples
 
@@ -2637,11 +2638,11 @@ make check-branch
 
 - ID: T-2026-0029
 - Title: Build retrieval diagnostic workbench
-- Status: ready
+- Status: review
 - Priority: P0
 - Owner role: Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer
 - Created: 2026-05-27
-- Last updated: 2026-05-29
+- Last updated: 2026-06-02
 
 ### Goal
 
@@ -2698,8 +2699,12 @@ make check-branch
 - Reviewer note explaining which failure bucket is dominant.
 - Explicit statement that `real100_v2` page metadata coverage is a blocker for
   claim-bearing page/citation work.
-- Reopened follow-up: the 2026-05-28 diagnostic conclusions are invalid for new
-  optimization decisions until rerun against the MiniLM page-aware v2 index.
+- Reopened follow-up: the 2026-05-28 diagnostic conclusions were rerun against
+  the MiniLM page-aware v2 index (2026-06-02, diagnostic-only). The page-span
+  blocker is resolved (coverage 0.0 -> 1.0) but doc-level retrieval collapsed
+  (gold-doc-in-retrieved 61.4% -> 12.1%, all-gold-observed rate ~0.7%), so the
+  renderer now emits a `retrieval_integrity_suspect` signal and the root-cause
+  investigation is spun off as `T-2026-0076`.
 
 ### Related Plan / Issue / PR Links
 
@@ -2724,6 +2729,22 @@ make check-branch
 - Next safe command: python3 -m py_compile scripts/render_real100_v2_retrieval_diagnostics.py scripts/check_real100_v2_only.py && python3 -m pytest -q tests/test_render_real100_v2_retrieval_diagnostics.py tests/test_real100_v2_guard.py tests/test_render_multi_chunk_evidence_failures.py tests/test_render_multi_chunk_retrieval_strategy.py && bash -n .githooks/pre-commit
 - Open questions: none.
 - Risks: duplicate/near-duplicate signal counts repeated top documents as aggregate near-duplicates, not semantic duplicates.
+```
+
+```markdown
+## Session Handoff - 2026-06-02 KST
+
+- Role: Implementer
+- Branch / worktree: eval/issue-1764-retrieval-remeasure
+- Issue / PR: issue #1764 / PR TBD
+- Task: T-2026-0029 (reopened, diagnostic-only re-measurement)
+- Current status: page-aware re-measurement complete; renderer BUG #1/#2 hardened; two committed aggregates regenerated; ready for benchmark/privacy review.
+- Files touched: scripts/render_real100_v2_retrieval_diagnostics.py, tests/test_render_real100_v2_retrieval_diagnostics.py, reports/real100_v2/retrieval_diagnostics.aggregate.json, docs/evaluation/real100_v2-retrieval-diagnostics.md, tasks/queue.md, docs/plans/T-2026-0029-real100-v2-retrieval-diagnostic-workbench.md
+- Decisions made: page-span blocker resolved (coverage 0.0 -> 1.0, 24613/24613 chunks); doc-level retrieval collapsed (gold-doc-in-retrieved 61.4% -> 12.1%, all-gold-observed rate ~0.7%); renderer now emits `retrieval_integrity_suspect` signal pointing at T-2026-0076 instead of the reranker (T-2026-0032) because the candidate pool itself collapsed; root-cause investigation spun off as T-2026-0076 (queue-only this PR, no GitHub issue yet). This PR is diagnostic-only — no retrieval/reranker/verifier/answer/ingestion/chunking/eval-scoring behavior changed.
+- Commands run: REAL_EVAL_ROOT=/Users/hskim/Desktop/projects/BidMate-DocAgent python3 scripts/render_real100_v2_retrieval_diagnostics.py; python3 -m pytest -q tests/test_render_real100_v2_retrieval_diagnostics.py.
+- Results: aggregate JSON/Markdown regenerated from the MiniLM page-aware eval_summary; 6 focused renderer tests pass.
+- Next safe command: git diff --check && make check-branch
+- Open questions: none (T-2026-0076 GitHub issue deferred to task start per maintainer decision).
 ```
 
 ## T-2026-0030 — Define latency and cost budget envelope
@@ -5242,3 +5263,78 @@ make check-branch
 - Plan: [`docs/plans/T-2026-0056-multimodal-agent-positioning-stack.md`](../docs/plans/T-2026-0056-multimodal-agent-positioning-stack.md)
 - Issue: TBD
 - PR: TBD
+
+## T-2026-0076 — Verify real100_v2 page-aware retrieval integrity (embedding parity + provenance)
+
+- ID: T-2026-0076
+- Title: Verify real100_v2 page-aware retrieval integrity (embedding parity + provenance)
+- Status: ready
+- Priority: P0
+- Owner role: Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer
+- Created: 2026-06-02
+- Last updated: 2026-06-02
+
+### Goal
+
+Determine why the MiniLM page-aware `real100_v2` rebuild collapsed doc-level
+retrieval (gold-doc-in-retrieved 61.4% -> 12.1%) despite 88.3% retrieved-universe
+coverage (answerable-with-gold population; 91.7% across all cases). Prime hypotheses: (a) query-time embedding model != index-time
+embedding model (parity mismatch), (b) page-aware re-chunking degraded chunk
+semantics / granularity. Close the provenance gap: add an embedding/retrieval-backend
+provenance field to `eval_summary` so future runs are reproducible. The diagnostic
+renderer's `retrieval_integrity_suspect` signal (T-2026-0029) points here, and this
+task gates every downstream `real100_v2` optimization task (T-2026-0030/0032/0033),
+which are meaningless while doc-recall is ~12%.
+
+### Scope
+
+- Read/measure the paired `real100_v2` retrieval collapse (hashing-backed ->
+  MiniLM page-aware) using existing aggregate-only diagnostics.
+- Add an embedding/retrieval-backend provenance field to `eval_summary` and
+  surface it (aggregate-only) so the diagnostic renderer can record it.
+- Decide whether page-aware chunking is kept, reverted, or re-tuned.
+
+### Non-Goals
+
+- Do not change the baseline (ADR 0001).
+- Do not optimize ranking. NO ranking-behavior change in this task unless the
+  root cause is a one-line wiring bug, which is decided after measurement.
+- Do not touch reranker or context-packing.
+- Do not expose raw private text or identifiers.
+
+### Acceptance Criteria
+
+- [ ] Named root cause for the doc-recall collapse with paired `real100_v2`
+  evidence (aggregate-only).
+- [ ] Embedding/retrieval provenance field present in `eval_summary` and surfaced
+  (aggregate-only) so the diagnostic renderer can record it.
+- [ ] Decision recorded whether page-aware chunking is kept, reverted, or re-tuned.
+
+### Validation Commands
+
+```bash
+make real-eval-v2-guard
+REAL_EVAL_ROOT=/Users/hskim/Desktop/projects/BidMate-DocAgent python3 scripts/render_real100_v2_retrieval_diagnostics.py
+python3 scripts/agent_loop.py privacy-audit-output
+python3 scripts/agent_loop.py claim-audit --from-git
+git diff --check
+make check-branch
+```
+
+### Evidence Required
+
+- Aggregate-only provenance field plus paired `real100_v2` doc-recall comparison;
+  no raw questions, answers, evidence text, document IDs, chunk IDs, filenames, or
+  local paths.
+
+### Related Plan / Issue / PR Links
+
+- Plan: TBD
+- Issue: TBD (created when task starts)
+- PR: TBD
+
+### Notes
+
+- Spun off from T-2026-0029 page-aware re-measurement (issue #1764). The renderer's
+  new `retrieval_integrity_suspect` signal in
+  `reports/real100_v2/retrieval_diagnostics.aggregate.json` points at this task.

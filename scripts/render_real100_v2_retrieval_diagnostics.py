@@ -14,7 +14,7 @@ import os
 import sys
 from collections import Counter
 from pathlib import Path
-from typing import Any, Iterable, Mapping
+from typing import Any, Iterable, Mapping, Sequence
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -240,7 +240,7 @@ def _empty_slice() -> dict[str, Any]:
     }
 
 
-def _metric_block(cases: list[Mapping[str, Any]]) -> dict[str, Any]:
+def _metric_block(cases: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     answerable = [
         case
         for case in cases
@@ -315,15 +315,51 @@ def _dominant(counter: Mapping[str, int]) -> str:
     return sorted(counter.items(), key=lambda item: (-item[1], item[0]))[0][0]
 
 
+CANDIDATE_POOL_COLLAPSE_ALL_GOLD_RATE = 0.05
+# Upper bound on any-gold observation: above ~20%, gold is frequently in the
+# candidate pool (a ranked-too-low / reranker situation -> T-2026-0032), so this
+# guard keeps the collapse signal from firing on a merely low-ranking run.
+CANDIDATE_POOL_COLLAPSE_ANY_GOLD_RATE = 0.20
+CANDIDATE_POOL_COLLAPSE_MIN_CASES = 20
+
+
 def _recommend_next_task(
     *,
     page_span_coverage: float | None,
     failure_buckets: Mapping[str, int],
+    all_gold_observed_rate: float,
+    any_gold_observed_rate: float,
+    coverage_cases: int,
 ) -> dict[str, Any]:
     if page_span_coverage == 0.0:
         page_blocker = "claim_bearing_page_or_window_work_blocked"
     else:
         page_blocker = "page_metadata_available"
+
+    # Candidate-pool-collapse gate (checked first). A reranker (T-2026-0032) only
+    # helps when gold IS in the candidate pool but ranked too low; when gold is
+    # observed in fewer than ~5% of answerable cases the pool itself collapsed, so
+    # reranking is meaningless and the actionable next step is embedding/index
+    # integrity verification (T-2026-0076). The coverage_cases >= 20 guard keeps
+    # tiny synthetic fixtures (e.g. the existing 5-case test) on the legacy path so
+    # they never trip the production-scale collapse signal. Note: we deliberately do
+    # NOT gate on not_in_candidate_pool >= ranked_too_low_after_top5 — on the real
+    # page-aware run retrieval returns < 10 candidates per case, so those misses are
+    # classified as not_observable_limited_depth (not not_in_candidate_pool), leaving
+    # not_in_candidate_pool == 0 while ranked_too_low_after_top5 == 1; that clause
+    # would suppress the collapse signal exactly when it matters most.
+    if (
+        coverage_cases >= CANDIDATE_POOL_COLLAPSE_MIN_CASES
+        and all_gold_observed_rate <= CANDIDATE_POOL_COLLAPSE_ALL_GOLD_RATE
+        and any_gold_observed_rate <= CANDIDATE_POOL_COLLAPSE_ANY_GOLD_RATE
+    ):
+        return {
+            "preferred_next_task": "T-2026-0076",
+            "reason": "candidate_pool_collapse_gold_rarely_observed_retrieval_integrity_suspect",
+            "blocked_task": None,
+            "blocker": page_blocker,
+            "signal": "retrieval_integrity_suspect",
+        }
 
     if failure_buckets.get("ranked_too_low_after_top5", 0) >= failure_buckets.get(
         "not_in_candidate_pool", 0
@@ -340,12 +376,14 @@ def _recommend_next_task(
             "reason": "T-2026-0031 depends on page/window evidence; v2 page metadata is still absent",
             "blocked_task": "T-2026-0031",
             "blocker": page_blocker,
+            "signal": "candidate_budget_or_window",
         }
     return {
         "preferred_next_task": preferred,
         "reason": reason,
         "blocked_task": "T-2026-0031" if page_span_coverage == 0.0 else None,
         "blocker": page_blocker,
+        "signal": "candidate_budget_or_window",
     }
 
 
@@ -497,6 +535,13 @@ def build_diagnostics(summary: Mapping[str, Any], *, source: Mapping[str, Any] |
     recommendation = _recommend_next_task(
         page_span_coverage=page_span_coverage,
         failure_buckets=failure_buckets,
+        all_gold_observed_rate=_rate(
+            candidate_pool["all_gold_observed"], metric_block["coverage_cases"]
+        ),
+        any_gold_observed_rate=_rate(
+            candidate_pool["any_gold_observed"], metric_block["coverage_cases"]
+        ),
+        coverage_cases=metric_block["coverage_cases"],
     )
 
     return {
@@ -699,6 +744,20 @@ def render_markdown(report: Mapping[str, Any]) -> str:
             f"`{row.get('dominant_exclusive_status')}` |"
         )
 
+    if blocker.get("status") == "available":
+        page_blocker_prose = (
+            f"Page-span coverage is now {blocker.get('page_span_coverage')}; "
+            "the prior v2 page-metadata blocker is resolved. Claim-bearing "
+            "page/citation and section-window work (T-2026-0031) is unblocked for "
+            "follow-up. No old evidence is substituted."
+        )
+    else:
+        page_blocker_prose = (
+            "Claim-bearing page/citation or section-window work remains blocked "
+            "while the v2 page metadata ready rate is 0.0. This report preserves "
+            "that blocker instead of substituting old evidence."
+        )
+
     lines.extend(
         [
             "",
@@ -712,7 +771,7 @@ def render_markdown(report: Mapping[str, Any]) -> str:
             f"| Page-span coverage | {blocker.get('page_span_coverage')} |",
             f"| Coverage reason | `{blocker.get('coverage_reason')}` |",
             "",
-            "Claim-bearing page/citation or section-window work remains blocked while the v2 page metadata ready rate is 0.0. This report preserves that blocker instead of substituting old evidence.",
+            page_blocker_prose,
             "",
             "## Next Task Decision",
             "",
@@ -720,6 +779,7 @@ def render_markdown(report: Mapping[str, Any]) -> str:
             f"- Reason: `{next_task.get('reason')}`",
             f"- Blocked task: `{next_task.get('blocked_task')}`",
             f"- Blocker: `{next_task.get('blocker')}`",
+            f"- Signal: `{next_task.get('signal')}`",
             "",
             "## Non-Claims",
             "",

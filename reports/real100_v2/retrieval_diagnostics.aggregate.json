@@ -1,18 +1,18 @@
 {
   "candidate_pool_coverage": {
-    "all_gold_observed": 116,
-    "all_gold_observed_rate": 0.426471,
-    "any_gold_observed": 120,
-    "any_gold_observed_rate": 0.441176,
-    "no_gold_observed": 152,
-    "no_gold_observed_rate": 0.558824,
-    "partial_gold_observed": 4,
+    "all_gold_observed": 2,
+    "all_gold_observed_rate": 0.007353,
+    "any_gold_observed": 3,
+    "any_gold_observed_rate": 0.011029,
+    "no_gold_observed": 269,
+    "no_gold_observed_rate": 0.988971,
+    "partial_gold_observed": 1,
     "retrieval_depth_lt_10": 272
   },
   "duplicate_or_near_duplicate": {
     "duplicate_chunk_id_cases": 0,
-    "repeated_doc_top10_cases": 53,
-    "repeated_doc_top5_cases": 146
+    "repeated_doc_top10_cases": 74,
+    "repeated_doc_top5_cases": 118
   },
   "evidence_shape": {
     "counts": {
@@ -30,40 +30,41 @@
   "exclusive_retrieval_status": {
     "counts": {
       "all_gold_observed_after_top10": 0,
-      "all_gold_top10_not_top5": 17,
-      "all_gold_top5": 99,
+      "all_gold_top10_not_top5": 0,
+      "all_gold_top5": 2,
       "no_gold_evidence": 0,
       "not_in_candidate_pool": 0,
-      "not_observable_limited_depth": 152,
-      "partial_candidate_pool": 4,
+      "not_observable_limited_depth": 269,
+      "partial_candidate_pool": 1,
       "unanswerable_no_gold": 28
     },
     "dominant": "not_observable_limited_depth"
   },
   "failure_buckets": {
-    "answer_generation_or_abstention": 3,
-    "boundary_or_window_candidate": 3,
-    "duplicate_or_near_duplicate_candidate": 199,
+    "answer_generation_or_abstention": 0,
+    "boundary_or_window_candidate": 0,
+    "duplicate_or_near_duplicate_candidate": 192,
     "evaluation_label_gap": 0,
-    "metadata_filter_candidate": 43,
+    "metadata_filter_candidate": 5,
     "multi_evidence_failure": 40,
     "not_in_candidate_pool": 0,
-    "page_metadata_blocked": 300,
-    "ranked_too_low_after_top5": 21,
-    "verifier_false_negative": 17,
-    "verifier_false_positive": 2
+    "page_metadata_blocked": 0,
+    "ranked_too_low_after_top5": 1,
+    "verifier_false_negative": 19,
+    "verifier_false_positive": 0
   },
   "metadata_filter": {
     "metadata_ambiguous_cases": 1,
-    "metadata_candidate_cases": 77,
-    "metadata_candidate_doc_miss_cases": 42,
-    "reduced_or_relaxed_filter_stage_cases": 297
+    "metadata_candidate_cases": 17,
+    "metadata_candidate_doc_miss_cases": 4,
+    "reduced_or_relaxed_filter_stage_cases": 299
   },
   "next_task_decision": {
-    "blocked_task": "T-2026-0031",
-    "blocker": "claim_bearing_page_or_window_work_blocked",
-    "preferred_next_task": "T-2026-0032",
-    "reason": "ranked_too_low_signal_points_to_candidate_budget_or_reranker_measurement"
+    "blocked_task": null,
+    "blocker": "page_metadata_available",
+    "preferred_next_task": "T-2026-0076",
+    "reason": "candidate_pool_collapse_gold_rarely_observed_retrieval_integrity_suspect",
+    "signal": "retrieval_integrity_suspect"
   },
   "non_claims": {
     "legacy_real100_evidence_used": false,
@@ -72,25 +73,25 @@
     "runtime_behavior_changed": false
   },
   "page_metadata_blocker": {
-    "chunks_total": 21800,
-    "chunks_with_page_span": 0,
-    "coverage_reason": "index_lacks_page_region_metadata",
-    "page_span_coverage": 0.0,
-    "status": "blocked_for_page_and_window_claims"
+    "chunks_total": 24613,
+    "chunks_with_page_span": 24613,
+    "coverage_reason": "ok",
+    "page_span_coverage": 1.0,
+    "status": "available"
   },
   "population": {
     "answerable": 272,
     "failure_category_counts": {
-      "abstention_failure": 3,
+      "abstention_failure": 0,
       "answer_synthesis_issue": 0,
       "citation_or_page_metadata_issue": 0,
       "evaluation_label_issue": 0,
-      "none": 85,
-      "parse_or_metadata_issue": 193,
+      "none": 25,
+      "parse_or_metadata_issue": 256,
       "retrieval_miss": 0,
       "unknown": 0,
-      "verifier_false_negative": 17,
-      "verifier_false_positive": 2
+      "verifier_false_negative": 19,
+      "verifier_false_positive": 0
     },
     "num_predictions": 300,
     "query_type_counts": {
@@ -132,26 +133,26 @@
       "cases": 13,
       "chunk_recall_at_10": 0.038462,
       "chunk_recall_at_20": 0.038462,
-      "chunk_recall_at_5": 0.0,
+      "chunk_recall_at_5": 0.038462,
       "dominant_exclusive_status": "not_observable_limited_depth",
       "hit_at_10": 0.076923,
-      "hit_at_5": 0.0,
-      "mrr_at_5": 0.0,
-      "ndcg_at_10": 0.016801,
-      "ndcg_at_5": 0.0
+      "hit_at_5": 0.076923,
+      "mrr_at_5": 0.076923,
+      "ndcg_at_10": 0.047165,
+      "ndcg_at_5": 0.047165
     },
     "single_doc": {
       "answerable": 259,
       "cases": 259,
-      "chunk_recall_at_10": 0.453668,
-      "chunk_recall_at_20": 0.453668,
-      "chunk_recall_at_5": 0.388031,
+      "chunk_recall_at_10": 0.007722,
+      "chunk_recall_at_20": 0.007722,
+      "chunk_recall_at_5": 0.007722,
       "dominant_exclusive_status": "not_observable_limited_depth",
-      "hit_at_10": 0.459459,
-      "hit_at_5": 0.393822,
-      "mrr_at_5": 0.269627,
-      "ndcg_at_10": 0.318806,
-      "ndcg_at_5": 0.296762
+      "hit_at_10": 0.007722,
+      "hit_at_5": 0.007722,
+      "mrr_at_5": 0.002059,
+      "ndcg_at_10": 0.003424,
+      "ndcg_at_5": 0.003424
     },
     "unknown": {
       "answerable": 0,
@@ -169,30 +170,30 @@
   },
   "retrieval_metrics": {
     "all_gold_at_k": {
-      "10": 0.426471,
-      "20": 0.426471,
-      "5": 0.363971
+      "10": 0.007353,
+      "20": 0.007353,
+      "5": 0.007353
     },
-    "chunk_recall_at_10": 0.433824,
-    "chunk_recall_at_20": 0.433824,
-    "chunk_recall_at_5": 0.369485,
-    "context_precision_at_5": 0.075,
-    "context_recall_at_5": 0.369485,
+    "chunk_recall_at_10": 0.009191,
+    "chunk_recall_at_20": 0.009191,
+    "chunk_recall_at_5": 0.009191,
+    "context_precision_at_5": 0.002206,
+    "context_recall_at_5": 0.009191,
     "coverage_cases": 272,
     "hit_at_k": {
-      "10": 0.441176,
-      "20": 0.441176,
-      "5": 0.375
+      "10": 0.011029,
+      "20": 0.011029,
+      "5": 0.011029
     },
-    "mrr": 0.266457,
-    "mrr_at_5": 0.25674,
-    "ndcg_at_10": 0.304372,
-    "ndcg_at_5": 0.282578
+    "mrr": 0.005637,
+    "mrr_at_5": 0.005637,
+    "ndcg_at_10": 0.005515,
+    "ndcg_at_5": 0.005515
   },
   "schema_version": 1,
   "source": {
     "input_artifact": "external_private/real100_v2_eval_summary",
     "input_location_redacted": true,
-    "input_sha256_12": "355da92b368c"
+    "input_sha256_12": "5ee09c068105"
   }
 }
