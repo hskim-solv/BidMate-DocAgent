@@ -47,9 +47,9 @@ XYZ 병렬화를 도입하되 **X 는 default-dark(기본 X=1)**, **Y 는 defaul
 재부과, gate 라우팅)는 **그대로 유지** 되고, 오직 **worker-count 결정**(`total_workers=1` 강제)만
 번복된다.
 
-**[ADR 0085](./0085-infinite-mode-active-auto-loop.md) 의 "루프는 직렬이므로 단일 ledger writer 가
-안전하다" 는 안전 논거를 [ADR 0094](./0094-concurrency-substrate-for-parallel-loop.md) 의 locking
-계약으로 replace 한다**: 0085 의 가드 **SEMANTICS**(연속-blocker, wall-clock, exit-code)는
+**[ADR 0085](./0085-infinite-mode-active-auto-loop.md) 의 직렬 루프가 *암묵적으로* 의존하던 단일
+ledger writer 안전성(0085 가 명시한 결정이 아니라 직렬 설계의 ambient 불변식)을
+[ADR 0094](./0094-concurrency-substrate-for-parallel-loop.md) 의 명시적 locking 계약으로 대체한다**: 0085 의 가드 **SEMANTICS**(연속-blocker, wall-clock, exit-code)는
 **보존** 되며 concurrency 용으로 재표현된다 — 특히 consecutive-blocker 를 "blockers since last
 completion(마지막 완료 이후 누적된 blocker)" 으로 재정의한다.
 
