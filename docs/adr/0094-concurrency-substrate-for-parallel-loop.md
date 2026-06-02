@@ -1,6 +1,6 @@
 # 0094: 병렬 루프를 위한 동시성 안전 substrate (atomic loop-state + lease manager + 전역 concurrency budget)
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-06-02
 - Deciders: User, Claude Code
 - Related: [ADR 0083](./0083-local-gate-completion-and-real100-v2-judge-egress.md) (`make 시작` local-gate completion / EXECUTE_SHIP=0), [ADR 0085](./0085-infinite-mode-active-auto-loop.md) (무한 모드 active-auto-loop + 안전 가드), [ADR 0087](./0087-opt-in-omc-team-parallel-runner.md) (opt-in omc 병렬 runner / `_resolve_omc_worker_mix`), [ADR 0080](./0080-active-loop-registry-v2-dual-agent-lanes.md) (registry v2 / lease + lane policy), [ADR 0001](./0001-preserve-naive-baseline.md) (baseline byte-identical 보존), [ADR 0005](./0005-eval-split-public-synthetic-private-local.md) (private 데이터 경계), [ADR 0061](./0061-external-and-paid-api-dependencies-allowed.md) (외부/유료 API opt-in 3조건)

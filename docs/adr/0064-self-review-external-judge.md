@@ -1,6 +1,6 @@
 # ADR 0064 — Self-review external-LLM cross-rating judge
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-05-19
 - Authors: Hyunsoo Kim
 - Related: ADR 0006 (real-data LLM-judge), ADR 0016 (judge↔human agreement gate), ADR 0056 (rationality_judge measurement surface)

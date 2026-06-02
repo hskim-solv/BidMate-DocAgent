@@ -1,6 +1,6 @@
 # 0069: Retrieval aggregate + citation coverage + embedding versioning as eval_summary surface
 
-- **Status**: proposed
+- **Status**: accepted
 - **Date**: 2026-05-22
 - **Deciders**: hskim (solo author)
 - **Related**: ADR 0005 (eval split / commit boundary), ADR 0048 (realN metrics extension), ADR 0054 (conditional-on-answer scorer semantics), ADR 0059 (failure-mode classifier surface)

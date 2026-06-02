@@ -1,6 +1,6 @@
 # ADR 0093 — Comparison groundedness 를 per-target 측정 표면으로
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-05-23
 - Authors: Hyunsoo Kim
 - Related: ADR 0001 (naive_baseline byte-identical), ADR 0003 (answer dict 계약), ADR 0005 (public/private eval 분리), ADR 0054 (conditional-on-substantive scorer semantics), ADR 0059 (failure-mode classifier 측정 표면), ADR 0070 (content-grounded gold), ADR 0072 (verifier single-doc topic grounding — comparison 을 명시적으로 면제)

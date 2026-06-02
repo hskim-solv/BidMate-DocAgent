@@ -1,6 +1,6 @@
 # 0067: Tree-SHA provenance for squash-merge-invariant baseline reachability
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-05-22
 - Deciders: Hyunsoo Kim
 - Related: ADR 0005 (eval-split aggregate-only), 게이트 출처 issue #160 / #413, baseline staleness 검토 #1095, this fix #1222
