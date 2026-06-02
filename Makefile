@@ -1510,6 +1510,8 @@ USE_EXISTING_ARM ?= 0
 TYPE ?= chore
 SLUG ?=
 LABELS ?=
+BASE ?= origin/main
+WT_PARENT ?= ..
 
 ship-start:
 	@if [ -z "$(TITLE)" ]; then \
@@ -1522,6 +1524,20 @@ ship-start:
 	  --type "$(TYPE)" \
 	  --slug "$(SLUG)" \
 	  --labels "$(LABELS)"
+
+# Spawn an isolated cmux track session (issue #1767): `git worktree add` off
+# origin/main + `cmux workspace create` cold-start `claude`. Thin mechanical
+# helper that captures the escaping / PATH / platform traps; see
+# scripts/spawn_track_session.sh. Issue creation stays with ship-start / gh.
+.PHONY: spawn-track
+spawn-track:
+	@if [ -z "$(ISSUE)" ] || [ -z "$(PROMPT)" ]; then \
+	  echo "Usage: make spawn-track ISSUE=N PROMPT='cold-start prompt' [TYPE=chore] [SLUG=slug] [BASE=origin/main] [WT_PARENT=..] [DRY_RUN=1]"; \
+	  exit 1; \
+	fi
+	@ISSUE="$(ISSUE)" PROMPT="$(PROMPT)" TYPE="$(TYPE)" SLUG="$(SLUG)" \
+	  BASE="$(BASE)" WT_PARENT="$(WT_PARENT)" DRY_RUN="$(DRY_RUN)" \
+	  bash scripts/spawn_track_session.sh
 
 ship-arm:
 	@$(PYTHON) scripts/claude-hooks/_ship_arm.py \
