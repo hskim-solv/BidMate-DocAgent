@@ -242,6 +242,19 @@ PR-E 에서 기본 1 → PR-F 에서 2 로 flip 하므로, 회귀 시 X=1 으로
 - **Failure mode**: two-lock + semaphore deadlock(ledger lock × lease lock × semaphore).
   - Detection signal: hang. Stop condition or fallback: **strict lock ordering**(semaphore 를
     lock 바깥에서 acquire) + bounded acquire timeout.
+- **Failure mode (PR-D 해소됨): stale worker-* artifacts from prior N>1 run — false human promotion**.
+  `_run_omc_team_runner` 의 stale eviction 이 team-launch 직전에 위치하면 no-ack / task-scope /
+  pre-launch blocked early-return 이 eviction 을 우회해 prior run 의 proposed `worker-{idx}/
+  patch_artifact.json` 이 disk 에 잔존 — human 이 오래된 proposed 를 promote 할 수 있다. 해소:
+  eviction 을 **함수 초입(`execute=True` 가드)**으로 이동해 모든 early-return 앞에 실행. dry-run
+  (`execute=False`)은 round-9 fix #2 read-only 불변으로 제외.
+- **Failure mode (PR-D 한정, X=1 dark 동안 무해): artifact race + teardown-중 permit 조기 release**.
+  `_finalize_omc_runner_result`(artifact write + heartbeat invalidation)와 teardown(shutdown)이
+  `global_concurrency_limiter().slot()` 밖에서 실행된다. 모든 omc run 이 공유하는 단일 표준
+  경로(`patch_runs/implementer/patch_artifact.json`)에서 X>1 동시 omc run 시 last-writer-wins
+  race 가 발생하고, teardown 진입 전에 permit 이 이미 반환된다. PR-D 는 X=1 dark 이므로 동시
+  omc run 이 없어 **무해**하다. PR-E 의 per-task artifact namespacing + publication fence 가
+  slot-scope 를 확장하고 standard-path race 를 닫는다(X-enable 은 PR-F 전제).
 
 ## Observability
 

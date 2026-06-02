@@ -1164,6 +1164,47 @@ def global_concurrency_limiter() -> GlobalConcurrencyLimiter:
     return limiter
 
 
+DEFAULT_OMC_MAX_WORKERS = 3
+OMC_MAX_WORKERS_ENV = "OMC_MAX_WORKERS"
+
+
+def _resolve_omc_max_workers(raw: str | None = None) -> int:
+    """Resolve the omc multi-worker cap (ADR 0095 PR-D, Y default-on). env
+    OMC_MAX_WORKERS overrides DEFAULT (3). Unset / blank / non-int -> DEFAULT (3).
+    fail-closed: a parsed value <=0 clamps to 1 (the cap must never be 0/unbounded
+    by misconfig). Byte-for-byte mirror of ``_resolve_global_concurrency``.
+
+    NOTE: this is a BEST-EFFORT cap on the worker-count the runner *requests* of
+    ``omc team``. ``omc team`` is a single out-of-process subprocess, so the in-process
+    global semaphore (M) charges its launch ONE permit and cannot hard-enforce the count
+    of the out-of-process omc workers it spawns. The cap bounds the mix_spec the runner
+    builds; the residual N-fold egress is acknowledged by the ACTIVE_OMC_RUNNER_ACK gate
+    (ADR 0087) and bounded best-effort by this knob ∧ M (ADR 0095)."""
+    source = os.getenv(OMC_MAX_WORKERS_ENV) if raw is None else raw
+    if source is None or not str(source).strip():
+        return DEFAULT_OMC_MAX_WORKERS
+    try:
+        value = int(str(source).strip())
+    except ValueError:
+        return DEFAULT_OMC_MAX_WORKERS
+    return value if value >= 1 else 1  # fail-closed: cap<=0 -> 1
+
+
+# Global parallelism kill-switch (ADR 0095). When truthy, every parallel branch is
+# forced down to a serial / single-worker path regardless of the other knobs. PR-D
+# introduces the skeleton at omc-scope (forces _resolve_omc_worker_mix to a single
+# worker); the X-task-pool demotion is wired in PR-E.
+PARALLELISM_KILL_ENV = "BIDMATE_AGENT_LOOP_PARALLELISM_KILL"
+
+
+def _parallelism_kill_enabled() -> bool:
+    """True when the operator set the global parallelism kill-switch to a truthy value.
+
+    Reuses the brick-C / ack resolver truthy判정 pattern ("1"/"true"/"yes"/"on",
+    case-insensitive) so all parallelism knobs agree on what "on" means."""
+    return os.environ.get(PARALLELISM_KILL_ENV, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _normalize_field(label: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", label.lower())
 
@@ -13359,23 +13400,37 @@ def _build_omc_env(base_env: dict[str, str]) -> dict[str, str]:
 def _resolve_omc_worker_mix(
     *,
     registry_payload: dict[str, object],
-    selected_count: int,
+    selected_count: int,  # NOTE: dead param — fan-out is task-count independent (redundant-attempt model); kept for API compat until PR-E
     max_parallel: int,
-    repo_root: Path,
+    repo_root: Path,  # NOTE: dead param — reserved for future per-host scaling; kept for API compat
     read_agent: str = "auto",
 ) -> tuple[int, int]:
     """Resolve (claude_workers, codex_workers) for the omc team from the agent_mix policy.
 
-    SINGLE-WORKER ONLY (ADR 0087 fix #2): per-worker diff capture and merge across multiple
-    worker worktrees (conflict resolution across worker branches) is deferred to a follow-up.
-    Until that path is implemented, only ONE worker is ever launched — launching more would
-    silently discard all but the leader-worker diff, multiplying the ADR 0005 exposure for
-    no captured benefit.
+    MULTI-WORKER (ADR 0095 PR-D, Y default-on — partially supersedes the ADR 0087 fix #2
+    single-worker pin). ``read_agent`` explicit overrides stay a SINGLE lane; only ``"auto"``
+    fans out to multiple workers. The total is capped at ``min(_resolve_omc_max_workers(),
+    max_parallel)`` and is always at least 1 (fail-closed). The ADR 0087 governance machinery
+    (ack fail-closed, no-auto-merge, per-worker privacy re-audit, scope re-imposition, gate
+    routing) is UNCHANGED — only the worker-count decision is reversed.
 
-    ``read_agent``: explicit agent override. ``"claude"`` → ``(1, 0)``, ``"codex"`` → ``(0, 1)``,
-    ``"auto"`` falls back to the agent_mix policy majority (higher weight wins; ties → claude).
+    ``read_agent``: explicit agent override stays single-lane. ``"claude"`` → ``(1, 0)``,
+    ``"codex"`` → ``(0, 1)``. ``"auto"`` maps the agent_mix claude/codex weights to worker
+    counts: a 0-weight lane gets 0 workers; when both are positive the cap is split
+    weight-proportionally (rounded), scaled down if the rounded sum exceeds the cap, and
+    given to the majority lane (ties → claude) if the rounded sum is 0.
+
+    NOTE — BEST-EFFORT cap: ``OMC_MAX_WORKERS`` bounds the worker count this runner *requests*
+    in the ``omc team N:claude,M:codex`` mix_spec. ``omc team`` is a single out-of-process
+    subprocess; the in-process global semaphore (M) charges its launch ONE permit and cannot
+    hard-enforce the out-of-process worker count. The residual N-fold egress is acknowledged by
+    the ACTIVE_OMC_RUNNER_ACK gate (ADR 0087) and bounded best-effort by this cap ∧ M (ADR 0095).
+
+    Kill-switch (ADR 0095): when ``BIDMATE_AGENT_LOOP_PARALLELISM_KILL`` is truthy the result is
+    forced to a single worker (explicit read_agent honored; ``"auto"`` → majority lane 1).
     """
-    # Explicit --read-agent override takes priority over agent_mix policy.
+    kill = _parallelism_kill_enabled()
+    # Explicit --read-agent override takes priority over agent_mix policy; always single-lane.
     if read_agent == "claude":
         return 1, 0  # 1:claude (explicit)
     if read_agent == "codex":
@@ -13384,10 +13439,36 @@ def _resolve_omc_worker_mix(
     target = policy.get("target") if isinstance(policy.get("target"), dict) else {}
     claude_weight = _coerce_wu(target.get("claude"))
     codex_weight = _coerce_wu(target.get("codex"))
-    # Force total_workers = 1: pick the higher-weight lane (ties → claude).
-    if claude_weight >= codex_weight:
-        return 1, 0  # 1:claude
-    return 0, 1  # 1:codex
+    # Kill-switch: force a single worker on the majority lane (ties → claude).
+    if kill:
+        return (1, 0) if claude_weight >= codex_weight else (0, 1)
+    # Cap = min(OMC_MAX_WORKERS, max_parallel), fail-closed to at least 1.
+    cap = max(1, min(_resolve_omc_max_workers(), max_parallel))
+    # A 0-weight lane gets 0 workers.
+    if claude_weight <= 0 and codex_weight <= 0:
+        # No positive weight at all — fall back to a single majority lane (ties → claude).
+        return 1, 0
+    if codex_weight <= 0:
+        return cap, 0  # claude-only
+    if claude_weight <= 0:
+        return 0, cap  # codex-only
+    # Both lanes positive: split the cap weight-proportionally (rounded), then clamp the
+    # rounded sum to the cap. round() is deterministic for the integer-weighted inputs here.
+    total_weight = claude_weight + codex_weight
+    claude_workers = round(cap * claude_weight / total_weight)
+    codex_workers = round(cap * codex_weight / total_weight)
+    over = (claude_workers + codex_workers) - cap
+    if over > 0:
+        # Rounding overshot the cap — trim from the smaller lane first (ties → trim codex so
+        # the majority/tie lane keeps its share, consistent with the ties → claude rule).
+        if claude_workers >= codex_workers:
+            codex_workers = max(0, codex_workers - over)
+        else:
+            claude_workers = max(0, claude_workers - over)
+    if claude_workers + codex_workers == 0:
+        # Rounded everything to 0 (cap=1 with near-equal weights) — give the majority lane 1.
+        return (1, 0) if claude_weight >= codex_weight else (0, 1)
+    return claude_workers, codex_workers
 
 
 def _run_omc_team_runner(
@@ -13436,9 +13517,14 @@ def _run_omc_team_runner(
       * always tears the team down (``omc team shutdown <team>``) in a finally block; and
       * never raises on omc failure (returns a blocked result with the failure recorded).
 
-    Scope: the single-worker capture path is implemented fully. Capturing + merging diffs
-    from >1 worker worktree (conflict resolution across worker branches) is a deliberate
-    follow-up — logged as a warning when the resolved team has multiple workers.
+    Scope (ADR 0095 PR-D): per-worker diff capture is implemented for N>=1 workers. Each
+    worker's diff is captured + re-audited (privacy + scope) into its own
+    ``omc_runs/omc-team/worker-{idx}/patch_artifact.json`` namespace. N==1 + all-pass keeps the
+    byte-identical single-worker canonical routing (standard path gets the proposed). N>1 +
+    all-pass routes the standard active-apply path to a ``needs-human-selection`` blocked
+    artifact (a human promotes exactly one per-worker proposal — automatic promotion is a
+    deliberate non-goal). Any worker failing capture or re-audit blocks the WHOLE run
+    (fail-closed; no partial success). NO ``--auto-merge`` is ever passed.
     """
     now = now or datetime.now(timezone.utc)
     blockers: list[str] = []
@@ -13451,6 +13537,72 @@ def _run_omc_team_runner(
     omc_runs_path = runs_path.parent / "omc_runs"
     run_dir = omc_runs_path / session_id
     artifact_path = run_dir / "patch_artifact.json"
+    # HIGH-3 (codex round-2 fix): evict stale worker-* artifacts at function entry, BEFORE any
+    # early-return, so EVERY execute=True path (no-ack, task-scope ambiguity, assignment missing,
+    # privacy/scope pre-launch blocked, AND the normal launch path) starts from a clean slate.
+    # Prior placement at the team-launch site (after run_dir.mkdir) was fail-open: pre-launch
+    # blocked early-returns bypassed it, leaving prior N>1 all-pass proposed worker-* on disk.
+    #
+    # FAIL-CLOSED (codex round-3): rmtree failure is NOT warning-only.  If rmtree fails, we
+    # neutralize the stale proposed artifact in-place by overwriting it with a blocked artifact
+    # (a blocked artifact is never apply-eligible).  If neutralize also fails, we add a
+    # fail-closed blocker so the run cannot proceed with a surviving proposed worker artifact.
+    # After the loop, a non-empty blockers list causes an early-return (see immediately below).
+    #
+    # dry-run (execute=False) is read-only (round-9 fix #2 invariant) and intentionally excluded:
+    # the worker-* present during a dry-run are a prior EXECUTED run's product (every execute run
+    # evicts here first, so the on-disk set always reflects the latest executed run); dry-run is
+    # not a promotion action, and the next executed run will evict before writing new ones.
+    if execute and run_dir.exists():
+        for _stale_wdir in sorted(run_dir.glob("worker-*")):
+            _stale_art = _stale_wdir / "patch_artifact.json"
+            try:
+                shutil.rmtree(_stale_wdir)
+            except Exception as _clean_exc:
+                # rmtree failed — neutralize the stale proposed artifact in-place so it can
+                # never be promoted (a blocked artifact is not apply-eligible).  If neutralize
+                # ALSO fails, record a fail-closed blocker so the run cannot proceed to launch
+                # with a surviving proposed worker artifact.
+                try:
+                    if _stale_art.exists():
+                        _write_blocked_omc_artifact(
+                            _stale_art, session_id=session_id, team_name=team_name, now=now
+                        )
+                    warnings.append(
+                        f"could not remove stale omc worker dir {_stale_wdir} ({_clean_exc}); "
+                        "neutralized its artifact to blocked"
+                    )
+                except Exception as _neut_exc:
+                    blockers.append(
+                        f"stale omc worker artifact at {_stale_art} could not be evicted "
+                        f"({_clean_exc}) nor neutralized ({_neut_exc}); fail-closed"
+                    )
+    if blockers:
+        return _finalize_omc_runner_result(
+            decision="blocked",
+            execute=execute,
+            session_id=session_id,
+            verdict="blocked",
+            blockers=blockers,
+            warnings=warnings,
+            team_name=team_name,
+            command_display=omc_command_display,
+            state_path=state_path,
+            out_path=out_path,
+            registry_path=registry_path,
+            assignments_path=assignments_path,
+            runs_path=omc_runs_path,
+            artifact_path=artifact_path,
+            diff_text="",
+            task_id=task_id,
+            model=model,
+            repo_root=repo_root,
+            now=now,
+            write_artifact=False,
+            invalidate_heartbeats=False,  # eviction-blocked: no omc team ran
+        )
+    # Per-worker captured diffs (ADR 0095 PR-D); populated by the capture loop on success.
+    omc_worker_diffs: list[dict[str, object]] = []
 
     # (2) Fail-closed data-boundary gate. NEVER spawn omc without the explicit ack.
     if not _omc_runner_ack_enabled():
@@ -13615,8 +13767,11 @@ def _run_omc_team_runner(
         repo_root=repo_root,
         read_agent=read_agent,
     )
-    # _resolve_omc_worker_mix enforces total_workers=1 (multi-worker diff capture deferred).
-    assert claude_workers + codex_workers == 1, "invariant: omc runner only launches 1 worker"
+    # ADR 0095 PR-D: the worker mix may now be multi-worker (Y default-on). The total is
+    # always >= 1 (fail-closed in _resolve_omc_worker_mix). The canonical-diff routing below
+    # treats N==1 (byte-compat) and N>1 (per-worker capture + needs-human-selection) distinctly.
+    total_workers = claude_workers + codex_workers
+    assert total_workers >= 1, "omc runner must launch at least 1 worker"
 
     # (3) Build the privacy-scrubbed task text from the selected session assignments. The
     # task text crosses the ADR 0005 boundary into uncontrolled omc workers (network-capable),
@@ -13759,146 +13914,157 @@ def _run_omc_team_runner(
             return None
         return max(1.0, deadline - _time.monotonic())
 
+    # (D4 semaphore) Charge the single out-of-process omc launch ONE global permit. The poll
+    # loop + per-worker diff capture stay inside the SAME slot (the launch is one logical CLI
+    # spawn; omc fans out its own workers out-of-process — the in-process M cannot charge those
+    # individually, hence the OMC_MAX_WORKERS best-effort cap). Lock-ordering: the omc path holds
+    # no flock (no LeaseManager / LedgerState lock), so acquiring the semaphore here satisfies the
+    # ADR 0094 ordering (semaphore acquired with no lock held). The ``with`` releases the permit
+    # on EVERY exit (success or exception) BEFORE the except/finally teardown runs.
     try:
-        # Launch the team. NO ``--auto-merge`` is ever in ``omc_command``.
-        launch = run(omc_command, cwd=repo_root, env=omc_env, timeout=_remaining_budget())
-        if getattr(launch, "returncode", 1) != 0:
-            blockers.append(f"omc team launch failed (rc={getattr(launch, 'returncode', 'unknown')})")
-        team_name = _parse_omc_team_name(str(getattr(launch, "stdout", "") or ""))
-        if not team_name and not blockers:
-            warnings.append("omc team launch did not report a team name; using default poll target")
-            team_name = "active"
+        with global_concurrency_limiter().slot():
+            # Launch the team. NO ``--auto-merge`` is ever in ``omc_command``.
+            launch = run(omc_command, cwd=repo_root, env=omc_env, timeout=_remaining_budget())
+            if getattr(launch, "returncode", 1) != 0:
+                blockers.append(f"omc team launch failed (rc={getattr(launch, 'returncode', 'unknown')})")
+            team_name = _parse_omc_team_name(str(getattr(launch, "stdout", "") or ""))
+            if not team_name and not blockers:
+                warnings.append("omc team launch did not report a team name; using default poll target")
+                team_name = "active"
 
-        # (poll) Wait for workers to reach a terminal state via the real omc API contract.
-        # Poll uses ``omc team api get-summary --input '{"team_name":"<team>"}' --json``
-        # (positional team name is NOT a valid form for api subcommands — requires --input JSON).
-        # Terminal success: all tasks completed, none failed, none in_progress, total > 0.
-        # Terminal fail: any task failed and none in_progress.
-        # ``timeout_seconds=0`` means unlimited (ADR 0085).
-        summary_data: dict[str, object] = {}
-        if not blockers:
-            team_success = False
-            while True:
-                get_sum = run(
-                    ["omc", "team", "api", "get-summary",
-                     "--input", json.dumps({"team_name": team_name}),
-                     "--json"],
-                    cwd=repo_root, env=omc_env, timeout=_remaining_budget(),
-                )
-                if getattr(get_sum, "returncode", 1) != 0:
-                    blockers.append(
-                        f"omc team api get-summary failed (rc={getattr(get_sum, 'returncode', 'unknown')})"
+            # (poll) Wait for workers to reach a terminal state via the real omc API contract.
+            # Poll uses ``omc team api get-summary --input '{"team_name":"<team>"}' --json``
+            # (positional team name is NOT a valid form for api subcommands — requires --input JSON).
+            # Terminal success: all tasks completed, none failed, none in_progress, total > 0.
+            # Terminal fail: any task failed and none in_progress.
+            # ``timeout_seconds=0`` means unlimited (ADR 0085).
+            summary_data: dict[str, object] = {}
+            if not blockers:
+                team_success = False
+                while True:
+                    get_sum = run(
+                        ["omc", "team", "api", "get-summary",
+                         "--input", json.dumps({"team_name": team_name}),
+                         "--json"],
+                        cwd=repo_root, env=omc_env, timeout=_remaining_budget(),
                     )
-                    break
-                try:
-                    summary_payload = json.loads(str(getattr(get_sum, "stdout", "") or ""))
-                    # API response: {"ok": true, "operation": "get-summary", "data": {"summary": {...}}}
-                    summary_data = (
-                        summary_payload.get("data", {}).get("summary", {})
-                        if isinstance(summary_payload.get("data"), dict)
-                        else {}
-                    )
-                except (ValueError, KeyError):
-                    summary_data = {}
-                tasks = summary_data.get("tasks") if isinstance(summary_data.get("tasks"), dict) else {}
-                total = int(tasks.get("total", 0))
-                in_progress = int(tasks.get("in_progress", 0))
-                completed = int(tasks.get("completed", 0))
-                failed = int(tasks.get("failed", 0))
-                if in_progress == 0 and failed == 0 and total > 0 and completed == total:
-                    team_success = True
-                    break
-                if in_progress == 0 and failed > 0:
-                    blockers.append(
-                        f"omc team reached a terminal failure state: {failed} task(s) failed"
-                        + (f" of {total}" if total > 0 else "")
-                    )
-                    break
-                if deadline is not None and _time.monotonic() >= deadline:
-                    blockers.append(
-                        f"omc team did not reach a terminal success state within {timeout_seconds}s timeout"
-                    )
-                    break
-                _time.sleep(_OMC_POLL_INTERVAL_SECONDS)
-
-        # Capture the worker diff from the single worker's git worktree.
-        # There is no ``get-diff`` API operation. The worker's committed changes live in its
-        # git worktree at ``{repo_root}/.omc/team/{team}/worktrees/{worker}`` (set by
-        # ``OMC_TEAM_WORKTREE_MODE=branch``).
-        #
-        # CRITICAL (round-6 fix #1): ``git diff HEAD`` captures ONLY uncommitted working-tree
-        # changes. OMC workers COMMIT their patch on their isolated worktree branch; the
-        # committed diff is therefore INVISIBLE to ``git diff HEAD``.  We must diff from the
-        # base the worker branched from — i.e. the merge-base of the worker HEAD and the
-        # canonical upstream (``origin/main``).  ``git diff <base>`` covers the working tree
-        # AND all commits since <base> (equivalent to: all committed + staged + untracked vs
-        # the branch point).  Resolution:
-        #   1. Resolve base via ``git -C <wt> merge-base HEAD origin/main`` (fallback: empty).
-        #   2. ``git -C <wt> diff <base>`` → captures committed worker changes + any residual
-        #      staged/unstaged work.
-        # If merge-base resolution fails (e.g. remote ref absent in a shallow clone / test
-        # worktree) we log a warning and fall back to ``git diff HEAD`` for the unstaged-only
-        # capture so the safety path degrades gracefully rather than erroring out.
-        if not blockers and team_success:
-            workers_list = summary_data.get("workers") if isinstance(summary_data.get("workers"), list) else []
-            worktree_path_raw = (
-                workers_list[0].get("worktree_path") if workers_list and isinstance(workers_list[0], dict) else None
-            )
-            if not worktree_path_raw:
-                # Fallback: derive canonical path from team name and first worker name.
-                worker_name = (
-                    str(workers_list[0].get("name", "worker-1")) if workers_list and isinstance(workers_list[0], dict) else "worker-1"
-                )
-                worktree_path_raw = str(repo_root / ".omc" / "team" / team_name / "worktrees" / worker_name)
-                warnings.append(
-                    f"omc summary did not report worktree_path; using derived path: {worktree_path_raw}"
-                )
-            worktree_path = str(worktree_path_raw)
-            git_run = git_runner if git_runner is not None else _git_worktree_runner
-            # Step 1: resolve the merge-base so committed worker commits are included.
-            # CRITICAL (round-8 fix #3): FAIL CLOSED when merge-base cannot be resolved.
-            # A fallback to ``git diff HEAD`` only captures uncommitted changes — workers commit
-            # their patch on a per-worker branch, so ``git diff HEAD`` returns an EMPTY diff for
-            # any committed work.  The run would finish ``empty``/``completed`` with ZERO privacy
-            # audit / scope check coverage of the actual worker output.  In a shallow clone or
-            # worktree without ``origin/main`` this is a safety hole, not a graceful degradation.
-            # Block fail-closed with a clear message; the operator must fix the remote ref first.
-            base_proc = git_run(["git", "-C", worktree_path, "merge-base", "HEAD", "origin/main"])
-            base_sha = str(getattr(base_proc, "stdout", "") or "").strip()
-            if getattr(base_proc, "returncode", 1) != 0 or not base_sha:
-                blockers.append(
-                    f"omc worker merge-base resolution failed (rc={getattr(base_proc, 'returncode', 'unknown')}); "
-                    "cannot safely capture committed worker output without a verified diff base — "
-                    "ensure origin/main is reachable in the worker worktree and retry; "
-                    f"worktree: {worktree_path}"
-                )
-            else:
-                # Step 2: stage everything (committed + tracked + UNTRACKED) then diff cached.
-                # CRITICAL (round-10 fix #1): plain ``git diff <base_sha>`` captures committed
-                # changes and unstaged changes to tracked files, but silently MISSES new
-                # untracked files — an OMC worker that creates a new file makes this look
-                # ``empty`` and the file bypasses privacy + scope checks entirely.
-                # The in-repo codex path uses ``git add -A`` for exactly this reason.
-                # Fix: stage everything with ``git -C <wt> add -A``, then capture the full
-                # index diff with ``git -C <wt> diff --cached <base_sha>``; this covers
-                # committed + staged + newly-created untracked files in one snapshot.
-                add_proc = git_run(["git", "-C", worktree_path, "add", "-A"])
-                if getattr(add_proc, "returncode", 0) != 0:
-                    blockers.append(
-                        f"git add -A in worker worktree failed (rc={getattr(add_proc, 'returncode', 'unknown')}); "
-                        f"cannot safely capture untracked worker files; worktree: {worktree_path}"
-                    )
-                else:
-                    diff_cmd: list[str] = ["git", "-C", worktree_path, "diff", "--cached", base_sha]
-                    diff_proc = git_run(diff_cmd)
-                    if getattr(diff_proc, "returncode", 0) == 0:
-                        diff_text = str(getattr(diff_proc, "stdout", "") or "")
-                        verdict = "proposed" if diff_text.strip() else "empty"
-                    else:
+                    if getattr(get_sum, "returncode", 1) != 0:
                         blockers.append(
-                            f"git diff --cached in worker worktree failed (rc={getattr(diff_proc, 'returncode', 'unknown')}); "
-                            f"worktree: {worktree_path}"
+                            f"omc team api get-summary failed (rc={getattr(get_sum, 'returncode', 'unknown')})"
                         )
+                        break
+                    try:
+                        summary_payload = json.loads(str(getattr(get_sum, "stdout", "") or ""))
+                        # API response: {"ok": true, "operation": "get-summary", "data": {"summary": {...}}}
+                        summary_data = (
+                            summary_payload.get("data", {}).get("summary", {})
+                            if isinstance(summary_payload.get("data"), dict)
+                            else {}
+                        )
+                    except (ValueError, KeyError):
+                        summary_data = {}
+                    tasks = summary_data.get("tasks") if isinstance(summary_data.get("tasks"), dict) else {}
+                    total = int(tasks.get("total", 0))
+                    in_progress = int(tasks.get("in_progress", 0))
+                    completed = int(tasks.get("completed", 0))
+                    failed = int(tasks.get("failed", 0))
+                    if in_progress == 0 and failed == 0 and total > 0 and completed == total:
+                        team_success = True
+                        break
+                    if in_progress == 0 and failed > 0:
+                        blockers.append(
+                            f"omc team reached a terminal failure state: {failed} task(s) failed"
+                            + (f" of {total}" if total > 0 else "")
+                        )
+                        break
+                    if deadline is not None and _time.monotonic() >= deadline:
+                        blockers.append(
+                            f"omc team did not reach a terminal success state within {timeout_seconds}s timeout"
+                        )
+                        break
+                    _time.sleep(_OMC_POLL_INTERVAL_SECONDS)
+
+            # Capture EVERY worker diff from its own git worktree (ADR 0095 PR-D multi-worker).
+            # There is no ``get-diff`` API operation. Each worker's committed changes live in its
+            # git worktree at ``{repo_root}/.omc/team/{team}/worktrees/{worker}`` (set by
+            # ``OMC_TEAM_WORKTREE_MODE=branch``). Per worker we run the same merge-base →
+            # ``git add -A`` → ``git diff --cached`` sequence (ADR 0087 round-6 / round-8 / round-10
+            # fixes) via ``_capture_omc_worker_diff``, then privacy + scope re-audit per worker.
+            #
+            # FAIL-CLOSED AGGREGATION: if ANY worker fails capture (merge-base / add -A / diff) or
+            # fails the privacy/scope re-audit, the WHOLE run is blocked (no partial success).
+            if not blockers and team_success:
+                workers_list = summary_data.get("workers") if isinstance(summary_data.get("workers"), list) else []
+                # HIGH-2 (ADR 0095 PR-D adversarial fix): if the summary reports NO workers but
+                # the runner requested N>1, the whole run is fail-closed blocked.  A missing
+                # workers list means we cannot locate ANY diff — silently falling back to a
+                # [None]-derived single worker would produce a canonical proposed for a run that
+                # was supposed to deliver N worker candidates, masking the real failure.
+                # For requested_total==1 the [None] single-worker fallback is safe (legacy behaviour).
+                if not workers_list and total_workers > 1:
+                    blockers.append(
+                        f"omc summary reported no workers but {total_workers} workers were "
+                        "requested; cannot locate worker diffs — blocked fail-closed"
+                    )
+                elif not workers_list:
+                    # Defensive: single-worker run with no workers list — derive path via fallback
+                    # helper (warns inside helper). Legacy behaviour preserved (N==1 byte-compat).
+                    workers_list = [None]
+                if not blockers:
+                    git_run = git_runner if git_runner is not None else _git_worktree_runner
+                    worker_diffs: list[dict[str, object]] = []
+                    for idx, worker_entry in enumerate(workers_list):
+                        worktree_path = _omc_worker_worktree_path(
+                            worker_entry=worker_entry,
+                            idx=idx,
+                            team_name=team_name,
+                            repo_root=repo_root,
+                            warnings=warnings,
+                        )
+                        w_diff, w_verdict, w_capture_blockers = _capture_omc_worker_diff(
+                            git_run=git_run,
+                            worktree_path=worktree_path,
+                        )
+                        if w_capture_blockers:
+                            blockers.extend(
+                                (f"worker {idx}: {b}" if total_workers > 1 else b)
+                                for b in w_capture_blockers
+                            )
+                            break  # fail-closed: stop at the first failing worker
+                        # Per-worker privacy + scope re-audit (fail-closed). The audit path is the
+                        # per-worker namespace so privacy finding messages reference the right file.
+                        worker_artifact_path = run_dir / f"worker-{idx}" / "patch_artifact.json"
+                        w_audited_verdict, w_audit_blockers = _audit_omc_diff_verdict(
+                            diff_text=w_diff,
+                            verdict=w_verdict,
+                            task_id=task_id,
+                            audit_path=worker_artifact_path,
+                            repo_root=repo_root,
+                        )
+                        if w_audited_verdict == "blocked":
+                            blockers.extend(
+                                (f"worker {idx}: {b}" if total_workers > 1 else b)
+                                for b in w_audit_blockers
+                            )
+                            break  # fail-closed: any worker privacy/scope violation blocks the run
+                        worker_diffs.append(
+                            {
+                                "idx": idx,
+                                "diff": w_diff,
+                                "verdict": w_verdict,
+                                "artifact_path": worker_artifact_path,
+                            }
+                        )
+                    # HIGH-2 (partial-capture guard): if capture succeeded for fewer workers than
+                    # requested, the result is ambiguous — block fail-closed rather than promoting
+                    # a partial result as if it were a full N-worker run.
+                    if not blockers and len(worker_diffs) != total_workers:
+                        blockers.append(
+                            f"captured {len(worker_diffs)} worker diff(s) but {total_workers} "
+                            "were requested; partial capture is not accepted — blocked fail-closed"
+                        )
+                    if not blockers:
+                        omc_worker_diffs = worker_diffs
     except subprocess.TimeoutExpired as exc:
         # Per-command timeout expired — record a deterministic blocker; attempt graceful shutdown.
         blockers.append(f"omc runner command timed out after {timeout_seconds}s: {exc}")
@@ -13984,6 +14150,60 @@ def _run_omc_team_runner(
             except Exception as exc:  # pragma: no cover - teardown best-effort
                 warnings.append(f"omc team shutdown warning: {exc}")
 
+    # (ADR 0095 PR-D) Canonical-diff routing from the per-worker captures.
+    #   * N==1 + all-pass: feed the single worker's diff into the canonical finalize so the
+    #     standard active-apply path gets the proposed artifact — byte-identical to the
+    #     pre-PR-D single-worker path (no worker-0/ namespace is written; the run-specific
+    #     artifact_path + standard path carry the proposed exactly as before).
+    #   * N>1 + all-pass: write EACH worker's proposed artifact into its worker-{idx}/ namespace
+    #     and route the standard path to a needs-human-selection blocked artifact (a human
+    #     promotes exactly one; auto-promotion is a non-goal). NO auto-merge.
+    # Capture-time / re-audit blockers (set in the loop above) take priority — they leave
+    # omc_worker_diffs empty so neither branch runs and the run finalizes blocked.
+    worker_count = len(omc_worker_diffs)
+    needs_human_selection = False
+    if not blockers and worker_count >= 1:
+        if worker_count == 1:
+            diff_text = str(omc_worker_diffs[0]["diff"])
+            verdict = str(omc_worker_diffs[0]["verdict"])
+        else:
+            # Persist each worker's proposed/empty artifact in its own namespace, then route
+            # the standard path to needs-human-selection. Per-worker artifacts already passed
+            # the in-memory privacy + scope re-audit in the capture loop; here we run the
+            # written-file backstop (mirrors the canonical path's audit_privacy_output backstop).
+            worker_artifact_paths: list[Path] = []
+            for worker in omc_worker_diffs:
+                worker_artifact_path = worker["artifact_path"]
+                assert isinstance(worker_artifact_path, Path)
+                worker_artifact_path.parent.mkdir(parents=True, exist_ok=True)
+                worker_payload = _omc_proposed_artifact_payload(
+                    diff_text=str(worker["diff"]),
+                    verdict=str(worker["verdict"]),
+                    task_id=task_id,
+                    session_id=session_id,
+                    team_name=team_name,
+                    now=now,
+                )
+                worker_artifact_path.write_text(
+                    json.dumps(_patch_artifact_json_payload(worker_payload), indent=2, sort_keys=True) + "\n",
+                    encoding="utf-8",
+                )
+                worker_artifact_paths.append(worker_artifact_path)
+                file_findings = audit_privacy_output(worker_artifact_path, out_path=None, repo_root=repo_root)
+                if file_findings:
+                    issues = sorted({finding.issue for finding in file_findings})
+                    blockers.extend(f"worker {worker['idx']}: privacy: {issue}" for issue in issues)
+            if blockers:
+                # Fail-closed: a backstop leak in ANY worker blocks the whole run AND must not
+                # leave a proposed artifact in ANY per-worker namespace (no partial success).
+                for worker_artifact_path in worker_artifact_paths:
+                    _write_blocked_omc_artifact(
+                        worker_artifact_path, session_id=session_id, team_name=team_name, now=now
+                    )
+            else:
+                needs_human_selection = True
+                diff_text = ""  # skip the canonical proposed write; route to needs-human-selection
+
     decision = "blocked" if blockers else ("completed" if verdict in {"proposed", "empty"} else "blocked")
     return _finalize_omc_runner_result(
         decision=decision,
@@ -14007,6 +14227,8 @@ def _run_omc_team_runner(
         now=now,
         write_artifact=not blockers,
         invalidate_heartbeats=True,  # omc team was actually launched; invalidate stale heartbeats
+        needs_human_selection=needs_human_selection,
+        worker_count=worker_count,
     )
 
 
@@ -14076,6 +14298,232 @@ def _build_omc_task_text(
     return _sanitize_inline_text(_redact_private_text(text)), task_blockers
 
 
+def _capture_omc_worker_diff(
+    *,
+    git_run,
+    worktree_path: str,
+) -> tuple[str, str, list[str]]:
+    """Capture ONE omc worker's committed+staged+untracked diff from its git worktree.
+
+    Returns ``(diff_text, verdict, blockers)``. Extracted from the single-worker path so the
+    multi-worker loop (ADR 0095 PR-D) reuses the EXACT same merge-base → ``git add -A`` →
+    ``git diff --cached`` sequence (ADR 0087 round-6 / round-8 / round-10 fixes) per worker.
+
+    CRITICAL (round-8 fix #3): FAIL CLOSED when merge-base cannot be resolved — workers COMMIT
+    on a per-worker branch, so a ``git diff HEAD`` fallback would return an EMPTY diff and the
+    run would finish ``empty``/``completed`` with ZERO privacy/scope coverage of the real
+    output. CRITICAL (round-10 fix #1): stage with ``git add -A`` first so newly-created
+    untracked files are captured (plain ``git diff <base>`` silently misses them).
+    """
+    worker_blockers: list[str] = []
+    base_proc = git_run(["git", "-C", worktree_path, "merge-base", "HEAD", "origin/main"])
+    base_sha = str(getattr(base_proc, "stdout", "") or "").strip()
+    if getattr(base_proc, "returncode", 1) != 0 or not base_sha:
+        worker_blockers.append(
+            f"omc worker merge-base resolution failed (rc={getattr(base_proc, 'returncode', 'unknown')}); "
+            "cannot safely capture committed worker output without a verified diff base — "
+            "ensure origin/main is reachable in the worker worktree and retry; "
+            f"worktree: {worktree_path}"
+        )
+        return "", "error", worker_blockers
+    add_proc = git_run(["git", "-C", worktree_path, "add", "-A"])
+    if getattr(add_proc, "returncode", 0) != 0:
+        worker_blockers.append(
+            f"git add -A in worker worktree failed (rc={getattr(add_proc, 'returncode', 'unknown')}); "
+            f"cannot safely capture untracked worker files; worktree: {worktree_path}"
+        )
+        return "", "error", worker_blockers
+    diff_proc = git_run(["git", "-C", worktree_path, "diff", "--cached", base_sha])
+    if getattr(diff_proc, "returncode", 0) != 0:
+        worker_blockers.append(
+            f"git diff --cached in worker worktree failed (rc={getattr(diff_proc, 'returncode', 'unknown')}); "
+            f"worktree: {worktree_path}"
+        )
+        return "", "error", worker_blockers
+    diff_text = str(getattr(diff_proc, "stdout", "") or "")
+    return diff_text, ("proposed" if diff_text.strip() else "empty"), worker_blockers
+
+
+def _omc_worker_worktree_path(
+    *,
+    worker_entry: object,
+    idx: int,
+    team_name: str,
+    repo_root: Path,
+    warnings: list[str],
+) -> str:
+    """Resolve the git-worktree path for worker ``idx`` from a summary ``workers[idx]`` entry,
+    falling back to the canonical ``.omc/team/<team>/worktrees/<name>`` path."""
+    worktree_path_raw = (
+        worker_entry.get("worktree_path") if isinstance(worker_entry, dict) else None
+    )
+    if not worktree_path_raw:
+        worker_name = (
+            str(worker_entry.get("name", f"worker-{idx + 1}"))
+            if isinstance(worker_entry, dict)
+            else f"worker-{idx + 1}"
+        )
+        worktree_path_raw = str(repo_root / ".omc" / "team" / team_name / "worktrees" / worker_name)
+        warnings.append(
+            f"omc summary did not report worktree_path for worker {idx}; "
+            f"using derived path: {worktree_path_raw}"
+        )
+    return str(worktree_path_raw)
+
+
+def _omc_proposed_artifact_payload(
+    *,
+    diff_text: str,
+    verdict: str,
+    task_id: str | None,
+    session_id: str,
+    team_name: str,
+    now: datetime,
+) -> dict[str, object]:
+    """Build the patch_artifact.json dict for a captured omc diff (codex-patch-compatible shape).
+
+    Single source of truth shared by ``_finalize_omc_runner_result`` (canonical N==1 path) and
+    the multi-worker per-worker artifact writes (ADR 0095 PR-D), so every omc proposed artifact
+    has byte-identical structure regardless of N."""
+    return {
+        "schema_version": 1,
+        "task_id": task_id if (task_id and TASK_ID_RE.fullmatch(task_id)) else None,
+        "session_id": session_id,
+        "role": "Implementer",
+        "agent": "omc",
+        "generated_at": _isoformat(now),
+        "base": "origin/main",
+        "scratch_branch": team_name,
+        "verdict": verdict,
+        "summary": _patch_summary(verdict, diff_text, agent="omc"),
+        "files": _diff_files(diff_text),
+        "diffstat": _diffstat(diff_text),
+        "diff": diff_text,
+        "wu": 1 if verdict == "proposed" else 0,
+        "privacy_scrubbed": True,
+    }
+
+
+def _write_needs_human_selection_artifact(
+    artifact_path: Path,
+    *,
+    session_id: str,
+    team_name: str,
+    worker_count: int,
+    now: datetime,
+) -> None:
+    """Write a privacy-clean ``needs-human-selection`` blocked artifact (no raw diff).
+
+    For N>1 omc workers that ALL pass the per-worker privacy + scope re-audit (ADR 0095 PR-D),
+    the standard active-apply consumption path is intentionally NOT auto-fed any single worker's
+    proposed diff — a human must promote exactly one of the preserved per-worker
+    (``worker-{idx}/patch_artifact.json``) proposals. This blocked artifact at the standard path
+    prevents the active-apply auto-consumer from silently picking one. Automatic promotion is a
+    deliberate PR-D non-goal (capture + safe routing only)."""
+    redacted = {
+        "schema_version": 1,
+        "task_id": None,
+        "session_id": session_id,
+        "role": "Implementer",
+        "agent": "omc",
+        "generated_at": _isoformat(now),
+        "base": "origin/main",
+        "scratch_branch": _sanitize_inline_text(team_name),
+        "verdict": "blocked",
+        "summary": (
+            f"omc multi-worker run produced {worker_count} candidate proposals — needs human "
+            "selection; promote exactly one worker-N/patch_artifact.json (no auto-merge)"
+        ),
+        "files": [],
+        "diffstat": {"files_changed": 0, "insertions": 0, "deletions": 0},
+        "diff": "",
+        "wu": 0,
+        "privacy_scrubbed": False,
+        "needs_human_selection": True,
+        "worker_count": worker_count,
+    }
+    artifact_path.parent.mkdir(parents=True, exist_ok=True)
+    artifact_path.write_text(json.dumps(_sanitize_json_value(redacted), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def _audit_omc_diff_verdict(
+    *,
+    diff_text: str,
+    verdict: str,
+    task_id: str | None,
+    audit_path: Path,
+    repo_root: Path,
+) -> tuple[str, list[str]]:
+    """Re-impose the omc privacy re-audit + claimed_files scope check on ONE captured diff.
+
+    Single source of truth shared by ``_finalize_omc_runner_result`` (the N==1 canonical
+    path) and the multi-worker per-worker capture loop (ADR 0095 PR-D). Returns
+    ``(verdict, extra_blockers)``: ``verdict`` is downgraded to ``"blocked"`` when any
+    privacy finding or scope violation is detected (fail-closed for the uncontrolled omc
+    path — ADR 0087 fix round-5 #2 / round-6 fix #2 / round-7 fix #1), otherwise the input
+    ``verdict`` is returned unchanged. ``audit_path`` is only used to derive a redacted
+    display path for the privacy finding messages; this helper does NOT write any artifact.
+    """
+    extra_blockers: list[str] = []
+    # (1) Privacy re-audit on the captured diff (fail-closed -> blocked).
+    privacy_findings = _privacy_findings_for_text(
+        diff_text,
+        path=_display_path(_repo_path(audit_path, repo_root), repo_root=repo_root),
+    )
+    if privacy_findings:
+        issues = sorted({finding.issue for finding in privacy_findings})
+        extra_blockers.extend(f"privacy: {issue}" for issue in issues)
+        return "blocked", extra_blockers
+
+    # (2) claimed_files scope check on the captured diff (fail-closed for omc). A missing
+    # write lease or empty claimed_files is BLOCKING when there is a proposed diff —
+    # uncontrolled workers require explicit scope enforcement; "unenforced" is unacceptable
+    # (round-5 fix #2). REQUIRE an EXACT current task_id match (round-6 fix #2 / round-7 fix
+    # #1): legacy/unscoped leases are not accepted. When task_id is None/empty (standalone
+    # call without --task), fall back to any active/recovery write lease.
+    lease_items = _load_active_leases(_active_path(DEFAULT_ACTIVE_LEASES, repo_root=repo_root))
+    if task_id:
+        task_write_leases = [
+            lease for lease in lease_items
+            if isinstance(lease, dict)
+            and lease.get("lease_type") == "write"
+            and lease.get("status") in {"active", "recovery-needed"}
+            and str(lease.get("task_id") or "") == task_id
+        ]
+    else:
+        task_write_leases = [
+            lease for lease in lease_items
+            if isinstance(lease, dict)
+            and lease.get("lease_type") == "write"
+            and lease.get("status") in {"active", "recovery-needed"}
+        ]
+    if len(task_write_leases) > 1:
+        lease_ids = [str(lse.get("lease_id") or "") for lse in task_write_leases]
+        extra_blockers.append(
+            f"omc diff scope is ambiguous: {len(task_write_leases)} active write leases "
+            f"found for task_id={task_id!r} (lease_ids: {', '.join(lease_ids[:5])}); "
+            "resolve to exactly one active write lease before running the omc runner"
+        )
+        return "blocked", extra_blockers
+    write_lease = task_write_leases[0] if len(task_write_leases) == 1 else None
+    claimed_raw = write_lease.get("claimed_files") if isinstance(write_lease, dict) else None
+    claimed = {str(f) for f in claimed_raw} if isinstance(claimed_raw, list) else set()
+    if not claimed and verdict == "proposed":
+        extra_blockers.append(
+            "omc diff scope is unenforced: no active write lease or claimed_files found; "
+            "set claimed_files in the write lease before running the omc runner"
+        )
+        return "blocked", extra_blockers
+    if claimed and verdict == "proposed":
+        out_of_scope = sorted(f for f in _diff_files(diff_text) if f not in claimed)
+        if out_of_scope and not _context_only_claimed_files(claimed):
+            extra_blockers.append(
+                "omc diff touches files outside the lease claim: " + ", ".join(out_of_scope[:5])
+            )
+            return "blocked", extra_blockers
+    return verdict, extra_blockers
+
+
 def _finalize_omc_runner_result(
     *,
     decision: str,
@@ -14099,6 +14547,8 @@ def _finalize_omc_runner_result(
     now: datetime,
     write_artifact: bool,
     invalidate_heartbeats: bool,
+    needs_human_selection: bool = False,
+    worker_count: int = 1,
 ) -> ActiveCodexRunnerResult:
     """Re-impose governance on the captured omc diff, write the patch_artifact.json, and map
     the result into an ActiveCodexRunnerResult (codex-patch-compatible shape).
@@ -14108,117 +14558,78 @@ def _finalize_omc_runner_result(
     ``invalidate_heartbeats``: only True when the omc team was actually launched (execute=True
     and the team launch was attempted) — prevents dry-run / no-ack / pre-spawn-blocked paths
     from mutating gate state.
+    ``needs_human_selection`` (ADR 0095 PR-D): True for an N>1 multi-worker run whose workers
+    ALL passed per-worker re-audit. The per-worker proposed artifacts are already written to
+    their ``worker-{idx}/`` namespaces by the caller; here we route the standard active-apply
+    path (and the run-specific ``artifact_path``) to a ``needs-human-selection`` BLOCKED artifact
+    so the active-apply auto-consumer never silently picks one candidate (automatic promotion is
+    a deliberate non-goal). ``worker_count`` is recorded in that artifact.
     """
     blockers = list(blockers)
     warnings = list(warnings)
 
-    if write_artifact and diff_text:
-        artifact = {
-            "schema_version": 1,
-            "task_id": task_id if (task_id and TASK_ID_RE.fullmatch(task_id)) else None,
-            "session_id": session_id,
-            "role": "Implementer",
-            "agent": "omc",
-            "generated_at": _isoformat(now),
-            "base": "origin/main",
-            "scratch_branch": team_name,
-            "verdict": verdict,
-            "summary": _patch_summary(verdict, diff_text, agent="omc"),
-            "files": _diff_files(diff_text),
-            "diffstat": _diffstat(diff_text),
-            "diff": diff_text,
-            "wu": 1 if verdict == "proposed" else 0,
-            "privacy_scrubbed": True,
-        }
+    # (ADR 0095 PR-D) N>1 multi-worker all-pass: route the standard + run-specific paths to a
+    # needs-human-selection blocked artifact (per-worker proposals are preserved by the caller).
+    # decision is forced blocked so active-apply will not auto-consume; this takes priority over
+    # the normal proposed write (the caller passes diff_text="" here, but guard explicitly).
+    if needs_human_selection and not blockers:
+        decision = "blocked"
+        verdict = "blocked"
+        blockers.append(
+            f"omc multi-worker run produced {worker_count} candidate proposals across "
+            f"worker-0..worker-{worker_count - 1}; needs human selection — promote exactly one "
+            "worker-N/patch_artifact.json to the standard path (no auto-merge, no auto-promotion)"
+        )
+        artifact_path.parent.mkdir(parents=True, exist_ok=True)
+        _write_needs_human_selection_artifact(
+            artifact_path, session_id=session_id, team_name=team_name,
+            worker_count=worker_count, now=now,
+        )
+        standard_path = _active_path(DEFAULT_ACTIVE_LEASES, repo_root=repo_root).parent / "patch_runs" / "implementer" / "patch_artifact.json"
+        standard_path.parent.mkdir(parents=True, exist_ok=True)
+        _write_needs_human_selection_artifact(
+            standard_path, session_id=session_id, team_name=team_name,
+            worker_count=worker_count, now=now,
+        )
+    elif write_artifact and diff_text:
+        artifact = _omc_proposed_artifact_payload(
+            diff_text=diff_text,
+            verdict=verdict,
+            task_id=task_id,
+            session_id=session_id,
+            team_name=team_name,
+            now=now,
+        )
         artifact_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Re-impose the privacy re-audit on the captured diff (fail-closed -> blocked).
-        privacy_findings = _privacy_findings_for_text(
-            diff_text,
-            path=_display_path(_repo_path(artifact_path, repo_root), repo_root=repo_root),
+        # Re-impose the privacy re-audit + claimed_files scope check on the captured diff
+        # (fail-closed -> blocked). Shared with the multi-worker per-worker capture loop via
+        # ``_audit_omc_diff_verdict`` (ADR 0095 PR-D single source of truth).
+        audited_verdict, audit_blockers = _audit_omc_diff_verdict(
+            diff_text=diff_text,
+            verdict=verdict,
+            task_id=task_id,
+            audit_path=artifact_path,
+            repo_root=repo_root,
         )
-        if privacy_findings:
-            issues = sorted({finding.issue for finding in privacy_findings})
+        if audited_verdict == "blocked":
             verdict = "blocked"
             decision = "blocked"
-            blockers.extend(f"privacy: {issue}" for issue in issues)
+            blockers.extend(audit_blockers)
             _write_blocked_omc_artifact(artifact_path, session_id=session_id, team_name=team_name, now=now)
         else:
-            # claimed_files scope check on the captured diff (fail-closed for omc).
-            # For omc runner, a missing write lease or empty claimed_files is a BLOCKING
-            # condition when there is a proposed diff — uncontrolled workers require explicit
-            # scope enforcement; "unenforced" is not acceptable (fix round-5 #2).
-            #
-            # CRITICAL (round-6 fix #2): ``_find_active_write_lease(lease_id=None)`` returns
-            # the FIRST active write lease regardless of which task it belongs to.  When
-            # ``active-start`` appends a new lease without removing the previous one, a stale
-            # lease from ANOTHER task_id may be returned — validating an OMC diff against the
-            # WRONG task's claimed_files.  Fix: filter by the current task_id FIRST; if no
-            # exactly-one matching lease is found, block fail-closed.  This ensures the scope
-            # check is always against the correct task's boundary.
-            lease_items = _load_active_leases(_active_path(DEFAULT_ACTIVE_LEASES, repo_root=repo_root))
-            # CRITICAL (round-7 fix #1): for the omc runner, REQUIRE an EXACT task_id match.
-            # Legacy leases without a task_id field are NOT accepted — an unscoped lease could
-            # belong to any task (stale/leaked), and accepting it silently validates the wrong
-            # scope. Fail-closed: if task_id is set, only leases whose task_id field
-            # EXPLICITLY equals the current task_id are eligible. When task_id is None/empty
-            # (standalone call without --task), fall back to any active/recovery write lease.
-            if task_id:
-                task_write_leases = [
-                    lease for lease in lease_items
-                    if isinstance(lease, dict)
-                    and lease.get("lease_type") == "write"
-                    and lease.get("status") in {"active", "recovery-needed"}
-                    and str(lease.get("task_id") or "") == task_id
-                ]
-            else:
-                task_write_leases = [
-                    lease for lease in lease_items
-                    if isinstance(lease, dict)
-                    and lease.get("lease_type") == "write"
-                    and lease.get("status") in {"active", "recovery-needed"}
-                ]
-            if len(task_write_leases) > 1:
-                # Multiple active write leases for the same task — ambiguous scope.
-                lease_ids = [str(lse.get("lease_id") or "") for lse in task_write_leases]
+            artifact_path.write_text(
+                json.dumps(_patch_artifact_json_payload(artifact), indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+            # Re-audit the written artifact file as the fail-closed backstop.
+            file_findings = audit_privacy_output(artifact_path, out_path=None, repo_root=repo_root)
+            if file_findings:
+                issues = sorted({finding.issue for finding in file_findings})
                 verdict = "blocked"
                 decision = "blocked"
-                blockers.append(
-                    f"omc diff scope is ambiguous: {len(task_write_leases)} active write leases "
-                    f"found for task_id={task_id!r} (lease_ids: {', '.join(lease_ids[:5])}); "
-                    "resolve to exactly one active write lease before running the omc runner"
-                )
-            write_lease = task_write_leases[0] if len(task_write_leases) == 1 else None
-            claimed_raw = write_lease.get("claimed_files") if isinstance(write_lease, dict) else None
-            claimed = {str(f) for f in claimed_raw} if isinstance(claimed_raw, list) else set()
-            if not claimed and verdict == "proposed":
-                verdict = "blocked"
-                decision = "blocked"
-                blockers.append(
-                    "omc diff scope is unenforced: no active write lease or claimed_files found; "
-                    "set claimed_files in the write lease before running the omc runner"
-                )
-            elif claimed and verdict == "proposed":
-                out_of_scope = sorted(f for f in _diff_files(diff_text) if f not in claimed)
-                if out_of_scope and not _context_only_claimed_files(claimed):
-                    verdict = "blocked"
-                    decision = "blocked"
-                    blockers.append("omc diff touches files outside the lease claim: " + ", ".join(out_of_scope[:5]))
-            if verdict == "blocked":
+                blockers.extend(f"privacy: {issue}" for issue in issues)
                 _write_blocked_omc_artifact(artifact_path, session_id=session_id, team_name=team_name, now=now)
-            else:
-                artifact_path.write_text(
-                    json.dumps(_patch_artifact_json_payload(artifact), indent=2, sort_keys=True) + "\n",
-                    encoding="utf-8",
-                )
-                # Re-audit the written artifact file as the fail-closed backstop.
-                file_findings = audit_privacy_output(artifact_path, out_path=None, repo_root=repo_root)
-                if file_findings:
-                    issues = sorted({finding.issue for finding in file_findings})
-                    verdict = "blocked"
-                    decision = "blocked"
-                    blockers.extend(f"privacy: {issue}" for issue in issues)
-                    _write_blocked_omc_artifact(artifact_path, session_id=session_id, team_name=team_name, now=now)
 
         # Mirror the artifact into the standard active-apply consumption path so the existing
         # integration-branch / Conservative-Gate path consumes it UNCHANGED (no auto-merge).
@@ -14274,11 +14685,39 @@ def _finalize_omc_runner_result(
         )
         if invalidation_error:
             decision = "blocked"
+            verdict = "blocked"
             blockers.append(
                 f"omc gate-heartbeat invalidation failed — cannot verify blocking-role "
                 f"statuses were reset; Conservative Gate may be stale-open: "
                 f"{invalidation_error}"
             )
+            # HIGH-1 (ADR 0095 PR-D adversarial fix): late blocker — the standard_path may
+            # already carry a proposed artifact written earlier in this function (before
+            # invalidation runs). Overwrite it (and artifact_path) with a blocked artifact so
+            # active-apply cannot consume a proposed diff that was produced in the same run
+            # whose heartbeat invalidation then failed.  Also overwrite any per-worker
+            # worker-{idx} artifacts written by a prior N>1 all-pass run in the same run_dir.
+            _late_blocker_standard_path = (
+                _active_path(DEFAULT_ACTIVE_LEASES, repo_root=repo_root).parent
+                / "patch_runs" / "implementer" / "patch_artifact.json"
+            )
+            _late_blocker_standard_path.parent.mkdir(parents=True, exist_ok=True)
+            _write_blocked_omc_artifact(
+                _late_blocker_standard_path, session_id=session_id, team_name=team_name, now=now
+            )
+            artifact_path.parent.mkdir(parents=True, exist_ok=True)
+            _write_blocked_omc_artifact(
+                artifact_path, session_id=session_id, team_name=team_name, now=now
+            )
+            # Overwrite per-worker artifacts (N>1 run may have written proposed per-worker
+            # artifacts before heartbeat invalidation was attempted).
+            _late_run_dir = artifact_path.parent  # omc_runs/omc-team/
+            for _wdir in sorted(_late_run_dir.glob("worker-*")):
+                _wart = _wdir / "patch_artifact.json"
+                if _wart.exists():
+                    _write_blocked_omc_artifact(
+                        _wart, session_id=session_id, team_name=team_name, now=now
+                    )
     if invalidated_roles:
         warnings.append(
             "OMC runner invalidated prior blocking-role gate heartbeats for "
