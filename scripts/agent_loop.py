@@ -32,7 +32,7 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from scripts._governance import is_load_bearing  # noqa: E402
+from scripts._governance import is_load_bearing, proposed_adr_age  # noqa: E402
 from scripts._ship_env import strip_ship_secret_env  # noqa: E402
 
 
@@ -10561,6 +10561,43 @@ def _learning_capture_advisory(
     }
 
 
+def _adr_lifecycle_advisory(*, repo_root: Path = ROOT_DIR) -> dict[str, object] | None:
+    """Advisory-only pointer at the adr-lifecycle-manager skill for OVER_SLA proposed
+    ADRs (ADR 0047's 30-day SLA), emitted on loop completion (sibling of the
+    learning-capture advisory; agent-loop integration follow-up #1757).
+
+    Call-only ("호출만"): it reads the ``proposed_adr_age`` collector
+    (scripts/_governance.py, --proposed-adr-age) read-only and records a pointer on
+    the terminal loop state, but does NOT mutate any ADR Status, append a
+    ``## Resolution`` section, touch the README index, open a PR, or invoke the
+    skill. Returns None when there are no OVER_SLA proposed ADRs (advisory absent)
+    or if the collector is unavailable — it must never block the loop.
+    """
+    try:
+        records = proposed_adr_age(repo_root / "docs" / "adr")
+    except Exception:
+        return None
+    over_sla = [r for r in records if r.over_sla]
+    if not over_sla:
+        return None
+    return {
+        "skill": "adr-lifecycle-manager",
+        "trigger": "proposed ADR(s) over the 30-day SLA (ADR 0047)",
+        "over_sla_adrs": [
+            {"number": f"{r.number:04d}", "age_days": r.age_days, "filename": r.filename}
+            for r in over_sla
+        ],
+        "guidance": (
+            f"{len(over_sla)} proposed ADR(s) are over the 30-day SLA (ADR 0047). "
+            "Run the adr-lifecycle-manager skill to resolve each "
+            "(promote / supersede / deprecate / append a Resolution section / "
+            "keep-open-with-justification) under explicit per-ADR confirmation. "
+            "Detection is via `python3 scripts/_governance.py --proposed-adr-age`. "
+            "Advisory only — nothing was mutated and the skill was not invoked."
+        ),
+    }
+
+
 def write_active_auto_loop(
     *,
     mode: str = "full-ship",
@@ -11290,6 +11327,11 @@ def write_active_auto_loop(
         if cycles
         else None
     )
+    # agent-loop integration follow-up (#1757): advisory-only adr-lifecycle pointer,
+    # recorded only when the loop actually ran a cycle. Reads the proposed_adr_age
+    # collector read-only; never mutates an ADR or invokes the skill (call-only);
+    # decision/control flow unchanged. Collector failure degrades to None.
+    adr_lifecycle_advisory = _adr_lifecycle_advisory(repo_root=repo_root) if cycles else None
 
     state_payload = {
         "schema_version": 1,
@@ -11311,6 +11353,7 @@ def write_active_auto_loop(
         "next_task_id": next_task.task_id if next_task else None,
         "cycles": cycles,
         "learning_capture_advisory": learning_advisory,
+        "adr_lifecycle_advisory": adr_lifecycle_advisory,
         "blockers": _dedupe_preserve_order(blockers),
         "warnings": _dedupe_preserve_order(warnings),
     }
@@ -11358,6 +11401,7 @@ def write_active_auto_loop(
             "next_task_id": next_task.task_id if next_task else None,
             "blockers": blockers,
             "learning_capture_advisory": bool(learning_advisory),
+            "adr_lifecycle_advisory": bool(adr_lifecycle_advisory),
         },
     )
     return ActiveAutoLoopResult(
