@@ -17,8 +17,12 @@ Pins the soft-warn contract (always exit 0; warning only on stderr) for
  12. origin/main is preferred over stale local main
  13. --clean --dry-run does not remove candidates
  14. --clean removes clean orphan worktrees without deleting branches
+     (also the off-by-default guard for --delete-branches)
  15. --clean skips dirty/untracked orphan worktrees
  16. --clean --prune prunes even when there are no clean removals
+ 17. --clean --delete-branches deletes the merged branch after worktree removal
+ 18. --clean --dry-run --delete-branches keeps both; prints "would delete branch"
+ 19. --clean --delete-branches still skips a dirty orphan (branch + worktree kept)
 
 Scenarios 5-8 are the #1163 fix: `git branch --merged` only lists ancestor
 tips, so squash-merges (this repo's default merge path) were a silent
@@ -323,6 +327,51 @@ class TestPrePushWorktreeHygiene(unittest.TestCase):
         self.assertIn("skip dirty/untracked", r.stderr)
         self.assertIn("no clean orphan worktrees", r.stderr)
         self.assertIn("pruned stale worktree admin files", r.stderr)
+
+    def test_delete_branches_removes_merged_branch(self) -> None:
+        # --delete-branches deletes the merge-confirmed local branch right after
+        # its worktree is removed. -D (force) is the contract: the documented
+        # default merge path is squash-merge, whose patch-equivalent tip is not
+        # an ancestor, so `git branch -d` would refuse it as "not fully merged".
+        wt = self._add_worktree("wt_merged", "feat-merged", extra_commit=False)
+
+        r = self._run_hook("--clean", "--delete-branches")
+
+        self.assertEqual(0, r.returncode, r.stderr)
+        self.assertFalse(wt.exists())
+        self.assertIn("deleted branch", r.stderr)
+        branch = self._git("show-ref", "--verify", "refs/heads/feat-merged")
+        self.assertNotEqual(0, branch.returncode, "branch should be deleted")
+
+    def test_delete_branches_dry_run_keeps_branch(self) -> None:
+        # --dry-run must touch nothing: both the worktree and the branch survive,
+        # and the intent is announced on stderr ("would delete branch").
+        wt = self._add_worktree("wt_merged", "feat-merged", extra_commit=False)
+
+        r = self._run_hook("--clean", "--dry-run", "--delete-branches")
+
+        self.assertEqual(0, r.returncode, r.stderr)
+        self.assertTrue(wt.exists())
+        self.assertIn("would delete branch", r.stderr)
+        branch = self._git("show-ref", "--verify", "refs/heads/feat-merged")
+        self.assertEqual(0, branch.returncode, "branch must survive dry-run")
+
+    def test_delete_branches_still_skips_dirty_orphan(self) -> None:
+        # The clean-only invariant outranks --delete-branches: a dirty orphan is
+        # skipped, so neither its worktree nor its branch is touched. Guards
+        # against --delete-branches deleting a branch whose worktree was never
+        # removed (the ref would still be checked out).
+        wt = self._add_worktree("wt_merged", "feat-merged", extra_commit=False)
+        (wt / "untracked.txt").write_text("local work\n", encoding="utf-8")
+
+        r = self._run_hook("--clean", "--delete-branches")
+
+        self.assertEqual(0, r.returncode, r.stderr)
+        self.assertTrue(wt.exists())
+        self.assertIn("skip dirty/untracked", r.stderr)
+        self.assertNotIn("deleted branch", r.stderr)
+        branch = self._git("show-ref", "--verify", "refs/heads/feat-merged")
+        self.assertEqual(0, branch.returncode, "dirty orphan's branch must survive")
 
 
 if __name__ == "__main__":  # pragma: no cover

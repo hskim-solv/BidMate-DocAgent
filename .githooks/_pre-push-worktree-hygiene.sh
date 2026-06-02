@@ -48,22 +48,27 @@ set -u
 clean_mode=0
 dry_run=0
 prune_after=0
+delete_branches=0
 
 for arg in "$@"; do
   case "$arg" in
     --clean) clean_mode=1 ;;
     --dry-run) clean_mode=1; dry_run=1 ;;
     --prune) prune_after=1 ;;
+    --delete-branches) delete_branches=1 ;;
     -h|--help)
       cat <<'EOF'
 Usage:
   bash .githooks/_pre-push-worktree-hygiene.sh
   bash .githooks/_pre-push-worktree-hygiene.sh --clean --dry-run
   bash .githooks/_pre-push-worktree-hygiene.sh --clean --prune
+  bash .githooks/_pre-push-worktree-hygiene.sh --clean --delete-branches
 
 Default mode prints orphan worktree warnings only. --clean removes only clean
-orphan worktrees; dirty/untracked worktrees are skipped. No branches or remote
-refs are deleted.
+orphan worktrees; dirty/untracked worktrees are skipped. --delete-branches
+additionally runs `git branch -D` on each merge-confirmed branch right after its
+worktree is removed (force -D because squash-merge tips are patch-equivalent,
+not ancestors, so `git branch -d` would refuse them). No remote refs are deleted.
 EOF
       exit 0
       ;;
@@ -264,10 +269,29 @@ while IFS=$'\t' read -r orphan_path orphan_branch; do
   if [[ "$dry_run" == "1" ]]; then
     printf 'worktree cleanup: would remove "%s"   # branch '\''%s'\''\n' \
       "$orphan_path" "$orphan_branch" >&2
+    if [[ "$delete_branches" == "1" ]]; then
+      printf 'worktree cleanup: would delete branch '\''%s'\''\n' \
+        "$orphan_branch" >&2
+    fi
   else
     if git worktree remove "$orphan_path" >/dev/null 2>&1; then
       printf 'worktree cleanup: removed "%s"   # branch '\''%s'\''\n' \
         "$orphan_path" "$orphan_branch" >&2
+      # Branch deletion is opt-in (--delete-branches) and runs only after the
+      # worktree is gone, so the ref is no longer checked out anywhere. Force
+      # -D: the 4-signal merge check upstream already confirmed the branch is
+      # merged, but a squash-merge tip is patch-equivalent (not an ancestor),
+      # so `git branch -d` would refuse it as "not fully merged". Soft: a failed
+      # delete logs and continues — it never aborts the run (exit 0 contract).
+      if [[ "$delete_branches" == "1" ]]; then
+        if git branch -D "$orphan_branch" >/dev/null 2>&1; then
+          printf 'worktree cleanup: deleted branch '\''%s'\''\n' \
+            "$orphan_branch" >&2
+        else
+          printf 'worktree cleanup: failed to delete branch '\''%s'\''\n' \
+            "$orphan_branch" >&2
+        fi
+      fi
     else
       printf 'worktree cleanup: failed to remove "%s"   # branch '\''%s'\''\n' \
         "$orphan_path" "$orphan_branch" >&2
