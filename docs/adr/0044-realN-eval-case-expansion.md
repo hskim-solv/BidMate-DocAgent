@@ -9,6 +9,8 @@
 | **Tags**    | eval, real-data, dataset-cardinality      |
 | **Superseded by** | ADR 0052 (n=21→221 step-change via LLM-assisted generator) |
 
+> **Archive note (2026-06-02)**: 본 ADR 본문의 real100 경로(`reports/real100`, `data/index/real100`)와 `make real-eval-baseline-update` 예시는 **historical**이다. 현행 private eval 표면은 `real100_v2`(`make real-eval-v2-*`, `reports/real100_v2`); legacy real100 은 archive-only(ADR 0005 / CLAUDE.md ban-list). 본문은 변경하지 않는다(이미 ADR 0052 로 Superseded).
+
 ## TL;DR
 
 - ADR 0044: real100 eval 케이스를 n=21 → n≥30 → n≥50 로 in-place 확장 (같은 100-doc 코퍼스, 같은 path)
