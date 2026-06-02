@@ -39,7 +39,7 @@ PR이 생기면 각 task에 링크를 추가한다. 예제 task는 `tasks/exampl
 | 26 | `T-2026-0026` | `in_progress` | Planner -> Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1580; Chroma-backed `naive_baseline` canonical switch, separated from embedding-model baselines. |
 | 27 | `T-2026-0027` | `review` | Planner -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1584; prioritized RAG performance experiment stack captured. |
 | 28 | `T-2026-0028` | `done` | Evaluator -> Benchmark Auditor -> Privacy Auditor -> Reviewer | merged in PR #1619; real100_v2-only guard and aggregate packet landed. |
-| 29 | `T-2026-0029` | `review` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1764; page-aware re-measurement DONE (diagnostic-only). Page blocker resolved (coverage 0.0 -> 1.0) but doc-level retrieval collapsed (~12%); renderer BUG #1/#2 hardened; root cause spun off as T-2026-0076. |
+| 29 | `T-2026-0029` | `done` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1764; page-aware re-measurement DONE (diagnostic-only). Page blocker resolved (coverage 0.0 -> 1.0) but doc-level retrieval collapsed (~12%); renderer BUG #1/#2 hardened; root cause spun off as T-2026-0076. |
 | 30 | `T-2026-0030` | `ready` | Implementer -> CI Reviewer -> Benchmark Auditor -> Reviewer | reopened after naive baseline remeasurement: rerender latency/cost envelope against the MiniLM page-aware v2 aggregate. |
 | 31 | `T-2026-0031` | `ready` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | MiniLM page-aware checkpoint index now has non-zero page_span coverage; rerun only after refreshed baseline aggregate is available. |
 | 32 | `T-2026-0032` | `ready` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | reopened after naive baseline remeasurement: rerun BGE-KO screening on the MiniLM page-aware v2 index before keeping no-winner status. |
@@ -2638,7 +2638,7 @@ make check-branch
 
 - ID: T-2026-0029
 - Title: Build retrieval diagnostic workbench
-- Status: review
+- Status: done
 - Priority: P0
 - Owner role: Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer
 - Created: 2026-05-27
