@@ -154,6 +154,14 @@ class TestSessionStartWorktreeHygiene(unittest.TestCase):
         self.assertIn("current worktree", skill.lower())
         self.assertIn("0096", skill)
 
+    def test_sessionstart_hook_fetches_and_guards_repo(self) -> None:
+        # Review follow-up (#1793): two 1-line hardenings of the same hook.
+        body = HOOK.read_text(encoding="utf-8")
+        # M-1: refresh origin/main so merge signals see just-merged branches.
+        self.assertIn("git fetch origin main", body)
+        # M-2: no-op outside the BidMate repo — never run `make` elsewhere.
+        self.assertIn('.githooks/_pre-push-worktree-hygiene.sh"', body)
+
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

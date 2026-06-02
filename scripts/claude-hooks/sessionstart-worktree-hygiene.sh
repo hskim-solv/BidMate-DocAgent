@@ -36,9 +36,21 @@ set -u
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$REPO_ROOT" || exit 0
 
+# Only act inside the BidMate repo: the hygiene script + make target live here.
+# If this hook is ever inherited by another context, no-op rather than running
+# `make` somewhere it does not belong (review M-2, issue #1793).
+[[ -f "$REPO_ROOT/.githooks/_pre-push-worktree-hygiene.sh" ]] || exit 0
+
 # Lower the patch-id walk budget for session start (latency cap); honour an
 # explicit override if the user set one.
 export BIDMATE_WORKTREE_HYGIENE_CHERRY_BUDGET="${BIDMATE_WORKTREE_HYGIENE_CHERRY_BUDGET:-5}"
+
+# Refresh origin/main so the hygiene script's ancestor / patch-equiv merge
+# signals see branches merged since the last local fetch (e.g. from another
+# machine or a just-merged PR), improving cleanup hit-rate. --quiet + || true
+# keep session start fast and never fail on a missing remote / network / lock;
+# git's own connection timeout bounds the wait (review M-1, issue #1793).
+git fetch origin main --quiet || true
 
 # Soft: capture output, never let a cleanup failure block the session start.
 output=$(make worktree-cleanup 2>&1 || true)
