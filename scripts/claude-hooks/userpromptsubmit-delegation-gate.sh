@@ -7,15 +7,27 @@
 # See scripts/claude-hooks/README.md for the full enforcement taxonomy.
 #
 # Registered in `.claude/settings.json` with matcher `.*`. Inspects every
-# user prompt for non-trivial change-intent keywords (Korean + English) and,
-# when matched, emits a CLAUDE.md "위임 기본값" suggestion to stdout — which
-# Claude receives as additional context for the next turn. Never blocks the
-# user; only nudges (always exits 0).
+# user prompt for non-trivial change-intent or measurement/analysis keywords
+# (Korean + English) and, when matched, emits a CLAUDE.md "위임 기본값"
+# suggestion to stdout — which Claude receives as additional context for the
+# next turn. Never blocks the user; only nudges (always exits 0).
 #
 # Why this hook exists: Q2-2026 self-review axis #2 (Agent 위임) graded △
 # because Plan/Explore subagents were under-called on non-trivial diffs.
 # CLAUDE.md already documents the rule; this hook makes the rule visible
 # right at prompt time instead of relying on Claude to remember.
+#
+# Keyword groups (issue #1753 expansion):
+#   Group A — code change-intent (original): 리팩토링|refactor|구현해|
+#     implement|다 고쳐|전체.*수정|all files|새 기능|new feature|
+#     마이그레이션|migrat[ei]|레거시|legacy|아키텍처|architectur|
+#     재설계|redesign
+#   Group B — measurement/investigation/parallel (new): 측정|진단|조사|
+#     분석|벤치|평가|여러|병렬|동시|measure|diagnos|investigat|analyz|
+#     benchmark|eval|multiple|parallel|concurrent|several
+# Conservative tuning: single typo fixes, yes/no questions, and
+# one-liner prompts should NOT trigger. Multi-word compound patterns
+# (전체.*수정) kept from Group A for specificity.
 #
 # A line is appended to `.claude/.hook-fires.log` in the ADR 0060 5-field
 # format (`<ts>|nudged|delegation-gate|agent-delegation|<path>`) via
@@ -46,16 +58,21 @@ p = d.get("prompt") or d.get("user_prompt") or d.get("user_message") or ""
 print(p)
 ' 2>/dev/null)
 
-# Non-trivial change-intent keywords (Korean + English). Tuned conservatively
-# to keep the false-positive rate low — single typo fixes and one-liner
-# question prompts should NOT trigger.
-if printf '%s' "$prompt" | grep -qiE "리팩토링|refactor|구현해|implement|다 고쳐|전체.*수정|all files|새 기능|new feature|마이그레이션|migrat[ei]|레거시|legacy|아키텍처|architectur|재설계|redesign"; then
+# Non-trivial change-intent + measurement/investigation/parallel keywords
+# (Korean + English). Tuned conservatively to keep the false-positive rate
+# low — single typo fixes and one-liner question prompts should NOT trigger.
+#
+# Group A: code change-intent (original set)
+# Group B: measurement / investigation / parallel tasks (issue #1753)
+if printf '%s' "$prompt" | grep -qiE "리팩토링|refactor|구현해|implement|다 고쳐|전체.*수정|all files|새 기능|new feature|마이그레이션|migrat[ei]|레거시|legacy|아키텍처|architectur|재설계|redesign|측정|진단|조사|분석|벤치|평가|여러|병렬|동시|measure|diagnos|investigat|analyz|benchmark|eval|multiple|parallel|concurrent|several"; then
   # stdout → prepended to Claude's next-turn context.
   cat <<'EOF'
 
-[agent-delegation-gate]: 비-trivial 변경 의도 감지. CLAUDE.md "위임 기본값" 적용 권장:
+[agent-delegation-gate]: 비-trivial 변경 또는 다중 작업 의도 감지. CLAUDE.md "위임 기본값" 적용 권장:
   • Plan subagent: >1 파일 또는 >50 LOC 예상 시 — 설계 검증 + 대안 평가
   • Explore subagent: 누적 Read ≥5회 또는 단일 파일 >200줄 예상 시 — 컨텍스트 보호
+  • 병렬 spawn: 독립 작업 2개 이상 감지 시 — Agent 도구로 background 병렬 spawn
+    (run_in_background 활용), 의존 관계 없는 작업은 동시에 실행 권장
 
 Trivial 변경(오타/단일 라인/단일 함수)은 직접 진행 OK.
 EOF

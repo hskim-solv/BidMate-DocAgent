@@ -29,7 +29,7 @@ Claude Code 의 PreToolUse / Stop / UserPromptSubmit 훅 모음. `.claude/settin
 | [`pretooluse-memory-lines.sh`](./pretooluse-memory-lines.sh) | graduated | `Edit\|MultiEdit\|Write` | MEMORY.md 라인 수 ≥AWARE 경고 / ≥BLOCK 차단 (issue #720) |
 | [`stop-ship.sh`](./stop-ship.sh) | pipeline | Stop | armed 상태일 때 commit→push→PR→CI→squash-merge 5-stage 자동 실행 (auto-ship) |
 | [`stop-agent-loop.sh`](./stop-agent-loop.sh) | pipeline | Stop | `.claude/.agent-loop-watch` 또는 `BIDMATE_AGENT_LOOP_STOP_HOOK=1` 일 때 ignored agent-loop status reports (`gate_status`, `loop_state`, `auto_pass`) 갱신 |
-| [`userpromptsubmit-delegation-gate.sh`](./userpromptsubmit-delegation-gate.sh) | nudge | UserPromptSubmit `.*` | non-trivial 변경 키워드 감지 시 Plan/Explore 위임 힌트 주입 (issue #1014) |
+| [`userpromptsubmit-delegation-gate.sh`](./userpromptsubmit-delegation-gate.sh) | nudge | UserPromptSubmit `.*` | non-trivial 변경 + 측정/진단/조사/분석/병렬 키워드 감지 시 Plan/Explore/병렬 spawn 위임 힌트 주입 (issue #1014, #1753) |
 
 ## Opt-in (자동 등록 아님)
 
