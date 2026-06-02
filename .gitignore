@@ -370,3 +370,8 @@ harness/real.yaml
 # (--runner omc, ADR 0087) writes .omc/state/team/...; this is per-clone runtime
 # state, never committed, and may carry local session metadata.
 .omc/
+
+# Node tooling for the Playwright UI smoke (scripts/ui_smoke.mjs, issue #1790).
+# package.json + package-lock.json ARE committed (reproducible install); the
+# installed modules are not. Playwright browser binaries live in ~/.cache.
+/node_modules/
