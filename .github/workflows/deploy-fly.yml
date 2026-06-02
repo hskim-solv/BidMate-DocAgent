@@ -1,5 +1,19 @@
 name: Deploy demo to Fly.io
 
+# ⏸️  STATUS (2026-06-02): PARKED — this workflow is intentionally disabled.
+# The `deploy` job below carries `if: false`, so it no longer runs on push.
+# The Fly.io live demo (bidmate-docagent-demo.fly.dev) is NO LONGER the
+# canonical demo; Hugging Face Spaces is:
+#   https://huggingface.co/spaces/hskim-solv/bidmate-docagent
+# Why parked: `flyctl deploy --remote-only` failed on every run from
+# 2026-05-26 onward — the depot.dev remote builder times out
+# (`deadline_exceeded ... api.depot.dev ... dial tcp ...: i/o timeout`,
+# exit 126). The Fly app + machine are KEPT (cost ~$0 while stopped:
+# shared IPv4, no volume), NOT destroyed, so re-enabling is reversible.
+# To re-enable: fix the builder (e.g. drop --remote-only or restore depot
+# access), then delete the `if: false` line from the deploy job.
+# See issue #1784 and docs/operations/deployment.md.
+#
 # Issue #181 (Phase 3.6): every merge to main that touches a runtime path
 # re-deploys the live demo at https://bidmate-docagent-demo.fly.dev/.
 # Builds on PR #158 (fly.toml + Dockerfile + docs/operations/deployment.md).
@@ -43,6 +57,9 @@ concurrency:
 
 jobs:
   deploy:
+    # PARKED — see STATUS header / issue #1784. Remove this `if: false`
+    # line (and fix the depot.dev builder) to re-enable Fly deploys.
+    if: false
     name: flyctl deploy --remote-only
     runs-on: ubuntu-latest
     timeout-minutes: 15
