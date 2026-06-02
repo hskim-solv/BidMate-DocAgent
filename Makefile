@@ -1445,14 +1445,13 @@ real-eval-history-render:
 real-eval-history-check:
 	$(PYTHON) scripts/render_real_eval_history.py --check
 
-# Run the local real-data eval, then ask an LLM judge for a second
-# opinion (ADR 0006). The judge is real-data only; never invoked from
-# public CI. Default backend is `stub` (deterministic, no network);
-# set BIDMATE_JUDGE_BACKEND=openai_compatible plus BIDMATE_JUDGE_*
-# env vars for a real judge call.
-real-eval-with-judge: real-eval
-	$(PYTHON) scripts/llm_judge.py
-	@echo "Run \`make real-eval-baseline-update\` to fold the judge aggregate into the committable baseline."
+# Legacy real100/v1 judge orchestration disabled with the same policy as
+# `real-eval` (real100->real100_v2 migration). The real100_v2 judge surface
+# is `real-eval-v2-judge` (judge.local.json + judge.aggregate.json), layered
+# on `real-eval-v2-chroma-llm`.
+real-eval-with-judge:
+	@echo "ERROR: legacy real100/v1 make real-eval-with-judge is disabled. Use make real-eval-v2-judge (after make real-eval-v2-chroma-llm) with reports/real100_v2 evidence." >&2
+	@exit 2
 
 # Case proposer cycle (ADR 0029). Two-stage human gate:
 #   case-propose -> reports/proposed/proposed_cases.local.yaml (gitignored)

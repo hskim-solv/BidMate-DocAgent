@@ -1164,7 +1164,7 @@ def main() -> int:
     # ADR 0006: if a judge.local.json sits beside the head eval
     # summary, fold its aggregate into the head view so the delta
     # surfaces judge_grounded_rate / agreement_with_verifier when the
-    # user just ran `make real-eval-with-judge`. The per-case judge
+    # user just ran `make real-eval-v2-judge`. The per-case judge
     # text is never copied into the head aggregate.
     judge_local = head_path.parent / "judge.local.json"
     if judge_local.exists():
