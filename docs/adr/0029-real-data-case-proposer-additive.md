@@ -1,6 +1,7 @@
 # 0029: Real-data case proposer를 additive semi-supervised eval-set 성장 표면으로
 
 - **Status**: proposed
+- **Archive note (2026-06-02)**: 본 ADR 본문의 real100 경로(`data/index/real100`)와 `make real-eval` 예시는 **historical**이다. 현행 private eval 표면은 `real100_v2`(`make real-eval-v2-*`, `reports/real100_v2`)이며 legacy real100/`make real-eval` 은 archive-only(ADR 0005 / CLAUDE.md ban-list). 본문은 결정 기록 보존을 위해 변경하지 않는다.
 - **Date**: 2026-05-13
 - **Related**: [ADR 0005](./0005-eval-split-public-synthetic-private-local.md) / [ADR 0006](./0006-llm-judge-on-real-data-only.md) 확장; [ADR 0011](./0011-llm-synthesis-as-additive-ablation.md) backend 패턴 재사용; [ADR 0001](./0001-preserve-naive-baseline.md) / [ADR 0003](./0003-structured-answer-citation-contract.md) / [ADR 0004](./0004-verifier-retry-policy.md) / [ADR 0008](./0008-evidence-boundary.md) 보존; calibration은 [ADR 0016](./0016-judge-human-agreement.md) mirror
 - **Deciders**: hskim

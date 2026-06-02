@@ -1,6 +1,7 @@
 # ADR 0056 — Trajectory-rationality judge 를 새 측정 표면으로
 
 - Status: Accepted
+- Archive note (2026-06-02): 본 ADR 본문 및 `## Verification` 블록의 real100 경로(`reports/real100/rationality.*`)와 `make real-eval` 예시는 **historical**이다. 현행 rationality judge 산출물은 `reports/real100_v2/rationality.*`(`make real-eval-v2-rationality-judge`); legacy real100 은 archive-only(ADR 0005 / CLAUDE.md ban-list). 본문·Verification 명령은 측정 record 보존을 위해 변경하지 않는다.
 - Implemented: #987 (2026-05-18) — `eval/judges/rationality_judge.py` 3-axis trajectory surface. (#1297 (2026-05-22) 가 committed artifact 와의 모순을 정정해 일시적으로 2-axis measured + 1-axis `answer_reasoning` pending 으로 relabel; #1326 (2026-05-22) 가 stub full-trace 캡처 wiring 을 고쳐 **3-axis 모두 measured** 로 복원 — `answer_reasoning` effective_n=166)
 - Date: 2026-05-18
 - Authors: Hyunsoo Kim
