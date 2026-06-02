@@ -50,7 +50,9 @@ hardening 으로 먼저 들어가야 한다.
 - **(3) `LeaseManager.claim_disjoint`**: read → disjoint-check → write 를 **하나의**
   `flock(LOCK_EX)` critical section 안에서 수행해 `assert_claimed_files_disjoint` 의 snapshot
   TOCTOU 를 닫는다. 같은 lock 아래로 `acquire_active_agent` / `release_active_agent`(active_agent
-  borrow/return)를 retrofit 한다 — 검사와 쓰기가 하나의 임계 구역이 되도록.
+  borrow/return)를 retrofit 한다 — 검사와 쓰기가 하나의 임계 구역이 되도록. 다만 substrate 단계에서
+  `claim_disjoint` 는 overlap 을 lock 하에 정확히 *보고*하되 write 를 gate 하지 않는다(byte-identity
+  보존, ADR 0001 gate) — first-writer-wins write-거부 enforcement 는 X>1 enablement(PR-D/E)로 이연.
 - **(4) 전역 `BoundedSemaphore(M)`**: 기본 M=8, env `BIDMATE_AGENT_LOOP_GLOBAL_CONCURRENCY`,
   Makefile `ACTIVE_GLOBAL_CONCURRENCY`. **모든 CLI spawn**(claude write / codex patch /
   read-review / omc)이 이 단일 전역 semaphore 를 acquire 한다 — X·Y·Z 가 각자의 cap 으로 곱셈
