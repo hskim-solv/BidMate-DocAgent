@@ -21,9 +21,11 @@ eval validity를 유지하며, reviewer가 검증 가능한 근거(evidence)를 
 3. [`docs/operations/ai-engineering-operating-system.md`](./ai-engineering-operating-system.md)에서
    role, evidence, review escalation을 확인한다.
 4. plan doc가 있으면 먼저 읽고, 없는데 필요한 범위면 구현 전에 만든다.
-5. `git status --short --branch`로 worktree 상태를 확인한다.
-6. 관련 ADR과 eval surface를 확인한다.
-7. 다음 safe command를 정하고 실행한다.
+5. `python3 scripts/agent_loop.py overlap-preflight --issue <N> --branch <type>/issue-<N>-<slug>`로
+   Codex/Claude Code/외부 worktree의 같은 issue·branch·PR 진행 여부를 확인한다.
+6. `git status --short --branch`로 worktree 상태를 확인한다.
+7. 관련 ADR과 eval surface를 확인한다.
+8. 다음 safe command를 정하고 실행한다.
 
 ## Context Preservation Rules
 
@@ -65,6 +67,7 @@ RAG 성능 개선 관련 long session은 handoff마다 8개 운영 원칙을 짧
 - Lifecycle stage:
 - Branch / worktree:
 - Base branch:
+- Overlap preflight: clear/warn/blocked + evidence path
 - Issue / PR:
 - Task:
 - Plan:
