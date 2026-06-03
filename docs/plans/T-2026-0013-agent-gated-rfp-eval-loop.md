@@ -8,7 +8,7 @@
 
 Codify the conservative agent-gate policy for continuing RFP QA evaluation across
 offline and online environments without requiring a human gate on every routine
-claim, private eval, shipping, or cleanup decision.
+claim, current `real100_v2` private eval, shipping, or cleanup decision.
 
 ## Scope
 
@@ -21,14 +21,14 @@ claim, private eval, shipping, or cleanup decision.
 ## Non-Goals
 
 - Do not change RAG runtime behavior.
-- Do not run private real-eval in this documentation PR.
+- Do not run current `real100_v2` private real-eval in this documentation PR.
 - Do not rename legacy `human-gated-*` CLI commands.
 
 ## Acceptance Criteria
 
 - [x] ADR 0079 exists and has verification markers.
 - [x] The policy defines offline/online environment assumptions.
-- [x] The policy makes private real-eval mandatory for claim-bearing evidence.
+- [x] The policy makes current `real100_v2` aggregate-only private real-eval mandatory for claim-bearing evidence.
 - [x] The policy defines metric-suite adoption and loop termination criteria.
 - [x] Existing surface map links the new policy.
 
@@ -54,7 +54,7 @@ make check-branch
 - Plan: docs/plans/T-2026-0013-agent-gated-rfp-eval-loop.md
 - Current status: policy docs implemented; focused validation passed.
 - Files touched: docs/adr/0079-agent-gated-offline-online-rfp-eval-loop.md, docs/evaluation/agent-gated-rfp-eval-loop.md, docs/evaluation/surface-map.md, docs/operations/ai-codex-workflow.md, docs/adr/README.md, tasks/queue.md, docs/plans/T-2026-0013-agent-gated-rfp-eval-loop.md
-- Decisions made: Codex acts as conservative agent gate; private real-eval is mandatory for claim-bearing evidence; metric suite beats single headline score.
+- Decisions made: Codex acts as conservative agent gate; current `real100_v2` aggregate-only private real-eval is mandatory for claim-bearing evidence; metric suite beats single headline score.
 - Eval surface: governance docs only; no metric claim.
 - Commands run: python3 scripts/_governance.py --lint-adr-consequences docs/adr/0079-agent-gated-offline-online-rfp-eval-loop.md; python3 scripts/check_doc_links.py --check-all --paths docs/adr/0079-agent-gated-offline-online-rfp-eval-loop.md docs/evaluation/agent-gated-rfp-eval-loop.md docs/evaluation/surface-map.md docs/operations/ai-codex-workflow.md docs/plans/T-2026-0013-agent-gated-rfp-eval-loop.md tasks/queue.md; git diff --check; make check-branch
 - Results: pass.
