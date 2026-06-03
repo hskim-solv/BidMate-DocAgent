@@ -1,7 +1,7 @@
 """Regression guard for the agent-loop ``make 시작`` mission-control HTML board.
 
-Covers three behaviours the renderer must hold (the board itself is frozen — these
-tests assert its *actual* behaviour, never drive a code change):
+Covers four behaviours the renderer must hold (tests assert the renderer's
+*actual* behaviour — a regression guard plus the staleness banner added here):
 
 1. ``render()`` builds a self-contained, network-free HTML page from a synthetic
    ``--state-dir`` of ledger JSON/JSONL files (the same filenames the renderer
@@ -14,6 +14,9 @@ tests assert its *actual* behaviour, never drive a code change):
    never surfaces (codex ``last_message``/``stdout``/``stderr``/``prompt``/
    ``command``, cycle escalation ``guidance``, backlog ``plan``) do not leak into
    the rendered HTML; only structural metadata is exposed.
+4. the top staleness banner aggregates already-computed ledger enum fields
+   (session ``heartbeat_state``/``status``, lease ``status``) into at-a-glance
+   counts, surfacing only counts and enum labels (ADR 0005).
 """
 from __future__ import annotations
 
@@ -27,6 +30,7 @@ from scripts.render_agent_loop_board import (
     render,
     render_blockers_summary,
     render_event_log,
+    render_staleness_banner,
 )
 
 # The sentinel ``_sanitize_text`` substitutes for a matched run-artifact path.
@@ -470,3 +474,51 @@ def test_structural_metadata_still_surfaced_alongside_redaction(tmp_path: Path) 
         "extra_fields scalar value leaked 'codex_runs' token in event_log "
         "(Low-2 regression)"
     )
+
+
+# ---------------------------------------------------------------------------
+# 4. Staleness banner — aggregate session/lease health at a glance.
+# ---------------------------------------------------------------------------
+
+def test_staleness_banner_aggregates_session_lease_counts(tmp_path: Path) -> None:
+    # Counts already-computed ledger enum fields (heartbeat_state/status, lease
+    # status) — deterministic (no now() recomputation), ADR 0005 (counts/enums
+    # only). Fixture: 2 sessions (1 active/fresh-hb, 1 stale/stale-hb) + 1 lease.
+    reg = _session_registry()
+    leases = _leases()
+
+    banner = render_staleness_banner(reg, leases)
+    assert "sessions 2" in banner
+    assert "hb-stale 1/2" in banner      # reviewer heartbeat_state == "stale"
+    assert "status-stale 1" in banner    # reviewer status == "stale"
+    assert "leases 1" in banner
+    assert "STALENESS" in banner         # warn headline when any stale present
+
+    # Surfaced at the top of the full render.
+    html = _render_to_html(tmp_path)
+    assert "session / lease at a glance" in html
+
+    # ADR 0005: the banner emits no free-text secret.
+    for secret in _FREE_TEXT_SECRETS:
+        assert secret not in banner, f"banner leaked free-text: {secret}"
+
+
+def test_staleness_banner_healthy_when_no_stale() -> None:
+    # All-fresh sessions and no expired lease → ✓ HEALTHY, no warn count chips.
+    healthy = {
+        "sessions": [
+            {"role": "orchestrator", "session_id": "s1",
+             "status": "active", "heartbeat_state": "fresh"},
+        ],
+    }
+    banner = render_staleness_banner(healthy, {"leases": []})
+    assert "HEALTHY" in banner
+    assert "sessions 1" in banner
+    assert "hb-stale" not in banner
+    assert "status-stale" not in banner
+    assert "expired-lease" not in banner
+
+
+def test_staleness_banner_empty_when_no_data() -> None:
+    # No sessions and no leases → banner renders nothing (empty string).
+    assert render_staleness_banner({}, {}) == ""

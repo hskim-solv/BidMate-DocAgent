@@ -1946,6 +1946,43 @@ LOG_FILTER_JS = """
 # Main render
 # ---------------------------------------------------------------------------
 
+def render_staleness_banner(registry: dict, leases_data: dict) -> str:
+    """Top banner: session/lease staleness at a glance.
+
+    Aggregates already-computed ledger enum fields (heartbeat_state,
+    status) only — no now()-based recomputation, so the rendered counts
+    are deterministic. ADR 0005: emits counts and enum labels only, never
+    free-text (no stdout/prompt/command/guidance/plan/last_message).
+    """
+    sessions = _as_list(registry.get("sessions"))
+    leases = _as_list(leases_data.get("leases"))
+    total = len(sessions)
+    if total == 0 and not leases:
+        return ""
+
+    stale_hb = sum(1 for r in sessions if _as_dict(r).get("heartbeat_state") == "stale")
+    stale_status = sum(1 for r in sessions if _as_dict(r).get("status") == "stale")
+    idle = sum(1 for r in sessions if _as_dict(r).get("status") == "idle")
+    expired_leases = sum(1 for r in leases if _as_dict(r).get("status") == "expired")
+    has_stale = bool(stale_hb or stale_status or expired_leases)
+
+    chips = [badge(f"sessions {total}", tone="neutral")]
+    if stale_hb:
+        chips.append(badge(f"hb-stale {stale_hb}/{total}", tone="warn"))
+    if stale_status:
+        chips.append(badge(f"status-stale {stale_status}", tone="warn"))
+    if idle:
+        chips.append(badge(f"idle {idle}", tone="neutral"))
+    if leases:
+        chips.append(badge(f"leases {len(leases)}", tone="neutral"))
+    if expired_leases:
+        chips.append(badge(f"expired-lease {expired_leases}", tone="warn"))
+
+    headline = "⚠ STALENESS" if has_stale else "✓ HEALTHY"
+    body = f'<div class="banner-chips">{" ".join(chips)}</div>'
+    return panel(headline, body, sub="session / lease at a glance")
+
+
 def render(state_dir: Path, out: Path, *, auto_refresh: bool = True) -> None:
     now_str = _dt.datetime.now(_tz.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -1974,6 +2011,7 @@ def render(state_dir: Path, out: Path, *, auto_refresh: bool = True) -> None:
     # 2 status · 3 trend|mix · 4 cycles · 5 topology · 6 workers|queue ·
     # 7 blockers|mix · 8 event log · 9 drawer
     body_sections = "\n".join([
+        render_staleness_banner(registry, leases_data),
         render_mission_status(auto, runner, registry, events),
         (
             '<div class="grid-2">'
