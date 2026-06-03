@@ -1999,6 +1999,7 @@ def run_validation_commands(
     changed_files: Sequence[str],
     *,
     keep_going: bool = False,
+    cwd: Path | None = None,
 ) -> tuple[int, list[ValidationRun]]:
     runs: list[ValidationRun] = []
     final_rc = 0
@@ -2021,6 +2022,7 @@ def run_validation_commands(
             capture_output=True,
             text=True,
             check=False,
+            cwd=cwd,
         )
         run = ValidationRun(
             command=command,
@@ -2052,20 +2054,24 @@ def render_validation_run_report(runs: Sequence[ValidationRun]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _gate_validation_signal(changed_files: Sequence[str]) -> dict[str, object]:
+def _gate_validation_signal(
+    changed_files: Sequence[str], *, repo_root: Path | None = None
+) -> dict[str, object]:
     """Reduce allowlisted validation over changed files to a verdict-independent gate
     signal (ADR 0099).
 
     Reuses ``run_validation_commands`` (allowlist subprocess execution) instead of adding
-    a new runner. Returns a dict mirroring the ``privacy`` evidence shape:
-    ``{ran, passed, returncode, command_count}``. ``passed`` is ``None`` when no
-    allowlisted command applies to the changed files (nothing to verify) so the gate
-    treats it as non-blocking; a real non-zero return sets ``passed=False`` and blocks
-    ``ready`` even when every role self-reports pass (self-report < validation).
+    a new runner. ``repo_root`` is forwarded as the subprocess ``cwd`` so validation runs
+    against the gate's worktree rather than the caller's process directory. Returns a dict
+    mirroring the ``privacy`` evidence shape: ``{ran, passed, returncode, command_count}``.
+    ``passed`` is ``None`` when no allowlisted command applies to the changed files
+    (nothing to verify) so the gate treats it as non-blocking; a real non-zero return sets
+    ``passed=False`` and blocks ``ready`` even when every role self-reports pass
+    (self-report < validation).
     """
     if not suggest_validation_commands(changed_files):
         return {"ran": False, "passed": None, "returncode": None, "command_count": 0}
-    returncode, runs = run_validation_commands(changed_files, keep_going=False)
+    returncode, runs = run_validation_commands(changed_files, keep_going=False, cwd=repo_root)
     return {
         "ran": True,
         "passed": returncode == 0,
@@ -18250,7 +18256,7 @@ def write_active_gate_evidence(
     role_ok = bool(required_roles) and all(bool(item["ok"]) for item in gate_roles)
     # ADR 0099: opt-in objective validation signal, folded into `ready` (self-report < validation).
     validation = (
-        _gate_validation_signal(files)
+        _gate_validation_signal(files, repo_root=repo_root)
         if run_validation
         else {"ran": False, "passed": None, "returncode": None, "command_count": 0}
     )
@@ -20549,6 +20555,13 @@ def build_parser() -> argparse.ArgumentParser:
     gate_evidence = sub.add_parser("gate-evidence", help="Bundle the active loop's Conservative-Gate evidence for a task (audit record; never ships).")
     gate_evidence.add_argument("--task", required=True)
     gate_evidence.add_argument("--out-dir", dest="out_dir", type=Path)
+    gate_evidence.add_argument(
+        "--run-validation",
+        dest="run_validation",
+        action="store_true",
+        help="Run allowlisted validation (lint/test) in the gate's repo and fold the "
+        "objective result into the ready decision (opt-in, ADR 0099).",
+    )
 
     active_prepare = sub.add_parser("active-worktree-prepare", help="Prepare an issue-linked worktree for an active-loop role.")
     active_prepare.add_argument("--issue")
@@ -21610,7 +21623,11 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 0 if apply_result.decision in {"checked", "applied"} else 1
         if args.command == "gate-evidence":
-            evidence_path, gate_summary = write_active_gate_evidence(task_id=args.task, out_dir=args.out_dir)
+            evidence_path, gate_summary = write_active_gate_evidence(
+                task_id=args.task,
+                out_dir=args.out_dir,
+                run_validation=args.run_validation,
+            )
             sys.stdout.write(
                 f"[OK] wrote {_repo_path(evidence_path, ROOT_DIR)} "
                 f"(ready={gate_summary['ready']}, privacy_clean={gate_summary['privacy_clean']})\n"

@@ -11245,7 +11245,7 @@ def test_gate_evidence_validation_failure_blocks_ready(monkeypatch, tmp_path: Pa
     monkeypatch.setattr(
         agent_loop,
         "_gate_validation_signal",
-        lambda files: {"ran": True, "passed": False, "returncode": 1, "command_count": 2},
+        lambda files, **_kw: {"ran": True, "passed": False, "returncode": 1, "command_count": 2},
     )
 
     path, summary = agent_loop.write_active_gate_evidence(
@@ -11266,7 +11266,7 @@ def test_gate_evidence_validation_pass_keeps_ready(monkeypatch, tmp_path: Path) 
     monkeypatch.setattr(
         agent_loop,
         "_gate_validation_signal",
-        lambda files: {"ran": True, "passed": True, "returncode": 0, "command_count": 2},
+        lambda files, **_kw: {"ran": True, "passed": True, "returncode": 0, "command_count": 2},
     )
 
     path, summary = agent_loop.write_active_gate_evidence(
@@ -11277,6 +11277,45 @@ def test_gate_evidence_validation_pass_keeps_ready(monkeypatch, tmp_path: Path) 
     assert summary["ready"] is True
     assert ev["conservative_gate"]["objective_ok"] is True
     assert ev["validation"]["passed"] is True
+
+
+def test_gate_evidence_cli_exposes_run_validation_flag() -> None:
+    # ADR 0099 Thread-2 회귀: gate-evidence CLI 가 --run-validation 토글을 노출해
+    # operator 가 객관 검증을 켤 수 있어야 한다 (이전엔 어느 호출처에서도 미전달 = dead).
+    parser = agent_loop.build_parser()
+    off = parser.parse_args(["gate-evidence", "--task", "T-2026-0001"])
+    assert off.run_validation is False
+    on = parser.parse_args(["gate-evidence", "--task", "T-2026-0001", "--run-validation"])
+    assert on.run_validation is True
+
+
+def test_gate_validation_signal_forwards_repo_root_as_cwd(monkeypatch, tmp_path: Path) -> None:
+    # ADR 0099 Thread-1 회귀: repo_root 가 run_validation_commands 의 cwd 로 전달돼
+    # 검증이 process cwd 가 아니라 gate 의 worktree 에서 실행돼야 한다.
+    captured: dict[str, object] = {}
+
+    def fake_run(changed_files, *, keep_going=False, cwd=None):
+        captured["cwd"] = cwd
+        return (0, [agent_loop.ValidationRun(command="x", returncode=0, stdout="", stderr="")])
+
+    monkeypatch.setattr(agent_loop, "run_validation_commands", fake_run)
+    result = agent_loop._gate_validation_signal(["scripts/agent_loop.py"], repo_root=tmp_path)
+    assert captured["cwd"] == tmp_path
+    assert result["ran"] is True
+    assert result["passed"] is True
+
+
+def test_gate_validation_signal_default_repo_root_keeps_cwd_none(monkeypatch) -> None:
+    # repo_root 미지정(기본) 시 cwd=None 으로 기존 동작 보존.
+    captured: dict[str, object] = {}
+
+    def fake_run(changed_files, *, keep_going=False, cwd=None):
+        captured["cwd"] = cwd
+        return (0, [agent_loop.ValidationRun(command="x", returncode=0, stdout="", stderr="")])
+
+    monkeypatch.setattr(agent_loop, "run_validation_commands", fake_run)
+    agent_loop._gate_validation_signal(["scripts/agent_loop.py"])
+    assert captured["cwd"] is None
 
 
 def test_stop_ship_skips_remote_branch_delete_when_stacked_dependents_exist() -> None:
