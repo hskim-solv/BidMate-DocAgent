@@ -11,6 +11,14 @@
   [ADR 0069](./0069-retrieval-aggregate-and-citation-coverage-surface.md) (소비한 retrieval aggregate 표면),
   [`docs/eval/embedding-ablation.md`](../eval/embedding-ablation.md) Phase 2.0, issue #1359
 
+> **Current-policy note (2026-06-03)**: this ADR remains an accepted historical
+> decision record for keeping MiniLM as the default embedding model. Its legacy
+> `real100` retrieval aggregates and `reports/real100/` references are
+> archive-only for new private-eval claims. New task, PR, claim, and handoff
+> evidence must use the `real100_v2` aggregate-only surface in
+> [Surface Map](../evaluation/surface-map.md), unless the maintainer explicitly
+> re-enables another private-eval surface.
+
 ## TL;DR
 
 - 5모델(MiniLM/EmbeddingGemma-300M/bge-m3-korean/KURE-v1/Qwen3-0.6B)을 **real100 비공개 corpus**(26376 kordoc 청크)에서 **retrieval 표면**(ADR 0069 `chunk_recall@k`/`mrr`/`ndcg` + bootstrap CI)으로 측정. Phase 1.x의 public-fixture-smoke answer-quality 표면에서 처음 벗어남.
