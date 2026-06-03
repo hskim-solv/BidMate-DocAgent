@@ -161,11 +161,13 @@ class NaiveBaselineEvalWrapperTest(unittest.TestCase):
                 "nDCG@5": 1.0,
             },
             "Answer/evidence metrics": {
-                "Faithfulness": 1.0,
-                "Answer relevancy": 1.0,
-                "Citation accuracy": 1.0,
+                "rule_based_groundedness": 1.0,
+                "term_coverage_accuracy": 1.0,
+                "citation_chunk_accuracy": 1.0,
                 "Hallucination rate": 0.0,
                 "Unanswerable detection rate": 1.0,
+                "failed_abstention_rate": 0.0,
+                "page_metadata_coverage": 1.0,
             },
             "Operational metrics": {
                 "total latency ms": 10.0,
@@ -217,7 +219,12 @@ class NaiveBaselineEvalWrapperTest(unittest.TestCase):
                     "count": 2,
                 },
             },
-            "index_citation_metadata_coverage": {"coverage_reason": "ok"},
+            "index_citation_metadata_coverage": {
+                "coverage_reason": "ok",
+                "chunks_total": 4,
+                "chunks_with_page_span": 4,
+                "page_span_coverage": 1.0,
+            },
             "case_results": [
                 {
                     "id": "c1",
