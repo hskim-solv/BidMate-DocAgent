@@ -1,12 +1,19 @@
 # Plan: T-2026-0074 XYZ parallelism stack — 3-level 병렬화(X task-pool × Y omc multi-worker × Z roles) + 동시성 안전 substrate
 
-- Status: proposed
+- Status: running
 - Owner role: Planner
 - Related task: `tasks/queue.md::T-2026-0074`
-- Related issue / PR: #1762
+- Related issue / PR: closed scaffold issue #1762; status refresh #2156; implementation PR-D #1815, PR-E1 #1821, PR-E2 #1823
 - Related ADR: [ADR 0094](../adr/0094-concurrency-substrate-for-parallel-loop.md) (동시성 안전 substrate), [ADR 0095](../adr/0095-task-parallel-bounded-loop.md) (task-level 병렬 X + omc multi-worker Y)
 - Created: 2026-06-02
-- Last updated: 2026-06-02
+- Last updated: 2026-06-04
+
+> Current status (2026-06-04): PR-0 scaffolding, PR-D omc multi-worker, PR-E1
+> per-task path substrate, and PR-E2 dark X=1 task-pool substrate are on `main`.
+> The next implementation step remains PR-E3: remove the dark clamp, enable
+> real X>1 fan-out, and harden lease/artifact reconciliation. `tasks/queue.md`
+> is intentionally not updated in this refresh because active worktrees
+> currently own that file.
 
 ## Problem Statement
 
