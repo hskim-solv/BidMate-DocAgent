@@ -6,14 +6,14 @@
 - Related issue / PR: [#1487](https://github.com/hskim-solv/BidMate-DocAgent/issues/1487) / PR TBD
 - Related ADR: [ADR 0005](../adr/0005-eval-split-public-synthetic-private-local.md)
 - Created: 2026-05-25
-- Last updated: 2026-05-25
+- Last updated: 2026-06-04
 
 ## Problem Statement
 
 Multiple files named `eval_summary.json` exist across public fixture smoke,
-public synthetic benchmark, private real-eval, and harness runs. The default
-delta comparator did not identify the surface being compared, so incompatible
-artifact comparisons could look legitimate.
+public synthetic benchmark, current `real100_v2` private eval, and harness
+runs. The default delta comparator did not identify the surface being compared,
+so incompatible artifact comparisons could look legitimate.
 
 ## Desired Behavior
 
@@ -28,7 +28,8 @@ are warned by default and can fail closed with opt-in CLI flags.
 ## Constraints
 
 - Do not change metric calculation or regression thresholds.
-- Do not require private raw data or make private real-eval a CI dependency.
+- Do not require private raw data or make current `real100_v2` private eval a
+  CI dependency.
 - Keep existing PR fixture smoke workflow backward compatible.
 
 ## Architecture Impact
@@ -50,8 +51,9 @@ git diff --check
 
 ## Reviewer Notes
 
-Attack claim boundary wording first: smoke, synthetic benchmark, private
-real-eval, and harness summaries must not be silently treated as interchangeable.
+Attack claim boundary wording first: smoke, synthetic benchmark, current
+`real100_v2` private eval, and harness summaries must not be silently treated
+as interchangeable.
 
 ## Session Handoff
 
