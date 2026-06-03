@@ -1,9 +1,11 @@
 # Private Real-Eval Gold Evidence Schema
 
-Gold evidence lives in ignored local JSONL, normally
-`data/private/gold_evidence.jsonl`. Every answerable question needs explicit
-evidence. Evidence derived only from `expected_terms` is not acceptable for a
-credible private retrieval(retrieval) baseline.
+Gold evidence lives in ignored local JSONL under the current private-eval
+surface, normally `data/private/real100_v2/gold_evidence.jsonl`. Every
+answerable question needs explicit evidence. Evidence derived only from
+`expected_terms` is not acceptable for a credible private retrieval baseline.
+Legacy real100/v1/221/kordoc gold paths are archive-only for new tasks, PRs,
+claims, and handoffs.
 
 ## Required Fields
 
