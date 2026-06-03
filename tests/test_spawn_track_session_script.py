@@ -154,6 +154,20 @@ class TestSpawnTrackBehavior(unittest.TestCase):
         self.assertNotEqual(0, r.returncode)
 
 
+class TestSpawnTrackSkillDocument(unittest.TestCase):
+    def test_judgment_skill_documents_spawn_gates(self) -> None:
+        skill = REPO / ".claude" / "skills" / "spawn-track-session" / "SKILL.md"
+        text = skill.read_text(encoding="utf-8")
+        self.assertIn("name: spawn-track-session", text)
+        self.assertIn("DRY_RUN=1", text)
+        self.assertIn("cmux identify", text)
+        self.assertIn("eval", text)
+        self.assertIn("retrieval-baseline", text)
+        self.assertIn("embedding-M3", text)
+        self.assertIn("Do not push", text)
+        self.assertIn("backtick, dollar sign, bang, double quote, and apostrophe", text)
+
+
 # Behavioral overlap-preflight gate (issue #1836). Unlike TestSpawnTrackBehavior
 # (DRY_RUN=1, real git echoed), the gate must actually execute, so these run with
 # DRY_RUN=0 and stub BOTH git and gh so `overlap-preflight` is deterministic. The
