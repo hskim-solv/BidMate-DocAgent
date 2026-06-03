@@ -6,7 +6,7 @@
 - Related issue / PR: [#1569](https://github.com/hskim-solv/BidMate-DocAgent/issues/1569) / [#1570](https://github.com/hskim-solv/BidMate-DocAgent/pull/1570)
 - Related ADR: N/A - no decision-level runtime or eval contract change
 - Created: 2026-05-27
-- Last updated: 2026-05-27
+- Last updated: 2026-06-03
 
 ## Problem Statement
 
@@ -46,8 +46,8 @@ human gates, and periodic process improvement.
 - Architecture constraints: do not change retrieval, reranking, answer,
   ingestion, API, or eval runtime behavior.
 - Compatibility constraints: preserve existing task queue and plan doc formats.
-- Eval/privacy constraints: no private real-eval run, no raw private artifact
-  content, and no exact local private path in tracked docs.
+- Eval/privacy constraints: no current `real100_v2` private-eval run, no raw
+  private artifact content, and no exact local private path in tracked docs.
 - Tooling/CI constraints: use targeted doc-link checks plus branch/issue checks.
 - Non-goals: do not add code automation, CI gates, metrics, or benchmark
   outputs in this PR.
@@ -137,8 +137,9 @@ Expected evidence:
 - Test/eval output: N/A - no runtime or eval behavior changed.
 - Generated or updated artifact: docs and queue entries only.
 - Reviewer checklist or manual inspection: claim boundary and role separation.
-- Explicitly not validated, with reason: no private real-eval because this PR
-  does not change RAG runtime behavior or make a performance claim.
+- Explicitly not validated, with reason: no current `real100_v2` private eval
+  because this PR does not change RAG runtime behavior or make a performance
+  claim.
 
 ## Rollback Strategy
 
@@ -156,7 +157,7 @@ rollback.
 
 - Failure mode: governance wording is mistaken for a performance claim.
 - Detection signal: PR body or docs imply RAG quality improved.
-- Stop condition or fallback: remove the claim and require private real-eval
+- Stop condition or fallback: remove the claim and require current `real100_v2`
   aggregate paired delta before performance wording.
 
 ## Observability
@@ -183,7 +184,8 @@ operable, but it must not claim any current RAG performance improvement.
 - Task: T-2026-0023
 - Current status: docs/governance implementation opened as PR #1570.
 - Files touched: tasks/queue.md, docs/plans/T-2026-0023-rag-performance-agent-operating-goal.md, docs/operations/ai-engineering-operating-system.md, docs/operations/long-session-workflow.md, docs/operations/ai-codex-workflow.md, docs/agent-utilization.md
-- Decisions made: keep this as docs/governance only; no runtime or eval changes.
+- Decisions made: keep this as docs/governance only; no runtime, eval, or
+  current `real100_v2` private-eval changes.
 - Commands run: python3 scripts/check_doc_links.py --check-all --paths tasks/queue.md docs/plans/T-2026-0023-rag-performance-agent-operating-goal.md docs/operations/ai-engineering-operating-system.md docs/operations/long-session-workflow.md docs/operations/ai-codex-workflow.md docs/agent-utilization.md; git diff --check; make check-branch
 - Results: passed.
 - Next safe command: make ship-review-gate PR=1570
