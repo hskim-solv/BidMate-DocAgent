@@ -1128,8 +1128,12 @@ def render_event_log(events: list[dict]) -> str:
             "ts", "event", "decision", "task_id", "blockers", "warnings",
             "guidance", "prompt", "last_message", "command", "stdout", "stderr",
         }
+        # Surfaced scalar values pass through _sanitize_text too: even a
+        # structural field (e.g. branch) could embed a run-artifact/scratch
+        # path token, so the board masks it before exposing/searching it
+        # (defense-in-depth, ADR 0005). skip/exclusion logic is unchanged.
         extra_fields = [
-            (k, v) for k, v in ev.items()
+            (k, _sanitize_text(str(v))) for k, v in ev.items()
             if k not in skip and not isinstance(v, (list, dict))
         ]
         if extra_fields:
