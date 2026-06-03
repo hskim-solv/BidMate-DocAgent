@@ -71,6 +71,12 @@ _GROUP_B_TRIGGERS = [
     "동시에 실행",
     "concurrent execution",
     "several tasks",
+    # issue #1761: \beval inclusion lock — evaluate/evaluation must still fire
+    "evaluate the model",
+    "evaluation framework",
+    # issue #1761: analy[sz] recall — analysis (noun) / analyse (British) now covered
+    "send me the analysis",
+    "analyse the data",
 ]
 
 _NON_TRIGGERS = [
@@ -87,6 +93,10 @@ _NON_TRIGGERS = [
     "what does this function do?",  # pure question
     "git status 알려줘",              # simple lookup
     "버전 확인해줘",
+    # issue #1761: \beval word-boundary — retrieval/medieval substring must NOT fire
+    "is retrieval hybrid by default?",
+    "fix typo in retrieval docstring",
+    "this is medieval history",
 ]
 
 
