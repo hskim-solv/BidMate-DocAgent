@@ -9,6 +9,7 @@ PRs, deletes branches, force-pushes, or calls external model APIs.
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 import contextlib
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -1203,6 +1204,43 @@ def _parallelism_kill_enabled() -> bool:
     Reuses the brick-C / ack resolver truthy判정 pattern ("1"/"true"/"yes"/"on",
     case-insensitive) so all parallelism knobs agree on what "on" means."""
     return os.environ.get(PARALLELISM_KILL_ENV, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _e2_task_pool_dark_clamp_enabled() -> bool:
+    """True while the E2-dark clamp is in place (PR-E3 removes this function and its call site).
+
+    Extracted as a module-level function so tests can monkeypatch it to False to reach
+    the X>1 branch of run_task_in_worktree and verify the E3-deferred RuntimeError fires.
+    In production this always returns True (E2 ships the X task-pool substrate dark)."""
+    return True
+
+
+# X task-pool size (ADR 0095 PR-E2). Default 1 == serial == byte-identical (ADR 0001 gate);
+# PR-F flips the operator default to 2 once the worktree-isolation substrate + tests are stable.
+# env BIDMATE_AGENT_LOOP_TASK_POOL (Makefile ACTIVE_TASK_POOL) overrides the default.
+DEFAULT_ACTIVE_TASK_POOL = 1
+TASK_POOL_ENV = "BIDMATE_AGENT_LOOP_TASK_POOL"
+
+
+def _resolve_task_pool_size(raw: str | None = None) -> int:
+    """Resolve the X task-pool size (ADR 0095 PR-E2). env BIDMATE_AGENT_LOOP_TASK_POOL
+    overrides DEFAULT (1). Unset / blank / non-int -> DEFAULT (1). fail-closed: a parsed
+    value <=0 clamps to 1 (the pool must never be 0). Byte-for-byte mirror of
+    ``_resolve_omc_max_workers`` / ``_resolve_global_concurrency``.
+
+    Kill-switch (ADR 0095): when ``BIDMATE_AGENT_LOOP_PARALLELISM_KILL`` is truthy the pool is
+    forced to 1 (serial) regardless of the knob — mirrors ``_resolve_omc_worker_mix``'s kill
+    check so every parallelism knob agrees on the kill-switch meaning."""
+    if _parallelism_kill_enabled():
+        return 1
+    source = os.getenv(TASK_POOL_ENV) if raw is None else raw
+    if source is None or not str(source).strip():
+        return DEFAULT_ACTIVE_TASK_POOL
+    try:
+        value = int(str(source).strip())
+    except ValueError:
+        return DEFAULT_ACTIVE_TASK_POOL
+    return value if value >= 1 else 1  # fail-closed: pool<=0 -> 1
 
 
 def _normalize_field(label: str) -> str:
@@ -10855,6 +10893,7 @@ def write_active_auto_loop(
     write_agent: str = "auto",
     runner: str = "codex",
     max_parallel: int = 8,
+    task_pool: int | None = None,
     timeout_seconds: int = 0,
     max_commands_per_session: int = 0,
     lane_autotune_config: "LaneAutotuneConfig | None" = None,
@@ -10889,9 +10928,42 @@ def write_active_auto_loop(
     # Capture the runner backend before the loop body reuses the local name ``runner`` for
     # the per-cycle ActiveCodexRunnerResult (the read-only/omc runner result).
     runner_backend = runner
+    # ADR 0095 PR-E2: resolve the X task-pool size through the shared resolver so the
+    # kill-switch + fail-closed (pool<=0 -> 1) clamp apply whether the caller passed an int
+    # (CLI/tests) or left it None (env-driven default). ``task_pool=None`` -> env / default 1.
+    task_pool_size = _resolve_task_pool_size(None if task_pool is None else str(task_pool))
+    # fcntl gating (ADR 0095 PR-E2, FailureMode "fcntl portability"): the LeaseManager flock is a
+    # no-op on non-POSIX (fcntl is None), so there is NO cross-process exclusion to make X>1 safe.
+    # Clamp the pool to 1 (serial) and warn. The X=1 path is unaffected (no flock contention).
+    fcntl_clamp_warning: str | None = None
+    if task_pool_size > 1 and fcntl is None:
+        fcntl_clamp_warning = (
+            f"task pool clamped {task_pool_size} -> 1: fcntl is unavailable on this platform so "
+            "the lease flock is a no-op (no cross-process exclusion); X>1 is unsafe without it"
+        )
+        task_pool_size = 1
+    # ADR 0095 PR-E2 ships the X task-pool substrate DARK: the worktree-per-task isolation
+    # (run_task_in_worktree) + ThreadPoolExecutor driver + stop_event fail-closed land here, but
+    # the real X>1 fan-out (ledger/lease reconciliation across worktrees) is gated to PR-E3. So
+    # this PR clamps the EFFECTIVE pool to 1 internally regardless of the knob — the driver runs
+    # the serial claim -> submit -> future.result() path (byte-identical, ADR 0001). The resolved
+    # ``task_pool_size`` (knob value, post kill-switch / fcntl gating) is still surfaced below so a
+    # >1 request is visibly demoted; PR-E3 removes this clamp to enable real concurrency.
+    e2_dark_clamp_warning: str | None = None
+    effective_task_pool_size = task_pool_size
+    if effective_task_pool_size > 1 and _e2_task_pool_dark_clamp_enabled():
+        e2_dark_clamp_warning = (
+            f"task pool requested {effective_task_pool_size} but ADR 0095 PR-E2 ships the X "
+            "task-pool substrate dark; running serially (X=1). PR-E3 enables X>1 fan-out"
+        )
+        effective_task_pool_size = 1
     out_path = _active_path(out, repo_root=repo_root)
     state_path = _active_path(state, repo_root=repo_root)
     prior_completed, prior_deferred, warnings = _load_active_auto_ledger(state_path)
+    if fcntl_clamp_warning is not None:
+        warnings.append(fcntl_clamp_warning)
+    if e2_dark_clamp_warning is not None:
+        warnings.append(e2_dark_clamp_warning)
     ledger = LedgerState(completed=prior_completed, deferred=prior_deferred)
     completed = ledger.completed
     deferred_task_ids = ledger.deferred
@@ -11062,6 +11134,12 @@ def write_active_auto_loop(
         return timeout_seconds
 
     def run_repair_apply(cycle: dict[str, object], task: TaskEntry, *, completion_decision: str) -> bool:
+        """Auto-repair apply lane (ADR 0095 PR-E2 Finding 1).
+
+        The repair-applied completion (the third terminal site) is routed through
+        ``complete_if_not_stopped`` so a sibling's stop_event blocks spurious promotion here too.
+        PR-E3 will add a cycle_root param when it threads the two-root split (write+read+acquire
+        +release+overlap-preflight); for now ``repo_root`` is the single root (X==1 only)."""
         def run_patch(agent_choice: str) -> ActiveCodexRunnerResult:
             return write_active_codex_runner(
                 execute=execute_runner,
@@ -11116,8 +11194,12 @@ def write_active_auto_loop(
                     write_cycle_checkpoint("running")
                     return False
                 cycle["completion_decision"] = "repair-applied"
+                # FAIL-CLOSED via complete_if_not_stopped (ADR 0095 PR-E2 Finding 1): repair-applied
+                # is the THIRD terminal completion site; route through the helper so a sibling's
+                # stop_event prevents spurious promotion here too. At X==1 always returns True.
+                if not complete_if_not_stopped(task.task_id):
+                    return False
                 cycle["completed"] = True
-                mark_task_completed(task.task_id)
                 warnings.append(f"{task.task_id}: repair patch applied; recorded repair-applied completion")
                 write_cycle_checkpoint("running")
                 return True
@@ -11149,6 +11231,21 @@ def write_active_auto_loop(
 
     iteration = 0
     attempted_this_run: list[str] = []
+    # ADR 0095 PR-E2 (X task pool). ``claim_lock`` serializes the *task selection + attempt
+    # bookkeeping* (iteration++, select_next_task, attempted_this_run.append) so two pool threads
+    # never claim the same task. It is a LEAF in-process lock (threading.Lock, NOT a file lock —
+    # cross-process disjointness already belongs to LeaseManager's flock): it is released BEFORE
+    # write_active_start (which takes the LeaseManager flock) and before any
+    # global_concurrency_limiter().slot() acquire (PR-B/PR-C lock-order docs). ``stop_event`` is
+    # the cross-thread replacement for the serial ``break``: a blocker that must stop the whole
+    # run sets it (the blocker fact is recorded under the ledger lock inside register_task_blocker),
+    # and the driver checks it before the next claim AND in-flight siblings check it before the
+    # terminal completion (fail-closed). At the effective X==1 dark default the driver waits on
+    # each future before the next claim, so the lock + event are uncontended and the ordering is
+    # EXACTLY the pre-E2 serial loop -> byte-identical (ADR 0001).
+    claim_lock = threading.Lock()
+    stop_event = threading.Event()
+    wall_clock_exceeded = False
 
     def loop_should_continue() -> bool:
         if infinite_mode:
@@ -11159,8 +11256,11 @@ def write_active_auto_loop(
             return True
         return len(completed) < target_completed_count and iteration < max_attempts
 
-    wall_clock_exceeded = False
-    while loop_should_continue():
+    def wall_clock_guard_tripped() -> bool:
+        """Per-claim wall-clock gate (infinite mode). Identical placement + semantics to the
+        pre-E2 loop-top check: it runs BETWEEN cycles (before each claim), records the same
+        blocker, and flips ``wall_clock_exceeded``. Returns True when the run must stop."""
+        nonlocal wall_clock_exceeded
         if infinite_mode and max_wall_clock_seconds:
             elapsed = time.monotonic() - loop_start_monotonic
             if elapsed >= max_wall_clock_seconds:
@@ -11174,68 +11274,134 @@ def write_active_auto_loop(
                 # Safety-guard abort -> blocked outcome (mirrors the consecutive-blocker
                 # guard); ``wall_clock_exceeded`` stays the machine-readable signal.
                 ledger.append_blocker(stop_message)
-                break
-        iteration += 1
-        retrying_deferred = False
-        try:
-            if task_id and iteration == 1:
-                task = load_task(task_id, repo_root)
-            elif (
-                branch_task_id
-                and iteration == 1
-                and branch_task_id not in completed
-                and branch_task_id not in deferred_task_ids
-            ):
-                branch_task = load_task(branch_task_id, repo_root)
-                if _active_auto_loop_selectable_status(branch_task.status):
-                    task = branch_task
-                    warnings.append(f"selected branch task `{branch_task_id}` for first cycle")
+                return True
+        return False
+
+    # Per-task wall-clock budget (ADR 0095 PR-E2, FailureMode "guard-semantics shift"). This is an
+    # X>1 feature: at effective X==1 the budget is HARD 0 regardless of the env var so the env
+    # has NO effect on the auto_loop_state.json -> byte-identical (ADR 0001, Finding 5). Resolving
+    # the budget at X==1 appended an advisory warning to auto_loop_state.json, breaking strict byte-
+    # identity with the unset-env case. At X>1 (PR-E3) a positive budget gives each task its OWN
+    # monotonic deadline so one slow task trips independently without aborting others.
+    per_task_wall_clock_budget = (
+        _resolve_infinite_guard_int("BIDMATE_AGENT_LOOP_TASK_WALL_CLOCK_SECONDS", 0, warnings)
+        if effective_task_pool_size > 1
+        else 0
+    )
+
+    def claim_next_task() -> "tuple[TaskEntry, int, bool] | None":
+        """Atomically select the next task + advance the attempt bookkeeping (ADR 0095 PR-E2).
+
+        Holds ``claim_lock`` ONLY around the iteration++ / select / attempted_this_run.append
+        critical section, then RELEASES it before returning (the caller submits the task to the
+        pool, which is where write_active_start / the global semaphore are acquired — the claim
+        lock must not be held across those, per the PR-B/PR-C lock ordering). Returns
+        ``(task, iteration, retrying_deferred)`` or ``None`` when the queue is drained / a
+        selection-stop blocker fired (the pre-E2 ``break`` cases). TaskEntry is a frozen dataclass,
+        so the per-claim iteration + retry flag travel alongside it as a tuple (not stashed on the
+        instance). The selection block is VERBATIM from the pre-E2 serial loop."""
+        with claim_lock:
+            nonlocal iteration
+            iteration += 1
+            retrying_deferred = False
+            try:
+                if task_id and iteration == 1:
+                    task = load_task(task_id, repo_root)
+                elif (
+                    branch_task_id
+                    and iteration == 1
+                    and branch_task_id not in completed
+                    and branch_task_id not in deferred_task_ids
+                ):
+                    branch_task = load_task(branch_task_id, repo_root)
+                    if _active_auto_loop_selectable_status(branch_task.status):
+                        task = branch_task
+                        warnings.append(f"selected branch task `{branch_task_id}` for first cycle")
+                    else:
+                        warnings.append(
+                            f"skipped branch task `{branch_task_id}` because status is "
+                            f"`{branch_task.status or 'unknown'}`"
+                        )
+                        task = select_next_task(
+                            repo_root,
+                            exclude_task_ids=(*completed, *deferred_task_ids, *attempted_this_run, branch_task_id),
+                            include_backlog=True,
+                            require_backlog_handoff=True,
+                        )
                 else:
-                    warnings.append(
-                        f"skipped branch task `{branch_task_id}` because status is "
-                        f"`{branch_task.status or 'unknown'}`"
-                    )
                     task = select_next_task(
                         repo_root,
-                        exclude_task_ids=(*completed, *deferred_task_ids, *attempted_this_run, branch_task_id),
+                        exclude_task_ids=(*completed, *deferred_task_ids, *attempted_this_run),
                         include_backlog=True,
                         require_backlog_handoff=True,
                     )
-            else:
-                task = select_next_task(
-                    repo_root,
-                    exclude_task_ids=(*completed, *deferred_task_ids, *attempted_this_run),
-                    include_backlog=True,
-                    require_backlog_handoff=True,
-                )
-        except ValueError as exc:
-            if auto_repair and deferred_task_ids:
-                try:
-                    task = _select_deferred_retry_task(
-                        repo_root,
-                        deferred_task_ids=deferred_task_ids,
-                        exclude_task_ids=(*completed, *attempted_this_run),
-                    )
-                    retrying_deferred = True
-                    warnings.append(f"retrying deferred task `{task.task_id}` after fresh task selection stopped: {exc}")
-                except ValueError as retry_exc:
+            except ValueError as exc:
+                if auto_repair and deferred_task_ids:
+                    try:
+                        task = _select_deferred_retry_task(
+                            repo_root,
+                            deferred_task_ids=deferred_task_ids,
+                            exclude_task_ids=(*completed, *attempted_this_run),
+                        )
+                        retrying_deferred = True
+                        warnings.append(f"retrying deferred task `{task.task_id}` after fresh task selection stopped: {exc}")
+                    except ValueError as retry_exc:
+                        if iteration == 1 and not (infinite_mode and not explicit_target_completed_count):
+                            ledger.append_blocker(str(exc))
+                        elif iteration != 1:
+                            warnings.append(f"no next task selected after iteration {iteration - 1}: {exc}")
+                        warnings.append(f"deferred retry selection stopped: {retry_exc}")
+                        return None
+                else:
                     if iteration == 1 and not (infinite_mode and not explicit_target_completed_count):
                         ledger.append_blocker(str(exc))
-                    elif iteration != 1:
+                    elif iteration == 1:
+                        # Open-ended infinite mode with an already-drained ready queue is a clean
+                        # no-op, not a blocked run (ADR 0085).
+                        warnings.append(f"infinite mode: ready queue already drained at start; nothing to do: {exc}")
+                    else:
                         warnings.append(f"no next task selected after iteration {iteration - 1}: {exc}")
-                    warnings.append(f"deferred retry selection stopped: {retry_exc}")
-                    break
-            else:
-                if iteration == 1 and not (infinite_mode and not explicit_target_completed_count):
-                    ledger.append_blocker(str(exc))
-                elif iteration == 1:
-                    # Open-ended infinite mode with an already-drained ready queue is a clean
-                    # no-op, not a blocked run (ADR 0085).
-                    warnings.append(f"infinite mode: ready queue already drained at start; nothing to do: {exc}")
-                else:
-                    warnings.append(f"no next task selected after iteration {iteration - 1}: {exc}")
-                break
-        attempted_this_run.append(task.task_id)
+                    return None
+            attempted_this_run.append(task.task_id)
+            # The cycle iteration index is captured inside the lock so each claimed task carries
+            # the iteration value it was claimed at (matches the pre-E2 cycle["iteration"]).
+            return task, iteration, retrying_deferred
+
+    def complete_if_not_stopped(task_id: str) -> bool:
+        """Gate ALL task-completion promotions on stop_event (ADR 0095 PR-E2 Finding 1 / MUST FIX).
+
+        Returns True when completion was recorded, False (no-op) when a terminal blocker already
+        stopped the run on another in-flight sibling. Covers ALL three completion sites:
+          - local-gate-complete (~11550)
+          - ship-executed (~11641)
+          - repair-applied (~11182)
+        At the effective X==1 dark default stop_event is NEVER set mid-cycle, so this always returns
+        True -> same mark_task_completed path -> byte-identical (ADR 0001)."""
+        if stop_event.is_set():
+            return False
+        mark_task_completed(task_id)
+        return True
+
+    def run_one_task(task: "TaskEntry", iteration: int, retrying_deferred: bool) -> None:
+        """One per-task cycle (ADR 0095 PR-E2). VERBATIM from the pre-E2 serial loop body, with
+        only the control-flow keywords re-expressed for the pool: ``break`` -> ``stop_event.set();
+        return`` (stop the whole run) and ``continue`` -> ``return`` (this task is done). Every
+        cycle dict build, ledger.append_cycle, write_* call, warnings.append, and
+        write_cycle_checkpoint stays textually identical and in the same order, so at the effective
+        X==1 dark default (claim -> run -> wait -> next claim) the produced auto_loop_state.json is
+        byte-identical (ADR 0001).
+
+        ``repo_root`` is the plain closure variable (ROOT_DIR). At X==1 (the E2 default) this is
+        byte-identical to the pre-E2 loop. PR-E3 will thread two explicit roots (cycle_repo_root
+        for artifacts, coordination_root for leases) once the full read/acquire/release surface is
+        also wired; for now the closure is the correct single root.
+
+        FAIL-CLOSED stop (complete_if_not_stopped): ALL three terminal mark_task_completed call
+        sites are routed through the helper above which short-circuits when a sibling already set
+        stop_event. At the effective X==1 dark default the event is never set mid-cycle -> helper
+        always returns True -> byte-identical."""
+        # Threaded forward to the lane-autotune controller (AC9/AC10) on the next runner call.
+        nonlocal pending_effort_overrides, lane_autotune_cooldown
 
         context_files = tuple(_dedupe_preserve_order((*requested_files, *_active_task_context_files(task, repo_root=repo_root))))
         cycle: dict[str, object] = {
@@ -11268,8 +11434,9 @@ def write_active_auto_loop(
         cycle["start_report"] = _repo_path(start.report_path, repo_root)
         if start.blockers:
             if register_task_blocker(task, [f"{task.task_id}: {item}" for item in start.blockers]):
-                break
-            continue
+                stop_event.set()
+                return
+            return
         if start.decision == "blocked" or start.active_loop.decision == "blocked":
             cycle["gate_tier"] = "start-blocked"
             cycle["completion_decision"] = "start-blocked"
@@ -11281,17 +11448,19 @@ def write_active_auto_loop(
                 )
                 write_cycle_checkpoint("running")
                 if applied:
-                    continue
+                    return
                 # Failed auto-repair leaves the task deferred. In infinite mode route that
                 # deferral through the consecutive-blocker guard so repeated repair failures
                 # can stop the run (the guard would otherwise never see auto-repair
                 # deferrals). Bounded mode keeps its historical continue-and-defer behavior.
                 if infinite_mode and register_task_blocker(task, []):
-                    break
-                continue
+                    stop_event.set()
+                    return
+                return
             if register_task_blocker(task, [f"{task.task_id}: active-start/active-loop decision was blocked"]):
-                break
-            continue
+                stop_event.set()
+                return
+            return
 
         runner = write_active_codex_runner(
             execute=execute_runner,
@@ -11372,20 +11541,22 @@ def write_active_auto_loop(
                 )
                 write_cycle_checkpoint("running")
                 if applied:
-                    continue
+                    return
                 # Failed auto-repair leaves the task deferred. In infinite mode route that
                 # deferral through the consecutive-blocker guard so repeated repair failures
                 # can stop the run (the guard would otherwise never see auto-repair
                 # deferrals). Bounded mode keeps its historical continue-and-defer behavior.
                 if infinite_mode and register_task_blocker(task, []):
-                    break
-                continue
+                    stop_event.set()
+                    return
+                return
             runner_messages = [f"{task.task_id}: runner {item}" for item in runner.blockers]
             if not runner.blockers:
                 runner_messages.append(f"{task.task_id}: runner decision was {runner.decision}, expected completed")
             if register_task_blocker(task, runner_messages):
-                break
-            continue
+                stop_event.set()
+                return
+            return
 
         evidence_path, gate_summary = write_active_gate_evidence(
             task_id=task.task_id,
@@ -11407,11 +11578,16 @@ def write_active_auto_loop(
                 and cycle["privacy_clean"]
             ):
                 cycle["completion_decision"] = "local-gate-complete"
+                # FAIL-CLOSED via complete_if_not_stopped (ADR 0095 PR-E2 Finding 1): all three
+                # terminal completion sites route through the helper, which short-circuits when
+                # stop_event is set (a sibling's blocker already stopped the run). At X==1 the
+                # event is never set mid-cycle -> helper always returns True -> byte-identical.
+                if not complete_if_not_stopped(task.task_id):
+                    return
                 cycle["completed"] = True
-                mark_task_completed(task.task_id)
                 warnings.append(f"{task.task_id}: ship execution disabled; recorded local gate completion")
                 write_cycle_checkpoint("running")
-                continue
+                return
             if (
                 auto_repair
                 and execute_runner
@@ -11425,22 +11601,25 @@ def write_active_auto_loop(
                 )
                 write_cycle_checkpoint("running")
                 if applied:
-                    continue
+                    return
                 # Failed auto-repair leaves the task deferred. In infinite mode route that
                 # deferral through the consecutive-blocker guard so repeated repair failures
                 # can stop the run (the guard would otherwise never see auto-repair
                 # deferrals). Bounded mode keeps its historical continue-and-defer behavior.
                 if infinite_mode and register_task_blocker(task, []):
-                    break
-                continue
+                    stop_event.set()
+                    return
+                return
             warnings.append(f"{task.task_id}: ship execution disabled; not marking task completed")
             if not infinite_mode:
-                break
+                stop_event.set()
+                return
             # Infinite mode: a non-completable dry-run task must not spin the queue; defer
             # it (counts toward the consecutive-blocker guard) and move on.
             if register_task_blocker(task, []):
-                break
-            continue
+                stop_event.set()
+                return
+            return
         if not cycle["gate_ready"]:
             if auto_repair and cycle["privacy_clean"]:
                 applied = run_repair_apply(cycle, task, completion_decision="repair-needed")
@@ -11450,17 +11629,19 @@ def write_active_auto_loop(
                 )
                 write_cycle_checkpoint("running")
                 if applied:
-                    continue
+                    return
                 # Failed auto-repair leaves the task deferred. In infinite mode route that
                 # deferral through the consecutive-blocker guard so repeated repair failures
                 # can stop the run (the guard would otherwise never see auto-repair
                 # deferrals). Bounded mode keeps its historical continue-and-defer behavior.
                 if infinite_mode and register_task_blocker(task, []):
-                    break
-                continue
+                    stop_event.set()
+                    return
+                return
             if register_task_blocker(task, [f"{task.task_id}: conservative gate is not ready"]):
-                break
-            continue
+                stop_event.set()
+                return
+            return
 
         ship = write_active_loop(
             mode=mode,
@@ -11482,12 +11663,128 @@ def write_active_auto_loop(
             if not ship.blockers:
                 ship_messages.append(f"{task.task_id}: ship decision was {ship.decision}, expected executed")
             if register_task_blocker(task, ship_messages):
-                break
-            continue
+                stop_event.set()
+                return
+            return
 
+        # FAIL-CLOSED via complete_if_not_stopped (ADR 0095 PR-E2 Finding 1): route through the
+        # shared helper so ALL three terminal completion sites share one guard. Invisible at X==1.
+        if not complete_if_not_stopped(task.task_id):
+            return
         cycle["completed"] = True
-        mark_task_completed(task.task_id)
         write_cycle_checkpoint("running")
+
+    def run_task_in_worktree(task: "TaskEntry", iteration: int, retrying_deferred: bool) -> None:
+        """Run one task cycle (ADR 0095 PR-E2).
+
+        At ``effective_task_pool_size == 1`` (the E2 dark default): calls ``run_one_task`` directly.
+        No worktree is created, ``repo_root`` is ROOT_DIR (the plain closure), byte-identical
+        (ADR 0001).
+
+        At ``effective_task_pool_size > 1`` (PR-E3 scope): raises an explicit E3-deferred
+        ``RuntimeError`` documenting the work-list. The E2-dark clamp makes this branch unreachable
+        at runtime; the raise makes the boundary visible in code and is caught by a unit test.
+
+        NOTE: the worktree lifecycle primitive (_run_cycle_in_task_worktree / create / teardown) is
+        already unit-tested at the module level; PR-E3 will wire it here once leases coordination_root
+        (write+read+acquire+release), parent branch/issue inheritance for cycle worktrees, and
+        overlap-preflight root-awareness are also resolved."""
+        if effective_task_pool_size <= 1:
+            # X==1 dark default: plain cycle, no worktree, no rebinding — byte-identical (ADR 0001).
+            run_one_task(task, iteration, retrying_deferred)
+            return
+
+        # --- X>1 fan-out: explicitly deferred to PR-E3 ------------------------------------------
+        # E3 work-list (codex round-2 HIGH findings):
+        #   • leases coordination_root: write_active_loop/write_active_start AND
+        #     read (_load_active_leases), acquire_active_agent, release_active_agent — ALL must use
+        #     the parent root so cross-task lease overlap is visible.
+        #   • parent branch/issue inheritance: cycle worktrees created from main (origin/main),
+        #     NOT the current branch, to avoid branch-tied issue metadata leaking into sibling tasks.
+        #   • overlap-preflight root-awareness: build_overlap_preflight must query the parent root.
+        #   • two-root threading: cycle_repo_root (artifacts) + coordination_root (leases) explicitly
+        #     passed through run_one_task / run_repair_apply / write_active_start / write_active_loop.
+        #   • claim_disjoint REJECT: first-writer-wins rejection (currently REPORT-only).
+        raise RuntimeError(
+            "X>1 task-pool fan-out is not enabled in PR-E2; PR-E3 wires leases coordination_root "
+            "(write+read+acquire+release), parent branch/issue inheritance for cycle worktrees, and "
+            "overlap-preflight root-awareness"
+        )
+
+    # X task-pool driver (ADR 0095 PR-E2). ``ThreadPoolExecutor(max_workers=effective_task_pool_size)``.
+    # DRIVER-ROOT != CYCLE-ROOT: the driver's ledger / state_path / completion bookkeeping stay on
+    # the PARENT repo_root (ROOT_DIR); only each per-task cycle (via run_task_in_worktree) may run
+    # against a worktree root. The driver records completion AFTER the future joins, so there is no
+    # cross-worktree ledger merge.
+    #
+    # X==1 DARK EQUIVALENCE (effective_task_pool_size clamped to 1 in E2): claim -> submit ->
+    # future.result() (WAIT) before the next claim == EXACTLY the pre-E2 serial ordering (claim ->
+    # run -> checkpoint -> claim) -> byte-identical (ADR 0001). ``loop_should_continue()``
+    # (verifies-key) + the wall-clock guard remain the per-claim GATE, evaluated BEFORE each claim
+    # exactly as the pre-E2 loop-top did. PR-E3 raises the effective pool for real fan-out + adds
+    # the FIRST_COMPLETED drain path (imported here, used by the clamped-off >1 branch).
+    in_flight: set = set()
+    # Per-task wall-clock budget metadata: each future's monotonic deadline (anchored at SUBMIT)
+    # keyed by the future, checked AFTER it joins. budget 0 -> deadline None -> NO-OP -> byte-
+    # identical at X==1. A future that overran its OWN deadline records a per-task advisory warning
+    # WITHOUT aborting siblings (trips independently — distinct from the infinite wall-clock guard).
+    future_meta: dict = {}
+
+    def check_task_budget(fut) -> None:
+        meta = future_meta.pop(fut, None)
+        if meta is None:
+            return
+        meta_task_id, deadline = meta
+        if deadline is not None and time.monotonic() >= deadline:
+            warnings.append(
+                f"{meta_task_id}: per-task wall-clock budget "
+                f"({per_task_wall_clock_budget}s) elapsed during this cycle"
+            )
+
+    with ThreadPoolExecutor(max_workers=effective_task_pool_size) as pool:
+        while True:
+            if stop_event.is_set():
+                break
+            if not loop_should_continue():
+                break
+            if wall_clock_guard_tripped():
+                break
+            claimed = claim_next_task()
+            if claimed is None:
+                break
+            future = pool.submit(run_task_in_worktree, *claimed)
+            in_flight.add(future)
+            future_meta[future] = (
+                claimed[0].task_id,
+                time.monotonic() + per_task_wall_clock_budget if per_task_wall_clock_budget else None,
+            )
+            if effective_task_pool_size == 1:
+                # Serial dark path: wait now so the next claim sees this task's ledger writes —
+                # exact pre-E2 ordering. Surface any exception (matches the un-wrapped serial body).
+                future.result()
+                in_flight.discard(future)
+                check_task_budget(future)
+            elif len(in_flight) >= effective_task_pool_size:
+                # Pool full (PR-E3 path): block until at least one task finishes, then loop to
+                # claim again. Unreachable while effective_task_pool_size is clamped to 1.
+                done, in_flight = wait(in_flight, return_when=FIRST_COMPLETED)
+                for fut in done:
+                    fut.result()
+                    check_task_budget(fut)
+        # Stop / drain (ADR 0095 PR-E2 MUST FIX): on a terminal-blocker stop, CANCEL pending futures
+        # and do NOT promote post-stop joins in bounded mode. ``pool.submit`` already returned for
+        # in-flight futures; ``future.cancel()`` only takes effect for not-yet-started ones (the X==1
+        # path has none in flight). The in-flight bodies are themselves stop_event-guarded so a
+        # running sibling will not record a spurious completion. We still join (drain) so the pool
+        # shuts down cleanly, but completion promotion is owned by run_one_task's fail-closed guard.
+        for fut in in_flight:
+            fut.cancel()
+        for fut in in_flight:
+            if fut.cancelled():
+                check_task_budget(fut)
+                continue
+            fut.result()
+            check_task_budget(fut)
 
     # ``target_reached`` marks a *clean* finish. With an explicit/bounded target it means the
     # completed count met it. In open-ended infinite mode (no target) a clean finish also
@@ -17056,6 +17353,148 @@ def _scratch_worktree_paths(task_id: str, agent: str, *, repo_root: Path) -> tup
     return path, branch
 
 
+def _task_cycle_worktree_paths(task_id: str, *, repo_root: Path) -> tuple[Path, str]:
+    """Return (worktree_path, branch) for a per-task CYCLE worktree (ADR 0095 PR-E2).
+
+    This is the OUTER worktree that becomes ``repo_root`` for an entire task cycle when the
+    X task-pool size > 1 — distinct from the per-agent write-lane scratch
+    (``_scratch_worktree_paths`` -> ``{task_id}-{agent}``) the patch lane creates *inside* the
+    cycle. The ``{task_id}-cycle`` suffix keeps the two disjoint so a cycle worktree and the
+    write-lane scratch nested under it never collide. At X==1 NO cycle worktree is created (the
+    cycle runs directly against ``ROOT_DIR`` -> byte-identical, ADR 0001), so this is only
+    reached on the X>1 fan-out path (enabled in PR-E3)."""
+    if not TASK_ID_RE.fullmatch(task_id):
+        raise ValueError("task id must match T-YYYY-NNNN")
+    path = repo_root / ".claude" / "worktrees" / f"{task_id}-cycle"
+    branch = f"agent/{task_id}/cycle"
+    return path, branch
+
+
+def create_task_cycle_worktree(
+    task_id: str,
+    *,
+    base: str = "origin/main",
+    repo_root: Path = ROOT_DIR,
+    runner=None,
+) -> tuple[Path, str, list[str]]:
+    """Create an isolated per-task CYCLE worktree + branch (ADR 0095 PR-E2).
+
+    Reuses the same low-level ``git worktree add`` mechanics as ``create_scratch_worktree``
+    but with the ``{task_id}-cycle`` naming so the OUTER cycle worktree is disjoint from the
+    write-lane scratch. The whole task cycle later runs with this path as its ``repo_root`` so
+    EVERY ``active/`` coordination path (registry/assignments/events/apply/gate/patch_runs/
+    codex_runs/omc_runs) is worktree-local and disjoint BY CONSTRUCTION (closing codex
+    HIGH-1..4 at the repo_root boundary). Returns (worktree_path, branch, blockers). The git
+    subprocess is injectable so tests never create real worktrees."""
+    run = runner or _git_worktree_runner
+    path, branch = _task_cycle_worktree_paths(task_id, repo_root=repo_root)
+    blockers: list[str] = []
+    path.parent.mkdir(parents=True, exist_ok=True)
+    proc = run(["git", "-C", str(repo_root), "worktree", "add", "-b", branch, str(path), base])
+    if getattr(proc, "returncode", 1) != 0:
+        tail = next((line for line in reversed((getattr(proc, "stderr", "") or "").splitlines()) if line.strip()), "")
+        blockers.append(f"task cycle worktree create failed for {branch}: {tail}".strip())
+    return path, branch, blockers
+
+
+def teardown_task_cycle_worktree(
+    task_id: str,
+    *,
+    repo_root: Path = ROOT_DIR,
+    runner=None,
+) -> list[str]:
+    """Best-effort removal of a per-task CYCLE worktree + its branch (ADR 0095 PR-E2).
+
+    Mirrors ``teardown_scratch_worktree`` for the ``{task_id}-cycle`` naming: before the
+    destructive ``--force`` removal it commits any uncommitted cycle state via the shared
+    ``commit_scratch_worktree_before_exit`` (exit hygiene, issue #1719) so an aborted/errored
+    cycle cannot silently lose work. Returns warnings (never raises)."""
+    run = runner or _git_worktree_runner
+    path, branch = _task_cycle_worktree_paths(task_id, repo_root=repo_root)
+    warnings: list[str] = []
+    committed, hygiene_warnings = commit_scratch_worktree_before_exit(path, runner=run)
+    warnings.extend(hygiene_warnings)
+    if committed:
+        warnings.append(f"exit hygiene: committed uncommitted cycle changes on {branch} before teardown")
+    rm = run(["git", "-C", str(repo_root), "worktree", "remove", "--force", str(path)])
+    if getattr(rm, "returncode", 1) != 0:
+        warnings.append(f"task cycle worktree remove warning for {branch}")
+    br = run(["git", "-C", str(repo_root), "branch", "-D", branch])
+    if getattr(br, "returncode", 1) != 0:
+        warnings.append(f"task cycle branch delete warning for {branch}")
+    return warnings
+
+
+def _run_cycle_in_task_worktree(
+    task_id: str,
+    *,
+    parent_root: Path,
+    run_cycle: "Callable[[Path], None]",
+    register_blocker: "Callable[[list[str]], bool]",
+    on_stop: "Callable[[], None]",
+    append_warnings: "Callable[[Sequence[str]], None]",
+    git_runner=None,
+) -> None:
+    """Run one task cycle inside an isolated per-task worktree (ADR 0095 PR-E2).
+
+    Module-level so the worktree LIFECYCLE (create -> seed -> confine -> commit -> teardown) is
+    independently unit-testable with an injected ``git_runner`` and a stub ``run_cycle`` for EACH
+    exit path (blocker / exception / stop / budget), without reaching into ``write_active_auto_loop``'s
+    closures or touching a real worktree. The X>1 branch of ``run_task_in_worktree`` delegates here.
+
+    Contract / lock order (PR-B/PR-C): the caller has ALREADY released ``claim_lock`` and holds NO
+    LeaseManager flock. Worktree creation is a CLI spawn, so it is charged ONE global-concurrency
+    permit (``global_concurrency_limiter().slot()``) — acquired here, around the create only, so the
+    long cycle does not hold a spawn permit. Every exit path (create failure / confinement refusal /
+    a ``run_cycle`` exception / a stop set inside the cycle / a budget overrun handled by the driver)
+    flows through the ``finally`` teardown so the worktree + branch are always removed (issue #1719
+    exit hygiene commits uncommitted state first). ``register_blocker`` returns True when the run
+    must stop (then ``on_stop`` is invoked, mirroring ``stop_event.set()``).
+    """
+    with global_concurrency_limiter().slot():
+        cycle_path, _cycle_branch, wt_blockers = create_task_cycle_worktree(
+            task_id, repo_root=parent_root, runner=git_runner
+        )
+    if wt_blockers:
+        # Could not isolate this task -> route through the blocker guard (fail-closed); never fall
+        # back to running the cycle against the shared parent root (that is the race E2 removes).
+        append_warnings(wt_blockers)
+        teardown_warnings = teardown_task_cycle_worktree(task_id, repo_root=parent_root, runner=git_runner)
+        append_warnings(teardown_warnings)
+        if register_blocker([f"{task_id}: {item}" for item in wt_blockers]):
+            on_stop()
+        return
+    # ADR 0095 PR-E2 Finding 4 (MED): the try/finally starts IMMEDIATELY after a successful create
+    # so that seed failure or confinement failure ALSO tears down the worktree. Previously seed ran
+    # inside the ``with`` slot block (before the try), meaning a seed exception skipped teardown.
+    try:
+        # Seed the worktree from the parent (copy task queue, context files, etc.). Run inside the
+        # try so a seed failure still flows through the finally teardown.
+        _seeded, seed_warnings = seed_scratch_worktree_from_parent(
+            cycle_path, repo_root=parent_root, runner=git_runner
+        )
+        append_warnings(seed_warnings)
+        # Guards 1+2 (issue #1719): before any write-lane spawn, prove the cycle lane is confined to
+        # its isolated worktree and is NOT the parent repo. Fail-closed: a confinement blocker
+        # refuses to run the cycle (mirrors the patch-lane guard). On the production path the
+        # confinement check runs against the real git topology (no injected runner); tests inject one.
+        confinement_blockers = assert_worktree_confinement(
+            cycle_path, repo_root=parent_root, runner=git_runner
+        )
+        if confinement_blockers:
+            append_warnings(confinement_blockers)
+            if register_blocker([f"{task_id}: {item}" for item in confinement_blockers]):
+                on_stop()
+            return
+        run_cycle(cycle_path)
+    finally:
+        # Exit hygiene: tear down on EVERY exit path (seed failure / blocker / exception / stop /
+        # budget). teardown commits uncommitted cycle state first (issue #1719) so aborted work is
+        # recoverable.
+        teardown_warnings = teardown_task_cycle_worktree(task_id, repo_root=parent_root, runner=git_runner)
+        append_warnings(teardown_warnings)
+
+
 def _git_worktree_runner(cmd: list[str]) -> "subprocess.CompletedProcess[str]":
     return subprocess.run(cmd, capture_output=True, text=True, check=False)
 
@@ -19889,6 +20328,12 @@ def build_parser() -> argparse.ArgumentParser:
     auto_loop.add_argument("--write-agent", choices=("auto", "codex", "claude"), default="auto")
     auto_loop.add_argument("--runner", choices=("codex", "omc"), default="codex", help="Parallel-execution backend (ADR 0087); default codex is byte-identical. omc delegates to `omc team` (opt-in, requires ACTIVE_OMC_RUNNER_ACK=1 — uncontrolled workers relax the ADR 0005 boundary).")
     auto_loop.add_argument("--max-parallel", type=int, default=8)
+    # ADR 0095 PR-E2: X task-pool size. The default is RESOLVED FROM ENV (BIDMATE_AGENT_LOOP_TASK_POOL,
+    # Makefile ACTIVE_TASK_POOL) so the operator front door stays the SSoT, falling back to 1
+    # (serial == byte-identical, ADR 0001) when unset. PR-F flips the operator default to 2. The
+    # kill-switch (BIDMATE_AGENT_LOOP_PARALLELISM_KILL=1) forces 1 inside _resolve_task_pool_size,
+    # and PR-E2 additionally clamps the EFFECTIVE pool to 1 (ships the substrate dark; PR-E3 enables).
+    auto_loop.add_argument("--task-pool", type=int, default=_resolve_task_pool_size())
     # ADR 0085: the Makefile `시작`/`agent-loop-active-auto-loop` front door is the SSoT
     # for operator defaults. These argparse defaults are aligned with it so a direct
     # `python3 scripts/agent_loop.py active-auto-loop` invocation behaves identically:
@@ -20968,6 +21413,7 @@ def main(argv: list[str] | None = None) -> int:
                 write_agent=args.write_agent,
                 runner=args.runner,
                 max_parallel=args.max_parallel,
+                task_pool=args.task_pool,
                 timeout_seconds=args.timeout_seconds,
                 max_commands_per_session=args.max_commands_per_session,
                 lane_autotune_config=_resolve_lane_autotune_config_for_cli(args),

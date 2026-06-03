@@ -512,6 +512,18 @@ ACTIVE_GLOBAL_CONCURRENCY ?= 8
 export ACTIVE_GLOBAL_CONCURRENCY
 BIDMATE_AGENT_LOOP_GLOBAL_CONCURRENCY ?= $(ACTIVE_GLOBAL_CONCURRENCY)
 export BIDMATE_AGENT_LOOP_GLOBAL_CONCURRENCY
+# ADR 0095 PR-E2: X task-pool size (concurrent queue tasks in flight). Default 1 == serial ==
+# byte-identical (ADR 0001); PR-F flips this to 2. fail-closed pool<=0 -> 1. The runtime read
+# path is os.getenv("BIDMATE_AGENT_LOOP_TASK_POOL"); ACTIVE_TASK_POOL is the operator front-door
+# knob bridged to that env var below so `make ... ACTIVE_TASK_POOL=N` reaches the runtime. A
+# direct BIDMATE_AGENT_LOOP_TASK_POOL already in the env still wins (via ?=). The global
+# kill-switch (BIDMATE_AGENT_LOOP_PARALLELISM_KILL=1) forces 1 regardless (serial demotion).
+# NOTE: PR-E2 ships the X substrate DARK — the resolved pool is additionally clamped to 1 in
+# write_active_auto_loop until PR-E3 enables real X>1 fan-out (worktree-per-task isolation lands here).
+ACTIVE_TASK_POOL ?= 1
+export ACTIVE_TASK_POOL
+BIDMATE_AGENT_LOOP_TASK_POOL ?= $(ACTIVE_TASK_POOL)
+export BIDMATE_AGENT_LOOP_TASK_POOL
 # ADR 0095 PR-D: best-effort cap on the worker count the omc runner requests of `omc team`
 # (Y default-on, omc path only). Default 3; fail-closed cap<=0 -> 1. The runtime read path is
 # os.getenv("OMC_MAX_WORKERS") directly (no bridge var needed — the code reads this exact name),
