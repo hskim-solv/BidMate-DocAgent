@@ -21,7 +21,7 @@ RFP 문서 이해를 위한 DocAgent 시스템. **입찰/RFP 문서 인텔리전
 
 ## 저장소 맵
 
-**Load-bearing** — 변경 시 reviewer 가 real-data 영향을 살펴야 하는 경로. **§5b real-data 델타 게이트는 ADR 0084 로 폐지** (PR body 강제 아님 — `make real-eval-delta` 측정 도구는 유지, 권장 근거). 기계 판독 가능 단일 출처는 [`scripts/_governance.py`](scripts/_governance.py) 의 `LOAD_BEARING_PATHS` ([.githooks/pre-push](.githooks/pre-push) reminders, [scripts/claude-hooks/pretooluse-loadbearing.sh](scripts/claude-hooks/pretooluse-loadbearing.sh) awareness 가 함께 읽음). 추가/제거 시 그 파일 먼저 수정.
+**Load-bearing** — 변경 시 reviewer 가 real-data 영향을 살펴야 하는 경로. **§5b real-data 델타 게이트는 ADR 0084 로 폐지** (PR body 강제 아님 — `make real-eval-delta` 측정 도구는 유지, 권장 근거). 기계 판독 가능 단일 출처는 [`scripts/_governance.py`](scripts/_governance.py) 의 `LOAD_BEARING_PATHS` ([.githooks/pre-push](.githooks/pre-push) reminders, [scripts/claude-hooks/pretooluse-loadbearing.sh](scripts/claude-hooks/pretooluse-loadbearing.sh) awareness, [scripts/agent_loop.py](scripts/agent_loop.py) `overlap-preflight --paths` path-scope 스캔이 함께 읽음). 추가/제거 시 그 파일 먼저 수정.
 
 - `rag_core.py` — RAG 파이프라인 코어 (검색·검증·답변 오케스트레이션)
 - `ingestion.py`, `visual_ingestion.py` — 문서 로딩/파싱. HWP/PDF backend = `HwpKordocLoader`/`PdfKordocLoader` (ADR 0049, `npx` 서브프로세스); `csv_text` 가 Node 부재/실패 시 무조건 fallback
@@ -76,6 +76,7 @@ RFP 문서 이해를 위한 DocAgent 시스템. **입찰/RFP 문서 인텔리전
 - **하위 호환성.** Breaking 변경은 명시적 사유 필요. 답변 계약 (ADR 0003) 깨질 시 `schema_version` 증가
 - **ADR 임계값.** load-bearing 결정 (기준선/파이프라인/답변 계약/eval 표면) 제거·교체 시 ADR 필요. **새 측정 표면** (eval slice, reviewer evidence artifact, self-review 축) 도입도 포함 (reviewer 가 의존할 계약 고정). 기준: [`docs/adr/README.md`](docs/adr/README.md)
 - **ADR 번호 사전 예약.** ADR 작성 전 `ls docs/adr/` + `gh pr list --search "ADR" --state open` 양쪽 확인. 사용자 확인 후 파일 생성 — 동시 worktree 작업으로 0022→0023, 0023→0025, 0029→0030 충돌 반복 발생
+- **새 작업 시작 전 overlap 확인.** 완전 새 작업(새 issue/worktree) 착수 전 `make ship-start`/`make spawn-track` 이 base fetch 직후 `overlap-preflight` 를 돌려 (1) 로컬 HEAD 가 `origin/main` 을 포함하는지(stale base 차단) (2) 활성 worktree·열린 PR 이 같은 load-bearing 경로를 동시 수정 중인지 경고한다. 수동 `git worktree add`/`git switch -c` 우회 또는 세션 내 머지 후 follow-up 시작 시에도 `python3 scripts/agent_loop.py overlap-preflight --issue <N> --branch <b> --paths <load-bearing 경로>` 를 직접 호출. stale base 만 block (gh 비의존·결정적), path/PR overlap 은 warn-only. False-positive 시 `OVERLAP=ack` (front door) 또는 `--no-overlap-check`/`NO_OVERLAP_CHECK=1` 로 우회 (ADR 0079 확장, issue #1836)
 - **LLM 코딩 편향 가드.** `karpathy-guidelines` skill ([upstream](https://github.com/multica-ai/andrej-karpathy-skills), 2026-05-15 fetch) 의 4 원칙 (Think Before / Simplicity First / Surgical Changes / Goal-Driven). **충돌 정책**: 위 프로젝트 규칙 (인시던트 유래) 이 karpathy 4 원칙 (범용) 보다 우선 — karpathy 는 프로젝트 규칙이 침묵할 때 leaning 기본값
 
 ## PR 설명

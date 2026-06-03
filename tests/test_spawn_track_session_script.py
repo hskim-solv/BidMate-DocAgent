@@ -14,6 +14,7 @@ families mirror tests/test_test_sh_bash32_regression.py:
 """
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import stat
@@ -151,6 +152,168 @@ class TestSpawnTrackBehavior(unittest.TestCase):
     def test_missing_issue_fails(self) -> None:
         r = self._run("measure recall", drop_issue=True)
         self.assertNotEqual(0, r.returncode)
+
+
+# Behavioral overlap-preflight gate (issue #1836). Unlike TestSpawnTrackBehavior
+# (DRY_RUN=1, real git echoed), the gate must actually execute, so these run with
+# DRY_RUN=0 and stub BOTH git and gh so `overlap-preflight` is deterministic. The
+# real `python3 scripts/agent_loop.py overlap-preflight` runs (cwd=REPO). Policy:
+# a stale base (local HEAD lacks origin/main) BLOCKS the worktree add unless
+# OVERLAP=ack; path/PR overlap warns + continues; gh-down fails open.
+GIT_STUB = r'''#!/usr/bin/env python3
+import os, sys
+argv = sys.argv[1:]
+if len(argv) >= 2 and argv[0] == "-C":
+    argv = argv[2:]
+stale = os.environ.get("STUB_STALE_BASE") == "1"
+def out(s=""):
+    sys.stdout.write(s)
+    if s and not s.endswith("\n"):
+        sys.stdout.write("\n")
+if not argv:
+    sys.exit(0)
+cmd = argv[0]
+if cmd == "fetch":
+    sys.exit(0)
+if cmd == "status":
+    sys.exit(0)
+if cmd == "worktree":
+    if len(argv) >= 2 and argv[1] == "add":
+        marker = os.environ.get("STUB_WT_ADD_MARKER")
+        if marker:
+            open(marker, "a").write(" ".join(argv) + "\n")
+        sys.exit(0)
+    if len(argv) >= 2 and argv[1] == "list":
+        out("worktree %s" % os.getcwd())
+        out("HEAD head1111")
+        out("branch refs/heads/chore/issue-4242-demo")
+        out("")
+    sys.exit(0)
+if cmd == "rev-parse":
+    ref = argv[-1]
+    if ref == "HEAD":
+        out("head1111")
+    elif ref == "origin/main":
+        out("new2222" if stale else "head1111")
+    else:
+        out("ref0000")
+    sys.exit(0)
+if cmd == "merge-base":
+    sys.exit(1 if stale else 0)
+if cmd == "ls-remote":
+    sys.exit(0)
+sys.exit(0)
+'''
+
+GH_STUB = r'''#!/usr/bin/env python3
+import json, os, sys
+argv = sys.argv[1:]
+if not argv:
+    sys.exit(0)
+if argv[0] == "issue" and len(argv) >= 2 and argv[1] == "view":
+    sys.stdout.write(json.dumps({"number": 4242, "title": "demo", "state": "OPEN",
+                                 "url": "https://github.com/acme/repo/issues/4242"}))
+    sys.exit(0)
+if argv[0] == "pr" and len(argv) >= 2 and argv[1] == "list":
+    if os.environ.get("STUB_GH_DOWN") == "1":
+        sys.stderr.write("gh: could not connect\n")
+        sys.exit(1)
+    if "--head" in argv:
+        sys.stdout.write("[]")
+        sys.exit(0)
+    sys.stdout.write(os.environ.get("STUB_OPEN_PRS", "[]"))
+    sys.exit(0)
+sys.exit(0)
+'''
+
+
+class TestSpawnTrackOverlapGate(unittest.TestCase):
+    def setUp(self) -> None:
+        self._tmp = tempfile.mkdtemp(prefix="spawn-track-gate-")
+        self.addCleanup(shutil.rmtree, self._tmp, ignore_errors=True)
+        self._bin = Path(self._tmp) / "bin"
+        self._bin.mkdir()
+        self._stub_bin("git", GIT_STUB)
+        self._stub_bin("gh", GH_STUB)
+        # cmux stub: `identify` exits non-zero (outside cmux) so the spawn path
+        # is the harmless fallback; the gate runs before that regardless.
+        _stub(self._bin / "cmux", '#!/bin/sh\nif [ "$1" = identify ]; then exit 1; fi\nexit 0\n')
+        self._wt_marker = Path(self._tmp) / "wt_add_called"
+
+    def _stub_bin(self, name: str, body: str) -> None:
+        p = self._bin / name
+        p.write_text(body, encoding="utf-8")
+        p.chmod(p.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+
+    def _run(self, *, paths: str | None = None, stale: bool = False,
+             gh_down: bool = False, open_prs: list | None = None,
+             overlap_ack: bool = False, skip: bool = False):
+        env = dict(os.environ)
+        env["PATH"] = f"{self._bin}{os.pathsep}{env['PATH']}"
+        env["CMUX_BIN"] = str(self._bin / "cmux")
+        env["DRY_RUN"] = "0"  # the gate must actually run
+        env["ISSUE"] = "4242"
+        env["TYPE"] = "chore"
+        env["SLUG"] = "demo"
+        env["PROMPT"] = "measure recall"
+        env["STUB_WT_ADD_MARKER"] = str(self._wt_marker)
+        if paths is not None:
+            env["OVERLAP_PATHS"] = paths
+        if stale:
+            env["STUB_STALE_BASE"] = "1"
+        if gh_down:
+            env["STUB_GH_DOWN"] = "1"
+        if open_prs is not None:
+            env["STUB_OPEN_PRS"] = json.dumps(open_prs)
+        if overlap_ack:
+            env["OVERLAP"] = "ack"
+        if skip:
+            env["NO_OVERLAP_CHECK"] = "1"
+        bash = "/bin/bash" if Path("/bin/bash").exists() else "bash"
+        return subprocess.run(
+            [bash, str(SCRIPT)],
+            cwd=REPO,
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    def _wt_added(self) -> bool:
+        return self._wt_marker.exists()
+
+    def test_stale_base_blocks_worktree_add(self) -> None:
+        r = self._run(stale=True)
+        self.assertNotEqual(0, r.returncode, msg=r.stdout + r.stderr)
+        self.assertIn("origin/main", (r.stdout + r.stderr))
+        self.assertFalse(self._wt_added(), "worktree must NOT be added on a stale base")
+
+    def test_stale_base_with_ack_continues(self) -> None:
+        r = self._run(stale=True, overlap_ack=True)
+        self.assertEqual(0, r.returncode, msg=r.stdout + r.stderr)
+        self.assertTrue(self._wt_added())
+
+    def test_fresh_base_adds_worktree(self) -> None:
+        r = self._run(stale=False)
+        self.assertEqual(0, r.returncode, msg=r.stdout + r.stderr)
+        self.assertTrue(self._wt_added())
+
+    def test_path_overlap_warns_but_continues(self) -> None:
+        prs = [{"number": 88, "title": "other", "headRefName": "feat/issue-9-x",
+                "state": "OPEN", "files": [{"path": "rag_core.py"}]}]
+        r = self._run(paths="rag_core.py", open_prs=prs)
+        self.assertEqual(0, r.returncode, msg=r.stdout + r.stderr)
+        self.assertTrue(self._wt_added())
+
+    def test_gh_down_fails_open(self) -> None:
+        r = self._run(gh_down=True, stale=False)
+        self.assertEqual(0, r.returncode, msg=r.stdout + r.stderr)
+        self.assertTrue(self._wt_added())
+
+    def test_skip_flag_bypasses_gate_even_when_stale(self) -> None:
+        r = self._run(skip=True, stale=True)
+        self.assertEqual(0, r.returncode, msg=r.stdout + r.stderr)
+        self.assertTrue(self._wt_added())
 
 
 if __name__ == "__main__":  # pragma: no cover

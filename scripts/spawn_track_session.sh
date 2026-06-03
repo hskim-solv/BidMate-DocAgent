@@ -43,6 +43,9 @@ set -euo pipefail
 #   WT_PARENT  parent dir for the new worktree (default .. = sibling)
 #   CMUX_BIN   cmux CLI path (default the macOS app-bundle absolute path)
 #   DRY_RUN    1 = print the git/cmux commands without executing (default 0)
+#   OVERLAP    ack = acknowledge a stale-base overlap blocker and proceed (#1836)
+#   NO_OVERLAP_CHECK  1 = skip the overlap-preflight start-of-task gate (#1836)
+#   OVERLAP_PATHS     space-separated load-bearing paths for the path-scope scan
 
 ISSUE="${ISSUE:?ISSUE=N (existing issue number) required}"
 PROMPT="${PROMPT:?PROMPT='cold-start prompt' required}"
@@ -99,11 +102,76 @@ run() {
   fi
 }
 
+# --- Overlap-preflight gate (issue #1836) ----------------------------------
+# Between the fetch and the worktree add, run overlap-preflight so the new
+# track does not start on a stale base or silently collide on a load-bearing
+# path. Policy: a base-staleness blocker (local HEAD lacks origin/main) BLOCKS
+# unless OVERLAP=ack; path/open-PR overlap warns + continues; any failure to
+# RUN the scan fails OPEN (read-only advisory, never hard-fail a fresh task on
+# transient git/gh state — memory feedback_merge_admin_gate §7). Skip entirely
+# with NO_OVERLAP_CHECK=1 (mirrors the --no-fetch escape on ship-start).
+# overlap-preflight confines --out/--json-out under reports/agent_loop/, so the
+# report goes there via mktemp (unique per run — no fixed /tmp, memory #1274).
+OVERLAP="${OVERLAP:-}"
+NO_OVERLAP_CHECK="${NO_OVERLAP_CHECK:-0}"
+OVERLAP_PATHS="${OVERLAP_PATHS:-}"
+overlap_gate() {
+  [ "$NO_OVERLAP_CHECK" = 1 ] && return 0
+  # Assemble the command once so DRY_RUN can echo the exact invocation.
+  local report_dir="reports/agent_loop"
+  if [ "$DRY_RUN" = 1 ]; then
+    run python3 scripts/agent_loop.py overlap-preflight --issue "$ISSUE" --branch "$BRANCH" ${OVERLAP_PATHS:+--paths $OVERLAP_PATHS}
+    return 0
+  fi
+  mkdir -p "$report_dir"
+  local md json verdict
+  md="$(mktemp "${report_dir}/overlap_XXXXXX.md")"
+  json="$(mktemp "${report_dir}/overlap_XXXXXX.json")"
+  # shellcheck disable=SC2086  # OVERLAP_PATHS is an intentional word-split list.
+  python3 scripts/agent_loop.py overlap-preflight \
+    --issue "$ISSUE" --branch "$BRANCH" --out "$md" --json-out "$json" \
+    ${OVERLAP_PATHS:+--paths $OVERLAP_PATHS} >/dev/null 2>&1 || true
+  # Parse the JSON in python: emit a verdict token on stdout + warnings on
+  # stderr. Missing/garbled report => FAILOPEN (the scan could not run).
+  verdict="$(
+    OVERLAP_ACK="$OVERLAP" python3 - "$json" <<'PY'
+import json, os, sys
+try:
+    rep = json.loads(open(sys.argv[1], encoding="utf-8").read())
+except Exception:
+    print("FAILOPEN")
+    sys.exit(0)
+blockers = [str(b) for b in rep.get("blockers", [])]
+warnings = [str(w) for w in rep.get("warnings", [])]
+for w in warnings:
+    sys.stderr.write("spawn: overlap warning — %s\n" % w)
+stale = any("does not contain origin/main" in b for b in blockers)
+ack = os.environ.get("OVERLAP_ACK", "").strip().lower() == "ack"
+if stale and not ack:
+    for b in blockers:
+        sys.stderr.write("spawn: overlap blocker — %s\n" % b)
+    print("BLOCK_STALE")
+elif stale and ack:
+    sys.stderr.write("spawn: overlap — stale base acknowledged (OVERLAP=ack); continuing.\n")
+    print("WARN")
+else:
+    print("WARN" if warnings else "CLEAR")
+PY
+  )"
+  rm -f "$md" "$json"
+  if [ "$verdict" = BLOCK_STALE ]; then
+    echo "spawn: refuse — local HEAD does not contain origin/main (stale base)." >&2
+    echo "spawn: refresh from latest main, or pass OVERLAP=ack to override." >&2
+    exit 1
+  fi
+}
+
 # --- Isolated worktree (memory project_omc_teleport_adr0007) ---------------
 # Fetch first so origin/main is fresh (stale-ref false-negative gotcha), then
 # add the worktree off origin/main for isolation. worktree add never moves the
 # caller's HEAD, so spawning from any worktree is safe.
 run git fetch origin main
+overlap_gate
 run git worktree add "$WT" -b "$BRANCH" "$BASE"
 
 # --- cmux detect → spawn / fallback ---------------------------------------

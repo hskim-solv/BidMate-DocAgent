@@ -1553,13 +1553,17 @@ SLUG ?=
 LABELS ?=
 BASE ?= origin/main
 WT_PARENT ?= ..
+OVERLAP ?=
+NO_OVERLAP_CHECK ?= 0
+OVERLAP_PATHS ?=
 
 ship-start:
 	@if [ -z "$(TITLE)" ]; then \
-	  echo "Usage: make ship-start TITLE='Issue title' [TYPE=docs] [SLUG=short-slug] [BODY='...'] [LABELS=a,b]"; \
+	  echo "Usage: make ship-start TITLE='Issue title' [TYPE=docs] [SLUG=short-slug] [BODY='...'] [LABELS=a,b] [OVERLAP=ack]"; \
+	  echo "  OVERLAP=ack overrides a stale-base overlap-preflight block (issue #1836)."; \
 	  exit 1; \
 	fi
-	@$(PYTHON) scripts/claude-hooks/_ship_start.py \
+	@OVERLAP="$(OVERLAP)" $(PYTHON) scripts/claude-hooks/_ship_start.py \
 	  --title "$(TITLE)" \
 	  --body "$(BODY)" \
 	  --type "$(TYPE)" \
@@ -1573,11 +1577,13 @@ ship-start:
 .PHONY: spawn-track
 spawn-track:
 	@if [ -z "$(ISSUE)" ] || [ -z "$(PROMPT)" ]; then \
-	  echo "Usage: make spawn-track ISSUE=N PROMPT='cold-start prompt' [TYPE=chore] [SLUG=slug] [BASE=origin/main] [WT_PARENT=..] [DRY_RUN=1]"; \
+	  echo "Usage: make spawn-track ISSUE=N PROMPT='cold-start prompt' [TYPE=chore] [SLUG=slug] [BASE=origin/main] [WT_PARENT=..] [DRY_RUN=1] [OVERLAP=ack] [OVERLAP_PATHS='p1 p2']"; \
+	  echo "  OVERLAP=ack overrides a stale-base overlap-preflight block; NO_OVERLAP_CHECK=1 skips it (issue #1836)."; \
 	  exit 1; \
 	fi
 	@ISSUE="$(ISSUE)" PROMPT="$(PROMPT)" TYPE="$(TYPE)" SLUG="$(SLUG)" \
 	  BASE="$(BASE)" WT_PARENT="$(WT_PARENT)" DRY_RUN="$(DRY_RUN)" \
+	  OVERLAP="$(OVERLAP)" NO_OVERLAP_CHECK="$(NO_OVERLAP_CHECK)" OVERLAP_PATHS="$(OVERLAP_PATHS)" \
 	  bash scripts/spawn_track_session.sh
 
 ship-arm:
