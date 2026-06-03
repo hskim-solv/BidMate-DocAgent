@@ -30,6 +30,7 @@ from rag_answer import (
     _is_aggregate_query,
     select_supporting_evidence,
 )
+from rag_query import analyze_query
 
 
 # ---------------------------------------------------------------------------
@@ -201,6 +202,38 @@ class TestProbe12AggregateRegression(unittest.TestCase):
         result = select_supporting_evidence(a, ev)
         chunk_ids = [r["chunk_id"] for r in result]
         self.assertIn(self._GOLD_CHUNK_ID, chunk_ids)
+
+
+# ---------------------------------------------------------------------------
+# analyze_query end-to-end integration: guards the #2170 test-reality drift
+# ---------------------------------------------------------------------------
+
+class TestAnalyzeQueryAggregateIntegration(unittest.TestCase):
+    """End-to-end: the *real* analyze_query output must drive _is_aggregate_query.
+
+    The pool-size tests above build the analysis dict via the ``_analysis``
+    helper, which injects a ``resolved_query`` key.  Runtime ``analyze_query``
+    previously omitted that key, so ``_is_aggregate_query``'s substring fallback
+    was dead in production while these unit tests stayed green — a mock-vs-
+    reality drift (#2170).  These tests call ``analyze_query`` directly so the
+    key contract is pinned end-to-end.
+    """
+
+    def test_analyze_query_exposes_resolved_query(self) -> None:
+        analysis = analyze_query("전체일정 알려줘", [])
+        self.assertIn("resolved_query", analysis)
+
+    def test_compound_token_aggregate_detected_end_to_end(self) -> None:
+        # tokenize("전체일정 알려줘") == ["전체일정"]: the bare signal "전체" is
+        # merged into a compound token, so token matching alone cannot fire.
+        # The substring fallback over resolved_query must still flag aggregate.
+        analysis = analyze_query("전체일정 알려줘", [])
+        self.assertNotIn("전체", analysis["tokens"])  # precondition: token path blind
+        self.assertTrue(_is_aggregate_query(analysis))
+
+    def test_plain_query_not_flagged_end_to_end(self) -> None:
+        analysis = analyze_query("사업 예산은 얼마인가", [])
+        self.assertFalse(_is_aggregate_query(analysis))
 
 
 if __name__ == "__main__":
