@@ -69,6 +69,18 @@ agent gate behavior is [Agent-Gated RFP Evaluation Loop](./agent-gated-rfp-eval-
 - dataset/config/index/provenance/command가 함께 있는 paired delta.
 - private/non-public임을 명시한 reviewer evidence.
 
+Naive RAG local private runner 경계:
+
+- `eval.naive_rag.private_real_eval` 은 새 run 의 `output_dir`, `index_dir`,
+  `index_build.hwp_pdf_artifact_dir` 가 legacy `data/index/real100*`,
+  `reports/real100*`, `outputs/real100*` 표면으로 향하면 실패해야 한다.
+  `real100_v2*` 는 현재 private-eval 표면으로 허용된다.
+- `run_id` 는 단일 안전 path segment 여야 하며 `..`, 절대경로, `/`, `\`
+  로 output root 를 벗어나면 안 된다.
+- Raw/private run output 은 gitignored/local-only 여야 한다. Redacted aggregate
+  summary 는 `reports/*.redacted.json` 처럼 raw case/id/path 를 포함하지 않는
+  allowlisted aggregate artifact 일 때만 commit boundary 에 들어갈 수 있다.
+
 금지:
 
 - raw private question, answer, evidence, filename, exact local path, doc/chunk id 노출.
@@ -110,6 +122,9 @@ agent gate behavior is [Agent-Gated RFP Evaluation Loop](./agent-gated-rfp-eval-
 - `reports/real100_v2/` is the current claim-bearing aggregate surface.
 - `judge.aggregate.json`, `judge_ragas.aggregate.json`, and `rationality.aggregate.json` are aggregate-only reviewer evidence. Their local per-case siblings (`*.local.json`, traces, prompts, completions) and human review views such as `rationality.md` must stay outside the commit boundary.
 - Legacy `reports/real100/`, 221-case aggregates, and kordoc/v1 indexes are archive-only and must not be used for new tasks until the maintainer explicitly re-enables them.
+- New private Naive RAG runs must not write fresh result/index/artifact outputs
+  to legacy `real100*` surfaces; use `real100_v2*` paths or another explicitly
+  approved current surface.
 - `artifacts/runs/*/metrics/eval_summary.json` belongs to a harness run. Compare only after checking
   dataset/config/index/provenance.
 - `naive_baseline` is Chroma-backed by default (ADR 0081). `memory` and `qdrant`
