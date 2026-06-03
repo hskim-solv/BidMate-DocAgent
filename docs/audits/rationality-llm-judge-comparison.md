@@ -3,7 +3,12 @@
 - Date: 2026-05-23
 - Issue/PR: #1377
 - ADR: [0056](../adr/0056-rationality-judge-measurement-surface.md) (Measurement appendix — LLM backend)
-- Surface: 비공개 real-100, n=221 (aggregate-only — ADR 0005)
+- Surface: historical v1 비공개 real-100, n=221 (aggregate-only archive-only — ADR 0005)
+
+> **Historical scope note.** 이 audit 은 2026-05-23 v1 `real100` judge 비교 기록이며,
+> 현재 private eval claim 근거가 아니다. 새 작업·PR·claim 에서 rationality judge
+> 성능이나 slice-sensitive 변별력을 주장하려면 별도 `real100_v2` aggregate evidence 를
+> 먼저 생성·검증해야 한다.
 
 ## 무엇을 측정했나
 
