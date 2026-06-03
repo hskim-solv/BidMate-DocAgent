@@ -3048,7 +3048,20 @@ def write_overlap_preflight(
     return safe_out, safe_json, report, rendered
 
 
-def build_overlap_preflight(*, issue: str, branch: str, repo_root: Path = ROOT_DIR) -> OverlapPreflightReport:
+def build_overlap_preflight(
+    *,
+    issue: str,
+    branch: str,
+    repo_root: Path = ROOT_DIR,
+    coordination_root: Path | None = None,
+) -> OverlapPreflightReport:
+    # ADR 0095 PR-E3a: the local checkout-state reads (current branch / HEAD / origin-main
+    # ancestry / worktree path) are COORDINATION reads — at X>1 each cycle runs inside its own
+    # worktree, but overlap-preflight must reflect the shared coordination root, not the cycle
+    # worktree. ``coordination_root=None`` resolves to ``repo_root`` so the standalone CLI caller
+    # (passes only repo_root) and X==1 stay byte-identical (ADR 0001). The GitHub-side reads
+    # (issue / PR / remote-branch via gh) are repo-agnostic and stay on repo_root.
+    coord = coordination_root or repo_root
     safe_issue = _validate_issue_selector(issue)
     safe_branch = _validate_branch_name(branch)
     blockers: list[str] = []
@@ -3063,9 +3076,9 @@ def build_overlap_preflight(*, issue: str, branch: str, repo_root: Path = ROOT_D
     else:
         evidence.append("target branch follows ADR 0007 and matches the requested issue")
 
-    current_branch = _current_branch(repo_root) or "unknown"
-    current_head = _git_ref("HEAD", repo_root=repo_root) or "unknown"
-    origin_main = _git_ref("origin/main", repo_root=repo_root) or "unknown"
+    current_branch = _current_branch(coord) or "unknown"
+    current_head = _git_ref("HEAD", repo_root=coord) or "unknown"
+    origin_main = _git_ref("origin/main", repo_root=coord) or "unknown"
     evidence.append(f"current branch={current_branch}")
     evidence.append(f"current head={current_head}")
     if origin_main != "unknown":
@@ -3084,7 +3097,7 @@ def build_overlap_preflight(*, issue: str, branch: str, repo_root: Path = ROOT_D
     if origin_main != "unknown" and current_branch != "HEAD":
         if current_head == origin_main:
             evidence.append("current checkout is exactly at origin/main")
-        elif _git_is_ancestor("origin/main", "HEAD", repo_root=repo_root):
+        elif _git_is_ancestor("origin/main", "HEAD", repo_root=coord):
             evidence.append("current checkout contains origin/main")
         else:
             blockers.append("current checkout does not contain origin/main; refresh from latest main before editing")
@@ -3128,7 +3141,7 @@ def build_overlap_preflight(*, issue: str, branch: str, repo_root: Path = ROOT_D
         blockers.append(str(exc))
         worktrees = ()
         worktree_state_proven = False
-    current_path = repo_root.resolve()
+    current_path = coord.resolve()
     overlapping_worktrees = [
         item
         for item in worktrees
@@ -9859,6 +9872,7 @@ def write_active_loop(
     agent_mix: dict[str, object] | None = None,
     agent_mix_out: Path = DEFAULT_ACTIVE_AGENT_MIX,
     repo_root: Path = ROOT_DIR,
+    coordination_root: Path | None = None,
 ) -> ActiveLoopResult:
     if mode != "full-ship":
         raise ValueError("--mode currently supports only full-ship")
@@ -9869,6 +9883,12 @@ def write_active_loop(
     if task_id and not TASK_ID_RE.fullmatch(task_id):
         raise ValueError("--task must match T-YYYY-NNNN")
 
+    # ADR 0095 PR-E3a: leases.json + overlap-preflight are COORDINATION operations; everything
+    # else (registry / events / assignments / out / refresh artifacts) is a per-cycle ARTIFACT
+    # that stays on ``repo_root``. ``coordination_root=None`` resolves to ``repo_root`` so X==1
+    # (and the standalone CLI caller) is byte-identical (ADR 0001); at X>1 the shared
+    # coordination_root makes cross-task lease overlap visible in one leases.json.
+    coord = coordination_root or repo_root
     agent_mix_policy = agent_mix if isinstance(agent_mix, dict) else _parse_agent_mix(None)
     now = datetime.now(timezone.utc)
     files = tuple(sorted(_normalize_changed_file(path, repo_root=repo_root) for path in changed_files if path))
@@ -9877,7 +9897,7 @@ def write_active_loop(
     safe_issue = _validate_issue_selector(issue) if issue else branch_issue
     branch_pr = _open_pr_for_branch(current_branch, repo_root=repo_root)
     registry_path = _active_path(registry, repo_root=repo_root)
-    leases_path = _active_path(leases, repo_root=repo_root)
+    leases_path = _active_path(leases, repo_root=coord)
     events_path = _active_path(events, repo_root=repo_root)
     assignments_path = _active_path(assignments_dir, repo_root=repo_root)
     out_path = _active_path(out, repo_root=repo_root)
@@ -9896,7 +9916,7 @@ def write_active_loop(
     # section (closes the assert_claimed_files_disjoint snapshot TOCTOU). Same
     # `now`/var names so generated_at + downstream render stay byte-identical.
     lease_payload, lease_blockers, lease_warnings = LeaseManager(
-        leases_path, repo_root=repo_root
+        leases_path, repo_root=coord
     ).claim_disjoint(
         task_id=task_id,
         issue=safe_issue,
@@ -9924,7 +9944,19 @@ def write_active_loop(
     overlap_report: OverlapPreflightReport | None = None
     if safe_issue and current_branch not in {"HEAD", "unknown"}:
         try:
-            overlap_report = build_overlap_preflight(issue=safe_issue, branch=current_branch, repo_root=repo_root)
+            # ADR 0095 PR-E3a: re-root overlap-preflight's coordination reads. Only pass the new
+            # kwarg when the coordination root actually differs from repo_root (X>1) so the X==1
+            # call stays textually ``build_overlap_preflight(issue=, branch=, repo_root=)`` —
+            # byte-identical AND compatible with tests that monkeypatch a 3-arg
+            # ``(issue, branch, repo_root)`` stub. ``coord == repo_root`` at X==1 even when a
+            # caller threads ``coordination_root=repo_root`` (effective_coord_root), so the guard
+            # is on the resolved value, not on whether the kwarg was supplied.
+            overlap_kwargs: dict[str, object] = {}
+            if coord != repo_root:
+                overlap_kwargs["coordination_root"] = coord
+            overlap_report = build_overlap_preflight(
+                issue=safe_issue, branch=current_branch, repo_root=repo_root, **overlap_kwargs
+            )
             if overlap_report.result == "blocked":
                 blockers.append("overlap-preflight blocked assignment")
                 blockers.extend(overlap_report.blockers)
@@ -10153,7 +10185,13 @@ def write_active_start(
     repair_title: str = "Agent loop active start",
     out: Path = DEFAULT_ACTIVE_START,
     repo_root: Path = ROOT_DIR,
+    coordination_root: Path | None = None,
 ) -> ActiveStartResult:
+    # ADR 0095 PR-E3a: active-start owns no lease state directly — its only coordination
+    # touchpoint is the nested write_active_loop call (which writes leases.json + runs
+    # overlap-preflight). Thread coordination_root straight through; ``None`` -> repo_root keeps
+    # X==1 byte-identical (ADR 0001). All active-start artifacts stay on repo_root.
+    coord = coordination_root or repo_root
     files = tuple(sorted(_normalize_changed_file(path, repo_root=repo_root) for path in changed_files if path))
     active_dir = repo_root / "reports" / "agent_loop" / "active"
     outputs: list[Path] = []
@@ -10270,6 +10308,11 @@ def write_active_start(
         except ValueError as exc:
             warnings.append(f"continue-loop bootstrap skipped: {exc}")
 
+    # ADR 0095 PR-E3a: only forward coordination_root when it differs from repo_root (X>1) so the
+    # X==1 nested call stays textually identical (byte-identical, ADR 0001).
+    active_loop_coord_kwargs: dict[str, object] = {}
+    if coord != repo_root:
+        active_loop_coord_kwargs["coordination_root"] = coord
     active_loop = write_active_loop(
         mode=mode,
         topology=topology,
@@ -10285,6 +10328,7 @@ def write_active_start(
         agent_mix=agent_mix,
         out=active_dir / "active_loop.md",
         repo_root=repo_root,
+        **active_loop_coord_kwargs,
     )
     outputs.append(active_loop.report_path)
     warnings.extend(active_loop.warnings)
@@ -11133,14 +11177,29 @@ def write_active_auto_loop(
             return remaining
         return timeout_seconds
 
-    def run_repair_apply(cycle: dict[str, object], task: TaskEntry, *, completion_decision: str) -> bool:
+    def run_repair_apply(
+        cycle: dict[str, object],
+        task: TaskEntry,
+        *,
+        completion_decision: str,
+        coordination_root: Path | None = None,
+    ) -> bool:
         """Auto-repair apply lane (ADR 0095 PR-E2 Finding 1).
 
         The repair-applied completion (the third terminal site) is routed through
         ``complete_if_not_stopped`` so a sibling's stop_event blocks spurious promotion here too.
-        PR-E3 will add a cycle_root param when it threads the two-root split (write+read+acquire
-        +release+overlap-preflight); for now ``repo_root`` is the single root (X==1 only)."""
+        ADR 0095 PR-E3a threads ``coordination_root`` into the patch lane (the lease-bearing
+        ``write_active_codex_runner`` call); the apply lane (``write_active_apply``) + patch
+        artifact stay on ``repo_root`` (artifacts). ``coordination_root=None`` -> repo_root keeps
+        X==1 byte-identical (ADR 0001)."""
+        repair_coord = coordination_root or repo_root
+
         def run_patch(agent_choice: str) -> ActiveCodexRunnerResult:
+            # ADR 0095 PR-E3a: only forward coordination_root when it differs from repo_root
+            # (X>1) so the X==1 patch-lane call stays textually identical (byte-identical).
+            patch_coord_kwargs: dict[str, object] = {}
+            if repair_coord != repo_root:
+                patch_coord_kwargs["coordination_root"] = repair_coord
             return write_active_codex_runner(
                 execute=execute_runner,
                 codex_executable=codex_executable,
@@ -11158,6 +11217,7 @@ def write_active_auto_loop(
                 # ADR 0092 (PR2): apply the controller's Implementer effort override (if any)
                 # to the repair patch lane too. Reads the loop-level mutable at call time.
                 effort_overrides=pending_effort_overrides or None,
+                **patch_coord_kwargs,
             )
 
         repair = run_patch(write_agent)
@@ -11382,7 +11442,14 @@ def write_active_auto_loop(
         mark_task_completed(task_id)
         return True
 
-    def run_one_task(task: "TaskEntry", iteration: int, retrying_deferred: bool) -> None:
+    def run_one_task(
+        task: "TaskEntry",
+        iteration: int,
+        retrying_deferred: bool,
+        *,
+        cycle_repo_root: Path | None = None,
+        coordination_root: Path | None = None,
+    ) -> None:
         """One per-task cycle (ADR 0095 PR-E2). VERBATIM from the pre-E2 serial loop body, with
         only the control-flow keywords re-expressed for the pool: ``break`` -> ``stop_event.set();
         return`` (stop the whole run) and ``continue`` -> ``return`` (this task is done). Every
@@ -11391,10 +11458,20 @@ def write_active_auto_loop(
         X==1 dark default (claim -> run -> wait -> next claim) the produced auto_loop_state.json is
         byte-identical (ADR 0001).
 
-        ``repo_root`` is the plain closure variable (ROOT_DIR). At X==1 (the E2 default) this is
-        byte-identical to the pre-E2 loop. PR-E3 will thread two explicit roots (cycle_repo_root
-        for artifacts, coordination_root for leases) once the full read/acquire/release surface is
-        also wired; for now the closure is the correct single root.
+        TWO-ROOT THREADING (ADR 0095 PR-E3a). Two explicit roots are resolved once at the top:
+          - ``effective_repo_root = cycle_repo_root or repo_root`` — the ARTIFACT/cycle root
+            (task context files, write_active_gate_evidence, the cycle's own report paths). At
+            X>1 this becomes the per-task cycle worktree; the driver's ledger/state_path stay on
+            the closure ``repo_root`` (ROOT_DIR) and are NEVER touched here (write_cycle_checkpoint
+            closes over the driver ledger, not over any cycle root).
+          - ``effective_coord_root = coordination_root or effective_repo_root`` — the shared
+            COORDINATION root for leases/overlap (write_active_start / write_active_loop /
+            write_active_codex_runner / run_repair_apply all receive ``coordination_root=
+            effective_coord_root``).
+        Both params default ``None``; at the X==1 dark default ``run_task_in_worktree`` calls this
+        with NO worktree and NONE of the new params, so ``effective_repo_root == repo_root`` and
+        ``effective_coord_root == repo_root`` and every downstream call resolves to the single
+        closure root -> byte-identical (ADR 0001).
 
         FAIL-CLOSED stop (complete_if_not_stopped): ALL three terminal mark_task_completed call
         sites are routed through the helper above which short-circuits when a sibling already set
@@ -11403,7 +11480,13 @@ def write_active_auto_loop(
         # Threaded forward to the lane-autotune controller (AC9/AC10) on the next runner call.
         nonlocal pending_effort_overrides, lane_autotune_cooldown
 
-        context_files = tuple(_dedupe_preserve_order((*requested_files, *_active_task_context_files(task, repo_root=repo_root))))
+        # ADR 0095 PR-E3a two-root split. effective_repo_root = artifacts/cycle; effective_coord_root
+        # = leases/coordination. The driver ledger/state_path are bound OUTSIDE this closure and are
+        # not rebound here (CRITICAL: auto_loop_state.json stays on the driver's ROOT_DIR).
+        effective_repo_root = cycle_repo_root or repo_root
+        effective_coord_root = coordination_root or effective_repo_root
+
+        context_files = tuple(_dedupe_preserve_order((*requested_files, *_active_task_context_files(task, repo_root=effective_repo_root))))
         cycle: dict[str, object] = {
             "iteration": iteration,
             "task_id": task.task_id,
@@ -11428,10 +11511,11 @@ def write_active_auto_loop(
             repair_branch_type=repair_branch_type,
             repair_slug=repair_slug,
             repair_title=repair_title,
-            repo_root=repo_root,
+            repo_root=effective_repo_root,
+            coordination_root=effective_coord_root,
         )
         cycle["start_decision"] = start.decision
-        cycle["start_report"] = _repo_path(start.report_path, repo_root)
+        cycle["start_report"] = _repo_path(start.report_path, effective_repo_root)
         if start.blockers:
             if register_task_blocker(task, [f"{task.task_id}: {item}" for item in start.blockers]):
                 stop_event.set()
@@ -11441,7 +11525,7 @@ def write_active_auto_loop(
             cycle["gate_tier"] = "start-blocked"
             cycle["completion_decision"] = "start-blocked"
             if auto_repair:
-                applied = run_repair_apply(cycle, task, completion_decision="start-repair-needed")
+                applied = run_repair_apply(cycle, task, completion_decision="start-repair-needed", coordination_root=effective_coord_root)
                 warnings.append(
                     f"{task.task_id}: active-start/active-loop blocked without explicit blockers; routed to patch repair lane"
                     + (" and completed by repair apply" if applied else " and deferred")
@@ -11476,13 +11560,14 @@ def write_active_auto_loop(
             max_commands_per_session=max_commands_per_session,
             record_gate_heartbeats=record_gate_heartbeats,
             task_id=task.task_id,
-            repo_root=repo_root,
+            repo_root=effective_repo_root,
+            coordination_root=effective_coord_root,
             # ADR 0092 (PR2, AC9/AC10): apply the controller's effort overrides from the PRIOR
             # iteration to this iteration's lanes. Empty when OFF or before any actuation.
             effort_overrides=pending_effort_overrides or None,
         )
         cycle["runner_decision"] = runner.decision
-        cycle["runner_report"] = _repo_path(runner.report_path, repo_root)
+        cycle["runner_report"] = _repo_path(runner.report_path, effective_repo_root)
         # ADR 0092 (B2 wiring, AC3): capture per-lane timing/status from the runner so the
         # opt-in controller can sense within-agent bottlenecks on the NEXT iteration. Gated on
         # the autotune config so the auto_loop_state.json stays byte-identical when OFF.
@@ -11534,7 +11619,7 @@ def write_active_auto_loop(
         if execute_runner and runner.decision != "completed":
             cycle["gate_tier"] = "runner-blocked"
             if auto_repair:
-                applied = run_repair_apply(cycle, task, completion_decision="runner-repair-needed")
+                applied = run_repair_apply(cycle, task, completion_decision="runner-repair-needed", coordination_root=effective_coord_root)
                 warnings.append(
                     f"{task.task_id}: runner did not complete ({runner.decision}); routed to patch repair lane"
                     + (" and completed by repair apply" if applied else " and deferred")
@@ -11561,9 +11646,9 @@ def write_active_auto_loop(
         evidence_path, gate_summary = write_active_gate_evidence(
             task_id=task.task_id,
             changed_files=context_files,
-            repo_root=repo_root,
+            repo_root=effective_repo_root,
         )
-        cycle["gate_evidence"] = _repo_path(evidence_path, repo_root)
+        cycle["gate_evidence"] = _repo_path(evidence_path, effective_repo_root)
         cycle["gate_ready"] = bool(gate_summary.get("ready"))
         cycle["privacy_clean"] = bool(gate_summary.get("privacy_clean"))
         cycle["gate_tier"] = "ready" if cycle["gate_ready"] and cycle["privacy_clean"] else "repairable"
@@ -11594,7 +11679,7 @@ def write_active_auto_loop(
                 and runner.decision == "completed"
                 and cycle["privacy_clean"]
             ):
-                applied = run_repair_apply(cycle, task, completion_decision="repair-needed")
+                applied = run_repair_apply(cycle, task, completion_decision="repair-needed", coordination_root=effective_coord_root)
                 warnings.append(
                     f"{task.task_id}: conservative gate not ready; routed to patch repair lane"
                     + (" and completed by repair apply" if applied else " and deferred")
@@ -11622,7 +11707,7 @@ def write_active_auto_loop(
             return
         if not cycle["gate_ready"]:
             if auto_repair and cycle["privacy_clean"]:
-                applied = run_repair_apply(cycle, task, completion_decision="repair-needed")
+                applied = run_repair_apply(cycle, task, completion_decision="repair-needed", coordination_root=effective_coord_root)
                 warnings.append(
                     f"{task.task_id}: conservative gate not ready; routed to patch repair lane"
                     + (" and completed by repair apply" if applied else " and deferred")
@@ -11654,10 +11739,11 @@ def write_active_auto_loop(
             lease_ttl_minutes=lease_ttl_minutes,
             batch=batch,
             agent_mix=agent_mix,
-            repo_root=repo_root,
+            repo_root=effective_repo_root,
+            coordination_root=effective_coord_root,
         )
         cycle["ship_decision"] = ship.decision
-        cycle["ship_report"] = _repo_path(ship.report_path, repo_root)
+        cycle["ship_report"] = _repo_path(ship.report_path, effective_repo_root)
         if ship.decision != "executed":
             ship_messages = [f"{task.task_id}: ship {item}" for item in ship.blockers]
             if not ship.blockers:
@@ -13884,6 +13970,7 @@ def _run_omc_team_runner(
     omc_runner=None,
     git_runner=None,
     now: datetime | None = None,
+    coordination_root: Path | None = None,
 ) -> ActiveCodexRunnerResult:
     """OPT-IN OMC parallel-execution runner backend (ADR 0087, issue #1679).
 
@@ -14004,6 +14091,7 @@ def _run_omc_team_runner(
             now=now,
             write_artifact=False,
             invalidate_heartbeats=False,  # eviction-blocked: no omc team ran
+            coordination_root=coordination_root,
         )
     # Per-worker captured diffs (ADR 0095 PR-D); populated by the capture loop on success.
     omc_worker_diffs: list[dict[str, object]] = []
@@ -14033,6 +14121,7 @@ def _run_omc_team_runner(
             now=now,
             write_artifact=False,
             invalidate_heartbeats=False,  # no-ack: no omc team ran
+            coordination_root=coordination_root,
         )
 
     registry_payload: dict[str, object] = {}
@@ -14094,6 +14183,7 @@ def _run_omc_team_runner(
             now=now,
             write_artifact=False,
             invalidate_heartbeats=False,  # pre-spawn consistency block: no omc team ran
+            coordination_root=coordination_root,
         )
     if not task_id:
         if len(selected_task_ids) == 1:
@@ -14137,6 +14227,7 @@ def _run_omc_team_runner(
             now=now,
             write_artifact=False,
             invalidate_heartbeats=False,  # pre-spawn mismatch block: no omc team ran
+            coordination_root=coordination_root,
         )
     if not task_id:
         return _finalize_omc_runner_result(
@@ -14166,6 +14257,7 @@ def _run_omc_team_runner(
             now=now,
             write_artifact=False,
             invalidate_heartbeats=False,  # no valid task_id: no omc team ran
+            coordination_root=coordination_root,
         )
 
     claude_workers, codex_workers = _resolve_omc_worker_mix(
@@ -14218,6 +14310,7 @@ def _run_omc_team_runner(
             now=now,
             write_artifact=False,
             invalidate_heartbeats=False,  # pre-spawn assignment block: no omc team ran
+            coordination_root=coordination_root,
         )
     task_text_findings = _privacy_findings_for_text(task_text, path="<omc-task-text>")
     if task_text_findings:
@@ -14245,6 +14338,7 @@ def _run_omc_team_runner(
             now=now,
             write_artifact=False,
             invalidate_heartbeats=False,  # pre-spawn privacy block: no omc team ran
+            coordination_root=coordination_root,
         )
 
     mix_parts = []
@@ -14287,6 +14381,7 @@ def _run_omc_team_runner(
             now=now,
             write_artifact=False,
             invalidate_heartbeats=False,  # dry-run: no omc team ran
+            coordination_root=coordination_root,
         )
 
     if blockers:
@@ -14313,6 +14408,7 @@ def _run_omc_team_runner(
             now=now,
             write_artifact=False,
             invalidate_heartbeats=False,  # pre-launch blocked: no omc team ran
+            coordination_root=coordination_root,
         )
 
     run = omc_runner if omc_runner is not None else _default_omc_runner
@@ -14452,6 +14548,7 @@ def _run_omc_team_runner(
                             task_id=task_id,
                             audit_path=worker_artifact_path,
                             repo_root=repo_root,
+                            coordination_root=coordination_root,
                         )
                         if w_audited_verdict == "blocked":
                             blockers.extend(
@@ -14654,6 +14751,7 @@ def _run_omc_team_runner(
         invalidate_heartbeats=True,  # omc team was actually launched; invalidate stale heartbeats
         needs_human_selection=needs_human_selection,
         worker_count=worker_count,
+        coordination_root=coordination_root,
     )
 
 
@@ -14878,6 +14976,7 @@ def _audit_omc_diff_verdict(
     task_id: str | None,
     audit_path: Path,
     repo_root: Path,
+    coordination_root: Path | None = None,
 ) -> tuple[str, list[str]]:
     """Re-impose the omc privacy re-audit + claimed_files scope check on ONE captured diff.
 
@@ -14906,7 +15005,10 @@ def _audit_omc_diff_verdict(
     # (round-5 fix #2). REQUIRE an EXACT current task_id match (round-6 fix #2 / round-7 fix
     # #1): legacy/unscoped leases are not accepted. When task_id is None/empty (standalone
     # call without --task), fall back to any active/recovery write lease.
-    lease_items = _load_active_leases(_active_path(DEFAULT_ACTIVE_LEASES, repo_root=repo_root))
+    # ADR 0095 PR-E3a: leases.json is read from the COORDINATION root (shared across cycles at
+    # X>1); coordination_root=None -> repo_root keeps X==1 byte-identical (ADR 0001).
+    coord = coordination_root or repo_root
+    lease_items = _load_active_leases(_active_path(DEFAULT_ACTIVE_LEASES, repo_root=coord))
     if task_id:
         task_write_leases = [
             lease for lease in lease_items
@@ -14975,6 +15077,7 @@ def _finalize_omc_runner_result(
     needs_human_selection: bool = False,
     worker_count: int = 1,
     standard_path: Path | None = None,
+    coordination_root: Path | None = None,
 ) -> ActiveCodexRunnerResult:
     """Re-impose governance on the captured omc diff, write the patch_artifact.json, and map
     the result into an ActiveCodexRunnerResult (codex-patch-compatible shape).
@@ -15045,6 +15148,7 @@ def _finalize_omc_runner_result(
             task_id=task_id,
             audit_path=artifact_path,
             repo_root=repo_root,
+            coordination_root=coordination_root,
         )
         if audited_verdict == "blocked":
             verdict = "blocked"
@@ -15355,6 +15459,8 @@ def write_active_codex_runner(
     runner: str = "codex",
     omc_runner=None,
     effort_overrides: "dict[tuple[str, str], str] | None" = None,
+    coordination_root: Path | None = None,
+    lease_id: str | None = None,
 ) -> ActiveCodexRunnerResult:
     """Plan or spawn Codex processes for the active loop.
 
@@ -15426,6 +15532,9 @@ def write_active_codex_runner(
             read_agent=read_agent,
             omc_runner=omc_runner,
             git_runner=git_runner,
+            # ADR 0095 PR-E3a: leases.json read for the omc scope re-audit lives on the
+            # coordination root. None -> repo_root keeps X==1 byte-identical (ADR 0001).
+            coordination_root=coordination_root,
         )
 
     if mode == "patch":
@@ -15451,6 +15560,11 @@ def write_active_codex_runner(
             claude_runner=claude_runner,
             # ADR 0092 (PR2): thread the controller's effort overrides into the patch lane.
             effort_overrides=_effort_overrides or None,
+            # ADR 0095 PR-E3a: the patch write-lease acquire/read/release + scope-check read
+            # all route to the coordination root, scoped to THIS cycle's lease_id. Both
+            # default None -> repo_root / first-match, keeping X==1 byte-identical (ADR 0001).
+            coordination_root=coordination_root,
+            lease_id=lease_id,
         )
 
     blockers: list[str] = []
@@ -16044,6 +16158,8 @@ def _write_active_codex_patch(
     claude_runner=None,
     now: datetime | None = None,
     effort_overrides: "dict[tuple[str, str], str] | None" = None,
+    coordination_root: Path | None = None,
+    lease_id: str | None = None,
 ) -> ActiveCodexRunnerResult:
     """Patch mode: a single write-lane on the Implementer (write-lease owner).
 
@@ -16056,6 +16172,13 @@ def _write_active_codex_patch(
     (that is PR-B). Claude uses the Claude Code CLI in the same scratch/patch-artifact
     flow so it is gated by the same privacy, scope, and apply checks as Codex.
     """
+    # ADR 0095 PR-E3a: the write lease lives on the shared COORDINATION root; everything this
+    # function writes (patch_runs artifacts, run_dir, state, out) stays on repo_root. The
+    # acquire/release/read of leases.json all route through ``coord``. ``coordination_root=None``
+    # -> repo_root keeps X==1 byte-identical (ADR 0001). ``lease_id=None`` keeps acquire/release/
+    # find selecting the first write lease (single-lease X==1 == byte-identical); at X>1 the
+    # caller threads its own task-scoped lease_id so concurrent cycles never steal each other's.
+    coord = coordination_root or repo_root
     now = now or datetime.now(timezone.utc)
     agent = "codex"
     registry_payload: dict[str, object] = {}
@@ -16192,7 +16315,8 @@ def _write_active_codex_patch(
     if can_run:
         ok, msg, _lease = acquire_active_agent(
             agent=agent,
-            repo_root=repo_root,
+            repo_root=coord,
+            lease_id=lease_id,
             now=now,
             allow_recovery_needed=True,
         )
@@ -16205,7 +16329,8 @@ def _write_active_codex_patch(
                     resolved_task, agent, base=base, repo_root=repo_root, runner=git_runner
                 )
                 blockers.extend(wt_blockers)
-                lease_items = _load_active_leases(_active_path(DEFAULT_ACTIVE_LEASES, repo_root=repo_root))
+                # ADR 0095 PR-E3a: read leases.json from the coordination root.
+                lease_items = _load_active_leases(_active_path(DEFAULT_ACTIVE_LEASES, repo_root=coord))
                 if not wt_blockers:
                     # Guards 1+2 (issue #1719): before any edit, prove the write lane is
                     # confined to its assigned scratch worktree and is not the parent repo.
@@ -16224,9 +16349,11 @@ def _write_active_codex_patch(
                         wt_blockers = list(wt_blockers) + disjoint_blockers
                 if not wt_blockers:
                     seed_include_paths: Sequence[str] | None = None
+                    # ADR 0095 PR-E3a: select THIS cycle's own lease (lease_id threaded by the
+                    # X>1 caller); lease_id=None keeps the single-lease X==1 first-match.
                     write_lease = _find_active_write_lease(
                         lease_items,
-                        lease_id=None,
+                        lease_id=lease_id,
                         allow_recovery_needed=True,
                     )
                     claimed_raw = write_lease.get("claimed_files") if isinstance(write_lease, dict) else None
@@ -16426,10 +16553,11 @@ def _write_active_codex_patch(
                                 # is downgraded to "blocked" so apply (PR-B) refuses it. An empty
                                 # claim leaves scope unenforced (exploratory tasks).
                                 if verdict == "proposed":
-                                    lease_items = _load_active_leases(_active_path(DEFAULT_ACTIVE_LEASES, repo_root=repo_root))
+                                    # ADR 0095 PR-E3a: read THIS cycle's lease from the coordination root.
+                                    lease_items = _load_active_leases(_active_path(DEFAULT_ACTIVE_LEASES, repo_root=coord))
                                     write_lease = _find_active_write_lease(
                                         lease_items,
-                                        lease_id=None,
+                                        lease_id=lease_id,
                                         allow_recovery_needed=True,
                                     )
                                     claimed_raw = write_lease.get("claimed_files") if isinstance(write_lease, dict) else None
@@ -16457,7 +16585,8 @@ def _write_active_codex_patch(
                 warnings.extend(teardown_scratch_worktree(resolved_task, agent, repo_root=repo_root, runner=git_runner))
                 release_ok, release_msg = release_active_agent(
                     agent=agent,
-                    repo_root=repo_root,
+                    repo_root=coord,
+                    lease_id=lease_id,
                     now=now,
                     allow_recovery_needed=True,
                 )
