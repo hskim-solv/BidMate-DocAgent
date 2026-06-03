@@ -25,6 +25,8 @@ from scripts.render_agent_loop_board import (
     _sanitize_text,
     main,
     render,
+    render_blockers_summary,
+    render_event_log,
 )
 
 # The sentinel ``_sanitize_text`` substitutes for a matched run-artifact path.
@@ -196,6 +198,11 @@ def _events() -> list[dict[str, object]]:
             # surrounding diagnostic text is still surfaced.
             "blockers": [f"gate failed reading {RAW_RUN_ARTIFACT_PATH}"],
             "warnings": [f"scratch dir {RAW_SCRATCH_BRANCH} left behind"],
+            # Structural scalar field NOT in the skip set: render_event_log
+            # surfaces it via the extra_fields path. Its value embeds a
+            # run-artifact path → _sanitize_text must mask it there too
+            # (Low-2 defense-in-depth, ADR 0005).
+            "scratch_log": RAW_RUN_ARTIFACT_PATH,
             # Free-text fields the event log explicitly skips (ADR 0005).
             "guidance": SECRET_EVENT_GUIDANCE,
             "prompt": SECRET_PROMPT,
@@ -414,3 +421,52 @@ def test_structural_metadata_still_surfaced_alongside_redaction(tmp_path: Path) 
     assert "scratch dir" in html  # warning diagnostic text retained
     assert "T-1003" in html  # task id from the blocked event/backlog
     assert "implementer" in html  # worker role still rendered
+
+    # The blocked event's diagnostic blocker/warning text is rendered in TWO
+    # independent sections (the event log AND the aggregated blockers summary).
+    # The full-page assertions above pass as long as *either* section renders
+    # the text, so they cannot catch an over-redaction regression isolated to
+    # one section. Verify each section's fragment independently so a break in
+    # exactly one section fails this guard.
+    events = _events()
+    event_log = render_event_log(events)
+    blockers_summary = render_blockers_summary(events)
+
+    for section_name, fragment in (
+        ("event_log", event_log),
+        ("blockers_summary", blockers_summary),
+    ):
+        # Diagnostic text + structural id survive in this section …
+        assert "gate failed reading" in fragment, (
+            f"{section_name} dropped the blocker diagnostic text"
+        )
+        assert "scratch dir" in fragment, (
+            f"{section_name} dropped the warning diagnostic text"
+        )
+        # … and the embedded run-artifact/scratch path is masked here, not in
+        # the *other* section: each section must carry its own redaction marker
+        # and must never leak the raw path token.
+        assert RAW_RUN_ARTIFACT_PATH not in fragment, (
+            f"{section_name} leaked the raw run-artifact path"
+        )
+        assert RAW_SCRATCH_BRANCH not in fragment, (
+            f"{section_name} leaked the raw scratch branch token"
+        )
+        assert REDACT_MARKER in fragment, (
+            f"{section_name} did not mask the embedded path (no redact marker)"
+        )
+
+    # Low-2 (extra_fields scalar masking): the event fixture includes a structural
+    # scalar field ``scratch_log: RAW_RUN_ARTIFACT_PATH`` that is NOT in the skip
+    # set and not a list/dict, so render_event_log surfaces it via the extra_fields
+    # path (display cell + data-search blob). _sanitize_text must mask it there too.
+    # Verify: raw token absent from the event_log fragment (covers both the <li>
+    # display cell and the data-search="" searchable blob).
+    assert RAW_RUN_ARTIFACT_PATH not in event_log, (
+        "extra_fields scalar value leaked raw run-artifact path in event_log "
+        "(display cell or data-search blob — Low-2 regression)"
+    )
+    assert "codex_runs" not in event_log, (
+        "extra_fields scalar value leaked 'codex_runs' token in event_log "
+        "(Low-2 regression)"
+    )
