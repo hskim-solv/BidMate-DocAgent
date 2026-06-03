@@ -1,5 +1,12 @@
 # real-100 정확도 천장의 construct-validity inspection (gold-grounding 결함)
 
+> **Archive/current-use boundary (2026-06-03)**: this inspection preserves
+> historical v1 `real100` / 221-case construct-validity findings. It is not
+> current claim-bearing private-eval evidence. New task, PR, claim, and handoff
+> evidence must use the `real100_v2` aggregate-only surface in
+> [Surface Map](../evaluation/surface-map.md), unless the maintainer explicitly
+> re-enables another private-eval surface.
+
 | field | value |
 |---|---|
 | Issue | #1347 |
