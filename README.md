@@ -162,7 +162,7 @@ python3 eval/run_eval.py --index_dir data/index --output_dir reports --config ev
 python3 scripts/check_latency_slo.py --config eval/config.yaml --summary reports/eval_summary.json
 ```
 
-상세 실행 (FastAPI 데모, PDF/HWP ingestion, visual parsing v2, 비공개 100-doc eval, harness): [`docs/operations/api-demo.md`](docs/operations/api-demo.md).
+상세 실행 (FastAPI 데모, PDF/HWP ingestion, visual parsing v2, `real100_v2` aggregate-only private eval, harness): [`docs/operations/api-demo.md`](docs/operations/api-demo.md).
 
 ---
 
