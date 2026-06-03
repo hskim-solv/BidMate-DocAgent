@@ -1,12 +1,12 @@
 # Plan: T-2026-0005 Eval-first RAG adapter hardening
 
-- Status: review
+- Status: done
 - Owner role: Implementer -> Benchmark Auditor -> Reviewer
 - Related task: `tasks/queue.md::T-2026-0005`
-- Related issue / PR: issue #1493 / PR #1499
+- Related issue / PR: issue #1493 / PR #1499; refresh issue #2075
 - Related ADR: ADR 0001, ADR 0003, ADR 0005, ADR 0069, ADR 0074
 - Created: 2026-05-26
-- Last updated: 2026-05-26
+- Last updated: 2026-06-04
 
 ## Problem Statement
 
@@ -58,10 +58,10 @@ chunking as an opt-in strategy. Defaults remain unchanged.
 
 ## Data / Eval Impact
 
-- Surface: public fixture smoke eval.
+- Surface: public fixture smoke eval; not current `real100_v2` private-eval evidence.
 - Data boundary: public fixture and aggregate-only eval summary fields.
 - Allowed claim: metric/manifest plumbing works and defaults are preserved.
-- Disallowed claim: real RFP quality improvement.
+- Disallowed claim: current `real100_v2` private-eval or real RFP quality improvement.
 - Baseline or control affected: no; `naive_baseline` remains dense/fixed/default.
 - Benchmark/eval auditor required: yes, because eval surface keys are added.
 
@@ -100,7 +100,7 @@ Expected evidence:
 - Test/eval output: focused pytest pass.
 - Generated or updated artifact: public fixture `data/index/index.json` carries additive chunk version fields; no generated reports committed.
 - Reviewer checklist or manual inspection: confirm no default/provider behavior flip.
-- Explicitly not validated, with reason: private real-eval unless reviewer requires it for load-bearing risk.
+- Explicitly not validated, with reason: current `real100_v2` private eval was not run for this docs refresh.
 
 ## Rollback Strategy
 
@@ -125,7 +125,7 @@ and focused regression tests show whether the work is active and bounded.
 ## Reviewer Notes
 
 Attack baseline preservation, answer contract drift, metric semantics, and
-provider boundary first. This PR should not claim quality improvement.
+provider boundary first. This PR should not claim current `real100_v2` private-eval or real RFP quality improvement.
 
 ## Handoff Notes
 
@@ -140,7 +140,7 @@ provider boundary first. This PR should not claim quality improvement.
 - Files touched: eval/scorers/*, eval/run_eval.py, rag_embedding.py, rag_indexing.py, scripts/build_index.py, data/index/index.json, tests, tasks/queue.md, this plan doc.
 - Decisions made: Keep flat layout, additive eval surfaces, opt-in contextual chunking, and existing embedding wrapper compatibility.
 - Commands run: focused pytest, vector store pytest, py_compile, git diff --check, make check-branch, make smoke, bash scripts/test.sh.
-- Results: pass; private real-eval not run.
+- Results: pass; current `real100_v2` private eval not run.
 - Next safe command: review diff and open PR.
 - Open questions: none.
 - Risks: load-bearing eval/index changes require precise test coverage.
