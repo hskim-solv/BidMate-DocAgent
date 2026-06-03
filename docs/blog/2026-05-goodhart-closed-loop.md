@@ -17,6 +17,8 @@ permalink: /blog/2026-05-goodhart-closed-loop/
 > [`hyde-measurement-saturation.md`](./hyde-measurement-saturation.md),
 > [`2026-05-extractive-baseline.md`](./2026-05-extractive-baseline.md).
 
+> **Historical snapshot note.** 이 글의 `real100`, `n=221`, `reports/real100/*` 언급은 2026-05 측정 루프를 설명하기 위한 archive-only 맥락이다. 현재 새 작업·PR·claim의 private eval 근거는 `real100_v2` 표면만 사용한다.
+
 이 closed loop 의 가장 큰 lesson 은 — *측정 도구의 첫 측정 결과를 신뢰하지 않는 것* 이다. 직관에 반하는 결과 (random baseline 이 default 보다 *높은* score) 가 나왔을 때, "시스템이 random 보다 못한가?" 가 아니라 "metric 정의 자체가 깨졌나?" 로 시작하는 것. 본 글의 5 step 은 그 한 질문에서 파생된 cascade 다.
 
 ## Step 1 — 측정 도구 도입 (PR #946)
