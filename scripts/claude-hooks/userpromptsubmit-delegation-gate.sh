@@ -23,8 +23,21 @@
 #     마이그레이션|migrat[ei]|레거시|legacy|아키텍처|architectur|
 #     재설계|redesign
 #   Group B — measurement/investigation/parallel (new): 측정|진단|조사|
-#     분석|벤치|평가|여러|병렬|동시|measure|diagnos|investigat|analyz|
-#     benchmark|eval|multiple|parallel|concurrent|several
+#     분석|벤치|평가|여러|병렬|동시|measure|diagnos|investigat|analy[sz]|
+#     benchmark|\beval|multiple|parallel|concurrent|several
+# Keyword precision (issue #1761):
+#   - `\beval` (leading word-boundary) matches eval/evaluate/evaluation/evals
+#     but excludes the retrieval/medieval substring false-positives. Bare
+#     `eval` fired on "retrieval" — ubiquitous in this RFP-retrieval repo —
+#     causing near-constant nudges (nudge blindness). `\b` works on GNU
+#     (Linux CI) and BSD (macOS) grep alike. Note: `\beval\b` would also drop
+#     evaluate/evaluation, so the trailing boundary is intentionally omitted.
+#   - `analy[sz]` adds analysis (noun) / analyse (British) recall; bare
+#     `analyz` only matched the US verb stem.
+#   - Korean `여러` keeps a known accepted false-positive on `여러분`
+#     (greeting). Dropping it would lose `여러 파일`(multiple files) recall and
+#     grep word-boundaries are unreliable for Hangul, so it is documented
+#     rather than over-engineered (issue #1761 LOW, accepted FP).
 # Conservative tuning: single typo fixes, yes/no questions, and
 # one-liner prompts should NOT trigger. Multi-word compound patterns
 # (전체.*수정) kept from Group A for specificity.
@@ -64,7 +77,7 @@ print(p)
 #
 # Group A: code change-intent (original set)
 # Group B: measurement / investigation / parallel tasks (issue #1753)
-if printf '%s' "$prompt" | grep -qiE "리팩토링|refactor|구현해|implement|다 고쳐|전체.*수정|all files|새 기능|new feature|마이그레이션|migrat[ei]|레거시|legacy|아키텍처|architectur|재설계|redesign|측정|진단|조사|분석|벤치|평가|여러|병렬|동시|measure|diagnos|investigat|analyz|benchmark|eval|multiple|parallel|concurrent|several"; then
+if printf '%s' "$prompt" | grep -qiE "리팩토링|refactor|구현해|implement|다 고쳐|전체.*수정|all files|새 기능|new feature|마이그레이션|migrat[ei]|레거시|legacy|아키텍처|architectur|재설계|redesign|측정|진단|조사|분석|벤치|평가|여러|병렬|동시|measure|diagnos|investigat|analy[sz]|benchmark|\beval|multiple|parallel|concurrent|several"; then
   # stdout → prepended to Claude's next-turn context.
   cat <<'EOF'
 
