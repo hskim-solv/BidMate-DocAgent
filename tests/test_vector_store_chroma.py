@@ -233,6 +233,66 @@ def test_chroma_query_uses_collection_for_full_scan() -> None:
     assert result == expected
 
 
+def test_chroma_full_scan_survives_lossy_collection() -> None:
+    """Regression for #1841: a full-corpus scan must not crash when chroma's
+    in-memory HNSW returns fewer rows than requested. The exact numpy ranking
+    is served instead; the lossy collection result is discarded."""
+
+    class LossyCollection:
+        def __init__(self) -> None:
+            self.calls: list[int] = []
+
+        def query(
+            self,
+            *,
+            query_embeddings: list[list[float]],
+            n_results: int,
+            include: list[str],
+        ) -> dict[str, list[list[str | float]]]:
+            self.calls.append(n_results)
+            # Drop one row, as HNSW does when n_results ≈ collection size.
+            return {"ids": [["2", "0", "1"]], "distances": [[0.0, 1.0, 1.0]]}
+
+    matrix = np.eye(4, dtype=np.float32)
+    expected = InMemoryVectorStore(vectors=matrix).query(matrix[2], top_k=len(matrix))
+    collection = LossyCollection()
+    store = ChromaVectorStore(
+        vectors=matrix,
+        client=object(),
+        collection=collection,
+    )
+
+    result = store.query(matrix[2], top_k=len(matrix))  # must not raise
+
+    assert collection.calls == [len(matrix)]  # chroma still attempted
+    assert result == expected  # exact numpy ranking served on shortfall
+
+
+def test_chroma_partial_top_k_short_result_still_raises() -> None:
+    """A short result for a *partial* top-k is a real defect, not HNSW
+    boundary noise — keep failing closed there (#1841)."""
+
+    class LossyCollection:
+        def query(
+            self,
+            *,
+            query_embeddings: list[list[float]],
+            n_results: int,
+            include: list[str],
+        ) -> dict[str, list[list[str | float]]]:
+            return {"ids": [["2"]], "distances": [[0.0]]}  # 1 row for top_k=2
+
+    matrix = np.eye(4, dtype=np.float32)
+    store = ChromaVectorStore(
+        vectors=matrix,
+        client=object(),
+        collection=LossyCollection(),
+    )
+
+    with pytest.raises(ValueError, match="rows for requested top-k"):
+        store.query(matrix[2], top_k=2)
+
+
 def test_naive_baseline_retrieval_uses_chroma_top_k_query() -> None:
     class SpyCollection:
         def __init__(self, inner: object) -> None:
