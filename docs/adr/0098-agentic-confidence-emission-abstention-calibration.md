@@ -1,7 +1,7 @@
 # 0098: agentic confidence 방출로 abstention calibration 활성화
 
 - **Status**: proposed
-- **Date**: 2026-06-02
+- **Date**: 2026-06-02 (proposed); accept 는 #1851 (gold-label defect) 해소 + clean 재측정 후로 연기 (아래 "승격 차단")
 - **Deciders**: hskim-solv
 - **Related**: issue #1820, ADR 0001, ADR 0003, ADR 0005, ADR 0048, ADR 0056
 
@@ -60,8 +60,9 @@ emission 메커니즘은 PR-1 의 코드(`rag_answer.py:_answer_confidence` + `r
 - `tests/test_confidence_emission_regression.py`: agentic 경로 `confidence` ∈ [0,1] float + 결정성; naive_baseline 답변 dict 에 `confidence` 키 **부재** (ADR 0001 guard); `test_answer_contract_snapshot.py` 무수정 green
 - calibration 계산 단위 테스트: known (confidence, correctness) pairs → 정확한 ece/brier/n; confidence 없는 케이스 → `null` path
 
-**proposed → accepted 승격 조건**: real100_v2 eval (PR-2 eval regen) 에서 `abstention_calibration` 블록이 non-null 로 출현 = 측정 표면이 실제 활성화됨을 e2e 입증한 시점.
+**proposed → accepted 승격 조건** (PR-2 에서 강화): real100_v2 eval 이 (1) #1851 (gold-label defect) 해소 후 (2) **git clean tree** 에서 재측정되어, canonical `reports/real100_v2/baseline.aggregate.json` 의 `abstention_calibration` 이 non-null 로 출현하고 **동시에** accuracy·recall 등 동거 claim-bearing 표면이 오염되지 않은 시점. 단일 슬라이스 non-null 출현만으로는 불충분 — canonical 표면 무결성이 함께 보존되어야 한다.
+
+**승격 차단 (PR-2, 2026-06-04)**: real100_v2 chroma eval 재생성에서 confidence emission 메커니즘이 작동해 `abstention_calibration` 가 by_format slice (`private_pdf_hwp_csv_text`) 에 non-null 로 산출됨을 **보조적으로 관찰**했다 — 단 구체적 ECE/Brier 절대 수치는 #1851 오염 + canonical 미커밋이라 durable 인용 대상이 아니고, 이 재생성 관찰 자체도 non-durable 이라 proof 로 쓰지 않는다. **메커니즘·파이프라인 e2e 의 durable 증거는 PR-1(#1822) 의 커밋된 unit test (`tests/test_confidence_emission_regression.py`)** 다. 그러나 같은 run 이 #1851 (gold-label 이 표지/목차 boilerplate chunk 지목) 로 retrieval 이 거의 0 수준으로 붕괴해 answerable accuracy 가 canonical baseline(durable, 0.279) 대비 큰 폭으로 급락·오염됐다 (오염 run 의 정확한 진단 수치는 #1851 에 기록 — non-durable run 이라 ADR 본문엔 정성 기술만 남긴다). 그 오염 run 으로 canonical `baseline.aggregate.json` 을 덮어쓰면 calibration 한 슬라이스를 살리려 accuracy·recall 표면을 망가뜨리는 나쁜 trade 가 되어 (Codex adversarial pre-commit review 가 "dirty provenance + contaminated run overwrites claim-bearing baseline" 으로 BLOCK), **canonical aggregate 는 갱신하지 않고 HEAD 를 보존**한다. 따라서 본 PR-2 는 ADR 0098 을 **proposed 로 유지**하며, accept 는 #1851 해소 + git clean 재측정으로 위 강화된 승격 조건을 충족하는 시점으로 연기한다. naive_baseline 답변 dict 의 `confidence` 키 부재(ADR 0001 byte-identity)는 무수정 유지.
 
 <!-- verifies-key: rag_answer.py:_answer_confidence -->
 <!-- verifies-key: tests/test_confidence_emission_regression.py:confidence -->
-<!-- verifies-key: reports/eval_summary.json:abstention_calibration -->
