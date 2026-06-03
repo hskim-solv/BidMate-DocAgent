@@ -118,6 +118,7 @@ Before accepting an eval/benchmark claim, verify:
 - [Eval Dataset Spec](../eval/eval-dataset-spec.md)
 - [Synthetic Naive RAG Benchmark v1 Design](./synthetic_benchmark_v1_design.md)
 - [Private Real-Eval Workflow](./private_real_eval_workflow.md)
+- [real100_v2 Benchmark Tier Split](./real100_v2-benchmark-tiers.md)
 - [Agent-Gated RFP Evaluation Loop](./agent-gated-rfp-eval-loop.md)
 - [Pre-Improvement Readiness Checklist](./pre_improvement_readiness_checklist.md)
 - [RAG Performance Experiment Stack](./rag-performance-experiment-stack.md)
