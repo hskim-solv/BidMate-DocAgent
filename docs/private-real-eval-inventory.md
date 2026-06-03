@@ -7,11 +7,17 @@ deprecated/dead reference 로 분리한다. 조사 기준은 repo-wide `rg` 로
 패턴을 검색하고, `find data eval reports scripts tests -maxdepth 4` 로
 실제 tree 를 대조한 결과다.
 
+Current claim-bearing private eval work uses the `real100_v2` config and
+aggregate surface. Legacy compatibility configs remain documented because
+direct/local tools still accept them, but they are not the current evidence
+surface for new PRs, claims, or handoffs.
+
 ## Inventory
 
 | path | category | referenced by | required before run? | can regenerate? | recommended env/config key |
 |---|---|---|---:|---:|---|
-| `eval/real_config.local.yaml` | required input | `eval/run_eval.py --config`, `scripts/smoke_real.sh`, case proposer/promote tools | yes | no | `REAL_EVAL_CONFIG` |
+| `data/private/real100_v2/real_config_v2.local.yaml` | required input for current private eval | `REAL100_V2_CONFIG`, `make real-eval-v2-*`, v2 judge/rationality targets | yes | no | `REAL100_V2_CONFIG` |
+| `eval/real_config.local.yaml` | compatibility local input | `eval/run_eval.py --config`, `scripts/smoke_real.sh`, case proposer/promote tools | yes for direct compatibility runs; no for current v2 claim surface | no | `REAL_EVAL_CONFIG` |
 | `data/data_list.csv` | required input | `scripts/validate_data_list.py`, `scripts/build_index.py --metadata_csv`, `eval/case_proposer.py`, `scripts/eda_real100.py` | yes | no | `REAL_EVAL_DATA_LIST`, `real_eval.data_list` |
 | `data/files/` | required input | `scripts/build_index.py --files_dir`, `scripts/validate_data_list.py --files_dir`, kordoc source hashing | yes | no | `REAL_EVAL_DATA_DIR`, `real_eval.document_dirs.default` |
 | `data/files_kordoc/` | regenerable cache | `ingestion._resolve_kordoc_cache_dir`, `scripts/build_kordoc_manifest.py`, `BIDMATE_KORDOC_CACHE_DIR` | no | yes | `REAL_EVAL_KORDOC_DATA_DIR`, `real_eval.document_dirs.kordoc` |
