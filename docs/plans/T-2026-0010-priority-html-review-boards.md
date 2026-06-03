@@ -29,6 +29,13 @@ six priority surfaces are still spread across:
 - `reports/private_real_eval_summary.redacted.json`
 - benchmark/evaluation governance docs
 
+Current-use boundary: the `reports/real100/*` and
+`reports/private_real_eval_summary.redacted.json` inputs above are historical
+review-board context only. They are not current claim-bearing private evidence;
+new task, PR, claim, and handoff decisions must use the `real100_v2`
+aggregate-only surface in [Surface Map](../evaluation/surface-map.md), or
+regenerate matching v2 board inputs before treating a board as current evidence.
+
 ## Desired Behavior
 
 A single local script renders six self-contained HTML boards:
