@@ -33,6 +33,8 @@ ingestion.py, visual_ingestion.py, eval/, api/, docs/adr/, scripts/build_index.p
 하는 테스트 최소 1개 필수. 출시된 버그용 regression 은 tests/test_*_regression.py
 (pattern: tests/test_retrieval_loop_regression.py).
 테스트 미추가 시 사유 명시.
+multi-session 또는 parallel worktree PR 이면 overlap-preflight result/evidence path를
+여기에 포함.
 -->
 
 ## 5. Eval 영향
