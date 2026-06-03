@@ -1,12 +1,18 @@
 # Plan: T-2026-0071 (P2.2) Staging self-ship autonomous merge orchestration
 
-- Status: proposed
+- Status: blocked
 - Owner role: Planner (this doc) → Implementer → Security Reviewer → Deep Reviewer → Reviewer
 - Related task: `tasks/queue.md::T-2026-0071`
-- Related issue / PR: issue [#1703](https://github.com/hskim-solv/BidMate-DocAgent/issues/1703) (P2.2 SSoT); this plan PR closes [#1707](https://github.com/hskim-solv/BidMate-DocAgent/issues/1707); builds on PR #1698 (D-minus), #1700 (codex-gate), #1702 (AR3 CODEOWNERS)
+- Related issue / PR: closed issue [#1703](https://github.com/hskim-solv/BidMate-DocAgent/issues/1703) (P2.2 SSoT); this plan PR closes [#1707](https://github.com/hskim-solv/BidMate-DocAgent/issues/1707); maintenance-gate refresh [#2152](https://github.com/hskim-solv/BidMate-DocAgent/issues/2152); builds on PR #1698 (D-minus), #1700 (codex-gate), #1702 (AR3 CODEOWNERS)
 - Related ADR: [0088](../adr/0088-opt-in-staging-self-ship-external-enforcement.md), [0090](../adr/0090-activate-staging-self-ship-lane-live-enforcement.md), [0091](../adr/0091-constitutional-guard-codeowners-trusted-signal.md) — all currently `proposed`. P2.2 needs **1 new ADR + 1 ADR 0090 amendment** (see Architecture Impact).
 - Created: 2026-06-01
-- Last updated: 2026-06-01
+- Last updated: 2026-06-04
+
+> Current status (2026-06-04): this plan is **not** an automatic
+> implementation-ready lane. Issue #1703 and the P2.2 follow-up set are closed,
+> but remaining work is gated on maintainer decisions, ADR reservation, and an
+> operator/live integration window. Resume only as a single-writer lane after
+> those gates are explicitly satisfied.
 
 > NOTE: ADR/issue numbers for the implementation PRs are NOT reserved by this plan. Reserve at ship time (`ls docs/adr/` + `gh pr list --search "ADR" --state open`). Inside this doc they appear as `ADR 00XX (reserve)`.
 
@@ -304,4 +310,4 @@ P2.2 security-critical 작업은 **단일 writer lane**으로 진행해야 한�
 3. **manifest seam** — PR-4(live merge)와 병합.
 4. **live merge e2e** — integration 레인 운영 시점 (Gate-3 한계: 워크플로 `autopilot/**` 전용).
 
-다음 안전 명령: ADR 0093+ 번호 예약(`ls docs/adr/` + `gh pr list --search ADR --state open`) 후 PR-1/PR-2(offline-testable, branch-protection 무의존)부터. **병렬 worktree agent 금지 — 단일 writer lane** (#1719 교훈, 위 §).
+다음 안전 명령: maintainer가 위 Open Questions 4건을 먼저 결정하고 integration 운영 창을 승인한 뒤, ADR 0093+ 번호 예약(`ls docs/adr/` + `gh pr list --search ADR --state open`)으로 재개한다. **병렬 worktree agent 금지 — 단일 writer lane** (#1719 교훈, 위 §).
