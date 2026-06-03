@@ -350,6 +350,14 @@ class ChromaVectorStore:
         pairs = self._query_chroma_pairs(qvec_f32, n_results=limit)
         actual_ids = [idx for idx, _ in pairs]
         if len(actual_ids) != limit:
+            if limit == len(self):
+                # Full-corpus scan: chroma's in-memory HNSW (search_ef ≪ k,
+                # num_threads=cpu_count) can nondeterministically drop rows when
+                # n_results ≈ collection size. We already hold the exact numpy
+                # ranking, so fall back to it instead of crashing. Partial
+                # top-k stays strict — a short result there is a real defect.
+                # (#1841)
+                return [(idx, float(scores[idx])) for idx in expected_ids]
             raise ValueError(
                 "Chroma query returned "
                 f"{len(actual_ids)} rows for requested top-k {limit}."
