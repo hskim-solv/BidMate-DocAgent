@@ -11215,6 +11215,109 @@ def test_gate_evidence_rejects_bad_task(tmp_path: Path) -> None:
         agent_loop.write_active_gate_evidence(task_id="nope", repo_root=tmp_path)
 
 
+def test_gate_validation_signal_no_commands_is_non_blocking(monkeypatch) -> None:
+    # ADR 0099: when no allowlisted validation command applies, the signal is
+    # non-blocking (passed=None) so the gate falls back to role-only.
+    monkeypatch.setattr(agent_loop, "suggest_validation_commands", lambda files: [])
+    signal = agent_loop._gate_validation_signal(["scripts/agent_loop.py"])
+    assert signal == {"ran": False, "passed": None, "returncode": None, "command_count": 0}
+
+
+def test_gate_evidence_run_validation_off_is_byte_identical(tmp_path: Path) -> None:
+    # ADR 0099: default run_validation=False keeps the verdict-only gate unchanged.
+    repo = _write_repo(tmp_path)
+    _seed_gate_registry(repo)
+
+    path, summary = agent_loop.write_active_gate_evidence(task_id="T-2026-0042", repo_root=repo)
+    ev = json.loads(path.read_text(encoding="utf-8"))
+
+    assert summary["ready"] is True  # role-only gate, unchanged
+    assert ev["validation"] == {"ran": False, "passed": None, "returncode": None, "command_count": 0}
+    assert ev["conservative_gate"]["objective_ok"] is True
+    assert ev["conservative_gate"]["role_ok"] is True
+    assert ev["conservative_gate"]["precedence"].startswith("self-report < validation")
+
+
+def test_gate_evidence_validation_failure_blocks_ready(monkeypatch, tmp_path: Path) -> None:
+    # ADR 0099: a real validation failure blocks ready even when every role self-reports pass.
+    repo = _write_repo(tmp_path)
+    _seed_gate_registry(repo)  # Reviewer + CI/Eval Auditor both "passed"
+    monkeypatch.setattr(
+        agent_loop,
+        "_gate_validation_signal",
+        lambda files, **_kw: {"ran": True, "passed": False, "returncode": 1, "command_count": 2},
+    )
+
+    path, summary = agent_loop.write_active_gate_evidence(
+        task_id="T-2026-0042", repo_root=repo, run_validation=True
+    )
+    ev = json.loads(path.read_text(encoding="utf-8"))
+
+    assert summary["ready"] is False  # self-report < validation
+    assert ev["conservative_gate"]["role_ok"] is True
+    assert ev["conservative_gate"]["objective_ok"] is False
+    assert ev["validation"]["passed"] is False
+
+
+def test_gate_evidence_validation_pass_keeps_ready(monkeypatch, tmp_path: Path) -> None:
+    # ADR 0099: a passing validation leaves the role-only verdict intact.
+    repo = _write_repo(tmp_path)
+    _seed_gate_registry(repo)
+    monkeypatch.setattr(
+        agent_loop,
+        "_gate_validation_signal",
+        lambda files, **_kw: {"ran": True, "passed": True, "returncode": 0, "command_count": 2},
+    )
+
+    path, summary = agent_loop.write_active_gate_evidence(
+        task_id="T-2026-0042", repo_root=repo, run_validation=True
+    )
+    ev = json.loads(path.read_text(encoding="utf-8"))
+
+    assert summary["ready"] is True
+    assert ev["conservative_gate"]["objective_ok"] is True
+    assert ev["validation"]["passed"] is True
+
+
+def test_gate_evidence_cli_exposes_run_validation_flag() -> None:
+    # ADR 0099 Thread-2 회귀: gate-evidence CLI 가 --run-validation 토글을 노출해
+    # operator 가 객관 검증을 켤 수 있어야 한다 (이전엔 어느 호출처에서도 미전달 = dead).
+    parser = agent_loop.build_parser()
+    off = parser.parse_args(["gate-evidence", "--task", "T-2026-0001"])
+    assert off.run_validation is False
+    on = parser.parse_args(["gate-evidence", "--task", "T-2026-0001", "--run-validation"])
+    assert on.run_validation is True
+
+
+def test_gate_validation_signal_forwards_repo_root_as_cwd(monkeypatch, tmp_path: Path) -> None:
+    # ADR 0099 Thread-1 회귀: repo_root 가 run_validation_commands 의 cwd 로 전달돼
+    # 검증이 process cwd 가 아니라 gate 의 worktree 에서 실행돼야 한다.
+    captured: dict[str, object] = {}
+
+    def fake_run(changed_files, *, keep_going=False, cwd=None):
+        captured["cwd"] = cwd
+        return (0, [agent_loop.ValidationRun(command="x", returncode=0, stdout="", stderr="")])
+
+    monkeypatch.setattr(agent_loop, "run_validation_commands", fake_run)
+    result = agent_loop._gate_validation_signal(["scripts/agent_loop.py"], repo_root=tmp_path)
+    assert captured["cwd"] == tmp_path
+    assert result["ran"] is True
+    assert result["passed"] is True
+
+
+def test_gate_validation_signal_default_repo_root_keeps_cwd_none(monkeypatch) -> None:
+    # repo_root 미지정(기본) 시 cwd=None 으로 기존 동작 보존.
+    captured: dict[str, object] = {}
+
+    def fake_run(changed_files, *, keep_going=False, cwd=None):
+        captured["cwd"] = cwd
+        return (0, [agent_loop.ValidationRun(command="x", returncode=0, stdout="", stderr="")])
+
+    monkeypatch.setattr(agent_loop, "run_validation_commands", fake_run)
+    agent_loop._gate_validation_signal(["scripts/agent_loop.py"])
+    assert captured["cwd"] is None
+
+
 def test_stop_ship_skips_remote_branch_delete_when_stacked_dependents_exist() -> None:
     text = (ROOT / "scripts" / "claude-hooks" / "stop-ship.sh").read_text(encoding="utf-8")
 
