@@ -82,6 +82,11 @@ python3 scripts/agent_loop.py overlap-preflight \
 예상 변경 파일이 다른 세션의 dirty/diff 파일과 겹치지 않는다는 근거를 남긴 뒤
 진행한다. 근거를 만들 수 없으면 다른 issue를 고른다.
 
+결과와 evidence path는 장기 작업이면 [`docs/plans/TEMPLATE.md`](../plans/TEMPLATE.md)
+또는 [`tasks/README.md`](../../tasks/README.md)의 handoff 필드에 남기고,
+PR 에서는 [`.github/pull_request_template.md`](../../.github/pull_request_template.md)
+§4 테스트/근거 섹션에 요약한다.
+
 ### Orphan Worktree Warnings
 
 pre-push hygiene가 “branch already merged into main, but the worktree was never removed”를 보고해도,
