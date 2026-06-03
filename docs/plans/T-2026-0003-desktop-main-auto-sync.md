@@ -1,12 +1,12 @@
 # Plan: T-2026-0003 Desktop Main Auto Sync After Auto-Ship Merge
 
-- Status: review
+- Status: done
 - Owner role: Implementer
 - Related task: `tasks/queue.md::T-2026-0003`
-- Related issue / PR: [#1482](https://github.com/hskim-solv/BidMate-DocAgent/issues/1482) / PR TBD
+- Related issue / PR: [#1482](https://github.com/hskim-solv/BidMate-DocAgent/issues/1482) / [#1483](https://github.com/hskim-solv/BidMate-DocAgent/pull/1483); refresh issue #2087
 - Related ADR: N/A - developer tooling only
 - Created: 2026-05-25
-- Last updated: 2026-05-25
+- Last updated: 2026-06-04
 
 ## Problem Statement
 
