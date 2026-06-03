@@ -1126,6 +1126,7 @@ def _phase_build_answer(ctx: _RunContext) -> dict[str, Any]:
             evidence,
             ctx.verified,
             verification_reasons,
+            emit_confidence=ctx.verifier_retry,
         )
     synthesis_meta: dict[str, Any] | None = None
     if ctx.prompt_profile == "llm_synthesis" and not abstained:

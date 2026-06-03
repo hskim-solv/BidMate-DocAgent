@@ -99,12 +99,42 @@ _AGGREGATE_SIGNALS: frozenset[str] = frozenset({
 _AGGREGATE_POOL_MAX: int = 5
 
 
+def _answer_confidence(status: str, reasons: list[str]) -> float:
+    """Map the verifier's grounding decision to ``P(decision correct)`` ∈ [0,1].
+
+    U-shaped by design (ADR 0098): a *strong answer* and a *strong abstention*
+    both score high, while the ambiguous middle (partial answer, weak-evidence
+    abstention) scores low. This matches the eval calibration target
+    ``_calibration_correctness`` (``eval/run_eval.py``), which scores an
+    answerable case on accuracy and an unanswerable case on whether it
+    correctly abstained — so a confident abstention on a truly unanswerable
+    query is a *correct* high-confidence decision.
+
+    The four values are first-pass hypotheses. The ADR 0048
+    ``abstention_calibration`` block (ECE / Brier) measures whether they are
+    well-calibrated; a follow-up tunes them from data rather than by guesswork.
+    """
+    if status == ANSWER_STATUS_SUPPORTED:
+        return 0.90
+    if status == ANSWER_STATUS_PARTIAL:
+        return 0.45
+    # INSUFFICIENT (abstention): a clean ``no_evidence`` abstention is a
+    # confident "the document does not contain this" decision; a weak-evidence
+    # abstention (``low_top_score`` / ``topic_not_grounded``) sits in the
+    # ambiguous middle where the system might have missed a real answer.
+    if "no_evidence" in reasons:
+        return 0.85
+    return 0.55
+
+
 def generate_answer(
     query: str,
     analysis: dict[str, Any],
     evidence: list[dict[str, Any]],
     verified: bool,
     verification_reasons: list[str] | None = None,
+    *,
+    emit_confidence: bool = False,
 ) -> tuple[dict[str, Any], str, bool]:
     claims = build_claims(analysis, evidence)
     effective_reasons = answer_verification_reasons(analysis, verification_reasons or [])
@@ -129,6 +159,16 @@ def generate_answer(
         "insufficiency": insufficiency,
     }
     answer_text = render_answer_text(answer)
+    # ADR 0098: ``confidence`` is an additive, agentic-only observability field
+    # added *after* rendering so answer-text generation is never affected. The
+    # naive_baseline pipeline (``verifier_retry=False``) never emits it, so the
+    # ADR 0001 byte-identical answer dict is preserved by construction; the
+    # agentic path (``verifier_retry=True``) populates it to activate the
+    # ADR 0048 ``abstention_calibration`` block. Kept out of the pinned
+    # contract snapshot (``test_answer_contract_snapshot.py``), like
+    # ``analysis`` / ``plan``.
+    if emit_confidence:
+        answer["confidence"] = _answer_confidence(status, effective_reasons)
     return answer, answer_text, status == ANSWER_STATUS_INSUFFICIENT
 
 
