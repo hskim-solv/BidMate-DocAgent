@@ -6,7 +6,7 @@
 - Related issue / PR: Issue #1531 / PR #1532
 - Related ADR: ADR 0079
 - Created: 2026-05-27
-- Last updated: 2026-05-27
+- Last updated: 2026-06-03
 
 ## Problem Statement
 
@@ -33,7 +33,8 @@ a report-only plan for up to 12 role subagents with depth 2.
 - Scope constraints: wording and local report tooling only.
 - Architecture constraints: no replacement of the existing shipping pipeline.
 - Compatibility constraints: keep `human-gated-exec` and `--confirm-human-approved`.
-- Eval/privacy constraints: no private real-eval run and no performance claim.
+- Eval/privacy constraints: no current `real100_v2` private-eval run and no
+  performance claim.
 - Tooling/CI constraints: focused agent-loop tests plus doc/link/branch checks.
 - Non-goals: no remote mutation behavior change.
 
@@ -59,7 +60,8 @@ a report-only plan for up to 12 role subagents with depth 2.
 - Surface: none.
 - Data boundary: no data touched.
 - Allowed claim: governance/tooling surfaces now align with ADR 0079.
-- Disallowed claim: no RFP QA, benchmark, private real-eval, or performance claim.
+- Disallowed claim: no RFP QA, benchmark, current `real100_v2`
+  private-eval, or performance claim.
 - Baseline or control affected: no.
 - Benchmark/eval auditor required: no, but benchmark/privacy auditor roles are
   included in generated dispatch plans when the changed-file surface requires it.
@@ -96,7 +98,8 @@ Expected evidence:
 - Test/eval output: focused pytest return code 0.
 - Generated or updated artifact: `reports/agent_loop/role_dispatch.md`.
 - Reviewer checklist or manual inspection: legacy command names unchanged.
-- Explicitly not validated: private real-eval, because this change makes no metric claim.
+- Explicitly not validated: current `real100_v2` private eval, because this
+  change makes no metric claim.
 
 ## Rollback Strategy
 
