@@ -167,6 +167,11 @@ flyctl deploy
 - `diagnostics` 의 `trace_url` — Streamlit 에서 클릭 가능, CLI 모드에서는
   `outputs/answer.json` 에 기록, FastAPI JSON 응답에서 반환됨.
 
+병행 Codex/Claude worktree에서 생성한 trace URL을 PR/debug evidence로 첨부할 때는
+[`overlap-preflight`](ai-codex-workflow.md#overlap-preflight) 결과를 함께 남긴다.
+trace가 가리키는 실행이 다른 세션의 파일 변경과 겹치지 않았다는 provenance 없이는
+regression 근거로 승격하지 않는다.
+
 ```jsonc
 // diagnostics block of a tracing-enabled run
 {
