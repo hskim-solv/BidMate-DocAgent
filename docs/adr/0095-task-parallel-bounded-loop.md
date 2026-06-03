@@ -163,9 +163,42 @@ completion(마지막 완료 이후 누적된 blocker)" 으로 재정의한다.
   감싸지 않는다**(launch slot 은 ADR 0094 의 정당한 spawn throttle 로 유지). **E1 기본값
   (standard_path 미지정, task_slug=None)은 기존 경로 계산식과 textually identical → X=1
   byte-identical(ADR 0001); X=1 은 dark 라 동시 publication 자체가 없다**. HIGH-4 의 실제 fix 는
-  **PR-E2** 가 E1 substrate 의 task_slug 를 per-task **disjoint `standard_path`** 로 wiring +
-  **M>1 동시 publication 회귀 테스트**(서로 다른 path 로 publish → 충돌 없음 증명)로 닫는다
-  (X-enable 은 PR-F 전제).
+  **PR-E2(#1816) 의 worktree-per-task isolation** 으로 한다 — E1 의 per-file `standard_path`/
+  `task_slug` fence 가 아니라 **cycle 의 `repo_root` 경계**에서 닫는다(아래 PR-E2 항목). E1 의
+  redaction `task_slug` substrate 는 merged 인 채로 유지하되(다른 concern), E2 의 worktree 전략은
+  그것을 wiring 하지 않는다(unused-but-intact).
+- **PR-E2(#1816) 착륙 — SHRUNK scope: X=1 byte-identical driver + 추출 primitives + worktree lifecycle (DARK)**:
+  codex round-1 BLOCK(slug-scope → repo_root 전략 재설계) + round-2 SHRINK(two-root split 은 write만
+  절반 wiring — read/acquire/release/overlap 미완 → 깨끗한 E3 경계가 낫다) 2라운드 검토 후 확정된 최소
+  범위. **E2 delivers**:
+  - **(a) X=1 byte-identical driver**: `ThreadPoolExecutor(1)` + claim→submit→`future.result()`→next claim
+    = 정확한 pre-E2 직렬 순서. effective pool 은 `_e2_task_pool_dark_clamp_enabled()` 로 1 로 clamp
+    (PR-E3 에서 이 함수+호출 제거); `_resolve_task_pool_size` / `--task-pool` / Makefile 브리지 / fcntl
+    gating / kill-switch 함께 착륙. per-task wall-clock budget 은 `effective_task_pool_size > 1` 일 때만
+    resolve — X==1 에서 env 무시 → byte-identical (Finding 5).
+  - **(b) cycle body extraction**: `claim_next_task`(leaf `threading.Lock`, select+append 감싸고
+    `write_active_start`/semaphore **전에** release) + `run_one_task`(cycle body verbatim move;
+    `break`→`stop_event.set()+return`, `continue`→`return`) + `run_task_in_worktree`(X==1→직접
+    `run_one_task`; X>1→E3-deferred `RuntimeError` — 코드에 E3 work-list 문서화).
+  - **(c) stop_event fail-closed** (Finding 1, general correctness — X==1 에서도 bounded-blocker 시
+    작동): `complete_if_not_stopped(task_id)` 헬퍼가 ALL 3 terminal completion site (local-gate /
+    ship / repair-applied)를 guard. X==1 에서는 event 가 mid-cycle set 되지 않아 항상 True → byte-identical.
+  - **(d) worktree lifecycle primitive** (Finding 4 seed-failure teardown 포함): `_task_cycle_worktree_
+    _paths` / `create_task_cycle_worktree` / `teardown_task_cycle_worktree` / `_run_cycle_in_task_worktree`
+    — 모듈레벨, injected git runner 로 모든 exit path(seed failure/blocker/exception/stop/budget)
+    teardown 단위 테스트 완료. PR-E3 가 이 primitive 를 `run_task_in_worktree` X>1 분기에 wire.
+    `try/finally` 를 `create` 직후(seed **전**)로 이동해 seed 예외도 teardown 보장 (Finding 4).
+  **X>1 는 PR-E2 에서 명시적으로 deferred** — `run_task_in_worktree` X>1 분기는 `RuntimeError` 로
+  E3 work-list 를 문서화(코드 경계 가시화); E2-dark clamp 로 runtime unreachable.
+  - **PR-E3 work-list** (codex round-2 HIGH findings): leases coordination_root — `write_active_loop`/
+    `write_active_start` 의 write 뿐 아니라 **`_load_active_leases`(read) + `acquire_active_agent`/
+    `release_active_agent`(acquire/release) + `build_overlap_preflight`(overlap-preflight)** 전부
+    coordination_root(parent) 를 사용해야 cross-task lease overlap 이 가시적. 추가: cycle worktree 의
+    parent branch/issue inheritance(origin/main 기반 생성, 현재 branch tied issue 미전파), `run_one_task`/
+    `run_repair_apply` 에 `cycle_repo_root`+`coordination_root` two explicit root threading, `claim_disjoint`
+    first-writer-wins REJECT(현재 REPORT-only). `_e2_task_pool_dark_clamp_enabled` 제거.
+  - **Open question**: `claim_disjoint` REPORT-only — E2-dark 에서는 disjointness 가 task selection
+    (`select_next_task` 이 `attempted_this_run` 제외)에서 나와 문제없음. E3 가 first-writer-wins 결정.
 
 ## Verification
 

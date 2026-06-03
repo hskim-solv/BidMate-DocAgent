@@ -176,11 +176,37 @@ autonomy core).
      `global_concurrency_limiter()` 는 BoundedSemaphore(M) capacity throttle 일 뿐 publication
      mutex 가 아니므로(두 sibling run 이 둘 다 permit 을 쥔 채 같은 `standard_path` 를
      last-writer-wins) fence 로 쓰면 안 된다 — E1 은 오직 `standard_path` 파라미터화 substrate 만
-     깐다(X=1 은 dark 라 동시 publication 자체가 없음). **E2** = `run_one_task` +
-     `ThreadPoolExecutor` + locked `claim_next_task` 가 E1 substrate 의 task_slug 를 per-task
-     **disjoint `standard_path`** 로 wiring + **M>1 동시 publication 회귀 테스트**(서로 다른 path
-     로 publish 하므로 충돌 없음을 증명) → 이것이 HIGH-4 의 실제 fix. E1 이 redaction cross-scan
-     위험(아래 Stop condition)을 닫으므로 E2 는 그 가드 위에서 안전하게 task pool 을 올린다.
+     깐다(X=1 은 dark 라 동시 publication 자체가 없음).
+   - **E2/E3 재분할 (codex BLOCK 후, worktree-per-task isolation 으로 재설계)**: 첫 E2 시도가
+     producer artifact 경로(`patch_runs/<slug>`)만 scoping 하고 `active/` 의 coordination+apply+gate
+     표면 전체를 singleton 으로 남겨 X>1 race 를 닫지 못한다는 codex BLOCK 을 받았다. slug 별 per-file
+     fence 를 더 늘리는 대신, **각 task cycle 의 `repo_root` 를 per-task git worktree 로** 바꾼다 —
+     그러면 `active/` 의 모든 경로(registry/assignments/events/apply/gate/patch_runs/codex_runs/
+     omc_runs)가 worktree-local 이라 **construction 으로 disjoint** → HIGH-1..4 를 per-file 이 아니라
+     **repo_root 경계에서** 닫는다. PARENT repo 에는 `leases.json`(PR-B flock) + `auto_loop_state.json`
+     ledger(PR-A2)만 남고 driver 가 future join **후** 완료를 기록 → ledger merge 없음.
+     - **E2(#1816) — isolation substrate + structure DARK, X=1 byte-identical (이 단계)**:
+       `write_active_auto_loop` body 를 leaf-lock `claim_next_task`(in-process `threading.Lock`,
+       flock 아님; select+append 만 감싸고 `write_active_start`/semaphore acquire **전에** release) +
+       `run_one_task` closure(cycle body verbatim move; `break`→`stop_event.set()`+return / `continue`→
+       return) + `run_task_in_worktree`/모듈레벨 `_run_cycle_in_task_worktree`(X=1→worktree 없이
+       `repo_root=ROOT_DIR`, byte-identical; X>1→create+seed+confine+commit-before-exit+teardown 을
+       try/finally 로 **모든 exit(blocker/exception/stop/budget)** 에서 teardown; write-lane spawn 전
+       `assert_worktree_confinement` fail-closed; worktree create CLI spawn 은
+       `global_concurrency_limiter().slot()` 1 permit) + `ThreadPoolExecutor` driver(X=1 직렬 path =
+       claim→submit→`future.result()`→next claim = pre-E2 순서 → byte-identical) 로 refactor.
+       **substrate 만 DARK** — knob>1 이어도 effective pool 을 1 로 clamp(advisory warning). MUST FIX:
+       stop_event in-flight fail-closed(terminal blocker 후 in-flight sibling promote 금지 + driver
+       pending cancel + bounded post-stop join no-promote). fcntl gating + per-task wall-clock budget
+       (default 0 = no-op) + kill-switch + convergent stop 구현. 기존 `_scratch_worktree_paths`(write-lane
+       scratch, `{task_id}-{agent}`)와 충돌 피하려 cycle worktree 는 `{task_id}-cycle` naming.
+       `create_scratch_worktree`/`seed_scratch_worktree_from_parent`/`assert_worktree_confinement`/
+       `commit_scratch_worktree_before_exit`/`teardown_scratch_worktree` git 메커닉 재사용(injected runner).
+     - **E3 — X>1 fan-out enable + ledger/lease reconciliation**: E2 의 effective-pool clamp 를 제거하고
+       `ThreadPoolExecutor(N)` + `FIRST_COMPLETED` drain 으로 실제 동시 cycle 을 돌린다. driver 가 per-cycle
+       `repo_root` 를 인자로 전달(nonlocal rebinding 제거 → siblings 가 root 공유 안 함). `leases.json`
+       `claim_disjoint` 의 first-writer-wins **rejection** 결정(현재 REPORT-only). X>1 disjoint-active-surface
+       + M>1 publication 회귀 테스트가 여기 산다(E2 에서는 clamp 때문에 불가).
 7. **PR-F — flip-on(X=2) + ADR Accepted + runbook**: X 기본을 2 로 올리고 ADR 0094/0095 를
    proposed → accepted 로 전환, [`docs/operations/active-agent-loop.md`](../operations/active-agent-loop.md)
    에 운영 runbook 추가.
@@ -274,9 +300,22 @@ PR-E 에서 기본 1 → PR-F 에서 2 로 flip 하므로, 회귀 시 X=1 으로
     permit 을 쥔 채 같은 path 를 clobber) fence 로 쓰면 last-writer-wins data loss 를 못 막고
     partial-write tearing 만 막는다. legacy 공유 경로에 flock 을 거는 것도 같은 이유로 오답이며,
     E2 가 path 를 disjoint 로 만들면 redundant 가 된다. X=1 byte-identical(ADR 0001).
-  - **PR-E2**: E1 substrate 의 task_slug 를 per-task **disjoint `standard_path`** 로 wiring →
-    동시 task 가 서로 겹치지 않는 path 로 publish 하므로 race 자체가 사라진다 + **M>1 동시
-    publication 회귀 테스트**로 증명. 이것이 HIGH-4 의 실제 fix(X-enable 은 PR-F 전제).
+  - **PR-E2(#1816) SHRUNK** (codex round-1 BLOCK + round-2 SHRINK 후 확정): X=1 byte-identical
+    ThreadPoolExecutor driver + `claim_next_task`/`run_one_task` extraction + `complete_if_not_stopped`
+    fail-closed(ALL 3 terminal sites) + worktree lifecycle primitive (Finding 4 seed teardown 포함) +
+    `_e2_task_pool_dark_clamp_enabled` patch-point + Finding 5 budget X>1-only. X>1 분기는
+    `RuntimeError`(E3 work-list 코드 문서화)로 명시 deferred; `_run_cycle_in_task_worktree` 단위 테스트
+    완료. E1 redaction slug surface INTACT(unused).
+  - **PR-E3 work-list** (codex round-2 HIGH 2개):
+    - leases coordination_root **전 표면**: `write_active_loop`/`write_active_start` write + `_load_active_
+      leases` read + `acquire_active_agent`/`release_active_agent` acquire/release + `build_overlap_preflight`
+      overlap-preflight — 전부 coordination_root(parent)를 사용해야 cross-task lease overlap 가시.
+    - cycle worktree parent **branch/issue inheritance**: origin/main 기반 생성, 현재 branch tied issue
+      메타데이터 sibling task 에 미전파.
+    - `run_one_task`/`run_repair_apply` two-root threading (`cycle_repo_root` + `coordination_root`).
+    - `claim_disjoint` first-writer-wins **REJECT** (현재 REPORT-only).
+    - `_e2_task_pool_dark_clamp_enabled` 제거 + effective X>1 fan-out 활성화.
+    - X>1/M>1 disjoint-active-surface + publication 회귀 테스트.
 
 ## Observability
 
@@ -319,4 +358,36 @@ Update this section at every session boundary or context compaction.
 - Next safe command: PR-A1(atomic-write primitives) 구현 — temp + os.replace + fcntl.flock 를 write_cycle_checkpoint / terminal write / _write_active_leases 에 적용.
 - Open questions: per-task runner 선택(post-v1 deferred); omc egress hard-cap 불가(best-effort).
 - Risks: redaction-scan cross-task interference(PR-E 전 trace 필수); two-lock+semaphore deadlock(strict ordering + bounded timeout).
+```
+
+```markdown
+## Session Handoff - 2026-06-03 (PR-E2 re-design: worktree-per-task isolation, X task pool DARK)
+
+- Role: Implementer (E2 = brick 6/7, 재설계)
+- Branch / worktree: `feat/issue-1816-x-task-pool` / `/Users/hskim/Desktop/projects/bidmate-wt/issue-1816-x-task-pool`
+- Issue / PR: issue #1816 (E2 = X task pool; E1 #1817 이미 origin/main 머지)
+- Task: `T-2026-0074` — XYZ parallelism epic E2 (X task pool substrate DARK, X=1 byte-identical)
+- Current status: E2 RE-IMPLEMENTED + tested locally (Codex adversarial review + ship 은 orchestrator — implementer 커밋 안 함). X=1 default-dark, byte-identical.
+- 재설계 이유: 첫 E2 시도(uncommitted, 이제 stash)가 producer artifact 경로(`patch_runs/<slug>`)만 scoping 하고 `active/` coordination+apply+gate 표면 전체를 singleton 으로 남겨 X>1 race → codex BLOCK. slug per-file fence 를 더 늘리는 대신 **cycle 의 `repo_root` 를 per-task worktree 로** 바꿔 `active/` 전 경로를 construction 으로 disjoint(HIGH-1..4 를 repo_root 경계에서 닫음).
+- Files touched: scripts/agent_loop.py(`_resolve_task_pool_size`/constants/`--task-pool`/Makefile 브리지 + `claim_lock`/`claim_next_task` + `run_one_task`(cycle body verbatim move) + `run_task_in_worktree` + 모듈레벨 `_run_cycle_in_task_worktree` + `_task_cycle_worktree_paths`/`create_task_cycle_worktree`/`teardown_task_cycle_worktree` + `ThreadPoolExecutor` driver + stop_event fail-closed + fcntl gating + per-task budget + E2-dark clamp), tests/test_agent_loop.py(+16 tests), docs/plans(이 노트 + E2/E3 재분할), docs/adr/0095(PR-E2 worktree 항목 + leases-overlap open Q).
+- Decisions made: (a) X=1 → worktree 없이 `repo_root=ROOT_DIR` (byte-identical; slug ternary 전무). (b) cycle worktree 는 `{task_id}-cycle` naming 으로 write-lane scratch(`{task_id}-{agent}`)와 disjoint. (c) 첫 E2 의 모든 slug path-injection RIP OUT(write_active_start/write_active_codex_runner/_run_omc_team_runner/_write_active_codex_patch/run_repair_apply/write_active_apply) — E1 redaction slug(`_redact_active_*`/`_sanitize_task_slug`/`_omc_task_run_root`)는 merged 라 INTACT(unused-but-kept). (d) E2 는 substrate DARK — effective pool 을 1 로 clamp(advisory warning), 실제 X>1 fan-out 은 E3. (e) worktree 라이프사이클을 모듈레벨 `_run_cycle_in_task_worktree` 로 추출해 injected git runner 로 모든 exit path(blocker/exception/stop/budget) teardown 을 단위 테스트. (f) DRIVER-ROOT != CYCLE-ROOT: driver ledger/state 는 PARENT ROOT_DIR, cycle 만 worktree root, future join 후 완료 기록 → ledger merge 없음. (g) stop_event fail-closed: terminal completion(local-gate-complete + ship) 전 `stop_event.is_set()` 체크 + driver pending cancel + bounded post-stop no-promote.
+- Commands run: python3 -m py_compile scripts/agent_loop.py; pytest tests/test_agent_loop.py tests/test_global_concurrency_limiter_regression.py -q (398 passed); ruff check (clean); bash scripts/test.sh.
+- Results: all green; X=1 byte-identical = `test_active_auto_loop_x1_byte_identical` + 기존 39 auto_loop 테스트.
+- Next safe command: PR-E3 — effective-pool clamp 제거 + `FIRST_COMPLETED` drain + per-cycle repo_root 인자화 + `claim_disjoint` first-writer-wins rejection + X>1/M>1 disjoint-surface 회귀 테스트.
+- Open questions: `leases.json` `claim_disjoint` 가 overlap REPORT-only(REJECT 는 E3); X>1 omc out-of-process worker egress 상호작용(best-effort cap, PR-D ack gate).
+- Risks: X=1 dark 에서 신규 위험 없음. X>1 enable 은 E3 + disjoint-worktree + fcntl-clamp 가드 뒤.
+
+## Session Handoff - 2026-06-03 (PR-E2 codex adversarial review 5 finding 수정)
+
+- Role: Implementer (E2 review fix = 첫 구현의 5 finding patch)
+- Branch / worktree: `feat/issue-1816-x-task-pool` / `/Users/hskim/Desktop/projects/bidmate-wt/issue-1816-x-task-pool`
+- Task: E2 codex review (#1816-E2-review) — 5개 finding ALL CONFIRMED by maintainer, all fixed in same worktree; DO NOT commit (orchestrator re-runs codex after)
+- Changes:
+  - Finding 1 (HIGH): `complete_if_not_stopped(task_id)` 헬퍼 추가. repair-applied(3rd site) 포함 ALL 3 terminal completion site 를 헬퍼로 routing. `stop_event.is_set()` 시 False(no-op)/True(completed) 반환.
+  - Finding 2+3 (HIGH): `nonlocal repo_root` + `_run_cycle` 클로저 제거. `run_one_task` 에 `cycle_repo_root` + `coordination_root` two explicit params 추가. `write_active_loop`/`write_active_start` 에 `coordination_root: Path | None = None` 추가(None→repo_root fallback→byte-identical). `run_repair_apply` 에 `cycle_root: Path | None = None` 추가.
+  - Finding 4 (MED): `_run_cycle_in_task_worktree` 의 `try/finally` 를 create **직후**로 이동. seed 가 예외를 던져도 teardown 실행.
+  - Finding 5 (MED): `per_task_wall_clock_budget` 를 `effective_task_pool_size > 1` 일 때만 resolve. X==1 에서는 env 무시 + 0 hard-clamp → state JSON 변경 없음 → byte-identical.
+- New tests: `test_stop_event_fail_closed_covers_repair_path` / `test_worktree_lifecycle_teardown_on_seed_failure` / `test_x1_budget_env_ignored_byte_identical` / `test_two_root_leases_on_coordination_root` (4개). 기존 `test_per_task_wall_clock_budget_trips_independently` 수정(Finding 5 행동 반영).
+- Commands run: python3 -m py_compile + pytest -q (402 passed).
+- Next: orchestrator codex adversarial re-review → pass 시 commit + PR.
 ```
