@@ -82,6 +82,15 @@ python3 scripts/agent_loop.py overlap-preflight \
 예상 변경 파일이 다른 세션의 dirty/diff 파일과 겹치지 않는다는 근거를 남긴 뒤
 진행한다. 근거를 만들 수 없으면 다른 issue를 고른다.
 
+### Orphan Worktree Warnings
+
+pre-push hygiene가 “branch already merged into main, but the worktree was never removed”를 보고해도,
+현재 PR과 무관한 다른 세션의 worktree를 opportunistic cleanup하지 않는다. 경고는 push를 막지 않는
+soft warning이며, 정리는 전용 경로(`make worktree-cleanup-dry-run` → `make worktree-cleanup`)나
+SessionStart hygiene([ADR 0096](../adr/0096-auto-worktree-branch-cleanup.md))에 맡긴다.
+즉시 정리해야 한다면 self-skip/clean/merged-confirmed 조건을 확인하고, 원격 branch
+삭제는 stacked dependent 확인 없이는 하지 않는다.
+
 ## Classification Contract
 
 Planner는 open PR을 선택 후보 목록으로 다루지 않는다. PR의 CI, draft 여부,
