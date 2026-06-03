@@ -5,11 +5,18 @@
 - Deciders: Hyunsoo Kim
 - Related: ADR 0005 (eval-split aggregate-only), 게이트 출처 issue #160 / #413, baseline staleness 검토 #1095, this fix #1222
 
+> **Current-policy note (2026-06-03)**: this ADR remains an accepted decision
+> record for the tree-SHA provenance gate. Its legacy `reports/real100/` baseline
+> example is not current claim-bearing private-eval evidence. New task, PR,
+> claim, and handoff evidence must use the `real100_v2` aggregate-only surface in
+> [Surface Map](../evaluation/surface-map.md), unless the maintainer explicitly
+> re-enables another private-eval surface.
+
 ## Context
 
 `baseline-provenance` CI 게이트(`scripts/check_baseline_provenance.py`,
 [`pr-eval.yml`](../../.github/workflows/pr-eval.yml))는 커밋된
-`reports/real100/baseline.aggregate.json` 의 `provenance.git_commit` 이
+historical `reports/real100/baseline.aggregate.json` 의 `provenance.git_commit` 이
 `origin/main` 의 ancestor 인지 `git merge-base --is-ancestor` 로 검증한다.
 SHA 가 main 에서 사라지면 `make real-eval-delta` 가 phantom 코드 상태와
 diff 하기 때문이다. 그런데 이 게이트는 **baseline regen PR 머지 직후마다
@@ -53,8 +60,8 @@ ancestry 검사가 실패한다.
    않도록 한다.
 
 production 코드 경로(`rag_*.py`, `api/`, `eval/config.yaml`) 미터치. 커밋된
-baseline 의 metric 값은 안 건드린다(§5b 무관). private 데이터는 CI 에 들어오지
-않는다 — tree 검사는 main history 만 읽는다.
+historical baseline 의 metric 값은 안 건드린다(§5b 무관). private 데이터는
+CI 에 들어오지 않는다 — tree 검사는 main history 만 읽는다.
 
 ## Consequences
 
