@@ -1,12 +1,12 @@
 # Plan: T-2026-0011 Remaining HTML Review Boards
 
-- Status: review
+- Status: done
 - Owner role: Implementer -> Reviewer
 - Related task: `tasks/queue.md::T-2026-0011`
-- Related issue / PR: [#1520](https://github.com/hskim-solv/BidMate-DocAgent/issues/1520)
+- Related issue / PR: [#1520](https://github.com/hskim-solv/BidMate-DocAgent/issues/1520) / [#1521](https://github.com/hskim-solv/BidMate-DocAgent/pull/1521); refresh issue [#2139](https://github.com/hskim-solv/BidMate-DocAgent/issues/2139)
 - Related ADR: N/A - no decision-level change
 - Created: 2026-05-26
-- Last updated: 2026-05-26
+- Last updated: 2026-06-04
 
 ## Problem Statement
 
@@ -167,15 +167,15 @@ not be treated as more authoritative than GitHub.
 ## Session Handoff - 2026-05-26 00:00 KST
 
 - Role: Implementer
-- Branch / worktree: chore/issue-1520-remaining-html-boards / /Users/hskim/.codex/worktrees/8ed1/BidMate-DocAgent
-- Issue / PR: #1520 / TBD
+- Branch / worktree: chore/issue-1520-remaining-html-boards / PR #1521
+- Issue / PR: #1520 / #1521; refresh issue #2139
 - Task: T-2026-0011
-- Current status: implemented and validated; PR pending.
+- Current status: merged in PR #1521; queue marks T-2026-0011 done.
 - Files touched: scripts/render_priority_review_boards.py, tests/test_render_priority_review_boards.py, tasks/queue.md, docs/plans/T-2026-0011-remaining-html-review-boards.md
 - Decisions made: extend one renderer rather than creating a second overlapping renderer.
 - Commands run: gh issue create; git switch; python3 -m pytest tests/test_render_priority_review_boards.py -q; python3 -m py_compile scripts/render_priority_review_boards.py; python3 scripts/render_priority_review_boards.py; python3 scripts/check_doc_links.py --check-all; git diff --check; browser smoke via http://127.0.0.1:8765
 - Results: fifteen local HTML boards generated; focused tests, py_compile, doc links, diff check, and browser smoke pass.
-- Next safe command: make check-branch
+- Next safe command: git status --short
 - Open questions: none
 - Risks: generated HTML files are ignored and must be regenerated in each checkout.
 ```
