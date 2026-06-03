@@ -6,7 +6,7 @@
 > 에이전트(agent)가 초안을 작성하게 두지 말고 본인의 프레이밍으로 직접 작성하라.
 
 - **Related**: issue [#179](https://github.com/hskim-solv/BidMate-DocAgent/issues/179), [ADR 0027](../adr/0027-lora-finetuned-embedding-additive.md), [ADR 0019](../adr/0019-embedding-default-stays-minilm.md), [ADR 0021](../adr/0021-bge-m3-completes-phase-1-3.md).
-- **Notebook**: [`notebooks/embedding_finetune.ipynb`](../notebooks/embedding_finetune.ipynb) — Colab T4 에서 end-to-end 실행 가능.
+- **Notebook**: [`notebooks/embedding_finetune.ipynb`](../../notebooks/embedding_finetune.ipynb) — Colab T4 에서 end-to-end 실행 가능.
 - **Adapter**: Hugging Face Hub 의 `bidmate/embedding-lora-kure-rfp-ko-v1` *(#179 에서 업로드; SHA 는 [`eval/config.yaml`](../../eval/config.yaml) 에 고정)*.
 
 ## TL;DR
