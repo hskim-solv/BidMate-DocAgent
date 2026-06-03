@@ -2,6 +2,8 @@
 
 이슈 [#47](https://github.com/hskim-solv/BidMate-DocAgent/issues/47)의 결과물. real100 평가셋에서 발견된 실패 모드를 6 카테고리로 분류하고, 후속 작업의 우선순위를 정한다. 본 문서는 평가 산출물(`reports/real100/eval_summary.json`)을 기반으로 작성하며, 원본 RFP 문서, 발주 기관/사업명, 질의 원문은 포함하지 않는다.
 
+> **Historical archive note.** 이 문서의 `real100`, `reports/real100/*`, `data/index/real100` 기반 실패 분류는 issue #47 시점의 v1 snapshot 보존용이다. 현재 새 작업·PR·claim의 private eval 근거는 `real100_v2` 표면만 사용하며, 아래 재현 명령과 카테고리 수치를 새 eval 근거로 재사용하지 않는다.
+
 ## 배경
 
 저장소에는 이미 공개 fixture smoke baseline, private hard-case 스캐폴딩, 재현 가능한 smoke harness, 리뷰어용 문서가 정비되어 있다. 다음 단계의 고가치 작업은 (a) 실데이터에서 어디가 실제로 깨지는지 검증하고, (b) 그 실패를 코드 경로에 매핑한 뒤, (c) impact·effort로 정렬된 백로그를 만드는 것이다. 본 문서는 그 결과물이며, 실제 fix 구현은 후속 이슈로 분리한다.
