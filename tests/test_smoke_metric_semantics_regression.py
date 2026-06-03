@@ -201,6 +201,49 @@ class SmokeMetricSemanticsRegressionTest(unittest.TestCase):
             filtered["ablation_runs"],
         )
 
+    def test_validate_metrics_allows_none_for_diagnostic_keys(self) -> None:
+        # HIGH fix (#1424): failed_abstention_rate / page_metadata_coverage
+        # return None when not applicable (no unanswerable case; no index
+        # page-metadata block). validate_metrics must treat a present key with
+        # a None value as valid, not a missing-key error (else export_artifacts
+        # crashes on otherwise-fine runs).
+        metrics = {
+            "Retrieval metrics": {
+                "Recall@5": 1.0, "Recall@10": 1.0, "MRR@5": 1.0, "nDCG@5": 1.0,
+            },
+            "Answer/evidence metrics": {
+                "rule_based_groundedness": 1.0,
+                "term_coverage_accuracy": 1.0,
+                "citation_chunk_accuracy": 1.0,
+                "Hallucination rate": 0.0,
+                "Unanswerable detection rate": 1.0,
+                "failed_abstention_rate": None,
+                "page_metadata_coverage": None,
+            },
+            "Operational metrics": {
+                "total latency ms": 10.0,
+                "retrieval latency mean ms": 2.0,
+                "generation latency mean ms": 4.0,
+                "P50 latency ms": 10.0,
+                "P95 latency ms": 20.0,
+            },
+        }
+
+        # Must NOT raise: present key + None value == not-applicable.
+        nb.validate_metrics(metrics)
+
+    def test_build_metrics_json_handles_none_diagnostic(self) -> None:
+        # End-to-end: a summary with no index page-metadata block yields
+        # page_metadata_coverage None and must not crash build_metrics_json
+        # (which validates the required key set).
+        summary = _summary_with_abstention(1.0)
+        summary.pop("index_citation_metadata_coverage", None)
+
+        block = _metrics(summary)["Answer/evidence metrics"]
+
+        self.assertIn("page_metadata_coverage", block)
+        self.assertIsNone(block["page_metadata_coverage"])
+
 
 if __name__ == "__main__":
     unittest.main()

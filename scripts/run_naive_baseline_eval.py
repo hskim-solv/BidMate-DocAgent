@@ -359,6 +359,11 @@ def validate_metrics(metrics: dict[str, Any]) -> None:
             "P95 latency ms",
         ),
     }
+    # failed_abstention_rate / page_metadata_coverage legitimately return None
+    # when not applicable (no unanswerable cases; no index page-metadata block).
+    # The key must be present, but a None value is a valid "not applicable"
+    # state — not a missing-key error.
+    nullable_keys = {"failed_abstention_rate", "page_metadata_coverage"}
     missing: list[str] = []
     for group, keys in required.items():
         block = metrics.get(group)
@@ -366,7 +371,7 @@ def validate_metrics(metrics: dict[str, Any]) -> None:
             missing.append(group)
             continue
         for key in keys:
-            if key not in block or block[key] is None:
+            if key not in block or (block[key] is None and key not in nullable_keys):
                 missing.append(f"{group}.{key}")
     if missing:
         raise ValueError("metrics.json missing required keys: " + ", ".join(sorted(missing)))
@@ -619,7 +624,7 @@ def recommend_issues(analysis: dict[str, Any], metrics: dict[str, Any]) -> list[
                 "title": "Audit citation support gaps in naive baseline answers",
                 "problem": "Observed citations are incomplete, vague, or not aligned with the generated claims.",
                 "why_it_matters": "RFP review needs claim-to-evidence traceability even when the textual answer is mostly correct.",
-                "expected_metric_impact": "Citation accuracy and claim-citation alignment should become explainable before verifier work starts.",
+                "expected_metric_impact": "Citation chunk accuracy and claim-citation alignment should become explainable before verifier work starts.",
                 "files_likely_to_change": "eval/scorers/citation.py, eval/scorers/alignment.py, docs/evaluation/naive_rag_baseline_report.md",
                 "acceptance_criteria": "Each citation failure case has a deterministic reason code and a representative example.",
                 "parallel_ai_assisted": "Yes",
@@ -643,7 +648,7 @@ def recommend_issues(analysis: dict[str, Any], metrics: dict[str, Any]) -> list[
                 "title": "Catalog naive answer failure modes without prompt tuning",
                 "problem": "The baseline produced an answer-policy failure on observed cases, including failed abstention when evidence was insufficient.",
                 "why_it_matters": "Answer failures must be separated from retrieval misses before prompt or verifier experiments.",
-                "expected_metric_impact": "Faithfulness, answer relevancy, hallucination, and abstention error rates get cleaner attribution.",
+                "expected_metric_impact": "Rule-based groundedness, term-coverage accuracy, hallucination, and abstention error rates get cleaner attribution.",
                 "files_likely_to_change": "docs/evaluation/naive_rag_baseline_report.md, eval/scorers/case.py",
                 "acceptance_criteria": "Failure cases distinguish partial answer, weak evidence, wrong synthesis, and failed abstention.",
                 "parallel_ai_assisted": "Yes",
