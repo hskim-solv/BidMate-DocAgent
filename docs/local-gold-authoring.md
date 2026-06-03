@@ -1,16 +1,28 @@
 # Local gold authoring guide
 
-이슈 [#50](https://github.com/hskim-solv/BidMate-DocAgent/issues/50)의 산출물. 비공개 실데이터(`data/files/`, `data/data_list.csv`) 위에서 답변 정확도와 abstention 동작을 검증할 때 사용하는 `eval/real_config.local.yaml`을 작성·유지하는 방법을 정리한다.
+이슈 [#50](https://github.com/hskim-solv/BidMate-DocAgent/issues/50)의 산출물.
+비공개 실데이터(`data/files/`, `data/data_list.csv`) 위에서 답변 정확도와
+abstention 동작을 검증할 때 사용하는 local gold config를 작성·유지하는
+방법을 정리한다.
+
+> **Current-use boundary.** 새 claim-bearing private real-eval 작업은
+> `data/private/real100_v2/real_config_v2.local.yaml` 또는
+> `REAL100_V2_CONFIG`가 가리키는 ignored local config를 사용한다.
+> `eval/real_config.local.yaml`은 legacy/compatibility 예시로만 다루며,
+> maintainer가 명시적으로 다시 열기 전까지 legacy real100/v1/221/kordoc
+> evidence를 새 PR, claim, handoff에 쓰지 않는다.
 
 ## 무엇을 만드는 파일인가
 
-`eval/real_config.local.yaml`은 **비공개** 평가 입력이다. 다음을 적는다.
+Local gold config는 **비공개** 평가 입력이다. 다음을 적는다.
 
 - 어떤 질의를 던지는지
 - 어떤 답이 나와야 하는지(혹은 답이 없어야 하는지)
 - 어떤 문서·문구가 인용되어야 하는지
 
-이 파일이 있어야 [`scripts/smoke_real.sh`](../scripts/smoke_real.sh) 또는 직접 호출하는 `python3 eval/run_eval.py --config eval/real_config.local.yaml ...`이 gold 비교를 한다. 파일이 없으면 인덱싱과 대표 질의까지만 실행되고 평가는 건너뛴다.
+이 파일이 있어야 maintainer-only full run 또는 직접 호출하는
+`python3 eval/run_eval.py --config <ignored-local-config> ...`이 gold 비교를
+한다. 파일이 없으면 인덱싱과 대표 질의까지만 실행되고 평가는 건너뛴다.
 
 ## 안전 원칙 (반드시 지킬 것)
 
@@ -21,11 +33,16 @@
 
 ## 어디서 시작하나
 
-[`eval/real_config.example.yaml`](../eval/real_config.example.yaml)을 같은 폴더에 `real_config.local.yaml`로 복사한 뒤 채운다.
+Compatibility 예시는 [`eval/real_config.example.yaml`](../eval/real_config.example.yaml)을
+같은 폴더에 `real_config.local.yaml`로 복사한 뒤 채운다.
 
 ```bash
 cp eval/real_config.example.yaml eval/real_config.local.yaml
 ```
+
+현재 `real100_v2` 작업에서는 같은 gold 필드를
+`data/private/real100_v2/real_config_v2.local.yaml`에 반영하거나
+`REAL100_V2_CONFIG`로 가리키는 ignored local config에 반영한다.
 
 ## 필수 필드
 
@@ -163,7 +180,7 @@ PDF/HWP 인덱스의 한 사업에 대해 사업기간과 사업예산을 묻는
 
    ```text
    python3 eval/run_eval.py \
-     --config eval/real_config.local.yaml \
+     --config data/private/real100_v2/real_config_v2.local.yaml \
      --index_dir data/index/real100_v2 \
      --output_dir reports/real100_v2
    ```
