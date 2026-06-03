@@ -65,7 +65,10 @@ HTML 자체가 아니라 source aggregate artifact, 실행 command, diff, ADR/so
 
 Codex가 파일을 편집하기 전에 같은 issue/branch/PR/worktree가 이미 진행 중인지
 확인한다. 이 check는 report-only이며 branch switch, push, PR 생성/머지/닫기,
-issue close, branch delete를 실행하지 않는다.
+issue close, branch delete를 실행하지 않는다. Coordination surface는 Codex와
+Claude Code를 분리하지 않는다. 루트 checkout, `.codex/worktrees/*`,
+`.claude/worktrees/*`, 그리고 `git worktree list`에 잡히는 외부 worktree는
+모두 같은 “다른 세션” 후보로 취급한다.
 
 ```bash
 python3 scripts/agent_loop.py overlap-preflight \
@@ -75,8 +78,9 @@ python3 scripts/agent_loop.py overlap-preflight \
 
 `blocked`이면 현재 작업을 시작하지 않는다. 예: 같은 issue의 open PR이 있거나,
 다른 worktree가 같은 issue branch를 소유하거나, 현재 checkout이 detached/stale인
-경우다. `warn`이면 branch/PR history를 사람이 볼 수 있는 report로 확인한 뒤
-진행한다.
+경우다. `warn`이면 branch/PR history를 사람이 볼 수 있는 report로 확인하고,
+예상 변경 파일이 다른 세션의 dirty/diff 파일과 겹치지 않는다는 근거를 남긴 뒤
+진행한다. 근거를 만들 수 없으면 다른 issue를 고른다.
 
 ## Classification Contract
 
