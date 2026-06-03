@@ -4,6 +4,7 @@
 - Owner role: <Planner | Implementer | Evaluator | Reviewer | other role>
 - Related task: `tasks/queue.md::<task-id>` | N/A
 - Related issue / PR: <links or N/A>
+- Overlap preflight: clear | warn | blocked | N/A; evidence: <path or command output>
 - Related ADR: <links or "N/A - no decision-level change">
 - Created: YYYY-MM-DD
 - Last updated: YYYY-MM-DD
@@ -118,6 +119,7 @@ Update this section at every session boundary or context compaction.
 
 - Role:
 - Branch / worktree:
+- Overlap preflight:
 - Issue / PR:
 - Task:
 - Current status:
