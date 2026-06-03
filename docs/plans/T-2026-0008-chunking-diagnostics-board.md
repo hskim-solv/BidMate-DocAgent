@@ -1,17 +1,17 @@
 # Plan: T-2026-0008 Chunking Diagnostics Board
 
-- Status: review
+- Status: done
 - Owner role: Implementer -> Reviewer
 - Related task: `tasks/queue.md::T-2026-0008`
-- Related issue / PR: [#1514](https://github.com/hskim-solv/BidMate-DocAgent/issues/1514) / PR TBD
+- Related issue / PR: [#1514](https://github.com/hskim-solv/BidMate-DocAgent/issues/1514) / [#1515](https://github.com/hskim-solv/BidMate-DocAgent/pull/1515); refresh issue #2077
 - Related ADR: N/A - no decision-level change
 - Created: 2026-05-26
-- Last updated: 2026-05-26
+- Last updated: 2026-06-04
 
 ## Problem Statement
 
-Chunking evidence is spread across Phase 2 retrieval reports, real100 corpus EDA,
-and multi-chunk evidence failure aggregates. That is enough for agent workflows
+Chunking evidence is spread across Phase 2 retrieval reports, historical real100
+corpus EDA, and multi-chunk evidence failure aggregates. That is enough for agent workflows
 but slow for human review. Reviewers need one local HTML board that shows the
 chunking ablation shape, corpus chunk health, and multi-chunk evidence failure
 signals without changing retrieval or chunking behavior.
@@ -42,12 +42,12 @@ deterministic, and aggregate-only.
 
 ## Data / Eval Impact
 
-- Surface: private real-eval aggregate viewer plus existing Phase 2 retrieval
-  aggregate report.
+- Surface: aggregate-only private-eval diagnostics viewer plus existing Phase 2
+  retrieval aggregate report; not a current `real100_v2` performance evidence surface.
 - Data boundary: aggregate-only private output under ADR 0005.
 - Allowed claim: chunking diagnostics now have a local human-readable board.
-- Disallowed claim: no chunking variant is promoted and no RAG quality improvement
-  is claimed.
+- Disallowed claim: no chunking variant is promoted and no current `real100_v2`
+  private-eval or RAG quality improvement is claimed.
 - Baseline/control affected: no.
 - Benchmark/eval auditor required: no.
 
@@ -81,7 +81,7 @@ Expected evidence:
 
 - Focused test suite passes.
 - Generated HTML is local-only and ignored by git.
-- No real-eval performance or default-change claim is made.
+- No current `real100_v2` performance or default-change claim is made.
 
 ## Rollback Strategy
 
@@ -102,9 +102,9 @@ case ids, query text, doc ids, chunk ids, or raw text should render.
 
 - Role: Implementer
 - Branch / worktree: chore/issue-1514-chunking-diagnostics-board / /Users/hskim/.codex/worktrees/8ed1/BidMate-DocAgent
-- Issue / PR: #1514 / PR TBD
+- Issue / PR: #1514 / PR #1515
 - Task: T-2026-0008
-- Current status: implementation complete, focused validation passing.
+- Current status: merged in PR #1515.
 - Files touched: scripts/render_chunking_diagnostics_board.py, tests/test_render_chunking_diagnostics_board.py, docs/retrieval/chunking-diagnostics.md, tasks/queue.md, docs/plans/T-2026-0008-chunking-diagnostics-board.md
 - Decisions made: local self-contained HTML, no JS/dependencies, aggregate-only board.
 - Commands run: python3 -m py_compile scripts/render_chunking_diagnostics_board.py scripts/html_report.py; python3 -m pytest -q tests/test_render_chunking_diagnostics_board.py; git diff --check
