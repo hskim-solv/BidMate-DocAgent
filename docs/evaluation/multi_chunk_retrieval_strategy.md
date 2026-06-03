@@ -2,6 +2,8 @@
 
 This report is aggregate-only. It uses counts from `reports/real100/multi_chunk_evidence_failures.aggregate.json` and does not include raw questions, answers, document IDs, chunk IDs, paths, sections, or source text.
 
+> **Archive-only note (2026-06-03)**: the source aggregate is a legacy `real100` / 221-prediction artifact. It is historical context, not current claim-bearing private eval evidence. New task, PR, claim, and handoff decisions must use the `real100_v2` aggregate-only surface in [Surface Map](./surface-map.md), or regenerate a matching `real100_v2` multi-chunk aggregate before reusing this strategy.
+
 ## Source Provenance
 
 | Field | Value |
