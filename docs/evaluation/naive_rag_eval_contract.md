@@ -6,6 +6,14 @@
 - 실행 명령은 `python -m eval.naive_rag.run_eval --config configs/eval/rag_quality_v1.yaml`이다.
 - 출력은 `experiments/runs/<run_id>/` 아래에 저장되며, 검색(retrieval) 지표와 답변(answer) 지표를 분리한다.
 
+## Current Evidence Boundary
+
+This contract is a public-fixture/local-run evaluation contract, not a private
+performance claim surface. New private-eval task, PR, claim, and handoff
+evidence must use `real100_v2` aggregate-only evidence with matching provenance;
+legacy `real100` / v1 / 221-case / `kordoc` evidence remains archive-only unless
+the maintainer explicitly re-enables another private-eval surface.
+
 ## 목적
 
 이 계약은 RFP/document QA RAG 시스템에서 후속 개선을 비교하기 위한 첫 기준선을 고정한다. 재순위(reranking), hybrid 검색(retrieval), 메타데이터 필터링(metadata filtering), query rewriting, self-correction, agentic retrieval을 붙이기 전에 naive RAG가 무엇을 맞히고 어디서 실패하는지 기록한다.
