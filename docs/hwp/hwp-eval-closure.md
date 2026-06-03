@@ -10,6 +10,10 @@ permalink: /hwp-eval-closure/
 corpus(96% HWP) 사이에서 식별된 네 가지 갭, 그리고 이를 해소한 PR 스택을
 기록한다.
 
+> **Historical archive note.** 이 문서의 `data/index/real100` private corpus
+> reference는 ADR 0039 / 2026-05 HWP gap closure 당시의 v1 snapshot 맥락이다.
+> 현재 새 작업·PR·claim의 private eval 근거는 `real100_v2` 표면만 사용한다.
+
 ## 배경(Background)
 
 ADR 0036 (#641) 이 `HwpNativeLoader` 를 pyhwp-gated 기본값으로 출하한 후,
