@@ -1,0 +1,4 @@
+{
+  "_schema": "Narrative-gap registry (issue #1088). Each entry juxtaposes a memory self-claim with a git ground-truth signal as a RAW SIGNAL — no verdict. Fields: signal (one of commits | load_bearing_touches | prs_merged_count | adr_changes_count), claim_value (number), source_memory (memory filename the claim came from), window (Qx-YYYY the claim refers to; compared against the report quarter via window_match), note (optional free text). Memory body text is never parsed — claims are registered explicitly here (privacy contract + parse-noise avoidance). The arithmetic gap is a raw signal; the in-/out-of-tolerance judgment stays with the LLM (SKILL.md, ADR 0064).",
+  "claims": []
+}

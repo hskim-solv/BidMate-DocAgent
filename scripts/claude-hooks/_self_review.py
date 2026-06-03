@@ -334,6 +334,113 @@ def collect_git(repo: str, start: str, end: str) -> dict[str, Any]:
     }
 
 
+# --- Narrative gap signals (issue #1088) -----------------------------------
+# Memory narrative accumulates numeric self-claims ("N PRs merged", "dogfood
+# N times"). git is the only externally-verifiable record of actual behavior;
+# when the two diverge the memory side risks being self-rationalization. We
+# place claim_value next to the git ground-truth value as a RAW SIGNAL — never
+# a verdict. The ✓/△/✗ judgment stays with the LLM (SKILL.md, ADR 0064); this
+# collector only juxtaposes the two numbers so a drifting claim can later be
+# surfaced as "needs verification".
+#
+# Deliberately OUT OF SCOPE (the discarded first attempt, stash-dropped):
+# word-count ratios, semantic similarity matching, and auto-grading. Claims
+# come from an explicit repo-internal registry, NOT from parsing memory body
+# text — the body is never read (privacy contract + parse noise).
+
+# Maps a registry ``signal`` name to a function extracting the comparable
+# scalar from ``collect_git()`` output. A signal absent from this map yields
+# ``git_value=None`` (gap stays None) so the registry may name a claim we
+# cannot yet ground without raising.
+NARRATIVE_GIT_SIGNALS: dict[str, Any] = {
+    "commits": lambda g: g.get("commits"),
+    "load_bearing_touches": lambda g: g.get("load_bearing_touches"),
+    "prs_merged_count": lambda g: len(g.get("prs_merged", [])),
+    "adr_changes_count": lambda g: len(g.get("adr_changes", [])),
+}
+
+
+def load_narrative_claims(path: str) -> list[dict[str, Any]]:
+    """Load the narrative-claims registry. Fail-soft to an empty list.
+
+    Registry shape::
+
+        {"claims": [{"signal", "claim_value", "source_memory",
+                     "window"?, "note"?}, ...]}
+
+    A missing file, malformed JSON, a non-dict root, or a non-list ``claims``
+    value all degrade to ``[]`` — the collector still runs, the gap section
+    just stays empty. Non-dict entries inside ``claims`` are skipped. Mirrors
+    the fail-soft import in ``load_load_bearing_paths``.
+    """
+    expanded = os.path.expanduser(path)
+    try:
+        with open(expanded, encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, ValueError):
+        return []
+    if not isinstance(data, dict):
+        return []
+    claims = data.get("claims")
+    if not isinstance(claims, list):
+        return []
+    return [c for c in claims if isinstance(c, dict)]
+
+
+def compute_narrative_gaps(
+    claims: list[dict[str, Any]], git_data: dict[str, Any], quarter: str
+) -> list[dict[str, Any]]:
+    """Juxtapose each claim_value with its git ground-truth value.
+
+    Returns one dict per claim carrying both numbers and their gap. This is a
+    RAW SIGNAL, not a verdict: ``gap`` is the plain arithmetic difference
+    (claim_value - git_value) and no threshold/grade is applied here — that is
+    the LLM's job in SKILL.md (ADR 0064). ``window_match`` flags whether the
+    claim's window equals the report quarter; since ``git_data`` is already
+    filtered to the quarter window, a mismatch means git_value is not a
+    like-for-like comparison and the gap should be read with caution.
+    """
+    signals: list[dict[str, Any]] = []
+    for claim in claims:
+        signal = claim.get("signal")
+        claim_value = claim.get("claim_value")
+        extractor = (
+            NARRATIVE_GIT_SIGNALS.get(signal) if isinstance(signal, str) else None
+        )
+        git_value = extractor(git_data) if extractor else None
+        if isinstance(claim_value, (int, float)) and isinstance(
+            git_value, (int, float)
+        ):
+            gap = claim_value - git_value
+        else:
+            gap = None
+        window = claim.get("window")
+        signals.append({
+            "signal": signal,
+            "claim_value": claim_value,
+            "git_value": git_value,
+            "gap": gap,
+            "window": window,
+            "window_match": (window == quarter) if window is not None else None,
+            "source_memory": claim.get("source_memory", ""),
+            "grounded": git_value is not None,
+        })
+    return signals
+
+
+def _narrative_gap_summary(signals: list[dict[str, Any]]) -> str:
+    """One-line registry summary for the report skeleton (no verdict)."""
+    if not signals:
+        return "0 registered"
+    grounded = [s for s in signals if s.get("grounded")]
+    gaps = [abs(s["gap"]) for s in grounded if isinstance(s.get("gap"), (int, float))]
+    max_gap = max(gaps) if gaps else None
+    return (
+        f"{len(signals)} registered, {len(grounded)} grounded, "
+        f"max|gap|={max_gap}"
+    )
+
+
 def _compute_adr_lags(repo: str, start: str, end: str) -> list[dict[str, Any]]:
     """Return ADR proposed→accepted lag for ADRs accepted within the quarter.
 
@@ -786,7 +893,8 @@ def compute_evidence_age_days(
 
 
 def assemble_stats(
-    quarter: str, transcripts_glob: str, memory_dir: str, repo: str
+    quarter: str, transcripts_glob: str, memory_dir: str, repo: str,
+    narrative_claims_path: str | None = None,
 ) -> dict[str, Any]:
     start, end = parse_quarter(quarter)
     sessions = collect_sessions(transcripts_glob, start, end)
@@ -806,6 +914,10 @@ def assemble_stats(
         "content_freshness": compute_axis_5_memory_hygiene(memory_data, start),
     }
     git_data = collect_git(repo, start, end)
+    claims_path = narrative_claims_path or os.path.join(
+        repo, "docs", "self-review", "narrative-claims.json"
+    )
+    narrative_claims = load_narrative_claims(claims_path)
     stats: dict[str, Any] = {
         "quarter": quarter,
         "date_range": [start, end],
@@ -817,6 +929,9 @@ def assemble_stats(
         "axis_2_plan_subagent_skip_rate": axis_2,
         "axis_4_cycle_time": axis_4,
         "axis_5_memory_hygiene": axis_5,
+        "narrative_gap_signals": compute_narrative_gaps(
+            narrative_claims, git_data, quarter
+        ),
     }
     stats["evidence_age_days"] = compute_evidence_age_days(stats)
     return stats
@@ -836,6 +951,10 @@ def emit_report(stats: dict[str, Any]) -> str:
         f"- Load-bearing touches: {stats['git'].get('load_bearing_touches', 0)}",
         f"- ADR changes: {len(stats['git'].get('adr_changes', []))}",
         f"- PRs merged: {len(stats['git'].get('prs_merged', []))}",
+        (
+            f"- Narrative-gap claims (issue #1088): "
+            f"{_narrative_gap_summary(stats.get('narrative_gap_signals', []))}"
+        ),
         (
             f"- Axis #2 Plan-subagent skip rate: "
             f"{stats['axis_2_plan_subagent_skip_rate'].get('skip_rate')} "
@@ -898,6 +1017,9 @@ def main() -> int:
     p.add_argument("--transcripts-glob", default=DEFAULT_TRANSCRIPTS_GLOB)
     p.add_argument("--memory-dir", default=DEFAULT_MEMORY_DIR)
     p.add_argument("--repo", default=os.getcwd())
+    p.add_argument("--narrative-claims", default=None,
+                   help="narrative-claims registry JSON (default "
+                        "<repo>/docs/self-review/narrative-claims.json)")
     p.add_argument("--emit-stats", action="store_true",
                    help="emit stats.json to stdout (quarter mode)")
     p.add_argument("--emit-report", action="store_true",
@@ -932,7 +1054,8 @@ def main() -> int:
 
     try:
         stats = assemble_stats(
-            args.quarter, args.transcripts_glob, args.memory_dir, args.repo
+            args.quarter, args.transcripts_glob, args.memory_dir, args.repo,
+            narrative_claims_path=args.narrative_claims,
         )
     except ValueError as e:
         sys.stderr.write(f"self-review: {e}\n")
