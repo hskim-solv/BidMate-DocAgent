@@ -38,7 +38,16 @@ make ship-start TITLE="자동화 범위 설명" TYPE=chore SLUG=short-slug
 3. 제목 또는 `SLUG` 로 `<type>/issue-<N>-<slug>` 브랜치를 만든다.
 4. `origin/main` 을 fetch 한 뒤 새 브랜치로 switch 한다.
 
-그 다음 파일을 수정하고 focused test 를 실행한 뒤 `make ship-arm` 한다.
+그 다음 파일을 수정하고 focused test 를 실행한 뒤 `make ship-arm` 한다. 편집이나
+arming 전에 동일 issue/branch/PR 이 다른 Codex, Claude Code, 또는 외부
+worktree 에서 이미 진행 중인지
+[`overlap-preflight`](./ai-codex-workflow.md#overlap-preflight)로 기록한다:
+
+```bash
+python3 scripts/agent_loop.py overlap-preflight \
+  --issue <N> \
+  --branch <type>/issue-<N>-<slug>
+```
 
 ## Arming: `make ship-arm`
 
