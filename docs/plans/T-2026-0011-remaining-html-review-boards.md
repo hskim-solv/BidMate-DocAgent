@@ -148,6 +148,13 @@ artifacts and can be deleted or regenerated without touching source aggregates.
 - `reports/governance_automation.html`
 - `reports/claim_validator.html`
 
+Current-use boundary: any `reports/real100/*` HTML outputs above are historical
+generated review views only. They are not current claim-bearing private
+evidence; new task, PR, claim, and handoff decisions must use the `real100_v2`
+aggregate-only surface in [Surface Map](../evaluation/surface-map.md), or
+regenerate matching v2 review-board outputs before treating a board as current
+evidence.
+
 ## Reviewer Notes
 
 Attack privacy boundary, over-claiming, and whether HTML is clearly generated
