@@ -7,6 +7,14 @@
 - Related: ADR 0001 (naive_baseline byte-identical), ADR 0005 (private/public eval 분리), ADR 0029 (case-proposer human-gate), ADR 0048 (realN metrics), ADR 0052 (n=221), ADR 0054 (conditional-on-answer scorer), ADR 0059 (failure-mode classifier), ADR 0068 (oracle 천장)
 - Issue: #1347
 
+> **Current-policy note (2026-06-03)**: this ADR remains an accepted historical
+> decision record for the additive content-grounded gold surface. Its legacy
+> `real-100` / 221-case motivating context and local-only `reports/real100_cg*`
+> measurements are not current claim-bearing private-eval evidence. New task,
+> PR, claim, and handoff evidence must use the `real100_v2` aggregate-only
+> surface in [Surface Map](../evaluation/surface-map.md), unless the maintainer
+> explicitly re-enables another private-eval surface.
+
 ## Context
 
 real-100 (ADR 0052, n=221) 헤드라인 정확도가 **0.085** (hashing) 에 고착. 5-lever null cascade audit (`docs/audits/construct-validity-gold-grounding-inspection.md`) 가 천장의 binding constraint 를 **파이프라인이 아니라 gold 의 construct-validity 결함**으로 확정했다:
