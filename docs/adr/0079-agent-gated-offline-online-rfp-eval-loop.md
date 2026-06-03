@@ -23,8 +23,9 @@ discipline.
 ## Decision
 
 Codex will act as a conservative agent gate for the offline/online RFP evaluation
-loop, using private real-eval as the required claim-bearing surface and adopting
-metric suites by versioned evidence rather than by a single headline score.
+loop, using the current `real100_v2` aggregate-only private real-eval lane as the
+required claim-bearing surface and adopting metric suites by versioned evidence
+rather than by a single headline score.
 
 Specifics:
 
@@ -36,7 +37,11 @@ Specifics:
   precision, claim-citation alignment, comparison coverage, abstention
   calibration, numeric/date/condition accuracy, and human/judge agreement.
 - A single headline score is a triage aid, not a merge/block contract.
-- Claim-bearing metric adoption requires private real-eval aggregate evidence.
+- Claim-bearing metric adoption requires current `real100_v2` aggregate evidence.
+  Legacy real100/v1/221/kordoc evidence remains archive-only unless the
+  maintainer explicitly re-enables a named private-eval surface through later ADR
+  + Surface Map updates that list allowed paths, commands, and aggregate-only
+  boundary.
 - Ambiguous cases default to draft, no performance claim, follow-up issue, or
   fail-closed handling.
 - Existing `human-gated-*` CLI names remain as compatibility names, but their
@@ -48,8 +53,8 @@ Specifics:
   private eval, or cleanup decision.
 - Agent decisions become auditable because the acceptance criteria live in a
   committed policy document.
-- Private real-eval becomes mandatory for performance evidence, increasing run
-  cost and provenance requirements.
+- The current `real100_v2` aggregate-only private-eval surface becomes mandatory
+  for performance evidence, increasing run cost and provenance requirements.
 - Online private-data egress is permitted by policy, so every online run must
   record provider/model/payload provenance and keep raw private outputs out of
   committed artifacts.
@@ -73,3 +78,5 @@ Specifics:
 <!-- verifies-key: docs/evaluation/agent-gated-rfp-eval-loop.md:Metric Suite -->
 <!-- verifies-key: docs/evaluation/agent-gated-rfp-eval-loop.md:Agent Gate -->
 <!-- verifies-key: docs/evaluation/surface-map.md:Environment Axis -->
+<!-- verifies-key: docs/evaluation/surface-map.md:Private Real-Eval -->
+<!-- verifies-key: docs/evaluation/surface-map.md:Critical Warnings -->
