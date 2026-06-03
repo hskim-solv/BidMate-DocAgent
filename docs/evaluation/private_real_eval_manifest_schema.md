@@ -3,6 +3,13 @@
 이 manifest는 private real-eval의 문서 inventory 단일 출처(source of truth)다.
 원문 파일명이나 고객명은 커밋하지 않는다. 아래 값은 모두 fake placeholder다.
 
+> **Current-use boundary (2026-06-03)**: this schema describes local private
+> inventory bookkeeping only. The example `private_real_eval` split and ignored
+> `data/files_kordoc/` paths do not re-enable legacy `real100`/v1 claim-bearing
+> evidence. New task, PR, claim, and handoff evidence must use the `real100_v2`
+> aggregate-only surface in [Surface Map](./surface-map.md), unless the
+> maintainer explicitly re-enables another private-eval surface.
+
 ## Required Columns
 
 | column | purpose |
