@@ -1,3 +1,9 @@
+---
+layout: page
+title: 0pp lift 가 가리킨 것 — 측정 surface 안의 진짜 신호
+permalink: /blog/hyde-measurement-saturation/
+---
+
 # 0pp lift 가 가리킨 것 — 측정 surface 안의 진짜 신호
 
 > This post documents the measurement-surface diagnosis that led to [ADR
