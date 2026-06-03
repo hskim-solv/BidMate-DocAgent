@@ -1,12 +1,12 @@
 # Plan: T-2026-0016 Agent worktree overlap preflight
 
-- Status: review
+- Status: done
 - Owner role: Maintainer -> Reviewer
 - Related task: `tasks/queue.md::T-2026-0016`
-- Related issue / PR: Issue #1541 / PR #1543
+- Related issue / PR: Issue #1541 / PR #1543; refresh issue #2097
 - Related ADR: ADR 0007; ADR 0079
 - Created: 2026-05-27
-- Last updated: 2026-05-27
+- Last updated: 2026-06-04
 
 ## Problem Statement
 
