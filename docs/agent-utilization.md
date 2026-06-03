@@ -20,6 +20,8 @@
 | **서브에이전트(Subagents)** | 컨텍스트 격리 (읽기 전용 탐색·설계 외주) | 메인 대화에서 위임 | Explore, Plan, general-purpose |
 
 원칙: **규칙은 자동, 나머지 셋은 트리거 만족 시만 호출.** 트리거가 모호하면 도구는 사장.
+Codex/Claude 병행 세션을 새로 열 때는 [`overlap-preflight`](operations/ai-codex-workflow.md#overlap-preflight)
+결과와 evidence sink를 남겨 같은 자동화가 다른 worktree 작업을 침범하지 않았음을 증명한다.
 
 ## 5축 × 4 Pillar 매핑
 
@@ -27,7 +29,7 @@
 |---|---|---|---|---|---|
 | **#1 컨텍스트 효율** | ✓ | Read 5회 누적 / 단일 파일 200줄↑ | **서브에이전트:** Explore 위임 (병렬 ≤3) · **커맨드:** `/clear` 후 작업 분리 | 대화당 평균 token, Explore 호출 수/분기 | — |
 | **#2 Agent 위임** | △ | 비-trivial 변경 (>1 파일 or >50 LOC) 시작 전 · plan mode 진입 | **서브에이전트:** Plan 기본 호출 · **규칙:** `## Delegation defaults` (CLAUDE.md) · **스킬:** multi-agent-ownership 역할 분담 | PR diff>50 LOC 중 Plan 호출 0회 비율 | #718 |
-| **#3 자동화 ROI** | △ | worktree clone 직후 · 분기 시작 | **커맨드:** `make install-hooks` · `make ship-arm` · `make governance-check` · **규칙:** PreToolUse 훅 3 · **스킬:** `ship-pr` | `.hook-fires.log` 라인 수, ship-* 경유 PR 비율 | #719 |
+| **#3 자동화 ROI** | △ | worktree clone 직후 · 분기 시작 · Codex/Claude 병행 세션 시작 | **커맨드:** `make install-hooks` · `make ship-arm` · `make governance-check` · `scripts/agent_loop.py overlap-preflight` · **규칙:** PreToolUse 훅 3 · **스킬:** `ship-pr` | `.hook-fires.log` 라인 수, ship-* 경유 PR 비율, overlap evidence 기록 여부 | #719 |
 | **#4 사이클 타임** | △ | ADR proposed→accepted >7일 · PR open→merge >3일 | **스킬:** `ship-pr` (ADR 번호 예약 + stacked 안전) · **커맨드:** `make ship-arm` (Stop훅 자동 ship) | ADR lag 평균, PR turnaround p90 | #724 |
 | **#5 메모리 위생** | △ | memory 파일 추가·수정 · 인덱스 라인 >20 | **스킬:** `anthropic-skills:consolidate-memory` · `productivity:memory-management` · **규칙:** PreToolUse Edit matcher (예정) | 인덱스 라인 수, stale (>2분기 미참조) 비율 | #720 |
 
