@@ -1,12 +1,12 @@
 # Plan: T-2026-0047 repair or rescope real100_v2 page metadata blocker
 
-- Status: review
+- Status: done
 - Owner role: Evaluator -> Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer
 - Related task: `tasks/queue.md::T-2026-0047`
-- Related issue / PR: [#1645](https://github.com/hskim-solv/BidMate-DocAgent/issues/1645) / PR TBD
+- Related issue / PR: [#1645](https://github.com/hskim-solv/BidMate-DocAgent/issues/1645) / [#1648](https://github.com/hskim-solv/BidMate-DocAgent/pull/1648); refresh issue [#2131](https://github.com/hskim-solv/BidMate-DocAgent/issues/2131)
 - Related ADR: [ADR 0005](../adr/0005-eval-split-public-synthetic-private-local.md), [ADR 0003](../adr/0003-structured-answer-citation-contract.md)
 - Created: 2026-05-28
-- Last updated: 2026-05-28
+- Last updated: 2026-06-04
 
 ## Problem Statement
 
@@ -161,15 +161,15 @@ index is rebuilt and measured.
 ## Session Handoff - 2026-05-28 14:25 KST
 
 - Role: Evaluator / Implementer
-- Branch / worktree: eval/issue-1645-repair-real100-v2-page-metadata-blocker / /Users/hskim/.codex/worktrees/0ebc/BidMate-DocAgent
-- Issue / PR: issue #1645 / PR TBD
+- Branch / worktree: eval/issue-1645-repair-real100-v2-page-metadata-blocker / PR #1648
+- Issue / PR: issue #1645 / PR #1648; refresh issue #2131
 - Task: T-2026-0047
-- Current status: fail-closed guard implemented; aggregate readiness packet generated; affected optimization reports are marked invalid for claims.
+- Current status: merged in PR #1648; queue marks T-2026-0047 done. The aggregate readiness packet keeps affected optimization reports invalid for claims.
 - Files touched: scripts/real_eval_paths.py, tests/test_real_eval_paths.py, scripts/page_metadata_recovery_audit.py, tests/test_page_metadata_recovery_audit.py, reports/real100_v2/page_metadata_readiness.aggregate.json, docs/evaluation/real100_v2-page-metadata-readiness.md, docs/evaluation/real100_v2-retrieval-diagnostics.md, docs/evaluation/real100_v2-latency-cost-budget.md, docs/evaluation/real100_v2-reranker-candidate-budget.md, docs/evaluation/real100_v2-context-packing.md, reports/real100_v2/README.md, .gitignore, .githooks/pre-commit, scripts/check_real100_v2_only.py, docs/plans/T-2026-0047-repair-or-rescope-real100-v2-page-metadata-blocker.md, tasks/queue.md
 - Decisions made: no parser/index rebuild in this PR; T-2026-0031 remains blocked; T-2026-0029/T-2026-0030/T-2026-0032/T-2026-0033 optimization conclusions must be rerun on a MiniLM page-aware v2 index.
 - Commands run: make ship-start TITLE="Repair real100 v2 page metadata blocker" TYPE=eval; make check-branch; python3 scripts/page_metadata_recovery_audit.py --index-dir <external_private_real100_v2_index> --out-json reports/real100_v2/page_metadata_readiness.aggregate.json --out-md docs/evaluation/real100_v2-page-metadata-readiness.md --format markdown; REAL_EVAL_ROOT=/Users/hskim/Desktop/projects/BidMate-DocAgent REAL100_V2_CONFIG=data/private/real100_v2/real_config_v2.local.yaml REAL100_V2_INDEX_DIR=data/index/real100_v2 REAL100_V2_REPORT_DIR=reports/real100_v2 make real-eval-v2-check.
 - Results: `make real-eval-v2-check` now fails for current real100_v2 index because it uses hashing embeddings and chunk page metadata coverage is 0.0; readiness packet reports private real-eval index NO-GO.
-- Next safe command: python3 -m pytest -q tests/test_real_eval_paths.py tests/test_page_metadata_recovery_audit.py tests/test_real100_v2_guard.py
+- Next safe command: git status --short
 - Open questions: none.
 - Risks: existing historical aggregates remain in tree for auditability but are invalidated for optimization claims.
 ```
