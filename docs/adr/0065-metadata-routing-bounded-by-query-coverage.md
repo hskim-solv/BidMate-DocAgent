@@ -4,9 +4,16 @@
 - **Date**: 2026-05-21
 - **Related**: [0058](./0058-phase35-mode-winner.md) (hybrid 기본), [0002](./0002-metadata-first-retrieval.md) (메타데이터 우선 검색), [0001](./0001-preserve-naive-baseline.md) (baseline 불변), [0005](./0005-eval-split-public-synthetic-private-local.md) (eval 분리); PR #1108, issue #1107, issue #1113
 
+> **Current-policy note (2026-06-03)**: this ADR remains an accepted historical
+> decision record for metadata-routing scope. Its legacy `real100 kordoc` Phase 4
+> retrieval-eval measurements are not current claim-bearing private-eval evidence.
+> New task, PR, claim, and handoff evidence must use the `real100_v2`
+> aggregate-only surface in [Surface Map](../evaluation/surface-map.md), unless
+> the maintainer explicitly re-enables another private-eval surface.
+
 ## Context
 
-검색 평가(retrieval-eval) 4단계 프로토콜의 Phase 4(메타데이터/필터링 ablation)를 real100 kordoc 26k 인덱스에서 측정했다 (PR #1108, n=114 답변 가능 케이스, paired CI 95%, seed 17/23/29, planner-bypass).
+검색 평가(retrieval-eval) 4단계 프로토콜의 historical Phase 4(메타데이터/필터링 ablation)는 legacy real100 kordoc 26k 인덱스에서 측정했다 (PR #1108, n=114 답변 가능 케이스, paired CI 95%, seed 17/23/29, planner-bypass).
 
 오라클(oracle) 메타데이터 — 답변 가능 케이스의 `expected_doc_ids[0]` 에서 조회한 정답 agency/project — 를 주입하면 4개 변형(`soft_agency` / `prefilter_agency` / `prefilter_project`) 모두 `no_metadata` 대비:
 
@@ -35,7 +42,7 @@
 
 - 검색 기본(ADR 0058 `hybrid`) 불변, 새 운영 손잡이 보류. ADR 0002(메타데이터 우선)는 `metadata_first` 프리셋 한정 — 본 ADR 이 그 현실 적용 범위를 ~34% 로 정량화한다.
 - 현실 추출기 측정(decision 3) 전에는 메타데이터 라우팅을 운영 lever 로 재고하지 않는다.
-- 지연시간 Pareto(강한 사전 필터 ~15배) 결과를 향후 라우팅 설계 근거로 기록.
+- 지연시간 Pareto(강한 사전 필터 ~15배) 결과는 historical routing-design context 로 기록한다. 현재 claim-bearing evidence 로 재사용하지 않는다.
 - ADR 0001 baseline byte-identical + ADR 0005 private/public 경계 보존: **committable** 산출물(`REPORT.md` / `deltas.json` / `metadata_specs.json`)은 qid + 카테고리 + 지표값만(문서/청크 텍스트 0). 단 현실 변형의 per-case `raw_results.json` 은 추출 품질 채점용 gold/extracted agency·project **실값**(= `data/data_list.csv` 비공개 카탈로그, pre-commit 하드 블록 ADR 0005 입력)을 담으므로 **strictly-local** — 커밋 금지, 로컬 재생성(`scripts/phase4_realistic_metadata_ablation.py`). 오라클 ablation(PR #1108)의 raw 는 agency/project 가 없어 committable 인 것과 대비된다 (경계 위반 정정: issue #1143).
 
 ## Alternatives considered
@@ -46,10 +53,14 @@
 
 ## Verification
 
+The `kordoc` `verifies-key` markers below verify the historical Phase 4
+measurement context only. They do not authorize new claim-bearing private-eval
+evidence outside the current `real100_v2` aggregate-only surface.
+
 <!-- verifies-key: reports/retrieval/phase4_metadata_20260520T032829Z_kordoc/COVERAGE.md:query 의미 분류 -->
 <!-- verifies-key: reports/retrieval/phase4_metadata_20260520T032829Z_kordoc/REPORT.md:카테고리별 winner -->
 <!-- verifies-key: eval/config.yaml:retrieval_backend -->
 
-- 커버리지 분류(34% / 66% / 0.8%)는 `COVERAGE.md` 의 `query 의미 분류` 표 — `scripts/phase4_query_metadata_coverage.py` 로 재현 (동일 인덱스+config → byte-identical).
-- 오라클 천장(+0.21~0.22 유의)은 `REPORT.md` 의 `카테고리별 winner` + paired CI delta 표.
+- 커버리지 분류(34% / 66% / 0.8%)는 historical `COVERAGE.md` 의 `query 의미 분류` 표 — `scripts/phase4_query_metadata_coverage.py` 로 재현 (동일 인덱스+config → byte-identical).
+- 오라클 천장(+0.21~0.22 유의)은 historical `REPORT.md` 의 `카테고리별 winner` + paired CI delta 표.
 - 운영 검색 기본 불변은 `eval/config.yaml` 의 `retrieval_backend` (ADR 0058 의 `hybrid`, 본 ADR 로 미변경).
