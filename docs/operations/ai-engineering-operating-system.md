@@ -95,6 +95,7 @@
 | 질문 | 답하는 문서 |
 |---|---|
 | What should I work on next? | [`tasks/queue.md`](../../tasks/queue.md)의 `Ready Order` 또는 `python3 scripts/agent_loop.py continue-loop` |
+| How do I avoid overlapping another AI session? | [`overlap-preflight`](./ai-codex-workflow.md#overlap-preflight) for Codex, Claude Code, and external worktrees |
 | What role am I acting as? | 이 문서의 [Agent Role Model](#agent-role-model) |
 | What plan should I follow? | task의 plan link 또는 [`docs/plans/TEMPLATE.md`](../plans/TEMPLATE.md) |
 | What evidence must I produce? | task의 `Evidence Required`와 plan의 `Validation Strategy` |
