@@ -63,6 +63,13 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterable
 
+# Governance SSoT — the hook inventory and memory-lines thresholds live in
+# scripts/_governance.py. Import them so this analyzer can't silently drift
+# from the emit-time typo guard (issue #1972). _governance is import-safe
+# (constants + functions behind an __main__ guard).
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _governance import KNOWN_HOOKS, THRESHOLDS  # noqa: E402
+
 # ---------------------------------------------------------------------------
 # Parsing
 # ---------------------------------------------------------------------------
@@ -238,12 +245,13 @@ def filter_window(events: list[dict], window: str) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 
-# Canonical hook inventory — matches scripts/claude-hooks/README.md table.
-ALL_HOOKS = [
-    "bash-guard", "loadbearing", "memory-lines",
-    "adr-template", "adr-collision", "plan-slug-race",
-    "delegation-gate", "stop-ship",
-]
+# Canonical hook inventory — DERIVED from _governance.KNOWN_HOOKS (the emit-time
+# typo guard) so the analysis-time inventory can never drift from it. agent-loop
+# and experiment-report (emitted by stop-agent-loop.sh / stop-experiment-report.sh)
+# are now included automatically; sorted for stable, readable report ordering.
+# Was a hand-maintained list that silently dropped those two → they got
+# misclassified as "Unrecognized hook names (legacy / typo)" (issue #1972).
+ALL_HOOKS = sorted(KNOWN_HOOKS)
 
 
 def outcome_breakdown(events: list[dict]) -> dict[str, dict[str, int]]:
@@ -275,7 +283,10 @@ def threshold_recommendation(events: list[dict]) -> dict:
     blocked = sum(1 for e in ml_events if e["outcome"] == "blocked")
     if total == 0:
         return {
-            "current": {"aware": 20, "block": 30},
+            "current": {
+                "aware": THRESHOLDS["MEMORY_LINE_AWARE"],
+                "block": THRESHOLDS["MEMORY_LINE_BLOCK"],
+            },
             "observed_total": 0,
             "verdict": "insufficient_data",
             "rationale": "memory-lines hook 이 윈도우 안에 0회 fire — 데이터 부족.",
@@ -297,7 +308,10 @@ def threshold_recommendation(events: list[dict]) -> dict:
         verdict = "maintain"
         rationale = f"BLOCK fire ratio = {block_ratio:.1%} — 정상 범위."
     return {
-        "current": {"aware": 20, "block": 30},
+        "current": {
+            "aware": THRESHOLDS["MEMORY_LINE_AWARE"],
+            "block": THRESHOLDS["MEMORY_LINE_BLOCK"],
+        },
         "observed_total": total,
         "observed_aware": aware,
         "observed_blocked": blocked,
