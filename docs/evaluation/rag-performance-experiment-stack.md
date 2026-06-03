@@ -6,6 +6,15 @@ not a performance claim. It contains no private raw questions, answers,
 evidence text, filenames, exact local paths, document identifiers, or chunk
 identifiers.
 
+## Current Evidence Boundary
+
+For new task, PR, claim, and handoff evidence, the current private-eval lane is
+`real100_v2` aggregate-only. Legacy `real100` / v1 / 221-case / `kordoc`
+evidence is archive-only unless the maintainer explicitly re-enables another
+private-eval surface. Any paired delta must use matching dataset, config, index,
+embedding/backend provenance, and command evidence; raw private artifacts remain
+local and ignored.
+
 ## TL;DR
 
 Do not start with GraphRAG, Agentic RAG, late chunking, or multi-vector search.
