@@ -11215,6 +11215,70 @@ def test_gate_evidence_rejects_bad_task(tmp_path: Path) -> None:
         agent_loop.write_active_gate_evidence(task_id="nope", repo_root=tmp_path)
 
 
+def test_gate_validation_signal_no_commands_is_non_blocking(monkeypatch) -> None:
+    # ADR 0099: when no allowlisted validation command applies, the signal is
+    # non-blocking (passed=None) so the gate falls back to role-only.
+    monkeypatch.setattr(agent_loop, "suggest_validation_commands", lambda files: [])
+    signal = agent_loop._gate_validation_signal(["scripts/agent_loop.py"])
+    assert signal == {"ran": False, "passed": None, "returncode": None, "command_count": 0}
+
+
+def test_gate_evidence_run_validation_off_is_byte_identical(tmp_path: Path) -> None:
+    # ADR 0099: default run_validation=False keeps the verdict-only gate unchanged.
+    repo = _write_repo(tmp_path)
+    _seed_gate_registry(repo)
+
+    path, summary = agent_loop.write_active_gate_evidence(task_id="T-2026-0042", repo_root=repo)
+    ev = json.loads(path.read_text(encoding="utf-8"))
+
+    assert summary["ready"] is True  # role-only gate, unchanged
+    assert ev["validation"] == {"ran": False, "passed": None, "returncode": None, "command_count": 0}
+    assert ev["conservative_gate"]["objective_ok"] is True
+    assert ev["conservative_gate"]["role_ok"] is True
+    assert ev["conservative_gate"]["precedence"].startswith("self-report < validation")
+
+
+def test_gate_evidence_validation_failure_blocks_ready(monkeypatch, tmp_path: Path) -> None:
+    # ADR 0099: a real validation failure blocks ready even when every role self-reports pass.
+    repo = _write_repo(tmp_path)
+    _seed_gate_registry(repo)  # Reviewer + CI/Eval Auditor both "passed"
+    monkeypatch.setattr(
+        agent_loop,
+        "_gate_validation_signal",
+        lambda files: {"ran": True, "passed": False, "returncode": 1, "command_count": 2},
+    )
+
+    path, summary = agent_loop.write_active_gate_evidence(
+        task_id="T-2026-0042", repo_root=repo, run_validation=True
+    )
+    ev = json.loads(path.read_text(encoding="utf-8"))
+
+    assert summary["ready"] is False  # self-report < validation
+    assert ev["conservative_gate"]["role_ok"] is True
+    assert ev["conservative_gate"]["objective_ok"] is False
+    assert ev["validation"]["passed"] is False
+
+
+def test_gate_evidence_validation_pass_keeps_ready(monkeypatch, tmp_path: Path) -> None:
+    # ADR 0099: a passing validation leaves the role-only verdict intact.
+    repo = _write_repo(tmp_path)
+    _seed_gate_registry(repo)
+    monkeypatch.setattr(
+        agent_loop,
+        "_gate_validation_signal",
+        lambda files: {"ran": True, "passed": True, "returncode": 0, "command_count": 2},
+    )
+
+    path, summary = agent_loop.write_active_gate_evidence(
+        task_id="T-2026-0042", repo_root=repo, run_validation=True
+    )
+    ev = json.loads(path.read_text(encoding="utf-8"))
+
+    assert summary["ready"] is True
+    assert ev["conservative_gate"]["objective_ok"] is True
+    assert ev["validation"]["passed"] is True
+
+
 def test_stop_ship_skips_remote_branch_delete_when_stacked_dependents_exist() -> None:
     text = (ROOT / "scripts" / "claude-hooks" / "stop-ship.sh").read_text(encoding="utf-8")
 
