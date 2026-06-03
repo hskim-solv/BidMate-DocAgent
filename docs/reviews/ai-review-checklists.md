@@ -58,6 +58,7 @@ AI-agent failure mode를 일부러 찾는다.
 
 - 새 문서가 기존 source of truth를 대체한다고 암시하지 않는가?
 - `CLAUDE.md`, `AGENTS.md`, `docs/engineering-governance.md`, ADR, README 사이에 drift가 생기지 않았는가?
+- multi-session 또는 parallel worktree PR이면 [`overlap-preflight`](../operations/ai-codex-workflow.md#overlap-preflight) 결과와 evidence path가 남아 있고 `clear/warn/blocked` 해석이 PR scope와 맞는가?
 - Links가 상대 경로 기준으로 유효한가? `make check-doc-links` 또는 `python scripts/check_doc_links.py --check-all`를 실행했는가?
 - 새 eval/benchmark 문서가 [`docs/evaluation/surface-map.md`](../evaluation/surface-map.md)의 claim boundary를 따르는가?
 - 새 plan/task/review 문서가 실제로 다음 agent가 실행 가능한 수준인가?
