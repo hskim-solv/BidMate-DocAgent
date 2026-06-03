@@ -88,11 +88,69 @@ PR이 생기면 각 task에 링크를 추가한다. 예제 task는 `tasks/exampl
 | 75 | `T-2026-0075` | `done` | Implementer -> Reviewer | issue #1765; `memory` VectorStore backend 가 default/baseline 로 새지 않도록 positive-shape 회귀 가드 (옵션 A — 런타임 코드 무변경, parity 테스트 무영향). `DEFAULT_INDEX_BACKEND`/default-resolve/eval `ablation_runs` 전체가 chroma 로 resolve 됨을 잠금 + 명시적 memory opt-in(test-control) 보존 (ADR 0001/0081). 기존 자산(presets default·`vector_store_backend_for_runs` mixed 거부·naive_baseline=chroma) 재사용, gap A(rag_vector_store chokepoint)+C(eval 전 row) 보강. merged in PR #1769 (issue #1765 CLOSED, 2026-06-02). |
 | 76 | `T-2026-0076` | `ready` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | P0; spun off from T-2026-0029 page-aware re-measurement. MiniLM page-aware `real100_v2` rebuild resolved the page blocker but collapsed doc-level retrieval (gold-doc-in-retrieved 61.4% -> 12.1%) despite 88.3% universe coverage (answerable-with-gold; 91.7% all-cases); the diagnostic renderer's new `retrieval_integrity_suspect` signal points here. Gates every downstream `real100_v2` optimization task (T-2026-0030/0032/0033). Issue: TBD (created when task starts). |
 | 77 | `T-2026-0077` | `backlog` | Maintainer -> CI Reviewer -> Reviewer | issue #1800; **due 2026-06-09** — ui-smoke(#1799) nightly 표본으로 required status check 승격 판단. durable cron 이 cmux 미지원 → 이 queue 행이 리마인드 앵커(다음 세션 표면화). flaky 0 + nightly ≥5회면 승격 제안, 실패 있으면 run 로그 분석 + 추가 관찰. |
+| 78 | `T-2026-0078` | `backlog` | Architect -> Planner -> Implementer -> Deep Reviewer -> Reviewer | agent-loop `expanded-eight` 토폴로지의 single write-lease Implementer 병목 재조정 **탐색**. 8역할 중 Implementer 만 `write_lease_owner=true`(나머지 7 read-only) → 구현 직렬화가 throughput 제약. 설계 미확정(현행 유지 / Implementer ×M + shared reviewer pool / 역할 축소) → architect 옵션 비교 + 순차단계 분석 + ADR(load-bearing; ADR 0080 single-writer 제약과 충돌 분석) 선행 필요. `ready` 아님 = 자동 루프가 섣불리 구현 못 하게. 진단 출처: 2026-06-03 세션. 시각화: `scripts/render_agent_loop_board.py` 토폴로지 맵. |
 
 ## Examples
 
 - [`tasks/examples/benchmark-hardening.md`](examples/benchmark-hardening.md): benchmark hardening task 작성 예시.
 - [`tasks/examples/eval-regression-safety.md`](examples/eval-regression-safety.md): eval regression safety task 작성 예시.
+
+## T-2026-0078 — Agent-loop topology rebalance (Implementer throughput)
+
+- ID: T-2026-0078
+- Title: Agent-loop topology rebalance (Implementer throughput)
+- Status: backlog
+- Owner role: Architect -> Planner -> Implementer -> Deep Reviewer -> Reviewer
+- Created: 2026-06-03
+- Last updated: 2026-06-03
+
+### Goal
+
+`expanded-eight` 토폴로지에서 single write-lease Implementer 가 throughput 병목인지
+확인하고, Implementer 병렬화 또는 역할 구성 재조정의 설계 옵션을 비교한다. 이 task 의
+산출물은 구현이 아니라 **설계 탐색 + ADR 초안(또는 현행 유지 근거)**이다.
+
+### Context
+
+- 현행 `expanded-eight` = 8역할: Orchestrator, Planner / Triage, Experiment Scout,
+  Implementer, Reviewer, Deep Reviewer, CI / Regression Auditor, Eval / Claim / Privacy Auditor.
+- `reports/agent_loop/active/session_registry.json` 기준 Implementer 만
+  `write_lease_owner=true`, 나머지 7개는 read-only → 구현이 직렬화되어 7개 검토 역할이
+  1개 Implementer 를 기다리는 구조가 throughput 제약으로 진단됨.
+- role != model: 8역할은 파이프라인 단계이고 claude/codex 는 `_ROLE_CAPABILITY` +
+  work-unit rolling-window balance(`choose_agent()`)로 동적 배정 (ADR 0080 dual-agent lanes).
+- 미해결 질문 (2026-06-03 세션): 순차 의존 단계가 몇 개인가? 역할을 축소할 수 있나?
+  병렬 Implementer 가 Reviewer / Auditor 풀을 충분히 바쁘게 유지하나?
+
+### Scope (탐색 단계)
+
+- architect agent 로 설계 옵션 비교:
+  - (A) 현행 유지 — single write-lease, 8역할.
+  - (B) Implementer ×M + shared Reviewer / Auditor pool.
+  - (C) 역할 축소 — 8 -> N, 검토 역할 통합.
+- 순차 의존 단계 분석: 어디가 fan-out 가능하고 어디가 barrier 인지.
+- single-writer 제약(ADR 0080 dual-agent lanes, single write-lease)과의 충돌 / 호환 분석.
+- ADR 초안 — load-bearing 토폴로지 변경이면 필요; 현행 유지 결론이면 근거 기록.
+
+### Non-Goals
+
+- 이 task 에서 바로 `scripts/agent_loop.py` 토폴로지 구현을 변경하지 않는다 (설계 / ADR 먼저).
+- ADR 0080 / 0083 / 0085 / 0086 / 0087 을 무효화하지 않는다 (호환 또는 명시적 supersede).
+- RAG 런타임 / eval / ingestion / answer 동작을 변경하지 않는다.
+
+### Acceptance Criteria (탐색 완료 기준)
+
+- [ ] 순차 단계 수 + fan-out 지점이 문서화된다.
+- [ ] 3개 설계 옵션의 trade-off 표 (throughput vs 복잡도 vs single-writer 안전성).
+- [ ] 권장 옵션 + ADR 초안, 또는 "현행 유지" 의 명시적 근거.
+
+### Related Plan / Issue / PR Links
+
+- 관련 ADR: 0080 (dual-agent lanes / single write-lease), 0083·0085 (bounded / infinite
+  default), 0086 (claude-write opt-in), 0087 (omc runner).
+- 진단 출처: 2026-06-03 세션 (single write-lease Implementer 병목 분석).
+- 시각화: `scripts/render_agent_loop_board.py` 토폴로지 맵 (`render_topology_mermaid`).
+- Issue: TBD (설계 확정 후 생성).
 
 ## T-2026-0016 — Agent worktree overlap preflight
 
