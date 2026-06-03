@@ -6,7 +6,7 @@
 - Related issue / PR: [#1480](https://github.com/hskim-solv/BidMate-DocAgent/issues/1480) / [#1481](https://github.com/hskim-solv/BidMate-DocAgent/pull/1481)
 - Related ADR: [ADR 0005](../adr/0005-eval-split-public-synthetic-private-local.md)
 - Created: 2026-05-25
-- Last updated: 2026-05-25
+- Last updated: 2026-06-04
 
 ## Problem Statement
 
@@ -24,7 +24,8 @@ that `index_build.input_path` equals `corpus_path`, the command builds from
 ## Constraints
 
 - Do not change benchmark scoring semantics.
-- Do not change retrieval, verifier, answer, or private real-eval behavior.
+- Do not change retrieval, verifier, answer, or current `real100_v2`
+  private-eval behavior.
 - Keep the surface classified as public synthetic benchmark only.
 
 ## Architecture Impact
