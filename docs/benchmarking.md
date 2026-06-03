@@ -84,6 +84,10 @@ python3 scripts/summarize_benchmark.py \
 - `logs/`: index build 등 command log
 
 `artifacts/benchmarks/`는 `.gitignore` 대상이다. 공개 fixture smoke 실행이라도 raw prediction과 trace는 noisy하고 커밋 diff를 크게 만들기 때문에 로컬 검증용으로만 둔다.
+병행 Codex/Claude worktree에서 만든 benchmark artifact를 PR 근거로 첨부하려면
+[`overlap-preflight`](operations/ai-codex-workflow.md#overlap-preflight) 결과를 함께
+남긴다. 같은 artifact root나 변경 파일을 공유한 run은 독립 benchmark evidence로
+취급하지 않는다.
 
 ## Stage Latency & Retry Cost
 
