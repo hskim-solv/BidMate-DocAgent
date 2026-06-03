@@ -262,5 +262,59 @@ def _repo_scripts_dir() -> "object":
     return Path(__file__).resolve().parent.parent / "scripts"
 
 
+class ExpandFeaturesTest(unittest.TestCase):
+    """Direct unit coverage for rag_embedding.expand_features (issue #2105).
+
+    expand_features is only exercised transitively via hashing_embeddings;
+    these lock the unigram + bigram expansion contract and its edge cases.
+    """
+
+    def test_empty_returns_empty(self) -> None:
+        import rag_embedding
+
+        self.assertEqual(rag_embedding.expand_features([]), [])
+
+    def test_single_token_has_no_bigram(self) -> None:
+        import rag_embedding
+
+        self.assertEqual(rag_embedding.expand_features(["a"]), ["a"])
+
+    def test_pair_appends_one_bigram(self) -> None:
+        import rag_embedding
+
+        self.assertEqual(
+            rag_embedding.expand_features(["a", "b"]), ["a", "b", "a_b"]
+        )
+
+    def test_triple_appends_adjacent_bigrams(self) -> None:
+        import rag_embedding
+
+        self.assertEqual(
+            rag_embedding.expand_features(["a", "b", "c"]),
+            ["a", "b", "c", "a_b", "b_c"],
+        )
+
+    def test_unigrams_precede_bigrams(self) -> None:
+        import rag_embedding
+
+        result = rag_embedding.expand_features(["x", "y", "z"])
+        self.assertEqual(result[:3], ["x", "y", "z"])
+        self.assertTrue(all("_" in bigram for bigram in result[3:]))
+
+    def test_duplicate_adjacent_tokens(self) -> None:
+        import rag_embedding
+
+        self.assertEqual(
+            rag_embedding.expand_features(["a", "a"]), ["a", "a", "a_a"]
+        )
+
+    def test_does_not_mutate_input(self) -> None:
+        import rag_embedding
+
+        tokens = ["a", "b"]
+        rag_embedding.expand_features(tokens)
+        self.assertEqual(tokens, ["a", "b"])
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
