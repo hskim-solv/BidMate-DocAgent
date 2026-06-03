@@ -1,12 +1,12 @@
 # Plan: T-2026-0029 real100_v2 retrieval diagnostic workbench
 
-- Status: review
+- Status: done
 - Owner role: Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer
 - Related task: `tasks/queue.md::T-2026-0029`
-- Related issue / PR: [#1622](https://github.com/hskim-solv/BidMate-DocAgent/issues/1622), reopened follow-up [#1764](https://github.com/hskim-solv/BidMate-DocAgent/issues/1764)
+- Related issue / PR: [#1622](https://github.com/hskim-solv/BidMate-DocAgent/issues/1622) / [#1623](https://github.com/hskim-solv/BidMate-DocAgent/pull/1623); follow-up [#1764](https://github.com/hskim-solv/BidMate-DocAgent/issues/1764) / [#1776](https://github.com/hskim-solv/BidMate-DocAgent/pull/1776); refresh issue [#2127](https://github.com/hskim-solv/BidMate-DocAgent/issues/2127)
 - Related ADR: [ADR 0005](../adr/0005-eval-split-public-synthetic-private-local.md), [ADR 0076](../adr/0076-multi-chunk-evidence-failure-analysis-surface.md)
 - Created: 2026-05-28
-- Last updated: 2026-06-02
+- Last updated: 2026-06-04
 
 ## Problem Statement
 
@@ -191,15 +191,15 @@ current support.
 ## Session Handoff - 2026-05-28 09:20 KST
 
 - Role: Implementer
-- Branch / worktree: eval/issue-1622-build-real100-v2-retrieval-diagnostic-workbench / /Users/hskim/.codex/worktrees/0ebc/BidMate-DocAgent
-- Issue / PR: issue #1622 / PR TBD
+- Branch / worktree: eval/issue-1622-build-real100-v2-retrieval-diagnostic-workbench / PR #1623; follow-up PR #1776
+- Issue / PR: issue #1622 / PR #1623; follow-up issue #1764 / PR #1776; refresh issue #2127
 - Task: T-2026-0029
-- Current status: real100_v2 retrieval diagnostics rendered and ready for review.
+- Current status: merged in PR #1623 and re-measured in PR #1776; queue marks T-2026-0029 done and T-2026-0076 carries the remaining retrieval-collapse follow-up.
 - Files touched: .gitignore, .githooks/pre-commit, scripts/render_real100_v2_retrieval_diagnostics.py, scripts/check_real100_v2_only.py, tests/test_render_real100_v2_retrieval_diagnostics.py, docs/evaluation/real100_v2-retrieval-diagnostics.md, reports/real100_v2/retrieval_diagnostics.aggregate.json, reports/real100_v2/README.md, docs/plans/T-2026-0029-real100-v2-retrieval-diagnostic-workbench.md, tasks/queue.md
 - Decisions made: use only real100_v2 local summary as raw input and emit aggregate-only committed artifacts.
 - Commands run: make ship-start TITLE="Build real100 v2 retrieval diagnostic workbench" TYPE=eval; make check-branch; python3 scripts/agent_loop.py next; REAL_EVAL_ROOT=/Users/hskim/Desktop/projects/BidMate-DocAgent python3 scripts/render_real100_v2_retrieval_diagnostics.py; python3 -m py_compile scripts/render_real100_v2_retrieval_diagnostics.py scripts/check_real100_v2_only.py; python3 -m pytest -q tests/test_render_real100_v2_retrieval_diagnostics.py tests/test_real100_v2_guard.py tests/test_render_multi_chunk_evidence_failures.py tests/test_render_multi_chunk_retrieval_strategy.py; make real-eval-v2-guard; bash -n .githooks/pre-commit; python3 scripts/check_doc_links.py --check-all --paths tasks/queue.md docs/plans/T-2026-0029-real100-v2-retrieval-diagnostic-workbench.md docs/evaluation/real100_v2-retrieval-diagnostics.md reports/real100_v2/README.md; python3 scripts/agent_loop.py privacy-audit-output; python3 scripts/agent_loop.py claim-audit --from-git.
 - Results: renderer generated aggregate JSON/Markdown; focused tests, v2 guard, hook syntax check, doc links, privacy audit, and claim audit passed.
-- Next safe command: git diff --check && make check-branch
+- Next safe command: git status --short
 - Open questions: none.
 - Risks: duplicate/near-duplicate signal counts repeated top documents as aggregate near-duplicates, not semantic duplicates.
 ```
