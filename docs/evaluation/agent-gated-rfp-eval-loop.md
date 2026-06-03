@@ -13,8 +13,10 @@
 | Online / non-closed network | 외부 judge/model/API 가능, private RFP 원문 외부 전송 가능 | provider/model/date, payload class, private-data egress mode, cost/latency, provenance 기록 |
 
 환경 축은 smoke / synthetic / private real-eval 표면(surface)과 독립이다. 모든
-claim-bearing 루프는 private real-eval을 포함해야 하며, online-only judge 결과는
-offline proxy 또는 rule-based metric과의 관계를 설명해야 한다.
+claim-bearing 루프는 현재 `real100_v2` aggregate-only private real-eval 표면을
+포함해야 하며, online-only judge 결과는 offline proxy 또는 rule-based metric과의
+관계를 설명해야 한다. Legacy real100/v1/221/kordoc evidence는 archive-only이며,
+새 claim, PR, task, handoff 근거로 쓰지 않는다.
 
 ## RFP Success Definition
 
@@ -48,7 +50,7 @@ metric suite다.
 
 새 metric 또는 metric suite version은 아래 조건을 모두 만족해야 채택한다.
 
-- Private real-eval aggregate에서 반드시 계산된다.
+- 현재 `real100_v2` aggregate-only private real-eval 표면에서 반드시 계산된다.
 - Offline과 online 양쪽에서 계산 가능하거나, online-only metric은 offline proxy와
   관계가 문서화된다.
 - Human review 또는 approved judge signal과 양의 관계가 있다.
@@ -67,7 +69,7 @@ metric suite다.
 
 | Version | Exit condition |
 |---|---|
-| v0 | Offline/online 양쪽에서 같은 private real-eval case family에 대해 metric suite aggregate가 생성된다. |
+| v0 | Offline/online 양쪽에서 같은 `real100_v2` private real-eval case family에 대해 metric suite aggregate가 생성된다. |
 | v1 | 세 개 이상의 주요 RFP failure mode를 분리 설명하고, suite가 그 failure를 감지한다. |
 | v2 | human/judge agreement가 기준선보다 높고, regression fixture에서 민감하게 반응한다. |
 | operating | 최근 변경 N회에서 false pass가 없고, 새 failure는 follow-up metric 또는 ratchet으로 흡수된다. |
@@ -76,9 +78,9 @@ metric suite다.
 
 | Milestone | Smallest next PR | Evidence required |
 |---|---|---|
-| v0-a metric inventory | 현재 private real-eval aggregate에 이미 있는 metric과 없는 metric을 [표로 분류한다](./v0-metric-suite-inventory.md). | aggregate-only inventory, no performance claim |
+| v0-a metric inventory | 현재 `real100_v2` aggregate에 이미 있는 metric과 없는 metric을 [표로 분류한다](./v0-metric-suite-inventory.md). | aggregate-only inventory, no performance claim |
 | v0-b offline/online run manifest | offline/online 실행 환경, provider/model, payload class, egress mode를 [같은 schema](./offline-online-run-manifest.md)로 기록한다. | manifest schema + privacy test |
-| v0-c metric suite report | `scripts/render_v0_metric_suite_report.py`로 retrieval, grounding, citation, comparison, abstention, numeric/date/condition, judge agreement를 한 report shell에 모은다. | private real-eval aggregate + provenance |
+| v0-c metric suite report | `scripts/render_v0_metric_suite_report.py`로 retrieval, grounding, citation, comparison, abstention, numeric/date/condition, judge agreement를 한 report shell에 모은다. | `real100_v2` aggregate + provenance |
 | v1 failure sensitivity | 세 개 이상의 RFP failure mode에 대해 metric이 실제로 움직이는지 확인한다. | before/after or historical failure replay |
 | v2 agreement calibration | human 또는 approved judge signal과 suite metric의 agreement를 측정한다. | agreement aggregate, no raw private text |
 
@@ -87,9 +89,9 @@ metric suite다.
 기존 human gate 자리에 Codex는 보수적 agent gate를 집행한다.
 
 - 애매하면 `draft`, `no performance claim`, `follow-up issue`, `fail closed`를 고른다.
-- Private real-eval은 claim-bearing loop의 필수 표면으로 둔다.
+- 현재 `real100_v2` aggregate-only private real-eval은 claim-bearing loop의 필수 표면으로 둔다.
 - Online private-data egress는 허용되지만 provenance와 payload class를 남긴다.
-- 성능 주장(performance claim)은 private real-eval aggregate와 provenance가 있을 때
+- 성능 주장(performance claim)은 현재 `real100_v2` aggregate와 provenance가 있을 때
   좁은 범위로만 자동 작성한다.
 - Architecture / ADR / issue close / branch delete / force-with-lease는 실행 가능하지만
   audit trail, dependent check, rollback note를 남긴다.
@@ -111,8 +113,8 @@ metric suite다.
 - 같은 파일을 쓰는 역할은 직렬화한다.
 - 최대 12개 role subagent, depth 2(`root session -> role subagents`)를 넘기지
   않는다.
-- Private real-eval 해석, benchmark/performance claim, remote mutation 실행은
-  서브에이전트에 위임하지 않는다. 서브에이전트는 evidence와 recommendation만
+- `real100_v2` private real-eval 해석, benchmark/performance claim, remote mutation
+  실행은 서브에이전트에 위임하지 않는다. 서브에이전트는 evidence와 recommendation만
   남기고, root session이 최종 agent gate를 집행한다.
 
 ## Related
