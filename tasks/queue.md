@@ -26,18 +26,18 @@ PR이 생기면 각 task에 링크를 추가한다. 예제 task는 `tasks/exampl
 | 13 | `T-2026-0013` | `done` | Maintainer -> Reviewer | merged in PR #1530. |
 | 14 | `T-2026-0014` | `done` | Maintainer -> Reviewer | merged in PR #1532. |
 | 15 | `T-2026-0015` | `done` | Maintainer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | merged in PR #1536. |
-| 16 | `T-2026-0016` | `review` | Maintainer -> Reviewer | overlap preflight implemented; PR #1543. |
-| 17 | `T-2026-0017` | `review` | Maintainer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | v0-b manifest automation ready for review; PR #1545. |
-| 18 | `T-2026-0018` | `review` | Maintainer -> Reviewer | issue #1547 implemented; draft PR #1548. |
-| 19 | `T-2026-0019` | `review` | Maintainer -> CI Reviewer -> Reviewer | local implementation ready on issue #1549 branch. |
-| 20 | `T-2026-0020` | `review` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1544; v0 metric-suite report implementation ready for review. |
-| 21 | `T-2026-0021` | `review` | Maintainer -> CI Reviewer -> Reviewer | issue #1551 implemented; draft PR #1552. |
+| 16 | `T-2026-0016` | `done` | Maintainer -> Reviewer | merged in PR #1543 (agent overlap preflight). |
+| 17 | `T-2026-0017` | `done` | Maintainer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | merged in PR #1545 (offline/online run manifest automation). |
+| 18 | `T-2026-0018` | `done` | Maintainer -> Reviewer | merged in PR #1548 (Codex-runnable auto-ship); issue #1547. |
+| 19 | `T-2026-0019` | `done` | Maintainer -> CI Reviewer -> Reviewer | issue #1549 COMPLETED (active-loop continuation repair). |
+| 20 | `T-2026-0020` | `done` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1544 COMPLETED (v0 metric-suite aggregate report). |
+| 21 | `T-2026-0021` | `done` | Maintainer -> CI Reviewer -> Reviewer | merged in PR #1552 (plan tasks from PR corpus); issue #1551. |
 | 22 | `T-2026-0022` | `done` | Planner -> Implementer -> Reviewer | merged in PR #1576; retrieval change deferred until page-aware re-index evidence. |
 | 23 | `T-2026-0023` | `done` | Planner -> Implementer -> Benchmark Auditor -> Privacy Auditor -> Deep Reviewer -> Reviewer | merged in PR #1570. |
 | 24 | `T-2026-0024` | `done` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | merged in PR #1577; page metadata recovery landed. |
 | 25 | `T-2026-0025` | `done` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | merged in PR #1579; named MiniLM target landed. |
-| 26 | `T-2026-0026` | `in_progress` | Planner -> Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1580; Chroma-backed `naive_baseline` canonical switch, separated from embedding-model baselines. |
-| 27 | `T-2026-0027` | `review` | Planner -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1584; prioritized RAG performance experiment stack captured. |
+| 26 | `T-2026-0026` | `done` | Planner -> Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1580 COMPLETED (Chroma naive_baseline canonical switch + ranking parity guard). |
+| 27 | `T-2026-0027` | `done` | Planner -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1584 COMPLETED (RAG performance experiment task stack). |
 | 28 | `T-2026-0028` | `done` | Evaluator -> Benchmark Auditor -> Privacy Auditor -> Reviewer | merged in PR #1619; real100_v2-only guard and aggregate packet landed. |
 | 29 | `T-2026-0029` | `done` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1764; page-aware re-measurement DONE (diagnostic-only). Page blocker resolved (coverage 0.0 -> 1.0) but doc-level retrieval collapsed (~12%); renderer BUG #1/#2 hardened; root cause spun off as T-2026-0076. |
 | 30 | `T-2026-0030` | `ready` | Implementer -> CI Reviewer -> Benchmark Auditor -> Reviewer | reopened after naive baseline remeasurement: rerender latency/cost envelope against the MiniLM page-aware v2 aggregate. |
@@ -51,13 +51,13 @@ PR이 생기면 각 task에 링크를 추가한다. 예제 task는 `tasks/exampl
 | 38 | `T-2026-0038` | `backlog` | Planner -> Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | P2; blocked on small-to-big retrieval evidence from T-2026-0031. |
 | 39 | `T-2026-0039` | `backlog` | Planner -> Architect -> Benchmark Auditor -> Privacy Auditor -> Deep Reviewer -> Reviewer | P3; advanced architecture feasibility after P0/P1 evidence. |
 | 40 | `T-2026-0040` | `done` | Implementer -> Reviewer | issue #1588 PR1 (#1589 merged); active-loop registry v2 + per-session Claude/Codex lanes scaffold. |
-| 41 | `T-2026-0041` | `review` | Implementer -> Reviewer | issue #1590 PR2; read-only Claude/Codex lane adapters + WU accounting; in review. |
+| 41 | `T-2026-0041` | `done` | Implementer -> Reviewer | issue #1590 COMPLETED (read-only Claude/Codex lane adapters + WU accounting, PR2). |
 | 42 | `T-2026-0042` | `backlog` | Implementer -> Reviewer | issue #1588 PR3; patch-proposal + lease active_agent borrow + scratch worktree; re-confirm scope after Phase 1-2. |
 | 43 | `T-2026-0043` | `backlog` | Implementer -> Reviewer | issue #1588 PR4; mutating-writer + claimed-files enforcement hook; blocked on T-2026-0042. |
 | 44 | `T-2026-0044` | `backlog` | Implementer -> Deep Reviewer -> Reviewer | issue #1588 PR5; Orchestrator-only ship-executor + gate evidence (promote agent_loop.py to LOAD_BEARING); blocked on T-2026-0043. |
 | 45 | `T-2026-0045` | `backlog` | Implementer -> Reviewer | issue #1588 PR6; full active-agent-loop.md ops-doc rewrite; blocked on T-2026-0044. |
-| 46 | `T-2026-0046` | `review` | Planner -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1627; expands the RAG experiment task stack and inserts measurement-driven replanning gates. |
-| 47 | `T-2026-0047` | `review` | Evaluator -> Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1645; hashing/page-0 real100_v2 index now fails v2 readiness, and affected optimization reports are invalidated until a MiniLM page-aware v2 rebuild. |
+| 46 | `T-2026-0046` | `done` | Planner -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1627 COMPLETED (expanded RAG experiment task stack + replanning gates). |
+| 47 | `T-2026-0047` | `done` | Evaluator -> Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1645 COMPLETED (real100_v2 page metadata blocker repair). |
 | 48 | `T-2026-0048` | `backlog` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | P0; candidate-depth and fusion-budget sweep for the `not_observable_limited_depth` retrieval failure bucket. |
 | 49 | `T-2026-0049` | `backlog` | Planner -> Benchmark Auditor -> Privacy Auditor -> Reviewer | P0 replanning gate after T-2026-0030, T-2026-0032, T-2026-0047, and T-2026-0048 evidence. |
 | 50 | `T-2026-0050` | `backlog` | Evaluator -> Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | P1; parser/layout/table coverage experiment for RFP evidence that is not text-searchable enough. |
@@ -67,8 +67,8 @@ PR이 생기면 각 task에 링크를 추가한다. 예제 task는 `tasks/exampl
 | 54 | `T-2026-0054` | `backlog` | Implementer -> Architect -> Benchmark Auditor -> Privacy Auditor -> Deep Reviewer -> Reviewer | P2; end-to-end bakeoff of the best isolated experiment winners under one aggregate guardrail. |
 | 55 | `T-2026-0055` | `backlog` | Benchmark Auditor -> Privacy Auditor -> Deep Reviewer -> Reviewer | P2; final optimization decision packet and default-change or no-go proposal. |
 | 56 | `T-2026-0056` | `backlog` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | P1; Ollama local OpenAI-compatible provider spike for synthesis/judge cost, privacy, and latency evidence. |
-| 57 | `T-2026-0057` | `review` | Planner -> Privacy Auditor -> Reviewer | issue #1651; real100_v2 portfolio wording cleanup and legacy current-claim wording removal. |
-| 58 | `T-2026-0058` | `review` | Planner -> Reviewer | issue #1651; Multimodal Agent/Product positioning map added as a docs-only stack. |
+| 57 | `T-2026-0057` | `done` | Planner -> Privacy Auditor -> Reviewer | issue #1651 COMPLETED (real100_v2 portfolio wording cleanup). |
+| 58 | `T-2026-0058` | `done` | Planner -> Reviewer | issue #1651 COMPLETED (multimodal agent positioning docs stack). |
 | 59 | `T-2026-0059` | `backlog` | Planner -> Reviewer | External source and citation audit before framework/vendor claims enter portfolio wording. |
 | 60 | `T-2026-0060` | `backlog` | Evaluator -> Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | Visual evidence contract hardening for OCR/layout/table/image citation readiness. |
 | 61 | `T-2026-0061` | `backlog` | Implementer -> Privacy Auditor -> Reviewer | Opt-in VLM captioning spike on public fixtures only; no private egress by default. |
