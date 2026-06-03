@@ -9,6 +9,7 @@ PRs, deletes branches, force-pushes, or calls external model APIs.
 from __future__ import annotations
 
 import argparse
+import copy
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 import contextlib
 from dataclasses import dataclass
@@ -989,6 +990,45 @@ def _repo_path(path: Path, repo_root: Path) -> str:
         return path.as_posix()
 
 
+# ADR 0095 PR-E3c MED-3: parent-relative posix prefix for the active coordination dir
+# (``reports/agent_loop/active``) and the X>1 per-task artifact mirror root
+# (``reports/agent_loop/active/tasks/<task_id>``). Recorded so a cycle's artifact paths survive the
+# per-task worktree teardown (the artifacts are COPIED to this parent-resolvable location).
+_ACTIVE_DIR_REL_POSIX = DEFAULT_ACTIVE_DIR.relative_to(ROOT_DIR).as_posix()  # "reports/agent_loop/active"
+_ACTIVE_TASKS_REL_POSIX = (DEFAULT_ACTIVE_DIR / "tasks").relative_to(ROOT_DIR).as_posix()
+
+
+def _task_artifact_mirror_dir(repo_root: Path, task_id: str) -> Path:
+    """The parent task-scoped directory the X>1 cycle's ``active`` artifacts are copied INTO before
+    the cycle worktree is torn down: ``<repo_root>/reports/agent_loop/active/tasks/<task_id>``."""
+    return DEFAULT_ACTIVE_DIR / "tasks" / task_id if repo_root == ROOT_DIR else repo_root / _ACTIVE_TASKS_REL_POSIX / task_id
+
+
+def _cycle_artifact_repo_path(
+    path: Path,
+    *,
+    effective_repo_root: Path,
+    repo_root: Path,
+    task_id: str,
+) -> str:
+    """Record a cycle artifact path so it is PARENT-resolvable (ADR 0095 PR-E3c MED-3).
+
+    At X==1 (``effective_repo_root == repo_root`` — no worktree) this is EXACTLY ``_repo_path(path,
+    repo_root)`` -> byte-identical (ADR 0001). At X>1 the artifact was written inside the cycle
+    worktree under ``reports/agent_loop/active/...``; that worktree is torn down at cycle end, so the
+    recorded path is re-pointed to the parent task-scoped mirror
+    ``reports/agent_loop/active/tasks/<task_id>/...`` (the copy that ``_run_cycle_in_task_worktree``
+    makes before teardown). The re-point only rewrites the ``reports/agent_loop/active/`` prefix; a
+    path that does not sit under the active dir (defensive) falls back to ``_repo_path`` unchanged."""
+    if effective_repo_root == repo_root:
+        return _repo_path(path, repo_root)
+    rel = _repo_path(path, effective_repo_root)  # worktree-relative, e.g. reports/agent_loop/active/codex_runner.md
+    prefix = _ACTIVE_DIR_REL_POSIX + "/"
+    if rel.startswith(prefix):
+        return f"{_ACTIVE_TASKS_REL_POSIX}/{task_id}/{rel[len(prefix):]}"
+    return rel
+
+
 def _read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
@@ -1064,6 +1104,26 @@ class LedgerState:
         with self._lock:
             self._cycles.append(cycle)   # BY REFERENCE — caller keeps mutating it
 
+    def upsert_cycle(self, task_id: str, cycle_snapshot: dict[str, object]) -> None:
+        """Register an immutable deep-copy of a cycle's current state (ADR 0095 PR-E3c HIGH-2).
+
+        Thread-safe: called from the owner thread before every ``write_cycle_checkpoint`` so
+        ``snapshot()`` always serializes a frozen copy, never a live-mutating dict.  The find-
+        and-replace (by ``task_id``) preserves list order so X==1 serial output is identical to
+        the old ``append_cycle`` by-ref path (same single entry per task, same order).
+
+        X==1 byte-identity argument: at X==1 there is exactly one writer thread; upsert is
+        called before every ``write_cycle_checkpoint`` (same points the old by-ref append was
+        already in effect at), and the deep-copy value equals the by-ref value at that instant
+        (no concurrent mutation).  ``snapshot()`` returns ``list(self._cycles)`` as before, but
+        now each element is an immutable copy -> the serialised JSON is byte-identical."""
+        with self._lock:
+            for i, existing in enumerate(self._cycles):
+                if existing.get("task_id") == task_id:
+                    self._cycles[i] = cycle_snapshot
+                    return
+            self._cycles.append(cycle_snapshot)
+
     def extend_blockers(self, messages: Sequence[str]) -> None:
         with self._lock:
             self._blockers.extend(messages)
@@ -1096,6 +1156,74 @@ class LedgerState:
                 path,
                 json.dumps(_sanitize_json_value(payload), indent=2, sort_keys=True) + "\n",
             )
+
+    def persist_checkpoint(self, path: Path, base_payload: dict[str, object]) -> None:
+        """Atomically snapshot the ledger fields INTO ``base_payload`` and persist (ADR 0095 PR-E3c
+        MED-1). ``base_payload`` carries every NON-ledger field the caller computed (schema_version,
+        decision, config, warnings, ...); this method injects the four ledger-derived fields
+        (completed_task_ids / deferred_task_ids / cycles / blockers) and writes the file ALL UNDER A
+        SINGLE ``_lock`` acquisition. The previous two-phase ``snapshot()`` then ``persist()`` took
+        the lock twice, so under X>1 a checkpoint thread could snapshot, a sibling could upsert +
+        persist a NEWER state, and then the first thread's persist would overwrite it with its stale
+        pre-sibling payload (lost update). Folding snapshot+merge+persist into one critical section
+        removes that window.
+
+        X==1 byte-identity: with a single writer thread there is no contention, the injected fields
+        equal the old ``snapshot()`` values, and the JSON is serialised with the same
+        ``indent=2, sort_keys=True`` -> byte-identical bytes + same single ``_atomic_write_text``
+        call shape (ADR 0001). Holding the lock across the disk write matches ``persist()`` (which
+        already wrote under the lock); the brief extra hold of the snapshot read is negligible and is
+        the price of correctness under concurrency."""
+        with self._lock:
+            payload = dict(base_payload)
+            payload["completed_task_ids"] = list(self._completed)
+            payload["deferred_task_ids"] = list(self._deferred)
+            payload["cycles"] = list(self._cycles)
+            payload["blockers"] = _dedupe_preserve_order(self._blockers)
+            _atomic_write_text(
+                path,
+                json.dumps(_sanitize_json_value(payload), indent=2, sort_keys=True) + "\n",
+            )
+
+
+class _ThreadSafeWarningList(list):
+    """A ``list`` whose mutating + snapshot operations are serialized behind one in-process lock
+    (ADR 0095 PR-E3c codex round-3 MED-1).
+
+    The X-task-pool driver (``write_active_auto_loop``) shares ONE ``warnings`` list across the
+    ThreadPoolExecutor worker threads: ``run_one_task`` / ``run_repair_apply`` call
+    ``warnings.append(...)`` and the driver passes ``append_warnings=warnings.extend`` into the
+    per-task worktree lifecycle (teardown / mirror / runner warnings). Meanwhile
+    ``write_cycle_checkpoint`` (also on a worker thread) and the final state serialization READ the
+    list via ``_dedupe_preserve_order(warnings.snapshot())``. CPython's ``list.append`` is
+    individually GIL-atomic, but ``_dedupe_preserve_order`` ITERATES the list, and a concurrent
+    ``append`` / ``extend`` during that iteration is a genuine data race ("list changed size during
+    iteration" / a torn read). Guarding ``append`` / ``extend`` and exposing an atomic ``snapshot()``
+    (a locked shallow copy the reader iterates instead of the live list) closes it.
+
+    X==1 byte-identity (ADR 0001): at the dark default the pool runs the serial
+    claim -> submit -> ``future.result()`` path on ONE thread, so the lock is ALWAYS uncontended and
+    every ``append`` / ``extend`` / ``snapshot`` happens in EXACTLY the pre-change call order against
+    a plain list -> identical ordering, identical bytes. The lock only changes WHEN two threads
+    contend, which never happens at X==1."""
+
+    def __init__(self, *args: object) -> None:
+        super().__init__(*args)
+        self._lock = threading.Lock()
+
+    def append(self, item: object) -> None:  # type: ignore[override]
+        with self._lock:
+            super().append(item)
+
+    def extend(self, items: "Iterable[object]") -> None:  # type: ignore[override]
+        with self._lock:
+            super().extend(items)
+
+    def snapshot(self) -> list:
+        """Return a locked shallow copy so a reader can iterate a stable list while worker threads
+        keep appending. Readers MUST use this (not the live list) for ``_dedupe_preserve_order``."""
+        with self._lock:
+            return list(self)
 
 
 DEFAULT_GLOBAL_CONCURRENCY = 8
@@ -1210,15 +1338,6 @@ def _parallelism_kill_enabled() -> bool:
     Reuses the brick-C / ack resolver truthy判정 pattern ("1"/"true"/"yes"/"on",
     case-insensitive) so all parallelism knobs agree on what "on" means."""
     return os.environ.get(PARALLELISM_KILL_ENV, "").strip().lower() in {"1", "true", "yes", "on"}
-
-
-def _e2_task_pool_dark_clamp_enabled() -> bool:
-    """True while the E2-dark clamp is in place (PR-E3 removes this function and its call site).
-
-    Extracted as a module-level function so tests can monkeypatch it to False to reach
-    the X>1 branch of run_task_in_worktree and verify the E3-deferred RuntimeError fires.
-    In production this always returns True (E2 ships the X task-pool substrate dark)."""
-    return True
 
 
 # X task-pool size (ADR 0095 PR-E2). Default 1 == serial == byte-identical (ADR 0001 gate);
@@ -11190,28 +11309,25 @@ def write_active_auto_loop(
             "the lease flock is a no-op (no cross-process exclusion); X>1 is unsafe without it"
         )
         task_pool_size = 1
-    # ADR 0095 PR-E2 ships the X task-pool substrate DARK: the worktree-per-task isolation
-    # (run_task_in_worktree) + ThreadPoolExecutor driver + stop_event fail-closed land here, but
-    # the real X>1 fan-out (ledger/lease reconciliation across worktrees) is gated to PR-E3. So
-    # this PR clamps the EFFECTIVE pool to 1 internally regardless of the knob — the driver runs
-    # the serial claim -> submit -> future.result() path (byte-identical, ADR 0001). The resolved
-    # ``task_pool_size`` (knob value, post kill-switch / fcntl gating) is still surfaced below so a
-    # >1 request is visibly demoted; PR-E3 removes this clamp to enable real concurrency.
-    e2_dark_clamp_warning: str | None = None
+    # ADR 0095 PR-E3c enables the real X>1 fan-out: the resolved ``task_pool_size`` (knob value,
+    # post kill-switch / fcntl gating) is used directly as the effective pool. The worktree-per-task
+    # isolation (run_task_in_worktree -> _run_cycle_in_task_worktree) + ThreadPoolExecutor driver +
+    # stop_event fail-closed drive real concurrency at X>1; at X=1 the driver runs the serial claim
+    # -> submit -> future.result() path with NO worktree (byte-identical, ADR 0001). PR-E2 shipped
+    # this substrate DARK behind an effective-pool clamp; PR-E3c removes that clamp.
     effective_task_pool_size = task_pool_size
-    if effective_task_pool_size > 1 and _e2_task_pool_dark_clamp_enabled():
-        e2_dark_clamp_warning = (
-            f"task pool requested {effective_task_pool_size} but ADR 0095 PR-E2 ships the X "
-            "task-pool substrate dark; running serially (X=1). PR-E3 enables X>1 fan-out"
-        )
-        effective_task_pool_size = 1
     out_path = _active_path(out, repo_root=repo_root)
     state_path = _active_path(state, repo_root=repo_root)
-    prior_completed, prior_deferred, warnings = _load_active_auto_ledger(state_path)
+    prior_completed, prior_deferred, _prior_warnings = _load_active_auto_ledger(state_path)
+    # ADR 0095 PR-E3c codex round-3 MED-1: the X>1 ThreadPoolExecutor workers share THIS warnings
+    # list (run_one_task/run_repair_apply append; the worktree-lifecycle append_warnings extends),
+    # while write_cycle_checkpoint + the final serialization read it. Wrap it in a lock-guarded list
+    # (append/extend serialized, atomic snapshot for the readers) so a concurrent append during the
+    # reader's _dedupe_preserve_order iteration cannot tear/raise. At X==1 the single serial worker
+    # never contends the lock and the call order is unchanged -> byte-identical (ADR 0001).
+    warnings = _ThreadSafeWarningList(_prior_warnings)
     if fcntl_clamp_warning is not None:
         warnings.append(fcntl_clamp_warning)
-    if e2_dark_clamp_warning is not None:
-        warnings.append(e2_dark_clamp_warning)
     ledger = LedgerState(completed=prior_completed, deferred=prior_deferred)
     completed = ledger.completed
     deferred_task_ids = ledger.deferred
@@ -11222,6 +11338,22 @@ def write_active_auto_loop(
     # gates every autotune side effect below so off-mode stays byte-identical (AC1/R4).
     if lane_autotune_config is None:
         lane_autotune_config = _resolve_lane_autotune_config()
+    # ADR 0095 PR-E3c MED-2: lane-autotune is nondeterministic under X>1. Concurrent cycles read the
+    # SAME live `cycles` history and mutate the shared pending_effort_overrides / lane_autotune_cooldown
+    # / lane_autotune_recommendations with last-writer-wins timing, so the controller's output depends
+    # on the (undefined) order in which parallel tasks finish their runner work. A lock would remove the
+    # data race but NOT the nondeterminism (the read-order itself is timing-dependent). Since autotune is
+    # opt-in and there is no defined cross-task ordering, the lower-risk correct fix is to DISABLE it at
+    # X>1 with a one-time advisory, forcing lane_autotune_config=None so all four autotune gates (prior-
+    # stats load, runner compute/update, checkpoint emit, final emit) stay off. At X==1 this branch never
+    # runs (effective_task_pool_size == 1), so autotune executes EXACTLY as today -> byte-identical (ADR 0001).
+    if lane_autotune_config is not None and effective_task_pool_size > 1:
+        warnings.append(
+            "lane-autotune disabled for this run: the X task-pool (effective_task_pool_size="
+            f"{effective_task_pool_size}) has no deterministic cross-task ordering for the controller "
+            "history/effort-override state (ADR 0095 PR-E3c MED-2)"
+        )
+        lane_autotune_config = None
     # Cross-run lane-stats history (oldest first) seeds the controller window so fail_rate
     # spans prior runs, not just this run's iterations. Only read when autotune is ON.
     prior_lane_stats: list[list[dict[str, object]]] = []
@@ -11300,7 +11432,11 @@ def write_active_auto_loop(
     max_attempts = max(1, max_iterations, int(auto_max_iterations_cap))
 
     def write_cycle_checkpoint(decision: str) -> None:
-        snap = ledger.snapshot()
+        # ADR 0095 PR-E3c MED-1: build only the NON-ledger payload here; the four ledger-derived
+        # fields (completed_task_ids / deferred_task_ids / cycles / blockers) are injected by
+        # ledger.persist_checkpoint UNDER ONE LOCK together with the disk write, so a concurrent
+        # sibling upsert+persist cannot be clobbered by a stale snapshot (lost update). At X==1 the
+        # single writer makes this byte-identical to the old snapshot()+persist() path (ADR 0001).
         checkpoint_payload = {
             "schema_version": 1,
             "generated_at": _isoformat(datetime.now(timezone.utc)),
@@ -11315,19 +11451,18 @@ def write_active_auto_loop(
             "target_completed_count": target_completed_count,
             "max_attempts": max_attempts,
             "max_iterations_reason": limit_reason,
-            "completed_task_ids": snap["completed_task_ids"],
-            "deferred_task_ids": snap["deferred_task_ids"],
             "next_task_id": None,
-            "cycles": snap["cycles"],
-            "blockers": snap["blockers"],
-            "warnings": _dedupe_preserve_order(warnings),
+            # codex round-3 MED-1: read via the atomic locked snapshot — this checkpoint builder runs
+            # ON the worker threads (write_cycle_checkpoint is called inside run_one_task), so iterating
+            # the live shared list while a sibling appends would race. snapshot() iterates a stable copy.
+            "warnings": _dedupe_preserve_order(warnings.snapshot()),
         }
         # ADR 0092 (AC8/AC13): only emit the recommendations + cooldown_state keys when
         # autotune is ON, so the checkpoint payload is byte-identical to today when OFF.
         if lane_autotune_config is not None:
             checkpoint_payload["lane_autotune_recommendations"] = lane_autotune_recommendations
             checkpoint_payload["lane_autotune_cooldown"] = lane_autotune_cooldown
-        ledger.persist(state_path, checkpoint_payload)
+        ledger.persist_checkpoint(state_path, checkpoint_payload)
 
     # Infinite-mode safety state. ``consecutive_blockers`` is reset to zero on every
     # completion so a long-running drain is only aborted by an *unbroken* streak of
@@ -11398,6 +11533,7 @@ def write_active_auto_loop(
         completion_decision: str,
         coordination_root: Path | None = None,
         lease_id: str | None = None,
+        artifact_root: Path | None = None,
     ) -> bool:
         """Auto-repair apply lane (ADR 0095 PR-E2 Finding 1).
 
@@ -11405,18 +11541,30 @@ def write_active_auto_loop(
         ``complete_if_not_stopped`` so a sibling's stop_event blocks spurious promotion here too.
         ADR 0095 PR-E3a threads ``coordination_root`` into the patch lane (the lease-bearing
         ``write_active_codex_runner`` call); the apply lane (``write_active_apply``) + patch
-        artifact stay on ``repo_root`` (artifacts). ``coordination_root=None`` -> repo_root keeps
+        artifact stay on the ARTIFACT root. ``coordination_root=None`` -> repo_root keeps
         X==1 byte-identical (ADR 0001). ADR 0095 PR-E3b additionally threads this cycle's own
         ``lease_id`` into that patch lane so the repair write-lane borrows THIS cycle's lease, not
-        first-match; ``lease_id=None`` (X=1) keeps the first-match path -> byte-identical."""
+        first-match; ``lease_id=None`` (X=1) keeps the first-match path -> byte-identical.
+        ADR 0095 PR-E3c HIGH-1: ``artifact_root`` separates artifact writes (patch runner output,
+        write_active_apply, patch_artifact.json path) from the coordination root.
+        ``artifact_root=None`` -> ``repo_root`` keeps X==1 byte-identical."""
         repair_coord = coordination_root or repo_root
+        effective_artifact_root = artifact_root or repo_root
 
         def run_patch(agent_choice: str) -> ActiveCodexRunnerResult:
-            # ADR 0095 PR-E3a/E3b: only forward coordination_root + lease_id when the coord differs
-            # from repo_root (X>1) so the X==1 patch-lane call stays textually identical
-            # (byte-identical). lease_id is folded into the same X>1 gate.
+            # ADR 0095 PR-E3c HIGH-2: forward coordination_root + lease_id whenever the ARTIFACT root
+            # diverges from the COORD root (effective_artifact_root != repair_coord) OR an explicit
+            # artifact_root was passed (artifact_root is not None). After E3c the X>1 caller threads
+            # coordination_root=PARENT repo_root, so repair_coord == repo_root and the old
+            # ``repair_coord != repo_root`` gate was FALSE — leaving coordination_root/lease_id
+            # UN-forwarded while repo_root=worktree (effective_artifact_root) made lease reads resolve
+            # to the torn-down cycle worktree instead of the shared parent lease file. Both new
+            # conditions key off the artifact↔coord split, which is exactly the X>1 signal.
+            # X==1 byte-identity: artifact_root=None -> effective_artifact_root == repo_root AND
+            # coordination_root=None -> repair_coord == repo_root, so effective_artifact_root ==
+            # repair_coord AND artifact_root is None -> gate FALSE -> textually identical call (ADR 0001).
             patch_coord_kwargs: dict[str, object] = {}
-            if repair_coord != repo_root:
+            if effective_artifact_root != repair_coord or artifact_root is not None:
                 patch_coord_kwargs["coordination_root"] = repair_coord
                 if lease_id is not None:
                     patch_coord_kwargs["lease_id"] = lease_id
@@ -11429,7 +11577,7 @@ def write_active_auto_loop(
                 write_agent=agent_choice,
                 timeout_seconds=effective_subprocess_timeout(),
                 record_gate_heartbeats=False,
-                repo_root=repo_root,
+                repo_root=effective_artifact_root,
                 mode="patch",
                 task_id=task.task_id,
                 state=DEFAULT_ACTIVE_AUTO_REPAIR_STATE,
@@ -11453,17 +11601,20 @@ def write_active_auto_loop(
             repair = run_patch(fallback_agent)
             cycle["repair_fallback_agent"] = fallback_agent
         cycle["repair_decision"] = repair.decision
-        cycle["repair_report"] = _repo_path(repair.report_path, repo_root)
+        # ADR 0095 PR-E3c MED-3: re-point repair/apply artifact paths to the parent task mirror so
+        # they survive cycle-worktree teardown at X>1. At X==1 effective_artifact_root == repo_root
+        # -> _repo_path(..., repo_root) -> byte-identical (ADR 0001).
+        cycle["repair_report"] = _cycle_artifact_repo_path(repair.report_path, effective_repo_root=effective_artifact_root, repo_root=repo_root, task_id=task.task_id)
         cycle["repair_status"] = repair.decision
         cycle["completion_decision"] = completion_decision
         if repair.decision == "completed":
-            apply_result = write_active_apply(execute=True, repo_root=repo_root)
+            apply_result = write_active_apply(execute=True, repo_root=effective_artifact_root)
             cycle["apply_decision"] = apply_result.decision
-            cycle["apply_report"] = _repo_path(apply_result.report_path, repo_root)
+            cycle["apply_report"] = _cycle_artifact_repo_path(apply_result.report_path, effective_repo_root=effective_artifact_root, repo_root=repo_root, task_id=task.task_id)
             cycle["apply_integration_branch"] = apply_result.integration_branch
             cycle["apply_applied"] = apply_result.applied
             if apply_result.applied:
-                patch_path = repo_root / "reports" / "agent_loop" / "active" / "patch_runs" / "implementer" / "patch_artifact.json"
+                patch_path = effective_artifact_root / "reports" / "agent_loop" / "active" / "patch_runs" / "implementer" / "patch_artifact.json"
                 if _patch_declares_blocked_handoff(patch_path):
                     cycle["completion_decision"] = "repair-applied-blocked-handoff"
                     cycle["completed"] = False
@@ -11471,6 +11622,7 @@ def write_active_auto_loop(
                     warnings.append(
                         f"{task.task_id}: repair patch only recorded a blocked handoff; deferred for another repair cycle"
                     )
+                    ledger.upsert_cycle(task.task_id, copy.deepcopy(cycle))
                     write_cycle_checkpoint("running")
                     return False
                 cycle["completion_decision"] = "repair-applied"
@@ -11478,9 +11630,20 @@ def write_active_auto_loop(
                 # is the THIRD terminal completion site; route through the helper so a sibling's
                 # stop_event prevents spurious promotion here too. At X==1 always returns True.
                 if not complete_if_not_stopped(task.task_id):
+                    # codex round-3 MED-2: completion was DENIED (a sibling set stop_event), but this
+                    # cycle has already mutated repair_decision/repair_report/repair_status/
+                    # completion_decision/apply_* in place. The early return skips the post-completion
+                    # upsert_cycle below, so without this snapshot the immutable ledger would keep the
+                    # STALE pre-repair copy. Persist the work-done (non-completed) cycle before
+                    # returning (run_repair_apply is defined ABOVE run_one_task, so _snapshot_cycle is
+                    # not in scope here — upsert directly, same shape as the success path below).
+                    # X==1: complete_if_not_stopped ALWAYS returns True (stop_event is never set
+                    # mid-cycle), so this branch is DEAD at X=1 -> byte-identical (ADR 0001).
+                    ledger.upsert_cycle(task.task_id, copy.deepcopy(cycle))
                     return False
                 cycle["completed"] = True
                 warnings.append(f"{task.task_id}: repair patch applied; recorded repair-applied completion")
+                ledger.upsert_cycle(task.task_id, copy.deepcopy(cycle))
                 write_cycle_checkpoint("running")
                 return True
             if apply_result.blockers:
@@ -11737,7 +11900,14 @@ def write_active_auto_loop(
             "completed": False,
             "retry_deferred": retrying_deferred,
         }
-        ledger.append_cycle(cycle)
+        # ADR 0095 PR-E3c HIGH-2: define a helper that snapshots the CURRENT cycle state into
+        # the ledger. Called (a) once right now (initial registration so ALL exit paths see a
+        # cycle entry), and (b) before every write_cycle_checkpoint (mid-run X>1 safety). At X=1
+        # the value equals the by-ref mutable at every call point -> byte-identical (ADR 0001).
+        def _snapshot_cycle() -> None:
+            ledger.upsert_cycle(task.task_id, copy.deepcopy(cycle))
+
+        _snapshot_cycle()  # initial registration
 
         start = write_active_start(
             mode=mode,
@@ -11767,14 +11937,30 @@ def write_active_auto_loop(
         # / coord). EMPTY at X=1 so the runner + ship calls stay textually the lease_id=None /
         # default-reject path -> first-match / unconditional-write -> byte-identical (ADR 0001).
         runner_lease_kwargs: dict[str, object] = {}
+        repair_lease_kwargs: dict[str, object] = {}
         ship_reject_kwargs: dict[str, object] = {}
         if effective_repo_root != repo_root:
             if cycle_lease_id is not None:
                 runner_lease_kwargs["lease_id"] = cycle_lease_id
+                repair_lease_kwargs["lease_id"] = cycle_lease_id
+            # ADR 0095 PR-E3c HIGH-1 (codex round-3 fix): artifact_root threads the cycle worktree
+            # so repair patch artifacts (run_patch output, write_active_apply, patch_artifact.json)
+            # land inside the per-task worktree, NOT the shared parent repo. It belongs ONLY to the
+            # repair lane (run_repair_apply has the param); write_active_codex_runner has NO
+            # artifact_root parameter, so the runner call must keep the lease_id-only dict — passing
+            # artifact_root there would TypeError at X>1. Hence two separate kwargs dicts. BOTH stay
+            # EMPTY at X=1 (gate false) -> runner+repair calls take the default path -> byte-identical.
+            repair_lease_kwargs["artifact_root"] = effective_repo_root
             ship_reject_kwargs["reject_on_overlap"] = True
         cycle["start_decision"] = start.decision
-        cycle["start_report"] = _repo_path(start.report_path, effective_repo_root)
+        # ADR 0095 PR-E3c MED-3: record artifact paths so they survive cycle-worktree teardown at X>1
+        # (re-pointed to the parent task mirror). At X==1 this == _repo_path(..., repo_root) -> byte-identical.
+        cycle["start_report"] = _cycle_artifact_repo_path(start.report_path, effective_repo_root=effective_repo_root, repo_root=repo_root, task_id=task.task_id)
         if start.blockers:
+            # codex round-3 HIGH-2: HEAD never set a completion_decision on the start-blocker path,
+            # so adding one breaks X=1 byte-identity (extra cycles[] key). Snapshot only the
+            # pre-existing start_decision/start_report fields (round-2 HIGH-1 fix) -> byte-identical.
+            _snapshot_cycle()
             if register_task_blocker(task, [f"{task.task_id}: {item}" for item in start.blockers]):
                 stop_event.set()
                 return
@@ -11783,11 +11969,12 @@ def write_active_auto_loop(
             cycle["gate_tier"] = "start-blocked"
             cycle["completion_decision"] = "start-blocked"
             if auto_repair:
-                applied = run_repair_apply(cycle, task, completion_decision="start-repair-needed", coordination_root=effective_coord_root, **runner_lease_kwargs)
+                applied = run_repair_apply(cycle, task, completion_decision="start-repair-needed", coordination_root=effective_coord_root, **repair_lease_kwargs)
                 warnings.append(
                     f"{task.task_id}: active-start/active-loop blocked without explicit blockers; routed to patch repair lane"
                     + (" and completed by repair apply" if applied else " and deferred")
                 )
+                ledger.upsert_cycle(task.task_id, copy.deepcopy(cycle))
                 write_cycle_checkpoint("running")
                 if applied:
                     return
@@ -11799,6 +11986,7 @@ def write_active_auto_loop(
                     stop_event.set()
                     return
                 return
+            _snapshot_cycle()
             if register_task_blocker(task, [f"{task.task_id}: active-start/active-loop decision was blocked"]):
                 stop_event.set()
                 return
@@ -11828,7 +12016,7 @@ def write_active_auto_loop(
             **runner_lease_kwargs,
         )
         cycle["runner_decision"] = runner.decision
-        cycle["runner_report"] = _repo_path(runner.report_path, effective_repo_root)
+        cycle["runner_report"] = _cycle_artifact_repo_path(runner.report_path, effective_repo_root=effective_repo_root, repo_root=repo_root, task_id=task.task_id)
         # ADR 0092 (B2 wiring, AC3): capture per-lane timing/status from the runner so the
         # opt-in controller can sense within-agent bottlenecks on the NEXT iteration. Gated on
         # the autotune config so the auto_loop_state.json stays byte-identical when OFF.
@@ -11847,6 +12035,11 @@ def write_active_auto_loop(
             # this cycle) and the carried cooldown_state to the PURE controller. PR2 returns the
             # effort overrides to apply on the NEXT iteration's runner call + the decremented
             # cooldown_state, both threaded forward via the loop-level mutables below.
+            # ADR 0095 PR-E3c HIGH-2: the ledger now holds immutable deep-copies (upsert_cycle),
+            # so the current cycle's lane_stats is NOT yet registered (no upsert has run since
+            # the lane_stats write above). Append the current cycle's lane_stats explicitly so
+            # compute_lane_autotune sees the same history as the old by-ref path.
+            current_lane_stats = cycle.get("lane_stats")
             history = [
                 *prior_lane_stats,
                 *(
@@ -11854,6 +12047,7 @@ def write_active_auto_loop(
                     for prior_cycle in cycles
                     if isinstance(prior_cycle.get("lane_stats"), list)
                 ),
+                *(([list(current_lane_stats)] if isinstance(current_lane_stats, list) else [])),
             ]
             (
                 next_effort_overrides,
@@ -11880,11 +12074,12 @@ def write_active_auto_loop(
         if execute_runner and runner.decision != "completed":
             cycle["gate_tier"] = "runner-blocked"
             if auto_repair:
-                applied = run_repair_apply(cycle, task, completion_decision="runner-repair-needed", coordination_root=effective_coord_root, **runner_lease_kwargs)
+                applied = run_repair_apply(cycle, task, completion_decision="runner-repair-needed", coordination_root=effective_coord_root, **repair_lease_kwargs)
                 warnings.append(
                     f"{task.task_id}: runner did not complete ({runner.decision}); routed to patch repair lane"
                     + (" and completed by repair apply" if applied else " and deferred")
                 )
+                ledger.upsert_cycle(task.task_id, copy.deepcopy(cycle))
                 write_cycle_checkpoint("running")
                 if applied:
                     return
@@ -11899,6 +12094,12 @@ def write_active_auto_loop(
             runner_messages = [f"{task.task_id}: runner {item}" for item in runner.blockers]
             if not runner.blockers:
                 runner_messages.append(f"{task.task_id}: runner decision was {runner.decision}, expected completed")
+            # ADR 0095 PR-E3c HIGH-1: publish the runner-blocked mutations (runner_decision /
+            # runner_report / gate_tier / lane_autotune) to the ledger BEFORE the terminal blocker,
+            # so the final snapshot()-backed cycles carry them. The old append_cycle by-ref path
+            # captured these automatically; with immutable upsert deep-copies they must be snapshotted
+            # explicitly. X==1 byte-identical: equals the by-ref value at this instant (ADR 0001).
+            _snapshot_cycle()
             if register_task_blocker(task, runner_messages):
                 stop_event.set()
                 return
@@ -11909,7 +12110,7 @@ def write_active_auto_loop(
             changed_files=context_files,
             repo_root=effective_repo_root,
         )
-        cycle["gate_evidence"] = _repo_path(evidence_path, effective_repo_root)
+        cycle["gate_evidence"] = _cycle_artifact_repo_path(evidence_path, effective_repo_root=effective_repo_root, repo_root=repo_root, task_id=task.task_id)
         cycle["gate_ready"] = bool(gate_summary.get("ready"))
         cycle["privacy_clean"] = bool(gate_summary.get("privacy_clean"))
         cycle["gate_tier"] = "ready" if cycle["gate_ready"] and cycle["privacy_clean"] else "repairable"
@@ -11929,9 +12130,16 @@ def write_active_auto_loop(
                 # stop_event is set (a sibling's blocker already stopped the run). At X==1 the
                 # event is never set mid-cycle -> helper always returns True -> byte-identical.
                 if not complete_if_not_stopped(task.task_id):
+                    # codex round-3 MED-2: completion DENIED (sibling stop_event). The cycle already
+                    # carries gate_evidence/gate_ready/privacy_clean/gate_tier + completion_decision;
+                    # the early return skips the success-path upsert_cycle below, so snapshot the
+                    # work-done (non-completed) cycle before returning. DEAD at X=1 (helper always
+                    # True) -> byte-identical (ADR 0001).
+                    _snapshot_cycle()
                     return
                 cycle["completed"] = True
                 warnings.append(f"{task.task_id}: ship execution disabled; recorded local gate completion")
+                ledger.upsert_cycle(task.task_id, copy.deepcopy(cycle))
                 write_cycle_checkpoint("running")
                 return
             if (
@@ -11940,11 +12148,12 @@ def write_active_auto_loop(
                 and runner.decision == "completed"
                 and cycle["privacy_clean"]
             ):
-                applied = run_repair_apply(cycle, task, completion_decision="repair-needed", coordination_root=effective_coord_root, **runner_lease_kwargs)
+                applied = run_repair_apply(cycle, task, completion_decision="repair-needed", coordination_root=effective_coord_root, **repair_lease_kwargs)
                 warnings.append(
                     f"{task.task_id}: conservative gate not ready; routed to patch repair lane"
                     + (" and completed by repair apply" if applied else " and deferred")
                 )
+                ledger.upsert_cycle(task.task_id, copy.deepcopy(cycle))
                 write_cycle_checkpoint("running")
                 if applied:
                     return
@@ -11957,6 +12166,7 @@ def write_active_auto_loop(
                     return
                 return
             warnings.append(f"{task.task_id}: ship execution disabled; not marking task completed")
+            _snapshot_cycle()
             if not infinite_mode:
                 stop_event.set()
                 return
@@ -11968,11 +12178,12 @@ def write_active_auto_loop(
             return
         if not cycle["gate_ready"]:
             if auto_repair and cycle["privacy_clean"]:
-                applied = run_repair_apply(cycle, task, completion_decision="repair-needed", coordination_root=effective_coord_root, **runner_lease_kwargs)
+                applied = run_repair_apply(cycle, task, completion_decision="repair-needed", coordination_root=effective_coord_root, **repair_lease_kwargs)
                 warnings.append(
                     f"{task.task_id}: conservative gate not ready; routed to patch repair lane"
                     + (" and completed by repair apply" if applied else " and deferred")
                 )
+                ledger.upsert_cycle(task.task_id, copy.deepcopy(cycle))
                 write_cycle_checkpoint("running")
                 if applied:
                     return
@@ -11984,6 +12195,11 @@ def write_active_auto_loop(
                     stop_event.set()
                     return
                 return
+            # ADR 0095 PR-E3c HIGH-1: publish the gate-not-ready mutations (gate_evidence / gate_ready
+            # / privacy_clean / gate_tier) to the ledger BEFORE the terminal blocker so the final
+            # snapshot()-backed cycles carry them (the by-ref append used to capture them implicitly).
+            # X==1 byte-identical: equals the by-ref value at this instant (ADR 0001).
+            _snapshot_cycle()
             if register_task_blocker(task, [f"{task.task_id}: conservative gate is not ready"]):
                 stop_event.set()
                 return
@@ -12010,11 +12226,16 @@ def write_active_auto_loop(
             **ship_reject_kwargs,
         )
         cycle["ship_decision"] = ship.decision
-        cycle["ship_report"] = _repo_path(ship.report_path, effective_repo_root)
+        cycle["ship_report"] = _cycle_artifact_repo_path(ship.report_path, effective_repo_root=effective_repo_root, repo_root=repo_root, task_id=task.task_id)
         if ship.decision != "executed":
             ship_messages = [f"{task.task_id}: ship {item}" for item in ship.blockers]
             if not ship.blockers:
                 ship_messages.append(f"{task.task_id}: ship decision was {ship.decision}, expected executed")
+            # ADR 0095 PR-E3c HIGH-1: publish the ship-blocked mutations (ship_decision / ship_report)
+            # to the ledger BEFORE the terminal blocker so the final snapshot()-backed cycles carry
+            # them (the by-ref append used to capture them implicitly). X==1 byte-identical: equals the
+            # by-ref value at this instant (ADR 0001).
+            _snapshot_cycle()
             if register_task_blocker(task, ship_messages):
                 stop_event.set()
                 return
@@ -12023,45 +12244,67 @@ def write_active_auto_loop(
         # FAIL-CLOSED via complete_if_not_stopped (ADR 0095 PR-E2 Finding 1): route through the
         # shared helper so ALL three terminal completion sites share one guard. Invisible at X==1.
         if not complete_if_not_stopped(task.task_id):
+            # codex round-3 MED-2: completion DENIED (sibling stop_event). The cycle already carries
+            # ship_decision/ship_report (just written above); the early return skips the success-path
+            # upsert_cycle below, so snapshot the work-done (non-completed) cycle before returning.
+            # DEAD at X=1 (helper always True) -> byte-identical (ADR 0001).
+            _snapshot_cycle()
             return
         cycle["completed"] = True
+        ledger.upsert_cycle(task.task_id, copy.deepcopy(cycle))
         write_cycle_checkpoint("running")
 
     def run_task_in_worktree(task: "TaskEntry", iteration: int, retrying_deferred: bool) -> None:
-        """Run one task cycle (ADR 0095 PR-E2).
+        """Run one task cycle (ADR 0095 PR-E2 substrate, PR-E3c fan-out).
 
-        At ``effective_task_pool_size == 1`` (the E2 dark default): calls ``run_one_task`` directly.
+        At ``effective_task_pool_size == 1`` (the dark default): calls ``run_one_task`` directly.
         No worktree is created, ``repo_root`` is ROOT_DIR (the plain closure), byte-identical
         (ADR 0001).
 
-        At ``effective_task_pool_size > 1`` (PR-E3 scope): raises an explicit E3-deferred
-        ``RuntimeError`` documenting the work-list. The E2-dark clamp makes this branch unreachable
-        at runtime; the raise makes the boundary visible in code and is caught by a unit test.
-
-        NOTE: the worktree lifecycle primitive (_run_cycle_in_task_worktree / create / teardown) is
-        already unit-tested at the module level; PR-E3 will wire it here once leases coordination_root
-        (write+read+acquire+release), parent branch/issue inheritance for cycle worktrees, and
-        overlap-preflight root-awareness are also resolved."""
+        At ``effective_task_pool_size > 1`` (PR-E3c fan-out): delegates to
+        ``_run_cycle_in_task_worktree`` which isolates the cycle in a per-task ``agent/<task>/cycle``
+        worktree and runs ``run_cycle`` (a closure that calls ``run_one_task`` with the two-root
+        params: cycle_repo_root = the worktree, coordination_root = the PARENT ROOT_DIR for leases,
+        plus the captured parent branch/issue for cycle-worktree inheritance — E3a/E3b). The
+        global-concurrency permit for the worktree create is acquired INSIDE
+        ``_run_cycle_in_task_worktree`` (around the create only), so the driver must NOT acquire it
+        here (no double charge)."""
         if effective_task_pool_size <= 1:
             # X==1 dark default: plain cycle, no worktree, no rebinding — byte-identical (ADR 0001).
             run_one_task(task, iteration, retrying_deferred)
             return
 
-        # --- X>1 fan-out: explicitly deferred to PR-E3 ------------------------------------------
-        # E3 work-list (codex round-2 HIGH findings):
-        #   • leases coordination_root: write_active_loop/write_active_start AND
-        #     read (_load_active_leases), acquire_active_agent, release_active_agent — ALL must use
-        #     the parent root so cross-task lease overlap is visible.
-        #   • parent branch/issue inheritance: cycle worktrees created from main (origin/main),
-        #     NOT the current branch, to avoid branch-tied issue metadata leaking into sibling tasks.
-        #   • overlap-preflight root-awareness: build_overlap_preflight must query the parent root.
-        #   • two-root threading: cycle_repo_root (artifacts) + coordination_root (leases) explicitly
-        #     passed through run_one_task / run_repair_apply / write_active_start / write_active_loop.
-        #   • claim_disjoint REJECT: first-writer-wins rejection (currently REPORT-only).
-        raise RuntimeError(
-            "X>1 task-pool fan-out is not enabled in PR-E2; PR-E3 wires leases coordination_root "
-            "(write+read+acquire+release), parent branch/issue inheritance for cycle worktrees, and "
-            "overlap-preflight root-awareness"
+        # --- X>1 fan-out (PR-E3c): isolate this cycle in a per-task worktree -----------------------
+        # run_cycle threads the two roots + parent branch/issue (E3a/E3b) into run_one_task so the
+        # cycle's artifacts land in the worktree while leases/coordination stay on the PARENT root.
+        # HIGH-3 (ADR 0095 PR-E3c codex review): use the closure ``repo_root`` (write_active_auto_loop
+        # parameter) rather than the module-level ROOT_DIR constant so non-CLI callers that pass an
+        # alternate root (tests, integration harnesses) get the correct coordination + parent root.
+        # On the CLI path repo_root == ROOT_DIR, so production behavior is unchanged.
+        def run_cycle(cycle_path: "Path") -> None:
+            run_one_task(
+                task,
+                iteration,
+                retrying_deferred,
+                cycle_repo_root=cycle_path,
+                coordination_root=repo_root,
+                parent_branch=parent_branch,
+                parent_issue=parent_issue,
+            )
+
+        # register_blocker adapter: _run_cycle_in_task_worktree expects Callable[[list[str]], bool];
+        # register_task_blocker is (task, messages) -> bool, so bind the task. on_stop mirrors
+        # stop_event.set() (no args); append_warnings extends the driver's warnings list. The git
+        # subprocess runner is left at the production default (None -> real `git worktree` spawn),
+        # matching create_task_cycle_worktree's own default.
+        _run_cycle_in_task_worktree(
+            task.task_id,
+            parent_root=repo_root,
+            run_cycle=run_cycle,
+            register_blocker=lambda messages: register_task_blocker(task, messages),
+            on_stop=stop_event.set,
+            append_warnings=lambda ws: warnings.extend(ws),
+            git_runner=None,
         )
 
     # X task-pool driver (ADR 0095 PR-E2). ``ThreadPoolExecutor(max_workers=effective_task_pool_size)``.
@@ -12102,6 +12345,33 @@ def write_active_auto_loop(
                 break
             if wall_clock_guard_tripped():
                 break
+            # ADR 0095 PR-E3c HIGH-3: bounded-mode overrun guard. At X>1, in-flight futures MIGHT each
+            # complete one task; while ``completed + in_flight`` could still satisfy the target we
+            # PAUSE new claims so the pool never over-claims past the target. But an in-flight future
+            # may DEFER instead of completing (e.g. a failed repair), so we must NOT treat in-flight
+            # work as a GUARANTEED completion and exit with an unmet target: instead of an
+            # unconditional break we drain ONE in-flight future and re-loop. After the drain, either
+            # ``completed`` reached the target (the loop_should_continue() check at the top breaks
+            # cleanly) OR the drained future deferred and the guard relaxes (completed + in_flight <
+            # target) so the next ready task is claimed. Only break for good when there is genuinely
+            # no in-flight work left to wait on (then ``completed >= target`` already, since
+            # in_flight==0 makes the guard condition collapse to completed >= target — which
+            # loop_should_continue() caught at the top). At X==1 in_flight is ALWAYS empty when this
+            # runs (serial path waits on each future before the next claim) AND
+            # loop_should_continue() already broke at ``completed >= target`` BEFORE this guard, so the
+            # guard is fully dead -> byte-identical (ADR 0001). Applies only with an explicit target.
+            if (not infinite_mode or explicit_target_completed_count) and target_completed_count is not None:
+                if len(completed) + len(in_flight) >= target_completed_count:
+                    if in_flight:
+                        # Wait for at least one in-flight task, then re-evaluate the target with the
+                        # updated completed/in_flight counts (never abandons an unmet target).
+                        done, in_flight = wait(in_flight, return_when=FIRST_COMPLETED)
+                        for fut in done:
+                            fut.result()
+                            check_task_budget(fut)
+                        continue
+                    # No in-flight work: the target is genuinely met (completed >= target); exit.
+                    break
             claimed = claim_next_task()
             if claimed is None:
                 break
@@ -12226,7 +12496,9 @@ def write_active_auto_loop(
         "learning_capture_advisory": learning_advisory,
         "adr_lifecycle_advisory": adr_lifecycle_advisory,
         "blockers": snap["blockers"],
-        "warnings": _dedupe_preserve_order(warnings),
+        # codex round-3 MED-1: the pool has joined here (no concurrent appends), but read via the
+        # locked snapshot uniformly with the checkpoint reader. Uncontended at X==1 -> byte-identical.
+        "warnings": _dedupe_preserve_order(warnings.snapshot()),
     }
     # ADR 0092 (AC8/AC13): emit recommendations + cooldown_state on the terminal state write
     # too (this block, not write_cycle_checkpoint, is the final state file). The persisted
@@ -12250,7 +12522,8 @@ def write_active_auto_loop(
         completed_task_ids=completed,
         next_task=next_task,
         blockers=tuple(_dedupe_preserve_order(blockers)),
-        warnings=tuple(_dedupe_preserve_order(warnings)),
+        # codex round-3 MED-1: locked-snapshot read (uniform with the other readers; pool joined).
+        warnings=tuple(_dedupe_preserve_order(warnings.snapshot())),
         state_path=state_path,
         repo_root=repo_root,
     )
@@ -12282,7 +12555,8 @@ def write_active_auto_loop(
         completed_task_ids=tuple(completed),
         next_task_id=next_task.task_id if next_task else None,
         blockers=tuple(_dedupe_preserve_order(blockers)),
-        warnings=tuple(_dedupe_preserve_order(warnings)),
+        # codex round-3 MED-1: locked-snapshot read (uniform with the other readers; pool joined).
+        warnings=tuple(_dedupe_preserve_order(warnings.snapshot())),
     )
 
 
@@ -17852,6 +18126,116 @@ def teardown_task_cycle_worktree(
     return warnings
 
 
+def _mirror_cycle_artifacts_to_parent(
+    task_id: str, cycle_path: Path, parent_root: Path
+) -> tuple[bool, list[str]]:
+    """TRANSACTIONALLY copy the cycle worktree's ``reports/agent_loop/active`` tree into a parent
+    task-scoped mirror ``<parent>/reports/agent_loop/active/tasks/<task_id>`` BEFORE the worktree is
+    torn down (ADR 0095 PR-E3c MED-3 + codex round-3 HIGH-3). Without this the X>1 cycle dict records
+    artifact paths that only existed inside the now-deleted worktree (dead references in the parent
+    ``auto_loop_state.json``); the mirror makes those re-pointed ``…/active/tasks/<task_id>/…`` paths
+    actually resolve.
+
+    Promotion is staged + backup/rollback so the live ``dst`` is never left half-written or (when a prior
+    mirror existed) missing on failure:
+      1. copy the cycle tree into a sibling ``…/<task_id>.mirror-tmp`` staging dir (``dst`` untouched if
+         this fails -> no dangle);
+      2. if a prior mirror exists at ``dst`` (only ever a STALE leftover from a PRIOR run -- a task_id is
+         claimed at most once per run, so this is never a same-run concurrent write) move it ASIDE to
+         ``…/<task_id>.mirror-bak`` via atomic rename;
+      3. rename staging into ``dst`` (atomic); on failure RESTORE the prior to ``dst`` by ATOMIC RENAME
+         only (NOT a copytree fallback -- codex round-6 HIGH: a non-atomic copy can leave a partial dst
+         that masquerades as recovery and gets the clean backup deleted). ``dst`` is left missing ONLY
+         under catastrophic FS failure that also defeats the rename-back; that residual is SURFACED in the
+         returned warning (the prior copy stays at ``…/<task_id>.mirror-bak`` and the message names it for
+         manual recovery) -- NEVER silently swallowed (codex round-5 HIGH: the earlier ``except: pass``
+         could leave ``dst`` missing with no signal);
+      4. drop the backup only AFTER a successful promote (best-effort -- a stale backup left by a cleanup
+         hiccup is harmless and reclaimed next run; it must not fail an otherwise-successful promote).
+    The vacate->promote window is the irreducible cost of replacing a non-empty directory on POSIX without
+    ``RENAME_EXCHANGE`` (codex round-4 HIGH: the earlier ``rmtree(dst)`` then ``os.replace`` order lost the
+    prior mirror outright if the replace raised between them).
+
+    The nested ``tasks/`` subtree is excluded so the parent-mirror namespace is never recursively copied
+    into a child cycle's mirror. Never raises. Returns ``(ok, warnings)``: ``ok`` is True when the mirror
+    is fully promoted (safe to tear the worktree down) OR when there were no artifacts to mirror (nothing
+    to lose); False when promotion failed -- the caller then FAILS CLOSED (records a blocker + preserves
+    the worktree instead of tearing it down)."""
+    src = cycle_path / _ACTIVE_DIR_REL_POSIX
+    if not src.is_dir():
+        # No artifacts were produced in this cycle -> nothing to mirror, nothing to lose -> ok.
+        return True, []
+    dst = _task_artifact_mirror_dir(parent_root, task_id)
+    staging = dst.with_name(dst.name + ".mirror-tmp")
+    backup = dst.with_name(dst.name + ".mirror-bak")
+
+    def _rm(path: Path) -> None:
+        # Best-effort recursive remove; cleanup must never mask the original failure.
+        try:
+            if path.exists():
+                shutil.rmtree(path)
+        except OSError:
+            pass
+
+    # True only once the prior mirror has been moved dst -> backup (so a failed promote MUST restore it).
+    # Declared before the try so the except can read it on every path (incl. a staging-build failure).
+    vacated = False
+    try:
+        # Clean any leftover staging dir from a prior crashed attempt, then copy into staging.
+        if staging.exists():
+            shutil.rmtree(staging)
+        staging.parent.mkdir(parents=True, exist_ok=True)
+        # ignore the nested per-task mirror namespace ("tasks") so we never copy a parent mirror tree.
+        shutil.copytree(src, dst=staging, ignore=shutil.ignore_patterns("tasks"))
+        # Promote. Clean any stale leftover backup first, then vacate the (stale) prior mirror if present.
+        if backup.exists():
+            shutil.rmtree(backup)
+        if dst.exists():
+            os.replace(dst, backup)  # vacate the prior; backup now holds the only prior copy
+            vacated = True
+        try:
+            os.replace(staging, dst)  # promote the new mirror into place (atomic)
+        except OSError:
+            if vacated and not dst.exists():
+                os.replace(backup, dst)  # inline ROLLBACK: restore the prior so dst is never left missing
+            raise
+        if vacated:
+            _rm(backup)  # promote succeeded -> the aside copy is stale (best-effort; never fail the promote)
+    except OSError as exc:
+        # FAIL CLOSED. Invariant: never leave dst missing when a prior mirror was vacated. If the inline
+        # rollback did not run (or itself raised), restore the prior to dst -- rename first, then a
+        # copytree fallback. Only catastrophic FS failure defeats BOTH; that residual is SURFACED in the
+        # returned warning (prior copy kept at backup), never silently swallowed.
+        if vacated and not dst.exists():
+            # Restore the prior to dst with the ATOMIC rename ONLY. A copytree fallback was deliberately
+            # removed (codex round-6 HIGH): copytree is NOT atomic -- it can partially populate dst and
+            # then raise, which would look like a successful recovery (dst.exists() is True) and trigger
+            # the stale-backup cleanup below, destroying the only CLEAN prior copy while leaving a corrupt
+            # dst. An atomic rename either fully restores dst or leaves it absent (-> the catastrophic
+            # branch keeps + names the backup). A rename that fails where the inverse just succeeded is
+            # FS-death territory; copytree would not fare better there. No partial-state hazard.
+            try:
+                os.replace(backup, dst)
+            except OSError:
+                pass
+        _rm(staging)
+        if vacated and not dst.exists():
+            # Catastrophic: could neither promote the new mirror nor restore the prior. KEEP the backup
+            # and name it so the prior artifacts are manually recoverable; the caller still fails closed.
+            return False, [
+                f"{task_id}: could not mirror cycle artifacts AND could not restore the prior mirror to "
+                f"{dst} ({exc}); the prior copy is preserved at {backup} -- manual recovery needed "
+                f"(fail-closed; cycle worktree preserved)"
+            ]
+        if dst.exists():
+            _rm(backup)  # dst is intact (restored prior, or never vacated) -> the backup is now stale
+        return False, [
+            f"{task_id}: could not mirror cycle artifacts to the parent task dir before teardown "
+            f"({exc}); preserving the cycle worktree so artifacts are not lost (fail-closed)"
+        ]
+    return True, []
+
+
 def _run_cycle_in_task_worktree(
     task_id: str,
     *,
@@ -17915,11 +18299,27 @@ def _run_cycle_in_task_worktree(
             return
         run_cycle(cycle_path)
     finally:
-        # Exit hygiene: tear down on EVERY exit path (seed failure / blocker / exception / stop /
-        # budget). teardown commits uncommitted cycle state first (issue #1719) so aborted work is
-        # recoverable.
-        teardown_warnings = teardown_task_cycle_worktree(task_id, repo_root=parent_root, runner=git_runner)
-        append_warnings(teardown_warnings)
+        # ADR 0095 PR-E3c MED-3: mirror the cycle's active artifacts into the parent task-scoped dir
+        # BEFORE teardown so the re-pointed cycle-dict paths (…/active/tasks/<task_id>/…) survive the
+        # worktree removal. Runs on every exit path that produced artifacts.
+        # codex round-3 HIGH-3 (FAIL-CLOSED): the mirror is now TRANSACTIONAL and returns ok=False if
+        # promotion failed (partial/failed copy). Because the recorded cycle paths were already
+        # re-pointed to the parent mirror, a missing mirror = DANGLING state — so on failure we record
+        # a blocker AND SKIP teardown, preserving the cycle worktree (the in-worktree artifacts are the
+        # only good copy left). On success we proceed to the normal exit-hygiene teardown.
+        mirror_ok, mirror_warnings = _mirror_cycle_artifacts_to_parent(task_id, cycle_path, parent_root)
+        append_warnings(mirror_warnings)
+        if not mirror_ok:
+            # Dangling-state risk: do NOT tear the worktree down. Route the failure through the blocker
+            # guard (fail-closed, same as create/confinement failures) so a sibling stop is honoured.
+            if register_blocker([f"{task_id}: cycle artifact mirror failed; worktree preserved to avoid losing artifacts"]):
+                on_stop()
+        else:
+            # Exit hygiene: tear down on EVERY (mirror-clean) exit path (seed failure / blocker /
+            # exception / stop / budget). teardown commits uncommitted cycle state first (issue #1719)
+            # so aborted work is recoverable.
+            teardown_warnings = teardown_task_cycle_worktree(task_id, repo_root=parent_root, runner=git_runner)
+            append_warnings(teardown_warnings)
 
 
 def _git_worktree_runner(cmd: list[str]) -> "subprocess.CompletedProcess[str]":
@@ -20789,8 +21189,9 @@ def build_parser() -> argparse.ArgumentParser:
     # ADR 0095 PR-E2: X task-pool size. The default is RESOLVED FROM ENV (BIDMATE_AGENT_LOOP_TASK_POOL,
     # Makefile ACTIVE_TASK_POOL) so the operator front door stays the SSoT, falling back to 1
     # (serial == byte-identical, ADR 0001) when unset. PR-F flips the operator default to 2. The
-    # kill-switch (BIDMATE_AGENT_LOOP_PARALLELISM_KILL=1) forces 1 inside _resolve_task_pool_size,
-    # and PR-E2 additionally clamps the EFFECTIVE pool to 1 (ships the substrate dark; PR-E3 enables).
+    # kill-switch (BIDMATE_AGENT_LOOP_PARALLELISM_KILL=1) forces 1 inside _resolve_task_pool_size.
+    # PR-E2 shipped the substrate dark behind an EFFECTIVE-pool clamp; PR-E3c removed that clamp so
+    # a resolved >1 now drives real X>1 fan-out (worktree-per-task isolation).
     auto_loop.add_argument("--task-pool", type=int, default=_resolve_task_pool_size())
     # ADR 0085: the Makefile `시작`/`agent-loop-active-auto-loop` front door is the SSoT
     # for operator defaults. These argparse defaults are aligned with it so a direct
