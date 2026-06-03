@@ -8,6 +8,13 @@ No public synthetic benchmark performance claim is produced by these audits.
 Private real-eval remains local-only; only redacted aggregate summaries may be
 reviewed as commit candidates.
 
+Current claim-bearing private eval work uses the `real100_v2` surface. Keep the
+local config at `data/private/real100_v2/real_config_v2.local.yaml` or point
+`REAL100_V2_CONFIG` at another ignored local v2 config, then validate with
+`make real-eval-v2-check` and `make real-eval-v2-guard`. Legacy real100/v1,
+221-case, and kordoc/v1 evidence is archive-only until the maintainer
+explicitly re-enables it.
+
 ## Required Order Before Baseline Measurement
 
 1. Parse audit
@@ -113,8 +120,12 @@ measurement warning, not as a system performance claim.
 After both audits pass, run the private real-eval validator:
 
 ```bash
-python3 scripts/check_private_real_eval_readiness.py --config eval/real_config.local.yaml
+REAL100_V2_CONFIG=data/private/real100_v2/real_config_v2.local.yaml make real-eval-v2-check
+make real-eval-v2-guard
 ```
 
-Then run the private baseline only after validate-only passes. Review only
-redacted aggregate summaries before considering any commit.
+Direct readiness-script invocations remain local-only compatibility paths. If
+used, point `--config` at an ignored v2 config and keep index/report/output
+paths inside the current guard boundary. Then run the private baseline only
+after validate-only passes. Review only redacted aggregate summaries before
+considering any commit.
