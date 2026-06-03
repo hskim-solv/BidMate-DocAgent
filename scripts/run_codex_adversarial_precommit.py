@@ -231,8 +231,11 @@ def build_focus(
             )
         else:
             focus += (
-                "\n\nStaged diff (`git diff --cached`) follows; treat it as the "
-                "authoritative change set for this commit." + instr_tail + body
+                "\n\nStaged diff (`git diff --cached`) follows, scoped to the "
+                "load-bearing staged paths under review; treat it as the "
+                "authoritative change set for those paths. Other staged files "
+                "listed above are out of this gate's scope and not embedded."
+                + instr_tail + body
             )
     return focus
 
@@ -557,14 +560,36 @@ def _payload_findings(payload: dict[str, object] | None) -> list[dict[str, objec
     return [f for f in findings if isinstance(f, dict)]
 
 
+def _is_recognized_severity(value: object) -> bool:
+    """True iff ``value`` is a severity string the block decision actually honors.
+
+    ``severity_rank`` / ``Cluster.max_severity`` silently fold any unrecognized
+    severity to ``unknown`` / ``"low"`` — i.e. NON-blocking. So a finding whose
+    severity is malformed or missing (``None``, an int, a typo like ``"critikal"``)
+    is treated as low and slips past the critical/high block gate, silently
+    downgrading what may be a real critical finding (issue #1920). Requiring a
+    recognized severity for a pass to count as valid closes that hole. The Codex
+    companion's structured output constrains severity to the same enum, so a
+    well-formed response always passes — only broken output is rejected.
+    """
+    return isinstance(value, str) and value.lower() in SEVERITY_RANK
+
+
 def _is_valid_result(payload: dict[str, object] | None) -> bool:
-    """True iff a pass carries a known verdict and a list of dict ``findings``.
+    """True iff a pass carries a known verdict and well-formed dict ``findings``.
 
     A non-dict / unknown-verdict / non-list-findings ``result`` — or a findings
     list with non-dict items — would otherwise read as a clean empty-findings
     success (via ``_payload_findings`` dropping non-dict items), inflating
     ``successful_passes`` and weakening the ``successful_passes < min_frequency``
     fail-closed gate (issue #1693; the non-dict-item case is a dogfood self-catch).
+    Each finding must also carry a recognized ``severity`` (issue #1920): the
+    block decision reads only ``max_severity``, which folds an unrecognized
+    severity to non-blocking, so a malformed-severity pass is classified as an
+    error (fail-closed) rather than trusted as a clean success. Block-irrelevant
+    fields (summary/title/body/recommendation/confidence) are left to the
+    renderer's ``.get`` defaults — over-validating them would only manufacture
+    false fail-closed blocks.
     """
     if payload is None or payload.get("parseError"):
         return False
@@ -574,7 +599,12 @@ def _is_valid_result(payload: dict[str, object] | None) -> bool:
     if result.get("verdict") not in VALID_VERDICTS:
         return False
     findings = result.get("findings")
-    return isinstance(findings, list) and all(isinstance(f, dict) for f in findings)
+    if not isinstance(findings, list):
+        return False
+    return all(
+        isinstance(f, dict) and _is_recognized_severity(f.get("severity"))
+        for f in findings
+    )
 
 
 def severity_rank(severity: str | None) -> int:
@@ -870,7 +900,9 @@ def _staged_diff_digest() -> str | None:
     return hashlib.sha256(proc.stdout or b"").hexdigest()
 
 
-def _staged_diff_snapshot(*, max_bytes: int = 60_000) -> str | None:
+def _staged_diff_snapshot(
+    *, paths: Sequence[str] | None = None, max_bytes: int = 60_000
+) -> str | None:
     """Text of the staged diff (`git diff --cached --no-color`), truncated to
     ``max_bytes`` UTF-8 bytes, or None on git failure.
 
@@ -880,10 +912,21 @@ def _staged_diff_snapshot(*, max_bytes: int = 60_000) -> str | None:
     empty HEAD..HEAD structured diff, so the focus is the only reliable channel
     for the actual staged content (issue #1693). Fail-open: returns None on any
     git error so the gate falls back to the prose-only focus, never crashing.
+
+    When ``paths`` is given (the load-bearing hits that triggered the gate), the
+    diff is scoped to those paths (`git diff --cached -- <paths>`). The gate only
+    fires on load-bearing changes, so embedding the *entire* staged diff would
+    ship unrelated staged content — potentially secrets a co-staged file carries —
+    to Codex for no review benefit. Scoping bounds the payload to exactly what the
+    review is about (issue #1920). ``changed_files`` in the focus prose still
+    lists every staged path for awareness.
     """
+    cmd = ["git", "diff", "--cached", "--no-color"]
+    if paths:
+        cmd += ["--", *paths]
     try:
         proc = subprocess.run(
-            ["git", "diff", "--cached", "--no-color"],
+            cmd,
             capture_output=True,
             text=True,
             check=False,
@@ -1061,7 +1104,7 @@ def run_precommit_review(
         raise ValueError("--timeout-sec must be >= 1")
 
     digest = _staged_diff_digest()
-    staged_diff = _staged_diff_snapshot()
+    staged_diff = _staged_diff_snapshot(paths=hits)
     pol_dgst = _policy_digest(
         start_attempts=start_attempts,
         cap_attempts=attempts,
