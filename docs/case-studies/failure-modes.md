@@ -4,7 +4,7 @@
 
 본 문서는 요약이며, 정본(canonical) 데이터는 다음을 참조한다 (중복 서술하지 않음):
 
-- [`docs/real-data/real-data-failure-taxonomy.md`](../real-data/real-data-failure-taxonomy.md) — real100 기반 6-카테고리(C1–C6) 정본 분류
+- [`docs/real-data/real-data-failure-taxonomy.md`](../real-data/real-data-failure-taxonomy.md) — historical v1 `real100` 기반 6-카테고리(C1–C6) 정본 분류(archive-only snapshot)
 - [`docs/agentic/agent-failure-modes-analysis.md`](../agentic/agent-failure-modes-analysis.md) — LangGraph 오케스트레이션 실패 패턴
 - [`docs/operations/failure-mode-harden-process.md`](../operations/failure-mode-harden-process.md) — monotone-ratchet 하드닝 프로세스
 - [ADR 0059](../adr/0059-failure-mode-classifier-as-measurement-surface.md) (failure classifier) · [ADR 0062](../adr/0062-failure-rate-regression-contract.md) (회귀 ceiling 계약)
