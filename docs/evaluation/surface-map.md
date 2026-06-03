@@ -29,6 +29,7 @@ agent gate behavior is [Agent-Gated RFP Evaluation Loop](./agent-gated-rfp-eval-
 | Private real-eval | `data/private/real100_v2/real_config_v2.local.yaml`, private v2 corpus/index, `reports/real100_v2/` aggregate outputs | real RFP aggregate evidence, tiered v2 baseline, paired delta, opt-in judge aggregate | `make real-eval-v2-check`, `make real-eval-v2-inventory`, `make real-eval-v2-guard`, `make real-eval-v2-chroma`, `make real-eval-v2-chroma-llm`, `make real-eval-v2-judge`, `make real-eval-v2-ragas-judge`, `make real-eval-v2-rationality-judge` | raw/per-case local-only; allowlisted aggregate-only artifact만 commit | "private real100_v2 aggregate에서 delta X, provenance Y" |
 | PR fixture eval | `.github/workflows/pr-eval.yml` | PR마다 public fixture delta와 tests 검증 | GitHub Actions `PR Eval Delta` | PR comment/check only | "CI smoke delta passed/failed" |
 | Slow tests | `pytest -m slow`, `.github/workflows/slow-tests.yml` | real-model/full-corpus risk 확인 | `PYTEST_ADDOPTS="-m slow" bash scripts/test.sh` | generated outputs local | "slow gate passed on date/SHA" |
+| Operator-skill eval | `agent-evals/` (PR1: `README.md` 단 하나; PR2+: aggregate-only `reports/*.aggregate.json`, raw run-log/diff/reviewer-input은 local) | 운영자(사람)의 코딩-에이전트 운영 능력 paired holdout delta — 모델 성능 아님 ([ADR 0100](../adr/0100-operator-skill-eval-surface.md)) | PR2/PR3 wire 예정: `make agent-eval-mine`, `make agent-eval-run`, `make agent-eval-report` | **PR1 = `agent-evals/README.md` exact-path 단 하나** (3-layer: `.gitignore` deny-by-default + index-aware 가드 + pre-commit mirror); raw per-run local-only, aggregate report는 PR2 content scanner 통과 후에만 commit | "운영자 playbook v1−v0 paired delta X (cross-family oracle; freshness-exclusion + counterbalanced order balanced 시에만, 미balance면 비주장)" |
 
 ## Allowed And Disallowed Claims
 
@@ -74,6 +75,23 @@ agent gate behavior is [Agent-Gated RFP Evaluation Loop](./agent-gated-rfp-eval-
 - provenance 없는 headline metric.
 - 같은 config/index가 아닌 run끼리 직접 비교.
 
+### Operator-Skill Eval
+
+측정 대상은 모델이 아니라 **운영자(사람)의 코딩-에이전트 운영 능력**이다 ([ADR 0100](../adr/0100-operator-skill-eval-surface.md)). PR1 표면은 *경로* 경계(`agent-evals/README.md` exact-path 단 하나)만 확립하며, content aggregate-only 강제와 report 산출은 PR2/PR3 가 wire 한다.
+
+허용:
+
+- 같은 모델·repo·budget 에서 frozen playbook v1 − v0 의 **paired holdout delta** (cross-family oracle: `reviewer_family != candidate_family`).
+- v1 ≤ v0 인 directional finding ("이 운영자의 spec-first scaffolding 은 고정 budget 에서 accepted output 을 못 올린다") — eval 실패 아님.
+- balance 가 측정·확보됐을 때만(freshness-exclusion + counterbalanced order + familiarity 메타)의 delta.
+
+금지:
+
+- 절대 solve rate / accepted rate 를 표면 claim 으로 사용 (운영자-기억 오염으로 inflated 가능 — paired delta 만).
+- contamination-balance 미측정·미확보 상태의 paired-delta 주장 (fail-closed, PR3 runner 강제).
+- same-family reviewer(candidate 와 같은 family)가 최종 accepted arbiter 인 결과를 claim 으로 사용.
+- raw run-log/diff/reviewer-input/task 본문을 commit 경계 안으로 노출 (PR1 = README only; aggregate 는 PR2 content scanner 통과 후).
+
 ## Required Evidence By Claim Type
 
 | Claim type | Required evidence |
@@ -84,6 +102,7 @@ agent gate behavior is [Agent-Gated RFP Evaluation Loop](./agent-gated-rfp-eval-
 | Answer quality improved | answer metric semantics, abstention/citation guardrails, private aggregate if real-world claim |
 | Latency improved | timed region, warm/cold split, stage latency, same hardware/process caveat |
 | Privacy-safe report | aggregate-only proof, forbidden fields absent, commit allowlist path |
+| Operator-skill delta | frozen playbook SHA (v0/v1), holdout split + freshness-exclusion proof, counterbalanced order, `reviewer_family != candidate_family`, **external reviewer payload public-data attestation OR proof of no-external-egress (local/stub reviewer)** — 없으면 fail-closed no-claim, paired bootstrap CI with min-N guard, aggregate-only report path |
 
 ## Critical Warnings
 

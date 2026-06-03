@@ -44,6 +44,7 @@ RFP 문서 이해를 위한 DocAgent 시스템. **입찰/RFP 문서 인텔리전
 - `scripts/` — `build_index.py`, `check_latency_slo.py`, `run_real_eval_delta.py` 등
 - `eval/fixtures/smoke_rfp/raw/` → `data/index/` → `outputs/` → `reports/` (public fixture smoke 파이프라인 산출물)
 - `docs/` — 설계 노트, ADR, 실패 분석, reviewer 문서
+- `agent-evals/` — 운영자(사람) **operator-skill eval** per-task 측정 표면 (ADR 0100). 독립변수=운영자 frozen playbook vN(model·repo·budget 고정), holdout paired delta + cross-family reviewer(`reviewer_family != candidate_family` fail-closed, ADR 0064 회피) + aggregate-only(ADR 0005). **비 load-bearing**(`scripts/_governance.py:LOAD_BEARING_PATHS` 비추가); `core/`=repo-무관, BidMate 특화는 `adapters/bidmate/` 한정. 5축 self-review 상호보완
 
 ## 소통
 

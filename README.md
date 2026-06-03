@@ -16,7 +16,7 @@
 | **무엇을 (what)** | RFP 문서용 citation-grounded **extractive** RAG — 외부 LLM 호출 없이 retrieved evidence 에서 claim 추출 + citation 잠금 ([ADR 0003](docs/adr/0003-structured-answer-citation-contract.md)) |
 | **왜 어려운지 (why hard)** | 한국어 공공/B2B RFP 는 길고 noisy 하며, 기관·사업명이 유사해 문서 간 비교·요건 추출이 구조적으로 어렵다 |
 | **무엇을 엔지니어링 (engineered)** | 메타데이터 우선 검색 ([ADR 0002](docs/adr/0002-metadata-first-retrieval.md)) + [comparison-aware balanced top-k](#핵심-기술-기여--comparison-aware-balanced-top-k) + verifier/retry + 근거 불충분 시 보류(abstention) |
-| **어떻게 평가 (evaluated)** | baseline 보존 ablation ([ADR 0001](docs/adr/0001-preserve-naive-baseline.md)) + 공개 fixture smoke / private internal eval 분리 ([ADR 0005](docs/adr/0005-eval-split-public-synthetic-private-local.md)) + PR 마다 회귀 게이트 ([pr-eval.yml](.github/workflows/pr-eval.yml)) + 96 ADR |
+| **어떻게 평가 (evaluated)** | baseline 보존 ablation ([ADR 0001](docs/adr/0001-preserve-naive-baseline.md)) + 공개 fixture smoke / private internal eval 분리 ([ADR 0005](docs/adr/0005-eval-split-public-synthetic-private-local.md)) + PR 마다 회귀 게이트 ([pr-eval.yml](.github/workflows/pr-eval.yml)) + 99 ADR |
 | **어떻게 실행 (run it)** | `make index && make demo`, 또는 [5분 quickstart](#실행-5분-quickstart) · [Colab](https://colab.research.google.com/github/hskim-solv/BidMate-DocAgent/blob/main/demo/bidmate_quickstart.ipynb) · [Live demo (HF Spaces)](https://huggingface.co/spaces/hskim-solv/bidmate-docagent) |
 
 > **Portfolio signal**: 외부 LLM API 를 호출하는 RAG 데모가 아니라, RFP 도메인의 실패 모드를 직접 정의하고 그것을 막는 평가·CI·provenance 게이트를 **소유(system ownership)** 한 사례. 현재 포지셔닝은 narrow RAG 가 아니라 문서·표·이미지 evidence 를 다루는 **Multimodal Agentic AI Product Engineer** 트랙으로 확장 중이며, 런타임 변경은 모두 opt-in follow-up task 로 분리한다. 리뷰어용 진입점 → [모듈 맵](docs/architecture/module-map.md) · [실패 모드 케이스 스터디](docs/case-studies/failure-modes.md) · [면접 피치](docs/portfolio-pitch.md).
@@ -25,7 +25,7 @@
 
 <details><summary><b>측정 상세 (over-claim 가드 — 펼치기)</b></summary>
 
-> **측정**: 공개 가능한 작은 fixture는 `make smoke`와 PR CI에서 평가 harness, metrics schema, latency SLO가 깨지지 않는지 확인하는 용도다. 실제 성능 수치는 `real100_v2` private/internal aggregate 로 관리하며, raw question/answer/evidence/text/path/id 는 커밋하지 않는다. 새 성능 claim 은 paired `real100_v2` aggregate delta, provenance, privacy audit, claim audit 를 함께 요구한다. 공개 fixture smoke + private/internal eval 분리 평가 ([ADR 0005](docs/adr/0005-eval-split-public-synthetic-private-local.md)), 98개 설계 결정 (ADR).
+> **측정**: 공개 가능한 작은 fixture는 `make smoke`와 PR CI에서 평가 harness, metrics schema, latency SLO가 깨지지 않는지 확인하는 용도다. 실제 성능 수치는 `real100_v2` private/internal aggregate 로 관리하며, raw question/answer/evidence/text/path/id 는 커밋하지 않는다. 새 성능 claim 은 paired `real100_v2` aggregate delta, provenance, privacy audit, claim audit 를 함께 요구한다. 공개 fixture smoke + private/internal eval 분리 평가 ([ADR 0005](docs/adr/0005-eval-split-public-synthetic-private-local.md)), 99개 설계 결정 (ADR).
 
 </details>
 
@@ -185,7 +185,7 @@ python3 scripts/check_latency_slo.py --config eval/config.yaml --summary reports
 | AI-agent 장기 작업 운영 모델 | [`docs/operations/ai-engineering-operating-system.md`](docs/operations/ai-engineering-operating-system.md) |
 | Persistent task queue | [`tasks/queue.md`](tasks/queue.md) |
 | Eval surface / claim boundary | [`docs/evaluation/surface-map.md`](docs/evaluation/surface-map.md) |
-| ADR 인덱스 (98개 결정) | [`docs/adr/README.md`](docs/adr/README.md) |
+| ADR 인덱스 (99개 결정) | [`docs/adr/README.md`](docs/adr/README.md) |
 | 분석 변형 결과 + benchmarking + latency 비교 | [`docs/benchmarking.md`](docs/benchmarking.md) / [`docs/eval/ablation-results.md`](docs/eval/ablation-results.md) |
 | 설계 배경 (한국 RFP 적응 5가지) | [`docs/design-background.md`](docs/design-background.md) |
 | 답변 출력 정책 + Evidence boundary + Baseline policy | [`docs/agentic/answer-policy.md`](docs/agentic/answer-policy.md) |
