@@ -16,6 +16,10 @@
 API 는 인덱스를 스스로 빌드하지 않는다; 디스크에 준비된 것을 로드해
 `rag_core.run_rag_query` 를 세 개의 작은 엔드포인트 뒤에 감싼다.
 
+병행 Codex/Claude worktree에서 API demo 응답을 PR evidence로 첨부할 때는 먼저
+[`overlap-preflight`](./ai-codex-workflow.md#overlap-preflight)를 실행하고 결과를
+함께 남긴다. 다른 세션의 인덱스·코드 변경과 겹친 demo 응답은 재현 근거로 쓰지 않는다.
+
 ## 엔드포인트
 
 | Method | Path | Description |
