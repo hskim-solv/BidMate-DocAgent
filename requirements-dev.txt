@@ -38,3 +38,9 @@ ruff>=0.15.12
 # passes `--splits N --group K` to pytest. Local runs without those env
 # vars (default) skip --splits entirely. 25min CI wall-clock → ~3-4min.
 pytest-split>=0.10
+# Issue #1826 — property/metamorphic retrieval invariants
+# (tests/test_retrieval_invariants_property.py). Hypothesis drives the
+# metamorphic relations (determinism INV-2, chunk-order permutation INV-3)
+# that mature the example-based tests/test_*_regression.py guards into a
+# property layer. Dev-only: not imported by the production pipeline.
+hypothesis>=6.0
