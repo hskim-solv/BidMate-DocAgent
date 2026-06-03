@@ -1,12 +1,12 @@
 # Plan: T-2026-0018 Codex-runnable auto-ship
 
-- Status: review
+- Status: done
 - Owner role: Maintainer -> Reviewer
 - Related task: `tasks/queue.md::T-2026-0018`
-- Related issue / PR: issue #1547, draft PR #1548
+- Related issue / PR: issue #1547 / PR #1548; refresh issue #2102
 - Related ADR: N/A - no decision-level change
 - Created: 2026-05-27
-- Last updated: 2026-05-27
+- Last updated: 2026-06-04
 
 ## Problem Statement
 
@@ -149,8 +149,8 @@ existing PR for the armed branch is visible.
 - Role: Maintainer
 - Branch / worktree: chore/issue-1547-codex-ship-run /
   /Users/hskim/.codex/worktrees/1547/BidMate-DocAgent
-- Current status: implementation complete; focused validation passed after rebasing on origin/main; draft PR #1548 open.
+- Current status: merged in PR #1548.
 - Commands run: python3 -m pytest tests/test_ship_run.py tests/test_ship_dispatcher_gates.py tests/test_ship_arm_mutex.py -q; python3 -m py_compile scripts/claude-hooks/_ship_run.py scripts/claude-hooks/_ship_arm.py; python3 scripts/check_doc_links.py --check-all --paths docs/operations/auto-ship.md docs/plans/T-2026-0018-codex-runnable-auto-ship.md tasks/queue.md scripts/claude-hooks/README.md; git diff --check; make check-branch
 - Results: passed
-- Next safe command: gh pr checks 1548 --watch --interval 30
+- Next safe command: make ship-status
 ```
