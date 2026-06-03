@@ -53,7 +53,13 @@ def parse_args() -> argparse.Namespace:
         "--ingestion_mode",
         default="csv-text",
         choices=["csv-text", "visual"],
-        help="Use CSV text v1 or visual parsing v2 when --metadata_csv is provided.",
+        help=(
+            "Select the metadata-CSV ingestion path when --metadata_csv is "
+            "provided: 'csv-text' selects the metadata-CSV v1 path, while "
+            "'visual' uses visual parsing v2. This flag does not force the "
+            "HWP/PDF loader fallback value 'csv_text'; body extraction is "
+            "controlled separately by --hwp_loader/--pdf_loader."
+        ),
     )
     parser.add_argument(
         "--visual_artifact_dir",

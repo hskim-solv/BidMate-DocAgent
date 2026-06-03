@@ -115,6 +115,16 @@ class IngestionLoaderTest(unittest.TestCase):
         self.assertNotIn("hwp_loader", labels)
         self.assertIn("embedding", labels)
 
+    def test_ingestion_mode_value_distinguishes_loader_fallback(self):
+        rows = p.build_index_rows(_Args(ingestion_mode="csv-text", hwp_loader="pdf_pymupdf4llm"))
+        mode = [r for r in rows if r[0] == "ingestion_mode"][0]
+        hwp = [r for r in rows if r[0] == "hwp_loader"][0]
+        self.assertEqual(mode[2], p.OK)
+        self.assertIn("metadata CSV v1 path", mode[1])
+        self.assertIn("does not force loader fallback csv_text", mode[1])
+        self.assertEqual(hwp[1], "pdf_pymupdf4llm")
+        self.assertEqual(hwp[2], p.OK)
+
 
 class EvalTextSourceTest(unittest.TestCase):
     def _write_report(self, tmp: Path, counts: dict) -> None:

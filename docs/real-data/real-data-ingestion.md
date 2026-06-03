@@ -83,8 +83,9 @@ required input 이며, 새 환경에서는 `eval/real_config.local.example.yaml`
 optional profile을 사용할 때도 index schema는 동일하며, 기본 경로만 `data/index/real100/`로 분리한다.
 
 ## v1 / v2 비교
-- v1 기본값은 `--ingestion_mode csv-text`이며, CSV의 `텍스트` 컬럼을 본문으로 사용한다.
+- v1 기본값은 `--ingestion_mode csv-text`이며, 이는 metadata-CSV v1 ingestion 경로를 선택한다는 뜻이다. HWP/PDF body extraction 또는 loader fallback 값인 `csv_text`와 다른 표면이다.
 - v2는 `--ingestion_mode visual`을 명시했을 때만 활성화된다.
+- HWP/PDF parser 선택은 별도 flag인 `--hwp_loader` / `--pdf_loader`가 담당한다. 예를 들어 `ingestion_mode=csv-text`이면서 `hwp_loader=pdf_pymupdf4llm`이면 metadata-CSV v1 경로를 쓰되 HWP 본문은 PyMuPDF4LLM page chunks로 만든다.
 - v2에서 PDF/image는 visual parser artifact를 만들고, HWP는 native visual parsing 대신 CSV 텍스트 fallback을 사용한다.
 - HWP fallback 문서는 metadata에 `visual_fallback_reason: visual_fallback_hwp`, `text_source: data_list_csv_text`를 유지한다.
 - 두 모드 모두 기본 산출물 경로는 `data/index/index.json`과 `data/index/ingestion_report.json`이다. v2는 추가로 `data/index/visual_artifacts/*.visual.json`을 생성한다.
