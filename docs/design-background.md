@@ -9,3 +9,9 @@
 
 ## 배경
 RFP QA는 단순 검색보다 비교/정합성/부재판별이 중요해, retrieve→generate 단일 체인 대신 analyzer/planner/verifier를 포함한 agentic 구조를 채택했다. 공개본은 원본 RFP 비공개 제약을 고려해 public fixture RFP와 결정적 평가셋으로 재현성을 우선한다.
+
+## 리뷰어 판독 경로
+
+- 모듈 책임과 호출 순서는 [모듈 맵](architecture/module-map.md)에서 먼저 확인한다.
+- "왜 이 설계인가"는 [실패 모드 케이스 스터디](case-studies/failure-modes.md)의 증상 → 설계 대응 → 회귀 가드 순서로 읽는다.
+- 성능·평가 주장은 [evaluation surface map](evaluation/surface-map.md)의 public fixture smoke / private `real100_v2` 경계를 먼저 적용한다.
