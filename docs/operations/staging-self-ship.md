@@ -175,6 +175,11 @@ Gate 3 check 1은 protection이 실제임을 검증한다. Check 2는 P2.2로 �
 
 ## lane 실행
 
+Codex/Claude 병행 세션에서 이 lane을 시작할 때는 먼저
+[`overlap-preflight`](ai-codex-workflow.md#overlap-preflight)를 실행하고, 결과와
+evidence sink를 plan/PR에 남긴다. `blocked`면 시작하지 말고, `warn`이면 예상 변경
+파일이 기존 worktree와 겹치지 않는다는 근거를 남긴 뒤 진행한다.
+
 ```bash
 # fail-closed (blocked-on-user, exit 2) — 올바른 D-minus 동작:
 make 시작-ship
