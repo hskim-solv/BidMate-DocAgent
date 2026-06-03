@@ -316,6 +316,12 @@ Runner: `scripts/run_routed_measurement.py --backend sentence-transformers`. 결
 
 ## Phase 2.0 — real100 retrieval-surface (issue #1359, 2026-05-23): 5-model Korean embedding ablation
 
+> **Current-use boundary.** Phase 2.0의 `real100` / `reports/real100/*`
+> references are historical v1 aggregate-only snapshots. They are not current
+> private-eval claim evidence; new task, PR, and handoff claims must use
+> `real100_v2` aggregate evidence plus `make real-eval-v2-check`,
+> `make real-eval-v2-inventory`, and `make real-eval-v2-guard`.
+
 Phase 1.x는 전부 **public-fixture-smoke** corpus + **end-to-end answer-quality**(accuracy/groundedness) 측정이었다. 두 가지 구조적 한계가 누적됐다:
 
 1. **합성 corpus saturation** — Phase 1.4 falsifier([ADR 0032](../adr/0032-eval-saturation-routed-subset.md))가 routed subset에서 측정 천장을 입증.
