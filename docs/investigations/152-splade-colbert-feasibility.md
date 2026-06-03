@@ -96,7 +96,12 @@ private 100-doc / 21-case real-data 에서만 실행. raw 결과는 `artifacts/b
 | dtype | float32 | `np.load(...).dtype` |
 | backend | local-hashing-bow | `idx["embedding"]["model"]` |
 
-Private real100 의 N 은 gitignored — `docs/real-data/real-data-failure-taxonomy.md` 의 100 docs × 30–50 chunks/doc 추정으로 **3,000–5,000 chunks 범위** 로 둔다. 정확한 수는 본 노트에 commit 하지 않는다.
+Private `real100` 의 N 은 gitignored 이며, 여기서는
+`docs/real-data/real-data-failure-taxonomy.md` 의 100 docs × 30–50 chunks/doc 추정을
+**historical v1 archive-only scale proxy** 로만 둔다. 이 **3,000–5,000 chunks 범위** 는
+ColBERT 저장비를 대략 산정하기 위한 과거 배경값이며 현재 private eval 근거가
+아니다. 새 작업·PR·claim 에서 정확한 현재 sizing 을 주장하려면 별도
+`real100_v2` manifest/index 검증을 먼저 추가해야 한다.
 
 ### 4.2 chunk 당 저장 공식(per-chunk storage formula)
 
