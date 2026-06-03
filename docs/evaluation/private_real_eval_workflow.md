@@ -50,6 +50,22 @@ evidence are disabled until the maintainer explicitly re-enables them. Validate
 the current surface with `make real-eval-v2-check`, `make real-eval-v2-inventory`,
 and `make real-eval-v2-guard`.
 
+### Current Path Guard
+
+For new private Naive RAG eval work, the runner is fail-closed around the
+current surface boundary:
+
+- `output_dir`, `index_dir`, and `index_build.hwp_pdf_artifact_dir` must not
+  target legacy `real100`, real100/v1, 221-case, or kordoc/v1 surfaces for new
+  outputs.
+- `run_id` must be a safe single path segment; do not use path separators or
+  parent-directory traversal.
+- `redacted_summary_path` may point at ignored local paths or committed
+  redacted aggregate summaries such as `reports/*.redacted.json`, but never at
+  raw private output paths.
+- Raw private run artifacts stay local-only under ignored paths. Only redacted
+  aggregate summaries may cross the commit boundary after privacy checks.
+
 ## Local Inventory And Canonical Mapping
 
 As of 2026-05-24, the maintainer local working copy has enough private corpus
@@ -59,7 +75,7 @@ cache to prepare the Naive RAG baseline runner, but not in the preferred
 | Candidate category | Observed local state | Canonical target | Action |
 |---|---:|---|---|
 | Source documents | 100 files | `data/files/` | Keep local-only; never commit. |
-| HWP citation PDFs | generated on rebuild | `data/index/real100/hwp_pdf_artifacts/` | Preserve local-only; citations refer to these LibreOffice converted PDFs. |
+| HWP citation PDFs | generated on rebuild | `data/index/real100_v2/hwp_pdf_artifacts/` or another ignored v2-local artifact directory | Preserve local-only; legacy `data/index/real100/` artifact directories are archive-only for new writes. |
 | Manifest | 100 rows | `data/data_list.csv` | Keep local-only; never commit. |
 | Existing index | 100 documents / v2 chunks | `data/index/real100_v2/` | Use only if it matches the v2 manifest and corpus; otherwise rebuild outside tracked output. |
 | Gold labels/questions | `cases:` in local config | `eval/real_config.local.yaml` | Curate local-only cases; add explicit `gold_evidence` or `gold_chunk_ids` when needed. |
@@ -76,21 +92,27 @@ claims, manually review the resolved evidence and prefer explicit local-only
 
 ## Local Config
 
+For current `real100_v2` claim-bearing work, keep the ignored local config at
+`data/private/real100_v2/real_config_v2.local.yaml` or set `REAL100_V2_CONFIG`
+to another ignored local v2 config path.
+
+Compatibility templates may still be copied for local-only experiments:
+
 ```bash
 cp eval/real_config.template.yaml eval/real_config.local.yaml
 ```
 
-Fill only local paths and local measurement settings. Do not put
+Fill only local paths and local measurement settings, and keep every output path
+inside an approved current surface such as `real100_v2`. Do not put
 machine-specific absolute paths, private filenames, raw questions, raw answers,
 or private document text in committed files.
 
 ## Gold Evidence Schema
 
-`eval/real_config.local.yaml` owns private questions and gold labels. Each
-answerable case should have either explicit `gold_evidence[].chunk_id`,
-`gold_chunk_ids`, or enough `expected_doc_ids` + `expected_terms` for the audit
-to resolve matching chunks from the local index. Unanswerable rows use no gold
-evidence.
+The ignored local config owns private questions and gold labels. Each answerable
+case should have either explicit `gold_evidence[].chunk_id`, `gold_chunk_ids`,
+or enough `expected_doc_ids` + `expected_terms` for the audit to resolve
+matching chunks from the local index. Unanswerable rows use no gold evidence.
 
 ```yaml
 cases:
@@ -168,25 +190,20 @@ private documents and manifest are present:
 python3 scripts/build_index.py \
   --metadata_csv data/data_list.csv \
   --files_dir data/files \
-  --output_dir data/index/real100 \
+  --output_dir data/index/real100_v2 \
   --hwp_loader pdf_pymupdf4llm \
   --pdf_loader pdf_pymupdf4llm \
   --embedding_backend hashing
 ```
 
-That command is the deterministic offline hashing surface. It records
+That command shape is the deterministic offline hashing surface. It records
 `embedding.backend=hashing` and `embedding.model=local-hashing-bow`; it is not a
-MiniLM semantic run even though the CLI default model constant is MiniLM.
-
-Use separate named targets for semantic private runs:
-
-```bash
-make real-eval-minilm    # MiniLM sentence-transformers baseline
-make real-eval-semantic  # BGE-M3 semantic comparison
-```
-
-These write to separate local index/output/report directories and do not update
-the canonical hashing `real100` path.
+MiniLM semantic run even though the CLI default model constant is MiniLM. For
+new work, retarget any scaffolded or historical command examples to an approved
+`real100_v2` local output directory before writing. Legacy real100/v1 semantic
+Make targets are disabled until the maintainer explicitly re-enables them; use
+the `real-eval-v2-*` targets for current inventory, guard, Chroma, and judge
+runs.
 
 ## Validate Private Naive RAG Inputs
 
@@ -209,19 +226,22 @@ print raw questions, raw answers, support text, document names, `doc_id`,
 Run the local private baseline from the same config:
 
 ```bash
-python3 scripts/run_private_real_eval.py --config eval/real_config.local.yaml
+python3 scripts/run_private_real_eval.py --config <ignored-local-config>
 ```
 
 Or use the Make target:
 
 ```bash
-make real-eval
+make real-eval-v2-check
 ```
 
-`make real-eval` is the hashing/offline workflow-validation run. Do not use it
-as a dense semantic retrieval baseline or performance claim. Use
-`make real-eval-minilm` for the named MiniLM baseline, and `make
-real-eval-semantic` for the BGE-M3 comparison surface.
+Current private real-eval workflow checks use the `real-eval-v2-*` targets.
+Legacy `make real-eval`, `make real-eval-minilm`, and `make real-eval-semantic`
+are fail-closed archive-only targets unless the maintainer explicitly
+re-enables them; do not use their historical real100/v1 paths for new evidence
+or claims. A direct runner invocation must also keep `output_dir`, `index_dir`,
+`index_build.hwp_pdf_artifact_dir`, `run_id`, and `redacted_summary_path` inside
+the current guard boundary.
 
 The canonical `naive_baseline` vector-store backend is Chroma (ADR 0081).
 `run_manifest.vector_store_backend` must be read alongside embedding
