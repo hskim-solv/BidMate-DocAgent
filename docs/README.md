@@ -7,6 +7,7 @@
 - [Persistent Task Queue](../tasks/queue.md) — 세션 간 이어지는 작업 상태
 - [AI Review Checklists](reviews/ai-review-checklists.md)
 - [Evaluation Surface Map](evaluation/surface-map.md)
+- [검증 방법론 맵](verification-methodology-map.md) — 11종 검증 가능한 문제풀이 방법론 × repo 구현 매핑
 - [Architecture Decision Records](./adr/README.md)
 - [벤치마킹](./benchmarking.md)
 - [검색(retrieval) 강화 마일스톤](retrieval/retrieval-hardening.md)
