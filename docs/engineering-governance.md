@@ -25,7 +25,9 @@ non-trivial 변경의 체크리스트 (사람·AI 공용):
 2. **ADR 필요한지 판단.** [`docs/adr/README.md`](./adr/README.md) 기준 사용. 대부분 불필요, 모호하면 issue 에 질문
 3. **Task queue / plan 판단.** multi-session, load-bearing, eval/benchmark, 또는 >1 파일/>50 LOC 작업은 [`tasks/queue.md`](../tasks/queue.md)에 task를 남기고 [`docs/plans/TEMPLATE.md`](./plans/TEMPLATE.md) 기반 plan doc를 작성
 4. **기존 코드 점검.** 읽은 파일, 재사용 함수, 놀란 점 명시
-5. **Branch + worktree (병렬 시).** `<type>/issue-<N>[-<slug>]` (ADR 0007) — 예: `feat/issue-79-hybrid-retrieval`. Claude Code 기본 worktree 명 (`claude/<auto>`) 은 PR 전 rename (`git branch -m feat/issue-<N>-<slug>`)
+5. **Branch + worktree (병렬 시).** `<type>/issue-<N>[-<slug>]` (ADR 0007) — 예: `feat/issue-79-hybrid-retrieval`. Claude Code 기본 worktree 명 (`claude/<auto>`) 은 PR 전 rename (`git branch -m feat/issue-<N>-<slug>`). Codex, Claude Code, 외부 `git worktree` 는 같은 coordination surface 이므로 편집 전에
+   [`overlap-preflight`](./operations/ai-codex-workflow.md#overlap-preflight)를 실행한다:
+   `python3 scripts/agent_loop.py overlap-preflight --issue <N> --branch <type>/issue-<N>-<slug>`
 6. **변경 + 테스트.** 재사용 우선, one concern per PR. 동작 변경 무 테스트 = 사고. 회귀는 `tests/test_*_regression.py`
 7. **Eval 로컬 실행 (해당 시).** `make eval` 공개 fixture smoke. 실제 성능 변경은 private/internal eval aggregate와 비교. Claim boundary는 [`docs/evaluation/surface-map.md`](./evaluation/surface-map.md) 기준
 8. **Review checklist 선택.** 일반 review 외에 load-bearing은 deep review, eval/benchmark claim은 benchmark auditor checklist ([`docs/reviews/ai-review-checklists.md`](./reviews/ai-review-checklists.md))를 적용
