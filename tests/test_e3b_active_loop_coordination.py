@@ -281,7 +281,11 @@ def test_e3b_write_active_start_rejects_overlapping_second_cycle_claim(monkeypat
     # Seed an existing ACTIVE write lease with the shared file so the second claimer sees overlap.
     leases_path = _leases_path(repo)
     leases_path.parent.mkdir(parents=True, exist_ok=True)
-    future = agent_loop._isoformat(FIXED_NOW + agent_loop.timedelta(minutes=60))
+    # write_active_start -> write_active_loop reads wall-clock now (no now= seam on that path), unlike the
+    # sibling tests that inject now=FIXED_NOW into claim_disjoint. Seed the lease expiry against the REAL
+    # clock so it stays unexpired regardless of when the suite runs; a FIXED_NOW+60min absolute coordinate
+    # (13:00 UTC) was silently mis-judged recovery-needed once real time passed it (#1847).
+    future = agent_loop._isoformat(datetime.now(timezone.utc) + timedelta(minutes=60))
     shared = "docs/operations/active-agent-loop.md"
     agent_loop._write_active_leases(
         leases_path,
