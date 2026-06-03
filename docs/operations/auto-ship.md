@@ -42,7 +42,7 @@ make ship-start TITLE="자동화 범위 설명" TYPE=chore SLUG=short-slug
 
 ## Arming: `make ship-arm`
 
-이 Makefile 타깃은 [`.claude/.ship-armed`](../Makefile)(JSON
+이 Makefile 타깃은 [`.claude/.ship-armed`](../../Makefile)(JSON
 상태 파일)를 쓰고 종료한다; 실제 파이프라인은 다음 Claude Stop
 이벤트에서 실행된다. 노브(env-var override):
 
@@ -58,14 +58,14 @@ make ship-start TITLE="자동화 범위 설명" TYPE=chore SLUG=short-slug
 
 `make ship-disarm` 은 arm 파일과 pid 파일을 제거한다. `make ship-status`
 는 사람이 읽을 수 있는 요약을 출력한다.
-[`Makefile:289-339`](../Makefile) 와
+[`Makefile:289-339`](../../Makefile) 와
 [`scripts/claude-hooks/_ship_arm.py`](../../scripts/claude-hooks/_ship_arm.py) 참조.
 
 ## Direct run: `make ship-run`
 
 Codex Desktop 처럼 Claude Stop-hook 이 자연스럽게 발화하지 않는 세션에서는
 `make ship-run` 을 쓴다. 이 타깃은 먼저 `_ship_arm.py` 로 같은
-[`.claude/.ship-armed`](../Makefile) 상태 파일을 만든 다음,
+[`.claude/.ship-armed`](../../Makefile) 상태 파일을 만든 다음,
 [`stop-ship.sh`](../../scripts/claude-hooks/stop-ship.sh)를 stdin EOF 와 함께
 즉시 1회 호출한다. 정책 우회가 아니라 같은 Gate 0 / Stage 1-5 dispatcher 를
 직접 호출하는 wrapper 다.
