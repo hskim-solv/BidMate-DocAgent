@@ -1,5 +1,11 @@
 # eval-framework-progressive-audit — Phase 4 (통계적 엄밀성)
 
+> **Historical snapshot note.** This audit records 2026-05 legacy `real100` /
+> n=221 statistical-rigor findings. Treat `reports/real100/*` references as
+> archive-only context; new task, PR, claim, and handoff evidence must use
+> `real100_v2` aggregate evidence plus `make real-eval-v2-check`,
+> `make real-eval-v2-inventory`, and `make real-eval-v2-guard`.
+
 | field | value |
 |---|---|
 | Skill | [`.claude/skills/eval-framework-progressive-audit/SKILL.md`](../../.claude/skills/eval-framework-progressive-audit/SKILL.md) (PR #889) |
