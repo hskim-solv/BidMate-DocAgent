@@ -21,7 +21,10 @@ metrics, partial proxies, and missing measurement work.
 v0/v1/v2 milestones, but it does not classify current aggregate artifacts.
 Committed private real-eval aggregate files exist under `reports/real100/` and
 `reports/real100_v2/`, while raw private eval summaries and per-case rows remain
-local-only.
+local-only. The `reports/real100/` side is historical field-availability context
+only; new task, PR, claim, and handoff evidence must use the current
+`real100_v2` aggregate-only surface in [Surface Map](../evaluation/surface-map.md)
+or regenerate matching v2 aggregates before claiming metric-family coverage.
 
 ## Desired Behavior
 
