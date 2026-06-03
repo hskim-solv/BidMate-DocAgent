@@ -61,16 +61,14 @@ python3 eval/run_eval.py \
   --runs m3_full
 ```
 
-real-data eval(CLAUDE.md 항목 5b 에 따라 load-bearing — `rag_core.py` 와
-`eval/config.yaml` 둘 다 `LOAD_BEARING_PATHS` 에 포함)의 경우:
+Historical real-data eval note: 이 spike 가 처음 작성될 때의 5b gate 흐름은
+`make real-eval` + `make real-eval-delta` 로 legacy `real100` 표면을 확인했다.
+이 명령 조합과 `reports/real_eval_delta.json` 해석은 archive-only 운영 기록이며,
+현재 새 작업·PR·claim 의 private eval 근거로 사용하지 않는다.
 
-```bash
-make real-eval
-make real-eval-delta
-```
-
-결과는 `reports/eval_summary.json` 의 `m3_full` 행에 기록되고, `hybrid_bm25`
-및 `full` 대조군 대비 델타는 `reports/real_eval_delta.json` 에 나타난다.
+현재 M3 retrieval claim 을 다시 열려면 먼저 `make real-eval-v2-check`,
+`make real-eval-v2-inventory`, `make real-eval-v2-guard` 로 `real100_v2` 입력/산출물
+경계를 검증하고, 별도 `real100_v2` aggregate surface 를 만든 뒤 비교해야 한다.
 
 ## 결과(Results)
 
@@ -86,7 +84,7 @@ _eval 실행 후 구현자가 채워 넣는다. 아래 표와 `docs/eval/ablatio
 
 ## 결정 규칙(Decision rule)
 
-private 100-doc real-data 표면에서 **세 조건 모두** 충족될 때만 ADR 0025 보완(및
+현재 `real100_v2` private eval 표면에서 **세 조건 모두** 충족될 때만 ADR 0025 보완(및
 `INDEX_SCHEMA_VERSION = 3` 으로 sparse + colbert 를 디스크에 영속화하는 후속
 PR)을 출하한다:
 
