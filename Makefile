@@ -487,6 +487,11 @@ ACTIVE_AUTO_LOOP_EXECUTE_SHIP ?= 0
 ACTIVE_AUTO_LOOP_AUTO_REPAIR ?= 1
 START_TASK_LIMIT ?= 5
 START_TASK_ATTEMPT_LIMIT ?= 15
+# issue #2137: opt-in queue auto-grow for `make 시작`. Defaults to QUEUE_RECOMMENDATIONS_APPLY
+# so BOTH `make 시작 START_QUEUE_RECOMMENDATIONS_APPLY=1` (discoverable START_ namespace) and
+# the pre-existing `make 시작 QUEUE_RECOMMENDATIONS_APPLY=1` front door append generated
+# T-2026 tasks to tasks/queue.md. Default 0 keeps the loop report-only (byte-identical default).
+START_QUEUE_RECOMMENDATIONS_APPLY ?= $(QUEUE_RECOMMENDATIONS_APPLY)
 # ADR 0085: set START_INFINITE=1 to run `make 시작` until the ready task queue drains.
 # Infinite mode drops the completed-target + attempt-cap bounds (max-iterations=0) and is
 # bounded only by ready-queue exhaustion + the safety guards
@@ -1134,7 +1139,8 @@ agent-loop-active-auto-loop:
 시작:
 	$(MAKE) agent-loop-queue-parallel-plan \
 	  QUEUE_PARALLEL_PLAN_LIMIT="$(ACTIVE_AUTO_LOOP_AUTO_MAX_ITERATIONS)"
-	$(MAKE) agent-loop-queue-recommendations
+	$(MAKE) agent-loop-queue-recommendations \
+	  QUEUE_RECOMMENDATIONS_APPLY="$(START_QUEUE_RECOMMENDATIONS_APPLY)"
 	$(MAKE) agent-loop-active-auto-loop \
 	  ACTIVE_AUTO_LOOP_MAX_ITERATIONS="$(if $(filter 1 true yes,$(START_INFINITE)),0,$(START_TASK_LIMIT))" \
 	  ACTIVE_AUTO_LOOP_AUTO_MAX_ITERATIONS="$(START_TASK_ATTEMPT_LIMIT)" \

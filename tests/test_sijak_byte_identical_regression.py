@@ -16,7 +16,8 @@ MAKEFILE = ROOT_DIR / "Makefile"
 EXPECTED_SIJAK_RECIPE = [
     '\t$(MAKE) agent-loop-queue-parallel-plan \\',
     '\t  QUEUE_PARALLEL_PLAN_LIMIT="$(ACTIVE_AUTO_LOOP_AUTO_MAX_ITERATIONS)"',
-    '\t$(MAKE) agent-loop-queue-recommendations',
+    '\t$(MAKE) agent-loop-queue-recommendations \\',
+    '\t  QUEUE_RECOMMENDATIONS_APPLY="$(START_QUEUE_RECOMMENDATIONS_APPLY)"',
     '\t$(MAKE) agent-loop-active-auto-loop \\',
     '\t  ACTIVE_AUTO_LOOP_MAX_ITERATIONS="$(if $(filter 1 true yes,$(START_INFINITE)),0,$(START_TASK_LIMIT))" \\',
     '\t  ACTIVE_AUTO_LOOP_AUTO_MAX_ITERATIONS="$(START_TASK_ATTEMPT_LIMIT)" \\',
