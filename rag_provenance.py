@@ -141,7 +141,12 @@ def build_index_rows(args: Any) -> list[Row]:
         ))
         if hwp == "kordoc" or pdf == "kordoc":
             rows.append(("kordoc_cache", _resolve_kordoc_cache(getattr(args, "files_dir", None)), INFO, None))
-        rows.append(("ingestion_mode", str(getattr(args, "ingestion_mode", "csv-text")), OK, None))
+        mode = str(getattr(args, "ingestion_mode", "csv-text"))
+        if mode == "csv-text":
+            mode_value = "csv-text (metadata CSV v1 path; does not force loader fallback csv_text)"
+        else:
+            mode_value = f"{mode} (metadata CSV visual path)"
+        rows.append(("ingestion_mode", mode_value, OK, None))
 
     rows.append(("chunking", str(getattr(args, "chunking_strategy", "fixed")), OK, None))
     if _env("BIDMATE_INGEST_REDACT_PII").lower() in _TRUTHY:
