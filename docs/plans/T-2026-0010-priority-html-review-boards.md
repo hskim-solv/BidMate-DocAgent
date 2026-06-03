@@ -1,12 +1,12 @@
 # Plan: T-2026-0010 Priority HTML Review Boards
 
-- Status: review
+- Status: done
 - Owner role: Implementer -> Reviewer
 - Related task: `tasks/queue.md::T-2026-0010`
-- Related issue / PR: [#1518](https://github.com/hskim-solv/BidMate-DocAgent/issues/1518)
+- Related issue / PR: [#1518](https://github.com/hskim-solv/BidMate-DocAgent/issues/1518) / [#1519](https://github.com/hskim-solv/BidMate-DocAgent/pull/1519); refresh issue [#2135](https://github.com/hskim-solv/BidMate-DocAgent/issues/2135)
 - Related ADR: N/A - no decision-level change
 - Created: 2026-05-26
-- Last updated: 2026-05-26
+- Last updated: 2026-06-04
 
 ## Problem Statement
 
@@ -154,15 +154,15 @@ navigation only; they must not imply a fresh benchmark/eval run.
 ## Session Handoff - 2026-05-26 00:00 KST
 
 - Role: Implementer
-- Branch / worktree: chore/issue-1518-priority-html-boards / /Users/hskim/.codex/worktrees/8ed1/BidMate-DocAgent
-- Issue / PR: #1518 / TBD
+- Branch / worktree: chore/issue-1518-priority-html-boards / PR #1519
+- Issue / PR: #1518 / #1519; refresh issue #2135
 - Task: T-2026-0010
-- Current status: review
+- Current status: merged in PR #1519; queue marks T-2026-0010 done.
 - Files touched: CLAUDE.md, tasks/queue.md, docs/plans/T-2026-0010-priority-html-review-boards.md, scripts/render_priority_review_boards.py, tests/test_render_priority_review_boards.py
 - Decisions made: Keep all six boards in one presentation-only renderer.
 - Commands run: gh issue create; git switch; python3 -m pytest tests/test_render_priority_review_boards.py -q; python3 scripts/render_priority_review_boards.py; git diff --check; python3 scripts/check_doc_links.py --check-all; browser smoke via http://127.0.0.1:8765
 - Results: issue and branch created; focused tests, doc links, diff check, and browser smoke pass.
-- Next safe command: gh pr create
+- Next safe command: git status --short
 - Open questions: none
 - Risks: generated HTML files are local ignored artifacts; renderer and markdown source-of-truth are committed.
 ```
