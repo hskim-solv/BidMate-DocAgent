@@ -6,7 +6,7 @@
 - Related issue / PR: [#1627](https://github.com/hskim-solv/BidMate-DocAgent/issues/1627) / PR TBD
 - Related ADR: N/A - no runtime or eval contract change
 - Created: 2026-05-28
-- Last updated: 2026-05-28
+- Last updated: 2026-06-03
 
 ## Problem Statement
 
@@ -47,8 +47,8 @@ The queue should guide performance work through measured rounds:
   runtime, or index behavior changes.
 - Compatibility constraints: preserve existing task IDs and existing experiment
   scopes.
-- Eval/privacy constraints: no private real-eval run; no raw private content,
-  filenames, local paths, `doc_id`, or `chunk_id`.
+- Eval/privacy constraints: no current `real100_v2` private-eval run; no raw
+  private content, filenames, local paths, `doc_id`, or `chunk_id`.
 - Tooling/CI constraints: doc-link check, whitespace check, and branch/issue
   check only.
 - Non-goals: do not create implementation issues for every future task now.
@@ -119,8 +119,8 @@ Expected evidence:
 - Generated or updated artifact: docs and queue entries only.
 - Reviewer checklist or manual inspection: task ordering, replanning gates,
   private boundary, and no-claim wording.
-- Explicitly not validated, with reason: no private real-eval because this PR
-  only creates task structure.
+- Explicitly not validated, with reason: no current `real100_v2` private eval
+  because this PR only creates task structure.
 
 ## Rollback Strategy
 
@@ -147,8 +147,8 @@ reports, private local runs, or prior plan docs.
 
 - `tasks/queue.md` ready/backlog/blocked statuses.
 - `docs/evaluation/rag-performance-experiment-stack.md` cadence and gates.
-- Future aggregate-only synthesis reports from `T-2026-0049`,
-  `T-2026-0053`, and `T-2026-0055`.
+- Future current `real100_v2` aggregate-only synthesis reports from
+  `T-2026-0049`, `T-2026-0053`, and `T-2026-0055`.
 
 ## Reviewer Notes
 
