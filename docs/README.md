@@ -1,5 +1,6 @@
 # BidMate Agent 상세 문서
 
+- **[엔지니어링 블로그](./blog/index.md)** — 공개 기술 글 인덱스 / 30초 리뷰 경로
 - **[1-페이지 아키텍처 심층 분석](./architecture-deep-dive.md)** — 파이프라인 / ADR 매핑 / 측정 highlight 한 페이지 요약
 - [엔지니어링 거버넌스(워크플로 맵)](./engineering-governance.md)
 - [AI Engineering Operating System](operations/ai-engineering-operating-system.md) — 장기 AI-agent task / plan / review / eval evidence 운영 모델
