@@ -142,6 +142,30 @@ def render_finding(
     return "\n".join(parts)
 
 
+def _result_dict(payload: dict[str, Any]) -> dict[str, Any]:
+    """Return ``payload['result']`` when it is a dict, else an empty dict.
+
+    A malformed Codex payload may carry a non-dict ``result`` (e.g. a bare
+    string). Callers degrade to an empty result rather than crashing on
+    ``.get(...)`` — issue #1693 union-gate robustness.
+    """
+    result = payload.get("result")
+    return result if isinstance(result, dict) else {}
+
+
+def _dict_findings(result: dict[str, Any]) -> list[dict[str, Any]]:
+    """Findings list with only dict items.
+
+    A malformed Codex payload may carry a non-list ``findings`` or a list with
+    non-dict entries (e.g. bare strings). Drop anything that is not a dict so
+    downstream rendering never calls ``.get(...)`` on a non-dict (issue #1693).
+    """
+    raw = result.get("findings")
+    if not isinstance(raw, list):
+        return []
+    return [f for f in raw if isinstance(f, dict)]
+
+
 def render_markdown(
     payload: dict[str, Any] | None,
     rc: int,
@@ -160,10 +184,10 @@ def render_markdown(
     if payload.get("parseError"):
         return render_parse_error(payload)
 
-    result = payload.get("result") or {}
+    result = _result_dict(payload)
     verdict = result.get("verdict", "(unknown)")
     summary = (result.get("summary") or "").strip()
-    findings = _sort_findings(list(result.get("findings") or []))
+    findings = _sort_findings(_dict_findings(result))
     next_steps = result.get("next_steps") or []
 
     head_emoji = "✅" if verdict == "approve" else "⚠️"
@@ -206,9 +230,9 @@ def render_check_summary(
     if payload.get("parseError"):
         return f"Codex returned malformed output: {payload['parseError']}"
 
-    result = payload.get("result") or {}
+    result = _result_dict(payload)
     verdict = result.get("verdict", "unknown")
-    findings = list(result.get("findings") or [])
+    findings = _dict_findings(result)
     by_severity: dict[str, int] = {}
     halluc = 0
     for f in findings:
@@ -234,7 +258,7 @@ def pick_conclusion(payload: dict[str, Any] | None, rc: int) -> str:
         return "neutral"
     if payload.get("parseError"):
         return "neutral"
-    verdict = (payload.get("result") or {}).get("verdict")
+    verdict = _result_dict(payload).get("verdict")
     if verdict == "approve":
         return "success"
     return "neutral"

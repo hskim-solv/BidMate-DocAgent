@@ -104,6 +104,36 @@ def test_blob_link_falls_back_to_code_when_repo_missing(needs_attention_payload)
     assert "`rag_core.py:930-970`" in md
 
 
+def test_non_dict_result_degrades_without_crashing():
+    """Malformed Codex payload with a non-dict `result` (bare string) must not
+    crash any renderer entry point — issue #1693 union-gate robustness. The
+    union gate separately classifies this as an error pass; the renderer just
+    degrades gracefully instead of raising AttributeError on `str.get`."""
+    bad = {"result": "not-a-dict", "parseError": None}
+    assert "(unknown)" in _render(bad)
+    assert "unknown" in r.render_check_summary(bad, rc=0, changed=set())
+    assert r.pick_conclusion(bad, rc=0) == "neutral"
+
+
+def test_non_dict_findings_entries_are_dropped():
+    # issue #1693 dogfood: findings is a list with non-dict entries (bare
+    # string/int) → must not crash; malformed entries dropped, the valid dict
+    # finding survives.
+    payload = {
+        "result": {
+            "verdict": "needs-attention",
+            "summary": "x",
+            "findings": ["oops", 42, {"severity": "high"}],
+            "next_steps": [],
+        },
+        "parseError": None,
+    }
+    md = _render(payload)  # must not raise
+    assert "Findings (1)" in md
+    s = r.render_check_summary(payload, rc=0, changed=set())
+    assert "1 high" in s
+
+
 # ----- check summary --------------------------------------------------------
 
 
