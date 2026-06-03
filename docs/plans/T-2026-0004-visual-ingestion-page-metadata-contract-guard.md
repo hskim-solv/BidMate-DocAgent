@@ -1,12 +1,12 @@
 # Plan: T-2026-0004 Visual Ingestion Page Metadata Contract Guard
 
-- Status: review
+- Status: done
 - Owner role: Planner + Implementer
 - Related task: `tasks/queue.md::T-2026-0004`
-- Related issue / PR: #1486 / #1490
+- Related issue / PR: #1486 / #1490; refresh issue: #2073
 - Related ADR: N/A - no decision-level change
 - Created: 2026-05-25
-- Last updated: 2026-05-25
+- Last updated: 2026-06-04
 
 ## Problem Statement
 
@@ -71,8 +71,8 @@ fails loudly with aggregate-only error details.
 
 ## Data / Eval Impact
 
-- Surface: docs/evaluation contract surface; no benchmark metric or private
-  real-eval claim.
+- Surface: docs/evaluation contract surface; no benchmark metric or current
+  `real100_v2` private-eval claim.
 - Data boundary: synthetic unit fixtures only; no private raw data touched.
 - Allowed claim: visual ingestion now has a regression guard for malformed page
   metadata at the parser output boundary.
@@ -121,8 +121,8 @@ Expected evidence:
 - Generated or updated artifact: none.
 - Reviewer checklist or manual inspection: Normal Code Review, Adversarial
   Review, Benchmark Validity Audit claim-boundary check.
-- Explicitly not validated, with reason: private real-eval not run; this change
-  makes no private real-data or performance claim.
+- Explicitly not validated, with reason: current `real100_v2` private eval
+  not run; this change makes no private real-data or performance claim.
 
 ## Rollback Strategy
 
@@ -173,7 +173,7 @@ metric semantics changed.
 - Commands run: git worktree add -b fix/issue-1486-visual-page-metadata-contract /Users/hskim/.codex/worktrees/1486/BidMate-DocAgent origin/main; git diff -- visual_ingestion.py tests/test_visual_ingestion.py | git -C /Users/hskim/.codex/worktrees/1486/BidMate-DocAgent apply; git diff --no-index ... plan copy via mktemp + git apply; python3 -m pytest -q tests/test_page_aware_parser_contract.py tests/test_page_metadata_recovery_audit.py tests/test_visual_ingestion.py tests/test_ingestion_kordoc_regression.py; python3 -m py_compile parser_page_metadata_contract.py scripts/page_metadata_recovery_audit.py ingestion.py visual_ingestion.py rag_indexing.py; python3 scripts/check_doc_links.py --check-all; git diff --check.
 - Results: branch split completed; all listed validation commands exited 0; draft PR #1490 opened.
 - Validation evidence: focused pytest passed; py_compile passed; doc link check reported no broken links; diff check passed.
-- Eval surface: page-aware parser contract / ingestion guard; no benchmark metric or private real-eval claim.
+- Eval surface: page-aware parser contract / ingestion guard; no benchmark metric or current `real100_v2` private-eval claim.
 - Evidence artifacts: none.
 - Blockers: none.
 - Open risks: malformed visual page metadata now raises before normal failed-artifact conversion; PR reviewer should confirm this fail-loud behavior is acceptable.
@@ -213,7 +213,7 @@ metric semantics changed.
 - Commands run: python3 -m pytest -q tests/test_page_aware_parser_contract.py tests/test_page_metadata_recovery_audit.py tests/test_visual_ingestion.py tests/test_ingestion_kordoc_regression.py; python3 -m py_compile eval/naive_rag/validate_benchmark_dataset.py eval/naive_rag/build_benchmark_index.py eval/naive_rag/benchmark.py scripts/compare_eval.py scripts/run_real_eval_delta.py scripts/render_difficulty_profile.py visual_ingestion.py parser_page_metadata_contract.py scripts/page_metadata_recovery_audit.py ingestion.py rag_indexing.py; git diff --check
 - Results: all listed commands exited 0.
 - Validation evidence: focused visual/parser pytest, py_compile, diff check.
-- Eval surface: page-aware parser contract / ingestion guard; no benchmark metric or private real-eval claim.
+- Eval surface: page-aware parser contract / ingestion guard; no benchmark metric or current `real100_v2` private-eval claim.
 - Evidence artifacts: none.
 - Blockers: none for this checkpoint.
 - Open risks: batch metadata CSV error propagation is not separately tested; reviewer should decide whether that is required before PR.
