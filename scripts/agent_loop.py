@@ -917,6 +917,12 @@ class ActiveLoopResult:
     blockers: tuple[str, ...]
     warnings: tuple[str, ...]
     executed_commands: tuple[tuple[str, ...], ...] = ()
+    # ADR 0095 PR-E3b: this cycle's own task-scoped implementer write-lease id
+    # (``task-issue-branch-implementer``). INTERNAL transfer only — surfaced so run_one_task can
+    # thread it into the runner/repair patch lanes at X>1 (lease_id conduit). It is NEVER
+    # serialized into auto_loop_state.json or the cycle dict (the cycle stores only decision +
+    # report_path), so the X=1 on-disk bytes are unchanged (ADR 0001). Defaults None == first-match.
+    lease_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -3142,10 +3148,22 @@ def build_overlap_preflight(
         worktrees = ()
         worktree_state_proven = False
     current_path = coord.resolve()
+    # ADR 0095 PR-E3b: a child CYCLE worktree of THIS run (created by create_task_cycle_worktree
+    # with branch ``agent/<task>/cycle``) inherits the parent issue (lease/overlap metadata) at X>1,
+    # so it would otherwise look like a second owner of the same issue.  Exclude it from the
+    # competing-owner set by its cycle-branch shape ONLY — ``agent/<task>/cycle`` is the canonical
+    # mint pattern and 100% identifies the cycle worktree.  Path-based exclusion was removed because
+    # ``.claude/worktrees/`` hosts integration worktrees too (e.g. T-…-integration with issue-bearing
+    # branches); excluding them would silently swallow genuine competing-owner blockers both at X=1
+    # and X>1 (HIGH-1 fix, codex adversarial review 2026-06-03).  At X=1 no cycle worktree exists,
+    # so this predicate excludes nothing -> byte-identical (ADR 0001).
+
     overlapping_worktrees = [
         item
         for item in worktrees
-        if Path(item.path).resolve() != current_path and _issue_from_branch(item.branch) == safe_issue
+        if Path(item.path).resolve() != current_path
+        and _issue_from_branch(item.branch) == safe_issue
+        and not _is_task_cycle_branch(item.branch)
     ]
     if overlapping_worktrees:
         blockers.append("another worktree already owns an issue branch for the target issue")
@@ -5646,6 +5664,17 @@ def _task_from_branch(branch: str | None) -> str | None:
         return None
     match = re.search(r"(?:^|[-_/])(t-\d{4}-\d{4})(?:[-_/]|$)", branch, flags=re.IGNORECASE)
     return match.group(1).upper() if match else None
+
+
+# ADR 0095 PR-E3b: per-task CYCLE worktree branch shape minted by create_task_cycle_worktree
+# (``agent/<task-id>/cycle``). overlap-preflight uses this to recognise — and EXCLUDE — a child
+# cycle worktree of the run's own task so it is not mistaken for a competing owner of the inherited
+# parent issue. At X=1 no cycle worktree exists, so nothing ever matches (no-op, byte-identical).
+_TASK_CYCLE_BRANCH_RE = re.compile(r"^agent/t-\d{4}-\d{4}/cycle$", flags=re.IGNORECASE)
+
+
+def _is_task_cycle_branch(branch: str | None) -> bool:
+    return bool(branch) and _TASK_CYCLE_BRANCH_RE.fullmatch(branch.strip()) is not None
 
 
 def _current_branch(repo_root: Path) -> str | None:
@@ -9873,6 +9902,7 @@ def write_active_loop(
     agent_mix_out: Path = DEFAULT_ACTIVE_AGENT_MIX,
     repo_root: Path = ROOT_DIR,
     coordination_root: Path | None = None,
+    reject_on_overlap: bool = False,
 ) -> ActiveLoopResult:
     if mode != "full-ship":
         raise ValueError("--mode currently supports only full-ship")
@@ -9915,6 +9945,12 @@ def write_active_loop(
     # PR-B (ADR 0094): read -> disjoint-check -> write as ONE flock critical
     # section (closes the assert_claimed_files_disjoint snapshot TOCTOU). Same
     # `now`/var names so generated_at + downstream render stay byte-identical.
+    # ADR 0095 PR-E3b: only pass reject_on_overlap when the X>1 caller asked to REJECT, so the
+    # X=1 / standalone-CLI call stays textually the unconditional-write call (byte-identical,
+    # ADR 0001; pinned by tests/test_lease_claim_disjoint_regression.py:52).
+    claim_disjoint_kwargs: dict[str, object] = {}
+    if reject_on_overlap:
+        claim_disjoint_kwargs["reject_on_overlap"] = True
     lease_payload, lease_blockers, lease_warnings = LeaseManager(
         leases_path, repo_root=coord
     ).claim_disjoint(
@@ -9924,6 +9960,7 @@ def write_active_loop(
         changed_files=files,
         lease_ttl_minutes=lease_ttl_minutes,
         now=now,
+        **claim_disjoint_kwargs,
     )
 
     blockers: list[str] = []
@@ -10163,6 +10200,18 @@ def write_active_loop(
         blockers=tuple(_dedupe_preserve_order(blockers)),
         warnings=tuple(_dedupe_preserve_order(warnings)),
         executed_commands=tuple(executed_commands),
+        # ADR 0095 PR-E3b: surface THIS cycle's own implementer write-lease id (the same slug
+        # _build_active_leases mints inside claim_disjoint above) so the X>1 caller can thread it
+        # into the runner/repair patch lanes. Gated on ``coord != repo_root or reject_on_overlap``
+        # so the conduit stays None on the X=1 normal path (coord==repo_root + reject_on_overlap=False)
+        # -> first-match; the ``or reject_on_overlap`` arm covers the edge where write_active_loop is
+        # called directly with reject_on_overlap=True but coord==repo_root (conservative, harmless).
+        # In-result only (never serialized), so X=1 on-disk bytes are unchanged (ADR 0001).
+        lease_id=(
+            _task_scoped_lease_id(task_id, safe_issue, current_branch)
+            if coord != repo_root or reject_on_overlap
+            else None
+        ),
     )
 
 
@@ -10186,6 +10235,7 @@ def write_active_start(
     out: Path = DEFAULT_ACTIVE_START,
     repo_root: Path = ROOT_DIR,
     coordination_root: Path | None = None,
+    reject_on_overlap: bool = False,
 ) -> ActiveStartResult:
     # ADR 0095 PR-E3a: active-start owns no lease state directly — its only coordination
     # touchpoint is the nested write_active_loop call (which writes leases.json + runs
@@ -10310,9 +10360,14 @@ def write_active_start(
 
     # ADR 0095 PR-E3a: only forward coordination_root when it differs from repo_root (X>1) so the
     # X==1 nested call stays textually identical (byte-identical, ADR 0001).
+    # ADR 0095 PR-E3b: reject_on_overlap forwarded straight through — caller (run_one_task) passes
+    # True only at X>1 via start_reject_kwargs; default False keeps the X=1 nested call textually
+    # identical -> byte-identical (ADR 0001).
     active_loop_coord_kwargs: dict[str, object] = {}
     if coord != repo_root:
         active_loop_coord_kwargs["coordination_root"] = coord
+    if reject_on_overlap:
+        active_loop_coord_kwargs["reject_on_overlap"] = True
     active_loop = write_active_loop(
         mode=mode,
         topology=topology,
@@ -11046,7 +11101,17 @@ def write_active_auto_loop(
     warnings.append(f"max-iterations resolved to {max_iterations} ({limit_reason})")
     infinite_mode = max_iterations == INFINITE_MAX_ITERATIONS
     requested_files = tuple(sorted(_normalize_changed_file(path, repo_root=repo_root) for path in changed_files if path))
-    branch_task_id = _task_from_branch(_current_branch(repo_root))
+    # ADR 0095 PR-E3b: capture the PARENT checkout's branch + issue ONCE, reusing the single
+    # _current_branch(repo_root) call branch_task_id already derives from (no extra subprocess). At
+    # X>1 each cycle runs inside an ``agent/<task>/cycle`` worktree whose own branch carries no
+    # issue, so write_active_start/write_active_loop would derive None and block ("could not derive
+    # issue"); the driver threads parent_branch/parent_issue into those calls ONLY on the X>1 cycle
+    # path (gated on effective_repo_root != repo_root) so the cycle inherits the parent's issue. At
+    # X=1 these are captured but NEVER passed (the gate is false), so the internal
+    # _current_branch/_issue_from_branch derivation is unchanged -> byte-identical (ADR 0001).
+    parent_branch = _current_branch(repo_root)
+    branch_task_id = _task_from_branch(parent_branch)
+    parent_issue = _issue_from_branch(parent_branch) if parent_branch else None
 
     if infinite_mode:
         # Infinite mode is bounded only by safety guards + ready-queue exhaustion, not by
@@ -11183,6 +11248,7 @@ def write_active_auto_loop(
         *,
         completion_decision: str,
         coordination_root: Path | None = None,
+        lease_id: str | None = None,
     ) -> bool:
         """Auto-repair apply lane (ADR 0095 PR-E2 Finding 1).
 
@@ -11191,15 +11257,20 @@ def write_active_auto_loop(
         ADR 0095 PR-E3a threads ``coordination_root`` into the patch lane (the lease-bearing
         ``write_active_codex_runner`` call); the apply lane (``write_active_apply``) + patch
         artifact stay on ``repo_root`` (artifacts). ``coordination_root=None`` -> repo_root keeps
-        X==1 byte-identical (ADR 0001)."""
+        X==1 byte-identical (ADR 0001). ADR 0095 PR-E3b additionally threads this cycle's own
+        ``lease_id`` into that patch lane so the repair write-lane borrows THIS cycle's lease, not
+        first-match; ``lease_id=None`` (X=1) keeps the first-match path -> byte-identical."""
         repair_coord = coordination_root or repo_root
 
         def run_patch(agent_choice: str) -> ActiveCodexRunnerResult:
-            # ADR 0095 PR-E3a: only forward coordination_root when it differs from repo_root
-            # (X>1) so the X==1 patch-lane call stays textually identical (byte-identical).
+            # ADR 0095 PR-E3a/E3b: only forward coordination_root + lease_id when the coord differs
+            # from repo_root (X>1) so the X==1 patch-lane call stays textually identical
+            # (byte-identical). lease_id is folded into the same X>1 gate.
             patch_coord_kwargs: dict[str, object] = {}
             if repair_coord != repo_root:
                 patch_coord_kwargs["coordination_root"] = repair_coord
+                if lease_id is not None:
+                    patch_coord_kwargs["lease_id"] = lease_id
             return write_active_codex_runner(
                 execute=execute_runner,
                 codex_executable=codex_executable,
@@ -11449,6 +11520,8 @@ def write_active_auto_loop(
         *,
         cycle_repo_root: Path | None = None,
         coordination_root: Path | None = None,
+        parent_branch: str | None = None,
+        parent_issue: str | None = None,
     ) -> None:
         """One per-task cycle (ADR 0095 PR-E2). VERBATIM from the pre-E2 serial loop body, with
         only the control-flow keywords re-expressed for the pool: ``break`` -> ``stop_event.set();
@@ -11486,6 +11559,26 @@ def write_active_auto_loop(
         effective_repo_root = cycle_repo_root or repo_root
         effective_coord_root = coordination_root or effective_repo_root
 
+        # ADR 0095 PR-E3b: cycle-worktree branch/issue inheritance. At X>1 effective_repo_root is the
+        # ``agent/<task>/cycle`` worktree, whose branch carries no issue, so pass the captured parent
+        # branch/issue into write_active_start/write_active_loop's existing --issue/--branch override
+        # path (safe_issue = _validate_issue_selector(issue) if issue else branch_issue). Gated on
+        # ``effective_repo_root != repo_root`` (the same X>1 signal E3a uses for coord) so at X=1 the
+        # dict is EMPTY and the start/loop calls stay textually identical -> the internal
+        # _current_branch/_issue_from_branch derivation is unchanged (byte-identical, ADR 0001).
+        inherit_kwargs: dict[str, object] = {}
+        # ADR 0095 PR-E3b: start-time REJECT kwargs — write_active_start now accepts
+        # reject_on_overlap and forwards it to its nested write_active_loop claim so the
+        # first-writer-wins decision is enforced AT CLAIM TIME (start), not only at ship.
+        # EMPTY at X=1 -> default False -> textually identical nested call -> byte-identical.
+        start_reject_kwargs: dict[str, object] = {}
+        if effective_repo_root != repo_root:
+            if parent_issue is not None:
+                inherit_kwargs["issue"] = parent_issue
+            if parent_branch is not None:
+                inherit_kwargs["branch"] = parent_branch
+            start_reject_kwargs["reject_on_overlap"] = True
+
         context_files = tuple(_dedupe_preserve_order((*requested_files, *_active_task_context_files(task, repo_root=effective_repo_root))))
         cycle: dict[str, object] = {
             "iteration": iteration,
@@ -11513,7 +11606,23 @@ def write_active_auto_loop(
             repair_title=repair_title,
             repo_root=effective_repo_root,
             coordination_root=effective_coord_root,
+            **inherit_kwargs,
+            **start_reject_kwargs,
         )
+        # ADR 0095 PR-E3b: capture THIS cycle's own task-scoped lease_id from the active-loop run
+        # nested inside active-start (write_active_loop surfaces it on ActiveLoopResult). Threaded
+        # into the runner/repair patch lanes at X>1 only (below) so each cycle selects its OWN lease
+        # instead of first-match; at X=1 it stays None at those call sites -> byte-identical.
+        cycle_lease_id = start.active_loop.lease_id
+        # X>1-only lease_id injection kwargs (same effective_repo_root != repo_root gate as inherit
+        # / coord). EMPTY at X=1 so the runner + ship calls stay textually the lease_id=None /
+        # default-reject path -> first-match / unconditional-write -> byte-identical (ADR 0001).
+        runner_lease_kwargs: dict[str, object] = {}
+        ship_reject_kwargs: dict[str, object] = {}
+        if effective_repo_root != repo_root:
+            if cycle_lease_id is not None:
+                runner_lease_kwargs["lease_id"] = cycle_lease_id
+            ship_reject_kwargs["reject_on_overlap"] = True
         cycle["start_decision"] = start.decision
         cycle["start_report"] = _repo_path(start.report_path, effective_repo_root)
         if start.blockers:
@@ -11525,7 +11634,7 @@ def write_active_auto_loop(
             cycle["gate_tier"] = "start-blocked"
             cycle["completion_decision"] = "start-blocked"
             if auto_repair:
-                applied = run_repair_apply(cycle, task, completion_decision="start-repair-needed", coordination_root=effective_coord_root)
+                applied = run_repair_apply(cycle, task, completion_decision="start-repair-needed", coordination_root=effective_coord_root, **runner_lease_kwargs)
                 warnings.append(
                     f"{task.task_id}: active-start/active-loop blocked without explicit blockers; routed to patch repair lane"
                     + (" and completed by repair apply" if applied else " and deferred")
@@ -11565,6 +11674,9 @@ def write_active_auto_loop(
             # ADR 0092 (PR2, AC9/AC10): apply the controller's effort overrides from the PRIOR
             # iteration to this iteration's lanes. Empty when OFF or before any actuation.
             effort_overrides=pending_effort_overrides or None,
+            # ADR 0095 PR-E3b: select THIS cycle's own write lease at X>1 (empty at X=1 ->
+            # lease_id=None -> first-match -> byte-identical, ADR 0001).
+            **runner_lease_kwargs,
         )
         cycle["runner_decision"] = runner.decision
         cycle["runner_report"] = _repo_path(runner.report_path, effective_repo_root)
@@ -11619,7 +11731,7 @@ def write_active_auto_loop(
         if execute_runner and runner.decision != "completed":
             cycle["gate_tier"] = "runner-blocked"
             if auto_repair:
-                applied = run_repair_apply(cycle, task, completion_decision="runner-repair-needed", coordination_root=effective_coord_root)
+                applied = run_repair_apply(cycle, task, completion_decision="runner-repair-needed", coordination_root=effective_coord_root, **runner_lease_kwargs)
                 warnings.append(
                     f"{task.task_id}: runner did not complete ({runner.decision}); routed to patch repair lane"
                     + (" and completed by repair apply" if applied else " and deferred")
@@ -11679,7 +11791,7 @@ def write_active_auto_loop(
                 and runner.decision == "completed"
                 and cycle["privacy_clean"]
             ):
-                applied = run_repair_apply(cycle, task, completion_decision="repair-needed", coordination_root=effective_coord_root)
+                applied = run_repair_apply(cycle, task, completion_decision="repair-needed", coordination_root=effective_coord_root, **runner_lease_kwargs)
                 warnings.append(
                     f"{task.task_id}: conservative gate not ready; routed to patch repair lane"
                     + (" and completed by repair apply" if applied else " and deferred")
@@ -11707,7 +11819,7 @@ def write_active_auto_loop(
             return
         if not cycle["gate_ready"]:
             if auto_repair and cycle["privacy_clean"]:
-                applied = run_repair_apply(cycle, task, completion_decision="repair-needed", coordination_root=effective_coord_root)
+                applied = run_repair_apply(cycle, task, completion_decision="repair-needed", coordination_root=effective_coord_root, **runner_lease_kwargs)
                 warnings.append(
                     f"{task.task_id}: conservative gate not ready; routed to patch repair lane"
                     + (" and completed by repair apply" if applied else " and deferred")
@@ -11741,6 +11853,12 @@ def write_active_auto_loop(
             agent_mix=agent_mix,
             repo_root=effective_repo_root,
             coordination_root=effective_coord_root,
+            # ADR 0095 PR-E3b: inherit the parent branch/issue (so the cycle-worktree ship derives
+            # the parent issue, not None) AND REJECT on lease overlap (first-writer-wins). Both
+            # kwargs dicts are EMPTY at X=1 (effective_repo_root == repo_root) so this stays the
+            # textual pre-E3b call -> byte-identical (ADR 0001).
+            **inherit_kwargs,
+            **ship_reject_kwargs,
         )
         cycle["ship_decision"] = ship.decision
         cycle["ship_report"] = _repo_path(ship.report_path, effective_repo_root)
@@ -17101,6 +17219,17 @@ def _active_next_command(role: str, *, task_id: str | None, pr: str | None = Non
     return "git diff --check && make check-branch"
 
 
+def _task_scoped_lease_id(task_id: str | None, issue: str | None, branch: str | None) -> str:
+    """Canonical id for a cycle's own implementer write lease (``task-issue-branch-implementer``).
+
+    Single source of truth for the slug ``_build_active_leases`` mints for the new lease AND the
+    value ``write_active_loop`` surfaces back to the X>1 caller so the runner/repair patch lanes can
+    select THIS cycle's lease (``lease_id`` conduit, ADR 0095 PR-E3b) instead of first-match. Pure /
+    deterministic — identical bytes to the previous inline expression, so the X=1 leases.json stays
+    byte-identical (ADR 0001)."""
+    return _slugify("-".join(part for part in (task_id, issue, branch, "implementer") if part))
+
+
 def _build_active_leases(
     *,
     existing_leases: Sequence[dict[str, object]],
@@ -17177,7 +17306,7 @@ def _build_active_leases(
             if existing_branch == branch or (task_id and existing_task == task_id) or (issue and existing_issue == issue):
                 warnings.append(f"active lease already exists for {existing_branch or existing_task or existing_issue}")
     if not any(item.get("status") == "recovery-needed" for item in rendered):
-        lease_id = _slugify("-".join(part for part in (task_id, issue, branch, "implementer") if part))
+        lease_id = _task_scoped_lease_id(task_id, issue, branch)
         if not any(str(item.get("lease_id")) == lease_id and item.get("status") == "active" for item in rendered):
             rendered.append(
                 {
@@ -17430,6 +17559,7 @@ class LeaseManager:
         changed_files: Sequence[str],
         lease_ttl_minutes: int = 30,
         now: datetime | None = None,
+        reject_on_overlap: bool = False,
     ) -> tuple[dict[str, object], list[str], list[str]]:
         # Resolve `now` ONCE so the returned payload's generated_at and the
         # on-disk write share the same timestamp (ADR 0094 byte-identity gate).
@@ -17450,6 +17580,25 @@ class LeaseManager:
             if not isinstance(leases, list):  # _build_active_leases always returns a list here; guard survives python -O
                 raise TypeError(f"_build_active_leases returned non-list leases: {type(leases).__name__}")
             disjoint_blockers = assert_claimed_files_disjoint(leases)
+            # ADR 0095 PR-E3b: first-writer-wins REJECT (X>1 only — write_active_loop passes
+            # reject_on_overlap=True solely on the X>1 fan-out path). The decision stays INSIDE
+            # this flock so two losing claimers cannot both read "no overlap" then both write:
+            # whichever claimer the lock admits first writes its disjoint lease; the next claimer
+            # builds against that durable state, sees the overlap, and is rejected here WITHOUT a
+            # write. On reject we return the EXISTING durable payload (the first writer's file)
+            # untouched. Diagnostics are scoped to the reject reason only: ``disjoint_blockers``
+            # (why the reject fired) is returned as the sole blockers, and warnings are EMPTY —
+            # ``warnings`` / ``blockers`` from the rendered-but-not-written build describe a write
+            # that never happened and would be misleading (MED fix, codex adversarial 2026-06-03).
+            # ``reject_on_overlap=False`` (default) keeps the legacy unconditional-write path ->
+            # X=1 byte-identical (ADR 0001), pinned by test_lease_claim_disjoint_regression.py:459.
+            if reject_on_overlap and disjoint_blockers:
+                existing_payload = {
+                    "schema_version": 1,
+                    "generated_at": _isoformat(now),
+                    "leases": [_sanitize_json_value(item) for item in existing],
+                }
+                return existing_payload, list(disjoint_blockers), []
             _write_active_leases(self._path, leases=leases, now=now)
             return payload, [*blockers, *disjoint_blockers], warnings
 
