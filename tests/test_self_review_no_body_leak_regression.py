@@ -199,6 +199,7 @@ class AssembleStatsStructuralTest(unittest.TestCase):
             "axis_4_cycle_time",
             "axis_5_memory_hygiene",
             "evidence_age_days",
+            "narrative_gap_signals",
         }
         self.assertEqual(set(stats.keys()), expected_keys)
 
