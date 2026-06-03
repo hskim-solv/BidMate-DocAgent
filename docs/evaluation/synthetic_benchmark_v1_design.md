@@ -3,7 +3,7 @@
 ## TL;DR
 
 - `synthetic_naive_rag_benchmark_v1`은 Naive RAG의 약점을 공개 재현 가능한 방식으로 드러내기 위한 benchmark이다.
-- 이 benchmark는 smoke eval이 아니며, private real-eval을 대체하지 않는다.
+- 이 benchmark는 smoke eval이 아니며, current `real100_v2` aggregate-only private eval evidence를 대체하지 않는다.
 - 성능 개선을 주장하기 전에 데이터셋 검증, index build, 첫 naive baseline 측정을 순서대로 실행한다.
 
 ## Purpose
@@ -14,7 +14,7 @@
 
 공개 저장소에서 반복 가능한 benchmark가 필요하지만 실제 RFP 문서는 비공개·권리·보안 제약이 있다. 그래서 문서, 일정, 기관명, 요구사항을 모두 synthetic-public으로 작성했다. 각 corpus 문서는 `document_type: synthetic_public_benchmark_v1`와 `synthetic: true` metadata를 가진다.
 
-Synthetic data는 failure probe와 ablation 준비에는 유용하지만 실제 조달 문서의 분포, noise, 서식, 기관별 관행을 완전히 대표하지 않는다. 최종 real-world baseline claim은 private real-eval에서만 해야 한다.
+Synthetic data는 failure probe와 ablation 준비에는 유용하지만 실제 조달 문서의 분포, noise, 서식, 기관별 관행을 완전히 대표하지 않는다. 최종 real-world baseline claim은 current `real100_v2` aggregate-only private eval evidence로만 해야 한다.
 
 ## Dataset Composition
 
@@ -121,7 +121,7 @@ Use this benchmark for public reproducibility, ablation setup, and failure-mode 
 - Perfect scores on this synthetic benchmark do not imply real RFP performance.
 - The answer metrics are rule-based/provisional lexical and citation checks, not semantic RAGAS-style judges.
 - Retrieval failures are more meaningful than headline answer quality until semantic judging or verifier-backed scoring is added.
-- Private real-eval remains required for credible real-world baseline claims.
+- Current `real100_v2` aggregate-only private eval evidence remains required for credible real-world baseline claims.
 
 ## Known Limitations
 
