@@ -6,17 +6,20 @@
 - Related issue / PR: #1484 / #1491
 - Related ADR: [ADR 0001](../adr/0001-preserve-naive-baseline.md), [ADR 0005](../adr/0005-eval-split-public-synthetic-private-local.md), [ADR 0058](../adr/0058-phase35-mode-winner.md), [ADR 0076](../adr/0076-multi-chunk-evidence-failure-analysis-surface.md)
 - Created: 2026-05-25
-- Last updated: 2026-05-25
+- Last updated: 2026-06-04
 
 ## Problem Statement
 
-Recent multi-chunk evidence work produced aggregate-only private real-eval reports, but the next executable step needs a small regression guard that does not require private raw data or retrieval behavior changes.
+Recent multi-chunk evidence work produced aggregate-only `real100_v2`
+private-eval reports, but the next executable step needs a small regression
+guard that does not require private raw data or retrieval behavior changes.
 
 Without this guard, future retrieval work can claim progress on multi-chunk failures without a public, repeatable signal that distinguishes all-gold hits, partial same-document hits, and distractor-only top-k failures.
 
 ## Current Behavior
 
-- `scripts/render_multi_chunk_evidence_failures.py` summarizes private real-eval multi-chunk failures as aggregate counts only.
+- `scripts/render_multi_chunk_evidence_failures.py` summarizes current
+  `real100_v2` private-eval multi-chunk failures as aggregate counts only.
 - `docs/evaluation/multi_chunk_retrieval_strategy.md` recommends deferring concrete retrieval changes until page metadata recovery because the private aggregate has unknown same-doc vs multi-doc split.
 - `eval/naive_rag/benchmark.py` runs the public synthetic Naive RAG benchmark and records retrieval/citation/answer metrics, but the metrics payload does not expose a dedicated multi-chunk evidence retrieval profile.
 - The public synthetic benchmark already has `multi_chunk_synthesis` questions with explicit multi-chunk gold evidence.
@@ -32,7 +35,8 @@ Add a public synthetic benchmark regression profile that classifies multi-chunk 
 - Compatibility constraints: additive metrics payload field only; existing metrics semantics remain unchanged.
 - Eval/privacy constraints: surface is public synthetic benchmark; do not use private raw data.
 - Tooling/CI constraints: keep validation to focused pytest, py_compile, and diff check.
-- Non-goals: no quality improvement claim, no private real-eval delta, no benchmark score change.
+- Non-goals: no quality improvement claim, no current `real100_v2`
+  private-eval delta, no benchmark score change.
 
 ## Architecture Impact
 
@@ -55,7 +59,8 @@ Add a public synthetic benchmark regression profile that classifies multi-chunk 
 - Surface: public synthetic benchmark.
 - Data boundary: public synthetic data only.
 - Allowed claim: "synthetic v1 benchmark now reports a multi-chunk evidence regression profile."
-- Disallowed claim: "retrieval quality improved" or any real-world/private real-eval performance claim.
+- Disallowed claim: "retrieval quality improved" or any real-world/current
+  `real100_v2` private-eval performance claim.
 - Baseline or control affected: no; retrieval calls and scoring are unchanged.
 - Benchmark/eval auditor required: yes.
 
@@ -87,7 +92,8 @@ Expected evidence:
 - Test/eval output: focused pytest pass.
 - Generated or updated artifact: none committed.
 - Reviewer checklist or manual inspection: Normal, adversarial, benchmark validity, and regression checks.
-- Explicitly not validated, with reason: private real-eval not run because this is public synthetic benchmark reporting only.
+- Explicitly not validated, with reason: current `real100_v2` private eval
+  not run because this is public synthetic benchmark reporting only.
 
 ## Rollback Strategy
 
@@ -137,7 +143,9 @@ Attack claim wording, additive-only output shape, baseline preservation, and whe
 - Open risks: stacked PR depends on #1488; wording must remain public synthetic benchmark observability only, not retrieval quality improvement.
 - Next action: review stacked draft PR #1491 after #1488, then retarget/rebase as needed.
 - Next safe command: python3 -m pytest -q tests/test_render_multi_chunk_evidence_failures.py tests/test_naive_rag_benchmark_v1.py
-- Reviewer focus: additive-only metrics payload, current fixture bucket assertions, no retrieval/scoring behavior drift, no private real-eval or performance claim.
+- Reviewer focus: additive-only metrics payload, current fixture bucket
+  assertions, no retrieval/scoring behavior drift, no current `real100_v2`
+  private-eval or performance claim.
 
 ## Session Handoff - 2026-05-26 14:03 KST
 
@@ -156,7 +164,8 @@ Attack claim wording, additive-only output shape, baseline preservation, and whe
 - Eval surface: public synthetic benchmark.
 - Evidence artifacts: none.
 - Blockers: pending push and final PR CI rerun after review fix.
-- Open risks: final CI must pass again before merge; no private real-eval or retrieval quality claim should be made.
+- Open risks: final CI must pass again before merge; no current `real100_v2`
+  private-eval or retrieval quality claim should be made.
 - Next action: push review fix, wait for #1491 CI, rerun review gate, then squash merge if clean.
 - Next safe command: gh pr checks 1491 --watch --interval 10
 
@@ -188,7 +197,8 @@ Attack claim wording, additive-only output shape, baseline preservation, and whe
 - Plan: docs/plans/T-2026-0005-multi-chunk-evidence-regression-guard.md
 - Current status: additive benchmark profile implemented and focused validation passed.
 - Files touched: eval/naive_rag/benchmark.py, tests/test_naive_rag_benchmark_v1.py, tasks/queue.md, docs/plans/T-2026-0005-multi-chunk-evidence-regression-guard.md
-- Decisions made: add a public synthetic benchmark profile only; no retrieval, verifier, scoring, dataset, or private real-eval changes.
+- Decisions made: add a public synthetic benchmark profile only; no retrieval,
+  verifier, scoring, dataset, or current `real100_v2` private-eval changes.
 - Commands run: python3 -m pytest -q tests/test_naive_rag_benchmark_v1.py; python3 -m py_compile eval/naive_rag/benchmark.py; python3 -m pytest -q tests/test_render_multi_chunk_evidence_failures.py tests/test_naive_rag_benchmark_v1.py; python3 -m py_compile scripts/render_multi_chunk_evidence_failures.py rag_retrieval.py rag_core.py eval/naive_rag/benchmark.py; git diff --check; python3 -m pytest tests/test_render_multi_chunk_evidence_failures.py tests/test_naive_rag_benchmark_v1.py -q -rA
 - Results: all validation commands exited 0.
 - Validation evidence: focused pytest, py_compile, and diff whitespace check passed locally.
