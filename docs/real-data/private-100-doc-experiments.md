@@ -2,6 +2,8 @@
 
 이 문서는 private 100-doc RFP 평가 결과를 포트폴리오용 근거로 남기되, 원문이나 개별 예측이 커밋되지 않도록 하는 aggregate-only 운영 기준이다. 실제 private 원문과 per-example output은 로컬 `artifacts/benchmarks/` 아래에만 둔다.
 
+> **Historical archive note.** 이 문서의 `real100`, `reports/real100/*`, `data/index/real100`, `n=221` 기록은 2026-05 private100/v1 측정 기록 보존용 archive-only snapshot 이다. 현재 새 작업·PR·claim의 private eval 근거는 `real100_v2` 표면만 사용하며, 아래 v1 명령·표를 새 근거로 재사용하지 않는다.
+
 ## 명명(Naming)
 
 - Run ID: `private100_<profile>_<YYYYMMDDTHHMMSSZ>`
