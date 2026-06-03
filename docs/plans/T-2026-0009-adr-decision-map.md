@@ -1,12 +1,12 @@
 # Plan: T-2026-0009 ADR Decision Map
 
-- Status: review
+- Status: done
 - Owner role: Implementer -> Reviewer
 - Related task: `tasks/queue.md::T-2026-0009`
-- Related issue / PR: [#1516](https://github.com/hskim-solv/BidMate-DocAgent/issues/1516) / PR TBD
+- Related issue / PR: [#1516](https://github.com/hskim-solv/BidMate-DocAgent/issues/1516) / [#1517](https://github.com/hskim-solv/BidMate-DocAgent/pull/1517); refresh issue #2091
 - Related ADR: N/A - no decision-level change
 - Created: 2026-05-26
-- Last updated: 2026-05-26
+- Last updated: 2026-06-04
 
 ## Problem Statement
 
@@ -97,9 +97,9 @@ format and escaping of title/status text.
 
 - Role: Implementer
 - Branch / worktree: chore/issue-1516-adr-decision-map / /Users/hskim/.codex/worktrees/8ed1/BidMate-DocAgent
-- Issue / PR: #1516 / PR TBD
+- Issue / PR: #1516 / PR #1517
 - Task: T-2026-0009
-- Current status: implementation complete, focused validation passing.
+- Current status: merged in PR #1517.
 - Files touched: scripts/render_adr_decision_map.py, tests/test_render_adr_decision_map.py, tasks/queue.md, docs/plans/T-2026-0009-adr-decision-map.md
 - Decisions made: local self-contained HTML generated from docs/adr/README.md only.
 - Commands run: python3 scripts/render_adr_decision_map.py; python3 -m py_compile scripts/render_adr_decision_map.py scripts/html_report.py; python3 -m pytest -q tests/test_render_adr_decision_map.py; git diff --check
