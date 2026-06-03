@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import threading
 from types import SimpleNamespace
 
 import pytest
@@ -2601,7 +2602,7 @@ def test_active_loop_dry_run_creates_four_session_ledger_without_remote_mutation
 
     monkeypatch.setattr(agent_loop.subprocess, "run", fake_run)
     monkeypatch.setattr(agent_loop, "_current_branch", lambda repo_root: "chore/issue-9999-active-loop")
-    monkeypatch.setattr(agent_loop, "build_overlap_preflight", lambda issue, branch, repo_root: _clear_overlap_report(issue, branch))
+    monkeypatch.setattr(agent_loop, "build_overlap_preflight", lambda issue, branch, repo_root, coordination_root=None: _clear_overlap_report(issue, branch))
     monkeypatch.setattr(agent_loop, "audit_privacy_output", lambda *args, **kwargs: [])
 
     result = agent_loop.write_active_loop(
@@ -2636,7 +2637,7 @@ def test_active_loop_expanded_eight_dry_run_creates_sessions_and_assignments(mon
 
     monkeypatch.setattr(agent_loop.subprocess, "run", fake_run)
     monkeypatch.setattr(agent_loop, "_current_branch", lambda repo_root: "chore/issue-9999-active-loop")
-    monkeypatch.setattr(agent_loop, "build_overlap_preflight", lambda issue, branch, repo_root: _clear_overlap_report(issue, branch))
+    monkeypatch.setattr(agent_loop, "build_overlap_preflight", lambda issue, branch, repo_root, coordination_root=None: _clear_overlap_report(issue, branch))
     monkeypatch.setattr(agent_loop, "audit_privacy_output", lambda *args, **kwargs: [])
 
     result = agent_loop.write_active_loop(
@@ -2692,7 +2693,7 @@ def test_active_loop_execute_runs_ship_only_after_reviewer_and_ci_pass(monkeypat
 
     monkeypatch.setattr(agent_loop.subprocess, "run", fake_run)
     monkeypatch.setattr(agent_loop, "_current_branch", lambda repo_root: "chore/issue-9999-active-loop")
-    monkeypatch.setattr(agent_loop, "build_overlap_preflight", lambda issue, branch, repo_root: _clear_overlap_report(issue, branch))
+    monkeypatch.setattr(agent_loop, "build_overlap_preflight", lambda issue, branch, repo_root, coordination_root=None: _clear_overlap_report(issue, branch))
     monkeypatch.setattr(agent_loop, "audit_privacy_output", lambda *args, **kwargs: [])
 
     result = agent_loop.write_active_loop(
@@ -2728,7 +2729,7 @@ def test_active_loop_expanded_eight_execute_uses_conservative_gate(monkeypatch, 
 
     monkeypatch.setattr(agent_loop.subprocess, "run", fake_run)
     monkeypatch.setattr(agent_loop, "_current_branch", lambda repo_root: "chore/issue-9999-active-loop")
-    monkeypatch.setattr(agent_loop, "build_overlap_preflight", lambda issue, branch, repo_root: _clear_overlap_report(issue, branch))
+    monkeypatch.setattr(agent_loop, "build_overlap_preflight", lambda issue, branch, repo_root, coordination_root=None: _clear_overlap_report(issue, branch))
     monkeypatch.setattr(agent_loop, "audit_privacy_output", lambda *args, **kwargs: [])
 
     result = agent_loop.write_active_loop(
@@ -2770,7 +2771,7 @@ def test_active_loop_expanded_eight_blocks_when_required_auditor_missing(monkeyp
 
     monkeypatch.setattr(agent_loop.subprocess, "run", fake_run)
     monkeypatch.setattr(agent_loop, "_current_branch", lambda repo_root: "chore/issue-9999-active-loop")
-    monkeypatch.setattr(agent_loop, "build_overlap_preflight", lambda issue, branch, repo_root: _clear_overlap_report(issue, branch))
+    monkeypatch.setattr(agent_loop, "build_overlap_preflight", lambda issue, branch, repo_root, coordination_root=None: _clear_overlap_report(issue, branch))
     monkeypatch.setattr(agent_loop, "audit_privacy_output", lambda *args, **kwargs: [])
 
     result = agent_loop.write_active_loop(
@@ -2807,7 +2808,7 @@ def test_active_loop_expanded_eight_requires_deep_reviewer_for_load_bearing(monk
 
     monkeypatch.setattr(agent_loop.subprocess, "run", fake_run)
     monkeypatch.setattr(agent_loop, "_current_branch", lambda repo_root: "chore/issue-9999-active-loop")
-    monkeypatch.setattr(agent_loop, "build_overlap_preflight", lambda issue, branch, repo_root: _clear_overlap_report(issue, branch))
+    monkeypatch.setattr(agent_loop, "build_overlap_preflight", lambda issue, branch, repo_root, coordination_root=None: _clear_overlap_report(issue, branch))
     monkeypatch.setattr(agent_loop, "audit_privacy_output", lambda *args, **kwargs: [])
     monkeypatch.setattr(agent_loop, "check_pr_body_text", lambda *args, **kwargs: [])
 
@@ -2834,7 +2835,7 @@ def test_active_loop_blocks_ship_when_reviewer_or_ci_has_not_passed(monkeypatch,
 
     monkeypatch.setattr(agent_loop.subprocess, "run", fake_run)
     monkeypatch.setattr(agent_loop, "_current_branch", lambda repo_root: "chore/issue-9999-active-loop")
-    monkeypatch.setattr(agent_loop, "build_overlap_preflight", lambda issue, branch, repo_root: _clear_overlap_report(issue, branch))
+    monkeypatch.setattr(agent_loop, "build_overlap_preflight", lambda issue, branch, repo_root, coordination_root=None: _clear_overlap_report(issue, branch))
     monkeypatch.setattr(agent_loop, "audit_privacy_output", lambda *args, **kwargs: [])
 
     result = agent_loop.write_active_loop(
@@ -2874,7 +2875,7 @@ def test_active_loop_execute_blocks_on_readiness_score_blockers(monkeypatch, tmp
 
     monkeypatch.setattr(agent_loop.subprocess, "run", fake_run)
     monkeypatch.setattr(agent_loop, "_current_branch", lambda repo_root: "chore/issue-9999-active-loop")
-    monkeypatch.setattr(agent_loop, "build_overlap_preflight", lambda issue, branch, repo_root: _clear_overlap_report(issue, branch))
+    monkeypatch.setattr(agent_loop, "build_overlap_preflight", lambda issue, branch, repo_root, coordination_root=None: _clear_overlap_report(issue, branch))
     monkeypatch.setattr(agent_loop, "audit_privacy_output", lambda *args, **kwargs: [])
 
     result = agent_loop.write_active_loop(execute=True, repo_root=repo)
@@ -2942,7 +2943,7 @@ def test_active_loop_blocks_overlap_and_recovery_needed_leases(monkeypatch, tmp_
 def test_active_loop_requires_claim_evidence_for_eval_surface(monkeypatch, tmp_path: Path) -> None:
     repo = _write_repo(tmp_path)
     monkeypatch.setattr(agent_loop, "_current_branch", lambda repo_root: "chore/issue-9999-active-loop")
-    monkeypatch.setattr(agent_loop, "build_overlap_preflight", lambda issue, branch, repo_root: _clear_overlap_report(issue, branch))
+    monkeypatch.setattr(agent_loop, "build_overlap_preflight", lambda issue, branch, repo_root, coordination_root=None: _clear_overlap_report(issue, branch))
     monkeypatch.setattr(agent_loop, "audit_privacy_output", lambda *args, **kwargs: [])
 
     result = agent_loop.write_active_loop(
@@ -2967,7 +2968,7 @@ def test_session_heartbeat_refreshes_registry_and_stale_sessions_are_marked(monk
     registry.write_text(json.dumps(payload), encoding="utf-8")
 
     monkeypatch.setattr(agent_loop, "_current_branch", lambda repo_root: "chore/issue-9999-active-loop")
-    monkeypatch.setattr(agent_loop, "build_overlap_preflight", lambda issue, branch, repo_root: _clear_overlap_report(issue, branch))
+    monkeypatch.setattr(agent_loop, "build_overlap_preflight", lambda issue, branch, repo_root, coordination_root=None: _clear_overlap_report(issue, branch))
     monkeypatch.setattr(agent_loop, "audit_privacy_output", lambda *args, **kwargs: [])
 
     result = agent_loop.write_active_loop(
@@ -3025,7 +3026,7 @@ def test_active_loop_cli_accepts_expanded_eight_and_rejects_unknown_topology() -
 def _patch_active_loop_clear(monkeypatch) -> None:
     monkeypatch.setattr(agent_loop.subprocess, "run", lambda cmd, **kwargs: subprocess.CompletedProcess(cmd, 0, stdout="", stderr=""))
     monkeypatch.setattr(agent_loop, "_current_branch", lambda repo_root: "chore/issue-9999-active-loop")
-    monkeypatch.setattr(agent_loop, "build_overlap_preflight", lambda issue, branch, repo_root: _clear_overlap_report(issue, branch))
+    monkeypatch.setattr(agent_loop, "build_overlap_preflight", lambda issue, branch, repo_root, coordination_root=None: _clear_overlap_report(issue, branch))
     monkeypatch.setattr(agent_loop, "audit_privacy_output", lambda *args, **kwargs: [])
 
 
@@ -8684,25 +8685,25 @@ def test_x1_default_uses_root_dir_and_no_worktree(monkeypatch, tmp_path: Path) -
     assert not (repo / ".claude" / "worktrees" / "T-2026-1002-cycle").exists()
 
 
-def test_task_pool_e2_dark_clamps_requested_pool_to_serial(monkeypatch, tmp_path: Path) -> None:
-    """E2 ships the X substrate DARK (ADR 0095 PR-E2): a >1 request is visibly demoted to serial
-    (X=1) with an advisory warning, and the run still completes both tasks in order — no worktree."""
+def test_task_pool_e3c_clamp_removed_request_fans_out(monkeypatch, tmp_path: Path) -> None:
+    """ADR 0095 PR-E3c removed the E2 dark clamp: a >1 request is NO LONGER demoted to serial. The
+    advisory "substrate dark" warning is gone and each ready task is routed through worktree
+    isolation (``_run_cycle_in_task_worktree``) rather than the direct X=1 run_one_task call."""
     repo = _write_repo(tmp_path, task_id="T-2026-1001", title="A")
     _append_ready_task(repo, "T-2026-1002", "B")
     active_dir = repo / "reports" / "agent_loop" / "active"
     _patch_auto_loop_inner(monkeypatch, active_dir)
-    # If the clamp failed and real fan-out ran, the worktree helper would fire; make that loud.
-    monkeypatch.setattr(
-        agent_loop, "create_task_cycle_worktree",
-        lambda *a, **k: (_ for _ in ()).throw(AssertionError("E2 must clamp to serial; no worktree")),
-    )
+
+    stub, seen = _stub_cycle_in_worktree_runs_in(repo)
+    monkeypatch.setattr(agent_loop, "_run_cycle_in_task_worktree", stub)
 
     result = agent_loop.write_active_auto_loop(
         max_iterations=2, execute_runner=True, execute_ship=False, repo_root=repo, task_pool=3
     )
 
-    assert any("PR-E2 ships the X task-pool substrate dark" in w for w in result.warnings)
-    assert result.completed_task_ids == ("T-2026-1001", "T-2026-1002")
+    assert not any("substrate dark" in w for w in result.warnings), "the E2 dark-clamp warning must be removed"
+    assert sorted(seen) == ["T-2026-1001", "T-2026-1002"], "a >1 request must fan out through worktree isolation"
+    assert set(result.completed_task_ids) == {"T-2026-1001", "T-2026-1002"}
 
 
 def test_task_pool_fcntl_gating_clamps_on_non_posix(monkeypatch, tmp_path: Path) -> None:
@@ -8775,17 +8776,20 @@ def test_per_task_wall_clock_budget_trips_independently(monkeypatch, tmp_path: P
 
 
 def test_claim_next_task_serializes_concurrent_claims(monkeypatch, tmp_path: Path) -> None:
-    """claim_lock serialization (ADR 0095 PR-E2): over a multi-task queue, the locked claim path
-    must never hand the same task to two cycles — every claimed task_id is distinct (no double-claim).
-    E2 clamps the effective pool to 1, so this asserts claim UNIQUENESS over the serial-clamped run;
-    true concurrent-overlap serialization (a Barrier forcing two in-flight tasks) moves to PR-E3 when
-    the clamp is lifted."""
+    """claim_lock serialization (ADR 0095 PR-E2 substrate, PR-E3c fan-out): over a multi-task queue
+    at --task-pool 2, the locked claim path must never hand the same task to two cycles — every
+    claimed task_id is distinct (no double-claim). PR-E3c lifted the E2 clamp, so this now runs the
+    REAL X>1 fan-out (worktree isolation stubbed so the cycle actually executes) and asserts claim
+    UNIQUENESS + all-completed over a live multi-task fan-out."""
     repo = _write_repo(tmp_path, task_id="T-2026-1001", title="A")
     _append_ready_task(repo, "T-2026-1002", "B")
     _append_ready_task(repo, "T-2026-1003", "C")
     active_dir = repo / "reports" / "agent_loop" / "active"
     _patch_active_loop_clear(monkeypatch)
     monkeypatch.setattr(agent_loop, "write_active_gate_evidence", _infinite_fake_gate(active_dir))
+
+    stub, _seen = _stub_cycle_in_worktree_runs_in(repo)
+    monkeypatch.setattr(agent_loop, "_run_cycle_in_task_worktree", stub)
 
     seen_ids: list[str] = []
     original_runner = _infinite_fake_runner(active_dir)
@@ -9235,27 +9239,1320 @@ def test_x1_budget_env_ignored_byte_identical(monkeypatch, tmp_path: Path) -> No
     )
 
 
-def test_run_task_in_worktree_x_gt_1_raises_e3_deferred(monkeypatch, tmp_path: Path) -> None:
-    """ADR 0095 PR-E2 E3-boundary: run_task_in_worktree raises a descriptive RuntimeError when
-    effective_task_pool_size > 1 is actually reached. The E2-dark clamp (_e2_task_pool_dark_clamp_
-    enabled) keeps this branch unreachable at runtime; it is patched to False here to exercise the
-    boundary and verify the E3 work-list error message is present in code."""
-    repo = _write_repo(tmp_path, task_id="T-2026-1001", title="E3 deferred")
+# --- ADR 0095 PR-E3c: X>1 fan-out wiring (dark clamp removed) -----------------------------------
+
+
+def _stub_cycle_in_worktree_runs_in(repo: Path):
+    """A drop-in replacement for ``_run_cycle_in_task_worktree`` that skips the real git worktree
+    and just invokes ``run_cycle`` against ``repo`` (the in-test parent), so a driver-level fan-out
+    test exercises the run_cycle -> run_one_task -> ledger reconcile path WITHOUT a real worktree.
+    Records every isolated task_id so the test can assert each cycle was routed through isolation."""
+    seen_task_ids: list[str] = []
+
+    def stub(task_id, *, parent_root, run_cycle, register_blocker, on_stop, append_warnings, git_runner=None):  # type: ignore[no-untyped-def]
+        seen_task_ids.append(task_id)
+        run_cycle(repo)
+
+    return stub, seen_task_ids
+
+
+def test_x_gt_1_fan_out_runs_each_task_in_isolation_and_reconciles(monkeypatch, tmp_path: Path) -> None:
+    """ADR 0095 PR-E3c: with --task-pool 2 and two ready tasks, the driver fans out via
+    ``_run_cycle_in_task_worktree`` (one isolated cycle PER task) and the shared LedgerState
+    reconciles BOTH completions automatically — no post-join ledger merge, the in-process lock
+    serializes the writes (ThreadPoolExecutor = threads, one ledger object)."""
+    repo = _write_repo(tmp_path, task_id="T-2026-1001", title="A")
+    _append_ready_task(repo, "T-2026-1002", "B")
+    active_dir = repo / "reports" / "agent_loop" / "active"
+    _patch_auto_loop_inner(monkeypatch, active_dir)
+
+    stub, seen = _stub_cycle_in_worktree_runs_in(repo)
+    monkeypatch.setattr(agent_loop, "_run_cycle_in_task_worktree", stub)
+
+    result = agent_loop.write_active_auto_loop(
+        max_iterations=0,  # infinite: ready queue is the sole termination signal
+        execute_runner=True, execute_ship=False, repo_root=repo, task_pool=2,
+    )
+
+    assert sorted(seen) == ["T-2026-1001", "T-2026-1002"], "each task must be routed through worktree isolation"
+    assert set(result.completed_task_ids) == {"T-2026-1001", "T-2026-1002"}, "both completions auto-reconcile"
+    # The E2 dark-clamp warning must be gone (the clamp was removed in PR-E3c).
+    assert not any("substrate dark" in w for w in result.warnings)
+
+
+def test_x_gt_1_run_cycle_threads_two_roots_and_parent_inheritance(monkeypatch, tmp_path: Path) -> None:
+    """ADR 0095 PR-E3c: the X>1 driver passes ``parent_root=repo_root`` (closure variable) to
+    ``_run_cycle_in_task_worktree`` and the ``run_cycle`` closure threads the cycle worktree path as
+    ``cycle_repo_root`` + the closure ``repo_root`` as ``coordination_root`` into ``run_one_task``
+    (E3a two-root split, HIGH-3 fix: must NOT hardcode ROOT_DIR).
+
+    Proof: the runner call (write_active_codex_runner) receives
+    ``repo_root == the cycle path`` and ``coordination_root == the closure repo_root (tmp_path)``."""
+    repo = _write_repo(tmp_path, task_id="T-2026-1001", title="Solo")
+    active_dir = repo / "reports" / "agent_loop" / "active"
+    _patch_active_loop_clear(monkeypatch)
+    monkeypatch.setattr(agent_loop, "write_active_gate_evidence", _infinite_fake_gate(active_dir))
+
+    runner_seen: list[dict] = []
+    base_runner = _infinite_fake_runner(active_dir)
+
+    def recording_runner(**kwargs):  # type: ignore[no-untyped-def]
+        runner_seen.append({"repo_root": kwargs.get("repo_root"), "coordination_root": kwargs.get("coordination_root")})
+        return base_runner(**kwargs)
+
+    monkeypatch.setattr(agent_loop, "write_active_codex_runner", recording_runner)
+
+    sentinel_cycle = repo  # real path so context-file reads resolve; identity is what we assert
+    captured: dict = {}
+
+    def stub(task_id, *, parent_root, run_cycle, register_blocker, on_stop, append_warnings, git_runner=None):  # type: ignore[no-untyped-def]
+        captured["parent_root"] = parent_root
+        captured["git_runner"] = git_runner
+        run_cycle(sentinel_cycle)
+
+    monkeypatch.setattr(agent_loop, "_run_cycle_in_task_worktree", stub)
+
+    agent_loop.write_active_auto_loop(
+        max_iterations=1, execute_runner=True, execute_ship=False, repo_root=repo, task_pool=2,
+    )
+
+    # HIGH-3 fix: driver must pass the closure repo_root, not the hardcoded ROOT_DIR module constant.
+    assert captured["parent_root"] == repo, "driver must pass parent_root=closure repo_root, not hardcoded ROOT_DIR"
+    assert captured["git_runner"] is None, "production git runner default (real subprocess) must be threaded as None"
+    assert runner_seen, "the runner must have been invoked through run_cycle -> run_one_task"
+    assert runner_seen[0]["repo_root"] == sentinel_cycle, "cycle_repo_root must thread to the runner as repo_root"
+    assert runner_seen[0]["coordination_root"] == repo, "coordination_root must be the closure repo_root, not hardcoded ROOT_DIR"
+
+
+def test_x_gt_1_no_double_concurrency_permit_in_driver(monkeypatch, tmp_path: Path) -> None:
+    """ADR 0095 PR-E3c lock-order: the global-concurrency permit for the worktree create is acquired
+    INSIDE ``_run_cycle_in_task_worktree`` (around the create only). The driver / run_task_in_worktree
+    must NOT acquire it again. Proof: with the lifecycle stubbed out, the driver fan-out path takes
+    ZERO permits from the limiter (any driver-side acquire would show up here)."""
+    repo = _write_repo(tmp_path, task_id="T-2026-1001", title="A")
+    _append_ready_task(repo, "T-2026-1002", "B")
+    active_dir = repo / "reports" / "agent_loop" / "active"
+    _patch_auto_loop_inner(monkeypatch, active_dir)
+
+    stub, _seen = _stub_cycle_in_worktree_runs_in(repo)
+    monkeypatch.setattr(agent_loop, "_run_cycle_in_task_worktree", stub)
+
+    acquisitions = {"n": 0}
+    real_limiter = agent_loop.global_concurrency_limiter()
+    real_slot = real_limiter.slot
+
+    def counting_slot(*a, **k):  # type: ignore[no-untyped-def]
+        acquisitions["n"] += 1
+        return real_slot(*a, **k)
+
+    monkeypatch.setattr(real_limiter, "slot", counting_slot)
+
+    agent_loop.write_active_auto_loop(
+        max_iterations=0, execute_runner=True, execute_ship=False, repo_root=repo, task_pool=2,
+    )
+
+    assert acquisitions["n"] == 0, "the driver must NOT acquire a global-concurrency permit (owned by _run_cycle_in_task_worktree)"
+
+
+def test_x_gt_1_deferred_blocker_records_in_ledger(monkeypatch, tmp_path: Path) -> None:
+    """ADR 0095 PR-E3c: a task whose isolated cycle hits a blocker is recorded via
+    ``register_task_blocker`` -> in infinite mode it lands in ``deferred_task_ids`` (not completed)
+    and the loop continues; the register_blocker adapter (lambda binding ``task``) routes the right
+    task id through the shared LedgerState."""
+    repo = _write_repo(tmp_path, task_id="T-2026-1001", title="A-blocks")
+    _append_ready_task(repo, "T-2026-1002", "B-ok")
     active_dir = repo / "reports" / "agent_loop" / "active"
     _patch_active_loop_clear(monkeypatch)
     monkeypatch.setattr(agent_loop, "write_active_gate_evidence", _infinite_fake_gate(active_dir))
     monkeypatch.setattr(agent_loop, "write_active_codex_runner", _infinite_fake_runner(active_dir))
-    # Bypass the E2-dark clamp: _e2_task_pool_dark_clamp_enabled() returns False so the
-    # effective_task_pool_size is NOT reduced to 1, letting the X>1 raise be hit.
-    monkeypatch.setattr(agent_loop, "_e2_task_pool_dark_clamp_enabled", lambda: False)
 
-    with pytest.raises(RuntimeError, match="X>1 task-pool fan-out is not enabled in PR-E2"):
-        agent_loop.write_active_auto_loop(
-            max_iterations=1, execute_runner=True, execute_ship=False, repo_root=repo, task_pool=2
+    def stub(task_id, *, parent_root, run_cycle, register_blocker, on_stop, append_warnings, git_runner=None):  # type: ignore[no-untyped-def]
+        # Task A: simulate a worktree-isolation blocker (e.g. create failure) routed through the
+        # blocker guard WITHOUT running the cycle (fail-closed). Task B: run normally.
+        if task_id == "T-2026-1001":
+            if register_blocker([f"{task_id}: simulated worktree blocker"]):
+                on_stop()
+            return
+        run_cycle(repo)
+
+    monkeypatch.setattr(agent_loop, "_run_cycle_in_task_worktree", stub)
+
+    result = agent_loop.write_active_auto_loop(
+        max_iterations=0, execute_runner=True, execute_ship=False, repo_root=repo, task_pool=2,
+    )
+
+    # deferred tasks are surfaced in the persisted ledger state, not on the result object.
+    state = json.loads((active_dir / "auto_loop_state.json").read_text(encoding="utf-8"))
+    assert "T-2026-1001" in state["deferred_task_ids"], "blocked task must be deferred (infinite mode)"
+    assert "T-2026-1001" not in result.completed_task_ids, "blocked task must NOT be completed"
+    assert "T-2026-1002" in result.completed_task_ids, "the healthy sibling still completes"
+
+
+def test_x_gt_1_terminal_blocker_stops_and_no_post_stop_promote(monkeypatch, tmp_path: Path) -> None:
+    """ADR 0095 PR-E3c drain: in BOUNDED mode any task blocker is terminal (register_task_blocker
+    returns True -> on_stop -> stop_event.set). A sibling that had NOT already completed must NOT be
+    promoted post-stop (fail-closed via complete_if_not_stopped), and the run reports blocked."""
+    repo = _write_repo(tmp_path, task_id="T-2026-1001", title="A-blocks")
+    _append_ready_task(repo, "T-2026-1002", "B")
+    active_dir = repo / "reports" / "agent_loop" / "active"
+    _patch_active_loop_clear(monkeypatch)
+    monkeypatch.setattr(agent_loop, "write_active_gate_evidence", _infinite_fake_gate(active_dir))
+    monkeypatch.setattr(agent_loop, "write_active_codex_runner", _infinite_fake_runner(active_dir))
+
+    def stub(task_id, *, parent_root, run_cycle, register_blocker, on_stop, append_warnings, git_runner=None):  # type: ignore[no-untyped-def]
+        if task_id == "T-2026-1001":
+            if register_blocker([f"{task_id}: terminal blocker"]):
+                on_stop()
+            return
+        run_cycle(repo)
+
+    monkeypatch.setattr(agent_loop, "_run_cycle_in_task_worktree", stub)
+
+    result = agent_loop.write_active_auto_loop(
+        max_iterations=5,  # bounded: a blocker stops the whole loop
+        execute_runner=True, execute_ship=False, repo_root=repo, task_pool=2,
+    )
+
+    assert result.decision == "blocked"
+    assert "T-2026-1001" not in result.completed_task_ids
+    assert "T-2026-1002" not in result.completed_task_ids, "post-stop sibling must NOT be promoted"
+
+
+# --- ADR 0095 PR-E3c codex round-2 fixes (HIGH-1/2/3 + MED-1/2/3) -------------------------------
+#
+# HIGH-1 (X==1 byte-identity REGRESSION): blocked terminal paths used to persist a STALE cycle
+# snapshot. The cycle is deep-copied at initial registration, then runner/gate/ship fields are
+# mutated, but no _snapshot_cycle() ran before register_task_blocker on the runner-blocked /
+# gate-not-ready / ship-blocked terminals, so the immutable upsert ledger kept the pre-mutation
+# copy and the mutated fields vanished from the final cycles. The old by-ref append captured them
+# implicitly. These three tests assert the mutated fields survive into the persisted
+# auto_loop_state.json at X==1 — they FAIL on the pre-fix code (KeyError / missing field) and PASS
+# after _snapshot_cycle() is published before each terminal blocker.
+
+
+def test_e3c_high1_runner_blocked_cycle_persists_mutated_fields_x1(monkeypatch, tmp_path: Path) -> None:
+    """HIGH-1: a runner-blocked (auto_repair=False) cycle must persist runner_decision / runner_report
+    / gate_tier into auto_loop_state.json at X==1 (byte-equivalent to the old by-ref path)."""
+    repo = _write_repo(tmp_path, task_id="T-2026-1001", title="Runner blocked task")
+    _patch_active_loop_clear(monkeypatch)
+    active_dir = repo / "reports" / "agent_loop" / "active"
+
+    def fake_runner(**kwargs):  # type: ignore[no-untyped-def]
+        report = active_dir / "codex_runner.md"
+        state = active_dir / "codex_runner_state.json"
+        runs = active_dir / "codex_runs"
+        report.parent.mkdir(parents=True, exist_ok=True)
+        report.write_text("# runner\n", encoding="utf-8")
+        state.write_text("{}\n", encoding="utf-8")
+        # decision != completed -> runner-blocked terminal (execute_runner=True, auto_repair=False).
+        return agent_loop.ActiveCodexRunnerResult(report, state, runs, "blocked", (), (), ())
+
+    monkeypatch.setattr(agent_loop, "write_active_codex_runner", fake_runner)
+
+    result = agent_loop.write_active_auto_loop(
+        max_iterations=1,
+        execute_runner=True,
+        execute_ship=True,
+        auto_repair=False,
+        repo_root=repo,
+    )
+
+    assert result.decision == "blocked"
+    state = json.loads((active_dir / "auto_loop_state.json").read_text(encoding="utf-8"))
+    cyc = state["cycles"][0]
+    assert cyc["task_id"] == "T-2026-1001"
+    # These three are mutated AFTER the deep-copied initial registration; pre-fix they were lost.
+    assert cyc["runner_decision"] == "blocked"
+    assert cyc["gate_tier"] == "runner-blocked"
+    assert "runner_report" in cyc
+    # The result object is built from the SAME ledger.snapshot(), so it must agree byte-for-byte.
+    assert result.cycles[0]["runner_decision"] == "blocked"
+    assert result.cycles[0]["gate_tier"] == "runner-blocked"
+
+
+def test_e3c_high1_gate_not_ready_cycle_persists_mutated_fields_x1(monkeypatch, tmp_path: Path) -> None:
+    """HIGH-1: a gate-not-ready (auto_repair=False) cycle must persist gate_evidence / gate_ready /
+    privacy_clean / gate_tier into auto_loop_state.json at X==1."""
+    repo = _write_repo(tmp_path, task_id="T-2026-1001", title="Gate not ready task")
+    _patch_active_loop_clear(monkeypatch)
+    active_dir = repo / "reports" / "agent_loop" / "active"
+
+    def fake_runner(**kwargs):  # type: ignore[no-untyped-def]
+        report = active_dir / "codex_runner.md"
+        state = active_dir / "codex_runner_state.json"
+        runs = active_dir / "codex_runs"
+        report.parent.mkdir(parents=True, exist_ok=True)
+        report.write_text("# runner\n", encoding="utf-8")
+        state.write_text("{}\n", encoding="utf-8")
+        return agent_loop.ActiveCodexRunnerResult(report, state, runs, "completed", (), (), ())
+
+    def fake_gate(*, task_id, **kwargs):  # type: ignore[no-untyped-def]
+        path = active_dir / "gate_evidence" / task_id / "evidence.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("{}\n", encoding="utf-8")
+        # ready=False, privacy_clean=True -> gate-not-ready non-repair terminal.
+        return path, {"ready": False, "privacy_clean": True}
+
+    monkeypatch.setattr(agent_loop, "write_active_codex_runner", fake_runner)
+    monkeypatch.setattr(agent_loop, "write_active_gate_evidence", fake_gate)
+
+    result = agent_loop.write_active_auto_loop(
+        max_iterations=1,
+        execute_runner=True,
+        execute_ship=True,
+        auto_repair=False,
+        repo_root=repo,
+    )
+
+    assert result.decision == "blocked"
+    state = json.loads((active_dir / "auto_loop_state.json").read_text(encoding="utf-8"))
+    cyc = state["cycles"][0]
+    assert cyc["task_id"] == "T-2026-1001"
+    assert cyc["gate_ready"] is False
+    assert cyc["privacy_clean"] is True
+    assert cyc["gate_tier"] == "repairable"
+    assert "gate_evidence" in cyc
+    assert "runner_decision" in cyc  # runner mutations also survive
+    assert result.cycles[0]["gate_ready"] is False
+
+
+def test_e3c_high1_ship_blocked_cycle_persists_mutated_fields_x1(monkeypatch, tmp_path: Path) -> None:
+    """HIGH-1: a ship-blocked cycle (write_active_loop ship returns != executed) must persist
+    ship_decision / ship_report into auto_loop_state.json at X==1."""
+    repo = _write_repo(tmp_path, task_id="T-2026-1001", title="Ship blocked task")
+    _patch_active_loop_clear(monkeypatch)
+    active_dir = repo / "reports" / "agent_loop" / "active"
+
+    def fake_runner(**kwargs):  # type: ignore[no-untyped-def]
+        report = active_dir / "codex_runner.md"
+        state = active_dir / "codex_runner_state.json"
+        runs = active_dir / "codex_runs"
+        report.parent.mkdir(parents=True, exist_ok=True)
+        report.write_text("# runner\n", encoding="utf-8")
+        state.write_text("{}\n", encoding="utf-8")
+        return agent_loop.ActiveCodexRunnerResult(report, state, runs, "completed", (), (), ())
+
+    def fake_gate(*, task_id, **kwargs):  # type: ignore[no-untyped-def]
+        path = active_dir / "gate_evidence" / task_id / "evidence.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("{}\n", encoding="utf-8")
+        return path, {"ready": True, "privacy_clean": True}
+
+    # write_active_start calls write_active_loop internally for the CLAIM (execute falsy); the
+    # auto-loop's FINAL ship calls it with execute=True. Only override the execute=True path to
+    # return a non-executed (blocked) ship so the start succeeds but the ship terminal trips.
+    real_write_active_loop = agent_loop.write_active_loop
+
+    def fake_ship(**kwargs):  # type: ignore[no-untyped-def]
+        if not kwargs.get("execute"):
+            return real_write_active_loop(**kwargs)
+        report = active_dir / "active_loop.md"
+        report.parent.mkdir(parents=True, exist_ok=True)
+        report.write_text("# ship\n", encoding="utf-8")
+        # decision != executed -> ship-blocked terminal.
+        return agent_loop.ActiveLoopResult(
+            active_dir / "session_registry.json",
+            active_dir / "leases.json",
+            active_dir / "events.jsonl",
+            active_dir / "assignments",
+            report,
+            "blocked",
+            (),
+            (),
+            (),
         )
 
+    monkeypatch.setattr(agent_loop, "write_active_codex_runner", fake_runner)
+    monkeypatch.setattr(agent_loop, "write_active_gate_evidence", fake_gate)
+    monkeypatch.setattr(agent_loop, "write_active_loop", fake_ship)
 
-# --- PR-D adversarial fixes (HIGH-1/2/3 + LOW-1) ---
+    result = agent_loop.write_active_auto_loop(
+        max_iterations=1,
+        execute_runner=True,
+        execute_ship=True,
+        auto_repair=False,
+        repo_root=repo,
+    )
+
+    assert result.decision == "blocked"
+    state = json.loads((active_dir / "auto_loop_state.json").read_text(encoding="utf-8"))
+    cyc = state["cycles"][0]
+    assert cyc["task_id"] == "T-2026-1001"
+    assert cyc["ship_decision"] == "blocked"
+    assert "ship_report" in cyc
+    assert cyc["completed"] is False
+    assert result.cycles[0]["ship_decision"] == "blocked"
+
+
+# HIGH-2 (X>1 lease routing): the repair patch lane must forward coordination_root=PARENT root +
+# this cycle's lease_id while running the patch artifacts against the cycle worktree (repo_root).
+# Before the fix the forward gate keyed on ``repair_coord != repo_root`` which is FALSE once the
+# parent coord root is threaded, so lease reads resolved to the torn-down worktree. At X==1 the gate
+# stays FALSE (no coordination_root/lease_id kwargs) -> byte-identical.
+
+
+def _record_runner_calls(active_dir: Path, calls: list[dict], *, read_decision: str = "blocked"):
+    """A write_active_codex_runner fake that records the kwargs of EACH call (read-only + patch),
+    returning a completed PATCH lane (so run_repair_apply proceeds to apply) and ``read_decision``
+    for the read-only lane."""
+    def fake_runner(**kwargs):  # type: ignore[no-untyped-def]
+        mode = str(kwargs.get("mode", "read-only"))
+        calls.append({
+            "mode": mode,
+            "repo_root": kwargs.get("repo_root"),
+            "coordination_root": kwargs.get("coordination_root"),
+            "has_coordination_root": "coordination_root" in kwargs and kwargs["coordination_root"] is not None,
+            "has_lease_id": "lease_id" in kwargs and kwargs["lease_id"] is not None,
+            "lease_id": kwargs.get("lease_id"),
+        })
+        report = active_dir / ("auto_repair.md" if mode == "patch" else "codex_runner.md")
+        state = active_dir / ("auto_repair_state.json" if mode == "patch" else "codex_runner_state.json")
+        runs = active_dir / ("patch_runs" if mode == "patch" else "codex_runs")
+        report.parent.mkdir(parents=True, exist_ok=True)
+        report.write_text(f"# {mode}\n", encoding="utf-8")
+        state.write_text("{}\n", encoding="utf-8")
+        decision = "completed" if mode == "patch" else read_decision
+        return agent_loop.ActiveCodexRunnerResult(report, state, runs, decision, (), (), ())
+
+    return fake_runner
+
+
+def test_e3c_high2_repair_patch_lane_forwards_parent_coord_and_lease_x_gt_1(monkeypatch, tmp_path: Path) -> None:
+    """HIGH-2: at X>1 the repair patch lane (run_patch) must forward coordination_root=PARENT repo
+    (so lease ops hit the shared parent lease file) + this cycle's lease_id, while its artifacts run
+    against the cycle worktree (repo_root)."""
+    repo = _write_repo(tmp_path, task_id="T-2026-1001", title="Repair lease task")
+    active_dir = repo / "reports" / "agent_loop" / "active"
+    _patch_active_loop_clear(monkeypatch)
+    monkeypatch.setattr(agent_loop, "write_active_gate_evidence", _infinite_fake_gate(active_dir))
+    # Make apply a no-op clean failure so the cycle just defers (we only care about the patch kwargs).
+    monkeypatch.setattr(
+        agent_loop, "write_active_apply",
+        lambda **kw: agent_loop.ActiveApplyResult(active_dir / "apply.md", active_dir / "apply_state.json", "blocked", "n/a", False, (), ()),
+    )
+
+    calls: list[dict] = []
+    monkeypatch.setattr(agent_loop, "write_active_codex_runner", _record_runner_calls(active_dir, calls))
+
+    # Distinct cycle worktree path so repo_root(worktree) != coordination_root(parent) is observable.
+    # Seed it with the fixture's tasks/ so run_one_task's context-file reads (rooted at the cycle
+    # repo_root) resolve while the path identity stays distinct from the parent repo.
+    cycle_path = tmp_path / "cycle_wt"
+    shutil.copytree(repo / "tasks", cycle_path / "tasks")
+
+    def stub(task_id, *, parent_root, run_cycle, register_blocker, on_stop, append_warnings, git_runner=None):  # type: ignore[no-untyped-def]
+        run_cycle(cycle_path)
+
+    monkeypatch.setattr(agent_loop, "_run_cycle_in_task_worktree", stub)
+
+    agent_loop.write_active_auto_loop(
+        max_iterations=0,  # infinite: a single deferral does not stop on the consecutive guard
+        execute_runner=True, execute_ship=False, auto_repair=True, repo_root=repo, task_pool=2,
+    )
+
+    patch_calls = [c for c in calls if c["mode"] == "patch"]
+    assert patch_calls, "the repair patch lane must have been invoked"
+    pc = patch_calls[0]
+    assert pc["repo_root"] == cycle_path, "patch artifacts must run against the cycle worktree"
+    assert pc["coordination_root"] == repo, "patch lane must forward coordination_root=PARENT repo (lease isolation)"
+    assert pc["has_lease_id"], "patch lane must borrow THIS cycle's lease_id at X>1"
+
+
+def test_e3c_high2_repair_patch_lane_no_coord_or_lease_x1_byte_identical(monkeypatch, tmp_path: Path) -> None:
+    """HIGH-2 X==1 byte-identity: with no worktree (artifact_root=None, coord==repo_root) the patch
+    lane must receive NEITHER coordination_root NOR lease_id (textually identical call)."""
+    repo = _write_repo(tmp_path, task_id="T-2026-1001", title="Repair lease x1")
+    active_dir = repo / "reports" / "agent_loop" / "active"
+    _patch_active_loop_clear(monkeypatch)
+    monkeypatch.setattr(agent_loop, "write_active_gate_evidence", _infinite_fake_gate(active_dir))
+    monkeypatch.setattr(
+        agent_loop, "write_active_apply",
+        lambda **kw: agent_loop.ActiveApplyResult(active_dir / "apply.md", active_dir / "apply_state.json", "blocked", "n/a", False, (), ()),
+    )
+
+    calls: list[dict] = []
+    monkeypatch.setattr(agent_loop, "write_active_codex_runner", _record_runner_calls(active_dir, calls))
+
+    agent_loop.write_active_auto_loop(
+        max_iterations=1,
+        execute_runner=True, execute_ship=False, auto_repair=True, repo_root=repo, task_pool=1,
+    )
+
+    patch_calls = [c for c in calls if c["mode"] == "patch"]
+    assert patch_calls, "the repair patch lane must have been invoked"
+    pc = patch_calls[0]
+    assert pc["repo_root"] == repo, "X==1 patch lane runs against the parent repo (no worktree)"
+    assert not pc["has_coordination_root"], "X==1 patch lane must NOT forward coordination_root (byte-identical)"
+    assert not pc["has_lease_id"], "X==1 patch lane must NOT forward lease_id (byte-identical)"
+
+
+# HIGH-3 (X>1 driver overrun guard): the bounded-mode guard counted every in-flight future as a
+# GUARANTEED completion, so once ``completed + in_flight >= target`` it broke, drained, and exited —
+# even if a drained future DEFERRED, leaving the target unmet with ready work remaining. The fix
+# drains in-flight work and re-enters the claim loop until the ACTUAL completed count meets the
+# target (or the ready queue is genuinely drained). At X==1 the guard is dead (in_flight always
+# empty + loop_should_continue() breaks first) so this is a no-op there.
+
+
+def test_e3c_high3_deferring_in_flight_task_does_not_abandon_unmet_target_x_gt_1(monkeypatch, tmp_path: Path) -> None:
+    """HIGH-3: with task_pool=2 and target=1, if the FIRST claimed (in-flight) task DEFERS instead
+    of completing, the driver must still claim + complete the next ready task to reach the target —
+    never silently stop below target with ready work remaining.
+
+    Deterministic trigger: at X>1 the guard fires right after the first claim (in_flight=1 >= target=1).
+    Pre-fix the guard broke + drained + exited at completed=0 (task A deferred). Post-fix it drains A,
+    sees completed(0) < target(1), relaxes the guard, claims B, and completes it -> target reached."""
+    repo = _write_repo(tmp_path, task_id="T-2026-1001", title="A-defers")
+    _append_ready_task(repo, "T-2026-1002", "B-ok")
+    active_dir = repo / "reports" / "agent_loop" / "active"
+    _patch_active_loop_clear(monkeypatch)
+    monkeypatch.setattr(agent_loop, "write_active_gate_evidence", _infinite_fake_gate(active_dir))
+    monkeypatch.setattr(agent_loop, "write_active_codex_runner", _infinite_fake_runner(active_dir))
+
+    def stub(task_id, *, parent_root, run_cycle, register_blocker, on_stop, append_warnings, git_runner=None):  # type: ignore[no-untyped-def]
+        # Task A: DEFER (infinite mode -> register_blocker returns False, task is deferred, run
+        # continues). Task B: run the cycle normally so it completes.
+        if task_id == "T-2026-1001":
+            if register_blocker([f"{task_id}: simulated deferral"]):
+                on_stop()
+            return
+        run_cycle(repo)
+
+    monkeypatch.setattr(agent_loop, "_run_cycle_in_task_worktree", stub)
+
+    result = agent_loop.write_active_auto_loop(
+        max_iterations=0,  # infinite mode so a single deferral does not stop the whole run
+        target_completed_count=1,  # explicit bound -> the overrun guard is live at X>1
+        execute_runner=True, execute_ship=False, repo_root=repo, task_pool=2,
+    )
+
+    # The healthy sibling must have been claimed + completed to reach the target despite A deferring.
+    # Pre-fix the driver counted A's in-flight future as a guaranteed completion, broke at
+    # completed(0)+in_flight(1) >= target(1), drained A (which DEFERRED), and exited WITHOUT ever
+    # claiming B -> completed_task_ids would be empty (target abandoned).
+    assert "T-2026-1002" in result.completed_task_ids, "must claim+complete the next ready task to reach target"
+    assert len(result.completed_task_ids) >= 1, "the target of 1 completion must be reached, not abandoned below target"
+    state = json.loads((active_dir / "auto_loop_state.json").read_text(encoding="utf-8"))
+    assert "T-2026-1001" in state["deferred_task_ids"], "the deferring task is recorded as deferred"
+    assert "T-2026-1002" in state["completed_task_ids"], "the persisted ledger reflects the recovered completion"
+
+
+# MED-1 (X>1 lost update): write_cycle_checkpoint used to snapshot() then persist() under two
+# SEPARATE lock acquisitions, so a sibling could upsert+persist a newer state between them and the
+# first thread's persist would clobber it with stale bytes. LedgerState.persist_checkpoint folds
+# snapshot+merge+persist into ONE critical section. These tests pin (a) X==1 byte-identity vs the
+# old two-phase path and (b) that the write reflects the ledger state AT WRITE TIME (no stale capture).
+
+
+def test_e3c_med1_persist_checkpoint_is_byte_identical_to_snapshot_then_persist(tmp_path: Path) -> None:
+    """MED-1 X==1 byte-identity: persist_checkpoint(path, base) must produce byte-for-byte the same
+    file as the old ledger.persist(path, {**base, **snapshot_fields}) two-phase path."""
+    base = {
+        "schema_version": 1,
+        "decision": "running",
+        "next_task_id": None,
+        "warnings": ["w1", "w2"],
+    }
+
+    ledger_new = agent_loop.LedgerState(completed=["T-2026-1001"], deferred=["T-2026-1002"])
+    ledger_new.upsert_cycle("T-2026-1001", {"task_id": "T-2026-1001", "completed": True, "runner_decision": "completed"})
+    ledger_new.extend_blockers(["b1", "b1", "b2"])  # dupes to exercise _dedupe_preserve_order
+    new_path = tmp_path / "new.json"
+    ledger_new.persist_checkpoint(new_path, base)
+
+    # Reconstruct the OLD path byte-for-byte from an identically-seeded ledger.
+    ledger_old = agent_loop.LedgerState(completed=["T-2026-1001"], deferred=["T-2026-1002"])
+    ledger_old.upsert_cycle("T-2026-1001", {"task_id": "T-2026-1001", "completed": True, "runner_decision": "completed"})
+    ledger_old.extend_blockers(["b1", "b1", "b2"])
+    snap = ledger_old.snapshot()
+    old_payload = {
+        **base,
+        "completed_task_ids": snap["completed_task_ids"],
+        "deferred_task_ids": snap["deferred_task_ids"],
+        "cycles": snap["cycles"],
+        "blockers": snap["blockers"],
+    }
+    old_path = tmp_path / "old.json"
+    ledger_old.persist(old_path, old_payload)
+
+    assert new_path.read_bytes() == old_path.read_bytes(), "persist_checkpoint must be byte-identical to snapshot()+persist()"
+    parsed = json.loads(new_path.read_text(encoding="utf-8"))
+    assert parsed["completed_task_ids"] == ["T-2026-1001"]
+    assert parsed["deferred_task_ids"] == ["T-2026-1002"]
+    assert parsed["blockers"] == ["b1", "b2"]  # deduped, order preserved
+    assert parsed["cycles"][0]["runner_decision"] == "completed"
+
+
+def test_e3c_med1_persist_checkpoint_reflects_state_at_write_time(tmp_path: Path) -> None:
+    """MED-1 atomicity contract: a sibling upsert that lands BEFORE the checkpoint's lock write must
+    be reflected in the persisted bytes (no two-phase stale-snapshot capture). This proves the merge
+    reads the live ledger inside the same critical section as the write — the structural guarantee
+    that removes the lost-update window."""
+    ledger = agent_loop.LedgerState()
+    ledger.upsert_cycle("T-2026-1001", {"task_id": "T-2026-1001", "completed": False})
+    path = tmp_path / "state.json"
+
+    # Simulate the sibling landing a NEWER cycle just before persist_checkpoint takes the lock.
+    ledger.upsert_cycle("T-2026-1002", {"task_id": "T-2026-1002", "completed": True})
+    ledger.record_completed("T-2026-1002")
+    ledger.persist_checkpoint(path, {"schema_version": 1, "decision": "running"})
+
+    state = json.loads(path.read_text(encoding="utf-8"))
+    task_ids = {c["task_id"] for c in state["cycles"]}
+    assert task_ids == {"T-2026-1001", "T-2026-1002"}, "checkpoint must reflect the sibling's cycle (no stale snapshot)"
+    assert state["completed_task_ids"] == ["T-2026-1002"], "checkpoint must reflect the sibling's completion at write time"
+
+
+# MED-2 (X>1 nondeterminism): lane-autotune reads shared live `cycles` history and mutates shared
+# effort-override / cooldown / recommendation state with last-writer-wins timing under X>1. Since
+# the cross-task ordering is undefined, the run DISABLES autotune at X>1 (one-time advisory) so the
+# state is deterministic. At X==1 autotune runs exactly as today (byte-identical, covered by the
+# existing ADR 0092 autotune tests).
+
+
+def test_e3c_med2_lane_autotune_disabled_at_x_gt_1(monkeypatch, tmp_path: Path) -> None:
+    """MED-2: with an injected LaneAutotuneConfig AND task_pool=2, autotune must be disabled — the
+    persisted auto_loop_state.json carries neither lane_autotune_recommendations nor
+    lane_autotune_cooldown, cycles carry no lane_stats, and a one-time advisory warning is recorded."""
+    repo = _write_repo(tmp_path, task_id="T-2026-1001", title="Autotune x>1")
+    active_dir = repo / "reports" / "agent_loop" / "active"
+    _patch_active_loop_clear(monkeypatch)
+    monkeypatch.setattr(agent_loop, "write_active_gate_evidence", _infinite_fake_gate(active_dir))
+
+    def fake_runner(**kwargs):  # type: ignore[no-untyped-def]
+        report = active_dir / "codex_runner.md"
+        state = active_dir / "codex_runner_state.json"
+        runs = active_dir / "codex_runs"
+        report.parent.mkdir(parents=True, exist_ok=True)
+        report.write_text("# runner\n", encoding="utf-8")
+        state.write_text("{}\n", encoding="utf-8")
+        sessions = (
+            {"role": "Implementer", "agent": "codex", "elapsed_s": 10.0, "status": "completed"},
+            {"role": "CI / Regression Auditor", "agent": "codex", "elapsed_s": 100.0, "status": "completed"},
+        )
+        return agent_loop.ActiveCodexRunnerResult(report, state, runs, "completed", sessions, (), ())
+
+    monkeypatch.setattr(agent_loop, "write_active_codex_runner", fake_runner)
+
+    stub, _seen = _stub_cycle_in_worktree_runs_in(repo)
+    monkeypatch.setattr(agent_loop, "_run_cycle_in_task_worktree", stub)
+
+    result = agent_loop.write_active_auto_loop(
+        max_iterations=0,  # infinite (ready queue drains -> single task completes)
+        execute_runner=True, execute_ship=False,
+        lane_autotune_config=agent_loop.LaneAutotuneConfig(),
+        repo_root=repo, task_pool=2,
+    )
+
+    assert any("lane-autotune disabled" in w and "X task-pool" in w for w in result.warnings), \
+        "a one-time advisory must explain the X>1 autotune disable"
+    state = json.loads((active_dir / "auto_loop_state.json").read_text(encoding="utf-8"))
+    assert "lane_autotune_recommendations" not in state, "autotune disabled -> no recommendations key at X>1"
+    assert "lane_autotune_cooldown" not in state, "autotune disabled -> no cooldown key at X>1"
+    for cyc in state["cycles"]:
+        assert "lane_stats" not in cyc, "autotune disabled -> cycles carry no lane_stats at X>1"
+        assert "lane_autotune" not in cyc, "autotune disabled -> cycles carry no lane_autotune block at X>1"
+
+
+def test_e3c_med2_lane_autotune_runs_at_x1(monkeypatch, tmp_path: Path) -> None:
+    """MED-2 X==1: the disable branch must NOT fire at task_pool=1 — autotune still records its
+    recommendations + cooldown (proving the guard is gated strictly on effective_task_pool_size>1)."""
+    repo = _write_repo(tmp_path, task_id="T-2026-1001", title="Autotune x1")
+    active_dir = repo / "reports" / "agent_loop" / "active"
+    _patch_active_loop_clear(monkeypatch)
+
+    def fake_runner(**kwargs):  # type: ignore[no-untyped-def]
+        report = active_dir / "codex_runner.md"
+        state = active_dir / "codex_runner_state.json"
+        runs = active_dir / "codex_runs"
+        report.parent.mkdir(parents=True, exist_ok=True)
+        report.write_text("# runner\n", encoding="utf-8")
+        state.write_text("{}\n", encoding="utf-8")
+        # Same slow-lane trio as the ADR 0092 autotune-on test: median 10s, CI lane 100s -> a
+        # within-agent accelerate recommendation is produced (proves autotune is LIVE at X==1).
+        sessions = (
+            {"role": "Implementer", "agent": "codex", "elapsed_s": 10.0, "status": "completed"},
+            {"role": "Reviewer", "agent": "codex", "elapsed_s": 10.0, "status": "completed"},
+            {"role": "CI / Regression Auditor", "agent": "codex", "elapsed_s": 100.0, "status": "completed"},
+        )
+        return agent_loop.ActiveCodexRunnerResult(report, state, runs, "completed", sessions, (), ())
+
+    def fake_gate(*, task_id, **kwargs):  # type: ignore[no-untyped-def]
+        path = active_dir / "gate_evidence" / task_id / "evidence.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("{}\n", encoding="utf-8")
+        return path, {"ready": True, "privacy_clean": True}
+
+    monkeypatch.setattr(agent_loop, "write_active_codex_runner", fake_runner)
+    monkeypatch.setattr(agent_loop, "write_active_gate_evidence", fake_gate)
+
+    result = agent_loop.write_active_auto_loop(
+        max_iterations=1, auto_max_iterations_cap=1,
+        execute_runner=True, execute_ship=False,
+        lane_autotune_config=agent_loop.LaneAutotuneConfig(),
+        repo_root=repo, task_pool=1,
+    )
+
+    assert not any("lane-autotune disabled" in w for w in result.warnings), "X==1 must NOT disable autotune"
+    state = json.loads((active_dir / "auto_loop_state.json").read_text(encoding="utf-8"))
+    assert "lane_autotune_recommendations" in state, "X==1 autotune still records recommendations (byte-identical behavior)"
+    assert state["lane_autotune_recommendations"], "the slow lane must produce a recommendation at X==1"
+
+
+# MED-3 (X>1 artifact survival): the cycle records artifact paths inside the per-task worktree that
+# is torn down at cycle end -> dead references in the parent auto_loop_state.json. The fix re-points
+# the recorded paths to a parent task-scoped mirror (reports/agent_loop/active/tasks/<task_id>/...)
+# and COPIES the cycle's active artifacts there before teardown. At X==1 (no worktree) the recorded
+# path is unchanged (byte-identical).
+
+
+def test_e3c_med3_cycle_artifact_repo_path_x1_is_plain_repo_path(tmp_path: Path) -> None:
+    """MED-3 X==1 byte-identity: with effective_repo_root == repo_root the helper is exactly
+    _repo_path(path, repo_root) (no tasks/<id> re-point)."""
+    repo = tmp_path
+    p = repo / "reports" / "agent_loop" / "active" / "codex_runner.md"
+    got = agent_loop._cycle_artifact_repo_path(p, effective_repo_root=repo, repo_root=repo, task_id="T-2026-1001")
+    assert got == agent_loop._repo_path(p, repo) == "reports/agent_loop/active/codex_runner.md"
+
+
+def test_e3c_med3_cycle_artifact_repo_path_x_gt_1_repoints_to_parent_task_dir(tmp_path: Path) -> None:
+    """MED-3 X>1: a worktree-relative active artifact path is re-pointed under
+    reports/agent_loop/active/tasks/<task_id>/ so it resolves against the PARENT root post-teardown."""
+    parent = tmp_path / "parent"
+    worktree = tmp_path / "worktree"
+    p = worktree / "reports" / "agent_loop" / "active" / "codex_runner.md"
+    got = agent_loop._cycle_artifact_repo_path(p, effective_repo_root=worktree, repo_root=parent, task_id="T-2026-1001")
+    assert got == "reports/agent_loop/active/tasks/T-2026-1001/codex_runner.md"
+    # A patch-runs nested artifact keeps its suffix under the task mirror.
+    p2 = worktree / "reports" / "agent_loop" / "active" / "patch_runs" / "implementer" / "patch_artifact.json"
+    got2 = agent_loop._cycle_artifact_repo_path(p2, effective_repo_root=worktree, repo_root=parent, task_id="T-2026-1001")
+    assert got2 == "reports/agent_loop/active/tasks/T-2026-1001/patch_runs/implementer/patch_artifact.json"
+
+
+def test_e3c_med3_mirror_copies_active_tree_and_excludes_nested_tasks(tmp_path: Path) -> None:
+    """MED-3: _mirror_cycle_artifacts_to_parent copies <cycle>/reports/agent_loop/active into
+    <parent>/reports/agent_loop/active/tasks/<task_id>, excluding the nested ``tasks/`` namespace so a
+    parent mirror is never recursively copied into a child cycle's mirror."""
+    parent = tmp_path / "parent"
+    cycle = tmp_path / "cycle"
+    active = cycle / "reports" / "agent_loop" / "active"
+    (active).mkdir(parents=True)
+    (active / "codex_runner.md").write_text("# runner\n", encoding="utf-8")
+    (active / "patch_runs" / "implementer").mkdir(parents=True)
+    (active / "patch_runs" / "implementer" / "patch_artifact.json").write_text("{}\n", encoding="utf-8")
+    # A pre-existing nested tasks/ mirror in the cycle must NOT be copied into the parent mirror.
+    (active / "tasks" / "T-OTHER").mkdir(parents=True)
+    (active / "tasks" / "T-OTHER" / "stale.md").write_text("stale\n", encoding="utf-8")
+
+    ok, warns = agent_loop._mirror_cycle_artifacts_to_parent("T-2026-1001", cycle, parent)
+    assert ok is True and warns == []
+    mirror = parent / "reports" / "agent_loop" / "active" / "tasks" / "T-2026-1001"
+    # codex round-3 HIGH-3: the transactional staging dir must be gone after a successful promote.
+    assert not mirror.with_name(mirror.name + ".mirror-tmp").exists()
+    assert (mirror / "codex_runner.md").read_text(encoding="utf-8") == "# runner\n"
+    assert (mirror / "patch_runs" / "implementer" / "patch_artifact.json").is_file()
+    assert not (mirror / "tasks").exists(), "the nested tasks/ namespace must be excluded from the mirror"
+
+
+def test_e3c_med3_recorded_paths_survive_worktree_teardown_x_gt_1(monkeypatch, tmp_path: Path) -> None:
+    """MED-3 end-to-end: after an X>1 cycle completes and its worktree is torn down, the persisted
+    auto_loop_state.json records artifact paths that are PARENT-resolvable AND the mirrored files
+    physically exist under the parent root (not dead references inside the deleted worktree)."""
+    repo = _write_repo(tmp_path, task_id="T-2026-1001", title="Artifact survival")
+    active_dir = repo / "reports" / "agent_loop" / "active"
+    _patch_active_loop_clear(monkeypatch)
+
+    # Build a real cycle worktree dir seeded with tasks/ so run_one_task's context reads resolve.
+    cycle_path = tmp_path / "cycle_wt"
+    shutil.copytree(repo / "tasks", cycle_path / "tasks")
+    cycle_active = cycle_path / "reports" / "agent_loop" / "active"
+
+    def fake_runner(**kwargs):  # type: ignore[no-untyped-def]
+        # Write the runner artifact INSIDE the cycle worktree's active dir (the X>1 root).
+        root = kwargs.get("repo_root")
+        report = root / "reports" / "agent_loop" / "active" / "codex_runner.md"
+        state = root / "reports" / "agent_loop" / "active" / "codex_runner_state.json"
+        runs = root / "reports" / "agent_loop" / "active" / "codex_runs"
+        report.parent.mkdir(parents=True, exist_ok=True)
+        report.write_text("# runner\n", encoding="utf-8")
+        state.write_text("{}\n", encoding="utf-8")
+        return agent_loop.ActiveCodexRunnerResult(report, state, runs, "completed", (), (), ())
+
+    def fake_gate(*, task_id, **kwargs):  # type: ignore[no-untyped-def]
+        root = kwargs.get("repo_root")
+        path = root / "reports" / "agent_loop" / "active" / "gate_evidence" / task_id / "evidence.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("{}\n", encoding="utf-8")
+        return path, {"ready": True, "privacy_clean": True}
+
+    monkeypatch.setattr(agent_loop, "write_active_codex_runner", fake_runner)
+    monkeypatch.setattr(agent_loop, "write_active_gate_evidence", fake_gate)
+
+    # A stub that mimics the REAL _run_cycle_in_task_worktree flow: run the cycle against the seeded
+    # worktree, mirror artifacts to the parent (the real helper), then "tear down" by deleting the
+    # worktree — so the only surviving copy is the parent mirror.
+    def stub(task_id, *, parent_root, run_cycle, register_blocker, on_stop, append_warnings, git_runner=None):  # type: ignore[no-untyped-def]
+        run_cycle(cycle_path)
+        # codex round-3 HIGH-3: the mirror helper now returns (ok, warnings); a successful mirror is ok=True.
+        mirror_ok, mirror_warnings = agent_loop._mirror_cycle_artifacts_to_parent(task_id, cycle_path, parent_root)
+        append_warnings(mirror_warnings)
+        assert mirror_ok is True
+        shutil.rmtree(cycle_path)  # simulate teardown_task_cycle_worktree removing the worktree
+
+    monkeypatch.setattr(agent_loop, "_run_cycle_in_task_worktree", stub)
+
+    result = agent_loop.write_active_auto_loop(
+        max_iterations=0,  # infinite -> single ready task completes
+        execute_runner=True, execute_ship=False, repo_root=repo, task_pool=2,
+    )
+
+    assert "T-2026-1001" in result.completed_task_ids
+    state = json.loads((active_dir / "auto_loop_state.json").read_text(encoding="utf-8"))
+    cyc = state["cycles"][0]
+    # The recorded runner_report is parent-resolvable under the task mirror...
+    assert cyc["runner_report"] == "reports/agent_loop/active/tasks/T-2026-1001/codex_runner.md"
+    # ...and the file physically EXISTS at that parent path after worktree teardown (not a dead ref).
+    assert (repo / cyc["runner_report"]).is_file(), "the mirrored artifact must survive worktree teardown"
+    assert not cycle_path.exists(), "the cycle worktree was torn down (only the parent mirror survives)"
+
+
+# --- ADR 0095 PR-E3c codex round-3 fixes (HIGH-1/HIGH-2/HIGH-3 + MED-1/MED-2) -------------------
+#
+# These five tests cover the round-3 adversarial findings. HIGH-1/HIGH-2 src was fixed by the
+# orchestrator; these add the regression coverage that the prior X>1 tests missed (they stubbed
+# _run_cycle_in_task_worktree and never reached the real runner kwargs expansion). HIGH-3/MED-1/MED-2
+# src is fixed in this round. Each behavior-change test FAILS on the pre-fix code and PASSES after.
+
+
+def _record_runner_calls_with_artifact_root(active_dir: Path, calls: list[dict], *, read_decision: str = "completed"):
+    """Like _record_runner_calls, but ALSO records whether each call carried an ``artifact_root`` kwarg
+    (codex round-3 HIGH-1). The read-only runner lane (write_active_codex_runner) has NO artifact_root
+    parameter, so it MUST never receive one (would TypeError at X>1). The repair lane DOES receive
+    artifact_root via run_repair_apply, which CONSUMES it (run_patch threads it as the patch call's
+    ``repo_root`` = the cycle worktree, NOT a literal artifact_root kwarg) — so the observable proof of
+    the repair-lane artifact_root is its patch call's ``repo_root`` being the cycle worktree."""
+    def fake_runner(**kwargs):  # type: ignore[no-untyped-def]
+        mode = str(kwargs.get("mode", "read-only"))
+        calls.append({
+            "mode": mode,
+            "repo_root": kwargs.get("repo_root"),
+            "has_artifact_root": "artifact_root" in kwargs,
+            "has_lease_id": "lease_id" in kwargs and kwargs["lease_id"] is not None,
+        })
+        report = active_dir / ("auto_repair.md" if mode == "patch" else "codex_runner.md")
+        state = active_dir / ("auto_repair_state.json" if mode == "patch" else "codex_runner_state.json")
+        runs = active_dir / ("patch_runs" if mode == "patch" else "codex_runs")
+        report.parent.mkdir(parents=True, exist_ok=True)
+        report.write_text(f"# {mode}\n", encoding="utf-8")
+        state.write_text("{}\n", encoding="utf-8")
+        decision = "completed" if mode == "patch" else read_decision
+        return agent_loop.ActiveCodexRunnerResult(report, state, runs, decision, (), (), ())
+
+    return fake_runner
+
+
+def test_e3c_round3_high1_runner_call_omits_artifact_root_at_x_gt_1(monkeypatch, tmp_path: Path) -> None:
+    """codex round-3 HIGH-1: at X>1 the REAL runner kwargs expansion must reach
+    write_active_codex_runner WITHOUT an ``artifact_root`` kwarg (that function has no such param ->
+    a leak would TypeError at X>1). The repair patch lane MUST still receive artifact_root.
+
+    This closes the gap left by the prior X>1 tests, which stubbed _run_cycle_in_task_worktree and so
+    never exercised the runner_lease_kwargs / repair_lease_kwargs split. Here run_cycle runs against a
+    DISTINCT cycle worktree path (effective_repo_root != repo_root) so the X>1 lease-kwargs branch
+    actually fires, and we record EVERY runner call's kwargs.
+
+    Pre-fix (runner_lease_kwargs still carried artifact_root) this would record has_artifact_root=True
+    on the read-only lane (and the real call would TypeError) -> assertion fails. Post-fix it is gone."""
+    repo = _write_repo(tmp_path, task_id="T-2026-1001", title="Runner artifact_root split")
+    active_dir = repo / "reports" / "agent_loop" / "active"
+    _patch_active_loop_clear(monkeypatch)
+    monkeypatch.setattr(agent_loop, "write_active_gate_evidence", _infinite_fake_gate(active_dir))
+    # Make the read-only runner NOT complete so the cycle routes into the repair patch lane too
+    # (so we observe BOTH the read-only runner call and the patch call's artifact_root handling).
+    monkeypatch.setattr(
+        agent_loop, "write_active_apply",
+        lambda **kw: agent_loop.ActiveApplyResult(active_dir / "apply.md", active_dir / "apply_state.json", "blocked", "n/a", False, (), ()),
+    )
+
+    calls: list[dict] = []
+    monkeypatch.setattr(
+        agent_loop, "write_active_codex_runner",
+        _record_runner_calls_with_artifact_root(active_dir, calls, read_decision="blocked"),
+    )
+
+    # Distinct cycle worktree path (seeded with tasks/ so context reads resolve) so
+    # effective_repo_root(cycle) != repo_root(parent) -> the X>1 lease-kwargs branch fires.
+    cycle_path = tmp_path / "cycle_wt"
+    shutil.copytree(repo / "tasks", cycle_path / "tasks")
+
+    def stub(task_id, *, parent_root, run_cycle, register_blocker, on_stop, append_warnings, git_runner=None):  # type: ignore[no-untyped-def]
+        run_cycle(cycle_path)
+
+    monkeypatch.setattr(agent_loop, "_run_cycle_in_task_worktree", stub)
+
+    agent_loop.write_active_auto_loop(
+        max_iterations=0,  # infinite: a single deferral does not trip the consecutive-blocker guard
+        execute_runner=True, execute_ship=False, auto_repair=True, repo_root=repo, task_pool=2,
+    )
+
+    read_calls = [c for c in calls if c["mode"] != "patch"]
+    patch_calls = [c for c in calls if c["mode"] == "patch"]
+    assert read_calls, "the read-only runner lane must have been invoked through the real kwargs expansion"
+    # CORE HIGH-1 ASSERTION: the read-only runner call must NOT carry artifact_root (it has no such
+    # param -> a leak TypeErrors at X>1). Pre-fix runner_lease_kwargs carried it -> this fails.
+    assert all(not c["has_artifact_root"] for c in read_calls), (
+        "HIGH-1: write_active_codex_runner (read-only lane) must NOT receive artifact_root at X>1 "
+        "(it has no such param -> TypeError); the runner_lease_kwargs dict must be lease_id-only"
+    )
+    # No write_active_codex_runner call (read-only OR patch) may carry artifact_root — that function
+    # has no such parameter; the repair lane consumes artifact_root via run_repair_apply (-> repo_root).
+    assert all(not c["has_artifact_root"] for c in calls), (
+        "HIGH-1: NO runner call may carry artifact_root (the param does not exist on the runner)"
+    )
+    assert patch_calls, "the repair patch lane must have been invoked"
+    # The repair lane DID receive artifact_root: run_repair_apply consumed it as effective_artifact_root
+    # and threaded it as the patch call's repo_root = the cycle worktree (the observable artifact_root
+    # effect). At X=1 (no worktree) this would be the parent repo instead.
+    assert all(c["repo_root"] == cycle_path for c in patch_calls), (
+        "HIGH-1: the repair lane MUST receive artifact_root at X>1 (its patch call's repo_root is the "
+        "cycle worktree, proving run_repair_apply got artifact_root=cycle worktree)"
+    )
+
+
+def test_e3c_round3_high1_runner_call_no_artifact_root_or_lease_at_x1(monkeypatch, tmp_path: Path) -> None:
+    """codex round-3 HIGH-1 X==1 byte-identity: with no worktree (effective_repo_root == repo_root) the
+    runner call must receive NEITHER artifact_root NOR lease_id — the textually pre-change call."""
+    repo = _write_repo(tmp_path, task_id="T-2026-1001", title="Runner x1 plain")
+    active_dir = repo / "reports" / "agent_loop" / "active"
+    _patch_active_loop_clear(monkeypatch)
+    monkeypatch.setattr(agent_loop, "write_active_gate_evidence", _infinite_fake_gate(active_dir))
+
+    calls: list[dict] = []
+    monkeypatch.setattr(
+        agent_loop, "write_active_codex_runner",
+        _record_runner_calls_with_artifact_root(active_dir, calls, read_decision="completed"),
+    )
+
+    agent_loop.write_active_auto_loop(
+        max_iterations=1, execute_runner=True, execute_ship=False, repo_root=repo, task_pool=1,
+    )
+
+    read_calls = [c for c in calls if c["mode"] != "patch"]
+    assert read_calls, "the read-only runner lane must have been invoked"
+    assert all(not c["has_artifact_root"] and not c["has_lease_id"] for c in read_calls), (
+        "X==1: runner call must carry no artifact_root and no lease_id (byte-identical, ADR 0001)"
+    )
+
+
+def test_e3c_round3_high2_start_blocker_cycle_has_no_completion_decision_x1(monkeypatch, tmp_path: Path) -> None:
+    """codex round-3 HIGH-2: when write_active_start returns blockers at X==1, the persisted
+    auto_loop_state.json cycles[0] must NOT carry a ``completion_decision`` key (HEAD never set one on
+    the start-blocker path) while STILL carrying start_decision/start_report (the round-2 snapshot fix).
+
+    Pre-fix the start-blocker path set cycle["completion_decision"]="start-blocker", an extra key that
+    broke X==1 byte-identity -> this assertion (key absent) FAILS pre-fix and PASSES after the removal."""
+    repo = _write_repo(tmp_path, task_id="T-2026-1001", title="Start blocker task")
+    active_dir = repo / "reports" / "agent_loop" / "active"
+    _patch_active_loop_clear(monkeypatch)
+
+    # Force write_active_start to surface a blocker (so run_one_task takes the start.blockers path).
+    real_start = agent_loop.write_active_start
+
+    def blocking_start(**kwargs):  # type: ignore[no-untyped-def]
+        res = real_start(**kwargs)
+        return agent_loop.ActiveStartResult(
+            report_path=res.report_path,
+            active_loop=res.active_loop,
+            outputs=res.outputs,
+            decision=res.decision,
+            blockers=("simulated start blocker",),
+            warnings=res.warnings,
+            next_safe_command=res.next_safe_command,
+        )
+
+    monkeypatch.setattr(agent_loop, "write_active_start", blocking_start)
+
+    result = agent_loop.write_active_auto_loop(
+        max_iterations=1, execute_runner=True, execute_ship=True, repo_root=repo, task_pool=1,
+    )
+
+    assert result.decision == "blocked"
+    state = json.loads((active_dir / "auto_loop_state.json").read_text(encoding="utf-8"))
+    assert state["cycles"], "the start-blocked cycle must still be persisted"
+    cyc = state["cycles"][0]
+    assert "completion_decision" not in cyc, (
+        "HIGH-2: HEAD never set completion_decision on the start-blocker path; an extra key breaks "
+        "X==1 byte-identity (ADR 0001)"
+    )
+    # The round-2 snapshot fix must still preserve the start_* fields on this path.
+    assert cyc.get("start_decision") is not None, "start_decision must survive (round-2 snapshot fix)"
+    assert "start_report" in cyc, "start_report must survive (round-2 snapshot fix)"
+
+
+def test_e3c_round3_high3_mirror_failure_fails_closed_preserves_worktree(monkeypatch, tmp_path: Path) -> None:
+    """codex round-3 HIGH-3: a cycle-artifact mirror that fails (copytree raises) must FAIL CLOSED —
+    record a blocker AND skip the worktree teardown so the in-worktree artifacts are not lost (the
+    recorded cycle paths were re-pointed to the parent mirror, so a missing mirror = dangling state).
+
+    Pre-fix the mirror was warning-only and teardown ran unconditionally -> the worktree was torn down
+    and no blocker fired. Post-fix: teardown is skipped (no ``remove``/``branch`` git ops) and a blocker
+    is registered (-> on_stop). Driven through the real _run_cycle_in_task_worktree with an injected git
+    runner; copytree is monkeypatched to raise mid-promote."""
+    parent = _write_repo(tmp_path, task_id="T-2026-1001", title="Mirror fail-closed")
+    runner = _RecordingGitRunner(create_worktree_dirs=True)
+    blockers: list[str] = []
+    stopped = {"v": False}
+
+    def register_blocker(messages):  # type: ignore[no-untyped-def]
+        blockers.extend(messages)
+        return True  # bounded contract
+
+    # The cycle writes a real active artifact inside the worktree so the mirror has something to copy.
+    def run_cycle(cycle_path):  # type: ignore[no-untyped-def]
+        art = cycle_path / "reports" / "agent_loop" / "active" / "codex_runner.md"
+        art.parent.mkdir(parents=True, exist_ok=True)
+        art.write_text("# runner\n", encoding="utf-8")
+
+    # Force the transactional copy to fail.
+    def boom_copytree(*a, **k):  # type: ignore[no-untyped-def]
+        raise OSError("simulated copytree failure")
+
+    monkeypatch.setattr(agent_loop.shutil, "copytree", boom_copytree)
+
+    agent_loop._run_cycle_in_task_worktree(
+        "T-2026-1001",
+        parent_root=parent,
+        run_cycle=run_cycle,
+        register_blocker=register_blocker,
+        on_stop=lambda: stopped.__setitem__("v", True),
+        append_warnings=lambda w: None,
+        git_runner=runner,
+    )
+
+    subs = runner.subcommands()
+    assert "remove" not in subs and "branch" not in subs, (
+        "HIGH-3 fail-closed: a failed mirror must SKIP teardown (no worktree remove / branch delete) "
+        "so the in-worktree artifacts are preserved"
+    )
+    assert any("mirror failed" in b for b in blockers), "HIGH-3: a blocker must be recorded on mirror failure"
+    assert stopped["v"] is True, "HIGH-3: the bounded blocker must route through on_stop (fail-closed)"
+
+
+def test_e3c_round3_high3_mirror_success_still_tears_down(tmp_path: Path) -> None:
+    """codex round-3 HIGH-3 happy path: a clean (successful) mirror leaves the normal teardown intact —
+    the fail-closed branch must NOT regress the success path."""
+    parent = _write_repo(tmp_path)
+    runner = _RecordingGitRunner(create_worktree_dirs=True)
+
+    def run_cycle(cycle_path):  # type: ignore[no-untyped-def]
+        art = cycle_path / "reports" / "agent_loop" / "active" / "codex_runner.md"
+        art.parent.mkdir(parents=True, exist_ok=True)
+        art.write_text("# runner\n", encoding="utf-8")
+
+    agent_loop._run_cycle_in_task_worktree(
+        "T-2026-1001",
+        parent_root=parent,
+        run_cycle=run_cycle,
+        register_blocker=lambda m: True,
+        on_stop=lambda: None,
+        append_warnings=lambda w: None,
+        git_runner=runner,
+    )
+    subs = runner.subcommands()
+    assert "remove" in subs and "branch" in subs, "a clean mirror must still tear the worktree down"
+    # The mirror physically promoted into the parent task dir.
+    mirror = parent / "reports" / "agent_loop" / "active" / "tasks" / "T-2026-1001" / "codex_runner.md"
+    assert mirror.is_file(), "the successful mirror must land under the parent task dir"
+
+
+def test_e3c_round4_high_mirror_promote_failure_restores_prior_mirror(monkeypatch, tmp_path: Path) -> None:
+    """codex round-4 HIGH: the mirror promote must be transactional via BACKUP/ROLLBACK. If the
+    staging->dst rename fails AFTER the prior mirror was moved aside, the PRIOR mirror must be restored
+    (dst never left missing) and the worktree preserved (fail-closed).
+
+    Pre-fix the promote did rmtree(dst) THEN os.replace(staging, dst); a failure between them left dst
+    gone AND the new mirror unpromoted -> the re-pointed auto_loop_state.json paths dangle. This test
+    pre-creates a prior mirror, fails ONLY the staging->dst promote (so dst->backup + backup->dst
+    rollback use the real os.replace), and asserts the prior mirror survives intact."""
+    parent = _write_repo(tmp_path, task_id="T-2026-1001", title="Mirror promote rollback")
+    runner = _RecordingGitRunner(create_worktree_dirs=True)
+    blockers: list[str] = []
+    stopped = {"v": False}
+
+    # Pre-create a PRIOR mirror at the parent task dir (a previous cycle's artifacts that must survive).
+    prior = parent / "reports" / "agent_loop" / "active" / "tasks" / "T-2026-1001"
+    prior.mkdir(parents=True, exist_ok=True)
+    (prior / "prior_artifact.md").write_text("# prior mirror -- must survive\n", encoding="utf-8")
+
+    def run_cycle(cycle_path):  # type: ignore[no-untyped-def]
+        art = cycle_path / "reports" / "agent_loop" / "active" / "codex_runner.md"
+        art.parent.mkdir(parents=True, exist_ok=True)
+        art.write_text("# new runner\n", encoding="utf-8")
+
+    # Fail ONLY the staging->dst promote (the second os.replace). The dst->backup move and the
+    # backup->dst rollback go through the real os.replace, so the double-fault window is exercised.
+    real_replace = agent_loop.os.replace
+    staging_dir = prior.with_name(prior.name + ".mirror-tmp")
+
+    def selective_replace(src, dst, *a, **k):  # type: ignore[no-untyped-def]
+        if str(src) == str(staging_dir) and str(dst) == str(prior):
+            raise OSError("simulated promote failure")
+        return real_replace(src, dst, *a, **k)
+
+    monkeypatch.setattr(agent_loop.os, "replace", selective_replace)
+
+    def register_blocker(messages):  # type: ignore[no-untyped-def]
+        blockers.extend(messages)
+        return True  # bounded contract
+
+    agent_loop._run_cycle_in_task_worktree(
+        "T-2026-1001",
+        parent_root=parent,
+        run_cycle=run_cycle,
+        register_blocker=register_blocker,
+        on_stop=lambda: stopped.__setitem__("v", True),
+        append_warnings=lambda w: None,
+        git_runner=runner,
+    )
+
+    # The PRIOR mirror must be restored (rollback) -- dst is never left missing on a failed promote.
+    assert prior.is_dir(), "round-4 HIGH: dst (prior mirror) must be restored after a failed promote"
+    assert (prior / "prior_artifact.md").read_text(encoding="utf-8") == "# prior mirror -- must survive\n", (
+        "round-4 HIGH: the prior mirror's contents must survive the failed promote (backup/rollback)"
+    )
+    # Fail-closed: teardown skipped + blocker recorded + on_stop (same contract as the copytree test).
+    subs = runner.subcommands()
+    assert "remove" not in subs and "branch" not in subs, "round-4 HIGH: a failed promote must SKIP teardown"
+    assert any("mirror failed" in b for b in blockers), "round-4 HIGH: a blocker must be recorded"
+    assert stopped["v"] is True, "round-4 HIGH: must route through on_stop (fail-closed)"
+    # No staging / backup leftovers pollute the parent task namespace after a clean rollback.
+    assert not staging_dir.exists(), "round-4 HIGH: the staging dir must be cleaned up on failure"
+    assert not prior.with_name(prior.name + ".mirror-bak").exists(), (
+        "round-4 HIGH: the backup must be gone after a successful rollback (renamed back into dst)"
+    )
+
+
+def test_e3c_round5_high_mirror_catastrophic_restore_failure_is_surfaced_not_silent(monkeypatch, tmp_path: Path) -> None:
+    """codex round-5 HIGH: if the promote AND both restores (rename + copytree) fail -- a catastrophic
+    FS-death triple-fault -- the prior mirror cannot be returned to dst. The earlier code did
+    `except: pass`, silently leaving dst missing while auto_loop_state.json still pointed at it. The fix
+    must NOT swallow: it preserves the prior copy at the `.mirror-bak` backup AND surfaces a warning that
+    NAMES that recovery location, while still failing closed (worktree preserved + blocker + on_stop)."""
+    parent = _write_repo(tmp_path, task_id="T-2026-1001", title="Mirror catastrophic restore")
+    runner = _RecordingGitRunner(create_worktree_dirs=True)
+    blockers: list[str] = []
+    warnings_seen: list[str] = []
+    stopped = {"v": False}
+
+    prior = parent / "reports" / "agent_loop" / "active" / "tasks" / "T-2026-1001"
+    prior.mkdir(parents=True, exist_ok=True)
+    (prior / "prior_artifact.md").write_text("# prior mirror -- recoverable\n", encoding="utf-8")
+    staging_dir = prior.with_name(prior.name + ".mirror-tmp")
+    backup_dir = prior.with_name(prior.name + ".mirror-bak")
+
+    def run_cycle(cycle_path):  # type: ignore[no-untyped-def]
+        art = cycle_path / "reports" / "agent_loop" / "active" / "codex_runner.md"
+        art.parent.mkdir(parents=True, exist_ok=True)
+        art.write_text("# new runner\n", encoding="utf-8")
+
+    # Fail the staging->dst promote AND every restore back to dst (rename + copytree). The dst->backup
+    # vacate (real os.replace) still succeeds, so the prior copy lands in backup and stays there.
+    real_replace = agent_loop.os.replace
+    real_copytree = agent_loop.shutil.copytree
+
+    def selective_replace(src, dst, *a, **k):  # type: ignore[no-untyped-def]
+        # promote (staging->dst) and rename-restore (backup->dst) both raise; vacate (dst->backup) is real.
+        if str(dst) == str(prior) and str(src) in (str(staging_dir), str(backup_dir)):
+            raise OSError("simulated rename failure")
+        return real_replace(src, dst, *a, **k)
+
+    def selective_copytree(src, *a, **k):  # type: ignore[no-untyped-def]
+        # the copytree-restore (backup->dst) raises; the staging build (cycle tree -> staging) is real.
+        if str(src) == str(backup_dir):
+            raise OSError("simulated copytree restore failure")
+        return real_copytree(src, *a, **k)
+
+    monkeypatch.setattr(agent_loop.os, "replace", selective_replace)
+    monkeypatch.setattr(agent_loop.shutil, "copytree", selective_copytree)
+
+    def register_blocker(messages):  # type: ignore[no-untyped-def]
+        blockers.extend(messages)
+        return True  # bounded contract
+
+    agent_loop._run_cycle_in_task_worktree(
+        "T-2026-1001",
+        parent_root=parent,
+        run_cycle=run_cycle,
+        register_blocker=register_blocker,
+        on_stop=lambda: stopped.__setitem__("v", True),
+        append_warnings=lambda w: warnings_seen.extend(w),
+        git_runner=runner,
+    )
+
+    # NOT silent: a warning must name the backup recovery location (the codex round-5 ask).
+    assert any("manual recovery" in w and str(backup_dir) in w for w in warnings_seen), (
+        f"round-5 HIGH: the catastrophic restore failure must be SURFACED with the backup recovery path, "
+        f"not silently swallowed; warnings={warnings_seen}"
+    )
+    # The prior artifacts are preserved (recoverable) at the backup, never destroyed.
+    assert (backup_dir / "prior_artifact.md").read_text(encoding="utf-8") == "# prior mirror -- recoverable\n", (
+        "round-5 HIGH: the prior mirror must be preserved at the backup for manual recovery"
+    )
+    # dst must be cleanly ABSENT -- the atomic-rename-only restore leaves no PARTIAL dst (codex round-6:
+    # a non-atomic copytree fallback could have left a partial dst that masquerades as recovery and gets
+    # this clean backup deleted). Absent dst + preserved backup is the correct catastrophic end state.
+    assert not prior.exists(), (
+        "round-6 HIGH: a failed restore must leave dst cleanly ABSENT (no partial copy); the clean prior "
+        "is preserved solely at the backup"
+    )
+    # Still fail-closed: worktree preserved (no teardown) + blocker + on_stop.
+    subs = runner.subcommands()
+    assert "remove" not in subs and "branch" not in subs, "round-5 HIGH: catastrophic mirror must SKIP teardown"
+    assert any("mirror failed" in b for b in blockers), "round-5 HIGH: a blocker must be recorded"
+    assert stopped["v"] is True, "round-5 HIGH: must route through on_stop (fail-closed)"
+
+
+def test_e3c_round3_med2_stop_denied_completion_persists_mutated_cycle_x_gt_1(monkeypatch, tmp_path: Path) -> None:
+    """codex round-3 MED-2: at X>1, when a sibling sets stop_event AFTER this task has written its
+    runner/gate fields, the local-gate completion is DENIED (complete_if_not_stopped == False). The
+    early return must still persist the work-done cycle (gate fields + completion_decision) — not the
+    stale initial snapshot.
+
+    Deterministic interleaving: task A's runner returns ``blocked`` -> A registers a (bounded) blocker
+    -> stop_event.set(); the worktree stub for task B WAITS until A's run_cycle returns (stop is set by
+    then) before running B's cycle, so B's runner completes + gate is ready and B reaches the local-gate
+    completion site with stop already set -> denied. The persisted B cycle must carry completion_decision=
+    'local-gate-complete' + gate_ready, proving the pre-return snapshot ran.
+
+    Pre-fix the denied return skipped the upsert and B's persisted cycle stayed the bare initial
+    registration snapshot (no completion_decision / gate fields) -> assertion FAILS. Post-fix it passes.
+    X==1 note: complete_if_not_stopped is ALWAYS True at X=1 (stop_event never set mid-cycle) so this
+    pre-return snapshot is on a dead branch -> byte-identical (ADR 0001)."""
+    repo = _write_repo(tmp_path, task_id="T-2026-1001", title="A-runner-blocked")
+    _append_ready_task(repo, "T-2026-1002", "B-gate-ready")
+    active_dir = repo / "reports" / "agent_loop" / "active"
+    _patch_active_loop_clear(monkeypatch)
+
+    def task_aware_runner(**kwargs):  # type: ignore[no-untyped-def]
+        # A (1001) runner BLOCKED -> bounded terminal blocker -> stop_event.set() (with a recorded
+        # blocker so the run decision is 'blocked'). B (1002) runner COMPLETED -> reaches the gate.
+        task_id = str(kwargs.get("task_id") or "")
+        report = active_dir / "codex_runner.md"
+        state = active_dir / "codex_runner_state.json"
+        runs = active_dir / "codex_runs"
+        report.parent.mkdir(parents=True, exist_ok=True)
+        report.write_text("# runner\n", encoding="utf-8")
+        state.write_text("{}\n", encoding="utf-8")
+        decision = "blocked" if task_id == "T-2026-1001" else "completed"
+        return agent_loop.ActiveCodexRunnerResult(report, state, runs, decision, (), (), ())
+
+    monkeypatch.setattr(agent_loop, "write_active_codex_runner", task_aware_runner)
+    monkeypatch.setattr(agent_loop, "write_active_gate_evidence", _infinite_fake_gate(active_dir))
+
+    a_returned = threading.Event()
+
+    def stub(task_id, *, parent_root, run_cycle, register_blocker, on_stop, append_warnings, git_runner=None):  # type: ignore[no-untyped-def]
+        if task_id == "T-2026-1001":
+            run_cycle(repo)            # A runs, hits gate-not-ready terminal, sets stop_event internally
+            a_returned.set()           # signal: stop_event is now set
+        else:
+            assert a_returned.wait(timeout=10), "task A must reach its terminal (and set stop) first"
+            run_cycle(repo)            # B runs fully with stop already set -> denied at completion site
+
+    monkeypatch.setattr(agent_loop, "_run_cycle_in_task_worktree", stub)
+
+    result = agent_loop.write_active_auto_loop(
+        max_iterations=5,  # bounded: A's blocker stops the run
+        execute_runner=True, execute_ship=False, repo_root=repo, task_pool=2,
+    )
+
+    assert result.decision == "blocked"
+    assert "T-2026-1002" not in result.completed_task_ids, "B's completion was denied (stop set)"
+    state = json.loads((active_dir / "auto_loop_state.json").read_text(encoding="utf-8"))
+    b_cycles = [c for c in state["cycles"] if c.get("task_id") == "T-2026-1002"]
+    assert b_cycles, "B's cycle must be persisted"
+    b = b_cycles[-1]
+    assert b.get("completion_decision") == "local-gate-complete", (
+        "MED-2: the stop-denied B cycle must persist the mutated completion_decision (not the stale "
+        "initial snapshot)"
+    )
+    assert b.get("gate_ready") is True, "MED-2: B's gate fields must survive into the persisted cycle"
+    assert b.get("completed") is not True, "B must NOT be marked completed (stop denied promotion)"
+
+
+def test_e3c_round3_med1_warnings_list_is_lock_guarded(monkeypatch, tmp_path: Path) -> None:
+    """codex round-3 MED-1: the driver's shared ``warnings`` list is a lock-guarded
+    _ThreadSafeWarningList so concurrent worker-thread appends + a checkpoint/final-serialization read
+    (snapshot) cannot tear or raise. A deterministic data-race test is impractical, so this asserts the
+    lock primitive exists + is exercised: (1) the type is installed at the driver call site (captured via
+    write_cycle_checkpoint's read), and (2) a stress of concurrent append/extend + snapshot never raises
+    and preserves every item.
+
+    Pre-fix ``warnings`` was a plain list (no .snapshot / no lock) -> the captured object would lack the
+    lock + snapshot method -> assertion fails."""
+    # (1) Capture the actual warnings object the driver uses by spying on _dedupe_preserve_order, which
+    # the checkpoint + final serialization call as _dedupe_preserve_order(warnings.snapshot()). We patch
+    # snapshot indirectly by recording the object type the driver builds.
+    captured: dict = {}
+    real_ctor = agent_loop._ThreadSafeWarningList
+
+    class _SpyList(real_ctor):  # type: ignore[misc, valid-type]
+        def snapshot(self):  # type: ignore[no-untyped-def]
+            captured["snapshot_called"] = True
+            return super().snapshot()
+
+    monkeypatch.setattr(agent_loop, "_ThreadSafeWarningList", _SpyList)
+
+    repo = _write_repo(tmp_path, task_id="T-2026-1001", title="Warnings lock")
+    active_dir = repo / "reports" / "agent_loop" / "active"
+    _patch_auto_loop_inner(monkeypatch, active_dir)
+    agent_loop.write_active_auto_loop(
+        max_iterations=1, execute_runner=True, execute_ship=False, repo_root=repo, task_pool=1,
+    )
+    assert captured.get("snapshot_called") is True, (
+        "MED-1: the driver must read warnings via the locked .snapshot() (not the live list)"
+    )
+
+    # (2) Stress: concurrent append/extend while a reader snapshots — must never raise, never lose items.
+    wl = agent_loop._ThreadSafeWarningList()
+    assert hasattr(wl, "_lock"), "MED-1: the warnings list must own a dedicated lock"
+    errors: list[BaseException] = []
+    N = 500
+
+    def writer(prefix: str):  # type: ignore[no-untyped-def]
+        try:
+            for i in range(N):
+                if i % 2 == 0:
+                    wl.append(f"{prefix}-{i}")
+                else:
+                    wl.extend([f"{prefix}-{i}"])
+        except BaseException as exc:  # pragma: no cover - failure path
+            errors.append(exc)
+
+    def reader():  # type: ignore[no-untyped-def]
+        try:
+            for _ in range(N):
+                _ = _dedupe_helper(wl.snapshot())
+        except BaseException as exc:  # pragma: no cover - failure path
+            errors.append(exc)
+
+    threads = [
+        threading.Thread(target=writer, args=("a",)),
+        threading.Thread(target=writer, args=("b",)),
+        threading.Thread(target=reader),
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert not errors, f"MED-1: concurrent append/extend + snapshot must not raise: {errors}"
+    assert len(wl) == 2 * N, "MED-1: every concurrent append/extend must be retained (no lost update)"
+
+
+def _dedupe_helper(items):  # type: ignore[no-untyped-def]
+    """Mirror _dedupe_preserve_order's read pattern (iterate the input) for the MED-1 stress test."""
+    return agent_loop._dedupe_preserve_order(items)
 
 
 def test_omc_heartbeat_invalidation_failure_overwrites_standard_proposed(
