@@ -5,6 +5,14 @@
 - **Deciders**: hskim (solo author)
 - **Related**: ADR 0001, ADR 0003, ADR 0005, ADR 0069, ADR 0075
 
+> **Current-policy note (2026-06-03)**: this ADR remains an accepted historical
+> decision record for the counts-only multi-chunk failure analysis surface. Its
+> legacy `real100` input/output paths, including `reports/real100/`, are
+> archive-only for new private-eval claims. New task, PR, claim, and handoff
+> evidence must use the `real100_v2` aggregate-only surface in
+> [Surface Map](../evaluation/surface-map.md), unless the maintainer explicitly
+> re-enables another private-eval surface.
+
 ## Context
 
 Real-eval failure analysis already has aggregate-only failure distribution and
