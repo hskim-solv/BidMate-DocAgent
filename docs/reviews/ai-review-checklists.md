@@ -31,13 +31,15 @@ AI-agent failure mode를 일부러 찾는다.
 ## Benchmark Validity Audit
 
 다음 중 하나라도 있으면 이 checklist를 사용한다: `eval/`, `benchmarks/`,
-`harness/`, `configs/eval/`, `reports/real100/`, `docs/evaluation/`, metric claim.
+`harness/`, `configs/eval/`, `reports/real100_v2/` (current private eval),
+historical `reports/real100/`, `docs/evaluation/`, metric claim.
 
 - Surface가 public fixture smoke, public synthetic benchmark, private real-eval 중 어디인지 명시됐는가?
 - Dataset/config/index/provenance/command가 함께 제시됐는가?
 - Synthetic benchmark 결과를 real-world performance claim으로 쓰지 않았는가?
 - Smoke test가 wiring/regression 이상의 의미로 해석되지 않았는가?
-- Private result는 aggregate-only이고 raw question/answer/evidence/doc id/chunk id를 노출하지 않는가?
+- Private result는 current `real100_v2` aggregate-only evidence이고 raw question/answer/evidence/doc id/chunk id를 노출하지 않는가?
+- Legacy `reports/real100/`, v1, 221-case, or kordoc artifacts를 새 task/PR/claim 근거로 재사용하지 않았는가?
 - Metric denominator, skipped cases, `None` semantics, confidence interval이 claim wording과 맞는가?
 - Baseline과 treatment가 같은 corpus/index/config 조건에서 비교됐는가?
 - `make real-eval` hashing 경로로 semantic dense/hybrid retrieval claim을 만들지 않았는가?
