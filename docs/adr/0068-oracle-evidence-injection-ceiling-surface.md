@@ -7,6 +7,14 @@
 - Related: ADR 0001 (naive_baseline byte-identical), ADR 0005 (private/public eval 분리), ADR 0045 (phase 분해 + back-edge 0), ADR 0054 (conditional-on-answer scorer semantics), ADR 0059 (failure-mode classifier)
 - Issue: #1282
 
+> **Current-policy note (2026-06-03)**: this ADR remains an accepted historical
+> decision record for the oracle-evidence ceiling measurement surface. Its
+> legacy `real-100` / 221-case motivating measurements are not current
+> claim-bearing private-eval evidence. New task, PR, claim, and handoff evidence
+> must use the `real100_v2` aggregate-only surface in
+> [Surface Map](../evaluation/surface-map.md), unless the maintainer explicitly
+> re-enables another private-eval surface.
+
 ## Context
 
 real-100 단독 측정 표면(ADR 0052, n=221)에서 파이프라인은 직렬 의존 `_phase_analyze → _phase_retrieve_loop → _phase_build_answer` (ADR 0045) 를 따른다. 상류(검색)가 하류(검증·답변) 천장을 가둔다 — 즉 "검색이 완벽했다면 답변·검증이 얼마나 맞힐 수 있었나?"를 현재 측정 표면은 답할 수 없다.
@@ -65,6 +73,6 @@ real-100 단독 측정 표면(ADR 0052, n=221)에서 파이프라인은 직렬 �
 
 ## Out-of-scope
 
-- **oracle 천장 실측 런** — `oracle_full` arm 을 real-100 에 돌려 headroom 표 생성. 본 PR 머지 후 (Wave 0b).
+- **oracle 천장 실측 런** — `oracle_full` arm 은 현재 승인된 private-eval 표면에서만 재측정한다. 기본 후속은 `real100_v2` aggregate-only evidence 이며, legacy real-100 재실행은 maintainer 가 명시적으로 re-enable 한 경우에만 허용한다.
 - **comparison query_type balance** — `derive_gold_chunk_ids` 가 per-entity 균형을 강제하지 않아 비교 케이스 천장이 과소평가될 수 있음. v1 은 비교 케이스도 그대로 측정하되 해석 시 주의. 정밀화는 별 issue.
 - **oracle-subqueries → retrieval 천장** — planner 우회 검색 천장(plan dict 주입)은 본 PR 의 evidence 주입과 별개 표면. 필요 시 별 ADR.
