@@ -53,8 +53,9 @@
 - Public fixture smoke 결과를 성능(performance) 주장으로 확대한다.
 - Synthetic benchmark 결과를 real-world RFP 성능처럼 표현한다.
 - `make real-eval`의 deterministic hashing 경로를 dense/hybrid 검색 품질 근거로
-  오해한다. Semantic retrieval claim은 `make real-eval-semantic` 또는 명시적
-  semantic index provenance가 필요하다.
+  오해한다. Semantic retrieval claim은 현재 `real100_v2` aggregate evidence,
+  `make real-eval-v2-check` / `make real-eval-v2-inventory` /
+  `make real-eval-v2-guard`, 그리고 명시적 semantic index provenance가 필요하다.
 - `naive_baseline`, answer dict schema, ADR 0005 privacy boundary 같은 invariant를
   작은 refactor 안에서 조용히 바꾼다.
 - AI-agent가 새 abstraction을 만들지만 기존 helper/contract를 재사용하지 않는다.
