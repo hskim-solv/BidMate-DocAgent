@@ -7,6 +7,12 @@ error loop)* 로 바꾸는 **monotone-harden** 워크플로: 감사(audit)가
 
 이것은 Phase 5 감사(#992)의 항목 3 이다. 계약은 ADR 0062 다.
 
+> **Historical scope note.** 이 문서의 legacy `reports/real100/*`, `make real-eval`,
+> `n=221`, `kordoc` 계열 언급은 ADR 0062 당시 v1 private-eval ratchet 를
+> 설명하는 archive-only 운영 기록이다. 현재 새 작업·PR·claim 의 private eval
+> 근거는 `real100_v2` 표면만 사용해야 하며, 이 프로세스를 재활성화하려면 먼저
+> `real100_v2` aggregate/gate 로 재검증해야 한다.
+
 ## 루프
 
 ```
@@ -47,7 +53,7 @@ in-test `test_ceilings_are_monotone_sane` 은 역전(천장 < 현재 rate)만 �
 | dashboard | `scripts/render_failure_distribution.py` | distribution + ADR 0059 계약 ✓ 렌더 (Markdown/aggregate JSON + local HTML board) |
 | **regression gate** | `tests/test_failure_rate_regression.py` | **커밋된 baseline 의 래칫 천장 (ADR 0062)** |
 | **ratchet gate** | `scripts/check_branch_and_issue.py --check-ceiling-ratchet` | **base 대비 ceiling 상향/제거를 `[ALLOW_REGRESSION]` 없이 차단 (CI, issue #1150)** |
-| baseline | `reports/real100/baseline.aggregate.json` | 게이트가 읽는 커밋된 aggregate (ADR 0005 경계) |
+| baseline | `reports/real100/baseline.aggregate.json` | **historical v1 archive-only** aggregate. 현재 게이트/claim 에 재사용하려면 `real100_v2` aggregate 로 재검증해야 함 (ADR 0005 경계) |
 
 ## 새로 표면화된 실패 모드 추가하기
 
@@ -61,28 +67,32 @@ in-test `test_ceilings_are_monotone_sane` 은 역전(천장 < 현재 rate)만 �
    최소 5개 `eval/real_config.local.yaml`(gitignore, ADR 0005)에 추가한다.
    이는 rate 에 안정적인 분모 신호를 준다.
 
-3. **천장을 설정한다.** baseline 을 regen(`make real-eval` +
-   `make real-eval-baseline-update STRICT=1`)하고, 새 카테고리의
-   커밋된 rate 를 읽어,
-   `tests/test_failure_rate_regression.py` 의 `CEILING_RATE_BY_CATEGORY` 에
-   `current_rate + margin` 으로 추가한다. margin 은 variance 감사(#1025)가
-   측정한 cross-HEAD variance 를 흡수한다 — 최초 도입 시에는
-   넉넉히 설정한 뒤 조인다(tighten).
+3. **천장을 설정한다.** historical v1 절차는 baseline 을 regen(`make real-eval` +
+   `make real-eval-baseline-update STRICT=1`)한 뒤 새 카테고리의 커밋된 rate 를
+   읽고, `tests/test_failure_rate_regression.py` 의 `CEILING_RATE_BY_CATEGORY` 에
+   `current_rate + margin` 을 추가했다. 이 명령 조합과 v1 rate 는 현재 새 작업에서는
+   archive-only 이며, 현재 천장/claim 을 갱신하려면 먼저 `real100_v2` aggregate/gate 로
+   등가 표면을 확정해야 한다. margin 은 variance 감사(#1025)가 측정한 cross-HEAD
+   variance 를 흡수했다 — 최초 도입 시에는 넉넉히 설정한 뒤 조였다(tighten).
 
 4. **대시보드가 렌더하는지 검증한다.**
-   `scripts/render_failure_distribution.py` 를 재실행한다; 새 카테고리가
-   `reports/real100/failure_distribution.md` 와 local-only
-   `reports/real100/failure_distribution.html` 에 나타난다.
+   historical v1 절차에서는 `scripts/render_failure_distribution.py` 를 재실행해 새
+   카테고리가 `reports/real100/failure_distribution.md` 와 local-only
+   `reports/real100/failure_distribution.html` 에 나타나는지 확인했다. 현재 표면에서
+   같은 주장을 하려면 `real100_v2` aggregate 기반 출력으로 먼저 대체해야 한다.
 
 ## fix 이후 천장 조이기
 
-fix PR 이 게이트된 rate 를 낮출 때:
+historical v1 fix PR 이 게이트된 rate 를 낮출 때의 절차는 다음과 같았다:
 
-1. fix 의 HEAD 에서 baseline 을 regen 한다.
+1. fix 의 HEAD 에서 v1 baseline 을 regen 한다.
 2. 카테고리의 `CEILING_RATE_BY_CATEGORY` 항목을 새
    `current_rate + small_margin` 으로 **같은 PR 에서** 낮춘다.
 3. `test_ceilings_are_monotone_sane` 은 천장을 현재 rate
    *아래로* 설정하는 것(역전된 래칫)을 가드한다.
+
+현재 `real100_v2` 표면에서 같은 래칫을 운용하려면 v2 baseline/gate 를 먼저 확정한
+뒤 그 표면의 rate 에만 적용해야 한다.
 
 의도적으로 천장을 **상향**해야 한다면 (예: ADR 0058 같은 cross-HEAD 변경으로
 variance 가 커진 경우), PR 본문에 `[ALLOW_REGRESSION: <category> 0.X→0.Y 사유]`
@@ -100,7 +110,7 @@ variance 를 흡수한다; 히스토리컬 variance 를 넘어선 진짜 회귀�
 비교는 fix 를 그 사이의 변경(예: ADR 0058
 hybrid 전환)과 혼동시킨다.
 
-## 워크 예제 (이 루프를 먹인 감사들)
+## 워크 예제 (이 루프를 먹인 historical v1 감사들)
 
 | audit | mode | committed rate | ceiling |
 |---|---|---:|---:|
@@ -109,4 +119,5 @@ hybrid 전환)과 혼동시킨다.
 | — | total failures | 0.814 (180/221) | 0.86 |
 
 각 감사의 follow-up fix(Issue F verifier 하든, Issue A top_k
-ablation, …)는 이 rate 를 낮춘 뒤 천장을 조이는 것을 목표로 한다.
+ablation, …)는 이 historical v1 rate 를 낮춘 뒤 천장을 조이는 것을 목표로 했다.
+현재 작업에서 같은 결론을 주장하려면 `real100_v2` evidence 로 다시 측정해야 한다.
