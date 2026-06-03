@@ -1,23 +1,23 @@
 {
   "decision": {
-    "overall_classification": "latency_regression",
+    "overall_classification": "no_material_change",
     "selected_variant": null,
     "variants": [
       {
         "classifications": [
-          "latency_regression"
+          "no_material_change"
         ],
         "deltas_vs_control": {
           "citation_worst": 0.0,
-          "latency_p95_ms": -33643.473999999995,
+          "latency_p95_ms": -7375.548999999998,
           "response_quality_best": 0.0
         },
         "name": "context_evidence_first",
-        "primary_classification": "latency_regression"
+        "primary_classification": "no_material_change"
       }
     ]
   },
-  "generated_at_utc": "2026-05-28T04:47:51.187239+00:00",
+  "generated_at_utc": "2026-06-03T22:32:07.231272+00:00",
   "known_limits": [
     "This is aggregate-only private-local measurement, not a global response quality improvement claim.",
     "Legacy real100, v1, 221, and kordoc evidence is not used."
@@ -30,10 +30,10 @@
   "privacy_boundary": "aggregate_only_no_private_payloads_ids_paths_or_filenames",
   "profile_type": "private_real100_v2_context_packing",
   "provenance": {
-    "eval_config_sha256": "168147eb51a599161733524bd11d515f15a4d2fe2085c81a4c68a4da133687ef",
-    "git_commit": "8f7a124abf81",
-    "git_dirty": true,
-    "index_fingerprint_sha256": "7ddb84e3cf430e4de3dcb994fa3c5f3b10622d5d77780d32d23a5ee7e761a277",
+    "eval_config_sha256": "be6e5dc606418192506f219aa8725de6d12b460e7a97d8218d175ce175aad50b",
+    "git_commit": "ba5bdbe8bce5",
+    "git_dirty": false,
+    "index_fingerprint_sha256": "c505c2e5eca74b4cd4644f1e996f5ec008de51d98de0f7ec0db0ff8126d38bc4",
     "input_labels": {
       "config": "external_private_real100_v2_config",
       "index": "external_private_real100_v2_index",
@@ -66,13 +66,13 @@
         },
         "latency_ms": {
           "count": 3,
-          "p50": 10425.43,
-          "p95": 46589.662
+          "p50": 2366.79,
+          "p95": 11495.444999999998
         },
         "response_quality": {
           "accuracy": 0.0,
-          "answer_format_compliance": 0.6666666666666666,
-          "groundedness": 0.6666666666666666
+          "answer_format_compliance": 0.0,
+          "groundedness": 1.0
         },
         "token_cost": {
           "cost_estimate_usd_mean": null,
@@ -102,13 +102,13 @@
         },
         "latency_ms": {
           "count": 3,
-          "p50": 12583.02,
-          "p95": 12946.188000000002
+          "p50": 3550.52,
+          "p95": 4119.896
         },
         "response_quality": {
           "accuracy": 0.0,
-          "answer_format_compliance": 0.6666666666666666,
-          "groundedness": 0.6666666666666666
+          "answer_format_compliance": 0.0,
+          "groundedness": 1.0
         },
         "token_cost": {
           "cost_estimate_usd_mean": null,
