@@ -58,9 +58,11 @@ friendly error 로 중단해야 한다.
 
 - Cache/index 는 missing 이어도 hard failure 가 아니다. 원본 input 이 있으면
   재생성(regeneration) 경로로 진행한다.
-- Existing private real100 index 의 metadata 가 `num_documents >= 50` 이고
-  `0 < num_chunks <= 1000` 이면 stale/invalid CSV fallback index 로 표시한다.
-  현재 허용 기준은 kordoc 26k급 index 다.
+- Existing legacy/non-v2 private `real100` index 의 metadata 가
+  `num_documents >= 50` 이고 `0 < num_chunks <= 1000` 이면 stale/invalid CSV
+  fallback index 로 표시한다. 이 heuristic 은 archive-only v1/legacy path 점검용이며,
+  현재 `real100_v2` index claim 은 `data/index/real100_v2/` manifest 와
+  `make real-eval-v2-guard` 로 별도 검증한다.
 - `reports/real100_v2/eval_summary.json` 은 output artifact 다. 실행 전 required
   input 으로 요구하면 안 된다.
 - Baseline comparison 은 `REAL_EVAL_BASELINE_SUMMARY` 또는
