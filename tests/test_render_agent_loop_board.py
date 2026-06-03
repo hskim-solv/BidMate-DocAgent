@@ -16,7 +16,8 @@ Covers four behaviours the renderer must hold (tests assert the renderer's
    the rendered HTML; only structural metadata is exposed.
 4. the top staleness banner aggregates already-computed ledger enum fields
    (session ``heartbeat_state``/``status``, lease ``status``) into at-a-glance
-   counts, surfacing only counts and enum labels (ADR 0005).
+   counts — distinguishing idle sessions and expired leases from stale ones —
+   surfacing only counts and enum labels (ADR 0005).
 """
 from __future__ import annotations
 
@@ -522,3 +523,45 @@ def test_staleness_banner_healthy_when_no_stale() -> None:
 def test_staleness_banner_empty_when_no_data() -> None:
     # No sessions and no leases → banner renders nothing (empty string).
     assert render_staleness_banner({}, {}) == ""
+
+
+def test_staleness_banner_counts_idle_sessions() -> None:
+    # idle 은 정상 대기 상태(staleness 아님): neutral chip 으로 집계되되 has_stale
+    # 에는 기여하지 않아야 → ✓ HEALTHY 유지. idle 집계 회귀 방어 (PR #1855 LOW).
+    data = {
+        "sessions": [
+            {"role": "orchestrator", "session_id": "s1",
+             "status": "active", "heartbeat_state": "fresh"},
+            {"role": "planner", "session_id": "s2",
+             "status": "idle", "heartbeat_state": "fresh"},
+            {"role": "scout", "session_id": "s3",
+             "status": "idle", "heartbeat_state": "fresh"},
+        ],
+    }
+    banner = render_staleness_banner(data, {"leases": []})
+    assert ">idle 2<" in banner          # two idle sessions counted (exact chip span — collision-safe)
+    assert "HEALTHY" in banner           # idle is not staleness
+    assert "hb-stale" not in banner
+    assert "status-stale" not in banner
+
+
+def test_staleness_banner_flags_expired_leases() -> None:
+    # expired lease 는 warn chip + ⚠ STALENESS 헤드라인을 유발해야 (has_stale).
+    # 세션은 모두 fresh — staleness 의 유일 출처가 expired lease 임을 격리.
+    data = {
+        "sessions": [
+            {"role": "orchestrator", "session_id": "s1",
+             "status": "active", "heartbeat_state": "fresh"},
+        ],
+    }
+    leases = {"leases": [
+        {"task_id": "T-1", "status": "expired"},
+        {"task_id": "T-2", "status": "active"},
+    ]}
+    banner = render_staleness_banner(data, leases)
+    assert ">leases 2<" in banner
+    assert ">expired-lease 1<" in banner  # only the expired one (exact chip span — collision-safe)
+    assert "STALENESS" in banner         # expired lease alone drives has_stale
+    # ADR 0005: lease task_id (구조적이나 enum 아님) 은 배너에 노출되지 않음.
+    assert "T-1" not in banner
+    assert "T-2" not in banner
