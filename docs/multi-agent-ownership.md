@@ -17,10 +17,15 @@ RAG 파이프라인은 단계별 (ingestion → 검색 → 계획 → 검증 →
 
 ## 원칙
 
-1. **ADR 소유권.** agent 1명 = ADR 계약 1개 이상의 단독 저자. 해당 ADR 수정은 그 agent 의 PR 으로만
-2. **허브 lock holder.** `rag_core.py` 는 Pipeline Core owner 만 수정. 다른 owner 는 hook, callback, `run_rag_query` public surface 경유
-3. **Additive only.** 신규 기능은 분석 변형 또는 확장 preset (ADR 0001/0011). 추출형 기준선은 절대 교체 금지
-4. **Stacked PR.** 의존 작업은 상위 PR 위로 rebase, `gh pr create --base <upstream>`. 독립 작업은 `main` 으로 직접
+1. **Start gate.** 파일 소유권을 읽기 전에 먼저
+   [`overlap-preflight`](operations/ai-codex-workflow.md#overlap-preflight)를 실행한다.
+   Codex, Claude Code, 루트 checkout, `.codex/worktrees/*`, `.claude/worktrees/*`,
+   외부 `git worktree`는 모두 같은 coordination surface다. `blocked`면 시작하지 않고,
+   `warn`이면 예상 변경 파일이 다른 세션의 dirty/diff 파일과 겹치지 않는다는 근거를 남긴다.
+2. **ADR 소유권.** agent 1명 = ADR 계약 1개 이상의 단독 저자. 해당 ADR 수정은 그 agent 의 PR 으로만
+3. **허브 lock holder.** `rag_core.py` 는 Pipeline Core owner 만 수정. 다른 owner 는 hook, callback, `run_rag_query` public surface 경유
+4. **Additive only.** 신규 기능은 분석 변형 또는 확장 preset (ADR 0001/0011). 추출형 기준선은 절대 교체 금지
+5. **Stacked PR.** 의존 작업은 상위 PR 위로 rebase, `gh pr create --base <upstream>`. 독립 작업은 `main` 으로 직접
 
 ## 7개 소유권 역할
 
