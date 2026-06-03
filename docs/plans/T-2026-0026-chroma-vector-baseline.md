@@ -1,9 +1,10 @@
 # Plan: T-2026-0026 Chroma-Backed Naive Baseline
 
-- Status: in_progress
+- Status: done
 - Owner role: Planner -> Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer
 - Related task: `tasks/queue.md::T-2026-0026`
-- Related issue / PR: [#1580](https://github.com/hskim-solv/BidMate-DocAgent/issues/1580) / PR TBD
+- Related issue / PR: [#1580](https://github.com/hskim-solv/BidMate-DocAgent/issues/1580) / [#1635](https://github.com/hskim-solv/BidMate-DocAgent/pull/1635); refresh issue [#2123](https://github.com/hskim-solv/BidMate-DocAgent/issues/2123)
+- Last updated: 2026-06-04
 
 ## Problem
 
@@ -71,18 +72,21 @@ REAL_EVAL_ROOT=/Users/hskim/Desktop/projects/BidMate-DocAgent make real-eval-v2-
 ## Session Handoff
 
 - Role: Planner
-- Lifecycle stage: todo
-- Branch / worktree: `docs/issue-1580-chroma-vector-baseline-plan` / Codex worktree
-- Current status: implementation in progress for the canonical Chroma-backed
-  `naive_baseline` contract.
+- Lifecycle stage: done
+- Branch / worktree: `feat/issue-1580-chroma-canonical-baseline` / PR #1635
+- Current status: merged in PR #1635; issue #1580 is closed and the queue marks
+  T-2026-0026 done.
 - Files touched: implementation, tests, ADR/docs, queue.
 - Commands run: `python3 scripts/check_doc_links.py --check-all --paths tasks/queue.md docs/plans/T-2026-0026-chroma-vector-baseline.md`; `git diff --check`; `make check-branch`.
-- Results: pending validation in implementation PR.
-- Blockers: none known.
-- Open risks: Chroma ranking/tie-break may differ from the in-memory backend;
-  Chroma dependency cost may affect CI or local setup.
-- Next action: complete validation and record PR evidence without refreshing
-  private baseline aggregates.
+- Results: focused tests and docs/branch gates passed; private v2 path check and
+  guard passed; full Chroma run completed against the checkpoint MiniLM
+  page-aware index.
+- Blockers: none for the completed T-2026-0026 scope.
+- Open risks: local OpenAI-compatible model/server availability remains a
+  separate follow-up for optional Chroma LLM synthesis, not a blocker for this
+  completed baseline switch.
+- Next action: run optional `make real-eval-v2-chroma-llm` only as a separate
+  follow-up when a local loopback model is available.
 - Next safe command: `git status --short`
 - Reviewer focus: backend axis separation, parity guard, no mixed embedding
   claim.
