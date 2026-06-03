@@ -167,13 +167,18 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           mkdir -p reports
-          files=$(gh api --paginate \
-            "repos/$REPO/pulls/$PR_NUMBER/files" --jq '.[].filename')
-          printf '%s\n' "$files" > reports/pr_eval_changed_files.txt
+          # Emit one @json-encoded filename per line (JSONL). @json escapes embedded
+          # newlines/control chars, so a hostile filename like `agent-evals/README.md<newline>`
+          # survives as ONE line instead of splitting and slipping past the agent-evals/
+          # README-only privacy guard (Codex pre-commit review, issue #1844). The classifier
+          # decodes each line and fails closed on surrounding whitespace.
+          gh api --paginate \
+            "repos/$REPO/pulls/$PR_NUMBER/files" --jq '.[].filename | @json' \
+            > reports/pr_eval_changed_files.jsonl
           echo "Changed files:"
-          cat reports/pr_eval_changed_files.txt
+          cat reports/pr_eval_changed_files.jsonl
           python3 scripts/pr_eval_change_scope.py \
-            --changed-files reports/pr_eval_changed_files.txt \
+            --changed-files-jsonl reports/pr_eval_changed_files.jsonl \
             --github-output "$GITHUB_OUTPUT"
 
   eval-delta:

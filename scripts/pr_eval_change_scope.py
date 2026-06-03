@@ -14,6 +14,7 @@ branch/issue checks remain handled by separate always-on workflows/jobs.
 from __future__ import annotations
 
 import argparse
+import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
@@ -118,13 +119,29 @@ def _is_pytest_path(path: str) -> bool:
         return True
     if path in PYTEST_FILES or _is_requirements(path):
         return True
+    # ADR 0100: any agent-evals/ change except the README must run the index-aware privacy
+    # guard (tests/test_agent_evals_gitignore.py). A force-added raw .md/.txt would otherwise
+    # be classified docs-only and skip the pytest job, leaving the guard toothless in CI.
+    if path.startswith("agent-evals/") and path != "agent-evals/README.md":
+        return True
     return any(path.startswith(prefix) for prefix in PYTEST_PREFIXES)
 
 
 def classify(paths: Iterable[str]) -> ChangeScope:
-    changed = tuple(path for path in (_normalize(p) for p in paths) if path)
+    raw_paths = list(paths)
+    changed = tuple(path for path in (_normalize(p) for p in raw_paths) if path)
     runtime_reasons: list[str] = []
     pytest_reasons: list[str] = []
+
+    # Fail closed on leading/trailing whitespace: a path like "agent-evals/README.md " is a
+    # DIFFERENT git file than the exact README exception, but _normalize() would strip it to
+    # the README and skip the agent-evals/ privacy guard. Any surrounding-whitespace path
+    # forces pytest so the index-aware guard runs (ADR 0100; do not trim meaningful path
+    # characters before the policy check).
+    for raw in raw_paths:
+        stripped = raw.strip()
+        if stripped and stripped != raw:
+            pytest_reasons.append(raw)
 
     for path in changed:
         if _is_runtime_path(path):
@@ -151,6 +168,29 @@ def _read_changed_files(path: str) -> list[str]:
 
         return sys.stdin.read().splitlines()
     return Path(path).read_text(encoding="utf-8").splitlines()
+
+
+def _read_changed_files_jsonl(path: str) -> list[str]:
+    """Read a JSONL changed-file list: one ``@json``-encoded filename per line.
+
+    Each line is a complete JSON string, so a filename containing a newline (or other control
+    character) survives intact instead of being split apart by ``splitlines()`` — ``classify``'s
+    whitespace fail-closed rule can then flag it and force the agent-evals/ privacy guard.
+    Use this transport (not ``--changed-files``) for untrusted PR file lists, fed from
+    ``gh api .../files --jq '.[].filename | @json'`` (Codex pre-commit review, issue #1844).
+    """
+    if path == "-":
+        import sys
+
+        raw = sys.stdin.read()
+    else:
+        raw = Path(path).read_text(encoding="utf-8")
+    names: list[str] = []
+    for line in raw.splitlines():
+        if not line.strip():
+            continue
+        names.append(str(json.loads(line)))
+    return names
 
 
 def _bool(value: bool) -> str:
@@ -186,10 +226,16 @@ def write_github_output(path: str, scope: ChangeScope) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
+    src = parser.add_mutually_exclusive_group(required=True)
+    src.add_argument(
         "--changed-files",
-        required=True,
-        help="Path to newline-delimited changed file list, or '-' for stdin.",
+        help="Path to newline-delimited changed file list, or '-' for stdin. "
+        "Use --changed-files-jsonl for untrusted PR lists (newline-safe).",
+    )
+    src.add_argument(
+        "--changed-files-jsonl",
+        help="Path to a JSONL list (one @json-encoded filename per line), or '-' for stdin. "
+        "Newline-safe transport for untrusted PR file lists.",
     )
     parser.add_argument(
         "--github-output",
@@ -197,7 +243,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    scope = classify(_read_changed_files(args.changed_files))
+    if args.changed_files_jsonl is not None:
+        paths = _read_changed_files_jsonl(args.changed_files_jsonl)
+    else:
+        paths = _read_changed_files(args.changed_files)
+    scope = classify(paths)
     if args.github_output:
         write_github_output(args.github_output, scope)
     print(render(scope))

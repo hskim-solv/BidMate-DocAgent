@@ -22,6 +22,11 @@ BLOCKED_PATTERNS=(
   '^data/data_list\.xlsx$'
   '^eval/.*\.local\.yaml$'
   '^reports/real[^/]*/'
+  # ADR 0100 operator-skill eval surface: deny-by-default. Every agent-evals/ path is
+  # blocked here (local force-add guard) and only README is allowlisted below — code, mined
+  # task.yaml, playbooks, splits, and reports all wait for the PR2 content scanner. Mirrors
+  # the .gitignore agent-evals/ boundary.
+  '^agent-evals/'
 )
 
 # Allowlist (regex). These aggregate artifacts ARE safe to commit; they
@@ -109,6 +114,9 @@ ALLOWED_PATTERNS=(
   '^reports/real100_v2/judge\.aggregate\.json$'
   '^reports/real100_v2/judge_ragas\.aggregate\.json$'
   '^reports/real100_v2/rationality\.aggregate\.json$'
+  # ADR 0100 operator-skill eval surface (PR1): README is the ONLY committable agent-evals/
+  # file. PR2 adds code + aggregate-report allowlist rules together with the content scanner.
+  '^agent-evals/README\.md$'
 )
 
 # Guard: ADR file deletion/rename (CLAUDE.md Prohibited).
@@ -340,14 +348,22 @@ if [[ -n "$eval_priv_staged" ]]; then
   fi
 fi
 
-staged=$(git diff --cached --name-only --diff-filter=ACMR 2>/dev/null || true)
+# NUL-delimited read (-z) so a staged path containing a newline or other control
+# character cannot split into multiple tokens and slip past the agent-evals/
+# README-only boundary (Codex pre-commit review, issue #1844). -z is robust
+# regardless of core.quotePath, unlike newline-delimited --name-only. read -r -d ''
+# stays bash-3.2 compatible (avoids mapfile -d, which needs bash 4+).
+staged_files=()
+while IFS= read -r -d '' file; do
+  staged_files+=("$file")
+done < <(git diff --cached -z --name-only --diff-filter=ACMR 2>/dev/null || true)
 
-if [[ -z "$staged" ]]; then
+if [[ ${#staged_files[@]} -eq 0 ]]; then
   exit 0
 fi
 
 violations=()
-while IFS= read -r file; do
+for file in "${staged_files[@]}"; do
   [[ -z "$file" ]] && continue
 
   # Skip files that match the allowlist.
@@ -367,7 +383,7 @@ while IFS= read -r file; do
       break
     fi
   done
-done <<< "$staged"
+done
 
 if [[ ${#violations[@]} -gt 0 ]]; then
   cat >&2 <<EOF
@@ -403,7 +419,7 @@ fi
 # (ADR 0066). This intentionally runs after the ADR 0005 path boundary above
 # so private eval files cannot be passed into the Codex review prompt.
 #
-# Uses its OWN ACMRD discovery (not the ACMR $staged above): deleting a
+# Uses its OWN ACMRD discovery (not the ACMR $staged_files above): deleting a
 # load-bearing contract is as risky as modifying it, so the deletion must reach
 # --any-match or the gate is silently skipped on that commit. The ADR 0005 path
 # scan above deliberately stays ACMR — removing a private file from the index is
