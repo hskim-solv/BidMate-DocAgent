@@ -42,7 +42,8 @@ never reaches merge even when the agent has armed ready shipping.
 ## Non-Goals
 
 - Do not push, create/merge/close PRs, close issues, delete branches, force-push,
-  run private real-eval, or approve benchmark/performance claims.
+  run current `real100_v2` private eval, or approve benchmark/performance
+  claims.
 - Do not change retrieval, ingestion, eval scoring, answer contracts, or runtime
   behavior.
 - Do not expose private raw values or PR body/title text as required evidence.
@@ -112,4 +113,5 @@ artifacts are gitignored and do not need rollback.
 - Confirm `continue-loop` does not perform remote mutation.
 - Confirm batch/workset lanes preserve serial dependencies and gate-sensitive
   surfaces.
-- Confirm no benchmark, product quality, or private real-eval claim is implied.
+- Confirm no benchmark, product quality, or current `real100_v2` private-eval
+  claim is implied.
