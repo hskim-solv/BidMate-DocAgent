@@ -1,15 +1,10 @@
 # real100_v2 Context Packing Experiment
 
-> Invalidated for optimization claims by `T-2026-0047`: this screening used a
-> hashing-backed `real100_v2` index with 0.0 chunk page metadata coverage. Do
-> not use its `latency_regression` result as context-packing evidence until
-> rerun on a MiniLM page-aware v2 index.
-
 This report is aggregate-only. It contains no raw case prompts, generated responses, evidence text, filenames, local paths, document identifiers, chunk identifiers, or per-case rows. Legacy `real100`, v1, 221, and kordoc evidence is not used.
 
 ## Decision
 
-- Overall classification: `latency_regression`
+- Overall classification: `no_material_change`
 - Selected variant: `-`
 - Paired delta valid: `False`
 - Subset run: `True`
@@ -20,8 +15,8 @@ This report is aggregate-only. It contains no raw case prompts, generated respon
 
 | Variant | Accuracy | Groundedness | Citation precision | Claim alignment | Token status | p95 ms | Classification |
 |---|---:|---:|---:|---:|---|---:|---|
-| control_context_default | 0.0000 | 0.6667 | 0.0000 | 0.8333 | not_observable_from_prediction_diagnostics | 46589.6620 | control |
-| context_evidence_first | 0.0000 | 0.6667 | 0.0000 | 0.8333 | not_observable_from_prediction_diagnostics | 12946.1880 | latency_regression |
+| control_context_default | 0.0000 | 1.0000 | 0.0000 | 0.8333 | not_observable_from_prediction_diagnostics | 11495.4450 | control |
+| context_evidence_first | 0.0000 | 1.0000 | 0.0000 | 0.8333 | not_observable_from_prediction_diagnostics | 4119.8960 | no_material_change |
 
 ## Notes
 

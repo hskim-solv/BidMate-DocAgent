@@ -3,10 +3,10 @@
 - Status: review
 - Owner role: Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer
 - Related task: `tasks/queue.md::T-2026-0033`
-- Related issue / PR: plan [#1638](https://github.com/hskim-solv/BidMate-DocAgent/issues/1638), implementation [#1641](https://github.com/hskim-solv/BidMate-DocAgent/issues/1641) / PR TBD
+- Related issue / PR: plan [#1638](https://github.com/hskim-solv/BidMate-DocAgent/issues/1638), implementation [#1641](https://github.com/hskim-solv/BidMate-DocAgent/issues/1641), page-aware rerun [#2149](https://github.com/hskim-solv/BidMate-DocAgent/issues/2149) / PR TBD
 - Related ADR: [ADR 0003](../adr/0003-structured-answer-citation-contract.md), [ADR 0005](../adr/0005-eval-split-public-synthetic-private-local.md), [ADR 0054](../adr/0054-conditional-on-answer-scorer-semantics.md)
 - Created: 2026-05-28
-- Last updated: 2026-05-28
+- Last updated: 2026-06-04
 
 ## Problem Statement
 
@@ -133,6 +133,21 @@ Expected evidence:
   latency/cost, and privacy checks pass.
 - Explicitly not validated, with reason: no paired full-run delta because the
   implementation run is a 3-case screening artifact.
+
+
+## Session Handoff - 2026-06-04 07:32 KST
+
+- Role: Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer
+- Lifecycle stage: review
+- Branch / worktree: `eval/issue-2149-t2026-0033-context-packing-pageaware` / `.codex/worktrees/issue-2149-t2026-0033-context-packing-pageaware`
+- Issue / PR: page-aware rerun issue #2149 / PR TBD
+- Task: T-2026-0033 page-aware rerun
+- Current status: 3-case `real100_v2` context-packing screening rerun against `data/index/real100_v2_checkpoint_minilm_pageaware`; evidence-first remains unselected and is classified `no_material_change`, not a winner.
+- Files touched: `reports/real100_v2/context_packing.aggregate.json`, `docs/evaluation/real100_v2-context-packing.md`, `docs/plans/T-2026-0033-context-packing-citation-ordering-experiment.md`.
+- Decisions made: remove the old hashing-index invalidation banner only after rerunning on the MiniLM page-aware checkpoint; do not update `tasks/queue.md` in this PR because other active sessions currently own that file.
+- Eval surface: private `real100_v2`, aggregate-only 3-case screening; no full paired delta and no headline improvement claim.
+- Validation evidence: focused context-packing tests passed; local private screening completed; follow-up validation commands are recorded in the PR.
+- Open risks: subset-only result; cost telemetry remains not observable from prediction diagnostics.
 
 ## Rollback Strategy
 
