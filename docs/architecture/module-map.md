@@ -4,6 +4,10 @@
 
 파이프라인: ingestion → 메타데이터 정규화 → 청킹 → 검색 → 재순위/계획 → 근거 집계 → 근거 기반 답변 → 검증 → 평가 → reviewer 문서.
 
+## 병행 작업 경계
+
+이 모듈 맵은 리뷰어용 진입점인 동시에 Codex/Claude 병행 세션의 **작업 표면 선택 기준**이다. 아래 표의 같은 단계·모듈·근거 문서를 수정하기 전에는 최신 `origin/main` 에서 별도 worktree 를 만든 뒤 [`overlap-preflight`](../operations/ai-codex-workflow.md#overlap-preflight)를 실행해 open PR, remote branch, 기존 worktree, issue 중복 여부를 먼저 남긴다.
+
 ## 단계별 모듈
 
 | 단계 | 주요 모듈 | 책임 |
