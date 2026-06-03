@@ -1,12 +1,12 @@
 # Plan: T-2026-0012 Extended HTML Review Boards
 
-- Status: review
+- Status: done
 - Owner role: Implementer -> Reviewer
 - Related task: `tasks/queue.md::T-2026-0012`
-- Related issue / PR: [#1522](https://github.com/hskim-solv/BidMate-DocAgent/issues/1522)
+- Related issue / PR: [#1522](https://github.com/hskim-solv/BidMate-DocAgent/issues/1522) / [#1523](https://github.com/hskim-solv/BidMate-DocAgent/pull/1523); refresh issue [#2142](https://github.com/hskim-solv/BidMate-DocAgent/issues/2142)
 - Related ADR: N/A - no decision-level change
 - Created: 2026-05-26
-- Last updated: 2026-05-26
+- Last updated: 2026-06-04
 
 ## Problem Statement
 
@@ -163,15 +163,15 @@ navigation, not introduce a new measurement surface.
 ## Session Handoff - 2026-05-26 00:00 KST
 
 - Role: Implementer
-- Branch / worktree: chore/issue-1522-extended-html-boards / /Users/hskim/.codex/worktrees/8ed1/BidMate-DocAgent
-- Issue / PR: #1522 / TBD
+- Branch / worktree: chore/issue-1522-extended-html-boards / PR #1523
+- Issue / PR: #1522 / #1523; refresh issue #2142
 - Task: T-2026-0012
-- Current status: implemented and validated; PR pending.
+- Current status: merged in PR #1523; queue marks T-2026-0012 done.
 - Files touched: scripts/render_priority_review_boards.py, tests/test_render_priority_review_boards.py, tasks/queue.md, docs/plans/T-2026-0012-extended-html-review-boards.md
 - Decisions made: extend the existing renderer to twenty-five boards.
 - Commands run: gh issue create; git switch; python3 -m pytest tests/test_render_priority_review_boards.py -q; python3 -m py_compile scripts/render_priority_review_boards.py; python3 scripts/render_priority_review_boards.py; python3 scripts/check_doc_links.py --check-all; git diff --check; make check-branch; browser smoke via http://127.0.0.1:8765
 - Results: twenty-five local HTML boards generated; focused tests, py_compile, doc links, diff check, branch check, and browser smoke pass.
-- Next safe command: gh pr create
+- Next safe command: git status --short
 - Open questions: none
 - Risks: generated HTML files are ignored and must be regenerated in each checkout.
 ```
