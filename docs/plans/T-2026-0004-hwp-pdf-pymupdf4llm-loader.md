@@ -1,12 +1,12 @@
 # Plan: T-2026-0004 PDF/HWP PyMuPDF4LLM canonical citation loader
 
-- Status: review
+- Status: done
 - Owner role: Implementer -> Reviewer
 - Related task: `tasks/queue.md::T-2026-0004`
-- Related issue / PR: N/A
+- Related issue / PR: implementation PR [#1494](https://github.com/hskim-solv/BidMate-DocAgent/pull/1494); refresh issue [#2118](https://github.com/hskim-solv/BidMate-DocAgent/issues/2118)
 - Related ADR: ADR 0078, ADR 0049, ADR 0001
 - Created: 2026-05-26
-- Last updated: 2026-05-26
+- Last updated: 2026-06-04
 
 ## Problem Statement
 
