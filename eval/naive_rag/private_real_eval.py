@@ -81,6 +81,8 @@ PREFERRED_SEMANTIC_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM
 ENV_DEFAULT_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}")
 SAFE_FAILURE_COUNT_KEY_RE = re.compile(r"^[A-Za-z0-9_.:-]+$")
 SAFE_MODEL_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*(?:/[A-Za-z0-9][A-Za-z0-9._-]*)?$")
+SAFE_RUN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+SAFE_REDACTED_SUMMARY_PATH_RE = re.compile(r"^reports/[A-Za-z0-9._-]+\.redacted\.json$")
 SAFE_COMPARISON_ROW_KEYS = {
     "workflow",
     "embedding_backend",
@@ -105,6 +107,10 @@ PRIVATE_PATH_MARKERS = (
     "data/index/real",
     "experiments/private_runs/",
     "reports/real",
+)
+LEGACY_REAL100_RESULT_PATH_RE = re.compile(
+    r"(?:^|/)(?:data/index|reports|outputs)/real100(?!_v2)(?:[^/]*)?(?:/|$)",
+    re.IGNORECASE,
 )
 
 
@@ -139,6 +145,133 @@ def rel_or_abs(path: Path, root: Path = ROOT_DIR) -> str:
         return str(path.resolve().relative_to(root.resolve()))
     except ValueError:
         return str(path)
+
+
+def unresolved_rel_or_abs(path: Path, root: Path = ROOT_DIR) -> str:
+    """Repo-relative path spelling without resolving symlinks."""
+    raw_path = Path(os.path.abspath(str(path))) if path.is_absolute() else path
+    raw_root = Path(os.path.abspath(str(root)))
+    try:
+        return raw_path.relative_to(raw_root).as_posix()
+    except ValueError:
+        return raw_path.as_posix()
+
+
+def resolved_rel_or_abs(path: Path, root: Path = ROOT_DIR) -> str:
+    """Resolved spelling for validation, preserving outside-root targets."""
+    resolved = path.resolve()
+    try:
+        return resolved.relative_to(root.resolve()).as_posix()
+    except ValueError:
+        return resolved.as_posix()
+
+
+def is_legacy_real100_result_path(path: Path, root: Path = ROOT_DIR) -> bool:
+    """Return true for stale v1 real100 result/index surfaces, not real100_v2."""
+    unresolved = os.path.normpath(unresolved_rel_or_abs(path, root)).replace("\\", "/")
+    resolved = os.path.normpath(resolved_rel_or_abs(path, root)).replace("\\", "/")
+    return bool(
+        LEGACY_REAL100_RESULT_PATH_RE.search(unresolved)
+        or LEGACY_REAL100_RESULT_PATH_RE.search(resolved)
+    )
+
+
+def canonical_guarded_result_path(path: Path) -> Path:
+    """Resolve guard-sensitive result paths once before downstream writes."""
+    return path.resolve(strict=False)
+
+
+def _legacy_real100_error(label: str) -> PrivateRealEvalError:
+    return PrivateRealEvalError(f"legacy_real100_path: {label}")
+
+
+def assert_guarded_result_path_current(
+    path: Path,
+    *,
+    label: str,
+    root: Path = ROOT_DIR,
+) -> Path:
+    """Return the current canonical path after legacy real100 checks."""
+    if is_legacy_real100_result_path(path, root):
+        raise _legacy_real100_error(label)
+    canonical = canonical_guarded_result_path(path)
+    if is_legacy_real100_result_path(canonical, root):
+        raise _legacy_real100_error(label)
+    return canonical
+
+
+def assert_private_result_path_current(
+    path: Path,
+    *,
+    label: str,
+    root: Path = ROOT_DIR,
+) -> Path:
+    """Return the current canonical private write target after all path checks."""
+    canonical = assert_guarded_result_path_current(path, label=label, root=root)
+    if not git_ignores_path(canonical, root):
+        raise PrivateRealEvalError(f"private_path_not_gitignored: {label}")
+    return canonical
+
+
+def prepare_guarded_result_dir(path: Path, *, label: str, root: Path = ROOT_DIR) -> Path:
+    """Materialize a guarded directory, then pin and revalidate its target."""
+    if is_legacy_real100_result_path(path, root):
+        raise _legacy_real100_error(label)
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise PrivateRealEvalError(f"invalid_guarded_path: {label}") from exc
+    return assert_guarded_result_path_current(path, label=label, root=root)
+
+
+def prepare_private_result_dir(path: Path, *, label: str, root: Path = ROOT_DIR) -> Path:
+    """Materialize a private result directory, then pin and revalidate its target."""
+    prepare_guarded_result_dir(path, label=label, root=root)
+    return assert_private_result_path_current(path, label=label, root=root)
+
+
+def validate_redacted_summary_path(
+    path: Path,
+    root: Path = ROOT_DIR,
+    *,
+    prepare: bool = False,
+) -> Path:
+    if is_legacy_real100_result_path(path, root):
+        raise _legacy_real100_error("redacted_summary_path")
+    if prepare:
+        prepare_guarded_result_dir(path.parent, label="redacted_summary_path", root=root)
+    canonical = assert_guarded_result_path_current(
+        path, label="redacted_summary_path", root=root
+    )
+    if git_ignores_path(canonical, root):
+        return canonical
+    normalized = os.path.normpath(unresolved_rel_or_abs(canonical, root)).replace("\\", "/")
+    if SAFE_REDACTED_SUMMARY_PATH_RE.fullmatch(normalized):
+        return canonical
+    raise PrivateRealEvalError("redacted_summary_path_not_allowed")
+
+
+def resolve_redacted_summary_path(
+    configured_path: str | None,
+    *,
+    output_dir: Path,
+    run_id: str,
+) -> Path:
+    return repo_path(configured_path) if configured_path else output_dir / run_id / "redacted_summary.json"
+
+
+def validate_run_id(value: str) -> str:
+    run_id = value.strip()
+    if (
+        not run_id
+        or run_id in {".", ".."}
+        or "/" in run_id
+        or "\\" in run_id
+        or Path(run_id).is_absolute()
+        or not SAFE_RUN_ID_RE.fullmatch(run_id)
+    ):
+        raise PrivateRealEvalError("invalid_run_id")
+    return run_id
 
 
 def load_private_config(path: Path) -> dict[str, Any]:
@@ -442,6 +575,8 @@ def validate_private_inputs(
     questions_path = repo_path(str(config.get("questions_path") or gold_evidence_path), root)
     index_dir = repo_path(str(config["index_dir"]), root)
     output_dir = repo_path(str(config["output_dir"]), root)
+    pinned_index_dir = canonical_guarded_result_path(index_dir)
+    pinned_output_dir = canonical_guarded_result_path(output_dir)
     index_build = (
         config.get("index_build") if isinstance(config.get("index_build"), Mapping) else {}
     )
@@ -470,7 +605,18 @@ def validate_private_inputs(
         errors.append("private_path_not_gitignored: output_dir")
     if not git_ignores_path(index_dir, root):
         errors.append("private_path_not_gitignored: index_dir")
-    if not (index_dir / "index.json").is_file() and not can_build_index:
+    if is_legacy_real100_result_path(output_dir, root):
+        errors.append("legacy_real100_path: output_dir")
+    if is_legacy_real100_result_path(index_dir, root):
+        errors.append("legacy_real100_path: index_dir")
+    hwp_pdf_artifact_dir_value = str(index_build.get("hwp_pdf_artifact_dir") or "").strip()
+    if hwp_pdf_artifact_dir_value:
+        hwp_pdf_artifact_dir = repo_path(hwp_pdf_artifact_dir_value, root)
+        if not git_ignores_path(hwp_pdf_artifact_dir, root):
+            errors.append("private_path_not_gitignored: hwp_pdf_artifact_dir")
+        if is_legacy_real100_result_path(hwp_pdf_artifact_dir, root):
+            errors.append("legacy_real100_path: hwp_pdf_artifact_dir")
+    if not (pinned_index_dir / "index.json").is_file() and not can_build_index:
         errors.append(f"missing_private_index: index_dir mode={build_mode}")
 
     document_count = _count_documents(documents_dir)
@@ -551,7 +697,7 @@ def validate_private_inputs(
                     f"questions count={len(unanswerable_with_gold)}"
                 )
 
-    index_docs, index_chunks = _index_counts(index_dir)
+    index_docs, index_chunks = _index_counts(pinned_index_dir)
     if errors:
         raise PrivateRealEvalError("Private real-eval validation failed:\n- " + "\n- ".join(errors))
     return {
@@ -559,23 +705,41 @@ def validate_private_inputs(
         "data_list_path": data_list_path,
         "questions_path": questions_path,
         "gold_evidence_path": gold_evidence_path,
-        "index_dir": index_dir,
-        "output_dir": output_dir,
+        "index_dir": pinned_index_dir,
+        "output_dir": pinned_output_dir,
         "document_count": document_count,
         "question_count": len(questions),
         "answerable_count": sum(1 for q in questions if q.get("answerable", True)),
         "unanswerable_count": sum(1 for q in questions if not q.get("answerable", True)),
-        "index_exists": (index_dir / "index.json").is_file(),
+        "index_exists": (pinned_index_dir / "index.json").is_file(),
         "index_document_count": index_docs,
         "index_chunk_count": index_chunks,
         "build_mode": build_mode,
     }
 
 
+def prepare_private_write_paths(
+    validation: Mapping[str, Any],
+    *,
+    root: Path = ROOT_DIR,
+) -> dict[str, Any]:
+    """Materialize and pin private output/index directories before any writes."""
+    prepared = dict(validation)
+    prepared["index_dir"] = prepare_private_result_dir(
+        Path(validation["index_dir"]), label="index_dir", root=root
+    )
+    prepared["output_dir"] = prepare_private_result_dir(
+        Path(validation["output_dir"]), label="output_dir", root=root
+    )
+    return prepared
+
+
 def build_index_command(
     config: Mapping[str, Any], validation: Mapping[str, Any]
 ) -> list[str] | None:
-    index_dir = Path(validation["index_dir"])
+    index_dir = assert_private_result_path_current(
+        Path(validation["index_dir"]), label="index_dir"
+    )
     index_build = (
         config.get("index_build") if isinstance(config.get("index_build"), Mapping) else {}
     )
@@ -609,6 +773,12 @@ def build_index_command(
     ):
         value = str(index_build.get(key) or "").strip()
         if value:
+            if key == "hwp_pdf_artifact_dir":
+                artifact_dir = prepare_private_result_dir(
+                    repo_path(value), label="hwp_pdf_artifact_dir"
+                )
+                command.extend([flag, rel_or_abs(artifact_dir)])
+                continue
             command.extend([flag, value])
     return command
 
@@ -645,9 +815,10 @@ def write_contract_config(
     *,
     run_id: str,
 ) -> Path:
-    output_dir = Path(validation["output_dir"])
-    run_dir = output_dir / run_id
-    run_dir.mkdir(parents=True, exist_ok=True)
+    output_dir = assert_private_result_path_current(
+        Path(validation["output_dir"]), label="output_dir"
+    )
+    run_dir = prepare_private_result_dir(output_dir / run_id, label="run_dir")
     questions_path = _private_questions_path(config, validation, run_dir)
     pipeline = config.get("pipeline") if isinstance(config.get("pipeline"), Mapping) else {}
     top_k = int(config["top_k"])
@@ -1074,12 +1245,28 @@ def main(argv: Sequence[str] | None = None) -> int:
             f"({validation['answerable_count']} answerable, "
             f"{validation['unanswerable_count']} unanswerable)"
         )
+        run_id = validate_run_id(
+            args.run_id or str(config.get("run_id") or "").strip() or default_run_id()
+        )
         if args.validate_only:
+            summary_path = resolve_redacted_summary_path(
+                args.redacted_summary_path,
+                output_dir=Path(validation["output_dir"]),
+                run_id=run_id,
+            )
+            validate_redacted_summary_path(summary_path)
             return 0
+        validation = prepare_private_write_paths(validation)
+        summary_path = resolve_redacted_summary_path(
+            args.redacted_summary_path,
+            output_dir=Path(validation["output_dir"]),
+            run_id=run_id,
+        )
+        summary_path = validate_redacted_summary_path(summary_path, prepare=True)
         build_command = build_or_load_private_index(config, validation)
-        run_id = args.run_id or str(config.get("run_id") or "").strip() or default_run_id()
         contract_path = write_contract_config(config, validation, run_id=run_id)
         started = time.perf_counter()
+        assert_private_result_path_current(Path(validation["output_dir"]), label="output_dir")
         run_dir = run_from_config(
             contract_path,
             output_root_override=Path(validation["output_dir"]),
@@ -1088,14 +1275,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         elapsed_ms = (time.perf_counter() - started) * 1000.0
         metrics_path = run_dir / "metrics.json"
         metrics_payload = json.loads(metrics_path.read_text(encoding="utf-8"))
+        assert_private_result_path_current(run_dir, label="run_dir")
         write_private_run_metadata(
             run_dir, validation, build_command=build_command, elapsed_ms=elapsed_ms
         )
-        summary_path = (
-            repo_path(args.redacted_summary_path)
-            if args.redacted_summary_path
-            else run_dir / "redacted_summary.json"
-        )
+        summary_path = validate_redacted_summary_path(summary_path, prepare=True)
         comparison_summary = load_existing_redacted_summary(summary_path)
         redacted_summary = build_redacted_summary(
             metrics_payload,
@@ -1104,6 +1288,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             elapsed_ms=elapsed_ms,
             comparison_summary=comparison_summary,
         )
+        summary_path = validate_redacted_summary_path(summary_path, prepare=True)
         write_json(summary_path, redacted_summary)
     except Exception as exc:
         print(f"[ERROR] Private real-eval failed: {exc}", file=sys.stderr)
