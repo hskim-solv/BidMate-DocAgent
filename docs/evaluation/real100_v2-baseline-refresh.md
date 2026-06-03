@@ -74,9 +74,13 @@ not support a performance-improvement claim.
 
 Executed:
 
+The final `make real-eval` command was a negative guard check, not a baseline
+run.
+
 ```bash
 REAL_EVAL_ROOT=/Users/hskim/Desktop/projects/BidMate-DocAgent make real-eval-v2-check
 make real-eval-v2-guard
+# Negative guard check: must fail while legacy real100/v1 targets are disabled.
 make real-eval
 ```
 
