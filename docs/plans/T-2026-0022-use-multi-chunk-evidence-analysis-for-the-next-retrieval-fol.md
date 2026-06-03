@@ -1,18 +1,19 @@
 # Plan: T-2026-0022 Use multi-chunk evidence analysis for the next retrieval follow-up
 
-- Status: review
+- Status: done
 - Owner role: Planner -> Implementer -> Reviewer
 - Related task: `tasks/queue.md::T-2026-0022`
-- Related issue / PR: [#1563](https://github.com/hskim-solv/BidMate-DocAgent/issues/1563) / PR TBD
+- Related issue / PR: [#1563](https://github.com/hskim-solv/BidMate-DocAgent/issues/1563) / [#1564](https://github.com/hskim-solv/BidMate-DocAgent/pull/1564), [#1576](https://github.com/hskim-solv/BidMate-DocAgent/pull/1576); refresh issue #2085
 - Source brief: `reports/agent_loop/codex_tasks/001-multi-chunk-follow-up.md`
 - Suggested final path: `docs/plans/T-2026-0022-use-multi-chunk-evidence-analysis-for-the-next-retrieval-fol.md`
+- Last updated: 2026-06-04
 
 ## Problem
 
 multi-chunk aggregate is available: 97/99 top-10 failures; 97 limited-depth cases.
-The current strategy source is the older `reports/real100/` aggregate with source
-SHA-256 prefix `714c08f9996d`; it is not a fresh `real100_v2` multi-chunk
-measurement.
+The current strategy source is the older legacy `reports/real100/` aggregate
+with source SHA-256 prefix `714c08f9996d`; it is not a fresh `real100_v2`
+multi-chunk measurement.
 
 ## Desired Outcome
 
@@ -32,7 +33,7 @@ follow-up, while preventing a stale aggregate from being mistaken for current
 ## Out of Scope
 
 - Auto-merge, auto-push, PR creation/close/merge, branch deletion, or force-push.
-- Benchmark, performance, private real-eval, or architecture tradeoff decisions without ADR 0079 agent-gate evidence.
+- Benchmark, performance, current `real100_v2` private-eval, or architecture tradeoff decisions without ADR 0079 agent-gate evidence.
 - Raw private question, answer, evidence, doc_id, chunk_id, filenames, or exact local paths.
 - Retrieval, reranker, chunking, prompt, verifier, or answer runtime changes.
 
@@ -43,7 +44,7 @@ follow-up, while preventing a stale aggregate from being mistaken for current
 - Source PRs: `PR corpus`
 - Lane: `parallel-safe`
 - Eval surface: classify again after implementation if changed files touch eval, benchmark, metrics, reports, configs, or claims.
-- Disallowed claim: do not claim product quality, benchmark lift, or private real-eval success from this draft alone.
+- Disallowed claim: do not claim product quality, benchmark lift, or current `real100_v2` private-eval success from this draft alone.
 
 ## Freshness Check
 
@@ -96,8 +97,8 @@ git diff --check
 - Lifecycle stage: implementation
 - Branch / worktree: eval/issue-1563-multi-chunk-followup-implementation / Codex worktree
 - Task: T-2026-0022
-- Current status: aggregate-only strategy decision implemented; concrete retrieval
-  change deferred until page-aware re-index evidence exists.
+- Current status: merged in PR #1576; aggregate-only strategy decision recorded
+  and concrete retrieval change deferred until page-aware re-index evidence exists.
 - Files touched: .githooks/pre-commit, scripts/render_multi_chunk_retrieval_strategy.py, tests/test_render_multi_chunk_retrieval_strategy.py, docs/evaluation/multi_chunk_retrieval_strategy.md, reports/real100/multi_chunk_retrieval_strategy.aggregate.json, docs/plans/T-2026-0022-use-multi-chunk-evidence-analysis-for-the-next-retrieval-fol.md, tasks/queue.md
 - Commands run: python3 -m pytest -q tests/test_render_multi_chunk_evidence_failures.py tests/test_render_multi_chunk_retrieval_strategy.py; python3 scripts/render_multi_chunk_retrieval_strategy.py; export REAL_EVAL_ROOT=/path/to/private/BidMate-DocAgent; python3 scripts/page_metadata_recovery_audit.py --index-dir "$REAL_EVAL_ROOT/data/index/real100_v2" --format markdown; python3 scripts/check_doc_links.py --check-all --paths docs/plans/T-2026-0022-use-multi-chunk-evidence-analysis-for-the-next-retrieval-fol.md docs/evaluation/multi_chunk_retrieval_strategy.md tasks/queue.md; bash -n .githooks/pre-commit; git diff --check; make check-branch
 - Results: strategy recommendation is `defer_until_page_metadata_recovery`; `real100_v2` has 100 parsed Markdown exports but current index page metadata coverage is 0.0.
