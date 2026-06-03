@@ -34,7 +34,7 @@
 | 6 | PAL / Code-as-Reasoning | **STRONG** | [`eval/`](../eval/) scorer, [`eval/bootstrap.py`](../eval/bootstrap.py), judge 스크립트, [`scripts/build_index.py`](../scripts/build_index.py) |
 | 7 | Spec-First / Test-First | **STRONG** | TEMPLATE의 Acceptance Criteria 우선, `tests/test_*_regression.py`, ADR, pre-commit 게이트 |
 | 8 | Evaluator-Optimizer / Critic | **STRONG** | pre-commit Codex adversarial([ADR 0066](adr/0066-codex-pr-adversarial-review.md)), [`docs/reviews/ai-review-checklists.md`](reviews/ai-review-checklists.md), [`scripts/run_real_eval_delta.py`](../scripts/run_real_eval_delta.py) |
-| 9 | Multi-Agent / Orchestrator | **STRONG** | [`docs/multi-agent-ownership.md`](multi-agent-ownership.md)(role 분담), [`docs/agent-utilization.md`](agent-utilization.md)(5축 × 4-pillar) |
+| 9 | Multi-Agent / Orchestrator | **STRONG** | [`docs/multi-agent-ownership.md`](multi-agent-ownership.md)(role 분담), [`docs/agent-utilization.md`](agent-utilization.md)(5축 × 4-pillar), [`overlap-preflight`](operations/ai-codex-workflow.md#overlap-preflight)(병행 worktree 시작 전 겹침 증거) |
 | 10 | Context Engineering / Memory | **STRONG** (미시 갭 有) | memory 시스템, [`tasks/queue.md`](../tasks/queue.md), plan 문서, [`docs/operations/long-session-workflow.md`](operations/long-session-workflow.md) |
 | 11 | Formal Methods / Solver | **PARTIAL (도메인 적합 형태 구현)** | statistical test = STRONG([`eval/bootstrap.py`](../eval/bootstrap.py) bootstrap CI); property/metamorphic test = 구현됨([`tests/test_retrieval_invariants_property.py`](../tests/test_retrieval_invariants_property.py), #1826); 일반형(Lean/SAT/SMT) = non-goal |
 
