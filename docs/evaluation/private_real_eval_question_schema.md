@@ -1,8 +1,10 @@
 # Private Real-Eval Question Schema
 
-Private questions live in ignored local JSONL, normally
-`data/private/questions.jsonl`. The readiness validator reports counts only and
-does not print question text. Examples below are fake placeholders.
+Private questions live in ignored local JSONL under the current private-eval
+surface, normally `data/private/real100_v2/questions.jsonl`. The readiness
+validator reports counts only and does not print question text. Examples below
+are fake placeholders. Legacy real100/v1/221/kordoc question paths are
+archive-only for new tasks, PRs, claims, and handoffs.
 
 ## Required Fields
 
