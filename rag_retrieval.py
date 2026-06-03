@@ -64,6 +64,7 @@ from typing import Any, Iterable
 
 import numpy as np
 
+from bidmate_data_boundary import ExternalPayloadBlocked
 from korean_lexicon import BM25_EXTRA_PARTICLE_SUFFIXES, BM25_EXTRA_STOPWORDS
 from rag_embedding import (
     DEFAULT_EMBEDDING_MODEL,
@@ -710,13 +711,45 @@ def embed_query_for_index(query: str, embedding_config: dict[str, Any]) -> np.nd
                 backend="sentence-transformers",
                 local_only=True,
             ).vectors[0]
-        except Exception:
-            return hashing_embeddings([query], dimension)[0]
+        except Exception as exc:
+            # Symmetric with embed_texts' build-time raise (rag_embedding.py).
+            # A silent hashing fallback here is unsafe: DEFAULT_HASH_DIM (384)
+            # collides with the default MiniLM dimension, so the hashing query
+            # vector passes dense_similarity's #784 shape guard and corrupts
+            # retrieval ranking against an ST-built index while the API still
+            # returns a "successful" answer. Fail loud at the call site.
+            # (The openai branch below stays a never-raise external-API
+            # fallback per ADR 0061; its dimension differs so #784 still fires.)
+            raise RuntimeError(
+                f"Failed to embed query with sentence-transformers model "
+                f"{model!r}: {exc}. Refusing to fall back to a hashing query "
+                f"vector (would silently corrupt retrieval ranking against an "
+                f"ST-built index — see #784). Rebuild with "
+                f"EMBEDDING_BACKEND=hashing or ensure the ST model loads."
+            ) from exc
     if backend == "openai":
         try:
             return embed_texts([query], model_name=model, backend="openai").vectors[0]
-        except Exception:
-            return hashing_embeddings([query], dimension)[0]
+        except ExternalPayloadBlocked:
+            # ADR 0005/0061 data-boundary block (assert_external_payload_allowed
+            # in _embed_with_openai). Propagate unchanged — masking it as the
+            # generic embedding RuntimeError below would hide a boundary
+            # violation from callers that catch ExternalPayloadBlocked.
+            raise
+        except Exception as exc:
+            # ADR 0061 mandates the openai embedding backend fail-closed
+            # ("openai 임베딩만 폴백 없는 백엔드라 raise 로 fail-closed"). A
+            # hashing query vector at the configured dimension can collide with
+            # an OpenAI-built index and pass dense_similarity's #784 shape
+            # guard, silently corrupting ranking — the same defect as the
+            # sentence-transformers branch above. embed_texts' openai path is
+            # already fail-closed at build time; keep query time symmetric.
+            raise RuntimeError(
+                f"Failed to embed query with OpenAI model {model!r}: {exc}. "
+                f"Refusing to fall back to a hashing query vector (would "
+                f"silently corrupt retrieval ranking against an OpenAI-built "
+                f"index — see #784). ADR 0061 mandates this backend fail-closed."
+            ) from exc
     return hashing_embeddings([query], dimension)[0]
 
 

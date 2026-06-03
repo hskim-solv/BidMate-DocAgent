@@ -159,22 +159,96 @@ class EmbedQueryForIndexOpenAITest(unittest.TestCase):
                 )
         self.assertEqual(vec.shape, (4,))
 
-    def test_openai_falls_back_to_hashing_when_sdk_missing(self) -> None:
+    def test_openai_failure_raises_instead_of_silent_hashing_fallback(self) -> None:
+        # issue #2138 — ADR 0061 mandates the openai embedding backend
+        # fail-closed ("openai 임베딩만 폴백 없는 백엔드라 raise"). A hashing
+        # query fallback at the configured dimension can collide with an
+        # OpenAI-built index and bypass dense_similarity's #784 shape guard,
+        # silently corrupting ranking. So an openai query embedding failure must
+        # raise — symmetric with the sentence-transformers branch and with
+        # embed_texts' build-time fail-closed behavior.
         import rag_core
 
         # Public-surface attestation passes the ADR 0061 ③ guard so the
-        # SDK-missing branch (not the boundary block) drives the graceful
-        # hashing fallback this test asserts (#1195).
+        # SDK-missing branch (not the boundary block) is exercised (#1195).
         with mock.patch.dict(
             os.environ, {"BIDMATE_DATA_SURFACE": "public_fixture"}, clear=False
         ), mock.patch.dict(sys.modules, {"openai": None}):
-            vec = rag_core.embed_query_for_index(
-                "안녕",
-                {"backend": "openai", "model": "text-embedding-3-large", "dimension": 8},
-            )
-        # Should silently fall back, matching the sentence-transformers branch's
-        # try/except path. Hashing returns dim=8 vectors.
-        self.assertEqual(vec.shape, (8,))
+            with self.assertRaises(RuntimeError) as ctx:
+                rag_core.embed_query_for_index(
+                    "안녕",
+                    {"backend": "openai", "model": "text-embedding-3-large", "dimension": 8},
+                )
+        msg = str(ctx.exception)
+        self.assertIn("OpenAI", msg)
+        self.assertIn("784", msg)
+
+    def test_openai_data_boundary_block_propagates_unchanged(self) -> None:
+        # ADR 0005/0061: a data-boundary violation must surface as
+        # ExternalPayloadBlocked, NOT be masked as the generic embedding
+        # RuntimeError the fix raises for other failures (issue #2138, Codex
+        # review). The query text would leave the process, so a private surface
+        # must block before any network call.
+        import rag_core
+        from bidmate_data_boundary import ExternalPayloadBlocked
+
+        with mock.patch.dict(
+            os.environ, {"BIDMATE_DATA_SURFACE": "private"}, clear=False
+        ):
+            # Hermetic: drop any approved egress override the host may export so
+            # the private-surface block is asserted deterministically (Codex
+            # review — test must not inherit BIDMATE_EGRESS_PROFILE).
+            os.environ.pop("BIDMATE_EGRESS_PROFILE", None)
+            with self.assertRaises(ExternalPayloadBlocked):
+                rag_core.embed_query_for_index(
+                    "안녕",
+                    {"backend": "openai", "model": "text-embedding-3-large", "dimension": 8},
+                )
+
+
+class EmbedQueryForIndexSentenceTransformersTest(unittest.TestCase):
+    """issue #2138 — a sentence-transformers query embedding failure must
+    raise, NOT silently fall back to a hashing vector.
+
+    ``DEFAULT_HASH_DIM`` (384) collides with the default MiniLM dimension, so a
+    hashing query vector would *pass* ``dense_similarity``'s #784 shape guard
+    and corrupt retrieval ranking against an ST-built index while the API still
+    returned a "successful" answer. The fix makes query-time symmetric with
+    ``embed_texts``' build-time raise.
+    """
+
+    def test_st_failure_raises_instead_of_silent_hashing_fallback(self) -> None:
+        import rag_core
+        import rag_embedding
+
+        rag_embedding.MODEL_CACHE.clear()
+        # Force the sentence-transformers import inside embed_texts to fail,
+        # mirroring the local BGE-M3 OOM / ST-load-failure environment.
+        with mock.patch.dict(sys.modules, {"sentence_transformers": None}):
+            with self.assertRaises(RuntimeError) as ctx:
+                rag_core.embed_query_for_index(
+                    "안녕",
+                    {
+                        "backend": "sentence-transformers",
+                        "model": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+                        "dimension": 384,
+                    },
+                )
+        msg = str(ctx.exception)
+        # Diagnostic must name the backend and reference the guard it would
+        # otherwise bypass, so the failure is actionable.
+        self.assertIn("sentence-transformers", msg)
+        self.assertIn("784", msg)
+
+    def test_hashing_backend_is_unaffected(self) -> None:
+        # ADR 0001 baseline: the default offline path (backend="hashing") never
+        # enters the sentence-transformers branch, so it stays byte-identical.
+        import rag_core
+
+        vec = rag_core.embed_query_for_index(
+            "안녕", {"backend": "hashing", "dimension": 384}
+        )
+        self.assertEqual(vec.shape, (384,))
 
 
 class _CapturingSentenceTransformer:
