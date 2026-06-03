@@ -2,6 +2,8 @@
 
 이 문서는 비공개 PDF/HWP 원본과 `data_list.csv`를 로컬에서 인덱싱하는 v1 경로를 설명한다. 공개 baseline인 `eval/fixtures/smoke_rfp/raw` public fixture RFP 실행 흐름은 그대로 유지한다. 원본 PDF/image를 직접 파싱하는 v2 경로는 [`visual-ingestion-v2.md`](../vision/visual-ingestion-v2.md)에 별도로 정리한다.
 
+> **Historical archive note.** 이 문서의 v1 optional profile `data/index/real100`, `outputs/real100`, `reports/real100/*` 경로와 관련 명령은 pre-`real100_v2` private-eval ingestion 기록 보존용이다. 현재 새 작업·PR·claim의 private eval 근거는 `real100_v2` 표면만 사용하며, 아래 v1 경로를 새 eval 근거로 재사용하지 않는다.
+
 ## 입력
 - `data/data_list.csv`: `공고 번호`, `공고 차수`, `사업명`, `사업 금액`, `발주 기관`, 날짜 필드, `사업 요약`, `파일형식`, `파일명`, `텍스트` 컬럼을 사용한다. 컬럼 audits는 [pre-flight 검증](#pre-flight-검증-issue-51)으로 분리해 본다.
 - `data/files/`: CSV의 `파일명`이 가리키는 PDF/HWP 파일 디렉터리다.
