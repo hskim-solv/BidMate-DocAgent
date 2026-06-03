@@ -6,7 +6,7 @@
 - Related issue / PR: example only
 - Related ADR: [ADR 0005](../adr/0005-eval-split-public-synthetic-private-local.md)
 - Created: 2026-05-25
-- Last updated: 2026-05-25
+- Last updated: 2026-06-03
 
 ## Problem Statement
 
@@ -21,7 +21,7 @@ Synthetic benchmark assets live under `data/eval/benchmark/` and
 must be built only from frozen corpus chunks and must not read questions, gold
 evidence, expected answers, or expected terms. The claim boundary is documented,
 but future agents can still weaken it by adding convenience code or docs that
-blur smoke, synthetic benchmark, and private real-eval.
+blur smoke, synthetic benchmark, and current `real100_v2` aggregate-only private eval.
 
 ## Desired Behavior
 
@@ -37,7 +37,7 @@ should make contamination and over-claiming harder to miss.
 - Eval/privacy constraints: ADR 0005 privacy and public/private split remain unchanged.
 - Tooling/CI constraints: generated run artifacts remain local unless explicitly allowed.
 - Non-goals: do not improve retrieval, reranking, answer generation, verifier behavior,
-  private real-eval scoring, or product-quality claims.
+  current `real100_v2` private eval scoring, or product-quality claims.
 
 ## Architecture Impact
 
@@ -61,7 +61,7 @@ should make contamination and over-claiming harder to miss.
 - Surface: public synthetic benchmark.
 - Data boundary: public synthetic corpus; generated run artifacts remain local.
 - Allowed claim: benchmark hardening improved contamination resistance.
-- Disallowed claim: RAG model quality improved on real RFPs.
+- Disallowed claim: RAG model quality improved on real RFPs or current `real100_v2` private-eval.
 - Baseline or control affected: no; `naive_baseline` remains the control.
 - Benchmark/eval auditor required: yes.
 
@@ -69,7 +69,7 @@ should make contamination and over-claiming harder to miss.
 
 1. Inspect benchmark index builder inputs and confirm it does not parse questions/gold.
 2. Add regression coverage if the invariant is not already tested.
-3. Tighten docs so synthetic result wording cannot be read as private real-eval evidence.
+3. Tighten docs so synthetic result wording cannot be read as current `real100_v2` private-eval evidence.
 4. Run validation and focused tests.
 
 ## Acceptance Criteria
@@ -98,7 +98,7 @@ Expected evidence:
 
 - validation report path and summary counts.
 - focused pytest result.
-- no real-world performance claim in changed docs.
+- no real-world or current `real100_v2` private-eval performance claim in changed docs.
 
 ## Rollback Strategy
 
@@ -134,7 +134,7 @@ questions, expected answers, expected terms, or gold evidence during index build
 - Task: T-EXAMPLE-001
 - Current status: proposed example plan
 - Files touched: N/A
-- Decisions made: Treat this as benchmark validity hardening, not model improvement.
+- Decisions made: Treat this as benchmark validity hardening, not model improvement or current `real100_v2` private-eval evidence.
 - Commands run: None; example only.
 - Results: N/A
 - Next safe command: python3 eval/naive_rag/validate_benchmark_dataset.py --help
