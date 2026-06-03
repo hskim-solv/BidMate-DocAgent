@@ -6,7 +6,7 @@ Allowed files:
 
 - `parse_inventory.aggregate.json`
 - `question_distribution.aggregate.json`
-- `benchmark_tiers.aggregate.json`
+- `benchmark_tiers.aggregate.json` — see [tier interpretation docs](../../docs/evaluation/real100_v2-benchmark-tiers.md)
 - `baseline.aggregate.json`
 - `latency_cost_budget.aggregate.json`
 - `reranker_candidate_budget.aggregate.json`
