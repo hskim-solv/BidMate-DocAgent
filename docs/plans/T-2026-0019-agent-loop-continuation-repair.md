@@ -1,9 +1,10 @@
 # Plan: T-2026-0019 Agent loop continuation repair
 
-- Status: review
+- Status: done
 - Owner role: Maintainer -> CI Reviewer -> Reviewer
 - Related task: `tasks/queue.md::T-2026-0019`
-- Issue: #1549
+- Issue / PR: #1549 / #1550; refresh issue #2081
+- Last updated: 2026-06-04
 
 ## Problem
 
@@ -30,7 +31,7 @@ dashboard should render the same status for human review.
 ## Non-Goals
 
 - Do not execute push, PR creation, merge, branch deletion, force-push, or
-  private real-eval from `loop-state`.
+  current `real100_v2` private eval from `loop-state`.
 - Do not remove `make ship-arm` single-shot behavior.
 - Do not hide task/plan linkage gaps.
 
