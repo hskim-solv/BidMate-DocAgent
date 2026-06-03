@@ -7,6 +7,13 @@
 - Related: ADR 0001 (naive_baseline byte-identical), ADR 0003 (answer dict 계약 / abstention 일급), ADR 0004 (partial-topic grounding strict→relaxed 정책), ADR 0005 (private/public eval 분리), ADR 0059 (failure-mode classifier)
 - Issue: #1008
 
+> **Current-policy note (2026-06-03)**: this ADR remains an accepted historical
+> decision record for the single-doc topic-grounding verifier change. Its legacy
+> `real-100` / 221-case motivating measurements are not current claim-bearing
+> private-eval evidence. New task, PR, claim, and handoff evidence must use the
+> `real100_v2` aggregate-only surface in [Surface Map](../evaluation/surface-map.md),
+> unless the maintainer explicitly re-enables another private-eval surface.
+
 ## Context
 
 Phase 5 audit finding #1 (`docs/audits/verifier-false-negative-inspection.md`, ADR 0059 / #1001·#1004 가 정량화)은 `verifier_false_negative` 를 real-100(n=221) failure 의 2위 카테고리로 측정했다 — unanswerable(`answerable=False`) 쿼리인데 verifier 가 sufficient 로 판정해 abstain 대신 답변을 emit 한 케이스 (`failure_classifier`: `not answerable and not abstained`).
@@ -37,7 +44,7 @@ inspection 의 핵심 신호: false-negative 케이스의 **81.6% 가 multi-doc 
 
 ## Consequences
 
-- real-100(n=221) A/B (동일 hashing 인덱스, main vs 본 변경): `verifier_false_negative` **76 → 68** (−8, −10.5%). 8건 전부 `incorrect_answer → correct_refusal` 로 전환. **accuracy 0.161 무변** (정답 손실 0), **`verifier_false_positive` 0 유지** (근거 충분한 answerable 쿼리의 잘못된 거부 0), abstention 0.262 → 0.340 (의도된 상승, 이슈 본문 `[ALLOW_REGRESSION]` 범주).
+- Historical real-100(n=221) A/B (동일 hashing 인덱스, main vs 본 변경): `verifier_false_negative` **76 → 68** (−8, −10.5%). 8건 전부 `incorrect_answer → correct_refusal` 로 전환. **accuracy 0.161 무변** (정답 손실 0), **`verifier_false_positive` 0 유지** (근거 충분한 answerable 쿼리의 잘못된 거부 0), abstention 0.262 → 0.340 (의도된 상승, 이슈 본문 `[ALLOW_REGRESSION]` 범주).
 - 남은 68 의 다수는 audit 의 "expected doc 은 검색됐는데 verifier 실패"(28.9%) — *문서는 맞지만 그 안에 답이 없는* chunk-level 의미 불일치로, single-doc grounding 으로는 못 잡는다. chunk-level claim alignment(audit 가설 #4) 는 별 issue/ADR 범위.
 - production 답변 계약(ADR 0003) 무변 — verified 판정만 강화, answer dict shape/`schema_version` 불변.
 
@@ -46,7 +53,7 @@ inspection 의 핵심 신호: false-negative 케이스의 **81.6% 가 multi-doc 
 - **ADR 0001** (`naive_baseline` byte-identical) — naive_baseline 은 `verify_evidence` 미호출(`verified = bool(evidence)`, `rag_core.py`). 본 변경은 `verifier_retry` arm(agentic_full/metadata_first) 한정. `tests/test_naive_baseline_ranking_invariance.py` 통과.
 - **ADR 0003** (answer dict 계약, abstention 일급) — 진짜 근거 부족은 그대로 `status: insufficient`. 본 변경은 cross-doc spread 라는 *거짓 충분* 만 제거하므로 abstention semantic 강화이지 위반 아님.
 - **ADR 0004** (partial-topic grounding) — partial 회복의 fraction/matched floor 와 #687 cross-entity guard 를 그대로 계승, single-doc 차원만 추가. `tests/test_partial_topic_grounding.py` 전 케이스 통과.
-- **ADR 0005** (private/public 분리) — 측정은 gitignored local config(real-100) 기반, 신규 커밋 데이터 0. aggregate 수치만 본 ADR 에 인용(per-case 텍스트 미노출).
+- **ADR 0005** (private/public 분리) — 당시 측정은 gitignored local config(real-100) 기반, 신규 커밋 데이터 0. aggregate 수치만 본 ADR 에 인용(per-case 텍스트 미노출). 현재 신규 claim-bearing evidence 는 위 current-policy note 의 `real100_v2` aggregate-only 경계를 따른다.
 
 ## Verification
 
