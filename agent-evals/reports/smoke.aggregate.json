@@ -1,0 +1,34 @@
+{
+  "generated_by": "agent-evals-pr2-smoke",
+  "metrics": {
+    "hidden_gate_pass_rate": {
+      "baseline": "v0_naive",
+      "baseline_mean": 0.333333,
+      "candidate": "v1_spec_first",
+      "candidate_mean": 0.666667,
+      "delta": 0.333334,
+      "losses": 0,
+      "metric": "hidden_gate_pass_rate",
+      "n": 3,
+      "ties": 1,
+      "wins": 2
+    }
+  },
+  "notes": [
+    "report-before-expansion smoke only",
+    "directional paired signal, not absolute leaderboard",
+    "aggregate counts only"
+  ],
+  "playbooks": {
+    "baseline": "v0_naive",
+    "candidate": "v1_spec_first"
+  },
+  "report_id": "smoke",
+  "scanner": {
+    "content_scan": "pass",
+    "path_allowlist": "PR2"
+  },
+  "schema_version": 1,
+  "surface": "agent-evals-pr2",
+  "task_count": 3
+}

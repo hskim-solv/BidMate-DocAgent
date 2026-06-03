@@ -1,0 +1,10 @@
+task_id: T-smoke-001
+source: smoke_synthetic_contract
+category: hook_privacy
+train_hint: prefer local guard before broad workflow changes
+acceptance:
+  - preserve deny-by-default boundary
+  - add scanner-backed commit exception only for curated surface files
+hidden_test_gate: unseen forced-add artifact remains blocked
+aggregate_only_notes:
+  - no raw issue, PR, patch, filename, path, query, answer, or evidence text

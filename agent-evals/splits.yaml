@@ -1,0 +1,12 @@
+schema_version: 1
+surface: agent-evals-pr2
+freshness_exclusion_days: 30
+assignment:
+  train:
+    - T-smoke-001
+    - T-smoke-002
+  holdout:
+    - T-smoke-003
+notes:
+  - smoke split only; full holdout expansion is PR3
+  - no raw issue, PR, patch, filename, path, query, answer, or evidence text

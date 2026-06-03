@@ -1,0 +1,10 @@
+task_id: T-smoke-003
+source: smoke_synthetic_contract
+category: doc_contract
+train_hint: state privacy and freshness exclusions before expansion
+acceptance:
+  - mark smoke report as report-before-expansion
+  - keep holdout expansion outside PR2
+hidden_test_gate: unseen split freshness exclusion remains documented
+aggregate_only_notes:
+  - no raw issue, PR, patch, filename, path, query, answer, or evidence text
