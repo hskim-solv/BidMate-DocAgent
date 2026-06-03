@@ -1,12 +1,12 @@
 # Plan: T-2026-0006 Human Review Surface
 
-- Status: review
+- Status: done
 - Owner role: Implementer -> Reviewer
 - Related task: `tasks/queue.md::T-2026-0006`
-- Related issue / PR: [#1506](https://github.com/hskim-solv/BidMate-DocAgent/issues/1506) / PR TBD
+- Related issue / PR: [#1506](https://github.com/hskim-solv/BidMate-DocAgent/issues/1506) / [#1509](https://github.com/hskim-solv/BidMate-DocAgent/pull/1509); refresh issue #2089
 - Related ADR: N/A - no decision-level change
 - Created: 2026-05-26
-- Last updated: 2026-05-26
+- Last updated: 2026-06-04
 
 ## Problem Statement
 
@@ -96,9 +96,9 @@ over-claim.
 
 - Role: Implementer
 - Branch / worktree: chore/issue-1506-human-review-surface / /Users/hskim/.codex/worktrees/8ed1/BidMate-DocAgent
-- Issue / PR: #1506 / PR TBD
+- Issue / PR: #1506 / PR #1509
 - Task: T-2026-0006
-- Current status: implementation complete, validation passing.
+- Current status: merged in PR #1509.
 - Files touched: scripts/ai_next_actions.py, tests/test_ai_next_actions.py, docs/operations/ai-codex-workflow.md, docs/reviews/README.md, tasks/queue.md, docs/plans/T-2026-0006-human-review-surface.md
 - Decisions made: local self-contained HTML, no JS/dependencies, non-evidence status board.
 - Commands run: python3 -m py_compile scripts/ai_next_actions.py; python3 -m pytest -q tests/test_ai_next_actions.py; python3 scripts/check_doc_links.py --check-all; git diff --check; make check-branch
