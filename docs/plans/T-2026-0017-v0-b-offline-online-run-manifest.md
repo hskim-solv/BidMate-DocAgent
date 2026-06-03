@@ -1,12 +1,12 @@
 # Plan: T-2026-0017 v0-b offline/online run manifest
 
-- Status: review
+- Status: done
 - Owner role: Maintainer -> Benchmark Auditor -> Privacy Auditor -> Reviewer
 - Related task: `tasks/queue.md::T-2026-0017`
-- Related issue / PR: [#1542](https://github.com/hskim-solv/BidMate-DocAgent/issues/1542) / [#1545](https://github.com/hskim-solv/BidMate-DocAgent/pull/1545)
+- Related issue / PR: [#1542](https://github.com/hskim-solv/BidMate-DocAgent/issues/1542) / [#1545](https://github.com/hskim-solv/BidMate-DocAgent/pull/1545); refresh issue #2079
 - Related ADR: [ADR 0079](../adr/0079-agent-gated-offline-online-rfp-eval-loop.md)
 - Created: 2026-05-27
-- Last updated: 2026-05-27
+- Last updated: 2026-06-04
 
 ## Problem Statement
 
@@ -40,7 +40,7 @@ standalone privacy-safe manifest artifact for review and handoff.
 - Eval/privacy constraints: aggregate/provenance only; no raw private content or
   exact local paths.
 - Tooling/CI constraints: keep tests deterministic and offline.
-- Non-goals: do not run private real-eval and do not make a performance claim.
+- Non-goals: do not run current `real100_v2` private eval and do not make a performance claim.
 
 ## Architecture Impact
 
@@ -65,7 +65,7 @@ standalone privacy-safe manifest artifact for review and handoff.
 
 ## Data / Eval Impact
 
-- Surface: private real-eval provenance / eval harness plumbing.
+- Surface: current `real100_v2` private-eval provenance / eval harness plumbing; not metric or performance evidence.
 - Data boundary: aggregate-only private output; no data touched.
 - Allowed claim: manifest/provenance automation works.
 - Disallowed claim: no benchmark, metric, regression, or RFP quality claim.
@@ -108,13 +108,13 @@ Expected evidence:
 - Generated or updated artifact: local `reports/agent_loop/offline_online_run_manifest.json`.
 - Reviewer checklist or manual inspection: no raw private content and no
   performance claim.
-- Explicitly not validated, with reason: private real-eval not run; this is
-  manifest plumbing only.
+- Explicitly not validated, with reason: current `real100_v2` private eval
+  not run; this is manifest plumbing only.
 
 ## Rollback Strategy
 
-Revert the PR. Do not delete local private eval outputs or ignored real-eval
-artifacts during rollback.
+Revert the PR. Do not delete local current `real100_v2` private eval outputs
+or ignored real-eval artifacts during rollback.
 
 ## Failure Modes
 
@@ -147,7 +147,7 @@ must not be reviewed as a performance or metric improvement.
 - Branch / worktree: chore/issue-1542-offline-online-manifest / /Users/hskim/.codex/worktrees/1542/BidMate-DocAgent
 - Task: T-2026-0017
 - Issue / PR: #1542 / #1545
-- Current status: implementation validated; ready for PR review
+- Current status: merged in PR #1545
 - Files touched: eval/run_eval.py, scripts/agent_loop.py, scripts/run_real_eval_delta.py, docs/evaluation/offline-online-run-manifest.md, docs/evaluation/agent-gated-rfp-eval-loop.md, docs/evaluation/v0-metric-suite-inventory.md, docs/plans/T-2026-0017-v0-b-offline-online-run-manifest.md, tasks/queue.md, tests/test_agent_loop.py, tests/test_eval_metrics.py, tests/test_run_manifest_versioning_regression.py, tests/test_run_real_eval_delta.py
 - Commands run: python3 -m pytest tests/test_agent_loop.py tests/test_run_manifest_versioning_regression.py tests/test_eval_metrics.py tests/test_run_real_eval_delta.py -q; python3 -m py_compile scripts/agent_loop.py eval/run_eval.py scripts/run_real_eval_delta.py; python3 scripts/agent_loop.py eval-run-manifest --mode offline --payload-class none --egress-mode none --provider local --model local-judge-v1 --judge-backend local-llm; python3 scripts/check_doc_links.py --check-all --paths docs/evaluation/agent-gated-rfp-eval-loop.md docs/evaluation/offline-online-run-manifest.md docs/evaluation/v0-metric-suite-inventory.md docs/plans/T-2026-0017-v0-b-offline-online-run-manifest.md tasks/queue.md; git diff --check; make check-branch; python3 scripts/_governance.py --check-eval-privacy
 - Results: passed
@@ -157,5 +157,5 @@ must not be reviewed as a performance or metric improvement.
 - Next action: run focused validation
 - Next safe command: python3 -m pytest tests/test_agent_loop.py tests/test_run_manifest_versioning_regression.py tests/test_eval_metrics.py tests/test_run_real_eval_delta.py -q
 - Reviewer focus: privacy-safe scalar whitelist, backward-compatible manifest fields, no performance claim
-- Eval surface: provenance plumbing only; no private real-eval run
+- Eval surface: provenance plumbing only; no current `real100_v2` private-eval run
 ```
