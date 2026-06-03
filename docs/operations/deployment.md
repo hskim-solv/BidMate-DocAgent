@@ -17,6 +17,9 @@ CLI / eval 흐름(배포 아님)에 대해서는
 
 ## Pre-flight 체크리스트
 
+- [ ] 병행 Codex/Claude worktree에서 배포 PR 또는 배포 증거를 만들고 있다면
+      [`overlap-preflight`](./ai-codex-workflow.md#overlap-preflight) 결과와
+      evidence sink를 PR에 남겼다.
 - [ ] `make smoke` 가 로컬에서 통과 — 데모는 같은 파이프라인을 실행한다.
 - [ ] `data/index/index.json` 이 존재(또는 컨테이너가 첫 시작 시
       빌드한다 — cold start 에 ~10 s 추가).
