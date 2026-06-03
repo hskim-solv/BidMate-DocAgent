@@ -1,3 +1,9 @@
+---
+layout: page
+title: 측정 도구가 자기 함정을 발견했을 때 — 5-step closed loop
+permalink: /blog/2026-05-goodhart-closed-loop/
+---
+
 # 측정 도구가 자기 함정을 발견했을 때 — 5-step closed loop
 
 > 이 글은 5 PR / 3 ADR / 2 audit 의 closed measurement loop 를 문서화한다.
