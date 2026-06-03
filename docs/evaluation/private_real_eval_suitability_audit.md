@@ -1,5 +1,11 @@
 # Private Real-Eval Suitability Audit
 
+> **Snapshot note.** 이 audit 의 verdict 는 작성 당시 checkout 에 대한 historical
+> readiness snapshot 이며, 현재 private eval 준비 상태나 claim 근거가 아니다. 새
+> 작업·PR·claim 에서 private eval readiness 를 주장하려면 현재 `real100_v2` 표면을
+> `make real-eval-v2-check`, `make real-eval-v2-inventory`,
+> `make real-eval-v2-guard` 로 다시 검증해야 한다.
+
 ## Executive Summary
 
 최종 verdict: **A. Not ready**.
