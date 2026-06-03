@@ -61,14 +61,16 @@ make test-regression  # P0 retrieval-loop / answerable-smoke regression guards (
 
 ## Partial-topic 근거 연결(grounding) (issue #69)
 
-`docs/real-data/real-data-failure-taxonomy.md` C6 는 실제 corpora 에서 남은
-영향력 최고의 실패로 false abstention 을 지목했다: 12 개 real100
-누락 중 9 개가 `retry_trigger_reason: topic_not_grounded × 2` 로 끝났다 —
-strict 와 relaxed 단계 모두 동일하게 약하지만 사용 가능한 근거를 거부했는데,
-verifier 가 **모든** verification topic 이 결합된 근거 텍스트에 나타나도록
-요구했기 때문이다. 의도된 abstention 케이스
-(P-13~15)는 이미 강건했다; 실패는 under-strict 검색이 아니라
-over-strict 검증이었다.
+`docs/real-data/real-data-failure-taxonomy.md` C6 는 issue #69 당시 배경을
+설명하기 위한 historical v1 `real100` archive-only context 로만 인용한다
+(현재 private eval 근거 아님): 그 snapshot 에서는 false abstention 12 개 중
+9 개가 `retry_trigger_reason: topic_not_grounded × 2` 로 끝났다. 아래 내용은
+그때 partial-topic grounding 을 시도한 배경 기록이며, 새 작업·PR·claim 의
+정량 근거로 재사용하려면 별도 `real100_v2` 검증을 먼저 추가해야 한다. 당시
+해석은 strict 와 relaxed 단계 모두 사용 가능한 근거를 거부했고 verifier 가
+**모든** verification topic 이 결합된 근거 텍스트에 나타나도록 요구했다는
+것이었다. 의도된 abstention 케이스(P-13~15)는 이미 강건했다는 해석도 같은
+historical snapshot 범위에 한정한다.
 
 ### 무엇이 바뀌었나
 
@@ -95,10 +97,10 @@ over-strict 검증이었다.
 strict-vs-relaxed 노브(knob)다. trade-off 는
 명시적이다:
 
-- **얻은 것**: 유의미한 비율의 false-abstention 쿼리가
-  `insufficient` 대신 `partial` 로 회복된다. public fixture smoke eval 에서는
-  새 `partial_topic_security_quantum` 케이스가 in-tree
-  가드로 함께 머지된다; real-data 영향은 C6 backlog (9 케이스)에서 기대된다.
+- **얻은 것**: 현재 in-tree 로 증명된 이득은 public fixture smoke eval 의
+  새 `partial_topic_security_quantum` 케이스가 `insufficient` 대신
+  `partial` 로 회복되는 것이다. 현재 real-data 영향은 별도 `real100_v2`
+  aggregate 검증 전까지 미확인이다.
 - **비용**: `citation_precision` 이 약간 떨어질 수 있는데, partial
   답변이 요청된 topic 중 일부만 근거 짓는 chunk 에 대한
   citation 을 포함할 수 있기 때문이다. 상태 자체(`partial`)가
