@@ -24,6 +24,13 @@ real-eval aggregate에서만 후보로 삼을 수 있다.
 `private real-eval aggregate`도 raw output 자체가 아니라 privacy check를 통과한
 aggregate summary만 claim 후보가 된다.
 
+현재 claim-bearing private real-eval 표면은 `real100_v2`다. 새 작업은
+`data/private/real100_v2/real_config_v2.local.yaml` 또는 `REAL100_V2_CONFIG`가
+가리키는 ignored local config를 사용하고, `make real-eval-v2-check` /
+`make real-eval-v2-guard`로 legacy real100/v1 경계가 fail-closed인지 확인한다.
+Legacy real100/v1/221/kordoc evidence는 maintainer가 명시적으로 다시 열기
+전까지 새 claim, PR, handoff에 쓰지 않는다.
+
 ## Definition Of Ready
 
 성능 개선 PR을 시작하기 전 다음 항목이 준비돼야 한다.
@@ -60,26 +67,38 @@ content가 제거된 aggregate summary 또는 문서화된 checklist뿐이다.
 
 ## Exact Local Commands
 
-이 readiness workflow의 단일 local config는 `eval/real_config.local.yaml`이다.
-별도의 `configs/eval/private_real_eval.local.yaml`를 만들지 않는다.
+이 readiness workflow의 current-use local config는
+`data/private/real100_v2/real_config_v2.local.yaml`이다. 다른 ignored local v2
+config를 써야 하면 `REAL100_V2_CONFIG`로 명시한다.
+`eval/real_config.local.yaml` 또는 `configs/eval/private_real_eval.local.yaml`는
+compatibility/local-only 실험 경로일 뿐이며, 새 기준선 claim은 `real100_v2`
+surface로 수렴시킨다.
 
 Parse/data readiness audit:
 
 ```bash
-python3 scripts/audit_private_data_readiness.py --config eval/real_config.local.yaml --out-dir experiments/private_runs/readiness_audit
+python3 scripts/audit_private_data_readiness.py \
+  --config data/private/real100_v2/real_config_v2.local.yaml \
+  --out-dir experiments/private_runs/readiness_audit
 ```
 
 Validate-only:
 
 ```bash
-python3 scripts/check_private_real_eval_readiness.py --config eval/real_config.local.yaml
+REAL100_V2_CONFIG=data/private/real100_v2/real_config_v2.local.yaml make real-eval-v2-check
+make real-eval-v2-guard
 ```
 
 Baseline run:
 
 ```bash
-python3 scripts/run_private_real_eval.py --config eval/real_config.local.yaml
+REAL_EVAL_ROOT=<private-real-eval-root> make real-eval-v2-chroma
 ```
+
+Direct runner invocations remain local-only compatibility paths. If used, their
+config must keep `output_dir`, `index_dir`, `index_build.hwp_pdf_artifact_dir`,
+`run_id`, and `redacted_summary_path` inside the current `real100_v2` guard
+boundary.
 
 ## Privacy Boundary
 
