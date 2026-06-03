@@ -11,6 +11,11 @@
 
 아래 5개 모드는 정본 taxonomy 의 C1–C6 에 대응한다 (A=C2, B=C1/C2, C=C6, D=C4, E=C5).
 
+## Evidence boundary
+
+- 이 문서는 failure-mode 설명용 case study 이며, archive-only v1 `real100` taxonomy 를 current private-eval 성능 주장으로 승격하지 않는다.
+- Reviewer takeaway 의 정량 수치는 현재 README/eval artifact 로 추적되는 지표 포인터다. 새로운 private-eval claim 은 `real100_v2` aggregate-only 근거를 명시해야 한다.
+
 ---
 
 ## A. Comparison query starvation (비교 질의 한쪽 문서 기아)
