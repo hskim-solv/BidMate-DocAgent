@@ -44,6 +44,11 @@ artifacts/runs/<run_id>/
 
 `artifacts/runs/`는 Git 추적 대상이 아니다. 공개 fixture smoke라도 raw prediction과 로그는 로컬 검증 산출물로 유지한다.
 
+병행 Codex/Claude worktree에서 harness를 실행해 PR 근거로 쓰는 경우, 실행 전
+[`overlap-preflight`](ai-codex-workflow.md#overlap-preflight) 결과를 함께 남긴다.
+`clear` 또는 정당화된 `warn` 결과가 있어야 해당 run artifact가 다른 세션의 변경과
+겹치지 않았음을 설명할 수 있다.
+
 ## 스키마
 
 `run_manifest.json`은 다음 필드를 포함한다.
