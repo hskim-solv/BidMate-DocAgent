@@ -19,8 +19,8 @@ PR4 표준 (5-field+)::
 
     outcome ∈ {aware, blocked, bypassed, false_positive,
                false_negative, nudged, pipeline_start, pipeline_end}
-    hook    ∈ {bash-guard, loadbearing, memory-lines, adr-template,
-               plan-slug-race, delegation-gate, stop-ship}
+    hook    ∈ ``_governance.KNOWN_HOOKS`` — 단일 출처 (``ALL_HOOKS`` 가 이로부터
+               파생되므로 hook 명을 여기서 중복 나열하지 않는다)
 
 Legacy 3-field (loadbearing 현재 포맷)::
 
