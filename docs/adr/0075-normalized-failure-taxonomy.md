@@ -54,6 +54,12 @@ signal stable while decomposing the old residual bucket.
   answer, ingestion, API, and preset defaults are not part of this decision.
 - Private raw content remains local-only. Committed reports contain aggregate
   counts and closed buckets only.
+- Current private-eval evidence for new tasks, PRs, claims, and agent handoffs
+  must use the `real100_v2` aggregate-only surface. The v1 taxonomy/baseline
+  context above, plus legacy real100/v1/221/kordoc aggregate wording, is
+  archive-only unless the maintainer explicitly re-enables a named private-eval
+  surface through a later ADR and Surface Map update that list allowed paths,
+  commands, and the aggregate-only boundary.
 
 ## Verification
 
