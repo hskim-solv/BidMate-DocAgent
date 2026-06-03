@@ -6,9 +6,10 @@ This template is for redacted aggregate reporting only. Do not include raw priva
 
 - Run ID: `TBD`
 - System: Naive Dense RAG
-- Data boundary: private local data, aggregate-only report
-- Runner: `python3 -m eval.naive_rag.private_real_eval`
-- Status: not executed until local validation passes
+- Data boundary: private local `real100_v2` data, aggregate-only report under `reports/real100_v2/`
+- Runner: `python3 scripts/run_private_real_eval.py --config <ignored-local-real100_v2-config>`
+- Required guards: `make real-eval-v2-check`, `make real-eval-v2-inventory`, `make real-eval-v2-guard`
+- Status: not executed until current `real100_v2` local validation passes
 
 ## Dataset Summary
 
@@ -62,7 +63,8 @@ Ready for improvement experiments only if all are true:
 
 ## Known Limitations
 
-- Private aggregate only; raw cases and traces remain local.
+- Private `real100_v2` aggregate only; raw cases and traces remain local.
 - Answer metrics are deterministic contract checks, not an LLM judge.
 - Latency is runner wall-clock unless a narrower local profiler is added.
 - No retrieval, reranking, prompt, chunking, verifier, or self-correction improvement is included.
+- Legacy real100/v1/221/kordoc outputs are archive-only and must not be used as new report evidence.
