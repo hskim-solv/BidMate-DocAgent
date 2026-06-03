@@ -34,7 +34,8 @@ repo-local task queue다. GitHub issue를 대체하지 않는다. 목적은 "다
    이때 Codex, Claude Code, 루트 checkout, `.codex/worktrees/*`, `.claude/worktrees/*`, 그리고 `git worktree list`에 잡히는 외부 worktree를 모두 같은 coordination surface로 본다.
 5. preflight가 `blocked`이면 그 task를 시작하지 말고 다른 issue를 고른다.
    `warn`이면 branch/PR history 경고를 기록하고, 파일 겹침이 없는지 확인한 뒤 진행한다.
-6. 시작 시 status를 `running`으로 바꾸고 `Handoff Notes`에 branch/worktree와 첫 명령을 남긴다.
+6. 시작 시 status를 `running`으로 바꾸고 `Handoff Notes`에 branch/worktree,
+   overlap-preflight 결과/evidence path, 첫 명령을 남긴다.
 7. 끝나면 status를 `review` 또는 `done`으로 바꾸고 validation output, artifact, PR/commit link를 남긴다.
 
 `backlog` task는 missing decision이나 validation이 남아 있다는 뜻이다. agent는
@@ -57,6 +58,7 @@ repo-local task queue다. GitHub issue를 대체하지 않는다. 목적은 "다
 - `Evidence Required`
 - `Failure Conditions`
 - `Related Plan / Issue / PR Links`
+- `Overlap Preflight`
 - `Handoff Notes`
 
 ## Operating Rules
@@ -89,5 +91,6 @@ repo-local task queue다. GitHub issue를 대체하지 않는다. 목적은 "다
 - Evidence Required:
 - Failure Conditions:
 - Related Plan / Issue / PR Links:
+- Overlap Preflight: clear | warn | blocked | N/A; evidence: <path or command output>
 - Handoff Notes:
 ```
