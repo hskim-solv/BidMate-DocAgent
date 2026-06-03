@@ -26,6 +26,11 @@
 - `reports/**/eval_summary.json` — smoke / eval 산출물
 - `reports/retrieval/**/REPORT.md` — retrieval-eval skill phase 보고서
 
+Current claim-bearing private eval evidence is `real100_v2` only. Legacy
+`reports/real100/` artifacts remain in this renderer's documented input and
+privacy-scan scope so historical artifacts are still checked before any HTML
+view is generated; they are not current private-eval claim evidence.
+
 ## 입력 denylist (ADR 0005 boundary)
 
 다음은 자동으로 거부된다 (exit 2 `denied`, stderr 에 사유):
@@ -39,6 +44,10 @@
 - `EVAL_PRIVACY_ARTIFACT_GLOBS` (`reports/retrieval`, `reports/real100`,
   `reports/real100_v2`) 아래: `_governance.find_eval_private_text`
   (한글 문자 + 콜론 포함 dict key)
+
+`reports/real100` is included here as a historical privacy-scan surface, not as
+permission to use legacy real100/v1 outputs for new task, PR, claim, or handoff
+evidence.
 
 2026-05-21 #1144 (realistic-metadata `raw_results.json` 의 `gold_agency`
 실값 committed 노출 → history-rewrite) 재발 방지가 명시 동기.
