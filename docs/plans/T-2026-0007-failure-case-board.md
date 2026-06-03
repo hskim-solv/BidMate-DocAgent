@@ -22,6 +22,13 @@ Running the failure distribution renderer writes the existing committable
 Markdown and aggregate JSON plus a local `reports/real100/failure_distribution.html`
 file. The HTML is deterministic, dependency-free, and aggregate-only.
 
+Current-use boundary: the `reports/real100/failure_distribution.html` output is
+historical local review context only. It is not current claim-bearing private
+evidence; new task, PR, claim, and handoff decisions must use the `real100_v2`
+aggregate-only surface in [Surface Map](../evaluation/surface-map.md), or
+regenerate matching v2 failure-board outputs before treating the board as
+current evidence.
+
 ## Constraints
 
 - Scope: reviewer tooling only.
