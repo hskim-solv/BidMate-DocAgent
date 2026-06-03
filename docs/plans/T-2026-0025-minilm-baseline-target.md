@@ -21,6 +21,13 @@ Make the three baseline surfaces explicit:
 - `make real-eval-minilm`: MiniLM sentence-transformers private baseline.
 - `make real-eval-semantic`: BGE-M3 semantic comparison surface.
 
+Current-use boundary: this plan records historical target disambiguation. Under
+the current policy, legacy `make real-eval-minilm`, `make real-eval-semantic`,
+and `real100_minilm`/`real100_m3` path names are archive-only for new task, PR,
+claim, and handoff evidence unless the maintainer explicitly re-enables them.
+Use the `real100_v2` aggregate-only surface in [Surface Map](../evaluation/surface-map.md)
+for current private-eval claims.
+
 ## Scope
 
 - Add a named MiniLM target with isolated local index/output/report paths.
