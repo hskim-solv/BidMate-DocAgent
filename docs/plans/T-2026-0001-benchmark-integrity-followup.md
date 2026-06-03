@@ -6,7 +6,7 @@
 - Related issue / PR: [#1485](https://github.com/hskim-solv/BidMate-DocAgent/issues/1485) / PR TBD
 - Related ADR: [ADR 0005](../adr/0005-eval-split-public-synthetic-private-local.md)
 - Created: 2026-05-25
-- Last updated: 2026-05-25
+- Last updated: 2026-06-04
 
 ## Problem Statement
 
@@ -108,7 +108,8 @@ Expected evidence:
 - Test/eval output: validator pass and focused pytest pass.
 - Generated or updated artifact: local validation JSON under `reports/benchmark/`.
 - Reviewer checklist or manual inspection: Benchmark Validity Audit.
-- Explicitly not validated, with reason: private real-eval is out of scope.
+- Explicitly not validated, with reason: current `real100_v2` private eval is
+  out of scope for public synthetic benchmark integrity validation.
 
 ## Rollback Strategy
 
