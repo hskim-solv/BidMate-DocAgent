@@ -58,12 +58,13 @@ ADR 0059 의 read-only consumer boundary 가 본 지표에도 그대로 — prod
 - 신규 measurement surface 1차원 추가 — `comparison_groundedness` per-case + aggregate 키.
 - production code path 0 변경 — `rag_*.py`, `api/`, `eval/config.yaml` 무수정. naive_baseline 합성 산출물 byte-identical.
 - **실측(real-100) 한계**: ADR 0070 이 정량화한 catalog-gold construct-validity 결함 (committed `expected_terms` 가 본문 부재) 이 본 지표에도 그대로 상속됨 — `contains_all_terms` 기반이므로. 따라서 본 loop 의 load-bearing 신호는 공개 합성 (expected_terms 가 합성 본문에 존재) 비교 슬라이스이며, 실측 비교 슬라이스는 ADR 0070 content-grounded gold 의 comparison 확장 (follow-up) 이후에 의미를 갖는다.
+- **Current private-eval boundary**: 이 ADR 의 `real-100` / 실측 비교 슬라이스 언급은 당시 historical measurement context 이다. 현재 claim-bearing private-eval 근거는 `real100_v2` aggregate-only 표면으로 한정하며, legacy real-100/n=221/kordoc aggregate wording 은 archive-only 로 취급한다.
 
 ## Invariance check
 
 - **ADR 0001** (naive_baseline byte-identical) — read-only scorer 확장, production 코드 0 변경 → 합성 baseline 영향 없음. 신규 키만 추가.
 - **ADR 0003** (answer dict `schema_version=2`) — 변경 없음. 본 확장은 `case_results` (eval scorer 출력) 이지 answer 계약과 무관.
-- **ADR 0005** (private/public 분리) — aggregate-only commit 패턴 그대로. 실측 비교 슬라이스는 n=1 (issue #1399 의 후속 데이터 확장 범위 밖) — 본 loop 의 load-bearing 신호는 공개 합성.
+- **ADR 0005** (private/public 분리) — aggregate-only commit 패턴 그대로. 실측 비교 슬라이스는 n=1 (issue #1399 의 후속 데이터 확장 범위 밖) — 본 loop 의 load-bearing 신호는 공개 합성. 현재 private-eval claim 은 `real100_v2` aggregate-only 근거가 필요하다.
 - **ADR 0054** (substantive-only semantics) — None/0.0 규칙이 ADR 0054 의 conditional-on-answer semantic 을 그대로 계승.
 - **ADR 0070** (content-grounded gold) — 본 지표는 채점기(scorer) 측 확장, ADR 0070 은 gold 구성 측 — 직교. 단 real-100 상속 한계는 위 Consequences 에 명시.
 - **ADR 0072** (verifier single-doc grounding) — comparison 면제로 남긴 측정 공백을 본 지표가 계측 측면에서 보완. verifier 동작 무변경.
@@ -77,6 +78,6 @@ ADR 0059 의 read-only consumer boundary 가 본 지표에도 그대로 — prod
 ## Out-of-scope
 
 - **Answer-builder per-target claim 선택 수정** — `build_comparison_claims` 의 first-match-only (`entity_evidence[0]`) + target-blind `best_sentence` ([rag_answer.py](../../rag_answer.py)). 본 지표가 드러내는 신호로 정당화되는 loop #2 별 PR (ADR 0072 의 "가설 #4" 계열).
-- **실측 비교 케이스 n=1 → ≥10 확장 + content-grounded comparison gold** — ADR 0070 의 comparison 확장 (follow-up). private real-eval 데이터셋 (ADR 0005/0052 경계).
+- **실측 비교 케이스 n=1 → ≥10 확장 + content-grounded comparison gold** — ADR 0070 의 comparison 확장 (follow-up). 현재 정책에서는 `real100_v2` aggregate-only private-eval 경계(ADR 0005/0052 및 current project policy) 안에서만 claim 근거로 사용할 수 있다.
 - **Verifier graded scoring** — 현재 binary pass/fail. 별 ADR.
 - **Citation↔target alignment assertion** — `make_citation` 의 대상-인용 정합성 검사. 별 follow-up.
