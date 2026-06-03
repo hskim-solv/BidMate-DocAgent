@@ -210,8 +210,21 @@ def compute_spread(rows: list[dict[str, Any]]) -> dict[str, Any]:
         for r in rows
         if r["routed"]["accuracy_mean"] is not None
     ]
-    if not routed_means:
-        return {"spread_pp": None, "verdict": "no_data"}
+    if len(routed_means) < 2:
+        # A top-vs-bottom spread / cross-validation needs >= 2 successful
+        # models. With one valid mean the spread is trivially 0.0, which must
+        # NOT be reported as cross-validated saturation (issue #2023): the
+        # missing model(s) failed to build/eval, so there is no cross-model
+        # evidence. Emit no_data — the same shape the all-failed case produces,
+        # which the downstream gate already treats as a hard "re-run".
+        return {
+            "spread_pp": None,
+            "verdict": "no_data",
+            "verdict_description": (
+                f"Insufficient routed means ({len(routed_means)}) — a top-vs-bottom "
+                "spread needs ≥2 successful models; re-run the measurement."
+            ),
+        }
     spread = (max(routed_means) - min(routed_means)) * 100.0
     if spread >= SPREAD_THRESHOLD_PP:
         verdict = "adr0019_reopen_trigger"
