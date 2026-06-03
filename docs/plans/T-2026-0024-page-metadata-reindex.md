@@ -24,10 +24,16 @@ prompt, answer, or eval scoring behavior.
 ## Scope
 
 - Preserve explicit section-level `page_span` through `fixed_parent_section`.
-- Keep the existing `make real-eval` defaults unchanged.
+- Keep the historical `make real-eval` default behavior unchanged; under the
+  current policy that means leaving legacy real100/v1 targets disabled, not
+  reviving them for new evidence.
 - Add an isolated `real-eval-page-aware` target for local page-aware rebuilds
   that reuse private converted PDFs and write to separate output paths.
 - Record only aggregate validation evidence.
+
+Current-use note: new private eval claims and handoffs must stay on
+`real100_v2` aggregate evidence and `real-eval-v2-*` guards unless the
+maintainer explicitly re-enables legacy real100/v1 targets.
 
 ## Out Of Scope
 
