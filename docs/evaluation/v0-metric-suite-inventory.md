@@ -8,6 +8,8 @@ which gaps remain before a v0 metric-suite report can claim coverage.
 This is an aggregate-only inventory. It is not a performance claim, does not run
 private real-eval, and does not compare deltas.
 
+> **Current-use boundary (2026-06-03)**: rows that mention legacy `reports/real100/` or `reports/private_real_eval_summary.redacted.json` artifacts record historical field availability only. They are not current claim-bearing private evidence. New task, PR, claim, and handoff wording must use the `real100_v2` aggregate-only surface in [Surface Map](./surface-map.md), or regenerate a v2 aggregate before marking a metric family present.
+
 Issue #1544 adds the first v0 report renderer:
 `scripts/render_v0_metric_suite_report.py`. It consumes aggregate-only private
 real-eval artifacts plus an optional local judge/human agreement CSV, and emits
