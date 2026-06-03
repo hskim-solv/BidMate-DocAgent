@@ -1,6 +1,6 @@
 # RAG 시스템 개선 회고 — 3가지 핵심 문제와 해결
 
-> 이 문서는 BidMate-DocAgent 의 주요 RAG 개선 결정을 **STAR 형식** (Situation → Task → Action → Result) 으로 재서술한 포트폴리오 자산입니다. 모든 수치는 private internal eval 집계(historical, 100-doc 계열; raw 는 ADR 0005 경계로 미포함) 기준이며, harness 동작 확인 전용 smoke(5-case)와는 별개입니다. raw query·문서 원문은 [ADR 0005](adr/0005-eval-split-public-synthetic-private-local.md) 경계를 준수해 포함하지 않습니다.
+> 이 문서는 BidMate-DocAgent 의 주요 RAG 개선 결정을 **STAR 형식** (Situation → Task → Action → Result) 으로 재서술한 포트폴리오 자산입니다. 여기의 historical private/internal 100-doc 계열 수치는 archive-only context 이며, 새 task·PR·claim 의 claim-bearing 근거는 현재 [`real100_v2` aggregate policy](evaluation/surface-map.md)를 따른다. harness 동작 확인 전용 smoke(5-case)와는 별개이고, raw query·문서 원문은 [ADR 0005](adr/0005-eval-split-public-synthetic-private-local.md) 경계를 준수해 포함하지 않습니다.
 
 ---
 
