@@ -379,6 +379,10 @@ def analyze_query(
         "context_entities": context_entities or [],
         "context_used": context_used,
         "tokens": tokenize(normalized_query),
+        # Substring source for _is_aggregate_query's fallback (rag_answer.py):
+        # catches aggregate signals the tokenizer merges into a compound token
+        # (tokenize("전체일정 알려줘") == ["전체일정"], dropping bare "전체"). #2170
+        "resolved_query": normalized_query,
         "metadata_matches": metadata_matches,
         "matched_doc_ids": matched_doc_ids,
         "matched_agencies": matched_agencies,
