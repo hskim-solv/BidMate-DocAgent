@@ -54,9 +54,29 @@ def _load_json(path: Path) -> dict[str, Any]:
         raise SystemExit(2) from exc
 
 
+def _as_dict(value: Any) -> dict[str, Any]:
+    """Return ``value`` if it is a mapping, else an empty dict.
+
+    The summary/config are machine-generated, but a partial or errored
+    eval run can emit a non-dict where a mapping is expected (e.g.
+    ``latency: "n/a"`` on a failed run, or a scalar budget from a config
+    typo). The old ``x or {}`` idiom only rescued *falsy* values, so a
+    *truthy* non-dict slipped through to ``.get()``/``.items()`` and
+    crashed the gate with ``AttributeError`` instead of skipping the
+    bad entry. This guard makes "not a mapping" behave like "absent".
+    """
+    return value if isinstance(value, dict) else {}
+
+
 def _runs_by_name(summary: dict[str, Any]) -> dict[str, dict[str, Any]]:
-    runs = (summary.get("ablation") or {}).get("runs") or []
-    return {str(r.get("name") or ""): r for r in runs if r.get("name")}
+    runs = _as_dict(_as_dict(summary).get("ablation")).get("runs") or []
+    if not isinstance(runs, list):
+        return {}
+    return {
+        str(r.get("name") or ""): r
+        for r in runs
+        if isinstance(r, dict) and r.get("name")
+    }
 
 
 def check(
@@ -72,7 +92,7 @@ def check(
     Ablations without a budget are not reported either way — quiet by
     design so adding ablations does not force a budget for every one.
     """
-    budgets = (config or {}).get("latency_budgets") or {}
+    budgets = _as_dict(_as_dict(config).get("latency_budgets"))
     runs = _runs_by_name(summary)
     violations: list[dict[str, Any]] = []
     passes: list[dict[str, Any]] = []
@@ -82,9 +102,9 @@ def check(
         if run is None:
             orphans.append(name)
             continue
-        latency = run.get("latency") or {}
+        latency = _as_dict(run.get("latency"))
         observed = latency.get("p95")
-        ceiling = (budget or {}).get("p95_ms")
+        ceiling = _as_dict(budget).get("p95_ms")
         if not isinstance(observed, (int, float)) or not isinstance(ceiling, (int, float)):
             continue
         row = {
@@ -118,7 +138,7 @@ def check_stage(
     Stage keys without a matching stage_latency entry are silently
     skipped (some stages are absent on simple pipelines).
     """
-    stage_budgets = (config or {}).get("stage_latency_budgets") or {}
+    stage_budgets = _as_dict(_as_dict(config).get("stage_latency_budgets"))
     runs = _runs_by_name(summary)
     violations: list[dict[str, Any]] = []
     passes: list[dict[str, Any]] = []
@@ -129,10 +149,10 @@ def check_stage(
         if run is None:
             orphans.append(run_name)
             continue
-        stage_latency = run.get("stage_latency") or {}
-        for stage_name, ceiling_config in (stage_ceilings or {}).items():
-            observed = (stage_latency.get(stage_name) or {}).get("p95")
-            ceiling = (ceiling_config or {}).get("p95_ms")
+        stage_latency = _as_dict(run.get("stage_latency"))
+        for stage_name, ceiling_config in _as_dict(stage_ceilings).items():
+            observed = _as_dict(stage_latency.get(stage_name)).get("p95")
+            ceiling = _as_dict(ceiling_config).get("p95_ms")
             if not isinstance(observed, (int, float)) or not isinstance(ceiling, (int, float)):
                 continue
             row: dict[str, Any] = {
