@@ -1,12 +1,12 @@
 # Plan: T-2026-0020 v0 metric suite report
 
-- Status: review
+- Status: done
 - Owner role: Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer
 - Related task: `tasks/queue.md::T-2026-0020`
-- Related issue / PR: [#1544](https://github.com/hskim-solv/BidMate-DocAgent/issues/1544)
+- Related issue / PR: [#1544](https://github.com/hskim-solv/BidMate-DocAgent/issues/1544) / [#1546](https://github.com/hskim-solv/BidMate-DocAgent/pull/1546); refresh issue #2083
 - Related ADR: [ADR 0005](../adr/0005-eval-split-public-synthetic-private-local.md), [ADR 0016](../adr/0016-judge-human-agreement.md), [ADR 0079](../adr/0079-agent-gated-offline-online-rfp-eval-loop.md)
 - Created: 2026-05-27
-- Last updated: 2026-05-27
+- Last updated: 2026-06-04
 
 ## Problem Statement
 
@@ -63,9 +63,9 @@ non-claim-bearing and preserve ADR 0005 privacy boundaries.
 
 ## Data / Eval Impact
 
-- Surface: private real-eval.
+- Surface: current `real100_v2` private-eval aggregate-only metric suite.
 - Data boundary: aggregate-only private output.
-- Allowed claim: metric-suite coverage/adoption status.
+- Allowed claim: metric-suite coverage/adoption status for the named `real100_v2` aggregate artifacts.
 - Disallowed claim: RFP QA quality improved or regressed.
 - Baseline or control affected: no ranking/runtime baseline change.
 - Benchmark/eval auditor required: yes, for claim boundary and metric status.
@@ -139,7 +139,7 @@ surface coverage; it does not claim performance movement.
 - Branch / worktree: feat/issue-1544-v0-metric-suite-report / /Users/hskim/.codex/worktrees/e622/BidMate-DocAgent
 - Issue / PR: #1544 / PR #1546
 - Task: T-2026-0020
-- Current status: implementation complete; ready for review.
+- Current status: merged in PR #1546.
 - Files touched: .gitignore, eval/scorers/slot_metrics.py, eval/scorers/__init__.py, eval/scorers/case.py, eval/run_eval.py, scripts/_utils.py, scripts/run_real_eval_delta.py, scripts/render_v0_metric_suite_report.py, docs/evaluation/v0-metric-suite-inventory.md, docs/evaluation/agent-gated-rfp-eval-loop.md, reports/real100_v2/README.md, reports/real100_v2/baseline.aggregate.json, reports/real100_v2/metric_suite.aggregate.json, reports/real100_v2/metric_suite.md, tests.
 - Decisions made: no performance claim; report consumes aggregate-only inputs; numeric/date/condition is populated after private real100_v2 aggregate regeneration.
 - Commands run: gh issue create; git switch -c feat/issue-1544-v0-metric-suite-report; python3 -m pytest tests/test_slot_metrics.py tests/test_v0_metric_suite_report.py tests/test_extract_aggregate_metadata_field_calibration.py -q; python3 -m py_compile eval/scorers/slot_metrics.py scripts/render_v0_metric_suite_report.py eval/scorers/case.py eval/run_eval.py scripts/run_real_eval_delta.py; python3 scripts/render_v0_metric_suite_report.py --aggregate reports/real100_v2/baseline.aggregate.json --question-distribution reports/real100_v2/question_distribution.aggregate.json --out-json reports/real100_v2/metric_suite.aggregate.json --out-md reports/real100_v2/metric_suite.md; python3 scripts/check_doc_links.py --check-all --paths docs/evaluation/agent-gated-rfp-eval-loop.md docs/evaluation/v0-metric-suite-inventory.md docs/plans/T-2026-0020-v0-metric-suite-report.md tasks/queue.md reports/real100_v2/README.md reports/real100_v2/metric_suite.md; git diff --check; make check-branch.
