@@ -71,5 +71,7 @@ flowchart TD
 ## 더 읽을 거리
 
 - [README §평가 스토리](https://github.com/hskim-solv/BidMate-DocAgent#%ED%8F%89%EA%B0%80-%EC%8A%A4%ED%86%A0%EB%A6%AC)
+- [모듈 맵](architecture/module-map.md) — 파이프라인 단계별 코드 소유권과 호출 순서
+- [설계 배경](design-background.md) — 핵심 의사결정과 reviewer 판독 경로
 - [ADR 인덱스](https://github.com/hskim-solv/BidMate-DocAgent/blob/main/docs/adr/README.md)
 - [Engineering governance](https://github.com/hskim-solv/BidMate-DocAgent/blob/main/docs/engineering-governance.md)
