@@ -6,20 +6,22 @@
 - Related issue / PR: example only
 - Related ADR: `docs/adr/0005-eval-split-public-synthetic-private-local.md`, `docs/adr/0055-claim-validator-as-pr-gate.md`
 - Created: 2026-05-25
-- Last updated: 2026-05-25
+- Last updated: 2026-06-03
 
 ## Problem Statement
 
 Claim-bearing evaluation work can regress quietly when a PR updates metrics,
 gold data, or report wording without preserving the baseline/control surface.
 The reviewer then has to rediscover which claims are supported by smoke tests,
-synthetic benchmarks, or private real-eval aggregates.
+synthetic benchmarks, or current `real100_v2` aggregate-only private-eval
+evidence.
 
 ## Current Behavior
 
 The repository separates public fixture smoke, public synthetic benchmark, and
-private real-eval surfaces. Claim validation exists for explicit PR-body metric
-claims, and ADRs define the public/private boundary. However, an AI session that
+the current `real100_v2` aggregate-only private-eval surface. Claim validation
+exists for explicit PR-body metric claims, and ADRs define the public/private
+boundary. However, an AI session that
 joins midstream can still miss which commands produced the evidence, which
 artifact is allowed to support the claim, and which wording is disallowed.
 
@@ -37,8 +39,9 @@ attack points are visible before implementation and updated at handoff.
   names.
 - Compatibility constraints: existing CI and local eval commands continue to
   work.
-- Eval/privacy constraints: private RFP data stays local; only aggregate
-  private results may be referenced.
+- Eval/privacy constraints: private RFP data stays local; claim-bearing
+  private-eval evidence references only current `real100_v2` aggregate-only
+  results.
 - Tooling/CI constraints: command examples must be runnable from repo root.
 - Non-goals: do not introduce a new metric, benchmark, or judge.
 
@@ -64,13 +67,13 @@ attack points are visible before implementation and updated at handoff.
 
 ## Data / Eval Impact
 
-- Surface: private real-eval for claim-bearing aggregate evidence; public
-  fixture smoke for reproducible sanity checks.
+- Surface: current `real100_v2` aggregate-only private eval for claim-bearing
+  aggregate evidence; public fixture smoke for reproducible sanity checks.
 - Data boundary: aggregate-only private output.
 - Allowed claim: "This change preserves or improves the measured aggregate on
   the named eval surface under the listed command."
 - Disallowed claim: "This proves general real-world RFP quality" without the
-  private real-eval evidence and claim gate.
+  current `real100_v2` aggregate-only private-eval evidence and claim gate.
 - Baseline or control affected: no; any control change requires a separate ADR.
 - Benchmark/eval auditor required: yes for metric or claim wording changes.
 
@@ -108,8 +111,8 @@ Expected evidence:
 - Generated or updated artifact: N/A - this plan changes process docs only.
 - Reviewer checklist or manual inspection: reviewer confirms claim wording maps
   to exactly one eval surface.
-- Explicitly not validated, with reason: private real-eval is not run for this
-  process-only example.
+- Explicitly not validated, with reason: current `real100_v2` private eval is
+  not run for this process-only example.
 
 ## Rollback Strategy
 
@@ -147,7 +150,8 @@ artifact support the exact claim and do not imply a broader real-world result.
 - Task: T-2026-0002
 - Current status: example plan complete
 - Files touched: docs/plans/EXAMPLE.md
-- Decisions made: no new eval surface; use existing claim boundary
+- Decisions made: no new eval surface; use current `real100_v2`
+  aggregate-only claim boundary
 - Commands run: not run for example
 - Results: N/A
 - Next safe command: python3 scripts/check_doc_links.py --check-all
