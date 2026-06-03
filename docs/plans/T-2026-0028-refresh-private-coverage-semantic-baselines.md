@@ -1,12 +1,12 @@
 # Plan: T-2026-0028 Refresh private coverage and semantic baselines
 
-- Status: running
+- Status: done
 - Owner role: Evaluator -> Benchmark Auditor -> Privacy Auditor -> Reviewer
 - Related task: `tasks/queue.md::T-2026-0028`
-- Related issue / PR: [#1618](https://github.com/hskim-solv/BidMate-DocAgent/issues/1618) / N/A
+- Related issue / PR: [#1618](https://github.com/hskim-solv/BidMate-DocAgent/issues/1618) / [#1619](https://github.com/hskim-solv/BidMate-DocAgent/pull/1619); refresh issue [#2146](https://github.com/hskim-solv/BidMate-DocAgent/issues/2146)
 - Related ADR: [ADR 0005](../adr/0005-eval-split-public-synthetic-private-local.md), [ADR 0048](../adr/0048-realN-metrics-extension.md), [ADR 0052](../adr/0052-real-eval-hardcase-expansion-to-200.md), [ADR 0058](../adr/0058-phase35-mode-winner.md)
 - Created: 2026-05-28
-- Last updated: 2026-05-28
+- Last updated: 2026-06-04
 
 ## Problem Statement
 
@@ -185,12 +185,11 @@ a runtime behavior change unless runtime files are unexpectedly modified.
 ## Session Handoff - 2026-05-28 KST
 
 - Role: Evaluator
-- Lifecycle stage: review
-- Branch / worktree: eval/issue-1618-refresh-private-coverage-and-semantic-baselines / /Users/hskim/.codex/worktrees/0ebc/BidMate-DocAgent
-- Issue / PR: #1618 / N/A
+- Lifecycle stage: done
+- Branch / worktree: eval/issue-1618-refresh-private-coverage-and-semantic-baselines / PR #1619
+- Issue / PR: #1618 / #1619; refresh issue #2146
 - Task: T-2026-0028
-- Current status: v2-only policy/guard added; aggregate packet written; legacy
-  real100/v1 targets disabled.
+- Current status: merged in PR #1619; queue marks T-2026-0028 done. The v2-only policy/guard and aggregate packet are in place, and legacy real100/v1 targets fail closed.
 - Files touched: Makefile, CLAUDE.md, scripts/check_real100_v2_only.py,
   tests/test_real100_v2_guard.py, tests/test_smoke_real_script.py,
   docs/evaluation/private_real_eval_workflow.md, docs/evaluation/surface-map.md,
@@ -206,12 +205,9 @@ a runtime behavior change unless runtime files are unexpectedly modified.
   passed; legacy real-eval targets fail closed; privacy and claim audits passed.
 - Blockers: claim-bearing page/citation work is blocked by v2 page metadata
   ready rate 0.0.
-- Next safe command: python3 -m pytest tests/test_real100_v2_guard.py tests/test_smoke_real_script.py -q
-- Next action: benchmark/privacy reviewer should verify v2-only policy and
-  aggregate-only packet, then decide whether `T-2026-0029` is diagnostic-only or
-  a v2 page-metadata repair task is needed first.
-- Open questions: whether T-2026-0029 should become diagnostic-only until v2
-  page metadata is repaired.
+- Next safe command: git status --short
+- Next action: none for T-2026-0028; follow-on diagnostic/page-metadata work is tracked separately in T-2026-0029, T-2026-0047, and T-2026-0076.
+- Open questions: none for the completed T-2026-0028 scope.
 - Open risks: old `real100` aggregate files remain in the repo as historical
   artifacts, so future agents must obey the new fail-closed guard.
 - Risks: aggregate wording must not imply performance improvement; stale
