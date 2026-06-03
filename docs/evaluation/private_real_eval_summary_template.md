@@ -1,6 +1,8 @@
-# Private Real-Eval Redacted Summary Template
+# Legacy Private Real-Eval Redacted Summary Template
 
-이 파일은 private real-eval 결과를 공개 가능한 형태로 요약할 때의 필드 계약(contract)이다. 실제 raw 질문(question), 답변(answer), 근거(evidence), 파일명, 고객명, private path는 포함하지 않는다.
+> **Archive-only note (2026-06-03)**: this schema-1 example belongs to the legacy `private_real_eval` / `reports/private_real_eval_summary.redacted.json` lane. Its 100-document / 221-question placeholders are not current claim-bearing evidence. New task, PR, claim, and handoff evidence must use the `real100_v2` aggregate-only surface described in [Surface Map](./surface-map.md), or introduce an explicit v2 template before reusing this shape.
+
+이 파일은 legacy private real-eval 결과를 공개 가능한 형태로 요약할 때의 historical 필드 계약(contract)이다. 실제 raw 질문(question), 답변(answer), 근거(evidence), 파일명, 고객명, private path는 포함하지 않는다.
 
 ```json
 {
@@ -50,6 +52,7 @@
   },
   "known_limitations": [
     "Private aggregate only; raw cases and traces remain local.",
+    "Legacy schema-1 example; do not use the 221-question placeholders for new claims.",
     "Answer metrics are deterministic contract checks, not an LLM judge.",
     "No retrieval, reranking, prompt, chunking, or verifier optimization is included."
   ]
