@@ -4,6 +4,7 @@
 - **[1-페이지 아키텍처 심층 분석](./architecture-deep-dive.md)** — 파이프라인 / ADR 매핑 / 측정 highlight 한 페이지 요약
 - [엔지니어링 거버넌스(워크플로 맵)](./engineering-governance.md)
 - [AI Engineering Operating System](operations/ai-engineering-operating-system.md) — 장기 AI-agent task / plan / review / eval evidence 운영 모델
+- [AI Codex Workflow / overlap preflight](operations/ai-codex-workflow.md#overlap-preflight) — 병행 Codex/Claude worktree 시작 전 겹침 차단 증거
 - [Persistent Task Queue](../tasks/queue.md) — 세션 간 이어지는 작업 상태
 - [AI Review Checklists](reviews/ai-review-checklists.md)
 - [Evaluation Surface Map](evaluation/surface-map.md)
