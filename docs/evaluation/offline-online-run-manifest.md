@@ -111,4 +111,7 @@ Top-level fields:
 
 This manifest is provenance evidence only. It supports later v0-c report review,
 but it is not a private real-eval result, benchmark lift, regression fix, or RFP
-quality claim.
+quality claim. New private-eval task, PR, claim, and handoff evidence must use
+`real100_v2` aggregate-only results with matching provenance; legacy `real100` /
+v1 / 221-case / `kordoc` evidence remains archive-only unless the maintainer
+explicitly re-enables another private-eval surface.
