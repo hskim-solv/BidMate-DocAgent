@@ -12479,3 +12479,246 @@ def test_active_auto_loop_resumes_cooldown_from_prior_run_and_decrements(monkeyp
     # Cooldown decremented from 2 -> 1 and re-persisted for the next run.
     state = json.loads((active_dir / "auto_loop_state.json").read_text(encoding="utf-8"))
     assert state["lane_autotune_cooldown"] == {"CI / Regression Auditor||codex": 1}
+
+
+# ---------------------------------------------------------------------------
+# ADR 0095 PR-E3a: two-root threading (cycle_repo_root / coordination_root)
+# ---------------------------------------------------------------------------
+
+
+def _e3a_stub_write_active_loop_env(monkeypatch, *, branch: str = "chore/issue-9999-active-loop") -> None:
+    """Stub the git / PR / overlap readers write_active_loop touches so the two-root tests run
+    fully offline. Mirrors test_active_loop_dry_run_creates_four_session_ledger_*."""
+    def fake_run(cmd, **kwargs):  # type: ignore[no-untyped-def]
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(agent_loop.subprocess, "run", fake_run)
+    monkeypatch.setattr(agent_loop, "_current_branch", lambda repo_root: branch)
+    monkeypatch.setattr(agent_loop, "_open_pr_for_branch", lambda *a, **k: None)
+    monkeypatch.setattr(
+        agent_loop, "build_overlap_preflight",
+        lambda issue, branch, repo_root, **kw: _clear_overlap_report(issue, branch),
+    )
+    monkeypatch.setattr(agent_loop, "audit_privacy_output", lambda *args, **kwargs: [])
+
+
+def test_e3a_write_active_loop_two_root_splits_leases_from_artifacts(monkeypatch, tmp_path: Path) -> None:
+    """ADR 0095 PR-E3a: with repo_root=A != coordination_root=B, leases.json lands under B's
+    active dir while the registry (an artifact) lands under A's active dir."""
+    repo_a = _write_repo(tmp_path / "artifacts")
+    coord_b = _write_repo(tmp_path / "coordination", task_id="T-2026-0002", title="Coord")
+    _e3a_stub_write_active_loop_env(monkeypatch)
+
+    result = agent_loop.write_active_loop(
+        changed_files=["docs/operations/active-agent-loop.md"],
+        repo_root=repo_a,
+        coordination_root=coord_b,
+    )
+
+    a_active = repo_a / "reports" / "agent_loop" / "active"
+    b_active = coord_b / "reports" / "agent_loop" / "active"
+    # leases.json -> coordination root B only.
+    assert (b_active / "leases.json").exists(), "leases.json must land under coordination_root B"
+    assert not (a_active / "leases.json").exists(), "leases.json must NOT land under artifact root A"
+    assert result.leases_path == b_active / "leases.json"
+    # registry + events (artifacts) -> repo_root A only.
+    assert (a_active / "session_registry.json").exists(), "registry must land under repo_root A"
+    assert not (b_active / "session_registry.json").exists(), "registry must NOT land under coord B"
+    assert (a_active / "events.jsonl").exists()
+    assert result.registry_path == a_active / "session_registry.json"
+
+
+def test_e3a_write_active_loop_default_coordination_root_is_repo_root(monkeypatch, tmp_path: Path) -> None:
+    """ADR 0095 PR-E3a byte-identity: coordination_root=None resolves to repo_root, so leases.json
+    and the registry both land under the single repo_root (== pre-E3a behavior)."""
+    repo_none = _write_repo(tmp_path / "none")
+    repo_explicit = _write_repo(tmp_path / "explicit")
+    _e3a_stub_write_active_loop_env(monkeypatch)
+
+    res_none = agent_loop.write_active_loop(
+        changed_files=["docs/operations/active-agent-loop.md"], repo_root=repo_none
+    )
+    res_explicit = agent_loop.write_active_loop(
+        changed_files=["docs/operations/active-agent-loop.md"],
+        repo_root=repo_explicit,
+        coordination_root=None,
+    )
+
+    none_leases = (repo_none / "reports" / "agent_loop" / "active" / "leases.json").read_text(encoding="utf-8")
+    explicit_leases = (repo_explicit / "reports" / "agent_loop" / "active" / "leases.json").read_text(encoding="utf-8")
+    # leases.json + registry land on repo_root in BOTH cases (coordination_root=None -> repo_root).
+    assert res_none.leases_path == repo_none / "reports" / "agent_loop" / "active" / "leases.json"
+    assert res_explicit.leases_path == repo_explicit / "reports" / "agent_loop" / "active" / "leases.json"
+    # The lease payload is structurally identical (strip generated_at, which differs per call).
+    def _strip(raw: str) -> object:
+        payload = json.loads(raw)
+        payload.pop("generated_at", None)
+        for lease in payload.get("leases", []):
+            lease.pop("expires_at", None)
+        return payload
+
+    assert _strip(none_leases) == _strip(explicit_leases)
+
+
+def test_e3a_build_overlap_preflight_reroots_coordination_reads(monkeypatch, tmp_path: Path) -> None:
+    """ADR 0095 PR-E3a: build_overlap_preflight's local checkout-state reads (_current_branch /
+    _git_ref / _git_is_ancestor) query the coordination_root B, not repo_root A."""
+    repo_a = _write_repo(tmp_path / "artifacts")
+    coord_b = _write_repo(tmp_path / "coordination", task_id="T-2026-0002")
+    branch = "chore/issue-1541-overlap-preflight"
+
+    branch_roots: list[Path] = []
+    ref_roots: list[Path] = []
+
+    def recording_current_branch(repo_root):  # type: ignore[no-untyped-def]
+        branch_roots.append(repo_root)
+        return branch
+
+    def recording_git_ref(ref, *, repo_root):  # type: ignore[no-untyped-def]
+        ref_roots.append(repo_root)
+        return "abc1234"
+
+    monkeypatch.setattr(agent_loop, "_current_branch", recording_current_branch)
+    monkeypatch.setattr(agent_loop, "_git_ref", recording_git_ref)
+    monkeypatch.setattr(agent_loop, "_git_is_ancestor", lambda ancestor, descendant, *, repo_root: True)
+    monkeypatch.setattr(
+        agent_loop, "_git_worktree_entries",
+        lambda repo_root: (agent_loop.WorktreeSnapshot(path=str(repo_root), branch=branch, head="abc1234"),),
+    )
+    monkeypatch.setattr(agent_loop, "_local_issue_branches", lambda repo_root: {"1541": {branch}})
+    monkeypatch.setattr(agent_loop, "_remote_issue_branches", lambda selected_issue, *, repo_root: set())
+    monkeypatch.setattr(agent_loop, "_open_pr_items", lambda *, repo_root: [])
+    monkeypatch.setattr(agent_loop, "_branch_pr_items", lambda selected_branch, *, repo_root: [])
+    monkeypatch.setattr(
+        agent_loop, "_issue_info",
+        lambda selected_issue, *, repo_root: {"number": int(selected_issue), "title": "x", "state": "OPEN", "url": "u"},
+    )
+
+    agent_loop.build_overlap_preflight(issue="1541", branch=branch, repo_root=repo_a, coordination_root=coord_b)
+
+    # The coordination reads used B, never A.
+    assert branch_roots == [coord_b], "_current_branch must be called with coordination_root B"
+    assert ref_roots and all(root == coord_b for root in ref_roots), "_git_ref must use coordination_root B"
+
+
+def test_e3a_build_overlap_preflight_default_uses_repo_root(monkeypatch, tmp_path: Path) -> None:
+    """ADR 0095 PR-E3a byte-identity: coordination_root=None (standalone CLI caller) keeps the
+    coordination reads on repo_root."""
+    repo = _write_repo(tmp_path)
+    branch = "chore/issue-1541-overlap-preflight"
+    seen: list[Path] = []
+    monkeypatch.setattr(agent_loop, "_current_branch", lambda repo_root: seen.append(repo_root) or branch)
+    monkeypatch.setattr(agent_loop, "_git_ref", lambda ref, *, repo_root: "abc1234")
+    monkeypatch.setattr(agent_loop, "_git_is_ancestor", lambda *a, **k: True)
+    monkeypatch.setattr(
+        agent_loop, "_git_worktree_entries",
+        lambda repo_root: (agent_loop.WorktreeSnapshot(path=str(repo_root), branch=branch, head="abc1234"),),
+    )
+    monkeypatch.setattr(agent_loop, "_local_issue_branches", lambda repo_root: {"1541": {branch}})
+    monkeypatch.setattr(agent_loop, "_remote_issue_branches", lambda selected_issue, *, repo_root: set())
+    monkeypatch.setattr(agent_loop, "_open_pr_items", lambda *, repo_root: [])
+    monkeypatch.setattr(agent_loop, "_branch_pr_items", lambda selected_branch, *, repo_root: [])
+    monkeypatch.setattr(
+        agent_loop, "_issue_info",
+        lambda selected_issue, *, repo_root: {"number": int(selected_issue), "title": "x", "state": "OPEN", "url": "u"},
+    )
+
+    agent_loop.build_overlap_preflight(issue="1541", branch=branch, repo_root=repo)
+
+    assert seen == [repo], "default coordination_root must resolve to repo_root"
+
+
+def test_e3a_lease_id_coexistence_acquire_release_own_lease(tmp_path: Path) -> None:
+    """ADR 0095 PR-E3a lease_id threading: with TWO distinct task-scoped write leases sharing one
+    coordination leases.json, acquire_active_agent for each (with its own lease_id) succeeds on its
+    OWN lease — neither steals the other's — and release frees only the caller's lease."""
+    coord = _write_repo(tmp_path / "coordination")
+    active = coord / "reports" / "agent_loop" / "active"
+    active.mkdir(parents=True, exist_ok=True)
+    leases_path = active / "leases.json"
+    leases_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "leases": [
+                    {
+                        "lease_id": "t-2026-0001-1-implementer",
+                        "status": "active",
+                        "lease_type": "write",
+                        "active_agent": None,
+                        "task_id": "T-2026-0001",
+                        "owner_session": "implementer",
+                    },
+                    {
+                        "lease_id": "t-2026-0002-2-implementer",
+                        "status": "active",
+                        "lease_type": "write",
+                        "active_agent": None,
+                        "task_id": "T-2026-0002",
+                        "owner_session": "implementer",
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    # Cycle 1 acquires its OWN lease (codex), cycle 2 acquires its OWN lease (claude).
+    ok1, _, lid1 = agent_loop.acquire_active_agent(
+        agent="codex", repo_root=coord, lease_id="t-2026-0001-1-implementer"
+    )
+    ok2, _, lid2 = agent_loop.acquire_active_agent(
+        agent="claude", repo_root=coord, lease_id="t-2026-0002-2-implementer"
+    )
+    assert ok1 is True and lid1 == "t-2026-0001-1-implementer"
+    assert ok2 is True and lid2 == "t-2026-0002-2-implementer"
+
+    leases = {l["lease_id"]: l for l in json.loads(leases_path.read_text(encoding="utf-8"))["leases"]}
+    # Each lease is held by its OWN agent — neither stole the other's.
+    assert leases["t-2026-0001-1-implementer"]["active_agent"] == "codex"
+    assert leases["t-2026-0002-2-implementer"]["active_agent"] == "claude"
+
+    # Release of cycle 1's lease frees ONLY lease 1; lease 2 stays held by claude.
+    rel_ok, _ = agent_loop.release_active_agent(
+        agent="codex", repo_root=coord, lease_id="t-2026-0001-1-implementer"
+    )
+    assert rel_ok is True
+    leases = {l["lease_id"]: l for l in json.loads(leases_path.read_text(encoding="utf-8"))["leases"]}
+    assert leases["t-2026-0001-1-implementer"]["active_agent"] is None
+    assert leases["t-2026-0002-2-implementer"]["active_agent"] == "claude", "release must not touch the sibling lease"
+
+
+def test_e3a_codex_patch_two_root_lease_on_coord_artifact_on_repo(tmp_path: Path) -> None:
+    """ADR 0095 PR-E3a: patch mode with repo_root=A != coordination_root=B borrows/releases the
+    write lease under B (coordination) while the patch artifact lands under A (cycle artifact)."""
+    repo_a = _write_repo(tmp_path / "artifacts")
+    coord_b = _write_repo(tmp_path / "coordination", task_id="T-2026-0042")
+    # registry + assignment are artifacts -> repo_root A.
+    _seed_patch_registry(repo_a)
+    _seed_patch_assignment(repo_a)
+    # write lease lives on coordination root B.
+    _seed_write_lease(coord_b, lease_id="impl", claimed_files=["foo.py"])
+    diff = "diff --git a/foo.py b/foo.py\n--- a/foo.py\n+++ b/foo.py\n@@ -1 +1,2 @@\n line\n+new line\n"
+    git_runner = _fake_git_runner(diff_stdout=diff)
+
+    result = agent_loop.write_active_codex_runner(
+        mode="patch",
+        execute=True,
+        task_id="T-2026-0042",
+        repo_root=repo_a,
+        coordination_root=coord_b,
+        popen_factory=lambda cmd, **kw: _FakeCodexProc(),
+        which_func=lambda exe: "/usr/bin/codex",
+        auth_runner=_chatgpt_auth_runner,
+        git_runner=git_runner,
+    )
+
+    assert result.decision == "completed"
+    # The lease under B was borrowed and then released (active_agent back to None on B's leases.json).
+    b_leases = json.loads((coord_b / "reports" / "agent_loop" / "active" / "leases.json").read_text(encoding="utf-8"))
+    assert b_leases["leases"][0]["active_agent"] is None, "lease on coordination root B must be released"
+    # A never grew a leases.json (lease coordination stays on B).
+    assert not (repo_a / "reports" / "agent_loop" / "active" / "leases.json").exists()
+    # The patch artifact (a cycle artifact) landed under repo_root A.
+    a_artifact = repo_a / "reports" / "agent_loop" / "active" / "patch_runs" / "implementer" / "patch_artifact.json"
+    assert a_artifact.exists(), "patch artifact must land under repo_root A"
