@@ -82,6 +82,9 @@ BIDMATE_EXPERIMENT_REPORT_FORCE=1 \
 디렉터리를 공유하는 경우 HTML write 가 race 할 수 있어서 atomic write
 (`tempfile.NamedTemporaryFile` + `os.replace`) 로 완화하지만, 동시 실행은
 권장하지 않는다.
+병행 Codex/Claude 세션에서 report HTML을 PR evidence로 붙이려면 먼저
+[`overlap-preflight`](./ai-codex-workflow.md#overlap-preflight)를 실행해
+공유 reports/ 경로 또는 변경 파일 충돌이 없다는 근거를 남긴다.
 
 ## Non-goals
 
