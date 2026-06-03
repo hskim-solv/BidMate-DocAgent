@@ -6,15 +6,15 @@
 - Related issue / PR: [#1584](https://github.com/hskim-solv/BidMate-DocAgent/issues/1584) / [#1587](https://github.com/hskim-solv/BidMate-DocAgent/pull/1587)
 - Related ADR: N/A - no runtime or eval contract change
 - Created: 2026-05-27
-- Last updated: 2026-05-27
+- Last updated: 2026-06-03
 
 ## Problem Statement
 
 The RAG performance goal is now explicit, but the next work is still too broad
 to execute safely. A generic list of RAG techniques can push the project toward
-expensive experiments before the private real-eval baseline, failure taxonomy,
-latency envelope, and privacy boundaries are strong enough to support a real
-performance claim.
+expensive experiments before the current `real100_v2` private-eval baseline,
+failure taxonomy, latency envelope, and privacy boundaries are strong enough to
+support a real performance claim.
 
 Without a concrete stack, future sessions can mix data readiness, retrieval,
 reranking, context packing, generator behavior, security, and advanced
@@ -30,11 +30,12 @@ The current main branch already contains important prerequisites:
 - `T-2026-0023` set the long-running RAG performance operating goal.
 - `T-2026-0024` recovered page metadata at index build time.
 - `T-2026-0025` separated hashing, MiniLM, and BGE-M3 private real-eval
-  surfaces.
+  surfaces; current claim evidence now requires `real100_v2` aggregate-only
+  outputs.
 - `T-2026-0026` split Chroma vector-store work into a backend-axis task rather
   than a quality-improvement experiment.
-- `docs/evaluation/surface-map.md` already requires private real-eval aggregate
-  paired deltas for real performance claims.
+- `docs/evaluation/surface-map.md` already requires current `real100_v2`
+  aggregate paired deltas for real performance claims.
 - `docs/evaluation/pre_improvement_readiness_checklist.md` already requires
   parse audit -> eval dataset audit -> validate-only -> baseline run -> failure
   taxonomy -> improvement hypothesis.
@@ -64,8 +65,9 @@ not a runtime quality change.
 - Architecture constraints: do not change retrieval, reranking, answer,
   ingestion, API, eval runtime, or index-building behavior in this PR.
 - Compatibility constraints: preserve existing task and plan formats.
-- Eval/privacy constraints: no private real-eval run, no raw private content,
-  no exact local private path, no `doc_id` or `chunk_id` in committed docs.
+- Eval/privacy constraints: no current `real100_v2` private-eval run, no raw
+  private content, no exact local private path, no `doc_id` or `chunk_id` in
+  committed docs.
 - Tooling/CI constraints: validate doc links, whitespace, and branch/issue
   convention.
 - Non-goals: do not create all future GitHub issues now; create issue-linked
@@ -140,8 +142,8 @@ Expected evidence:
 - Generated or updated artifact: docs and queue entries only.
 - Reviewer checklist or manual inspection: priority order, dependency order,
   no-claim wording, and private boundary.
-- Explicitly not validated, with reason: no private real-eval because this PR
-  only creates the task stack.
+- Explicitly not validated, with reason: no current `real100_v2` private eval
+  because this PR only creates the task stack.
 
 ## Rollback Strategy
 
@@ -167,8 +169,8 @@ plan docs during rollback.
 - Failure mode: a task commits raw private identifiers.
 - Detection signal: committed artifact includes raw question, answer, evidence,
   filename, exact local path, `doc_id`, or `chunk_id`.
-- Stop condition or fallback: remove the artifact and replace it with
-  aggregate-only evidence.
+- Stop condition or fallback: remove the artifact and replace it with current
+  `real100_v2` aggregate-only evidence.
 
 ## Observability
 
