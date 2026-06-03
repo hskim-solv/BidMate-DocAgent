@@ -21,7 +21,9 @@ Reviewer는 PR 설명을 근거(evidence)로 취급하지 않는다. 승인 가�
 하나로 뒷받침되어야 한다.
 
 근거가 없으면 claim은 없는 것으로 처리한다. green CI, synthetic-only success,
-깔끔한 agent 요약은 private real-eval 또는 architecture safety 증거가 아니다.
+깔끔한 agent 요약은 현재 `real100_v2` aggregate-only private-eval 또는 architecture
+safety 증거가 아니다. Legacy real100/v1/221/kordoc aggregate wording은 새 reviewer
+근거로 쓰지 않는다.
 
 ## Fast Triage Surface
 
