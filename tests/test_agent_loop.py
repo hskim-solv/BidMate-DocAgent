@@ -548,6 +548,7 @@ def _stub_overlap_environment(
     branch_prs: list[dict[str, object]] | None = None,
     issue_state: str = "OPEN",
     remote_branches: set[str] | None = None,
+    worktree_dirty_paths: dict[str, list[str]] | None = None,
 ) -> None:
     current = branch if current_branch is None else current_branch
     monkeypatch.setattr(agent_loop, "_current_branch", lambda repo_root: current)
@@ -562,6 +563,15 @@ def _stub_overlap_environment(
     )
     monkeypatch.setattr(agent_loop, "_local_issue_branches", lambda repo_root: {issue: {branch}})
     monkeypatch.setattr(agent_loop, "_remote_issue_branches", lambda selected_issue, *, repo_root: remote_branches or set())
+    # Map worktree path -> dirty paths it reports. _worktree_dirty_paths is the
+    # single git-status seam path-scan ① reads; stubbing it keeps these tests
+    # free of a real `git status --porcelain` invocation.
+    dirty_by_wt = worktree_dirty_paths or {}
+    monkeypatch.setattr(
+        agent_loop,
+        "_worktree_dirty_paths",
+        lambda wt, paths, **_kwargs: tuple(p for p in paths if p in dirty_by_wt.get(str(getattr(wt, "path", wt)), [])),
+    )
     monkeypatch.setattr(agent_loop, "_open_pr_items", lambda *, repo_root: open_prs or [])
     monkeypatch.setattr(agent_loop, "_branch_pr_items", lambda selected_branch, *, repo_root: branch_prs or [])
     monkeypatch.setattr(
@@ -714,6 +724,130 @@ def test_overlap_preflight_writes_markdown_and_optional_json(monkeypatch, tmp_pa
     assert payload["result"] == "clear"
     assert payload["issue"] == "1541"
     assert str(repo) not in json_out.read_text(encoding="utf-8")
+
+
+def test_overlap_preflight_warns_load_bearing_dirty_in_other_worktree(monkeypatch, tmp_path: Path) -> None:
+    # Path-scan ①: another worktree has rag_retrieval.py (load-bearing) dirty.
+    # That is a warn (not a block) so the stacked-day pattern stays possible.
+    repo = _write_repo(tmp_path)
+    branch = "chore/issue-1541-overlap-preflight"
+    other = tmp_path / "other"
+    worktrees = (
+        agent_loop.WorktreeSnapshot(path=str(repo), branch=branch, head="abc1234"),
+        agent_loop.WorktreeSnapshot(path=str(other), branch="docs/issue-1599-doc", head="def5678"),
+    )
+    _stub_overlap_environment(
+        monkeypatch,
+        repo,
+        branch=branch,
+        worktrees=worktrees,
+        worktree_dirty_paths={str(other): ["rag_retrieval.py"]},
+    )
+
+    report = agent_loop.build_overlap_preflight(
+        issue="1541", branch=branch, repo_root=repo, paths=["rag_retrieval.py"]
+    )
+
+    assert report.result == "warn"
+    assert not report.blockers
+    assert any("rag_retrieval.py" in warning for warning in report.warnings)
+    assert any("worktree" in warning and "rag_retrieval.py" in warning for warning in report.warnings)
+
+
+def test_overlap_preflight_warns_open_pr_touches_same_load_bearing_path(monkeypatch, tmp_path: Path) -> None:
+    # Path-scan ②: an unrelated open PR touches rag_core.py (load-bearing).
+    # warn-only — overlapping load-bearing edits across PRs are allowed but flagged.
+    repo = _write_repo(tmp_path)
+    branch = "chore/issue-1541-overlap-preflight"
+    open_prs = [
+        {
+            "number": 42,
+            "title": "Unrelated retriever change",
+            "headRefName": "feat/issue-1600-other",
+            "state": "OPEN",
+            "files": [{"path": "rag_core.py"}, {"path": "docs/notes.md"}],
+        }
+    ]
+    _stub_overlap_environment(monkeypatch, repo, branch=branch, open_prs=open_prs)
+
+    report = agent_loop.build_overlap_preflight(
+        issue="1541", branch=branch, repo_root=repo, paths=["rag_core.py"]
+    )
+
+    assert report.result == "warn"
+    assert not report.blockers
+    assert any("rag_core.py" in warning and "#42" in warning for warning in report.warnings)
+
+
+def test_overlap_preflight_path_scan_ignores_non_load_bearing_paths(monkeypatch, tmp_path: Path) -> None:
+    # False-positive guard: a non-load-bearing path (README.md) dirty in another
+    # worktree AND touched by an open PR must NOT raise any path-scan warning.
+    repo = _write_repo(tmp_path)
+    branch = "chore/issue-1541-overlap-preflight"
+    other = tmp_path / "other"
+    worktrees = (
+        agent_loop.WorktreeSnapshot(path=str(repo), branch=branch, head="abc1234"),
+        agent_loop.WorktreeSnapshot(path=str(other), branch="docs/issue-1599-doc", head="def5678"),
+    )
+    open_prs = [
+        {
+            "number": 43,
+            "title": "Docs tweak",
+            "headRefName": "docs/issue-1601-readme",
+            "state": "OPEN",
+            "files": [{"path": "README.md"}],
+        }
+    ]
+    _stub_overlap_environment(
+        monkeypatch,
+        repo,
+        branch=branch,
+        worktrees=worktrees,
+        open_prs=open_prs,
+        worktree_dirty_paths={str(other): ["README.md"]},
+    )
+
+    report = agent_loop.build_overlap_preflight(
+        issue="1541", branch=branch, repo_root=repo, paths=["README.md"]
+    )
+
+    assert report.result == "clear"
+    assert not any("README.md" in warning for warning in report.warnings)
+
+
+def test_overlap_preflight_path_scan_skipped_when_no_paths_arg(monkeypatch, tmp_path: Path) -> None:
+    # Back-compat: without --paths the path-scan is skipped entirely, so even a
+    # load-bearing overlap in another worktree / open PR stays invisible (the
+    # issue-scope behavior is byte-identical to before this change).
+    repo = _write_repo(tmp_path)
+    branch = "chore/issue-1541-overlap-preflight"
+    other = tmp_path / "other"
+    worktrees = (
+        agent_loop.WorktreeSnapshot(path=str(repo), branch=branch, head="abc1234"),
+        agent_loop.WorktreeSnapshot(path=str(other), branch="docs/issue-1599-doc", head="def5678"),
+    )
+    open_prs = [
+        {
+            "number": 44,
+            "title": "Retriever change",
+            "headRefName": "feat/issue-1602-other",
+            "state": "OPEN",
+            "files": [{"path": "rag_retrieval.py"}],
+        }
+    ]
+    _stub_overlap_environment(
+        monkeypatch,
+        repo,
+        branch=branch,
+        worktrees=worktrees,
+        open_prs=open_prs,
+        worktree_dirty_paths={str(other): ["rag_retrieval.py"]},
+    )
+
+    report = agent_loop.build_overlap_preflight(issue="1541", branch=branch, repo_root=repo)
+
+    assert report.result == "clear"
+    assert not any("rag_retrieval.py" in warning for warning in report.warnings)
 
 
 def test_pr_selector_rejects_gh_option_like_values() -> None:

@@ -3064,8 +3064,9 @@ def write_overlap_preflight(
     out: Path = DEFAULT_OVERLAP_PREFLIGHT,
     json_out: Path | None = None,
     repo_root: Path = ROOT_DIR,
+    paths: Sequence[str] | None = None,
 ) -> tuple[Path, Path | None, OverlapPreflightReport, str]:
-    report = build_overlap_preflight(issue=issue, branch=branch, repo_root=repo_root)
+    report = build_overlap_preflight(issue=issue, branch=branch, repo_root=repo_root, paths=paths)
     rendered = render_overlap_preflight(report, repo_root=repo_root)
     out = _default_output(out, DEFAULT_OVERLAP_PREFLIGHT, "overlap_preflight.md", repo_root=repo_root)
     safe_out = _safe_output_path(out, repo_root=repo_root)
@@ -3088,6 +3089,7 @@ def build_overlap_preflight(
     branch: str,
     repo_root: Path = ROOT_DIR,
     coordination_root: Path | None = None,
+    paths: Sequence[str] | None = None,
 ) -> OverlapPreflightReport:
     # ADR 0095 PR-E3a: the local checkout-state reads (current branch / HEAD / origin-main
     # ancestry / worktree path) are COORDINATION reads — at X>1 each cycle runs inside its own
@@ -3215,6 +3217,50 @@ def build_overlap_preflight(
         warnings.append("other remote branches exist for the target issue: " + ", ".join(f"`{item}`" for item in remote_other))
     if not remote_issue_branches:
         evidence.append("no remote branch matched the target issue")
+
+    # Path-scope overlap (issue #1836). Optional dimension on top of ADR 0079's
+    # issue-scope check: when the caller supplies --paths, warn (never block —
+    # the stacked-day pattern legitimately touches one load-bearing file from
+    # several branches) if a *load-bearing* path is concurrently in flight in
+    # another worktree (uncommitted) or an open PR. ``paths`` absent ⇒ scan is
+    # skipped and the issue-scope result stays byte-identical. Non-load-bearing
+    # paths are dropped to suppress false positives (LOAD_BEARING_PATHS is the
+    # single source of truth via is_load_bearing).
+    if paths:
+        load_bearing_paths = _dedupe_preserve_order(
+            _overlap_path_key(p) for p in paths if is_load_bearing(p)
+        )
+        if load_bearing_paths:
+            evidence.append("path-scan covered load-bearing paths: " + ", ".join(f"`{p}`" for p in load_bearing_paths))
+            # path-scan intentionally includes cycle worktrees (only self is
+            # skipped): this warn-only advisory wants to surface an active
+            # loop's in-flight edits to a shared load-bearing file.
+            for item in worktrees:
+                if Path(item.path).resolve() == current_path:
+                    continue
+                dirty = _worktree_dirty_paths(item, load_bearing_paths)
+                if dirty:
+                    rendered_wt = _display_path(_repo_path(Path(item.path), repo_root), repo_root=repo_root)
+                    wt_branch = _sanitize_inline_text(item.branch) if item.branch else "unknown"
+                    warnings.append(
+                        f"another worktree (branch `{wt_branch}`, path `{rendered_wt}`) "
+                        "has uncommitted changes to load-bearing path(s): "
+                        + ", ".join(f"`{p}`" for p in dirty)
+                    )
+            for pr in open_prs:
+                pr_paths = _pr_changed_paths(pr)
+                hits = [p for p in load_bearing_paths if p in pr_paths]
+                if not hits:
+                    continue
+                if _pr_matches_issue_or_branch(pr, issue=safe_issue, branch=safe_branch):
+                    # Same-issue/branch PR already surfaced as a blocker above;
+                    # do not double-report it as a path warning.
+                    continue
+                number = _sanitize_inline_text(str(pr.get("number") or "N/A"))
+                warnings.append(
+                    f"open PR #{number} touches the same load-bearing path(s): "
+                    + ", ".join(f"`{p}`" for p in hits)
+                )
 
     result = "blocked" if blockers else ("warn" if warnings else "clear")
     return OverlapPreflightReport(
@@ -7584,6 +7630,43 @@ def _git_worktree_entries(repo_root: Path) -> tuple[WorktreeSnapshot, ...]:
     return tuple(entries)
 
 
+def _worktree_dirty_paths(wt: WorktreeSnapshot, paths: Sequence[str]) -> tuple[str, ...]:
+    """Return which of ``paths`` have uncommitted changes in worktree ``wt``.
+
+    Path-scan ① of overlap-preflight (issue #1836). Runs a single
+    ``git -C <wt.path> status --porcelain -- <p1> <p2> …`` (no per-path fork)
+    and reports any requested path that shows up. The dirty model mirrors
+    ``.githooks/_pre-push-worktree-hygiene.sh`` (porcelain = staged ∪ unstaged ∪
+    untracked). On any git error the scan yields ``()`` — overlap-preflight is a
+    read-only advisory and must fail-open on transient/offline git state, never
+    block a fresh task on a flaky sibling worktree read.
+    """
+    if not paths:
+        return ()
+    try:
+        result = subprocess.run(
+            ["git", "-C", wt.path, "status", "--porcelain", "--", *paths],
+            capture_output=True,
+            check=True,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return ()
+    dirty: list[str] = []
+    requested = set(paths)
+    for raw in result.stdout.splitlines():
+        # porcelain v1: 2 status columns, a space, then the path (rename shows
+        # `orig -> new`; take the post-arrow target). Match against the exact
+        # requested paths (exact string equality — a directory entry like `api/`
+        # matches only the literal dir, not its child files).
+        entry = raw[3:].strip()
+        if " -> " in entry:
+            entry = entry.split(" -> ", 1)[1].strip()
+        if entry in requested and entry not in dirty:
+            dirty.append(entry)
+    return tuple(dirty)
+
+
 def _worktree_issue_branches(repo_root: Path) -> dict[str, set[str]]:
     found: dict[str, set[str]] = {}
     try:
@@ -7661,9 +7744,13 @@ def _issue_info(issue: str, *, repo_root: Path) -> dict[str, object]:
 
 
 def _open_pr_items(*, repo_root: Path) -> list[dict[str, object]]:
+    # ``files`` is added (one extra JSON field, no extra gh call) so overlap-
+    # preflight path-scan ② can intersect each open PR's changed paths with the
+    # requested load-bearing paths (issue #1836). Every existing consumer reads
+    # other keys, so the added field is inert for them.
     try:
         result = subprocess.run(
-            ["gh", "pr", "list", "--state", "open", "--json", "number,title,url,headRefName,state,mergedAt"],
+            ["gh", "pr", "list", "--state", "open", "--json", "number,title,url,headRefName,state,mergedAt,files"],
             cwd=repo_root,
             capture_output=True,
             check=True,
@@ -7698,6 +7785,40 @@ def _branch_pr_items(branch: str, *, repo_root: Path) -> list[dict[str, object]]
 def _pr_matches_issue_or_branch(pr: dict[str, object], *, issue: str, branch: str) -> bool:
     head = str(pr.get("headRefName") or "")
     return head == branch or _issue_from_branch(head) == issue
+
+
+def _overlap_path_key(path: str) -> str:
+    """Light, filesystem-free normalization for overlap path-scan matching.
+
+    Strips a leading ``./`` and surrounding backticks only (mirrors
+    ``scripts/_governance._normalize``). Path-scan ② (issue #1836) compares the
+    user's ``--paths`` against a PR's changed paths purely as repo-relative
+    strings; using the heavier ``_normalize_changed_file`` would resolve against
+    the local filesystem and could fold an out-of-tree path to
+    ``[redacted-local-path]``, which is not wanted for plain string overlap.
+    """
+    raw = path.strip().strip("`")
+    return raw[2:] if raw.startswith("./") else raw
+
+
+def _pr_changed_paths(pr: dict[str, object]) -> frozenset[str]:
+    """Repo-relative paths a PR touches, from the ``files`` gh JSON field.
+
+    ``gh pr list --json …,files`` returns ``files: [{"path": "...", ...}, …]``.
+    Path-scan ② (issue #1836) reads only ``path``; the field is absent on PR
+    payloads fetched without ``files`` (every other caller), so this returns an
+    empty set there and the scan simply finds no hits.
+    """
+    files = pr.get("files")
+    if not isinstance(files, list):
+        return frozenset()
+    out: set[str] = set()
+    for entry in files:
+        if isinstance(entry, dict):
+            path = entry.get("path")
+            if isinstance(path, str) and path:
+                out.add(_overlap_path_key(path))
+    return frozenset(out)
 
 
 def _pr_is_merged(pr: dict[str, object]) -> bool:
@@ -20111,6 +20232,14 @@ def build_parser() -> argparse.ArgumentParser:
     overlap.add_argument("--branch", required=True)
     overlap.add_argument("--out", type=Path, default=DEFAULT_OVERLAP_PREFLIGHT)
     overlap.add_argument("--json-out", type=Path)
+    overlap.add_argument(
+        "--paths",
+        nargs="*",
+        default=None,
+        help="Optional repo-relative paths to add a load-bearing path-scope overlap scan "
+        "(warns if a load-bearing path is dirty in another worktree or touched by an open PR). "
+        "Omitted = issue-scope check only.",
+    )
 
     pr_scan = sub.add_parser("pr-scan", help="Export read-only PR state for planning.")
     pr_scan.add_argument("--out", type=Path, default=DEFAULT_PR_STATE)
@@ -20850,6 +20979,7 @@ def main(argv: list[str] | None = None) -> int:
                 branch=args.branch,
                 out=args.out,
                 json_out=args.json_out,
+                paths=args.paths,
             )
             if json_out is None:
                 sys.stdout.write(f"[OK] wrote {_repo_path(out, ROOT_DIR)}\n")

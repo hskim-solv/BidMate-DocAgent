@@ -67,6 +67,11 @@ def test_ship_start_creates_issue_then_switches_branch(monkeypatch, capsys) -> N
             "--type",
             "chore",
             "--no-fetch",
+            # The overlap-preflight gate (issue #1836) shells to git/gh against
+            # the real repo, which this issue-creation/branch-switch unit does
+            # not model; skip it here exactly like --no-fetch. The gate's own
+            # behavior is covered by tests/test_ship_start_overlap_gate.py.
+            "--no-overlap-check",
         ],
     )
 
@@ -120,6 +125,9 @@ def test_ship_start_label_failure_warns_without_aborting(monkeypatch, capsys) ->
             "--labels",
             "enhancement,rag",
             "--no-fetch",
+            # See the note in test_ship_start_creates_issue_then_switches_branch:
+            # skip the overlap gate, which is exercised separately.
+            "--no-overlap-check",
         ],
     )
 
