@@ -5,6 +5,14 @@
 - **Deciders**: hskim (solo author)
 - **Related**: ADR 0001, ADR 0005, ADR 0052, ADR 0069, ADR 0075, ADR 0076
 
+> **Current-policy note (2026-06-03)**: this ADR remains an accepted historical
+> decision record for the legacy difficulty-profile measurement surface. Its
+> `reports/real100/` and `data/index/real100` paths are not current
+> claim-bearing private-eval evidence. New task, PR, claim, and handoff evidence
+> must use the `real100_v2` aggregate-only surface in
+> [Surface Map](../evaluation/surface-map.md), unless the maintainer explicitly
+> re-enables another private-eval surface.
+
 ## Context
 
 The private real-eval baseline can show low Naive RAG scores without telling a
@@ -17,7 +25,7 @@ failure distribution, and multi-chunk failure analysis. They do not provide one
 aggregate profile that joins difficulty buckets with Naive RAG retrieval,
 citation, abstention, and failure outcomes.
 
-The required inputs live in local-only artifacts:
+For this historical surface, the required inputs lived in local-only artifacts:
 `reports/real100/eval_summary.json::case_results` and
 `data/index/real100/index.json::chunks`. These may contain private question
 text, evidence text, document identifiers, chunk identifiers, filenames, and
@@ -25,18 +33,20 @@ paths, so ADR 0005 allows only aggregate outputs to cross the commit boundary.
 
 ## Decision
 
-Add `scripts/render_difficulty_profile.py` as a read-only renderer that consumes
-the local private eval summary and matching index, computes difficulty features
-in memory, and emits:
+For the accepted historical surface, `scripts/render_difficulty_profile.py` was
+added as a read-only renderer that consumes the local private eval summary and
+matching index, computes difficulty features in memory, and emits legacy-path
+outputs:
 
 - `reports/real100/difficulty_profile.aggregate.json`
 - `reports/real100/difficulty_profile.md`
 
-The aggregate schema is `schema_version: 1` and contains only safe provenance,
-population counts, closed difficulty buckets, per-bucket metric means, failure
-category distributions, validity counters, and explicit conclusions. The
-renderer rejects non-Naive primary runs unless `--allow-non-naive` is passed, so
-claims about Naive RAG do not accidentally use an agentic run.
+The historical aggregate schema is `schema_version: 1` and contains only safe
+provenance, population counts, closed difficulty buckets, per-bucket metric
+means, failure category distributions, validity counters, and explicit
+conclusions. The renderer rejects non-Naive primary runs unless
+`--allow-non-naive` is passed, so claims about Naive RAG do not accidentally use
+an agentic run.
 
 Difficulty buckets include answerability, single-doc vs multi-doc gold
 evidence, single-chunk vs multi-chunk gold evidence, expected-terms count,
