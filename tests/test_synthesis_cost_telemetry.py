@@ -68,6 +68,13 @@ class ComputeCostUsdTest(unittest.TestCase):
             rag_synthesis.compute_cost_usd(model=None, tokens_in=10, tokens_out=10)
         )
 
+    def test_missing_token_counts_for_priced_model_returns_none(self) -> None:
+        self.assertIsNone(
+            rag_synthesis.compute_cost_usd(
+                model="claude-sonnet-4-6", tokens_in=None, tokens_out=None
+            )
+        )
+
     def test_sonnet_input_output_only(self) -> None:
         # Sonnet 4.6: $3 / Mtok input, $15 / Mtok output.
         # 1_000_000 input + 1_000_000 output = $3 + $15 = $18.00.
