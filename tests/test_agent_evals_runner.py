@@ -851,3 +851,164 @@ def test_report_glob_fallback_when_no_manifest(tmp_path) -> None:
     logs = report_script._read_run_logs(runs_dir)
     assert sorted({log["task_id"] for log in logs}) == ["T-x"]
     assert len(logs) == 2
+
+
+# --------------------------------------------------------------------------- #
+# #2441 — post-merge cross-family review hardening (fail-closed + metric)      #
+# --------------------------------------------------------------------------- #
+
+
+def test_cross_family_review_non_true_attestation_returns_none() -> None:
+    # #2441 P1a: egress opens ONLY on `public_attestation is True`. A truthy non-bool
+    # (e.g. the string "false") must NOT invoke payload_provider or the reviewer.
+    ob = _oracle_bidmate()
+
+    def exploding_provider():
+        raise AssertionError("provider must not run when attestation is not exactly True")
+
+    assert (
+        ob.cross_family_review(
+            exploding_provider,
+            public_attestation="false",  # truthy, but not True
+            candidate_family="cand",
+            reviewer_family="other",
+            reviewer_call=lambda _p: (True, "ok"),
+        )
+        is None
+    )
+
+
+def test_evaluate_truthy_attestation_does_not_egress() -> None:
+    # #2441 P1a end-to-end: gates pass, so only the attestation gate stands between
+    # the patch and the external reviewer; a non-True attestation must skip egress.
+    ob = _oracle_bidmate()
+
+    class _Proc:
+        returncode = 0
+
+    def fake_run(_cmd, **_kwargs):
+        return _Proc()
+
+    def exploding_provider():
+        raise AssertionError("payload must NOT egress under a non-True attestation")
+
+    out = ob.evaluate(
+        Path("/tmp/x"),
+        task={"task_id": "T-attest"},
+        candidate_family="cand",
+        public_attestation="false",  # truthy, but not exactly True
+        reviewer_family="other",
+        payload_provider=exploding_provider,
+        hidden_test_cmd=["h"],
+        pytest_cmd=["p"],
+        regression_cmd=["r"],
+        runner_subprocess=fake_run,
+        reviewer_call=lambda _p: (True, "ok"),
+    )
+    assert out["egress"] == "skipped"
+    assert out["tier"] == "NECESSARY_GATE_ONLY"
+    assert out["reviewer_family"] is None
+
+
+def test_cross_family_review_truthy_accepted_is_strict_false() -> None:
+    # #2441 P1b: a reviewer_call returning a truthy NON-bool "accepted" (e.g. the
+    # string "false") must not be widened past decide_verdict's `accepted is True`.
+    ob = _oracle_bidmate()
+    verdict = ob.cross_family_review(
+        lambda: "payload",
+        public_attestation=True,
+        candidate_family="cand",
+        reviewer_family="other",
+        reviewer_call=lambda _p: ("false", "reject"),
+    )
+    assert verdict is not None
+    assert verdict.accepted is False  # strict identity, not bool("false") == True
+
+
+def test_run_one_non_bool_gate_is_fail_closed() -> None:
+    # #2441 P1c (write side): a candidate returning a non-bool truthy FAILED gate
+    # (e.g. "false") must be recorded as a fail, never coerced to a pass.
+    runner = load_module("agent-evals/adapters/bidmate/runner.py", "agent_evals_runner_failclosed_write")
+
+    class _Proc:
+        returncode = 0
+
+    def cand(**_kwargs):
+        return {
+            "gate_results": {
+                "hidden_test_gate": "false",
+                "pytest_pass": "false",
+                "regression_pass": "false",
+                "hard_gates": [],
+            },
+            "cost": {"usd": 0.0},
+            "human_minutes": 0.0,
+        }
+
+    log = runner.run_one(
+        start_commit="HEAD",
+        task_id="T",
+        playbook="v1_spec_first",
+        seed=17,
+        candidate=cand,
+        repo_root=Path("/tmp"),
+        subprocess_run=lambda *a, **k: _Proc(),
+        workdir_factory=lambda **k: "/tmp/agent-evals-failclosed-nonexistent",
+    )
+    gr = log["gate_results"]
+    assert gr["hidden_test_gate"] is False
+    assert gr["pytest_pass"] is False
+    assert gr["regression_pass"] is False
+
+
+def test_verdict_for_run_non_bool_gate_fails_closed() -> None:
+    # #2441 P1c (read side): even a run-log carrying a non-bool truthy gate value must
+    # be treated as a fail by _verdict_for_run, never ACCEPTED.
+    run_script = load_module("scripts/agent_evals_run.py", "agent_evals_run_failclosed_read")
+    oracle = _oracle()
+    run_log = {
+        "task_id": "T-2",
+        "playbook": "v1_spec_first",
+        "seed": 17,
+        "gate_results": {
+            "hidden_test_gate": "false",
+            "pytest_pass": "false",
+            "regression_pass": "false",
+            "hard_gates": [],
+        },
+    }
+    tier = run_script._verdict_for_run(run_log, oracle, public_attestation=True)
+    assert tier != "ACCEPTED"
+
+
+def test_report_manifest_rejects_non_basename_entries(tmp_path) -> None:
+    # #2441 P2: a manifest entry that is not a plain basename (../, absolute, nested)
+    # would let the reader escape the runs dir; it must be rejected loudly.
+    report_script = load_module("scripts/agent_evals_report.py", "agent_evals_report_basename")
+    runner = load_module("agent-evals/adapters/bidmate/runner.py", "agent_evals_runner_basename")
+    runs_dir = tmp_path / "runs"
+    runs_dir.mkdir(parents=True)
+    _write_log(runner, runs_dir, "T-a", "v0_naive", 17)
+    (runs_dir / runner.RUN_MANIFEST_NAME).write_text(
+        json.dumps({"run_logs": ["../escape.json", "T-a__v0_naive__seed17.json"]}) + "\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="non-basename"):
+        report_script._read_run_logs(runs_dir)
+
+
+def test_metric_per_accepted_counts_total_effort() -> None:
+    # #2441 P3: human_min_per_accepted / cost_per_accepted divide TOTAL effort across
+    # ALL seed runs (accepted AND rejected) by the accepted count — failed attempts
+    # cost effort too. Summing only accepted runs would understate per-accepted cost.
+    report_script = load_module("scripts/agent_evals_report.py", "agent_evals_report_total_effort")
+    runs = [
+        {"gate_results": {"tier": "ACCEPTED"}, "cost": {"usd": 3.0}, "human_minutes": 2.0},
+        {"gate_results": {"tier": "NECESSARY_GATE_ONLY"}, "cost": {"usd": 5.0}, "human_minutes": 4.0},
+    ]
+    assert report_script._metric_value("cost_per_accepted", runs) == 8.0  # (3+5)/1, not 3/1
+    assert report_script._metric_value("human_min_per_accepted", runs) == 6.0  # (2+4)/1
+    # zero accepted stays UNDEFINED (dropped), never 0.0.
+    zero = [{"gate_results": {"tier": "NECESSARY_GATE_ONLY"}, "cost": {"usd": 5.0}, "human_minutes": 4.0}]
+    assert report_script._metric_value("cost_per_accepted", zero) is None
+    assert report_script._metric_value("human_min_per_accepted", zero) is None

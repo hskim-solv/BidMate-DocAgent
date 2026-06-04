@@ -102,6 +102,17 @@ def _read_run_logs(runs_dir: Path) -> list[dict[str, Any]]:
     manifest = runner.read_run_manifest(runs_dir)
     if manifest is not None:
         names = manifest.get("run_logs") or []
+        # Enforce the "listed basenames only" contract before joining. A non-basename
+        # entry (``../old.json``, an absolute path, or a nested ``a/b.json``) would
+        # let ``runs_dir / name`` escape the runs dir and read a stale log outside the
+        # current run — defeating the manifest-scoping invariant. Reject loudly.
+        bad = [n for n in names if not isinstance(n, str) or n == "" or Path(n).name != n]
+        if bad:
+            raise ValueError(
+                f"run_manifest.json lists non-basename entries {bad[:3]}"
+                f"{'...' if len(bad) > 3 else ''}; the manifest contract is plain "
+                "basenames within the runs dir only."
+            )
         missing = [name for name in names if not (runs_dir / name).exists()]
         if missing:
             preview = missing[:3]
@@ -140,6 +151,12 @@ def _metric_value(metric: str, runs: list[dict[str, Any]]) -> float | None:
     the cost metric: a baseline that solves nothing would tie or beat a candidate
     that solves at nonzero cost. An undefined value is dropped from the paired
     sample (see ``_paired_rows``) rather than scored as free.
+
+    The per-accepted numerator is the TOTAL effort across ALL seed runs in the group
+    (accepted AND rejected), divided by the accepted count — a cost-efficiency
+    metric: "effort spent to obtain one accepted solve". Summing only the accepted
+    runs' effort would understate cost, since the failed attempts also consumed
+    human-minutes / spend (matches the module docstring's "total / accepted count").
     """
 
     n_runs = len(runs)
@@ -152,12 +169,12 @@ def _metric_value(metric: str, runs: list[dict[str, Any]]) -> float | None:
         return ((n_accepted / n_runs) * weight) if n_runs else 0.0
     if metric == "human_min_per_accepted":
         if n_accepted == 0:
-            return None  # undefined: no accepted run to amortize human-minutes over
-        return sum(float(r.get("human_minutes", 0.0)) for r in accepted_runs) / n_accepted
+            return None  # undefined: no accepted run to amortize total effort over
+        return sum(float(r.get("human_minutes", 0.0)) for r in runs) / n_accepted
     if metric == "cost_per_accepted":
         if n_accepted == 0:
-            return None  # undefined: no accepted run to amortize cost over
-        return sum(float(r.get("cost", {}).get("usd", 0.0)) for r in accepted_runs) / n_accepted
+            return None  # undefined: no accepted run to amortize total spend over
+        return sum(float(r.get("cost", {}).get("usd", 0.0)) for r in runs) / n_accepted
     raise ValueError(f"unknown metric: {metric}")
 
 
