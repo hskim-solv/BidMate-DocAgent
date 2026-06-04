@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import importlib.util
+import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -48,12 +50,36 @@ def test_paired_delta_rejects_empty_input() -> None:
         raise AssertionError("paired_delta accepted an empty same-task set")
 
 
+def _is_gitignored(rel_path: str) -> bool:
+    """True iff git ignores ``rel_path`` by pattern (ephemeral, non-committable)."""
+
+    result = subprocess.run(
+        ["git", "check-ignore", "--no-index", "--quiet", "--", rel_path],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode in (0, 1), (
+        f"git check-ignore failed for {rel_path} (rc={result.returncode}); treat as failure."
+    )
+    return result.returncode == 0
+
+
 def test_scanner_accepts_current_pr2_surface_files() -> None:
     report = load_module("agent-evals/core/report.py", "agent_evals_report_accept_test")
+    # Only the *committable* surface is asserted clean. Gitignored, deny-by-default
+    # artifacts (e.g. ephemeral run-logs under agent-evals/runs/ that a local
+    # pipeline run leaves behind) are not surface files and are intentionally
+    # excluded — a clean CI checkout never has them, and they are *meant* to fail
+    # the path allowlist if force-added (covered by the gitignore guard tests).
     rel_paths = sorted(
-        path.relative_to(REPO_ROOT).as_posix()
-        for path in (REPO_ROOT / "agent-evals").rglob("*")
-        if path.is_file() and "__pycache__" not in path.parts
+        rel
+        for rel in (
+            path.relative_to(REPO_ROOT).as_posix()
+            for path in (REPO_ROOT / "agent-evals").rglob("*")
+            if path.is_file() and "__pycache__" not in path.parts
+        )
+        if not _is_gitignored(rel)
     )
 
     violations = []
@@ -295,3 +321,104 @@ def test_scanner_rejects_top_level_key_reused_below_root() -> None:
     violations = report.validate_agent_eval_file("agent-evals/reports/smoke.aggregate.json", text)
 
     assert any("unknown report key not in schema" in violation.reason for violation in violations)
+
+
+def test_scanner_accepts_pr3_paired_ci_nested_keys() -> None:
+    # PR3: a powered metric row carries the bootstrap-CI extension nested keys
+    # (underpowered / ci_lo / ci_hi / num_resamples / alpha). These must be in the
+    # nested allowlist so a legitimate CI-aware row passes the scanner.
+    report = load_module("agent-evals/core/report.py", "agent_evals_report_pr3_ci_keys_test")
+
+    text = json.dumps(
+        {
+            "schema_version": 1,
+            "surface": "agent-evals-pr3",
+            "metrics": {
+                "accepted_solve_rate": {
+                    "metric": "accepted_solve_rate",
+                    "baseline": "v0_naive",
+                    "candidate": "v1_spec_first",
+                    "n": 12,
+                    "baseline_mean": 0.4,
+                    "candidate_mean": 0.7,
+                    "delta": 0.3,
+                    "wins": 6,
+                    "losses": 1,
+                    "ties": 5,
+                    "underpowered": False,
+                    "ci_lo": 0.1,
+                    "ci_hi": 0.5,
+                    "num_resamples": 1000,
+                    "alpha": 0.05,
+                }
+            },
+        }
+    )
+    violations = report.validate_agent_eval_file("agent-evals/reports/holdout.aggregate.json", text)
+
+    assert [violation.render() for violation in violations] == []
+
+
+def test_scanner_rejects_raw_sink_nested_under_metric_row() -> None:
+    # PR3: extending the nested allowlist with CI keys must NOT open a hole — a raw
+    # sink nested inside a metric row (metrics.<name>.pr_title) is still rejected by
+    # the recursive denylist.
+    report = load_module("agent-evals/core/report.py", "agent_evals_report_pr3_nested_sink_test")
+
+    text = json.dumps(
+        {
+            "schema_version": 1,
+            "metrics": {"accepted_solve_rate": {"pr_title": "raw upstream pr title"}},
+        }
+    )
+    violations = report.validate_agent_eval_file("agent-evals/reports/holdout.aggregate.json", text)
+
+    assert any(
+        "forbidden data key" in violation.reason and "pr_title" in violation.reason
+        for violation in violations
+    )
+
+
+def test_generated_holdout_report_passes_scanner_and_is_aggregate_only() -> None:
+    # PR3: the committed holdout report must clear the content scanner and contain
+    # none of the raw/private sink tokens (aggregate-only boundary, ADR 0005).
+    report = load_module("agent-evals/core/report.py", "agent_evals_report_holdout_scan_test")
+    rel_path = "agent-evals/reports/holdout-v0-vs-v1.aggregate.json"
+    text = (REPO_ROOT / rel_path).read_text(encoding="utf-8")
+
+    violations = report.validate_agent_eval_file(rel_path, text)
+    assert [violation.render() for violation in violations] == []
+
+    forbidden_tokens = (
+        "pr_title",
+        "issue_title",
+        "rfp_excerpt",
+        "patch",
+        "diff --git",
+        "/Users/",
+        "run-log",
+        "captured.diff",
+    )
+    lowered = text.lower()
+    for token in forbidden_tokens:
+        assert token.lower() not in lowered, f"forbidden token leaked into holdout report: {token}"
+
+
+def test_generated_holdout_report_is_underpowered_with_no_ci_band() -> None:
+    # PR3: the N=3 smoke holdout is below n_min, so every metric row must be flagged
+    # underpowered and must OMIT the CI band (no ci_lo/ci_hi).
+    rel_path = "agent-evals/reports/holdout-v0-vs-v1.aggregate.json"
+    data = json.loads((REPO_ROOT / rel_path).read_text(encoding="utf-8"))
+
+    assert data["surface"] == "agent-evals-pr3"
+    assert data["task_count"] == 3
+    assert set(data["metrics"]) == {
+        "accepted_solve_rate",
+        "difficulty_weighted_rate",
+        "human_min_per_accepted",
+        "cost_per_accepted",
+    }
+    for name, row in data["metrics"].items():
+        assert row.get("underpowered") is True, f"{name} should be underpowered at N=3"
+        assert "ci_lo" not in row and "ci_hi" not in row, f"{name} must omit CI band when underpowered"
+    assert any(note.startswith("UNDERPOWERED N=") for note in data["notes"])

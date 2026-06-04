@@ -52,8 +52,10 @@ DENIED = [
     "agent-evals/reports/2026-smoke-run-log.json",        # "smoke" in name but not allowed
     "agent-evals/reports/2026-smoke-captured-diff.json",
     "agent-evals/reports/raw-v0-vs-v1.json",
-    # Unanticipated shallow .py files are denied too — exact PR2 module allowlists close the
-    # "shallow code path could be a raw sink" bypass (no generalizable .py pattern to match):
+    # Unanticipated shallow .py files are denied too — exact module allowlists close the
+    # "shallow code path could be a raw sink" bypass (no generalizable .py pattern to match).
+    # PR3 widened the allowlist to oracle/runner/oracle_bidmate by EXACT name only, so an
+    # arbitrary shallow .py (raw_dump.py) must still be denied:
     "agent-evals/core/raw_dump.py",
     "agent-evals/adapters/bidmate/raw_dump.py",
     "agent-evals/core/runs/2026/raw_dump.py",
@@ -67,8 +69,11 @@ ALLOWED = [
     "agent-evals/core/schema.py",
     "agent-evals/core/metrics.py",
     "agent-evals/core/report.py",
+    "agent-evals/core/oracle.py",
     "agent-evals/adapters/bidmate/__init__.py",
     "agent-evals/adapters/bidmate/task_mining.py",
+    "agent-evals/adapters/bidmate/runner.py",
+    "agent-evals/adapters/bidmate/oracle_bidmate.py",
     "agent-evals/playbooks/v0_naive.md",
     "agent-evals/playbooks/v1_spec_first.md",
     "agent-evals/splits.yaml",
@@ -87,9 +92,9 @@ ALLOWED = [
 COMMITTABLE_RE = [
     re.compile(r"^agent-evals/README\.md\Z"),
     re.compile(r"^agent-evals/core/__init__\.py\Z"),
-    re.compile(r"^agent-evals/core/(schema|metrics|report)\.py\Z"),
+    re.compile(r"^agent-evals/core/(schema|metrics|report|oracle)\.py\Z"),
     re.compile(r"^agent-evals/adapters/bidmate/__init__\.py\Z"),
-    re.compile(r"^agent-evals/adapters/bidmate/task_mining\.py\Z"),
+    re.compile(r"^agent-evals/adapters/bidmate/(task_mining|runner|oracle_bidmate)\.py\Z"),
     re.compile(r"^agent-evals/playbooks/v(0_naive|1_spec_first)\.md\Z"),
     re.compile(r"^agent-evals/splits\.yaml\Z"),
     re.compile(r"^agent-evals/tasks/[^/]+/task\.yaml\Z"),
@@ -167,8 +172,13 @@ def test_precommit_hook_enforces_agent_evals_boundary() -> None:
     assert r"'^agent-evals/README\.md$'" in allowed, (
         "pre-commit ALLOWED_PATTERNS must permit agent-evals/README.md."
     )
-    assert r"'^agent-evals/core/(schema|metrics|report)\.py$'" in allowed, (
-        "pre-commit ALLOWED_PATTERNS must permit exact PR2 core modules."
+    assert r"'^agent-evals/core/(schema|metrics|report|oracle)\.py$'" in allowed, (
+        "pre-commit ALLOWED_PATTERNS must permit exact core modules (PR2 schema/metrics/report "
+        "plus PR3 oracle)."
+    )
+    assert r"'^agent-evals/adapters/bidmate/(task_mining|runner|oracle_bidmate)\.py$'" in allowed, (
+        "pre-commit ALLOWED_PATTERNS must permit exact bidmate adapter modules (PR2 task_mining "
+        "plus PR3 runner/oracle_bidmate)."
     )
     assert r"'^agent-evals/reports/[^/]+\.aggregate\.json$'" in allowed, (
         "pre-commit ALLOWED_PATTERNS must permit aggregate reports only."

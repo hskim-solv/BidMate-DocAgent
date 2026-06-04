@@ -1,0 +1,78 @@
+{
+  "generated_by": "scripts/agent_evals_report.py",
+  "metrics": {
+    "accepted_solve_rate": {
+      "baseline": "v0_naive",
+      "baseline_mean": 0.333333,
+      "candidate": "v1_spec_first",
+      "candidate_mean": 1.0,
+      "delta": 0.666667,
+      "losses": 0,
+      "metric": "accepted_solve_rate",
+      "n": 3,
+      "ties": 1,
+      "underpowered": true,
+      "wins": 2
+    },
+    "cost_per_accepted": {
+      "baseline": "v0_naive",
+      "baseline_mean": 0.0,
+      "candidate": "v1_spec_first",
+      "candidate_mean": 0.0,
+      "delta": 0.0,
+      "losses": 0,
+      "metric": "cost_per_accepted",
+      "n": 1,
+      "ties": 1,
+      "underpowered": true,
+      "wins": 0
+    },
+    "difficulty_weighted_rate": {
+      "baseline": "v0_naive",
+      "baseline_mean": 0.333333,
+      "candidate": "v1_spec_first",
+      "candidate_mean": 1.0,
+      "delta": 0.666667,
+      "losses": 0,
+      "metric": "difficulty_weighted_rate",
+      "n": 3,
+      "ties": 1,
+      "underpowered": true,
+      "wins": 2
+    },
+    "human_min_per_accepted": {
+      "baseline": "v0_naive",
+      "baseline_mean": 0.0,
+      "candidate": "v1_spec_first",
+      "candidate_mean": 0.0,
+      "delta": 0.0,
+      "losses": 0,
+      "metric": "human_min_per_accepted",
+      "n": 1,
+      "ties": 1,
+      "underpowered": true,
+      "wins": 0
+    }
+  },
+  "notes": [
+    "UNDERPOWERED N=3",
+    "stub candidate + stub reviewer; no external egress",
+    "directional paired signal, not absolute leaderboard",
+    "aggregate counts only",
+    "seeds: 17, 18, 19",
+    "n_min=10",
+    "ci source: eval.bootstrap"
+  ],
+  "playbooks": {
+    "baseline": "v0_naive",
+    "candidate": "v1_spec_first"
+  },
+  "report_id": "holdout-v0-vs-v1",
+  "scanner": {
+    "content_scan": "pass",
+    "path_allowlist": "PR3"
+  },
+  "schema_version": 1,
+  "surface": "agent-evals-pr3",
+  "task_count": 3
+}

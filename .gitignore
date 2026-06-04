@@ -391,8 +391,11 @@ agent-evals/**
 !agent-evals/core/schema.py
 !agent-evals/core/metrics.py
 !agent-evals/core/report.py
+!agent-evals/core/oracle.py
 !agent-evals/adapters/bidmate/__init__.py
 !agent-evals/adapters/bidmate/task_mining.py
+!agent-evals/adapters/bidmate/runner.py
+!agent-evals/adapters/bidmate/oracle_bidmate.py
 !agent-evals/playbooks/v0_naive.md
 !agent-evals/playbooks/v1_spec_first.md
 !agent-evals/splits.yaml

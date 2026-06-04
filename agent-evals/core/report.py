@@ -37,9 +37,9 @@ _MAX_DATA_STRING_LEN = 512
 _ALLOWED_PATH_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"^agent-evals/README\.md\Z"),
     re.compile(r"^agent-evals/core/__init__\.py\Z"),
-    re.compile(r"^agent-evals/core/(schema|metrics|report)\.py\Z"),
+    re.compile(r"^agent-evals/core/(schema|metrics|report|oracle)\.py\Z"),
     re.compile(r"^agent-evals/adapters/bidmate/__init__\.py\Z"),
-    re.compile(r"^agent-evals/adapters/bidmate/task_mining\.py\Z"),
+    re.compile(r"^agent-evals/adapters/bidmate/(task_mining|runner|oracle_bidmate)\.py\Z"),
     re.compile(r"^agent-evals/playbooks/v(0_naive|1_spec_first)\.md\Z"),
     re.compile(r"^agent-evals/splits\.yaml\Z"),
     re.compile(r"^agent-evals/tasks/[A-Za-z0-9_.-]+/task\.yaml\Z"),
@@ -184,6 +184,15 @@ _ALLOWED_NESTED_KEYS = frozenset(
         "path_allowlist",
         "train",
         "holdout",
+        # PR3 paired-CI extension on metric rows: an underpowered (n<n_min) row
+        # carries only ``underpowered``; a powered row additionally carries the
+        # bootstrap band (``ci_lo``/``ci_hi``) plus its provenance
+        # (``num_resamples``/``alpha``). All numeric/bool — never raw prose.
+        "underpowered",
+        "ci_lo",
+        "ci_hi",
+        "num_resamples",
+        "alpha",
     }
 )
 

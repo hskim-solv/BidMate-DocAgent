@@ -117,9 +117,9 @@ ALLOWED_PATTERNS=(
   # ADR 0100 operator-skill eval surface (PR2): scanner-backed committable surface.
   '^agent-evals/README\.md$'
   '^agent-evals/core/__init__\.py$'
-  '^agent-evals/core/(schema|metrics|report)\.py$'
+  '^agent-evals/core/(schema|metrics|report|oracle)\.py$'
   '^agent-evals/adapters/bidmate/__init__\.py$'
-  '^agent-evals/adapters/bidmate/task_mining\.py$'
+  '^agent-evals/adapters/bidmate/(task_mining|runner|oracle_bidmate)\.py$'
   '^agent-evals/playbooks/v(0_naive|1_spec_first)\.md$'
   '^agent-evals/splits\.yaml$'
   '^agent-evals/tasks/[^/]+/task\.yaml$'
