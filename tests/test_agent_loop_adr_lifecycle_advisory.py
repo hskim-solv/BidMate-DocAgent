@@ -129,6 +129,7 @@ def test_loop_state_carries_advisory_when_over_sla_and_cycle_ran(monkeypatch, tm
         execute_runner=False,
         execute_ship=False,
         repo_root=repo,
+        task_pool=1,  # PR-F flipped the default to 2; pin X=1 (advisory emission is pool-agnostic) so this fixture (no real git repo) does not enter the X>1 worktree-per-task path.
     )
     assert result.cycles  # a cycle was recorded
     state = json.loads((active_dir / "auto_loop_state.json").read_text(encoding="utf-8"))
@@ -154,6 +155,7 @@ def test_loop_state_advisory_absent_when_no_cycle_ran(monkeypatch, tmp_path: Pat
         execute_runner=False,
         execute_ship=False,
         repo_root=repo,
+        task_pool=1,  # PR-F flipped the default to 2; pin X=1 to isolate this fixture from the X>1 worktree path (target already met -> no cycle, but keep intent explicit).
     )
     assert result.cycles == ()  # target already reached, no cycle ran
     state = json.loads((active_dir / "auto_loop_state.json").read_text(encoding="utf-8"))
@@ -170,6 +172,7 @@ def test_loop_decision_invariant_to_advisory(monkeypatch, tmp_path: Path) -> Non
         execute_runner=False,
         execute_ship=False,
         repo_root=repo_a,
+        task_pool=1,  # PR-F flipped the default to 2; pin X=1 (advisory emission is pool-agnostic) so this fixture (no real git repo) stays on the serial path.
     )
     repo_b = _write_loop_repo(tmp_path / "b")
     monkeypatch.setattr(agent_loop, "proposed_adr_age", lambda *a, **k: [])
@@ -178,6 +181,7 @@ def test_loop_decision_invariant_to_advisory(monkeypatch, tmp_path: Path) -> Non
         execute_runner=False,
         execute_ship=False,
         repo_root=repo_b,
+        task_pool=1,  # PR-F flipped the default to 2; pin X=1 (advisory emission is pool-agnostic) so this fixture (no real git repo) stays on the serial path.
     )
     assert result_over.decision == result_none.decision
     assert result_over.completed_task_ids == result_none.completed_task_ids

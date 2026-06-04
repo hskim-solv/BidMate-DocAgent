@@ -87,6 +87,7 @@ def test_advisory_present_in_state_when_a_cycle_ran(tmp_path: Path) -> None:
         execute_runner=False,
         execute_ship=False,
         repo_root=repo,
+        task_pool=1,  # PR-F flipped the default to 2; pin X=1 (advisory emission is pool-agnostic) so this fixture (no real git repo) does not enter the X>1 worktree-per-task path.
     )
     assert result.cycles  # a cycle was recorded
     state = json.loads((active_dir / "auto_loop_state.json").read_text(encoding="utf-8"))
@@ -111,6 +112,7 @@ def test_advisory_absent_when_no_cycle_ran(tmp_path: Path) -> None:
         execute_runner=False,
         execute_ship=False,
         repo_root=repo,
+        task_pool=1,  # PR-F flipped the default to 2; pin X=1 to isolate this fixture from the X>1 worktree path (target already met -> no cycle, but keep intent explicit).
     )
     assert result.cycles == ()  # target already reached, no cycle ran
     state = json.loads((active_dir / "auto_loop_state.json").read_text(encoding="utf-8"))

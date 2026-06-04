@@ -1,6 +1,6 @@
 # 0095: task-level 병렬 bounded 루프 (X) + omc multi-worker (Y) default-on
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-06-02
 - Deciders: User, Claude Code
 - Related: [ADR 0094](./0094-concurrency-substrate-for-parallel-loop.md) (동시성 안전 substrate — 본 ADR 의 전제), [ADR 0087](./0087-opt-in-omc-team-parallel-runner.md) (opt-in omc 병렬 runner / single-worker pin), [ADR 0085](./0085-infinite-mode-active-auto-loop.md) (무한 모드 + 안전 가드 SEMANTICS), [ADR 0083](./0083-local-gate-completion-and-real100-v2-judge-egress.md) (`make 시작` local-gate completion / EXECUTE_SHIP=0), [ADR 0001](./0001-preserve-naive-baseline.md) (baseline byte-identical 보존), [ADR 0005](./0005-eval-split-public-synthetic-private-local.md) (private 데이터 경계), [ADR 0061](./0061-external-and-paid-api-dependencies-allowed.md) (외부/유료 API opt-in 3조건)
@@ -22,8 +22,10 @@ parallelism(이미 존재하는 `spawn_and_wait`). 본 ADR 은 [ADR 0094](./0094
 
 ## Decision
 
-XYZ 병렬화를 도입하되 **X 는 default-dark(기본 X=1)**, **Y 는 default-on(omc path 한정)** 으로
-착륙시킨다. 단일 전역 budget M 은 [ADR 0094](./0094-concurrency-substrate-for-parallel-loop.md) 에서
+XYZ 병렬화를 도입한다. **X 는 PR-E2~E3c 에서 default-dark(기본 X=1)로 dark 착륙한 뒤 PR-F(#1948)에서
+기본을 X=2 로 flip 했다 — 현재 기본 = X=2 병렬**(X=1 직렬·ADR 0001 byte-identical 경로는
+`ACTIVE_TASK_POOL=1` / `BIDMATE_AGENT_LOOP_TASK_POOL=1` / kill-switch override 로 유지). **Y 는
+default-on(omc path 한정)**. 단일 전역 budget M 은 [ADR 0094](./0094-concurrency-substrate-for-parallel-loop.md) 에서
 온다. `EXECUTE_SHIP=0`(ADR 0083) human-gated ship 은 불변이다.
 
 - **Y (omc multi-worker) default-on**: `_resolve_omc_worker_mix` 의 `total_workers=1` 핀 +
@@ -53,11 +55,27 @@ XYZ 병렬화를 도입하되 **X 는 default-dark(기본 X=1)**, **Y 는 defaul
   consent** 로 수용한다. 전역 kill-switch `BIDMATE_AGENT_LOOP_PARALLELISM_KILL=1` 는 PR-D 에서
   omc-scope 로 도입되어(`_resolve_omc_worker_mix`를 single worker 로 강등) 켜질 때 multi-worker 를
   즉시 직렬 강등한다; X-task-pool 강등은 PR-E.
-- **X (task pool) DEFAULT X=1 (dark)**: 루프 body 를 `run_one_task` 로 refactor 하고
+- **X (task pool) DEFAULT X=2 (go-live)**: 루프 body 를 `run_one_task` 로 refactor 하고
   `ThreadPoolExecutor` + locked `claim_next_task`(다음 task 선택을 atomic 하게)로 묶는다. race-free
   completed-count, convergent stop(#1719 teardown 재사용), per-task artifact namespacing(동시 task
-  의 `patch_artifact.json` 충돌 방지)을 구현한다. **기본 X=1 으로 dark 착륙** 하고, substrate +
-  테스트 안정화 후 별도 PR(PR-F)에서 X=2 로 flip 한다.
+  의 `patch_artifact.json` 충돌 방지)을 구현한다. **기본 X=1 으로 dark 착륙**(PR-E2~E3c) 후 substrate +
+  테스트가 안정화되어, **PR-F(#1948)에서 기본을 X=2 로 flip 했다(현재 기본 = X=2 병렬)**. X=1(직렬,
+  ADR 0001 byte-identical 경로)은 `ACTIVE_TASK_POOL=1` / `BIDMATE_AGENT_LOOP_TASK_POOL=1` 또는
+  kill-switch(`BIDMATE_AGENT_LOOP_PARALLELISM_KILL=1`)로 여전히 사용 가능하다.
+  - **X>1 시작 가드 — HEAD≠origin/main demote(PR-F, codex round-3 Option B + round-4 exact parity)**:
+    X>1 cycle worktree 는 `origin/main` 에서 fork 하고 parent 의 **DIRTY(uncommitted) 파일만** seed
+    하므로, cycle tree 가 parent checkout 과 일치하는 건 **HEAD == origin/main(정확히 같은 commit)** 일
+    때 뿐이다. 어느 방향으로든 어긋나면 cycle 이 X=1(parent repo 직접 실행)과 다른 tree 에서 돈다: HEAD 가
+    **앞서면** committed-but-unpushed 작업이 cycle 에서 안 보이고(round-3, data-loss 방향), origin/main 이
+    **앞서면** cycle 이 operator 가 checkout 한 것보다 새 코드에서 fork 돼 stale HEAD 가 origin/main tip
+    으로 fan-out 된다(round-4, stale-base 방향). 따라서 driver 시작 시 `_head_matches_origin_main(repo_root)`
+    (= `rev-parse HEAD` 와 `rev-parse origin/main` commit id 비교)로 1회 확인하고, 같지 않으면 X 를 1 로
+    **강등(demote)** 하고 경고를 emit 한다 — cycle 코드 가시성을 항상 X=1 과 일치시킨다. **ancestor 검사로는
+    round-4 를 못 잡는다**(HEAD 가 더 새 origin/main 의 ancestor 이지만 tree 는 다름) → commit id 등치 비교.
+    fcntl clamp 와 같은 **correctness 가드**라 명시적 knob 값에도 적용된다(선호가 아님). FAIL-SAFE: 어느 ref
+    든 미해결이면 `_git_ref` 가 None → False → 강등(검증 불가한 base 로 cycle 실행 금지). within-run task
+    commit 은 X>1 에서도 안전(lease 가 claimed-file disjoint 강제) — PRE-RUN checkout 상태만 위험하므로 시작
+    시점 1회 검사로 충분. HEAD 를 origin/main 으로 sync(push/merge 또는 pull) 하면 X>1 재활성화.
 - **단일 전역 M**: [ADR 0094](./0094-concurrency-substrate-for-parallel-loop.md) 의
   `BoundedSemaphore(M)`(기본 8)를 모든 CLI spawn 이 acquire — X·Y·Z 곱셈 폭증 방지.
 
@@ -78,7 +96,8 @@ completion(마지막 완료 이후 누적된 blocker)" 으로 재정의한다.
 ## Drivers
 
 1. **X dark-first** — Plan + codex 가 "X 는 dark 로 착륙, 안정화 후 flip" 을 권고했다(폭주
-   리스크를 default-off 로 격리). substrate 가 검증되기 전에 X 를 기본 켜지 않는다.
+   리스크를 default-off 로 격리). substrate 가 검증되기 전에 X 를 기본 켜지 않았고, 검증·테스트
+   안정화 후 PR-F(#1948)에서 기본을 X=2 로 flip 했다.
 2. **Y default-on, omc-only** — maintainer 가 omc multi-worker 를 기본 동작으로 원한다. 이미
    ack-gated 된 omc 경로에 한정하므로 기본 codex 경로 byte-identical 이 보존된다(ADR 0001).
 3. **재사용 / SSoT** — [ADR 0094](./0094-concurrency-substrate-for-parallel-loop.md) substrate +
@@ -87,7 +106,7 @@ completion(마지막 완료 이후 누적된 blocker)" 으로 재정의한다.
 ## Alternatives considered
 
 - **X 를 처음부터 default-on.** 기각: Plan + codex 가 dark-first 를 권고. substrate + 동시성
-  테스트가 안정화되기 전 X 기본 활성은 폭주(runaway) 리스크. PR-F 에서 flip.
+  테스트가 안정화되기 전 X 기본 활성은 폭주(runaway) 리스크. 안정화 후 PR-F(#1948)에서 X=2 로 flip 했다.
 - **Y 도 ack 뒤 opt-in 유지(default-off).** 기각: maintainer 가 명시적으로 default-on 을 결정.
   단 omc 경로 자체가 이미 `ACTIVE_OMC_RUNNER_ACK=1` 로 gated 이므로 기본 codex 경로는 불변.
 - **per-task runner 선택(task 별 codex/omc/claude 라우팅).** 기각/연기: post-v1 deferred. v1 은
@@ -200,10 +219,87 @@ completion(마지막 완료 이후 누적된 blocker)" 으로 재정의한다.
   - **Open question**: `claim_disjoint` REPORT-only — E2-dark 에서는 disjointness 가 task selection
     (`select_next_task` 이 `attempted_this_run` 제외)에서 나와 문제없음. E3 가 first-writer-wins 결정.
 
+## Resolution
+
+- **PR-F(#1948) go-live**: `DEFAULT_ACTIVE_TASK_POOL` 을 1 → 2 로 flip 해 X-병렬 bounded-loop 실행을
+  기본값으로 켰다 — 이로써 X=1 기본 경로의 byte-identity(dark-brick 불변)는 **의도적으로 종료**된다
+  (Makefile `ACTIVE_TASK_POOL` 기본값도 2 로 동반 flip). X=1(직렬, ADR 0001 byte-identical)은
+  `ACTIVE_TASK_POOL=1` / kill-switch 로 여전히 사용 가능하고, 그 byte-identity 회귀는
+  `test_active_auto_loop_x1_byte_identical`(양 arm 모두 `task_pool=1` 고정)이 계속 지킨다.
+- **End-to-end X>1 증거**: 이전 X>1 driver 테스트는 전부 `_run_cycle_in_task_worktree` 를 stub 했기에
+  REAL worktree create→seed→confine→mirror→teardown 체인이 2-task fan-out 하에서 한 번도 실행되지
+  않았다. PR-F 의 신규 테스트 **`test_x_gt_1_full_driver_real_worktree_e2e`** 가 그 공백을 닫는다 —
+  REAL git tmp repo + `task_pool=2` 로 실제 `agent/<id>/cycle` worktree 2개를 만들고(codex/gate +
+  GitHub-side read 만 fake, 실제 PR side effect 없음), (a) 두 task 의 convergent 완료, (b) 각 task
+  artifact 의 parent 미러링 + teardown 생존, (c) disjoint cycle branch 생성→정리, (d) ledger
+  무충돌 reconcile, (e) mirror-failure warning 부재(silent partial-mirror 가 성공으로 통과 못함)를
+  증거로 단언한다. ADR 0094 동시성 substrate 는 이미 accepted 다.
+- **Go-live 정합성 수정(codex+architect 2026-06-04 adversarial 리뷰)**: flip 시점의 pre-commit
+  codex 8-pass 리뷰가 X=2 기본화로 새로 노출되는 2건을 제기했고, architect tie-breaker 가 코드로
+  판정했다. (1) **REACHABLE** — `_active_task_context_files` 가 모든 task claim set 에
+  `tasks/queue.md` 를 prepend 하는데 `assert_claimed_files_disjoint` 의 context-only 제외가
+  whole-set 단위라, 서로 다른 real 파일을 만지는 두 task 가 queue.md 로 false-overlap → reject →
+  X>1 이 조용히 serial 로 강등됐다. **per-file 제외(`_is_context_only_path`)로 수정**
+  (`test_disjoint_mixed_claim_compares_real_files_only` + `_still_blocks_real_file_conflict`).
+  (2) **NOT REACHABLE** — cross-process cycle-worktree 삭제는 teardown 의 `worktree remove` 가
+  호출자 `repo_root` 로 path-scoped + git 이 타 worktree 에 checked-out 된 branch 의 `-D` 를
+  거부하므로 불가하며, 암묵적이던 이 불변식을 `test_teardown_cannot_delete_branch_checked_out_elsewhere`
+  (real git 2-worktree)로 고정했다.
+- **Go-live 정합성 수정 2차(codex+architect 2026-06-04, 2~3라운드)**: flip 을 staging 한 뒤
+  pre-commit codex 리뷰가 X=2 기본화 고유의 **회복·격리 공백 2건(둘 다 REACHABLE)** 을 더 표면화했고,
+  주목할 점은 **그 1차 수정 자체가 다음 라운드에서 불완전으로 판정**되어 2번 다듬은 것이다(“각 라운드가
+  새 X>1 gap 을 드러낸다”의 자기예시). (A) **create-failure teardown 이 preserved/sibling cycle
+  worktree 를 삭제** — 직전 X>1 run 이 artifact 미러링에 실패하면 `.claude/worktrees/<task>-cycle` 을
+  의도적으로 보존하는데, 같은 root 의 다음 run 이 기존 경로에서 create 실패 후 그 worktree 를
+  teardown → fail-closed 회복 상태가 데이터 손실로 전환. 1차 수정(create 직전 `cycle_path_preexisted`
+  캡처 후 pre-existing 일 때만 보존)은 **probe→add TOCTOU race** 가 남았다(probe 시 부재여도 sibling 이
+  add 직전 생성 가능 → 여전히 sibling worktree 삭제). 그래서 **create 실패 시 무조건 teardown 하지 않고
+  보존 + recovery blocker** 로 정정(`git worktree prune` 로 out-of-band GC; 소유권 증명 불가하므로
+  unconditional). `test_worktree_lifecycle_create_failure_fails_closed_and_preserves`(path 부재) +
+  `test_worktree_lifecycle_preexisting_cycle_path_is_preserved_not_torn_down`(보존 artifact 생존)으로
+  핀. r1-(2) 의 cross-process 삭제(NOT REACHABLE)와 달리 이건 **same-root 재시도** 경로라 도달 가능.
+  (B) **cycle seed 가 unscoped** — X>1 cycle 이 `seed_scratch_worktree_from_parent` 를 `include_paths`
+  없이 호출해 parent 의 모든 dirty 파일을 각 cycle 로 복사 → X=2 에서 무관한 두 task(+로컬/staged 편집)가
+  서로의 미커밋 상태 상속, claimed-file disjointness 무의미화. 1차 수정(seed 를
+  `_active_task_context_files(task)` 로만 한정)은 **claim footprint 의 `requested_files`(=changed_files)를
+  누락**해 task 가 자기 in-flight 작업을 못 보는 과도 축소였다. 그래서 claim 과 **동일한 footprint**
+  (`requested_files` + context files)를 쓰는 `_cycle_seed_include_paths` 헬퍼를 추출해 `run_one_task`
+  의 claim 계산(`context_files`)을 미러링하도록 정정(`None` 은 legacy copy-all 보존). 회귀:
+  `test_cycle_seed_include_paths_includes_changed_files`(changed_files-only 경로 포함) +
+  `test_worktree_lifecycle_seed_is_scoped_to_task_include_paths`(forwarding) + 필터 자체는 기존
+  `test_seed_scratch_worktree_from_parent_can_limit_to_claimed_files`. go-live flip 의 blast radius 가
+  dark-brick 들이 X=1 에서 잠재워 둔 latent X>1 isolation/recovery gap 들을 활성화함을 보여준다.
+  (2차에서 informational·freq 1/8 로 남겼던 "cycle 이 `origin/main` base 라 committed-but-unpushed
+  parent-branch state 미상속"은 3차에서 blocking 으로 escalate → Option B 로 해소, 아래.)
+- **Go-live 정합성 수정 3·4차(codex 2026-06-04, Option B + exact parity)**: 2차에서 informational
+  (freq 1/8)로 남겼던 origin/main-base 미상속이 X=2 기본 flip 의 blast-radius 하에서 3차에 **freq
+  4/8·2/8 high 로 escalate**(go-live 시 cycle 이 stale tree 에서 실행될 위험). codex 권고는 (a) cycle 을
+  parent HEAD/branch 기준으로 생성, 또는 (b) branch-local commit 감지 시 X=1 로 강등 + 경고였고, **사용자가
+  (b) Option B 를 선택**했다(E3b 격리 설계 유지 + 최소 변경). **3차 1차 구현**은 `_git_is_ancestor("HEAD",
+  "origin/main")` 즉 "HEAD 가 origin/main 을 벗어나는가"(HEAD-ahead) 만 검사했는데, **4차 리뷰가 그
+  ancestor 검사의 반대 방향 공백을 freq 3/8 high 로 표면화**: origin/main 이 HEAD 보다 **앞서면**(로컬
+  stale) HEAD 는 새 origin/main 의 ancestor 라 검사를 통과하지만 cycle 은 더 새 코드에서 fork → stale HEAD
+  fan-out. **최종 구현**: `_head_matches_origin_main(repo_root)`(= `rev-parse HEAD` 와 `rev-parse
+  origin/main` commit id 등치; 기존 `_git_ref` 재사용)로 **정확한 parity** 검사 → 양방향(ahead/behind/
+  diverged) 모두 강등. `write_active_auto_loop` 시작 가드(fcntl clamp 와 동격 correctness 가드 — 명시적
+  knob 값에도 적용; FAIL-SAFE: 어느 ref 든 미해결 → None → 강등). 회귀 4종:
+  `test_head_matches_origin_main_true_only_when_exactly_equal`(real git: equal→True / HEAD-ahead→False
+  [round-3 sentinel] / origin/main-ahead→False [round-4; ancestor 검사는 통과함을 같은 테스트에서 대조]),
+  `test_head_matches_origin_main_false_when_origin_main_unresolved`(fail-safe),
+  `test_x_gt_1_demotes_to_serial_when_head_ahead_of_origin_main`(real git: HEAD ahead + task_pool=2 →
+  강등 경고 + cycle 0개 + 각 task 가 committed sentinel parent tree 에서 실행),
+  `test_x_gt_1_demotes_to_serial_when_origin_main_ahead_of_head`(real git: origin/main ahead +
+  task_pool=2 → 강등 경고 + cycle 0개; behind checkout 은 기존 stale-base overlap-preflight 가 runner
+  전에 추가로 block = defense-in-depth). dispatch 테스트의 X>1 precondition 은 `_patch_active_loop_clear`
+  가 `_head_matches_origin_main→True` 로 명시 greenlight 한다(이전엔 faked subprocess 에 암묵 의존).
+  round-3 freq-1/8 MEDIUM("Accepted ADR 가 여전히 X=dark serial 이라 기술")은 Decision lead 를 X=2 기본·
+  X=1 serial override 로 재작성해 해소.
+
 ## Verification
 
 ```bash
-python3 -m pytest -q tests/test_agent_loop.py -k 'task_pool or omc_multi or global_concurrency or convergent'
+python3 -m pytest -q tests/test_agent_loop.py -k 'task_pool or omc_multi or global_concurrency or convergent or e2e or lifecycle or origin_main'
+python3 -m pytest -q tests/test_agent_loop_worktree_confinement.py -k 'disjoint or teardown'
 python3 scripts/_governance.py --check-adr-readme-parity docs/adr/0095-task-parallel-bounded-loop.md
 git diff --check
 ```
@@ -212,3 +308,4 @@ git diff --check
 <!-- verifies-key: scripts/agent_loop.py:_resolve_omc_worker_mix -->
 <!-- verifies-key: scripts/agent_loop.py:loop_should_continue -->
 <!-- verifies-key: scripts/agent_loop.py:_run_omc_team_runner -->
+<!-- verifies-key: scripts/agent_loop.py:_head_matches_origin_main -->

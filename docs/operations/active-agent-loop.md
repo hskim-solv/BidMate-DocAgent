@@ -358,7 +358,96 @@ blocker 가 아니다. 직접 CLI 로는 `--max-iterations 0`(또는 `infinite`/
 `make 시작` 기본 `ACTIVE_AUTO_LOOP_EXECUTE_SHIP=0` 은 무한 모드에서도 유지된다 —
 실제 ship 은 여전히 기존 human-gated 경로가 담당한다.
 
-## Lane Autotune (opt-in)
+## X Task Pool (병렬 task 실행)
+
+> ADR 0095 ([`docs/adr/0095-task-parallel-bounded-loop.md`](../adr/0095-task-parallel-bounded-loop.md))
+> + ADR 0094 ([`docs/adr/0094-concurrency-substrate-for-parallel-loop.md`](../adr/0094-concurrency-substrate-for-parallel-loop.md))
+
+auto loop 드라이버는 **X = task-pool size** 개의 ready task 를 동시에(in-flight) 처리할
+수 있다 — `ThreadPoolExecutor(max_workers=X)` + lock 으로 직렬화된 `claim_next_task` 가
+다음 task 선택을 atomic 하게 묶고, 공유 `LedgerState`(in-process `threading.Lock`)가
+completed/deferred 를 race-free 로 reconcile 한다. **기본값은 X=2 다** (PR-F #1948 에서
+1 → 2 로 flip — 그 전까지는 dark 로 X=1 에 clamp 되어 있었다). X 는 task-level 병렬일
+뿐 retrieval/verifier/answer/eval 런타임을 건드리지 않으며 `agent_loop.py` 는
+`LOAD_BEARING_PATHS` 에 올라가지 않는다.
+
+### 노브 (env / Makefile 변수)
+
+| 변수 | 기본값 | 의미 |
+|---|---|---|
+| `ACTIVE_TASK_POOL` | `2` | 동시 in-flight task 수 (X). operator front-door 노브; 아래 env 로 브리지된다 |
+| `BIDMATE_AGENT_LOOP_TASK_POOL` | `$(ACTIVE_TASK_POOL)` | X 의 런타임 read 경로(`_resolve_task_pool_size`). env 에 직접 있으면 그 값이 우선 |
+| `BIDMATE_AGENT_LOOP_PARALLELISM_KILL` | `` (빈값 = OFF) | **kill-switch** — `1`/`true`/`yes`/`on` 이면 X 를 무조건 1(직렬)로 강등 (Y omc multi-worker 와 동일 의미) |
+
+fail-closed: 파싱된 값이 `<=0` 이면 1 로 floor 된다(pool 은 0 이 될 수 없다); 빈값/비정수는
+기본값(2)으로 폴백한다.
+
+### 직렬(X=1)로 실행
+
+X=1 은 PR-E2~E3c dark 기간의 **ADR 0001 byte-identical 경로** 다 — worktree 를 만들지
+않고 cycle 이 `repo_root` 위에서 바로 돈다(claim → run → wait → next claim, pre-병렬 순서
+그대로). 의심스러운 동작을 직렬로 재현·격리하려면:
+
+```bash
+make 시작 ACTIVE_TASK_POOL=1
+# 또는 전역 kill-switch (모든 병렬 노브를 한 번에 직렬 강등)
+BIDMATE_AGENT_LOOP_PARALLELISM_KILL=1 make 시작
+```
+
+`test_active_auto_loop_x1_byte_identical` 가 이 X=1 경로의 byte-identity 를 계속 가드한다.
+
+### 동작 (X>1)
+
+X>1 에서 각 task cycle 은 **자기 전용 worktree 안에서 격리 실행**된다:
+
+- **worktree-per-task 격리**: cycle 마다 `git worktree add -b agent/<task-id>/cycle
+  .claude/worktrees/<task-id>-cycle origin/main` 으로 disjoint 한 cycle worktree + branch 를
+  만들고, 그 경로를 cycle 의 `repo_root` 로 삼는다. 따라서 모든 `active/` 좌표 경로
+  (registry/assignments/events/apply/gate/patch_runs/codex_runs)가 worktree-local 로
+  disjoint 해져 동시 task 끼리 충돌하지 않는다(codex HIGH-1..4 를 `repo_root` 경계에서
+  닫는다). cycle worktree 는 parent checkout 의 branch/issue 를 상속한다(E3b) — 자기
+  branch(`agent/<id>/cycle`)에는 issue 가 없으므로.
+- **parent-mirrored artifacts**: cycle worktree 는 끝나면 teardown 되므로, teardown **전에**
+  cycle 의 `reports/agent_loop/active` 트리를 parent task-scoped 디렉터리
+  `reports/agent_loop/active/tasks/<task-id>/` 로 **transaction 하게 미러링**한다(staging →
+  backup/rollback → atomic promote). parent `auto_loop_state.json` 의 cycle dict 가 기록하는
+  artifact 경로도 그 미러 경로로 re-point 된다 → worktree 가 사라져도 산출물이 parent 에서
+  resolvable 하다. 미러 실패 시 **fail-closed**(worktree 를 보존하고 blocker 기록 — 산출물
+  유실 방지).
+- **단일 전역 budget M**: worktree create 같은 CLI spawn 은 ADR 0094 의 전역
+  `BoundedSemaphore(M)`(기본 8, `ACTIVE_GLOBAL_CONCURRENCY` / `BIDMATE_AGENT_LOOP_GLOBAL_CONCURRENCY`)
+  에서 permit 1개를 받는다 — X·Y·Z 곱셈 폭증을 막는다.
+- **lane-autotune 비활성**: X>1 에서는 cross-task ordering 이 비결정적이라 lane-autotune 이
+  자동으로 OFF 된다(1회 advisory 후, ADR 0095 PR-E3c MED-2).
+
+### POSIX(fcntl) 미가용 시 자동 직렬 강등
+
+`LeaseManager` 의 flock 은 비-POSIX 플랫폼(`fcntl` 미가용)에서 no-op 이라 cross-process
+exclusion 이 없다 → X>1 이 안전하지 않다. 이 경우 드라이버는 pool 을 **자동으로 1 로
+clamp** 하고 warning 을 남긴다(X=1 경로는 flock 경합이 없어 영향 없음). POSIX(Linux/macOS)
+에서는 그대로 X>1 이 유지된다.
+
+### HEAD 가 origin/main 과 다르면 자동 직렬 강등 (ADR 0095 PR-F, Option B)
+
+X>1 cycle worktree 는 `origin/main` 에서 fork 하고 parent 의 **dirty(uncommitted) 파일만**
+seed 한다(위 "동작 (X>1)" 참조). 따라서 cycle tree 가 operator 의 checkout 과 일치하는 건
+**HEAD 와 `origin/main` 이 정확히 같은 commit** 일 때 뿐이다 — X=1(직렬)은 parent repo 에서
+직접 실행하므로 항상 checkout 을 본다. 어느 방향으로든 어긋나면 cycle 이 다른 tree 에서 돈다:
+
+- **HEAD 가 앞섬**(committed-but-unpushed 로컬 commit): 그 코드가 cycle 에서 **안 보인다**(작업 유실 방향).
+- **origin/main 이 앞섬**(로컬 checkout 이 stale): cycle 이 operator 가 checkout 한 것보다 **새 코드에서
+  fork** 돼 stale HEAD 가 origin/main tip 으로 fan-out 된다(stale-base 방향).
+
+이를 막기 위해 드라이버는 시작 시 `rev-parse HEAD` 와 `rev-parse origin/main` 의 commit id 를
+비교해(정확한 parity) 같지 않으면 pool 을 **자동으로 1 로 강등**하고 warning 을 남긴다
+(`task pool clamped N -> 1: HEAD is not at origin/main ...`). **ancestor 검사로는 부족**하다 — HEAD 가
+더 새 origin/main 의 ancestor 일 때(behind) 통과해 버리기 때문. fcntl clamp 와 동일하게
+**correctness 가드**라 `ACTIVE_TASK_POOL=2` 같은 명시적 노브에도 적용된다. FAIL-SAFE: 어느 ref 든
+미해결(offline/누락)이면 강등(검증 불가한 base 로 cycle 을 silent 실행하지 않음). **X>1 을 다시 켜려면**
+HEAD 를 `origin/main` 으로 sync(push/merge 또는 pull) 하거나 머지된 main 위에서 `make 시작` 한다.
+참고: run **도중** task 가 만드는 commit 은 X>1 에서도 안전하다(lease 가 claimed-file disjointness 를
+강제) — 위험한 건 **시작 전** checkout 상태뿐이라 시작 시점 1회 검사로 충분하다. (behind 인 경우 기존
+stale-base overlap-preflight 가 task 를 runner 전에 추가로 block 한다 — defense in depth.)
 
 > ADR 0092 ([`docs/adr/0092-lane-adaptive-autotune.md`](../adr/0092-lane-adaptive-autotune.md))
 
