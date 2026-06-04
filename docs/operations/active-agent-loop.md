@@ -156,9 +156,12 @@ conservative gate가 ready이며 privacy gate가 clean일 때만 local completed
 기록한다. spawned Codex sessions는 기본 `read-only` sandbox로 실행된다.
 실행 직전에는 `queue-parallel-plan`을 먼저 생성해 upcoming queue를 우선순위별로
 정렬하고 `parallel-safe`, `review-only`, `serial-gated` lane으로 묶는다.
-이어서 `queue-recommendations`를 report-only로 생성해 최근 diff, queue 상태,
+이어서 `queue-recommendations`를 **기본 report-only**로 생성해 최근 diff, queue 상태,
 `real100_v2` checkpoint/Chroma artifact 여부, local-LLM baseline gap 같은 신호를
-다음 task 후보로 정리한다.
+다음 task 후보로 정리한다. `START_QUEUE_RECOMMENDATIONS_APPLY=1`(또는 기존
+`QUEUE_RECOMMENDATIONS_APPLY=1` front door)을 주면 그 추천을 `tasks/queue.md`에
+생성 task(`T-2026-NNNN`)로 직접 append 한다 — title 중복은 건너뛰므로 반복 실행해도
+멱등(idempotent)이다. 기본값은 off라 `make 시작`만으로는 queue를 변경하지 않는다.
 
 ```bash
 make 시작
@@ -168,6 +171,12 @@ task 수를 고정하려면 다음처럼 덮어쓴다.
 
 ```bash
 make 시작 START_TASK_LIMIT=2
+```
+
+추천 task를 큐에 자동 append하려면(opt-in, 기본 off) 다음처럼 켠다.
+
+```bash
+make 시작 START_QUEUE_RECOMMENDATIONS_APPLY=1
 ```
 
 ## Codex Runner
