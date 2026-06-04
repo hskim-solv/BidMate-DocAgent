@@ -87,13 +87,27 @@ _HANGUL_MONEY_SUFFIX = r"(?:\s*원\s*정|\s*원|\s*정(?!도))"
 # containing a `1`). Require an explicit 원 unit here; the sectioned branch keeps
 # 정 so real amounts like `일금일억정`=100000000 are preserved.
 _HANGUL_MONEY_SUFFIX_BARE = r"(?:\s*원\s*정|\s*원)"
+# Bare-body money body (issue #2346): a lone Hangul digit + 원 is almost always a
+# noun (사원/구원/일원화...), not money. Real Hangul amounts always carry a subunit
+# (십백천) — 오천원, 삼천오백원 — or a section (만/억/조), and the sectioned branch
+# above already handles section-bearing amounts. So the bare Hangul path here
+# requires at least one subunit; the Arabic path ([\d,]+) stays standalone
+# (5원/5000원). Without this, `사원`->4 / `구원`->9 poison verifier topic grounding
+# the same false-grounding way #2228 (`일정`->1) did.
+_HANGUL_MONEY_BODY_BARE = (
+    r"(?:"
+    rf"[\d,]+\s*(?:{_HANGUL_SUBUNIT_PART}\s*{_HANGUL_DIGIT_PART}\s*)*{_HANGUL_SUBUNIT_PART}?"
+    r"|"
+    rf"[영공일이삼사오육칠팔구]\s*(?:{_HANGUL_SUBUNIT_PART}\s*{_HANGUL_DIGIT_PART}\s*)*{_HANGUL_SUBUNIT_PART}"
+    r")"
+)
 
 _HANGUL_MONEY_RE = re.compile(
     r"(?:일금\s*)?"
     r"(?:"
     rf"{_HANGUL_NUMBER_SECTIONED}{_HANGUL_MONEY_SUFFIX}?"  # sectioned (anchor = section)
     r"|"
-    rf"{_HANGUL_MYRIAD_BODY}{_HANGUL_MONEY_SUFFIX_BARE}"   # bare body (anchor = 원, #2228)
+    rf"{_HANGUL_MONEY_BODY_BARE}{_HANGUL_MONEY_SUFFIX_BARE}"   # bare body (anchor = 원, #2228/#2346)
     r")"
 )
 

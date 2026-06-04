@@ -59,6 +59,12 @@ class NormalizeMoneyTest(unittest.TestCase):
         ("壹億伍仟萬元", 150_000_000, False),
         ("5천만정도", 50_000_000, True),
         ("5천만원 내외", 50_000_000, True),
+        # issue #2346: subunit-bearing bare-body Hangul amounts (오천원 = 오+천)
+        # and standalone Arabic amounts must still parse after the lone-Hangul-
+        # digit + 원 noun guard. The sectioned branch (만/억/조) is untouched.
+        ("오천원", 5_000, False),
+        ("오천오백원", 5_500, False),
+        ("5원", 5, False),
     ]
 
     def test_amounts_match_canonical_table(self) -> None:
@@ -147,6 +153,19 @@ class FalsePositiveGuardTest(unittest.TestCase):
         "삼정",
         "구정",  # 설날(舊正)
         "이정표",  # 이(2) + 정
+        # issue #2346: a single Hangul digit + 원 (사원/구원/일원화…) is an
+        # ordinary noun, not money. The bare-body branch accepted a lone 원
+        # after a single Hangul digit, so parse_amounts('사원') returned
+        # [ParsedAmount(value=4)] and normalize_text('사원')=='4' — the same
+        # false-grounding class as #2228 but on the 원 (not 정) suffix path.
+        "사원",  # 社員 — 사(4) + 원
+        "구원",  # 救援 — 구(9) + 원
+        "일원",
+        "이원",
+        "일원화",  # 일(1) + 원 + 화
+        "이원화",
+        "구원파",
+        "사원수",
     ]
 
     DATE_NEGATIVES = [
@@ -311,6 +330,21 @@ class EndToEndVerifyEvidenceTest(unittest.TestCase):
         item = _evidence_item("담당자는 1명이며 12월에 시작합니다.")  # no '일정', has '1'
         self.assertFalse(evidence_has_topic(item, ["일정"]))
         verified, reasons = verify_evidence(self._analysis(["일정"]), [item])
+        self.assertFalse(
+            verified, f"expected not grounded, got reasons={reasons}"
+        )
+
+    def test_won_noun_topic_does_not_false_match_bare_digit(self) -> None:
+        # issue #2346: a '사원'(employee) topic must NOT be grounded by
+        # evidence that merely contains a bare digit '4'. Before the fix
+        # normalize_text('사원')=='4' injected '4' into expand_forms('사원'),
+        # so any document with a '4' (4명/4월/제4조/4단계) false-matched and
+        # the #1008 single-doc grounding floor was bypassed — the same class
+        # as the #2228 '일정' bug but reached via the 원 suffix path.
+        self.assertEqual(["사원"], expand_forms("사원"))
+        item = _evidence_item("본 사업은 4단계로 4월에 추진한다.")  # has '4', no '사원'
+        self.assertFalse(evidence_has_topic(item, ["사원"]))
+        verified, reasons = verify_evidence(self._analysis(["사원"]), [item])
         self.assertFalse(
             verified, f"expected not grounded, got reasons={reasons}"
         )
