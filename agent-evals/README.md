@@ -30,13 +30,13 @@
 scaffolding 은 고정 budget 에서 accepted output 을 못 올린다"* 가 정직한 reportable
 finding 이다 — eval 실패가 아니다.
 
-## 레이아웃 (PR2 현재)
+## 레이아웃 (shipped)
 
 ```
 agent-evals/
 ├── README.md                 # 표면 정의
-├── core/                     # repo-무관: schema/metrics/report content scanner
-├── adapters/bidmate/         # sanitized task mining (runner/oracle wrapper는 PR3)
+├── core/                     # repo-무관: schema/metrics/report content scanner/oracle 결정표
+├── adapters/bidmate/         # sanitized task mining + runner.py(detached-worktree matrix) + oracle_bidmate.py(gate·cross-family egress)
 ├── tasks/T-*/task.yaml       # scanner-backed sanitized task contracts
 ├── playbooks/                # v0_naive.md · v1_spec_first.md (frozen)
 ├── splits.yaml               # train/holdout 배정 + freshness-exclusion
@@ -44,19 +44,40 @@ agent-evals/
 └── reports/                  # scanner-backed *.aggregate.json only
 ```
 
-## 상태 (thin slice, 3 PR)
+> 오케스트레이션 CLI(`scripts/agent_evals_run.py` · `scripts/agent_evals_report.py`)는
+> agent-evals allowlist 밖의 일반 repo 도구이므로 `scripts/` 에 있다 (hyphen 디렉터리는
+> import 불가 → 둘 다 path-load). `core/` ↔ `adapters/` 는 import 격리(back-edge 0).
 
-- **PR1 (완료):** ADR 0100 + 이 README + queue 항목 + CLAUDE.md 맵 — 계약 고정만(코드 없음).
-- **PR2 (현재):** `core/`(import 격리) + content scanner + task mining(merge PR ~#1336–1820, hidden-test gate) +
+## 상태 (thin slice 완료 — 3 PR 전부 머지)
+
+- **PR1 (#1964, 머지):** ADR 0100 + 이 README + queue 항목 + CLAUDE.md 맵 — 계약 고정만(코드 없음).
+- **PR2 (#2343, 머지):** `core/`(import 격리) + content scanner + task mining(merge PR ~#1336–1820, hidden-test gate) +
   playbook 2버전 + split + **3-task smoke report**(report-before-expansion).
-- **PR3:** full runner(`git worktree add --detach`, ≥3 seed) + cross-family oracle(`reviewer_family != candidate_family` fail-closed) +
+- **PR3 (#2411, 머지):** full runner(`git worktree add --detach`, ≥3 seed) + cross-family oracle(`reviewer_family != candidate_family` fail-closed) +
   paired bootstrap CI(min-N 가드) + holdout v0-vs-v1 report.
 
-## 실행 (PR3 에서 Makefile wire 예정)
+> **Cross-family 리뷰 수렴 (thesis 자기증명).** PR3 머지 후 외부-family(codex) 리뷰
+> 3라운드가 real 결함을 점감(漸減)시키며 수렴했다 — round1(3) → round2 #2446(6) →
+> round3 #2455(2 real+live; 1 latent defer, 1 contrived decline). fail-closed 규율은
+> 모든 경계(decide_verdict + adapter/runner/egress/report)에서 strict `is True`. committed
+> holdout aggregate 의 byte-identical 재현은 회귀 테스트(#2471)로 잠갔다. **실제 holdout
+> 측정(real candidate)·external-reviewer 실 egress 는 deferred axis** — 따라서 ADR 0100 은
+> 여전히 `proposed`(실측 e2e 전 승격 금지).
+
+## 실행 (stub 합성 표면)
 
 ```bash
-# PR3+
-make agent-eval-mine     # merge PR → task.yaml (hidden-test gate, mineable floor 경고)
-make agent-eval-run      # (playbook × holdout task × seed) → run-log
-make agent-eval-report   # holdout v0 vs v1 aggregate (paired bootstrap, min-N 가드)
+# 1) (playbook × holdout task × seed) 매트릭스 → gitignored run-log + run_manifest.json
+#    기본 후보 = 결정적 stub(repo 무변경·고정 게이트); --real 은 NotImplemented(실 코딩-에이전트는 후속 PR)
+python3 scripts/agent_evals_run.py --public-attestation
+#    --public-attestation 없으면 egress 게이트가 닫혀 전 trial 이 NECESSARY_GATE_ONLY 로 캡(ACCEPTED 0)
+
+# 2) run-log → paired v0-vs-v1 aggregate (manifest 스코핑 + paired bootstrap min-N 가드)
+python3 scripts/agent_evals_report.py
+#    → agent-evals/reports/holdout-v0-vs-v1.aggregate.json (content scanner 통과 시에만 write)
 ```
+
+> task mining 은 adapter-internal(`adapters/bidmate/`)이라 별도 CLI 가 없다 — sanitized
+> `tasks/T-*/task.yaml` 은 PR2 에 이미 commit 됐다. Makefile 타겟은 아직 wire 되지 않았고
+> 위 두 스크립트가 오케스트레이션 SSoT 다. 합성 stub 표면의 byte-identical aggregate 는
+> 회귀 테스트(`tests/test_agent_evals_runner.py::test_committed_holdout_aggregate_reproduced_by_stub_pipeline`)가 잠근다.
