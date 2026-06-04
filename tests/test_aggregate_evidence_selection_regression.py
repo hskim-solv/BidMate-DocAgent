@@ -98,6 +98,84 @@ class TestIsAggregateQuery(unittest.TestCase):
                     f"signal '{sig}' did not trigger aggregate detection",
                 )
 
+    # --- issue #2179: substring-fallback compound-noun guard ----------------
+    # A signal fused with a nominalizer suffix (성/화/율/률/형) is a compound
+    # noun (전체성/목록화/정리율/일체형), not aggregate intent. A signal merged
+    # into a token but followed by a compound part / verb ending / space
+    # (전체일정/전부다/정리해줘) stays aggregate, preserving #2170 recall.
+    _COMPOUND_FALSE_POSITIVES = [
+        "전체성", "목록화", "정리율", "일체형",
+        "전체성 평가", "목록화 작업", "정리율 산정",
+    ]
+    _MERGED_TOKEN_AGGREGATES = [
+        "전체일정", "전부다", "모두다", "전체다", "정리해줘",
+        "나열해줘", "목록작성", "모든일정", "전부보여줘",
+    ]
+
+    def test_compound_noun_not_aggregate(self) -> None:
+        # tokens=[q] models the merged compound so only the substring fallback
+        # can fire; the nominalizer suffix must guard it out.
+        for q in self._COMPOUND_FALSE_POSITIVES:
+            with self.subTest(q=q):
+                a = _analysis(resolved_query=q, tokens=[q])
+                self.assertFalse(
+                    _is_aggregate_query(a), f"{q!r} should not be aggregate (#2179)"
+                )
+
+    def test_merged_token_aggregate_still_detected(self) -> None:
+        # #2170 recall: a real aggregate merged into one token (no exact match)
+        # must still fire via the substring fallback — the char after the signal
+        # is a compound part / verb ending, not a nominalizer.
+        for q in self._MERGED_TOKEN_AGGREGATES:
+            with self.subTest(q=q):
+                a = _analysis(resolved_query=q, tokens=[q])
+                self.assertTrue(
+                    _is_aggregate_query(a), f"{q!r} should stay aggregate (#2170)"
+                )
+
+    _VERBALIZED_AGGREGATES = [
+        "목록화해줘", "목록화해", "목록화하라", "목록화함",
+        "전체화해줘", "정리화하여", "목록화했다",
+    ]
+
+    def test_verbalized_nominalizer_still_aggregate(self) -> None:
+        # Codex review (#2179): a nominalizer suffix re-verbed by 하다 (목록화해줘)
+        # is a listing request, not a bare noun — it must stay aggregate while the
+        # bare nominal (목록화) is still guarded out by test_compound_noun_not_aggregate.
+        for q in self._VERBALIZED_AGGREGATES:
+            with self.subTest(q=q):
+                a = _analysis(resolved_query=q, tokens=[q])
+                self.assertTrue(
+                    _is_aggregate_query(a),
+                    f"{q!r} should stay aggregate (#2179 verbalized nominalizer)",
+                )
+
+    _SUFFIX_COMPOUND_NEGATIVES = [
+        "일체형하우징", "정리형하중", "전체형하부", "정리율하한", "전체성하부구조",
+    ]
+
+    def test_non_hwa_suffix_plus_ha_not_aggregate(self) -> None:
+        # Codex review (#2179): only ~화 takes 하다; 형/율/률/성 + 하 is an accidental
+        # compound (일체형하우징/정리형하중), not a verbalized aggregate. The verbalizer
+        # exception must stay scoped to the 화 suffix.
+        for q in self._SUFFIX_COMPOUND_NEGATIVES:
+            with self.subTest(q=q):
+                a = _analysis(resolved_query=q, tokens=[q])
+                self.assertFalse(
+                    _is_aggregate_query(a),
+                    f"{q!r} should not be aggregate (#2179 non-화 suffix)",
+                )
+
+    def test_exact_token_overrides_compound_suffix(self) -> None:
+        # An exact token signal wins even when resolved also carries a compound.
+        a = _analysis(resolved_query="전체성 분석", tokens=["전체", "분석"])
+        self.assertTrue(_is_aggregate_query(a))
+
+    def test_signal_at_string_end_is_aggregate(self) -> None:
+        # signal with nothing after it (string end, not a suffix) → aggregate.
+        a = _analysis(resolved_query="예산 전체", tokens=["예산전체"])
+        self.assertTrue(_is_aggregate_query(a))
+
 
 # ---------------------------------------------------------------------------
 # select_supporting_evidence pool-size tests
@@ -233,6 +311,15 @@ class TestAnalyzeQueryAggregateIntegration(unittest.TestCase):
 
     def test_plain_query_not_flagged_end_to_end(self) -> None:
         analysis = analyze_query("사업 예산은 얼마인가", [])
+        self.assertFalse(_is_aggregate_query(analysis))
+
+    def test_compound_noun_not_flagged_end_to_end(self) -> None:
+        # issue #2179: tokenize("전체성을 평가한다") merges "전체성" into one token,
+        # so the token path is blind; the substring fallback must NOT fire on the
+        # compound noun (전체 + 성 nominalizer). The precision-direction mirror of
+        # the #2170 recall drift guard above.
+        analysis = analyze_query("전체성을 평가한다", [])
+        self.assertNotIn("전체", analysis["tokens"])  # precondition: token path blind
         self.assertFalse(_is_aggregate_query(analysis))
 
 
