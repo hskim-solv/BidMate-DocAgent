@@ -75,6 +75,17 @@ class GenerateCasesContractTest(unittest.TestCase):
         self.assertNotIn("boiler-1", produced_docs)
         self.assertGreaterEqual(skipped, 1, "boilerplate candidate must be skipped")
 
+    def test_duplicated_content_phrase_yields_no_case(self) -> None:
+        chunks = [
+            _chunk("dup-1", "위험관리플랫폼 통합관제 고도화 요구사항을 설명한다"),
+            _chunk("dup-2", "위험관리플랫폼 통합관제 고도화 요구사항을 설명한다"),
+        ]
+
+        cases, skipped = generate_cases(chunks, n=10)
+
+        self.assertEqual(cases, [])
+        self.assertEqual(skipped, 0)
+
     def test_deterministic_and_respects_n_cap(self) -> None:
         first, _ = generate_cases(_CHUNKS, n=1)
         second, _ = generate_cases(_CHUNKS, n=1)
