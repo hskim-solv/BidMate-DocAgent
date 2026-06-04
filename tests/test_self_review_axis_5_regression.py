@@ -93,6 +93,8 @@ class TestComputeAxis5MemoryHygiene(unittest.TestCase):
         self.assertEqual(result["total"], 2)
         self.assertEqual(result["fresh_in_quarter"], 1)
         self.assertEqual(result["fresh_rate"], 0.5)
+        self.assertEqual(result["stale_count"], 1)
+        self.assertEqual(result["oldest_mtime"], "2026-05-01")
 
 
 class TestCollectMemoryEmitsMtime(unittest.TestCase):
