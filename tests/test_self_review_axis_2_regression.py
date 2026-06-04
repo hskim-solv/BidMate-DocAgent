@@ -128,6 +128,13 @@ class TestCollectPrDiffStatsParsing(unittest.TestCase):
                 "mergedAt": "2026-05-14T12:00:00Z",
             },
             {
+                "number": 902,
+                "headRefName": "test/issue-902",
+                "additions": 55,
+                "deletions": 5,
+                "mergedAt": "2026-05-14T12:15:00Z",
+            },
+            {
                 "number": 901,
                 "headRefName": "main-revert",
                 "additions": 5,
@@ -147,11 +154,14 @@ class TestCollectPrDiffStatsParsing(unittest.TestCase):
         finally:
             sr.subprocess.run = original_run
 
-        self.assertEqual(len(result), 2)
+        self.assertEqual(len(result), 3)
         self.assertEqual(result[0]["number"], 718)
         self.assertEqual(result[0]["issue"], 718)
         self.assertEqual(result[0]["loc"], 100)
-        self.assertIsNone(result[1]["issue"])
+        self.assertEqual(result[1]["number"], 902)
+        self.assertEqual(result[1]["issue"], 902)
+        self.assertEqual(result[1]["loc"], 60)
+        self.assertIsNone(result[2]["issue"])
 
 
 if __name__ == "__main__":
