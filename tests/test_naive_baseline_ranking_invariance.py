@@ -37,6 +37,15 @@ class NaiveBaselineRankingInvarianceTest(unittest.TestCase):
         cls.golden = json.loads(GOLDEN_PATH.read_text(encoding="utf-8"))
         cls.rebuilt = build_golden(cls.golden)
 
+    def test_rebuild_preserves_committed_query_set(self) -> None:
+        self.assertTrue(self.golden, "naive_baseline golden query set is empty")
+        self.assertEqual(
+            set(self.golden),
+            set(self.rebuilt),
+            "build_golden must preserve the committed query set; add/remove "
+            "queries by editing tests/data/naive_baseline_top_k.json deliberately.",
+        )
+
     def test_top_k_chunk_ids_match_golden(self) -> None:
         for query, golden_top in self.golden.items():
             with self.subTest(query=query):
