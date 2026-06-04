@@ -18,6 +18,7 @@ class TestNormalizeCurrency(unittest.TestCase):
         cases = [
             ("10000000원", Decimal("10000000")),
             ("10,000,000원", Decimal("10000000")),
+            ("일금 10,000원", Decimal("10000")),
             ("10,000,000", Decimal("10000000")),
             ("0", Decimal(0)),
         ]
