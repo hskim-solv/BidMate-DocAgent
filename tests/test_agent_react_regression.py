@@ -93,6 +93,13 @@ def test_agent_react_stage_latency_has_react_loop_ms():
     assert "react_loop_ms" in stages, f"react_loop_ms missing: {list(stages)}"
 
 
+def test_agent_react_react_loop_stage_budget_is_positive_number():
+    config = _load_config()
+    budget = config["stage_latency_budgets"]["agent_react"]["react_loop_ms"]["p95_ms"]
+    assert isinstance(budget, (int, float))
+    assert budget > 0
+
+
 # ---------------------------------------------------------------------------
 # 4. ADR 0042 file
 # ---------------------------------------------------------------------------
