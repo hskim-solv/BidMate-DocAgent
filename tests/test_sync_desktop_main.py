@@ -112,3 +112,24 @@ def test_stop_ship_stage_5_invokes_desktop_sync() -> None:
     text = (REPO_ROOT / "scripts" / "claude-hooks" / "stop-ship.sh").read_text(encoding="utf-8")
     assert "scripts/sync_desktop_main.py" in text
     assert "BIDMATE_DESKTOP_REPO" in text
+
+
+def test_sync_skips_missing_repo_path(tmp_path: Path) -> None:
+    missing_repo = tmp_path / "missing"
+
+    result = sync_desktop_main(missing_repo)
+
+    assert result.exit_code == 2
+    assert result.status == "skipped"
+    assert f"repo not found: {missing_repo}" == result.reason
+
+
+def test_sync_skips_non_git_directory(tmp_path: Path) -> None:
+    non_git_repo = tmp_path / "plain-directory"
+    non_git_repo.mkdir()
+
+    result = sync_desktop_main(non_git_repo)
+
+    assert result.exit_code == 2
+    assert result.status == "skipped"
+    assert f"not a git repository: {non_git_repo}" == result.reason
