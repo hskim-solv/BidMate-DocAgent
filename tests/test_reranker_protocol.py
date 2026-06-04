@@ -22,6 +22,10 @@ def test_default_reranker_is_cross_encoder() -> None:
     assert isinstance(reranker, CrossEncoderReranker)
 
 
+def test_default_reranker_returns_fresh_instance() -> None:
+    assert default_reranker() is not default_reranker()
+
+
 def test_cross_encoder_reranker_delegates_under_stub_backend(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
