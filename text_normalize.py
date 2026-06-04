@@ -303,6 +303,18 @@ def parse_amounts(s: str) -> list[ParsedAmount]:
         # with 억, and carry no '제' prefix, so they are unaffected.
         if start > 0 and s[start - 1] == "제" and raw and raw[-1] in _SECTION_MAP:
             continue
+        # Bare common-noun guard (issue #2369): a single Hangul digit char + a
+        # bare section marker (구조/공조/오만/일억...) is almost always a noun, not
+        # money. The sectioned branch matches '한글숫자+만/억/조' even without a 원/정
+        # suffix (_SECTION_MAP), so 구조(構造)→9兆 / 공조→1兆 / 오만→5만 leak numeric
+        # forms into expand_forms and false-ground verifier topics — the same
+        # false-grounding class as #2228/#2346/#2360. Real amounts carry a 원/정
+        # suffix (일조원/오만원/일억원), use Arabic digits (3조/5조원), or combine
+        # multiple sections (일조 5천억원); none of those is a bare 2-char
+        # Hangul-digit+section span, so they are unaffected. Arabic bare spans
+        # (3조) stay money — an author who writes digits means the amount.
+        if len(raw) == 2 and raw[0] in _HANGUL_DIGIT_MAP and raw[1] in _SECTION_MAP:
+            continue
         value = _parse_korean_number(raw)
         if value is None or value == 0:
             continue
