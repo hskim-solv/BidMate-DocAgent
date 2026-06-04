@@ -56,6 +56,12 @@ def test_extract_markers_none(tmp_path: Path) -> None:
     assert extract_adr_verification_markers(f) == []
 
 
+def test_extract_markers_ignores_missing_key(tmp_path: Path) -> None:
+    body = "## Verification\n<!-- verifies-key: reports/eval_summary.json: -->\n"
+    f = _adr(tmp_path, "0001-stub.md", body)
+    assert extract_adr_verification_markers(f) == []
+
+
 def test_extract_markers_single(tmp_path: Path) -> None:
     body = (
         "## Verification\n"
