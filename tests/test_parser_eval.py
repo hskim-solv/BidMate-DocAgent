@@ -104,6 +104,24 @@ class ParserEvalTest(unittest.TestCase):
         self.assertEqual(1, by_category["noisy_ocr"]["num_documents_with_errors"])
         self.assertEqual({"artifact_missing": 1}, by_category["table_heavy"]["failure_counts"])
 
+    def test_build_report_groups_legacy_singular_hardcase_category(self) -> None:
+        gold = {
+            "documents": [
+                {
+                    "doc_id": "legacy-category-doc",
+                    "hardcase_category": "legacy_table",
+                }
+            ]
+        }
+
+        report = build_report(Path("missing-artifacts"), Path("gold.yaml"), gold, "unit", "2")
+        document = report["documents"][0]
+        by_category = report["summary"]["by_hardcase_category"]
+
+        self.assertEqual(["legacy_table"], document["hardcase_categories"])
+        self.assertEqual(1, by_category["legacy_table"]["num_documents"])
+        self.assertEqual({"artifact_missing": 1}, by_category["legacy_table"]["failure_counts"])
+
     def test_cli_writes_parser_eval_summary(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             completed = subprocess.run(
