@@ -70,6 +70,13 @@ class TestDetectKoAxes(unittest.TestCase):
             with self.subTest(row=row):
                 self.assertIn(KO_AXIS_ABBREVIATION, detect_ko_axes(row))
 
+    def test_abbreviation_axis_scans_acceptable_aliases(self) -> None:
+        row = {
+            "question": "학습관리시스템의 연계 범위는?",
+            "acceptable_aliases": "LMS 시스템|Learning Management System",
+        }
+        self.assertIn(KO_AXIS_ABBREVIATION, detect_ko_axes(row))
+
     def test_no_axis(self) -> None:
         row = {
             "question": "이 사업의 추진목표는?",
