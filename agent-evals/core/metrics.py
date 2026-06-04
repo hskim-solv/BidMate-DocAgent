@@ -12,6 +12,20 @@ from dataclasses import dataclass
 from typing import Iterable, Mapping
 
 
+# Minimum paired sample size below which a paired delta is reported as a
+# directional point estimate only — no bootstrap CI band. ADR 0100 forbids
+# absolute leaderboard claims; a CI on n<10 paired tasks would imply a precision
+# the surface does not have, so the report attaches an ``underpowered`` flag and
+# omits the band instead.
+N_MIN_DEFAULT = 10
+
+
+def underpowered(n: int, *, n_min: int = N_MIN_DEFAULT) -> bool:
+    """True iff ``n`` paired samples are below the CI-reporting floor ``n_min``."""
+
+    return n < n_min
+
+
 @dataclass(frozen=True)
 class PairedDelta:
     metric: str
