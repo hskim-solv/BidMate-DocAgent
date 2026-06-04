@@ -71,6 +71,15 @@ class NormalizeMoneyTest(unittest.TestCase):
         ("일조원", 1_000_000_000_000, False),
         ("1조 5천억원", 1_500_000_000_000, False),
         ("1조", 1_000_000_000_000, False),
+        # issue #2369: section-bearing amounts with a 원/정 suffix (구조원/오만원/
+        # 일억원), Arabic digits (3조), or compound sections must still parse after
+        # the bare 2-char Hangul-digit+section noun guard. 구조원(9조원) differs from
+        # the noun 구조(構造) by exactly the 원 suffix — that suffix is the
+        # disambiguator, so the money path must stay intact.
+        ("구조원", 9_000_000_000_000, False),
+        ("오만원", 50_000, False),
+        ("일억원", 100_000_000, False),
+        ("3조", 3_000_000_000_000, False),
     ]
 
     def test_amounts_match_canonical_table(self) -> None:
@@ -182,6 +191,24 @@ class FalsePositiveGuardTest(unittest.TestCase):
         "제3조의2",
         "제5조",
         "본 계약 제1조에 따라",  # sentence-level: 제1조 must survive intact
+        # issue #2369: a bare 2-char span of one Hangul digit + a section marker
+        # (만/억/조) with no 원/정 suffix is a common noun, not money. The sectioned
+        # branch matched 한글숫자+section even without a suffix, so
+        # parse_amounts('구조') returned [ParsedAmount(value=9_000_000_000_000)] and
+        # normalize_text('구조')=='9000000000000' — the largest remnant of the
+        # #2228/#2346 false-grounding class (구조/공조/오만 are RFP 최빈출어).
+        "구조",  # 構造 — 구(9) + 조
+        "공조",  # 共助/空調 — 공(0) + 조 (section default 1 → 1兆)
+        "오만",  # 傲慢 — 오(5) + 만
+        "일억",  # bare 일(1)+억 (only 일억원 is money)
+        "일조",  # 一組/一條 — bare (only 일조원 is money)
+        "이조",  # 吏曹 — 이(2) + 조
+        "구만",  # 구(9) + 만
+        "삼조",
+        "육조",  # 六曹
+        "팔조",
+        "본 시스템의 전체 구조를 설명한다",  # sentence-level: 구조 must survive
+        "부서 간 공조 체계",
     ]
 
     DATE_NEGATIVES = [
@@ -381,6 +408,25 @@ class EndToEndVerifyEvidenceTest(unittest.TestCase):
         # 대조: a real 1조원 amount document must still ground.
         real = _evidence_item("총사업비는 1조원 규모이다.")
         self.assertTrue(evidence_has_topic(real, ["1000000000000"]))
+
+    def test_bare_section_noun_topic_does_not_false_match_amount(self) -> None:
+        # issue #2369: a bare Hangul-digit+section noun (구조/공조/오만) must NOT
+        # normalize to a 兆/억/만 amount and false-ground a numeric money topic.
+        # Before the fix normalize_text('구조')=='9000000000000', so a 9조원 topic
+        # grounded on any document mentioning '구조'(構造) — the largest remnant of
+        # the #2228/#2346/#2360 false-grounding class (구조/공조/오만 are RFP 최빈출어).
+        self.assertEqual("구조", normalize_text("구조"))
+        self.assertEqual("공조", normalize_text("공조"))
+        self.assertEqual(["구조"], expand_forms("구조"))
+        doc = _evidence_item("본 시스템의 전체 구조를 설명한다.")  # 구조, no 9조 amount
+        self.assertFalse(evidence_has_topic(doc, ["9000000000000"]))
+        verified, reasons = verify_evidence(
+            self._analysis(["9000000000000"]), [doc]
+        )
+        self.assertFalse(verified, f"expected not grounded, got reasons={reasons}")
+        # 대조: a real 9조원 amount document must still ground (원 suffix disambiguates).
+        real = _evidence_item("총사업비는 9조원 규모이다.")
+        self.assertTrue(evidence_has_topic(real, ["9000000000000"]))
 
     def test_canonical_iso_date_matches_korean_date_evidence(self) -> None:
         # Query topic "2026-03-15" (canonical) must match evidence written
