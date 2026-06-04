@@ -40,6 +40,19 @@ def test_build_board_counts_status_and_recent() -> None:
     assert board["proposed"][0].number == 69
 
 
+def test_build_board_handles_empty_index() -> None:
+    board = build_board([])
+
+    assert board["total"] == 0
+    assert board["latest"] is None
+    assert board["status_counts"] == {}
+    assert board["area_counts"] == {}
+    assert board["recent"] == []
+    assert board["proposed"] == []
+    assert board["superseded"] == []
+    assert board["accepted_count"] == 0
+
+
 def test_html_has_sections_and_escapes_title() -> None:
     entries = parse_adr_index(
         ADR_README
