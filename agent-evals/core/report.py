@@ -51,6 +51,12 @@ _CODE_PATH_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"^agent-evals/adapters/bidmate/.*\.py\Z"),
 )
 
+# Recursive blocklist: these key names are forbidden at *any* depth, so a raw
+# sink nested under an allowed top-level object (e.g. metrics.pr_title) or wrapped
+# in a sequence cannot leak past the positive top-level allowlists below. The
+# title/summary/description/excerpt/comment family has no legitimate use anywhere
+# in the aggregate-only artifacts and is the raw-prose path cross-family review
+# flagged (issue_title / pr_title / rfp_excerpt).
 _FORBIDDEN_DATA_KEYS = frozenset(
     {
         "answer",
@@ -58,16 +64,22 @@ _FORBIDDEN_DATA_KEYS = frozenset(
         "captured_diff",
         "chunk_id",
         "chunk_text",
+        "comment",
+        "comments",
+        "description",
         "doc_id",
         "document_id",
         "document_text",
         "evidence",
+        "excerpt",
         "file_name",
         "filename",
+        "issue_title",
         "local_path",
         "path",
         "patch",
         "pr_body",
+        "pr_title",
         "query",
         "raw_body",
         "raw_diff",
@@ -75,8 +87,11 @@ _FORBIDDEN_DATA_KEYS = frozenset(
         "raw_pr_body",
         "reviewer_input",
         "rfp_body",
+        "rfp_excerpt",
         "run_log",
+        "summary",
         "text",
+        "title",
     }
 )
 
@@ -263,12 +278,19 @@ def _scan_yaml(rel_path: str, text: str) -> list[ScanViolation]:
     except yaml.YAMLError as exc:
         violations.append(ScanViolation(rel_path, f"unparseable YAML data artifact: {_yaml_error_summary(exc)}"))
         return violations
-    if parsed is not None:
-        if rel_path == "agent-evals/splits.yaml":
-            violations.extend(_check_allowed_top_level_keys(rel_path, parsed, _ALLOWED_SPLIT_KEYS, "split"))
-        elif rel_path.endswith("/task.yaml"):
-            violations.extend(_check_allowed_top_level_keys(rel_path, parsed, _ALLOWED_TASK_KEYS, "task"))
+    if parsed is None:
+        return violations
+    if not isinstance(parsed, Mapping):
+        # A list/scalar document would otherwise skip the positive key allowlist,
+        # so wrapping unknown keys in a sequence could bypass the schema gate.
+        violations.append(ScanViolation(rel_path, "committable YAML artifact must be a mapping"))
         violations.extend(_scan_json_keys(rel_path, parsed))
+        return violations
+    if rel_path == "agent-evals/splits.yaml":
+        violations.extend(_check_allowed_top_level_keys(rel_path, parsed, _ALLOWED_SPLIT_KEYS, "split"))
+    elif rel_path.endswith("/task.yaml"):
+        violations.extend(_check_allowed_top_level_keys(rel_path, parsed, _ALLOWED_TASK_KEYS, "task"))
+    violations.extend(_scan_json_keys(rel_path, parsed))
     return violations
 
 

@@ -218,3 +218,30 @@ def test_scanner_rejects_unknown_splits_key() -> None:
     violations = report.validate_agent_eval_file("agent-evals/splits.yaml", text)
 
     assert any("unknown split key" in violation.reason for violation in violations)
+
+
+def test_scanner_rejects_raw_sink_under_allowed_report_object() -> None:
+    # P1 (cross-family review): a raw-title sink nested under an allowed top-level
+    # object (metrics) bypasses the top-level allowlist, so the recursive denylist
+    # must name it. pr_title/issue_title/rfp_excerpt are now forbidden at any depth.
+    report = load_module("agent-evals/core/report.py", "agent_evals_report_nested_sink_test")
+
+    text = '{"schema_version": 1, "metrics": {"pr_title": "raw upstream title"}}'
+    violations = report.validate_agent_eval_file("agent-evals/reports/smoke.aggregate.json", text)
+
+    assert any(
+        "forbidden data key" in violation.reason and "pr_title" in violation.reason
+        for violation in violations
+    )
+
+
+def test_scanner_rejects_non_mapping_yaml_artifact() -> None:
+    # P1 (cross-family review): wrapping unknown keys in a sequence must not bypass
+    # the positive key allowlist; a non-mapping committable YAML is rejected.
+    report = load_module("agent-evals/core/report.py", "agent_evals_report_yaml_seq_test")
+
+    violations = report.validate_agent_eval_file(
+        "agent-evals/tasks/T-1/task.yaml", "- issue_title: raw upstream issue title\n"
+    )
+
+    assert any("must be a mapping" in violation.reason for violation in violations)
