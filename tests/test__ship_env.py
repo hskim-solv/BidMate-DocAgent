@@ -1,6 +1,10 @@
 from scripts._ship_env import SHIP_SECRET_ENV_PREFIX, strip_ship_secret_env
 
 
+def test_ship_secret_env_prefix_keeps_trailing_separator() -> None:
+    assert SHIP_SECRET_ENV_PREFIX == "BIDMATE_SHIP_"
+
+
 def test_strip_ship_secret_env_removes_only_ship_prefixed_keys() -> None:
     env = {
         "BIDMATE_SHIP_TOKEN": "secret",
