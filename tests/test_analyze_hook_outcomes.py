@@ -358,3 +358,43 @@ def test_main_single_hook_scopes_surface_reduction(tmp_path, aho, capsys):
     # scope, so they must NOT appear as surface-reduction candidates.
     assert js["surface_reduction_candidates"] == []
     assert "memory-lines" not in js["surface_reduction_candidates"]
+
+
+# ---------------------------------------------------------------------------
+# SSoT sync with _governance (issue #1972)
+# ---------------------------------------------------------------------------
+
+
+def test_all_hooks_matches_governance_known_hooks(aho):
+    # ALL_HOOKS must be the SAME SET as _governance.KNOWN_HOOKS. KNOWN_HOOKS is
+    # the emit-time typo guard (enforced in emit_hook_fire); ALL_HOOKS is the
+    # analysis-time inventory. If they drift, a hook that legitimately emits is
+    # silently dropped from / misclassified by the analysis. This test is the
+    # guard that was missing when agent-loop / experiment-report drifted out.
+    assert set(aho.ALL_HOOKS) == set(aho.KNOWN_HOOKS)
+
+
+def test_emitting_hooks_not_misclassified_as_unrecognized(aho):
+    # agent-loop / experiment-report are emitted by stop-agent-loop.sh /
+    # stop-experiment-report.sh (pipeline_end). They must sit in the inventory
+    # so render_text counts them under their own name, not the
+    # "Unrecognized hook names (legacy / typo)" bucket.
+    for hook in ("agent-loop", "experiment-report"):
+        assert hook in aho.ALL_HOOKS
+    now = datetime.now(timezone.utc)
+    events = [
+        _make_event(now, "agent-loop", "pipeline_end"),
+        _make_event(now, "experiment-report", "pipeline_end"),
+    ]
+    out = aho.render_text(events, "all")
+    assert "Unrecognized hook names" not in out
+    assert "agent-loop" in out
+    assert "experiment-report" in out
+
+
+def test_threshold_current_reflects_governance_thresholds(aho):
+    # The reported "current" thresholds must read from _governance.THRESHOLDS,
+    # not a hardcoded {aware: 20, block: 30} that drifts when the SSoT changes.
+    rec = aho.threshold_recommendation([])
+    assert rec["current"]["aware"] == aho.THRESHOLDS["MEMORY_LINE_AWARE"]
+    assert rec["current"]["block"] == aho.THRESHOLDS["MEMORY_LINE_BLOCK"]
