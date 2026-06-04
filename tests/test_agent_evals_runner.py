@@ -1103,3 +1103,98 @@ def test_committed_holdout_aggregate_reproduced_by_stub_pipeline(tmp_path) -> No
         )
     )
     assert report == committed
+
+
+def _fake_git_run(resolved_head: str):
+    """Fake ``subprocess_run`` for ``agent_evals_run.main()``.
+
+    Resolves ``git rev-parse HEAD`` to a fixed commit and treats every worktree op
+    (add/remove/prune) as a no-op success, so ``main()`` runs end-to-end with NO
+    real git side effects. The default stub candidate applies no repo change, so the
+    detached worktree is never actually needed.
+    """
+
+    class _Proc:
+        returncode = 0
+        stderr = ""
+
+        def __init__(self, stdout: str = "") -> None:
+            self.stdout = stdout
+
+    def _run(cmd, *args, **kwargs):
+        if "rev-parse" in cmd:
+            return _Proc(resolved_head + "\n")
+        return _Proc("")
+
+    return _run
+
+
+def test_main_without_attestation_caps_all_runs_at_necessary_gate_only(tmp_path) -> None:
+    # main() is the documented CLI entrypoint, yet its flag wiring was untested (no
+    # test called .main()). Without --public-attestation the egress gate must stay
+    # CLOSED end-to-end: every persisted trial caps at NECESSARY_GATE_ONLY, never
+    # ACCEPTED. Faked git => no real worktree churn.
+    run_script = load_module("scripts/agent_evals_run.py", "agent_evals_run_main_noattest")
+    runs_dir = tmp_path / "runs"
+    rc = run_script.main(
+        ["--runs-dir", str(runs_dir), "--start-commit", "deadbeefcafe1234"],
+        subprocess_run=_fake_git_run("deadbeefcafe1234"),
+    )
+    assert rc == 0
+    logs = [
+        json.loads(p.read_text(encoding="utf-8"))
+        for p in sorted(runs_dir.glob("T-smoke-*.json"))
+    ]
+    assert len(logs) == 18  # 3 tasks x 2 playbooks x 3 seeds
+    assert {log["gate_results"]["tier"] for log in logs} == {"NECESSARY_GATE_ONLY"}
+
+
+def test_main_public_attestation_flag_is_wired_through_to_egress(tmp_path) -> None:
+    # The security-relevant assertion: passing --public-attestation must thread the
+    # flag main() -> run() -> _verdict_for_run -> decide_verdict so the cross-family
+    # reviewer can move trials to ACCEPTED. If the flag were dropped in main()'s
+    # wiring (the ADR 0099 "opt-in is inert unless wired to the CLI flag" failure),
+    # the tier set would stay capped at NECESSARY_GATE_ONLY and this fails.
+    run_script = load_module("scripts/agent_evals_run.py", "agent_evals_run_main_attest")
+    runs_dir = tmp_path / "runs"
+    rc = run_script.main(
+        [
+            "--runs-dir",
+            str(runs_dir),
+            "--start-commit",
+            "deadbeefcafe1234",
+            "--public-attestation",
+        ],
+        subprocess_run=_fake_git_run("deadbeefcafe1234"),
+    )
+    assert rc == 0
+    logs = [
+        json.loads(p.read_text(encoding="utf-8"))
+        for p in sorted(runs_dir.glob("T-smoke-*.json"))
+    ]
+    # v1_spec_first is accepted by the stub reviewer on every holdout task, so with
+    # egress open ALL v1 trials reach ACCEPTED (proves the flag is wired, not inert).
+    v1_tiers = {
+        log["gate_results"]["tier"] for log in logs if log["playbook"] == "v1_spec_first"
+    }
+    assert v1_tiers == {"ACCEPTED"}
+
+
+def test_main_defaults_start_commit_to_resolved_head(tmp_path) -> None:
+    # With no --start-commit, main() must resolve the detached-worktree start commit
+    # from `git rev-parse HEAD` and thread it into every run-log. A regression that
+    # dropped/garbled this default would silently eval against the wrong tree.
+    run_script = load_module("scripts/agent_evals_run.py", "agent_evals_run_main_head")
+    runs_dir = tmp_path / "runs"
+    resolved = "0123456789abcdef0123456789abcdef01234567"
+    rc = run_script.main(
+        ["--runs-dir", str(runs_dir)],
+        subprocess_run=_fake_git_run(resolved),
+    )
+    assert rc == 0
+    logs = [
+        json.loads(p.read_text(encoding="utf-8"))
+        for p in sorted(runs_dir.glob("T-smoke-*.json"))
+    ]
+    assert logs  # matrix ran
+    assert {log["start_commit"] for log in logs} == {resolved}
