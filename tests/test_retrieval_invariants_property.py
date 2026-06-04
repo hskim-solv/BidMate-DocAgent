@@ -12,6 +12,12 @@ behaviour change**, no ``rag_*.py`` production edit):
 * **INV-2 (determinism)** — the same ``(query, backend, index)`` retrieved
   twice yields a byte-identical ``[(chunk_id, score), …]`` list. Green
   regression guard; pins the determinism the other invariants lean on.
+* **INV-4 (reranker idempotence)** — applying the default ``stub`` reranker
+  backend (``BIDMATE_RERANK_BACKEND=stub``, the CI default) is an identity
+  pass-through, so the reranked top-k chunk_id list equals the non-reranked
+  one and a second application is a fixed point. Green-by-construction under
+  the stub; guards against a future reranker stage silently reordering or
+  dropping chunks on the no-op path.
 * **INV-3 (chunk-order permutation invariance)** — permuting
   ``index["chunks"]`` (and invalidating the order-keyed BM25 cache) must not
   change the retrieved **top-k chunk_id set**. This is the bug-exposure
@@ -23,6 +29,14 @@ behaviour change**, no ``rag_*.py`` production edit):
   for the empirically observed list-equality verdict (a fixed-output guard,
   not a property, kept alongside as the documented evidence). Any future
   tie-break fix (PR-2) is free to make the stronger list relation hold.
+* **INV-1 (noise invariance)** — for a query with an unambiguous gold chunk,
+  adding unrelated (noise) chunks to the corpus must not lower recall@k.
+  Scoped to the ``dense`` backend and a lexically-distinct gold query whose
+  agency token is omitted (so the metadata filter does NOT pre-exclude the
+  noise — it genuinely reaches the dense scorer). Asserted as recall NOT
+  decreasing (the conservative form); hybrid is excluded because BM25 IDF is
+  corpus-global, so adding documents shifts term weights and the
+  no-regression guarantee does not hold there.
 
 Determinism prerequisites (hard requirement for every relation here):
 hashing embedding backend + the ``eval/fixtures/smoke_rfp/raw`` fixture +
@@ -47,6 +61,7 @@ from rag_core import (
     metadata_targets,
     retrieve,
 )
+from eval.scorers.chunk_metrics import chunk_recall_at_k
 
 # Deterministic backends only. ``dense`` is the ADR 0001 baseline; ``hybrid``
 # adds the BM25 + RRF fusion channel (ADR 0010/0058). Both are pure-Python /
@@ -85,13 +100,19 @@ SHUFFLE_SEEDS = [1, 7, 13, 101]
 _BM25_CACHE_KEYS = ("_bm25_by_profile", "_bm25", "_bm25_chunk_ids")
 
 
-def _retrieve(index, query, *, backend="dense", top_k=TOP_K):
+def _retrieve(index, query, *, backend="dense", top_k=TOP_K, rerank_cross_encoder=False):
     """Run the planner→retrieve path exactly as the regression suite does.
 
     Mirror of ``tests/test_hybrid_retrieval_regression.py``'s helper: flat
     retrieval mode, metadata-first, identity rerank (stub), no verifier retry.
     Returns the evidence ``list[dict]`` (each item carries chunk_id / doc_id /
     score / score_parts).
+
+    ``rerank_cross_encoder`` (default ``False``) routes the result through
+    ``apply_fusion_and_reranking``'s cross-encoder reranker block; under the
+    CI-default ``BIDMATE_RERANK_BACKEND=stub`` that block is an identity
+    pass-through (``rag_rerank._stub_backend``), which is exactly the property
+    INV-4 below pins.
     """
     analysis = analyze_query(query, metadata_targets(index))
     plan = make_plan(
@@ -99,6 +120,7 @@ def _retrieve(index, query, *, backend="dense", top_k=TOP_K):
         top_k=top_k,
         metadata_first=True,
         rerank=True,
+        rerank_cross_encoder=rerank_cross_encoder,
         verifier_retry=False,
         retrieval_mode="flat",
         retrieval_backend=backend,
@@ -147,6 +169,45 @@ def _permuted_index(index, seed):
     random.Random(seed).shuffle(permuted["chunks"])
     _invalidate_bm25_cache(permuted)
     return permuted
+
+
+# INV-1 noise-invariance probe. The query is lexically distinct (rare term
+# "라만" / Raman) and deliberately OMITS the agency token ("기관 D") so the
+# metadata filter does NOT pre-exclude the unrelated documents — the noise
+# chunks genuinely reach the dense scorer rather than being filtered out
+# upstream. The gold document's two "라만"-bearing chunks rank top-2 on this
+# fixture even with the full noisy corpus present.
+NOISE_PROBE_QUERY = "라만 캘리브레이션 분광기"
+NOISE_GOLD_DOC = "rfp-agency-d-spectrometer-probe"
+NOISE_GOLD_TERM = "라만"
+
+
+def _gold_chunk_ids(index):
+    """Gold chunk_ids = chunks of ``NOISE_GOLD_DOC`` carrying ``NOISE_GOLD_TERM``."""
+    return [
+        str(chunk["chunk_id"])
+        for chunk in index["chunks"]
+        if str(chunk.get("doc_id")) == NOISE_GOLD_DOC
+        and NOISE_GOLD_TERM in str(chunk.get("text") or "")
+    ]
+
+
+def _clean_corpus(index):
+    """Shallow-copy ``index`` restricted to the gold document's chunks.
+
+    The ``clean`` corpus (gold doc only) is the no-noise control; the full
+    fixture is the noisy corpus (gold + 10 unrelated chunks). The shared
+    ``_vector_store`` is reused unchanged — dense scores are read per chunk via
+    ``embedding_idx`` (order/subset-independent), so restricting ``chunks`` is
+    sound without rebuilding the store.
+    """
+    clean = dict(index)
+    clean["chunks"] = [
+        chunk
+        for chunk in index["chunks"]
+        if str(chunk.get("doc_id")) == NOISE_GOLD_DOC
+    ]
+    return clean
 
 
 class RetrievalInvariantsPropertyTest(unittest.TestCase):
@@ -280,6 +341,97 @@ class RetrievalInvariantsPropertyTest(unittest.TestCase):
             "expected the hybrid RRF tie to flip output order under permutation; "
             "if this now holds, PR-2's tie-break may have landed — promote INV-3 "
             "to list-equality and update this evidence guard",
+        )
+
+    # -- INV-4 — reranker idempotence (stub identity) ---------------------
+
+    @settings(derandomize=True, max_examples=40, deadline=None)
+    @given(query=st.sampled_from(QUERIES), backend=st.sampled_from(BACKENDS))
+    def test_inv4_stub_reranker_is_idempotent(self, query: str, backend: str) -> None:
+        """Default stub reranker is identity → out_ids == in_ids, idempotent.
+
+        Metamorphic relation: applying the cross-encoder reranker (the CI
+        default ``BIDMATE_RERANK_BACKEND=stub``, ``rag_rerank._stub_backend``)
+        is an identity pass-through. So the reranked top-k chunk_id list equals
+        the non-reranked one, and a second independent rerank retrieval
+        reproduces it (determinism of the stub rerank path — a true
+        ``rerank(rerank(x))`` composition is out of scope for this option-B
+        test, which never mutates the production rerank stage). This pins the
+        never-reorder
+        contract of the stub backend the regression suite relies on; a real
+        backend (bge/cohere) is opt-in and out of scope for this deterministic
+        property. Compared on chunk_id only — the stub leaves order and
+        membership untouched, which is the full identity claim.
+        """
+        in_ids = [item["chunk_id"] for item in _retrieve(self.index, query, backend=backend)]
+        self.assertGreater(len(in_ids), 0, "fixture query retrieved nothing")
+
+        out_ids = [
+            item["chunk_id"]
+            for item in _retrieve(self.index, query, backend=backend, rerank_cross_encoder=True)
+        ]
+        self.assertEqual(
+            in_ids,
+            out_ids,
+            f"stub reranker changed the ranking (backend={backend}) — expected identity",
+        )
+
+        # Determinism: a second independent rerank retrieval reproduces the ids.
+        out_ids_again = [
+            item["chunk_id"]
+            for item in _retrieve(self.index, query, backend=backend, rerank_cross_encoder=True)
+        ]
+        self.assertEqual(
+            out_ids,
+            out_ids_again,
+            f"stub reranker is not idempotent (backend={backend})",
+        )
+
+    # -- INV-1 — noise invariance (dense, recall non-decreasing) ----------
+
+    @settings(derandomize=True, max_examples=40, deadline=None)
+    @given(k=st.sampled_from([5, 10]))
+    def test_inv1_noise_does_not_lower_recall_dense(self, k: int) -> None:
+        """Adding noise chunks must not evict gold from the dense top-k.
+
+        Concrete guard (the comparative "recall NOT decreasing" framing would
+        overstate it): the clean corpus is the gold document alone (3 chunks),
+        so at ``top_k=10`` every gold chunk is returned and ``recall_clean`` is
+        structurally pinned to 1.0. The assertion ``recall_noisy >=
+        recall_clean`` therefore reduces to ``recall_noisy >= 1.0`` — i.e.
+        **both gold chunks must stay in the noisy top-k**; noise must not push
+        gold out on the dense path. The noisy corpus is the full smoke fixture
+        (gold + the other-document chunks reaching the dense scorer, since
+        ``NOISE_PROBE_QUERY`` omits the agency token and is not
+        metadata-filtered). Scoped to ``dense`` on purpose: BM25 IDF is
+        corpus-global, so adding documents reweights terms and the
+        no-regression guarantee does not hold on the hybrid path — that is a
+        genuine NOT-GUARANTEED case, not a test gap, and is left out rather
+        than weakened into a false invariant.
+        """
+        gold = _gold_chunk_ids(self.index)
+        self.assertTrue(gold, "fixture changed: gold probe doc/term no longer present")
+
+        clean_ids = [
+            item["chunk_id"]
+            for item in _retrieve(_clean_corpus(self.index), NOISE_PROBE_QUERY, backend="dense", top_k=10)
+        ]
+        noisy_ids = [
+            item["chunk_id"]
+            for item in _retrieve(self.index, NOISE_PROBE_QUERY, backend="dense", top_k=10)
+        ]
+
+        recall_clean = chunk_recall_at_k(clean_ids, gold, k)
+        recall_noisy = chunk_recall_at_k(noisy_ids, gold, k)
+        # gold is non-empty (asserted above) so chunk_recall_at_k never returns
+        # None here; a plain assert (unlike unittest.assertIsNotNone) also
+        # narrows float|None → float for static type-checkers.
+        assert recall_clean is not None and recall_noisy is not None
+        self.assertGreaterEqual(
+            recall_noisy,
+            recall_clean,
+            f"recall@{k} regressed when noise was added: "
+            f"clean={recall_clean} noisy={recall_noisy}",
         )
 
 
