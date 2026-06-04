@@ -111,3 +111,64 @@ def test_schema_rejects_unknown_task_keys() -> None:
         assert "unknown task key" in str(exc)
     else:  # pragma: no cover
         raise AssertionError("EvalTask accepted a raw-sink key")
+
+
+def test_scanner_rejects_oversized_yaml_value_under_innocuous_key() -> None:
+    # GAP 1: raw prose smuggled as a long scalar under a non-forbidden task key
+    # (``train_hint``) is only caught once the YAML is parsed structurally.
+    report = load_module("agent-evals/core/report.py", "agent_evals_report_yaml_size_test")
+
+    smuggled = "x" * 600
+    text = (
+        "task_id: T-1\n"
+        "source: smoke_synthetic_contract\n"
+        "category: hook_privacy\n"
+        f"train_hint: {smuggled}\n"
+        "acceptance:\n  - preserve guard\n"
+        "hidden_test_gate: unseen guard passes\n"
+    )
+    violations = report.validate_agent_eval_file("agent-evals/tasks/T-1/task.yaml", text)
+
+    assert any("oversized data string" in violation.reason for violation in violations)
+
+
+def test_scanner_rejects_yaml_value_pattern_only_visible_after_parse() -> None:
+    # GAP 1: the diff marker is anchored to start-of-line, so as a raw YAML scalar
+    # value it escapes the whole-text scan and is only exposed after a real parse.
+    report = load_module("agent-evals/core/report.py", "agent_evals_report_yaml_parse_test")
+
+    text = (
+        "task_id: T-1\n"
+        "source: smoke_synthetic_contract\n"
+        "category: hook_privacy\n"
+        "train_hint: 'diff --git a/secret b/secret'\n"
+        "acceptance:\n  - preserve guard\n"
+        "hidden_test_gate: unseen guard passes\n"
+    )
+    violations = report.validate_agent_eval_file("agent-evals/tasks/T-1/task.yaml", text)
+
+    assert any("raw diff marker" in violation.reason for violation in violations)
+
+
+def test_scanner_rejects_unparseable_yaml_artifact() -> None:
+    # GAP 1: a committable YAML artifact that does not parse cannot be cleared by
+    # the structural layer, so it is rejected rather than silently text-scanned.
+    report = load_module("agent-evals/core/report.py", "agent_evals_report_yaml_bad_test")
+
+    violations = report.validate_agent_eval_file(
+        "agent-evals/splits.yaml", "assignment: [unterminated\n"
+    )
+
+    assert any("unparseable YAML data artifact" in violation.reason for violation in violations)
+
+
+def test_scanner_rejects_oversized_aggregate_json_value() -> None:
+    # GAP 2: an aggregate JSON string value can hide a raw excerpt even when it
+    # matches none of the value patterns, so a size cap mirrors the Python check.
+    report = load_module("agent-evals/core/report.py", "agent_evals_report_json_size_test")
+
+    blob = "y" * 600
+    text = '{"schema_version": 1, "notes": "' + blob + '"}'
+    violations = report.validate_agent_eval_file("agent-evals/reports/smoke.aggregate.json", text)
+
+    assert any("oversized data string" in violation.reason for violation in violations)

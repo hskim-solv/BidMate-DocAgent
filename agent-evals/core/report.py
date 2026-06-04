@@ -19,14 +19,20 @@ import hashlib
 import json
 import re
 import subprocess
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
+import yaml
+
 
 SCHEMA_VERSION = 1
 SURFACE = "agent-evals-pr2"
+
+# Data-artifact string scalars (JSON values, YAML scalars) are capped well above
+# every legitimate aggregate note but far below a raw issue/PR/RFP excerpt, so an
+# oversized value cannot smuggle private prose under an otherwise-innocuous key.
+_MAX_DATA_STRING_LEN = 512
 
 _ALLOWED_PATH_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"^agent-evals/README\.md\Z"),
@@ -168,7 +174,43 @@ def _scan_json_keys(rel_path: str, value: Any, *, trail: str = "$") -> list[Scan
         for idx, child in enumerate(value):
             violations.extend(_scan_json_keys(rel_path, child, trail=f"{trail}[{idx}]"))
     elif isinstance(value, str):
+        if len(value) > _MAX_DATA_STRING_LEN:
+            violations.append(
+                ScanViolation(
+                    rel_path,
+                    f"oversized data string at {trail} ({len(value)} chars) could hide raw text",
+                )
+            )
         violations.extend(_scan_values(rel_path, value))
+    return violations
+
+
+def _yaml_error_summary(exc: yaml.YAMLError) -> str:
+    text = str(exc).strip()
+    return text.splitlines()[0] if text else exc.__class__.__name__
+
+
+def _scan_yaml(rel_path: str, text: str) -> list[ScanViolation]:
+    """Validate a committed YAML data artifact structurally.
+
+    The whole-text value-pattern scan and the line-oriented forbidden-key check
+    remain as dependency-free backstops, but the structural parse is what stops
+    raw prose hidden under an innocuous, non-forbidden key (for example a long
+    ``train_hint`` smuggling issue/PR text, or a diff marker whose start-of-line
+    anchor only matches once the scalar value is extracted).
+    """
+
+    violations: list[ScanViolation] = []
+    violations.extend(_scan_values(rel_path, text))
+    if _FORBIDDEN_KEY_RE.search(text):
+        violations.append(ScanViolation(rel_path, "forbidden raw/private data key in text artifact"))
+    try:
+        parsed = yaml.safe_load(text)
+    except yaml.YAMLError as exc:
+        violations.append(ScanViolation(rel_path, f"unparseable YAML data artifact: {_yaml_error_summary(exc)}"))
+        return violations
+    if parsed is not None:
+        violations.extend(_scan_json_keys(rel_path, parsed))
     return violations
 
 
@@ -189,8 +231,8 @@ def validate_agent_eval_file(rel_path: str, text: str) -> list[ScanViolation]:
     if _is_code_path(rel_path):
         return _scan_python(rel_path, text)
 
-    violations.extend(_scan_values(rel_path, text))
     if rel_path.endswith(".aggregate.json"):
+        violations.extend(_scan_values(rel_path, text))
         try:
             parsed = json.loads(text)
         except json.JSONDecodeError as exc:
@@ -199,11 +241,17 @@ def validate_agent_eval_file(rel_path: str, text: str) -> list[ScanViolation]:
             if not isinstance(parsed, dict):
                 violations.append(ScanViolation(rel_path, "aggregate report must be a JSON object"))
             violations.extend(_scan_json_keys(rel_path, parsed))
+        return violations
 
-    if rel_path.endswith((".yaml", ".yml", ".md")):
-        if _FORBIDDEN_KEY_RE.search(text):
-            violations.append(ScanViolation(rel_path, "forbidden raw/private data key in text artifact"))
+    if rel_path.endswith((".yaml", ".yml")):
+        return _scan_yaml(rel_path, text)
 
+    # Remaining committable surface: curated Markdown (playbooks). These are
+    # operator prose, so only value-pattern and forbidden-key text checks apply;
+    # a structural parse or size cap would false-positive on legitimate long prose.
+    violations.extend(_scan_values(rel_path, text))
+    if _FORBIDDEN_KEY_RE.search(text):
+        violations.append(ScanViolation(rel_path, "forbidden raw/private data key in text artifact"))
     return violations
 
 
