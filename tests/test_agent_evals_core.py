@@ -422,3 +422,69 @@ def test_generated_holdout_report_is_underpowered_with_no_ci_band() -> None:
         assert row.get("underpowered") is True, f"{name} should be underpowered at N=3"
         assert "ci_lo" not in row and "ci_hi" not in row, f"{name} must omit CI band when underpowered"
     assert any(note.startswith("UNDERPOWERED N=") for note in data["notes"])
+
+
+def _init_repo(tmp_path) -> Path:
+    """Create an isolated git repo for scan_staged tests (no real-repo coupling)."""
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    def _git(*args: str) -> None:
+        subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True)
+
+    _git("init", "-q")
+    _git("config", "user.email", "t@example.test")
+    _git("config", "user.name", "agent-evals-test")
+    return repo
+
+
+def test_scan_staged_flags_denied_staged_agent_eval_path(tmp_path) -> None:
+    # scan_staged is the ADR 0005 commit-time enforcer the pre-commit hook invokes
+    # via `report.py --check-staged`. Existing coverage only asserts the hook TEXT
+    # references it; this asserts the enforcement actually fires — a staged file
+    # outside the committable allowlist (a raw run-log) must be flagged.
+    report = load_module("agent-evals/core/report.py", "agent_evals_report_scan_staged_denied")
+    repo = _init_repo(tmp_path)
+
+    raw = repo / "agent-evals" / "runs"
+    raw.mkdir(parents=True)
+    (raw / "leak.json").write_text('{"captured_patch": "x"}', encoding="utf-8")
+    subprocess.run(
+        ["git", "-C", str(repo), "add", "agent-evals/runs/leak.json"],
+        check=True,
+        capture_output=True,
+    )
+
+    violations = report.scan_staged(repo)
+
+    assert [v.path for v in violations] == ["agent-evals/runs/leak.json"]
+    assert "outside the PR2 committable allowlist" in violations[0].reason
+
+
+def test_scan_staged_judges_staged_blob_not_worktree(tmp_path) -> None:
+    # scan_staged must validate what will be COMMITTED — the staged blob read via
+    # `git show :path` — not the current working-tree text. Stage a clean aggregate,
+    # then dirty the worktree with content that WOULD be flagged: the scan must still
+    # pass, because _read_staged_text reads the index, not the worktree. This locks
+    # the staged-vs-worktree correctness of the commit boundary.
+    report = load_module("agent-evals/core/report.py", "agent_evals_report_scan_staged_blob")
+    repo = _init_repo(tmp_path)
+
+    reports_dir = repo / "agent-evals" / "reports"
+    reports_dir.mkdir(parents=True)
+    clean = (REPO_ROOT / "agent-evals" / "reports" / "holdout-v0-vs-v1.aggregate.json").read_text(
+        encoding="utf-8"
+    )
+    target = reports_dir / "x.aggregate.json"
+    target.write_text(clean, encoding="utf-8")
+    subprocess.run(
+        ["git", "-C", str(repo), "add", "agent-evals/reports/x.aggregate.json"],
+        check=True,
+        capture_output=True,
+    )
+
+    # Dirty the worktree AFTER staging; the index still holds the clean blob.
+    target.write_text('{"captured_patch": "secret leak"}', encoding="utf-8")
+
+    assert report.scan_staged(repo) == []
