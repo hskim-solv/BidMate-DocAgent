@@ -119,6 +119,9 @@ class TestMemoryLinesHook(unittest.TestCase):
         })
         self.assertEqual(r.returncode, 2)
         self.assertIn("32", r.stderr)
+        line = self._fires_log.read_text().strip()
+        self.assertIn("|blocked|memory-lines|line-count|", line)
+        self.assertIn(str(target), line)
 
 
 if __name__ == "__main__":
