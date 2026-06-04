@@ -73,3 +73,23 @@ def test_canonical_doc_id_none_when_all_empty() -> None:
     # notice·file 모두 비면 None(빈 문자열 아님).
     assert canonical_doc_id("", "", "") is None
     assert canonical_doc_id(None, None, None) is None
+
+
+# ---- case preservation (issue #2409) ----
+# docstring 의 옛 'casefold' 문구는 미구현이고(slug_part 는 #49 이래 한 번도
+# casefold 안 함), doc_id 는 대소문자를 보존한다. 아래 테스트가 그 계약을 pin —
+# 누가 slug_part 에 casefold/.lower() 를 넣으면 FAIL 하여 ADR 0001 naive_baseline
+# byte-identity 가 깨짐(모든 doc_id 변경)을 의식하게 만든다.
+
+def test_canonical_doc_id_preserves_case_in_notice() -> None:
+    # notice_id 경로: 대소문자 보존 — RFP-001 과 rfp-001 은 서로 다른 id.
+    assert canonical_doc_id("RFP-001", None, None) == "RFP-001"
+    assert canonical_doc_id("rfp-001", None, None) == "rfp-001"
+    assert canonical_doc_id("RFP-001", None, None) != canonical_doc_id("rfp-001", None, None)
+
+
+def test_canonical_doc_id_preserves_case_in_file_fallback() -> None:
+    # file_name stem fallback 경로도 대소문자 보존 — Document ≠ document.
+    assert canonical_doc_id(None, None, "Document.hwp") == "Document"
+    assert canonical_doc_id(None, None, "document.hwp") == "document"
+    assert canonical_doc_id(None, None, "Document.hwp") != canonical_doc_id(None, None, "document.hwp")

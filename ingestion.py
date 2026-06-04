@@ -1923,8 +1923,13 @@ def canonical_doc_id(
     Priority:
       1. ``notice_id`` (+ optional ``notice_round``) if non-empty.
       2. File-name stem fallback.
-    Both branches NFC-normalize, casefold, and collapse whitespace so the
-    same source row produces the same id across runs and platforms.
+    Both branches NFC-normalize and collapse whitespace (via ``slug_part``)
+    so the same source row produces the same id across runs and platforms.
+    Case is **preserved**: ``RFP-001`` and ``rfp-001`` are distinct ids.
+    (Issue #2409 — an earlier docstring claimed casefold, but ``slug_part``
+    has never case-folded since #49; run/platform determinism needs only NFC +
+    whitespace collapse, and folding would change every doc_id and break the
+    ADR 0001 naive_baseline byte-identity, so it stays out of scope.)
     """
     notice = clean_cell(notice_id)
     if notice:
