@@ -39,6 +39,13 @@ class StripLeaderDotsTest(unittest.TestCase):
         md = "1·2·3·4·5"
         self.assertEqual(_strip_kordoc_toc_noise(md), md)
 
+    def test_middle_dot_threshold_boundary(self):
+        below = "사업개요" + ("·" * 7) + "범위"
+        at_threshold = "사업개요" + ("·" * 8) + "범위"
+
+        self.assertEqual(_strip_kordoc_toc_noise(below), below)
+        self.assertEqual(_strip_kordoc_toc_noise(at_threshold), "사업개요 범위")
+
     def test_collapses_ascii_period_run_above_threshold(self):
         # 15+ ASCII periods: ToC leader; collapsed.
         md = "사업개요" + ("." * 30) + "1"
