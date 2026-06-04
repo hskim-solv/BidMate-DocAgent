@@ -65,6 +65,12 @@ class NormalizeMoneyTest(unittest.TestCase):
         ("오천원", 5_000, False),
         ("오천오백원", 5_500, False),
         ("5원", 5, False),
+        # issue #2360: real 兆(trillion) amounts must still parse — the 제N조
+        # legal-article guard only fires on a '제' prefix, not on these.
+        ("5조원", 5_000_000_000_000, False),
+        ("일조원", 1_000_000_000_000, False),
+        ("1조 5천억원", 1_500_000_000_000, False),
+        ("1조", 1_000_000_000_000, False),
     ]
 
     def test_amounts_match_canonical_table(self) -> None:
@@ -166,6 +172,16 @@ class FalsePositiveGuardTest(unittest.TestCase):
         "이원화",
         "구원파",
         "사원수",
+        # issue #2360: '제N조'(條, legal article) is an ordinal, not a 兆(trillion)
+        # amount. The sectioned branch matched 숫자+조 as money, so
+        # parse_amounts('제1조') returned [ParsedAmount(value=1_000_000_000_000)]
+        # and normalize_text('제1조')=='제1000000000000'. RFP/계약 법조문 빈출어.
+        "제1조",
+        "제2조",
+        "제10조",
+        "제3조의2",
+        "제5조",
+        "본 계약 제1조에 따라",  # sentence-level: 제1조 must survive intact
     ]
 
     DATE_NEGATIVES = [
@@ -348,6 +364,23 @@ class EndToEndVerifyEvidenceTest(unittest.TestCase):
         self.assertFalse(
             verified, f"expected not grounded, got reasons={reasons}"
         )
+
+    def test_jo_article_topic_does_not_false_match_trillion(self) -> None:
+        # issue #2360: '제1조'(條, legal article) must NOT normalize to 1兆, so a
+        # canonical 1000000000000 (1조원) money topic must NOT ground on a legal-
+        # article document. Before the fix normalize_text('제1조')=='제1000000000000'
+        # so the canonical money form substring-matched the article text — the
+        # same false-grounding class as #2228/#2346 via the 조(條/兆) homograph.
+        self.assertEqual("제1조", normalize_text("제1조"))
+        article = _evidence_item("본 계약 제1조에 따라 용역을 이행한다.")  # 제1조, no 兆
+        self.assertFalse(evidence_has_topic(article, ["1000000000000"]))
+        verified, reasons = verify_evidence(
+            self._analysis(["1000000000000"]), [article]
+        )
+        self.assertFalse(verified, f"expected not grounded, got reasons={reasons}")
+        # 대조: a real 1조원 amount document must still ground.
+        real = _evidence_item("총사업비는 1조원 규모이다.")
+        self.assertTrue(evidence_has_topic(real, ["1000000000000"]))
 
     def test_canonical_iso_date_matches_korean_date_evidence(self) -> None:
         # Query topic "2026-03-15" (canonical) must match evidence written

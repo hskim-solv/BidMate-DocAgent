@@ -293,6 +293,16 @@ def parse_amounts(s: str) -> list[ParsedAmount]:
         # Trim trailing whitespace from span to keep approximation-suffix
         # detection accurate.
         end = start + len(raw)
+        # Ordinal/legal-article guard (issue #2360): '제N조'(條, article) is not a
+        # 兆(trillion) amount. The sectioned branch matches '숫자+조' as money
+        # (_SECTION_MAP['조']=10^12), but when the span is immediately preceded by
+        # '제' and ends in a bare section marker (no 원/정 suffix), it is an ordinal
+        # like 제1조/제10조 — pin it out so '예산 1조원' topics stop false-grounding
+        # on legal-article documents (same false-grounding class as #2228/#2346).
+        # Real 兆 amounts (5조원, 일조원, 1조 5천억원) keep a 원/정 suffix or combine
+        # with 억, and carry no '제' prefix, so they are unaffected.
+        if start > 0 and s[start - 1] == "제" and raw and raw[-1] in _SECTION_MAP:
+            continue
         value = _parse_korean_number(raw)
         if value is None or value == 0:
             continue
