@@ -1012,3 +1012,39 @@ def test_metric_per_accepted_counts_total_effort() -> None:
     zero = [{"gate_results": {"tier": "NECESSARY_GATE_ONLY"}, "cost": {"usd": 5.0}, "human_minutes": 4.0}]
     assert report_script._metric_value("cost_per_accepted", zero) is None
     assert report_script._metric_value("human_min_per_accepted", zero) is None
+
+
+# --------------------------------------------------------------------------- #
+# #2452 — review round 3: manifest parent-ref guard + destructive fail-closed  #
+# --------------------------------------------------------------------------- #
+
+
+def test_report_manifest_rejects_parent_ref_entries(tmp_path) -> None:
+    # #2452 F3: a bare ".." (and ".") slips the `Path(n).name != n` check on POSIX
+    # (Path("..").name == ".."); the basename guard must still reject parent refs.
+    report_script = load_module("scripts/agent_evals_report.py", "agent_evals_report_parentref")
+    runner = load_module("agent-evals/adapters/bidmate/runner.py", "agent_evals_runner_parentref")
+    runs_dir = tmp_path / "runs"
+    runs_dir.mkdir(parents=True)
+    _write_log(runner, runs_dir, "T-a", "v0_naive", 17)
+    for entry in ("..", "."):
+        (runs_dir / runner.RUN_MANIFEST_NAME).write_text(
+            json.dumps({"run_logs": [entry, "T-a__v0_naive__seed17.json"]}) + "\n",
+            encoding="utf-8",
+        )
+        with pytest.raises(ValueError, match="non-basename"):
+            report_script._read_run_logs(runs_dir)
+
+
+def test_detect_hard_gates_non_numeric_deleted_paths_fails_closed() -> None:
+    # #2452 F4: deleted_paths is a destructive (security) signal. A serialized count
+    # ("1") or a malformed truthy value must still trip DESTRUCTIVE (fail-closed);
+    # clean-zero / "0" / "" / None / absent must not.
+    ob = _oracle_bidmate()
+    HardGate = ob.oracle.HardGate
+    assert HardGate.DESTRUCTIVE in ob.detect_hard_gates({"deleted_paths": "1"})  # was ignored
+    assert HardGate.DESTRUCTIVE in ob.detect_hard_gates({"deleted_paths": 3})  # numeric still trips
+    assert HardGate.DESTRUCTIVE in ob.detect_hard_gates({"deleted_paths": "yes"})  # malformed truthy
+    for falsy in ("0", 0, "", None):
+        assert HardGate.DESTRUCTIVE not in ob.detect_hard_gates({"deleted_paths": falsy})
+    assert HardGate.DESTRUCTIVE not in ob.detect_hard_gates({})

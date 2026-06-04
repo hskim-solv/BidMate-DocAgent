@@ -105,8 +105,14 @@ def _read_run_logs(runs_dir: Path) -> list[dict[str, Any]]:
         # Enforce the "listed basenames only" contract before joining. A non-basename
         # entry (``../old.json``, an absolute path, or a nested ``a/b.json``) would
         # let ``runs_dir / name`` escape the runs dir and read a stale log outside the
-        # current run — defeating the manifest-scoping invariant. Reject loudly.
-        bad = [n for n in names if not isinstance(n, str) or n == "" or Path(n).name != n]
+        # current run — defeating the manifest-scoping invariant. Reject loudly. The
+        # explicit ``.``/``..`` cases are needed because ``Path("..").name == ".."``
+        # (a bare parent ref slips the ``Path(n).name != n`` check on POSIX).
+        bad = [
+            n
+            for n in names
+            if not isinstance(n, str) or n in ("", ".", "..") or Path(n).name != n
+        ]
         if bad:
             raise ValueError(
                 f"run_manifest.json lists non-basename entries {bad[:3]}"

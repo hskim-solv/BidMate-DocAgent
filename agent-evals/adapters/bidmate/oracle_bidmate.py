@@ -112,7 +112,9 @@ def detect_hard_gates(diff_summary: Mapping[str, Any]) -> tuple[Any, ...]:
     "added_secrets": bool, "destructive": bool, "unrelated_churn": bool,
     "unauthorized_migration": bool, "instruction_violation": bool,
     "deleted_paths": int}``) — never raw diff text.  ``deleted_paths`` is treated
-    as a destructive signal when positive.
+    as a destructive signal when positive.  Detection is fail-closed on a security
+    gate: a serialized count (``"1"``) or any other truthy-but-malformed value still
+    trips DESTRUCTIVE rather than being silently ignored for not being a clean int.
     """
 
     gates: list[Any] = []
@@ -120,8 +122,16 @@ def detect_hard_gates(diff_summary: Mapping[str, Any]) -> tuple[Any, ...]:
         if bool(diff_summary.get(key)):
             gates.append(gate)
     deleted = diff_summary.get("deleted_paths")
-    if isinstance(deleted, (int, float)) and deleted > 0 and oracle.HardGate.DESTRUCTIVE not in gates:
-        gates.append(oracle.HardGate.DESTRUCTIVE)
+    if deleted is not None and oracle.HardGate.DESTRUCTIVE not in gates:
+        try:
+            deleted_positive = float(deleted) > 0
+        except (TypeError, ValueError):
+            # Present but non-numeric (e.g. a malformed serialized value): treat any
+            # truthy value as a destructive signal — fail-closed, never fail-open, on
+            # a security gate. ("" / [] / 0-like values stay non-destructive.)
+            deleted_positive = bool(deleted)
+        if deleted_positive:
+            gates.append(oracle.HardGate.DESTRUCTIVE)
     return tuple(gates)
 
 
