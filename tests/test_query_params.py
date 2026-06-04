@@ -181,6 +181,8 @@ class QueryParamsShapeTest(unittest.TestCase):
             "comparison_balance",
             "rrf_k",
             "bm25_stopword_profile",
+            "bm25_tokenizer",
+            "bm25_backend",
         ):
             self.assertIsNone(
                 getattr(params, field_name),
