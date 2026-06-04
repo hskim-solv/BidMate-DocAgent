@@ -200,6 +200,7 @@ class TestIsMidSentenceCut(unittest.TestCase):
         # Common ending: ``이다."`` / ``이다.)`` → still clean
         self.assertFalse(_is_mid_sentence_cut('대상입니다."'))
         self.assertFalse(_is_mid_sentence_cut("의함)"))
+        self.assertFalse(_is_mid_sentence_cut("의함)』"))
 
     def test_empty_string_is_not_mid_cut(self):
         # Empty chunks are handled by the empty_chunks metric; this fn
