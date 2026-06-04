@@ -22,6 +22,7 @@ This test pins the new contract:
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 import pytest
 
@@ -88,6 +89,28 @@ class TestBM25CacheInvalidation(unittest.TestCase):
         shared_regex = get_or_build_bm25(self.index, "shared", "regex")
         bm25_extra_regex = get_or_build_bm25(self.index, "bm25_extra", "regex")
         self.assertIsNot(shared_regex[0], bm25_extra_regex[0])
+
+    def test_backend_change_invalidates_cache(self) -> None:
+        built_backends: list[str] = []
+
+        def fake_make_bm25_instance(corpus, backend):
+            built_backends.append(backend)
+            return object()
+
+        with patch("rag_retrieval._make_bm25_instance", fake_make_bm25_instance):
+            okapi_first = get_or_build_bm25(
+                self.index, "shared", "regex", backend="okapi"
+            )
+            bm25s = get_or_build_bm25(
+                self.index, "shared", "regex", backend="bm25s"
+            )
+            okapi_second = get_or_build_bm25(
+                self.index, "shared", "regex", backend="okapi"
+            )
+
+        self.assertIsNot(okapi_first[0], bm25s[0])
+        self.assertIs(okapi_first[0], okapi_second[0])
+        self.assertEqual(built_backends, ["okapi", "bm25s"])
 
 
 if __name__ == "__main__":
