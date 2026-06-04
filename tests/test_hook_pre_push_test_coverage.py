@@ -99,6 +99,13 @@ class TestPrePushTestCoverage(unittest.TestCase):
         self.assertEqual(0, r.returncode, r.stderr)
         self.assertEqual("", r.stderr.strip(), r.stderr)
 
+    def test_non_load_bearing_code_path_is_quiet(self) -> None:
+        self._pin_origin_main()
+        self._commit("scripts/non_loadbearing_helper.py")
+        r = self._run_hook()
+        self.assertEqual(0, r.returncode, r.stderr)
+        self.assertEqual("", r.stderr.strip(), r.stderr)
+
     def test_no_origin_main_ref_is_quiet(self) -> None:
         # No origin/main ref and no upstream → base diff is empty → quiet.
         self._commit("rag_core.py")
