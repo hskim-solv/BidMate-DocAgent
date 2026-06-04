@@ -102,6 +102,15 @@ def test_agent_react_tools_names():
     ], f"Unexpected order: {names}"
 
 
+def test_agent_react_tools_descriptions_nonempty():
+    # Anthropic tool definitions are shown to the LLM; an empty description
+    # silently weakens tool selection even when the JSON schema is valid.
+    for tool in AGENT_REACT_TOOLS:
+        description = tool.get("description")
+        assert isinstance(description, str)
+        assert len(description.strip()) > 20, tool["name"]
+
+
 # ---------------------------------------------------------------------------
 # 3. AGENT_TOOL_NAMES / is_valid_tool_name
 # ---------------------------------------------------------------------------
