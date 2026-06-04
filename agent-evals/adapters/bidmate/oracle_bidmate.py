@@ -135,24 +135,32 @@ def cross_family_review(
 ) -> Any:  # oracle.ReviewerVerdict | None — oracle is importlib-loaded, not a static type
     """Run a cross-family reviewer over the candidate payload, egress-gated.
 
-    Egress happens ONLY when ``public_attestation`` is True.  When it is False this
-    returns ``None`` and ``payload_provider`` is NOT invoked, so no payload (issue +
-    patch) is ever built or sent.  The family validity check is intentionally NOT
-    done here; it is enforced downstream in ``oracle.decide_verdict`` so that even a
-    same-family reviewer's verdict is neutralized to ``NECESSARY_GATE_ONLY``.
+    Egress happens ONLY when ``public_attestation`` is exactly ``True``.  For any
+    other value — ``False`` *or a truthy non-bool such as the string ``"false"``* —
+    this returns ``None`` and ``payload_provider`` is NOT invoked, so no payload
+    (issue + patch) is ever built or sent.  The strict ``is True`` test mirrors the
+    fail-closed discipline in ``oracle.decide_verdict``: a truthiness check here
+    would let a malformed truthy value open egress *before* the downstream verdict
+    caps the tier, leaking the payload the caller never attested as public (ADR
+    0005).  The family validity check is intentionally NOT done here; it is enforced
+    downstream in ``oracle.decide_verdict`` so even a same-family reviewer's verdict
+    is neutralized to ``NECESSARY_GATE_ONLY``.
 
     ``reviewer_call`` is injectable; tests pass a fake so the real codex egress path
     is never exercised by the suite.  ``candidate_family`` is accepted for interface
     symmetry / future provenance and is not used to short-circuit egress.
     """
 
-    if not public_attestation:
+    if public_attestation is not True:
         return None
     call = reviewer_call if reviewer_call is not None else _default_codex_reviewer
     payload = payload_provider()
     accepted, reason_code = call(payload)
     return oracle.ReviewerVerdict(
-        accepted=bool(accepted),
+        # Strict identity, not bool(): a reviewer_call returning a truthy non-bool
+        # (e.g. the string "false") must NOT be widened to acceptance past
+        # decide_verdict's ``accepted is True`` guard.
+        accepted=accepted is True,
         reviewer_family=reviewer_family,
         reason_code=str(reason_code),
     )

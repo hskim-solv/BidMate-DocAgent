@@ -80,14 +80,16 @@ def _verdict_for_run(run_log: dict[str, Any], oracle, *, public_attestation: boo
 
     gr = run_log["gate_results"]
     hard = tuple(gr.get("hard_gates", ()))
+    # Strict identity to match the fail-closed run-log writer (runner.run_one): a
+    # gate counts as passing only when it is exactly True, never a coerced truthy.
     gates = oracle.GateResults(
-        hidden_test_gate=bool(gr.get("hidden_test_gate", False)),
-        pytest_pass=bool(gr.get("pytest_pass", False)),
-        regression_pass=bool(gr.get("regression_pass", False)),
+        hidden_test_gate=gr.get("hidden_test_gate") is True,
+        pytest_pass=gr.get("pytest_pass") is True,
+        regression_pass=gr.get("regression_pass") is True,
         hard_gates=hard,
     )
     reviewer = None
-    if public_attestation:
+    if public_attestation is True:
         accepted, reason_code = _stub_cross_family_reviewer(
             playbook=run_log["playbook"],
             task_id=run_log["task_id"],

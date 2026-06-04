@@ -126,9 +126,13 @@ def run_one(
             "usd": float(cost.get("usd", 0.0)),
         },
         "gate_results": {
-            "hidden_test_gate": bool(gate_results.get("hidden_test_gate", False)),
-            "pytest_pass": bool(gate_results.get("pytest_pass", False)),
-            "regression_pass": bool(gate_results.get("regression_pass", False)),
+            # Strict identity, not bool(): a candidate may return a non-bool truthy
+            # value for a FAILED gate (e.g. the string "false"); bool() would coerce
+            # that to a pass and let the verdict reach ACCEPTED. A gate passes only
+            # when the candidate reports exactly True — anything else is fail-closed.
+            "hidden_test_gate": gate_results.get("hidden_test_gate") is True,
+            "pytest_pass": gate_results.get("pytest_pass") is True,
+            "regression_pass": gate_results.get("regression_pass") is True,
             "hard_gates": list(gate_results.get("hard_gates", [])),
             "tier": gate_results.get("tier"),
         },
