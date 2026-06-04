@@ -59,6 +59,12 @@ def test_normalize_text_preserves_punctuation() -> None:
     assert cmp._normalize_text("FR-007") == "fr-007"
 
 
+def test_normalize_text_none_to_empty_string() -> None:
+    # Nullable table-cell text appears in extractor JSON. Treat it as blank
+    # rather than the literal string "none" so empty cells compare cleanly.
+    assert cmp._normalize_text(None) == ""  # type: ignore[arg-type]
+
+
 # --- diff_pair ---------------------------------------------------------
 
 
