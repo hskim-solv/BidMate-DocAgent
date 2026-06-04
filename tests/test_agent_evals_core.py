@@ -283,3 +283,15 @@ def test_scanner_rejects_non_mapping_dynamic_section() -> None:
     violations = report.validate_agent_eval_file("agent-evals/reports/smoke.aggregate.json", text)
 
     assert any("dynamic section must be a mapping" in violation.reason for violation in violations)
+
+
+def test_scanner_rejects_top_level_key_reused_below_root() -> None:
+    # P1 (cross-family review): top-level-only keys (notes/surface/...) must not be
+    # accepted nested. A metric row reusing `notes` would otherwise smuggle short
+    # raw prose; only the root uses the top-level schema, nested uses the row set.
+    report = load_module("agent-evals/core/report.py", "agent_evals_report_nested_toplevel_test")
+
+    text = '{"schema_version": 1, "metrics": {"review_body": {"notes": "raw upstream body"}}}'
+    violations = report.validate_agent_eval_file("agent-evals/reports/smoke.aggregate.json", text)
+
+    assert any("unknown report key not in schema" in violation.reason for violation in violations)

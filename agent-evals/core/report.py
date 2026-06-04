@@ -295,11 +295,19 @@ def _scan_artifact_keys(
             key_s = str(key)
             child_trail = f"{trail}.{key_s}"
             if parent_key in _DYNAMIC_NAME_PARENTS:
+                # immediate children of a dynamic section are free metric *names*
                 if not _DYNAMIC_NAME_RE.match(key_s):
                     violations.append(ScanViolation(rel_path, f"non-identifier key under {parent_key}: {child_trail}"))
                 if not isinstance(child, Mapping):
                     violations.append(ScanViolation(rel_path, f"{parent_key} entry must be a mapping: {child_trail}"))
-            elif key_s not in top_allowed and key_s not in _ALLOWED_NESTED_KEYS:
+            elif parent_key is None:
+                # artifact root: only the per-artifact top-level schema applies
+                if key_s not in top_allowed:
+                    violations.append(ScanViolation(rel_path, f"unknown {kind} key not in schema: {child_trail}"))
+            elif key_s not in _ALLOWED_NESTED_KEYS:
+                # below the root only the shared nested-row schema applies; a
+                # top-level-only key (notes/surface/...) must not reappear nested
+                # as a raw sink (e.g. metrics.<name>.notes).
                 violations.append(ScanViolation(rel_path, f"unknown {kind} key not in schema: {child_trail}"))
             if key_s in _DYNAMIC_NAME_PARENTS and not isinstance(child, Mapping):
                 # A dynamic section (e.g. metrics) must be a mapping of name -> row;
