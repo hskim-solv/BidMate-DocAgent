@@ -61,6 +61,19 @@ class TestClearModelCaches:
             "use sys.modules.get() lookup, not direct `import visual_ingestion`."
         )
 
+    def test_loaded_visual_ingestion_without_donut_cache_is_safe(self) -> None:
+        """Older/stubbed visual_ingestion modules without the cache attr are ignored."""
+        import types
+
+        stub = types.ModuleType("visual_ingestion")
+        sys.modules["visual_ingestion"] = stub
+        MODEL_CACHE[("dummy-model", False, None)] = object()
+        try:
+            clear_model_caches()
+            assert len(MODEL_CACHE) == 0
+        finally:
+            sys.modules.pop("visual_ingestion", None)
+
     def test_clears_donut_cache_when_module_loaded(self) -> None:
         """Once ``visual_ingestion`` is loaded, its donut cache is also cleared."""
         # Synthesize a minimal visual_ingestion-shaped module without
