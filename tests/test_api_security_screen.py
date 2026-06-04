@@ -9,6 +9,7 @@ the screen is diagnostic-only.
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -76,6 +77,26 @@ class ApiSecurityScreenTest(unittest.TestCase):
             sv = body["answer"].get("schema_version")
             if sv is not None:
                 self.assertEqual(sv, 2)
+
+
+    def test_screen_preserves_existing_diagnostics(self) -> None:
+        """Injection-screen diagnostics are additive to existing pipeline diagnostics."""
+
+        async def fake_arun_rag_query(*args, **kwargs):
+            return {
+                "answer": {"schema_version": 2, "text": "stub"},
+                "evidence": [],
+                "diagnostics": {"retrieval": {"strategy": "stub"}},
+            }
+
+        client = self._client()
+        with patch.object(api_main, "arun_rag_query", fake_arun_rag_query):
+            resp = client.post("/query", json={"query": "기관 A의 보안 통제 요구사항은?"})
+
+        self.assertEqual(resp.status_code, 200, resp.text)
+        diagnostics = resp.json()["diagnostics"]
+        self.assertEqual(diagnostics["retrieval"], {"strategy": "stub"})
+        self.assertEqual(diagnostics["injection_screen"]["status"], "passed")
 
 
 if __name__ == "__main__":
