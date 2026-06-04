@@ -20,9 +20,14 @@ class TestBuildQidParentMap(unittest.TestCase):
             {"qid": "Q2", "parent_qid": None},
             {"qid": "Q3", "parent_qid": "null"},
             {"qid": "Q4", "parent_qid": "None"},
+            {"qid": "Q5", "parent_qid": " null "},
+            {"qid": "Q6", "parent_qid": " None "},
         ]
         mapping = build_qid_parent_map(rows)
-        self.assertEqual(mapping, {"Q1": None, "Q2": None, "Q3": None, "Q4": None})
+        self.assertEqual(
+            mapping,
+            {"Q1": None, "Q2": None, "Q3": None, "Q4": None, "Q5": None, "Q6": None},
+        )
 
     def test_real_parent_chain(self) -> None:
         rows = [
