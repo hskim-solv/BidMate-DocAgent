@@ -117,6 +117,18 @@ class ConfigSurfaceTest(unittest.TestCase):
         )
         self.assertEqual(config["bm25_tokenizer"], "kiwi")
 
+    def test_resolve_lowercases_tokenizer_override(self) -> None:
+        # CLI / YAML values sometimes arrive with human casing. The resolver
+        # normalizes before allow-list validation so `KIWI` is the same
+        # explicit opt-in as `kiwi`.
+        config = resolve_pipeline_config(
+            {
+                "pipeline": "agentic_full",
+                "bm25_tokenizer": "KIWI",
+            }
+        )
+        self.assertEqual(config["bm25_tokenizer"], "kiwi")
+
     def test_resolve_defaults_to_regex_when_missing(self) -> None:
         config = resolve_pipeline_config({"pipeline": "naive_baseline"})
         self.assertEqual(config["bm25_tokenizer"], "regex")
