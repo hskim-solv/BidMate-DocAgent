@@ -56,6 +56,13 @@ def test_reasons_are_included_in_output():
         assert r in result, f"reason '{r}' not found in feedback"
 
 
+def test_reasons_are_bulleted_in_order():
+    reasons = ["low_top_score", "topic_not_grounded", "missing_comparison_doc:d1"]
+    result = format_verifier_feedback(reasons=reasons, evidence=[])
+    bullet_lines = [line for line in result.splitlines() if line.startswith("- ")]
+    assert bullet_lines == [f"- {reason}" for reason in reasons]
+
+
 def test_chunk_count_is_mentioned():
     evidence: list[dict[str, Any]] = [
         {"chunk_id": "c1", "text": "테스트1"},
