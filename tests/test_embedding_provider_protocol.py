@@ -51,3 +51,13 @@ def test_embedding_dimension_match_returns_original_result() -> None:
     )
 
     assert ensure_embedding_dimension(result, 4) is result
+
+
+def test_embedding_dimension_none_skips_validation() -> None:
+    result = EmbeddingResult(
+        vectors=np.zeros(4, dtype=np.float32),
+        backend="fake",
+        model="fake-model",
+    )
+
+    assert ensure_embedding_dimension(result, None) is result
