@@ -1198,3 +1198,51 @@ def test_main_defaults_start_commit_to_resolved_head(tmp_path) -> None:
     ]
     assert logs  # matrix ran
     assert {log["start_commit"] for log in logs} == {resolved}
+
+
+def test_report_main_errors_on_empty_runs_dir(tmp_path) -> None:
+    # report.main() must fail LOUD (parser.error -> SystemExit) when there are no
+    # run-logs, rather than silently writing an empty/degenerate aggregate.
+    report_script = load_module("scripts/agent_evals_report.py", "agent_evals_report_main_empty")
+    empty = tmp_path / "runs"
+    empty.mkdir()
+    with pytest.raises(SystemExit):
+        report_script.main(["--runs-dir", str(empty)])
+
+
+def test_report_main_restores_cwd_when_scanner_rejects_out_path(tmp_path, monkeypatch) -> None:
+    # report.main() chdir's to REPO_ROOT around the scanner-gated write and MUST
+    # restore the prior cwd in a finally even when the write raises. Drop that
+    # finally and a scanner rejection would strand the process in REPO_ROOT,
+    # silently corrupting any later relative-path work.
+    #
+    # Trigger the post-chdir failure with an in-repo --out whose name is not
+    # *.aggregate.json: it passes the relative_to(REPO_ROOT) check (so the chdir
+    # happens) but the content scanner rejects the PATH, so write_aggregate_report
+    # raises BEFORE writing anything (scan-before-write => no file leaks into the
+    # real tree).
+    run_script = load_module("scripts/agent_evals_run.py", "agent_evals_run_for_report_cwd")
+    report_script = load_module("scripts/agent_evals_report.py", "agent_evals_report_main_cwd")
+
+    class _Proc:
+        returncode = 0
+        stdout = ""
+        stderr = ""
+
+    runs_dir = tmp_path / "runs"
+    run_script.run(
+        tasks=run_script.SMOKE_HOLDOUT_TASKS,
+        start_commit="deadbeefcafe1234",
+        runs_dir=runs_dir,
+        public_attestation=True,
+        use_real=False,
+        subprocess_run=lambda *a, **k: _Proc(),
+    )
+
+    monkeypatch.chdir(tmp_path)
+    before = Path.cwd()
+    bad_out = REPO_ROOT / "agent-evals" / "reports" / "not_aggregate.json"
+    with pytest.raises(ValueError):
+        report_script.main(["--runs-dir", str(runs_dir), "--out", str(bad_out)])
+    assert Path.cwd() == before  # finally restored cwd despite the write failing
+    assert not bad_out.exists()  # scan-before-write => nothing was written
