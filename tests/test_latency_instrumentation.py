@@ -25,6 +25,14 @@ class StageTimerTest(unittest.TestCase):
             time.sleep(0.001)
         self.assertGreater(bucket["stage_ms"], first)
 
+    def test_records_elapsed_when_block_raises(self) -> None:
+        bucket: dict[str, float] = {}
+        with self.assertRaises(RuntimeError):
+            with _StageTimer(bucket, "stage_ms"):
+                raise RuntimeError("boom")
+        self.assertIn("stage_ms", bucket)
+        self.assertGreaterEqual(bucket["stage_ms"], 0.0)
+
 
 class RunRagQueryTimingTest(unittest.TestCase):
     @pytest.fixture(autouse=True)
