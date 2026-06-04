@@ -126,6 +126,11 @@ def compute_cost_usd(
     pricing = _resolve_pricing(model)
     if pricing is None:
         return None
+    if all(
+        count is None
+        for count in (tokens_in, tokens_out, cache_read_tokens, cache_write_tokens)
+    ):
+        return None
     cost = 0.0
     if tokens_in:
         cost += (tokens_in / 1_000_000.0) * pricing["input"]
