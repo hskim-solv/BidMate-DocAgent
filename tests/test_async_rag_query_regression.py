@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -62,6 +63,23 @@ class AsyncRagQueryParityTest(unittest.TestCase):
             sync_result["diagnostics"].get("pipeline"),
             async_result["diagnostics"].get("pipeline"),
         )
+
+    def test_arun_propagates_bm25_backend_kwarg(self) -> None:
+        calls: list[dict] = []
+
+        def fake_run_rag_query(index, query, **kwargs):
+            calls.append({"index": index, "query": query, "kwargs": kwargs})
+            return {"ok": True}
+
+        with patch("rag_core.run_rag_query", fake_run_rag_query):
+            result = self._run_async(
+                arun_rag_query(self.index, "bm25 backend probe", bm25_backend="bm25s")
+            )
+
+        self.assertEqual(result, {"ok": True})
+        self.assertEqual(calls[0]["index"], self.index)
+        self.assertEqual(calls[0]["query"], "bm25 backend probe")
+        self.assertEqual(calls[0]["kwargs"].get("bm25_backend"), "bm25s")
 
     # ------------------------------------------------------------------
 
