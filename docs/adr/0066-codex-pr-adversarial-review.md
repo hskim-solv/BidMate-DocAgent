@@ -1,7 +1,7 @@
 # ADR 0066 — Local Codex adversarial pre-commit review loop
 
 - **Status**: Accepted
-- **Date**: 2026-05-21 (개정 2026-05-31: Decision #4 를 single-pass approve loop → N-pass union + 빈도 게이트로 교체; 개정 2026-06-01: Decision #4 를 flat-N union → adaptive escalation(START=2 → CAP=8)으로 교체, issue #1728)
+- **Date**: 2026-05-21 (개정 2026-05-31: Decision #4 를 single-pass approve loop → N-pass union + 빈도 게이트로 교체; 개정 2026-06-01: Decision #4 를 flat-N union → adaptive escalation(START=2 → CAP=8)으로 교체, issue #1728; 개정 2026-06-03: invalid Codex result(미지 verdict/비-dict result/비-list findings)를 error pass 로 분류하고 staged diff snapshot 을 focus 에 embed, issue #1693)
 - **Related**: [0007](./0007-issue-linked-branch-naming.md) (issue-first 컨벤션), [0047](./0047-solo-author-adr-governance.md) (30일 SLA), [0061](./0061-external-and-paid-api-dependencies-allowed.md) (외부 API 3조건); issue #1126
 
 ## Context
@@ -31,6 +31,7 @@ PR 리뷰 시 `/codex:adversarial-review` 슬래시 명령을 수동 호출해 �
 - **로컬 Codex 환경 의존**: Claude Codex plugin cache 또는 `CODEX_COMPANION`이 필요하다. 모든 패스가 미설치/실패면 load-bearing commit이 block된다.
 - **PR comment evidence 제거**: reviewer-facing artifact는 PR comment/check가 아니라 local hook stderr와 git-dir 내부 `codex-adversarial-precommit/` artifact다. PR 본문에는 필요한 finding만 사람이 요약한다.
 - **비공개 데이터 경계 유지**: pre-commit은 ADR 0005 path block 이후에 Codex를 호출한다. private staged file이 있으면 Codex 호출 전에 hook이 중단된다.
+- **malformed Codex 출력의 fail-closed 분류 (issue #1693)**: rc=0 이어도 result 가 dict 가 아니거나 verdict 가 `approve`/`needs-attention` 이 아니거나 findings 가 list 가 아니면 `_is_valid_result` 가 그 패스를 error pass 로 분류한다 — 그래야 깨진 패스가 "깨끗한 빈 approve" 로 위장해 게이트를 약화시키지 못한다(누적 성공<min_freq 이면 기존 fail-closed 경로가 block). 렌더러(`render_codex_review.py`)도 비-dict result 에 `(unknown)` 으로 graceful degrade 해 per-pass artifact 작성이 죽지 않는다. 또한 `--base HEAD --scope branch` 호출에서 구조적 branch-diff 가 비어 있으므로(HEAD..HEAD), staged diff snapshot(상한 60KB, truncation 마커)을 focus 프롬프트에 직접 embed 해 변경 집합을 권위 있는 증거로 만든다(모델이 직접 `git diff --cached` 를 돌리는 데 의존하지 않음; 산문 지시도 defense-in-depth 로 유지). 이 변경을 도입하는 commit 을 게이트가 dogfood 한 결과(freq≥2 high) 세 잔여 빈틈을 self-catch 해 함께 보강했다: (a) truncated snapshot 은 authoritative 라벨을 떼고 모델에게 full `git diff --cached` 재확인을 지시(잘린 hunk 은폐 방지), (b) validity 로직 변경이 stale cache 로 우회되지 않도록 `_CACHE_SCHEMA_VERSION` 을 3→4 bump, (c) 렌더러가 findings list 의 비-dict 항목도 drop(중첩 malformed 방어), (d) embed 한 staged diff 는 ```diff 펜스가 아니라 sentinel(`<<<STAGED_DIFF_BEGIN/END>>>`)로 감싼 데이터 채널로 프레이밍하고, diff 본문에 들어 있는 sentinel 문자열(이 파일 자체를 staging 할 때 가장 첨예 — freq 4/8 로 재self-catch)은 embed 전에 inert 형태로 defang 해 diff 내용이 프레임 경계를 위조하지 못하게 한다(프롬프트 인젝션 / 프레임 탈출 방어). 나머지 self-catch(errored pass finding salvage, full-schema 검증, embed scope 축소)는 게이트 위협모델 재설계라는 별개 concern 으로 follow-up 이슈 #1920 에 분리.
 
 ## Alternatives considered
 
@@ -54,6 +55,13 @@ PR 리뷰 시 `/codex:adversarial-review` 슬래시 명령을 수동 호출해 �
 <!-- verifies-key: tests/test_codex_adversarial_precommit.py:test_gate_escalates_when_strong_finding_subthreshold_in_start -->
 <!-- verifies-key: tests/test_codex_adversarial_precommit.py:test_gate_early_blocks_when_strong_reproduced_in_start -->
 <!-- verifies-key: tests/test_codex_adversarial_precommit.py:test_resolve_start_attempts_clamps_implicit_start_to_lowered_cap -->
+<!-- verifies-key: tests/test_codex_adversarial_precommit.py:test_malformed_result_counts_as_error_pass -->
+<!-- verifies-key: tests/test_codex_adversarial_precommit.py:test_unknown_verdict_counts_as_error_pass -->
+<!-- verifies-key: tests/test_codex_adversarial_precommit.py:test_valid_empty_approve_still_successful -->
+<!-- verifies-key: tests/test_codex_adversarial_precommit.py:test_runner_receives_staged_diff_in_focus -->
+<!-- verifies-key: tests/test_codex_adversarial_precommit.py:test_old_v3_cache_entry_is_rejected -->
+<!-- verifies-key: tests/test_codex_adversarial_precommit.py:test_build_focus_truncated_diff_is_not_labeled_authoritative -->
+<!-- verifies-key: tests/test_codex_adversarial_precommit.py:test_build_focus_defangs_sentinel_injected_from_diff -->
 
 - Hook wiring: `.githooks/pre-commit`이 staged load-bearing hit를 `scripts/_governance.py --any-match`로 찾은 뒤 `scripts/run_codex_adversarial_precommit.py`를 호출한다.
 - Local runner: `scripts/run_codex_adversarial_precommit.py`는 staged file list를 focus에 포함해 N패스를 병렬 실행하고, pass별 raw + union artifact를 git-dir 내부 `codex-adversarial-precommit/`에 쓴다.
