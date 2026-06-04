@@ -41,6 +41,12 @@ class TestDenseSimilarityShapeValidation(unittest.TestCase):
         anti = -v
         self.assertAlmostEqual(dense_similarity(v, anti), 0.0, places=6)
 
+    def test_out_of_range_dot_product_is_clamped(self) -> None:
+        high = np.array([2.0, 0.0], dtype=np.float32)
+        low = np.array([-2.0, 0.0], dtype=np.float32)
+        self.assertEqual(dense_similarity(high, high), 1.0)
+        self.assertEqual(dense_similarity(high, low), 0.0)
+
     def test_shape_mismatch_raises_with_both_shapes(self) -> None:
         # The bug we are fixing: previously this returned 0.0
         # silently, corrupting retrieval ranking. Now it raises so
