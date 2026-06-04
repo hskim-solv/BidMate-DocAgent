@@ -53,6 +53,14 @@ class TestThresholdCli(unittest.TestCase):
         self.assertEqual(int(r.stdout.strip()), gov.THRESHOLDS["MEMORY_LINE_AWARE"])
         self.assertEqual(r.stderr, "")
 
+    def test_all_known_keys_round_trip_through_cli(self) -> None:
+        for key, value in gov.THRESHOLDS.items():
+            with self.subTest(key=key):
+                r = self._run(["--threshold", key])
+                self.assertEqual(r.returncode, 0)
+                self.assertEqual(int(r.stdout.strip()), value)
+                self.assertEqual(r.stderr, "")
+
     def test_unknown_key_exits_one_with_stderr(self) -> None:
         r = self._run(["--threshold", "NOPE_NOT_REAL"])
         self.assertEqual(r.returncode, 1)
