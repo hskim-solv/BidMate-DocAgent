@@ -156,6 +156,12 @@ def test_default_planner_factory_returns_fresh_instances():
     assert p1 is not p2
 
 
+def test_default_planner_unknown_backend_falls_back_static(monkeypatch):
+    monkeypatch.setenv("BIDMATE_PLANNER_BACKEND", "not-a-real-backend")
+    planner = default_planner()
+    assert isinstance(planner, StaticPlanner)
+
+
 def test_default_planner_preset_kwargs_forwarded():
     planner = default_planner(preset_kwargs={"rerank": False})
     next_action, _ = planner.plan_next(
