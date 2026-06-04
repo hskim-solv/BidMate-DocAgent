@@ -99,6 +99,10 @@ class TestCaseProposerCsvBomRegression(unittest.TestCase):
             )
             # 2 seed docs × 2 templates per doc (single_doc + abstention).
             self.assertEqual(len(cases), 4)
+            self.assertEqual(
+                [c["proposer_meta"]["seed_doc_id"] for c in cases],
+                ["K2026-001", "K2026-001", "K2026-002", "K2026-002"],
+            )
 
     def test_bom_byte_is_actually_present_in_fixture(self) -> None:
         """Sanity check on the fixture: without this, a regression in
