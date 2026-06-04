@@ -162,6 +162,37 @@ _ALLOWED_SPLIT_KEYS = frozenset(
     }
 )
 
+# Keys permitted inside the *nested* objects of a committable artifact. Enforcing
+# the allowlist recursively (not just at the top level) is what closes the
+# whack-a-mole: a raw sink nested under an allowed object (metrics.issue_body,
+# scanner.pr_title, ...) fails closed regardless of whether the sink name was
+# ever added to the denylist. Covers PairedDelta metric rows, playbooks, scanner
+# self-attest, and the split assignment.
+_ALLOWED_NESTED_KEYS = frozenset(
+    {
+        "metric",
+        "baseline",
+        "candidate",
+        "n",
+        "baseline_mean",
+        "candidate_mean",
+        "delta",
+        "wins",
+        "losses",
+        "ties",
+        "content_scan",
+        "path_allowlist",
+        "train",
+        "holdout",
+    }
+)
+
+# Under these parents the immediate child keys are free identifier *names* (e.g.
+# the metric name in ``metrics.<name>``); each such value must itself be a mapping
+# so a scalar raw sink (``metrics.pr_title: "..."``) cannot masquerade as a name.
+_DYNAMIC_NAME_PARENTS = frozenset({"metrics"})
+_DYNAMIC_NAME_RE = re.compile(r"[a-z][a-z0-9_]*\Z")
+
 
 @dataclass(frozen=True)
 class ScanViolation:
@@ -241,17 +272,44 @@ def _scan_json_keys(rel_path: str, value: Any, *, trail: str = "$") -> list[Scan
     return violations
 
 
-def _check_allowed_top_level_keys(
-    rel_path: str, parsed: Any, allowed: frozenset[str], kind: str
+def _scan_artifact_keys(
+    rel_path: str,
+    value: Any,
+    top_allowed: frozenset[str],
+    kind: str,
+    *,
+    trail: str = "$",
+    parent_key: str | None = None,
 ) -> list[ScanViolation]:
-    """Fail closed on unknown top-level keys for a committable data artifact."""
+    """Fail closed on unknown keys at every depth of a committable data artifact.
 
-    if not isinstance(parsed, Mapping):
-        return []
-    unknown = sorted(str(key) for key in parsed if str(key) not in allowed)
-    if unknown:
-        return [ScanViolation(rel_path, f"unknown {kind} key(s) not in schema: {unknown}")]
-    return []
+    Top-level keys must be in ``top_allowed``; nested keys must be in
+    ``top_allowed`` or ``_ALLOWED_NESTED_KEYS``. Children of a dynamic-name parent
+    (``metrics``) are free identifier names but must each be a mapping, so a scalar
+    raw sink cannot ride in as a fake metric name.
+    """
+
+    violations: list[ScanViolation] = []
+    if isinstance(value, Mapping):
+        for key, child in value.items():
+            key_s = str(key)
+            child_trail = f"{trail}.{key_s}"
+            if parent_key in _DYNAMIC_NAME_PARENTS:
+                if not _DYNAMIC_NAME_RE.match(key_s):
+                    violations.append(ScanViolation(rel_path, f"non-identifier key under {parent_key}: {child_trail}"))
+                if not isinstance(child, Mapping):
+                    violations.append(ScanViolation(rel_path, f"{parent_key} entry must be a mapping: {child_trail}"))
+            elif key_s not in top_allowed and key_s not in _ALLOWED_NESTED_KEYS:
+                violations.append(ScanViolation(rel_path, f"unknown {kind} key not in schema: {child_trail}"))
+            violations.extend(
+                _scan_artifact_keys(rel_path, child, top_allowed, kind, trail=child_trail, parent_key=key_s)
+            )
+    elif isinstance(value, list):
+        for idx, child in enumerate(value):
+            violations.extend(
+                _scan_artifact_keys(rel_path, child, top_allowed, kind, trail=f"{trail}[{idx}]", parent_key=parent_key)
+            )
+    return violations
 
 
 def _yaml_error_summary(exc: yaml.YAMLError) -> str:
@@ -287,9 +345,9 @@ def _scan_yaml(rel_path: str, text: str) -> list[ScanViolation]:
         violations.extend(_scan_json_keys(rel_path, parsed))
         return violations
     if rel_path == "agent-evals/splits.yaml":
-        violations.extend(_check_allowed_top_level_keys(rel_path, parsed, _ALLOWED_SPLIT_KEYS, "split"))
+        violations.extend(_scan_artifact_keys(rel_path, parsed, _ALLOWED_SPLIT_KEYS, "split"))
     elif rel_path.endswith("/task.yaml"):
-        violations.extend(_check_allowed_top_level_keys(rel_path, parsed, _ALLOWED_TASK_KEYS, "task"))
+        violations.extend(_scan_artifact_keys(rel_path, parsed, _ALLOWED_TASK_KEYS, "task"))
     violations.extend(_scan_json_keys(rel_path, parsed))
     return violations
 
@@ -320,7 +378,7 @@ def validate_agent_eval_file(rel_path: str, text: str) -> list[ScanViolation]:
         else:
             if not isinstance(parsed, dict):
                 violations.append(ScanViolation(rel_path, "aggregate report must be a JSON object"))
-            violations.extend(_check_allowed_top_level_keys(rel_path, parsed, _ALLOWED_REPORT_KEYS, "report"))
+            violations.extend(_scan_artifact_keys(rel_path, parsed, _ALLOWED_REPORT_KEYS, "report"))
             violations.extend(_scan_json_keys(rel_path, parsed))
         return violations
 

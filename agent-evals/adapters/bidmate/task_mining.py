@@ -13,6 +13,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterable, Mapping, Sequence
 
+import yaml
+
 
 DEFAULT_MINEABLE_FLOOR = 132
 DEFAULT_HOLDOUT_TARGET = 46
@@ -106,23 +108,25 @@ def mine_tasks(
 
 
 def render_task_yaml(task: Mapping[str, object]) -> str:
-    """Render a scanner-friendly task.yaml fragment without external YAML deps."""
+    """Render a task.yaml fragment as well-formed YAML.
 
-    lines: list[str] = []
-    for key in (
-        "task_id",
-        "source",
-        "category",
-        "train_hint",
-        "acceptance",
-        "hidden_test_gate",
-        "aggregate_only_notes",
-    ):
-        value = task.get(key)
-        if isinstance(value, list):
-            lines.append(f"{key}:")
-            for item in value:
-                lines.append(f"  - {item}")
-        else:
-            lines.append(f"{key}: {value}")
-    return "\n".join(lines) + "\n"
+    Uses ``yaml.safe_dump`` so a scalar value containing YAML syntax (e.g. a
+    governance signal like ``"ADR 0005: privacy guard"``) is quoted rather than
+    silently reparsed into a mapping, which would corrupt the ``acceptance``
+    contract. Cross-family review flagged the previous manual f-string renderer.
+    """
+
+    ordered = {
+        key: task[key]
+        for key in (
+            "task_id",
+            "source",
+            "category",
+            "train_hint",
+            "acceptance",
+            "hidden_test_gate",
+            "aggregate_only_notes",
+        )
+        if key in task
+    }
+    return yaml.safe_dump(ordered, sort_keys=False, allow_unicode=True, default_flow_style=False)

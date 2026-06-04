@@ -245,3 +245,29 @@ def test_scanner_rejects_non_mapping_yaml_artifact() -> None:
     )
 
     assert any("must be a mapping" in violation.reason for violation in violations)
+
+
+def test_scanner_rejects_raw_body_variant_under_nested_object() -> None:
+    # P1 (cross-family review): nested raw sinks must fail closed structurally via
+    # the recursive allowlist, not depend on the denylist naming every variant
+    # (issue_body / review_body / comment_body / ...). scanner is a non-dynamic
+    # allowed object, so an unknown nested key is rejected outright.
+    report = load_module("agent-evals/core/report.py", "agent_evals_report_nested_body_test")
+
+    text = '{"schema_version": 1, "scanner": {"issue_body": "raw upstream body"}}'
+    violations = report.validate_agent_eval_file("agent-evals/reports/smoke.aggregate.json", text)
+
+    assert any("unknown report key not in schema" in violation.reason for violation in violations)
+
+
+def test_scanner_rejects_scalar_metric_entry() -> None:
+    # P1 (cross-family review): under the dynamic-name parent `metrics`, a scalar
+    # raw sink masquerading as a metric name is rejected because each metric entry
+    # must itself be a mapping (a PairedDelta row). issue_body is not denylisted,
+    # so this proves the structural gate is independent of the denylist.
+    report = load_module("agent-evals/core/report.py", "agent_evals_report_scalar_metric_test")
+
+    text = '{"schema_version": 1, "metrics": {"issue_body": "raw upstream body"}}'
+    violations = report.validate_agent_eval_file("agent-evals/reports/smoke.aggregate.json", text)
+
+    assert any("must be a mapping" in violation.reason for violation in violations)

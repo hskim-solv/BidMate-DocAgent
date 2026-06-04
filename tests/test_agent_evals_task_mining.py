@@ -4,6 +4,8 @@ import importlib.util
 import sys
 from pathlib import Path
 
+import yaml
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -75,6 +77,29 @@ def test_rendered_task_yaml_passes_content_scanner() -> None:
     violations = scanner.validate_agent_eval_file("agent-evals/tasks/T-1820/task.yaml", text)
 
     assert [violation.render() for violation in violations] == []
+
+
+def test_render_task_yaml_quotes_colon_signals() -> None:
+    # P2 (cross-family review): a governance-style signal containing a colon must
+    # render as a string, not silently reparse into a mapping that corrupts the
+    # acceptance contract.
+    mining = load_module("agent-evals/adapters/bidmate/task_mining.py", "agent_evals_task_mining_colon_test")
+
+    tasks, _summary = mining.mine_tasks(
+        [
+            {
+                "number": 1500,
+                "merged": True,
+                "category": "doc_contract",
+                "signals": ["ADR 0005: privacy guard"],
+            }
+        ],
+        mineable_floor=1,
+        holdout_target=1,
+    )
+    parsed = yaml.safe_load(mining.render_task_yaml(tasks[0]))
+
+    assert parsed["acceptance"] == ["preserve ADR 0005: privacy guard"]
 
 
 def test_non_allowlisted_category_is_not_mineable() -> None:
