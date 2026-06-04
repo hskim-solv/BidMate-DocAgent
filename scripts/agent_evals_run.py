@@ -158,7 +158,11 @@ def run(
     return written
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(
+    argv: list[str] | None = None,
+    *,
+    subprocess_run: Callable[..., Any] = subprocess.run,
+) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--tasks",
@@ -190,7 +194,7 @@ def main(argv: list[str] | None = None) -> int:
 
     start_commit = args.start_commit
     if start_commit is None:
-        proc = subprocess.run(
+        proc = subprocess_run(
             ["git", "-C", str(REPO_ROOT), "rev-parse", "HEAD"],
             check=True,
             capture_output=True,
@@ -204,6 +208,7 @@ def main(argv: list[str] | None = None) -> int:
         runs_dir=Path(args.runs_dir),
         public_attestation=args.public_attestation,
         use_real=args.real,
+        subprocess_run=subprocess_run,
     )
     print(f"wrote {len(written)} run-log(s) to {args.runs_dir}")
     return 0
