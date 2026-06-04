@@ -30,3 +30,11 @@ def test_demo_on_prints_auditor_strengthen_contract(capsys):
     assert "effort_overrides[('Auditor', 'codex')] = 'xhigh'" in out
     assert "cooldown_state['Auditor||codex'] = 2" in out
     assert "model_reasoning_effort=xhigh" in out
+
+
+def test_main_prints_off_before_on_demo(capsys):
+    demo.main()
+
+    out = capsys.readouterr().out
+
+    assert out.index("AUTOTUNE OFF") < out.index("AUTOTUNE ON")
