@@ -88,6 +88,17 @@ class CheckLatencySloUnit(unittest.TestCase):
         self.assertEqual(passes, [])
         self.assertEqual(orphans, [])
 
+    def test_observed_equal_to_ceiling_is_pass(self) -> None:
+        # Boundary: the gate breaches on ``observed > ceiling`` so
+        # observed == ceiling is *within* budget (zero headroom, pass).
+        # Locks the inclusive boundary against an accidental ``>=`` flip.
+        config = {"latency_budgets": {"full": {"p95_ms": 100}}}
+        summary = _summary([{"name": "full", "latency": {"p95": 100.0}}])
+        violations, passes, _ = check(config, summary)
+        self.assertEqual(violations, [])
+        self.assertEqual(len(passes), 1)
+        self.assertAlmostEqual(passes[0]["headroom_ms"], 0.0)
+
 
 def _stage_summary(run_name: str, stages: dict) -> dict:
     """Build a minimal eval_summary.json with stage_latency for one run."""
@@ -167,6 +178,104 @@ class CheckStageSloUnit(unittest.TestCase):
         self.assertEqual(len(violations), 1)
         self.assertEqual(violations[0]["stage"], "retrieve_ms")
         self.assertEqual(len(passes), 2)
+
+    def test_stage_observed_equal_to_ceiling_is_pass(self) -> None:
+        # Same inclusive boundary as the top-level gate: stage
+        # observed == ceiling is a pass (breach is ``> ceiling``).
+        config = {"stage_latency_budgets": {"full": {"query_analysis_ms": {"p95_ms": 50}}}}
+        summary = _stage_summary("full", {"query_analysis_ms": {"p95": 50.0}})
+        violations, passes, _ = check_stage(config, summary)
+        self.assertEqual(violations, [])
+        self.assertEqual(len(passes), 1)
+        self.assertAlmostEqual(passes[0]["headroom_ms"], 0.0)
+
+
+class MalformedInputRobustness(unittest.TestCase):
+    """A malformed eval_summary.json / config must NOT crash the SLO gate.
+
+    The summary is machine-generated, but a partial or errored eval run
+    can emit a non-dict where a mapping is expected — e.g. ``latency:
+    "n/a"`` on a run that failed to measure, or a scalar budget from a
+    config typo (``full: 1500`` instead of ``full: {p95_ms: 1500}``).
+    The old ``(x or {}).get(...)`` idiom only rescued *falsy* values, so
+    a *truthy* non-dict slipped through and raised ``AttributeError``
+    mid-gate — turning a measurement-quality problem into an opaque CI
+    crash (exit 1 via traceback, not the intended skip). Each field now
+    degrades to "skip this entry" via the ``_as_dict`` guard.
+    """
+
+    # ----- check() -------------------------------------------------------
+    def test_non_dict_latency_is_skipped_not_crash(self) -> None:
+        config = {"latency_budgets": {"full": {"p95_ms": 100}}}
+        summary = _summary([{"name": "full", "latency": "n/a"}])
+        violations, passes, _ = check(config, summary)  # must not raise
+        self.assertEqual(violations, [])
+        self.assertEqual(passes, [])
+
+    def test_non_dict_budget_is_skipped_not_crash(self) -> None:
+        config = {"latency_budgets": {"full": 1500}}  # scalar, not {p95_ms: …}
+        summary = _summary([{"name": "full", "latency": {"p95": 5.0}}])
+        violations, passes, _ = check(config, summary)  # must not raise
+        self.assertEqual(violations, [])
+        self.assertEqual(passes, [])
+
+    def test_non_dict_ablation_yields_orphan_not_crash(self) -> None:
+        config = {"latency_budgets": {"full": {"p95_ms": 100}}}
+        summary = {"ablation": "broken"}  # not a mapping
+        violations, passes, orphans = check(config, summary)  # must not raise
+        self.assertEqual(violations, [])
+        self.assertEqual(passes, [])
+        self.assertEqual(orphans, ["full"])  # budget present, no run → orphan
+
+    def test_non_dict_run_element_is_skipped_not_crash(self) -> None:
+        config = {"latency_budgets": {"full": {"p95_ms": 100}}}
+        summary = {
+            "ablation": {"runs": ["notadict", {"name": "full", "latency": {"p95": 5.0}}]}
+        }
+        violations, passes, _ = check(config, summary)  # must not raise
+        self.assertEqual(len(passes), 1)
+        self.assertEqual(passes[0]["name"], "full")
+
+    def test_non_dict_config_is_skipped_not_crash(self) -> None:
+        summary = _summary([{"name": "full", "latency": {"p95": 5.0}}])
+        result = check("notaconfig", summary)  # must not raise
+        self.assertEqual(result, ([], [], []))
+
+    def test_non_dict_summary_is_skipped_not_crash(self) -> None:
+        # A corrupted report whose top-level JSON is a list/scalar (not a
+        # mapping) must orphan the budget, not crash _runs_by_name.
+        config = {"latency_budgets": {"full": {"p95_ms": 100}}}
+        result = check(config, ["not", "a", "mapping"])  # must not raise
+        self.assertEqual(result, ([], [], ["full"]))
+
+    # ----- check_stage() -------------------------------------------------
+    def test_non_dict_stage_latency_is_skipped_not_crash(self) -> None:
+        config = {"stage_latency_budgets": {"full": {"verify_ms": {"p95_ms": 20}}}}
+        summary = _stage_summary("full", "n/a")  # stage_latency is a string
+        violations, passes, _ = check_stage(config, summary)  # must not raise
+        self.assertEqual(violations, [])
+        self.assertEqual(passes, [])
+
+    def test_non_dict_per_stage_entry_is_skipped_not_crash(self) -> None:
+        config = {"stage_latency_budgets": {"full": {"verify_ms": {"p95_ms": 20}}}}
+        summary = _stage_summary("full", {"verify_ms": "n/a"})  # per-stage non-dict
+        violations, passes, _ = check_stage(config, summary)  # must not raise
+        self.assertEqual(violations, [])
+        self.assertEqual(passes, [])
+
+    def test_non_dict_stage_ceilings_is_skipped_not_crash(self) -> None:
+        config = {"stage_latency_budgets": {"full": "bogus"}}  # ceilings not a mapping
+        summary = _stage_summary("full", {"verify_ms": {"p95": 5.0}})
+        violations, passes, _ = check_stage(config, summary)  # must not raise
+        self.assertEqual(violations, [])
+        self.assertEqual(passes, [])
+
+    def test_non_dict_ceiling_config_is_skipped_not_crash(self) -> None:
+        config = {"stage_latency_budgets": {"full": {"verify_ms": 20}}}  # scalar ceiling
+        summary = _stage_summary("full", {"verify_ms": {"p95": 5.0}})
+        violations, passes, _ = check_stage(config, summary)  # must not raise
+        self.assertEqual(violations, [])
+        self.assertEqual(passes, [])
 
 
 class CheckLatencySloCli(unittest.TestCase):
